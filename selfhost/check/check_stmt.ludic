@@ -31,18 +31,20 @@ function ck_let(s: Node) -> void {
     if s.tps != null and (s.tps == "state") {                        # an entry point's state (state.ludic)
       if not is_state_ty(s.ty) { ck_err("state", s, `an entry point takes states, and {s.s}: {s.ty} is not one`) }
       ck_set_ro(s.uns == 0)
-    }
+    } else { ck_let_from(s.a, s.ty) }
     return
   }
   ck_bind(s.s, t)
-  # a local bound to a read-only state is read-only too
+  # a local bound to a read-only state, or to a reference out of one, is read-only too
   if s.a != null and s.a.kind == E_ID {
     let li = ck_local(s.a.s)
     if li >= 0 and li < ck_top - 1 and ck_is_ro(li) { ck_set_ro(true) }
   }
+  ck_let_from(s.a, t)
 }
 function ck_assign(s: Node) -> void {
-  ck_write_check(s.a, "this assignment")
+  # a local rebound is not a write through it
+  if not (s.a.kind == E_ID and ck_local(s.a.s) >= 0) { ck_write_check(s.a, "this assignment") }
   let lt = ck_target(s.a)
   if (s.s == "=") { ck_expect = lt }
   let rt = ck_expr(s.b)
@@ -124,6 +126,33 @@ function ck_stmt(s: Node) -> void {
     ck_unsafe -= 1
     return
   }
+  # a machine's store: its states' `become` writes it
+  if k == S_MACHINE {
+    if s.a != null and not (s.a.kind == E_INT) { ck_write_check(s.a, "a machine's become") }
+    ck_walk(s)
+    return
+  }
+  # 0.S: a query's body, a spawn's fields, a machine's states - read for what they touch
+  if k == S_QUERY {
+    let m = ck_mark()
+    var t = 0
+    var i = 0
+    while i < len(s.kids) {
+      var ty: pointer = "?"
+      if s.c != null {
+        while t < len(s.c.kids) and s.c.kids[t].ival == 1 { t += 1 }
+        if t < len(s.c.kids) { ty = s.c.kids[t].s }
+        t += 1
+      }
+      ck_bind(s.kids[i].s, ty)
+      i += 1
+    }
+    ck_any(s.b)
+    ck_block(s.a)
+    ck_pop(m)
+    return
+  }
+  ck_walk(s)
 }
 function ck_fn_body(d: Node) -> void {
   mg_enter(d, 0)
@@ -182,6 +211,35 @@ function ck_runtime_shadows() -> void {
     r += 1
   }
 }
+function ck_hooks(hs: []Node) -> void {
+  var i = 0
+  while i < len(hs) {
+    mg_enter(hs[i], 4)
+    ck_block(hs[i].a)
+    mg_leave()
+    i += 1
+  }
+}
+function ck_scene_block(b: Node) -> void {
+  if b == null { return }
+  mg_enter(b, 5)
+  ck_block(b)
+  mg_leave()
+}
+# a retained ui widget (N_UI, whose number is also S_IF's): its props and its children
+function ck_widget(w: Node) -> void {
+  if w == null { return }
+  var i = 0
+  while w.b != null and i < len(w.b.kids) {
+    ck_expr(w.b.kids[i].a)
+    i += 1
+  }
+  i = 0
+  while i < len(w.kids) {
+    ck_widget(w.kids[i])
+    i += 1
+  }
+}
 # the pass also makes the generics real (check_gen.ludic), so it always runs
 function check_program() -> void {
   gen_collect()
@@ -195,6 +253,11 @@ function check_program() -> void {
       mg_enter(d, 1)
       ck_block(d.a)
       mg_leave()
+    }
+    if d.kind == N_UI and d.ival == 1 and g_migrate {   # 0.S2: a ui block's props, for what they read
+      g_mg_cur = -3
+      ck_widget(d.a)
+      g_mg_cur = -1
     }
     if d.kind == N_SYS and g_migrate {          # a handler's body: only the migration reads it here
       mg_enter(d, 2)
@@ -214,6 +277,20 @@ function check_program() -> void {
   while j < len(g_onlisten) {
     ck_listener(g_onlisten[j])
     j += 1
+  }
+  if g_migrate {                               # 0.S2: the hooks' bodies and the scenes', for what they touch
+    ck_hooks(g_onspawn)
+    ck_hooks(g_ondespawn)
+    ck_hooks(g_onattach)
+    ck_hooks(g_ondetach)
+    ck_hooks(g_onenable)
+    ck_hooks(g_ondisable)
+    j = 0
+    while j < len(g_scenes) {
+      ck_scene_block(g_scenes[j].a)
+      ck_scene_block(g_scenes[j].b)
+      j += 1
+    }
   }
   # a test block is checked like `entry`: that is also what makes its generic calls real
   j = 0

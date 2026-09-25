@@ -16,6 +16,35 @@
 # toolchain's own programs, which are not part of this); a module-level `let` is deeply immutable.
 var g_state_names: []pointer = new []pointer
 var g_allow_globals: bool = false
+var g_gen_nodes: bool = false          # the finishing passes are writing code: its nodes are generated
+
+# a call the compiler wrote itself (a view's model, a component's glue): its callee's states are
+# supplied - the runtime's side of an entry point
+function state_inject_generated(e: Node, f: Node) -> void {
+  if e != null and e.pos < 0 { state_inject(e, f) }
+}
+# `(h: mut Hiker)` copied onto the front of a function's parameters (a view's functions)
+function state_params_onto(f: Node, ps: []Node) -> void {
+  if len(ps) == 0 { return }
+  let kids = new []Node
+  var i = 0
+  while i < len(ps) {
+    let p = node(N_PARAM)
+    p.s = ps[i].s
+    p.ty = ps[i].ty
+    p.uns = ps[i].uns
+    p.file = ps[i].file
+    p.line = ps[i].line
+    push(kids, p)
+    i += 1
+  }
+  i = 0
+  while i < len(f.kids) {
+    push(kids, f.kids[i])
+    i += 1
+  }
+  f.kids = kids
+}
 
 function state_global(name: pointer) -> pointer { return `state${name}` }
 function is_state_ty(t: pointer) -> bool {
@@ -103,6 +132,26 @@ function state_inject(e: Node, f: Node) -> void {
     i += 1
   }
   e.kids = args
+}
+# a retained `ui` block is an entry point: `font: MenuState.title_font` reads the instance
+function ui_state_refs(n: Node) -> void {
+  if n == null { return }
+  if n.kind == E_MEMBER and n.a != null and n.a.kind == E_ID and is_state_ty(n.a.s) { n.a.s = state_global(n.a.s) }
+  ui_state_refs(n.a)
+  ui_state_refs(n.b)
+  ui_state_refs(n.c)
+  var i = 0
+  while i < len(n.kids) {
+    ui_state_refs(n.kids[i])
+    i += 1
+  }
+}
+function ui_blocks_states() -> void {
+  var i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_UI and prog[i].ival == 1 { ui_state_refs(prog[i].a) }
+    i += 1
+  }
 }
 function entry_bind(body: Node, ps: []Node) -> void {
   if len(ps) == 0 or body == null { return }

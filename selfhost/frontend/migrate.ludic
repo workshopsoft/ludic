@@ -24,7 +24,7 @@ var g_ms_param: []pointer = new []pointer
 var g_ms_export: []int = new []int
 # units: the functions and entry points whose states are worked out
 var g_mu_node: []Node = new []Node
-var g_mu_kind: []int = new []int      # 0 function, 1 entry block, 2 handler, 3 test, 4 listener
+var g_mu_kind: []int = new []int      # 0 function, 1 entry block, 2 handler, 3 test, 4 listener or hook, 5 a scene's on enter/exit
 var g_mu_need: []pointer = new []pointer   # ",0,3," state indices it needs
 var g_mu_mut: []pointer = new []pointer    # the ones it changes
 var g_mg_cur: int = -1
@@ -33,6 +33,7 @@ var g_mc_unit: []int = new []int
 var g_mc_callee: []int = new []int
 var g_mr_node: []Node = new []Node    # every reference to a moving var
 var g_mr_var: []int = new []int
+var g_mr_ui: []int = new []int        # 1: in a ui block, rewritten as State.var
 var g_mg_report: []pointer = new []pointer
 
 function mg_camel(s: pointer) -> pointer {
@@ -118,11 +119,39 @@ function mg_state_of_mod(m: pointer, base: pointer) -> int {
     if (g_ms_mod[i] == m) { return i }
     i += 1
   }
+  let name = `{mg_camel(base)}State`
+  # the module's state from a run before: its new vars are more of its fields
+  i = 0
+  while i < len(g_ms_name) {
+    if (g_ms_name[i] == name) {
+      g_ms_mod[i] = m
+      return i
+    }
+    i += 1
+  }
   push(g_ms_mod, m)
-  push(g_ms_name, `{mg_camel(base)}State`)
+  push(g_ms_name, name)
   push(g_ms_param, `{base}_st`)
   push(g_ms_export, 0)
   return len(g_ms_mod) - 1
+}
+# where a state is already declared, for its new fields: the declaration, else null
+function mg_state_decl(name: pointer) -> Node {
+  var i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_COMP and prog[i].uns == 2 and (prog[i].s == name) { return prog[i] }
+    i += 1
+  }
+  return null
+}
+# a name as its source spells it: a module's private one is `dice$shop` inside the compiler
+function mg_src_name(s: pointer) -> pointer {
+  var i = 0
+  while i < len(s) {
+    if s[i] == '$' { return s[0 .. i] }
+    i += 1
+  }
+  return s
 }
 function mg_is_target(v: Node) -> bool {
   if v.kind != N_VAR or v.uns != 0 or v.file == null or v.pos < 0 { return false }
@@ -202,9 +231,11 @@ function mg_ref(e: Node, g: Node) -> void {
   if not g_migrate or g == null or g.kind != N_VAR or g.mg < 0 { return }
   push(g_mr_node, e)
   push(g_mr_var, g.mg)
+  if g_mg_cur == -3 { push(g_mr_ui, 1) } else { push(g_mr_ui, 0) }
+  if g_mg_cur == -3 { return }
   if g_mg_cur >= 0 { mg_need(g_mg_cur, g_mg_vstate[g.mg], false) }
   else { mg_say(e, `{g.s} is read where no function is (a global's initializer); move it by hand`) }
-  if e.pos < 0 { mg_say(e, `a reference to {g.s} in generated code (a component, a view, a registry's lookup)`) }
+  if e.pos < 0 and not mg_bound_var(g.s) { mg_say(e, `a reference to {g.s} in generated code (a component, a view, a registry's lookup)`) }
 }
 function mg_write(t: Node, g: Node) -> void {
   if not g_migrate or g == null or g.kind != N_VAR or g.mg < 0 { return }
@@ -213,6 +244,7 @@ function mg_write(t: Node, g: Node) -> void {
 var g_mc_passed: []int = new []int  # 1: the call already hands the callee a state (a run before)
 function mg_call(e: Node, f: Node) -> void {
   if not g_migrate or f == null or g_mg_cur < 0 { return }
+  if e.pos < 0 { return }                        # a generated call gets its states when compiled
   push(g_mc_call, e)
   push(g_mc_unit, g_mg_cur)
   push(g_mc_callee, mg_unit(f, 0))
@@ -346,9 +378,28 @@ function mg_units() -> void {
     u += 1
   }
 }
+var g_mv_need: []pointer = new []pointer    # per view: the states its functions need
+var g_mv_mut: []pointer = new []pointer
 function mg_unit_edit(u: int, n: Node, text: pointer) -> void {
   let kind = g_mu_kind[u]
+  if kind == 0 and n.vw >= 0 {
+    # a view's getter, query or event: the view declares the states, for all of them
+    while len(g_mv_need) < len(g_vw_name) {
+      push(g_mv_need, ",")
+      push(g_mv_mut, ",")
+    }
+    let need = mg_list(g_mu_need[u])
+    var k = 0
+    while k < len(need) {
+      let key = `,{itoa(need[k])},`
+      if not has_sub(g_mv_need[n.vw], key) { g_mv_need[n.vw] = g_mv_need[n.vw] + itoa(need[k]) + "," }
+      if has_sub(g_mu_mut[u], key) and not has_sub(g_mv_mut[n.vw], key) { g_mv_mut[n.vw] = g_mv_mut[n.vw] + itoa(need[k]) + "," }
+      k += 1
+    }
+    return
+  }
   if kind == 0 {
+    if n.pos2 < 0 and len(n.s) > 5 and (n.s[0 .. 5] == "bind_") { return }   # a port bind's getter: its bind moves
     if n.pos2 < 0 or n.file == null {
       mg_say(n, `{n.s} needs {text} and is generated code: its caller cannot be rewritten`)
       return
@@ -360,14 +411,29 @@ function mg_unit_edit(u: int, n: Node, text: pointer) -> void {
   }
   # an entry point: a list of the states the runtime supplies
   var body = n.a
-  if kind == 4 { body = n.a }
+  if kind == 5 { body = n }                    # a scene's `on enter` block is its own body
   if body != null and len(body.kids) > 0 and body.kids[0].tps != null and (body.kids[0].tps == "state") {
-    mg_say(n, `this entry point declares states already; add ({text}) to them by hand`)
+    # it declares some already: whatever it needs beyond them is for a person to add
+    let need = mg_list(g_mu_need[u])
+    var more = ""
+    var k = 0
+    while k < len(need) {
+      var have = false
+      var j = 0
+      while j < len(body.kids) and body.kids[j].tps != null and (body.kids[j].tps == "state") {
+        if (body.kids[j].ty == g_ms_name[need[k]]) { have = true }
+        j += 1
+      }
+      if not have { more = more + " " + g_ms_name[need[k]] }
+      k += 1
+    }
+    if len(more) > 0 { mg_say(n, `this entry point declares states already; add{more} to them by hand`) }
     return
   }
   if kind == 1 { mg_emit(`INS {n.file} {itoa(n.pos)} {mg_esc(`({text}) `)}`, `{n.file}@{itoa(n.pos)}`) }
   if kind == 2 { mg_emit(`INS {n.file} {itoa(n.pos2)} {mg_esc(`({text})`)}`, `{n.file}@{itoa(n.pos2)}`) }
   if kind == 3 { mg_emit(`INS {n.file} {itoa(n.pos2)} {mg_esc(` ({text})`)}`, `{n.file}@{itoa(n.pos2)}`) }
+  if kind == 5 { mg_emit(`INS {n.file} {itoa(n.pos2)} {mg_esc(` ({text})`)}`, `{n.file}@{itoa(n.pos2)}`) }
   if kind == 4 {
     let b = n.a
     if b == null or b.pos2 < 0 {
@@ -375,6 +441,26 @@ function mg_unit_edit(u: int, n: Node, text: pointer) -> void {
       return
     }
     mg_emit(`INS {b.file} {itoa(b.pos2)} {mg_esc(`({text})`)}`, `{b.file}@{itoa(b.pos2)}`)
+  }
+}
+function mg_views() -> void {
+  var v = 0
+  while v < len(g_mv_need) {
+    let need = mg_list(g_mv_need[v])
+    if len(need) > 0 {
+      let head = g_vw_node[v]
+      if g_vw_nps[v] > 0 { mg_say(head, `view {g_vw_name[v]} declares states already; add what it needs by hand`) } else {
+        var text = ""
+        var k = 0
+        while k < len(need) {
+          if len(text) > 0 { text = text + ", " }
+          if has_sub(g_mv_mut[v], `,{itoa(need[k])},`) { text = text + `{g_ms_param[need[k]]}: mut {g_ms_name[need[k]]}` } else { text = text + `{g_ms_param[need[k]]}: {g_ms_name[need[k]]}` }
+          k += 1
+        }
+        mg_emit(`INS {head.file} {itoa(g_vw_hdr[v])} {mg_esc(` ({text})`)}`, "")
+      }
+    }
+    v += 1
   }
 }
 function mg_calls() -> void {
@@ -395,8 +481,8 @@ function mg_calls() -> void {
         }
         k += 1
       }
-      if len(text) > 0 {
-        if e.pos < 0 or e.file == null { mg_say(e, `a call to {callee.s} in generated code needs ({text})`) } else {
+      if len(text) > 0 and e.pos >= 0 {             # a generated call gets its states when compiled
+        if e.file == null { mg_say(e, `a call to {callee.s} with no place needs ({text})`) } else {
           var t = text
           if len(e.kids) > 0 { t = t + ", " }
           mg_emit(`INS {e.file} {itoa(e.pos + 1)} {mg_esc(t)}`, `{e.file}@{itoa(e.pos)}`)
@@ -413,7 +499,10 @@ function mg_refs() -> void {
     let v = g_mg_vars[g_mr_var[r]]
     if e.pos >= 0 and e.file != null {
       let s = g_mg_vstate[g_mr_var[r]]
-      mg_emit(`REF {e.file} {itoa(e.pos)} {itoa(len(v.s))} {mg_esc(`{g_ms_param[s]}.{v.s}`)}`, `{e.file}@{itoa(e.pos)}`)
+      let nm = mg_src_name(v.s)
+      var text = `{g_ms_param[s]}.{nm}`
+      if g_mr_ui[r] == 1 { text = `{g_ms_name[s]}.{nm}` }
+      mg_emit(`REF {e.file} {itoa(e.pos)} {itoa(len(nm))} {mg_esc(text)}`, `{e.file}@{itoa(e.pos)}`)
     }
     r += 1
   }
@@ -436,6 +525,32 @@ function mg_exports() -> void {
     u += 1
   }
 }
+# a port member bound to a var (`money: g_money`) becomes the state's field (`money: S.g_money`)
+var g_mg_pbv: []Node = new []Node
+function mg_bind_var(fi: Node) -> void {
+  if g_migrate and fi != null and fi.a != null and fi.a.kind == E_ID { push(g_mg_pbv, fi.a) }
+}
+function mg_bound_var(name: pointer) -> bool {
+  var i = 0
+  while i < len(g_mg_pbv) {
+    if (g_mg_pbv[i].s == name) { return true }
+    i += 1
+  }
+  return false
+}
+function mg_binds() -> void {
+  var i = 0
+  while i < len(g_mg_pbv) {
+    let e = g_mg_pbv[i]
+    let g = find_global(e.s)
+    if g != null and g.mg >= 0 and e.pos >= 0 {
+      let s = g_mg_vstate[g.mg]
+      let nm = mg_src_name(e.s)
+      mg_emit(`REF {e.file} {itoa(e.pos)} {itoa(len(nm))} {mg_esc(`{g_ms_name[s]}.{nm}`)}`, "")
+    }
+    i += 1
+  }
+}
 function mg_finish() -> void {
   mg_fixpoint()
   mg_exports()
@@ -455,14 +570,19 @@ function mg_finish() -> void {
       if g_mg_vstate[j] == s { first = j }
       j += 1
     }
-    if first >= 0 {
+    let decl = mg_state_decl(g_ms_name[s])
+    if first >= 0 and decl != null {
+      mg_emit(`STATE {g_ms_name[s]} {decl.file} {itoa(decl.pos)} {itoa(g_ms_export[s])} {g_ms_param[s]} more`, "")
+    } else if first >= 0 {
       let v = g_mg_vars[first]
       mg_emit(`STATE {g_ms_name[s]} {v.file} {itoa(v.pos)} {itoa(g_ms_export[s])} {g_ms_param[s]}`, "")
     }
     s += 1
   }
   mg_refs()
+  mg_binds()
   mg_units()
+  mg_views()
   mg_calls()
   let f = file_open(g_mg_plan, "wb")
   if f == null { die("ludicc: cannot write the migration plan\n") }

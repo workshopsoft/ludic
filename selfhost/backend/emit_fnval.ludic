@@ -113,6 +113,13 @@ function emit_inj_thunk(d: Node) -> pointer {
   emith(`define {rt} {name}({params}) {{\nentry:\n{body}{call}}}\n\n`)
   return name
 }
+# the symbol a call the compiler writes by name reaches: the function, or its thunk when it takes
+# states (an engine system, a runtime hook) - the runtime's side of an entry point
+function fn_sym(name: pointer) -> pointer {
+  let d = find_fn(name)
+  if d != null and state_lead(d) > 0 { return emit_inj_thunk(d) }
+  return `@fn_{name}`
+}
 # a call through a value of a function type
 function emit_indirect_call(fv: Val, e: Node) -> Val {
   let ptys = fn_ty_params(fv.ty)
@@ -174,7 +181,8 @@ function check_worker_ref(e: Node) -> void {
   let d = find_fn(e.s)
   if d == null { return }
   # the thread calls it as void(i32, ptr): any pointer-sized context will do (words, a record)
-  var ok = len(d.kids) == 2 and llty(d.ty) == "void"
-  if ok { ok = llty(d.kids[0].ty) == "i32" and llty(d.kids[1].ty) == "ptr" }
+  let s = state_lead(d)                           # its states come from the thunk
+  var ok = len(d.kids) == s + 2 and llty(d.ty) == "void"
+  if ok { ok = llty(d.kids[s].ty) == "i32" and llty(d.kids[s + 1].ty) == "ptr" }
   if not ok { perr(`fn {e.s}: a worker function takes (i: int, ctx: pointer) and returns nothing`) }
 }

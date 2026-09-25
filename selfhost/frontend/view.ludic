@@ -19,13 +19,22 @@ var g_vw_fnames: [][]pointer = new [][]pointer
 var g_vw_calls: [][]Node = new [][]Node     # the queries and the events
 var g_vw_cnames: [][]pointer = new [][]pointer
 var g_vw_helpers: []pointer = new []pointer # conversion helpers already written, program-wide
+var g_vw_hdr: []int = new []int             # 0.S: where state parameters go (after the name)
+var g_vw_nps: []int = new []int             # how many the view declares
+var g_vw_ps: [][]Node = new [][]Node        # and which
 
 function vw_prefix(name: pointer) -> pointer { return `view_{reg_lower(name)}_` }
 
-# view NAME { members }
+# view NAME [(states)] { members } - 0.S: the states the view's getters, queries and events read,
+# supplied by the runtime when a template asks
 function parse_view() -> void {
   pi += 1
   let name = eat_id()
+  push(g_vw_hdr, toks[pi - 1].end)
+  let vps = parse_entry_params()
+  push(g_vw_nps, len(vps))
+  push(g_vw_ps, vps)
+  let vi = len(g_vw_name)
   let px = vw_prefix(name)
   g_uses_value = true
   let fields = new []Node
@@ -41,6 +50,8 @@ function parse_view() -> void {
       let ev = is_id("on")
       if ev { toks[pi].text = "function" }
       let f = parse_fn()
+      state_params_onto(f, vps)
+      f.vw = vi
       push(cnames, f.s)
       if ev { f.s = px + "on_" + f.s } else { f.s = px + f.s }
       push(calls, f)
@@ -48,7 +59,10 @@ function parse_view() -> void {
       continue
     }
     push(fnames, eat_id())
-    push(fields, vw_field(px, fnames[len(fnames) - 1]))
+    let getter = vw_field(px, fnames[len(fnames) - 1])
+    state_params_onto(getter, vps)
+    getter.vw = vi
+    push(fields, getter)
   }
   eat_op("}")
   let head = vw_head(name, px)

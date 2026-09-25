@@ -1,6 +1,8 @@
 # fn_type_mismatch.ludic - a function of one type where another is wanted is refused, by name
 program FnTypeMismatch {
   function half(x: float) -> float { return x / 2.0 }
-  var op: fn(int) -> int = null
-  entry { op = fn half }
+  state Ops {
+    op: fn(int) -> int = null
+  }
+  entry (ops: mut Ops) { ops.op = fn half }
 }

@@ -11,27 +11,49 @@ function machine_var(a: Node) -> Node {
   }
   return null
 }
+# 0.S: a machine over a state's field (`machine hero.mode`) or a local: its address, else null
+var g_mach_ty: pointer = null
+function machine_addr(a: Node) -> pointer {
+  if a.kind == E_MEMBER {
+    let p = emit_member_addr(a)
+    g_mach_ty = g_addr_ty
+    return p
+  }
+  if a.kind == E_ID {
+    let li = loc_find(a.s)
+    if li >= 0 {
+      g_mach_ty = loc_ty[li]
+      return loc_reg[li]
+    }
+    let gv = machine_var(a)
+    if gv != null {
+      g_mach_ty = gv.ty
+      return `@g_{a.s}`
+    }
+  }
+  return null
+}
 
 # the value a state dispatches on: its explicit `= expr`; else, when the machine's
 # store is a `var` declared with an enum type, the variant named like the state
 # (`var mode: HeroState` + `state Rolling` -> HeroState.Rolling); else its ordinal.
 function machine_state_value(m: Node, state: Node) -> pointer {
   if (state.b != null) { return emit_expr(state.b).code }
-  let gv = machine_var(m.a)
-  if (gv != null) {
-    if (gv.ty != null) {
-      let ord = enum_ordinal(gv.ty, state.s)
-      if ord >= 0 { return itoa(ord) }
-      if (find_enum(gv.ty) != null) { perr(`machine state {state.s} is not a variant of enum {gv.ty}`) }
-    }
+  g_mach_ty = null
+  let addr = machine_addr(m.a)
+  let ty = g_mach_ty
+  if addr != null and ty != null {
+    let ord = enum_ordinal(ty, state.s)
+    if ord >= 0 { return itoa(ord) }
+    if (find_enum(ty) != null) { perr(`machine state {state.s} is not a variant of enum {ty}`) }
   }
   return itoa(state.ival)
 }
 
 function emit_machine(st: Node) -> void {
-  let gv = machine_var(st.a)
+  let addr = machine_addr(st.a)
   var s: pointer = ""
-  if (gv != null) { s = emit_bind(`load i32, ptr @g_{st.a.s}`) }
+  if (addr != null) { s = emit_bind(`load i32, ptr {addr}`) }
   else {
     let regv = emit_expr(st.a)
     s = emit_bind(`call i32 @fn_rt_reg(i32 {regv.code})`)
@@ -68,10 +90,10 @@ function emit_become(st: Node) -> void {
     var i = 0
     while i < len(m.kids) { if (m.kids[i].s == st.s) { target = m.kids[i] };  i += 1 }
     if (target != null) {
-      let gv = machine_var(m.a)
       let sv = machine_state_value(m, target)
-      if (gv != null) {
-        emit("  store i32 ");  emit(sv);  emit(", ptr @g_");  emit(m.a.s);  emit("\n")
+      let addr = machine_addr(m.a)
+      if (addr != null) {
+        emit(`  store i32 {sv}, ptr {addr}\n`)
       } else {
         let regv = emit_expr(m.a)
         emit("  call void @fn_rt_set_reg(i32 ");  emit(regv.code);  emit(", i32 ");  emit(sv);  emit(")\n")

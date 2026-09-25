@@ -60,6 +60,7 @@ function parse_ui_component() -> void {
   let head = node(N_VAR)
   head.s = px + "reg"
   head.ty = "int"
+  head.pos = -1                                  # the compiler's own, not a program's var
   push(g_cm_head, head)
   push(prog, head)
 }

@@ -1,8 +1,8 @@
 # a view is for templates, which ludic.ui shows
 program ViewWithoutUi {
-  var a: int = 1
-  view Sums {
-    a = a
+  state Nums { a: int = 1 }
+  view Sums (n: Nums) {
+    a: int = n.a
   }
-  entry { print(a) }
+  entry { print(1) }
 }

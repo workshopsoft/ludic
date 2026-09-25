@@ -136,6 +136,7 @@ function port_defaults_only(k: int) -> void {
 # `money: gm_money` for a `money: fn() -> int` member: the function `bind_<Port>_<member>` that
 # returns the variable, written in the bind's own file (so it sees what the bind sees)
 function port_bind_var(b: Node, c: Node, fi: Node) -> void {
+  mg_bind_var(fi)                                # 0.S2: ludic migrate state moves it to the state's field
   # 0.S: `money: Wallet.cash` - a field of a state, read through the state the runtime supplies
   var sty: pointer = null
   var name: pointer = null

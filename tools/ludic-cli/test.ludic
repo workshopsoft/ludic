@@ -517,7 +517,7 @@ function migrate_case() -> void {
   var src = "program Demo {\n  var count: int = 0\n  var names: []string = new []string   # the names\n"
   src = src + "  function add(n: string) -> void {\n    push(names, n)\n    count += 1\n  }\n"
   src = src + "  function total() -> int {\n    return count\n  }\n"
-  src = src + "  function report() -> string {\n    return `{{total()}} names, first {{names[0]}}`\n  }\n"
+  src = src + "  function report() -> string {\n    return `{total()} names, first {names[0]}`\n  }\n"
   src = src + "  entry {\n    add(\"a\")\n    add(\"b\")\n    print(report())\n  }\n}\n"
   write_file(`{work}/demo.ludic`, src)
   if not shq(`bin/ludic migrate state {work}/demo.ludic > {work}/out.txt 2>&1`) { bad2(lbl, capture_line(`tail -1 {work}/out.txt`));  return }
@@ -545,9 +545,9 @@ function test_dir_case() -> void {
   let work = `{tmp_dir()}/testdir`
   let root = capture_line("pwd")
   shell(`rm -rf {work} && mkdir -p {work}/pk/tests {work}/pk/src/deep`)
-  var a = "program State {\n  var counter: int = 0\n  var seen: []int = new []int\n"
-  a = a + "  test \"first\" {\n    counter += 1\n    push(seen, 1)\n    expect_eq(counter, 1)\n    expect_eq(len(seen), 1)\n  }\n"
-  a = a + "  test \"second\" {\n    counter += 1\n    push(seen, 2)\n    expect_eq(counter, 1)\n    expect_eq(len(seen), 1)\n  }\n}\n"
+  var a = "program State {\n  state Tally {\n    counter: int = 0\n    seen: []int = new []int\n  }\n"
+  a = a + "  test \"first\" (t: mut Tally) {\n    t.counter += 1\n    push(t.seen, 1)\n    expect_eq(t.counter, 1)\n    expect_eq(len(t.seen), 1)\n  }\n"
+  a = a + "  test \"second\" (t: mut Tally) {\n    t.counter += 1\n    push(t.seen, 2)\n    expect_eq(t.counter, 1)\n    expect_eq(len(t.seen), 1)\n  }\n}\n"
   write_file(`{work}/pk/tests/state.ludic`, a)
   write_file(`{work}/pk/src/deep/sums_test.ludic`, "program Sums {\n  test \"adds\" {\n    expect_eq(2 + 2, 4)\n  }\n  test \"wrong\" {\n    expect_eq(2 + 2, 5)\n  }\n}\n")
   write_file(`{work}/pk/src/helper.ludic`, "program NotATest {\n  entry { exit(3) }\n}\n")
@@ -889,7 +889,7 @@ function cmd_dev_test() -> int {
   reject_case("rejected/port_var_args", "only a member that takes nothing can be bound to a variable", "a member with parameters binds a function, not a variable")
   reject_case("rejected/port_new", "Clock is a port: it is filled once with 'bind Clock", "a port is bound, not made with new")
   reject_case("rejected/port_private", "Clock is private to module clock", "whoever binds a port has to see it")
-  reject_case("rejected/uses_package", "mech uses ludic_inventory.inv_count", "a package's module counts under `uses` like any other")
+  reject_case("rejected/uses_package", "mech uses ludic_inventory.inv_limit", "a package's module counts under `uses` like any other")
   reject_case("rejected/uses_render3d", "mech uses ludic_render3d.PI", "a package with no module line is still named under `uses`")
   feat_case("modules/private_twins", "", "105 41 7", "private_twins.ludic (L3: two modules' private seed, dice and LIMIT, and the program's seed, do not collide)")
   feat_case("modules/private_kinds", "", "7 hare", "private_kinds.ludic (L3: two modules' private record Catch and event Landed do not collide)")

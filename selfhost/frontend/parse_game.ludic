@@ -209,10 +209,16 @@ function parse_scene() -> void {
   while true {
     skipnl(); if is_op("}") { break }
     if is_id("on") {                         # on enter { .. } / on exit { .. }
-      pi += 1; let which = eat_id(); skipnl()
-      if which == "enter" { n.a = block() }
-      else if which == "exit" { n.b = block() }
+      pi += 1; let which = eat_id()
+      let at = toks[pi - 1].end                # 0.S: where its states would go
+      let ps = parse_entry_params()            # on enter (h: mut Hiker) { .. }
+      skipnl()
+      var body: Node = null
+      if which == "enter" { n.a = block();  body = n.a }
+      else if which == "exit" { n.b = block();  body = n.b }
       else { perr("expected 'enter' or 'exit' after 'on'") }
+      body.pos2 = at
+      entry_bind(body, ps)
       continue
     }
     if is_id("layer") {                      # layer Name [public] { handler .. }
@@ -268,7 +274,7 @@ function scene_add_loader(sc: Node, next: pointer) -> void {
 # generated Update handler that `become`s T at zero — the splash / banner scene.
 function scene_add_timer(sc: Node, frames: Node, next: pointer) -> void {
   let counter = `scene_{sc.s}_left`
-  let v = node(N_VAR); v.s = counter; v.ty = "int"; push(prog, v)
+  let v = node(N_VAR); v.s = counter; v.ty = "int"; v.pos = -1; push(prog, v)   # the compiler's own
   if (sc.a == null) { sc.a = node(N_BLOCK) }
   let set = node(S_ASSIGN); set.s = "="; let lhs = node(E_ID); lhs.s = counter; set.a = lhs; set.b = frames
   let ins = new []Node; push(ins, set)

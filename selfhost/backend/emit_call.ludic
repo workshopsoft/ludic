@@ -358,6 +358,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   let al = ns_alias_find(ns, meth)
   if al >= 0 { return emit_alias_call(al, e) }
   var bare: pointer = null
+  var nsfn: Node = null                            # a namespace function behind Ns.meth
   let labels = new []pointer
   # Sprite.* / Assets.* — the namespaced spritesheet / atlas API (#81), a runtime
   # in atlas.ludic over the variable-size image loader. A cell (or multi-cell span)
@@ -519,15 +520,16 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_ns_block(ns) and (not ns_export_has(bare)) { perr(`{ns}.{meth} is internal to namespace {ns}`) }
     # a namespace function takes named arguments like any other function: its
     # labels are its parameter names, so `Weapon.def(name: "pistol", ...)` works.
-    let nsfn = find_fn(bare)
+    nsfn = find_fn(bare)
     if (nsfn != null) {
       let names = param_labels(nsfn)
-      var pi2 = 0
+      var pi2 = state_lead(nsfn)                   # 0.S: its states are the runtime's to give
       while pi2 < len(names) { push(labels, names[pi2]);  pi2 += 1 }
     }
   }
   if (bare == null) { perr(`unknown builtin {ns}.{meth}`) }
   reorder_named(e, labels)
+  state_inject(e, nsfn)
   let id = node(E_ID); id.s = bare; e.a = id
   return emit_call(e)
 }
@@ -955,6 +957,7 @@ function emit_call(e: Node) -> Val {
     cname = rtname
   }
   vis_check(fn2, name)
+  state_inject_generated(e, fn2)                   # 0.S: a call the compiler wrote gets its states
   call_fill_defaults(e, fn2)                       # L11 - for code the checker does not walk
   reorder_named(e, param_labels(fn2))
   # evaluate args first (their IR is emitted before the call instruction), coercing

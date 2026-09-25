@@ -3,8 +3,8 @@ import "private_bank"
 import "private_kit"
 program FriendScope {
   friend module lab of kit
-  entry {
-    add(5)
-    print(total())
+  entry (bank_st: mut BankState) {
+    add(bank_st, 5)
+    print(total(bank_st))
   }
 }

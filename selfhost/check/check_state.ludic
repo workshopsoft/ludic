@@ -2,14 +2,41 @@
 # `h: Hiker` may only read it - an assignment whose target starts at it (`h.hips = 1`,
 # `h.list[i] = x`), a push onto something in it, or passing it where a `mut Hiker` is wanted is
 # refused. A module-level `let` (and a const, a registry, a state's own instance) is immutable all
-# the way down: the same writes starting at one are refused. What this does not follow: a reference
-# read out of a read-only state into a local (`let l = h.list`) and changed there.
+# the way down: the same writes starting at one are refused. A reference read out of either into a
+# local (`let l = h.list`, `let r = TABLE[0]`) carries the same rule: a write through it is refused.
 var ck_ro: []int = new []int            # parallel to ck_names: 1 for a read-only state
+var ck_alias: []Node = new []Node       # parallel to ck_names: the global a local's reference came from
 
 function ck_set_ro(ro: bool) -> void {
   let k = ck_top - 1
   while len(ck_ro) < len(ck_names) { push(ck_ro, 0) }
+  while len(ck_alias) < len(ck_names) { push(ck_alias, null) }
   if ro { ck_ro[k] = 1 } else { ck_ro[k] = 0 }
+  ck_alias[k] = null
+}
+# a value, not a reference: nothing can be written through it
+function ck_scalar(t: pointer) -> bool {
+  if t == null or (t == "?") or (t == "int") or (t == "float") or (t == "fixed") or (t == "long") { return true }
+  if (t == "bool") or (t == "string") or (t == "byte") or (t == "pointer") { return true }
+  if is_fn_type(t) { return true }
+  return find_enum(t) != null
+}
+# `let l = <e>` just bound at the top: a reference out of a read-only state is read-only, and one out
+# of a global is that global's (a write through it writes the global)
+function ck_let_from(e: Node, ty: pointer) -> void {
+  if e == null or ck_scalar(ty) { return }
+  let r = ck_chain_root(e)
+  if r == null { return }
+  let k = ck_top - 1
+  let li = ck_local(r.s)
+  if li >= 0 and li < k {
+    if ck_is_ro(li) { ck_ro[k] = 1 }
+    if li < len(ck_alias) { ck_alias[k] = ck_alias[li] }
+    return
+  }
+  if li >= 0 { return }
+  let g = ck_global(r.s)
+  if g != null and g.kind == N_VAR { ck_alias[k] = g }
 }
 function ck_is_ro(li: int) -> bool {
   if li < 0 or li >= len(ck_ro) { return false }
@@ -35,6 +62,11 @@ function ck_write_check(t: Node, what: pointer) -> void {
   if r == null { return }
   let li = ck_local(r.s)
   if li >= 0 {
+    if li < len(ck_alias) and ck_alias[li] != null {
+      let ag = ck_alias[li]
+      mg_write(t, ag)
+      if ck_module_let(ag) { ck_err("state", t, `{what}: {r.s} holds part of {mg_src_name(ag.s)}, which is module-level and immutable all the way down`) }
+    }
     if ck_is_ro(li) {
       ck_err("state", t, `{what}: {r.s} is read-only here ({r.s}: {ck_tys[li]}); take it as {r.s}: mut {ck_tys[li]} to change it`)
     }

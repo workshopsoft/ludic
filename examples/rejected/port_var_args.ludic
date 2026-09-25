@@ -1,8 +1,8 @@
-# L3: a variable answers a member that takes nothing; price takes an int, so it binds a function
+# L3: a state's field answers a member that takes nothing; price takes an int, so it binds a function
 program PortVarArgs {
   port Purse { price: fn(int) -> int }
-  var g_rate: int = 3
-  bind Purse { price: g_rate }
+  state Rates { rate: int = 3 }
+  bind Purse { price: Rates.rate }
   entry {
     print(Purse.price(2))
   }

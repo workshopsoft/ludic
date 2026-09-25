@@ -4,5 +4,5 @@ module mech uses ludic_base
 import "ludic.base"
 import "ludic.inventory"
 export function stock() -> int {
-  return inv_count(0)
+  return inv_limit(0)
 }

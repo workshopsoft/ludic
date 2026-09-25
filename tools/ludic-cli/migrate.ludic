@@ -79,6 +79,26 @@ function mgx_rtrim(s: pointer) -> pointer {
   while n > 0 and (s[n - 1] == 10 or s[n - 1] == 13 or s[n - 1] == 32) { n -= 1 }
   return sslice(s, 0, n)
 }
+# the brace that closes the first block after `at` (strings skipped), or -1
+function mgx_close(t: pointer, at: int) -> int {
+  var i = at
+  while t[i] != 0 and t[i] != '{' { i += 1 }
+  var depth = 0
+  var instr = false
+  while t[i] != 0 {
+    let c = t[i]
+    if instr {
+      if c == 92 { i += 1 } else if c == 34 { instr = false }
+    } else if c == 34 { instr = true }
+    else if c == '{' { depth += 1 }
+    else if c == '}' {
+      depth -= 1
+      if depth == 0 { return i }
+    }
+    i += 1
+  }
+  return -1
+}
 function cmd_migrate() -> int {
   if arg_count() < 3 or not (arg(2) == "state") {
     err("usage: ludic migrate state [file|dir...] [--runtime] [--unsafe] [--dry-run]\n")
@@ -167,6 +187,7 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
   let sfile = new []pointer
   let spos = new []int
   let sexp = new []int
+  let smore = new []int                # 1: the state is already declared, and gains fields
   let reports = new []pointer
   for i in 0 .. len(lines) {
     let w = dp_words(lines[i])
@@ -188,6 +209,7 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
       push(sfile, w[2])
       push(spos, s_to_int(w[3]))
       push(sexp, s_to_int(w[4]))
+      if len(w) >= 7 { push(smore, 1) } else { push(smore, 0) }
     } else if (w[0] == "REF") and len(w) == 5 {
       mgx_edit(w[1], s_to_int(w[2]), s_to_int(w[3]), mgx_unesc(w[4]))
     } else if (w[0] == "INS") and len(w) == 4 {
@@ -224,6 +246,19 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
     var block = ""
     var at = -1
     var indent = ""
+    if smore[s] == 1 {
+      # the fields go in before the declaration's closing brace
+      let t = mgx_text_of(sfile[s])
+      indent = mgx_indent(t, mgx_line_start(t, spos[s]))
+      var ff = ""
+      for ov in 0 .. len(order) {
+        let v = order[ov]
+        if vstate[v] == sname[s] { ff = ff + `{indent}  {mgx_field(mgx_text_of(vfile[v]), vpos[v], vpos2[v])}\n` }
+      }
+      let close = mgx_close(t, spos[s])
+      if close >= 0 { mgx_edit(sfile[s], mgx_line_start(t, close), 0, ff) }
+      continue
+    }
     for ov in 0 .. len(order) {
       let v = order[ov]
       if vstate[v] == sname[s] {

@@ -42,6 +42,18 @@ function vw_infer(v: int, g: Node, fname: pointer) -> pointer {
     let d = find_global(e.s)
     if d != null and d.ty != null { return d.ty }
   }
+  # 0.S: a field of one of the view's states, `picked = s.picked`
+  if e.kind == E_MEMBER and e.a != null and e.a.kind == E_ID {
+    let ps = g_vw_ps[v]
+    var i = 0
+    while i < len(ps) {
+      if (ps[i].s == e.a.s) {
+        let r = find_comp(ps[i].ty)
+        if r != null and field_index(r, e.s) >= 0 { return field_type(r, e.s) }
+      }
+      i += 1
+    }
+  }
   if e.kind == E_INT { return "int" }
   if e.kind == E_FLOAT { return "float" }
   if e.kind == E_BOOL { return "bool" }
@@ -62,10 +74,10 @@ function vw_call_src(v: int, px: pointer, head: Node) -> pointer {
   while i < len(calls) {
     let f = calls[i]
     var args = ""
-    var p = 0
+    var p = g_vw_nps[v]                            # 0.S: the view's states are supplied, not passed
     while p < len(f.kids) {
-      if p > 0 { args = args + ", " }
-      args = args + vw_arg(v, f.kids[p], p)
+      if p > g_vw_nps[v] { args = args + ", " }
+      args = args + vw_arg(v, f.kids[p], p - g_vw_nps[v])
       p += 1
     }
     let call = `{f.s}({args})`

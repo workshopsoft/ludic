@@ -181,7 +181,7 @@ function cmd_test_pkg() -> int {
   pt_commit_tag(cp, "v1.0.0")
   let proj4 = `{work}/proj4`
   pt_write(`{proj4}/package.ludic`, `package "game"` + nl() + `version "0.0.0"` + nl() + `require "example.test/coachpack" "1.0.0"` + nl())
-  pt_write(`{proj4}/game.ludic`, "program Game {\n  import \"example.test/coachpack/coach.ludic\"\n  model Player { Score }\n  @OnSpawn(Player) handler Init { }\n  var frames: int = 0\n  handler Boot phase Start { let e = world_spawn(world_model_id(\"Player\")) }\n  handler Run phase Update {\n    frames = frames + 1\n    if frames >= 5 {\n      let P = world_prop_id(\"Score\")\n      let e = world_query_next(P, 0)\n      print(world_get(e, P, 0))\n      print(Coach.bonus())\n      quit()\n    }\n  }\n}\n")
+  pt_write(`{proj4}/game.ludic`, "program Game {\n  import \"example.test/coachpack/coach.ludic\"\n  model Player { Score }\n  @OnSpawn(Player) handler Init { }\n  state Clock { frames: int = 0 }\n  handler Boot phase Start { let e = world_spawn(world_model_id(\"Player\")) }\n  handler Run(c: mut Clock) phase Update {\n    c.frames = c.frames + 1\n    if c.frames >= 5 {\n      let P = world_prop_id(\"Score\")\n      let e = world_query_next(P, 0)\n      print(world_get(e, P, 0))\n      print(Coach.bonus())\n      quit()\n    }\n  }\n}\n")
   if shq(`( cd {proj4} && {envp} {root}/bin/ludic get > {work}/get4.out 2>&1 )`) {
     shell(`LUDIC_HOME={root} LUDIC_MODULES={proj4}/ludic_modules {root}/bin/ludicc --headless {proj4}/game.ludic -o {proj4}/game 2>{work}/gc4.err`)
     if file_exists(`{proj4}/game`) {
@@ -213,7 +213,7 @@ function cmd_test_pkg() -> int {
 
   let proj3 = `{work}/proj3`
   pt_write(`{proj3}/package.ludic`, `package "game"` + nl() + `version "0.0.0"` + nl() + `require "example.test/manapack" "1.0.0"` + nl())
-  pt_write(`{proj3}/game.ludic`, "program Game {\n  property Dummy { x: int = 0 }\n  model Ent { Dummy }\n  @OnSpawn(Ent) handler Init { }\n  extern function mana_bonus() -> int = \"fn_mana_bonus\"\n  var frames: int = 0\n  handler Boot phase Start {\n    let e = world_spawn(world_model_id(\"Ent\"))\n    let M = world_prop_id(\"Mana\")\n    world_attach_dyn(e, M)\n    world_set(e, M, 0, 0)\n  }\n  handler Run phase Update {\n    frames = frames + 1\n    if frames >= 4 {\n      let M = world_prop_id(\"Mana\")\n      let e = world_query_next(M, 0)\n      print(world_get(e, M, 0))\n      print(mana_bonus())\n      quit()\n    }\n  }\n}\n")
+  pt_write(`{proj3}/game.ludic`, "program Game {\n  property Dummy { x: int = 0 }\n  model Ent { Dummy }\n  @OnSpawn(Ent) handler Init { }\n  extern function mana_bonus() -> int = \"fn_mana_bonus\"\n  state Clock { frames: int = 0 }\n  handler Boot phase Start {\n    let e = world_spawn(world_model_id(\"Ent\"))\n    let M = world_prop_id(\"Mana\")\n    world_attach_dyn(e, M)\n    world_set(e, M, 0, 0)\n  }\n  handler Run(c: mut Clock) phase Update {\n    c.frames = c.frames + 1\n    if c.frames >= 4 {\n      let M = world_prop_id(\"Mana\")\n      let e = world_query_next(M, 0)\n      print(world_get(e, M, 0))\n      print(mana_bonus())\n      quit()\n    }\n  }\n}\n")
   if shq(`( cd {proj3} && {envp} {root}/bin/ludic get > {work}/get3.out 2>&1 )`) and file_exists(`{proj3}/ludic_modules/example.test/manapack/lib/{tgt}/libmanapack.dylib`) {
     ok("ludic get fetches + links a prebuilt (kind prebuilt) package for the target")
   } else { bad2("prebuilt ludic get failed", capture_line(`tail -1 {work}/get3.out`)) }

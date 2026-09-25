@@ -154,6 +154,36 @@ function deps_chain_root(t: Node) -> Node {
   if n == null or n.kind != E_ID { return null }
   return n
 }
+# 0.S: a chain rooted in a state parameter (`b_st.b_count`): the state's module and the field, when
+# the state is another module's - else null
+var g_dp_st_field: pointer = null
+function deps_state_owner(t: Node) -> pointer {
+  let r = deps_chain_root(t)
+  if r == null { return null }
+  let li = loc_find(r.s)
+  if li < 0 or not is_state_ty(loc_ty[li]) { return null }
+  let g = find_global(state_global(loc_ty[li]))
+  if g == null or g.file == null { return null }
+  let owner = module_for_uses(g.file)
+  let from = module_of(g_err_file)
+  if (from == "") or (owner == "") or (from == owner) { return null }
+  var n = t
+  g_dp_st_field = null
+  while n != null and n != r {
+    if n.kind == E_MEMBER and n.a == r { g_dp_st_field = n.s }
+    n = n.a
+  }
+  if g_dp_st_field == null { g_dp_st_field = loc_ty[li] }
+  return owner
+}
+# an assignment into another module's state, through the parameter that holds it
+function deps_state_write(t: Node) -> bool {
+  if not deps_on() or g_err_file == null { return false }
+  let owner = deps_state_owner(t)
+  if owner == null { return false }
+  push(g_dp_writes, `write {owner} {g_dp_st_field} {module_of(g_err_file)} {g_err_file}:{itoa(g_err_line)}`)
+  return true
+}
 # `let local = <expr>`: an alias when the expression is another module's global, or an alias
 function deps_alias_let(local: pointer, e: Node) -> void {
   if not deps_on() or g_err_file == null { return }
@@ -162,6 +192,13 @@ function deps_alias_let(local: pointer, e: Node) -> void {
   let r = deps_chain_root(e)
   if r == null { return }
   if loc_find(r.s) >= 0 {
+    let so = deps_state_owner(e)                 # a field of another module's state
+    if so != null {
+      push(g_dp_al_local, local)
+      push(g_dp_al_owner, so)
+      push(g_dp_al_global, g_dp_st_field)
+      return
+    }
     let k = deps_alias_find(r.s)
     if k < 0 { return }
     push(g_dp_al_local, local)

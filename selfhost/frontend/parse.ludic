@@ -1023,7 +1023,7 @@ function parse_one_decl() -> void {
   }
   if is_id("registry") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "of") { parse_registry(); return }   # L8
   if is_id("def") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].kind == TK_ID) { parse_def(); return }            # L8
-  if is_id("view") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_view(); return }            # L11
+  if is_id("view") and (toks[pi + 1].kind == TK_ID) and ((toks[pi + 2].text == "{") or (toks[pi + 2].text == "(")) { parse_view(); return }            # L11
   if is_id("component") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_ui_component(); return }  # L11
   if is_id("state") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_state(); return }   # 0.S
   if is_id("var") {
@@ -1565,9 +1565,12 @@ function parse_program() -> void {
     if is_op("}") { break }
     parse_one_decl()
   }
+  g_gen_nodes = true                               # 0.S: what the finishing passes make is generated
   modules_finish()                                 # L3: the declared uses have no cycle
   registries_finish()                              # L8: each registry gets its defs
   ports_finish()                                   # L3: each port gets its one bind
   views_finish()                                   # L11: each view gets its model and call
   components_finish()                              # L11: each component gets its class
+  ui_blocks_states()                               # 0.S: a ui block reads a state as State.field
+  g_gen_nodes = false
 }

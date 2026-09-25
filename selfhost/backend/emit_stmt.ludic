@@ -49,7 +49,7 @@ function emit_assign(st: Node) -> void {
   } else {
     if deps_on() {
       let root = deps_target_root(t)
-      if root != null { deps_write(root, root.s) } else { deps_alias_write(t) }
+      if root != null { deps_write(root, root.s) } else if not deps_state_write(t) { deps_alias_write(t) }
     }
     if t.kind == E_MEMBER { addr = emit_member_addr(t);  ty = g_addr_ty }
     else { if t.kind == E_INDEX { addr = emit_index_addr(t);  ty = g_addr_ty }
