@@ -4,17 +4,17 @@ export port CraftPack {
   count: fn(int) -> int
   take: fn(int, int) -> bool
   add: fn(int, int) -> int
-  room: fn(int) -> int = fn cr_no_limit
-  leaves: fn(int) -> int = fn cr_leaves_nothing
+  room: fn(int) -> int = fn craft_no_limit
+  leaves: fn(int) -> int = fn craft_leaves_nothing
 }
-function cr_no_limit(it: int) -> int { return 2147483647 }
-function cr_leaves_nothing(it: int) -> int { return -1 }
+function craft_no_limit(it: int) -> int { return 2147483647 }
+function craft_leaves_nothing(it: int) -> int { return -1 }
 
 # the stations. Unbound, there are none: only the hands are ready, and nothing can be started.
 # `start(station, recipe)` puts a timed recipe in; false gives the makings back.
 export port CraftStations {
-  ready: fn(int) -> bool = fn cr_hands_only
-  start: fn(int, int) -> bool = fn cr_no_start
+  ready: fn(int) -> bool = fn craft_hands_only
+  start: fn(int, int) -> bool = fn craft_no_start
 }
-function cr_hands_only(station: int) -> bool { return station == CRAFT_HANDS }
-function cr_no_start(station: int, recipe: int) -> bool { return false }
+function craft_hands_only(station: int) -> bool { return station == CRAFT_HANDS }
+function craft_no_start(station: int, recipe: int) -> bool { return false }

@@ -1,0 +1,101 @@
+# state.ludic - the ports, the data a game hands over, the numbers it may change, and the facts
+# the world a price depends on. Unbound: day one, no shortage, nobody buys beyond their list.
+export port ShopWorld {
+  rep: fn() -> int                                # the player's standing, 0 to 100
+  day: fn() -> int = fn shop_day_one                # the game day; the demand turns with the week
+  buy_mult: fn() -> float = fn shop_one             # a shortage on everything bought
+  also_buys: fn(int, int) -> bool = fn shop_never   # (vendor, item) taken beyond the vendor's list
+}
+function shop_day_one() -> int { return 1 }
+function shop_one() -> float { return 1.0 }
+function shop_never(v: int, it: int) -> bool { return false }
+
+export port ShopPurse {
+  money: fn() -> int
+  spend: fn(int) -> bool
+  earn: fn(int) -> void
+}
+
+export port ShopPack {
+  count: fn(int) -> int
+  take: fn(int, int) -> bool
+  add: fn(int, int) -> int
+  room: fn(int) -> int = fn shop_no_limit
+}
+function shop_no_limit(it: int) -> int { return 2147483647 }
+
+# one vendor's shelves: what it sells, what it buys, and one thing it will not take (-1: none)
+export property ShopVendor {
+  stock: []int = null
+  buys: []int = null
+  refuses: int = -1
+}
+
+var shop_base: []int = null       # an item's base price
+var shop_sell_frac: []float = null      # what fraction of the curve a vendor pays for it
+var shop_vendor_list: []ShopVendor = null
+var shop_at: int = -1              # the vendor at the counter, -1 none
+
+# the curve: buying from `buy_new` of base at rep 0 down to `buy_best` at 100; selling the same way
+var shop_buy_new: float = 1.15
+var shop_buy_best: float = 0.92
+var shop_sell_new: float = 0.62
+var shop_sell_best: float = 0.85
+
+# the items: a base price and a sell fraction each (raw material pays less than something made)
+export function shop_config_items(prices: []int, sell: []float) -> void {
+  shop_base = prices
+  shop_sell_frac = sell
+}
+
+export function shop_config_curve(buy_new: float, buy_best: float, sell_new: float, sell_best: float) -> void {
+  shop_buy_new = buy_new
+  shop_buy_best = buy_best
+  shop_sell_new = sell_new
+  shop_sell_best = sell_best
+}
+
+export function shop_clear_vendors() -> void { shop_vendor_list = new []ShopVendor }
+
+# a vendor; its number is the order added
+export function shop_add_vendor(stock: []int, buys: []int, refuses: int) -> int {
+  if shop_vendor_list == null { shop_clear_vendors() }
+  let v = new ShopVendor
+  v.stock = stock
+  v.buys = buys
+  v.refuses = refuses
+  push(shop_vendor_list, v)
+  return len(shop_vendor_list) - 1
+}
+
+export function shop_vendors() -> int {
+  if shop_vendor_list == null { return 0 }
+  return len(shop_vendor_list)
+}
+
+export function shop_items() -> int {
+  if shop_base == null { return 0 }
+  return len(shop_base)
+}
+
+export function shop_vendor_ok(v: int) -> bool { return v >= 0 and v < shop_vendors() }
+export function shop_item_ok(it: int) -> bool { return it >= 0 and it < shop_items() }
+
+export const SHOP_BOUGHT: int = 0
+export const SHOP_SOLD: int = 1
+
+# something changed hands: `n` of `item` at `price` each
+export property ShopTrade {
+  what: int = 0
+  vendor: int = -1
+  item: int = 0
+  n: int = 0
+  price: int = 0
+}
+
+var shop_trade_q: Queue<ShopTrade> = null
+
+export function shop_trades() -> Queue<ShopTrade> {
+  if shop_trade_q == null { shop_trade_q = queue_new("shop.trades") }
+  return shop_trade_q
+}

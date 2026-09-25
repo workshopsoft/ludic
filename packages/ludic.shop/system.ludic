@@ -1,0 +1,13 @@
+# system.ludic - the shop as a system: a reset and nothing saved (the week's demand follows from
+# the day, and nobody is at a counter across a save)
+export function shop_reset() -> void {
+  shop_at = -1
+  shop_demand_reset()
+  q_clear(shop_trades())
+}
+
+export function shop_system() -> System {
+  let s = system_new("shop", PH_COMMIT)
+  s.reset = fn shop_reset
+  return s
+}

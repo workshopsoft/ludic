@@ -1,9 +1,9 @@
 # verbs.ludic - can it be made, taking and giving back its makings, and making it
-var cr_facts: Queue<Crafted> = null
+var craft_fact_q: Queue<Crafted> = null
 
 export function craft_facts() -> Queue<Crafted> {
-  if cr_facts == null { cr_facts = queue_new("crafting.crafted") }
-  return cr_facts
+  if craft_fact_q == null { craft_fact_q = queue_new("crafting.crafted") }
+  return craft_fact_q
 }
 
 # every making is in the pack
@@ -46,7 +46,7 @@ export function craft_refund(i: int) -> void {
   }
 }
 
-function cr_fact(i: int, queued: bool) -> void {
+function craft_fact_push(i: int, queued: bool) -> void {
   let r = CraftRecipes[i]
   let c = new Crafted
   c.recipe = i
@@ -68,10 +68,10 @@ export function craft_make(i: int) -> bool {
       craft_refund(i)
       return false
     }
-    cr_fact(i, true)
+    craft_fact_push(i, true)
     return true
   }
   CraftPack.add(r.out, r.n)
-  cr_fact(i, false)
+  craft_fact_push(i, false)
   return true
 }

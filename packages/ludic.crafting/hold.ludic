@@ -1,42 +1,42 @@
 # hold.ludic - a recipe made by holding a button for its `hold` seconds: letting go wastes
 # nothing, and it stops by itself the moment it can no longer be made
-var cr_hold: int = -1
-var cr_hold_t: float = 0.0
+var craft_hold_i: int = -1
+var craft_hold_t: float = 0.0
 
 export function craft_holds(i: int) -> bool { return craft_ok(i) and CraftRecipes[i].hold > 0.0 }
 
 # the recipe being held, or -1
-export function craft_holding() -> int { return cr_hold }
+export function craft_holding() -> int { return craft_hold_i }
 
 # starts holding one that is made by holding and can be made now
 export function craft_hold_start(i: int) -> bool {
   if not craft_holds(i) or not craft_can(i) { return false }
-  cr_hold = i
-  cr_hold_t = 0.0
+  craft_hold_i = i
+  craft_hold_t = 0.0
   return true
 }
 
 export function craft_hold_stop() -> void {
-  cr_hold = -1
-  cr_hold_t = 0.0
+  craft_hold_i = -1
+  craft_hold_t = 0.0
 }
 
 # how far through the hold on `i` is, 0 to 1
 export function craft_hold_frac(i: int) -> float {
-  if cr_hold != i or not craft_holds(i) { return 0.0 }
-  return Math.clamp(cr_hold_t / CraftRecipes[i].hold, 0.0, 1.0)
+  if craft_hold_i != i or not craft_holds(i) { return 0.0 }
+  return Math.clamp(craft_hold_t / CraftRecipes[i].hold, 0.0, 1.0)
 }
 
 # `dt` real seconds of holding; true on the frame it is made
 export function craft_hold_run(dt: float) -> bool {
-  if cr_hold < 0 { return false }
-  if not craft_can(cr_hold) {
+  if craft_hold_i < 0 { return false }
+  if not craft_can(craft_hold_i) {
     craft_hold_stop()
     return false
   }
-  cr_hold_t = cr_hold_t + dt
-  if cr_hold_t <= CraftRecipes[cr_hold].hold { return false }
-  let i = cr_hold
+  craft_hold_t = craft_hold_t + dt
+  if craft_hold_t <= CraftRecipes[craft_hold_i].hold { return false }
+  let i = craft_hold_i
   craft_hold_stop()
   return craft_make(i)
 }

@@ -1,0 +1,236 @@
+# shop_test.ludic - a counter over fake money and a fake pack: buying and selling, the week's
+# demand from the shop's own dice, and the three balance invariants a price curve must keep:
+# a shop is not a fountain, friction falls with standing and never inverts, raw keeps its order
+import "ludic.shop"
+import "ludic.base"
+program ShopTest {
+  numbers float
+  const WOOD: int = 0
+  const CHANTERELLE: int = 1
+  const PUFFBALL: int = 2
+  const TROUT: int = 3
+  const COOKED: int = 4
+  const BAIT: int = 5
+  const ROPE: int = 6
+  const JACKET: int = 7
+  const GRUB: int = 8
+  const BURNT: int = 9
+  const RAW: float = 0.50
+  const MADE: float = 1.15
+  const BOUGHT: float = 0.55
+
+  var rep: int = 0
+  var day: int = 1
+  var money: int = 0
+  var pack: []int = null
+  var food_too: bool = false
+
+  function fake_rep() -> int { return rep }
+  function fake_day() -> int { return day }
+  function fake_food(v: int, it: int) -> bool { return food_too and v == 1 and (it == TROUT or it == COOKED or it == BURNT) }
+  function fake_money() -> int { return money }
+  function fake_spend(n: int) -> bool {
+    if n > money { return false }
+    money -= n
+    return true
+  }
+  function fake_earn(n: int) -> void { money += n }
+  function fake_count(it: int) -> int { return pack[it] }
+  function fake_take(it: int, n: int) -> bool {
+    if pack[it] < n { return false }
+    pack[it] = pack[it] - n
+    return true
+  }
+  function fake_add(it: int, n: int) -> int {
+    pack[it] = pack[it] + n
+    return n
+  }
+  function fake_room(it: int) -> int {
+    if it == JACKET { return 1 - pack[it] }
+    return 99
+  }
+
+  bind ShopWorld { rep: fn fake_rep, day: fn fake_day, also_buys: fn fake_food }
+  bind ShopPurse { money: fn fake_money, spend: fn fake_spend, earn: fn fake_earn }
+  bind ShopPack { count: fn fake_count, take: fn fake_take, add: fn fake_add, room: fn fake_room }
+
+  function ints(a: int, b: int, c: int, d: int) -> []int {
+    let out = new []int
+    if a >= 0 { push(out, a) }
+    if b >= 0 { push(out, b) }
+    if c >= 0 { push(out, c) }
+    if d >= 0 { push(out, d) }
+    return out
+  }
+
+  # the valley's own numbers: base prices and the sell classes
+  function fresh() -> void {
+    let prices = new []int
+    let sell = new []float
+    let p = ints(3, 6, 8, 9)
+    let q = ints(10, 1, 6, 60)
+    for i in 0 .. 4 { push(prices, p[i]) }
+    for i in 0 .. 4 { push(prices, q[i]) }
+    push(prices, 1)
+    push(prices, 1)
+    push(sell, RAW)
+    push(sell, RAW)
+    push(sell, RAW)
+    push(sell, RAW)
+    push(sell, MADE)
+    push(sell, MADE)
+    push(sell, BOUGHT)
+    push(sell, BOUGHT)
+    push(sell, RAW)
+    push(sell, RAW)
+    shop_config_items(prices, sell)
+    shop_clear_vendors()
+    shop_add_vendor(ints(ROPE, JACKET, -1, -1), ints(WOOD, CHANTERELLE, -1, -1), -1)
+    shop_add_vendor(ints(BAIT, COOKED, -1, -1), ints(WOOD, PUFFBALL, BAIT, -1), BURNT)
+    shop_add_vendor(ints(BAIT, COOKED, GRUB, -1), ints(TROUT, COOKED, BAIT, GRUB), -1)
+    pack = new []int
+    for i in 0 .. 10 { push(pack, 0) }
+    rep = 0
+    day = 1
+    money = 0
+    shop_reset()
+  }
+
+  function trades() -> []ShopTrade { return q_drain(shop_trades()) }
+
+  test "buying takes the price and puts one in the pack, and says so" {
+    fresh()
+    money = 100
+    shop_visit(0)
+    let pr = shop_price_buy(JACKET)
+    expect(shop_buy(JACKET))
+    expect_eq(money, 100 - pr)
+    expect_eq(pack[JACKET], 1)
+    expect(not shop_buy(JACKET))
+    let ts = trades()
+    expect_eq(len(ts), 1)
+    expect_eq(ts[0].what, SHOP_BOUGHT)
+    expect_eq(ts[0].vendor, 0)
+    expect_eq(ts[0].price, pr)
+  }
+
+  test "no money, nothing bought and nothing spent" {
+    fresh()
+    money = 3
+    expect(not shop_can_buy(JACKET))
+    expect(not shop_buy(JACKET))
+    expect_eq(money, 3)
+    expect_eq(len(trades()), 0)
+  }
+
+  test "selling pays what the counter's vendor pays, only what the pack has" {
+    fresh()
+    pack[TROUT] = 3
+    shop_visit(2)
+    let pr = shop_price_sell(TROUT)
+    expect_eq(shop_sell(TROUT, 5), 3)
+    expect_eq(money, pr * 3)
+    expect_eq(pack[TROUT], 0)
+    expect_eq(trades()[0].n, 3)
+  }
+
+  test "a vendor buys its list and what the world adds, never what it refuses" {
+    fresh()
+    expect(shop_buys(1, PUFFBALL))
+    expect(not shop_buys(1, TROUT))
+    food_too = true
+    expect(shop_buys(1, TROUT))
+    expect(not shop_buys(1, BURNT))
+    pack[BURNT] = 1
+    pack[TROUT] = 1
+    let s = shop_sellable(1)
+    expect_eq(len(s), 1)
+    expect_eq(s[0], TROUT)
+    shop_visit(1)
+    expect_eq(shop_sell(BURNT, 1), 0)
+  }
+
+  test "the week's demand is the shop's own dice, and turns with the week" {
+    fresh()
+    let a = shop_wanted(0)
+    expect(len(a) > 0)
+    for k in 0 .. len(a) { expect(shop_buys(0, a[k])) }
+    let again = shop_wanted(0)
+    expect_eq(again[0], a[0])
+    shop_visit(0)
+    let it = a[0]
+    let plain = shop_price_sell_at(-1, it)
+    expect(shop_demand_mult(0, it) == 1.5)
+    expect(shop_price_sell(it) >= plain)
+    var moved = false
+    for w in 1 .. 12 {
+      day = 1 + w * 7
+      let b = shop_wanted(0)
+      if len(b) != len(a) or b[0] != a[0] { moved = true }
+    }
+    expect(moved)
+  }
+
+  test "a shop is not a fountain: nothing it stocks sells back for what it costs" {
+    fresh()
+    for v in 0 .. shop_vendors() {
+      let st = shop_stock(v)
+      for k in 0 .. len(st) {
+        for r in 0 .. 11 {
+          rep = r * 10
+          shop_set_want(v, st[k])
+          let buy = shop_price_buy(st[k])
+          let sell = shop_price_sell_at(v, st[k])
+          expect(sell < buy)
+          expect(sell >= 0)
+        }
+      }
+    }
+  }
+
+  test "not even at a dollar: a penny item a vendor stocks fetches nothing" {
+    fresh()
+    rep = 100
+    shop_set_want(2, GRUB)
+    expect_eq(shop_price_buy(GRUB), 1)
+    expect_eq(shop_price_sell_at(2, GRUB), 0)
+    expect(shop_price_sell_at(-1, GRUB) >= 1)
+  }
+
+  test "friction falls with standing and never inverts" {
+    fresh()
+    var last_buy = 1000000
+    var last_sell = -1
+    for r in 0 .. 11 {
+      rep = r * 10
+      expect(shop_buy_factor() > shop_sell_factor())
+      let b = shop_price_buy(JACKET)
+      let s = shop_price_sell_at(-1, COOKED)
+      expect(b <= last_buy)
+      expect(s >= last_sell)
+      last_buy = b
+      last_sell = s
+    }
+    rep = 0
+    let b0 = shop_price_buy(JACKET)
+    rep = 100
+    expect(shop_price_buy(JACKET) < b0)
+    rep = 0
+    expect(float(b0) / 60.0 <= 1.25)
+  }
+
+  test "raw material keeps its order, and is not an income" {
+    fresh()
+    for r in 0 .. 11 {
+      rep = r * 10
+      let w = shop_price_sell_at(-1, WOOD)
+      let ch = shop_price_sell_at(-1, CHANTERELLE)
+      let pf = shop_price_sell_at(-1, PUFFBALL)
+      let tr = shop_price_sell_at(-1, TROUT)
+      expect(w <= ch and ch <= pf and pf <= tr)
+      expect(pf <= 8 / 2)
+    }
+    rep = 0
+    expect(shop_price_sell_at(-1, WOOD) < shop_price_sell_at(-1, TROUT))
+  }
+}

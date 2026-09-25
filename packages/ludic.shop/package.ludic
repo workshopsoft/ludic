@@ -1,0 +1,5 @@
+# ludic.shop - vendors that sell what they stock and buy what they take, at prices that move with
+# reputation and a weekly demand, and never become a fountain. Uses ludic.base and nothing else.
+package "ludic.shop"
+version "0.1.0"
+kind source

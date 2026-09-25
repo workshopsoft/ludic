@@ -1,0 +1,104 @@
+# demand.ludic - what each vendor is short of this week, and the one thing it is full of: rolled
+# from the shop's own dice, seeded by the week, so it never moves anyone else's rolls
+var shop_wants_n: int = 3
+var shop_want_mult: float = 1.5
+var shop_glut_mult: float = 0.6
+var shop_week_days: int = 7
+var shop_seed: int = 1013
+var shop_week_rolled: int = -1
+var shop_want_list: []int = null        # shop_wants_n per vendor, -1 empty
+var shop_full_list: []int = null        # one per vendor, -1 none
+var shop_dice: Rng = null
+
+# how many things a vendor wants a week, what that pays and what a glut pays, the week, the seed
+export function shop_config_demand(wants: int, want_mult: float, glut_mult: float, days: int, seed: int) -> void {
+  shop_wants_n = wants
+  shop_want_mult = want_mult
+  shop_glut_mult = glut_mult
+  shop_week_days = days
+  shop_seed = seed
+  shop_week_rolled = -1
+}
+
+export function shop_week() -> int { return (ShopWorld.day() - 1) / shop_week_days }
+
+function shop_pick_one(v: int, taken: []int) -> int {
+  for t in 0 .. 200 {
+    let it = rng_between(shop_dice, 0, shop_items() - 1)
+    if not shop_buys(v, it) { continue }
+    var dup = false
+    for k in 0 .. len(taken) { if taken[k] == it { dup = true } }
+    if not dup { return it }
+  }
+  return -1
+}
+
+function shop_roll_vendor(v: int) -> void {
+  let taken = new []int
+  for k in 0 .. shop_wants_n {
+    let it = shop_pick_one(v, taken)
+    shop_want_list[v * shop_wants_n + k] = it
+    if it >= 0 { push(taken, it) }
+  }
+  shop_full_list[v] = shop_pick_one(v, taken)
+}
+
+# the week's lists, rolled again only when the week turns
+function shop_roll() -> void {
+  let week = shop_week()
+  if week == shop_week_rolled and shop_want_list != null { return }
+  shop_week_rolled = week
+  shop_dice = rng_new(shop_seed + week * 37)
+  shop_want_list = new []int
+  shop_full_list = new []int
+  for i in 0 .. shop_vendors() * shop_wants_n { push(shop_want_list, -1) }
+  for v in 0 .. shop_vendors() { push(shop_full_list, -1) }
+  if shop_items() == 0 { return }
+  for v in 0 .. shop_vendors() { shop_roll_vendor(v) }
+}
+
+export function shop_wants(v: int, it: int) -> bool {
+  if not shop_vendor_ok(v) { return false }
+  shop_roll()
+  for k in 0 .. shop_wants_n { if shop_want_list[v * shop_wants_n + k] == it { return true } }
+  return false
+}
+
+export function shop_glutted(v: int, it: int) -> bool {
+  if not shop_vendor_ok(v) { return false }
+  shop_roll()
+  return shop_full_list[v] == it
+}
+
+# what a vendor wants this week, in its order
+export function shop_wanted(v: int) -> []int {
+  let out = new []int
+  if not shop_vendor_ok(v) { return out }
+  shop_roll()
+  for k in 0 .. shop_wants_n {
+    let it = shop_want_list[v * shop_wants_n + k]
+    if it >= 0 { push(out, it) }
+  }
+  return out
+}
+
+# the week's multiplier on what `v` pays for `it` (1 with no vendor)
+export function shop_demand_mult(v: int, it: int) -> float {
+  if shop_wants(v, it) { return shop_want_mult }
+  if shop_glutted(v, it) { return shop_glut_mult }
+  return 1.0
+}
+
+# this week, `v` wants `it` (a test, staging, a board that says so)
+export function shop_set_want(v: int, it: int) -> void {
+  if not shop_vendor_ok(v) { return }
+  shop_roll()
+  shop_want_list[v * shop_wants_n] = it
+  if shop_full_list[v] == it { shop_full_list[v] = -1 }
+}
+
+function shop_demand_reset() -> void {
+  shop_week_rolled = -1
+  shop_want_list = null
+  shop_full_list = null
+}

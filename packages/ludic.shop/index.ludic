@@ -1,0 +1,10 @@
+# ludic.shop - the counter: items' base prices and vendors' shelves are the game's data, money and
+# the pack are asked through ports, and every sale or purchase is a fact
+module ludic_shop uses ludic_base
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "demand.ludic"
+import "prices.ludic"
+import "trade.ludic"
+import "system.ludic"
