@@ -32,6 +32,7 @@ function vis_say(m: pointer) -> void {
 function vis_check(d: Node, what0: pointer) -> void {
   if d == null { return }
   port_check_bound(d)
+  deps_edge(d, what0)                            # LUDIC_DEPS: the graph ludic deps reads (emit_deps.ludic)
   if g_vis_off { return }
   if d.file == null { return }
   let what = vis_plain(what0)

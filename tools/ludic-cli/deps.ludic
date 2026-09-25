@@ -1,0 +1,374 @@
+# ---- ludic deps ---------------------------------------------------------------
+# How tangled a program's modules are, from the compiler's own view: it compiles the program
+# with LUDIC_DEPS set (selfhost/backend/emit_deps.ludic), which records every reference the
+# visibility pass resolves - from the module it is written in to the module of what it names -
+# and every assignment to another module's global. A package's modules are listed but not
+# counted; the program's own modules are.
+#
+#   ludic deps [file]                    the numbers (the same five tools/deps.py printed)
+#   ludic deps --graph                   every module: its declared uses and the edges seen
+#   ludic deps --dot                     the graph for Graphviz (dot -Tsvg)
+#   ludic deps --writes                  every write to another module's global
+#   ludic deps --uses MOD                what the other modules use of MOD
+#   ludic deps --check FILE              fail if any number is above FILE's
+#   ludic deps --baseline FILE           write the numbers to FILE
+#
+# dependencies: module pairs (a, b) where a uses something of b, not counting b when b uses no
+# other module (a leaf); largest_cycle: the largest set of modules that all reach each other;
+# cross_writes: assignments to a global of another module; globals_written_from_outside: those
+# globals, each counted once.
+var dp_mods: []pointer = null
+var dp_pkg: []int = null
+var dp_uses: []pointer = null
+var dp_ef: []int = null
+var dp_et: []int = null
+var dp_ec: []int = null
+var dp_en: []pointer = null
+var dp_writes: []pointer = null
+var dp_wowner: []pointer = null
+var dp_wname: []pointer = null
+var dp_wfrom: []pointer = null
+
+function dp_words(line: pointer) -> []pointer {
+  let out = new []pointer
+  let n = slen(line)
+  var a = 0
+  var i = 0
+  while i <= n {
+    if i == n or line[i] == 32 {
+      if i > a { push(out, sslice(line, a, i)) }
+      a = i + 1
+    }
+    i += 1
+  }
+  return out
+}
+function dp_mod(name: pointer) -> int {
+  var i = 0
+  while i < len(dp_mods) {
+    if dp_mods[i] == name { return i }
+    i += 1
+  }
+  push(dp_mods, name)
+  push(dp_pkg, 1)
+  push(dp_uses, "-")
+  return len(dp_mods) - 1
+}
+function dp_load(path: pointer) -> bool {
+  let text = read_file(path)
+  if text == null { return false }
+  dp_mods = new []pointer;  dp_pkg = new []int;  dp_uses = new []pointer
+  dp_ef = new []int;  dp_et = new []int;  dp_ec = new []int;  dp_en = new []pointer
+  dp_writes = new []pointer;  dp_wowner = new []pointer;  dp_wname = new []pointer;  dp_wfrom = new []pointer
+  let lines = split_lines(text)
+  for i in 0 .. len(lines) {
+    let w = dp_words(lines[i])
+    if len(w) == 4 and w[0] == "module" {
+      let k = dp_mod(w[1])
+      dp_pkg[k] = 0
+      if w[2] == "1" { dp_pkg[k] = 1 }
+      dp_uses[k] = w[3]
+    }
+  }
+  for i in 0 .. len(lines) {
+    let w = dp_words(lines[i])
+    if len(w) >= 5 and w[0] == "edge" {
+      push(dp_ef, dp_mod(w[1]))
+      push(dp_et, dp_mod(w[2]))
+      push(dp_ec, s_to_int(w[3]))
+      push(dp_en, w[4])
+    }
+    if len(w) >= 5 and w[0] == "write" {
+      push(dp_wowner, w[1])
+      push(dp_wname, w[2])
+      push(dp_wfrom, w[3])
+      push(dp_writes, lines[i])
+    }
+  }
+  return true
+}
+function s_to_int(s: pointer) -> int {
+  var v = 0
+  var i = 0
+  while s[i] >= 48 and s[i] <= 57 {
+    v = v * 10 + (s[i] - 48)
+    i += 1
+  }
+  return v
+}
+function dp_own(k: int) -> bool { return dp_pkg[k] == 0 }
+# an edge the numbers count: between two of the program's own modules
+function dp_counted(e: int) -> bool { return dp_own(dp_ef[e]) and dp_own(dp_et[e]) }
+function dp_leaf(k: int) -> bool {
+  for e in 0 .. len(dp_ef) { if dp_ef[e] == k and dp_counted(e) { return false } }
+  return true
+}
+
+# ---- the largest strongly connected set (Tarjan) ----------------------------
+var tj_index: []int = null
+var tj_low: []int = null
+var tj_on: []int = null
+var tj_stack: []int = null
+var tj_sp: int = 0
+var tj_n: int = 0
+var tj_best: []int = null
+function tj_visit(v: int) -> void {
+  tj_index[v] = tj_n
+  tj_low[v] = tj_n
+  tj_n += 1
+  tj_stack[tj_sp] = v
+  tj_sp += 1
+  tj_on[v] = 1
+  for e in 0 .. len(dp_ef) {
+    if dp_ef[e] == v and dp_counted(e) {
+      let w = dp_et[e]
+      if tj_index[w] < 0 {
+        tj_visit(w)
+        if tj_low[w] < tj_low[v] { tj_low[v] = tj_low[w] }
+      } else if tj_on[w] == 1 and tj_index[w] < tj_low[v] { tj_low[v] = tj_index[w] }
+    }
+  }
+  if tj_low[v] == tj_index[v] {
+    let comp = new []int
+    while true {
+      tj_sp -= 1
+      let w = tj_stack[tj_sp]
+      tj_on[w] = 0
+      push(comp, w)
+      if w == v { break }
+    }
+    if len(comp) > len(tj_best) { tj_best = comp }
+  }
+}
+function dp_largest_cycle() -> []int {
+  let n = len(dp_mods)
+  tj_index = new []int;  tj_low = new []int;  tj_on = new []int;  tj_stack = new []int
+  for i in 0 .. n {
+    push(tj_index, -1)
+    push(tj_low, 0)
+    push(tj_on, 0)
+    push(tj_stack, 0)
+  }
+  tj_sp = 0
+  tj_n = 0
+  tj_best = new []int
+  for v in 0 .. n { if dp_own(v) and tj_index[v] < 0 { tj_visit(v) } }
+  return tj_best
+}
+function dp_sorted_names(ks: []int) -> pointer {
+  let names = new []pointer
+  for i in 0 .. len(ks) { push(names, dp_mods[ks[i]]) }
+  # a handful to a few hundred: an insertion sort
+  var i = 1
+  while i < len(names) {
+    let x = names[i]
+    var j = i - 1
+    while j >= 0 and s_less(x, names[j]) {
+      names[j + 1] = names[j]
+      j -= 1
+    }
+    names[j + 1] = x
+    i += 1
+  }
+  var out = ""
+  for k in 0 .. len(names) {
+    if k > 0 { out = out + " " }
+    out = out + names[k]
+  }
+  return out
+}
+function s_less(a: pointer, b: pointer) -> bool {
+  var i = 0
+  while a[i] != 0 and b[i] != 0 {
+    if a[i] != b[i] { return a[i] < b[i] }
+    i += 1
+  }
+  return a[i] == 0 and b[i] != 0
+}
+
+# ---- the numbers ------------------------------------------------------------
+var dp_names: []pointer = null
+var dp_vals: []int = null
+var dp_cycle: []int = null
+function dp_numbers() -> void {
+  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside"]
+  var mods = 0
+  for k in 0 .. len(dp_mods) { if dp_own(k) { mods += 1 } }
+  var deps = 0
+  for e in 0 .. len(dp_ef) { if dp_counted(e) and not dp_leaf(dp_et[e]) { deps += 1 } }
+  dp_cycle = dp_largest_cycle()
+  var writes = 0
+  let seen = new []pointer
+  for w in 0 .. len(dp_writes) {
+    let ok = dp_own(dp_mod(dp_wowner[w]))
+    if ok {
+      writes += 1
+      let key = `{dp_wowner[w]}.{dp_wname[w]}`
+      var dup = false
+      for s in 0 .. len(seen) { if seen[s] == key { dup = true } }
+      if not dup { push(seen, key) }
+    }
+  }
+  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen)]
+}
+
+# ---- the command --------------------------------------------------------------
+function dp_print_numbers() -> void {
+  for i in 0 .. len(dp_names) { print(`{dp_names[i]}: {string(dp_vals[i])}`) }
+  print(`in the largest cycle: {dp_sorted_names(dp_cycle)}`)
+}
+# FILE: `name value` lines, `#` comments; every number but modules may only go down
+function dp_check(path: pointer) -> int {
+  let text = read_file(path)
+  if text == null { err(`ludic deps: cannot read {path}\n`);  return 2 }
+  let lines = split_lines(text)
+  var worse = 0
+  var better = 0
+  for i in 0 .. len(dp_names) {
+    var base = -1
+    for l in 0 .. len(lines) {
+      let w = dp_words(lines[l])
+      if len(w) == 2 and w[0] == dp_names[i] { base = s_to_int(w[1]) }
+    }
+    var shown = "-"
+    if base >= 0 { shown = string(base) }
+    var mark = ""
+    if i > 0 and base >= 0 and dp_vals[i] > base {
+      mark = "  WORSE"
+      worse += 1
+    }
+    if i > 0 and base >= 0 and dp_vals[i] < base { better += 1 }
+    print(`  deps: {dp_names[i]} {string(dp_vals[i])} (baseline {shown}){mark}`)
+  }
+  if worse > 0 {
+    print("deps: the code is more tangled than the baseline - see ludic deps --writes and --graph")
+    return 1
+  }
+  if better > 0 { print(`deps: better than the baseline - lower it: ludic deps --baseline {path}`) }
+  print("  deps: OK")
+  return 0
+}
+function dp_baseline(path: pointer) -> int {
+  var s = "# ludic deps --check: each number may only go down\n"
+  for i in 1 .. len(dp_names) { s = s + `{dp_names[i]} {string(dp_vals[i])}\n` }
+  if not write_file(path, s) { err(`ludic deps: cannot write {path}\n`);  return 2 }
+  print(`deps: wrote {path}`)
+  return 0
+}
+function dp_declared(from: int, to: int) -> bool {
+  let u = dp_uses[from]
+  if u == "-" { return false }
+  return s_contains(u, `,{dp_mods[to]},`)
+}
+# ",a,b," as "a, b" ("nothing" for ",")
+function dp_list(u: pointer) -> pointer {
+  let n = slen(u)
+  if n <= 1 { return "nothing" }
+  var out = ""
+  var i = 1
+  while i < n - 1 {
+    if u[i] == 44 { out = out + ", " } else { out = out + sslice(u, i, i + 1) }
+    i += 1
+  }
+  return out
+}
+function dp_graph() -> void {
+  for k in 0 .. len(dp_mods) {
+    if dp_own(k) {
+      var uses = "(no uses line)"
+      if dp_uses[k] != "-" { uses = `uses {dp_list(dp_uses[k])}` }
+      var to = ""
+      for e in 0 .. len(dp_ef) {
+        if dp_ef[e] == k {
+          var tag = ""
+          if dp_uses[k] != "-" and not dp_declared(k, dp_et[e]) { tag = "!" }
+          if dp_pkg[dp_et[e]] == 1 { tag = tag + "(pkg)" }
+          to = to + ` {dp_mods[dp_et[e]]}{tag}:{string(dp_ec[e])}`
+        }
+      }
+      print(`{dp_mods[k]}  {uses}  ->{to}`)
+    }
+  }
+}
+function dp_in(xs: []int, k: int) -> bool {
+  for i in 0 .. len(xs) { if xs[i] == k { return true } }
+  return false
+}
+function dp_dot() -> void {
+  print("digraph modules {")
+  print("  rankdir=LR; node [shape=box, fontname=Helvetica];")
+  for k in 0 .. len(dp_mods) {
+    if dp_own(k) {
+      var style = ""
+      if dp_in(dp_cycle, k) { style = ", style=filled, fillcolor=\"#f6d6d6\"" }
+      print(`  "{dp_mods[k]}" [label="{dp_mods[k]}"{style}];`)
+    }
+  }
+  for e in 0 .. len(dp_ef) {
+    if dp_counted(e) {
+      let f = dp_ef[e]
+      let t = dp_et[e]
+      var style = ""
+      if dp_uses[f] != "-" and not dp_declared(f, t) { style = ", color=red" }
+      if dp_in(dp_cycle, f) and dp_in(dp_cycle, t) { style = style + ", penwidth=2" }
+      print(`  "{dp_mods[f]}" -> "{dp_mods[t]}" [label="{string(dp_ec[e])}"{style}];`)
+    }
+  }
+  print("}")
+}
+function dp_uses_of(target: pointer) -> void {
+  for e in 0 .. len(dp_ef) {
+    if dp_mods[dp_et[e]] == target { print(`{dp_mods[dp_ef[e]]}  {string(dp_ec[e])} uses, e.g. {dp_en[e]}`) }
+  }
+}
+function cmd_deps() -> int {
+  var src = ""
+  var mode = "numbers"
+  var arg2 = ""
+  var ai = 2
+  while ai < arg_count() {
+    let a = arg(ai)
+    if a == "--dot" { mode = "dot" }
+    else if a == "--graph" { mode = "graph" }
+    else if a == "--writes" { mode = "writes" }
+    else if a == "--uses" or a == "--check" or a == "--baseline" {
+      if ai + 1 >= arg_count() { err(`ludic deps: {a} needs an argument\n`);  return 2 }
+      mode = sslice(a, 2, slen(a))
+      ai += 1
+      arg2 = arg(ai)
+    }
+    else if a[0] == '-' {
+      err(`ludic deps: unknown option {a}\n`)
+      err("  usage: ludic deps [file] [--graph | --dot | --writes | --uses MOD | --check FILE | --baseline FILE]\n")
+      return 2
+    }
+    else { src = a }
+    ai += 1
+  }
+  let entry = find_entry(src)
+  if entry == "" { return no_entry() }
+  ensure_ludicc()
+  let graph = tmp_path("deps.txt")
+  let ll = tmp_path("deps.ll")
+  # the compiler records the graph as it resolves names; a module rule broken on the way is listed
+  # (LUDIC_VIS_REPORT) rather than stopping the count
+  if not shq(`LUDIC_DEPS={graph} LUDIC_VIS_REPORT=1 {ludicc()} --headless{unsafe_flag()} {entry} --emit-llvm -o {ll} 2> {tmp_path("deps.err")}`) {
+    err(`ludic deps: {entry} did not compile:\n`)
+    err(capture(`grep -i error {tmp_path("deps.err")} | head -5`))
+    return 1
+  }
+  shell(`rm -f {ll}`)
+  if not dp_load(graph) { err("ludic deps: the compiler wrote no graph (is it older than ludic deps?)\n");  return 1 }
+  dp_numbers()
+  if mode == "dot" { dp_dot();  return 0 }
+  if mode == "graph" { dp_graph();  return 0 }
+  if mode == "writes" {
+    for w in 0 .. len(dp_writes) { print(sslice(dp_writes[w], 6, slen(dp_writes[w]))) }
+    return 0
+  }
+  if mode == "uses" { dp_uses_of(arg2);  return 0 }
+  if mode == "check" { return dp_check(arg2) }
+  if mode == "baseline" { return dp_baseline(arg2) }
+  dp_print_numbers()
+  return 0
+}

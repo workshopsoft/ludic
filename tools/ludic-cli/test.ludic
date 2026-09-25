@@ -471,6 +471,23 @@ function lab_plate_case() -> void {
   ok(`{lbl} (peak {peak} bytes)`)
 }
 
+# ludic deps: the module graph as the compiler resolved it, its numbers, a baseline check and --dot
+function deps_case() -> void {
+  let lbl = "ludic deps: the numbers, --check against a baseline, --dot, --writes"
+  let p = "examples/modules/tangle.ludic"
+  let got = capture(`bin/ludic deps {p} 2>&1`)
+  let want = "modules: 3\ndependencies: 2\nlargest_cycle: 2\ncross_writes: 1\nglobals_written_from_outside: 1\nin the largest cycle: a b\n"
+  if not (s_trim(got) == s_trim(want)) { bad2(lbl, `said [{s_trim(got)}]`);  return }
+  let base = `{tmp_dir()}/deps-base.txt`
+  if not shq(`bin/ludic deps {p} --baseline {base} > /dev/null`) { bad2(lbl, "--baseline failed");  return }
+  if not shq(`bin/ludic deps {p} --check {base} > /dev/null`) { bad2(lbl, "--check failed against its own baseline");  return }
+  write_file(base, "dependencies 1\nlargest_cycle 2\ncross_writes 1\nglobals_written_from_outside 1\n")
+  if shq(`bin/ludic deps {p} --check {base} > /dev/null`) { bad2(lbl, "--check passed with more dependencies than the baseline");  return }
+  if not shq(`bin/ludic deps {p} --dot | grep -q '"a" -> "b"'`) { bad2(lbl, "--dot has no a -> b edge");  return }
+  if not shq(`bin/ludic deps {p} --writes | grep -q 'b b_count a examples/modules/tangle/a/index.ludic:4'`) { bad2(lbl, "--writes misses a's write to b_count");  return }
+  ok(lbl)
+}
+
 # every package's own tests, the way a package author runs them: `ludic test packages`
 function packages_test_case() -> void {
   let lbl = "ludic test packages: every package's tests pass"
@@ -824,6 +841,7 @@ function cmd_dev_test() -> int {
   feat_case("modules/private_kinds", "", "7 hare", "private_kinds.ludic (L3: two modules' private record Catch and event Landed do not collide)")
   reject_case("rejected/exported_kinds", "'Catch' is defined twice", "two modules that export one record still clash")
   reject_case("rejected/exported_events", "event 'Landed' is defined twice", "two modules that export one event clash")
+  feat_case("modules/tangle", "", "4", "tangle.ludic (the program ludic deps is tested on)")
   reject_case("rejected/exported_twins", "function 'seed' is defined twice", "two modules that export one name still clash")
   vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")
   feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
@@ -1044,6 +1062,7 @@ function cmd_dev_test() -> int {
   package_scripts_case()
   test_dir_case()
   packages_test_case()
+  deps_case()
   lab_plate_case()
   pack_roundtrip_case()
   packignore_case()

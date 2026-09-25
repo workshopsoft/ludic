@@ -208,6 +208,7 @@ entry {
   check_duplicate_decls()
   check_program()                                 # L4: the types agree before anything is emitted
   emit_program()
+  deps_flush()                                    # LUDIC_DEPS=<file>: the module graph (ludic deps)
 
   # --emit-llvm, or no binary target: emit IR and stop (stdout when out is null).
   if emit_ir { ir_flush(out);  return }

@@ -1,0 +1,5 @@
+# c/index.ludic - uses nothing: a leaf, which the dependencies do not count
+module c
+export function c_one() -> int {
+  return 1
+}

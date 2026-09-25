@@ -1,0 +1,112 @@
+# emit_deps.ludic — the module graph as the compiler saw it, for `ludic deps`. With LUDIC_DEPS=<file>
+# every reference vis_check is asked about is an edge from the module it is written in to the module
+# of what it names, and every assignment to a global of another module is a write; the file lists
+# the modules (their declared `uses`, and whether they are a package's), the edges with a count, and
+# the writes, one a line:
+#   module <name> <package 0|1> <uses: -|,a,b,>
+#   edge <from> <to> <count> <first name>
+#   write <owner> <global> <from> <file>:<line>
+var g_dp_on: int = -1
+var g_dp_key: []pointer = new []pointer        # "from to"
+var g_dp_cnt: []int = new []int
+var g_dp_name: []pointer = new []pointer
+var g_dp_writes: []pointer = new []pointer
+
+function deps_on() -> bool {
+  if g_dp_on < 0 {
+    g_dp_on = 0
+    if getenv("LUDIC_DEPS") != null { g_dp_on = 1 }
+  }
+  return g_dp_on == 1
+}
+function deps_edge(d: Node, what: pointer) -> void {
+  if not deps_on() or d.file == null or g_err_file == null { return }
+  let from = module_of(g_err_file)
+  let to = module_for_uses(d.file)
+  if (from == "") or (to == "") or (from == to) { return }
+  let key = `{from} {to}`
+  var i = 0
+  while i < len(g_dp_key) {
+    if (g_dp_key[i] == key) {
+      g_dp_cnt[i] = g_dp_cnt[i] + 1
+      return
+    }
+    i += 1
+  }
+  push(g_dp_key, key)
+  push(g_dp_cnt, 1)
+  push(g_dp_name, vis_plain(what))
+}
+# an assignment into global `g` (directly, or through an index or a field of it)
+function deps_write(g: Node, name: pointer) -> void {
+  if not deps_on() or g == null or g.file == null or g_err_file == null { return }
+  let from = module_of(g_err_file)
+  let owner = module_for_uses(g.file)
+  if (from == "") or (owner == "") or (from == owner) { return }
+  push(g_dp_writes, `write {owner} {name} {from} {g_err_file}:{itoa(g_err_line)}`)
+}
+# the global an assignment target is rooted in (`a[i].f = ...` writes a), or null for a local
+function deps_target_root(t: Node) -> Node {
+  var n = t
+  while n != null and (n.kind == E_INDEX or n.kind == E_MEMBER) { n = n.a }
+  if n == null or n.kind != E_ID { return null }
+  if loc_find(n.s) >= 0 { return null }
+  return find_global(n.s)
+}
+function deps_line(f: pointer, s: pointer) -> void {
+  file_write(f, s, len(s))
+  file_write(f, "\n", 1)
+}
+function deps_flush() -> void {
+  if not deps_on() { return }
+  let f = file_open(getenv("LUDIC_DEPS"), "wb")
+  if f == null { return }
+  let seen = new []pointer
+  var i = 0
+  while i < len(g_mod_name) {
+    let m = g_mod_name[i]
+    var dup = false
+    var j = 0
+    while j < len(seen) {
+      if (seen[j] == m) { dup = true }
+      j += 1
+    }
+    if not dup and not (m == "") {
+      push(seen, m)
+      var pkg = 0
+      if not (pkg_of_file(g_mod_file[i]) == "") { pkg = 1 }
+      var uses: pointer = "-"
+      let k = mod_find_uses(m)
+      if k >= 0 { uses = g_mu_list[k] }
+      deps_line(f, `module {m} {itoa(pkg)} {uses}`)
+    }
+    i += 1
+  }
+  # a package with no module line of its own is named for its directory (module_for_uses)
+  i = 0
+  while i < len(g_pk_name) {
+    let m = g_pk_name[i]
+    var dup = false
+    var j = 0
+    while j < len(seen) {
+      if (seen[j] == m) { dup = true }
+      j += 1
+    }
+    if not dup and not (m == "") {
+      push(seen, m)
+      deps_line(f, `module {m} 1 -`)
+    }
+    i += 1
+  }
+  i = 0
+  while i < len(g_dp_key) {
+    deps_line(f, `edge {g_dp_key[i]} {itoa(g_dp_cnt[i])} {g_dp_name[i]}`)
+    i += 1
+  }
+  i = 0
+  while i < len(g_dp_writes) {
+    deps_line(f, g_dp_writes[i])
+    i += 1
+  }
+  file_close(f)
+}

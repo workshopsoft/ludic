@@ -42,9 +42,14 @@ function emit_assign(st: Node) -> void {
       let g = find_global(t.s)
       if (g == null) { perr(`assign to unknown {t.s}`) }
       vis_check(g, t.s)
+      deps_write(g, t.s)
       addr = `@g_{t.s}`;  ty = g.ty
     }
   } else {
+    if deps_on() {
+      let root = deps_target_root(t)
+      if root != null { deps_write(root, root.s) }
+    }
     if t.kind == E_MEMBER { addr = emit_member_addr(t);  ty = g_addr_ty }
     else { if t.kind == E_INDEX { addr = emit_index_addr(t);  ty = g_addr_ty }
       else { perr("bad assignment target") } }

@@ -1,0 +1,9 @@
+# a/index.ludic - uses b, and writes b's global from outside it
+module a
+export function a_run() -> int {
+  b_count = b_count + 1
+  return b_run() + c_one()
+}
+export function a_two() -> int {
+  return 2
+}

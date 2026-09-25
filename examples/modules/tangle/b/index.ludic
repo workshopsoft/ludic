@@ -1,0 +1,6 @@
+# b/index.ludic - uses a back: a and b are a cycle
+module b
+export var b_count: int = 0
+export function b_run() -> int {
+  return a_two() + c_one()
+}

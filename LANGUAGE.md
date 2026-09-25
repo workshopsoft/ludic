@@ -1828,10 +1828,23 @@ ludic build --headless                   # headless build (renders out.ppm; read
 ludic test                               # compile and run the project's `test` blocks
 ludic test tests/math.ludic --test adds  # just the test named "adds" (-v: every result line)
 ludic test packages/ludic.base          # the test programs under a directory (a package's)
+ludic deps                               # how tangled the modules are, as the compiler resolved them
+ludic deps --check tests/deps-baseline.txt   # fail when a number rose (--baseline FILE writes them)
 
 ludicc app.ludic -o build/app            # the compiler directly: a native binary
 ludicc app.ludic --emit-llvm -o app.ll   # stop at LLVM IR
 ```
+
+`ludic deps` compiles the program (the package's entry, or a file) with the compiler recording every
+reference its visibility pass resolves - from the module it is written in to the module of what it
+names - and every assignment to another module's global. It prints five numbers: `modules` (the
+program's own; packages are listed but not counted), `dependencies` (pairs of modules where one uses
+the other, not counting a use of a module that itself uses none), `largest_cycle` (the largest set
+of modules that all reach each other, named on the last line), `cross_writes` and
+`globals_written_from_outside`. `--graph` lists each module with its declared `uses` and the edges
+seen (`!` marks one its `uses` line does not name), `--dot` is the same for Graphviz with the cycle
+filled, `--writes` lists the writes and `--uses MOD` who uses MOD. `--check FILE` fails when any
+number is above FILE's `name value` lines; `--baseline FILE` writes them.
 
 A test program is a file of `test "name" { ... }` blocks with `expect(cond)`, `expect_eq(a, b)` and
 `expect_near(a, b, tol)` in them (on ints and fixeds, or on floats and doubles, which compare - and

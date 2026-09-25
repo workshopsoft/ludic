@@ -1,0 +1,12 @@
+# tangle.ludic — the program `ludic deps` is tested on: a and b use each other (the largest cycle is
+# 2), both use the leaf c (not counted), and a writes b's global b_count (one cross-module write).
+#
+# Running it prints:  4
+import "tangle/c"
+import "tangle/a"
+import "tangle/b"
+program Tangle {
+  entry {
+    print(a_run())
+  }
+}
