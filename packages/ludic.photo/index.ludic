@@ -1,0 +1,18 @@
+# ludic.photo - the camera's side of a wildlife game: what is in the frame and how good it is, the
+# roll it goes onto and what it is worth. The game says where the lens is and what the light is
+# doing, hands it the subjects, and writes the picture itself.
+module ludic_photo uses ludic_base
+numbers float
+import "ludic.base"
+import "ports.ludic"
+import "roll.ludic"
+import "queries.ludic"
+import "sight.ludic"
+import "grade.ludic"
+import "light.ludic"
+import "frame.ludic"
+import "keep.ludic"
+import "worth.ludic"
+import "order.ludic"
+import "slug.ludic"
+import "system.ludic"

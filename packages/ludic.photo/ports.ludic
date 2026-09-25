@@ -1,0 +1,54 @@
+# ports.ludic - what a photograph asks the game: where the lens is and what it can see, the light,
+# and the rules of the market. Unbound, the lens sits at the origin looking down -z on flat open
+# ground at noon under a clear sky, every point projects to the middle of the frame, and a
+# subject's first frame is worth 12 and a legend 120.
+export port PhotoLens {
+  x: fn() -> float = fn pht__zero                    # the camera's position
+  y: fn() -> float = fn pht__zero
+  z: fn() -> float = fn pht__zero
+  fx: fn() -> float = fn pht__zero                   # where it points (unit)
+  fy: fn() -> float = fn pht__zero
+  fz: fn() -> float = fn pht__back
+  fov: fn() -> float = fn pht__fov                   # vertical, radians
+  project: fn(float, float, float) -> bool = fn pht__centred   # into the picture; sx / sy say where
+  sx: fn() -> float = fn pht__half                   # 0..1 across
+  sy: fn() -> float = fn pht__half                   # 0..1 down
+  visible: fn(float, float, float, float) -> bool = fn pht__seen   # a sphere inside the frustum
+  ground: fn(float, float) -> float = fn pht__flat
+  trunk: fn(float, float, float) -> bool = fn pht__clear         # (x, z, r): a trunk there
+  range: fn() -> float = fn pht__range               # how far the lens reaches, m
+  steady: fn() -> bool = fn pht__no                  # on a tripod
+}
+
+export port PhotoLight {
+  hour: fn() -> float = fn pht__noon
+  night: fn() -> bool = fn pht__no
+  moon: fn() -> float = fn pht__zero                 # 0..1 lit
+  dim: fn() -> int = fn pht__none                    # what the weather takes off (a storm 4)
+  bonus: fn() -> int = fn pht__none                  # what it adds (the light after a front)
+  sun_x: fn() -> float = fn pht__zero                # toward the sun
+  sun_z: fn() -> float = fn pht__zero
+}
+
+export port PhotoRules {
+  behaviour: fn() -> bool = fn pht__no               # size counts half and the moment double
+  subject_value: fn(int) -> int = fn pht__twelve     # a subject's first frame, before the grade
+  legend_value: fn(int) -> int = fn pht__legend
+  mult: fn() -> float = fn pht__one                  # the lens's worth, times
+}
+
+function pht__zero() -> float { return 0.0 }
+function pht__back() -> float { return -1.0 }
+function pht__fov() -> float { return 1.0 }
+function pht__centred(x: float, y: float, z: float) -> bool { return true }
+function pht__half() -> float { return 0.5 }
+function pht__seen(x: float, y: float, z: float, r: float) -> bool { return true }
+function pht__flat(x: float, z: float) -> float { return 0.0 }
+function pht__clear(x: float, z: float, r: float) -> bool { return false }
+function pht__range() -> float { return 100.0 }
+function pht__no() -> bool { return false }
+function pht__noon() -> float { return 12.0 }
+function pht__none() -> int { return 0 }
+function pht__twelve(sp: int) -> int { return 12 }
+function pht__legend(sp: int) -> int { return 120 }
+function pht__one() -> float { return 1.0 }

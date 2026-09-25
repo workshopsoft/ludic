@@ -1,0 +1,38 @@
+# worth.ludic - what a buyer pays for a frame: the first frame of each subject and every legend,
+# on the grade's curve and the lens's worth; sold is sold
+export function photo_value(i: int) -> int {
+  if i < 0 or i >= pht_n or pht_sold[i] != 0 { return 0 }
+  var v = 0
+  for sp in 0 .. 32 {
+    if (pht_mask[i] & (1 << sp)) == 0 { continue }
+    var first = true
+    for k in 0 .. pht_n { if k != i and pht_sold[k] != 0 and (pht_mask[k] & (1 << sp)) != 0 { first = false } }
+    if first { v += PhotoRules.subject_value(sp) }
+    if (pht_legend[i] & (1 << sp)) != 0 { v += PhotoRules.legend_value(sp) }
+  }
+  if v > 0 { v = int(float(v) * (PhotoRules.mult() * photo_grade_mult(pht_grade[i]))) }
+  return v
+}
+
+# every frame with a price, sold: the total, and a fact a frame
+export function photo_sell_all() -> int {
+  var total = 0
+  for i in 0 .. pht_n {
+    let v = photo_value(i)
+    if v > 0 {
+      total += v
+      pht_sold[i] = 1
+      let f = pht_fact(PHOTO_SOLD, i)
+      f.v = v
+      f.mask = pht_mask[i]
+    }
+  }
+  return total
+}
+
+# what the roll would fetch now
+export function photo_worth() -> int {
+  var total = 0
+  for i in 0 .. pht_n { total += photo_value(i) }
+  return total
+}

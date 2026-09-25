@@ -1,0 +1,6 @@
+# ludic.photo - a camera's photographs: composing a frame, grading it on size, framing, light and the
+# moment, the roll, its tags and order, what each is worth, and the best frame of every subject.
+# Uses ludic.base and nothing else. See README.md.
+package "ludic.photo"
+version "0.1.0"
+kind source

@@ -1,0 +1,19 @@
+# light.ludic - 0..20 from the light on a subject at (x, z): the hour after dawn and before dusk pay
+# best, flat noon middling, the night by the moon; the weather takes off and adds what it says; and a
+# subject between the lens and the sun is backlit
+export function photo_score_light(x: float, z: float) -> int {
+  var v = 10
+  let h = PhotoLight.hour()
+  if (h > 5.5 and h < 8.0) or (h > 17.5 and h < 20.0) { v = 20 } else if h > 11.0 and h < 15.0 { v = 9 }
+  let night = PhotoLight.night()
+  if night { v = int(3.0 + PhotoLight.moon() * 6.0) }
+  v = v - PhotoLight.dim() + PhotoLight.bonus()
+  if not night {
+    let dx = x - PhotoLens.x()
+    let dz = z - PhotoLens.z()
+    let d = Math.max(Math.sqrt(dx * dx + dz * dz), 0.01)
+    let sun = dx / d * PhotoLight.sun_x() + dz / d * PhotoLight.sun_z()
+    if sun > 0.72 { v = v - 7 } else if sun < -0.3 { v = v + 2 }
+  }
+  return Math.clamp(v, 0, 20)
+}

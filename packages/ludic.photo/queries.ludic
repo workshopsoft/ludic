@@ -1,0 +1,54 @@
+# queries.ludic - what a game may ask of the roll and of the frame being composed
+export function photo_count() -> int { return pht_n }
+export function photo_max() -> int { return pht_max }
+export function photo_full() -> bool { return pht_n >= pht_max }
+export function photo_day(i: int) -> int { return pht_day[i] }
+export function photo_hour(i: int) -> float { return pht_hour[i] }
+export function photo_mask(i: int) -> int { return pht_mask[i] }
+export function photo_legend_mask(i: int) -> int { return pht_legend[i] }
+export function photo_sold(i: int) -> bool { return pht_sold[i] != 0 }
+export function photo_grade(i: int) -> int { return pht_grade[i] }
+export function photo_why(i: int) -> int { return pht_why[i] }
+export function photo_tags(i: int) -> string { return pht_tags[i] }
+export function photo_file(i: int) -> string { return pht_file[i] }
+# a frame with a subject in it was graded; a view is not
+export function photo_graded(i: int) -> bool { return pht_mask[i] != 0 }
+export function photo_cover() -> int { return pht_cover }
+
+export function photo_species_shot() -> int { return pht_species_shot }
+export function photo_legend_shot() -> int { return pht_legend_shot }
+export function photo_best(sp: int) -> int {
+  if sp < 0 or sp >= len(pht_best) { return 0 }
+  return pht_best[sp]
+}
+
+export function photo_pending_tags() -> string { return pht_pending_tags }
+export function photo_pending_mask() -> int { return pht_pending_mask }
+export function photo_pending_legend() -> int { return pht_pending_legend }
+export function photo_pending_grade() -> int { return pht_pending_grade }
+export function photo_pending_why() -> int { return pht_pending_why }
+export function photo_pending_sign() -> int { return pht_pending_sign }
+export function photo_pending_stars() -> bool { return pht_pending_stars }
+
+# the last subject's four components (size of 40, framing, light and the moment of 20 each), for a meter
+export function photo_comp(k: int) -> float { return pht_comp[k] }
+export function photo_comp_have() -> bool { return pht_comp_have }
+
+# the band a grade falls in: 0 a record shot, 1 fair, 2 good, 3 fine, 4 one for the wall
+export function photo_band(g: int) -> int {
+  if g >= 90 { return 4 }
+  if g >= 75 { return 3 }
+  if g >= 55 { return 2 }
+  if g >= 30 { return 1 }
+  return 0
+}
+
+# what the grade does to a frame's price: a quarter for a record shot, four times for the wall
+export function photo_grade_mult(g: int) -> float {
+  let b = photo_band(g)
+  if b == 4 { return 4.0 }
+  if b == 3 { return 2.4 }
+  if b == 2 { return 1.5 }
+  if b == 1 { return 1.0 }
+  return 0.35
+}

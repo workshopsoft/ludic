@@ -1,0 +1,97 @@
+# roll.ludic - the roll of kept frames, the frame being composed, what has ever been photographed,
+# and the facts
+export const PHOTO_WHY_NONE: int = -1        # no subject: nothing to say
+export const PHOTO_WHY_SIZE: int = 0         # too far off - get closer, or more lens
+export const PHOTO_WHY_FRAME: int = 1        # badly placed in the frame
+export const PHOTO_WHY_LIGHT: int = 2        # the light was wrong
+export const PHOTO_WHY_MOMENT: int = 3       # it was not doing anything
+export const PHOTO_WHY_FINE: int = 4         # nothing to fault
+
+export const PHOTO_KEPT: int = 0             # a frame went onto the roll
+export const PHOTO_FULL: int = 1             # the card is full
+export const PHOTO_DELETED: int = 2          # file: the picture to remove
+export const PHOTO_SOLD: int = 3             # v: what it fetched
+
+export property PhotoFact {
+  what: int = 0
+  index: int = -1
+  mask: int = 0          # subjects in it, a bit each
+  legend: int = 0        # which of them were legends
+  firsts: int = 0        # subjects never photographed before this frame
+  grade: int = 0
+  sign: int = -1         # a sign in the frame, or -1
+  stars: bool = false
+  file: string = ""
+  tags: string = ""
+  v: int = 0
+}
+
+var pht_max: int = 40
+var pht_n: int = 0
+var pht_day: []int = null
+var pht_hour: []float = null
+var pht_mask: []int = null
+var pht_legend: []int = null
+var pht_sold: []int = null
+var pht_grade: []int = null
+var pht_why: []int = null
+var pht_tags: []string = null
+var pht_file: []string = null
+var pht_best: []int = null          # the best grade yet, per subject
+var pht_species_shot: int = 0       # every subject ever photographed, sold or deleted
+var pht_legend_shot: int = 0
+var pht_cover: int = -1             # the one frame a game shows for the whole roll
+
+var pht_pending_tags: string = ""
+var pht_pending_mask: int = 0
+var pht_pending_legend: int = 0
+var pht_pending_grade: int = 0
+var pht_pending_why: int = -1
+var pht_pending_sign: int = -1
+var pht_pending_stars: bool = false
+var pht_comp: []float = null        # size, framing, light, moment of the last subject scored
+var pht_comp_have: bool = false
+
+var pht_fact_q: Queue<PhotoFact> = null
+
+export function photo_facts() -> Queue<PhotoFact> {
+  if pht_fact_q == null { pht_fact_q = queue_new("photo.facts") }
+  return pht_fact_q
+}
+
+function pht_fact(what: int, i: int) -> PhotoFact {
+  let f = new PhotoFact
+  f.what = what
+  f.index = i
+  q_push(photo_facts(), f)
+  return f
+}
+
+function pht_ints(n: int) -> []int {
+  let out = new []int
+  for i in 0 .. n { push(out, 0) }
+  return out
+}
+
+function pht_floats(n: int) -> []float {
+  let out = new []float
+  for i in 0 .. n { push(out, 0.0) }
+  return out
+}
+
+# an empty roll of `max` frames
+function pht_blank() -> void {
+  pht_n = 0
+  pht_day = pht_ints(pht_max)
+  pht_hour = pht_floats(pht_max)
+  pht_mask = pht_ints(pht_max)
+  pht_legend = pht_ints(pht_max)
+  pht_sold = pht_ints(pht_max)
+  pht_grade = pht_ints(pht_max)
+  pht_why = pht_ints(pht_max)
+  pht_tags = new []string
+  pht_file = new []string
+  pht_best = pht_ints(32)
+  pht_comp = pht_floats(4)
+  pht_comp_have = false
+}
