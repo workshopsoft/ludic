@@ -1,0 +1,5 @@
+# ludic.vehicles - boats and horses each player owns: called to a berth or a bay, mounted and got
+# off onto a safe spot, ridden with a stroke or a gallop. Uses ludic.base and nothing else.
+package "ludic.vehicles"
+version "0.1.0"
+kind source

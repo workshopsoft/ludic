@@ -32,6 +32,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.things](ludic.things/README.md) | the placed things of a world and their kinds (an open registry), queries, facts, a save |
 | [ludic.tracks](ludic.tracks/README.md) | prints and sign animals leave, their age, and reading them |
 | [ludic.update](ludic.update/README.md) | a Velopack-installed game updating itself a frame at a time |
+| [ludic.vehicles](ludic.vehicles/README.md) | each player's boat and horse: called to berths and bays, owner and rider, riding, getting off onto a safe spot |
 | [ludic.wallet](ludic.wallet/README.md) | money carried: earned, spent, lost, every change a fact |
 | [ludic.weather](ludic.weather/README.md) | spells of weather described as data: odds, wetness, wind, storms, a forecast |
 | [ludic.wildlife](ludic.wildlife/README.md) | a valley's animals: ranges, their day, senses and alert, feeding, lures, spawning |

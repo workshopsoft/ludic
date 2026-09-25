@@ -1,0 +1,47 @@
+# ports.ludic - what a vehicle asks the world and its rider. Unbound, the world is dry flat ground
+# with nothing in the way and no wind, and the rider is put exactly where asked.
+export port VehicleWorld {
+  ground: fn(float, float) -> float
+  water: fn(float, float) -> float = fn ve__dry            # the surface over a point
+  blocked: fn(float, float, float) -> bool = fn ve__open   # (x, z, r): a collider in a horse's way
+  swell: fn(float, float, float, float) -> float = fn ve__calm   # (x, z, fx, fz): 0..1 of a stroke lost
+  wind: fn() -> float = fn ve__zero                        # 0..1
+  wind_yaw: fn() -> float = fn ve__zero                    # the yaw the wind pushes toward
+  next_id: fn() -> int = fn ve__next
+  made: fn(Vehicle) -> void = fn ve__nothing               # a new vehicle: draw it
+  placed: fn(Vehicle) -> void = fn ve__nothing             # it moved: put its model there
+  gone: fn(Vehicle) -> void = fn ve__nothing               # its owner left: take it away
+}
+
+# the body on board: the game's walking body (ludic.character, through the game)
+export port VehicleRider {
+  board: fn(float, float, float) -> void = fn ve__board             # (x, z, yaw)
+  ride_at: fn(float, float, float, float, float) -> void = fn ve__ride   # (x, y, z, yaw, speed)
+  step_off: fn(float, float) -> void = fn ve__off                  # (x, z)
+  safe_spot: fn(float, float, float, float) -> bool = fn ve__safe   # (x, z, from_y, max_depth)
+  safe_x: fn() -> float = fn ve__safe_x
+  safe_z: fn() -> float = fn ve__safe_z
+}
+
+var ve_ids: int = 0
+var ve_sx: float = 0.0
+var ve_sz: float = 0.0
+function ve__dry(x: float, z: float) -> float { return -10000.0 }
+function ve__open(x: float, z: float, r: float) -> bool { return false }
+function ve__calm(x: float, z: float, fx: float, fz: float) -> float { return 0.0 }
+function ve__zero() -> float { return 0.0 }
+function ve__next() -> int {
+  ve_ids += 1
+  return ve_ids
+}
+function ve__nothing(v: Vehicle) -> void { }
+function ve__board(x: float, z: float, yaw: float) -> void { }
+function ve__ride(x: float, y: float, z: float, yaw: float, speed: float) -> void { }
+function ve__off(x: float, z: float) -> void { }
+function ve__safe(x: float, z: float, from_y: float, max_depth: float) -> bool {
+  ve_sx = x
+  ve_sz = z
+  return true
+}
+function ve__safe_x() -> float { return ve_sx }
+function ve__safe_z() -> float { return ve_sz }

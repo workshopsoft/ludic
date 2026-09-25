@@ -1,0 +1,14 @@
+# ludic.vehicles - a player's boat and horse: made the first time they are called to a place and
+# fetched there after, one rider at a time, ridden over water or land, and put down again through
+# the rider's own safe spot. The game draws them, prices them and words them.
+module ludic_vehicles uses ludic_base
+numbers float
+import "ludic.base"
+import "kinds.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "places.ludic"
+import "call.ludic"
+import "mount.ludic"
+import "ride.ludic"
+import "system.ludic"

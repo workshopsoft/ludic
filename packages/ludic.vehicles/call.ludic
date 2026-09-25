@@ -1,0 +1,104 @@
+# call.ludic - a player's boat or horse brought to a place: made there the first time, fetched there
+# after; gone when its player leaves
+function ve_add(kind: int, x: float, z: float, yaw: float) -> Vehicle {
+  if kind != VEHICLE_HORSE and kind != VEHICLE_BOAT { return null }
+  let v = new Vehicle
+  v.nid = VehicleWorld.next_id()
+  v.kind = kind
+  v.yaw = yaw
+  if kind == VEHICLE_HORSE {
+    v.seat_h = 1.35
+    v.fuel = 100.0
+    v.food = 40.0
+  } else {
+    v.seat_h = 0.30
+  }
+  ve_put(v, x, z)
+  push(ve_all(), v)
+  VehicleWorld.made(v)
+  return v
+}
+
+# at rest at (x, z): a boat on the water, a horse on the ground and tied there
+function ve_put(v: Vehicle, x: float, z: float) -> void {
+  v.x = x
+  v.z = z
+  v.speed = 0.0
+  if v.kind == VEHICLE_BOAT { v.y = VehicleWorld.water(x, z) + 0.02 } else { v.y = VehicleWorld.ground(x, z) }
+  v.home_x = x
+  v.home_z = z
+}
+
+# Bring player pid's boat or horse to place k. False when the place is somebody else's, or it is
+# being ridden. A horse faces the trough: the bay lies on its near side.
+export function vehicle_call_for(pid: int, kind: int, k: int) -> bool {
+  if not ve_have_dock or k < 0 or k >= VEHICLE_PLACES { return false }
+  let here = vehicle_in_place(kind, k)
+  let v = vehicle_of(pid, kind)
+  if here != null { return v != null and here.nid == v.nid }
+  var yaw = ve_dock_yaw
+  if kind == VEHICLE_HORSE { yaw = ve_rail_yaw }
+  if v == null {
+    let made = ve_add(kind, vehicle_place_x(kind, k), vehicle_place_z(kind, k), yaw)
+    if made == null { return false }
+    made.owner = pid
+    if pid == 0 { ve_apply_kept(made) }
+    return true
+  }
+  if v.rider >= 0 { return false }
+  ve_put(v, vehicle_place_x(kind, k), vehicle_place_z(kind, k))
+  v.yaw = yaw
+  VehicleWorld.placed(v)
+  return true
+}
+
+# a player left: their boat and horse go with them, and their places are free
+export function vehicles_release(pid: int) -> void {
+  if pid == 0 { return }
+  let keep = new []Vehicle
+  let l = ve_all()
+  for i in 0 .. len(l) {
+    if l[i].owner != pid { push(keep, l[i]) } else { VehicleWorld.gone(l[i]) }
+  }
+  ve_list = keep
+}
+
+# hired or rented for the trip
+export function vehicle_own(v: Vehicle) -> void { if v != null { v.owned = true } }
+
+# hay for a horse, up to a full belly
+export function vehicle_feed(v: Vehicle, amount: float) -> void {
+  if v == null { return }
+  v.food = Math.min(v.food + amount, 100.0)
+  ve_say(VEHICLE_FED, v, amount)
+}
+
+# a horse nobody rides goes where its animal goes, round the home it is tied at (home_x, home_z)
+export function vehicle_follow(v: Vehicle, x: float, y: float, z: float, yaw: float) -> void {
+  if v == null or v.rider >= 0 { return }
+  v.x = x
+  v.y = y
+  v.z = z
+  v.yaw = yaw
+}
+
+# a saved trip's word on this player's own: hired, and how fed
+export function vehicle_restore(kind: int, owned: bool, food: float) -> void {
+  if kind == VEHICLE_HORSE {
+    ve_kept_horse = owned
+    ve_kept_food = food
+  } else { ve_kept_boat = owned }
+  let v = vehicle_find(kind)
+  if v != null { ve_apply_kept(v) }
+}
+
+var ve_kept_horse: bool = false
+var ve_kept_boat: bool = false
+var ve_kept_food: float = 40.0
+
+function ve_apply_kept(v: Vehicle) -> void {
+  if v.kind == VEHICLE_HORSE {
+    v.owned = ve_kept_horse
+    v.food = ve_kept_food
+  } else { v.owned = ve_kept_boat }
+}

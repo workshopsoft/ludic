@@ -1,0 +1,237 @@
+# vehicles_test.ludic - a fake shore: land at x < 10, a lake past it deepening a metre a metre, a
+# pier head at the shore facing out and a trough on the meadow, a trunk in a horse's way. Calling to
+# berths and bays, the owner and the rider, mounting a hungry horse, riding both, the swell, the wind,
+# getting off near a shore and far from one, a player leaving, and the save.
+import "ludic.vehicles"
+import "ludic.base"
+program VehiclesTest {
+  numbers float
+
+  function fk_ground(x: float, z: float) -> float {
+    if x > 10.0 { return -(x - 10.0) }
+    return 0.0
+  }
+  function fk_water(x: float, z: float) -> float {
+    if x > 9.5 { return 0.0 }
+    return -10000.0
+  }
+  function fk_blocked(x: float, z: float, r: float) -> bool { return Math.abs(x) < 1.0 + r and Math.abs(z + 60.0) < 1.0 + r }
+  var swell: float = 0.0
+  function fk_swell(x: float, z: float, fx: float, fz: float) -> float {
+    if fx > 0.0 { return swell }
+    return 0.0
+  }
+  var wind: float = 0.0
+  function fk_wind() -> float { return wind }
+  var made: int = 0
+  var gone: int = 0
+  var placed: int = 0
+  function fk_made(v: Vehicle) -> void { made += 1 }
+  function fk_gone(v: Vehicle) -> void { gone += 1 }
+  function fk_placed(v: Vehicle) -> void { placed += 1 }
+
+  # the rider: where it was put, and a safe spot that walks back toward the shore
+  var rx: float = 0.0
+  var ry: float = 0.0
+  var rz: float = 0.0
+  var boarded: int = 0
+  var sx: float = 0.0
+  var sz: float = 0.0
+  function fk_board(x: float, z: float, yaw: float) -> void { boarded += 1 }
+  function fk_ride(x: float, y: float, z: float, yaw: float, speed: float) -> void {
+    rx = x
+    ry = y
+    rz = z
+  }
+  function fk_off(x: float, z: float) -> void {
+    rx = x
+    rz = z
+    ry = fk_ground(x, z)
+  }
+  function fk_safe(x: float, z: float, from_y: float, max_depth: float) -> bool {
+    for s in 0 .. 11 {
+      let px = x - float(s)
+      let depth = fk_water(px, z) - fk_ground(px, z)
+      if not (depth > max_depth) {
+        sx = px
+        sz = z
+        return true
+      }
+    }
+    return false
+  }
+  function fk_sx() -> float { return sx }
+  function fk_sz() -> float { return sz }
+
+  bind VehicleWorld { ground: fn fk_ground, water: fn fk_water, blocked: fn fk_blocked, swell: fn fk_swell, wind: fn fk_wind, made: fn fk_made, gone: fn fk_gone, placed: fn fk_placed }
+  bind VehicleRider { board: fn fk_board, ride_at: fn fk_ride, step_off: fn fk_off, safe_spot: fn fk_safe, safe_x: fn fk_sx, safe_z: fn fk_sz }
+
+  const EAST: float = -1.5707963
+
+  function fresh() -> void {
+    vehicles_reset()
+    vehicles_dock_at(10.0, 0.0, EAST)
+    vehicles_rail_at(0.0, 5.0, 0.0)
+    made = 0
+    gone = 0
+    swell = 0.0
+    wind = 0.0
+  }
+  function facts() -> []VehicleFact { return q_drain(vehicle_facts()) }
+  function count(fs: []VehicleFact, what: int) -> int {
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+  function ride(ix: float, iz: float, run: bool, secs: float) -> void {
+    for i in 0 .. int(secs * 60.0) { vehicle_update(ix, iz, run, 1.0 / 60.0) }
+  }
+
+  test "a berth is off the pier head in the water, a bay on the meadow" {
+    fresh()
+    expect_near(vehicle_berth_x(0), 17.25, 0.01)
+    expect_near(vehicle_berth_z(0), -3.3, 0.01)
+    expect_near(vehicle_post_x(3), 16.15, 0.01)
+    expect_near(vehicle_bay_z(2), 3.6, 0.01)
+  }
+
+  test "the first call makes a vehicle, a later one fetches it, and a taken place refuses" {
+    fresh()
+    expect(vehicle_call_for(0, VEHICLE_BOAT, 0))
+    expect_eq(made, 1)
+    let b = vehicle_find(VEHICLE_BOAT)
+    expect(b != null)
+    expect_near(b.y, 0.02, 0.001)
+    expect(vehicle_call_for(0, VEHICLE_BOAT, 0))
+    expect_eq(made, 1)
+    expect(not vehicle_call_for(2, VEHICLE_BOAT, 0))
+    expect(vehicle_call_for(2, VEHICLE_BOAT, 1))
+    expect_eq(made, 2)
+    expect(vehicle_call_for(0, VEHICLE_BOAT, 2))
+    expect(vehicle_in_place(VEHICLE_BOAT, 0) == null)
+    expect_eq(vehicle_free_place(VEHICLE_BOAT), 0)
+    expect(vehicle_mine_in_place(VEHICLE_BOAT))
+  }
+
+  test "a player leaving takes theirs away; this machine's player never leaves" {
+    fresh()
+    vehicle_call_for(0, VEHICLE_HORSE, 0)
+    vehicle_call_for(3, VEHICLE_HORSE, 1)
+    vehicles_release(0)
+    expect_eq(len(vehicles_all()), 2)
+    vehicles_release(3)
+    expect_eq(len(vehicles_all()), 1)
+    expect_eq(gone, 1)
+    expect(vehicle_in_place(VEHICLE_HORSE, 1) == null)
+  }
+
+  test "a hungry horse will not go; a fed one is mounted, and only by its owner" {
+    fresh()
+    vehicle_call_for(0, VEHICLE_HORSE, 0)
+    vehicle_call_for(4, VEHICLE_HORSE, 1)
+    let h = vehicle_find(VEHICLE_HORSE)
+    h.food = 5.0
+    expect(not vehicle_mount(h))
+    expect_eq(count(facts(), VEHICLE_HUNGRY), 1)
+    vehicle_feed(h, 50.0)
+    expect_near(h.food, 55.0, 0.001)
+    expect(not vehicle_mount(vehicle_of(4, VEHICLE_HORSE)))
+    boarded = 0
+    expect(vehicle_mount(h))
+    expect_eq(boarded, 1)
+    expect_eq(vehicle_ride_kind(), VEHICLE_HORSE)
+    expect_eq(h.rider, 0)
+    expect(vehicle_nearest(h.x, h.z, 5.0) == null)
+    expect(vehicle_in_place(VEHICLE_HORSE, 0) == null)
+  }
+
+  test "a horse walks, gallops on stamina, stops at the water and at a trunk" {
+    fresh()
+    vehicle_call_for(0, VEHICLE_HORSE, 0)
+    let h = vehicle_find(VEHICLE_HORSE)
+    vehicle_mount(h)
+    ride(0.0, 1.0, false, 3.0)
+    expect_near(h.speed, 4.5, 0.05)
+    expect(count(facts(), VEHICLE_MOVED) > 100)
+    ride(0.0, 1.0, true, 3.0)
+    expect_near(h.speed, 11.0, 0.1)
+    expect(h.fuel < 100.0)
+    expect(h.z < -15.0)
+    expect_near(rz, h.z, 0.001)
+    expect_near(ry, 1.35, 0.001)
+    # the trunk at z = -60 stops it
+    ride(0.0, 1.0, true, 6.0)
+    expect(h.z > -60.0 + 1.7)
+    expect_near(h.speed, 0.0, 0.001)
+    # and the lake to the east does too
+    vehicle_drop()
+    h.x = 7.0
+    h.z = 0.0
+    h.yaw = EAST
+    vehicle_mount(h)
+    ride(0.0, 1.0, false, 4.0)
+    expect(h.x < 9.6)
+  }
+
+  test "a boat rows on water, stops at the shore, loses its stroke to the swell, drifts on the wind" {
+    fresh()
+    vehicle_call_for(0, VEHICLE_BOAT, 0)
+    let b = vehicle_find(VEHICLE_BOAT)
+    vehicle_mount(b)
+    ride(0.0, 1.0, false, 2.0)
+    let x2 = b.x
+    expect(x2 > 18.0)
+    swell = 1.0
+    ride(0.0, 1.0, false, 1.0)
+    expect_near(b.x, x2, 0.2)
+    expect_eq(count(facts(), VEHICLE_SWELL), 1)
+    swell = 0.0
+    ride(0.0, -1.0, false, 12.0)
+    expect(b.x > 10.3)
+    wind = 1.0
+    let z0 = b.z
+    ride(0.0, 0.0, false, 1.0)
+    expect(b.z < z0)
+  }
+
+  test "getting off a boat needs a shore near enough; a horse is left tied where it stands" {
+    fresh()
+    vehicle_call_for(0, VEHICLE_BOAT, 0)
+    let b = vehicle_find(VEHICLE_BOAT)
+    vehicle_mount(b)
+    b.x = 40.0
+    expect(not vehicle_dismount())
+    expect_eq(count(facts(), VEHICLE_NO_LANDING), 1)
+    expect_eq(vehicle_ride_kind(), VEHICLE_BOAT)
+    b.x = 12.0
+    expect(vehicle_dismount())
+    expect_near(rx, 11.0, 0.001)
+    expect_eq(vehicle_ride_kind(), 0)
+    expect_eq(b.rider, -1)
+    vehicle_call_for(0, VEHICLE_HORSE, 0)
+    let h = vehicle_find(VEHICLE_HORSE)
+    vehicle_mount(h)
+    h.x = -5.0
+    h.z = -5.0
+    expect(vehicle_dismount())
+    expect_near(h.home_x, -5.0, 0.001)
+    expect(vehicle_in_place(VEHICLE_HORSE, 0) == null)
+    expect_near(rx, -5.0 + 1.2, 0.001)
+  }
+
+  test "this player's own are saved by kind, and a save read before they are made still applies" {
+    fresh()
+    vehicle_call_for(0, VEHICLE_HORSE, 0)
+    vehicle_call_for(0, VEHICLE_BOAT, 0)
+    vehicle_own(vehicle_find(VEHICLE_HORSE))
+    vehicle_find(VEHICLE_HORSE).food = 77.0
+    let saved = vehicles_save()
+    fresh()
+    vehicles_load(saved, 1)
+    vehicle_call_for(0, VEHICLE_HORSE, 0)
+    vehicle_call_for(0, VEHICLE_BOAT, 0)
+    expect(vehicle_find(VEHICLE_HORSE).owned)
+    expect_near(vehicle_find(VEHICLE_HORSE).food, 77.0, 0.01)
+    expect(not vehicle_find(VEHICLE_BOAT).owned)
+  }
+}

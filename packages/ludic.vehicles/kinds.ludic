@@ -1,0 +1,41 @@
+# kinds.ludic - what can be ridden, a vehicle, and what happened to one
+export const VEHICLE_HORSE: int = 1     # land only: stamina for a gallop, hay to go at all
+export const VEHICLE_BOAT: int = 3      # water only (2 was a machine the wilderness has no place for)
+export const VEHICLE_PLACES: int = 4    # berths on the pier head, bays at the rail
+
+export property Vehicle {
+  kind: int = 0
+  nid: int = 0            # its id across machines
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  speed: float = 0.0
+  fuel: float = 0.0       # a horse's stamina, 0..100
+  food: float = 0.0       # a horse's hay, 0..100
+  seat_h: float = 0.0     # the rider sits this far above it
+  bob: float = 0.0
+  owned: bool = false     # hired or rented for the trip
+  owner: int = 0          # the player it belongs to (0: this machine's)
+  rider: int = -1         # the player on it, -1 nobody
+  home_x: float = 0.0     # a horse is tied where its home is
+  home_z: float = 0.0
+}
+
+export const VEHICLE_MOUNTED: int = 0
+export const VEHICLE_DISMOUNTED: int = 1
+export const VEHICLE_NO_LANDING: int = 2     # no shore near enough to step onto
+export const VEHICLE_MOVED: int = 3          # v: metres covered this frame by the rider
+export const VEHICLE_SWELL: int = 4          # the edge's swell is taking the stroke; every 14 s
+export const VEHICLE_HUNGRY: int = 5         # a horse without hay will not go
+export const VEHICLE_FED: int = 6
+
+export property VehicleFact {
+  what: int = 0
+  nid: int = 0
+  kind: int = 0
+  owner: int = 0
+  x: float = 0.0
+  z: float = 0.0
+  v: float = 0.0
+}
