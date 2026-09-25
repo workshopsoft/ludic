@@ -135,6 +135,7 @@ function ck_fn_body(d: Node) -> void {
 }
 function ck_listener(l: Node) -> void {
   let ev = find_event(l.s)
+  ck_vis(ev, l.s, l)
   let m = ck_mark()
   if ev != null {
     var i = 0
@@ -177,7 +178,13 @@ function check_program() -> void {
     let d = prog[i]
     if d.kind == N_FN { ck_fn_body(d) }
     if d.kind == N_MAIN or d.kind == N_TEST { ck_block(d.a) }
-    if (d.kind == N_VAR or d.kind == N_CONST) and d.a != null { ck_give(d.ty, ck_expr(d.a), d.a, d.s) }
+    if (d.kind == N_VAR or d.kind == N_CONST) and d.a != null {
+      ck_vis_file = d.file
+      ck_vis_skip = d.kind == N_VAR and is_port_var(d)
+      ck_give(d.ty, ck_expr(d.a), d.a, d.s)
+      ck_vis_file = null
+      ck_vis_skip = false
+    }
     i += 1
   }
   var j = 0

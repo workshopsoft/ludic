@@ -152,6 +152,7 @@ entry {
     else if a == "--fmt" { fmt = true }
     else if a == "--save-temps" { save = true }
     else if a == "--run" { run = true }
+    else if a == "--check" { g_check_only = true }       # parse, type, module and port checks; nothing emitted
     else if a == "--coverage" { g_coverage = true }
     else if a == "--target" { ai += 1;  if ai < arg_count() { target = arg(ai) } }
     else if a == "--gui" { gui = true }
@@ -207,6 +208,7 @@ entry {
   check_duplicate_fns()                           # two declarations of one name: the cause, before its symptoms
   check_duplicate_decls()
   check_program()                                 # L4: the types agree before anything is emitted
+  if g_check_only { exit(0) }                     # --check: the checks are all there is
   emit_program()
   deps_flush()                                    # LUDIC_DEPS=<file>: the module graph (ludic deps)
 

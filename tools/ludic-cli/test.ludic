@@ -490,6 +490,23 @@ function deps_case() -> void {
   ok(lbl)
 }
 
+# --check: the module rules, the ports and the types, with nothing emitted - a broken uses line is
+# refused as a full build refuses it, and a sound program writes no file
+function check_build_case() -> void {
+  let lbl = "ludicc --check / ludic build --check: modules, uses, ports and types without emitting"
+  let bad = ["rejected/uses_missing", "rejected/layer_reach", "rejected/private_module", "rejected/port_unbound", "rejected/registry_hidden", "rejected/port_new", "rejected/wrong_arity"]
+  let want = ["fishing uses items.inv_add", "hud uses items.item_count", "add is private to module bank", "port Clock is used here but never bound", "Tools is private to module kit", "Clock is a port", "leaves out h"]
+  for i in 0 .. len(bad) {
+    if shq(`bin/ludicc --check examples/{bad[i]}.ludic > {tmp_dir()}/chk.err 2>&1`) { bad2(lbl, `{bad[i]} passed the check`);  return }
+    let said = capture(`cat {tmp_dir()}/chk.err`)
+    if not s_contains(said, want[i]) { bad2(lbl, `{bad[i]}: [{s_trim(said)}]`);  return }
+  }
+  shell("rm -f build/checked_out")
+  if not shq(`bin/ludic build examples/modules/layers.ludic --check -o build/checked_out > {tmp_dir()}/chk.out 2>&1`) { bad2(lbl, capture_line(`tail -1 {tmp_dir()}/chk.out`));  return }
+  if file_exists("build/checked_out") { bad2(lbl, "--check wrote a binary");  return }
+  ok(lbl)
+}
+
 # every package's own tests, the way a package author runs them: `ludic test packages`
 function packages_test_case() -> void {
   let lbl = "ludic test packages: every package's tests pass"
@@ -1079,6 +1096,7 @@ function cmd_dev_test() -> int {
   test_dir_case()
   packages_test_case()
   deps_case()
+  check_build_case()
   lab_plate_case()
   pack_roundtrip_case()
   packignore_case()

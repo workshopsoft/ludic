@@ -276,6 +276,7 @@ function parse_build_args(start: int) -> pointer {
     else if a == "--windowed" { g_mode = 1 }
     else if a == "--save-temps" { g_save = true }
     else if a == "--unsafe" { g_unsafe_build = true }
+    else if a == "--check" { g_check_build = true }
     else if a == "-o" {
       ai += 1
       if ai < arg_count() { g_out = arg(ai) }
@@ -283,7 +284,7 @@ function parse_build_args(start: int) -> pointer {
     }
     else if a[0] == '-' {
       err(`ludic: unknown option {a}\n`)
-      err("  build/run take: [file] [--headless|--windowed] [-o out] [--save-temps]\n")
+      err("  build/run take: [file] [--headless|--windowed] [-o out] [--save-temps] [--check]\n")
       g_argerr = true
     }
     else { src = a }
@@ -303,10 +304,20 @@ function output_path(entry: pointer) -> pointer {
 }
 
 # ludic build [file] [--headless] [-o out] [--save-temps]
+# --check: parse, types, modules, uses, ports - everything the compiler checks before it emits -
+# and nothing emitted or linked; a fraction of a build's time, for iterating on uses lines
+var g_check_build: bool = false
+function check_app(src: pointer) -> int {
+  ensure_ludicc()
+  if not shq(`{ludicc()} --check{title_flag()}{unsafe_flag()} {src}`) { return 1 }
+  print(`checked {src}`)
+  return 0
+}
 function cmd_build() -> int {
   let entry = parse_build_args(2)
   if g_argerr { return 1 }
   if entry == "" { return no_entry() }
+  if g_check_build { return check_app(entry) }
   let out = output_path(entry)
   if not compile_app(entry, out, g_mode, g_save) { return 1 }
   if g_mode == 2 {

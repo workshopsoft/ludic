@@ -42,6 +42,7 @@ program Ludic {
     print("  run [file] [--headless]       build the project and run it")
     print("  build [file] [--headless] [-o out]")
     print("                                compile to build/<name> (a native binary, nothing to ship beside it)")
+    print("  build [file] --check          only check it: types, modules, uses and ports; nothing emitted")
     print("  test [file|dir...] [-j N] [-v] [--test NAME]")
     print("                                compile and run the project's tests (-v: every test's line)")
     print("  deps [file] [--graph|--dot|--writes|--uses MOD|--check F|--baseline F]")

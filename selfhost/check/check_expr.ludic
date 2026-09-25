@@ -47,6 +47,7 @@ function ck_expr(e: Node) -> pointer {
   if k == E_ID { return ck_id(e) }
   if k == E_FNREF {
     let f = ck_fn(e.s)
+    ck_vis(f, e.s, e)
     if f != null { return fn_sig_of(f) }
     return "?"
   }
@@ -68,11 +69,30 @@ function ck_id(e: Node) -> pointer {
   let li = ck_local(e.s)
   if li >= 0 { return ck_tys[li] }
   let g = ck_global(e.s)
-  if g != null { return g.ty }
+  if g != null {
+    ck_vis(g, e.s, e)
+    return g.ty
+  }
   return "?"
+}
+# --check: the module rules (uses, export, ports - emit_vis.ludic) asked here, where every reference
+# is resolved, since a check-only build stops before the emitter that asks them otherwise
+var g_check_only: bool = false
+var ck_vis_file: pointer = null   # a global's initializer is its declaration's file's code (as emitted)
+var ck_vis_skip: bool = false     # a port's bind, checked where it was written (ports.ludic)
+function ck_vis(d: Node, name: pointer, at: Node) -> void {
+  if not g_check_only or ck_vis_skip or d == null or at == null or at.file == null { return }
+  g_err_file = at.file
+  if ck_vis_file != null { g_err_file = ck_vis_file }
+  g_err_line = at.line
+  vis_check(d, name)
 }
 function ck_new(e: Node) -> pointer {
   let r = ck_record(e.s)
+  ck_vis(r, e.s, e)
+  if r == null and g_check_only and port_find(e.s) >= 0 {
+    ck_err("port", e, `{e.s} is a port: it is filled once with 'bind {e.s} {{ ... }}' where the program is put together, not made with new`)
+  }
   if e.a != null {
     var i = 0
     while i < len(e.a.kids) {
@@ -91,8 +111,12 @@ function ck_new(e: Node) -> pointer {
 function ck_list(e: Node) -> pointer {
   var t: pointer = "?"
   var i = 0
+  let saved = ck_vis_file
   while i < len(e.kids) {
+    # a registry's entries are their defs' files' code (emit_list_elem)
+    if saved != null and e.kids[i].file != null { ck_vis_file = e.kids[i].file }
     let et = ck_expr(e.kids[i])
+    ck_vis_file = saved
     if ck_unknown(t) { t = et }
     else { ck_give(t, et, e.kids[i], `an element of a []{t}`) }
     i += 1

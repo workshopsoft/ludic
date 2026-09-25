@@ -1841,12 +1841,19 @@ ludic test                               # compile and run the project's `test` 
 ludic test tests/math.ludic --test adds  # just the test named "adds" (-v: every result line)
 ludic test -j 4                          # four tests at once (default: one per CPU)
 ludic test packages/ludic.base          # the test programs under a directory (a package's)
+ludic build --check                      # only check: types, modules, uses and ports - nothing emitted
 ludic deps                               # how tangled the modules are, as the compiler resolved them
 ludic deps --check tests/deps-baseline.txt   # fail when a number rose (--baseline FILE writes them)
 
 ludicc app.ludic -o build/app            # the compiler directly: a native binary
 ludicc app.ludic --emit-llvm -o app.ll   # stop at LLVM IR
 ```
+
+`ludic build [file] --check` (the compiler's `ludicc --check`) runs everything the compiler checks
+before it writes code - the parse, the types, `export`, `uses` and layers, ports and binds, registries
+- and stops: no IR, no link. On Maroon Lake it takes about three seconds where a build takes about a
+minute, for iterating on `uses` lines. Two checks belong to the code writer and only a build makes
+them: a function that can reach its end without its result, and a local declared twice in a block.
 
 `ludic deps` compiles the program (the package's entry, or a file) with the compiler recording every
 reference its visibility pass resolves - from the module it is written in to the module of what it

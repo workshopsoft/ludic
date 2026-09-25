@@ -180,6 +180,7 @@ function ck_call(e: Node) -> pointer {
           if tf != null { ck_raw(e, `{b.s}.{c.s}, a C function`) }
         }
         if tf != null {
+          if ck_fn(g_al_target[al]) != null { ck_vis(tf, g_al_target[al], e) }
           ck_extern_arg = ck_extern(g_al_target[al]) != null
           let at = ck_call_alias(e, `{b.s}.{c.s}`, al, tf)
           ck_extern_arg = false
@@ -192,6 +193,7 @@ function ck_call(e: Node) -> pointer {
       # so the Ludic function behind it gives the result's type and nothing about the arguments
       ck_walk_args(e)
       let nf = ck_fn(ns_lower(b.s) + "_" + c.s)
+      if nf != null { ck_vis(nf, nf.s, e) }
       if nf != null and nf.ty != null { return nf.ty }
       return "?"
     }
@@ -218,9 +220,15 @@ function ck_call_named(e: Node, name: pointer) -> pointer {
   let bt = ck_builtin(e, name)
   if bt != null { return bt }
   let f = ck_fn(name)
-  if f != null { return ck_call_fn(e, name, f) }
+  if f != null {
+    ck_vis(f, name, e)
+    return ck_call_fn(e, name, f)
+  }
   let gt = gen_template(g_gen_fns, name)
-  if gt != null { return gen_call(e, name, gt) }
+  if gt != null {
+    ck_vis(gt, name, e)
+    return gen_call(e, name, gt)
+  }
   let x = ck_extern(name)
   if x != null {
     ck_raw(e, `the C function {name}`)
@@ -237,6 +245,7 @@ function ck_call_named(e: Node, name: pointer) -> pointer {
 # emit E(field: v): each field gets the type the event declares for it
 function ck_emit(s: Node) -> void {
   let ev = find_event(s.s)
+  ck_vis(ev, s.s, s)
   if s.a == null { return }
   var i = 0
   while i < len(s.a.kids) {
