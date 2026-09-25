@@ -395,6 +395,7 @@ function pack_add_packages(l: PackList) -> void {
     i = i + slen(line) + 1
     let mod = s_trim(line)
     if slen(mod) == 0 { continue }
+    if not shq(`test -d {base}/{mod}`) { continue }      # packages/README.md is an index, not a package
     pack_gather_pkg(l, base, mod)
   }
 }
