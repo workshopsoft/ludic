@@ -14,11 +14,13 @@ A <code>become</code> statement performs a transition. Inside a <code>machine</c
 ```ludic
 program EncounterFlow {
   enum Stage { Explore, Battle, Victory }
-  var stage: int = Stage.Explore
-  var enemies_left: int = 2
+  state EncounterFlowState {
+    stage: int = Stage.Explore
+  }
+  let enemies_left: int = 2
 
-  handler RunStage phase Update {
-    machine stage {
+  handler RunStage(encounter_flow_st: mut EncounterFlowState) phase Update {
+    machine encounter_flow_st.stage {
       state Explore {
         if Input.key() == ' ' { become Battle }
       }

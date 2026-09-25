@@ -20,7 +20,7 @@ Parameters:
 program RowsNeeded {
   const ROW_HEIGHT: fixed = 12.0
 
-  var content_height: fixed = 30.0
+  let content_height: fixed = 30.0
 
   handler Layout phase Update {
     let rows = Math.ceil(content_height / ROW_HEIGHT)   # 3

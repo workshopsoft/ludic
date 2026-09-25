@@ -25,7 +25,7 @@ program HealthBar {
   const MAX_HP: fixed = 200.0
   const BAR_WIDTH: fixed = 64.0
 
-  var hp: fixed = 150.0
+  let hp: fixed = 150.0
 
   handler Draw phase Render {
     let width = Math.remap(hp, 0.0, MAX_HP, 0.0, BAR_WIDTH)   # 48.0

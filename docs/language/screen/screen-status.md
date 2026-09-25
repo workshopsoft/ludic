@@ -18,11 +18,13 @@ Parameters:
 
 ```ludic
 program StatusLine {
-  var elapsed_frames: int = 0
+  state StatusLineState {
+    elapsed_frames: int = 0
+  }
 
-  handler UpdateStatus phase Update {
-    elapsed_frames = elapsed_frames + 1
-    Screen.status(text: `frame {elapsed_frames}`)
+  handler UpdateStatus(status_line_st: mut StatusLineState) phase Update {
+    status_line_st.elapsed_frames = status_line_st.elapsed_frames + 1
+    Screen.status(text: `frame {status_line_st.elapsed_frames}`)
   }
 
   handler DrawWorld phase Render {

@@ -17,24 +17,26 @@ program UpdateExample {
   model Enemy { Position }
 
   const GRID_WIDTH: int = 20
-  var elapsed_frames: int = 0
-  var score: int = 0
+  state UpdateExampleState {
+    elapsed_frames: int = 0
+    score: int = 0
+  }
 
-  handler SpawnWave phase Update {
-    elapsed_frames = elapsed_frames + 1
-    if elapsed_frames % 30 == 0 {
+  handler SpawnWave(update_example_st: mut UpdateExampleState) phase Update {
+    update_example_st.elapsed_frames = update_example_st.elapsed_frames + 1
+    if update_example_st.elapsed_frames % 30 == 0 {
       let spawn_column = Random.range(low: 0, high: GRID_WIDTH - 1)
       spawn Enemy { Position { column: spawn_column, row: 0 } }
-      score = score + 1
+      update_example_st.score = update_example_st.score + 1
     }
   }
 
-  handler DrawWorld phase Render {
+  handler DrawWorld(update_example_st: UpdateExampleState) phase Render {
     Screen.clear(Color.MidnightBlue)
     for (current_position) in query [Position, {Enemy}] {
       Screen.fill_rectangle(x: current_position.column * 16, y: current_position.row * 16, width: 16, height: 16, color: Color.Crimson)
     }
-    Screen.draw_number(x: 4, y: 4, value: score, color: Color.Gold, scale: 1)
+    Screen.draw_number(x: 4, y: 4, value: update_example_st.score, color: Color.Gold, scale: 1)
     Screen.show()
   }
 }

@@ -19,7 +19,7 @@ Parameters:
 
 ```ludic
 program KeyValue {
-  var pair: string = "hp=42"
+  let pair: string = "hp=42"
 
   handler Parse phase Update {
     let eq = Text.index_of(pair, "=")            # 2

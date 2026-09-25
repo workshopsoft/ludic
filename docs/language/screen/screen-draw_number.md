@@ -22,16 +22,18 @@ Parameters:
 
 ```ludic
 program ScoreHud {
-  var score: int = 0
-
-  handler EarnPoints phase Update {
-    score = score + 1
+  state ScoreHudState {
+    score: int = 0
   }
 
-  handler DrawWorld phase Render {
+  handler EarnPoints(score_hud_st: mut ScoreHudState) phase Update {
+    score_hud_st.score = score_hud_st.score + 1
+  }
+
+  handler DrawWorld(score_hud_st: ScoreHudState) phase Render {
     Screen.clear(Color.MidnightBlue)
     Screen.draw_text(x: 6, y: 4, text: "SCORE", color: Color.White, scale: 1)
-    Screen.draw_number(x: 52, y: 4, value: score, color: Color.Gold, scale: 1)
+    Screen.draw_number(x: 52, y: 4, value: score_hud_st.score, color: Color.Gold, scale: 1)
     Screen.show()
   }
 }

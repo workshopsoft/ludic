@@ -18,11 +18,13 @@ Parameters:
 
 ```ludic
 program PathOrder {
-  var path: []int = new []int
+  state PathOrderState {
+    path: []int = new []int
+  }
 
-  handler Finalize phase Update {
+  handler Finalize(path_order_st: PathOrderState) phase Update {
     # path was built from the goal back to the start
-    List.reverse(path)   # now start -> goal
+    List.reverse(path_order_st.path)   # now start -> goal
   }
 }
 ```

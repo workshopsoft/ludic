@@ -19,10 +19,12 @@ Parameters:
 
 ```ludic
 program ClampScore {
-  var score: int = 0
+  state ClampScoreState {
+    score: int = 0
+  }
 
-  handler AddPoint phase Update {
-    score = Math.min(score + 1, 100)   # never climbs past 100
+  handler AddPoint(clamp_score_st: mut ClampScoreState) phase Update {
+    clamp_score_st.score = Math.min(clamp_score_st.score + 1, 100)   # never climbs past 100
   }
 }
 ```

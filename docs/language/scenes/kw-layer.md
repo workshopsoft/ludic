@@ -16,7 +16,7 @@ program LayerExample {
   property Position { column: int = 0, row: int = 0 }
   model Player { Position }
 
-  var score: int = 0
+  let score: int = 0
 
   scene Overworld start {
     on enter { spawn Player { Position { column: 6, row: 6 } } }

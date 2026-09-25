@@ -15,19 +15,21 @@ order: 50
 program CancellableExample {
   event cancellable BeforeHurt { amount: int = 0 }
 
-  var current_health: int = 100
+  state CancellableExampleState {
+    current_health: int = 100
+  }
 
   @On(BeforeHurt) handler AbsorbSmallHits { if amount <= 5 { cancel } }
 
-  handler TakeDamage phase Update {
+  handler TakeDamage(cancellable_example_st: mut CancellableExampleState) phase Update {
     if Input.key() == 'h' {
-      if emit BeforeHurt(amount: 3) == 0 { current_health = current_health - 3 }
+      if emit BeforeHurt(amount: 3) == 0 { cancellable_example_st.current_health = cancellable_example_st.current_health - 3 }
     }
   }
 
-  handler DrawWorld phase Render {
+  handler DrawWorld(cancellable_example_st: CancellableExampleState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    Screen.draw_number(x: 4, y: 4, value: current_health, color: Color.Crimson, scale: 1)
+    Screen.draw_number(x: 4, y: 4, value: cancellable_example_st.current_health, color: Color.Crimson, scale: 1)
     Screen.show()
   }
 }

@@ -19,7 +19,7 @@ Parameters:
 
 ```ludic
 program Command {
-  var input: string = "/say hello"
+  let input: string = "/say hello"
 
   handler Parse phase Update {
     if Text.starts_with(input, "/say ") {

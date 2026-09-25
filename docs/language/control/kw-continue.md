@@ -13,12 +13,14 @@ order: 10
 
 ```ludic
 program SumOdds {
-  var total: int = 0
+  state SumOddsState {
+    total: int = 0
+  }
 
-  handler Add phase Update {
+  handler Add(sum_odds_st: mut SumOddsState) phase Update {
     for i in 0 .. 10 {
       if i % 2 == 0 { continue }   # skip even numbers
-      total = total + i
+      sum_odds_st.total = sum_odds_st.total + i
     }
   }
 }

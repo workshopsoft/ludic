@@ -20,7 +20,7 @@ Parameters:
 program TileIndex {
   const TILE_SIZE: fixed = 16.0
 
-  var world_x: fixed = 40.5
+  let world_x: fixed = 40.5
 
   handler Locate phase Update {
     let column = Math.floor(world_x / TILE_SIZE)   # 2

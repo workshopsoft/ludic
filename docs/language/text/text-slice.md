@@ -20,7 +20,7 @@ Parameters:
 
 ```ludic
 program FirstWord {
-  var line: string = "hello world"
+  let line: string = "hello world"
 
   handler Split phase Update {
     let space = Text.index_of(line, " ")   # 5

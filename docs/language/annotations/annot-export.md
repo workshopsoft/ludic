@@ -13,16 +13,18 @@ order: 3
 
 ```ludic
 program ScoreModule {
-  var running_total: int = 0
-
-  @export function add_points(amount: int) -> int {      # callable from a native host
-    running_total = running_total + amount
-    return running_total
+  state ScoreModuleState {
+    running_total: int = 0
   }
 
-  entry {
-    print(add_points(10))                           # 10
-    print(add_points(5))                            # 15
+  @export function add_points(score_module_st: mut ScoreModuleState, amount: int) -> int {      # callable from a native host
+    score_module_st.running_total = score_module_st.running_total + amount
+    return score_module_st.running_total
+  }
+
+  entry (score_module_st: mut ScoreModuleState) {
+    print(add_points(score_module_st, 10))                           # 10
+    print(add_points(score_module_st, 5))                            # 15
   }
 }
 ```

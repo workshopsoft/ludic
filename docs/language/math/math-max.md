@@ -19,10 +19,12 @@ Parameters:
 
 ```ludic
 program Countdown {
-  var timer: int = 60
+  state CountdownState {
+    timer: int = 60
+  }
 
-  handler Tick phase Update {
-    timer = Math.max(timer - 1, 0)   # stops at 0, never negative
+  handler Tick(countdown_st: mut CountdownState) phase Update {
+    countdown_st.timer = Math.max(countdown_st.timer - 1, 0)   # stops at 0, never negative
   }
 }
 ```

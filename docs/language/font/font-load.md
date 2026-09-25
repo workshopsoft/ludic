@@ -15,9 +15,9 @@ Loads a TrueType font file and returns its handle. Load it before <code>Ui.build
 
 ```ludic
 # doc-check: skip — illustrative
-var menu_font: int = 0
-handler Boot phase Start {
-  menu_font = Font.load(path: "assets/fonts/PixelOperator.ttf")
+state Menu { font: int = 0 }
+handler Boot(menu: mut Menu) phase Start {
+  menu.font = Font.load(path: "assets/fonts/PixelOperator.ttf")
   Ui.build()
 }
 ```

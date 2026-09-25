@@ -18,11 +18,13 @@ Parameters:
 
 ```ludic
 program UndoStack {
-  var history: []int = new []int
+  state UndoStackState {
+    history: []int = new []int
+  }
 
-  handler Undo phase Update {
-    if List.len(history) > 0 {
-      let last_action = List.pop(history)
+  handler Undo(undo_stack_st: UndoStackState) phase Update {
+    if List.len(undo_stack_st.history) > 0 {
+      let last_action = List.pop(undo_stack_st.history)
     }
   }
 }

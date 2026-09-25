@@ -19,10 +19,12 @@ Parameters:
 
 ```ludic
 program Collect {
-  var picked: []int = new []int
+  state CollectState {
+    picked: []int = new []int
+  }
 
-  handler Grab phase Update {
-    List.push(picked, 7)
+  handler Grab(collect_st: CollectState) phase Update {
+    List.push(collect_st.picked, 7)
   }
 }
 ```

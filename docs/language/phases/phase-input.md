@@ -15,18 +15,20 @@ order: 1
 program InputExample {
   const DIRECTION_LEFT: int = 0
   const DIRECTION_RIGHT: int = 1
-  var facing: int = DIRECTION_RIGHT
-
-  handler ReadControls phase Input {
-    let pressed_key = Input.key()
-    if pressed_key == 'a' { facing = DIRECTION_LEFT }
-    if pressed_key == 'd' { facing = DIRECTION_RIGHT }
+  state InputExampleState {
+    facing: int = DIRECTION_RIGHT
   }
 
-  handler DrawWorld phase Render {
+  handler ReadControls(input_example_st: mut InputExampleState) phase Input {
+    let pressed_key = Input.key()
+    if pressed_key == 'a' { input_example_st.facing = DIRECTION_LEFT }
+    if pressed_key == 'd' { input_example_st.facing = DIRECTION_RIGHT }
+  }
+
+  handler DrawWorld(input_example_st: InputExampleState) phase Render {
     Screen.clear(Color.MidnightBlue)
     var marker_x = 40
-    if facing == DIRECTION_RIGHT { marker_x = 200 }
+    if input_example_st.facing == DIRECTION_RIGHT { marker_x = 200 }
     Screen.fill_rectangle(x: marker_x, y: 100, width: 16, height: 16, color: Color.LimeGreen)
     Screen.show()
   }

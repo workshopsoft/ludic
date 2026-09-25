@@ -13,20 +13,22 @@ A <code>while</code> loop re-evaluates its condition before every pass and runs 
 
 ```ludic
 program Countdown {
-  var fuse: int = 5
-  var elapsed_frames: int = 0
+  state CountdownState {
+    fuse: int = 5
+    elapsed_frames: int = 0
+  }
 
-  handler Tick phase Update {
-    elapsed_frames = elapsed_frames + 1
-    while fuse > 0 and elapsed_frames % 60 == 0 {
-      fuse = fuse - 1
-      elapsed_frames = elapsed_frames + 1
+  handler Tick(countdown_st: mut CountdownState) phase Update {
+    countdown_st.elapsed_frames = countdown_st.elapsed_frames + 1
+    while countdown_st.fuse > 0 and countdown_st.elapsed_frames % 60 == 0 {
+      countdown_st.fuse = countdown_st.fuse - 1
+      countdown_st.elapsed_frames = countdown_st.elapsed_frames + 1
     }
   }
 
-  handler DrawWorld phase Render {
+  handler DrawWorld(countdown_st: CountdownState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    Screen.draw_number(x: 8, y: 8, value: fuse, color: Color.Crimson, scale: 3)
+    Screen.draw_number(x: 8, y: 8, value: countdown_st.fuse, color: Color.Crimson, scale: 3)
     Screen.show()
   }
 }

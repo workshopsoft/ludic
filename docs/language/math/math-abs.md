@@ -18,8 +18,8 @@ Parameters:
 
 ```ludic
 program ChaseDistance {
-  var target: int = 40
-  var here: int = 12
+  let target: int = 40
+  let here: int = 12
 
   handler Report phase Update {
     let gap = Math.abs(target - here)   # 28, regardless of which is larger

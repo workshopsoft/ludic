@@ -22,8 +22,10 @@ import "ludic.base"
    member and never binds it. A member with a default may be left out.
 3. **Queues for facts.** What HAPPENED is pushed onto a `Queue<T>` the mechanic owns (`caught`)
    and drained by the game in a later phase. A mechanic never acts on another's behalf.
-4. **Verbs for changes.** A mechanic's state changes only through its exported functions
-   (`fishing_cast`, `pack_add`). Nothing assigns another module's globals.
+4. **Verbs for changes.** A mechanic's data is its `state` (`ToyFishingState`), handed to its
+   functions as a parameter, and it changes only through its exported functions (`fishing_cast`,
+   `pack_add`). Nothing writes another module's state; a function value (`fn fishing_tick`) is
+   called with its states supplied, so a system never passes them itself.
 5. **Phases for order.** A system names its phase; within a phase the game's list is the order.
    No system says "after fishing".
 6. **Its own save section.** Each system saves under its own key with its own version and
@@ -56,26 +58,28 @@ numbers float
 import "ludic.base"
 export property Caught { species: int = 0, weight: float = 0.0 }
 export port FishingWorld { is_water: fn(float, float) -> bool }           # its port
-var dice: Rng = null
-var casts: int = 0
-export var caught: Queue<Caught> = null                                   # its facts
-export function fishing_cast(x: float, z: float) -> bool {                 # its verb
+export state ToyFishingState {
+  dice: Rng = null
+  casts: int = 0
+  caught: Queue<Caught> = null                                   # its facts
+}
+export function fishing_cast(toy_fishing_st: mut ToyFishingState, x: float, z: float) -> bool {                 # its verb
   if not FishingWorld.is_water(x, z) { return false }
-  casts += 1
+  toy_fishing_st.casts += 1
   return true
 }
-function fishing_reset() -> void {
-  casts = 0
-  dice = rng_new(7)
-  caught = queue_new("fishing.caught")
+function fishing_reset(base_st: mut BaseState, toy_fishing_st: mut ToyFishingState) -> void {
+  toy_fishing_st.casts = 0
+  toy_fishing_st.dice = rng_new(7)
+  toy_fishing_st.caught = queue_new(base_st, "fishing.caught")
 }
-function fishing_tick(t: Tick) -> void {
-  while casts > 0 {
+function fishing_tick(base_st: mut BaseState, toy_fishing_st: mut ToyFishingState, t: Tick) -> void {
+  while toy_fishing_st.casts > 0 {
     let c = new Caught
-    c.species = rng_between(dice, 0, 2)
-    c.weight = 0.5 + rng_float(dice)
-    q_push(caught, c)
-    casts -= 1
+    c.species = rng_between(toy_fishing_st.dice, 0, 2)
+    c.weight = 0.5 + rng_float(toy_fishing_st.dice)
+    q_push(base_st, toy_fishing_st.caught, c)
+    toy_fishing_st.casts -= 1
   }
 }
 export function fishing_system() -> System {
@@ -102,18 +106,18 @@ program Game {
   bind FishingWorld { is_water: fn lake }
 
   # the route: a landed fish goes into the pack
-  function route_fishing_pack(t: Tick) -> void {
-    let fish = q_drain(caught)
-    for i in 0 .. len(fish) { pack_add(fish[i].species, 1) }
+  function route_fishing_pack(base_st: mut BaseState, fishing: ToyFishingState, pack: mut ToyPackState, t: Tick) -> void {
+    let fish = q_drain(base_st, fishing.caught)
+    for i in 0 .. len(fish) { pack_add(pack, fish[i].species, 1) }
   }
 
-  function game_start() -> void {
-    core_add(fishing_system())
+  function game_start(base_st: mut BaseState) -> void {
+    core_add(base_st, fishing_system())
     let r = system_new("route.fishing_pack", PH_RESOLVE)
-    r.tick = fn route_fishing_pack
-    core_add(r)
-    core_add(pack_system())
-    core_reset_all()
+    r.tick = fn route_fishing_pack           # a fn(Tick) -> void: its states are supplied
+    core_add(base_st, r)
+    core_add(base_st, pack_system())
+    core_reset_all(base_st)
   }
 }
 ```

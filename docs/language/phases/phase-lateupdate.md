@@ -16,7 +16,9 @@ program FollowCamera {
   property Position { column: int = 0, row: int = 0 }
   model Player { Position }
 
-  var camera_column: int = 0
+  state FollowCameraState {
+    camera_column: int = 0
+  }
 
   handler SpawnPlayer phase Start {
     spawn Player { Position { column: 12, row: 0 } }
@@ -29,8 +31,8 @@ program FollowCamera {
 
   # runs after MovePlayer, so the camera sees the final position
   @Queries(these: [Position])
-  handler TrackPlayer phase LateUpdate {
-    camera_column = Position.column
+  handler TrackPlayer(follow_camera_st: mut FollowCameraState) phase LateUpdate {
+    follow_camera_st.camera_column = Position.column
   }
 }
 ```

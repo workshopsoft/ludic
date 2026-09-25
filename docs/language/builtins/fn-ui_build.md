@@ -13,18 +13,20 @@ Constructs the retained-UI tree you declared in a <code>ui</code> block, laying 
 
 ```ludic
 program TitleMenu {
-  var title_font: int = 0
+  state TitleMenuState {
+    title_font: int = 0
+  }
 
   ui MainMenu {
     panel id: Root w: 240 pad: 16 gap: 6 bg: 0x1a1a2c align: center {
-      label text: "CHRONORIFT" font: title_font size: 24 fg: 0xffe060 align: center
-      button id: NewGame text: "New Game" font: title_font size: 16 w: 200
-      button id: Quit    text: "Quit"     font: title_font size: 16 w: 200
+      label text: "CHRONORIFT" font: TitleMenuState.title_font size: 24 fg: 0xffe060 align: center
+      button id: NewGame text: "New Game" font: TitleMenuState.title_font size: 16 w: 200
+      button id: Quit    text: "Quit"     font: TitleMenuState.title_font size: 16 w: 200
     }
   }
 
-  handler Boot phase Start {
-    title_font = Font.load("/System/Library/Fonts/Supplemental/Arial.ttf")
+  handler Boot(title_menu_st: mut TitleMenuState) phase Start {
+    title_menu_st.title_font = Font.load("/System/Library/Fonts/Supplemental/Arial.ttf")
     ui_build()
     Ui.open(UI_MainMenu)
   }

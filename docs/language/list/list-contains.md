@@ -19,12 +19,14 @@ Parameters:
 
 ```ludic
 program Visited {
-  var seen: []int = new []int
+  state VisitedState {
+    seen: []int = new []int
+  }
 
-  handler Step phase Update {
+  handler Step(visited_st: VisitedState) phase Update {
     let tile = 42
-    if not List.contains(seen, tile) {
-      List.push(seen, tile)
+    if not List.contains(visited_st.seen, tile) {
+      List.push(visited_st.seen, tile)
     }
   }
 }

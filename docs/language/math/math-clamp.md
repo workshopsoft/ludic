@@ -22,10 +22,12 @@ Parameters:
 program CameraBounds {
   const WORLD_WIDTH: int = 320
 
-  var camera_x: int = 0
+  state CameraBoundsState {
+    camera_x: int = 0
+  }
 
-  handler Follow phase Update {
-    camera_x = Math.clamp(camera_x, 0, WORLD_WIDTH - 1)
+  handler Follow(camera_bounds_st: mut CameraBoundsState) phase Update {
+    camera_bounds_st.camera_x = Math.clamp(camera_bounds_st.camera_x, 0, WORLD_WIDTH - 1)
   }
 }
 ```

@@ -16,11 +16,13 @@ program EnterHookExample {
   property Position { column: int = 0, row: int = 0 }
   model Player { Position }
 
-  var score: int = 0
+  state EnterHookExampleState {
+    score: int = 0
+  }
 
   scene Overworld start {
-    on enter {
-      score = 0
+    on enter (enter_hook_example_st: mut EnterHookExampleState) {
+      enter_hook_example_st.score = 0
       spawn Player { Position { column: 5, row: 5 } }
     }
     layer World {

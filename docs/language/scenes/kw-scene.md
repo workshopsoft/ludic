@@ -13,13 +13,15 @@ A `scene` is one of the mutually-exclusive states a game moves between — a tit
 
 ```ludic
 program SceneExample {
-  var elapsed_frames: int = 0
+  state SceneExampleState {
+    elapsed_frames: int = 0
+  }
 
   scene Title start {
-    on enter { elapsed_frames = 0 }
+    on enter (scene_example_st: mut SceneExampleState) { scene_example_st.elapsed_frames = 0 }
     layer Main {
-      handler WaitForStart phase Update {
-        elapsed_frames = elapsed_frames + 1
+      handler WaitForStart(scene_example_st: mut SceneExampleState) phase Update {
+        scene_example_st.elapsed_frames = scene_example_st.elapsed_frames + 1
         if Input.key() != 0 { become Overworld }
       }
       handler DrawTitle phase Render {
@@ -31,7 +33,7 @@ program SceneExample {
   }
 
   scene Overworld {
-    on enter { elapsed_frames = 0 }
+    on enter (scene_example_st: mut SceneExampleState) { scene_example_st.elapsed_frames = 0 }
     layer World {
       handler DrawWorld phase Render {
         Screen.clear(Color.MidnightBlue)

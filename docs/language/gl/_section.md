@@ -16,20 +16,22 @@ Using <code>Gl.*</code> links <code>gl.ll</code>, the thunks and <code>OpenGL.fr
 program Triangle {
   property Marker { on: int = 1 }
   model Anchor { Marker }
-  var prog: int = 0
-  var vao:  int = 0
-  handler Boot phase Start {
+  state TriangleState {
+    prog: int = 0
+    vao:  int = 0
+  }
+  handler Boot(triangle_st: mut TriangleState) phase Start {
     spawn Anchor {}
     if not Gl.open(width: 640, height: 360, title: "GL") { quit() }
-    prog = Gl.program(vs: "#version 410 core\nvoid main(){ gl_Position = vec4(float(gl_VertexID == 1) * 2.0 - 0.5, float(gl_VertexID == 2) * 2.0 - 0.5, 0.0, 1.0); }\n",
+    triangle_st.prog = Gl.program(vs: "#version 410 core\nvoid main(){ gl_Position = vec4(float(gl_VertexID == 1) * 2.0 - 0.5, float(gl_VertexID == 2) * 2.0 - 0.5, 0.0, 1.0); }\n",
                       fs: "#version 410 core\nout vec4 o; void main(){ o = vec4(1.0, 0.5, 0.2, 1.0); }\n")
-    vao = Gl.vao()
+    triangle_st.vao = Gl.vao()
   }
-  handler Draw phase Render {
+  handler Draw(triangle_st: TriangleState) phase Render {
     Gl.clear_color(red: 0.1, green: 0.1, blue: 0.15, alpha: 1.0)
     Gl.clear(mask: GL_COLOR_BUFFER_BIT)
-    Gl.use_program(prog: prog)
-    Gl.bind_vertex_array(array: vao)
+    Gl.use_program(prog: triangle_st.prog)
+    Gl.bind_vertex_array(array: triangle_st.vao)
     Gl.draw_arrays(mode: GL_TRIANGLES, first: 0, count: 3)
     Gl.swap()
   }

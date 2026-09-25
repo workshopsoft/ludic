@@ -17,14 +17,16 @@ A child ended by a signal (macOS) answers <code>128</code> plus the signal numbe
 
 ```ludic
 program Demo {
-  var game: int = -1
-  handler Watch phase Update {
-    if game >= 0 {
-      let code = Process.poll(handle: game)
+  state DemoState {
+    game: int = -1
+  }
+  handler Watch(demo_st: mut DemoState) phase Update {
+    if demo_st.game >= 0 {
+      let code = Process.poll(handle: demo_st.game)
       if code >= 0 or code < -1 {
         if code != 0 { print("the game crashed") }
-        Process.free(handle: game)
-        game = -1
+        Process.free(handle: demo_st.game)
+        demo_st.game = -1
       }
     }
   }

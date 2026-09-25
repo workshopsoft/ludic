@@ -17,7 +17,7 @@ program RenderExample {
   model Player { Position }
 
   const TILE_SIZE: int = 16
-  var score: int = 0
+  let score: int = 0
 
   handler PlacePlayer phase Start {
     spawn Player { Position { column: 5, row: 6 } }

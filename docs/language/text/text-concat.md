@@ -19,7 +19,7 @@ Parameters:
 
 ```ludic
 program Greeting {
-  var name: string = "world"
+  let name: string = "world"
 
   handler Build phase Update {
     let line = Text.concat("hello ", name)   # "hello world"

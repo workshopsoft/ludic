@@ -18,11 +18,13 @@ Parameters:
 
 ```ludic
 program Trail {
-  var points: []int = new []int
+  state TrailState {
+    points: []int = new []int
+  }
 
-  handler Head phase Update {
-    if List.len(points) > 0 {
-      let newest = List.last(points)
+  handler Head(trail_st: TrailState) phase Update {
+    if List.len(trail_st.points) > 0 {
+      let newest = List.last(trail_st.points)
     }
   }
 }

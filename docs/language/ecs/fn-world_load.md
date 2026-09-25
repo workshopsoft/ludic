@@ -20,16 +20,18 @@ program SnapshotRoundTrip {
   property Position { column: int = 0, row: int = 0 }
   model Enemy { Position }
 
-  var snapshot_length: int = 0
+  state SnapshotRoundTripState {
+    snapshot_length: int = 0
+  }
 
   handler Boot phase Start {
     spawn Grunt { Position { column: 3, row: 3 } }
   }
 
-  handler RoundTrip phase Update {
+  handler RoundTrip(snapshot_round_trip_st: mut SnapshotRoundTripState) phase Update {
     let buffer = bytes(4096)
-    if Input.key() == 's' { snapshot_length = world_save(buffer) }
-    if Input.key() == 'l' { world_load(buffer, snapshot_length) }
+    if Input.key() == 's' { snapshot_round_trip_st.snapshot_length = world_save(buffer) }
+    if Input.key() == 'l' { world_load(buffer, snapshot_round_trip_st.snapshot_length) }
   }
 }
 ```

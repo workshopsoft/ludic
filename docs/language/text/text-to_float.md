@@ -18,7 +18,7 @@ Parameters:
 
 ```ludic
 program ParseSpeed {
-  var typed: string = "3.2"
+  let typed: string = "3.2"
 
   handler Apply phase Update {
     let speed = Text.to_float(typed)   # 3.2

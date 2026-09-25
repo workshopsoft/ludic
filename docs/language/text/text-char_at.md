@@ -19,7 +19,7 @@ Parameters:
 
 ```ludic
 program FirstIsDigit {
-  var entry: string = "7up"
+  let entry: string = "7up"
 
   handler Check phase Update {
     let c = Text.char_at(entry, 0)

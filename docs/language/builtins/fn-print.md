@@ -16,12 +16,14 @@ Parameters:
 
 ```ludic
 program PrintScore {
-  var score: int = 0
+  state PrintScoreState {
+    score: int = 0
+  }
 
-  handler CountUp phase Update {
-    score = score + 10
-    print(score)
-    if score >= 30 { quit() }
+  handler CountUp(print_score_st: mut PrintScoreState) phase Update {
+    print_score_st.score = print_score_st.score + 10
+    print(print_score_st.score)
+    if print_score_st.score >= 30 { quit() }
   }
 }
 ```

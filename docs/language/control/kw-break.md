@@ -13,12 +13,14 @@ order: 9
 
 ```ludic
 program FindFirst {
-  var found: int = 0 - 1
+  state FindFirstState {
+    found: int = 0 - 1
+  }
 
-  handler Scan phase Update {
+  handler Scan(find_first_st: mut FindFirstState) phase Update {
     for i in 0 .. 10 {
       if i * i > 20 {
-        found = i
+        find_first_st.found = i
         break        # stop at the first i whose square exceeds 20
       }
     }

@@ -16,13 +16,15 @@ program BootHook {
   property Health { current: int = 0, maximum: int = 100 }
   model Player { Health }
 
-  var elapsed_frames: int = 0
-
-  @OnStart handler CreateWorld {                     # runs once at boot
-    spawn Player { Health { current: 100, maximum: 100 } }
-    elapsed_frames = 0
+  state BootHookState {
+    elapsed_frames: int = 0
   }
 
-  handler CountFrames phase Update { elapsed_frames = elapsed_frames + 1 }
+  @OnStart handler CreateWorld(boot_hook_st: mut BootHookState) {                     # runs once at boot
+    spawn Player { Health { current: 100, maximum: 100 } }
+    boot_hook_st.elapsed_frames = 0
+  }
+
+  handler CountFrames(boot_hook_st: mut BootHookState) phase Update { boot_hook_st.elapsed_frames = boot_hook_st.elapsed_frames + 1 }
 }
 ```

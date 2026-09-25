@@ -13,18 +13,20 @@ A <code>var</code> declares a <b>mutable</b> binding: unlike `let`, you may reas
 
 ```ludic
 program Scorekeeper {
-  var score: int = 0
-  var elapsed_frames: int = 0
-
-  handler Tick phase Update {
-    elapsed_frames = elapsed_frames + 1
-    if elapsed_frames % 60 == 0 { score = score + 1 }
+  state ScorekeeperState {
+    score: int = 0
+    elapsed_frames: int = 0
   }
 
-  handler DrawWorld phase Render {
+  handler Tick(scorekeeper_st: mut ScorekeeperState) phase Update {
+    scorekeeper_st.elapsed_frames = scorekeeper_st.elapsed_frames + 1
+    if scorekeeper_st.elapsed_frames % 60 == 0 { scorekeeper_st.score = scorekeeper_st.score + 1 }
+  }
+
+  handler DrawWorld(scorekeeper_st: ScorekeeperState) phase Render {
     Screen.clear(Color.MidnightBlue)
     Screen.draw_text(x: 6, y: 4, text: "SCORE", color: Color.White, scale: 1)
-    Screen.draw_number(x: 52, y: 4, value: score, color: Color.Gold, scale: 1)
+    Screen.draw_number(x: 52, y: 4, value: scorekeeper_st.score, color: Color.Gold, scale: 1)
     Screen.show()
   }
 }

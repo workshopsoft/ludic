@@ -18,11 +18,13 @@ Parameters:
 
 ```ludic
 program FaceTarget {
-  var x: int = 8
-  var target: int = 20
+  state FaceTargetState {
+    x: int = 8
+  }
+  let target: int = 20
 
-  handler StepToward phase Update {
-    x = x + Math.sign(target - x)   # +1 while target is to the right
+  handler StepToward(face_target_st: mut FaceTargetState) phase Update {
+    face_target_st.x = face_target_st.x + Math.sign(target - face_target_st.x)   # +1 while target is to the right
   }
 }
 ```

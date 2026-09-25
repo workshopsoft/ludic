@@ -15,23 +15,25 @@ order: 2
 program CancelExample {
   event cancellable BeforeOpenDoor { key_count: int = 0 }
 
-  var keys: int = 0
-  var doors_opened: int = 0
+  state CancelExampleState {
+    keys: int = 0
+    doors_opened: int = 0
+  }
 
   @On(BeforeOpenDoor) handler RequireKey { if key_count <= 0 { cancel } }
 
-  handler TryOpen phase Update {
+  handler TryOpen(cancel_example_st: mut CancelExampleState) phase Update {
     if Input.key() == 'o' {
-      if emit BeforeOpenDoor(key_count: keys) == 0 {
-        doors_opened = doors_opened + 1
-        keys = keys - 1
+      if emit BeforeOpenDoor(key_count: cancel_example_st.keys) == 0 {
+        cancel_example_st.doors_opened = cancel_example_st.doors_opened + 1
+        cancel_example_st.keys = cancel_example_st.keys - 1
       }
     }
   }
 
-  handler DrawWorld phase Render {
+  handler DrawWorld(cancel_example_st: CancelExampleState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    Screen.draw_number(x: 4, y: 4, value: doors_opened, color: Color.Gold, scale: 1)
+    Screen.draw_number(x: 4, y: 4, value: cancel_example_st.doors_opened, color: Color.Gold, scale: 1)
     Screen.show()
   }
 }

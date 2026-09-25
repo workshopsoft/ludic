@@ -17,18 +17,20 @@ program StartExample {
   model Player { Position }
 
   const GRID_WIDTH: int = 20
-  var score: int = 0
+  state StartExampleState {
+    score: int = 0
+  }
 
-  handler SetUpWorld phase Start {
+  handler SetUpWorld(start_example_st: mut StartExampleState) phase Start {
     Random.seed(value: 1)
     Map.size(width: GRID_WIDTH, height: 15)
-    score = 0
+    start_example_st.score = 0
     spawn Player { Position { column: 10, row: 7 } }
   }
 
-  handler DrawWorld phase Render {
+  handler DrawWorld(start_example_st: StartExampleState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    Screen.draw_number(x: 4, y: 4, value: score, color: Color.Gold, scale: 1)
+    Screen.draw_number(x: 4, y: 4, value: start_example_st.score, color: Color.Gold, scale: 1)
     Screen.show()
   }
 }

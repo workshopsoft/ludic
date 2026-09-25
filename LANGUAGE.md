@@ -85,11 +85,11 @@ module bank
 import "ledger.ludic"
 
 # bank/ledger.ludic
-var balance: int = 0                     # private: only module bank sees it
+export state Bank { balance: int = 0 }   # its fields are bank's to change: only bank's functions do
 export event Deposited { amount: int }
-function add(n: int) -> void { balance += n }
-export function deposit(n: int) -> void {
-  add(n)
+function add(b: mut Bank, n: int) -> void { b.balance += n }   # private: only module bank sees it
+export function deposit(b: mut Bank, n: int) -> void {
+  add(b, n)
   emit Deposited(amount: n)
 }
 ```
@@ -240,19 +240,25 @@ function hips_of(h: Hiker) -> int { return h.hips }
 - **Read-only is checked where it is written.** Through a read-only state the compiler refuses an
   assignment whose target starts at it (`h.hips = 1`, `h.list[i] = x`), a `push` onto something in
   it, and passing it where a `mut` one is wanted (`bump changes Tally (c: mut Tally), and c is
-  read-only here`). It does not follow a reference read out of it into a local and changed there.
+  read-only here`). A reference read out of it into a local (`let l = h.list`, `let r = h.rows[0]`)
+  is read-only too, so a write through that is refused the same way; a value read out (`let n =
+  h.count`) is a copy and the local's own. `machine h.mode` writes its store on every `become`.
   `mut` is for a state parameter only.
 - **The runtime supplies it at the entry points** - the only code nothing in the program calls:
   - a body that declares it: `entry (h: mut Hiker) { ... }`, `handler Draw(h: Hiker) phase Render
-    { ... }`, `@On(Ping) handler Heard(h: mut Hiker) { ... }`, `test "name" (h: mut Hiker) { ... }`;
+    { ... }`, `@On(Ping) handler Heard(h: mut Hiker) { ... }`, `@OnSpawn(M) handler Made(h: mut
+    Hiker) { ... }`, a scene's `on enter (h: mut Hiker) { ... }`, `test "name" (h: mut Hiker) { ... }`;
+  - a retained `ui` block, which names a state's instance by the state's name: `font: Menu.title_font`;
   - a function value: `fn tick` of `function tick(h: mut Hiker, t: Tick)` is `tick` with its
     leading states supplied, a `fn(Tick) -> void` - so a system's functions, a port's bind and any
     callback a package calls are entry points without saying so;
   - a port member bound to a state's field, `bind Purse { money: Wallet.cash }`;
-  - a call the compiler writes: a namespace method's target, a runtime built-in.
+  - a call the compiler writes: a namespace method's target (`Weapon.def(...)` of `function
+    weapon_def(w: mut Weapons, ...)`), an engine system, a runtime built-in.
   Every other call passes its states explicitly.
 - **Everything else module-level is immutable all the way down.** `let LIMITS: []int = [1, 2]`,
-  a `const`, a registry: an assignment or a `push` that starts at one is refused.
+  a `const`, a registry: an assignment or a `push` that starts at one is refused, and so is one
+  through a local that holds part of it (`let r = LIMITS; push(r, 3)`).
 - **Tests get fresh states.** Each test block starts from states made new, in its own process under
   `ludic test` and in the runner run directly.
 - The toolchain's own programs (the compiler, the CLI) are not part of this yet: they build with
@@ -267,19 +273,34 @@ counter.ludic:5: error: this assignment: LIMITS is module-level and immutable al
 counter.ludic:3: error: x: mut int - mut is for a state parameter, and int is not a state
 ```
 
-**`ludic migrate state [file]` moves a program there.** It compiles the program and, from the
-compiler's own view of every name:
+**`ludic migrate state [file|dir...] [--runtime] [--dry-run]` moves programs there.** It compiles
+each program and, from the compiler's own view of every name:
 
-1. each module's vars become one state, `state <Module>State { ... }`, where the first of them was;
-2. every reference to one is rewritten to `<module>_st.<name>`;
-3. each function's states - those it touches, and those of everything it calls, to a fixed point -
-   become its leading parameters, `mut` where it or something it calls writes;
-4. each call passes them on, and each entry point declares them.
+1. a var nothing writes, holding a value (an int, a string, an enum...), becomes a module-level
+   `let` where it stands;
+2. each module's other vars become one state, `state <Module>State { ... }`, where the first of
+   them was - a module's by its name (`module fishing`: `FishingState`), a directory with no module
+   line by its path (`ludic.render3d`: `Render3dState`), the program's own file by the program's
+   name (`program SceneDemo`: `SceneDemoState`); the fields keep their comments;
+3. every reference to one is rewritten to `<snake>_st.<name>` (`scene_demo_st.counter`), and in a
+   `ui` block to `<State>.<name>`;
+4. each function's states - those it touches, and those of everything it calls, to a fixed point -
+   become its leading parameters, `mut` where it or something it calls writes; a state a run before
+   declared read-only becomes `mut` where it is now changed;
+5. each call passes them on, and each entry point declares them.
 
-It prints what it cannot decide (a var read in another global's initializer, a reference in
-generated code), for a person to finish. Run it once per program that uses what changes - each of a
-package's test programs, a game's entry and its lab: a later run finds the states an earlier one
-made and passes them on. `--runtime` moves the runtime's own vars too.
+Give it every program at once - a directory stands for the test programs under it - and it merges
+their plans before it edits anything: programs that share a package agree about it, a module two of
+them see different files of is one state, and a path reached as `../../packages/x` is the same
+file as `packages/x`. It prints what it cannot decide (a var read in another global's initializer, a
+reference in generated code), for a person to finish. A later run finds the states an earlier one
+made and adds to them. `--runtime` moves the runtime's own vars too. gpp's packages and examples
+were moved with one command:
+
+```
+ludic migrate state packages <every example program> packages/ludic.lab/example/plate.ludic
+migrate: 1804 vars into 126 states, 64 into lets; 23498 edits in 460 files
+```
 
 ### Types are checked before anything is emitted
 
@@ -943,13 +964,13 @@ panels with padding / gap / alignment / grow), drawing (9-slice skins, images,
 TrueType text, focus highlight) and keyboard focus + activation.
 
 ```ludic
-var title_font: int = 0
+state Menu { title_font: int = 0 }
 
 ui MainMenu {
   panel id: Root w: 288 pad: 16 gap: 6 skin: "assets/ui/panel.png" inset: 10 align: center {
-    label  text: "CHRONO RIFT" font: title_font size: 26 fg: Color.Gold align: center
-    button id: NewGame text: "New Game" font: title_font size: 16 w: 236
-    button id: Quit    text: "Quit"     font: title_font size: 16 w: 236
+    label  text: "CHRONO RIFT" font: Menu.title_font size: 26 fg: Color.Gold align: center
+    button id: NewGame text: "New Game" font: Menu.title_font size: 16 w: 236
+    button id: Quit    text: "Quit"     font: Menu.title_font size: 16 w: 236
   }
 }
 ```
@@ -958,13 +979,14 @@ A widget inherits `font`, `size`, `fg` and `align` from the nearest ancestor tha
 sets them, so a panel states a menu's look once and a label only says what differs.
 Widget types: `panel` (container + optional skin/bg/border), `col` / `row`
 (pure stacks), `label`, `button` (focusable), `image`, `spacer`. Props are
-evaluated at build time, so `font: title_font` reads a value the program set first.
+evaluated at build time, so `font: Menu.title_font` reads a value the program set first - a `ui`
+block is an entry point, and names a state's one instance by the state's name.
 Each `id: Name` mints a `UI_Name` handle (the `ui` block name too), used from
 handlers:
 
 ```ludic
-handler Boot phase Start {
-  title_font = Font.load("…Arial.ttf")
+handler Boot(menu: mut Menu) phase Start {
+  menu.title_font = Font.load("…Arial.ttf")
   Ui.build()                 # construct the tree (loads skins/images)
   Ui.open(UI_MainMenu)       # make it active, focus the first button
 }
@@ -1098,7 +1120,7 @@ any record's:
 ```ludic
 # doc-check: skip — composite: declarations plus statements using them
 property Hero { iframes: int = 0, roll_cooldown: int = 0 }
-var player: int = -1
+let player = World.query_next(World.prop_id("Hero"), 0)
 
 Hero.of(player).iframes = 20              # assign a field
 Hero.of(player).roll_cooldown -= 1        # compound-assign one
@@ -1584,11 +1606,11 @@ snippet below does not compile today. Programs use `[]T` slices for now.
 
 ```ludic
 # doc-check: skip — [T; N] fixed arrays are not yet implemented (design target)
-var table: [int; 8]      # module-level storage
-handler S phase Update {
+state Grid { table: [int; 8] }   # a state's storage
+handler S(g: mut Grid) phase Update {
   let buf: [int; 4]      # a local; no initializer needed
   buf[0] = 10
-  table[2] = buf[0]
+  g.table[2] = buf[0]
 }
 ```
 
@@ -1678,19 +1700,24 @@ at the top level it is module state).
   loop accumulators and anything that genuinely changes.
 - **`const NAME = e`** — a compile-time constant (folded, no storage).
 
-A program-scope `var` may be initialized with **any expression** — a literal, an
-`Enum.Variant`, a `new Record`, a call. What the compiler can fold becomes the
-global's initial value; the rest runs once at startup, in declaration order,
-after the runtime boots and before the `Start` phase:
+`var` is for locals. At module level there is no `var` (it is refused): what changes belongs to a
+`state` (see "State" below), and what does not is a module-level `let`, immutable all the way
+down. A state's field, or a module-level `let`, may be initialized with **any expression** — a
+literal, an `Enum.Variant`, a `new Record`, a call. What the compiler can fold becomes the initial
+value; the rest runs once at startup, in declaration order, after the runtime boots and before the
+`Start` phase:
 
 ```ludic
-# doc-check: skip — illustrative globals
-var run:    Progress  = new Progress             # allocated before Start
-var origin: IVec2     = IVec2.zero()
-var mode:   HeroState = HeroState.Idle           # folded
+# doc-check: skip — illustrative
+state Hero {
+  run:    Progress  = new Progress             # allocated before Start
+  origin: IVec2     = IVec2.zero()
+  mode:   HeroState = HeroState.Idle           # folded
+}
+let ORIGIN_NAME: string = "camp"               # a module-level let: a value nothing changes
 ```
 
-Declaring the same `var` twice is an error — including a name the spliced engine
+Declaring the same name twice is an error — including a name the spliced engine
 runtime already uses, which the message says (`variable ui_font is also a
 variable of the engine runtime; choose another name`).
 
@@ -1767,19 +1794,20 @@ no `= value` on any state:
 ```ludic
 # doc-check: skip — composite: declarations plus a machine over them
 enum HeroState { Idle, Rolling, Swinging }
-var hero_state: HeroState = HeroState.Idle
+state Hero { mode: HeroState = HeroState.Idle }
 
-machine hero_state {
+machine hero.mode {                                        # (hero: mut Hero) - become writes it
   state Idle     { if wants_roll { become Rolling } }      # HeroState.Idle
   state Rolling  { if done { become Idle } }               # HeroState.Rolling
   state Swinging { … }
 }
-if hero_state == HeroState.Rolling { … }                   # readable from anywhere
+if hero.mode == HeroState.Rolling { … }                    # readable wherever Hero is
 ```
 
-A state that names no variant of the store's enum is a compile error. A bare
-(payload-free) enum is an `int`-sized type wherever a type is written — a `var`,
-a parameter, a field, a return.
+A machine's store is a state's field (`machine hero.mode`), a local, or a register index; a
+`become` writes it, so the function needs its state `mut`. A state that names no variant of the
+store's enum is a compile error. A bare (payload-free) enum is an `int`-sized type wherever a type
+is written — a `var`, a parameter, a field, a return.
 
 ## Enums
 

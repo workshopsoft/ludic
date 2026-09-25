@@ -15,19 +15,21 @@ order: 1
 program EmitExample {
   event cancellable BeforeSpend { amount: int = 0 }
 
-  var coins: int = 50
+  state EmitExampleState {
+    coins: int = 50
+  }
 
-  @On(BeforeSpend) handler RejectOverdraft { if amount > coins { cancel } }
+  @On(BeforeSpend) handler RejectOverdraft(emit_example_st: EmitExampleState) { if amount > emit_example_st.coins { cancel } }
 
-  handler TrySpend phase Update {
+  handler TrySpend(emit_example_st: mut EmitExampleState) phase Update {
     if Input.key() == 'b' {
-      if emit BeforeSpend(amount: 20) == 0 { coins = coins - 20 }
+      if emit BeforeSpend(amount: 20) == 0 { emit_example_st.coins = emit_example_st.coins - 20 }
     }
   }
 
-  handler DrawWorld phase Render {
+  handler DrawWorld(emit_example_st: EmitExampleState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    Screen.draw_number(x: 4, y: 4, value: coins, color: Color.Gold, scale: 1)
+    Screen.draw_number(x: 4, y: 4, value: emit_example_st.coins, color: Color.Gold, scale: 1)
     Screen.show()
   }
 }

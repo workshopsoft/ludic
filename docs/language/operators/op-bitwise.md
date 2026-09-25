@@ -13,6 +13,6 @@ The bitwise operators work on the bits of an `int`: `&` (and), `|` (or), `^` (xo
 ```ludic
 const FLAG_POISONED: int = 1
 const FLAG_SHIELDED: int = 2
-var status_flags: int = FLAG_POISONED | FLAG_SHIELDED
-var is_shielded: bool = status_flags & FLAG_SHIELDED != 0
+let status_flags: int = FLAG_POISONED | FLAG_SHIELDED
+let is_shielded: bool = status_flags & FLAG_SHIELDED != 0
 ```

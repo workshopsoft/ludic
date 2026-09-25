@@ -18,15 +18,17 @@ Parameters:
 
 ```ludic
 program ClearBackground {
-  var elapsed_frames: int = 0
-
-  handler CountFrames phase Update {
-    elapsed_frames = elapsed_frames + 1
+  state ClearBackgroundState {
+    elapsed_frames: int = 0
   }
 
-  handler DrawWorld phase Render {
+  handler CountFrames(clear_background_st: mut ClearBackgroundState) phase Update {
+    clear_background_st.elapsed_frames = clear_background_st.elapsed_frames + 1
+  }
+
+  handler DrawWorld(clear_background_st: ClearBackgroundState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    Screen.draw_number(x: 8, y: 8, value: elapsed_frames, color: Color.White, scale: 1)
+    Screen.draw_number(x: 8, y: 8, value: clear_background_st.elapsed_frames, color: Color.White, scale: 1)
     Screen.show()
   }
 }

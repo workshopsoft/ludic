@@ -18,10 +18,12 @@ Parameters:
 
 ```ludic
 program FrameHits {
-  var hits: []int = new []int
+  state FrameHitsState {
+    hits: []int = new []int
+  }
 
-  handler BeginFrame phase Update {
-    List.clear(hits)   # start the frame with an empty list
+  handler BeginFrame(frame_hits_st: FrameHitsState) phase Update {
+    List.clear(frame_hits_st.hits)   # start the frame with an empty list
   }
 }
 ```

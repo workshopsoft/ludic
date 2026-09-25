@@ -18,10 +18,12 @@ Parameters:
 
 ```ludic
 program CountEnemies {
-  var enemies: []int = new []int
+  state CountEnemiesState {
+    enemies: []int = new []int
+  }
 
-  handler Report phase Update {
-    let n = List.len(enemies)
+  handler Report(count_enemies_st: CountEnemiesState) phase Update {
+    let n = List.len(count_enemies_st.enemies)
   }
 }
 ```

@@ -40,18 +40,20 @@ A tagged `match` must be **exhaustive**: it either handles every variant or ends
 program BattleMenu {
   enum Action { Attack, Guard, Item, Flee }
 
-  var current_action: int = Action.Attack
-
-  handler ChooseAction phase Input {
-    let pressed = Input.key()
-    if pressed == 'a' { current_action = Action.Attack }
-    if pressed == 'g' { current_action = Action.Guard }
-    if pressed == 'f' { current_action = Action.Flee }
+  state BattleMenuState {
+    current_action: int = Action.Attack
   }
 
-  handler DrawWorld phase Render {
+  handler ChooseAction(battle_menu_st: mut BattleMenuState) phase Input {
+    let pressed = Input.key()
+    if pressed == 'a' { battle_menu_st.current_action = Action.Attack }
+    if pressed == 'g' { battle_menu_st.current_action = Action.Guard }
+    if pressed == 'f' { battle_menu_st.current_action = Action.Flee }
+  }
+
+  handler DrawWorld(battle_menu_st: BattleMenuState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    match current_action {
+    match battle_menu_st.current_action {
       Action.Attack => Screen.draw_text(x: 8, y: 8, text: "ATTACK", color: Color.Crimson, scale: 2)
       Action.Guard  => Screen.draw_text(x: 8, y: 8, text: "GUARD", color: Color.White, scale: 2)
       _             => Screen.draw_text(x: 8, y: 8, text: "FLEE", color: Color.Gold, scale: 2)

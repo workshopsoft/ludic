@@ -20,13 +20,15 @@ Parameters:
 
 ```ludic
 program RemoveFast {
-  var actors: []int = new []int
+  state RemoveFastState {
+    actors: []int = new []int
+  }
 
-  handler Kill phase Update {
+  handler Kill(remove_fast_st: RemoveFastState) phase Update {
     let dead = 2
-    let last = List.len(actors) - 1
-    List.swap(actors, dead, last)   # move it to the end...
-    let removed = List.pop(actors)  # ...then drop it
+    let last = List.len(remove_fast_st.actors) - 1
+    List.swap(remove_fast_st.actors, dead, last)   # move it to the end...
+    let removed = List.pop(remove_fast_st.actors)  # ...then drop it
   }
 }
 ```

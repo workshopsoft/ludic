@@ -18,7 +18,7 @@ Parameters:
 
 ```ludic
 program SnapToPixel {
-  var smooth_x: fixed = 10.5
+  let smooth_x: fixed = 10.5
 
   handler Draw phase Render {
     let px = Math.round(smooth_x)   # 11

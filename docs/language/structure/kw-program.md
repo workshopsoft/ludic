@@ -16,7 +16,7 @@ program SpaceDrift {
   property Position { column: int = 0, row: int = 0 }
   model Player { Position }
 
-  var score: int = 0
+  let score: int = 0
 
   handler Boot phase Start {
     spawn Hero { Position { column: 10, row: 8 } }

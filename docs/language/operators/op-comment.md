@@ -12,6 +12,6 @@ A comment begins with `#` and runs to the end of the line; the compiler ignores 
 
 ```ludic
 const TILE_SIZE: int = 16          # pixels per grid cell
-var score: int = 0                 # reset in the Start phase
+let score: int = 0                 # reset in the Start phase
 # the head is drawn brighter than the body
 ```

@@ -15,18 +15,20 @@ order: 0
 program EventExample {
   event EnemyDefeated { points: int = 0 }
 
-  var score: int = 0
+  state EventExampleState {
+    score: int = 0
+  }
 
-  @On(EnemyDefeated) handler AddScore { score = score + points }
+  @On(EnemyDefeated) handler AddScore(event_example_st: mut EventExampleState) { event_example_st.score = event_example_st.score + points }
   @On(EnemyDefeated) handler PlayChime { Screen.status("enemy down") }
 
   handler ScoreOnKey phase Update {
     if Input.key() == 'k' { emit EnemyDefeated(points: 10) }
   }
 
-  handler DrawWorld phase Render {
+  handler DrawWorld(event_example_st: EventExampleState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    Screen.draw_number(x: 4, y: 4, value: score, color: Color.Gold, scale: 1)
+    Screen.draw_number(x: 4, y: 4, value: event_example_st.score, color: Color.Gold, scale: 1)
     Screen.show()
   }
 }

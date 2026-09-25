@@ -19,12 +19,14 @@ Parameters:
 
 ```ludic
 program FindSlot {
-  var ids: []int = new []int
+  state FindSlotState {
+    ids: []int = new []int
+  }
 
-  handler Locate phase Update {
-    let slot = List.index_of(ids, 99)
+  handler Locate(find_slot_st: FindSlotState) phase Update {
+    let slot = List.index_of(find_slot_st.ids, 99)
     if slot >= 0 {
-      List.swap(ids, slot, List.len(ids) - 1)
+      List.swap(find_slot_st.ids, slot, List.len(find_slot_st.ids) - 1)
     }
   }
 }

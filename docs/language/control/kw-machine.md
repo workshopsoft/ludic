@@ -14,10 +14,12 @@ A <code>machine</code> turns an integer store into an explicit state machine, re
 ```ludic
 program TurnOrder {
   enum Phase { KnightMenu, KnightResolve, EnemyTurn }
-  var battle_phase: int = Phase.KnightMenu
+  state TurnOrderState {
+    battle_phase: int = Phase.KnightMenu
+  }
 
-  handler RunTurn phase Update {
-    machine battle_phase {
+  handler RunTurn(turn_order_st: mut TurnOrderState) phase Update {
+    machine turn_order_st.battle_phase {
       state KnightMenu {
         if Input.key() == ' ' { become KnightResolve }
       }
@@ -30,9 +32,9 @@ program TurnOrder {
     }
   }
 
-  handler DrawWorld phase Render {
+  handler DrawWorld(turn_order_st: TurnOrderState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    Screen.draw_number(x: 8, y: 8, value: battle_phase, color: Color.Gold, scale: 2)
+    Screen.draw_number(x: 8, y: 8, value: turn_order_st.battle_phase, color: Color.Gold, scale: 2)
     Screen.show()
   }
 }

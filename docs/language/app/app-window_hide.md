@@ -17,15 +17,15 @@ Keep the frame loop going while hidden so the child can be polled, but there is 
 
 ```ludic skip
 program Launcher {
-  var game: int = -1
-  function play() -> void {
-    game = Process.spawn(game_path(), new []string)
-    if game >= 0 { App.window_hide() }
+  state Child { game: int = -1 }
+  function play(c: mut Child) -> void {
+    c.game = Process.spawn(game_path(), new []string)
+    if c.game >= 0 { App.window_hide() }
   }
-  handler Watch phase Update {
-    if game >= 0 and Process.poll(game) != -1 {
-      Process.free(game)
-      game = -1
+  handler Watch(c: mut Child) phase Update {
+    if c.game >= 0 and Process.poll(c.game) != -1 {
+      Process.free(c.game)
+      c.game = -1
       App.window_show()
     }
   }

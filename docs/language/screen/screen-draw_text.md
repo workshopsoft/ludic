@@ -22,10 +22,12 @@ Parameters:
 
 ```ludic
 program TitleScreen {
-  var elapsed_frames: int = 0
+  state TitleScreenState {
+    elapsed_frames: int = 0
+  }
 
-  handler CountFrames phase Update {
-    elapsed_frames = elapsed_frames + 1
+  handler CountFrames(title_screen_st: mut TitleScreenState) phase Update {
+    title_screen_st.elapsed_frames = title_screen_st.elapsed_frames + 1
   }
 
   handler DrawWorld phase Render {

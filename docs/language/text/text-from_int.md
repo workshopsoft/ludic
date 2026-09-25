@@ -18,7 +18,7 @@ Parameters:
 
 ```ludic
 program ScoreLabel {
-  var score: int = 1500
+  let score: int = 1500
 
   handler Build phase Update {
     let label = Text.concat("score: ", Text.from_int(score))

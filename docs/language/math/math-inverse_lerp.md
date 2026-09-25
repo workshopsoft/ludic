@@ -22,7 +22,7 @@ Parameters:
 program HealthFraction {
   const MAX_HP: fixed = 200.0
 
-  var hp: fixed = 150.0
+  let hp: fixed = 150.0
 
   handler Draw phase Render {
     let fraction = Math.inverse_lerp(0.0, MAX_HP, hp)   # 0.75

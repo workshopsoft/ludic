@@ -17,18 +17,20 @@ Parameters:
 
 ```ludic
 program HighScore {
-  var score: int = 0
-  var best_score: int = 0
-
-  handler EarnPoints phase Update {
-    score = score + 5
-    best_score = max(best_score, score)
-    if score >= 20 { quit() }
+  state HighScoreState {
+    score: int = 0
+    best_score: int = 0
   }
 
-  handler ReportBest phase Render {
+  handler EarnPoints(high_score_st: mut HighScoreState) phase Update {
+    high_score_st.score = high_score_st.score + 5
+    high_score_st.best_score = max(high_score_st.best_score, high_score_st.score)
+    if high_score_st.score >= 20 { quit() }
+  }
+
+  handler ReportBest(high_score_st: HighScoreState) phase Render {
     Screen.clear(Color.MidnightBlue)
-    Screen.draw_number(x: 8, y: 8, value: best_score, color: Color.Gold, scale: 1)
+    Screen.draw_number(x: 8, y: 8, value: high_score_st.best_score, color: Color.Gold, scale: 1)
     Screen.show()
   }
 }

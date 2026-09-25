@@ -16,7 +16,9 @@ program SceneHookExample {
   property Position { column: int = 0, row: int = 0 }
   model Enemy { Position }
 
-  var elapsed_frames: int = 0
+  state SceneHookExampleState {
+    elapsed_frames: int = 0
+  }
 
   scene Overworld start {
     layer World {
@@ -31,8 +33,8 @@ program SceneHookExample {
   }
 
   scene Battle {
-    on enter {
-      elapsed_frames = 0
+    on enter (scene_hook_example_st: mut SceneHookExampleState) {
+      scene_hook_example_st.elapsed_frames = 0
       spawn Enemy { Position { column: 8, row: 4 } }
     }
     on exit {

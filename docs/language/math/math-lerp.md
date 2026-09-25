@@ -20,11 +20,13 @@ Parameters:
 
 ```ludic
 program EaseCamera {
-  var camera_x: fixed = 0.0
-  var target_x: fixed = 100.0
+  state EaseCameraState {
+    camera_x: fixed = 0.0
+  }
+  let target_x: fixed = 100.0
 
-  handler Follow phase Update {
-    camera_x = Math.lerp(camera_x, target_x, 0.1)   # glides a tenth of the way each frame
+  handler Follow(ease_camera_st: mut EaseCameraState) phase Update {
+    ease_camera_st.camera_x = Math.lerp(ease_camera_st.camera_x, target_x, 0.1)   # glides a tenth of the way each frame
   }
 }
 ```

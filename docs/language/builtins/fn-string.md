@@ -16,7 +16,7 @@ Parameters:
 
 ```ludic
 program LabelValue {
-  var score: int = 250
+  let score: int = 250
 
   handler ReportScore phase Start {
     let label = string(score)

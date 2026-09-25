@@ -18,11 +18,13 @@ Parameters:
 
 ```ludic
 program Queue {
-  var waiting: []int = new []int
+  state QueueState {
+    waiting: []int = new []int
+  }
 
-  handler Serve phase Update {
-    if List.len(waiting) > 0 {
-      let next = List.first(waiting)
+  handler Serve(queue_st: QueueState) phase Update {
+    if List.len(queue_st.waiting) > 0 {
+      let next = List.first(queue_st.waiting)
     }
   }
 }

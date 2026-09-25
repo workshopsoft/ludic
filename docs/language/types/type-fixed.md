@@ -13,7 +13,7 @@ order: 1
 
 ```ludic
 const GRAVITY: fixed = 0.5
-var velocity_y: fixed = fixed(0)
-var next_velocity: fixed = velocity_y + GRAVITY
-var pixel_row: int = floor(next_velocity)
+let velocity_y: fixed = fixed(0)
+let next_velocity: fixed = velocity_y + GRAVITY
+let pixel_row: int = floor(next_velocity)
 ```

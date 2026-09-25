@@ -14,17 +14,19 @@ A <code>state</code> declares one state of an enclosing <code>machine</code>: a 
 ```ludic
 program DoorControl {
   enum DoorState { Closed, Opening, Open }
-  var door: int = DoorState.Closed
-  var elapsed_frames: int = 0
+  state DoorControlState {
+    door: int = DoorState.Closed
+    elapsed_frames: int = 0
+  }
 
-  handler RunDoor phase Update {
-    machine door {
+  handler RunDoor(door_control_st: mut DoorControlState) phase Update {
+    machine door_control_st.door {
       state Closed {
-        if Input.key() == ' ' { elapsed_frames = 0; become Opening }
+        if Input.key() == ' ' { door_control_st.elapsed_frames = 0; become Opening }
       }
       state Opening {
-        elapsed_frames = elapsed_frames + 1
-        if elapsed_frames >= 30 { become Open }
+        door_control_st.elapsed_frames = door_control_st.elapsed_frames + 1
+        if door_control_st.elapsed_frames >= 30 { become Open }
       }
       state Open {
         Screen.status("door open")

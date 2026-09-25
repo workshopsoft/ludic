@@ -15,7 +15,7 @@ Returns how many bytes of the response body have arrived. For a request given <a
 
 ```ludic
 program Demo {
-  var dl: int = 0
+  let dl: int = 0
   handler Bar phase Render {
     let got = Http.received(handle: dl)
     let all = Http.expected(handle: dl)
