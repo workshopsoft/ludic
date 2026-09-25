@@ -1,0 +1,146 @@
+# tracks_test.ludic - prints go into a ring per kind and are drawn through the hook, they age on
+# the world's clock, the nearest is found, a read is a fact every time and a count once, and the
+# reader's state saves
+import "ludic.tracks"
+import "ludic.base"
+program TracksTest {
+  numbers float
+  var now: float = 0.0
+  var skill: int = 1
+  var placed_n: int = 0
+  var placed_last: int = -1
+
+  function fake_now() -> float { return now }
+  function fake_skill() -> int { return skill }
+  function fake_bearing(yaw: float) -> string {
+    if yaw > 0.0 { return "east" }
+    return "west"
+  }
+  function fake_placed(kind: int, i: int) -> void {
+    placed_n += 1
+    placed_last = i
+  }
+
+  function fresh() -> void {
+    now = 10.0
+    skill = 1
+    placed_n = 0
+    placed_last = -1
+    let w = new TracksWorld
+    w.now = fn fake_now
+    w.skill = fn fake_skill
+    w.bearing = fn fake_bearing
+    w.placed = fn fake_placed
+    tracks_bind(w)
+    tracks_config(3, 4)
+    tracks_config_reading(1, 0.5, 2.5)
+    tracks_reset()
+  }
+
+  function reads() -> []TrackRead { return q_drain(tracks_reads()) }
+
+  test "a print goes into its kind's ring and is drawn" {
+    fresh()
+    let i = tracks_leave(1, 5.0, 6.0, 1.0, 7, false)
+    expect_eq(i, 0)
+    expect_eq(tracks_count(1), 1)
+    expect_eq(tracks_count(0), 0)
+    expect_eq(placed_n, 1)
+    let s = tracks_slot(1, 0)
+    expect(tracks_x(s) == 5.0 and tracks_z(s) == 6.0)
+    expect_eq(tracks_sp(s), 7)
+  }
+
+  test "a full ring writes over its oldest print" {
+    fresh()
+    for n in 0 .. 5 { tracks_leave(2, float(n), 0.0, 0.0, n, false) }
+    expect_eq(tracks_count(2), 4)
+    expect_eq(placed_last, 0)
+    expect_eq(tracks_sp(tracks_slot(2, 0)), 4)
+  }
+
+  test "a print ages on the world's clock" {
+    fresh()
+    tracks_leave(1, 0.0, 0.0, 0.0, 1, false)
+    now = 13.0
+    let s = tracks_slot(1, 0)
+    expect(tracks_age(s) == 3.0)
+    expect_eq(tracks_fresh_of(tracks_age(s)), TRACK_OLD)
+    expect_eq(tracks_fresh_of(0.2), TRACK_FRESH)
+    expect_eq(tracks_fresh_of(1.0), TRACK_RECENT)
+  }
+
+  test "the nearest print within reach, or none" {
+    fresh()
+    tracks_leave(1, 10.0, 0.0, 0.0, 1, false)
+    tracks_leave(2, 1.0, 1.0, 0.0, 2, false)
+    expect_eq(tracks_nearest(0.0, 0.0, 2.0), tracks_slot(2, 0))
+    expect_eq(tracks_nearest(50.0, 50.0, 2.0), -1)
+  }
+
+  test "a print read twice is two facts and one count" {
+    fresh()
+    tracks_leave(1, 0.0, 0.0, 1.0, 3, true)
+    let s = tracks_nearest(0.0, 0.0, 2.0)
+    tracks_read(s)
+    tracks_read(s)
+    let rs = reads()
+    expect_eq(len(rs), 2)
+    expect(rs[0].first and not rs[1].first)
+    expect_eq(rs[0].source, TRACK_PRINT)
+    expect_eq(rs[0].kind, 1)
+    expect(rs[0].legend)
+    expect(rs[0].bearing == "east")
+    expect_eq(tracks_read_count(), 1)
+    expect(tracks_has_bearing() and tracks_last_yaw() == 1.0)
+  }
+
+  test "a reader without the skill cannot name the animal" {
+    fresh()
+    skill = 0
+    tracks_leave(1, 0.0, 0.0, 0.0, 3, false)
+    tracks_read(tracks_slot(1, 0))
+    expect(not reads()[0].named)
+  }
+
+  test "a sign that is not a print is told, and counts when it is the first" {
+    fresh()
+    tracks_note(4, TRACK_SCAT, false, -1.0, true)
+    tracks_note(4, TRACK_SCAT, false, -1.0, false)
+    let rs = reads()
+    expect_eq(len(rs), 2)
+    expect_eq(rs[0].source, TRACK_SCAT)
+    expect_eq(tracks_read_count(), 1)
+  }
+
+  test "a written-over slot is a new, unread print" {
+    fresh()
+    tracks_leave(0, 0.0, 0.0, 0.0, 1, false)
+    tracks_read(tracks_slot(0, 0))
+    for n in 0 .. 4 { tracks_leave(0, 0.0, 0.0, 0.0, 2, false) }
+    expect(not tracks_was_read(tracks_slot(0, 0)))
+  }
+
+  test "clearing the ground forgets the prints, not the reader" {
+    fresh()
+    tracks_leave(1, 0.0, 0.0, 0.0, 1, false)
+    tracks_read(tracks_slot(1, 0))
+    tracks_clear()
+    expect_eq(tracks_count(1), 0)
+    expect_eq(tracks_read_count(), 1)
+  }
+
+  test "a save section reads back the same reader" {
+    fresh()
+    tracks_note(1, TRACK_SIGN, true, 0.0, true)
+    tracks_note_bearing(2.5)
+    let root = save_tree()
+    save_section(root, "tracks", 1, tracks_save())
+    let text = save_encode(root)
+    tracks_reset()
+    let n = load_section(save_decode(text), "tracks")
+    tracks_load(n.data, n.version)
+    expect_eq(tracks_read_count(), 1)
+    expect(tracks_has_bearing() and tracks_last_yaw() == 2.5)
+  }
+}

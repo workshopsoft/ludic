@@ -1,0 +1,37 @@
+# config.ludic - how many kinds of print, how many of each the ground remembers, how the reader
+# reads, and the port's defaults
+export function tracks_config(kinds: int, cap: int) -> void {
+  tk_kinds = kinds
+  tk_cap = cap
+  tk_ring = new []Track
+  tk_count = new []int
+  tk_next = new []int
+  for i in 0 .. kinds * cap { push(tk_ring, new Track) }
+  for k in 0 .. kinds {
+    push(tk_count, 0)
+    push(tk_next, 0)
+  }
+}
+
+# a reader at `name_at` or above can tell the animal; a print is fresh under `fresh` hours old,
+# recent under `recent`, and old after
+export function tracks_config_reading(name_at: int, fresh: float, recent: float) -> void {
+  tk_name_at = name_at
+  tk_fresh_h = fresh
+  tk_recent_h = recent
+}
+
+function tk_now() -> float {
+  if tk_world == null or tk_world.now == null { return 0.0 }
+  return tk_world.now()
+}
+
+function tk_named() -> bool {
+  if tk_world == null or tk_world.skill == null { return true }
+  return tk_world.skill() >= tk_name_at
+}
+
+function tk_bearing(yaw: float) -> string {
+  if tk_world == null or tk_world.bearing == null { return "" }
+  return tk_world.bearing(yaw)
+}

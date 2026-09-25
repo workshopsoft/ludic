@@ -1,0 +1,11 @@
+# ludic.tracks - a ring of prints per kind, each remembering who left it, which way it went and
+# when; reading one is a fact on a queue, and the game draws them through a hook
+module ludic_tracks
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "config.ludic"
+import "leave.ludic"
+import "read.ludic"
+import "queries.ludic"
+import "system.ludic"

@@ -1,0 +1,66 @@
+# state.ludic - the port, the prints, the facts, and what the reader has learned
+# what the tracks ask the world. Any field may be left null: the time is then 0, the reader
+# can name every animal, no bearing is given, and nothing is drawn.
+export property TracksWorld {
+  now: fn() -> float = null              # game hours, counted from the start of the trip
+  skill: fn() -> int = null              # how well the reader reads (the game's tiers)
+  bearing: fn(float) -> string = null    # a yaw in words ("north-west"), "" for none
+  placed: fn(int, int) -> void = null    # a print was put down at (kind, ring index): draw it
+}
+
+# where a sign came from
+export const TRACK_PRINT: int = 0     # a print in a ring, read with tracks_read
+export const TRACK_SIGN: int = 1      # a legend's sign, told with tracks_note
+export const TRACK_SCAT: int = 2      # droppings, told with tracks_note
+
+# how old a print looks
+export const TRACK_FRESH: int = 0
+export const TRACK_RECENT: int = 1
+export const TRACK_OLD: int = 2
+
+export property Track {
+  x: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  sp: int = 0
+  legend: bool = false
+  made: float = 0.0
+  read: bool = false
+}
+
+# a sign was read: `first` the first time this one was, `named` whether the reader could tell
+# the animal, `bearing` the way it went in words ("" without them)
+export property TrackRead {
+  sp: int = 0
+  source: int = 0
+  kind: int = 0
+  legend: bool = false
+  age: float = 0.0
+  fresh: int = 0
+  yaw: float = 0.0
+  named: bool = true
+  bearing: string = ""
+  first: bool = false
+}
+
+var tk_world: TracksWorld = null
+var tk_kinds: int = 0
+var tk_cap: int = 0
+var tk_ring: []Track = null        # kinds x cap, kind-major
+var tk_count: []int = null         # per kind: how many of the ring are in use
+var tk_next: []int = null          # per kind: where the next print goes
+var tk_name_at: int = 0            # the skill that tells the animal from its print
+var tk_fresh_h: float = 0.5
+var tk_recent_h: float = 2.5
+var tk_read_n: int = 0             # signs read for the first time, of every source
+var tk_yaw: float = 0.0            # the heading of the last sign read
+var tk_has_yaw: bool = false
+var tk_reads: Queue<TrackRead> = null
+
+export function tracks_bind(w: TracksWorld) -> void { tk_world = w }
+
+# the facts: every sign read, oldest first
+export function tracks_reads() -> Queue<TrackRead> {
+  if tk_reads == null { tk_reads = queue_new("tracks.reads") }
+  return tk_reads
+}
