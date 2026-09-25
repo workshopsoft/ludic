@@ -36,6 +36,7 @@ function emit_assign(st: Node) -> void {
       # a `let` binding is immutable: rebinding it is an error (mutating THROUGH
       # it — `x.field = …`, `x[i] = …` — is fine, and lands in the branches below).
       if loc_mut[li] == 0 { perr(`cannot assign to immutable '{t.s}' (declared with let; use var) — line {itoa(st.line)}`) }
+      if deps_on() { deps_alias_let(t.s, st.b) }  # the local now holds what it is given
       addr = loc_reg[li];  ty = loc_ty[li]
     }
     else {
@@ -48,7 +49,7 @@ function emit_assign(st: Node) -> void {
   } else {
     if deps_on() {
       let root = deps_target_root(t)
-      if root != null { deps_write(root, root.s) }
+      if root != null { deps_write(root, root.s) } else { deps_alias_write(t) }
     }
     if t.kind == E_MEMBER { addr = emit_member_addr(t);  ty = g_addr_ty }
     else { if t.kind == E_INDEX { addr = emit_index_addr(t);  ty = g_addr_ty }
@@ -359,6 +360,7 @@ function emit_stmt(st: Node) -> void {
   emit_cov_hit(st.line)                            # --coverage: bump this line's hit counter (no-op otherwise)
   if st.kind == S_LET {
     loc_check_redeclared(st.s)
+    deps_alias_let(st.s, st.a)
     var ty = st.ty
     if (ty == null) { let v0 = emit_expr(st.a);  ty = v0.ty
       let slot = emit_alloca(llty(ty));  store_at(llty(ty), v0.code, slot);  loc_push(st.s, slot, ty);  loc_mark_declared();  loc_set_mut(st.ival);  return }

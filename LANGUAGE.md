@@ -1863,7 +1863,10 @@ the other, not counting a use of a module that itself uses none), `largest_cycle
 of modules that all reach each other, named on the last line), `cross_writes` and
 `globals_written_from_outside`. `--graph` lists each module with its declared `uses` and the edges
 seen (`!` marks one its `uses` line does not name), `--dot` is the same for Graphviz with the cycle
-filled, `--writes` lists the writes and `--uses MOD` who uses MOD. The largest cycle leaves out the
+filled, `--writes` lists the writes - and then, as warnings not counted in the numbers, the writes
+through a local bound straight to another module's global (`let t = thing_cur` then `t.used = 1`) -
+and `--uses MOD` who uses MOD. A reference that reaches a local any other way (a function's result,
+a field of another record) is not followed; that would need knowing where every reference can point. The largest cycle leaves out the
 edges inside a declared layer, which may go round by design; the layers and the cycle counting their
 own edges are printed after it. `--check FILE` fails when any
 number is above FILE's `name value` lines; `--baseline FILE` writes them.

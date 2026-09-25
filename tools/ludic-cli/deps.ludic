@@ -8,7 +8,8 @@
 #   ludic deps [file]                    the numbers (the same five tools/deps.py printed)
 #   ludic deps --graph                   every module: its declared uses and the edges seen
 #   ludic deps --dot                     the graph for Graphviz (dot -Tsvg)
-#   ludic deps --writes                  every write to another module's global
+#   ludic deps --writes                  every write to another module's global, then (as warnings)
+#                                        every write through a local bound to one (let t = g; t.f = 1)
 #   ludic deps --uses MOD                what the other modules use of MOD
 #   ludic deps --check FILE              fail if any number is above FILE's
 #   ludic deps --baseline FILE           write the numbers to FILE
@@ -27,6 +28,7 @@ var dp_et: []int = null
 var dp_ec: []int = null
 var dp_en: []pointer = null
 var dp_writes: []pointer = null
+var dp_aliases: []pointer = null      # writes through a local holding another module's global
 var dp_wowner: []pointer = null
 var dp_wname: []pointer = null
 var dp_wfrom: []pointer = null
@@ -62,7 +64,7 @@ function dp_load(path: pointer) -> bool {
   if text == null { return false }
   dp_mods = new []pointer;  dp_pkg = new []int;  dp_uses = new []pointer;  dp_layer = new []pointer
   dp_ef = new []int;  dp_et = new []int;  dp_ec = new []int;  dp_en = new []pointer
-  dp_writes = new []pointer;  dp_wowner = new []pointer;  dp_wname = new []pointer;  dp_wfrom = new []pointer
+  dp_writes = new []pointer;  dp_aliases = new []pointer;  dp_wowner = new []pointer;  dp_wname = new []pointer;  dp_wfrom = new []pointer
   let lines = split_lines(text)
   for i in 0 .. len(lines) {
     let w = dp_words(lines[i])
@@ -82,6 +84,7 @@ function dp_load(path: pointer) -> bool {
       push(dp_ec, s_to_int(w[3]))
       push(dp_en, w[4])
     }
+    if len(w) >= 6 and w[0] == "alias" { push(dp_aliases, lines[i]) }
     if len(w) >= 5 and w[0] == "write" {
       push(dp_wowner, w[1])
       push(dp_wname, w[2])
@@ -396,6 +399,11 @@ function cmd_deps() -> int {
   if mode == "graph" { dp_graph();  return 0 }
   if mode == "writes" {
     for w in 0 .. len(dp_writes) { print(sslice(dp_writes[w], 6, slen(dp_writes[w]))) }
+    # a warning, not a number: a write through a local bound to the global (not counted above)
+    for a in 0 .. len(dp_aliases) {
+      let w = dp_words(dp_aliases[a])
+      print(`warning: {w[1]} {w[2]} {w[3]} {w[4]} through the local {w[5]}`)
+    }
     return 0
   }
   if mode == "uses" { dp_uses_of(arg2);  return 0 }

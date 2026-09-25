@@ -7,3 +7,7 @@ export function a_run() -> int {
 export function a_two() -> int {
   return 2
 }
+export function a_bump() -> void {
+  let r = b_rec
+  r.n = r.n + 1
+}

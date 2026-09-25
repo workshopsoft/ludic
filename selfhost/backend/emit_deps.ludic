@@ -6,6 +6,7 @@
 #   module <name> <package 0|1> <uses: -|,a,b,> <layer: -|name>
 #   edge <from> <to> <count> <first name>
 #   write <owner> <global> <from> <file>:<line>
+#   alias <owner> <global> <from> <file>:<line> <local>    (a write through a local, below)
 var g_dp_on: int = -1
 var g_dp_key: []pointer = new []pointer        # "from to"
 var g_dp_cnt: []int = new []int
@@ -110,5 +111,79 @@ function deps_flush() -> void {
     deps_line(f, g_dp_writes[i])
     i += 1
   }
+  i = 0
+  while i < len(g_dp_aliases) {
+    deps_line(f, g_dp_aliases[i])
+    i += 1
+  }
   file_close(f)
+}
+
+# A local that holds another module's global record (or a piece of one) - `let t = thing_cur`,
+# `let s = slots[i]` - writes into that module's state when it is written through: `t.used = 1`.
+# That is caught here for a local bound straight from the global (or from such a local) in the
+# function being lowered, and listed as `alias <owner> <global> <from> <file>:<line> <local>`. A
+# reference that arrives any other way - returned by a function, read out of a field of another
+# record - is not followed: that needs knowing where every reference can point, which this is not.
+var g_dp_al_local: []pointer = new []pointer
+var g_dp_al_owner: []pointer = new []pointer
+var g_dp_al_global: []pointer = new []pointer
+var g_dp_aliases: []pointer = new []pointer
+function deps_alias_reset() -> void {
+  if not deps_on() { return }
+  g_dp_al_local = new []pointer
+  g_dp_al_owner = new []pointer
+  g_dp_al_global = new []pointer
+}
+function deps_alias_find(local: pointer) -> int {
+  var i = len(g_dp_al_local) - 1
+  while i >= 0 {
+    if (g_dp_al_local[i] == local) { return i }
+    i -= 1
+  }
+  return -1
+}
+function deps_alias_drop(local: pointer) -> void {
+  let k = deps_alias_find(local)
+  if k >= 0 { g_dp_al_local[k] = "" }
+}
+# the E_ID an index / field chain starts at
+function deps_chain_root(t: Node) -> Node {
+  var n = t
+  while n != null and (n.kind == E_INDEX or n.kind == E_MEMBER) { n = n.a }
+  if n == null or n.kind != E_ID { return null }
+  return n
+}
+# `let local = <expr>`: an alias when the expression is another module's global, or an alias
+function deps_alias_let(local: pointer, e: Node) -> void {
+  if not deps_on() or g_err_file == null { return }
+  deps_alias_drop(local)
+  if e == null { return }
+  let r = deps_chain_root(e)
+  if r == null { return }
+  if loc_find(r.s) >= 0 {
+    let k = deps_alias_find(r.s)
+    if k < 0 { return }
+    push(g_dp_al_local, local)
+    push(g_dp_al_owner, g_dp_al_owner[k])
+    push(g_dp_al_global, g_dp_al_global[k])
+    return
+  }
+  let g = find_global(r.s)
+  if g == null or g.file == null { return }
+  let owner = module_for_uses(g.file)
+  let from = module_of(g_err_file)
+  if (from == "") or (owner == "") or (from == owner) { return }
+  push(g_dp_al_local, local)
+  push(g_dp_al_owner, owner)
+  push(g_dp_al_global, r.s)
+}
+# an assignment through a local's field or element: a write into the state the local aliases
+function deps_alias_write(t: Node) -> void {
+  if not deps_on() or g_err_file == null { return }
+  let r = deps_chain_root(t)
+  if r == null or loc_find(r.s) < 0 { return }
+  let k = deps_alias_find(r.s)
+  if k < 0 { return }
+  push(g_dp_aliases, `alias {g_dp_al_owner[k]} {g_dp_al_global[k]} {module_of(g_err_file)} {g_err_file}:{itoa(g_err_line)} {r.s}`)
 }

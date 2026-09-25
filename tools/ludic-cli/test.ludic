@@ -485,6 +485,7 @@ function deps_case() -> void {
   if shq(`bin/ludic deps {p} --check {base} > /dev/null`) { bad2(lbl, "--check passed with more dependencies than the baseline");  return }
   if not shq(`bin/ludic deps {p} --dot | grep -q '"a" -> "b"'`) { bad2(lbl, "--dot has no a -> b edge");  return }
   if not shq(`bin/ludic deps {p} --writes | grep -q 'b b_count a examples/modules/tangle/a/index.ludic:4'`) { bad2(lbl, "--writes misses a's write to b_count");  return }
+  if not shq(`bin/ludic deps {p} --writes | grep -q 'warning: b b_rec a examples/modules/tangle/a/index.ludic:12 through the local r'`) { bad2(lbl, "--writes misses the write through a local");  return }
   let lay = capture(`bin/ludic deps examples/modules/layers.ludic 2>&1`)
   if not s_contains(lay, "largest_cycle: 1") or not s_contains(lay, "layers: app (2: hud menu)") or not s_contains(lay, "counting the layers' own edges: 2") { bad2(lbl, `layers: [{s_trim(lay)}]`);  return }
   ok(lbl)

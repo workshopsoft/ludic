@@ -498,7 +498,10 @@ function is_toggled_layer(name: pointer) -> bool {
 function is_model(name: pointer) -> bool { return find_arch_id(name) > 0 }
 
 # local variable environment
-function loc_reset() -> void { nloc = 0 }
+function loc_reset() -> void {
+  nloc = 0
+  deps_alias_reset()                              # emit_deps.ludic: aliases are a function's own
+}
 # push a local. Defaults to mutable (params, loop and query bindings are all
 # reassignable/rebindable); a `let` binding marks its slot immutable afterward
 # via loc_set_mut, so a later `name = …` can be rejected.
