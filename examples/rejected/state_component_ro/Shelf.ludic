@@ -1,0 +1,3 @@
+component Shelf (look: Look) {
+  on grow() { look.size += 1 }
+}

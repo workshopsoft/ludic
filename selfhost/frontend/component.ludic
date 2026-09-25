@@ -11,6 +11,11 @@
 #     on buy() { taps += 1 }         # props and state are plain names here
 #   }
 #
+# 0.S: `component PauseMenu (clock: ClockState, s: mut Session) { ... }` - the states its members
+# read and change. Every getter, default, function and event takes them before the instance, the
+# glue's calls are supplied them by the runtime, a member's call to another passes them on, and
+# the template never sees them.
+#
 # Each mounted instance is a record of its props and state. The compiler reads the template and the
 # styles into the program, so a missing template fails the build and nothing more has to ship, and
 # registers the component with ludic.ui when the program starts.
@@ -27,6 +32,8 @@ var g_cm_fnames: [][]pointer = new [][]pointer
 var g_cm_calls: [][]Node = new [][]Node
 var g_cm_cnames: [][]pointer = new [][]pointer
 var g_cm_head: []Node = new []Node
+var g_cm_hdr: []int = new []int              # 0.S: where state parameters go (after the name)
+var g_cm_ps: [][]Node = new [][]Node         # the states it declares
 
 function cm_prefix(name: pointer) -> pointer { return `cmp_{reg_lower(name)}_` }
 
@@ -34,6 +41,8 @@ function cm_prefix(name: pointer) -> pointer { return `cmp_{reg_lower(name)}_` }
 function parse_ui_component() -> void {
   pi += 1
   let name = eat_id()
+  push(g_cm_hdr, toks[pi - 1].end)
+  push(g_cm_ps, parse_entry_params())
   cm_unique(name)
   let px = cm_prefix(name)
   g_uses_value = true
@@ -79,6 +88,7 @@ function cm_member(c: int, px: pointer) -> void {
       pi += 1
       def = cm_getter(px + "def_" + fname, ty, expr())
     }
+    if def != null { def.cm = c }
     push(g_cm_defs[c], def)
     return
   }
@@ -86,6 +96,7 @@ function cm_member(c: int, px: pointer) -> void {
     let ev = is_id("on")
     if ev { toks[pi].text = "function" }
     let f = parse_fn()
+    f.cm = c
     push(g_cm_cnames[c], f.s)
     if ev { f.s = px + "on_" + f.s } else { f.s = px + f.s }
     push(g_cm_calls[c], f)
@@ -101,7 +112,9 @@ function cm_member(c: int, px: pointer) -> void {
   if not is_op("=") { perr(`component field {fname}: say what it is - {fname} = some_global`) }
   pi += 1
   push(g_cm_fnames[c], fname)
-  push(g_cm_fields[c], cm_getter(px + "get_" + fname, ty, expr()))
+  let g = cm_getter(px + "get_" + fname, ty, expr())
+  g.cm = c
+  push(g_cm_fields[c], g)
 }
 # a function of the instance that answers one expression (a field, or a default)
 function cm_getter(name: pointer, ty: pointer, e: Node) -> Node {

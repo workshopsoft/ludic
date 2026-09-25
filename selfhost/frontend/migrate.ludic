@@ -14,6 +14,7 @@
 #       first var this program sees, or its declaration when it has one already: `more`)
 #   REF <file> <pos> <len> <text>              a reference's name replaced
 #   INS <file> <pos> <text>                    text inserted (a parameter, an argument)
+#   CLOSE <file> <pos> <text>                  text inserted before the first `)` after <pos>
 #   ? <file>:<line> <what>                     what the tool cannot decide, for a person
 var g_migrate: bool = false
 var g_mg_runtime: bool = false         # --migrate-runtime: the runtime's own vars too
@@ -21,7 +22,8 @@ var g_mg_plan: pointer = null
 var g_mg_vars: []Node = new []Node     # the vars that move
 var g_mg_vstate: []int = new []int     # the state each moves into
 var g_mg_written: []int = new []int    # 1: something writes it
-var g_mg_let: []int = new []int        # 1: a value nothing writes - it stays, as a module-level let
+var g_mg_let: []int = new []int        # 1: a value nothing writes - it stays, as a module-level let;
+                                       # 2: moved already (a package's, migrated before this program)
 var g_mr_unit: []int = new []int       # per reference: the unit it is read in (-1: none)
 var g_ms_name: []pointer = new []pointer
 var g_ms_mod: []pointer = new []pointer
@@ -91,7 +93,23 @@ function mg_state_of_file(f: pointer) -> int {
     if len(b) > 6 and (b[len(b) - 6 .. len(b)] == ".ludic") { b = b[0 .. len(b) - 6] }
     return mg_state_of_mod(`@{f}`, `rt_{b}`)
   }
-  let m = module_for_uses(f)
+  if (f == g_mg_entry) {                        # the program's own file: its own state, whatever module
+    let p = mg_param_for(g_game_name)
+    return mg_state_of_mod("", p[0 .. len(p) - 3])
+  }
+  var m = module_for_uses(f)
+  # a friend module (`friend module lab`) is a view of the others each program declares for itself,
+  # not one module: its files' vars go by their directory, as a file in no module does
+  var fi = 0
+  while fi < len(g_mod_friends) {
+    if (g_mod_friends[fi] == m) { m = "" }
+    fi += 1
+  }
+  if not (m == "") and not (module_of(f) == "") and pkg_of_file(f) == "" and mg_pkg_named(mg_short(m)) {
+    # the program's own module named like a package's (a game's `module fishing` beside
+    # ludic.fishing): a state of its own, never merged into the package's
+    return mg_state_of_mod(m, mg_short(m) + "_app")
+  }
   if not (m == "") { return mg_state_of_mod(m, mg_short(m)) }
   if (f == g_mg_entry) {                        # the program's own: SceneDemo is SceneDemoState, scene_demo_st
     let p = mg_param_for(g_game_name)
@@ -166,6 +184,12 @@ function mg_state_key(s: int) -> pointer {
   }
   return `package:{m}`
 }
+# is there a package called ludic.<short> - installed with the toolchain, or fetched into ludic_modules
+function mg_pkg_named(short: pointer) -> bool {
+  if read_file(`{ludic_home()}packages/ludic.{short}/package.ludic`) != null { return true }
+  let mods = ensure_slash(getenv_or("LUDIC_MODULES", "ludic_modules"))
+  return read_file(`{mods}ludic.{short}/package.ludic`) != null
+}
 function mg_state_decl(name: pointer) -> Node {
   var i = 0
   while i < len(prog) {
@@ -190,6 +214,47 @@ function mg_is_target(v: Node) -> bool {
   return true
 }
 # which vars move, and the state each moves into
+# a name the program uses that is a field of a state now - a package migrated before it moved its
+# var there (`cam_pos` is Render3dState's): a reference to that state's field, which the program is
+# rewritten to reach through the state. Only a name exactly one state has.
+var g_mg_fv_name: []pointer = new []pointer
+var g_mg_fv_node: []Node = new []Node
+function mg_field_var(name: pointer) -> Node {
+  if not g_migrate { return null }
+  var i = 0
+  while i < len(g_mg_fv_name) {
+    if (g_mg_fv_name[i] == name) { return g_mg_fv_node[i] }
+    i += 1
+  }
+  var found: Node = null
+  var many = false
+  i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_COMP and d.uns == 2 and field_index(d, name) >= 0 {
+      if found != null { many = true }
+      found = d
+    }
+    i += 1
+  }
+  var v: Node = null
+  if found != null and not many {
+    v = node(N_VAR)
+    v.s = name
+    v.ty = field_type(found, name)
+    v.file = found.file
+    v.line = found.line
+    v.pos = -1
+    push(g_mg_vars, v)
+    push(g_mg_vstate, mg_state_named(found.s))
+    push(g_mg_written, 0)
+    push(g_mg_let, 2)
+    v.mg = len(g_mg_vars) - 1
+  }
+  push(g_mg_fv_name, name)
+  push(g_mg_fv_node, v)
+  return v
+}
 function mg_collect() -> void {
   var end = g_prog_user_end
   if g_mg_runtime { end = len(prog) }           # the runtime's declarations come after the program's
@@ -283,14 +348,45 @@ function mg_decide_lets() -> void {
   var i = 0
   while i < len(g_mg_vars) {
     let v = g_mg_vars[i]
-    if g_mg_written[i] == 0 and mg_value_ty(v.ty) and not mg_bound_var(v.s) { g_mg_let[i] = 1 }
+    if g_mg_let[i] == 0 and g_mg_written[i] == 0 and mg_value_ty(v.ty) and not mg_bound_var(v.s) and not mg_knob(v) { g_mg_let[i] = 1 }
     i += 1
   }
   var r = 0
   while r < len(g_mr_node) {
-    if g_mr_node[r].pos < 0 { g_mg_let[g_mr_var[r]] = 0 }
+    if g_mr_node[r].pos < 0 and g_mg_let[g_mr_var[r]] == 1 { g_mg_let[g_mr_var[r]] = 0 }
     r += 1
   }
+}
+# a package's var a program may set (render3d's r3d_dem_path): nothing in these programs writes it,
+# but a game using the package may - it stays changing data. A private one of a package's module is
+# the package's own business.
+function mg_knob(v: Node) -> bool {
+  let f = mg_norm(v.file)
+  let pkg = not (pkg_of_file(v.file) == "") or s_has_prefix(f, "packages/") or has_sub(f, "/packages/") or has_sub(f, "ludic_modules/")
+  if not pkg { return false }
+  if module_of(v.file) == "" { return true }
+  return v.vis == 1
+}
+function s_has_prefix(s: pointer, p: pointer) -> bool { return len(s) >= len(p) and (s[0 .. len(p)] == p) }
+# the runtime's function that only answers its var `name` (`function gl_width() -> int { return gl_w }`)
+function mg_runtime_reader(name: pointer) -> pointer {
+  var i = 0
+  while i < len(prog) {
+    let f = prog[i]
+    if f.kind == N_FN and is_runtime_file(f.file) and f.a != null and len(f.a.kids) == 1 and f.a.kids[0].kind == S_RETURN {
+      var np = 0
+      var j = 0
+      while j < len(f.kids) {
+        if f.kids[j].kind == N_PARAM and not is_state_ty(f.kids[j].ty) { np += 1 }
+        j += 1
+      }
+      let x = f.a.kids[0].a
+      if np == 0 and x != null and x.kind == E_MEMBER and x.a != null and x.a.kind == E_ID and (x.s == name) { return f.s }
+      if np == 0 and x != null and x.kind == E_ID and (mg_src_name(x.s) == name) { return f.s }
+    }
+    i += 1
+  }
+  return null
 }
 function mg_value_ty(t: pointer) -> bool {
   if t == null { return false }
@@ -306,10 +402,14 @@ function mg_read_needs() -> void {
     let u = g_mr_unit[r]
     let g = g_mg_vars[v]
     if is_runtime_file(g.file) and not is_runtime_file(e.file) {
-      # the runtime's state is the runtime's: from outside it is read through its functions
-      mg_say(e, `{mg_src_name(g.s)} is the runtime's; read it through the runtime's function for it`)
+      # the runtime's state is the runtime's: from outside it is read through its functions - the
+      # one that answers it, when there is one (gl_w: gl_width())
+      let rd = mg_runtime_reader(mg_src_name(g.s))
+      if rd != null and e.pos >= 0 and e.file != null {
+        mg_emit(`REF {e.file} {itoa(e.pos)} {itoa(len(mg_src_name(g.s)))} {mg_esc(`{rd}()`)}`, "")
+      } else { mg_say(e, `{mg_src_name(g.s)} is the runtime's; read it through the runtime's function for it`) }
       g_mr_var[r] = -1 - v
-    } else if g_mg_let[v] == 0 and u != -3 {
+    } else if not (g_mg_let[v] == 1) and u != -3 {
       if u >= 0 { mg_need(u, g_mg_vstate[v], false) }
       else { mg_say(e, `{g.s} is read where no function is (a global's initializer); move it by hand`) }
       if e.pos < 0 and not mg_bound_var(g.s) { mg_say(e, `a reference to {g.s} in generated code (a component, a view, a registry's lookup)`) }
@@ -421,7 +521,7 @@ function mg_norm_line(line: pointer) -> pointer {
   }
   if len(w) < 2 { return line }
   let k = w[0]
-  if (k == "VAR") or (k == "REF") or (k == "INS") or (k == "LET") { w[1] = mg_norm(w[1]) }
+  if (k == "VAR") or (k == "REF") or (k == "INS") or (k == "LET") or (k == "CLOSE") { w[1] = mg_norm(w[1]) }
   if (k == "?") { w[1] = mg_norm(w[1]) }
   if (k == "VAR") and len(w) > 5 { w[5] = mg_norm_key(w[5]) }
   if (k == "STATE") and len(w) > 6 {
@@ -571,6 +671,11 @@ function mg_units() -> void {
   var u = 0
   while u < len(g_mu_node) {
     let n = g_mu_node[u]
+    if g_mu_kind[u] == 0 and n.cm >= 0 {
+      mg_comp_acc(u, n.cm)                       # a component's member: the component declares them
+      u += 1
+      continue
+    }
     mg_mut_upgrades(u, n)
     let need = mg_list(g_mu_need[u])
     if len(need) > 0 {
@@ -624,20 +729,26 @@ function mg_unit_edit(u: int, n: Node, text: pointer) -> void {
   if kind == 5 { body = n }                    # a scene's `on enter` block is its own body
   if body != null and len(body.kids) > 0 and body.kids[0].tps != null and (body.kids[0].tps == "state") {
     # it declares some already: whatever it needs beyond them is for a person to add
+    # it declares some already: the rest go after them
     let need = mg_list(g_mu_need[u])
     var more = ""
+    var last: Node = null
     var k = 0
     while k < len(need) {
       var have = false
       var j = 0
       while j < len(body.kids) and body.kids[j].tps != null and (body.kids[j].tps == "state") {
         if (body.kids[j].ty == g_ms_name[need[k]]) { have = true }
+        last = body.kids[j]
         j += 1
       }
-      if not have { more = more + " " + g_ms_name[need[k]] }
+      if not have { more = more + ", " + mg_param_text(u, need[k]) }
       k += 1
     }
-    if len(more) > 0 { mg_say(n, `this entry point declares states already; add{more} to them by hand`) }
+    if len(more) > 0 {
+      if last == null or last.pos2 < 0 or last.file == null { mg_say(n, `this entry point declares states already; add{more} to them by hand`) }
+      else { mg_emit(`CLOSE {last.file} {itoa(last.pos2)} {mg_esc(more)}`, "") }
+    }
     return
   }
   if kind == 1 { mg_emit(`INS {n.file} {itoa(n.pos)} {mg_esc(`({text}) `)}`, `{n.file}@{itoa(n.pos)}`) }
@@ -651,6 +762,58 @@ function mg_unit_edit(u: int, n: Node, text: pointer) -> void {
       return
     }
     mg_emit(`INS {b.file} {itoa(b.pos2)} {mg_esc(`({text})`)}`, `{b.file}@{itoa(b.pos2)}`)
+  }
+}
+var g_mcm_need: []pointer = new []pointer   # per component: the states its members need
+var g_mcm_mut: []pointer = new []pointer
+function mg_comp_acc(u: int, c: int) -> void {
+  while len(g_mcm_need) < len(g_cm_name) {
+    push(g_mcm_need, ",")
+    push(g_mcm_mut, ",")
+  }
+  let need = mg_list(g_mu_need[u])
+  var k = 0
+  while k < len(need) {
+    let key = `,{itoa(need[k])},`
+    if not has_sub(g_mcm_need[c], key) { g_mcm_need[c] = g_mcm_need[c] + itoa(need[k]) + "," }
+    if has_sub(g_mu_mut[u], key) and not has_sub(g_mcm_mut[c], key) { g_mcm_mut[c] = g_mcm_mut[c] + itoa(need[k]) + "," }
+    k += 1
+  }
+}
+# each component's header: the states its members need that it does not declare yet, and `mut` on
+# one it declares read-only that a member now changes
+function mg_comps() -> void {
+  var c = 0
+  while c < len(g_mcm_need) {
+    let need = mg_list(g_mcm_need[c])
+    let ps = g_cm_ps[c]
+    var text = ""
+    var k = 0
+    while k < len(need) {
+      let s = need[k]
+      let m = has_sub(g_mcm_mut[c], `,{itoa(s)},`)
+      var have: Node = null
+      var j = 0
+      while j < len(ps) {
+        if (ps[j].ty == g_ms_name[s]) { have = ps[j] }
+        j += 1
+      }
+      if have == null {
+        if len(text) > 0 { text = text + ", " }
+        if m { text = text + `{g_ms_param[s]}: mut {g_ms_name[s]}` } else { text = text + `{g_ms_param[s]}: {g_ms_name[s]}` }
+      } else if m and have.uns == 0 and have.pos2 >= 0 {
+        mg_emit(`INS {g_cm_file[c]} {itoa(have.pos2)} {mg_esc("mut ")}`, "")
+      }
+      k += 1
+    }
+    if len(text) > 0 {
+      if len(ps) == 0 { mg_emit(`INS {g_cm_file[c]} {itoa(g_cm_hdr[c])} {mg_esc(` ({text})`)}`, "") } else {
+        # after the last one it declares: its type's end is not kept, so before the `)` that follows
+        let last = ps[len(ps) - 1]
+        mg_emit(`CLOSE {g_cm_file[c]} {itoa(last.pos2)} {mg_esc(`, {text}`)}`, "")
+      }
+    }
+    c += 1
   }
 }
 function mg_views() -> void {
@@ -680,7 +843,7 @@ function mg_calls() -> void {
     let to = g_mc_callee[c]
     let callee = g_mu_node[to]
     let need = mg_list(g_mu_need[to])
-    if len(need) > 0 {
+    if len(need) > 0 and callee.cm < 0 {           # a component's member is passed its states by the compiler
       var text = ""
       let passed = g_mc_passed[c] == 1
       var k = 0
@@ -711,7 +874,7 @@ function mg_refs() -> void {
       continue
     }
     let v = g_mg_vars[g_mr_var[r]]
-    if e.pos >= 0 and e.file != null and g_mg_let[g_mr_var[r]] == 0 {
+    if e.pos >= 0 and e.file != null and not (g_mg_let[g_mr_var[r]] == 1) {
       let s = g_mg_vstate[g_mr_var[r]]
       let nm = mg_src_name(v.s)
       var text = `{g_ms_param[s]}.{nm}`
@@ -784,7 +947,7 @@ function mg_finish() -> void {
     let v = g_mg_vars[i]
     let vs = g_mg_vstate[i]
     if g_mg_let[i] == 1 { mg_emit(`LET {v.file} {itoa(v.pos)}`, "") }
-    else { mg_emit(`VAR {v.file} {itoa(v.pos)} {itoa(v.pos2)} {g_ms_name[vs]} {anchor[vs]}`, "") }
+    else if g_mg_let[i] == 0 { mg_emit(`VAR {v.file} {itoa(v.pos)} {itoa(v.pos2)} {g_ms_name[vs]} {anchor[vs]}`, "") }
     i += 1
   }
   s = 0
@@ -808,6 +971,7 @@ function mg_finish() -> void {
   mg_refs()
   mg_binds()
   mg_units()
+  mg_comps()
   mg_views()
   mg_calls()
   let f = file_open(g_mg_plan, "wb")

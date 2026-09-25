@@ -13,6 +13,7 @@ var mgx_len: []int = null
 var mgx_text: []pointer = null
 var mgx_texts: []pointer = null       # the files' texts, read once
 var mgx_names: []pointer = null
+var mgx_roots: []pointer = null       # where it may write: the programs and directories it was given
 
 function mgx_unesc(s: pointer) -> pointer {
   var out = ""
@@ -99,32 +100,85 @@ function mgx_close(t: pointer, at: int) -> int {
   }
   return -1
 }
+# a directory as the plans spell a path (relative to here, `..` resolved), with a trailing '/'
+function mgx_dir(d: pointer) -> pointer {
+  var p = mgx_norm(d)
+  if len(p) == 0 or (p == ".") { return "" }
+  if p[len(p) - 1] != '/' { p = p + "/" }
+  return p
+}
+function mgx_norm(p0: pointer) -> pointer {
+  var p = p0
+  let cwd = getenv_or("PWD", "")
+  if len(cwd) > 0 and s_starts(p, cwd + "/") { p = p[len(cwd) + 1 .. len(p)] }
+  let abs = len(p) > 0 and p[0] == '/'
+  let segs = new []pointer
+  var n = 0
+  var a = 0
+  for i in 0 .. len(p) + 1 {
+    if i == len(p) or p[i] == '/' {
+      let seg = p[a .. i]
+      if (seg == "..") and n > 0 and not (segs[n - 1] == "..") { n -= 1 }
+      else if not (seg == ".") and not (seg == "") {
+        if n < len(segs) { segs[n] = seg } else { push(segs, seg) }
+        n += 1
+      }
+      a = i + 1
+    }
+  }
+  var out = ""
+  if abs { out = "/" }
+  for i in 0 .. n {
+    if i > 0 { out = out + "/" }
+    out = out + segs[i]
+  }
+  return out
+}
+# may it write this file: it is under one of the programs' directories (a package the program only
+# imports - installed, or a neighbour's - is not the migration's to change)
+function mgx_mine(path: pointer) -> bool {
+  let p = mgx_norm(path)
+  for i in 0 .. len(mgx_roots) {
+    if mgx_roots[i] == "" and not (p[0] == '/') and not s_starts(p, "../") { return true }
+    if not (mgx_roots[i] == "") and s_starts(p, mgx_roots[i]) { return true }
+  }
+  return false
+}
 function cmd_migrate() -> int {
   if arg_count() < 3 or not (arg(2) == "state") {
     err("usage: ludic migrate state [file|dir...] [--runtime] [--unsafe] [--dry-run]\n")
     return 2
   }
   let srcs = new []pointer
+  mgx_roots = new []pointer
   var runtime = ""
   var dry = false
   var ai = 3
   while ai < arg_count() {
     let a = arg(ai)
-    if a == "--runtime" { runtime = " --migrate-runtime" }
+    if a == "--runtime" {
+      runtime = " --migrate-runtime"
+      push(mgx_roots, "runtime/")
+    }
     else if a == "--unsafe" { g_unsafe_build = true }
     else if a == "--dry-run" { dry = true }
     else if a[0] == '-' { err(`ludic migrate: unknown option {a}\n`);  return 2 }
     else if shq(`test -d {sh_single(a)}`) {
       let found = test_files_in(a)
       for k in 0 .. len(found) { push(srcs, found[k]) }
+      push(mgx_roots, mgx_dir(a))
     }
-    else { push(srcs, a) }
+    else {
+      push(srcs, a)
+      push(mgx_roots, mgx_dir(dir_of_path(a)))
+    }
     ai += 1
   }
   if len(srcs) == 0 {
     let entry = find_entry("")
     if entry == "" { return no_entry() }
     push(srcs, entry)
+    push(mgx_roots, mgx_dir(dir_of_path(entry)))
   }
   ensure_ludicc()
   # every program's plan from the source as it is, then one pass over the files: programs that
@@ -190,11 +244,21 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
   let sexp = new []int
   let smore = new []int                # 1: the state is already declared, and gains fields
   let reports = new []pointer
+  let foreign = new []pointer          # files a plan would change that the migration may not
   let lfile = new []pointer
   let lpos = new []int
   for i in 0 .. len(lines) {
     let w = dp_words(lines[i])
     if len(w) == 0 { continue }
+    var at = ""
+    if (w[0] == "VAR") or (w[0] == "REF") or (w[0] == "INS") or (w[0] == "CLOSE") or (w[0] == "LET") { at = w[1] }
+    if (w[0] == "STATE") and len(w) > 2 { at = w[2] }
+    if len(at) > 0 and mgx_roots != null and not mgx_mine(at) {
+      var seen = false
+      for k in 0 .. len(foreign) { if foreign[k] == at { seen = true } }
+      if not seen { push(foreign, at) }
+      continue
+    }
     if w[0] == "VAR" and len(w) == 6 {
       push(vfile, w[1])
       push(vpos, s_to_int(w[2]))
@@ -228,6 +292,11 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
       mgx_edit(w[1], s_to_int(w[2]), s_to_int(w[3]), mgx_unesc(w[4]))
     } else if (w[0] == "INS") and len(w) == 4 {
       mgx_edit(w[1], s_to_int(w[2]), 0, mgx_unesc(w[3]))
+    } else if (w[0] == "CLOSE") and len(w) == 4 {
+      let t = mgx_text_of(w[1])
+      var k = s_to_int(w[2])
+      while t[k] != 0 and t[k] != ')' { k += 1 }
+      mgx_edit(w[1], k, 0, mgx_unesc(w[3]))
     } else if w[0] == "LET" and len(w) == 3 {
       push(lfile, w[1])
       push(lpos, s_to_int(w[2]))
@@ -247,6 +316,23 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
         mgx_edit(lfile[l], k, 3, "let")
         lets += 1
       }
+    }
+  }
+  # a change the programs need in a file it may not write (a package's, a neighbour's): refused,
+  # whole - that code is migrated where it lives, or given here too
+  if len(foreign) > 0 {
+    err("ludic migrate: these files would have to change too, and are not under a program or directory given; nothing was changed:\n")
+    for f in 0 .. len(foreign) { err(`  {foreign[f]}\n`) }
+    err("migrate them first (a package: in its own checkout), or name their directory as well\n")
+    return 1
+  }
+  # a var whose state would be declared in a file it may not write: refused, whole
+  for v in 0 .. len(vfile) {
+    var ok = false
+    for k in 0 .. len(sat) { if sat[k] == vstate[v] { ok = true } }
+    if not ok {
+      err(`ludic migrate: {vfile[v]} has a var for the state of {vstate[v]}, which is declared where this migration may not write; nothing was changed\n`)
+      return 1
     }
   }
   # the vars: each line goes, and the first of each state's becomes the state

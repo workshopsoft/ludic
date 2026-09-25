@@ -93,6 +93,7 @@ property Node {
   pos2: int = -1              # 0.S: a second place a rewrite needs (a declaration's end, a '(')
   mg:   int = -1              # 0.S2: its index in the migration's tables (migrate.ludic)
   vw:   int = -1              # 0.S: the view a function was generated for or written in
+  cm:   int = -1              # 0.S: the component a function was generated for or written in
 }
 
 # every node remembers where it was parsed (file + the line of the token the

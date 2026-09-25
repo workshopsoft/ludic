@@ -25,3 +25,12 @@ Outside the runtime, the drawable's size and scale, the screen's framebuffer and
 size are read and set through its functions (`gl_width()`, `gl_set_drawable(w, h)`,
 `gl_screen_fbo()`, `gl_pixel_scale()`, `rt_map_tile_size()`), and ludic.ui's render3d backend
 installs itself through the `UiRenderers` registry.
+
+A component names the states its members read and change in its header, `component Tally (score:
+mut Score, look: Look) { ... }`: every getter, default, function and event takes them before the
+instance, a member's call to another passes them on, ludic.ui's calls into it are supplied them, and
+the template never sees them. `ludic migrate state` writes those headers (and adds to an entry
+point's or a component's existing list), gives a program's module named like a package a state of
+its own (`FishingAppState`), keeps a package's settable vars as state, rewrites a program's
+references to vars a package already moved into its state, and writes only under the programs and
+directories it is given - a change needed anywhere else stops the run with the files named.

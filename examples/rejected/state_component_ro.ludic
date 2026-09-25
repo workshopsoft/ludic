@@ -1,0 +1,7 @@
+# 0.S: a component's states are read-only unless its header says mut
+import "ludic.ui"
+program StateComponentRo {
+  state Look { size: int = 1 }
+  import "state_component_ro/Shelf.ludic"
+  entry { print(1) }
+}

@@ -74,6 +74,11 @@ function ck_id(e: Node) -> pointer {
     ck_vis(g, e.s, e)
     return g.ty
   }
+  let fv = mg_field_var(e.s)                     # 0.S2: a var a package moved into its state
+  if fv != null {
+    mg_ref(e, fv)
+    return fv.ty
+  }
   return "?"
 }
 # --check: the module rules (uses, export, ports - emit_vis.ludic) asked here, where every reference

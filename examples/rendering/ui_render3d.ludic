@@ -1,0 +1,13 @@
+# ui_render3d.ludic - ludic.ui drawn by render3d's overlay: importing its backend is enough to
+# draw templates (the suite builds it, so the backend always compiles against the renderer)
+program UiRender3d {
+  numbers float
+  import "ludic.render3d/r3d.ludic"
+  import "ludic.ui"
+  import "ludic.ui/render3d.ludic"
+  entry (ui_st: mut UiState) {
+    ui_render3d(ui_st)
+    ui_render3d_scale(ui_st, 1.5)
+    print("ok")
+  }
+}

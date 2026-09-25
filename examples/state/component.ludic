@@ -1,0 +1,33 @@
+# component.ludic - 0.S: a component's members take the states its header names; the runtime
+# supplies them when the template asks (Tally.ludic)
+import "ludic.ui"
+program StateComponent {
+  numbers float
+  state Score {
+    points: int = 0
+    bigs: int = 0
+  }
+  state Look {
+    prefix: string = "#"
+    big: int = 7
+  }
+  import "component_parts/Tally.ludic"
+  function all_text(n: UiNode) -> string {
+    var out = n.text
+    for i in 0 .. len(n.children) { out = out + all_text(n.children[i]) }
+    return out
+  }
+  function frame(ui_st: mut UiState) -> UiNode {
+    let root: UiNode = ui_nodes(ui_st, "Tally", null)
+    ui_place(ui_st, root, 0.0, 0.0, 300.0, 200.0)
+    return root
+  }
+  entry (ui_st: mut UiState, score: Score) {
+    var root = frame(ui_st)
+    ui_press(ui_st, root.children[0].children[1])
+    root = frame(ui_st)
+    ui_press(ui_st, root.children[0].children[1])
+    root = frame(ui_st)
+    print(`{all_text(root.children[0].children[0])} {score.points} {score.bigs}`)
+  }
+}

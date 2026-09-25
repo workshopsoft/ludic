@@ -249,6 +249,7 @@ function hips_of(h: Hiker) -> int { return h.hips }
     { ... }`, `@On(Ping) handler Heard(h: mut Hiker) { ... }`, `@OnSpawn(M) handler Made(h: mut
     Hiker) { ... }`, a scene's `on enter (h: mut Hiker) { ... }`, `test "name" (h: mut Hiker) { ... }`;
   - a retained `ui` block, which names a state's instance by the state's name: `font: Menu.title_font`;
+  - a component, whose header names its states: `component Tally (score: mut Score) { ... }`;
   - a function value: `fn tick` of `function tick(h: mut Hiker, t: Tick)` is `tick` with its
     leading states supplied, a `fn(Tick) -> void` - so a system's functions, a port's bind and any
     callback a package calls are entry points without saying so;
@@ -287,15 +288,26 @@ each program and, from the compiler's own view of every name:
 4. each function's states - those it touches, and those of everything it calls, to a fixed point -
    become its leading parameters, `mut` where it or something it calls writes; a state a run before
    declared read-only becomes `mut` where it is now changed;
-5. each call passes them on, and each entry point declares them.
+5. each call passes them on, each entry point declares them (after any it declares already), and
+   each component's header declares what all its members need.
 
 Give it every program at once - a directory stands for the test programs under it - and it merges
 their plans before it edits anything: programs that share a package agree about it, a module two of
-them see different files of is one state, and a path reached as `../../packages/x` is the same
-file as `packages/x`. It prints what it cannot decide (a var read in another global's initializer, a
-reference in generated code), for a person to finish. A later run finds the states an earlier one
-made and adds to them. `--runtime` moves the runtime's own vars too. gpp's packages and examples
-were moved with one command:
+them see different files of is one state, and a path reached as `../../packages/x` is the same file
+as `packages/x`. A program's own file keeps a state of its own (named for the program) whatever module it says, and
+a `friend module`'s other files go by their directory, since each program declares that module for
+itself. A package's var nothing in the given programs writes stays changing data (a game may set
+`r3d_dem_path`); only a private one of a package's module becomes a `let`. A name the program uses
+that a package migrated earlier moved into its state (`cam_pos`, now `Render3dState`'s) is rewritten
+through that state, and a read of the runtime's own var from outside it through the runtime function
+that answers it (`gl_w` is `gl_width()`). A program's own module named like a package (a game's `module fishing` beside
+`ludic.fishing`) gets a state of its own, `FishingAppState` / `fishing_app_st`, never the package's.
+It writes only under the programs and directories it is given (and `runtime/` with `--runtime`):
+when the programs need a change in a file anywhere else - an installed package, a module imported
+from a neighbouring directory - it says which and changes nothing. It prints what it cannot decide
+(a var read in another global's initializer, a reference in generated code), for a person to finish.
+A later run finds the states an earlier one made and adds to them. `--runtime` moves the runtime's
+own vars too. gpp's packages and examples were moved with one command:
 
 ```
 ludic migrate state packages <every example program> packages/ludic.lab/example/plate.ludic
@@ -589,6 +601,22 @@ component Counter {
   files again when they change on disk and keeps every instance's state.
 - **A screen is a component** with no props: `ui_show("Counter", null, x, y, w, h)`, or
   `ui_nodes("Counter", null)` for a test.
+- **States in the header.** A component that reads the program's data names the states it reads
+  and changes after its name, as an entry point does:
+
+  ```ludic
+  # doc-check: skip — a fragment of a program that imports ludic.ui
+  component Tally (score: mut Score, look: Look) {
+    total: int = score.points
+    function big() -> bool { return total > look.big }
+    on add(n: int) { score.points += n }
+  }
+  ```
+
+  Every getter, default, function and event takes them before the instance; a member's call to
+  another passes them on; ludic.ui's calls into the component are given the instances; and the
+  template never sees them - `on-click="add(5)"` passes only `5`. A header state without `mut` is
+  read-only in every member.
 
 An older, lighter bridge remains: `view Name { ... }` gives a whole template file of `<screen>`s
 and `<component>`s (loaded with `ui_load`) one model and one call, and the rest of this section

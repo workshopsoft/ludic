@@ -1,0 +1,1 @@
+<div><button on-click="grow()">+</button></div>

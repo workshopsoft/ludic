@@ -1,0 +1,12 @@
+# Tally.ludic - a component that reads and changes states: its header names them, every member
+# takes them, and the template never sees them
+component Tally (score: mut Score, look: Look) {
+  prop label: string
+  total: int = score.points
+  shown: string = `{look.prefix}{total}`
+  function big() -> bool { return total > look.big }
+  on add(n: int) {
+    score.points += n
+    if big() { score.bigs += 1 }
+  }
+}

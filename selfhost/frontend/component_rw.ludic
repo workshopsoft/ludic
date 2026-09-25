@@ -25,6 +25,26 @@ function cm_rewrite(c: int, f: Node, self_ty: pointer) -> void {
   }
   f.kids = kids
   cm_rw(c, f.a)
+  state_params_onto(f, g_cm_ps[c])               # 0.S: its states, before the instance
+}
+# a member's call to another passes its states on (they are its own parameters), then the instance
+function cm_member_args(c: int, rest: []Node) -> []Node {
+  let args = new []Node
+  var i = 0
+  while i < len(g_cm_ps[c]) {
+    let id = node(E_ID)
+    id.s = g_cm_ps[c][i].s
+    id.pos = -1
+    push(args, id)
+    i += 1
+  }
+  push(args, cm_self())
+  i = 0
+  while i < len(rest) {
+    push(args, rest[i])
+    i += 1
+  }
+  return args
 }
 function cm_is_keep(c: int, s: pointer) -> bool {
   var i = 0
@@ -73,20 +93,13 @@ function cm_rw(c: int, n: Node) -> void {
     let callee = node(E_ID)
     callee.s = cm_prefix(g_cm_name[c]) + "get_" + n.s
     n.a = callee
-    n.kids = new []Node
-    push(n.kids, cm_self())
+    n.kids = cm_member_args(c, new []Node)
+    n.pos = -1                                   # a call the compiler wrote: nothing in the source to edit
     return
   }
   if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and cm_is_call(c, n.a.s) and not cm_is_keep(c, n.a.s) {
     n.a.s = cm_prefix(g_cm_name[c]) + n.a.s
-    let args = new []Node
-    push(args, cm_self())
-    var i = 0
-    while i < len(n.kids) {
-      push(args, n.kids[i])
-      i += 1
-    }
-    n.kids = args
+    n.kids = cm_member_args(c, n.kids)
   }
   cm_rw(c, n.a)
   cm_rw(c, n.b)

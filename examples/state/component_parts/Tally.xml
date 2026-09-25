@@ -1,0 +1,4 @@
+<div>
+  <p>{label} {shown}{big() ? ' big' : ''}</p>
+  <button on-click="add(5)">+5</button>
+</div>

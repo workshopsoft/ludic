@@ -35,6 +35,9 @@ function vis_check(d: Node, what0: pointer) -> void {
   deps_edge(d, what0)                            # LUDIC_DEPS: the graph ludic deps reads (emit_deps.ludic)
   if g_vis_off { return }
   if d.file == null { return }
+  # 0.S: a state's instance, supplied by the runtime (a component's or a view's glue, an entry's
+  # parameters): the code that names it only passes it on
+  if d.kind == N_VAR and d.uns == 1 and is_state_ty(d.ty) and len(d.s) > 6 and (d.s[0 .. 6] == "state$") { return }
   let what = vis_plain(what0)
   var here = g_err_file
   if here == null { return }

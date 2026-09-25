@@ -531,6 +531,51 @@ function migrate_case() -> void {
   if ran == "2 names, first a" { ok(lbl) } else { bad2(lbl, `ran [{ran}]`) }
 }
 
+# a program built headless with the toolchain and run: its first line
+function headless_case(path: pointer, exp: pointer, label: pointer) -> void {
+  let out = `{tmp_dir()}/h_{flat(path)}`
+  if not shq(`bin/ludicc --headless examples/{path}.ludic -o {out} > {out}.log 2>&1`) { bad2(label, capture_line(`grep -i error {out}.log | head -1`));  return }
+  let got = capture_line(`{out} < /dev/null`)
+  if got == exp { ok(label) } else { bad2(label, `got [{got}] want [{exp}]`) }
+}
+# ludic migrate state and components: the header names what every member needs, a field read in a
+# member is not edited, a module named like a package keeps a state of its own, and the program
+# runs as it did
+function migrate_component_case() -> void {
+  let lbl = "ludic migrate state: a component's header, a module named like a package, the same output"
+  let work = `{tmp_dir()}/migcomp`
+  shell(`rm -rf {work} && mkdir -p {work}/game/parts {work}/game/fishing && cp examples/state/component_parts/Tally.xml {work}/game/parts/`)
+  write_file(`{work}/game/parts/Tally.ludic`, "component Tally {\n  prop label: string\n  total: int = points\n  shown: string = `{prefix}{total}`\n  function big() -> bool { return total > 7 }\n  on add(n: int) {\n    points += n\n    if big() { bigs += 1 }\n    fish_cast()\n  }\n}\n")
+  write_file(`{work}/game/fishing/index.ludic`, "module fishing\nvar casts: int = 0\nexport function fish_cast() -> void { casts += 1 }\nexport function fish_casts() -> int { return casts }\n")
+  var m = "import \"ludic.ui\"\nimport \"fishing\"\nprogram Mig {\n  numbers float\n  var points: int = 0\n  var bigs: int = 0\n  var prefix: string = \"#\"\n  import \"parts/Tally.ludic\"\n"
+  m = m + "  function frame(ui_st: mut UiState) -> UiNode {\n    let root: UiNode = ui_nodes(ui_st, \"Tally\", null)\n    ui_place(ui_st, root, 0.0, 0.0, 300.0, 200.0)\n    return root\n  }\n"
+  m = m + "  entry (ui_st: mut UiState) {\n    var root = frame(ui_st)\n    ui_press(ui_st, root.children[0].children[1])\n    root = frame(ui_st)\n    ui_press(ui_st, root.children[0].children[1])\n    root = frame(ui_st)\n"
+  m = m + "    print(`{root.children[0].children[0].text} {points} {bigs} {fish_casts()}`)\n  }\n}\n"
+  write_file(`{work}/game/main.ludic`, m)
+  let root = capture_line("pwd")
+  if not shq(`cd {work} && {root}/bin/ludic migrate state game/main.ludic > out.txt 2>&1`) { bad2(lbl, capture_line(`tail -1 {work}/out.txt`));  return }
+  let tally = read_file(`{work}/game/parts/Tally.ludic`)
+  if not s_contains(tally, "component Tally (fishing_app_st: mut FishingAppState, mig_st: mut MigState) {") or not s_contains(tally, "if big() { mig_st.bigs += 1 }") { bad2(lbl, `rewrote the component as [{tally}]`);  return }
+  if not s_contains(read_file(`{work}/game/fishing/index.ludic`), "export state FishingAppState {") { bad2(lbl, "module fishing's state is not its own");  return }
+  if not shq(`cd {work} && {root}/bin/ludicc --headless game/main.ludic -o mig > cc.txt 2>&1`) { bad2(lbl, capture_line(`grep -i error {work}/cc.txt | head -1`));  return }
+  let ran = capture_line(`{work}/mig < /dev/null`)
+  if ran == " #10 big 10 1 2" { ok(lbl) } else { bad2(lbl, `ran [{ran}]`) }
+}
+# ludic migrate state never writes outside what it was given: a module a program imports from
+# elsewhere that needs changing refuses the whole run, and nothing is written
+function migrate_foreign_case() -> void {
+  let lbl = "ludic migrate state refuses to change a file outside the programs it was given"
+  let work = `{tmp_dir()}/migforeign`
+  shell(`rm -rf {work} && mkdir -p {work}/lib/extra {work}/game`)
+  write_file(`{work}/lib/extra/index.ludic`, "module extra\nvar n: int = 0\nexport function bump() -> void { n += 1 }\n")
+  let main = "import \"../lib/extra\"\nprogram F {\n  entry { bump() }\n}\n"
+  write_file(`{work}/game/main.ludic`, main)
+  let root = capture_line("pwd")
+  if shq(`cd {work} && {root}/bin/ludic migrate state game/main.ludic > out.txt 2>&1`) { bad2(lbl, "it went ahead");  return }
+  if not shq(`grep -q 'lib/extra/index.ludic' {work}/out.txt`) { bad2(lbl, capture(`cat {work}/out.txt`));  return }
+  if not (read_file(`{work}/game/main.ludic`) == main) { bad2(lbl, "the program was changed anyway");  return }
+  ok(lbl)
+}
 # every package's own tests, the way a package author runs them: `ludic test packages`
 function packages_test_case() -> void {
   let lbl = "ludic test packages: every package's tests pass"
@@ -910,6 +955,11 @@ function cmd_dev_test() -> int {
   reject_case("rejected/mut_not_state", "mut is for a state parameter", "mut is for a state parameter")
   reject_case("rejected/state_alias_readonly", "r holds part of a read-only Table; take the state as mut Table", "a reference out of a read-only state is read-only too")
   reject_case("rejected/module_let_alias", "l holds part of LIMITS, which is module-level and immutable all the way down", "a module-level let is immutable through a local that holds it")
+  reject_case("rejected/state_component_ro", "look is read-only here (look: Look)", "a component's state is read-only unless its header says mut")
+  controller_case("state/component", "", " #10 big 10 1", "component.ludic (0.S: a component's header names its states; its getters, functions and events take them and the template never sees them)")
+  headless_case("rendering/ui_render3d", "ok", "ui_render3d.ludic (ludic.ui's render3d backend builds against the renderer)")
+  migrate_component_case()
+  migrate_foreign_case()
   reject_case("rejected/runtime_type_clash", "PadButton is the runtime's enum", "a program's type named like one of the runtime's is refused")
   migrate_case()
   vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")

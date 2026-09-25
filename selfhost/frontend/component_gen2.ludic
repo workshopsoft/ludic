@@ -55,10 +55,11 @@ function cm_call_src(c: int, px: pointer, rec: pointer, head: Node) -> pointer {
   var i = 0
   while i < len(calls) {
     let f = calls[i]
-    var args = "s"
-    var k = 1
+    var args = "s"                               # 0.S: its states are supplied, not passed
+    let lead = len(g_cm_ps[c]) + 1
+    var k = lead
     while k < len(f.kids) {
-      args = args + ", " + cm_arg(c, f.kids[k], k - 1)
+      args = args + ", " + cm_arg(c, f.kids[k], k - lead)
       k += 1
     }
     src = src + `  if name == "{g_cm_cnames[c][i]}" {{\n`

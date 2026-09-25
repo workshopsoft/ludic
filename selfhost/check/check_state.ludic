@@ -45,7 +45,8 @@ function ck_let_from(e: Node, ty: pointer) -> void {
     return
   }
   if li >= 0 { return }
-  let g = ck_global(r.s)
+  var g = ck_global(r.s)
+  if g == null { g = mg_field_var(r.s) }
   if g != null and g.kind == N_VAR { ck_alias[k] = g }
 }
 function ck_is_ro(li: int) -> bool {
@@ -90,7 +91,8 @@ function ck_write_check(t: Node, what: pointer) -> void {
     }
     return
   }
-  let g = ck_global(r.s)
+  var g = ck_global(r.s)
+  if g == null { g = mg_field_var(r.s) }
   mg_write(t, g)
   if ck_module_let(g) {
     var name = r.s
