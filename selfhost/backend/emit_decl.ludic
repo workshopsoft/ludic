@@ -60,7 +60,7 @@ function emit_main(d: Node) -> void {
   # game that renders (drives tick_render, draws, uses the engine light pass) has
   # its framebuffer allocated. Headless it only allocates — no window, no output —
   # so a non-rendering entry game is unchanged.
-  if (find_fn("rt_init") != null) { emit("  call void @fn_rt_init()\n") }
+  if (find_fn("rt_init") != null) { emit("  call void " + fn_sym("rt_init") + "()\n") }
   emit("  call void @L_init_globals()\n")
   emit_block(d.a)
   if not g_term { emit("  br label %ret\n") }

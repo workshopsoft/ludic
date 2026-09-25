@@ -56,7 +56,7 @@ function emit_machine(st: Node) -> void {
   if (addr != null) { s = emit_bind(`load i32, ptr {addr}`) }
   else {
     let regv = emit_expr(st.a)
-    s = emit_bind(`call i32 @fn_rt_reg(i32 {regv.code})`)
+    s = emit_bind(`call i32 {fn_sym("rt_reg")}(i32 {regv.code})`)
   }
   if nmach < len(mach_stk) { mach_stk[nmach] = st } else { push(mach_stk, st) }
   nmach += 1
@@ -96,7 +96,7 @@ function emit_become(st: Node) -> void {
         emit(`  store i32 {sv}, ptr {addr}\n`)
       } else {
         let regv = emit_expr(m.a)
-        emit("  call void @fn_rt_set_reg(i32 ");  emit(regv.code);  emit(", i32 ");  emit(sv);  emit(")\n")
+        emit("  call void " + fn_sym("rt_set_reg") + "(i32 ");  emit(regv.code);  emit(", i32 ");  emit(sv);  emit(")\n")
       }
       return
     }

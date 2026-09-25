@@ -75,12 +75,12 @@ function emit_engine_systems_for_phase(phase: pointer) -> void {
   if (phase == "Update") {
     # Tween.* fluent handles (#48): advanced each Update tick when the game uses
     # them (gated on g_uses_tween_rt rather than a declared component).
-    if g_uses_tween_rt and (find_fn("esys_tween") != null) { emit("  call void @fn_esys_tween()\n") }
+    if g_uses_tween_rt and (find_fn("esys_tween") != null) { emit("  call void " + fn_sym("esys_tween") + "()\n") }
     if has_countdowns() { emit("  call void @L_countdowns()\n") }        # `countdown` fields tick toward 0
-    if g_uses_fx and (find_fn("fx_tick") != null) { emit("  call void @fn_fx_tick()\n") }   # Fx.* age and move
+    if g_uses_fx and (find_fn("fx_tick") != null) { emit("  call void " + fn_sym("fx_tick") + "()\n") }   # Fx.* age and move
   }
   if (phase == "Render") {
-    if g_uses_fx and (find_fn("fx_draw") != null) { emit("  call void @fn_fx_draw()\n") }   # Fx.* draw after the sprites
+    if g_uses_fx and (find_fn("fx_draw") != null) { emit("  call void " + fn_sym("fx_draw") + "()\n") }   # Fx.* draw after the sprites
   }
 }
 
@@ -361,7 +361,7 @@ function emit_scene_menu_render() -> void {
       let ce = emit_bind(`icmp eq i32 {cs}, {itoa(sc.ival)}`)
       let run = lbl("mrun");  let skip = lbl("mskip")
       emit("  br i1 ");  emit(ce);  emit(", label %");  emit(run);  emit(", label %");  emit(skip);  emit("\n")
-      emit(run);  emit(":\n  call void @fn_rt_ui_render()\n")
+      emit(run);  emit(":\n  call void " + fn_sym("rt_ui_render") + "()\n")
       emit("  br label %");  emit(skip);  emit("\n");  emit(skip);  emit(":\n")
     }
     i += 1
@@ -380,10 +380,10 @@ function emit_scene_fn(name: pointer, kind: pointer, body: Node, menu: pointer) 
   code = fbody
   # `scene X shows Menu`: a free cursor and the menu open on enter, closed on exit
   if (menu != null) and (kind == "enter") {
-    if (find_fn("input_cursor_mode") != null) { emit("  call void @fn_input_cursor_mode(i32 0)\n") }
-    emit("  call void @fn_rt_ui_open(i32 ");  emit(itoa(ui_index_of("UI_" + menu)));  emit(")\n")
+    if (find_fn("input_cursor_mode") != null) { emit("  call void " + fn_sym("input_cursor_mode") + "(i32 0)\n") }
+    emit("  call void " + fn_sym("rt_ui_open") + "(i32 ");  emit(itoa(ui_index_of("UI_" + menu)));  emit(")\n")
   }
-  if (menu != null) and (kind == "exit") { emit("  call void @fn_rt_ui_close()\n") }
+  if (menu != null) and (kind == "exit") { emit("  call void " + fn_sym("rt_ui_close") + "()\n") }
   if (body != null) { emit_block(body) }
   # EV1: a `public` scene fires scene_<S>_enter / scene_<S>_exit after its block
   let sev = `scene_{name}_{kind}`

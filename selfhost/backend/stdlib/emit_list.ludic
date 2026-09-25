@@ -70,11 +70,11 @@ function emit_takeright(elt: pointer, mode: int, fnsym: pointer, keyll: pointer,
     return emit_bind(`icmp slt {elt} {bv}, {av}`)              # right strictly less than left
   }
   if (mode == SORT_WITH) {
-    let c = emit_bind(`call i32 @fn_{fnsym}({elt} {av}, {elt} {bv})`)
+    let c = emit_bind(`call i32 {fn_sym(fnsym)}({elt} {av}, {elt} {bv})`)
     return emit_bind(`icmp sgt i32 {c}, 0`)                    # cmp(left, right) > 0 -> left comes after
   }
-  let kl = emit_bind(`call {keyll} @fn_{fnsym}({elt} {av})`)
-  let kr = emit_bind(`call {keyll} @fn_{fnsym}({elt} {bv})`)
+  let kl = emit_bind(`call {keyll} {fn_sym(fnsym)}({elt} {av})`)
+  let kr = emit_bind(`call {keyll} {fn_sym(fnsym)}({elt} {bv})`)
   if (mode == SORT_KEY_DESC) {
     return emit_bind(`icmp slt {keyll} {kl}, {kr}`)            # desc: right first when its key is larger
   }
@@ -232,7 +232,7 @@ function emit_list_ns(meth: pointer, e: Node) -> Val {
     let pool = emit_expr(e.kids[0])
     let cnt = emit_expr(e.kids[1])
     if find_fn("rt_list_sample") == null { perr("List.sample needs the engine runtime (a game, or import ludic.core)") }
-    return val(emit_bind(`call ptr @fn_rt_list_sample(ptr {pool.code}, i32 {cnt.code})`), "[]int")
+    return val(emit_bind(`call ptr {fn_sym("rt_list_sample")}(ptr {pool.code}, i32 {cnt.code})`), "[]int")
   }
   let s = emit_expr(e.kids[0])
   if not is_slice_ty(s.ty) { perr(`List.{meth} needs a slice`) }

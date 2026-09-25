@@ -81,6 +81,16 @@ var g_mg_entry: pointer = ""            # the program's own file: its vars are t
 # the state a var's file moves into: its module's, or - a file in no module - the program's for the
 # program's own file, else one named for the file's directory (a test's shared fakes)
 function mg_state_of_file(f: pointer) -> int {
+  if is_runtime_file(f) {                        # the runtime: a state per file (rt_input: RtInputState)
+    var b = f
+    var i = 0
+    while i < len(f) {
+      if f[i] == '/' { b = f[i + 1 .. len(f)] }
+      i += 1
+    }
+    if len(b) > 6 and (b[len(b) - 6 .. len(b)] == ".ludic") { b = b[0 .. len(b) - 6] }
+    return mg_state_of_mod(`@{f}`, `rt_{b}`)
+  }
   let m = module_for_uses(f)
   if not (m == "") { return mg_state_of_mod(m, mg_short(m)) }
   if (f == g_mg_entry) {                        # the program's own: SceneDemo is SceneDemoState, scene_demo_st
@@ -301,6 +311,7 @@ var g_mc_passed: []int = new []int  # 1: the call already hands the callee a sta
 function mg_call(e: Node, f: Node) -> void {
   if not g_migrate or f == null or g_mg_cur < 0 { return }
   if e.pos < 0 { return }                        # a generated call gets its states when compiled
+  if is_runtime_file(f.file) and not is_runtime_file(e.file) { return }   # the runtime's are supplied
   push(g_mc_call, e)
   push(g_mc_unit, g_mg_cur)
   push(g_mc_callee, mg_unit(f, 0))

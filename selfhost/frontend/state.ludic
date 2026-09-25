@@ -18,6 +18,11 @@ var g_state_names: []pointer = new []pointer
 var g_allow_globals: bool = false
 var g_gen_nodes: bool = false          # the finishing passes are writing code: its nodes are generated
 
+# a runtime function called from outside the runtime: a built-in, whose states are the runtime's
+function is_runtime_file(f: pointer) -> bool { return f != null and has_sub(f, "runtime/native/") }
+function state_inject_runtime(e: Node, f: Node) -> void {
+  if e != null and f != null and is_runtime_file(f.file) and not is_runtime_file(e.file) { state_inject(e, f) }
+}
 # a call the compiler wrote itself (a view's model, a component's glue): its callee's states are
 # supplied - the runtime's side of an entry point
 function state_inject_generated(e: Node, f: Node) -> void {
@@ -117,6 +122,12 @@ function state_inject(e: Node, f: Node) -> void {
     i += 1
   }
   if k == 0 or len(e.kids) + k > total { return }
+  var named = false                              # `f(x: 1)`: the states go in by name too
+  i = 0
+  while i < len(e.kids) {
+    if e.kids[i].kind == E_FINIT { named = true }
+    i += 1
+  }
   let args = new []Node
   i = 0
   while i < k {
@@ -124,7 +135,12 @@ function state_inject(e: Node, f: Node) -> void {
     id.s = state_global(f.kids[i].ty)
     id.file = e.file
     id.line = e.line
-    push(args, id)
+    if named {
+      let fi = node(E_FINIT)
+      fi.s = f.kids[i].s
+      fi.a = id
+      push(args, fi)
+    } else { push(args, id) }
     i += 1
   }
   i = 0

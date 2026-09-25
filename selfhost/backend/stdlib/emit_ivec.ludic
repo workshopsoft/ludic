@@ -56,17 +56,17 @@ function emit_ivec_ns(meth: pointer, e: Node) -> Val {
   if (meth == "heading") {                          # degrees from a to b (0 = +x, 90 = +y)
     if find_fn("rt_ivec_heading") == null { perr("IVec2.heading needs the engine runtime") }
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
-    return val(emit_bind(`call i32 @fn_rt_ivec_heading(i64 {a.code}, i64 {b.code})`), "int")
+    return val(emit_bind(`call i32 {fn_sym("rt_ivec_heading")}(i64 {a.code}, i64 {b.code})`), "int")
   }
   if (meth == "along") {                            # the point `distance` along `degrees` from origin
     if find_fn("rt_ivec_along") == null { perr("IVec2.along needs the engine runtime") }
     let o = emit_expr(e.kids[0]);  let d = emit_expr(e.kids[1]);  let n = emit_expr(e.kids[2])
-    return val(emit_bind(`call i64 @fn_rt_ivec_along(i64 {o.code}, i32 {d.code}, i32 {n.code})`), "IVec2")
+    return val(emit_bind(`call i64 {fn_sym("rt_ivec_along")}(i64 {o.code}, i32 {d.code}, i32 {n.code})`), "IVec2")
   }
   if (meth == "step") {                             # a -1/0/1 unit step along `degrees`
     if find_fn("rt_ivec_step") == null { perr("IVec2.step needs the engine runtime") }
     let d = emit_expr(e.kids[0])
-    return val(emit_bind(`call i64 @fn_rt_ivec_step(i32 {d.code})`), "IVec2")
+    return val(emit_bind(`call i64 {fn_sym("rt_ivec_step")}(i32 {d.code})`), "IVec2")
   }
   if (meth == "add") {                              # component-wise a + b
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])

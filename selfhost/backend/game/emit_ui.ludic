@@ -85,7 +85,7 @@ function is_ui_ident(nm: pointer) -> bool {
 }
 
 function ll_ui_set(idx: int, key: int, val: pointer) -> void {
-  emit("  call void @fn_rt_ui_set(i32 ");  emit(itoa(idx));  emit(", i32 ");  emit(itoa(key));  emit(", i32 ");  emit(val);  emit(")\n")
+  emit("  call void " + fn_sym("rt_ui_set") + "(i32 ");  emit(itoa(idx));  emit(", i32 ");  emit(itoa(key));  emit(", i32 ");  emit(val);  emit(")\n")
 }
 function ui_prop_key(k: pointer) -> int {
   if (k == "w") { return 2 };  if (k == "h") { return 3 };  if (k == "x") { return 4 };  if (k == "y") { return 5 }
@@ -102,7 +102,7 @@ function emit_ui_build() -> void {
   falloc = buf_new()
   let saved = code
   code = fbody
-  emit("  call void @fn_rt_ui_reset(i32 ");  emit(itoa(len(uiw)));  emit(")\n")
+  emit("  call void " + fn_sym("rt_ui_reset") + "(i32 ");  emit(itoa(len(uiw)));  emit(")\n")
   var i = 0
   while i < len(uiw) {
     let w = uiw[i]
@@ -119,10 +119,10 @@ function emit_ui_build() -> void {
       if (k == "id") or (k == "goto") { p += 1;  continue }
       if (k == "text") {
         let sv = emit_expr(v)
-        emit("  call void @fn_rt_ui_static_text(i32 ");  emit(itoa(i));  emit(", ptr ");  emit(sv.code);  emit(")\n")
+        emit("  call void " + fn_sym("rt_ui_static_text") + "(i32 ");  emit(itoa(i));  emit(", ptr ");  emit(sv.code);  emit(")\n")
       } else { if (k == "skin") or (k == "image") {
         let sv = emit_expr(v)
-        let r = emit_bind(`call i32 @fn_rt_image_load(ptr {sv.code})`)
+        let r = emit_bind(`call i32 {fn_sym("rt_image_load")}(ptr {sv.code})`)
         if (k == "skin") { ll_ui_set(i, 20, r) } else { ll_ui_set(i, 19, r) }
       } else { if (k == "align") {
         if v.kind == E_ID {

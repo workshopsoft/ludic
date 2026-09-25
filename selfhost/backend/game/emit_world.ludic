@@ -445,7 +445,7 @@ function emit_game_main() -> void {
   emit("define i32 @main(i32 %argc, ptr %argv) {\nentry:\n")
   emit("  store i32 %argc, ptr @L_argc\n")
   emit("  store ptr %argv, ptr @L_argv\n")
-  if (find_fn("rt_init") != null) { emit("  call void @fn_rt_init()\n") }
+  if (find_fn("rt_init") != null) { emit("  call void " + fn_sym("rt_init") + "()\n") }
   emit("  call void @L_init_globals()\n")
   emit_calls_for_phase("Start")
   # enter the start scene once, after boot: store its id and run its on-enter.
@@ -463,7 +463,7 @@ function emit_game_main() -> void {
   let r = emit_bind("load i32, ptr @L_running")
   let rc = emit_bind(`icmp ne i32 {r}, 0`)
   if (find_fn("rt_running") != null) {
-    let pr = emit_bind("call i32 @fn_rt_running()")
+    let pr = emit_bind("call i32 " + fn_sym("rt_running") + "()")
     let pc = emit_bind(`icmp ne i32 {pr}, 0`)
     let go = emit_bind(`and i1 {rc}, {pc}`)
     emit("  br i1 ");  emit(go);  emit(", label %body, label %done\n")
@@ -478,11 +478,11 @@ function emit_game_main() -> void {
   # and the game no longer has to call Input.poll by hand. A game that uses no Input
   # runtime keeps the plain rt_poll path, byte-identical.
   if g_uses_input and (find_fn("input_drive") != null) {
-    let k = emit_bind("call i32 @fn_input_drive()")
+    let k = emit_bind("call i32 " + fn_sym("input_drive") + "()")
     emit("  store i32 ");  emit(k);  emit(", ptr @L_key\n")
   } else {
     if (find_fn("rt_poll") != null) {
-      let k = emit_bind("call i32 @fn_rt_poll()")
+      let k = emit_bind("call i32 " + fn_sym("rt_poll") + "()")
       emit("  store i32 ");  emit(k);  emit(", ptr @L_key\n")
     }
   }
@@ -490,7 +490,7 @@ function emit_game_main() -> void {
   # UiClicked on activation — so a scene never polls ui_tick by hand.
   if has_ui() and (find_fn("rt_ui_tick") != null) {
     let uk = emit_bind("load i32, ptr @L_key")
-    emit("  call void @fn_rt_ui_tick(i32 ");  emit(uk);  emit(")\n")
+    emit("  call void " + fn_sym("rt_ui_tick") + "(i32 ");  emit(uk);  emit(")\n")
   }
   emit_calls_for_phase("Input")
   emit_calls_for_phase("FixedUpdate")
@@ -503,14 +503,14 @@ function emit_game_main() -> void {
   # system owns the present).
   if g_has_clear_color and (find_fn("rt_clear") != null) {
     let colour = emit_expr(g_clear_color)          # a literal, a const, or a Color.Name
-    emit("  call void @fn_rt_clear(i32 ");  emit(colour.code);  emit(")\n")
+    emit("  call void " + fn_sym("rt_clear") + "(i32 ");  emit(colour.code);  emit(")\n")
   }
   emit_calls_for_phase("Render")
   # Overlay: HUD / menus drawn after every engine Render system (sprites, lights), so
   # game UI is never painted under an actor. Presented together with the frame.
   emit_calls_for_phase("Overlay")
   if g_has_clear_color and (find_fn("rt_present") != null) {
-    emit("  call void @fn_rt_present()\n")
+    emit("  call void " + fn_sym("rt_present") + "()\n")
   }
   let fcur = emit_bind("load i32, ptr @L_frame")     # Time.frame(): count completed frames
   let fnext = emit_bind(`add i32 {fcur}, 1`)
@@ -520,6 +520,6 @@ function emit_game_main() -> void {
   if len(g_ondespawn) > 0 { emit("  call void @L_despawn_all(i32 2)\n") }   # LC1: every survivor's @OnDespawn fires with reason Quit
   emit_calls_for_phase("OnQuit")               # @OnQuit shutdown hooks run once, before teardown
   if (find_event("program_quit") != null) { emit("  call void @ev_program_quit()\n") }   # EV1: @Public @OnQuit
-  if (find_fn("rt_shutdown") != null) { emit("  call void @fn_rt_shutdown()\n") }
+  if (find_fn("rt_shutdown") != null) { emit("  call void " + fn_sym("rt_shutdown") + "()\n") }
   emit("  ret i32 0\n}\n")
 }

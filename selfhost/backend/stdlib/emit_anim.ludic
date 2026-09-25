@@ -137,7 +137,7 @@ function emit_tween_ns(meth: pointer, e: Node) -> Val {
     # a call into tween.ludic; the 2-arg Tween.done(timer, dur) is the pure form.
     if (len(e.kids) == 1) {
       let h = emit_expr(e.kids[0])
-      return val(emit_bind(`call i32 @fn_tween_done(i32 {h.code})`), "bool")
+      return val(emit_bind(`call i32 {fn_sym("tween_done")}(i32 {h.code})`), "bool")
     }
     let timer = emit_expr(e.kids[0]);  let dur = emit_expr(e.kids[1])   # timer >= duration -> bool
     let c = emit_bind(`icmp sge i32 {timer.code}, {dur.code}`)

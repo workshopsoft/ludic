@@ -958,6 +958,7 @@ function emit_call(e: Node) -> Val {
   }
   vis_check(fn2, name)
   state_inject_generated(e, fn2)                   # 0.S: a call the compiler wrote gets its states
+  state_inject_runtime(e, fn2)                     # and a call into the runtime
   call_fill_defaults(e, fn2)                       # L11 - for code the checker does not walk
   reorder_named(e, param_labels(fn2))
   # evaluate args first (their IR is emitted before the call instruction), coercing

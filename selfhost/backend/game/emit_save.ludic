@@ -86,7 +86,7 @@ function emit_snapshot() -> void {
   emit("  %bad = icmp eq ptr %f, null\n")
   emit("  br i1 %bad, label %out, label %go\ngo:\n")
   emit_snapshot_blocks("fwrite")
-  if has_save { emit("  call void @fn_rt_save_state(ptr %f)\n") }
+  if has_save { emit("  call void " + fn_sym("rt_save_state") + "(ptr %f)\n") }
   emit("  %c = call i32 @fclose(ptr %f)\n  br label %out\nout:\n  ret void\n}\n\n")
 
   emit("define i32 @L_load() {\nentry:\n")
@@ -94,7 +94,7 @@ function emit_snapshot() -> void {
   emit("  %bad = icmp eq ptr %f, null\n")
   emit("  br i1 %bad, label %miss, label %go\nmiss:\n  ret i32 0\ngo:\n")
   emit_snapshot_blocks("fread")
-  if has_load { emit("  call void @fn_rt_load_state(ptr %f)\n") }
+  if has_load { emit("  call void " + fn_sym("rt_load_state") + "(ptr %f)\n") }
   emit("  %c = call i32 @fclose(ptr %f)\n  ret i32 1\n}\n\n")
 
   # world_save(buf) -> int / world_load(buf, len): the same whole-world snapshot,
