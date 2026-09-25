@@ -1,0 +1,22 @@
+# port_vars.ludic — L3: a port member that takes nothing can be bound to a variable, `money: g_money`
+# - the compiler writes the getter (bind_Purse_money) in the bind's own file - and a member that takes
+# something is still bound to a function.
+#
+# Running it prints:  40 45 12
+program PortVars {
+  port Purse {
+    money: fn() -> int
+    price: fn(int) -> int
+  }
+  var g_money: int = 40
+  var g_rate: int = 3
+  function priced(n: int) -> int {
+    return n * g_rate
+  }
+  bind Purse { money: g_money, price: fn priced }
+  entry {
+    let a = Purse.money()
+    g_money += 5
+    print(`{a} {Purse.money()} {Purse.price(4)}`)
+  }
+}

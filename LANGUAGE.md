@@ -190,6 +190,12 @@ bind Clock { now: fn game_hours }
 function game_hours() -> int { return g_hours }
 ```
 
+A member that takes nothing can be bound to a variable instead: `bind Purse { money: g_money }` for a
+`money: fn() -> int` writes the getter (`bind_Purse_money`, returning `g_money` as it is at each call)
+in the bind's own file, so the one-line wrapper function is not needed. A member that takes something
+is refused a variable (`bind Purse: price is a fn(int)->int, and only a member that takes nothing can
+be bound to a variable`).
+
 Calls go through the port by name, `Clock.now()`. `clock` never names `app`, so it needs no
 `uses app`; the binder must be able to see the port - it is `export`ed, and a binder that says
 `uses` names the port's module. What the bind names (`fn game_hours`) is checked from the bind's

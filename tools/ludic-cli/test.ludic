@@ -844,6 +844,8 @@ function cmd_dev_test() -> int {
   reject_case("rejected/port_unbound", "port Clock is used here but never bound", "a port used and never bound is refused at the use")
   reject_case("rejected/port_missing", "bind Clock leaves out day, which has no default", "a bind gives every required member")
   reject_case("rejected/port_twice", "port Clock is bound twice (first at", "a port is bound once")
+  feat_case("modules/port_vars", "", "40 45 12", "port_vars.ludic (L3: a port member that takes nothing bound to a variable, money: g_money)")
+  reject_case("rejected/port_var_args", "only a member that takes nothing can be bound to a variable", "a member with parameters binds a function, not a variable")
   reject_case("rejected/port_new", "Clock is a port: it is filled once with 'bind Clock", "a port is bound, not made with new")
   reject_case("rejected/port_private", "Clock is private to module clock", "whoever binds a port has to see it")
   reject_case("rejected/uses_package", "mech uses ludic_inventory.inv_count", "a package's module counts under `uses` like any other")
