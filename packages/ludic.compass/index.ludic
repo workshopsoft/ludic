@@ -1,0 +1,11 @@
+# ludic.compass - where things are from where you stand: marks gathered once a frame from an open
+# registry of providers, gated by a tier and sorted by priority, turned into bearings for a strip
+# and blips for a radar. The game draws both.
+module ludic_compass uses ludic_base
+numbers float
+import "ludic.base"
+import "ports.ludic"
+import "marks.ludic"
+import "gather.ludic"
+import "bearing.ludic"
+import "radar.ludic"

@@ -1,0 +1,6 @@
+# ludic.compass - bearing markers on a strip: marks gathered each frame from the game's providers,
+# gated by the viewer's tier, sorted and culled by priority, as bearings and distances, and the
+# radar's tiers. Uses ludic.base and nothing else. See README.md.
+package "ludic.compass"
+version "0.1.0"
+kind source

@@ -1,0 +1,46 @@
+# marks.ludic - a mark, the providers the game registers, and the frame's list
+export const COMPASS_PLAIN: int = 0          # priorities: an ordinary mark
+export const COMPASS_NOTE: int = 1           # one the player asked for (a mark of their own)
+export const COMPASS_TRACKED: int = 2        # the objective: its distance is shown, at the edge too
+
+export property CompassMark {
+  x: float = 0.0
+  z: float = 0.0
+  icon: int = 0          # the game's key for its picture
+  colour: int = 0        # the game's key for its colour
+  tier: int = 1          # the least compass that shows it
+  prio: int = 0
+  label: string = ""
+}
+
+# a provider says where its things are by calling compass_mark; the game fills the registry
+# (`def CompassProviders story { gather: fn story_marks }`) and they are asked in its order
+export property CompassProvider {
+  key: string = ""
+  gather: fn() -> void = null
+}
+
+export open registry CompassProviders of CompassProvider as COMPASS_FROM
+
+var cmp_cap: int = 64
+var cmp_list: []CompassMark = null       # this frame's, sorted and culled
+var cmp_capturing: bool = false
+var cmp_caught: []CompassMark = null     # what providers said while someone was listening
+
+# how many marks a frame keeps (the lowest priorities go first past it)
+export function compass_config(cap: int) -> void {
+  cmp_cap = Math.max(cap, 1)
+  compass_begin()
+}
+
+function cmp_new(x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> CompassMark {
+  let m = new CompassMark
+  m.x = x
+  m.z = z
+  m.icon = icon
+  m.colour = colour
+  m.tier = tier
+  m.prio = prio
+  m.label = label
+  return m
+}

@@ -1,0 +1,14 @@
+# ports.ludic - what the compass asks the game: where the viewer stands, which way the strip
+# faces and which compass is in the pack. Unbound, it stands at the origin facing -z (yaw 0) and
+# carries every tier.
+export port CompassWorld {
+  x: fn() -> float = fn cmp__zero
+  z: fn() -> float = fn cmp__zero
+  yaw: fn() -> float = fn cmp__zero           # radians; 0 faces -z, and +yaw turns toward -x
+  tier: fn() -> int = fn cmp__every           # 0 no compass: nothing at all is gathered
+}
+
+function cmp__zero() -> float { return 0.0 }
+function cmp__every() -> int { return 1000 }
+
+const CMP_PI: float = 3.14159265
