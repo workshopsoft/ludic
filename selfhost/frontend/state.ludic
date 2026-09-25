@@ -76,6 +76,7 @@ function parse_state() -> void {
 }
 # `name: mut T` in a parameter list: the `mut`, when it is there
 function parse_param_mut(p: Node) -> void {
+  p.pos2 = toks[pi].pos                        # where `mut ` goes, when a migration adds it
   if is_id("mut") and toks[pi + 1].kind == TK_ID {
     pi += 1
     p.uns = 1
@@ -167,6 +168,7 @@ function entry_bind(body: Node, ps: []Node) -> void {
     l.ival = 0
     l.uns = p.uns                                # 1: a `mut` state; 0: read-only
     l.tps = "state"                              # an entry point's state: checked to be one
+    l.pos2 = p.pos2
     let id = node(E_ID)
     id.s = state_global(p.ty)
     id.file = p.file

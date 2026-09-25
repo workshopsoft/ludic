@@ -856,8 +856,8 @@ function cmd_dev_test() -> int {
   g_case_unsafe = true                                   # the transport ABI takes raw bytes
   net_case("networking/net_echo", "4 10 20 30 42")
   net_case("networking/net_snapshot", "50 7 50")
-  g_case_unsafe = false
   net_case("networking/net_sync", "12 3 4 50 999")
+  g_case_unsafe = false
   net_case("networking/net_owner", "-1 7 0 1")
   net_case("networking/net_rpc", "0 8")
   net_case("networking/net_roles", "1 102")

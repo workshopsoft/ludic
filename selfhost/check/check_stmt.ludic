@@ -38,7 +38,7 @@ function ck_let(s: Node) -> void {
   # a local bound to a read-only state, or to a reference out of one, is read-only too
   if s.a != null and s.a.kind == E_ID {
     let li = ck_local(s.a.s)
-    if li >= 0 and li < ck_top - 1 and ck_is_ro(li) { ck_set_ro(true) }
+    if li >= 0 and li < ck_top - 1 and ck_is_ro(li) { ck_ro_like(li) }
   }
   ck_let_from(s.a, t)
 }

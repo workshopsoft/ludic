@@ -358,10 +358,34 @@ function mg_nparams(n: Node) -> int {
   }
   return k
 }
+# a state declared read-only (a run before) that the unit, or something it calls, now changes
+function mg_mut_upgrades(u: int, n: Node) -> void {
+  var ps = n.kids
+  if g_mu_kind[u] != 0 {
+    ps = new []Node
+    var body = n.a
+    if g_mu_kind[u] == 5 { body = n }
+    var j = 0
+    while body != null and j < len(body.kids) and body.kids[j].tps != null and (body.kids[j].tps == "state") {
+      push(ps, body.kids[j])
+      j += 1
+    }
+  }
+  var i = 0
+  while i < len(ps) {
+    let p = ps[i]
+    if (p.kind == N_PARAM or p.kind == S_LET) and is_state_ty(p.ty) and p.uns == 0 and p.pos2 >= 0 and p.file != null {
+      let s = mg_state_named(p.ty)
+      if has_sub(g_mu_mut[u], `,{itoa(s)},`) { mg_emit(`INS {p.file} {itoa(p.pos2)} {mg_esc("mut ")}`, "") }
+    }
+    i += 1
+  }
+}
 function mg_units() -> void {
   var u = 0
   while u < len(g_mu_node) {
     let n = g_mu_node[u]
+    mg_mut_upgrades(u, n)
     let need = mg_list(g_mu_need[u])
     if len(need) > 0 {
       var text = ""

@@ -6,13 +6,23 @@
 # local (`let l = h.list`, `let r = TABLE[0]`) carries the same rule: a write through it is refused.
 var ck_ro: []int = new []int            # parallel to ck_names: 1 for a read-only state
 var ck_alias: []Node = new []Node       # parallel to ck_names: the global a local's reference came from
+var ck_ro_st: []pointer = new []pointer # parallel to ck_names: the state that makes a local read-only
 
 function ck_set_ro(ro: bool) -> void {
   let k = ck_top - 1
   while len(ck_ro) < len(ck_names) { push(ck_ro, 0) }
   while len(ck_alias) < len(ck_names) { push(ck_alias, null) }
+  while len(ck_ro_st) < len(ck_names) { push(ck_ro_st, null) }
   if ro { ck_ro[k] = 1 } else { ck_ro[k] = 0 }
   ck_alias[k] = null
+  ck_ro_st[k] = null
+  if ro { ck_ro_st[k] = ck_tys[k] }
+}
+# the local just bound is read-only for the same state as local `li`
+function ck_ro_like(li: int) -> void {
+  let k = ck_top - 1
+  ck_ro[k] = 1
+  ck_ro_st[k] = ck_ro_st[li]
 }
 # a value, not a reference: nothing can be written through it
 function ck_scalar(t: pointer) -> bool {
@@ -30,7 +40,7 @@ function ck_let_from(e: Node, ty: pointer) -> void {
   let k = ck_top - 1
   let li = ck_local(r.s)
   if li >= 0 and li < k {
-    if ck_is_ro(li) { ck_ro[k] = 1 }
+    if ck_is_ro(li) { ck_ro_like(li) }
     if li < len(ck_alias) { ck_alias[k] = ck_alias[li] }
     return
   }
@@ -66,6 +76,10 @@ function ck_write_check(t: Node, what: pointer) -> void {
       let ag = ck_alias[li]
       mg_write(t, ag)
       if ck_module_let(ag) { ck_err("state", t, `{what}: {r.s} holds part of {mg_src_name(ag.s)}, which is module-level and immutable all the way down`) }
+    }
+    if ck_is_ro(li) and g_migrate and g_mg_cur >= 0 and ck_ro_st[li] != null {
+      mg_need(g_mg_cur, mg_state_named(ck_ro_st[li]), true)   # 0.S2: it becomes `mut`
+      return
     }
     if ck_is_ro(li) {
       ck_err("state", t, `{what}: {r.s} is read-only here ({r.s}: {ck_tys[li]}); take it as {r.s}: mut {ck_tys[li]} to change it`)
