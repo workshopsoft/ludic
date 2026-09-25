@@ -1,0 +1,5 @@
+# ludic.effects - timed modifiers that run down in game time: a meal's warmth, a drink's legs,
+# a soaking's chill. Uses ludic.base and nothing else. See README.md.
+package "ludic.effects"
+version "0.1.0"
+kind source

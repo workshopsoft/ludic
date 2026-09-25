@@ -1,0 +1,127 @@
+# effects_test.ludic - the ring: sums by kind, replacing itself, the bonus cap, a delayed start,
+# running down in game time, the facts it reports, and its own save section
+import "ludic.effects"
+import "ludic.base"
+program EffectsTest {
+  numbers float
+  const LEGS: int = 0
+  const WARMTH: int = 1
+  const CARRY: int = 2
+
+  function fresh() -> void {
+    effects_config(8, 3)
+    effects_reset()
+  }
+
+  function ended() -> []EffectEnded { return q_drain(effects_ended()) }
+  function waiting() -> int { return q_len(effects_ended()) }
+
+  function tick_minutes(m: float) -> void {
+    let s = effects_system()
+    s.tick(tick_new(0.016, 0, m / 60.0))
+  }
+
+  test "the sum is per kind, and a kind with nothing running is zero" {
+    fresh()
+    effects_add(LEGS, 8.0, 20.0, false, "Fizz")
+    effects_add(LEGS, 6.0, 45.0, false, "Trail mix")
+    effects_add(WARMTH, 12.0, 50.0, false, "Stew")
+    expect(effects_sum(LEGS) == 14.0)
+    expect(effects_sum(WARMTH) == 12.0)
+    expect(effects_sum(CARRY) == 0.0)
+    expect(effects_has(WARMTH))
+    expect(not effects_has(CARRY))
+  }
+
+  test "the same kind from the same label replaces itself rather than stacking" {
+    fresh()
+    effects_add(LEGS, 8.0, 20.0, false, "Fizz")
+    effects_add(LEGS, 8.0, 20.0, false, "Fizz")
+    expect_eq(effects_count(), 1)
+    expect(effects_sum(LEGS) == 8.0)
+  }
+
+  test "a fourth bonus pushes the oldest out and says so" {
+    fresh()
+    effects_add(LEGS, 1.0, 10.0, true, "a")
+    effects_add(LEGS, 1.0, 30.0, true, "b")
+    effects_add(WARMTH, 1.0, 40.0, true, "c")
+    effects_add(CARRY, 1.0, 50.0, true, "d")
+    expect_eq(effects_bonus_count(), 3)
+    let gone = ended()
+    expect_eq(len(gone), 1)
+    expect(gone[0].label == "a")
+    expect_eq(gone[0].why, EFFECT_PUSHED_OUT)
+  }
+
+  test "a full ring drops the one nearest its end" {
+    fresh()
+    effects_config(2, 3)
+    effects_add(LEGS, 1.0, 10.0, false, "short")
+    effects_add(WARMTH, 1.0, 90.0, false, "long")
+    effects_add(CARRY, 1.0, 50.0, false, "new")
+    expect_eq(effects_count(), 2)
+    expect(not effects_has(LEGS))
+    expect_eq(ended()[0].why, EFFECT_CROWDED_OUT)
+  }
+
+  test "a delayed one counts only once it has begun" {
+    fresh()
+    effects_add(LEGS, 8.0, 20.0, false, "Fizz")
+    effects_add_after(20.0, LEGS, -5.0, 15.0, false, "Sugar crash")
+    expect(effects_sum(LEGS) == 8.0)
+    expect_eq(len(effects_live()), 1)
+    tick_minutes(25.0)
+    expect(effects_sum(LEGS) == -5.0)
+    tick_minutes(20.0)
+    expect_eq(effects_count(), 0)
+  }
+
+  test "running down in game hours reports each ending" {
+    fresh()
+    effects_add(WARMTH, -10.0, 10.0, false, "Wet through")
+    tick_minutes(5.0)
+    expect_eq(waiting(), 0)
+    tick_minutes(6.0)
+    expect_eq(effects_count(), 0)
+    let gone = ended()
+    expect_eq(gone[0].why, EFFECT_RAN_OUT)
+    expect(gone[0].label == "Wet through")
+  }
+
+  test "clear stops everything and says nothing" {
+    fresh()
+    effects_add(LEGS, 1.0, 10.0, false, "a")
+    effects_clear()
+    expect_eq(effects_count(), 0)
+    expect_eq(waiting(), 0)
+  }
+
+  test "a save section reads back the same ring" {
+    fresh()
+    effects_add(LEGS, 8.5, 20.0, true, "Fizz")
+    effects_add_after(20.0, LEGS, -5.0, 15.0, false, "Sugar crash")
+    let root = save_tree()
+    save_section(root, "effects", 1, effects_save())
+    let text = save_encode(root)
+    effects_clear()
+    let n = load_section(save_decode(text), "effects")
+    expect(n.found)
+    effects_load(n.data, n.version)
+    expect_eq(effects_count(), 2)
+    let a = effects_at(0)
+    expect(a.mag == 8.5)
+    expect(a.bonus)
+    let b = effects_at(1)
+    expect(b.delay == 20.0)
+    expect(b.label == "Sugar crash")
+  }
+
+  test "the copy a reader gets does not change the ring" {
+    fresh()
+    effects_add(LEGS, 3.0, 10.0, false, "a")
+    let e = effects_at(0)
+    e.mag = 100.0
+    expect(effects_sum(LEGS) == 3.0)
+  }
+}

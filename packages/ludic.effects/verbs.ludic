@@ -1,0 +1,80 @@
+# verbs.ludic - the only way the ring changes. The same kind from the same label replaces
+# itself; a bonus past the cap pushes out the oldest bonus; a full ring drops the nearest end.
+function ef_end(i: int, why: int) -> void {
+  let all = ef_all()
+  let e = new EffectEnded
+  e.kind = all[i].kind
+  e.label = all[i].label
+  e.why = why
+  e.bonus = all[i].bonus
+  q_push(effects_ended(), e)
+  ef_drop(i)
+}
+
+function ef_drop(i: int) -> void {
+  let all = ef_all()
+  let rest = new []Effect
+  for k in 0 .. len(all) { if k != i { push(rest, all[k]) } }
+  ef_list = rest
+}
+
+# the one with the least time left (of the bonuses only, when asked); -1 when there is none
+function ef_nearest_end(bonus_only: bool) -> int {
+  let all = ef_all()
+  var at = -1
+  for i in 0 .. len(all) {
+    if bonus_only and not all[i].bonus { continue }
+    if at < 0 or all[i].left < all[at].left { at = i }
+  }
+  return at
+}
+
+function ef_make_room(bonus: bool) -> void {
+  if bonus {
+    while effects_bonus_count() >= ef_bonus_max and ef_nearest_end(true) >= 0 { ef_end(ef_nearest_end(true), EFFECT_PUSHED_OUT) }
+  }
+  if len(ef_all()) >= ef_max and ef_nearest_end(false) >= 0 { ef_end(ef_nearest_end(false), EFFECT_CROWDED_OUT) }
+}
+
+# begin one `after` game minutes from now, lasting `minutes` once it has begun
+export function effects_add_after(after: float, kind: int, mag: float, minutes: float, bonus: bool, label: string) -> void {
+  let all = ef_all()
+  for i in 0 .. len(all) {
+    if all[i].kind == kind and all[i].label == label {
+      all[i].mag = mag
+      all[i].left = minutes
+      return
+    }
+  }
+  ef_make_room(bonus)
+  let e = new Effect
+  e.kind = kind
+  e.mag = mag
+  e.left = minutes
+  e.delay = after
+  e.bonus = bonus
+  e.label = label
+  push(ef_all(), e)
+}
+
+export function effects_add(kind: int, mag: float, minutes: float, bonus: bool, label: string) -> void {
+  effects_add_after(0.0, kind, mag, minutes, bonus, label)
+}
+
+# everything stops at once, and says nothing: a new trip or a night's sleep
+export function effects_clear() -> void { ef_list = new []Effect }
+
+# run them down by `minutes` of game time; a delayed one waits first
+export function effects_run(minutes: float) -> void {
+  var i = 0
+  while i < len(ef_all()) {
+    let e = ef_all()[i]
+    if e.delay > 0.0 {
+      e.delay = e.delay - minutes
+      i += 1
+      continue
+    }
+    e.left = e.left - minutes
+    if e.left < 0.0 { ef_end(i, EFFECT_RAN_OUT) } else { i += 1 }
+  }
+}

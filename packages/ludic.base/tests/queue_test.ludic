@@ -13,7 +13,7 @@ program QueueTest {
   }
 
   function fifo_case() -> void {
-    let q: Queue<int> = q_new("ints")
+    let q: Queue<int> = queue_new("ints")
     q_push(q, 3)
     q_push(q, 1)
     q_push(q, 2)
@@ -28,7 +28,7 @@ program QueueTest {
   }
 
   function record_case() -> void {
-    let q: Queue<Caught> = q_new("caught")
+    let q: Queue<Caught> = queue_new("caught")
     q_push(q, caught(2, 1.5))
     q_push(q, caught(4, 0.25))
     let cs = q_drain(q)
@@ -37,15 +37,15 @@ program QueueTest {
   }
 
   function clear_case() -> void {
-    let q: Queue<string> = q_new("words")
+    let q: Queue<string> = queue_new("words")
     q_push(q, "a")
     q_clear(q)
     expect_eq(q_len(q), 0)
   }
 
   function undrained_case() -> void {
-    let a: Queue<int> = q_new("left_behind")
-    let b: Queue<int> = q_new("read")
+    let a: Queue<int> = queue_new("left_behind")
+    let b: Queue<int> = queue_new("read")
     q_push(a, 1)
     q_push(b, 2)
     q_drain(b)

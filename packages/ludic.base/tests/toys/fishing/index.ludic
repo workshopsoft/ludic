@@ -17,7 +17,7 @@ export function fishing_cast(x: float, z: float) -> bool {                 # its
 function fishing_reset() -> void {
   casts = 0
   dice = rng_new(7)
-  caught = q_new("fishing.caught")
+  caught = queue_new("fishing.caught")
 }
 function fishing_tick(t: Tick) -> void {
   while casts > 0 {

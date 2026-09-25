@@ -16,7 +16,7 @@ function qb_init() -> void {
 }
 
 # a queue; the name is only for core_undrained
-export function q_new<T>(name: string) -> Queue<T> {
+export function queue_new<T>(name: string) -> Queue<T> {
   qb_init()
   let q = new Queue<T>
   q.items = new []T

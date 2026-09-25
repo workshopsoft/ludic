@@ -35,7 +35,7 @@ import "ludic.base"
 | --- | --- |
 | `Tick { dt, frame, hours }`, `tick_new(dt, frame, hours)` | what a system's tick receives |
 | `PH_INPUT`, `PH_SENSE`, `PH_SIMULATE`, `PH_RESOLVE`, `PH_COMMIT`, `PH_PRESENT`, `PH_COUNT` | the phases, in the order they run |
-| `Queue<T>`, `q_new<T>(name)`, `q_push(q, v)`, `q_drain(q) -> []T`, `q_len(q)`, `q_clear(q)` | facts, first in first out |
+| `Queue<T>`, `queue_new<T>(name)`, `q_push(q, v)`, `q_drain(q) -> []T`, `q_len(q)`, `q_clear(q)` | facts, first in first out (`queue_new`, not `q_new`: that name is render3d's quaternion) |
 | `core_undrained() -> []string` | the names of queues still holding facts; ask it at the end of a frame |
 | `Rng`, `rng_new(seed)`, `rng_seed(r, seed)`, `rng_next(r)`, `rng_float(r)`, `rng_between(r, lo, hi)`, `rng_span(r, lo, hi)` | a xorshift32 stream of its own (`rng_between` is inclusive; `rng_range` is taken by `Random.range`) |
 | `SaveNode { found, version, data }`, `save_tree()`, `save_section(root, key, version, v)`, `load_section(root, key) -> SaveNode`, `save_encode`, `save_decode` | the save tree: `{"fishing": {"v": 3, ...}}`; `v` is reserved in a section, and a non-object value rides under `data` |
@@ -66,7 +66,7 @@ export function fishing_cast(x: float, z: float) -> bool {                 # its
 function fishing_reset() -> void {
   casts = 0
   dice = rng_new(7)
-  caught = q_new("fishing.caught")
+  caught = queue_new("fishing.caught")
 }
 function fishing_tick(t: Tick) -> void {
   while casts > 0 {
