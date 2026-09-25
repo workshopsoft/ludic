@@ -23,8 +23,13 @@ program Threads {
     Sync.unlock(threads_st.lock)
   }
 
-  # remember which calls ran on a pool thread
-  function placed(i: int, out: words) -> void { if Job.is_worker() { out[i] = 1 } else { out[i] = 0 } }
+  # remember which calls ran on a pool thread - each with a little work in it, so on a busy machine
+  # the calling thread cannot claim every index before a worker wakes
+  function placed(i: int, out: words) -> void {
+    var spin = 0
+    for k in 0 .. 2000 { spin = spin + k % 7 }
+    if Job.is_worker() { out[i] = 1 + spin * 0 } else { out[i] = spin * 0 }
+  }
 
   entry (threads_st: mut ThreadsState) {
     if Sync.cpu_count() >= 1 { print(1) }

@@ -1,0 +1,5 @@
+# bag/index.ludic - the bag's state and its reducer; it uses acts for the action's type
+module bag uses acts
+export state Bag { items: []int = new []int }
+reducer Bag on PickUp(b: mut Bag, a: PickUp) { push(b.items, a.item) }
+export function bag_count(b: Bag) -> int { return len(b.items) }

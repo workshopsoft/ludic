@@ -1,0 +1,6 @@
+# a port bound to a function that is not there: refused by a check-only build too
+program BindMissingFn {
+  port Clock { now: fn() -> int }
+  bind Clock { now: fn no_such_clock }
+  entry { print(Clock.now()) }
+}

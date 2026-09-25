@@ -49,6 +49,9 @@ function ck_expr(e: Node) -> pointer {
     let f = ck_fn(e.s)
     ck_vis(f, e.s, e)
     if f != null { return fn_sig_of(f) }
+    # the emitter's own refusal, here too, so a check-only build finds it (a bind to a function
+    # that is gone)
+    if find_fn(e.s) == null { ck_err("fnref", e, `fn {e.s}: no function called {e.s}`) }
     return "?"
   }
   if k == E_NEW { return ck_new(e) }

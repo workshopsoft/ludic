@@ -1,0 +1,4 @@
+# a name that is nothing: refused by a check-only build as by a build
+program UnknownName {
+  entry { print(no_such_name + 1) }
+}

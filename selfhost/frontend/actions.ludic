@@ -19,6 +19,7 @@ var g_red_action: []pointer = new []pointer
 var g_dsp_ids: []Node = new []Node              # each dispatch's action number, filled at the end
 var g_dsp_names: []pointer = new []pointer
 var g_dsp_at: []Node = new []Node
+var g_act_main: pointer = null                  # the program's own file, where the drain is written
 const ACTION_PASSES: int = 64
 
 # action NAME { fields } - a record
@@ -101,12 +102,11 @@ function actions_finish() -> void {
     g_dsp_ids[i].ival = k
     i += 1
   }
+  # the queue and the drain are the program's, written in its own file: in the file of the first
+  # action they would belong to its module, and it would call every module's reducers
   var file = g_parse_file
-  var line = 1
-  if len(g_act_nodes) > 0 {
-    file = g_act_nodes[0].file
-    line = g_act_nodes[0].line
-  }
+  if g_act_main != null { file = g_act_main }
+  let line = 1
   # no actions: drain_actions() is still there (a ludic.base runner calls it), and does nothing
   if len(g_act_names) == 0 {
     vw_parse("export function drain_actions() -> void {\n}\n", file, line, 1)

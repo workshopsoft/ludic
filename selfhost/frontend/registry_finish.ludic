@@ -44,6 +44,12 @@ function reg_fill(r: int) -> void {
       j += 1
     }
     push(seen, key)
+    if (reg_upper(key) == "COUNT") {
+      g_err_file = rec.file
+      g_err_line = rec.line
+      g_parsing = false
+      perr(`def {g_rg_name[r]} {key}: its constant would be {g_rg_prefix[r]}_COUNT, which is the registry's size; give the entry another key`)
+    }
     if keyed and not reg_rec_has(rec, "key") {
       let fi = node(E_FINIT)
       fi.s = "key"

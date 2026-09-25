@@ -1,0 +1,8 @@
+# a def keyed `count` would be TL_COUNT, the registry's own size
+program RegistryCountKey {
+  property Tool { key: string = "", n: int = 0 }
+  registry Tools of Tool as TL
+  def Tools count { n: 1 }
+  def Tools axe { n: 2 }
+  entry { print(TL_COUNT) }
+}

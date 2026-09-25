@@ -1,0 +1,12 @@
+# modules.ludic - 0.R: an action declared in one module and reduced in another; the drain that calls
+# every reducer is the program's own, so acts does not come to depend on bag (ludic deps: no cycle)
+import "mods/acts"
+import "mods/bag"
+program ActionModules {
+  entry (b: Bag) {
+    dispatch PickUp { item: 4 }
+    dispatch PickUp { item: 5 }
+    drain_actions()
+    print(bag_count(b))
+  }
+}

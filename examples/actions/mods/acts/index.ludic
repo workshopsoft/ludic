@@ -1,0 +1,4 @@
+# acts/index.ludic - the actions, in a module that uses nothing: dispatching or declaring them makes
+# no module depend on the modules whose reducers handle them
+module acts uses
+export action PickUp { item: int }

@@ -91,7 +91,7 @@ function dp_load(path: pointer) -> bool {
     if len(w) >= 6 and w[0] == "alias" { push(dp_aliases, lines[i]) }
     if len(w) >= 5 and w[0] == "width" and w[4] == "0" and s_to_int(w[1]) > dp_wide_n {
       dp_wide_n = s_to_int(w[1])
-      dp_wide_at = `{w[2]} ({w[3]})`
+      dp_wide_at = `{dp_fn_name(w[2])} ({w[3]})`
     }
     if len(w) >= 5 and w[0] == "write" {
       push(dp_wowner, w[1])
@@ -101,6 +101,15 @@ function dp_load(path: pointer) -> bool {
     }
   }
   return true
+}
+# a function as its source names it: a reducer is `reducer Bag on PickUp`, not its symbol
+function dp_fn_name(n: pointer) -> pointer {
+  if not s_starts(n, "ludic_reduce__") { return n }
+  let rest = n[14 .. slen(n)]
+  for i in 0 .. slen(rest) - 1 {
+    if rest[i] == '_' and rest[i + 1] == '_' { return `reducer {rest[i + 2 .. slen(rest)]} on {rest[0 .. i]}` }
+  }
+  return n
 }
 function dp_own(k: int) -> bool { return dp_pkg[k] == 0 }
 # an edge the numbers count: between two of the program's own modules

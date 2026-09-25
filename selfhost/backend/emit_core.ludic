@@ -151,7 +151,94 @@ function find_arch(name: pointer) -> Node {
   while i < len(prog) { let d = prog[i];  if d.kind == N_ARCH and (d.s == name) { return d };  i += 1 }
   return null
 }
+# ---- the emitter's lookups by name: tables, once the program is whole ---------------------
+# find_fn / find_enum / find_comp / find_global / find_extern are asked for every name the emitter
+# lowers; walking prog for each was most of a big program's build. From emit_program on, each kind
+# is a table, kept up with what is appended to prog; a hit whose node has since been renamed falls
+# back to the walk.
+const IX_SLOTS: int = 131072
+var g_ix_on: bool = false
+var g_ix_tagged: []Node = new []Node
+var g_ix_upto: int = 0
+var g_ix_keys: [][]pointer = new [][]pointer   # per kind: 0 fn, 1 enum, 2 comp, 3 global, 4 extern
+var g_ix_vals: [][]pointer = new [][]pointer
+function ix_start() -> void {
+  g_ix_keys = new [][]pointer
+  g_ix_vals = new [][]pointer
+  var t = 0
+  while t < 5 {
+    let k = new []pointer
+    let v = new []pointer
+    var i = 0
+    while i < IX_SLOTS {
+      push(k, null)
+      push(v, null)
+      i += 1
+    }
+    push(g_ix_keys, k)
+    push(g_ix_vals, v)
+    t += 1
+  }
+  g_ix_upto = 0
+  g_ix_tagged = new []Node
+  g_ix_on = true
+}
+function ix_kind(d: Node) -> int {
+  if d.kind == N_FN { return 0 }
+  if d.kind == N_ENUM { return 1 }
+  if d.kind == N_COMP { return 2 }
+  if d.kind == N_VAR or d.kind == N_CONST { return 3 }
+  if d.kind == N_EXTERN { return 4 }
+  return -1
+}
+function ix_slot(t: int, name: pointer) -> int {
+  var h = 5381
+  var i = 0
+  let n = len(name)
+  while i < n {
+    h = (h * 33 + name[i]) % 1000003
+    i += 1
+  }
+  h = h % IX_SLOTS
+  let ks = g_ix_keys[t]
+  while ks[h] != null and not (ks[h] == name) { h = (h + 1) % IX_SLOTS }
+  return h
+}
+function ix_sync() -> void {
+  while g_ix_upto < len(prog) {
+    let d = prog[g_ix_upto]
+    let t = ix_kind(d)
+    if d.kind == N_ENUM and enum_is_tagged(d) { push(g_ix_tagged, d) }
+    if t >= 0 and d.s != null {
+      let h = ix_slot(t, d.s)
+      if g_ix_keys[t][h] == null {                # the first of a name wins, as the walk had it
+        g_ix_keys[t][h] = d.s
+        g_ix_vals[t][h] = d
+      }
+    }
+    g_ix_upto += 1
+  }
+}
+# the node of kind t called name, or null; -1 when the table cannot say (off, or a stale hit)
+var g_ix_miss: bool = false
+function ix_find(t: int, name: pointer) -> Node {
+  g_ix_miss = false
+  if not g_ix_on or name == null {
+    g_ix_miss = true
+    return null
+  }
+  ix_sync()
+  let h = ix_slot(t, name)
+  let p = g_ix_vals[t][h]
+  if p == null { return null }
+  let d: Node = p
+  if (d.s == name) and ix_kind(d) == t { return d }
+  g_ix_miss = true
+  return null
+}
 function find_comp(name: pointer) -> Node {
+  let x = ix_find(2, name)
+  if not g_ix_miss { return x }
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_COMP and (d.s == name) { return d };  i += 1 }
   return null
@@ -174,6 +261,8 @@ function field_type(s: Node, fname: pointer) -> pointer {
 
 # find a global var/const by name
 function find_global(name: pointer) -> Node {
+  let x = ix_find(3, name)
+  if not g_ix_miss { return x }
   var i = 0
   while i < len(prog) {
     let d = prog[i]
@@ -188,6 +277,14 @@ function find_global(name: pointer) -> Node {
 # enum with that variant. Enum names live in `prog` like any other declaration.
 function enum_ordinal(ename: pointer, vname: pointer) -> int {
   var i = 0
+  if g_ix_on {                                   # the table knows the one enum of that name
+    let d = find_enum(ename)
+    if d != null {
+      var j = 0
+      while j < len(d.kids) { if (d.kids[j].s == vname) { return j };  j += 1 }
+    }
+    i = len(prog)
+  }
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_ENUM and (d.s == ename) {
@@ -234,6 +331,8 @@ function has_countdowns() -> bool {
   return false
 }
 function find_fn(name: pointer) -> Node {
+  let x = ix_find(0, name)
+  if not g_ix_miss { return x }
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_FN and (d.s == name) { return d };  i += 1 }
   return null
@@ -248,6 +347,8 @@ function find_fn(name: pointer) -> Node {
 var g_var_ord: int = 0
 
 function find_enum(name: pointer) -> Node {
+  let x = ix_find(1, name)
+  if not g_ix_miss { return x }
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_ENUM and (d.s == name) { return d };  i += 1 }
   return null
@@ -276,6 +377,16 @@ function variant_ordinal(en: Node, vname: pointer) -> int {
 # Only tagged enums participate, so a plain enum's `Enum.Variant` member form and
 # any like-named function are left alone.
 function variant_enum(vname: pointer) -> Node {
+  if g_ix_on {                                   # the tagged enums, kept as prog grows
+    ix_sync()
+    var t = 0
+    while t < len(g_ix_tagged) {
+      let ord = variant_ordinal(g_ix_tagged[t], vname)
+      if ord >= 0 { g_var_ord = ord;  return g_ix_tagged[t] }
+      t += 1
+    }
+    return null
+  }
   var i = 0
   while i < len(prog) {
     let d = prog[i]
@@ -306,6 +417,8 @@ function enum_box_size(en: Node) -> int { return 8 * (1 + enum_max_arity(en)) }
 # is the transport seam (net_send/net_poll), the windowing/socket FFI, and any
 # C/Rust/Zig library binding — the same seam NETWORKING-DESIGN §5 names.
 function find_extern(name: pointer) -> Node {
+  let x = ix_find(4, name)
+  if not g_ix_miss { return x }
   var i = 0
   while i < len(prog) { let d = prog[i];  if d.kind == N_EXTERN and (d.s == name) { return d };  i += 1 }
   return null

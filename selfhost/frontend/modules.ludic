@@ -128,15 +128,9 @@ function pkg_name_of(rel: pointer) -> pointer {
 function pkg_file_set(f: pointer, name: pointer) -> void {
   push(g_pk_file, f)
   push(g_pk_name, name)
+  fm_put(g_fm_pkg, f, name)
 }
-function pkg_of_file(f: pointer) -> pointer {
-  var i = len(g_pk_file) - 1
-  while i >= 0 {
-    if (g_pk_file[i] == f) { return g_pk_name[i] }
-    i -= 1
-  }
-  return ""
-}
+function pkg_of_file(f: pointer) -> pointer { return fm_get(g_fm_pkg, f) }
 # the module a declaration is in, for the uses rule: its own, else its package's
 function module_for_uses(f: pointer) -> pointer {
   let m = module_of(f)

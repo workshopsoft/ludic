@@ -350,7 +350,7 @@ The self-hosted `ludicc`/`ludic` (built with `bin/ludic-dev build-cli`) accept:
   --windowed         force a windowed (Cocoa) build
   --headless         force a headless build (stdin input, out.ppm output)
   --emit-llvm        stop at LLVM IR — write it and exit, no clang
-  --check            parse and check only (types, modules, uses, layers, ports); write nothing
+  --check            every check a build makes (types, modules, uses, layers, ports, binds); write nothing
   --fmt              lex + parse only; exit 0 if it parses, 1 on a parse error
                      (the check-docs gate; canonical formatting not yet restored)
   --save-temps       keep the intermediate .ll

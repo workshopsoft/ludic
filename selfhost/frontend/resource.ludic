@@ -29,7 +29,7 @@ function res_read_into(reg: pointer, from: pointer, who: pointer) -> void {
   let saved_file = g_parse_file
   let saved_parsing = g_parsing
   if not (module_of(saved_file) == "") { module_set(path, module_of(saved_file)) }
-  if is_float_file(saved_file) and not is_float_file(path) { push(g_float_files, path) }
+  if is_float_file(saved_file) and not is_float_file(path) { float_file_add(path) }
   g_parse_file = path
   g_parsing = true
   g_res_mode = true

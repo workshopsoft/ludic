@@ -213,19 +213,19 @@ function emit_test_runner() -> void {
 # two `function`s with one name would collide in the object file; say so in
 # source terms (and name both files) instead of leaving it to the IR assembler.
 function check_duplicate_fns() -> void {
+  let k = new []pointer                          # by name, in a table: a pair of loops was quadratic
+  let v = new []Node
+  ck_tab_init(k, v)
   var i = 0
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_FN {
-      var j = i + 1
-      while j < len(prog) {
-        let o = prog[j]
-        if o.kind == N_FN and (o.s == d.s) {
-          g_err_file = o.file;  g_err_line = o.line
-          perr(`function '{d.s}' is defined twice (first in {d.file}:{itoa(d.line)})`)
-        }
-        j += 1
+      let first = ck_tab_get(k, v, d.s)
+      if first != null {
+        g_err_file = d.file;  g_err_line = d.line
+        perr(`function '{d.s}' is defined twice (first in {first.file}:{itoa(first.line)})`)
       }
+      ck_tab_put(k, v, d.s, d)
     }
     i += 1
   }
@@ -240,22 +240,23 @@ function decl_group(k: int) -> int {
   return 0
 }
 function check_duplicate_decls() -> void {
+  let k = new []pointer
+  let v = new []Node
+  ck_tab_init(k, v)
   let n = g_prog_user_end
   var i = 0
   while i < n and i < len(prog) {
     let d = prog[i]
     let g = decl_group(d.kind)
     if g > 0 {
-      var j = i + 1
-      while j < n and j < len(prog) {
-        let o = prog[j]
-        if decl_group(o.kind) == g and (o.s == d.s) {
-          g_err_file = o.file
-          g_err_line = o.line
-          perr(`'{d.s}' is defined twice (first in {d.file}:{itoa(d.line)})`)
-        }
-        j += 1
+      let key = `{itoa(g)}:{d.s}`
+      let first = ck_tab_get(k, v, key)
+      if first != null {
+        g_err_file = d.file
+        g_err_line = d.line
+        perr(`'{d.s}' is defined twice (first in {first.file}:{itoa(first.line)})`)
       }
+      ck_tab_put(k, v, key, d)
     }
     i += 1
   }
@@ -264,6 +265,7 @@ function check_duplicate_decls() -> void {
 function emit_program() -> void {
   check_duplicate_fns()
   check_duplicate_decls()
+  ix_start()                                     # the lookups by name, as tables from here on
   head = buf_new()
   code = buf_new()
   g_uses_str = false

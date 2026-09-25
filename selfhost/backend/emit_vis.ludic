@@ -29,17 +29,29 @@ function vis_plain(what: pointer) -> pointer {
 function vis_say(m: pointer) -> void {
   file_write(file_stderr(), m, len(m))
 }
+# does s start with p - without making the slice a comparison of s[0 .. n] would (asked for every
+# reference)
+function str_prefix(s: pointer, p: pointer) -> bool {
+  if s == null { return false }
+  let n = len(p)
+  if len(s) < n { return false }
+  var i = 0
+  while i < n {
+    if s[i] != p[i] { return false }
+    i += 1
+  }
+  return true
+}
 function vis_check(d: Node, what0: pointer) -> void {
   if d == null { return }
   port_check_bound(d)
+  # 0.S/0.R: a state's instance, the action queue and a reducer are the runtime's to supply and to
+  # call - the code that names them depends on no module for it
+  if d.kind == N_VAR and d.uns == 1 and str_prefix(d.s, "state$") and is_state_ty(d.ty) { return }
+  if d.kind == N_FN and (str_prefix(d.s, "ludic_reduce__") or is_action_builtin(d.s)) { return }
   deps_edge(d, what0)                            # LUDIC_DEPS: the graph ludic deps reads (emit_deps.ludic)
   if g_vis_off { return }
   if d.file == null { return }
-  # 0.S: a state's instance, supplied by the runtime (a component's or a view's glue, an entry's
-  # parameters): the code that names it only passes it on
-  if d.kind == N_VAR and d.uns == 1 and is_state_ty(d.ty) and len(d.s) > 6 and (d.s[0 .. 6] == "state$") { return }
-  # 0.R: the action queue and the reducers are the runtime's to call, from any module
-  if d.kind == N_FN and (is_action_builtin(d.s) or (len(d.s) > 14 and (d.s[0 .. 14] == "ludic_reduce__"))) { return }
   let what = vis_plain(what0)
   var here = g_err_file
   if here == null { return }

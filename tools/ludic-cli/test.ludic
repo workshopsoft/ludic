@@ -500,9 +500,9 @@ function deps_case() -> void {
 # --check: the module rules, the ports and the types, with nothing emitted - a broken uses line is
 # refused as a full build refuses it, and a sound program writes no file
 function check_build_case() -> void {
-  let lbl = "ludicc --check / ludic build --check: modules, uses, ports and types without emitting"
-  let bad = ["rejected/uses_missing", "rejected/layer_reach", "rejected/private_module", "rejected/port_unbound", "rejected/registry_hidden", "rejected/port_new", "rejected/wrong_arity"]
-  let want = ["fishing uses items.inv_add", "hud uses items.item_count", "add is private to module bank", "port Clock is used here but never bound", "Tools is private to module kit", "Clock is a port", "leaves out h"]
+  let lbl = "ludicc --check / ludic build --check: every check a build makes (binds, names, registries too), nothing written"
+  let bad = ["rejected/uses_missing", "rejected/layer_reach", "rejected/private_module", "rejected/port_unbound", "rejected/registry_hidden", "rejected/port_new", "rejected/wrong_arity", "rejected/bind_missing_fn", "rejected/unknown_name", "rejected/registry_count_key"]
+  let want = ["fishing uses items.inv_add", "hud uses items.item_count", "add is private to module bank", "port Clock is used here but never bound", "Tools is private to module kit", "Clock is a port", "leaves out h", "fn no_such_clock: no function called no_such_clock", "unknown identifier no_such_name", "its constant would be TL_COUNT, which is the registry's size"]
   for i in 0 .. len(bad) {
     if shq(`bin/ludicc --check examples/{bad[i]}.ludic > {tmp_dir()}/chk.err 2>&1`) { bad2(lbl, `{bad[i]} passed the check`);  return }
     let said = capture(`cat {tmp_dir()}/chk.err`)
@@ -546,6 +546,13 @@ function expect_str_case() -> void {
   let got = capture(`cat {out}.txt`)
   let want = "ok   - equal text built two ways\nexamples/library/testing_strings.ludic:11: expect_eq failed (got \"camp\", want \"lake\")\nFAIL - different text fails, and says both\nexamples/library/testing_strings.ludic:15: expect_eq failed (got \"<null>\", want \"camp\")\nFAIL - a null is not a string\n== 1 passed, 2 failed ==\n"
   if s_trim(got) == s_trim(want) { ok(lbl) } else { bad2(lbl, `said [{s_trim(got)}]`) }
+}
+# 0.R: the drain that calls every reducer is the program's own, so the module that declares the
+# actions gains no dependency on the modules that reduce them
+function actions_deps_case() -> void {
+  let lbl = "the action drain is the program's: acts depends on no reducer's module (ludic deps)"
+  let got = capture(`bin/ludic deps examples/actions/modules.ludic 2>&1`)
+  if s_contains(got, "largest_cycle: 1") and s_contains(got, "dependencies: 0") and s_contains(got, "the widest function: reducer Bag on PickUp (") { ok(lbl) } else { bad2(lbl, s_trim(got)) }
 }
 # a program built headless with the toolchain and run: its first line
 function headless_case(path: pointer, exp: pointer, label: pointer) -> void {
@@ -963,8 +970,11 @@ function cmd_dev_test() -> int {
   reject_case("rejected/layer_reach", "hud uses items.item_count", "a layered module is still held to its uses outside the layer")
   reject_case("rejected/layer_cycle", "go round in a circle: items -> layer app -> items", "a cycle through a layer and out of it is refused")
   feat_case("actions/pack", "", "0 1 9 13 picked 7 picked 9 too heavy", "pack.ludic (0.R: actions, reducers - one per state, in the order of the states' names - dispatch, drain_actions, an action a reducer dispatches goes behind)")
+  feat_case("actions/modules", "", "2", "modules.ludic (0.R: an action in one module, its reducer in another)")
+  actions_deps_case()
   feat_case("actions/phases", "dd a q", "1 0 2 0 2 1 1 1 1 2 1 2", "phases.ludic (0.R: the frame loop drains the queue after every phase - Input's actions are reduced before Update)")
   feat_case("actions/runaway", "", "actions: Ping is still being dispatched after 64 rounds of reducers - a reducer dispatches what dispatches it", "runaway.ludic (0.R: a reducer that dispatches what dispatches it is stopped by name)")
+  reject_case("rejected/registry_count_key", "def Tools count: its constant would be TL_COUNT", "a registry key named count is refused")
   reject_case("rejected/reducer_two_states", "a reducer takes one state, and w is a Wallet", "a reducer takes exactly one state")
   reject_case("rejected/reducer_not_action", "Buy is not an action", "a reducer is on an action")
   reject_case("rejected/dispatch_unknown", "dispatch Sell: Sell is not an action", "only an action is dispatched")

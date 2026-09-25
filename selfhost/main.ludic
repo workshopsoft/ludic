@@ -188,6 +188,7 @@ entry {
   cur_dir = dir_of(path)
   g_src_name = base_name(path)                    # for panic/expect file:line messages
   g_parse_file = path                             # for the compiler's own file:line diagnostics
+  g_act_main = path                               # 0.R: where the action drain is written
   lex(src)
   parse_program()
   g_prog_user_end = len(prog)
@@ -217,9 +218,15 @@ entry {
   check_duplicate_decls()
   g_mg_entry = path
   if g_migrate { mg_collect() }                   # 0.S2: the vars that move (migrate.ludic)
+  ix_start()                                      # the lookups by name, as tables (emit_core.ludic)
   check_program()                                 # L4: the types agree before anything is emitted
   if g_migrate { mg_finish() }
-  if g_check_only { exit(0) }                     # --check: the checks are all there is
+  # --check: every check a build makes - the emitter refuses things too (a bind to a function that is
+  # gone, an unknown name) - and nothing written
+  if g_check_only {
+    emit_program()
+    exit(0)
+  }
   emit_program()
   deps_flush()                                    # LUDIC_DEPS=<file>: the module graph (ludic deps)
 

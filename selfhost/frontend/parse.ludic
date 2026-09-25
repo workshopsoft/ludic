@@ -25,36 +25,77 @@ var g_trusted_files: []pointer = new []pointer
 var g_unsafe_all: bool = false
 function unsafe_trusted(f: pointer) -> bool {
   if g_unsafe_all { return true }
+  return not (fm_get(g_fm_trusted, f) == "")
+}
+# a file's facts - its module, its package, whether it is trusted - asked of every reference the
+# checker and the emitter resolve: a table by file name, not a list walked each time (with a game's
+# nine hundred files that walk was most of a check-only build)
+const FM_SLOTS: int = 16384
+property FileMap {
+  keys: []pointer = null
+  vals: []pointer = null
+}
+function fm_new() -> FileMap {
+  let m = new FileMap
+  m.keys = new []pointer
+  m.vals = new []pointer
   var i = 0
-  while i < len(g_trusted_files) {
-    if (g_trusted_files[i] == f) { return true }
+  while i < FM_SLOTS {
+    push(m.keys, null)
+    push(m.vals, null)
     i += 1
   }
-  return false
+  return m
+}
+function fm_slot(m: FileMap, f: pointer) -> int {
+  var h = 5381
+  var i = 0
+  let n = len(f)
+  while i < n {
+    h = (h * 33 + f[i]) % 1000003
+    i += 1
+  }
+  h = h % FM_SLOTS
+  while m.keys[h] != null and not (m.keys[h] == f) { h = (h + 1) % FM_SLOTS }
+  return h
+}
+# the latest value set for f wins, as the lists' walk from the end had it
+function fm_put(m: FileMap, f: pointer, v: pointer) -> void {
+  if f == null { return }
+  let h = fm_slot(m, f)
+  m.keys[h] = f
+  m.vals[h] = v
+}
+function fm_get(m: FileMap, f: pointer) -> pointer {
+  if f == null { return "" }
+  let h = fm_slot(m, f)
+  if m.keys[h] == null { return "" }
+  return m.vals[h]
+}
+var g_fm_mod: FileMap = fm_new()
+var g_fm_pkg: FileMap = fm_new()
+var g_fm_trusted: FileMap = fm_new()
+function trust_file(f: pointer) -> void {
+  push(g_trusted_files, f)
+  fm_put(g_fm_trusted, f, "1")
 }
 var g_mod_file: []pointer = new []pointer
 var g_mod_name: []pointer = new []pointer
 var g_mod_friends: []pointer = new []pointer
-function module_of(f: pointer) -> pointer {
-  var i = len(g_mod_file) - 1
-  while i >= 0 {
-    if (g_mod_file[i] == f) { return g_mod_name[i] }
-    i -= 1
-  }
-  return ""
-}
+function module_of(f: pointer) -> pointer { return fm_get(g_fm_mod, f) }
 function module_set(f: pointer, name: pointer) -> void {
   push(g_mod_file, f)
   push(g_mod_name, name)
+  fm_put(g_fm_mod, f, name)
 }
 function is_float_file(f: pointer) -> bool {
   if (f == null) { return false }
-  var i = 0
-  while i < len(g_float_files) {
-    if (g_float_files[i] == f) { return true }
-    i += 1
-  }
-  return false
+  return not (fm_get(g_fm_float, f) == "")
+}
+var g_fm_float: FileMap = fm_new()
+function float_file_add(f: pointer) -> void {
+  push(g_float_files, f)
+  fm_put(g_fm_float, f, "1")
 }
 var g_parsing: bool = true         # false once lowering starts
 var g_err_file: pointer = ""       # the statement being lowered
@@ -952,7 +993,7 @@ function parse_one_decl() -> void {
   }
   if is_id("numbers") and (toks[pi + 1].text == "float") {
     pi += 2
-    if not is_float_file(g_parse_file) { push(g_float_files, g_parse_file) }
+    if not is_float_file(g_parse_file) { float_file_add(g_parse_file) }
     return
   }
   if is_id("import") { pi += 1
@@ -1180,11 +1221,11 @@ function do_import(rel: pointer) -> void {
   }
   if already_loaded(full) { return }
   push(loaded_paths, full)
-  if is_float_file(g_parse_file) and not is_runtime_path(rel) and not is_float_file(full) { push(g_float_files, full) }
+  if is_float_file(g_parse_file) and not is_runtime_path(rel) and not is_float_file(full) { float_file_add(full) }
   # a module reaches as far as its own files: a package found through $LUDIC_HOME or
   # ludic_modules is not beside its importer and keeps its own module (or none)
   let beside = full == join_path(cur_dir, rel)
-  if is_runtime_path(rel) or not beside or (beside and unsafe_trusted(g_parse_file)) { push(g_trusted_files, full) }
+  if is_runtime_path(rel) or not beside or (beside and unsafe_trusted(g_parse_file)) { trust_file(full) }
   if beside and not is_runtime_path(rel) and not (module_of(g_parse_file) == "") { module_set(full, module_of(g_parse_file)) }
   if not beside and not is_runtime_path(rel) { pkg_file_set(full, pkg_name_of(rel)) }            # modules.ludic
   if beside and not is_runtime_path(rel) and not (pkg_of_file(g_parse_file) == "") { pkg_file_set(full, pkg_of_file(g_parse_file)) }
