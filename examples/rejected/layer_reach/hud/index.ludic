@@ -1,0 +1,5 @@
+# hud/index.ludic - in layer app with no uses line: items is outside the layer, so it is refused
+module hud in layer app
+export function hud_lines() -> int {
+  return menu_title() + item_count()
+}

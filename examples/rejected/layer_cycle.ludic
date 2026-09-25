@@ -1,0 +1,9 @@
+# L3: a cycle is allowed inside a layer and nowhere else: items -> layer app -> items is refused
+import "layer_cycle/items"
+import "layer_cycle/menu"
+import "layer_cycle/hud"
+program LayerCycle {
+  entry {
+    print(menu_rows())
+  }
+}

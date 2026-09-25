@@ -159,6 +159,12 @@ fishing/land.ludic:4: error: fishing uses items.inv_add (items/index.ludic:3): a
 - The declared graph may not go round: `module a uses b` beside `module b uses a` is refused
   (`the modules' uses go round in a circle: a -> b -> a`) - one of them takes the other through a
   port instead.
+- **Layers.** `module flow in layer app uses base, items` puts `flow` in layer `app`. The modules of
+  one layer use each other freely, without naming each other, and may go round - a game's app
+  modules (the flow, the menus, the HUD) reach each other by design. Everything outside the layer is
+  still held to the module's `uses`, and a layered module with no `uses` may reach nothing outside
+  its layer. A cycle is allowed only inside a layer: `items uses hud` with `hud` in layer `app`
+  using `items` back is `items -> layer app -> items`, refused. A module is in one layer.
 - `LUDIC_VIS_REPORT=1` lists these too, as `uses: <file>:<line>: <module>.<name> used from <file>
   (module <m>)`, and builds.
 
@@ -1844,7 +1850,9 @@ the other, not counting a use of a module that itself uses none), `largest_cycle
 of modules that all reach each other, named on the last line), `cross_writes` and
 `globals_written_from_outside`. `--graph` lists each module with its declared `uses` and the edges
 seen (`!` marks one its `uses` line does not name), `--dot` is the same for Graphviz with the cycle
-filled, `--writes` lists the writes and `--uses MOD` who uses MOD. `--check FILE` fails when any
+filled, `--writes` lists the writes and `--uses MOD` who uses MOD. The largest cycle leaves out the
+edges inside a declared layer, which may go round by design; the layers and the cycle counting their
+own edges are printed after it. `--check FILE` fails when any
 number is above FILE's `name value` lines; `--baseline FILE` writes them.
 
 A test program is a file of `test "name" { ... }` blocks with `expect(cond)`, `expect_eq(a, b)` and

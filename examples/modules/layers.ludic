@@ -1,0 +1,13 @@
+# layers.ludic — L3: `module menu in layer app uses items`. The modules of one layer use each other
+# freely and may go round (menu and hud use each other); anything outside the layer is held to the
+# module's `uses` - a layered module with no uses line may reach nothing outside its layer.
+#
+# Running it prints:  5
+import "layered/items"
+import "layered/menu"
+import "layered/hud"
+program Layers {
+  entry {
+    print(menu_rows())
+  }
+}

@@ -1,0 +1,5 @@
+# items/index.ludic - below the layer: it uses nothing
+module items uses
+export function item_count() -> int {
+  return 3
+}

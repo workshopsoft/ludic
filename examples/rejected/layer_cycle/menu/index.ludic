@@ -1,0 +1,8 @@
+# menu/index.ludic - in layer app: it reaches hud (same layer) freely, and items through its uses
+module menu in layer app uses items
+export function menu_rows() -> int {
+  return item_count() + hud_lines()
+}
+export function menu_title() -> int {
+  return 1
+}

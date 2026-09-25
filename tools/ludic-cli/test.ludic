@@ -485,6 +485,8 @@ function deps_case() -> void {
   if shq(`bin/ludic deps {p} --check {base} > /dev/null`) { bad2(lbl, "--check passed with more dependencies than the baseline");  return }
   if not shq(`bin/ludic deps {p} --dot | grep -q '"a" -> "b"'`) { bad2(lbl, "--dot has no a -> b edge");  return }
   if not shq(`bin/ludic deps {p} --writes | grep -q 'b b_count a examples/modules/tangle/a/index.ludic:4'`) { bad2(lbl, "--writes misses a's write to b_count");  return }
+  let lay = capture(`bin/ludic deps examples/modules/layers.ludic 2>&1`)
+  if not s_contains(lay, "largest_cycle: 1") or not s_contains(lay, "layers: app (2: hud menu)") or not s_contains(lay, "counting the layers' own edges: 2") { bad2(lbl, `layers: [{s_trim(lay)}]`);  return }
   ok(lbl)
 }
 
@@ -852,6 +854,9 @@ function cmd_dev_test() -> int {
   reject_case("rejected/exported_events", "event 'Landed' is defined twice", "two modules that export one event clash")
   feat_case("modules/tangle", "", "4", "tangle.ludic (the program ludic deps is tested on)")
   reject_case("rejected/exported_twins", "function 'seed' is defined twice", "two modules that export one name still clash")
+  feat_case("modules/layers", "", "5", "layers.ludic (L3: `module menu in layer app uses items` - one layer's modules use each other and may go round)")
+  reject_case("rejected/layer_reach", "hud uses items.item_count", "a layered module is still held to its uses outside the layer")
+  reject_case("rejected/layer_cycle", "go round in a circle: items -> layer app -> items", "a cycle through a layer and out of it is refused")
   vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")
   feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
   reject_case("rejected/wrong_arity", "this call to area leaves out h, which has no default", "a call with the wrong number of arguments is refused")

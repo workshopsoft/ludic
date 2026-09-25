@@ -1,0 +1,9 @@
+# L3: a layer frees the modules in it from naming each other, not from naming anything else
+import "layer_reach/items"
+import "layer_reach/menu"
+import "layer_reach/hud"
+program LayerReach {
+  entry {
+    print(menu_rows())
+  }
+}

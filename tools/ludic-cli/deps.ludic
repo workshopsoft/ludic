@@ -14,12 +14,14 @@
 #   ludic deps --baseline FILE           write the numbers to FILE
 #
 # dependencies: module pairs (a, b) where a uses something of b, not counting b when b uses no
-# other module (a leaf); largest_cycle: the largest set of modules that all reach each other;
+# other module (a leaf); largest_cycle: the largest set of modules that all reach each other, not
+# counting the edges inside a declared layer (which may go round by design - reported beside it);
 # cross_writes: assignments to a global of another module; globals_written_from_outside: those
 # globals, each counted once.
 var dp_mods: []pointer = null
 var dp_pkg: []int = null
 var dp_uses: []pointer = null
+var dp_layer: []pointer = null
 var dp_ef: []int = null
 var dp_et: []int = null
 var dp_ec: []int = null
@@ -52,22 +54,24 @@ function dp_mod(name: pointer) -> int {
   push(dp_mods, name)
   push(dp_pkg, 1)
   push(dp_uses, "-")
+  push(dp_layer, "-")
   return len(dp_mods) - 1
 }
 function dp_load(path: pointer) -> bool {
   let text = read_file(path)
   if text == null { return false }
-  dp_mods = new []pointer;  dp_pkg = new []int;  dp_uses = new []pointer
+  dp_mods = new []pointer;  dp_pkg = new []int;  dp_uses = new []pointer;  dp_layer = new []pointer
   dp_ef = new []int;  dp_et = new []int;  dp_ec = new []int;  dp_en = new []pointer
   dp_writes = new []pointer;  dp_wowner = new []pointer;  dp_wname = new []pointer;  dp_wfrom = new []pointer
   let lines = split_lines(text)
   for i in 0 .. len(lines) {
     let w = dp_words(lines[i])
-    if len(w) == 4 and w[0] == "module" {
+    if len(w) >= 4 and w[0] == "module" {
       let k = dp_mod(w[1])
       dp_pkg[k] = 0
       if w[2] == "1" { dp_pkg[k] = 1 }
       dp_uses[k] = w[3]
+      if len(w) >= 5 { dp_layer[k] = w[4] }
     }
   }
   for i in 0 .. len(lines) {
@@ -90,6 +94,11 @@ function dp_load(path: pointer) -> bool {
 function dp_own(k: int) -> bool { return dp_pkg[k] == 0 }
 # an edge the numbers count: between two of the program's own modules
 function dp_counted(e: int) -> bool { return dp_own(dp_ef[e]) and dp_own(dp_et[e]) }
+# an edge inside a declared layer: allowed to go round, so not part of the cycle the numbers count
+function dp_in_layer(e: int) -> bool {
+  let a = dp_layer[dp_ef[e]]
+  return a != "-" and a == dp_layer[dp_et[e]]
+}
 function dp_leaf(k: int) -> bool {
   for e in 0 .. len(dp_ef) { if dp_ef[e] == k and dp_counted(e) { return false } }
   return true
@@ -103,6 +112,7 @@ var tj_stack: []int = null
 var tj_sp: int = 0
 var tj_n: int = 0
 var tj_best: []int = null
+var dp_skip_layers: bool = true       # the largest cycle leaves out the edges inside a declared layer
 function tj_visit(v: int) -> void {
   tj_index[v] = tj_n
   tj_low[v] = tj_n
@@ -111,7 +121,7 @@ function tj_visit(v: int) -> void {
   tj_sp += 1
   tj_on[v] = 1
   for e in 0 .. len(dp_ef) {
-    if dp_ef[e] == v and dp_counted(e) {
+    if dp_ef[e] == v and dp_counted(e) and not (dp_skip_layers and dp_in_layer(e)) {
       let w = dp_et[e]
       if tj_index[w] < 0 {
         tj_visit(w)
@@ -181,12 +191,16 @@ function s_less(a: pointer, b: pointer) -> bool {
 var dp_names: []pointer = null
 var dp_vals: []int = null
 var dp_cycle: []int = null
+var dp_cycle_all: []int = null        # the same with the layers' own edges counted
 function dp_numbers() -> void {
   dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside"]
   var mods = 0
   for k in 0 .. len(dp_mods) { if dp_own(k) { mods += 1 } }
   var deps = 0
   for e in 0 .. len(dp_ef) { if dp_counted(e) and not dp_leaf(dp_et[e]) { deps += 1 } }
+  dp_skip_layers = false
+  dp_cycle_all = dp_largest_cycle()
+  dp_skip_layers = true
   dp_cycle = dp_largest_cycle()
   var writes = 0
   let seen = new []pointer
@@ -207,6 +221,11 @@ function dp_numbers() -> void {
 function dp_print_numbers() -> void {
   for i in 0 .. len(dp_names) { print(`{dp_names[i]}: {string(dp_vals[i])}`) }
   print(`in the largest cycle: {dp_sorted_names(dp_cycle)}`)
+  let layers = dp_layers()
+  if layers != "" {
+    print(`layers: {layers}`)
+    print(`largest cycle counting the layers' own edges: {string(len(dp_cycle_all))}`)
+  }
 }
 # FILE: `name value` lines, `#` comments; every number but modules may only go down
 function dp_check(path: pointer) -> int {
@@ -246,7 +265,28 @@ function dp_baseline(path: pointer) -> int {
   print(`deps: wrote {path}`)
   return 0
 }
+# "app (11: core flow ...), ..." for the declared layers, "" when there are none
+function dp_layers() -> pointer {
+  var out = ""
+  let seen = new []pointer
+  for k in 0 .. len(dp_mods) {
+    let l = dp_layer[k]
+    if l != "-" {
+      var dup = false
+      for s in 0 .. len(seen) { if seen[s] == l { dup = true } }
+      if not dup {
+        push(seen, l)
+        let members = new []int
+        for m in 0 .. len(dp_mods) { if dp_layer[m] == l { push(members, m) } }
+        if out != "" { out = out + "; " }
+        out = out + `{l} ({string(len(members))}: {dp_sorted_names(members)})`
+      }
+    }
+  }
+  return out
+}
 function dp_declared(from: int, to: int) -> bool {
+  if dp_layer[from] != "-" and dp_layer[from] == dp_layer[to] { return true }
   let u = dp_uses[from]
   if u == "-" { return false }
   return s_contains(u, `,{dp_mods[to]},`)
@@ -268,6 +308,7 @@ function dp_graph() -> void {
     if dp_own(k) {
       var uses = "(no uses line)"
       if dp_uses[k] != "-" { uses = `uses {dp_list(dp_uses[k])}` }
+      if dp_layer[k] != "-" { uses = `layer {dp_layer[k]}, {uses}` }
       var to = ""
       for e in 0 .. len(dp_ef) {
         if dp_ef[e] == k {

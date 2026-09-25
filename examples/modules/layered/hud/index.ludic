@@ -1,0 +1,5 @@
+# hud/index.ludic - in layer app: it reaches menu back - a cycle, allowed inside the layer
+module hud in layer app
+export function hud_lines() -> int {
+  return menu_title() + 1
+}

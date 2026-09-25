@@ -35,17 +35,44 @@ function mod_parse_names() -> pointer {
   }
   return out
 }
-# `module NAME [uses A, B]`
+# a module's layer, or "": `module flow in layer app` - the modules of one layer may use each other
+# (and go round) freely; everything outside the layer is held to the module's `uses`
+var g_ly_mod: []pointer = new []pointer
+var g_ly_name: []pointer = new []pointer
+function mod_layer(m: pointer) -> pointer {
+  var i = 0
+  while i < len(g_ly_mod) {
+    if (g_ly_mod[i] == m) { return g_ly_name[i] }
+    i += 1
+  }
+  return ""
+}
+function mod_set_layer(m: pointer, layer: pointer) -> void {
+  let was = mod_layer(m)
+  if (was == layer) { return }
+  if not (was == "") { perr(`module {m} is in layer {was}, and this line puts it in layer {layer}`) }
+  push(g_ly_mod, m)
+  push(g_ly_name, layer)
+}
+# `module NAME [in layer L] [uses A, B]`
 function mod_parse_line() -> void {
   pi += 1
   let name = eat_id()
   module_set(g_parse_file, name)
-  if not is_id("uses") { return }
+  var layered = false
+  if is_id("in") and toks[pi + 1].text == "layer" {
+    pi += 2
+    mod_set_layer(name, eat_id())
+    layered = true
+  }
+  if not is_id("uses") and not layered { return }
   let ln = toks[pi].line
-  pi += 1
-  # `uses` and nothing after it: a module that reaches no other module at all
+  # `uses` and nothing after it (or a layer and no uses): nothing outside the module's layer
   var list = ","
-  if toks[pi].kind == TK_ID { list = mod_parse_names() }
+  if is_id("uses") {
+    pi += 1
+    if toks[pi].kind == TK_ID { list = mod_parse_names() }
+  }
   let k = mod_find_uses(name)
   if k >= 0 {
     g_mu_list[k] = g_mu_list[k] + list
@@ -121,6 +148,7 @@ function module_may_use(from: pointer, to: pointer) -> bool {
   if (from == "") or (to == "") or (from == to) { return true }
   let k = mod_find_uses(from)
   if k < 0 { return true }
+  if not (mod_layer(from) == "") and (mod_layer(from) == mod_layer(to)) { return true }
   return mod_list_has(g_mu_list[k], to)
 }
 # the names in ",a,b," as a slice
@@ -138,18 +166,42 @@ function mod_names(list: pointer) -> []pointer {
   return out
 }
 # the declared uses graph has no cycle: a depth-first walk that carries its path, "a -> b -> "
-var g_mu_done: pointer = ","          # modules whose every path is known to end
+var g_mu_done: pointer = ","          # nodes whose every path is known to end
+# the graph the cycle check walks: a layer is one node ("layer app"), since its modules may cycle
+function mod_node(m: pointer) -> pointer {
+  let l = mod_layer(m)
+  if (l == "") { return m }
+  return `layer {l}`
+}
+# a node's edges, as ",a,layer b,": every uses entry of the modules in it, leaving its own layer
+function mod_node_edges(nd: pointer) -> pointer {
+  var out = ","
+  var k = 0
+  while k < len(g_mu_mod) {
+    if (mod_node(g_mu_mod[k]) == nd) {
+      let next = mod_names(g_mu_list[k])
+      var n = 0
+      while n < len(next) {
+        let t = mod_node(next[n])
+        if not (t == nd) and not has_sub(out, `,{t},`) { out = out + t + "," }
+        n += 1
+      }
+    }
+    k += 1
+  }
+  return out
+}
 function mod_walk(m: pointer, path: pointer, first: pointer) -> void {
   if has_sub(`-> {path}`, `-> {m} -> `) {
     let k0 = mod_find_uses(first)
     g_err_file = g_mu_file[k0]
     g_err_line = g_mu_line[k0]
-    perr(`the modules' uses go round in a circle: {path}{m}; one of them has to take the other through a port`)
+    perr(`the modules' uses go round in a circle: {path}{m}; one of them has to take the other through a port, or the ones that belong together declare one layer (module m in layer L)`)
   }
   if has_sub(g_mu_done, `,{m},`) { return }
-  let k = mod_find_uses(m)
-  if k < 0 { return }
-  let next = mod_names(g_mu_list[k])
+  let edges = mod_node_edges(m)
+  if (edges == ",") { return }
+  let next = mod_names(edges)
   var n = 0
   while n < len(next) {
     mod_walk(next[n], `{path}{m} -> `, first)
@@ -162,7 +214,7 @@ function modules_finish() -> void {
   g_parsing = false
   var i = 0
   while i < len(g_mu_mod) {
-    mod_walk(g_mu_mod[i], "", g_mu_mod[i])
+    mod_walk(mod_node(g_mu_mod[i]), "", g_mu_mod[i])
     i += 1
   }
   g_parsing = saved

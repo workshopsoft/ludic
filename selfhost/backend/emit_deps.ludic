@@ -3,7 +3,7 @@
 # of what it names, and every assignment to a global of another module is a write; the file lists
 # the modules (their declared `uses`, and whether they are a package's), the edges with a count, and
 # the writes, one a line:
-#   module <name> <package 0|1> <uses: -|,a,b,>
+#   module <name> <package 0|1> <uses: -|,a,b,> <layer: -|name>
 #   edge <from> <to> <count> <first name>
 #   write <owner> <global> <from> <file>:<line>
 var g_dp_on: int = -1
@@ -78,7 +78,9 @@ function deps_flush() -> void {
       var uses: pointer = "-"
       let k = mod_find_uses(m)
       if k >= 0 { uses = g_mu_list[k] }
-      deps_line(f, `module {m} {itoa(pkg)} {uses}`)
+      var layer = mod_layer(m)
+      if (layer == "") { layer = "-" }
+      deps_line(f, `module {m} {itoa(pkg)} {uses} {layer}`)
     }
     i += 1
   }
@@ -94,7 +96,7 @@ function deps_flush() -> void {
     }
     if not dup and not (m == "") {
       push(seen, m)
-      deps_line(f, `module {m} 1 -`)
+      deps_line(f, `module {m} 1 - -`)
     }
     i += 1
   }

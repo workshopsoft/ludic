@@ -1,0 +1,5 @@
+# items/index.ludic - uses hud, which is in layer app
+module items uses hud
+export function item_count() -> int {
+  return 3
+}
