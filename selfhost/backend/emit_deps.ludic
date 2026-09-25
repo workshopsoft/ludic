@@ -116,9 +116,46 @@ function deps_flush() -> void {
     deps_line(f, g_dp_aliases[i])
     i += 1
   }
+  deps_widths(f)
   file_close(f)
 }
 
+# 0.R2: how many states each function and entry point takes - `width <n> <name> <file>:<line> <pkg>`,
+# the program's own code only (not the runtime's)
+function deps_widths(f: pointer) -> void {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.file != null and not is_runtime_file(d.file) {
+      var n = 0
+      var name = d.s
+      if d.kind == N_FN {
+        var k = 0
+        while k < len(d.kids) {
+          if d.kids[k].kind == N_PARAM and is_state_ty(d.kids[k].ty) { n += 1 }
+          k += 1
+        }
+      }
+      if (d.kind == N_MAIN or d.kind == N_SYS) and d.a != null {
+        if d.kind == N_MAIN { name = "entry" }
+        n = deps_body_states(d.a)
+      }
+      var pkg = 0
+      if not (pkg_of_file(d.file) == "") { pkg = 1 }
+      if n > 0 { deps_line(f, `width {itoa(n)} {name} {d.file}:{itoa(d.line)} {itoa(pkg)}`) }
+    }
+    i += 1
+  }
+}
+function deps_body_states(b: Node) -> int {
+  var n = 0
+  var k = 0
+  while k < len(b.kids) and b.kids[k].tps != null and (b.kids[k].tps == "state") {
+    n += 1
+    k += 1
+  }
+  return n
+}
 # A local that holds another module's global record (or a piece of one) - `let t = thing_cur`,
 # `let s = slots[i]` - writes into that module's state when it is written through: `t.used = 1`.
 # That is caught here for a local bound straight from the global (or from such a local) in the

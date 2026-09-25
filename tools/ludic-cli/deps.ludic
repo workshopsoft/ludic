@@ -18,7 +18,8 @@
 # other module (a leaf); largest_cycle: the largest set of modules that all reach each other, not
 # counting the edges inside a declared layer (which may go round by design - reported beside it);
 # cross_writes: assignments to a global of another module; globals_written_from_outside: those
-# globals, each counted once.
+# globals, each counted once; widest_function: the most states any function or entry point of the
+# program's own takes (0.R2 - a reducer takes one, and the dispatchers should come down to a few).
 var dp_mods: []pointer = null
 var dp_pkg: []int = null
 var dp_uses: []pointer = null
@@ -32,6 +33,8 @@ var dp_aliases: []pointer = null      # writes through a local holding another m
 var dp_wowner: []pointer = null
 var dp_wname: []pointer = null
 var dp_wfrom: []pointer = null
+var dp_wide_n: int = 0                # 0.R2: the widest function's state parameters, and which
+var dp_wide_at: pointer = ""
 
 function dp_words(line: pointer) -> []pointer {
   let out = new []pointer
@@ -64,6 +67,7 @@ function dp_load(path: pointer) -> bool {
   if text == null { return false }
   dp_mods = new []pointer;  dp_pkg = new []int;  dp_uses = new []pointer;  dp_layer = new []pointer
   dp_ef = new []int;  dp_et = new []int;  dp_ec = new []int;  dp_en = new []pointer
+  dp_wide_n = 0;  dp_wide_at = ""
   dp_writes = new []pointer;  dp_aliases = new []pointer;  dp_wowner = new []pointer;  dp_wname = new []pointer;  dp_wfrom = new []pointer
   let lines = split_lines(text)
   for i in 0 .. len(lines) {
@@ -85,6 +89,10 @@ function dp_load(path: pointer) -> bool {
       push(dp_en, w[4])
     }
     if len(w) >= 6 and w[0] == "alias" { push(dp_aliases, lines[i]) }
+    if len(w) >= 5 and w[0] == "width" and w[4] == "0" and s_to_int(w[1]) > dp_wide_n {
+      dp_wide_n = s_to_int(w[1])
+      dp_wide_at = `{w[2]} ({w[3]})`
+    }
     if len(w) >= 5 and w[0] == "write" {
       push(dp_wowner, w[1])
       push(dp_wname, w[2])
@@ -196,7 +204,7 @@ var dp_vals: []int = null
 var dp_cycle: []int = null
 var dp_cycle_all: []int = null        # the same with the layers' own edges counted
 function dp_numbers() -> void {
-  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside"]
+  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside", "widest_function"]
   var mods = 0
   for k in 0 .. len(dp_mods) { if dp_own(k) { mods += 1 } }
   var deps = 0
@@ -217,13 +225,15 @@ function dp_numbers() -> void {
       if not dup { push(seen, key) }
     }
   }
-  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen)]
+  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen), dp_wide_n]
 }
 
 # ---- the command --------------------------------------------------------------
 function dp_print_numbers() -> void {
   for i in 0 .. len(dp_names) { print(`{dp_names[i]}: {string(dp_vals[i])}`) }
   print(`in the largest cycle: {dp_sorted_names(dp_cycle)}`)
+  if dp_wide_n == 1 { print(`the widest function: {dp_wide_at}, 1 state`) }
+  if dp_wide_n > 1 { print(`the widest function: {dp_wide_at}, {string(dp_wide_n)} states`) }
   let layers = dp_layers()
   if layers != "" {
     print(`layers: {layers}`)

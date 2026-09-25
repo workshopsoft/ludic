@@ -476,13 +476,19 @@ function deps_case() -> void {
   let lbl = "ludic deps: the numbers, --check against a baseline, --dot, --writes"
   let p = "examples/modules/tangle.ludic"
   let got = capture(`bin/ludic deps {p} 2>&1`)
-  let want = "modules: 3\ndependencies: 2\nlargest_cycle: 2\ncross_writes: 1\nglobals_written_from_outside: 1\nin the largest cycle: a b\n"
+  let want = "modules: 3\ndependencies: 2\nlargest_cycle: 2\ncross_writes: 1\nglobals_written_from_outside: 1\nwidest_function: 1\nin the largest cycle: a b\nthe widest function: a_run (examples/modules/tangle/a/index.ludic:3), 1 state\n"
   if not (s_trim(got) == s_trim(want)) { bad2(lbl, `said [{s_trim(got)}]`);  return }
   let base = `{tmp_dir()}/deps-base.txt`
   if not shq(`bin/ludic deps {p} --baseline {base} > /dev/null`) { bad2(lbl, "--baseline failed");  return }
   if not shq(`bin/ludic deps {p} --check {base} > /dev/null`) { bad2(lbl, "--check failed against its own baseline");  return }
   write_file(base, "dependencies 1\nlargest_cycle 2\ncross_writes 1\nglobals_written_from_outside 1\n")
   if shq(`bin/ludic deps {p} --check {base} > /dev/null`) { bad2(lbl, "--check passed with more dependencies than the baseline");  return }
+  # 0.R2: the widest function is a ratchet too
+  write_file(base, "dependencies 2\nlargest_cycle 2\ncross_writes 1\nglobals_written_from_outside 1\nwidest_function 0\n")
+  if shq(`bin/ludic deps {p} --check {base} > {tmp_dir()}/wide.out`) { bad2(lbl, "--check passed with a wider function than the baseline");  return }
+  if not shq(`grep -q 'widest_function 1 (baseline 0)  WORSE' {tmp_dir()}/wide.out`) { bad2(lbl, capture(`cat {tmp_dir()}/wide.out`));  return }
+  let pk = capture(`bin/ludic deps examples/actions/pack.ludic 2>&1`)
+  if not s_contains(pk, "the widest function: entry (examples/actions/pack.ludic:29), 2 states") { bad2(lbl, `widest: [{s_trim(pk)}]`);  return }
   if not shq(`bin/ludic deps {p} --dot | grep -q '"a" -> "b"'`) { bad2(lbl, "--dot has no a -> b edge");  return }
   if not shq(`bin/ludic deps {p} --writes | grep -q 'b b_count a examples/modules/tangle/a/index.ludic:4'`) { bad2(lbl, "--writes misses a's write to b_count");  return }
   if not shq(`bin/ludic deps {p} --writes | grep -q 'warning: b b_rec a examples/modules/tangle/a/index.ludic:12 through the local r'`) { bad2(lbl, "--writes misses the write through a local");  return }
