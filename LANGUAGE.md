@@ -1739,7 +1739,7 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 
 ```
 # math      min max abs clamp                       (int)
-# rng       seed(i)  rng_range(lo,hi)->int  rng_chance(pct)->bool   (deterministic)
+# rng       seed(i)  rng_range(lo,hi)->int  rng_chance(pct)->bool   (deterministic; any program, ECS or not)
 # fixed     fixed(i)->fixed   floor(f)->int
 # tilemap   map_size(w,h)  map_row(y,str)  tile(x,y)->int
 # 2D draw   clear(color)  fill_rect(x,y,w,h,color)  frame_rect(...)  put_px(x,y,color)

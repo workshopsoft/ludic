@@ -1,0 +1,11 @@
+# value_direct.ludic — the value tree is spliced when a program calls value_* / json_* itself,
+# as a package does, not only when it writes Value.* or Json.*.
+#
+# Running it prints:  {"fish":3} 3
+program ValueDirect {
+  entry {
+    let o = value_object()
+    value_put(o, "fish", value_int(3))
+    print(`{json_encode(o)} {value_as_int(value_get(o, "fish"))}`)
+  }
+}

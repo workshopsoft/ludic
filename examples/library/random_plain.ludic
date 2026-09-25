@@ -1,0 +1,19 @@
+# random_plain.ludic — Random.* in a program with no properties or handlers: the seeded random
+# numbers are spliced on their own, and a helper may call rng_range directly. The same seed gives
+# the same draws.
+#
+# Running it prints:  1 1 1
+program RandomPlain {
+  function roll() -> int {
+    return rng_range(1, 6)
+  }
+  entry {
+    Random.seed(7)
+    let a = Random.range(1, 6)
+    let b = roll()
+    Random.seed(7)
+    let c = Random.range(1, 6)
+    let d = roll()
+    print(`{a == c} {b == d} {a >= 1 and a <= 6}`)
+  }
+}

@@ -1,0 +1,12 @@
+# testing_random.ludic — a program made only of test blocks has the runtime's namespaces too:
+# Random.range through a helper. Its runner prints:
+#   == 1 passed, 0 failed ==
+program TestingRandom {
+  function roll() -> int {
+    return Random.range(1, 6)
+  }
+  test "a roll is a die's" {
+    let r = roll()
+    expect(r >= 1 and r <= 6)
+  }
+}

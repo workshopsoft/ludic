@@ -298,6 +298,7 @@ function p_postfix() -> Node {
   while true {
     if is_op(".") { pi += 1; let m = node(E_MEMBER); m.a = e; m.s = eat_id(); e = m
       if e.a.kind == E_ID and e.a.s == "Regex" { g_uses_regex = true }   # splice the regex runtime on demand
+      if e.a.kind == E_ID and e.a.s == "Random" { g_uses_rng = true }   # splice the seeded random numbers on demand
       if e.a.kind == E_ID and e.a.s == "Fs" and (e.s == "read_bytes" or e.s == "write_bytes") { g_uses_bytes = true }
       if e.a.kind == E_ID and (e.a.s == "BigInt" or e.a.s == "Decimal") { g_uses_bignum = true }   # splice the bignum runtime on demand
       if e.a.kind == E_ID and (e.a.s == "Dict" or e.a.s == "Set") { g_uses_dict = true }   # splice the hash-table runtime on demand
@@ -349,6 +350,7 @@ function p_postfix() -> Node {
       else { let ix = node(E_INDEX); ix.a = e; ix.b = lo; eat_op("]"); e = ix }
     }
     else if is_op("(") { let c = node(E_CALL); c.a = e; c.line = toks[pi].line; args_call(c); e = c
+      if (c.a.kind == E_ID) and rt_wanted_name(c.a.s) { push(g_rt_wants, c.a.s) }   # a runtime called by its own name
       if (c.a.kind == E_ID) and ((c.a.s == "draw_sprite") or (c.a.s == "draw_sprite_scaled")) { warn_draw_sprite(c.a.s) }   # #85 deprecate the bare aliases
     }
     else { break }
@@ -751,6 +753,8 @@ var g_uses_query: bool = false    # a program mentioned Query.* -> splice the qu
 var g_uses_reflect: bool = false  # a program mentioned Reflect.* -> force-emit the reflection ABI
 var g_uses_light: bool = false    # a program mentioned Light.* -> splice the 2D light pass
 var g_uses_value: bool = false    # Value.*/Json.*/Reflect.serialize -> splice the value tree + JSON (#44)
+var g_uses_rng: bool = false      # Random.* -> splice the seeded random numbers (runtime/native/rng.ludic)
+var g_rt_wants: []pointer = new []pointer   # bare names a spliced runtime answers (rng_*, seed, value_*, json_*)
 var g_uses_xml: bool = false      # Xml.* -> splice the XML reader (Tiled #67)
 var g_uses_base64: bool = false   # Base64.* -> splice the base64 codec + inflate (Tiled #67)
 var g_uses_tiled: bool = false    # Tiled.* -> splice the Tiled map runtime (#69)
@@ -1177,6 +1181,22 @@ function do_import(rel: pointer) -> void {
 
 # a game (has handlers/components) links the Ludic runtime; auto-splice it.
 # Tools (an `entry` block, no ECS) get nothing.
+# a bare name that only a spliced runtime answers: the runtime comes in when a program calls it
+# directly (a package calling value_get, a helper calling rng_range), not only through Value.*
+function rt_wanted_name(n: pointer) -> bool {
+  if (n == "seed") { return true }
+  return str_starts(n, "rng_") or str_starts(n, "value_") or str_starts(n, "json_")
+}
+# a wanted name with this prefix that nothing in the program defines
+function rt_wants_unmet(prefix: pointer) -> bool {
+  var i = 0
+  while i < len(g_rt_wants) {
+    let n = g_rt_wants[i]
+    if str_starts(n, prefix) and find_fn(n) == null and find_global(n) == null { return true }
+    i += 1
+  }
+  return false
+}
 function maybe_splice_runtime() -> void {
   let saved = cur_dir
   # L6: the engine's namespaces that are aliases of runtime functions, declared in Ludic
@@ -1186,6 +1206,13 @@ function maybe_splice_runtime() -> void {
   # the asset pack, and a program that does not should not carry the pack's machinery)
   if g_uses_bytes { do_import("runtime/native/bytes.ludic") }
   cur_dir = saved
+  # Random.* (or a bare rng_* / seed nobody else defines) in a program with no ECS: the seeded
+  # random numbers on their own; a game has them through core.ludic
+  if not has_ecs() and (g_uses_rng or rt_wants_unmet("rng_") or rt_wants_unmet("seed")) {
+    cur_dir = ""
+    do_import("runtime/native/rng.ludic")
+    cur_dir = saved
+  }
   # a game (has systems/components) links the Ludic runtime.
   if has_ecs() {
     cur_dir = ""
@@ -1246,6 +1273,7 @@ function maybe_splice_runtime() -> void {
   }
   # Value.*/Json.* (#44) get the generic value tree + JSON bridge spliced in; it
   # is self-contained (only string/slice ops), so it works in a plain tool too.
+  if rt_wants_unmet("value_") or rt_wants_unmet("json_") { g_uses_value = true }   # value_get called directly
   if g_uses_value {
     cur_dir = ""
     do_import("runtime/native/value.ludic")
@@ -1467,6 +1495,8 @@ function parse_program() -> void {
   g_uses_world_despawn = false
   g_uses_light = false
   g_uses_value = false
+  g_uses_rng = false
+  g_rt_wants = new []pointer
   g_uses_xml = false
   g_uses_base64 = false
   g_uses_tiled = false
