@@ -1,0 +1,129 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "ludic tools/lab/plate_build.py"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "plate",
+   "mesh": 0
+  }
+ ],
+ "meshes": [
+  {
+   "name": "plate",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    }
+   ]
+  }
+ ],
+ "materials": [
+  {
+   "name": "plate",
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 0
+    },
+    "metallicRoughnessTexture": {
+     "index": 1
+    }
+   }
+  }
+ ],
+ "textures": [
+  {
+   "source": 0
+  },
+  {
+   "source": 1
+  }
+ ],
+ "images": [
+  {
+   "uri": "plate_diff.png"
+  },
+  {
+   "uri": "plate_arm.png"
+  }
+ ],
+ "buffers": [
+  {
+   "uri": "plate.bin",
+   "byteLength": 4256
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 1164
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 1164,
+   "byteLength": 1164
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 2328,
+   "byteLength": 776
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 3104,
+   "byteLength": 1152
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 97,
+   "type": "VEC3",
+   "min": [
+    -20.0,
+    0.0,
+    -20.0
+   ],
+   "max": [
+    20.0,
+    0.0,
+    20.0
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 97,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 97,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5125,
+   "count": 288,
+   "type": "SCALAR"
+  }
+ ]
+}

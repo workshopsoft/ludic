@@ -37,6 +37,13 @@ var r3d_dem_base: float = 0.0
 var r3d_dem_ox: float = 0.0
 var r3d_dem_oz: float = 0.0
 var r3d_ortho_path: string = null
+# A plate: no terrain, no grass, no water - the sky, the sun, the shadows and whatever the scene
+# draws (a lab's stage, ludic.lab). Set before the load; nothing of the landscape is made, so
+# its hundreds of megabytes of height field, materials and grass never exist.
+var r3d_plate: bool = false
+function r3d_plate_mode(on: bool) -> void { r3d_plate = on }
+# the sky's HDR image, when it is not the default photograph under r3d_assets
+var r3d_sky_path: string = null
 var r3d_debug: bool = false
 var r3d_debug_shadow: bool = false
 var r3d_debug_max: bool = false
@@ -123,9 +130,12 @@ function r3d_load_count() -> int { return 4 + TERRAIN_INIT_STEPS }
 function r3d_load_step(i: int) -> bool {
   let t = i - 1
   if i == 0 {
-    if not sky_load(r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr") { return false }
+    var sky = r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr"
+    if r3d_sky_path != null { sky = r3d_sky_path }
+    if not sky_load(sky) { return false }
     daylight_init()
   } else if t >= 0 and t < TERRAIN_INIT_STEPS {
+    if r3d_plate { return true }
     if t == 0 {
       if r3d_dem_path != null { terrain_use_dem(r3d_dem_path, r3d_dem_min, r3d_dem_max, r3d_dem_base, r3d_dem_ox, r3d_dem_oz) }
       if r3d_ortho_path != null { terrain_use_ortho(r3d_ortho_path) }
@@ -138,7 +148,7 @@ function r3d_load_step(i: int) -> bool {
     scatter_init()
     actor_init()
   } else if i == 3 + TERRAIN_INIT_STEPS {
-    grass_init()
+    if not r3d_plate { grass_init() }
     r3d_sky_prog = r3d_program("fullscreen.vert", "sky.frag", "")
     # The base is NOON's air, and it was tuned when nothing desaturated with distance - so it
     # was doing its whole job through colour and could not be raised without the valley going
@@ -221,7 +231,7 @@ function r3d_frame(time: float) -> void {
     print(`cam {r3d_test_frame} pos {int(cam_pos[0] * 1000.0)} {int(cam_pos[1] * 1000.0)} {int(cam_pos[2] * 1000.0)} yaw {int(cam_yaw * 1000.0)} pitch {int(cam_pitch * 1000.0)} jitter {int(gsl_jitter_x * 1000000.0)} {int(gsl_jitter_y * 1000000.0)} render {post_w}x{post_h} reset {gsl_reset} evalok {gsl_eval_ok} fresh {gsl_fresh}`)
   }
   # the height-field shadow rebakes as the light moves in steps (daylight), or with the sky yaw when there is no clock
-  if (not day_on and ter_shadow_yaw != sky_yaw) or ter_shadow_gen != day_gen {
+  if not r3d_plate and ((not day_on and ter_shadow_yaw != sky_yaw) or ter_shadow_gen != day_gen) {
     ter_shadow_gen = day_gen
     let t_bk = gl_now_us()
     terrain_bake_shadow()
@@ -249,12 +259,14 @@ function r3d_frame(time: float) -> void {
     sc_prepass = true
   }
   prof_cpu_mark("foliage prepass")
-  prof_begin("terrain sun")
-  terrain_sun_prepare()
-  prof_end()
-  prof_begin("terrain")
-  terrain_draw()
-  prof_end()
+  if not r3d_plate {
+    prof_begin("terrain sun")
+    terrain_sun_prepare()
+    prof_end()
+    prof_begin("terrain")
+    terrain_draw()
+    prof_end()
+  }
   prof_cpu_mark("terrain")
   prof_begin("scene (vegetation)")
   r3d_scene_draw()

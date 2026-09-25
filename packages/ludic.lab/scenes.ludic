@@ -1,0 +1,20 @@
+# scenes.ludic - every scene the lab can show, added by whoever has something to look at:
+#   def LabScenes deer { setup: fn deer_setup, tick: fn deer_tick }
+# setup builds what the scene shows and names its cameras (lab_shot); tick, if any, moves it each
+# frame by the lab's fixed step; draw, if any, draws what is not an actor or a scatter layer.
+export property LabScene {
+  key: string = ""
+  setup: fn() -> void = null
+  tick: fn(float) -> void = null
+  draw: fn() -> void = null
+}
+export open registry LabScenes of LabScene as LAB
+
+export function lab_scene_names() -> string {
+  var s = ""
+  for i in 0 .. LAB_COUNT {
+    if i > 0 { s = s + ", " }
+    s = s + LabScenes[i].key
+  }
+  return s
+}

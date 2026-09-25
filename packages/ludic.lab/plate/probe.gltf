@@ -1,0 +1,209 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "ludic tools/lab/plate_build.py"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "probe",
+   "mesh": 0
+  }
+ ],
+ "meshes": [
+  {
+   "name": "probe",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 3,
+     "material": 0
+    },
+    {
+     "attributes": {
+      "POSITION": 4,
+      "NORMAL": 5,
+      "TEXCOORD_0": 6
+     },
+     "indices": 7,
+     "material": 1
+    }
+   ]
+  }
+ ],
+ "materials": [
+  {
+   "name": "probe_box",
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 0
+    },
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   }
+  },
+  {
+   "name": "probe_ball",
+   "pbrMetallicRoughness": {
+    "baseColorTexture": {
+     "index": 1
+    },
+    "metallicRoughnessTexture": {
+     "index": 2
+    }
+   }
+  }
+ ],
+ "textures": [
+  {
+   "source": 0
+  },
+  {
+   "source": 1
+  },
+  {
+   "source": 2
+  }
+ ],
+ "images": [
+  {
+   "uri": "probe_box.png"
+  },
+  {
+   "uri": "probe_ball.png"
+  },
+  {
+   "uri": "probe_arm.png"
+  }
+ ],
+ "buffers": [
+  {
+   "uri": "probe.bin",
+   "byteLength": 31152
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 288
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 288,
+   "byteLength": 288
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 576,
+   "byteLength": 192
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 768,
+   "byteLength": 144
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 912,
+   "byteLength": 6732
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 7644,
+   "byteLength": 6732
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 14376,
+   "byteLength": 4488
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 18864,
+   "byteLength": 12288
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3",
+   "min": [
+    -0.4,
+    0.0,
+    -0.4
+   ],
+   "max": [
+    0.4,
+    0.8,
+    0.4
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5125,
+   "count": 36,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 4,
+   "componentType": 5126,
+   "count": 561,
+   "type": "VEC3",
+   "min": [
+    -0.3,
+    0.8,
+    -0.3
+   ],
+   "max": [
+    0.3,
+    1.4000000000000001,
+    0.3
+   ]
+  },
+  {
+   "bufferView": 5,
+   "componentType": 5126,
+   "count": 561,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 6,
+   "componentType": 5126,
+   "count": 561,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 7,
+   "componentType": 5125,
+   "count": 3072,
+   "type": "SCALAR"
+  }
+ ]
+}

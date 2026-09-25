@@ -1,0 +1,36 @@
+# plate.ludic - the stage: a flat disc 40 m across at y = 0 with a line every metre, lit by the
+# package's own small sky (a sun 40 degrees up), and nothing else. Its files are in plate/.
+var lb_plate: Actor = null
+var lb_plate_dir: string = ""
+
+# the package's plate/ directory: beside the project (a checkout of the toolchain) or installed
+export function lab_plate_dir() -> string {
+  if lb_plate_dir != "" { return lb_plate_dir }
+  lb_plate_dir = "packages/ludic.lab/plate"
+  if not Fs.exists(`{lb_plate_dir}/plate.gltf`) { lb_plate_dir = `{r3d_home()}/packages/ludic.lab/plate` }
+  return lb_plate_dir
+}
+function lab_plate_load() -> void {
+  let m = gltf_load(lab_plate_dir(), "plate.gltf", "plate")
+  if m == null { return }
+  lb_plate = actor_new(m)
+  lb_plate.casts = false
+  lb_plate.cull = 0.0
+  lb_plate.radius = 0.0
+  actor_place(lb_plate, 0.0, 0.0, 0.0, 0.0)
+}
+# the ground under (x, z): the plate is flat at 0
+export function lab_ground_y(x: float, z: float) -> float { return 0.0 }
+# an actor stood on the plate at (x, z), facing yaw (radians)
+export function lab_stand(a: Actor, x: float, z: float, yaw: float) -> void {
+  if a == null { return }
+  actor_place(a, x, lab_ground_y(x, z), z, yaw)
+}
+# a model from a glTF file stood on the plate: the one call a scene usually needs
+export function lab_model(dir: string, file: string, node: string, x: float, z: float, yaw: float) -> Actor {
+  let m = gltf_load(dir, file, node)
+  if m == null { return null }
+  let a = actor_new(m)
+  lab_stand(a, x, z, yaw)
+  return a
+}

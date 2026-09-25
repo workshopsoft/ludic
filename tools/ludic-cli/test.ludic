@@ -446,6 +446,31 @@ function expect_fp_fail_case() -> void {
   if got == `{src}:4: expect_near failed (got 1.5, want 2)` { ok(lbl) } else { bad2(lbl, `said [{got}]`) }
 }
 
+# ludic.lab: a scene on the plate, headless, three shots as PNGs, in well under a gigabyte
+function lab_plate_case() -> void {
+  let lbl = "ludic.lab: the example's three shots on the plate, as PNGs, under 1 GB"
+  if not is_darwin() { skip(lbl);  return }
+  let bin = `{tmp_dir()}/lab_plate`
+  if not shq(`bin/ludic build packages/ludic.lab/example/plate.ludic --headless -o {bin} > {tmp_dir()}/lab.out 2>&1`) { bad2(lbl, capture_line(`grep -i error {tmp_dir()}/lab.out | head -1`));  return }
+  # from the checkout's root, where the renderer's shaders and the plate are found beside it
+  let work = `{tmp_dir()}/labrun`
+  shell(`rm -rf {work} build/lab/probe && mkdir -p {work}`)
+  if not shq(`yes '' | head -300 | /usr/bin/time -l {bin} > {work}/run.out 2> {work}/time.out`) { bad2(lbl, capture_line(`tail -1 {work}/run.out`));  return }
+  var n = 0
+  let names = ["front", "side", "above"]
+  for i in 0 .. 3 {
+    if shq(`file build/lab/probe/{names[i]}.png | grep -q 'PNG image data, 1920 x 1080'`) { n += 1 }
+  }
+  let last = capture_line(`tail -1 {work}/run.out`)
+  if n != 3 { bad2(lbl, `{string(n)} of 3 shots are PNGs: {last}`);  return }
+  let pl = s_trim(capture_line(`grep 'peak memory footprint' {work}/time.out`))
+  var k = 0
+  while k < len(pl) and pl[k] >= '0' and pl[k] <= '9' { k += 1 }
+  let peak = pl[0 .. k]
+  if len(peak) >= 10 { bad2(lbl, `peak memory footprint {peak} bytes`);  return }
+  ok(`{lbl} (peak {peak} bytes)`)
+}
+
 # every package's own tests, the way a package author runs them: `ludic test packages`
 function packages_test_case() -> void {
   let lbl = "ludic test packages: every package's tests pass"
@@ -1013,6 +1038,7 @@ function cmd_dev_test() -> int {
   package_scripts_case()
   test_dir_case()
   packages_test_case()
+  lab_plate_case()
   pack_roundtrip_case()
   packignore_case()
   os_dirs_case()

@@ -273,6 +273,7 @@ function emit_program() -> void {
   g_fprintf_declared = false
   g_uses_result = false
   g_uses_option = false
+  g_uses_quit = false
   g_uses_world_despawn = false                   # #84: set when a world_despawn call is emitted (below)
   g_cov_lines = new []int
   g_cov_active = true
@@ -312,6 +313,8 @@ function emit_program() -> void {
     i = 0
     while i < len(prog) { if prog[i].kind == N_MAIN { emit_main(prog[i]) };  i += 1 }
   } } }
+  # quit() in a program with no frame loop (a package's code in a test program): the flag it sets
+  if g_uses_quit and not has_ecs() { emith("@L_running = internal global i32 1\n") }
   if g_uses_world_despawn { emit_world_despawn_fn() }   # #84: @fn_world_despawn, after all World.despawn / esys_bounds-kill uses are seen
   if g_uses_loopback { emit_loopback() }         # built-in transport, after all net_send/net_poll uses are seen
   if g_uses_str { emit_str_prelude() }          # @lp_str_eq / @lp_str_concat, after all uses are seen

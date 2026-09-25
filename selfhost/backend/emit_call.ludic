@@ -582,7 +582,7 @@ function emit_call(e: Node) -> Val {
     emit("  call void @L_world_load(ptr ");  emit(b.code);  emit(", i32 ");  emit(l.code);  emit(")\n")
     return val("0", "void")
   }
-  if (name == "quit") { emit("  store i32 0, ptr @L_running\n");  return val("0", "void") }
+  if (name == "quit") { g_uses_quit = true;  emit("  store i32 0, ptr @L_running\n");  return val("0", "void") }
   # NETWORKING (NETWORKING-DESIGN §5) — the low-level freedom layer, callable from
   # Ludic. serialize/apply/sync_size lower to the @Sync by-kind dispatchers (N2);
   # owner/set_owner/is_owner to the @Owned storage (N3); is_server/local_id read

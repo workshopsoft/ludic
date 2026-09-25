@@ -1,0 +1,35 @@
+# shots.ludic - a scene names its cameras; the loop takes them in order
+function lab_shots_reset() -> void {
+  lb_shot_names = new []string
+  lb_shot_pose = new []float
+}
+# a camera at (x, y, z) looking along yaw / pitch, both in DEGREES (cam_set's units)
+export function lab_shot(name: string, x: float, y: float, z: float, yaw_deg: float, pitch_deg: float) -> void {
+  push(lb_shot_names, name)
+  push(lb_shot_pose, x)
+  push(lb_shot_pose, y)
+  push(lb_shot_pose, z)
+  push(lb_shot_pose, yaw_deg)
+  push(lb_shot_pose, pitch_deg)
+}
+# a camera `dist` metres from the point (tx, ty, tz), from bearing `from_deg` (0 = from +z),
+# `up_deg` above the horizontal, looking at the point
+export function lab_shot_at(name: string, tx: float, ty: float, tz: float, dist: float, from_deg: float, up_deg: float) -> void {
+  let b = Math.deg_to_rad(from_deg)
+  let e = Math.deg_to_rad(up_deg)
+  let hd = dist * Math.cos(e)
+  let cx = tx + Math.sin(b) * hd
+  let cz = tz + Math.cos(b) * hd
+  let cy = ty + dist * Math.sin(e)
+  let yaw = Math.atan2(cx - tx, cz - tz) * (180.0 / PI)
+  lab_shot(name, cx, cy, cz, yaw, -up_deg)
+}
+export function lab_shot_count() -> int {
+  if lb_shot_names == null { return 0 }
+  return len(lb_shot_names)
+}
+function lab_shot_apply(i: int) -> void {
+  if i < 0 or i >= lab_shot_count() { return }
+  let o = i * 5
+  cam_set(lb_shot_pose[o], lb_shot_pose[o + 1], lb_shot_pose[o + 2], lb_shot_pose[o + 3], lb_shot_pose[o + 4])
+}

@@ -1,0 +1,12 @@
+# ludic.lab - a scene on a plate (a lit disc, a sky, a sun at one hour, a clock of frames) and the
+# cameras that photograph it; a game or a package adds scenes to LabScenes. See README.md.
+module ludic_lab uses ludic_render3d, ludic_base
+numbers float
+import "ludic.render3d/r3d.ludic"
+import "state.ludic"
+import "scenes.ludic"
+import "plate.ludic"
+import "shots.ludic"
+import "png.ludic"
+import "boot.ludic"
+import "loop.ludic"

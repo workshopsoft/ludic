@@ -317,6 +317,7 @@ var ter_h_scale: float = 0.0
 var ter_o_scale: float = 0.0
 
 function terrain_height(x: float, z: float) -> float {
+  if ter_heights == null { return 0.0 }          # a plate (r3d_plate_mode): flat at y = 0
   if ter_h_scale == 0.0 { ter_h_scale = float(TERRAIN_RES) / float(TERRAIN_HALF * 2) }
   let scale = ter_h_scale
   let fx = (x - ter_ox + float(TERRAIN_HALF)) * scale
@@ -342,6 +343,7 @@ function terrain_height_fx(x: fixed, z: fixed) -> fixed { return fixed(terrain_h
 # thousands of placement queries a chunk makes.
 var ter_bw: floats = null
 function terrain_height_smooth(x: float, z: float) -> float {
+  if ter_heights == null { return 0.0 }
   if ter_h_scale == 0.0 { ter_h_scale = float(TERRAIN_RES) / float(TERRAIN_HALF * 2) }
   if ter_bw == null { ter_bw = floats(8) }
   let scale = ter_h_scale

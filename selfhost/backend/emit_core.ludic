@@ -46,6 +46,7 @@ var g_fprintf_declared: bool = false  # @fprintf is declared once, by whoever ne
 var g_bounds: bool = true        # check every slice index (--no-bounds turns it off)
 var g_uses_result: bool = false  # ok()/err()/try was emitted -> define the %Result value type (issue #46)
 var g_uses_option: bool = false  # some()/none() was emitted -> define the %Option value type (issue #53)
+var g_uses_quit: bool = false    # quit() was lowered: a program with no frame loop still needs @L_running
 var g_tests: []Node              # test "name" { ... } blocks collected by the parser
 var g_src_name: pointer = "?"    # base name of the source file, for panic/expect file:line messages
 var g_uses_longstr: bool = false  # string(long) / interpolating a long was emitted -> emit fn_long_str

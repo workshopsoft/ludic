@@ -1,0 +1,5 @@
+# ludic.lab - the visual lab: one model or one mechanic on a plate, photographed from fixed
+# cameras, never a whole game world. See README.md.
+package "ludic.lab"
+version "0.1.0"
+kind source

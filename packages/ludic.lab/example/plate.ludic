@@ -1,0 +1,20 @@
+# plate.ludic - the lab's example: one model on the plate, photographed from three cameras.
+#   ludic build packages/ludic.lab/example/plate.ludic --headless -o build/lab_plate
+#   yes '' | head -300 | ./build/lab_plate      -> build/lab/probe/{front,side,above}.png
+# The model is the package's own probe (a box with a ball on it), so the example needs nothing
+# from any game.
+import "ludic.lab"
+program LabPlate {
+  numbers float
+  function probe_setup() -> void {
+    lab_model(lab_plate_dir(), "probe.gltf", "probe", 0.0, 0.0, 0.5)
+    lab_note("a box and a ball, in the plate's light")
+    lab_shot_at("front", 0.0, 0.7, 0.0, 4.0, 0.0, 12.0)
+    lab_shot_at("side", 0.0, 0.7, 0.0, 4.0, 90.0, 12.0)
+    lab_shot_at("above", 0.0, 0.5, 0.0, 7.0, 30.0, 55.0)
+  }
+  def LabScenes probe { setup: fn probe_setup }
+  handler Boot phase Start { lab_boot() }
+  handler Look phase Input { lab_input() }
+  handler Draw phase Render { lab_render() }
+}

@@ -1,0 +1,54 @@
+# lab_test.ludic - what the lab computes without a window: the PNG it keeps a shot as, the cameras
+# a scene names, and the scenes a program adds
+import "ludic.lab"
+program LabTest {
+  numbers float
+  friend module lab_test of ludic_lab
+  function nothing() -> void { }
+  def LabScenes one { setup: fn nothing }
+  def LabScenes two { setup: fn nothing }
+
+  function ppm(path: string) -> void {
+    let hdr = "P6\n2 2\n255\n"
+    let b = buffer(len(hdr) + 12)
+    for i in 0 .. len(hdr) { b[i] = hdr[i] }
+    for i in 0 .. 12 { b[len(hdr) + i] = i * 20 }
+    Fs.write_bytes(path, b, len(hdr) + 12)
+  }
+
+  test "a PPM becomes a PNG with its signature, its size and a valid IEND" {
+    let dir = Os.temp_dir()
+    ppm(`{dir}/lab_test.ppm`)
+    expect(lab_ppm_to_png(`{dir}/lab_test.ppm`, `{dir}/lab_test.png`))
+    let p = Fs.read_bytes(`{dir}/lab_test.png`)
+    expect(p != null)
+    expect_eq(p[0], 137)
+    expect_eq(p[1], 80)
+    expect_eq(p[19], 2)                        # IHDR width, low byte
+    expect_eq(p[23], 2)                        # height
+    let n = len(p)
+    # the IEND chunk's CRC is always AE 42 60 82
+    expect_eq(p[n - 4], 174)
+    expect_eq(p[n - 3], 66)
+    expect_eq(p[n - 2], 96)
+    expect_eq(p[n - 1], 130)
+    expect(not Fs.exists(`{dir}/lab_test.ppm`))
+  }
+
+  test "a camera at a point looks back at it" {
+    lab_shots_reset()
+    lab_shot_at("front", 0.0, 1.0, 0.0, 10.0, 0.0, 0.0)
+    lab_shot_at("side", 0.0, 1.0, 0.0, 10.0, 90.0, 30.0)
+    expect_eq(lab_shot_count(), 2)
+    expect_near(lb_shot_pose[2], 10.0, 0.001)           # front: 10 m out along +z
+    expect_near(lb_shot_pose[5 + 0], 8.660, 0.01)       # side: along +x, 30 degrees up
+    expect_near(lb_shot_pose[5 + 1], 6.0, 0.01)
+    expect_near(lb_shot_pose[5 + 4], -30.0, 0.001)
+  }
+
+  test "scenes are what the program added, in its order" {
+    expect_eq(LAB_COUNT, 2)
+    expect(lab_scene_names() == "one, two")
+    expect_eq(labscenes_find("two"), LAB_TWO)
+  }
+}

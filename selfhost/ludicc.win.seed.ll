@@ -535,6 +535,7 @@ entry:
 @g_g_bounds = internal global i32 1
 @g_g_uses_result = internal global i32 0
 @g_g_uses_option = internal global i32 0
+@g_g_uses_quit = internal global i32 0
 @g_g_tests = internal global ptr null
 @g_g_src_name = internal global ptr null
 @g_g_uses_longstr = internal global i32 0
@@ -2175,7 +2176,7 @@ entry:
 @.str1556 = private unnamed_addr constant [2 x i8] c":\00"
 @.str1557 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4368: index out of range: \00"
 @.str1558 = private unnamed_addr constant [77 x i8] c" - a component is used by its name as a tag, so each needs a name of its own\00"
-@.str1559 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4440: index out of range: \00"
+@.str1559 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4441: index out of range: \00"
 @.str1560 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str1561 = private unnamed_addr constant [53 x i8] c" = getelementptr inbounds i32, ptr @L_cov_hits, i32 \00"
 @.str1562 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -2185,8 +2186,8 @@ entry:
 @.str1566 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str1567 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str1568 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1569 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4481: index out of range: \00"
-@.str1570 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4481: index out of range: \00"
+@.str1569 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4482: index out of range: \00"
+@.str1570 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4482: index out of range: \00"
 @.str1571 = private unnamed_addr constant [3 x i8] c"%t\00"
 @.str1572 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str1573 = private unnamed_addr constant [11 x i8] c" = alloca \00"
@@ -2223,38 +2224,38 @@ entry:
 @.str1604 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str1605 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str1606 = private unnamed_addr constant [4 x i8] c"ptr\00"
-@.str1607 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4523: index out of range: \00"
-@.str1608 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4528: index out of range: \00"
+@.str1607 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4524: index out of range: \00"
+@.str1608 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4529: index out of range: \00"
 @.str1609 = private unnamed_addr constant [6 x i8] c"%Cmp_\00"
-@.str1610 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4538: index out of range: \00"
-@.str1611 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4543: index out of range: \00"
-@.str1612 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4543: index out of range: \00"
+@.str1610 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4539: index out of range: \00"
+@.str1611 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4544: index out of range: \00"
+@.str1612 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4544: index out of range: \00"
 @.str1613 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str1614 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4551: index out of range: \00"
-@.str1615 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4564: index out of range: \00"
-@.str1616 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4567: index out of range: \00"
+@.str1614 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4552: index out of range: \00"
+@.str1615 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4565: index out of range: \00"
+@.str1616 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4568: index out of range: \00"
 @.str1617 = private unnamed_addr constant [10 x i8] c"EndReason\00"
 @.str1618 = private unnamed_addr constant [10 x i8] c"Despawned\00"
 @.str1619 = private unnamed_addr constant [10 x i8] c"SceneExit\00"
 @.str1620 = private unnamed_addr constant [5 x i8] c"Quit\00"
-@.str1621 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4585: index out of range: \00"
-@.str1622 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4590: index out of range: \00"
-@.str1623 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4595: index out of range: \00"
-@.str1624 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4602: index out of range: \00"
-@.str1625 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4603: index out of range: \00"
+@.str1621 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4586: index out of range: \00"
+@.str1622 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4591: index out of range: \00"
+@.str1623 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4596: index out of range: \00"
+@.str1624 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4603: index out of range: \00"
+@.str1625 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4604: index out of range: \00"
 @.str1626 = private unnamed_addr constant [10 x i8] c"countdown\00"
-@.str1627 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4610: index out of range: \00"
-@.str1628 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4624: index out of range: \00"
-@.str1629 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4629: index out of range: \00"
-@.str1630 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4643: index out of range: \00"
-@.str1631 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4653: index out of range: \00"
-@.str1632 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4668: index out of range: \00"
-@.str1633 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4682: index out of range: \00"
+@.str1627 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4611: index out of range: \00"
+@.str1628 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4625: index out of range: \00"
+@.str1629 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4630: index out of range: \00"
+@.str1630 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4644: index out of range: \00"
+@.str1631 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4654: index out of range: \00"
+@.str1632 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4669: index out of range: \00"
+@.str1633 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4683: index out of range: \00"
 @.str1634 = private unnamed_addr constant [2 x i8] c".\00"
 @.str1635 = private unnamed_addr constant [2 x i8] c".\00"
-@.str1636 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4699: index out of range: \00"
-@.str1637 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4699: index out of range: \00"
-@.str1638 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4705: index out of range: \00"
+@.str1636 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4700: index out of range: \00"
+@.str1637 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4700: index out of range: \00"
+@.str1638 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4706: index out of range: \00"
 @.str1639 = private unnamed_addr constant [3 x i8] c"of\00"
 @.str1640 = private unnamed_addr constant [6 x i8] c"IVec2\00"
 @.str1641 = private unnamed_addr constant [5 x i8] c"make\00"
@@ -2276,47 +2277,47 @@ entry:
 @.str1657 = private unnamed_addr constant [6 x i8] c"Input\00"
 @.str1658 = private unnamed_addr constant [7 x i8] c"move_i\00"
 @.str1659 = private unnamed_addr constant [6 x i8] c"IVec2\00"
-@.str1660 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4717: index out of range: \00"
+@.str1660 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4718: index out of range: \00"
 @.str1661 = private unnamed_addr constant [2 x i8] c"_\00"
-@.str1662 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4731: index out of range: \00"
+@.str1662 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4732: index out of range: \00"
 @.str1663 = private unnamed_addr constant [3 x i8] c"[]\00"
 @.str1664 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str1665 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str1666 = private unnamed_addr constant [6 x i8] c"float\00"
 @.str1667 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str1668 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str1669 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4752: index out of range: \00"
-@.str1670 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4752: index out of range: \00"
-@.str1671 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4770: index out of range: \00"
-@.str1672 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4770: index out of range: \00"
-@.str1673 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4778: index out of range: \00"
-@.str1674 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4778: index out of range: \00"
-@.str1675 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4791: index out of range: \00"
-@.str1676 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4791: index out of range: \00"
-@.str1677 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4803: index out of range: \00"
-@.str1678 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4803: index out of range: \00"
-@.str1679 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4808: index out of range: \00"
-@.str1680 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4808: index out of range: \00"
-@.str1681 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4825: index out of range: \00"
-@.str1682 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4825: index out of range: \00"
+@.str1669 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4753: index out of range: \00"
+@.str1670 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4753: index out of range: \00"
+@.str1671 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4771: index out of range: \00"
+@.str1672 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4771: index out of range: \00"
+@.str1673 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4779: index out of range: \00"
+@.str1674 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4779: index out of range: \00"
+@.str1675 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4792: index out of range: \00"
+@.str1676 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4792: index out of range: \00"
+@.str1677 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4804: index out of range: \00"
+@.str1678 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4804: index out of range: \00"
+@.str1679 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4809: index out of range: \00"
+@.str1680 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4809: index out of range: \00"
+@.str1681 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4826: index out of range: \00"
+@.str1682 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4826: index out of range: \00"
 @.str1683 = private unnamed_addr constant [7 x i8] c"entity\00"
 @.str1684 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str1685 = private unnamed_addr constant [7 x i8] c"reason\00"
 @.str1686 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str1687 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4857: index out of range: \00"
-@.str1688 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4862: index out of range: \00"
-@.str1689 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4879: index out of range: \00"
-@.str1690 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4879: index out of range: \00"
-@.str1691 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4879: index out of range: \00"
-@.str1692 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4879: index out of range: \00"
-@.str1693 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4882: index out of range: \00"
-@.str1694 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4886: index out of range: \00"
-@.str1695 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4893: index out of range: \00"
-@.str1696 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4893: index out of range: \00"
+@.str1687 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4858: index out of range: \00"
+@.str1688 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4863: index out of range: \00"
+@.str1689 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4880: index out of range: \00"
+@.str1690 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4880: index out of range: \00"
+@.str1691 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4880: index out of range: \00"
+@.str1692 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4880: index out of range: \00"
+@.str1693 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4883: index out of range: \00"
+@.str1694 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4887: index out of range: \00"
+@.str1695 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4894: index out of range: \00"
+@.str1696 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4894: index out of range: \00"
 @.str1697 = private unnamed_addr constant [2 x i8] c"'\00"
 @.str1698 = private unnamed_addr constant [34 x i8] c"' is declared twice in this block\00"
-@.str1699 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4897: index out of range: \00"
-@.str1700 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4900: index out of range: \00"
+@.str1699 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4898: index out of range: \00"
+@.str1700 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4901: index out of range: \00"
 @.str1701 = private unnamed_addr constant [6 x i8] c"@.str\00"
 @.str1702 = private unnamed_addr constant [35 x i8] c" = private unnamed_addr constant [\00"
 @.str1703 = private unnamed_addr constant [10 x i8] c" x i8] c\22\00"
@@ -2328,7 +2329,7 @@ entry:
 @.str1709 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str1710 = private unnamed_addr constant [2 x i8] c"-\00"
 @.str1711 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str1712 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4972: index out of range: \00"
+@.str1712 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:4973: index out of range: \00"
 @.str1713 = private unnamed_addr constant [9 x i8] c"  store \00"
 @.str1714 = private unnamed_addr constant [2 x i8] c" \00"
 @.str1715 = private unnamed_addr constant [10 x i8] c", ptr @g_\00"
@@ -2402,9 +2403,9 @@ entry:
 @.str1783 = private unnamed_addr constant [10 x i8] c" x i8] c\22\00"
 @.str1784 = private unnamed_addr constant [6 x i8] c"\5C00\22\0A\00"
 @.str1785 = private unnamed_addr constant [34 x i8] c"%LSlice = type { ptr, i32, i32 }\0A\00"
-@.str1786 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5076: index out of range: \00"
-@.str1787 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5080: index out of range: \00"
-@.str1788 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5080: index out of range: \00"
+@.str1786 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5077: index out of range: \00"
+@.str1787 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5081: index out of range: \00"
+@.str1788 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5081: index out of range: \00"
 @.str1789 = private unnamed_addr constant [10 x i8] c"property \00"
 @.str1790 = private unnamed_addr constant [63 x i8] c" is also a property of the engine runtime; choose another name\00"
 @.str1791 = private unnamed_addr constant [10 x i8] c"property \00"
@@ -2412,11 +2413,11 @@ entry:
 @.str1793 = private unnamed_addr constant [11 x i8] c" = type { \00"
 @.str1794 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str1795 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1796 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5091: index out of range: \00"
+@.str1796 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5092: index out of range: \00"
 @.str1797 = private unnamed_addr constant [4 x i8] c" }\0A\00"
-@.str1798 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5101: index out of range: \00"
-@.str1799 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5105: index out of range: \00"
-@.str1800 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5105: index out of range: \00"
+@.str1798 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5102: index out of range: \00"
+@.str1799 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5106: index out of range: \00"
+@.str1800 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5106: index out of range: \00"
 @.str1801 = private unnamed_addr constant [10 x i8] c"variable \00"
 @.str1802 = private unnamed_addr constant [63 x i8] c" is also a variable of the engine runtime; choose another name\00"
 @.str1803 = private unnamed_addr constant [10 x i8] c"variable \00"
@@ -2425,12 +2426,12 @@ entry:
 @.str1806 = private unnamed_addr constant [20 x i8] c" = internal global \00"
 @.str1807 = private unnamed_addr constant [2 x i8] c" \00"
 @.str1808 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1809 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5126: index out of range: \00"
+@.str1809 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5127: index out of range: \00"
 @.str1810 = private unnamed_addr constant [9 x i8] c"declare \00"
 @.str1811 = private unnamed_addr constant [3 x i8] c" @\00"
 @.str1812 = private unnamed_addr constant [2 x i8] c"(\00"
 @.str1813 = private unnamed_addr constant [3 x i8] c", \00"
-@.str1814 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5132: index out of range: \00"
+@.str1814 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5133: index out of range: \00"
 @.str1815 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str1816 = private unnamed_addr constant [41 x i8] c"define i32 @lp_str_eq(ptr %a, ptr %b) {\0A\00"
 @.str1817 = private unnamed_addr constant [25 x i8] c"entry:\0A  br label %loop\0A\00"
@@ -2590,7 +2591,7 @@ entry:
 @.str1971 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str1972 = private unnamed_addr constant [4 x i8] c" = \00"
 @.str1973 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str1974 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5355: index out of range: \00"
+@.str1974 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5356: index out of range: \00"
 @.str1975 = private unnamed_addr constant [7 x i8] c"resize\00"
 @.str1976 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
 @.str1977 = private unnamed_addr constant [8 x i8] c" to i64\00"
@@ -2605,7 +2606,7 @@ entry:
 @.str1986 = private unnamed_addr constant [8 x i8] c"pointer\00"
 @.str1987 = private unnamed_addr constant [10 x i8] c"file_read\00"
 @.str1988 = private unnamed_addr constant [11 x i8] c"file_write\00"
-@.str1989 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5378: index out of range: \00"
+@.str1989 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5379: index out of range: \00"
 @.str1990 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
 @.str1991 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str1992 = private unnamed_addr constant [7 x i8] c"@fread\00"
@@ -2714,7 +2715,7 @@ entry:
 @.str2095 = private unnamed_addr constant [10 x i8] c"hs_header\00"
 @.str2096 = private unnamed_addr constant [8 x i8] c"hs_free\00"
 @.str2097 = private unnamed_addr constant [5 x i8] c"free\00"
-@.str2098 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5477: index out of range: \00"
+@.str2098 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5478: index out of range: \00"
 @.str2099 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
 @.str2100 = private unnamed_addr constant [23 x i8] c"  call void @free(ptr \00"
 @.str2101 = private unnamed_addr constant [3 x i8] c")\0A\00"
@@ -2723,7 +2724,7 @@ entry:
 @.str2104 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str2105 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str2106 = private unnamed_addr constant [5 x i8] c"fill\00"
-@.str2107 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5487: index out of range: \00"
+@.str2107 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5488: index out of range: \00"
 @.str2108 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
 @.str2109 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str2110 = private unnamed_addr constant [24 x i8] c"  call ptr @memset(ptr \00"
@@ -2733,7 +2734,7 @@ entry:
 @.str2114 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str2115 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str2116 = private unnamed_addr constant [7 x i8] c"offset\00"
-@.str2117 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5493: index out of range: \00"
+@.str2117 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5494: index out of range: \00"
 @.str2118 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str2119 = private unnamed_addr constant [35 x i8] c" = getelementptr inbounds i8, ptr \00"
 @.str2120 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -2743,10 +2744,10 @@ entry:
 @.str2124 = private unnamed_addr constant [20 x i8] c"call i32 @getchar()\00"
 @.str2125 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str2126 = private unnamed_addr constant [9 x i8] c"as_fixed\00"
-@.str2127 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5499: index out of range: \00"
+@.str2127 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5500: index out of range: \00"
 @.str2128 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2129 = private unnamed_addr constant [7 x i8] c"as_int\00"
-@.str2130 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5500: index out of range: \00"
+@.str2130 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5501: index out of range: \00"
 @.str2131 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str2132 = private unnamed_addr constant [12 x i8] c"is_windowed\00"
 @.str2133 = private unnamed_addr constant [2 x i8] c"1\00"
@@ -2910,7 +2911,7 @@ entry:
 @.str2291 = private unnamed_addr constant [6 x i8] c"float\00"
 @.str2292 = private unnamed_addr constant [7 x i8] c"double\00"
 @.str2293 = private unnamed_addr constant [1 x i8] c"\00"
-@.str2294 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5583: index out of range: \00"
+@.str2294 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5584: index out of range: \00"
 @.str2295 = private unnamed_addr constant [1 x i8] c"\00"
 @.str2296 = private unnamed_addr constant [16 x i8] c"@deterministic \00"
 @.str2297 = private unnamed_addr constant [22 x i8] c" cannot compute with \00"
@@ -3113,7 +3114,7 @@ entry:
 @.str2494 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str2495 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
 @.str2496 = private unnamed_addr constant [2 x i8] c")\00"
-@.str2497 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5856: index out of range: \00"
+@.str2497 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5857: index out of range: \00"
 @.str2498 = private unnamed_addr constant [6 x i8] c"float\00"
 @.str2499 = private unnamed_addr constant [2 x i8] c"f\00"
 @.str2500 = private unnamed_addr constant [9 x i8] c"declare \00"
@@ -3183,9 +3184,9 @@ entry:
 @.str2564 = private unnamed_addr constant [3 x i8] c", \00"
 @.str2565 = private unnamed_addr constant [2 x i8] c" \00"
 @.str2566 = private unnamed_addr constant [1 x i8] c"\00"
-@.str2567 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5902: index out of range: \00"
+@.str2567 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5903: index out of range: \00"
 @.str2568 = private unnamed_addr constant [1 x i8] c"\00"
-@.str2569 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5912: index out of range: \00"
+@.str2569 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:5913: index out of range: \00"
 @.str2570 = private unnamed_addr constant [6 x i8] c"Math.\00"
 @.str2571 = private unnamed_addr constant [6 x i8] c"Math.\00"
 @.str2572 = private unnamed_addr constant [4 x i8] c"abs\00"
@@ -3381,10 +3382,10 @@ entry:
 @.str2762 = private unnamed_addr constant [4 x i8] c"max\00"
 @.str2763 = private unnamed_addr constant [4 x i8] c"abs\00"
 @.str2764 = private unnamed_addr constant [6 x i8] c"clamp\00"
-@.str2765 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6060: index out of range: \00"
-@.str2766 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6064: index out of range: \00"
+@.str2765 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6061: index out of range: \00"
+@.str2766 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6065: index out of range: \00"
 @.str2767 = private unnamed_addr constant [4 x i8] c"abs\00"
-@.str2768 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6070: index out of range: \00"
+@.str2768 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6071: index out of range: \00"
 @.str2769 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
 @.str2770 = private unnamed_addr constant [4 x i8] c", 0\00"
 @.str2771 = private unnamed_addr constant [12 x i8] c"sub i32 0, \00"
@@ -3393,8 +3394,8 @@ entry:
 @.str2774 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str2775 = private unnamed_addr constant [4 x i8] c"min\00"
 @.str2776 = private unnamed_addr constant [4 x i8] c"max\00"
-@.str2777 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6076: index out of range: \00"
-@.str2778 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6076: index out of range: \00"
+@.str2777 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6077: index out of range: \00"
+@.str2778 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6077: index out of range: \00"
 @.str2779 = private unnamed_addr constant [4 x i8] c"slt\00"
 @.str2780 = private unnamed_addr constant [4 x i8] c"max\00"
 @.str2781 = private unnamed_addr constant [4 x i8] c"sgt\00"
@@ -3404,9 +3405,9 @@ entry:
 @.str2785 = private unnamed_addr constant [11 x i8] c"select i1 \00"
 @.str2786 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str2787 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str2788 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6083: index out of range: \00"
-@.str2789 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6083: index out of range: \00"
-@.str2790 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6083: index out of range: \00"
+@.str2788 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6084: index out of range: \00"
+@.str2789 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6084: index out of range: \00"
+@.str2790 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6084: index out of range: \00"
 @.str2791 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
 @.str2792 = private unnamed_addr constant [3 x i8] c", \00"
 @.str2793 = private unnamed_addr constant [11 x i8] c"select i1 \00"
@@ -3477,18 +3478,18 @@ entry:
 @.str2858 = private unnamed_addr constant [4 x i8] c"exp\00"
 @.str2859 = private unnamed_addr constant [4 x i8] c"log\00"
 @.str2860 = private unnamed_addr constant [4 x i8] c"pow\00"
-@.str2861 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6142: index out of range: \00"
-@.str2862 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6143: index out of range: \00"
+@.str2861 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6143: index out of range: \00"
+@.str2862 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6144: index out of range: \00"
 @.str2863 = private unnamed_addr constant [1 x i8] c"\00"
-@.str2864 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6146: index out of range: \00"
-@.str2865 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6152: index out of range: \00"
-@.str2866 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6156: index out of range: \00"
+@.str2864 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6147: index out of range: \00"
+@.str2865 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6153: index out of range: \00"
+@.str2866 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6157: index out of range: \00"
 @.str2867 = private unnamed_addr constant [4 x i8] c"min\00"
 @.str2868 = private unnamed_addr constant [4 x i8] c"max\00"
 @.str2869 = private unnamed_addr constant [4 x i8] c"abs\00"
 @.str2870 = private unnamed_addr constant [6 x i8] c"clamp\00"
 @.str2871 = private unnamed_addr constant [5 x i8] c"sign\00"
-@.str2872 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6165: index out of range: \00"
+@.str2872 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6166: index out of range: \00"
 @.str2873 = private unnamed_addr constant [14 x i8] c"icmp sgt i32 \00"
 @.str2874 = private unnamed_addr constant [4 x i8] c", 0\00"
 @.str2875 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
@@ -3499,53 +3500,53 @@ entry:
 @.str2880 = private unnamed_addr constant [14 x i8] c", i32 1, i32 \00"
 @.str2881 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str2882 = private unnamed_addr constant [6 x i8] c"floor\00"
-@.str2883 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6172: index out of range: \00"
+@.str2883 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6173: index out of range: \00"
 @.str2884 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
 @.str2885 = private unnamed_addr constant [5 x i8] c", 16\00"
 @.str2886 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str2887 = private unnamed_addr constant [5 x i8] c"ceil\00"
-@.str2888 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6176: index out of range: \00"
+@.str2888 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6177: index out of range: \00"
 @.str2889 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str2890 = private unnamed_addr constant [8 x i8] c", 65535\00"
 @.str2891 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
 @.str2892 = private unnamed_addr constant [5 x i8] c", 16\00"
 @.str2893 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str2894 = private unnamed_addr constant [6 x i8] c"round\00"
-@.str2895 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6181: index out of range: \00"
+@.str2895 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6182: index out of range: \00"
 @.str2896 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str2897 = private unnamed_addr constant [8 x i8] c", 32768\00"
 @.str2898 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
 @.str2899 = private unnamed_addr constant [5 x i8] c", 16\00"
 @.str2900 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str2901 = private unnamed_addr constant [5 x i8] c"lerp\00"
-@.str2902 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6186: index out of range: \00"
-@.str2903 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6186: index out of range: \00"
-@.str2904 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6186: index out of range: \00"
+@.str2902 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6187: index out of range: \00"
+@.str2903 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6187: index out of range: \00"
+@.str2904 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6187: index out of range: \00"
 @.str2905 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2906 = private unnamed_addr constant [13 x i8] c"inverse_lerp\00"
-@.str2907 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6190: index out of range: \00"
-@.str2908 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6190: index out of range: \00"
-@.str2909 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6190: index out of range: \00"
+@.str2907 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6191: index out of range: \00"
+@.str2908 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6191: index out of range: \00"
+@.str2909 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6191: index out of range: \00"
 @.str2910 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2911 = private unnamed_addr constant [5 x i8] c"sqrt\00"
-@.str2912 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6195: index out of range: \00"
+@.str2912 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6196: index out of range: \00"
 @.str2913 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_sqrt(i32 \00"
 @.str2914 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2915 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2916 = private unnamed_addr constant [4 x i8] c"sin\00"
-@.str2917 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6200: index out of range: \00"
+@.str2917 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6201: index out of range: \00"
 @.str2918 = private unnamed_addr constant [25 x i8] c"call i32 @lp_fx_sin(i32 \00"
 @.str2919 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2920 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2921 = private unnamed_addr constant [4 x i8] c"cos\00"
-@.str2922 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6205: index out of range: \00"
+@.str2922 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6206: index out of range: \00"
 @.str2923 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str2924 = private unnamed_addr constant [9 x i8] c", 102944\00"
 @.str2925 = private unnamed_addr constant [25 x i8] c"call i32 @lp_fx_sin(i32 \00"
 @.str2926 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2927 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2928 = private unnamed_addr constant [4 x i8] c"tan\00"
-@.str2929 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6211: index out of range: \00"
+@.str2929 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6212: index out of range: \00"
 @.str2930 = private unnamed_addr constant [25 x i8] c"call i32 @lp_fx_sin(i32 \00"
 @.str2931 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2932 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -3554,14 +3555,14 @@ entry:
 @.str2935 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2936 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2937 = private unnamed_addr constant [6 x i8] c"atan2\00"
-@.str2938 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6219: index out of range: \00"
-@.str2939 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6219: index out of range: \00"
+@.str2938 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6220: index out of range: \00"
+@.str2939 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6220: index out of range: \00"
 @.str2940 = private unnamed_addr constant [27 x i8] c"call i32 @lp_fx_atan2(i32 \00"
 @.str2941 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str2942 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2943 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2944 = private unnamed_addr constant [5 x i8] c"asin\00"
-@.str2945 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6224: index out of range: \00"
+@.str2945 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6225: index out of range: \00"
 @.str2946 = private unnamed_addr constant [16 x i8] c"sub i32 65536, \00"
 @.str2947 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_sqrt(i32 \00"
 @.str2948 = private unnamed_addr constant [2 x i8] c")\00"
@@ -3570,7 +3571,7 @@ entry:
 @.str2951 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2952 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2953 = private unnamed_addr constant [5 x i8] c"acos\00"
-@.str2954 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6232: index out of range: \00"
+@.str2954 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6233: index out of range: \00"
 @.str2955 = private unnamed_addr constant [16 x i8] c"sub i32 65536, \00"
 @.str2956 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_sqrt(i32 \00"
 @.str2957 = private unnamed_addr constant [2 x i8] c")\00"
@@ -3579,18 +3580,18 @@ entry:
 @.str2960 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2961 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2962 = private unnamed_addr constant [6 x i8] c"hypot\00"
-@.str2963 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6240: index out of range: \00"
-@.str2964 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6240: index out of range: \00"
+@.str2963 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6241: index out of range: \00"
+@.str2964 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6241: index out of range: \00"
 @.str2965 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str2966 = private unnamed_addr constant [3 x i8] c", \00"
 @.str2967 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_sqrt(i32 \00"
 @.str2968 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2969 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2970 = private unnamed_addr constant [6 x i8] c"dist2\00"
-@.str2971 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6246: index out of range: \00"
-@.str2972 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6246: index out of range: \00"
-@.str2973 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6247: index out of range: \00"
-@.str2974 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6247: index out of range: \00"
+@.str2971 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6247: index out of range: \00"
+@.str2972 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6247: index out of range: \00"
+@.str2973 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6248: index out of range: \00"
+@.str2974 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6248: index out of range: \00"
 @.str2975 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str2976 = private unnamed_addr constant [3 x i8] c", \00"
 @.str2977 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
@@ -3599,10 +3600,10 @@ entry:
 @.str2980 = private unnamed_addr constant [3 x i8] c", \00"
 @.str2981 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2982 = private unnamed_addr constant [5 x i8] c"dist\00"
-@.str2983 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6255: index out of range: \00"
-@.str2984 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6255: index out of range: \00"
-@.str2985 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6256: index out of range: \00"
-@.str2986 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6256: index out of range: \00"
+@.str2983 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6256: index out of range: \00"
+@.str2984 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6256: index out of range: \00"
+@.str2985 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6257: index out of range: \00"
+@.str2986 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6257: index out of range: \00"
 @.str2987 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str2988 = private unnamed_addr constant [3 x i8] c", \00"
 @.str2989 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
@@ -3613,36 +3614,36 @@ entry:
 @.str2994 = private unnamed_addr constant [2 x i8] c")\00"
 @.str2995 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str2996 = private unnamed_addr constant [4 x i8] c"exp\00"
-@.str2997 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6265: index out of range: \00"
+@.str2997 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6266: index out of range: \00"
 @.str2998 = private unnamed_addr constant [6 x i8] c"94548\00"
 @.str2999 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_exp2(i32 \00"
 @.str3000 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3001 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3002 = private unnamed_addr constant [4 x i8] c"log\00"
-@.str3003 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6271: index out of range: \00"
+@.str3003 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6272: index out of range: \00"
 @.str3004 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_log2(i32 \00"
 @.str3005 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3006 = private unnamed_addr constant [6 x i8] c"45426\00"
 @.str3007 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3008 = private unnamed_addr constant [4 x i8] c"pow\00"
-@.str3009 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6277: index out of range: \00"
-@.str3010 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6277: index out of range: \00"
+@.str3009 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6278: index out of range: \00"
+@.str3010 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6278: index out of range: \00"
 @.str3011 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_log2(i32 \00"
 @.str3012 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3013 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_exp2(i32 \00"
 @.str3014 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3015 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3016 = private unnamed_addr constant [11 x i8] c"deg_to_rad\00"
-@.str3017 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6283: index out of range: \00"
+@.str3017 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6284: index out of range: \00"
 @.str3018 = private unnamed_addr constant [5 x i8] c"1144\00"
 @.str3019 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3020 = private unnamed_addr constant [11 x i8] c"rad_to_deg\00"
-@.str3021 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6287: index out of range: \00"
+@.str3021 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6288: index out of range: \00"
 @.str3022 = private unnamed_addr constant [8 x i8] c"3754936\00"
 @.str3023 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3024 = private unnamed_addr constant [7 x i8] c"posmod\00"
-@.str3025 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6291: index out of range: \00"
-@.str3026 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6291: index out of range: \00"
+@.str3025 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6292: index out of range: \00"
+@.str3026 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6292: index out of range: \00"
 @.str3027 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
 @.str3028 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3029 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -3651,9 +3652,9 @@ entry:
 @.str3032 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3033 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str3034 = private unnamed_addr constant [5 x i8] c"wrap\00"
-@.str3035 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6297: index out of range: \00"
-@.str3036 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6297: index out of range: \00"
-@.str3037 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6297: index out of range: \00"
+@.str3035 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6298: index out of range: \00"
+@.str3036 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6298: index out of range: \00"
+@.str3037 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6298: index out of range: \00"
 @.str3038 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str3039 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3040 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
@@ -3668,8 +3669,8 @@ entry:
 @.str3049 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3050 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str3051 = private unnamed_addr constant [10 x i8] c"ping_pong\00"
-@.str3052 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6306: index out of range: \00"
-@.str3053 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6306: index out of range: \00"
+@.str3052 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6307: index out of range: \00"
+@.str3053 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6307: index out of range: \00"
 @.str3054 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
 @.str3055 = private unnamed_addr constant [4 x i8] c", 2\00"
 @.str3056 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
@@ -3690,8 +3691,8 @@ entry:
 @.str3071 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3072 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str3073 = private unnamed_addr constant [8 x i8] c"snapped\00"
-@.str3074 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6318: index out of range: \00"
-@.str3075 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6318: index out of range: \00"
+@.str3074 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6319: index out of range: \00"
+@.str3075 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6319: index out of range: \00"
 @.str3076 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3077 = private unnamed_addr constant [8 x i8] c", 32768\00"
 @.str3078 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
@@ -3700,9 +3701,9 @@ entry:
 @.str3081 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3082 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3083 = private unnamed_addr constant [12 x i8] c"move_toward\00"
-@.str3084 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6325: index out of range: \00"
-@.str3085 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6325: index out of range: \00"
-@.str3086 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6325: index out of range: \00"
+@.str3084 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6326: index out of range: \00"
+@.str3085 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6326: index out of range: \00"
+@.str3086 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6326: index out of range: \00"
 @.str3087 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str3088 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3089 = private unnamed_addr constant [12 x i8] c"sub i32 0, \00"
@@ -3730,9 +3731,9 @@ entry:
 @.str3111 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str3112 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3113 = private unnamed_addr constant [11 x i8] c"smoothstep\00"
-@.str3114 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6340: index out of range: \00"
-@.str3115 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6340: index out of range: \00"
-@.str3116 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6340: index out of range: \00"
+@.str3114 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6341: index out of range: \00"
+@.str3115 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6341: index out of range: \00"
+@.str3116 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6341: index out of range: \00"
 @.str3117 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
 @.str3118 = private unnamed_addr constant [4 x i8] c", 0\00"
 @.str3119 = private unnamed_addr constant [11 x i8] c"select i1 \00"
@@ -3745,11 +3746,11 @@ entry:
 @.str3126 = private unnamed_addr constant [4 x i8] c", 2\00"
 @.str3127 = private unnamed_addr constant [17 x i8] c"sub i32 196608, \00"
 @.str3128 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str3129 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6352: index out of range: \00"
-@.str3130 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6353: index out of range: \00"
-@.str3131 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6353: index out of range: \00"
-@.str3132 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6354: index out of range: \00"
-@.str3133 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6354: index out of range: \00"
+@.str3129 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6353: index out of range: \00"
+@.str3130 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6354: index out of range: \00"
+@.str3131 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6354: index out of range: \00"
+@.str3132 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6355: index out of range: \00"
+@.str3133 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6355: index out of range: \00"
 @.str3134 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3135 = private unnamed_addr constant [2968 x i8] c"@L_sin_tab = private unnamed_addr constant [256 x i32] [i32 0, i32 1608, i32 3216, i32 4821, i32 6424, i32 8022, i32 9616, i32 11204, i32 12785, i32 14359, i32 15924, i32 17479, i32 19024, i32 20557, i32 22078, i32 23586, i32 25080, i32 26558, i32 28020, i32 29466, i32 30893, i32 32303, i32 33692, i32 35062, i32 36410, i32 37736, i32 39040, i32 40320, i32 41576, i32 42806, i32 44011, i32 45190, i32 46341, i32 47464, i32 48559, i32 49624, i32 50660, i32 51665, i32 52639, i32 53581, i32 54491, i32 55368, i32 56212, i32 57022, i32 57798, i32 58538, i32 59244, i32 59914, i32 60547, i32 61145, i32 61705, i32 62228, i32 62714, i32 63162, i32 63572, i32 63944, i32 64277, i32 64571, i32 64827, i32 65043, i32 65220, i32 65358, i32 65457, i32 65516, i32 65536, i32 65516, i32 65457, i32 65358, i32 65220, i32 65043, i32 64827, i32 64571, i32 64277, i32 63944, i32 63572, i32 63162, i32 62714, i32 62228, i32 61705, i32 61145, i32 60547, i32 59914, i32 59244, i32 58538, i32 57798, i32 57022, i32 56212, i32 55368, i32 54491, i32 53581, i32 52639, i32 51665, i32 50660, i32 49624, i32 48559, i32 47464, i32 46341, i32 45190, i32 44011, i32 42806, i32 41576, i32 40320, i32 39040, i32 37736, i32 36410, i32 35062, i32 33692, i32 32303, i32 30893, i32 29466, i32 28020, i32 26558, i32 25080, i32 23586, i32 22078, i32 20557, i32 19024, i32 17479, i32 15924, i32 14359, i32 12785, i32 11204, i32 9616, i32 8022, i32 6424, i32 4821, i32 3216, i32 1608, i32 0, i32 -1608, i32 -3216, i32 -4821, i32 -6424, i32 -8022, i32 -9616, i32 -11204, i32 -12785, i32 -14359, i32 -15924, i32 -17479, i32 -19024, i32 -20557, i32 -22078, i32 -23586, i32 -25080, i32 -26558, i32 -28020, i32 -29466, i32 -30893, i32 -32303, i32 -33692, i32 -35062, i32 -36410, i32 -37736, i32 -39040, i32 -40320, i32 -41576, i32 -42806, i32 -44011, i32 -45190, i32 -46341, i32 -47464, i32 -48559, i32 -49624, i32 -50660, i32 -51665, i32 -52639, i32 -53581, i32 -54491, i32 -55368, i32 -56212, i32 -57022, i32 -57798, i32 -58538, i32 -59244, i32 -59914, i32 -60547, i32 -61145, i32 -61705, i32 -62228, i32 -62714, i32 -63162, i32 -63572, i32 -63944, i32 -64277, i32 -64571, i32 -64827, i32 -65043, i32 -65220, i32 -65358, i32 -65457, i32 -65516, i32 -65536, i32 -65516, i32 -65457, i32 -65358, i32 -65220, i32 -65043, i32 -64827, i32 -64571, i32 -64277, i32 -63944, i32 -63572, i32 -63162, i32 -62714, i32 -62228, i32 -61705, i32 -61145, i32 -60547, i32 -59914, i32 -59244, i32 -58538, i32 -57798, i32 -57022, i32 -56212, i32 -55368, i32 -54491, i32 -53581, i32 -52639, i32 -51665, i32 -50660, i32 -49624, i32 -48559, i32 -47464, i32 -46341, i32 -45190, i32 -44011, i32 -42806, i32 -41576, i32 -40320, i32 -39040, i32 -37736, i32 -36410, i32 -35062, i32 -33692, i32 -32303, i32 -30893, i32 -29466, i32 -28020, i32 -26558, i32 -25080, i32 -23586, i32 -22078, i32 -20557, i32 -19024, i32 -17479, i32 -15924, i32 -14359, i32 -12785, i32 -11204, i32 -9616, i32 -8022, i32 -6424, i32 -4821, i32 -3216, i32 -1608]\0A\00"
 @.str3136 = private unnamed_addr constant [34 x i8] c"define i32 @lp_fx_sqrt(i32 %x) {\0A\00"
@@ -3893,51 +3894,51 @@ entry:
 @.str3274 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str3275 = private unnamed_addr constant [7 x i8] c"Vector\00"
 @.str3276 = private unnamed_addr constant [5 x i8] c"make\00"
-@.str3277 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6528: index out of range: \00"
-@.str3278 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6528: index out of range: \00"
+@.str3277 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6529: index out of range: \00"
+@.str3278 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6529: index out of range: \00"
 @.str3279 = private unnamed_addr constant [7 x i8] c"Vector\00"
 @.str3280 = private unnamed_addr constant [2 x i8] c"x\00"
-@.str3281 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6532: index out of range: \00"
+@.str3281 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6533: index out of range: \00"
 @.str3282 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3283 = private unnamed_addr constant [2 x i8] c"y\00"
-@.str3284 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6536: index out of range: \00"
+@.str3284 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6537: index out of range: \00"
 @.str3285 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3286 = private unnamed_addr constant [4 x i8] c"add\00"
-@.str3287 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6540: index out of range: \00"
-@.str3288 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6540: index out of range: \00"
+@.str3287 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6541: index out of range: \00"
+@.str3288 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6541: index out of range: \00"
 @.str3289 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3290 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3291 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3292 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3293 = private unnamed_addr constant [7 x i8] c"Vector\00"
 @.str3294 = private unnamed_addr constant [4 x i8] c"sub\00"
-@.str3295 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6547: index out of range: \00"
-@.str3296 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6547: index out of range: \00"
+@.str3295 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6548: index out of range: \00"
+@.str3296 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6548: index out of range: \00"
 @.str3297 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str3298 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3299 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str3300 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3301 = private unnamed_addr constant [7 x i8] c"Vector\00"
 @.str3302 = private unnamed_addr constant [6 x i8] c"scale\00"
-@.str3303 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6554: index out of range: \00"
-@.str3304 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6554: index out of range: \00"
+@.str3303 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6555: index out of range: \00"
+@.str3304 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6555: index out of range: \00"
 @.str3305 = private unnamed_addr constant [7 x i8] c"Vector\00"
 @.str3306 = private unnamed_addr constant [4 x i8] c"dot\00"
-@.str3307 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6561: index out of range: \00"
-@.str3308 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6561: index out of range: \00"
+@.str3307 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6562: index out of range: \00"
+@.str3308 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6562: index out of range: \00"
 @.str3309 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3310 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3311 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3312 = private unnamed_addr constant [7 x i8] c"length\00"
-@.str3313 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6568: index out of range: \00"
+@.str3313 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6569: index out of range: \00"
 @.str3314 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3315 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3316 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_sqrt(i32 \00"
 @.str3317 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3318 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3319 = private unnamed_addr constant [9 x i8] c"distance\00"
-@.str3320 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6576: index out of range: \00"
-@.str3321 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6576: index out of range: \00"
+@.str3320 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6577: index out of range: \00"
+@.str3321 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6577: index out of range: \00"
 @.str3322 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str3323 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3324 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
@@ -3948,7 +3949,7 @@ entry:
 @.str3329 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3330 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3331 = private unnamed_addr constant [10 x i8] c"normalize\00"
-@.str3332 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6586: index out of range: \00"
+@.str3332 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6587: index out of range: \00"
 @.str3333 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3334 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3335 = private unnamed_addr constant [26 x i8] c"call i32 @lp_fx_sqrt(i32 \00"
@@ -3960,8 +3961,8 @@ entry:
 @.str3341 = private unnamed_addr constant [6 x i8] c"65536\00"
 @.str3342 = private unnamed_addr constant [7 x i8] c"Vector\00"
 @.str3343 = private unnamed_addr constant [7 x i8] c"rotate\00"
-@.str3344 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6599: index out of range: \00"
-@.str3345 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6599: index out of range: \00"
+@.str3344 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6600: index out of range: \00"
+@.str3345 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6600: index out of range: \00"
 @.str3346 = private unnamed_addr constant [25 x i8] c"call i32 @lp_fx_sin(i32 \00"
 @.str3347 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3348 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -3974,13 +3975,13 @@ entry:
 @.str3355 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3356 = private unnamed_addr constant [7 x i8] c"Vector\00"
 @.str3357 = private unnamed_addr constant [6 x i8] c"angle\00"
-@.str3358 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6612: index out of range: \00"
+@.str3358 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6613: index out of range: \00"
 @.str3359 = private unnamed_addr constant [27 x i8] c"call i32 @lp_fx_atan2(i32 \00"
 @.str3360 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str3361 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3362 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3363 = private unnamed_addr constant [11 x i8] c"from_angle\00"
-@.str3364 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6618: index out of range: \00"
+@.str3364 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6619: index out of range: \00"
 @.str3365 = private unnamed_addr constant [25 x i8] c"call i32 @lp_fx_sin(i32 \00"
 @.str3366 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3367 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -3988,9 +3989,9 @@ entry:
 @.str3369 = private unnamed_addr constant [25 x i8] c"call i32 @lp_fx_sin(i32 \00"
 @.str3370 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3371 = private unnamed_addr constant [7 x i8] c"Vector\00"
-@.str3372 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6625: index out of range: \00"
-@.str3373 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6625: index out of range: \00"
-@.str3374 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6625: index out of range: \00"
+@.str3372 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6626: index out of range: \00"
+@.str3373 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6626: index out of range: \00"
+@.str3374 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6626: index out of range: \00"
 @.str3375 = private unnamed_addr constant [7 x i8] c"Vector\00"
 @.str3376 = private unnamed_addr constant [12 x i8] c"sub i32 0, \00"
 @.str3377 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
@@ -4018,19 +4019,19 @@ entry:
 @.str3399 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str3400 = private unnamed_addr constant [6 x i8] c"IVec2\00"
 @.str3401 = private unnamed_addr constant [5 x i8] c"make\00"
-@.str3402 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6663: index out of range: \00"
-@.str3403 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6663: index out of range: \00"
+@.str3402 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6664: index out of range: \00"
+@.str3403 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6664: index out of range: \00"
 @.str3404 = private unnamed_addr constant [6 x i8] c"IVec2\00"
 @.str3405 = private unnamed_addr constant [2 x i8] c"x\00"
-@.str3406 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6667: index out of range: \00"
+@.str3406 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6668: index out of range: \00"
 @.str3407 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str3408 = private unnamed_addr constant [2 x i8] c"y\00"
-@.str3409 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6671: index out of range: \00"
+@.str3409 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6672: index out of range: \00"
 @.str3410 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str3411 = private unnamed_addr constant [10 x i8] c"distance2\00"
 @.str3412 = private unnamed_addr constant [7 x i8] c"within\00"
-@.str3413 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6675: index out of range: \00"
-@.str3414 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6675: index out of range: \00"
+@.str3413 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6676: index out of range: \00"
+@.str3414 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6676: index out of range: \00"
 @.str3415 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str3416 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3417 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
@@ -4043,7 +4044,7 @@ entry:
 @.str3424 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3425 = private unnamed_addr constant [10 x i8] c"distance2\00"
 @.str3426 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str3427 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6682: index out of range: \00"
+@.str3427 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6683: index out of range: \00"
 @.str3428 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
 @.str3429 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3430 = private unnamed_addr constant [14 x i8] c"icmp sle i32 \00"
@@ -4054,8 +4055,8 @@ entry:
 @.str3435 = private unnamed_addr constant [8 x i8] c"heading\00"
 @.str3436 = private unnamed_addr constant [16 x i8] c"rt_ivec_heading\00"
 @.str3437 = private unnamed_addr constant [39 x i8] c"IVec2.heading needs the engine runtime\00"
-@.str3438 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6689: index out of range: \00"
-@.str3439 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6689: index out of range: \00"
+@.str3438 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6690: index out of range: \00"
+@.str3439 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6690: index out of range: \00"
 @.str3440 = private unnamed_addr constant [34 x i8] c"call i32 @fn_rt_ivec_heading(i64 \00"
 @.str3441 = private unnamed_addr constant [7 x i8] c", i64 \00"
 @.str3442 = private unnamed_addr constant [2 x i8] c")\00"
@@ -4063,9 +4064,9 @@ entry:
 @.str3444 = private unnamed_addr constant [6 x i8] c"along\00"
 @.str3445 = private unnamed_addr constant [14 x i8] c"rt_ivec_along\00"
 @.str3446 = private unnamed_addr constant [37 x i8] c"IVec2.along needs the engine runtime\00"
-@.str3447 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6694: index out of range: \00"
-@.str3448 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6694: index out of range: \00"
-@.str3449 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6694: index out of range: \00"
+@.str3447 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6695: index out of range: \00"
+@.str3448 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6695: index out of range: \00"
+@.str3449 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6695: index out of range: \00"
 @.str3450 = private unnamed_addr constant [32 x i8] c"call i64 @fn_rt_ivec_along(i64 \00"
 @.str3451 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str3452 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -4074,37 +4075,37 @@ entry:
 @.str3455 = private unnamed_addr constant [5 x i8] c"step\00"
 @.str3456 = private unnamed_addr constant [13 x i8] c"rt_ivec_step\00"
 @.str3457 = private unnamed_addr constant [36 x i8] c"IVec2.step needs the engine runtime\00"
-@.str3458 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6699: index out of range: \00"
+@.str3458 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6700: index out of range: \00"
 @.str3459 = private unnamed_addr constant [31 x i8] c"call i64 @fn_rt_ivec_step(i32 \00"
 @.str3460 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3461 = private unnamed_addr constant [6 x i8] c"IVec2\00"
 @.str3462 = private unnamed_addr constant [4 x i8] c"add\00"
-@.str3463 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6703: index out of range: \00"
-@.str3464 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6703: index out of range: \00"
+@.str3463 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6704: index out of range: \00"
+@.str3464 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6704: index out of range: \00"
 @.str3465 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3466 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3467 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3468 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3469 = private unnamed_addr constant [6 x i8] c"IVec2\00"
 @.str3470 = private unnamed_addr constant [4 x i8] c"sub\00"
-@.str3471 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6710: index out of range: \00"
-@.str3472 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6710: index out of range: \00"
+@.str3471 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6711: index out of range: \00"
+@.str3472 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6711: index out of range: \00"
 @.str3473 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str3474 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3475 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str3476 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3477 = private unnamed_addr constant [6 x i8] c"IVec2\00"
 @.str3478 = private unnamed_addr constant [6 x i8] c"scale\00"
-@.str3479 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6717: index out of range: \00"
-@.str3480 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6717: index out of range: \00"
+@.str3479 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6718: index out of range: \00"
+@.str3480 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6718: index out of range: \00"
 @.str3481 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
 @.str3482 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3483 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
 @.str3484 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3485 = private unnamed_addr constant [6 x i8] c"IVec2\00"
 @.str3486 = private unnamed_addr constant [4 x i8] c"dot\00"
-@.str3487 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6724: index out of range: \00"
-@.str3488 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6724: index out of range: \00"
+@.str3487 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6725: index out of range: \00"
+@.str3488 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6725: index out of range: \00"
 @.str3489 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
 @.str3490 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3491 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
@@ -4113,16 +4114,16 @@ entry:
 @.str3494 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3495 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str3496 = private unnamed_addr constant [6 x i8] c"equal\00"
-@.str3497 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6730: index out of range: \00"
-@.str3498 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6730: index out of range: \00"
+@.str3497 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6731: index out of range: \00"
+@.str3498 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6731: index out of range: \00"
 @.str3499 = private unnamed_addr constant [13 x i8] c"icmp eq i64 \00"
 @.str3500 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3501 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
 @.str3502 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str3503 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str3504 = private unnamed_addr constant [10 x i8] c"manhattan\00"
-@.str3505 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6735: index out of range: \00"
-@.str3506 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6735: index out of range: \00"
+@.str3505 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6736: index out of range: \00"
+@.str3506 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6736: index out of range: \00"
 @.str3507 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str3508 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3509 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
@@ -4130,7 +4131,7 @@ entry:
 @.str3511 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3512 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3513 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str3514 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6742: index out of range: \00"
+@.str3514 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6743: index out of range: \00"
 @.str3515 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
 @.str3516 = private unnamed_addr constant [5 x i8] c", 16\00"
 @.str3517 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
@@ -4178,35 +4179,35 @@ entry:
 @.str3559 = private unnamed_addr constant [9 x i8] c"contains\00"
 @.str3560 = private unnamed_addr constant [11 x i8] c"intersects\00"
 @.str3561 = private unnamed_addr constant [5 x i8] c"make\00"
-@.str3562 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6795: index out of range: \00"
-@.str3563 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6795: index out of range: \00"
-@.str3564 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6796: index out of range: \00"
-@.str3565 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6796: index out of range: \00"
+@.str3562 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6796: index out of range: \00"
+@.str3563 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6796: index out of range: \00"
+@.str3564 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6797: index out of range: \00"
+@.str3565 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6797: index out of range: \00"
 @.str3566 = private unnamed_addr constant [5 x i8] c"Rect\00"
 @.str3567 = private unnamed_addr constant [2 x i8] c"x\00"
-@.str3568 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6799: index out of range: \00"
+@.str3568 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6800: index out of range: \00"
 @.str3569 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3570 = private unnamed_addr constant [2 x i8] c"y\00"
-@.str3571 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6800: index out of range: \00"
+@.str3571 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6801: index out of range: \00"
 @.str3572 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3573 = private unnamed_addr constant [2 x i8] c"w\00"
-@.str3574 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6801: index out of range: \00"
+@.str3574 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6802: index out of range: \00"
 @.str3575 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3576 = private unnamed_addr constant [2 x i8] c"h\00"
-@.str3577 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6802: index out of range: \00"
+@.str3577 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6803: index out of range: \00"
 @.str3578 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3579 = private unnamed_addr constant [6 x i8] c"right\00"
-@.str3580 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6804: index out of range: \00"
+@.str3580 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6805: index out of range: \00"
 @.str3581 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3582 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3583 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3584 = private unnamed_addr constant [7 x i8] c"bottom\00"
-@.str3585 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6809: index out of range: \00"
+@.str3585 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6810: index out of range: \00"
 @.str3586 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3587 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3588 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str3589 = private unnamed_addr constant [7 x i8] c"center\00"
-@.str3590 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6814: index out of range: \00"
+@.str3590 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6815: index out of range: \00"
 @.str3591 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
 @.str3592 = private unnamed_addr constant [4 x i8] c", 1\00"
 @.str3593 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
@@ -4217,9 +4218,9 @@ entry:
 @.str3598 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3599 = private unnamed_addr constant [7 x i8] c"Vector\00"
 @.str3600 = private unnamed_addr constant [9 x i8] c"contains\00"
-@.str3601 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6822: index out of range: \00"
-@.str3602 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6822: index out of range: \00"
-@.str3603 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6822: index out of range: \00"
+@.str3601 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6823: index out of range: \00"
+@.str3602 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6823: index out of range: \00"
+@.str3603 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6823: index out of range: \00"
 @.str3604 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3605 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3606 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -4235,8 +4236,8 @@ entry:
 @.str3616 = private unnamed_addr constant [9 x i8] c"and i32 \00"
 @.str3617 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3618 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str3619 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6832: index out of range: \00"
-@.str3620 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6832: index out of range: \00"
+@.str3619 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6833: index out of range: \00"
+@.str3620 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6833: index out of range: \00"
 @.str3621 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str3622 = private unnamed_addr constant [3 x i8] c", \00"
 @.str3623 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -4278,34 +4279,34 @@ entry:
 @.str3659 = private unnamed_addr constant [5 x i8] c"join\00"
 @.str3660 = private unnamed_addr constant [8 x i8] c"replace\00"
 @.str3661 = private unnamed_addr constant [9 x i8] c"from_int\00"
-@.str3662 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6864: index out of range: \00"
+@.str3662 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6865: index out of range: \00"
 @.str3663 = private unnamed_addr constant [26 x i8] c"call ptr @lp_int_str(i32 \00"
 @.str3664 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3665 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str3666 = private unnamed_addr constant [6 x i8] c"slice\00"
-@.str3667 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6869: index out of range: \00"
-@.str3668 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6869: index out of range: \00"
-@.str3669 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6869: index out of range: \00"
+@.str3667 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6870: index out of range: \00"
+@.str3668 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6870: index out of range: \00"
+@.str3669 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6870: index out of range: \00"
 @.str3670 = private unnamed_addr constant [28 x i8] c"call ptr @lp_str_slice(ptr \00"
 @.str3671 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str3672 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str3673 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3674 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str3675 = private unnamed_addr constant [7 x i8] c"equals\00"
-@.str3676 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6874: index out of range: \00"
-@.str3677 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6874: index out of range: \00"
+@.str3676 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6875: index out of range: \00"
+@.str3677 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6875: index out of range: \00"
 @.str3678 = private unnamed_addr constant [25 x i8] c"call i32 @lp_str_eq(ptr \00"
 @.str3679 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str3680 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3681 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str3682 = private unnamed_addr constant [7 x i8] c"concat\00"
-@.str3683 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6879: index out of range: \00"
-@.str3684 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6879: index out of range: \00"
+@.str3683 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6880: index out of range: \00"
+@.str3684 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6880: index out of range: \00"
 @.str3685 = private unnamed_addr constant [29 x i8] c"call ptr @lp_str_concat(ptr \00"
 @.str3686 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str3687 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3688 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str3689 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6884: index out of range: \00"
+@.str3689 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6885: index out of range: \00"
 @.str3690 = private unnamed_addr constant [7 x i8] c"length\00"
 @.str3691 = private unnamed_addr constant [22 x i8] c"call i64 @strlen(ptr \00"
 @.str3692 = private unnamed_addr constant [2 x i8] c")\00"
@@ -4313,7 +4314,7 @@ entry:
 @.str3694 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str3695 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str3696 = private unnamed_addr constant [8 x i8] c"char_at\00"
-@.str3697 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6890: index out of range: \00"
+@.str3697 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6891: index out of range: \00"
 @.str3698 = private unnamed_addr constant [32 x i8] c"getelementptr inbounds i8, ptr \00"
 @.str3699 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str3700 = private unnamed_addr constant [14 x i8] c"load i8, ptr \00"
@@ -4344,46 +4345,46 @@ entry:
 @.str3725 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3726 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str3727 = private unnamed_addr constant [7 x i8] c"repeat\00"
-@.str3728 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6917: index out of range: \00"
+@.str3728 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6918: index out of range: \00"
 @.str3729 = private unnamed_addr constant [29 x i8] c"call ptr @lp_str_repeat(ptr \00"
 @.str3730 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str3731 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3732 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str3733 = private unnamed_addr constant [9 x i8] c"pad_left\00"
-@.str3734 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6922: index out of range: \00"
+@.str3734 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6923: index out of range: \00"
 @.str3735 = private unnamed_addr constant [26 x i8] c"call ptr @lp_str_pad(ptr \00"
 @.str3736 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str3737 = private unnamed_addr constant [8 x i8] c", i1 1)\00"
 @.str3738 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str3739 = private unnamed_addr constant [10 x i8] c"pad_right\00"
-@.str3740 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6927: index out of range: \00"
+@.str3740 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6928: index out of range: \00"
 @.str3741 = private unnamed_addr constant [26 x i8] c"call ptr @lp_str_pad(ptr \00"
 @.str3742 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str3743 = private unnamed_addr constant [8 x i8] c", i1 0)\00"
 @.str3744 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str3745 = private unnamed_addr constant [8 x i8] c"replace\00"
-@.str3746 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6932: index out of range: \00"
-@.str3747 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6932: index out of range: \00"
+@.str3746 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6933: index out of range: \00"
+@.str3747 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6933: index out of range: \00"
 @.str3748 = private unnamed_addr constant [30 x i8] c"call ptr @lp_str_replace(ptr \00"
 @.str3749 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str3750 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str3751 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3752 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str3753 = private unnamed_addr constant [6 x i8] c"split\00"
-@.str3754 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6937: index out of range: \00"
+@.str3754 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6938: index out of range: \00"
 @.str3755 = private unnamed_addr constant [28 x i8] c"call ptr @lp_str_split(ptr \00"
 @.str3756 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str3757 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3758 = private unnamed_addr constant [9 x i8] c"[]string\00"
 @.str3759 = private unnamed_addr constant [5 x i8] c"join\00"
-@.str3760 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6942: index out of range: \00"
+@.str3760 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6943: index out of range: \00"
 @.str3761 = private unnamed_addr constant [27 x i8] c"call ptr @lp_str_join(ptr \00"
 @.str3762 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str3763 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3764 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str3765 = private unnamed_addr constant [9 x i8] c"contains\00"
 @.str3766 = private unnamed_addr constant [9 x i8] c"index_of\00"
-@.str3767 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6946: index out of range: \00"
+@.str3767 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6947: index out of range: \00"
 @.str3768 = private unnamed_addr constant [22 x i8] c"call ptr @strstr(ptr \00"
 @.str3769 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str3770 = private unnamed_addr constant [2 x i8] c")\00"
@@ -4406,7 +4407,7 @@ entry:
 @.str3787 = private unnamed_addr constant [11 x i8] c"select i1 \00"
 @.str3788 = private unnamed_addr constant [15 x i8] c", i32 -1, i32 \00"
 @.str3789 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str3790 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6961: index out of range: \00"
+@.str3790 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:6962: index out of range: \00"
 @.str3791 = private unnamed_addr constant [22 x i8] c"call i64 @strlen(ptr \00"
 @.str3792 = private unnamed_addr constant [2 x i8] c")\00"
 @.str3793 = private unnamed_addr constant [12 x i8] c"starts_with\00"
@@ -4902,29 +4903,29 @@ entry:
 @.str4283 = private unnamed_addr constant [3 x i8] c", \00"
 @.str4284 = private unnamed_addr constant [3 x i8] c"of\00"
 @.str4285 = private unnamed_addr constant [6 x i8] c"fnv1a\00"
-@.str4286 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7462: index out of range: \00"
+@.str4286 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7463: index out of range: \00"
 @.str4287 = private unnamed_addr constant [29 x i8] c"call i32 @lp_hash_fnv1a(ptr \00"
 @.str4288 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4289 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str4290 = private unnamed_addr constant [5 x i8] c"of64\00"
 @.str4291 = private unnamed_addr constant [9 x i8] c"fnv1a_64\00"
-@.str4292 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7467: index out of range: \00"
+@.str4292 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7468: index out of range: \00"
 @.str4293 = private unnamed_addr constant [32 x i8] c"call i64 @lp_hash_fnv1a_64(ptr \00"
 @.str4294 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4295 = private unnamed_addr constant [5 x i8] c"long\00"
 @.str4296 = private unnamed_addr constant [6 x i8] c"mix64\00"
-@.str4297 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7471: index out of range: \00"
+@.str4297 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7472: index out of range: \00"
 @.str4298 = private unnamed_addr constant [5 x i8] c"long\00"
 @.str4299 = private unnamed_addr constant [6 x i8] c"crc32\00"
-@.str4300 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7476: index out of range: \00"
+@.str4300 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7477: index out of range: \00"
 @.str4301 = private unnamed_addr constant [29 x i8] c"call i32 @lp_hash_crc32(ptr \00"
 @.str4302 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4303 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str4304 = private unnamed_addr constant [4 x i8] c"mix\00"
-@.str4305 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7480: index out of range: \00"
+@.str4305 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7481: index out of range: \00"
 @.str4306 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str4307 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str4308 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7490: index out of range: \00"
+@.str4308 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7491: index out of range: \00"
 @.str4309 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str4310 = private unnamed_addr constant [14 x i8] c", -1640531527\00"
 @.str4311 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
@@ -5045,32 +5046,32 @@ entry:
 @.str4426 = private unnamed_addr constant [11 x i8] c"random_u32\00"
 @.str4427 = private unnamed_addr constant [7 x i8] c"base64\00"
 @.str4428 = private unnamed_addr constant [7 x i8] c"sha256\00"
-@.str4429 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7653: index out of range: \00"
+@.str4429 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7654: index out of range: \00"
 @.str4430 = private unnamed_addr constant [29 x i8] c"call ptr @lp_sha256_hex(ptr \00"
 @.str4431 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4432 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str4433 = private unnamed_addr constant [12 x i8] c"hmac_sha256\00"
-@.str4434 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7657: index out of range: \00"
-@.str4435 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7657: index out of range: \00"
+@.str4434 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7658: index out of range: \00"
+@.str4435 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7658: index out of range: \00"
 @.str4436 = private unnamed_addr constant [34 x i8] c"call ptr @lp_hmac_sha256_hex(ptr \00"
 @.str4437 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str4438 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4439 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str4440 = private unnamed_addr constant [4 x i8] c"hex\00"
-@.str4441 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7661: index out of range: \00"
+@.str4441 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7662: index out of range: \00"
 @.str4442 = private unnamed_addr constant [26 x i8] c"call ptr @lp_str_hex(ptr \00"
 @.str4443 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4444 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str4445 = private unnamed_addr constant [9 x i8] c"ct_equal\00"
-@.str4446 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7665: index out of range: \00"
-@.str4447 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7665: index out of range: \00"
+@.str4446 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7666: index out of range: \00"
+@.str4447 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7666: index out of range: \00"
 @.str4448 = private unnamed_addr constant [27 x i8] c"call i32 @lp_ct_streq(ptr \00"
 @.str4449 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str4450 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4451 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str4452 = private unnamed_addr constant [13 x i8] c"random_bytes\00"
 @.str4453 = private unnamed_addr constant [11 x i8] c"random_hex\00"
-@.str4454 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7672: index out of range: \00"
+@.str4454 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7673: index out of range: \00"
 @.str4455 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
 @.str4456 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str4457 = private unnamed_addr constant [29 x i8] c"call ptr @lp_random_hex(i64 \00"
@@ -5080,13 +5081,13 @@ entry:
 @.str4461 = private unnamed_addr constant [26 x i8] c"call i32 @lp_random_u32()\00"
 @.str4462 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str4463 = private unnamed_addr constant [7 x i8] c"base64\00"
-@.str4464 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7680: index out of range: \00"
+@.str4464 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7681: index out of range: \00"
 @.str4465 = private unnamed_addr constant [25 x i8] c"call ptr @lp_base64(ptr \00"
 @.str4466 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4467 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str4468 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7686: index out of range: \00"
-@.str4469 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7686: index out of range: \00"
-@.str4470 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7686: index out of range: \00"
+@.str4468 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7687: index out of range: \00"
+@.str4469 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7687: index out of range: \00"
+@.str4470 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:7687: index out of range: \00"
 @.str4471 = private unnamed_addr constant [34 x i8] c"call ptr @lp_hmac_sha256_hex(ptr \00"
 @.str4472 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str4473 = private unnamed_addr constant [2 x i8] c")\00"
@@ -5323,21 +5324,21 @@ entry:
 @.str4704 = private unnamed_addr constant [24 x i8] c"call ptr @lp_uuid_nil()\00"
 @.str4705 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str4706 = private unnamed_addr constant [9 x i8] c"is_valid\00"
-@.str4707 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8021: index out of range: \00"
+@.str4707 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8022: index out of range: \00"
 @.str4708 = private unnamed_addr constant [29 x i8] c"call i32 @lp_uuid_valid(ptr \00"
 @.str4709 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4710 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str4711 = private unnamed_addr constant [8 x i8] c"to_text\00"
-@.str4712 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8025: index out of range: \00"
+@.str4712 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8026: index out of range: \00"
 @.str4713 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str4714 = private unnamed_addr constant [7 x i8] c"equals\00"
-@.str4715 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8029: index out of range: \00"
-@.str4716 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8029: index out of range: \00"
+@.str4715 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8030: index out of range: \00"
+@.str4716 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8030: index out of range: \00"
 @.str4717 = private unnamed_addr constant [26 x i8] c"call i32 @lp_uuid_eq(ptr \00"
 @.str4718 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str4719 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4720 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str4721 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8035: index out of range: \00"
+@.str4721 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8036: index out of range: \00"
 @.str4722 = private unnamed_addr constant [29 x i8] c"call ptr @lp_uuid_parse(ptr \00"
 @.str4723 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4724 = private unnamed_addr constant [7 x i8] c"string\00"
@@ -5423,7 +5424,7 @@ entry:
 @.str4804 = private unnamed_addr constant [13 x i8] c"cellular2_id\00"
 @.str4805 = private unnamed_addr constant [5 x i8] c"unit\00"
 @.str4806 = private unnamed_addr constant [5 x i8] c"unit\00"
-@.str4807 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8169: index out of range: \00"
+@.str4807 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8170: index out of range: \00"
 @.str4808 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
 @.str4809 = private unnamed_addr constant [4 x i8] c", 1\00"
 @.str4810 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -5431,9 +5432,9 @@ entry:
 @.str4812 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str4813 = private unnamed_addr constant [7 x i8] c"value2\00"
 @.str4814 = private unnamed_addr constant [7 x i8] c"value2\00"
-@.str4815 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8176: index out of range: \00"
-@.str4816 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8176: index out of range: \00"
-@.str4817 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8176: index out of range: \00"
+@.str4815 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8177: index out of range: \00"
+@.str4816 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8177: index out of range: \00"
+@.str4817 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8177: index out of range: \00"
 @.str4818 = private unnamed_addr constant [31 x i8] c"call i32 @lp_noise_value2(i32 \00"
 @.str4819 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str4820 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -5441,9 +5442,9 @@ entry:
 @.str4822 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str4823 = private unnamed_addr constant [8 x i8] c"perlin2\00"
 @.str4824 = private unnamed_addr constant [8 x i8] c"perlin2\00"
-@.str4825 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8181: index out of range: \00"
-@.str4826 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8181: index out of range: \00"
-@.str4827 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8181: index out of range: \00"
+@.str4825 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8182: index out of range: \00"
+@.str4826 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8182: index out of range: \00"
+@.str4827 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8182: index out of range: \00"
 @.str4828 = private unnamed_addr constant [32 x i8] c"call i32 @lp_noise_perlin2(i32 \00"
 @.str4829 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str4830 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -5451,9 +5452,9 @@ entry:
 @.str4832 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str4833 = private unnamed_addr constant [9 x i8] c"simplex2\00"
 @.str4834 = private unnamed_addr constant [9 x i8] c"simplex2\00"
-@.str4835 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8186: index out of range: \00"
-@.str4836 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8186: index out of range: \00"
-@.str4837 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8186: index out of range: \00"
+@.str4835 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8187: index out of range: \00"
+@.str4836 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8187: index out of range: \00"
+@.str4837 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8187: index out of range: \00"
 @.str4838 = private unnamed_addr constant [33 x i8] c"call i32 @lp_noise_simplex2(i32 \00"
 @.str4839 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str4840 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -5461,10 +5462,10 @@ entry:
 @.str4842 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str4843 = private unnamed_addr constant [5 x i8] c"fbm2\00"
 @.str4844 = private unnamed_addr constant [5 x i8] c"fbm2\00"
-@.str4845 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8192: index out of range: \00"
-@.str4846 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8192: index out of range: \00"
-@.str4847 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8192: index out of range: \00"
-@.str4848 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8192: index out of range: \00"
+@.str4845 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8193: index out of range: \00"
+@.str4846 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8193: index out of range: \00"
+@.str4847 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8193: index out of range: \00"
+@.str4848 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8193: index out of range: \00"
 @.str4849 = private unnamed_addr constant [29 x i8] c"call i32 @lp_noise_fbm2(i32 \00"
 @.str4850 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str4851 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -5473,17 +5474,17 @@ entry:
 @.str4854 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str4855 = private unnamed_addr constant [10 x i8] c"cellular2\00"
 @.str4856 = private unnamed_addr constant [10 x i8] c"cellular2\00"
-@.str4857 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8198: index out of range: \00"
-@.str4858 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8198: index out of range: \00"
-@.str4859 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8198: index out of range: \00"
+@.str4857 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8199: index out of range: \00"
+@.str4858 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8199: index out of range: \00"
+@.str4859 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8199: index out of range: \00"
 @.str4860 = private unnamed_addr constant [34 x i8] c"call i32 @lp_noise_cellular2(i32 \00"
 @.str4861 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str4862 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str4863 = private unnamed_addr constant [2 x i8] c")\00"
 @.str4864 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str4865 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8203: index out of range: \00"
-@.str4866 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8203: index out of range: \00"
-@.str4867 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8203: index out of range: \00"
+@.str4865 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8204: index out of range: \00"
+@.str4866 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8204: index out of range: \00"
+@.str4867 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8204: index out of range: \00"
 @.str4868 = private unnamed_addr constant [37 x i8] c"call i32 @lp_noise_cellular2_id(i32 \00"
 @.str4869 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str4870 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -5617,7 +5618,7 @@ entry:
 @.str4998 = private unnamed_addr constant [26 x i8] c"call ptr @lp_int_str(i32 \00"
 @.str4999 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5000 = private unnamed_addr constant [10 x i8] c"set_level\00"
-@.str5001 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8414: index out of range: \00"
+@.str5001 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8415: index out of range: \00"
 @.str5002 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str5003 = private unnamed_addr constant [20 x i8] c", ptr @L_log_level\0A\00"
 @.str5004 = private unnamed_addr constant [2 x i8] c"0\00"
@@ -5640,11 +5641,11 @@ entry:
 @.str5021 = private unnamed_addr constant [2 x i8] c"4\00"
 @.str5022 = private unnamed_addr constant [9 x i8] c"[ERROR] \00"
 @.str5023 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str5024 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8430: index out of range: \00"
+@.str5024 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8431: index out of range: \00"
 @.str5025 = private unnamed_addr constant [2 x i8] c"+\00"
 @.str5026 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str5027 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8434: index out of range: \00"
-@.str5028 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8435: index out of range: \00"
+@.str5027 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8435: index out of range: \00"
+@.str5028 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8436: index out of range: \00"
 @.str5029 = private unnamed_addr constant [2 x i8] c"+\00"
 @.str5030 = private unnamed_addr constant [2 x i8] c" \00"
 @.str5031 = private unnamed_addr constant [7 x i8] c"string\00"
@@ -5690,7 +5691,7 @@ entry:
 @.str5071 = private unnamed_addr constant [22 x i8] c"load i32, ptr @L_argc\00"
 @.str5072 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str5073 = private unnamed_addr constant [4 x i8] c"arg\00"
-@.str5074 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8508: index out of range: \00"
+@.str5074 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8509: index out of range: \00"
 @.str5075 = private unnamed_addr constant [22 x i8] c"load ptr, ptr @L_argv\00"
 @.str5076 = private unnamed_addr constant [24 x i8] c"getelementptr ptr, ptr \00"
 @.str5077 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -5700,19 +5701,19 @@ entry:
 @.str5081 = private unnamed_addr constant [19 x i8] c"call i32 @getpid()\00"
 @.str5082 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str5083 = private unnamed_addr constant [5 x i8] c"exit\00"
-@.str5084 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8515: index out of range: \00"
+@.str5084 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8516: index out of range: \00"
 @.str5085 = private unnamed_addr constant [23 x i8] c"  call void @exit(i32 \00"
 @.str5086 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str5087 = private unnamed_addr constant [15 x i8] c"  unreachable\0A\00"
 @.str5088 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str5089 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str5090 = private unnamed_addr constant [4 x i8] c"env\00"
-@.str5091 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8522: index out of range: \00"
+@.str5091 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8523: index out of range: \00"
 @.str5092 = private unnamed_addr constant [22 x i8] c"call ptr @getenv(ptr \00"
 @.str5093 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5094 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str5095 = private unnamed_addr constant [8 x i8] c"has_env\00"
-@.str5096 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8526: index out of range: \00"
+@.str5096 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8527: index out of range: \00"
 @.str5097 = private unnamed_addr constant [22 x i8] c"call ptr @getenv(ptr \00"
 @.str5098 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5099 = private unnamed_addr constant [13 x i8] c"icmp ne ptr \00"
@@ -5723,7 +5724,7 @@ entry:
 @.str5104 = private unnamed_addr constant [13 x i8] c"stdout_write\00"
 @.str5105 = private unnamed_addr constant [13 x i8] c"stderr_write\00"
 @.str5106 = private unnamed_addr constant [13 x i8] c"stderr_write\00"
-@.str5107 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8534: index out of range: \00"
+@.str5107 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8535: index out of range: \00"
 @.str5108 = private unnamed_addr constant [22 x i8] c"call i64 @strlen(ptr \00"
 @.str5109 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5110 = private unnamed_addr constant [24 x i8] c"  call i64 @fwrite(ptr \00"
@@ -5736,15 +5737,15 @@ entry:
 @.str5117 = private unnamed_addr constant [23 x i8] c"call ptr @lp_os_args()\00"
 @.str5118 = private unnamed_addr constant [9 x i8] c"[]string\00"
 @.str5119 = private unnamed_addr constant [7 x i8] c"env_or\00"
-@.str5120 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8544: index out of range: \00"
-@.str5121 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8544: index out of range: \00"
+@.str5120 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8545: index out of range: \00"
+@.str5121 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8545: index out of range: \00"
 @.str5122 = private unnamed_addr constant [31 x i8] c"call ptr @lp_os_getenv_or(ptr \00"
 @.str5123 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str5124 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5125 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str5126 = private unnamed_addr constant [8 x i8] c"set_env\00"
-@.str5127 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8548: index out of range: \00"
-@.str5128 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8548: index out of range: \00"
+@.str5127 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8549: index out of range: \00"
+@.str5128 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8549: index out of range: \00"
 @.str5129 = private unnamed_addr constant [22 x i8] c"call i32 @setenv(ptr \00"
 @.str5130 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str5131 = private unnamed_addr constant [9 x i8] c", i32 1)\00"
@@ -5754,7 +5755,7 @@ entry:
 @.str5135 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str5136 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str5137 = private unnamed_addr constant [10 x i8] c"unset_env\00"
-@.str5138 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8554: index out of range: \00"
+@.str5138 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8555: index out of range: \00"
 @.str5139 = private unnamed_addr constant [24 x i8] c"call i32 @unsetenv(ptr \00"
 @.str5140 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5141 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
@@ -5769,17 +5770,17 @@ entry:
 @.str5150 = private unnamed_addr constant [23 x i8] c"call ptr @lp_os_arch()\00"
 @.str5151 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str5152 = private unnamed_addr constant [9 x i8] c"save_dir\00"
-@.str5153 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8562: index out of range: \00"
+@.str5153 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8563: index out of range: \00"
 @.str5154 = private unnamed_addr constant [30 x i8] c"call ptr @lp_os_save_dir(ptr \00"
 @.str5155 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5156 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str5157 = private unnamed_addr constant [11 x i8] c"config_dir\00"
-@.str5158 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8566: index out of range: \00"
+@.str5158 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8567: index out of range: \00"
 @.str5159 = private unnamed_addr constant [32 x i8] c"call ptr @lp_os_config_dir(ptr \00"
 @.str5160 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5161 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str5162 = private unnamed_addr constant [10 x i8] c"cache_dir\00"
-@.str5163 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8570: index out of range: \00"
+@.str5163 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8571: index out of range: \00"
 @.str5164 = private unnamed_addr constant [31 x i8] c"call ptr @lp_os_cache_dir(ptr \00"
 @.str5165 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5166 = private unnamed_addr constant [7 x i8] c"string\00"
@@ -5884,52 +5885,52 @@ entry:
 @.str5265 = private unnamed_addr constant [9 x i8] c"truncate\00"
 @.str5266 = private unnamed_addr constant [13 x i8] c"grapheme_len\00"
 @.str5267 = private unnamed_addr constant [9 x i8] c"byte_len\00"
-@.str5268 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8744: index out of range: \00"
+@.str5268 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8745: index out of range: \00"
 @.str5269 = private unnamed_addr constant [22 x i8] c"call i64 @strlen(ptr \00"
 @.str5270 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5271 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
 @.str5272 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str5273 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str5274 = private unnamed_addr constant [4 x i8] c"len\00"
-@.str5275 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8749: index out of range: \00"
+@.str5275 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8750: index out of range: \00"
 @.str5276 = private unnamed_addr constant [26 x i8] c"call i32 @lp_uni_len(ptr \00"
 @.str5277 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5278 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str5279 = private unnamed_addr constant [14 x i8] c"is_valid_utf8\00"
-@.str5280 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8753: index out of range: \00"
+@.str5280 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8754: index out of range: \00"
 @.str5281 = private unnamed_addr constant [28 x i8] c"call i32 @lp_uni_valid(ptr \00"
 @.str5282 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5283 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str5284 = private unnamed_addr constant [8 x i8] c"char_at\00"
-@.str5285 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8757: index out of range: \00"
-@.str5286 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8757: index out of range: \00"
+@.str5285 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8758: index out of range: \00"
+@.str5286 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8758: index out of range: \00"
 @.str5287 = private unnamed_addr constant [30 x i8] c"call i32 @lp_uni_char_at(ptr \00"
 @.str5288 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str5289 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5290 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str5291 = private unnamed_addr constant [6 x i8] c"chars\00"
-@.str5292 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8761: index out of range: \00"
+@.str5292 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8762: index out of range: \00"
 @.str5293 = private unnamed_addr constant [28 x i8] c"call ptr @lp_uni_chars(ptr \00"
 @.str5294 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5295 = private unnamed_addr constant [6 x i8] c"[]int\00"
 @.str5296 = private unnamed_addr constant [6 x i8] c"upper\00"
-@.str5297 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8765: index out of range: \00"
+@.str5297 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8766: index out of range: \00"
 @.str5298 = private unnamed_addr constant [27 x i8] c"call ptr @lp_uni_case(ptr \00"
 @.str5299 = private unnamed_addr constant [9 x i8] c", i32 1)\00"
 @.str5300 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str5301 = private unnamed_addr constant [6 x i8] c"lower\00"
-@.str5302 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8769: index out of range: \00"
+@.str5302 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8770: index out of range: \00"
 @.str5303 = private unnamed_addr constant [27 x i8] c"call ptr @lp_uni_case(ptr \00"
 @.str5304 = private unnamed_addr constant [9 x i8] c", i32 0)\00"
 @.str5305 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str5306 = private unnamed_addr constant [9 x i8] c"truncate\00"
-@.str5307 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8773: index out of range: \00"
-@.str5308 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8773: index out of range: \00"
+@.str5307 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8774: index out of range: \00"
+@.str5308 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8774: index out of range: \00"
 @.str5309 = private unnamed_addr constant [31 x i8] c"call ptr @lp_uni_truncate(ptr \00"
 @.str5310 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str5311 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5312 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str5313 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8777: index out of range: \00"
+@.str5313 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:8778: index out of range: \00"
 @.str5314 = private unnamed_addr constant [35 x i8] c"call i32 @lp_uni_grapheme_len(ptr \00"
 @.str5315 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5316 = private unnamed_addr constant [4 x i8] c"int\00"
@@ -6120,7 +6121,7 @@ entry:
 @.str5501 = private unnamed_addr constant [10 x i8] c"normalize\00"
 @.str5502 = private unnamed_addr constant [3 x i8] c"of\00"
 @.str5503 = private unnamed_addr constant [6 x i8] c"sniff\00"
-@.str5504 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9079: index out of range: \00"
+@.str5504 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9080: index out of range: \00"
 @.str5505 = private unnamed_addr constant [7 x i8] c"exists\00"
 @.str5506 = private unnamed_addr constant [28 x i8] c"call i32 @lp_fs_exists(ptr \00"
 @.str5507 = private unnamed_addr constant [2 x i8] c")\00"
@@ -6149,7 +6150,7 @@ entry:
 @.str5530 = private unnamed_addr constant [26 x i8] c"call ptr @lp_fs_list(ptr \00"
 @.str5531 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5532 = private unnamed_addr constant [9 x i8] c"[]string\00"
-@.str5533 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9087: index out of range: \00"
+@.str5533 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9088: index out of range: \00"
 @.str5534 = private unnamed_addr constant [11 x i8] c"write_text\00"
 @.str5535 = private unnamed_addr constant [32 x i8] c"call i32 @lp_fs_write_text(ptr \00"
 @.str5536 = private unnamed_addr constant [7 x i8] c", ptr \00"
@@ -6164,7 +6165,7 @@ entry:
 @.str5545 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str5546 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5547 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str5548 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9096: index out of range: \00"
+@.str5548 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9097: index out of range: \00"
 @.str5549 = private unnamed_addr constant [4 x i8] c"dir\00"
 @.str5550 = private unnamed_addr constant [27 x i8] c"call ptr @lp_path_dir(ptr \00"
 @.str5551 = private unnamed_addr constant [2 x i8] c")\00"
@@ -6185,12 +6186,12 @@ entry:
 @.str5566 = private unnamed_addr constant [28 x i8] c"call ptr @lp_path_norm(ptr \00"
 @.str5567 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5568 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str5569 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9103: index out of range: \00"
+@.str5569 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9104: index out of range: \00"
 @.str5570 = private unnamed_addr constant [28 x i8] c"call ptr @lp_path_join(ptr \00"
 @.str5571 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str5572 = private unnamed_addr constant [2 x i8] c")\00"
 @.str5573 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str5574 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9109: index out of range: \00"
+@.str5574 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9110: index out of range: \00"
 @.str5575 = private unnamed_addr constant [6 x i8] c"sniff\00"
 @.str5576 = private unnamed_addr constant [29 x i8] c"call ptr @lp_mime_sniff(ptr \00"
 @.str5577 = private unnamed_addr constant [2 x i8] c")\00"
@@ -6417,16 +6418,16 @@ entry:
 @.str5798 = private unnamed_addr constant [9 x i8] c"font/otf\00"
 @.str5799 = private unnamed_addr constant [6 x i8] c"ludic\00"
 @.str5800 = private unnamed_addr constant [13 x i8] c"text/x-ludic\00"
-@.str5801 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9411: index out of range: \00"
-@.str5802 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9411: index out of range: \00"
+@.str5801 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9412: index out of range: \00"
+@.str5802 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9412: index out of range: \00"
 @.str5803 = private unnamed_addr constant [25 x i8] c"application/octet-stream\00"
 @.str5804 = private unnamed_addr constant [44 x i8] c"@mime_tbl = private unnamed_addr constant [\00"
 @.str5805 = private unnamed_addr constant [19 x i8] c" x { ptr, ptr }] [\00"
 @.str5806 = private unnamed_addr constant [3 x i8] c", \00"
 @.str5807 = private unnamed_addr constant [20 x i8] c"{ ptr, ptr } { ptr \00"
-@.str5808 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9420: index out of range: \00"
+@.str5808 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9421: index out of range: \00"
 @.str5809 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str5810 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9420: index out of range: \00"
+@.str5810 = private unnamed_addr constant [54 x i8] c"build/cfree/selfhost.ludic:9421: index out of range: \00"
 @.str5811 = private unnamed_addr constant [3 x i8] c" }\00"
 @.str5812 = private unnamed_addr constant [3 x i8] c"]\0A\00"
 @.str5813 = private unnamed_addr constant [37 x i8] c"define ptr @lp_mime_of(ptr %path) {\0A\00"
@@ -7071,25 +7072,25 @@ entry:
 @.str6452 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str6453 = private unnamed_addr constant [6 x i8] c"List.\00"
 @.str6454 = private unnamed_addr constant [25 x i8] c" needs (slice, function)\00"
-@.str6455 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10292: index out of range: \00"
+@.str6455 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10293: index out of range: \00"
 @.str6456 = private unnamed_addr constant [6 x i8] c"List.\00"
 @.str6457 = private unnamed_addr constant [46 x i8] c": the second argument must be a function name\00"
-@.str6458 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10293: index out of range: \00"
+@.str6458 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10294: index out of range: \00"
 @.str6459 = private unnamed_addr constant [6 x i8] c"List.\00"
 @.str6460 = private unnamed_addr constant [22 x i8] c": no function named '\00"
 @.str6461 = private unnamed_addr constant [2 x i8] c"'\00"
 @.str6462 = private unnamed_addr constant [4 x i8] c"len\00"
 @.str6463 = private unnamed_addr constant [5 x i8] c"push\00"
 @.str6464 = private unnamed_addr constant [7 x i8] c"sample\00"
-@.str6465 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10302: index out of range: \00"
-@.str6466 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10303: index out of range: \00"
+@.str6465 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10303: index out of range: \00"
+@.str6466 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10304: index out of range: \00"
 @.str6467 = private unnamed_addr constant [15 x i8] c"rt_list_sample\00"
 @.str6468 = private unnamed_addr constant [68 x i8] c"List.sample needs the engine runtime (a game, or import ludic.core)\00"
 @.str6469 = private unnamed_addr constant [33 x i8] c"call ptr @fn_rt_list_sample(ptr \00"
 @.str6470 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str6471 = private unnamed_addr constant [2 x i8] c")\00"
 @.str6472 = private unnamed_addr constant [6 x i8] c"[]int\00"
-@.str6473 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10307: index out of range: \00"
+@.str6473 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10308: index out of range: \00"
 @.str6474 = private unnamed_addr constant [6 x i8] c"List.\00"
 @.str6475 = private unnamed_addr constant [15 x i8] c" needs a slice\00"
 @.str6476 = private unnamed_addr constant [6 x i8] c"clear\00"
@@ -7117,8 +7118,8 @@ entry:
 @.str6498 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str6499 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str6500 = private unnamed_addr constant [5 x i8] c"swap\00"
-@.str6501 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10337: index out of range: \00"
-@.str6502 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10337: index out of range: \00"
+@.str6501 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10338: index out of range: \00"
+@.str6502 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10338: index out of range: \00"
 @.str6503 = private unnamed_addr constant [6 x i8] c"load \00"
 @.str6504 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str6505 = private unnamed_addr constant [6 x i8] c"load \00"
@@ -7135,7 +7136,7 @@ entry:
 @.str6516 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str6517 = private unnamed_addr constant [9 x i8] c"contains\00"
 @.str6518 = private unnamed_addr constant [9 x i8] c"index_of\00"
-@.str6519 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10347: index out of range: \00"
+@.str6519 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10348: index out of range: \00"
 @.str6520 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
 @.str6521 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str6522 = private unnamed_addr constant [4 x i8] c"i32\00"
@@ -7188,8 +7189,8 @@ entry:
 @.str6569 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str6570 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str6571 = private unnamed_addr constant [7 x i8] c"insert\00"
-@.str6572 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10379: index out of range: \00"
-@.str6573 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10379: index out of range: \00"
+@.str6572 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10380: index out of range: \00"
+@.str6573 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10380: index out of range: \00"
 @.str6574 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
 @.str6575 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str6576 = private unnamed_addr constant [4 x i8] c"i32\00"
@@ -7231,7 +7232,7 @@ entry:
 @.str6612 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str6613 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str6614 = private unnamed_addr constant [10 x i8] c"remove_at\00"
-@.str6615 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10405: index out of range: \00"
+@.str6615 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10406: index out of range: \00"
 @.str6616 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
 @.str6617 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str6618 = private unnamed_addr constant [4 x i8] c", 1\00"
@@ -7269,7 +7270,7 @@ entry:
 @.str6650 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str6651 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str6652 = private unnamed_addr constant [7 x i8] c"remove\00"
-@.str6653 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10428: index out of range: \00"
+@.str6653 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10429: index out of range: \00"
 @.str6654 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
 @.str6655 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str6656 = private unnamed_addr constant [4 x i8] c"i32\00"
@@ -7580,7 +7581,7 @@ entry:
 @.str6961 = private unnamed_addr constant [2 x i8] c")\00"
 @.str6962 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str6963 = private unnamed_addr constant [8 x i8] c", 65536\00"
-@.str6964 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10663: index out of range: \00"
+@.str6964 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10664: index out of range: \00"
 @.str6965 = private unnamed_addr constant [3 x i8] c"in\00"
 @.str6966 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str6967 = private unnamed_addr constant [4 x i8] c"out\00"
@@ -7614,16 +7615,16 @@ entry:
 @.str6995 = private unnamed_addr constant [11 x i8] c"select i1 \00"
 @.str6996 = private unnamed_addr constant [14 x i8] c", i32 1, i32 \00"
 @.str6997 = private unnamed_addr constant [6 x i8] c"frame\00"
-@.str6998 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10712: index out of range: \00"
-@.str6999 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10712: index out of range: \00"
-@.str7000 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10712: index out of range: \00"
+@.str6998 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10713: index out of range: \00"
+@.str6999 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10713: index out of range: \00"
+@.str7000 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10713: index out of range: \00"
 @.str7001 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
 @.str7002 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7003 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7004 = private unnamed_addr constant [5 x i8] c"once\00"
-@.str7005 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10718: index out of range: \00"
-@.str7006 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10718: index out of range: \00"
-@.str7007 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10718: index out of range: \00"
+@.str7005 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10719: index out of range: \00"
+@.str7006 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10719: index out of range: \00"
+@.str7007 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10719: index out of range: \00"
 @.str7008 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str7009 = private unnamed_addr constant [4 x i8] c", 1\00"
 @.str7010 = private unnamed_addr constant [14 x i8] c"icmp slt i32 \00"
@@ -7633,9 +7634,9 @@ entry:
 @.str7014 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7015 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7016 = private unnamed_addr constant [9 x i8] c"pingpong\00"
-@.str7017 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10725: index out of range: \00"
-@.str7018 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10725: index out of range: \00"
-@.str7019 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10725: index out of range: \00"
+@.str7017 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10726: index out of range: \00"
+@.str7018 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10726: index out of range: \00"
+@.str7019 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10726: index out of range: \00"
 @.str7020 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
 @.str7021 = private unnamed_addr constant [4 x i8] c", 2\00"
 @.str7022 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
@@ -7651,34 +7652,34 @@ entry:
 @.str7032 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7033 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7034 = private unnamed_addr constant [9 x i8] c"finished\00"
-@.str7035 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10736: index out of range: \00"
-@.str7036 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10736: index out of range: \00"
-@.str7037 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10736: index out of range: \00"
+@.str7035 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10737: index out of range: \00"
+@.str7036 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10737: index out of range: \00"
+@.str7037 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10737: index out of range: \00"
 @.str7038 = private unnamed_addr constant [14 x i8] c"icmp sge i32 \00"
 @.str7039 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7040 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
 @.str7041 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str7042 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str7043 = private unnamed_addr constant [9 x i8] c"duration\00"
-@.str7044 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10742: index out of range: \00"
-@.str7045 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10742: index out of range: \00"
+@.str7044 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10743: index out of range: \00"
+@.str7045 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10743: index out of range: \00"
 @.str7046 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
 @.str7047 = private unnamed_addr constant [5 x i8] c", 16\00"
 @.str7048 = private unnamed_addr constant [10 x i8] c"sdiv i32 \00"
 @.str7049 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7050 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str7051 = private unnamed_addr constant [7 x i8] c"cell_x\00"
-@.str7052 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10748: index out of range: \00"
-@.str7053 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10748: index out of range: \00"
-@.str7054 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10748: index out of range: \00"
+@.str7052 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10749: index out of range: \00"
+@.str7053 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10749: index out of range: \00"
+@.str7054 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10749: index out of range: \00"
 @.str7055 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
 @.str7056 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7057 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
 @.str7058 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7059 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str7060 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10754: index out of range: \00"
-@.str7061 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10754: index out of range: \00"
-@.str7062 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10754: index out of range: \00"
+@.str7060 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10755: index out of range: \00"
+@.str7061 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10755: index out of range: \00"
+@.str7062 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10755: index out of range: \00"
 @.str7063 = private unnamed_addr constant [10 x i8] c"sdiv i32 \00"
 @.str7064 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7065 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
@@ -7699,8 +7700,8 @@ entry:
 @.str7080 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7081 = private unnamed_addr constant [12 x i8] c", i32 65536\00"
 @.str7082 = private unnamed_addr constant [9 x i8] c"progress\00"
-@.str7083 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10781: index out of range: \00"
-@.str7084 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10781: index out of range: \00"
+@.str7083 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10782: index out of range: \00"
+@.str7084 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10782: index out of range: \00"
 @.str7085 = private unnamed_addr constant [14 x i8] c"icmp sgt i32 \00"
 @.str7086 = private unnamed_addr constant [4 x i8] c", 0\00"
 @.str7087 = private unnamed_addr constant [11 x i8] c"select i1 \00"
@@ -7719,14 +7720,14 @@ entry:
 @.str7100 = private unnamed_addr constant [12 x i8] c", i32 65536\00"
 @.str7101 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str7102 = private unnamed_addr constant [5 x i8] c"loop\00"
-@.str7103 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10792: index out of range: \00"
-@.str7104 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10792: index out of range: \00"
+@.str7103 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10793: index out of range: \00"
+@.str7104 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10793: index out of range: \00"
 @.str7105 = private unnamed_addr constant [9 x i8] c"and i32 \00"
 @.str7106 = private unnamed_addr constant [8 x i8] c", 65535\00"
 @.str7107 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str7108 = private unnamed_addr constant [5 x i8] c"yoyo\00"
-@.str7109 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10798: index out of range: \00"
-@.str7110 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10798: index out of range: \00"
+@.str7109 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10799: index out of range: \00"
+@.str7110 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10799: index out of range: \00"
 @.str7111 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
 @.str7112 = private unnamed_addr constant [9 x i8] c", 131072\00"
 @.str7113 = private unnamed_addr constant [17 x i8] c"sub i32 131072, \00"
@@ -7737,31 +7738,31 @@ entry:
 @.str7118 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7119 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str7120 = private unnamed_addr constant [5 x i8] c"done\00"
-@.str7121 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10810: index out of range: \00"
+@.str7121 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10811: index out of range: \00"
 @.str7122 = private unnamed_addr constant [29 x i8] c"call i32 @fn_tween_done(i32 \00"
 @.str7123 = private unnamed_addr constant [2 x i8] c")\00"
 @.str7124 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str7125 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10813: index out of range: \00"
-@.str7126 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10813: index out of range: \00"
+@.str7125 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10814: index out of range: \00"
+@.str7126 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10814: index out of range: \00"
 @.str7127 = private unnamed_addr constant [14 x i8] c"icmp sge i32 \00"
 @.str7128 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7129 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
 @.str7130 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str7131 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str7132 = private unnamed_addr constant [5 x i8] c"ease\00"
-@.str7133 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10818: index out of range: \00"
-@.str7134 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10819: index out of range: \00"
+@.str7133 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10819: index out of range: \00"
+@.str7134 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10820: index out of range: \00"
 @.str7135 = private unnamed_addr constant [55 x i8] c"Tween.ease: the easing mode must be a literal int 0..6\00"
 @.str7136 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str7137 = private unnamed_addr constant [7 x i8] c"number\00"
-@.str7138 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10824: index out of range: \00"
-@.str7139 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10824: index out of range: \00"
-@.str7140 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10824: index out of range: \00"
+@.str7138 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10825: index out of range: \00"
+@.str7139 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10825: index out of range: \00"
+@.str7140 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10825: index out of range: \00"
 @.str7141 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str7142 = private unnamed_addr constant [6 x i8] c"round\00"
-@.str7143 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10828: index out of range: \00"
-@.str7144 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10828: index out of range: \00"
-@.str7145 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10828: index out of range: \00"
+@.str7143 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10829: index out of range: \00"
+@.str7144 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10829: index out of range: \00"
+@.str7145 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10829: index out of range: \00"
 @.str7146 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str7147 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7148 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
@@ -7780,13 +7781,13 @@ entry:
 @.str7161 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7162 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7163 = private unnamed_addr constant [6 x i8] c"point\00"
-@.str7164 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10839: index out of range: \00"
-@.str7165 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10839: index out of range: \00"
-@.str7166 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10839: index out of range: \00"
+@.str7164 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10840: index out of range: \00"
+@.str7165 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10840: index out of range: \00"
+@.str7166 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10840: index out of range: \00"
 @.str7167 = private unnamed_addr constant [7 x i8] c"Vector\00"
-@.str7168 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10846: index out of range: \00"
-@.str7169 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10846: index out of range: \00"
-@.str7170 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10846: index out of range: \00"
+@.str7168 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10847: index out of range: \00"
+@.str7169 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10847: index out of range: \00"
+@.str7170 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10847: index out of range: \00"
 @.str7171 = private unnamed_addr constant [3 x i8] c"16\00"
 @.str7172 = private unnamed_addr constant [3 x i8] c"16\00"
 @.str7173 = private unnamed_addr constant [2 x i8] c"8\00"
@@ -7819,14 +7820,14 @@ entry:
 @.str7200 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7201 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7202 = private unnamed_addr constant [6 x i8] c"rects\00"
-@.str7203 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10883: index out of range: \00"
-@.str7204 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10883: index out of range: \00"
-@.str7205 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10883: index out of range: \00"
-@.str7206 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10883: index out of range: \00"
-@.str7207 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10884: index out of range: \00"
-@.str7208 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10884: index out of range: \00"
-@.str7209 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10884: index out of range: \00"
-@.str7210 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10884: index out of range: \00"
+@.str7203 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10884: index out of range: \00"
+@.str7204 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10884: index out of range: \00"
+@.str7205 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10884: index out of range: \00"
+@.str7206 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10884: index out of range: \00"
+@.str7207 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10885: index out of range: \00"
+@.str7208 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10885: index out of range: \00"
+@.str7209 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10885: index out of range: \00"
+@.str7210 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10885: index out of range: \00"
 @.str7211 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str7212 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7213 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -7853,12 +7854,12 @@ entry:
 @.str7234 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str7235 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str7236 = private unnamed_addr constant [11 x i8] c"point_rect\00"
-@.str7237 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10899: index out of range: \00"
-@.str7238 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10899: index out of range: \00"
-@.str7239 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10900: index out of range: \00"
-@.str7240 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10900: index out of range: \00"
-@.str7241 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10900: index out of range: \00"
-@.str7242 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10900: index out of range: \00"
+@.str7237 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10900: index out of range: \00"
+@.str7238 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10900: index out of range: \00"
+@.str7239 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10901: index out of range: \00"
+@.str7240 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10901: index out of range: \00"
+@.str7241 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10901: index out of range: \00"
+@.str7242 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10901: index out of range: \00"
 @.str7243 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str7244 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7245 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -7881,12 +7882,12 @@ entry:
 @.str7262 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str7263 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str7264 = private unnamed_addr constant [8 x i8] c"circles\00"
-@.str7265 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10913: index out of range: \00"
-@.str7266 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10913: index out of range: \00"
-@.str7267 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10913: index out of range: \00"
-@.str7268 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10914: index out of range: \00"
-@.str7269 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10914: index out of range: \00"
-@.str7270 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10914: index out of range: \00"
+@.str7265 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10914: index out of range: \00"
+@.str7266 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10914: index out of range: \00"
+@.str7267 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10914: index out of range: \00"
+@.str7268 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10915: index out of range: \00"
+@.str7269 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10915: index out of range: \00"
+@.str7270 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10915: index out of range: \00"
 @.str7271 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str7272 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7273 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
@@ -7902,13 +7903,13 @@ entry:
 @.str7283 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
 @.str7284 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str7285 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str7286 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10925: index out of range: \00"
-@.str7287 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10925: index out of range: \00"
-@.str7288 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10925: index out of range: \00"
-@.str7289 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10925: index out of range: \00"
-@.str7290 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10926: index out of range: \00"
-@.str7291 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10926: index out of range: \00"
-@.str7292 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10926: index out of range: \00"
+@.str7286 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10926: index out of range: \00"
+@.str7287 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10926: index out of range: \00"
+@.str7288 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10926: index out of range: \00"
+@.str7289 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10926: index out of range: \00"
+@.str7290 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10927: index out of range: \00"
+@.str7291 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10927: index out of range: \00"
+@.str7292 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10927: index out of range: \00"
 @.str7293 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str7294 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7295 = private unnamed_addr constant [9 x i8] c"add i32 \00"
@@ -7933,23 +7934,23 @@ entry:
 @.str7314 = private unnamed_addr constant [5 x i8] c"peek\00"
 @.str7315 = private unnamed_addr constant [5 x i8] c"poke\00"
 @.str7316 = private unnamed_addr constant [6 x i8] c"bytes\00"
-@.str7317 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10953: index out of range: \00"
+@.str7317 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10954: index out of range: \00"
 @.str7318 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
 @.str7319 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str7320 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
 @.str7321 = private unnamed_addr constant [2 x i8] c")\00"
 @.str7322 = private unnamed_addr constant [8 x i8] c"pointer\00"
 @.str7323 = private unnamed_addr constant [6 x i8] c"words\00"
-@.str7324 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10958: index out of range: \00"
+@.str7324 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10959: index out of range: \00"
 @.str7325 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
 @.str7326 = private unnamed_addr constant [4 x i8] c", 4\00"
 @.str7327 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
 @.str7328 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str7329 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7330 = private unnamed_addr constant [5 x i8] c"copy\00"
-@.str7331 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10964: index out of range: \00"
-@.str7332 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10964: index out of range: \00"
-@.str7333 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10964: index out of range: \00"
+@.str7331 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10965: index out of range: \00"
+@.str7332 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10965: index out of range: \00"
+@.str7333 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10965: index out of range: \00"
 @.str7334 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
 @.str7335 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str7336 = private unnamed_addr constant [24 x i8] c"  call ptr @memcpy(ptr \00"
@@ -7959,9 +7960,9 @@ entry:
 @.str7340 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str7341 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str7342 = private unnamed_addr constant [5 x i8] c"fill\00"
-@.str7343 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10970: index out of range: \00"
-@.str7344 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10970: index out of range: \00"
-@.str7345 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10970: index out of range: \00"
+@.str7343 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10971: index out of range: \00"
+@.str7344 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10971: index out of range: \00"
+@.str7345 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10971: index out of range: \00"
 @.str7346 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
 @.str7347 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str7348 = private unnamed_addr constant [24 x i8] c"  call ptr @memset(ptr \00"
@@ -7971,17 +7972,17 @@ entry:
 @.str7352 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str7353 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str7354 = private unnamed_addr constant [5 x i8] c"peek\00"
-@.str7355 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10976: index out of range: \00"
-@.str7356 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10976: index out of range: \00"
+@.str7355 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10977: index out of range: \00"
+@.str7356 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10977: index out of range: \00"
 @.str7357 = private unnamed_addr constant [32 x i8] c"getelementptr inbounds i8, ptr \00"
 @.str7358 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7359 = private unnamed_addr constant [14 x i8] c"load i8, ptr \00"
 @.str7360 = private unnamed_addr constant [9 x i8] c"zext i8 \00"
 @.str7361 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str7362 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str7363 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10982: index out of range: \00"
-@.str7364 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10982: index out of range: \00"
-@.str7365 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10982: index out of range: \00"
+@.str7363 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10983: index out of range: \00"
+@.str7364 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10983: index out of range: \00"
+@.str7365 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:10983: index out of range: \00"
 @.str7366 = private unnamed_addr constant [32 x i8] c"getelementptr inbounds i8, ptr \00"
 @.str7367 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7368 = private unnamed_addr constant [11 x i8] c"trunc i32 \00"
@@ -8008,7 +8009,7 @@ entry:
 @.str7389 = private unnamed_addr constant [7 x i8] c", 1092\00"
 @.str7390 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str7391 = private unnamed_addr constant [6 x i8] c"since\00"
-@.str7392 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11012: index out of range: \00"
+@.str7392 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11013: index out of range: \00"
 @.str7393 = private unnamed_addr constant [25 x i8] c"call i64 @time(ptr null)\00"
 @.str7394 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
 @.str7395 = private unnamed_addr constant [8 x i8] c" to i32\00"
@@ -8027,7 +8028,7 @@ entry:
 @.str7408 = private unnamed_addr constant [11 x i8] c"as_minutes\00"
 @.str7409 = private unnamed_addr constant [9 x i8] c"as_hours\00"
 @.str7410 = private unnamed_addr constant [8 x i8] c"as_days\00"
-@.str7411 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11047: index out of range: \00"
+@.str7411 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11048: index out of range: \00"
 @.str7412 = private unnamed_addr constant [8 x i8] c"seconds\00"
 @.str7413 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7414 = private unnamed_addr constant [8 x i8] c"minutes\00"
@@ -8075,25 +8076,25 @@ entry:
 @.str7456 = private unnamed_addr constant [9 x i8] c"add_days\00"
 @.str7457 = private unnamed_addr constant [10 x i8] c"diff_days\00"
 @.str7458 = private unnamed_addr constant [4 x i8] c"new\00"
-@.str7459 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11084: index out of range: \00"
-@.str7460 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11084: index out of range: \00"
-@.str7461 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11084: index out of range: \00"
+@.str7459 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11085: index out of range: \00"
+@.str7460 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11085: index out of range: \00"
+@.str7461 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11085: index out of range: \00"
 @.str7462 = private unnamed_addr constant [34 x i8] c"call i32 @lp_days_from_civil(i32 \00"
 @.str7463 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7464 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7465 = private unnamed_addr constant [2 x i8] c")\00"
 @.str7466 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7467 = private unnamed_addr constant [5 x i8] c"year\00"
-@.str7468 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11087: index out of range: \00"
+@.str7468 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11088: index out of range: \00"
 @.str7469 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7470 = private unnamed_addr constant [6 x i8] c"month\00"
-@.str7471 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11088: index out of range: \00"
+@.str7471 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11089: index out of range: \00"
 @.str7472 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7473 = private unnamed_addr constant [4 x i8] c"day\00"
-@.str7474 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11089: index out of range: \00"
+@.str7474 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11090: index out of range: \00"
 @.str7475 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7476 = private unnamed_addr constant [8 x i8] c"weekday\00"
-@.str7477 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11091: index out of range: \00"
+@.str7477 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11092: index out of range: \00"
 @.str7478 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str7479 = private unnamed_addr constant [4 x i8] c", 4\00"
 @.str7480 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
@@ -8104,7 +8105,7 @@ entry:
 @.str7485 = private unnamed_addr constant [4 x i8] c", 7\00"
 @.str7486 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7487 = private unnamed_addr constant [8 x i8] c"is_leap\00"
-@.str7488 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11098: index out of range: \00"
+@.str7488 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11099: index out of range: \00"
 @.str7489 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
 @.str7490 = private unnamed_addr constant [4 x i8] c", 4\00"
 @.str7491 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
@@ -8125,8 +8126,8 @@ entry:
 @.str7506 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str7507 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str7508 = private unnamed_addr constant [14 x i8] c"days_in_month\00"
-@.str7509 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11108: index out of range: \00"
-@.str7510 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11108: index out of range: \00"
+@.str7509 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11109: index out of range: \00"
+@.str7510 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11109: index out of range: \00"
 @.str7511 = private unnamed_addr constant [34 x i8] c"call i32 @lp_days_from_civil(i32 \00"
 @.str7512 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7513 = private unnamed_addr constant [9 x i8] c", i32 1)\00"
@@ -8148,18 +8149,18 @@ entry:
 @.str7529 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7530 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7531 = private unnamed_addr constant [9 x i8] c"to_epoch\00"
-@.str7532 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11119: index out of range: \00"
+@.str7532 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11120: index out of range: \00"
 @.str7533 = private unnamed_addr constant [9 x i8] c"mul i32 \00"
 @.str7534 = private unnamed_addr constant [8 x i8] c", 86400\00"
 @.str7535 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7536 = private unnamed_addr constant [9 x i8] c"add_days\00"
-@.str7537 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11123: index out of range: \00"
-@.str7538 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11123: index out of range: \00"
+@.str7537 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11124: index out of range: \00"
+@.str7538 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11124: index out of range: \00"
 @.str7539 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str7540 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7541 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str7542 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11127: index out of range: \00"
-@.str7543 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11127: index out of range: \00"
+@.str7542 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11128: index out of range: \00"
+@.str7543 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11128: index out of range: \00"
 @.str7544 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str7545 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7546 = private unnamed_addr constant [4 x i8] c"int\00"
@@ -8188,10 +8189,10 @@ entry:
 @.str7569 = private unnamed_addr constant [29 x i8] c"call ptr @lp_str_concat(ptr \00"
 @.str7570 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str7571 = private unnamed_addr constant [2 x i8] c")\00"
-@.str7572 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11175: index out of range: \00"
+@.str7572 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11176: index out of range: \00"
 @.str7573 = private unnamed_addr constant [47 x i8] c"DateTime.format needs a string-literal pattern\00"
-@.str7574 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11176: index out of range: \00"
-@.str7575 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11177: index out of range: \00"
+@.str7574 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11177: index out of range: \00"
+@.str7575 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11178: index out of range: \00"
 @.str7576 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str7577 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str7578 = private unnamed_addr constant [4 x i8] c"i32\00"
@@ -8225,10 +8226,10 @@ entry:
 @.str7606 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7607 = private unnamed_addr constant [2 x i8] c")\00"
 @.str7608 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str7609 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11225: index out of range: \00"
+@.str7609 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11226: index out of range: \00"
 @.str7610 = private unnamed_addr constant [46 x i8] c"DateTime.parse needs a string-literal pattern\00"
-@.str7611 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11226: index out of range: \00"
-@.str7612 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11227: index out of range: \00"
+@.str7611 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11227: index out of range: \00"
+@.str7612 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11228: index out of range: \00"
 @.str7613 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str7614 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str7615 = private unnamed_addr constant [2 x i8] c"0\00"
@@ -8293,12 +8294,12 @@ entry:
 @.str7674 = private unnamed_addr constant [7 x i8] c"format\00"
 @.str7675 = private unnamed_addr constant [6 x i8] c"parse\00"
 @.str7676 = private unnamed_addr constant [5 x i8] c"from\00"
-@.str7677 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11279: index out of range: \00"
-@.str7678 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11279: index out of range: \00"
-@.str7679 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11279: index out of range: \00"
-@.str7680 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11280: index out of range: \00"
-@.str7681 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11280: index out of range: \00"
-@.str7682 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11280: index out of range: \00"
+@.str7677 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11280: index out of range: \00"
+@.str7678 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11280: index out of range: \00"
+@.str7679 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11280: index out of range: \00"
+@.str7680 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11281: index out of range: \00"
+@.str7681 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11281: index out of range: \00"
+@.str7682 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11281: index out of range: \00"
 @.str7683 = private unnamed_addr constant [34 x i8] c"call i32 @lp_days_from_civil(i32 \00"
 @.str7684 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str7685 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -8317,25 +8318,25 @@ entry:
 @.str7698 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7699 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7700 = private unnamed_addr constant [5 x i8] c"date\00"
-@.str7701 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11290: index out of range: \00"
+@.str7701 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11291: index out of range: \00"
 @.str7702 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7703 = private unnamed_addr constant [4 x i8] c"add\00"
-@.str7704 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11294: index out of range: \00"
-@.str7705 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11294: index out of range: \00"
+@.str7704 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11295: index out of range: \00"
+@.str7705 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11295: index out of range: \00"
 @.str7706 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str7707 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7708 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7709 = private unnamed_addr constant [5 x i8] c"year\00"
-@.str7710 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11297: index out of range: \00"
+@.str7710 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11298: index out of range: \00"
 @.str7711 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7712 = private unnamed_addr constant [6 x i8] c"month\00"
-@.str7713 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11298: index out of range: \00"
+@.str7713 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11299: index out of range: \00"
 @.str7714 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7715 = private unnamed_addr constant [4 x i8] c"day\00"
-@.str7716 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11299: index out of range: \00"
+@.str7716 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11300: index out of range: \00"
 @.str7717 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7718 = private unnamed_addr constant [8 x i8] c"weekday\00"
-@.str7719 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11301: index out of range: \00"
+@.str7719 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11302: index out of range: \00"
 @.str7720 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str7721 = private unnamed_addr constant [4 x i8] c", 4\00"
 @.str7722 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
@@ -8346,18 +8347,18 @@ entry:
 @.str7727 = private unnamed_addr constant [4 x i8] c", 7\00"
 @.str7728 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7729 = private unnamed_addr constant [5 x i8] c"hour\00"
-@.str7730 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11309: index out of range: \00"
+@.str7730 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11310: index out of range: \00"
 @.str7731 = private unnamed_addr constant [10 x i8] c"sdiv i32 \00"
 @.str7732 = private unnamed_addr constant [7 x i8] c", 3600\00"
 @.str7733 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7734 = private unnamed_addr constant [7 x i8] c"minute\00"
-@.str7735 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11314: index out of range: \00"
+@.str7735 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11315: index out of range: \00"
 @.str7736 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
 @.str7737 = private unnamed_addr constant [7 x i8] c", 3600\00"
 @.str7738 = private unnamed_addr constant [10 x i8] c"sdiv i32 \00"
 @.str7739 = private unnamed_addr constant [5 x i8] c", 60\00"
 @.str7740 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str7741 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11320: index out of range: \00"
+@.str7741 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11321: index out of range: \00"
 @.str7742 = private unnamed_addr constant [10 x i8] c"srem i32 \00"
 @.str7743 = private unnamed_addr constant [5 x i8] c", 60\00"
 @.str7744 = private unnamed_addr constant [4 x i8] c"int\00"
@@ -8471,12 +8472,12 @@ entry:
 @.str7852 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str7853 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str7854 = private unnamed_addr constant [4 x i8] c"set\00"
-@.str7855 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11457: index out of range: \00"
+@.str7855 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11458: index out of range: \00"
 @.str7856 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str7857 = private unnamed_addr constant [16 x i8] c", ptr @L_clock\0A\00"
 @.str7858 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str7859 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str7860 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11462: index out of range: \00"
+@.str7860 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11463: index out of range: \00"
 @.str7861 = private unnamed_addr constant [23 x i8] c"load i32, ptr @L_clock\00"
 @.str7862 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str7863 = private unnamed_addr constant [3 x i8] c", \00"
@@ -8511,23 +8512,23 @@ entry:
 @.str7892 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str7893 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7894 = private unnamed_addr constant [4 x i8] c"rgb\00"
-@.str7895 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11504: index out of range: \00"
-@.str7896 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11504: index out of range: \00"
-@.str7897 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11504: index out of range: \00"
+@.str7895 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11505: index out of range: \00"
+@.str7896 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11505: index out of range: \00"
+@.str7897 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11505: index out of range: \00"
 @.str7898 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7899 = private unnamed_addr constant [5 x i8] c"rgba\00"
-@.str7900 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11508: index out of range: \00"
-@.str7901 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11508: index out of range: \00"
-@.str7902 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11508: index out of range: \00"
-@.str7903 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11508: index out of range: \00"
+@.str7900 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11509: index out of range: \00"
+@.str7901 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11509: index out of range: \00"
+@.str7902 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11509: index out of range: \00"
+@.str7903 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11509: index out of range: \00"
 @.str7904 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
 @.str7905 = private unnamed_addr constant [5 x i8] c", 24\00"
 @.str7906 = private unnamed_addr constant [8 x i8] c"or i32 \00"
 @.str7907 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7908 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7909 = private unnamed_addr constant [11 x i8] c"with_alpha\00"
-@.str7910 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11514: index out of range: \00"
-@.str7911 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11514: index out of range: \00"
+@.str7910 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11515: index out of range: \00"
+@.str7911 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11515: index out of range: \00"
 @.str7912 = private unnamed_addr constant [9 x i8] c"and i32 \00"
 @.str7913 = private unnamed_addr constant [11 x i8] c", 16777215\00"
 @.str7914 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
@@ -8536,9 +8537,9 @@ entry:
 @.str7917 = private unnamed_addr constant [3 x i8] c", \00"
 @.str7918 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7919 = private unnamed_addr constant [5 x i8] c"lerp\00"
-@.str7920 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11520: index out of range: \00"
-@.str7921 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11520: index out of range: \00"
-@.str7922 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11520: index out of range: \00"
+@.str7920 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11521: index out of range: \00"
+@.str7921 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11521: index out of range: \00"
+@.str7922 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11521: index out of range: \00"
 @.str7923 = private unnamed_addr constant [3 x i8] c"16\00"
 @.str7924 = private unnamed_addr constant [3 x i8] c"16\00"
 @.str7925 = private unnamed_addr constant [2 x i8] c"8\00"
@@ -8547,8 +8548,8 @@ entry:
 @.str7928 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str7929 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str7930 = private unnamed_addr constant [7 x i8] c"darken\00"
-@.str7931 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11527: index out of range: \00"
-@.str7932 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11527: index out of range: \00"
+@.str7931 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11528: index out of range: \00"
+@.str7932 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11528: index out of range: \00"
 @.str7933 = private unnamed_addr constant [16 x i8] c"sub i32 65536, \00"
 @.str7934 = private unnamed_addr constant [3 x i8] c"16\00"
 @.str7935 = private unnamed_addr constant [2 x i8] c"8\00"
@@ -8566,8 +8567,8 @@ entry:
 @.str7947 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
 @.str7948 = private unnamed_addr constant [5 x i8] c", 16\00"
 @.str7949 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str7950 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11536: index out of range: \00"
-@.str7951 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11536: index out of range: \00"
+@.str7950 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11537: index out of range: \00"
+@.str7951 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11537: index out of range: \00"
 @.str7952 = private unnamed_addr constant [3 x i8] c"16\00"
 @.str7953 = private unnamed_addr constant [2 x i8] c"8\00"
 @.str7954 = private unnamed_addr constant [2 x i8] c"0\00"
@@ -8874,14 +8875,14 @@ entry:
 @.str8255 = private unnamed_addr constant [18 x i8] c", ptr null, i32 1\00"
 @.str8256 = private unnamed_addr constant [14 x i8] c"ptrtoint ptr \00"
 @.str8257 = private unnamed_addr constant [8 x i8] c" to i64\00"
-@.str8258 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11871: index out of range: \00"
+@.str8258 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11872: index out of range: \00"
 @.str8259 = private unnamed_addr constant [42 x i8] c" is a port: it is filled once with 'bind \00"
 @.str8260 = private unnamed_addr constant [63 x i8] c" { ... }' where the program is put together, not made with new\00"
 @.str8261 = private unnamed_addr constant [21 x i8] c"unknown record type \00"
 @.str8262 = private unnamed_addr constant [8 x i8] c" in new\00"
 @.str8263 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
 @.str8264 = private unnamed_addr constant [2 x i8] c")\00"
-@.str8265 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11891: index out of range: \00"
+@.str8265 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11892: index out of range: \00"
 @.str8266 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str8267 = private unnamed_addr constant [27 x i8] c" = getelementptr inbounds \00"
 @.str8268 = private unnamed_addr constant [7 x i8] c", ptr \00"
@@ -8924,10 +8925,10 @@ entry:
 @.str8305 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str8306 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str8307 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str8308 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11935: index out of range: \00"
+@.str8308 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11936: index out of range: \00"
 @.str8309 = private unnamed_addr constant [33 x i8] c"view takes a slice, and this is \00"
-@.str8310 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11937: index out of range: \00"
-@.str8311 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11938: index out of range: \00"
+@.str8310 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11938: index out of range: \00"
+@.str8311 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11939: index out of range: \00"
 @.str8312 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
 @.str8313 = private unnamed_addr constant [9 x i8] c"add i32 \00"
 @.str8314 = private unnamed_addr constant [3 x i8] c", \00"
@@ -8976,7 +8977,7 @@ entry:
 @.str8357 = private unnamed_addr constant [40 x i8] c" = getelementptr inbounds %LSlice, ptr \00"
 @.str8358 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
 @.str8359 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str8360 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11979: index out of range: \00"
+@.str8360 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11980: index out of range: \00"
 @.str8361 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
 @.str8362 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str8363 = private unnamed_addr constant [22 x i8] c"call i64 @strlen(ptr \00"
@@ -8984,14 +8985,14 @@ entry:
 @.str8365 = private unnamed_addr constant [11 x i8] c"trunc i64 \00"
 @.str8366 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str8367 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str8368 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11989: index out of range: \00"
-@.str8369 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11990: index out of range: \00"
+@.str8368 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11990: index out of range: \00"
+@.str8369 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11991: index out of range: \00"
 @.str8370 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str8371 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str8372 = private unnamed_addr constant [67 x i8] c"an empty list literal has no element type: write `new []T` instead\00"
-@.str8373 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11998: index out of range: \00"
+@.str8373 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:11999: index out of range: \00"
 @.str8374 = private unnamed_addr constant [3 x i8] c"[]\00"
-@.str8375 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12005: index out of range: \00"
+@.str8375 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12006: index out of range: \00"
 @.str8376 = private unnamed_addr constant [34 x i8] c"list literal mixes element types \00"
 @.str8377 = private unnamed_addr constant [6 x i8] c" and \00"
 @.str8378 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
@@ -9043,7 +9044,7 @@ entry:
 @.str8424 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str8425 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str8426 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str8427 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12062: index out of range: \00"
+@.str8427 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12063: index out of range: \00"
 @.str8428 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str8429 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str8430 = private unnamed_addr constant [7 x i8] c", ptr \00"
@@ -9270,19 +9271,19 @@ entry:
 @.str8651 = private unnamed_addr constant [6 x i8] c" i32 \00"
 @.str8652 = private unnamed_addr constant [3 x i8] c", \00"
 @.str8653 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str8654 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12291: index out of range: \00"
-@.str8655 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12298: index out of range: \00"
+@.str8654 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12292: index out of range: \00"
+@.str8655 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12299: index out of range: \00"
 @.str8656 = private unnamed_addr constant [59 x i8] c"named and positional arguments cannot be mixed in one call\00"
 @.str8657 = private unnamed_addr constant [26 x i8] c"wrong number of arguments\00"
-@.str8658 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12307: index out of range: \00"
-@.str8659 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12307: index out of range: \00"
-@.str8660 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12307: index out of range: \00"
+@.str8658 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12308: index out of range: \00"
+@.str8659 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12308: index out of range: \00"
+@.str8660 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12308: index out of range: \00"
 @.str8661 = private unnamed_addr constant [19 x i8] c"no argument named \00"
-@.str8662 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12308: index out of range: \00"
-@.str8663 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12318: index out of range: \00"
-@.str8664 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12318: index out of range: \00"
-@.str8665 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12325: index out of range: \00"
-@.str8666 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12325: index out of range: \00"
+@.str8662 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12309: index out of range: \00"
+@.str8663 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12319: index out of range: \00"
+@.str8664 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12319: index out of range: \00"
+@.str8665 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12326: index out of range: \00"
+@.str8666 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12326: index out of range: \00"
 @.str8667 = private unnamed_addr constant [5 x i8] c"exok\00"
 @.str8668 = private unnamed_addr constant [6 x i8] c"exbad\00"
 @.str8669 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
@@ -9416,7 +9417,7 @@ entry:
 @.str8797 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str8798 = private unnamed_addr constant [2 x i8] c".\00"
 @.str8799 = private unnamed_addr constant [32 x i8] c" takes one argument: the entity\00"
-@.str8800 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12454: index out of range: \00"
+@.str8800 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12455: index out of range: \00"
 @.str8801 = private unnamed_addr constant [3 x i8] c"of\00"
 @.str8802 = private unnamed_addr constant [25 x i8] c"getelementptr inbounds [\00"
 @.str8803 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
@@ -9445,7 +9446,7 @@ entry:
 @.str8826 = private unnamed_addr constant [9 x i8] c"zext i1 \00"
 @.str8827 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str8828 = private unnamed_addr constant [5 x i8] c"bool\00"
-@.str8829 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12476: index out of range: \00"
+@.str8829 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12477: index out of range: \00"
 @.str8830 = private unnamed_addr constant [5 x i8] c"name\00"
 @.str8831 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str8832 = private unnamed_addr constant [17 x i8] c"unknown builtin \00"
@@ -9562,8 +9563,8 @@ entry:
 @.str8943 = private unnamed_addr constant [42 x i8] c"Prefab.spawn_at needs a Position property\00"
 @.str8944 = private unnamed_addr constant [5 x i8] c"name\00"
 @.str8945 = private unnamed_addr constant [3 x i8] c"at\00"
-@.str8946 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12704: index out of range: \00"
-@.str8947 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12705: index out of range: \00"
+@.str8946 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12705: index out of range: \00"
+@.str8947 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12706: index out of range: \00"
 @.str8948 = private unnamed_addr constant [30 x i8] c"call i32 @L_spawn_prefab(ptr \00"
 @.str8949 = private unnamed_addr constant [2 x i8] c")\00"
 @.str8950 = private unnamed_addr constant [25 x i8] c"getelementptr inbounds [\00"
@@ -9585,7 +9586,7 @@ entry:
 @.str8966 = private unnamed_addr constant [45 x i8] c"Prefab.spawn: the program declares no prefab\00"
 @.str8967 = private unnamed_addr constant [5 x i8] c"name\00"
 @.str8968 = private unnamed_addr constant [51 x i8] c"Prefab.spawn takes one argument: the prefab's name\00"
-@.str8969 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12722: index out of range: \00"
+@.str8969 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12723: index out of range: \00"
 @.str8970 = private unnamed_addr constant [30 x i8] c"call i32 @L_spawn_prefab(ptr \00"
 @.str8971 = private unnamed_addr constant [2 x i8] c")\00"
 @.str8972 = private unnamed_addr constant [7 x i8] c"entity\00"
@@ -9607,7 +9608,7 @@ entry:
 @.str8988 = private unnamed_addr constant [6 x i8] c"count\00"
 @.str8989 = private unnamed_addr constant [5 x i8] c"work\00"
 @.str8990 = private unnamed_addr constant [4 x i8] c"ctx\00"
-@.str8991 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12768: index out of range: \00"
+@.str8991 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12769: index out of range: \00"
 @.str8992 = private unnamed_addr constant [5 x i8] c"Anim\00"
 @.str8993 = private unnamed_addr constant [5 x i8] c"clip\00"
 @.str8994 = private unnamed_addr constant [10 x i8] c"anim_clip\00"
@@ -9633,17 +9634,17 @@ entry:
 @.str9014 = private unnamed_addr constant [5 x i8] c"mode\00"
 @.str9015 = private unnamed_addr constant [3 x i8] c"Vk\00"
 @.str9016 = private unnamed_addr constant [4 x i8] c"vk_\00"
-@.str9017 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12830: index out of range: \00"
+@.str9017 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12831: index out of range: \00"
 @.str9018 = private unnamed_addr constant [3 x i8] c"Gl\00"
 @.str9019 = private unnamed_addr constant [4 x i8] c"gl_\00"
-@.str9020 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12840: index out of range: \00"
+@.str9020 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12841: index out of range: \00"
 @.str9021 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str9022 = private unnamed_addr constant [2 x i8] c".\00"
 @.str9023 = private unnamed_addr constant [27 x i8] c" is internal to namespace \00"
-@.str9024 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12854: index out of range: \00"
+@.str9024 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12855: index out of range: \00"
 @.str9025 = private unnamed_addr constant [17 x i8] c"unknown builtin \00"
 @.str9026 = private unnamed_addr constant [2 x i8] c".\00"
-@.str9027 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12869: index out of range: \00"
+@.str9027 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12870: index out of range: \00"
 @.str9028 = private unnamed_addr constant [14 x i8] c"enum variant \00"
 @.str9029 = private unnamed_addr constant [8 x i8] c" takes \00"
 @.str9030 = private unnamed_addr constant [18 x i8] c" payload(s), got \00"
@@ -9652,8 +9653,8 @@ entry:
 @.str9033 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str9034 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str9035 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str9036 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12876: index out of range: \00"
-@.str9037 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12877: index out of range: \00"
+@.str9036 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12877: index out of range: \00"
+@.str9037 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12878: index out of range: \00"
 @.str9038 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str9039 = private unnamed_addr constant [35 x i8] c" = getelementptr inbounds i8, ptr \00"
 @.str9040 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -9667,7 +9668,7 @@ entry:
 @.str9048 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9049 = private unnamed_addr constant [7 x i8] c"entity\00"
 @.str9050 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str9051 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12897: index out of range: \00"
+@.str9051 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12898: index out of range: \00"
 @.str9052 = private unnamed_addr constant [7 x i8] c"entity\00"
 @.str9053 = private unnamed_addr constant [4 x i8] c"key\00"
 @.str9054 = private unnamed_addr constant [21 x i8] c"load i32, ptr @L_key\00"
@@ -9687,13 +9688,13 @@ entry:
 @.str9068 = private unnamed_addr constant [25 x i8] c"call i32 @L_world_size()\00"
 @.str9069 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9070 = private unnamed_addr constant [11 x i8] c"world_save\00"
-@.str9071 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12904: index out of range: \00"
+@.str9071 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12905: index out of range: \00"
 @.str9072 = private unnamed_addr constant [28 x i8] c"call i32 @L_world_save(ptr \00"
 @.str9073 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9074 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9075 = private unnamed_addr constant [11 x i8] c"world_load\00"
-@.str9076 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12908: index out of range: \00"
-@.str9077 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12909: index out of range: \00"
+@.str9076 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12909: index out of range: \00"
+@.str9077 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12910: index out of range: \00"
 @.str9078 = private unnamed_addr constant [31 x i8] c"  call void @L_world_load(ptr \00"
 @.str9079 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9080 = private unnamed_addr constant [3 x i8] c")\0A\00"
@@ -9704,16 +9705,16 @@ entry:
 @.str9085 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9086 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9087 = private unnamed_addr constant [10 x i8] c"serialize\00"
-@.str9088 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12920: index out of range: \00"
-@.str9089 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12920: index out of range: \00"
+@.str9088 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12921: index out of range: \00"
+@.str9089 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12921: index out of range: \00"
 @.str9090 = private unnamed_addr constant [31 x i8] c"call i32 @ludic_serialize(i32 \00"
 @.str9091 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str9092 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9093 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9094 = private unnamed_addr constant [6 x i8] c"apply\00"
-@.str9095 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12924: index out of range: \00"
-@.str9096 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12924: index out of range: \00"
-@.str9097 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12924: index out of range: \00"
+@.str9095 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12925: index out of range: \00"
+@.str9096 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12925: index out of range: \00"
+@.str9097 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12925: index out of range: \00"
 @.str9098 = private unnamed_addr constant [30 x i8] c"  call void @ludic_apply(i32 \00"
 @.str9099 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str9100 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -9721,25 +9722,25 @@ entry:
 @.str9102 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9103 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9104 = private unnamed_addr constant [10 x i8] c"sync_size\00"
-@.str9105 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12929: index out of range: \00"
+@.str9105 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12930: index out of range: \00"
 @.str9106 = private unnamed_addr constant [31 x i8] c"call i32 @ludic_sync_size(i32 \00"
 @.str9107 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9108 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9109 = private unnamed_addr constant [6 x i8] c"owner\00"
-@.str9110 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12933: index out of range: \00"
+@.str9110 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12934: index out of range: \00"
 @.str9111 = private unnamed_addr constant [23 x i8] c"call i32 @L_owner(i32 \00"
 @.str9112 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9113 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9114 = private unnamed_addr constant [10 x i8] c"set_owner\00"
-@.str9115 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12937: index out of range: \00"
-@.str9116 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12937: index out of range: \00"
+@.str9115 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12938: index out of range: \00"
+@.str9116 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12938: index out of range: \00"
 @.str9117 = private unnamed_addr constant [30 x i8] c"  call void @L_set_owner(i32 \00"
 @.str9118 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9119 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str9120 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9121 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9122 = private unnamed_addr constant [9 x i8] c"is_owner\00"
-@.str9123 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12942: index out of range: \00"
+@.str9123 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12943: index out of range: \00"
 @.str9124 = private unnamed_addr constant [26 x i8] c"call i32 @L_is_owner(i32 \00"
 @.str9125 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9126 = private unnamed_addr constant [5 x i8] c"bool\00"
@@ -9766,22 +9767,22 @@ entry:
 @.str9147 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9148 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9149 = private unnamed_addr constant [9 x i8] c"set_role\00"
-@.str9150 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12955: index out of range: \00"
+@.str9150 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12956: index out of range: \00"
 @.str9151 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str9152 = private unnamed_addr constant [15 x i8] c", ptr @L_role\0A\00"
 @.str9153 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9154 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9155 = private unnamed_addr constant [13 x i8] c"set_local_id\00"
-@.str9156 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12958: index out of range: \00"
+@.str9156 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12959: index out of range: \00"
 @.str9157 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str9158 = private unnamed_addr constant [18 x i8] c", ptr @L_localid\0A\00"
 @.str9159 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9160 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9161 = private unnamed_addr constant [9 x i8] c"net_send\00"
 @.str9162 = private unnamed_addr constant [9 x i8] c"net_send\00"
-@.str9163 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12965: index out of range: \00"
-@.str9164 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12965: index out of range: \00"
-@.str9165 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12965: index out of range: \00"
+@.str9163 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12966: index out of range: \00"
+@.str9164 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12966: index out of range: \00"
+@.str9165 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12966: index out of range: \00"
 @.str9166 = private unnamed_addr constant [29 x i8] c"  call void @L_net_send(i32 \00"
 @.str9167 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str9168 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -9790,8 +9791,8 @@ entry:
 @.str9171 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9172 = private unnamed_addr constant [9 x i8] c"net_poll\00"
 @.str9173 = private unnamed_addr constant [9 x i8] c"net_poll\00"
-@.str9174 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12971: index out of range: \00"
-@.str9175 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12971: index out of range: \00"
+@.str9174 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12972: index out of range: \00"
+@.str9175 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12972: index out of range: \00"
 @.str9176 = private unnamed_addr constant [26 x i8] c"call i32 @L_net_poll(ptr \00"
 @.str9177 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9178 = private unnamed_addr constant [2 x i8] c")\00"
@@ -9799,7 +9800,7 @@ entry:
 @.str9180 = private unnamed_addr constant [4 x i8] c"len\00"
 @.str9181 = private unnamed_addr constant [5 x i8] c"push\00"
 @.str9182 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str9183 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12977: index out of range: \00"
+@.str9183 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12978: index out of range: \00"
 @.str9184 = private unnamed_addr constant [4 x i8] c"ptr\00"
 @.str9185 = private unnamed_addr constant [4 x i8] c"i64\00"
 @.str9186 = private unnamed_addr constant [27 x i8] c"call ptr @lp_long_str(i64 \00"
@@ -9809,7 +9810,7 @@ entry:
 @.str9190 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9191 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str9192 = private unnamed_addr constant [6 x i8] c"print\00"
-@.str9193 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12985: index out of range: \00"
+@.str9193 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12986: index out of range: \00"
 @.str9194 = private unnamed_addr constant [4 x i8] c"ptr\00"
 @.str9195 = private unnamed_addr constant [51 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr \00"
 @.str9196 = private unnamed_addr constant [3 x i8] c")\0A\00"
@@ -9821,7 +9822,7 @@ entry:
 @.str9202 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9203 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9204 = private unnamed_addr constant [6 x i8] c"bytes\00"
-@.str9205 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12993: index out of range: \00"
+@.str9205 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12994: index out of range: \00"
 @.str9206 = private unnamed_addr constant [10 x i8] c"zext i32 \00"
 @.str9207 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str9208 = private unnamed_addr constant [22 x i8] c"call ptr @malloc(i64 \00"
@@ -9829,32 +9830,32 @@ entry:
 @.str9210 = private unnamed_addr constant [8 x i8] c"pointer\00"
 @.str9211 = private unnamed_addr constant [6 x i8] c"words\00"
 @.str9212 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str9213 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12997: index out of range: \00"
+@.str9213 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12998: index out of range: \00"
 @.str9214 = private unnamed_addr constant [7 x i8] c"buffer\00"
 @.str9215 = private unnamed_addr constant [5 x i8] c"byte\00"
-@.str9216 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12998: index out of range: \00"
+@.str9216 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12999: index out of range: \00"
 @.str9217 = private unnamed_addr constant [7 x i8] c"fixeds\00"
 @.str9218 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str9219 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:12999: index out of range: \00"
+@.str9219 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13000: index out of range: \00"
 @.str9220 = private unnamed_addr constant [9 x i8] c"pointers\00"
 @.str9221 = private unnamed_addr constant [8 x i8] c"pointer\00"
-@.str9222 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13000: index out of range: \00"
+@.str9222 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13001: index out of range: \00"
 @.str9223 = private unnamed_addr constant [5 x i8] c"view\00"
 @.str9224 = private unnamed_addr constant [8 x i8] c"data_of\00"
-@.str9225 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13006: index out of range: \00"
+@.str9225 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13007: index out of range: \00"
 @.str9226 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
 @.str9227 = private unnamed_addr constant [8 x i8] c"pointer\00"
 @.str9228 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str9229 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13010: index out of range: \00"
+@.str9229 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13011: index out of range: \00"
 @.str9230 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str9231 = private unnamed_addr constant [9 x i8] c"shl i32 \00"
 @.str9232 = private unnamed_addr constant [5 x i8] c", 16\00"
 @.str9233 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str9234 = private unnamed_addr constant [6 x i8] c"float\00"
 @.str9235 = private unnamed_addr constant [7 x i8] c"double\00"
-@.str9236 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13017: index out of range: \00"
+@.str9236 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13018: index out of range: \00"
 @.str9237 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str9238 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13020: index out of range: \00"
+@.str9238 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13021: index out of range: \00"
 @.str9239 = private unnamed_addr constant [6 x i8] c"fixed\00"
 @.str9240 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
 @.str9241 = private unnamed_addr constant [5 x i8] c", 16\00"
@@ -9865,29 +9866,29 @@ entry:
 @.str9246 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9247 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9248 = private unnamed_addr constant [5 x i8] c"long\00"
-@.str9249 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13027: index out of range: \00"
+@.str9249 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13028: index out of range: \00"
 @.str9250 = private unnamed_addr constant [5 x i8] c"long\00"
 @.str9251 = private unnamed_addr constant [11 x i8] c"float_bits\00"
-@.str9252 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13031: index out of range: \00"
+@.str9252 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13032: index out of range: \00"
 @.str9253 = private unnamed_addr constant [16 x i8] c"float_from_bits\00"
-@.str9254 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13032: index out of range: \00"
+@.str9254 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13033: index out of range: \00"
 @.str9255 = private unnamed_addr constant [12 x i8] c"double_bits\00"
-@.str9256 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13033: index out of range: \00"
+@.str9256 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13034: index out of range: \00"
 @.str9257 = private unnamed_addr constant [17 x i8] c"double_from_bits\00"
-@.str9258 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13034: index out of range: \00"
+@.str9258 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13035: index out of range: \00"
 @.str9259 = private unnamed_addr constant [7 x i8] c"floats\00"
 @.str9260 = private unnamed_addr constant [8 x i8] c"doubles\00"
 @.str9261 = private unnamed_addr constant [6 x i8] c"float\00"
 @.str9262 = private unnamed_addr constant [8 x i8] c"doubles\00"
 @.str9263 = private unnamed_addr constant [7 x i8] c"double\00"
-@.str9264 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13038: index out of range: \00"
+@.str9264 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13039: index out of range: \00"
 @.str9265 = private unnamed_addr constant [6 x i8] c"floor\00"
-@.str9266 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13040: index out of range: \00"
+@.str9266 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13041: index out of range: \00"
 @.str9267 = private unnamed_addr constant [10 x i8] c"ashr i32 \00"
 @.str9268 = private unnamed_addr constant [5 x i8] c", 16\00"
 @.str9269 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9270 = private unnamed_addr constant [7 x i8] c"expect\00"
-@.str9271 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13048: index out of range: \00"
+@.str9271 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13049: index out of range: \00"
 @.str9272 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
 @.str9273 = private unnamed_addr constant [4 x i8] c", 0\00"
 @.str9274 = private unnamed_addr constant [16 x i8] c": expect failed\00"
@@ -9896,17 +9897,17 @@ entry:
 @.str9277 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9278 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9279 = private unnamed_addr constant [10 x i8] c"expect_eq\00"
-@.str9280 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13056: index out of range: \00"
-@.str9281 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13056: index out of range: \00"
+@.str9280 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13057: index out of range: \00"
+@.str9281 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13057: index out of range: \00"
 @.str9282 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
 @.str9283 = private unnamed_addr constant [3 x i8] c", \00"
 @.str9284 = private unnamed_addr constant [19 x i8] c": expect_eq failed\00"
 @.str9285 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9286 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9287 = private unnamed_addr constant [12 x i8] c"expect_near\00"
-@.str9288 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13065: index out of range: \00"
-@.str9289 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13065: index out of range: \00"
-@.str9290 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13065: index out of range: \00"
+@.str9288 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13066: index out of range: \00"
+@.str9289 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13066: index out of range: \00"
+@.str9290 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13066: index out of range: \00"
 @.str9291 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
 @.str9292 = private unnamed_addr constant [3 x i8] c", \00"
 @.str9293 = private unnamed_addr constant [12 x i8] c"sub i32 0, \00"
@@ -9921,7 +9922,7 @@ entry:
 @.str9302 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9303 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9304 = private unnamed_addr constant [6 x i8] c"panic\00"
-@.str9305 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13084: index out of range: \00"
+@.str9305 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13085: index out of range: \00"
 @.str9306 = private unnamed_addr constant [2 x i8] c":\00"
 @.str9307 = private unnamed_addr constant [10 x i8] c": panic: \00"
 @.str9308 = private unnamed_addr constant [41 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr \00"
@@ -9932,7 +9933,7 @@ entry:
 @.str9313 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9314 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9315 = private unnamed_addr constant [7 x i8] c"assert\00"
-@.str9316 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13094: index out of range: \00"
+@.str9316 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13095: index out of range: \00"
 @.str9317 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
 @.str9318 = private unnamed_addr constant [4 x i8] c", 0\00"
 @.str9319 = private unnamed_addr constant [5 x i8] c"asok\00"
@@ -9942,7 +9943,7 @@ entry:
 @.str9323 = private unnamed_addr constant [10 x i8] c", label %\00"
 @.str9324 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str9325 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str9326 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13099: index out of range: \00"
+@.str9326 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13100: index out of range: \00"
 @.str9327 = private unnamed_addr constant [2 x i8] c":\00"
 @.str9328 = private unnamed_addr constant [21 x i8] c": assertion failed: \00"
 @.str9329 = private unnamed_addr constant [41 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr \00"
@@ -9955,7 +9956,7 @@ entry:
 @.str9336 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9337 = private unnamed_addr constant [3 x i8] c"ok\00"
 @.str9338 = private unnamed_addr constant [3 x i8] c"ok\00"
-@.str9339 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13115: index out of range: \00"
+@.str9339 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13116: index out of range: \00"
 @.str9340 = private unnamed_addr constant [25 x i8] c"call ptr @malloc(i64 16)\00"
 @.str9341 = private unnamed_addr constant [37 x i8] c"getelementptr inbounds %Result, ptr \00"
 @.str9342 = private unnamed_addr constant [15 x i8] c", i32 0, i32 0\00"
@@ -9974,7 +9975,7 @@ entry:
 @.str9355 = private unnamed_addr constant [7 x i8] c"result\00"
 @.str9356 = private unnamed_addr constant [4 x i8] c"err\00"
 @.str9357 = private unnamed_addr constant [4 x i8] c"err\00"
-@.str9358 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13127: index out of range: \00"
+@.str9358 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13128: index out of range: \00"
 @.str9359 = private unnamed_addr constant [25 x i8] c"call ptr @malloc(i64 16)\00"
 @.str9360 = private unnamed_addr constant [37 x i8] c"getelementptr inbounds %Result, ptr \00"
 @.str9361 = private unnamed_addr constant [15 x i8] c", i32 0, i32 0\00"
@@ -9992,7 +9993,7 @@ entry:
 @.str9373 = private unnamed_addr constant [7 x i8] c"result\00"
 @.str9374 = private unnamed_addr constant [6 x i8] c"is_ok\00"
 @.str9375 = private unnamed_addr constant [6 x i8] c"is_ok\00"
-@.str9376 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13138: index out of range: \00"
+@.str9376 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13139: index out of range: \00"
 @.str9377 = private unnamed_addr constant [37 x i8] c"getelementptr inbounds %Result, ptr \00"
 @.str9378 = private unnamed_addr constant [15 x i8] c", i32 0, i32 0\00"
 @.str9379 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
@@ -10003,7 +10004,7 @@ entry:
 @.str9384 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str9385 = private unnamed_addr constant [7 x i8] c"is_err\00"
 @.str9386 = private unnamed_addr constant [7 x i8] c"is_err\00"
-@.str9387 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13145: index out of range: \00"
+@.str9387 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13146: index out of range: \00"
 @.str9388 = private unnamed_addr constant [37 x i8] c"getelementptr inbounds %Result, ptr \00"
 @.str9389 = private unnamed_addr constant [15 x i8] c", i32 0, i32 0\00"
 @.str9390 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
@@ -10014,7 +10015,7 @@ entry:
 @.str9395 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str9396 = private unnamed_addr constant [5 x i8] c"some\00"
 @.str9397 = private unnamed_addr constant [5 x i8] c"some\00"
-@.str9398 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13159: index out of range: \00"
+@.str9398 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13160: index out of range: \00"
 @.str9399 = private unnamed_addr constant [24 x i8] c"call ptr @malloc(i64 8)\00"
 @.str9400 = private unnamed_addr constant [37 x i8] c"getelementptr inbounds %Option, ptr \00"
 @.str9401 = private unnamed_addr constant [15 x i8] c", i32 0, i32 0\00"
@@ -10041,7 +10042,7 @@ entry:
 @.str9422 = private unnamed_addr constant [7 x i8] c"option\00"
 @.str9423 = private unnamed_addr constant [8 x i8] c"is_some\00"
 @.str9424 = private unnamed_addr constant [8 x i8] c"is_some\00"
-@.str9425 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13177: index out of range: \00"
+@.str9425 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13178: index out of range: \00"
 @.str9426 = private unnamed_addr constant [37 x i8] c"getelementptr inbounds %Option, ptr \00"
 @.str9427 = private unnamed_addr constant [15 x i8] c", i32 0, i32 0\00"
 @.str9428 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
@@ -10052,7 +10053,7 @@ entry:
 @.str9433 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str9434 = private unnamed_addr constant [8 x i8] c"is_none\00"
 @.str9435 = private unnamed_addr constant [8 x i8] c"is_none\00"
-@.str9436 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13184: index out of range: \00"
+@.str9436 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13185: index out of range: \00"
 @.str9437 = private unnamed_addr constant [37 x i8] c"getelementptr inbounds %Option, ptr \00"
 @.str9438 = private unnamed_addr constant [15 x i8] c", i32 0, i32 0\00"
 @.str9439 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
@@ -10063,8 +10064,8 @@ entry:
 @.str9444 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str9445 = private unnamed_addr constant [10 x i8] c"unwrap_or\00"
 @.str9446 = private unnamed_addr constant [10 x i8] c"unwrap_or\00"
-@.str9447 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13191: index out of range: \00"
-@.str9448 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13192: index out of range: \00"
+@.str9447 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13192: index out of range: \00"
+@.str9448 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13193: index out of range: \00"
 @.str9449 = private unnamed_addr constant [37 x i8] c"getelementptr inbounds %Option, ptr \00"
 @.str9450 = private unnamed_addr constant [15 x i8] c", i32 0, i32 0\00"
 @.str9451 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
@@ -10079,21 +10080,21 @@ entry:
 @.str9460 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9461 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9462 = private unnamed_addr constant [14 x i8] c"world_prop_id\00"
-@.str9463 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13203: index out of range: \00"
+@.str9463 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13204: index out of range: \00"
 @.str9464 = private unnamed_addr constant [29 x i8] c"call i32 @ludic_prop_id(ptr \00"
 @.str9465 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9466 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9467 = private unnamed_addr constant [15 x i8] c"world_field_id\00"
-@.str9468 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13204: index out of range: \00"
-@.str9469 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13204: index out of range: \00"
+@.str9468 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13205: index out of range: \00"
+@.str9469 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13205: index out of range: \00"
 @.str9470 = private unnamed_addr constant [30 x i8] c"call i32 @ludic_field_id(i32 \00"
 @.str9471 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str9472 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9473 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9474 = private unnamed_addr constant [10 x i8] c"world_get\00"
-@.str9475 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13206: index out of range: \00"
-@.str9476 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13206: index out of range: \00"
-@.str9477 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13206: index out of range: \00"
+@.str9475 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13207: index out of range: \00"
+@.str9476 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13207: index out of range: \00"
+@.str9477 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13207: index out of range: \00"
 @.str9478 = private unnamed_addr constant [25 x i8] c"call i64 @ludic_get(i32 \00"
 @.str9479 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9480 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -10102,10 +10103,10 @@ entry:
 @.str9483 = private unnamed_addr constant [8 x i8] c" to i32\00"
 @.str9484 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9485 = private unnamed_addr constant [10 x i8] c"world_set\00"
-@.str9486 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13211: index out of range: \00"
-@.str9487 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13211: index out of range: \00"
-@.str9488 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13211: index out of range: \00"
-@.str9489 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13211: index out of range: \00"
+@.str9486 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13212: index out of range: \00"
+@.str9487 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13212: index out of range: \00"
+@.str9488 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13212: index out of range: \00"
+@.str9489 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13212: index out of range: \00"
 @.str9490 = private unnamed_addr constant [10 x i8] c"sext i32 \00"
 @.str9491 = private unnamed_addr constant [8 x i8] c" to i64\00"
 @.str9492 = private unnamed_addr constant [28 x i8] c"  call void @ludic_set(i32 \00"
@@ -10116,8 +10117,8 @@ entry:
 @.str9497 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9498 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9499 = private unnamed_addr constant [10 x i8] c"world_has\00"
-@.str9500 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13216: index out of range: \00"
-@.str9501 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13216: index out of range: \00"
+@.str9500 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13217: index out of range: \00"
+@.str9501 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13217: index out of range: \00"
 @.str9502 = private unnamed_addr constant [25 x i8] c"call i32 @ludic_has(i32 \00"
 @.str9503 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9504 = private unnamed_addr constant [2 x i8] c")\00"
@@ -10126,47 +10127,47 @@ entry:
 @.str9507 = private unnamed_addr constant [31 x i8] c"call i32 @ludic_entity_count()\00"
 @.str9508 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9509 = private unnamed_addr constant [11 x i8] c"world_kind\00"
-@.str9510 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13218: index out of range: \00"
+@.str9510 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13219: index out of range: \00"
 @.str9511 = private unnamed_addr constant [26 x i8] c"call i32 @ludic_kind(i32 \00"
 @.str9512 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9513 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9514 = private unnamed_addr constant [15 x i8] c"world_model_id\00"
-@.str9515 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13219: index out of range: \00"
+@.str9515 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13220: index out of range: \00"
 @.str9516 = private unnamed_addr constant [30 x i8] c"call i32 @ludic_model_id(ptr \00"
 @.str9517 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9518 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9519 = private unnamed_addr constant [17 x i8] c"world_query_next\00"
-@.str9520 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13220: index out of range: \00"
-@.str9521 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13220: index out of range: \00"
+@.str9520 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13221: index out of range: \00"
+@.str9521 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13221: index out of range: \00"
 @.str9522 = private unnamed_addr constant [32 x i8] c"call i32 @ludic_query_next(i32 \00"
 @.str9523 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9524 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9525 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9526 = private unnamed_addr constant [20 x i8] c"world_register_prop\00"
-@.str9527 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13221: index out of range: \00"
-@.str9528 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13221: index out of range: \00"
+@.str9527 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13222: index out of range: \00"
+@.str9528 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13222: index out of range: \00"
 @.str9529 = private unnamed_addr constant [35 x i8] c"call i32 @ludic_register_prop(ptr \00"
 @.str9530 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9531 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9532 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9533 = private unnamed_addr constant [17 x i8] c"world_attach_dyn\00"
-@.str9534 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13222: index out of range: \00"
-@.str9535 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13222: index out of range: \00"
+@.str9534 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13223: index out of range: \00"
+@.str9535 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13223: index out of range: \00"
 @.str9536 = private unnamed_addr constant [35 x i8] c"  call void @ludic_attach_dyn(i32 \00"
 @.str9537 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9538 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str9539 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9540 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9541 = private unnamed_addr constant [17 x i8] c"world_detach_dyn\00"
-@.str9542 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13223: index out of range: \00"
-@.str9543 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13223: index out of range: \00"
+@.str9542 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13224: index out of range: \00"
+@.str9543 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13224: index out of range: \00"
 @.str9544 = private unnamed_addr constant [35 x i8] c"  call void @ludic_detach_dyn(i32 \00"
 @.str9545 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9546 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str9547 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9548 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9549 = private unnamed_addr constant [12 x i8] c"world_spawn\00"
-@.str9550 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13224: index out of range: \00"
+@.str9550 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13225: index out of range: \00"
 @.str9551 = private unnamed_addr constant [27 x i8] c"call i32 @ludic_spawn(i32 \00"
 @.str9552 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9553 = private unnamed_addr constant [4 x i8] c"int\00"
@@ -10174,33 +10175,33 @@ entry:
 @.str9555 = private unnamed_addr constant [29 x i8] c"call i32 @ludic_prop_count()\00"
 @.str9556 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9557 = private unnamed_addr constant [16 x i8] c"world_prop_name\00"
-@.str9558 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13227: index out of range: \00"
+@.str9558 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13228: index out of range: \00"
 @.str9559 = private unnamed_addr constant [31 x i8] c"call ptr @ludic_prop_name(i32 \00"
 @.str9560 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9561 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str9562 = private unnamed_addr constant [18 x i8] c"world_field_count\00"
-@.str9563 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13228: index out of range: \00"
+@.str9563 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13229: index out of range: \00"
 @.str9564 = private unnamed_addr constant [33 x i8] c"call i32 @ludic_field_count(i32 \00"
 @.str9565 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9566 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9567 = private unnamed_addr constant [17 x i8] c"world_field_name\00"
-@.str9568 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13229: index out of range: \00"
-@.str9569 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13229: index out of range: \00"
+@.str9568 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13230: index out of range: \00"
+@.str9569 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13230: index out of range: \00"
 @.str9570 = private unnamed_addr constant [32 x i8] c"call ptr @ludic_field_name(i32 \00"
 @.str9571 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9572 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9573 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str9574 = private unnamed_addr constant [17 x i8] c"world_field_type\00"
-@.str9575 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13230: index out of range: \00"
-@.str9576 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13230: index out of range: \00"
+@.str9575 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13231: index out of range: \00"
+@.str9576 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13231: index out of range: \00"
 @.str9577 = private unnamed_addr constant [32 x i8] c"call ptr @ludic_field_type(i32 \00"
 @.str9578 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str9579 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9580 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str9581 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13246: index out of range: \00"
+@.str9581 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13247: index out of range: \00"
 @.str9582 = private unnamed_addr constant [15 x i8] c"load ptr, ptr \00"
 @.str9583 = private unnamed_addr constant [8 x i8] c"pointer\00"
-@.str9584 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13250: index out of range: \00"
+@.str9584 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13251: index out of range: \00"
 @.str9585 = private unnamed_addr constant [8 x i8] c"pointer\00"
 @.str9586 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str9587 = private unnamed_addr constant [2 x i8] c"0\00"
@@ -10210,14 +10211,14 @@ entry:
 @.str9591 = private unnamed_addr constant [3 x i8] c" @\00"
 @.str9592 = private unnamed_addr constant [2 x i8] c"(\00"
 @.str9593 = private unnamed_addr constant [3 x i8] c", \00"
-@.str9594 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13264: index out of range: \00"
+@.str9594 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13265: index out of range: \00"
 @.str9595 = private unnamed_addr constant [2 x i8] c" \00"
-@.str9596 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13264: index out of range: \00"
+@.str9596 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13265: index out of range: \00"
 @.str9597 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str9598 = private unnamed_addr constant [4 x i8] c"rt_\00"
 @.str9599 = private unnamed_addr constant [18 x i8] c"unknown function \00"
-@.str9600 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13294: index out of range: \00"
-@.str9601 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13296: index out of range: \00"
+@.str9600 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13295: index out of range: \00"
+@.str9601 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13297: index out of range: \00"
 @.str9602 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str9603 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9604 = private unnamed_addr constant [5 x i8] c"void\00"
@@ -10226,9 +10227,9 @@ entry:
 @.str9607 = private unnamed_addr constant [6 x i8] c" @fn_\00"
 @.str9608 = private unnamed_addr constant [2 x i8] c"(\00"
 @.str9609 = private unnamed_addr constant [3 x i8] c", \00"
-@.str9610 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13307: index out of range: \00"
+@.str9610 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13308: index out of range: \00"
 @.str9611 = private unnamed_addr constant [2 x i8] c" \00"
-@.str9612 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13307: index out of range: \00"
+@.str9612 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13308: index out of range: \00"
 @.str9613 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str9614 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9615 = private unnamed_addr constant [4 x i8] c"int\00"
@@ -10236,7 +10237,7 @@ entry:
 @.str9617 = private unnamed_addr constant [6 x i8] c"float\00"
 @.str9618 = private unnamed_addr constant [6 x i8] c"float\00"
 @.str9619 = private unnamed_addr constant [6 x i8] c"fixed\00"
-@.str9620 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13323: index out of range: \00"
+@.str9620 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13324: index out of range: \00"
 @.str9621 = private unnamed_addr constant [5 x i8] c"bool\00"
 @.str9622 = private unnamed_addr constant [5 x i8] c"null\00"
 @.str9623 = private unnamed_addr constant [8 x i8] c"pointer\00"
@@ -10247,8 +10248,8 @@ entry:
 @.str9628 = private unnamed_addr constant [2 x i8] c")\00"
 @.str9629 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str9630 = private unnamed_addr constant [7 x i8] c"string\00"
-@.str9631 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13345: index out of range: \00"
-@.str9632 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13345: index out of range: \00"
+@.str9631 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13346: index out of range: \00"
+@.str9632 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13346: index out of range: \00"
 @.str9633 = private unnamed_addr constant [7 x i8] c"const \00"
 @.str9634 = private unnamed_addr constant [6 x i8] c"load \00"
 @.str9635 = private unnamed_addr constant [10 x i8] c", ptr @g_\00"
@@ -10303,7 +10304,7 @@ entry:
 @.str9684 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9685 = private unnamed_addr constant [4 x i8] c"fn(\00"
 @.str9686 = private unnamed_addr constant [2 x i8] c",\00"
-@.str9687 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13452: index out of range: \00"
+@.str9687 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13453: index out of range: \00"
 @.str9688 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str9689 = private unnamed_addr constant [4 x i8] c")->\00"
 @.str9690 = private unnamed_addr constant [5 x i8] c"void\00"
@@ -10313,8 +10314,8 @@ entry:
 @.str9694 = private unnamed_addr constant [3 x i8] c"a \00"
 @.str9695 = private unnamed_addr constant [8 x i8] c" takes \00"
 @.str9696 = private unnamed_addr constant [35 x i8] c" argument(s), and this call gives \00"
-@.str9697 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13513: index out of range: \00"
-@.str9698 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13514: index out of range: \00"
+@.str9697 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13514: index out of range: \00"
+@.str9698 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13515: index out of range: \00"
 @.str9699 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str9700 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str9701 = private unnamed_addr constant [5 x i8] c"void\00"
@@ -10323,17 +10324,17 @@ entry:
 @.str9704 = private unnamed_addr constant [2 x i8] c" \00"
 @.str9705 = private unnamed_addr constant [2 x i8] c"(\00"
 @.str9706 = private unnamed_addr constant [3 x i8] c", \00"
-@.str9707 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13529: index out of range: \00"
+@.str9707 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13530: index out of range: \00"
 @.str9708 = private unnamed_addr constant [2 x i8] c" \00"
-@.str9709 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13529: index out of range: \00"
+@.str9709 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13530: index out of range: \00"
 @.str9710 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str9711 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13541: index out of range: \00"
+@.str9711 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13542: index out of range: \00"
 @.str9712 = private unnamed_addr constant [3 x i8] c"a \00"
 @.str9713 = private unnamed_addr constant [40 x i8] c" is not a function and cannot be called\00"
 @.str9714 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str9715 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13567: index out of range: \00"
+@.str9715 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13568: index out of range: \00"
 @.str9716 = private unnamed_addr constant [4 x i8] c"i32\00"
-@.str9717 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13567: index out of range: \00"
+@.str9717 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13568: index out of range: \00"
 @.str9718 = private unnamed_addr constant [4 x i8] c"ptr\00"
 @.str9719 = private unnamed_addr constant [4 x i8] c"fn \00"
 @.str9720 = private unnamed_addr constant [69 x i8] c": a worker function takes (i: int, ctx: pointer) and returns nothing\00"
@@ -10363,14 +10364,14 @@ entry:
 @.str9744 = private unnamed_addr constant [23 x i8] c" is private to module \00"
 @.str9745 = private unnamed_addr constant [42 x i8] c"; mark it 'export' where it is declared (\00"
 @.str9746 = private unnamed_addr constant [2 x i8] c")\00"
-@.str9747 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13666: index out of range: \00"
-@.str9748 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13667: index out of range: \00"
-@.str9749 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13670: index out of range: \00"
-@.str9750 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13671: index out of range: \00"
-@.str9751 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13676: index out of range: \00"
-@.str9752 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13677: index out of range: \00"
-@.str9753 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13677: index out of range: \00"
-@.str9754 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13690: index out of range: \00"
+@.str9747 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13667: index out of range: \00"
+@.str9748 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13668: index out of range: \00"
+@.str9749 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13671: index out of range: \00"
+@.str9750 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13672: index out of range: \00"
+@.str9751 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13677: index out of range: \00"
+@.str9752 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13678: index out of range: \00"
+@.str9753 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13678: index out of range: \00"
+@.str9754 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13691: index out of range: \00"
 @.str9755 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str9756 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9757 = private unnamed_addr constant [5 x i8] c"long\00"
@@ -10432,9 +10433,9 @@ entry:
 @.str9813 = private unnamed_addr constant [5 x i8] c"kind\00"
 @.str9814 = private unnamed_addr constant [5 x i8] c"null\00"
 @.str9815 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str9816 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13820: index out of range: \00"
-@.str9817 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13821: index out of range: \00"
-@.str9818 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13833: index out of range: \00"
+@.str9816 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13821: index out of range: \00"
+@.str9817 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13822: index out of range: \00"
+@.str9818 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13834: index out of range: \00"
 @.str9819 = private unnamed_addr constant [19 x i8] c"LUDIC_CHECK_REPORT\00"
 @.str9820 = private unnamed_addr constant [1 x i8] c"\00"
 @.str9821 = private unnamed_addr constant [2 x i8] c":\00"
@@ -10453,9 +10454,9 @@ entry:
 @.str9834 = private unnamed_addr constant [93 x i8] c" and this is a pointer: a slice is made with words(n), floats(n) or new, not from an address\00"
 @.str9835 = private unnamed_addr constant [8 x i8] c" wants \00"
 @.str9836 = private unnamed_addr constant [14 x i8] c" and this is \00"
-@.str9837 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13878: index out of range: \00"
-@.str9838 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13878: index out of range: \00"
-@.str9839 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13891: index out of range: \00"
+@.str9837 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13879: index out of range: \00"
+@.str9838 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13879: index out of range: \00"
+@.str9839 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13892: index out of range: \00"
 @.str9840 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str9841 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str9842 = private unnamed_addr constant [6 x i8] c"float\00"
@@ -10467,16 +10468,16 @@ entry:
 @.str9848 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str9849 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str9850 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str9851 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13938: index out of range: \00"
+@.str9851 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13939: index out of range: \00"
 @.str9852 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str9853 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13948: index out of range: \00"
+@.str9853 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13949: index out of range: \00"
 @.str9854 = private unnamed_addr constant [7 x i8] c"field \00"
 @.str9855 = private unnamed_addr constant [5 x i8] c" of \00"
 @.str9856 = private unnamed_addr constant [6 x i8] c"field\00"
 @.str9857 = private unnamed_addr constant [15 x i8] c" has no field \00"
 @.str9858 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str9859 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13964: index out of range: \00"
-@.str9860 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13966: index out of range: \00"
+@.str9859 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13965: index out of range: \00"
+@.str9860 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:13967: index out of range: \00"
 @.str9861 = private unnamed_addr constant [19 x i8] c"an element of a []\00"
 @.str9862 = private unnamed_addr constant [5 x i8] c"null\00"
 @.str9863 = private unnamed_addr constant [2 x i8] c"?\00"
@@ -10599,42 +10600,42 @@ entry:
 @.str9980 = private unnamed_addr constant [5 x i8] c"long\00"
 @.str9981 = private unnamed_addr constant [5 x i8] c"long\00"
 @.str9982 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str9983 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14105: index out of range: \00"
-@.str9984 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14106: index out of range: \00"
-@.str9985 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14107: index out of range: \00"
+@.str9983 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14106: index out of range: \00"
+@.str9984 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14107: index out of range: \00"
+@.str9985 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14108: index out of range: \00"
 @.str9986 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str9987 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14122: index out of range: \00"
+@.str9987 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14123: index out of range: \00"
 @.str9988 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str9989 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14138: index out of range: \00"
-@.str9990 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14145: index out of range: \00"
-@.str9991 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14148: index out of range: \00"
-@.str9992 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14151: index out of range: \00"
+@.str9989 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14139: index out of range: \00"
+@.str9990 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14146: index out of range: \00"
+@.str9991 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14149: index out of range: \00"
+@.str9992 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14152: index out of range: \00"
 @.str9993 = private unnamed_addr constant [10 x i8] c"argument \00"
 @.str9994 = private unnamed_addr constant [5 x i8] c" of \00"
 @.str9995 = private unnamed_addr constant [6 x i8] c"arity\00"
 @.str9996 = private unnamed_addr constant [19 x i8] c" has no parameter \00"
-@.str9997 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14157: index out of range: \00"
+@.str9997 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14158: index out of range: \00"
 @.str9998 = private unnamed_addr constant [6 x i8] c"arity\00"
 @.str9999 = private unnamed_addr constant [14 x i8] c"this call to \00"
 @.str10000 = private unnamed_addr constant [13 x i8] c" leaves out \00"
-@.str10001 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14157: index out of range: \00"
+@.str10001 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14158: index out of range: \00"
 @.str10002 = private unnamed_addr constant [23 x i8] c", which has no default\00"
 @.str10003 = private unnamed_addr constant [6 x i8] c"arity\00"
 @.str10004 = private unnamed_addr constant [14 x i8] c"this call to \00"
 @.str10005 = private unnamed_addr constant [13 x i8] c" leaves out \00"
-@.str10006 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14162: index out of range: \00"
+@.str10006 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14163: index out of range: \00"
 @.str10007 = private unnamed_addr constant [23 x i8] c", which has no default\00"
 @.str10008 = private unnamed_addr constant [6 x i8] c"arity\00"
 @.str10009 = private unnamed_addr constant [8 x i8] c" takes \00"
 @.str10010 = private unnamed_addr constant [34 x i8] c" argument(s) and this call gives \00"
-@.str10011 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14166: index out of range: \00"
-@.str10012 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14167: index out of range: \00"
-@.str10013 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14168: index out of range: \00"
-@.str10014 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14168: index out of range: \00"
+@.str10011 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14167: index out of range: \00"
+@.str10012 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14168: index out of range: \00"
+@.str10013 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14169: index out of range: \00"
+@.str10014 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14169: index out of range: \00"
 @.str10015 = private unnamed_addr constant [10 x i8] c"argument \00"
 @.str10016 = private unnamed_addr constant [5 x i8] c" of \00"
-@.str10017 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14175: index out of range: \00"
-@.str10018 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14183: index out of range: \00"
+@.str10017 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14176: index out of range: \00"
+@.str10018 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14184: index out of range: \00"
 @.str10019 = private unnamed_addr constant [7 x i8] c"string\00"
 @.str10020 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str10021 = private unnamed_addr constant [6 x i8] c"float\00"
@@ -10647,14 +10648,14 @@ entry:
 @.str10028 = private unnamed_addr constant [11 x i8] c"float_bits\00"
 @.str10029 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str10030 = private unnamed_addr constant [5 x i8] c"view\00"
-@.str10031 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14202: index out of range: \00"
+@.str10031 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14203: index out of range: \00"
 @.str10032 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str10033 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14203: index out of range: \00"
-@.str10034 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14203: index out of range: \00"
+@.str10033 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14204: index out of range: \00"
+@.str10034 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14204: index out of range: \00"
 @.str10035 = private unnamed_addr constant [20 x i8] c"the start of a view\00"
 @.str10036 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str10037 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14204: index out of range: \00"
-@.str10038 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14204: index out of range: \00"
+@.str10037 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14205: index out of range: \00"
+@.str10038 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14205: index out of range: \00"
 @.str10039 = private unnamed_addr constant [21 x i8] c"the length of a view\00"
 @.str10040 = private unnamed_addr constant [5 x i8] c"kind\00"
 @.str10041 = private unnamed_addr constant [33 x i8] c"view takes a slice, and this is \00"
@@ -10678,159 +10679,159 @@ entry:
 @.str10059 = private unnamed_addr constant [6 x i8] c"print\00"
 @.str10060 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str10061 = private unnamed_addr constant [5 x i8] c"push\00"
-@.str10062 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14241: index out of range: \00"
-@.str10063 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14242: index out of range: \00"
-@.str10064 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14243: index out of range: \00"
+@.str10062 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14242: index out of range: \00"
+@.str10063 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14243: index out of range: \00"
+@.str10064 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14244: index out of range: \00"
 @.str10065 = private unnamed_addr constant [11 x i8] c"push onto \00"
 @.str10066 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str10067 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14253: index out of range: \00"
+@.str10067 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14254: index out of range: \00"
 @.str10068 = private unnamed_addr constant [16 x i8] c"runtime/native/\00"
 @.str10069 = private unnamed_addr constant [16 x i8] c"runtime/native/\00"
-@.str10070 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14257: index out of range: \00"
+@.str10070 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14258: index out of range: \00"
 @.str10071 = private unnamed_addr constant [7 x i8] c"shadow\00"
 @.str10072 = private unnamed_addr constant [18 x i8] c" is the engine's \00"
-@.str10073 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14261: index out of range: \00"
+@.str10073 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14262: index out of range: \00"
 @.str10074 = private unnamed_addr constant [2 x i8] c".\00"
-@.str10075 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14261: index out of range: \00"
+@.str10075 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14262: index out of range: \00"
 @.str10076 = private unnamed_addr constant [29 x i8] c", which this program calls (\00"
 @.str10077 = private unnamed_addr constant [2 x i8] c":\00"
 @.str10078 = private unnamed_addr constant [78 x i8] c"), and every such call would reach this function instead; choose another name\00"
 @.str10079 = private unnamed_addr constant [7 x i8] c"Memory\00"
 @.str10080 = private unnamed_addr constant [8 x i8] c"Memory.\00"
-@.str10081 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14273: index out of range: \00"
-@.str10082 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14276: index out of range: \00"
+@.str10081 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14274: index out of range: \00"
+@.str10082 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14277: index out of range: \00"
 @.str10083 = private unnamed_addr constant [2 x i8] c".\00"
 @.str10084 = private unnamed_addr constant [15 x i8] c", a C function\00"
-@.str10085 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14280: index out of range: \00"
+@.str10085 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14281: index out of range: \00"
 @.str10086 = private unnamed_addr constant [2 x i8] c".\00"
 @.str10087 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str10088 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str10089 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str10090 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str10091 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str10092 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14310: index out of range: \00"
-@.str10093 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14310: index out of range: \00"
+@.str10092 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14311: index out of range: \00"
+@.str10093 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14311: index out of range: \00"
 @.str10094 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str10095 = private unnamed_addr constant [3 x i8] c"()\00"
 @.str10096 = private unnamed_addr constant [16 x i8] c"the C function \00"
 @.str10097 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str10098 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14340: index out of range: \00"
+@.str10098 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14341: index out of range: \00"
 @.str10099 = private unnamed_addr constant [7 x i8] c"field \00"
 @.str10100 = private unnamed_addr constant [5 x i8] c" of \00"
-@.str10101 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14364: index out of range: \00"
+@.str10101 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14365: index out of range: \00"
 @.str10102 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str10103 = private unnamed_addr constant [2 x i8] c"=\00"
 @.str10104 = private unnamed_addr constant [16 x i8] c"this assignment\00"
 @.str10105 = private unnamed_addr constant [7 x i8] c"field \00"
 @.str10106 = private unnamed_addr constant [2 x i8] c"=\00"
-@.str10107 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14403: index out of range: \00"
-@.str10108 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14407: index out of range: \00"
-@.str10109 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14412: index out of range: \00"
-@.str10110 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14412: index out of range: \00"
+@.str10107 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14404: index out of range: \00"
+@.str10108 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14408: index out of range: \00"
+@.str10109 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14413: index out of range: \00"
+@.str10110 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14413: index out of range: \00"
 @.str10111 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str10112 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str10113 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str10114 = private unnamed_addr constant [11 x i8] c"the result\00"
-@.str10115 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14471: index out of range: \00"
-@.str10116 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14471: index out of range: \00"
-@.str10117 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14471: index out of range: \00"
+@.str10115 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14472: index out of range: \00"
+@.str10116 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14472: index out of range: \00"
+@.str10117 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14472: index out of range: \00"
 @.str10118 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str10119 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str10120 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14491: index out of range: \00"
-@.str10121 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14491: index out of range: \00"
+@.str10120 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14492: index out of range: \00"
+@.str10121 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14492: index out of range: \00"
 @.str10122 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str10123 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14505: index out of range: \00"
+@.str10123 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14506: index out of range: \00"
 @.str10124 = private unnamed_addr constant [7 x i8] c"shadow\00"
 @.str10125 = private unnamed_addr constant [102 x i8] c" is a built-in of the compiler, and a call to it would never reach this function; choose another name\00"
-@.str10126 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14511: index out of range: \00"
+@.str10126 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14512: index out of range: \00"
 @.str10127 = private unnamed_addr constant [7 x i8] c"shadow\00"
 @.str10128 = private unnamed_addr constant [44 x i8] c" is also a function of the engine runtime (\00"
 @.str10129 = private unnamed_addr constant [23 x i8] c"); choose another name\00"
-@.str10130 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14526: index out of range: \00"
-@.str10131 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14534: index out of range: \00"
-@.str10132 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14540: index out of range: \00"
+@.str10130 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14527: index out of range: \00"
+@.str10131 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14535: index out of range: \00"
+@.str10132 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14541: index out of range: \00"
 @.str10133 = private unnamed_addr constant [16 x i8] c" type error(s)\0A\00"
-@.str10134 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14569: index out of range: \00"
-@.str10135 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14569: index out of range: \00"
-@.str10136 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14580: index out of range: \00"
-@.str10137 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14595: index out of range: \00"
-@.str10138 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14604: index out of range: \00"
+@.str10134 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14570: index out of range: \00"
+@.str10135 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14570: index out of range: \00"
+@.str10136 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14581: index out of range: \00"
+@.str10137 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14596: index out of range: \00"
+@.str10138 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14605: index out of range: \00"
 @.str10139 = private unnamed_addr constant [3 x i8] c"[]\00"
 @.str10140 = private unnamed_addr constant [4 x i8] c"fn(\00"
 @.str10141 = private unnamed_addr constant [2 x i8] c",\00"
-@.str10142 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14612: index out of range: \00"
+@.str10142 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14613: index out of range: \00"
 @.str10143 = private unnamed_addr constant [4 x i8] c")->\00"
-@.str10144 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14618: index out of range: \00"
-@.str10145 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14619: index out of range: \00"
-@.str10146 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14623: index out of range: \00"
-@.str10147 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14626: index out of range: \00"
-@.str10148 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14647: index out of range: \00"
-@.str10149 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14655: index out of range: \00"
-@.str10150 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14656: index out of range: \00"
-@.str10151 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14658: index out of range: \00"
-@.str10152 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14662: index out of range: \00"
-@.str10153 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14663: index out of range: \00"
+@.str10144 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14619: index out of range: \00"
+@.str10145 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14620: index out of range: \00"
+@.str10146 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14624: index out of range: \00"
+@.str10147 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14627: index out of range: \00"
+@.str10148 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14648: index out of range: \00"
+@.str10149 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14656: index out of range: \00"
+@.str10150 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14657: index out of range: \00"
+@.str10151 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14659: index out of range: \00"
+@.str10152 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14663: index out of range: \00"
+@.str10153 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14664: index out of range: \00"
 @.str10154 = private unnamed_addr constant [8 x i8] c"generic\00"
 @.str10155 = private unnamed_addr constant [8 x i8] c" takes \00"
 @.str10156 = private unnamed_addr constant [23 x i8] c" type argument(s) and \00"
 @.str10157 = private unnamed_addr constant [8 x i8] c" gives \00"
 @.str10158 = private unnamed_addr constant [5 x i8] c"null\00"
-@.str10159 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14678: index out of range: \00"
-@.str10160 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14678: index out of range: \00"
-@.str10161 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14690: index out of range: \00"
-@.str10162 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14690: index out of range: \00"
-@.str10163 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14698: index out of range: \00"
-@.str10164 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14698: index out of range: \00"
-@.str10165 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14699: index out of range: \00"
-@.str10166 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14700: index out of range: \00"
-@.str10167 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14703: index out of range: \00"
-@.str10168 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14703: index out of range: \00"
+@.str10159 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14679: index out of range: \00"
+@.str10160 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14679: index out of range: \00"
+@.str10161 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14691: index out of range: \00"
+@.str10162 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14691: index out of range: \00"
+@.str10163 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14699: index out of range: \00"
+@.str10164 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14699: index out of range: \00"
+@.str10165 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14700: index out of range: \00"
+@.str10166 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14701: index out of range: \00"
+@.str10167 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14704: index out of range: \00"
+@.str10168 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14704: index out of range: \00"
 @.str10169 = private unnamed_addr constant [2 x i8] c"?\00"
 @.str10170 = private unnamed_addr constant [3 x i8] c"[]\00"
-@.str10171 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14714: index out of range: \00"
-@.str10172 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14715: index out of range: \00"
+@.str10171 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14715: index out of range: \00"
+@.str10172 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14716: index out of range: \00"
 @.str10173 = private unnamed_addr constant [2 x i8] c"<\00"
 @.str10174 = private unnamed_addr constant [3 x i8] c", \00"
-@.str10175 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14719: index out of range: \00"
+@.str10175 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14720: index out of range: \00"
 @.str10176 = private unnamed_addr constant [2 x i8] c">\00"
 @.str10177 = private unnamed_addr constant [2 x i8] c"$\00"
-@.str10178 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14734: index out of range: \00"
-@.str10179 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14759: index out of range: \00"
-@.str10180 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14762: index out of range: \00"
-@.str10181 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14764: index out of range: \00"
+@.str10178 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14735: index out of range: \00"
+@.str10179 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14760: index out of range: \00"
+@.str10180 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14763: index out of range: \00"
+@.str10181 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14765: index out of range: \00"
 @.str10182 = private unnamed_addr constant [6 x i8] c"arity\00"
 @.str10183 = private unnamed_addr constant [8 x i8] c" takes \00"
 @.str10184 = private unnamed_addr constant [34 x i8] c" argument(s) and this call gives \00"
 @.str10185 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str10186 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14789: index out of range: \00"
-@.str10187 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14789: index out of range: \00"
-@.str10188 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14791: index out of range: \00"
-@.str10189 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14791: index out of range: \00"
-@.str10190 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14791: index out of range: \00"
-@.str10191 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14797: index out of range: \00"
-@.str10192 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14797: index out of range: \00"
-@.str10193 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14797: index out of range: \00"
-@.str10194 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14797: index out of range: \00"
-@.str10195 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14802: index out of range: \00"
+@.str10186 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14790: index out of range: \00"
+@.str10187 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14790: index out of range: \00"
+@.str10188 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14792: index out of range: \00"
+@.str10189 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14792: index out of range: \00"
+@.str10190 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14792: index out of range: \00"
+@.str10191 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14798: index out of range: \00"
+@.str10192 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14798: index out of range: \00"
+@.str10193 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14798: index out of range: \00"
+@.str10194 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14798: index out of range: \00"
+@.str10195 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14803: index out of range: \00"
 @.str10196 = private unnamed_addr constant [8 x i8] c"generic\00"
 @.str10197 = private unnamed_addr constant [18 x i8] c"cannot tell what \00"
-@.str10198 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14803: index out of range: \00"
+@.str10198 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14804: index out of range: \00"
 @.str10199 = private unnamed_addr constant [21 x i8] c" is in this call to \00"
 @.str10200 = private unnamed_addr constant [88 x i8] c": pass it an argument that says, or write the call where its result has a declared type\00"
 @.str10201 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str10202 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14815: index out of range: \00"
-@.str10203 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14815: index out of range: \00"
-@.str10204 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14815: index out of range: \00"
-@.str10205 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14815: index out of range: \00"
+@.str10202 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14816: index out of range: \00"
+@.str10203 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14816: index out of range: \00"
+@.str10204 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14816: index out of range: \00"
+@.str10205 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14816: index out of range: \00"
 @.str10206 = private unnamed_addr constant [10 x i8] c"argument \00"
 @.str10207 = private unnamed_addr constant [5 x i8] c" of \00"
-@.str10208 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14826: index out of range: \00"
-@.str10209 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14831: index out of range: \00"
-@.str10210 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14831: index out of range: \00"
-@.str10211 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14831: index out of range: \00"
-@.str10212 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14841: index out of range: \00"
-@.str10213 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14845: index out of range: \00"
-@.str10214 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14851: index out of range: \00"
+@.str10208 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14827: index out of range: \00"
+@.str10209 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14832: index out of range: \00"
+@.str10210 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14832: index out of range: \00"
+@.str10211 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14832: index out of range: \00"
+@.str10212 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14842: index out of range: \00"
+@.str10213 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14846: index out of range: \00"
+@.str10214 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14852: index out of range: \00"
 @.str10215 = private unnamed_addr constant [8 x i8] c"pointer\00"
 @.str10216 = private unnamed_addr constant [6 x i8] c"bytes\00"
 @.str10217 = private unnamed_addr constant [6 x i8] c"bytes\00"
@@ -10843,18 +10844,18 @@ entry:
 @.str10224 = private unnamed_addr constant [83 x i8] c" is raw memory: it belongs inside unsafe { }, and a game reaches it through an API\00"
 @.str10225 = private unnamed_addr constant [13 x i8] c"unsafe-block\00"
 @.str10226 = private unnamed_addr constant [95 x i8] c"unsafe is for the runtime and packages; this file may use it only when the build says --unsafe\00"
-@.str10227 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14900: index out of range: \00"
+@.str10227 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14901: index out of range: \00"
 @.str10228 = private unnamed_addr constant [9 x i8] c"  store \00"
 @.str10229 = private unnamed_addr constant [2 x i8] c" \00"
 @.str10230 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str10231 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10232 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str10233 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str10234 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14926: index out of range: \00"
+@.str10234 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14927: index out of range: \00"
 @.str10235 = private unnamed_addr constant [29 x i8] c"cannot assign to immutable '\00"
 @.str10236 = private unnamed_addr constant [41 x i8] c"' (declared with let; use var) \E2\80\94 line \00"
-@.str10237 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14927: index out of range: \00"
-@.str10238 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14927: index out of range: \00"
+@.str10237 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14928: index out of range: \00"
+@.str10238 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:14928: index out of range: \00"
 @.str10239 = private unnamed_addr constant [19 x i8] c"assign to unknown \00"
 @.str10240 = private unnamed_addr constant [4 x i8] c"@g_\00"
 @.str10241 = private unnamed_addr constant [22 x i8] c"bad assignment target\00"
@@ -10933,32 +10934,32 @@ entry:
 @.str10314 = private unnamed_addr constant [8 x i8] c"%retval\00"
 @.str10315 = private unnamed_addr constant [13 x i8] c"  br label %\00"
 @.str10316 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str10317 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15030: index out of range: \00"
-@.str10318 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15047: index out of range: \00"
-@.str10319 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15059: index out of range: \00"
-@.str10320 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15059: index out of range: \00"
+@.str10317 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15031: index out of range: \00"
+@.str10318 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15048: index out of range: \00"
+@.str10319 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15060: index out of range: \00"
+@.str10320 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15060: index out of range: \00"
 @.str10321 = private unnamed_addr constant [2 x i8] c"_\00"
-@.str10322 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15069: index out of range: \00"
+@.str10322 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15070: index out of range: \00"
 @.str10323 = private unnamed_addr constant [8 x i8] c"match: \00"
 @.str10324 = private unnamed_addr constant [8 x i8] c" binds \00"
 @.str10325 = private unnamed_addr constant [22 x i8] c" name(s) but carries \00"
-@.str10326 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15075: index out of range: \00"
+@.str10326 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15076: index out of range: \00"
 @.str10327 = private unnamed_addr constant [8 x i8] c"match: \00"
 @.str10328 = private unnamed_addr constant [10 x i8] c" payload \00"
 @.str10329 = private unnamed_addr constant [24 x i8] c" must be a binding name\00"
-@.str10330 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15076: index out of range: \00"
+@.str10330 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15077: index out of range: \00"
 @.str10331 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10332 = private unnamed_addr constant [35 x i8] c" = getelementptr inbounds i8, ptr \00"
 @.str10333 = private unnamed_addr constant [7 x i8] c", i32 \00"
 @.str10334 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10335 = private unnamed_addr constant [6 x i8] c"load \00"
 @.str10336 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str10337 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15082: index out of range: \00"
+@.str10337 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15083: index out of range: \00"
 @.str10338 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
 @.str10339 = private unnamed_addr constant [5 x i8] c"mend\00"
-@.str10340 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15098: index out of range: \00"
+@.str10340 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15099: index out of range: \00"
 @.str10341 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str10342 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15106: index out of range: \00"
+@.str10342 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15107: index out of range: \00"
 @.str10343 = private unnamed_addr constant [8 x i8] c"match: \00"
 @.str10344 = private unnamed_addr constant [27 x i8] c" is not a variant of enum \00"
 @.str10345 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
@@ -10977,15 +10978,15 @@ entry:
 @.str10358 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str10359 = private unnamed_addr constant [10 x i8] c"match on \00"
 @.str10360 = private unnamed_addr constant [29 x i8] c" is not exhaustive: variant \00"
-@.str10361 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15134: index out of range: \00"
+@.str10361 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15135: index out of range: \00"
 @.str10362 = private unnamed_addr constant [34 x i8] c" is unhandled (add it or a _ arm)\00"
 @.str10363 = private unnamed_addr constant [13 x i8] c"  br label %\00"
 @.str10364 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10365 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str10366 = private unnamed_addr constant [5 x i8] c"mend\00"
-@.str10367 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15151: index out of range: \00"
+@.str10367 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15152: index out of range: \00"
 @.str10368 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str10369 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15158: index out of range: \00"
+@.str10369 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15159: index out of range: \00"
 @.str10370 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
 @.str10371 = private unnamed_addr constant [3 x i8] c", \00"
 @.str10372 = private unnamed_addr constant [7 x i8] c"or i1 \00"
@@ -11004,9 +11005,9 @@ entry:
 @.str10385 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10386 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str10387 = private unnamed_addr constant [21 x i8] c"emit: unknown event \00"
-@.str10388 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15190: index out of range: \00"
-@.str10389 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15193: index out of range: \00"
-@.str10390 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15193: index out of range: \00"
+@.str10388 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15191: index out of range: \00"
+@.str10389 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15194: index out of range: \00"
+@.str10390 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15194: index out of range: \00"
 @.str10391 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str10392 = private unnamed_addr constant [4 x i8] c"ptr\00"
 @.str10393 = private unnamed_addr constant [5 x i8] c"null\00"
@@ -11019,12 +11020,12 @@ entry:
 @.str10400 = private unnamed_addr constant [51 x i8] c" = getelementptr inbounds i8, ptr @L_sendbuf, i32 \00"
 @.str10401 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10402 = private unnamed_addr constant [9 x i8] c"  store \00"
-@.str10403 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15212: index out of range: \00"
+@.str10403 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15213: index out of range: \00"
 @.str10404 = private unnamed_addr constant [2 x i8] c" \00"
-@.str10405 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15212: index out of range: \00"
+@.str10405 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15213: index out of range: \00"
 @.str10406 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str10407 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str10408 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15213: index out of range: \00"
+@.str10408 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15214: index out of range: \00"
 @.str10409 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str10410 = private unnamed_addr constant [10 x i8] c"toclients\00"
 @.str10411 = private unnamed_addr constant [3 x i8] c"-1\00"
@@ -11036,9 +11037,9 @@ entry:
 @.str10417 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str10418 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str10419 = private unnamed_addr constant [3 x i8] c", \00"
-@.str10420 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15228: index out of range: \00"
+@.str10420 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15229: index out of range: \00"
 @.str10421 = private unnamed_addr constant [2 x i8] c" \00"
-@.str10422 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15228: index out of range: \00"
+@.str10422 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15229: index out of range: \00"
 @.str10423 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10424 = private unnamed_addr constant [17 x i8] c" = call i32 @ev_\00"
 @.str10425 = private unnamed_addr constant [2 x i8] c"(\00"
@@ -11050,22 +11051,22 @@ entry:
 @.str10431 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str10432 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str10433 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str10434 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15262: index out of range: \00"
+@.str10434 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15263: index out of range: \00"
 @.str10435 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10436 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str10437 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15263: index out of range: \00"
+@.str10437 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15264: index out of range: \00"
 @.str10438 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10439 = private unnamed_addr constant [44 x i8] c"cancel outside a cancellable event listener\00"
 @.str10440 = private unnamed_addr constant [20 x i8] c"  store i32 1, ptr \00"
 @.str10441 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10442 = private unnamed_addr constant [22 x i8] c"cannot emit statement\00"
-@.str10443 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15284: index out of range: \00"
-@.str10444 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15284: index out of range: \00"
-@.str10445 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15299: index out of range: \00"
-@.str10446 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15308: index out of range: \00"
-@.str10447 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15322: index out of range: \00"
+@.str10443 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15285: index out of range: \00"
+@.str10444 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15285: index out of range: \00"
+@.str10445 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15300: index out of range: \00"
+@.str10446 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15309: index out of range: \00"
+@.str10447 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15323: index out of range: \00"
 @.str10448 = private unnamed_addr constant [9 x i8] c"Occluder\00"
-@.str10449 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15331: index out of range: \00"
+@.str10449 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15332: index out of range: \00"
 @.str10450 = private unnamed_addr constant [36 x i8] c"@L_running = internal global i32 1\0A\00"
 @.str10451 = private unnamed_addr constant [32 x i8] c"@L_key = internal global i32 0\0A\00"
 @.str10452 = private unnamed_addr constant [34 x i8] c"@L_frame = internal global i32 0\0A\00"
@@ -11082,7 +11083,7 @@ entry:
 @.str10463 = private unnamed_addr constant [36 x i8] c"@L_localid = internal global i32 0\0A\00"
 @.str10464 = private unnamed_addr constant [33 x i8] c"@L_owner_arr = internal global [\00"
 @.str10465 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
-@.str10466 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15363: index out of range: \00"
+@.str10466 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15364: index out of range: \00"
 @.str10467 = private unnamed_addr constant [4 x i8] c"@S_\00"
 @.str10468 = private unnamed_addr constant [21 x i8] c" = internal global [\00"
 @.str10469 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
@@ -11095,15 +11096,15 @@ entry:
 @.str10476 = private unnamed_addr constant [5 x i8] c"@HE_\00"
 @.str10477 = private unnamed_addr constant [26 x i8] c" = internal global i32 1\0A\00"
 @.str10478 = private unnamed_addr constant [5 x i8] c"@LE_\00"
-@.str10479 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15378: index out of range: \00"
+@.str10479 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15379: index out of range: \00"
 @.str10480 = private unnamed_addr constant [26 x i8] c" = internal global i32 1\0A\00"
 @.str10481 = private unnamed_addr constant [39 x i8] c"define void @L_reset(i32 %e) {\0Aentry:\0A\00"
-@.str10482 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15387: index out of range: \00"
+@.str10482 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15388: index out of range: \00"
 @.str10483 = private unnamed_addr constant [3 x i8] c"%h\00"
 @.str10484 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10485 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
 @.str10486 = private unnamed_addr constant [16 x i8] c" x i8], ptr @H_\00"
-@.str10487 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15389: index out of range: \00"
+@.str10487 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15390: index out of range: \00"
 @.str10488 = private unnamed_addr constant [17 x i8] c", i32 0, i32 %e\0A\00"
 @.str10489 = private unnamed_addr constant [19 x i8] c"  store i8 0, ptr \00"
 @.str10490 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -11149,12 +11150,12 @@ entry:
 @.str10530 = private unnamed_addr constant [25 x i8] c"  %fn1 = add i32 %fn, 1\0A\00"
 @.str10531 = private unnamed_addr constant [32 x i8] c"  store i32 %fn1, ptr @L_freen\0A\00"
 @.str10532 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
-@.str10533 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15443: index out of range: \00"
-@.str10534 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15443: index out of range: \00"
+@.str10533 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15444: index out of range: \00"
+@.str10534 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15444: index out of range: \00"
 @.str10535 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str10536 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str10537 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str10538 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15451: index out of range: \00"
+@.str10538 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15452: index out of range: \00"
 @.str10539 = private unnamed_addr constant [6 x i8] c"qcond\00"
 @.str10540 = private unnamed_addr constant [6 x i8] c"qbody\00"
 @.str10541 = private unnamed_addr constant [6 x i8] c"qnext\00"
@@ -11185,7 +11186,7 @@ entry:
 @.str10566 = private unnamed_addr constant [10 x i8] c", label %\00"
 @.str10567 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10568 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str10569 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15475: index out of range: \00"
+@.str10569 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15476: index out of range: \00"
 @.str10570 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str10571 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10572 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
@@ -11213,7 +11214,7 @@ entry:
 @.str10594 = private unnamed_addr constant [10 x i8] c", label %\00"
 @.str10595 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10596 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str10597 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15501: index out of range: \00"
+@.str10597 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15502: index out of range: \00"
 @.str10598 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10599 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
 @.str10600 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
@@ -11224,7 +11225,7 @@ entry:
 @.str10605 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
 @.str10606 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str10607 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str10608 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15508: index out of range: \00"
+@.str10608 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15509: index out of range: \00"
 @.str10609 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
 @.str10610 = private unnamed_addr constant [4 x i8] c", 0\00"
 @.str10611 = private unnamed_addr constant [3 x i8] c"qw\00"
@@ -11247,7 +11248,7 @@ entry:
 @.str10628 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str10629 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str10630 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str10631 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15546: index out of range: \00"
+@.str10631 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15547: index out of range: \00"
 @.str10632 = private unnamed_addr constant [25 x i8] c"spawn: unknown property \00"
 @.str10633 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10634 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
@@ -11262,7 +11263,7 @@ entry:
 @.str10643 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
 @.str10644 = private unnamed_addr constant [14 x i8] c", i32 0, i32 \00"
 @.str10645 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str10646 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15563: index out of range: \00"
+@.str10646 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15564: index out of range: \00"
 @.str10647 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10648 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Cmp_\00"
 @.str10649 = private unnamed_addr constant [7 x i8] c", ptr \00"
@@ -11272,7 +11273,7 @@ entry:
 @.str10653 = private unnamed_addr constant [2 x i8] c" \00"
 @.str10654 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str10655 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str10656 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15576: index out of range: \00"
+@.str10656 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15577: index out of range: \00"
 @.str10657 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10658 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Cmp_\00"
 @.str10659 = private unnamed_addr constant [7 x i8] c", ptr \00"
@@ -11291,7 +11292,7 @@ entry:
 @.str10672 = private unnamed_addr constant [17 x i8] c"  call void @ev_\00"
 @.str10673 = private unnamed_addr constant [6 x i8] c"(i32 \00"
 @.str10674 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str10675 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15610: index out of range: \00"
+@.str10675 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15611: index out of range: \00"
 @.str10676 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10677 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
 @.str10678 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
@@ -11302,10 +11303,10 @@ entry:
 @.str10683 = private unnamed_addr constant [13 x i8] c"  store ptr \00"
 @.str10684 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str10685 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str10686 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15624: index out of range: \00"
-@.str10687 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15624: index out of range: \00"
-@.str10688 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15633: index out of range: \00"
-@.str10689 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15635: index out of range: \00"
+@.str10686 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15625: index out of range: \00"
+@.str10687 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15625: index out of range: \00"
+@.str10688 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15634: index out of range: \00"
+@.str10689 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15636: index out of range: \00"
 @.str10690 = private unnamed_addr constant [8 x i8] c"prefab \00"
 @.str10691 = private unnamed_addr constant [45 x i8] c": the chain of prefabs never reaches a model\00"
 @.str10692 = private unnamed_addr constant [26 x i8] c"call i32 @thr_is_worker()\00"
@@ -11338,21 +11339,21 @@ entry:
 @.str10719 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str10720 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str10721 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str10722 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15692: index out of range: \00"
+@.str10722 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15693: index out of range: \00"
 @.str10723 = private unnamed_addr constant [7 x i8] c"model_\00"
 @.str10724 = private unnamed_addr constant [7 x i8] c"_spawn\00"
 @.str10725 = private unnamed_addr constant [17 x i8] c"  call void @ev_\00"
 @.str10726 = private unnamed_addr constant [6 x i8] c"(i32 \00"
 @.str10727 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str10728 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15709: index out of range: \00"
-@.str10729 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15709: index out of range: \00"
+@.str10728 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15710: index out of range: \00"
+@.str10729 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15710: index out of range: \00"
 @.str10730 = private unnamed_addr constant [8 x i8] c"despawn\00"
 @.str10731 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str10732 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
 @.str10733 = private unnamed_addr constant [34 x i8] c" x i32], ptr @L_kind, i32 0, i32 \00"
 @.str10734 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10735 = private unnamed_addr constant [15 x i8] c"load i32, ptr \00"
-@.str10736 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15724: index out of range: \00"
+@.str10736 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15725: index out of range: \00"
 @.str10737 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
 @.str10738 = private unnamed_addr constant [3 x i8] c", \00"
 @.str10739 = private unnamed_addr constant [3 x i8] c"dh\00"
@@ -11429,7 +11430,7 @@ entry:
 @.str10810 = private unnamed_addr constant [13 x i8] c"  br label %\00"
 @.str10811 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str10812 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str10813 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15792: index out of range: \00"
+@.str10813 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15793: index out of range: \00"
 @.str10814 = private unnamed_addr constant [2 x i8] c"0\00"
 @.str10815 = private unnamed_addr constant [2 x i8] c"1\00"
 @.str10816 = private unnamed_addr constant [7 x i8] c"system\00"
@@ -11508,9 +11509,9 @@ entry:
 @.str10889 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str10890 = private unnamed_addr constant [17 x i8] c"  call void @fn_\00"
 @.str10891 = private unnamed_addr constant [4 x i8] c"()\0A\00"
-@.str10892 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15905: index out of range: \00"
-@.str10893 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15905: index out of range: \00"
-@.str10894 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15905: index out of range: \00"
+@.str10892 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15906: index out of range: \00"
+@.str10893 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15906: index out of range: \00"
+@.str10894 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15906: index out of range: \00"
 @.str10895 = private unnamed_addr constant [7 x i8] c"Update\00"
 @.str10896 = private unnamed_addr constant [11 x i8] c"esys_tween\00"
 @.str10897 = private unnamed_addr constant [30 x i8] c"  call void @fn_esys_tween()\0A\00"
@@ -11527,8 +11528,8 @@ entry:
 @.str10908 = private unnamed_addr constant [33 x i8] c"  %ap = getelementptr inbounds [\00"
 @.str10909 = private unnamed_addr constant [38 x i8] c" x i32], ptr @L_alive, i32 0, i32 %i\0A\00"
 @.str10910 = private unnamed_addr constant [96 x i8] c"  %al = load i32, ptr %ap\0A  %alive = icmp ne i32 %al, 0\0A  br i1 %alive, label %c0, label %next\0A\00"
-@.str10911 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15934: index out of range: \00"
-@.str10912 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15938: index out of range: \00"
+@.str10911 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15935: index out of range: \00"
+@.str10912 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15939: index out of range: \00"
 @.str10913 = private unnamed_addr constant [10 x i8] c"countdown\00"
 @.str10914 = private unnamed_addr constant [2 x i8] c"c\00"
 @.str10915 = private unnamed_addr constant [3 x i8] c":\0A\00"
@@ -11553,7 +11554,7 @@ entry:
 @.str10934 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
 @.str10935 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
 @.str10936 = private unnamed_addr constant [17 x i8] c", i32 0, i32 %i\0A\00"
-@.str10937 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15950: index out of range: \00"
+@.str10937 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15951: index out of range: \00"
 @.str10938 = private unnamed_addr constant [10 x i8] c"countdown\00"
 @.str10939 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str10940 = private unnamed_addr constant [6 x i8] c"  %fa\00"
@@ -11589,9 +11590,9 @@ entry:
 @.str10970 = private unnamed_addr constant [22 x i8] c"define i32 @L_prefab_\00"
 @.str10971 = private unnamed_addr constant [13 x i8] c"() {\0Aentry:\0A\00"
 @.str10972 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
-@.str10973 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15992: index out of range: \00"
-@.str10974 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15992: index out of range: \00"
-@.str10975 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16001: index out of range: \00"
+@.str10973 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15993: index out of range: \00"
+@.str10974 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:15993: index out of range: \00"
+@.str10975 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16002: index out of range: \00"
 @.str10976 = private unnamed_addr constant [36 x i8] c"call i32 @lp_str_eq(ptr %name, ptr \00"
 @.str10977 = private unnamed_addr constant [2 x i8] c")\00"
 @.str10978 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
@@ -11651,9 +11652,9 @@ entry:
 @.str11032 = private unnamed_addr constant [12 x i8] c"module_init\00"
 @.str11033 = private unnamed_addr constant [31 x i8] c"  call void @fn_module_init()\0A\00"
 @.str11034 = private unnamed_addr constant [43 x i8] c"  call i32 @ludic_register_system(ptr @fn_\00"
-@.str11035 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16094: index out of range: \00"
+@.str11035 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16095: index out of range: \00"
 @.str11036 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str11037 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16094: index out of range: \00"
+@.str11037 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16095: index out of range: \00"
 @.str11038 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str11039 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
 @.str11040 = private unnamed_addr constant [130 x i8] c"@llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @__ludic_mod_init, ptr null }]\0A\00"
@@ -11726,10 +11727,10 @@ entry:
 @.str11107 = private unnamed_addr constant [17 x i8] c", 1\0A  br label %\00"
 @.str11108 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11109 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str11110 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16154: index out of range: \00"
-@.str11111 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16161: index out of range: \00"
+@.str11110 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16155: index out of range: \00"
+@.str11111 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16162: index out of range: \00"
 @.str11112 = private unnamed_addr constant [23 x i8] c"load i32, ptr @L_scene\00"
-@.str11113 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16166: index out of range: \00"
+@.str11113 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16167: index out of range: \00"
 @.str11114 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
 @.str11115 = private unnamed_addr constant [3 x i8] c", \00"
 @.str11116 = private unnamed_addr constant [6 x i8] c"scrun\00"
@@ -11743,9 +11744,9 @@ entry:
 @.str11124 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11125 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str11126 = private unnamed_addr constant [8 x i8] c"Overlay\00"
-@.str11127 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16187: index out of range: \00"
+@.str11127 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16188: index out of range: \00"
 @.str11128 = private unnamed_addr constant [23 x i8] c"load i32, ptr @L_scene\00"
-@.str11129 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16192: index out of range: \00"
+@.str11129 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16193: index out of range: \00"
 @.str11130 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
 @.str11131 = private unnamed_addr constant [3 x i8] c", \00"
 @.str11132 = private unnamed_addr constant [5 x i8] c"mrun\00"
@@ -11777,12 +11778,12 @@ entry:
 @.str11158 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str11159 = private unnamed_addr constant [13 x i8] c"() {\0Aentry:\0A\00"
 @.str11160 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
-@.str11161 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16236: index out of range: \00"
+@.str11161 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16237: index out of range: \00"
 @.str11162 = private unnamed_addr constant [6 x i8] c"enter\00"
 @.str11163 = private unnamed_addr constant [5 x i8] c"exit\00"
 @.str11164 = private unnamed_addr constant [39 x i8] c"define void @L_scene_leave() {\0Aentry:\0A\00"
 @.str11165 = private unnamed_addr constant [31 x i8] c"  %s = load i32, ptr @L_scene\0A\00"
-@.str11166 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16254: index out of range: \00"
+@.str11166 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16255: index out of range: \00"
 @.str11167 = private unnamed_addr constant [6 x i8] c"  %is\00"
 @.str11168 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %s, \00"
 @.str11169 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -11796,7 +11797,7 @@ entry:
 @.str11177 = private unnamed_addr constant [5 x i8] c"next\00"
 @.str11178 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str11179 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
-@.str11180 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16272: index out of range: \00"
+@.str11180 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16273: index out of range: \00"
 @.str11181 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str11182 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str11183 = private unnamed_addr constant [26 x i8] c"  store i32 %reason, ptr \00"
@@ -11812,7 +11813,7 @@ entry:
 @.str11193 = private unnamed_addr constant [33 x i8] c"  %kp = getelementptr inbounds [\00"
 @.str11194 = private unnamed_addr constant [37 x i8] c" x i32], ptr @L_kind, i32 0, i32 %e\0A\00"
 @.str11195 = private unnamed_addr constant [26 x i8] c"  %k = load i32, ptr %kp\0A\00"
-@.str11196 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16313: index out of range: \00"
+@.str11196 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16314: index out of range: \00"
 @.str11197 = private unnamed_addr constant [5 x i8] c"  %c\00"
 @.str11198 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %k, \00"
 @.str11199 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -11845,7 +11846,7 @@ entry:
 @.str11226 = private unnamed_addr constant [37 x i8] c"do:\0A  %kp = getelementptr inbounds [\00"
 @.str11227 = private unnamed_addr constant [37 x i8] c" x i32], ptr @L_kind, i32 0, i32 %i\0A\00"
 @.str11228 = private unnamed_addr constant [26 x i8] c"  %k = load i32, ptr %kp\0A\00"
-@.str11229 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16350: index out of range: \00"
+@.str11229 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16351: index out of range: \00"
 @.str11230 = private unnamed_addr constant [5 x i8] c"  %c\00"
 @.str11231 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %k, \00"
 @.str11232 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -11868,11 +11869,11 @@ entry:
 @.str11249 = private unnamed_addr constant [46 x i8] c"cont:\0A  %i1 = add i32 %i, 1\0A  br label %loop\0A\00"
 @.str11250 = private unnamed_addr constant [20 x i8] c"fin:\0A  ret void\0A}\0A\0A\00"
 @.str11251 = private unnamed_addr constant [26 x i8] c"@ev_depth = global i32 0\0A\00"
-@.str11252 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16392: index out of range: \00"
+@.str11252 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16393: index out of range: \00"
 @.str11253 = private unnamed_addr constant [5 x i8] c"%Ev_\00"
 @.str11254 = private unnamed_addr constant [11 x i8] c" = type { \00"
 @.str11255 = private unnamed_addr constant [3 x i8] c", \00"
-@.str11256 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16403: index out of range: \00"
+@.str11256 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16404: index out of range: \00"
 @.str11257 = private unnamed_addr constant [3 x i8] c", \00"
 @.str11258 = private unnamed_addr constant [4 x i8] c"i32\00"
 @.str11259 = private unnamed_addr constant [4 x i8] c" }\0A\00"
@@ -11942,7 +11943,7 @@ entry:
 @.str11323 = private unnamed_addr constant [7 x i8] c"evgo:\0A\00"
 @.str11324 = private unnamed_addr constant [60 x i8] c"  %evd1 = add i32 %evd, 1\0A  store i32 %evd1, ptr @ev_depth\0A\00"
 @.str11325 = private unnamed_addr constant [5 x i8] c"%Ev_\00"
-@.str11326 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16469: index out of range: \00"
+@.str11326 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16470: index out of range: \00"
 @.str11327 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str11328 = private unnamed_addr constant [31 x i8] c" = getelementptr inbounds %Ev_\00"
 @.str11329 = private unnamed_addr constant [7 x i8] c", ptr \00"
@@ -11963,10 +11964,10 @@ entry:
 @.str11344 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11345 = private unnamed_addr constant [20 x i8] c"  store i32 0, ptr \00"
 @.str11346 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str11347 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16488: index out of range: \00"
+@.str11347 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16489: index out of range: \00"
 @.str11348 = private unnamed_addr constant [7 x i8] c"evnext\00"
-@.str11349 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16494: index out of range: \00"
-@.str11350 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16496: index out of range: \00"
+@.str11349 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16495: index out of range: \00"
+@.str11350 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16497: index out of range: \00"
 @.str11351 = private unnamed_addr constant [4 x i8] c"ret\00"
 @.str11352 = private unnamed_addr constant [13 x i8] c"  br label %\00"
 @.str11353 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12031,12 +12032,12 @@ entry:
 @.str11412 = private unnamed_addr constant [6 x i8] c" @ev_\00"
 @.str11413 = private unnamed_addr constant [2 x i8] c"(\00"
 @.str11414 = private unnamed_addr constant [3 x i8] c", \00"
-@.str11415 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16543: index out of range: \00"
+@.str11415 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16544: index out of range: \00"
 @.str11416 = private unnamed_addr constant [4 x i8] c" %p\00"
 @.str11417 = private unnamed_addr constant [12 x i8] c") {\0Aentry:\0A\00"
 @.str11418 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
 @.str11419 = private unnamed_addr constant [112 x i8] c"define void @ludic_sweep_entity(i32 %owner) {\0Aentry:\0A  %ci = alloca i32\0A  store i32 0, ptr %ci\0A  br label %sw0\0A\00"
-@.str11420 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16560: index out of range: \00"
+@.str11420 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16561: index out of range: \00"
 @.str11421 = private unnamed_addr constant [3 x i8] c"sw\00"
 @.str11422 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str11423 = private unnamed_addr constant [7 x i8] c"  %swi\00"
@@ -12092,15 +12093,15 @@ entry:
 @.str11473 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11474 = private unnamed_addr constant [12 x i8] c"  ret void\0A\00"
 @.str11475 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
-@.str11476 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16609: index out of range: \00"
+@.str11476 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16610: index out of range: \00"
 @.str11477 = private unnamed_addr constant [27 x i8] c"@dyn_count = global i32 0\0A\00"
 @.str11478 = private unnamed_addr constant [43 x i8] c"@dynS = global [32 x ptr] zeroinitializer\0A\00"
 @.str11479 = private unnamed_addr constant [43 x i8] c"@dynH = global [32 x ptr] zeroinitializer\0A\00"
 @.str11480 = private unnamed_addr constant [43 x i8] c"@dynF = global [32 x i32] zeroinitializer\0A\00"
 @.str11481 = private unnamed_addr constant [46 x i8] c"@dynName = global [32 x ptr] zeroinitializer\0A\00"
 @.str11482 = private unnamed_addr constant [47 x i8] c"define i32 @ludic_prop_id(ptr %name) {\0Aentry:\0A\00"
-@.str11483 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16622: index out of range: \00"
-@.str11484 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16623: index out of range: \00"
+@.str11483 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16623: index out of range: \00"
+@.str11484 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16624: index out of range: \00"
 @.str11485 = private unnamed_addr constant [5 x i8] c"  %c\00"
 @.str11486 = private unnamed_addr constant [36 x i8] c" = call i32 @strcmp(ptr %name, ptr \00"
 @.str11487 = private unnamed_addr constant [3 x i8] c")\0A\00"
@@ -12124,8 +12125,8 @@ entry:
 @.str11505 = private unnamed_addr constant [76 x i8] c"dpnext:\0A  %di1 = add i32 %di, 1\0A  store i32 %di1, ptr %dpi\0A  br label %dpl\0A\00"
 @.str11506 = private unnamed_addr constant [25 x i8] c"dpnone:\0A  ret i32 -1\0A}\0A\0A\00"
 @.str11507 = private unnamed_addr constant [56 x i8] c"define i32 @ludic_field_id(i32 %p, ptr %name) {\0Aentry:\0A\00"
-@.str11508 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16645: index out of range: \00"
-@.str11509 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16646: index out of range: \00"
+@.str11508 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16646: index out of range: \00"
+@.str11509 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16647: index out of range: \00"
 @.str11510 = private unnamed_addr constant [6 x i8] c"  %pm\00"
 @.str11511 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %p, \00"
 @.str11512 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12135,7 +12136,7 @@ entry:
 @.str11516 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11517 = private unnamed_addr constant [3 x i8] c"pk\00"
 @.str11518 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str11519 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16652: index out of range: \00"
+@.str11519 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16653: index out of range: \00"
 @.str11520 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str11521 = private unnamed_addr constant [6 x i8] c"  %fc\00"
 @.str11522 = private unnamed_addr constant [36 x i8] c" = call i32 @strcmp(ptr %name, ptr \00"
@@ -12157,8 +12158,8 @@ entry:
 @.str11538 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str11539 = private unnamed_addr constant [17 x i8] c"  ret i32 -1\0A}\0A\0A\00"
 @.str11540 = private unnamed_addr constant [56 x i8] c"define i64 @ludic_get(i32 %e, i32 %p, i32 %f) {\0Aentry:\0A\00"
-@.str11541 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16677: index out of range: \00"
-@.str11542 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16678: index out of range: \00"
+@.str11541 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16678: index out of range: \00"
+@.str11542 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16679: index out of range: \00"
 @.str11543 = private unnamed_addr constant [5 x i8] c"  %m\00"
 @.str11544 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %p, \00"
 @.str11545 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12173,7 +12174,7 @@ entry:
 @.str11554 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
 @.str11555 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
 @.str11556 = private unnamed_addr constant [17 x i8] c", i32 0, i32 %e\0A\00"
-@.str11557 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16685: index out of range: \00"
+@.str11557 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16686: index out of range: \00"
 @.str11558 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str11559 = private unnamed_addr constant [6 x i8] c"  %gm\00"
 @.str11560 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %f, \00"
@@ -12225,8 +12226,8 @@ entry:
 @.str11606 = private unnamed_addr constant [133 x i8] c"  %gaddr = getelementptr inbounds i32, ptr %gbase, i32 %gidx\0A  %gv = load i32, ptr %gaddr\0A  %gr = sext i32 %gv to i64\0A  ret i64 %gr\0A\00"
 @.str11607 = private unnamed_addr constant [24 x i8] c"gdnone:\0A  ret i64 0\0A}\0A\0A\00"
 @.str11608 = private unnamed_addr constant [67 x i8] c"define void @ludic_set(i32 %e, i32 %p, i32 %f, i64 %val) {\0Aentry:\0A\00"
-@.str11609 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16720: index out of range: \00"
-@.str11610 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16721: index out of range: \00"
+@.str11609 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16721: index out of range: \00"
+@.str11610 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16722: index out of range: \00"
 @.str11611 = private unnamed_addr constant [5 x i8] c"  %m\00"
 @.str11612 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %p, \00"
 @.str11613 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12241,7 +12242,7 @@ entry:
 @.str11622 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
 @.str11623 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
 @.str11624 = private unnamed_addr constant [17 x i8] c", i32 0, i32 %e\0A\00"
-@.str11625 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16728: index out of range: \00"
+@.str11625 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16729: index out of range: \00"
 @.str11626 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str11627 = private unnamed_addr constant [6 x i8] c"  %sm\00"
 @.str11628 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %f, \00"
@@ -12287,8 +12288,8 @@ entry:
 @.str11668 = private unnamed_addr constant [131 x i8] c"  %saddr = getelementptr inbounds i32, ptr %sbase, i32 %sidx\0A  %sv = trunc i64 %val to i32\0A  store i32 %sv, ptr %saddr\0A  ret void\0A\00"
 @.str11669 = private unnamed_addr constant [23 x i8] c"sdnone:\0A  ret void\0A}\0A\0A\00"
 @.str11670 = private unnamed_addr constant [48 x i8] c"define i32 @ludic_has(i32 %e, i32 %p) {\0Aentry:\0A\00"
-@.str11671 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16763: index out of range: \00"
-@.str11672 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16764: index out of range: \00"
+@.str11671 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16764: index out of range: \00"
+@.str11672 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16765: index out of range: \00"
 @.str11673 = private unnamed_addr constant [5 x i8] c"  %m\00"
 @.str11674 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %p, \00"
 @.str11675 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12343,8 +12344,8 @@ entry:
 @.str11724 = private unnamed_addr constant [37 x i8] c" x i32], ptr @L_kind, i32 0, i32 %e\0A\00"
 @.str11725 = private unnamed_addr constant [42 x i8] c"  %k = load i32, ptr %kp\0A  ret i32 %k\0A}\0A\0A\00"
 @.str11726 = private unnamed_addr constant [48 x i8] c"define i32 @ludic_model_id(ptr %name) {\0Aentry:\0A\00"
-@.str11727 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16813: index out of range: \00"
-@.str11728 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16814: index out of range: \00"
+@.str11727 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16814: index out of range: \00"
+@.str11728 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16815: index out of range: \00"
 @.str11729 = private unnamed_addr constant [7 x i8] c"  %mdc\00"
 @.str11730 = private unnamed_addr constant [36 x i8] c" = call i32 @strcmp(ptr %name, ptr \00"
 @.str11731 = private unnamed_addr constant [3 x i8] c")\0A\00"
@@ -12357,13 +12358,13 @@ entry:
 @.str11738 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11739 = private unnamed_addr constant [4 x i8] c"mdh\00"
 @.str11740 = private unnamed_addr constant [13 x i8] c":\0A  ret i32 \00"
-@.str11741 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16818: index out of range: \00"
+@.str11741 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16819: index out of range: \00"
 @.str11742 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11743 = private unnamed_addr constant [4 x i8] c"mdn\00"
 @.str11744 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str11745 = private unnamed_addr constant [17 x i8] c"  ret i32 -1\0A}\0A\0A\00"
-@.str11746 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16832: index out of range: \00"
-@.str11747 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16833: index out of range: \00"
+@.str11746 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16833: index out of range: \00"
+@.str11747 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16834: index out of range: \00"
 @.str11748 = private unnamed_addr constant [4 x i8] c"int\00"
 @.str11749 = private unnamed_addr constant [11 x i8] c"  ret i32 \00"
 @.str11750 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12371,8 +12372,8 @@ entry:
 @.str11752 = private unnamed_addr constant [13 x i8] c"() {\0Aentry:\0A\00"
 @.str11753 = private unnamed_addr constant [4 x i8] c"}\0A\0A\00"
 @.str11754 = private unnamed_addr constant [42 x i8] c"define i32 @ludic_spawn(i32 %m) {\0Aentry:\0A\00"
-@.str11755 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16854: index out of range: \00"
-@.str11756 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16855: index out of range: \00"
+@.str11755 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16855: index out of range: \00"
+@.str11756 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16856: index out of range: \00"
 @.str11757 = private unnamed_addr constant [6 x i8] c"  %sm\00"
 @.str11758 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %m, \00"
 @.str11759 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12401,13 +12402,13 @@ entry:
 @.str11782 = private unnamed_addr constant [23 x i8] c"none:\0A  ret i32 -1\0A}\0A\0A\00"
 @.str11783 = private unnamed_addr constant [1 x i8] c"\00"
 @.str11784 = private unnamed_addr constant [4 x i8] c"int\00"
-@.str11785 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16895: index out of range: \00"
+@.str11785 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16896: index out of range: \00"
 @.str11786 = private unnamed_addr constant [41 x i8] c"define i32 @ludic_prop_count() {\0Aentry:\0A\00"
 @.str11787 = private unnamed_addr constant [52 x i8] c"  %d = load i32, ptr @dyn_count\0A  %n = add i32 %d, \00"
 @.str11788 = private unnamed_addr constant [18 x i8] c"\0A  ret i32 %n\0A}\0A\0A\00"
 @.str11789 = private unnamed_addr constant [46 x i8] c"define ptr @ludic_prop_name(i32 %i) {\0Aentry:\0A\00"
-@.str11790 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16906: index out of range: \00"
-@.str11791 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16907: index out of range: \00"
+@.str11790 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16907: index out of range: \00"
+@.str11791 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16908: index out of range: \00"
 @.str11792 = private unnamed_addr constant [6 x i8] c"  %pe\00"
 @.str11793 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %i, \00"
 @.str11794 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12427,8 +12428,8 @@ entry:
 @.str11808 = private unnamed_addr constant [17 x i8] c"pbad:\0A  ret ptr \00"
 @.str11809 = private unnamed_addr constant [5 x i8] c"\0A}\0A\0A\00"
 @.str11810 = private unnamed_addr constant [48 x i8] c"define i32 @ludic_field_count(i32 %p) {\0Aentry:\0A\00"
-@.str11811 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16925: index out of range: \00"
-@.str11812 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16926: index out of range: \00"
+@.str11811 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16926: index out of range: \00"
+@.str11812 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16927: index out of range: \00"
 @.str11813 = private unnamed_addr constant [7 x i8] c"  %fce\00"
 @.str11814 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %p, \00"
 @.str11815 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12447,8 +12448,8 @@ entry:
 @.str11828 = private unnamed_addr constant [118 x i8] c"fcdyn:\0A  %fp = getelementptr inbounds [32 x i32], ptr @dynF, i32 0, i32 %dyn\0A  %fn = load i32, ptr %fp\0A  ret i32 %fn\0A\00"
 @.str11829 = private unnamed_addr constant [23 x i8] c"fcbad:\0A  ret i32 0\0A}\0A\0A\00"
 @.str11830 = private unnamed_addr constant [55 x i8] c"define ptr @ludic_field_name(i32 %p, i32 %f) {\0Aentry:\0A\00"
-@.str11831 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16944: index out of range: \00"
-@.str11832 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16945: index out of range: \00"
+@.str11831 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16945: index out of range: \00"
+@.str11832 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16946: index out of range: \00"
 @.str11833 = private unnamed_addr constant [7 x i8] c"  %fne\00"
 @.str11834 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %p, \00"
 @.str11835 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12458,7 +12459,7 @@ entry:
 @.str11839 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11840 = private unnamed_addr constant [4 x i8] c"fnk\00"
 @.str11841 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str11842 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16951: index out of range: \00"
+@.str11842 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16952: index out of range: \00"
 @.str11843 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str11844 = private unnamed_addr constant [8 x i8] c"  %fnfe\00"
 @.str11845 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %f, \00"
@@ -12479,8 +12480,8 @@ entry:
 @.str11860 = private unnamed_addr constant [11 x i8] c"  ret ptr \00"
 @.str11861 = private unnamed_addr constant [5 x i8] c"\0A}\0A\0A\00"
 @.str11862 = private unnamed_addr constant [55 x i8] c"define ptr @ludic_field_type(i32 %p, i32 %f) {\0Aentry:\0A\00"
-@.str11863 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16970: index out of range: \00"
-@.str11864 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16971: index out of range: \00"
+@.str11863 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16971: index out of range: \00"
+@.str11864 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16972: index out of range: \00"
 @.str11865 = private unnamed_addr constant [7 x i8] c"  %fte\00"
 @.str11866 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %p, \00"
 @.str11867 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12490,7 +12491,7 @@ entry:
 @.str11871 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11872 = private unnamed_addr constant [4 x i8] c"ftk\00"
 @.str11873 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str11874 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16977: index out of range: \00"
+@.str11874 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:16978: index out of range: \00"
 @.str11875 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str11876 = private unnamed_addr constant [8 x i8] c"  %ftfe\00"
 @.str11877 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %f, \00"
@@ -12520,8 +12521,8 @@ entry:
 @.str11901 = private unnamed_addr constant [7 x i8] c"Render\00"
 @.str11902 = private unnamed_addr constant [8 x i8] c"Overlay\00"
 @.str11903 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
-@.str11904 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17017: index out of range: \00"
-@.str11905 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17017: index out of range: \00"
+@.str11904 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17018: index out of range: \00"
+@.str11905 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17018: index out of range: \00"
 @.str11906 = private unnamed_addr constant [49 x i8] c"define i32 @main(i32 %argc, ptr %argv) {\0Aentry:\0A\00"
 @.str11907 = private unnamed_addr constant [32 x i8] c"  store i32 %argc, ptr @L_argc\0A\00"
 @.str11908 = private unnamed_addr constant [32 x i8] c"  store ptr %argv, ptr @L_argv\0A\00"
@@ -12531,9 +12532,9 @@ entry:
 @.str11912 = private unnamed_addr constant [6 x i8] c"Start\00"
 @.str11913 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str11914 = private unnamed_addr constant [16 x i8] c", ptr @L_scene\0A\00"
-@.str11915 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17039: index out of range: \00"
+@.str11915 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17040: index out of range: \00"
 @.str11916 = private unnamed_addr constant [26 x i8] c"  call void @scene_enter_\00"
-@.str11917 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17039: index out of range: \00"
+@.str11917 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17040: index out of range: \00"
 @.str11918 = private unnamed_addr constant [4 x i8] c"()\0A\00"
 @.str11919 = private unnamed_addr constant [14 x i8] c"program_start\00"
 @.str11920 = private unnamed_addr constant [33 x i8] c"  call void @ev_program_start()\0A\00"
@@ -12596,9 +12597,9 @@ entry:
 @.str11977 = private unnamed_addr constant [18 x i8] c"load i32, ptr @g_\00"
 @.str11978 = private unnamed_addr constant [25 x i8] c"call i32 @fn_rt_reg(i32 \00"
 @.str11979 = private unnamed_addr constant [2 x i8] c")\00"
-@.str11980 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17148: index out of range: \00"
+@.str11980 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17149: index out of range: \00"
 @.str11981 = private unnamed_addr constant [6 x i8] c"smend\00"
-@.str11982 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17153: index out of range: \00"
+@.str11982 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17154: index out of range: \00"
 @.str11983 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
 @.str11984 = private unnamed_addr constant [3 x i8] c", \00"
 @.str11985 = private unnamed_addr constant [6 x i8] c"sbody\00"
@@ -12614,9 +12615,9 @@ entry:
 @.str11995 = private unnamed_addr constant [13 x i8] c"  br label %\00"
 @.str11996 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str11997 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str11998 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17175: index out of range: \00"
-@.str11999 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17178: index out of range: \00"
-@.str12000 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17178: index out of range: \00"
+@.str11998 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17176: index out of range: \00"
+@.str11999 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17179: index out of range: \00"
+@.str12000 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17179: index out of range: \00"
 @.str12001 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
 @.str12002 = private unnamed_addr constant [10 x i8] c", ptr @g_\00"
 @.str12003 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12677,12 +12678,12 @@ entry:
 @.str12058 = private unnamed_addr constant [8 x i8] c"%nalive\00"
 @.str12059 = private unnamed_addr constant [13 x i8] c"@L_owner_arr\00"
 @.str12060 = private unnamed_addr constant [8 x i8] c"%nalive\00"
-@.str12061 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17260: index out of range: \00"
+@.str12061 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17261: index out of range: \00"
 @.str12062 = private unnamed_addr constant [4 x i8] c"@g_\00"
-@.str12063 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17260: index out of range: \00"
+@.str12063 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17261: index out of range: \00"
 @.str12064 = private unnamed_addr constant [2 x i8] c"4\00"
-@.str12065 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17264: index out of range: \00"
-@.str12066 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17265: index out of range: \00"
+@.str12065 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17265: index out of range: \00"
+@.str12066 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17266: index out of range: \00"
 @.str12067 = private unnamed_addr constant [5 x i8] c"%csz\00"
 @.str12068 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str12069 = private unnamed_addr constant [37 x i8] c" = ptrtoint ptr getelementptr (%Cmp_\00"
@@ -12737,43 +12738,43 @@ entry:
 @.str12118 = private unnamed_addr constant [3 x i8] c"i8\00"
 @.str12119 = private unnamed_addr constant [2 x i8] c"1\00"
 @.str12120 = private unnamed_addr constant [2 x i8] c"4\00"
-@.str12121 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17358: index out of range: \00"
-@.str12122 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17359: index out of range: \00"
-@.str12123 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17362: index out of range: \00"
-@.str12124 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17362: index out of range: \00"
-@.str12125 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17374: index out of range: \00"
-@.str12126 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17374: index out of range: \00"
-@.str12127 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17381: index out of range: \00"
-@.str12128 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17381: index out of range: \00"
-@.str12129 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17389: index out of range: \00"
-@.str12130 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17389: index out of range: \00"
+@.str12121 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17359: index out of range: \00"
+@.str12122 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17360: index out of range: \00"
+@.str12123 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17363: index out of range: \00"
+@.str12124 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17363: index out of range: \00"
+@.str12125 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17375: index out of range: \00"
+@.str12126 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17375: index out of range: \00"
+@.str12127 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17382: index out of range: \00"
+@.str12128 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17382: index out of range: \00"
+@.str12129 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17390: index out of range: \00"
+@.str12130 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17390: index out of range: \00"
 @.str12131 = private unnamed_addr constant [24 x i8] c"ludicc(self): warning: \00"
 @.str12132 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str12133 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17411: index out of range: \00"
-@.str12134 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17412: index out of range: \00"
-@.str12135 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17415: index out of range: \00"
-@.str12136 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17416: index out of range: \00"
-@.str12137 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17422: index out of range: \00"
-@.str12138 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17424: index out of range: \00"
+@.str12133 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17412: index out of range: \00"
+@.str12134 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17413: index out of range: \00"
+@.str12135 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17416: index out of range: \00"
+@.str12136 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17417: index out of range: \00"
+@.str12137 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17423: index out of range: \00"
+@.str12138 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17425: index out of range: \00"
 @.str12139 = private unnamed_addr constant [4 x i8] c"ptr\00"
 @.str12140 = private unnamed_addr constant [13 x i8] c"@Sync field \00"
 @.str12141 = private unnamed_addr constant [2 x i8] c".\00"
-@.str12142 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17424: index out of range: \00"
+@.str12142 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17425: index out of range: \00"
 @.str12143 = private unnamed_addr constant [68 x i8] c" is not a POD scalar (networked fields must be int/bool/fixed/byte)\00"
 @.str12144 = private unnamed_addr constant [7 x i8] c"model \00"
 @.str12145 = private unnamed_addr constant [9 x i8] c" @Syncs \00"
 @.str12146 = private unnamed_addr constant [51 x i8] c" but it has no @Sync fields \E2\80\94 nothing replicates\00"
 @.str12147 = private unnamed_addr constant [25 x i8] c"define i32 @L_serialize_\00"
 @.str12148 = private unnamed_addr constant [29 x i8] c"(i32 %e, ptr %buf) {\0Aentry:\0A\00"
-@.str12149 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17448: index out of range: \00"
-@.str12150 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17449: index out of range: \00"
+@.str12149 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17449: index out of range: \00"
+@.str12150 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17450: index out of range: \00"
 @.str12151 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str12152 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
 @.str12153 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
 @.str12154 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
 @.str12155 = private unnamed_addr constant [17 x i8] c", i32 0, i32 %e\0A\00"
-@.str12156 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17455: index out of range: \00"
-@.str12157 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17456: index out of range: \00"
+@.str12156 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17456: index out of range: \00"
+@.str12157 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17457: index out of range: \00"
 @.str12158 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str12159 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Cmp_\00"
 @.str12160 = private unnamed_addr constant [7 x i8] c", ptr \00"
@@ -12786,20 +12787,20 @@ entry:
 @.str12167 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str12168 = private unnamed_addr constant [7 x i8] c", i64 \00"
 @.str12169 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str12170 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17460: index out of range: \00"
+@.str12170 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17461: index out of range: \00"
 @.str12171 = private unnamed_addr constant [11 x i8] c"  ret i32 \00"
 @.str12172 = private unnamed_addr constant [5 x i8] c"\0A}\0A\0A\00"
 @.str12173 = private unnamed_addr constant [22 x i8] c"define void @L_apply_\00"
 @.str12174 = private unnamed_addr constant [39 x i8] c"(i32 %e, ptr %buf, i32 %len) {\0Aentry:\0A\00"
-@.str12175 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17481: index out of range: \00"
-@.str12176 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17482: index out of range: \00"
+@.str12175 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17482: index out of range: \00"
+@.str12176 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17483: index out of range: \00"
 @.str12177 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str12178 = private unnamed_addr constant [28 x i8] c" = getelementptr inbounds [\00"
 @.str12179 = private unnamed_addr constant [9 x i8] c" x %Cmp_\00"
 @.str12180 = private unnamed_addr constant [11 x i8] c"], ptr @S_\00"
 @.str12181 = private unnamed_addr constant [17 x i8] c", i32 0, i32 %e\0A\00"
-@.str12182 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17488: index out of range: \00"
-@.str12183 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17489: index out of range: \00"
+@.str12182 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17489: index out of range: \00"
+@.str12183 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17490: index out of range: \00"
 @.str12184 = private unnamed_addr constant [3 x i8] c"  \00"
 @.str12185 = private unnamed_addr constant [32 x i8] c" = getelementptr inbounds %Cmp_\00"
 @.str12186 = private unnamed_addr constant [7 x i8] c", ptr \00"
@@ -12812,14 +12813,14 @@ entry:
 @.str12193 = private unnamed_addr constant [7 x i8] c", ptr \00"
 @.str12194 = private unnamed_addr constant [7 x i8] c", i64 \00"
 @.str12195 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str12196 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17493: index out of range: \00"
+@.str12196 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17494: index out of range: \00"
 @.str12197 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
 @.str12198 = private unnamed_addr constant [56 x i8] c"define i32 @ludic_serialize(i32 %e, ptr %buf) {\0Aentry:\0A\00"
 @.str12199 = private unnamed_addr constant [33 x i8] c"  %kp = getelementptr inbounds [\00"
 @.str12200 = private unnamed_addr constant [62 x i8] c" x i32], ptr @L_kind, i32 0, i32 %e\0A  %k = load i32, ptr %kp\0A\00"
-@.str12201 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17516: index out of range: \00"
-@.str12202 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17516: index out of range: \00"
-@.str12203 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17517: index out of range: \00"
+@.str12201 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17517: index out of range: \00"
+@.str12202 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17517: index out of range: \00"
+@.str12203 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17518: index out of range: \00"
 @.str12204 = private unnamed_addr constant [5 x i8] c"  %c\00"
 @.str12205 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %k, \00"
 @.str12206 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12838,9 +12839,9 @@ entry:
 @.str12219 = private unnamed_addr constant [63 x i8] c"define void @ludic_apply(i32 %e, ptr %buf, i32 %len) {\0Aentry:\0A\00"
 @.str12220 = private unnamed_addr constant [33 x i8] c"  %kp = getelementptr inbounds [\00"
 @.str12221 = private unnamed_addr constant [62 x i8] c" x i32], ptr @L_kind, i32 0, i32 %e\0A  %k = load i32, ptr %kp\0A\00"
-@.str12222 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17532: index out of range: \00"
-@.str12223 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17532: index out of range: \00"
-@.str12224 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17533: index out of range: \00"
+@.str12222 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17533: index out of range: \00"
+@.str12223 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17533: index out of range: \00"
+@.str12224 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17534: index out of range: \00"
 @.str12225 = private unnamed_addr constant [5 x i8] c"  %c\00"
 @.str12226 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %k, \00"
 @.str12227 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12857,9 +12858,9 @@ entry:
 @.str12238 = private unnamed_addr constant [46 x i8] c"define i32 @ludic_sync_size(i32 %e) {\0Aentry:\0A\00"
 @.str12239 = private unnamed_addr constant [33 x i8] c"  %kp = getelementptr inbounds [\00"
 @.str12240 = private unnamed_addr constant [62 x i8] c" x i32], ptr @L_kind, i32 0, i32 %e\0A  %k = load i32, ptr %kp\0A\00"
-@.str12241 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17550: index out of range: \00"
-@.str12242 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17550: index out of range: \00"
-@.str12243 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17551: index out of range: \00"
+@.str12241 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17551: index out of range: \00"
+@.str12242 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17551: index out of range: \00"
+@.str12243 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17552: index out of range: \00"
 @.str12244 = private unnamed_addr constant [5 x i8] c"  %c\00"
 @.str12245 = private unnamed_addr constant [20 x i8] c" = icmp eq i32 %k, \00"
 @.str12246 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12869,7 +12870,7 @@ entry:
 @.str12250 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str12251 = private unnamed_addr constant [2 x i8] c"h\00"
 @.str12252 = private unnamed_addr constant [13 x i8] c":\0A  ret i32 \00"
-@.str12253 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17554: index out of range: \00"
+@.str12253 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17555: index out of range: \00"
 @.str12254 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str12255 = private unnamed_addr constant [2 x i8] c"n\00"
 @.str12256 = private unnamed_addr constant [3 x i8] c":\0A\00"
@@ -12910,8 +12911,8 @@ entry:
 @.str12291 = private unnamed_addr constant [76 x i8] c"  %nz = zext i32 %n to i64\0A  call ptr @memcpy(ptr %buf, ptr %row, i64 %nz)\0A\00"
 @.str12292 = private unnamed_addr constant [93 x i8] c"  %h1 = add i32 %h, 1\0A  %hn = srem i32 %h1, 64\0A  store i32 %hn, ptr @L_nethead\0A  ret i32 %n\0A\00"
 @.str12293 = private unnamed_addr constant [22 x i8] c"none:\0A  ret i32 0\0A}\0A\0A\00"
-@.str12294 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17627: index out of range: \00"
-@.str12295 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17633: index out of range: \00"
+@.str12294 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17628: index out of range: \00"
+@.str12295 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17634: index out of range: \00"
 @.str12296 = private unnamed_addr constant [9 x i8] c"net_send\00"
 @.str12297 = private unnamed_addr constant [11 x i8] c"L_net_send\00"
 @.str12298 = private unnamed_addr constant [9 x i8] c"net_poll\00"
@@ -12923,7 +12924,7 @@ entry:
 @.str12304 = private unnamed_addr constant [28 x i8] c"(ptr @L_recvbuf, i32 2048)\0A\00"
 @.str12305 = private unnamed_addr constant [68 x i8] c"  %done = icmp eq i32 %n, 0\0A  br i1 %done, label %fin, label %body\0A\00"
 @.str12306 = private unnamed_addr constant [41 x i8] c"body:\0A  %eid = load i32, ptr @L_recvbuf\0A\00"
-@.str12307 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17652: index out of range: \00"
+@.str12307 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17653: index out of range: \00"
 @.str12308 = private unnamed_addr constant [5 x i8] c"  %c\00"
 @.str12309 = private unnamed_addr constant [22 x i8] c" = icmp eq i32 %eid, \00"
 @.str12310 = private unnamed_addr constant [2 x i8] c"\0A\00"
@@ -12933,7 +12934,7 @@ entry:
 @.str12314 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str12315 = private unnamed_addr constant [2 x i8] c"h\00"
 @.str12316 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str12317 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17663: index out of range: \00"
+@.str12317 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17664: index out of range: \00"
 @.str12318 = private unnamed_addr constant [2 x i8] c"_\00"
 @.str12319 = private unnamed_addr constant [6 x i8] c"  %fa\00"
 @.str12320 = private unnamed_addr constant [51 x i8] c" = getelementptr inbounds i8, ptr @L_recvbuf, i32 \00"
@@ -12944,7 +12945,7 @@ entry:
 @.str12325 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str12326 = private unnamed_addr constant [3 x i8] c", \00"
 @.str12327 = private unnamed_addr constant [5 x i8] c" %fv\00"
-@.str12328 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17669: index out of range: \00"
+@.str12328 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17670: index out of range: \00"
 @.str12329 = private unnamed_addr constant [17 x i8] c"  call void @ev_\00"
 @.str12330 = private unnamed_addr constant [2 x i8] c"(\00"
 @.str12331 = private unnamed_addr constant [3 x i8] c")\0A\00"
@@ -12953,10 +12954,10 @@ entry:
 @.str12334 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str12335 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
 @.str12336 = private unnamed_addr constant [20 x i8] c"fin:\0A  ret void\0A}\0A\0A\00"
-@.str12337 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17688: index out of range: \00"
-@.str12338 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17688: index out of range: \00"
-@.str12339 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17689: index out of range: \00"
-@.str12340 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17690: index out of range: \00"
+@.str12337 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17689: index out of range: \00"
+@.str12338 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17689: index out of range: \00"
+@.str12339 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17690: index out of range: \00"
+@.str12340 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17691: index out of range: \00"
 @.str12341 = private unnamed_addr constant [58 x i8] c"@L_sendbuf = internal global [2048 x i8] zeroinitializer\0A\00"
 @.str12342 = private unnamed_addr constant [6 x i8] c"panel\00"
 @.str12343 = private unnamed_addr constant [4 x i8] c"col\00"
@@ -12965,31 +12966,31 @@ entry:
 @.str12346 = private unnamed_addr constant [7 x i8] c"button\00"
 @.str12347 = private unnamed_addr constant [6 x i8] c"image\00"
 @.str12348 = private unnamed_addr constant [7 x i8] c"spacer\00"
-@.str12349 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17721: index out of range: \00"
-@.str12350 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17721: index out of range: \00"
-@.str12351 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17727: index out of range: \00"
-@.str12352 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17730: index out of range: \00"
+@.str12349 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17722: index out of range: \00"
+@.str12350 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17722: index out of range: \00"
+@.str12351 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17728: index out of range: \00"
+@.str12352 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17731: index out of range: \00"
 @.str12353 = private unnamed_addr constant [5 x i8] c"font\00"
 @.str12354 = private unnamed_addr constant [5 x i8] c"size\00"
 @.str12355 = private unnamed_addr constant [3 x i8] c"fg\00"
 @.str12356 = private unnamed_addr constant [6 x i8] c"align\00"
-@.str12357 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17735: index out of range: \00"
-@.str12358 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17736: index out of range: \00"
-@.str12359 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17738: index out of range: \00"
-@.str12360 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17738: index out of range: \00"
-@.str12361 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17739: index out of range: \00"
-@.str12362 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17740: index out of range: \00"
-@.str12363 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17751: index out of range: \00"
-@.str12364 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17757: index out of range: \00"
-@.str12365 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17757: index out of range: \00"
-@.str12366 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17757: index out of range: \00"
-@.str12367 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17763: index out of range: \00"
-@.str12368 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17763: index out of range: \00"
-@.str12369 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17774: index out of range: \00"
-@.str12370 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17774: index out of range: \00"
-@.str12371 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17774: index out of range: \00"
-@.str12372 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17774: index out of range: \00"
-@.str12373 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17779: index out of range: \00"
+@.str12357 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17736: index out of range: \00"
+@.str12358 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17737: index out of range: \00"
+@.str12359 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17739: index out of range: \00"
+@.str12360 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17739: index out of range: \00"
+@.str12361 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17740: index out of range: \00"
+@.str12362 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17741: index out of range: \00"
+@.str12363 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17752: index out of range: \00"
+@.str12364 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17758: index out of range: \00"
+@.str12365 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17758: index out of range: \00"
+@.str12366 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17758: index out of range: \00"
+@.str12367 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17764: index out of range: \00"
+@.str12368 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17764: index out of range: \00"
+@.str12369 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17775: index out of range: \00"
+@.str12370 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17775: index out of range: \00"
+@.str12371 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17775: index out of range: \00"
+@.str12372 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17775: index out of range: \00"
+@.str12373 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17780: index out of range: \00"
 @.str12374 = private unnamed_addr constant [3 x i8] c"id\00"
 @.str12375 = private unnamed_addr constant [31 x i8] c"  call void @fn_rt_ui_set(i32 \00"
 @.str12376 = private unnamed_addr constant [7 x i8] c", i32 \00"
@@ -13011,10 +13012,10 @@ entry:
 @.str12392 = private unnamed_addr constant [6 x i8] c"focus\00"
 @.str12393 = private unnamed_addr constant [33 x i8] c"  call void @fn_rt_ui_reset(i32 \00"
 @.str12394 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str12395 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17810: index out of range: \00"
-@.str12396 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17813: index out of range: \00"
+@.str12395 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17811: index out of range: \00"
+@.str12396 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17814: index out of range: \00"
 @.str12397 = private unnamed_addr constant [2 x i8] c"1\00"
-@.str12398 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17818: index out of range: \00"
+@.str12398 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17819: index out of range: \00"
 @.str12399 = private unnamed_addr constant [3 x i8] c"id\00"
 @.str12400 = private unnamed_addr constant [5 x i8] c"goto\00"
 @.str12401 = private unnamed_addr constant [5 x i8] c"text\00"
@@ -13033,13 +13034,13 @@ entry:
 @.str12414 = private unnamed_addr constant [34 x i8] c"define void @ui_build() {\0Aentry:\0A\00"
 @.str12415 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
 @.str12416 = private unnamed_addr constant [3 x i8] c", \00"
-@.str12417 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17862: index out of range: \00"
+@.str12417 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17863: index out of range: \00"
 @.str12418 = private unnamed_addr constant [7 x i8] c" %arg_\00"
-@.str12419 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17862: index out of range: \00"
+@.str12419 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17863: index out of range: \00"
 @.str12420 = private unnamed_addr constant [5 x i8] c"void\00"
 @.str12421 = private unnamed_addr constant [20 x i8] c"  %retval = alloca \00"
 @.str12422 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str12423 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17881: index out of range: \00"
+@.str12423 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17882: index out of range: \00"
 @.str12424 = private unnamed_addr constant [9 x i8] c"  store \00"
 @.str12425 = private unnamed_addr constant [7 x i8] c" %arg_\00"
 @.str12426 = private unnamed_addr constant [7 x i8] c", ptr \00"
@@ -13086,7 +13087,7 @@ entry:
 @.str12467 = private unnamed_addr constant [38 x i8] c"@L_test_fail = internal global i32 0\0A\00"
 @.str12468 = private unnamed_addr constant [94 x i8] c"@.fmt_test_sum = private unnamed_addr constant [28 x i8] c\22== %d passed, %d failed ==\5C0A\5C00\22\0A\00"
 @.str12469 = private unnamed_addr constant [91 x i8] c"@.fmt_test_none = private unnamed_addr constant [20 x i8] c\22no test named \5C22%s\5C22\5C0A\5C00\22\0A\00"
-@.str12470 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17961: index out of range: \00"
+@.str12470 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17962: index out of range: \00"
 @.str12471 = private unnamed_addr constant [86 x i8] c"@.fmt_expect = private unnamed_addr constant [22 x i8] c\22%s (got %d, want %d)\5C0A\5C00\22\0A\00"
 @.str12472 = private unnamed_addr constant [89 x i8] c"@.fmt_expect_fp = private unnamed_addr constant [22 x i8] c\22%s (got %g, want %g)\5C0A\5C00\22\0A\00"
 @.str12473 = private unnamed_addr constant [49 x i8] c"define i32 @main(i32 %argc, ptr %argv) {\0Aentry:\0A\00"
@@ -13132,7 +13133,7 @@ entry:
 @.str12513 = private unnamed_addr constant [10 x i8] c", label %\00"
 @.str12514 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str12515 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str12516 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17996: index out of range: \00"
+@.str12516 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:17997: index out of range: \00"
 @.str12517 = private unnamed_addr constant [51 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr \00"
 @.str12518 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str12519 = private unnamed_addr constant [13 x i8] c"  ret i32 0\0A\00"
@@ -13140,10 +13141,10 @@ entry:
 @.str12521 = private unnamed_addr constant [24 x i8] c"  call void @rt_init()\0A\00"
 @.str12522 = private unnamed_addr constant [31 x i8] c"  call void @L_init_globals()\0A\00"
 @.str12523 = private unnamed_addr constant [8 x i8] c"ok   - \00"
-@.str12524 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18006: index out of range: \00"
+@.str12524 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18007: index out of range: \00"
 @.str12525 = private unnamed_addr constant [8 x i8] c"FAIL - \00"
-@.str12526 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18007: index out of range: \00"
-@.str12527 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18008: index out of range: \00"
+@.str12526 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18008: index out of range: \00"
+@.str12527 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18009: index out of range: \00"
 @.str12528 = private unnamed_addr constant [5 x i8] c"tcmp\00"
 @.str12529 = private unnamed_addr constant [5 x i8] c"trun\00"
 @.str12530 = private unnamed_addr constant [6 x i8] c"tskip\00"
@@ -13233,200 +13234,201 @@ entry:
 @.str12614 = private unnamed_addr constant [15 x i8] c", i32 0, i32 1\00"
 @.str12615 = private unnamed_addr constant [11 x i8] c"  ret i32 \00"
 @.str12616 = private unnamed_addr constant [4 x i8] c"\0A}\0A\00"
-@.str12617 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18066: index out of range: \00"
-@.str12618 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18070: index out of range: \00"
+@.str12617 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18067: index out of range: \00"
+@.str12618 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18071: index out of range: \00"
 @.str12619 = private unnamed_addr constant [11 x i8] c"function '\00"
 @.str12620 = private unnamed_addr constant [30 x i8] c"' is defined twice (first in \00"
 @.str12621 = private unnamed_addr constant [2 x i8] c":\00"
 @.str12622 = private unnamed_addr constant [2 x i8] c")\00"
-@.str12623 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18094: index out of range: \00"
-@.str12624 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18099: index out of range: \00"
+@.str12623 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18095: index out of range: \00"
+@.str12624 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18100: index out of range: \00"
 @.str12625 = private unnamed_addr constant [2 x i8] c"'\00"
 @.str12626 = private unnamed_addr constant [30 x i8] c"' is defined twice (first in \00"
 @.str12627 = private unnamed_addr constant [2 x i8] c":\00"
 @.str12628 = private unnamed_addr constant [2 x i8] c")\00"
-@.str12629 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18141: index out of range: \00"
-@.str12630 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18143: index out of range: \00"
-@.str12631 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18161: index out of range: \00"
-@.str12632 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18161: index out of range: \00"
-@.str12633 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18166: index out of range: \00"
-@.str12634 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18166: index out of range: \00"
-@.str12635 = private unnamed_addr constant [23 x i8] c"declare i32 @getpid()\0A\00"
-@.str12636 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
-@.str12637 = private unnamed_addr constant [68 x i8] c"@.fmt_panic = private unnamed_addr constant [6 x i8] c\22%s%s\5C0A\5C00\22\0A\00"
-@.str12638 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
-@.str12639 = private unnamed_addr constant [78 x i8] c"@.fmt_bounds = private unnamed_addr constant [14 x i8] c\22%s%d, len %d\5C0A\5C00\22\0A\00"
-@.str12640 = private unnamed_addr constant [34 x i8] c"%Result = type { i32, i32, ptr }\0A\00"
-@.str12641 = private unnamed_addr constant [29 x i8] c"%Option = type { i32, i32 }\0A\00"
-@.str12642 = private unnamed_addr constant [33 x i8] c"@L_cov_lines = internal global [\00"
-@.str12643 = private unnamed_addr constant [10 x i8] c" x i32] [\00"
-@.str12644 = private unnamed_addr constant [3 x i8] c", \00"
-@.str12645 = private unnamed_addr constant [5 x i8] c"i32 \00"
-@.str12646 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18220: index out of range: \00"
-@.str12647 = private unnamed_addr constant [3 x i8] c"]\0A\00"
-@.str12648 = private unnamed_addr constant [32 x i8] c"@L_cov_hits = internal global [\00"
-@.str12649 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
-@.str12650 = private unnamed_addr constant [32 x i8] c"@L_cov_n = internal global i32 \00"
-@.str12651 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str12652 = private unnamed_addr constant [15 x i8] c"LUDIC_COVERAGE\00"
-@.str12653 = private unnamed_addr constant [10 x i8] c"ludic.cov\00"
-@.str12654 = private unnamed_addr constant [2 x i8] c"w\00"
-@.str12655 = private unnamed_addr constant [73 x i8] c"@.cov_filefmt = private unnamed_addr constant [9 x i8] c\22FILE %s\5C0A\5C00\22\0A\00"
-@.str12656 = private unnamed_addr constant [70 x i8] c"@.cov_rowfmt = private unnamed_addr constant [7 x i8] c\22%d %d\5C0A\5C00\22\0A\00"
-@.str12657 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
-@.str12658 = private unnamed_addr constant [26 x i8] c"declare i32 @atexit(ptr)\0A\00"
-@.str12659 = private unnamed_addr constant [34 x i8] c"define void @cov_dump() {\0Aentry:\0A\00"
-@.str12660 = private unnamed_addr constant [31 x i8] c"  %env = call ptr @getenv(ptr \00"
-@.str12661 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str12662 = private unnamed_addr constant [35 x i8] c"  %noenv = icmp eq ptr %env, null\0A\00"
-@.str12663 = private unnamed_addr constant [33 x i8] c"  %path = select i1 %noenv, ptr \00"
-@.str12664 = private unnamed_addr constant [12 x i8] c", ptr %env\0A\00"
-@.str12665 = private unnamed_addr constant [39 x i8] c"  %f = call ptr @fopen(ptr %path, ptr \00"
-@.str12666 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str12667 = private unnamed_addr constant [31 x i8] c"  %bad = icmp eq ptr %f, null\0A\00"
-@.str12668 = private unnamed_addr constant [41 x i8] c"  br i1 %bad, label %done, label %write\0A\00"
-@.str12669 = private unnamed_addr constant [8 x i8] c"write:\0A\00"
-@.str12670 = private unnamed_addr constant [68 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr %f, ptr @.cov_filefmt, ptr \00"
-@.str12671 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str12672 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
-@.str12673 = private unnamed_addr constant [7 x i8] c"loop:\0A\00"
-@.str12674 = private unnamed_addr constant [46 x i8] c"  %i = phi i32 [ 0, %write ], [ %i1, %body ]\0A\00"
-@.str12675 = private unnamed_addr constant [26 x i8] c"  %go = icmp slt i32 %i, \00"
-@.str12676 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str12677 = private unnamed_addr constant [40 x i8] c"  br i1 %go, label %body, label %close\0A\00"
-@.str12678 = private unnamed_addr constant [7 x i8] c"body:\0A\00"
-@.str12679 = private unnamed_addr constant [33 x i8] c"  %lp = getelementptr inbounds [\00"
-@.str12680 = private unnamed_addr constant [42 x i8] c" x i32], ptr @L_cov_lines, i32 0, i32 %i\0A\00"
-@.str12681 = private unnamed_addr constant [27 x i8] c"  %lv = load i32, ptr %lp\0A\00"
-@.str12682 = private unnamed_addr constant [33 x i8] c"  %hp = getelementptr inbounds [\00"
-@.str12683 = private unnamed_addr constant [41 x i8] c" x i32], ptr @L_cov_hits, i32 0, i32 %i\0A\00"
-@.str12684 = private unnamed_addr constant [27 x i8] c"  %hv = load i32, ptr %hp\0A\00"
-@.str12685 = private unnamed_addr constant [81 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr %f, ptr @.cov_rowfmt, i32 %lv, i32 %hv)\0A\00"
-@.str12686 = private unnamed_addr constant [23 x i8] c"  %i1 = add i32 %i, 1\0A\00"
-@.str12687 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
-@.str12688 = private unnamed_addr constant [8 x i8] c"close:\0A\00"
-@.str12689 = private unnamed_addr constant [34 x i8] c"  %rc = call i32 @fclose(ptr %f)\0A\00"
-@.str12690 = private unnamed_addr constant [18 x i8] c"  br label %done\0A\00"
-@.str12691 = private unnamed_addr constant [21 x i8] c"done:\0A  ret void\0A}\0A\0A\00"
-@.str12692 = private unnamed_addr constant [34 x i8] c"define void @cov_init() {\0Aentry:\0A\00"
-@.str12693 = private unnamed_addr constant [40 x i8] c"  %r = call i32 @atexit(ptr @cov_dump)\0A\00"
-@.str12694 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
-@.str12695 = private unnamed_addr constant [122 x i8] c"@llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @cov_init, ptr null }]\0A\00"
-@.str12696 = private unnamed_addr constant [3 x i8] c"wb\00"
-@.str12697 = private unnamed_addr constant [7 x i8] c".ludic\00"
-@.str12698 = private unnamed_addr constant [2 x i8] c"/\00"
-@.str12699 = private unnamed_addr constant [15 x i8] c"if not exist \22\00"
-@.str12700 = private unnamed_addr constant [10 x i8] c"\22 mkdir \22\00"
-@.str12701 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str12702 = private unnamed_addr constant [10 x i8] c"mkdir -p \00"
-@.str12703 = private unnamed_addr constant [12 x i8] c"del /f /q \22\00"
-@.str12704 = private unnamed_addr constant [8 x i8] c"\22 2>nul\00"
-@.str12705 = private unnamed_addr constant [7 x i8] c"rm -f \00"
-@.str12706 = private unnamed_addr constant [9 x i8] c"LUDIC_CC\00"
-@.str12707 = private unnamed_addr constant [36 x i8] c"C:/Program Files/LLVM/bin/clang.exe\00"
-@.str12708 = private unnamed_addr constant [3 x i8] c"rb\00"
-@.str12709 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str12629 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18143: index out of range: \00"
+@.str12630 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18145: index out of range: \00"
+@.str12631 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18163: index out of range: \00"
+@.str12632 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18163: index out of range: \00"
+@.str12633 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18168: index out of range: \00"
+@.str12634 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18168: index out of range: \00"
+@.str12635 = private unnamed_addr constant [36 x i8] c"@L_running = internal global i32 1\0A\00"
+@.str12636 = private unnamed_addr constant [23 x i8] c"declare i32 @getpid()\0A\00"
+@.str12637 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
+@.str12638 = private unnamed_addr constant [68 x i8] c"@.fmt_panic = private unnamed_addr constant [6 x i8] c\22%s%s\5C0A\5C00\22\0A\00"
+@.str12639 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
+@.str12640 = private unnamed_addr constant [78 x i8] c"@.fmt_bounds = private unnamed_addr constant [14 x i8] c\22%s%d, len %d\5C0A\5C00\22\0A\00"
+@.str12641 = private unnamed_addr constant [34 x i8] c"%Result = type { i32, i32, ptr }\0A\00"
+@.str12642 = private unnamed_addr constant [29 x i8] c"%Option = type { i32, i32 }\0A\00"
+@.str12643 = private unnamed_addr constant [33 x i8] c"@L_cov_lines = internal global [\00"
+@.str12644 = private unnamed_addr constant [10 x i8] c" x i32] [\00"
+@.str12645 = private unnamed_addr constant [3 x i8] c", \00"
+@.str12646 = private unnamed_addr constant [5 x i8] c"i32 \00"
+@.str12647 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18224: index out of range: \00"
+@.str12648 = private unnamed_addr constant [3 x i8] c"]\0A\00"
+@.str12649 = private unnamed_addr constant [32 x i8] c"@L_cov_hits = internal global [\00"
+@.str12650 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
+@.str12651 = private unnamed_addr constant [32 x i8] c"@L_cov_n = internal global i32 \00"
+@.str12652 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str12653 = private unnamed_addr constant [15 x i8] c"LUDIC_COVERAGE\00"
+@.str12654 = private unnamed_addr constant [10 x i8] c"ludic.cov\00"
+@.str12655 = private unnamed_addr constant [2 x i8] c"w\00"
+@.str12656 = private unnamed_addr constant [73 x i8] c"@.cov_filefmt = private unnamed_addr constant [9 x i8] c\22FILE %s\5C0A\5C00\22\0A\00"
+@.str12657 = private unnamed_addr constant [70 x i8] c"@.cov_rowfmt = private unnamed_addr constant [7 x i8] c\22%d %d\5C0A\5C00\22\0A\00"
+@.str12658 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
+@.str12659 = private unnamed_addr constant [26 x i8] c"declare i32 @atexit(ptr)\0A\00"
+@.str12660 = private unnamed_addr constant [34 x i8] c"define void @cov_dump() {\0Aentry:\0A\00"
+@.str12661 = private unnamed_addr constant [31 x i8] c"  %env = call ptr @getenv(ptr \00"
+@.str12662 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str12663 = private unnamed_addr constant [35 x i8] c"  %noenv = icmp eq ptr %env, null\0A\00"
+@.str12664 = private unnamed_addr constant [33 x i8] c"  %path = select i1 %noenv, ptr \00"
+@.str12665 = private unnamed_addr constant [12 x i8] c", ptr %env\0A\00"
+@.str12666 = private unnamed_addr constant [39 x i8] c"  %f = call ptr @fopen(ptr %path, ptr \00"
+@.str12667 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str12668 = private unnamed_addr constant [31 x i8] c"  %bad = icmp eq ptr %f, null\0A\00"
+@.str12669 = private unnamed_addr constant [41 x i8] c"  br i1 %bad, label %done, label %write\0A\00"
+@.str12670 = private unnamed_addr constant [8 x i8] c"write:\0A\00"
+@.str12671 = private unnamed_addr constant [68 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr %f, ptr @.cov_filefmt, ptr \00"
+@.str12672 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str12673 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
+@.str12674 = private unnamed_addr constant [7 x i8] c"loop:\0A\00"
+@.str12675 = private unnamed_addr constant [46 x i8] c"  %i = phi i32 [ 0, %write ], [ %i1, %body ]\0A\00"
+@.str12676 = private unnamed_addr constant [26 x i8] c"  %go = icmp slt i32 %i, \00"
+@.str12677 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str12678 = private unnamed_addr constant [40 x i8] c"  br i1 %go, label %body, label %close\0A\00"
+@.str12679 = private unnamed_addr constant [7 x i8] c"body:\0A\00"
+@.str12680 = private unnamed_addr constant [33 x i8] c"  %lp = getelementptr inbounds [\00"
+@.str12681 = private unnamed_addr constant [42 x i8] c" x i32], ptr @L_cov_lines, i32 0, i32 %i\0A\00"
+@.str12682 = private unnamed_addr constant [27 x i8] c"  %lv = load i32, ptr %lp\0A\00"
+@.str12683 = private unnamed_addr constant [33 x i8] c"  %hp = getelementptr inbounds [\00"
+@.str12684 = private unnamed_addr constant [41 x i8] c" x i32], ptr @L_cov_hits, i32 0, i32 %i\0A\00"
+@.str12685 = private unnamed_addr constant [27 x i8] c"  %hv = load i32, ptr %hp\0A\00"
+@.str12686 = private unnamed_addr constant [81 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr %f, ptr @.cov_rowfmt, i32 %lv, i32 %hv)\0A\00"
+@.str12687 = private unnamed_addr constant [23 x i8] c"  %i1 = add i32 %i, 1\0A\00"
+@.str12688 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
+@.str12689 = private unnamed_addr constant [8 x i8] c"close:\0A\00"
+@.str12690 = private unnamed_addr constant [34 x i8] c"  %rc = call i32 @fclose(ptr %f)\0A\00"
+@.str12691 = private unnamed_addr constant [18 x i8] c"  br label %done\0A\00"
+@.str12692 = private unnamed_addr constant [21 x i8] c"done:\0A  ret void\0A}\0A\0A\00"
+@.str12693 = private unnamed_addr constant [34 x i8] c"define void @cov_init() {\0Aentry:\0A\00"
+@.str12694 = private unnamed_addr constant [40 x i8] c"  %r = call i32 @atexit(ptr @cov_dump)\0A\00"
+@.str12695 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
+@.str12696 = private unnamed_addr constant [122 x i8] c"@llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @cov_init, ptr null }]\0A\00"
+@.str12697 = private unnamed_addr constant [3 x i8] c"wb\00"
+@.str12698 = private unnamed_addr constant [7 x i8] c".ludic\00"
+@.str12699 = private unnamed_addr constant [2 x i8] c"/\00"
+@.str12700 = private unnamed_addr constant [15 x i8] c"if not exist \22\00"
+@.str12701 = private unnamed_addr constant [10 x i8] c"\22 mkdir \22\00"
+@.str12702 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str12703 = private unnamed_addr constant [10 x i8] c"mkdir -p \00"
+@.str12704 = private unnamed_addr constant [12 x i8] c"del /f /q \22\00"
+@.str12705 = private unnamed_addr constant [8 x i8] c"\22 2>nul\00"
+@.str12706 = private unnamed_addr constant [7 x i8] c"rm -f \00"
+@.str12707 = private unnamed_addr constant [9 x i8] c"LUDIC_CC\00"
+@.str12708 = private unnamed_addr constant [36 x i8] c"C:/Program Files/LLVM/bin/clang.exe\00"
+@.str12709 = private unnamed_addr constant [3 x i8] c"rb\00"
 @.str12710 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str12711 = private unnamed_addr constant [6 x i8] c"clang\00"
-@.str12712 = private unnamed_addr constant [8 x i8] c"VERSION\00"
-@.str12713 = private unnamed_addr constant [24 x i8] c"ludic (version unknown)\00"
-@.str12714 = private unnamed_addr constant [7 x i8] c"ludic \00"
-@.str12715 = private unnamed_addr constant [1 x i8] c"\00"
+@.str12711 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str12712 = private unnamed_addr constant [6 x i8] c"clang\00"
+@.str12713 = private unnamed_addr constant [8 x i8] c"VERSION\00"
+@.str12714 = private unnamed_addr constant [24 x i8] c"ludic (version unknown)\00"
+@.str12715 = private unnamed_addr constant [7 x i8] c"ludic \00"
 @.str12716 = private unnamed_addr constant [1 x i8] c"\00"
-@.str12717 = private unnamed_addr constant [2 x i8] c",\00"
-@.str12718 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str12719 = private unnamed_addr constant [4 x i8] c"ret\00"
-@.str12720 = private unnamed_addr constant [1 x i8] c"\00"
-@.str12721 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str12722 = private unnamed_addr constant [10 x i8] c"--version\00"
-@.str12723 = private unnamed_addr constant [11 x i8] c"--windowed\00"
-@.str12724 = private unnamed_addr constant [11 x i8] c"--headless\00"
-@.str12725 = private unnamed_addr constant [12 x i8] c"--emit-llvm\00"
-@.str12726 = private unnamed_addr constant [9 x i8] c"--unsafe\00"
-@.str12727 = private unnamed_addr constant [14 x i8] c"--emit-module\00"
-@.str12728 = private unnamed_addr constant [6 x i8] c"--fmt\00"
-@.str12729 = private unnamed_addr constant [13 x i8] c"--save-temps\00"
-@.str12730 = private unnamed_addr constant [6 x i8] c"--run\00"
-@.str12731 = private unnamed_addr constant [11 x i8] c"--coverage\00"
-@.str12732 = private unnamed_addr constant [9 x i8] c"--target\00"
-@.str12733 = private unnamed_addr constant [6 x i8] c"--gui\00"
-@.str12734 = private unnamed_addr constant [8 x i8] c"--title\00"
-@.str12735 = private unnamed_addr constant [7 x i8] c"--link\00"
-@.str12736 = private unnamed_addr constant [3 x i8] c"-o\00"
-@.str12737 = private unnamed_addr constant [31 x i8] c"ludicc: ignoring unknown flag \00"
-@.str12738 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str12739 = private unnamed_addr constant [108 x i8] c"usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--target triple] [--emit-llvm] [--save-temps]\0A\00"
-@.str12740 = private unnamed_addr constant [8 x i8] c"windows\00"
-@.str12741 = private unnamed_addr constant [27 x i8] c"ludicc: cannot open input\0A\00"
-@.str12742 = private unnamed_addr constant [5 x i8] c"TEMP\00"
-@.str12743 = private unnamed_addr constant [2 x i8] c".\00"
-@.str12744 = private unnamed_addr constant [12 x i8] c"/ludic-run-\00"
-@.str12745 = private unnamed_addr constant [16 x i8] c"/tmp/ludic-run-\00"
-@.str12746 = private unnamed_addr constant [5 x i8] c".exe\00"
+@.str12717 = private unnamed_addr constant [1 x i8] c"\00"
+@.str12718 = private unnamed_addr constant [2 x i8] c",\00"
+@.str12719 = private unnamed_addr constant [2 x i8] c"?\00"
+@.str12720 = private unnamed_addr constant [4 x i8] c"ret\00"
+@.str12721 = private unnamed_addr constant [1 x i8] c"\00"
+@.str12722 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str12723 = private unnamed_addr constant [10 x i8] c"--version\00"
+@.str12724 = private unnamed_addr constant [11 x i8] c"--windowed\00"
+@.str12725 = private unnamed_addr constant [11 x i8] c"--headless\00"
+@.str12726 = private unnamed_addr constant [12 x i8] c"--emit-llvm\00"
+@.str12727 = private unnamed_addr constant [9 x i8] c"--unsafe\00"
+@.str12728 = private unnamed_addr constant [14 x i8] c"--emit-module\00"
+@.str12729 = private unnamed_addr constant [6 x i8] c"--fmt\00"
+@.str12730 = private unnamed_addr constant [13 x i8] c"--save-temps\00"
+@.str12731 = private unnamed_addr constant [6 x i8] c"--run\00"
+@.str12732 = private unnamed_addr constant [11 x i8] c"--coverage\00"
+@.str12733 = private unnamed_addr constant [9 x i8] c"--target\00"
+@.str12734 = private unnamed_addr constant [6 x i8] c"--gui\00"
+@.str12735 = private unnamed_addr constant [8 x i8] c"--title\00"
+@.str12736 = private unnamed_addr constant [7 x i8] c"--link\00"
+@.str12737 = private unnamed_addr constant [3 x i8] c"-o\00"
+@.str12738 = private unnamed_addr constant [31 x i8] c"ludicc: ignoring unknown flag \00"
+@.str12739 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str12740 = private unnamed_addr constant [108 x i8] c"usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--target triple] [--emit-llvm] [--save-temps]\0A\00"
+@.str12741 = private unnamed_addr constant [8 x i8] c"windows\00"
+@.str12742 = private unnamed_addr constant [27 x i8] c"ludicc: cannot open input\0A\00"
+@.str12743 = private unnamed_addr constant [5 x i8] c"TEMP\00"
+@.str12744 = private unnamed_addr constant [2 x i8] c".\00"
+@.str12745 = private unnamed_addr constant [12 x i8] c"/ludic-run-\00"
+@.str12746 = private unnamed_addr constant [16 x i8] c"/tmp/ludic-run-\00"
 @.str12747 = private unnamed_addr constant [5 x i8] c".exe\00"
-@.str12748 = private unnamed_addr constant [4 x i8] c".ll\00"
-@.str12749 = private unnamed_addr constant [25 x i8] c"ludicc: cannot write IR\0A\00"
-@.str12750 = private unnamed_addr constant [27 x i8] c" -O2 -Wno-override-module \00"
-@.str12751 = private unnamed_addr constant [24 x i8] c"runtime/native/win32.ll\00"
-@.str12752 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12753 = private unnamed_addr constant [63 x i8] c" -luser32 -lgdi32 -lxinput -lole32 -Wl,/ignore:importeddllmain\00"
-@.str12754 = private unnamed_addr constant [28 x i8] c"runtime/native/audio_win.ll\00"
-@.str12755 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12756 = private unnamed_addr constant [19 x i8] c" -lxaudio2 -lole32\00"
-@.str12757 = private unnamed_addr constant [24 x i8] c"runtime/native/cocoa.ll\00"
-@.str12758 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12759 = private unnamed_addr constant [79 x i8] c" -framework Cocoa -Wl,-needed_framework,GameController -Wl,-rpath,@loader_path\00"
-@.str12760 = private unnamed_addr constant [24 x i8] c"runtime/native/audio.ll\00"
-@.str12761 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12762 = private unnamed_addr constant [36 x i8] c" -Wl,-needed_framework,AVFoundation\00"
-@.str12763 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12764 = private unnamed_addr constant [30 x i8] c"runtime/native/threads_win.ll\00"
-@.str12765 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12766 = private unnamed_addr constant [26 x i8] c"runtime/native/threads.ll\00"
-@.str12767 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12768 = private unnamed_addr constant [26 x i8] c"runtime/native/udp_win.ll\00"
-@.str12769 = private unnamed_addr constant [10 x i8] c" -lws2_32\00"
-@.str12770 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12771 = private unnamed_addr constant [22 x i8] c"runtime/native/udp.ll\00"
-@.str12772 = private unnamed_addr constant [12 x i8] c" -ladvapi32\00"
-@.str12773 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12774 = private unnamed_addr constant [30 x i8] c"runtime/native/process_win.ll\00"
-@.str12775 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12776 = private unnamed_addr constant [26 x i8] c"runtime/native/process.ll\00"
-@.str12777 = private unnamed_addr constant [27 x i8] c"runtime/native/http_win.ll\00"
-@.str12778 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12779 = private unnamed_addr constant [11 x i8] c" -lwinhttp\00"
-@.str12780 = private unnamed_addr constant [23 x i8] c"runtime/native/http.ll\00"
-@.str12781 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12782 = private unnamed_addr constant [34 x i8] c" -Wl,-needed_framework,Foundation\00"
-@.str12783 = private unnamed_addr constant [25 x i8] c"runtime/native/gl_win.ll\00"
-@.str12784 = private unnamed_addr constant [32 x i8] c"runtime/native/gl_thunks_win.ll\00"
-@.str12785 = private unnamed_addr constant [31 x i8] c"runtime/native/gl_win_nowin.ll\00"
-@.str12786 = private unnamed_addr constant [27 x i8] c"runtime/native/win32_gl.ll\00"
-@.str12787 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12748 = private unnamed_addr constant [5 x i8] c".exe\00"
+@.str12749 = private unnamed_addr constant [4 x i8] c".ll\00"
+@.str12750 = private unnamed_addr constant [25 x i8] c"ludicc: cannot write IR\0A\00"
+@.str12751 = private unnamed_addr constant [27 x i8] c" -O2 -Wno-override-module \00"
+@.str12752 = private unnamed_addr constant [24 x i8] c"runtime/native/win32.ll\00"
+@.str12753 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12754 = private unnamed_addr constant [63 x i8] c" -luser32 -lgdi32 -lxinput -lole32 -Wl,/ignore:importeddllmain\00"
+@.str12755 = private unnamed_addr constant [28 x i8] c"runtime/native/audio_win.ll\00"
+@.str12756 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12757 = private unnamed_addr constant [19 x i8] c" -lxaudio2 -lole32\00"
+@.str12758 = private unnamed_addr constant [24 x i8] c"runtime/native/cocoa.ll\00"
+@.str12759 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12760 = private unnamed_addr constant [79 x i8] c" -framework Cocoa -Wl,-needed_framework,GameController -Wl,-rpath,@loader_path\00"
+@.str12761 = private unnamed_addr constant [24 x i8] c"runtime/native/audio.ll\00"
+@.str12762 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12763 = private unnamed_addr constant [36 x i8] c" -Wl,-needed_framework,AVFoundation\00"
+@.str12764 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12765 = private unnamed_addr constant [30 x i8] c"runtime/native/threads_win.ll\00"
+@.str12766 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12767 = private unnamed_addr constant [26 x i8] c"runtime/native/threads.ll\00"
+@.str12768 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12769 = private unnamed_addr constant [26 x i8] c"runtime/native/udp_win.ll\00"
+@.str12770 = private unnamed_addr constant [10 x i8] c" -lws2_32\00"
+@.str12771 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12772 = private unnamed_addr constant [22 x i8] c"runtime/native/udp.ll\00"
+@.str12773 = private unnamed_addr constant [12 x i8] c" -ladvapi32\00"
+@.str12774 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12775 = private unnamed_addr constant [30 x i8] c"runtime/native/process_win.ll\00"
+@.str12776 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12777 = private unnamed_addr constant [26 x i8] c"runtime/native/process.ll\00"
+@.str12778 = private unnamed_addr constant [27 x i8] c"runtime/native/http_win.ll\00"
+@.str12779 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12780 = private unnamed_addr constant [11 x i8] c" -lwinhttp\00"
+@.str12781 = private unnamed_addr constant [23 x i8] c"runtime/native/http.ll\00"
+@.str12782 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12783 = private unnamed_addr constant [34 x i8] c" -Wl,-needed_framework,Foundation\00"
+@.str12784 = private unnamed_addr constant [25 x i8] c"runtime/native/gl_win.ll\00"
+@.str12785 = private unnamed_addr constant [32 x i8] c"runtime/native/gl_thunks_win.ll\00"
+@.str12786 = private unnamed_addr constant [31 x i8] c"runtime/native/gl_win_nowin.ll\00"
+@.str12787 = private unnamed_addr constant [27 x i8] c"runtime/native/win32_gl.ll\00"
 @.str12788 = private unnamed_addr constant [2 x i8] c" \00"
 @.str12789 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12790 = private unnamed_addr constant [29 x i8] c" -luser32 -lgdi32 -lopengl32\00"
-@.str12791 = private unnamed_addr constant [21 x i8] c"runtime/native/gl.ll\00"
-@.str12792 = private unnamed_addr constant [28 x i8] c"runtime/native/gl_thunks.ll\00"
-@.str12793 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12790 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12791 = private unnamed_addr constant [29 x i8] c" -luser32 -lgdi32 -lopengl32\00"
+@.str12792 = private unnamed_addr constant [21 x i8] c"runtime/native/gl.ll\00"
+@.str12793 = private unnamed_addr constant [28 x i8] c"runtime/native/gl_thunks.ll\00"
 @.str12794 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12795 = private unnamed_addr constant [19 x i8] c" -framework OpenGL\00"
-@.str12796 = private unnamed_addr constant [28 x i8] c"runtime/native/vk_thunks.ll\00"
-@.str12797 = private unnamed_addr constant [25 x i8] c"runtime/native/vk_mac.ll\00"
-@.str12798 = private unnamed_addr constant [25 x i8] c"runtime/native/vk_win.ll\00"
-@.str12799 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12795 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12796 = private unnamed_addr constant [19 x i8] c" -framework OpenGL\00"
+@.str12797 = private unnamed_addr constant [28 x i8] c"runtime/native/vk_thunks.ll\00"
+@.str12798 = private unnamed_addr constant [25 x i8] c"runtime/native/vk_mac.ll\00"
+@.str12799 = private unnamed_addr constant [25 x i8] c"runtime/native/vk_win.ll\00"
 @.str12800 = private unnamed_addr constant [2 x i8] c" \00"
-@.str12801 = private unnamed_addr constant [50 x i8] c" -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup\00"
-@.str12802 = private unnamed_addr constant [3 x i8] c" \22\00"
-@.str12803 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18632: index out of range: \00"
-@.str12804 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str12805 = private unnamed_addr constant [5 x i8] c" -o \00"
-@.str12806 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str12801 = private unnamed_addr constant [2 x i8] c" \00"
+@.str12802 = private unnamed_addr constant [50 x i8] c" -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup\00"
+@.str12803 = private unnamed_addr constant [3 x i8] c" \22\00"
+@.str12804 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:18636: index out of range: \00"
+@.str12805 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str12806 = private unnamed_addr constant [5 x i8] c" -o \00"
 @.str12807 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str12808 = private unnamed_addr constant [21 x i8] c"ludicc: link failed\0A\00"
-@.str12809 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str12808 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str12809 = private unnamed_addr constant [21 x i8] c"ludicc: link failed\0A\00"
 @.str12810 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str12811 = private unnamed_addr constant [2 x i8] c"\22\00"
 define i32 @lp_str_eq(ptr %a, ptr %b) {
 entry:
   br label %loop
@@ -14224,56 +14226,56 @@ sod:
   store i32 %fcnt, ptr %d2
   ret ptr %h
 }
-@.str12811 = private unnamed_addr constant [4 x i8] c"png\00"
-@.str12812 = private unnamed_addr constant [10 x i8] c"image/png\00"
-@.str12813 = private unnamed_addr constant [4 x i8] c"jpg\00"
-@.str12814 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
-@.str12815 = private unnamed_addr constant [5 x i8] c"jpeg\00"
-@.str12816 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
-@.str12817 = private unnamed_addr constant [4 x i8] c"gif\00"
-@.str12818 = private unnamed_addr constant [10 x i8] c"image/gif\00"
-@.str12819 = private unnamed_addr constant [4 x i8] c"bmp\00"
-@.str12820 = private unnamed_addr constant [10 x i8] c"image/bmp\00"
-@.str12821 = private unnamed_addr constant [5 x i8] c"webp\00"
-@.str12822 = private unnamed_addr constant [11 x i8] c"image/webp\00"
-@.str12823 = private unnamed_addr constant [4 x i8] c"svg\00"
-@.str12824 = private unnamed_addr constant [14 x i8] c"image/svg+xml\00"
-@.str12825 = private unnamed_addr constant [4 x i8] c"txt\00"
-@.str12826 = private unnamed_addr constant [11 x i8] c"text/plain\00"
-@.str12827 = private unnamed_addr constant [3 x i8] c"md\00"
-@.str12828 = private unnamed_addr constant [14 x i8] c"text/markdown\00"
-@.str12829 = private unnamed_addr constant [4 x i8] c"csv\00"
-@.str12830 = private unnamed_addr constant [9 x i8] c"text/csv\00"
-@.str12831 = private unnamed_addr constant [5 x i8] c"html\00"
-@.str12832 = private unnamed_addr constant [10 x i8] c"text/html\00"
-@.str12833 = private unnamed_addr constant [4 x i8] c"htm\00"
-@.str12834 = private unnamed_addr constant [10 x i8] c"text/html\00"
-@.str12835 = private unnamed_addr constant [4 x i8] c"css\00"
-@.str12836 = private unnamed_addr constant [9 x i8] c"text/css\00"
-@.str12837 = private unnamed_addr constant [3 x i8] c"js\00"
-@.str12838 = private unnamed_addr constant [16 x i8] c"text/javascript\00"
-@.str12839 = private unnamed_addr constant [5 x i8] c"json\00"
-@.str12840 = private unnamed_addr constant [17 x i8] c"application/json\00"
-@.str12841 = private unnamed_addr constant [4 x i8] c"xml\00"
-@.str12842 = private unnamed_addr constant [16 x i8] c"application/xml\00"
-@.str12843 = private unnamed_addr constant [4 x i8] c"zip\00"
-@.str12844 = private unnamed_addr constant [16 x i8] c"application/zip\00"
-@.str12845 = private unnamed_addr constant [4 x i8] c"pdf\00"
-@.str12846 = private unnamed_addr constant [16 x i8] c"application/pdf\00"
-@.str12847 = private unnamed_addr constant [4 x i8] c"wav\00"
-@.str12848 = private unnamed_addr constant [10 x i8] c"audio/wav\00"
-@.str12849 = private unnamed_addr constant [4 x i8] c"ogg\00"
-@.str12850 = private unnamed_addr constant [10 x i8] c"audio/ogg\00"
-@.str12851 = private unnamed_addr constant [4 x i8] c"mp3\00"
-@.str12852 = private unnamed_addr constant [11 x i8] c"audio/mpeg\00"
-@.str12853 = private unnamed_addr constant [4 x i8] c"ttf\00"
-@.str12854 = private unnamed_addr constant [9 x i8] c"font/ttf\00"
-@.str12855 = private unnamed_addr constant [4 x i8] c"otf\00"
-@.str12856 = private unnamed_addr constant [9 x i8] c"font/otf\00"
-@.str12857 = private unnamed_addr constant [6 x i8] c"ludic\00"
-@.str12858 = private unnamed_addr constant [13 x i8] c"text/x-ludic\00"
-@.str12859 = private unnamed_addr constant [25 x i8] c"application/octet-stream\00"
-@mime_tbl = private unnamed_addr constant [24 x { ptr, ptr }] [{ ptr, ptr } { ptr @.str12811, ptr @.str12812 }, { ptr, ptr } { ptr @.str12813, ptr @.str12814 }, { ptr, ptr } { ptr @.str12815, ptr @.str12816 }, { ptr, ptr } { ptr @.str12817, ptr @.str12818 }, { ptr, ptr } { ptr @.str12819, ptr @.str12820 }, { ptr, ptr } { ptr @.str12821, ptr @.str12822 }, { ptr, ptr } { ptr @.str12823, ptr @.str12824 }, { ptr, ptr } { ptr @.str12825, ptr @.str12826 }, { ptr, ptr } { ptr @.str12827, ptr @.str12828 }, { ptr, ptr } { ptr @.str12829, ptr @.str12830 }, { ptr, ptr } { ptr @.str12831, ptr @.str12832 }, { ptr, ptr } { ptr @.str12833, ptr @.str12834 }, { ptr, ptr } { ptr @.str12835, ptr @.str12836 }, { ptr, ptr } { ptr @.str12837, ptr @.str12838 }, { ptr, ptr } { ptr @.str12839, ptr @.str12840 }, { ptr, ptr } { ptr @.str12841, ptr @.str12842 }, { ptr, ptr } { ptr @.str12843, ptr @.str12844 }, { ptr, ptr } { ptr @.str12845, ptr @.str12846 }, { ptr, ptr } { ptr @.str12847, ptr @.str12848 }, { ptr, ptr } { ptr @.str12849, ptr @.str12850 }, { ptr, ptr } { ptr @.str12851, ptr @.str12852 }, { ptr, ptr } { ptr @.str12853, ptr @.str12854 }, { ptr, ptr } { ptr @.str12855, ptr @.str12856 }, { ptr, ptr } { ptr @.str12857, ptr @.str12858 }]
+@.str12812 = private unnamed_addr constant [4 x i8] c"png\00"
+@.str12813 = private unnamed_addr constant [10 x i8] c"image/png\00"
+@.str12814 = private unnamed_addr constant [4 x i8] c"jpg\00"
+@.str12815 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
+@.str12816 = private unnamed_addr constant [5 x i8] c"jpeg\00"
+@.str12817 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
+@.str12818 = private unnamed_addr constant [4 x i8] c"gif\00"
+@.str12819 = private unnamed_addr constant [10 x i8] c"image/gif\00"
+@.str12820 = private unnamed_addr constant [4 x i8] c"bmp\00"
+@.str12821 = private unnamed_addr constant [10 x i8] c"image/bmp\00"
+@.str12822 = private unnamed_addr constant [5 x i8] c"webp\00"
+@.str12823 = private unnamed_addr constant [11 x i8] c"image/webp\00"
+@.str12824 = private unnamed_addr constant [4 x i8] c"svg\00"
+@.str12825 = private unnamed_addr constant [14 x i8] c"image/svg+xml\00"
+@.str12826 = private unnamed_addr constant [4 x i8] c"txt\00"
+@.str12827 = private unnamed_addr constant [11 x i8] c"text/plain\00"
+@.str12828 = private unnamed_addr constant [3 x i8] c"md\00"
+@.str12829 = private unnamed_addr constant [14 x i8] c"text/markdown\00"
+@.str12830 = private unnamed_addr constant [4 x i8] c"csv\00"
+@.str12831 = private unnamed_addr constant [9 x i8] c"text/csv\00"
+@.str12832 = private unnamed_addr constant [5 x i8] c"html\00"
+@.str12833 = private unnamed_addr constant [10 x i8] c"text/html\00"
+@.str12834 = private unnamed_addr constant [4 x i8] c"htm\00"
+@.str12835 = private unnamed_addr constant [10 x i8] c"text/html\00"
+@.str12836 = private unnamed_addr constant [4 x i8] c"css\00"
+@.str12837 = private unnamed_addr constant [9 x i8] c"text/css\00"
+@.str12838 = private unnamed_addr constant [3 x i8] c"js\00"
+@.str12839 = private unnamed_addr constant [16 x i8] c"text/javascript\00"
+@.str12840 = private unnamed_addr constant [5 x i8] c"json\00"
+@.str12841 = private unnamed_addr constant [17 x i8] c"application/json\00"
+@.str12842 = private unnamed_addr constant [4 x i8] c"xml\00"
+@.str12843 = private unnamed_addr constant [16 x i8] c"application/xml\00"
+@.str12844 = private unnamed_addr constant [4 x i8] c"zip\00"
+@.str12845 = private unnamed_addr constant [16 x i8] c"application/zip\00"
+@.str12846 = private unnamed_addr constant [4 x i8] c"pdf\00"
+@.str12847 = private unnamed_addr constant [16 x i8] c"application/pdf\00"
+@.str12848 = private unnamed_addr constant [4 x i8] c"wav\00"
+@.str12849 = private unnamed_addr constant [10 x i8] c"audio/wav\00"
+@.str12850 = private unnamed_addr constant [4 x i8] c"ogg\00"
+@.str12851 = private unnamed_addr constant [10 x i8] c"audio/ogg\00"
+@.str12852 = private unnamed_addr constant [4 x i8] c"mp3\00"
+@.str12853 = private unnamed_addr constant [11 x i8] c"audio/mpeg\00"
+@.str12854 = private unnamed_addr constant [4 x i8] c"ttf\00"
+@.str12855 = private unnamed_addr constant [9 x i8] c"font/ttf\00"
+@.str12856 = private unnamed_addr constant [4 x i8] c"otf\00"
+@.str12857 = private unnamed_addr constant [9 x i8] c"font/otf\00"
+@.str12858 = private unnamed_addr constant [6 x i8] c"ludic\00"
+@.str12859 = private unnamed_addr constant [13 x i8] c"text/x-ludic\00"
+@.str12860 = private unnamed_addr constant [25 x i8] c"application/octet-stream\00"
+@mime_tbl = private unnamed_addr constant [24 x { ptr, ptr }] [{ ptr, ptr } { ptr @.str12812, ptr @.str12813 }, { ptr, ptr } { ptr @.str12814, ptr @.str12815 }, { ptr, ptr } { ptr @.str12816, ptr @.str12817 }, { ptr, ptr } { ptr @.str12818, ptr @.str12819 }, { ptr, ptr } { ptr @.str12820, ptr @.str12821 }, { ptr, ptr } { ptr @.str12822, ptr @.str12823 }, { ptr, ptr } { ptr @.str12824, ptr @.str12825 }, { ptr, ptr } { ptr @.str12826, ptr @.str12827 }, { ptr, ptr } { ptr @.str12828, ptr @.str12829 }, { ptr, ptr } { ptr @.str12830, ptr @.str12831 }, { ptr, ptr } { ptr @.str12832, ptr @.str12833 }, { ptr, ptr } { ptr @.str12834, ptr @.str12835 }, { ptr, ptr } { ptr @.str12836, ptr @.str12837 }, { ptr, ptr } { ptr @.str12838, ptr @.str12839 }, { ptr, ptr } { ptr @.str12840, ptr @.str12841 }, { ptr, ptr } { ptr @.str12842, ptr @.str12843 }, { ptr, ptr } { ptr @.str12844, ptr @.str12845 }, { ptr, ptr } { ptr @.str12846, ptr @.str12847 }, { ptr, ptr } { ptr @.str12848, ptr @.str12849 }, { ptr, ptr } { ptr @.str12850, ptr @.str12851 }, { ptr, ptr } { ptr @.str12852, ptr @.str12853 }, { ptr, ptr } { ptr @.str12854, ptr @.str12855 }, { ptr, ptr } { ptr @.str12856, ptr @.str12857 }, { ptr, ptr } { ptr @.str12858, ptr @.str12859 }]
 define ptr @lp_mime_of(ptr %path) {
 entry:
   %ext = call ptr @lp_path_ext(ptr %path)
@@ -14301,7 +14303,7 @@ nx:
   store i32 %i1, ptr %ip
   br label %lp
 def:
-  %d = call ptr @lp_fs_strdup(ptr @.str12859)
+  %d = call ptr @lp_fs_strdup(ptr @.str12860)
   ret ptr %d
 }
 define ptr @lp_mime_lc(ptr %s) {
@@ -102389,6 +102391,7 @@ ifend41:
   %t165 = icmp ne i32 %t164, 0
   br i1 %t165, label %then46, label %ifend48
 then46:
+  store i32 1, ptr @g_g_uses_quit
   call void @fn_emit(ptr @.str9084)
   %t166 = call ptr @fn_val(ptr @.str9085, ptr @.str9086)
   store ptr %t166, ptr %retval
@@ -139443,7 +139446,8 @@ define void @fn_emit_program() {
 entry:
   %t70 = alloca i32
   %t131 = alloca i32
-  %t242 = alloca i32
+  %t210 = alloca i32
+  %t253 = alloca i32
   call void @fn_check_duplicate_fns()
   call void @fn_check_duplicate_decls()
   %t0 = call ptr @fn_buf_new()
@@ -139480,6 +139484,7 @@ entry:
   store i32 0, ptr @g_g_fprintf_declared
   store i32 0, ptr @g_g_uses_result
   store i32 0, ptr @g_g_uses_option
+  store i32 0, ptr @g_g_uses_quit
   store i32 0, ptr @g_g_uses_world_despawn
   %t14 = getelementptr %LSlice, ptr null, i32 1
   %t15 = ptrtoint ptr %t14 to i64
@@ -139855,215 +139860,236 @@ ifend51:
 ifend38:
   br label %ifend30
 ifend30:
-  %t210 = load i32, ptr @g_g_uses_world_despawn
-  %t211 = icmp ne i32 %t210, 0
-  br i1 %t211, label %then62, label %ifend64
-then62:
-  call void @fn_emit_world_despawn_fn()
-  br label %ifend64
-ifend64:
-  %t212 = load i32, ptr @g_g_uses_loopback
-  %t213 = icmp ne i32 %t212, 0
-  br i1 %t213, label %then65, label %ifend67
-then65:
-  call void @fn_emit_loopback()
-  br label %ifend67
-ifend67:
-  %t214 = load i32, ptr @g_g_uses_str
-  %t215 = icmp ne i32 %t214, 0
-  br i1 %t215, label %then68, label %ifend70
-then68:
-  call void @fn_emit_str_prelude()
-  br label %ifend70
-ifend70:
-  %t216 = load i32, ptr @g_g_uses_intstr
+  %t211 = load i32, ptr @g_g_uses_quit
+  %t212 = icmp ne i32 %t211, 0
+  %t213 = zext i1 %t212 to i32
+  store i32 %t213, ptr %t210
+  br i1 %t212, label %sc62, label %scend63
+sc62:
+  %t214 = call i32 @fn_has_ecs()
+  %t215 = icmp eq i32 %t214, 0
+  %t216 = zext i1 %t215 to i32
   %t217 = icmp ne i32 %t216, 0
-  br i1 %t217, label %then71, label %ifend73
-then71:
+  %t218 = zext i1 %t217 to i32
+  store i32 %t218, ptr %t210
+  br label %scend63
+scend63:
+  %t219 = load i32, ptr %t210
+  %t220 = icmp ne i32 %t219, 0
+  br i1 %t220, label %then64, label %ifend66
+then64:
+  call void @fn_emith(ptr @.str12635)
+  br label %ifend66
+ifend66:
+  %t221 = load i32, ptr @g_g_uses_world_despawn
+  %t222 = icmp ne i32 %t221, 0
+  br i1 %t222, label %then67, label %ifend69
+then67:
+  call void @fn_emit_world_despawn_fn()
+  br label %ifend69
+ifend69:
+  %t223 = load i32, ptr @g_g_uses_loopback
+  %t224 = icmp ne i32 %t223, 0
+  br i1 %t224, label %then70, label %ifend72
+then70:
+  call void @fn_emit_loopback()
+  br label %ifend72
+ifend72:
+  %t225 = load i32, ptr @g_g_uses_str
+  %t226 = icmp ne i32 %t225, 0
+  br i1 %t226, label %then73, label %ifend75
+then73:
+  call void @fn_emit_str_prelude()
+  br label %ifend75
+ifend75:
+  %t227 = load i32, ptr @g_g_uses_intstr
+  %t228 = icmp ne i32 %t227, 0
+  br i1 %t228, label %then76, label %ifend78
+then76:
   call void @fn_emit_int_str()
-  br label %ifend73
-ifend73:
-  %t218 = load i32, ptr @g_g_uses_fpstr
-  %t219 = icmp ne i32 %t218, 0
-  br i1 %t219, label %then74, label %ifend76
-then74:
+  br label %ifend78
+ifend78:
+  %t229 = load i32, ptr @g_g_uses_fpstr
+  %t230 = icmp ne i32 %t229, 0
+  br i1 %t230, label %then79, label %ifend81
+then79:
   call void @fn_emit_fp_str_fn()
-  br label %ifend76
-ifend76:
-  %t220 = load i32, ptr @g_g_uses_longstr
-  %t221 = icmp ne i32 %t220, 0
-  br i1 %t221, label %then77, label %ifend79
-then77:
+  br label %ifend81
+ifend81:
+  %t231 = load i32, ptr @g_g_uses_longstr
+  %t232 = icmp ne i32 %t231, 0
+  br i1 %t232, label %then82, label %ifend84
+then82:
   call void @fn_emit_long_str()
-  br label %ifend79
-ifend79:
-  %t222 = load i32, ptr @g_g_uses_strslice
-  %t223 = icmp ne i32 %t222, 0
-  br i1 %t223, label %then80, label %ifend82
-then80:
+  br label %ifend84
+ifend84:
+  %t233 = load i32, ptr @g_g_uses_strslice
+  %t234 = icmp ne i32 %t233, 0
+  br i1 %t234, label %then85, label %ifend87
+then85:
   call void @fn_emit_str_slice()
-  br label %ifend82
-ifend82:
-  %t224 = load i32, ptr @g_g_uses_mathrt
-  %t225 = icmp ne i32 %t224, 0
-  br i1 %t225, label %then83, label %ifend85
-then83:
+  br label %ifend87
+ifend87:
+  %t235 = load i32, ptr @g_g_uses_mathrt
+  %t236 = icmp ne i32 %t235, 0
+  br i1 %t236, label %then88, label %ifend90
+then88:
   call void @fn_emit_math_prelude()
-  br label %ifend85
-ifend85:
-  %t226 = load i32, ptr @g_g_uses_textrt
-  %t227 = icmp ne i32 %t226, 0
-  br i1 %t227, label %then86, label %ifend88
-then86:
+  br label %ifend90
+ifend90:
+  %t237 = load i32, ptr @g_g_uses_textrt
+  %t238 = icmp ne i32 %t237, 0
+  br i1 %t238, label %then91, label %ifend93
+then91:
   call void @fn_emit_text_prelude()
-  br label %ifend88
-ifend88:
-  %t228 = load i32, ptr @g_g_uses_textrt2
-  %t229 = icmp ne i32 %t228, 0
-  br i1 %t229, label %then89, label %ifend91
-then89:
+  br label %ifend93
+ifend93:
+  %t239 = load i32, ptr @g_g_uses_textrt2
+  %t240 = icmp ne i32 %t239, 0
+  br i1 %t240, label %then94, label %ifend96
+then94:
   call void @fn_emit_text2_prelude()
-  br label %ifend91
-ifend91:
-  %t230 = load i32, ptr @g_g_uses_hashrt
-  %t231 = icmp ne i32 %t230, 0
-  br i1 %t231, label %then92, label %ifend94
-then92:
+  br label %ifend96
+ifend96:
+  %t241 = load i32, ptr @g_g_uses_hashrt
+  %t242 = icmp ne i32 %t241, 0
+  br i1 %t242, label %then97, label %ifend99
+then97:
   call void @fn_emit_hash_prelude()
-  br label %ifend94
-ifend94:
-  %t232 = load i32, ptr @g_g_uses_cryptort
-  %t233 = icmp ne i32 %t232, 0
-  br i1 %t233, label %then95, label %ifend97
-then95:
-  call void @fn_emit_crypto_prelude()
-  br label %ifend97
-ifend97:
-  %t234 = load i32, ptr @g_g_uses_uuidrt
-  %t235 = icmp ne i32 %t234, 0
-  br i1 %t235, label %then98, label %ifend100
-then98:
-  call void @fn_emit_uuid_prelude()
-  br label %ifend100
-ifend100:
-  %t236 = load i32, ptr @g_g_uses_noisert
-  %t237 = icmp ne i32 %t236, 0
-  br i1 %t237, label %then101, label %ifend103
-then101:
-  call void @fn_emit_noise_prelude()
-  br label %ifend103
-ifend103:
-  %t238 = load i32, ptr @g_g_uses_logrt
-  %t239 = icmp ne i32 %t238, 0
-  br i1 %t239, label %then104, label %ifend106
-then104:
-  call void @fn_emit_log_prelude()
-  br label %ifend106
-ifend106:
-  %t240 = load i32, ptr @g_g_uses_osrt
-  %t241 = icmp ne i32 %t240, 0
-  br i1 %t241, label %then107, label %ifend109
-then107:
-  call void @fn_emit_os_prelude()
-  br label %ifend109
-ifend109:
-  %t243 = load i32, ptr @g_g_uses_pid
+  br label %ifend99
+ifend99:
+  %t243 = load i32, ptr @g_g_uses_cryptort
   %t244 = icmp ne i32 %t243, 0
-  %t245 = zext i1 %t244 to i32
-  store i32 %t245, ptr %t242
-  br i1 %t244, label %sc110, label %scend111
-sc110:
-  %t246 = load i32, ptr @g_g_target_win
-  %t247 = icmp eq i32 %t246, 0
-  %t248 = zext i1 %t247 to i32
-  %t249 = icmp ne i32 %t248, 0
-  %t250 = zext i1 %t249 to i32
-  store i32 %t250, ptr %t242
-  br label %scend111
-scend111:
-  %t251 = load i32, ptr %t242
+  br i1 %t244, label %then100, label %ifend102
+then100:
+  call void @fn_emit_crypto_prelude()
+  br label %ifend102
+ifend102:
+  %t245 = load i32, ptr @g_g_uses_uuidrt
+  %t246 = icmp ne i32 %t245, 0
+  br i1 %t246, label %then103, label %ifend105
+then103:
+  call void @fn_emit_uuid_prelude()
+  br label %ifend105
+ifend105:
+  %t247 = load i32, ptr @g_g_uses_noisert
+  %t248 = icmp ne i32 %t247, 0
+  br i1 %t248, label %then106, label %ifend108
+then106:
+  call void @fn_emit_noise_prelude()
+  br label %ifend108
+ifend108:
+  %t249 = load i32, ptr @g_g_uses_logrt
+  %t250 = icmp ne i32 %t249, 0
+  br i1 %t250, label %then109, label %ifend111
+then109:
+  call void @fn_emit_log_prelude()
+  br label %ifend111
+ifend111:
+  %t251 = load i32, ptr @g_g_uses_osrt
   %t252 = icmp ne i32 %t251, 0
   br i1 %t252, label %then112, label %ifend114
 then112:
-  call void @fn_emith(ptr @.str12635)
+  call void @fn_emit_os_prelude()
   br label %ifend114
 ifend114:
-  %t253 = load i32, ptr @g_g_uses_unicodert
-  %t254 = icmp ne i32 %t253, 0
-  br i1 %t254, label %then115, label %ifend117
-then115:
-  call void @fn_emit_unicode_prelude()
-  br label %ifend117
-ifend117:
-  %t255 = load i32, ptr @g_g_uses_fsrt
-  %t256 = icmp ne i32 %t255, 0
-  br i1 %t256, label %then118, label %ifend120
-then118:
-  call void @fn_emit_fs_prelude()
-  br label %ifend120
-ifend120:
-  %t257 = load i32, ptr @g_g_uses_pak
-  %t258 = icmp ne i32 %t257, 0
-  br i1 %t258, label %then121, label %ifend123
-then121:
-  call void @fn_emit_pak_prelude()
-  br label %ifend123
-ifend123:
-  %t259 = load i32, ptr @g_g_uses_datert
+  %t254 = load i32, ptr @g_g_uses_pid
+  %t255 = icmp ne i32 %t254, 0
+  %t256 = zext i1 %t255 to i32
+  store i32 %t256, ptr %t253
+  br i1 %t255, label %sc115, label %scend116
+sc115:
+  %t257 = load i32, ptr @g_g_target_win
+  %t258 = icmp eq i32 %t257, 0
+  %t259 = zext i1 %t258 to i32
   %t260 = icmp ne i32 %t259, 0
-  br i1 %t260, label %then124, label %ifend126
-then124:
-  call void @fn_emit_datetime_prelude()
-  br label %ifend126
-ifend126:
-  %t261 = load i32, ptr @g_g_uses_panic
-  %t262 = icmp ne i32 %t261, 0
-  br i1 %t262, label %then127, label %ifend129
-then127:
+  %t261 = zext i1 %t260 to i32
+  store i32 %t261, ptr %t253
+  br label %scend116
+scend116:
+  %t262 = load i32, ptr %t253
+  %t263 = icmp ne i32 %t262, 0
+  br i1 %t263, label %then117, label %ifend119
+then117:
   call void @fn_emith(ptr @.str12636)
-  store i32 1, ptr @g_g_fprintf_declared
+  br label %ifend119
+ifend119:
+  %t264 = load i32, ptr @g_g_uses_unicodert
+  %t265 = icmp ne i32 %t264, 0
+  br i1 %t265, label %then120, label %ifend122
+then120:
+  call void @fn_emit_unicode_prelude()
+  br label %ifend122
+ifend122:
+  %t266 = load i32, ptr @g_g_uses_fsrt
+  %t267 = icmp ne i32 %t266, 0
+  br i1 %t267, label %then123, label %ifend125
+then123:
+  call void @fn_emit_fs_prelude()
+  br label %ifend125
+ifend125:
+  %t268 = load i32, ptr @g_g_uses_pak
+  %t269 = icmp ne i32 %t268, 0
+  br i1 %t269, label %then126, label %ifend128
+then126:
+  call void @fn_emit_pak_prelude()
+  br label %ifend128
+ifend128:
+  %t270 = load i32, ptr @g_g_uses_datert
+  %t271 = icmp ne i32 %t270, 0
+  br i1 %t271, label %then129, label %ifend131
+then129:
+  call void @fn_emit_datetime_prelude()
+  br label %ifend131
+ifend131:
+  %t272 = load i32, ptr @g_g_uses_panic
+  %t273 = icmp ne i32 %t272, 0
+  br i1 %t273, label %then132, label %ifend134
+then132:
   call void @fn_emith(ptr @.str12637)
-  br label %ifend129
-ifend129:
-  %t263 = load i32, ptr @g_g_uses_bounds
-  %t264 = icmp ne i32 %t263, 0
-  br i1 %t264, label %then130, label %ifend132
-then130:
-  %t265 = load i32, ptr @g_g_fprintf_declared
-  %t266 = icmp eq i32 %t265, 0
-  %t267 = zext i1 %t266 to i32
-  %t268 = icmp ne i32 %t267, 0
-  br i1 %t268, label %then133, label %ifend135
-then133:
-  call void @fn_emith(ptr @.str12638)
   store i32 1, ptr @g_g_fprintf_declared
-  br label %ifend135
-ifend135:
+  call void @fn_emith(ptr @.str12638)
+  br label %ifend134
+ifend134:
+  %t274 = load i32, ptr @g_g_uses_bounds
+  %t275 = icmp ne i32 %t274, 0
+  br i1 %t275, label %then135, label %ifend137
+then135:
+  %t276 = load i32, ptr @g_g_fprintf_declared
+  %t277 = icmp eq i32 %t276, 0
+  %t278 = zext i1 %t277 to i32
+  %t279 = icmp ne i32 %t278, 0
+  br i1 %t279, label %then138, label %ifend140
+then138:
   call void @fn_emith(ptr @.str12639)
-  br label %ifend132
-ifend132:
-  %t269 = load i32, ptr @g_g_uses_result
-  %t270 = icmp ne i32 %t269, 0
-  br i1 %t270, label %then136, label %ifend138
-then136:
+  store i32 1, ptr @g_g_fprintf_declared
+  br label %ifend140
+ifend140:
   call void @fn_emith(ptr @.str12640)
-  br label %ifend138
-ifend138:
-  %t271 = load i32, ptr @g_g_uses_option
-  %t272 = icmp ne i32 %t271, 0
-  br i1 %t272, label %then139, label %ifend141
-then139:
+  br label %ifend137
+ifend137:
+  %t280 = load i32, ptr @g_g_uses_result
+  %t281 = icmp ne i32 %t280, 0
+  br i1 %t281, label %then141, label %ifend143
+then141:
   call void @fn_emith(ptr @.str12641)
-  br label %ifend141
-ifend141:
+  br label %ifend143
+ifend143:
+  %t282 = load i32, ptr @g_g_uses_option
+  %t283 = icmp ne i32 %t282, 0
+  br i1 %t283, label %then144, label %ifend146
+then144:
+  call void @fn_emith(ptr @.str12642)
+  br label %ifend146
+ifend146:
   call void @fn_emit_cov_runtime()
-  %t273 = load i32, ptr @g_g_emit_module
-  %t274 = icmp ne i32 %t273, 0
-  br i1 %t274, label %then142, label %ifend144
-then142:
+  %t284 = load i32, ptr @g_g_emit_module
+  %t285 = icmp ne i32 %t284, 0
+  br i1 %t285, label %then147, label %ifend149
+then147:
   call void @fn_emit_module_glue()
-  br label %ifend144
-ifend144:
+  br label %ifend149
+ifend149:
   br label %ret
 ret:
   ret void
@@ -140101,10 +140127,10 @@ ifend5:
   %t12 = load i32, ptr %t7
   %t13 = call ptr @fn_itoa(i32 %t12)
   store ptr %t13, ptr %t14
-  call void @fn_emith(ptr @.str12642)
+  call void @fn_emith(ptr @.str12643)
   %t15 = load ptr, ptr %t14
   call void @fn_emith(ptr %t15)
-  call void @fn_emith(ptr @.str12643)
+  call void @fn_emith(ptr @.str12644)
   store i32 0, ptr %t16
   br label %wcond6
 wcond6:
@@ -140121,10 +140147,10 @@ wbody7:
   %t25 = icmp ne i32 %t24, 0
   br i1 %t25, label %then9, label %ifend11
 then9:
-  call void @fn_emith(ptr @.str12644)
+  call void @fn_emith(ptr @.str12645)
   br label %ifend11
 ifend11:
-  call void @fn_emith(ptr @.str12645)
+  call void @fn_emith(ptr @.str12646)
   %t26 = load ptr, ptr @g_g_cov_lines
   %t27 = load i32, ptr %t16
   %t28 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 0
@@ -140135,7 +140161,7 @@ ifend11:
   br i1 %t32, label %ixok12, label %ixbad13
 ixbad13:
   %t33 = call ptr @lp_win_stdio(i32 2)
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t33, ptr @.fmt_bounds, ptr @.str12646, i32 %t27, i32 %t31)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t33, ptr @.fmt_bounds, ptr @.str12647, i32 %t27, i32 %t31)
   call void @exit(i32 1)
   unreachable
 ixok12:
@@ -140148,76 +140174,75 @@ ixok12:
   store i32 %t38, ptr %t16
   br label %wcond6
 wend8:
-  call void @fn_emith(ptr @.str12647)
   call void @fn_emith(ptr @.str12648)
+  call void @fn_emith(ptr @.str12649)
   %t39 = load ptr, ptr %t14
   call void @fn_emith(ptr %t39)
-  call void @fn_emith(ptr @.str12649)
+  call void @fn_emith(ptr @.str12650)
   %t40 = load ptr, ptr %t14
-  %t41 = call ptr @lp_str_concat(ptr @.str12650, ptr %t40)
-  %t42 = call ptr @lp_str_concat(ptr %t41, ptr @.str12651)
+  %t41 = call ptr @lp_str_concat(ptr @.str12651, ptr %t40)
+  %t42 = call ptr @lp_str_concat(ptr %t41, ptr @.str12652)
   call void @fn_emith(ptr %t42)
   %t43 = load ptr, ptr @g_g_src_name
   %t44 = call ptr @fn_emit_str_const(ptr %t43)
   store ptr %t44, ptr %t45
-  %t46 = call ptr @fn_emit_str_const(ptr @.str12652)
+  %t46 = call ptr @fn_emit_str_const(ptr @.str12653)
   store ptr %t46, ptr %t47
-  %t48 = call ptr @fn_emit_str_const(ptr @.str12653)
+  %t48 = call ptr @fn_emit_str_const(ptr @.str12654)
   store ptr %t48, ptr %t49
-  %t50 = call ptr @fn_emit_str_const(ptr @.str12654)
+  %t50 = call ptr @fn_emit_str_const(ptr @.str12655)
   store ptr %t50, ptr %t51
-  call void @fn_emith(ptr @.str12655)
   call void @fn_emith(ptr @.str12656)
+  call void @fn_emith(ptr @.str12657)
   %t52 = load i32, ptr @g_g_fprintf_declared
   %t53 = icmp eq i32 %t52, 0
   %t54 = zext i1 %t53 to i32
   %t55 = icmp ne i32 %t54, 0
   br i1 %t55, label %then14, label %ifend16
 then14:
-  call void @fn_emith(ptr @.str12657)
+  call void @fn_emith(ptr @.str12658)
   store i32 1, ptr @g_g_fprintf_declared
   br label %ifend16
 ifend16:
-  call void @fn_emith(ptr @.str12658)
-  call void @fn_emit(ptr @.str12659)
+  call void @fn_emith(ptr @.str12659)
+  call void @fn_emit(ptr @.str12660)
   %t56 = load ptr, ptr %t47
-  %t57 = call ptr @lp_str_concat(ptr @.str12660, ptr %t56)
-  %t58 = call ptr @lp_str_concat(ptr %t57, ptr @.str12661)
+  %t57 = call ptr @lp_str_concat(ptr @.str12661, ptr %t56)
+  %t58 = call ptr @lp_str_concat(ptr %t57, ptr @.str12662)
   call void @fn_emit(ptr %t58)
-  call void @fn_emit(ptr @.str12662)
+  call void @fn_emit(ptr @.str12663)
   %t59 = load ptr, ptr %t49
-  %t60 = call ptr @lp_str_concat(ptr @.str12663, ptr %t59)
-  %t61 = call ptr @lp_str_concat(ptr %t60, ptr @.str12664)
+  %t60 = call ptr @lp_str_concat(ptr @.str12664, ptr %t59)
+  %t61 = call ptr @lp_str_concat(ptr %t60, ptr @.str12665)
   call void @fn_emit(ptr %t61)
   %t62 = load ptr, ptr %t51
-  %t63 = call ptr @lp_str_concat(ptr @.str12665, ptr %t62)
-  %t64 = call ptr @lp_str_concat(ptr %t63, ptr @.str12666)
+  %t63 = call ptr @lp_str_concat(ptr @.str12666, ptr %t62)
+  %t64 = call ptr @lp_str_concat(ptr %t63, ptr @.str12667)
   call void @fn_emit(ptr %t64)
-  call void @fn_emit(ptr @.str12667)
   call void @fn_emit(ptr @.str12668)
   call void @fn_emit(ptr @.str12669)
+  call void @fn_emit(ptr @.str12670)
   %t65 = load ptr, ptr %t45
-  %t66 = call ptr @lp_str_concat(ptr @.str12670, ptr %t65)
-  %t67 = call ptr @lp_str_concat(ptr %t66, ptr @.str12671)
+  %t66 = call ptr @lp_str_concat(ptr @.str12671, ptr %t65)
+  %t67 = call ptr @lp_str_concat(ptr %t66, ptr @.str12672)
   call void @fn_emit(ptr %t67)
-  call void @fn_emit(ptr @.str12672)
   call void @fn_emit(ptr @.str12673)
   call void @fn_emit(ptr @.str12674)
+  call void @fn_emit(ptr @.str12675)
   %t68 = load ptr, ptr %t14
-  %t69 = call ptr @lp_str_concat(ptr @.str12675, ptr %t68)
-  %t70 = call ptr @lp_str_concat(ptr %t69, ptr @.str12676)
+  %t69 = call ptr @lp_str_concat(ptr @.str12676, ptr %t68)
+  %t70 = call ptr @lp_str_concat(ptr %t69, ptr @.str12677)
   call void @fn_emit(ptr %t70)
-  call void @fn_emit(ptr @.str12677)
   call void @fn_emit(ptr @.str12678)
   call void @fn_emit(ptr @.str12679)
+  call void @fn_emit(ptr @.str12680)
   %t71 = load ptr, ptr %t14
   call void @fn_emit(ptr %t71)
-  call void @fn_emit(ptr @.str12680)
   call void @fn_emit(ptr @.str12681)
   call void @fn_emit(ptr @.str12682)
+  call void @fn_emit(ptr @.str12683)
   %t72 = load ptr, ptr %t14
   call void @fn_emit(ptr %t72)
-  call void @fn_emit(ptr @.str12683)
   call void @fn_emit(ptr @.str12684)
   call void @fn_emit(ptr @.str12685)
   call void @fn_emit(ptr @.str12686)
@@ -140229,7 +140254,8 @@ ifend16:
   call void @fn_emit(ptr @.str12692)
   call void @fn_emit(ptr @.str12693)
   call void @fn_emit(ptr @.str12694)
-  call void @fn_emith(ptr @.str12695)
+  call void @fn_emit(ptr @.str12695)
+  call void @fn_emith(ptr @.str12696)
   br label %ret
 ret:
   ret void
@@ -140278,7 +140304,7 @@ then0:
   br label %ret
 ifend2:
   %t29 = load ptr, ptr %t0
-  %t30 = call ptr @lp_pak_open(ptr %t29, ptr @.str12696)
+  %t30 = call ptr @lp_pak_open(ptr %t29, ptr @.str12697)
   store ptr %t30, ptr %t31
   %t32 = load ptr, ptr %t31
   %t33 = icmp eq ptr %t32, null
@@ -140387,7 +140413,7 @@ then0:
   %t11 = sub i32 %t10, 6
   %t12 = load i32, ptr %t4
   %t13 = call ptr @lp_str_slice(ptr %t9, i32 %t11, i32 %t12)
-  %t14 = call i32 @lp_str_eq(ptr %t13, ptr @.str12697)
+  %t14 = call i32 @lp_str_eq(ptr %t13, ptr @.str12698)
   %t15 = icmp ne i32 %t14, 0
   br i1 %t15, label %then3, label %ifend5
 then3:
@@ -140473,7 +140499,7 @@ then3:
   br label %ret
 ifend5:
   %t20 = load ptr, ptr %t0
-  %t21 = call ptr @lp_str_concat(ptr %t20, ptr @.str12698)
+  %t21 = call ptr @lp_str_concat(ptr %t20, ptr @.str12699)
   store ptr %t21, ptr %retval
   br label %ret
 ret:
@@ -140735,16 +140761,16 @@ then0:
   %t4 = call ptr @fn_win_path(ptr %t3)
   store ptr %t4, ptr %t5
   %t6 = load ptr, ptr %t5
-  %t7 = call ptr @lp_str_concat(ptr @.str12699, ptr %t6)
-  %t8 = call ptr @lp_str_concat(ptr %t7, ptr @.str12700)
+  %t7 = call ptr @lp_str_concat(ptr @.str12700, ptr %t6)
+  %t8 = call ptr @lp_str_concat(ptr %t7, ptr @.str12701)
   %t9 = load ptr, ptr %t5
   %t10 = call ptr @lp_str_concat(ptr %t8, ptr %t9)
-  %t11 = call ptr @lp_str_concat(ptr %t10, ptr @.str12701)
+  %t11 = call ptr @lp_str_concat(ptr %t10, ptr @.str12702)
   %t12 = call i32 @system(ptr %t11)
   br label %ifend2
 else1:
   %t13 = load ptr, ptr %t0
-  %t14 = call ptr @lp_str_concat(ptr @.str12702, ptr %t13)
+  %t14 = call ptr @lp_str_concat(ptr @.str12703, ptr %t13)
   %t15 = call i32 @system(ptr %t14)
   br label %ifend2
 ifend2:
@@ -140763,13 +140789,13 @@ entry:
 then0:
   %t3 = load ptr, ptr %t0
   %t4 = call ptr @fn_win_path(ptr %t3)
-  %t5 = call ptr @lp_str_concat(ptr @.str12703, ptr %t4)
-  %t6 = call ptr @lp_str_concat(ptr %t5, ptr @.str12704)
+  %t5 = call ptr @lp_str_concat(ptr @.str12704, ptr %t4)
+  %t6 = call ptr @lp_str_concat(ptr %t5, ptr @.str12705)
   %t7 = call i32 @system(ptr %t6)
   br label %ifend2
 else1:
   %t8 = load ptr, ptr %t0
-  %t9 = call ptr @lp_str_concat(ptr @.str12705, ptr %t8)
+  %t9 = call ptr @lp_str_concat(ptr @.str12706, ptr %t8)
   %t10 = call i32 @system(ptr %t9)
   br label %ifend2
 ifend2:
@@ -140784,7 +140810,7 @@ entry:
   %t1 = alloca ptr
   %t9 = alloca ptr
   %t12 = alloca ptr
-  %t0 = call ptr @getenv(ptr @.str12706)
+  %t0 = call ptr @getenv(ptr @.str12707)
   store ptr %t0, ptr %t1
   %t2 = load ptr, ptr %t1
   %t3 = icmp ne ptr %t2, null
@@ -140800,9 +140826,9 @@ ifend2:
   %t8 = icmp ne i32 %t7, 0
   br i1 %t8, label %then3, label %ifend5
 then3:
-  store ptr @.str12707, ptr %t9
+  store ptr @.str12708, ptr %t9
   %t10 = load ptr, ptr %t9
-  %t11 = call ptr @lp_pak_open(ptr %t10, ptr @.str12708)
+  %t11 = call ptr @lp_pak_open(ptr %t10, ptr @.str12709)
   store ptr %t11, ptr %t12
   %t13 = load ptr, ptr %t12
   %t14 = icmp ne ptr %t13, null
@@ -140813,14 +140839,14 @@ then6:
   %t17 = load ptr, ptr %t12
   call i32 @fclose(ptr %t17)
   %t18 = load ptr, ptr %t9
-  %t19 = call ptr @lp_str_concat(ptr @.str12709, ptr %t18)
-  %t20 = call ptr @lp_str_concat(ptr %t19, ptr @.str12710)
+  %t19 = call ptr @lp_str_concat(ptr @.str12710, ptr %t18)
+  %t20 = call ptr @lp_str_concat(ptr %t19, ptr @.str12711)
   store ptr %t20, ptr %retval
   br label %ret
 ifend8:
   br label %ifend5
 ifend5:
-  store ptr @.str12711, ptr %retval
+  store ptr @.str12712, ptr %retval
   br label %ret
 ret:
   %t21 = load ptr, ptr %retval
@@ -140831,7 +140857,7 @@ define void @fn_show_version() {
 entry:
   %t3 = alloca ptr
   %t0 = call ptr @fn_ludic_home()
-  %t1 = call ptr @fn_join_path(ptr %t0, ptr @.str12712)
+  %t1 = call ptr @fn_join_path(ptr %t0, ptr @.str12713)
   %t2 = call ptr @fn_read_file(ptr %t1)
   store ptr %t2, ptr %t3
   %t4 = load ptr, ptr %t3
@@ -140840,12 +140866,12 @@ entry:
   %t7 = icmp ne i32 %t6, 0
   br i1 %t7, label %then0, label %else1
 then0:
-  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr @.str12713)
+  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr @.str12714)
   br label %ifend2
 else1:
   %t8 = load ptr, ptr %t3
   %t9 = call ptr @fn_chomp(ptr %t8)
-  %t10 = call ptr @lp_str_concat(ptr @.str12714, ptr %t9)
+  %t10 = call ptr @lp_str_concat(ptr @.str12715, ptr %t9)
   call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr %t10)
   br label %ifend2
 ifend2:
@@ -140857,7 +140883,7 @@ ret:
 
 define void @L_init_globals() {
 entry:
-  store ptr @.str12715, ptr @g_g_parse_file
+  store ptr @.str12716, ptr @g_g_parse_file
   %t0 = getelementptr %LSlice, ptr null, i32 1
   %t1 = ptrtoint ptr %t0 to i64
   %t2 = call ptr @malloc(i64 %t1)
@@ -140908,7 +140934,7 @@ entry:
   %t29 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 2
   store i32 0, ptr %t29
   store ptr %t26, ptr @g_g_mod_friends
-  store ptr @.str12716, ptr @g_g_err_file
+  store ptr @.str12717, ptr @g_g_err_file
   %t30 = getelementptr %LSlice, ptr null, i32 1
   %t31 = ptrtoint ptr %t30 to i64
   %t32 = call ptr @malloc(i64 %t31)
@@ -141099,7 +141125,7 @@ entry:
   %t143 = getelementptr inbounds %LSlice, ptr %t140, i32 0, i32 2
   store i32 0, ptr %t143
   store ptr %t140, ptr @g_g_pk_name
-  store ptr @.str12717, ptr @g_g_mu_done
+  store ptr @.str12718, ptr @g_g_mu_done
   %t144 = getelementptr %LSlice, ptr null, i32 1
   %t145 = ptrtoint ptr %t144 to i64
   %t146 = call ptr @malloc(i64 %t145)
@@ -141470,8 +141496,8 @@ entry:
   %t365 = getelementptr inbounds %LSlice, ptr %t362, i32 0, i32 2
   store i32 0, ptr %t365
   store ptr %t362, ptr @g_g_cm_head
-  store ptr @.str12718, ptr @g_g_src_name
-  store ptr @.str12719, ptr @g_g_ret_label
+  store ptr @.str12719, ptr @g_g_src_name
+  store ptr @.str12720, ptr @g_g_ret_label
   %t366 = getelementptr %LSlice, ptr null, i32 1
   %t367 = ptrtoint ptr %t366 to i64
   %t368 = call ptr @malloc(i64 %t367)
@@ -141482,7 +141508,7 @@ entry:
   %t371 = getelementptr inbounds %LSlice, ptr %t368, i32 0, i32 2
   store i32 0, ptr %t371
   store ptr %t368, ptr @g_g_det_names
-  store ptr @.str12720, ptr @g_g_det_ctx
+  store ptr @.str12721, ptr @g_g_det_ctx
   %t372 = getelementptr %LSlice, ptr null, i32 1
   %t373 = ptrtoint ptr %t372 to i64
   %t374 = call ptr @malloc(i64 %t373)
@@ -141603,7 +141629,7 @@ entry:
   %t443 = getelementptr inbounds %LSlice, ptr %t440, i32 0, i32 2
   store i32 0, ptr %t443
   store ptr %t440, ptr @g_ck_tys
-  store ptr @.str12721, ptr @g_ck_ret
+  store ptr @.str12722, ptr @g_ck_ret
   %t444 = getelementptr %LSlice, ptr null, i32 1
   %t445 = ptrtoint ptr %t444 to i64
   %t446 = call ptr @malloc(i64 %t445)
@@ -141747,7 +141773,7 @@ wbody1:
   %t26 = load ptr, ptr %t25
   store ptr %t26, ptr %t27
   %t28 = load ptr, ptr %t27
-  %t29 = call i32 @lp_str_eq(ptr %t28, ptr @.str12722)
+  %t29 = call i32 @lp_str_eq(ptr %t28, ptr @.str12723)
   %t30 = icmp ne i32 %t29, 0
   br i1 %t30, label %then3, label %else4
 then3:
@@ -141755,7 +141781,7 @@ then3:
   br label %ifend5
 else4:
   %t31 = load ptr, ptr %t27
-  %t32 = call i32 @lp_str_eq(ptr %t31, ptr @.str12723)
+  %t32 = call i32 @lp_str_eq(ptr %t31, ptr @.str12724)
   %t33 = icmp ne i32 %t32, 0
   br i1 %t33, label %then6, label %else7
 then6:
@@ -141763,7 +141789,7 @@ then6:
   br label %ifend8
 else7:
   %t34 = load ptr, ptr %t27
-  %t35 = call i32 @lp_str_eq(ptr %t34, ptr @.str12724)
+  %t35 = call i32 @lp_str_eq(ptr %t34, ptr @.str12725)
   %t36 = icmp ne i32 %t35, 0
   br i1 %t36, label %then9, label %else10
 then9:
@@ -141771,7 +141797,7 @@ then9:
   br label %ifend11
 else10:
   %t37 = load ptr, ptr %t27
-  %t38 = call i32 @lp_str_eq(ptr %t37, ptr @.str12725)
+  %t38 = call i32 @lp_str_eq(ptr %t37, ptr @.str12726)
   %t39 = icmp ne i32 %t38, 0
   br i1 %t39, label %then12, label %else13
 then12:
@@ -141779,7 +141805,7 @@ then12:
   br label %ifend14
 else13:
   %t40 = load ptr, ptr %t27
-  %t41 = call i32 @lp_str_eq(ptr %t40, ptr @.str12726)
+  %t41 = call i32 @lp_str_eq(ptr %t40, ptr @.str12727)
   %t42 = icmp ne i32 %t41, 0
   br i1 %t42, label %then15, label %else16
 then15:
@@ -141787,7 +141813,7 @@ then15:
   br label %ifend17
 else16:
   %t43 = load ptr, ptr %t27
-  %t44 = call i32 @lp_str_eq(ptr %t43, ptr @.str12727)
+  %t44 = call i32 @lp_str_eq(ptr %t43, ptr @.str12728)
   %t45 = icmp ne i32 %t44, 0
   br i1 %t45, label %then18, label %else19
 then18:
@@ -141796,7 +141822,7 @@ then18:
   br label %ifend20
 else19:
   %t46 = load ptr, ptr %t27
-  %t47 = call i32 @lp_str_eq(ptr %t46, ptr @.str12728)
+  %t47 = call i32 @lp_str_eq(ptr %t46, ptr @.str12729)
   %t48 = icmp ne i32 %t47, 0
   br i1 %t48, label %then21, label %else22
 then21:
@@ -141804,7 +141830,7 @@ then21:
   br label %ifend23
 else22:
   %t49 = load ptr, ptr %t27
-  %t50 = call i32 @lp_str_eq(ptr %t49, ptr @.str12729)
+  %t50 = call i32 @lp_str_eq(ptr %t49, ptr @.str12730)
   %t51 = icmp ne i32 %t50, 0
   br i1 %t51, label %then24, label %else25
 then24:
@@ -141812,7 +141838,7 @@ then24:
   br label %ifend26
 else25:
   %t52 = load ptr, ptr %t27
-  %t53 = call i32 @lp_str_eq(ptr %t52, ptr @.str12730)
+  %t53 = call i32 @lp_str_eq(ptr %t52, ptr @.str12731)
   %t54 = icmp ne i32 %t53, 0
   br i1 %t54, label %then27, label %else28
 then27:
@@ -141820,7 +141846,7 @@ then27:
   br label %ifend29
 else28:
   %t55 = load ptr, ptr %t27
-  %t56 = call i32 @lp_str_eq(ptr %t55, ptr @.str12731)
+  %t56 = call i32 @lp_str_eq(ptr %t55, ptr @.str12732)
   %t57 = icmp ne i32 %t56, 0
   br i1 %t57, label %then30, label %else31
 then30:
@@ -141828,7 +141854,7 @@ then30:
   br label %ifend32
 else31:
   %t58 = load ptr, ptr %t27
-  %t59 = call i32 @lp_str_eq(ptr %t58, ptr @.str12732)
+  %t59 = call i32 @lp_str_eq(ptr %t58, ptr @.str12733)
   %t60 = icmp ne i32 %t59, 0
   br i1 %t60, label %then33, label %else34
 then33:
@@ -141852,7 +141878,7 @@ ifend38:
   br label %ifend35
 else34:
   %t72 = load ptr, ptr %t27
-  %t73 = call i32 @lp_str_eq(ptr %t72, ptr @.str12733)
+  %t73 = call i32 @lp_str_eq(ptr %t72, ptr @.str12734)
   %t74 = icmp ne i32 %t73, 0
   br i1 %t74, label %then39, label %else40
 then39:
@@ -141860,7 +141886,7 @@ then39:
   br label %ifend41
 else40:
   %t75 = load ptr, ptr %t27
-  %t76 = call i32 @lp_str_eq(ptr %t75, ptr @.str12734)
+  %t76 = call i32 @lp_str_eq(ptr %t75, ptr @.str12735)
   %t77 = icmp ne i32 %t76, 0
   br i1 %t77, label %then42, label %else43
 then42:
@@ -141884,7 +141910,7 @@ ifend47:
   br label %ifend44
 else43:
   %t89 = load ptr, ptr %t27
-  %t90 = call i32 @lp_str_eq(ptr %t89, ptr @.str12735)
+  %t90 = call i32 @lp_str_eq(ptr %t89, ptr @.str12736)
   %t91 = icmp ne i32 %t90, 0
   br i1 %t91, label %then48, label %else49
 then48:
@@ -141934,7 +141960,7 @@ ifend53:
   br label %ifend50
 else49:
   %t122 = load ptr, ptr %t27
-  %t123 = call i32 @lp_str_eq(ptr %t122, ptr @.str12736)
+  %t123 = call i32 @lp_str_eq(ptr %t122, ptr @.str12737)
   %t124 = icmp ne i32 %t123, 0
   br i1 %t124, label %then56, label %else57
 then56:
@@ -141967,8 +141993,8 @@ else57:
   br i1 %t142, label %then62, label %else63
 then62:
   %t143 = load ptr, ptr %t27
-  %t144 = call ptr @lp_str_concat(ptr @.str12737, ptr %t143)
-  %t145 = call ptr @lp_str_concat(ptr %t144, ptr @.str12738)
+  %t144 = call ptr @lp_str_concat(ptr @.str12738, ptr %t143)
+  %t145 = call ptr @lp_str_concat(ptr %t144, ptr @.str12739)
   store ptr %t145, ptr %t146
   %t147 = call ptr @lp_win_stdio(i32 2)
   %t148 = load ptr, ptr %t146
@@ -142025,7 +142051,7 @@ wend2:
   %t161 = icmp ne i32 %t160, 0
   br i1 %t161, label %then65, label %ifend67
 then65:
-  call void @fn_die(ptr @.str12739)
+  call void @fn_die(ptr @.str12740)
   br label %ifend67
 ifend67:
   %t162 = load ptr, ptr %t7
@@ -142035,7 +142061,7 @@ ifend67:
   br i1 %t165, label %then68, label %else69
 then68:
   %t166 = load ptr, ptr %t7
-  %t167 = call i32 @fn_has_sub(ptr %t166, ptr @.str12740)
+  %t167 = call i32 @fn_has_sub(ptr %t166, ptr @.str12741)
   store i32 %t167, ptr @g_g_target_win
   br label %ifend70
 else69:
@@ -142052,7 +142078,7 @@ ifend70:
   %t175 = icmp ne i32 %t174, 0
   br i1 %t175, label %then71, label %ifend73
 then71:
-  call void @fn_die(ptr @.str12741)
+  call void @fn_die(ptr @.str12742)
   br label %ifend73
 ifend73:
   %t176 = load ptr, ptr %t0
@@ -142202,9 +142228,9 @@ then100:
   %t251 = icmp ne i32 %t250, 0
   br i1 %t251, label %then103, label %else104
 then103:
-  %t252 = call ptr @fn_getenv_or(ptr @.str12742, ptr @.str12743)
+  %t252 = call ptr @fn_getenv_or(ptr @.str12743, ptr @.str12744)
   %t253 = call ptr @fn_fwd_slashes(ptr %t252)
-  %t254 = call ptr @lp_str_concat(ptr %t253, ptr @.str12744)
+  %t254 = call ptr @lp_str_concat(ptr %t253, ptr @.str12745)
   %t255 = load ptr, ptr %t0
   %t256 = call ptr @fn_base_name(ptr %t255)
   %t257 = call ptr @fn_strip_ludic(ptr %t256)
@@ -142215,7 +142241,7 @@ else104:
   %t259 = load ptr, ptr %t0
   %t260 = call ptr @fn_base_name(ptr %t259)
   %t261 = call ptr @fn_strip_ludic(ptr %t260)
-  %t262 = call ptr @lp_str_concat(ptr @.str12745, ptr %t261)
+  %t262 = call ptr @lp_str_concat(ptr @.str12746, ptr %t261)
   store ptr %t262, ptr %t1
   br label %ifend105
 ifend105:
@@ -142241,7 +142267,7 @@ then109:
   %t276 = sub i32 %t275, 4
   %t277 = load i32, ptr %t268
   %t278 = call ptr @lp_str_slice(ptr %t274, i32 %t276, i32 %t277)
-  %t279 = call i32 @lp_str_eq(ptr %t278, ptr @.str12746)
+  %t279 = call i32 @lp_str_eq(ptr %t278, ptr @.str12747)
   store i32 %t279, ptr %t269
   br label %ifend111
 ifend111:
@@ -142252,7 +142278,7 @@ ifend111:
   br i1 %t283, label %then112, label %ifend114
 then112:
   %t284 = load ptr, ptr %t1
-  %t285 = call ptr @lp_str_concat(ptr %t284, ptr @.str12747)
+  %t285 = call ptr @lp_str_concat(ptr %t284, ptr @.str12748)
   store ptr %t285, ptr %t1
   br label %ifend114
 ifend114:
@@ -142274,7 +142300,7 @@ then115:
   br label %ifend117
 ifend117:
   %t296 = load ptr, ptr %t1
-  %t297 = call ptr @lp_str_concat(ptr %t296, ptr @.str12748)
+  %t297 = call ptr @lp_str_concat(ptr %t296, ptr @.str12749)
   store ptr %t297, ptr %t298
   %t299 = load ptr, ptr %t298
   %t300 = call i32 @fn_ir_flush(ptr %t299)
@@ -142283,7 +142309,7 @@ ifend117:
   %t303 = icmp ne i32 %t302, 0
   br i1 %t303, label %then118, label %ifend120
 then118:
-  call void @fn_die(ptr @.str12749)
+  call void @fn_die(ptr @.str12750)
   br label %ifend120
 ifend120:
   %t304 = call ptr @fn_find_cc()
@@ -142291,7 +142317,7 @@ ifend120:
   %t306 = call ptr @fn_ludic_home()
   store ptr %t306, ptr %t307
   %t308 = load ptr, ptr %t305
-  %t309 = call ptr @lp_str_concat(ptr %t308, ptr @.str12750)
+  %t309 = call ptr @lp_str_concat(ptr %t308, ptr @.str12751)
   %t310 = load ptr, ptr %t298
   %t311 = call ptr @lp_str_concat(ptr %t309, ptr %t310)
   store ptr %t311, ptr %t312
@@ -142304,26 +142330,26 @@ then121:
   br i1 %t316, label %then124, label %ifend126
 then124:
   %t317 = load ptr, ptr %t307
-  %t318 = call ptr @fn_join_path(ptr %t317, ptr @.str12751)
+  %t318 = call ptr @fn_join_path(ptr %t317, ptr @.str12752)
   store ptr %t318, ptr %t319
   %t320 = load ptr, ptr %t312
-  %t321 = call ptr @lp_str_concat(ptr %t320, ptr @.str12752)
+  %t321 = call ptr @lp_str_concat(ptr %t320, ptr @.str12753)
   %t322 = load ptr, ptr %t319
   %t323 = call ptr @lp_str_concat(ptr %t321, ptr %t322)
-  %t324 = call ptr @lp_str_concat(ptr %t323, ptr @.str12753)
+  %t324 = call ptr @lp_str_concat(ptr %t323, ptr @.str12754)
   store ptr %t324, ptr %t312
   %t325 = load i32, ptr @g_g_uses_audio
   %t326 = icmp ne i32 %t325, 0
   br i1 %t326, label %then127, label %ifend129
 then127:
   %t327 = load ptr, ptr %t307
-  %t328 = call ptr @fn_join_path(ptr %t327, ptr @.str12754)
+  %t328 = call ptr @fn_join_path(ptr %t327, ptr @.str12755)
   store ptr %t328, ptr %t329
   %t330 = load ptr, ptr %t312
-  %t331 = call ptr @lp_str_concat(ptr %t330, ptr @.str12755)
+  %t331 = call ptr @lp_str_concat(ptr %t330, ptr @.str12756)
   %t332 = load ptr, ptr %t329
   %t333 = call ptr @lp_str_concat(ptr %t331, ptr %t332)
-  %t334 = call ptr @lp_str_concat(ptr %t333, ptr @.str12756)
+  %t334 = call ptr @lp_str_concat(ptr %t333, ptr @.str12757)
   store ptr %t334, ptr %t312
   br label %ifend129
 ifend129:
@@ -142336,26 +142362,26 @@ else122:
   br i1 %t336, label %then130, label %ifend132
 then130:
   %t337 = load ptr, ptr %t307
-  %t338 = call ptr @fn_join_path(ptr %t337, ptr @.str12757)
+  %t338 = call ptr @fn_join_path(ptr %t337, ptr @.str12758)
   store ptr %t338, ptr %t339
   %t340 = load ptr, ptr %t312
-  %t341 = call ptr @lp_str_concat(ptr %t340, ptr @.str12758)
+  %t341 = call ptr @lp_str_concat(ptr %t340, ptr @.str12759)
   %t342 = load ptr, ptr %t339
   %t343 = call ptr @lp_str_concat(ptr %t341, ptr %t342)
-  %t344 = call ptr @lp_str_concat(ptr %t343, ptr @.str12759)
+  %t344 = call ptr @lp_str_concat(ptr %t343, ptr @.str12760)
   store ptr %t344, ptr %t312
   %t345 = load i32, ptr @g_g_uses_audio
   %t346 = icmp ne i32 %t345, 0
   br i1 %t346, label %then133, label %ifend135
 then133:
   %t347 = load ptr, ptr %t307
-  %t348 = call ptr @fn_join_path(ptr %t347, ptr @.str12760)
+  %t348 = call ptr @fn_join_path(ptr %t347, ptr @.str12761)
   store ptr %t348, ptr %t349
   %t350 = load ptr, ptr %t312
-  %t351 = call ptr @lp_str_concat(ptr %t350, ptr @.str12761)
+  %t351 = call ptr @lp_str_concat(ptr %t350, ptr @.str12762)
   %t352 = load ptr, ptr %t349
   %t353 = call ptr @lp_str_concat(ptr %t351, ptr %t352)
-  %t354 = call ptr @lp_str_concat(ptr %t353, ptr @.str12762)
+  %t354 = call ptr @lp_str_concat(ptr %t353, ptr @.str12763)
   store ptr %t354, ptr %t312
   br label %ifend135
 ifend135:
@@ -142372,17 +142398,17 @@ then136:
   br i1 %t358, label %then139, label %else140
 then139:
   %t359 = load ptr, ptr %t312
-  %t360 = call ptr @lp_str_concat(ptr %t359, ptr @.str12763)
+  %t360 = call ptr @lp_str_concat(ptr %t359, ptr @.str12764)
   %t361 = load ptr, ptr %t307
-  %t362 = call ptr @fn_join_path(ptr %t361, ptr @.str12764)
+  %t362 = call ptr @fn_join_path(ptr %t361, ptr @.str12765)
   %t363 = call ptr @lp_str_concat(ptr %t360, ptr %t362)
   store ptr %t363, ptr %t312
   br label %ifend141
 else140:
   %t364 = load ptr, ptr %t312
-  %t365 = call ptr @lp_str_concat(ptr %t364, ptr @.str12765)
+  %t365 = call ptr @lp_str_concat(ptr %t364, ptr @.str12766)
   %t366 = load ptr, ptr %t307
-  %t367 = call ptr @fn_join_path(ptr %t366, ptr @.str12766)
+  %t367 = call ptr @fn_join_path(ptr %t366, ptr @.str12767)
   %t368 = call ptr @lp_str_concat(ptr %t365, ptr %t367)
   store ptr %t368, ptr %t312
   br label %ifend141
@@ -142398,18 +142424,18 @@ then142:
   br i1 %t372, label %then145, label %else146
 then145:
   %t373 = load ptr, ptr %t312
-  %t374 = call ptr @lp_str_concat(ptr %t373, ptr @.str12767)
+  %t374 = call ptr @lp_str_concat(ptr %t373, ptr @.str12768)
   %t375 = load ptr, ptr %t307
-  %t376 = call ptr @fn_join_path(ptr %t375, ptr @.str12768)
+  %t376 = call ptr @fn_join_path(ptr %t375, ptr @.str12769)
   %t377 = call ptr @lp_str_concat(ptr %t374, ptr %t376)
-  %t378 = call ptr @lp_str_concat(ptr %t377, ptr @.str12769)
+  %t378 = call ptr @lp_str_concat(ptr %t377, ptr @.str12770)
   store ptr %t378, ptr %t312
   br label %ifend147
 else146:
   %t379 = load ptr, ptr %t312
-  %t380 = call ptr @lp_str_concat(ptr %t379, ptr @.str12770)
+  %t380 = call ptr @lp_str_concat(ptr %t379, ptr @.str12771)
   %t381 = load ptr, ptr %t307
-  %t382 = call ptr @fn_join_path(ptr %t381, ptr @.str12771)
+  %t382 = call ptr @fn_join_path(ptr %t381, ptr @.str12772)
   %t383 = call ptr @lp_str_concat(ptr %t380, ptr %t382)
   store ptr %t383, ptr %t312
   br label %ifend147
@@ -142433,7 +142459,7 @@ scend149:
   br i1 %t392, label %then150, label %ifend152
 then150:
   %t393 = load ptr, ptr %t312
-  %t394 = call ptr @lp_str_concat(ptr %t393, ptr @.str12772)
+  %t394 = call ptr @lp_str_concat(ptr %t393, ptr @.str12773)
   store ptr %t394, ptr %t312
   br label %ifend152
 ifend152:
@@ -142446,17 +142472,17 @@ then153:
   br i1 %t398, label %then156, label %else157
 then156:
   %t399 = load ptr, ptr %t312
-  %t400 = call ptr @lp_str_concat(ptr %t399, ptr @.str12773)
+  %t400 = call ptr @lp_str_concat(ptr %t399, ptr @.str12774)
   %t401 = load ptr, ptr %t307
-  %t402 = call ptr @fn_join_path(ptr %t401, ptr @.str12774)
+  %t402 = call ptr @fn_join_path(ptr %t401, ptr @.str12775)
   %t403 = call ptr @lp_str_concat(ptr %t400, ptr %t402)
   store ptr %t403, ptr %t312
   br label %ifend158
 else157:
   %t404 = load ptr, ptr %t312
-  %t405 = call ptr @lp_str_concat(ptr %t404, ptr @.str12775)
+  %t405 = call ptr @lp_str_concat(ptr %t404, ptr @.str12776)
   %t406 = load ptr, ptr %t307
-  %t407 = call ptr @fn_join_path(ptr %t406, ptr @.str12776)
+  %t407 = call ptr @fn_join_path(ptr %t406, ptr @.str12777)
   %t408 = call ptr @lp_str_concat(ptr %t405, ptr %t407)
   store ptr %t408, ptr %t312
   br label %ifend158
@@ -142472,24 +142498,24 @@ then159:
   br i1 %t412, label %then162, label %else163
 then162:
   %t413 = load ptr, ptr %t307
-  %t414 = call ptr @fn_join_path(ptr %t413, ptr @.str12777)
+  %t414 = call ptr @fn_join_path(ptr %t413, ptr @.str12778)
   store ptr %t414, ptr %t415
   %t416 = load ptr, ptr %t312
-  %t417 = call ptr @lp_str_concat(ptr %t416, ptr @.str12778)
+  %t417 = call ptr @lp_str_concat(ptr %t416, ptr @.str12779)
   %t418 = load ptr, ptr %t415
   %t419 = call ptr @lp_str_concat(ptr %t417, ptr %t418)
-  %t420 = call ptr @lp_str_concat(ptr %t419, ptr @.str12779)
+  %t420 = call ptr @lp_str_concat(ptr %t419, ptr @.str12780)
   store ptr %t420, ptr %t312
   br label %ifend164
 else163:
   %t421 = load ptr, ptr %t307
-  %t422 = call ptr @fn_join_path(ptr %t421, ptr @.str12780)
+  %t422 = call ptr @fn_join_path(ptr %t421, ptr @.str12781)
   store ptr %t422, ptr %t423
   %t424 = load ptr, ptr %t312
-  %t425 = call ptr @lp_str_concat(ptr %t424, ptr @.str12781)
+  %t425 = call ptr @lp_str_concat(ptr %t424, ptr @.str12782)
   %t426 = load ptr, ptr %t423
   %t427 = call ptr @lp_str_concat(ptr %t425, ptr %t426)
-  %t428 = call ptr @lp_str_concat(ptr %t427, ptr @.str12782)
+  %t428 = call ptr @lp_str_concat(ptr %t427, ptr @.str12783)
   store ptr %t428, ptr %t312
   br label %ifend164
 ifend164:
@@ -142504,51 +142530,51 @@ then165:
   br i1 %t432, label %then168, label %else169
 then168:
   %t433 = load ptr, ptr %t307
-  %t434 = call ptr @fn_join_path(ptr %t433, ptr @.str12783)
+  %t434 = call ptr @fn_join_path(ptr %t433, ptr @.str12784)
   store ptr %t434, ptr %t435
   %t436 = load ptr, ptr %t307
-  %t437 = call ptr @fn_join_path(ptr %t436, ptr @.str12784)
+  %t437 = call ptr @fn_join_path(ptr %t436, ptr @.str12785)
   store ptr %t437, ptr %t438
   %t439 = load ptr, ptr %t307
-  %t440 = call ptr @fn_join_path(ptr %t439, ptr @.str12785)
+  %t440 = call ptr @fn_join_path(ptr %t439, ptr @.str12786)
   store ptr %t440, ptr %t441
   %t442 = load i32, ptr @g_g_windowed
   %t443 = icmp ne i32 %t442, 0
   br i1 %t443, label %then171, label %ifend173
 then171:
   %t444 = load ptr, ptr %t307
-  %t445 = call ptr @fn_join_path(ptr %t444, ptr @.str12786)
+  %t445 = call ptr @fn_join_path(ptr %t444, ptr @.str12787)
   store ptr %t445, ptr %t441
   br label %ifend173
 ifend173:
   %t446 = load ptr, ptr %t312
-  %t447 = call ptr @lp_str_concat(ptr %t446, ptr @.str12787)
+  %t447 = call ptr @lp_str_concat(ptr %t446, ptr @.str12788)
   %t448 = load ptr, ptr %t435
   %t449 = call ptr @lp_str_concat(ptr %t447, ptr %t448)
-  %t450 = call ptr @lp_str_concat(ptr %t449, ptr @.str12788)
+  %t450 = call ptr @lp_str_concat(ptr %t449, ptr @.str12789)
   %t451 = load ptr, ptr %t438
   %t452 = call ptr @lp_str_concat(ptr %t450, ptr %t451)
-  %t453 = call ptr @lp_str_concat(ptr %t452, ptr @.str12789)
+  %t453 = call ptr @lp_str_concat(ptr %t452, ptr @.str12790)
   %t454 = load ptr, ptr %t441
   %t455 = call ptr @lp_str_concat(ptr %t453, ptr %t454)
-  %t456 = call ptr @lp_str_concat(ptr %t455, ptr @.str12790)
+  %t456 = call ptr @lp_str_concat(ptr %t455, ptr @.str12791)
   store ptr %t456, ptr %t312
   br label %ifend170
 else169:
   %t457 = load ptr, ptr %t307
-  %t458 = call ptr @fn_join_path(ptr %t457, ptr @.str12791)
+  %t458 = call ptr @fn_join_path(ptr %t457, ptr @.str12792)
   store ptr %t458, ptr %t459
   %t460 = load ptr, ptr %t307
-  %t461 = call ptr @fn_join_path(ptr %t460, ptr @.str12792)
+  %t461 = call ptr @fn_join_path(ptr %t460, ptr @.str12793)
   store ptr %t461, ptr %t462
   %t463 = load ptr, ptr %t312
-  %t464 = call ptr @lp_str_concat(ptr %t463, ptr @.str12793)
+  %t464 = call ptr @lp_str_concat(ptr %t463, ptr @.str12794)
   %t465 = load ptr, ptr %t459
   %t466 = call ptr @lp_str_concat(ptr %t464, ptr %t465)
-  %t467 = call ptr @lp_str_concat(ptr %t466, ptr @.str12794)
+  %t467 = call ptr @lp_str_concat(ptr %t466, ptr @.str12795)
   %t468 = load ptr, ptr %t462
   %t469 = call ptr @lp_str_concat(ptr %t467, ptr %t468)
-  %t470 = call ptr @lp_str_concat(ptr %t469, ptr @.str12795)
+  %t470 = call ptr @lp_str_concat(ptr %t469, ptr @.str12796)
   store ptr %t470, ptr %t312
   br label %ifend170
 ifend170:
@@ -142559,25 +142585,25 @@ ifend167:
   br i1 %t472, label %then174, label %ifend176
 then174:
   %t473 = load ptr, ptr %t307
-  %t474 = call ptr @fn_join_path(ptr %t473, ptr @.str12796)
+  %t474 = call ptr @fn_join_path(ptr %t473, ptr @.str12797)
   store ptr %t474, ptr %t475
   %t476 = load ptr, ptr %t307
-  %t477 = call ptr @fn_join_path(ptr %t476, ptr @.str12797)
+  %t477 = call ptr @fn_join_path(ptr %t476, ptr @.str12798)
   store ptr %t477, ptr %t478
   %t479 = load i32, ptr @g_g_target_win
   %t480 = icmp ne i32 %t479, 0
   br i1 %t480, label %then177, label %ifend179
 then177:
   %t481 = load ptr, ptr %t307
-  %t482 = call ptr @fn_join_path(ptr %t481, ptr @.str12798)
+  %t482 = call ptr @fn_join_path(ptr %t481, ptr @.str12799)
   store ptr %t482, ptr %t478
   br label %ifend179
 ifend179:
   %t483 = load ptr, ptr %t312
-  %t484 = call ptr @lp_str_concat(ptr %t483, ptr @.str12799)
+  %t484 = call ptr @lp_str_concat(ptr %t483, ptr @.str12800)
   %t485 = load ptr, ptr %t475
   %t486 = call ptr @lp_str_concat(ptr %t484, ptr %t485)
-  %t487 = call ptr @lp_str_concat(ptr %t486, ptr @.str12800)
+  %t487 = call ptr @lp_str_concat(ptr %t486, ptr @.str12801)
   %t488 = load ptr, ptr %t478
   %t489 = call ptr @lp_str_concat(ptr %t487, ptr %t488)
   store ptr %t489, ptr %t312
@@ -142600,7 +142626,7 @@ scend181:
   br i1 %t498, label %then182, label %ifend184
 then182:
   %t499 = load ptr, ptr %t312
-  %t500 = call ptr @lp_str_concat(ptr %t499, ptr @.str12801)
+  %t500 = call ptr @lp_str_concat(ptr %t499, ptr @.str12802)
   store ptr %t500, ptr %t312
   br label %ifend184
 ifend184:
@@ -142617,7 +142643,7 @@ wcond185:
   br i1 %t508, label %wbody186, label %wend187
 wbody186:
   %t509 = load ptr, ptr %t312
-  %t510 = call ptr @lp_str_concat(ptr %t509, ptr @.str12802)
+  %t510 = call ptr @lp_str_concat(ptr %t509, ptr @.str12803)
   %t511 = load ptr, ptr %t16
   %t512 = load i32, ptr %t501
   %t513 = getelementptr inbounds %LSlice, ptr %t511, i32 0, i32 0
@@ -142628,14 +142654,14 @@ wbody186:
   br i1 %t517, label %ixok188, label %ixbad189
 ixbad189:
   %t518 = call ptr @lp_win_stdio(i32 2)
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t518, ptr @.fmt_bounds, ptr @.str12803, i32 %t512, i32 %t516)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t518, ptr @.fmt_bounds, ptr @.str12804, i32 %t512, i32 %t516)
   call void @exit(i32 1)
   unreachable
 ixok188:
   %t519 = getelementptr inbounds ptr, ptr %t514, i32 %t512
   %t520 = load ptr, ptr %t519
   %t521 = call ptr @lp_str_concat(ptr %t510, ptr %t520)
-  %t522 = call ptr @lp_str_concat(ptr %t521, ptr @.str12804)
+  %t522 = call ptr @lp_str_concat(ptr %t521, ptr @.str12805)
   store ptr %t522, ptr %t312
   %t523 = load i32, ptr %t501
   %t524 = add i32 %t523, 1
@@ -142643,7 +142669,7 @@ ixok188:
   br label %wcond185
 wend187:
   %t525 = load ptr, ptr %t312
-  %t526 = call ptr @lp_str_concat(ptr %t525, ptr @.str12805)
+  %t526 = call ptr @lp_str_concat(ptr %t525, ptr @.str12806)
   %t527 = load ptr, ptr %t1
   %t528 = call ptr @lp_str_concat(ptr %t526, ptr %t527)
   store ptr %t528, ptr %t312
@@ -142654,8 +142680,8 @@ wend187:
   br i1 %t532, label %then190, label %ifend192
 then190:
   %t533 = load ptr, ptr %t312
-  %t534 = call ptr @lp_str_concat(ptr @.str12806, ptr %t533)
-  %t535 = call ptr @lp_str_concat(ptr %t534, ptr @.str12807)
+  %t534 = call ptr @lp_str_concat(ptr @.str12807, ptr %t533)
+  %t535 = call ptr @lp_str_concat(ptr %t534, ptr @.str12808)
   store ptr %t535, ptr %t530
   br label %ifend192
 ifend192:
@@ -142678,7 +142704,7 @@ ifend195:
   %t547 = icmp ne i32 %t546, 0
   br i1 %t547, label %then196, label %ifend198
 then196:
-  call void @fn_die(ptr @.str12808)
+  call void @fn_die(ptr @.str12809)
   br label %ifend198
 ifend198:
   %t548 = load i32, ptr %t6
@@ -142691,8 +142717,8 @@ then199:
 then202:
   %t552 = load ptr, ptr %t1
   %t553 = call ptr @fn_win_path(ptr %t552)
-  %t554 = call ptr @lp_str_concat(ptr @.str12809, ptr %t553)
-  %t555 = call ptr @lp_str_concat(ptr %t554, ptr @.str12810)
+  %t554 = call ptr @lp_str_concat(ptr @.str12810, ptr %t553)
+  %t555 = call ptr @lp_str_concat(ptr %t554, ptr @.str12811)
   %t556 = call i32 @system(ptr %t555)
   call void @exit(i32 %t556)
   unreachable
