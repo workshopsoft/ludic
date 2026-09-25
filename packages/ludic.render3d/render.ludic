@@ -97,9 +97,9 @@ function r3d_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
   if not gpu_open(render3d_st, w, h, title) { print("r3d: no OpenGL context");  return false }
   if r3d_env_has(render3d_st, "R3D_NOVSYNC") { gpu_vsync(render3d_st, 0) }
   var renderer: string = gpu_renderer_name(render3d_st)
-  print(`r3d: {gl_w}x{gl_h} on {renderer}`)
+  print(`r3d: {gl_width()}x{gl_height()} on {renderer}`)
   prof_init(render3d_st)
-  cam_init(render3d_st, float(gl_w) / float(gl_h))
+  cam_init(render3d_st, float(gl_width()) / float(gl_height()))
   return true
 }
 
@@ -124,7 +124,7 @@ function r3d_load_step(render3d_st: mut Render3dState, i: int) -> bool {
     terrain_init_step(render3d_st, t)
   } else if i == 1 + TERRAIN_INIT_STEPS {
     shadow_init(render3d_st)
-    post_init(render3d_st, gl_w, gl_h)
+    post_init(render3d_st, gl_width(), gl_height())
   } else if i == 2 + TERRAIN_INIT_STEPS {
     scatter_init(render3d_st)
     actor_init(render3d_st)
@@ -169,12 +169,12 @@ function r3d_present(render3d_st: mut Render3dState) -> void { gpu_present(rende
 
 # the drawable changed size: the camera's aspect and every screen-sized target follow
 function r3d_resize(render3d_st: mut Render3dState) -> void {
-  render3d_st.cam_aspect = float(gl_w) / float(gl_h)
+  render3d_st.cam_aspect = float(gl_width()) / float(gl_height())
   cam_update(render3d_st)
   post_free(render3d_st)
-  post_init(render3d_st, gl_w, gl_h)
+  post_init(render3d_st, gl_width(), gl_height())
   if render3d_st.water_refl != null { target_free(render3d_st, render3d_st.water_refl);  render3d_st.water_refl = null }
-  print(`r3d: resized to {gl_w}x{gl_h}`)
+  print(`r3d: resized to {gl_width()}x{gl_height()}`)
 }
 function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
   gpu_glcheck_after(render3d_st, "the time between frames")
@@ -194,7 +194,7 @@ function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
     if step == 1 { w = 1440;  h = 810 }
     if step == 2 { w = 2560;  h = 1440 }
     if step == 3 { w = 1281;  h = 721 }
-    gl_w = w;  gl_h = h
+    gl_set_drawable(w, h)
     r3d_resize(render3d_st)
   }
   render3d_st.r3d_time = time
@@ -203,7 +203,7 @@ function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
   # covers is exactly one frame, from this point to the same point next time
   prof_gen_frame(render3d_st)
   prof_mark_start(render3d_st)
-  cam_begin_frame(render3d_st, render3d_st.post_frame, gl_w, gl_h)
+  cam_begin_frame(render3d_st, render3d_st.post_frame, gl_width(), gl_height())
   # R3D_CAM_LOG=1: the camera each frame, in millimetres and thousandths of a radian - to tell a
   # camera that moves while the hiker stands still from a picture that shakes on its own
   if render3d_st.r3d_cam_log < 0 { render3d_st.r3d_cam_log = 0;  if r3d_env_has(render3d_st, "R3D_CAM_LOG") { render3d_st.r3d_cam_log = 1 } }

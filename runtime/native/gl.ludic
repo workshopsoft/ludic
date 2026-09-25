@@ -161,6 +161,12 @@ function gl_width() -> int { return gl_w }
 function gl_height() -> int { return gl_h }
 function gl_screen_fbo() -> int { return gl_screen }
 function gl_pixel_scale() -> int { return gl_scale }
+# a renderer that owns its swapchain (render3d's Vulkan path) says what the drawable is
+function gl_set_drawable(w: int, h: int) -> void {
+  gl_w = w
+  gl_h = h
+}
+function gl_set_pixel_scale(s: int) -> void { gl_scale = s }
 
 # Present the frame (vsync'd flushBuffer); headless, just finish the GPU work.
 function gl_swap() -> void {

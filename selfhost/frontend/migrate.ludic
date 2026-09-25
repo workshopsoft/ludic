@@ -191,8 +191,10 @@ function mg_is_target(v: Node) -> bool {
 }
 # which vars move, and the state each moves into
 function mg_collect() -> void {
+  var end = g_prog_user_end
+  if g_mg_runtime { end = len(prog) }           # the runtime's declarations come after the program's
   var i = 0
-  while i < g_prog_user_end and i < len(prog) {
+  while i < end and i < len(prog) {
     let d = prog[i]
     if d.kind == N_VAR and mg_is_target(d) {
       let k = mg_state_of_file(d.file)
@@ -269,6 +271,10 @@ function mg_ref(e: Node, g: Node) -> void {
 function mg_write(t: Node, g: Node) -> void {
   if not g_migrate or g == null or g.kind != N_VAR or g.mg < 0 { return }
   g_mg_written[g.mg] = 1
+  if is_runtime_file(g.file) and t != null and not is_runtime_file(t.file) {
+    mg_say(t, `{mg_src_name(g.s)} is the runtime's; change it through the runtime's function for it`)
+    return
+  }
   if g_mg_cur >= 0 { mg_need(g_mg_cur, g_mg_vstate[g.mg], true) }
 }
 # a var nothing writes, holding a value (not a reference something could change through), and
@@ -299,7 +305,11 @@ function mg_read_needs() -> void {
     let e = g_mr_node[r]
     let u = g_mr_unit[r]
     let g = g_mg_vars[v]
-    if g_mg_let[v] == 0 and u != -3 {
+    if is_runtime_file(g.file) and not is_runtime_file(e.file) {
+      # the runtime's state is the runtime's: from outside it is read through its functions
+      mg_say(e, `{mg_src_name(g.s)} is the runtime's; read it through the runtime's function for it`)
+      g_mr_var[r] = -1 - v
+    } else if g_mg_let[v] == 0 and u != -3 {
       if u >= 0 { mg_need(u, g_mg_vstate[v], false) }
       else { mg_say(e, `{g.s} is read where no function is (a global's initializer); move it by hand`) }
       if e.pos < 0 and not mg_bound_var(g.s) { mg_say(e, `a reference to {g.s} in generated code (a component, a view, a registry's lookup)`) }
@@ -696,6 +706,10 @@ function mg_refs() -> void {
   var r = 0
   while r < len(g_mr_node) {
     let e = g_mr_node[r]
+    if g_mr_var[r] < 0 {                         # the runtime's, read from outside it: by hand
+      r += 1
+      continue
+    }
     let v = g_mg_vars[g_mr_var[r]]
     if e.pos >= 0 and e.file != null and g_mg_let[g_mr_var[r]] == 0 {
       let s = g_mg_vstate[g_mr_var[r]]

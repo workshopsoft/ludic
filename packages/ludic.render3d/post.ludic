@@ -382,7 +382,7 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   mesh_draw(render3d_st, render3d_st.post_fs)
   # sharpen + grain onto the screen
   gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
-  gpu_viewport(render3d_st, 0, 0, gl_w, gl_h)
+  gpu_viewport(render3d_st, 0, 0, gl_width(), gl_height())
   gpu_use_program(render3d_st, render3d_st.post_p_sharp)
   r3d_bind_2d(render3d_st, render3d_st.post_p_sharp, "u_src", 0, render3d_st.post_ldr.color)
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_texel"), 1.0 / float(render3d_st.post_ldr.w), 1.0 / float(render3d_st.post_ldr.h))

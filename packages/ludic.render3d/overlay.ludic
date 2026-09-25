@@ -150,14 +150,14 @@ function ov_glyph(render3d_st: Render3dState, cp: int) -> int {
 function ov_begin(render3d_st: mut Render3dState) -> void {
   if not render3d_st.ov_ready { return }
   gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
-  gpu_viewport(render3d_st, 0, 0, gl_w, gl_h)
+  gpu_viewport(render3d_st, 0, 0, gl_width(), gl_height())
   gpu_depth_test(render3d_st, false)
   gpu_cull(render3d_st, false)
   gpu_blend(render3d_st, true)
   gpu_blend_func(render3d_st, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
   ov_pick_prog(render3d_st)
   gpu_use_program(render3d_st, render3d_st.ov_prog)
-  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.ov_prog, "u_screen"), float(gl_w), float(gl_h))
+  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.ov_prog, "u_screen"), float(gl_width()), float(gl_height()))
   render3d_st.ov_n = 0;  render3d_st.ov_nr = 0;  render3d_st.ov_range_start = 0
   render3d_st.ov_tex = render3d_st.ov_white
   render3d_st.ov_mode = 2;  render3d_st.ov_voff = 8.0
@@ -191,7 +191,7 @@ function ov_flush(render3d_st: mut Render3dState) -> void {
   # (where the screen is an offscreen framebuffer) every overlay draw after it was an invalid
   # framebuffer operation. Saying the target at each flush is what a render pass says anyway.
   gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
-  gpu_viewport(render3d_st, 0, 0, gl_w, gl_h)
+  gpu_viewport(render3d_st, 0, 0, gl_width(), gl_height())
   ov_pick_prog(render3d_st)
   gpu_use_program(render3d_st, render3d_st.ov_prog)
   gpu_mesh_bind(render3d_st, render3d_st.ov_mesh)

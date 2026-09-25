@@ -1328,20 +1328,19 @@ function gvk_manifest(render3d_st: mut Render3dState) -> bool {
 # The screen: a colour and a depth image. Headless they are the asked-for size; with a window
 # they are its client area in pixels, and the swapchain is made on it.
 function gvk_open(render3d_st: mut Render3dState, w: int, h: int, title: string) -> bool {
-  gl_w = w
-  gl_h = h
+  gl_set_drawable(w, h)
   if is_windowed() {
     win_open(w, h, 1, title)          # the window exists before main: this retitles it
     win_gl_resize(w, h)
     if render3d_st.gvk_size_buf == null { render3d_st.gvk_size_buf = words(4) }
     win_gl_drawable(render3d_st.gvk_size_buf)
-    if render3d_st.gvk_size_buf[0] > 0 and render3d_st.gvk_size_buf[1] > 0 { gl_w = render3d_st.gvk_size_buf[0];  gl_h = render3d_st.gvk_size_buf[1] }
-    gl_scale = win_gl_scale()
+    if render3d_st.gvk_size_buf[0] > 0 and render3d_st.gvk_size_buf[1] > 0 { gl_set_drawable(render3d_st.gvk_size_buf[0], render3d_st.gvk_size_buf[1]) }
+    gl_set_pixel_scale(win_gl_scale())
   }
   if not gvk_frame_init(render3d_st) { return false }
-  if not gvk_screen_make(render3d_st, gl_w, gl_h) { return false }
+  if not gvk_screen_make(render3d_st, gl_width(), gl_height()) { return false }
   if r3d_env_has(render3d_st, "R3D_VK_PROBE") { gvk_compute_probe(render3d_st) }
-  if is_windowed() { return gvk_swap_make(render3d_st, gl_w, gl_h) }
+  if is_windowed() { return gvk_swap_make(render3d_st, gl_width(), gl_height()) }
   return true
 }
 
@@ -1695,10 +1694,9 @@ function gvk_resize_check(render3d_st: mut Render3dState) -> bool {
   let w = render3d_st.gvk_size_buf[0]
   let h = render3d_st.gvk_size_buf[1]
   if w <= 0 or h <= 0 { return false }
-  if w == gl_w and h == gl_h and not render3d_st.gvk_swap_stale { return false }
+  if w == gl_width() and h == gl_height() and not render3d_st.gvk_swap_stale { return false }
   gvk_flush(render3d_st)
-  gl_w = w
-  gl_h = h
+  gl_set_drawable(w, h)
   gvk_screen_make(render3d_st, w, h)
   gvk_swap_make(render3d_st, w, h)
   return true

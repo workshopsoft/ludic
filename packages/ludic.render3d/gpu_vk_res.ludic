@@ -465,9 +465,9 @@ function gvk_mip_bias(render3d_st: mut Render3dState) -> float {
   if r3d_env_has(render3d_st, "R3D_NO_MIPBIAS") { return 0.0 }
   if not r3d_dlss_live(render3d_st) { return 0.0 }
   let rw = r3d_dlss_render_w(render3d_st)
-  if rw <= 0 or gl_w <= 0 or rw >= gl_w { return 0.0 }
+  if rw <= 0 or gl_width() <= 0 or rw >= gl_width() { return 0.0 }
   # log2 from the natural log the runtime has: log2(x) = ln(x) * 1/ln(2)
-  return Math.log(float(rw) / float(gl_w)) * 1.4426950408889634 - 1.0
+  return Math.log(float(rw) / float(gl_width())) * 1.4426950408889634 - 1.0
 }
 # the sampler for texture tex's parameters, from the texture's own one-entry cache when they have
 # not changed since it last asked - a draw asks for every texture it binds

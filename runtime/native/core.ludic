@@ -625,6 +625,7 @@ function rt_map_random_cell_far(glyph: int, from: IVec2, min_tiles: int) -> IVec
 var rt_map_solid1: int = 0
 var rt_map_solid2: int = 0
 var rt_map_tile_px: int = 16
+function rt_map_tile_size() -> int { return rt_map_tile_px }
 function rt_map_is_solid(x: int, y: int) -> bool {
   if rt_map_solid1 == 0 { return false }        # no Solids config: nothing is solid
   let g = rt_tile(x, y)

@@ -110,7 +110,7 @@ function dungeon_exit_cell(side: int) -> IVec2 {
 }
 # where a body of w x h px starts after entering from `side`, `inset` px inside the edge
 @Namespace(Dungeon) function dungeon_entry_point(side: int, inset: int, w: int, h: int) -> IVec2 {
-  let tile = rt_map_tile_px
+  let tile = rt_map_tile_size()
   let across_x = (dungeon_door_column() + 1) * tile - w / 2
   let across_y = dungeon_door_row() * tile + (2 * tile - h) / 2
   match side {

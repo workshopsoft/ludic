@@ -146,9 +146,9 @@ function gpu_depth_bias(render3d_st: mut Render3dState, factor: fixed, units: fi
 # A scissor rectangle in top-down pixels (x, y from the top-left of the drawable), or
 # off. Every API but OpenGL counts rows from the top; the GL backend flips it.
 function gpu_scissor(render3d_st: mut Render3dState, x: int, y_top: int, w: int, h: int) -> void {
-  if render3d_st.gpu_kind == GPU_VK { render3d_st.gpu_s_scissor = 1;  gvk_scissor(render3d_st, x, gl_h - y_top - h, w, h);  return }
+  if render3d_st.gpu_kind == GPU_VK { render3d_st.gpu_s_scissor = 1;  gvk_scissor(render3d_st, x, gl_height() - y_top - h, w, h);  return }
   if render3d_st.gpu_s_scissor != 1 { render3d_st.gpu_s_scissor = 1;  gl_enable(GL_SCISSOR_TEST) }
-  gl_scissor(x, gl_h - y_top - h, w, h)
+  gl_scissor(x, gl_height() - y_top - h, w, h)
   gpu_glcheck_after(render3d_st, "scissor")
 }
 function gpu_scissor_off(render3d_st: mut Render3dState) -> void {
@@ -908,7 +908,7 @@ function gpu_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> 
   gpu_glcheck_after(render3d_st, "a blit")
 }
 # the framebuffer the finished frame is presented from (an offscreen one, headless)
-function gpu_screen_fb(render3d_st: Render3dState) -> int { if render3d_st.gpu_kind == GPU_VK { return 0 };  return gl_screen }
+function gpu_screen_fb(render3d_st: Render3dState) -> int { if render3d_st.gpu_kind == GPU_VK { return 0 };  return gl_screen_fbo() }
 function gpu_multisample(render3d_st: mut Render3dState, on: bool) -> void { if render3d_st.gpu_kind == GPU_VK { return };  gpu_gl_cap(render3d_st, GL_MULTISAMPLE, gpu_b(on));  gpu_glcheck_after(render3d_st, "multisample") }
 # the most samples the scene may be drawn with: the device's colour-and-depth limit on Vulkan (0 before
 # it is open), 4 on OpenGL, which has always asked for up to that
@@ -921,7 +921,7 @@ function gpu_wireframe(render3d_st: mut Render3dState, on: bool) -> void {
 # the presented frame as RGB8, bottom row first (a photograph)
 function gpu_read_screen(render3d_st: mut Render3dState, w: int, h: int, out: pointer) -> void {
   if render3d_st.gpu_kind == GPU_VK { gvk_read_screen(render3d_st, w, h, out);  return }
-  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, gl_screen)
+  gl_bind_framebuffer(GL_READ_FRAMEBUFFER, gl_screen_fbo())
   gl_pixel_storei(GL_PACK_ALIGNMENT, 1)
   gl_read_pixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, out)
   gpu_glcheck_after(render3d_st, `a {w}x{h} read of the screen`)
