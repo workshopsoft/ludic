@@ -24,6 +24,7 @@ anim_play(sk, walk, t, idle, t2, 0.3)              # 70% walk, 30% idle, into th
 | `anim_play(sk, a, ta, b, tb, blend) -> bool` | `a` at `ta`, cross-faded toward `b` at `tb` by `blend` (0 all a, 1 all b; `b` may be null), folded into the joint matrices |
 | `anim_mix(c, sk, t, w, rot, pos, hit)`, `anim_to_pose(sk, rot, pos, hit)`, `anim_key_at(c, ch, t)` | the pieces `anim_play` is made of, for a caller that mixes more than two |
 | `anim_set_positions(on)`, `anim_positions()` | keyed translations applied or not (off: baking keys location on every bone, and rounding down an eighteen-bone chain is a collapsed animal) |
+| `skin_joint(sk, name)`, `skin_joint_quiet(sk, name)` | a bone by name in the skin's OWN joints: a kit packs several rigs with the same bone names, and render3d's `skin_find` answers the file's first, which belongs to another rig (the pose is then stored and never drawn) |
 | `anim_first_key(c) -> float` | the earliest key; a read warns when it is not zero |
 
 ## Rules it keeps

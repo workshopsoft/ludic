@@ -1,0 +1,16 @@
+# bones.ludic - a bone is looked up in the skin's OWN joint list: every kit packs several rigs
+# with the same bone names, and skin_find's first hit in the file belongs to whichever came first
+export function skin_joint(sk: Skin, name: string) -> int {
+  let i = skin_joint_quiet(sk, name)
+  if i < 0 { print(`skin: no joint {name} in this skin`) }
+  return i
+}
+# the same lookup without the complaint: animal_pose asks every skin for "wing_l" and "leg_fl_u"
+export function skin_joint_quiet(sk: Skin, name: string) -> int {
+  if sk == null { return -1 }
+  for j in 0 .. sk.n_joints {
+    let i = sk.joints[j]
+    if sk.names[i] == name { return i }
+  }
+  return -1
+}

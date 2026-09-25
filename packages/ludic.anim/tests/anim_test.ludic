@@ -86,6 +86,14 @@ program AnimTest {
     expect_near(pose_z(sk), 0.0, 0.001)
   }
 
+  test "a bone is found in the skin's own joints, not the file's first of that name" {
+    gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"bone\"}, {\"name\": \"root\", \"children\": [2]}, {\"name\": \"bone\"}], \"skins\": [{\"joints\": [1, 2]}]}")
+    let sk = skin_load(0)
+    expect_eq(skin_joint(sk, "bone"), 2)
+    expect_eq(skin_joint_quiet(sk, "wing_l"), -1)
+    expect_eq(skin_joint_quiet(null, "bone"), -1)
+  }
+
   test "no skin or no clip plays nothing" {
     expect(not anim_play(null, turn("t"), 0.0, null, 0.0, 0.0))
     expect(not anim_play(skin(), null, 0.0, null, 0.0, 0.0))
