@@ -1,0 +1,74 @@
+# count.ludic - progress: events the game counts (jobs_count), and state read back (the recheck),
+# taking whichever is further - progress only ever goes up
+function jobs__matches(want_kind: int, want_param: int, kind: int, param: int) -> bool {
+  if want_kind < 0 or want_kind != kind { return false }
+  return want_param < 0 or want_param == param
+}
+
+# `n` of (kind, param) happened here: every job and post of a scope this machine keeps
+export function jobs_count(kind: int, param: int, n: int) -> void { jobs__count(-1, kind, param, n) }
+
+# the same for one scope alone, kept or not: another member's deed arriving at the host
+export function jobs_count_in(scope: int, kind: int, param: int, n: int) -> void { jobs__count(scope, kind, param, n) }
+
+function jobs__takes(only: int, scope: int) -> bool {
+  if only >= 0 { return scope == only }
+  return JobsWorld.owns(scope)
+}
+
+function jobs__count(only: int, kind: int, param: int, n: int) -> void {
+  jobs__ensure()
+  for i in 0 .. JOB_COUNT {
+    let d = Jobs[i]
+    if jobs__st[i] != JOBS_ACTIVE or not jobs__takes(only, d.scope) { continue }
+    if not jobs__matches(d.kind, d.param, kind, param) { continue }
+    let was = jobs__hv[i]
+    jobs__hv[i] = was + n
+    jobs__moved(i, was)
+  }
+  for b in 0 .. BOARD_COUNT {
+    if not jobs__takes(only, JobBoards[b].scope) { continue }
+    for s in 0 .. JobBoards[b].slots {
+      let k = jobs__off[b] + s
+      if jobs__ps[k] != JOBS_ACTIVE or not jobs__matches(jobs__pk[k], jobs__pp[k], kind, param) { continue }
+      jobs__post_moved(b, s, jobs__ph[k] + n)
+    }
+  }
+}
+
+function jobs__recheck_one(i: int) -> void {
+  let d = Jobs[i]
+  if jobs__st[i] != JOBS_ACTIVE or d.kind < 0 or not JobsWorld.owns(d.scope) { return }
+  let e = JobsWorld.evidence(d.kind, d.param)
+  if e <= jobs__hv[i] { return }
+  let was = jobs__hv[i]
+  jobs__hv[i] = e
+  jobs__moved(i, was)
+}
+
+# every job under way against what the state already proves: work done before it was taken counts
+# for a written job; a post counts only what came after it went up
+export function jobs_recheck() -> void {
+  jobs__ensure()
+  for i in 0 .. JOB_COUNT { jobs__recheck_one(i) }
+  for b in 0 .. BOARD_COUNT {
+    if not JobsWorld.owns(JobBoards[b].scope) { continue }
+    for s in 0 .. JobBoards[b].slots {
+      let k = jobs__off[b] + s
+      if jobs__ps[k] != JOBS_ACTIVE or jobs__pk[k] < 0 { continue }
+      let e = JobsWorld.evidence(jobs__pk[k], jobs__pp[k])
+      if e >= 0 and e - jobs__pb[k] > jobs__ph[k] { jobs__post_moved(b, s, e - jobs__pb[k]) }
+    }
+  }
+}
+
+# offers newly open are said once; the first look after a reset says none of them
+function jobs__offers() -> void {
+  jobs__ensure()
+  for i in 0 .. JOB_COUNT {
+    let now = jobs_offered(i)
+    if now and not jobs__seen[i] and jobs__primed { jobs__fact(JOBS_F_OFFERED, i, -1, -1, 0, Jobs[i].need) }
+    jobs__seen[i] = now
+  }
+  jobs__primed = true
+}

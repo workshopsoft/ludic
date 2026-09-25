@@ -1,0 +1,15 @@
+# ludic.jobs - a job is (kind, param, need, reward, scope, gate); what a kind measures is the
+# game's, counted by jobs_count and read back through JobsWorld.evidence
+module ludic_jobs uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "jobs.ludic"
+import "count.ludic"
+import "lists.ludic"
+import "boards.ludic"
+import "posts.ludic"
+import "save.ludic"
+import "system.ludic"

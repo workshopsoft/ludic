@@ -1,0 +1,54 @@
+# system.ludic - two systems, one per owner: "jobs" is this player's (personal jobs and boards, the
+# done counts, the tick), "jobs.party" the party's, saved with the world
+export function jobs_reset() -> void {
+  jobs__reset_scope(JOBS_SELF)
+  for g in 0 .. JOBS_GROUPS { jobs__done_n[g] = 0 }
+  q_clear(jobs_facts())
+}
+
+export function jobs_party_reset() -> void { jobs__reset_scope(JOBS_PARTY) }
+
+export function jobs_save() -> Val {
+  jobs__ensure()
+  let v = jobs__save_scope(JOBS_SELF)
+  sv_put_ints(v, "done", jobs__done_n)
+  return v
+}
+
+export function jobs_load(v: Val, version: int) -> void {
+  jobs__load_scope(JOBS_SELF, v)
+  let d = sv_ints(v, "done")
+  for g in 0 .. JOBS_GROUPS {
+    jobs__done_n[g] = 0
+    if g < len(d) { jobs__done_n[g] = d[g] }
+  }
+}
+
+export function jobs_party_save() -> Val {
+  jobs__ensure()
+  return jobs__save_scope(JOBS_PARTY)
+}
+
+export function jobs_party_load(v: Val, version: int) -> void { jobs__load_scope(JOBS_PARTY, v) }
+
+function jobs__tick(t: Tick) -> void {
+  jobs__offers()
+  jobs_recheck()
+}
+
+export function jobs_system() -> System {
+  let s = system_new("jobs", PH_COMMIT)
+  s.reset = fn jobs_reset
+  s.tick = fn jobs__tick
+  s.save = fn jobs_save
+  s.load = fn jobs_load
+  return s
+}
+
+export function jobs_party_system() -> System {
+  let s = system_new("jobs.party", PH_COMMIT)
+  s.reset = fn jobs_party_reset
+  s.save = fn jobs_party_save
+  s.load = fn jobs_party_load
+  return s
+}

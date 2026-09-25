@@ -1,0 +1,23 @@
+# ports.ludic - what jobs asks the game, and how it pays. Unbound, JobsWorld is a standing of 0, a
+# story at its start, every job open, no evidence, day one, everything this machine's, no posts.
+export port JobsWorld {
+  rep: fn(int) -> int = fn jobs__zero_of              # standing in a scope
+  stage: fn() -> int = fn jobs__zero
+  open: fn(int) -> bool = fn jobs__yes_of             # a job the game allows today
+  evidence: fn(int, int) -> int = fn jobs__none       # (kind, param) as the state proves it, -1 unknown
+  day: fn() -> int = fn jobs__day_one
+  owns: fn(int) -> bool = fn jobs__yes_of             # this machine keeps a scope's jobs
+  roll: fn(int, int) -> void = fn jobs__no_roll       # (board, slot): the game posts with jobs_post
+}
+
+function jobs__zero_of(n: int) -> int { return 0 }
+function jobs__zero() -> int { return 0 }
+function jobs__yes_of(n: int) -> bool { return true }
+function jobs__none(kind: int, param: int) -> int { return -1 }
+function jobs__day_one() -> int { return 1 }
+function jobs__no_roll(b: int, s: int) -> void { }
+
+# (scope, money, rep): the game routes it to the wallet and the standings
+export port JobsPay {
+  reward: fn(int, int, int) -> void
+}

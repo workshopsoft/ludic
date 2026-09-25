@@ -1,0 +1,6 @@
+# ludic.jobs - work a player takes on for pay: written jobs gated by standing, boards of posts rolled
+# by the day from their own dice, progress counted from events and read back from state, handing
+# in, and rewards paid through a port. Uses ludic.base and nothing else. See README.md.
+package "ludic.jobs"
+version "0.1.0"
+kind source

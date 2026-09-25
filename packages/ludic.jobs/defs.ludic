@@ -1,0 +1,67 @@
+# defs.ludic - a job and a board as the game writes them, the states, the scopes and the facts
+export const JOBS_SELF: int = 0        # a personal job: yours, saved with your body
+export const JOBS_PARTY: int = 1       # the party's: the world's, saved with the trip
+
+export const JOBS_OFFERED: int = 0
+export const JOBS_ACTIVE: int = 1
+export const JOBS_DONE: int = 2        # handed in and paid
+export const JOBS_READY: int = 3       # everything in hand; waits to be handed in
+
+export const JOBS_GROUPS: int = 8      # the game's lists (a board of notices, a vendor's longer work)
+
+# `kind` is the game's (-1: nothing counts it; the game's own play says when it is ready), `param`
+# narrows it (-1 any), `need` 0 is never ready by counting. Money and rep are paid through JobsPay.
+export property JobDef {
+  key: string = ""
+  group: int = 0
+  vendor: int = 0
+  kind: int = -1
+  param: int = -1
+  need: int = 1
+  money: int = 0
+  rep: int = 0
+  minrep: int = 0      # standing in its scope before it is offered
+  minstage: int = 0    # how far the game's story must be
+  scope: int = JOBS_SELF
+  title: string = ""
+  text: string = ""
+  how: string = ""
+  icon: string = ""
+}
+
+# the game's jobs; saved by key, so order is free
+export open registry Jobs of JobDef as JOB
+
+# a board of posts rolled by the game (JobsWorld.roll): `keep` days a post stays up, `auto` pays
+# the moment it is met, `refill` replaces a handed-in post at once
+export property JobBoard {
+  key: string = ""
+  slots: int = 3
+  keep: int = 1
+  auto: bool = false
+  refill: bool = true
+  scope: int = JOBS_SELF
+}
+
+export open registry JobBoards of JobBoard as BOARD
+
+export const JOBS_F_OFFERED: int = 0
+export const JOBS_F_PROGRESSED: int = 1
+export const JOBS_F_COMPLETED: int = 2
+export const JOBS_F_HANDED_IN: int = 3
+
+# `job` a written job, or -1 and `board` / `slot` a post; what it counted rides along, since a
+# post handed in is replaced before anyone reads the fact
+export property JobsFact {
+  what: int = 0
+  job: int = -1
+  board: int = -1
+  slot: int = -1
+  kind: int = -1
+  param: int = -1
+  have: int = 0
+  need: int = 0
+  money: int = 0
+  rep: int = 0
+  scope: int = JOBS_SELF
+}
