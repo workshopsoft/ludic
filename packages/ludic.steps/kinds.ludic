@@ -1,0 +1,88 @@
+# kinds.ludic - the kinds the game hands in, and a step answered from its kind's shape: met or
+# not, its count, what it wants. A kind past the list is a plain yes, the world's.
+export function steps_kinds(ks: []StepsKind) -> void { steps__kinds = ks }
+
+function steps__known(kind: int) -> bool { return steps__kinds != null and kind >= 0 and kind < len(steps__kinds) }
+
+export function steps_shape(kind: int) -> int {
+  if not steps__known(kind) { return STEPS_SHAPE_YES }
+  return steps__kinds[kind].shape
+}
+
+export function steps_pool(kind: int) -> int {
+  if not steps__known(kind) { return STEPS_POOL_WORLD }
+  return steps__kinds[kind].pool
+}
+
+export function steps_shows(kind: int) -> bool {
+  if not steps__known(kind) { return false }
+  return steps__kinds[kind].shows
+}
+
+function steps__value(kind: int, param: int) -> int { return StepsWorld.value(kind, param, 0) }
+
+# is (kind, param, need) met by this machine's own state?
+export function steps_eval(kind: int, param: int, need: int) -> bool {
+  if kind < 0 { return false }
+  return steps__met_by(kind, param, need, steps__value(kind, param))
+}
+
+function steps__met_by(kind: int, param: int, need: int, v: int) -> bool {
+  let sh = steps_shape(kind)
+  if sh == STEPS_SHAPE_COUNT { return v >= need }
+  if sh == STEPS_SHAPE_MASK { return steps_popcount(v) >= need }
+  if sh == STEPS_SHAPE_MASK_ALL { return (v & param) == param }
+  return v != 0
+}
+
+# how far a counted step has got, -1 for a kind a panel shows no count for
+export function steps_got(kind: int, param: int) -> int {
+  if kind < 0 or not steps_shows(kind) { return -1 }
+  return steps__shaped(kind, param, steps__value(kind, param))
+}
+
+function steps__shaped(kind: int, param: int, v: int) -> int {
+  let sh = steps_shape(kind)
+  if sh == STEPS_SHAPE_MASK { return steps_popcount(v) }
+  if sh == STEPS_SHAPE_MASK_ALL { return steps_popcount(v & param) }
+  return v
+}
+
+export function steps_want(kind: int, param: int, need: int) -> int {
+  if steps_shape(kind) == STEPS_SHAPE_MASK_ALL { return steps_popcount(param) }
+  return need
+}
+
+# THIS machine's share: a mask for OR, a count for SUM and MAX, 1 or 0 for ANY and EACH, and
+# nothing for a question about the world
+export function steps_mine(kind: int, param: int, need: int) -> int {
+  let how = steps_pool(kind)
+  if how == STEPS_POOL_WORLD { return 0 }
+  if how == STEPS_POOL_ANY or how == STEPS_POOL_EACH {
+    if steps_eval(kind, param, need) { return 1 }
+    return 0
+  }
+  return steps__value(kind, param)
+}
+
+# the party's verdict from what it has between it: `v` combined as the pool says; for EACH,
+# how many are in the party and how many carry it
+export function steps_from(kind: int, param: int, need: int, v: int, players: int, have: int) -> bool {
+  let how = steps_pool(kind)
+  if how == STEPS_POOL_WORLD { return steps_eval(kind, param, need) }
+  if how == STEPS_POOL_ANY { return v != 0 }
+  if how == STEPS_POOL_EACH { return players > 0 and have >= players }
+  if how == STEPS_POOL_OR {
+    if steps_shape(kind) == STEPS_SHAPE_MASK_ALL { return (v & param) == param }
+    return steps_popcount(v) >= need
+  }
+  return v >= need
+}
+
+# the count from a share already combined across the party
+export function steps_got_from(kind: int, param: int, v: int) -> int {
+  let how = steps_pool(kind)
+  if not steps_shows(kind) { return -1 }
+  if how == STEPS_POOL_OR or how == STEPS_POOL_SUM or how == STEPS_POOL_MAX { return steps__shaped(kind, param, v) }
+  return steps_got(kind, param)
+}

@@ -1,0 +1,43 @@
+# check.ludic - once a frame on the machine that owns the story: every open step of the current
+# chapter that is met now sticks (STEPS_MET), and a chapter with all of them done moves the arc on
+# (STEPS_CHAPTER). A step asks about STATE, so one met before its chapter opened ticks at once.
+export function steps_check() -> void {
+  if steps_finished() { return }
+  let ch = steps__cur
+  let n = steps_in(ch)
+  var all = true
+  for i in 0 .. n {
+    if not steps_done(i) and steps_met(i) {
+      steps__done = steps__done | (1 << i)
+      steps__fact(STEPS_MET, ch, i)
+    }
+    if not steps_done(i) { all = false }
+  }
+  if not all { return }
+  steps__cur = ch + 1
+  steps__done = 0
+  steps__fact(STEPS_CHAPTER, ch, n)
+}
+
+# is step i of chapter ch met by this machine's own state? (a chapter not being played, a panel)
+export function steps_check_at(ch: int, i: int) -> bool {
+  if ch < 0 or ch >= steps_count() or i < 0 or i >= steps_in(ch) { return false }
+  return steps_eval(steps_kind(ch, i), steps_param(ch, i), steps_need(ch, i))
+}
+
+# is an open step of the current chapter asking for this kind (and this param, unless < 0)?
+export function steps_wants(kind: int, param: int) -> bool {
+  if steps_finished() { return false }
+  for i in 0 .. steps_in(steps__cur) {
+    if steps_done(i) or steps_kind(steps__cur, i) != kind { continue }
+    if param < 0 or steps_param(steps__cur, i) == param { return true }
+  }
+  return false
+}
+
+# back to no arc and no party (tests)
+export function steps_reset() -> void {
+  steps_arc_clear()
+  steps__party_clear()
+  q_clear(steps_facts())
+}

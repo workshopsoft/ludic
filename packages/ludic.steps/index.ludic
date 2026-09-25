@@ -1,0 +1,11 @@
+# ludic.steps - a step is a question about state, answered by the game through a port; a chapter
+# is a table of steps; the current one ticks its steps as they are met and moves on when all are
+module ludic_steps uses ludic_base
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "kinds.ludic"
+import "arc.ludic"
+import "check.ludic"
+import "party.ludic"
+import "each.ludic"

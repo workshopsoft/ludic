@@ -1,0 +1,6 @@
+# ludic.steps - chapters made of steps (kind, param, need), step kinds with a shape and a party
+# pool, progress and done masks, and a party's shares pooled into one verdict. Uses ludic.base and
+# nothing else. See README.md.
+package "ludic.steps"
+version "0.1.0"
+kind source

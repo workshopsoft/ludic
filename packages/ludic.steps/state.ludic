@@ -1,0 +1,78 @@
+# state.ludic - the port, the kinds' shapes and pools, the facts, and the arc being played
+# what a step kind measures, asked of the game: a count, a mask, or 1 / 0, for one player (0 is
+# this machine's own); whether a party is playing, and whether a seat in it is taken
+export port StepsWorld {
+  value: fn(int, int, int) -> int
+  party: fn() -> bool = fn steps__solo
+  present: fn(int) -> bool = fn steps__only_me
+}
+
+function steps__solo() -> bool { return false }
+function steps__only_me(p: int) -> bool { return p == 0 }
+
+# a kind's shape: met or not; a number against the need; a mask whose bits are counted against
+# the need; every bit of the mask in `param`
+export const STEPS_SHAPE_YES: int = 0
+export const STEPS_SHAPE_COUNT: int = 1
+export const STEPS_SHAPE_MASK: int = 2
+export const STEPS_SHAPE_MASK_ALL: int = 3
+
+# how a party combines a kind: the same for everyone already (asked of this machine); anyone
+# having done it; the counts add up; the masks union; the best one; every player needs their own
+export const STEPS_POOL_WORLD: int = 0
+export const STEPS_POOL_ANY: int = 1
+export const STEPS_POOL_SUM: int = 2
+export const STEPS_POOL_OR: int = 3
+export const STEPS_POOL_MAX: int = 4
+export const STEPS_POOL_EACH: int = 5
+
+# the most steps a chapter carries: its done steps are a bit mask
+export const STEPS_PER_CHAPTER: int = 6
+
+export property StepsKind {
+  key: string = ""
+  shape: int = STEPS_SHAPE_YES
+  pool: int = STEPS_POOL_WORLD
+  shows: bool = false          # a panel shows its count against what it wants
+}
+
+export const STEPS_MET: int = 0        # a step of the current chapter was met (chapter, step)
+export const STEPS_CHAPTER: int = 1    # every step of a chapter is met, and the next one is open
+
+export property StepsFact {
+  what: int = 0
+  chapter: int = 0
+  step: int = 0
+}
+
+var steps__kinds: []StepsKind = null
+var steps__n: []int = null          # steps per chapter
+var steps__kind: []int = null       # STEPS_PER_CHAPTER per chapter
+var steps__param: []int = null
+var steps__need: []int = null
+var steps__cur: int = 0
+var steps__done: int = 0
+var steps__facts: Queue<StepsFact> = null
+
+export function steps_facts() -> Queue<StepsFact> {
+  if steps__facts == null { steps__facts = queue_new("steps.facts") }
+  return steps__facts
+}
+
+function steps__fact(what: int, ch: int, i: int) -> void {
+  let f = new StepsFact
+  f.what = what
+  f.chapter = ch
+  f.step = i
+  q_push(steps_facts(), f)
+}
+
+export function steps_popcount(m: int) -> int {
+  var n = 0
+  var v = m
+  while v != 0 {
+    n += v & 1
+    v = (v >> 1) & 0x7FFFFFFF
+  }
+  return n
+}
