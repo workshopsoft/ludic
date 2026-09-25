@@ -8,6 +8,7 @@ function registries_finish() -> void {
       g_parsing = false
       perr(`def {g_df_reg[d]} {g_df_key[d]}: there is no registry {g_df_reg[d]}`)
     }
+    reg_def_check(d)                               # registry_open.ludic: open, and visible
     d += 1
   }
   var r = 0
@@ -26,41 +27,41 @@ function reg_fill(r: int) -> void {
   lst.line = v.line
   let seen = new []pointer
   var n = 0
-  var d = 0
-  while d < len(g_df_reg) {
-    if (g_df_reg[d] == g_rg_name[r]) {
-      let key = g_df_key[d]
-      let rec = g_df_rec[d]
-      var j = 0
-      while j < len(seen) {
-        if (seen[j] == key) {
-          g_err_file = rec.file
-          g_err_line = rec.line
-          g_parsing = false
-          perr(`def {g_rg_name[r]} {key} is declared twice`)
-        }
-        j += 1
+  let order = reg_order(r)
+  var o = 0
+  while o < len(order) {
+    let d = order[o]
+    let key = g_df_key[d]
+    let rec = g_df_rec[d]
+    var j = 0
+    while j < len(seen) {
+      if (seen[j] == key) {
+        g_err_file = rec.file
+        g_err_line = rec.line
+        g_parsing = false
+        perr(`def {g_rg_name[r]} {key} is declared twice`)
       }
-      push(seen, key)
-      if keyed and not reg_rec_has(rec, "key") {
-        let fi = node(E_FINIT)
-        fi.s = "key"
-        let ks = node(E_STR)
-        ks.s = key
-        fi.a = ks
-        push(rec.kids, fi)
-      }
-      if comp != null { res_type_fields(rec, comp) }   # L9: nested records take their field's type
-      let nw = node(E_NEW)
-      nw.s = t
-      nw.a = rec
-      nw.file = rec.file
-      nw.line = rec.line
-      push(lst.kids, nw)
-      reg_const(v, `{g_rg_prefix[r]}_{reg_upper(key)}`, n)
-      n += 1
+      j += 1
     }
-    d += 1
+    push(seen, key)
+    if keyed and not reg_rec_has(rec, "key") {
+      let fi = node(E_FINIT)
+      fi.s = "key"
+      let ks = node(E_STR)
+      ks.s = key
+      fi.a = ks
+      push(rec.kids, fi)
+    }
+    if comp != null { res_type_fields(rec, comp) }   # L9: nested records take their field's type
+    let nw = node(E_NEW)
+    nw.s = t
+    nw.a = rec
+    nw.file = rec.file
+    nw.line = rec.line
+    push(lst.kids, nw)
+    reg_const(v, `{g_rg_prefix[r]}_{reg_upper(key)}`, n)
+    n += 1
+    o += 1
   }
   reg_const(v, `{g_rg_prefix[r]}_COUNT`, n)
   if n == 0 {

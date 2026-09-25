@@ -1,0 +1,6 @@
+# zeta/index.ludic - adds an entry to core's open registry; its function stays private to zeta
+module zeta uses core
+def Systems weather { run: fn weather_run }
+function weather_run() -> int {
+  return 3
+}

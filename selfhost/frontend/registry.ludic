@@ -15,6 +15,7 @@ var g_rg_name: []pointer = new []pointer
 var g_rg_type: []pointer = new []pointer
 var g_rg_prefix: []pointer = new []pointer
 var g_rg_var: []Node = new []Node
+var g_rg_open: []int = new []int              # 1: `open registry` - other modules may def into it
 var g_df_reg: []pointer = new []pointer
 var g_df_key: []pointer = new []pointer
 var g_df_rec: []Node = new []Node
@@ -70,6 +71,7 @@ function parse_registry() -> void {
   push(g_rg_type, t)
   push(g_rg_prefix, prefix)
   push(g_rg_var, v)
+  push(g_rg_open, 0)
   if from != null { res_read(v, from) }
 }
 # def REGISTRY key { field: value, ... }

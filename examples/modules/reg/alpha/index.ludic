@@ -1,0 +1,6 @@
+# alpha/index.ludic - another module's entry
+module alpha uses core
+def Systems animals { run: fn animals_run }
+function animals_run() -> int {
+  return 2
+}

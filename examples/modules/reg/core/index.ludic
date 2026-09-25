@@ -1,0 +1,11 @@
+# core/index.ludic - declares the registry other modules add to, and its own first entry
+module core
+export property System {
+  key: string = ""
+  run: fn() -> int = null
+}
+export open registry Systems of System as SY
+def Systems clock { run: fn clock_run }
+function clock_run() -> int {
+  return 1
+}

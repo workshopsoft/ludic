@@ -1,0 +1,80 @@
+# registry_open.ludic — L8 + L3: which defs a registry takes, and in what order.
+#
+# A def written in another module than its registry's is refused unless the registry says `open
+# registry`, and then it goes through the same visibility as any reference: the registry must be
+# exported, and a module that says `uses` names the registry's module. The index order is the
+# declaring module's own entries first, in the order they were read, then each other module's, the
+# modules in the order of their names and each one's entries in the order they were read - so an
+# entry's index does not depend on the order a barrel happens to import things in. A registry and
+# its defs in one module, or in no module, keep exactly the order they always had.
+function reg_def_check(d: int) -> void {
+  let r = reg_find(g_df_reg[d])
+  let v = g_rg_var[r]
+  let rec = g_df_rec[d]
+  let to = module_of(v.file)
+  let from = module_of(rec.file)
+  if (to == "") or (from == to) { return }
+  g_err_file = rec.file
+  g_err_line = rec.line
+  let saved = g_parsing
+  g_parsing = false
+  if g_rg_open[r] == 0 {
+    perr(`def {v.s} {g_df_key[d]}: registry {v.s} is not open to other modules; declare it 'open registry {v.s}' in module {to}, or write the def there`)
+  }
+  vis_check(v, v.s)
+  g_parsing = saved
+}
+# a < b, byte by byte
+function reg_str_less(a: pointer, b: pointer) -> bool {
+  var i = 0
+  while i < len(a) and i < len(b) {
+    if a[i] != b[i] { return a[i] < b[i] }
+    i += 1
+  }
+  return len(a) < len(b)
+}
+# the defs of registry r, as indices into g_df_*, in index order
+function reg_order(r: int) -> []int {
+  let out = new []int
+  let own = module_of(g_rg_var[r].file)
+  let others = new []pointer
+  var d = 0
+  while d < len(g_df_reg) {
+    if (g_df_reg[d] == g_rg_name[r]) {
+      let m = module_of(g_df_rec[d].file)
+      if (m == own) { push(out, d) }
+      else {
+        var seen = false
+        var j = 0
+        while j < len(others) {
+          if (others[j] == m) { seen = true }
+          j += 1
+        }
+        if not seen { push(others, m) }
+      }
+    }
+    d += 1
+  }
+  # a handful of modules: an insertion sort by name
+  var i = 1
+  while i < len(others) {
+    let x = others[i]
+    var j = i - 1
+    while j >= 0 and reg_str_less(x, others[j]) {
+      others[j + 1] = others[j]
+      j -= 1
+    }
+    others[j + 1] = x
+    i += 1
+  }
+  i = 0
+  while i < len(others) {
+    d = 0
+    while d < len(g_df_reg) {
+      if (g_df_reg[d] == g_rg_name[r]) and (module_of(g_df_rec[d].file) == others[i]) { push(out, d) }
+      d += 1
+    }
+    i += 1
+  }
+  return out
+}

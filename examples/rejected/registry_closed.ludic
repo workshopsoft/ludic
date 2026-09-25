@@ -1,0 +1,8 @@
+# L8 + L3: only an `open registry` takes defs from another module
+import "closed_kit"
+program RegistryClosed {
+  def Tools saw { name: "Saw" }
+  entry {
+    print(TOOLS_COUNT)
+  }
+}

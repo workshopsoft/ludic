@@ -1004,6 +1004,12 @@ function parse_one_decl() -> void {
   if is_id("namespace") { parse_namespace(); return }   # #76 namespace block
   if is_id("port") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_port(); return }        # L3 ports
   if is_id("bind") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_bind(); return }
+  if is_id("open") and (toks[pi + 1].text == "registry") {                        # L8: open to other modules' defs
+    pi += 1
+    parse_registry()
+    g_rg_open[len(g_rg_open) - 1] = 1
+    return
+  }
   if is_id("registry") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "of") { parse_registry(); return }   # L8
   if is_id("def") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].kind == TK_ID) { parse_def(); return }            # L8
   if is_id("view") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_view(); return }            # L11

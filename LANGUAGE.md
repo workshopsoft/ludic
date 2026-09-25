@@ -314,6 +314,40 @@ the rule it always had: add an entry at the end, never between two. The order is
 compiler reads them in, and an `import` is read where it stands: a file's imported defs come before
 the defs written after the import line.
 
+A registry belongs to its module, and a `def` written in another module is refused - unless the
+registry says `open`:
+
+```ludic
+# doc-check: skip — a module spans files
+# core/index.ludic
+module core
+export property System { key: string = "", run: fn() -> int = null }
+export open registry Systems of System as SY
+def Systems clock { run: fn clock_run }
+
+# weather/index.ludic
+module weather uses core
+def Systems weather { run: fn weather_run }    # weather_run may stay private to weather
+```
+
+A def into an open registry goes through visibility like any other reference: the registry must be
+exported, and a module that says `uses` names the registry's module. What the entry itself names
+(`fn weather_run`) is seen from the def's own module. The errors:
+
+```
+game.ludic:4: error: def Tools saw: registry Tools is not open to other modules; declare it 'open registry Tools' in module kit, or write the def there
+game.ludic:4: error: Tools is private to module kit; mark it 'export' where it is declared (kit/index.ludic)
+```
+
+**The index order of an open registry** is the declaring module's own entries first, in the order
+they are read, then every other module's: the modules in the order of their names, each one's
+entries in the order they are read. `SY_CLOCK` is 0 however the program imports things, and an
+entry from `alpha` comes before one from `zeta` even when `zeta` is imported first - so a table
+saved by position keeps its meaning when a barrel's imports are reordered. The rule for a saved
+table is still to append: a new entry goes at the end of its own module's list, and a new module
+whose name sorts before an existing one moves that one's entries along. A registry whose defs are
+all in its own module (or in no module) keeps exactly the order it always had.
+
 ### Resource files (`registry ... from`)
 
 A registry's entries can live in a data file instead of the source:

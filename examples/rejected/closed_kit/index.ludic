@@ -1,0 +1,7 @@
+# closed_kit/index.ludic - a registry that is not open
+module kit
+export property Tool {
+  name: string = ""
+}
+export registry Tools of Tool
+def Tools axe { name: "Axe" }

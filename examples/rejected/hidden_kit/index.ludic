@@ -1,0 +1,10 @@
+# hidden_kit/index.ludic - open, but not exported: nothing outside kit can name it
+module kit
+export property Tool {
+  name: string = ""
+}
+open registry Tools of Tool
+def Tools axe { name: "Axe" }
+export function tool_count() -> int {
+  return TOOLS_COUNT
+}

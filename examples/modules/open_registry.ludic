@@ -1,0 +1,17 @@
+# open_registry.ludic — L8 + L3: `export open registry Systems of System` takes defs from other
+# modules. The index order is the declaring module's entries, then every other module's by module
+# name - alpha before zeta, although zeta is imported first - so it never depends on import order.
+#
+# Running it prints:  clock animals weather / 2 2 3
+import "reg/core"
+import "reg/zeta"
+import "reg/alpha"
+program OpenRegistry {
+  entry {
+    var out = ""
+    for i in 0 .. SY_COUNT { out = out + Systems[i].key + " " }
+    let s = Systems[SY_ANIMALS]
+    let w = Systems[SY_WEATHER]
+    print(`{out}/ {s.run()} {SY_WEATHER} {w.run()}`)
+  }
+}

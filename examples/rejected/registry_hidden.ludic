@@ -1,0 +1,8 @@
+# L8 + L3: a def goes through visibility like any reference - the registry must be exported
+import "hidden_kit"
+program RegistryHidden {
+  def Tools saw { name: "Saw" }
+  entry {
+    print(tool_count())
+  }
+}
