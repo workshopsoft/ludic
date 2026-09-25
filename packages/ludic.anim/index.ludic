@@ -1,0 +1,9 @@
+# ludic.anim - playing the clips an animator keyed into a glTF, and blending two of them.
+# render3d parses no animations and offers a POSE api rather than a player, so the sampler is here
+module ludic_anim uses ludic_render3d
+numbers float
+import "ludic.render3d/r3d.ludic"
+import "clip.ludic"
+import "read.ludic"
+import "mix.ludic"
+import "pose.ludic"

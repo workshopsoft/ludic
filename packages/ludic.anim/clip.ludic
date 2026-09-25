@@ -1,0 +1,66 @@
+# clip.ludic - a clip: its channels flattened into one run of key times and one of values, and the
+# table of every clip read so far, found by name
+export const AC_ROT: int = 0
+export const AC_POS: int = 1
+
+export property Clip {
+  name:  string = "",
+  dur:   float = 0.0,              # seconds: the last key of any channel
+  n:     int = 0,                  # channels
+  cnode: words,                    # target node per channel (the FILE's node index)
+  cpath: words,                    # AC_ROT or AC_POS
+  ckeys: words,                    # keys per channel
+  coff:  words,                    # where this channel starts in `times`
+  cvoff: words,                    # where it starts in `vals`
+  times: floats,
+  vals:  floats
+}
+
+var clips: []Clip = null
+# Keyed translations are off unless asked for: baking keys location on every bone, and a skeleton
+# does not translate its joints, so applying them turns rounding into a pose.
+var positions: bool = false
+
+function clips_init() -> void {
+  if clips == null { clips = new []Clip }
+}
+
+# the clip of that name, or null; names are per file (per body, per species), never shared
+export function anim_find(name: string) -> Clip {
+  clips_init()
+  for i in 0 .. len(clips) { if clips[i].name == name { return clips[i] } }
+  return null
+}
+
+export function anim_count() -> int {
+  clips_init()
+  return len(clips)
+}
+
+# a clip made outside a glTF (a test, a generated clip); a name already held is refused
+export function anim_add(c: Clip) -> bool {
+  if c == null or anim_find(c.name) != null { return false }
+  push(clips, c)
+  return true
+}
+
+export function anim_clear() -> void { clips = new []Clip }
+export function anim_set_positions(on: bool) -> void { positions = on }
+export function anim_positions() -> bool { return positions }
+
+# Which key pair straddles time t, by halving rather than walking: a grazing clip is three
+# hundred keys long and a valley can have dozens of animals posed in a frame.
+export function anim_key_at(c: Clip, ch: int, t: float) -> int {
+  let n = c.ckeys[ch]
+  let o = c.coff[ch]
+  if n <= 1 { return 0 }
+  if t < c.times[o] { return 0 }
+  if t > c.times[o + n - 1] { return n - 2 }
+  var lo = 0
+  var hi = n - 1
+  while hi - lo > 1 {
+    let mid = (lo + hi) / 2
+    if c.times[o + mid] > t { hi = mid } else { lo = mid }
+  }
+  return lo
+}

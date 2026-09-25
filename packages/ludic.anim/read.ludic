@@ -1,0 +1,112 @@
+# read.ludic - every animation out of the document `gltf_load` just parsed: rotation and
+# translation channels, flattened into a Clip each; a name already held is skipped
+
+# Call it straight after a load and before the next one: `gltf_doc` and `gltf_bin` point at
+# whichever file was read last, so a clip that is not taken now cannot be taken later.
+export function anim_read_doc(dir: string) -> int {
+  clips_init()
+  if gltf_doc == null { return 0 }
+  if value_has(gltf_doc, "animations") == 0 { return 0 }
+  # REOPEN THE .bin. `gltf_load` closes it before it returns, and an accessor read through a closed
+  # handle returns a buffer of the right size full of zeros: right names, right counts, no motion.
+  let buffers = value_get(gltf_doc, "buffers")
+  if value_count(buffers) == 0 { return 0 }
+  let bin_uri = value_as_str(value_get(value_at(buffers, 0), "uri"))
+  gltf_bin = file_open(dir + "/" + bin_uri, "rb")
+  if gltf_bin == null {
+    print(`anim: cannot reopen {dir}/{bin_uri}`)
+    return 0
+  }
+  let arr = value_get(gltf_doc, "animations")
+  var got = 0
+  for ai in 0 .. value_count(arr) {
+    let c = read_one(value_at(arr, ai))
+    if c != null {
+      push(clips, c)
+      got += 1
+    }
+  }
+  file_close(gltf_bin)
+  gltf_bin = null
+  return got
+}
+
+function kept_path(ch: Val) -> string {
+  let tgt = value_get(ch, "target")
+  if value_has(tgt, "node") == 0 { return "" }
+  let path = value_as_str(value_get(tgt, "path"))
+  if path != "rotation" and path != "translation" { return "" }
+  return path
+}
+
+function read_one(a: Val) -> Clip {
+  var nm = ""
+  if value_has(a, "name") != 0 { nm = value_as_str(value_get(a, "name")) }
+  if anim_find(nm) != null { return null }                 # a second rig's file, same clip
+  let chans = value_get(a, "channels")
+  let samps = value_get(a, "samplers")
+  let nc = value_count(chans)
+  # count first: the flat arrays are sized once rather than grown per channel
+  var n_keep = 0
+  var n_t = 0
+  var n_v = 0
+  for ci in 0 .. nc {
+    let ch = value_at(chans, ci)
+    let path = kept_path(ch)
+    if path == "" { continue }
+    let sp = value_at(samps, value_as_int(value_get(ch, "sampler")))
+    let cnt = gltf_accessor_count(value_as_int(value_get(sp, "input")))
+    n_keep += 1
+    n_t += cnt
+    if path == "rotation" { n_v += cnt * 4 } else { n_v += cnt * 3 }
+  }
+  if n_keep == 0 { return null }
+  let c = new Clip
+  c.name = nm
+  c.n = n_keep
+  c.cnode = words(n_keep)
+  c.cpath = words(n_keep)
+  c.ckeys = words(n_keep)
+  c.coff = words(n_keep)
+  c.cvoff = words(n_keep)
+  c.times = floats(n_t)
+  c.vals = floats(n_v)
+  var k = 0
+  var at = 0
+  var av = 0
+  for ci in 0 .. nc {
+    let ch = value_at(chans, ci)
+    let path = kept_path(ch)
+    if path == "" { continue }
+    let sp = value_at(samps, value_as_int(value_get(ch, "sampler")))
+    c.cnode[k] = value_as_int(value_get(value_get(ch, "target"), "node"))
+    if path == "rotation" { c.cpath[k] = AC_ROT } else { c.cpath[k] = AC_POS }
+    let tb = gltf_accessor_floats(value_as_int(value_get(sp, "input")))
+    let nk = gltf_count
+    c.ckeys[k] = nk
+    c.coff[k] = at
+    for i in 0 .. nk { c.times[at + i] = tb[i] }
+    if nk > 0 and c.times[at + nk - 1] > c.dur { c.dur = c.times[at + nk - 1] }
+    at += nk
+    let vb = gltf_accessor_floats(value_as_int(value_get(sp, "output")))
+    var comps = 3
+    if c.cpath[k] == AC_ROT { comps = 4 }
+    c.cvoff[k] = av
+    for i in 0 .. nk * comps { c.vals[av + i] = vb[i] }
+    av += nk * comps
+    k += 1
+  }
+  if anim_first_key(c) > 0.001 { print(`anim: {nm} starts at {anim_first_key(c)} s - key from frame zero, or every cycle holds its opening pose`) }
+  return c
+}
+
+# the earliest key of any channel: a clip keyed from frame 1 has 1/30 here, and a hitch every cycle
+export function anim_first_key(c: Clip) -> float {
+  var t = 0.0
+  for ch in 0 .. c.n {
+    if c.ckeys[ch] == 0 { continue }
+    let s = c.times[c.coff[ch]]
+    if ch == 0 or s < t { t = s }
+  }
+  return t
+}
