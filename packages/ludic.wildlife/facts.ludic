@@ -1,0 +1,50 @@
+# facts.ludic - what happened, oldest first, for the game to drain: it decides what a sighting is
+# worth, who a fed animal credits, what a snare's catch does to the snare, and what a shove costs
+export const WILD_SPOTTED: int = 0   # a species came within sight of player 0 for the first time
+export const WILD_FLED: int = 1      # it was flushed and ran (from `player`)
+export const WILD_FED: int = 2       # it ate food someone set out (`lure`, `owner`, `diet`)
+export const WILD_CAUGHT: int = 3    # it walked into a snare (`lure`, `owner`)
+export const WILD_CHARGED: int = 4   # it came at `player`
+export const WILD_SHOVED: int = 5    # and reached them, from (x, z)
+export const WILD_PRINT: int = 6     # a walker left a print at (x, z), heading `yaw`
+export const WILD_SCAT: int = 7      # droppings, near enough to a player to be found
+export const WILD_BED: int = 8       # a long sit left crushed grass
+export const WILD_WENT: int = 9      # its hours ended and it went for good (a legend's)
+
+export property WildFact {
+  what: int = 0
+  key: int = 0
+  nid: int = 0
+  sp: int = 0
+  legend: bool = false
+  x: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  scale: float = 1.0
+  player: int = 0
+  lure: int = 0
+  owner: int = -1
+  diet: int = 0
+}
+
+var wl_facts: Queue<WildFact> = null
+
+export function wildlife_facts() -> Queue<WildFact> {
+  if wl_facts == null { wl_facts = queue_new("wildlife.facts") }
+  return wl_facts
+}
+
+function wl_fact(what: int, a: WildAnimal) -> WildFact {
+  let f = new WildFact
+  f.what = what
+  f.key = a.key
+  f.nid = a.nid
+  f.sp = a.sp
+  f.legend = a.legend
+  f.x = a.x
+  f.z = a.z
+  f.yaw = a.yaw
+  f.scale = a.scale
+  q_push(wildlife_facts(), f)
+  return f
+}

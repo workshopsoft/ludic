@@ -1,0 +1,73 @@
+# port.ludic - what the animals ask the world. Every member has a default: unbound, the ground is a
+# flat dry meadow at 0 in the middle of a summer's day, one player stands at the origin making no
+# sound, nothing is set out and nothing blocks a look.
+export const WILD_MOVING: int = 0    # a player's stillness
+export const WILD_STILL: int = 1
+export const WILD_SITTING: int = 2
+
+export const WILD_ABOUT: int = 0     # what an animal is doing at this hour (WildlifeWorld.about)
+export const WILD_AWAY: int = 1      # lying up: not drawn, not ticked
+export const WILD_GONE: int = 2      # gone for good: a fact says so
+
+export port WildlifeWorld {
+  ground: fn(float, float) -> float = fn wl_zero2
+  water: fn(float, float) -> float = fn wl_dry            # the water's surface there
+  slope: fn(float, float) -> float = fn wl_zero2
+  forest: fn(float, float) -> bool = fn wl_no2
+  sight: fn(float, float, float, float, float, float) -> bool = fn wl_clear   # nothing between
+  players: fn() -> int = fn wl_one                        # player slots
+  player_on: fn(int) -> bool = fn wl_first
+  player_x: fn(int) -> float = fn wl_zero1
+  player_y: fn(int) -> float = fn wl_zero1
+  player_z: fn(int) -> float = fn wl_zero1
+  hidden: fn(int) -> bool = fn wl_no1                     # in a hide: nothing sees them
+  noise: fn(int) -> float = fn wl_zero1                   # 0..1
+  scent: fn(int) -> float = fn wl_zero1                   # 0..1
+  stillness: fn(int) -> int = fn wl_moving                # WILD_MOVING, _STILL, _SITTING
+  hour: fn() -> float = fn wl_noon
+  light: fn() -> float = fn wl_one_f                      # how well it sees now: 1 by day
+  winterness: fn() -> float = fn wl_zero0                 # 0 full summer .. 1 full winter
+  wind: fn() -> float = fn wl_zero0                       # 0..1
+  wind_dir: fn() -> float = fn wl_zero0                   # the yaw the wind blows toward
+  wariness: fn() -> float = fn wl_one_f                   # every nerve, times
+  charge_reach: fn() -> float = fn wl_nine              # how close a charger lets you come, m
+  taught: fn() -> bool = fn wl_no0                        # food carries further, feeders mind less
+  about: fn(WildAnimal) -> int = fn wl_about              # WILD_ABOUT, _AWAY or _GONE
+  ranges: fn(int) -> int = fn wl_two                      # ranges a species gets on this map
+  per_range: fn(int) -> int = fn wl_three                 # and how many live in each
+  spot: fn(WildAnimal, bool, WildSpot) -> bool = fn wl_no_spot   # water (true) or forage for it
+  lures: fn() -> int = fn wl_none0                        # how many things to ask `lure` about
+  lure: fn(int, WildLure) -> bool = fn wl_no_lure         # the i-th, if it is one and set out
+  present: fn(int) -> bool = fn wl_yes1                   # a spot or lure by uid is still there
+  next_id: fn() -> int = fn wl_next_id
+  born: fn(WildAnimal) -> void = fn wl_nothing            # a new animal: draw it
+  placed: fn(WildRange, int) -> void = fn wl_range_nothing   # a range was set out
+}
+function wl_zero0() -> float { return 0.0 }
+function wl_zero1(p: int) -> float { return 0.0 }
+function wl_zero2(x: float, z: float) -> float { return 0.0 }
+function wl_dry(x: float, z: float) -> float { return -1000.0 }
+function wl_no0() -> bool { return false }
+function wl_no1(p: int) -> bool { return false }
+function wl_no2(x: float, z: float) -> bool { return false }
+function wl_yes1(u: int) -> bool { return true }
+function wl_clear(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool { return true }
+function wl_one() -> int { return 1 }
+function wl_none0() -> int { return 0 }
+function wl_first(p: int) -> bool { return p == 0 }
+function wl_moving(p: int) -> int { return WILD_MOVING }
+function wl_noon() -> float { return 12.0 }
+function wl_one_f() -> float { return 1.0 }
+function wl_nine() -> float { return 9.0 }
+function wl_about(a: WildAnimal) -> int { return WILD_ABOUT }
+function wl_two(sp: int) -> int { return 2 }
+function wl_three(sp: int) -> int { return 3 }
+function wl_no_spot(a: WildAnimal, water: bool, s: WildSpot) -> bool { return false }
+function wl_no_lure(i: int, l: WildLure) -> bool { return false }
+function wl_nothing(a: WildAnimal) -> void { }
+function wl_range_nothing(r: WildRange, i: int) -> void { }
+var wl_ids: int = 0
+function wl_next_id() -> int {
+  wl_ids += 1
+  return wl_ids
+}

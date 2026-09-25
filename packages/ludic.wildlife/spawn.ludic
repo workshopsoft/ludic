@@ -1,0 +1,52 @@
+# spawn.ludic - a valley filled: ranges set out, then each range to its target on its own habitat.
+# Each morning the ranges move with the season and every range under its target gets ONE back,
+# out of every player's sight: a valley recovers, it does not refill.
+export function wildlife_spawn(x0: float, z0: float) -> void {
+  wildlife_ranges_setup(x0, z0)
+  wildlife_seed(97)
+  let rs = wildlife_ranges()
+  for i in 0 .. len(rs) { wl_fill(i, WildlifeWorld.per_range(rs[i].sp)) }
+  wildlife_ranges_migrate()
+}
+
+# up to `want` more in range i; returns how many went in
+function wl_fill(i: int, want: int) -> int {
+  let r = wildlife_range(i)
+  var made = 0
+  for k in 0 .. want {
+    if not wildlife_find_spot(wl_sp(r.sp).habitat, r.x, r.z, 0.0, r.r) { continue }
+    let a = wildlife_new(r.sp, wl_px, wl_pz, false)
+    if a != null {
+      a.rg = i
+      made += 1
+    }
+  }
+  return made
+}
+
+# each morning: the ranges slide with the season, and the valley gets back what it lost
+export function wildlife_morning() -> int {
+  wildlife_ranges_migrate()
+  return wildlife_repopulate()
+}
+
+# one newcomer for each range under its target, never within 200 m of a player; how many came
+export function wildlife_repopulate() -> int {
+  let rs = wildlife_ranges()
+  var added = 0
+  for i in 0 .. len(rs) {
+    let want = WildlifeWorld.per_range(rs[i].sp)
+    if want == 0 or wildlife_range_alive(i) >= want { continue }
+    for t in 0 .. 12 {
+      if not wildlife_find_spot(wl_sp(rs[i].sp).habitat, rs[i].x, rs[i].z, 0.0, rs[i].r) { continue }
+      if wl_near(wl_px, wl_pz) < 200.0 { continue }
+      let a = wildlife_new(rs[i].sp, wl_px, wl_pz, false)
+      if a != null {
+        a.rg = i
+        added += 1
+      }
+      break
+    }
+  }
+  return added
+}

@@ -1,0 +1,44 @@
+# system.ludic - the wildlife as a system: its save section is this player's record (the species
+# seen and fed) and which ranges they have found; the animals themselves are respawned with the
+# valley, so a reset forgets the record and nothing else
+export function wildlife_reset() -> void {
+  wl_record_reset()
+  wl_found = null
+  let rs = wildlife_ranges()
+  for i in 0 .. len(rs) { rs[i].found = false }
+  q_clear(wildlife_facts())
+}
+
+export function wildlife_save() -> Val {
+  let v = Value.object()
+  sv_put_int(v, "seen", wl_seen)
+  sv_put_int(v, "fed", wl_fed)
+  sv_put_bool(v, "fed_any", wl_fed_any)
+  let found = new []int
+  let rs = wildlife_ranges()
+  for i in 0 .. len(rs) {
+    var f = 0
+    if rs[i].found { f = 1 }
+    push(found, f)
+  }
+  sv_put_ints(v, "found", found)
+  return v
+}
+
+export function wildlife_load(v: Val, version: int) -> void {
+  wildlife_reset()
+  wl_seen = sv_int(v, "seen", 0)
+  wl_fed = sv_int(v, "fed", 0)
+  wl_fed_any = sv_bool(v, "fed_any", false)
+  wl_found = sv_ints(v, "found")
+  wl_found_apply()
+}
+
+# PH_SIMULATE with no tick of its own: the game steps it (wildlife_tick) where the world is owned
+export function wildlife_system() -> System {
+  let s = system_new("wildlife", PH_SIMULATE)
+  s.reset = fn wildlife_reset
+  s.save = fn wildlife_save
+  s.load = fn wildlife_load
+  return s
+}

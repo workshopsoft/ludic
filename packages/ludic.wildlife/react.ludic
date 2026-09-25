@@ -1,0 +1,79 @@
+# react.ludic - alert (it stops and looks: the window the camera wants), wary (it puts ground between
+# you without running) and fleeing; true when it is doing one of them, which is all it does this tick
+function wl_react(a: WildAnimal, np: int, dt: float) -> bool {
+  let s = wl_sp(a.sp)
+  if a.state == WILD_ALERT {
+    a.speed = 0.0
+    wl_face(a, a.sus_x, a.sus_z, 2.2, dt)
+    if a.timer < 0.0 { wl_wander(a, 3.0 + wl_rnd() * 4.0) }
+    return true
+  }
+  if a.state == WILD_WARY {
+    wl_face(a, a.x + (a.x - a.sus_x), a.z + (a.z - a.sus_z), 2.6, dt)
+    a.speed = s.walk * 0.8
+    wl_step(a, dt)
+    if a.timer < 0.0 { wl_wander(a, 3.0 + wl_rnd() * 4.0) }
+    return true
+  }
+  if a.state == WILD_FLEE {
+    wl_face(a, a.x + (a.x - WildlifeWorld.player_x(np)), a.z + (a.z - WildlifeWorld.player_z(np)), 5.0, dt)
+    a.speed = s.run
+    wl_step(a, dt)
+    if a.timer < 0.0 {
+      wl_rehome(a)
+      wl_wander(a, 5.0)
+    }
+    return true
+  }
+  return false
+}
+
+# walking to (or reached) something set out; true while it is
+function wl_approach(a: WildAnimal, dt: float) -> bool {
+  if (a.state == WILD_IDLE or a.state == WILD_WANDER) and wl_attraction(a) { wl_take_lure(a) }
+  if a.state != WILD_APPROACH { return false }
+  if a.lure == 0 or not WildlifeWorld.present(a.lure) {
+    a.lure = 0
+    a.state = WILD_IDLE
+    a.timer = 2.0
+    return true
+  }
+  wl_face(a, a.lure_x, a.lure_z, 3.0, dt)
+  a.speed = wl_sp(a.sp).walk
+  let dx = a.lure_x - a.x
+  let dz = a.lure_z - a.z
+  if Math.sqrt(dx * dx + dz * dz) < 1.3 {
+    a.speed = 0.0
+    wl_arrive(a)
+    return true
+  }
+  wl_step(a, dt)
+  return true
+}
+
+# at a snare it is held; at food it eats for 14 s; at a lure it stands curious for 9
+function wl_arrive(a: WildAnimal) -> void {
+  a.state = WILD_EAT
+  a.timer = 9.0
+  if a.lure_kind == WILD_FEED { a.timer = 14.0 }
+  if a.lure_kind != WILD_SNARE { return }
+  a.state = WILD_TRAPPED
+  a.x = a.lure_x
+  a.z = a.lure_z
+  a.y = WildlifeWorld.ground(a.x, a.z)
+  let f = wl_fact(WILD_CAUGHT, a)
+  f.lure = a.lure
+  f.owner = a.lure_owner
+}
+
+# eating what it came to; when it is done, food is credited and it wanders off
+function wl_eat(a: WildAnimal) -> bool {
+  if a.state != WILD_EAT { return false }
+  a.speed = 0.0
+  if a.timer < 0.0 {
+    if a.lure != 0 and a.lure_kind == WILD_FEED and WildlifeWorld.present(a.lure) { wl_ate(a, a.lure, a.lure_owner, wl_sp(a.sp).diet) }
+    a.lure = 0
+    wl_wander(a, 4.0)
+  }
+  return true
+}

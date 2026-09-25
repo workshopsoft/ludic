@@ -1,0 +1,64 @@
+# animal.ludic - one animal: where it is and where it lives, what it is doing, what it wants, and
+# what it makes of the players. The game draws it from these and keeps its own drawing by `key`.
+export const WILD_IDLE: int = 0
+export const WILD_WANDER: int = 1
+export const WILD_FLEE: int = 2
+export const WILD_APPROACH: int = 3   # walking to food, a lure or a snare
+export const WILD_EAT: int = 4
+export const WILD_TRAPPED: int = 5
+export const WILD_CHARGE: int = 6
+export const WILD_FLY: int = 7
+export const WILD_PERCH: int = 8
+export const WILD_GO_DRINK: int = 9
+export const WILD_GO_FEED: int = 10
+export const WILD_DRINK: int = 11     # drinking or grazing at its spot
+export const WILD_ALERT: int = 12     # head up, turned at what it noticed
+export const WILD_WARY: int = 13      # turned away, a step or two of distance taken
+export const WILD_LAND: int = 14      # a bird gliding down to a spot
+
+export property WildAnimal {
+  key: int = 0            # unique for the run, never reused: the game's drawing is found by it
+  nid: int = 0            # its id across machines (the port's next_id)
+  sp: int = 0
+  legend: bool = false
+  variant: int = 0        # 0..11: which coat, the game's to read
+  scale: float = 1.0
+  alive: bool = true
+  shown: bool = true      # about, and to be drawn
+  pinned: bool = false    # the AI leaves it where it stands
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  speed: float = 0.0
+  phase: float = 0.0      # the gait, 0..2 pi, from the ground covered
+  fly_h: float = 0.0
+  bank: float = 0.0
+  state: int = 0
+  timer: float = 0.0
+  rg: int = -1            # the range it belongs to
+  home_x: float = 0.0
+  home_z: float = 0.0
+  tx: float = 0.0
+  tz: float = 0.0
+  thirst: float = 0.0     # 0..100: over 60 it goes looking for water
+  hunger: float = 0.0
+  scat_t: float = 0.0     # game minutes until it might leave sign
+  track_d: float = 0.0
+  spot: int = 0           # the uid of the water or forage it walks to, 0 none
+  spot_x: float = 0.0
+  spot_z: float = 0.0
+  spot_water: bool = false
+  lure: int = 0           # the uid of the food, lure or snare it walks to, 0 none
+  lure_kind: int = 0
+  lure_x: float = 0.0
+  lure_z: float = 0.0
+  lure_owner: int = -1
+  calm: float = 0.0       # game minutes of tolerating you, after being fed
+  fed: int = 0
+  alert: float = 0.0      # 0..100: what it makes of you
+  sus_x: float = 0.0      # where it thinks the trouble is
+  sus_z: float = 0.0
+  spook: float = 0.0      # game minutes of extra wariness after being flushed
+  seen: float = 0.0       # the alert it has already reacted to
+}

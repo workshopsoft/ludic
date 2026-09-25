@@ -1,0 +1,27 @@
+# ludic.wildlife - species handed in by the game, ranges placed against its ground, and every animal's
+# day: wander, graze, drink, notice the players, flee, come to food; what happened is a fact
+module ludic_wildlife uses ludic_base
+numbers float
+import "ludic.base"
+import "species.ludic"
+import "animal.ludic"
+import "places.ludic"
+import "port.ludic"
+import "facts.ludic"
+import "store.ludic"
+import "guest.ludic"
+import "record.ludic"
+import "habitat.ludic"
+import "ranges.ludic"
+import "migrate.ludic"
+import "senses.ludic"
+import "steer.ludic"
+import "lures.ludic"
+import "needs.ludic"
+import "ground.ludic"
+import "react.ludic"
+import "want.ludic"
+import "birds.ludic"
+import "run.ludic"
+import "spawn.ludic"
+import "system.ludic"

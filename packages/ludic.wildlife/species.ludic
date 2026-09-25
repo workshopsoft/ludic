@@ -1,0 +1,57 @@
+# species.ludic - what a kind of animal IS, as far as its day goes: the game hands the table in,
+# one entry per species, and the entry's place in it is the species' number
+export const WILD_MEADOW: int = 0
+export const WILD_FOREST: int = 1
+export const WILD_SHORE: int = 2
+export const WILD_CLIFF: int = 3
+
+# what it eats, and so what food and which lures it comes to
+export const WILD_PLANTS: int = 0
+export const WILD_FISH: int = 1
+export const WILD_HAY: int = 2
+export const WILD_SEED: int = 3
+
+export property WildSpecies {
+  key: string = ""
+  walk: float = 1.0          # m/s
+  run: float = 1.0           # m/s
+  flee: float = 30.0         # its nerve: how far off a player starts to reach it, m
+  home: float = 60.0         # how far it roams about its home, m
+  habitat: int = 0           # WILD_MEADOW .. WILD_CLIFF
+  tracks: bool = false       # a walker that leaves prints (and droppings, and beds)
+  size: int = 0              # 0 small (a snare holds it), 1 medium, 2 large
+  diet: int = 0              # WILD_PLANTS .. WILD_SEED
+  flies: bool = false        # a bird: it circles, lands and lifts off
+  tame: bool = false         # minds nobody (a horse)
+  charges: bool = false      # comes at a player who gets too close (a bear)
+  forget: float = 2.5        # alert points a second it lets go of
+  land_shy: float = 80.0     # a bird: how close it comes down with somebody about, m
+  land_chance: float = 0.1   # and how readily it comes down at all
+  keep_away: float = 60.0    # how far its ranges keep from where the valley starts, m
+  range: float = 100.0       # how wide one of its ranges is, m
+  scale: float = 1.0         # its size, times
+}
+
+var wl_species: []WildSpecies = null
+
+function wl_sp_all() -> []WildSpecies {
+  if wl_species == null { wl_species = new []WildSpecies }
+  return wl_species
+}
+
+export function wildlife_species_clear() -> void { wl_species = new []WildSpecies }
+
+# the next species; returns its number
+export function wildlife_species_add(s: WildSpecies) -> int {
+  push(wl_sp_all(), s)
+  return len(wl_sp_all()) - 1
+}
+
+export function wildlife_species_count() -> int { return len(wl_sp_all()) }
+
+export function wildlife_species(sp: int) -> WildSpecies {
+  if sp < 0 or sp >= len(wl_sp_all()) { return null }
+  return wl_sp_all()[sp]
+}
+
+function wl_sp(sp: int) -> WildSpecies { return wl_sp_all()[sp] }

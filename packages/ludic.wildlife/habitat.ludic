@@ -1,0 +1,38 @@
+# habitat.ludic - the right kind of ground for a species, asked of the port's ground, water, slope
+# and forest; and a spot of it at a distance from a point, off the package's dice
+var wl_px: float = 0.0
+var wl_pz: float = 0.0
+
+function wl_wet(x: float, z: float, depth: float) -> bool {
+  return WildlifeWorld.ground(x, z) < WildlifeWorld.water(x, z) - depth
+}
+
+export function wildlife_habitat_ok(hab: int, x: float, z: float) -> bool {
+  let h = WildlifeWorld.ground(x, z)
+  let w = WildlifeWorld.water(x, z)
+  if h < w + 0.8 { return false }
+  let s = WildlifeWorld.slope(x, z)
+  if hab == WILD_MEADOW { return s < 0.28 and not WildlifeWorld.forest(x, z) }
+  if hab == WILD_FOREST { return s < 0.5 and WildlifeWorld.forest(x, z) }
+  if hab == WILD_SHORE { return h < w + 4.0 and s < 0.4 }
+  return s > 0.25 or h > 80.0
+}
+
+# a spot of `hab` d0..d1 metres from (x0, z0); where it is, is wildlife_spot_x / _z
+export function wildlife_find_spot(hab: int, x0: float, z0: float, d0: float, d1: float) -> bool {
+  for t in 0 .. 60 {
+    let ang = wl_rnd() * WL_TAU
+    let d = d0 + wl_rnd() * (d1 - d0)
+    let x = x0 + Math.cos(ang) * d
+    let z = z0 + Math.sin(ang) * d
+    if wildlife_habitat_ok(hab, x, z) {
+      wl_px = x
+      wl_pz = z
+      return true
+    }
+  }
+  return false
+}
+
+export function wildlife_spot_x() -> float { return wl_px }
+export function wildlife_spot_z() -> float { return wl_pz }

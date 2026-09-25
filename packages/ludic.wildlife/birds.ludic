@@ -1,0 +1,105 @@
+# birds.ludic - a bird circles its home at its own height, comes down now and then (for seed from
+# further off than for nothing), glides in rather than dropping, pecks and drinks, and lifts off
+export function wildlife_tick_bird(a: WildAnimal, dt: float) -> void {
+  a.timer = a.timer - dt
+  let dh = wl_near(a.x, a.z)
+  if a.state == WILD_LAND {
+    wl_land(a, dh, dt)
+    return
+  }
+  if a.state == WILD_PERCH {
+    wl_perch(a, dh, dt)
+    return
+  }
+  wl_circle(a, dt)
+  let s = wl_sp(a.sp)
+  if wl_bird_seed(a) and dh > s.flee * 0.7 and wl_bird_spot_ok(wl_best.x, wl_best.z) {
+    let off = 1.0 + wl_rnd() * 2.0
+    let oa = wl_rnd() * WL_TAU
+    wl_come_down(a, wl_best.x + Math.sin(oa) * off, wl_best.z + Math.cos(oa) * off)
+    return
+  }
+  if a.timer < 0.0 and dh > s.land_shy {
+    let sx = a.x + (wl_rnd() - 0.5) * 24.0
+    let sz = a.z + (wl_rnd() - 0.5) * 24.0
+    if wl_rnd() < s.land_chance and wl_bird_spot_ok(sx, sz) {
+      wl_come_down(a, sx, sz)
+      return
+    }
+  }
+  if a.timer < 0.0 {
+    a.timer = 30.0
+    a.home_x = a.home_x + (wl_rnd() - 0.5) * 120.0
+    a.home_z = a.home_z + (wl_rnd() - 0.5) * 120.0
+  }
+}
+
+function wl_come_down(a: WildAnimal, x: float, z: float) -> void {
+  a.tx = x
+  a.tz = z
+  a.state = WILD_LAND
+  a.timer = 30.0
+}
+
+# a circle about home, climbing to its height: the eagle wide and high, the jay low
+function wl_circle(a: WildAnimal, dt: float) -> void {
+  let s = wl_sp(a.sp)
+  a.fly_h = a.fly_h + (8.0 + s.home * 0.12 - a.fly_h) * Math.min(1.0, 0.4 * dt)
+  let r = s.home * 0.5
+  let ang = Math.atan2(a.z - a.home_z, a.x - a.home_x) + s.walk / r * dt
+  let nx = a.home_x + Math.cos(ang) * r
+  let nz = a.home_z + Math.sin(ang) * r
+  a.yaw = Math.atan2(-(nx - a.x), -(nz - a.z))
+  a.x = nx
+  a.z = nz
+  a.speed = s.walk
+  a.y = WildlifeWorld.ground(a.x, a.z) + a.fly_h
+  a.bank = 0.35
+}
+
+function wl_take_off(a: WildAnimal, h: float) -> void {
+  a.state = WILD_FLY
+  a.timer = 20.0 + wl_rnd() * 40.0
+  a.fly_h = Math.max(a.fly_h, h)
+}
+
+function wl_land(a: WildAnimal, dh: float, dt: float) -> void {
+  let s = wl_sp(a.sp)
+  a.fly_h = Math.max(0.0, a.fly_h - dt * 3.2)
+  a.speed = s.walk * 0.8
+  wl_face(a, a.tx, a.tz, 2.4, dt)
+  wl_step(a, dt)
+  a.y = WildlifeWorld.ground(a.x, a.z) + a.fly_h
+  a.bank = 0.2 * Math.clamp(a.fly_h / 4.0, 0.0, 1.0)
+  if dh < s.flee or a.timer < -20.0 {
+    wl_take_off(a, 0.0)
+    return
+  }
+  if a.fly_h < 0.15 and wl_at_target(a, 2.0) {
+    a.state = WILD_PERCH
+    a.fly_h = 0.0
+    a.timer = 8.0 + wl_rnd() * 16.0
+    a.bank = 0.0
+  }
+}
+
+# on the ground it pecks at seed or takes a drink at the water's edge; it leaves no droppings
+function wl_perch(a: WildAnimal, dh: float, dt: float) -> void {
+  a.speed = 0.0
+  a.y = WildlifeWorld.ground(a.x, a.z)
+  a.bank = 0.0
+  if wl_bird_seed(a) and Math.sqrt((wl_best.x - a.x) * (wl_best.x - a.x) + (wl_best.z - a.z) * (wl_best.z - a.z)) < 3.0 {
+    a.hunger = Math.max(a.hunger - 30.0 * dt, 0.0)
+    a.timer = Math.max(a.timer, 1.0)
+    if wl_rnd() < 0.12 * dt and WildlifeWorld.present(wl_best.uid) { wl_ate(a, wl_best.uid, wl_best.owner, WILD_SEED) }
+  } else if wl_wet(a.x - Math.sin(a.yaw) * 2.0, a.z - Math.cos(a.yaw) * 2.0, 0.05) {
+    a.thirst = Math.max(a.thirst - 30.0 * dt, 0.0)
+  }
+  if a.timer < 0.0 or dh < wl_sp(a.sp).flee { wl_take_off(a, 0.5) }
+}
+
+# somewhere a bird would put down: flat and dry
+function wl_bird_spot_ok(x: float, z: float) -> bool {
+  if wl_wet(x, z, 0.05) { return false }
+  return not (WildlifeWorld.slope(x, z) > 0.30)
+}

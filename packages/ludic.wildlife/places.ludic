@@ -1,0 +1,38 @@
+# places.ludic - the places an animal's day is made of: its range, the water and forage it walks
+# to (the game's, found through the port), and food, lures and snares players set out
+export const WILD_FEED: int = 0      # food put down: eaten, and the one who left it is credited
+export const WILD_LURE: int = 1      # a lure: it comes, stands curious a while, and drifts off
+export const WILD_SNARE: int = 2     # a snare: a small enough animal walking onto it is held
+
+# a disc a species keeps to, with an address for each end of the year: `x`, `z` is where it is
+# today, the summer and winter centres lerped by the season (WildlifeWorld.winterness)
+export property WildRange {
+  sp: int = 0
+  x: float = 0.0
+  z: float = 0.0
+  r: float = 0.0
+  found: bool = false     # a player has been inside it
+  sx: float = 0.0
+  sz: float = 0.0
+  wx: float = 0.0
+  wz: float = 0.0
+}
+
+# water or forage the game offers an animal (WildlifeWorld.spot fills one)
+export property WildSpot {
+  uid: int = 0
+  x: float = 0.0
+  z: float = 0.0
+  water: bool = false
+}
+
+# something set out (WildlifeWorld.lure fills one): what it is, what eats it, where, whose
+export property WildLure {
+  uid: int = 0
+  kind: int = 0           # WILD_FEED, WILD_LURE, WILD_SNARE
+  diet: int = 0           # the diet it draws (WILD_PLANTS .. WILD_SEED)
+  size: int = 0           # a snare: the largest size it holds
+  x: float = 0.0
+  z: float = 0.0
+  owner: int = -1         # whoever set it out; the game decides what it means
+}

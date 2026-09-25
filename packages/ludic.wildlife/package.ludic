@@ -1,0 +1,5 @@
+# ludic.wildlife - the animals of a valley: where they live, what they do all day, what they make of
+# the players, and what they come to. Uses ludic.base and nothing else.
+package "ludic.wildlife"
+version "0.1.0"
+kind source

@@ -1,0 +1,97 @@
+# senses.ludic - what an animal makes of one player: sight (a clear line, closer is worse, the dark
+# helps), scent (downwind, further than sight), noise; the rise is NET of how fast it forgets, so
+# an alert settles where the distance puts it instead of climbing to the top and sticking
+var wl_near_i: int = 0
+
+# the nearest player's distance; `wl_near_i` says who
+function wl_near(x: float, z: float) -> float {
+  var best = 999999999999.0
+  wl_near_i = 0
+  for p in 0 .. WildlifeWorld.players() {
+    if not WildlifeWorld.player_on(p) { continue }
+    let d = wl_pdist2(p, x, z)
+    if d < best {
+      best = d
+      wl_near_i = p
+    }
+  }
+  return Math.sqrt(best)
+}
+
+function wl_pdist2(p: int, x: float, z: float) -> float {
+  let dx = WildlifeWorld.player_x(p) - x
+  let dz = WildlifeWorld.player_z(p) - z
+  return dx * dx + dz * dz
+}
+
+function wl_pdist(p: int, a: WildAnimal) -> float { return Math.sqrt(wl_pdist2(p, a.x, a.z)) }
+
+# -1 (it is upwind of player p: it cannot smell them) .. 1 (straight downwind, it gets everything)
+export function wildlife_downwind(a: WildAnimal, p: int) -> float {
+  let dx = a.x - WildlifeWorld.player_x(p)
+  let dz = a.z - WildlifeWorld.player_z(p)
+  let d = Math.max(Math.sqrt(dx * dx + dz * dz), 0.01)
+  let dir = WildlifeWorld.wind_dir()
+  return dx / d * -Math.sin(dir) + dz / d * -Math.cos(dir)
+}
+
+export function wildlife_can_see(a: WildAnimal, p: int) -> bool {
+  if WildlifeWorld.hidden(p) { return false }
+  return WildlifeWorld.sight(a.x, a.y + 0.9, a.z, WildlifeWorld.player_x(p), WildlifeWorld.player_y(p) + 0.9, WildlifeWorld.player_z(p))
+}
+
+# 1 at the animal, 0 at `reach` and beyond, squared: the far half of a range is almost free
+function wl_near_sq(d: float, reach: float) -> float {
+  let n = Math.max(1.0 - d / reach, 0.0)
+  return n * n
+}
+
+# alert points a second from player p at `dh` metres; 0 when nothing of them reaches it
+export function wildlife_alert_rate(a: WildAnimal, p: int, dh: float) -> float {
+  let s = wl_sp(a.sp)
+  if s.tame or a.calm > 0.0 { return 0.0 }
+  if (a.state == WILD_APPROACH or a.state == WILD_EAT) and a.lure != 0 and a.lure_kind == WILD_FEED and dh > 5.0 and WildlifeWorld.taught() { return 0.0 }
+  var reach = s.flee * WildlifeWorld.wariness()
+  if a.spook > 0.0 { reach = reach * 1.25 }
+  var rate = 0.0
+  if dh < reach * 1.9 and wildlife_can_see(a, p) { rate = rate + 55.0 * wl_near_sq(dh, reach * 1.9) * WildlifeWorld.light() }
+  let wind = wildlife_downwind(a, p)
+  let ws = WildlifeWorld.wind()
+  if wind > 0.0 and ws > 0.08 and dh < reach * 3.2 {
+    rate = rate + 30.0 * wl_near_sq(dh, reach * 3.2) * wind * (WildlifeWorld.scent(p) * Math.min(1.0, 0.4 + ws))
+  }
+  let noise = WildlifeWorld.noise(p)
+  if noise > 0.12 and dh < reach * 1.5 * noise { rate = rate + 40.0 * wl_near_sq(dh, reach * 1.5 * noise) * noise }
+  return rate
+}
+
+# how fast it forgets player p: standing still buys it, sitting down buys more
+export function wildlife_alert_decay(a: WildAnimal, p: int) -> float {
+  var d = wl_sp(a.sp).forget
+  let still = WildlifeWorld.stillness(p)
+  if still == WILD_SITTING { d = d * 2.5 } else if still == WILD_STILL { d = d * 1.6 }
+  if a.spook > 0.0 { d = d * 0.7 }
+  return d
+}
+
+# the alert rises and falls with the player who nets it the most, and it watches them
+function wl_alert(a: WildAnimal, np: int, dh: float, dt: float) -> void {
+  var rise = wildlife_alert_rate(a, np, dh)
+  var fall = wildlife_alert_decay(a, np)
+  var who = np
+  for p in 0 .. WildlifeWorld.players() {
+    if p == np or not WildlifeWorld.player_on(p) { continue }
+    let r2 = wildlife_alert_rate(a, p, wl_pdist(p, a))
+    let f2 = wildlife_alert_decay(a, p)
+    if r2 - f2 > rise - fall {
+      rise = r2
+      fall = f2
+      who = p
+    }
+  }
+  if rise > 0.05 {
+    a.sus_x = WildlifeWorld.player_x(who)
+    a.sus_z = WildlifeWorld.player_z(who)
+  }
+  a.alert = Math.clamp(a.alert + (rise - fall) * dt, 0.0, 100.0)
+}

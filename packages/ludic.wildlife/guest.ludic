@@ -1,0 +1,17 @@
+# guest.ludic - a machine that draws another's animals puts its own away whole, and they come back
+# as they were when it stops; in between the list is the copies it is handed (wildlife_make)
+var wl_own: []WildAnimal = null
+
+export function wildlife_put_away() -> void {
+  if wl_own != null { return }
+  wl_own = wildlife_all()
+  wl_list = new []WildAnimal
+}
+
+export function wildlife_bring_back() -> void {
+  if wl_own == null { return }
+  wl_list = wl_own
+  wl_own = null
+}
+
+export function wildlife_away() -> bool { return wl_own != null }

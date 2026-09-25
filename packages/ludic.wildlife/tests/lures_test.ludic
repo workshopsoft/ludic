@@ -1,0 +1,131 @@
+# lures_test.ludic - food of its diet draws an animal and feeding it is a fact with the one who left
+# it; the wrong food does not; a snare holds a small animal; thirst finds water; a bird comes to seed
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+program LuresTest {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn fk_spot
+  }
+
+  function facts() -> []WildFact { return q_drain(wildlife_facts()) }
+  function set_out(uid: int, kind: int, diet: int, x: float, z: float, owner: int) -> WildLure {
+    let l = new WildLure
+    l.uid = uid
+    l.kind = kind
+    l.diet = diet
+    l.x = x
+    l.z = z
+    l.owner = owner
+    push(fk_lures, l)
+    return l
+  }
+  function idle(sp: int, x: float, z: float) -> WildAnimal {
+    let a = wildlife_make(sp, x, z, false, 0.0, 0, 1.0, 7)
+    a.timer = 30.0
+    return a
+  }
+  function go(a: WildAnimal, secs: float) -> void {
+    for k in 0 .. int(secs * 20.0) { wildlife_tick_ground(a, 0.05, 0.05 / 60.0) }
+  }
+
+  test "food of its diet draws it in, it eats, and the fact names what and whose" {
+    fk_setup()
+    set_out(41, WILD_FEED, WILD_PLANTS, 20.0, 0.0, 3)
+    let a = idle(0, 0.0, 0.0)
+    go(a, 40.0)
+    let fs = facts()
+    var fed = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == WILD_FED {
+        fed += 1
+        expect_eq(fs[i].lure, 41)
+        expect_eq(fs[i].owner, 3)
+      }
+    }
+    expect_eq(fed, 1)
+    expect(a.calm > 0.0)
+  }
+
+  test "food of another diet is left alone" {
+    fk_setup()
+    set_out(41, WILD_FEED, WILD_FISH, 20.0, 0.0, -1)
+    let a = idle(0, 0.0, 0.0)
+    go(a, 5.0)
+    expect(a.state != WILD_APPROACH)
+    expect_eq(a.lure, 0)
+  }
+
+  test "food taken away while it walks is given up" {
+    fk_setup()
+    set_out(41, WILD_FEED, WILD_PLANTS, 50.0, 0.0, -1)
+    let a = idle(0, 0.0, 0.0)
+    go(a, 1.0)
+    expect_eq(a.state, WILD_APPROACH)
+    fk_gone = 41
+    go(a, 0.2)
+    expect(a.state != WILD_APPROACH)
+  }
+
+  test "a snare holds a small animal, the port can find it, and a release lets it go" {
+    fk_setup()
+    let l = set_out(55, WILD_SNARE, 0, 10.0, 0.0, -1)
+    l.size = 0
+    let h = idle(2, 0.0, 0.0)
+    for k in 0 .. 40 {
+      if h.state == WILD_TRAPPED { break }
+      go(h, 2.0)
+    }
+    expect_eq(h.state, WILD_TRAPPED)
+    expect(wildlife_in_snare(55) == h)
+    let fs = facts()
+    var held = false
+    for i in 0 .. len(fs) { if fs[i].what == WILD_CAUGHT and fs[i].lure == 55 { held = true } }
+    expect(held)
+    wildlife_release(h)
+    expect_eq(h.state, WILD_FLEE)
+    expect(wildlife_in_snare(55) == null)
+  }
+
+  test "a thirsty animal walks to the water the port offers, and drinks it down" {
+    fk_setup()
+    let a = idle(0, 0.0, 0.0)
+    a.thirst = 90.0
+    a.state = WILD_WANDER
+    go(a, 0.1)
+    expect_eq(a.state, WILD_GO_DRINK)
+    expect_eq(a.spot, 900)
+    go(a, 40.0)
+    expect(a.thirst < 60.0)
+  }
+
+  test "seed down brings a bird out of the sky and it takes it" {
+    fk_setup()
+    set_out(77, WILD_FEED, WILD_SEED, 30.0, 0.0, -1)
+    let j = wildlife_new(3, 0.0, 0.0, false)
+    fk_px[0] = 200.0                               # within 900 m: an animal nobody is near does not think
+    fk_pz[0] = 0.0
+    var landed = false
+    var ate = false
+    for k in 0 .. 4000 {
+      wildlife_tick(0.05, 0.0)
+      if j.state == WILD_PERCH { landed = true }
+      let fs = facts()
+      for i in 0 .. len(fs) { if fs[i].what == WILD_FED and fs[i].diet == WILD_SEED { ate = true } }
+      if ate { break }
+    }
+    expect(landed)
+    expect(ate)
+  }
+}

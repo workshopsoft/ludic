@@ -1,0 +1,64 @@
+# steer.ludic - turning toward a point at a rate, a step along the facing that turns away from water
+# and a climb, and a target somewhere about home; a walker leaves a print every 2.8 m
+function wl_wrap(a: float) -> float {
+  var r = a
+  while r > 3.1415927 { r = r - WL_TAU }
+  while r < -3.1415927 { r = r + WL_TAU }
+  return r
+}
+
+function wl_face(a: WildAnimal, tx: float, tz: float, rate: float, dt: float) -> void {
+  let want = Math.atan2(-(tx - a.x), -(tz - a.z))
+  let r = rate * dt
+  a.yaw = a.yaw + Math.clamp(wl_wrap(want - a.yaw), -r, r)
+}
+
+# true when it moved
+function wl_step(a: WildAnimal, dt: float) -> bool {
+  let d = a.speed * dt
+  if d < 0.0001 { return false }
+  let nx = a.x - Math.sin(a.yaw) * d
+  let nz = a.z - Math.cos(a.yaw) * d
+  let nh = WildlifeWorld.ground(nx, nz)
+  if nh < WildlifeWorld.water(nx, nz) + 0.6 or nh - a.y > d * 1.2 {
+    a.yaw = a.yaw + Math.deg_to_rad(75.0)
+    a.timer = 0.0
+    return false
+  }
+  a.x = nx
+  a.z = nz
+  a.y = nh
+  a.track_d = a.track_d + d
+  if wl_sp(a.sp).tracks and a.track_d > 2.8 {
+    a.track_d = 0.0
+    wl_fact(WILD_PRINT, a)
+  }
+  return true
+}
+
+function wl_pick_target(a: WildAnimal, radius: float) -> void {
+  let ang = wl_rnd() * WL_TAU
+  let d = wl_rnd() * radius
+  a.tx = a.home_x + Math.cos(ang) * d
+  a.tz = a.home_z + Math.sin(ang) * d
+}
+
+function wl_at_target(a: WildAnimal, r: float) -> bool {
+  let dx = a.tx - a.x
+  let dz = a.tz - a.z
+  return dx * dx + dz * dz < r * r
+}
+
+# back to wandering about home after `t` seconds of whatever it was doing
+function wl_wander(a: WildAnimal, t: float) -> void {
+  a.state = WILD_WANDER
+  a.timer = t
+  wl_pick_target(a, wl_sp(a.sp).home)
+}
+
+# home where it stands now, kept inside its range
+function wl_rehome(a: WildAnimal) -> void {
+  a.home_x = a.x
+  a.home_z = a.z
+  wl_clamp(a)
+}

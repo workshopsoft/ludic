@@ -1,0 +1,97 @@
+# ranges.ludic - a species keeps to discs placed once, against the ground, 120-700 m out from where
+# the valley starts; each winters lower, toward the timber, as far down as it summered high
+var wl_ranges: []WildRange = null
+var wl_found: []int = null      # found flags a load brought before the ranges were set out
+
+export function wildlife_ranges() -> []WildRange {
+  if wl_ranges == null { wl_ranges = new []WildRange }
+  return wl_ranges
+}
+
+export function wildlife_range(i: int) -> WildRange {
+  if i < 0 or i >= len(wildlife_ranges()) { return null }
+  return wildlife_ranges()[i]
+}
+
+export function wildlife_range_dist(r: WildRange, x: float, z: float) -> float {
+  let dx = r.x - x
+  let dz = r.z - z
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+function wl_range_clashes(sp: int, x: float, z: float) -> bool {
+  let rs = wildlife_ranges()
+  for j in 0 .. len(rs) { if rs[j].sp == sp and wildlife_range_dist(rs[j], x, z) < wl_sp(sp).range * 1.6 { return true } }
+  return false
+}
+
+function wl_range_try(sp: int, x0: float, z0: float) -> bool {
+  let s = wl_sp(sp)
+  for tries in 0 .. 80 {
+    if not wildlife_find_spot(s.habitat, x0, z0, 120.0, 700.0) { continue }
+    let dx = wl_px - x0
+    let dz = wl_pz - z0
+    if Math.sqrt(dx * dx + dz * dz) < s.keep_away or wl_range_clashes(sp, wl_px, wl_pz) { continue }
+    let r = new WildRange
+    r.sp = sp
+    r.x = wl_px
+    r.z = wl_pz
+    r.r = s.range
+    r.sx = wl_px
+    r.sz = wl_pz
+    wl_pick_winter(r)
+    push(wildlife_ranges(), r)
+    return true
+  }
+  return false
+}
+
+# every species' ranges about (x0, z0), then the game told of each (WildlifeWorld.placed)
+export function wildlife_ranges_setup(x0: float, z0: float) -> void {
+  wildlife_seed(613)
+  wl_ranges = new []WildRange
+  for sp in 0 .. wildlife_species_count() {
+    for k in 0 .. WildlifeWorld.ranges(sp) { if not wl_range_try(sp, x0, z0) { break } }
+  }
+  wl_found_apply()
+  let rs = wildlife_ranges()
+  for i in 0 .. len(rs) { WildlifeWorld.placed(rs[i], i) }
+}
+
+# downhill, toward the timber, never into the water: shelter is worth 25 m of height
+function wl_pick_winter(r: WildRange) -> void {
+  let up = WildlifeWorld.ground(r.sx, r.sz) - WildlifeWorld.water(r.sx, r.sz)
+  let reach = Math.min(60.0 + up * 6.0, 520.0)
+  r.wx = r.sx
+  r.wz = r.sz
+  var best = up
+  for k in 0 .. 24 {
+    let ang = float(k) * Math.deg_to_rad(15.0)
+    for step in 1 .. 5 {
+      let d = reach * (float(step) / 4.0)
+      let px = r.sx + Math.cos(ang) * d
+      let pz = r.sz + Math.sin(ang) * d
+      let h = WildlifeWorld.ground(px, pz) - WildlifeWorld.water(px, pz)
+      if h < 3.0 or WildlifeWorld.slope(px, pz) > 0.6 { continue }
+      var score = h
+      if WildlifeWorld.forest(px, pz) { score = score - 25.0 }
+      if score < best {
+        best = score
+        r.wx = px
+        r.wz = pz
+      }
+    }
+  }
+}
+
+# a player stood at (x, z): any range they are inside is found
+export function wildlife_ranges_visit(x: float, z: float) -> void {
+  let rs = wildlife_ranges()
+  for i in 0 .. len(rs) { if not rs[i].found and wildlife_range_dist(rs[i], x, z) < rs[i].r { rs[i].found = true } }
+}
+
+function wl_found_apply() -> void {
+  if wl_found == null { return }
+  let rs = wildlife_ranges()
+  for i in 0 .. len(rs) { if i < len(wl_found) { rs[i].found = wl_found[i] != 0 } }
+}
