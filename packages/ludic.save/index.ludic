@@ -1,0 +1,10 @@
+# ludic.save - a save file's contract across releases: what version it is, what this build can read,
+# the migrations that carry an older one forward, and the write that is known to be on disk
+module ludic_save uses
+numbers float
+import "format.ludic"
+import "text.ludic"
+import "read.ludic"
+import "migrate.ludic"
+import "write.ludic"
+import "values.ludic"

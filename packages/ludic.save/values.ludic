@@ -1,0 +1,46 @@
+# values.ludic - what a migration keeps doing to a parsed file, and a fingerprint of the tables a
+# file stores by position (a table that moved without a version bump changes it)
+
+# an object with one key left out - also how a test builds an older file out of a current one
+export function save_strip(v: Val, key: string) -> Val {
+  let r = value_object()
+  for i in 0 .. value_count(v) {
+    let k: pointer = value_key_at(v, i)
+    if k == key { continue }
+    value_put(r, k, value_at(v, i))
+  }
+  return r
+}
+
+# a copy of a list of ints with one slot replaced
+export function save_list_with(l: Val, slot: int, n: int) -> Val {
+  let r = value_list()
+  for i in 0 .. value_count(l) {
+    var x = value_as_int(value_at(l, i))
+    if i == slot { x = n }
+    value_add(r, value_int(x))
+  }
+  return r
+}
+
+# a copy of a list of ints with one slot taken out (an entry deleted from a table stored by position)
+export function save_list_without(l: Val, slot: int) -> Val {
+  let r = value_list()
+  for i in 0 .. value_count(l) { if i != slot { value_add(r, value_int(value_as_int(value_at(l, i)))) } }
+  return r
+}
+
+export function save_int(v: Val, key: string, fallback: int) -> int {
+  if v == null or value_has(v, key) == 0 { return fallback }
+  return value_as_int(value_get(v, key))
+}
+
+# A fold, small and stable: a change anywhere in what is folded moves it. Fold the names of every
+# table stored by position, in order, and compare with the number the last release wrote.
+export function save_fold(h0: int, s: string) -> int {
+  var h = h0
+  for i in 0 .. len(s) { h = (h * 131 + s[i]) % 1000003 }
+  return h
+}
+
+export function save_fold_int(h0: int, n: int) -> int { return (h0 * 131 + n) % 1000003 }

@@ -1,0 +1,135 @@
+# save_test.ludic - a toy "note" format at version 3 with two steps: a torn file told from a whole
+# one, the chain walked from 1, a newer file refused and read-only, the backup standing in, and a
+# write that backs up only a whole file and is read back
+import "ludic.save"
+program SaveTest {
+  numbers float
+  # 1 -> 2: "text" renamed "body"; 2 has no step; 3 is today
+  function mig_1_2(v: Val) -> void {
+    if value_has(v, "text") != 0 { value_put(v, "body", value_get(v, "text")) }
+    value_put(v, "moved", value_int(1))
+  }
+  function mig_2_3(v: Val) -> void { value_put(v, "pages", value_int(save_int(v, "pages", 0) + 10)) }
+  def SaveMigrations note_1_2 { format: "note", from: 1, run: fn mig_1_2 }
+  def SaveMigrations note_2_3 { format: "note", from: 2, run: fn mig_2_3 }
+  def SaveMigrations other_1_2 { format: "other", from: 1, run: fn mig_2_3 }
+
+  function is_note(v: Val) -> bool { return value_has(v, "body") != 0 or value_has(v, "text") != 0 }
+  function fmt() -> SaveFormat {
+    let f = save_format("note", 3)
+    f.is_one = fn is_note
+    return f
+  }
+  function dir() -> string { return Os.temp_dir() + "/ludic-save-test" }
+  function path() -> string { return dir() + "/note.json" }
+  function bak() -> string { return dir() + "/note.bak.json" }
+  function fresh() -> void {
+    Fs.mkdir(dir())
+    Fs.remove(path())
+    Fs.remove(bak())
+  }
+
+  test "a torn file is told from a whole one" {
+    expect(save_text_intact("{\"a\": [1, 2], \"b\": \"}{\"}"))
+    expect(not save_text_intact("{\"day\":6,\"money\":7"))
+    expect(not save_text_intact("{\"a\": \"cut"))
+    expect(not save_text_intact("]["))
+    expect(not save_text_intact("plain"))
+    expect(save_text_intact("{\"q\": \"a \\\" b\"}"))
+  }
+
+  test "nothing, rubbish and another kind of file" {
+    expect_eq(save_parse(null, fmt()).status, SAVE_NONE)
+    expect_eq(save_parse("[1, 2]", fmt()).status, SAVE_CORRUPT)
+    expect_eq(save_parse("{\"day\": 4}", fmt()).status, SAVE_CORRUPT)
+    expect_eq(save_parse("{\"body\": \"hi\", \"version\": 3}", fmt()).status, SAVE_OK)
+  }
+
+  test "a file with no version is 1, and walks every step of its own format" {
+    let r = save_parse("{\"text\": \"hi\"}", fmt())
+    expect(save_upgrade(r, fmt()))
+    expect_eq(r.from, 1)
+    expect(r.migrated)
+    expect(value_as_str(value_get(r.value, "body")) == "hi")
+    expect_eq(save_int(r.value, "moved", 0), 1)
+    expect_eq(save_int(r.value, "pages", 0), 10)
+    expect_eq(save_int(r.value, "version", 0), 3)
+    expect_eq(save_steps_doubled(fmt()), 0)
+  }
+
+  test "today's file is not migrated, and a step is not run twice" {
+    let r = save_parse("{\"body\": \"x\", \"version\": 2, \"pages\": 1}", fmt())
+    expect(save_upgrade(r, fmt()))
+    expect_eq(save_int(r.value, "pages", 0), 11)
+    expect_eq(save_int(r.value, "moved", 0), 0)
+    let t = save_parse("{\"body\": \"x\", \"version\": 3}", fmt())
+    expect(save_upgrade(t, fmt()))
+    expect(not t.migrated)
+  }
+
+  test "a newer build's file is refused and read-only, an older than the oldest is corrupt" {
+    let r = save_parse("{\"body\": \"x\", \"version\": 9}", fmt())
+    expect(not save_upgrade(r, fmt()))
+    expect_eq(r.status, SAVE_FUTURE)
+    expect(r.readonly)
+    expect(not save_write_to(r, path(), bak(), "{}"))
+    let f = fmt()
+    f.oldest = 2
+    let o = save_parse("{\"body\": \"x\", \"version\": 1}", f)
+    expect(not save_upgrade(o, f))
+    expect_eq(o.status, SAVE_CORRUPT)
+  }
+
+  test "a write backs up the old file only when it is whole, and is read back" {
+    fresh()
+    expect(save_write(path(), bak(), "{\"body\": \"one\", \"version\": 3}"))
+    expect(not Fs.exists(bak()))
+    expect(save_write(path(), bak(), "{\"body\": \"two\", \"version\": 3}"))
+    expect(Fs.read_text(bak()) == "{\"body\": \"one\", \"version\": 3}")
+    Fs.write_text(path(), "{\"body\": \"thr")
+    expect(save_write(path(), bak(), "{\"body\": \"four\", \"version\": 3}"))
+    expect(Fs.read_text(bak()) == "{\"body\": \"one\", \"version\": 3}")
+  }
+
+  test "the backup stands in for a damaged file, and both damaged is read-only" {
+    fresh()
+    Fs.write_text(path(), "{\"body\": \"cut")
+    Fs.write_text(bak(), "{\"body\": \"good\", \"version\": 3}")
+    let r = save_open(path(), bak(), fmt())
+    expect_eq(r.status, SAVE_OK)
+    expect(r.from_backup)
+    expect(value_as_str(value_get(r.value, "body")) == "good")
+    Fs.write_text(bak(), "{\"body\": ")
+    let d = save_open(path(), bak(), fmt())
+    expect_eq(d.status, SAVE_CORRUPT)
+    expect(d.readonly)
+    Fs.remove(path())
+    let none = save_open(path(), bak(), fmt())
+    expect_eq(none.status, SAVE_NONE)
+    expect(not none.readonly)
+  }
+
+  test "a newer file is never replaced by its backup" {
+    fresh()
+    Fs.write_text(path(), "{\"body\": \"new\", \"version\": 7}")
+    Fs.write_text(bak(), "{\"body\": \"old\", \"version\": 3}")
+    let r = save_open(path(), bak(), fmt())
+    expect_eq(r.status, SAVE_FUTURE)
+    expect(r.readonly)
+    expect(not r.from_backup)
+  }
+
+  test "the helpers a migration uses, and the fingerprint moves with a name" {
+    let v = Json.parse("{\"a\": 1, \"b\": [5, 6, 7]}")
+    expect_eq(value_has(save_strip(v, "a"), "a"), 0)
+    let l = save_list_with(value_get(v, "b"), 1, 9)
+    expect_eq(value_as_int(value_at(l, 1)), 9)
+    let w = save_list_without(value_get(v, "b"), 0)
+    expect_eq(value_count(w), 2)
+    expect_eq(value_as_int(value_at(w, 0)), 6)
+    let h1 = save_fold(save_fold(17, "rope"), "cloth")
+    let h2 = save_fold(save_fold(17, "cloth"), "rope")
+    expect(h1 != h2)
+    expect(save_fold_int(17, 3) != save_fold_int(17, 4))
+  }
+}

@@ -1,0 +1,32 @@
+# text.ludic - is this the whole file? Every brace and bracket closed, every string closed, at least
+# one opened. A JSON parser that is best-effort hands back half a file as a shorter, plausible one
+# (`{"day":6,"money":7` is a day), so the text itself is what knows whether the write finished.
+export function save_text_intact(s: string) -> bool {
+  let n = len(s)
+  if n < 2 { return false }
+  var depth = 0
+  var instr = false
+  var esc = false
+  var opened = false
+  var i = 0
+  while i < n {
+    let c = s[i]
+    if instr {
+      if esc { esc = false }
+      else if c == 92 { esc = true }               # a backslash: the next byte is literal
+      else if c == 34 { instr = false }
+    } else {
+      if c == 34 {
+        instr = true
+      } else if c == 123 or c == 91 {
+        depth += 1
+        opened = true
+      } else if c == 125 or c == 93 {
+        depth -= 1
+        if depth < 0 { return false }
+      }
+    }
+    i += 1
+  }
+  return opened and depth == 0 and not instr
+}

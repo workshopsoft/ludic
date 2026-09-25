@@ -1,0 +1,16 @@
+# write.ludic - a write that is known to be on disk: the old file to the backup first (only when it
+# is whole - a torn file must never replace a good backup), then the new text, read straight back
+# and compared, because a caller about to delete something on the strength of it needs to know
+export function save_write(path: string, backup: string, text: string) -> bool {
+  let old = Fs.read_text(path)
+  if old != null and len(backup) > 0 and save_text_intact(old) { Fs.write_text(backup, old) }
+  Fs.write_text(path, text)
+  let back = Fs.read_text(path)
+  return back != null and back == text
+}
+
+# a SaveRead that must not be written over says so; a write through it refuses
+export function save_write_to(r: SaveRead, path: string, backup: string, text: string) -> bool {
+  if r != null and r.readonly { return false }
+  return save_write(path, backup, text)
+}

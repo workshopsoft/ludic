@@ -1,0 +1,6 @@
+# ludic.save - versioned save files: a version in the file, a chain of migrations the game supplies
+# (an open registry), a torn write told from a whole one, a backup, a newer file refused and made
+# read-only. Generic over what a file holds. Uses nothing. See README.md.
+package "ludic.save"
+version "0.1.0"
+kind source

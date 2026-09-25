@@ -1,0 +1,53 @@
+# format.ludic - a kind of file, the steps that carry it forward, and how one read went
+
+# how a read ended; a game's own refusals (another map, another account) start at SAVE_STATUS_COUNT
+export const SAVE_OK: int = 0
+export const SAVE_NONE: int = 1            # there is no file
+export const SAVE_CORRUPT: int = 2         # it did not parse, is cut off, or is not this kind of file
+export const SAVE_FUTURE: int = 3          # written by a later build: refused, and never written over
+export const SAVE_STATUS_COUNT: int = 4
+
+# a kind of file: which migrations are its, what this build writes, the oldest it will carry forward,
+# the key its version is under (a file without one is version 1), and whether an object is one at all
+export property SaveFormat {
+  name: string = "",
+  version: int = 1,
+  oldest: int = 1,
+  version_key: string = "version",
+  is_one: fn(Val) -> bool = null
+}
+
+export function save_format(name: string, version: int) -> SaveFormat {
+  let f = new SaveFormat
+  f.name = name
+  f.version = version
+  return f
+}
+
+# One step: an object of `format` at version `from` rewritten in place into version from + 1. A
+# version with no step is carried forward as it stands. The game writes these as defs.
+export property SaveMigration {
+  key: string = "",
+  format: string = "",
+  from: int = 0,
+  run: fn(Val) -> void = null
+}
+export open registry SaveMigrations of SaveMigration as SMIG
+
+# One read: what was found, the version it was written in, whether it had to be carried forward,
+# whether it must never be written over, and whether it is the backup standing in for the file
+export property SaveRead {
+  status: int = 0,
+  from: int = 0,
+  migrated: bool = false,
+  readonly: bool = false,
+  from_backup: bool = false,
+  value: Val = null
+}
+
+function read_new(status: int, v: Val) -> SaveRead {
+  let r = new SaveRead
+  r.status = status
+  r.value = v
+  return r
+}

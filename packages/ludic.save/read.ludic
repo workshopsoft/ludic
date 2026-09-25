@@ -1,0 +1,54 @@
+# read.ludic - a file read far enough to know it is one of this kind, then brought up to today's
+# shape; and the two together with the backup standing in for a damaged file
+
+# the text checked whole, parsed, and asked whether it is this kind of file at all
+export function save_parse(text: string, f: SaveFormat) -> SaveRead {
+  if text == null { return read_new(SAVE_NONE, null) }
+  if not save_text_intact(text) { return read_new(SAVE_CORRUPT, null) }
+  let v = Json.parse(text)
+  if value_kind(v) != 6 { return read_new(SAVE_CORRUPT, null) }          # 6 is an object
+  if f.is_one != null and not f.is_one(v) { return read_new(SAVE_CORRUPT, null) }
+  return read_new(SAVE_OK, v)
+}
+
+export function save_read(path: string, f: SaveFormat) -> SaveRead { return save_parse(Fs.read_text(path), f) }
+
+# The version checks, then the chain. True when the object is now in today's shape; a newer file is
+# SAVE_FUTURE and read-only, an older one than the format carries is SAVE_CORRUPT.
+export function save_upgrade(r: SaveRead, f: SaveFormat) -> bool {
+  if r.status != SAVE_OK or r.value == null { return false }
+  r.migrated = false
+  var ver = 1
+  if value_has(r.value, f.version_key) != 0 { ver = value_as_int(value_get(r.value, f.version_key)) }
+  r.from = ver
+  if ver > f.version {
+    r.status = SAVE_FUTURE
+    r.readonly = true
+    return false
+  }
+  if ver < f.oldest {
+    r.status = SAVE_CORRUPT
+    return false
+  }
+  if ver < f.version {
+    save_migrate(r.value, f, ver)
+    r.migrated = true
+  }
+  return true
+}
+
+# The file, else its backup when the file is damaged. A newer build's file is never replaced by its
+# backup (that is from the newer build too); both copies damaged is read-only, so nothing this build
+# writes can land over what it could not read. No file at all is SAVE_NONE and writable.
+export function save_open(path: string, backup: string, f: SaveFormat) -> SaveRead {
+  let r = save_read(path, f)
+  if r.status == SAVE_OK and save_upgrade(r, f) { return r }
+  if r.status != SAVE_CORRUPT or len(backup) == 0 or not Fs.exists(backup) { return r }
+  let b = save_read(backup, f)
+  if b.status == SAVE_OK and save_upgrade(b, f) {
+    b.from_backup = true
+    return b
+  }
+  r.readonly = true
+  return r
+}

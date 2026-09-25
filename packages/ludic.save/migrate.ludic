@@ -1,0 +1,31 @@
+# migrate.ludic - the chain: one step per version, each rewriting the parsed object in place, so an
+# old file is brought to today's shape once and every reader after it sees only that shape
+export function save_migrate(v: Val, f: SaveFormat, from: int) -> int {
+  var n = from
+  while n < f.version {
+    let k = save_step(f.name, n)
+    if k >= 0 { SaveMigrations[k].run(v) }
+    n += 1
+  }
+  value_put(v, f.version_key, value_int(f.version))
+  return n
+}
+
+# the step that carries `format` from version n, or -1: a version with no step changed nothing
+export function save_step(format: string, n: int) -> int {
+  for i in 0 .. SMIG_COUNT {
+    if SaveMigrations[i].format == format and SaveMigrations[i].from == n { return i }
+  }
+  return -1
+}
+
+# the steps a format has twice (a mistake the chain would otherwise run both of, in registry order)
+export function save_steps_doubled(f: SaveFormat) -> int {
+  var d = 0
+  for n in f.oldest .. f.version {
+    var c = 0
+    for i in 0 .. SMIG_COUNT { if SaveMigrations[i].format == f.name and SaveMigrations[i].from == n { c += 1 } }
+    if c > 1 { d += 1 }
+  }
+  return d
+}
