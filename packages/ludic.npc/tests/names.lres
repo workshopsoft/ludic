@@ -1,0 +1,15 @@
+# names.lres - two pools of seven, one per body, and one the place keeps (Ada) that is never given
+nora { name: "Nora", body: 1 }
+wren { name: "Wren", body: 1 }
+ada { name: "Ada", body: 1 }
+dev { name: "Dev", body: 0 }
+cal { name: "Cal", body: 0 }
+tom { name: "Tom", body: 0 }
+ines { name: "Ines", body: 1 }
+ruth { name: "Ruth", body: 1 }
+pia { name: "Pia", body: 1 }
+bea { name: "Bea", body: 1 }
+sol { name: "Sol", body: 0 }
+gus { name: "Gus", body: 0 }
+ozan { name: "Ozan", body: 0 }
+rafe { name: "Rafe", body: 0 }

@@ -1,0 +1,5 @@
+# ludic.npc - the other people in a place: a routine by the hour, walking between spots and round
+# what is in the way, facing a player who comes near, and what they say as data. Uses ludic.base.
+package "ludic.npc"
+version "0.1.0"
+kind source

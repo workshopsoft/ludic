@@ -1,0 +1,96 @@
+# talk.ludic - what somebody says, as data: lines by kind and act, the highest `prio` that has
+# anything to say winning, each line in its turn given its `chance`; a line's words are its `text`,
+# or the story's (NpcTalk.say) when it `fill`s; a line may offer choices, each answered by a line
+export property NpcChoice {
+  text: string = ""
+  line: string = ""            # the key of the line that answers it ("" ends the talk)
+  code: int = -1               # the game's, carried by the Talked fact
+}
+
+export property NpcLine {
+  key: string = ""
+  kind: int = -1               # NPCK_* (-1: anyone)
+  act: int = -1                # NPCA_* (-1: whatever they are doing)
+  prio: int = 0
+  chance: int = 100            # percent: how often this line is even considered
+  text: string = ""
+  fill: bool = false
+  choices: []NpcChoice = null
+}
+
+export open registry NpcLines of NpcLine as NPCL
+
+var np_said: string = ""
+
+function np_line_fits(p: NpcPerson, l: NpcLine) -> bool {
+  return (l.kind < 0 or l.kind == p.kind) and (l.act < 0 or l.act == p.act)
+}
+
+# its words now ("" when it has nothing to say)
+export function npc_words(p: NpcPerson, line: int) -> string {
+  if line < 0 or line >= NPCL_COUNT { return "" }
+  if NpcLines[line].fill { return NpcTalk.say(p, line) }
+  return NpcLines[line].text
+}
+
+# the line it would say now (-1: none), its words kept for npc_said()
+export function npc_line_for(p: NpcPerson) -> int {
+  np_said = ""
+  var top = -1000000
+  for i in 0 .. NPCL_COUNT { if NpcLines[i].prio > top { top = NpcLines[i].prio } }
+  var prio = top
+  while prio > -1000000 {
+    var lower = -1000000
+    for i in 0 .. NPCL_COUNT {
+      let l = NpcLines[i]
+      if l.prio < prio and l.prio > lower { lower = l.prio }
+      if l.prio != prio or not np_line_fits(p, l) { continue }
+      if l.chance < 100 and npc_between(0, 99) >= l.chance { continue }
+      let w = npc_words(p, i)
+      if len(w) > 0 {
+        np_said = w
+        return i
+      }
+    }
+    prio = lower
+  }
+  return -1
+}
+
+export function npc_said() -> string { return np_said }
+
+# a player talks to them: the line (-1: nothing to say), its words in npc_said(), a Talked fact,
+# and `said` marked for the day
+export function npc_talk(p: NpcPerson, player: int) -> int {
+  let line = npc_line_for(p)
+  let f = np_fact(NPC_F_TALKED, p, player)
+  f.line = line
+  p.said = NpcWorld.day()
+  return line
+}
+
+# the answer to choice c of a line: the line it leads to (-1: the talk is over), its words in
+# npc_said(), and a Talked fact carrying the choice's code
+export function npc_choose(p: NpcPerson, line: int, c: int, player: int) -> int {
+  np_said = ""
+  if line < 0 or line >= NPCL_COUNT { return -1 }
+  let cs = NpcLines[line].choices
+  if cs == null or c < 0 or c >= len(cs) { return -1 }
+  let next = npc_lines_find(cs[c].line)
+  let f = np_fact(NPC_F_TALKED, p, player)
+  f.line = next
+  f.choice = cs[c].code
+  if next >= 0 { np_said = npc_words(p, next) }
+  return next
+}
+
+function npc_lines_find(key: string) -> int {
+  if len(key) == 0 { return -1 }
+  return npclines_find(key)
+}
+
+# spoken to already today
+export function npc_talked_today(p: NpcPerson) -> bool { return p.said == NpcWorld.day() }
+
+# a greeting (a vendor's): the story's words for this person
+export function npc_greeting(p: NpcPerson) -> string { return NpcTalk.greeting(p) }

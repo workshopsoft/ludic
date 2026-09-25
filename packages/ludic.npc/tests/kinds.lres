@@ -1,0 +1,19 @@
+# kinds.lres - the test's kinds: a camper who fishes the shore by day and sits at home by night, a
+# hiker who wanders, and a vendor at a post the census never draws
+camper {
+  weight: 1, night: true, stays: true
+  steps: [
+    { from: 21.0, to: 5.0, spot: NPCS_HOME, act: NPCA_SIT, lo: 60, hi: 150 },
+    { from: 5.0, to: 21.0, spot: NPCS_SHORE_HERE, act: NPCA_FISH, far: 80.0, lo: 60, hi: 90 }
+  ]
+}
+hiker {
+  weight: 3
+  start: fn tk_start
+  steps: [
+    { weight: 2, spot: NPCS_NEAR_HERE, act: NPCA_IDLE, near: 5.0, far: 20.0 },
+    { weight: 1, spot: NPCS_HERE, act: NPCA_SIT },
+    { weight: 1, spot: NPCS_WANDER, act: NPCA_IDLE }
+  ]
+}
+vendor { weight: 0, notice: 15.0 }

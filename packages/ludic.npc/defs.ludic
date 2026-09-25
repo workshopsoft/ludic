@@ -1,0 +1,139 @@
+# defs.ludic - a person, and the four tables a game fills: kinds (with their routine), spots (where
+# a routine step goes), acts (what somebody does on arriving) and names
+# One person. `goal`, `subj`, `note`, `note_h` and `flags` are the game's to use in its own plans
+# (what it is out for, what it is watching, what it did and when); the package only reads `goal`.
+export property NpcPerson {
+  slot: int = -1
+  id: int = 0                  # across machines, new each time a slot is reused
+  kind: int = 0
+  fixed: bool = false          # at a post (a vendor): never walks, never counted, never leaves
+  active: bool = false
+  name: string = ""
+  body: int = 0                # the game's (a model), from the look
+  look: int = 0                # the seed its look came from
+  seed: float = 0.0            # a phase of its own, so a crowd does not breathe in step
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  speed: float = 0.0
+  phase: float = 0.0           # the gait: 2.6 a metre walked
+  act: int = 0                 # NPCA_*
+  act_t: float = 0.0           # seconds left of it
+  next_act: int = 0            # what it does on arriving, and for how long
+  next_t: float = 0.0
+  tx: float = 0.0              # where it is walking to
+  tz: float = 0.0
+  fx: float = 0.0              # what it faces while it does it
+  fz: float = 0.0
+  hx: float = 0.0              # its own ground
+  hz: float = 0.0
+  hfx: float = 0.0             # what it faces sitting at home (a camper's fire), when home_face
+  hfz: float = 0.0
+  home_face: bool = false
+  stance: float = 0.0          # a post's heading, turned back to when nobody is near
+  leg: int = 0                 # which stop of a round it is on
+  out_h: float = 0.0           # the hour it leaves
+  said: int = -1               # the day it last spoke to a player
+  near: int = 0                # the players it has noticed, a bit each
+  stalk: bool = false          # creeping: slow, and it does not turn to a player
+  goal: int = -1
+  subj: int = -1
+  note: int = -1
+  note_h: float = 0.0
+  flags: int = 0
+  best: float = 0.0            # the closest it has got to where it is walking
+  prog_t: float = 0.0          # seconds without getting any closer
+  via_on: bool = false         # a step round whatever is in the way
+  vx: float = 0.0
+  vz: float = 0.0
+  detours: int = 0
+  fails: int = 0
+  stall: float = 0.0           # seconds walking without moving
+  stall_max: float = 0.0
+  nx: float = 0.0              # a guest's copy: where the host last said it was
+  ny: float = 0.0
+  nz: float = 0.0
+  nyaw: float = 0.0
+  heard: bool = false
+  heard_t: float = 0.0
+}
+
+# a step of a kind's routine: in the hours from..to (round midnight when from > to), `weight` of
+# the draw, go to `spot` (NpcSpots, `near` .. `far` metres; `n` the spot's own number) and `act`
+# for lo .. hi seconds
+export property NpcStep {
+  from: float = 0.0
+  to: float = 24.0
+  weight: int = 1
+  spot: int = 0
+  act: int = 1
+  lo: int = 10
+  hi: int = 30
+  near: float = 0.0
+  far: float = 30.0
+  n: int = 0
+}
+
+# a kind of person: how often the census draws it (`night`: the only kinds it draws after dark),
+# whether it `stays` the night, when it leaves, how far off it notices a player; `start` puts a
+# new one down (npc_start_near), `plan` has the first word on what it does next (true: decided)
+export property NpcKind {
+  key: string = ""
+  weight: int = 1
+  night: bool = false
+  stays: bool = false
+  leave_lo: float = 16.0
+  leave_hi: float = 21.0
+  notice: float = 10.0
+  start: fn(NpcPerson) -> void = null
+  plan: fn(NpcPerson) -> bool = null
+  steps: []NpcStep = null
+}
+
+export open registry NpcKinds of NpcKind as NPCK
+
+# where a step goes: `find` sends the person there (npc_go / npc_do) or says it cannot
+export property NpcSpot {
+  key: string = ""
+  find: fn(NpcPerson, NpcStep) -> bool = null
+}
+
+export open registry NpcSpots of NpcSpot as NPCS
+
+# what somebody does: `turns` to face a player who comes near, `clip` a hint for the drawing
+# ("idle", "walk", or "" for the game's own pose), `tick` the game's while it lasts (true: decided)
+export property NpcAct {
+  key: string = ""
+  turns: bool = true
+  clip: string = ""
+  tick: fn(NpcPerson, float) -> bool = null
+}
+
+export open registry NpcActs of NpcAct as NPCA
+def NpcActs walk { clip: "walk" }
+def NpcActs idle { clip: "idle" }
+
+# a name somebody can have; `body` the game's (a pool per model), so a Nora is drawn as a woman
+export property NpcName {
+  key: string = ""
+  name: string = ""
+  body: int = 0
+}
+
+export open registry NpcNames of NpcName as NPCN
+
+export const NPC_F_GREETED: int = 0    # a player came within notice
+export const NPC_F_TALKED: int = 1     # a player talked (line, choice -1 or the choice taken)
+export const NPC_F_ARRIVED: int = 2    # got where it was walking, and began the act
+
+export property NpcFact {
+  what: int = 0
+  person: int = -1             # its id
+  slot: int = -1
+  fixed: bool = false
+  player: int = -1
+  line: int = -1
+  choice: int = -1
+  act: int = -1
+}

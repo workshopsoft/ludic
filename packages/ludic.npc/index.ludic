@@ -1,0 +1,19 @@
+# ludic.npc - people with a routine rather than an intelligence: kinds, spots and acts as open
+# registries, a census by the hour, the walk, the acts, the lines, and a guest's copy of a host's
+module ludic_npc uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "person.ludic"
+import "port.ludic"
+import "ground.ludic"
+import "spots.ludic"
+import "routine.ludic"
+import "walk.ludic"
+import "act.ludic"
+import "names.ludic"
+import "census.ludic"
+import "tick.ludic"
+import "mirror.ludic"
+import "talk.ludic"
+import "system.ludic"

@@ -1,0 +1,8 @@
+# system.ludic - the people as a system: PH_SIMULATE with a reset and no tick (the game steps them
+# with npc_tick where it runs the place, and npc_mirror_tick where it only draws a host's); a trip
+# saves none of them - who is about is the hour's, not the trip's
+export function npc_system() -> System {
+  let s = system_new("npc", PH_SIMULATE)
+  s.reset = fn npc_reset
+  return s
+}

@@ -1,0 +1,106 @@
+# routine.ludic - going somewhere to do something, doing it here, and deciding what is next: the
+# kind's own plan first, then a weighted draw among its steps for this hour, falling through to the
+# next step whose spot can be found, and standing a while when none can
+export function npc_go(p: NpcPerson, x: float, z: float, act: int, dur: float) -> void {
+  p.tx = x
+  p.tz = z
+  p.next_act = act
+  p.next_t = dur
+  p.act = NPCA_WALK
+  p.via_on = false
+  p.detours = 0
+  p.prog_t = 0.0
+  p.best = npc_d(p.x, p.z, x, z)
+  p.fx = x + (x - p.x)
+  p.fz = z + (z - p.z)
+  p.speed = 1.1 + npc_rnd() * 0.4
+}
+
+# whatever it is, it is not done where the place says nobody stops: walk out of there first
+export function npc_do(p: NpcPerson, act: int, dur: float) -> void {
+  if act != NPCA_WALK and not p.fixed and not NpcWorld.allowed(p.x, p.z) {
+    if npc_spot_near(p.x, p.z, 20.0, 60.0) {
+      let fx = p.fx
+      let fz = p.fz
+      npc_go(p, np_px, np_pz, act, dur)
+      if act != NPCA_IDLE {
+        p.fx = fx
+        p.fz = fz
+      }
+      return
+    }
+  }
+  p.act = act
+  p.act_t = dur
+  p.speed = 0.0
+}
+
+export function npc_face(p: NpcPerson, x: float, z: float) -> void {
+  p.fx = x
+  p.fz = z
+}
+
+export function npc_face_ahead(p: NpcPerson) -> void {
+  p.fx = p.x - Math.sin(p.yaw) * 10.0
+  p.fz = p.z - Math.cos(p.yaw) * 10.0
+}
+
+# where it faces sitting at home: its own fire when it has one, else out ahead from home
+export function npc_set_home_face(p: NpcPerson, x: float, z: float) -> void {
+  p.hfx = x
+  p.hfz = z
+  p.home_face = true
+}
+
+function np_in_hours(s: NpcStep, h: float) -> bool {
+  if s.from <= s.to { return h >= s.from and h < s.to }
+  return h >= s.from or h < s.to
+}
+
+# what next: the kind's plan, then its steps for this hour
+export function npc_plan(p: NpcPerson) -> void {
+  p.stalk = false
+  if p.fixed {
+    npc_do(p, NPCA_IDLE, 3600.0)
+    return
+  }
+  let k = NpcKinds[p.kind]
+  if k.plan != null {
+    let plan = k.plan
+    if plan(p) { return }
+  }
+  if k.steps != null and npc_steps(p, k.steps) { return }
+  npc_face_ahead(p)
+  npc_do(p, NPCA_IDLE, 10.0)
+}
+
+# a weighted draw among the steps whose hours hold now; a step whose spot cannot be found
+# gives way to the next one in the table, round to the start
+export function npc_steps(p: NpcPerson, steps: []NpcStep) -> bool {
+  let h = NpcWorld.hour()
+  var total = 0
+  for i in 0 .. len(steps) { if np_in_hours(steps[i], h) { total += np_pos(steps[i].weight) } }
+  if total <= 0 { return false }
+  var r = npc_between(0, total - 1)
+  var first = -1
+  for i in 0 .. len(steps) {
+    if not np_in_hours(steps[i], h) { continue }
+    r -= np_pos(steps[i].weight)
+    if r < 0 {
+      first = i
+      break
+    }
+  }
+  for k in 0 .. len(steps) {
+    let s = steps[(first + k) % len(steps)]
+    if not np_in_hours(s, h) or s.spot < 0 or s.spot >= NPCS_COUNT { continue }
+    let find = NpcSpots[s.spot].find
+    if find != null and find(p, s) { return true }
+  }
+  return false
+}
+
+function np_pos(n: int) -> int {
+  if n < 0 { return 0 }
+  return n
+}

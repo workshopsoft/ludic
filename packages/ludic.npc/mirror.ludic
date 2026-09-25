@@ -1,0 +1,78 @@
+# mirror.ludic - a guest draws the host's people: no routine and no census here, a slot filled or
+# emptied as the host says, and each one eased toward where it was last heard to be
+var np_clock: float = 0.0
+
+# on: this machine's own walkers leave, and only the host's are drawn until it is turned off
+export function npc_mirror(on: bool) -> void {
+  np_ensure()
+  if np_mirror == on { return }
+  np_mirror = on
+  for i in 0 .. len(np_walkers) { npc_retire(np_walkers[i]) }
+  if not on { npc_census_now() }
+}
+
+export function npc_mirroring() -> bool { return np_mirror }
+
+# the host's slot: somebody new in it (born), or nobody (gone)
+export function npc_put(slot: int, id: int, kind: int, look: int, seed: float, name: string, hx: float, hz: float) -> NpcPerson {
+  np_ensure()
+  if slot < 0 or slot >= np_max or kind < 0 or kind >= NPCK_COUNT { return null }
+  while len(np_walkers) <= slot {
+    let q = new NpcPerson
+    q.slot = len(np_walkers)
+    push(np_walkers, q)
+  }
+  let p = np_walkers[slot]
+  if p.active and p.id == id { return p }
+  if p.active { npc_retire(p) }
+  np_fresh(p, kind, look)
+  p.id = id
+  p.seed = seed
+  p.name = name
+  npc_set_at(p, hx, hz)
+  p.active = true
+  np_n += 1
+  NpcWorld.born(p)
+  return p
+}
+
+# where the host says it is now, and what it is doing
+export function npc_heard(slot: int, x: float, y: float, z: float, yaw: float, speed: float, act: int, stalk: bool) -> void {
+  let p = npc_at(slot)
+  if p == null or not p.active { return }
+  if not p.heard {
+    p.x = x
+    p.y = y
+    p.z = z
+    p.yaw = yaw
+  }
+  p.heard = true
+  p.heard_t = np_clock
+  p.nx = x
+  p.ny = y
+  p.nz = z
+  p.nyaw = yaw
+  p.speed = speed
+  p.act = act
+  p.stalk = stalk
+}
+
+# heard from in the last six seconds: drawn; not, and it is not drawn until it is again
+export function npc_heard_lately(p: NpcPerson) -> bool { return p.heard and np_clock - p.heard_t <= 6.0 }
+
+export function npc_mirror_tick(dt: float) -> void {
+  np_ensure()
+  np_clock = np_clock + dt
+  let k = Math.min(1.0, dt * 8.0)
+  for i in 0 .. len(np_walkers) {
+    let p = np_walkers[i]
+    if not p.active or not npc_heard_lately(p) { continue }
+    let ox = p.x
+    let oz = p.z
+    p.x = p.x + (p.nx - p.x) * k
+    p.y = p.y + (p.ny - p.y) * k
+    p.z = p.z + (p.nz - p.z) * k
+    p.yaw = p.yaw + npc_wrap(p.nyaw - p.yaw) * k
+    if p.act == NPCA_WALK { p.phase = p.phase + npc_d(ox, oz, p.x, p.z) * 2.6 }
+  }
+}

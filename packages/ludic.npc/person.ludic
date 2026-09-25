@@ -1,0 +1,109 @@
+# person.ludic - the people: walkers in slots the census fills and empties, and the fixed ones at
+# their posts; the package's own dice and its facts
+var np_walkers: []NpcPerson = null
+var np_posts: []NpcPerson = null
+var np_max: int = 10              # walkers at most
+var np_n: int = 0                 # walkers about
+var np_dice: Rng = null
+var np_facts: Queue<NpcFact> = null
+var np_next_h: float = 0.0        # the hour the census is next looked at
+var np_hold: bool = false         # held where they stand (a shot of their poses)
+var np_mirror: bool = false       # a guest drawing a host's: no routine runs here
+const NP_PI: float = 3.1415927
+const NP_TAU: float = 6.2831853
+
+export function npc_facts() -> Queue<NpcFact> {
+  if np_facts == null { np_facts = queue_new("npc.facts") }
+  return np_facts
+}
+
+function np_fact(what: int, p: NpcPerson, player: int) -> NpcFact {
+  let f = new NpcFact
+  f.what = what
+  f.person = p.id
+  f.slot = p.slot
+  f.fixed = p.fixed
+  f.player = player
+  f.act = p.act
+  q_push(npc_facts(), f)
+  return f
+}
+
+function np_ensure() -> void {
+  if np_walkers == null { np_walkers = new []NpcPerson }
+  if np_posts == null { np_posts = new []NpcPerson }
+  if np_dice == null { np_dice = rng_new(20260925) }
+}
+
+# how many walkers the place can hold at once
+export function npc_config(max: int) -> void { np_max = max }
+
+export function npc_seed(n: int) -> void {
+  np_ensure()
+  rng_seed(np_dice, n)
+}
+
+# 0 .. 1, and whole seconds lo .. hi, off the package's dice
+export function npc_rnd() -> float {
+  np_ensure()
+  return rng_float(np_dice)
+}
+
+export function npc_between(lo: int, hi: int) -> int {
+  np_ensure()
+  return rng_between(np_dice, lo, hi)
+}
+
+export function npc_secs(lo: int, hi: int) -> float { return float(npc_between(lo, np_hi(lo, hi))) }
+
+export function npc_walkers() -> []NpcPerson {
+  np_ensure()
+  return np_walkers
+}
+
+export function npc_posts() -> []NpcPerson {
+  np_ensure()
+  return np_posts
+}
+
+export function npc_count() -> int { return np_n }
+
+export function npc_max() -> int { return np_max }
+
+# a walker's slot or a post, and anyone by id
+export function npc_at(slot: int) -> NpcPerson {
+  np_ensure()
+  if slot < 0 or slot >= len(np_walkers) { return null }
+  return np_walkers[slot]
+}
+
+export function npc_post(i: int) -> NpcPerson {
+  np_ensure()
+  if i < 0 or i >= len(np_posts) { return null }
+  return np_posts[i]
+}
+
+export function npc_by_id(id: int) -> NpcPerson {
+  np_ensure()
+  for i in 0 .. len(np_walkers) { if np_walkers[i].active and np_walkers[i].id == id { return np_walkers[i] } }
+  for i in 0 .. len(np_posts) { if np_posts[i].active and np_posts[i].id == id { return np_posts[i] } }
+  return null
+}
+
+export function npc_d(ax: float, az: float, bx: float, bz: float) -> float {
+  let dx = ax - bx
+  let dz = az - bz
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+export function npc_wrap(a: float) -> float {
+  var r = a
+  while r > NP_PI { r = r - NP_TAU }
+  while r < -NP_PI { r = r + NP_TAU }
+  return r
+}
+
+function np_hi(lo: int, hi: int) -> int {
+  if hi < lo { return lo }
+  return hi
+}

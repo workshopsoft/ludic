@@ -1,0 +1,90 @@
+# walk.ludic - walking to the target: turn toward it, step, never into the water and never up a
+# scramble - step round it instead - and give up on a target that gets no closer for twenty seconds
+export function npc_walk(p: NpcPerson, dt: float) -> void {
+  var gx = p.tx
+  var gz = p.tz
+  if p.via_on {
+    gx = p.vx
+    gz = p.vz
+  }
+  let dx = gx - p.x
+  let dz = gz - p.z
+  if Math.sqrt(dx * dx + dz * dz) < 1.2 {
+    np_arrive(p)
+    return
+  }
+  let dg = npc_d(p.x, p.z, p.tx, p.tz)
+  if dg < p.best - 1.0 {
+    p.best = dg
+    p.prog_t = 0.0
+  } else { p.prog_t = p.prog_t + dt }
+  if p.prog_t > 20.0 {
+    np_stuck(p)
+    return
+  }
+  var sp = p.speed
+  if sp < 0.1 { sp = 1.2 }
+  if p.stalk { sp = Math.min(sp, 0.7) }
+  let want = Math.atan2(-dx, -dz)
+  let r = 3.0 * dt
+  p.yaw = p.yaw + Math.clamp(npc_wrap(want - p.yaw), -r, r)
+  let step = sp * dt
+  let nx = p.x - Math.sin(p.yaw) * step
+  let nz = p.z - Math.cos(p.yaw) * step
+  let nh = NpcWorld.ground(nx, nz)
+  if nh < NpcWorld.water(nx, nz) + 0.4 or nh - p.y > step * 1.4 {
+    p.stall = p.stall + dt
+    if p.stall > p.stall_max { p.stall_max = p.stall }
+    if p.detours < 10 and np_detour(p, want) {
+      p.detours += 1
+      return
+    }
+    np_stuck(p)
+    return
+  }
+  p.x = nx
+  p.z = nz
+  p.y = nh
+  p.stall = 0.0
+  p.phase = p.phase + step * 2.6
+}
+
+# there: a step round something ends, or the errand begins, facing what it came for
+function np_arrive(p: NpcPerson) -> void {
+  if p.via_on {
+    p.via_on = false
+    return
+  }
+  let fx = p.fx
+  let fz = p.fz
+  npc_do(p, p.next_act, p.next_t)
+  p.fx = fx
+  p.fz = fz
+  p.stall = 0.0
+  if p.act != NPCA_WALK { np_fact(NPC_F_ARRIVED, p, -1) }
+}
+
+function np_detour(p: NpcPerson, want: float) -> bool {
+  for k in 0 .. 8 {
+    let ang = want + float((k / 2 + 1) * (1 - 2 * (k % 2))) * 0.6
+    let x = p.x - Math.sin(ang) * 6.0
+    let z = p.z - Math.cos(ang) * 6.0
+    if npc_line_ok(p.x, p.z, x, z) {
+      p.via_on = true
+      p.vx = x
+      p.vz = z
+      p.yaw = ang
+      return true
+    }
+  }
+  return false
+}
+
+function np_stuck(p: NpcPerson) -> void {
+  p.fails += 1
+  p.via_on = false
+  if p.fails >= 3 {
+    p.fails = 0
+    npc_wander(p)
+  } else { npc_plan(p) }
+}
