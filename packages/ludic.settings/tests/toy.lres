@@ -1,0 +1,6 @@
+# toy.lres - a game's settings for settings_test
+bloom { kind: SETTING_BOOL, num: 1.0 }
+shadow_q { kind: SETTING_INT, num: 2.0, lo: 0.0, hi: 3.0, rescue: true }
+rscale { kind: SETTING_FLOAT, num: 0.78, lo: 0.5, hi: 1.0, rescue: true }
+lang { kind: SETTING_TEXT, text: "en" }
+held { kind: SETTING_BOOL, saved: false }

@@ -1,0 +1,23 @@
+# ludic.settings/defs.ludic - what a setting is: its key in the file, its kind, its default, the
+# range it may take, and whether a rescue start puts it back. A game's registry is a list of these.
+export const SETTING_BOOL: int = 0
+export const SETTING_INT: int = 1
+export const SETTING_FLOAT: int = 2
+export const SETTING_TEXT: int = 3
+
+export property SettingDef {
+  key: string = ""        # its name in the file; a registry fills it with the entry's own name
+  kind: int = 0           # SETTING_*
+  num: float = 0.0        # the default: 0 or 1 for a switch, a whole number, a float
+  text: string = ""       # the default of a text setting
+  lo: float = 0.0         # the range, inclusive; a value outside it is the default again
+  hi: float = -1.0        # hi below lo: any value
+  rescue: bool = false    # a rescue start puts it back to its default
+  saved: bool = true      # false: held in memory only, never written to the file
+}
+
+# one setting changed, by its place in the store and its key
+export property SettingChanged {
+  id: int = 0
+  key: string = ""
+}

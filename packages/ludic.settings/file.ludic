@@ -1,0 +1,54 @@
+# ludic.settings/file.ludic - the store as a JSON object, by key: a switch is 0 or 1, a whole number
+# is itself, a float is thousandths (sv_put_float), text is a string. A key the file lacks keeps
+# what the store holds, and a key the store does not know is ignored.
+export function settings_to_json() -> Val {
+  sg_init()
+  let v = Value.object()
+  for i in 0 .. len(sg_defs) { settings_put(v, i) }
+  return v
+}
+
+# one setting into `v` under its key (a game building its own file adds its extras beside them)
+export function settings_put(v: Val, id: int) -> void {
+  let d = sg_defs[id]
+  if not d.saved { return }
+  if d.kind == SETTING_TEXT {
+    sv_put_str(v, d.key, sg_text[id])
+  } else if d.kind == SETTING_FLOAT {
+    sv_put_float(v, d.key, sg_num[id])
+  } else {
+    sv_put_int(v, d.key, int(sg_num[id]))
+  }
+}
+
+# every key `v` names, held to its range; quiet, since a load is applied whole by its caller
+export function settings_from_json(v: Val) -> void {
+  sg_init()
+  if v == null { return }
+  for i in 0 .. len(sg_defs) { sg_read(v, i) }
+}
+
+function sg_read(v: Val, id: int) -> void {
+  let d = sg_defs[id]
+  if not d.saved or Value.kind(v) != 6 or Value.has(v, d.key) == 0 { return }
+  if d.kind == SETTING_TEXT {
+    sg_text[id] = sv_str(v, d.key, sg_text[id])
+  } else if d.kind == SETTING_FLOAT {
+    sg_num[id] = settings_held(id, sv_float(v, d.key, sg_num[id]))
+  } else {
+    sg_num[id] = settings_held(id, float(sv_int(v, d.key, int(sg_num[id]))))
+  }
+}
+
+# one setting from a JSON value in the file's own form (a row in a settings screen hands these):
+# a change is a fact
+export function settings_set_value(id: int, x: Val) -> void {
+  let d = sg_defs[id]
+  if d.kind == SETTING_TEXT {
+    if Value.kind(x) == 4 { settings_set_text(id, Value.as_str(x)) }
+  } else if d.kind == SETTING_FLOAT {
+    settings_set_float(id, float(Value.as_int(x)) / 1000.0)
+  } else {
+    settings_set_int(id, Value.as_int(x))
+  }
+}

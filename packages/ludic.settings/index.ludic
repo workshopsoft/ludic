@@ -1,0 +1,9 @@
+# ludic.settings - the settings a game declares as data (a registry of SettingDef), read and
+# written only through settings_get_* / settings_set_*, each change a SettingChanged fact
+module ludic_settings uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "store.ludic"
+import "rules.ludic"
+import "file.ludic"

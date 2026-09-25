@@ -1,0 +1,75 @@
+# settings_test.ludic - a registry of settings as data: defaults, typed reads, a fact per change,
+# ranges, the rescue set, and the file by key
+import "ludic.settings"
+import "ludic.base"
+program SettingsTest {
+  numbers float
+  registry Toy of SettingDef as TOY from "packages/ludic.settings/tests/toy.lres"
+
+  function declare() -> void {
+    settings_clear()
+    for i in 0 .. TOY_COUNT { settings_add(Toy[i]) }
+  }
+
+  function facts() -> []SettingChanged { return q_drain(settings_changes()) }
+
+  test "a registry declares the store, each at its default" {
+    declare()
+    expect_eq(settings_count(), 5)
+    expect(settings_get_bool(TOY_BLOOM))
+    expect_eq(settings_get_int(TOY_SHADOW_Q), 2)
+    expect(settings_get_float(TOY_RSCALE) > 0.77)
+    expect(settings_get_text(TOY_LANG) == "en")
+    expect_eq(settings_id_of("rscale"), TOY_RSCALE)
+    expect_eq(settings_id_of("nothing"), -1)
+  }
+
+  test "a change is a fact, and setting what is there is none" {
+    declare()
+    settings_set_int(TOY_SHADOW_Q, 3)
+    settings_set_int(TOY_SHADOW_Q, 3)
+    settings_set_text(TOY_LANG, "tr")
+    let fs = facts()
+    expect_eq(len(fs), 2)
+    expect(fs[0].key == "shadow_q")
+    expect_eq(fs[1].id, TOY_LANG)
+  }
+
+  test "a value out of range is the default" {
+    declare()
+    settings_set_int(TOY_SHADOW_Q, 9)
+    expect_eq(settings_get_int(TOY_SHADOW_Q), 2)
+    settings_set_float(TOY_RSCALE, 0.2)
+    expect(settings_get_float(TOY_RSCALE) > 0.77)
+  }
+
+  test "a rescue puts back only what it lists" {
+    declare()
+    settings_set_int(TOY_SHADOW_Q, 0)
+    settings_set_bool(TOY_BLOOM, false)
+    expect(not settings_is_safe(TOY_SHADOW_Q))
+    settings_rescue()
+    expect_eq(settings_get_int(TOY_SHADOW_Q), 2)
+    expect(not settings_get_bool(TOY_BLOOM))
+  }
+
+  test "the file is by key, and what it lacks or cannot hold keeps the store's" {
+    declare()
+    settings_set_float(TOY_RSCALE, 0.9)
+    settings_set_text(TOY_LANG, "tr")
+    settings_set_bool(TOY_HELD, true)
+    let text = Json.encode(settings_to_json())
+    declare()
+    settings_set_bool(TOY_BLOOM, false)
+    let v = Json.parse(text)
+    Value.put(v, "shadow_q", Value.int(7))
+    Value.put(v, "stranger", Value.int(1))
+    settings_from_json(v)
+    expect(settings_get_float(TOY_RSCALE) > 0.89)
+    expect(settings_get_text(TOY_LANG) == "tr")
+    expect_eq(settings_get_int(TOY_SHADOW_Q), 2)
+    expect(settings_get_bool(TOY_BLOOM))
+    expect(not settings_get_bool(TOY_HELD))
+    expect(Value.has(settings_to_json(), "held") == 0)
+  }
+}

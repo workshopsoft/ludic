@@ -1,0 +1,5 @@
+# ludic.settings - a game's settings as data: one store, one owner, a fact per change, held to
+# their ranges, a safe set for a rescue start, and a file by key. Uses ludic.base. See README.md.
+package "ludic.settings"
+version "0.1.0"
+kind source
