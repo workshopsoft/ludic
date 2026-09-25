@@ -1,0 +1,33 @@
+# queries.ludic - what the game (a Settings row, a test) asks, and a reset back to before start
+export function telemetry_id() -> string { return telemetry__id }
+export function telemetry_session() -> string { return telemetry__session }
+export function telemetry_ready() -> bool { return telemetry__ready }
+export function telemetry_get_config() -> TelemetryConfig { return telemetry__conf() }
+export function telemetry_fails() -> int { return telemetry__fails }
+export function telemetry_next_ms() -> int { return telemetry__next_ms }
+export function telemetry_in_flight() -> bool { return telemetry__h >= 0 }
+
+export function telemetry_queued() -> int {
+  if telemetry__q == null { return 0 }
+  return len(telemetry__q)
+}
+
+# a queued line as it will be sent, player mark and all
+export function telemetry_line(i: int) -> string { return telemetry__q[i] }
+
+# back to before telemetry_start, ports and config kept (tests; a start after a failed boot)
+export function telemetry_reset() -> void {
+  telemetry__drop_request()
+  telemetry__ready = false
+  telemetry__id = ""
+  telemetry__session = ""
+  telemetry__q = null
+  telemetry__dirty = false
+  telemetry__sent_n = 0
+  telemetry__next_ms = 0
+  telemetry__saved_ms = 0
+  telemetry__fails = 0
+  telemetry__clock_on = false
+  telemetry__proc = -1
+  q_clear(telemetry_facts())
+}

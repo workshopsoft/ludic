@@ -1,0 +1,75 @@
+# state.ludic - the game's config, the ports, the facts, and what is queued
+# where the events go and how often. An empty host or key sends nothing, ever.
+export property TelemetryConfig {
+  host: string = ""            # "https://analytics.example.com"
+  key: string = ""             # the project's public token (PostHog's phc_...)
+  path: string = "/batch/"     # the batch endpoint under the host
+  lib: string = ""             # every event's $lib
+  queue_file: string = ""      # the unsent lines between starts; "" keeps them in memory only
+  id_file: string = ""         # the player id's JSON file ({"id": ...}; other keys are kept)
+  id_salt: string = ""         # hashed with the machine's own id; "" makes a random id instead
+  id_scratch: string = ""      # where the machine-id child writes (unset: the temp directory)
+  flush_ms: int = 30000        # a batch this often
+  flush_at: int = 50           # or sooner, at this many events
+  batch: int = 200             # events in one request
+  queue_max: int = 5000        # the oldest go past this
+  backoff_max: int = 6         # the wait doubles at most this many times
+  save_ms: int = 5000          # the queue on disk at most this far behind
+}
+
+# what telemetry asks the game (unbound: yes, on, and the wall clock)
+export port TelemetryWorld {
+  can_send: fn() -> bool = fn telemetry__yes     # may this run send at all (a test, a dev build: no)
+  enabled: fn() -> bool = fn telemetry__yes      # the player's switch; off forgets everything queued
+  now_ms: fn() -> int = fn telemetry__wall_ms    # a clock in milliseconds
+  stamp: fn() -> string = fn telemetry__wall_stamp  # the ISO time an event happened
+}
+
+# how a batch travels (unbound: Http). send returns a handle (< 0: could not start); poll
+# answers -1 while pending, 0 on failure, 1 when the server took it; drop abandons one.
+export port TelemetryTransport {
+  send: fn(string, string) -> int = fn telemetry__http_send
+  poll: fn(int) -> int = fn telemetry__http_poll
+  drop: fn(int) -> void = fn telemetry__http_drop
+}
+
+export const TELEMETRY_SENT: int = 0     # a batch went (count)
+export const TELEMETRY_FAILED: int = 1   # a batch did not (status, retry_ms)
+export const TELEMETRY_ID: int = 2       # the player id became known
+
+export property TelemetryFact {
+  what: int = 0
+  count: int = 0
+  status: int = 0
+  retry_ms: int = 0
+}
+
+const TELEMETRY_MARK: string = "@@TELEMETRY_PLAYER@@"
+
+var telemetry__cfg: TelemetryConfig = null
+var telemetry__ready: bool = false
+var telemetry__id: string = ""
+var telemetry__session: string = ""
+var telemetry__q: []string = null         # the queued lines, oldest first
+var telemetry__dirty: bool = false        # telemetry__q differs from the file
+var telemetry__h: int = -1                # the batch in flight
+var telemetry__sent_n: int = 0            # how many lines it carries
+var telemetry__next_ms: int = 0           # when the next send may go
+var telemetry__saved_ms: int = 0          # when the queue was last put on disk
+var telemetry__fails: int = 0             # sends failed in a row
+var telemetry__t0: int = 0                # the default clock's zero, wall seconds
+var telemetry__facts: Queue<TelemetryFact> = null
+
+export function telemetry_facts() -> Queue<TelemetryFact> {
+  if telemetry__facts == null { telemetry__facts = queue_new("telemetry.facts") }
+  return telemetry__facts
+}
+
+function telemetry__fact(what: int, count: int, status: int, retry: int) -> void {
+  let f = new TelemetryFact
+  f.what = what
+  f.count = count
+  f.status = status
+  f.retry_ms = retry
+  q_push(telemetry_facts(), f)
+}

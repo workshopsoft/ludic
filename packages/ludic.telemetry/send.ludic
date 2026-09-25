@@ -1,0 +1,70 @@
+# send.ludic - every frame: a batch when one is due, its answer when it lands, the wait doubled
+# when it failed, the queue on disk every few seconds. One request at a time; nothing waits on it.
+var telemetry__clock_on: bool = false
+
+export function telemetry_tick() -> void {
+  if not telemetry__ready { return }
+  telemetry__id_tick()
+  if not telemetry__enabled() {
+    if len(telemetry__q) > 0 or telemetry__h >= 0 { telemetry_forget() }
+    return
+  }
+  if not telemetry__can_send() { return }
+  let now = telemetry__now()
+  let c = telemetry__conf()
+  if not telemetry__clock_on {
+    telemetry__clock_on = true
+    telemetry__next_ms = now + c.flush_ms
+    telemetry__saved_ms = now
+  }
+  if now - telemetry__saved_ms >= c.save_ms {
+    telemetry_save()
+    telemetry__saved_ms = now
+  }
+  if telemetry__h >= 0 {
+    telemetry__answer(now)
+    return
+  }
+  if len(telemetry__q) == 0 { return }
+  let early = telemetry__fails == 0 and len(telemetry__q) >= c.flush_at
+  if early or now >= telemetry__next_ms {
+    telemetry_save()
+    telemetry__flush(now)
+    if telemetry__fails == 0 { telemetry__next_ms = now + c.flush_ms }
+  }
+}
+
+function telemetry__answer(now: int) -> void {
+  let st = telemetry__poll(telemetry__h)
+  if st < 0 { return }
+  telemetry__h = -1
+  if st > 0 {
+    telemetry__queue_drop(telemetry__sent_n)
+    telemetry__fails = 0
+    telemetry__next_ms = now + telemetry__conf().flush_ms
+    telemetry__fact(TELEMETRY_SENT, telemetry__sent_n, st, 0)
+  } else {
+    telemetry__backoff(now)
+    telemetry__fact(TELEMETRY_FAILED, telemetry__sent_n, st, telemetry__next_ms - now)
+  }
+  telemetry_save()
+}
+
+function telemetry__flush(now: int) -> void {
+  if telemetry__h >= 0 or len(telemetry__id) == 0 or len(telemetry__q) == 0 { return }
+  let n = min(telemetry__conf().batch, len(telemetry__q))
+  let h = telemetry__send(telemetry_batch_body(n))
+  if h < 0 {
+    telemetry__backoff(now)
+    telemetry__fact(TELEMETRY_FAILED, n, 0, telemetry__next_ms - now)
+    return
+  }
+  telemetry__h = h
+  telemetry__sent_n = n
+}
+
+# a failed send: wait twice as long next time, up to backoff_max doublings
+function telemetry__backoff(now: int) -> void {
+  if telemetry__fails < telemetry__conf().backoff_max { telemetry__fails += 1 }
+  telemetry__next_ms = now + (telemetry__conf().flush_ms << telemetry__fails)
+}

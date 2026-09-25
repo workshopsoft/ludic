@@ -1,0 +1,97 @@
+# queue.ludic - a start, an event encoded once into a line, the queue on disk, and forgetting
+# once, at boot: who this is (from the id file, or begun from the machine), a new session, and
+# whatever an earlier start left unsent - or nothing, if the player has it off
+export function telemetry_start() -> void {
+  if telemetry__ready { return }
+  telemetry__ready = true
+  telemetry__t0 = Time.now()
+  telemetry__session = telemetry_random_hex(16)
+  telemetry__q = new []string
+  telemetry__id = sv_str(telemetry__read_obj(telemetry__conf().id_file), "id", "")
+  if len(telemetry__id) == 0 { telemetry__id_begin() }
+  if telemetry__enabled() { telemetry__queue_load() } else { telemetry_forget() }
+}
+
+# may an event be kept right now?
+export function telemetry_on() -> bool { return telemetry__ready and telemetry__enabled() and telemetry__can_send() }
+
+# an event: the properties (null for none) with the session and the library added, and the player
+# as a mark put in when the batch goes, so an event queued before the id is known is not misfiled
+export function telemetry_event(name: string, props: Val) -> void {
+  if not telemetry_on() { return }
+  var p = props
+  if p == null { p = Value.object() }
+  Value.put(p, "$session_id", Value.str(telemetry__session))
+  if len(telemetry__conf().lib) > 0 { Value.put(p, "$lib", Value.str(telemetry__conf().lib)) }
+  let e = Value.object()
+  Value.put(e, "event", Value.str(name))
+  Value.put(e, "distinct_id", Value.str(TELEMETRY_MARK))
+  Value.put(e, "properties", p)
+  Value.put(e, "timestamp", Value.str(telemetry__stamp()))
+  push(telemetry__q, Json.encode(e))
+  telemetry__dirty = true
+  let c = telemetry__conf()
+  if len(telemetry__q) > c.queue_max + c.batch { telemetry__queue_drop(len(telemetry__q) - c.queue_max) }
+}
+
+# the queue on disk now, if it changed (a quit, a crash about to happen, a child starting)
+export function telemetry_save() -> void {
+  if not telemetry__dirty or telemetry__q == null { return }
+  telemetry__dirty = false
+  let f = telemetry__conf().queue_file
+  if len(f) == 0 { return }
+  if len(telemetry__q) == 0 {
+    if Fs.exists(f) { Fs.remove(f) }
+    return
+  }
+  Fs.write_text(f, Text.join(telemetry__q, "\n") + "\n")
+}
+
+# the player turned it off: nothing more is sent, and nothing queued is kept, here or on disk
+export function telemetry_forget() -> void {
+  telemetry__drop_request()
+  telemetry__q = new []string
+  telemetry__dirty = false
+  let f = telemetry__conf().queue_file
+  if len(f) > 0 and Fs.exists(f) { Fs.remove(f) }
+}
+
+function telemetry__queue_load() -> void {
+  telemetry__q = new []string
+  let f = telemetry__conf().queue_file
+  if len(f) == 0 { return }
+  let s = Fs.read_text(f)
+  if s == null { return }
+  let parts = Text.split(s, "\n")
+  for i in 0 .. len(parts) { if len(parts[i]) > 2 { push(telemetry__q, parts[i]) } }
+  let max = telemetry__conf().queue_max
+  if len(telemetry__q) > max { telemetry__queue_drop(len(telemetry__q) - max) }
+}
+
+# drop the first n lines (sent, or the oldest past the cap)
+function telemetry__queue_drop(n: int) -> void {
+  let rest = new []string
+  for i in n .. len(telemetry__q) { push(rest, telemetry__q[i]) }
+  telemetry__q = rest
+  telemetry__dirty = true
+}
+
+# the batch: the first n lines joined, with the player id put in - no parsing
+export function telemetry_batch_body(n: int) -> string {
+  let part = new []string
+  for i in 0 .. n { push(part, telemetry__q[i]) }
+  let head = Value.object()
+  Value.put(head, "api_key", Value.str(telemetry__conf().key))
+  let h: string = Json.encode(head)
+  let body = h[0..len(h) - 1] + ",\"batch\":[" + Text.join(part, ",") + "]}"
+  return Text.replace(body, TELEMETRY_MARK, telemetry__id)
+}
+
+function telemetry__read_obj(path: string) -> Val {
+  if len(path) == 0 { return null }
+  let s = Fs.read_text(path)
+  if s == null { return null }
+  let v = Json.parse(s)
+  if v == null or Value.kind(v) != 6 { return null }
+  return v
+}

@@ -1,0 +1,51 @@
+# ports.ludic - the config, and what the ports answer when the game leaves them unbound
+export function telemetry_config(c: TelemetryConfig) -> void { telemetry__cfg = c }
+
+function telemetry__conf() -> TelemetryConfig {
+  if telemetry__cfg == null { telemetry__cfg = new TelemetryConfig }
+  return telemetry__cfg
+}
+
+function telemetry__yes() -> bool { return true }
+function telemetry__wall_ms() -> int { return (Time.now() - telemetry__t0) * 1000 }
+function telemetry__wall_stamp() -> string { return DateTime.format(Time.now(), "YYYY-MM-DDTHH:mm:ssZ") }
+
+function telemetry__can_send() -> bool {
+  let c = telemetry__conf()
+  if len(c.host) == 0 or len(c.key) == 0 { return false }
+  return TelemetryWorld.can_send()
+}
+
+function telemetry__enabled() -> bool { return TelemetryWorld.enabled() }
+function telemetry__now() -> int { return TelemetryWorld.now_ms() }
+function telemetry__stamp() -> string { return TelemetryWorld.stamp() }
+
+function telemetry__http_send(url: string, body: string) -> int {
+  let h = Http.open("POST", url)
+  if h < 0 { return h }
+  Http.set(h, "Content-Type", "application/json")
+  Http.body(h, body)
+  Http.send(h)
+  return h
+}
+
+function telemetry__http_poll(h: int) -> int {
+  let st = Http.poll(h)
+  if st < 0 { return -1 }
+  var ok = 0
+  if st > 0 and Http.ok(h) { ok = 1 }
+  Http.free(h)
+  return ok
+}
+
+function telemetry__http_drop(h: int) -> void { Http.free(h) }
+
+function telemetry__send(body: string) -> int { return TelemetryTransport.send(telemetry__conf().host + telemetry__conf().path, body) }
+function telemetry__poll(h: int) -> int { return TelemetryTransport.poll(h) }
+
+# a request abandoned (the player said no)
+function telemetry__drop_request() -> void {
+  if telemetry__h < 0 { return }
+  TelemetryTransport.drop(telemetry__h)
+  telemetry__h = -1
+}

@@ -1,0 +1,200 @@
+# telemetry_test.ludic - events queue as lines, a batch goes when due and not before, a failure
+# waits longer, off forgets, a test run never sends, and the queue survives a restart
+import "ludic.telemetry"
+import "ludic.base"
+program TelemetryTest {
+  numbers float
+  var clock: int = 0
+  var on: bool = true
+  var allowed: bool = true
+  var answer: int = -1
+  var refuse: bool = false
+  var sends: int = 0
+  var last_url: string = ""
+  var last_body: string = ""
+
+  function fake_now() -> int { return clock }
+  function fake_enabled() -> bool { return on }
+  function fake_can() -> bool { return allowed }
+  function fake_stamp() -> string { return "2026-09-25T12:00:00Z" }
+  function fake_send(url: string, body: string) -> int {
+    if refuse { return -1 }
+    sends += 1
+    last_url = url
+    last_body = body
+    return 7
+  }
+  function fake_poll(h: int) -> int { return answer }
+  function fake_drop(h: int) -> void { }
+
+  bind TelemetryWorld { can_send: fn fake_can, enabled: fn fake_enabled, now_ms: fn fake_now, stamp: fn fake_stamp }
+  bind TelemetryTransport { send: fn fake_send, poll: fn fake_poll, drop: fn fake_drop }
+
+  function qfile() -> string { return Os.temp_dir() + "/ludic-telemetry-test-queue.txt" }
+  function idfile() -> string { return Os.temp_dir() + "/ludic-telemetry-test-id.json" }
+
+  function fresh() -> void {
+    clock = 0
+    on = true
+    allowed = true
+    answer = -1
+    refuse = false
+    sends = 0
+    last_url = ""
+    last_body = ""
+    telemetry_reset()
+    if Fs.exists(qfile()) { Fs.remove(qfile()) }
+    Fs.write_text(idfile(), "{\"id\":\"p-1\",\"notices\":2}")
+    let c = new TelemetryConfig
+    c.host = "http://fake"
+    c.key = "k-1"
+    c.lib = "test-game"
+    c.queue_file = qfile()
+    c.id_file = idfile()
+    c.flush_ms = 1000
+    c.flush_at = 5
+    c.batch = 3
+    c.queue_max = 8
+    c.backoff_max = 2
+    c.save_ms = 100000
+    telemetry_config(c)
+    telemetry_start()
+    telemetry_tick()
+  }
+
+  function events(n: int) -> void {
+    for i in 0 .. n { telemetry_event(`e{i}`, null) }
+  }
+
+  function at(ms: int) -> void {
+    clock = ms
+    telemetry_tick()
+  }
+
+  function facts_of(what: int) -> int {
+    let fs = q_drain(telemetry_facts())
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "an event is one line with the player as a mark, and the batch puts the id in" {
+    fresh()
+    expect(telemetry_id() == "p-1")
+    telemetry_event("hello", null)
+    expect_eq(telemetry_queued(), 1)
+    let line = telemetry_line(0)
+    expect(Text.contains(line, "\"event\":\"hello\""))
+    expect(Text.contains(line, "test-game"))
+    expect(not Text.contains(line, "p-1"))
+    let body = telemetry_batch_body(1)
+    expect(Text.contains(body, "\"api_key\":\"k-1\""))
+    expect(Text.contains(body, "\"distinct_id\":\"p-1\""))
+  }
+
+  test "a batch goes when due, and only what the server took leaves the queue" {
+    fresh()
+    events(4)
+    at(500)
+    expect_eq(sends, 0)
+    at(1000)
+    expect_eq(sends, 1)
+    expect(last_url == "http://fake/batch/")
+    expect(telemetry_in_flight())
+    events(1)
+    answer = 1
+    at(1100)
+    expect_eq(telemetry_queued(), 2)
+    expect_eq(facts_of(TELEMETRY_SENT), 1)
+  }
+
+  test "enough events go early" {
+    fresh()
+    events(5)
+    at(10)
+    expect_eq(sends, 1)
+  }
+
+  test "a failure keeps the lines and waits twice as long, up to the cap" {
+    fresh()
+    events(2)
+    answer = 0
+    at(1000)
+    at(1001)
+    expect_eq(telemetry_queued(), 2)
+    expect_eq(telemetry_fails(), 1)
+    expect_eq(telemetry_next_ms(), 1001 + 2000)
+    expect_eq(facts_of(TELEMETRY_FAILED), 1)
+    at(3001)
+    at(3002)
+    at(7002)
+    at(7003)
+    expect_eq(telemetry_fails(), 2)
+    expect_eq(telemetry_next_ms(), 7003 + 4000)
+  }
+
+  test "a request that cannot start backs off too" {
+    fresh()
+    refuse = true
+    events(1)
+    at(1000)
+    expect_eq(telemetry_fails(), 1)
+    expect(not telemetry_in_flight())
+  }
+
+  test "off keeps nothing and deletes the file" {
+    fresh()
+    events(3)
+    telemetry_save()
+    expect(Fs.exists(qfile()))
+    on = false
+    at(10)
+    expect_eq(telemetry_queued(), 0)
+    expect(not Fs.exists(qfile()))
+    events(3)
+    expect_eq(telemetry_queued(), 0)
+  }
+
+  test "a run that may not send queues nothing and sends nothing" {
+    fresh()
+    allowed = false
+    events(9)
+    at(100000)
+    expect_eq(telemetry_queued(), 0)
+    expect_eq(sends, 0)
+  }
+
+  test "the queue is capped at its newest events" {
+    fresh()
+    allowed = true
+    events(12)
+    expect(telemetry_queued() <= 11)
+    expect(Text.contains(telemetry_line(telemetry_queued() - 1), "e11"))
+  }
+
+  test "what was not sent is there at the next start" {
+    fresh()
+    events(3)
+    telemetry_save()
+    telemetry_reset()
+    telemetry_start()
+    expect_eq(telemetry_queued(), 3)
+  }
+
+  test "an id set outright is written beside the file's other keys" {
+    fresh()
+    telemetry_set_id("p-2")
+    let v = Json.parse(Fs.read_text(idfile()))
+    expect(sv_str(v, "id", "") == "p-2")
+    expect_eq(sv_int(v, "notices", 0), 2)
+  }
+
+  test "no salt and no id file makes a random id" {
+    fresh()
+    telemetry_reset()
+    Fs.remove(idfile())
+    telemetry_start()
+    expect(Text.starts_with(telemetry_id(), "r-"))
+    expect_eq(len(telemetry_session()), 32)
+  }
+}

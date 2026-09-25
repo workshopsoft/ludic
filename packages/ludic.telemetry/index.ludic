@@ -1,0 +1,11 @@
+# ludic.telemetry - what a game says about how it is played: each event is encoded once into a
+# line, the lines go out in batches on Http's own thread, and a failed send waits longer next time
+module ludic_telemetry uses ludic_base
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "ports.ludic"
+import "queue.ludic"
+import "send.ludic"
+import "ident.ludic"
+import "queries.ludic"

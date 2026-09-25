@@ -1,0 +1,5 @@
+# ludic.telemetry - events queued in memory, batched to a PostHog-shaped endpoint, backed off when
+# offline, kept on disk between starts, and forgotten when the player says no. See README.md.
+package "ludic.telemetry"
+version "0.1.0"
+kind source
