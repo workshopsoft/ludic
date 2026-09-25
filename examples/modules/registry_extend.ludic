@@ -1,0 +1,12 @@
+# registry_extend.ludic — L8 + L9: a game fills a package's open registry from its own resource
+# file with `def Recipes from "recipes.lres"`. The entries are checked against Recipe as the file
+# is read, and they come after the package's own, in file order.
+#
+# Running it prints:  3 Rope Pine tea Splint 20
+import "crafting"
+program RegistryExtend {
+  def Recipes from "recipes.lres"
+  entry {
+    print(`{RC_COUNT} {Recipes[0].name} {Recipes[RC_TEA].name} {Recipes[2].name} {Recipes[recipes_find("splint")].minutes}`)
+  }
+}

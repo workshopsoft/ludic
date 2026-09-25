@@ -1,0 +1,9 @@
+# crafting/index.ludic - a registry the game may add to, and the package's own first entry
+module crafting
+export property Recipe {
+  key: string = ""
+  name: string = ""
+  minutes: int = 0
+}
+export open registry Recipes of Recipe as RC
+def Recipes rope { name: "Rope", minutes: 10 }

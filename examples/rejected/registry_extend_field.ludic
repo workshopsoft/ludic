@@ -1,0 +1,8 @@
+# L8 + L9: a resource file that extends a registry is checked against its record, at its own line
+import "craft_kit"
+program RegistryExtendField {
+  def Recipes from "bad_recipes.lres"
+  entry {
+    print(RC_COUNT)
+  }
+}

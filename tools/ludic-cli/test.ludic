@@ -820,6 +820,8 @@ function cmd_dev_test() -> int {
   feat_case("modules/open_registry", "", "clock animals weather / 2 2 3", "open_registry.ludic (L8+L3: an open registry takes other modules' defs; its own entries first, then by module name)")
   reject_case("rejected/registry_closed", "registry Tools is not open to other modules", "a def from another module into a registry that is not open is refused")
   reject_case("rejected/registry_hidden", "Tools is private to module kit", "a def goes through visibility: the registry must be exported")
+  feat_case("modules/registry_extend", "", "3 Rope Pine tea Splint 20", "registry_extend.ludic (L8+L9: `def Recipes from \"recipes.lres\"` fills a package's open registry from the game's file)")
+  reject_case("rejected/registry_extend_field", "bad_recipes.lres:3: error: field minutes of Recipe wants an int", "a resource file extending a registry is checked at its own line")
   feat_case("lang/resources", "", "2 Axe 2 Split 10 0 1", "resources.ludic (L9: a registry read from a resource file at compile time, nested records typed by the schema)")
   reject_case("rejected/resource_field", "bad_tools.lres:3: error: field weight of Tool wants a float", "a resource file's entry is checked at its own line")
   reject_case("rejected/resource_missing", "cannot read the resource file data/no_such.lres", "a registry's resource file must exist")

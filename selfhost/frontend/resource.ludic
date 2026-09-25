@@ -16,9 +16,14 @@ function res_path(from: pointer, declaring: pointer) -> pointer {
   return join_path(dir_of(declaring), from)
 }
 function res_read(v: Node, from: pointer) -> void {
+  res_read_into(v.s, from, `registry {v.s}`)
+}
+# the entries of a resource file into registry `reg`, as defs of the reading file's module: a
+# registry's own file, or `def REG from "file.lres"` in a module that extends an open registry
+function res_read_into(reg: pointer, from: pointer, who: pointer) -> void {
   let path = res_path(from, g_parse_file)
   let src = read_file(path)
-  if src == null { perr(`registry {v.s}: cannot read the resource file {from}`) }
+  if src == null { perr(`{who}: cannot read the resource file {from}`) }
   let saved_toks = toks
   let saved_pi = pi
   let saved_file = g_parse_file
@@ -36,7 +41,7 @@ function res_read(v: Node, from: pointer) -> void {
     let key = eat_id()
     skipnl()
     let rec = record()
-    push(g_df_reg, v.s)
+    push(g_df_reg, reg)
     push(g_df_key, key)
     push(g_df_rec, rec)
   }

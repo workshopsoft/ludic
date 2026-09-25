@@ -400,6 +400,22 @@ The entries are compiled in: nothing is parsed at start-up, and a build that suc
 every resource it uses. The path is the project's (where the build runs), else beside the file that
 declares the registry.
 
+
+A module that extends an open registry can bring its entries from a resource file of its own:
+
+```ludic
+# doc-check: skip — the file it names is beside the example
+import "crafting"                 # module crafting: export open registry Recipes of Recipe as RC
+def Recipes from "recipes.lres"   # the game's recipes, after crafting's own
+```
+
+`def REGISTRY from "file.lres"` reads the file as `registry ... from` does - the project's path, else
+beside the file that says it - and checks every entry against the registry's record, an error
+naming the resource file's own line (`bad_recipes.lres:3: error: field minutes of Recipe wants an
+int and this is a string`). Its entries are defs of the module that wrote the line, so the registry
+must be open (and exported) to it, and they take that module's place in the order: the declaring
+module's entries, then each other module's by module name, and within a file, file order.
+
 ### Default parameters, and calls that name what they change
 
 A parameter can have a default, and a call leaves out what it does not change - the last ones when

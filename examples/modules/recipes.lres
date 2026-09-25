@@ -1,0 +1,3 @@
+# recipes.lres - the game's own recipes, added to crafting's open registry
+tea { name: "Pine tea", minutes: 5 }
+splint { name: "Splint", minutes: 20 }

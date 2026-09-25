@@ -1,0 +1,8 @@
+# craft_kit/index.ludic - an open registry of recipes
+module crafting
+export property Recipe {
+  key: string = ""
+  name: string = ""
+  minutes: int = 0
+}
+export open registry Recipes of Recipe as RC

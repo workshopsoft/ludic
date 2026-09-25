@@ -75,9 +75,16 @@ function parse_registry() -> void {
   if from != null { res_read(v, from) }
 }
 # def REGISTRY key { field: value, ... }
+# def REGISTRY from "file.lres" - every entry of a resource file, as defs of this file's module
 function parse_def() -> void {
   pi += 1
   let reg = eat_id()
+  if is_id("from") and toks[pi + 1].kind == TK_STR {
+    let from = toks[pi + 1].text
+    pi += 2
+    res_read_into(reg, from, `def {reg} from`)
+    return
+  }
   let key = eat_id()
   skipnl()
   let rec = record()
