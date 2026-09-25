@@ -26,6 +26,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.hints](ludic.hints/README.md) | a rail of what is true now, most urgent first, each a card that teaches it and can be muted by key |
 | [ludic.i18n](ludic.i18n/README.md) | a game in any language: gettext `.po` files, patterns with holes, plurals, a mod folder, a font per language |
 | [ludic.inventory](ludic.inventory/README.md) | a pack: a count per kind, with room the game decides |
+| [ludic.minimap](ludic.minimap/README.md) | a map's logic: the explored fog over a grid and its land share, the player's marks, and the view (world to map and back, zoom, pan, the camp, you, focus) |
 | [ludic.needs](ludic.needs/README.md) | a body's warmth, food, water and energy, and the countdown to a collapse |
 | [ludic.photo](ludic.photo/README.md) | a camera's photographs: what is in the frame, a grade on size, framing, light and the moment, the roll, its worth, the best of each subject |
 | [ludic.save](ludic.save/README.md) | versioned save files: a migration chain the game declares, torn writes told apart, a backup, a newer file refused and read-only |

@@ -1,0 +1,104 @@
+# pins.ludic - the player's own marks: a note at a place, with a symbol, a colour, the day it was
+# made and a name. It does not route anyone and it does not move. One may be open (on the map's
+# legend) and one followed (on the compass); the symbol last chosen is the next mark's.
+export property MinimapPin {
+  x: float = 0.0
+  z: float = 0.0
+  icon: int = 0          # 0 .. symbols - 1, the game's
+  colour: int = 0        # 0 .. colours - 1, the game's
+  day: int = 1
+  label: string = ""
+}
+
+var mm_pins: []MinimapPin = null
+var mm_pin_max: int = 32
+var mm_symbols: int = 8
+var mm_colours: int = 5
+var mm_open: int = -1
+var mm_followed: int = -1
+var mm_last: int = 0
+var mm_placing: bool = false
+
+export function minimap_config_pins(max: int, symbols: int, colours: int) -> void {
+  mm_pin_max = Math.max(max, 1)
+  mm_symbols = Math.max(symbols, 1)
+  mm_colours = Math.max(colours, 1)
+  minimap_pins_clear()
+}
+
+export function minimap_pins_clear() -> void {
+  mm_pins = new []MinimapPin
+  mm_open = -1
+  mm_followed = -1
+  mm_last = 0
+  mm_placing = false
+}
+
+export function minimap_pin_count() -> int {
+  if mm_pins == null { return 0 }
+  return len(mm_pins)
+}
+
+export function minimap_pin_max() -> int { return mm_pin_max }
+export function minimap_pin_full() -> bool { return minimap_pin_count() >= mm_pin_max }
+
+# a mark at (x, z) made today, with the colour 0; -1 when the map holds all it will
+export function minimap_pin_add(x: float, z: float, icon: int, label: string) -> int {
+  if mm_pins == null { minimap_pins_clear() }
+  if minimap_pin_full() { return -1 }
+  let p = new MinimapPin
+  p.x = x
+  p.z = z
+  p.icon = Math.clamp(icon, 0, mm_symbols - 1)
+  p.day = MinimapWorld.day()
+  p.label = label
+  push(mm_pins, p)
+  mm_last = p.icon
+  return len(mm_pins) - 1
+}
+
+# as saved: everything given, the symbol last chosen left alone
+export function minimap_pin_put(x: float, z: float, icon: int, colour: int, day: int, label: string) -> int {
+  if mm_pins == null { minimap_pins_clear() }
+  if minimap_pin_full() { return -1 }
+  let p = new MinimapPin
+  p.x = x
+  p.z = z
+  p.icon = Math.clamp(icon, 0, mm_symbols - 1)
+  p.colour = Math.clamp(colour, 0, mm_colours - 1)
+  p.day = day
+  p.label = label
+  push(mm_pins, p)
+  return len(mm_pins) - 1
+}
+
+# the i-th mark, or an empty one past the end
+export function minimap_pin(i: int) -> MinimapPin {
+  if i < 0 or i >= minimap_pin_count() { return new MinimapPin }
+  return mm_pins[i]
+}
+
+# the nearest n marks within `within` of (x, z), nearest first, leaving out the followed one
+export function minimap_pins_near(x: float, z: float, n: int, within: float) -> []int {
+  let out = new []int
+  for k in 0 .. n {
+    var best = -1
+    var bd = within * within
+    for i in 0 .. minimap_pin_count() {
+      if i == mm_followed or mm_has(out, i) { continue }
+      let d = (mm_pins[i].x - x) * (mm_pins[i].x - x) + (mm_pins[i].z - z) * (mm_pins[i].z - z)
+      if d < bd {
+        bd = d
+        best = i
+      }
+    }
+    if best < 0 { break }
+    push(out, best)
+  }
+  return out
+}
+
+function mm_has(xs: []int, v: int) -> bool {
+  for i in 0 .. len(xs) { if xs[i] == v { return true } }
+  return false
+}

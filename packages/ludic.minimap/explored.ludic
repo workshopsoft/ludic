@@ -1,0 +1,100 @@
+# explored.ludic - walking reveals the cells round you; "explored" is the share of the core's LAND
+# that has been seen, since open water has nothing on it to miss
+var mm_land_n: int = 0            # land cells in the core, counted once per origin
+var mm_land_ox: float = 0.0
+var mm_land_oz: float = 0.0
+
+# every cell any part of which is within r of (x, z)
+export function minimap_reveal(x: float, z: float, r: float) -> void {
+  mm_grid()
+  let c = minimap_cell(x, z)
+  let reach = int(r / mm_cell_m) + 1
+  let x0 = minimap_grid_x0()
+  let z0 = minimap_grid_z0()
+  let ci = int(Math.floor((x - x0) / mm_cell_m))
+  let cj = int(Math.floor((z - z0) / mm_cell_m))
+  for j in cj - reach .. cj + reach + 1 {
+    for i in ci - reach .. ci + reach + 1 {
+      if i < 0 or j < 0 or i >= mm_cells or j >= mm_cells { continue }
+      let nx = Math.clamp(x, x0 + float(i) * mm_cell_m, x0 + float(i + 1) * mm_cell_m)
+      let nz = Math.clamp(z, z0 + float(j) * mm_cell_m, z0 + float(j + 1) * mm_cell_m)
+      if (nx - x) * (nx - x) + (nz - z) * (nz - z) <= r * r { minimap_reveal_cell(j * mm_cells + i) }
+    }
+  }
+  if c >= 0 { minimap_reveal_cell(c) }
+}
+
+export function minimap_reveal_cell(c: int) -> void {
+  mm_grid()
+  if c < 0 or c >= mm_cells * mm_cells or mm_seen[c] != 0 { return }
+  mm_seen[c] = 1
+  mm_version += 1
+}
+
+export function minimap_seen(c: int) -> bool {
+  if mm_seen == null or c < 0 or c >= mm_cells * mm_cells { return false }
+  return mm_seen[c] != 0
+}
+
+export function minimap_seen_at(x: float, z: float) -> bool { return minimap_seen(minimap_cell(x, z)) }
+
+export function minimap_seen_count() -> int {
+  var n = 0
+  if mm_seen == null { return 0 }
+  for c in 0 .. len(mm_seen) { if mm_seen[c] != 0 { n += 1 } }
+  return n
+}
+
+# goes up whenever what has been seen changes: a picture of the fog is baked again when it does
+export function minimap_version() -> int { return mm_version }
+
+export function minimap_explored_pct() -> int {
+  mm_land_count()
+  var n = 0
+  for j in mm_core0 .. mm_core0 + mm_core_n {
+    for i in mm_core0 .. mm_core0 + mm_core_n {
+      if minimap_seen(j * mm_cells + i) and mm_land(i, j) { n += 1 }
+    }
+  }
+  return Math.min(n * 100 / mm_land_n, 100)
+}
+
+function mm_land(i: int, j: int) -> bool { return MinimapWorld.land(minimap_cell_x(i), minimap_cell_z(j)) }
+
+function mm_land_count() -> void {
+  let ox = MinimapWorld.origin_x()
+  let oz = MinimapWorld.origin_z()
+  if mm_land_n > 0 and ox == mm_land_ox and oz == mm_land_oz { return }
+  mm_land_ox = ox
+  mm_land_oz = oz
+  mm_land_n = 0
+  for j in mm_core0 .. mm_core0 + mm_core_n {
+    for i in mm_core0 .. mm_core0 + mm_core_n { if mm_land(i, j) { mm_land_n += 1 } }
+  }
+  mm_land_n = Math.max(mm_land_n, 1)
+}
+
+# the ground under the grid is not what it was (a new world): count its land again
+export function minimap_land_changed() -> void { mm_land_n = 0 }
+
+# the grid as one string of 0 / 1, row by row, and back (a shorter string leaves the rest unseen)
+export function minimap_seen_text() -> string {
+  mm_grid()
+  var s = ""
+  for j in 0 .. mm_cells {
+    var row = ""
+    for i in 0 .. mm_cells { if mm_seen[j * mm_cells + i] != 0 { row = row + "1" } else { row = row + "0" } }
+    s = s + row
+  }
+  return s
+}
+
+export function minimap_seen_from_text(s: string) -> void {
+  mm_grid()
+  let n = len(s)
+  for c in 0 .. mm_cells * mm_cells {
+    mm_seen[c] = 0
+    if c < n and s[c] == 49 { mm_seen[c] = 1 }
+  }
+  mm_version += 1
+}

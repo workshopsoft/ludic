@@ -1,0 +1,6 @@
+# ludic.minimap - a map's logic: the explored fog over a grid of cells, the player's own marks,
+# and the view onto it (world to map and back, zoom, pan, the camp, you, focus). Uses ludic.base
+# and nothing else. See README.md.
+package "ludic.minimap"
+version "0.1.0"
+kind source

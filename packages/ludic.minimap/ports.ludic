@@ -1,0 +1,23 @@
+# ports.ludic - what a map asks the game: where its grid is centred, what is land, where you and
+# the camp are, the day, and how far the view may be pushed. Unbound: a grid round the origin, all
+# land, you and the camp at the origin on day 1, and nowhere the view may not go.
+export port MinimapWorld {
+  origin_x: fn() -> float = fn mm__zero        # the grid's centre
+  origin_z: fn() -> float = fn mm__zero
+  land: fn(float, float) -> bool = fn mm__land  # "explored" counts land only
+  you_x: fn() -> float = fn mm__zero
+  you_z: fn() -> float = fn mm__zero
+  camp_x: fn() -> float = fn mm__zero
+  camp_z: fn() -> float = fn mm__zero
+  day: fn() -> int = fn mm__day                 # a mark remembers the day it was made
+  lo_x: fn() -> float = fn mm__lo               # the view's centre stays inside these
+  lo_z: fn() -> float = fn mm__lo
+  hi_x: fn() -> float = fn mm__hi
+  hi_z: fn() -> float = fn mm__hi
+}
+
+function mm__zero() -> float { return 0.0 }
+function mm__land(x: float, z: float) -> bool { return true }
+function mm__day() -> int { return 1 }
+function mm__lo() -> float { return -1000000000.0 }
+function mm__hi() -> float { return 1000000000.0 }

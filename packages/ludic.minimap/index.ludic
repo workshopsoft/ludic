@@ -1,0 +1,13 @@
+# ludic.minimap - what a map knows without drawing anything: which cells have been walked, the
+# marks the player put on it, and where its window looks. The game paints the picture.
+module ludic_minimap uses ludic_base
+numbers float
+import "ludic.base"
+import "ports.ludic"
+import "grid.ludic"
+import "explored.ludic"
+import "pins.ludic"
+import "pin_edit.ludic"
+import "view.ludic"
+import "view_moves.ludic"
+import "system.ludic"
