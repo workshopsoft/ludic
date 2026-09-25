@@ -39,7 +39,7 @@ function fp_result(a: pointer, b: pointer) -> pointer {
 # a literal-only expression (Val.lit) evaluated exactly in float type t
 function fp_const(e: Node, t: pointer) -> pointer {
   if e.kind == E_FLOAT { return fp_lit_code(e.s, t) }
-  if e.kind == E_INT { return fp_lit_code(itoa(e.ival), t) }
+  if e.kind == E_INT { return fp_lit_code(int_lit_code(e), t) }
   if e.kind == E_UN {
     let x = fp_const(e.a, t)
     return emit_bind(`fneg {t} {x}`)

@@ -1,0 +1,7 @@
+# a literal past 2^31 - 1 is a long, and a long does not narrow into an int
+program LongIntoInt {
+  entry {
+    let n: int = 4294967295
+    print(n)
+  }
+}

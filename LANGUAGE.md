@@ -1764,13 +1764,19 @@ let msg = `hello {name}, you have {count + 1} messages`
 # == "hello " + name + ", you have " + str(count + 1) + " messages"
 ```
 
-`str(x)` is the same conversion on its own. Write a literal brace as `{{` / `}}`.
+`str(x)` is the same conversion on its own. Write a literal brace as `{{` / `}}`. A hole is code,
+so a string, a char or another template literal inside it is taken whole - `` `a {wrap(`b {n}`)} c` ``
+is one literal, and a brace or a backtick inside a string in a hole is text.
 
 **Slicing.** `s[a..b]` is a fresh substring of the bytes `[a, b)`, and `len(s)`
 is a string's byte length — so `path[0..len(path) - 6]` trims an extension and
 `s[i]` still indexes a single byte. `expr with { field: … }`
 is not implemented; records appear only in `spawn`. Char literals (`'w'`) are
-`int` code points; colors are hex ints (`0xff8800`). `null` is the null-pointer
+`int` code points; colors are hex ints (`0xff8800`). An integer literal past `2147483647` is a
+`long` and keeps its value (`let mask: long = 4294967295`); given to an `int` it is refused (`n wants
+an int and 4294967295 does not fit one; it is a long`). A hex literal of up to eight digits is a
+32-bit pattern - `0xFFFFFFFF` is `-1`, and `0xEDB88320` given to a `long` is negative - and one of
+more digits is a `long` (`0x10000000000`). `null` is the null-pointer
 literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 `Node`/`ptr` field reads back as `null`).
 

@@ -985,7 +985,10 @@ function emit_call(e: Node) -> Val {
 
 function emit_expr(e: Node) -> Val {
   if (e == null) { return val("0", "int") }
-  if e.kind == E_INT  { return val(itoa(e.ival), "int") }
+  if e.kind == E_INT  {
+    if e.s != null { return val(e.s, "long") }     # a literal past 2^31 - 1
+    return val(itoa(e.ival), "int")
+  }
   if e.kind == E_FLOAT and is_float_file(e.file) {
     let ff = val(fp_lit_code(e.s, "float"), "float")
     ff.lit = e

@@ -30,12 +30,18 @@ function emit_escaped(s: pointer) -> void {
   }
 }
 
+# an int literal's LLVM constant: its value, or a long literal's own digits
+function int_lit_code(e: Node) -> pointer {
+  if e.s != null { return e.s }
+  return itoa(e.ival)
+}
 # the constant initializer for a global var: a literal, or 0/null
 function global_init(d: Node) -> pointer {
   if (d.a == null) or is_fp(d.ty) { return zero_of(llty(d.ty)) }   # a float's value is set by L_init_globals
   let e = d.a
-  if e.kind == E_INT or e.kind == E_FLOAT or e.kind == E_BOOL { return itoa(e.ival) }
-  if e.kind == E_UN and (e.s == ("-")) and e.a.kind == E_INT { return (("-") + itoa(e.a.ival)) }
+  if e.kind == E_INT { return int_lit_code(e) }
+  if e.kind == E_FLOAT or e.kind == E_BOOL { return itoa(e.ival) }
+  if e.kind == E_UN and (e.s == ("-")) and e.a.kind == E_INT { return (("-") + int_lit_code(e.a)) }
   if e.kind == E_MEMBER and e.a.kind == E_ID {                  # `Enum.Variant` is a compile-time int
     let ord = enum_ordinal(e.a.s, e.s)
     if ord >= 0 { return itoa(ord) }

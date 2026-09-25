@@ -32,7 +32,10 @@ function ck_expr(e: Node) -> pointer {
   let ex = ck_expect
   ck_expect = null
   let k = e.kind
-  if k == E_INT { return "int" }
+  if k == E_INT {
+    if e.s != null { return "long" }              # a literal past 2^31 - 1
+    return "int"
+  }
   if k == E_FLOAT {
     if is_float_file(e.file) { return "float" }
     return "fixed"

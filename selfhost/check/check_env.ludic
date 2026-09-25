@@ -51,6 +51,11 @@ function ck_err(cat: pointer, n: Node, msg: pointer) -> void {
 }
 # a value given where a type is wanted: `what` says where ("argument 2 of f", "x")
 function ck_give(to: pointer, from: pointer, e: Node, what: pointer) -> void {
+  # a literal past 2^31 - 1 given to an int would lose its value: say so, rather than wrap it
+  if e != null and e.kind == E_INT and e.s != null and ((to == "int") or (to == "byte") or (to == "fixed")) {
+    ck_err("literal", e, `{what} wants {ck_a(to)} and {e.s} does not fit one; it is a long`)
+    return
+  }
   let cat = ck_mismatch(to, from, e)
   if cat == null { return }
   if (cat == "slice-pointer") {

@@ -1,0 +1,12 @@
+# nested_templates.ludic — a template literal inside another's hole is one expression: the outer
+# literal ends at its own backtick, not at the inner one's. A brace or a backtick inside a string in
+# a hole is text, and {{ }} are still literal braces.
+#
+# Running it prints:  outer [inner 3 {x}] "`}" end
+program NestedTemplates {
+  function wrap(s: string) -> string { return `[{s}]` }
+  entry {
+    let n = 3
+    print(`outer {wrap(`inner {n} {{x}}`)} {"\"`}\""} end`)
+  }
+}
