@@ -5,24 +5,24 @@ import "ludic.ui"
 import "ui_popover_mouse_parts/Grid.ludic"
 program UiPopoverMouse {
   numbers float
-  function frame(i: UiInput) -> UiNode {
-    ui_input(i)
-    ui_show("Grid", null, 0.0, 0.0, 400.0, 400.0)
-    let root: UiNode = ui_nodes("Grid", null)
-    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+  function frame(ui_st: mut UiState, i: UiInput) -> UiNode {
+    ui_input(ui_st, i)
+    ui_show(ui_st, "Grid", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes(ui_st, "Grid", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
     return root
   }
-  function click(x: float, y: float) -> string {
+  function click(ui_st: mut UiState, x: float, y: float) -> string {
     let d = new UiInput
     d.x = x
     d.y = y
     d.down = true
-    frame(d)
+    frame(ui_st, d)
     let u = new UiInput
     u.x = x
     u.y = y
-    frame(u)
-    let root = frame(new UiInput)
+    frame(ui_st, u)
+    let root = frame(ui_st, new UiInput)
     let page = root.children[0]
     return page.children[len(page.children) - 1].text
   }
@@ -34,19 +34,19 @@ program UiPopoverMouse {
     }
     return null
   }
-  entry {
-    ui_backend(new UiBackend)
-    frame(new UiInput)
-    let opened = click(20.0, 20.0)
-    let root = frame(new UiInput)
+  entry (ui_st: mut UiState) {
+    ui_backend(ui_st, new UiBackend)
+    frame(ui_st, new UiInput)
+    let opened = click(ui_st, 20.0, 20.0)
+    let root = frame(ui_st, new UiInput)
     let drop = find(root, "drop")
     let cell = find(root, "cell")
     let over = drop.x >= cell.x and drop.y >= cell.y and drop.x + drop.cw <= cell.x + cell.cw
-    let dropped = click(drop.x + drop.cw / 2.0, drop.y + drop.ch / 2.0)
-    click(20.0, 20.0)
-    let on_cell = click(180.0, 90.0)
-    click(20.0, 20.0)
-    let on_nothing = click(390.0, 390.0)
+    let dropped = click(ui_st, drop.x + drop.cw / 2.0, drop.y + drop.ch / 2.0)
+    click(ui_st, 20.0, 20.0)
+    let on_cell = click(ui_st, 180.0, 90.0)
+    click(ui_st, 20.0, 20.0)
+    let on_nothing = click(ui_st, 390.0, 390.0)
     print(`over the cell {over} | {opened} | {dropped} | {on_cell} | {on_nothing}`)
   }
 }

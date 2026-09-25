@@ -1,5 +1,5 @@
 # layout_wrap.ludic - a wrapping row, line by line: each line is as tall as its tallest child
-function ly_place_wrap(n: UiNode, top0: float, inner_w: float) -> void {
+function ly_place_wrap(ui_st: mut UiState, n: UiNode, top0: float, inner_w: float) -> void {
   var top = top0
   var from = 0
   while from < len(n.children) {
@@ -16,23 +16,23 @@ function ly_place_wrap(n: UiNode, top0: float, inner_w: float) -> void {
       line_h = Math.max(line_h, ly_cross(n.children[to], UI_ROW))
       to += 1
     }
-    ly_place_line(n, from, to, top, inner_w, line_h)
+    ly_place_line(ui_st, n, from, to, top, inner_w, line_h)
     top = top + line_h + n.gap
     from = to
   }
 }
 # position: absolute (in the parent's padding box) or fixed (in the screen): the insets say where,
 # and two opposite ones say how big; relative is placed as usual and moved by its insets
-function ly_place_abs(n: UiNode, c: UiNode) -> void {
+function ly_place_abs(ui_st: mut UiState, n: UiNode, c: UiNode) -> void {
   var bx = n.x + n.bl
   var by = n.y + n.bt
   var bw = n.cw - n.bl - n.br
   var bh = n.ch - n.bt - n.bb
   if c.pos == 3 {
-    bx = ly_vp_x
-    by = ly_vp_y
-    bw = ly_vp_w
-    bh = ly_vp_h
+    bx = ui_st.ly_vp_x
+    by = ui_st.ly_vp_y
+    bw = ui_st.ly_vp_w
+    bh = ui_st.ly_vp_h
   }
   var w = c.mw
   var h = c.mh
@@ -48,7 +48,7 @@ function ly_place_abs(n: UiNode, c: UiNode) -> void {
   if l != UI_AUTO { x = bx + l + c.ml } else if r != UI_AUTO { x = bx + bw - r - c.mr - w }
   var y = by + n.pt + c.mt
   if t != UI_AUTO { y = by + t + c.mt } else if b != UI_AUTO { y = by + bh - b - c.mb - h }
-  ly_place(c, x, y, w, h)
+  ly_place(ui_st, c, x, y, w, h)
 }
 function ly_or0(v: float) -> float {
   if v == UI_AUTO { return 0.0 }
@@ -60,19 +60,19 @@ function ly_offset(n: UiNode, dx: float, dy: float) -> void {
   for i in 0 .. len(n.children) { ly_offset(n.children[i], dx, dy) }
 }
 # where the first child starts and what goes between, when nothing grows into the spare room
-function ly_justify(n: UiNode, free: float, count: int, grows: float) -> void {
-  ly_lead = 0.0
-  ly_extra = 0.0
+function ly_justify(ui_st: mut UiState, n: UiNode, free: float, count: int, grows: float) -> void {
+  ui_st.ly_lead = 0.0
+  ui_st.ly_extra = 0.0
   if grows > 0.0 or free <= 0.0 or count == 0 { return }
-  if n.justify == UI_CENTER { ly_lead = free / 2.0 }
-  if n.justify == UI_END { ly_lead = free }
-  if n.justify == UI_BETWEEN and count > 1 { ly_extra = free / float(count - 1) }
+  if n.justify == UI_CENTER { ui_st.ly_lead = free / 2.0 }
+  if n.justify == UI_END { ui_st.ly_lead = free }
+  if n.justify == UI_BETWEEN and count > 1 { ui_st.ly_extra = free / float(count - 1) }
   if n.justify == UI_AROUND {
-    ly_extra = free / float(count)
-    ly_lead = ly_extra / 2.0
+    ui_st.ly_extra = free / float(count)
+    ui_st.ly_lead = ui_st.ly_extra / 2.0
   }
   if n.justify == UI_EVENLY {
-    ly_extra = free / float(count + 1)
-    ly_lead = ly_extra
+    ui_st.ly_extra = free / float(count + 1)
+    ui_st.ly_lead = ui_st.ly_extra
   }
 }

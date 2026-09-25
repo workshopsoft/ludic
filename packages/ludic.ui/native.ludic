@@ -8,59 +8,55 @@ export property UiNative {
   draw: fn(UiNode) -> void = null
   input: fn(UiNode, UiPointer) -> bool = null    # the pointer on it (pointer_events.ludic)
 }
-var nt_list: []UiNative = new []UiNative
-export function ui_native(tag: string, measure: fn(UiNode, float) -> void, draw: fn(UiNode) -> void) -> void {
+export function ui_native(ui_st: mut UiState, tag: string, measure: fn(UiNode, float) -> void, draw: fn(UiNode) -> void) -> void {
   let nv = new UiNative
   nv.tag = tag
   nv.measure = measure
   nv.draw = draw
-  for i in 0 .. len(nt_list) {
-    if nt_list[i].tag == tag {
-      nv.input = nt_list[i].input
-      nt_list[i] = nv
+  for i in 0 .. len(ui_st.nt_list) {
+    if ui_st.nt_list[i].tag == tag {
+      nv.input = ui_st.nt_list[i].input
+      ui_st.nt_list[i] = nv
       return
     }
   }
-  push(nt_list, nv)
+  push(ui_st.nt_list, nv)
 }
 # the pointer on a native: its presses, moves, drags, releases and the wheel, while it is over it or
 # has it captured; answering false to a pointerdown leaves the pointer free
-export function ui_native_input(tag: string, f: fn(UiNode, UiPointer) -> bool) -> void {
-  let nv = nt_find(tag)
+export function ui_native_input(ui_st: mut UiState, tag: string, f: fn(UiNode, UiPointer) -> bool) -> void {
+  let nv = nt_find(ui_st, tag)
   if nv == null {
-    ui_err(`ui_native_input: there is no native <{tag}> - ui_native it first`)
+    ui_err(ui_st, `ui_native_input: there is no native <{tag}> - ui_native it first`)
     return
   }
   nv.input = f
 }
-function nt_find(tag: string) -> UiNative {
-  for i in 0 .. len(nt_list) {
-    if nt_list[i].tag == tag { return nt_list[i] }
+function nt_find(ui_st: UiState, tag: string) -> UiNative {
+  for i in 0 .. len(ui_st.nt_list) {
+    if ui_st.nt_list[i].tag == tag { return ui_st.nt_list[i] }
   }
   return null
 }
-var nt_q_nodes: []UiNode = new []UiNode
-var nt_q_names: []string = new []string
-var nt_q_vals: []Val = new []Val
-function nt_fired_clear() -> void {
-  nt_q_nodes = new []UiNode
-  nt_q_names = new []string
-  nt_q_vals = new []Val
+function nt_fired_clear(ui_st: mut UiState) -> void {
+  ui_st.nt_q_nodes = new []UiNode
+  ui_st.nt_q_names = new []string
+  ui_st.nt_q_vals = new []Val
 }
-export function ui_fire(n: UiNode, name: string, value: Val) -> void {
-  push(nt_q_nodes, n)
-  push(nt_q_names, name)
-  push(nt_q_vals, value)
+export function ui_fire(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void {
+  push(ui_st.nt_q_nodes, n)
+  push(ui_st.nt_q_names, name)
+  push(ui_st.nt_q_vals, value)
 }
-function nt_fired_run() -> void {
-  let nodes = nt_q_nodes
-  let names = nt_q_names
-  let vals = nt_q_vals
-  nt_fired_clear()
-  for i in 0 .. len(nodes) { nt_run(nodes[i], names[i], vals[i]) }
+function nt_fired_run(ui_st: mut UiState) -> void {
+  let nodes = ui_st.nt_q_nodes
+  let names = ui_st.nt_q_names
+  let vals = ui_st.nt_q_vals
+  nt_fired_clear(ui_st)
+  for i in 0 .. len(nodes) { nt_run(ui_st, nodes[i], names[i], vals[i]) }
 }
 # the element's on-<name>, with `event` bound to what happened
-function nt_run(n: UiNode, name: string, value: Val) -> void {
+function nt_run(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void {
   if n.on_names == null or not n.enabled { return }
   for i in 0 .. len(n.on_names) {
     if n.on_names[i] == name {
@@ -70,7 +66,7 @@ function nt_run(n: UiNode, name: string, value: Val) -> void {
       Value.put(ev, "value", value)
       let e = env_new(n.env)
       env_bind(e, "event", ev)
-      act_run(n.on_acts[i], e)
+      act_run(ui_st, n.on_acts[i], e)
     }
   }
 }

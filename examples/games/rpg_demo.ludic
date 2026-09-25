@@ -38,14 +38,16 @@ program RpgDemo {
   @OnSpawn(Cfg) handler CI { }
 
   # a locked-door rule: veto a rightward grid step while `locked` is set (lever 4).
-  var locked: int = 0
-  @On(MoveRequested) handler LockDoor { if (locked == 1) and (dx == 1) { cancel } }
-  var entered: int = 0
-  @On(TileEntered) handler CountEnter { entered += 1 }
-  var talked: int = 0
-  @On(Interacted) handler OnTalk { if target >= 0 { talked += 1 } }
-  var quest_done: int = 0
-  @On(QuestCompleted) handler OnQuestDone { quest_done += 1 }
+  state RpgdemoState {
+    locked: int = 0
+    entered: int = 0
+    talked: int = 0
+    quest_done: int = 0
+  }
+  @On(MoveRequested) handler LockDoor(rpgdemo_st: RpgdemoState) { if (rpgdemo_st.locked == 1) and (dx == 1) { cancel } }
+  @On(TileEntered) handler CountEnter(rpgdemo_st: mut RpgdemoState) { rpgdemo_st.entered += 1 }
+  @On(Interacted) handler OnTalk(rpgdemo_st: mut RpgdemoState) { if target >= 0 { rpgdemo_st.talked += 1 } }
+  @On(QuestCompleted) handler OnQuestDone(rpgdemo_st: mut RpgdemoState) { rpgdemo_st.quest_done += 1 }
 
   function tick_n(n: int) -> void { var i = 0;  while i < n { tick_fixed();  i += 1 } }
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
@@ -53,7 +55,7 @@ program RpgDemo {
   function py(e: int) -> int { let P = World.prop_id("Position");  return World.get(e, P, World.field_id(P, "y")) }
   function hp(e: int) -> int { let P = World.prop_id("Stats");  return World.get(e, P, World.field_id(P, "hp")) }
 
-  entry {
+  entry (rpgdemo_st: mut RpgdemoState) {
     let PM = World.prop_id("Mover")
 
     # a 6x3 tile world; a wall glyph at cell (3,1)
@@ -71,7 +73,7 @@ program RpgDemo {
     # move down into the open cell (16,32)
     Mover.move(h, 0, 1);  tick_n(1);  Mover.move(h, 0, 0);  tick_n(1)
     print(bi((px(h) == 16) and (py(h) == 32)))         # 1 — stepped one cell down
-    print(bi(entered >= 1))                             # 1 — TileEntered fired
+    print(bi(rpgdemo_st.entered >= 1))                             # 1 — TileEntered fired
 
     # try to walk into the wall at cell (3,1)=(48,16): from (32,16) moving right blocked
     World.set(h, World.prop_id("Position"), World.field_id(World.prop_id("Position"), "x"), 32)
@@ -81,17 +83,17 @@ program RpgDemo {
 
     # MoveRequested veto: a locked door forbids the rightward step (open cell now)
     World.set(h, World.prop_id("Position"), World.field_id(World.prop_id("Position"), "y"), 32)  # row 2 open
-    locked = 1
+    rpgdemo_st.locked = 1
     Mover.move(h, 1, 0);  tick_n(1);  Mover.move(h, 0, 0)
     print(bi(px(h) == 32))                              # 1 — vetoed, no move
-    locked = 0
+    rpgdemo_st.locked = 0
     Mover.move(h, 1, 0);  tick_n(1);  Mover.move(h, 0, 0)
     print(bi(px(h) == 48))                              # 1 — now allowed
 
     # interact: an NPC one cell ahead (facing right after the last move)
     spawn Npc { Position { x: 64, y: 32 } }
     print(bi(Mover.interact(h) >= 0))                   # 1 — found the NPC ahead
-    print(bi(talked == 1))                              # 1 — Interacted fired
+    print(bi(rpgdemo_st.talked == 1))                              # 1 — Interacted fired
 
     # ================= Module B: inventory + equipment =================
     Item.def("herb", 99, 1, 2)
@@ -120,7 +122,7 @@ program RpgDemo {
     Quest.start("hunt")
     Quest.notify(0, 0, 1);  Quest.notify(0, 0, 1);  Quest.notify(0, 0, 1)
     print(bi(Quest.state_of("hunt") == 3))             # 1 — auto-completed
-    print(bi(quest_done == 1))                          # 1 — QuestCompleted fired
+    print(bi(rpgdemo_st.quest_done == 1))                          # 1 — QuestCompleted fired
 
     # ================= Module E: dialog =================
     let dn0 = Dialog.node("elder", "hello")

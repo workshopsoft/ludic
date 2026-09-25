@@ -5,48 +5,50 @@ import "ludic.ui"
 import "ui_scrollbar_parts/Long.ludic"
 program UiScrollbar {
   numbers float
-  var bx: float = 0.0
-  var by: float = 0.0
-  function frame(i: UiInput) -> UiNode {
-    ui_input(i)
-    ui_show("Long", null, 0.0, 0.0, 400.0, 400.0)
-    let root: UiNode = ui_nodes("Long", null)
-    ui_place(root, 0.0, 0.0, 400.0, 400.0)
+  state UiscrollbarState {
+    bx: float = 0.0
+    by: float = 0.0
+  }
+  function frame(ui_st: mut UiState, i: UiInput) -> UiNode {
+    ui_input(ui_st, i)
+    ui_show(ui_st, "Long", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes(ui_st, "Long", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
     return root.children[0]
   }
   # the pointer at (bx + x, by + y), held or not; how far the box is scrolled then
-  function at(x: float, y: float, down: bool) -> int {
+  function at(ui_st: mut UiState, uiscrollbar_st: UiscrollbarState, x: float, y: float, down: bool) -> int {
     let i = new UiInput
-    i.x = bx + x
-    i.y = by + y
+    i.x = uiscrollbar_st.bx + x
+    i.y = uiscrollbar_st.by + y
     i.down = down
-    return int(frame(i).children[0].scroll_y)
+    return int(frame(ui_st, i).children[0].scroll_y)
   }
-  function wheel(x: float, y: float) -> int {
+  function wheel(ui_st: mut UiState, uiscrollbar_st: UiscrollbarState, x: float, y: float) -> int {
     let i = new UiInput
-    i.x = bx + x
-    i.y = by + y
+    i.x = uiscrollbar_st.bx + x
+    i.y = uiscrollbar_st.by + y
     i.wheel = 1.0
-    frame(i)
-    return int(frame(new UiInput).children[0].scroll_y)
+    frame(ui_st, i)
+    return int(frame(ui_st, new UiInput).children[0].scroll_y)
   }
-  entry {
-    ui_backend(new UiBackend)
-    let list = frame(new UiInput).children[0]
-    bx = list.x
-    by = list.y
-    let grab = at(195.0, 10.0, true)
-    let moved = at(195.0, 40.0, true)
-    let far = at(195.0, 300.0, true)
-    let back = at(195.0, 25.0, true)
-    let kept = at(195.0, 25.0, false)
-    at(0.0 - bx - 1.0, 0.0 - by - 1.0, false)
-    let jump = at(195.0, 80.0, true)
-    at(195.0, 80.0, false)
-    let wheeled = wheel(50.0, 50.0)
-    at(50.0, 20.0, true)
-    at(50.0, 20.0, false)
-    let page = frame(new UiInput)
+  entry (ui_st: mut UiState, uiscrollbar_st: mut UiscrollbarState) {
+    ui_backend(ui_st, new UiBackend)
+    let list = frame(ui_st, new UiInput).children[0]
+    uiscrollbar_st.bx = list.x
+    uiscrollbar_st.by = list.y
+    let grab = at(ui_st, uiscrollbar_st, 195.0, 10.0, true)
+    let moved = at(ui_st, uiscrollbar_st, 195.0, 40.0, true)
+    let far = at(ui_st, uiscrollbar_st, 195.0, 300.0, true)
+    let back = at(ui_st, uiscrollbar_st, 195.0, 25.0, true)
+    let kept = at(ui_st, uiscrollbar_st, 195.0, 25.0, false)
+    at(ui_st, uiscrollbar_st, 0.0 - uiscrollbar_st.bx - 1.0, 0.0 - uiscrollbar_st.by - 1.0, false)
+    let jump = at(ui_st, uiscrollbar_st, 195.0, 80.0, true)
+    at(ui_st, uiscrollbar_st, 195.0, 80.0, false)
+    let wheeled = wheel(ui_st, uiscrollbar_st, 50.0, 50.0)
+    at(ui_st, uiscrollbar_st, 50.0, 20.0, true)
+    at(ui_st, uiscrollbar_st, 50.0, 20.0, false)
+    let page = frame(ui_st, new UiInput)
     print(`grab {grab} moved {moved} far {far} back {back} kept {kept} | jump {jump} | wheel {wheeled} | {page.children[1].text}`)
   }
 }

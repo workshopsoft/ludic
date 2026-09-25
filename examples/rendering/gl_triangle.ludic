@@ -7,19 +7,21 @@ program GlTriangle {
   property Marker { on: int = 1 }
   model Anchor { Marker }
 
-  var prog: int = 0
-  var vao:  int = 0
-  var frame: int = 0
+  state GltriangleState {
+    prog: int = 0
+    vao:  int = 0
+    frame: int = 0
+  }
 
   const VS: string = "#version 410 core\nlayout(location=0) in vec2 p; layout(location=1) in vec3 c; out vec3 vc;\nvoid main(){ vc = c; gl_Position = vec4(p, 0.0, 1.0); }\n"
   const FS: string = "#version 410 core\nin vec3 vc; out vec4 o;\nvoid main(){ o = vec4(vc, 1.0); }\n"
 
-  handler Boot phase Start {
+  handler Boot(gltriangle_st: mut GltriangleState) phase Start {
     spawn Anchor {}
     if not Gl.open(width: 640, height: 360, title: "Ludic GL") { print("no GL context"); quit() }
     print(Gl.get_string(name: GL_VERSION))
-    prog = Gl.program(vs: VS, fs: FS)
-    vao = Gl.vao()
+    gltriangle_st.prog = Gl.program(vs: VS, fs: FS)
+    gltriangle_st.vao = Gl.vao()
     let vbo = Gl.buffer()
     Gl.bind_buffer(target: GL_ARRAY_BUFFER, buffer: vbo)
     let v = Gl.floats(15)
@@ -34,16 +36,16 @@ program GlTriangle {
     Gl.check(tag: "boot")
   }
 
-  handler Draw phase Render {
+  handler Draw(gltriangle_st: mut GltriangleState) phase Render {
     Gl.bind_framebuffer(target: GL_FRAMEBUFFER, framebuffer: Gl.screen_fbo())
     Gl.viewport(x: 0, y: 0, width: Gl.width(), height: Gl.height())
     Gl.clear_color(red: 0.1, green: 0.12, blue: 0.18, alpha: 1.0)
     Gl.clear(mask: GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    Gl.use_program(prog: prog)
-    Gl.bind_vertex_array(array: vao)
+    Gl.use_program(prog: gltriangle_st.prog)
+    Gl.bind_vertex_array(array: gltriangle_st.vao)
     Gl.draw_arrays(mode: GL_TRIANGLES, first: 0, count: 3)
-    frame += 1
-    if frame == 1 { Gl.screenshot(path: "build/gl_triangle.ppm") }
+    gltriangle_st.frame += 1
+    if gltriangle_st.frame == 1 { Gl.screenshot(path: "build/gl_triangle.ppm") }
     Gl.swap()
   }
 }

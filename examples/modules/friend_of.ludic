@@ -5,8 +5,8 @@
 import "bank"
 program FriendOf {
   friend module lab of bank
-  entry {
-    add(7)
-    print(`{balance} {total()}`)
+  entry (bank_st: mut BankState) {
+    add(bank_st, 7)
+    print(`{bank_st.balance} {total(bank_st)}`)
   }
 }

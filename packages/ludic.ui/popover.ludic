@@ -2,7 +2,6 @@
 # (absolutely, in its parent) and is drawn on the top layer, over everything. While one is up the
 # pointer and the keyboard are its: a press outside it, or Esc, closes it (on-close), and Tab
 # walks only its own controls.
-var pop_list: []UiNode = new []UiNode
 function pp_find(n: UiNode, out: []UiNode) -> void {
   if n.popover {
     push(out, n)
@@ -18,16 +17,16 @@ function pp_top(root: UiNode) -> UiNode {
   return all[len(all) - 1]
 }
 # the pointer against the popover: inside it is as usual; a press outside closes it and is spent
-function pp_pointer(top: UiNode) -> bool {
-  let i = in_now
-  if not (i.down and not in_was_down) { return false }
+function pp_pointer(ui_st: mut UiState, top: UiNode) -> bool {
+  let i = ui_st.in_now
+  if not (i.down and not ui_st.in_was_down) { return false }
   if i.x >= top.x and i.y >= top.y and i.x < top.x + top.cw and i.y < top.y + top.ch { return false }
-  fr_press_key = ""
-  ui_fire(top, "close", Value.null())
+  ui_st.fr_press_key = ""
+  ui_fire(ui_st, top, "close", Value.null())
   return true
 }
-function pp_draw_top() -> void {
-  let list = pop_list
-  pop_list = new []UiNode
-  for i in 0 .. len(list) { fr_draw(list[i]) }
+function pp_draw_top(ui_st: mut UiState) -> void {
+  let list = ui_st.pop_list
+  ui_st.pop_list = new []UiNode
+  for i in 0 .. len(list) { fr_draw(ui_st, list[i]) }
 }

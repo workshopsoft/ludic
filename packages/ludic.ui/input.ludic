@@ -28,19 +28,15 @@ export property UiInput {
   down_right: bool = false      # the other mouse buttons held
   down_middle: bool = false
 }
-var in_now: UiInput = new UiInput
-var in_was_down: bool = false
-var in_last: UiInput = new UiInput
-var in_given: bool = false
-function in_read() -> void {
-  if in_given {
-    in_given = false
+function in_read(ui_st: mut UiState) -> void {
+  if ui_st.in_given {
+    ui_st.in_given = false
     return
   }
-  in_was_down = in_now.down
-  in_last = in_now
+  ui_st.in_was_down = ui_st.in_now.down
+  ui_st.in_last = ui_st.in_now
   let i = new UiInput
-  if ui_be != null and ui_be.input {
+  if ui_st.ui_be != null and ui_st.ui_be.input {
     i.x = float(Input.mouse_x())
     i.y = float(Input.mouse_y())
     i.down = Input.mouse_down(0)
@@ -61,8 +57,8 @@ function in_read() -> void {
     i.key = in_any_key()
     in_held(i)
   }
-  in_repeat(i)
-  in_now = i
+  in_repeat(ui_st, i)
+  ui_st.in_now = i
 }
 function in_any_key() -> int {
   for k in 8 .. 167 {
@@ -71,10 +67,10 @@ function in_any_key() -> int {
   return 0
 }
 # this frame's input, given by a test or a host that reads its own
-export function ui_input(i: UiInput) -> void {
-  in_was_down = in_now.down
-  in_last = in_now
-  in_repeat(i)
-  in_now = i
-  in_given = true
+export function ui_input(ui_st: mut UiState, i: UiInput) -> void {
+  ui_st.in_was_down = ui_st.in_now.down
+  ui_st.in_last = ui_st.in_now
+  in_repeat(ui_st, i)
+  ui_st.in_now = i
+  ui_st.in_given = true
 }

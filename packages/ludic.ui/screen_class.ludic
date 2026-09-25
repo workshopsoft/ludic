@@ -1,10 +1,10 @@
 # screen_class.ludic - a Ludic component shown as a whole screen
 # a Ludic component shown as a screen: an instance at the top, keyed by its name
-function fr_class_nodes(cls: UiClass) -> UiNode {
-  lc_begin()
-  in_build += 1
-  ui_view = null
-  uc_load(cls)
+function fr_class_nodes(ui_st: mut UiState, cls: UiClass) -> UiNode {
+  lc_begin(ui_st)
+  ui_st.in_build += 1
+  ui_st.ui_view = null
+  uc_load(ui_st, cls)
   let root = fr_root(cls.name, cls.sheet)
   let use = new UiTpl
   use.tag = cls.name
@@ -17,9 +17,9 @@ function fr_class_nodes(cls: UiClass) -> UiNode {
   let e = env_new(null)
   e.model = Value.object()
   root.env = e
-  bd_class(use, e, cls.name, root.children)
-  in_sweep(cls.name)
-  cs_tree(root)
+  bd_class(ui_st, use, e, cls.name, root.children)
+  in_sweep(ui_st, cls.name)
+  cs_tree(ui_st, root)
   return root
 }
 function fr_root(key: string, sheet: UiSheet) -> UiNode {

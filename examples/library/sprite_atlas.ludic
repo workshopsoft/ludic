@@ -10,23 +10,25 @@
 program SpriteAtlas {
   import "ludic.core/components.ludic"
 
-  var TALL: int = 0
+  state SpriteatlasState {
+    TALL: int = 0
+  }
 
   function bi(b: bool) -> int { if b { return 1 };  return 0 }
 
-  @OnStart handler Boot {
+  @OnStart handler Boot(spriteatlas_st: mut SpriteatlasState) {
     let sheet = Sprite.sheet("assets/kenney/tiny-dungeon/Tilemap/tilemap_packed.png", 16, 16)
-    TALL = Sprite.cell_span(sheet, 0, 0, 1, 2)                       # a 16x32 sprite: two cells tall
-    spawn Tall   { Position { x: 40, y: 40 },  Sprite { id: TALL, atlas: 1 } }
-    spawn Tinted { Position { x: 100, y: 40 }, Sprite { id: TALL, atlas: 1, tint: 0xff0000 } }
-    spawn Table  { Position { x: 160, y: 40 }, Sprite { id: TALL } }   # atlas: 0 -> the (empty) 16x16 table
+    spriteatlas_st.TALL = Sprite.cell_span(sheet, 0, 0, 1, 2)                       # a 16x32 sprite: two cells tall
+    spawn Tall   { Position { x: 40, y: 40 },  Sprite { id: spriteatlas_st.TALL, atlas: 1 } }
+    spawn Tinted { Position { x: 100, y: 40 }, Sprite { id: spriteatlas_st.TALL, atlas: 1, tint: 0xff0000 } }
+    spawn Table  { Position { x: 160, y: 40 }, Sprite { id: spriteatlas_st.TALL } }   # atlas: 0 -> the (empty) 16x16 table
   }
 
   # An empty Render handler: the engine sprite system draws the Sprite entities.
   handler Draw phase Render { }
 
-  @OnQuit handler Report {
-    print(Sprite.height(TALL))           # 32 — the span is two cells tall
+  @OnQuit handler Report(spriteatlas_st: SpriteatlasState) {
+    print(Sprite.height(spriteatlas_st.TALL))           # 32 — the span is two cells tall
 
     var top = 0
     for yy in 40 .. 56 { for xx in 40 .. 56 { if Screen.pixel(xx, yy) != 0 { top = 1 } } }

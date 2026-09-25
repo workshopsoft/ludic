@@ -54,7 +54,7 @@ export function ply_leave(base_st: mut BaseState, session_st: mut SessionState, 
 export function ply_leave_all(base_st: mut BaseState, session_st: mut SessionState) -> void { for p in 1 .. PLY_MAX { ply_leave(base_st, session_st, p) } }
 
 # what a remote player's machine reported this tick
-export function ply_report(session_st: SessionState, p: int, x: float, y: float, z: float, yaw: float, speed: float) -> void {
+export function ply_report(session_st: mut SessionState, p: int, x: float, y: float, z: float, yaw: float, speed: float) -> void {
   if p <= 0 or not ply_on(session_st, p) { return }
   let r = session_st.session__slot[p]
   r.x = x

@@ -1,28 +1,25 @@
 # hold.ludic - on-hold: every frame a control is held down - by the pointer (wherever it goes until it
 # is let go), or by Enter or the pad's A on the focus - with event.dt, the seconds since the last
 # frame, and event.t, how long it has been held, on the ui clock
-var hd_key: string = ""
-var hd_t0: float = 0.0
-var hd_last: float = 0.0
-function hd_tick(root: UiNode) -> void {
-  var key = fr_key_press
-  if fr_press_key != "" and in_now.down { key = fr_press_key }
+function hd_tick(ui_st: mut UiState, root: UiNode) -> void {
+  var key = ui_st.fr_key_press
+  if ui_st.fr_press_key != "" and ui_st.in_now.down { key = ui_st.fr_press_key }
   if key == "" {
-    hd_key = ""
+    ui_st.hd_key = ""
     return
   }
-  let now = an_now()
-  if key != hd_key {
-    hd_key = key
-    hd_t0 = now
-    hd_last = now
+  let now = an_now(ui_st)
+  if key != ui_st.hd_key {
+    ui_st.hd_key = key
+    ui_st.hd_t0 = now
+    ui_st.hd_last = now
   }
   let n = fr_node(root, key)
   if n != null {
     let v = Value.object()
-    Value.put(v, "dt", Value.float(now - hd_last))
-    Value.put(v, "t", Value.float(now - hd_t0))
-    ui_fire(n, "hold", v)
+    Value.put(v, "dt", Value.float(now - ui_st.hd_last))
+    Value.put(v, "t", Value.float(now - ui_st.hd_t0))
+    ui_fire(ui_st, n, "hold", v)
   }
-  hd_last = now
+  ui_st.hd_last = now
 }

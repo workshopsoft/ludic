@@ -1,41 +1,41 @@
 # eval.ludic - an expression's value, here
-function ui_eval(x: UiExpr, e: UiEnv) -> Val {
+function ui_eval(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   if x.op == X_LIT { return x.v }
-  if x.op == X_NAME { return env_get(e, x.s) }
+  if x.op == X_NAME { return env_get(ui_st, e, x.s) }
   if x.op == X_MEMBER {
-    let o = ui_eval(x.a, e)
+    let o = ui_eval(ui_st, x.a, e)
     if Value.kind(o) == 6 and Value.has(o, x.s) != 0 { return Value.get(o, x.s) }
     if Value.kind(o) == 5 and x.s == "length" { return Value.int(Value.count(o)) }
-    ui_err(`.{x.s}: there is no such field`)
+    ui_err(ui_st, `.{x.s}: there is no such field`)
     return Value.null()
   }
-  if x.op == X_INDEX { return Value.at(ui_eval(x.a, e), Value.as_int(ui_eval(x.b, e))) }
-  if x.op == X_CALL { return ev_call(x, e) }
-  if x.op == X_NOT { return vl_bool(not vl_truthy(ui_eval(x.a, e))) }
-  if x.op == X_NEG { return vl_arith("-", Value.int(0), ui_eval(x.a, e)) }
+  if x.op == X_INDEX { return Value.at(ui_eval(ui_st, x.a, e), Value.as_int(ui_eval(ui_st, x.b, e))) }
+  if x.op == X_CALL { return ev_call(ui_st, x, e) }
+  if x.op == X_NOT { return vl_bool(not vl_truthy(ui_eval(ui_st, x.a, e))) }
+  if x.op == X_NEG { return vl_arith("-", Value.int(0), ui_eval(ui_st, x.a, e)) }
   if x.op == X_AND {
-    if not vl_truthy(ui_eval(x.a, e)) { return vl_bool(false) }
-    return vl_bool(vl_truthy(ui_eval(x.b, e)))
+    if not vl_truthy(ui_eval(ui_st, x.a, e)) { return vl_bool(false) }
+    return vl_bool(vl_truthy(ui_eval(ui_st, x.b, e)))
   }
   if x.op == X_OR {
-    if vl_truthy(ui_eval(x.a, e)) { return vl_bool(true) }
-    return vl_bool(vl_truthy(ui_eval(x.b, e)))
+    if vl_truthy(ui_eval(ui_st, x.a, e)) { return vl_bool(true) }
+    return vl_bool(vl_truthy(ui_eval(ui_st, x.b, e)))
   }
   if x.op == X_COND {
-    if vl_truthy(ui_eval(x.a, e)) { return ui_eval(x.b, e) }
-    return ui_eval(x.c, e)
+    if vl_truthy(ui_eval(ui_st, x.a, e)) { return ui_eval(ui_st, x.b, e) }
+    return ui_eval(ui_st, x.c, e)
   }
   if x.op == X_TEXT {
     var out = ""
-    for i in 0 .. len(x.args) { out = out + vl_text(ui_eval(x.args[i], e)) }
+    for i in 0 .. len(x.args) { out = out + vl_text(ui_eval(ui_st, x.args[i], e)) }
     return Value.str(out)
   }
-  return vl_binary(x.s, ui_eval(x.a, e), ui_eval(x.b, e))
+  return vl_binary(x.s, ui_eval(ui_st, x.a, e), ui_eval(ui_st, x.b, e))
 }
 # a call: len() and range() are the template's own, anything else is the view's
-function ev_call(x: UiExpr, e: UiEnv) -> Val {
+function ev_call(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   let args = Value.list()
-  for i in 0 .. len(x.args) { Value.add(args, ui_eval(x.args[i], e)) }
+  for i in 0 .. len(x.args) { Value.add(args, ui_eval(ui_st, x.args[i], e)) }
   if x.s == "len" and len(x.args) == 1 { return Value.int(Value.count(Value.at(args, 0))) }
   if x.s == "range" and len(x.args) == 1 {
     let out = Value.list()
@@ -50,11 +50,11 @@ function ev_call(x: UiExpr, e: UiEnv) -> Val {
     }
     at = at.parent
   }
-  if ui_view == null or ui_view.call == null {
-    ui_err(`{x.s}(): there is no function or event of that name here`)
+  if ui_st.ui_view == null or ui_st.ui_view.call == null {
+    ui_err(ui_st, `{x.s}(): there is no function or event of that name here`)
     return Value.null()
   }
-  return ui_view.call(x.s, args)
+  return ui_st.ui_view.call(x.s, args)
 }
-function ui_eval_text(x: UiExpr, e: UiEnv) -> string { return vl_text(ui_eval(x, e)) }
-function ui_eval_bool(x: UiExpr, e: UiEnv) -> bool { return vl_truthy(ui_eval(x, e)) }
+function ui_eval_text(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> string { return vl_text(ui_eval(ui_st, x, e)) }
+function ui_eval_bool(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> bool { return vl_truthy(ui_eval(ui_st, x, e)) }

@@ -6,13 +6,11 @@ property UiInst {
   ptr: pointer = null
   seen: int = 0
 }
-var in_list: []UiInst = new []UiInst
-var in_build: int = 0
-function in_get(key: string, k: UiClass) -> UiInst {
-  for i in 0 .. len(in_list) {
-    let it = in_list[i]
+function in_get(ui_st: mut UiState, key: string, k: UiClass) -> UiInst {
+  for i in 0 .. len(ui_st.in_list) {
+    let it = ui_st.in_list[i]
     if it.key == key and it.cls.name == k.name {
-      it.seen = in_build
+      it.seen = ui_st.in_build
       return it
     }
   }
@@ -20,16 +18,16 @@ function in_get(key: string, k: UiClass) -> UiInst {
   it.key = key
   it.cls = k
   it.ptr = k.make()
-  it.seen = in_build
-  push(in_list, it)
+  it.seen = ui_st.in_build
+  push(ui_st.in_list, it)
   return it
 }
 # after a build of `screen`: its instances the build did not reach are unmounted
-function in_sweep(screen: string) -> void {
+function in_sweep(ui_st: mut UiState, screen: string) -> void {
   let keep = new []UiInst
-  for i in 0 .. len(in_list) {
-    let it = in_list[i]
-    if it.seen == in_build or not lc_mine(it.key, screen) { push(keep, it) }
+  for i in 0 .. len(ui_st.in_list) {
+    let it = ui_st.in_list[i]
+    if it.seen == ui_st.in_build or not lc_mine(it.key, screen) { push(keep, it) }
   }
-  in_list = keep
+  ui_st.in_list = keep
 }

@@ -5,19 +5,21 @@ import "ludic.ui"
 import "ui_text_parts/Fit.ludic"
 program UiText {
   numbers float
-  var said: []string = new []string
-  function rec_text(x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(said, `{s}@{int(size * 10.0)} y{int(y)}`) }
+  state UitextState {
+    said: []string = new []string
+  }
+  function rec_text(uitext_st: mut UitextState, x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(uitext_st.said, `{s}@{int(size * 10.0)} y{int(y)}`) }
   function w(s: string, size: float) -> float { return float(len(s)) * size * 0.5 }
-  entry {
+  entry (ui_st: mut UiState, uitext_st: UitextState) {
     let b = new UiBackend
     b.text = fn rec_text
     b.measure = fn w
-    ui_backend(b)
-    ui_show("Fit", null, 0.0, 0.0, 400.0, 600.0)
-    let root: UiNode = ui_nodes("Fit", null)
-    ui_place(root, 0.0, 0.0, 400.0, 600.0)
+    ui_backend(ui_st, b)
+    ui_show(ui_st, "Fit", null, 0.0, 0.0, 400.0, 600.0)
+    let root: UiNode = ui_nodes(ui_st, "Fit", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 600.0)
     let page = root.children[0]
     let lines = page.children[3]
-    print(`{said[0]} | {said[1]} | {said[2]} | lines {len(lines.lines)} {int(lines.mh)} {said[3]} {said[4]} | tall {int(page.children[4].mh)} | em {int(page.children[5].pt)} {int(page.children[6].pt)} | tie {ui_hex(page.children[7].fg)}`)
+    print(`{uitext_st.said[0]} | {uitext_st.said[1]} | {uitext_st.said[2]} | lines {len(lines.lines)} {int(lines.mh)} {uitext_st.said[3]} {uitext_st.said[4]} | tall {int(page.children[4].mh)} | em {int(page.children[5].pt)} {int(page.children[6].pt)} | tie {ui_hex(page.children[7].fg)}`)
   }
 }

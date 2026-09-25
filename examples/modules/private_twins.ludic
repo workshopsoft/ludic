@@ -9,7 +9,7 @@ program PrivateTwins {
   function seed() -> int {
     return 7
   }
-  entry {
-    print(`{shop_seed()} {weather_seed()} {seed()}`)
+  entry (shop_st: ShopState, weather_st: WeatherState) {
+    print(`{shop_seed(shop_st)} {weather_seed(weather_st)} {seed()}`)
   }
 }

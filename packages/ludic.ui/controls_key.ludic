@@ -2,54 +2,51 @@
 # the next key pressed is its value - Tab, the arrows and Enter included, which move nothing while it
 # listens. Esc stops listening and keeps the value; Backspace, when it is not listening, clears it (0).
 # `shown` is what it says for its value (a host's own name for the key), else the keyboard's label.
-var ct_capture: string = ""
-var ct_capture_at: int = -1       # the frame listening began, whose own key started it
-var ct_capture_seen: int = -1     # the last frame that began listening, for ui_capturing
-function ct_key_start(n: UiNode) -> void {
-  ct_capture = n.key
-  ct_capture_at = an_frame
-  ct_capture_seen = an_frame
+function ct_key_start(ui_st: mut UiState, n: UiNode) -> void {
+  ui_st.ct_capture = n.key
+  ui_st.ct_capture_at = ui_st.an_frame
+  ui_st.ct_capture_seen = ui_st.an_frame
 }
 # while it listens, the frame's keys are the field's: nothing else reads them (fc_keys)
-function ct_key_listening() -> bool { return ct_capture != "" and ct_capture_at != an_frame }
+function ct_key_listening(ui_st: UiState) -> bool { return ui_st.ct_capture != "" and ui_st.ct_capture_at != ui_st.an_frame }
 # the field listening, given this frame's key; false when there is none to give it to
-function ct_key_capture(list: []UiNode) -> bool {
-  if ct_capture == "" { return false }
-  ct_capture_seen = an_frame
+function ct_key_capture(ui_st: mut UiState, list: []UiNode) -> bool {
+  if ui_st.ct_capture == "" { return false }
+  ui_st.ct_capture_seen = ui_st.an_frame
   var n: UiNode = null
   for i in 0 .. len(list) {
-    if list[i].key == ct_capture { n = list[i] }
+    if list[i].key == ui_st.ct_capture { n = list[i] }
   }
   if n == null {
-    ct_capture = ""
+    ui_st.ct_capture = ""
     return false
   }
-  if ct_capture_at == an_frame { return true }
-  if in_now.escape {
-    ct_capture = ""
+  if ui_st.ct_capture_at == ui_st.an_frame { return true }
+  if ui_st.in_now.escape {
+    ui_st.ct_capture = ""
     return true
   }
-  if in_now.key != 0 {
-    ct_capture = ""
-    ct_change(n, Value.int(in_now.key))
+  if ui_st.in_now.key != 0 {
+    ui_st.ct_capture = ""
+    ct_change(ui_st, n, Value.int(ui_st.in_now.key))
   }
   return true
 }
 # focused, not listening: Backspace unbinds it
-function ct_key_typed(n: UiNode) -> void {
-  if ct_capture != n.key and in_now.backspace { ct_change(n, Value.int(0)) }
+function ct_key_typed(ui_st: mut UiState, n: UiNode) -> void {
+  if ui_st.ct_capture != n.key and ui_st.in_now.backspace { ct_change(ui_st, n, Value.int(0)) }
 }
 # a press anywhere but the field stops it listening
-function ct_key_pressed_away(hit: UiNode) -> void {
-  if ct_capture != "" and (hit == null or hit.key != ct_capture) { ct_capture = "" }
+function ct_key_pressed_away(ui_st: mut UiState, hit: UiNode) -> void {
+  if ui_st.ct_capture != "" and (hit == null or hit.key != ui_st.ct_capture) { ui_st.ct_capture = "" }
 }
-function ct_key_text(n: UiNode) -> string {
-  if ct_capture == n.key { return ui_tr("press a key...") }
-  if Value.kind(ui_attr(n, "shown")) != 0 { return ui_tr(ui_attr_text(n, "shown")) }
+function ct_key_text(ui_st: UiState, n: UiNode) -> string {
+  if ui_st.ct_capture == n.key { return ui_tr(ui_st, "press a key...") }
+  if Value.kind(ui_attr(n, "shown")) != 0 { return ui_tr(ui_st, ui_attr_text(n, "shown")) }
   let v = Value.as_int(ui_attr(n, "value"))
-  if v >= UI_MOUSE_LEFT and v <= UI_MOUSE_MIDDLE { return ct_mouse_name(v) }
+  if v >= UI_MOUSE_LEFT and v <= UI_MOUSE_MIDDLE { return ct_mouse_name(ui_st, v) }
   return Input.key_label(v)
 }
 # a key field is listening: the host should leave the keys alone until it is done (it stays true
 # for the frame in which Esc or a key ended it, so that key is not read twice)
-export function ui_capturing() -> bool { return ct_capture != "" or ct_capture_seen == an_frame }
+export function ui_capturing(ui_st: UiState) -> bool { return ui_st.ct_capture != "" or ui_st.ct_capture_seen == ui_st.an_frame }

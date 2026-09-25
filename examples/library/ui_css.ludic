@@ -9,12 +9,12 @@ program UiCss {
   }
   const LOOK: string = "screen { --gap: 6px; --accent: #ff8800 }\n.panel { position: relative; width: 300px; height: 200px; padding: 10px }\n.badge { position: absolute; right: 5px; bottom: 5px; width: 40px; height: 20px; background: var(--accent) }\n.corner { position: fixed; left: 0; top: 0; width: 10vw; height: 2rem }\n.nudge { position: relative; left: 7px; top: 3px }\n.big { font-size: 2em }\n.missing { color: var(--nope, #00ff00) }\n@media (max-width: 500px) { .wide-only { display: none } }\n@media (min-width: 500px) { .narrow-only { display: none } }\nli + li { margin-top: var(--gap) }\nh3 ~ p { color: var(--accent) }\nli:nth-child(2n+1) { color: #0000ff }\ninput:checked { opacity: 0.25 }\n.list { overflow: auto; height: 50px }\n.para { width: 120px }\n"
   const PAGE: string = "<ui>\n<import src='look.lss'/>\n<screen name='css'>\n  <div class='panel'><span class='badge'>!</span><p class='nudge'>moved</p><p class='big'>big</p></div>\n  <div class='corner'/>\n  <p class='wide-only'>wide</p><p class='narrow-only'>narrow</p>\n  <ul><li>a</li><li>b</li><li>c</li></ul>\n  <h3>h</h3><p>after</p><p class='missing'>fallback</p>\n  <input type='checkbox' checked='true'/>\n  <div class='list'><p>1</p><p>2</p><p>3</p><p>4</p></div>\n  <p class='para'>a sentence long enough that it has to wrap onto several lines</p>\n</screen>\n</ui>\n"
-  entry {
-    ui_load_text(LOOK, "ui/look.lss")
-    ui_load_text(PAGE, "ui/css.xml")
-    ui_viewport(400.0, 300.0)
-    let root: UiNode = ui_nodes("css", view_css())
-    ui_place(root, 0.0, 0.0, 400.0, 300.0)
+  entry (ui_st: mut UiState) {
+    ui_load_text(ui_st, LOOK, "ui/look.lss")
+    ui_load_text(ui_st, PAGE, "ui/css.xml")
+    ui_viewport(ui_st, 400.0, 300.0)
+    let root: UiNode = ui_nodes(ui_st, "css", view_css())
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 300.0)
     let panel = root.children[0]
     let badge = panel.children[0]
     let ul = root.children[3]

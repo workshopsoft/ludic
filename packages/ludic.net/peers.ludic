@@ -17,7 +17,7 @@ export function np_of_pid(net_st: NetState, pid: int) -> int {
   return -1
 }
 
-function net__open(net_st: NetState, slot: int, ip: int, port: int, pid: int) -> void {
+function net__open(net_st: mut NetState, slot: int, ip: int, port: int, pid: int) -> void {
   let p = net_st.net__peers[slot]
   p.on = true
   p.ip = ip
@@ -32,7 +32,7 @@ function net__open(net_st: NetState, slot: int, ip: int, port: int, pid: int) ->
   p.closing = false
 }
 
-export function np_close(net_st: NetState, slot: int) -> void {
+export function np_close(net_st: mut NetState, slot: int) -> void {
   if net_st.net__peers == null or slot < 0 or slot >= NET_PEERS { return }
   let p = net_st.net__peers[slot]
   p.on = false
@@ -41,7 +41,7 @@ export function np_close(net_st: NetState, slot: int) -> void {
 }
 
 # the written message, for one peer (a reliable one is kept until it is taken)
-export function np_queue(net_st: NetState, slot: int, kind: int, rel: bool) -> void {
+export function np_queue(net_st: mut NetState, slot: int, kind: int, rel: bool) -> void {
   if net_st.net__peers == null or slot < 0 or slot >= NET_PEERS { return }
   let p = net_st.net__peers[slot]
   if not p.on { return }
@@ -63,7 +63,7 @@ export function np_queue(net_st: NetState, slot: int, kind: int, rel: bool) -> v
 }
 
 # to everyone this machine talks to (a host: every guest but `except`; a guest: the host)
-export function np_queue_all(net_st: NetState, kind: int, rel: bool, except: int) -> void {
+export function np_queue_all(net_st: mut NetState, kind: int, rel: bool, except: int) -> void {
   if net_st.net__peers == null { return }
   for i in 0 .. NET_PEERS { if net_st.net__peers[i].on and i != except { np_queue(net_st, i, kind, rel) } }
 }
@@ -94,7 +94,7 @@ export function net_peer_heard(net_st: NetState, slot: int) -> float {
 }
 
 # let the slot go once it has taken everything queued for it so far, or after `secs`
-export function net_close_when_sent(net_st: NetState, slot: int, secs: float) -> void {
+export function net_close_when_sent(net_st: mut NetState, slot: int, secs: float) -> void {
   if not net_peer_on(net_st, slot) { return }
   let p = net_st.net__peers[slot]
   p.closing = true

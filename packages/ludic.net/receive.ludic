@@ -29,7 +29,7 @@ function net__packet(base_st: mut BaseState, net_st: mut NetState, n: int, ip: i
 }
 
 # the known peer at that address, a stranger's new slot (a host, and only with a hello), or -1
-function net__slot_for(net_st: NetState, n: int, ip: int, port: int) -> int {
+function net__slot_for(net_st: mut NetState, n: int, ip: int, port: int) -> int {
   let token = nb_get32(net_st.net__in, 4)
   var slot = net__find(net_st, ip, port)
   if slot >= 0 {

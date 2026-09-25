@@ -9,40 +9,40 @@ function ca_fn_at(s: string, at: int) -> string {
   return ""
 }
 function ca_word(s: string, at: int, w: string) -> bool { return at + len(w) <= len(s) and s[at..at + len(w)] == w }
-function ca_fn(f: string) -> CaVal {
-  ca_i = ca_i + len(f) + 1
+function ca_fn(ui_st: mut UiState, f: string) -> CaVal {
+  ui_st.ca_i = ui_st.ca_i + len(f) + 1
   let args = new []CaVal
-  while ca_bad == "" {
-    push(args, ca_sum())
-    ca_ws()
-    if ca_i < len(ca_s) and ca_s[ca_i] == 44 { ca_i += 1 } else { break }
+  while ui_st.ca_bad == "" {
+    push(args, ca_sum(ui_st))
+    ca_ws(ui_st)
+    if ui_st.ca_i < len(ui_st.ca_s) and ui_st.ca_s[ui_st.ca_i] == 44 { ui_st.ca_i += 1 } else { break }
   }
-  if ca_bad == "" and (ca_i >= len(ca_s) or ca_s[ca_i] != 41) { ca_bad = "a closing )" }
-  ca_i += 1
-  if ca_bad != "" { return new CaVal }
+  if ui_st.ca_bad == "" and (ui_st.ca_i >= len(ui_st.ca_s) or ui_st.ca_s[ui_st.ca_i] != 41) { ui_st.ca_bad = "a closing )" }
+  ui_st.ca_i += 1
+  if ui_st.ca_bad != "" { return new CaVal }
   if f == "clamp" and len(args) != 3 {
-    ca_bad = "clamp(least, want, most)"
+    ui_st.ca_bad = "clamp(least, want, most)"
     return new CaVal
   }
   for i in 0 .. len(args) {
     if args[i].pct != 0.0 {
-      ca_bad = `lengths in {f}(), not a percentage`
+      ui_st.ca_bad = `lengths in {f}(), not a percentage`
       return new CaVal
     }
   }
-  if f == "clamp" { return ca_pick(ca_pick(args[1], args[0], false), args[2], true) }
+  if f == "clamp" { return ca_pick(ui_st, ca_pick(ui_st, args[1], args[0], false), args[2], true) }
   var r = args[0]
-  for i in 1 .. len(args) { r = ca_pick(r, args[i], f == "min") }
+  for i in 1 .. len(args) { r = ca_pick(ui_st, r, args[i], f == "min") }
   return r
 }
 # the smaller (or the larger) of two, a bare number beside a length being px
-function ca_pick(a: CaVal, b: CaVal, smaller: bool) -> CaVal {
+function ca_pick(ui_st: UiState, a: CaVal, b: CaVal, smaller: bool) -> CaVal {
   if a.bare and b.bare {
     if (b.n < a.n) == smaller and b.n != a.n { return b }
     return a
   }
-  let la = ca_len(a)
-  let lb = ca_len(b)
+  let la = ca_len(ui_st, a)
+  let lb = ca_len(ui_st, b)
   if (lb.px < la.px) == smaller and lb.px != la.px { return lb }
   return la
 }

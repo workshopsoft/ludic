@@ -8,43 +8,43 @@
 enum KnightAct { Attack, Guard, Item, Flee }
 enum MageAct   { Attack, Heal, Guard }
 
-handler Battle phase Update {
-  if game_mode == 1 {
+handler Battle(games_chronorift_st: mut GamesChronoriftState) phase Update {
+  if games_chronorift_st.game_mode == 1 {
     let k = Input.key()
     for (e) in query [Stats, {Enemy}] {
-      machine turn_phase {
+      machine games_chronorift_st.turn_phase {
 
         state KnightMenu {
           for (st, pt) in query [Stats, Party] {
             if pt.slot == 0 {
               if st.hp <= 0 {
                 become MageMenu
-                menu_cursor = 0
+                games_chronorift_st.menu_cursor = 0
               } else {
-                if k == 'w' { menu_cursor = max(0, menu_cursor - 1) }
-                if k == 's' { menu_cursor = min(3, menu_cursor + 1) }
+                if k == 'w' { games_chronorift_st.menu_cursor = max(0, games_chronorift_st.menu_cursor - 1) }
+                if k == 's' { games_chronorift_st.menu_cursor = min(3, games_chronorift_st.menu_cursor + 1) }
                 if is_confirm(k) {
-                  match menu_cursor {
+                  match games_chronorift_st.menu_cursor {
                     KnightAct.Attack => {
                       let d = max(1, st.atk - e.def + Random.range(0, 4))
                       e.hp -= d
-                      player_hit = d
+                      games_chronorift_st.player_hit = d
                     }
-                    KnightAct.Guard => { st.guard = 1;  player_hit = 0 }
+                    KnightAct.Guard => { st.guard = 1;  games_chronorift_st.player_hit = 0 }
                     KnightAct.Item => {
-                      if potions > 0 {
-                        potions -= 1
+                      if games_chronorift_st.potions > 0 {
+                        games_chronorift_st.potions -= 1
                         st.hp = min(st.maxhp, st.hp + 24)
-                        player_hit = 24
-                      } else { player_hit = 0 }
+                        games_chronorift_st.player_hit = 24
+                      } else { games_chronorift_st.player_hit = 0 }
                     }
                     KnightAct.Flee => {
-                      if Random.chance(50) { e.hp = 0;  game_mode = 0 }
-                      else { player_hit = 0 }
+                      if Random.chance(50) { e.hp = 0;  games_chronorift_st.game_mode = 0 }
+                      else { games_chronorift_st.player_hit = 0 }
                     }
                   }
                   become KnightResolve
-                  menu_cursor = 0
+                  games_chronorift_st.menu_cursor = 0
                 }
               }
             }
@@ -55,13 +55,13 @@ handler Battle phase Update {
           if k != 0 {
             if e.hp <= 0 {
               grant_xp(e.xp)
-              gold += e.xp
-              if enemy_type == 2 { boss_down = 1;  game_mode = 3;  ack = 0 }
-              else { game_mode = 0 }
+              games_chronorift_st.gold += e.xp
+              if games_chronorift_st.enemy_type == 2 { games_chronorift_st.boss_down = 1;  games_chronorift_st.game_mode = 3;  games_chronorift_st.ack = 0 }
+              else { games_chronorift_st.game_mode = 0 }
               become KnightMenu
             } else {
               become MageMenu
-              menu_cursor = 0
+              games_chronorift_st.menu_cursor = 0
             }
           }
         }
@@ -72,14 +72,14 @@ handler Battle phase Update {
               if st.hp <= 0 {
                 become EnemyTurn
               } else {
-                if k == 'i' { menu_cursor = max(0, menu_cursor - 1) }
-                if k == 'k' { menu_cursor = min(2, menu_cursor + 1) }
+                if k == 'i' { games_chronorift_st.menu_cursor = max(0, games_chronorift_st.menu_cursor - 1) }
+                if k == 'k' { games_chronorift_st.menu_cursor = min(2, games_chronorift_st.menu_cursor + 1) }
                 if k == 'j' {
-                  match menu_cursor {
+                  match games_chronorift_st.menu_cursor {
                     MageAct.Attack => {
                       let d = max(1, st.atk + 5 - e.def + Random.range(0, 5))
                       e.hp -= d
-                      player_hit = d
+                      games_chronorift_st.player_hit = d
                     }
                     MageAct.Heal => {
                       if st.mp >= 4 {
@@ -87,13 +87,13 @@ handler Battle phase Update {
                         for (t2, p2) in query [Stats, Party] {
                           if p2.slot == 0 { t2.hp = min(t2.maxhp, t2.hp + 16) }
                         }
-                        player_hit = 16
-                      } else { player_hit = 0 }
+                        games_chronorift_st.player_hit = 16
+                      } else { games_chronorift_st.player_hit = 0 }
                     }
-                    MageAct.Guard => { st.guard = 1;  player_hit = 0 }
+                    MageAct.Guard => { st.guard = 1;  games_chronorift_st.player_hit = 0 }
                   }
                   become MageResolve
-                  menu_cursor = 0
+                  games_chronorift_st.menu_cursor = 0
                 }
               }
             }
@@ -104,9 +104,9 @@ handler Battle phase Update {
           if k != 0 {
             if e.hp <= 0 {
               grant_xp(e.xp)
-              gold += e.xp
-              if enemy_type == 2 { boss_down = 1;  game_mode = 3;  ack = 0 }
-              else { game_mode = 0 }
+              games_chronorift_st.gold += e.xp
+              if games_chronorift_st.enemy_type == 2 { games_chronorift_st.boss_down = 1;  games_chronorift_st.game_mode = 3;  games_chronorift_st.ack = 0 }
+              else { games_chronorift_st.game_mode = 0 }
               become KnightMenu
             } else {
               become EnemyTurn
@@ -123,7 +123,7 @@ handler Battle phase Update {
                   var ed = max(1, e.atk - t3.def + Random.range(0, 4))
                   if t3.guard == 1 { ed /= 2;  t3.guard = 0 }
                   t3.hp -= ed
-                  enemy_hit = ed
+                  games_chronorift_st.enemy_hit = ed
                   done = 1
                 }
               }
@@ -132,10 +132,10 @@ handler Battle phase Update {
             for (t4) in query [Stats, {Party}] {
               if t4.hp > 0 { alive += 1 }
             }
-            if alive == 0 { game_mode = 2;  ack = 0 }
+            if alive == 0 { games_chronorift_st.game_mode = 2;  games_chronorift_st.ack = 0 }
             else {
               become KnightMenu
-              menu_cursor = 0
+              games_chronorift_st.menu_cursor = 0
             }
           }
         }
@@ -144,29 +144,29 @@ handler Battle phase Update {
   }
 }
 
-handler CleanBattle phase LateUpdate {
-  if game_mode != 1 {
+handler CleanBattle(games_chronorift_st: GamesChronoriftState) phase LateUpdate {
+  if games_chronorift_st.game_mode != 1 {
     for (e) in query [Stats, {Enemy}] {
       despawn self()
     }
   }
 }
 
-handler Meta phase Update {
+handler Meta(games_chronorift_st: mut GamesChronoriftState) phase Update {
   let k = Input.key()
-  if game_mode == 2 {
-    if k == 0 { ack = 1 }
+  if games_chronorift_st.game_mode == 2 {
+    if k == 0 { games_chronorift_st.ack = 1 }
     if k != 0 {
-      if ack == 1 {
+      if games_chronorift_st.ack == 1 {
         for (h) in query [Stats, {Party}] { h.hp = h.maxhp }
-        game_mode = 0
+        games_chronorift_st.game_mode = 0
       }
     }
   }
-  if game_mode == 3 {
-    if k == 0 { ack = 1 }
+  if games_chronorift_st.game_mode == 3 {
+    if k == 0 { games_chronorift_st.ack = 1 }
     if k != 0 {
-      if ack == 1 { game_mode = 0 }
+      if games_chronorift_st.ack == 1 { games_chronorift_st.game_mode = 0 }
     }
   }
 }

@@ -6,15 +6,15 @@
 import "ludic.lab"
 program LabPlate {
   numbers float
-  function probe_setup() -> void {
-    lab_model(lab_plate_dir(), "probe.gltf", "probe", 0.0, 0.0, 0.5)
-    lab_note("a box and a ball, in the plate's light")
-    lab_shot_at("front", 0.0, 0.7, 0.0, 4.0, 0.0, 12.0)
-    lab_shot_at("side", 0.0, 0.7, 0.0, 4.0, 90.0, 12.0)
-    lab_shot_at("above", 0.0, 0.5, 0.0, 7.0, 30.0, 55.0)
+  function probe_setup(lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
+    lab_model(render3d_st, lab_plate_dir(lab_st), "probe.gltf", "probe", 0.0, 0.0, 0.5)
+    lab_note(lab_st, "a box and a ball, in the plate's light")
+    lab_shot_at(lab_st, "front", 0.0, 0.7, 0.0, 4.0, 0.0, 12.0)
+    lab_shot_at(lab_st, "side", 0.0, 0.7, 0.0, 4.0, 90.0, 12.0)
+    lab_shot_at(lab_st, "above", 0.0, 0.5, 0.0, 7.0, 30.0, 55.0)
   }
   def LabScenes probe { setup: fn probe_setup }
-  handler Boot phase Start { lab_boot() }
-  handler Look phase Input { lab_input() }
-  handler Draw phase Render { lab_render() }
+  handler Boot(lab_st: mut LabState, render3d_st: mut Render3dState) phase Start { lab_boot(lab_st, render3d_st) }
+  handler Look(lab_st: mut LabState, render3d_st: mut Render3dState) phase Input { lab_input(lab_st, render3d_st) }
+  handler Draw(lab_st: mut LabState, render3d_st: mut Render3dState) phase Render { lab_render(lab_st, render3d_st) }
 }

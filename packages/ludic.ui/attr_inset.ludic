@@ -1,21 +1,21 @@
 # attr_inset.ludic - top, right, bottom and left as lengths, percentages or calc() of both: the
 # percentage is kept apart and taken of the containing block's width (left, right) or height (top,
 # bottom) when the element is placed
-function el_inset(n: UiNode, side: int, v: Val) -> float {
+function el_inset(ui_st: mut UiState, n: UiNode, side: int, v: Val) -> float {
   let s = vl_text(v)
   var pct = 0.0
   var px = UI_AUTO
   if s != "auto" {
     if ca_is(s) {
       px = 0.0
-      if ca_eval(s) {
-        pct = ca_pct
-        px = ca_px
+      if ca_eval(ui_st, s) {
+        pct = ui_st.ca_pct
+        px = ui_st.ca_px
       }
     } else if len(s) > 1 and s[len(s) - 1] == 37 {
       pct = el_num(s)
       px = 0.0
-    } else { px = el_len(v) }
+    } else { px = el_len(ui_st, v) }
   }
   if pct != 0.0 or n.ex != null {
     let x = nx(n)

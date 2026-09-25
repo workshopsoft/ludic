@@ -6,11 +6,11 @@ import "ludic.ui"
 import "ui_boxes_parts/Boxes.ludic"
 program UiBoxes {
   numbers float
-  entry {
-    ui_backend(new UiBackend)
-    ui_show("Boxes", null, 0.0, 0.0, 400.0, 600.0)
-    let root: UiNode = ui_nodes("Boxes", null)
-    ui_place(root, 0.0, 0.0, 400.0, 600.0)
+  entry (ui_st: mut UiState) {
+    ui_backend(ui_st, new UiBackend)
+    ui_show(ui_st, "Boxes", null, 0.0, 0.0, 400.0, 600.0)
+    let root: UiNode = ui_nodes(ui_st, "Boxes", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 600.0)
     let page = root.children[0]
     let list = page.children[0].children[1]
     let line = page.children[1]

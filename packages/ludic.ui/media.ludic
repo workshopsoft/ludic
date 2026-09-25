@@ -25,12 +25,12 @@ function md_parse(cond: string) -> UiMedia {
   }
   return m
 }
-function md_ok(r: UiRule) -> bool {
+function md_ok(ui_st: UiState, r: UiRule) -> bool {
   let m = r.md
   if m == null { return true }
-  if m.min_w > 0.0 and ly_vp_w < m.min_w { return false }
-  if m.max_w > 0.0 and ly_vp_w > m.max_w { return false }
-  if m.min_h > 0.0 and ly_vp_h < m.min_h { return false }
-  if m.max_h > 0.0 and ly_vp_h > m.max_h { return false }
+  if m.min_w > 0.0 and ui_st.ly_vp_w < m.min_w { return false }
+  if m.max_w > 0.0 and ui_st.ly_vp_w > m.max_w { return false }
+  if m.min_h > 0.0 and ui_st.ly_vp_h < m.min_h { return false }
+  if m.max_h > 0.0 and ui_st.ly_vp_h > m.max_h { return false }
   return true
 }

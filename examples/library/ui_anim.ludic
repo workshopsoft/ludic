@@ -4,24 +4,26 @@
 import "ludic.ui"
 program UiAnim {
   numbers float
-  var dim: bool = false
-  view Anim {
-    dim = dim
+  state UianimState {
+    dim: bool = false
+  }
+  view Anim (uianim_st: UianimState) {
+    dim = uianim_st.dim
   }
   const PAGE: string = "<ui><style>@keyframes fade { from { opacity: 0 } to { opacity: 1 } }\n@keyframes pulse { from { opacity: 1 } to { opacity: 0.5 } }\n.in { animation: fade 1s }\n.beat { animation: pulse 0.5s infinite alternate }\n.soft { transition: opacity 1s }\n.dim { opacity: 0.2 }</style><screen name='a'><p class='in'>a</p><p class='beat'>b</p><p class=\"soft {dim ? 'dim' : ''}\">c</p></screen></ui>"
-  function at() -> string {
-    ui_show("a", view_anim(), 0.0, 0.0, 200.0, 200.0)
-    let r: UiNode = ui_nodes("a", view_anim())
+  function at(ui_st: mut UiState) -> string {
+    ui_show(ui_st, "a", view_anim(), 0.0, 0.0, 200.0, 200.0)
+    let r: UiNode = ui_nodes(ui_st, "a", view_anim())
     return `{int(r.children[0].alpha * 100.0)} {int(r.children[1].alpha * 100.0)} {int(r.children[2].alpha * 100.0)}`
   }
-  entry {
-    ui_load_text(PAGE, "a.xml")
-    var out = at()
-    for i in 0 .. 29 { at() }
-    out = out + " | " + at()
-    dim = true
-    for i in 0 .. 29 { at() }
-    out = out + " | " + at()
+  entry (ui_st: mut UiState, uianim_st: mut UianimState) {
+    ui_load_text(ui_st, PAGE, "a.xml")
+    var out = at(ui_st)
+    for i in 0 .. 29 { at(ui_st) }
+    out = out + " | " + at(ui_st)
+    uianim_st.dim = true
+    for i in 0 .. 29 { at(ui_st) }
+    out = out + " | " + at(ui_st)
     print(out)
   }
 }

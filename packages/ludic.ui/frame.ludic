@@ -1,46 +1,46 @@
 # frame.ludic - a screen shown: built from the view's model, laid out, drawn, and its presses
 # run once the frame is drawn, so nothing the view does can change a frame half way through it
 
-export function ui_show(screen: string, view: UiView, x: float, y: float, w: float, h: float) -> void {
-  in_read()
-  dv_before()
-  an_frame += 1
-  ui_viewport(w, h)
-  let root = ui_nodes(screen, view)
+export function ui_show(ui_st: mut UiState, screen: string, view: UiView, x: float, y: float, w: float, h: float) -> void {
+  in_read(ui_st)
+  dv_before(ui_st)
+  ui_st.an_frame += 1
+  ui_viewport(ui_st, w, h)
+  let root = ui_nodes(ui_st, screen, view)
   if root == null { return }
-  ui_place(root, x, y, w, h)
-  nt_fired_clear()
+  ui_place(ui_st, root, x, y, w, h)
+  nt_fired_clear(ui_st)
   sc_undo(root)
-  sc_update(root)
-  fr_pointer(root)
-  fc_keys(root)
-  hd_tick(root)
-  tt_track(root, in_now.x, in_now.y)
-  fb_keep(screen, root)
-  if ui_be != null and ui_be.text != null {
-    fr_draw(root)
-    pp_draw_top()
-    tt_draw(root)
+  sc_update(ui_st, root)
+  fr_pointer(ui_st, root)
+  fc_keys(ui_st, root)
+  hd_tick(ui_st, root)
+  tt_track(ui_st, root, ui_st.in_now.x, ui_st.in_now.y)
+  fb_keep(ui_st, screen, root)
+  if ui_st.ui_be != null and ui_st.ui_be.text != null {
+    fr_draw(ui_st, root)
+    pp_draw_top(ui_st)
+    tt_draw(ui_st, root)
   }
-  dv_after(screen, root)
-  lc_run(screen)
-  nt_fired_run()
+  dv_after(ui_st, screen, root)
+  lc_run(ui_st, screen)
+  nt_fired_run(ui_st)
 }
 # the screen's nodes for this frame, not yet laid out - for a test, or a host that places them
-export function ui_nodes(screen: string, view: UiView) -> UiNode {
-  let si = lib_find(lib_screen_names, screen)
-  let cls = uc_find(screen)
-  if si < 0 and cls != null { return fr_class_nodes(cls) }
+export function ui_nodes(ui_st: mut UiState, screen: string, view: UiView) -> UiNode {
+  let si = lib_find(ui_st.lib_screen_names, screen)
+  let cls = uc_find(ui_st, screen)
+  if si < 0 and cls != null { return fr_class_nodes(ui_st, cls) }
   if si < 0 {
-    ui_err(`there is no screen {screen} - ui_load the file that has it`)
+    ui_err(ui_st, `there is no screen {screen} - ui_load the file that has it`)
     return null
   }
-  let t = lib_screens[si]
-  lc_begin()
-  ui_view = view
+  let t = ui_st.lib_screens[si]
+  lc_begin(ui_st)
+  ui_st.ui_view = view
   let e = env_new(null)
   if view != null and view.model != null { e.model = view.model() } else { e.model = Value.object() }
-  e.state = st_for(screen, t, e)
+  e.state = st_for(ui_st, screen, t, e)
   let root = new UiNode
   root.key = screen
   root.children = new []UiNode
@@ -52,32 +52,32 @@ export function ui_nodes(screen: string, view: UiView) -> UiNode {
   root.vals = new []Val
   root.tag = "screen"
   for i in 0 .. len(t.keys) {
-    if t.keys[i] != "name" { el_keep(root, t.keys[i], ui_eval(t.vals[i], e)) }
+    if t.keys[i] != "name" { el_keep(root, t.keys[i], ui_eval(ui_st, t.vals[i], e)) }
   }
-  bd_kids(t.kids, e, screen, root.children)
-  cs_tree(root)
+  bd_kids(ui_st, t.kids, e, screen, root.children)
+  cs_tree(ui_st, root)
   return root
 }
 # the room vw, vh and @media measure against; ui_show sets it to the screen's rectangle
-export function ui_viewport(w: float, h: float) -> void {
-  ly_vp_w = w
-  ly_vp_h = h
+export function ui_viewport(ui_st: mut UiState, w: float, h: float) -> void {
+  ui_st.ly_vp_w = w
+  ui_st.ly_vp_h = h
 }
-export function ui_place(root: UiNode, x: float, y: float, w: float, h: float) -> void {
-  ly_vp_x = x
-  ly_vp_y = y
+export function ui_place(ui_st: mut UiState, root: UiNode, x: float, y: float, w: float, h: float) -> void {
+  ui_st.ly_vp_x = x
+  ui_st.ly_vp_y = y
   root.w = UI_FILL
   root.h = UI_FILL
   let fg = 15658734
-  ly_fg_a = 1.0
-  ly_measure(root, w, ui_px(16.0), fg)
-  ly_place(root, x, y, w, h)
-  sc_apply(root)
-  pp_anchor_all(root)
+  ui_st.ly_fg_a = 1.0
+  ly_measure(ui_st, root, w, ui_px(ui_st, 16.0), fg)
+  ly_place(ui_st, root, x, y, w, h)
+  sc_apply(ui_st, root)
+  pp_anchor_all(ui_st, root)
 }
 # a press, as if the pointer had made it
-export function ui_press(n: UiNode) -> void {
-  if n.act != null and n.enabled { act_run(n.act, n.env) }
+export function ui_press(ui_st: mut UiState, n: UiNode) -> void {
+  if n.act != null and n.enabled { act_run(ui_st, n.act, n.env) }
 }
 # any event, as if the element had fired it - for a test
-export function ui_event(n: UiNode, name: string, value: Val) -> void { nt_run(n, name, value) }
+export function ui_event(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void { nt_run(ui_st, n, name, value) }

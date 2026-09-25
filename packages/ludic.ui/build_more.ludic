@@ -1,27 +1,27 @@
 # build_more.ludic - <let name="{value}"/> names a value for the siblings after it, and
 # <provide name="{value}"> gives it to everything inside, components included (React's context)
-function bd_let(k: UiTpl, e: UiEnv) -> UiEnv {
+function bd_let(ui_st: mut UiState, k: UiTpl, e: UiEnv) -> UiEnv {
   let le = env_new(e)
-  for i in 0 .. len(k.keys) { env_bind(le, k.keys[i], ui_eval(k.vals[i], e)) }
+  for i in 0 .. len(k.keys) { env_bind(le, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
   return le
 }
-function bd_provide(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
+function bd_provide(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
   let cx = env_new(e.ctx)
-  for i in 0 .. len(k.keys) { env_bind(cx, k.keys[i], ui_eval(k.vals[i], e)) }
+  for i in 0 .. len(k.keys) { env_bind(cx, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
   let pe = env_new(e)
   pe.ctx = cx
-  bd_kids(k.kids, pe, key, out)
+  bd_kids(ui_st, k.kids, pe, key, out)
 }
 # a fragment's (or a template's) content: its elements, or its words as a text of their own
-function bd_group(k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
+function bd_group(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
   if k.text == null {
-    bd_kids(k.kids, e, key, out)
+    bd_kids(ui_st, k.kids, e, key, out)
     return
   }
   let t = new UiNode
   t.kind = UI_TEXT
   t.key = key
-  t.text = ui_tr(ui_eval_text(k.text, e))
+  t.text = ui_tr(ui_st, ui_eval_text(ui_st, k.text, e))
   t.env = e
   t.children = new []UiNode
   push(out, t)

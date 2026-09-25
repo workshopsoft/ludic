@@ -7,19 +7,9 @@
 module ludic_ui
 import "render3d_image.ludic"
 import "render3d_nine.ludic"
-var r3u_user: float = 1.0
-var r3u_tex_paths: []string = new []string
-var r3u_tex_ids: []int = new []int
-var r3u_tex_sizes: []int = new []int
-var r3u_tex_seen: []float = new []float
-var r3u_atlas: []string = new []string
-var r3u_atlas_tex: []int = new []int
-var r3u_atlas_cols: []int = new []int
-var r3u_atlas_rows: []int = new []int
-var r3u_atlas_names: [][]string = new [][]string
 # importing this file is enough: it is the renderer from the program's first frame
 def UiRenderers render3d { make: fn r3u_make }
-export function ui_render3d() -> void { ui_backend(r3u_make()) }
+export function ui_render3d(ui_st: mut UiState) -> void { ui_backend(ui_st, r3u_make()) }
 function r3u_make() -> UiBackend {
   let b = new UiBackend
   b.rect = fn r3u_rect
@@ -38,18 +28,18 @@ function r3u_make() -> UiBackend {
   return b
 }
 # the player's interface size, 1.0 as designed
-export function ui_render3d_scale(s: float) -> void { r3u_user = s }
+export function ui_render3d_scale(ui_st: mut UiState, s: float) -> void { ui_st.r3u_user = s }
 # a grid atlas: `names` are its cells, row by row, `cols` across and `rows` down; <img
 # src="prefix:name"> draws one (by its name, or by its number: "item:12")
-export function ui_atlas(prefix: string, tex: int, cols: int, rows: int, names: []string) -> void {
-  push(r3u_atlas, prefix)
-  push(r3u_atlas_tex, tex)
-  push(r3u_atlas_cols, cols)
-  push(r3u_atlas_rows, Math.max(rows, 1))
-  push(r3u_atlas_names, names)
+export function ui_atlas(ui_st: mut UiState, prefix: string, tex: int, cols: int, rows: int, names: []string) -> void {
+  push(ui_st.r3u_atlas, prefix)
+  push(ui_st.r3u_atlas_tex, tex)
+  push(ui_st.r3u_atlas_cols, cols)
+  push(ui_st.r3u_atlas_rows, Math.max(rows, 1))
+  push(ui_st.r3u_atlas_names, names)
 }
 function r3u_now() -> float { return float(Time.now_us() / 1000) / 1000.0 }
-function r3u_scale() -> float { return float(gl_h) / 1080.0 * r3u_user }
+function r3u_scale(ui_st: UiState) -> float { return float(gl_h) / 1080.0 * ui_st.r3u_user }
 function r3u_r(c: int) -> float { return float((c / 65536) % 256) / 255.0 }
 function r3u_g(c: int) -> float { return float((c / 256) % 256) / 255.0 }
 function r3u_b(c: int) -> float { return float(c % 256) / 255.0 }

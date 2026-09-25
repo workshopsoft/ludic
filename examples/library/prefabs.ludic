@@ -8,9 +8,11 @@ program Prefabs {
   model Creature { Position, Enemy }
   prefab Foe: Creature { Enemy { team: 2, hp: 1 }, Position { y: 9 } }
   prefab Grunt: Foe { Enemy { kind: 1, hp: 30 } }
-  var last: int = -1
-  @OnSpawn(Creature) handler Remember { last = self() }
-  entry {
+  state PrefabsState {
+    last: int = -1
+  }
+  @OnSpawn(Creature) handler Remember(prefabs_st: mut PrefabsState) { prefabs_st.last = self() }
+  entry (prefabs_st: PrefabsState) {
     let g = spawn Grunt { Position { x: 5 } }                     # Foe's presets, Grunt's, then this
     print(Enemy.of(g).team * 100000 + Enemy.of(g).hp * 1000 + Enemy.of(g).kind * 100 + Position.of(g).x * 10 + Position.of(g).y)
     let n = Prefab.spawn(name: "Grunt")
@@ -20,6 +22,6 @@ program Prefabs {
     print(Position.of(placed).x)
     print(Position.of(placed).y)
     print(Prefab.spawn(name: "Nope"))                              # no such prefab
-    print(last)                                                    # self() in the hook: the last spawn
+    print(prefabs_st.last)                                                    # self() in the hook: the last spawn
   }
 }

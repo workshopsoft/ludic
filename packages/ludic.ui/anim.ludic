@@ -6,17 +6,13 @@ export property UiKeyframes {
   stops: []float = null
   rules: []UiRule = null
 }
-var an_frames: []UiKeyframes = new []UiKeyframes
-var an_keys: []string = new []string
-var an_start: []float = new []float
-var an_frame: int = 0
 # the renderer's clock in seconds, or the frames shown at sixty a second (a test, a still picture)
-function an_now() -> float {
-  if ui_be != null and ui_be.now != null { return ui_be.now() }
-  return float(an_frame) / 60.0
+function an_now(ui_st: UiState) -> float {
+  if ui_st.ui_be != null and ui_st.ui_be.now != null { return ui_st.ui_be.now() }
+  return float(ui_st.an_frame) / 60.0
 }
 # @keyframes NAME { from {...} 50% {...} to {...} }
-function an_read(name: string, body: string, err: []string) -> void {
+function an_read(ui_st: mut UiState, name: string, body: string, err: []string) -> void {
   let k = new UiKeyframes
   k.name = tpl_words(name)
   k.stops = new []float
@@ -34,40 +30,40 @@ function an_read(name: string, body: string, err: []string) -> void {
     push(k.stops, at)
     push(k.rules, decls)
   }
-  push(an_frames, k)
+  push(ui_st.an_frames, k)
 }
-function an_find(name: string) -> UiKeyframes {
-  for i in 0 .. len(an_frames) {
-    if an_frames[i].name == name { return an_frames[i] }
+function an_find(ui_st: UiState, name: string) -> UiKeyframes {
+  for i in 0 .. len(ui_st.an_frames) {
+    if ui_st.an_frames[i].name == name { return ui_st.an_frames[i] }
   }
   return null
 }
 # when this element's animation began: the first frame it was seen with it
-function an_began(key: string) -> float {
-  for i in 0 .. len(an_keys) {
-    if an_keys[i] == key { return an_start[i] }
+function an_began(ui_st: mut UiState, key: string) -> float {
+  for i in 0 .. len(ui_st.an_keys) {
+    if ui_st.an_keys[i] == key { return ui_st.an_start[i] }
   }
-  push(an_keys, key)
-  push(an_start, an_now())
-  return an_now()
+  push(ui_st.an_keys, key)
+  push(ui_st.an_start, an_now(ui_st))
+  return an_now(ui_st)
 }
 # the element's animation at this moment: each property between the stops around it
-function an_apply(n: UiNode) -> void {
+function an_apply(ui_st: mut UiState, n: UiNode) -> void {
   if n.anim == "" or n.anim_dur <= 0.0 { return }
-  let k = an_find(n.anim)
+  let k = an_find(ui_st, n.anim)
   if k == null {
-    ui_err(`animation {n.anim}: there is no @keyframes of that name`)
+    ui_err(ui_st, `animation {n.anim}: there is no @keyframes of that name`)
     return
   }
-  var t = (an_now() - an_began(`{n.key}@{n.anim}`)) / n.anim_dur
+  var t = (an_now(ui_st) - an_began(ui_st, `{n.key}@{n.anim}`)) / n.anim_dur
   if n.anim_loop {
     let lap = int(t)
     t = t - float(lap)
     if n.anim_alt and lap % 2 == 1 { t = 1.0 - t }
   } else { t = Math.clamp(t, 0.0, 1.0) }
-  an_at(n, k, t)
+  an_at(ui_st, n, k, t)
 }
-function an_at(n: UiNode, k: UiKeyframes, t: float) -> void {
+function an_at(ui_st: mut UiState, n: UiNode, k: UiKeyframes, t: float) -> void {
   var lo = 0
   var hi = len(k.stops) - 1
   for i in 0 .. len(k.stops) {
@@ -79,11 +75,11 @@ function an_at(n: UiNode, k: UiKeyframes, t: float) -> void {
   let a = k.rules[lo]
   let b = k.rules[hi]
   for i in 0 .. len(a.keys) {
-    let va = el_num(vl_text(ui_eval(a.vals[i], n.env)))
+    let va = el_num(vl_text(ui_eval(ui_st, a.vals[i], n.env)))
     var vb = va
     for j in 0 .. len(b.keys) {
-      if b.keys[j] == a.keys[i] { vb = el_num(vl_text(ui_eval(b.vals[j], n.env))) }
+      if b.keys[j] == a.keys[i] { vb = el_num(vl_text(ui_eval(ui_st, b.vals[j], n.env))) }
     }
-    el_apply(n, a.keys[i], Value.float(va + (vb - va) * f))
+    el_apply(ui_st, n, a.keys[i], Value.float(va + (vb - va) * f))
   }
 }

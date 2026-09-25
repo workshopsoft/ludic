@@ -12,13 +12,15 @@ program CombatKit {
   model Hero { Position, Body, Collider, TopDown, Weapon, Faction, Stats, Dash, Melee }
   model Creature { Position, Body, Collider, Faction, Stats, Foe }
   model WorldRules { Solids }
-  var frames: int = 0
-  var hero: int = -1
+  state CombatkitState {
+    frames: int = 0
+    hero: int = -1
+  }
   @On(MeleeHit) handler H { print(5000 + target) }
   @On(Crit) handler C { print(6000) }
-  handler Tick phase Update {
-    frames += 1
-    if frames == 1 {
+  handler Tick(combatkit_st: mut CombatkitState) phase Update {
+    combatkit_st.frames += 1
+    if combatkit_st.frames == 1 {
       Map.size(20, 15)
       Dungeon.arena(Dungeon.random_style(), '#', '.')
       Dungeon.set_exit(Side.North, 'D')
@@ -28,19 +30,19 @@ program CombatKit {
       print(e.x * 1000 + e.y)                                             # 153196
       print(Dungeon.opposite(Side.West) * 10 + Dungeon.at_edge(IVec2.make(0, 3)))   # 31
       Weapon.def(name: "p", fire_rate: 10, damage: 10, speed: 8, spread: 0, pellets: 1, pattern: 0)
-      hero = spawn Hero { Position { x: 100, y: 100 }, Collider { w: 14, h: 20 }, Body { policy: 1 }, TopDown { move_speed: 4, aim_mode: AimMode.Manual, aim_angle: 0 }, Faction { id: 1 },
+      combatkit_st.hero = spawn Hero { Position { x: 100, y: 100 }, Collider { w: 14, h: 20 }, Body { policy: 1 }, TopDown { move_speed: 4, aim_mode: AimMode.Manual, aim_angle: 0 }, Faction { id: 1 },
         Stats { hp: 100, max_hp: 100 }, Dash { frames: 3, speed: 9, cooldown_frames: 5 }, Melee { range: 30, damage: 7, knockback: 4 } }
-      Stats.add(hero, StatKind.CritPct, 100)
-      Stats.add(hero, StatKind.DamagePct, 50)
-      let c = Collider.center(hero);  print(c.x * 1000 + c.y)             # 107110
+      Stats.add(combatkit_st.hero, StatKind.CritPct, 100)
+      Stats.add(combatkit_st.hero, StatKind.DamagePct, 50)
+      let c = Collider.center(combatkit_st.hero);  print(c.x * 1000 + c.y)             # 107110
       spawn Creature { Position { x: 120, y: 100 }, Collider { w: 14, h: 20 }, Body { policy: 1 }, Faction { id: 2 }, Stats { hp: 100, max_hp: 100, thorns: 3 }, Foe { n: 1 } }
       Faction.set(1, 2, 2)
-      print(Melee.swing(hero))                                            # 1 hit (after 6000 and 5002)
+      print(Melee.swing(combatkit_st.hero))                                            # 1 hit (after 6000 and 5002)
       for (s, f) in query [Stats, Foe] { print(s.hp) }                    # 80: 7 * 150% doubled by the crit
-      print(Stats.of(hero).hp)                                            # 97: thorns
-      print(Dash.start(hero, 0, 0) * 10 + Dash.active(hero))              # 11
+      print(Stats.of(combatkit_st.hero).hp)                                            # 97: thorns
+      print(Dash.start(combatkit_st.hero, 0, 0) * 10 + Dash.active(combatkit_st.hero))              # 11
       print(Prefs.max("best", 5) * 10 + Prefs.max("best", 3))             # 10
     }
-    if frames == 7 { print(700 + Dash.active(hero));  print(Position.of(hero).x);  quit() }   # 700 110
+    if combatkit_st.frames == 7 { print(700 + Dash.active(combatkit_st.hero));  print(Position.of(combatkit_st.hero).x);  quit() }   # 700 110
   }
 }

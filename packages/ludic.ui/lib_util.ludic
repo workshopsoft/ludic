@@ -6,9 +6,9 @@ function lib_find(names: []string, name: string) -> int {
   }
   return -1
 }
-function lib_new(path: string) -> UiFile {
+function lib_new(ui_st: mut UiState, path: string) -> UiFile {
   let f = lib_blank(path)
-  push(lib_files, f)
+  push(ui_st.lib_files, f)
   return f
 }
 # a file that is not one of the loaded ones (a component's own)
@@ -23,9 +23,9 @@ function lib_blank(path: string) -> UiFile {
   f.own = new []UiRule
   return f
 }
-function lib_text(path: string) -> string {
+function lib_text(ui_st: UiState, path: string) -> string {
   var src = ""
-  if ui_be != null and ui_be.read != null { src = ui_be.read(path) } else { src = Fs.read_text(path) }
+  if ui_st.ui_be != null and ui_st.ui_be.read != null { src = ui_st.ui_be.read(path) } else { src = Fs.read_text(path) }
   if src == null { return "" }
   return src
 }

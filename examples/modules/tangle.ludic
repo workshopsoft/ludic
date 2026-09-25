@@ -7,8 +7,8 @@ import "tangle/c"
 import "tangle/a"
 import "tangle/b"
 program Tangle {
-  entry {
-    a_bump()
-    print(a_run() + b_rec.n - 1)
+  entry (b_st: mut BState) {
+    a_bump(b_st)
+    print(a_run(b_st) + b_st.b_rec.n - 1)
   }
 }

@@ -30,30 +30,155 @@ function ui_default_backend() -> UiBackend {
   if len(UiRenderers) == 0 { return null }
   return UiRenderers[0].make()
 }
-var ui_be: UiBackend = ui_default_backend()
-export function ui_backend(b: UiBackend) -> void { ui_be = b }
-function ui_px(v: float) -> float {
-  if ui_be != null and ui_be.scale != null { return v * ui_be.scale() }
+export state UiState {
+  an_frames: []UiKeyframes = new []UiKeyframes
+  an_keys: []string = new []string
+  an_start: []float = new []float
+  an_frame: int = 0
+  el_s0: float = 0.0
+  el_s1: float = 0.0
+  el_s2: float = 0.0
+  el_s3: float = 0.0
+  ui_be: UiBackend = ui_default_backend()
+  tr_no: bool = false        # inside translate="no" while a frame is built
+  ca_s: string = ""
+  ca_i: int = 0
+  ca_bad: string = ""
+  ca_px: float = 0.0            # the result: its lengths, its percentage, and whether it had units
+  ca_pct: float = 0.0
+  ca_num: float = 0.0           # a plain number's own value, and whether it was one
+  ca_bare: bool = false
+  cs_pass: int = 0
+  ua_sh: UiSheet = null
+  uc_list: []UiClass = null     # filled by the compiler's registrations, before the program's globals
+  cl_alpha: float = 1.0
+  ct_capture: string = ""
+  ct_capture_at: int = -1       # the frame listening began, whose own key started it
+  ct_capture_seen: int = -1     # the last frame that began listening, for ui_capturing
+  ct_num_key: string = ""
+  ct_num_text: string = ""
+  dv_on: bool = false
+  dv_frames: int = 0
+  dv_dumped: bool = false
+  fr_ga: float = 1.0           # the opacity of everything around this element, which it multiplies
+  gr_a: float = 1.0
+  fr_clips: []float = new []float
+  ui_view: UiView = null
+  ui_errs: []string = new []string
+  ui_at: string = ""
+  fc_key: string = ""
+  fc_visible: bool = false    # focus came from the keyboard: :focus-visible, and the ring
+  fc_list: []UiNode = new []UiNode
+  fb_roots: []UiNode = new []UiNode
+  hd_key: string = ""
+  hd_t0: float = 0.0
+  hd_last: float = 0.0
+  in_now: UiInput = new UiInput
+  in_was_down: bool = false
+  in_last: UiInput = new UiInput
+  in_given: bool = false
+  rp_next: []float = [-1.0, -1.0, -1.0, -1.0]
+  rp_a: bool = false
+  rp_b: bool = false
+  rp_act: bool = false
+  in_act_down: bool = false   # A or Enter went down this frame, or came up
+  in_act_up: bool = false
+  in_list: []UiInst = new []UiInst
+  in_build: int = 0
+  ly_fg_a: float = 1.0
+  ly_lead: float = 0.0
+  ly_extra: float = 0.0
+  lib_files: []UiFile = new []UiFile
+  lib_screen_names: []string = new []string
+  lib_screens: []UiTpl = new []UiTpl
+  lc_keys: []string = new []string
+  lc_mounts: []UiAct = new []UiAct
+  lc_unmounts: []UiAct = new []UiAct
+  lc_envs: []UiEnv = new []UiEnv
+  lc_prev_keys: []string = new []string
+  lc_prev_unmounts: []UiAct = new []UiAct
+  lc_prev_envs: []UiEnv = new []UiEnv
+  nt_list: []UiNative = new []UiNative
+  nt_q_nodes: []UiNode = new []UiNode
+  nt_q_names: []string = new []string
+  nt_q_vals: []Val = new []Val
+  fr_hover: []string = new []string
+  fr_press_key: string = ""
+  fr_down_now: bool = false
+  fr_key_press: string = ""   # the control Enter or the pad's A is holding down
+  pe_key: string = ""         # the element the pointer is captured by
+  pe_btn: int = 0
+  pop_list: []UiNode = new []UiNode
+  pp_bx: float = 0.0
+  pp_by: float = 0.0
+  pp_bw: float = 0.0
+  pp_bh: float = 0.0
+  r3u_user: float = 1.0
+  r3u_tex_paths: []string = new []string
+  r3u_tex_ids: []int = new []int
+  r3u_tex_sizes: []int = new []int
+  r3u_tex_seen: []float = new []float
+  r3u_atlas: []string = new []string
+  r3u_atlas_tex: []int = new []int
+  r3u_atlas_cols: []int = new []int
+  r3u_atlas_rows: []int = new []int
+  r3u_atlas_names: [][]string = new [][]string
+  sc_keys: []string = new []string
+  sc_offs: []float = new []float
+  sc_drag: string = ""
+  sc_scope: UiNode = null      # the popover that has the pointer this frame, if one is up
+  sb_x: float = 0.0
+  sb_w: float = 0.0
+  sb_ty: float = 0.0
+  sb_th: float = 0.0
+  sb_bar: UiNode = null
+  sc_grab: float = 0.0        # how far below the thumb's top the pointer holds it
+  sc_want_keys: []string = new []string
+  sc_want_px: []float = new []float
+  st_keys: []string = new []string
+  st_vals: []Val = new []Val
+  tf_size: float = 0.0        # the size tf_fit drew at
+  tt_key: string = ""
+  tt_since: float = 0.0
+  tt_text: string = ""
+  tt_x: float = 0.0
+  tt_y: float = 0.0
+  tt_by_keys: bool = false    # the focus moved by the keyboard since the pointer last moved
+  tt_focus_seen: string = ""
+  tp_nl: []int = new []int
+  tr_keys: []string = new []string
+  tr_from: []float = new []float
+  tr_to: []float = new []float
+  tr_at: []float = new []float
+  el_cur: UiNode = null
+  el_key: string = ""
+  ly_vp_x: float = 0.0
+  ly_vp_y: float = 0.0
+  ly_vp_w: float = 0.0
+  ly_vp_h: float = 0.0
+}
+export function ui_backend(ui_st: mut UiState, b: UiBackend) -> void { ui_st.ui_be = b }
+function ui_px(ui_st: UiState, v: float) -> float {
+  if ui_st.ui_be != null and ui_st.ui_be.scale != null { return v * ui_st.ui_be.scale() }
   return v
 }
-var tr_no: bool = false        # inside translate="no" while a frame is built
-function ui_tr(s: string) -> string {
-  if tr_no { return s }
-  if ui_be != null and ui_be.translate != null { return ui_be.translate(s) }
+function ui_tr(ui_st: UiState, s: string) -> string {
+  if ui_st.tr_no { return s }
+  if ui_st.ui_be != null and ui_st.ui_be.translate != null { return ui_st.ui_be.translate(s) }
   return s
 }
-function ui_sound(name: string) -> void {
-  if ui_be != null and ui_be.sound != null { ui_be.sound(name) }
+function ui_sound(ui_st: UiState, name: string) -> void {
+  if ui_st.ui_be != null and ui_st.ui_be.sound != null { ui_st.ui_be.sound(name) }
 }
 # the program's language: every text a template shows goes through `f` before it is measured
-export function ui_translator(f: fn(string) -> string) -> void {
-  if ui_be != null { ui_be.translate = f }
+export function ui_translator(ui_st: mut UiState, f: fn(string) -> string) -> void {
+  if ui_st.ui_be != null { ui_st.ui_be.translate = f }
 }
 # the program's sounds: "click" when a control is used, or the control's own sound="..."
-export function ui_sounds(f: fn(string) -> void) -> void {
-  if ui_be != null { ui_be.sound = f }
+export function ui_sounds(ui_st: mut UiState, f: fn(string) -> void) -> void {
+  if ui_st.ui_be != null { ui_st.ui_be.sound = f }
 }
 # the program's clock, in seconds, for animation (a game's own time, which a headless run counts)
-export function ui_clock(f: fn() -> float) -> void {
-  if ui_be != null { ui_be.now = f }
+export function ui_clock(ui_st: mut UiState, f: fn() -> float) -> void {
+  if ui_st.ui_be != null { ui_st.ui_be.now = f }
 }

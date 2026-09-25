@@ -16,43 +16,42 @@ export property UiClass {
   seen_xml: string = ""         # the files as a developer's build last found them on disk
   seen_lss: string = ""
 }
-var uc_list: []UiClass = null     # filled by the compiler's registrations, before the program's globals
-export function ui_register(k: UiClass) -> int {
-  if uc_list == null { uc_list = new []UiClass }
-  push(uc_list, k)
-  return len(uc_list)
+export function ui_register(ui_st: mut UiState, k: UiClass) -> int {
+  if ui_st.uc_list == null { ui_st.uc_list = new []UiClass }
+  push(ui_st.uc_list, k)
+  return len(ui_st.uc_list)
 }
-function uc_find(name: string) -> UiClass {
-  if uc_list == null { return null }
-  for i in 0 .. len(uc_list) {
-    if uc_list[i].name == name { return uc_list[i] }
+function uc_find(ui_st: UiState, name: string) -> UiClass {
+  if ui_st.uc_list == null { return null }
+  for i in 0 .. len(ui_st.uc_list) {
+    if ui_st.uc_list[i].name == name { return ui_st.uc_list[i] }
   }
   return null
 }
 # the class's template and styles, read the first time it is shown
-function uc_load(k: UiClass) -> void {
+function uc_load(ui_st: mut UiState, k: UiClass) -> void {
   if k.root != null { return }
   let f = lib_blank(k.xml_path)
   f.src = k.xml
-  if k.lss != "" { lss_text(f, k.lss) }
+  if k.lss != "" { lss_text(ui_st, f, k.lss) }
   f.sheet = sheet_of(f)
-  tp_lines(k.xml)
-  let root = tpl_read(Xml.parse(k.xml), k.xml_path)
+  tp_lines(ui_st, k.xml)
+  let root = tpl_read(ui_st, Xml.parse(k.xml), k.xml_path)
   k.sheet = f.sheet
-  lib_link(f, root)
+  lib_link(ui_st, f, root)
   k.root = root
 }
 # a developer's build reads a class's files again when they change on disk: the first look is what
 # they are, and a later one that differs is taken (an @import in the styles is read from disk too)
-function uc_reload() -> bool {
-  if uc_list == null { return false }
+function uc_reload(ui_st: mut UiState) -> bool {
+  if ui_st.uc_list == null { return false }
   var changed = false
-  for i in 0 .. len(uc_list) {
-    let k = uc_list[i]
+  for i in 0 .. len(ui_st.uc_list) {
+    let k = ui_st.uc_list[i]
     if k.xml_path != "" and Fs.exists(k.xml_path) {
-      let x = lib_text(k.xml_path)
+      let x = lib_text(ui_st, k.xml_path)
       var l = ""
-      if k.lss_path != "" and Fs.exists(k.lss_path) { l = lib_text(k.lss_path) }
+      if k.lss_path != "" and Fs.exists(k.lss_path) { l = lib_text(ui_st, k.lss_path) }
       if k.seen_xml != "" and (x != k.seen_xml or l != k.seen_lss) {
         k.xml = x
         k.lss = l
@@ -66,7 +65,7 @@ function uc_reload() -> bool {
   return changed
 }
 # every class reads its template and styles again, as when a stylesheet they import has changed
-function uc_invalidate() -> void {
-  if uc_list == null { return }
-  for i in 0 .. len(uc_list) { uc_list[i].root = null }
+function uc_invalidate(ui_st: mut UiState) -> void {
+  if ui_st.uc_list == null { return }
+  for i in 0 .. len(ui_st.uc_list) { ui_st.uc_list[i].root = null }
 }

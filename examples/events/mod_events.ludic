@@ -3,14 +3,16 @@
 # `Damage` has two @On listeners: one prints the amount, one accumulates a total.
 # Emitting it twice runs both listeners each time. Prints 10 / 32 / 42.
 program ModEvents {
-  var total: int = 0
+  state ModeventsState {
+    total: int = 0
+  }
   event Damage { amount: int = 0 }
   @On(Damage) handler Native { print(amount) }        # prints each hit
-  @On(Damage) handler Accum  { total += amount }   # sums them
+  @On(Damage) handler Accum(modevents_st: mut ModeventsState)  { modevents_st.total += amount }   # sums them
 
-  entry {
+  entry (modevents_st: ModeventsState) {
     emit Damage(amount: 10)     # Native prints 10
     emit Damage(amount: 32)     # Native prints 32
-    print(total)                # 42
+    print(modevents_st.total)                # 42
   }
 }
