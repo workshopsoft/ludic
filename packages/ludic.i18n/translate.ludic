@@ -1,0 +1,75 @@
+# translate.ludic - what the game draws, in the language in use: exact, else a pattern, else the
+# padding a layout put round it taken off, else a paragraph a sentence at a time; English otherwise
+export function L(s: string) -> string {
+  if not on { return s }
+  let ci = Dict.get_or(cache, s, -1)
+  if ci >= 0 { return cache_out[ci] }
+  let r = whole(s)
+  if Dict.size(cache) >= CACHE_MAX {
+    Dict.clear(cache)
+    cache_out = new []string
+  }
+  Dict.set(cache, s, len(cache_out))
+  push(cache_out, r)
+  return r
+}
+
+function whole(s: string) -> string {
+  let n = len(s)
+  if n == 0 { return s }
+  let e = Dict.get_or(exact, s, -1)
+  if e >= 0 { return out[e] }
+  let r = pattern(s, 0)
+  if hit { return r }
+  # the padding a layout put round a word: "   owned"
+  var a = 0
+  var b = n
+  while a < n and s[a] == 32 { a += 1 }
+  while b > a and s[b - 1] == 32 { b -= 1 }
+  if a > 0 or b < n {
+    if b <= a { return s }
+    let core: string = s[a..b]
+    let t = whole(core)
+    if t == core { return s }
+    return s[0..a] + t + s[b..n]
+  }
+  return sentences(s)
+}
+
+# a paragraph built from sentences, one at a time; English stays where a sentence is unknown
+function sentences(s: string) -> string {
+  let n = len(s)
+  var r = ""
+  var start = 0
+  var any = false
+  var pieces = 0
+  var i = 0
+  while i < n - 1 {
+    let c = s[i]
+    if (c == 46 or c == 33 or c == 63) and s[i + 1] == 32 {
+      let t = sentence(s[start..i + 1])
+      if hit { any = true }
+      r = r + t + " "
+      start = i + 2
+      pieces += 1
+      i += 2
+      continue
+    }
+    i += 1
+  }
+  if pieces == 0 { return s }
+  let t = sentence(s[start..n])
+  if hit { any = true }
+  if not any { return s }
+  return r + t
+}
+
+function sentence(p: string) -> string {
+  hit = false
+  let e = Dict.get_or(exact, p, -1)
+  if e >= 0 {
+    hit = true
+    return out[e]
+  }
+  return pattern(p, 0)
+}

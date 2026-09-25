@@ -1,0 +1,82 @@
+# langs.ludic - where languages come from, later ones replacing earlier ones with the same code:
+# <lang_dir>/languages.txt (one code per line, # a comment) and every .po in the mod folder
+export function i18n_init() -> void {
+  codes = new []string
+  names = new []string
+  paths = new []string
+  fonts = new []string
+  lang_add("en", "English", "", "")
+  let idx = Fs.read_text(lang_dir + "/languages.txt")
+  if idx != null {
+    let ls = lines_of(idx)
+    for i in 0 .. len(ls) {
+      let ln = trim(ls[i])
+      if len(ln) == 0 or ln[0] == 35 { continue }
+      probe(ln, `{lang_dir}/{ln}.po`, lang_dir)
+    }
+  }
+  let md = i18n_mod_dir()
+  if len(md) == 0 { return }
+  Fs.mkdir(md)
+  let files = Fs.list(md)
+  if files == null { return }
+  for i in 0 .. len(files) {
+    let nm = files[i]
+    let n = len(nm)
+    if n > 3 and i18n_ends(nm, ".po") { probe(nm[0..n - 3], md + "/" + nm, md) }
+  }
+}
+
+# where a player's own .po files go; "" when the game has none
+export function i18n_mod_dir() -> string { return I18nWorld.mod_dir() }
+
+function lang_add(code: string, name: string, path: string, font: string) -> void {
+  for i in 0 .. len(codes) {
+    if codes[i] == code {
+      names[i] = name
+      paths[i] = path
+      fonts[i] = font
+      return
+    }
+  }
+  push(codes, code)
+  push(names, name)
+  push(paths, path)
+  push(fonts, font)
+}
+
+function probe(code: string, path: string, dir: string) -> void {
+  let text = Fs.read_text(path)
+  if text == null { return }
+  var name = i18n_header(text, "X-Language-Name")
+  if len(name) == 0 { name = code }
+  var font = i18n_header(text, "X-Font")
+  if len(font) > 0 { font = dir + "/" + font }
+  lang_add(code, name, path, font)
+}
+
+export function i18n_count() -> int {
+  if codes == null { return 1 }
+  return len(codes)
+}
+
+export function i18n_index(code: string) -> int {
+  if codes != null { for i in 0 .. len(codes) { if codes[i] == code { return i } } }
+  return 0
+}
+
+export function i18n_code_at(i: int) -> string {
+  if codes == null or i < 0 or i >= len(codes) { return "en" }
+  return codes[i]
+}
+
+export function i18n_name_at(i: int) -> string {
+  if names == null or i < 0 or i >= len(names) { return "English" }
+  return names[i]
+}
+
+# the font atlas a language names with X-Font, beside its .po; "" is the default
+export function i18n_font_at(i: int) -> string {
+  if fonts == null or i < 0 or i >= len(fonts) { return "" }
+  return fonts[i]
+}

@@ -1,0 +1,76 @@
+# bytes.ludic - the byte-level helpers the parser and the matcher share
+export function i18n_find(s: string, n: int, from: int, lit: string, m: int) -> int {
+  if m == 0 { return from }
+  var i = from
+  while i + m <= n {
+    if s[i] == lit[0] {
+      var k = 1
+      while k < m and s[i + k] == lit[k] { k += 1 }
+      if k == m { return i }
+    }
+    i += 1
+  }
+  return -1
+}
+
+export function i18n_starts(s: string, p: string) -> bool {
+  let n = len(p)
+  if len(s) < n { return false }
+  for i in 0 .. n { if s[i] != p[i] { return false } }
+  return true
+}
+
+export function i18n_ends(s: string, p: string) -> bool {
+  let n = len(p)
+  let m = len(s)
+  if m < n { return false }
+  for i in 0 .. n { if s[m - n + i] != p[i] { return false } }
+  return true
+}
+
+function blank(s: string) -> bool { return len(s) == 0 }
+
+function trim(s: string) -> string {
+  let n = len(s)
+  var a = 0
+  var b = n
+  while a < n and (s[a] == 32 or s[a] == 9 or s[a] == 13) { a += 1 }
+  while b > a and (s[b - 1] == 32 or s[b - 1] == 9 or s[b - 1] == 13) { b -= 1 }
+  if a == 0 and b == n { return s }
+  return s[a..b]
+}
+
+function lines_of(text: string) -> []string {
+  let r = new []string
+  let n = len(text)
+  var start = 0
+  for i in 0 .. n {
+    if text[i] == 10 {
+      push(r, text[start..i])
+      start = i + 1
+    }
+  }
+  if start < n { push(r, text[start..n]) }
+  return r
+}
+
+# the hole numbers of "{1}" / "{12}" in a string, each seen at i: its number, or -1 and no hole
+function hole_at(s: string, i: int) -> int {
+  let n = len(s)
+  if s[i] != 123 { return -1 }
+  var j = i + 1
+  var num = 0
+  while j < n and s[j] >= 48 and s[j] <= 57 {
+    num = num * 10 + (s[j] - 48)
+    j += 1
+  }
+  if j > i + 1 and j < n and s[j] == 125 { return num }
+  return -1
+}
+
+# where the hole at i ends (one past its closing brace)
+function hole_end(s: string, i: int) -> int {
+  var j = i + 1
+  while s[j] != 125 { j += 1 }
+  return j + 1
+}

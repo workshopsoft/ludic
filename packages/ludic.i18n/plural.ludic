@@ -1,0 +1,74 @@
+# plural.ludic - msgid_plural / msgstr[k], chosen by the file's Plural-Forms. The rules a game meets
+# are named rather than evaluated: one form, n != 1, n > 1 and the three East Slavic forms
+export const PL_NOT_ONE: int = 0     # English, German, Turkish as most files write it
+export const PL_ABOVE_ONE: int = 1   # French, Portuguese (0 and 1 are singular)
+export const PL_ONE_FORM: int = 2    # Japanese, Chinese
+export const PL_SLAVIC: int = 3      # Russian, Ukrainian: one, few, many
+
+function plural_rule_of(h: string) -> int {
+  let k = i18n_find(h, len(h), 0, "plural=", 7)
+  if k < 0 { return PL_NOT_ONE }
+  let e: string = h[k + 7..len(h)]
+  if i18n_find(e, len(e), 0, "n%10", 4) >= 0 or i18n_find(e, len(e), 0, "n % 10", 6) >= 0 { return PL_SLAVIC }
+  if i18n_find(e, len(e), 0, ">", 1) >= 0 { return PL_ABOVE_ONE }
+  if i18n_find(e, len(e), 0, "n", 1) < 0 { return PL_ONE_FORM }
+  return PL_NOT_ONE
+}
+
+export function i18n_plural_rule() -> int { return plural_rule }
+
+# which msgstr[k] a count takes under a rule
+export function i18n_plural_form(rule: int, n: int) -> int {
+  if rule == PL_ONE_FORM { return 0 }
+  if rule == PL_ABOVE_ONE {
+    if n > 1 { return 1 }
+    return 0
+  }
+  if rule == PL_SLAVIC {
+    if n % 10 == 1 and n % 100 != 11 { return 0 }
+    if n % 10 >= 2 and n % 10 <= 4 and (n % 100 < 10 or n % 100 >= 20) { return 1 }
+    return 2
+  }
+  if n != 1 { return 1 }
+  return 0
+}
+
+function plural_add(e: PoEntry) -> void {
+  if len(e.forms) == 0 or blank(e.forms[0]) { return }
+  Dict.set(plural, e.id, len(forms) / 3)
+  for k in 0 .. 3 {
+    if k < len(e.forms) { push(forms, e.forms[k]) } else { push(forms, e.forms[len(e.forms) - 1]) }
+  }
+}
+
+# `one` or `many` by the count, in the language in use, with every {1} the count: Ln("{1} trout",
+# "{1} trout", 3). English (or a line the file lacks) is one for 1 and many otherwise
+export function Ln(one: string, many: string, n: int) -> string {
+  var t = many
+  if n == 1 { t = one }
+  if on {
+    let k = Dict.get_or(plural, one, -1)
+    if k >= 0 {
+      let f = forms[k * 3 + i18n_plural_form(plural_rule, n)]
+      if not blank(f) { t = f }
+    }
+  }
+  return count_in(t, n)
+}
+
+function count_in(t: string, n: int) -> string {
+  let m = len(t)
+  var r = ""
+  var seg = 0
+  var i = 0
+  while i < m {
+    if hole_at(t, i) == 1 {
+      r = r + t[seg..i] + `{n}`
+      i = hole_end(t, i)
+      seg = i
+      continue
+    }
+    i += 1
+  }
+  return r + t[seg..m]
+}

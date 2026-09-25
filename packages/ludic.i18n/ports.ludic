@@ -1,0 +1,24 @@
+# ports.ludic - what the languages ask the game: where a player's own .po files are, a code that
+# overrides the choice (a test in a language), and the overlay's font atlas, which is the game's
+export port I18nWorld {
+  mod_dir: fn() -> string = fn i18n__no_dir                 # "" is no mod folder
+  forced: fn() -> string = fn i18n__no_code                 # "" is the code asked for
+  font_ready: fn() -> bool = fn i18n__no                    # is there an overlay to load a font into
+  set_font: fn(string) -> bool = fn i18n__no_font           # load this atlas directory; false if it could not
+}
+
+function i18n__no_dir() -> string { return "" }
+function i18n__no_code() -> string { return "" }
+function i18n__no() -> bool { return false }
+function i18n__no_font(dir: string) -> bool { return false }
+
+var lang_dir: string = "assets/lang"
+var font_default: string = "assets/kit/font"
+
+# where the shipped languages are (a directory with languages.txt and <code>.po), and the atlas a
+# language with no X-Font draws in
+export function i18n_config(dir: string, default_font: string) -> void {
+  lang_dir = dir
+  font_default = default_font
+  codes = null
+}

@@ -1,0 +1,94 @@
+# po.ludic - a gettext file: msgid / msgid_plural / msgstr / msgstr[k] and their continuation lines;
+# comments, flags and msgctxt are read past
+property PoEntry {
+  id: string = "",
+  plural: string = "",
+  str: string = "",
+  forms: []string
+}
+
+function entry_new() -> PoEntry {
+  let e = new PoEntry
+  e.forms = new []string
+  return e
+}
+
+function entry_put(e: PoEntry, mode: int, s: string) -> void {
+  if mode == 1 { e.id = e.id + s }
+  if mode == 2 { e.str = e.str + s }
+  if mode == 3 { e.plural = e.plural + s }
+  if mode == 4 { e.forms[len(e.forms) - 1] = e.forms[len(e.forms) - 1] + s }
+}
+
+export function i18n_parse(text: string) -> []PoEntry {
+  let r = new []PoEntry
+  let lines = lines_of(text)
+  var mode = 0                           # 1 msgid, 2 msgstr, 3 msgid_plural, 4 msgstr[k]
+  var e: PoEntry = null
+  for li in 0 .. len(lines) {
+    let line = trim(lines[li])
+    if i18n_starts(line, "msgid ") {
+      if e != null { push(r, e) }
+      e = entry_new()
+      e.id = unquote(line, 6)
+      mode = 1
+    } else if e != null and i18n_starts(line, "msgid_plural ") {
+      e.plural = unquote(line, 13)
+      mode = 3
+    } else if e != null and i18n_starts(line, "msgstr[") {
+      push(e.forms, unquote(line, 7))
+      mode = 4
+    } else if e != null and i18n_starts(line, "msgstr ") {
+      e.str = unquote(line, 7)
+      mode = 2
+    } else if len(line) > 0 and line[0] == 34 {
+      if e != null { entry_put(e, mode, unquote(line, 0)) }
+    } else {
+      if e != null and (mode == 2 or mode == 4) {
+        push(r, e)
+        e = null
+      }
+      mode = 0
+    }
+  }
+  if e != null { push(r, e) }
+  return r
+}
+
+# the string whose opening quote is at or after `from`, with \" \\ \n \t undone
+function unquote(line: string, from: int) -> string {
+  let n = len(line)
+  var i = from
+  while i < n and line[i] != 34 { i += 1 }
+  i += 1
+  var seg = i
+  var s = ""
+  while i < n {
+    let c = line[i]
+    if c == 92 and i + 1 < n {
+      if i > seg { s = s + line[seg..i] }
+      let e = line[i + 1]
+      if e == 110 { s = s + "\n" } else if e == 116 { s = s + "\t" } else { s = s + line[i + 1..i + 2] }
+      i += 2
+      seg = i
+      continue
+    }
+    if c == 34 { break }
+    i += 1
+  }
+  if i > seg { s = s + line[seg..i] }
+  return s
+}
+
+# a header field out of the msgstr "" block: "X-Language-Name: Türkçe\n"
+export function i18n_header(text: string, field: string) -> string {
+  var n = len(text)
+  if n > 4000 { n = 4000 }
+  let key = field + ": "
+  let at = i18n_find(text, n, 0, key, len(key))
+  if at < 0 { return "" }
+  let s0 = at + len(key)
+  var e = s0
+  while e < n and text[e] != 92 and text[e] != 34 and text[e] != 10 { e += 1 }
+  return trim(text[s0..e])
+}

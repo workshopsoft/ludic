@@ -19,6 +19,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.effects](ludic.effects/README.md) | timed modifiers that run down in game time (a meal's warmth, a drink's legs) |
 | [ludic.fire](ludic.fire/README.md) | a camp fire: fuel, the rain on it, warmth at a distance, whether it will cook |
 | [ludic.fishing](ludic.fishing/README.md) | a rod at the water: cast, bite, the reel's fight, the landing; species as an open registry |
+| [ludic.i18n](ludic.i18n/README.md) | a game in any language: gettext `.po` files, patterns with holes, plurals, a mod folder, a font per language |
 | [ludic.inventory](ludic.inventory/README.md) | a pack: a count per kind, with room the game decides |
 | [ludic.needs](ludic.needs/README.md) | a body's warmth, food, water and energy, and the countdown to a collapse |
 | [ludic.settings](ludic.settings/README.md) | a game's settings as data: one store, a fact per change, ranges, a safe set |

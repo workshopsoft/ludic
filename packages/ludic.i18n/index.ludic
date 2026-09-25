@@ -1,0 +1,13 @@
+# ludic.i18n - English in the code, every other language a .po looked up at the moment of drawing
+module ludic_i18n uses
+numbers float
+import "ports.ludic"
+import "state.ludic"
+import "bytes.ludic"
+import "po.ludic"
+import "langs.ludic"
+import "use.ludic"
+import "patterns.ludic"
+import "match.ludic"
+import "translate.ludic"
+import "plural.ludic"

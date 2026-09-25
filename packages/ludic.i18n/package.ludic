@@ -1,0 +1,6 @@
+# ludic.i18n - a game in any language from gettext files anyone can add: the English stays in the
+# code, a .po is keyed by the English as drawn, exact lines, patterns with holes, paragraphs a
+# sentence at a time, plurals, a mod folder and a font per language. Uses nothing. See README.md.
+package "ludic.i18n"
+version "0.1.0"
+kind source

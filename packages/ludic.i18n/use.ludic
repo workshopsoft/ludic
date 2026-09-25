@@ -1,0 +1,80 @@
+# use.ludic - choosing a language: its file loaded into the lookups, and the font atlas it names
+export function i18n_use(code: string) -> void {
+  if codes == null { i18n_init() }
+  on = false
+  cur = "en"
+  var k = i18n_index(code)
+  let forced = I18nWorld.forced()
+  if len(forced) > 0 { k = i18n_index(forced) }
+  var font = ""
+  if k > 0 {
+    let text = Fs.read_text(paths[k])
+    if text != null {
+      i18n_load_text(text)
+      on = true
+      cur = codes[k]
+      font = fonts[k]
+    }
+  }
+  # the atlas follows the language, and is only reloaded when it actually changes
+  if len(font) == 0 { font = font_default }
+  if I18nWorld.font_ready() and not (font == font_now) {
+    if I18nWorld.set_font(font) { font_now = font } else if not (font_now == font_default) {
+      I18nWorld.set_font(font_default)
+      font_now = font_default
+    }
+  }
+}
+
+# a .po's text as the lookups, whatever the language is called (a test, a file from elsewhere)
+export function i18n_load_text(text: string) -> void {
+  let es = i18n_parse(text)
+  exact = Dict.new()
+  out = new []string
+  cache = Dict.new()
+  cache_out = new []string
+  caps = new []string
+  for c in 0 .. CAPS { push(caps, "") }
+  plural = Dict.new()
+  forms = new []string
+  plural_rule = plural_rule_of(i18n_header(text, "Plural-Forms"))
+  var np = 0
+  var nlit = 0
+  for i in 0 .. len(es) {
+    if blank(es[i].id) or blank(es[i].str) { continue }
+    let h = holes(es[i].id)
+    if h > 0 {
+      np += 1
+      nlit += h + 1
+    }
+  }
+  pat_out = new []string
+  lits = new []string
+  pat_l0 = words(np + 1)
+  pat_nl = words(np + 1)
+  pat_sc = words(np + 1)
+  pat_ph = words(nlit + 1)
+  nx_p = words(np + 1)
+  nx_s = words(np + 1)
+  nx_g = words(np + 1)
+  pfx = Dict.new()
+  sfx = Dict.new()
+  gen_head = 0
+  pat_n = 0
+  for i in 0 .. len(es) {
+    let e = es[i]
+    if len(e.plural) > 0 { plural_add(e) } else if not (blank(e.id) or blank(e.str)) {
+      if holes(e.id) > 0 { add_pattern(e.id, e.str) } else {
+        Dict.set(exact, e.id, len(out))
+        push(out, e.str)
+      }
+    }
+  }
+  on = true
+}
+
+# English again: nothing loaded, nothing translated
+export function i18n_off() -> void {
+  on = false
+  cur = "en"
+}
