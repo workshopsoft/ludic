@@ -1,0 +1,25 @@
+# testing_generic.ludic — a test block is checked like `entry`, so a generic function called from
+# one is made real for its type arguments there, as it is from any function. Its runner prints:
+#   == 2 passed, 0 failed ==
+program TestingGeneric {
+  property Box<T> { items: []T = null }
+  function box_new<T>() -> Box<T> {
+    let b = new Box<T>
+    b.items = new []T
+    return b
+  }
+  function box_push<T>(b: Box<T>, v: T) -> void {
+    push(b.items, v)
+  }
+  test "a generic call in a test" {
+    let b: Box<int> = box_new()
+    box_push(b, 4)
+    box_push(b, 5)
+    expect_eq(len(b.items), 2)
+  }
+  test "another instance of it" {
+    let b: Box<string> = box_new()
+    box_push(b, "trout")
+    expect(b.items[0] == "trout")
+  }
+}

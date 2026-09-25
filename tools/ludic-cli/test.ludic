@@ -713,6 +713,7 @@ function cmd_dev_test() -> int {
   controller_case("library/combat_kit", "xxxxxxxxxxxx", "6846 153196 31 107110 6000 5002 1 80 97 11 10 700 110", "combat_kit.ludic (Dash, Melee + MeleeHit, build stats in Combat.damage + Crit, Stats.add, Dungeon arena / exits / entry points, Prefs.max)")
   controller_case("games/rpg_demo", "", "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1", "rpg_demo.ludic (ludic.rpg #59 all 7 modules: grid move+veto+interact, inventory+equip, crafting, quests, dialog graph, sokoban+signal gate, poison status)")
   spec_case("library/testing", "== 6 passed, 0 failed ==")
+  spec_case("library/testing_generic", "== 2 passed, 0 failed ==")
   spec_case("library/coverage", "== 3 passed, 0 failed ==")
   feat_case("library/errors", "", "5 10 0 7 1", "errors.ludic (assert guards an invariant, holds -> runs to the end; issue #8 success path)")
   feat_case("library/recover", "", "2600 100 1 1 42 7", "recover.ludic (try/else recovers a result value + fallback, error binding, is_ok/is_err; issue #46)")
