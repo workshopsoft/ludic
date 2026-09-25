@@ -1,0 +1,8 @@
+# L3: two modules that both export an event of one name clash
+import "exported_events/a"
+import "exported_events/b"
+program ExportedEvents {
+  entry {
+    print(0)
+  }
+}

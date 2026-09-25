@@ -112,9 +112,16 @@ may share its spelling with a name in another module, in a file in no module, or
 runtime: `shop` and `weather` may each have a private `seed`, and each module's code reaches its
 own (a local of the same name still shadows it). There is no need to prefix a package's privates.
 Exported names are one namespace across the program, so two modules that both `export function
-seed` are still refused (`function 'seed' is defined twice`); and records and events - private or
-not - still share one namespace. Where two names meet, the private one is compiled under its
-module's name (`seed$shop`), which is the spelling a message about it may show.
+seed` are still refused (`function 'seed' is defined twice`). Where two names meet, the private
+one is compiled under its module's name (`seed$shop`), which is the spelling a message about it may
+show.
+
+The same holds for a `property` and an `event`: `fishing` and `hunting` may each have a private
+`Catch` record and a private `Landed` event with different fields, and each module's types, `new`,
+`emit` and `@On` reach its own (compiled as `Catch__fishing`). Two exported ones of one spelling are
+refused (`'Catch' is defined twice`, `event 'Landed' is defined twice`). Three kinds of record stay
+one namespace, because other code names them by spelling: a generic record, a property that is an
+entity's component (a `model` names it), and the record a component or a view generates.
 
 To move an existing codebase onto modules, build it once with `LUDIC_VIS_REPORT=1`: every
 reference that would be refused is printed as `vis: <file>:<line>: <module>.<name> used from

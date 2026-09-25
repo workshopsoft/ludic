@@ -1,0 +1,5 @@
+# a/index.ludic - exports Catch
+module a
+export property Catch {
+  fish: int = 0
+}

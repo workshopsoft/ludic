@@ -1,0 +1,9 @@
+# L3: two modules that both export a record of one name clash
+import "exported_kinds/a"
+import "exported_kinds/b"
+program ExportedKinds {
+  entry {
+    let c = new Catch
+    print(0)
+  }
+}

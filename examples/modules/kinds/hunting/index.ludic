@@ -1,0 +1,15 @@
+# hunting/index.ludic - a Catch and a Landed of its own, with other fields
+module hunting
+property Catch {
+  name: string = ""
+  weight: float = 0.0
+}
+event Landed { name: string }
+var heard: string = ""
+@On(Landed) handler Hear { heard = heard + name }
+export function hunting_day() -> string {
+  let c = new Catch
+  c.name = "hare"
+  emit Landed(name: c.name)
+  return heard
+}

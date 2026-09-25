@@ -4,7 +4,7 @@
 # (`sp_seed` in module shop becomes `sp_seed$shop`), and so is every reference to it written in that
 # module that no local shadows. Exported and public names stay one namespace, so a clash between two
 # of those is still the error it was. Nothing is renamed when nothing clashes, so a program with no
-# clash compiles exactly as before. Records and events still share one namespace.
+# clash compiles exactly as before. Records and events: privates_types.ludic.
 var g_rn_mod: []pointer = new []pointer
 var g_rn_old: []pointer = new []pointer
 var g_rn_new: []pointer = new []pointer
@@ -107,8 +107,8 @@ function privates_rename() -> void {
     }
     a = b
   }
-  if len(g_rn_old) == 0 { return }
-  priv_apply()
+  if len(g_rn_old) > 0 { priv_apply() }
+  privates_types()                               # records and events (privates_types.ludic)
 }
 # the rename for a reference to `s` written in file `f`, or null
 function priv_find(s: pointer, f: pointer, want_fn: int) -> pointer {

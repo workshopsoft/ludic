@@ -1,0 +1,5 @@
+# b/index.ludic - exports Catch too: exported records are one namespace
+module b
+export property Catch {
+  name: string = ""
+}

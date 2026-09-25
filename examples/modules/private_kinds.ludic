@@ -1,0 +1,12 @@
+# private_kinds.ludic — L3: a module's private records and events are its own too. fishing and
+# hunting each have a record Catch and an event Landed, with different fields; each module's `new`,
+# types, `emit` and `@On` reach its own.
+#
+# Running it prints:  7 hare
+import "kinds/fishing"
+import "kinds/hunting"
+program PrivateKinds {
+  entry {
+    print(`{fishing_day()} {hunting_day()}`)
+  }
+}

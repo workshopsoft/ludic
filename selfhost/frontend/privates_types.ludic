@@ -1,0 +1,231 @@
+# privates_types.ludic — L3: a module's private records and events are its own too. A `property`
+# or an `event` a module does not export may share its spelling with another module's (or the
+# runtime's): where two meet, each private one is renamed for its module (`Catch` in module fishing
+# becomes `Catch__fishing`), and so is every use written in that module - a type in a signature, a
+# field, a `let`, a `new`, an `emit` and an `@On`. Exported ones stay one namespace. Three kinds are
+# left global, because other code names them by spelling: a generic record, a property that is an
+# entity's component (named by a model), and a component's or a view's generated record.
+var g_rt_mod: []pointer = new []pointer      # records
+var g_rt_old: []pointer = new []pointer
+var g_rt_new: []pointer = new []pointer
+var g_re_mod: []pointer = new []pointer      # events
+var g_re_old: []pointer = new []pointer
+var g_re_new: []pointer = new []pointer
+
+function pt_in(xs: []pointer, s: pointer) -> bool {
+  if xs == null { return false }
+  var i = 0
+  while i < len(xs) {
+    if (xs[i] == s) { return true }
+    i += 1
+  }
+  return false
+}
+# a record other code names by spelling: an entity's component, a generic's argument, a UI class
+function pt_pinned(d: Node) -> bool {
+  if d.tps != null { return true }
+  if pt_in(g_cm_name, d.s) or pt_in(g_vw_name, d.s) { return true }
+  var i = 0
+  while i < len(g_gi_args) {
+    if has_sub(`|{g_gi_args[i]}|`, `|{d.s}|`) or has_sub(g_gi_args[i], `<{d.s}`) { return true }
+    i += 1
+  }
+  i = 0
+  while i < len(prog) {
+    let a = prog[i]
+    if a.kind == N_ARCH {
+      var k = 0
+      while k < len(a.kids) {
+        if (a.kids[k].s == d.s) { return true }
+        k += 1
+      }
+    }
+    i += 1
+  }
+  return false
+}
+function pt_is_record(k: int) -> bool { return k == N_COMP or k == N_STRUCT }
+# records: every private one whose spelling another module (or the runtime) also declares
+function pt_records() -> void {
+  var i = 0
+  while i < g_prog_user_end and i < len(prog) {
+    let d = prog[i]
+    let m = module_of(d.file)
+    if pt_is_record(d.kind) and d.vis != 1 and not (m == "") and d.s != null {
+      var other = false
+      var j = 0
+      while j < len(prog) and not other {
+        let o = prog[j]
+        if j != i and pt_is_record(o.kind) and (o.s == d.s) and not (priv_mod(j) == m) { other = true }
+        j += 1
+      }
+      if other and not pt_pinned(d) {
+        push(g_rt_mod, m)
+        push(g_rt_old, d.s)
+        push(g_rt_new, `{d.s}__{m}`)
+      }
+    }
+    i += 1
+  }
+}
+function pt_events() -> void {
+  var i = 0
+  while i < len(g_events) {
+    let d = g_events[i]
+    var m: pointer = ""
+    if d.file != null { m = module_of(d.file) }
+    if d.vis != 1 and not (m == "") {
+      var other = false
+      var j = 0
+      while j < len(g_events) {
+        let o = g_events[j]
+        var om: pointer = ""
+        if o.file != null { om = module_of(o.file) }
+        if j != i and (o.s == d.s) and not (om == m) { other = true }
+        j += 1
+      }
+      if other {
+        push(g_re_mod, m)
+        push(g_re_old, d.s)
+        push(g_re_new, `{d.s}__{m}`)
+      }
+    }
+    i += 1
+  }
+}
+function pt_id_ch(c: int) -> bool {
+  return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_'
+}
+# `t` with every whole name `old` in it made `new` ("[]Catch" -> "[]Catch__fishing")
+function pt_rewrite(t: pointer, old: pointer, nw: pointer) -> pointer {
+  if not has_sub(t, old) { return t }
+  var out: pointer = ""
+  var a = 0
+  var i = 0
+  let n = len(t)
+  while i <= n {
+    if i == n or not pt_id_ch(t[i]) {
+      if i > a and (t[a .. i] == old) { out = out + nw } else { out = out + t[a .. i] }
+      if i < n { out = out + t[i .. i + 1] }
+      a = i + 1
+    }
+    i += 1
+  }
+  return out
+}
+# a type text written in file `f`, with its module's private records renamed
+function pt_ty(t: pointer, f: pointer) -> pointer {
+  if t == null or f == null { return t }
+  var out = t
+  var m: pointer = null
+  var k = 0
+  while k < len(g_rt_old) {
+    if has_sub(out, g_rt_old[k]) {
+      if m == null { m = module_of(f) }
+      if (m == g_rt_mod[k]) { out = pt_rewrite(out, g_rt_old[k], g_rt_new[k]) }
+    }
+    k += 1
+  }
+  return out
+}
+function pt_event(s: pointer, f: pointer) -> pointer {
+  if s == null or f == null { return s }
+  var k = 0
+  while k < len(g_re_old) {
+    if (g_re_old[k] == s) and (module_of(f) == g_re_mod[k]) { return g_re_new[k] }
+    k += 1
+  }
+  return s
+}
+function pt_walk(n: Node) -> void {
+  if n == null { return }
+  if n.ty != null and len(g_rt_old) > 0 { n.ty = pt_ty(n.ty, n.file) }
+  if n.kind == E_NEW and n.s != null and len(g_rt_old) > 0 { n.s = pt_ty(n.s, n.file) }
+  if n.kind == S_EMIT and len(g_re_old) > 0 { n.s = pt_event(n.s, n.file) }
+  pt_walk(n.a)
+  pt_walk(n.b)
+  pt_walk(n.c)
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) {
+      pt_walk(n.kids[i])
+      i += 1
+    }
+  }
+}
+function pt_walk_all(xs: []Node) -> void {
+  if xs == null { return }
+  var i = 0
+  while i < len(xs) {
+    pt_walk(xs[i])
+    i += 1
+  }
+}
+function pt_apply() -> void {
+  var i = 0
+  while i < g_prog_user_end and i < len(prog) {
+    let d = prog[i]
+    if pt_is_record(d.kind) and d.vis != 1 and d.s != null {
+      var k = 0
+      while k < len(g_rt_old) {
+        if (g_rt_old[k] == d.s) and (module_of(d.file) == g_rt_mod[k]) {
+          d.s = g_rt_new[k]
+          k = len(g_rt_old)
+        }
+        k += 1
+      }
+    }
+    i += 1
+  }
+  i = 0
+  while i < len(g_events) {
+    let e = g_events[i]
+    if e.vis != 1 { e.s = pt_event(e.s, e.file) }
+    i += 1
+  }
+  i = 0
+  while i < g_prog_user_end and i < len(prog) {
+    pt_walk(prog[i])
+    i += 1
+  }
+  pt_walk_all(g_tests)
+  pt_walk_all(g_onlisten)
+  pt_walk_all(g_onspawn)
+  pt_walk_all(g_ondespawn)
+  pt_walk_all(g_onattach)
+  pt_walk_all(g_ondetach)
+  pt_walk_all(g_onenable)
+  pt_walk_all(g_ondisable)
+  pt_walk_all(g_computed)
+  pt_walk_all(g_scenes)
+  pt_walk_all(g_events)
+  # an @On listener names its event by spelling, in the listener's own file
+  i = 0
+  while i < len(g_onlisten) {
+    g_onlisten[i].s = pt_event(g_onlisten[i].s, g_onlisten[i].file)
+    i += 1
+  }
+}
+# two events of one spelling left after the renaming are two exports (or two in no module): an error,
+# where it used to be the first one silently taking the other's emits
+function pt_events_twice() -> void {
+  var i = 0
+  while i < len(g_events) {
+    var j = i + 1
+    while j < len(g_events) {
+      if (g_events[j].s == g_events[i].s) and g_events[j].file != null {
+        g_err_file = g_events[j].file
+        g_err_line = g_events[j].line
+        perr(`event '{g_events[i].s}' is defined twice (first in {g_events[i].file}:{itoa(g_events[i].line)})`)
+      }
+      j += 1
+    }
+    i += 1
+  }
+}
+function privates_types() -> void {
+  pt_records()
+  pt_events()
+  if len(g_rt_old) > 0 or len(g_re_old) > 0 { pt_apply() }
+  pt_events_twice()
+}
