@@ -1,0 +1,6 @@
+# ludic.update - a Velopack game updating itself: the newest version and its notes, then the feed,
+# the delta chain or the full package, the download with its bar, the hash, the patch and the
+# apply. Uses ludic.base and nothing else. See README.md.
+package "ludic.update"
+version "0.1.0"
+kind source

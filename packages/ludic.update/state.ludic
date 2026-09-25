@@ -1,0 +1,97 @@
+# state.ludic - the config, the states, the errors, the facts, and the plan being carried out
+# what the game says about itself and where its releases are
+export property UpdateConfig {
+  feed: string = ""           # the release bucket: <feed>/latest.json, <feed>/releases.<os>.json
+  app_id: string = ""         # Velopack's pack id (MaroonLake)
+  version: string = ""        # this build's version
+  latest: string = "latest.json"
+  root: string = ""           # Velopack's root outright (a stand-in, for a test); "" from the executable
+  packages: string = ""       # where packages go outright; "" is <root>/packages, or mac_packages
+  mac_packages: string = ""   # on macOS: outside the bundle, which apply replaces
+  scratch: string = ""        # where a hash is written (unset: the temp directory)
+}
+
+# the newest version, asked of latest.json
+export const UPDATE_ASK_IDLE: int = 0
+export const UPDATE_ASKING: int = 1
+export const UPDATE_NONE: int = 2       # up to date, or the network said nothing useful
+export const UPDATE_NEWER: int = 3
+export const UPDATE_CURRENT: int = 4    # the newest is this version: its notes are "what's new"
+
+# the install
+export const UPDATE_IDLE: int = 0
+export const UPDATE_FEED: int = 1
+export const UPDATE_FETCH: int = 2
+export const UPDATE_CHECK: int = 3
+export const UPDATE_PATCH: int = 4
+export const UPDATE_APPLY: int = 5
+export const UPDATE_FAILED: int = 6
+
+# why it stopped; the game words it (update_error_file / _version say which)
+export const UPDATE_ERR_NONE: int = 0
+export const UPDATE_ERR_UNREACHABLE: int = 1   # the feed or a package could not be asked for
+export const UPDATE_ERR_NOTHING: int = 2       # nothing newer to install
+export const UPDATE_ERR_DOWNLOAD: int = 3      # a package did not download
+export const UPDATE_ERR_CORRUPT: int = 4       # its hash was wrong; it is deleted
+export const UPDATE_ERR_CHECK: int = 5         # the hash could not be started
+export const UPDATE_ERR_PATCH_START: int = 6
+export const UPDATE_ERR_PATCH: int = 7
+export const UPDATE_ERR_APPLY: int = 8
+export const UPDATE_ERR_NOT_INSTALLED: int = 9 # not installed by Velopack: nothing to update in place
+
+export const UPDATE_STARTED: int = 0    # a plan was made (target, packages, bytes)
+export const UPDATE_STOPPED: int = 1    # it failed (error)
+export const UPDATE_APPLYING: int = 2   # apply is running: the game must exit now (target)
+
+export property UpdateFact {
+  what: int = 0
+  error: int = 0
+  target: string = ""
+  packages: int = 0
+  bytes: int = 0
+}
+
+var update__cfg: UpdateConfig = null
+var update__state: int = 0
+var update__err: int = 0
+var update__h: int = -1               # the request
+var update__proc: int = -1            # the child process
+var update__target: string = ""
+var update__files: []string = null    # the plan: file names, hashes, sizes, delta or not, versions
+var update__sha: []string = null
+var update__size: []int = null
+var update__delta: []bool = null
+var update__ver: []string = null
+var update__full: []string = null     # what the feed calls the FULL package of that version
+var update__i: int = 0
+var update__done_bytes: int = 0
+var update__total_bytes: int = 0
+var update__old: string = ""          # the full package the next delta patches
+var update__package: string = ""      # what apply installs
+var update__step_t0: int = 0          # when a check or a patch began, ms
+var update__rate: int = 0             # bytes a second, eased
+var update__rate_t: int = -1
+var update__rate_bytes: int = 0
+var update__facts: Queue<UpdateFact> = null
+
+export function update_config(c: UpdateConfig) -> void { update__cfg = c }
+
+function update__conf() -> UpdateConfig {
+  if update__cfg == null { update__cfg = new UpdateConfig }
+  return update__cfg
+}
+
+export function update_facts() -> Queue<UpdateFact> {
+  if update__facts == null { update__facts = queue_new("update.facts") }
+  return update__facts
+}
+
+function update__fact(what: int) -> void {
+  let f = new UpdateFact
+  f.what = what
+  f.error = update__err
+  f.target = update__target
+  f.packages = update_package_count()
+  f.bytes = update__total_bytes
+  q_push(update_facts(), f)
+}

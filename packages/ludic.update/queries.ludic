@@ -1,0 +1,70 @@
+# queries.ludic - what a panel draws: the step, the bar, the pace, and why it stopped
+export function update_state() -> int { return update__state }
+export function update_error() -> int { return update__err }
+export function update_busy() -> bool { return update__state != UPDATE_IDLE and update__state != UPDATE_FAILED }
+export function update_failed() -> bool { return update__state == UPDATE_FAILED }
+
+# checking and patching have no fraction to give: a panel's bar sweeps instead of filling
+export function update_working() -> bool { return update__state == UPDATE_CHECK or update__state == UPDATE_PATCH }
+
+# the package being fetched, checked or patched (0-based), its name, size and version
+export function update_index() -> int { return update__i }
+
+export function update_file() -> string {
+  if update__files == null or update__i >= len(update__files) { return "" }
+  return update__files[update__i]
+}
+
+export function update_file_size() -> int {
+  if update__size == null or update__i >= len(update__size) { return 0 }
+  return update__size[update__i]
+}
+
+export function update_version_at() -> string {
+  if update__ver == null or update__i >= len(update__ver) { return "" }
+  return update__ver[update__i]
+}
+
+# bytes of the package in flight, and of the whole plan
+export function update_file_received() -> int {
+  if update__state != UPDATE_FETCH or update__h < 0 { return 0 }
+  return UpdateNet.received(update__h)
+}
+
+export function update_received() -> int { return update__done_bytes + update_file_received() }
+
+# how far, 0..1000, over every byte of the plan (the file being checked counts as fetched)
+export function update_progress() -> int {
+  if update__total_bytes <= 0 { return 0 }
+  var got = update__done_bytes
+  if update__state == UPDATE_FETCH { got = update_received() }
+  if update__state == UPDATE_CHECK { got = update__done_bytes + update__size[update__i] }
+  return min(1000, got / max(1, update__total_bytes / 1000))
+}
+
+# seconds a check or a patch has been running
+export function update_step_seconds() -> int { return (UpdateWorld.now_ms() - update__step_t0) / 1000 }
+
+# seconds left at the eased pace; -1 until the pace is known
+export function update_eta_seconds() -> int {
+  if update__state != UPDATE_FETCH or update__rate <= 0 { return -1 }
+  return (update__total_bytes - update_received()) / update__rate + 1
+}
+
+# every half second: the pace, eased so the estimate does not jump
+function update__rate_tick() -> void {
+  if update__state != UPDATE_FETCH { return }
+  let now = UpdateWorld.now_ms()
+  let got = update_received()
+  if update__rate_t < 0 {
+    update__rate_t = now
+    update__rate_bytes = got
+    return
+  }
+  let ms = now - update__rate_t
+  if ms < 500 { return }
+  let per_s = (got - update__rate_bytes) / ms * 1000
+  if update__rate == 0 { update__rate = per_s } else { update__rate = (update__rate * 3 + per_s) / 4 }
+  update__rate_t = now
+  update__rate_bytes = got
+}

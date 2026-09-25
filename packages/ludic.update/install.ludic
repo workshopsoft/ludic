@@ -1,0 +1,98 @@
+# install.ludic - where Velopack put this copy: its root, its packages, its updater, and whether
+# it is an install at all. Windows: <root>\Update.exe, <root>\current\<game>.exe, <root>\packages.
+# macOS: the .app IS the install and UpdateMac sits beside the binary in Contents/MacOS.
+# "0.10.2" beats "0.9.9": compared a number at a time, not as text
+export function update_newer(a: string, b: string) -> bool {
+  let pa = Text.split(a, ".")
+  let pb = Text.split(b, ".")
+  for i in 0 .. 3 {
+    var x = 0
+    var y = 0
+    if i < len(pa) { x = Text.to_int(pa[i]) }
+    if i < len(pb) { y = Text.to_int(pb[i]) }
+    if x != y { return x > y }
+  }
+  return false
+}
+
+# Velopack runs the game with --veloapp-install / -updated / -obsolete / -uninstall and kills it if
+# it is still running 15-30 s later: a game that sees one exits at once
+export function update_is_install_hook() -> bool {
+  let a = Os.args()
+  for i in 1 .. len(a) {
+    let s = a[i]
+    if len(s) >= 10 { if s[0..10] == "--veloapp-" { return true } }
+  }
+  return false
+}
+
+function update__mac() -> bool { return UpdateWorld.platform() == "macos" }
+
+function update__sep() -> string {
+  if UpdateWorld.platform() == "windows" { return "\\" }
+  return "/"
+}
+
+# the directory above p, with no ".." left in it (UpdateMac is handed it as its root)
+function update__up(p: string) -> string {
+  var cut = -1
+  for i in 0 .. len(p) { if p[i..i + 1] == "/" or p[i..i + 1] == "\\" { cut = i } }
+  if cut < 0 { return "." }
+  return p[0..cut]
+}
+
+# the executable's directory
+export function update_dir() -> string { return update__up(UpdateWorld.exe()) }
+
+export function update_root() -> string {
+  let c = update__conf()
+  if len(c.root) > 0 { return c.root }
+  if update__mac() { return update__up(update__up(update_dir())) }
+  return update_dir() + "\\.."
+}
+
+# where the packages live: never inside a macOS bundle, which is read-only and which apply replaces
+export function update_packages() -> string {
+  let c = update__conf()
+  if len(c.packages) > 0 { return c.packages }
+  if update__mac() and len(c.mac_packages) > 0 { return c.mac_packages }
+  return update_root() + update__sep() + "packages"
+}
+
+function update__feed_file() -> string {
+  if update__mac() { return "releases.osx.json" }
+  return "releases.win.json"
+}
+
+function update__updater() -> string {
+  if update__mac() { return update_root() + "/Contents/MacOS/UpdateMac" }
+  return update_root() + update__sep() + "Update.exe"
+}
+
+# A quarantined Mac app still where it was downloaded runs from a read-only /AppTranslocation/
+# image that vanishes when it exits: nothing there can be updated in place
+export function update_translocated() -> bool {
+  return update__mac() and Text.contains(UpdateWorld.exe(), "/AppTranslocation/")
+}
+
+# can this copy update itself? A copy Velopack did not install downloads the game again instead.
+export function update_installed() -> bool {
+  if len(update__conf().root) > 0 { return true }
+  if update_translocated() { return false }
+  if update__mac() { return Fs.exists(update_dir() + "/UpdateMac") }
+  return Fs.exists(update_dir() + "/../Update.exe")
+}
+
+# a page in the player's browser (the site, the changelog)
+export function update_open(url: string) -> void {
+  if update__mac() { System.run(`open "{url}"`) } else { System.run(`cmd /c start "" "{url}"`) }
+}
+
+# a path inside a PowerShell single-quoted string: a quote is written twice
+function update__psq(p: string) -> string { return "'" + Text.replace(p, "'", "''") + "'" }
+
+function update__powershell() -> string {
+  var root = "C:\\Windows"
+  if Os.has_env("SystemRoot") and len(Os.env("SystemRoot")) > 0 { root = Os.env("SystemRoot") }
+  return root + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+}

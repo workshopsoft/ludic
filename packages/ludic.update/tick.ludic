@@ -1,0 +1,117 @@
+# tick.ludic - once a frame while an update runs: whatever the step waits on, and the next step
+export function update_tick() -> void {
+  update__rate_tick()
+  if update__state == UPDATE_FEED { update__feed_tick() }
+  else if update__state == UPDATE_FETCH { update__fetch_tick() }
+  else if update__state == UPDATE_CHECK { update__check_tick() }
+  else if update__state == UPDATE_PATCH { update__patch_tick() }
+}
+
+function update__feed_tick() -> void {
+  let st = UpdateNet.poll(update__h)
+  if st < 0 { return }
+  var feed: Val = null
+  if st > 0 { feed = Json.parse(UpdateNet.text(update__h)) }
+  UpdateNet.free(update__h)
+  update__h = -1
+  if feed == null {
+    update__fail(UPDATE_ERR_UNREACHABLE)
+    return
+  }
+  if not update_plan(feed) {
+    update__fail(UPDATE_ERR_NOTHING)
+    return
+  }
+  update__fact(UPDATE_STARTED)
+  update__fetch(0)
+}
+
+function update__fetch_tick() -> void {
+  let st = UpdateNet.poll(update__h)
+  if st < 0 { return }
+  UpdateNet.free(update__h)
+  update__h = -1
+  if st == 0 {
+    Fs.remove(update__path(update__i))
+    update__fail(UPDATE_ERR_DOWNLOAD)
+    return
+  }
+  update__check(update__i)
+}
+
+# a package rebuilt from deltas is not compared with the full one's hash: patch re-assembles the
+# archive, so the same files come out as different bytes
+function update__check_tick() -> void {
+  let code = UpdateProc.poll(update__proc)
+  if code < 0 { return }
+  UpdateProc.free(update__proc)
+  update__proc = -1
+  if code != 0 or update__hash_read() != Text.upper(update__sha[update__i]) {
+    Fs.remove(update__path(update__i))
+    update__fail(UPDATE_ERR_CORRUPT)
+    return
+  }
+  update__done_bytes += update__size[update__i]
+  if update__delta[update__i] { update__patch(update__i) } else { update__apply(update__path(update__i)) }
+}
+
+function update__patch(i: int) -> void {
+  let out = update_packages() + update__sep() + update__full[i]
+  if Fs.exists(out) { Fs.remove(out) }
+  let args = new []string
+  push(args, "patch")
+  push(args, "--silent")
+  push(args, "--old")
+  push(args, update__old)
+  push(args, "--delta")
+  push(args, update__path(i))
+  push(args, "--output")
+  push(args, out)
+  update__proc = UpdateProc.spawn(update__updater(), args)
+  if update__proc < 0 {
+    update__fail(UPDATE_ERR_PATCH_START)
+    return
+  }
+  update__old = out
+  update__state = UPDATE_PATCH
+  update__step_t0 = UpdateWorld.now_ms()
+}
+
+function update__patch_tick() -> void {
+  let code = UpdateProc.poll(update__proc)
+  if code < 0 { return }
+  UpdateProc.free(update__proc)
+  update__proc = -1
+  if code != 0 or not Fs.exists(update__old) {
+    update__fail(UPDATE_ERR_PATCH)
+    return
+  }
+  if update__i + 1 < len(update__files) { update__fetch(update__i + 1) } else { update__apply(update__old) }
+}
+
+# Velopack waits for this process to be gone, swaps the install and starts the new version; the
+# game hears UPDATE_APPLYING and exits. On macOS neither the root nor the packages are where
+# UpdateMac would look, so both are named.
+function update__apply(package: string) -> void {
+  update__package = package
+  let args = new []string
+  push(args, "apply")
+  push(args, "--silent")
+  push(args, "--waitPid")
+  push(args, `{UpdateWorld.pid()}`)
+  push(args, "--package")
+  push(args, package)
+  if update__mac() {
+    push(args, "--rootDir")
+    push(args, update_root())
+    push(args, "--packageDir")
+    push(args, update_packages())
+  }
+  update__proc = UpdateProc.spawn(update__updater(), args)
+  if update__proc < 0 {
+    update__fail(UPDATE_ERR_APPLY)
+    return
+  }
+  update__state = UPDATE_APPLY
+  update__fact(UPDATE_APPLYING)
+}

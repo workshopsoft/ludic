@@ -1,0 +1,82 @@
+# plan.ludic - the smallest way from this version to the newest, from Velopack's feed: the chain of
+# deltas when the installed full package is on disk, no delta is missing and they weigh less than
+# the full one; the newest full package otherwise
+property UpdateAsset {
+  ver: string = ""
+  file: string = ""
+  sha: string = ""
+  size: int = 0
+  delta: bool = false
+}
+
+# this app's packages in the feed ({"Assets": [{PackageId, Version, Type, FileName, SHA256, Size}]})
+function update__assets(feed: Val) -> []UpdateAsset {
+  let out = new []UpdateAsset
+  if feed == null or Value.kind(feed) != 6 or Value.has(feed, "Assets") == 0 { return out }
+  let all = Value.get(feed, "Assets")
+  for i in 0 .. Value.count(all) {
+    let a = Value.at(all, i)
+    if sv_str(a, "PackageId", "") != update__conf().app_id { continue }
+    let x = new UpdateAsset
+    x.ver = sv_str(a, "Version", "")
+    x.file = sv_str(a, "FileName", "")
+    x.sha = sv_str(a, "SHA256", "")
+    x.size = sv_int(a, "Size", 0)
+    x.delta = sv_str(a, "Type", "") == "Delta"
+    push(out, x)
+  }
+  return out
+}
+
+# What the feed calls the FULL package of version v. Never built here: Velopack puts the channel in
+# a macOS name (App-0.3.4-osx-full.nupkg) and not a Windows one, and it is both the name a patch
+# writes and the name the next update looks for as its base.
+function update__full_name(as: []UpdateAsset, v: string) -> string {
+  for i in 0 .. len(as) { if not as[i].delta and as[i].ver == v { return as[i].file } }
+  return update__conf().app_id + "-" + v + "-full.nupkg"
+}
+
+function update__newest_full(as: []UpdateAsset) -> int {
+  var best = -1
+  for i in 0 .. len(as) {
+    if as[i].delta { continue }
+    if best < 0 or update_newer(as[i].ver, as[best].ver) { best = i }
+  }
+  return best
+}
+
+# the deltas above this version up to the newest, oldest first
+function update__chain(as: []UpdateAsset, newest: string) -> []UpdateAsset {
+  let out = new []UpdateAsset
+  let mine = update__conf().version
+  for i in 0 .. len(as) {
+    let a = as[i]
+    if not a.delta or not update_newer(a.ver, mine) or update_newer(a.ver, newest) { continue }
+    var at = len(out)
+    while at > 0 and update_newer(out[at - 1].ver, a.ver) { at -= 1 }
+    push(out, a)
+    var k = len(out) - 1
+    while k > at {
+      out[k] = out[k - 1]
+      k -= 1
+    }
+    out[at] = a
+  }
+  return out
+}
+
+function update__fulls_after(as: []UpdateAsset) -> int {
+  var n = 0
+  for i in 0 .. len(as) { if not as[i].delta and update_newer(as[i].ver, update__conf().version) { n += 1 } }
+  return n
+}
+
+function update__plan_add(a: UpdateAsset, full: string) -> void {
+  push(update__files, a.file)
+  push(update__sha, a.sha)
+  push(update__size, a.size)
+  push(update__delta, a.delta)
+  push(update__ver, a.ver)
+  push(update__full, full)
+  update__total_bytes += a.size
+}

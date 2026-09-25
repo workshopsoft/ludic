@@ -1,0 +1,60 @@
+# ports.ludic - what the update asks, and the runtime's answers when the game leaves it unbound
+# the machine: its platform ("windows", "macos"), this executable, this process, a clock
+export port UpdateWorld {
+  platform: fn() -> string = fn update__os_platform
+  exe: fn() -> string = fn update__os_exe
+  pid: fn() -> int = fn update__os_pid
+  now_ms: fn() -> int = fn update__os_ms
+}
+
+# requests: get asks for text, download streams to a path; poll is -1 pending, 0 failed, 1 ok
+export port UpdateNet {
+  get: fn(string) -> int = fn update__http_get
+  download: fn(string, string) -> int = fn update__http_download
+  poll: fn(int) -> int = fn update__http_poll
+  text: fn(int) -> string = fn update__http_text
+  received: fn(int) -> int = fn update__http_received
+  free: fn(int) -> void = fn update__http_free
+}
+
+# children: the hash and Velopack's updater; poll is -1 running, else the exit code
+export port UpdateProc {
+  spawn: fn(string, []string) -> int = fn update__proc_spawn
+  poll: fn(int) -> int = fn update__proc_poll
+  free: fn(int) -> void = fn update__proc_free
+}
+
+function update__os_platform() -> string { return Os.platform() }
+
+function update__os_exe() -> string {
+  let a = Os.args()
+  if len(a) == 0 { return "" }
+  return a[0]
+}
+
+function update__os_pid() -> int { return Os.pid() }
+function update__os_ms() -> int { return Time.now() * 1000 }
+
+function update__http_get(url: string) -> int { return Http.get(url) }
+
+function update__http_download(url: string, path: string) -> int {
+  let h = Http.open("GET", url)
+  if h < 0 { return h }
+  Http.save_to(h, path)
+  Http.send(h)
+  return h
+}
+
+function update__http_poll(h: int) -> int {
+  let st = Http.poll(h)
+  if st < 0 { return -1 }
+  if st > 0 and Http.ok(h) { return 1 }
+  return 0
+}
+
+function update__http_text(h: int) -> string { return Http.text(h) }
+function update__http_received(h: int) -> int { return Http.received(h) }
+function update__http_free(h: int) -> void { Http.free(h) }
+function update__proc_spawn(path: string, args: []string) -> int { return Process.spawn(path, args) }
+function update__proc_poll(h: int) -> int { return Process.poll(h) }
+function update__proc_free(h: int) -> void { Process.free(h) }

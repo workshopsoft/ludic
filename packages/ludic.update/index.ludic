@@ -1,0 +1,14 @@
+# ludic.update - is there a newer version (latest.json, polled a frame at a time), and installing it
+# through Velopack a frame at a time: feed, plan, fetch, check, patch, apply
+module ludic_update uses ludic_base
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "ports.ludic"
+import "install.ludic"
+import "latest.ludic"
+import "plan.ludic"
+import "chain.ludic"
+import "steps.ludic"
+import "tick.ludic"
+import "queries.ludic"

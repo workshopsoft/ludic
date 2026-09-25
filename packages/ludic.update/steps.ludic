@@ -1,0 +1,92 @@
+# steps.ludic - each step started: the feed asked, a package streamed into the packages folder, its
+# SHA-256 by a child (Get-FileHash, shasum) so the frame keeps drawing, a patch, the apply
+# the Update button: false (and nothing started) when Velopack did not install this copy
+export function update_start() -> bool {
+  if not update_installed() {
+    update__err = UPDATE_ERR_NOT_INSTALLED
+    return false
+  }
+  update__release()
+  Fs.mkdir(update_packages())
+  update__err = UPDATE_ERR_NONE
+  update__h = UpdateNet.get(update__conf().feed + "/" + update__feed_file())
+  if update__h < 0 {
+    update__fail(UPDATE_ERR_UNREACHABLE)
+    return true
+  }
+  update__state = UPDATE_FEED
+  return true
+}
+
+function update__release() -> void {
+  if update__h >= 0 { UpdateNet.free(update__h) }
+  update__h = -1
+  if update__proc >= 0 { UpdateProc.free(update__proc) }
+  update__proc = -1
+}
+
+function update__fail(err: int) -> void {
+  update__release()
+  update__err = err
+  update__state = UPDATE_FAILED
+  update__fact(UPDATE_STOPPED)
+}
+
+# fetch file i, unless a copy of the right size is there already - then straight to its check
+function update__fetch(i: int) -> void {
+  update__i = i
+  let p = update__path(i)
+  if Fs.exists(p) and Fs.size(p) == update__size[i] {
+    update__check(i)
+    return
+  }
+  if Fs.exists(p) { Fs.remove(p) }
+  update__h = UpdateNet.download(update__conf().feed + "/" + update__files[i], p)
+  if update__h < 0 {
+    update__fail(UPDATE_ERR_UNREACHABLE)
+    return
+  }
+  update__rate_t = -1
+  update__state = UPDATE_FETCH
+}
+
+function update__hash_file() -> string {
+  if len(update__conf().scratch) > 0 { return update__conf().scratch }
+  return Os.temp_dir() + "/ludic-update-hash.txt"
+}
+
+# no cmd.exe: it parses its own command line and would not survive Process.spawn's quoting
+function update__check(i: int) -> void {
+  let out = update__hash_file()
+  if Fs.exists(out) { Fs.remove(out) }
+  let args = new []string
+  if UpdateWorld.platform() == "windows" {
+    push(args, "-NoProfile")
+    push(args, "-NonInteractive")
+    push(args, "-Command")
+    push(args, "(Get-FileHash -Algorithm SHA256 -LiteralPath " + update__psq(update__path(i)) + ").Hash | Out-File -Encoding ascii -LiteralPath " + update__psq(out))
+    update__proc = UpdateProc.spawn(update__powershell(), args)
+  } else {
+    push(args, "-c")
+    push(args, "shasum -a 256 '" + update__path(i) + "' | cut -d' ' -f1 > '" + out + "'")
+    update__proc = UpdateProc.spawn("/bin/sh", args)
+  }
+  if update__proc < 0 {
+    update__fail(UPDATE_ERR_CHECK)
+    return
+  }
+  update__state = UPDATE_CHECK
+  update__step_t0 = UpdateWorld.now_ms()
+}
+
+# the hash the child wrote: the first line with anything on it
+function update__hash_read() -> string {
+  let s = Fs.read_text(update__hash_file())
+  if s == null { return "" }
+  let lines = Text.split(s, "\n")
+  for i in 0 .. len(lines) {
+    let t = Text.trim(lines[i])
+    if len(t) > 0 { return Text.upper(t) }
+  }
+  return ""
+}
