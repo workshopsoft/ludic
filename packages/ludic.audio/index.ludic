@@ -1,0 +1,9 @@
+# ludic.audio - Audio.play is the INTERFACE; everything that happens in the world goes through
+# aud_emit with a gain and a pan from where it is. Nothing outside this module names Audio.*.
+module ludic_audio uses
+numbers float
+import "ports.ludic"
+import "place.ludic"
+import "emit.ludic"
+import "load.ludic"
+import "wav.ludic"

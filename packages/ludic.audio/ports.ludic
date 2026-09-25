@@ -1,0 +1,14 @@
+# ports.ludic - what the sounds ask the game: where the listener is and which way it faces, and a
+# writable directory to lift packed clips into
+export port AudioListener {
+  x: fn() -> float
+  z: fn() -> float
+  yaw: fn() -> float = fn audio__no_yaw           # radians, 0 looking down -z (render3d's cam_yaw)
+}
+
+export port AudioFiles {
+  cache_dir: fn() -> string = fn audio__no_cache  # "" is none: a packed clip then stays silent
+}
+
+function audio__no_yaw() -> float { return 0.0 }
+function audio__no_cache() -> string { return "" }

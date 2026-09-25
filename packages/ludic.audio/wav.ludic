@@ -1,0 +1,16 @@
+# wav.ludic - a PCM WAV's length from its own header (the sample rate at byte 24, the data length at
+# 40), so a loop re-triggered before its clip ends follows whatever the fetcher wrote
+export function aud_wav_seconds(path: string, fallback: float) -> float {
+  let hdr = Fs.read_bytes(path)
+  if hdr == null { return fallback }
+  if len(hdr) < 44 { return fallback }
+  let rate = hdr[24] | (hdr[25] << 8) | (hdr[26] << 16) | (hdr[27] << 24)
+  let bps = hdr[34]
+  let ch = hdr[22]
+  let data = hdr[40] | (hdr[41] << 8) | (hdr[42] << 16) | (hdr[43] << 24)
+  if rate <= 0 or bps <= 0 or ch <= 0 { return fallback }
+  let frames = data / (ch * (bps / 8))
+  let secs = float(frames) / float(rate)
+  if secs < 0.2 { return fallback }
+  return secs
+}

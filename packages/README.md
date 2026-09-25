@@ -15,6 +15,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.base](ludic.base/README.md) | the shared vocabulary: Tick and phases, `Queue<T>`, rng streams, the save tree, the system runner (`Systems`, an open registry) |
 | [ludic.anim](ludic.anim/README.md) | glTF animation clips sampled and cross-faded onto a render3d Skin (uses `ludic_render3d`) |
 | [ludic.character](ludic.character/README.md) | a third-person walking body: gait, steps and slopes, a jump, wading, swimming, sitting, a safe put-down, the orbit camera |
+| [ludic.audio](ludic.audio/README.md) | world sounds with a gain, pan and pitch from a listener port, flat interface sounds, packed clips loaded, the one door to `Audio.*` |
 | [ludic.clock](ludic.clock/README.md) | the hour, the day, the moon and a calendar of seasons |
 | [ludic.crafting](ludic.crafting/README.md) | recipes: what goes in and out, where and how long, making, refunding, hold-to-make |
 | [ludic.effects](ludic.effects/README.md) | timed modifiers that run down in game time (a meal's warmth, a drink's legs) |

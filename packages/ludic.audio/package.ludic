@@ -1,0 +1,6 @@
+# ludic.audio - a world's sounds with a gain, a pan and a pitch from where they are relative to a
+# listener, flat interface sounds, clips loaded past Audio.load's blind spot for packed assets,
+# loops and the master volume: the one door to the runtime's Audio.*. Uses nothing. See README.md.
+package "ludic.audio"
+version "0.1.0"
+kind source

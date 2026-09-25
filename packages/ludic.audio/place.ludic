@@ -1,0 +1,36 @@
+# place.ludic - where a sound is, heard from the listener. Not an inverse square, which is right for
+# a point in free air and wrong for a valley full of trees: a shaped roll-off keeps a call audible
+# across a meadow and gone across a lake
+const TAU: float = 6.2831853
+const HALF_TURN: float = 3.14159265
+
+export function aud_gain_at(x: float, z: float, range: float) -> float {
+  let dx = x - AudioListener.x()
+  let dz = z - AudioListener.z()
+  let d = Math.sqrt(dx * dx + dz * dz)
+  if d > range or range <= 0.0 { return 0.0 }
+  let t = 1.0 - d / range
+  return Math.clamp(t * t, 0.0, 1.0)
+}
+
+# Which side, -1 left .. 1 right, from the listener's heading. Ahead and behind are both centred:
+# that is all a two-speaker pan can honestly say.
+export function aud_pan_at(x: float, z: float) -> float {
+  let dx = x - AudioListener.x()
+  let dz = z - AudioListener.z()
+  if dx * dx + dz * dz < 1.0 { return 0.0 }
+  let rel = wrap(Math.atan2(-dx, -dz) - AudioListener.yaw())
+  # forward for a yaw is (-sin, -cos), so a bearing to the LEFT is positive out of atan2
+  return Math.clamp(-Math.sin(rel) * 0.85, -1.0, 1.0)
+}
+
+# Air takes the top off a distant sound: a semitone lower at the edge of hearing is most of why a
+# far call reads as far rather than as a quiet near one.
+export function aud_pitch_at(gain: float) -> float { return 0.94 + gain * 0.09 }
+
+function wrap(a: float) -> float {
+  var d = a
+  while d > HALF_TURN { d = d - TAU }
+  while d < -HALF_TURN { d = d + TAU }
+  return d
+}

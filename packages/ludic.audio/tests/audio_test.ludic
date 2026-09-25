@@ -1,0 +1,100 @@
+# audio_test.ludic - a listener at the origin facing -z: the roll-off, the pan on each side, the pitch
+# of a far sound, emit's numbers (Audio.* itself is a no-op headless), a packed file lifted into the
+# cache once, and a WAV's length from its header
+import "ludic.audio"
+program AudioTest {
+  numbers float
+  var lx: float = 0.0
+  var lz: float = 0.0
+  var lyaw: float = 0.0
+  function t_x() -> float { return lx }
+  function t_z() -> float { return lz }
+  function t_yaw() -> float { return lyaw }
+  function dir() -> string { return Os.temp_dir() + "/ludic-audio-test" }
+  function cache() -> string { return dir() + "/cache" }
+  bind AudioListener { x: fn t_x, z: fn t_z, yaw: fn t_yaw }
+  bind AudioFiles { cache_dir: fn cache }
+
+  test "the gain falls off with distance and is gone past the range" {
+    let near = aud_gain_at(0.0, -10.0, 200.0)
+    let mid = aud_gain_at(0.0, -100.0, 200.0)
+    let far = aud_gain_at(0.0, -150.0, 200.0)
+    expect(near > mid and mid > far and far > 0.0)
+    expect_eq(aud_gain_at(0.0, -400.0, 200.0), 0.0)
+    expect_near(aud_gain_at(0.0, 0.0, 50.0), 1.0, 0.0001)
+    lx = 1000.0
+    expect_near(aud_gain_at(1000.0, 0.0, 50.0), 1.0, 0.0001)
+  }
+
+  test "the pan says which side, ahead and behind are centred, and it turns with the listener" {
+    expect(aud_pan_at(-60.0, 0.0) < -0.5)
+    expect(aud_pan_at(60.0, 0.0) > 0.5)
+    expect_near(aud_pan_at(0.0, -60.0), 0.0, 0.01)
+    expect_near(aud_pan_at(0.0, 60.0), 0.0, 0.01)
+    expect_near(aud_pan_at(0.5, 0.0), 0.0, 0.0001)
+    lyaw = 3.14159265
+    expect(aud_pan_at(-60.0, 0.0) > 0.5)
+  }
+
+  test "a far sound is a little lower" {
+    expect(aud_pitch_at(1.0) > aud_pitch_at(0.1))
+    expect(aud_pitch_at(0.0) > 0.9 and aud_pitch_at(1.0) < 1.1)
+  }
+
+  test "emit hands the runtime what it was told, and a sound out of earshot is not played" {
+    aud_emit(7, 0.5, 0.97, -0.25)
+    expect_near(aud_last_gain(), 0.5, 0.0001)
+    expect_near(aud_last_pan(), -0.25, 0.0001)
+    expect_eq(aud_emitted(), 1)
+    aud_emit(0, 1.0, 1.0, 0.0)
+    expect_eq(aud_emitted(), 1)
+    expect(not aud_emit_at(7, 0.0, -500.0, 100.0))
+    expect(aud_emit_at(7, 30.0, 0.0, 100.0))
+    expect(aud_last_pan() > 0.5)
+    expect(aud_last_gain() > 0.4 and aud_last_gain() < 0.5)
+    expect(aud_last_pitch() < 1.0)
+  }
+
+  function wav(path: string, rate: int, frames: int) -> void {
+    let n = 44 + frames * 2
+    let b = buffer(n)
+    b[22] = 1
+    b[24] = rate & 255
+    b[25] = (rate >> 8) & 255
+    b[26] = (rate >> 16) & 255
+    b[34] = 16
+    let data = frames * 2
+    b[40] = data & 255
+    b[41] = (data >> 8) & 255
+    b[42] = (data >> 16) & 255
+    Fs.write_bytes(path, b, n)
+  }
+
+  test "a WAV's length from its header, and a fallback for anything else" {
+    Fs.mkdir(dir())
+    wav(dir() + "/two.wav", 22050, 44100)
+    expect_near(aud_wav_seconds(dir() + "/two.wav", 9.0), 2.0, 0.001)
+    wav(dir() + "/blip.wav", 22050, 100)
+    expect_near(aud_wav_seconds(dir() + "/blip.wav", 9.0), 9.0, 0.001)
+    expect_near(aud_wav_seconds(dir() + "/none.wav", 5.4), 5.4, 0.001)
+  }
+
+  test "a packed clip is lifted into the cache once, and a short copy is replaced" {
+    Fs.mkdir(dir())
+    wav(dir() + "/click.wav", 22050, 300)
+    Fs.remove(cache() + "/click.wav")
+    let out = aud_unpack(dir() + "/click.wav", "click.wav")
+    expect(out == cache() + "/click.wav")
+    expect_eq(Fs.size(out), 44 + 600)
+    Fs.write_text(out, "cut")
+    let again = aud_unpack(dir() + "/click.wav", "click.wav")
+    expect_eq(Fs.size(again), 44 + 600)
+    expect(aud_unpack(dir() + "/nothing.wav", "nothing.wav") == null)
+  }
+
+  test "nothing loads headless, and the count says so" {
+    expect_eq(aud_load(dir() + "/click.wav"), 0)
+    expect_eq(aud_tried(), 1)
+    expect_eq(aud_live(), 0)
+  }
+}
