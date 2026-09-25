@@ -131,8 +131,13 @@ fishing/land.ludic:4: error: fishing uses items.inv_add (items/index.ludic:3): a
 
 - A module with no `uses` clause keeps the rule before it - anything exported - so the rule can be
   switched on one module at a time. Two module lines for one module add their lists together.
-- A file in no module (the program's root, the runtime) is unaffected either way, and a package's
-  module (found through `ludic_modules` or the toolchain, such as `ludic_ui`) is always usable.
+- A package's module counts like any other: a mechanic that says `uses ludic_base` and calls
+  into `ludic_inventory`, `ludic_ui` or the renderer is refused. A package with no `module` line
+  of its own (`ludic.render3d`) is named for its directory - `ludic_render3d` - for this rule; its
+  names stay public to the export rule. Only the engine's own runtime - `Value`, `Json`,
+  `Random` and the rest, which is in no module and no package - needs no naming.
+- A file in no module (the program's root) is unaffected either way.
+- `module ludic_base uses` with nothing after it is a module that reaches no other module at all.
 - A friend of a module (`friend module lab`, or `friend module lab of fishing`) is not held to its
   `uses` for that module.
 - The declared graph may not go round: `module a uses b` beside `module b uses a` is refused
@@ -176,7 +181,9 @@ app.ludic:9: error: port Clock has no member later
 ```
 
 and a member of the wrong type is a type error like any other (`field now of Clock_port wants a
-fn()->int and this is a fn(int)->float`). A port nobody uses may stay unbound.
+fn()->int and this is a fn(int)->float`). A port nobody uses may stay unbound, and so may a port
+whose every member has a default: unbound, it answers with its defaults - which is how a
+package's fallbacks ("unbound: this machine runs the world") are written.
 
 ### Types are checked before anything is emitted
 

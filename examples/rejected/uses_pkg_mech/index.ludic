@@ -1,0 +1,8 @@
+# uses_pkg_mech/index.ludic - a mechanic that says it uses ludic_base, then reaches into another
+# mechanic package
+module mech uses ludic_base
+import "ludic.base"
+import "ludic.inventory"
+export function stock() -> int {
+  return inv_count(0)
+}

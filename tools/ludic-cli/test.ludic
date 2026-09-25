@@ -446,6 +446,13 @@ function expect_fp_fail_case() -> void {
   if got == `{src}:4: expect_near failed (got 1.5, want 2)` { ok(lbl) } else { bad2(lbl, `said [{got}]`) }
 }
 
+# every package's own tests, the way a package author runs them: `ludic test packages`
+function packages_test_case() -> void {
+  let lbl = "ludic test packages: every package's tests pass"
+  if shq(`bin/ludic test packages > {tmp_dir()}/pkgs.out 2>&1`) { ok(lbl) }
+  else { bad2(lbl, capture_line(`grep -m1 FAIL {tmp_dir()}/pkgs.out`)) }
+}
+
 # `ludic test <dir>`: the test programs under a package, each test block in a process of its own
 # (a global one test changes is fresh in the next), and a failed expect named by file:line
 function test_dir_case() -> void {
@@ -784,7 +791,10 @@ function cmd_dev_test() -> int {
   reject_case("rejected/port_unbound", "port Clock is used here but never bound", "a port used and never bound is refused at the use")
   reject_case("rejected/port_missing", "bind Clock leaves out day, which has no default", "a bind gives every required member")
   reject_case("rejected/port_twice", "port Clock is bound twice (first at", "a port is bound once")
+  reject_case("rejected/port_new", "Clock is a port: it is filled once with 'bind Clock", "a port is bound, not made with new")
   reject_case("rejected/port_private", "Clock is private to module clock", "whoever binds a port has to see it")
+  reject_case("rejected/uses_package", "mech uses ludic_inventory.inv_count", "a package's module counts under `uses` like any other")
+  reject_case("rejected/uses_render3d", "mech uses ludic_render3d.PI", "a package with no module line is still named under `uses`")
   vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")
   feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
   reject_case("rejected/wrong_arity", "this call to area leaves out h, which has no default", "a call with the wrong number of arguments is refused")
@@ -998,6 +1008,7 @@ function cmd_dev_test() -> int {
   scaffold_names_case()
   package_scripts_case()
   test_dir_case()
+  packages_test_case()
   pack_roundtrip_case()
   packignore_case()
   os_dirs_case()

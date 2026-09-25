@@ -1,0 +1,7 @@
+# L3: a package's module counts under `uses` like any other - ludic_inventory is not named
+import "uses_pkg_mech"
+program UsesPackage {
+  entry {
+    print(stock())
+  }
+}

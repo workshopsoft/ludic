@@ -9,7 +9,8 @@
 # required) and a global `Clock` of that record, in the port's module and exported with it. The
 # one `bind` is that global's initializer. When the program is read (ports_finish) every bind
 # must name a port, give each required member, give no member twice-over, and see the port;
-# a port used anywhere must be bound (port_check_bound, at the use). The binding's values are
+# a port used anywhere must be bound (port_check_bound, at the use) - unless every member has a
+# default, when an unbound port answers with its defaults. The binding's values are
 # checked for visibility from the bind's file, here, so the port's module needs no `uses` of it.
 var g_pt_name: []pointer = new []pointer
 var g_pt_comp: []Node = new []Node
@@ -108,12 +109,33 @@ function port_bind_one(b: Node) -> void {
   nw.line = b.line
   v.a = nw
 }
+# a port whose every member has a default needs no bind: left alone it answers with its defaults
+function port_defaults_only(k: int) -> void {
+  let c = g_pt_comp[k]
+  var i = 0
+  while i < len(c.kids) {
+    if c.kids[i].a == null { return }
+    i += 1
+  }
+  let v = g_pt_var[k]
+  let nw = node(E_NEW)
+  nw.s = c.s
+  nw.file = v.file
+  nw.line = v.line
+  v.a = nw
+  g_pt_bind[k] = nw
+}
 function ports_finish() -> void {
   let saved = g_parsing
   g_parsing = false
   var i = 0
   while i < len(g_bd) {
     port_bind_one(g_bd[i])
+    i += 1
+  }
+  i = 0
+  while i < len(g_pt_name) {
+    if g_pt_bind[i] == null { port_defaults_only(i) }
     i += 1
   }
   g_parsing = saved

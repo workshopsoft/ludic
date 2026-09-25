@@ -1158,8 +1158,9 @@ function do_import(rel: pointer) -> void {
   # ludic_modules is not beside its importer and keeps its own module (or none)
   let beside = full == join_path(cur_dir, rel)
   if is_runtime_path(rel) or not beside or (beside and unsafe_trusted(g_parse_file)) { push(g_trusted_files, full) }
-  if (not beside and not is_runtime_path(rel)) or (beside and is_pkg_file(g_parse_file)) { push(g_pkg_files, full) }
   if beside and not is_runtime_path(rel) and not (module_of(g_parse_file) == "") { module_set(full, module_of(g_parse_file)) }
+  if not beside and not is_runtime_path(rel) { pkg_file_set(full, pkg_name_of(rel)) }            # modules.ludic
+  if beside and not is_runtime_path(rel) and not (pkg_of_file(g_parse_file) == "") { pkg_file_set(full, pkg_of_file(g_parse_file)) }
   if (src == null) { perr(`cannot open import {full}`) }
   # the audio runtime can arrive through atlas.ludic's own import or the Assets
   # splice, not only through an Audio.* call in the game; a windowed build must

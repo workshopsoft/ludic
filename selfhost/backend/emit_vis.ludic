@@ -1,8 +1,9 @@
 # emit_vis.ludic — L3: module scope. A file belongs to the module its own `module NAME` line or
 # its importer's names (frontend/parse.ludic, module_of); a file in no module is public. A
 # reference from one module to another module's function, global, record or event needs that
-# declaration `export`ed, and - when the referring module says `uses` - that module named there
-# (frontend/modules.ludic), unless the referring module is a friend of it (a test harness).
+# declaration `export`ed, and - when the referring module says `uses` - that module (or, for a
+# package with no module line, the package) named there (frontend/modules.ludic), unless the
+# referring module is a friend of it (a test harness). The engine's runtime needs no naming.
 # LUDIC_VIS_REPORT=1 prints every violation as `vis: <file>: <module>.<name>` (a private name) or
 # `uses: <file>: ...` (a module not in the uses list) and goes on, so a tool can add the exports
 # and the uses a codebase needs before the rule is switched on for it.
@@ -37,16 +38,17 @@ function vis_check(d: Node, what0: pointer) -> void {
   var here = g_err_file
   if here == null { return }
   let from = module_of(here)
+  let uto = module_for_uses(d.file)
+  if not (uto == "") and not (from == uto) and not module_friend_of(from, uto) and not module_may_use(from, uto) {
+    if vis_reporting() {
+      vis_say(`uses: {d.file}:{itoa(d.line)}: {uto}.{what} used from {here} (module {from})\n`)
+    } else {
+      perr(`{from} uses {uto}.{what} ({d.file}:{itoa(d.line)}): add 'uses {uto}' to {from}'s module line, or take it through a port`)
+    }
+  }
   let to = module_of(d.file)
   if (to == "") or (from == to) { return }
   if module_friend_of(from, to) { return }
-  if not module_may_use(from, to) {
-    if vis_reporting() {
-      vis_say(`uses: {d.file}:{itoa(d.line)}: {to}.{what} used from {here} (module {from})\n`)
-    } else {
-      perr(`{from} uses {to}.{what} ({d.file}:{itoa(d.line)}): add 'uses {to}' to {from}'s module line, or take it through a port`)
-    }
-  }
   if d.vis == 1 { return }
   if vis_reporting() {
     vis_say(`vis: {d.file}:{itoa(d.line)}: {to}.{what} used from {here}\n`)

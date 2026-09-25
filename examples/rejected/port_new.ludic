@@ -1,0 +1,11 @@
+# L3: a port is not a record a program makes - it is filled once, by `bind`
+program PortNew {
+  port Clock { now: fn() -> int }
+  function hours() -> int {
+    return 3
+  }
+  entry {
+    let c = new Clock
+    print(0)
+  }
+}

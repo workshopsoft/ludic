@@ -1,0 +1,8 @@
+# L3: a package with no module line is still named under `uses` - ludic_render3d is not
+import "uses_r3d_mech"
+program UsesRender3d {
+  numbers float
+  entry {
+    print(circle())
+  }
+}

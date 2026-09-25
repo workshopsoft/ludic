@@ -1,0 +1,7 @@
+# uses_r3d_mech/index.ludic - a mechanic that reaches into the renderer, which has no module line
+module mech uses ludic_base
+numbers float
+import "ludic.render3d/fmath.ludic"
+export function circle() -> float {
+  return PI * 2.0
+}

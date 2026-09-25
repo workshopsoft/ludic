@@ -2,8 +2,9 @@
 # fishing may reach at all: a reference from fishing into a module it does not name is refused
 # (backend/emit_vis.ludic), exported or not, unless fishing is a friend of that module. A module
 # that says no `uses` keeps the old rule (anything exported), so the rule comes in one module at a
-# time. A package's module (found through ludic_modules or the toolchain) is always usable, and
-# the declared graph may not have a cycle.
+# time. A package's module counts like any other (ludic_base, ludic_ui, ludic_render3d must be
+# named); only the engine's own runtime, which is in no module, needs no naming. The declared
+# graph may not have a cycle.
 #
 # `friend module lab` sees every module's private names; `friend module lab of fishing, data`
 # sees only those modules'.
@@ -12,8 +13,6 @@ var g_mu_list: []pointer = new []pointer     # ",a,b," - what it may use (union 
 var g_mu_file: []pointer = new []pointer     # where it said so first
 var g_mu_line: []int = new []int
 var g_fr_scope: []pointer = new []pointer    # per g_mod_friends entry: "" for all, else ",a,b,"
-var g_pkg_files: []pointer = new []pointer   # files that belong to a package, not the project
-var g_pkg_mods: []pointer = new []pointer    # modules declared in a package's files
 
 function mod_list_has(list: pointer, name: pointer) -> bool {
   return has_sub(list, `,{name},`)
@@ -41,11 +40,12 @@ function mod_parse_line() -> void {
   pi += 1
   let name = eat_id()
   module_set(g_parse_file, name)
-  if is_pkg_file(g_parse_file) and not mod_is_pkg(name) { push(g_pkg_mods, name) }
   if not is_id("uses") { return }
   let ln = toks[pi].line
   pi += 1
-  let list = mod_parse_names()
+  # `uses` and nothing after it: a module that reaches no other module at all
+  var list = ","
+  if toks[pi].kind == TK_ID { list = mod_parse_names() }
   let k = mod_find_uses(name)
   if k >= 0 {
     g_mu_list[k] = g_mu_list[k] + list
@@ -80,26 +80,45 @@ function module_friend_of(from: pointer, to: pointer) -> bool {
   }
   return false
 }
-function is_pkg_file(f: pointer) -> bool {
+# the package each of a package's files came from, as a module name: `ludic.render3d/r3d.ludic` is
+# ludic_render3d. A package with no `module` line of its own is public to the export rule, but a
+# module that says `uses` still has to name it - a mechanic reaching into the renderer is caught.
+var g_pk_file: []pointer = new []pointer
+var g_pk_name: []pointer = new []pointer
+function pkg_name_of(rel: pointer) -> pointer {
+  var n = 0
+  while n < len(rel) and rel[n] != '/' { n += 1 }
+  let first = rel[0 .. n]
+  var out = ""
   var i = 0
-  while i < len(g_pkg_files) {
-    if (g_pkg_files[i] == f) { return true }
+  while i < len(first) {
+    let c = first[i]
+    if c == '.' or c == '-' { out = out + "_" } else { out = out + first[i .. i + 1] }
     i += 1
   }
-  return false
+  return out
 }
-function mod_is_pkg(m: pointer) -> bool {
-  var i = 0
-  while i < len(g_pkg_mods) {
-    if (g_pkg_mods[i] == m) { return true }
-    i += 1
+function pkg_file_set(f: pointer, name: pointer) -> void {
+  push(g_pk_file, f)
+  push(g_pk_name, name)
+}
+function pkg_of_file(f: pointer) -> pointer {
+  var i = len(g_pk_file) - 1
+  while i >= 0 {
+    if (g_pk_file[i] == f) { return g_pk_name[i] }
+    i -= 1
   }
-  return false
+  return ""
+}
+# the module a declaration is in, for the uses rule: its own, else its package's
+function module_for_uses(f: pointer) -> pointer {
+  let m = module_of(f)
+  if not (m == "") { return m }
+  return pkg_of_file(f)
 }
 # may module `from` reach into module `to` at all? (L3 uses; the export rule is separate)
 function module_may_use(from: pointer, to: pointer) -> bool {
   if (from == "") or (to == "") or (from == to) { return true }
-  if mod_is_pkg(to) { return true }
   let k = mod_find_uses(from)
   if k < 0 { return true }
   return mod_list_has(g_mu_list[k], to)
