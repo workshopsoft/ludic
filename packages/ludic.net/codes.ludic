@@ -1,0 +1,100 @@
+# codes.ludic - an address and a port as ten letters in two fives, from an alphabet with no 0/O or
+# 1/I: what a host reads out. An "a.b.c.d:port" or a bare "a.b.c.d" is taken too; a room code is
+# six of the same letters.
+const NET_ALPHA: string = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+export function net_code_of(ip: int, port: int) -> string {
+  let a = NET_ALPHA
+  let buf = buffer(11)
+  # 48 bits: the port's 16, then the address's 32, five at a time from the top
+  var o = 0
+  for k in 0 .. 10 {
+    let shift = 45 - k * 5
+    var v = 0
+    for b in 0 .. 5 {
+      let bit = shift + 4 - b
+      var x = 0
+      if bit >= 32 { x = (port >> (bit - 32)) & 1 } else if bit >= 0 { x = (ip >> bit) & 1 }
+      v = (v << 1) | x
+    }
+    buf[o] = a[v]
+    o += 1
+    if k == 4 {
+      buf[o] = '-'
+      o += 1
+    }
+  }
+  return text_of(buf, o)
+}
+
+# this machine's code: its address on the network and the socket's port
+export function net_join_code() -> string {
+  var ip = NetSocket.local_ip()
+  if ip == 0 { ip = Udp.ip("127.0.0.1") }
+  return net_code_of(ip, net_port())
+}
+
+function net__letter(c: int) -> int {
+  var ch = c
+  if ch >= 'a' and ch <= 'z' { ch = ch - 32 }
+  if ch == 'O' { ch = '0' }
+  if ch == 'I' { ch = '1' }
+  let a = NET_ALPHA
+  for i in 0 .. 32 { if a[i] == ch { return i } }
+  return -1
+}
+
+# a code or an address: true when net_code_ip() / net_code_port() say where
+export function net_parse_code(text: string) -> bool {
+  let p = text
+  var colon = -1
+  var dots = 0
+  for i in 0 .. len(p) {
+    if p[i] == ':' { colon = i }
+    if p[i] == '.' { dots += 1 }
+  }
+  if dots == 3 { return net__parse_addr(text, colon) }
+  var hi = 0
+  var lo = 0
+  var n = 0
+  for i in 0 .. len(p) {
+    let c = p[i]
+    if c == '-' or c == ' ' { continue }
+    let v = net__letter(c)
+    if v < 0 { return false }
+    # 50 bits arrive; the top two are padding. Keep the port (bits 47..32) and the address.
+    for b in 0 .. 5 {
+      let bit = (v >> (4 - b)) & 1
+      let pos = 49 - n * 5 - b
+      if pos >= 32 and pos < 48 { hi = hi | (bit << (pos - 32)) }
+      if pos >= 0 and pos < 32 { lo = lo | (bit << pos) }
+    }
+    n += 1
+  }
+  if n != 10 { return false }
+  net__code_ip = lo
+  net__code_port = hi
+  return net__code_ip != 0 and net__code_port > 0
+}
+
+function net__parse_addr(text: string, colon: int) -> bool {
+  var host = text
+  net__code_port = net__conf().port
+  if colon > 0 {
+    host = text[0..colon]
+    net__code_port = Text.to_int(text[colon + 1..len(text)])
+  }
+  net__code_ip = Udp.ip(host)
+  return net__code_ip != 0 and net__code_port > 0 and net__code_port < 65536
+}
+
+export function net_code_ip() -> int { return net__code_ip }
+export function net_code_port() -> int { return net__code_port }
+
+# six of the code's letters: a room at the matchmaker
+export function net_is_room(text: string) -> bool {
+  let p = text
+  if len(p) != 6 { return false }
+  for i in 0 .. 6 { if net__letter(p[i]) < 0 { return false } }
+  return true
+}

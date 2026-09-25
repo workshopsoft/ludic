@@ -1,0 +1,5 @@
+# ludic.net - a small party over UDP: peers, packets, reliable ordered delivery, the handshake's
+# frame, join codes, room codes through a matchmaker with STUN, punching and a relay. See README.md.
+package "ludic.net"
+version "0.1.0"
+kind source

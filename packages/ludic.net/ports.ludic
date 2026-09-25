@@ -1,0 +1,96 @@
+# ports.ludic - the game's config, the socket and log it lends, and the facts it drains
+export property NetConfig {
+  proto: int = 1               # a packet's protocol byte; two builds that differ here ignore each other
+  port: int = 27415            # what an address typed without one means
+  signal_url: string = ""      # the matchmaker (HTTP); "" means room codes are off
+  stun_host: string = ""       # STUN and the relay (UDP), by name
+  stun_port: int = 27400
+  stun_at: string = ""         # "ip:port" instead of the name (a test server)
+  no_stun: bool = false        # a test on one machine has no outside to ask about
+  force_relay: bool = false    # a room join goes through the relay at once
+  relay_port0: int = 60000     # a relayed guest, as the host sees it: the relay's address, this + its session
+  seed: int = 1                # the STUN transaction's dice
+}
+
+# what the game hears about: a guest gone silent (slot, pid), a slot let go once it had taken
+# its last message (slot, pid), this machine out of the session (why), a room code (text) or a
+# matchmaker that failed a host (why)
+export const NET_GONE: int = 0
+export const NET_CLOSED: int = 1
+export const NET_DOWN: int = 2
+export const NET_ROOM: int = 3
+export const NET_ROOM_FAILED: int = 4
+
+export const NET_WHY_GAME: int = 0            # the game's own words, set before net_lose
+export const NET_WHY_HOST_SILENT: int = 1
+export const NET_WHY_NO_ANSWER: int = 2       # a hello nobody answered
+export const NET_WHY_NO_SOCKET: int = 3
+export const NET_WHY_PORT_TAKEN: int = 4
+export const NET_WHY_NO_MATCHMAKER: int = 5
+export const NET_WHY_MATCHMAKER_SILENT: int = 6
+export const NET_WHY_NO_ROOM_GIVEN: int = 7
+export const NET_WHY_NO_ROOM: int = 8
+export const NET_WHY_BAD_ADDRESS: int = 9
+
+export property NetFact {
+  what: int = 0,
+  slot: int = -1,
+  pid: int = 0,
+  why: int = 0,
+  text: string = ""
+}
+
+# how the game hears the transport talk (unbound: silence) and whether to log every packet
+export port NetWorld {
+  log: fn(string) -> void = fn net__no_log
+  trace: fn() -> bool = fn net__no
+}
+
+# the socket (unbound: Udp); a test lends a fake one
+export port NetSocket {
+  open: fn(int) -> int = fn net__udp_open
+  close: fn(int) -> void = fn net__udp_close
+  send: fn(int, int, int, []byte, int) -> int = fn net__udp_send
+  recv: fn(int, []byte, int) -> int = fn net__udp_recv
+  from_ip: fn(int) -> int = fn net__udp_from_ip
+  from_port: fn(int) -> int = fn net__udp_from_port
+  port: fn(int) -> int = fn net__udp_port
+  local_ip: fn() -> int = fn net__udp_local_ip
+}
+
+var net__cfg: NetConfig = null
+var net__facts: Queue<NetFact> = null
+
+export function net_config(c: NetConfig) -> void { net__cfg = c }
+
+function net__conf() -> NetConfig {
+  if net__cfg == null { net__cfg = new NetConfig }
+  return net__cfg
+}
+
+export function net_facts() -> Queue<NetFact> {
+  if net__facts == null { net__facts = queue_new("net.facts") }
+  return net__facts
+}
+
+function net__fact(what: int, slot: int, pid: int, why: int, text: string) -> void {
+  let f = new NetFact
+  f.what = what
+  f.slot = slot
+  f.pid = pid
+  f.why = why
+  f.text = text
+  q_push(net_facts(), f)
+}
+
+function net__no_log(s: string) -> void { }
+function net__no() -> bool { return false }
+function net__log(s: string) -> void { NetWorld.log(s) }
+function net__udp_open(port: int) -> int { return Udp.open(port) }
+function net__udp_close(h: int) -> void { Udp.close(h) }
+function net__udp_send(h: int, ip: int, port: int, b: []byte, n: int) -> int { return Udp.send(h, ip, port, b, n) }
+function net__udp_recv(h: int, b: []byte, cap: int) -> int { return Udp.recv(h, b, cap) }
+function net__udp_from_ip(h: int) -> int { return Udp.from_ip(h) }
+function net__udp_from_port(h: int) -> int { return Udp.from_port(h) }
+function net__udp_port(h: int) -> int { return Udp.port(h) }
+function net__udp_local_ip() -> int { return Udp.local_ip() }

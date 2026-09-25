@@ -1,0 +1,21 @@
+# ludic.net - the transport a party plays over: what a message says and what each kind means are
+# the game's; getting it there, once, in order, through two home routers, is this
+module ludic_net uses ludic_base
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "ports.ludic"
+import "codec.ludic"
+import "peers.ludic"
+import "send.ludic"
+import "receive.ludic"
+import "session.ludic"
+import "tick.ludic"
+import "queries.ludic"
+import "codes.ludic"
+import "stun.ludic"
+import "room.ludic"
+import "room_connect.ludic"
+import "room_tick.ludic"
+import "punch.ludic"
+import "relay.ludic"

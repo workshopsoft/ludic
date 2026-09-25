@@ -1,0 +1,109 @@
+# codec.ludic - bytes little-endian, one message written at a time (nw_*) and one read (nr_*).
+# Numbers go as their raw bits: a float as float_bits, never rounded and never fixed.
+export function nb_put8(p: []byte, o: int, v: int) -> void { p[o] = v & 255 }
+
+export function nb_put32(p: []byte, o: int, v: int) -> void {
+  p[o] = v & 255
+  p[o + 1] = (v >> 8) & 255
+  p[o + 2] = (v >> 16) & 255
+  p[o + 3] = (v >> 24) & 255
+}
+
+export function nb_get8(p: []byte, o: int) -> int { return p[o] & 255 }
+
+export function nb_get32(p: []byte, o: int) -> int {
+  return (p[o] & 255) | ((p[o + 1] & 255) << 8) | ((p[o + 2] & 255) << 16) | ((p[o + 3] & 255) << 24)
+}
+
+# n bytes from src at s to dst at d, forwards: within one buffer it may only move bytes DOWN
+export function nb_copy(dst: []byte, d: int, src: []byte, s: int, n: int) -> void {
+  for i in 0 .. n { dst[d + i] = src[s + i] }
+}
+
+# the writer: past the MTU it counts on and keeps nothing, and np_queue cuts the message there
+export function nw_begin() -> void {
+  net__init()
+  net__wl = 0
+}
+
+export function nw_i(v: int) -> void {
+  if net__wl + 4 <= NET_MTU { nb_put32(net__wb, net__wl, v) }
+  net__wl += 4
+}
+
+export function nw_b(v: bool) -> void { if v { nw_i(1) } else { nw_i(0) } }
+
+export function nw_f(v: float) -> void { nw_i(float_bits(v)) }
+
+# a string of at most 200 bytes; nw_text takes a longer one up to its own cap
+export function nw_s(s: string) -> void { nw_text(s, 200) }
+
+export function nw_text(s: string, cap: int) -> void {
+  var n = len(s)
+  if n > cap { n = cap }
+  nw_i(n)
+  for i in 0 .. n {
+    if net__wl < NET_MTU { net__wb[net__wl] = s[i] }
+    net__wl += 1
+  }
+}
+
+export function nw_len() -> int { return net__wl }
+
+# the reader: a short or bad message reads as zeros and sets nr_bad()
+export function nr_i() -> int {
+  if net__rp + 4 > net__rl {
+    net__rbad = true
+    return 0
+  }
+  let v = nb_get32(net__rb, net__rp)
+  net__rp += 4
+  return v
+}
+
+export function nr_b() -> bool { return nr_i() != 0 }
+
+export function nr_f() -> float { return float_from_bits(nr_i()) }
+
+export function nr_s() -> string { return nr_text(200) }
+
+export function nr_text(cap: int) -> string {
+  let n = nr_i()
+  if n < 0 or n > cap or net__rp + n > net__rl {
+    net__rbad = true
+    return ""
+  }
+  if net__tb == null { net__tb = buffer(NET_MTU) }
+  nb_copy(net__tb, 0, net__rb, net__rp, n)
+  net__rp += n
+  return text_of(net__tb, n)
+}
+
+export function nr_bad() -> bool { return net__rbad }
+
+# a message that came in, made the one nr_* reads
+export function net_read(m: NetMessage) -> void {
+  net__init()
+  nb_copy(net__rb, 0, m.data, 0, m.len)
+  net__rl = m.len
+  net__rp = 0
+  net__rbad = false
+}
+
+# the message just written, as if it had come in (a loopback: a test, a host telling itself)
+export function net_written() -> NetMessage {
+  net__init()
+  let m = new NetMessage
+  m.from = net__my_pid
+  m.len = min(net__wl, NET_MTU)
+  m.data = buffer(m.len)
+  nb_copy(m.data, 0, net__wb, 0, m.len)
+  return m
+}
+
+# the message being read, copied out as the next one to write (a host passing it on)
+export function net_copy_read() -> void {
+  nw_begin()
+  nb_copy(net__wb, 0, net__rb, 0, net__rl)
+  net__wl = net__rl
+}

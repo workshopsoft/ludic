@@ -1,0 +1,81 @@
+# send.ludic - everything due goes out now, in as many packets as it takes (up to eight a call).
+# A packet is a 20-byte header - "ML", the protocol, 1, the session token, the sender's pid, the
+# highest reliable id taken in order, a message count - then each message: kind, flags, a
+# reliable id when it is reliable, a 16-bit length, the payload. A reliable message goes again
+# every quarter second until acknowledged; an unreliable one half a second old is dropped.
+export function np_flush(slot: int) -> void {
+  if not net_peer_on(slot) { return }
+  let p = net__peers[slot]
+  for pk in 0 .. 8 {
+    if not net__flush_one(p) { return }
+  }
+}
+
+function net__flush_one(p: NetPeer) -> bool {
+  var o = 20
+  var count = 0
+  let keep = new []NetMsg
+  for i in 0 .. len(p.queue) {
+    let m = p.queue[i]
+    if m.rel and m.id <= p.acked { continue }                     # taken: drop it
+    if not m.rel and net__time - m.made > 0.5 { continue }        # stale
+    var due = true
+    if m.rel and not (m.sent < 0.0) and net__time - m.sent < 0.25 { due = false }
+    var size = 4 + m.len
+    if m.rel { size += 4 }
+    if due and o + size <= NET_MTU and count < 250 {
+      o = net__put_msg(o, m)
+      count += 1
+      m.sent = net__time
+      if net__kind_out != null and m.kind < 64 { net__kind_out[m.kind] += size }
+      if m.rel { push(keep, m) }                                  # kept until acknowledged
+    } else {
+      push(keep, m)                                              # not due, or waits for the next packet
+    }
+  }
+  p.queue = keep
+  if count == 0 and not p.ack_due { return false }
+  nb_put8(net__out, 0, 'M')
+  nb_put8(net__out, 1, 'L')
+  nb_put8(net__out, 2, net__conf().proto)
+  nb_put8(net__out, 3, 1)
+  nb_put32(net__out, 4, net__token)
+  nb_put32(net__out, 8, net__my_pid)
+  nb_put32(net__out, 12, p.recv_id)
+  nb_put32(net__out, 16, count)
+  let sent = net__relay_send(p, o)
+  if sent > 0 { net__bytes_out += sent + 28 }          # with the IP and UDP headers: what the line carries
+  if NetWorld.trace() { net__log(`out {o} bytes to {Udp.ip_text(p.ip)}:{p.port}: {sent}`) }
+  p.ack_due = false
+  return count > 0
+}
+
+function net__put_msg(at: int, m: NetMsg) -> int {
+  var o = at
+  nb_put8(net__out, o, m.kind)
+  nb_put8(net__out, o + 1, 0)
+  if m.rel { nb_put8(net__out, o + 1, 1) }
+  o += 2
+  if m.rel {
+    nb_put32(net__out, o, m.id)
+    o += 4
+  }
+  nb_put8(net__out, o, m.len & 255)
+  nb_put8(net__out, o + 1, (m.len >> 8) & 255)
+  o += 2
+  nb_copy(net__out, o, m.data, 0, m.len)
+  return o + m.len
+}
+
+# the per-kind byte count starts again (a game measuring what a party costs its upload)
+export function net_kind_out_clear() -> void {
+  net__kind_out = words(64)
+  for k in 0 .. 64 { net__kind_out[k] = 0 }
+}
+
+export function net_kind_bytes(kind: int) -> int {
+  if net__kind_out == null or kind < 0 or kind >= 64 { return 0 }
+  return net__kind_out[kind]
+}
+
+export function net_bytes_out() -> int { return net__bytes_out }

@@ -1,0 +1,97 @@
+# state.ludic - the wire's numbers, a peer, a queued message, what came in, and the session
+export const NET_MTU: int = 1200
+export const NET_PEERS: int = 12       # a host: slot 0 unused, a guest each after; a guest: 0 is the host
+export const NET_TIMEOUT: int = 10     # seconds of silence before a peer is gone
+export const NET_HELLO: int = 1        # the one kind a stranger may send a host; every other is the game's
+const NET_BEAT: int = 0                # a heartbeat, never delivered
+
+export const NET_IDLE: int = 0
+export const NET_HOSTING: int = 1
+export const NET_JOINING: int = 2
+export const NET_JOINED: int = 3
+export const NET_LOST: int = 4
+
+# a message on its way out, kept until acknowledged when it is reliable
+property NetMsg {
+  kind: int = 0,
+  rel: bool = false,
+  id: int = 0,
+  sent: float = 0.0,           # net seconds it was last sent; -1 never
+  len: int = 0,
+  made: float = 0.0,           # net seconds it was queued
+  data: []byte
+}
+
+property NetPeer {
+  on: bool = false,
+  ip: int = 0,
+  port: int = 0,
+  pid: int = 0,
+  heard: float = 0.0,          # net seconds of the last packet from it
+  next_id: int = 1,            # the next reliable id to send it
+  recv_id: int = 0,            # the highest reliable id taken from it, in order
+  acked: int = 0,              # the highest id it has taken from us
+  ack_due: bool = false,
+  queue: []NetMsg,
+  closing: bool = false,       # let go once it has taken close_id
+  close_id: int = 0,
+  close_t: float = 0.0         # ... or at this net time, whichever comes first
+}
+
+# a message that came in, in order: read it with net_read(m) and nr_*
+export property NetMessage {
+  slot: int = 0,               # the peer slot it came from
+  from: int = 0,               # the sender's pid, as its header says
+  kind: int = 0,
+  len: int = 0,
+  data: []byte
+}
+
+var net__state: int = 0
+var net__sock: int = 0
+var net__time: float = 0.0
+var net__token: int = 0
+var net__my_pid: int = 0
+var net__next_pid: int = 2
+var net__peers: []NetPeer = null
+var net__in: []byte = null
+var net__out: []byte = null
+var net__wb: []byte = null          # the message being written
+var net__wl: int = 0
+var net__rb: []byte = null          # the message being read
+var net__rl: int = 0
+var net__rp: int = 0
+var net__rbad: bool = false
+var net__tb: []byte = null          # text read out of a message, through one scratch buffer
+var net__hello_b: []byte = null     # the game's hello, sent again on every dial
+var net__hello_l: int = 0
+var net__hello_t: float = 0.0       # seconds since it went; -1 not yet
+var net__wait_more: int = 0         # extra seconds a slow host is given (a map switch, a matchmaker)
+var net__beat_t: float = 0.0
+var net__join_ip: int = 0
+var net__join_port: int = 0
+var net__code_ip: int = 0
+var net__code_port: int = 0
+var net__bytes_out: int = 0
+var net__kind_out: words = null
+var net__inbox: Queue<NetMessage> = null
+
+export function net_inbox() -> Queue<NetMessage> {
+  if net__inbox == null { net__inbox = queue_new("net.inbox") }
+  return net__inbox
+}
+
+function net__init() -> void {
+  if net__peers != null { return }
+  net__peers = new []NetPeer
+  for i in 0 .. NET_PEERS {
+    let p = new NetPeer
+    p.queue = new []NetMsg
+    push(net__peers, p)
+  }
+  net__in = buffer(NET_MTU + 64)
+  net__out = buffer(NET_MTU + 64)
+  net__wb = buffer(NET_MTU)
+  net__rb = buffer(NET_MTU)
+  net__hello_b = buffer(NET_MTU)
+}
