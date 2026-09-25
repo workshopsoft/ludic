@@ -1,0 +1,8 @@
+# L3: fishing says `uses base` and calls items.inv_add - exported, but not a module fishing names
+import "uses_valley/items"
+import "uses_valley/fishing"
+program UsesMissing {
+  entry {
+    print(land())
+  }
+}

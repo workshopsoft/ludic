@@ -1,0 +1,8 @@
+# L3: two modules that each say they use the other are refused, whatever they call
+import "uses_cycle/a"
+import "uses_cycle/b"
+program UsesCycle {
+  entry {
+    print(two())
+  }
+}

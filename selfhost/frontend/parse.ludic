@@ -47,14 +47,6 @@ function module_set(f: pointer, name: pointer) -> void {
   push(g_mod_file, f)
   push(g_mod_name, name)
 }
-function module_is_friend(name: pointer) -> bool {
-  var i = 0
-  while i < len(g_mod_friends) {
-    if (g_mod_friends[i] == name) { return true }
-    i += 1
-  }
-  return false
-}
 function is_float_file(f: pointer) -> bool {
   if (f == null) { return false }
   var i = 0
@@ -921,15 +913,11 @@ function parse_one_decl() -> void {
     skipnl()
   }
   if is_id("friend") and (toks[pi + 1].text == "module") {
-    pi += 2
-    let fm = eat_id()
-    module_set(g_parse_file, fm)
-    push(g_mod_friends, fm)
+    mod_parse_friend()                            # frontend/modules.ludic
     return
   }
   if is_id("module") and toks[pi + 1].kind == TK_ID {
-    pi += 1
-    module_set(g_parse_file, eat_id())
+    mod_parse_line()                              # module NAME [uses A, B]
     return
   }
   # `export function f`, `export var v`, ...: visible from other modules (L3)
@@ -1158,6 +1146,7 @@ function do_import(rel: pointer) -> void {
   # ludic_modules is not beside its importer and keeps its own module (or none)
   let beside = full == join_path(cur_dir, rel)
   if is_runtime_path(rel) or not beside or (beside and unsafe_trusted(g_parse_file)) { push(g_trusted_files, full) }
+  if (not beside and not is_runtime_path(rel)) or (beside and is_pkg_file(g_parse_file)) { push(g_pkg_files, full) }
   if beside and not is_runtime_path(rel) and not (module_of(g_parse_file) == "") { module_set(full, module_of(g_parse_file)) }
   if (src == null) { perr(`cannot open import {full}`) }
   # the audio runtime can arrive through atlas.ludic's own import or the Assets
@@ -1513,6 +1502,7 @@ function parse_program() -> void {
     if is_op("}") { break }
     parse_one_decl()
   }
+  modules_finish()                                 # L3: the declared uses have no cycle
   registries_finish()                              # L8: each registry gets its defs
   views_finish()                                   # L11: each view gets its model and call
   components_finish()                              # L11: each component gets its class

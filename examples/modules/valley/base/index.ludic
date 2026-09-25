@@ -1,0 +1,5 @@
+# base/index.ludic - a module with no uses line keeps the old rule: its exports are anyone's
+module base
+export function bait() -> int {
+  return 3
+}

@@ -1,0 +1,12 @@
+# uses.ludic — L3: `module fishing uses base` names the only modules fishing may reach; the program
+# itself is in no module, so it may call anything exported. A module with no `uses` line keeps the
+# old rule, which is how the rule comes into a codebase one module at a time.
+#
+# Running it prints:  8 3
+import "valley/base"
+import "valley/fishing"
+program Uses {
+  entry {
+    print(`{cast(3)} {bait()}`)
+  }
+}

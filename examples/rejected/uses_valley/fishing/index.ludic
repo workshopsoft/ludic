@@ -1,0 +1,5 @@
+# fishing/index.ludic - says it uses base, and then reaches into items
+module fishing uses base
+export function land() -> int {
+  return inv_add(1)
+}

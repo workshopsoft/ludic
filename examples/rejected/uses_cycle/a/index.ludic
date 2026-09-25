@@ -1,0 +1,5 @@
+# a/index.ludic - a uses b
+module a uses b
+export function one() -> int {
+  return 1
+}

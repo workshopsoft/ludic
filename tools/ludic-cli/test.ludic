@@ -31,6 +31,17 @@ function reject_case(path: pointer, want: pointer, label: pointer) -> void {
   if s_contains(got, want) { ok(label) } else { bad2(label, `refused, but said [{got}]`) }
 }
 
+# LUDIC_VIS_REPORT=1: a program the module rules refuse builds, and says why on stderr
+function vis_report_case(path: pointer, want: pointer, label: pointer) -> void {
+  let ll = `{tmp_dir()}/vr_{flat(path)}.ll`
+  if not shq(`LUDIC_VIS_REPORT=1 bin/ludicc examples/{path}.ludic --emit-llvm -o {ll} 2>{tmp_dir()}/vr.err`) {
+    bad2(label, capture_line(`grep -i error {tmp_dir()}/vr.err | head -1`))
+    return
+  }
+  let got = capture(`cat {tmp_dir()}/vr.err`)
+  if s_contains(got, want) { ok(label) } else { bad2(label, `said [{s_trim(got)}]`) }
+}
+
 # a program the checker refuses for exactly `n` reasons, all of them reported in one run
 function reject_count(path: pointer, n: int, label: pointer) -> void {
   let ll = `{tmp_dir()}/rj_{flat(path)}.ll`
@@ -724,6 +735,10 @@ function cmd_dev_test() -> int {
   reject_case("rejected/fn_type_mismatch", "op wants a fn(int)->int and this is a fn(float)->float", "a function of the wrong type is refused")
   feat_case("modules/visible", "", "42 42", "visible.ludic (L3: a module's exported function and event used from outside it)")
   reject_case("rejected/private_module", "add is private to module bank", "a private function of another module is refused")
+  feat_case("modules/uses", "", "8 3", "uses.ludic (L3: `module fishing uses base` - a module reaches only the modules it names)")
+  reject_case("rejected/uses_missing", "fishing uses items.inv_add", "a module that says `uses` cannot reach a module it does not name, exported or not")
+  reject_case("rejected/uses_cycle", "go round in a circle: a -> b -> a", "a cycle in the declared uses is refused")
+  vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")
   feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
   reject_case("rejected/wrong_arity", "this call to area leaves out h, which has no default", "a call with the wrong number of arguments is refused")
   reject_case("rejected/float_into_int", "metres wants an int and this is a float", "a float computed into an int is refused")

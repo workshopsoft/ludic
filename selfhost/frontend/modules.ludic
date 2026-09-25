@@ -1,0 +1,146 @@
+# modules.ludic — L3 the module graph. `module fishing uses base, data` says which other modules
+# fishing may reach at all: a reference from fishing into a module it does not name is refused
+# (backend/emit_vis.ludic), exported or not, unless fishing is a friend of that module. A module
+# that says no `uses` keeps the old rule (anything exported), so the rule comes in one module at a
+# time. A package's module (found through ludic_modules or the toolchain) is always usable, and
+# the declared graph may not have a cycle.
+#
+# `friend module lab` sees every module's private names; `friend module lab of fishing, data`
+# sees only those modules'.
+var g_mu_mod: []pointer = new []pointer      # a module that said `uses`
+var g_mu_list: []pointer = new []pointer     # ",a,b," - what it may use (union of its lines)
+var g_mu_file: []pointer = new []pointer     # where it said so first
+var g_mu_line: []int = new []int
+var g_fr_scope: []pointer = new []pointer    # per g_mod_friends entry: "" for all, else ",a,b,"
+var g_pkg_files: []pointer = new []pointer   # files that belong to a package, not the project
+var g_pkg_mods: []pointer = new []pointer    # modules declared in a package's files
+
+function mod_list_has(list: pointer, name: pointer) -> bool {
+  return has_sub(list, `,{name},`)
+}
+function mod_find_uses(m: pointer) -> int {
+  var i = 0
+  while i < len(g_mu_mod) {
+    if (g_mu_mod[i] == m) { return i }
+    i += 1
+  }
+  return -1
+}
+# `A, B, C` after `uses` / `of`, as ",A,B,C,"
+function mod_parse_names() -> pointer {
+  var out = ","
+  out = out + eat_id() + ","
+  while is_op(",") {
+    pi += 1
+    out = out + eat_id() + ","
+  }
+  return out
+}
+# `module NAME [uses A, B]`
+function mod_parse_line() -> void {
+  pi += 1
+  let name = eat_id()
+  module_set(g_parse_file, name)
+  if is_pkg_file(g_parse_file) and not mod_is_pkg(name) { push(g_pkg_mods, name) }
+  if not is_id("uses") { return }
+  let ln = toks[pi].line
+  pi += 1
+  let list = mod_parse_names()
+  let k = mod_find_uses(name)
+  if k >= 0 {
+    g_mu_list[k] = g_mu_list[k] + list
+    return
+  }
+  push(g_mu_mod, name)
+  push(g_mu_list, list)
+  push(g_mu_file, g_parse_file)
+  push(g_mu_line, ln)
+}
+# `friend module NAME [of A, B]`
+function mod_parse_friend() -> void {
+  pi += 2
+  let fm = eat_id()
+  module_set(g_parse_file, fm)
+  let scope = ""
+  push(g_mod_friends, fm)
+  push(g_fr_scope, scope)
+}
+# may `from` see `to`'s private names?
+function module_friend_of(from: pointer, to: pointer) -> bool {
+  var i = 0
+  while i < len(g_mod_friends) {
+    if (g_mod_friends[i] == from) {
+      if (g_fr_scope[i] == "") or mod_list_has(g_fr_scope[i], to) { return true }
+    }
+    i += 1
+  }
+  return false
+}
+function is_pkg_file(f: pointer) -> bool {
+  var i = 0
+  while i < len(g_pkg_files) {
+    if (g_pkg_files[i] == f) { return true }
+    i += 1
+  }
+  return false
+}
+function mod_is_pkg(m: pointer) -> bool {
+  var i = 0
+  while i < len(g_pkg_mods) {
+    if (g_pkg_mods[i] == m) { return true }
+    i += 1
+  }
+  return false
+}
+# may module `from` reach into module `to` at all? (L3 uses; the export rule is separate)
+function module_may_use(from: pointer, to: pointer) -> bool {
+  if (from == "") or (to == "") or (from == to) { return true }
+  if mod_is_pkg(to) { return true }
+  let k = mod_find_uses(from)
+  if k < 0 { return true }
+  return mod_list_has(g_mu_list[k], to)
+}
+# the names in ",a,b," as a slice
+function mod_names(list: pointer) -> []pointer {
+  let out = new []pointer
+  var a = 1
+  var j = 1
+  while j < len(list) {
+    if list[j] == ',' {
+      if j > a { push(out, list[a .. j]) }
+      a = j + 1
+    }
+    j += 1
+  }
+  return out
+}
+# the declared uses graph has no cycle: a depth-first walk that carries its path, "a -> b -> "
+var g_mu_done: pointer = ","          # modules whose every path is known to end
+function mod_walk(m: pointer, path: pointer, first: pointer) -> void {
+  if has_sub(`-> {path}`, `-> {m} -> `) {
+    let k0 = mod_find_uses(first)
+    g_err_file = g_mu_file[k0]
+    g_err_line = g_mu_line[k0]
+    perr(`the modules' uses go round in a circle: {path}{m}; one of them has to take the other through a port`)
+  }
+  if has_sub(g_mu_done, `,{m},`) { return }
+  let k = mod_find_uses(m)
+  if k < 0 { return }
+  let next = mod_names(g_mu_list[k])
+  var n = 0
+  while n < len(next) {
+    mod_walk(next[n], `{path}{m} -> `, first)
+    n += 1
+  }
+  g_mu_done = g_mu_done + m + ","
+}
+function modules_finish() -> void {
+  let saved = g_parsing
+  g_parsing = false
+  var i = 0
+  while i < len(g_mu_mod) {
+    mod_walk(g_mu_mod[i], "", g_mu_mod[i])
+    i += 1
+  }
+  g_parsing = saved
+}

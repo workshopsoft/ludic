@@ -1,0 +1,3 @@
+# fishing/index.ludic - fishing names the one module it may reach
+module fishing uses base
+import "catch.ludic"

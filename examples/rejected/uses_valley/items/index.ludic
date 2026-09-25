@@ -1,0 +1,5 @@
+# items/index.ludic - exports inv_add, but that is not enough for a module that says `uses`
+module items
+export function inv_add(n: int) -> int {
+  return n + 1
+}

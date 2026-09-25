@@ -110,6 +110,35 @@ To move an existing codebase onto modules, build it once with `LUDIC_VIS_REPORT=
 reference that would be refused is printed as `vis: <file>:<line>: <module>.<name> used from
 <file>` and the build goes on, so a script can add the `export`s the program already relies on.
 
+### What a module may reach (`uses`)
+
+`export` says what a module offers; `uses` says what a module takes. A module line may name the
+only other modules its files reach:
+
+```ludic
+# doc-check: skip — a module spans files
+# fishing/index.ludic
+module fishing uses base, data
+```
+
+From then on a reference from `fishing` into any other module is refused, even to a name that
+module exports:
+
+```
+fishing/land.ludic:4: error: fishing uses items.inv_add (items/index.ludic:3): add 'uses items' to fishing's module line, or take it through a port
+```
+
+- A module with no `uses` clause keeps the rule before it - anything exported - so the rule can be
+  switched on one module at a time. Two module lines for one module add their lists together.
+- A file in no module (the program's root, the runtime) is unaffected either way, and a package's
+  module (found through `ludic_modules` or the toolchain, such as `ludic_ui`) is always usable.
+- A friend of a module (below) is not held to its `uses` for that module.
+- The declared graph may not go round: `module a uses b` beside `module b uses a` is refused
+  (`the modules' uses go round in a circle: a -> b -> a`) - one of them takes the other through a
+  port instead.
+- `LUDIC_VIS_REPORT=1` lists these too, as `uses: <file>:<line>: <module>.<name> used from <file>
+  (module <m>)`, and builds.
+
 ### Types are checked before anything is emitted
 
 Between the parse and the emitter a checker walks every function, the entry, the tests, the

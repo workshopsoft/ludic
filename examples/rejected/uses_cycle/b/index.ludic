@@ -1,0 +1,5 @@
+# b/index.ludic - and b uses a: the declared graph goes round
+module b uses a
+export function two() -> int {
+  return one() + 1
+}

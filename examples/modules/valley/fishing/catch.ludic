@@ -1,0 +1,4 @@
+# fishing/catch.ludic - inherits `module fishing uses base` from its barrel
+export function cast(times: int) -> int {
+  return times * bait() - 1
+}
