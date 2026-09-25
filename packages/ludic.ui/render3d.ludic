@@ -17,13 +17,10 @@ var r3u_atlas_tex: []int = new []int
 var r3u_atlas_cols: []int = new []int
 var r3u_atlas_rows: []int = new []int
 var r3u_atlas_names: [][]string = new [][]string
-var r3u_installed: bool = r3u_install()
 # importing this file is enough: it is the renderer from the program's first frame
-function r3u_install() -> bool {
-  ui_render3d()
-  return true
-}
-export function ui_render3d() -> void {
+def UiRenderers render3d { make: fn r3u_make }
+export function ui_render3d() -> void { ui_backend(r3u_make()) }
+function r3u_make() -> UiBackend {
   let b = new UiBackend
   b.rect = fn r3u_rect
   b.round = fn r3u_round
@@ -38,7 +35,7 @@ export function ui_render3d() -> void {
   b.unclip = fn r3u_unclip
   b.scale = fn r3u_scale
   b.now = fn r3u_now
-  ui_backend(b)
+  return b
 }
 # the player's interface size, 1.0 as designed
 export function ui_render3d_scale(s: float) -> void { r3u_user = s }

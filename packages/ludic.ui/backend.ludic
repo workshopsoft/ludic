@@ -20,7 +20,17 @@ export property UiBackend {
   now: fn() -> float = null                # seconds, for animation (else frames at 60 a second)
   input: bool = true               # false: take no input from Input.* (a test drives it)
 }
-var ui_be: UiBackend = null
+# a renderer a program installs by importing it (render3d.ludic): the first one is the backend
+property UiRenderer {
+  key: string = ""
+  make: fn() -> UiBackend = null
+}
+registry UiRenderers of UiRenderer as UIR
+function ui_default_backend() -> UiBackend {
+  if len(UiRenderers) == 0 { return null }
+  return UiRenderers[0].make()
+}
+var ui_be: UiBackend = ui_default_backend()
 export function ui_backend(b: UiBackend) -> void { ui_be = b }
 function ui_px(v: float) -> float {
   if ui_be != null and ui_be.scale != null { return v * ui_be.scale() }
