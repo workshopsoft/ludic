@@ -1,0 +1,53 @@
+# ground.ludic - what the feet stand on, and the one rule for a step versus a slope
+# The ground at (x, z) for feet at from_y, a collider's top included when it is a step up. Only
+# the body's own movement asks this: the ground itself (CharacterGround.height) stays pure, or
+# the height ratchets on itself and the body ends up on things it never climbed.
+export function char_stand_at(x: float, z: float, from_y: float) -> float {
+  let base = CharacterGround.height(x, z)
+  return CharacterGround.top_at(x, z, 0.35, Math.max(from_y, base), CHAR_STEP, base)
+}
+
+# A step up and a slope up are different refusals. Within CHAR_STEP of the feet is a step, taken
+# whatever the gradient into it (a 45 cm deck arrives in one frame); above that the boots decide,
+# measured over CHAR_SLOPE_PROBE, so the frame rate never changes the answer.
+export function char_slope_blocks(nh: float, fx: float, fz: float) -> bool {
+  if nh - chr_y > CHAR_STEP { return true }
+  let sx = chr_x + fx * CHAR_SLOPE_PROBE
+  let sz = chr_z + fz * CHAR_SLOPE_PROBE
+  return CharacterGround.height(sx, sz) - chr_y > CHAR_SLOPE_PROBE * CharacterGround.slope_limit()
+}
+
+# a body of radius r at (x, z) from y0 to y1, out of every collider: the resolved point is chr_out_*
+var chr_out_x: float = 0.0
+var chr_out_z: float = 0.0
+function chr_push(x: float, z: float, r: float, y0: float, y1: float) -> bool {
+  chr_ask_x = x
+  chr_ask_z = z
+  let hit = CharacterGround.push(x, z, r, y0, y1)
+  chr_out_x = x
+  chr_out_z = z
+  if hit {
+    chr_out_x = CharacterGround.pushed_x()
+    chr_out_z = CharacterGround.pushed_z()
+  }
+  return hit
+}
+
+function chr_bed_depth(x: float, z: float) -> float { return CharacterGround.water(x, z) - CharacterGround.bed(x, z) }
+
+export function char_wrap(a: float) -> float {
+  var d = a
+  while d > chr_pi { d = d - 2.0 * chr_pi }
+  while d < -chr_pi { d = d + 2.0 * chr_pi }
+  return d
+}
+
+export function char_toward(cur: float, target: float, rate: float) -> float {
+  return cur + Math.clamp(target - cur, -rate, rate)
+}
+
+# did the gait's phase step over `mark` this frame? (it wraps at 2 pi)
+function chr_cross(a: float, b: float, mark: float) -> bool {
+  if b < a { return a > mark or b < mark }
+  return a < mark and not (b < mark)
+}

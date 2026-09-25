@@ -1,0 +1,73 @@
+# water.ludic - one axis decides it: how far the bed is below the surface where the body stands.
+# Under CHAR_WADE_MAX the walk wades; past it the feet leave the bottom. Coming out wants a
+# shallower bed (CHAR_STAND_UP) than going in did, so a shelving shore does not flicker.
+function chr_enter_water(x: float, z: float) -> void {
+  if chr_swim { return }
+  chr_swim = true
+  chr_dive = false
+  chr_depth = 0.0
+  chr_breath = body_breath_max()
+  chr_float = 0.0
+  chr_air = false
+  chr_vy = 0.0
+  chr_sit = false
+  chr_x = x
+  chr_z = z
+  chr_water = CharacterGround.water(x, z)
+  chr_y = chr_water - 0.30
+  chr_say(CHAR_STARTED_SWIMMING, 0.0)
+}
+
+function chr_leave_water() -> void {
+  if not chr_swim { return }
+  chr_swim = false
+  chr_dive = false
+  chr_depth = 0.0
+  chr_y = CharacterGround.height(chr_x, chr_z)
+  chr_speed = Math.min(chr_speed, 1.0)
+  chr_say(CHAR_LEFT_WATER, 0.0)
+}
+
+# the descent: the jump held pushes the body under, letting go floats it back up
+function chr_dive_tick(jump: bool, dt: float) -> void {
+  let bed = Math.max(chr_bed_depth(chr_x, chr_z), 0.0)
+  let max_d = Math.min(6.0, Math.max(bed - 0.4, 0.0))
+  if jump and max_d > 0.2 {
+    chr_dive = true
+    chr_depth = Math.min(chr_depth + 1.2 * dt, max_d)
+  } else {
+    chr_depth = Math.max(chr_depth - 1.6 * dt, 0.0)
+    if chr_depth < 0.05 { chr_dive = false }
+  }
+}
+
+# air is spent only under the surface, and comes back fast at the top
+function chr_breath_tick(dt: float) -> void {
+  if not (chr_depth > 0.55) {
+    chr_breath = Math.min(chr_breath + dt * 12.0, body_breath_max())
+    return
+  }
+  chr_breath = chr_breath - dt
+  if chr_breath < 0.0 {
+    chr_breath = 0.0
+    chr_dive = false
+    chr_depth = Math.max(chr_depth - 3.0 * dt, 0.0)
+    chr_say(CHAR_OUT_OF_AIR, dt)
+  }
+}
+
+# The edge of the world is a current, not a wall: it takes the outward part of a stroke, so
+# turning round always works. Said once every twelve seconds while it is strong.
+function chr_current_tick(dt: float) -> void {
+  let fx = -Math.sin(chr_yaw)
+  let fz = -Math.cos(chr_yaw)
+  let take = Math.clamp(CharacterGround.current(chr_x, chr_z, fx, fz), 0.0, 1.0)
+  if take > 0.0 {
+    chr_speed = chr_speed * (1.0 - take)
+    if take > 0.55 and chr_edge_said < 0.0 {
+      chr_edge_said = 12.0
+      chr_say(CHAR_CURRENT, take)
+    }
+  }
+  chr_edge_said = chr_edge_said - dt
+}

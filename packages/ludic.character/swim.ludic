@@ -1,0 +1,22 @@
+# swim.ludic - afloat: buoyancy, the descent, the breath, and the shore stopping the body
+function chr_swim_tick(dx: float, dz: float, jump: bool, dt: float) -> void {
+  # standing still out here is floating, not swimming
+  if Math.abs(dx) + Math.abs(dz) > 0.05 { chr_float = 0.0 } else { chr_float = Math.min(1.0, chr_float + dt / 1.5) }
+  chr_dive_tick(jump, dt)
+  chr_breath_tick(dt)
+  chr_current_tick(dt)
+  let step = chr_speed * dt
+  if step > 0.0 {
+    chr_push(chr_x - Math.sin(chr_yaw) * step, chr_z - Math.cos(chr_yaw) * step, 0.35, chr_y, chr_y + CHAR_BODY)
+    let mx = chr_out_x - chr_x
+    let mz = chr_out_z - chr_z
+    chr_step = Math.sqrt(mx * mx + mz * mz)
+    chr_x = chr_out_x
+    chr_z = chr_out_z
+  }
+  # the surface, with a slow bob so a floating body is not a statue on glass
+  let bob = 0.04 * Math.sin(chr_time * 3.8)
+  chr_y = chr_water - 0.30 + bob - chr_depth
+  # shallow enough to stand up in, and at the top rather than under it
+  if chr_bed_depth(chr_x, chr_z) < CHAR_STAND_UP and chr_depth < 0.2 { chr_leave_water() }
+}

@@ -1,0 +1,48 @@
+# rules.ludic - the numbers that are the body's rules, and what it reports as facts
+export const CHAR_STEP: float = 0.55          # a rise within this of the feet is a step, whatever its gradient
+export const CHAR_BODY: float = 1.8           # feet to head
+# a slope is measured over this, never over the frame's own step: 60 Hz and 240 Hz refuse alike
+export const CHAR_SLOPE_PROBE: float = 0.6
+export const CHAR_BREATH_MAX: float = 45.0    # seconds of air under the surface
+export const CHAR_WADE_MAX: float = 1.35      # a bed deeper than this under the surface is a swim
+export const CHAR_STAND_UP: float = 1.15      # and shallower than this is ground again
+export const CHAR_DROP: float = 1.5           # how far below the height left a put-down may be
+
+export const CHAR_SIT_SEAT: int = 0           # a log, a stump, a bench
+export const CHAR_SIT_GROUND: int = 1         # cross-legged in the grass
+
+# who is holding the body still; two holders cannot release each other's hold
+export const CHAR_HOLD_SCREEN: int = 1
+export const CHAR_HOLD_STAGE: int = 2
+
+# what sitting down where you stand answered
+export const CHAR_SAT: int = 0
+export const CHAR_STOOD: int = 1
+export const CHAR_NOT_RIDING: int = 2
+export const CHAR_NOT_AIRBORNE: int = 3
+export const CHAR_NOT_STEEP: int = 4
+export const CHAR_NOT_WET: int = 5
+
+# what the first-person toggle answered
+export const CHAR_EYES_ON: int = 0
+export const CHAR_EYES_OFF: int = 1
+export const CHAR_EYES_SITTING: int = 2
+export const CHAR_EYES_RIDING: int = 3
+
+# the facts
+export const CHAR_LANDED: int = 0             # v: the speed carried out of the air
+export const CHAR_JUMPED: int = 1
+export const CHAR_FOOTFALL: int = 2           # a boot came down
+export const CHAR_TOO_STEEP: int = 3          # a walk refused, once per refusal
+export const CHAR_STARTED_SWIMMING: int = 4
+export const CHAR_LEFT_WATER: int = 5
+export const CHAR_OUT_OF_AIR: int = 6         # v: the seconds of it this frame
+export const CHAR_CURRENT: int = 7            # the water at the edge takes the stroke; said every 12 s
+
+export property CharacterFact {
+  what: int = 0
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  v: float = 0.0
+}

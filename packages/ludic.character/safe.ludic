@@ -1,0 +1,39 @@
+# safe.ludic - somewhere a body can be put down: the one answer every dismount, every stand-up and
+# every landing asks. The wanted spot if it will do, else the nearest ring out that is clear of every
+# collider, no deeper than max_depth, within CHAR_DROP of the height being left, and on ground
+# gentle enough to walk off - a spot you can stand on but cannot leave is not a safe spot.
+function chr_safe_ok(x: float, z: float, from_y: float, max_depth: float) -> bool {
+  let g = CharacterGround.height(x, z)
+  if Math.abs(g - from_y) > CHAR_DROP { return false }
+  if CharacterGround.water(x, z) - g > max_depth { return false }
+  if chr_push(x, z, 0.4, g, g + CHAR_BODY) { return false }
+  var lo = g
+  var hi = g
+  for k in 0 .. 4 {
+    let a = float(k) * (chr_pi * 0.5)
+    let h = CharacterGround.height(x + Math.sin(a) * CHAR_SLOPE_PROBE, z + Math.cos(a) * CHAR_SLOPE_PROBE)
+    lo = Math.min(lo, h)
+    hi = Math.max(hi, h)
+  }
+  return not (hi - lo > CHAR_SLOPE_PROBE * 2.0)
+}
+
+export function char_safe_spot(x: float, z: float, from_y: float, max_depth: float) -> bool {
+  chr_safe_x = x
+  chr_safe_z = z
+  if chr_safe_ok(x, z, from_y, max_depth) { return true }
+  for r in 0 .. 9 {
+    let rad = 0.8 + float(r) * 1.1
+    for k in 0 .. 16 {
+      let a = float(k) * (chr_pi / 8.0)
+      let px = x + Math.sin(a) * rad
+      let pz = z + Math.cos(a) * rad
+      if chr_safe_ok(px, pz, from_y, max_depth) {
+        chr_safe_x = px
+        chr_safe_z = pz
+        return true
+      }
+    }
+  }
+  return false
+}

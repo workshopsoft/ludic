@@ -1,0 +1,6 @@
+# ludic.character - a third-person walking body: the gait's speeds, steps and slopes, a jump,
+# wading, swimming and diving, sitting, a safe place to be put down, and the orbit camera.
+# Uses ludic.base and nothing else. See README.md.
+package "ludic.character"
+version "0.1.0"
+kind source

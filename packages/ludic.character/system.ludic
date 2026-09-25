@@ -1,0 +1,24 @@
+# system.ludic - the body as a system: reset, a tick from the input port, and nothing saved (where a
+# body stands is the game's to write, with the rest of the player)
+export function char_reset() -> void {
+  char_teleport(0.0, 0.0, 0.0)
+  chr_time = 0.0
+  chr_phase = 0.0
+  chr_breath = CHAR_BREATH_MAX
+  chr_can_run = true
+  chr_sit_t = 0.0
+  chr_steep = 0.0
+  chr_land = 0.0
+  chr_edge_said = 0.0
+  chr_fps = false
+  q_clear(char_facts())
+}
+
+function chr_sys_tick(t: Tick) -> void { char_tick(t.dt) }
+
+export function char_system() -> System {
+  let s = system_new("character", PH_INPUT)
+  s.reset = fn char_reset
+  s.tick = fn chr_sys_tick
+  return s
+}

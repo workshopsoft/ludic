@@ -1,0 +1,70 @@
+# camera.ludic - the orbit: a pivot at the chest easing after the body, the camera on its orbit
+# behind and a share of the distance to the right (so the body sits left of the crosshair), lifted
+# out of the ground and aimed back at the pivot. Or the eyes, with the gait's bob on them.
+function chr_eyes_allowed() -> bool { return not CharacterBody.riding() and not chr_sit and CharacterBody.eyes_ok() }
+
+function chr_shoulder() -> float { return Math.clamp(chr_cam_dist * 0.30, 0.6, 1.9) }
+
+export function char_camera(dt: float) -> void {
+  if chr_fps and chr_eyes_allowed() {
+    chr_camera_eyes(dt)
+    return
+  }
+  char_camera_third(dt)
+}
+
+# over the shoulder, whatever the player plays in (a figure looked at from inside its head is not)
+export function char_camera_third(dt: float) -> void {
+  chr_eyes_now = false
+  let k = Math.min(1.0, 10.0 * dt)
+  var ty = chr_y + 1.45
+  if chr_swim { ty = chr_y + 0.9 }
+  chr_piv_x = Math.lerp(chr_piv_x, chr_x, k)
+  chr_piv_y = Math.lerp(chr_piv_y, ty, k)
+  chr_piv_z = Math.lerp(chr_piv_z, chr_z, k)
+  let cyw = Math.cos(chr_cam_yaw)
+  let syw = Math.sin(chr_cam_yaw)
+  let cpt = Math.cos(chr_cam_pitch)
+  let fx = -(syw * cpt)
+  let fy = Math.sin(chr_cam_pitch)
+  let fz = -(cyw * cpt)
+  let ax = chr_piv_x + cyw * chr_shoulder()
+  let az = chr_piv_z - syw * chr_shoulder()
+  let cx = ax - fx * chr_cam_dist
+  var cyy = chr_piv_y - fy * chr_cam_dist
+  let cz = az - fz * chr_cam_dist
+  cyy = Math.max(cyy, CharacterGround.bed(cx, cz) + 0.55)
+  # at the top of the water the camera is held clear of it; under it, it follows the dive
+  if chr_swim and not chr_dive and cyy < chr_water + 0.35 { cyy = chr_water + 0.35 }
+  let mid_g = CharacterGround.bed((cx + ax) * 0.5, (cz + az) * 0.5) + 0.4
+  let mid_y = (cyy + chr_piv_y) * 0.5
+  if mid_y < mid_g { cyy = cyy + (mid_g - mid_y) * 2.0 }
+  chr_eye_x = cx
+  chr_eye_y = cyy
+  chr_eye_z = cz
+  let ddx = ax - cx
+  let ddz = az - cz
+  chr_eye_yaw = Math.atan2(-ddx, -ddz)
+  chr_eye_pitch = Math.atan2(chr_piv_y - cyy, Math.sqrt(ddx * ddx + ddz * ddz))
+}
+
+# the eyes: the head's height, the walk's bob, and the look the player is already holding
+function chr_camera_eyes(dt: float) -> void {
+  chr_eyes_now = true
+  var eye = 1.62
+  if chr_swim { eye = 0.42 }
+  if chr_dive { eye = 0.30 }
+  let moving = Math.clamp(chr_speed / 5.0, 0.0, 1.0)
+  let want = 0.035 * moving * (1.0 - Math.cos(chr_phase * 2.0))
+  chr_fps_bob = Math.lerp(chr_fps_bob, want, Math.min(1.0, 12.0 * dt))
+  # never inside the ground on a steep step
+  let ey = Math.max(chr_y + eye + chr_fps_bob, CharacterGround.bed(chr_x, chr_z) + 0.30)
+  chr_piv_x = chr_x
+  chr_piv_y = ey
+  chr_piv_z = chr_z
+  chr_eye_x = chr_x
+  chr_eye_y = ey
+  chr_eye_z = chr_z
+  chr_eye_yaw = chr_cam_yaw
+  chr_eye_pitch = chr_cam_pitch
+}

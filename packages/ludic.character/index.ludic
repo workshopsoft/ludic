@@ -1,0 +1,21 @@
+# ludic.character - one body under a player's stick: the game says where the ground, the water and
+# the colliders are and what the stick asks; the package moves the body and its camera and says
+# what happened. It never draws: the game poses a figure and points its camera from the queries.
+module ludic_character uses ludic_base
+numbers float
+import "ludic.base"
+import "rules.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "queries.ludic"
+import "ground.ludic"
+import "safe.ludic"
+import "water.ludic"
+import "swim.ludic"
+import "walk.ludic"
+import "steer.ludic"
+import "update.ludic"
+import "sit.ludic"
+import "verbs.ludic"
+import "camera.ludic"
+import "system.ludic"

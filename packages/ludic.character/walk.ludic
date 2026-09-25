@@ -1,0 +1,69 @@
+# walk.ludic - the step itself: swimming, in the air, or on the ground; the distance, for the gait
+function chr_travel(dx: float, dz: float, fx: float, fz: float, jump: bool, dt: float) -> float {
+  if chr_swim {
+    chr_swim_tick(dx, dz, jump, dt)
+    return chr_speed * dt
+  }
+  if chr_air { return chr_fly(dx, dz, dt) }
+  return chr_walk(fx, fz, jump, dt)
+}
+
+# ballistic: gravity, the takeoff's velocity carried, a little steering
+function chr_fly(dx: float, dz: float, dt: float) -> float {
+  chr_vy = chr_vy - 14.0 * dt
+  chr_air_vx = chr_air_vx + dx * (4.0 * dt)
+  chr_air_vz = chr_air_vz + dz * (4.0 * dt)
+  chr_push(chr_x + chr_air_vx * dt, chr_z + chr_air_vz * dt, 0.35, chr_y, chr_y + CHAR_BODY)
+  chr_y = chr_y + chr_vy * dt
+  let ground = char_stand_at(chr_out_x, chr_out_z, chr_y)
+  chr_x = chr_out_x
+  chr_z = chr_out_z
+  if chr_y < ground and chr_vy < 0.0 {
+    chr_y = ground
+    chr_air = false
+    chr_land = 0.22
+    chr_speed = Math.sqrt(chr_air_vx * chr_air_vx + chr_air_vz * chr_air_vz)
+    chr_say(CHAR_LANDED, chr_speed)
+  }
+  return chr_speed * (dt * 0.4)
+}
+
+# on the ground: a step, unless a slope refuses it or the water takes the body; then a jump
+function chr_walk(fx: float, fz: float, jump: bool, dt: float) -> float {
+  var dist = chr_speed * dt
+  if dist > 0.0 { dist = chr_walk_step(fx, fz, dist) } else { chr_y = CharacterGround.height(chr_x, chr_z) }
+  if jump and chr_can_run and chr_land < 0.05 {
+    chr_air = true
+    chr_vy = 5.0
+    chr_air_vx = fx * chr_speed
+    chr_air_vz = fz * chr_speed
+    chr_say(CHAR_JUMPED, 0.0)
+  }
+  return dist
+}
+
+function chr_walk_step(fx: float, fz: float, dist: float) -> float {
+  chr_push(chr_x + fx * dist, chr_z + fz * dist, 0.35, chr_y, chr_y + CHAR_BODY)
+  let nx = chr_out_x
+  let nz = chr_out_z
+  let nh = char_stand_at(nx, nz, chr_y)
+  if char_slope_blocks(nh, fx, fz) {
+    if not (chr_steep > 0.0) { chr_say(CHAR_TOO_STEEP, nh - chr_y) }
+    chr_steep = 1.2
+    chr_speed = 0.0
+    return 0.0
+  }
+  # the lake shelves: shin-deep is a wade, and past CHAR_WADE_MAX it is a swim. Entering owns
+  # the position and the height this frame, or the body sits on the bed for one frame.
+  if nh < CharacterGround.water(nx, nz) - CHAR_WADE_MAX {
+    chr_enter_water(nx, nz)
+    return dist
+  }
+  let mx = nx - chr_x
+  let mz = nz - chr_z
+  chr_step = Math.sqrt(mx * mx + mz * mz)
+  chr_x = nx
+  chr_z = nz
+  chr_y = nh
+  return dist
+}

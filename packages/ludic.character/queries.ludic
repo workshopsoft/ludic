@@ -1,0 +1,48 @@
+# queries.ludic - what the rest of a game may ASK about the body: the only way out of its state
+export function body_x() -> float { return chr_x }
+export function body_y() -> float { return chr_y }
+export function body_z() -> float { return chr_z }
+export function body_yaw() -> float { return chr_yaw }
+export function body_speed() -> float { return chr_speed }
+export function body_moving() -> float { return chr_move }
+export function body_run() -> float { return chr_run }
+export function body_phase() -> float { return chr_phase }
+export function body_time() -> float { return chr_time }
+export function body_water() -> float { return chr_water }
+export function body_airborne() -> bool { return chr_air }
+export function body_vy() -> float { return chr_vy }
+export function body_landing() -> float { return chr_land }
+export function body_steep() -> float { return chr_steep }
+export function body_step() -> float { return chr_step }
+export function body_sitting() -> bool { return chr_sit }
+export function body_sit_mode() -> int { return chr_sit_mode }
+export function body_sit_t() -> float { return chr_sit_t }
+export function body_swimming() -> bool { return chr_swim }
+export function body_diving() -> bool { return chr_dive }
+export function body_depth() -> float { return chr_depth }
+export function body_breath() -> float { return chr_breath }
+export function body_floating() -> float { return chr_float }
+export function body_swim_phase() -> float { return chr_swim_phase }
+export function body_can_run() -> bool { return chr_can_run }
+export function body_walk_speed() -> float { return chr_walk_speed }
+export function body_run_speed() -> float { return chr_run_speed }
+export function body_held() -> bool { return chr_holds != 0 }
+export function body_fps() -> bool { return chr_fps }
+export function body_cam_yaw() -> float { return chr_cam_yaw }
+export function body_cam_pitch() -> float { return chr_cam_pitch }
+export function body_cam_dist() -> float { return chr_cam_dist }
+
+# the camera the last char_camera worked out, for the game to hand its renderer
+export function body_eye_x() -> float { return chr_eye_x }
+export function body_eye_y() -> float { return chr_eye_y }
+export function body_eye_z() -> float { return chr_eye_z }
+export function body_eye_yaw() -> float { return chr_eye_yaw }
+export function body_eye_pitch() -> float { return chr_eye_pitch }
+export function body_eyes_now() -> bool { return chr_eyes_now }
+
+# where char_safe_spot found room, after it answered true
+export function body_safe_x() -> float { return chr_safe_x }
+export function body_safe_z() -> float { return chr_safe_z }
+
+# the air a full breath holds, with the lungs the game gives
+export function body_breath_max() -> float { return CHAR_BREATH_MAX * CharacterBody.breath() }

@@ -1,0 +1,62 @@
+# ports.ludic - what the body asks the game. Unbound, the world is a dry plain with no colliders,
+# the boots manage 1.05 m a metre, the body is fresh and nothing holds or carries it.
+export port CharacterGround {
+  height: fn(float, float) -> float                   # the world's own ground: pure, never the body's
+  # (x, z, r, from_y, step, base): the top of a collider within `step` above from_y, else base
+  top_at: fn(float, float, float, float, float, float) -> float = fn chr__top_plain
+  bed: fn(float, float) -> float = fn chr__bed_plain       # the bed under water (unbound: the ground)
+  water: fn(float, float) -> float = fn chr__dry           # the surface over a point
+  # (x, z, r, y0, y1): true when a collider takes a body of radius r there; pushed_x / _z say where to
+  push: fn(float, float, float, float, float) -> bool = fn chr__no_push
+  pushed_x: fn() -> float = fn chr__asked_x
+  pushed_z: fn() -> float = fn chr__asked_z
+  slope: fn(float, float) -> float = fn chr__slope_plain   # 0 flat .. 1 a wall
+  slope_limit: fn() -> float = fn chr__boots               # the rise a metre the boots take
+  current: fn(float, float, float, float) -> float = fn chr__still   # (x, z, fx, fz): 0..1 of a stroke lost
+}
+
+export port CharacterBody {
+  pace: fn() -> float = fn chr__one                        # the walk and run, times (gear, a tired body)
+  sneaking: fn() -> bool = fn chr__no
+  breath: fn() -> float = fn chr__one                      # the lungs, times
+  riding: fn() -> bool = fn chr__no                        # something else carries the body
+  ride: fn(float, float, bool, float) -> void = fn chr__not_carried   # (ix, iz, run, dt) while riding
+  holding: fn() -> bool = fn chr__no                       # at work on something: face it
+  hold_x: fn() -> float = fn chr__zero
+  hold_z: fn() -> float = fn chr__zero
+  eyes_ok: fn() -> bool = fn chr__yes                      # first person may be used now
+}
+
+# the stick, once a frame: move is in the camera's frame (+z ahead), look is radians this frame
+export port CharacterInput {
+  move_x: fn() -> float = fn chr__zero
+  move_z: fn() -> float = fn chr__zero
+  run: fn() -> bool = fn chr__no
+  jump: fn() -> bool = fn chr__no
+  look_yaw: fn() -> float = fn chr__zero
+  look_pitch: fn() -> float = fn chr__zero
+  zoom: fn() -> float = fn chr__zero                       # wheel notches, in toward the body
+  look_always: fn() -> bool = fn chr__no                   # the look is held: never settle behind
+}
+
+var chr_ask_x: float = 0.0
+var chr_ask_z: float = 0.0
+function chr__top_plain(x: float, z: float, r: float, from_y: float, step: float, base: float) -> float { return base }
+function chr__bed_plain(x: float, z: float) -> float { return CharacterGround.height(x, z) }
+function chr__dry(x: float, z: float) -> float { return -10000.0 }
+function chr__no_push(x: float, z: float, r: float, y0: float, y1: float) -> bool { return false }
+function chr__asked_x() -> float { return chr_ask_x }
+function chr__asked_z() -> float { return chr_ask_z }
+function chr__slope_plain(x: float, z: float) -> float {
+  let e = 2.0
+  let dx = CharacterGround.height(x + e, z) - CharacterGround.height(x - e, z)
+  let dz = CharacterGround.height(x, z + e) - CharacterGround.height(x, z - e)
+  return 1.0 - 4.0 / Math.sqrt(dx * dx + dz * dz + 16.0)
+}
+function chr__boots() -> float { return 1.05 }
+function chr__still(x: float, z: float, fx: float, fz: float) -> float { return 0.0 }
+function chr__one() -> float { return 1.0 }
+function chr__zero() -> float { return 0.0 }
+function chr__no() -> bool { return false }
+function chr__yes() -> bool { return true }
+function chr__not_carried(ix: float, iz: float, run: bool, dt: float) -> void { }

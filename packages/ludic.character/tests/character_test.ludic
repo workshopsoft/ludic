@@ -1,0 +1,272 @@
+# character_test.ludic - a body on a fake world: flat meadow, a 45 cm deck, a gentle rise and a cliff,
+# a boulder with a step on top, and a lake that shelves. The step against the slope at every frame
+# rate, wading into a swim and out, the dive and the breath, the jump, sitting, holds, the safe
+# spot, riding and the camera.
+import "ludic.character"
+import "ludic.base"
+program CharacterTest {
+  numbers float
+
+  # the world: x in 4..8 is a deck 45 cm up; z < -10 a cliff; z > 10 a gentle rise; x > 20 the lake
+  function fk_height(x: float, z: float) -> float {
+    if x > 20.0 { return -(x - 20.0) * 0.5 }
+    if z < -10.0 { return (-10.0 - z) * 2.0 }
+    if z > 10.0 { return (z - 10.0) * 0.3 }
+    if x > 4.0 and x < 8.0 and z > -2.0 and z < 2.0 { return 0.45 }
+    return 0.0
+  }
+  function fk_water(x: float, z: float) -> float {
+    if x > 19.0 { return 0.0 }
+    return -10000.0
+  }
+  # a boulder at (0, 6), a metre round and 40 cm high, and a pillar at (-6, 0)
+  var px: float = 0.0
+  var pz: float = 0.0
+  function fk_ring(x: float, z: float, cx: float, cz: float, r: float) -> bool {
+    let dx = x - cx
+    let dz = z - cz
+    let d = Math.sqrt(dx * dx + dz * dz)
+    if d >= r { return false }
+    let k = r / Math.max(d, 0.001)
+    px = cx + dx * k
+    pz = cz + dz * k
+    return true
+  }
+  function fk_push(x: float, z: float, r: float, y0: float, y1: float) -> bool {
+    if y0 < 0.4 and fk_ring(x, z, 0.0, 6.0, 1.0 + r) { return true }
+    return fk_ring(x, z, -6.0, 0.0, 0.5 + r)
+  }
+  function fk_px() -> float { return px }
+  function fk_pz() -> float { return pz }
+  function fk_top(x: float, z: float, r: float, from_y: float, step: float, base: float) -> float {
+    let dx = x
+    let dz = z - 6.0
+    if dx * dx + dz * dz < 1.0 and 0.4 - from_y <= step { return 0.4 }
+    return base
+  }
+
+  var riding: bool = false
+  var rides: int = 0
+  var sneaking: bool = false
+  var pace: float = 1.0
+  var eyes: bool = true
+  function fk_riding() -> bool { return riding }
+  function fk_ride(ix: float, iz: float, run: bool, dt: float) -> void { rides += 1 }
+  function fk_sneak() -> bool { return sneaking }
+  function fk_pace() -> float { return pace }
+  function fk_eyes() -> bool { return eyes }
+
+  var mz: float = 0.0
+  function fk_move_z() -> float { return mz }
+
+  bind CharacterGround { height: fn fk_height, water: fn fk_water, push: fn fk_push, pushed_x: fn fk_px, pushed_z: fn fk_pz, top_at: fn fk_top }
+  bind CharacterBody { riding: fn fk_riding, ride: fn fk_ride, sneaking: fn fk_sneak, pace: fn fk_pace, eyes_ok: fn fk_eyes }
+  bind CharacterInput { move_z: fn fk_move_z }
+
+  function fresh(x: float, z: float, yaw: float) -> void {
+    char_reset()
+    char_release(CHAR_HOLD_SCREEN)
+    char_teleport(x, z, yaw)
+  }
+  function facts() -> []CharacterFact { return q_drain(char_facts()) }
+  function count(fs: []CharacterFact, what: int) -> int {
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+  # walk the stick straight ahead (the camera looks where the body faces) for `secs`
+  function walk(secs: float, hz: float, run: bool) -> void {
+    let n = int(secs * hz)
+    for i in 0 .. n { char_update(0.0, 1.0, run, false, 0.0, 0.0, 1.0 / hz) }
+  }
+  # yaw 0 faces -z; the heading of a walk toward +x is -pi/2
+  const EAST: float = -1.5707963
+  const SOUTH: float = 3.14159265
+
+  test "a 45 cm deck is a step at 60 Hz and at 240" {
+    fresh(1.0, 0.0, EAST)
+    walk(2.0, 60.0, false)
+    expect(body_x() > 5.0)
+    expect_near(body_y(), 0.45, 0.01)
+    fresh(1.0, 0.0, EAST)
+    walk(2.0, 240.0, false)
+    expect(body_x() > 5.0)
+    expect_near(body_y(), 0.45, 0.01)
+    expect_eq(count(facts(), CHAR_TOO_STEEP), 0)
+  }
+
+  test "a cliff is refused at the same place whatever the frame rate, and said once" {
+    fresh(0.0, -8.0, 0.0)
+    walk(3.0, 30.0, false)
+    let at30 = body_z()
+    expect(body_steep() > 0.0)
+    expect_eq(count(facts(), CHAR_TOO_STEEP), 1)
+    fresh(0.0, -8.0, 0.0)
+    walk(3.0, 240.0, false)
+    expect_near(body_z(), at30, 0.25)
+    expect(body_z() > -10.0)
+    expect(body_y() < 0.3)
+  }
+
+  test "a gentle rise is walked up" {
+    fresh(0.0, 8.0, SOUTH)
+    walk(3.0, 60.0, false)
+    expect(body_z() > 14.0)
+    expect(body_y() > 1.0)
+  }
+
+  test "the boots set the limit: a rise they cannot take is refused" {
+    fresh(0.0, 8.0, SOUTH)
+    walk(0.2, 60.0, false)
+    expect(not char_slope_blocks(body_y() + 0.1, 0.0, 1.0))
+  }
+
+  test "the walk reaches the walk speed, the run the run speed, a sneak its own" {
+    fresh(0.0, 0.0, SOUTH)
+    walk(2.0, 60.0, false)
+    expect_near(body_speed(), 3.2, 0.05)
+    fresh(0.0, 0.0, SOUTH)
+    walk(2.0, 60.0, true)
+    expect_near(body_speed(), 6.8, 0.05)
+    pace = 0.5
+    fresh(0.0, 0.0, SOUTH)
+    walk(2.0, 60.0, false)
+    expect_near(body_speed(), 1.6, 0.05)
+    pace = 1.0
+    sneaking = true
+    fresh(0.0, 0.0, SOUTH)
+    walk(2.0, 60.0, true)
+    expect_near(body_speed(), 1.3, 0.05)
+  }
+
+  test "a boulder is a wall to a body below its step and a step onto its top" {
+    fresh(0.0, 3.0, SOUTH)
+    walk(2.0, 60.0, false)
+    expect(body_z() < 5.1)
+    expect_near(char_stand_at(0.0, 6.0, 0.0), 0.4, 0.001)
+    expect_near(char_stand_at(3.0, 6.0, 0.0), 0.0, 0.001)
+    # and the world's own ground never includes it
+    expect_near(fk_height(0.0, 6.0), 0.0, 0.001)
+  }
+
+  test "wading shelves into a swim, and the shallows give the ground back" {
+    fresh(18.0, 0.0, EAST)
+    walk(3.0, 60.0, false)
+    let fs = facts()
+    expect(body_swimming())
+    expect_eq(count(fs, CHAR_STARTED_SWIMMING), 1)
+    expect_near(body_y(), -0.30, 0.06)
+    expect(body_breath() > 40.0)
+    char_face(-EAST)
+    char_look(-EAST, 0.0)
+    walk(8.0, 60.0, false)
+    expect(not body_swimming())
+    expect_eq(count(facts(), CHAR_LEFT_WATER), 1)
+  }
+
+  test "the jump held dives, the air runs out, and the body surfaces" {
+    fresh(30.0, 0.0, 0.0)
+    char_resume_swim(false, 0.0, 2.0)
+    for i in 0 .. 600 { char_update(0.0, 0.0, false, true, 0.0, 0.0, 1.0 / 60.0) }
+    let fs = facts()
+    expect(count(fs, CHAR_OUT_OF_AIR) > 0)
+    for i in 0 .. 300 { char_update(0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    expect(body_depth() < 0.05)
+    expect(body_breath() > 10.0)
+  }
+
+  test "a jump leaves the ground, falls, lands, and says both" {
+    fresh(0.0, 0.0, 0.0)
+    char_update(0.0, 0.0, false, true, 0.0, 0.0, 1.0 / 60.0)
+    expect(body_airborne())
+    var guard = 0
+    while body_airborne() and guard < 200 {
+      char_update(0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0)
+      guard += 1
+    }
+    let fs = facts()
+    expect(not body_airborne())
+    expect_eq(count(fs, CHAR_JUMPED), 1)
+    expect_eq(count(fs, CHAR_LANDED), 1)
+    expect(guard > 30)
+    char_allow_run(false)
+    char_update(0.0, 0.0, false, true, 0.0, 0.0, 1.0 / 60.0)
+    expect(not body_airborne())
+  }
+
+  test "the safe spot clears a collider, keeps out of deep water, and allows a wade when asked" {
+    expect(char_safe_spot(-6.0, 0.0, 0.0, 0.0))
+    let dx = body_safe_x() + 6.0
+    let dz = body_safe_z()
+    expect(dx * dx + dz * dz > 0.81)
+    expect(not char_safe_spot(40.0, 0.0, 0.0, 0.0))
+    expect(char_safe_spot(20.5, 0.0, 0.0, 1.25))
+    expect(char_safe_spot(15.0, 0.0, 0.0, 0.0))
+    expect_near(body_safe_x(), 15.0, 0.001)
+  }
+
+  test "sitting where you stand, and the refusals" {
+    fresh(0.0, 0.0, 0.0)
+    expect_eq(char_sit_here(), CHAR_SAT)
+    for i in 0 .. 30 { char_update(0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    expect(body_sitting())
+    expect_near(body_sit_t(), 1.0, 0.01)
+    expect_eq(char_sit_here(), CHAR_STOOD)
+    expect(not body_sitting())
+    fresh(0.0, -14.0, 0.0)
+    expect_eq(char_sit_here(), CHAR_NOT_STEEP)
+    fresh(24.0, 0.0, 0.0)
+    char_resume_swim(false, 0.0, 10.0)
+    expect_eq(char_sit_here(), CHAR_NOT_WET)
+    riding = true
+    fresh(0.0, 0.0, 0.0)
+    expect_eq(char_sit_here(), CHAR_NOT_RIDING)
+    riding = false
+  }
+
+  test "a hold stops the stick, and only its own reason lets it go" {
+    fresh(0.0, 0.0, 0.0)
+    mz = 1.0
+    char_hold(CHAR_HOLD_STAGE)
+    char_hold(CHAR_HOLD_SCREEN)
+    for i in 0 .. 60 { char_tick(1.0 / 60.0) }
+    expect_near(body_z(), 0.0, 0.001)
+    char_release(CHAR_HOLD_SCREEN)
+    char_release(CHAR_HOLD_SCREEN)
+    expect(body_held())
+    char_release(CHAR_HOLD_STAGE)
+    for i in 0 .. 60 { char_tick(1.0 / 60.0) }
+    expect(body_z() < -1.0)
+    mz = 0.0
+  }
+
+  test "riding hands the stick over and leaves the body where the ride puts it" {
+    fresh(0.0, 0.0, 0.0)
+    riding = true
+    rides = 0
+    char_board(3.0, 3.0, 0.0)
+    for i in 0 .. 10 { char_update(0.0, 1.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    expect_eq(rides, 10)
+    char_ride_at(4.0, 1.2, 3.0, 0.0, 2.0)
+    expect_near(body_x(), 4.0, 0.001)
+    expect_near(body_y(), 1.2, 0.001)
+    riding = false
+    char_step_off(5.0, 0.0)
+    expect_near(body_y(), 0.45, 0.001)
+  }
+
+  test "the orbit sits behind and above the ground; the eyes at head height, refused when sat" {
+    fresh(0.0, 0.0, 0.0)
+    char_camera(1.0)
+    expect(body_eye_z() > 1.0)
+    expect(body_eye_y() > 0.55)
+    expect(not body_eyes_now())
+    expect_eq(char_fps_toggle(), CHAR_EYES_ON)
+    char_camera(1.0)
+    expect(body_eyes_now())
+    expect_near(body_eye_y(), 1.62, 0.05)
+    expect_eq(char_fps_toggle(), CHAR_EYES_OFF)
+    char_sit(0.0, 0.0, 0.0, CHAR_SIT_SEAT)
+    expect_eq(char_fps_toggle(), CHAR_EYES_SITTING)
+  }
+}

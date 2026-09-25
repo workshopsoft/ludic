@@ -1,0 +1,125 @@
+# verbs.ludic - every change the rest of a game may make to the body
+export function char_config(walk: float, run: float) -> void {
+  chr_walk_speed = walk
+  chr_run_speed = run
+}
+
+# put the body somewhere, standing, the camera behind it
+export function char_teleport(x: float, z: float, yaw: float) -> void {
+  chr_x = x
+  chr_z = z
+  chr_yaw = yaw
+  chr_y = CharacterGround.height(x, z)
+  char_halt()
+  chr_sit = false
+  chr_swim = false
+  chr_dive = false
+  chr_depth = 0.0
+  chr_float = 0.0
+  # the water where the body lands, not where it was: a trip reloaded mid-swim reads it next
+  chr_water = CharacterGround.water(x, z)
+  chr_cam_yaw = yaw
+  chr_piv_x = chr_x
+  chr_piv_y = chr_y + 1.45
+  chr_piv_z = chr_z
+  char_camera(1.0)
+}
+
+# a screen holds the body still by a reason, so two holders cannot release each other's hold
+export function char_hold(reason: int) -> void { chr_holds = chr_holds | reason }
+export function char_release(reason: int) -> void { if (chr_holds & reason) != 0 { chr_holds = chr_holds - reason } }
+
+# everything that carries the body stops: no fall, no stride, no run
+export function char_halt() -> void {
+  chr_air = false
+  chr_vy = 0.0
+  chr_speed = 0.0
+  chr_move = 0.0
+  chr_run = 0.0
+}
+
+# out of strength in the water: the stroke stops and the body floats
+export function char_go_limp() -> void {
+  chr_speed = 0.0
+  chr_float = 1.0
+}
+
+# set down somewhere without the teleport's reset (a swimmer turned back)
+export function char_push_to(x: float, z: float) -> void {
+  chr_x = x
+  chr_z = z
+  chr_speed = 0.0
+}
+
+# stood on the ground at a point, facing a way
+export function char_stand_on(x: float, z: float, yaw: float) -> void {
+  chr_x = x
+  chr_z = z
+  chr_yaw = yaw
+  chr_y = CharacterGround.height(x, z)
+}
+
+# a trip saved in the middle of the lake reloads in the middle of the lake, not on the bed
+export function char_resume_swim(dive: bool, depth: float, breath: float) -> void {
+  chr_water = CharacterGround.water(chr_x, chr_z)
+  chr_swim = true
+  chr_dive = dive
+  chr_depth = depth
+  chr_breath = breath
+  chr_y = chr_water - 0.30 - chr_depth
+}
+
+# the map changed under the body: nothing about the old water may survive
+export function char_map_changed() -> void {
+  chr_swim = false
+  chr_dive = false
+  chr_depth = 0.0
+  chr_water = CharacterGround.water(chr_x, chr_z)
+}
+
+export function char_face(yaw: float) -> void { chr_yaw = yaw }
+export function char_allow_run(on: bool) -> void { chr_can_run = on }
+export function char_look(yaw: float, pitch: float) -> void {
+  chr_cam_yaw = yaw
+  chr_cam_pitch = pitch
+}
+export function char_look_pitch(pitch: float) -> void { chr_cam_pitch = pitch }
+export function char_orbit(dist: float) -> void { chr_cam_dist = Math.clamp(dist, 1.8, 9.0) }
+export function char_lock_orbit(on: bool) -> void { chr_lock = on }
+export function char_set_fps(on: bool) -> void { chr_fps = on }
+
+# the eyes or the shoulder; refused while sitting or carried, and the answer says which
+export function char_fps_toggle() -> int {
+  if not chr_fps and not chr_eyes_allowed() {
+    if chr_sit { return CHAR_EYES_SITTING }
+    return CHAR_EYES_RIDING
+  }
+  chr_fps = not chr_fps
+  if chr_fps { return CHAR_EYES_ON }
+  return CHAR_EYES_OFF
+}
+
+# something to ride: getting on, being carried, and stepping off onto a spot char_safe_spot found
+export function char_board(x: float, z: float, yaw: float) -> void {
+  chr_sit = false
+  chr_x = x
+  chr_z = z
+  chr_yaw = yaw
+  chr_speed = 0.0
+  chr_move = 0.0
+  chr_run = 0.0
+}
+
+export function char_ride_at(x: float, y: float, z: float, yaw: float, speed: float) -> void {
+  chr_x = x
+  chr_y = y
+  chr_z = z
+  chr_yaw = yaw
+  chr_speed = speed
+}
+
+export function char_step_off(x: float, z: float) -> void {
+  chr_x = x
+  chr_z = z
+  chr_y = CharacterGround.height(x, z)
+}
