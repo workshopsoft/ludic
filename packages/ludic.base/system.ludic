@@ -12,10 +12,17 @@ export property System {
   load: fn(Val, int) -> void = null
 }
 
+# the declared list: a mechanic or the game writes `def Systems fishing { phase: PH_ACT, tick: fn
+# fishing_tick }` from its own module; the runner starts from these, then core_add appends
+export open registry Systems of System as SYS
+
 var cs_list: []System = null
 
 function cs_all() -> []System {
-  if cs_list == null { cs_list = new []System }
+  if cs_list == null {
+    cs_list = new []System
+    for i in 0 .. SYS_COUNT { push(cs_list, Systems[i]) }
+  }
   return cs_list
 }
 

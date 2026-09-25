@@ -43,6 +43,7 @@ import "ludic.base"
 | `sv_put_int`, `sv_put_float`, `sv_put_bool`, `sv_put_str`, `sv_put_ints` | the matching writes |
 | `System { key, phase, version, init, reset, tick, save, load }`, `system_new(key, phase)` | a system; a null function is a verb it does not have |
 | `core_add(s)`, `core_clear()`, `core_count()` | the game's system list (a key may appear once) |
+| `def Systems key { ... }`, `SYS_<KEY>`, `SYS_COUNT` | a system declared from any module; the list starts from these |
 | `core_init_all()`, `core_reset_all()`, `core_tick_all(t)`, `core_save_all() -> Val`, `core_load_all(v)` | the runner: in the order added, tick phase by phase |
 
 ## A toy mechanic
@@ -123,24 +124,26 @@ Both are compiled and run by `tests/route_test.ludic` (the mechanics are `tests/
 
 ## Tests
 
-Each piece has a program under `tests/`, built and run directly:
+Each piece has a program under `tests/`, and `ludic test` runs them all, every test block in a
+process of its own:
 
 ```bash
-ludic build packages/ludic.base/tests/queue_test.ludic --headless -o /tmp/queue_test && /tmp/queue_test
+ludic test packages/ludic.base
 ```
 
-`queue_test`, `rng_test`, `save_test`, `system_test` and `route_test`. Two things the language
-does not do yet shape them: a generic call inside a `test` body is not resolved (so the queue
-cases are functions a test calls), and test blocks share one program's globals (so each case
-that uses the runner starts with `core_clear()`); `ludic test <dir>` with a fresh state per
-test will lift the second.
+`queue_test`, `rng_test`, `save_test`, `system_test`, `registry_test` and `route_test`. They were
+written before a generic call inside a `test` body resolved and before each test had a fresh
+state, so the queue cases are functions a test calls and the runner's cases start with
+`core_clear()`; neither is needed any more.
 
 ## Later
 
 - `port FishingWorld { ... }` / `bind` will replace the record of function values, checked at
   compile time instead of a null at run time.
-- `open registry Systems of System` could replace `core_add`: each mechanic `def`s its system and
-  the game's own `def`s give the order. Function values in a `def` work today (`def Systems a {
-  tick: fn a_tick }`); what is missing is a registry a package declares and a game fills, in an
-  order the game controls. Until then the list is built by calls, in one place.
+- `Systems` is an `open registry`, so a system can be declared instead of added: `def Systems
+  fishing { phase: PH_SIMULATE, tick: fn fishing_tick }` from any module. The runner starts from
+  the declared systems - the order the compiler gives an open registry: ludic.base's own (none),
+  then each other module's by module name, each module's in the order it is read - and `core_add`
+  appends after them. A game that wants to decide the order itself writes the `def`s in its own
+  files, or keeps calling `core_add` in one place.
 - `module toy_fishing uses ludic_base` will make rule 1 a compile error rather than a review.
