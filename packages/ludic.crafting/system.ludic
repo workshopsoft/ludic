@@ -1,0 +1,12 @@
+# system.ludic - crafting as a system: a reset, and nothing saved (a hold never outlives its
+# screen; what a station holds is the station's)
+export function craft_reset() -> void {
+  craft_hold_stop()
+  q_clear(craft_facts())
+}
+
+export function craft_system() -> System {
+  let s = system_new("crafting", PH_SIMULATE)
+  s.reset = fn craft_reset
+  return s
+}

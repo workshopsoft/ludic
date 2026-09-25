@@ -1,0 +1,5 @@
+# ludic.crafting - recipes (what goes in, what comes out, where and how long), whether one can be
+# made, making it, giving it back, and the hold-to-make. Uses ludic.base and nothing else.
+package "ludic.crafting"
+version "0.1.0"
+kind source

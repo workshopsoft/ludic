@@ -1,0 +1,10 @@
+# ludic.crafting - recipes as an open registry; the pack and the stations are the game's, asked
+# through ports; making one takes its makings and either hands the result over or starts a station
+module ludic_crafting uses ludic_base
+numbers float
+import "ludic.base"
+import "recipes.ludic"
+import "ports.ludic"
+import "verbs.ludic"
+import "hold.ludic"
+import "system.ludic"

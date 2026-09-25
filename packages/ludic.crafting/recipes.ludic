@@ -1,0 +1,59 @@
+# recipes.ludic - a recipe, the registry the game fills, and the fact a making leaves
+# station 0 is the hands: anywhere, always ready
+export const CRAFT_HANDS: int = 0
+
+# `ins` are items and `ns` how many of each, side by side; `minutes` is game time at a station
+# (0 is made at once) and `hold` seconds of holding the button (0 is a click)
+export property CraftRecipe {
+  key: string = ""
+  out: int = 0
+  n: int = 1
+  ins: []int = null
+  ns: []int = null
+  station: int = 0
+  minutes: int = 0
+  hold: float = 0.0
+  group: int = 0
+  learned: bool = true
+}
+
+# the game fills it: `def CraftRecipes torch { out: IT_TORCH, ins: [IT_WOOD], ns: [1] }`. A
+# station holds a recipe by its index, so a game that saves that appends, never inserts.
+export open registry CraftRecipes of CraftRecipe as CRAFT
+
+# a recipe was made: handed over (`queued` false) or put into its station (`queued` true)
+export property Crafted {
+  recipe: int = 0
+  item: int = 0
+  n: int = 0
+  station: int = 0
+  queued: bool = false
+}
+
+export function craft_ok(i: int) -> bool { return i >= 0 and i < CRAFT_COUNT }
+
+export function craft_count() -> int { return CRAFT_COUNT }
+
+export function craft_recipe(i: int) -> CraftRecipe { return CraftRecipes[i] }
+
+# how many makings a recipe has
+export function craft_inputs(i: int) -> int {
+  if not craft_ok(i) or CraftRecipes[i].ins == null { return 0 }
+  return len(CraftRecipes[i].ins)
+}
+
+export function craft_input(i: int, k: int) -> int { return CraftRecipes[i].ins[k] }
+
+export function craft_input_n(i: int, k: int) -> int { return CraftRecipes[i].ns[k] }
+
+# the first recipe that makes `item`, or -1
+export function craft_find(item: int) -> int {
+  for i in 0 .. CRAFT_COUNT { if CraftRecipes[i].out == item { return i } }
+  return -1
+}
+
+# the recipe the save calls `key`, or -1
+export function craft_by_key(key: string) -> int {
+  for i in 0 .. CRAFT_COUNT { if CraftRecipes[i].key == key { return i } }
+  return -1
+}

@@ -1,0 +1,77 @@
+# verbs.ludic - can it be made, taking and giving back its makings, and making it
+var cr_facts: Queue<Crafted> = null
+
+export function craft_facts() -> Queue<Crafted> {
+  if cr_facts == null { cr_facts = queue_new("crafting.crafted") }
+  return cr_facts
+}
+
+# every making is in the pack
+export function craft_has(i: int) -> bool {
+  if not craft_ok(i) { return false }
+  for k in 0 .. craft_inputs(i) {
+    if CraftPack.count(craft_input(i, k)) < craft_input_n(i, k) { return false }
+  }
+  return true
+}
+
+# learned, the makings in the pack, its station ready, and room for what it makes
+export function craft_can(i: int) -> bool {
+  if not craft_ok(i) { return false }
+  let r = CraftRecipes[i]
+  if not r.learned or not craft_has(i) { return false }
+  if not CraftStations.ready(r.station) { return false }
+  return CraftPack.room(r.out) >= r.n
+}
+
+# the makings out of the pack, and what they leave behind into it
+export function craft_take(i: int) -> void {
+  for k in 0 .. craft_inputs(i) {
+    let it = craft_input(i, k)
+    let n = craft_input_n(i, k)
+    CraftPack.take(it, n)
+    let left = CraftPack.leaves(it)
+    if left >= 0 { CraftPack.add(left, n) }
+  }
+}
+
+# the makings back, and what they left behind out again (a station said no after all)
+export function craft_refund(i: int) -> void {
+  for k in 0 .. craft_inputs(i) {
+    let it = craft_input(i, k)
+    let n = craft_input_n(i, k)
+    CraftPack.add(it, n)
+    let left = CraftPack.leaves(it)
+    if left >= 0 { CraftPack.take(left, n) }
+  }
+}
+
+function cr_fact(i: int, queued: bool) -> void {
+  let r = CraftRecipes[i]
+  let c = new Crafted
+  c.recipe = i
+  c.item = r.out
+  c.n = r.n
+  c.station = r.station
+  c.queued = queued
+  q_push(craft_facts(), c)
+}
+
+# make it: a timed recipe at a station goes into the station (given back if it will not take it),
+# anything else is handed over at once. False, and the pack untouched, when it cannot be made.
+export function craft_make(i: int) -> bool {
+  if not craft_can(i) { return false }
+  let r = CraftRecipes[i]
+  craft_take(i)
+  if r.minutes > 0 and r.station != CRAFT_HANDS {
+    if not CraftStations.start(r.station, i) {
+      craft_refund(i)
+      return false
+    }
+    cr_fact(i, true)
+    return true
+  }
+  CraftPack.add(r.out, r.n)
+  cr_fact(i, false)
+  return true
+}
