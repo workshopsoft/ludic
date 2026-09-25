@@ -63,6 +63,35 @@ function emit_expect_fp(e: Node, a: Val, b: Val, tol: Val) -> Val {
   return val("0", "void")
 }
 
+# expect_eq on strings: equal by content (two nulls are equal, a null and a string are not), and
+# both printed on a failure - it was an i32 compare of two pointers, which the IR refused
+var g_uses_expect_str: bool = false
+function emit_expect_str(e: Node, a: Val, b: Val) -> Val {
+  g_uses_expect_str = true
+  let an = emit_bind(`icmp eq ptr {a.code}, null`)
+  let bn = emit_bind(`icmp eq ptr {b.code}, null`)
+  let anyn = emit_bind(`or i1 {an}, {bn}`)
+  let same = emit_bind(`icmp eq ptr {a.code}, {b.code}`)
+  let empty = emit_str_const("")
+  let sa = emit_bind(`select i1 {anyn}, ptr {empty}, ptr {a.code}`)
+  let sb = emit_bind(`select i1 {anyn}, ptr {empty}, ptr {b.code}`)
+  let r = emit_bind(`call i32 @strcmp(ptr {sa}, ptr {sb})`)
+  let eq = emit_bind(`icmp eq i32 {r}, 0`)
+  let c = emit_bind(`select i1 {anyn}, i1 {same}, i1 {eq}`)
+  let msg = emit_str_const(`{expect_where(e)}: expect_eq failed`)
+  let nul = emit_str_const("<null>")
+  let lok = lbl("exok")
+  let lbad = lbl("exbad")
+  emit(`  br i1 {c}, label %{lok}, label %{lbad}\n`)
+  emit(`{lbad}:\n`)
+  emit("  store i32 1, ptr @L_test_fail\n")
+  let pa = emit_bind(`select i1 {an}, ptr {nul}, ptr {a.code}`)
+  let pb = emit_bind(`select i1 {bn}, ptr {nul}, ptr {b.code}`)
+  emit(`  call i32 (ptr, ...) @printf(ptr @.fmt_expect_str, ptr {msg}, ptr {pa}, ptr {pb})\n`)
+  emit(`  br label %{lok}\n`)
+  emit(`{lok}:\n`)
+  return val("0", "void")
+}
 # an assertion names the file it is written in, as the compiler was given it, and its line
 function expect_where(e: Node) -> pointer {
   if e.file != null { return `{e.file}:{itoa(e.line)}` }
@@ -737,6 +766,7 @@ function emit_call(e: Node) -> Val {
     g_uses_expect = true
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
     if is_fp(a.ty) or is_fp(b.ty) { return emit_expect_fp(e, a, b, null) }
+    if (a.ty == "string") or (b.ty == "string") { return emit_expect_str(e, a, b) }
     let c = emit_bind(`icmp eq i32 {a.code}, {b.code}`)
     let msg = emit_str_const(`{expect_where(e)}: expect_eq failed`)
     emit_expect_fail(c, msg, a.code, b.code)

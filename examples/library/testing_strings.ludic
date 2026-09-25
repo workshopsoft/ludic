@@ -1,0 +1,17 @@
+# testing_strings.ludic - expect_eq on strings compares their text, not where they are kept, and a
+# failure prints both (two of these fail on purpose: the runner reports them and exits 1)
+program TestingStrings {
+  function joined(a: string, b: string) -> string { return a + b }
+  test "equal text built two ways" {
+    expect_eq(joined("ca", "mp"), "camp")
+    let none: string = null
+    expect_eq(none, null)
+  }
+  test "different text fails, and says both" {
+    expect_eq(joined("ca", "mp"), "lake")
+  }
+  test "a null is not a string" {
+    let none: string = null
+    expect_eq(none, "camp")
+  }
+}

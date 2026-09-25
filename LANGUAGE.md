@@ -2057,7 +2057,8 @@ number is above FILE's `name value` lines; `--baseline FILE` writes them.
 
 A test program is a file of `test "name" { ... }` blocks with `expect(cond)`, `expect_eq(a, b)` and
 `expect_near(a, b, tol)` in them (on ints and fixeds, or on floats and doubles, which compare - and
-print - as floats); a test block is type-checked like `entry`, so a generic function
+print - as floats; `expect_eq` on strings compares their text, a null equal only to a null, and
+prints both: `expect_eq failed (got "camp", want "lake")`); a test block is type-checked like `entry`, so a generic function
 called from one works as it does anywhere. `ludic test` finds `tests/*.ludic` and `src/**/*_test.ludic`;
 given a directory, it runs every `*_test.ludic` under it and every file straight inside a `tests/`
 directory under it. **Each test block runs in a process of its own**, so a global one test changes

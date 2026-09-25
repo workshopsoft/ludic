@@ -537,6 +537,16 @@ function migrate_case() -> void {
   if ran == "2 names, first a" { ok(lbl) } else { bad2(lbl, `ran [{ran}]`) }
 }
 
+# expect_eq on strings: the text is compared, and a failure prints both (the spec fails on purpose)
+function expect_str_case() -> void {
+  let lbl = "testing_strings.ludic (expect_eq compares strings by content, a null only equal to a null, and prints both on a failure)"
+  let out = `{tmp_dir()}/t_strings`
+  if not shq(`bin/ludicc examples/library/testing_strings.ludic -o {out} > {out}.log 2>&1`) { bad2(lbl, capture_line(`grep -i error {out}.log | head -1`));  return }
+  if shq(`{out} > {out}.txt 2>&1`) { bad2(lbl, "two failing tests, and it exited 0");  return }
+  let got = capture(`cat {out}.txt`)
+  let want = "ok   - equal text built two ways\nexamples/library/testing_strings.ludic:11: expect_eq failed (got \"camp\", want \"lake\")\nFAIL - different text fails, and says both\nexamples/library/testing_strings.ludic:15: expect_eq failed (got \"<null>\", want \"camp\")\nFAIL - a null is not a string\n== 1 passed, 2 failed ==\n"
+  if s_trim(got) == s_trim(want) { ok(lbl) } else { bad2(lbl, `said [{s_trim(got)}]`) }
+}
 # a program built headless with the toolchain and run: its first line
 function headless_case(path: pointer, exp: pointer, label: pointer) -> void {
   let out = `{tmp_dir()}/h_{flat(path)}`
@@ -879,6 +889,7 @@ function cmd_dev_test() -> int {
   spec_case("library/testing_generic", "== 2 passed, 0 failed ==")
   spec_case("library/testing_random", "== 1 passed, 0 failed ==")
   spec_case("library/testing_floats", "== 3 passed, 0 failed ==")
+  expect_str_case()
   expect_fp_fail_case()
   feat_case("library/random_plain", "", "1 1 1", "random_plain.ludic (Random.* and a bare rng_range in a program with no ECS)")
   feat_case("library/value_direct", "", "{\"fish\":3} 3", "value_direct.ludic (value_* / json_* called directly splice the value tree)")
