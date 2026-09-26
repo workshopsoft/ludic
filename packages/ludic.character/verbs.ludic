@@ -123,3 +123,14 @@ export function char_step_off(character_st: mut CharacterState, x: float, z: flo
   character_st.chr_z = z
   character_st.chr_y = CharacterGround.height(x, z)
 }
+
+# knocked off its feet at (vx, vz) across and `up` upward (a bear's shove): the walker carries it,
+# so it lands wherever the world lets it - never inside a trunk. Not while swimming or riding.
+export function char_knock(character_st: mut CharacterState, vx: float, vz: float, up: float) -> void {
+  if character_st.chr_swim or CharacterBody.riding() { return }
+  character_st.chr_sit = false
+  character_st.chr_air = true
+  character_st.chr_air_vx = vx
+  character_st.chr_air_vz = vz
+  character_st.chr_knock = up
+}

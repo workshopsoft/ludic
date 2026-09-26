@@ -67,6 +67,7 @@ export state CharacterState {
   chr_air: bool = false
   chr_air_vx: float = 0.0
   chr_air_vz: float = 0.0
+  chr_knock: float = 0.0            # a knock-back's speed up, handed to the walker on the next step
   chr_land: float = 0.0             # seconds of the landing's crouch left
   chr_steep: float = 0.0            # seconds of "that was too steep" left to say
   chr_can_run: bool = true

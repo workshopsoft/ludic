@@ -71,6 +71,7 @@ still stick.
 | `char_hold(reason)`, `char_release(reason)` (`CHAR_HOLD_SCREEN`, `CHAR_HOLD_STAGE`) | holds by reason: two holders cannot release each other |
 | `char_board(x, z, yaw)`, `char_ride_at(x, y, z, yaw, speed)`, `char_step_off(x, z)` | carried by something (`CharacterBody.riding`/`ride`) |
 | `char_safe_spot(x, z, from_y, max_depth) -> bool`, `body_safe_x()`, `body_safe_z()` | somewhere to put a body down |
+| `char_knock(vx, vz, up)` | knocked off its feet (a shove): the walker carries it and it lands where the world lets it |
 | `char_stand_at(x, z, from_y)` | the ground with a collider's top when it is a step, for a put-down |
 | `char_camera(dt)`, `char_camera_third(dt)`, `char_look(yaw, pitch)`, `char_look_pitch`, `char_orbit(dist)`, `char_lock_orbit`, `char_set_fps`, `char_fps_toggle() -> CHAR_EYES_*` | the camera; read it back with `body_eye_x/y/z/yaw/pitch()` and `body_eyes_now()` |
 | `body_x()`, `body_y()`, `body_z()`, `body_yaw()`, `body_speed()`, `body_moving()`, `body_run()`, `body_phase()`, `body_time()`, `body_water()`, `body_airborne()`, `body_vy()`, `body_landing()`, `body_steep()`, `body_step()`, `body_sitting()`, `body_sit_mode()`, `body_sit_t()`, `body_swimming()`, `body_diving()`, `body_depth()`, `body_breath()`, `body_breath_max()`, `body_floating()`, `body_swim_phase()`, `body_can_run()`, `body_held()`, `body_fps()`, `body_cam_yaw()`, `body_cam_pitch()`, `body_cam_dist()` | the queries |

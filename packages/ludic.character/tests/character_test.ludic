@@ -240,6 +240,20 @@ program CharacterTest {
     expect(not body_airborne(character_st))
   }
 
+  test "a knock-back carries the body off its feet, and a post stops it" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, -2.0, 0.0)
+    char_knock(character_st, 0.0, 5.0, 3.0)
+    char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0)
+    expect(body_airborne(character_st))
+    for i in 0 .. 120 { char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    expect(not body_airborne(character_st))
+    expect(body_z(character_st) > 0.5)
+    fresh(character_st, -3.5, 0.0, 0.0)
+    char_knock(character_st, -8.0, 0.0, 2.0)
+    for i in 0 .. 120 { char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    expect(body_x(character_st) > -5.2)
+  }
+
   test "the safe spot clears a collider, keeps out of deep water, and allows a wade when asked" (character_st: mut CharacterState) {
     expect(char_safe_spot(character_st, -6.0, 0.0, 0.0, 0.0))
     let dx = body_safe_x(character_st) + 6.0

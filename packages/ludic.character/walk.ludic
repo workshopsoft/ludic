@@ -14,7 +14,12 @@ function chr_walk(character_st: mut CharacterState, fx: float, fz: float, dx: fl
   var vx = fx * character_st.chr_speed
   var vz = fz * character_st.chr_speed
   var up = 0.0
-  if character_st.chr_air {
+  if character_st.chr_knock > 0.0 {
+    up = character_st.chr_knock
+    character_st.chr_knock = 0.0
+    vx = character_st.chr_air_vx
+    vz = character_st.chr_air_vz
+  } else if character_st.chr_air {
     character_st.chr_air_vx = character_st.chr_air_vx + dx * (4.0 * dt)
     character_st.chr_air_vz = character_st.chr_air_vz + dz * (4.0 * dt)
     vx = character_st.chr_air_vx
@@ -60,6 +65,10 @@ function chr_walked(character_st: mut CharacterState, g: int, jumped: bool, dt: 
 
 function chr_landed(character_st: mut CharacterState) -> void {
   character_st.chr_land = 0.22
-  character_st.chr_speed = Math.sqrt(character_st.chr_air_vx * character_st.chr_air_vx + character_st.chr_air_vz * character_st.chr_air_vz)
-  chr_say(character_st, CHAR_LANDED, character_st.chr_speed)
+  let carried = Math.sqrt(character_st.chr_air_vx * character_st.chr_air_vx + character_st.chr_air_vz * character_st.chr_air_vz)
+  # the walk goes on only as fast as the air was carrying it the way it faces (a knock from the
+  # front does not walk it back into what knocked it)
+  let along = -Math.sin(character_st.chr_yaw) * character_st.chr_air_vx - Math.cos(character_st.chr_yaw) * character_st.chr_air_vz
+  character_st.chr_speed = Math.max(along, 0.0)
+  chr_say(character_st, CHAR_LANDED, carried)
 }
