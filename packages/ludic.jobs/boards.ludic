@@ -2,14 +2,12 @@
 # the jobs' own dice seeded by the day, so a board never moves anyone else's rolls
 export function jobs_board_ok(b: int) -> bool { return b >= 0 and b < BOARD_COUNT }
 
-function jobs__at(jobs_st: mut JobsState, b: int, s: int) -> int {
-  jobs__ensure(jobs_st)
+function jobs__at(jobs_st: JobsState, b: int, s: int) -> int {
   return jobs_st.jobs__off[b] + s
 }
 
 # a whole number in [lo, hi] from the jobs' dice: what JobsWorld.roll draws with
-export function jobs_roll(jobs_st: mut JobsState, lo: int, hi: int) -> int {
-  jobs__ensure(jobs_st)
+export function jobs_roll(jobs_st: JobsState, lo: int, hi: int) -> int {
   return rng_between(jobs_st.jobs__dice, lo, hi)
 }
 
@@ -51,7 +49,6 @@ function jobs__repost(jobs_st: mut JobsState, b: int, s: int) -> void {
 # a new day, on the boards this machine keeps: an empty or stale post is replaced, and one
 # finished on an earlier day
 export function jobs_morning(jobs_st: mut JobsState) -> void {
-  jobs__ensure(jobs_st)
   let day = JobsWorld.day()
   for b in 0 .. BOARD_COUNT {
     let bd = JobBoards[b]

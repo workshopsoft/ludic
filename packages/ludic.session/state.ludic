@@ -61,7 +61,7 @@ function session__nameless() -> string { return "" }
 
 export state SessionState {
   session__me_sleeping: bool = false
-  session__slot: []PartyMember = null
+  session__slot: []PartyMember = session__slots()
   session__role: int = 0
   session__max: int = 4
   session__open: bool = true
@@ -92,10 +92,11 @@ function session__fact(session_st: SessionState, what: int, slot: int, pid: int)
   return f
 }
 
-function session__init(session_st: mut SessionState) -> void {
-  if session_st.session__slot != null { return }
-  session_st.session__slot = new []PartyMember
-  for i in 0 .. PLY_MAX { push(session_st.session__slot, new PartyMember) }
-  session_st.session__slot[0].on = true
-}
 function session__facts__new() -> Queue<SessionFact> { return queue_new("session.facts") }
+# the roster's slots, slot 0 this machine's own and on
+function session__slots() -> []PartyMember {
+  let out = new []PartyMember
+  for i in 0 .. PLY_MAX { push(out, new PartyMember) }
+  out[0].on = true
+  return out
+}

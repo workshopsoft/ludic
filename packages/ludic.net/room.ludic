@@ -29,7 +29,6 @@ export function net_room_join(net_st: mut NetState, code: string) -> bool {
     net_st.net__why = NET_WHY_NO_MATCHMAKER
     return false
   }
-  net__init(net_st)
   if not net__socket(net_st) { return false }
   net_st.net__r_role = 2
   net_st.net__room = Text.upper(code)

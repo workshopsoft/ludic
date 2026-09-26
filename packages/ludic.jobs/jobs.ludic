@@ -1,26 +1,24 @@
 # jobs.ludic - the written jobs: offered by standing and story, taken, readied, handed in and paid
 export function jobs_ok(i: int) -> bool { return i >= 0 and i < JOB_COUNT }
 
-export function jobs_state(jobs_st: mut JobsState, i: int) -> int {
-  jobs__ensure(jobs_st)
+export function jobs_state(jobs_st: JobsState, i: int) -> int {
   return jobs_st.jobs__st[i]
 }
 
-export function jobs_have(jobs_st: mut JobsState, i: int) -> int {
-  jobs__ensure(jobs_st)
+export function jobs_have(jobs_st: JobsState, i: int) -> int {
   return jobs_st.jobs__hv[i]
 }
 
-export function jobs_ready_now(jobs_st: mut JobsState, i: int) -> bool { return jobs_state(jobs_st, i) == JOBS_READY }
+export function jobs_ready_now(jobs_st: JobsState, i: int) -> bool { return jobs_state(jobs_st, i) == JOBS_READY }
 
 # taken and not yet paid
-export function jobs_under_way(jobs_st: mut JobsState, i: int) -> bool {
+export function jobs_under_way(jobs_st: JobsState, i: int) -> bool {
   let s = jobs_state(jobs_st, i)
   return s == JOBS_ACTIVE or s == JOBS_READY
 }
 
 # on offer: not taken, the scope's standing and the story far enough, and the game allowing it
-export function jobs_offered(jobs_st: mut JobsState, i: int) -> bool {
+export function jobs_offered(jobs_st: JobsState, i: int) -> bool {
   let d = Jobs[i]
   if jobs_state(jobs_st, i) != JOBS_OFFERED { return false }
   return JobsWorld.rep(d.scope) >= d.minrep and JobsWorld.stage() >= d.minstage and JobsWorld.open(i)
@@ -79,18 +77,15 @@ export function jobs_complete(jobs_st: mut JobsState, i: int) -> bool {
 
 # the state outright: the host's word for a party job, a test
 export function jobs_set(jobs_st: mut JobsState, i: int, state: int, have: int) -> void {
-  jobs__ensure(jobs_st)
   jobs_st.jobs__st[i] = state
   jobs_st.jobs__hv[i] = have
 }
 
-export function jobs_done(jobs_st: mut JobsState, group: int) -> int {
-  jobs__ensure(jobs_st)
+export function jobs_done(jobs_st: JobsState, group: int) -> int {
   if group < 0 or group >= JOBS_GROUPS { return 0 }
   return jobs_st.jobs__done_n[group]
 }
 
 export function jobs_set_done(jobs_st: mut JobsState, group: int, n: int) -> void {
-  jobs__ensure(jobs_st)
   if group >= 0 and group < JOBS_GROUPS { jobs_st.jobs__done_n[group] = n }
 }

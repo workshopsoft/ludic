@@ -30,14 +30,12 @@ program SessionTest {
 
   # a host with n guests, pids 2.., facts drained
   function party(session_st: mut SessionState, n: int) -> void {
-    ply_init(session_st)
     ses_set_role(session_st, SES_HOST)
     for i in 0 .. n { ply_join(session_st, 2 + i) }
     q_clear(ses_facts(session_st))
   }
 
   test "slot 0 is the local player, read live; others join at its feet and leave" (session_st: mut SessionState, session_test_st: mut SessionTestState) {
-    ply_init(session_st)
     session_test_st.me_x = 5.0
     expect(ply_on(session_st, 0))
     expect_near(ply_x(session_st, 0), 5.0, 0.001)
@@ -58,14 +56,12 @@ program SessionTest {
   }
 
   test "the roster fills at twelve" (session_st: mut SessionState) {
-    ply_init(session_st)
     for i in 0 .. PLY_MAX - 1 { expect(ply_join(session_st, 10 + i) > 0) }
     expect_eq(ply_join(session_st, 99), -1)
     expect_eq(ply_count(session_st), PLY_MAX)
   }
 
   test "the nearest player, whoever it is" (session_st: mut SessionState, session_test_st: mut SessionTestState) {
-    ply_init(session_st)
     session_test_st.me_x = 100.0
     let p = ply_join(session_st, 2)
     ply_report(session_st, p, 3.0, 0.0, 4.0, 0.0, 1.0)
@@ -75,7 +71,6 @@ program SessionTest {
   }
 
   test "roles: alone owns the world, a guest does not, and a change is a fact" (session_st: mut SessionState) {
-    ply_init(session_st)
     expect(ses_owns_world(session_st))
     expect(not ses_live(session_st))
     expect(ses_night_passes(session_st))
@@ -115,7 +110,6 @@ program SessionTest {
   }
 
   test "a guest's turning in is a fact for the host to hear; alone a bed just sleeps" (session_st: mut SessionState) {
-    ply_init(session_st)
     expect(not ses_sleep(session_st, true))
     ses_set_role(session_st, SES_GUEST)
     q_clear(ses_facts(session_st))
@@ -153,7 +147,6 @@ program SessionTest {
   }
 
   test "alone it may go; a guest may not, and its vote goes to the host" (session_st: mut SessionState) {
-    ply_init(session_st)
     expect_eq(ses_may(session_st, 1, 0, "x"), SES_MAY_GO)
     ses_set_role(session_st, SES_GUEST)
     expect_eq(ses_may(session_st, 1, 0, "x"), SES_MAY_HOSTS)

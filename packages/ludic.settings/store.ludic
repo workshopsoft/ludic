@@ -1,18 +1,12 @@
 # ludic.settings/store.ludic - the values, by id (a setting's place in the order it was added),
 # and the verbs: nothing else holds a setting, and every set that changes one is a fact
 export state SettingsState {
-  sg_defs: []SettingDef = null
-  sg_num: []float = null
-  sg_text: []string = null
+  sg_defs: []SettingDef = new []SettingDef
+  sg_num: []float = new []float
+  sg_text: []string = new []string
   sg_changes: Queue<SettingChanged> = sg_changes__new()
 }
 
-function sg_init(settings_st: mut SettingsState) -> void {
-  if settings_st.sg_defs != null { return }
-  settings_st.sg_defs = new []SettingDef
-  settings_st.sg_num = new []float
-  settings_st.sg_text = new []string
-}
 
 export function settings_changes(settings_st: SettingsState) -> Queue<SettingChanged> {
   return settings_st.sg_changes
@@ -28,23 +22,20 @@ export function settings_clear(settings_st: mut SettingsState) -> void {
 
 # a setting, at its default; its id is its place in the order added
 export function settings_add(settings_st: mut SettingsState, d: SettingDef) -> int {
-  sg_init(settings_st)
   push(settings_st.sg_defs, d)
   push(settings_st.sg_num, d.num)
   push(settings_st.sg_text, d.text)
   return len(settings_st.sg_defs) - 1
 }
 
-export function settings_count(settings_st: mut SettingsState) -> int {
-  sg_init(settings_st)
+export function settings_count(settings_st: SettingsState) -> int {
   return len(settings_st.sg_defs)
 }
 
 export function settings_def(settings_st: SettingsState, id: int) -> SettingDef { return settings_st.sg_defs[id] }
 
 # the id of `key`, or -1
-export function settings_id_of(settings_st: mut SettingsState, key: string) -> int {
-  sg_init(settings_st)
+export function settings_id_of(settings_st: SettingsState, key: string) -> int {
   for i in 0 .. len(settings_st.sg_defs) { if settings_st.sg_defs[i].key == key { return i } }
   return -1
 }

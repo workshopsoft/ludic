@@ -22,7 +22,6 @@ export function nb_copy(dst: []byte, d: int, src: []byte, s: int, n: int) -> voi
 
 # the writer: past the MTU it counts on and keeps nothing, and np_queue cuts the message there
 export function nw_begin(net_st: mut NetState) -> void {
-  net__init(net_st)
   net_st.net__wl = 0
 }
 
@@ -82,7 +81,6 @@ export function nr_bad(net_st: NetState) -> bool { return net_st.net__rbad }
 
 # a message that came in, made the one nr_* reads
 export function net_read(net_st: mut NetState, m: NetMessage) -> void {
-  net__init(net_st)
   nb_copy(net_st.net__rb, 0, m.data, 0, m.len)
   net_st.net__rl = m.len
   net_st.net__rp = 0
@@ -90,8 +88,7 @@ export function net_read(net_st: mut NetState, m: NetMessage) -> void {
 }
 
 # the message just written, as if it had come in (a loopback: a test, a host telling itself)
-export function net_written(net_st: mut NetState) -> NetMessage {
-  net__init(net_st)
+export function net_written(net_st: NetState) -> NetMessage {
   let m = new NetMessage
   m.from = net_st.net__my_pid
   m.len = min(net_st.net__wl, NET_MTU)
