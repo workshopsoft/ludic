@@ -19,7 +19,7 @@ From a clean checkout, one line lifts the toolchain off the seed:
 
 ```bash
 mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
-bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev
 ```
 
 That gives you `bin/ludic-dev`, the contributor tool: it replaces every

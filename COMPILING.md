@@ -25,7 +25,7 @@
 > ```bash
 > # one-time bootstrap: clang assembles the seed, then ludicc compiles bin/ludic
 > mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
-> bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+> bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev
 > bin/ludic-dev build                                  # the whole toolchain into bin/
 >                                                      #   (ludicc, ludic, ludic-fmt, ludic-lsp)
 > bin/ludicc examples/games/snake.ludic -o bin/snake   # the compiler, directly
