@@ -13,6 +13,13 @@ export port CharacterGround {
   slope: fn(float, float) -> float = fn chr__slope_plain   # 0 flat .. 1 a wall
   slope_limit: fn() -> float = fn chr__boots               # the rise a metre the boots take
   current: fn(float, float, float, float) -> float = fn chr__still   # (x, z, fx, fz): 0..1 of a stroke lost
+  # (x, y, z, vx, vz, jump, step, max_slope_deg, dt): the body on land moved from where it stands at
+  # (vx, vz) across, jump > 0 leaving the ground at that speed up; the ground after it (CHAR_WALK_*),
+  # and walked_x / _y / _z where it is. The game's physics walker; there is no default mover.
+  walk: fn(float, float, float, float, float, float, float, float, float) -> int
+  walked_x: fn() -> float
+  walked_y: fn() -> float
+  walked_z: fn() -> float
 }
 
 export port CharacterBody {

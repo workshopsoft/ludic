@@ -31,10 +31,11 @@ export function phys_walker_add(physics_st: mut PhysicsState, r: float, h: float
   return len(physics_st.ph_walkers) - 1
 }
 
-# how high a step it takes without a jump, and how far it follows the ground down
-export function phys_walker_limits(physics_st: PhysicsState, id: int, step_up: float, stick: float) -> void {
+# how high a step it takes without a jump, how far it follows the ground down, and the steepest
+# slope in degrees that is still ground
+export function phys_walker_limits(physics_st: PhysicsState, id: int, step_up: float, stick: float, max_slope: float) -> void {
   let k = ph_walker(physics_st, id)
-  if k != null { jph_char_limits(k, step_up, stick) }
+  if k != null { jph_char_limits(k, step_up, stick, max_slope) }
 }
 
 export function phys_walker_remove(physics_st: mut PhysicsState, id: int) -> void {
@@ -71,4 +72,17 @@ export function phys_walker_pose(physics_st: mut PhysicsState, id: int) -> PhysW
 export function phys_walker_place(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void {
   let k = ph_walker(physics_st, id)
   if k != null and physics_st.ph_world != null { jph_char_place(physics_st.ph_world, k, x, y, z) }
+}
+
+# a body the game keeps elsewhere, moved by its walker: put where the body is if something else
+# moved it (a teleport, a ride, a swim), then one step under the given limits; the ground after it
+export function phys_walker_move(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float, vx: float, vz: float, jump: float, step: float, max_slope: float, dt: float) -> int {
+  let p = phys_walker_pose(physics_st, id)
+  if p == null { return PHYS_IN_AIR }
+  let dx = p.x - x
+  let dy = p.y - y
+  let dz = p.z - z
+  if dx * dx + dy * dy + dz * dz > 0.0025 { phys_walker_place(physics_st, id, x, y, z) }
+  phys_walker_limits(physics_st, id, step, 0.5, max_slope)
+  return phys_walker_step(physics_st, id, dt, vx, vz, jump)
 }

@@ -7,16 +7,6 @@ export function char_stand_at(x: float, z: float, from_y: float) -> float {
   return CharacterGround.top_at(x, z, 0.35, Math.max(from_y, base), CHAR_STEP, base)
 }
 
-# A step up and a slope up are different refusals. Within CHAR_STEP of the feet is a step, taken
-# whatever the gradient into it (a 45 cm deck arrives in one frame); above that the boots decide,
-# measured over CHAR_SLOPE_PROBE, so the frame rate never changes the answer.
-export function char_slope_blocks(character_st: CharacterState, nh: float, fx: float, fz: float) -> bool {
-  if nh - character_st.chr_y > CHAR_STEP { return true }
-  let sx = character_st.chr_x + fx * CHAR_SLOPE_PROBE
-  let sz = character_st.chr_z + fz * CHAR_SLOPE_PROBE
-  return CharacterGround.height(sx, sz) - character_st.chr_y > CHAR_SLOPE_PROBE * CharacterGround.slope_limit()
-}
-
 # a body of radius r at (x, z) from y0 to y1, out of every collider: the resolved point is chr_out_*
 function chr_push(character_st: mut CharacterState, x: float, z: float, r: float, y0: float, y1: float) -> bool {
   character_st.chr_ask_x = x

@@ -34,11 +34,31 @@ JPH_SHIM void jph_char_free(void *k) {
   delete wk;
 }
 
-// how high a step it takes without a jump, and how far it follows the ground down
-JPH_SHIM void jph_char_limits(void *k, float step_up, float stick) {
+// how high a step it takes without a jump, how far it follows the ground down, and the steepest
+// slope in degrees that is still ground
+JPH_SHIM void jph_char_limits(void *k, float step_up, float stick, float max_slope) {
   Walker *wk = static_cast<Walker *>(k);
   wk->step_up = step_up;
   wk->stick = stick;
+  wk->c->SetMaxSlopeAngle(DegreesToRadians(max_slope));
+}
+
+// what the step comes to: TOO STEEP (1) only when GROUND too steep for it faces against the way it
+// wanted to go (a cliff, a rise the boots cannot take) - a still thing's edge is a step or a wall;
+// steep ground merely under the feet, as when stepping off an edge, is UNSUPPORTED (2)
+static int jph_char_says(World *ww, CharacterVirtual *c, float vx, float vz) {
+  int state = int(c->GetGroundState());
+  if (state == int(CharacterBase::EGroundState::InAir)) return state;
+  Vec3 want(vx, 0.0f, vz);
+  for (const CharacterContact &ct : c->GetActiveContacts()) {
+    if (!ct.mHadCollision || ct.mWasDiscarded || ct.mBodyB.IsInvalid()) continue;
+    if (ww->sys.GetBodyInterface().GetObjectLayer(ct.mBodyB) != L_GROUND) continue;
+    Vec3 n = ct.mSurfaceNormal;
+    bool slope = n.GetY() > 0.05f && c->IsSlopeTooSteep(n);
+    if (slope && Vec3(n.GetX(), 0.0f, n.GetZ()).Dot(want) < -1.0e-4f) return int(CharacterBase::EGroundState::OnSteepGround);
+  }
+  if (state == int(CharacterBase::EGroundState::OnSteepGround)) return int(CharacterBase::EGroundState::NotSupported);
+  return state;
 }
 
 // one step of dt: (vx, vz) the speed it wants across; jump > 0 leaves the ground at that speed up
@@ -50,18 +70,17 @@ JPH_SHIM int jph_char_step(void *w, void *k, float dt, float vx, float vz, float
   bool ground = c->GetGroundState() == CharacterBase::EGroundState::OnGround;
   float vy = c->GetLinearVelocity().GetY() + g.GetY() * dt;
   Vec3 v(vx, vy, vz);
-  if (ground) {
-    v = Vec3(vx, 0.0f, vz) + c->GetGroundVelocity();
-    if (jump > 0.0f) v.SetY(jump);
-  }
+  if (ground) v = Vec3(vx, 0.0f, vz) + c->GetGroundVelocity();
+  // whether a jump may leave is the game's rule; here it only leaves
+  if (jump > 0.0f) v.SetY(jump);
   c->SetLinearVelocity(v);
   CharacterVirtual::ExtendedUpdateSettings u;
   u.mWalkStairsStepUp = Vec3(0.0f, wk->step_up, 0.0f);
-  u.mStickToFloorStepDown = Vec3(0.0f, -wk->stick, 0.0f);
+  u.mStickToFloorStepDown = Vec3(0.0f, jump > 0.0f ? 0.0f : -wk->stick, 0.0f);
   IgnoreSingleBodyFilter self(c->GetInnerBodyID());
   c->ExtendedUpdate(dt, g, u, ww->sys.GetDefaultBroadPhaseLayerFilter(L_MOVING), ww->sys.GetDefaultLayerFilter(L_MOVING),
                     self, {}, ww->temp);
-  return int(c->GetGroundState());
+  return jph_char_says(ww, c, vx, vz);
 }
 
 // position, velocity, the ground state (0 on ground, 1 too steep, 2 touching but unsupported,

@@ -4,66 +4,62 @@ function chr_travel(character_st: mut CharacterState, dx: float, dz: float, fx: 
     chr_swim_tick(character_st, dx, dz, jump, dt)
     return character_st.chr_speed * dt
   }
-  if character_st.chr_air { return chr_fly(character_st, dx, dz, dt) }
-  return chr_walk(character_st, fx, fz, jump, dt)
+  return chr_walk(character_st, fx, fz, dx, dz, jump, dt)
 }
 
-# ballistic: gravity, the takeoff's velocity carried, a little steering
-function chr_fly(character_st: mut CharacterState, dx: float, dz: float, dt: float) -> float {
-  character_st.chr_vy = character_st.chr_vy - 14.0 * dt
-  character_st.chr_air_vx = character_st.chr_air_vx + dx * (4.0 * dt)
-  character_st.chr_air_vz = character_st.chr_air_vz + dz * (4.0 * dt)
-  chr_push(character_st, character_st.chr_x + character_st.chr_air_vx * dt, character_st.chr_z + character_st.chr_air_vz * dt, 0.35, character_st.chr_y, character_st.chr_y + CHAR_BODY)
-  character_st.chr_y = character_st.chr_y + character_st.chr_vy * dt
-  let ground = char_stand_at(character_st.chr_out_x, character_st.chr_out_z, character_st.chr_y)
-  character_st.chr_x = character_st.chr_out_x
-  character_st.chr_z = character_st.chr_out_z
-  if character_st.chr_y < ground and character_st.chr_vy < 0.0 {
-    character_st.chr_y = ground
-    character_st.chr_air = false
-    character_st.chr_land = 0.22
-    character_st.chr_speed = Math.sqrt(character_st.chr_air_vx * character_st.chr_air_vx + character_st.chr_air_vz * character_st.chr_air_vz)
-    chr_say(character_st, CHAR_LANDED, character_st.chr_speed)
-  }
-  return character_st.chr_speed * (dt * 0.4)
-}
-
-# on the ground: a step, unless a slope refuses it or the water takes the body; then a jump
-function chr_walk(character_st: mut CharacterState, fx: float, fz: float, jump: bool, dt: float) -> float {
-  var dist = character_st.chr_speed * dt
-  if dist > 0.0 { dist = chr_walk_step(character_st, fx, fz, dist) } else { character_st.chr_y = CharacterGround.height(character_st.chr_x, character_st.chr_z) }
-  if jump and character_st.chr_can_run and character_st.chr_land < 0.05 {
-    character_st.chr_air = true
-    character_st.chr_vy = 5.0
-    character_st.chr_air_vx = fx * character_st.chr_speed
-    character_st.chr_air_vz = fz * character_st.chr_speed
+# on land the game's walker moves the body (CharacterGround.walk): gravity, landing, a step up to
+# CHAR_STEP, a slope up to what the boots take. The rules stay here: how fast, where, when a jump
+# leaves, when the lake takes the body, and what is said about it.
+function chr_walk(character_st: mut CharacterState, fx: float, fz: float, dx: float, dz: float, jump: bool, dt: float) -> float {
+  var vx = fx * character_st.chr_speed
+  var vz = fz * character_st.chr_speed
+  var up = 0.0
+  if character_st.chr_air {
+    character_st.chr_air_vx = character_st.chr_air_vx + dx * (4.0 * dt)
+    character_st.chr_air_vz = character_st.chr_air_vz + dz * (4.0 * dt)
+    vx = character_st.chr_air_vx
+    vz = character_st.chr_air_vz
+  } else if jump and character_st.chr_can_run and character_st.chr_land < 0.05 {
+    up = 5.0
+    character_st.chr_air_vx = vx
+    character_st.chr_air_vz = vz
     chr_say(character_st, CHAR_JUMPED, 0.0)
   }
-  return dist
+  let slope = Math.atan2(CharacterGround.slope_limit(), 1.0) * 57.29578
+  let g = CharacterGround.walk(character_st.chr_x, character_st.chr_y, character_st.chr_z, vx, vz, up, CHAR_STEP, slope, dt)
+  return chr_walked(character_st, g, up > 0.0, dt)
 }
 
-function chr_walk_step(character_st: mut CharacterState, fx: float, fz: float, dist: float) -> float {
-  chr_push(character_st, character_st.chr_x + fx * dist, character_st.chr_z + fz * dist, 0.35, character_st.chr_y, character_st.chr_y + CHAR_BODY)
-  let nx = character_st.chr_out_x
-  let nz = character_st.chr_out_z
-  let nh = char_stand_at(nx, nz, character_st.chr_y)
-  if char_slope_blocks(character_st, nh, fx, fz) {
-    if not (character_st.chr_steep > 0.0) { chr_say(character_st, CHAR_TOO_STEEP, nh - character_st.chr_y) }
+# where the walker put the body, and what that means: the lake, a landing, a slope too steep
+function chr_walked(character_st: mut CharacterState, g: int, jumped: bool, dt: float) -> float {
+  let nx = CharacterGround.walked_x()
+  let ny = CharacterGround.walked_y()
+  let nz = CharacterGround.walked_z()
+  if ny < CharacterGround.water(nx, nz) - CHAR_WADE_MAX {
+    chr_enter_water(character_st, nx, nz)
+    return character_st.chr_speed * dt
+  }
+  let was_air = character_st.chr_air
+  character_st.chr_air = g == CHAR_WALK_AIR or jumped
+  if was_air and not character_st.chr_air { chr_landed(character_st) }
+  if g == CHAR_WALK_STEEP and not character_st.chr_air {
+    if not (character_st.chr_steep > 0.0) { chr_say(character_st, CHAR_TOO_STEEP, ny - character_st.chr_y) }
     character_st.chr_steep = 1.2
     character_st.chr_speed = 0.0
-    return 0.0
-  }
-  # the lake shelves: shin-deep is a wade, and past CHAR_WADE_MAX it is a swim. Entering owns
-  # the position and the height this frame, or the body sits on the bed for one frame.
-  if nh < CharacterGround.water(nx, nz) - CHAR_WADE_MAX {
-    chr_enter_water(character_st, nx, nz)
-    return dist
   }
   let mx = nx - character_st.chr_x
   let mz = nz - character_st.chr_z
   character_st.chr_step = Math.sqrt(mx * mx + mz * mz)
+  character_st.chr_vy = (ny - character_st.chr_y) / Math.max(dt, 0.0001)
   character_st.chr_x = nx
+  character_st.chr_y = ny
   character_st.chr_z = nz
-  character_st.chr_y = nh
-  return dist
+  if character_st.chr_air { return character_st.chr_speed * (dt * 0.4) }
+  return character_st.chr_speed * dt
+}
+
+function chr_landed(character_st: mut CharacterState) -> void {
+  character_st.chr_land = 0.22
+  character_st.chr_speed = Math.sqrt(character_st.chr_air_vx * character_st.chr_air_vx + character_st.chr_air_vz * character_st.chr_air_vz)
+  chr_say(character_st, CHAR_LANDED, character_st.chr_speed)
 }

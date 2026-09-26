@@ -38,7 +38,7 @@ program WalkerTest {
     phys_static_add(physics_st, wall, 3.0, 0.0, 10.0, 0.0)
     phys_settle(physics_st)
     let a = phys_walker_add(physics_st, 0.35, 1.8, 0.0, 0.0, 0.0, 50.0, 70.0)
-    phys_walker_limits(physics_st, a, 0.55, 0.5)
+    phys_walker_limits(physics_st, a, 0.55, 0.5, 50.0)
     walk(physics_st, a, 1.5, 2.0, 0.0)
     let pa = phys_walker_pose(physics_st, a)
     expect(pa.x > 2.5)

@@ -1,7 +1,12 @@
 # rules.ludic - the numbers that are the body's rules, and what it reports as facts
 export const CHAR_STEP: float = 0.55          # a rise within this of the feet is a step, whatever its gradient
 export const CHAR_BODY: float = 1.8           # feet to head
-# a slope is measured over this, never over the frame's own step: 60 Hz and 240 Hz refuse alike
+# what CharacterGround.walk says of the ground after a step (the same order as ludic.physics')
+export const CHAR_WALK_GROUND: int = 0
+export const CHAR_WALK_STEEP: int = 1
+export const CHAR_WALK_UNSUPPORTED: int = 2
+export const CHAR_WALK_AIR: int = 3
+# how far a put-down spot's ground is measured round it (char_safe_spot)
 export const CHAR_SLOPE_PROBE: float = 0.6
 export const CHAR_BREATH_MAX: float = 45.0    # seconds of air under the surface
 export const CHAR_WADE_MAX: float = 1.35      # a bed deeper than this under the surface is a swim

@@ -33,7 +33,7 @@ extern function jph_push(w: pointer, x: float, z: float, r: float, y0: float, y1
 extern function jph_step_top(w: pointer, x: float, z: float, r: float, feet: float, reach: float, mask: int) -> float = "jph_step_top"
 extern function jph_char_new(w: pointer, r: float, h: float, x: float, y: float, z: float, max_slope: float, mass: float) -> pointer = "jph_char_new"
 extern function jph_char_free(k: pointer) -> void = "jph_char_free"
-extern function jph_char_limits(k: pointer, step_up: float, stick: float) -> void = "jph_char_limits"
+extern function jph_char_limits(k: pointer, step_up: float, stick: float, max_slope: float) -> void = "jph_char_limits"
 extern function jph_char_step(w: pointer, k: pointer, dt: float, vx: float, vz: float, jump: float) -> int = "jph_char_step"
 extern function jph_char_read(k: pointer, out: pointer) -> void = "jph_char_read"
 extern function jph_char_place(w: pointer, k: pointer, x: float, y: float, z: float) -> void = "jph_char_place"

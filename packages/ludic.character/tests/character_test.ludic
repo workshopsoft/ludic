@@ -1,18 +1,22 @@
 # character_test.ludic - a body on a fake world: flat meadow, a 45 cm deck, a gentle rise and a cliff,
 # a boulder with a step on top, and a lake that shelves. The step against the slope at every frame
 # rate, wading into a swim and out, the dive and the breath, the jump, sitting, holds, the safe
-# spot, riding and the camera.
+# spot, riding and the camera. The walk is a real Jolt walker (ludic.physics) on the same world.
 import "ludic.character"
 import "ludic.base"
+import "ludic.physics"
 program CharacterTest {
   numbers float
 
   # the world: x in 4..8 is a deck 45 cm up; z < -10 a cliff; z > 10 a gentle rise; x > 20 the lake
   function fk_height(x: float, z: float) -> float {
+    if x > 4.0 and x < 8.0 and z > -2.0 and z < 2.0 { return 0.45 }
+    return fk_land(x, z)
+  }
+  function fk_land(x: float, z: float) -> float {
     if x > 20.0 { return -(x - 20.0) * 0.5 }
     if z < -10.0 { return (-10.0 - z) * 2.0 }
     if z > 10.0 { return (z - 10.0) * 0.3 }
-    if x > 4.0 and x < 8.0 and z > -2.0 and z < 2.0 { return 0.45 }
     return 0.0
   }
   function fk_water(x: float, z: float) -> float {
@@ -28,6 +32,11 @@ program CharacterTest {
     sneaking: bool = false
     pace: float = 1.0
     mz: float = 0.0
+    boots: float = 1.05
+    walker: int = -1
+    wx: float = 0.0
+    wy: float = 0.0
+    wz: float = 0.0
   }
   function fk_ring(character_test_st: mut CharacterTestState, x: float, z: float, cx: float, cz: float, r: float) -> bool {
     let dx = x - cx
@@ -61,7 +70,35 @@ program CharacterTest {
 
   function fk_move_z(character_test_st: CharacterTestState) -> float { return character_test_st.mz }
 
-  bind CharacterGround { height: fn fk_height, water: fn fk_water, push: fn fk_push, pushed_x: fn fk_px, pushed_z: fn fk_pz, top_at: fn fk_top }
+  # the same world in Jolt: the land as a heightfield, the deck a box, the boulder a 40 cm drum and
+  # the pillar a post
+  function fk_jolt(physics_st: mut PhysicsState) -> int {
+    phys_open(physics_st, 256, 1)
+    let n = 128
+    let h = floats(n * n)
+    for j in 0 .. n { for i in 0 .. n { h[j * n + i] = fk_land(float(i) - 40.0, float(j) - 60.0) } }
+    phys_ground_add(physics_st, phys_heightfield(physics_st, h, n, -40.0, -60.0, 1.0))
+    phys_static_add(physics_st, phys_offset(physics_st, phys_box(physics_st, 2.0, 0.225, 2.0), 0.0, 0.225, 0.0, 0.0), 6.0, 0.0, 0.0, 0.0)
+    phys_static_add(physics_st, phys_offset(physics_st, phys_cylinder(physics_st, 0.2, 1.0), 0.0, 0.2, 0.0, 0.0), 0.0, 0.0, 6.0, 0.0)
+    phys_static_add(physics_st, phys_offset(physics_st, phys_cylinder(physics_st, 3.0, 0.5), 0.0, 3.0, 0.0, 0.0), -6.0, 0.0, 0.0, 0.0)
+    phys_settle(physics_st)
+    return phys_walker_add(physics_st, 0.35, CHAR_BODY, 0.0, 0.0, 0.0, 50.0, 70.0)
+  }
+  function fk_walk(physics_st: mut PhysicsState, character_test_st: mut CharacterTestState, x: float, y: float, z: float, vx: float, vz: float, jump: float, step: float, slope: float, dt: float) -> int {
+    if character_test_st.walker < 0 { character_test_st.walker = fk_jolt(physics_st) }
+    let g = phys_walker_move(physics_st, character_test_st.walker, x, y, z, vx, vz, jump, step, slope, dt)
+    let p = phys_walker_pose(physics_st, character_test_st.walker)
+    character_test_st.wx = p.x
+    character_test_st.wy = p.y
+    character_test_st.wz = p.z
+    return g
+  }
+  function fk_wx(character_test_st: CharacterTestState) -> float { return character_test_st.wx }
+  function fk_wy(character_test_st: CharacterTestState) -> float { return character_test_st.wy }
+  function fk_wz(character_test_st: CharacterTestState) -> float { return character_test_st.wz }
+  function fk_boots(character_test_st: CharacterTestState) -> float { return character_test_st.boots }
+
+  bind CharacterGround { height: fn fk_height, water: fn fk_water, push: fn fk_push, pushed_x: fn fk_px, pushed_z: fn fk_pz, top_at: fn fk_top, walk: fn fk_walk, walked_x: fn fk_wx, walked_y: fn fk_wy, walked_z: fn fk_wz, slope_limit: fn fk_boots }
   bind CharacterBody { riding: fn fk_riding, ride: fn fk_ride, sneaking: fn fk_sneak, pace: fn fk_pace, eyes_ok: fn fk_eyes }
   bind CharacterInput { move_z: fn fk_move_z }
 
@@ -117,10 +154,13 @@ program CharacterTest {
     expect(body_y(character_st) > 1.0)
   }
 
-  test "the boots set the limit: a rise they cannot take is refused" (character_st: mut CharacterState) {
+  test "the boots set the limit: a rise they cannot take is refused" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
+    character_test_st.boots = 0.2
     fresh(character_st, 0.0, 8.0, SOUTH)
-    walk(character_st, 0.2, 60.0, false)
-    expect(not char_slope_blocks(character_st, body_y(character_st) + 0.1, 0.0, 1.0))
+    walk(character_st, 3.0, 60.0, false)
+    expect(body_z(character_st) < 11.5)
+    expect(body_y(character_st) < 0.45)
+    expect(count(facts(character_st), CHAR_TOO_STEEP) >= 1)
   }
 
   test "the walk reaches the walk speed, the run the run speed, a sneak its own" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
@@ -141,10 +181,14 @@ program CharacterTest {
     expect_near(body_speed(character_st), 1.3, 0.05)
   }
 
-  test "a boulder is a wall to a body below its step and a step onto its top" (character_st: mut CharacterState) {
+  test "a knee-high boulder is a step onto its top, and a post is a wall" (character_st: mut CharacterState) {
     fresh(character_st, 0.0, 3.0, SOUTH)
+    walk(character_st, 1.3, 60.0, false)
+    expect(body_z(character_st) > 5.2)
+    expect_near(body_y(character_st), 0.4, 0.03)
+    fresh(character_st, -3.0, 0.0, -EAST)
     walk(character_st, 2.0, 60.0, false)
-    expect(body_z(character_st) < 5.1)
+    expect(body_x(character_st) > -5.2)
     expect_near(char_stand_at(0.0, 6.0, 0.0), 0.4, 0.001)
     expect_near(char_stand_at(3.0, 6.0, 0.0), 0.0, 0.001)
     # and the world's own ground never includes it
