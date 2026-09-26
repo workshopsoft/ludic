@@ -94,4 +94,20 @@ program PhysicsTest {
     expect_eq(clear.n, 0)
     phys_close(physics_st)
   }
+
+  test "a step's top counts, a wall's does not, and the step beside a wall still does" (physics_st: mut PhysicsState) {
+    ground(physics_st)
+    let step = phys_offset(physics_st, phys_cylinder(physics_st, 0.15, 0.8), 0.0, 0.15, 0.0, 0.0)
+    let wall = phys_offset(physics_st, phys_cylinder(physics_st, 1.5, 0.8), 0.0, 1.5, 0.0, 0.0)
+    phys_static_add(physics_st, step, 0.0, 0.0, 0.0, 0.0)
+    phys_static_add(physics_st, wall, 1.5, 0.0, 0.0, 0.0)
+    phys_static_add(physics_st, wall, 5.0, 0.0, 0.0, 0.0)
+    phys_settle(physics_st)
+    expect(Math.abs(phys_step_top(physics_st, 0.0, 0.0, 0.35, 0.0, 0.55, PHYS_M_STATIC) - 0.3) < 0.02)
+    expect(Math.abs(phys_step_top(physics_st, 0.6, 0.0, 0.35, 0.0, 0.55, PHYS_M_STATIC) - 0.3) < 0.02)
+    expect(phys_step_top(physics_st, 5.0, 0.0, 0.35, 0.0, 0.55, PHYS_M_STATIC) == PHYS_NONE)
+    expect(phys_step_top(physics_st, -5.0, 0.0, 0.35, 0.0, 0.55, PHYS_M_STATIC) == PHYS_NONE)
+    expect(Math.abs(phys_step_top(physics_st, 5.0, 0.0, 0.35, 2.9, 0.55, PHYS_M_STATIC) - 3.0) < 0.02)
+    phys_close(physics_st)
+  }
 }

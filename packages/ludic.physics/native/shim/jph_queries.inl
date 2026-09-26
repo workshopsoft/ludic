@@ -79,3 +79,40 @@ JPH_SHIM int jph_push(void *w, float x, float z, float r, float y0, float y1, in
   out[1] = pz;
   return int(hits.mHits.size());
 }
+
+// the highest top under an upright body r wide at (x, z) that a foot at `feet` could stand on or
+// step up to: a thing whose top is above feet + reach is a wall and is left out, whatever else is
+// there. Each candidate's surface is found by letting a ball r across down onto it alone.
+// -FLT_MAX when there is nothing.
+JPH_SHIM float jph_step_top(void *w, float x, float z, float r, float feet, float reach, int mask) {
+  World *ww = static_cast<World *>(w);
+  float limit = feet + reach;
+  float y0 = feet - 1.0f, y1 = limit + 0.05f;
+  float half = (y1 - y0) * 0.5f;
+  CylinderShape column(half, r, 0.0f);
+  column.SetEmbedded();
+  AllHitCollisionCollector<CollideShapeCollector> hits;
+  MaskFilter f(mask);
+  ww->sys.GetNarrowPhaseQuery().CollideShape(&column, Vec3::sOne(), RMat44::sTranslation(RVec3(x, y0 + half, z)),
+                                             CollideShapeSettings(), RVec3::sZero(), hits, {}, f);
+  hits.Sort();
+  float best = -FLT_MAX;
+  SphereShape ball(r);
+  ball.SetEmbedded();
+  float from = limit + r + 0.01f;
+  RShapeCast cast = RShapeCast::sFromWorldTransform(&ball, Vec3::sOne(), RMat44::sTranslation(RVec3(x, from, z)),
+                                                    Vec3(0.0f, y0 - from, 0.0f));
+  for (const CollideShapeResult &h : hits.mHits) {
+    BodyLockRead lock(ww->sys.GetBodyLockInterface(), h.mBodyID2);
+    if (!lock.Succeeded()) continue;
+    const Body &b = lock.GetBody();
+    float top = float(b.GetWorldSpaceBounds().mMax.GetY());
+    if (top > limit + 1.0e-4f) continue;
+    ClosestHitCollisionCollector<CastShapeCollector> c;
+    b.GetTransformedShape().CastShape(cast, ShapeCastSettings(), RVec3::sZero(), c);
+    float y = c.HadHit() ? float(c.mHit.mContactPointOn2.GetY()) : top;
+    if (y > top) y = top;
+    if (y > best) best = y;
+  }
+  return best;
+}

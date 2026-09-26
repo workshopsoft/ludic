@@ -30,3 +30,4 @@ extern function jph_ray(w: pointer, ox: float, oy: float, oz: float, dx: float, 
 extern function jph_top_at(w: pointer, x: float, z: float, r: float, from_y: float, depth: float, mask: int) -> float = "jph_top_at"
 extern function jph_overlap(w: pointer, x: float, y: float, z: float, r: float, mask: int, ids: pointer, cap: int) -> int = "jph_overlap"
 extern function jph_push(w: pointer, x: float, z: float, r: float, y0: float, y1: float, mask: int, out: pointer) -> int = "jph_push"
+extern function jph_step_top(w: pointer, x: float, z: float, r: float, feet: float, reach: float, mask: int) -> float = "jph_step_top"

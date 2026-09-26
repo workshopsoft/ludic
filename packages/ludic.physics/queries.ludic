@@ -35,6 +35,16 @@ export function phys_top_at(physics_st: PhysicsState, x: float, z: float, r: flo
   return y
 }
 
+# the highest top under an upright body r wide that a foot at `feet` could stand on or step up
+# to, or PHYS_NONE: anything whose top is above feet + reach is a wall and left out - what
+# CharacterGround.top_at asks when a boulder may be climbed and a cliff may not
+export function phys_step_top(physics_st: PhysicsState, x: float, z: float, r: float, feet: float, reach: float, mask: int) -> float {
+  if physics_st.ph_world == null { return PHYS_NONE }
+  let y = jph_step_top(physics_st.ph_world, x, z, r, feet, reach, mask)
+  if y < PHYS_NONE { return PHYS_NONE }
+  return y
+}
+
 # the bodies a ball at (x, y, z) touches, in the order Jolt sorts them
 export function phys_overlap(physics_st: mut PhysicsState, x: float, y: float, z: float, r: float, mask: int) -> []int {
   let out = new []int
