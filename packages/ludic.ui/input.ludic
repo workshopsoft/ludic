@@ -37,8 +37,9 @@ function in_read(ui_st: mut UiState) -> void {
   ui_st.in_last = ui_st.in_now
   let i = new UiInput
   if ui_st.ui_be != null and ui_st.ui_be.input {
-    i.x = float(Input.mouse_x())
-    i.y = float(Input.mouse_y())
+    let ps = in_pointer_scale(ui_st)
+    i.x = float(Input.mouse_x()) * ps
+    i.y = float(Input.mouse_y()) * ps
     i.down = Input.mouse_down(0)
     i.down_right = Input.mouse_down(1)
     i.down_middle = Input.mouse_down(2)
@@ -59,6 +60,12 @@ function in_read(ui_st: mut UiState) -> void {
   }
   in_repeat(ui_st, i)
   ui_st.in_now = i
+}
+# the platform reports the pointer in window points and a renderer draws in pixels: on Retina the
+# layout is twice the pointer's numbers, and every hit landed up and to the left of the cursor
+function in_pointer_scale(ui_st: UiState) -> float {
+  if ui_st.ui_be.pointer_scale == null { return 1.0 }
+  return ui_st.ui_be.pointer_scale()
 }
 function in_any_key() -> int {
   for k in 8 .. 167 {

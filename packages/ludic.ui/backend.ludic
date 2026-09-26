@@ -14,6 +14,7 @@ export property UiBackend {
   clip: fn(float, float, float, float) -> void = null
   unclip: fn() -> void = null
   scale: fn() -> float = null      # screen pixels per design pixel
+  pointer_scale: fn() -> float = null   # screen pixels per unit of Input.mouse_x/y (2 on Retina)
   translate: fn(string) -> string = null   # the program's language, for every text a template shows
   sound: fn(string) -> void = null         # a control was used: "click", or its sound="..."
   read: fn(string) -> string = null        # a template file's text (else Fs.read_text)

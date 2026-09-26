@@ -24,6 +24,7 @@ function r3u_make() -> UiBackend {
   b.clip = fn r3u_clip
   b.unclip = fn r3u_unclip
   b.scale = fn r3u_scale
+  b.pointer_scale = fn r3u_pointer_scale
   b.now = fn r3u_now
   return b
 }
@@ -40,6 +41,7 @@ export function ui_atlas(ui_st: mut UiState, prefix: string, tex: int, cols: int
 }
 function r3u_now() -> float { return float(Time.now_us() / 1000) / 1000.0 }
 function r3u_scale(ui_st: UiState) -> float { return float(gl_height()) / 1080.0 * ui_st.r3u_user }
+function r3u_pointer_scale() -> float { return float(gl_pixel_scale()) }
 function r3u_r(c: int) -> float { return float((c / 65536) % 256) / 255.0 }
 function r3u_g(c: int) -> float { return float((c / 256) % 256) / 255.0 }
 function r3u_b(c: int) -> float { return float(c % 256) / 255.0 }
