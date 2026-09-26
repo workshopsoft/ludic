@@ -13,13 +13,17 @@
 #   ludic deps --uses MOD                what the other modules use of MOD
 #   ludic deps --check FILE              fail if any number is above FILE's
 #   ludic deps --baseline FILE           write the numbers to FILE
+#   ludic deps --widest N                the N functions that take the most states, and what each reaches
+#   ludic deps --reach N                 the same, the N that reach the most
 #
 # dependencies: module pairs (a, b) where a uses something of b, not counting b when b uses no
 # other module (a leaf); largest_cycle: the largest set of modules that all reach each other, not
 # counting the edges inside a declared layer (which may go round by design - reported beside it);
 # cross_writes: assignments to a global of another module; globals_written_from_outside: those
 # globals, each counted once; widest_function: the most states any function or entry point of the
-# program's own takes (0.R2 - a reducer takes one, and the dispatchers should come down to a few).
+# program's own takes (0.R2 - a reducer takes one, and the dispatchers should come down to a few);
+# widest_reach: the most states any of them can come to - what it takes, and through calls, `fn f`
+# and globals holding fn values (a step list, a registry of systems) what those take (0.R4).
 var dp_mods: []pointer = null
 var dp_pkg: []int = null
 var dp_uses: []pointer = null
@@ -35,6 +39,12 @@ var dp_wname: []pointer = null
 var dp_wfrom: []pointer = null
 var dp_wide_n: int = 0                # 0.R2: the widest function's state parameters, and which
 var dp_wide_at: pointer = ""
+var dp_reach_n: int = 0               # 0.R4: the most states a function reaches, fn values included
+var dp_reach_at: pointer = ""
+var dp_reach_own: int = 0             # ... of which it takes itself
+var dp_fn_at: []pointer = null        # each of the program's own functions: where, what it takes, what it reaches
+var dp_fn_w: []int = null
+var dp_fn_r: []int = null
 
 function dp_words(line: pointer) -> []pointer {
   let out = new []pointer
@@ -68,6 +78,8 @@ function dp_load(path: pointer) -> bool {
   dp_mods = new []pointer;  dp_pkg = new []int;  dp_uses = new []pointer;  dp_layer = new []pointer
   dp_ef = new []int;  dp_et = new []int;  dp_ec = new []int;  dp_en = new []pointer
   dp_wide_n = 0;  dp_wide_at = ""
+  dp_reach_n = 0;  dp_reach_at = "";  dp_reach_own = 0
+  dp_fn_at = new []pointer;  dp_fn_w = new []int;  dp_fn_r = new []int
   dp_writes = new []pointer;  dp_aliases = new []pointer;  dp_wowner = new []pointer;  dp_wname = new []pointer;  dp_wfrom = new []pointer
   let lines = split_lines(text)
   for i in 0 .. len(lines) {
@@ -93,6 +105,10 @@ function dp_load(path: pointer) -> bool {
       dp_wide_n = s_to_int(w[1])
       dp_wide_at = `{dp_fn_name(w[2])} ({w[3]})`
     }
+    if len(w) >= 5 and (w[0] == "width" or w[0] == "reach") and w[4] == "0" {
+      let k = dp_fn(`{dp_fn_name(w[2])} ({w[3]})`)
+      if w[0] == "width" { dp_fn_w[k] = s_to_int(w[1]) } else { dp_fn_r[k] = s_to_int(w[1]) }
+    }
     if len(w) >= 5 and w[0] == "write" {
       push(dp_wowner, w[1])
       push(dp_wname, w[2])
@@ -101,6 +117,67 @@ function dp_load(path: pointer) -> bool {
     }
   }
   return true
+}
+# a function of the program's own, by `name (file:line)`
+function dp_fn(at: pointer) -> int {
+  for i in 0 .. len(dp_fn_at) { if dp_fn_at[i] == at { return i } }
+  push(dp_fn_at, at)
+  push(dp_fn_w, 0)
+  push(dp_fn_r, 0)
+  return len(dp_fn_at) - 1
+}
+# after the load: the widest reach (a function reaches at least what it takes)
+function dp_reach_best() -> void {
+  for i in 0 .. len(dp_fn_at) {
+    if dp_fn_r[i] < dp_fn_w[i] { dp_fn_r[i] = dp_fn_w[i] }
+    if dp_fn_r[i] > dp_reach_n {
+      dp_reach_n = dp_fn_r[i]
+      dp_reach_at = dp_fn_at[i]
+      dp_reach_own = dp_fn_w[i]
+    }
+  }
+}
+# --widest N / --reach N: the top N functions by what they take (or by what they reach), both shown
+function dp_top(n: int, by_reach: bool) -> void {
+  let order = new []int
+  for i in 0 .. len(dp_fn_at) { push(order, i) }
+  for a in 1 .. len(order) {
+    let x = order[a]
+    var b = a - 1
+    while b >= 0 and dp_top_before(x, order[b], by_reach) {
+      order[b + 1] = order[b]
+      b -= 1
+    }
+    order[b + 1] = x
+  }
+  print("takes  reaches  function")
+  var shown = 0
+  for i in 0 .. len(order) {
+    let k = order[i]
+    if shown < n and (dp_fn_w[k] > 0 or dp_fn_r[k] > 0) {
+      print(`{dp_pad(string(dp_fn_w[k]), 5)}  {dp_pad(string(dp_fn_r[k]), 7)}  {dp_fn_at[k]}`)
+      shown += 1
+    }
+  }
+}
+function dp_top_before(x: int, y: int, by_reach: bool) -> bool {
+  var kx = dp_fn_w[x]
+  var ky = dp_fn_w[y]
+  var tx = dp_fn_r[x]
+  var ty = dp_fn_r[y]
+  if by_reach {
+    kx = dp_fn_r[x]
+    ky = dp_fn_r[y]
+    tx = dp_fn_w[x]
+    ty = dp_fn_w[y]
+  }
+  if kx != ky { return kx > ky }
+  return tx > ty
+}
+function dp_pad(s: pointer, n: int) -> pointer {
+  var out = s
+  while slen(out) < n { out = " " + out }
+  return out
 }
 # a function as its source names it: a reducer is `reducer Bag on PickUp`, not its symbol
 function dp_fn_name(n: pointer) -> pointer {
@@ -213,7 +290,7 @@ var dp_vals: []int = null
 var dp_cycle: []int = null
 var dp_cycle_all: []int = null        # the same with the layers' own edges counted
 function dp_numbers() -> void {
-  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside", "widest_function"]
+  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside", "widest_function", "widest_reach"]
   var mods = 0
   for k in 0 .. len(dp_mods) { if dp_own(k) { mods += 1 } }
   var deps = 0
@@ -234,7 +311,8 @@ function dp_numbers() -> void {
       if not dup { push(seen, key) }
     }
   }
-  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen), dp_wide_n]
+  dp_reach_best()
+  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen), dp_wide_n, dp_reach_n]
 }
 
 # ---- the command --------------------------------------------------------------
@@ -243,6 +321,7 @@ function dp_print_numbers() -> void {
   print(`in the largest cycle: {dp_sorted_names(dp_cycle)}`)
   if dp_wide_n == 1 { print(`the widest function: {dp_wide_at}, 1 state`) }
   if dp_wide_n > 1 { print(`the widest function: {dp_wide_at}, {string(dp_wide_n)} states`) }
+  if dp_reach_n > dp_reach_own { print(`the widest reach: {dp_reach_at}, {string(dp_reach_n)} states ({string(dp_reach_n - dp_reach_own)} through calls and fn values it does not take)`) }
   let layers = dp_layers()
   if layers != "" {
     print(`layers: {layers}`)
@@ -385,7 +464,7 @@ function cmd_deps() -> int {
     if a == "--dot" { mode = "dot" }
     else if a == "--graph" { mode = "graph" }
     else if a == "--writes" { mode = "writes" }
-    else if a == "--uses" or a == "--check" or a == "--baseline" {
+    else if a == "--uses" or a == "--check" or a == "--baseline" or a == "--widest" or a == "--reach" {
       if ai + 1 >= arg_count() { err(`ludic deps: {a} needs an argument\n`);  return 2 }
       mode = sslice(a, 2, slen(a))
       ai += 1
@@ -393,7 +472,7 @@ function cmd_deps() -> int {
     }
     else if a[0] == '-' {
       err(`ludic deps: unknown option {a}\n`)
-      err("  usage: ludic deps [file] [--graph | --dot | --writes | --uses MOD | --check FILE | --baseline FILE]\n")
+      err("  usage: ludic deps [file] [--graph | --dot | --writes | --uses MOD | --check FILE | --baseline FILE | --widest N | --reach N]\n")
       return 2
     }
     else { src = a }
@@ -426,6 +505,8 @@ function cmd_deps() -> int {
     return 0
   }
   if mode == "uses" { dp_uses_of(arg2);  return 0 }
+  if mode == "widest" { dp_top(s_to_int(arg2), false);  return 0 }
+  if mode == "reach" { dp_top(s_to_int(arg2), true);  return 0 }
   if mode == "check" { return dp_check(arg2) }
   if mode == "baseline" { return dp_baseline(arg2) }
   dp_print_numbers()

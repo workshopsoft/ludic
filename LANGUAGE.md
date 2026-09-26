@@ -381,7 +381,12 @@ program Pack {
 
 `ludic deps` reports the widest function - the most states any function or entry point of the
 program's own takes - and `--check` holds it as a ratchet like its other numbers
-(`widest_function 12` in the baseline file).
+(`widest_function 12` in the baseline file). A function value's states are supplied where it is called, so a
+step list - `let STEPS = [fn a, fn b]` walked by a function that takes nothing - hides what it
+touches; `widest_reach` is the most states any function can come to, through its calls, the `fn f`
+it writes and the globals holding fn values it reads (a registry of systems), and the report says how
+many of them it does not take itself. `ludic deps --widest N` lists the N functions that take the
+most states, each with what it reaches; `--reach N` lists them by reach.
 
 ### Types are checked before anything is emitted
 

@@ -7,6 +7,8 @@
 #   edge <from> <to> <count> <first name>
 #   write <owner> <global> <from> <file>:<line>
 #   alias <owner> <global> <from> <file>:<line> <local>    (a write through a local, below)
+#   width <n> <name> <file>:<line> <pkg>                   (the states it takes)
+#   reach <n> <name> <file>:<line> <pkg>                   (the states it can come to, fn values too)
 var g_dp_on: int = -1
 var g_dp_key: []pointer = new []pointer        # "from to"
 var g_dp_cnt: []int = new []int
@@ -117,6 +119,7 @@ function deps_flush() -> void {
     i += 1
   }
   deps_widths(f)
+  deps_reach(f)
   file_close(f)
 }
 
@@ -260,4 +263,138 @@ function deps_alias_write(t: Node) -> void {
   let k = deps_alias_find(r.s)
   if k < 0 { return }
   push(g_dp_aliases, `alias {g_dp_al_owner[k]} {g_dp_al_global[k]} {module_of(g_err_file)} {g_err_file}:{itoa(g_err_line)} {r.s}`)
+}
+# 0.R4: the states a function REACHES - its own, and every state of every function it can come to:
+# by a call, by `fn f` written in it, or by reading a global whose value holds `fn f` (a step list,
+# a registry of fn values). A function value's states are supplied where it is called, so a step list
+# or a reducer that walks one takes none itself and still reaches all of them.
+# `reach <n> <name> <file>:<line> <pkg>`, for each of the program's functions that reaches any.
+var g_dr_name: []pointer = new []pointer        # the declarations a name can reach: functions, globals
+var g_dr_node: []Node = new []Node
+var g_dr_refs: [][]int = new [][]int            # what each one names
+var g_dr_bits: [][]int = new [][]int            # the states it reaches, 60 to a word
+var g_dr_find_k: []pointer = new []pointer
+var g_dr_find_v: []Node = new []Node
+function dr_state_ix(t: pointer) -> int {
+  var i = 0
+  while i < len(g_state_names) {
+    if (g_state_names[i] == t) { return i }
+    i += 1
+  }
+  return -1
+}
+function dr_set(bits: []int, s: int) -> void { bits[s / 60] = bits[s / 60] | (1 << (s % 60)) }
+function dr_words() -> int { return len(g_state_names) / 60 + 1 }
+function dr_index(name: pointer) -> int {
+  let n = ck_tab_get(g_dr_find_k, g_dr_find_v, name)
+  if n == null { return -1 }
+  return n.ival
+}
+function dr_walk(n: Node, refs: []int) -> void {
+  if n == null { return }
+  if (n.kind == E_ID or n.kind == E_FNREF) and n.s != null {
+    let k = dr_index(n.s)
+    if k >= 0 { push(refs, k) }
+  }
+  dr_walk(n.a, refs)
+  dr_walk(n.b, refs)
+  dr_walk(n.c, refs)
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) {
+      dr_walk(n.kids[i], refs)
+      i += 1
+    }
+  }
+}
+function dr_own(d: Node, bits: []int) -> void {
+  if d.kind == N_FN {
+    var k = 0
+    while k < len(d.kids) {
+      if d.kids[k].kind == N_PARAM {
+        let s = dr_state_ix(d.kids[k].ty)
+        if s >= 0 { dr_set(bits, s) }
+      }
+      k += 1
+    }
+  }
+}
+function dr_count(bits: []int) -> int {
+  var n = 0
+  var i = 0
+  while i < len(bits) {
+    var w = bits[i]
+    while w != 0 {
+      n += w & 1
+      w = w >> 1
+    }
+    i += 1
+  }
+  return n
+}
+function deps_reach(f: pointer) -> void {
+  ck_tab_init(g_dr_find_k, g_dr_find_v)
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.s != null and (d.kind == N_FN or d.kind == N_VAR or d.kind == N_CONST) and ck_tab_get(g_dr_find_k, g_dr_find_v, d.s) == null {
+      let h = new Node
+      h.ival = len(g_dr_node)
+      ck_tab_put(g_dr_find_k, g_dr_find_v, d.s, h)
+      push(g_dr_name, d.s)
+      push(g_dr_node, d)
+    }
+    i += 1
+  }
+  let nw = dr_words()
+  var j = 0
+  while j < len(g_dr_node) {
+    let refs = new []int
+    dr_walk(g_dr_node[j], refs)
+    push(g_dr_refs, refs)
+    let bits = new []int
+    var w = 0
+    while w < nw {
+      push(bits, 0)
+      w += 1
+    }
+    dr_own(g_dr_node[j], bits)
+    push(g_dr_bits, bits)
+    j += 1
+  }
+  var changed = true
+  while changed {                                # to a fixed point: what a callee reaches, the caller does
+    changed = false
+    j = 0
+    while j < len(g_dr_node) {
+      let mine = g_dr_bits[j]
+      let refs = g_dr_refs[j]
+      var r = 0
+      while r < len(refs) {
+        let theirs = g_dr_bits[refs[r]]
+        var w2 = 0
+        while w2 < nw {
+          let u = mine[w2] | theirs[w2]
+          if u != mine[w2] {
+            mine[w2] = u
+            changed = true
+          }
+          w2 += 1
+        }
+        r += 1
+      }
+      j += 1
+    }
+  }
+  j = 0
+  while j < len(g_dr_node) {
+    let d = g_dr_node[j]
+    if d.kind == N_FN and d.file != null and not is_runtime_file(d.file) {
+      let n = dr_count(g_dr_bits[j])
+      var pkg = 0
+      if not (pkg_of_file(d.file) == "") { pkg = 1 }
+      if n > 0 { deps_line(f, `reach {itoa(n)} {d.s} {d.file}:{itoa(d.line)} {itoa(pkg)}`) }
+    }
+    j += 1
+  }
 }

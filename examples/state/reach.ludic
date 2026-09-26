@@ -1,0 +1,21 @@
+# ludic deps --reach: a step list takes no state and still reaches every state its steps take
+program Reach {
+  state Alpha { n: int = 0 }
+  state Beta { n: int = 0 }
+  state Gamma { n: int = 0 }
+  function step_a(a: mut Alpha) -> void { a.n += 1 }
+  function step_b(b: mut Beta) -> void { b.n += 2 }
+  function step_c(c: mut Gamma) -> void { c.n += 3 }
+  let STEPS: []fn() -> void = [fn step_a, fn step_b]
+  function run_steps() -> void {
+    for i in 0 .. len(STEPS) { STEPS[i]() }
+  }
+  function one(c: mut Gamma) -> void {
+    step_c(c)
+    run_steps()
+  }
+  entry (c: mut Gamma) {
+    one(c)
+    print(`{c.n}`)
+  }
+}
