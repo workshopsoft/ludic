@@ -318,7 +318,8 @@ migrate: 1804 vars into 126 states, 64 into lets; 23498 edits in 460 files
 function nor anything it calls uses, and the argument that fills it at every call. An argument for a
 parameter the callee no longer has goes too - a package's verb that dropped a state leaves its callers
 passing one too many, and `ludic migrate state --prune <program>` puts them right. A reducer keeps its
-state. When ludic.base's queues began keeping their own counts, every package verb lost its
+state, and a state declared after a plain parameter (`home_keep(r: Records, save_st: mut Save)`) is
+kept where it is. When ludic.base's queues began keeping their own counts, every package verb lost its
 `base_st` this way (`wallet_earn(wallet_st, n)`, not `wallet_earn(base_st, wallet_st, n)`):
 
 ```
@@ -399,7 +400,8 @@ What it holds apart: `int`, `float`, `fixed` and `bool` (a float or a fixed into
 `int(x)`; a float and a fixed never meet but by a literal, which takes whichever kind its slot is);
 text and numbers (`string(n)` or a template); one record type and another; slices of different
 elements; functions of different types. A call gives exactly as many arguments as there are
-parameters, a `return` gives the declared result, and `push` gives the slice's own element.
+parameters, a `return` gives the declared result, and `push` gives the slice's own element. A
+function names each parameter once (`add names two parameters n`).
 
 `pointer` is untyped, as `void *` is in C: it goes wherever a reference is wanted and takes any
 reference, and a `[]pointer` any slice of references. Restricting what a raw pointer may reach is

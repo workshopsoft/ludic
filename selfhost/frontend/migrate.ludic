@@ -559,8 +559,22 @@ function mg_list(set: pointer) -> []int {
 function mg_declared(n: Node, s: int) -> bool {
   if n.kind != N_FN { return false }
   var i = 0
-  while i < len(n.kids) and n.kids[i].kind == N_PARAM and is_state_ty(n.kids[i].ty) {
-    if (n.kids[i].ty == g_ms_name[s]) { return true }
+  while i < len(n.kids) {                        # anywhere in the list: a state after a plain parameter is declared too
+    if n.kids[i].kind == N_PARAM and (n.kids[i].ty == g_ms_name[s]) { return true }
+    i += 1
+  }
+  return false
+}
+# a state declared after a plain parameter: every call already names it where it stands
+function mg_declared_late(n: Node, s: int) -> bool {
+  if n.kind != N_FN { return false }
+  var plain = false
+  var i = 0
+  while i < len(n.kids) {
+    if n.kids[i].kind == N_PARAM {
+      if not is_state_ty(n.kids[i].ty) { plain = true }
+      else if plain and (n.kids[i].ty == g_ms_name[s]) { return true }
+    }
     i += 1
   }
   return false
@@ -972,7 +986,7 @@ function mg_calls() -> void {
       let passed = g_mc_passed[c] == 1
       var k = 0
       while k < len(need) {
-        if not (mg_declared(callee, need[k]) and passed) {
+        if not (mg_declared(callee, need[k]) and (passed or mg_declared_late(callee, need[k]))) {
           if len(text) > 0 { text = text + ", " }
           text = text + g_ms_param[need[k]]
         }

@@ -1,0 +1,5 @@
+# a parameter named twice is refused where it is written
+program ParamTwice {
+  function add(n: int, k: int, n: int) -> int { return n + k }
+  entry { print(`{add(1, 2, 3)}`) }
+}

@@ -539,7 +539,8 @@ function migrate_case() -> void {
 
 # ludic migrate state --prune: a state nothing uses leaves the functions that take it and the calls
 # that pass it; an argument for a parameter the callee no longer has goes too (a package's verb that
-# dropped a state), and the program then builds and runs
+# dropped a state), a state declared after a plain parameter is kept where it is, and the program
+# then builds and runs
 function migrate_prune_case() -> void {
   let lbl = "ludic migrate state --prune: unused states and the arguments that fill them go, the same output"
   let work = `{tmp_dir()}/migprune`
@@ -550,12 +551,13 @@ function migrate_prune_case() -> void {
   src = src + "  function add(log_st: mut Log, b: mut Bag, v: int) -> void { put(log_st, b, v) }\n"
   src = src + "  function outer(log_st: mut Log, b: mut Bag) -> void { add(log_st, b, 4) }\n"
   src = src + "  function top(log_st: Log, b: Bag) -> int { return head(log_st, b.items) }\n"
-  src = src + "  function said(log_st: mut Log, b: Bag) -> int {\n    push(log_st.lines, \"x\")\n    return len(log_st.lines)\n  }\n"
+  src = src + "  function said(log_st: mut Log, b: Bag) -> int {\n    push(log_st.lines, \"x\")\n    return late(3, log_st)\n  }\n"
+  src = src + "  function late(k: int, log_st: Log) -> int { return len(log_st.lines) + k - 3 }\n"
   src = src + "  entry (log_st: mut Log, b: mut Bag) {\n    outer(log_st, b)\n    print(`{top(log_st, b)} {said(log_st, b)}`)\n  }\n}\n"
   write_file(`{work}/prune.ludic`, src)
   if not shq(`bin/ludic migrate state --prune {work}/prune.ludic > {work}/out.txt 2>&1`) { bad2(lbl, capture_line(`tail -1 {work}/out.txt`));  return }
   let got = read_file(`{work}/prune.ludic`)
-  if not s_contains(got, "function add(b: mut Bag, v: int) -> void { put(b, v) }") or not s_contains(got, "function outer(b: mut Bag) -> void { add(b, 4) }") or not s_contains(got, "function top(b: Bag) -> int { return head(b.items) }") or not s_contains(got, "function said(log_st: mut Log) -> int") or not s_contains(got, "entry (log_st: mut Log, b: mut Bag)") or not s_contains(got, "{top(b)} {said(log_st)}") {
+  if not s_contains(got, "function add(b: mut Bag, v: int) -> void { put(b, v) }") or not s_contains(got, "function outer(b: mut Bag) -> void { add(b, 4) }") or not s_contains(got, "function top(b: Bag) -> int { return head(b.items) }") or not s_contains(got, "function said(log_st: mut Log) -> int") or not s_contains(got, "entry (log_st: mut Log, b: mut Bag)") or not s_contains(got, "{top(b)} {said(log_st)}") or not s_contains(got, "function late(k: int, log_st: Log) -> int") or not s_contains(got, "return late(3, log_st)") {
     bad2(lbl, `rewrote it as [{got}]`)
     return
   }
@@ -1025,6 +1027,7 @@ function cmd_dev_test() -> int {
   migrate_prune_case()
   vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")
   feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
+  reject_case("rejected/param_twice", "add names two parameters n", "a parameter named twice is refused")
   reject_case("rejected/wrong_arity", "this call to area leaves out h, which has no default", "a call with the wrong number of arguments is refused")
   reject_case("rejected/float_into_int", "metres wants an int and this is a float", "a float computed into an int is refused")
   reject_case("rejected/record_mixup", "d wants a Door and this is a Key", "one record type is not another")

@@ -154,12 +154,26 @@ function ck_stmt(s: Node) -> void {
   }
   ck_walk(s)
 }
+# a name given to two parameters: the second would shadow the first, and nothing could reach it
+function ck_param_twice(d: Node, i: int) -> void {
+  var j = 0
+  while j < i {
+    if d.kids[j].kind == N_PARAM and (d.kids[j].s == d.kids[i].s) {
+      ck_err("arity", d.kids[i], `{d.s} names two parameters {d.kids[i].s}`)
+      return
+    }
+    j += 1
+  }
+}
 function ck_fn_body(d: Node) -> void {
   mg_enter(d, 0)
   let m = ck_mark()
   var i = 0
   while i < len(d.kids) {
-    if d.kids[i].kind == N_PARAM { ck_bind_param(d.kids[i]) }
+    if d.kids[i].kind == N_PARAM {
+      ck_param_twice(d, i)
+      ck_bind_param(d.kids[i])
+    }
     i += 1
   }
   ck_ret = d.ty
