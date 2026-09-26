@@ -62,3 +62,26 @@ JPH_SHIM int jph_body_buoyancy(void *w, int id, float sy, float nx, float ny, fl
                                      Vec3(cx, 0.0f, cz), ww->sys.GetGravity(), dt);
   return in ? 1 : 0;
 }
+
+// a push kept up over the next step (an oar's stroke, a paddle), and a twist
+JPH_SHIM void jph_body_force(void *w, int id, float x, float y, float z) {
+  static_cast<World *>(w)->sys.GetBodyInterface().AddForce(bid(id), Vec3(x, y, z));
+}
+JPH_SHIM void jph_body_torque(void *w, int id, float x, float y, float z) {
+  static_cast<World *>(w)->sys.GetBodyInterface().AddTorque(bid(id), Vec3(x, y, z));
+}
+JPH_SHIM void jph_body_angular_impulse(void *w, int id, float x, float y, float z) {
+  static_cast<World *>(w)->sys.GetBodyInterface().AddAngularImpulse(bid(id), Vec3(x, y, z));
+}
+// how fast it turns (x, y, z), into out[3]
+JPH_SHIM void jph_body_spin(void *w, int id, float *out) {
+  Vec3 a = static_cast<World *>(w)->sys.GetBodyInterface().GetAngularVelocity(bid(id));
+  out[0] = a.GetX(); out[1] = a.GetY(); out[2] = a.GetZ();
+}
+// where a body is going, set whole: a guest's copy of the host's body, moved to what the host said
+JPH_SHIM void jph_body_set_pose(void *w, int id, float x, float y, float z, float qx, float qy, float qz, float qw,
+                                float vx, float vy, float vz) {
+  BodyInterface &bi = static_cast<World *>(w)->sys.GetBodyInterface();
+  bi.SetPositionAndRotation(bid(id), RVec3(x, y, z), Quat(qx, qy, qz, qw).Normalized(), EActivation::Activate);
+  bi.SetLinearVelocity(bid(id), Vec3(vx, vy, vz));
+}

@@ -47,6 +47,7 @@ export state PhysicsState {
   ph_float_k: []float = null      # and theirs: buoyancy, linear drag, angular drag, wet
   ph_rx: float = 0.0               # where the last phys_resolve put a body
   ph_rz: float = 0.0
+  ph_walkers: []pointer = null   # a walker id is its place here; null once removed
   ph_ids: []int = null
   ph_vals: []float = null
   ph_facts: Queue<PhysFact> = null
@@ -64,6 +65,7 @@ function ph_buffers(physics_st: mut PhysicsState) -> void {
   if physics_st.ph_shapes == null { physics_st.ph_shapes = new []pointer }
   if physics_st.ph_floats == null { physics_st.ph_floats = new []int }
   if physics_st.ph_float_k == null { physics_st.ph_float_k = new []float }
+  if physics_st.ph_walkers == null { physics_st.ph_walkers = new []pointer }
 }
 
 # a step's length, its collision steps, and how hard a contact must be to be a fact

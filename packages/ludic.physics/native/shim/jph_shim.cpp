@@ -22,6 +22,8 @@
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
 #include <mutex>
 #include <thread>
 #include <cfloat>
@@ -126,3 +128,4 @@ JPH_SHIM int jph_init(void) {
 #include "jph_shapes.inl"
 #include "jph_bodies.inl"
 #include "jph_queries.inl"
+#include "jph_character.inl"

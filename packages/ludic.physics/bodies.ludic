@@ -68,3 +68,22 @@ export function phys_awake(physics_st: PhysicsState, id: int) -> bool { return p
 export function phys_set_kinematic_target(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float, yaw: float) -> void {
   if physics_st.ph_world != null { jph_body_target(physics_st.ph_world, id, x, y, z, yaw, physics_st.ph_step) }
 }
+
+# a push kept up over the next step (an oar), a twist, and a twist at once
+export function phys_force(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void { if physics_st.ph_world != null { jph_body_force(physics_st.ph_world, id, x, y, z) } }
+export function phys_torque(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void { if physics_st.ph_world != null { jph_body_torque(physics_st.ph_world, id, x, y, z) } }
+export function phys_angular_impulse(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void { if physics_st.ph_world != null { jph_body_angular_impulse(physics_st.ph_world, id, x, y, z) } }
+
+# how fast it turns about y, radians a second
+export function phys_spin_y(physics_st: mut PhysicsState, id: int) -> float {
+  if physics_st.ph_world == null { return 0.0 }
+  ph_buffers(physics_st)
+  jph_body_spin(physics_st.ph_world, id, physics_st.ph_vals)
+  return physics_st.ph_vals[1]
+}
+
+# a body put exactly where a pose says, moving as it says: a guest's copy of the host's body
+export function phys_set_pose(physics_st: mut PhysicsState, id: int, p: PhysPose) -> void {
+  if physics_st.ph_world == null or p == null { return }
+  jph_body_set_pose(physics_st.ph_world, id, p.x, p.y, p.z, p.qx, p.qy, p.qz, p.qw, p.vx, p.vy, p.vz)
+}

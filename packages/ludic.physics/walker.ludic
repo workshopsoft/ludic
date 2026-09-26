@@ -1,0 +1,74 @@
+# walker.ludic - a body that walks: Jolt's CharacterVirtual, stepped by the game with the speed it
+# wants across. Gravity, landing, steps up to ph step_up, slopes to max_slope and following the
+# ground down are Jolt's; a walker shoves dynamic things and a ray finds it (its `body`).
+export const PHYS_ON_GROUND: int = 0
+export const PHYS_TOO_STEEP: int = 1
+export const PHYS_UNSUPPORTED: int = 2
+export const PHYS_IN_AIR: int = 3
+
+export property PhysWalk {
+  x: float = 0.0     # the feet
+  y: float = 0.0
+  z: float = 0.0
+  vx: float = 0.0
+  vy: float = 0.0
+  vz: float = 0.0
+  ground: int = 3    # PHYS_ON_GROUND .. PHYS_IN_AIR
+  ny: float = 1.0    # the ground normal's y: 1 flat
+  body: int = -1     # its inner body, what rays and overlaps see
+}
+
+function ph_walker(physics_st: PhysicsState, id: int) -> pointer {
+  if physics_st.ph_walkers == null or id < 0 or id >= len(physics_st.ph_walkers) { return null }
+  return physics_st.ph_walkers[id]
+}
+
+# r wide and h tall, feet at (x, y, z), mass in kg; -1 with no world
+export function phys_walker_add(physics_st: mut PhysicsState, r: float, h: float, x: float, y: float, z: float, max_slope: float, mass: float) -> int {
+  if physics_st.ph_world == null { return -1 }
+  ph_buffers(physics_st)
+  push(physics_st.ph_walkers, jph_char_new(physics_st.ph_world, r, h, x, y, z, max_slope, mass))
+  return len(physics_st.ph_walkers) - 1
+}
+
+# how high a step it takes without a jump, and how far it follows the ground down
+export function phys_walker_limits(physics_st: PhysicsState, id: int, step_up: float, stick: float) -> void {
+  let k = ph_walker(physics_st, id)
+  if k != null { jph_char_limits(k, step_up, stick) }
+}
+
+export function phys_walker_remove(physics_st: mut PhysicsState, id: int) -> void {
+  let k = ph_walker(physics_st, id)
+  if k == null { return }
+  jph_char_free(k)
+  physics_st.ph_walkers[id] = null
+}
+
+# one step of dt at (vx, vz) metres a second across; jump > 0 leaves the ground at that speed up.
+# Returns the ground state after it.
+export function phys_walker_step(physics_st: mut PhysicsState, id: int, dt: float, vx: float, vz: float, jump: float) -> int {
+  let k = ph_walker(physics_st, id)
+  if k == null or physics_st.ph_world == null { return PHYS_IN_AIR }
+  return jph_char_step(physics_st.ph_world, k, dt, vx, vz, jump)
+}
+
+export function phys_walker_pose(physics_st: mut PhysicsState, id: int) -> PhysWalk {
+  let k = ph_walker(physics_st, id)
+  if k == null { return null }
+  ph_buffers(physics_st)
+  jph_char_read(k, physics_st.ph_vals)
+  let v = physics_st.ph_vals
+  let p = new PhysWalk
+  p.x = v[0];  p.y = v[1];  p.z = v[2]
+  p.vx = v[3];  p.vy = v[4];  p.vz = v[5]
+  p.ground = int(v[6])
+  p.ny = v[7]
+  p.body = int(v[8])
+  return p
+}
+
+# put it somewhere, standing still: a teleport, a swap, getting off a boat
+export function phys_walker_place(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void {
+  let k = ph_walker(physics_st, id)
+  if k != null and physics_st.ph_world != null { jph_char_place(physics_st.ph_world, k, x, y, z) }
+}

@@ -42,6 +42,8 @@ import "ludic.physics"
 | `phys_resolve(st, x, z, r, y0, y1, mask) -> bool`, `phys_resolved_x` / `_z` | pushed clear in two passes, the place kept (`CharacterGround.push`, `pushed_x` / `_z`); a thing wholly under the feet or over the head is not in the way |
 | `phys_step_top(st, x, z, r, feet, reach, mask) -> float` | the highest top a foot could step up to, anything taller than `feet + reach` left out as a wall |
 | `phys_overlap(st, x, y, z, r, mask) -> []int` | the bodies a ball touches |
+| `phys_walker_add(st, r, h, x, y, z, max_slope, mass)`, `phys_walker_step(st, id, dt, vx, vz, jump) -> ground`, `phys_walker_pose -> PhysWalk`, `phys_walker_place`, `phys_walker_limits(step_up, stick)`, `phys_walker_remove` | a walking body (Jolt's CharacterVirtual): gravity, landing, steps, slopes, following the ground down; it shoves dynamic things and rays find its `body` |
+| `phys_force`, `phys_torque`, `phys_angular_impulse`, `phys_spin_y`, `phys_set_pose(st, id, pose)` | an oar's stroke and a turn; a guest's copy put where the host said |
 | `phys_float(st, id, buoyancy, linear_drag, angular_drag)`, `phys_sink`, `phys_floating` | a body buoyed each step against `PhysWater` and carried by its current |
 | `phys_facts(st)` | `PhysFact`: `PHYS_HIT` (two bodies met at `ph_hard` m/s or more), `PHYS_SPLASH` (a floating body reached water) |
 | `phys_tick`, `phys_advance(st, dt) -> steps`, `phys_step`, `phys_system()` | the system, in `PH_SIMULATE` |
