@@ -1,0 +1,6 @@
+# a misspelled type in a field, inside a slice, is refused too
+program UnknownFieldType {
+  property CharacterFact { kind: int = 0 }
+  property Sheet { facts: []CharFact = null }
+  entry { print("x") }
+}

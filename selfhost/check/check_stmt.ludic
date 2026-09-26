@@ -279,6 +279,7 @@ function check_program() -> void {
   gen_collect()
   ck_index()
   ck_runtime_shadows()
+  ck_tynames()                                 # 0.R4: a type written names a type
   var i = 0
   while i < len(prog) {
     let d = prog[i]

@@ -401,7 +401,10 @@ What it holds apart: `int`, `float`, `fixed` and `bool` (a float or a fixed into
 text and numbers (`string(n)` or a template); one record type and another; slices of different
 elements; functions of different types. A call gives exactly as many arguments as there are
 parameters, a `return` gives the declared result, and `push` gives the slice's own element. A
-function names each parameter once (`add names two parameters n`).
+function names each parameter once (`add names two parameters n`). A type written in a parameter, a
+result or a field names a declared type (or one of the declaration's type parameters): a misspelling
+is refused there (`kind_of's parameter f: there is no type CharFact`), not later as a member access
+that makes no sense.
 
 `pointer` is untyped, as `void *` is in C: it goes wherever a reference is wanted and takes any
 reference, and a `[]pointer` any slice of references. Restricting what a raw pointer may reach is

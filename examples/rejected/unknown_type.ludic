@@ -1,0 +1,6 @@
+# a misspelled type in a parameter is refused where it is written, not as member access far away
+program UnknownType {
+  property CharacterFact { kind: int = 0 }
+  function kind_of(f: CharFact) -> int { return f.kind }
+  entry { print(`{kind_of(new CharacterFact)}`) }
+}

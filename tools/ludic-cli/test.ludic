@@ -1027,6 +1027,8 @@ function cmd_dev_test() -> int {
   migrate_prune_case()
   vis_report_case("rejected/uses_missing", "uses: examples/rejected/uses_valley/items/index.ludic:3: items.inv_add used from", "LUDIC_VIS_REPORT=1 lists a uses violation and builds")
   feat_case("lang/checked", "", "7.5 3 12 hi 2 ok", "checked.ludic (L4: literals take their slot's kind, string(p), []string as []pointer, null, named args)")
+  reject_case("rejected/unknown_type", "kind_of's parameter f: there is no type CharFact", "a misspelled type in a parameter is refused where it is written")
+  reject_case("rejected/unknown_field_type", "Sheet.facts: there is no type CharFact", "a misspelled type in a field is refused where it is written")
   reject_case("rejected/param_twice", "add names two parameters n", "a parameter named twice is refused")
   reject_case("rejected/wrong_arity", "this call to area leaves out h, which has no default", "a call with the wrong number of arguments is refused")
   reject_case("rejected/float_into_int", "metres wants an int and this is a float", "a float computed into an int is refused")

@@ -1,0 +1,104 @@
+# check_tynames.ludic — 0.R4: a type written in a parameter or a field names a type. A misspelled
+# one (`f: CharFact` for CharacterFact) used to be taken on trust and fail far away, in the emitter,
+# as "member access on non-aggregate". A capitalised name is a declared type's - a property, a
+# record, a state, an event, an enum, an action - or a type parameter of the declaration it is in;
+# anything else is refused where it is written. Lower-case names are the language's own.
+var ck_ty_k: []pointer = new []pointer
+var ck_ty_v: []Node = new []Node
+function ck_ty_is_decl(d: Node) -> bool {
+  let k = d.kind
+  return k == N_COMP or k == N_STRUCT or k == N_EVENT or k == N_ENUM or k == N_ARCH or k == N_PREFAB
+}
+function ck_ty_index() -> void {
+  ck_tab_init(ck_ty_k, ck_ty_v)
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.s != null and ck_ty_is_decl(d) { ck_tab_put(ck_ty_k, ck_ty_v, d.s, d) }
+    i += 1
+  }
+}
+function ck_ty_upper(c: int) -> bool { return c >= 'A' and c <= 'Z' }
+function ck_ty_ident(c: int) -> bool { return (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z') or (c >= '0' and c <= '9') or c == '_' }
+# the unknown capitalised name in t, or null: t is plain (Name), a slice ([]T) or an instance
+# (Pool<T, U>); a function type, a pointer or anything else is left to the emitter
+function ck_ty_unknown(t: pointer, tps: pointer) -> pointer {
+  if t == null { return null }
+  let n = len(t)
+  if n > 1 and t[0] == '[' and t[1] == ']' { return ck_ty_unknown(t[2 .. n], tps) }
+  if n == 0 or not ck_ty_upper(t[0]) { return null }
+  var e = 0
+  while e < n and ck_ty_ident(t[e]) { e += 1 }
+  let name = t[0 .. e]
+  if e < n and t[e] != '<' { return null }
+  if ck_ty_known(name, tps) {
+    if e < n { return ck_ty_args(t[e + 1 .. n], tps) }
+    return null
+  }
+  return name
+}
+# the arguments of an instance, `A, []B>`, each checked (nested instances by their own brackets)
+function ck_ty_args(s: pointer, tps: pointer) -> pointer {
+  var depth = 0
+  var a = 0
+  var i = 0
+  while i < len(s) {
+    let c = s[i]
+    if c == '<' { depth += 1 }
+    if (c == ',' or c == '>') and depth == 0 {
+      var b = a
+      while b < i and s[b] == ' ' { b += 1 }
+      let bad = ck_ty_unknown(s[b .. i], tps)
+      if bad != null { return bad }
+      a = i + 1
+    }
+    if c == '>' and depth > 0 { depth -= 1 }
+    i += 1
+  }
+  return null
+}
+function ck_ty_known(name: pointer, tps: pointer) -> bool {
+  if ck_tab_get(ck_ty_k, ck_ty_v, name) != null { return true }
+  if (name == "Vector") or (name == "IVec2") or (name == "Rect") { return true }   # the packed value types
+  if is_state_ty(name) or ck_record(name) != null or ck_enum(name) != null { return true }
+  if gen_template(g_gen_recs, name) != null { return true }
+  if tps != null {
+    let ps = gen_split(tps)
+    var i = 0
+    while i < len(ps) {
+      if (ps[i] == name) { return true }
+      i += 1
+    }
+  }
+  return false
+}
+function ck_ty_say(n: Node, t: pointer, tps: pointer, what: pointer) -> void {
+  let bad = ck_ty_unknown(t, tps)
+  if bad != null { ck_err("type", n, `{what}: there is no type {bad}`) }
+}
+# every function's parameters and result, every record's fields
+function ck_tynames() -> void {
+  ck_ty_index()
+  var i = 0
+  while i < g_prog_user_end and i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_FN and d.file != null and d.pos >= 0 {
+      var k = 0
+      while k < len(d.kids) {
+        let p = d.kids[k]
+        if p.kind == N_PARAM { ck_ty_say(p, p.ty, d.tps, `{d.s}'s parameter {p.s}`) }
+        k += 1
+      }
+      ck_ty_say(d, d.ty, d.tps, `{d.s}'s result`)
+    }
+    if (d.kind == N_COMP or d.kind == N_STRUCT or d.kind == N_EVENT) and d.file != null and d.pos >= 0 {
+      var f = 0
+      while f < len(d.kids) {
+        let x = d.kids[f]
+        if x.kind == N_FIELD { ck_ty_say(x, x.ty, d.tps, `{d.s}.{x.s}`) }
+        f += 1
+      }
+    }
+    i += 1
+  }
+}

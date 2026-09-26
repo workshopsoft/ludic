@@ -88,6 +88,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/check/check_stmt.ludic")
   push(f, "selfhost/check/check_gen.ludic")
   push(f, "selfhost/check/check_gen_call.ludic")
+  push(f, "selfhost/check/check_tynames.ludic")
   push(f, "selfhost/check/check_unsafe.ludic")
   push(f, "selfhost/backend/emit_stmt.ludic")
   push(f, "selfhost/backend/game/emit_ecs.ludic")
