@@ -42,3 +42,4 @@ extern function jph_body_torque(w: pointer, id: int, x: float, y: float, z: floa
 extern function jph_body_angular_impulse(w: pointer, id: int, x: float, y: float, z: float) -> void = "jph_body_angular_impulse"
 extern function jph_body_spin(w: pointer, id: int, out: pointer) -> void = "jph_body_spin"
 extern function jph_body_set_pose(w: pointer, id: int, x: float, y: float, z: float, qx: float, qy: float, qz: float, qw: float, vx: float, vy: float, vz: float) -> void = "jph_body_set_pose"
+extern function jph_shape_heightfield_bspline(tex: pointer, n: int, ox: float, oz: float, cell: float) -> pointer = "jph_shape_heightfield_bspline"

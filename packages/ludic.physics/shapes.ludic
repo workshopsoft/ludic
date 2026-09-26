@@ -70,6 +70,13 @@ export function phys_heightfield(physics_st: mut PhysicsState, h: []float, n: in
   return ph_keep(physics_st, jph_shape_heightfield(h, n, ox, oz, cell))
 }
 
+# the ground as a renderer draws a cubic B-spline height map: tex is n x n texels, the first
+# texel's centre at (ox, oz), cell metres apart; the smoothing is done in C
+export function phys_heightfield_smooth(physics_st: mut PhysicsState, tex: []float, n: int, ox: float, oz: float, cell: float) -> int {
+  if len(tex) < n * n { return -1 }
+  return ph_keep(physics_st, jph_shape_heightfield_bspline(tex, n, ox, oz, cell))
+}
+
 # a dock or a cabin: v holds nv points (x, y, z), tri holds nt triangles (i, j, k)
 export function phys_mesh(physics_st: mut PhysicsState, v: []float, nv: int, tri: []int, nt: int) -> int {
   if len(v) < nv * 3 or len(tri) < nt * 3 { return -1 }

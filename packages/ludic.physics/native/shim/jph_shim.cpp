@@ -27,6 +27,7 @@
 #include <mutex>
 #include <thread>
 #include <cfloat>
+#include <vector>
 #include <cmath>
 #include <algorithm>
 

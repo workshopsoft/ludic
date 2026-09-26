@@ -40,3 +40,24 @@ JPH_SHIM void *jph_shape_mesh(const float *v, int nv, const int *tri, int nt) {
 }
 
 JPH_SHIM void jph_shape_free(void *s) { if (s) static_cast<Shape *>(s)->Release(); }
+
+// the ground as it is DRAWN: n x n texels of a cubic B-spline height map (row z, column x), the
+// first texel's centre at (ox, oz), cell metres apart. At a texel's centre the B-spline is the
+// separable (1 4 1) / 6 filter of the texels, so those are the samples; Jolt joins them with flat
+// triangles, a few centimetres from the curve on the valley's ground.
+JPH_SHIM void *jph_shape_heightfield_bspline(const float *tex, int n, float ox, float oz, float cell) {
+  std::vector<float> row(size_t(n) * n), out(size_t(n) * n);
+  for (int z = 0; z < n; z++)
+    for (int x = 0; x < n; x++) {
+      int a = x > 0 ? x - 1 : 0, b = x < n - 1 ? x + 1 : n - 1;
+      const float *r = tex + size_t(z) * n;
+      row[size_t(z) * n + x] = (r[a] + 4.0f * r[x] + r[b]) / 6.0f;
+    }
+  for (int z = 0; z < n; z++) {
+    int a = z > 0 ? z - 1 : 0, b = z < n - 1 ? z + 1 : n - 1;
+    for (int x = 0; x < n; x++)
+      out[size_t(z) * n + x] = (row[size_t(a) * n + x] + 4.0f * row[size_t(z) * n + x] + row[size_t(b) * n + x]) / 6.0f;
+  }
+  HeightFieldShapeSettings st(out.data(), Vec3(ox, 0.0f, oz), Vec3(cell, 1.0f, cell), uint32(n));
+  return keep(st.Create());
+}
