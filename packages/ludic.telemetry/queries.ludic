@@ -16,7 +16,7 @@ export function telemetry_queued(telemetry_st: TelemetryState) -> int {
 export function telemetry_line(telemetry_st: TelemetryState, i: int) -> string { return telemetry_st.telemetry__q[i] }
 
 # back to before telemetry_start, ports and config kept (tests; a start after a failed boot)
-export function telemetry_reset(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> void {
+export function telemetry_reset(telemetry_st: mut TelemetryState) -> void {
   telemetry__drop_request(telemetry_st)
   telemetry_st.telemetry__ready = false
   telemetry_st.telemetry__id = ""
@@ -29,5 +29,5 @@ export function telemetry_reset(base_st: mut BaseState, telemetry_st: mut Teleme
   telemetry_st.telemetry__fails = 0
   telemetry_st.telemetry__clock_on = false
   telemetry_st.telemetry__proc = -1
-  q_clear(base_st, telemetry_facts(base_st, telemetry_st))
+  q_clear(telemetry_facts(telemetry_st))
 }

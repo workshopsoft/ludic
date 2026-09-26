@@ -1,6 +1,6 @@
 # verbs.ludic - the only way the sky changes from outside: a morning, a reset, the host's word
 # a new trip: clear sky, a still-ish wind, nothing forecast; the dice from the world's seed
-export function weather_reset(base_st: mut BaseState, weather_st: mut WeatherState) -> void {
+export function weather_reset(weather_st: mut WeatherState) -> void {
   weather_st.wx_dice = rng_new(WeatherWorld.seed())
   let clear = wx_clear_kind(weather_st)
   weather_st.wx_state = clear
@@ -17,7 +17,7 @@ export function weather_reset(base_st: mut BaseState, weather_st: mut WeatherSta
   weather_st.wx_clear_t = 0.0
   weather_st.wx_wet_today = false
   weather_st.wx_wet_yesterday = false
-  q_clear(base_st, weather_facts(base_st, weather_st))
+  q_clear(weather_facts(weather_st))
 }
 
 # a new day's forecast: seven times in ten it is the next spell. A front already on its way
@@ -45,7 +45,7 @@ export function weather_set(weather_st: mut WeatherState, kind: int, next: int, 
 }
 
 # what the machine that owns the world says the sky is; a new spell is a fact here too
-export function weather_told(base_st: mut BaseState, weather_st: mut WeatherState, kind: int, next: int, left: float, amount: float, wind: float, dir: float, forecast: int) -> void {
+export function weather_told(weather_st: mut WeatherState, kind: int, next: int, left: float, amount: float, wind: float, dir: float, forecast: int) -> void {
   let was = weather_st.wx_state
   weather_st.wx_state = kind
   weather_st.wx_next = next
@@ -54,7 +54,7 @@ export function weather_told(base_st: mut BaseState, weather_st: mut WeatherStat
   weather_st.wx_wind = wind
   weather_st.wx_dir = dir
   weather_st.wx_forecast = forecast
-  if kind != was { wx_fact(base_st, weather_st, WEATHER_BEGAN, kind, was) }
+  if kind != was { wx_fact(weather_st, WEATHER_BEGAN, kind, was) }
 }
 
 export function weather_set_wind(weather_st: mut WeatherState, strength: float, dir: float) -> void {

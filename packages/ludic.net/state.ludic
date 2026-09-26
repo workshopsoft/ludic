@@ -107,8 +107,8 @@ export state NetState {
   net__dice: Rng = null
 }
 
-export function net_inbox(base_st: mut BaseState, net_st: mut NetState) -> Queue<NetMessage> {
-  if net_st.net__inbox == null { net_st.net__inbox = queue_new(base_st, "net.inbox") }
+export function net_inbox(net_st: mut NetState) -> Queue<NetMessage> {
+  if net_st.net__inbox == null { net_st.net__inbox = queue_new("net.inbox") }
   return net_st.net__inbox
 }
 

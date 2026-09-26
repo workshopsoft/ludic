@@ -87,17 +87,17 @@ function update__conf(update_st: mut UpdateState) -> UpdateConfig {
   return update_st.update__cfg
 }
 
-export function update_facts(base_st: mut BaseState, update_st: mut UpdateState) -> Queue<UpdateFact> {
-  if update_st.update__facts == null { update_st.update__facts = queue_new(base_st, "update.facts") }
+export function update_facts(update_st: mut UpdateState) -> Queue<UpdateFact> {
+  if update_st.update__facts == null { update_st.update__facts = queue_new("update.facts") }
   return update_st.update__facts
 }
 
-function update__fact(base_st: mut BaseState, update_st: mut UpdateState, what: int) -> void {
+function update__fact(update_st: mut UpdateState, what: int) -> void {
   let f = new UpdateFact
   f.what = what
   f.error = update_st.update__err
   f.target = update_st.update__target
   f.packages = update_package_count(update_st)
   f.bytes = update_st.update__total_bytes
-  q_push(base_st, update_facts(base_st, update_st), f)
+  q_push(update_facts(update_st), f)
 }

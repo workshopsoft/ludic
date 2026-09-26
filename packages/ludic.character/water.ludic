@@ -1,7 +1,7 @@
 # water.ludic - one axis decides it: how far the bed is below the surface where the body stands.
 # Under CHAR_WADE_MAX the walk wades; past it the feet leave the bottom. Coming out wants a
 # shallower bed (CHAR_STAND_UP) than going in did, so a shelving shore does not flicker.
-function chr_enter_water(base_st: mut BaseState, character_st: mut CharacterState, x: float, z: float) -> void {
+function chr_enter_water(character_st: mut CharacterState, x: float, z: float) -> void {
   if character_st.chr_swim { return }
   character_st.chr_swim = true
   character_st.chr_dive = false
@@ -15,17 +15,17 @@ function chr_enter_water(base_st: mut BaseState, character_st: mut CharacterStat
   character_st.chr_z = z
   character_st.chr_water = CharacterGround.water(x, z)
   character_st.chr_y = character_st.chr_water - 0.30
-  chr_say(base_st, character_st, CHAR_STARTED_SWIMMING, 0.0)
+  chr_say(character_st, CHAR_STARTED_SWIMMING, 0.0)
 }
 
-function chr_leave_water(base_st: mut BaseState, character_st: mut CharacterState) -> void {
+function chr_leave_water(character_st: mut CharacterState) -> void {
   if not character_st.chr_swim { return }
   character_st.chr_swim = false
   character_st.chr_dive = false
   character_st.chr_depth = 0.0
   character_st.chr_y = CharacterGround.height(character_st.chr_x, character_st.chr_z)
   character_st.chr_speed = Math.min(character_st.chr_speed, 1.0)
-  chr_say(base_st, character_st, CHAR_LEFT_WATER, 0.0)
+  chr_say(character_st, CHAR_LEFT_WATER, 0.0)
 }
 
 # the descent: the jump held pushes the body under, letting go floats it back up
@@ -42,7 +42,7 @@ function chr_dive_tick(character_st: mut CharacterState, jump: bool, dt: float) 
 }
 
 # air is spent only under the surface, and comes back fast at the top
-function chr_breath_tick(base_st: mut BaseState, character_st: mut CharacterState, dt: float) -> void {
+function chr_breath_tick(character_st: mut CharacterState, dt: float) -> void {
   if not (character_st.chr_depth > 0.55) {
     character_st.chr_breath = Math.min(character_st.chr_breath + dt * 12.0, body_breath_max())
     return
@@ -52,13 +52,13 @@ function chr_breath_tick(base_st: mut BaseState, character_st: mut CharacterStat
     character_st.chr_breath = 0.0
     character_st.chr_dive = false
     character_st.chr_depth = Math.max(character_st.chr_depth - 3.0 * dt, 0.0)
-    chr_say(base_st, character_st, CHAR_OUT_OF_AIR, dt)
+    chr_say(character_st, CHAR_OUT_OF_AIR, dt)
   }
 }
 
 # The edge of the world is a current, not a wall: it takes the outward part of a stroke, so
 # turning round always works. Said once every twelve seconds while it is strong.
-function chr_current_tick(base_st: mut BaseState, character_st: mut CharacterState, dt: float) -> void {
+function chr_current_tick(character_st: mut CharacterState, dt: float) -> void {
   let fx = -Math.sin(character_st.chr_yaw)
   let fz = -Math.cos(character_st.chr_yaw)
   let take = Math.clamp(CharacterGround.current(character_st.chr_x, character_st.chr_z, fx, fz), 0.0, 1.0)
@@ -66,7 +66,7 @@ function chr_current_tick(base_st: mut BaseState, character_st: mut CharacterSta
     character_st.chr_speed = character_st.chr_speed * (1.0 - take)
     if take > 0.55 and character_st.chr_edge_said < 0.0 {
       character_st.chr_edge_said = 12.0
-      chr_say(base_st, character_st, CHAR_CURRENT, take)
+      chr_say(character_st, CHAR_CURRENT, take)
     }
   }
   character_st.chr_edge_said = character_st.chr_edge_said - dt

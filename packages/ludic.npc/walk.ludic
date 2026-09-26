@@ -1,6 +1,6 @@
 # walk.ludic - walking to the target: turn toward it, step, never into the water and never up a
 # scramble - step round it instead - and give up on a target that gets no closer for twenty seconds
-export function npc_walk(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson, dt: float) -> void {
+export function npc_walk(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void {
   var gx = p.tx
   var gz = p.tz
   if p.via_on {
@@ -10,7 +10,7 @@ export function npc_walk(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPer
   let dx = gx - p.x
   let dz = gz - p.z
   if Math.sqrt(dx * dx + dz * dz) < 1.2 {
-    np_arrive(base_st, npc_st, p)
+    np_arrive(npc_st, p)
     return
   }
   let dg = npc_d(p.x, p.z, p.tx, p.tz)
@@ -50,7 +50,7 @@ export function npc_walk(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPer
 }
 
 # there: a step round something ends, or the errand begins, facing what it came for
-function np_arrive(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson) -> void {
+function np_arrive(npc_st: mut NpcState, p: NpcPerson) -> void {
   if p.via_on {
     p.via_on = false
     return
@@ -61,7 +61,7 @@ function np_arrive(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson) -
   p.fx = fx
   p.fz = fz
   p.stall = 0.0
-  if p.act != NPCA_WALK { np_fact(base_st, npc_st, NPC_F_ARRIVED, p, -1) }
+  if p.act != NPCA_WALK { np_fact(npc_st, NPC_F_ARRIVED, p, -1) }
 }
 
 function np_detour(p: NpcPerson, want: float) -> bool {

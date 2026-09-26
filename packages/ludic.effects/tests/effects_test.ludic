@@ -8,24 +8,24 @@ program EffectsTest {
   const WARMTH: int = 1
   const CARRY: int = 2
 
-  function fresh(base_st: mut BaseState, effects_st: mut EffectsState) -> void {
+  function fresh(effects_st: mut EffectsState) -> void {
     effects_config(effects_st, 8, 3)
-    effects_reset(base_st, effects_st)
+    effects_reset(effects_st)
   }
 
-  function ended(base_st: mut BaseState, effects_st: mut EffectsState) -> []EffectEnded { return q_drain(base_st, effects_ended(base_st, effects_st)) }
-  function waiting(base_st: mut BaseState, effects_st: mut EffectsState) -> int { return q_len(effects_ended(base_st, effects_st)) }
+  function ended(effects_st: mut EffectsState) -> []EffectEnded { return q_drain(effects_ended(effects_st)) }
+  function waiting(effects_st: mut EffectsState) -> int { return q_len(effects_ended(effects_st)) }
 
   function tick_minutes(m: float) -> void {
     let s = effects_system()
     s.tick(tick_new(0.016, 0, m / 60.0))
   }
 
-  test "the sum is per kind, and a kind with nothing running is zero" (base_st: mut BaseState, effects_st: mut EffectsState) {
-    fresh(base_st, effects_st)
-    effects_add(base_st, effects_st, LEGS, 8.0, 20.0, false, "Fizz")
-    effects_add(base_st, effects_st, LEGS, 6.0, 45.0, false, "Trail mix")
-    effects_add(base_st, effects_st, WARMTH, 12.0, 50.0, false, "Stew")
+  test "the sum is per kind, and a kind with nothing running is zero" (effects_st: mut EffectsState) {
+    fresh(effects_st)
+    effects_add(effects_st, LEGS, 8.0, 20.0, false, "Fizz")
+    effects_add(effects_st, LEGS, 6.0, 45.0, false, "Trail mix")
+    effects_add(effects_st, WARMTH, 12.0, 50.0, false, "Stew")
     expect(effects_sum(effects_st, LEGS) == 14.0)
     expect(effects_sum(effects_st, WARMTH) == 12.0)
     expect(effects_sum(effects_st, CARRY) == 0.0)
@@ -33,42 +33,42 @@ program EffectsTest {
     expect(not effects_has(effects_st, CARRY))
   }
 
-  test "the same kind from the same label replaces itself rather than stacking" (base_st: mut BaseState, effects_st: mut EffectsState) {
-    fresh(base_st, effects_st)
-    effects_add(base_st, effects_st, LEGS, 8.0, 20.0, false, "Fizz")
-    effects_add(base_st, effects_st, LEGS, 8.0, 20.0, false, "Fizz")
+  test "the same kind from the same label replaces itself rather than stacking" (effects_st: mut EffectsState) {
+    fresh(effects_st)
+    effects_add(effects_st, LEGS, 8.0, 20.0, false, "Fizz")
+    effects_add(effects_st, LEGS, 8.0, 20.0, false, "Fizz")
     expect_eq(effects_count(effects_st), 1)
     expect(effects_sum(effects_st, LEGS) == 8.0)
   }
 
-  test "a fourth bonus pushes the oldest out and says so" (base_st: mut BaseState, effects_st: mut EffectsState) {
-    fresh(base_st, effects_st)
-    effects_add(base_st, effects_st, LEGS, 1.0, 10.0, true, "a")
-    effects_add(base_st, effects_st, LEGS, 1.0, 30.0, true, "b")
-    effects_add(base_st, effects_st, WARMTH, 1.0, 40.0, true, "c")
-    effects_add(base_st, effects_st, CARRY, 1.0, 50.0, true, "d")
+  test "a fourth bonus pushes the oldest out and says so" (effects_st: mut EffectsState) {
+    fresh(effects_st)
+    effects_add(effects_st, LEGS, 1.0, 10.0, true, "a")
+    effects_add(effects_st, LEGS, 1.0, 30.0, true, "b")
+    effects_add(effects_st, WARMTH, 1.0, 40.0, true, "c")
+    effects_add(effects_st, CARRY, 1.0, 50.0, true, "d")
     expect_eq(effects_bonus_count(effects_st), 3)
-    let gone = ended(base_st, effects_st)
+    let gone = ended(effects_st)
     expect_eq(len(gone), 1)
     expect(gone[0].label == "a")
     expect_eq(gone[0].why, EFFECT_PUSHED_OUT)
   }
 
-  test "a full ring drops the one nearest its end" (base_st: mut BaseState, effects_st: mut EffectsState) {
-    fresh(base_st, effects_st)
+  test "a full ring drops the one nearest its end" (effects_st: mut EffectsState) {
+    fresh(effects_st)
     effects_config(effects_st, 2, 3)
-    effects_add(base_st, effects_st, LEGS, 1.0, 10.0, false, "short")
-    effects_add(base_st, effects_st, WARMTH, 1.0, 90.0, false, "long")
-    effects_add(base_st, effects_st, CARRY, 1.0, 50.0, false, "new")
+    effects_add(effects_st, LEGS, 1.0, 10.0, false, "short")
+    effects_add(effects_st, WARMTH, 1.0, 90.0, false, "long")
+    effects_add(effects_st, CARRY, 1.0, 50.0, false, "new")
     expect_eq(effects_count(effects_st), 2)
     expect(not effects_has(effects_st, LEGS))
-    expect_eq(ended(base_st, effects_st)[0].why, EFFECT_CROWDED_OUT)
+    expect_eq(ended(effects_st)[0].why, EFFECT_CROWDED_OUT)
   }
 
-  test "a delayed one counts only once it has begun" (base_st: mut BaseState, effects_st: mut EffectsState) {
-    fresh(base_st, effects_st)
-    effects_add(base_st, effects_st, LEGS, 8.0, 20.0, false, "Fizz")
-    effects_add_after(base_st, effects_st, 20.0, LEGS, -5.0, 15.0, false, "Sugar crash")
+  test "a delayed one counts only once it has begun" (effects_st: mut EffectsState) {
+    fresh(effects_st)
+    effects_add(effects_st, LEGS, 8.0, 20.0, false, "Fizz")
+    effects_add_after(effects_st, 20.0, LEGS, -5.0, 15.0, false, "Sugar crash")
     expect(effects_sum(effects_st, LEGS) == 8.0)
     expect_eq(len(effects_live(effects_st)), 1)
     tick_minutes(25.0)
@@ -77,30 +77,30 @@ program EffectsTest {
     expect_eq(effects_count(effects_st), 0)
   }
 
-  test "running down in game hours reports each ending" (base_st: mut BaseState, effects_st: mut EffectsState) {
-    fresh(base_st, effects_st)
-    effects_add(base_st, effects_st, WARMTH, -10.0, 10.0, false, "Wet through")
+  test "running down in game hours reports each ending" (effects_st: mut EffectsState) {
+    fresh(effects_st)
+    effects_add(effects_st, WARMTH, -10.0, 10.0, false, "Wet through")
     tick_minutes(5.0)
-    expect_eq(waiting(base_st, effects_st), 0)
+    expect_eq(waiting(effects_st), 0)
     tick_minutes(6.0)
     expect_eq(effects_count(effects_st), 0)
-    let gone = ended(base_st, effects_st)
+    let gone = ended(effects_st)
     expect_eq(gone[0].why, EFFECT_RAN_OUT)
     expect(gone[0].label == "Wet through")
   }
 
-  test "clear stops everything and says nothing" (base_st: mut BaseState, effects_st: mut EffectsState) {
-    fresh(base_st, effects_st)
-    effects_add(base_st, effects_st, LEGS, 1.0, 10.0, false, "a")
+  test "clear stops everything and says nothing" (effects_st: mut EffectsState) {
+    fresh(effects_st)
+    effects_add(effects_st, LEGS, 1.0, 10.0, false, "a")
     effects_clear(effects_st)
     expect_eq(effects_count(effects_st), 0)
-    expect_eq(waiting(base_st, effects_st), 0)
+    expect_eq(waiting(effects_st), 0)
   }
 
-  test "a save section reads back the same ring" (base_st: mut BaseState, effects_st: mut EffectsState) {
-    fresh(base_st, effects_st)
-    effects_add(base_st, effects_st, LEGS, 8.5, 20.0, true, "Fizz")
-    effects_add_after(base_st, effects_st, 20.0, LEGS, -5.0, 15.0, false, "Sugar crash")
+  test "a save section reads back the same ring" (effects_st: mut EffectsState) {
+    fresh(effects_st)
+    effects_add(effects_st, LEGS, 8.5, 20.0, true, "Fizz")
+    effects_add_after(effects_st, 20.0, LEGS, -5.0, 15.0, false, "Sugar crash")
     let root = save_tree()
     save_section(root, "effects", 1, effects_save(effects_st))
     let text = save_encode(root)
@@ -117,9 +117,9 @@ program EffectsTest {
     expect(b.label == "Sugar crash")
   }
 
-  test "the copy a reader gets does not change the ring" (base_st: mut BaseState, effects_st: mut EffectsState) {
-    fresh(base_st, effects_st)
-    effects_add(base_st, effects_st, LEGS, 3.0, 10.0, false, "a")
+  test "the copy a reader gets does not change the ring" (effects_st: mut EffectsState) {
+    fresh(effects_st)
+    effects_add(effects_st, LEGS, 3.0, 10.0, false, "a")
     let e = effects_at(effects_st, 0)
     e.mag = 100.0
     expect(effects_sum(effects_st, LEGS) == 3.0)

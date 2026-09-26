@@ -1,7 +1,7 @@
 # want.ludic - thirst and hunger over sixty send it to the water or the forage the game offers for
 # it (a hungry one on its way turns to food put down nearer); it drinks or grazes there
 
-function wl_seek(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
+function wl_seek(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
   if a.state == WILD_GO_FEED and wl_attraction(wildlife_st, a) and wildlife_st.wl_best.kind == WILD_FEED { wl_take_lure(wildlife_st, a) }
   if a.state != WILD_GO_DRINK and a.state != WILD_GO_FEED { return false }
   if a.spot == 0 or not WildlifeWorld.present(a.spot) {
@@ -14,7 +14,7 @@ function wl_seek(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: Wild
   a.speed = wl_sp(wildlife_st, a.sp).walk
   a.tx = a.spot_x
   a.tz = a.spot_z
-  wl_step(base_st, wildlife_st, a, dt)
+  wl_step(wildlife_st, a, dt)
   if wl_at_target(a, 2.0) {
     a.state = WILD_DRINK
     a.timer = 6.0 + wl_rnd(wildlife_st) * 10.0

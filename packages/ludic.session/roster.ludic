@@ -25,7 +25,7 @@ export function ply_count(session_st: SessionState) -> int {
 
 # a remote player comes in, standing where this one stands until they say: the first free
 # slot, or -1 when the party is full
-export function ply_join(base_st: mut BaseState, session_st: mut SessionState, pid: int) -> int {
+export function ply_join(session_st: mut SessionState, pid: int) -> int {
   session__init(session_st)
   if pid <= 0 { return -1 }                  # 0 is this machine's player
   for p in 1 .. PLY_MAX {
@@ -37,21 +37,21 @@ export function ply_join(base_st: mut BaseState, session_st: mut SessionState, p
     r.y = SessionLocal.y()
     r.z = SessionLocal.z()
     session_st.session__slot[p] = r
-    session__fact(base_st, session_st, SES_JOINED, p, pid)
+    session__fact(session_st, SES_JOINED, p, pid)
     return p
   }
   return -1
 }
 
-export function ply_leave(base_st: mut BaseState, session_st: mut SessionState, p: int) -> void {
+export function ply_leave(session_st: mut SessionState, p: int) -> void {
   if p <= 0 or not ply_on(session_st, p) { return }
   let r = session_st.session__slot[p]
   r.on = false
   r.ready = false
-  session__fact(base_st, session_st, SES_LEFT, p, r.pid)
+  session__fact(session_st, SES_LEFT, p, r.pid)
 }
 
-export function ply_leave_all(base_st: mut BaseState, session_st: mut SessionState) -> void { for p in 1 .. PLY_MAX { ply_leave(base_st, session_st, p) } }
+export function ply_leave_all(session_st: mut SessionState) -> void { for p in 1 .. PLY_MAX { ply_leave(session_st, p) } }
 
 # what a remote player's machine reported this tick
 export function ply_report(session_st: mut SessionState, p: int, x: float, y: float, z: float, yaw: float, speed: float) -> void {

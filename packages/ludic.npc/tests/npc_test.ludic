@@ -40,8 +40,8 @@ program NpcTest {
   function tk_greeting(p: NpcPerson) -> string { return "What'll it be?" }
   function tk_start(npc_st: mut NpcState, p: NpcPerson) -> void { npc_start_near(npc_st, p, 0.0, 0.0, 0.0, 10.0) }
 
-  function one(base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState, kind: int) -> NpcPerson {
-    fk_setup(base_st, npc_st, npc_tests_fake_st)
+  function one(npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState, kind: int) -> NpcPerson {
+    fk_setup(npc_st, npc_tests_fake_st)
     npc_tests_fake_st.fk_want = 1
     let p = npc_spawn(npc_st, kind)
     npc_set_at(p, 0.0, 0.0)
@@ -58,56 +58,56 @@ program NpcTest {
     expect_eq(NPCN_COUNT, 14)
   }
 
-  test "the census fills to what the place wants, by weight, and after dark only who stays out" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    fk_setup(base_st, npc_st, npc_tests_fake_st)
+  test "the census fills to what the place wants, by weight, and after dark only who stays out" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    fk_setup(npc_st, npc_tests_fake_st)
     npc_tests_fake_st.fk_want = 4
-    npc_tick(base_st, npc_st, 0.05)
+    npc_tick(npc_st, 0.05)
     expect_eq(npc_count(npc_st), 4)
     expect_eq(npc_tests_fake_st.fk_born, 4)
     expect_eq(npc_name_clashes(npc_st), 0)
     for i in 0 .. len(npc_walkers(npc_st)) { expect(npc_walkers(npc_st)[i].kind != NPCK_VENDOR) }
-    fk_setup(base_st, npc_st, npc_tests_fake_st)
+    fk_setup(npc_st, npc_tests_fake_st)
     npc_tests_fake_st.fk_want = 3
     npc_tests_fake_st.fk_hour = 23.0
-    npc_tick(base_st, npc_st, 0.05)
+    npc_tick(npc_st, 0.05)
     expect_eq(npc_count(npc_st), 3)
     for i in 0 .. len(npc_walkers(npc_st)) { expect_eq(npc_walkers(npc_st)[i].kind, NPCK_CAMPER) }
   }
 
-  test "no name twice, and never one the place keeps" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    fk_setup(base_st, npc_st, npc_tests_fake_st)
+  test "no name twice, and never one the place keeps" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    fk_setup(npc_st, npc_tests_fake_st)
     npc_tests_fake_st.fk_want = 6
-    npc_tick(base_st, npc_st, 0.05)
+    npc_tick(npc_st, 0.05)
     expect_eq(npc_count(npc_st), 6)
     expect_eq(npc_name_clashes(npc_st), 0)
     for i in 0 .. 6 { expect(npc_walkers(npc_st)[i].name != "Ada") }
   }
 
-  test "it walks to where it is going and begins there, facing what it came for" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    let p = one(base_st, npc_st, npc_tests_fake_st, NPCK_HIKER)
+  test "it walks to where it is going and begins there, facing what it came for" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_HIKER)
     npc_go(npc_st, p, 20.0, 0.0, NPCA_SIT, 30.0)
     npc_face(p, 30.0, 0.0)
-    fk_run(base_st, npc_st, 30.0)
+    fk_run(npc_st, 30.0)
     expect_eq(p.act, NPCA_SIT)
     expect(npc_d(p.x, p.z, 20.0, 0.0) < 1.3)
     expect(p.phase > 20.0)
-    expect_eq(fk_count(base_st, npc_st, NPC_F_ARRIVED), 1)
+    expect_eq(fk_count(npc_st, NPC_F_ARRIVED), 1)
     expect_near(p.fx, 30.0, 0.01)
   }
 
-  test "nobody walks into the lake" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    let p = one(base_st, npc_st, npc_tests_fake_st, NPCK_HIKER)
+  test "nobody walks into the lake" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_HIKER)
     npc_go(npc_st, p, -80.0, 0.0, NPCA_SIT, 30.0)
     var west = 0.0
     for k in 0 .. 1200 {
-      npc_tick(base_st, npc_st, 0.05)
+      npc_tick(npc_st, 0.05)
       west = Math.min(west, p.x)
     }
     expect(west > -50.5)
   }
 
-  test "a step's spot is where its hours say: the shore by day, home by night" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    let p = one(base_st, npc_st, npc_tests_fake_st, NPCK_CAMPER)
+  test "a step's spot is where its hours say: the shore by day, home by night" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_CAMPER)
     npc_set_at(p, -20.0, 0.0)
     npc_tests_fake_st.fk_hour = 12.0
     npc_plan(npc_st, p)
@@ -119,65 +119,65 @@ program NpcTest {
     expect_eq(p.act, NPCA_SIT)
   }
 
-  test "an act is not begun where the place says nobody stops" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    let p = one(base_st, npc_st, npc_tests_fake_st, NPCK_HIKER)
+  test "an act is not begun where the place says nobody stops" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_HIKER)
     npc_set_at(p, 40.0, 0.0)
     npc_do(npc_st, p, NPCA_SIT, 30.0)
     expect_eq(p.act, NPCA_WALK)
     expect(fk_allowed(p.tx, p.tz))
   }
 
-  test "it turns to a player who comes near, greets them once, and again after they have gone" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    let p = one(base_st, npc_st, npc_tests_fake_st, NPCK_HIKER)
+  test "it turns to a player who comes near, greets them once, and again after they have gone" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_HIKER)
     npc_do(npc_st, p, NPCA_IDLE, 100.0)
     p.yaw = 0.0
     fk_player_at(npc_tests_fake_st, 0.0, 0.0 - 5.0)
-    fk_run(base_st, npc_st, 2.0)
+    fk_run(npc_st, 2.0)
     expect(Math.abs(p.yaw) < 0.05)
     fk_player_at(npc_tests_fake_st, 5.0, 0.0)
-    fk_run(base_st, npc_st, 3.0)
+    fk_run(npc_st, 3.0)
     expect(Math.abs(npc_wrap(p.yaw + 1.5707963)) < 0.05)
-    fk_run(base_st, npc_st, 1.0)
-    expect_eq(fk_count(base_st, npc_st, NPC_F_GREETED), 1)
+    fk_run(npc_st, 1.0)
+    expect_eq(fk_count(npc_st, NPC_F_GREETED), 1)
     fk_player_at(npc_tests_fake_st, 40.0, 0.0)
-    fk_run(base_st, npc_st, 0.5)
+    fk_run(npc_st, 0.5)
     fk_player_at(npc_tests_fake_st, 5.0, 0.0)
-    fk_run(base_st, npc_st, 0.5)
-    expect_eq(fk_count(base_st, npc_st, NPC_F_GREETED), 1)
+    fk_run(npc_st, 0.5)
+    expect_eq(fk_count(npc_st, NPC_F_GREETED), 1)
   }
 
-  test "a fisher keeps its eyes on the water, whoever is near" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    let p = one(base_st, npc_st, npc_tests_fake_st, NPCK_HIKER)
+  test "a fisher keeps its eyes on the water, whoever is near" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_HIKER)
     npc_do(npc_st, p, NPCA_FISH, 100.0)
     p.yaw = 0.0
     npc_face(p, 0.0, -10.0)
     fk_player_at(npc_tests_fake_st, 5.0, 0.0)
-    fk_run(base_st, npc_st, 2.0)
+    fk_run(npc_st, 2.0)
     expect(Math.abs(p.yaw) < 0.05)
   }
 
-  test "the day ends out of sight, and not in it" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    let p = one(base_st, npc_st, npc_tests_fake_st, NPCK_HIKER)
+  test "the day ends out of sight, and not in it" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_HIKER)
     npc_do(npc_st, p, NPCA_IDLE, 1000.0)
     npc_tests_fake_st.fk_hour = 22.5
     fk_player_at(npc_tests_fake_st, 20.0, 0.0)
-    fk_run(base_st, npc_st, 0.5)
+    fk_run(npc_st, 0.5)
     expect(p.active)
     fk_player_at(npc_tests_fake_st, 500.0, 0.0)
-    fk_run(base_st, npc_st, 0.5)
+    fk_run(npc_st, 0.5)
     expect(not p.active)
     expect_eq(npc_tests_fake_st.fk_gone, 1)
-    let c = one(base_st, npc_st, npc_tests_fake_st, NPCK_CAMPER)
+    let c = one(npc_st, npc_tests_fake_st, NPCK_CAMPER)
     npc_do(npc_st, c, NPCA_IDLE, 1000.0)
     npc_tests_fake_st.fk_hour = 22.5
-    fk_run(base_st, npc_st, 0.5)
+    fk_run(npc_st, 0.5)
     expect(c.active)
   }
 
-  test "lines: the highest that has something to say, the story's words, and choices" (base_st: mut BaseState, npc_st: mut NpcState, npc_test_st: mut NpcTestState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    let p = one(base_st, npc_st, npc_tests_fake_st, NPCK_CAMPER)
+  test "lines: the highest that has something to say, the story's words, and choices" (npc_st: mut NpcState, npc_test_st: mut NpcTestState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_CAMPER)
     npc_do(npc_st, p, NPCA_FISH, 100.0)
-    expect_eq(npc_talk(base_st, npc_st, p, 0), NPCL_HUSH)
+    expect_eq(npc_talk(npc_st, p, 0), NPCL_HUSH)
     expect(npc_said(npc_st) == "Shh.")
     expect(npc_talked_today(p))
     npc_do(npc_st, p, NPCA_IDLE, 100.0)
@@ -186,34 +186,34 @@ program NpcTest {
     expect_eq(npc_line_for(npc_st, p), NPCL_NEWS)
     expect(npc_said(npc_st) == `{p.name} saw a bear.`)
     npc_test_st.news_on = false
-    expect_eq(npc_choose(base_st, npc_st, p, NPCL_HELLO, 0, 0), NPCL_FISH_NO)
+    expect_eq(npc_choose(npc_st, p, NPCL_HELLO, 0, 0), NPCL_FISH_NO)
     expect(npc_said(npc_st) == "Not today.")
-    expect_eq(npc_choose(base_st, npc_st, p, NPCL_HELLO, 1, 0), -1)
-    let fs = q_drain(base_st, npc_facts(base_st, npc_st))
+    expect_eq(npc_choose(npc_st, p, NPCL_HELLO, 1, 0), -1)
+    let fs = q_drain(npc_facts(npc_st))
     expect_eq(len(fs), 3)
     expect_eq(fs[1].choice, 7)
     expect(npc_greeting(p) == "What'll it be?")
   }
 
-  test "a post stands where it was put, is not counted, and turns back when nobody is near" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    fk_setup(base_st, npc_st, npc_tests_fake_st)
+  test "a post stands where it was put, is not counted, and turns back when nobody is near" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    fk_setup(npc_st, npc_tests_fake_st)
     let v = npc_place(npc_st, NPCK_VENDOR, 0.0, 0.0, 0.0, "Mateo", 5)
     expect(v.fixed)
     expect_eq(npc_count(npc_st), 0)
     fk_player_at(npc_tests_fake_st, 8.0, 0.0)
-    fk_run(base_st, npc_st, 3.0)
+    fk_run(npc_st, 3.0)
     expect(Math.abs(npc_wrap(v.yaw + 1.5707963)) < 0.05)
     fk_player_at(npc_tests_fake_st, 300.0, 0.0)
-    fk_run(base_st, npc_st, 3.0)
+    fk_run(npc_st, 3.0)
     expect(Math.abs(v.yaw) < 0.05)
     expect(npc_d(v.x, v.z, 0.0, 0.0) < 0.001)
     expect(npc_by_id(npc_st, v.id).name == "Mateo")
   }
 
-  test "a guest's copy: the host's slot put, heard and eased toward, and not drawn once it goes quiet" (base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
-    fk_setup(base_st, npc_st, npc_tests_fake_st)
+  test "a guest's copy: the host's slot put, heard and eased toward, and not drawn once it goes quiet" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    fk_setup(npc_st, npc_tests_fake_st)
     npc_tests_fake_st.fk_want = 2
-    npc_tick(base_st, npc_st, 0.05)
+    npc_tick(npc_st, 0.05)
     npc_mirror(npc_st, true)
     expect_eq(npc_count(npc_st), 0)
     let p = npc_put(npc_st, 3, 99, NPCK_HIKER, 12, 1.5, "Wren", 10.0, 10.0)
@@ -224,7 +224,7 @@ program NpcTest {
     for k in 0 .. 40 { npc_mirror_tick(npc_st, 0.05) }
     expect_near(p.x, 12.0, 0.01)
     expect(p.phase > 0.0)
-    npc_tick(base_st, npc_st, 0.05)
+    npc_tick(npc_st, 0.05)
     expect_near(p.x, 12.0, 0.01)
     for k in 0 .. 140 { npc_mirror_tick(npc_st, 0.05) }
     expect(not npc_heard_lately(npc_st, p))

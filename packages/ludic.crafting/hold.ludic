@@ -26,7 +26,7 @@ export function craft_hold_frac(crafting_st: CraftingState, i: int) -> float {
 }
 
 # `dt` real seconds of holding; true on the frame it is made
-export function craft_hold_run(base_st: mut BaseState, crafting_st: mut CraftingState, dt: float) -> bool {
+export function craft_hold_run(crafting_st: mut CraftingState, dt: float) -> bool {
   if crafting_st.craft_hold_i < 0 { return false }
   if not craft_can(crafting_st.craft_hold_i) {
     craft_hold_stop(crafting_st)
@@ -36,5 +36,5 @@ export function craft_hold_run(base_st: mut BaseState, crafting_st: mut Crafting
   if crafting_st.craft_hold_t <= CraftRecipes[crafting_st.craft_hold_i].hold { return false }
   let i = crafting_st.craft_hold_i
   craft_hold_stop(crafting_st)
-  return craft_make(base_st, crafting_st, i)
+  return craft_make(crafting_st, i)
 }

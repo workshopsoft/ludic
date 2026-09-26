@@ -39,8 +39,8 @@ import "ludic.base"
 | --- | --- |
 | `Tick { dt, frame, hours }`, `tick_new(dt, frame, hours)` | what a system's tick receives |
 | `PH_INPUT`, `PH_SENSE`, `PH_SIMULATE`, `PH_RESOLVE`, `PH_COMMIT`, `PH_PRESENT`, `PH_COUNT` | the phases, in the order they run |
-| `Queue<T>`, `queue_new<T>(name)`, `q_push(q, v)`, `q_drain(q) -> []T`, `q_len(q)`, `q_clear(q)` | facts, first in first out (`queue_new`, not `q_new`: that name is render3d's quaternion) |
-| `core_undrained() -> []string` | the names of queues still holding facts; ask it at the end of a frame |
+| `Queue<T>`, `queue_new<T>(name)`, `q_push(q, v)`, `q_drain(q) -> []T`, `q_len(q)`, `q_clear(q)` | facts, first in first out (`queue_new`, not `q_new`: that name is render3d's quaternion). A queue keeps its own count, so its verbs take only the queue: a mechanic's verbs take only the mechanic's own state |
+| `q_tag(q) -> QueueTag`, `core_undrained(tags) -> []string` | the names of the given queues still holding facts; ask it at the end of a frame |
 | `Rng`, `rng_new(seed)`, `rng_seed(r, seed)`, `rng_next(r)`, `rng_float(r)`, `rng_between(r, lo, hi)`, `rng_span(r, lo, hi)` | a xorshift32 stream of its own (`rng_between` is inclusive; `rng_range` is taken by `Random.range`) |
 | `SaveNode { found, version, data }`, `save_tree()`, `save_section(root, key, version, v)`, `load_section(root, key) -> SaveNode`, `save_encode`, `save_decode` | the save tree: `{"fishing": {"v": 3, ...}}`; `v` is reserved in a section, and a non-object value rides under `data` |
 | `sv_int`, `sv_float`, `sv_bool`, `sv_str` (key, fallback), `sv_ints` | typed reads with a fallback; a float is kept as thousandths |
@@ -68,17 +68,17 @@ export function fishing_cast(toy_fishing_st: mut ToyFishingState, x: float, z: f
   toy_fishing_st.casts += 1
   return true
 }
-function fishing_reset(base_st: mut BaseState, toy_fishing_st: mut ToyFishingState) -> void {
+function fishing_reset(toy_fishing_st: mut ToyFishingState) -> void {
   toy_fishing_st.casts = 0
   toy_fishing_st.dice = rng_new(7)
-  toy_fishing_st.caught = queue_new(base_st, "fishing.caught")
+  toy_fishing_st.caught = queue_new("fishing.caught")
 }
-function fishing_tick(base_st: mut BaseState, toy_fishing_st: mut ToyFishingState, t: Tick) -> void {
+function fishing_tick(toy_fishing_st: mut ToyFishingState, t: Tick) -> void {
   while toy_fishing_st.casts > 0 {
     let c = new Caught
     c.species = rng_between(toy_fishing_st.dice, 0, 2)
     c.weight = 0.5 + rng_float(toy_fishing_st.dice)
-    q_push(base_st, toy_fishing_st.caught, c)
+    q_push(toy_fishing_st.caught, c)
     toy_fishing_st.casts -= 1
   }
 }
@@ -106,8 +106,8 @@ program Game {
   bind FishingWorld { is_water: fn lake }
 
   # the route: a landed fish goes into the pack
-  function route_fishing_pack(base_st: mut BaseState, fishing: ToyFishingState, pack: mut ToyPackState, t: Tick) -> void {
-    let fish = q_drain(base_st, fishing.caught)
+  function route_fishing_pack(fishing: ToyFishingState, pack: mut ToyPackState, t: Tick) -> void {
+    let fish = q_drain(fishing.caught)
     for i in 0 .. len(fish) { pack_add(pack, fish[i].species, 1) }
   }
 

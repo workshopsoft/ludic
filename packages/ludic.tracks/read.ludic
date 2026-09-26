@@ -6,13 +6,13 @@ export function tracks_fresh_of(tracks_st: TracksState, age: float) -> int {
   return TRACK_FRESH
 }
 
-function tk_push(base_st: mut BaseState, tracks_st: mut TracksState, f: TrackRead) -> void {
+function tk_push(tracks_st: mut TracksState, f: TrackRead) -> void {
   if f.first { tracks_st.tk_read_n += 1 }
-  q_push(base_st, tracks_reads(base_st, tracks_st), f)
+  q_push(tracks_reads(tracks_st), f)
 }
 
 # read the print at a slot (tracks_nearest's answer): a fact every time, a count the first time
-export function tracks_read(base_st: mut BaseState, tracks_st: mut TracksState, slot: int) -> void {
+export function tracks_read(tracks_st: mut TracksState, slot: int) -> void {
   if slot < 0 or tracks_st.tk_ring == null or slot >= len(tracks_st.tk_ring) { return }
   let t = tracks_st.tk_ring[slot]
   let f = new TrackRead
@@ -28,12 +28,12 @@ export function tracks_read(base_st: mut BaseState, tracks_st: mut TracksState, 
   f.first = not t.read
   t.read = true
   tracks_note_bearing(tracks_st, t.yaw)
-  tk_push(base_st, tracks_st, f)
+  tk_push(tracks_st, f)
 }
 
 # a sign that is not a print (droppings, a legend's mark): the caller knows whether it is the
 # first reading of it
-export function tracks_note(base_st: mut BaseState, tracks_st: mut TracksState, sp: int, source: int, legend: bool, yaw: float, first: bool) -> void {
+export function tracks_note(tracks_st: mut TracksState, sp: int, source: int, legend: bool, yaw: float, first: bool) -> void {
   let f = new TrackRead
   f.sp = sp
   f.source = source
@@ -42,7 +42,7 @@ export function tracks_note(base_st: mut BaseState, tracks_st: mut TracksState, 
   f.named = tk_named(tracks_st)
   f.bearing = tk_bearing(yaw)
   f.first = first
-  tk_push(base_st, tracks_st, f)
+  tk_push(tracks_st, f)
 }
 
 # the way the last thing read went (a bed, droppings, a print)

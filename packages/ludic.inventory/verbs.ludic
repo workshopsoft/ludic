@@ -1,5 +1,5 @@
 # verbs.ludic - the only way a count changes, and each change is said once
-function iv_change(base_st: mut BaseState, inventory_st: mut InventoryState, it: int, after: int) -> void {
+function iv_change(inventory_st: mut InventoryState, it: int, after: int) -> void {
   let before = inventory_st.iv_counts[it]
   if before == after { return }
   inventory_st.iv_counts[it] = after
@@ -7,28 +7,28 @@ function iv_change(base_st: mut BaseState, inventory_st: mut InventoryState, it:
   c.item = it
   c.before = before
   c.after = after
-  q_push(base_st, inv_changes(base_st, inventory_st), c)
+  q_push(inv_changes(inventory_st), c)
 }
 
 # as many of n as there is room for; returns how many went in
-export function inv_add(base_st: mut BaseState, inventory_st: mut InventoryState, it: int, n: int) -> int {
+export function inv_add(inventory_st: mut InventoryState, it: int, n: int) -> int {
   if not iv_valid(inventory_st, it) or n <= 0 { return 0 }
   let k = Math.min(n, inv_room(inventory_st, it))
-  if k > 0 { iv_change(base_st, inventory_st, it, inventory_st.iv_counts[it] + k) }
+  if k > 0 { iv_change(inventory_st, it, inventory_st.iv_counts[it] + k) }
   return k
 }
 
 # all n or none
-export function inv_take(base_st: mut BaseState, inventory_st: mut InventoryState, it: int, n: int) -> bool {
+export function inv_take(inventory_st: mut InventoryState, it: int, n: int) -> bool {
   if not iv_valid(inventory_st, it) or inventory_st.iv_counts[it] < n { return false }
-  if n > 0 { iv_change(base_st, inventory_st, it, inventory_st.iv_counts[it] - n) }
+  if n > 0 { iv_change(inventory_st, it, inventory_st.iv_counts[it] - n) }
   return true
 }
 
 # a count outright, room or not (a starting kit, a correction, the network's word); never below 0
-export function inv_set(base_st: mut BaseState, inventory_st: mut InventoryState, it: int, n: int) -> void {
+export function inv_set(inventory_st: mut InventoryState, it: int, n: int) -> void {
   if not iv_valid(inventory_st, it) { return }
-  iv_change(base_st, inventory_st, it, Math.max(n, 0))
+  iv_change(inventory_st, it, Math.max(n, 0))
 }
 
 # everything gone, silently: a new trip, or before a load

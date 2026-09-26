@@ -1,18 +1,18 @@
 # system.ludic - the camera as a system: the roll and what has been photographed in its own save
 # section, by key. The best per subject follows from the frames, as a buyer would judge them.
-export function photo_config(base_st: mut BaseState, photo_st: mut PhotoState, max: int) -> void {
+export function photo_config(photo_st: mut PhotoState, max: int) -> void {
   photo_st.pht_max = Math.max(max, 1)
-  photo_reset(base_st, photo_st)
+  photo_reset(photo_st)
 }
 
-export function photo_reset(base_st: mut BaseState, photo_st: mut PhotoState) -> void {
+export function photo_reset(photo_st: mut PhotoState) -> void {
   pht_blank(photo_st)
   photo_st.pht_species_shot = 0
   photo_st.pht_legend_shot = 0
   photo_st.pht_cover = -1
   photo_st.pht_page = 0
   photo_frame_begin(photo_st)
-  q_clear(base_st, photo_facts(base_st, photo_st))
+  q_clear(photo_facts(photo_st))
 }
 
 export function photo_save(photo_st: PhotoState) -> Val {
@@ -39,8 +39,8 @@ export function photo_save(photo_st: PhotoState) -> Val {
   return v
 }
 
-export function photo_load(base_st: mut BaseState, photo_st: mut PhotoState, v: Val, version: int) -> void {
-  photo_reset(base_st, photo_st)
+export function photo_load(photo_st: mut PhotoState, v: Val, version: int) -> void {
+  photo_reset(photo_st)
   if Value.has(v, "frames") != 0 {
     let l = Value.get(v, "frames")
     for i in 0 .. Value.count(l) {

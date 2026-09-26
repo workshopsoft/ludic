@@ -73,6 +73,8 @@ function ck_write_check(t: Node, what: pointer) -> void {
   if r == null { return }
   let li = ck_local(r.s)
   if li >= 0 {
+    mg_local_write(ck_tys[li])                   # 0.S2 --migrate-prune: a state changed here
+    if li < len(ck_ro_st) { mg_local_write(ck_ro_st[li]) }
     if li < len(ck_alias) and ck_alias[li] != null {
       let ag = ck_alias[li]
       mg_write(t, ag)

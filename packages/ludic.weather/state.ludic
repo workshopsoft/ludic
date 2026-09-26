@@ -78,15 +78,15 @@ export state WeatherState {
 }
 
 # the facts, oldest first; the game drains them into its notices and sounds
-export function weather_facts(base_st: mut BaseState, weather_st: mut WeatherState) -> Queue<WeatherFact> {
-  if weather_st.wx_facts == null { weather_st.wx_facts = queue_new(base_st, "weather.facts") }
+export function weather_facts(weather_st: mut WeatherState) -> Queue<WeatherFact> {
+  if weather_st.wx_facts == null { weather_st.wx_facts = queue_new("weather.facts") }
   return weather_st.wx_facts
 }
 
-function wx_fact(base_st: mut BaseState, weather_st: mut WeatherState, what: int, kind: int, from: int) -> void {
+function wx_fact(weather_st: mut WeatherState, what: int, kind: int, from: int) -> void {
   let f = new WeatherFact
   f.what = what
   f.kind = kind
   f.from = from
-  q_push(base_st, weather_facts(base_st, weather_st), f)
+  q_push(weather_facts(weather_st), f)
 }

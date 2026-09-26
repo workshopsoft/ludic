@@ -75,16 +75,16 @@ function nd_fill(needs_st: mut NeedsState) -> void {
 }
 
 # the facts, oldest first; the game drains them into its notices and its collapse
-export function needs_facts(base_st: mut BaseState, needs_st: mut NeedsState) -> Queue<NeedFact> {
-  if needs_st.nd_facts == null { needs_st.nd_facts = queue_new(base_st, "needs.facts") }
+export function needs_facts(needs_st: mut NeedsState) -> Queue<NeedFact> {
+  if needs_st.nd_facts == null { needs_st.nd_facts = queue_new("needs.facts") }
   return needs_st.nd_facts
 }
 
-function nd_fact(base_st: mut BaseState, needs_st: mut NeedsState, what: int, need: int) -> void {
+function nd_fact(needs_st: mut NeedsState, what: int, need: int) -> void {
   let f = new NeedFact
   f.what = what
   f.need = need
-  q_push(base_st, needs_facts(base_st, needs_st), f)
+  q_push(needs_facts(needs_st), f)
 }
 
 function nd_ok(k: int) -> bool { return k >= 0 and k < NEED_COUNT }

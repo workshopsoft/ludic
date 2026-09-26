@@ -1,10 +1,10 @@
 # system.ludic - the effects as a system: reset, a tick in game hours, and its own save section
-export function effects_reset(base_st: mut BaseState, effects_st: mut EffectsState) -> void {
+export function effects_reset(effects_st: mut EffectsState) -> void {
   effects_clear(effects_st)
-  q_clear(base_st, effects_ended(base_st, effects_st))
+  q_clear(effects_ended(effects_st))
 }
 
-function effects_tick(base_st: mut BaseState, effects_st: mut EffectsState, t: Tick) -> void { effects_run(base_st, effects_st, t.hours * 60.0) }
+function effects_tick(effects_st: mut EffectsState, t: Tick) -> void { effects_run(effects_st, t.hours * 60.0) }
 
 export function effects_save(effects_st: mut EffectsState) -> Val {
   let l = Value.list()

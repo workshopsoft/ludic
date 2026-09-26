@@ -49,7 +49,7 @@ export function update_notes(update_st: UpdateState, lang: string) -> []string {
 }
 
 # back to before anything was asked or installed (tests)
-export function update_reset(base_st: mut BaseState, update_st: mut UpdateState) -> void {
+export function update_reset(update_st: mut UpdateState) -> void {
   if update_st.update__ask_h >= 0 { UpdateNet.free(update_st.update__ask_h) }
   update_st.update__ask_h = -1
   update_st.update__ask = UPDATE_ASK_IDLE
@@ -65,5 +65,5 @@ export function update_reset(base_st: mut BaseState, update_st: mut UpdateState)
   update_st.update__i = 0
   update_st.update__rate = 0
   update_st.update__rate_t = -1
-  q_clear(base_st, update_facts(base_st, update_st))
+  q_clear(update_facts(update_st))
 }

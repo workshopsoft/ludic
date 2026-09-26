@@ -42,8 +42,8 @@ export function fishing_config(fishing_st: mut FishingState, min_depth: float, d
   fishing_st.fishing_dice = rng_new(seed)
 }
 
-export function fishing_facts(base_st: mut BaseState, fishing_st: mut FishingState) -> Queue<FishingFact> {
-  if fishing_st.fishing_fact_q == null { fishing_st.fishing_fact_q = queue_new(base_st, "fishing.facts") }
+export function fishing_facts(fishing_st: mut FishingState) -> Queue<FishingFact> {
+  if fishing_st.fishing_fact_q == null { fishing_st.fishing_fact_q = queue_new("fishing.facts") }
   return fishing_st.fishing_fact_q
 }
 
@@ -52,7 +52,7 @@ function fishing_rand(fishing_st: mut FishingState) -> float {
   return rng_float(fishing_st.fishing_dice)
 }
 
-function fishing_say(base_st: mut BaseState, fishing_st: mut FishingState, what: int) -> void {
+function fishing_say(fishing_st: mut FishingState, what: int) -> void {
   let f = new FishingFact
   f.what = what
   f.species = fishing_st.fishing_sp
@@ -64,7 +64,7 @@ function fishing_say(base_st: mut BaseState, fishing_st: mut FishingState, what:
   f.lure = fishing_st.fishing_lure_on
   f.x = fishing_st.fishing_bx
   f.z = fishing_st.fishing_bz
-  q_push(base_st, fishing_facts(base_st, fishing_st), f)
+  q_push(fishing_facts(fishing_st), f)
 }
 
 export function fishing_state(fishing_st: FishingState) -> int { return fishing_st.fishing_st }

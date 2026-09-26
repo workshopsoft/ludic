@@ -88,10 +88,10 @@ function wl_bird_seed(wildlife_st: mut WildlifeState, a: WildAnimal) -> bool {
 }
 
 # it ate what was set out: calm for three game hours, and the game credits whoever left it
-function wl_ate(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, uid: int, owner: int, diet: int) -> void {
+function wl_ate(wildlife_st: mut WildlifeState, a: WildAnimal, uid: int, owner: int, diet: int) -> void {
   a.calm = 180.0
   a.fed += 1
-  let f = wl_fact(base_st, wildlife_st, WILD_FED, a)
+  let f = wl_fact(wildlife_st, WILD_FED, a)
   f.lure = uid
   f.owner = owner
   f.diet = diet

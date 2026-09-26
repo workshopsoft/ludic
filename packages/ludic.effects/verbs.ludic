@@ -1,13 +1,13 @@
 # verbs.ludic - the only way the ring changes. The same kind from the same label replaces
 # itself; a bonus past the cap pushes out the oldest bonus; a full ring drops the nearest end.
-function ef_end(base_st: mut BaseState, effects_st: mut EffectsState, i: int, why: int) -> void {
+function ef_end(effects_st: mut EffectsState, i: int, why: int) -> void {
   let all = ef_all(effects_st)
   let e = new EffectEnded
   e.kind = all[i].kind
   e.label = all[i].label
   e.why = why
   e.bonus = all[i].bonus
-  q_push(base_st, effects_ended(base_st, effects_st), e)
+  q_push(effects_ended(effects_st), e)
   ef_drop(effects_st, i)
 }
 
@@ -29,15 +29,15 @@ function ef_nearest_end(effects_st: mut EffectsState, bonus_only: bool) -> int {
   return at
 }
 
-function ef_make_room(base_st: mut BaseState, effects_st: mut EffectsState, bonus: bool) -> void {
+function ef_make_room(effects_st: mut EffectsState, bonus: bool) -> void {
   if bonus {
-    while effects_bonus_count(effects_st) >= effects_st.ef_bonus_max and ef_nearest_end(effects_st, true) >= 0 { ef_end(base_st, effects_st, ef_nearest_end(effects_st, true), EFFECT_PUSHED_OUT) }
+    while effects_bonus_count(effects_st) >= effects_st.ef_bonus_max and ef_nearest_end(effects_st, true) >= 0 { ef_end(effects_st, ef_nearest_end(effects_st, true), EFFECT_PUSHED_OUT) }
   }
-  if len(ef_all(effects_st)) >= effects_st.ef_max and ef_nearest_end(effects_st, false) >= 0 { ef_end(base_st, effects_st, ef_nearest_end(effects_st, false), EFFECT_CROWDED_OUT) }
+  if len(ef_all(effects_st)) >= effects_st.ef_max and ef_nearest_end(effects_st, false) >= 0 { ef_end(effects_st, ef_nearest_end(effects_st, false), EFFECT_CROWDED_OUT) }
 }
 
 # begin one `after` game minutes from now, lasting `minutes` once it has begun
-export function effects_add_after(base_st: mut BaseState, effects_st: mut EffectsState, after: float, kind: int, mag: float, minutes: float, bonus: bool, label: string) -> void {
+export function effects_add_after(effects_st: mut EffectsState, after: float, kind: int, mag: float, minutes: float, bonus: bool, label: string) -> void {
   let all = ef_all(effects_st)
   for i in 0 .. len(all) {
     if all[i].kind == kind and all[i].label == label {
@@ -46,7 +46,7 @@ export function effects_add_after(base_st: mut BaseState, effects_st: mut Effect
       return
     }
   }
-  ef_make_room(base_st, effects_st, bonus)
+  ef_make_room(effects_st, bonus)
   let e = new Effect
   e.kind = kind
   e.mag = mag
@@ -57,15 +57,15 @@ export function effects_add_after(base_st: mut BaseState, effects_st: mut Effect
   push(ef_all(effects_st), e)
 }
 
-export function effects_add(base_st: mut BaseState, effects_st: mut EffectsState, kind: int, mag: float, minutes: float, bonus: bool, label: string) -> void {
-  effects_add_after(base_st, effects_st, 0.0, kind, mag, minutes, bonus, label)
+export function effects_add(effects_st: mut EffectsState, kind: int, mag: float, minutes: float, bonus: bool, label: string) -> void {
+  effects_add_after(effects_st, 0.0, kind, mag, minutes, bonus, label)
 }
 
 # everything stops at once, and says nothing: a new trip or a night's sleep
 export function effects_clear(effects_st: mut EffectsState) -> void { effects_st.ef_list = new []Effect }
 
 # run them down by `minutes` of game time; a delayed one waits first
-export function effects_run(base_st: mut BaseState, effects_st: mut EffectsState, minutes: float) -> void {
+export function effects_run(effects_st: mut EffectsState, minutes: float) -> void {
   var i = 0
   while i < len(ef_all(effects_st)) {
     let e = ef_all(effects_st)[i]
@@ -75,6 +75,6 @@ export function effects_run(base_st: mut BaseState, effects_st: mut EffectsState
       continue
     }
     e.left = e.left - minutes
-    if e.left < 0.0 { ef_end(base_st, effects_st, i, EFFECT_RAN_OUT) } else { i += 1 }
+    if e.left < 0.0 { ef_end(effects_st, i, EFFECT_RAN_OUT) } else { i += 1 }
   }
 }

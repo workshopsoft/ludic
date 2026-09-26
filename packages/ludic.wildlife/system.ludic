@@ -1,12 +1,12 @@
 # system.ludic - the wildlife as a system: its save section is this player's record (the species
 # seen and fed) and which ranges they have found; the animals themselves are respawned with the
 # valley, so a reset forgets the record and nothing else
-export function wildlife_reset(base_st: mut BaseState, wildlife_st: mut WildlifeState) -> void {
+export function wildlife_reset(wildlife_st: mut WildlifeState) -> void {
   wl_record_reset(wildlife_st)
   wildlife_st.wl_found = null
   let rs = wildlife_ranges(wildlife_st)
   for i in 0 .. len(rs) { rs[i].found = false }
-  q_clear(base_st, wildlife_facts(base_st, wildlife_st))
+  q_clear(wildlife_facts(wildlife_st))
 }
 
 export function wildlife_save(wildlife_st: mut WildlifeState) -> Val {
@@ -25,8 +25,8 @@ export function wildlife_save(wildlife_st: mut WildlifeState) -> Val {
   return v
 }
 
-export function wildlife_load(base_st: mut BaseState, wildlife_st: mut WildlifeState, v: Val, version: int) -> void {
-  wildlife_reset(base_st, wildlife_st)
+export function wildlife_load(wildlife_st: mut WildlifeState, v: Val, version: int) -> void {
+  wildlife_reset(wildlife_st)
   wildlife_st.wl_seen = sv_int(v, "seen", 0)
   wildlife_st.wl_fed = sv_int(v, "fed", 0)
   wildlife_st.wl_fed_any = sv_bool(v, "fed_any", false)

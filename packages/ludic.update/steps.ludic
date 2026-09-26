@@ -1,7 +1,7 @@
 # steps.ludic - each step started: the feed asked, a package streamed into the packages folder, its
 # SHA-256 by a child (Get-FileHash, shasum) so the frame keeps drawing, a patch, the apply
 # the Update button: false (and nothing started) when Velopack did not install this copy
-export function update_start(base_st: mut BaseState, update_st: mut UpdateState) -> bool {
+export function update_start(update_st: mut UpdateState) -> bool {
   if not update_installed(update_st) {
     update_st.update__err = UPDATE_ERR_NOT_INSTALLED
     return false
@@ -11,7 +11,7 @@ export function update_start(base_st: mut BaseState, update_st: mut UpdateState)
   update_st.update__err = UPDATE_ERR_NONE
   update_st.update__h = UpdateNet.get(update__conf(update_st).feed + "/" + update__feed_file())
   if update_st.update__h < 0 {
-    update__fail(base_st, update_st, UPDATE_ERR_UNREACHABLE)
+    update__fail(update_st, UPDATE_ERR_UNREACHABLE)
     return true
   }
   update_st.update__state = UPDATE_FEED
@@ -25,25 +25,25 @@ function update__release(update_st: mut UpdateState) -> void {
   update_st.update__proc = -1
 }
 
-function update__fail(base_st: mut BaseState, update_st: mut UpdateState, err: int) -> void {
+function update__fail(update_st: mut UpdateState, err: int) -> void {
   update__release(update_st)
   update_st.update__err = err
   update_st.update__state = UPDATE_FAILED
-  update__fact(base_st, update_st, UPDATE_STOPPED)
+  update__fact(update_st, UPDATE_STOPPED)
 }
 
 # fetch file i, unless a copy of the right size is there already - then straight to its check
-function update__fetch(base_st: mut BaseState, update_st: mut UpdateState, i: int) -> void {
+function update__fetch(update_st: mut UpdateState, i: int) -> void {
   update_st.update__i = i
   let p = update__path(update_st, i)
   if Fs.exists(p) and Fs.size(p) == update_st.update__size[i] {
-    update__check(base_st, update_st, i)
+    update__check(update_st, i)
     return
   }
   if Fs.exists(p) { Fs.remove(p) }
   update_st.update__h = UpdateNet.download(update__conf(update_st).feed + "/" + update_st.update__files[i], p)
   if update_st.update__h < 0 {
-    update__fail(base_st, update_st, UPDATE_ERR_UNREACHABLE)
+    update__fail(update_st, UPDATE_ERR_UNREACHABLE)
     return
   }
   update_st.update__rate_t = -1
@@ -56,7 +56,7 @@ function update__hash_file(update_st: mut UpdateState) -> string {
 }
 
 # no cmd.exe: it parses its own command line and would not survive Process.spawn's quoting
-function update__check(base_st: mut BaseState, update_st: mut UpdateState, i: int) -> void {
+function update__check(update_st: mut UpdateState, i: int) -> void {
   let out = update__hash_file(update_st)
   if Fs.exists(out) { Fs.remove(out) }
   let args = new []string
@@ -72,7 +72,7 @@ function update__check(base_st: mut BaseState, update_st: mut UpdateState, i: in
     update_st.update__proc = UpdateProc.spawn("/bin/sh", args)
   }
   if update_st.update__proc < 0 {
-    update__fail(base_st, update_st, UPDATE_ERR_CHECK)
+    update__fail(update_st, UPDATE_ERR_CHECK)
     return
   }
   update_st.update__state = UPDATE_CHECK

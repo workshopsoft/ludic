@@ -70,8 +70,8 @@ program VehiclesTest {
 
   const EAST: float = -1.5707963
 
-  function fresh(base_st: mut BaseState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) -> void {
-    vehicles_reset(base_st, vehicles_st)
+  function fresh(vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) -> void {
+    vehicles_reset(vehicles_st)
     vehicles_dock_at(vehicles_st, 10.0, 0.0, EAST)
     vehicles_rail_at(vehicles_st, 0.0, 5.0, 0.0)
     vehicles_test_st.made = 0
@@ -79,26 +79,26 @@ program VehiclesTest {
     vehicles_test_st.swell = 0.0
     vehicles_test_st.wind = 0.0
   }
-  function facts(base_st: mut BaseState, vehicles_st: mut VehiclesState) -> []VehicleFact { return q_drain(base_st, vehicle_facts(base_st, vehicles_st)) }
+  function facts(vehicles_st: mut VehiclesState) -> []VehicleFact { return q_drain(vehicle_facts(vehicles_st)) }
   function count(fs: []VehicleFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
   }
-  function ride(base_st: mut BaseState, vehicles_st: mut VehiclesState, ix: float, iz: float, run: bool, secs: float) -> void {
-    for i in 0 .. int(secs * 60.0) { vehicle_update(base_st, vehicles_st, ix, iz, run, 1.0 / 60.0) }
+  function ride(vehicles_st: mut VehiclesState, ix: float, iz: float, run: bool, secs: float) -> void {
+    for i in 0 .. int(secs * 60.0) { vehicle_update(vehicles_st, ix, iz, run, 1.0 / 60.0) }
   }
 
-  test "a berth is off the pier head in the water, a bay on the meadow" (base_st: mut BaseState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
-    fresh(base_st, vehicles_st, vehicles_test_st)
+  test "a berth is off the pier head in the water, a bay on the meadow" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
     expect_near(vehicle_berth_x(vehicles_st, 0), 17.25, 0.01)
     expect_near(vehicle_berth_z(vehicles_st, 0), -3.3, 0.01)
     expect_near(vehicle_post_x(vehicles_st, 3), 16.15, 0.01)
     expect_near(vehicle_bay_z(vehicles_st, 2), 3.6, 0.01)
   }
 
-  test "the first call makes a vehicle, a later one fetches it, and a taken place refuses" (base_st: mut BaseState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
-    fresh(base_st, vehicles_st, vehicles_test_st)
+  test "the first call makes a vehicle, a later one fetches it, and a taken place refuses" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
     expect(vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0))
     expect_eq(vehicles_test_st.made, 1)
     let b = vehicle_find(vehicles_st, VEHICLE_BOAT)
@@ -115,8 +115,8 @@ program VehiclesTest {
     expect(vehicle_mine_in_place(vehicles_st, VEHICLE_BOAT))
   }
 
-  test "a player leaving takes theirs away; this machine's player never leaves" (base_st: mut BaseState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
-    fresh(base_st, vehicles_st, vehicles_test_st)
+  test "a player leaving takes theirs away; this machine's player never leaves" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
     vehicle_call_for(vehicles_st, 3, VEHICLE_HORSE, 1)
     vehicles_release(vehicles_st, 0)
@@ -127,19 +127,19 @@ program VehiclesTest {
     expect(vehicle_in_place(vehicles_st, VEHICLE_HORSE, 1) == null)
   }
 
-  test "a hungry horse will not go; a fed one is mounted, and only by its owner" (base_st: mut BaseState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
-    fresh(base_st, vehicles_st, vehicles_test_st)
+  test "a hungry horse will not go; a fed one is mounted, and only by its owner" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
     vehicle_call_for(vehicles_st, 4, VEHICLE_HORSE, 1)
     let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
     h.food = 5.0
-    expect(not vehicle_mount(base_st, vehicles_st, h))
-    expect_eq(count(facts(base_st, vehicles_st), VEHICLE_HUNGRY), 1)
-    vehicle_feed(base_st, vehicles_st, h, 50.0)
+    expect(not vehicle_mount(vehicles_st, h))
+    expect_eq(count(facts(vehicles_st), VEHICLE_HUNGRY), 1)
+    vehicle_feed(vehicles_st, h, 50.0)
     expect_near(h.food, 55.0, 0.001)
-    expect(not vehicle_mount(base_st, vehicles_st, vehicle_of(vehicles_st, 4, VEHICLE_HORSE)))
+    expect(not vehicle_mount(vehicles_st, vehicle_of(vehicles_st, 4, VEHICLE_HORSE)))
     vehicles_test_st.boarded = 0
-    expect(vehicle_mount(base_st, vehicles_st, h))
+    expect(vehicle_mount(vehicles_st, h))
     expect_eq(vehicles_test_st.boarded, 1)
     expect_eq(vehicle_ride_kind(vehicles_st), VEHICLE_HORSE)
     expect_eq(h.rider, 0)
@@ -147,22 +147,22 @@ program VehiclesTest {
     expect(vehicle_in_place(vehicles_st, VEHICLE_HORSE, 0) == null)
   }
 
-  test "a horse walks, gallops on stamina, stops at the water and at a trunk" (base_st: mut BaseState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
-    fresh(base_st, vehicles_st, vehicles_test_st)
+  test "a horse walks, gallops on stamina, stops at the water and at a trunk" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
     let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
-    vehicle_mount(base_st, vehicles_st, h)
-    ride(base_st, vehicles_st, 0.0, 1.0, false, 3.0)
+    vehicle_mount(vehicles_st, h)
+    ride(vehicles_st, 0.0, 1.0, false, 3.0)
     expect_near(h.speed, 4.5, 0.05)
-    expect(count(facts(base_st, vehicles_st), VEHICLE_MOVED) > 100)
-    ride(base_st, vehicles_st, 0.0, 1.0, true, 3.0)
+    expect(count(facts(vehicles_st), VEHICLE_MOVED) > 100)
+    ride(vehicles_st, 0.0, 1.0, true, 3.0)
     expect_near(h.speed, 11.0, 0.1)
     expect(h.fuel < 100.0)
     expect(h.z < -15.0)
     expect_near(vehicles_test_st.rz, h.z, 0.001)
     expect_near(vehicles_test_st.ry, 1.35, 0.001)
     # the trunk at z = -60 stops it
-    ride(base_st, vehicles_st, 0.0, 1.0, true, 6.0)
+    ride(vehicles_st, 0.0, 1.0, true, 6.0)
     expect(h.z > -60.0 + 1.7)
     expect_near(h.speed, 0.0, 0.001)
     # and the lake to the east does too
@@ -170,65 +170,65 @@ program VehiclesTest {
     h.x = 7.0
     h.z = 0.0
     h.yaw = EAST
-    vehicle_mount(base_st, vehicles_st, h)
-    ride(base_st, vehicles_st, 0.0, 1.0, false, 4.0)
+    vehicle_mount(vehicles_st, h)
+    ride(vehicles_st, 0.0, 1.0, false, 4.0)
     expect(h.x < 9.6)
   }
 
-  test "a boat rows on water, stops at the shore, loses its stroke to the swell, drifts on the wind" (base_st: mut BaseState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
-    fresh(base_st, vehicles_st, vehicles_test_st)
+  test "a boat rows on water, stops at the shore, loses its stroke to the swell, drifts on the wind" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0)
     let b = vehicle_find(vehicles_st, VEHICLE_BOAT)
-    vehicle_mount(base_st, vehicles_st, b)
-    ride(base_st, vehicles_st, 0.0, 1.0, false, 2.0)
+    vehicle_mount(vehicles_st, b)
+    ride(vehicles_st, 0.0, 1.0, false, 2.0)
     let x2 = b.x
     expect(x2 > 18.0)
     vehicles_test_st.swell = 1.0
-    ride(base_st, vehicles_st, 0.0, 1.0, false, 1.0)
+    ride(vehicles_st, 0.0, 1.0, false, 1.0)
     expect_near(b.x, x2, 0.2)
-    expect_eq(count(facts(base_st, vehicles_st), VEHICLE_SWELL), 1)
+    expect_eq(count(facts(vehicles_st), VEHICLE_SWELL), 1)
     vehicles_test_st.swell = 0.0
-    ride(base_st, vehicles_st, 0.0, -1.0, false, 12.0)
+    ride(vehicles_st, 0.0, -1.0, false, 12.0)
     expect(b.x > 10.3)
     vehicles_test_st.wind = 1.0
     let z0 = b.z
-    ride(base_st, vehicles_st, 0.0, 0.0, false, 1.0)
+    ride(vehicles_st, 0.0, 0.0, false, 1.0)
     expect(b.z < z0)
   }
 
-  test "getting off a boat needs a shore near enough; a horse is left tied where it stands" (base_st: mut BaseState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
-    fresh(base_st, vehicles_st, vehicles_test_st)
+  test "getting off a boat needs a shore near enough; a horse is left tied where it stands" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0)
     let b = vehicle_find(vehicles_st, VEHICLE_BOAT)
-    vehicle_mount(base_st, vehicles_st, b)
+    vehicle_mount(vehicles_st, b)
     b.x = 40.0
-    expect(not vehicle_dismount(base_st, vehicles_st))
-    expect_eq(count(facts(base_st, vehicles_st), VEHICLE_NO_LANDING), 1)
+    expect(not vehicle_dismount(vehicles_st))
+    expect_eq(count(facts(vehicles_st), VEHICLE_NO_LANDING), 1)
     expect_eq(vehicle_ride_kind(vehicles_st), VEHICLE_BOAT)
     b.x = 12.0
-    expect(vehicle_dismount(base_st, vehicles_st))
+    expect(vehicle_dismount(vehicles_st))
     expect_near(vehicles_test_st.rx, 11.0, 0.001)
     expect_eq(vehicle_ride_kind(vehicles_st), 0)
     expect_eq(b.rider, -1)
     vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
     let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
-    vehicle_mount(base_st, vehicles_st, h)
+    vehicle_mount(vehicles_st, h)
     h.x = -5.0
     h.z = -5.0
-    expect(vehicle_dismount(base_st, vehicles_st))
+    expect(vehicle_dismount(vehicles_st))
     expect_near(h.home_x, -5.0, 0.001)
     expect(vehicle_in_place(vehicles_st, VEHICLE_HORSE, 0) == null)
     expect_near(vehicles_test_st.rx, -5.0 + 1.2, 0.001)
   }
 
-  test "this player's own are saved by kind, and a save read before they are made still applies" (base_st: mut BaseState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
-    fresh(base_st, vehicles_st, vehicles_test_st)
+  test "this player's own are saved by kind, and a save read before they are made still applies" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
     vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0)
     vehicle_own(vehicle_find(vehicles_st, VEHICLE_HORSE))
     vehicle_find(vehicles_st, VEHICLE_HORSE).food = 77.0
     let saved = vehicles_save(vehicles_st)
-    fresh(base_st, vehicles_st, vehicles_test_st)
+    fresh(vehicles_st, vehicles_test_st)
     vehicles_load(vehicles_st, saved, 1)
     vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
     vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0)

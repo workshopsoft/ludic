@@ -19,12 +19,12 @@ function gear__ensure(gear_st: mut GearState) -> void {
   }
 }
 
-export function gear_facts(base_st: mut BaseState, gear_st: mut GearState) -> Queue<GearFact> {
-  if gear_st.gear__q == null { gear_st.gear__q = queue_new(base_st, "gear.facts") }
+export function gear_facts(gear_st: mut GearState) -> Queue<GearFact> {
+  if gear_st.gear__q == null { gear_st.gear__q = queue_new("gear.facts") }
   return gear_st.gear__q
 }
 
-function gear__fact(base_st: mut BaseState, gear_st: mut GearState, what: int, k: int, c: int, cost: int) -> void {
+function gear__fact(gear_st: mut GearState, what: int, k: int, c: int, cost: int) -> void {
   let f = new GearFact
   f.what = what
   f.cost = cost
@@ -35,5 +35,5 @@ function gear__fact(base_st: mut BaseState, gear_st: mut GearState, what: int, k
     f.item = GearKinds[k].item
   }
   if c >= 0 { f.item = GearCharges[c].item }
-  q_push(base_st, gear_facts(base_st, gear_st), f)
+  q_push(gear_facts(gear_st), f)
 }

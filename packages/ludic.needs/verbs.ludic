@@ -48,11 +48,11 @@ export function needs_helped_up(needs_st: mut NeedsState) -> void {
 }
 
 # a new trip: fed, watered, rested and warm, and never walked out
-export function needs_reset(base_st: mut BaseState, needs_st: mut NeedsState) -> void {
+export function needs_reset(needs_st: mut NeedsState) -> void {
   nd_lv(needs_st)
   nd_fill(needs_st)
   needs_st.nd_legs = 0.0
   needs_st.nd_last = 0
   needs_st.nd_collapses = 0
-  q_clear(base_st, needs_facts(base_st, needs_st))
+  q_clear(needs_facts(needs_st))
 }

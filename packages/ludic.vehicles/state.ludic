@@ -2,12 +2,12 @@
 # from, and the facts
 const ve_pi: float = 3.14159265
 
-export function vehicle_facts(base_st: mut BaseState, vehicles_st: mut VehiclesState) -> Queue<VehicleFact> {
-  if vehicles_st.ve_fact_q == null { vehicles_st.ve_fact_q = queue_new(base_st, "vehicles.facts") }
+export function vehicle_facts(vehicles_st: mut VehiclesState) -> Queue<VehicleFact> {
+  if vehicles_st.ve_fact_q == null { vehicles_st.ve_fact_q = queue_new("vehicles.facts") }
   return vehicles_st.ve_fact_q
 }
 
-function ve_say(base_st: mut BaseState, vehicles_st: mut VehiclesState, what: int, v: Vehicle, n: float) -> void {
+function ve_say(vehicles_st: mut VehiclesState, what: int, v: Vehicle, n: float) -> void {
   let f = new VehicleFact
   f.what = what
   f.nid = v.nid
@@ -16,7 +16,7 @@ function ve_say(base_st: mut BaseState, vehicles_st: mut VehiclesState, what: in
   f.x = v.x
   f.z = v.z
   f.v = n
-  q_push(base_st, vehicle_facts(base_st, vehicles_st), f)
+  q_push(vehicle_facts(vehicles_st), f)
 }
 
 function ve_all(vehicles_st: mut VehiclesState) -> []Vehicle {

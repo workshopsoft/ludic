@@ -1,20 +1,20 @@
 # run.ludic - `dt` real seconds of a line in the water: the wait, the bite, and the fight
-function fishing_run_wait(base_st: mut BaseState, fishing_st: mut FishingState) -> void {
+function fishing_run_wait(fishing_st: mut FishingState) -> void {
   if fishing_st.fishing_t >= 0.0 { return }
   fishing_st.fishing_st = FISHING_BITE_ON
   fishing_st.fishing_t = 1.6
   fishing_st.fishing_sp = fishing_pick(fishing_st)
-  fishing_say(base_st, fishing_st, FISHING_BITE)
+  fishing_say(fishing_st, FISHING_BITE)
 }
 
 # a fish that runs: the marker is all over the bar and nothing done with it helps
-function fishing_run_runs(base_st: mut BaseState, fishing_st: mut FishingState, dt: float) -> float {
+function fishing_run_runs(fishing_st: mut FishingState, dt: float) -> float {
   let k = FishSpecies[fishing_st.fishing_sp]
   if fishing_st.fishing_run_t > 0.0 {
     fishing_st.fishing_run_t = fishing_st.fishing_run_t - dt
     if fishing_st.fishing_run_t <= 0.0 {
       fishing_st.fishing_run_t = 0.0
-      fishing_say(base_st, fishing_st, FISHING_TIRED)
+      fishing_say(fishing_st, FISHING_TIRED)
     }
     return 4.2
   }
@@ -24,17 +24,17 @@ function fishing_run_runs(base_st: mut BaseState, fishing_st: mut FishingState, 
       fishing_st.fishing_run_left -= 1
       fishing_st.fishing_run_t = 2.2
       fishing_st.fishing_run_next = 4.0 + fishing_rand(fishing_st) * 4.0
-      fishing_say(base_st, fishing_st, FISHING_RUNS)
+      fishing_say(fishing_st, FISHING_RUNS)
     }
   }
   return k.speed + k.speed_per_hit * float(fishing_st.fishing_won)
 }
 
-function fishing_run_reel(base_st: mut BaseState, fishing_st: mut FishingState, dt: float) -> void {
-  let sp = fishing_run_runs(base_st, fishing_st, dt)
+function fishing_run_reel(fishing_st: mut FishingState, dt: float) -> void {
+  let sp = fishing_run_runs(fishing_st, dt)
   if fishing_st.fishing_gentle_on {
     fishing_st.fishing_ring_t = fishing_st.fishing_ring_t - dt
-    if fishing_st.fishing_ring_t <= 0.0 { fishing_lost(base_st, fishing_st, FISHING_LINE_SNAPPED) }
+    if fishing_st.fishing_ring_t <= 0.0 { fishing_lost(fishing_st, FISHING_LINE_SNAPPED) }
     return
   }
   fishing_st.fishing_mark = fishing_st.fishing_mark + sp * fishing_st.fishing_dir * dt
@@ -46,19 +46,19 @@ function fishing_run_reel(base_st: mut BaseState, fishing_st: mut FishingState, 
     fishing_st.fishing_mark = 0.0
     fishing_st.fishing_dir = 1.0
   }
-  if fishing_st.fishing_t < 0.0 { fishing_lost(base_st, fishing_st, FISHING_SLACK) }
+  if fishing_st.fishing_t < 0.0 { fishing_lost(fishing_st, FISHING_SLACK) }
 }
 
-export function fishing_run(base_st: mut BaseState, fishing_st: mut FishingState, dt: float) -> void {
+export function fishing_run(fishing_st: mut FishingState, dt: float) -> void {
   if fishing_st.fishing_st == FISHING_OFF { return }
   fishing_st.fishing_t = fishing_st.fishing_t - dt
   if fishing_st.fishing_st == FISHING_WAIT {
-    fishing_run_wait(base_st, fishing_st)
+    fishing_run_wait(fishing_st)
     return
   }
   if fishing_st.fishing_st == FISHING_BITE_ON {
-    if fishing_st.fishing_t < 0.0 { fishing_lost(base_st, fishing_st, FISHING_MISSED) }
+    if fishing_st.fishing_t < 0.0 { fishing_lost(fishing_st, FISHING_MISSED) }
     return
   }
-  fishing_run_reel(base_st, fishing_st, dt)
+  fishing_run_reel(fishing_st, dt)
 }

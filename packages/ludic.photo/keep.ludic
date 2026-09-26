@@ -1,16 +1,16 @@
 # keep.ludic - the frame onto the roll, and a frame off it
 # The composed frame, kept as `file` on `day` at `hour`: the index, or -1 when the card is full.
 # Every subject in it counts as photographed, and its best grade may rise.
-export function photo_keep(base_st: mut BaseState, photo_st: mut PhotoState, file: string, day: int, hour: float) -> int {
+export function photo_keep(photo_st: mut PhotoState, file: string, day: int, hour: float) -> int {
   if photo_st.pht_n >= photo_st.pht_max {
-    pht_fact(base_st, photo_st, PHOTO_FULL, -1)
+    pht_fact(photo_st, PHOTO_FULL, -1)
     return -1
   }
   var firsts = 0
   for sp in 0 .. 32 { if (photo_st.pht_pending_mask & (1 << sp)) != 0 and photo_st.pht_best[sp] == 0 { firsts = firsts | (1 << sp) } }
   let i = photo_add(photo_st, day, hour, photo_st.pht_pending_mask, photo_st.pht_pending_legend, false, photo_st.pht_pending_tags, file, photo_st.pht_pending_grade, photo_st.pht_pending_why)
   photo_st.pht_legend_shot = photo_st.pht_legend_shot | photo_st.pht_pending_legend
-  let f = pht_fact(base_st, photo_st, PHOTO_KEPT, i)
+  let f = pht_fact(photo_st, PHOTO_KEPT, i)
   f.mask = photo_st.pht_pending_mask
   f.legend = photo_st.pht_pending_legend
   f.firsts = firsts
@@ -44,9 +44,9 @@ export function photo_add(photo_st: mut PhotoState, day: int, hour: float, mask:
 }
 
 # forgetting one: the record goes, the ones after it close up, and the game is told the file
-export function photo_remove(base_st: mut BaseState, photo_st: mut PhotoState, i: int) -> void {
+export function photo_remove(photo_st: mut PhotoState, i: int) -> void {
   if i < 0 or i >= photo_st.pht_n { return }
-  let f = pht_fact(base_st, photo_st, PHOTO_DELETED, i)
+  let f = pht_fact(photo_st, PHOTO_DELETED, i)
   f.file = photo_st.pht_file[i]
   let tags = new []string
   let files = new []string

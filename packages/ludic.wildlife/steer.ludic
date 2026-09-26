@@ -14,7 +14,7 @@ function wl_face(a: WildAnimal, tx: float, tz: float, rate: float, dt: float) ->
 }
 
 # true when it moved
-function wl_step(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
+function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
   let d = a.speed * dt
   if d < 0.0001 { return false }
   let nx = a.x - Math.sin(a.yaw) * d
@@ -31,7 +31,7 @@ function wl_step(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: Wild
   a.track_d = a.track_d + d
   if wl_sp(wildlife_st, a.sp).tracks and a.track_d > 2.8 {
     a.track_d = 0.0
-    wl_fact(base_st, wildlife_st, WILD_PRINT, a)
+    wl_fact(wildlife_st, WILD_PRINT, a)
   }
   return true
 }

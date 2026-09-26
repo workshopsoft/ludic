@@ -59,12 +59,12 @@ function jobs__ensure(jobs_st: mut JobsState) -> void {
   jobs_st.jobs__dice = rng_new(jobs_st.jobs__seed)
 }
 
-export function jobs_facts(base_st: mut BaseState, jobs_st: mut JobsState) -> Queue<JobsFact> {
-  if jobs_st.jobs__q == null { jobs_st.jobs__q = queue_new(base_st, "jobs.facts") }
+export function jobs_facts(jobs_st: mut JobsState) -> Queue<JobsFact> {
+  if jobs_st.jobs__q == null { jobs_st.jobs__q = queue_new("jobs.facts") }
   return jobs_st.jobs__q
 }
 
-function jobs__fact(base_st: mut BaseState, jobs_st: mut JobsState, what: int, job: int, b: int, s: int, have: int, need: int) -> void {
+function jobs__fact(jobs_st: mut JobsState, what: int, job: int, b: int, s: int, have: int, need: int) -> void {
   let f = new JobsFact
   f.what = what
   f.job = job
@@ -85,7 +85,7 @@ function jobs__fact(base_st: mut BaseState, jobs_st: mut JobsState, what: int, j
     f.rep = jobs_st.jobs__pr[jobs_st.jobs__off[b] + s]
     f.scope = JobBoards[b].scope
   }
-  q_push(base_st, jobs_facts(base_st, jobs_st), f)
+  q_push(jobs_facts(jobs_st), f)
 }
 
 # the base of every roll: a post's seed is this, the day, the board, the slot and how many before

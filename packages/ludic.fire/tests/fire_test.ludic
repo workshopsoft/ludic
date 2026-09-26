@@ -23,44 +23,44 @@ program FireTest {
     allowed: fn fake_allowed
   }
 
-  function fresh(base_st: mut BaseState, fire_st: mut FireState) -> void {
+  function fresh(fire_st: mut FireState) -> void {
     fire_config(fire_st, 3, 120.0, 60.0, 15.0)
     fire_config_reach(fire_st, 3.6, 3.5)
-    fire_reset(base_st, fire_st)
+    fire_reset(fire_st)
   }
 
-  function facts(base_st: mut BaseState, fire_st: mut FireState) -> []FireFact { return q_drain(base_st, fire_facts(base_st, fire_st)) }
+  function facts(fire_st: mut FireState) -> []FireFact { return q_drain(fire_facts(fire_st)) }
   function count(fs: []FireFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
   }
 
-  function light(base_st: mut BaseState, fire_st: mut FireState) -> void { fire_apply(base_st, fire_st, fire_decide(fire_st, 3)) }
+  function light(fire_st: mut FireState) -> void { fire_apply(fire_st, fire_decide(fire_st, 3)) }
 
-  test "three logs light it, and that is a fact" (base_st: mut BaseState, fire_st: mut FireState) {
-    fresh(base_st, fire_st)
+  test "three logs light it, and that is a fact" (fire_st: mut FireState) {
+    fresh(fire_st)
     expect_eq(fire_decide(fire_st, 2), FIRE_NO_WOOD)
     expect_eq(fire_decide(fire_st, 3), FIRE_LIGHT)
     expect_eq(fire_cost(fire_st, FIRE_LIGHT), 3)
-    light(base_st, fire_st)
+    light(fire_st)
     expect(fire_lit(fire_st))
     expect(fire_fuel(fire_st) == 120.0)
-    expect_eq(count(facts(base_st, fire_st), FIRE_LIT), 1)
+    expect_eq(count(facts(fire_st), FIRE_LIT), 1)
   }
 
-  test "a lit fire takes a log for an hour" (base_st: mut BaseState, fire_st: mut FireState) {
-    fresh(base_st, fire_st)
-    light(base_st, fire_st)
+  test "a lit fire takes a log for an hour" (fire_st: mut FireState) {
+    fresh(fire_st)
+    light(fire_st)
     expect_eq(fire_decide(fire_st, 0), FIRE_NO_LOG)
     expect_eq(fire_decide(fire_st, 1), FIRE_FEED)
     expect_eq(fire_cost(fire_st, FIRE_FEED), 1)
-    fire_apply(base_st, fire_st, FIRE_FEED)
+    fire_apply(fire_st, FIRE_FEED)
     expect(fire_fuel(fire_st) == 180.0)
   }
 
-  test "a ban and a soaked ring refuse, a tarp keeps it dry" (base_st: mut BaseState, fire_st: mut FireState, fire_test_st: mut FireTestState) {
-    fresh(base_st, fire_st)
+  test "a ban and a soaked ring refuse, a tarp keeps it dry" (fire_st: mut FireState, fire_test_st: mut FireTestState) {
+    fresh(fire_st)
     fire_test_st.ban = true
     expect_eq(fire_decide(fire_st, 5), FIRE_BANNED)
     fire_test_st.ban = false
@@ -71,55 +71,55 @@ program FireTest {
     expect_eq(fire_decide(fire_st, 5), FIRE_LIGHT)
   }
 
-  test "it burns a minute a minute, runs low, and goes out as facts" (base_st: mut BaseState, fire_st: mut FireState) {
-    fresh(base_st, fire_st)
-    light(base_st, fire_st)
-    facts(base_st, fire_st)
-    fire_run(base_st, fire_st, 1.5)
+  test "it burns a minute a minute, runs low, and goes out as facts" (fire_st: mut FireState) {
+    fresh(fire_st)
+    light(fire_st)
+    facts(fire_st)
+    fire_run(fire_st, 1.5)
     expect(fire_fuel(fire_st) == 30.0)
     expect(not fire_low(fire_st))
-    fire_run(base_st, fire_st, 0.3)
+    fire_run(fire_st, 0.3)
     expect(fire_low(fire_st))
-    expect_eq(count(facts(base_st, fire_st), FIRE_LOW_FUEL), 1)
-    fire_run(base_st, fire_st, 0.5)
+    expect_eq(count(facts(fire_st), FIRE_LOW_FUEL), 1)
+    fire_run(fire_st, 0.5)
     expect(not fire_lit(fire_st))
     expect(fire_fuel(fire_st) == 0.0)
-    expect_eq(count(facts(base_st, fire_st), FIRE_WENT_OUT), 1)
+    expect_eq(count(facts(fire_st), FIRE_WENT_OUT), 1)
   }
 
-  test "the rain burns it twice as fast, and under a tarp it counts the hours" (base_st: mut BaseState, fire_st: mut FireState, fire_test_st: mut FireTestState) {
-    fresh(base_st, fire_st)
-    light(base_st, fire_st)
+  test "the rain burns it twice as fast, and under a tarp it counts the hours" (fire_st: mut FireState, fire_test_st: mut FireTestState) {
+    fresh(fire_st)
+    light(fire_st)
     fire_test_st.wet = true
-    fire_run(base_st, fire_st, 0.5)
+    fire_run(fire_st, 0.5)
     expect(fire_fuel(fire_st) == 60.0)
     fire_test_st.tarp = true
-    fire_run(base_st, fire_st, 0.5)
+    fire_run(fire_st, 0.5)
     expect(fire_fuel(fire_st) == 30.0)
     expect(fire_rain_hours(fire_st) == 0.5)
     fire_morning(fire_st)
     expect(fire_rain_hours(fire_st) == 0.0)
   }
 
-  test "a machine that does not own the world burns nothing, but is told" (base_st: mut BaseState, fire_st: mut FireState, fire_test_st: mut FireTestState) {
-    fresh(base_st, fire_st)
-    light(base_st, fire_st)
+  test "a machine that does not own the world burns nothing, but is told" (fire_st: mut FireState, fire_test_st: mut FireTestState) {
+    fresh(fire_st)
+    light(fire_st)
     fire_test_st.owns = false
-    fire_run(base_st, fire_st, 5.0)
+    fire_run(fire_st, 5.0)
     expect(fire_fuel(fire_st) == 120.0)
-    facts(base_st, fire_st)
-    fire_told(base_st, fire_st, false, 0.0, true)
+    facts(fire_st)
+    fire_told(fire_st, false, 0.0, true)
     expect(not fire_lit(fire_st))
-    expect_eq(count(facts(base_st, fire_st), FIRE_WENT_OUT), 1)
-    fire_told(base_st, fire_st, true, 50.0, true)
-    fire_told(base_st, fire_st, false, 0.0, false)
-    expect_eq(q_len(fire_facts(base_st, fire_st)), 0)
+    expect_eq(count(facts(fire_st), FIRE_WENT_OUT), 1)
+    fire_told(fire_st, true, 50.0, true)
+    fire_told(fire_st, false, 0.0, false)
+    expect_eq(q_len(fire_facts(fire_st)), 0)
   }
 
-  test "it warms and cooks close, and only while lit" (base_st: mut BaseState, fire_st: mut FireState) {
-    fresh(base_st, fire_st)
+  test "it warms and cooks close, and only while lit" (fire_st: mut FireState) {
+    fresh(fire_st)
     expect(not fire_warms(fire_st, 1.0))
-    light(base_st, fire_st)
+    light(fire_st)
     expect(fire_warms(fire_st, 3.5))
     expect(not fire_warms(fire_st, 3.7))
     expect(fire_cooks(fire_st, 3.4))
@@ -128,18 +128,18 @@ program FireTest {
     expect(not fire_cooks(fire_st, 0.0))
   }
 
-  test "a save section reads back the same fire" (base_st: mut BaseState, fire_st: mut FireState, fire_test_st: mut FireTestState) {
-    fresh(base_st, fire_st)
-    light(base_st, fire_st)
+  test "a save section reads back the same fire" (fire_st: mut FireState, fire_test_st: mut FireTestState) {
+    fresh(fire_st)
+    light(fire_st)
     fire_test_st.wet = true
     fire_test_st.tarp = true
-    fire_run(base_st, fire_st, 0.25)
+    fire_run(fire_st, 0.25)
     let root = save_tree()
     save_section(root, "fire", 1, fire_save(fire_st))
     let text = save_encode(root)
-    fire_reset(base_st, fire_st)
+    fire_reset(fire_st)
     let n = load_section(save_decode(text), "fire")
-    fire_load(base_st, fire_st, n.data, n.version)
+    fire_load(fire_st, n.data, n.version)
     expect(fire_lit(fire_st))
     expect(fire_fuel(fire_st) == 105.0)
     expect(fire_rain_hours(fire_st) == 0.25)

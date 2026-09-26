@@ -20,17 +20,17 @@ program HintsTest {
   function fake_showing(hints_test_st: HintsTestState) -> bool { return hints_test_st.showing }
   bind HintsWorld { true_now: fn fake_true, showing: fn fake_showing }
 
-  function fresh(base_st: mut BaseState, hints_st: mut HintsState, hints_test_st: mut HintsTestState) -> void {
+  function fresh(hints_st: mut HintsState, hints_test_st: mut HintsTestState) -> void {
     hints_test_st.on = new []bool
     for i in 0 .. HINT_COUNT { push(hints_test_st.on, false) }
     hints_test_st.showing = true
     hints_config(hints_st, 3, 1.0)
-    hints_reset(base_st, hints_st)
+    hints_reset(hints_st)
     hints_mutes_load(hints_st, Value.list())
   }
 
-  function count(base_st: mut BaseState, hints_st: mut HintsState, what: int) -> int {
-    let fs = q_drain(base_st, hints_facts(base_st, hints_st))
+  function count(hints_st: mut HintsState, what: int) -> int {
+    let fs = q_drain(hints_facts(hints_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
@@ -46,8 +46,8 @@ program HintsTest {
     expect(hints_step_text(HINT_THIRSTY, 1) == "Drink at a shore")
   }
 
-  test "the most urgent true cards, capped, ties in registry order" (base_st: mut BaseState, hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
-    fresh(base_st, hints_st, hints_test_st)
+  test "the most urgent true cards, capped, ties in registry order" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
+    fresh(hints_st, hints_test_st)
     for i in 0 .. HINT_COUNT { hints_test_st.on[i] = true }
     hints_tick(hints_st, 1.0)
     expect_eq(hints_count(hints_st), 3)
@@ -64,8 +64,8 @@ program HintsTest {
     expect_eq(hints_at(hints_st, 2), HINT_FIRE)
   }
 
-  test "nothing on the rail while it is not showing" (base_st: mut BaseState, hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
-    fresh(base_st, hints_st, hints_test_st)
+  test "nothing on the rail while it is not showing" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
+    fresh(hints_st, hints_test_st)
     hints_test_st.on[HINT_COLD] = true
     hints_test_st.showing = false
     hints_sort(hints_st)
@@ -76,31 +76,31 @@ program HintsTest {
     expect_eq(len(hints_rail(hints_st)), 1)
   }
 
-  test "the key opens the picked chip, the arrows walk round, the key puts it down" (base_st: mut BaseState, hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
-    fresh(base_st, hints_st, hints_test_st)
+  test "the key opens the picked chip, the arrows walk round, the key puts it down" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
+    fresh(hints_st, hints_test_st)
     hints_test_st.on[HINT_COLD] = true
     hints_test_st.on[HINT_THIRSTY] = true
     hints_test_st.on[HINT_RAIN] = true
     hints_sort(hints_st)
-    hints_key(base_st, hints_st)
+    hints_key(hints_st)
     expect_eq(hints_card(hints_st), HINT_COLD)
-    hints_move(base_st, hints_st, 1)
+    hints_move(hints_st, 1)
     expect_eq(hints_card(hints_st), HINT_THIRSTY)
     expect(hints_hot(hints_st, 1))
-    hints_move(base_st, hints_st, -1)
-    hints_move(base_st, hints_st, -1)
+    hints_move(hints_st, -1)
+    hints_move(hints_st, -1)
     expect_eq(hints_card(hints_st), HINT_RAIN)
-    hints_key(base_st, hints_st)
+    hints_key(hints_st)
     expect_eq(hints_card(hints_st), -1)
-    expect_eq(count(base_st, hints_st, HINTS_F_OPENED), 4)
+    expect_eq(count(hints_st, HINTS_F_OPENED), 4)
   }
 
-  test "the card follows its subject as the rail re-sorts, and goes when it is no longer true" (base_st: mut BaseState, hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
-    fresh(base_st, hints_st, hints_test_st)
+  test "the card follows its subject as the rail re-sorts, and goes when it is no longer true" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
+    fresh(hints_st, hints_test_st)
     hints_test_st.on[HINT_THIRSTY] = true
     hints_test_st.on[HINT_RAIN] = true
     hints_sort(hints_st)
-    hints_open(base_st, hints_st, 1)
+    hints_open(hints_st, 1)
     expect_eq(hints_card(hints_st), HINT_RAIN)
     hints_test_st.on[HINT_COLD] = true
     hints_sort(hints_st)
@@ -109,31 +109,31 @@ program HintsTest {
     hints_test_st.on[HINT_RAIN] = false
     hints_sort(hints_st)
     expect_eq(hints_card(hints_st), -1)
-    expect_eq(count(base_st, hints_st, HINTS_F_CLOSED), 0)            # it went; nobody put it down
+    expect_eq(count(hints_st, HINTS_F_CLOSED), 0)            # it went; nobody put it down
   }
 
-  test "I know this: muted off the rail, counted, given back" (base_st: mut BaseState, hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
-    fresh(base_st, hints_st, hints_test_st)
+  test "I know this: muted off the rail, counted, given back" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
+    fresh(hints_st, hints_test_st)
     hints_test_st.on[HINT_COLD] = true
     hints_test_st.on[HINT_THIRSTY] = true
     hints_sort(hints_st)
-    hints_key(base_st, hints_st)
-    hints_mute_card(base_st, hints_st)
+    hints_key(hints_st)
+    hints_mute_card(hints_st)
     expect_eq(hints_card(hints_st), -1)
     expect(hints_muted(hints_st, HINT_COLD))
     expect_eq(hints_mute_count(hints_st), 1)
-    expect_eq(count(base_st, hints_st, HINTS_F_MUTED), 1)
+    expect_eq(count(hints_st, HINTS_F_MUTED), 1)
     hints_tick(hints_st, 0.0)                                # the next pass comes at once
     expect_eq(hints_at(hints_st, 0), HINT_THIRSTY)
     expect_eq(hints_count(hints_st), 1)
-    hints_unmute_all(base_st, hints_st)
+    hints_unmute_all(hints_st)
     hints_tick(hints_st, 0.0)
     expect_eq(hints_at(hints_st, 0), HINT_COLD)
-    expect_eq(count(base_st, hints_st, HINTS_F_UNMUTED), 1)
+    expect_eq(count(hints_st, HINTS_F_UNMUTED), 1)
   }
 
-  test "mutes are kept by key, and a key this build lacks is carried through" (base_st: mut BaseState, hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
-    fresh(base_st, hints_st, hints_test_st)
+  test "mutes are kept by key, and a key this build lacks is carried through" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
+    fresh(hints_st, hints_test_st)
     hints_mute(hints_st, HINT_NIGHT, true)
     hints_mute(hints_st, HINT_BEAR, true)
     let l = hints_mutes_save(hints_st)
@@ -153,7 +153,7 @@ program HintsTest {
   }
 
   test "as a system it ticks the rail" (base_st: mut BaseState, hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
-    fresh(base_st, hints_st, hints_test_st)
+    fresh(hints_st, hints_test_st)
     core_clear(base_st)
     core_add(base_st, hints_system())
     core_reset_all(base_st)

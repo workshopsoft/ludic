@@ -1,9 +1,9 @@
 # system.ludic - two systems, one per owner: "jobs" is this player's (personal jobs and boards, the
 # done counts, the tick), "jobs.party" the party's, saved with the world
-export function jobs_reset(base_st: mut BaseState, jobs_st: mut JobsState) -> void {
+export function jobs_reset(jobs_st: mut JobsState) -> void {
   jobs__reset_scope(jobs_st, JOBS_SELF)
   for g in 0 .. JOBS_GROUPS { jobs_st.jobs__done_n[g] = 0 }
-  q_clear(base_st, jobs_facts(base_st, jobs_st))
+  q_clear(jobs_facts(jobs_st))
 }
 
 export function jobs_party_reset(jobs_st: mut JobsState) -> void { jobs__reset_scope(jobs_st, JOBS_PARTY) }
@@ -31,9 +31,9 @@ export function jobs_party_save(jobs_st: mut JobsState) -> Val {
 
 export function jobs_party_load(jobs_st: mut JobsState, v: Val, version: int) -> void { jobs__load_scope(jobs_st, JOBS_PARTY, v) }
 
-function jobs__tick(base_st: mut BaseState, jobs_st: mut JobsState, t: Tick) -> void {
-  jobs__offers(base_st, jobs_st)
-  jobs_recheck(base_st, jobs_st)
+function jobs__tick(jobs_st: mut JobsState, t: Tick) -> void {
+  jobs__offers(jobs_st)
+  jobs_recheck(jobs_st)
 }
 
 export function jobs_system() -> System {

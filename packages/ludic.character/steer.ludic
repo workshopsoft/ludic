@@ -34,7 +34,7 @@ function chr_steer(character_st: mut CharacterState, dx: float, dz: float, mag: 
 
 # The gait's phase is distance over the stride, so the feet never slide; a boot comes down as the
 # phase crosses 0 and again as it crosses pi, and that is when a footfall is said.
-function chr_gait(base_st: mut BaseState, character_st: mut CharacterState, dist: float, dyaw: float, dpitch: float, dt: float) -> void {
+function chr_gait(character_st: mut CharacterState, dist: float, dyaw: float, dpitch: float, dt: float) -> void {
   if character_st.chr_land > 0.0 { character_st.chr_land = character_st.chr_land - dt }
   if character_st.chr_steep > 0.0 { character_st.chr_steep = character_st.chr_steep - dt }
   if character_st.chr_swim { character_st.chr_swim_phase = (character_st.chr_swim_phase + dt * (1.6 + character_st.chr_speed * 0.9)) % (2.0 * chr_pi) }
@@ -42,7 +42,7 @@ function chr_gait(base_st: mut BaseState, character_st: mut CharacterState, dist
   let phase0 = character_st.chr_phase
   character_st.chr_phase = (character_st.chr_phase + dist / stride * (2.0 * chr_pi)) % (2.0 * chr_pi)
   if not character_st.chr_air and not character_st.chr_swim and not character_st.chr_sit and character_st.chr_speed > 0.4 {
-    if chr_cross(phase0, character_st.chr_phase, 0.0) or chr_cross(phase0, character_st.chr_phase, chr_pi) { chr_say(base_st, character_st, CHAR_FOOTFALL, character_st.chr_speed) }
+    if chr_cross(phase0, character_st.chr_phase, 0.0) or chr_cross(phase0, character_st.chr_phase, chr_pi) { chr_say(character_st, CHAR_FOOTFALL, character_st.chr_speed) }
   }
   var mv = 0.0
   if character_st.chr_speed > 0.12 { mv = 1.0 }

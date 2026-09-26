@@ -66,7 +66,7 @@ program ShopTest {
   }
 
   # the valley's own numbers: base prices and the sell classes
-  function fresh(base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) -> void {
+  function fresh(shop_st: mut ShopState, shop_test_st: mut ShopTestState) -> void {
     let prices = new []int
     let sell = new []float
     let p = ints(3, 6, 8, 9)
@@ -95,49 +95,49 @@ program ShopTest {
     shop_test_st.rep = 0
     shop_test_st.day = 1
     shop_test_st.money = 0
-    shop_reset(base_st, shop_st)
+    shop_reset(shop_st)
   }
 
-  function trades(base_st: mut BaseState, shop_st: mut ShopState) -> []ShopTrade { return q_drain(base_st, shop_trades(base_st, shop_st)) }
+  function trades(shop_st: mut ShopState) -> []ShopTrade { return q_drain(shop_trades(shop_st)) }
 
-  test "buying takes the price and puts one in the pack, and says so" (base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
-    fresh(base_st, shop_st, shop_test_st)
+  test "buying takes the price and puts one in the pack, and says so" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
+    fresh(shop_st, shop_test_st)
     shop_test_st.money = 100
     shop_visit(shop_st, 0)
     let pr = shop_price_buy(shop_st, JACKET)
-    expect(shop_buy(base_st, shop_st, JACKET))
+    expect(shop_buy(shop_st, JACKET))
     expect_eq(shop_test_st.money, 100 - pr)
     expect_eq(shop_test_st.pack[JACKET], 1)
-    expect(not shop_buy(base_st, shop_st, JACKET))
-    let ts = trades(base_st, shop_st)
+    expect(not shop_buy(shop_st, JACKET))
+    let ts = trades(shop_st)
     expect_eq(len(ts), 1)
     expect_eq(ts[0].what, SHOP_BOUGHT)
     expect_eq(ts[0].vendor, 0)
     expect_eq(ts[0].price, pr)
   }
 
-  test "no money, nothing bought and nothing spent" (base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
-    fresh(base_st, shop_st, shop_test_st)
+  test "no money, nothing bought and nothing spent" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
+    fresh(shop_st, shop_test_st)
     shop_test_st.money = 3
     expect(not shop_can_buy(shop_st, JACKET))
-    expect(not shop_buy(base_st, shop_st, JACKET))
+    expect(not shop_buy(shop_st, JACKET))
     expect_eq(shop_test_st.money, 3)
-    expect_eq(len(trades(base_st, shop_st)), 0)
+    expect_eq(len(trades(shop_st)), 0)
   }
 
-  test "selling pays what the counter's vendor pays, only what the pack has" (base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
-    fresh(base_st, shop_st, shop_test_st)
+  test "selling pays what the counter's vendor pays, only what the pack has" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
+    fresh(shop_st, shop_test_st)
     shop_test_st.pack[TROUT] = 3
     shop_visit(shop_st, 2)
     let pr = shop_price_sell(shop_st, TROUT)
-    expect_eq(shop_sell(base_st, shop_st, TROUT, 5), 3)
+    expect_eq(shop_sell(shop_st, TROUT, 5), 3)
     expect_eq(shop_test_st.money, pr * 3)
     expect_eq(shop_test_st.pack[TROUT], 0)
-    expect_eq(trades(base_st, shop_st)[0].n, 3)
+    expect_eq(trades(shop_st)[0].n, 3)
   }
 
-  test "a vendor buys its list and what the world adds, never what it refuses" (base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
-    fresh(base_st, shop_st, shop_test_st)
+  test "a vendor buys its list and what the world adds, never what it refuses" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
+    fresh(shop_st, shop_test_st)
     expect(shop_buys(shop_st, 1, PUFFBALL))
     expect(not shop_buys(shop_st, 1, TROUT))
     shop_test_st.food_too = true
@@ -149,11 +149,11 @@ program ShopTest {
     expect_eq(len(s), 1)
     expect_eq(s[0], TROUT)
     shop_visit(shop_st, 1)
-    expect_eq(shop_sell(base_st, shop_st, BURNT, 1), 0)
+    expect_eq(shop_sell(shop_st, BURNT, 1), 0)
   }
 
-  test "the week's demand is the shop's own dice, and turns with the week" (base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
-    fresh(base_st, shop_st, shop_test_st)
+  test "the week's demand is the shop's own dice, and turns with the week" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
+    fresh(shop_st, shop_test_st)
     let a = shop_wanted(shop_st, 0)
     expect(len(a) > 0)
     for k in 0 .. len(a) { expect(shop_buys(shop_st, 0, a[k])) }
@@ -173,8 +173,8 @@ program ShopTest {
     expect(moved)
   }
 
-  test "a shop is not a fountain: nothing it stocks sells back for what it costs" (base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
-    fresh(base_st, shop_st, shop_test_st)
+  test "a shop is not a fountain: nothing it stocks sells back for what it costs" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
+    fresh(shop_st, shop_test_st)
     for v in 0 .. shop_vendors(shop_st) {
       let st = shop_stock(shop_st, v)
       for k in 0 .. len(st) {
@@ -190,8 +190,8 @@ program ShopTest {
     }
   }
 
-  test "not even at a dollar: a penny item a vendor stocks fetches nothing" (base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
-    fresh(base_st, shop_st, shop_test_st)
+  test "not even at a dollar: a penny item a vendor stocks fetches nothing" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
+    fresh(shop_st, shop_test_st)
     shop_test_st.rep = 100
     shop_set_want(shop_st, 2, GRUB)
     expect_eq(shop_price_buy(shop_st, GRUB), 1)
@@ -199,8 +199,8 @@ program ShopTest {
     expect(shop_price_sell_at(shop_st, -1, GRUB) >= 1)
   }
 
-  test "friction falls with standing and never inverts" (base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
-    fresh(base_st, shop_st, shop_test_st)
+  test "friction falls with standing and never inverts" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
+    fresh(shop_st, shop_test_st)
     var last_buy = 1000000
     var last_sell = -1
     for r in 0 .. 11 {
@@ -221,8 +221,8 @@ program ShopTest {
     expect(float(b0) / 60.0 <= 1.25)
   }
 
-  test "raw material keeps its order, and is not an income" (base_st: mut BaseState, shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
-    fresh(base_st, shop_st, shop_test_st)
+  test "raw material keeps its order, and is not an income" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
+    fresh(shop_st, shop_test_st)
     for r in 0 .. 11 {
       shop_test_st.rep = r * 10
       let w = shop_price_sell_at(shop_st, -1, WOOD)

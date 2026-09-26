@@ -10,7 +10,7 @@ export function telemetry_random_hex(telemetry_st: mut TelemetryState, n: int) -
 }
 
 # the id outright (a game with accounts of its own, a test); written to the id file
-export function telemetry_set_id(base_st: mut BaseState, telemetry_st: mut TelemetryState, id: string) -> void {
+export function telemetry_set_id(telemetry_st: mut TelemetryState, id: string) -> void {
   telemetry_st.telemetry__id = id
   let path = telemetry__conf(telemetry_st).id_file
   if len(path) > 0 {
@@ -19,25 +19,25 @@ export function telemetry_set_id(base_st: mut BaseState, telemetry_st: mut Telem
     Value.put(v, "id", Value.str(id))
     Fs.write_text(path, Json.encode(v))
   }
-  telemetry__fact(base_st, telemetry_st, TELEMETRY_ID, 0, 0, 0)
+  telemetry__fact(telemetry_st, TELEMETRY_ID, 0, 0, 0)
 }
 
-function telemetry__random_id(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> void { telemetry_set_id(base_st, telemetry_st, "r-" + telemetry_random_hex(telemetry_st, 16)) }
+function telemetry__random_id(telemetry_st: mut TelemetryState) -> void { telemetry_set_id(telemetry_st, "r-" + telemetry_random_hex(telemetry_st, 16)) }
 
-function telemetry__from_machine(base_st: mut BaseState, telemetry_st: mut TelemetryState, raw: string) -> void {
+function telemetry__from_machine(telemetry_st: mut TelemetryState, raw: string) -> void {
   let salt = telemetry__conf(telemetry_st).id_salt
-  telemetry_set_id(base_st, telemetry_st, "m-" + Crypto.sha256(salt + ":" + Text.lower(raw))[0..32])
+  telemetry_set_id(telemetry_st, "m-" + Crypto.sha256(salt + ":" + Text.lower(raw))[0..32])
 }
 
-function telemetry__id_begin(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> void {
+function telemetry__id_begin(telemetry_st: mut TelemetryState) -> void {
   if len(telemetry__conf(telemetry_st).id_salt) == 0 {
-    telemetry__random_id(base_st, telemetry_st)
+    telemetry__random_id(telemetry_st)
     return
   }
   let plat = Os.platform()
   if plat == "linux" {
     let m = Fs.read_text("/etc/machine-id")
-    if m != null and len(Text.trim(m)) > 0 { telemetry__from_machine(base_st, telemetry_st, Text.trim(m)) } else { telemetry__random_id(base_st, telemetry_st) }
+    if m != null and len(Text.trim(m)) > 0 { telemetry__from_machine(telemetry_st, Text.trim(m)) } else { telemetry__random_id(telemetry_st) }
     return
   }
   telemetry_st.telemetry__proc_out = telemetry__conf(telemetry_st).id_scratch
@@ -45,7 +45,7 @@ function telemetry__id_begin(base_st: mut BaseState, telemetry_st: mut Telemetry
   if Fs.exists(telemetry_st.telemetry__proc_out) { Fs.remove(telemetry_st.telemetry__proc_out) }
   telemetry_st.telemetry__proc = telemetry__spawn_machine(telemetry_st, plat)
   telemetry_st.telemetry__proc_t0 = Time.now()
-  if telemetry_st.telemetry__proc < 0 { telemetry__random_id(base_st, telemetry_st) }
+  if telemetry_st.telemetry__proc < 0 { telemetry__random_id(telemetry_st) }
 }
 
 function telemetry__spawn_machine(telemetry_st: TelemetryState, plat: string) -> int {
@@ -66,7 +66,7 @@ function telemetry__spawn_machine(telemetry_st: TelemetryState, plat: string) ->
 }
 
 # the machine id, once the child has written it (ten seconds at most)
-function telemetry__id_tick(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> void {
+function telemetry__id_tick(telemetry_st: mut TelemetryState) -> void {
   if telemetry_st.telemetry__proc < 0 { return }
   let code = Process.poll(telemetry_st.telemetry__proc)
   if code < 0 {
@@ -74,7 +74,7 @@ function telemetry__id_tick(base_st: mut BaseState, telemetry_st: mut TelemetryS
       Process.kill(telemetry_st.telemetry__proc)
       Process.free(telemetry_st.telemetry__proc)
       telemetry_st.telemetry__proc = -1
-      telemetry__random_id(base_st, telemetry_st)
+      telemetry__random_id(telemetry_st)
     }
     return
   }
@@ -84,5 +84,5 @@ function telemetry__id_tick(base_st: mut BaseState, telemetry_st: mut TelemetryS
   let s = Fs.read_text(telemetry_st.telemetry__proc_out)
   if s != null { raw = Text.trim(s) }
   if Fs.exists(telemetry_st.telemetry__proc_out) { Fs.remove(telemetry_st.telemetry__proc_out) }
-  if code == 0 and len(raw) >= 8 { telemetry__from_machine(base_st, telemetry_st, raw) } else { telemetry__random_id(base_st, telemetry_st) }
+  if code == 0 and len(raw) >= 8 { telemetry__from_machine(telemetry_st, raw) } else { telemetry__random_id(telemetry_st) }
 }

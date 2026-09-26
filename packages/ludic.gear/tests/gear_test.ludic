@@ -42,64 +42,64 @@ program GearTest {
   bind GearPack { count: fn pack_count, add: fn pack_add }
   bind GearWorld { hidden: fn hidden }
 
-  function fresh(base_st: mut BaseState, gear_st: mut GearState, gear_test_st: mut GearTestState) -> void {
+  function fresh(gear_st: mut GearState, gear_test_st: mut GearTestState) -> void {
     gear_test_st.money = 0
     gear_test_st.rep = 0
     gear_test_st.hide_pack = false
     gear_test_st.pack = new []int
     for i in 0 .. 12 { push(gear_test_st.pack, 0) }
-    gear_reset(base_st, gear_st)
+    gear_reset(gear_st)
   }
 
-  function ran_out(base_st: mut BaseState, gear_st: mut GearState) -> int {
-    let fs = q_drain(base_st, gear_facts(base_st, gear_st))
+  function ran_out(gear_st: mut GearState) -> int {
+    let fs = q_drain(gear_facts(gear_st))
     var n = -1
     for i in 0 .. len(fs) { if fs[i].what == GEAR_RAN_OUT { n = fs[i].charge } }
     return n
   }
 
-  test "a new trip starts where the kinds say" (base_st: mut BaseState, gear_st: mut GearState, gear_test_st: mut GearTestState) {
-    fresh(base_st, gear_st, gear_test_st)
+  test "a new trip starts where the kinds say" (gear_st: mut GearState, gear_test_st: mut GearTestState) {
+    fresh(gear_st, gear_test_st)
     expect_eq(gear_level(gear_st, GEAR_ROD), 0)
     expect_eq(gear_level(gear_st, GEAR_CAMERA), 1)
     expect(gear_next_name(gear_st, GEAR_CAMERA) == "Zoom")
     expect_eq(gear_next_cost(gear_st, GEAR_ROD), 30)
   }
 
-  test "bought with money once the standing is there, and the item follows" (base_st: mut BaseState, gear_st: mut GearState, gear_test_st: mut GearTestState) {
-    fresh(base_st, gear_st, gear_test_st)
-    expect(not gear_buy(base_st, gear_st, GEAR_ROD))
+  test "bought with money once the standing is there, and the item follows" (gear_st: mut GearState, gear_test_st: mut GearTestState) {
+    fresh(gear_st, gear_test_st)
+    expect(not gear_buy(gear_st, GEAR_ROD))
     gear_test_st.money = 200
-    expect(gear_buy(base_st, gear_st, GEAR_ROD))
+    expect(gear_buy(gear_st, GEAR_ROD))
     expect_eq(gear_test_st.money, 170)
     expect_eq(gear_test_st.pack[IT_ROD], 1)
     expect(not gear_can_buy(gear_st, GEAR_ROD))
     gear_test_st.rep = 10
-    expect(gear_buy(base_st, gear_st, GEAR_ROD))
+    expect(gear_buy(gear_st, GEAR_ROD))
     expect_eq(gear_test_st.pack[IT_ROD], 1)
-    let fs = q_drain(base_st, gear_facts(base_st, gear_st))
+    let fs = q_drain(gear_facts(gear_st))
     expect_eq(len(fs), 2)
     expect_eq(fs[1].what, GEAR_BOUGHT)
     expect_eq(fs[1].level, 2)
     expect_eq(fs[1].cost, 100)
   }
 
-  test "the best tier is the end, and a hidden kind is not for sale" (base_st: mut BaseState, gear_st: mut GearState, gear_test_st: mut GearTestState) {
-    fresh(base_st, gear_st, gear_test_st)
+  test "the best tier is the end, and a hidden kind is not for sale" (gear_st: mut GearState, gear_test_st: mut GearTestState) {
+    fresh(gear_st, gear_test_st)
     gear_test_st.money = 1000
     gear_test_st.rep = 50
-    for i in 0 .. 5 { gear_buy(base_st, gear_st, GEAR_PACK) }
+    for i in 0 .. 5 { gear_buy(gear_st, GEAR_PACK) }
     expect(gear_best(gear_st, GEAR_PACK))
     expect_eq(gear_level(gear_st, GEAR_PACK), 3)
-    fresh(base_st, gear_st, gear_test_st)
+    fresh(gear_st, gear_test_st)
     gear_test_st.money = 100
     gear_test_st.hide_pack = true
-    expect(not gear_buy(base_st, gear_st, GEAR_PACK))
+    expect(not gear_buy(gear_st, GEAR_PACK))
     expect_eq(len(gear_kinds_at(-1)), 2)
   }
 
-  test "a tier decides a value and a mult, and the stack's room follows" (base_st: mut BaseState, gear_st: mut GearState, gear_test_st: mut GearTestState) {
-    fresh(base_st, gear_st, gear_test_st)
+  test "a tier decides a value and a mult, and the stack's room follows" (gear_st: mut GearState, gear_test_st: mut GearTestState) {
+    fresh(gear_st, gear_test_st)
     expect_eq(gear_value(gear_st, GV_BITE), 1.0)
     gear_set_level(gear_st, GEAR_ROD, 3)
     expect_eq(gear_value(gear_st, GV_BITE), 0.55)
@@ -112,15 +112,15 @@ program GearTest {
     expect_eq(gear_mult(gear_st, GEAR_ROD), 1.0)
   }
 
-  test "a carried item counts as the first tier" (base_st: mut BaseState, gear_st: mut GearState, gear_test_st: mut GearTestState) {
-    fresh(base_st, gear_st, gear_test_st)
+  test "a carried item counts as the first tier" (gear_st: mut GearState, gear_test_st: mut GearTestState) {
+    fresh(gear_st, gear_test_st)
     gear_test_st.pack[IT_ROD] = 1
     gear_sync(gear_st)
     expect_eq(gear_level(gear_st, GEAR_ROD), 1)
   }
 
-  test "a held charge runs only in the hand, burns by the hour and runs out" (base_st: mut BaseState, gear_st: mut GearState, gear_test_st: mut GearTestState) {
-    fresh(base_st, gear_st, gear_test_st)
+  test "a held charge runs only in the hand, burns by the hour and runs out" (gear_st: mut GearState, gear_test_st: mut GearTestState) {
+    fresh(gear_st, gear_test_st)
     let t = CHARGE_TORCH
     expect(not gear_run(gear_st, t, true))
     gear_set_hand(gear_st, IT_TORCH)
@@ -131,12 +131,12 @@ program GearTest {
     gear_system().tick(tick_new(0.1, 2, 0.6))
     expect_eq(gear_charge(gear_st, t), 0.0)
     expect(not gear_lit(gear_st))
-    expect_eq(ran_out(base_st, gear_st), t)
+    expect_eq(ran_out(gear_st), t)
     expect(not gear_run(gear_st, t, true))
   }
 
-  test "a charge's rate can be its tier's, and a new hand puts the light out" (base_st: mut BaseState, gear_st: mut GearState, gear_test_st: mut GearTestState) {
-    fresh(base_st, gear_st, gear_test_st)
+  test "a charge's rate can be its tier's, and a new hand puts the light out" (gear_st: mut GearState, gear_test_st: mut GearTestState) {
+    fresh(gear_st, gear_test_st)
     gear_set_hand(gear_st, IT_LAMP)
     gear_run(gear_st, CHARGE_LAMP, true)
     gear_system().tick(tick_new(0.1, 1, 1.0))
@@ -150,13 +150,13 @@ program GearTest {
     expect(gear_running(gear_st, CHARGE_RADIO))
   }
 
-  test "levels and charges are saved by key" (base_st: mut BaseState, gear_st: mut GearState, gear_test_st: mut GearTestState) {
-    fresh(base_st, gear_st, gear_test_st)
+  test "levels and charges are saved by key" (gear_st: mut GearState, gear_test_st: mut GearTestState) {
+    fresh(gear_st, gear_test_st)
     gear_set_level(gear_st, GEAR_ROD, 2)
     gear_charge_set(gear_st, CHARGE_TORCH, 12.5)
     let v = gear_save(gear_st)
-    fresh(base_st, gear_st, gear_test_st)
-    gear_load(base_st, gear_st, v, 1)
+    fresh(gear_st, gear_test_st)
+    gear_load(gear_st, v, 1)
     expect_eq(gear_level(gear_st, GEAR_ROD), 2)
     expect_eq(gear_level(gear_st, GEAR_CAMERA), 1)
     expect_eq(gear_charge(gear_st, CHARGE_TORCH), 12.5)

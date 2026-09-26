@@ -15,14 +15,14 @@ export function photo_value(photo_st: PhotoState, i: int) -> int {
 }
 
 # every frame with a price, sold: the total, and a fact a frame
-export function photo_sell_all(base_st: mut BaseState, photo_st: mut PhotoState) -> int {
+export function photo_sell_all(photo_st: mut PhotoState) -> int {
   var total = 0
   for i in 0 .. photo_st.pht_n {
     let v = photo_value(photo_st, i)
     if v > 0 {
       total += v
       photo_st.pht_sold[i] = 1
-      let f = pht_fact(base_st, photo_st, PHOTO_SOLD, i)
+      let f = pht_fact(photo_st, PHOTO_SOLD, i)
       f.v = v
       f.mask = photo_st.pht_mask[i]
     }

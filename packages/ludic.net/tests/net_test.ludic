@@ -41,12 +41,12 @@ program NetTest {
   }
   bind NetSocket { open: fn fake_open, close: fn fake_close, send: fn fake_send, recv: fn fake_recv, from_ip: fn fake_from_ip, from_port: fn fake_from_port, port: fn fake_port, local_ip: fn fake_local }
 
-  function fresh(base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) -> void {
+  function fresh(net_st: mut NetState, net_test_st: mut NetTestState) -> void {
     net_test_st.sent = new []Pkt
     net_test_st.inbound = new []Pkt
     net_reset(net_st)
-    q_clear(base_st, net_inbox(base_st, net_st))
-    q_clear(base_st, net_facts(base_st, net_st))
+    q_clear(net_inbox(net_st))
+    q_clear(net_facts(net_st))
   }
 
   # a packet from ip:port: token, pid, ack, then one message of `kind` (reliable with `id` > 0)
@@ -80,32 +80,32 @@ program NetTest {
     push(net_test_st.inbound, p)
   }
 
-  function frame(base_st: mut BaseState, net_st: mut NetState, dt: float) -> void {
-    net_begin(base_st, net_st, dt)
-    net_update(base_st, net_st, dt)
-    net_end(base_st, net_st)
+  function frame(net_st: mut NetState, dt: float) -> void {
+    net_begin(net_st, dt)
+    net_update(net_st, dt)
+    net_end(net_st)
   }
 
   # the host with a guest let in at 10.0.0.9:5000 as pid 2
-  function host_with_guest(base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) -> int {
-    fresh(base_st, net_st, net_test_st)
+  function host_with_guest(net_st: mut NetState, net_test_st: mut NetTestState) -> int {
+    fresh(net_st, net_test_st)
     expect(net_host(net_st, 27415, 77))
     arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 0, 0, 0, NET_HELLO, 1, 42)
-    net_begin(base_st, net_st, 0.01)
-    let got = q_drain(base_st, net_inbox(base_st, net_st))
+    net_begin(net_st, 0.01)
+    let got = q_drain(net_inbox(net_st))
     expect_eq(len(got), 1)
     return net_accept(net_st, got[0].slot)
   }
 
-  function facts_of(base_st: mut BaseState, net_st: mut NetState, what: int) -> []NetFact {
-    let all = q_drain(base_st, net_facts(base_st, net_st))
+  function facts_of(net_st: mut NetState, what: int) -> []NetFact {
+    let all = q_drain(net_facts(net_st))
     let out = new []NetFact
     for i in 0 .. len(all) { if all[i].what == what { push(out, all[i]) } }
     return out
   }
 
-  test "the codec carries ints, bools, floats and text, and a short message reads bad" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    fresh(base_st, net_st, net_test_st)
+  test "the codec carries ints, bools, floats and text, and a short message reads bad" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    fresh(net_st, net_test_st)
     nw_begin(net_st)
     nw_i(net_st, -7)
     nw_b(net_st, true)
@@ -121,8 +121,8 @@ program NetTest {
     expect(nr_bad(net_st))
   }
 
-  test "a join code decodes to its address and port; an address and a room code are taken too" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    fresh(base_st, net_st, net_test_st)
+  test "a join code decodes to its address and port; an address and a room code are taken too" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    fresh(net_st, net_test_st)
     let ip = Udp.ip("192.168.1.20")
     let code = net_code_of(ip, 27415)
     expect_eq(len(code), 11)
@@ -139,25 +139,25 @@ program NetTest {
     expect(not net_is_room("ABCDE1"))
   }
 
-  test "a host takes a stranger only with a hello, and hands out pids from 2" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    let pid = host_with_guest(base_st, net_st, net_test_st)
+  test "a host takes a stranger only with a hello, and hands out pids from 2" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    let pid = host_with_guest(net_st, net_test_st)
     expect_eq(pid, 2)
     expect(net_hosting(net_st))
     expect_eq(net_my_pid(net_st), 1)
     arrive(net_test_st, Udp.ip("10.0.0.10"), 6000, 0, 0, 0, 9, 1, 1)
-    net_begin(base_st, net_st, 0.01)
-    expect_eq(q_len(net_inbox(base_st, net_st)), 0)
+    net_begin(net_st, 0.01)
+    expect_eq(q_len(net_inbox(net_st)), 0)
     arrive(net_test_st, Udp.ip("10.0.0.11"), 6000, 0, 0, 0, NET_HELLO, 1, 1)
-    net_begin(base_st, net_st, 0.01)
-    let got = q_drain(base_st, net_inbox(base_st, net_st))
+    net_begin(net_st, 0.01)
+    let got = q_drain(net_inbox(net_st))
     expect_eq(net_accept(net_st, got[0].slot), 3)
   }
 
-  test "a message's payload reads back as it was written" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    host_with_guest(base_st, net_st, net_test_st)
+  test "a message's payload reads back as it was written" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    host_with_guest(net_st, net_test_st)
     arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, 0, 9, 2, 1234)
-    net_begin(base_st, net_st, 0.01)
-    let got = q_drain(base_st, net_inbox(base_st, net_st))
+    net_begin(net_st, 0.01)
+    let got = q_drain(net_inbox(net_st))
     expect_eq(len(got), 1)
     expect_eq(got[0].kind, 9)
     expect_eq(got[0].from, 2)
@@ -168,73 +168,73 @@ program NetTest {
     expect(nr_bad(net_st))
   }
 
-  test "a reliable message that arrives early is dropped and taken in order" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    let slot = np_of_pid(net_st, host_with_guest(base_st, net_st, net_test_st))
+  test "a reliable message that arrives early is dropped and taken in order" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    let slot = np_of_pid(net_st, host_with_guest(net_st, net_test_st))
     arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, 0, 9, 3, 30)
-    net_begin(base_st, net_st, 0.01)
-    expect_eq(q_len(net_inbox(base_st, net_st)), 0)
+    net_begin(net_st, 0.01)
+    expect_eq(q_len(net_inbox(net_st)), 0)
     arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, 0, 9, 2, 20)
     arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, 0, 9, 3, 30)
-    net_begin(base_st, net_st, 0.01)
-    let got = q_drain(base_st, net_inbox(base_st, net_st))
+    net_begin(net_st, 0.01)
+    let got = q_drain(net_inbox(net_st))
     expect_eq(len(got), 2)
     net_read(net_st, got[1])
     expect_eq(nr_i(net_st), 30)
     expect_eq(got[1].slot, slot)
   }
 
-  test "a reliable message goes again until it is taken" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    let slot = np_of_pid(net_st, host_with_guest(base_st, net_st, net_test_st))
-    net_end(base_st, net_st)
+  test "a reliable message goes again until it is taken" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    let slot = np_of_pid(net_st, host_with_guest(net_st, net_test_st))
+    net_end(net_st)
     net_test_st.sent = new []Pkt
     nw_begin(net_st)
     nw_i(net_st, 5)
     np_queue(net_st, slot, 9, true)
-    frame(base_st, net_st, 0.01)
+    frame(net_st, 0.01)
     expect_eq(len(net_test_st.sent), 1)
-    frame(base_st, net_st, 0.1)
+    frame(net_st, 0.1)
     expect_eq(len(net_test_st.sent), 1)
-    frame(base_st, net_st, 0.2)
+    frame(net_st, 0.2)
     expect_eq(len(net_test_st.sent), 2)
     arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, 1, 9, 0, 0)
-    frame(base_st, net_st, 0.3)
+    frame(net_st, 0.3)
     let n = len(net_test_st.sent)
-    frame(base_st, net_st, 0.3)
+    frame(net_st, 0.3)
     expect_eq(len(net_test_st.sent), n)
   }
 
-  test "an unreliable message half a second old is dropped" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    let slot = np_of_pid(net_st, host_with_guest(base_st, net_st, net_test_st))
-    net_end(base_st, net_st)
+  test "an unreliable message half a second old is dropped" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    let slot = np_of_pid(net_st, host_with_guest(net_st, net_test_st))
+    net_end(net_st)
     net_test_st.sent = new []Pkt
     nw_begin(net_st)
     np_queue(net_st, slot, 9, false)
-    net_begin(base_st, net_st, 0.6)
-    net_end(base_st, net_st)
+    net_begin(net_st, 0.6)
+    net_end(net_st)
     expect_eq(len(net_test_st.sent), 0)
   }
 
-  test "a guest sends its hello until nobody has answered for too long" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    fresh(base_st, net_st, net_test_st)
+  test "a guest sends its hello until nobody has answered for too long" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    fresh(net_st, net_test_st)
     nw_begin(net_st)
     nw_s(net_st, "v1")
     net_hello_set(net_st)
     expect(net_join(net_st, Udp.ip("10.0.0.1"), 27415))
     expect(net_joining(net_st))
-    frame(base_st, net_st, 0.1)
+    frame(net_st, 0.1)
     expect_eq(len(net_test_st.sent), 1)
     expect_eq(nb_get8(net_test_st.sent[0].data, 20), NET_HELLO)
-    for i in 0 .. 110 { frame(base_st, net_st, 0.1) }
+    for i in 0 .. 110 { frame(net_st, 0.1) }
     expect_eq(net_state(net_st), NET_LOST)
-    let down = facts_of(base_st, net_st, NET_DOWN)
+    let down = facts_of(net_st, NET_DOWN)
     expect_eq(len(down), 1)
     expect_eq(down[0].why, NET_WHY_NO_ANSWER)
     net_fresh(net_st)
     expect_eq(net_state(net_st), NET_IDLE)
   }
 
-  test "a welcome makes the guest that pid in that session" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    fresh(base_st, net_st, net_test_st)
+  test "a welcome makes the guest that pid in that session" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    fresh(net_st, net_test_st)
     nw_begin(net_st)
     net_hello_set(net_st)
     net_join(net_st, Udp.ip("10.0.0.1"), 27415)
@@ -244,32 +244,32 @@ program NetTest {
     expect_eq(net_token(net_st), 99)
   }
 
-  test "a guest silent for the timeout is gone" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    let pid = host_with_guest(base_st, net_st, net_test_st)
+  test "a guest silent for the timeout is gone" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    let pid = host_with_guest(net_st, net_test_st)
     let slot = np_of_pid(net_st, pid)
-    for i in 0 .. 105 { frame(base_st, net_st, 0.1) }
-    let gone = facts_of(base_st, net_st, NET_GONE)
+    for i in 0 .. 105 { frame(net_st, 0.1) }
+    let gone = facts_of(net_st, NET_GONE)
     expect_eq(len(gone), 1)
     expect_eq(gone[0].pid, pid)
     expect_eq(gone[0].slot, slot)
     expect(not net_peer_on(net_st, slot))
   }
 
-  test "a slot is let go once it has taken its last message" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    let slot = np_of_pid(net_st, host_with_guest(base_st, net_st, net_test_st))
+  test "a slot is let go once it has taken its last message" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    let slot = np_of_pid(net_st, host_with_guest(net_st, net_test_st))
     nw_begin(net_st)
     np_queue(net_st, slot, 9, true)
     net_close_when_sent(net_st, slot, 20.0)
-    frame(base_st, net_st, 0.01)
+    frame(net_st, 0.01)
     expect(net_peer_on(net_st, slot))
     arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, 1, 9, 0, 0)
-    frame(base_st, net_st, 0.01)
+    frame(net_st, 0.01)
     expect(not net_peer_on(net_st, slot))
-    expect_eq(len(facts_of(base_st, net_st, NET_CLOSED)), 1)
+    expect_eq(len(facts_of(net_st, NET_CLOSED)), 1)
   }
 
-  test "with no matchmaker, a room code is refused" (base_st: mut BaseState, net_st: mut NetState, net_test_st: mut NetTestState) {
-    fresh(base_st, net_st, net_test_st)
+  test "with no matchmaker, a room code is refused" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    fresh(net_st, net_test_st)
     expect(not net_room_on(net_st))
     expect(not net_room_join(net_st, "ABCDEF"))
     expect_eq(net_why(net_st), NET_WHY_NO_MATCHMAKER)

@@ -59,7 +59,7 @@ function gear__rate(gear_st: mut GearState, c: int) -> float {
 }
 
 # the game hours of a tick burn every running charge; one that runs out stops and says so
-function gear__burn(base_st: mut BaseState, gear_st: mut GearState, hours: float) -> void {
+function gear__burn(gear_st: mut GearState, hours: float) -> void {
   gear__ensure(gear_st)
   for c in 0 .. CHARGE_COUNT {
     if not gear_st.gear__on[c] { continue }
@@ -67,6 +67,6 @@ function gear__burn(base_st: mut BaseState, gear_st: mut GearState, hours: float
     if gear_st.gear__left[c] > 0.0 { continue }
     gear_st.gear__left[c] = 0.0
     gear_st.gear__on[c] = false
-    gear__fact(base_st, gear_st, GEAR_RAN_OUT, -1, c, 0)
+    gear__fact(gear_st, GEAR_RAN_OUT, -1, c, 0)
   }
 }

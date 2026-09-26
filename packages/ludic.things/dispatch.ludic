@@ -21,10 +21,10 @@ export function thing_prompt(t: Thing) -> string {
 }
 
 # the kind does what using it does; the use is a fact whatever the kind made of it
-export function thing_use(base_st: mut BaseState, things_st: mut ThingsState, t: Thing) -> void {
+export function thing_use(things_st: mut ThingsState, t: Thing) -> void {
   if t == null or not thing_kind_ok(t.kind) { return }
   let k = ThingKinds[t.kind]
-  th_fact(base_st, things_st, THING_USED, t)
+  th_fact(things_st, THING_USED, t)
   if k.use != null { k.use(t) }
 }
 

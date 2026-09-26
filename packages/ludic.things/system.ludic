@@ -33,18 +33,18 @@ function th_to_json(t: Thing) -> Val {
 }
 
 # every kept Thing removed for good: what a load or a new trip is about to put back
-export function things_reset(base_st: mut BaseState, things_st: mut ThingsState) -> void { things_drop(base_st, things_st, fn th_kept) }
+export function things_reset(things_st: mut ThingsState) -> void { things_drop(things_st, fn th_kept) }
 function th_kept(t: Thing) -> bool { return ThingsWorld.keeps(t) }
 
 # a kind this build does not know is dropped
-export function things_load(base_st: mut BaseState, things_st: mut ThingsState, v: Val, version: int) -> void {
-  things_reset(base_st, things_st)
+export function things_load(things_st: mut ThingsState, v: Val, version: int) -> void {
+  things_reset(things_st)
   if v == null or Value.kind(v) != 6 or Value.has(v, "placed") == 0 { return }
   let l = Value.get(v, "placed")
-  for i in 0 .. Value.count(l) { th_from_json(base_st, things_st, Value.at(l, i)) }
+  for i in 0 .. Value.count(l) { th_from_json(things_st, Value.at(l, i)) }
 }
 
-function th_from_json(base_st: mut BaseState, things_st: mut ThingsState, o: Val) -> void {
+function th_from_json(things_st: mut ThingsState, o: Val) -> void {
   let k = thing_kind_by_key(sv_str(o, "kind", ""))
   if k < 0 { return }
   let t = new Thing
@@ -59,7 +59,7 @@ function th_from_json(base_st: mut BaseState, things_st: mut ThingsState, o: Val
   let x = sv_float(o, "x", 0.0)
   let z = sv_float(o, "z", 0.0)
   let y = sv_float(o, "y", ThingsWorld.ground(x, z))
-  th_place(base_st, things_st, t, k, sv_str(o, "look", ""), x, y, z, sv_float(o, "yaw", 0.0), sv_int(o, "id", 0))
+  th_place(things_st, t, k, sv_str(o, "look", ""), x, y, z, sv_float(o, "yaw", 0.0), sv_int(o, "id", 0))
   ThingsWorld.restored(t)
 }
 

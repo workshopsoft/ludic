@@ -1,5 +1,5 @@
 # system.ludic - the fire as a system: PH_SIMULATE, and its own save section
-function fire_tick(base_st: mut BaseState, fire_st: mut FireState, t: Tick) -> void { fire_run(base_st, fire_st, t.hours) }
+function fire_tick(fire_st: mut FireState, t: Tick) -> void { fire_run(fire_st, t.hours) }
 
 export function fire_save(fire_st: FireState) -> Val {
   let v = Value.object()
@@ -9,8 +9,8 @@ export function fire_save(fire_st: FireState) -> Val {
   return v
 }
 
-export function fire_load(base_st: mut BaseState, fire_st: mut FireState, v: Val, version: int) -> void {
-  fire_reset(base_st, fire_st)
+export function fire_load(fire_st: mut FireState, v: Val, version: int) -> void {
+  fire_reset(fire_st)
   fire_st.fr_lit = sv_bool(v, "lit", false)
   fire_st.fr_fuel = sv_float(v, "fuel", 0.0)
   fire_st.fr_rain_h = sv_float(v, "rain_h", 0.0)

@@ -26,55 +26,55 @@ export function jobs_offered(jobs_st: mut JobsState, i: int) -> bool {
   return JobsWorld.rep(d.scope) >= d.minrep and JobsWorld.stage() >= d.minstage and JobsWorld.open(i)
 }
 
-export function jobs_take(base_st: mut BaseState, jobs_st: mut JobsState, i: int) -> bool {
+export function jobs_take(jobs_st: mut JobsState, i: int) -> bool {
   if not jobs_ok(i) or jobs_state(jobs_st, i) != JOBS_OFFERED { return false }
   jobs_st.jobs__st[i] = JOBS_ACTIVE
   jobs_st.jobs__hv[i] = 0
-  jobs__recheck_one(base_st, jobs_st, i)
+  jobs__recheck_one(jobs_st, i)
   return true
 }
 
 # a count has moved: a job with a need is ready when it is met
-function jobs__moved(base_st: mut BaseState, jobs_st: mut JobsState, i: int, was: int) -> void {
+function jobs__moved(jobs_st: mut JobsState, i: int, was: int) -> void {
   let d = Jobs[i]
   if d.need > 0 and jobs_st.jobs__hv[i] > d.need { jobs_st.jobs__hv[i] = d.need }
-  if jobs_st.jobs__hv[i] > was { jobs__fact(base_st, jobs_st, JOBS_F_PROGRESSED, i, -1, -1, jobs_st.jobs__hv[i], d.need) }
-  if jobs_st.jobs__st[i] == JOBS_ACTIVE and d.need > 0 and jobs_st.jobs__hv[i] >= d.need { jobs_ready(base_st, jobs_st, i) }
+  if jobs_st.jobs__hv[i] > was { jobs__fact(jobs_st, JOBS_F_PROGRESSED, i, -1, -1, jobs_st.jobs__hv[i], d.need) }
+  if jobs_st.jobs__st[i] == JOBS_ACTIVE and d.need > 0 and jobs_st.jobs__hv[i] >= d.need { jobs_ready(jobs_st, i) }
 }
 
 # the game's own play: a step counter, a mask of targets met
-export function jobs_set_have(base_st: mut BaseState, jobs_st: mut JobsState, i: int, v: int) -> void {
+export function jobs_set_have(jobs_st: mut JobsState, i: int, v: int) -> void {
   let was = jobs_have(jobs_st, i)
   jobs_st.jobs__hv[i] = v
-  jobs__moved(base_st, jobs_st, i, was)
+  jobs__moved(jobs_st, i, was)
 }
 
-export function jobs_add_have(base_st: mut BaseState, jobs_st: mut JobsState, i: int, n: int) -> void { jobs_set_have(base_st, jobs_st, i, jobs_have(jobs_st, i) + n) }
+export function jobs_add_have(jobs_st: mut JobsState, i: int, n: int) -> void { jobs_set_have(jobs_st, i, jobs_have(jobs_st, i) + n) }
 
-export function jobs_mark(base_st: mut BaseState, jobs_st: mut JobsState, i: int, bit: int) -> void { jobs_set_have(base_st, jobs_st, i, jobs_have(jobs_st, i) | (1 << bit)) }
+export function jobs_mark(jobs_st: mut JobsState, i: int, bit: int) -> void { jobs_set_have(jobs_st, i, jobs_have(jobs_st, i) | (1 << bit)) }
 
 # everything in hand
-export function jobs_ready(base_st: mut BaseState, jobs_st: mut JobsState, i: int) -> void {
+export function jobs_ready(jobs_st: mut JobsState, i: int) -> void {
   if jobs_state(jobs_st, i) != JOBS_ACTIVE { return }
   jobs_st.jobs__st[i] = JOBS_READY
-  jobs__fact(base_st, jobs_st, JOBS_F_COMPLETED, i, -1, -1, jobs_st.jobs__hv[i], Jobs[i].need)
+  jobs__fact(jobs_st, JOBS_F_COMPLETED, i, -1, -1, jobs_st.jobs__hv[i], Jobs[i].need)
 }
 
-export function jobs_hand_in(base_st: mut BaseState, jobs_st: mut JobsState, i: int) -> bool {
+export function jobs_hand_in(jobs_st: mut JobsState, i: int) -> bool {
   if not jobs_ok(i) or jobs_state(jobs_st, i) != JOBS_READY { return false }
   let d = Jobs[i]
   jobs_st.jobs__st[i] = JOBS_DONE
   if d.group >= 0 and d.group < JOBS_GROUPS { jobs_st.jobs__done_n[d.group] += 1 }
   JobsPay.reward(d.scope, d.money, d.rep)
-  jobs__fact(base_st, jobs_st, JOBS_F_HANDED_IN, i, -1, -1, jobs_st.jobs__hv[i], d.need)
+  jobs__fact(jobs_st, JOBS_F_HANDED_IN, i, -1, -1, jobs_st.jobs__hv[i], d.need)
   return true
 }
 
 # finished and paid in one go, whatever the count says
-export function jobs_complete(base_st: mut BaseState, jobs_st: mut JobsState, i: int) -> bool {
+export function jobs_complete(jobs_st: mut JobsState, i: int) -> bool {
   if not jobs_ok(i) or not jobs_under_way(jobs_st, i) { return false }
-  jobs_ready(base_st, jobs_st, i)
-  return jobs_hand_in(base_st, jobs_st, i)
+  jobs_ready(jobs_st, i)
+  return jobs_hand_in(jobs_st, i)
 }
 
 # the state outright: the host's word for a party job, a test

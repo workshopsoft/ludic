@@ -4,7 +4,7 @@ export const FISHING_NOT_WATER: int = 1
 export const FISHING_BUSY: int = 2
 
 # a line into (x, z): bait halves the wait (and is a fact, for the game to take from the pack)
-export function fishing_cast(base_st: mut BaseState, fishing_st: mut FishingState, x: float, z: float) -> int {
+export function fishing_cast(fishing_st: mut FishingState, x: float, z: float) -> int {
   if fishing_st.fishing_st != FISHING_OFF { return FISHING_BUSY }
   fishing_st.fishing_bx = x
   fishing_st.fishing_bz = z
@@ -17,8 +17,8 @@ export function fishing_cast(base_st: mut BaseState, fishing_st: mut FishingStat
   var wait = 6.0 + fishing_rand(fishing_st) * 14.0
   if fishing_st.fishing_bait_on { wait = wait * 0.5 }
   fishing_st.fishing_t = wait * FishingWorld.bite_mult()
-  if fishing_st.fishing_bait_on { fishing_say(base_st, fishing_st, FISHING_BAIT_USED) }
-  fishing_say(base_st, fishing_st, FISHING_CAST)
+  if fishing_st.fishing_bait_on { fishing_say(fishing_st, FISHING_BAIT_USED) }
+  fishing_say(fishing_st, FISHING_CAST)
   return FISHING_CAST_OK
 }
 
@@ -32,7 +32,7 @@ export function fishing_stop(fishing_st: mut FishingState) -> void {
   fishing_st.fishing_run_t = 0.0
 }
 
-function fishing_strike(base_st: mut BaseState, fishing_st: mut FishingState) -> void {
+function fishing_strike(fishing_st: mut FishingState) -> void {
   let k = FishSpecies[fishing_st.fishing_sp]
   fishing_st.fishing_st = FISHING_REEL
   fishing_st.fishing_won = 0
@@ -51,55 +51,55 @@ function fishing_strike(base_st: mut BaseState, fishing_st: mut FishingState) ->
     fishing_st.fishing_ring_t = 2.0
   }
   fishing_new_window(fishing_st)
-  fishing_say(base_st, fishing_st, FISHING_HOOKED)
+  fishing_say(fishing_st, FISHING_HOOKED)
 }
 
-function fishing_land(base_st: mut BaseState, fishing_st: mut FishingState) -> void {
+function fishing_land(fishing_st: mut FishingState) -> void {
   fishing_st.fishing_n += 1
   if fishing_st.fishing_len > fishing_st.fishing_big { fishing_st.fishing_big = fishing_st.fishing_len }
   if FishSpecies[fishing_st.fishing_sp].legend { fishing_st.fishing_leg = true }
-  fishing_say(base_st, fishing_st, FISHING_CAUGHT)
+  fishing_say(fishing_st, FISHING_CAUGHT)
   fishing_stop(fishing_st)
 }
 
-function fishing_lost(base_st: mut BaseState, fishing_st: mut FishingState, what: int) -> void {
-  fishing_say(base_st, fishing_st, what)
+function fishing_lost(fishing_st: mut FishingState, what: int) -> void {
+  fishing_say(fishing_st, what)
   fishing_stop(fishing_st)
 }
 
-function fishing_reel_press(base_st: mut BaseState, fishing_st: mut FishingState) -> void {
+function fishing_reel_press(fishing_st: mut FishingState) -> void {
   if fishing_st.fishing_gentle_on {
-    if fishing_st.fishing_ring_t > 0.0 { fishing_land(base_st, fishing_st) } else { fishing_lost(base_st, fishing_st, FISHING_LINE_SNAPPED) }
+    if fishing_st.fishing_ring_t > 0.0 { fishing_land(fishing_st) } else { fishing_lost(fishing_st, FISHING_LINE_SNAPPED) }
     return
   }
   if fishing_st.fishing_run_t > 0.0 {
     fishing_st.fishing_won = Math.max(fishing_st.fishing_won - 1, 0)
-    fishing_say(base_st, fishing_st, FISHING_CHECKED)
+    fishing_say(fishing_st, FISHING_CHECKED)
     return
   }
   if fishing_in_window(fishing_st) {
     fishing_st.fishing_won += 1
     fishing_new_window(fishing_st)
-    if fishing_st.fishing_won >= fishing_st.fishing_need_n { fishing_land(base_st, fishing_st) } else { fishing_say(base_st, fishing_st, FISHING_GOOD) }
+    if fishing_st.fishing_won >= fishing_st.fishing_need_n { fishing_land(fishing_st) } else { fishing_say(fishing_st, FISHING_GOOD) }
     return
   }
   if FishSpecies[fishing_st.fishing_sp].legend and fishing_st.fishing_won > 0 {
     fishing_st.fishing_won -= 1
-    fishing_say(base_st, fishing_st, FISHING_TURNED)
+    fishing_say(fishing_st, FISHING_TURNED)
     return
   }
-  fishing_lost(base_st, fishing_st, FISHING_LINE_SNAPPED)
+  fishing_lost(fishing_st, FISHING_LINE_SNAPPED)
 }
 
 # the button: waiting it reels in, on a bite it strikes, on a fish it reels
-export function fishing_press(base_st: mut BaseState, fishing_st: mut FishingState) -> void {
+export function fishing_press(fishing_st: mut FishingState) -> void {
   if fishing_st.fishing_st == FISHING_WAIT {
-    fishing_lost(base_st, fishing_st, FISHING_REELED_IN)
+    fishing_lost(fishing_st, FISHING_REELED_IN)
     return
   }
   if fishing_st.fishing_st == FISHING_BITE_ON {
-    fishing_strike(base_st, fishing_st)
+    fishing_strike(fishing_st)
     return
   }
-  if fishing_st.fishing_st == FISHING_REEL { fishing_reel_press(base_st, fishing_st) }
+  if fishing_st.fishing_st == FISHING_REEL { fishing_reel_press(fishing_st) }
 }

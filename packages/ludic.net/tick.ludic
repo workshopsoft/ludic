@@ -1,33 +1,33 @@
 # tick.ludic - a frame of the session, in three calls with the game's between them: net_begin
 # (time, and what came in onto the inbox), net_update (the matchmaker, the hello, silence) and,
 # once the game has queued its own, net_end (heartbeats, sending, letting slots go)
-export function net_begin(base_st: mut BaseState, net_st: mut NetState, dt: float) -> void {
+export function net_begin(net_st: mut NetState, dt: float) -> void {
   if not net_active(net_st) { return }
   net_st.net__time = net_st.net__time + dt
-  net__pump(base_st, net_st)
+  net__pump(net_st)
 }
 
-export function net_update(base_st: mut BaseState, net_st: mut NetState, dt: float) -> void {
+export function net_update(net_st: mut NetState, dt: float) -> void {
   if not net_active(net_st) { return }
-  net__room_tick(base_st, net_st, dt)
+  net__room_tick(net_st, dt)
   if net_st.net__state == NET_JOINING {
-    net__hello_tick(base_st, net_st, dt)
+    net__hello_tick(net_st, dt)
     return
   }
   for i in 0 .. NET_PEERS {
     let p = net_st.net__peers[i]
     if not p.on or net_st.net__time - p.heard <= float(NET_TIMEOUT) { continue }
     if net_st.net__state == NET_JOINED {
-      net_lose(base_st, net_st, NET_WHY_HOST_SILENT)
+      net_lose(net_st, NET_WHY_HOST_SILENT)
       return
     }
     let gone = p.pid
     np_close(net_st, i)
-    net__fact(base_st, net_st, NET_GONE, i, gone, 0, "")
+    net__fact(net_st, NET_GONE, i, gone, 0, "")
   }
 }
 
-function net__hello_tick(base_st: mut BaseState, net_st: mut NetState, dt: float) -> void {
+function net__hello_tick(net_st: mut NetState, dt: float) -> void {
   if net_st.net__hello_t < 0.0 {
     nb_copy(net_st.net__wb, 0, net_st.net__hello_b, 0, net_st.net__hello_l)
     net_st.net__wl = net_st.net__hello_l
@@ -36,13 +36,13 @@ function net__hello_tick(base_st: mut BaseState, net_st: mut NetState, dt: float
   }
   net_st.net__hello_t = net_st.net__hello_t + dt
   if net_st.net__hello_t > float(NET_TIMEOUT + net_st.net__wait_more) {
-    net_lose(base_st, net_st, NET_WHY_NO_ANSWER)
+    net_lose(net_st, NET_WHY_NO_ANSWER)
     return
   }
   np_flush(net_st, 0)
 }
 
-export function net_end(base_st: mut BaseState, net_st: mut NetState) -> void {
+export function net_end(net_st: mut NetState) -> void {
   if not net_live(net_st) { return }
   let beat = net_st.net__time - net_st.net__beat_t >= 1.0
   if beat { net_st.net__beat_t = net_st.net__time }
@@ -57,15 +57,15 @@ export function net_end(base_st: mut BaseState, net_st: mut NetState) -> void {
     if p.closing and (p.acked >= p.close_id or net_st.net__time > p.close_t) {
       let pid = p.pid
       np_close(net_st, i)
-      net__fact(base_st, net_st, NET_CLOSED, i, pid, 0, "")
+      net__fact(net_st, NET_CLOSED, i, pid, 0, "")
     }
   }
 }
 
 # while a load holds the frame: keep answering, so nobody times out on this machine
-export function net_keepalive(base_st: mut BaseState, net_st: mut NetState) -> void {
+export function net_keepalive(net_st: mut NetState) -> void {
   if not net_live(net_st) { return }
-  net__pump(base_st, net_st)
+  net__pump(net_st)
   for i in 0 .. NET_PEERS {
     let p = net_st.net__peers[i]
     if p.on {
@@ -96,15 +96,15 @@ export function net_reset(net_st: mut NetState) -> void {
 }
 
 # out of the session, and why: the game hears NET_DOWN and says so in its own words
-export function net_lose(base_st: mut BaseState, net_st: mut NetState, why: int) -> void { net__lose_with(base_st, net_st, why, "") }
+export function net_lose(net_st: mut NetState, why: int) -> void { net__lose_with(net_st, why, "") }
 
 # ... with what the reason is about (the room code nobody had)
-function net__lose_with(base_st: mut BaseState, net_st: mut NetState, why: int, text: string) -> void {
+function net__lose_with(net_st: mut NetState, why: int, text: string) -> void {
   net_reset(net_st)
   net_st.net__state = NET_LOST
   net_st.net__why = why
   net__log(`lost ({why})`)
-  net__fact(base_st, net_st, NET_DOWN, -1, 0, why, text)
+  net__fact(net_st, NET_DOWN, -1, 0, why, text)
 }
 
 # a lost session read and done with: idle again

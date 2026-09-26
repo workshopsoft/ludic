@@ -67,16 +67,16 @@ export state TelemetryState {
   telemetry__facts: Queue<TelemetryFact> = null
 }
 
-export function telemetry_facts(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> Queue<TelemetryFact> {
-  if telemetry_st.telemetry__facts == null { telemetry_st.telemetry__facts = queue_new(base_st, "telemetry.facts") }
+export function telemetry_facts(telemetry_st: mut TelemetryState) -> Queue<TelemetryFact> {
+  if telemetry_st.telemetry__facts == null { telemetry_st.telemetry__facts = queue_new("telemetry.facts") }
   return telemetry_st.telemetry__facts
 }
 
-function telemetry__fact(base_st: mut BaseState, telemetry_st: mut TelemetryState, what: int, count: int, status: int, retry: int) -> void {
+function telemetry__fact(telemetry_st: mut TelemetryState, what: int, count: int, status: int, retry: int) -> void {
   let f = new TelemetryFact
   f.what = what
   f.count = count
   f.status = status
   f.retry_ms = retry
-  q_push(base_st, telemetry_facts(base_st, telemetry_st), f)
+  q_push(telemetry_facts(telemetry_st), f)
 }

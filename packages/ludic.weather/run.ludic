@@ -1,6 +1,6 @@
 # run.ludic - the sky moving on. Only the machine that owns the world runs the spells; every
 # machine eases the ground's wetness and makes its own lightning out of a storm it is told of.
-function wx_turn(base_st: mut BaseState, weather_st: mut WeatherState) -> void {
+function wx_turn(weather_st: mut WeatherState) -> void {
   let was = weather_st.wx_state
   weather_st.wx_state = weather_st.wx_next
   weather_st.wx_next = wx_pick_next(weather_st, weather_st.wx_state)
@@ -14,9 +14,9 @@ function wx_turn(base_st: mut BaseState, weather_st: mut WeatherState) -> void {
   # a front going through and leaving clear sky behind it: the light people get up for
   if weather_st.wx_kinds[weather_st.wx_state].clear and weather_st.wx_kinds[was].wet and not wx_night() {
     weather_st.wx_clear_t = 0.6
-    wx_fact(base_st, weather_st, WEATHER_CLEARED, weather_st.wx_state, was)
+    wx_fact(weather_st, WEATHER_CLEARED, weather_st.wx_state, was)
   }
-  wx_fact(base_st, weather_st, WEATHER_BEGAN, weather_st.wx_state, was)
+  wx_fact(weather_st, WEATHER_BEGAN, weather_st.wx_state, was)
 }
 
 function wx_wind_tick(weather_st: mut WeatherState, dt: float) -> void {
@@ -33,10 +33,10 @@ function wx_wind_tick(weather_st: mut WeatherState, dt: float) -> void {
 }
 
 # the spells: the story's lean, the clock running down, the edges eased, the wind
-function wx_spells(base_st: mut BaseState, weather_st: mut WeatherState, dt: float, gh: float) -> void {
-  wx_apply_bias(base_st, weather_st)
+function wx_spells(weather_st: mut WeatherState, dt: float, gh: float) -> void {
+  wx_apply_bias(weather_st)
   weather_st.wx_left = weather_st.wx_left - gh
-  if weather_st.wx_left < 0.0 { wx_turn(base_st, weather_st) }
+  if weather_st.wx_left < 0.0 { wx_turn(weather_st) }
   var want = 1.0
   if weather_st.wx_kinds[weather_st.wx_state].clear { want = 0.0 }
   if weather_st.wx_left < 0.5 and weather_st.wx_kinds[weather_st.wx_next].clear { want = 0.0 }
@@ -54,22 +54,22 @@ function wx_ground_tick(weather_st: mut WeatherState, dt: float) -> void {
   weather_st.wx_ground = weather_st.wx_ground + (want - weather_st.wx_ground) * Math.clamp(k, 0.0, 1.0)
 }
 
-function wx_storm_tick(base_st: mut BaseState, weather_st: mut WeatherState, dt: float) -> void {
+function wx_storm_tick(weather_st: mut WeatherState, dt: float) -> void {
   weather_st.wx_flash = weather_st.wx_flash * Math.max(0.0, 1.0 - dt * 9.0)
   if not weather_st.wx_kinds[weather_st.wx_state].thunder or weather_st.wx_amount < 0.5 { return }
   weather_st.wx_thunder_t = weather_st.wx_thunder_t - dt
   if weather_st.wx_thunder_t < 0.0 {
     weather_st.wx_thunder_t = rng_span(weather_st.wx_dice, 9.0, 34.0)
     weather_st.wx_flash = 1.0
-    wx_fact(base_st, weather_st, WEATHER_THUNDER, weather_st.wx_state, weather_st.wx_state)
+    wx_fact(weather_st, WEATHER_THUNDER, weather_st.wx_state, weather_st.wx_state)
   }
 }
 
 # one step: `dt` real seconds and `gh` game hours
-export function weather_run(base_st: mut BaseState, weather_st: mut WeatherState, dt: float, gh: float) -> void {
+export function weather_run(weather_st: mut WeatherState, dt: float, gh: float) -> void {
   if weather_kind_count(weather_st) == 0 { return }
-  if wx_owns() { wx_spells(base_st, weather_st, dt, gh) }
+  if wx_owns() { wx_spells(weather_st, dt, gh) }
   wx_ground_tick(weather_st, dt)
-  wx_storm_tick(base_st, weather_st, dt)
+  wx_storm_tick(weather_st, dt)
   if weather_wet(weather_st) { weather_st.wx_wet_today = true }
 }

@@ -33,8 +33,8 @@ function ef_all(effects_st: mut EffectsState) -> []Effect {
 }
 
 # the facts: what ended and why, oldest first; the game drains it
-export function effects_ended(base_st: mut BaseState, effects_st: mut EffectsState) -> Queue<EffectEnded> {
-  if effects_st.ef_ended == null { effects_st.ef_ended = queue_new(base_st, "effects.ended") }
+export function effects_ended(effects_st: mut EffectsState) -> Queue<EffectEnded> {
+  if effects_st.ef_ended == null { effects_st.ef_ended = queue_new("effects.ended") }
   return effects_st.ef_ended
 }
 

@@ -35,7 +35,7 @@ program TelemetryTest {
   function qfile() -> string { return Os.temp_dir() + "/ludic-telemetry-test-queue.txt" }
   function idfile() -> string { return Os.temp_dir() + "/ludic-telemetry-test-id.json" }
 
-  function fresh(base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) -> void {
+  function fresh(telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) -> void {
     telemetry_test_st.clock = 0
     telemetry_test_st.on = true
     telemetry_test_st.allowed = true
@@ -44,7 +44,7 @@ program TelemetryTest {
     telemetry_test_st.sends = 0
     telemetry_test_st.last_url = ""
     telemetry_test_st.last_body = ""
-    telemetry_reset(base_st, telemetry_st)
+    telemetry_reset(telemetry_st)
     if Fs.exists(qfile()) { Fs.remove(qfile()) }
     Fs.write_text(idfile(), "{\"id\":\"p-1\",\"notices\":2}")
     let c = new TelemetryConfig
@@ -60,28 +60,28 @@ program TelemetryTest {
     c.backoff_max = 2
     c.save_ms = 100000
     telemetry_config(telemetry_st, c)
-    telemetry_start(base_st, telemetry_st)
-    telemetry_tick(base_st, telemetry_st)
+    telemetry_start(telemetry_st)
+    telemetry_tick(telemetry_st)
   }
 
   function events(telemetry_st: mut TelemetryState, n: int) -> void {
     for i in 0 .. n { telemetry_event(telemetry_st, `e{i}`, null) }
   }
 
-  function at(base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState, ms: int) -> void {
+  function at(telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState, ms: int) -> void {
     telemetry_test_st.clock = ms
-    telemetry_tick(base_st, telemetry_st)
+    telemetry_tick(telemetry_st)
   }
 
-  function facts_of(base_st: mut BaseState, telemetry_st: mut TelemetryState, what: int) -> int {
-    let fs = q_drain(base_st, telemetry_facts(base_st, telemetry_st))
+  function facts_of(telemetry_st: mut TelemetryState, what: int) -> int {
+    let fs = q_drain(telemetry_facts(telemetry_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
   }
 
-  test "an event is one line with the player as a mark, and the batch puts the id in" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
+  test "an event is one line with the player as a mark, and the batch puts the id in" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
     expect(telemetry_id(telemetry_st) == "p-1")
     telemetry_event(telemetry_st, "hello", null)
     expect_eq(telemetry_queued(telemetry_st), 1)
@@ -94,108 +94,108 @@ program TelemetryTest {
     expect(Text.contains(body, "\"distinct_id\":\"p-1\""))
   }
 
-  test "a batch goes when due, and only what the server took leaves the queue" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
+  test "a batch goes when due, and only what the server took leaves the queue" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
     events(telemetry_st, 4)
-    at(base_st, telemetry_st, telemetry_test_st, 500)
+    at(telemetry_st, telemetry_test_st, 500)
     expect_eq(telemetry_test_st.sends, 0)
-    at(base_st, telemetry_st, telemetry_test_st, 1000)
+    at(telemetry_st, telemetry_test_st, 1000)
     expect_eq(telemetry_test_st.sends, 1)
     expect(telemetry_test_st.last_url == "http://fake/batch/")
     expect(telemetry_in_flight(telemetry_st))
     events(telemetry_st, 1)
     telemetry_test_st.answer = 1
-    at(base_st, telemetry_st, telemetry_test_st, 1100)
+    at(telemetry_st, telemetry_test_st, 1100)
     expect_eq(telemetry_queued(telemetry_st), 2)
-    expect_eq(facts_of(base_st, telemetry_st, TELEMETRY_SENT), 1)
+    expect_eq(facts_of(telemetry_st, TELEMETRY_SENT), 1)
   }
 
-  test "enough events go early" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
+  test "enough events go early" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
     events(telemetry_st, 5)
-    at(base_st, telemetry_st, telemetry_test_st, 10)
+    at(telemetry_st, telemetry_test_st, 10)
     expect_eq(telemetry_test_st.sends, 1)
   }
 
-  test "a failure keeps the lines and waits twice as long, up to the cap" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
+  test "a failure keeps the lines and waits twice as long, up to the cap" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
     events(telemetry_st, 2)
     telemetry_test_st.answer = 0
-    at(base_st, telemetry_st, telemetry_test_st, 1000)
-    at(base_st, telemetry_st, telemetry_test_st, 1001)
+    at(telemetry_st, telemetry_test_st, 1000)
+    at(telemetry_st, telemetry_test_st, 1001)
     expect_eq(telemetry_queued(telemetry_st), 2)
     expect_eq(telemetry_fails(telemetry_st), 1)
     expect_eq(telemetry_next_ms(telemetry_st), 1001 + 2000)
-    expect_eq(facts_of(base_st, telemetry_st, TELEMETRY_FAILED), 1)
-    at(base_st, telemetry_st, telemetry_test_st, 3001)
-    at(base_st, telemetry_st, telemetry_test_st, 3002)
-    at(base_st, telemetry_st, telemetry_test_st, 7002)
-    at(base_st, telemetry_st, telemetry_test_st, 7003)
+    expect_eq(facts_of(telemetry_st, TELEMETRY_FAILED), 1)
+    at(telemetry_st, telemetry_test_st, 3001)
+    at(telemetry_st, telemetry_test_st, 3002)
+    at(telemetry_st, telemetry_test_st, 7002)
+    at(telemetry_st, telemetry_test_st, 7003)
     expect_eq(telemetry_fails(telemetry_st), 2)
     expect_eq(telemetry_next_ms(telemetry_st), 7003 + 4000)
   }
 
-  test "a request that cannot start backs off too" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
+  test "a request that cannot start backs off too" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
     telemetry_test_st.refuse = true
     events(telemetry_st, 1)
-    at(base_st, telemetry_st, telemetry_test_st, 1000)
+    at(telemetry_st, telemetry_test_st, 1000)
     expect_eq(telemetry_fails(telemetry_st), 1)
     expect(not telemetry_in_flight(telemetry_st))
   }
 
-  test "off keeps nothing and deletes the file" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
+  test "off keeps nothing and deletes the file" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
     events(telemetry_st, 3)
     telemetry_save(telemetry_st)
     expect(Fs.exists(qfile()))
     telemetry_test_st.on = false
-    at(base_st, telemetry_st, telemetry_test_st, 10)
+    at(telemetry_st, telemetry_test_st, 10)
     expect_eq(telemetry_queued(telemetry_st), 0)
     expect(not Fs.exists(qfile()))
     events(telemetry_st, 3)
     expect_eq(telemetry_queued(telemetry_st), 0)
   }
 
-  test "a run that may not send queues nothing and sends nothing" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
+  test "a run that may not send queues nothing and sends nothing" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
     telemetry_test_st.allowed = false
     events(telemetry_st, 9)
-    at(base_st, telemetry_st, telemetry_test_st, 100000)
+    at(telemetry_st, telemetry_test_st, 100000)
     expect_eq(telemetry_queued(telemetry_st), 0)
     expect_eq(telemetry_test_st.sends, 0)
   }
 
-  test "the queue is capped at its newest events" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
+  test "the queue is capped at its newest events" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
     telemetry_test_st.allowed = true
     events(telemetry_st, 12)
     expect(telemetry_queued(telemetry_st) <= 11)
     expect(Text.contains(telemetry_line(telemetry_st, telemetry_queued(telemetry_st) - 1), "e11"))
   }
 
-  test "what was not sent is there at the next start" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
+  test "what was not sent is there at the next start" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
     events(telemetry_st, 3)
     telemetry_save(telemetry_st)
-    telemetry_reset(base_st, telemetry_st)
-    telemetry_start(base_st, telemetry_st)
+    telemetry_reset(telemetry_st)
+    telemetry_start(telemetry_st)
     expect_eq(telemetry_queued(telemetry_st), 3)
   }
 
-  test "an id set outright is written beside the file's other keys" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
-    telemetry_set_id(base_st, telemetry_st, "p-2")
+  test "an id set outright is written beside the file's other keys" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
+    telemetry_set_id(telemetry_st, "p-2")
     let v = Json.parse(Fs.read_text(idfile()))
     expect(sv_str(v, "id", "") == "p-2")
     expect_eq(sv_int(v, "notices", 0), 2)
   }
 
-  test "no salt and no id file makes a random id" (base_st: mut BaseState, telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
-    fresh(base_st, telemetry_st, telemetry_test_st)
-    telemetry_reset(base_st, telemetry_st)
+  test "no salt and no id file makes a random id" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
+    telemetry_reset(telemetry_st)
     Fs.remove(idfile())
-    telemetry_start(base_st, telemetry_st)
+    telemetry_start(telemetry_st)
     expect(Text.starts_with(telemetry_id(telemetry_st), "r-"))
     expect_eq(len(telemetry_session(telemetry_st)), 32)
   }

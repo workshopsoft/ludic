@@ -1,8 +1,8 @@
 # system.ludic - the pack as a system: reset and its own save section, each count under its
 # kind's name, so kinds can be added or reordered without a migration
-export function inv_reset(base_st: mut BaseState, inventory_st: mut InventoryState) -> void {
+export function inv_reset(inventory_st: mut InventoryState) -> void {
   inv_clear(inventory_st)
-  q_clear(base_st, inv_changes(base_st, inventory_st))
+  q_clear(inv_changes(inventory_st))
 }
 
 export function inv_save(inventory_st: InventoryState) -> Val {

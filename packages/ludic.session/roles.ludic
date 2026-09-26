@@ -2,10 +2,10 @@
 # guest owns only its own player. The transport says what this machine became.
 export function ses_role(session_st: SessionState) -> int { return session_st.session__role }
 
-export function ses_set_role(base_st: mut BaseState, session_st: mut SessionState, r: int) -> void {
+export function ses_set_role(session_st: mut SessionState, r: int) -> void {
   if r == session_st.session__role { return }
   session_st.session__role = r
-  session__fact(base_st, session_st, SES_ROLE, -1, 0)
+  session__fact(session_st, SES_ROLE, -1, 0)
 }
 
 # this machine runs the world: the clock, the weather, the animals, the people
@@ -37,9 +37,9 @@ export function ses_open(session_st: SessionState) -> bool { return session_st.s
 export function ses_room_for_one(session_st: SessionState) -> bool { return session_st.session__open and ply_count(session_st) < session_st.session__max }
 
 # the session is over: everyone else gone, alone again, nothing asked and nobody asleep
-export function ses_reset(base_st: mut BaseState, session_st: mut SessionState) -> void {
-  ply_leave_all(base_st, session_st)
-  ses_set_role(base_st, session_st, SES_SOLO)
+export function ses_reset(session_st: mut SessionState) -> void {
+  ply_leave_all(session_st)
+  ses_set_role(session_st, SES_SOLO)
   session_st.session__me_sleeping = false
   session_st.session__vote_t = 0.0
   session_st.session__vote_mine = -1

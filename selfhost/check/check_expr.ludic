@@ -70,7 +70,10 @@ function ck_expr(e: Node) -> pointer {
 }
 function ck_id(e: Node) -> pointer {
   let li = ck_local(e.s)
-  if li >= 0 { return ck_tys[li] }
+  if li >= 0 {
+    mg_local_use(e, ck_tys[li])                  # 0.S2 --migrate-prune: a state used here
+    return ck_tys[li]
+  }
   let g = ck_global(e.s)
   if g != null {
     mg_ref(e, g)

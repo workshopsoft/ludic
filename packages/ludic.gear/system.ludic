@@ -1,6 +1,6 @@
 # system.ludic - gear as a system: the burn each tick, and the levels and charges saved by key (the
 # hand is not saved: a trip opens with empty hands)
-export function gear_reset(base_st: mut BaseState, gear_st: mut GearState) -> void {
+export function gear_reset(gear_st: mut GearState) -> void {
   gear__ensure(gear_st)
   for k in 0 .. GEAR_COUNT { gear_st.gear__lv[k] = GearKinds[k].start }
   for c in 0 .. CHARGE_COUNT {
@@ -8,7 +8,7 @@ export function gear_reset(base_st: mut BaseState, gear_st: mut GearState) -> vo
     gear_st.gear__on[c] = false
   }
   gear_st.gear__hand = -1
-  q_clear(base_st, gear_facts(base_st, gear_st))
+  q_clear(gear_facts(gear_st))
 }
 
 export function gear_save(gear_st: mut GearState) -> Val {
@@ -24,8 +24,8 @@ export function gear_save(gear_st: mut GearState) -> Val {
 }
 
 # a kind the file does not name starts where a new trip does; then what the pack carries counts
-export function gear_load(base_st: mut BaseState, gear_st: mut GearState, v: Val, version: int) -> void {
-  gear_reset(base_st, gear_st)
+export function gear_load(gear_st: mut GearState, v: Val, version: int) -> void {
+  gear_reset(gear_st)
   if Value.has(v, "levels") != 0 {
     let lv = Value.get(v, "levels")
     for k in 0 .. GEAR_COUNT { gear_st.gear__lv[k] = sv_int(lv, GearKinds[k].key, GearKinds[k].start) }
@@ -37,7 +37,7 @@ export function gear_load(base_st: mut BaseState, gear_st: mut GearState, v: Val
   gear_sync(gear_st)
 }
 
-function gear__tick(base_st: mut BaseState, gear_st: mut GearState, t: Tick) -> void { gear__burn(base_st, gear_st, t.hours) }
+function gear__tick(gear_st: mut GearState, t: Tick) -> void { gear__burn(gear_st, t.hours) }
 
 export function gear_system() -> System {
   let s = system_new("gear", PH_SIMULATE)

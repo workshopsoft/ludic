@@ -1,8 +1,8 @@
 # system.ludic - crafting as a system: a reset, and nothing saved (a hold never outlives its
 # screen; what a station holds is the station's)
-export function craft_reset(base_st: mut BaseState, crafting_st: mut CraftingState) -> void {
+export function craft_reset(crafting_st: mut CraftingState) -> void {
   craft_hold_stop(crafting_st)
-  q_clear(base_st, craft_facts(base_st, crafting_st))
+  q_clear(craft_facts(crafting_st))
 }
 
 export function craft_system() -> System {

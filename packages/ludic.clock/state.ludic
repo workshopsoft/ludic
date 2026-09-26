@@ -39,8 +39,8 @@ export state ClockState {
 }
 
 # the facts: each day that turned, in order; the game drains it and runs its morning
-export function clock_days(base_st: mut BaseState, clock_st: mut ClockState) -> Queue<DayTurned> {
-  if clock_st.ck_days == null { clock_st.ck_days = queue_new(base_st, "clock.days") }
+export function clock_days(clock_st: mut ClockState) -> Queue<DayTurned> {
+  if clock_st.ck_days == null { clock_st.ck_days = queue_new("clock.days") }
   return clock_st.ck_days
 }
 

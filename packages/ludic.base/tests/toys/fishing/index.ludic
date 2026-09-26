@@ -14,17 +14,17 @@ export function fishing_cast(toy_fishing_st: mut ToyFishingState, x: float, z: f
   toy_fishing_st.casts += 1
   return true
 }
-function fishing_reset(base_st: mut BaseState, toy_fishing_st: mut ToyFishingState) -> void {
+function fishing_reset(toy_fishing_st: mut ToyFishingState) -> void {
   toy_fishing_st.casts = 0
   toy_fishing_st.dice = rng_new(7)
-  toy_fishing_st.caught = queue_new(base_st, "fishing.caught")
+  toy_fishing_st.caught = queue_new("fishing.caught")
 }
-function fishing_tick(base_st: mut BaseState, toy_fishing_st: mut ToyFishingState, t: Tick) -> void {
+function fishing_tick(toy_fishing_st: mut ToyFishingState, t: Tick) -> void {
   while toy_fishing_st.casts > 0 {
     let c = new Caught
     c.species = rng_between(toy_fishing_st.dice, 0, 2)
     c.weight = 0.5 + rng_float(toy_fishing_st.dice)
-    q_push(base_st, toy_fishing_st.caught, c)
+    q_push(toy_fishing_st.caught, c)
     toy_fishing_st.casts -= 1
   }
 }

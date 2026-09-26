@@ -1,6 +1,6 @@
 # room_tick.ludic - the matchmaker's side of a frame: STUN asked three times, the room registered
 # or asked for, the host's look at who has asked, and a guest's switch to the relay
-function net__room_tick(base_st: mut BaseState, net_st: mut NetState, dt: float) -> void {
+function net__room_tick(net_st: mut NetState, dt: float) -> void {
   if net_st.net__r_state == NET_R_IDLE or net_st.net__r_role == 0 { return }
   net_st.net__r_t = net_st.net__r_t + dt
   if net_st.net__r_state == NET_R_STUN {
@@ -8,7 +8,7 @@ function net__room_tick(base_st: mut BaseState, net_st: mut NetState, dt: float)
     return
   }
   if net_st.net__r_state == NET_R_REGISTER or net_st.net__r_state == NET_R_ASK or (net_st.net__r_state == NET_R_ROOM and net_st.net__http != 0) {
-    net__room_answer(base_st, net_st)
+    net__room_answer(net_st)
     return
   }
   if net_st.net__r_state == NET_R_DONE {
@@ -42,13 +42,13 @@ function net__room_stun_tick(net_st: mut NetState) -> void {
   net_st.net__r_t = 0.0
 }
 
-function net__room_answer(base_st: mut BaseState, net_st: mut NetState) -> void {
+function net__room_answer(net_st: mut NetState) -> void {
   let st = Http.poll(net_st.net__http)
   if st < 0 {
     if net_st.net__r_t > 12.0 {
       Http.free(net_st.net__http)
       net_st.net__http = 0
-      net__room_fail(base_st, net_st, NET_WHY_MATCHMAKER_SILENT)
+      net__room_fail(net_st, NET_WHY_MATCHMAKER_SILENT)
     }
     return
   }
@@ -59,7 +59,7 @@ function net__room_answer(base_st: mut BaseState, net_st: mut NetState) -> void 
   if net_st.net__r_state == NET_R_REGISTER {
     let code = net__json_str(v, "code")
     if len(code) == 0 {
-      net__room_fail(base_st, net_st, NET_WHY_NO_ROOM_GIVEN)
+      net__room_fail(net_st, NET_WHY_NO_ROOM_GIVEN)
       return
     }
     net_st.net__room = code
@@ -67,16 +67,16 @@ function net__room_answer(base_st: mut BaseState, net_st: mut NetState) -> void 
     net_st.net__r_state = NET_R_ROOM
     net_st.net__poll_t = 0.0
     net__log(`room {code}`)
-    net__fact(base_st, net_st, NET_ROOM, -1, 0, 0, code)
+    net__fact(net_st, NET_ROOM, -1, 0, 0, code)
     return
   }
   if net_st.net__r_state == NET_R_ASK {
     if v == null {
-      net__room_fail(base_st, net_st, NET_WHY_NO_ROOM)
+      net__room_fail(net_st, NET_WHY_NO_ROOM)
       return
     }
     net__take_relay(net_st, v)
-    net__room_connect(base_st, net_st, net__json_str(v, "host"), net__json_str(v, "local"))
+    net__room_connect(net_st, net__json_str(v, "host"), net__json_str(v, "local"))
     return
   }
   # the host's look at the room

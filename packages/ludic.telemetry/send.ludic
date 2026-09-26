@@ -1,9 +1,9 @@
 # send.ludic - every frame: a batch when one is due, its answer when it lands, the wait doubled
 # when it failed, the queue on disk every few seconds. One request at a time; nothing waits on it.
 
-export function telemetry_tick(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> void {
+export function telemetry_tick(telemetry_st: mut TelemetryState) -> void {
   if not telemetry_st.telemetry__ready { return }
-  telemetry__id_tick(base_st, telemetry_st)
+  telemetry__id_tick(telemetry_st)
   if not telemetry__enabled() {
     if len(telemetry_st.telemetry__q) > 0 or telemetry_st.telemetry__h >= 0 { telemetry_forget(telemetry_st) }
     return
@@ -21,19 +21,19 @@ export function telemetry_tick(base_st: mut BaseState, telemetry_st: mut Telemet
     telemetry_st.telemetry__saved_ms = now
   }
   if telemetry_st.telemetry__h >= 0 {
-    telemetry__answer(base_st, telemetry_st, now)
+    telemetry__answer(telemetry_st, now)
     return
   }
   if len(telemetry_st.telemetry__q) == 0 { return }
   let early = telemetry_st.telemetry__fails == 0 and len(telemetry_st.telemetry__q) >= c.flush_at
   if early or now >= telemetry_st.telemetry__next_ms {
     telemetry_save(telemetry_st)
-    telemetry__flush(base_st, telemetry_st, now)
+    telemetry__flush(telemetry_st, now)
     if telemetry_st.telemetry__fails == 0 { telemetry_st.telemetry__next_ms = now + c.flush_ms }
   }
 }
 
-function telemetry__answer(base_st: mut BaseState, telemetry_st: mut TelemetryState, now: int) -> void {
+function telemetry__answer(telemetry_st: mut TelemetryState, now: int) -> void {
   let st = telemetry__poll(telemetry_st.telemetry__h)
   if st < 0 { return }
   telemetry_st.telemetry__h = -1
@@ -41,21 +41,21 @@ function telemetry__answer(base_st: mut BaseState, telemetry_st: mut TelemetrySt
     telemetry__queue_drop(telemetry_st, telemetry_st.telemetry__sent_n)
     telemetry_st.telemetry__fails = 0
     telemetry_st.telemetry__next_ms = now + telemetry__conf(telemetry_st).flush_ms
-    telemetry__fact(base_st, telemetry_st, TELEMETRY_SENT, telemetry_st.telemetry__sent_n, st, 0)
+    telemetry__fact(telemetry_st, TELEMETRY_SENT, telemetry_st.telemetry__sent_n, st, 0)
   } else {
     telemetry__backoff(telemetry_st, now)
-    telemetry__fact(base_st, telemetry_st, TELEMETRY_FAILED, telemetry_st.telemetry__sent_n, st, telemetry_st.telemetry__next_ms - now)
+    telemetry__fact(telemetry_st, TELEMETRY_FAILED, telemetry_st.telemetry__sent_n, st, telemetry_st.telemetry__next_ms - now)
   }
   telemetry_save(telemetry_st)
 }
 
-function telemetry__flush(base_st: mut BaseState, telemetry_st: mut TelemetryState, now: int) -> void {
+function telemetry__flush(telemetry_st: mut TelemetryState, now: int) -> void {
   if telemetry_st.telemetry__h >= 0 or len(telemetry_st.telemetry__id) == 0 or len(telemetry_st.telemetry__q) == 0 { return }
   let n = min(telemetry__conf(telemetry_st).batch, len(telemetry_st.telemetry__q))
   let h = telemetry__send(telemetry_st, telemetry_batch_body(telemetry_st, n))
   if h < 0 {
     telemetry__backoff(telemetry_st, now)
-    telemetry__fact(base_st, telemetry_st, TELEMETRY_FAILED, n, 0, telemetry_st.telemetry__next_ms - now)
+    telemetry__fact(telemetry_st, TELEMETRY_FAILED, n, 0, telemetry_st.telemetry__next_ms - now)
     return
   }
   telemetry_st.telemetry__h = h

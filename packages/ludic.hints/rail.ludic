@@ -13,16 +13,16 @@ export state HintsState {
   hn_facts: Queue<HintsFact> = null
 }
 
-export function hints_facts(base_st: mut BaseState, hints_st: mut HintsState) -> Queue<HintsFact> {
-  if hints_st.hn_facts == null { hints_st.hn_facts = queue_new(base_st, "hints.facts") }
+export function hints_facts(hints_st: mut HintsState) -> Queue<HintsFact> {
+  if hints_st.hn_facts == null { hints_st.hn_facts = queue_new("hints.facts") }
   return hints_st.hn_facts
 }
 
-function hn_fact(base_st: mut BaseState, hints_st: mut HintsState, what: int, card: int) -> void {
+function hn_fact(hints_st: mut HintsState, what: int, card: int) -> void {
   let f = new HintsFact
   f.what = what
   f.card = card
-  q_push(base_st, hints_facts(base_st, hints_st), f)
+  q_push(hints_facts(hints_st), f)
 }
 
 # how many the rail holds and how often it is sorted
@@ -96,11 +96,11 @@ export function hints_pick(hints_st: HintsState) -> int { return hints_st.hn_pic
 
 export function hints_hot(hints_st: HintsState, k: int) -> bool { return k == hints_st.hn_pick }
 
-export function hints_reset(base_st: mut BaseState, hints_st: mut HintsState) -> void {
+export function hints_reset(hints_st: mut HintsState) -> void {
   hints_st.hn_top = null
   hints_st.hn_n = 0
   hints_st.hn_t = 0.0
   hints_st.hn_pick = 0
   hints_st.hn_card = -1
-  q_clear(base_st, hints_facts(base_st, hints_st))
+  q_clear(hints_facts(hints_st))
 }

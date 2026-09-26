@@ -48,15 +48,15 @@ program PhotoTest {
   bind PhotoLight { hour: fn fk_hour, night: fn fk_night, moon: fn fk_moon, dim: fn fk_dim, sun_z: fn fk_sun_z }
   bind PhotoRules { behaviour: fn fk_behaviour, subject_value: fn fk_value }
 
-  function fresh(base_st: mut BaseState, photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) -> void {
-    photo_config(base_st, photo_st, 4)
+  function fresh(photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) -> void {
+    photo_config(photo_st, 4)
     photo_test_st.hour = 12.0
     photo_test_st.night = false
     photo_test_st.dim = 0
     photo_test_st.sun_z = 0.0
     photo_test_st.behaviour = false
   }
-  function facts(base_st: mut BaseState, photo_st: mut PhotoState) -> []PhotoFact { return q_drain(base_st, photo_facts(base_st, photo_st)) }
+  function facts(photo_st: mut PhotoState) -> []PhotoFact { return q_drain(photo_facts(photo_st)) }
   function count(fs: []PhotoFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
@@ -68,8 +68,8 @@ program PhotoTest {
     return photo_frame_subject(photo_st, sp, "deer", x, 0.0, -d, h, false, moment)
   }
 
-  test "a subject ahead and in reach is in the frame; behind, too far, over a ridge or a trunk it is not" (base_st: mut BaseState, photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
-    fresh(base_st, photo_st, photo_test_st)
+  test "a subject ahead and in reach is in the frame; behind, too far, over a ridge or a trunk it is not" (photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
+    fresh(photo_st, photo_test_st)
     expect(shoot(photo_st, 1, 0.0, 20.0, 1.1, 10))
     expect_eq(photo_pending_mask(photo_st), 2)
     expect(photo_pending_tags(photo_st) == "deer")
@@ -90,8 +90,8 @@ program PhotoTest {
     expect_eq(photo_score_frame(1.4, 0.4, 0.1), 0)
   }
 
-  test "the light: gold after dawn, flat at noon, the moon at night, the weather, and backlit" (base_st: mut BaseState, photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
-    fresh(base_st, photo_st, photo_test_st)
+  test "the light: gold after dawn, flat at noon, the moon at night, the weather, and backlit" (photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
+    fresh(photo_st, photo_test_st)
     photo_test_st.hour = 6.5
     expect_eq(photo_score_light(0.0, -20.0), 20)
     photo_test_st.hour = 12.0
@@ -107,8 +107,8 @@ program PhotoTest {
     expect_eq(photo_score_light(0.0, -20.0), 9)
   }
 
-  test "the moment counts by how much subject there is, and a judge of behaviour doubles it" (base_st: mut BaseState, photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
-    fresh(base_st, photo_st, photo_test_st)
+  test "the moment counts by how much subject there is, and a judge of behaviour doubles it" (photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
+    fresh(photo_st, photo_test_st)
     shoot(photo_st, 1, 0.0, 70.0, 0.3, 20)
     let tiny = photo_pending_grade(photo_st)
     shoot(photo_st, 1, 0.0, 6.0, 1.1, 6)
@@ -123,8 +123,8 @@ program PhotoTest {
     expect_near(photo_comp(photo_st, 3), 40.0, 0.01)
   }
 
-  test "the frame takes its best subject, tags each kind once and every legend" (base_st: mut BaseState, photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
-    fresh(base_st, photo_st, photo_test_st)
+  test "the frame takes its best subject, tags each kind once and every legend" (photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
+    fresh(photo_st, photo_test_st)
     photo_frame_begin(photo_st)
     photo_frame_subject(photo_st, 2, "elk", 0.0, 0.0, -60.0, 1.9, false, 6)
     let far = photo_pending_grade(photo_st)
@@ -138,62 +138,62 @@ program PhotoTest {
     expect(photo_pending_why(photo_st) >= PHOTO_WHY_SIZE)
   }
 
-  test "a kept frame is on the roll, its subjects are photographed for good, and a full card says so" (base_st: mut BaseState, photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
-    fresh(base_st, photo_st, photo_test_st)
+  test "a kept frame is on the roll, its subjects are photographed for good, and a full card says so" (photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
+    fresh(photo_st, photo_test_st)
     shoot(photo_st, 3, 0.0, 10.0, 1.1, 15)
     let g = photo_pending_grade(photo_st)
-    expect_eq(photo_keep(base_st, photo_st, "a.png", 2, 7.5), 0)
-    let fs = facts(base_st, photo_st)
+    expect_eq(photo_keep(photo_st, "a.png", 2, 7.5), 0)
+    let fs = facts(photo_st)
     expect_eq(count(fs, PHOTO_KEPT), 1)
     expect_eq(fs[0].firsts, 8)
     expect_eq(photo_species_shot(photo_st), 8)
     expect_eq(photo_best(photo_st, 3), g)
     expect_eq(photo_day(photo_st, 0), 2)
     shoot(photo_st, 3, 0.0, 10.0, 1.1, 15)
-    photo_keep(base_st, photo_st, "b.png", 2, 8.0)
-    expect_eq(facts(base_st, photo_st)[0].firsts, 0)
-    photo_keep(base_st, photo_st, "c.png", 2, 8.0)
-    photo_keep(base_st, photo_st, "d.png", 2, 8.0)
+    photo_keep(photo_st, "b.png", 2, 8.0)
+    expect_eq(facts(photo_st)[0].firsts, 0)
+    photo_keep(photo_st, "c.png", 2, 8.0)
+    photo_keep(photo_st, "d.png", 2, 8.0)
     expect(photo_full(photo_st))
-    expect_eq(photo_keep(base_st, photo_st, "e.png", 2, 8.0), -1)
-    expect_eq(count(facts(base_st, photo_st), PHOTO_FULL), 1)
+    expect_eq(photo_keep(photo_st, "e.png", 2, 8.0), -1)
+    expect_eq(count(facts(photo_st), PHOTO_FULL), 1)
   }
 
-  test "the first frame of a subject is worth its value on the grade's curve; sold is sold" (base_st: mut BaseState, photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
-    fresh(base_st, photo_st, photo_test_st)
+  test "the first frame of a subject is worth its value on the grade's curve; sold is sold" (photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
+    fresh(photo_st, photo_test_st)
     photo_add(photo_st, 1, 9.0, 2, 0, false, "fox", "f.png", 60, PHOTO_WHY_NONE)
     photo_add(photo_st, 1, 9.5, 2, 2, false, "fox", "g.png", 95, PHOTO_WHY_FINE)
     photo_add(photo_st, 1, 9.5, 0, 0, false, "the valley", "h.png", 0, PHOTO_WHY_NONE)
     expect_eq(photo_value(photo_st, 0), int(11.0 * 1.5))
     expect_eq(photo_value(photo_st, 1), int(float(11 + 120) * 4.0))
     expect_eq(photo_value(photo_st, 2), 0)
-    let total = photo_sell_all(base_st, photo_st)
+    let total = photo_sell_all(photo_st)
     expect_eq(total, int(11.0 * 1.5) + int(120.0 * 4.0))
-    expect_eq(count(facts(base_st, photo_st), PHOTO_SOLD), 2)
+    expect_eq(count(facts(photo_st), PHOTO_SOLD), 2)
     expect(photo_sold(photo_st, 0))
     expect_eq(photo_value(photo_st, 0), 0)
     photo_add(photo_st, 1, 10.0, 2, 0, false, "fox", "i.png", 60, PHOTO_WHY_NONE)
     expect_eq(photo_value(photo_st, 3), 0)
   }
 
-  test "forgetting a frame closes the roll up, moves the cover, and names the file" (base_st: mut BaseState, photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
-    fresh(base_st, photo_st, photo_test_st)
+  test "forgetting a frame closes the roll up, moves the cover, and names the file" (photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
+    fresh(photo_st, photo_test_st)
     photo_add(photo_st, 1, 9.0, 2, 0, false, "a", "a.png", 10, 0)
     photo_add(photo_st, 1, 9.0, 4, 0, false, "b", "b.png", 20, 0)
     photo_add(photo_st, 1, 9.0, 8, 0, false, "c", "c.png", 30, 0)
     photo_cover_set(photo_st, 2)
-    photo_remove(base_st, photo_st, 0)
+    photo_remove(photo_st, 0)
     expect_eq(photo_count(photo_st), 2)
     expect(photo_tags(photo_st, 0) == "b")
     expect_eq(photo_grade(photo_st, 1), 30)
     expect_eq(photo_cover(photo_st), 1)
-    let fs = facts(base_st, photo_st)
+    let fs = facts(photo_st)
     expect(fs[0].file == "a.png")
     expect_eq(photo_species_shot(photo_st), 14)
   }
 
-  test "the roll in order: newest first, best first, by subject, and a page at a time" (base_st: mut BaseState, photo_st: mut PhotoState) {
-    photo_config(base_st, photo_st, 20)
+  test "the roll in order: newest first, best first, by subject, and a page at a time" (photo_st: mut PhotoState) {
+    photo_config(photo_st, 20)
     for i in 0 .. 10 { photo_add(photo_st, 1, 9.0, 1 << (i % 3), 0, false, "x", "x.png", (i * 37) % 100, 0) }
     expect_eq(photo_order(photo_st)[0], 9)
     photo_sort_next(photo_st)
@@ -215,15 +215,15 @@ program PhotoTest {
     expect(photo_slug("a very long list of names past twenty") == "a-very-long-list-of-name")
   }
 
-  test "the roll and what was ever photographed come back from the save" (base_st: mut BaseState, photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
-    fresh(base_st, photo_st, photo_test_st)
+  test "the roll and what was ever photographed come back from the save" (photo_st: mut PhotoState, photo_test_st: mut PhotoTestState) {
+    fresh(photo_st, photo_test_st)
     photo_add(photo_st, 3, 18.25, 2, 2, true, "fox", "f.png", 80, PHOTO_WHY_LIGHT)
     photo_record_set(photo_st, 2 | 64, 2)
     photo_cover_set(photo_st, 0)
     let v = photo_save(photo_st)
-    photo_reset(base_st, photo_st)
+    photo_reset(photo_st)
     expect_eq(photo_count(photo_st), 0)
-    photo_load(base_st, photo_st, v, 1)
+    photo_load(photo_st, v, 1)
     expect_eq(photo_count(photo_st), 1)
     expect_near(photo_hour(photo_st, 0), 18.25, 0.01)
     expect(photo_sold(photo_st, 0))

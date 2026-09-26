@@ -24,8 +24,8 @@ export function inv_config(inventory_st: mut InventoryState, keys: []string) -> 
   inv_clear(inventory_st)
 }
 
-export function inv_changes(base_st: mut BaseState, inventory_st: mut InventoryState) -> Queue<ItemChanged> {
-  if inventory_st.iv_changes == null { inventory_st.iv_changes = queue_new(base_st, "inventory.changes") }
+export function inv_changes(inventory_st: mut InventoryState) -> Queue<ItemChanged> {
+  if inventory_st.iv_changes == null { inventory_st.iv_changes = queue_new("inventory.changes") }
   return inventory_st.iv_changes
 }
 

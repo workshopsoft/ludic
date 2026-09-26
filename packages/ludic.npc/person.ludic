@@ -23,12 +23,12 @@ export state NpcState {
 const NP_PI: float = 3.1415927
 const NP_TAU: float = 6.2831853
 
-export function npc_facts(base_st: mut BaseState, npc_st: mut NpcState) -> Queue<NpcFact> {
-  if npc_st.np_facts == null { npc_st.np_facts = queue_new(base_st, "npc.facts") }
+export function npc_facts(npc_st: mut NpcState) -> Queue<NpcFact> {
+  if npc_st.np_facts == null { npc_st.np_facts = queue_new("npc.facts") }
   return npc_st.np_facts
 }
 
-function np_fact(base_st: mut BaseState, npc_st: mut NpcState, what: int, p: NpcPerson, player: int) -> NpcFact {
+function np_fact(npc_st: mut NpcState, what: int, p: NpcPerson, player: int) -> NpcFact {
   let f = new NpcFact
   f.what = what
   f.person = p.id
@@ -36,7 +36,7 @@ function np_fact(base_st: mut BaseState, npc_st: mut NpcState, what: int, p: Npc
   f.fixed = p.fixed
   f.player = player
   f.act = p.act
-  q_push(base_st, npc_facts(base_st, npc_st), f)
+  q_push(npc_facts(npc_st), f)
   return f
 }
 

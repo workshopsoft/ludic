@@ -19,7 +19,7 @@ program LuresTest {
     spot: fn fk_spot
   }
 
-  function facts(base_st: mut BaseState, wildlife_st: mut WildlifeState) -> []WildFact { return q_drain(base_st, wildlife_facts(base_st, wildlife_st)) }
+  function facts(wildlife_st: mut WildlifeState) -> []WildFact { return q_drain(wildlife_facts(wildlife_st)) }
   function set_out(wildlife_tests_fake_st: mut WildlifeTestsFakeState, uid: int, kind: int, diet: int, x: float, z: float, owner: int) -> WildLure {
     let l = new WildLure
     l.uid = uid
@@ -36,16 +36,16 @@ program LuresTest {
     a.timer = 30.0
     return a
   }
-  function go(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, secs: float) -> void {
-    for k in 0 .. int(secs * 20.0) { wildlife_tick_ground(base_st, wildlife_st, a, 0.05, 0.05 / 60.0) }
+  function go(wildlife_st: mut WildlifeState, a: WildAnimal, secs: float) -> void {
+    for k in 0 .. int(secs * 20.0) { wildlife_tick_ground(wildlife_st, a, 0.05, 0.05 / 60.0) }
   }
 
-  test "food of its diet draws it in, it eats, and the fact names what and whose" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "food of its diet draws it in, it eats, and the fact names what and whose" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     set_out(wildlife_tests_fake_st, 41, WILD_FEED, WILD_PLANTS, 20.0, 0.0, 3)
     let a = idle(wildlife_st, 0, 0.0, 0.0)
-    go(base_st, wildlife_st, a, 40.0)
-    let fs = facts(base_st, wildlife_st)
+    go(wildlife_st, a, 40.0)
+    let fs = facts(wildlife_st)
     var fed = 0
     for i in 0 .. len(fs) {
       if fs[i].what == WILD_FED {
@@ -58,38 +58,38 @@ program LuresTest {
     expect(a.calm > 0.0)
   }
 
-  test "food of another diet is left alone" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "food of another diet is left alone" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     set_out(wildlife_tests_fake_st, 41, WILD_FEED, WILD_FISH, 20.0, 0.0, -1)
     let a = idle(wildlife_st, 0, 0.0, 0.0)
-    go(base_st, wildlife_st, a, 5.0)
+    go(wildlife_st, a, 5.0)
     expect(a.state != WILD_APPROACH)
     expect_eq(a.lure, 0)
   }
 
-  test "food taken away while it walks is given up" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "food taken away while it walks is given up" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     set_out(wildlife_tests_fake_st, 41, WILD_FEED, WILD_PLANTS, 50.0, 0.0, -1)
     let a = idle(wildlife_st, 0, 0.0, 0.0)
-    go(base_st, wildlife_st, a, 1.0)
+    go(wildlife_st, a, 1.0)
     expect_eq(a.state, WILD_APPROACH)
     wildlife_tests_fake_st.fk_gone = 41
-    go(base_st, wildlife_st, a, 0.2)
+    go(wildlife_st, a, 0.2)
     expect(a.state != WILD_APPROACH)
   }
 
-  test "a snare holds a small animal, the port can find it, and a release lets it go" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "a snare holds a small animal, the port can find it, and a release lets it go" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     let l = set_out(wildlife_tests_fake_st, 55, WILD_SNARE, 0, 10.0, 0.0, -1)
     l.size = 0
     let h = idle(wildlife_st, 2, 0.0, 0.0)
     for k in 0 .. 40 {
       if h.state == WILD_TRAPPED { break }
-      go(base_st, wildlife_st, h, 2.0)
+      go(wildlife_st, h, 2.0)
     }
     expect_eq(h.state, WILD_TRAPPED)
     expect(wildlife_in_snare(wildlife_st, 55) == h)
-    let fs = facts(base_st, wildlife_st)
+    let fs = facts(wildlife_st)
     var held = false
     for i in 0 .. len(fs) { if fs[i].what == WILD_CAUGHT and fs[i].lure == 55 { held = true } }
     expect(held)
@@ -98,19 +98,19 @@ program LuresTest {
     expect(wildlife_in_snare(wildlife_st, 55) == null)
   }
 
-  test "a thirsty animal walks to the water the port offers, and drinks it down" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "a thirsty animal walks to the water the port offers, and drinks it down" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     let a = idle(wildlife_st, 0, 0.0, 0.0)
     a.thirst = 90.0
     a.state = WILD_WANDER
-    go(base_st, wildlife_st, a, 0.1)
+    go(wildlife_st, a, 0.1)
     expect_eq(a.state, WILD_GO_DRINK)
     expect_eq(a.spot, 900)
-    go(base_st, wildlife_st, a, 40.0)
+    go(wildlife_st, a, 40.0)
     expect(a.thirst < 60.0)
   }
 
-  test "seed down brings a bird out of the sky and it takes it" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "seed down brings a bird out of the sky and it takes it" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     set_out(wildlife_tests_fake_st, 77, WILD_FEED, WILD_SEED, 30.0, 0.0, -1)
     let j = wildlife_new(wildlife_st, 3, 0.0, 0.0, false)
@@ -119,9 +119,9 @@ program LuresTest {
     var landed = false
     var ate = false
     for k in 0 .. 4000 {
-      wildlife_tick(base_st, wildlife_st, 0.05, 0.0)
+      wildlife_tick(wildlife_st, 0.05, 0.0)
       if j.state == WILD_PERCH { landed = true }
-      let fs = facts(base_st, wildlife_st)
+      let fs = facts(wildlife_st)
       for i in 0 .. len(fs) { if fs[i].what == WILD_FED and fs[i].diet == WILD_SEED { ate = true } }
       if ate { break }
     }

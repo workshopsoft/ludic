@@ -1,5 +1,5 @@
 # system.ludic - the weather as a system: PH_SIMULATE, and its own save section
-function weather_tick(base_st: mut BaseState, weather_st: mut WeatherState, t: Tick) -> void { weather_run(base_st, weather_st, t.dt, t.hours) }
+function weather_tick(weather_st: mut WeatherState, t: Tick) -> void { weather_run(weather_st, t.dt, t.hours) }
 
 export function weather_save(weather_st: WeatherState) -> Val {
   let v = Value.object()
@@ -22,8 +22,8 @@ function wx_kind_ok(weather_st: WeatherState, k: int) -> int {
   return k
 }
 
-export function weather_load(base_st: mut BaseState, weather_st: mut WeatherState, v: Val, version: int) -> void {
-  weather_reset(base_st, weather_st)
+export function weather_load(weather_st: mut WeatherState, v: Val, version: int) -> void {
+  weather_reset(weather_st)
   weather_st.wx_state = wx_kind_ok(weather_st, sv_int(v, "state", 0))
   weather_st.wx_next = wx_kind_ok(weather_st, sv_int(v, "next", 0))
   weather_st.wx_left = sv_float(v, "left", 10.0)

@@ -31,7 +31,7 @@ program WildlifeTest {
     spot: fn fk_spot
   }
 
-  function facts(base_st: mut BaseState, wildlife_st: mut WildlifeState) -> []WildFact { return q_drain(base_st, wildlife_facts(base_st, wildlife_st)) }
+  function facts(wildlife_st: mut WildlifeState) -> []WildFact { return q_drain(wildlife_facts(wildlife_st)) }
   function count(fs: []WildFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
@@ -47,8 +47,8 @@ program WildlifeTest {
     wildlife_tests_fake_st.fk_px[0] = x
     wildlife_tests_fake_st.fk_pz[0] = z
   }
-  function go(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, secs: float) -> void {
-    for k in 0 .. int(secs * 20.0) { wildlife_tick_ground(base_st, wildlife_st, a, 0.05, 0.05 / 60.0) }
+  function go(wildlife_st: mut WildlifeState, a: WildAnimal, secs: float) -> void {
+    for k in 0 .. int(secs * 20.0) { wildlife_tick_ground(wildlife_st, a, 0.05, 0.05 / 60.0) }
   }
 
   test "the table handed in numbers the species, and a new animal is born through the port" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
@@ -79,24 +79,24 @@ program WildlifeTest {
     expect_eq(wildlife_count_all(wildlife_st), wildlife_count(wildlife_st, 0) + wildlife_count(wildlife_st, 1) + wildlife_count(wildlife_st, 2) + wildlife_count(wildlife_st, 3))
   }
 
-  test "a player far off makes no difference that lasts: the alert settles under the unaware line" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "a player far off makes no difference that lasts: the alert settles under the unaware line" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     let a = deer_at(wildlife_st, 0.0, 0.0)
     player_at(wildlife_tests_fake_st, 55.0, 0.0)
     wildlife_tests_fake_st.fk_noise = 0.3
-    go(base_st, wildlife_st, a, 60.0)
+    go(wildlife_st, a, 60.0)
     expect(a.alert < 25.0)
     expect(a.state != WILD_FLEE)
   }
 
-  test "close and in the open it is flushed, runs, and says so" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "close and in the open it is flushed, runs, and says so" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     let a = deer_at(wildlife_st, 0.0, 0.0)
     player_at(wildlife_tests_fake_st, 8.0, 0.0)
     wildlife_tests_fake_st.fk_noise = 0.8
-    go(base_st, wildlife_st, a, 10.0)
+    go(wildlife_st, a, 10.0)
     expect(a.spook > 0.0)
-    let fs = facts(base_st, wildlife_st)
+    let fs = facts(wildlife_st)
     expect(count(fs, WILD_FLED) >= 1)
     expect(a.x < 0.0)
   }
@@ -135,33 +135,33 @@ program WildlifeTest {
     expect_near(wildlife_alert_rate(wildlife_st, a, 0, 60.0), 0.0, 0.0001)
   }
 
-  test "a charger comes at a player inside its reach, and a shove is a fact for the game" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "a charger comes at a player inside its reach, and a shove is a fact for the game" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     let b = wildlife_make(wildlife_st, 1, 0.0, 0.0, false, 0.0, 0, 1.0, 2)
     player_at(wildlife_tests_fake_st, 6.0, 0.0)
-    wildlife_tick_ground(base_st, wildlife_st, b, 0.05, 0.001)
+    wildlife_tick_ground(wildlife_st, b, 0.05, 0.001)
     expect_eq(b.state, WILD_CHARGE)
-    go(base_st, wildlife_st, b, 2.0)
-    let fs = facts(base_st, wildlife_st)
+    go(wildlife_st, b, 2.0)
+    let fs = facts(wildlife_st)
     expect_eq(count(fs, WILD_CHARGED), 1)
     expect_eq(count(fs, WILD_SHOVED), 1)
     expect(b.calm > 0.0)
   }
 
-  test "away is hidden and skipped, gone is removed and said" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "away is hidden and skipped, gone is removed and said" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     let a = deer_at(wildlife_st, 0.0, 0.0)
     player_at(wildlife_tests_fake_st, 10.0, 0.0)
     wildlife_tests_fake_st.fk_about = WILD_AWAY
-    wildlife_tick(base_st, wildlife_st, 0.05, 0.001)
+    wildlife_tick(wildlife_st, 0.05, 0.001)
     expect(not a.shown and a.alive)
     wildlife_tests_fake_st.fk_about = WILD_GONE
-    wildlife_tick(base_st, wildlife_st, 0.05, 0.001)
+    wildlife_tick(wildlife_st, 0.05, 0.001)
     expect(not a.alive)
-    expect_eq(count(facts(base_st, wildlife_st), WILD_WENT), 1)
+    expect_eq(count(facts(wildlife_st), WILD_WENT), 1)
   }
 
-  test "a walker leaves a print every 2.8 m, and player 0 spots a species once" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "a walker leaves a print every 2.8 m, and player 0 spots a species once" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     let a = deer_at(wildlife_st, 0.0, 0.0)
     player_at(wildlife_tests_fake_st, 40.0, 0.0)
@@ -170,14 +170,14 @@ program WildlifeTest {
     a.tx = 0.0
     a.tz = -100.0
     a.timer = 100.0
-    for k in 0 .. 200 { wildlife_tick(base_st, wildlife_st, 0.05, 0.0) }
-    let fs = facts(base_st, wildlife_st)
+    for k in 0 .. 200 { wildlife_tick(wildlife_st, 0.05, 0.0) }
+    let fs = facts(wildlife_st)
     expect(count(fs, WILD_PRINT) >= 3)
     expect_eq(count(fs, WILD_SPOTTED), 1)
     expect(wildlife_seen(wildlife_st, 0))
   }
 
-  test "the record and the found ranges come back from the save section" (base_st: mut BaseState, wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "the record and the found ranges come back from the save section" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     fk_setup(wildlife_st, wildlife_tests_fake_st)
     wildlife_spawn(wildlife_st, 0.0, 0.0)
     wildlife_mark_fed(wildlife_st, 2)
@@ -185,9 +185,9 @@ program WildlifeTest {
     let r = wildlife_ranges(wildlife_st)[0]
     wildlife_ranges_visit(wildlife_st, r.x, r.z)
     let v = wildlife_save(wildlife_st)
-    wildlife_reset(base_st, wildlife_st)
+    wildlife_reset(wildlife_st)
     expect(not wildlife_fed_any(wildlife_st) and not wildlife_ranges(wildlife_st)[0].found)
-    wildlife_load(base_st, wildlife_st, v, 1)
+    wildlife_load(wildlife_st, v, 1)
     expect(wildlife_fed_any(wildlife_st))
     expect_eq(wildlife_fed_mask(wildlife_st), 4)
     expect(wildlife_seen(wildlife_st, 0))

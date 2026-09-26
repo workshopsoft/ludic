@@ -1,6 +1,6 @@
 # needs.ludic - thirst and hunger climb with the game hours (midday is thirsty work, a run costs more
 # than a graze, dawn and dusk are when they go down to drink), and a walker leaves droppings
-function wl_needs(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, gh: float) -> void {
+function wl_needs(wildlife_st: mut WildlifeState, a: WildAnimal, gh: float) -> void {
   let h = WildlifeWorld.hour()
   var thirst = 8.0
   var hunger = 5.0
@@ -18,5 +18,5 @@ function wl_needs(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: Wil
   a.scat_t = 120.0 + wl_rnd(wildlife_st) * 300.0
   wl_near(wildlife_st, a.x, a.z)
   if wl_pdist(wildlife_st.wl_near_i, a) > 500.0 { return }      # further than 500 m from everyone: nobody would find it
-  wl_fact(base_st, wildlife_st, WILD_SCAT, a)
+  wl_fact(wildlife_st, WILD_SCAT, a)
 }

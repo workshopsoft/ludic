@@ -42,13 +42,13 @@ function sg_read(settings_st: mut SettingsState, v: Val, id: int) -> void {
 
 # one setting from a JSON value in the file's own form (a row in a settings screen hands these):
 # a change is a fact
-export function settings_set_value(base_st: mut BaseState, settings_st: mut SettingsState, id: int, x: Val) -> void {
+export function settings_set_value(settings_st: mut SettingsState, id: int, x: Val) -> void {
   let d = settings_st.sg_defs[id]
   if d.kind == SETTING_TEXT {
-    if Value.kind(x) == 4 { settings_set_text(base_st, settings_st, id, Value.as_str(x)) }
+    if Value.kind(x) == 4 { settings_set_text(settings_st, id, Value.as_str(x)) }
   } else if d.kind == SETTING_FLOAT {
-    settings_set_float(base_st, settings_st, id, float(Value.as_int(x)) / 1000.0)
+    settings_set_float(settings_st, id, float(Value.as_int(x)) / 1000.0)
   } else {
-    settings_set_int(base_st, settings_st, id, Value.as_int(x))
+    settings_set_int(settings_st, id, Value.as_int(x))
   }
 }

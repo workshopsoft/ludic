@@ -3,7 +3,9 @@
 # migrate.ludic, `ludicc --migrate-state <plan>`); this applies them to the source, file by file,
 # and prints what it could not decide.
 #
-#   ludic migrate state [file] [--runtime] [--unsafe] [--dry-run]
+#   ludic migrate state [file|dir...] [--prune] [--runtime] [--unsafe] [--dry-run]
+#   --prune also takes out every state parameter (and the argument that fills it) a function no
+#   longer uses, nor anything it calls
 #
 # Run it once per program that uses what changes (a package's test programs, the game's entry,
 # its lab): a later run finds the states an earlier one made and passes them on.
@@ -80,6 +82,30 @@ function mgx_rtrim(s: pointer) -> pointer {
   while n > 0 and (s[n - 1] == 10 or s[n - 1] == 13 or s[n - 1] == 32) { n -= 1 }
   return sslice(s, 0, n)
 }
+function mgx_merge_dels(f: []pointer, a: []int, b: []int) -> void {
+  let used = new []bool
+  for i in 0 .. len(f) { push(used, false) }
+  for i in 0 .. len(f) {
+    if not used[i] {
+      var lo = a[i]
+      var hi = b[i]
+      var grew = true
+      while grew {
+        grew = false
+        for j in 0 .. len(f) {
+          if not used[j] and j != i and f[j] == f[i] and a[j] <= hi and b[j] >= lo {
+            if a[j] < lo { lo = a[j] }
+            if b[j] > hi { hi = b[j] }
+            used[j] = true
+            grew = true
+          }
+        }
+      }
+      used[i] = true
+      mgx_edit(f[i], lo, hi - lo, "")
+    }
+  }
+}
 # the brace that closes the first block after `at` (strings skipped), or -1
 function mgx_close(t: pointer, at: int) -> int {
   var i = at
@@ -146,13 +172,14 @@ function mgx_mine(path: pointer) -> bool {
 }
 function cmd_migrate() -> int {
   if arg_count() < 3 or not (arg(2) == "state") {
-    err("usage: ludic migrate state [file|dir...] [--runtime] [--unsafe] [--dry-run]\n")
+    err("usage: ludic migrate state [file|dir...] [--prune] [--runtime] [--unsafe] [--dry-run]\n")
     return 2
   }
   let srcs = new []pointer
   mgx_roots = new []pointer
   var runtime = ""
   var dry = false
+  var prune = ""
   var ai = 3
   while ai < arg_count() {
     let a = arg(ai)
@@ -162,6 +189,7 @@ function cmd_migrate() -> int {
     }
     else if a == "--unsafe" { g_unsafe_build = true }
     else if a == "--dry-run" { dry = true }
+    else if a == "--prune" { prune = " --migrate-prune" }
     else if a[0] == '-' { err(`ludic migrate: unknown option {a}\n`);  return 2 }
     else if shq(`test -d {sh_single(a)}`) {
       let found = test_files_in(a)
@@ -187,7 +215,7 @@ function cmd_migrate() -> int {
   for i in 0 .. len(srcs) {
     let plan = tmp_path(`migrate{string(i)}.plan`)
     shell(`rm -f {plan}`)
-    shq(`{ludicc()} --headless{unsafe_flag()}{runtime} --migrate-state {plan} {sh_single(srcs[i])} > {tmp_path("migrate.err")} 2>&1`)
+    shq(`{ludicc()} --headless{unsafe_flag()}{runtime}{prune} --migrate-state {plan} {sh_single(srcs[i])} > {tmp_path("migrate.err")} 2>&1`)
     let text = read_file(plan)
     if text == null {
       err(`ludic migrate: the compiler wrote no plan for {srcs[i]}:\n`)
@@ -246,12 +274,15 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
   let reports = new []pointer
   let foreign = new []pointer          # files a plan would change that the migration may not
   let lfile = new []pointer
+  let dfile = new []pointer            # DELITEM: ranges to take out, merged where they touch
+  let da = new []int
+  let db = new []int
   let lpos = new []int
   for i in 0 .. len(lines) {
     let w = dp_words(lines[i])
     if len(w) == 0 { continue }
     var at = ""
-    if (w[0] == "VAR") or (w[0] == "REF") or (w[0] == "INS") or (w[0] == "CLOSE") or (w[0] == "LET") { at = w[1] }
+    if (w[0] == "VAR") or (w[0] == "REF") or (w[0] == "INS") or (w[0] == "CLOSE") or (w[0] == "LET") or (w[0] == "DELITEM") { at = w[1] }
     if (w[0] == "STATE") and len(w) > 2 { at = w[2] }
     if len(at) > 0 and mgx_roots != null and not mgx_mine(at) {
       var seen = false
@@ -292,6 +323,30 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
       mgx_edit(w[1], s_to_int(w[2]), s_to_int(w[3]), mgx_unesc(w[4]))
     } else if (w[0] == "INS") and len(w) == 4 {
       mgx_edit(w[1], s_to_int(w[2]), 0, mgx_unesc(w[3]))
+    } else if (w[0] == "DELITEM") and len(w) == 3 {
+      # a parameter or an argument taken out, with the comma that goes with it
+      let t = mgx_text_of(w[1])
+      let p = s_to_int(w[2])
+      var e = p
+      var depth = 0
+      while t[e] != 0 and not (depth == 0 and (t[e] == ',' or t[e] == ')')) {
+        if t[e] == '(' or t[e] == '[' { depth += 1 }
+        if t[e] == ')' or t[e] == ']' { depth -= 1 }
+        e += 1
+      }
+      var a = p
+      var b = e
+      if t[e] == ',' {
+        b = e + 1
+        while t[b] == ' ' { b += 1 }
+      } else {
+        var k = p - 1
+        while k > 0 and t[k] == ' ' { k -= 1 }
+        if t[k] == ',' { a = k }
+      }
+      push(dfile, w[1])
+      push(da, a)
+      push(db, b)
     } else if (w[0] == "CLOSE") and len(w) == 4 {
       let t = mgx_text_of(w[1])
       var k = s_to_int(w[2])
@@ -302,6 +357,8 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
       push(lpos, s_to_int(w[2]))
     } else if w[0] == "?" { push(reports, lines[i]) }
   }
+  # the taken-out ranges: two neighbours in one list overlap (each with its comma), so they merge
+  mgx_merge_dels(dfile, da, db)
   # a var nothing writes is a let - unless another program's plan saw it written
   var lets = 0
   for l in 0 .. len(lfile) {
@@ -425,7 +482,10 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
     }
     if len(idx) == 0 { continue }
     files += 1
-    if dry { continue }
+    if dry {
+      edits += len(idx)                          # what would be made; nothing is written
+      continue
+    }
     let out = file_open(path, "wb")
     if out == null {
       err(`ludic migrate: cannot write {path}\n`)

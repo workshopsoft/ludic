@@ -26,7 +26,7 @@ function nd_gentle(needs_st: mut NeedsState) -> void {
 }
 
 # `dt` real seconds; run it after everything this frame that could fill a need
-export function needs_watch(base_st: mut BaseState, needs_st: mut NeedsState, dt: float) -> void {
+export function needs_watch(needs_st: mut NeedsState, dt: float) -> void {
   if NeedsWorld.held() { return }
   if NeedsWorld.gentle() {
     nd_gentle(needs_st)
@@ -36,18 +36,18 @@ export function needs_watch(base_st: mut BaseState, needs_st: mut NeedsState, dt
   if need < 0 {
     if needs_st.nd_legs > 0.0 and nd_clear(needs_st) {
       needs_st.nd_legs = 0.0
-      nd_fact(base_st, needs_st, NEEDS_RESTORED, needs_st.nd_last)
+      nd_fact(needs_st, NEEDS_RESTORED, needs_st.nd_last)
     }
     return
   }
   if needs_st.nd_legs == 0.0 {
     needs_st.nd_legs = LAST_LEGS
     needs_st.nd_last = need
-    nd_fact(base_st, needs_st, NEEDS_CRITICAL, need)
+    nd_fact(needs_st, NEEDS_CRITICAL, need)
     return
   }
   needs_st.nd_legs = needs_st.nd_legs - dt
   if needs_st.nd_legs > 0.0 { return }
   needs_st.nd_legs = 0.0
-  nd_fact(base_st, needs_st, NEEDS_COLLAPSED, needs_st.nd_last)
+  nd_fact(needs_st, NEEDS_COLLAPSED, needs_st.nd_last)
 }

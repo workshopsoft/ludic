@@ -1,5 +1,5 @@
 # update.ludic - a frame of the body: the stick in the camera's frame, the step, the gait, the camera
-export function char_update(base_st: mut BaseState, character_st: mut CharacterState, ix0: float, iz0: float, run0: bool, jump0: bool, dyaw: float, dpitch: float, dt: float) -> void {
+export function char_update(character_st: mut CharacterState, ix0: float, iz0: float, run0: bool, jump0: bool, dyaw: float, dpitch: float, dt: float) -> void {
   var run = run0 and character_st.chr_can_run
   var ix = ix0
   var iz = iz0
@@ -32,8 +32,8 @@ export function char_update(base_st: mut BaseState, character_st: mut CharacterS
     mag = 1.0
   }
   chr_steer(character_st, dx, dz, mag, run, dt)
-  let dist = chr_travel(base_st, character_st, dx, dz, -Math.sin(character_st.chr_yaw), -Math.cos(character_st.chr_yaw), jump, dt)
-  chr_gait(base_st, character_st, dist, dyaw, dpitch, dt)
+  let dist = chr_travel(character_st, dx, dz, -Math.sin(character_st.chr_yaw), -Math.cos(character_st.chr_yaw), jump, dt)
+  chr_gait(character_st, dist, dyaw, dpitch, dt)
   char_camera(character_st, dt)
 }
 
@@ -47,7 +47,7 @@ function chr_ride_update(character_st: mut CharacterState, ix: float, iz: float,
 }
 
 # a frame from the input port: the game's devices, read once, stepping the body
-export function char_tick(base_st: mut BaseState, character_st: mut CharacterState, dt: float) -> void {
+export function char_tick(character_st: mut CharacterState, dt: float) -> void {
   var ix = 0.0
   var iz = 0.0
   var run = false
@@ -64,5 +64,5 @@ export function char_tick(base_st: mut BaseState, character_st: mut CharacterSta
     let wheel = CharacterInput.zoom()
     if wheel != 0.0 { character_st.chr_cam_dist = Math.clamp(character_st.chr_cam_dist - wheel * 0.35, 1.8, 9.0) }
   }
-  char_update(base_st, character_st, ix, iz, run, jump, dyaw, dpitch, dt)
+  char_update(character_st, ix, iz, run, jump, dyaw, dpitch, dt)
 }

@@ -44,12 +44,12 @@ program NeedsTest {
     bonus: fn fake_bonus
   }
 
-  function fresh(base_st: mut BaseState, needs_st: mut NeedsState) -> void { needs_reset(base_st, needs_st) }
+  function fresh(needs_st: mut NeedsState) -> void { needs_reset(needs_st) }
   function hours(needs_st: mut NeedsState, h: float) -> void { for i in 0 .. int(h * 10.0) { needs_run(needs_st, 0.1) } }
-  function facts(base_st: mut BaseState, needs_st: mut NeedsState) -> []NeedFact { return q_drain(base_st, needs_facts(base_st, needs_st)) }
+  function facts(needs_st: mut NeedsState) -> []NeedFact { return q_drain(needs_facts(needs_st)) }
 
-  test "a new body is warm, rested, fed and watered" (base_st: mut BaseState, needs_st: mut NeedsState) {
-    fresh(base_st, needs_st)
+  test "a new body is warm, rested, fed and watered" (needs_st: mut NeedsState) {
+    fresh(needs_st)
     expect(needs_warmth(needs_st) == 100.0)
     expect(needs_energy(needs_st) == 100.0)
     expect(needs_food(needs_st) == 70.0)
@@ -58,8 +58,8 @@ program NeedsTest {
     expect(needs_can_run(needs_st))
   }
 
-  test "a walking day empties a full bar of food in about a day, a run much sooner" (base_st: mut BaseState, needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
-    fresh(base_st, needs_st)
+  test "a walking day empties a full bar of food in about a day, a run much sooner" (needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
+    fresh(needs_st)
     needs_set(needs_st, NEED_FOOD, 100.0)
     needs_test_st.act = NEEDS_WALK
     hours(needs_st, 12.0)
@@ -70,8 +70,8 @@ program NeedsTest {
     expect(needs_food(needs_st) < 20.0)
   }
 
-  test "the sun and the lake make thirst faster, but never past the cap" (base_st: mut BaseState, needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
-    fresh(base_st, needs_st)
+  test "the sun and the lake make thirst faster, but never past the cap" (needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
+    fresh(needs_st)
     needs_set(needs_st, NEED_WATER, 100.0)
     needs_test_st.act = NEEDS_SWIM_HARD
     needs_test_st.hot = true
@@ -79,16 +79,16 @@ program NeedsTest {
     expect_near(needs_water(needs_st), 92.5, 0.01)
   }
 
-  test "thirst off holds water full" (base_st: mut BaseState, needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
-    fresh(base_st, needs_st)
+  test "thirst off holds water full" (needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
+    fresh(needs_st)
     needs_test_st.thirst = false
     needs_set(needs_st, NEED_WATER, 10.0)
     hours(needs_st, 1.0)
     expect(needs_water(needs_st) == 100.0)
   }
 
-  test "the port's drain and bonus are what the bars get" (base_st: mut BaseState, needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
-    fresh(base_st, needs_st)
+  test "the port's drain and bonus are what the bars get" (needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
+    fresh(needs_st)
     needs_test_st.food_mult = 2.0
     hours(needs_st, 1.0)
     expect_near(needs_food(needs_st), 62.0, 0.01)
@@ -99,8 +99,8 @@ program NeedsTest {
     expect_near(needs_warmth(needs_st), 60.0, 0.01)
   }
 
-  test "clothing keeps what is being lost, and a dry body loses more" (base_st: mut BaseState, needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
-    fresh(base_st, needs_st)
+  test "clothing keeps what is being lost, and a dry body loses more" (needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
+    fresh(needs_st)
     needs_test_st.air = -20.0
     needs_test_st.keep = 0.5
     hours(needs_st, 1.0)
@@ -112,8 +112,8 @@ program NeedsTest {
     expect_near(needs_warmth(needs_st), 75.0, 0.01)
   }
 
-  test "sitting gives energy back, swimming takes it" (base_st: mut BaseState, needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
-    fresh(base_st, needs_st)
+  test "sitting gives energy back, swimming takes it" (needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
+    fresh(needs_st)
     needs_set(needs_st, NEED_ENERGY, 40.0)
     needs_test_st.act = NEEDS_SIT
     hours(needs_st, 1.0)
@@ -123,8 +123,8 @@ program NeedsTest {
     expect_near(needs_energy(needs_st), 52.0, 0.01)
   }
 
-  test "meals fill, and every bar is held to 0..100" (base_st: mut BaseState, needs_st: mut NeedsState) {
-    fresh(base_st, needs_st)
+  test "meals fill, and every bar is held to 0..100" (needs_st: mut NeedsState) {
+    fresh(needs_st)
     needs_meal(needs_st, 50.0, 50.0, 10.0)
     expect(needs_food(needs_st) == 100.0)
     expect(needs_water(needs_st) == 100.0)
@@ -134,22 +134,22 @@ program NeedsTest {
     expect(needs_energy(needs_st) == 30.0)
   }
 
-  test "a need at zero is a countdown, then a collapse, as facts" (base_st: mut BaseState, needs_st: mut NeedsState) {
-    fresh(base_st, needs_st)
+  test "a need at zero is a countdown, then a collapse, as facts" (needs_st: mut NeedsState) {
+    fresh(needs_st)
     needs_set(needs_st, NEED_WATER, 0.0)
-    needs_watch(base_st, needs_st, 0.1)
-    let a = facts(base_st, needs_st)
+    needs_watch(needs_st, 0.1)
+    let a = facts(needs_st)
     expect_eq(len(a), 1)
     expect_eq(a[0].what, NEEDS_CRITICAL)
     expect_eq(a[0].need, NEED_WATER)
     expect(needs_last_legs(needs_st) > 0.0)
     expect(needs_pace(needs_st) < 0.6)
     var i = 0
-    while q_len(needs_facts(base_st, needs_st)) == 0 and i < 200 {
-      needs_watch(base_st, needs_st, 0.1)
+    while q_len(needs_facts(needs_st)) == 0 and i < 200 {
+      needs_watch(needs_st, 0.1)
       i += 1
     }
-    let b = facts(base_st, needs_st)
+    let b = facts(needs_st)
     expect_eq(len(b), 1)
     expect_eq(b[0].what, NEEDS_COLLAPSED)
     expect_eq(b[0].need, NEED_WATER)
@@ -159,34 +159,34 @@ program NeedsTest {
     expect_eq(needs_collapses(needs_st), 1)
   }
 
-  test "a drink in time calls the countdown off" (base_st: mut BaseState, needs_st: mut NeedsState) {
-    fresh(base_st, needs_st)
+  test "a drink in time calls the countdown off" (needs_st: mut NeedsState) {
+    fresh(needs_st)
     needs_set(needs_st, NEED_FOOD, 0.0)
-    needs_watch(base_st, needs_st, 0.1)
+    needs_watch(needs_st, 0.1)
     needs_feed(needs_st, NEED_FOOD, 30.0)
-    needs_watch(base_st, needs_st, 0.1)
-    let f = facts(base_st, needs_st)
+    needs_watch(needs_st, 0.1)
+    let f = facts(needs_st)
     expect_eq(len(f), 2)
     expect_eq(f[1].what, NEEDS_RESTORED)
     expect(needs_last_legs(needs_st) == 0.0)
   }
 
-  test "gentle never counts down, and a body already down waits" (base_st: mut BaseState, needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
-    fresh(base_st, needs_st)
+  test "gentle never counts down, and a body already down waits" (needs_st: mut NeedsState, needs_test_st: mut NeedsTestState) {
+    fresh(needs_st)
     needs_test_st.gentle = true
     needs_set(needs_st, NEED_WARMTH, 0.0)
-    needs_watch(base_st, needs_st, 0.1)
+    needs_watch(needs_st, 0.1)
     expect(needs_warmth(needs_st) == 22.0)
-    expect_eq(q_len(needs_facts(base_st, needs_st)), 0)
+    expect_eq(q_len(needs_facts(needs_st)), 0)
     needs_test_st.gentle = false
     needs_test_st.held = true
     needs_set(needs_st, NEED_WARMTH, 0.0)
-    needs_watch(base_st, needs_st, 0.1)
-    expect_eq(q_len(needs_facts(base_st, needs_st)), 0)
+    needs_watch(needs_st, 0.1)
+    expect_eq(q_len(needs_facts(needs_st)), 0)
   }
 
-  test "a hand up costs the body but leaves nothing below twenty" (base_st: mut BaseState, needs_st: mut NeedsState) {
-    fresh(base_st, needs_st)
+  test "a hand up costs the body but leaves nothing below twenty" (needs_st: mut NeedsState) {
+    fresh(needs_st)
     needs_set(needs_st, NEED_FOOD, 25.0)
     needs_helped_up(needs_st)
     expect(needs_food(needs_st) == 20.0)
@@ -194,17 +194,17 @@ program NeedsTest {
     expect(needs_energy(needs_st) == 75.0)
   }
 
-  test "a save section reads back the same body" (base_st: mut BaseState, needs_st: mut NeedsState) {
-    fresh(base_st, needs_st)
+  test "a save section reads back the same body" (needs_st: mut NeedsState) {
+    fresh(needs_st)
     needs_set(needs_st, NEED_FOOD, 33.5)
     needs_set(needs_st, NEED_WARMTH, 12.25)
     needs_went_down(needs_st)
     let root = save_tree()
     save_section(root, "needs", 1, needs_save(needs_st))
     let text = save_encode(root)
-    needs_reset(base_st, needs_st)
+    needs_reset(needs_st)
     let n = load_section(save_decode(text), "needs")
-    needs_load(base_st, needs_st, n.data, n.version)
+    needs_load(needs_st, n.data, n.version)
     expect(needs_food(needs_st) == 33.5)
     expect(needs_warmth(needs_st) == 12.25)
     expect_eq(needs_collapses(needs_st), 1)

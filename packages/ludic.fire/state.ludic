@@ -43,16 +43,16 @@ export property FireFact {
 
 
 # the facts, oldest first; the game drains them into its notices
-export function fire_facts(base_st: mut BaseState, fire_st: mut FireState) -> Queue<FireFact> {
-  if fire_st.fr_facts == null { fire_st.fr_facts = queue_new(base_st, "fire.facts") }
+export function fire_facts(fire_st: mut FireState) -> Queue<FireFact> {
+  if fire_st.fr_facts == null { fire_st.fr_facts = queue_new("fire.facts") }
   return fire_st.fr_facts
 }
 
-function fr_fact(base_st: mut BaseState, fire_st: mut FireState, what: int) -> void {
+function fr_fact(fire_st: mut FireState, what: int) -> void {
   let f = new FireFact
   f.what = what
   f.fuel = fire_st.fr_fuel
-  q_push(base_st, fire_facts(base_st, fire_st), f)
+  q_push(fire_facts(fire_st), f)
 }
 
 # a game's numbers: logs to light, minutes a new fire and a log are worth, when it is low

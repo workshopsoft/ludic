@@ -1,13 +1,13 @@
 # tick.ludic - once a frame while an update runs: whatever the step waits on, and the next step
-export function update_tick(base_st: mut BaseState, update_st: mut UpdateState) -> void {
+export function update_tick(update_st: mut UpdateState) -> void {
   update__rate_tick(update_st)
-  if update_st.update__state == UPDATE_FEED { update__feed_tick(base_st, update_st) }
-  else if update_st.update__state == UPDATE_FETCH { update__fetch_tick(base_st, update_st) }
-  else if update_st.update__state == UPDATE_CHECK { update__check_tick(base_st, update_st) }
-  else if update_st.update__state == UPDATE_PATCH { update__patch_tick(base_st, update_st) }
+  if update_st.update__state == UPDATE_FEED { update__feed_tick(update_st) }
+  else if update_st.update__state == UPDATE_FETCH { update__fetch_tick(update_st) }
+  else if update_st.update__state == UPDATE_CHECK { update__check_tick(update_st) }
+  else if update_st.update__state == UPDATE_PATCH { update__patch_tick(update_st) }
 }
 
-function update__feed_tick(base_st: mut BaseState, update_st: mut UpdateState) -> void {
+function update__feed_tick(update_st: mut UpdateState) -> void {
   let st = UpdateNet.poll(update_st.update__h)
   if st < 0 { return }
   var feed: Val = null
@@ -15,47 +15,47 @@ function update__feed_tick(base_st: mut BaseState, update_st: mut UpdateState) -
   UpdateNet.free(update_st.update__h)
   update_st.update__h = -1
   if feed == null {
-    update__fail(base_st, update_st, UPDATE_ERR_UNREACHABLE)
+    update__fail(update_st, UPDATE_ERR_UNREACHABLE)
     return
   }
   if not update_plan(update_st, feed) {
-    update__fail(base_st, update_st, UPDATE_ERR_NOTHING)
+    update__fail(update_st, UPDATE_ERR_NOTHING)
     return
   }
-  update__fact(base_st, update_st, UPDATE_STARTED)
-  update__fetch(base_st, update_st, 0)
+  update__fact(update_st, UPDATE_STARTED)
+  update__fetch(update_st, 0)
 }
 
-function update__fetch_tick(base_st: mut BaseState, update_st: mut UpdateState) -> void {
+function update__fetch_tick(update_st: mut UpdateState) -> void {
   let st = UpdateNet.poll(update_st.update__h)
   if st < 0 { return }
   UpdateNet.free(update_st.update__h)
   update_st.update__h = -1
   if st == 0 {
     Fs.remove(update__path(update_st, update_st.update__i))
-    update__fail(base_st, update_st, UPDATE_ERR_DOWNLOAD)
+    update__fail(update_st, UPDATE_ERR_DOWNLOAD)
     return
   }
-  update__check(base_st, update_st, update_st.update__i)
+  update__check(update_st, update_st.update__i)
 }
 
 # a package rebuilt from deltas is not compared with the full one's hash: patch re-assembles the
 # archive, so the same files come out as different bytes
-function update__check_tick(base_st: mut BaseState, update_st: mut UpdateState) -> void {
+function update__check_tick(update_st: mut UpdateState) -> void {
   let code = UpdateProc.poll(update_st.update__proc)
   if code < 0 { return }
   UpdateProc.free(update_st.update__proc)
   update_st.update__proc = -1
   if code != 0 or update__hash_read(update_st) != Text.upper(update_st.update__sha[update_st.update__i]) {
     Fs.remove(update__path(update_st, update_st.update__i))
-    update__fail(base_st, update_st, UPDATE_ERR_CORRUPT)
+    update__fail(update_st, UPDATE_ERR_CORRUPT)
     return
   }
   update_st.update__done_bytes += update_st.update__size[update_st.update__i]
-  if update_st.update__delta[update_st.update__i] { update__patch(base_st, update_st, update_st.update__i) } else { update__apply(base_st, update_st, update__path(update_st, update_st.update__i)) }
+  if update_st.update__delta[update_st.update__i] { update__patch(update_st, update_st.update__i) } else { update__apply(update_st, update__path(update_st, update_st.update__i)) }
 }
 
-function update__patch(base_st: mut BaseState, update_st: mut UpdateState, i: int) -> void {
+function update__patch(update_st: mut UpdateState, i: int) -> void {
   let out = update_packages(update_st) + update__sep() + update_st.update__full[i]
   if Fs.exists(out) { Fs.remove(out) }
   let args = new []string
@@ -69,7 +69,7 @@ function update__patch(base_st: mut BaseState, update_st: mut UpdateState, i: in
   push(args, out)
   update_st.update__proc = UpdateProc.spawn(update__updater(update_st), args)
   if update_st.update__proc < 0 {
-    update__fail(base_st, update_st, UPDATE_ERR_PATCH_START)
+    update__fail(update_st, UPDATE_ERR_PATCH_START)
     return
   }
   update_st.update__old = out
@@ -77,22 +77,22 @@ function update__patch(base_st: mut BaseState, update_st: mut UpdateState, i: in
   update_st.update__step_t0 = UpdateWorld.now_ms()
 }
 
-function update__patch_tick(base_st: mut BaseState, update_st: mut UpdateState) -> void {
+function update__patch_tick(update_st: mut UpdateState) -> void {
   let code = UpdateProc.poll(update_st.update__proc)
   if code < 0 { return }
   UpdateProc.free(update_st.update__proc)
   update_st.update__proc = -1
   if code != 0 or not Fs.exists(update_st.update__old) {
-    update__fail(base_st, update_st, UPDATE_ERR_PATCH)
+    update__fail(update_st, UPDATE_ERR_PATCH)
     return
   }
-  if update_st.update__i + 1 < len(update_st.update__files) { update__fetch(base_st, update_st, update_st.update__i + 1) } else { update__apply(base_st, update_st, update_st.update__old) }
+  if update_st.update__i + 1 < len(update_st.update__files) { update__fetch(update_st, update_st.update__i + 1) } else { update__apply(update_st, update_st.update__old) }
 }
 
 # Velopack waits for this process to be gone, swaps the install and starts the new version; the
 # game hears UPDATE_APPLYING and exits. On macOS neither the root nor the packages are where
 # UpdateMac would look, so both are named.
-function update__apply(base_st: mut BaseState, update_st: mut UpdateState, package: string) -> void {
+function update__apply(update_st: mut UpdateState, package: string) -> void {
   update_st.update__package = package
   let args = new []string
   push(args, "apply")
@@ -109,9 +109,9 @@ function update__apply(base_st: mut BaseState, update_st: mut UpdateState, packa
   }
   update_st.update__proc = UpdateProc.spawn(update__updater(update_st), args)
   if update_st.update__proc < 0 {
-    update__fail(base_st, update_st, UPDATE_ERR_APPLY)
+    update__fail(update_st, UPDATE_ERR_APPLY)
     return
   }
   update_st.update__state = UPDATE_APPLY
-  update__fact(base_st, update_st, UPDATE_APPLYING)
+  update__fact(update_st, UPDATE_APPLYING)
 }

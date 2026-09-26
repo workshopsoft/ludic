@@ -13,7 +13,7 @@ export state NpcTestsFakeState {
   fk_gone: int = 0
 }
 
-function fk_setup(base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) -> void {
+function fk_setup(npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) -> void {
   npc_tests_fake_st.fk_hour = 12.0
   npc_tests_fake_st.fk_day = 1
   npc_tests_fake_st.fk_want = 0
@@ -24,7 +24,7 @@ function fk_setup(base_st: mut BaseState, npc_st: mut NpcState, npc_tests_fake_s
   npc_tests_fake_st.fk_born = 0
   npc_tests_fake_st.fk_gone = 0
   npc_clear(npc_st)
-  npc_reset(base_st, npc_st)
+  npc_reset(npc_st)
   npc_seed(npc_st, 7)
   npc_config(npc_st, 10)
 }
@@ -53,10 +53,10 @@ function fk_player_at(npc_tests_fake_st: mut NpcTestsFakeState, x: float, z: flo
 }
 
 # seconds of the place, in twentieths
-function fk_run(base_st: mut BaseState, npc_st: mut NpcState, secs: float) -> void { for k in 0 .. int(secs * 20.0) { npc_tick(base_st, npc_st, 0.05) } }
+function fk_run(npc_st: mut NpcState, secs: float) -> void { for k in 0 .. int(secs * 20.0) { npc_tick(npc_st, 0.05) } }
 
-function fk_count(base_st: mut BaseState, npc_st: mut NpcState, what: int) -> int {
-  let fs = q_drain(base_st, npc_facts(base_st, npc_st))
+function fk_count(npc_st: mut NpcState, what: int) -> int {
+  let fs = q_drain(npc_facts(npc_st))
   var n = 0
   for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
   return n

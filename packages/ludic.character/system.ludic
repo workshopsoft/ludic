@@ -1,6 +1,6 @@
 # system.ludic - the body as a system: reset, a tick from the input port, and nothing saved (where a
 # body stands is the game's to write, with the rest of the player)
-export function char_reset(base_st: mut BaseState, character_st: mut CharacterState) -> void {
+export function char_reset(character_st: mut CharacterState) -> void {
   char_teleport(character_st, 0.0, 0.0, 0.0)
   character_st.chr_time = 0.0
   character_st.chr_phase = 0.0
@@ -11,10 +11,10 @@ export function char_reset(base_st: mut BaseState, character_st: mut CharacterSt
   character_st.chr_land = 0.0
   character_st.chr_edge_said = 0.0
   character_st.chr_fps = false
-  q_clear(base_st, char_facts(base_st, character_st))
+  q_clear(char_facts(character_st))
 }
 
-function chr_sys_tick(base_st: mut BaseState, character_st: mut CharacterState, t: Tick) -> void { char_tick(base_st, character_st, t.dt) }
+function chr_sys_tick(character_st: mut CharacterState, t: Tick) -> void { char_tick(character_st, t.dt) }
 
 export function char_system() -> System {
   let s = system_new("character", PH_INPUT)

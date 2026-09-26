@@ -65,85 +65,85 @@ program CharacterTest {
   bind CharacterBody { riding: fn fk_riding, ride: fn fk_ride, sneaking: fn fk_sneak, pace: fn fk_pace, eyes_ok: fn fk_eyes }
   bind CharacterInput { move_z: fn fk_move_z }
 
-  function fresh(base_st: mut BaseState, character_st: mut CharacterState, x: float, z: float, yaw: float) -> void {
-    char_reset(base_st, character_st)
+  function fresh(character_st: mut CharacterState, x: float, z: float, yaw: float) -> void {
+    char_reset(character_st)
     char_release(character_st, CHAR_HOLD_SCREEN)
     char_teleport(character_st, x, z, yaw)
   }
-  function facts(base_st: mut BaseState, character_st: mut CharacterState) -> []CharacterFact { return q_drain(base_st, char_facts(base_st, character_st)) }
+  function facts(character_st: mut CharacterState) -> []CharacterFact { return q_drain(char_facts(character_st)) }
   function count(fs: []CharacterFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
   }
   # walk the stick straight ahead (the camera looks where the body faces) for `secs`
-  function walk(base_st: mut BaseState, character_st: mut CharacterState, secs: float, hz: float, run: bool) -> void {
+  function walk(character_st: mut CharacterState, secs: float, hz: float, run: bool) -> void {
     let n = int(secs * hz)
-    for i in 0 .. n { char_update(base_st, character_st, 0.0, 1.0, run, false, 0.0, 0.0, 1.0 / hz) }
+    for i in 0 .. n { char_update(character_st, 0.0, 1.0, run, false, 0.0, 0.0, 1.0 / hz) }
   }
   # yaw 0 faces -z; the heading of a walk toward +x is -pi/2
   const EAST: float = -1.5707963
   const SOUTH: float = 3.14159265
 
-  test "a 45 cm deck is a step at 60 Hz and at 240" (base_st: mut BaseState, character_st: mut CharacterState) {
-    fresh(base_st, character_st, 1.0, 0.0, EAST)
-    walk(base_st, character_st, 2.0, 60.0, false)
+  test "a 45 cm deck is a step at 60 Hz and at 240" (character_st: mut CharacterState) {
+    fresh(character_st, 1.0, 0.0, EAST)
+    walk(character_st, 2.0, 60.0, false)
     expect(body_x(character_st) > 5.0)
     expect_near(body_y(character_st), 0.45, 0.01)
-    fresh(base_st, character_st, 1.0, 0.0, EAST)
-    walk(base_st, character_st, 2.0, 240.0, false)
+    fresh(character_st, 1.0, 0.0, EAST)
+    walk(character_st, 2.0, 240.0, false)
     expect(body_x(character_st) > 5.0)
     expect_near(body_y(character_st), 0.45, 0.01)
-    expect_eq(count(facts(base_st, character_st), CHAR_TOO_STEEP), 0)
+    expect_eq(count(facts(character_st), CHAR_TOO_STEEP), 0)
   }
 
-  test "a cliff is refused at the same place whatever the frame rate, and said once" (base_st: mut BaseState, character_st: mut CharacterState) {
-    fresh(base_st, character_st, 0.0, -8.0, 0.0)
-    walk(base_st, character_st, 3.0, 30.0, false)
+  test "a cliff is refused at the same place whatever the frame rate, and said once" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, -8.0, 0.0)
+    walk(character_st, 3.0, 30.0, false)
     let at30 = body_z(character_st)
     expect(body_steep(character_st) > 0.0)
-    expect_eq(count(facts(base_st, character_st), CHAR_TOO_STEEP), 1)
-    fresh(base_st, character_st, 0.0, -8.0, 0.0)
-    walk(base_st, character_st, 3.0, 240.0, false)
+    expect_eq(count(facts(character_st), CHAR_TOO_STEEP), 1)
+    fresh(character_st, 0.0, -8.0, 0.0)
+    walk(character_st, 3.0, 240.0, false)
     expect_near(body_z(character_st), at30, 0.25)
     expect(body_z(character_st) > -10.0)
     expect(body_y(character_st) < 0.3)
   }
 
-  test "a gentle rise is walked up" (base_st: mut BaseState, character_st: mut CharacterState) {
-    fresh(base_st, character_st, 0.0, 8.0, SOUTH)
-    walk(base_st, character_st, 3.0, 60.0, false)
+  test "a gentle rise is walked up" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, 8.0, SOUTH)
+    walk(character_st, 3.0, 60.0, false)
     expect(body_z(character_st) > 14.0)
     expect(body_y(character_st) > 1.0)
   }
 
-  test "the boots set the limit: a rise they cannot take is refused" (base_st: mut BaseState, character_st: mut CharacterState) {
-    fresh(base_st, character_st, 0.0, 8.0, SOUTH)
-    walk(base_st, character_st, 0.2, 60.0, false)
+  test "the boots set the limit: a rise they cannot take is refused" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, 8.0, SOUTH)
+    walk(character_st, 0.2, 60.0, false)
     expect(not char_slope_blocks(character_st, body_y(character_st) + 0.1, 0.0, 1.0))
   }
 
-  test "the walk reaches the walk speed, the run the run speed, a sneak its own" (base_st: mut BaseState, character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
-    fresh(base_st, character_st, 0.0, 0.0, SOUTH)
-    walk(base_st, character_st, 2.0, 60.0, false)
+  test "the walk reaches the walk speed, the run the run speed, a sneak its own" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    walk(character_st, 2.0, 60.0, false)
     expect_near(body_speed(character_st), 3.2, 0.05)
-    fresh(base_st, character_st, 0.0, 0.0, SOUTH)
-    walk(base_st, character_st, 2.0, 60.0, true)
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    walk(character_st, 2.0, 60.0, true)
     expect_near(body_speed(character_st), 6.8, 0.05)
     character_test_st.pace = 0.5
-    fresh(base_st, character_st, 0.0, 0.0, SOUTH)
-    walk(base_st, character_st, 2.0, 60.0, false)
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    walk(character_st, 2.0, 60.0, false)
     expect_near(body_speed(character_st), 1.6, 0.05)
     character_test_st.pace = 1.0
     character_test_st.sneaking = true
-    fresh(base_st, character_st, 0.0, 0.0, SOUTH)
-    walk(base_st, character_st, 2.0, 60.0, true)
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    walk(character_st, 2.0, 60.0, true)
     expect_near(body_speed(character_st), 1.3, 0.05)
   }
 
-  test "a boulder is a wall to a body below its step and a step onto its top" (base_st: mut BaseState, character_st: mut CharacterState) {
-    fresh(base_st, character_st, 0.0, 3.0, SOUTH)
-    walk(base_st, character_st, 2.0, 60.0, false)
+  test "a boulder is a wall to a body below its step and a step onto its top" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, 3.0, SOUTH)
+    walk(character_st, 2.0, 60.0, false)
     expect(body_z(character_st) < 5.1)
     expect_near(char_stand_at(0.0, 6.0, 0.0), 0.4, 0.001)
     expect_near(char_stand_at(3.0, 6.0, 0.0), 0.0, 0.001)
@@ -151,48 +151,48 @@ program CharacterTest {
     expect_near(fk_height(0.0, 6.0), 0.0, 0.001)
   }
 
-  test "wading shelves into a swim, and the shallows give the ground back" (base_st: mut BaseState, character_st: mut CharacterState) {
-    fresh(base_st, character_st, 18.0, 0.0, EAST)
-    walk(base_st, character_st, 3.0, 60.0, false)
-    let fs = facts(base_st, character_st)
+  test "wading shelves into a swim, and the shallows give the ground back" (character_st: mut CharacterState) {
+    fresh(character_st, 18.0, 0.0, EAST)
+    walk(character_st, 3.0, 60.0, false)
+    let fs = facts(character_st)
     expect(body_swimming(character_st))
     expect_eq(count(fs, CHAR_STARTED_SWIMMING), 1)
     expect_near(body_y(character_st), -0.30, 0.06)
     expect(body_breath(character_st) > 40.0)
     char_face(character_st, -EAST)
     char_look(character_st, -EAST, 0.0)
-    walk(base_st, character_st, 8.0, 60.0, false)
+    walk(character_st, 8.0, 60.0, false)
     expect(not body_swimming(character_st))
-    expect_eq(count(facts(base_st, character_st), CHAR_LEFT_WATER), 1)
+    expect_eq(count(facts(character_st), CHAR_LEFT_WATER), 1)
   }
 
-  test "the jump held dives, the air runs out, and the body surfaces" (base_st: mut BaseState, character_st: mut CharacterState) {
-    fresh(base_st, character_st, 30.0, 0.0, 0.0)
+  test "the jump held dives, the air runs out, and the body surfaces" (character_st: mut CharacterState) {
+    fresh(character_st, 30.0, 0.0, 0.0)
     char_resume_swim(character_st, false, 0.0, 2.0)
-    for i in 0 .. 600 { char_update(base_st, character_st, 0.0, 0.0, false, true, 0.0, 0.0, 1.0 / 60.0) }
-    let fs = facts(base_st, character_st)
+    for i in 0 .. 600 { char_update(character_st, 0.0, 0.0, false, true, 0.0, 0.0, 1.0 / 60.0) }
+    let fs = facts(character_st)
     expect(count(fs, CHAR_OUT_OF_AIR) > 0)
-    for i in 0 .. 300 { char_update(base_st, character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    for i in 0 .. 300 { char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
     expect(body_depth(character_st) < 0.05)
     expect(body_breath(character_st) > 10.0)
   }
 
-  test "a jump leaves the ground, falls, lands, and says both" (base_st: mut BaseState, character_st: mut CharacterState) {
-    fresh(base_st, character_st, 0.0, 0.0, 0.0)
-    char_update(base_st, character_st, 0.0, 0.0, false, true, 0.0, 0.0, 1.0 / 60.0)
+  test "a jump leaves the ground, falls, lands, and says both" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, 0.0, 0.0)
+    char_update(character_st, 0.0, 0.0, false, true, 0.0, 0.0, 1.0 / 60.0)
     expect(body_airborne(character_st))
     var guard = 0
     while body_airborne(character_st) and guard < 200 {
-      char_update(base_st, character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0)
+      char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0)
       guard += 1
     }
-    let fs = facts(base_st, character_st)
+    let fs = facts(character_st)
     expect(not body_airborne(character_st))
     expect_eq(count(fs, CHAR_JUMPED), 1)
     expect_eq(count(fs, CHAR_LANDED), 1)
     expect(guard > 30)
     char_allow_run(character_st, false)
-    char_update(base_st, character_st, 0.0, 0.0, false, true, 0.0, 0.0, 1.0 / 60.0)
+    char_update(character_st, 0.0, 0.0, false, true, 0.0, 0.0, 1.0 / 60.0)
     expect(not body_airborne(character_st))
   }
 
@@ -207,47 +207,47 @@ program CharacterTest {
     expect_near(body_safe_x(character_st), 15.0, 0.001)
   }
 
-  test "sitting where you stand, and the refusals" (base_st: mut BaseState, character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
-    fresh(base_st, character_st, 0.0, 0.0, 0.0)
+  test "sitting where you stand, and the refusals" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
+    fresh(character_st, 0.0, 0.0, 0.0)
     expect_eq(char_sit_here(character_st), CHAR_SAT)
-    for i in 0 .. 30 { char_update(base_st, character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    for i in 0 .. 30 { char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
     expect(body_sitting(character_st))
     expect_near(body_sit_t(character_st), 1.0, 0.01)
     expect_eq(char_sit_here(character_st), CHAR_STOOD)
     expect(not body_sitting(character_st))
-    fresh(base_st, character_st, 0.0, -14.0, 0.0)
+    fresh(character_st, 0.0, -14.0, 0.0)
     expect_eq(char_sit_here(character_st), CHAR_NOT_STEEP)
-    fresh(base_st, character_st, 24.0, 0.0, 0.0)
+    fresh(character_st, 24.0, 0.0, 0.0)
     char_resume_swim(character_st, false, 0.0, 10.0)
     expect_eq(char_sit_here(character_st), CHAR_NOT_WET)
     character_test_st.riding = true
-    fresh(base_st, character_st, 0.0, 0.0, 0.0)
+    fresh(character_st, 0.0, 0.0, 0.0)
     expect_eq(char_sit_here(character_st), CHAR_NOT_RIDING)
     character_test_st.riding = false
   }
 
-  test "a hold stops the stick, and only its own reason lets it go" (base_st: mut BaseState, character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
-    fresh(base_st, character_st, 0.0, 0.0, 0.0)
+  test "a hold stops the stick, and only its own reason lets it go" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
+    fresh(character_st, 0.0, 0.0, 0.0)
     character_test_st.mz = 1.0
     char_hold(character_st, CHAR_HOLD_STAGE)
     char_hold(character_st, CHAR_HOLD_SCREEN)
-    for i in 0 .. 60 { char_tick(base_st, character_st, 1.0 / 60.0) }
+    for i in 0 .. 60 { char_tick(character_st, 1.0 / 60.0) }
     expect_near(body_z(character_st), 0.0, 0.001)
     char_release(character_st, CHAR_HOLD_SCREEN)
     char_release(character_st, CHAR_HOLD_SCREEN)
     expect(body_held(character_st))
     char_release(character_st, CHAR_HOLD_STAGE)
-    for i in 0 .. 60 { char_tick(base_st, character_st, 1.0 / 60.0) }
+    for i in 0 .. 60 { char_tick(character_st, 1.0 / 60.0) }
     expect(body_z(character_st) < -1.0)
     character_test_st.mz = 0.0
   }
 
-  test "riding hands the stick over and leaves the body where the ride puts it" (base_st: mut BaseState, character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
-    fresh(base_st, character_st, 0.0, 0.0, 0.0)
+  test "riding hands the stick over and leaves the body where the ride puts it" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
+    fresh(character_st, 0.0, 0.0, 0.0)
     character_test_st.riding = true
     character_test_st.rides = 0
     char_board(character_st, 3.0, 3.0, 0.0)
-    for i in 0 .. 10 { char_update(base_st, character_st, 0.0, 1.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    for i in 0 .. 10 { char_update(character_st, 0.0, 1.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
     expect_eq(character_test_st.rides, 10)
     char_ride_at(character_st, 4.0, 1.2, 3.0, 0.0, 2.0)
     expect_near(body_x(character_st), 4.0, 0.001)
@@ -257,8 +257,8 @@ program CharacterTest {
     expect_near(body_y(character_st), 0.45, 0.001)
   }
 
-  test "the orbit sits behind and above the ground; the eyes at head height, refused when sat" (base_st: mut BaseState, character_st: mut CharacterState) {
-    fresh(base_st, character_st, 0.0, 0.0, 0.0)
+  test "the orbit sits behind and above the ground; the eyes at head height, refused when sat" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, 0.0, 0.0)
     char_camera(character_st, 1.0)
     expect(body_eye_z(character_st) > 1.0)
     expect(body_eye_y(character_st) > 0.55)

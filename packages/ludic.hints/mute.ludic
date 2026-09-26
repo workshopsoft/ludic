@@ -28,12 +28,12 @@ export function hints_mute_count(hints_st: mut HintsState) -> int {
 }
 
 # every muted card given back, from the next pass
-export function hints_unmute_all(base_st: mut BaseState, hints_st: mut HintsState) -> void {
+export function hints_unmute_all(hints_st: mut HintsState) -> void {
   hn_mute_ensure(hints_st)
   for i in 0 .. HINT_COUNT { hints_st.hn_mute[i] = false }
   hints_st.hn_foreign = new []string
   hints_st.hn_t = 0.0
-  hn_fact(base_st, hints_st, HINTS_F_UNMUTED, -1)
+  hn_fact(hints_st, HINTS_F_UNMUTED, -1)
 }
 
 # the mutes as a list of keys, for wherever the game keeps the player's own choices

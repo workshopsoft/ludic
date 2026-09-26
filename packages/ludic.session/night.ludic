@@ -5,29 +5,29 @@
 export function ses_sleeping(session_st: SessionState) -> bool { return session_st.session__me_sleeping }
 
 # this player turns in (or gets up): false alone, where a bed simply sleeps
-export function ses_sleep(base_st: mut BaseState, session_st: mut SessionState, on: bool) -> bool {
+export function ses_sleep(session_st: mut SessionState, on: bool) -> bool {
   if not ses_live(session_st) { return false }
   if on == session_st.session__me_sleeping { return on }
   session_st.session__me_sleeping = on
-  let f = session__fact(base_st, session_st, SES_SLEEP, 0, 0)
+  let f = session__fact(session_st, SES_SLEEP, 0, 0)
   f.yes = on
-  if on { ses_night_check(base_st, session_st) }
+  if on { ses_night_check(session_st) }
   return true
 }
 
 # the host: a guest said it turned in, or got up
-export function ses_sleep_ready(base_st: mut BaseState, session_st: mut SessionState, p: int, on: bool) -> void {
+export function ses_sleep_ready(session_st: mut SessionState, p: int, on: bool) -> void {
   if p <= 0 or not ply_on(session_st, p) { return }
   session_st.session__slot[p].ready = on
-  ses_night_check(base_st, session_st)
+  ses_night_check(session_st)
 }
 
 # the host: is everyone in? Then the night is due, and everyone's readiness starts again
-export function ses_night_check(base_st: mut BaseState, session_st: mut SessionState) -> void {
+export function ses_night_check(session_st: mut SessionState) -> void {
   if session_st.session__role != SES_HOST or not session_st.session__me_sleeping { return }
   for p in 1 .. PLY_MAX { if ply_on(session_st, p) and not session_st.session__slot[p].ready { return } }
   for p in 1 .. PLY_MAX { session_st.session__slot[p].ready = false }
-  session__fact(base_st, session_st, SES_NIGHT, -1, 0)
+  session__fact(session_st, SES_NIGHT, -1, 0)
 }
 
 # the night went by on this machine: awake again

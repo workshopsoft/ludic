@@ -18,12 +18,12 @@ export function fire_cost(fire_st: FireState, how: int) -> int {
   return 0
 }
 
-export function fire_apply(base_st: mut BaseState, fire_st: mut FireState, how: int) -> void {
+export function fire_apply(fire_st: mut FireState, how: int) -> void {
   if how == FIRE_FEED { fire_st.fr_fuel = fire_st.fr_fuel + fire_st.fr_log_minutes }
   if how == FIRE_LIGHT {
     fire_st.fr_lit = true
     fire_st.fr_fuel = fire_st.fr_light_minutes
-    fr_fact(base_st, fire_st, FIRE_LIT)
+    fr_fact(fire_st, FIRE_LIT)
   }
 }
 

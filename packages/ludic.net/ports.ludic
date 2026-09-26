@@ -66,19 +66,19 @@ function net__conf(net_st: mut NetState) -> NetConfig {
   return net_st.net__cfg
 }
 
-export function net_facts(base_st: mut BaseState, net_st: mut NetState) -> Queue<NetFact> {
-  if net_st.net__facts == null { net_st.net__facts = queue_new(base_st, "net.facts") }
+export function net_facts(net_st: mut NetState) -> Queue<NetFact> {
+  if net_st.net__facts == null { net_st.net__facts = queue_new("net.facts") }
   return net_st.net__facts
 }
 
-function net__fact(base_st: mut BaseState, net_st: mut NetState, what: int, slot: int, pid: int, why: int, text: string) -> void {
+function net__fact(net_st: mut NetState, what: int, slot: int, pid: int, why: int, text: string) -> void {
   let f = new NetFact
   f.what = what
   f.slot = slot
   f.pid = pid
   f.why = why
   f.text = text
-  q_push(base_st, net_facts(base_st, net_st), f)
+  q_push(net_facts(net_st), f)
 }
 
 function net__no_log(s: string) -> void { }

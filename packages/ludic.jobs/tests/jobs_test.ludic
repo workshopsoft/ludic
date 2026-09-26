@@ -47,7 +47,7 @@ program JobsTest {
   bind JobsWorld { rep: fn world_rep, stage: fn world_stage, day: fn world_day, owns: fn world_owns, evidence: fn world_evidence, roll: fn world_roll }
   bind JobsPay { reward: fn pay }
 
-  function fresh(base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) -> void {
+  function fresh(jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) -> void {
     jobs_test_st.rep = 0
     jobs_test_st.stage = 0
     jobs_test_st.day = 1
@@ -55,12 +55,12 @@ program JobsTest {
     jobs_test_st.fish = 0
     jobs_test_st.paid = 0
     jobs_test_st.paid_rep = 0
-    jobs_reset(base_st, jobs_st)
+    jobs_reset(jobs_st)
     jobs_party_reset(jobs_st)
   }
 
-  function count_of(base_st: mut BaseState, jobs_st: mut JobsState, what: int) -> int {
-    let fs = q_drain(base_st, jobs_facts(base_st, jobs_st))
+  function count_of(jobs_st: mut JobsState, what: int) -> int {
+    let fs = q_drain(jobs_facts(jobs_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
@@ -72,8 +72,8 @@ program JobsTest {
     expect_eq(BOARD_COUNT, 2)
   }
 
-  test "a gate of standing and story" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
+  test "a gate of standing and story" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
     expect(jobs_offered(jobs_st, JOB_CATCH))
     expect(not jobs_offered(jobs_st, JOB_DEER))
     jobs_test_st.rep = 10
@@ -84,148 +84,148 @@ program JobsTest {
     expect_eq(len(jobs_at(jobs_st, 0, -1)), 3)
   }
 
-  test "counted by events, readied, handed in and paid" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
-    jobs_count(base_st, jobs_st, K_FISH, 0, 1)
+  test "counted by events, readied, handed in and paid" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    jobs_count(jobs_st, K_FISH, 0, 1)
     expect_eq(jobs_have(jobs_st, JOB_CATCH), 0)
-    expect(jobs_take(base_st, jobs_st, JOB_CATCH))
-    jobs_count(base_st, jobs_st, K_FISH, 0, 2)
+    expect(jobs_take(jobs_st, JOB_CATCH))
+    jobs_count(jobs_st, K_FISH, 0, 2)
     expect_eq(jobs_state(jobs_st, JOB_CATCH), JOBS_ACTIVE)
-    jobs_count(base_st, jobs_st, K_FISH, 0, 5)
+    jobs_count(jobs_st, K_FISH, 0, 5)
     expect_eq(jobs_have(jobs_st, JOB_CATCH), 3)
     expect(jobs_ready_now(jobs_st, JOB_CATCH))
-    expect_eq(count_of(base_st, jobs_st, JOBS_F_COMPLETED), 1)
-    expect(jobs_hand_in(base_st, jobs_st, JOB_CATCH))
-    expect(not jobs_hand_in(base_st, jobs_st, JOB_CATCH))
+    expect_eq(count_of(jobs_st, JOBS_F_COMPLETED), 1)
+    expect(jobs_hand_in(jobs_st, JOB_CATCH))
+    expect(not jobs_hand_in(jobs_st, JOB_CATCH))
     expect_eq(jobs_test_st.paid, 30)
     expect_eq(jobs_test_st.paid_rep, 5)
     expect_eq(jobs_done(jobs_st, 0), 1)
-    expect_eq(count_of(base_st, jobs_st, JOBS_F_HANDED_IN), 1)
+    expect_eq(count_of(jobs_st, JOBS_F_HANDED_IN), 1)
   }
 
-  test "the state already proves the work" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
+  test "the state already proves the work" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
     jobs_test_st.fish = 2
-    jobs_take(base_st, jobs_st, JOB_CATCH)
+    jobs_take(jobs_st, JOB_CATCH)
     expect_eq(jobs_have(jobs_st, JOB_CATCH), 2)
     jobs_test_st.fish = 3
-    jobs_recheck(base_st, jobs_st)
+    jobs_recheck(jobs_st)
     expect(jobs_ready_now(jobs_st, JOB_CATCH))
   }
 
-  test "a param narrows the count" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
+  test "a param narrows the count" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
     jobs_test_st.rep = 10
-    jobs_take(base_st, jobs_st, JOB_DEER)
-    jobs_count(base_st, jobs_st, K_PHOTO, 3, 1)
+    jobs_take(jobs_st, JOB_DEER)
+    jobs_count(jobs_st, K_PHOTO, 3, 1)
     expect_eq(jobs_have(jobs_st, JOB_DEER), 0)
-    jobs_count(base_st, jobs_st, K_PHOTO, 4, 1)
+    jobs_count(jobs_st, K_PHOTO, 4, 1)
     expect(jobs_ready_now(jobs_st, JOB_DEER))
   }
 
-  test "the game's own play readies a job with no need" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
-    jobs_take(base_st, jobs_st, JOB_STILL)
-    jobs_mark(base_st, jobs_st, JOB_STILL, 2)
+  test "the game's own play readies a job with no need" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    jobs_take(jobs_st, JOB_STILL)
+    jobs_mark(jobs_st, JOB_STILL, 2)
     expect_eq(jobs_have(jobs_st, JOB_STILL), 4)
     expect_eq(jobs_state(jobs_st, JOB_STILL), JOBS_ACTIVE)
-    expect(jobs_complete(base_st, jobs_st, JOB_STILL))
+    expect(jobs_complete(jobs_st, JOB_STILL))
     expect_eq(jobs_test_st.paid, 60)
     expect_eq(jobs_done(jobs_st, 1), 1)
   }
 
-  test "a guest counts its own and leaves the party's to the host" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
+  test "a guest counts its own and leaves the party's to the host" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
     jobs_test_st.guest = true
-    jobs_take(base_st, jobs_st, JOB_TEN)
-    jobs_take(base_st, jobs_st, JOB_CATCH)
-    jobs_count(base_st, jobs_st, K_FISH, 0, 2)
+    jobs_take(jobs_st, JOB_TEN)
+    jobs_take(jobs_st, JOB_CATCH)
+    jobs_count(jobs_st, K_FISH, 0, 2)
     expect_eq(jobs_have(jobs_st, JOB_TEN), 0)
     expect_eq(jobs_have(jobs_st, JOB_CATCH), 2)
-    jobs_count_in(base_st, jobs_st, JOBS_PARTY, K_FISH, 0, 4)
+    jobs_count_in(jobs_st, JOBS_PARTY, K_FISH, 0, 4)
     expect_eq(jobs_have(jobs_st, JOB_TEN), 4)
     expect_eq(jobs_have(jobs_st, JOB_CATCH), 2)
   }
 
-  test "an offer is said once it opens, never for what was open at the reset" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
+  test "an offer is said once it opens, never for what was open at the reset" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
     jobs_system().tick(tick_new(0.1, 1, 0.0))
-    expect_eq(count_of(base_st, jobs_st, JOBS_F_OFFERED), 0)
+    expect_eq(count_of(jobs_st, JOBS_F_OFFERED), 0)
     jobs_test_st.rep = 10
     jobs_system().tick(tick_new(0.1, 2, 0.0))
-    expect_eq(count_of(base_st, jobs_st, JOBS_F_OFFERED), 1)
+    expect_eq(count_of(jobs_st, JOBS_F_OFFERED), 1)
   }
 
-  test "a board rolled by the day, the same every time" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
+  test "a board rolled by the day, the same every time" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
     jobs_test_st.day = 3
-    jobs_morning(base_st, jobs_st)
+    jobs_morning(jobs_st)
     expect_eq(len(jobs_posted(jobs_st, BOARD_DAILY)), 3)
     expect_eq(len(jobs_posted(jobs_st, BOARD_ADA)), 2)
     let a = jobs_post_need(jobs_st, BOARD_DAILY, 0) * 100 + jobs_post_need(jobs_st, BOARD_DAILY, 1) * 10 + jobs_post_need(jobs_st, BOARD_DAILY, 2)
-    fresh(base_st, jobs_st, jobs_test_st)
+    fresh(jobs_st, jobs_test_st)
     jobs_test_st.day = 3
-    jobs_morning(base_st, jobs_st)
+    jobs_morning(jobs_st)
     let b = jobs_post_need(jobs_st, BOARD_DAILY, 0) * 100 + jobs_post_need(jobs_st, BOARD_DAILY, 1) * 10 + jobs_post_need(jobs_st, BOARD_DAILY, 2)
     expect_eq(a, b)
     expect(jobs_post_need(jobs_st, BOARD_DAILY, 0) >= 2 and jobs_post_need(jobs_st, BOARD_DAILY, 0) <= 4)
   }
 
-  test "a daily pays the moment it is met and waits for the morning" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
+  test "a daily pays the moment it is met and waits for the morning" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
     jobs_test_st.day = 2
-    jobs_morning(base_st, jobs_st)
+    jobs_morning(jobs_st)
     let need = jobs_post_need(jobs_st, BOARD_DAILY, 1)
-    jobs_count(base_st, jobs_st, K_WOOD, -1, need)
+    jobs_count(jobs_st, K_WOOD, -1, need)
     expect_eq(jobs_post_state(jobs_st, BOARD_DAILY, 1), JOBS_DONE)
     expect(jobs_posts_done(jobs_st, BOARD_DAILY) >= 1)
     expect_eq(jobs_test_st.paid, 7 * jobs_posts_done(jobs_st, BOARD_DAILY))
-    jobs_morning(base_st, jobs_st)
+    jobs_morning(jobs_st)
     expect_eq(jobs_post_state(jobs_st, BOARD_DAILY, 1), JOBS_DONE)
     jobs_test_st.day = 3
-    jobs_morning(base_st, jobs_st)
+    jobs_morning(jobs_st)
     expect_eq(jobs_post_state(jobs_st, BOARD_DAILY, 1), JOBS_ACTIVE)
   }
 
-  test "a post counts only what came after it went up, and is replaced when handed in" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
+  test "a post counts only what came after it went up, and is replaced when handed in" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
     jobs_test_st.fish = 5
-    jobs_morning(base_st, jobs_st)
+    jobs_morning(jobs_st)
     let need = jobs_post_need(jobs_st, BOARD_ADA, 0)
-    jobs_recheck(base_st, jobs_st)
+    jobs_recheck(jobs_st)
     expect_eq(jobs_post_have(jobs_st, BOARD_ADA, 0), 0)
     jobs_test_st.fish = 5 + need
-    jobs_recheck(base_st, jobs_st)
+    jobs_recheck(jobs_st)
     expect_eq(jobs_post_state(jobs_st, BOARD_ADA, 0), JOBS_READY)
-    expect(jobs_post_hand_in(base_st, jobs_st, BOARD_ADA, 0))
+    expect(jobs_post_hand_in(jobs_st, BOARD_ADA, 0))
     expect_eq(jobs_test_st.paid_scope, JOBS_PARTY)
     expect_eq(jobs_total(jobs_st, BOARD_ADA), 1)
     expect_eq(jobs_post_state(jobs_st, BOARD_ADA, 0), JOBS_ACTIVE)
   }
 
-  test "a stale post comes down after its days" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
-    jobs_morning(base_st, jobs_st)
+  test "a stale post comes down after its days" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    jobs_morning(jobs_st)
     jobs_test_st.day = 7
-    jobs_morning(base_st, jobs_st)
+    jobs_morning(jobs_st)
     expect_eq(jobs_post_day(jobs_st, BOARD_ADA, 0), 1)
     jobs_test_st.day = 8
-    jobs_morning(base_st, jobs_st)
+    jobs_morning(jobs_st)
     expect_eq(jobs_post_day(jobs_st, BOARD_ADA, 0), 8)
   }
 
-  test "each scope saves its own, by key" (base_st: mut BaseState, jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
-    fresh(base_st, jobs_st, jobs_test_st)
-    jobs_take(base_st, jobs_st, JOB_CATCH)
-    jobs_count(base_st, jobs_st, K_FISH, 0, 2)
-    jobs_take(base_st, jobs_st, JOB_TEN)
-    jobs_count(base_st, jobs_st, K_FISH, 0, 1)
+  test "each scope saves its own, by key" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    jobs_take(jobs_st, JOB_CATCH)
+    jobs_count(jobs_st, K_FISH, 0, 2)
+    jobs_take(jobs_st, JOB_TEN)
+    jobs_count(jobs_st, K_FISH, 0, 1)
     jobs_test_st.day = 2
-    jobs_morning(base_st, jobs_st)
+    jobs_morning(jobs_st)
     let body = jobs_save(jobs_st)
     let world = jobs_party_save(jobs_st)
     let need = jobs_post_need(jobs_st, BOARD_ADA, 1)
-    fresh(base_st, jobs_st, jobs_test_st)
+    fresh(jobs_st, jobs_test_st)
     jobs_load(jobs_st, body, 1)
     expect_eq(jobs_have(jobs_st, JOB_CATCH), 3)
     expect_eq(jobs_state(jobs_st, JOB_TEN), JOBS_OFFERED)

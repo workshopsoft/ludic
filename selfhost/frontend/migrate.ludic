@@ -18,6 +18,11 @@
 #   ? <file>:<line> <what>                     what the tool cannot decide, for a person
 var g_migrate: bool = false
 var g_mg_runtime: bool = false         # --migrate-runtime: the runtime's own vars too
+var g_mg_prune: bool = false           # --migrate-prune: a declared state nothing uses is taken out
+var g_ma_node: []Node = new []Node     # each state argument a call passes (an E_ID), its call, its state
+var g_ma_call: []int = new []int
+var g_ma_state: []int = new []int
+var g_ma_excess: []bool = new []bool   # an argument for a parameter the callee no longer has: it goes
 var g_mg_plan: pointer = null
 var g_mg_vars: []Node = new []Node     # the vars that move
 var g_mg_vstate: []int = new []int     # the state each moves into
@@ -280,8 +285,9 @@ function mg_unit(n: Node, kind: int) -> int {
   push(g_mu_need, ",")
   push(g_mu_mut, ",")
   n.mg = len(g_mu_node) - 1
-  # an already-migrated function: its declared states are needs
-  if kind == 0 {
+  # an already-migrated function: its declared states are needs - unless pruning, where only what
+  # it uses (and what what it calls uses) is
+  if kind == 0 and not g_mg_prune {
     var i = 0
     while i < len(n.kids) and n.kids[i].kind == N_PARAM and is_state_ty(n.kids[i].ty) {
       let s = mg_state_named(n.kids[i].ty)
@@ -426,12 +432,72 @@ function mg_call(e: Node, f: Node) -> void {
   push(g_mc_call, e)
   push(g_mc_unit, g_mg_cur)
   push(g_mc_callee, mg_unit(f, 0))
+  mg_state_args(e, f, len(g_mc_call) - 1)
   var passed = 0
   if len(e.kids) > 0 and e.kids[0].kind == E_ID {
     let li = ck_local(e.kids[0].s)
     if li >= 0 and is_state_ty(ck_tys[li]) { passed = 1 }
   }
   push(g_mc_passed, passed)
+}
+# the states a call hands on as plain names: a passing is not a use (the callee's use, through the
+# fixed point, is), and with --migrate-prune one the callee does not take (any more) goes
+function mg_state_args(e: Node, f: Node, c: int) -> void {
+  var np = 0
+  var k = 0
+  while k < len(f.kids) {
+    if f.kids[k].kind == N_PARAM { np += 1 }
+    k += 1
+  }
+  var excess = len(e.kids) - np                  # arguments for parameters the callee no longer has
+  let keep = new []Node
+  var i = 0
+  while i < len(e.kids) {
+    let a = e.kids[i]
+    var gone = false
+    if a.kind == E_ID {
+      let li = ck_local(a.s)
+      if li >= 0 and is_state_ty(ck_tys[li]) {
+        var passed = mg_declared_ty(f, ck_tys[li])
+        if not passed and excess > 0 {
+          gone = true
+          excess -= 1
+        }
+        if passed or gone {
+          a.mg = -2                              # marked: ck_id does not count it as a use
+          push(g_ma_node, a)
+          push(g_ma_call, c)
+          push(g_ma_state, mg_state_named(ck_tys[li]))
+          push(g_ma_excess, gone)
+        }
+      }
+    }
+    if not (gone and g_mg_prune) { push(keep, a) }
+    i += 1
+  }
+  # with --migrate-prune the call is checked as it will read: without the arguments that go, so the
+  # rest meet their parameters (and a generic's T is told by the argument that says it)
+  if g_mg_prune and len(keep) < len(e.kids) { e.kids = keep }
+}
+function mg_declared_ty(f: Node, ty: pointer) -> bool {
+  var i = 0
+  while i < len(f.kids) {
+    if f.kids[i].kind == N_PARAM and (f.kids[i].ty == ty) { return true }
+    i += 1
+  }
+  return false
+}
+# with --migrate-prune, a state local used in place (read, written, handed to anything but a
+# function taking it) is a need of the unit it is used in
+function mg_local_use(e: Node, ty: pointer) -> void {
+  if not g_migrate or not g_mg_prune or g_mg_cur < 0 or e.mg == -2 or e.pos < 0 { return }
+  if not is_state_ty(ty) { return }
+  mg_need(g_mg_cur, mg_state_named(ty), false)
+}
+function mg_local_write(ty: pointer) -> void {
+  if not g_migrate or not g_mg_prune or g_mg_cur < 0 or ty == null { return }
+  if not is_state_ty(ty) { return }
+  mg_need(g_mg_cur, mg_state_named(ty), true)
 }
 function mg_say(n: Node, what: pointer) -> void {
   var at = "?"
@@ -522,7 +588,7 @@ function mg_norm_line(line: pointer) -> pointer {
   }
   if len(w) < 2 { return line }
   let k = w[0]
-  if (k == "VAR") or (k == "REF") or (k == "INS") or (k == "LET") or (k == "CLOSE") { w[1] = mg_norm(w[1]) }
+  if (k == "VAR") or (k == "REF") or (k == "INS") or (k == "LET") or (k == "CLOSE") or (k == "DELITEM") { w[1] = mg_norm(w[1]) }
   if (k == "?") { w[1] = mg_norm(w[1]) }
   if (k == "VAR") and len(w) > 5 { w[5] = mg_norm_key(w[5]) }
   if (k == "STATE") and len(w) > 6 {
@@ -678,6 +744,7 @@ function mg_units() -> void {
       continue
     }
     mg_mut_upgrades(u, n)
+    if g_mg_prune { mg_prune_unit(u, n) }
     let need = mg_list(g_mu_need[u])
     if len(need) > 0 {
       var text = ""
@@ -692,6 +759,50 @@ function mg_units() -> void {
       if len(text) > 0 { mg_unit_edit(u, n, text) }
     }
     u += 1
+  }
+}
+# --migrate-prune: each state a unit declares and does not need (nor anything it calls) goes
+function mg_prune_unit(u: int, n: Node) -> void {
+  if n.file == null or (is_runtime_file(n.file) and not g_mg_runtime) { return }
+  let kind = g_mu_kind[u]
+  if kind == 0 {
+    if n.vw >= 0 { return }
+    if s_has_prefix(n.s, "ludic_reduce__") { return }   # a reducer takes its state whether it reads it or not
+    var i = 0
+    while i < len(n.kids) {
+      let p = n.kids[i]
+      if p.kind == N_PARAM and is_state_ty(p.ty) and p.pos >= 0 and p.file != null {
+        if not has_sub(g_mu_need[u], `,{itoa(mg_state_named(p.ty))},`) { mg_emit(`DELITEM {p.file} {itoa(p.pos)}`, "") }
+      }
+      i += 1
+    }
+    return
+  }
+  var body = n.a
+  if kind == 5 { body = n }
+  if body == null { return }
+  var j = 0
+  while j < len(body.kids) and body.kids[j].tps != null and (body.kids[j].tps == "state") {
+    let l = body.kids[j]
+    if l.pos >= 0 and l.file != null and not has_sub(g_mu_need[u], `,{itoa(mg_state_named(l.ty))},`) {
+      mg_emit(`DELITEM {l.file} {itoa(l.pos)}`, "")
+    }
+    j += 1
+  }
+}
+# --migrate-prune: a state a call hands on that its callee does not take, or no longer needs
+function mg_prune_args() -> void {
+  var a = 0
+  while a < len(g_ma_node) {
+    let x = g_ma_node[a]
+    let c = g_ma_call[a]
+    let to = g_mc_callee[c]
+    let callee = g_mu_node[to]
+    let unused = callee.cm < 0 and not has_sub(g_mu_need[to], `,{itoa(g_ma_state[a])},`)
+    if x.pos >= 0 and x.file != null and (g_ma_excess[a] or unused) {
+      mg_emit(`DELITEM {x.file} {itoa(x.pos)}`, "")
+    }
+    a += 1
   }
 }
 var g_mv_need: []pointer = new []pointer    # per view: the states its functions need
@@ -784,8 +895,20 @@ function mg_comp_acc(u: int, c: int) -> void {
 # each component's header: the states its members need that it does not declare yet, and `mut` on
 # one it declares read-only that a member now changes
 function mg_comps() -> void {
+  while len(g_mcm_need) < len(g_cm_name) {
+    push(g_mcm_need, ",")
+    push(g_mcm_mut, ",")
+  }
   var c = 0
   while c < len(g_mcm_need) {
+    if g_mg_prune {                              # a header state no member needs
+      var q = 0
+      while q < len(g_cm_ps[c]) {
+        let p = g_cm_ps[c][q]
+        if p.pos >= 0 and not has_sub(g_mcm_need[c], `,{itoa(mg_state_named(p.ty))},`) { mg_emit(`DELITEM {g_cm_file[c]} {itoa(p.pos)}`, "") }
+        q += 1
+      }
+    }
     let need = mg_list(g_mcm_need[c])
     let ps = g_cm_ps[c]
     var text = ""
@@ -972,6 +1095,7 @@ function mg_finish() -> void {
   mg_refs()
   mg_binds()
   mg_units()
+  if g_mg_prune { mg_prune_args() }
   mg_comps()
   mg_views()
   mg_calls()

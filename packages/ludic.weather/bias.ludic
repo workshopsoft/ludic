@@ -5,14 +5,14 @@ function wx_front_kind() -> int {
   return WeatherWorld.front()
 }
 
-function wx_want_wet(base_st: mut BaseState, weather_st: mut WeatherState) -> void {
+function wx_want_wet(weather_st: mut WeatherState) -> void {
   if weather_st.wx_kinds[weather_st.wx_state].wet or weather_st.wx_forced { return }
   let front = wx_front_kind()
   weather_st.wx_next = front
   weather_st.wx_forecast = front
   weather_st.wx_forced = true
   if weather_st.wx_left > 1.5 { weather_st.wx_left = 1.5 }
-  wx_fact(base_st, weather_st, WEATHER_FRONT, front, weather_st.wx_state)
+  wx_fact(weather_st, WEATHER_FRONT, front, weather_st.wx_state)
 }
 
 function wx_hold(weather_st: mut WeatherState) -> void {
@@ -34,9 +34,9 @@ function wx_want_clear(weather_st: mut WeatherState) -> void {
   }
 }
 
-function wx_apply_bias(base_st: mut BaseState, weather_st: mut WeatherState) -> void {
+function wx_apply_bias(weather_st: mut WeatherState) -> void {
   let b = wx_bias()
-  if b == WEATHER_WANT_WET { wx_want_wet(base_st, weather_st) }
+  if b == WEATHER_WANT_WET { wx_want_wet(weather_st) }
   if b == WEATHER_HOLD { wx_hold(weather_st) }
   if b == WEATHER_WANT_CLEAR { wx_want_clear(weather_st) }
 }

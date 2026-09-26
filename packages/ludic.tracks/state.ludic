@@ -64,7 +64,7 @@ export state TracksState {
 
 
 # the facts: every sign read, oldest first
-export function tracks_reads(base_st: mut BaseState, tracks_st: mut TracksState) -> Queue<TrackRead> {
-  if tracks_st.tk_reads == null { tracks_st.tk_reads = queue_new(base_st, "tracks.reads") }
+export function tracks_reads(tracks_st: mut TracksState) -> Queue<TrackRead> {
+  if tracks_st.tk_reads == null { tracks_st.tk_reads = queue_new("tracks.reads") }
   return tracks_st.tk_reads
 }

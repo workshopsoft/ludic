@@ -6,15 +6,15 @@ program SettingsTest {
   numbers float
   registry Toy of SettingDef as TOY from "packages/ludic.settings/tests/toy.lres"
 
-  function declare(base_st: mut BaseState, settings_st: mut SettingsState) -> void {
-    settings_clear(base_st, settings_st)
+  function declare(settings_st: mut SettingsState) -> void {
+    settings_clear(settings_st)
     for i in 0 .. TOY_COUNT { settings_add(settings_st, Toy[i]) }
   }
 
-  function facts(base_st: mut BaseState, settings_st: mut SettingsState) -> []SettingChanged { return q_drain(base_st, settings_changes(base_st, settings_st)) }
+  function facts(settings_st: mut SettingsState) -> []SettingChanged { return q_drain(settings_changes(settings_st)) }
 
-  test "a registry declares the store, each at its default" (base_st: mut BaseState, settings_st: mut SettingsState) {
-    declare(base_st, settings_st)
+  test "a registry declares the store, each at its default" (settings_st: mut SettingsState) {
+    declare(settings_st)
     expect_eq(settings_count(settings_st), 5)
     expect(settings_get_bool(settings_st, TOY_BLOOM))
     expect_eq(settings_get_int(settings_st, TOY_SHADOW_Q), 2)
@@ -24,43 +24,43 @@ program SettingsTest {
     expect_eq(settings_id_of(settings_st, "nothing"), -1)
   }
 
-  test "a change is a fact, and setting what is there is none" (base_st: mut BaseState, settings_st: mut SettingsState) {
-    declare(base_st, settings_st)
-    settings_set_int(base_st, settings_st, TOY_SHADOW_Q, 3)
-    settings_set_int(base_st, settings_st, TOY_SHADOW_Q, 3)
-    settings_set_text(base_st, settings_st, TOY_LANG, "tr")
-    let fs = facts(base_st, settings_st)
+  test "a change is a fact, and setting what is there is none" (settings_st: mut SettingsState) {
+    declare(settings_st)
+    settings_set_int(settings_st, TOY_SHADOW_Q, 3)
+    settings_set_int(settings_st, TOY_SHADOW_Q, 3)
+    settings_set_text(settings_st, TOY_LANG, "tr")
+    let fs = facts(settings_st)
     expect_eq(len(fs), 2)
     expect(fs[0].key == "shadow_q")
     expect_eq(fs[1].id, TOY_LANG)
   }
 
-  test "a value out of range is the default" (base_st: mut BaseState, settings_st: mut SettingsState) {
-    declare(base_st, settings_st)
-    settings_set_int(base_st, settings_st, TOY_SHADOW_Q, 9)
+  test "a value out of range is the default" (settings_st: mut SettingsState) {
+    declare(settings_st)
+    settings_set_int(settings_st, TOY_SHADOW_Q, 9)
     expect_eq(settings_get_int(settings_st, TOY_SHADOW_Q), 2)
-    settings_set_float(base_st, settings_st, TOY_RSCALE, 0.2)
+    settings_set_float(settings_st, TOY_RSCALE, 0.2)
     expect(settings_get_float(settings_st, TOY_RSCALE) > 0.77)
   }
 
-  test "a rescue puts back only what it lists" (base_st: mut BaseState, settings_st: mut SettingsState) {
-    declare(base_st, settings_st)
-    settings_set_int(base_st, settings_st, TOY_SHADOW_Q, 0)
-    settings_set_bool(base_st, settings_st, TOY_BLOOM, false)
+  test "a rescue puts back only what it lists" (settings_st: mut SettingsState) {
+    declare(settings_st)
+    settings_set_int(settings_st, TOY_SHADOW_Q, 0)
+    settings_set_bool(settings_st, TOY_BLOOM, false)
     expect(not settings_is_safe(settings_st, TOY_SHADOW_Q))
     settings_rescue(settings_st)
     expect_eq(settings_get_int(settings_st, TOY_SHADOW_Q), 2)
     expect(not settings_get_bool(settings_st, TOY_BLOOM))
   }
 
-  test "the file is by key, and what it lacks or cannot hold keeps the store's" (base_st: mut BaseState, settings_st: mut SettingsState) {
-    declare(base_st, settings_st)
-    settings_set_float(base_st, settings_st, TOY_RSCALE, 0.9)
-    settings_set_text(base_st, settings_st, TOY_LANG, "tr")
-    settings_set_bool(base_st, settings_st, TOY_HELD, true)
+  test "the file is by key, and what it lacks or cannot hold keeps the store's" (settings_st: mut SettingsState) {
+    declare(settings_st)
+    settings_set_float(settings_st, TOY_RSCALE, 0.9)
+    settings_set_text(settings_st, TOY_LANG, "tr")
+    settings_set_bool(settings_st, TOY_HELD, true)
     let text = Json.encode(settings_to_json(settings_st))
-    declare(base_st, settings_st)
-    settings_set_bool(base_st, settings_st, TOY_BLOOM, false)
+    declare(settings_st)
+    settings_set_bool(settings_st, TOY_BLOOM, false)
     let v = Json.parse(text)
     Value.put(v, "shadow_q", Value.int(7))
     Value.put(v, "stranger", Value.int(1))

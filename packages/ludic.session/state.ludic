@@ -78,18 +78,18 @@ export state SessionState {
   session__vote_passed: int = -1     # the last vote: -1 none, 0 failed, 1 passed
 }
 
-export function ses_facts(base_st: mut BaseState, session_st: mut SessionState) -> Queue<SessionFact> {
-  if session_st.session__facts == null { session_st.session__facts = queue_new(base_st, "session.facts") }
+export function ses_facts(session_st: mut SessionState) -> Queue<SessionFact> {
+  if session_st.session__facts == null { session_st.session__facts = queue_new("session.facts") }
   return session_st.session__facts
 }
 
-function session__fact(base_st: mut BaseState, session_st: mut SessionState, what: int, slot: int, pid: int) -> SessionFact {
+function session__fact(session_st: mut SessionState, what: int, slot: int, pid: int) -> SessionFact {
   let f = new SessionFact
   f.what = what
   f.slot = slot
   f.pid = pid
   f.role = session_st.session__role
-  q_push(base_st, ses_facts(base_st, session_st), f)
+  q_push(ses_facts(session_st), f)
   return f
 }
 

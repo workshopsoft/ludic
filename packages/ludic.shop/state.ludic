@@ -106,7 +106,7 @@ export property ShopTrade {
 }
 
 
-export function shop_trades(base_st: mut BaseState, shop_st: mut ShopState) -> Queue<ShopTrade> {
-  if shop_st.shop_trade_q == null { shop_st.shop_trade_q = queue_new(base_st, "shop.trades") }
+export function shop_trades(shop_st: mut ShopState) -> Queue<ShopTrade> {
+  if shop_st.shop_trade_q == null { shop_st.shop_trade_q = queue_new("shop.trades") }
   return shop_st.shop_trade_q
 }

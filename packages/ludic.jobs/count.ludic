@@ -6,17 +6,17 @@ function jobs__matches(want_kind: int, want_param: int, kind: int, param: int) -
 }
 
 # `n` of (kind, param) happened here: every job and post of a scope this machine keeps
-export function jobs_count(base_st: mut BaseState, jobs_st: mut JobsState, kind: int, param: int, n: int) -> void { jobs__count(base_st, jobs_st, -1, kind, param, n) }
+export function jobs_count(jobs_st: mut JobsState, kind: int, param: int, n: int) -> void { jobs__count(jobs_st, -1, kind, param, n) }
 
 # the same for one scope alone, kept or not: another member's deed arriving at the host
-export function jobs_count_in(base_st: mut BaseState, jobs_st: mut JobsState, scope: int, kind: int, param: int, n: int) -> void { jobs__count(base_st, jobs_st, scope, kind, param, n) }
+export function jobs_count_in(jobs_st: mut JobsState, scope: int, kind: int, param: int, n: int) -> void { jobs__count(jobs_st, scope, kind, param, n) }
 
 function jobs__takes(only: int, scope: int) -> bool {
   if only >= 0 { return scope == only }
   return JobsWorld.owns(scope)
 }
 
-function jobs__count(base_st: mut BaseState, jobs_st: mut JobsState, only: int, kind: int, param: int, n: int) -> void {
+function jobs__count(jobs_st: mut JobsState, only: int, kind: int, param: int, n: int) -> void {
   jobs__ensure(jobs_st)
   for i in 0 .. JOB_COUNT {
     let d = Jobs[i]
@@ -24,50 +24,50 @@ function jobs__count(base_st: mut BaseState, jobs_st: mut JobsState, only: int, 
     if not jobs__matches(d.kind, d.param, kind, param) { continue }
     let was = jobs_st.jobs__hv[i]
     jobs_st.jobs__hv[i] = was + n
-    jobs__moved(base_st, jobs_st, i, was)
+    jobs__moved(jobs_st, i, was)
   }
   for b in 0 .. BOARD_COUNT {
     if not jobs__takes(only, JobBoards[b].scope) { continue }
     for s in 0 .. JobBoards[b].slots {
       let k = jobs_st.jobs__off[b] + s
       if jobs_st.jobs__ps[k] != JOBS_ACTIVE or not jobs__matches(jobs_st.jobs__pk[k], jobs_st.jobs__pp[k], kind, param) { continue }
-      jobs__post_moved(base_st, jobs_st, b, s, jobs_st.jobs__ph[k] + n)
+      jobs__post_moved(jobs_st, b, s, jobs_st.jobs__ph[k] + n)
     }
   }
 }
 
-function jobs__recheck_one(base_st: mut BaseState, jobs_st: mut JobsState, i: int) -> void {
+function jobs__recheck_one(jobs_st: mut JobsState, i: int) -> void {
   let d = Jobs[i]
   if jobs_st.jobs__st[i] != JOBS_ACTIVE or d.kind < 0 or not JobsWorld.owns(d.scope) { return }
   let e = JobsWorld.evidence(d.kind, d.param)
   if e <= jobs_st.jobs__hv[i] { return }
   let was = jobs_st.jobs__hv[i]
   jobs_st.jobs__hv[i] = e
-  jobs__moved(base_st, jobs_st, i, was)
+  jobs__moved(jobs_st, i, was)
 }
 
 # every job under way against what the state already proves: work done before it was taken counts
 # for a written job; a post counts only what came after it went up
-export function jobs_recheck(base_st: mut BaseState, jobs_st: mut JobsState) -> void {
+export function jobs_recheck(jobs_st: mut JobsState) -> void {
   jobs__ensure(jobs_st)
-  for i in 0 .. JOB_COUNT { jobs__recheck_one(base_st, jobs_st, i) }
+  for i in 0 .. JOB_COUNT { jobs__recheck_one(jobs_st, i) }
   for b in 0 .. BOARD_COUNT {
     if not JobsWorld.owns(JobBoards[b].scope) { continue }
     for s in 0 .. JobBoards[b].slots {
       let k = jobs_st.jobs__off[b] + s
       if jobs_st.jobs__ps[k] != JOBS_ACTIVE or jobs_st.jobs__pk[k] < 0 { continue }
       let e = JobsWorld.evidence(jobs_st.jobs__pk[k], jobs_st.jobs__pp[k])
-      if e >= 0 and e - jobs_st.jobs__pb[k] > jobs_st.jobs__ph[k] { jobs__post_moved(base_st, jobs_st, b, s, e - jobs_st.jobs__pb[k]) }
+      if e >= 0 and e - jobs_st.jobs__pb[k] > jobs_st.jobs__ph[k] { jobs__post_moved(jobs_st, b, s, e - jobs_st.jobs__pb[k]) }
     }
   }
 }
 
 # offers newly open are said once; the first look after a reset says none of them
-function jobs__offers(base_st: mut BaseState, jobs_st: mut JobsState) -> void {
+function jobs__offers(jobs_st: mut JobsState) -> void {
   jobs__ensure(jobs_st)
   for i in 0 .. JOB_COUNT {
     let now = jobs_offered(jobs_st, i)
-    if now and not jobs_st.jobs__seen[i] and jobs_st.jobs__primed { jobs__fact(base_st, jobs_st, JOBS_F_OFFERED, i, -1, -1, 0, Jobs[i].need) }
+    if now and not jobs_st.jobs__seen[i] and jobs_st.jobs__primed { jobs__fact(jobs_st, JOBS_F_OFFERED, i, -1, -1, 0, Jobs[i].need) }
     jobs_st.jobs__seen[i] = now
   }
   jobs_st.jobs__primed = true

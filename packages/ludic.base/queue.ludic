@@ -2,60 +2,58 @@
 # game drains it in a later phase. First in, first out; nothing here rolls dice or reorders.
 export property Queue<T> {
   items: []T = null
-  id: int = -1
+  tag: QueueTag = null
+}
+# what a queue says about itself, whatever it holds: its name and how many facts wait in it
+export property QueueTag {
+  name: string = ""
+  pending: int = 0
 }
 
-# every named queue's pending count, so a frame's end can say which facts nobody read
+# BaseState is the system runner's (system.ludic). A queue keeps its own count, so pushing and
+# draining one takes only the state that owns the queue.
 export state BaseState {
-  qb_names: []string = null
-  qb_pending: []int = null
   cs_list: []System = null
 }
 
-function qb_init(base_st: mut BaseState) -> void {
-  if base_st.qb_names != null { return }
-  base_st.qb_names = new []string
-  base_st.qb_pending = new []int
-}
-
 # a queue; the name is only for core_undrained
-export function queue_new<T>(base_st: mut BaseState, name: string) -> Queue<T> {
-  qb_init(base_st)
+export function queue_new<T>(name: string) -> Queue<T> {
   let q = new Queue<T>
   q.items = new []T
-  q.id = len(base_st.qb_names)
-  push(base_st.qb_names, name)
-  push(base_st.qb_pending, 0)
+  q.tag = new QueueTag
+  q.tag.name = name
   return q
 }
 
-export function q_push<T>(base_st: mut BaseState, q: Queue<T>, v: T) -> void {
+export function q_push<T>(q: Queue<T>, v: T) -> void {
   push(q.items, v)
-  base_st.qb_pending[q.id] = len(q.items)
+  q.tag.pending = len(q.items)
 }
 
 # the facts in the order they were pushed; the queue is empty afterwards
-export function q_drain<T>(base_st: mut BaseState, q: Queue<T>) -> []T {
+export function q_drain<T>(q: Queue<T>) -> []T {
   let out = q.items
   q.items = new []T
-  base_st.qb_pending[q.id] = 0
+  q.tag.pending = 0
   return out
 }
 
 export function q_len<T>(q: Queue<T>) -> int { return len(q.items) }
 
-export function q_clear<T>(base_st: mut BaseState, q: Queue<T>) -> void {
+export function q_clear<T>(q: Queue<T>) -> void {
   q.items = new []T
-  base_st.qb_pending[q.id] = 0
+  q.tag.pending = 0
 }
 
-# the names of the queues still holding facts; call it at the end of a frame, where a fact
+# a queue's tag, for core_undrained: queues of different facts in one list
+export function q_tag<T>(q: Queue<T>) -> QueueTag { return q.tag }
+
+# the names of the given queues still holding facts; ask it at the end of a frame, where a fact
 # left behind is a route nobody wrote
-export function core_undrained(base_st: mut BaseState) -> []string {
-  qb_init(base_st)
+export function core_undrained(tags: []QueueTag) -> []string {
   let out = new []string
-  for i in 0 .. len(base_st.qb_names) {
-    if base_st.qb_pending[i] > 0 { push(out, base_st.qb_names[i]) }
+  for i in 0 .. len(tags) {
+    if tags[i] != null and tags[i].pending > 0 { push(out, tags[i].name) }
   }
   return out
 }

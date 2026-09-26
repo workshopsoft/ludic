@@ -59,16 +59,16 @@ export state PhotoState {
 
 
 
-export function photo_facts(base_st: mut BaseState, photo_st: mut PhotoState) -> Queue<PhotoFact> {
-  if photo_st.pht_fact_q == null { photo_st.pht_fact_q = queue_new(base_st, "photo.facts") }
+export function photo_facts(photo_st: mut PhotoState) -> Queue<PhotoFact> {
+  if photo_st.pht_fact_q == null { photo_st.pht_fact_q = queue_new("photo.facts") }
   return photo_st.pht_fact_q
 }
 
-function pht_fact(base_st: mut BaseState, photo_st: mut PhotoState, what: int, i: int) -> PhotoFact {
+function pht_fact(photo_st: mut PhotoState, what: int, i: int) -> PhotoFact {
   let f = new PhotoFact
   f.what = what
   f.index = i
-  q_push(base_st, photo_facts(base_st, photo_st), f)
+  q_push(photo_facts(photo_st), f)
   return f
 }
 

@@ -1,13 +1,13 @@
 # verbs.ludic - the fire burning down, and the only other ways it changes
-function fr_out(base_st: mut BaseState, fire_st: mut FireState) -> void {
+function fr_out(fire_st: mut FireState) -> void {
   fire_st.fr_lit = false
   fire_st.fr_fuel = 0.0
-  fr_fact(base_st, fire_st, FIRE_WENT_OUT)
+  fr_fact(fire_st, FIRE_WENT_OUT)
 }
 
 # `gh` game hours of burning; in the rain it burns twice as fast with nothing over the ring,
 # and under cover it counts the hours it held. Only the machine that owns the world burns it.
-export function fire_run(base_st: mut BaseState, fire_st: mut FireState, gh: float) -> void {
+export function fire_run(fire_st: mut FireState, gh: float) -> void {
   if not fire_st.fr_lit or not FireWorld.owns_world() { return }
   let was = fire_st.fr_fuel
   fire_st.fr_fuel = fire_st.fr_fuel - gh * 60.0
@@ -15,10 +15,10 @@ export function fire_run(base_st: mut BaseState, fire_st: mut FireState, gh: flo
     if FireWorld.sheltered() { fire_st.fr_rain_h = fire_st.fr_rain_h + gh } else { fire_st.fr_fuel = fire_st.fr_fuel - gh * 60.0 }
   }
   if fire_st.fr_fuel < 0.0 {
-    fr_out(base_st, fire_st)
+    fr_out(fire_st)
     return
   }
-  if was >= fire_st.fr_low_minutes and fire_st.fr_fuel < fire_st.fr_low_minutes { fr_fact(base_st, fire_st, FIRE_LOW_FUEL) }
+  if was >= fire_st.fr_low_minutes and fire_st.fr_fuel < fire_st.fr_low_minutes { fr_fact(fire_st, FIRE_LOW_FUEL) }
 }
 
 # put out, and nothing said (the night burns it down)
@@ -34,11 +34,11 @@ export function fire_set_burning(fire_st: mut FireState, fuel: float) -> void {
 }
 
 # what the machine that owns the world says the fire is; going out is a fact when `say`
-export function fire_told(base_st: mut BaseState, fire_st: mut FireState, lit: bool, fuel: float, say: bool) -> void {
+export function fire_told(fire_st: mut FireState, lit: bool, fuel: float, say: bool) -> void {
   let was = fire_st.fr_lit
   fire_st.fr_lit = lit
   fire_st.fr_fuel = fuel
-  if was and not lit and say { fr_fact(base_st, fire_st, FIRE_WENT_OUT) }
+  if was and not lit and say { fr_fact(fire_st, FIRE_WENT_OUT) }
 }
 
 # the rain hours outright (staging, a test)
@@ -47,9 +47,9 @@ export function fire_set_rain_hours(fire_st: mut FireState, h: float) -> void { 
 # a new day: the rain hours start again
 export function fire_morning(fire_st: mut FireState) -> void { fire_st.fr_rain_h = 0.0 }
 
-export function fire_reset(base_st: mut BaseState, fire_st: mut FireState) -> void {
+export function fire_reset(fire_st: mut FireState) -> void {
   fire_st.fr_lit = false
   fire_st.fr_fuel = 0.0
   fire_st.fr_rain_h = 0.0
-  q_clear(base_st, fire_facts(base_st, fire_st))
+  q_clear(fire_facts(fire_st))
 }

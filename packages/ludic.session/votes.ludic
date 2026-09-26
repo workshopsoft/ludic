@@ -10,16 +10,16 @@ const SESSION_VOTE_SECS: float = 30.0
 
 
 # a world-changing act: may it go ahead now, or does the party have to be asked first?
-export function ses_may(base_st: mut BaseState, session_st: mut SessionState, kind: int, param: int, text: string) -> int {
+export function ses_may(session_st: mut SessionState, kind: int, param: int, text: string) -> int {
   if not ses_live(session_st) { return SES_MAY_GO }
   if session_st.session__role == SES_GUEST { return SES_MAY_HOSTS }
   if ply_count(session_st) <= 1 { return SES_MAY_GO }
-  if not ses_vote_open(base_st, session_st, kind, param, text) { return SES_MAY_BUSY }
+  if not ses_vote_open(session_st, kind, param, text) { return SES_MAY_BUSY }
   return SES_MAY_ASKED
 }
 
 # the host puts it to the party, voting yes itself
-export function ses_vote_open(base_st: mut BaseState, session_st: mut SessionState, kind: int, param: int, text: string) -> bool {
+export function ses_vote_open(session_st: mut SessionState, kind: int, param: int, text: string) -> bool {
   if session_st.session__role != SES_HOST or ses_vote_live(session_st) { return false }
   session_st.session__vote_id += 1
   session_st.session__vote_kind = kind
@@ -30,29 +30,29 @@ export function ses_vote_open(base_st: mut BaseState, session_st: mut SessionSta
   session_st.session__vote_no = 0
   session_st.session__vote_mine = 1
   session_st.session__vote_passed = -1
-  let f = session__vote_fact(base_st, session_st, SES_VOTE_OPENED)
+  let f = session__vote_fact(session_st, SES_VOTE_OPENED)
   f.yes = true
-  session__vote_check(base_st, session_st)
+  session__vote_check(session_st)
   return true
 }
 
 # this player's answer; a guest's goes to the host as SES_VOTE_CAST
-export function ses_vote_cast(base_st: mut BaseState, session_st: mut SessionState, yes: bool) -> void {
+export function ses_vote_cast(session_st: mut SessionState, yes: bool) -> void {
   if not ses_vote_live(session_st) or session_st.session__vote_mine >= 0 { return }
   if yes { session_st.session__vote_mine = 1 } else { session_st.session__vote_mine = 0 }
   if session_st.session__role == SES_GUEST {
-    let f = session__vote_fact(base_st, session_st, SES_VOTE_CAST)
+    let f = session__vote_fact(session_st, SES_VOTE_CAST)
     f.yes = yes
     return
   }
-  ses_vote_heard(base_st, session_st, session_st.session__vote_id, yes)
+  ses_vote_heard(session_st, session_st.session__vote_id, yes)
 }
 
 # the host: a player's answer to vote `id`
-export function ses_vote_heard(base_st: mut BaseState, session_st: mut SessionState, id: int, yes: bool) -> void {
+export function ses_vote_heard(session_st: mut SessionState, id: int, yes: bool) -> void {
   if session_st.session__role != SES_HOST or id != session_st.session__vote_id or not ses_vote_live(session_st) { return }
   if yes { session_st.session__vote_yes += 1 } else { session_st.session__vote_no += 1 }
-  session__vote_check(base_st, session_st)
+  session__vote_check(session_st)
 }
 
 # a guest: the host opened vote `id`, or ended it
@@ -71,29 +71,29 @@ export function ses_vote_ended(session_st: mut SessionState, id: int, passed: bo
 }
 
 # the vote's thirty seconds; on the host, running out decides it
-export function ses_vote_tick(base_st: mut BaseState, session_st: mut SessionState, dt: float) -> void {
+export function ses_vote_tick(session_st: mut SessionState, dt: float) -> void {
   if not ses_vote_live(session_st) { return }
   session_st.session__vote_t = session_st.session__vote_t - dt
-  if session_st.session__role == SES_HOST and not ses_vote_live(session_st) { session__vote_finish(base_st, session_st) }
+  if session_st.session__role == SES_HOST and not ses_vote_live(session_st) { session__vote_finish(session_st) }
 }
 
-function session__vote_check(base_st: mut BaseState, session_st: mut SessionState) -> void {
+function session__vote_check(session_st: mut SessionState) -> void {
   let n = ply_count(session_st)
   let yes = session_st.session__vote_yes
   let no = session_st.session__vote_no
-  if yes * 2 > n or no * 2 >= n or yes + no >= n { session__vote_finish(base_st, session_st) }
+  if yes * 2 > n or no * 2 >= n or yes + no >= n { session__vote_finish(session_st) }
 }
 
-function session__vote_finish(base_st: mut BaseState, session_st: mut SessionState) -> void {
+function session__vote_finish(session_st: mut SessionState) -> void {
   let passed = session_st.session__vote_yes * 2 > ply_count(session_st)
   session_st.session__vote_t = 0.0
   if passed { session_st.session__vote_passed = 1 } else { session_st.session__vote_passed = 0 }
-  let f = session__vote_fact(base_st, session_st, SES_VOTE_RESOLVED)
+  let f = session__vote_fact(session_st, SES_VOTE_RESOLVED)
   f.yes = passed
 }
 
-function session__vote_fact(base_st: mut BaseState, session_st: mut SessionState, what: int) -> SessionFact {
-  let f = session__fact(base_st, session_st, what, -1, 0)
+function session__vote_fact(session_st: mut SessionState, what: int) -> SessionFact {
+  let f = session__fact(session_st, what, -1, 0)
   f.id = session_st.session__vote_id
   f.kind = session_st.session__vote_kind
   f.param = session_st.session__vote_param

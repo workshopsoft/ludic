@@ -274,7 +274,7 @@ counter.ludic:5: error: this assignment: LIMITS is module-level and immutable al
 counter.ludic:3: error: x: mut int - mut is for a state parameter, and int is not a state
 ```
 
-**`ludic migrate state [file|dir...] [--runtime] [--dry-run]` moves programs there.** It compiles
+**`ludic migrate state [file|dir...] [--prune] [--runtime] [--dry-run]` moves programs there.** It compiles
 each program and, from the compiler's own view of every name:
 
 1. a var nothing writes, holding a value (an int, a string, an enum...), becomes a module-level
@@ -312,6 +312,18 @@ own vars too. gpp's packages and examples were moved with one command:
 ```
 ludic migrate state packages <every example program> packages/ludic.lab/example/plate.ludic
 migrate: 1804 vars into 126 states, 64 into lets; 23498 edits in 460 files
+```
+
+**`--prune` takes out what a function no longer uses:** each state parameter that neither the
+function nor anything it calls uses, and the argument that fills it at every call. An argument for a
+parameter the callee no longer has goes too - a package's verb that dropped a state leaves its callers
+passing one too many, and `ludic migrate state --prune <program>` puts them right. A reducer keeps its
+state. When ludic.base's queues began keeping their own counts, every package verb lost its
+`base_st` this way (`wallet_earn(wallet_st, n)`, not `wallet_earn(base_st, wallet_st, n)`):
+
+```
+ludic migrate state --prune packages packages/ludic.lab/example/plate.ludic
+migrate: 0 vars into 0 states, 0 into lets; 1889 edits in 132 files
 ```
 
 ### Actions and reducers (`action`, `reducer`, `dispatch`)

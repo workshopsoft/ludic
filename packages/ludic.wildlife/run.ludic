@@ -1,12 +1,12 @@
 # run.ludic - one step of every animal: the port says whether it is about at this hour; anything
 # within 900 m of a player thinks; the gait follows the ground covered; player 0 sees what is near
-export function wildlife_tick(base_st: mut BaseState, wildlife_st: mut WildlifeState, dt: float, gh: float) -> void {
+export function wildlife_tick(wildlife_st: mut WildlifeState, dt: float, gh: float) -> void {
   wl_seed_scan(wildlife_st, dt)
   let all = wildlife_all(wildlife_st)
-  for i in 0 .. len(all) { wl_tick_one(base_st, wildlife_st, all[i], dt, gh) }
+  for i in 0 .. len(all) { wl_tick_one(wildlife_st, all[i], dt, gh) }
 }
 
-function wl_tick_one(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: WildAnimal, dt: float, gh: float) -> void {
+function wl_tick_one(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float, gh: float) -> void {
   if not a.alive { return }
   let about = WildlifeWorld.about(a)
   if about == WILD_AWAY {
@@ -15,7 +15,7 @@ function wl_tick_one(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: 
   }
   if about == WILD_GONE {
     wildlife_remove(a)
-    wl_fact(base_st, wildlife_st, WILD_WENT, a)
+    wl_fact(wildlife_st, WILD_WENT, a)
     return
   }
   a.shown = true
@@ -24,11 +24,11 @@ function wl_tick_one(base_st: mut BaseState, wildlife_st: mut WildlifeState, a: 
   let s = wl_sp(wildlife_st, a.sp)
   if wildlife_st.wl_hold { }
   else if a.pinned { a.speed = 0.0 }
-  else if s.flies { wildlife_tick_bird(base_st, wildlife_st, a, dt) } else { wildlife_tick_ground(base_st, wildlife_st, a, dt, gh) }
+  else if s.flies { wildlife_tick_bird(wildlife_st, a, dt) } else { wildlife_tick_ground(wildlife_st, a, dt, gh) }
   var stride = 1.2 * a.scale
   if s.flies { stride = 0.6 }
   a.phase = (a.phase + a.speed * dt / stride * WL_TAU) % WL_TAU
-  if WildlifeWorld.player_on(0) and wl_pdist(0, a) < 60.0 and wildlife_saw(wildlife_st, a.sp) { wl_fact(base_st, wildlife_st, WILD_SPOTTED, a) }
+  if WildlifeWorld.player_on(0) and wl_pdist(0, a) < 60.0 and wildlife_saw(wildlife_st, a.sp) { wl_fact(wildlife_st, WILD_SPOTTED, a) }
 }
 
 # the gait advanced by a copy the game moves itself (a guest's copy of the host's animal)

@@ -1,12 +1,12 @@
 # system.ludic - fishing as a system: its tick, and the record in its own save section (a line in
 # the water is never saved)
-export function fishing_reset(base_st: mut BaseState, fishing_st: mut FishingState) -> void {
+export function fishing_reset(fishing_st: mut FishingState) -> void {
   fishing_stop(fishing_st)
   fishing_st.fishing_n = 0
   fishing_st.fishing_big = 0
   fishing_st.fishing_leg = false
   fishing_st.fishing_dice = rng_new(fishing_st.fishing_seed_n)
-  q_clear(base_st, fishing_facts(base_st, fishing_st))
+  q_clear(fishing_facts(fishing_st))
 }
 
 # the record outright (staging, a test, the network's word)
@@ -24,12 +24,12 @@ export function fishing_save(fishing_st: FishingState) -> Val {
   return v
 }
 
-export function fishing_load(base_st: mut BaseState, fishing_st: mut FishingState, v: Val, version: int) -> void {
-  fishing_reset(base_st, fishing_st)
+export function fishing_load(fishing_st: mut FishingState, v: Val, version: int) -> void {
+  fishing_reset(fishing_st)
   fishing_record_set(fishing_st, sv_int(v, "caught", 0), sv_int(v, "biggest", 0), sv_bool(v, "legend", false))
 }
 
-function fishing_sys_tick(base_st: mut BaseState, fishing_st: mut FishingState, t: Tick) -> void { fishing_run(base_st, fishing_st, t.dt) }
+function fishing_sys_tick(fishing_st: mut FishingState, t: Tick) -> void { fishing_run(fishing_st, t.dt) }
 
 export function fishing_system() -> System {
   let s = system_new("fishing", PH_SIMULATE)

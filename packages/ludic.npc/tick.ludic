@@ -1,27 +1,27 @@
 # tick.ludic - a step of everyone, on the machine that runs the place: the census on the half hour,
 # the day's end (only ever out of every player's sight), the walk or the act, and who noticed whom
-export function npc_tick(base_st: mut BaseState, npc_st: mut NpcState, dt: float) -> void {
+export function npc_tick(npc_st: mut NpcState, dt: float) -> void {
   np_ensure(npc_st)
-  for i in 0 .. len(npc_st.np_posts) { if npc_st.np_posts[i].active { np_step_post(base_st, npc_st, npc_st.np_posts[i], dt) } }
+  for i in 0 .. len(npc_st.np_posts) { if npc_st.np_posts[i].active { np_step_post(npc_st, npc_st.np_posts[i], dt) } }
   if npc_st.np_hold or npc_st.np_mirror { return }
   np_census(npc_st)
   for i in 0 .. len(npc_st.np_walkers) {
     let p = npc_st.np_walkers[i]
     if not p.active or np_leaves(npc_st, p) { continue }
-    if p.act == NPCA_WALK { npc_walk(base_st, npc_st, p, dt) } else { npc_act(npc_st, p, dt) }
-    npc_notice(base_st, npc_st, p)
+    if p.act == NPCA_WALK { npc_walk(npc_st, p, dt) } else { npc_act(npc_st, p, dt) }
+    npc_notice(npc_st, p)
   }
 }
 
 # the posts alone: a machine that does not run the place still turns its vendors to whoever comes
-export function npc_posts_tick(base_st: mut BaseState, npc_st: mut NpcState, dt: float) -> void {
+export function npc_posts_tick(npc_st: mut NpcState, dt: float) -> void {
   np_ensure(npc_st)
-  for i in 0 .. len(npc_st.np_posts) { if npc_st.np_posts[i].active { np_step_post(base_st, npc_st, npc_st.np_posts[i], dt) } }
+  for i in 0 .. len(npc_st.np_posts) { if npc_st.np_posts[i].active { np_step_post(npc_st, npc_st.np_posts[i], dt) } }
 }
 
-function np_step_post(base_st: mut BaseState, npc_st: mut NpcState, p: NpcPerson, dt: float) -> void {
+function np_step_post(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void {
   npc_act(npc_st, p, dt)
-  npc_notice(base_st, npc_st, p)
+  npc_notice(npc_st, p)
 }
 
 # counted, not tallied, so it cannot drift; the census fills to what the place wants from the kinds
@@ -81,14 +81,14 @@ export function npc_census_now(npc_st: mut NpcState) -> void { npc_st.np_next_h 
 export function npc_hold(npc_st: mut NpcState, on: bool) -> void { npc_st.np_hold = on }
 
 # everyone gone, as a new trip starts; the posts are the place's and stay
-export function npc_reset(base_st: mut BaseState, npc_st: mut NpcState) -> void {
+export function npc_reset(npc_st: mut NpcState) -> void {
   np_ensure(npc_st)
   for i in 0 .. len(npc_st.np_walkers) { npc_retire(npc_st, npc_st.np_walkers[i]) }
   npc_st.np_n = 0
   npc_st.np_next_h = 0.0
   npc_st.np_hold = false
   npc_st.np_recent = new []string
-  q_clear(base_st, npc_facts(base_st, npc_st))
+  q_clear(npc_facts(npc_st))
 }
 
 # forgotten altogether, walkers and posts (the place itself was replaced)

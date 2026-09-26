@@ -1,14 +1,14 @@
 # queue.ludic - a start, an event encoded once into a line, the queue on disk, and forgetting
 # once, at boot: who this is (from the id file, or begun from the machine), a new session, and
 # whatever an earlier start left unsent - or nothing, if the player has it off
-export function telemetry_start(base_st: mut BaseState, telemetry_st: mut TelemetryState) -> void {
+export function telemetry_start(telemetry_st: mut TelemetryState) -> void {
   if telemetry_st.telemetry__ready { return }
   telemetry_st.telemetry__ready = true
   telemetry_st.telemetry__t0 = Time.now()
   telemetry_st.telemetry__session = telemetry_random_hex(telemetry_st, 16)
   telemetry_st.telemetry__q = new []string
   telemetry_st.telemetry__id = sv_str(telemetry__read_obj(telemetry__conf(telemetry_st).id_file), "id", "")
-  if len(telemetry_st.telemetry__id) == 0 { telemetry__id_begin(base_st, telemetry_st) }
+  if len(telemetry_st.telemetry__id) == 0 { telemetry__id_begin(telemetry_st) }
   if telemetry__enabled() { telemetry__queue_load(telemetry_st) } else { telemetry_forget(telemetry_st) }
 }
 

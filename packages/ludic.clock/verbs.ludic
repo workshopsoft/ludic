@@ -10,34 +10,34 @@ export function clock_set_hours(clock_st: mut ClockState, h: float) -> void {
   clock_st.ck_hours = x
 }
 
-function ck_turn(base_st: mut BaseState, clock_st: mut ClockState, how: int) -> void {
+function ck_turn(clock_st: mut ClockState, how: int) -> void {
   clock_st.ck_day += 1
   clock_st.ck_moon = (clock_st.ck_moon + 1.0 / clock_st.ck_moon_days) % 1.0
   let d = new DayTurned
   d.day = clock_st.ck_day
   d.how = how
-  q_push(base_st, clock_days(base_st, clock_st), d)
+  q_push(clock_days(clock_st), d)
 }
 
 # a new day however it came (a night slept, a collapse); the caller sets the hour first
-export function clock_new_day(base_st: mut BaseState, clock_st: mut ClockState) -> void { ck_turn(base_st, clock_st, DAY_SLEPT) }
+export function clock_new_day(clock_st: mut ClockState) -> void { ck_turn(clock_st, DAY_SLEPT) }
 
 # run the hours on by `gh` game hours; past midnight the day turns. Only the machine that owns
 # the world moves it - another machine is told the time.
-export function clock_advance(base_st: mut BaseState, clock_st: mut ClockState, gh: float) -> void {
+export function clock_advance(clock_st: mut ClockState, gh: float) -> void {
   if not ck_owns() { return }
   clock_st.ck_hours = clock_st.ck_hours + gh
   while not (clock_st.ck_hours < 24.0) {
     clock_st.ck_hours = clock_st.ck_hours - 24.0
-    ck_turn(base_st, clock_st, DAY_STAYED_UP)
+    ck_turn(clock_st, DAY_STAYED_UP)
   }
 }
 
 # a new trip: day one at the start hour, the moon somewhere in its month
-export function clock_reset(base_st: mut BaseState, clock_st: mut ClockState) -> void {
+export function clock_reset(clock_st: mut ClockState) -> void {
   clock_st.ck_dice = rng_new(ClockWorld.seed())
   clock_st.ck_day = 1
   clock_st.ck_hours = clock_st.ck_start_hours
   clock_st.ck_moon = rng_span(clock_st.ck_dice, clock_st.ck_moon_lo, clock_st.ck_moon_hi) % 1.0
-  q_clear(base_st, clock_days(base_st, clock_st))
+  q_clear(clock_days(clock_st))
 }

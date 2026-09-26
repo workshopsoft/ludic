@@ -9,17 +9,17 @@ const chr_pi: float = 3.14159265
 
 
 
-export function char_facts(base_st: mut BaseState, character_st: mut CharacterState) -> Queue<CharacterFact> {
-  if character_st.chr_fact_q == null { character_st.chr_fact_q = queue_new(base_st, "character.facts") }
+export function char_facts(character_st: mut CharacterState) -> Queue<CharacterFact> {
+  if character_st.chr_fact_q == null { character_st.chr_fact_q = queue_new("character.facts") }
   return character_st.chr_fact_q
 }
 
-function chr_say(base_st: mut BaseState, character_st: mut CharacterState, what: int, v: float) -> void {
+function chr_say(character_st: mut CharacterState, what: int, v: float) -> void {
   let f = new CharacterFact
   f.what = what
   f.x = character_st.chr_x
   f.y = character_st.chr_y
   f.z = character_st.chr_z
   f.v = v
-  q_push(base_st, char_facts(base_st, character_st), f)
+  q_push(char_facts(character_st), f)
 }

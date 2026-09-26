@@ -14,17 +14,17 @@ function sg_init(settings_st: mut SettingsState) -> void {
   settings_st.sg_text = new []string
 }
 
-export function settings_changes(base_st: mut BaseState, settings_st: mut SettingsState) -> Queue<SettingChanged> {
-  if settings_st.sg_changes == null { settings_st.sg_changes = queue_new(base_st, "settings.changes") }
+export function settings_changes(settings_st: mut SettingsState) -> Queue<SettingChanged> {
+  if settings_st.sg_changes == null { settings_st.sg_changes = queue_new("settings.changes") }
   return settings_st.sg_changes
 }
 
 # forget every setting (a test, or a game that declares its table again)
-export function settings_clear(base_st: mut BaseState, settings_st: mut SettingsState) -> void {
+export function settings_clear(settings_st: mut SettingsState) -> void {
   settings_st.sg_defs = new []SettingDef
   settings_st.sg_num = new []float
   settings_st.sg_text = new []string
-  q_clear(base_st, settings_changes(base_st, settings_st))
+  q_clear(settings_changes(settings_st))
 }
 
 # a setting, at its default; its id is its place in the order added
@@ -55,31 +55,31 @@ export function settings_get_int(settings_st: SettingsState, id: int) -> int { r
 export function settings_get_bool(settings_st: SettingsState, id: int) -> bool { return settings_st.sg_num[id] != 0.0 }
 export function settings_get_text(settings_st: SettingsState, id: int) -> string { return settings_st.sg_text[id] }
 
-function sg_changed(base_st: mut BaseState, settings_st: mut SettingsState, id: int) -> void {
+function sg_changed(settings_st: mut SettingsState, id: int) -> void {
   let c = new SettingChanged
   c.id = id
   c.key = settings_st.sg_defs[id].key
-  q_push(base_st, settings_changes(base_st, settings_st), c)
+  q_push(settings_changes(settings_st), c)
 }
 
 # a value outside the setting's range is its default: a damaged file never reaches the game
-export function settings_set_float(base_st: mut BaseState, settings_st: mut SettingsState, id: int, v: float) -> void {
+export function settings_set_float(settings_st: mut SettingsState, id: int, v: float) -> void {
   let h = settings_held(settings_st, id, v)
   if h == settings_st.sg_num[id] { return }
   settings_st.sg_num[id] = h
-  sg_changed(base_st, settings_st, id)
+  sg_changed(settings_st, id)
 }
 
-export function settings_set_int(base_st: mut BaseState, settings_st: mut SettingsState, id: int, v: int) -> void { settings_set_float(base_st, settings_st, id, float(v)) }
+export function settings_set_int(settings_st: mut SettingsState, id: int, v: int) -> void { settings_set_float(settings_st, id, float(v)) }
 
-export function settings_set_bool(base_st: mut BaseState, settings_st: mut SettingsState, id: int, v: bool) -> void {
-  if v { settings_set_float(base_st, settings_st, id, 1.0) } else { settings_set_float(base_st, settings_st, id, 0.0) }
+export function settings_set_bool(settings_st: mut SettingsState, id: int, v: bool) -> void {
+  if v { settings_set_float(settings_st, id, 1.0) } else { settings_set_float(settings_st, id, 0.0) }
 }
 
-export function settings_set_text(base_st: mut BaseState, settings_st: mut SettingsState, id: int, v: string) -> void {
+export function settings_set_text(settings_st: mut SettingsState, id: int, v: string) -> void {
   if v == settings_st.sg_text[id] { return }
   settings_st.sg_text[id] = v
-  sg_changed(base_st, settings_st, id)
+  sg_changed(settings_st, id)
 }
 
 # `v` held to the setting's range: outside it, the default
