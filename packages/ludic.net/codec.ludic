@@ -73,7 +73,6 @@ export function nr_text(net_st: mut NetState, cap: int) -> string {
     net_st.net__rbad = true
     return ""
   }
-  if net_st.net__tb == null { net_st.net__tb = buffer(NET_MTU) }
   nb_copy(net_st.net__tb, 0, net_st.net__rb, net_st.net__rp, n)
   net_st.net__rp += n
   return text_of(net_st.net__tb, n)

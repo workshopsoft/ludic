@@ -92,7 +92,7 @@ function session__vote_finish(session_st: mut SessionState) -> void {
   f.yes = passed
 }
 
-function session__vote_fact(session_st: mut SessionState, what: int) -> SessionFact {
+function session__vote_fact(session_st: SessionState, what: int) -> SessionFact {
   let f = session__fact(session_st, what, -1, 0)
   f.id = session_st.session__vote_id
   f.kind = session_st.session__vote_kind

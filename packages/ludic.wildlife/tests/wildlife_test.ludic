@@ -31,7 +31,7 @@ program WildlifeTest {
     spot: fn fk_spot
   }
 
-  function facts(wildlife_st: mut WildlifeState) -> []WildFact { return q_drain(wildlife_facts(wildlife_st)) }
+  function facts(wildlife_st: WildlifeState) -> []WildFact { return q_drain(wildlife_facts(wildlife_st)) }
   function count(fs: []WildFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

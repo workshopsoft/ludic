@@ -2,7 +2,7 @@
 export function telemetry_id(telemetry_st: TelemetryState) -> string { return telemetry_st.telemetry__id }
 export function telemetry_session(telemetry_st: TelemetryState) -> string { return telemetry_st.telemetry__session }
 export function telemetry_ready(telemetry_st: TelemetryState) -> bool { return telemetry_st.telemetry__ready }
-export function telemetry_get_config(telemetry_st: mut TelemetryState) -> TelemetryConfig { return telemetry__conf(telemetry_st) }
+export function telemetry_get_config(telemetry_st: TelemetryState) -> TelemetryConfig { return telemetry__conf(telemetry_st) }
 export function telemetry_fails(telemetry_st: TelemetryState) -> int { return telemetry_st.telemetry__fails }
 export function telemetry_next_ms(telemetry_st: TelemetryState) -> int { return telemetry_st.telemetry__next_ms }
 export function telemetry_in_flight(telemetry_st: TelemetryState) -> bool { return telemetry_st.telemetry__h >= 0 }

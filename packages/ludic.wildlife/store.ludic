@@ -1,25 +1,23 @@
 # store.ludic - the animals, their own dice, and the verbs that make and take one away
 const WL_TAU: float = 6.2831853
 
-export function wildlife_all(wildlife_st: mut WildlifeState) -> []WildAnimal {
-  if wildlife_st.wl_list == null { wildlife_st.wl_list = new []WildAnimal }
+export function wildlife_all(wildlife_st: WildlifeState) -> []WildAnimal {
   return wildlife_st.wl_list
 }
 
-export function wildlife_count_all(wildlife_st: mut WildlifeState) -> int { return len(wildlife_all(wildlife_st)) }
+export function wildlife_count_all(wildlife_st: WildlifeState) -> int { return len(wildlife_all(wildlife_st)) }
 
 # a new valley: every animal forgotten, quietly (the game has already let its drawings go)
 export function wildlife_clear(wildlife_st: mut WildlifeState) -> void { wildlife_st.wl_list = new []WildAnimal }
 
-function wl_rng(wildlife_st: mut WildlifeState) -> Rng {
-  if wildlife_st.wl_dice == null { wildlife_st.wl_dice = rng_new(97) }
+function wl_rng(wildlife_st: WildlifeState) -> Rng {
   return wildlife_st.wl_dice
 }
 
-function wl_rnd(wildlife_st: mut WildlifeState) -> float { return rng_float(wl_rng(wildlife_st)) }
+function wl_rnd(wildlife_st: WildlifeState) -> float { return rng_float(wl_rng(wildlife_st)) }
 
 # the package's dice from a known place (a spawn, a test)
-export function wildlife_seed(wildlife_st: mut WildlifeState, seed: int) -> void { rng_seed(wl_rng(wildlife_st), seed) }
+export function wildlife_seed(wildlife_st: WildlifeState, seed: int) -> void { rng_seed(wl_rng(wildlife_st), seed) }
 
 # an individual exactly as given: the host's own, or the host's on a guest
 export function wildlife_make(wildlife_st: mut WildlifeState, sp: int, x: float, z: float, legend: bool, yaw: float, variant: int, scale: float, nid: int) -> WildAnimal {
@@ -76,14 +74,14 @@ export function wildlife_remove(a: WildAnimal) -> void {
 # staged for a picture: nobody thinks, and everybody keeps the speed they were given
 export function wildlife_hold(wildlife_st: mut WildlifeState, on: bool) -> void { wildlife_st.wl_hold = on }
 
-export function wildlife_by_nid(wildlife_st: mut WildlifeState, nid: int) -> WildAnimal {
+export function wildlife_by_nid(wildlife_st: WildlifeState, nid: int) -> WildAnimal {
   let all = wildlife_all(wildlife_st)
   for i in 0 .. len(all) { if all[i].nid == nid { return all[i] } }
   return null
 }
 
 # how many of a species are alive, legends apart
-export function wildlife_count(wildlife_st: mut WildlifeState, sp: int) -> int {
+export function wildlife_count(wildlife_st: WildlifeState, sp: int) -> int {
   var n = 0
   let all = wildlife_all(wildlife_st)
   for i in 0 .. len(all) { if all[i].alive and all[i].sp == sp and not all[i].legend { n += 1 } }

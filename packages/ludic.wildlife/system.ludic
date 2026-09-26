@@ -9,7 +9,7 @@ export function wildlife_reset(wildlife_st: mut WildlifeState) -> void {
   q_clear(wildlife_facts(wildlife_st))
 }
 
-export function wildlife_save(wildlife_st: mut WildlifeState) -> Val {
+export function wildlife_save(wildlife_st: WildlifeState) -> Val {
   let v = Value.object()
   sv_put_int(v, "seen", wildlife_st.wl_seen)
   sv_put_int(v, "fed", wildlife_st.wl_fed)

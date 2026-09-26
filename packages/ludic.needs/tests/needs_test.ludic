@@ -46,7 +46,7 @@ program NeedsTest {
 
   function fresh(needs_st: mut NeedsState) -> void { needs_reset(needs_st) }
   function hours(needs_st: mut NeedsState, h: float) -> void { for i in 0 .. int(h * 10.0) { needs_run(needs_st, 0.1) } }
-  function facts(needs_st: mut NeedsState) -> []NeedFact { return q_drain(needs_facts(needs_st)) }
+  function facts(needs_st: NeedsState) -> []NeedFact { return q_drain(needs_facts(needs_st)) }
 
   test "a new body is warm, rested, fed and watered" (needs_st: mut NeedsState) {
     fresh(needs_st)

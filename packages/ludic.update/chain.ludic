@@ -46,4 +46,4 @@ export function update_plan_version(update_st: UpdateState, i: int) -> string { 
 export function update_target(update_st: UpdateState) -> string { return update_st.update__target }
 export function update_total_bytes(update_st: UpdateState) -> int { return update_st.update__total_bytes }
 
-function update__path(update_st: mut UpdateState, i: int) -> string { return update_packages(update_st) + update__sep() + update_st.update__files[i] }
+function update__path(update_st: UpdateState, i: int) -> string { return update_packages(update_st) + update__sep() + update_st.update__files[i] }

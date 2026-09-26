@@ -13,8 +13,8 @@ program EffectsTest {
     effects_reset(effects_st)
   }
 
-  function ended(effects_st: mut EffectsState) -> []EffectEnded { return q_drain(effects_ended(effects_st)) }
-  function waiting(effects_st: mut EffectsState) -> int { return q_len(effects_ended(effects_st)) }
+  function ended(effects_st: EffectsState) -> []EffectEnded { return q_drain(effects_ended(effects_st)) }
+  function waiting(effects_st: EffectsState) -> int { return q_len(effects_ended(effects_st)) }
 
   function tick_minutes(m: float) -> void {
     let s = effects_system()

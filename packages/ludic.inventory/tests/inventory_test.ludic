@@ -28,8 +28,8 @@ program InventoryTest {
     inv_reset(inventory_st)
   }
 
-  function changes(inventory_st: mut InventoryState) -> []ItemChanged { return q_drain(inv_changes(inventory_st)) }
-  function waiting(inventory_st: mut InventoryState) -> int { return q_len(inv_changes(inventory_st)) }
+  function changes(inventory_st: InventoryState) -> []ItemChanged { return q_drain(inv_changes(inventory_st)) }
+  function waiting(inventory_st: InventoryState) -> int { return q_len(inv_changes(inventory_st)) }
 
   test "add puts in what fits and says how many" (inventory_st: mut InventoryState) {
     fresh(inventory_st)

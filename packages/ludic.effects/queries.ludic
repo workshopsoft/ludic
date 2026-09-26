@@ -2,20 +2,20 @@
 function ef_live(e: Effect) -> bool { return e.delay < 0.01 }
 
 # what the rules should add for a kind right now (a delayed one counts only once it begins)
-export function effects_sum(effects_st: mut EffectsState, kind: int) -> float {
+export function effects_sum(effects_st: EffectsState, kind: int) -> float {
   let all = ef_all(effects_st)
   var t = 0.0
   for i in 0 .. len(all) { if all[i].kind == kind and ef_live(all[i]) { t = t + all[i].mag } }
   return t
 }
 
-export function effects_has(effects_st: mut EffectsState, kind: int) -> bool {
+export function effects_has(effects_st: EffectsState, kind: int) -> bool {
   let all = ef_all(effects_st)
   for i in 0 .. len(all) { if all[i].kind == kind and ef_live(all[i]) { return true } }
   return false
 }
 
-export function effects_bonus_count(effects_st: mut EffectsState) -> int {
+export function effects_bonus_count(effects_st: EffectsState) -> int {
   let all = ef_all(effects_st)
   var n = 0
   for i in 0 .. len(all) { if all[i].bonus { n += 1 } }
@@ -23,10 +23,10 @@ export function effects_bonus_count(effects_st: mut EffectsState) -> int {
 }
 
 # everything held, delayed or not, in the order added
-export function effects_count(effects_st: mut EffectsState) -> int { return len(ef_all(effects_st)) }
+export function effects_count(effects_st: EffectsState) -> int { return len(ef_all(effects_st)) }
 
 # a copy, so a reader cannot change the ring
-export function effects_at(effects_st: mut EffectsState, i: int) -> Effect {
+export function effects_at(effects_st: EffectsState, i: int) -> Effect {
   let src = ef_all(effects_st)[i]
   let e = new Effect
   e.kind = src.kind
@@ -39,7 +39,7 @@ export function effects_at(effects_st: mut EffectsState, i: int) -> Effect {
 }
 
 # the indices of the ones that have begun, for a read-out
-export function effects_live(effects_st: mut EffectsState) -> []int {
+export function effects_live(effects_st: EffectsState) -> []int {
   let out = new []int
   let all = ef_all(effects_st)
   for i in 0 .. len(all) { if ef_live(all[i]) { push(out, i) } }

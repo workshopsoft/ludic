@@ -10,7 +10,7 @@ const NET_R_DONE: int = 5        # a guest: the hello is on its way
 
 
 # room codes are on when the game named a matchmaker
-export function net_room_on(net_st: mut NetState) -> bool { return len(net__conf(net_st).signal_url) > 0 }
+export function net_room_on(net_st: NetState) -> bool { return len(net__conf(net_st).signal_url) > 0 }
 export function net_room(net_st: NetState) -> string { return net_st.net__room }
 export function net_room_asking(net_st: NetState) -> bool { return net_st.net__r_state == NET_R_STUN or net_st.net__r_state == NET_R_ASK }
 

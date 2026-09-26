@@ -38,7 +38,7 @@ program FishingTest {
     fishing_test_st.skill = 0.0
   }
 
-  function facts(fishing_st: mut FishingState) -> []FishingFact { return q_drain(fishing_facts(fishing_st)) }
+  function facts(fishing_st: FishingState) -> []FishingFact { return q_drain(fishing_facts(fishing_st)) }
   function saw(fs: []FishingFact, what: int) -> bool {
     for i in 0 .. len(fs) { if fs[i].what == what { return true } }
     return false

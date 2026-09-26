@@ -26,7 +26,7 @@ export function shop_sellable(shop_st: ShopState, v: int) -> []int {
   return out
 }
 
-function shop_trade_fact(shop_st: mut ShopState, what: int, it: int, n: int, price: int) -> void {
+function shop_trade_fact(shop_st: ShopState, what: int, it: int, n: int, price: int) -> void {
   let t = new ShopTrade
   t.what = what
   t.vendor = shop_st.shop_at
@@ -41,7 +41,7 @@ export function shop_can_buy(shop_st: ShopState, it: int) -> bool {
 }
 
 # one, paid for and in the pack; false and nothing spent when it cannot be
-export function shop_buy(shop_st: mut ShopState, it: int) -> bool {
+export function shop_buy(shop_st: ShopState, it: int) -> bool {
   if not shop_can_buy(shop_st, it) { return false }
   let pr = shop_price_buy(shop_st, it)
   if not ShopPurse.spend(pr) { return false }

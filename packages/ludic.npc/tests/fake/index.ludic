@@ -55,7 +55,7 @@ function fk_player_at(npc_tests_fake_st: mut NpcTestsFakeState, x: float, z: flo
 # seconds of the place, in twentieths
 function fk_run(npc_st: mut NpcState, secs: float) -> void { for k in 0 .. int(secs * 20.0) { npc_tick(npc_st, 0.05) } }
 
-function fk_count(npc_st: mut NpcState, what: int) -> int {
+function fk_count(npc_st: NpcState, what: int) -> int {
   let fs = q_drain(npc_facts(npc_st))
   var n = 0
   for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

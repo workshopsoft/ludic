@@ -45,7 +45,7 @@ program ThingsTest {
   bind ThingsWorld { ground: fn hill, placed: fn on_placed, removed: fn on_removed, shown: fn on_shown, restored: fn on_restored }
 
   function put(things_st: mut ThingsState, kind: int, x: float, z: float) -> Thing { return thing_spawn(things_st, kind, "m", x, 0.0, z, 0.0, 0) }
-  function facts(things_st: mut ThingsState) -> []ThingFact { return q_drain(things_facts(things_st)) }
+  function facts(things_st: ThingsState) -> []ThingFact { return q_drain(things_facts(things_st)) }
 
   test "a spawn is drawn, numbered and said" (things_st: mut ThingsState, things_test_st: ThingsTestState) {
     things_clear(things_st)

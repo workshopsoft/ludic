@@ -24,7 +24,7 @@ export state FishingState {
   fishing_run_left: int = 0
   fishing_run_next: float = 0.0
   fishing_dice: Rng = null
-  fishing_fact_q: Queue<FishingFact> = null
+  fishing_fact_q: Queue<FishingFact> = fishing_fact_q__new()
   fishing_n: int = 0              # the record: caught, the biggest (cm), a legend landed
   fishing_big: int = 0
   fishing_leg: bool = false
@@ -42,8 +42,7 @@ export function fishing_config(fishing_st: mut FishingState, min_depth: float, d
   fishing_st.fishing_dice = rng_new(seed)
 }
 
-export function fishing_facts(fishing_st: mut FishingState) -> Queue<FishingFact> {
-  if fishing_st.fishing_fact_q == null { fishing_st.fishing_fact_q = queue_new("fishing.facts") }
+export function fishing_facts(fishing_st: FishingState) -> Queue<FishingFact> {
   return fishing_st.fishing_fact_q
 }
 
@@ -52,7 +51,7 @@ function fishing_rand(fishing_st: mut FishingState) -> float {
   return rng_float(fishing_st.fishing_dice)
 }
 
-function fishing_say(fishing_st: mut FishingState, what: int) -> void {
+function fishing_say(fishing_st: FishingState, what: int) -> void {
   let f = new FishingFact
   f.what = what
   f.species = fishing_st.fishing_sp
@@ -89,3 +88,4 @@ export function fishing_legend_caught(fishing_st: FishingState) -> bool { return
 export function fishing_water_at(fishing_st: FishingState, x: float, z: float) -> bool {
   return FishingWorld.afloat() or FishingWorld.depth(x, z) >= fishing_st.fishing_min_depth
 }
+function fishing_fact_q__new() -> Queue<FishingFact> { return queue_new("fishing.facts") }

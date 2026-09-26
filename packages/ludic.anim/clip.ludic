@@ -17,7 +17,7 @@ export property Clip {
 }
 
 export state AnimState {
-  clips: []Clip = null
+  clips: []Clip = new []Clip
   positions: bool = false
   q_a: floats = null
   q_b: floats = null
@@ -31,19 +31,18 @@ export state AnimState {
 # Keyed translations are off unless asked for: baking keys location on every bone, and a skeleton
 # does not translate its joints, so applying them turns rounding into a pose.
 
-function clips_init(anim_st: mut AnimState) -> void {
-  if anim_st.clips == null { anim_st.clips = new []Clip }
+function clips_init() -> void {
 }
 
 # the clip of that name, or null; names are per file (per body, per species), never shared
-export function anim_find(anim_st: mut AnimState, name: string) -> Clip {
-  clips_init(anim_st)
+export function anim_find(anim_st: AnimState, name: string) -> Clip {
+  clips_init()
   for i in 0 .. len(anim_st.clips) { if anim_st.clips[i].name == name { return anim_st.clips[i] } }
   return null
 }
 
-export function anim_count(anim_st: mut AnimState) -> int {
-  clips_init(anim_st)
+export function anim_count(anim_st: AnimState) -> int {
+  clips_init()
   return len(anim_st.clips)
 }
 

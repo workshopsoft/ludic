@@ -51,7 +51,7 @@ program GearTest {
     gear_reset(gear_st)
   }
 
-  function ran_out(gear_st: mut GearState) -> int {
+  function ran_out(gear_st: GearState) -> int {
     let fs = q_drain(gear_facts(gear_st))
     var n = -1
     for i in 0 .. len(fs) { if fs[i].what == GEAR_RAN_OUT { n = fs[i].charge } }

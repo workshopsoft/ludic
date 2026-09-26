@@ -1,20 +1,18 @@
 # tiers.ludic - what is owned and what a tier is worth
 export function gear_ok(k: int) -> bool { return k >= 0 and k < GEAR_COUNT }
 
-export function gear_level(gear_st: mut GearState, k: int) -> int {
-  gear__ensure(gear_st)
+export function gear_level(gear_st: GearState, k: int) -> int {
   return gear_st.gear__lv[k]
 }
 
 # outright: staging, a test, a camera handed over with the trip
 export function gear_set_level(gear_st: mut GearState, k: int, lv: int) -> void {
-  gear__ensure(gear_st)
   gear_st.gear__lv[k] = lv
 }
 
-export function gear_owned(gear_st: mut GearState, k: int) -> bool { return gear_level(gear_st, k) > 0 }
+export function gear_owned(gear_st: GearState, k: int) -> bool { return gear_level(gear_st, k) > 0 }
 
-export function gear_best(gear_st: mut GearState, k: int) -> bool { return gear_level(gear_st, k) >= GearKinds[k].tiers }
+export function gear_best(gear_st: GearState, k: int) -> bool { return gear_level(gear_st, k) >= GearKinds[k].tiers }
 
 # a tier's name, "" for none
 export function gear_level_name(k: int, lv: int) -> string {
@@ -23,14 +21,14 @@ export function gear_level_name(k: int, lv: int) -> string {
 }
 
 # the tier on offer next: its name, cost and the standing it wants
-export function gear_next_name(gear_st: mut GearState, k: int) -> string { return gear_level_name(k, gear_level(gear_st, k) + 1) }
+export function gear_next_name(gear_st: GearState, k: int) -> string { return gear_level_name(k, gear_level(gear_st, k) + 1) }
 
-export function gear_next_cost(gear_st: mut GearState, k: int) -> int {
+export function gear_next_cost(gear_st: GearState, k: int) -> int {
   if gear_best(gear_st, k) { return 0 }
   return GearKinds[k].cost[gear_level(gear_st, k)]
 }
 
-export function gear_next_rep(gear_st: mut GearState, k: int) -> int {
+export function gear_next_rep(gear_st: GearState, k: int) -> int {
   if gear_best(gear_st, k) { return 0 }
   return GearKinds[k].rep[gear_level(gear_st, k)]
 }
@@ -43,10 +41,10 @@ function gear__pick(xs: []float, lv: int, fallback: float) -> float {
 }
 
 # the kind's own number at its level (1.0 when it has none)
-export function gear_mult(gear_st: mut GearState, k: int) -> float { return gear__pick(GearKinds[k].mult, gear_level(gear_st, k), 1.0) }
+export function gear_mult(gear_st: GearState, k: int) -> float { return gear__pick(GearKinds[k].mult, gear_level(gear_st, k), 1.0) }
 
 # a value its kind's tier decides
-export function gear_value(gear_st: mut GearState, v: int) -> float {
+export function gear_value(gear_st: GearState, v: int) -> float {
   let d = GearValues[v]
   return gear__pick(d.at, gear_level(gear_st, d.gear), 0.0)
 }

@@ -13,7 +13,7 @@ export function telemetry_start(telemetry_st: mut TelemetryState) -> void {
 }
 
 # may an event be kept right now?
-export function telemetry_on(telemetry_st: mut TelemetryState) -> bool { return telemetry_st.telemetry__ready and telemetry__enabled() and telemetry__can_send(telemetry_st) }
+export function telemetry_on(telemetry_st: TelemetryState) -> bool { return telemetry_st.telemetry__ready and telemetry__enabled() and telemetry__can_send(telemetry_st) }
 
 # an event: the properties (null for none) with the session and the library added, and the player
 # as a mark put in when the batch goes, so an event queued before the id is known is not misfiled
@@ -77,7 +77,7 @@ function telemetry__queue_drop(telemetry_st: mut TelemetryState, n: int) -> void
 }
 
 # the batch: the first n lines joined, with the player id put in - no parsing
-export function telemetry_batch_body(telemetry_st: mut TelemetryState, n: int) -> string {
+export function telemetry_batch_body(telemetry_st: TelemetryState, n: int) -> string {
   let part = new []string
   for i in 0 .. n { push(part, telemetry_st.telemetry__q[i]) }
   let head = Value.object()

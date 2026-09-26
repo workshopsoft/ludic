@@ -89,7 +89,7 @@ program UpdateTest {
   function seed_base() -> void { Fs.write_text(pkgs() + "/Game-1.0.0-osx-full.nupkg", "base") }
   function plan_of(update_st: mut UpdateState, text: string) -> bool { return update_plan(update_st, Json.parse(text)) }
 
-  function facts_of(update_st: mut UpdateState, what: int) -> int {
+  function facts_of(update_st: UpdateState, what: int) -> int {
     let fs = q_drain(update_facts(update_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

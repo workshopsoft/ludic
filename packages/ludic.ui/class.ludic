@@ -17,7 +17,6 @@ export property UiClass {
   seen_lss: string = ""
 }
 export function ui_register(ui_st: mut UiState, k: UiClass) -> int {
-  if ui_st.uc_list == null { ui_st.uc_list = new []UiClass }
   push(ui_st.uc_list, k)
   return len(ui_st.uc_list)
 }

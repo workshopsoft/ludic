@@ -74,19 +74,19 @@ export state WeatherState {
   wx_wet_today: bool = false
   wx_wet_yesterday: bool = false
   wx_dice: Rng = null
-  wx_facts: Queue<WeatherFact> = null
+  wx_facts: Queue<WeatherFact> = wx_facts__new()
 }
 
 # the facts, oldest first; the game drains them into its notices and sounds
-export function weather_facts(weather_st: mut WeatherState) -> Queue<WeatherFact> {
-  if weather_st.wx_facts == null { weather_st.wx_facts = queue_new("weather.facts") }
+export function weather_facts(weather_st: WeatherState) -> Queue<WeatherFact> {
   return weather_st.wx_facts
 }
 
-function wx_fact(weather_st: mut WeatherState, what: int, kind: int, from: int) -> void {
+function wx_fact(weather_st: WeatherState, what: int, kind: int, from: int) -> void {
   let f = new WeatherFact
   f.what = what
   f.kind = kind
   f.from = from
   q_push(weather_facts(weather_st), f)
 }
+function wx_facts__new() -> Queue<WeatherFact> { return queue_new("weather.facts") }

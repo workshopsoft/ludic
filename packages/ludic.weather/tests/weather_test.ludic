@@ -73,7 +73,7 @@ program WeatherTest {
     weather_reset(weather_st)
   }
 
-  function facts(weather_st: mut WeatherState) -> []WeatherFact { return q_drain(weather_facts(weather_st)) }
+  function facts(weather_st: WeatherState) -> []WeatherFact { return q_drain(weather_facts(weather_st)) }
   function step(weather_st: mut WeatherState, dt: float, gh: float, n: int) -> void { for i in 0 .. n { weather_run(weather_st, dt, gh) } }
   function count(fs: []WeatherFact, what: int) -> int {
     var n = 0

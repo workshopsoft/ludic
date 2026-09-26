@@ -11,7 +11,7 @@ program SettingsTest {
     for i in 0 .. TOY_COUNT { settings_add(settings_st, Toy[i]) }
   }
 
-  function facts(settings_st: mut SettingsState) -> []SettingChanged { return q_drain(settings_changes(settings_st)) }
+  function facts(settings_st: SettingsState) -> []SettingChanged { return q_drain(settings_changes(settings_st)) }
 
   test "a registry declares the store, each at its default" (settings_st: mut SettingsState) {
     declare(settings_st)

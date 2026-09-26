@@ -54,17 +54,16 @@ export state PhotoState {
   pht_pending_stars: bool = false
   pht_comp: []float = null        # size, framing, light, moment of the last subject scored
   pht_comp_have: bool = false
-  pht_fact_q: Queue<PhotoFact> = null
+  pht_fact_q: Queue<PhotoFact> = pht_fact_q__new()
 }
 
 
 
-export function photo_facts(photo_st: mut PhotoState) -> Queue<PhotoFact> {
-  if photo_st.pht_fact_q == null { photo_st.pht_fact_q = queue_new("photo.facts") }
+export function photo_facts(photo_st: PhotoState) -> Queue<PhotoFact> {
   return photo_st.pht_fact_q
 }
 
-function pht_fact(photo_st: mut PhotoState, what: int, i: int) -> PhotoFact {
+function pht_fact(photo_st: PhotoState, what: int, i: int) -> PhotoFact {
   let f = new PhotoFact
   f.what = what
   f.index = i
@@ -100,3 +99,4 @@ function pht_blank(photo_st: mut PhotoState) -> void {
   photo_st.pht_comp = pht_floats(4)
   photo_st.pht_comp_have = false
 }
+function pht_fact_q__new() -> Queue<PhotoFact> { return queue_new("photo.facts") }

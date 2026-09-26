@@ -6,11 +6,10 @@ export property MoneyChanged {
 
 export state WalletState {
   wl_money: int = 0
-  wl_changes: Queue<MoneyChanged> = null
+  wl_changes: Queue<MoneyChanged> = wl_changes__new()
 }
 
-export function wallet_changes(wallet_st: mut WalletState) -> Queue<MoneyChanged> {
-  if wallet_st.wl_changes == null { wallet_st.wl_changes = queue_new("wallet.changes") }
+export function wallet_changes(wallet_st: WalletState) -> Queue<MoneyChanged> {
   return wallet_st.wl_changes
 }
 
@@ -62,3 +61,4 @@ export function wallet_system() -> System {
   s.load = fn wallet_load
   return s
 }
+function wl_changes__new() -> Queue<MoneyChanged> { return queue_new("wallet.changes") }

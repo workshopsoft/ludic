@@ -44,7 +44,7 @@ function update__up(p: string) -> string {
 # the executable's directory
 export function update_dir() -> string { return update__up(UpdateWorld.exe()) }
 
-export function update_root(update_st: mut UpdateState) -> string {
+export function update_root(update_st: UpdateState) -> string {
   let c = update__conf(update_st)
   if len(c.root) > 0 { return c.root }
   if update__mac() { return update__up(update__up(update_dir())) }
@@ -52,7 +52,7 @@ export function update_root(update_st: mut UpdateState) -> string {
 }
 
 # where the packages live: never inside a macOS bundle, which is read-only and which apply replaces
-export function update_packages(update_st: mut UpdateState) -> string {
+export function update_packages(update_st: UpdateState) -> string {
   let c = update__conf(update_st)
   if len(c.packages) > 0 { return c.packages }
   if update__mac() and len(c.mac_packages) > 0 { return c.mac_packages }
@@ -64,7 +64,7 @@ function update__feed_file() -> string {
   return "releases.win.json"
 }
 
-function update__updater(update_st: mut UpdateState) -> string {
+function update__updater(update_st: UpdateState) -> string {
   if update__mac() { return update_root(update_st) + "/Contents/MacOS/UpdateMac" }
   return update_root(update_st) + update__sep() + "Update.exe"
 }
@@ -76,7 +76,7 @@ export function update_translocated() -> bool {
 }
 
 # can this copy update itself? A copy Velopack did not install downloads the game again instead.
-export function update_installed(update_st: mut UpdateState) -> bool {
+export function update_installed(update_st: UpdateState) -> bool {
   if len(update__conf(update_st).root) > 0 { return true }
   if update_translocated() { return false }
   if update__mac() { return Fs.exists(update_dir() + "/UpdateMac") }

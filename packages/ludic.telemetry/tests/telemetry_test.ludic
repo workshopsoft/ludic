@@ -73,7 +73,7 @@ program TelemetryTest {
     telemetry_tick(telemetry_st)
   }
 
-  function facts_of(telemetry_st: mut TelemetryState, what: int) -> int {
+  function facts_of(telemetry_st: TelemetryState, what: int) -> int {
     let fs = q_drain(telemetry_facts(telemetry_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

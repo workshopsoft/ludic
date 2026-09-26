@@ -41,7 +41,7 @@ export function wildlife_tick_ground(wildlife_st: mut WildlifeState, a: WildAnim
 }
 
 # a charger close enough comes at the nearest player; true while it is charging
-function wl_charge(wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dh: float, dt: float) -> bool {
+function wl_charge(wildlife_st: WildlifeState, a: WildAnimal, np: int, dh: float, dt: float) -> bool {
   let s = wl_sp(wildlife_st, a.sp)
   if s.charges and a.state != WILD_CHARGE and dh < WildlifeWorld.charge_reach() and not (a.calm > 0.0) {
     a.state = WILD_CHARGE
@@ -63,7 +63,7 @@ function wl_charge(wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dh: f
 
 # Four postures read off the alert. Staring is a REACTION, not a condition: each times out and
 # hands the animal back to its business, and only a fresh rise above `seen` looks up again.
-function wl_posture(wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dt: float) -> void {
+function wl_posture(wildlife_st: WildlifeState, a: WildAnimal, np: int, dt: float) -> void {
   if wl_sp(wildlife_st, a.sp).tame or a.state == WILD_EAT { return }
   if a.alert > 95.0 {
     if a.state != WILD_FLEE {

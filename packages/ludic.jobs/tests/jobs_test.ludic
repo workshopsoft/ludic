@@ -59,7 +59,7 @@ program JobsTest {
     jobs_party_reset(jobs_st)
   }
 
-  function count_of(jobs_st: mut JobsState, what: int) -> int {
+  function count_of(jobs_st: JobsState, what: int) -> int {
     let fs = q_drain(jobs_facts(jobs_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

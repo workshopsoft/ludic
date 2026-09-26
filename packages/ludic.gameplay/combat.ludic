@@ -26,7 +26,7 @@ event Crit { target: int = 0, src: int = 0 }     # the attacker's crit_pct fired
 state GameplayState {
   combat_reflecting: bool = false              # thorns never reflect thorns
   combat_pending: int = 0
-  fac_tbl: words = null
+  fac_tbl: words = words(FAC_MAX * FAC_MAX)
 }
 
 # the mutable channel for lever 6: listeners rewrite the pending damage here.

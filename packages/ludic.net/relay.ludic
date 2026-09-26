@@ -38,7 +38,7 @@ function net__use_relay(net_st: mut NetState) -> void {
 
 export function net_via_relay(net_st: NetState) -> bool { return net_st.net__via_relay }
 
-function net__relayed(net_st: mut NetState, p: NetPeer) -> bool {
+function net__relayed(net_st: NetState, p: NetPeer) -> bool {
   return net_st.net__relay_ip != 0 and p.ip == net_st.net__relay_ip and (p.port >= net__conf(net_st).relay_port0 or net_st.net__via_relay)
 }
 

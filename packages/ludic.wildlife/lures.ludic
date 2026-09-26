@@ -1,9 +1,7 @@
 # lures.ludic - what an animal would walk to: food of its diet, a lure of its diet, a snare it is
 # small enough for (half the time: a curiosity), within 70 m - 175 m for food while feeding is taught
 
-function wl_lure_scratch(wildlife_st: mut WildlifeState) -> void {
-  if wildlife_st.wl_ask == null { wildlife_st.wl_ask = new WildLure }
-  if wildlife_st.wl_best == null { wildlife_st.wl_best = new WildLure }
+function wl_lure_scratch() -> void {
 }
 
 function wl_copy_lure(from: WildLure, to: WildLure) -> void {
@@ -16,15 +14,15 @@ function wl_copy_lure(from: WildLure, to: WildLure) -> void {
   to.owner = from.owner
 }
 
-function wl_draws(wildlife_st: mut WildlifeState, a: WildAnimal, l: WildLure) -> bool {
+function wl_draws(wildlife_st: WildlifeState, a: WildAnimal, l: WildLure) -> bool {
   let s = wl_sp(wildlife_st, a.sp)
   if l.kind == WILD_SNARE { return s.size <= l.size and wl_rnd(wildlife_st) > 0.5 }
   return l.diet == s.diet and l.diet != WILD_SEED
 }
 
 # the nearest thing set out that draws it, into `wl_best`; false when none does
-function wl_attraction(wildlife_st: mut WildlifeState, a: WildAnimal) -> bool {
-  wl_lure_scratch(wildlife_st)
+function wl_attraction(wildlife_st: WildlifeState, a: WildAnimal) -> bool {
+  wl_lure_scratch()
   var bd = 70.0
   var got = false
   let taught = WildlifeWorld.taught()
@@ -58,7 +56,7 @@ function wl_seed_scan(wildlife_st: mut WildlifeState, dt: float) -> void {
   if wildlife_st.wl_seed_t > 0.0 { return }
   wildlife_st.wl_seed_t = 1.0
   wildlife_st.wl_seed_any = false
-  wl_lure_scratch(wildlife_st)
+  wl_lure_scratch()
   for i in 0 .. WildlifeWorld.lures() {
     if WildlifeWorld.lure(i, wildlife_st.wl_ask) and wildlife_st.wl_ask.kind == WILD_FEED and wildlife_st.wl_ask.diet == WILD_SEED {
       wildlife_st.wl_seed_any = true
@@ -68,9 +66,9 @@ function wl_seed_scan(wildlife_st: mut WildlifeState, dt: float) -> void {
 }
 
 # the nearest seed within 120 m, into `wl_best`: the one thing that brings an animal TO you
-function wl_bird_seed(wildlife_st: mut WildlifeState, a: WildAnimal) -> bool {
+function wl_bird_seed(wildlife_st: WildlifeState, a: WildAnimal) -> bool {
   if not wildlife_st.wl_seed_any { return false }
-  wl_lure_scratch(wildlife_st)
+  wl_lure_scratch()
   var bd = 120.0
   var got = false
   for i in 0 .. WildlifeWorld.lures() {
@@ -88,7 +86,7 @@ function wl_bird_seed(wildlife_st: mut WildlifeState, a: WildAnimal) -> bool {
 }
 
 # it ate what was set out: calm for three game hours, and the game credits whoever left it
-function wl_ate(wildlife_st: mut WildlifeState, a: WildAnimal, uid: int, owner: int, diet: int) -> void {
+function wl_ate(wildlife_st: WildlifeState, a: WildAnimal, uid: int, owner: int, diet: int) -> void {
   a.calm = 180.0
   a.fed += 1
   let f = wl_fact(wildlife_st, WILD_FED, a)

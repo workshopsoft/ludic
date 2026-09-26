@@ -14,14 +14,14 @@ program SessionTest {
   function fname() -> string { return "me" }
   bind SessionLocal { x: fn fx, y: fn fy, z: fn fz, name: fn fname }
 
-  function whats(session_st: mut SessionState) -> []int {
+  function whats(session_st: SessionState) -> []int {
     let fs = q_drain(ses_facts(session_st))
     let out = new []int
     for i in 0 .. len(fs) { push(out, fs[i].what) }
     return out
   }
 
-  function last_of(session_st: mut SessionState, what: int) -> SessionFact {
+  function last_of(session_st: SessionState, what: int) -> SessionFact {
     let fs = q_drain(ses_facts(session_st))
     var f: SessionFact = null
     for i in 0 .. len(fs) { if fs[i].what == what { f = fs[i] } }

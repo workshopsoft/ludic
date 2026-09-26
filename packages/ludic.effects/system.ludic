@@ -6,7 +6,7 @@ export function effects_reset(effects_st: mut EffectsState) -> void {
 
 function effects_tick(effects_st: mut EffectsState, t: Tick) -> void { effects_run(effects_st, t.hours * 60.0) }
 
-export function effects_save(effects_st: mut EffectsState) -> Val {
+export function effects_save(effects_st: EffectsState) -> Val {
   let l = Value.list()
   let all = ef_all(effects_st)
   for i in 0 .. len(all) {
