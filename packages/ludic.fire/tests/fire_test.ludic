@@ -29,7 +29,7 @@ program FireTest {
     fire_reset(fire_st)
   }
 
-  function facts(fire_st: mut FireState) -> []FireFact { return q_drain(fire_facts(fire_st)) }
+  function facts(fire_st: FireState) -> []FireFact { return q_drain(fire_facts(fire_st)) }
   function count(fs: []FireFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

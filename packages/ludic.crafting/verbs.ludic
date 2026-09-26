@@ -2,11 +2,10 @@
 export state CraftingState {
   craft_hold_i: int = -1
   craft_hold_t: float = 0.0
-  craft_fact_q: Queue<Crafted> = null
+  craft_fact_q: Queue<Crafted> = craft_fact_q__new()
 }
 
-export function craft_facts(crafting_st: mut CraftingState) -> Queue<Crafted> {
-  if crafting_st.craft_fact_q == null { crafting_st.craft_fact_q = queue_new("crafting.crafted") }
+export function craft_facts(crafting_st: CraftingState) -> Queue<Crafted> {
   return crafting_st.craft_fact_q
 }
 
@@ -50,7 +49,7 @@ export function craft_refund(i: int) -> void {
   }
 }
 
-function craft_fact_push(crafting_st: mut CraftingState, i: int, queued: bool) -> void {
+function craft_fact_push(crafting_st: CraftingState, i: int, queued: bool) -> void {
   let r = CraftRecipes[i]
   let c = new Crafted
   c.recipe = i
@@ -63,7 +62,7 @@ function craft_fact_push(crafting_st: mut CraftingState, i: int, queued: bool) -
 
 # make it: a timed recipe at a station goes into the station (given back if it will not take it),
 # anything else is handed over at once. False, and the pack untouched, when it cannot be made.
-export function craft_make(crafting_st: mut CraftingState, i: int) -> bool {
+export function craft_make(crafting_st: CraftingState, i: int) -> bool {
   if not craft_can(i) { return false }
   let r = CraftRecipes[i]
   craft_take(i)
@@ -79,3 +78,4 @@ export function craft_make(crafting_st: mut CraftingState, i: int) -> bool {
   craft_fact_push(crafting_st, i, false)
   return true
 }
+function craft_fact_q__new() -> Queue<Crafted> { return queue_new("crafting.crafted") }

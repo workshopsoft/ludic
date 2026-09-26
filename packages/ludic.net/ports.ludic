@@ -61,17 +61,15 @@ export port NetSocket {
 
 export function net_config(net_st: mut NetState, c: NetConfig) -> void { net_st.net__cfg = c }
 
-function net__conf(net_st: mut NetState) -> NetConfig {
-  if net_st.net__cfg == null { net_st.net__cfg = new NetConfig }
+function net__conf(net_st: NetState) -> NetConfig {
   return net_st.net__cfg
 }
 
-export function net_facts(net_st: mut NetState) -> Queue<NetFact> {
-  if net_st.net__facts == null { net_st.net__facts = queue_new("net.facts") }
+export function net_facts(net_st: NetState) -> Queue<NetFact> {
   return net_st.net__facts
 }
 
-function net__fact(net_st: mut NetState, what: int, slot: int, pid: int, why: int, text: string) -> void {
+function net__fact(net_st: NetState, what: int, slot: int, pid: int, why: int, text: string) -> void {
   let f = new NetFact
   f.what = what
   f.slot = slot

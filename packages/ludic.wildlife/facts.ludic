@@ -28,12 +28,11 @@ export property WildFact {
 }
 
 
-export function wildlife_facts(wildlife_st: mut WildlifeState) -> Queue<WildFact> {
-  if wildlife_st.wl_facts == null { wildlife_st.wl_facts = queue_new("wildlife.facts") }
+export function wildlife_facts(wildlife_st: WildlifeState) -> Queue<WildFact> {
   return wildlife_st.wl_facts
 }
 
-function wl_fact(wildlife_st: mut WildlifeState, what: int, a: WildAnimal) -> WildFact {
+function wl_fact(wildlife_st: WildlifeState, what: int, a: WildAnimal) -> WildFact {
   let f = new WildFact
   f.what = what
   f.key = a.key

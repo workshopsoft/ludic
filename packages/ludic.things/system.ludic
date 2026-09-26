@@ -1,6 +1,6 @@
 # system.ludic - the things as a system: its save section carries every active Thing the port
 # keeps, by its kind's KEY (so the game may reorder its kinds), and a load puts each back
-export function things_save(things_st: mut ThingsState) -> Val {
+export function things_save(things_st: ThingsState) -> Val {
   let l = Value.list()
   let all = things_all(things_st)
   for i in 0 .. len(all) {

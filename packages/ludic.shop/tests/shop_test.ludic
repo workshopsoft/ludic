@@ -98,7 +98,7 @@ program ShopTest {
     shop_reset(shop_st)
   }
 
-  function trades(shop_st: mut ShopState) -> []ShopTrade { return q_drain(shop_trades(shop_st)) }
+  function trades(shop_st: ShopState) -> []ShopTrade { return q_drain(shop_trades(shop_st)) }
 
   test "buying takes the price and puts one in the pack, and says so" (shop_st: mut ShopState, shop_test_st: mut ShopTestState) {
     fresh(shop_st, shop_test_st)

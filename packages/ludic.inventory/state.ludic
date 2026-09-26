@@ -15,7 +15,7 @@ export property ItemChanged {
 export state InventoryState {
   iv_keys: []string = null
   iv_counts: []int = null
-  iv_changes: Queue<ItemChanged> = null
+  iv_changes: Queue<ItemChanged> = iv_changes__new()
 }
 
 # the kinds, by the name each is saved under; the pack starts empty
@@ -24,8 +24,7 @@ export function inv_config(inventory_st: mut InventoryState, keys: []string) -> 
   inv_clear(inventory_st)
 }
 
-export function inv_changes(inventory_st: mut InventoryState) -> Queue<ItemChanged> {
-  if inventory_st.iv_changes == null { inventory_st.iv_changes = queue_new("inventory.changes") }
+export function inv_changes(inventory_st: InventoryState) -> Queue<ItemChanged> {
   return inventory_st.iv_changes
 }
 
@@ -59,3 +58,4 @@ export function inv_total(inventory_st: InventoryState) -> int {
   for i in 0 .. len(inventory_st.iv_counts) { t += inventory_st.iv_counts[i] }
   return t
 }
+function iv_changes__new() -> Queue<ItemChanged> { return queue_new("inventory.changes") }

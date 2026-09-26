@@ -63,7 +63,7 @@ program StepsTest {
     steps_add(steps_st, K_COMPASS, 0, 1)
   }
 
-  function facts_of(steps_st: mut StepsState, what: int) -> int {
+  function facts_of(steps_st: StepsState, what: int) -> int {
     let fs = q_drain(steps_facts(steps_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

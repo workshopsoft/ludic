@@ -14,7 +14,7 @@ function wl_face(a: WildAnimal, tx: float, tz: float, rate: float, dt: float) ->
 }
 
 # true when it moved
-function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
+function wl_step(wildlife_st: WildlifeState, a: WildAnimal, dt: float) -> bool {
   let d = a.speed * dt
   if d < 0.0001 { return false }
   let nx = a.x - Math.sin(a.yaw) * d
@@ -36,7 +36,7 @@ function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bo
   return true
 }
 
-function wl_pick_target(wildlife_st: mut WildlifeState, a: WildAnimal, radius: float) -> void {
+function wl_pick_target(wildlife_st: WildlifeState, a: WildAnimal, radius: float) -> void {
   let ang = wl_rnd(wildlife_st) * WL_TAU
   let d = wl_rnd(wildlife_st) * radius
   a.tx = a.home_x + Math.cos(ang) * d
@@ -50,14 +50,14 @@ function wl_at_target(a: WildAnimal, r: float) -> bool {
 }
 
 # back to wandering about home after `t` seconds of whatever it was doing
-function wl_wander(wildlife_st: mut WildlifeState, a: WildAnimal, t: float) -> void {
+function wl_wander(wildlife_st: WildlifeState, a: WildAnimal, t: float) -> void {
   a.state = WILD_WANDER
   a.timer = t
   wl_pick_target(wildlife_st, a, wl_sp(wildlife_st, a.sp).home)
 }
 
 # home where it stands now, kept inside its range
-function wl_rehome(wildlife_st: mut WildlifeState, a: WildAnimal) -> void {
+function wl_rehome(wildlife_st: WildlifeState, a: WildAnimal) -> void {
   a.home_x = a.x
   a.home_z = a.z
   wl_clamp(wildlife_st, a)

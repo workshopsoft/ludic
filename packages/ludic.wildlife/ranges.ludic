@@ -1,12 +1,11 @@
 # ranges.ludic - a species keeps to discs placed once, against the ground, 120-700 m out from where
 # the valley starts; each winters lower, toward the timber, as far down as it summered high
 
-export function wildlife_ranges(wildlife_st: mut WildlifeState) -> []WildRange {
-  if wildlife_st.wl_ranges == null { wildlife_st.wl_ranges = new []WildRange }
+export function wildlife_ranges(wildlife_st: WildlifeState) -> []WildRange {
   return wildlife_st.wl_ranges
 }
 
-export function wildlife_range(wildlife_st: mut WildlifeState, i: int) -> WildRange {
+export function wildlife_range(wildlife_st: WildlifeState, i: int) -> WildRange {
   if i < 0 or i >= len(wildlife_ranges(wildlife_st)) { return null }
   return wildlife_ranges(wildlife_st)[i]
 }
@@ -17,7 +16,7 @@ export function wildlife_range_dist(r: WildRange, x: float, z: float) -> float {
   return Math.sqrt(dx * dx + dz * dz)
 }
 
-function wl_range_clashes(wildlife_st: mut WildlifeState, sp: int, x: float, z: float) -> bool {
+function wl_range_clashes(wildlife_st: WildlifeState, sp: int, x: float, z: float) -> bool {
   let rs = wildlife_ranges(wildlife_st)
   for j in 0 .. len(rs) { if rs[j].sp == sp and wildlife_range_dist(rs[j], x, z) < wl_sp(wildlife_st, sp).range * 1.6 { return true } }
   return false
@@ -83,12 +82,12 @@ function wl_pick_winter(r: WildRange) -> void {
 }
 
 # a player stood at (x, z): any range they are inside is found
-export function wildlife_ranges_visit(wildlife_st: mut WildlifeState, x: float, z: float) -> void {
+export function wildlife_ranges_visit(wildlife_st: WildlifeState, x: float, z: float) -> void {
   let rs = wildlife_ranges(wildlife_st)
   for i in 0 .. len(rs) { if not rs[i].found and wildlife_range_dist(rs[i], x, z) < rs[i].r { rs[i].found = true } }
 }
 
-function wl_found_apply(wildlife_st: mut WildlifeState) -> void {
+function wl_found_apply(wildlife_st: WildlifeState) -> void {
   if wildlife_st.wl_found == null { return }
   let rs = wildlife_ranges(wildlife_st)
   for i in 0 .. len(rs) { if i < len(wildlife_st.wl_found) { rs[i].found = wildlife_st.wl_found[i] != 0 } }

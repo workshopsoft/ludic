@@ -5,8 +5,8 @@ import "ludic.base"
 program WalletTest {
   numbers float
 
-  function changes(wallet_st: mut WalletState) -> []MoneyChanged { return q_drain(wallet_changes(wallet_st)) }
-  function waiting(wallet_st: mut WalletState) -> int { return q_len(wallet_changes(wallet_st)) }
+  function changes(wallet_st: WalletState) -> []MoneyChanged { return q_drain(wallet_changes(wallet_st)) }
+  function waiting(wallet_st: WalletState) -> int { return q_len(wallet_changes(wallet_st)) }
 
   test "earning and spending move the purse, and each says so" (wallet_st: mut WalletState) {
     wallet_reset(wallet_st)

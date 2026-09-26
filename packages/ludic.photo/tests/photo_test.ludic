@@ -56,7 +56,7 @@ program PhotoTest {
     photo_test_st.sun_z = 0.0
     photo_test_st.behaviour = false
   }
-  function facts(photo_st: mut PhotoState) -> []PhotoFact { return q_drain(photo_facts(photo_st)) }
+  function facts(photo_st: PhotoState) -> []PhotoFact { return q_drain(photo_facts(photo_st)) }
   function count(fs: []PhotoFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

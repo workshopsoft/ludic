@@ -19,7 +19,7 @@ function ef_drop(effects_st: mut EffectsState, i: int) -> void {
 }
 
 # the one with the least time left (of the bonuses only, when asked); -1 when there is none
-function ef_nearest_end(effects_st: mut EffectsState, bonus_only: bool) -> int {
+function ef_nearest_end(effects_st: EffectsState, bonus_only: bool) -> int {
   let all = ef_all(effects_st)
   var at = -1
   for i in 0 .. len(all) {

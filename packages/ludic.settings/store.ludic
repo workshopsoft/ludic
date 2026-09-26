@@ -4,7 +4,7 @@ export state SettingsState {
   sg_defs: []SettingDef = null
   sg_num: []float = null
   sg_text: []string = null
-  sg_changes: Queue<SettingChanged> = null
+  sg_changes: Queue<SettingChanged> = sg_changes__new()
 }
 
 function sg_init(settings_st: mut SettingsState) -> void {
@@ -14,8 +14,7 @@ function sg_init(settings_st: mut SettingsState) -> void {
   settings_st.sg_text = new []string
 }
 
-export function settings_changes(settings_st: mut SettingsState) -> Queue<SettingChanged> {
-  if settings_st.sg_changes == null { settings_st.sg_changes = queue_new("settings.changes") }
+export function settings_changes(settings_st: SettingsState) -> Queue<SettingChanged> {
   return settings_st.sg_changes
 }
 
@@ -55,7 +54,7 @@ export function settings_get_int(settings_st: SettingsState, id: int) -> int { r
 export function settings_get_bool(settings_st: SettingsState, id: int) -> bool { return settings_st.sg_num[id] != 0.0 }
 export function settings_get_text(settings_st: SettingsState, id: int) -> string { return settings_st.sg_text[id] }
 
-function sg_changed(settings_st: mut SettingsState, id: int) -> void {
+function sg_changed(settings_st: SettingsState, id: int) -> void {
   let c = new SettingChanged
   c.id = id
   c.key = settings_st.sg_defs[id].key
@@ -93,3 +92,4 @@ export function settings_held(settings_st: SettingsState, id: int, v: float) -> 
   if d.hi >= d.lo and (x < d.lo or x > d.hi) { return d.num }
   return x
 }
+function sg_changes__new() -> Queue<SettingChanged> { return queue_new("settings.changes") }

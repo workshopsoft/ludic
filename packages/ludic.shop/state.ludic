@@ -49,7 +49,7 @@ export state ShopState {
   shop_buy_best: float = 0.92
   shop_sell_new: float = 0.62
   shop_sell_best: float = 0.85
-  shop_trade_q: Queue<ShopTrade> = null
+  shop_trade_q: Queue<ShopTrade> = shop_trade_q__new()
 }
 
 # the curve: buying from `buy_new` of base at rep 0 down to `buy_best` at 100; selling the same way
@@ -106,7 +106,7 @@ export property ShopTrade {
 }
 
 
-export function shop_trades(shop_st: mut ShopState) -> Queue<ShopTrade> {
-  if shop_st.shop_trade_q == null { shop_st.shop_trade_q = queue_new("shop.trades") }
+export function shop_trades(shop_st: ShopState) -> Queue<ShopTrade> {
   return shop_st.shop_trade_q
 }
+function shop_trade_q__new() -> Queue<ShopTrade> { return queue_new("shop.trades") }

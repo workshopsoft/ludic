@@ -56,15 +56,14 @@ export state StepsState {
   steps__need: []int = null
   steps__cur: int = 0
   steps__done: int = 0
-  steps__facts: Queue<StepsFact> = null
+  steps__facts: Queue<StepsFact> = steps__facts__new()
 }
 
-export function steps_facts(steps_st: mut StepsState) -> Queue<StepsFact> {
-  if steps_st.steps__facts == null { steps_st.steps__facts = queue_new("steps.facts") }
+export function steps_facts(steps_st: StepsState) -> Queue<StepsFact> {
   return steps_st.steps__facts
 }
 
-function steps__fact(steps_st: mut StepsState, what: int, ch: int, i: int) -> void {
+function steps__fact(steps_st: StepsState, what: int, ch: int, i: int) -> void {
   let f = new StepsFact
   f.what = what
   f.chapter = ch
@@ -81,3 +80,4 @@ export function steps_popcount(m: int) -> int {
   }
   return n
 }
+function steps__facts__new() -> Queue<StepsFact> { return queue_new("steps.facts") }

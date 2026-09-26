@@ -2,7 +2,6 @@
 # from outside: the router's address and the port it mapped
 
 function net__stun_send(net_st: mut NetState) -> void {
-  if net_st.net__txn == null { net_st.net__txn = words(3) }
   if net_st.net__dice == null { net_st.net__dice = rng_new(net__conf(net_st).seed) }
   if net_st.net__stun_ip == 0 {
     let c = net__conf(net_st)

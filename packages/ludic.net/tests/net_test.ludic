@@ -97,7 +97,7 @@ program NetTest {
     return net_accept(net_st, got[0].slot)
   }
 
-  function facts_of(net_st: mut NetState, what: int) -> []NetFact {
+  function facts_of(net_st: NetState, what: int) -> []NetFact {
     let all = q_drain(net_facts(net_st))
     let out = new []NetFact
     for i in 0 .. len(all) { if all[i].what == what { push(out, all[i]) } }

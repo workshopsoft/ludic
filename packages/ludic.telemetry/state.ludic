@@ -52,7 +52,7 @@ export state TelemetryState {
   telemetry__proc_t0: int = 0
   telemetry__rand_n: int = 0
   telemetry__clock_on: bool = false
-  telemetry__cfg: TelemetryConfig = null
+  telemetry__cfg: TelemetryConfig = new TelemetryConfig
   telemetry__ready: bool = false
   telemetry__id: string = ""
   telemetry__session: string = ""
@@ -64,15 +64,14 @@ export state TelemetryState {
   telemetry__saved_ms: int = 0          # when the queue was last put on disk
   telemetry__fails: int = 0             # sends failed in a row
   telemetry__t0: int = 0                # the default clock's zero, wall seconds
-  telemetry__facts: Queue<TelemetryFact> = null
+  telemetry__facts: Queue<TelemetryFact> = telemetry__facts__new()
 }
 
-export function telemetry_facts(telemetry_st: mut TelemetryState) -> Queue<TelemetryFact> {
-  if telemetry_st.telemetry__facts == null { telemetry_st.telemetry__facts = queue_new("telemetry.facts") }
+export function telemetry_facts(telemetry_st: TelemetryState) -> Queue<TelemetryFact> {
   return telemetry_st.telemetry__facts
 }
 
-function telemetry__fact(telemetry_st: mut TelemetryState, what: int, count: int, status: int, retry: int) -> void {
+function telemetry__fact(telemetry_st: TelemetryState, what: int, count: int, status: int, retry: int) -> void {
   let f = new TelemetryFact
   f.what = what
   f.count = count
@@ -80,3 +79,4 @@ function telemetry__fact(telemetry_st: mut TelemetryState, what: int, count: int
   f.retry_ms = retry
   q_push(telemetry_facts(telemetry_st), f)
 }
+function telemetry__facts__new() -> Queue<TelemetryFact> { return queue_new("telemetry.facts") }

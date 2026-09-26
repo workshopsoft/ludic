@@ -29,7 +29,7 @@ program HintsTest {
     hints_mutes_load(hints_st, Value.list())
   }
 
-  function count(hints_st: mut HintsState, what: int) -> int {
+  function count(hints_st: HintsState, what: int) -> int {
     let fs = q_drain(hints_facts(hints_st))
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

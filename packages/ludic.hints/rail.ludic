@@ -10,15 +10,14 @@ export state HintsState {
   hn_t: float = 0.0            # seconds to the next pass
   hn_pick: int = 0             # which chip the key would open
   hn_card: int = -1            # the card being read, or -1
-  hn_facts: Queue<HintsFact> = null
+  hn_facts: Queue<HintsFact> = hn_facts__new()
 }
 
-export function hints_facts(hints_st: mut HintsState) -> Queue<HintsFact> {
-  if hints_st.hn_facts == null { hints_st.hn_facts = queue_new("hints.facts") }
+export function hints_facts(hints_st: HintsState) -> Queue<HintsFact> {
   return hints_st.hn_facts
 }
 
-function hn_fact(hints_st: mut HintsState, what: int, card: int) -> void {
+function hn_fact(hints_st: HintsState, what: int, card: int) -> void {
   let f = new HintsFact
   f.what = what
   f.card = card
@@ -104,3 +103,4 @@ export function hints_reset(hints_st: mut HintsState) -> void {
   hints_st.hn_card = -1
   q_clear(hints_facts(hints_st))
 }
+function hn_facts__new() -> Queue<HintsFact> { return queue_new("hints.facts") }

@@ -51,7 +51,7 @@ export state UiState {
   ca_bare: bool = false
   cs_pass: int = 0
   ua_sh: UiSheet = null
-  uc_list: []UiClass = null     # filled by the compiler's registrations, before the program's globals
+  uc_list: []UiClass = new []UiClass     # filled by the compiler's registrations, before the program's globals
   cl_alpha: float = 1.0
   ct_capture: string = ""
   ct_capture_at: int = -1       # the frame listening began, whose own key started it

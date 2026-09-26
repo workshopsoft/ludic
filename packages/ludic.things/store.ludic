@@ -1,18 +1,17 @@
 # store.ludic - the Things, and the only verbs that make, remove, move, show and hide one; each
 # placing and removing is a fact, and the port is told at once so the game can draw it
 export state ThingsState {
-  th_list: []Thing = null
+  th_list: []Thing = new []Thing
   th_uid: int = 0
-  th_facts: Queue<ThingFact> = null
+  th_facts: Queue<ThingFact> = th_facts__new()
   th_marked: int = -1
 }
 
-export function things_facts(things_st: mut ThingsState) -> Queue<ThingFact> {
-  if things_st.th_facts == null { things_st.th_facts = queue_new("things.facts") }
+export function things_facts(things_st: ThingsState) -> Queue<ThingFact> {
   return things_st.th_facts
 }
 
-function th_fact(things_st: mut ThingsState, what: int, t: Thing) -> void {
+function th_fact(things_st: ThingsState, what: int, t: Thing) -> void {
   let f = new ThingFact
   f.what = what
   f.uid = t.uid
@@ -28,12 +27,11 @@ function th_fact(things_st: mut ThingsState, what: int, t: Thing) -> void {
 export function things_ready(things_st: ThingsState) -> bool { return things_st.th_list != null }
 
 # every Thing, in the order placed; the list is the package's, never to be pushed to
-export function things_all(things_st: mut ThingsState) -> []Thing {
-  if things_st.th_list == null { things_st.th_list = new []Thing }
+export function things_all(things_st: ThingsState) -> []Thing {
   return things_st.th_list
 }
 
-export function things_count(things_st: mut ThingsState) -> int { return len(things_all(things_st)) }
+export function things_count(things_st: ThingsState) -> int { return len(things_all(things_st)) }
 
 # a new world: every Thing forgotten, quietly (the game has already dropped its drawings)
 export function things_clear(things_st: mut ThingsState) -> void { things_st.th_list = new []Thing }
@@ -110,3 +108,4 @@ export function thing_set_active(t: Thing, on: bool) -> void {
 }
 export function thing_hide(t: Thing) -> void { thing_set_active(t, false) }
 export function thing_show(t: Thing) -> void { thing_set_active(t, true) }
+function th_facts__new() -> Queue<ThingFact> { return queue_new("things.facts") }

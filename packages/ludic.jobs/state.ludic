@@ -20,7 +20,7 @@ export state JobsState {
   jobs__serial: []int = null     # posts made, per board: each roll its own seed
   jobs__seed: int = 1000
   jobs__dice: Rng = null
-  jobs__q: Queue<JobsFact> = null
+  jobs__q: Queue<JobsFact> = jobs__q__new()
 }
 
 # the posts, every board's slots end to end from jobs__off[b]
@@ -59,12 +59,11 @@ function jobs__ensure(jobs_st: mut JobsState) -> void {
   jobs_st.jobs__dice = rng_new(jobs_st.jobs__seed)
 }
 
-export function jobs_facts(jobs_st: mut JobsState) -> Queue<JobsFact> {
-  if jobs_st.jobs__q == null { jobs_st.jobs__q = queue_new("jobs.facts") }
+export function jobs_facts(jobs_st: JobsState) -> Queue<JobsFact> {
   return jobs_st.jobs__q
 }
 
-function jobs__fact(jobs_st: mut JobsState, what: int, job: int, b: int, s: int, have: int, need: int) -> void {
+function jobs__fact(jobs_st: JobsState, what: int, job: int, b: int, s: int, have: int, need: int) -> void {
   let f = new JobsFact
   f.what = what
   f.job = job
@@ -93,3 +92,4 @@ export function jobs_config_seed(jobs_st: mut JobsState, seed: int) -> void {
   jobs_st.jobs__seed = seed
   jobs_st.jobs__dice = rng_new(seed)
 }
+function jobs__q__new() -> Queue<JobsFact> { return queue_new("jobs.facts") }

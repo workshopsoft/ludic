@@ -32,7 +32,7 @@ function wl_tick_one(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float, g
 }
 
 # the gait advanced by a copy the game moves itself (a guest's copy of the host's animal)
-export function wildlife_stride(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> void {
+export function wildlife_stride(wildlife_st: WildlifeState, a: WildAnimal, dt: float) -> void {
   var stride = 1.2 * a.scale
   if wl_sp(wildlife_st, a.sp).flies { stride = 0.6 }
   a.phase = (a.phase + a.speed * dt / stride * WL_TAU) % WL_TAU
@@ -48,7 +48,7 @@ export function wildlife_release(a: WildAnimal) -> void {
 }
 
 # the animal a snare holds, by the snare's uid
-export function wildlife_in_snare(wildlife_st: mut WildlifeState, uid: int) -> WildAnimal {
+export function wildlife_in_snare(wildlife_st: WildlifeState, uid: int) -> WildAnimal {
   let all = wildlife_all(wildlife_st)
   for i in 0 .. len(all) {
     let a = all[i]

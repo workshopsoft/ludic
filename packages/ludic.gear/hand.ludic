@@ -4,7 +4,6 @@ export function gear_hand(gear_st: GearState) -> int { return gear_st.gear__hand
 
 # a new thing in the hand (-1 empty): whatever the old one was running goes out
 export function gear_set_hand(gear_st: mut GearState, it: int) -> void {
-  gear__ensure(gear_st)
   gear_st.gear__hand = it
   for c in 0 .. CHARGE_COUNT { if GearCharges[c].hand { gear_st.gear__on[c] = false } }
 }
@@ -15,26 +14,22 @@ export function gear_charge_of(it: int) -> int {
   return -1
 }
 
-export function gear_charge(gear_st: mut GearState, c: int) -> float {
-  gear__ensure(gear_st)
+export function gear_charge(gear_st: GearState, c: int) -> float {
   return gear_st.gear__left[c]
 }
 
 export function gear_charge_set(gear_st: mut GearState, c: int, v: float) -> void {
-  gear__ensure(gear_st)
   gear_st.gear__left[c] = Math.clamp(v, 0.0, GearCharges[c].full)
 }
 
 export function gear_charge_fill(gear_st: mut GearState, c: int) -> void { gear_charge_set(gear_st, c, GearCharges[c].full) }
 
-export function gear_running(gear_st: mut GearState, c: int) -> bool {
-  gear__ensure(gear_st)
+export function gear_running(gear_st: GearState, c: int) -> bool {
   return gear_st.gear__on[c]
 }
 
 # on or off; false when it has nothing left, or is held and not in the hand
 export function gear_run(gear_st: mut GearState, c: int, on: bool) -> bool {
-  gear__ensure(gear_st)
   if not on {
     gear_st.gear__on[c] = false
     return true
@@ -46,13 +41,13 @@ export function gear_run(gear_st: mut GearState, c: int, on: bool) -> bool {
 }
 
 # the hand's own charge is running (a torch lit, a flashlight on)
-export function gear_lit(gear_st: mut GearState) -> bool {
+export function gear_lit(gear_st: GearState) -> bool {
   if gear_st.gear__hand < 0 { return false }
   let c = gear_charge_of(gear_st.gear__hand)
   return c >= 0 and GearCharges[c].hand and gear_running(gear_st, c)
 }
 
-function gear__rate(gear_st: mut GearState, c: int) -> float {
+function gear__rate(gear_st: GearState, c: int) -> float {
   let d = GearCharges[c]
   if d.rate >= 0 { return gear_value(gear_st, d.rate) }
   return d.per_hour
@@ -60,7 +55,6 @@ function gear__rate(gear_st: mut GearState, c: int) -> float {
 
 # the game hours of a tick burn every running charge; one that runs out stops and says so
 function gear__burn(gear_st: mut GearState, hours: float) -> void {
-  gear__ensure(gear_st)
   for c in 0 .. CHARGE_COUNT {
     if not gear_st.gear__on[c] { continue }
     gear_st.gear__left[c] = gear_st.gear__left[c] - hours * gear__rate(gear_st, c)

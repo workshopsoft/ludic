@@ -33,7 +33,7 @@ function fk_setup(wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut Wi
 }
 
 # 0 deer (meadow, tracks, medium), 1 bear (forest, charges), 2 hare (small), 3 jay (flies)
-function fk_species(wildlife_st: mut WildlifeState) -> void {
+function fk_species(wildlife_st: WildlifeState) -> void {
   let d = new WildSpecies
   d.key = "deer"
   d.walk = 1.1

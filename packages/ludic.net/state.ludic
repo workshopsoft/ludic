@@ -48,9 +48,9 @@ export property NetMessage {
 }
 
 export state NetState {
-  net__cfg: NetConfig = null
-  net__facts: Queue<NetFact> = null
-  net__seen: []string = null     # guests already punched for
+  net__cfg: NetConfig = new NetConfig
+  net__facts: Queue<NetFact> = net__facts__new()
+  net__seen: []string = new []string     # guests already punched for
   net__punch_ip: words = null
   net__punch_port: words = null
   net__punch_left: words = null
@@ -88,7 +88,7 @@ export state NetState {
   net__rl: int = 0
   net__rp: int = 0
   net__rbad: bool = false
-  net__tb: []byte = null          # text read out of a message, through one scratch buffer
+  net__tb: []byte = buffer(NET_MTU)          # text read out of a message, through one scratch buffer
   net__hello_b: []byte = null     # the game's hello, sent again on every dial
   net__hello_l: int = 0
   net__hello_t: float = 0.0       # seconds since it went; -1 not yet
@@ -100,15 +100,14 @@ export state NetState {
   net__code_port: int = 0
   net__bytes_out: int = 0
   net__kind_out: words = null
-  net__inbox: Queue<NetMessage> = null
+  net__inbox: Queue<NetMessage> = net__inbox__new()
   net__stun_ip: int = 0
   net__stun_port: int = 0
-  net__txn: words = null
+  net__txn: words = words(3)
   net__dice: Rng = null
 }
 
-export function net_inbox(net_st: mut NetState) -> Queue<NetMessage> {
-  if net_st.net__inbox == null { net_st.net__inbox = queue_new("net.inbox") }
+export function net_inbox(net_st: NetState) -> Queue<NetMessage> {
   return net_st.net__inbox
 }
 
@@ -126,3 +125,5 @@ function net__init(net_st: mut NetState) -> void {
   net_st.net__rb = buffer(NET_MTU)
   net_st.net__hello_b = buffer(NET_MTU)
 }
+function net__facts__new() -> Queue<NetFact> { return queue_new("net.facts") }
+function net__inbox__new() -> Queue<NetMessage> { return queue_new("net.inbox") }

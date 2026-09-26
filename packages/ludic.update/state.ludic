@@ -56,7 +56,7 @@ export state UpdateState {
   update__ask_h: int = -1
   update__latest: string = ""
   update__notes: Val = null
-  update__cfg: UpdateConfig = null
+  update__cfg: UpdateConfig = new UpdateConfig
   update__state: int = 0
   update__err: int = 0
   update__h: int = -1               # the request
@@ -77,22 +77,20 @@ export state UpdateState {
   update__rate: int = 0             # bytes a second, eased
   update__rate_t: int = -1
   update__rate_bytes: int = 0
-  update__facts: Queue<UpdateFact> = null
+  update__facts: Queue<UpdateFact> = update__facts__new()
 }
 
 export function update_config(update_st: mut UpdateState, c: UpdateConfig) -> void { update_st.update__cfg = c }
 
-function update__conf(update_st: mut UpdateState) -> UpdateConfig {
-  if update_st.update__cfg == null { update_st.update__cfg = new UpdateConfig }
+function update__conf(update_st: UpdateState) -> UpdateConfig {
   return update_st.update__cfg
 }
 
-export function update_facts(update_st: mut UpdateState) -> Queue<UpdateFact> {
-  if update_st.update__facts == null { update_st.update__facts = queue_new("update.facts") }
+export function update_facts(update_st: UpdateState) -> Queue<UpdateFact> {
   return update_st.update__facts
 }
 
-function update__fact(update_st: mut UpdateState, what: int) -> void {
+function update__fact(update_st: UpdateState, what: int) -> void {
   let f = new UpdateFact
   f.what = what
   f.error = update_st.update__err
@@ -101,3 +99,4 @@ function update__fact(update_st: mut UpdateState, what: int) -> void {
   f.bytes = update_st.update__total_bytes
   q_push(update_facts(update_st), f)
 }
+function update__facts__new() -> Queue<UpdateFact> { return queue_new("update.facts") }

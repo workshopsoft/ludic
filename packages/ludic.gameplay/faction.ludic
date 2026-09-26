@@ -18,7 +18,6 @@ const REL_HOSTILE: int = 2
 # A global var initialiser must be a literal, so it is allocated lazily.
 
 function fac_ensure(gameplay_st: mut GameplayState) -> void {
-  if gameplay_st.fac_tbl == null { gameplay_st.fac_tbl = words(FAC_MAX * FAC_MAX) }
 }
 
 # Faction.set(a, b, rel) — record a symmetric relationship between two factions.

@@ -1,7 +1,7 @@
 # names.ludic - a name nobody else in the place is using: not another person, not one the place
 # keeps for itself (NpcWorld.taken: a vendor), and not somebody who left a little while ago
 
-export function npc_name_used(npc_st: mut NpcState, n: string) -> bool {
+export function npc_name_used(npc_st: NpcState, n: string) -> bool {
   if NpcWorld.taken(n) { return true }
   let all = npc_walkers(npc_st)
   for i in 0 .. len(all) { if all[i].active and all[i].name == n { return true } }
@@ -12,7 +12,7 @@ export function npc_name_used(npc_st: mut NpcState, n: string) -> bool {
 }
 
 # a free name from the body's pool, from a place in it the dice choose ("" when the pool is empty)
-export function npc_pick_name(npc_st: mut NpcState, body: int) -> string {
+export function npc_pick_name(npc_st: NpcState, body: int) -> string {
   let pool = new []string
   for i in 0 .. NPCN_COUNT { if NpcNames[i].body == body { push(pool, NpcNames[i].name) } }
   let n = len(pool)
@@ -26,7 +26,6 @@ export function npc_pick_name(npc_st: mut NpcState, body: int) -> string {
 }
 
 function np_left(npc_st: mut NpcState, name: string) -> void {
-  if npc_st.np_recent == null { npc_st.np_recent = new []string }
   push(npc_st.np_recent, name)
   if len(npc_st.np_recent) <= 8 { return }
   let keep = new []string
@@ -35,7 +34,7 @@ function np_left(npc_st: mut NpcState, name: string) -> void {
 }
 
 # how many pairs share a name, the place's own names included
-export function npc_name_clashes(npc_st: mut NpcState) -> int {
+export function npc_name_clashes(npc_st: NpcState) -> int {
   var dup = 0
   let all = npc_walkers(npc_st)
   for i in 0 .. len(all) {

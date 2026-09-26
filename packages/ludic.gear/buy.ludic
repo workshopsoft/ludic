@@ -1,5 +1,5 @@
 # buy.ludic - a tier bought with money once the standing is there; the kind's item follows
-export function gear_can_buy(gear_st: mut GearState, k: int) -> bool {
+export function gear_can_buy(gear_st: GearState, k: int) -> bool {
   if not gear_ok(k) or gear_best(gear_st, k) or GearWorld.hidden(k) { return false }
   return GearPurse.rep() >= gear_next_rep(gear_st, k) and GearPurse.money() >= gear_next_cost(gear_st, k)
 }
@@ -17,7 +17,6 @@ export function gear_buy(gear_st: mut GearState, k: int) -> bool {
 
 # a kind whose item is already carried counts as its first tier
 export function gear_sync(gear_st: mut GearState) -> void {
-  gear__ensure(gear_st)
   for k in 0 .. GEAR_COUNT {
     let it = GearKinds[k].item
     if it >= 0 and gear_st.gear__lv[k] == 0 and GearPack.count(it) > 0 { gear_st.gear__lv[k] = 1 }

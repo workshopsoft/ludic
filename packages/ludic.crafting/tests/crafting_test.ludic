@@ -65,7 +65,7 @@ program CraftingTest {
     craft_reset(crafting_st)
   }
 
-  function facts(crafting_st: mut CraftingState) -> []Crafted { return q_drain(craft_facts(crafting_st)) }
+  function facts(crafting_st: CraftingState) -> []Crafted { return q_drain(craft_facts(crafting_st)) }
 
   test "the registry is the game's, in the order written" {
     expect_eq(CRAFT_COUNT, 5)

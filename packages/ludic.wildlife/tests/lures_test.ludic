@@ -19,7 +19,7 @@ program LuresTest {
     spot: fn fk_spot
   }
 
-  function facts(wildlife_st: mut WildlifeState) -> []WildFact { return q_drain(wildlife_facts(wildlife_st)) }
+  function facts(wildlife_st: WildlifeState) -> []WildFact { return q_drain(wildlife_facts(wildlife_st)) }
   function set_out(wildlife_tests_fake_st: mut WildlifeTestsFakeState, uid: int, kind: int, diet: int, x: float, z: float, owner: int) -> WildLure {
     let l = new WildLure
     l.uid = uid

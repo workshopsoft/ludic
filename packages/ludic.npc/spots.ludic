@@ -10,7 +10,7 @@ def NpcSpots shore_here { find: fn np_spot_shore_here }
 def NpcSpots wander { find: fn np_spot_wander }
 
 # the step's act for the step's time, at (x, z)
-export function npc_step_go(npc_st: mut NpcState, p: NpcPerson, s: NpcStep, x: float, z: float) -> void {
+export function npc_step_go(npc_st: NpcState, p: NpcPerson, s: NpcStep, x: float, z: float) -> void {
   npc_go(npc_st, p, x, z, s.act, npc_secs(npc_st, s.lo, s.hi))
 }
 

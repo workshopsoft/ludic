@@ -56,7 +56,7 @@ export state NeedsState {
   nd_legs: float = 0.0          # seconds left before a collapse, 0 = none
   nd_last: int = 0              # the need the countdown is for
   nd_collapses: int = 0
-  nd_facts: Queue<NeedFact> = null
+  nd_facts: Queue<NeedFact> = nd_facts__new()
 }
 
 function nd_lv(needs_st: mut NeedsState) -> []float {
@@ -75,12 +75,11 @@ function nd_fill(needs_st: mut NeedsState) -> void {
 }
 
 # the facts, oldest first; the game drains them into its notices and its collapse
-export function needs_facts(needs_st: mut NeedsState) -> Queue<NeedFact> {
-  if needs_st.nd_facts == null { needs_st.nd_facts = queue_new("needs.facts") }
+export function needs_facts(needs_st: NeedsState) -> Queue<NeedFact> {
   return needs_st.nd_facts
 }
 
-function nd_fact(needs_st: mut NeedsState, what: int, need: int) -> void {
+function nd_fact(needs_st: NeedsState, what: int, need: int) -> void {
   let f = new NeedFact
   f.what = what
   f.need = need
@@ -88,3 +87,4 @@ function nd_fact(needs_st: mut NeedsState, what: int, need: int) -> void {
 }
 
 function nd_ok(k: int) -> bool { return k >= 0 and k < NEED_COUNT }
+function nd_facts__new() -> Queue<NeedFact> { return queue_new("needs.facts") }

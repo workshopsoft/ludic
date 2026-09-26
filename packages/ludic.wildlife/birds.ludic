@@ -42,7 +42,7 @@ function wl_come_down(a: WildAnimal, x: float, z: float) -> void {
 }
 
 # a circle about home, climbing to its height: the eagle wide and high, the jay low
-function wl_circle(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> void {
+function wl_circle(wildlife_st: WildlifeState, a: WildAnimal, dt: float) -> void {
   let s = wl_sp(wildlife_st, a.sp)
   a.fly_h = a.fly_h + (8.0 + s.home * 0.12 - a.fly_h) * Math.min(1.0, 0.4 * dt)
   let r = s.home * 0.5
@@ -57,13 +57,13 @@ function wl_circle(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> 
   a.bank = 0.35
 }
 
-function wl_take_off(wildlife_st: mut WildlifeState, a: WildAnimal, h: float) -> void {
+function wl_take_off(wildlife_st: WildlifeState, a: WildAnimal, h: float) -> void {
   a.state = WILD_FLY
   a.timer = 20.0 + wl_rnd(wildlife_st) * 40.0
   a.fly_h = Math.max(a.fly_h, h)
 }
 
-function wl_land(wildlife_st: mut WildlifeState, a: WildAnimal, dh: float, dt: float) -> void {
+function wl_land(wildlife_st: WildlifeState, a: WildAnimal, dh: float, dt: float) -> void {
   let s = wl_sp(wildlife_st, a.sp)
   a.fly_h = Math.max(0.0, a.fly_h - dt * 3.2)
   a.speed = s.walk * 0.8
@@ -84,7 +84,7 @@ function wl_land(wildlife_st: mut WildlifeState, a: WildAnimal, dh: float, dt: f
 }
 
 # on the ground it pecks at seed or takes a drink at the water's edge; it leaves no droppings
-function wl_perch(wildlife_st: mut WildlifeState, a: WildAnimal, dh: float, dt: float) -> void {
+function wl_perch(wildlife_st: WildlifeState, a: WildAnimal, dh: float, dt: float) -> void {
   a.speed = 0.0
   a.y = WildlifeWorld.ground(a.x, a.z)
   a.bank = 0.0

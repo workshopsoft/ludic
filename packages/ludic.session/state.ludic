@@ -66,7 +66,7 @@ export state SessionState {
   session__max: int = 4
   session__open: bool = true
   session__near_i: int = 0
-  session__facts: Queue<SessionFact> = null
+  session__facts: Queue<SessionFact> = session__facts__new()
   session__vote_id: int = 0
   session__vote_kind: int = 0
   session__vote_param: int = 0
@@ -78,12 +78,11 @@ export state SessionState {
   session__vote_passed: int = -1     # the last vote: -1 none, 0 failed, 1 passed
 }
 
-export function ses_facts(session_st: mut SessionState) -> Queue<SessionFact> {
-  if session_st.session__facts == null { session_st.session__facts = queue_new("session.facts") }
+export function ses_facts(session_st: SessionState) -> Queue<SessionFact> {
   return session_st.session__facts
 }
 
-function session__fact(session_st: mut SessionState, what: int, slot: int, pid: int) -> SessionFact {
+function session__fact(session_st: SessionState, what: int, slot: int, pid: int) -> SessionFact {
   let f = new SessionFact
   f.what = what
   f.slot = slot
@@ -99,3 +98,4 @@ function session__init(session_st: mut SessionState) -> void {
   for i in 0 .. PLY_MAX { push(session_st.session__slot, new PartyMember) }
   session_st.session__slot[0].on = true
 }
+function session__facts__new() -> Queue<SessionFact> { return queue_new("session.facts") }

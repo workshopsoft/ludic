@@ -27,8 +27,8 @@ program ClockTest {
     clock_reset(clock_st)
   }
 
-  function turned(clock_st: mut ClockState) -> []DayTurned { return q_drain(clock_days(clock_st)) }
-  function waiting(clock_st: mut ClockState) -> int { return q_len(clock_days(clock_st)) }
+  function turned(clock_st: ClockState) -> []DayTurned { return q_drain(clock_days(clock_st)) }
+  function waiting(clock_st: ClockState) -> int { return q_len(clock_days(clock_st)) }
   function run_hours(h: float) -> void {
     let s = clock_system()
     s.tick(tick_new(0.016, 0, h))

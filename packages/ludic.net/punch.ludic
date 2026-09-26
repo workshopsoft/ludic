@@ -4,7 +4,6 @@
 
 function net__new_guest(net_st: mut NetState, pub: string, local: string) -> void {
   let key = `{pub}|{local}`
-  if net_st.net__seen == null { net_st.net__seen = new []string }
   for i in 0 .. len(net_st.net__seen) { if net_st.net__seen[i] == key { return } }
   push(net_st.net__seen, key)
   net__log(`room {net_st.net__room}: a guest at {pub} / {local}`)

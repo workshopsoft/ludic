@@ -50,7 +50,7 @@ function update__fetch(update_st: mut UpdateState, i: int) -> void {
   update_st.update__state = UPDATE_FETCH
 }
 
-function update__hash_file(update_st: mut UpdateState) -> string {
+function update__hash_file(update_st: UpdateState) -> string {
   if len(update__conf(update_st).scratch) > 0 { return update__conf(update_st).scratch }
   return Os.temp_dir() + "/ludic-update-hash.txt"
 }
@@ -80,7 +80,7 @@ function update__check(update_st: mut UpdateState, i: int) -> void {
 }
 
 # the hash the child wrote: the first line with anything on it
-function update__hash_read(update_st: mut UpdateState) -> string {
+function update__hash_read(update_st: UpdateState) -> string {
   let s = Fs.read_text(update__hash_file(update_st))
   if s == null { return "" }
   let lines = Text.split(s, "\n")

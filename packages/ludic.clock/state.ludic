@@ -35,12 +35,11 @@ export state ClockState {
   ck_moon_lo: float = 0.0
   ck_moon_hi: float = 1.0
   ck_dice: Rng = null
-  ck_days: Queue<DayTurned> = null
+  ck_days: Queue<DayTurned> = ck_days__new()
 }
 
 # the facts: each day that turned, in order; the game drains it and runs its morning
-export function clock_days(clock_st: mut ClockState) -> Queue<DayTurned> {
-  if clock_st.ck_days == null { clock_st.ck_days = queue_new("clock.days") }
+export function clock_days(clock_st: ClockState) -> Queue<DayTurned> {
   return clock_st.ck_days
 }
 
@@ -61,3 +60,4 @@ export function clock_config_moon(clock_st: mut ClockState, days: float, lo: flo
   clock_st.ck_moon_lo = lo
   clock_st.ck_moon_hi = hi
 }
+function ck_days__new() -> Queue<DayTurned> { return queue_new("clock.days") }

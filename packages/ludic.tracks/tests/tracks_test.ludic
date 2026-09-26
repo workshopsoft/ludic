@@ -35,7 +35,7 @@ program TracksTest {
     tracks_reset(tracks_st)
   }
 
-  function reads(tracks_st: mut TracksState) -> []TrackRead { return q_drain(tracks_reads(tracks_st)) }
+  function reads(tracks_st: TracksState) -> []TrackRead { return q_drain(tracks_reads(tracks_st)) }
 
   test "a print goes into its kind's ring and is drawn" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
     fresh(tracks_st, tracks_test_st)

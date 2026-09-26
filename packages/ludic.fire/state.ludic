@@ -20,7 +20,7 @@ export state FireState {
   fr_lit: bool = false
   fr_fuel: float = 0.0            # game minutes left
   fr_rain_h: float = 0.0          # game hours today it burned in the rain under cover
-  fr_facts: Queue<FireFact> = null
+  fr_facts: Queue<FireFact> = fr_facts__new()
 }
 
 # what lighting or feeding would come to, as the world stands
@@ -43,12 +43,11 @@ export property FireFact {
 
 
 # the facts, oldest first; the game drains them into its notices
-export function fire_facts(fire_st: mut FireState) -> Queue<FireFact> {
-  if fire_st.fr_facts == null { fire_st.fr_facts = queue_new("fire.facts") }
+export function fire_facts(fire_st: FireState) -> Queue<FireFact> {
   return fire_st.fr_facts
 }
 
-function fr_fact(fire_st: mut FireState, what: int) -> void {
+function fr_fact(fire_st: FireState, what: int) -> void {
   let f = new FireFact
   f.what = what
   f.fuel = fire_st.fr_fuel
@@ -68,3 +67,4 @@ export function fire_config_reach(fire_st: mut FireState, warm: float, cook: flo
   fire_st.fr_warm_radius = warm
   fire_st.fr_cook_radius = cook
 }
+function fr_facts__new() -> Queue<FireFact> { return queue_new("fire.facts") }

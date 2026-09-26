@@ -59,12 +59,12 @@ export state TracksState {
   tk_read_n: int = 0             # signs read for the first time, of every source
   tk_yaw: float = 0.0            # the heading of the last sign read
   tk_has_yaw: bool = false
-  tk_reads: Queue<TrackRead> = null
+  tk_reads: Queue<TrackRead> = tk_reads__new()
 }
 
 
 # the facts: every sign read, oldest first
-export function tracks_reads(tracks_st: mut TracksState) -> Queue<TrackRead> {
-  if tracks_st.tk_reads == null { tracks_st.tk_reads = queue_new("tracks.reads") }
+export function tracks_reads(tracks_st: TracksState) -> Queue<TrackRead> {
   return tracks_st.tk_reads
 }
+function tk_reads__new() -> Queue<TrackRead> { return queue_new("tracks.reads") }
