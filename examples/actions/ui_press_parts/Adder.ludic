@@ -1,0 +1,4 @@
+# Adder.ludic - a button that says what happened and changes nothing itself
+component Adder {
+  on add(n: int) { dispatch Scored { n: n } }
+}

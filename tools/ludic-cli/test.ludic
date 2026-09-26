@@ -1012,6 +1012,7 @@ function cmd_dev_test() -> int {
   reject_case("rejected/layer_reach", "hud uses items.item_count", "a layered module is still held to its uses outside the layer")
   reject_case("rejected/layer_cycle", "go round in a circle: items -> layer app -> items", "a cycle through a layer and out of it is refused")
   feat_case("actions/pack", "", "0 1 9 13 picked 7 picked 9 too heavy", "pack.ludic (0.R: actions, reducers - one per state, in the order of the states' names - dispatch, drain_actions, an action a reducer dispatches goes behind)")
+  controller_case("actions/ui_press", "", "5 10", "ui_press.ludic (0.R4: an action a UI press dispatches is reduced before ludic.ui hands control back)")
   feat_case("actions/modules", "", "2", "modules.ludic (0.R: an action in one module, its reducer in another)")
   actions_deps_case()
   deps_reach_case()

@@ -1,0 +1,3 @@
+<div>
+  <button on-click="add(5)">+5</button>
+</div>

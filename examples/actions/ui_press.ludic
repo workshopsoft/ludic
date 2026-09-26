@@ -1,0 +1,22 @@
+# ui_press.ludic - 0.R4: an action a UI control dispatches is reduced before the UI hands control
+# back, so the code after it - and the frame the host presents - already sees the change
+import "ludic.ui"
+program UiPress {
+  numbers float
+  state Score { points: int = 0 }
+  action Scored { n: int = 1 }
+  reducer Score on Scored(s: mut Score, a: Scored) { s.points += a.n }
+  import "ui_press_parts/Adder.ludic"
+  function frame(ui_st: mut UiState) -> UiNode {
+    let root: UiNode = ui_nodes(ui_st, "Adder", null)
+    ui_place(ui_st, root, 0.0, 0.0, 300.0, 200.0)
+    return root
+  }
+  entry (ui_st: mut UiState, score: Score) {
+    let root = frame(ui_st)
+    ui_press(ui_st, root.children[0].children[0])
+    let after_one = score.points
+    ui_press(ui_st, root.children[0].children[0])
+    print(`{after_one} {score.points}`)
+  }
+}

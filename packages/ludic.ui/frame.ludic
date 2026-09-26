@@ -1,5 +1,7 @@
 # frame.ludic - a screen shown: built from the view's model, laid out, drawn, and its presses
-# run once the frame is drawn, so nothing the view does can change a frame half way through it
+# run once the frame is drawn, so nothing the view does can change a frame half way through it;
+# the actions they dispatch are reduced before ui_show returns, so the frame presented next is built
+# from what they changed
 
 export function ui_show(ui_st: mut UiState, screen: string, view: UiView, x: float, y: float, w: float, h: float) -> void {
   in_read(ui_st)
@@ -25,6 +27,7 @@ export function ui_show(ui_st: mut UiState, screen: string, view: UiView, x: flo
   dv_after(ui_st, screen, root)
   lc_run(ui_st, screen)
   nt_fired_run(ui_st)
+  drain_actions()                                # 0.R4: what the presses dispatched is reduced before the host presents
 }
 # the screen's nodes for this frame, not yet laid out - for a test, or a host that places them
 export function ui_nodes(ui_st: mut UiState, screen: string, view: UiView) -> UiNode {
@@ -78,6 +81,7 @@ export function ui_place(ui_st: mut UiState, root: UiNode, x: float, y: float, w
 # a press, as if the pointer had made it
 export function ui_press(ui_st: mut UiState, n: UiNode) -> void {
   if n.act != null and n.enabled { act_run(ui_st, n.act, n.env) }
+  drain_actions()
 }
 # any event, as if the element had fired it - for a test
 export function ui_event(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void { nt_run(ui_st, n, name, value) }

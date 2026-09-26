@@ -371,8 +371,10 @@ program Pack {
   dispatching needs no state parameter.
 - **When the queue is drained:** at the end of every phase of the frame loop (so what the `Input`
   phase dispatches is reduced before `Update`); after every phase of the ludic.base system runner
-  (`core_tick_all`); and wherever the program calls `drain_actions()` (an `entry` program, a test,
-  a loop of its own). Draining runs the actions in the order they were dispatched, and each action's
+  (`core_tick_all`); when ludic.ui has run a frame's presses (`ui_show`, `ui_press`), so a button's
+  action is reduced before the host presents the frame, not a frame later; and wherever the program
+  calls `drain_actions()` (an `entry` program, a test, a loop of its own - and a host that runs UI
+  presses some other way calls it before it presents). Draining runs the actions in the order they were dispatched, and each action's
   reducers in the order of their states' names - never the order of imports - so the same actions
   make the same changes on every machine and in a replay.
 - **An action a reducer dispatches** is queued behind the rest and reduced in the same drain, never
