@@ -53,7 +53,7 @@ JPH_SHIM int jph_overlap(void *w, float x, float y, float z, float r, int mask, 
 }
 
 // an upright body r wide, from y0 to y1, at (x, z): how far to move it in x and z to stand clear
-// of what it overlaps in mask, into out[2]; returns how many things it overlapped
+// of what it overlaps in mask, into out[2]; returns how many things were in the way
 JPH_SHIM int jph_push(void *w, float x, float z, float r, float y0, float y1, int mask, float *out) {
   World *ww = static_cast<World *>(w);
   float half = (y1 - y0) * 0.5f;
@@ -66,18 +66,23 @@ JPH_SHIM int jph_push(void *w, float x, float z, float r, float y0, float y1, in
   ww->sys.GetNarrowPhaseQuery().CollideShape(&body, Vec3::sOne(), RMat44::sTranslation(RVec3(x, y0 + half, z)),
                                              cs, RVec3::sZero(), hits, {}, f);
   hits.Sort();
+  // a contact more up than across is what the feet stand on (a rock's top, a dome under them),
+  // not a wall, and a touch with nothing in it is no contact
   float px = 0.0f, pz = 0.0f;
+  int n = 0;
   for (const CollideShapeResult &h : hits.mHits) {
-    Vec3 a = h.mPenetrationAxis;
+    if (h.mPenetrationDepth <= 1.0e-4f) continue;
+    Vec3 a = h.mPenetrationAxis.NormalizedOr(Vec3::sAxisY());
     Vec3 flat(a.GetX(), 0.0f, a.GetZ());
-    if (flat.LengthSq() < 1.0e-8f) continue;
+    if (flat.Length() < 0.5f) continue;
     flat = flat.Normalized() * h.mPenetrationDepth;
     px -= flat.GetX();
     pz -= flat.GetZ();
+    n++;
   }
   out[0] = px;
   out[1] = pz;
-  return int(hits.mHits.size());
+  return n;
 }
 
 // the highest top under an upright body r wide at (x, z) that a foot at `feet` could stand on or

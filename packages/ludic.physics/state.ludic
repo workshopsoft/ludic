@@ -45,6 +45,8 @@ export state PhysicsState {
   ph_hard: float = 2.0            # metres a second: a contact under this is not a fact
   ph_floats: []int = null         # buoyant bodies' ids
   ph_float_k: []float = null      # and theirs: buoyancy, linear drag, angular drag, wet
+  ph_rx: float = 0.0               # where the last phys_resolve put a body
+  ph_rz: float = 0.0
   ph_ids: []int = null
   ph_vals: []float = null
   ph_facts: Queue<PhysFact> = null

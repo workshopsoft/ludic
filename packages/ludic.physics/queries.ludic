@@ -72,3 +72,25 @@ export function phys_push(physics_st: mut PhysicsState, x: float, z: float, r: f
   p.z = physics_st.ph_vals[1]
   return p
 }
+
+# a body r wide from y0 to y1 at (x, z) moved clear of what it stands in, two passes over (a push out
+# of one thing can put it into another); true when it moved, the place in phys_resolved_x / _z -
+# what CharacterGround.push and pushed_x / _z ask
+export function phys_resolve(physics_st: mut PhysicsState, x: float, z: float, r: float, y0: float, y1: float, mask: int) -> bool {
+  var px = x
+  var pz = z
+  var moved = false
+  for pass in 0 .. 2 {
+    let p = phys_push(physics_st, px, pz, r, y0, y1, mask)
+    if p.n > 0 {
+      px += p.x
+      pz += p.z
+      moved = true
+    }
+  }
+  physics_st.ph_rx = px
+  physics_st.ph_rz = pz
+  return moved
+}
+export function phys_resolved_x(physics_st: PhysicsState) -> float { return physics_st.ph_rx }
+export function phys_resolved_z(physics_st: PhysicsState) -> float { return physics_st.ph_rz }
