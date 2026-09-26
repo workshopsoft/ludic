@@ -1,0 +1,7 @@
+# a program's type named like a package's export is a real clash, and the message says whose
+import "ludic.ui"
+program PkgClash {
+  numbers float
+  property UiNode { kind: int = 3 }
+  entry { print("x") }
+}

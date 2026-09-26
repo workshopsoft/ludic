@@ -119,7 +119,10 @@ show.
 The same holds for a `property` and an `event`: `fishing` and `hunting` may each have a private
 `Catch` record and a private `Landed` event with different fields, and each module's types, `new`,
 `emit` and `@On` reach its own (compiled as `Catch__fishing`). Two exported ones of one spelling are
-refused (`'Catch' is defined twice`, `event 'Landed' is defined twice`). Three kinds of record stay
+refused (`'Catch' is defined twice`, `event 'Landed' is defined twice`). When one of the two is a package's export the message
+says so (`'UiNode' is defined twice (...): ludic_ui exports it, and exported names are one namespace -
+rename this one, or declare it without export inside a module of your own`); a package exports only
+what a program uses, so ludic.ui's `UiAct` is its own and a game's may take the name. Three kinds of record stay
 one namespace, because other code names them by spelling: a generic record, a property that is an
 entity's component (a `model` names it), and the record a component or a view generates.
 

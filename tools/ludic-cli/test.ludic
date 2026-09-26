@@ -1005,6 +1005,8 @@ function cmd_dev_test() -> int {
   reject_case("rejected/exported_kinds", "'Catch' is defined twice", "two modules that export one record still clash")
   reject_case("rejected/exported_events", "event 'Landed' is defined twice", "two modules that export one event clash")
   feat_case("modules/tangle", "", "4", "tangle.ludic (the program ludic deps is tested on)")
+  feat_case("modules/own_uiact", "", "3", "own_uiact.ludic (0.R4: a game's exported UiAct does not meet ludic.ui's, which is its own module's)")
+  reject_case("rejected/pkg_export_clash", "ludic_ui exports it, and exported names are one namespace", "a type named like a package's export says whose it is")
   reject_case("rejected/exported_twins", "function 'seed' is defined twice", "two modules that export one name still clash")
   feat_case("modules/layers", "", "5", "layers.ludic (L3: `module menu in layer app uses items` - one layer's modules use each other and may go round)")
   reject_case("rejected/layer_reach", "hud uses items.item_count", "a layered module is still held to its uses outside the layer")

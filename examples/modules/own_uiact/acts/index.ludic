@@ -1,0 +1,6 @@
+module acts
+export property UiAct { kind: int = 3 }
+export function act_kind() -> int {
+  let a = new UiAct
+  return a.kind
+}

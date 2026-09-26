@@ -239,6 +239,15 @@ function decl_group(k: int) -> int {
   if k == N_STRUCT or k == N_COMP or k == N_EVENT { return 2 }
   return 0
 }
+# when one of the two is a package's export: say so, and what to do - exported names are one
+# namespace, and a module's private one of the same spelling would not clash
+function dup_whose(first: Node, d: Node) -> pointer {
+  var pk = pkg_of_file(first.file)
+  if pk == "" { pk = pkg_of_file(d.file) }
+  if pk == "" { return "" }
+  if not (pkg_of_file(first.file) == "") and not (pkg_of_file(d.file) == "") { return "" }
+  return `: {pk} exports it, and exported names are one namespace - rename this one, or declare it without export inside a module of your own`
+}
 function check_duplicate_decls() -> void {
   let k = new []pointer
   let v = new []Node
@@ -254,7 +263,7 @@ function check_duplicate_decls() -> void {
       if first != null {
         g_err_file = d.file
         g_err_line = d.line
-        perr(`'{d.s}' is defined twice (first in {first.file}:{itoa(first.line)})`)
+        perr(`'{d.s}' is defined twice (first in {first.file}:{itoa(first.line)}){dup_whose(first, d)}`)
       }
       ck_tab_put(k, v, key, d)
     }

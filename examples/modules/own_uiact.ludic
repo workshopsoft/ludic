@@ -1,0 +1,7 @@
+# own_uiact.ludic - a game module may export a record named like one of ludic.ui's own private ones
+import "ludic.ui"
+import "own_uiact/acts"
+program OwnUiAct {
+  numbers float
+  entry { print(`{act_kind()}`) }
+}

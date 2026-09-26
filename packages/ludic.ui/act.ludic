@@ -4,7 +4,7 @@
 const A_CALL: int = 0
 const A_SET: int = 1
 const A_EMIT: int = 2
-export property UiAct {
+property UiAct {
   kinds: []int = null
   names: []string = null
   exprs: []UiExpr = null
