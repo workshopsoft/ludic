@@ -9,6 +9,7 @@
 #   alias <owner> <global> <from> <file>:<line> <local>    (a write through a local, below)
 #   width <n> <name> <file>:<line> <pkg>                   (the states it takes)
 #   reach <n> <name> <file>:<line> <pkg>                   (the states it can come to, fn values too)
+#   wreach <n> <name> <file>:<line> <pkg>                  (of those, the ones it can come to change: `mut`)
 var g_dp_on: int = -1
 var g_dp_key: []pointer = new []pointer        # "from to"
 var g_dp_cnt: []int = new []int
@@ -273,7 +274,10 @@ var g_dr_name: []pointer = new []pointer        # the declarations a name can re
 var g_dr_node: []Node = new []Node
 var g_dr_refs: [][]int = new [][]int            # what each one names
 var g_dr_bits: [][]int = new [][]int            # the states it reaches, 60 to a word
+var g_dr_wbits: [][]int = new [][]int           # ... and of them the ones it takes `mut` somewhere down
 var g_dr_find_k: []pointer = new []pointer
+var g_dr_rl_name: []pointer = new []pointer     # a local holding one entry of a registry ...
+var g_dr_rl_reg: []pointer = new []pointer      # ... and which registry
 var g_dr_find_v: []Node = new []Node
 function dr_state_ix(t: pointer) -> int {
   var i = 0
@@ -292,9 +296,20 @@ function dr_index(name: pointer) -> int {
 }
 function dr_walk(n: Node, refs: []int) -> void {
   if n == null { return }
+  if dr_port_member(n, refs) { return }
+  if n.kind == S_LET and n.s != null and n.a != null and n.a.kind == E_INDEX and n.a.a != null and n.a.a.kind == E_ID and n.a.a.s != null and reg_find(n.a.a.s) >= 0 {
+    push(g_dr_rl_name, n.s)
+    push(g_dr_rl_reg, n.a.a.s)
+    dr_walk(n.a.b, refs)
+    return
+  }
+  if dr_reg_field(n, refs) { return }
   if (n.kind == E_ID or n.kind == E_FNREF) and n.s != null {
     let k = dr_index(n.s)
     if k >= 0 { push(refs, k) }
+    # a registry entry held in a local and handed on whole reaches the whole registry
+    let rl = dr_reg_local(n.s)
+    if k < 0 and rl != null and dr_index(rl) >= 0 { push(refs, dr_index(rl)) }
   }
   dr_walk(n.a, refs)
   dr_walk(n.b, refs)
@@ -307,11 +322,75 @@ function dr_walk(n: Node, refs: []int) -> void {
     }
   }
 }
-function dr_own(d: Node, bits: []int) -> void {
+# `Port.member` reaches what that member is bound to (or its default), not every member of the port:
+# a port asked for its save is not asked for its load
+function dr_port_member(n: Node, refs: []int) -> bool {
+  if n.kind != E_MEMBER or n.a == null or n.a.kind != E_ID or n.a.s == null or n.s == null { return false }
+  let k = dr_index(n.a.s)
+  if k < 0 { return false }
+  let v = g_dr_node[k]
+  if not is_port_var(v) { return false }
+  if v.a != null and v.a.kind == E_NEW and v.a.a != null {
+    let rec = v.a.a
+    var i = 0
+    while i < len(rec.kids) {
+      if (rec.kids[i].s == n.s) {
+        dr_walk(rec.kids[i].a, refs)
+        return true
+      }
+      i += 1
+    }
+  }
+  let c = g_pt_comp[port_find(v.s)]
+  var j = 0
+  while j < len(c.kids) {
+    if (c.kids[j].s == n.s) { dr_walk(c.kids[j].a, refs) }
+    j += 1
+  }
+  return true
+}
+# `Registry[i].field` reaches what that field holds in each entry, not every fn of every field: a
+# kind asked whether it is personal is not asked to be used
+function dr_reg_local(name: pointer) -> pointer {
+  var i = len(g_dr_rl_name) - 1
+  while i >= 0 {
+    if (g_dr_rl_name[i] == name) { return g_dr_rl_reg[i] }
+    i -= 1
+  }
+  return null
+}
+function dr_reg_field(n: Node, refs: []int) -> bool {
+  if n.kind != E_MEMBER or n.s == null or n.a == null { return false }
+  var reg: pointer = null
+  if n.a.kind == E_INDEX and n.a.a != null and n.a.a.kind == E_ID and n.a.a.s != null and reg_find(n.a.a.s) >= 0 {
+    reg = n.a.a.s
+    dr_walk(n.a.b, refs)
+  }
+  if reg == null and n.a.kind == E_ID and n.a.s != null { reg = dr_reg_local(n.a.s) }
+  if reg == null { return false }
+  let k = dr_index(reg)
+  if k < 0 { return false }
+  let v = g_dr_node[k]
+  if v.kind != N_VAR or v.a == null or v.a.kind != E_LIST { return false }
+  var i = 0
+  while i < len(v.a.kids) {
+    let e = v.a.kids[i]
+    if e.kind == E_NEW and e.a != null {
+      var j = 0
+      while j < len(e.a.kids) {
+        if (e.a.kids[j].s == n.s) { dr_walk(e.a.kids[j].a, refs) }
+        j += 1
+      }
+    }
+    i += 1
+  }
+  return true
+}
+function dr_own(d: Node, bits: []int, only_mut: bool) -> void {
   if d.kind == N_FN {
     var k = 0
     while k < len(d.kids) {
-      if d.kids[k].kind == N_PARAM {
+      if d.kids[k].kind == N_PARAM and (not only_mut or d.kids[k].uns == 1) {
         let s = dr_state_ix(d.kids[k].ty)
         if s >= 0 { dr_set(bits, s) }
       }
@@ -332,6 +411,20 @@ function dr_count(bits: []int) -> int {
   }
   return n
 }
+# `mine` takes in `theirs`; true when it grew
+function dr_join(mine: []int, theirs: []int, nw: int) -> bool {
+  var grew = false
+  var w = 0
+  while w < nw {
+    let u = mine[w] | theirs[w]
+    if u != mine[w] {
+      mine[w] = u
+      grew = true
+    }
+    w += 1
+  }
+  return grew
+}
 function deps_reach(f: pointer) -> void {
   ck_tab_init(g_dr_find_k, g_dr_find_v)
   var i = 0
@@ -350,6 +443,8 @@ function deps_reach(f: pointer) -> void {
   var j = 0
   while j < len(g_dr_node) {
     let refs = new []int
+    g_dr_rl_name = new []pointer
+    g_dr_rl_reg = new []pointer
     dr_walk(g_dr_node[j], refs)
     push(g_dr_refs, refs)
     let bits = new []int
@@ -358,8 +453,16 @@ function deps_reach(f: pointer) -> void {
       push(bits, 0)
       w += 1
     }
-    dr_own(g_dr_node[j], bits)
+    dr_own(g_dr_node[j], bits, false)
     push(g_dr_bits, bits)
+    let wb = new []int
+    var w3 = 0
+    while w3 < nw {
+      push(wb, 0)
+      w3 += 1
+    }
+    dr_own(g_dr_node[j], wb, true)
+    push(g_dr_wbits, wb)
     j += 1
   }
   var changed = true
@@ -367,20 +470,11 @@ function deps_reach(f: pointer) -> void {
     changed = false
     j = 0
     while j < len(g_dr_node) {
-      let mine = g_dr_bits[j]
       let refs = g_dr_refs[j]
       var r = 0
       while r < len(refs) {
-        let theirs = g_dr_bits[refs[r]]
-        var w2 = 0
-        while w2 < nw {
-          let u = mine[w2] | theirs[w2]
-          if u != mine[w2] {
-            mine[w2] = u
-            changed = true
-          }
-          w2 += 1
-        }
+        if dr_join(g_dr_bits[j], g_dr_bits[refs[r]], nw) { changed = true }
+        if dr_join(g_dr_wbits[j], g_dr_wbits[refs[r]], nw) { changed = true }
         r += 1
       }
       j += 1
@@ -394,6 +488,8 @@ function deps_reach(f: pointer) -> void {
       var pkg = 0
       if not (pkg_of_file(d.file) == "") { pkg = 1 }
       if n > 0 { deps_line(f, `reach {itoa(n)} {d.s} {d.file}:{itoa(d.line)} {itoa(pkg)}`) }
+      let wn = dr_count(g_dr_wbits[j])
+      if wn > 0 { deps_line(f, `wreach {itoa(wn)} {d.s} {d.file}:{itoa(d.line)} {itoa(pkg)}`) }
     }
     j += 1
   }

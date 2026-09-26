@@ -1,0 +1,35 @@
+# ludic deps --wreach: what a function can come to CHANGE. A port asked one member reaches that
+# member's binding only, and a registry read for one field reaches that field only - so a
+# question stays a question even when the port or the table beside it also holds a verb.
+program WriteReach {
+  state Store { n: int = 0 }
+  state Log { lines: int = 0 }
+  function store_count(s: Store) -> int { return s.n }
+  function store_add(s: mut Store) -> void { s.n += 1 }
+  port Shelf {
+    count: fn() -> int
+    add: fn() -> void
+  }
+  bind Shelf { count: fn store_count, add: fn store_add }
+  function log_note(l: mut Log) -> void { l.lines += 1 }
+  property Kind {
+    key: string = ""
+    size: int = 0
+    note: fn() -> void = null
+  }
+  registry Kinds of Kind as KD
+  def Kinds box { size: 3, note: fn log_note }
+  function asks() -> int { return Shelf.count() + Kinds[KD_BOX].size }
+  function asks_local() -> int {
+    let k = Kinds[KD_BOX]
+    return k.size
+  }
+  function changes() -> void {
+    Shelf.add()
+    Kinds[KD_BOX].note()
+  }
+  entry {
+    changes()
+    print(`{asks()} {asks_local()}`)
+  }
+}
