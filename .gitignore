@@ -57,3 +57,6 @@ assets/polyhaven/textures/
 assets/polyhaven/models/
 # `ludic run` beside an example writes its binary into a build/ there
 examples/**/build/
+
+# a package native/build.sh writes its objects under the package (phase 15)
+packages/*/build/

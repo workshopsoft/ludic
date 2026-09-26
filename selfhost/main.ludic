@@ -138,6 +138,7 @@ entry {
   var title = null        # --title <name>: game_title() - the window's first title - instead of the program name
   var gui = false         # --gui: a Windows GUI-subsystem program (no console behind the window)
   var links = new []pointer   # --link <file>: an extra input to the link (a compiled resource)
+  var natives_out = null      # --natives-out <file>: the package libraries linked, one a line (ludic bundle)
   g_coverage = false      # --coverage: instrument each statement with a per-line hit counter
 
   var ai = 1
@@ -166,6 +167,7 @@ entry {
     else if a == "--target" { ai += 1;  if ai < arg_count() { target = arg(ai) } }
     else if a == "--gui" { gui = true }
     else if a == "--title" { ai += 1;  if ai < arg_count() { title = arg(ai) } }
+    else if a == "--natives-out" { ai += 1;  if ai < arg_count() { natives_out = arg(ai) } }
     else if a == "--link" { ai += 1;  if ai < arg_count() { push(links, arg(ai)) } }
     else if a == "-o" { ai += 1;  if ai < arg_count() { out = arg(ai) } }
     else if a[0] == '-' {
@@ -359,6 +361,8 @@ entry {
   # console-subsystem one opens a console window behind the game. mainCRTStartup keeps
   # the C runtime's ordinary main() entry rather than WinMain.
   if g_target_win and gui { cmd = `{cmd} -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup` }
+  # a package's native libraries (natives.ludic)
+  cmd = cmd + native_link_args(out)
   var li = 0
   while li < len(links) { cmd = `{cmd} "{links[li]}"`;  li += 1 }
   cmd = `{cmd} -o {out}`
@@ -371,6 +375,13 @@ entry {
   let rc = run(line)
   if not save { remove_file(ll) }
   if rc != 0 { die("ludicc: link failed\n") }
+  if natives_out != null {
+    var nl = ""
+    var ni = 0
+    while ni < len(g_native_libs) { nl = nl + g_native_libs[ni] + "\n";  ni += 1 }
+    let nf = file_open(natives_out, "wb")
+    if nf != null { file_write(nf, nl, len(nl));  file_close(nf) }
+  }
 
   # run mode: execute the binary we just built and forward its exit code.
   # system() hands back a wait status on POSIX and the exit code itself on Windows.

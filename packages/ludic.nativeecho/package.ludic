@@ -1,0 +1,8 @@
+# ludic.nativeecho - the worked example of a package that carries a native library (phase 15):
+# a C function that sums a float slice, and one that records what a callback would have said
+# into a buffer the package drains. Uses ludic.base and nothing else.
+package "ludic.nativeecho"
+version "0.1.0"
+kind source
+native "macos-arm64" "lib/macos-arm64/libnativeecho.dylib"
+native "windows-x64" "lib/windows-x64/nativeecho.dll"

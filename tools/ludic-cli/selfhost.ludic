@@ -21,6 +21,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/frontend/generics.ludic")
   push(f, "selfhost/frontend/aliases.ludic")
   push(f, "selfhost/frontend/modules.ludic")
+  push(f, "selfhost/frontend/natives.ludic")
   push(f, "selfhost/frontend/ports.ludic")
   push(f, "selfhost/frontend/privates.ludic")
   push(f, "selfhost/frontend/privates_types.ludic")

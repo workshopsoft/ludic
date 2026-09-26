@@ -27,6 +27,8 @@ function ensure_ludicc() -> void {
 # rendered to build/out.ppm from piped input — deterministic output for tests).
 # Returns true on success. `ludic build`, `ludic run` and the contributor tool all
 # go through here.
+# the native libraries (phase 15) the last compile_app linked, for `ludic bundle` to place
+var g_built_natives: []pointer = new []pointer
 function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool {
   ensure_ludicc()                          # in a checkout: assemble the seed if bin/ludicc is missing or stale
   let home = ludic_home()
@@ -52,7 +54,8 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
 
   if mode == 2 {
     if not shq(`{ludicc()} --headless{title_flag()}{unsafe_flag()} {src} --emit-llvm -o {ll}`) { return false }
-    if not shq(`{cc()} -O2 {ll}{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{pbf} -o {out}`) { return false }
+    if not shq(`{cc()} -O2 {ll}{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`) { return false }
+    g_built_natives = native_libs_of(ll)
     if not save { shell(`rm -f {ll}`) }
     return true
   }
@@ -62,7 +65,8 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   # canonical `ludicc -o` path links it only when Audio.* is used.
   let cocoa = `{home}runtime/native/cocoa.ll`
   let audio = `{home}runtime/native/audio.ll`
-  if not shq(`{cc()} -O2 {ll} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{pbf} -o {out}`) { return false }
+  if not shq(`{cc()} -O2 {ll} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`) { return false }
+  g_built_natives = native_libs_of(ll)
   if not save { shell(`rm -f {ll}`) }
   return true
 }
@@ -103,6 +107,30 @@ function vk_link_flags(ll: pointer) -> pointer {
   if not shq(`grep -q "@lvk_" {ll}`) { return "" }
   let home = ludic_home()
   return ` {home}runtime/native/vk_thunks.ll {home}runtime/native/vk_mac.ll`
+}
+
+# A package that carries a native library (phase 15) is written into the IR by the compiler as
+# `; ludic-native: <path>` lines: link each, with an rpath to its directory for a run from the
+# build and one to Contents/Frameworks, where `ludic bundle` puts it.
+function native_libs_of(ll: pointer) -> []pointer {
+  let out = new []pointer
+  let lines = split_lines(capture(`grep "^; ludic-native: " {ll} 2>/dev/null`))
+  var i = 0
+  while i < len(lines) {
+    if s_starts(lines[i], "; ludic-native: ") { push(out, sslice(lines[i], 16, slen(lines[i]))) }
+    i += 1
+  }
+  return out
+}
+function native_link_flags(ll: pointer) -> pointer {
+  let libs = native_libs_of(ll)
+  var f = ""
+  var i = 0
+  while i < len(libs) {
+    f = f + ` "{libs[i]}" -Wl,-rpath,{dir_of_path(libs[i])} -Wl,-rpath,@executable_path/../Frameworks`
+    i += 1
+  }
+  return f
 }
 
 # A program that uses Http.* calls the @hs_* transport; link http.ll and Foundation only

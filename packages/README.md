@@ -52,6 +52,39 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.lab](ludic.lab/README.md) | the visual lab: a scene on a lit plate, fixed cameras, PNG shots and a contact sheet |
 | [ludic.core](ludic.core/) | the canonical engine-ABI components |
 | [ludic.prefs](ludic.prefs/) | a small `key=value` store for preferences and records |
+| [ludic.nativeecho](ludic.nativeecho/README.md) | the worked example of a package carrying a native library: a C sum over a slice, callbacks drained as facts |
+
+## Native libraries
+
+A package may carry a C or C++ library (`native` lines in its `package.ludic`,
+[docs/PACKAGES.md](../docs/PACKAGES.md#native-libraries---a-source-package-that-carries-a-cc-library-phase-15)).
+The library is never bound directly: a thin C shim in the package's `native/shim/` is, and every
+shim keeps the same shape so the Ludic side stays safe.
+
+- **Only `int`, `long`, `float` and opaque handles cross.** A Ludic `float` is a C `float`, a
+  `long` an `int64_t`, a `pointer` a `void *`. No struct is passed by value, no C++ type, no
+  exception: the shim catches and turns it into a return code.
+- **A handle is the library's pointer, kept in the package's state and never exported.** The
+  game names what the package hands it - an int id - and the package maps it to the handle.
+- **Nothing calls back into Ludic.** No function pointer crosses the boundary. What a library
+  reports through a callback (a contact, a finished path, a mixed buffer) the shim records in a
+  buffer of its own, and the package drains it after the call returns (`ne_scan` then
+  `ne_drain`), pushing each record onto its facts queue. A record that did not fit is counted,
+  not dropped silently.
+- **Bulk data crosses as a slice the package owns.** A `[]float` or `[]int` passed where the
+  shim takes a pointer is its data; the package makes it once and reuses it (L7), and passes its
+  length beside it.
+- **Errors are return codes.** 0 is success and a negative number says what failed; nothing
+  aborts, nothing prints.
+- **Threads a library starts stay inside C** (a job system, an audio device). The Ludic side is
+  called on the game's thread only.
+- **The symbols are prefixed** with the package's short name (`ne_`, `jph_`), exported explicitly
+  (`__attribute__((visibility("default")))`, `__declspec(dllexport)`), and everything else is
+  hidden.
+
+`native/build.sh` builds `lib/<target>/` from the pinned upstream source and the shim through
+[tools/native/lib.sh](../tools/native/lib.sh); run it on the Mac and, in Git Bash, on the PC.
+The package's tests run the real library - there is no fake for it.
 
 ## The builtin controllers
 

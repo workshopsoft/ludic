@@ -1,0 +1,41 @@
+# echo_test.ludic - the native library is linked and called: a sum over a slice, a scan whose
+# records come back as facts in order, a 64-bit value, and a drain that leaves nothing behind
+import "ludic.nativeecho"
+import "ludic.base"
+program EchoTest {
+  numbers float
+
+  test "a sum is worked out in C over the package's own slice" (echo_st: mut EchoState) {
+    echo_put(echo_st, 1.5)
+    echo_put(echo_st, 2.0)
+    echo_put(echo_st, 0.25)
+    expect(echo_sum(echo_st) == 3.75)
+  }
+
+  test "what C would have called back arrives as facts, in order" (echo_st: mut EchoState) {
+    echo_put(echo_st, 1.0)
+    echo_put(echo_st, 9.0)
+    echo_put(echo_st, 2.0)
+    echo_put(echo_st, 7.5)
+    expect(echo_scan(echo_st, 5.0) == 2)
+    let fs = q_drain(echo_facts(echo_st))
+    expect(len(fs) == 2)
+    expect(fs[0].index == 1)
+    expect(fs[0].value == 9.0)
+    expect(fs[1].index == 3)
+    expect(fs[1].value == 7.5)
+    expect(echo_scan(echo_st, 100.0) == 0)
+    expect(q_len(echo_facts(echo_st)) == 0)
+    expect(echo_lost() == 0)
+  }
+
+  test "a long crosses whole" {
+    expect(echo_twice(long(3000000000)) == long(6000000000))
+  }
+
+  test "the slice holds what it was made for and no more" (echo_st: mut EchoState) {
+    for i in 0 .. ECHO_CAP { expect(echo_put(echo_st, 1.0)) }
+    expect(not echo_put(echo_st, 1.0))
+    expect(echo_sum(echo_st) == float(ECHO_CAP))
+  }
+}

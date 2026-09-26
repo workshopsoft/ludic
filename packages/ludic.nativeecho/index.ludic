@@ -1,0 +1,7 @@
+# ludic.nativeecho - the worked example of a package carrying a native library (phase 15): a C
+# sum over a slice it owns, and a C scan whose "callbacks" come back as facts on its queue
+module ludic_nativeecho uses ludic_base
+numbers float
+import "ludic.base"
+import "native.ludic"
+import "echo.ludic"

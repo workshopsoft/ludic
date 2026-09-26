@@ -1228,6 +1228,7 @@ function do_import(rel: pointer) -> void {
   if is_runtime_path(rel) or not beside or (beside and unsafe_trusted(g_parse_file)) { trust_file(full) }
   if beside and not is_runtime_path(rel) and not (module_of(g_parse_file) == "") { module_set(full, module_of(g_parse_file)) }
   if not beside and not is_runtime_path(rel) { pkg_file_set(full, pkg_name_of(rel)) }            # modules.ludic
+  if not beside and not is_runtime_path(rel) and (src != null) { native_note_pkg(full, rel) }  # natives.ludic
   if beside and not is_runtime_path(rel) and not (pkg_of_file(g_parse_file) == "") { pkg_file_set(full, pkg_of_file(g_parse_file)) }
   if (src == null) { perr(`cannot open import {full}`) }
   # the audio runtime can arrive through atlas.ludic's own import or the Assets

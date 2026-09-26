@@ -235,6 +235,47 @@ clang -O2 game.ll $(ludic link-flags) -o game
 not ship the build target, `ludic get` fails — build from source instead where the
 package offers it.
 
+## Native libraries - a source package that carries a C/C++ library (phase 15)
+
+A source package may link a native library of its own - a physics engine, a navmesh builder, an
+audio renderer - by naming it per target in its `package.ludic`:
+
+```
+native "macos-arm64" "lib/macos-arm64/libjoltc.dylib"
+native "windows-x64" "lib/windows-x64/joltc.dll"
+```
+
+The targets are `macos-arm64`, `macos-x64`, `windows-x64` and `linux-x64`
+(`$LUDIC_NATIVE_TARGET` names another). The package's Ludic reaches the library through
+`extern function` declarations, which only a package (or the runtime) may call (L7).
+
+**Linked at build time, not opened with `dlopen`.** When the compiler loads a file from a
+package, it reads that package's manifest once and keeps the libraries for the build's target;
+they are written into the IR as `; ludic-native: <path>` lines, and every link reads that one
+list - `ludicc -o`, `ludic build`, `ludic test` and `ludic bundle`. A program that imports no
+such package links nothing new. Linking was chosen over a Vulkan-style loader because a missing
+or mismatched library then fails at start-up, with the loader's own message naming it, rather
+than at the first call deep in a frame; because an `extern function` is all the binding needs (no
+generated thunk table per library); and because nothing here is optional the way Vulkan is - a
+game that imports the physics package cannot run without it.
+
+- **macOS**: the dylib's install name is `@rpath/lib<name>.dylib`. A build gets an rpath to the
+  package's `lib/<target>/` (so `ludic run` and `ludic test` work in place) and one to
+  `@executable_path/../Frameworks`. `ludic bundle` copies each library into
+  `Contents/Frameworks` - never `Contents/MacOS`, which holds mach-o executables only (a Velopack
+  update strips a detached signature) - removes the build machine's rpath from the executable,
+  and signs every library before the app.
+- **Windows**: the `.dll` is linked through its import library, `<name>.lib` beside it; `ludicc`
+  copies the `.dll` beside the executable it writes, and `ludic bundle` beside the game's `.exe`.
+
+**Built here from a pinned source.** A package's `native/build.sh` fetches the upstream tag,
+checks its SHA-256, compiles the library and the package's shim with clang, and writes
+`lib/<target>/` (committed through Git LFS). `tools/native/lib.sh` is what every such script
+shares - `native_fetch`, `native_link`, the target and compiler - and it runs unchanged in Git
+Bash on Windows with the LLVM installer's clang. The shim's rules (what may cross, how a
+callback comes back) are in [packages/README.md](../packages/README.md#native-libraries);
+`ludic.nativeecho` is the worked example.
+
 ## Offline / hermetic builds
 
 `ludic vendor` copies the resolved packages out of the store into `./vendor`. Build

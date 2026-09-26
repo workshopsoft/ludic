@@ -272,6 +272,35 @@ function windows_icon_res(icon: pointer) -> pointer {
   return res
 }
 
+# copy what the last build linked into Contents/Frameworks
+# and drop the rpath to where each was built: a shipped binary names no path on this machine
+function bundle_natives_mac(contents: pointer, exe: pointer) -> bool {
+  if len(g_built_natives) == 0 { return true }
+  shell(`mkdir -p "{contents}/Frameworks"`)
+  for i in 0 .. len(g_built_natives) {
+    shq(`install_name_tool -delete_rpath "{dir_of_path(g_built_natives[i])}" "{exe}" 2>/dev/null`)
+    if not shq(`cp "{g_built_natives[i]}" "{contents}/Frameworks/"`) {
+      err(`ludic bundle: could not place {g_built_natives[i]}\n`)
+      return false
+    }
+  }
+  return true
+}
+
+# copy the .dll files ludicc wrote into <exe>.natives beside the executable
+function bundle_natives_win(list: pointer, root: pointer) -> bool {
+  let txt = read_file(list)
+  if txt == null { return true }
+  let libs = split_lines(txt)
+  for i in 0 .. len(libs) {
+    if libs[i] != "" and not shq(`cp "{libs[i]}" "{root}/"`) {
+      err(`ludic bundle: could not place {libs[i]}\n`)
+      return false
+    }
+  }
+  return true
+}
+
 function cmd_bundle_windows() -> int {
   let entry = parse_build_args(2)
   if g_argerr { return 1 }
@@ -288,11 +317,12 @@ function cmd_bundle_windows() -> int {
   let staged = tmp_path("bundle_exe")
   var flags = "--windowed --gui"
   if res != "" { flags = flags + ` --link "{res}"` }
-  if not shq(`{ludicc()} {flags}{title_flag()} {entry} -o {staged}`) { return 1 }
+  if not shq(`{ludicc()} {flags}{title_flag()} {entry} --natives-out {staged}.natives -o {staged}`) { return 1 }
   if not shq(`cp "{staged}.exe" "{root}/{name}.exe"`) {
     err("ludic bundle: could not place the executable\n")
     return 1
   }
+  if not bundle_natives_win(`{staged}.natives`, root) { return 1 }
 
   # 2. the assets, exactly as the .app packs them
   let roots = pack_roots(m, 999)
@@ -376,6 +406,11 @@ function cmd_bundle() -> int {
     return 1
   }
 
+  # 1b. a package's native libraries (phase 15) go in Contents/Frameworks, where the binary's
+  #     @executable_path/../Frameworks rpath finds them - never in MacOS, which must hold mach-o
+  #     executables only (a Velopack update strips anything else's detached signature)
+  if not bundle_natives_mac(contents, exe) { return 1 }
+
   # 2. the assets
   let roots = pack_roots(m, 999)                 # manifest/convention only, no argv
   var packed = false
@@ -430,6 +465,13 @@ function cmd_bundle() -> int {
   #    ID and notarisation - but it does make it run here.
   var ident = manifest_app(m, "sign")
   if ident == "" { ident = "-" }
+  # nested code is signed before what contains it
+  for i in 0 .. len(g_built_natives) {
+    let fw = `{contents}/Frameworks/{file_of_path(g_built_natives[i])}`
+    if not shq(`codesign --force --timestamp=none --sign "{ident}" "{fw}" 2>/dev/null`) {
+      err(`ludic bundle: warning: codesign failed on {fw}\n`)
+    }
+  }
   if not shq(`codesign --force --timestamp=none --sign "{ident}" "{root}" 2>/dev/null`) {
     err(`ludic bundle: warning: codesign failed; the app may not launch\n`)
   }

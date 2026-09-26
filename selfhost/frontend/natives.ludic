@@ -1,0 +1,105 @@
+# natives.ludic - a package can carry a native library (phase 15).
+#
+# A package's package.ludic says `native "<target>" "<path>"` for each library it links, per
+# target. When an import is found in a package, its manifest is read once and the libraries for
+# this build's target are kept, as absolute paths. ir_flush writes them into the IR as
+# `; ludic-native: <path>` lines, so every link - ludicc's own, `ludic build`, `ludic test` and
+# `ludic bundle` - reads one list, and a program that imports no such package links nothing new.
+var g_native_libs: []pointer = new []pointer
+var g_native_pkgs: []pointer = new []pointer
+
+# the target a `native` line names: windows-x64, macos-arm64 or linux-x64.
+# $LUDIC_NATIVE_TARGET names another (an Intel Mac says macos-x64).
+function native_target() -> pointer {
+  let env = getenv("LUDIC_NATIVE_TARGET")
+  if (env != null) { return env }
+  if g_target_win { return "windows-x64" }
+  if Fs.is_dir("/System/Library") { return "macos-arm64" }
+  return "linux-x64"
+}
+
+# the words of one manifest line, a quoted word as one word without its quotes
+function native_words(line: pointer) -> []pointer {
+  let out = new []pointer
+  let n = len(line)
+  var i = 0
+  while i < n {
+    while (i < n) and ((line[i] == ' ') or (line[i] == 9)) { i += 1 }
+    if (i >= n) or (line[i] == '#') { return out }
+    if line[i] == '"' {
+      let s = i + 1
+      i = s
+      while (i < n) and (line[i] != '"') { i += 1 }
+      push(out, line[s..i])
+      i += 1
+    } else {
+      let s = i
+      while (i < n) and (line[i] != ' ') and (line[i] != 9) { i += 1 }
+      push(out, line[s..i])
+    }
+  }
+  return out
+}
+
+function native_have(xs: []pointer, s: pointer) -> bool {
+  var i = 0
+  while i < len(xs) { if xs[i] == s { return true };  i += 1 }
+  return false
+}
+
+# `full` was found as `rel` under a package root (ludic_modules or $LUDIC_HOME/packages):
+# read that package's manifest once and keep its libraries for this target
+function native_note_pkg(full: pointer, rel: pointer) -> void {
+  var n = 0
+  while (n < len(rel)) and (rel[n] != '/') { n += 1 }
+  let root = full[0..len(full) - len(rel) + n] + "/"
+  if native_have(g_native_pkgs, root) { return }
+  push(g_native_pkgs, root)
+  let txt = read_file(root + "package.ludic")
+  if (txt == null) { return }
+  let want = native_target()
+  var i = 0
+  let tn = len(txt)
+  while i < tn {
+    var e = i
+    while (e < tn) and (txt[e] != '\n') { e += 1 }
+    var le = e
+    if (le > i) and (txt[le - 1] == 13) { le -= 1 }
+    let ws = native_words(txt[i..le])
+    if (len(ws) == 3) and (ws[0] == "native") and (ws[1] == want) {
+      let lib = root + ws[2]
+      if not native_have(g_native_libs, lib) { push(g_native_libs, lib) }
+    }
+    i = e + 1
+  }
+}
+
+# the `; ludic-native:` lines ir_flush puts at the head of the IR
+function native_ir_lines() -> pointer {
+  var s = ""
+  var i = 0
+  while i < len(g_native_libs) { s = s + `; ludic-native: {g_native_libs[i]}\n`;  i += 1 }
+  return s
+}
+
+# what ludicc's own link adds: on macOS the library and an rpath to its directory (and to where
+# a bundle keeps it); on Windows the import library beside the .dll, the .dll copied beside the exe
+function native_link_args(out: pointer) -> pointer {
+  var s = ""
+  var i = 0
+  while i < len(g_native_libs) {
+    let lib = g_native_libs[i]
+    let dir = dir_of(lib)
+    if g_target_win {
+      let n = len(lib)
+      s = s + ` "{lib[0..n - 4]}.lib"`
+      var od = dir_of(out)
+      if len(od) == 0 { od = "." }
+      run(`copy /y "{win_path(lib)}" "{win_path(od)}" >nul 2>nul`)
+    } else {
+      s = s + ` "{lib}" -Wl,-rpath,{dir} -Wl,-rpath,@executable_path/../Frameworks`
+    }
+    i += 1
+  }
+  return s
+}

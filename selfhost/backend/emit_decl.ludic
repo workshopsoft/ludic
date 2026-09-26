@@ -439,7 +439,7 @@ function emit_cov_runtime() -> void {
 # drivers read); with a path it is written to that file so ludicc can hand it to
 # clang itself.
 function ir_flush(path: pointer) -> bool {
-  let h = buf_str(head)
+  let h = native_ir_lines() + buf_str(head)
   let c = buf_str(code)
   if (path == null) {                             # raw IR to stdout (no trailing newline)
     let out = file_stdout()

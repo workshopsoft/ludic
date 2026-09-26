@@ -1,0 +1,7 @@
+# native.ludic - the shim's symbols (native/shim/nativeecho.c), in the types that cross:
+# int, long, float and a slice's data as a pointer. Nothing here is exported.
+extern function ne_sum(xs: pointer, n: int) -> float = "ne_sum"
+extern function ne_scan(xs: pointer, n: int, over: float) -> int = "ne_scan"
+extern function ne_drain(kinds: pointer, values: pointer, cap: int) -> int = "ne_drain"
+extern function ne_lost_count() -> int = "ne_lost_count"
+extern function ne_twice(x: long) -> long = "ne_twice"
