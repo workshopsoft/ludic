@@ -19,6 +19,7 @@
 var g_migrate: bool = false
 var g_mg_runtime: bool = false         # --migrate-runtime: the runtime's own vars too
 var g_mg_prune: bool = false           # --migrate-prune: a declared state nothing uses is taken out
+var g_mg_tighten: bool = false         # --migrate-tighten: and a `mut` state nothing down the chain writes is read-only
 var g_ma_node: []Node = new []Node     # each state argument a call passes (an E_ID), its call, its state
 var g_ma_call: []int = new []int
 var g_ma_state: []int = new []int
@@ -602,7 +603,7 @@ function mg_norm_line(line: pointer) -> pointer {
   }
   if len(w) < 2 { return line }
   let k = w[0]
-  if (k == "VAR") or (k == "REF") or (k == "INS") or (k == "LET") or (k == "CLOSE") or (k == "DELITEM") { w[1] = mg_norm(w[1]) }
+  if (k == "VAR") or (k == "REF") or (k == "INS") or (k == "LET") or (k == "CLOSE") or (k == "DELITEM") or (k == "DELMUT") { w[1] = mg_norm(w[1]) }
   if (k == "?") { w[1] = mg_norm(w[1]) }
   if (k == "VAR") and len(w) > 5 { w[5] = mg_norm_key(w[5]) }
   if (k == "STATE") and len(w) > 6 {
@@ -787,6 +788,7 @@ function mg_prune_unit(u: int, n: Node) -> void {
       let p = n.kids[i]
       if p.kind == N_PARAM and is_state_ty(p.ty) and p.pos >= 0 and p.file != null {
         if not has_sub(g_mu_need[u], `,{itoa(mg_state_named(p.ty))},`) { mg_emit(`DELITEM {p.file} {itoa(p.pos)}`, "") }
+        else if g_mg_tighten and p.uns == 1 and p.pos2 >= 0 and not has_sub(g_mu_mut[u], `,{itoa(mg_state_named(p.ty))},`) { mg_emit(`DELMUT {p.file} {itoa(p.pos2)}`, "") }
       }
       i += 1
     }

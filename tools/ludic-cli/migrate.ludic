@@ -3,7 +3,9 @@
 # migrate.ludic, `ludicc --migrate-state <plan>`); this applies them to the source, file by file,
 # and prints what it could not decide.
 #
-#   ludic migrate state [file|dir...] [--prune] [--runtime] [--unsafe] [--dry-run]
+#   ludic migrate state [file|dir...] [--prune | --tighten] [--runtime] [--unsafe] [--dry-run]
+#   --tighten prunes, and takes `mut` off every state parameter nothing down the chain writes
+#   --root DIR lets the edits reach DIR too (a package the program imports) without running its programs
 #   --prune also takes out every state parameter (and the argument that fills it) a function no
 #   longer uses, nor anything it calls
 #
@@ -172,7 +174,7 @@ function mgx_mine(path: pointer) -> bool {
 }
 function cmd_migrate() -> int {
   if arg_count() < 3 or not (arg(2) == "state") {
-    err("usage: ludic migrate state [file|dir...] [--prune] [--runtime] [--unsafe] [--dry-run]\n")
+    err("usage: ludic migrate state [file|dir...] [--prune | --tighten] [--runtime] [--unsafe] [--dry-run]\n")
     return 2
   }
   let srcs = new []pointer
@@ -190,6 +192,12 @@ function cmd_migrate() -> int {
     else if a == "--unsafe" { g_unsafe_build = true }
     else if a == "--dry-run" { dry = true }
     else if a == "--prune" { prune = " --migrate-prune" }
+    else if a == "--tighten" { prune = " --migrate-tighten" }
+    else if a == "--root" and ai + 1 < arg_count() {
+      # a directory the edits may reach without its programs being run (a package the program imports)
+      ai += 1
+      push(mgx_roots, mgx_dir(arg(ai)))
+    }
     else if a[0] == '-' { err(`ludic migrate: unknown option {a}\n`);  return 2 }
     else if shq(`test -d {sh_single(a)}`) {
       let found = test_files_in(a)
@@ -282,8 +290,10 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
     let w = dp_words(lines[i])
     if len(w) == 0 { continue }
     var at = ""
-    if (w[0] == "VAR") or (w[0] == "REF") or (w[0] == "INS") or (w[0] == "CLOSE") or (w[0] == "LET") or (w[0] == "DELITEM") { at = w[1] }
+    if (w[0] == "VAR") or (w[0] == "REF") or (w[0] == "INS") or (w[0] == "CLOSE") or (w[0] == "LET") or (w[0] == "DELITEM") or (w[0] == "DELMUT") { at = w[1] }
     if (w[0] == "STATE") and len(w) > 2 { at = w[2] }
+    # a package's own `mut` is tightened in its own checkout; a program's run leaves it be
+    if (w[0] == "DELMUT") and len(at) > 0 and mgx_roots != null and not mgx_mine(at) { continue }
     if len(at) > 0 and mgx_roots != null and not mgx_mine(at) {
       var seen = false
       for k in 0 .. len(foreign) { if foreign[k] == at { seen = true } }
@@ -323,6 +333,11 @@ function mgx_apply(lines: []pointer, dry: bool) -> int {
       mgx_edit(w[1], s_to_int(w[2]), s_to_int(w[3]), mgx_unesc(w[4]))
     } else if (w[0] == "INS") and len(w) == 4 {
       mgx_edit(w[1], s_to_int(w[2]), 0, mgx_unesc(w[3]))
+    } else if (w[0] == "DELMUT") and len(w) == 3 {
+      # a state parameter nothing down the chain writes: its `mut ` goes (only where the text says so)
+      let t = mgx_text_of(w[1])
+      let p = s_to_int(w[2])
+      if t[p] == 'm' and t[p + 1] == 'u' and t[p + 2] == 't' and t[p + 3] == ' ' { mgx_edit(w[1], p, 4, "") }
     } else if (w[0] == "DELITEM") and len(w) == 3 {
       # a parameter or an argument taken out, with the comma that goes with it
       let t = mgx_text_of(w[1])

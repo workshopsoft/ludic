@@ -48,7 +48,7 @@ program Ludic {
     print("                                compile and run the project's tests (-v: every test's line)")
     print("  deps [file] [--graph|--dot|--writes|--uses MOD|--check F|--baseline F]")
     print("                                the module graph as the compiler sees it, and how tangled it is")
-    print("  migrate state [file] [--prune] [--runtime]  module-level vars into states, passed as parameters (0.S); --prune drops states nothing uses")
+    print("  migrate state [file] [--prune] [--runtime]  module-level vars into states, passed as parameters (0.S); --prune drops states nothing uses, --tighten also mut nothing writes")
     print("  clean                         remove build/")
     print("")
     print("packages:")

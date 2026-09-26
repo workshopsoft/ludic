@@ -7,15 +7,19 @@
 var ck_ro: []int = new []int            # parallel to ck_names: 1 for a read-only state
 var ck_alias: []Node = new []Node       # parallel to ck_names: the global a local's reference came from
 var ck_ro_st: []pointer = new []pointer # parallel to ck_names: the state that makes a local read-only
+var ck_from_st: []pointer = new []pointer  # parallel to ck_names: the state a local's reference came out of, mut or not
 
 function ck_set_ro(ro: bool) -> void {
   let k = ck_top - 1
   while len(ck_ro) < len(ck_names) { push(ck_ro, 0) }
   while len(ck_alias) < len(ck_names) { push(ck_alias, null) }
   while len(ck_ro_st) < len(ck_names) { push(ck_ro_st, null) }
+  while len(ck_from_st) < len(ck_names) { push(ck_from_st, null) }
   if ro { ck_ro[k] = 1 } else { ck_ro[k] = 0 }
   ck_alias[k] = null
   ck_ro_st[k] = null
+  ck_from_st[k] = null
+  if is_state_ty(ck_tys[k]) { ck_from_st[k] = ck_tys[k] }
   if ro { ck_ro_st[k] = ck_tys[k] }
 }
 # the local just bound is read-only for the same state as local `li`
@@ -42,6 +46,7 @@ function ck_let_from(e: Node, ty: pointer) -> void {
   if li >= 0 and li < k {
     if ck_is_ro(li) { ck_ro_like(li) }
     if li < len(ck_alias) { ck_alias[k] = ck_alias[li] }
+    if li < len(ck_from_st) and k < len(ck_from_st) { ck_from_st[k] = ck_from_st[li] }
     return
   }
   if li >= 0 { return }
@@ -75,6 +80,7 @@ function ck_write_check(t: Node, what: pointer) -> void {
   if li >= 0 {
     mg_local_write(ck_tys[li])                   # 0.S2 --migrate-prune: a state changed here
     if li < len(ck_ro_st) { mg_local_write(ck_ro_st[li]) }
+    if li < len(ck_from_st) and ck_from_st[li] != null { mg_local_write(ck_from_st[li]) }   # through a local holding part of it
     if li < len(ck_alias) and ck_alias[li] != null {
       let ag = ck_alias[li]
       mg_write(t, ag)
