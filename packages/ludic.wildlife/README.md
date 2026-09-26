@@ -31,6 +31,7 @@ export port WildlifeWorld {        # every member has a default: a flat dry mead
   ground, water, slope: fn(float, float) -> float     # the ground, the water's surface, the gradient
   forest: fn(float, float) -> bool
   sight: fn(ax, ay, az, bx, by, bz) -> bool           # nothing between the two points
+  push: fn(x, z, r, feet, head) -> bool, pushed_x, pushed_z   # a walker slid clear of still things
   players: fn() -> int                                # slots; player_on(p), player_x / _y / _z(p)
   hidden, noise, scent, stillness                     # per player: in a hide, 0..1, 0..1, WILD_MOVING / _STILL / _SITTING
   hour, light, winterness, wind, wind_dir: fn() -> float   # the clock, how well it sees now, the season, the weather

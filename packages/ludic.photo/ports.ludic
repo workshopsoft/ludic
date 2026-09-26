@@ -1,6 +1,6 @@
 # ports.ludic - what a photograph asks the game: where the lens is and what it can see, the light,
-# and the rules of the market. Unbound, the lens sits at the origin looking down -z on flat open
-# ground at noon under a clear sky, every point projects to the middle of the frame, and a
+# and the rules of the market. Unbound, the lens sits at the origin looking down -z with nothing in
+# the way at noon under a clear sky, every point projects to the middle of the frame, and a
 # subject's first frame is worth 12 and a legend 120.
 export port PhotoLens {
   x: fn() -> float = fn pht__zero                    # the camera's position
@@ -14,8 +14,7 @@ export port PhotoLens {
   sx: fn() -> float = fn pht__half                   # 0..1 across
   sy: fn() -> float = fn pht__half                   # 0..1 down
   visible: fn(float, float, float, float) -> bool = fn pht__seen   # a sphere inside the frustum
-  ground: fn(float, float) -> float = fn pht__flat
-  trunk: fn(float, float, float) -> bool = fn pht__clear         # (x, z, r): a trunk there
+  clear: fn(float, float, float, float, float, float) -> bool = fn pht__clear   # nothing between two points
   range: fn() -> float = fn pht__range               # how far the lens reaches, m
   steady: fn() -> bool = fn pht__no                  # on a tripod
 }
@@ -43,8 +42,7 @@ function pht__fov() -> float { return 1.0 }
 function pht__centred(x: float, y: float, z: float) -> bool { return true }
 function pht__half() -> float { return 0.5 }
 function pht__seen(x: float, y: float, z: float, r: float) -> bool { return true }
-function pht__flat(x: float, z: float) -> float { return 0.0 }
-function pht__clear(x: float, z: float, r: float) -> bool { return false }
+function pht__clear(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool { return true }
 function pht__range() -> float { return 100.0 }
 function pht__no() -> bool { return false }
 function pht__noon() -> float { return 12.0 }

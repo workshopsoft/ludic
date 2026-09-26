@@ -1,5 +1,5 @@
 # pick.ludic - one target a frame: the game offers every candidate, and the nearest one the ray enters
-# that the ground does not hide is the pick. Near things occlude far ones for free, which is what a
+# that nothing hides is the pick. Near things occlude far ones for free, which is what a
 # player means by "I am looking at that one".
 export const AIM_NONE: int = 0
 export const AIM_REACH_MIN: float = 3.0     # about as far as a hand goes with a step into it
@@ -13,9 +13,6 @@ export state AimState {
   am_dist: float = 0.0
   am_reach: bool = false
   am_off: float = 1.0
-  am_seen: int = 0
-  am_blocked: int = 0
-  am_disagree: int = 0
 }
 
 # The crosshair decides WHICH; the distance decides only WHETHER. Every reach is lifted to a floor of
@@ -41,7 +38,7 @@ export function aim_offer(aim_st: mut AimState, kind: int, id: int, x: float, y0
   let rr = r + aim_slack_m(d)
   let hit = aim_ray_cyl(x, y0, y1, z, rr)
   if hit < 0.0 or not (hit < aim_st.am_t) { return false }
-  if not aim_clear_to(x, (y0 + y1) * 0.5, z) { return false }
+  if not aim_clear_at(hit, rr) { return false }
   aim_st.am_t = hit
   aim_st.am_off = aim_miss(x, z, rr)
   aim_st.am_kind = kind

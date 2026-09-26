@@ -13,14 +13,20 @@ function wl_face(a: WildAnimal, tx: float, tz: float, rate: float, dt: float) ->
   a.yaw = a.yaw + Math.clamp(wl_wrap(want - a.yaw), -r, r)
 }
 
-# true when it moved
+# true when it moved; a walker is slid round a still thing (a trunk, a tent), a bird is not
 function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
   let d = a.speed * dt
   if d < 0.0001 { return false }
-  let nx = a.x - Math.sin(a.yaw) * d
-  let nz = a.z - Math.cos(a.yaw) * d
+  var nx = a.x - Math.sin(a.yaw) * d
+  var nz = a.z - Math.cos(a.yaw) * d
+  let s = wl_sp(wildlife_st, a.sp)
+  if not s.flies and wl_push(wildlife_st, a, s, nx, nz) {
+    nx = wildlife_st.wl_out_x
+    nz = wildlife_st.wl_out_z
+  }
   let nh = WildlifeWorld.ground(nx, nz)
-  if nh < WildlifeWorld.water(nx, nz) + 0.6 or nh - a.y > d * 1.2 {
+  let moved = Math.abs(nx - a.x) + Math.abs(nz - a.z)
+  if nh < WildlifeWorld.water(nx, nz) + 0.6 or nh - a.y > d * 1.2 or moved < d * 0.2 {
     a.yaw = a.yaw + Math.deg_to_rad(75.0)
     a.timer = 0.0
     return false
@@ -29,11 +35,27 @@ function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bo
   a.z = nz
   a.y = nh
   a.track_d = a.track_d + d
-  if wl_sp(wildlife_st, a.sp).tracks and a.track_d > 2.8 {
+  if s.tracks and a.track_d > 2.8 {
     a.track_d = 0.0
     wl_fact(wildlife_st, WILD_PRINT, a)
   }
   return true
+}
+
+# (x, z) pushed clear of every still thing for a body its size; wl_out_x / _z say where
+function wl_push(wildlife_st: mut WildlifeState, a: WildAnimal, s: WildSpecies, x: float, z: float) -> bool {
+  wildlife_st.wl_ask_x = x
+  wildlife_st.wl_ask_z = z
+  let k = Math.clamp(float(s.size), 0.0, 2.0)
+  let r = (0.2 + 0.2 * k) * s.scale * a.scale
+  let hit = WildlifeWorld.push(x, z, r, a.y + 0.1, a.y + (0.5 + 0.7 * k) * s.scale * a.scale)
+  wildlife_st.wl_out_x = x
+  wildlife_st.wl_out_z = z
+  if hit {
+    wildlife_st.wl_out_x = WildlifeWorld.pushed_x()
+    wildlife_st.wl_out_z = WildlifeWorld.pushed_z()
+  }
+  return hit
 }
 
 function wl_pick_target(wildlife_st: mut WildlifeState, a: WildAnimal, radius: float) -> void {

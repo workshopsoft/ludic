@@ -11,6 +11,9 @@ export state NpcTestsFakeState {
   fk_on: []bool = null
   fk_born: int = 0
   fk_gone: int = 0
+  fk_trunk: bool = false         # a trunk 1 m round at (10, 0.3)
+  fk_out_x: float = 0.0
+  fk_out_z: float = 0.0
 }
 
 function fk_setup(npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) -> void {
@@ -23,6 +26,7 @@ function fk_setup(npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState
   npc_tests_fake_st.fk_on = [true, false]
   npc_tests_fake_st.fk_born = 0
   npc_tests_fake_st.fk_gone = 0
+  npc_tests_fake_st.fk_trunk = false
   npc_clear(npc_st)
   npc_reset(npc_st)
   npc_seed(npc_st, 7)
@@ -60,4 +64,23 @@ function fk_count(npc_st: mut NpcState, what: int) -> int {
   var n = 0
   for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
   return n
+}
+
+# the trunk, when it stands: a body inside it is pushed straight out from its axis, and a line
+# passing within its radius is not clear
+function fk_push(npc_tests_fake_st: mut NpcTestsFakeState, x: float, z: float, r: float, y0: float, y1: float) -> bool {
+  let d = npc_d(x, z, 10.0, 0.3)
+  if not npc_tests_fake_st.fk_trunk or d > 1.0 + r or d < 0.0001 { return false }
+  npc_tests_fake_st.fk_out_x = 10.0 + (x - 10.0) / d * (1.0 + r)
+  npc_tests_fake_st.fk_out_z = 0.3 + (z - 0.3) / d * (1.0 + r)
+  return true
+}
+function fk_pushed_x(npc_tests_fake_st: NpcTestsFakeState) -> float { return npc_tests_fake_st.fk_out_x }
+function fk_pushed_z(npc_tests_fake_st: NpcTestsFakeState) -> float { return npc_tests_fake_st.fk_out_z }
+function fk_clear(npc_tests_fake_st: NpcTestsFakeState, ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool {
+  if not npc_tests_fake_st.fk_trunk { return true }
+  let lx = bx - ax
+  let lz = bz - az
+  let t = Math.clamp(((10.0 - ax) * lx + (0.3 - az) * lz) / Math.max(lx * lx + lz * lz, 0.0001), 0.0, 1.0)
+  return npc_d(ax + lx * t, az + lz * t, 10.0, 0.3) > 1.0
 }

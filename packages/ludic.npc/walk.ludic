@@ -1,5 +1,8 @@
-# walk.ludic - walking to the target: turn toward it, step, never into the water and never up a
-# scramble - step round it instead - and give up on a target that gets no closer for twenty seconds
+# walk.ludic - walking to the target: turn toward it, step, slid round a trunk or a tent, never into
+# the water and never up a scramble - step round it instead - and give up on a target that gets no
+# closer for twenty seconds
+const NP_BODY_R: float = 0.35      # a person's width, for the still things
+
 export function npc_walk(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void {
   var gx = p.tx
   var gz = p.tz
@@ -29,10 +32,12 @@ export function npc_walk(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void 
   let r = 3.0 * dt
   p.yaw = p.yaw + Math.clamp(npc_wrap(want - p.yaw), -r, r)
   let step = sp * dt
-  let nx = p.x - Math.sin(p.yaw) * step
-  let nz = p.z - Math.cos(p.yaw) * step
+  np_slide(npc_st, p, p.x - Math.sin(p.yaw) * step, p.z - Math.cos(p.yaw) * step)
+  let nx = npc_st.np_ask_x
+  let nz = npc_st.np_ask_z
   let nh = NpcWorld.ground(nx, nz)
-  if nh < NpcWorld.water(nx, nz) + 0.4 or nh - p.y > step * 1.4 {
+  let slid = Math.abs(nx - p.x) + Math.abs(nz - p.z)
+  if nh < NpcWorld.water(nx, nz) + 0.4 or nh - p.y > step * 1.4 or slid < step * 0.2 {
     p.stall = p.stall + dt
     if p.stall > p.stall_max { p.stall_max = p.stall }
     if p.detours < 10 and np_detour(p, want) {
@@ -47,6 +52,17 @@ export function npc_walk(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void 
   p.y = nh
   p.stall = 0.0
   p.phase = p.phase + step * 2.6
+}
+
+# (x, z) slid clear of every still thing for a person; np_ask_x / _z hold where it came out
+function np_slide(npc_st: mut NpcState, p: NpcPerson, x: float, z: float) -> void {
+  npc_st.np_ask_x = x
+  npc_st.np_ask_z = z
+  if not NpcWorld.push(x, z, NP_BODY_R, p.y + 0.1, p.y + 1.8) { return }
+  let ox = NpcWorld.pushed_x()
+  let oz = NpcWorld.pushed_z()
+  npc_st.np_ask_x = ox
+  npc_st.np_ask_z = oz
 }
 
 # there: a step round something ends, or the errand begins, facing what it came for

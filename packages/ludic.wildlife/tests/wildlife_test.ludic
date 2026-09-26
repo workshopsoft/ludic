@@ -10,6 +10,9 @@ program WildlifeTest {
     water: fn fk_water
     forest: fn fk_forest
     sight: fn fk_sight
+    push: fn fk_push
+    pushed_x: fn fk_pushed_x
+    pushed_z: fn fk_pushed_z
     players: fn fk_players
     player_on: fn fk_player_on
     player_x: fn fk_x
@@ -175,6 +178,25 @@ program WildlifeTest {
     expect(count(fs, WILD_PRINT) >= 3)
     expect_eq(count(fs, WILD_SPOTTED), 1)
     expect(wildlife_seen(wildlife_st, 0))
+  }
+
+  test "a walker slides round a trunk rather than through it" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = deer_at(wildlife_st, 0.0, 0.0)
+    wildlife_tests_fake_st.fk_trunk = true
+    player_at(wildlife_tests_fake_st, 60.0, 0.0)
+    wildlife_tests_fake_st.fk_blocked = true
+    a.state = WILD_WANDER
+    a.tx = 0.0
+    a.tz = -100.0
+    a.timer = 100.0
+    var closest = 100.0
+    for k in 0 .. 800 {
+      wildlife_tick(wildlife_st, 0.05, 0.0)
+      closest = Math.min(closest, Math.sqrt((a.x - 0.3) * (a.x - 0.3) + (a.z + 20.0) * (a.z + 20.0)))
+    }
+    expect(closest > 1.35)
+    expect(a.z < -25.0)
   }
 
   test "the record and the found ranges come back from the save section" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {

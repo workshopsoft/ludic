@@ -34,7 +34,19 @@ program PhotoTest {
     if x < 0.0 and z < -45.0 and z > -50.0 { return 10.0 }
     return 0.0
   }
-  function fk_trunk(x: float, z: float, r: float) -> bool { return Math.abs(x - 3.75) < 1.6 and Math.abs(z + 30.0) < 1.6 }
+  function fk_trunk(x: float, z: float) -> bool { return Math.abs(x - 3.75) < 1.6 and Math.abs(z + 30.0) < 1.6 }
+  # what a physics ray would say: forty points of the line against the ridge and the trunk
+  function fk_clear(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool {
+    let n = 40
+    for s in 1 .. n {
+      let f = float(s) / float(n)
+      let px = Math.lerp(ax, bx, f)
+      let pz = Math.lerp(az, bz, f)
+      let g = fk_ground(px, pz)
+      if g - 0.35 > Math.lerp(ay, by, f) or (Math.lerp(ay, by, f) - g < 7.0 and fk_trunk(px, pz)) { return false }
+    }
+    return true
+  }
   function fk_range() -> float { return 80.0 }
   function fk_hour(photo_test_st: PhotoTestState) -> float { return photo_test_st.hour }
   function fk_night(photo_test_st: PhotoTestState) -> bool { return photo_test_st.night }
@@ -44,7 +56,7 @@ program PhotoTest {
   function fk_behaviour(photo_test_st: PhotoTestState) -> bool { return photo_test_st.behaviour }
   function fk_value(sp: int) -> int { return 10 + sp }
 
-  bind PhotoLens { y: fn fk_y, fz: fn fk_fz, fov: fn fk_fov, project: fn fk_project, sx: fn fk_sx, sy: fn fk_sy, ground: fn fk_ground, trunk: fn fk_trunk, range: fn fk_range }
+  bind PhotoLens { y: fn fk_y, fz: fn fk_fz, fov: fn fk_fov, project: fn fk_project, sx: fn fk_sx, sy: fn fk_sy, clear: fn fk_clear, range: fn fk_range }
   bind PhotoLight { hour: fn fk_hour, night: fn fk_night, moon: fn fk_moon, dim: fn fk_dim, sun_z: fn fk_sun_z }
   bind PhotoRules { behaviour: fn fk_behaviour, subject_value: fn fk_value }
 

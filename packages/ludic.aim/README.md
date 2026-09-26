@@ -3,7 +3,9 @@
 What the crosshair is on, and which thing the use key means. The crosshair is the exact middle of
 the screen and the projection is symmetric, so the ray through it is the camera's position along its
 forward - no unprojection. Each candidate is an upright cylinder widened by a fixed angular
-forgiveness, and the pick is the nearest one the ray enters that the ground does not hide. Uses
+forgiveness, and the pick is the nearest one the ray enters that nothing hides: the line up to
+where the ray enters it is asked of the game (`clear`), so a thing that is itself solid does not
+hide itself. Uses
 [`ludic.base`](../ludic.base/README.md) and nothing else.
 
 ```ludic
@@ -32,13 +34,12 @@ that asks "am I close enough to this" asks `aim_reach_of`.
 ```ludic
 export port AimView {
   x, y, z, fx, fy, fz, fov,       # the camera (the ray)
-  ground: fn(float, float) -> float,
-  dry: fn(float, float) -> bool,  # land, for the probe's viewpoints
+  clear: fn(ax, ay, az, bx, by, bz) -> bool,   # nothing between: the ground and every still thing
   body_x, body_z                  # distances and reach are the body's, not the camera's
 }
 ```
 
-Every member has a default: a camera 1.5 m up at the origin looking down -z over flat ground.
+Every member has a default: a camera 1.5 m up at the origin looking down -z at nothing in the way.
 
 ## API
 
@@ -47,8 +48,7 @@ Every member has a default: a camera 1.5 m up at the origin looking down -z over
 | `aim_begin()`, `aim_offer(kind, id, x, y0, y1, z, r, reach, far) -> bool` | a frame's candidates: true when this one is now the pick (`reach` `AIM_NEVER` is never in reach) |
 | `aim_kind()` (`AIM_NONE` for nothing), `aim_id()`, `aim_dist()`, `aim_in_reach()`, `aim_t()`, `aim_off_centre()` | the pick |
 | `aim_use(kind)` -> `AIM_USE_THIS` / `_NOTHING` / `_NEAREST`, `aim_reach_of(reach)` | the use key |
-| `aim_ray_cyl(cx, y0, y1, cz, r)`, `aim_slack_m(dist)`, `aim_clear_to(x, y, z)`, `aim_range(x, z)`, `aim_miss(cx, cz, r)` | the geometry, for a game's own probes |
-| `aim_probe_ground(px, pz, look) -> bool`, `aim_probe_seen()`, `aim_probe_blocked()`, `aim_probe_disagree()` | from a point and a ring round it, lines at 60, 120 and 200 m on 36 bearings: the ground's own answer against `aim_clear_to`; `look(x, y, z)` puts the game's camera there |
+| `aim_ray_cyl(cx, y0, y1, cz, r)`, `aim_slack_m(dist)`, `aim_clear_to(x, y, z)`, `aim_clear_at(t, back)`, `aim_range(x, z)`, `aim_miss(cx, cz, r)` | the geometry, for a game's own probes (`aim_clear_at`: the ray clear to `back` short of t along it) |
 
 ## Tests
 
@@ -57,4 +57,5 @@ ludic test packages/ludic.aim
 ```
 
 A camera over flat ground with a ridge: the ray against a cylinder, the forgiveness, near before
-far, the ground hiding a thing, the reach floor and the three answers for the use key, and the probe.
+far, the ridge hiding a thing and a solid thing not hiding itself, the reach floor and the three
+answers for the use key.

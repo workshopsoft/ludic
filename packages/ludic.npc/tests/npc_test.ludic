@@ -10,6 +10,10 @@ program NpcTest {
     ground: fn fk_ground
     water: fn fk_water
     allowed: fn fk_allowed
+    push: fn fk_push
+    pushed_x: fn fk_pushed_x
+    pushed_z: fn fk_pushed_z
+    clear: fn fk_clear
     hour: fn fk_hour_now
     day: fn fk_day_now
     players: fn fk_players
@@ -93,6 +97,21 @@ program NpcTest {
     expect(p.phase > 20.0)
     expect_eq(fk_count(npc_st, NPC_F_ARRIVED), 1)
     expect_near(p.fx, 30.0, 0.01)
+  }
+
+  test "a trunk in the way is walked round, and a line through it is not a clear walk" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_HIKER)
+    npc_tests_fake_st.fk_trunk = true
+    expect(not npc_line_ok(0.0, 0.0, 20.0, 0.0))
+    expect(npc_line_ok(0.0, 5.0, 20.0, 5.0))
+    npc_go(npc_st, p, 20.0, 0.0, NPCA_SIT, 30.0)
+    var closest = 100.0
+    for k in 0 .. 600 {
+      npc_tick(npc_st, 0.05)
+      closest = Math.min(closest, npc_d(p.x, p.z, 10.0, 0.3))
+    }
+    expect(closest > 1.3)
+    expect_eq(p.act, NPCA_SIT)
   }
 
   test "nobody walks into the lake" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
