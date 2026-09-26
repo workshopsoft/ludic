@@ -87,7 +87,7 @@ Characters and moving objects
 58. A 2D overlay over the finished frame: batched rectangles, images and proportional text from a baked font atlas (`tools/blender/font_build.py`) — `overlay.ludic`, `shaders/overlay.*`
 59. Time of day over the HDRI: a solar arc drives the sun's direction and colour, the sky's light scales toward a deep-blue starry night, a moon lights the night, the visible sky turns with the sun and its convolutions rebake when far off, the height-field shadow rebakes as the sun moves, auto-exposure is capped at night — `daylight.ludic`, `shaders/sky.frag`, `shaders/lighting.glsl`
 60. One point light (the campfire) in the shading — `shaders/lighting.glsl` `fireLight`
-61. Static collision: ground circles in a cell grid with push-out and a segment test — `collide.ludic`
+61. ~~Static collision: ground circles in a cell grid~~ - removed; still things are bodies in `ludic.physics` (Jolt)
 62. Cut-out and emissive actors (a flame's cards) — `actor.ludic`, `shaders/model.frag` `u_emissive`
 63. Per-instance skin clones (a herd posed individually), per-part tints and hidden parts on actors, uniform-location caching with frustum and distance culling — `skin.ludic` `skin_clone`, `actor.ludic`
 64. A second point / cone light (a torch or flashlight in the hand) with a reach in metres and a gentle falloff to it — `daylight.ludic` `daylight_hand`, `shaders/lighting.glsl` `handLight`
