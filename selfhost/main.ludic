@@ -161,6 +161,10 @@ entry {
       g_allow_globals = true
     }
     else if a == "--migrate-prune" { g_mg_prune = true }     # 0.S2: state parameters nothing uses go too
+    else if a == "--migrate-tighten" {                       # 0.R5: and `mut` goes where nothing down the chain writes
+      g_mg_prune = true
+      g_mg_tighten = true
+    }
     else if a == "--migrate-runtime" { g_mg_runtime = true }   # 0.S: the toolchain's own programs keep module-level vars       # parse, type, module and port checks; nothing emitted
     else if a == "--coverage" { g_coverage = true }
     else if a == "--target" { ai += 1;  if ai < arg_count() { target = arg(ai) } }
