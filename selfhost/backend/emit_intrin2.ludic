@@ -70,7 +70,7 @@ function emit_intrinsic2(name: pointer, e: Node) -> Val {
     return val("0", "void")
   }
   if (name == "win_present") {
-    let a = arg_code(e, 0);  let b = arg_code(e, 1);  let c = arg_code(e, 2)
+    let a = arg_buf(e, 0);  let b = arg_code(e, 1);  let c = arg_code(e, 2)
     emit("  call void @win_present(ptr ");  emit(a);  emit(", i32 ");  emit(b);  emit(", i32 ");  emit(c);  emit(")\n")
     return val("0", "void")
   }
@@ -78,19 +78,19 @@ function emit_intrinsic2(name: pointer, e: Node) -> Val {
   # #50 — fill a caller buffer with the platform device state (windowed only,
   # DCE'd headless). win_held: an 8-word held-key bitset; win_mouse: [x, y,
   # button-mask, wheel-delta].
-  if (name == "win_held")  { let a = arg_code(e, 0);  emit("  call void @win_held(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
-  if (name == "win_mouse") { let a = arg_code(e, 0);  emit("  call void @win_mouse(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
+  if (name == "win_held")  { let a = arg_buf(e, 0);  emit("  call void @win_held(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
+  if (name == "win_mouse") { let a = arg_buf(e, 0);  emit("  call void @win_mouse(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
   # what the active keyboard layout types on a held-set key position (windowed only,
   # DCE'd headless): a code point, 0 for none.
   if (name == "win_key_char") { let a = arg_code(e, 0);  return val(emit_bind(`call i32 @win_key_char(i32 {a})`), "int") }
   # what the player TYPED since the last call - UTF-16 code units into the caller's buffer, one per
   # word, returning how many. The layout, the modifiers and any dead key are already applied, which
   # is why a name field must read this rather than build text out of key codes.
-  if (name == "win_text") { let a = arg_code(e, 0);  let b = arg_code(e, 1);  return val(emit_bind(`call i32 @win_text(ptr {a}, i32 {b})`), "int") }
+  if (name == "win_text") { let a = arg_buf(e, 0);  let b = arg_code(e, 1);  return val(emit_bind(`call i32 @win_text(ptr {a}, i32 {b})`), "int") }
   # #51 — win_pad: 6 words/pad [connected, mask, lx, ly, rx, ry]; win_touch: 3
   # words/point [active, x, y]. Both windowed-only, DCE'd headless.
-  if (name == "win_pad")   { let a = arg_code(e, 0);  emit("  call void @win_pad(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
-  if (name == "win_touch") { let a = arg_code(e, 0);  emit("  call void @win_touch(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
+  if (name == "win_pad")   { let a = arg_buf(e, 0);  emit("  call void @win_pad(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
+  if (name == "win_touch") { let a = arg_buf(e, 0);  emit("  call void @win_touch(ptr ");  emit(a);  emit(")\n");  return val("0", "void") }
   # #89 — set the OS cursor capture mode (windowed only; DCE'd headless).
   if (name == "win_cursor_mode") { let a = arg_code(e, 0);  emit("  call void @win_cursor_mode(i32 ");  emit(a);  emit(")\n");  return val("0", "void") }
   # #22 audio backend — AVAudioPlayer via audio.ll; windowed-only, DCE'd headless.

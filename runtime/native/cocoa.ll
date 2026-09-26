@@ -1607,6 +1607,14 @@ go:
   %scale = select i1 %ison, i32 %bsv, i32 1
   store i32 %scale, ptr @W_glscale
   call void @win_gl_update()
+  ; a Metal layer (Vulkan) draws at the same scale
+  %ml = load ptr, ptr @W_mtl
+  %noml = icmp eq ptr %ml, null
+  br i1 %noml, label %out, label %mtl
+mtl:
+  %scd = sitofp i32 %scale to double
+  %sel_csc = call ptr @sel_registerName(ptr @.s_setcsc)
+  %rm = call ptr (ptr, ptr, double) @objc_msgSend(ptr %ml, ptr %sel_csc, double %scd)
   br label %out
 out:
   ret void
@@ -2034,4 +2042,82 @@ entry:
 define ptr @win_native_instance() {
 entry:
   ret ptr null
+}
+
+; ---- a Metal layer on the view, for Vulkan through MoltenVK -----------------------------
+; VK_EXT_metal_surface presents to a CAMetalLayer, so the view is made layer-hosting with one
+; (the layer set before wantsLayer, which is what makes the view host it rather than back it).
+; Its contentsScale is the window's backing scale, or the swapchain's pixels are stretched over
+; a Retina window's points; @W_glscale follows it, as win_gl_attach sets it for OpenGL. The class
+; is looked up by name: the program links QuartzCore when it uses Vk.* (null without it).
+;   win_metal_layer() -> CAMetalLayer* | null (no window, or no QuartzCore)
+@.c_mtllayer = private unnamed_addr constant [13 x i8] c"CAMetalLayer\00"
+@.s_layer    = private unnamed_addr constant [6 x i8]  c"layer\00"
+@.s_retain   = private unnamed_addr constant [7 x i8]  c"retain\00"
+@.s_setlayer = private unnamed_addr constant [10 x i8] c"setLayer:\00"
+@.s_wantsl   = private unnamed_addr constant [15 x i8] c"setWantsLayer:\00"
+@.s_setcsc   = private unnamed_addr constant [18 x i8] c"setContentsScale:\00"
+@W_mtl = internal global ptr null
+
+define ptr @win_metal_layer() {
+entry:
+  %have = load ptr, ptr @W_mtl
+  %got = icmp ne ptr %have, null
+  br i1 %got, label %done, label %make
+make:
+  %view = load ptr, ptr @W_view
+  %win = load ptr, ptr @W_win
+  %noview = icmp eq ptr %view, null
+  %nowin = icmp eq ptr %win, null
+  %nothing = or i1 %noview, %nowin
+  br i1 %nothing, label %none, label %cls
+cls:
+  %c = call ptr @objc_getClass(ptr @.c_mtllayer)
+  %noc = icmp eq ptr %c, null
+  br i1 %noc, label %none, label %go
+go:
+  %sel_l = call ptr @sel_registerName(ptr @.s_layer)
+  %l0 = call ptr @objc_msgSend(ptr %c, ptr %sel_l)
+  %sel_r = call ptr @sel_registerName(ptr @.s_retain)
+  %l = call ptr @objc_msgSend(ptr %l0, ptr %sel_r)
+  %sel_bs = call ptr @sel_registerName(ptr @.s_bscale)
+  %bs = call double (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_bs)
+  %bsok = fcmp ogt double %bs, 0.0
+  %scale = select i1 %bsok, double %bs, double 1.0
+  %sel_cs = call ptr @sel_registerName(ptr @.s_setcsc)
+  %r0 = call ptr (ptr, ptr, double) @objc_msgSend(ptr %l, ptr %sel_cs, double %scale)
+  %sel_sl = call ptr @sel_registerName(ptr @.s_setlayer)
+  %r1 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %view, ptr %sel_sl, ptr %l)
+  %sel_wl = call ptr @sel_registerName(ptr @.s_wantsl)
+  %r2 = call ptr (ptr, ptr, i8) @objc_msgSend(ptr %view, ptr %sel_wl, i8 1)
+  %si = fptosi double %scale to i32
+  store i32 %si, ptr @W_glscale
+  store ptr %l, ptr @W_mtl
+  ret ptr %l
+done:
+  ret ptr %have
+none:
+  ret ptr null
+}
+
+; ---- is the window on screen ----------------------------------------------------------------------
+; A covered or minimised window's CAMetalLayer hands out drawables at the compositor's pace (a
+; second's timeout each), so a Vulkan frame waiting for one stalled the whole game at 3 fps behind
+; another window. NSWindowOcclusionStateVisible is bit 1 of -occlusionState.
+;   win_visible() -> 1 | 0 (1 with no window)
+@.s_occl = private unnamed_addr constant [15 x i8] c"occlusionState\00"
+define i32 @win_visible() {
+entry:
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %yes, label %ask
+ask:
+  %sel = call ptr @sel_registerName(ptr @.s_occl)
+  %st = call i64 (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel)
+  %bit = and i64 %st, 2
+  %vis = icmp ne i64 %bit, 0
+  %r = zext i1 %vis to i32
+  ret i32 %r
+yes:
+  ret i32 1
 }

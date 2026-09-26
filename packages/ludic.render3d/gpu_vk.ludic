@@ -43,6 +43,11 @@ function gvk_ext_in(props: bytes, n: int, want: string) -> bool {
 # device with the Tier 1 floor switched on. False, with gvk_why set, if any of it is missing:
 # the caller stays on OpenGL.
 
+function gvk_surface_ext() -> string {
+  if Os.platform() == "macos" { return VK_EXT_METAL_SURFACE_EXTENSION_NAME }
+  return VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+}
+
 function gvk_init(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gvk_ready { return true }
   gsl_boot(render3d_st)
@@ -72,12 +77,13 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
     Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);  n_iext += 1
     Vk.put_i32(ici, VkInstanceCreateInfo_flags, VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
   }
-  # a window's surface: only the Win32 one is built, so a window elsewhere stays on OpenGL
-  render3d_st.gvk_has_surface = render3d_st.gvk_want_surface and gvk_ext_in(iexts, nie, VK_KHR_SURFACE_EXTENSION_NAME) and gvk_ext_in(iexts, nie, VK_KHR_WIN32_SURFACE_EXTENSION_NAME)
-  if render3d_st.gvk_want_surface and not render3d_st.gvk_has_surface { render3d_st.gvk_why = "no Win32 surface in this Vulkan instance";  return false }
+  # a window's surface: Win32 on Windows, Metal (MoltenVK) on macOS
+  let surf_ext = gvk_surface_ext()
+  render3d_st.gvk_has_surface = render3d_st.gvk_want_surface and gvk_ext_in(iexts, nie, VK_KHR_SURFACE_EXTENSION_NAME) and gvk_ext_in(iexts, nie, surf_ext)
+  if render3d_st.gvk_want_surface and not render3d_st.gvk_has_surface { render3d_st.gvk_why = `no {surf_ext} in this Vulkan instance`;  return false }
   if render3d_st.gvk_has_surface {
     Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_SURFACE_EXTENSION_NAME);  n_iext += 1
-    Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_WIN32_SURFACE_EXTENSION_NAME);  n_iext += 1
+    Vk.put_ptr(iext_names, n_iext * 8, surf_ext);  n_iext += 1
   }
   # HDR output: an instance only lists the HDR colour spaces when it asks for them
   render3d_st.gvk_has_colorspace = render3d_st.gvk_has_surface and gvk_ext_in(iexts, nie, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME)
@@ -488,6 +494,9 @@ function gvk_cmd_init(render3d_st: mut Render3dState) -> bool {
   render3d_st.gvk_fence = bytes(8)
   r = Vk.create_fence(render3d_st.gvk_dev, fci, null, render3d_st.gvk_fence)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateFence", r) }
+  render3d_st.gvk_frame_fence = bytes(8)
+  r = Vk.create_fence(render3d_st.gvk_dev, fci, null, render3d_st.gvk_frame_fence)
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateFence", r) }
   return true
 }
 # a command buffer, begun
@@ -510,6 +519,7 @@ function gvk_once_begin(render3d_st: Render3dState) -> pointer {
 }
 # end it, submit it, wait for it, free it
 function gvk_once_end(render3d_st: mut Render3dState, cb: pointer) -> bool {
+  gvk_frame_wait(render3d_st)
   var r = Vk.end_command_buffer(cb)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkEndCommandBuffer", r) }
   let cbs = bytes(8)
@@ -529,12 +539,61 @@ function gvk_once_end(render3d_st: mut Render3dState, cb: pointer) -> bool {
   return true
 }
 
+# ---- one frame in flight -------------------------------------------------------------------
+# A window's frame is submitted and presented without waiting, so the game's next tick runs on the
+# CPU while the GPU draws: waiting at the present serialised the two, which cost MoltenVK a third
+# of its frame rate against OpenGL. Anything that would reuse what that frame reads - the next
+# frame's command buffer and ring, a one-off submit, a descriptor pool reset, a swapchain rebuild -
+# waits for it first (gvk_frame_wait), and a buffer it reads is busy (gvk_buf_busy). On by default
+# on macOS; R3D_VK_INFLIGHT=0/1 says otherwise.
+function gvk_inflight_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_inflight < 0 {
+    render3d_st.gvk_inflight = 0
+    if Os.platform() == "macos" { render3d_st.gvk_inflight = 1 }
+    if r3d_env_has(render3d_st, "R3D_VK_INFLIGHT") { render3d_st.gvk_inflight = Text.to_int(r3d_env(render3d_st, "R3D_VK_INFLIGHT")) }
+  }
+  return render3d_st.gvk_inflight == 1
+}
+
+function gvk_frame_submit(render3d_st: mut Render3dState, cb: pointer) -> bool {
+  gvk_frame_wait(render3d_st)
+  var r = Vk.end_command_buffer(cb)
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkEndCommandBuffer", r) }
+  let cbs = bytes(8)
+  Vk.put_ptr(cbs, 0, cb)
+  Vk.reset_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_frame_fence)
+  let si = bytes(VkSubmitInfo_sizeof)
+  Vk.zero(si, VkSubmitInfo_sizeof)
+  Vk.put_i32(si, VkSubmitInfo_sType, VK_STRUCTURE_TYPE_SUBMIT_INFO)
+  Vk.put_i32(si, VkSubmitInfo_commandBufferCount, 1)
+  Vk.put_ptr(si, VkSubmitInfo_pCommandBuffers, cbs)
+  r = Vk.queue_submit(render3d_st.gvk_queue, 1, si, Vk.get_i64(render3d_st.gvk_frame_fence, 0))
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkQueueSubmit", r) }
+  render3d_st.gvk_frame_pending = true
+  render3d_st.gvk_frame_pending_cb = cb
+  return true
+}
+
+function gvk_frame_wait(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.gvk_frame_pending { return }
+  let forever: long = -1
+  Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_frame_fence, 1, forever)
+  let cbs = bytes(8)
+  Vk.put_ptr(cbs, 0, render3d_st.gvk_frame_pending_cb)
+  Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
+  render3d_st.gvk_frame_pending = false
+  render3d_st.gvk_frame_pending_cb = null
+  gvk_retire_flush(render3d_st)
+}
+
 # ---- teardown -----------------------------------------------------------------------------
 function gvk_shutdown(render3d_st: mut Render3dState) -> void {
   if not render3d_st.gvk_ready { return }
+  gvk_frame_wait(render3d_st)
   Vk.device_wait_idle(render3d_st.gvk_dev)
   gsl_shutdown(render3d_st)
   Vk.destroy_fence(render3d_st.gvk_dev, Vk.get_i64(render3d_st.gvk_fence, 0), null)
+  Vk.destroy_fence(render3d_st.gvk_dev, Vk.get_i64(render3d_st.gvk_frame_fence, 0), null)
   Vk.destroy_command_pool(render3d_st.gvk_dev, render3d_st.gvk_pool, null)
   Vk.destroy_device(render3d_st.gvk_dev, null)
   Vk.destroy_instance(render3d_st.gvk_inst, null)

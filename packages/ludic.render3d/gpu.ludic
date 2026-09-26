@@ -49,9 +49,10 @@ function gpu_select(render3d_st: mut Render3dState) -> int {
   if render3d_st.gpu_wanted == 0 { render3d_st.gpu_wanted = GPU_GL }
   render3d_st.gpu_kind = GPU_GL
   if render3d_st.gpu_wanted == GPU_VK {
-    # a window needs a surface, and only the Win32 one is built
+    # a window needs a surface: Win32 on Windows, a CAMetalLayer through MoltenVK on macOS
     render3d_st.gvk_want_surface = is_windowed()
-    if is_windowed() and Os.platform() != "windows" { render3d_st.gpu_fallback_reason = "the Vulkan window is built for Windows only" }
+    let os = Os.platform()
+    if is_windowed() and os != "windows" and os != "macos" { render3d_st.gpu_fallback_reason = `no Vulkan window is built for {os}` }
     else if not gvk_init(render3d_st) { render3d_st.gpu_fallback_reason = render3d_st.gvk_why }
     else if not gvk_manifest(render3d_st) { render3d_st.gpu_fallback_reason = "the renderer's SPIR-V manifest is missing" }
     else { render3d_st.gpu_kind = GPU_VK }

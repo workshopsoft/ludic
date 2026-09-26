@@ -20,6 +20,12 @@ function is_intrinsic(name: pointer) -> bool {
 function emit_bind(rest: pointer) -> pointer { let r = nreg();  emit("  ");  emit(r);  emit(" = ");  emit(rest);  emit("\n");  return r }
 
 function arg_code(e: Node, i: int) -> pointer { let v = emit_expr(e.kids[i]);  return v.code }
+# a buffer handed to the platform layer: a slice's elements, never its header (as an extern's are)
+function arg_buf(e: Node, i: int) -> pointer {
+  let v = emit_expr(e.kids[i])
+  if is_slice_ty(v.ty) { return emit_bind(`load ptr, ptr {slice_field(v.code, 0)}`) }
+  return v.code
+}
 
 function emit_intrinsic(name: pointer, e: Node) -> Val {
   g_intrin_ok = true

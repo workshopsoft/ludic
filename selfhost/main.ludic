@@ -358,6 +358,8 @@ entry {
     var vkl = join_path(home, "runtime/native/vk_mac.ll")
     if g_target_win { vkl = join_path(home, "runtime/native/vk_win.ll") }
     cmd = `{cmd} {vkt} {vkl}`
+    # the CAMetalLayer a macOS window presents through, found by name in cocoa.ll
+    if not g_target_win { cmd = `{cmd} -Wl,-needed_framework,QuartzCore` }
   }
   # A shipped Windows game is a GUI-subsystem program: started from Explorer, a
   # console-subsystem one opens a console window behind the game. mainCRTStartup keeps

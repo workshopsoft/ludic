@@ -52,6 +52,16 @@ define ptr @win_native_instance() {
 entry:
   ret ptr null
 }
+; macOS only (cocoa.ll): the CAMetalLayer MoltenVK presents to
+define ptr @win_metal_layer() {
+entry:
+  ret ptr null
+}
+; the window is always drawn to here (cocoa.ll asks macOS whether it is covered)
+define i32 @win_visible() {
+entry:
+  ret i32 1
+}
 
 define void @win_set_title(ptr %title) {
 entry:

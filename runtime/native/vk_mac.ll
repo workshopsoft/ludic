@@ -4,8 +4,8 @@
 ; macOS has no Vulkan of its own: the LunarG loader and MoltenVK (Vulkan over
 ; Metal) come with the Vulkan SDK or with a game that bundles them. So the loader
 ; is looked for at run time - beside the executable, in the usual library
-; directories, then under $VULKAN_SDK - and a Mac without it gets 0 from vk_open
-; and stays on OpenGL. The contract is vk_win.ll's:
+; directories, then MoltenVK on its own (a bundle's Contents/Frameworks), then under
+; $VULKAN_SDK - and a Mac without any gets 0 from vk_open and stays on OpenGL. The contract is vk_win.ll's:
 ;
 ;   lvk_open() -> 1 | 0      lvk_sym(name) -> ptr      lvk_has(name) -> 1 | 0
 ;
@@ -25,6 +25,10 @@ declare i32 @lvk_bind()
 @.lvk_c3 = private unnamed_addr constant [36 x i8] c"/opt/homebrew/lib/libvulkan.1.dylib\00"
 @.lvk_env = private unnamed_addr constant [11 x i8] c"VULKAN_SDK\00"
 @.lvk_fmt = private unnamed_addr constant [25 x i8] c"%s/lib/libvulkan.1.dylib\00"
+@.lvk_fmtm = private unnamed_addr constant [25 x i8] c"%s/lib/libMoltenVK.dylib\00"
+@.lvk_m0 = private unnamed_addr constant [49 x i8] c"@executable_path/../Frameworks/libMoltenVK.dylib\00"
+@.lvk_m1 = private unnamed_addr constant [35 x i8] c"@executable_path/libMoltenVK.dylib\00"
+@.lvk_m2 = private unnamed_addr constant [18 x i8] c"libMoltenVK.dylib\00"
 @lvk_lib  = internal global ptr null
 
 ; RTLD_NOW (2) | RTLD_LOCAL (4)
@@ -34,51 +38,50 @@ entry:
   ret ptr %h
 }
 
+; the candidates in order: a Vulkan loader first (the SDK's, so the validation layer can be
+; stacked in development), then MoltenVK itself, which exports every vk* entry point and is what
+; a bundle ships in Contents/Frameworks - no loader, no ICD json.
+@lvk_paths = internal constant [7 x ptr] [ptr @.lvk_c0, ptr @.lvk_c1, ptr @.lvk_c2, ptr @.lvk_c3, ptr @.lvk_m0, ptr @.lvk_m1, ptr @.lvk_m2]
+
 define i32 @lvk_open() {
 entry:
   %have = load ptr, ptr @lvk_lib
   %open = icmp ne ptr %have, null
-  br i1 %open, label %ok, label %t0
-t0:
-  %h0 = call ptr @lvk_try(ptr @.lvk_c0)
-  %n0 = icmp eq ptr %h0, null
-  br i1 %n0, label %t1, label %got0
-got0:
-  store ptr %h0, ptr @lvk_lib
+  br i1 %open, label %ok, label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %i1, %next ]
+  %slot = getelementptr [7 x ptr], ptr @lvk_paths, i32 0, i32 %i
+  %path = load ptr, ptr %slot
+  %h = call ptr @lvk_try(ptr %path)
+  %miss = icmp eq ptr %h, null
+  br i1 %miss, label %next, label %got
+next:
+  %i1 = add i32 %i, 1
+  %more = icmp slt i32 %i1, 7
+  br i1 %more, label %loop, label %sdk
+got:
+  store ptr %h, ptr @lvk_lib
   br label %bind
-t1:
-  %h1 = call ptr @lvk_try(ptr @.lvk_c1)
-  %n1 = icmp eq ptr %h1, null
-  br i1 %n1, label %t2, label %got1
-got1:
-  store ptr %h1, ptr @lvk_lib
-  br label %bind
-t2:
-  %h2 = call ptr @lvk_try(ptr @.lvk_c2)
-  %n2 = icmp eq ptr %h2, null
-  br i1 %n2, label %t3, label %got2
-got2:
-  store ptr %h2, ptr @lvk_lib
-  br label %bind
-t3:
-  %h3 = call ptr @lvk_try(ptr @.lvk_c3)
-  %n3 = icmp eq ptr %h3, null
-  br i1 %n3, label %t4, label %got3
-got3:
-  store ptr %h3, ptr @lvk_lib
-  br label %bind
-t4:
-  %sdk = call ptr @getenv(ptr @.lvk_env)
-  %nosdk = icmp eq ptr %sdk, null
-  br i1 %nosdk, label %fail, label %t4b
-t4b:
+sdk:
+  %sdkp = call ptr @getenv(ptr @.lvk_env)
+  %nosdk = icmp eq ptr %sdkp, null
+  br i1 %nosdk, label %fail, label %s1
+s1:
   %buf = alloca [1024 x i8]
-  %w = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf, i64 1024, ptr @.lvk_fmt, ptr %sdk)
+  %w = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf, i64 1024, ptr @.lvk_fmt, ptr %sdkp)
   %h4 = call ptr @lvk_try(ptr %buf)
   %n4 = icmp eq ptr %h4, null
-  br i1 %n4, label %fail, label %got4
+  br i1 %n4, label %s2, label %got4
+s2:
+  %w2 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf, i64 1024, ptr @.lvk_fmtm, ptr %sdkp)
+  %h5 = call ptr @lvk_try(ptr %buf)
+  %n5 = icmp eq ptr %h5, null
+  br i1 %n5, label %fail, label %got5
 got4:
   store ptr %h4, ptr @lvk_lib
+  br label %bind
+got5:
+  store ptr %h5, ptr @lvk_lib
   br label %bind
 bind:
   %n = call i32 @lvk_bind()
