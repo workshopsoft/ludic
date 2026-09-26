@@ -1,8 +1,8 @@
-# 0.R: a reducer takes its own state and the action; what else it needs rides in the action
+# 0.R: a reducer writes its own state and may read others; a second state to write is refused
 program ReducerTwoStates {
   state Pack { n: int = 0 }
   state Wallet { cash: int = 0 }
   action Buy { cost: int }
-  reducer Pack on Buy(p: mut Pack, w: mut Wallet) { p.n += 1 }
+  reducer Pack on Buy(p: mut Pack, w: mut Wallet, a: Buy) { p.n += 1 }
   entry { print(1) }
 }

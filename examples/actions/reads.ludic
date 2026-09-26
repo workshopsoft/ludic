@@ -1,0 +1,23 @@
+# reads.ludic - 0.R5: a reducer writes one state and may READ others, declared between its state and
+# the action: what only becomes known inside the drain (a price another reducer set) need not ride in
+# the action, and still no reducer changes a state it does not own.
+program ReducerReads {
+  state Shop { price: int = 3 }
+  state Wallet { cash: int = 10 }
+  state Pack { n: int = 0 }
+  action Rise { by: int }
+  action Buy { }
+
+  reducer Shop on Rise(s: mut Shop, a: Rise) { s.price += a.by }
+  reducer Wallet on Buy(w: mut Wallet, s: Shop, a: Buy) {
+    if w.cash >= s.price { w.cash -= s.price }
+  }
+  reducer Pack on Buy(p: mut Pack, w: Wallet, a: Buy) { p.n += 1 }
+
+  entry (s: Shop, w: Wallet, p: Pack) {
+    dispatch Rise { by: 2 }
+    dispatch Buy { }
+    drain_actions()
+    print(`{s.price} {w.cash} {p.n}`)
+  }
+}

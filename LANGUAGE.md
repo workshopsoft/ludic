@@ -360,12 +360,14 @@ program Pack {
 
 - **`action Name { fields }`** is a record, with defaults like any. `export action` for other
   modules to dispatch it.
-- **`reducer State on Action(s: mut State, a: Action) { ... }`** takes exactly its state and the
-  action, in that order. A second state is refused (`reducer Pack on Buy: a reducer takes one state,
-  and w is a Wallet - what it needs to know rides in the action`), and so is a call inside it to a
-  function that needs another, since nothing supplies one there. What it needs to know rides in the
-  action, filled by whoever dispatches it. Several reducers may handle one action, one per state;
-  a reducer is not called by name.
+- **`reducer State on Action(s: mut State, a: Action) { ... }`** WRITES exactly its state, and takes
+  the action last. Between the two it may declare states it only READS - `reducer Wallet on Buy(w:
+  mut Wallet, s: Shop, a: Buy)` - supplied like its own, for what is only known inside the drain (a
+  price another reducer just set, the map in play, where the save lives). A second state to write
+  is refused (`reducer Pack on Buy: a reducer writes one state, and w is a mut Wallet - read it (w:
+  Wallet), or dispatch an action Wallet's own reducer takes`), and so is a call inside it to a
+  function that writes another. What the dispatcher knows rides in the action. Several reducers may
+  handle one action, one per state; a reducer is not called by name.
 - **`dispatch Action { fields }`** queues the action, from anywhere: a handler, a function, a
   listener, a reducer. The queue is the runtime's, supplied like an entry point's state, so
   dispatching needs no state parameter.

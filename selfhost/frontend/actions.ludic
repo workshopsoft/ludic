@@ -8,9 +8,9 @@
 #
 # `dispatch` queues the action; the queue is drained - every reducer of each action run in turn,
 # each supplied its own state - at the end of every phase of the frame loop, after each ludic.base
-# phase, or where the program calls drain_actions(). A reducer takes exactly its state and the
-# action. Actions a reducer dispatches go behind the queue, never re-entrant, and a queue still
-# growing after ACTION_PASSES rounds stops the program with the action that keeps coming.
+# phase, or where the program calls drain_actions(). A reducer writes exactly its own state and may
+# READ others, declared between it and the action. Actions a reducer dispatches go behind the queue,
+# never re-entrant, and a queue still growing after ACTION_PASSES rounds stops the program.
 var g_act_names: []pointer = new []pointer     # the actions, in the order read
 var g_act_nodes: []Node = new []Node
 var g_red_nodes: []Node = new []Node            # the reducers
@@ -126,16 +126,16 @@ function red_check(i: int) -> void {
     if f.kids[k].kind == N_PARAM { push(ps, f.kids[k]) }
     k += 1
   }
-  k = 0
-  while k < len(ps) {
+  # between its state and the action: states it only READS, never another to write
+  k = 1
+  while k < len(ps) - 1 {
     let p = ps[k]
-    if k > 0 and is_state_ty(p.ty) {
-      act_err(f, `reducer {st} on {act}: a reducer takes one state, and {p.s} is a {p.ty} - what it needs to know rides in the action`)
-    }
+    if not is_state_ty(p.ty) { act_err(f, `reducer {st} on {act}: {p.s} is a {p.ty} - between its state and the action a reducer takes only states it reads; what it needs to know rides in the action`) }
+    if p.uns == 1 { act_err(f, `reducer {st} on {act}: a reducer writes one state, and {p.s} is a mut {p.ty} - read it ({p.s}: {p.ty}), or dispatch an action {p.ty}'s own reducer takes`) }
     k += 1
   }
-  if len(ps) != 2 or not (ps[0].ty == st) or not (ps[1].ty == act) {
-    act_err(f, `reducer {st} on {act}: its parameters are its state and the action - ({reg_lower(st)}: mut {st}, a: {act})`)
+  if len(ps) < 2 or not (ps[0].ty == st) or not (ps[len(ps) - 1].ty == act) {
+    act_err(f, `reducer {st} on {act}: its parameters are its state, any states it reads, and the action - ({reg_lower(st)}: mut {st}, a: {act})`)
   }
   var j = 0
   while j < i {
