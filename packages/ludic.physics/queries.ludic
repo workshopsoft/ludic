@@ -75,7 +75,8 @@ export function phys_push(physics_st: mut PhysicsState, x: float, z: float, r: f
 
 # a body r wide from y0 to y1 at (x, z) moved clear of what it stands in, two passes over (a push out
 # of one thing can put it into another); true when it moved, the place in phys_resolved_x / _z -
-# what CharacterGround.push and pushed_x / _z ask
+# what CharacterGround.push and pushed_x / _z ask. A thing wholly below y0 or above y1 is not in
+# the way
 export function phys_resolve(physics_st: mut PhysicsState, x: float, z: float, r: float, y0: float, y1: float, mask: int) -> bool {
   var px = x
   var pz = z

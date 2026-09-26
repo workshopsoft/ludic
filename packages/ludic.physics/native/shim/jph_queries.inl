@@ -66,18 +66,37 @@ JPH_SHIM int jph_push(void *w, float x, float z, float r, float y0, float y1, in
   ww->sys.GetNarrowPhaseQuery().CollideShape(&body, Vec3::sOne(), RMat44::sTranslation(RVec3(x, y0 + half, z)),
                                              cs, RVec3::sZero(), hits, {}, f);
   hits.Sort();
-  // a contact more up than across is what the feet stand on (a rock's top, a dome under them),
-  // not a wall, and a touch with nothing in it is no contact
+  // a thing wholly below the feet (stood on) or above the head is not in the way; anything else
+  // pushes out sideways - along Jolt's own axis when the contact is side-on, else straight away
+  // from the thing's middle, by as much as the two overlap across (exact for an upright post)
   float px = 0.0f, pz = 0.0f;
   int n = 0;
   for (const CollideShapeResult &h : hits.mHits) {
-    if (h.mPenetrationDepth <= 1.0e-4f) continue;
+    BodyLockRead lock(ww->sys.GetBodyLockInterface(), h.mBodyID2);
+    if (!lock.Succeeded()) continue;
+    AABox bb = lock.GetBody().GetWorldSpaceBounds();
+    if (float(bb.mMax.GetY()) <= y0 + 1.0e-3f || float(bb.mMin.GetY()) >= y1 - 1.0e-3f) continue;
     Vec3 a = h.mPenetrationAxis.NormalizedOr(Vec3::sAxisY());
     Vec3 flat(a.GetX(), 0.0f, a.GetZ());
-    if (flat.Length() < 0.5f) continue;
-    flat = flat.Normalized() * h.mPenetrationDepth;
-    px -= flat.GetX();
-    pz -= flat.GetZ();
+    float dx, dz;
+    if (flat.Length() >= 0.5f && h.mPenetrationDepth > 1.0e-4f) {
+      flat = flat.Normalized() * h.mPenetrationDepth;
+      dx = -flat.GetX();
+      dz = -flat.GetZ();
+    } else {
+      Vec3 c = bb.GetCenter();
+      float ex = x - float(c.GetX()), ez = z - float(c.GetZ());
+      float d = std::sqrt(ex * ex + ez * ez);
+      float half = std::max(float(bb.GetExtent().GetX()), float(bb.GetExtent().GetZ()));
+      float push = half + r - d;
+      if (push <= 1.0e-4f) continue;
+      float ux = 1.0f, uz = 0.0f;
+      if (d > 1.0e-6f) { ux = ex / d; uz = ez / d; }
+      dx = ux * push;
+      dz = uz * push;
+    }
+    px += dx;
+    pz += dz;
     n++;
   }
   out[0] = px;

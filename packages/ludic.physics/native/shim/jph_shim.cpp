@@ -25,6 +25,8 @@
 #include <mutex>
 #include <thread>
 #include <cfloat>
+#include <cmath>
+#include <algorithm>
 
 #if defined(_WIN32)
 #define JPH_SHIM extern "C" __declspec(dllexport)

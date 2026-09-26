@@ -39,7 +39,7 @@ import "ludic.physics"
 | `phys_ray(st, o, d, mask) -> PhysHit` | the first thing along a ray |
 | `phys_top_at(st, x, z, r, from_y, depth, mask) -> float` | what a foot would land on (`CharacterGround.top_at`), `PHYS_NONE` if nothing |
 | `phys_push(st, x, z, r, y0, y1, mask) -> PhysPush` | the move that stands an upright body clear (`CharacterGround.push`) |
-| `phys_resolve(st, x, z, r, y0, y1, mask) -> bool`, `phys_resolved_x` / `_z` | pushed clear in two passes, the place kept (`CharacterGround.push`, `pushed_x` / `_z`); a contact more up than across is ground under the feet, not a wall |
+| `phys_resolve(st, x, z, r, y0, y1, mask) -> bool`, `phys_resolved_x` / `_z` | pushed clear in two passes, the place kept (`CharacterGround.push`, `pushed_x` / `_z`); a thing wholly under the feet or over the head is not in the way |
 | `phys_step_top(st, x, z, r, feet, reach, mask) -> float` | the highest top a foot could step up to, anything taller than `feet + reach` left out as a wall |
 | `phys_overlap(st, x, y, z, r, mask) -> []int` | the bodies a ball touches |
 | `phys_float(st, id, buoyancy, linear_drag, angular_drag)`, `phys_sink`, `phys_floating` | a body buoyed each step against `PhysWater` and carried by its current |

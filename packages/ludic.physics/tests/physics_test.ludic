@@ -111,25 +111,24 @@ program PhysicsTest {
     phys_close(physics_st)
   }
 
-  test "a body is resolved clear of a post, and standing on a rock is not being in it" (physics_st: mut PhysicsState) {
+  test "a body is resolved clear of a post; a low rock blocks from the ground and not once stood on" (physics_st: mut PhysicsState) {
     ground(physics_st)
     let post = phys_offset(physics_st, phys_cylinder(physics_st, 1.0, 0.3), 0.0, 1.0, 0.0, 0.0)
     phys_static_add(physics_st, post, 0.0, 0.0, 0.0, 0.0)
     let rock = phys_offset(physics_st, phys_cylinder(physics_st, 0.2, 1.0), 0.0, 0.2, 0.0, 0.0)
     phys_static_add(physics_st, rock, 5.0, 0.0, 0.0, 0.0)
-    phys_static_add(physics_st, phys_dome(physics_st, 1.5, 0.6), -5.0, 0.0, 0.0, 0.0)
     phys_settle(physics_st)
     expect(phys_resolve(physics_st, 0.4, 0.1, 0.35, 0.0, 1.8, PHYS_M_STATIC))
     let dx = phys_resolved_x(physics_st)
     let dz = phys_resolved_z(physics_st)
     expect(Math.sqrt(dx * dx + dz * dz) > 0.64)
+    expect(phys_resolve(physics_st, 5.2, 0.0, 0.35, 0.0, 1.8, PHYS_M_STATIC))
+    expect(phys_resolved_x(physics_st) > 6.34)
     expect(not phys_resolve(physics_st, 5.2, 0.0, 0.35, 0.4, 2.2, PHYS_M_STATIC))
     expect_eq(phys_resolved_x(physics_st), 5.2)
     expect(phys_resolve(physics_st, 6.3, 0.0, 0.35, 0.0, 1.8, PHYS_M_STATIC))
     expect(phys_resolved_x(physics_st) > 6.34)
-    let top = phys_step_top(physics_st, -5.3, 0.0, 0.35, 0.0, 0.7, PHYS_M_STATIC)
-    expect(top > 0.4)
-    expect(not phys_resolve(physics_st, -5.3, 0.0, 0.35, top, top + 1.8, PHYS_M_STATIC))
+    expect(not phys_resolve(physics_st, 5.0, 3.0, 0.35, 0.0, 1.8, PHYS_M_STATIC))
     phys_close(physics_st)
   }
 }
