@@ -5,6 +5,11 @@ export port NpcWorld {
   water: fn(float, float) -> float = fn nw_dry             # the water's surface there
   slope: fn(float, float) -> float = fn nw_zero2
   allowed: fn(float, float) -> bool = fn nw_yes2           # a person may stop here (not the player's camp)
+  # (x, z, r, feet, head): true when a still thing takes a body of radius r there; pushed_x / _z say where
+  push: fn(float, float, float, float, float) -> bool = fn nw_no_push
+  pushed_x: fn() -> float = fn nw_asked_x
+  pushed_z: fn() -> float = fn nw_asked_z
+  clear: fn(float, float, float, float, float, float) -> bool = fn nw_clear   # nothing between two points
   hour: fn() -> float = fn nw_noon
   day: fn() -> int = fn nw_day_one
   players: fn() -> int = fn nw_one                         # player slots
@@ -34,6 +39,10 @@ function nw_zero1(p: int) -> float { return 0.0 }
 function nw_zero2(x: float, z: float) -> float { return 0.0 }
 function nw_dry(x: float, z: float) -> float { return -1000.0 }
 function nw_yes2(x: float, z: float) -> bool { return true }
+function nw_no_push(x: float, z: float, r: float, y0: float, y1: float) -> bool { return false }
+function nw_asked_x(npc_st: NpcState) -> float { return npc_st.np_ask_x }
+function nw_asked_z(npc_st: NpcState) -> float { return npc_st.np_ask_z }
+function nw_clear(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool { return true }
 function nw_noon() -> float { return 12.0 }
 function nw_day_one() -> int { return 1 }
 function nw_one() -> int { return 1 }

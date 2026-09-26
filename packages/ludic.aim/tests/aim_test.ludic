@@ -1,6 +1,6 @@
 # aim_test.ludic - a camera 1.5 m up looking down -z over flat ground with a ridge 42 m out: the ray
-# against a cylinder, the forgiveness, near before far, the ground hiding a thing, the reach floor,
-# which thing the use key means, and the probe agreeing with the ground
+# against a cylinder, the forgiveness, near before far, the ridge hiding a thing, the reach floor,
+# and which thing the use key means
 import "ludic.aim"
 import "ludic.base"
 program AimTest {
@@ -11,6 +11,7 @@ program AimTest {
     cy: float = 1.5
     cz: float = 0.0
     fy: float = 0.0
+    post: bool = false
   }
   function fk_x(aim_test_st: AimTestState) -> float { return aim_test_st.cx }
   function fk_y(aim_test_st: AimTestState) -> float { return aim_test_st.cy }
@@ -19,18 +20,29 @@ program AimTest {
   function fk_fz(aim_test_st: AimTestState) -> float { return -Math.sqrt(1.0 - aim_test_st.fy * aim_test_st.fy) }
   # a 6 m ridge along z = -42, thirty metres across, the whole width of the view
   function fk_ground(x: float, z: float) -> float { return 6.0 * Math.max(0.0, 1.0 - Math.abs(z + 42.0) / 15.0) }
-  function fk_look(aim_test_st: mut AimTestState, x: float, y: float, z: float) -> void {
-    aim_test_st.cx = x
-    aim_test_st.cy = y
-    aim_test_st.cz = z
+  # the ground under ten points of the line, with 35 cm of slack, and (when it stands) a solid post
+  # 0.75 m round at (0, -20), wider than its aim: what a physics ray would say
+  function fk_clear(aim_test_st: AimTestState, ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool {
+    let lx = bx - ax
+    let lz = bz - az
+    let t = Math.clamp(((0.0 - ax) * lx + (-20.0 - az) * lz) / Math.max(lx * lx + lz * lz, 0.0001), 0.0, 1.0)
+    let px = ax + lx * t
+    let pz = az + lz * t
+    if aim_test_st.post and px * px + (pz + 20.0) * (pz + 20.0) < 0.5625 { return false }
+    for s in 1 .. 10 {
+      let f = float(s) / 10.0
+      if fk_ground(Math.lerp(ax, bx, f), Math.lerp(az, bz, f)) - 0.35 > Math.lerp(ay, by, f) { return false }
+    }
+    return true
   }
-  bind AimView { x: fn fk_x, y: fn fk_y, z: fn fk_z, fy: fn fk_fy, fz: fn fk_fz, ground: fn fk_ground }
+  bind AimView { x: fn fk_x, y: fn fk_y, z: fn fk_z, fy: fn fk_fy, fz: fn fk_fz, clear: fn fk_clear }
 
   function fresh(aim_st: mut AimState, aim_test_st: mut AimTestState) -> void {
     aim_test_st.cx = 0.0
     aim_test_st.cy = 1.5
     aim_test_st.cz = 0.0
     aim_test_st.fy = 0.0
+    aim_test_st.post = false
     aim_begin(aim_st)
   }
 
@@ -63,13 +75,18 @@ program AimTest {
     expect(not aim_offer(aim_st, 2, 5, 0.0, 0.0, 2.0, -3.0, 0.5, 1.5, 2.0))
   }
 
-  test "the ground in front hides a thing, and nothing within arm's length is hidden" (aim_st: mut AimState, aim_test_st: mut AimTestState) {
+  test "the ridge in front hides a thing, a thing does not hide itself, and nothing a hand's breadth off is hidden" (aim_st: mut AimState, aim_test_st: mut AimTestState) {
     fresh(aim_st, aim_test_st)
     expect(not aim_clear_to(0.0, 1.0, -60.0))
     expect(aim_clear_to(0.0, 1.0, -30.0))
     expect(not aim_offer(aim_st, 1, 1, 0.0, 0.0, 2.0, -60.0, 2.0, 1.5, 80.0))
+    aim_test_st.post = true
+    expect(not aim_clear_to(0.0, 1.0, -20.0))
+    expect(aim_offer(aim_st, 1, 2, 0.0, 0.0, 2.0, -20.0, 0.5, 1.5, 80.0))
+    fresh(aim_st, aim_test_st)
     aim_test_st.cy = -5.0
-    expect(aim_clear_to(0.0, -5.0, -2.0))
+    expect(aim_clear_at(0.5, 0.45))
+    expect(not aim_clear_at(50.0, 0.5))
   }
 
   test "the crosshair decides which, the distance whether: every reach is floored at three metres" (aim_st: mut AimState, aim_test_st: mut AimTestState) {
@@ -91,13 +108,5 @@ program AimTest {
     aim_offer(aim_st, 2, 9, 0.0, 0.0, 2.0, -2.0, 0.3, AIM_NEVER, 30.0)
     expect(not aim_in_reach(aim_st))
     expect_eq(aim_kind(aim_st), 2)
-  }
-
-  test "the probe finds the bank and agrees with the ground about every line it hides" (aim_st: mut AimState, aim_test_st: mut AimTestState) {
-    fresh(aim_st, aim_test_st)
-    expect(aim_probe_ground(aim_st, 0.0, 0.0, fn fk_look))
-    expect(aim_probe_seen(aim_st) > 100)
-    expect(aim_probe_blocked(aim_st) > 0)
-    expect(not (aim_probe_disagree(aim_st) > aim_probe_seen(aim_st) / 50))
   }
 }

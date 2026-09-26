@@ -1,5 +1,5 @@
 # ray.ludic - the ray through the crosshair against an upright cylinder, the forgiveness around a
-# body, and the ground in front of a point
+# body, and whether anything stands in front of a point
 # t along the ray where it enters the cylinder at (cx, cz), radius r, from y0 up to y1; or -1
 export function aim_ray_cyl(cx: float, y0: float, y1: float, cz: float, r: float) -> float {
   let ox = AimView.x() - cx
@@ -42,18 +42,15 @@ export function aim_range(x: float, z: float) -> float {
   return Math.sqrt(dx * dx + dz * dz)
 }
 
-# Is the line from the camera to a point clear of the ground? Without it the crosshair reads through a
-# rise; within arm's length nothing is hidden, or a prop on a slope hides behind its own slope.
-export function aim_clear_to(x: float, y: float, z: float) -> bool {
-  let cx = AimView.x()
-  let cy = AimView.y()
-  let cz = AimView.z()
-  if (x - cx) * (x - cx) + (z - cz) * (z - cz) < 9.0 { return true }
-  for s in 1 .. 10 {
-    let f = float(s) / 10.0
-    if AimView.ground(Math.lerp(cx, x, f), Math.lerp(cz, z, f)) - 0.35 > Math.lerp(cy, y, f) { return false }
-  }
-  return true
+# is the line from the camera to a point clear? (the ground and every still thing: the port's)
+export function aim_clear_to(x: float, y: float, z: float) -> bool { return AimView.clear(AimView.x(), AimView.y(), AimView.z(), x, y, z) }
+
+# is the ray clear up to `back` short of t, where it enters a thing? Asked a body's width short, so
+# a solid thing (a trunk, a tent) whose collider is wider than its aim does not hide itself
+export function aim_clear_at(t: float, back: float) -> bool {
+  let u = t - Math.max(back, 0.05)
+  if u < 0.1 { return true }
+  return aim_clear_to(AimView.x() + AimView.fx() * u, AimView.y() + AimView.fy() * u, AimView.z() + AimView.fz() * u)
 }
 
 # how far the ray passes from a body's axis as a share of its width: 0 dead centre, 1 at the edge

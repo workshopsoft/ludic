@@ -78,6 +78,8 @@ a `fill` line's words are `NpcTalk.say(p, line)`, and "" means it has nothing tr
 export port NpcWorld {       # every member has a default: a flat dry field at noon, one player, nobody wanted
   ground, water, slope: fn(float, float) -> float
   allowed: fn(float, float) -> bool                  # may a person stop here
+  push: fn(x, z, r, feet, head) -> bool, pushed_x, pushed_z   # a walker slid clear of still things (r 0.35)
+  clear: fn(ax, ay, az, bx, by, bz) -> bool          # no still thing between: npc_line_ok asks it at 1 m
   hour: fn() -> float, day: fn() -> int              # the clock
   players: fn() -> int, player_on: fn(int) -> bool, player_x / player_z: fn(int) -> float
   want: fn() -> int, extra: fn() -> int              # the census: how many, and a kind brought out regardless (-1)

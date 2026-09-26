@@ -19,6 +19,8 @@ export state NpcState {
   nw_ids: int = 0
   np_near_i: int = -1
   np_said: string = ""
+  np_ask_x: float = 0.0          # the point handed to NpcWorld.push, then where it came out
+  np_ask_z: float = 0.0
 }
 const NP_PI: float = 3.1415927
 const NP_TAU: float = 6.2831853

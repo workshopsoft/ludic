@@ -15,6 +15,10 @@ export port WildlifeWorld {
   slope: fn(float, float) -> float = fn wl_zero2
   forest: fn(float, float) -> bool = fn wl_no2
   sight: fn(float, float, float, float, float, float) -> bool = fn wl_clear   # nothing between
+  # (x, z, r, feet, head): true when a still thing takes a body of radius r there; pushed_x / _z say where
+  push: fn(float, float, float, float, float) -> bool = fn wl_no_push
+  pushed_x: fn() -> float = fn wl_asked_x
+  pushed_z: fn() -> float = fn wl_asked_z
   players: fn() -> int = fn wl_one                        # player slots
   player_on: fn(int) -> bool = fn wl_first
   player_x: fn(int) -> float = fn wl_zero1
@@ -52,6 +56,9 @@ function wl_no1(p: int) -> bool { return false }
 function wl_no2(x: float, z: float) -> bool { return false }
 function wl_yes1(u: int) -> bool { return true }
 function wl_clear(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool { return true }
+function wl_no_push(x: float, z: float, r: float, y0: float, y1: float) -> bool { return false }
+function wl_asked_x(wildlife_st: WildlifeState) -> float { return wildlife_st.wl_ask_x }
+function wl_asked_z(wildlife_st: WildlifeState) -> float { return wildlife_st.wl_ask_z }
 function wl_one() -> int { return 1 }
 function wl_none0() -> int { return 0 }
 function wl_first(p: int) -> bool { return p == 0 }

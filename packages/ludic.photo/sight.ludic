@@ -1,27 +1,7 @@
 # sight.ludic - in the picture, within reach, and actually seen. A frustum says a subject is in FRONT
-# of the lens, not that the lens can see it: the ray walks the ground and the trunks between. It is
-# forgiving on purpose - the subject passes if its body or its head is clear.
-const PHT_STEP: float = 3.0        # metres between the ray's samples
-
-function pht_ray_point(x: float, y: float, z: float) -> bool {
-  let cx = PhotoLens.x()
-  let cy = PhotoLens.y()
-  let cz = PhotoLens.z()
-  let d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy) + (z - cz) * (z - cz))
-  if d < 3.0 { return true }
-  let n = int(Math.clamp(d / PHT_STEP, 6.0, 120.0))
-  for s in 1 .. n {
-    let f = float(s) / float(n)
-    let px = Math.lerp(cx, x, f)
-    let py = Math.lerp(cy, y, f)
-    let pz = Math.lerp(cz, z, f)
-    let g = PhotoLens.ground(px, pz)
-    # the ground with 35 cm of slack; a trunk once past the lens's own few metres
-    if g - 0.35 > py { return false }
-    if d * f > 6.0 and py - g < 7.0 and PhotoLens.trunk(px, pz, 0.45) { return false }
-  }
-  return true
-}
+# of the lens, not that the lens can see it: the line must be clear of the ground and the still
+# things (the port's). It is forgiving on purpose - the subject passes if its body or its head is clear.
+function pht_ray_point(x: float, y: float, z: float) -> bool { return PhotoLens.clear(PhotoLens.x(), PhotoLens.y(), PhotoLens.z(), x, y, z) }
 
 # is (x, y, z) in the picture, within `far`, and can the lens see it?
 export function photo_in_view(x: float, y: float, z: float, far: float) -> bool {

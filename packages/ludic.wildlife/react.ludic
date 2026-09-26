@@ -1,6 +1,6 @@
 # react.ludic - alert (it stops and looks: the window the camera wants), wary (it puts ground between
 # you without running) and fleeing; true when it is doing one of them, which is all it does this tick
-function wl_react(wildlife_st: WildlifeState, a: WildAnimal, np: int, dt: float) -> bool {
+function wl_react(wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dt: float) -> bool {
   let s = wl_sp(wildlife_st, a.sp)
   if a.state == WILD_ALERT {
     a.speed = 0.0
@@ -29,7 +29,7 @@ function wl_react(wildlife_st: WildlifeState, a: WildAnimal, np: int, dt: float)
 }
 
 # walking to (or reached) something set out; true while it is
-function wl_approach(wildlife_st: WildlifeState, a: WildAnimal, dt: float) -> bool {
+function wl_approach(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
   if (a.state == WILD_IDLE or a.state == WILD_WANDER) and wl_attraction(wildlife_st, a) { wl_take_lure(wildlife_st, a) }
   if a.state != WILD_APPROACH { return false }
   if a.lure == 0 or not WildlifeWorld.present(a.lure) {

@@ -36,14 +36,14 @@ export port PhotoLens {
   x, y, z, fx, fy, fz, fov,                       # the camera
   project(x, y, z) -> bool, sx(), sy(),           # into the picture, 0..1
   visible(x, y, z, r) -> bool,                    # the frustum
-  ground(x, z), trunk(x, z, r) -> bool,           # what a line of sight walks
+  clear(ax, ay, az, bx, by, bz) -> bool,          # a line of sight: the ground and every still thing
   range(), steady() -> bool                       # the lens in the pack
 }
 export port PhotoLight { hour, night, moon, dim, bonus, sun_x, sun_z }
 export port PhotoRules { behaviour, subject_value(sp), legend_value(sp), mult }
 ```
 
-Every member has a default: a lens at the origin looking down -z on flat open ground at noon.
+Every member has a default: a lens at the origin looking down -z with nothing in the way at noon.
 
 ## API
 

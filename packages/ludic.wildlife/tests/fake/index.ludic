@@ -16,6 +16,9 @@ export state WildlifeTestsFakeState {
   fk_born: int = 0
   fk_lures: []WildLure = null
   fk_gone: int = 0                  # a uid the port says is no longer there
+  fk_trunk: bool = false            # a trunk 1 m round at (0.3, -20)
+  fk_out_x: float = 0.0
+  fk_out_z: float = 0.0
 }
 
 function fk_setup(wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) -> void {
@@ -27,6 +30,7 @@ function fk_setup(wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut Wi
   wildlife_tests_fake_st.fk_px[0] = 5000.0
   wildlife_tests_fake_st.fk_pz[0] = 5000.0
   wildlife_tests_fake_st.fk_lures = new []WildLure
+  wildlife_tests_fake_st.fk_trunk = false
   wildlife_clear(wildlife_st)
   wildlife_species_clear(wildlife_st)
   fk_species(wildlife_st)
@@ -108,3 +112,16 @@ function fk_spot(a: WildAnimal, water: bool, s: WildSpot) -> bool {
   s.water = water
   return true
 }
+
+# the trunk, when it stands: a body inside it is pushed straight out from its axis
+function fk_push(wildlife_tests_fake_st: mut WildlifeTestsFakeState, x: float, z: float, r: float, y0: float, y1: float) -> bool {
+  let dx = x - 0.3
+  let dz = z + 20.0
+  let d = Math.sqrt(dx * dx + dz * dz)
+  if not wildlife_tests_fake_st.fk_trunk or d > 1.0 + r or d < 0.0001 { return false }
+  wildlife_tests_fake_st.fk_out_x = 0.3 + dx / d * (1.0 + r)
+  wildlife_tests_fake_st.fk_out_z = -20.0 + dz / d * (1.0 + r)
+  return true
+}
+function fk_pushed_x(wildlife_tests_fake_st: WildlifeTestsFakeState) -> float { return wildlife_tests_fake_st.fk_out_x }
+function fk_pushed_z(wildlife_tests_fake_st: WildlifeTestsFakeState) -> float { return wildlife_tests_fake_st.fk_out_z }

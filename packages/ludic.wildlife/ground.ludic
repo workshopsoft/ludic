@@ -41,7 +41,7 @@ export function wildlife_tick_ground(wildlife_st: mut WildlifeState, a: WildAnim
 }
 
 # a charger close enough comes at the nearest player; true while it is charging
-function wl_charge(wildlife_st: WildlifeState, a: WildAnimal, np: int, dh: float, dt: float) -> bool {
+function wl_charge(wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dh: float, dt: float) -> bool {
   let s = wl_sp(wildlife_st, a.sp)
   if s.charges and a.state != WILD_CHARGE and dh < WildlifeWorld.charge_reach() and not (a.calm > 0.0) {
     a.state = WILD_CHARGE

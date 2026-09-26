@@ -42,6 +42,10 @@ export state WildlifeState {
   wl_seed_any: bool = false
   wl_seed_t: float = 0.0
   wl_ids: int = 0
+  wl_ask_x: float = 0.0       # the point last handed to WildlifeWorld.push, and where it came out
+  wl_ask_z: float = 0.0
+  wl_out_x: float = 0.0
+  wl_out_z: float = 0.0
   wl_ranges: []WildRange = new []WildRange
   wl_found: []int = null      # found flags a load brought before the ranges were set out
   wl_seen: int = 0

@@ -63,7 +63,7 @@ function wl_take_off(wildlife_st: WildlifeState, a: WildAnimal, h: float) -> voi
   a.fly_h = Math.max(a.fly_h, h)
 }
 
-function wl_land(wildlife_st: WildlifeState, a: WildAnimal, dh: float, dt: float) -> void {
+function wl_land(wildlife_st: mut WildlifeState, a: WildAnimal, dh: float, dt: float) -> void {
   let s = wl_sp(wildlife_st, a.sp)
   a.fly_h = Math.max(0.0, a.fly_h - dt * 3.2)
   a.speed = s.walk * 0.8
