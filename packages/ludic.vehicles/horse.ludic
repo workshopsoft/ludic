@@ -1,0 +1,45 @@
+# horse.ludic - a horse under the stick: a walk, a canter on stamina, hay for every metre; it stops at
+# water, at a rise it cannot take and at a still thing in its way
+const VE_HORSE_WALK: float = 4.5
+const VE_HORSE_GALLOP: float = 11.0
+const VE_HORSE_ACC: float = 4.0
+const VE_HORSE_TURN: float = 1.6
+
+function ve_ride_horse(vehicles_st: mut VehiclesState, v: Vehicle, ix: float, iz: float, run: bool, dt: float) -> void {
+  var top = VE_HORSE_WALK
+  if run and v.fuel > 5.0 { top = VE_HORSE_GALLOP }
+  v.speed = v.speed + Math.clamp(iz * top - v.speed, -VE_HORSE_ACC * dt, VE_HORSE_ACC * dt)
+  # Steering follows SIGNED speed: backing up with the stick left swings the nose right
+  if Math.abs(v.speed) > 0.3 {
+    var rate = Math.clamp(Math.abs(v.speed) / 3.0, 0.4, 1.0)
+    if v.speed < 0.0 { rate = -rate }
+    v.yaw = v.yaw - ix * VE_HORSE_TURN * (dt * rate)
+  }
+  let d = v.speed * dt
+  ve_travel(vehicles_st, v, v.x - Math.sin(v.yaw) * d, v.z - Math.cos(v.yaw) * d, d)
+  ve_stamina(v, d, dt)
+}
+
+# a horse only on dry ground, up a walkable rise, clear of what is in its way
+function ve_travel(vehicles_st: mut VehiclesState, v: Vehicle, nx: float, nz: float, d: float) -> void {
+  let nh = VehicleWorld.ground(nx, nz)
+  var ok = true
+  if nh < VehicleWorld.water(nx, nz) + 0.4 { ok = false }
+  if nh - v.y > Math.abs(d) * 0.9 { ok = false }
+  if VehicleWorld.blocked(nx, nz, 0.8) { ok = false }
+  if not ok {
+    v.speed = 0.0
+    return
+  }
+  v.x = nx
+  v.z = nz
+  v.y = nh
+  if Math.abs(d) > 0.0 { ve_say(vehicles_st, VEHICLE_MOVED, v, Math.abs(d)) }
+}
+
+# a gallop spends stamina and a walk gives it back; every metre costs hay
+function ve_stamina(v: Vehicle, d: float, dt: float) -> void {
+  if Math.abs(v.speed) > 6.0 { v.fuel = Math.max(v.fuel - 6.0 * dt, 0.0) } else { v.fuel = Math.min(v.fuel + 3.0 * dt, 100.0) }
+  v.food = Math.max(v.food - Math.abs(d) * 0.02, 0.0)
+}
+

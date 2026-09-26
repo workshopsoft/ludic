@@ -1,9 +1,11 @@
 # vehicles_test.ludic - a fake shore: land at x < 10, a lake past it deepening a metre a metre, a
 # pier head at the shore facing out and a trough on the meadow, a trunk in a horse's way. Calling to
 # berths and bays, the owner and the rider, mounting a hungry horse, riding both, the swell, the wind,
-# getting off near a shore and far from one, a player leaving, and the save.
+# getting off near a shore and far from one, a player leaving, and the save. The boat's hull is a
+# real ludic.physics body on the same lake.
 import "ludic.vehicles"
 import "ludic.base"
+import "ludic.physics"
 program VehiclesTest {
   numbers float
 
@@ -28,6 +30,14 @@ program VehiclesTest {
     boarded: int = 0
     sx: float = 0.0
     sz: float = 0.0
+    hull_nid: int = -1
+    hull: int = -1
+    hx: float = 0.0
+    hy: float = 0.0
+    hz: float = 0.0
+    hyaw: float = 0.0
+    hspeed: float = 0.0
+    hulls: int = 0
   }
   function fk_swell(vehicles_test_st: VehiclesTestState, x: float, z: float, fx: float, fz: float) -> float {
     if fx > 0.0 { return vehicles_test_st.swell }
@@ -65,6 +75,52 @@ program VehiclesTest {
   function fk_sx(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.sx }
   function fk_sz(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.sz }
 
+  # the hull: one boat's body in a Jolt lake - the shore's bed as a heightfield, the water at 0
+  function fk_lake(physics_st: mut PhysicsState) -> void {
+    if phys_is_open(physics_st) { return }
+    phys_open(physics_st, 64, 1)
+    let n = 96
+    let h = floats(n * n)
+    for j in 0 .. n { for i in 0 .. n { h[j * n + i] = fk_ground(float(i) - 20.0, float(j) - 48.0) } }
+    phys_ground_add(physics_st, phys_heightfield(physics_st, h, n, -20.0, -48.0, 1.0))
+  }
+  function fk_put(physics_st: mut PhysicsState, vehicles_test_st: mut VehiclesTestState, nid: int, x: float, y: float, z: float, yaw: float) -> void {
+    fk_lake(physics_st)
+    if vehicles_test_st.hull >= 0 and vehicles_test_st.hull_nid == nid {
+      phys_place(physics_st, vehicles_test_st.hull, x, y + 0.12, z, yaw)
+      phys_set_velocity(physics_st, vehicles_test_st.hull, 0.0, 0.0, 0.0)
+      return
+    }
+    vehicles_test_st.hull = phys_hull_add(physics_st, x, y + 0.12, z, yaw, 0.6, 0.25, 1.9, 180.0, 4.0, 1.0)
+    vehicles_test_st.hull_nid = nid
+    vehicles_test_st.hulls += 1
+  }
+  function fk_row(physics_st: mut PhysicsState, vehicles_test_st: VehiclesTestState, nid: int, f: float, t: float) -> void { phys_row(physics_st, vehicles_test_st.hull, f, t) }
+  function fk_drift(physics_st: mut PhysicsState, vehicles_test_st: VehiclesTestState, nid: int, fx: float, fz: float) -> void { phys_force(physics_st, vehicles_test_st.hull, fx, 0.0, fz) }
+  function fk_read(physics_st: mut PhysicsState, vehicles_test_st: mut VehiclesTestState, nid: int) -> bool {
+    if vehicles_test_st.hull < 0 or vehicles_test_st.hull_nid != nid { return false }
+    let p = phys_pose(physics_st, vehicles_test_st.hull)
+    if p == null { return false }
+    vehicles_test_st.hx = p.x
+    vehicles_test_st.hy = p.y
+    vehicles_test_st.hz = p.z
+    vehicles_test_st.hyaw = phys_yaw_of(p)
+    vehicles_test_st.hspeed = phys_bow_speed(p)
+    return true
+  }
+  function fk_hull_gone(physics_st: mut PhysicsState, vehicles_test_st: mut VehiclesTestState, nid: int) -> void {
+    if vehicles_test_st.hull_nid != nid { return }
+    phys_remove(physics_st, vehicles_test_st.hull)
+    vehicles_test_st.hull = -1
+  }
+  function fk_hx(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.hx }
+  function fk_hy(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.hy }
+  function fk_hz(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.hz }
+  function fk_hyaw(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.hyaw }
+  function fk_hspeed(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.hspeed }
+  bind VehicleHull { put: fn fk_put, row: fn fk_row, drift: fn fk_drift, read: fn fk_read, x: fn fk_hx, y: fn fk_hy, z: fn fk_hz, yaw: fn fk_hyaw, speed: fn fk_hspeed, gone: fn fk_hull_gone }
+  bind PhysWater { height: fn fk_water }
+
   bind VehicleWorld { ground: fn fk_ground, water: fn fk_water, blocked: fn fk_blocked, swell: fn fk_swell, wind: fn fk_wind, made: fn fk_made, gone: fn fk_gone, placed: fn fk_placed }
   bind VehicleRider { board: fn fk_board, ride_at: fn fk_ride, step_off: fn fk_off, safe_spot: fn fk_safe, safe_x: fn fk_sx, safe_z: fn fk_sz }
 
@@ -85,8 +141,12 @@ program VehiclesTest {
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
     return n
   }
-  function ride(vehicles_st: mut VehiclesState, ix: float, iz: float, run: bool, secs: float) -> void {
-    for i in 0 .. int(secs * 60.0) { vehicle_update(vehicles_st, ix, iz, run, 1.0 / 60.0) }
+  function ride(physics_st: mut PhysicsState, vehicles_st: mut VehiclesState, ix: float, iz: float, run: bool, secs: float) -> void {
+    for i in 0 .. int(secs * 60.0) {
+      vehicle_update(vehicles_st, ix, iz, run, 1.0 / 60.0)
+      vehicles_tick(vehicles_st, 1.0 / 60.0)
+      phys_step(physics_st)
+    }
   }
 
   test "a berth is off the pier head in the water, a bay on the meadow" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
@@ -147,22 +207,22 @@ program VehiclesTest {
     expect(vehicle_in_place(vehicles_st, VEHICLE_HORSE, 0) == null)
   }
 
-  test "a horse walks, gallops on stamina, stops at the water and at a trunk" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+  test "a horse walks, gallops on stamina, stops at the water and at a trunk" (physics_st: mut PhysicsState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
     fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
     let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
     vehicle_mount(vehicles_st, h)
-    ride(vehicles_st, 0.0, 1.0, false, 3.0)
+    ride(physics_st, vehicles_st, 0.0, 1.0, false, 3.0)
     expect_near(h.speed, 4.5, 0.05)
     expect(count(facts(vehicles_st), VEHICLE_MOVED) > 100)
-    ride(vehicles_st, 0.0, 1.0, true, 3.0)
+    ride(physics_st, vehicles_st, 0.0, 1.0, true, 3.0)
     expect_near(h.speed, 11.0, 0.1)
     expect(h.fuel < 100.0)
     expect(h.z < -15.0)
     expect_near(vehicles_test_st.rz, h.z, 0.001)
     expect_near(vehicles_test_st.ry, 1.35, 0.001)
     # the trunk at z = -60 stops it
-    ride(vehicles_st, 0.0, 1.0, true, 6.0)
+    ride(physics_st, vehicles_st, 0.0, 1.0, true, 6.0)
     expect(h.z > -60.0 + 1.7)
     expect_near(h.speed, 0.0, 0.001)
     # and the lake to the east does too
@@ -171,29 +231,46 @@ program VehiclesTest {
     h.z = 0.0
     h.yaw = EAST
     vehicle_mount(vehicles_st, h)
-    ride(vehicles_st, 0.0, 1.0, false, 4.0)
+    ride(physics_st, vehicles_st, 0.0, 1.0, false, 4.0)
     expect(h.x < 9.6)
   }
 
-  test "a boat rows on water, stops at the shore, loses its stroke to the swell, drifts on the wind" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+  test "a boat is rowed out, loses its stroke to the swell, turns, is stopped by the shore's bed, drifts on the wind" (physics_st: mut PhysicsState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
     fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0)
     let b = vehicle_find(vehicles_st, VEHICLE_BOAT)
+    expect_eq(vehicles_test_st.hulls, 1)
     vehicle_mount(vehicles_st, b)
-    ride(vehicles_st, 0.0, 1.0, false, 2.0)
-    let x2 = b.x
-    expect(x2 > 18.0)
+    let x0 = b.x
+    ride(physics_st, vehicles_st, 0.0, 1.0, false, 6.0)
+    let x6 = b.x
+    expect(x6 > x0 + 8.0)
+    expect(b.speed > 2.0)
+    expect(b.y > -0.2)
+    ride(physics_st, vehicles_st, 0.0, 0.0, false, 6.0)
     vehicles_test_st.swell = 1.0
-    ride(vehicles_st, 0.0, 1.0, false, 1.0)
-    expect_near(b.x, x2, 0.2)
+    let xs = b.x
+    ride(physics_st, vehicles_st, 0.0, 1.0, false, 2.0)
+    expect(b.x - xs < 1.0)
     expect_eq(count(facts(vehicles_st), VEHICLE_SWELL), 1)
     vehicles_test_st.swell = 0.0
-    ride(vehicles_st, 0.0, -1.0, false, 12.0)
-    expect(b.x > 10.3)
+    let yaw0 = b.yaw
+    ride(physics_st, vehicles_st, 1.0, 0.0, false, 2.0)
+    expect(Math.abs(char_turn(b.yaw - yaw0)) > 1.0)
+    ride(physics_st, vehicles_st, 0.0, -1.0, false, 25.0)
+    ride(physics_st, vehicles_st, 0.0, 0.0, false, 3.0)
+    expect(b.x > 9.5)
     vehicles_test_st.wind = 1.0
     let z0 = b.z
-    ride(vehicles_st, 0.0, 0.0, false, 1.0)
-    expect(b.z < z0)
+    ride(physics_st, vehicles_st, 0.0, 0.0, false, 3.0)
+    expect(b.z < z0 - 0.2)
+  }
+
+  function char_turn(a: float) -> float {
+    var d = a
+    while d > 3.14159265 { d -= 6.2831853 }
+    while d < -3.14159265 { d += 6.2831853 }
+    return d
   }
 
   test "getting off a boat needs a shore near enough; a horse is left tied where it stands" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {

@@ -1,106 +1,69 @@
 # ride.ludic - the rider's stick steers what they are on: a horse walks, canters on stamina and
-# stops at water, a slope or a trunk; a boat rows, drifts on the wind and stops at the shore
-const VE_HORSE_WALK: float = 4.5
-const VE_HORSE_GALLOP: float = 11.0
-const VE_HORSE_ACC: float = 4.0
-const VE_HORSE_TURN: float = 1.6
-const VE_BOAT_TOP: float = 3.2
-const VE_BOAT_ACC: float = 1.2
-const VE_BOAT_TURN: float = 1.1
+# stops at water, a slope or a trunk; a boat is rowed - a stroke and a turn handed to its hull,
+# which the water floats, the wind drifts and the lake bed stops
+const VE_ROW: float = 630.0          # N: a full stroke forward, about 3 m/s on Maroon Lake's hull
+const VE_ROW_TURN: float = 270.0     # N.m: the oars pulled against each other, about 1.1 rad/s
+const VE_WIND: float = 70.0          # N on a boat in a full wind
 
 export function vehicle_update(vehicles_st: mut VehiclesState, ix: float, iz: float, run: bool, dt: float) -> void {
   let v = vehicles_st.ve_cur
   if v == null { return }
-  var top = VE_BOAT_TOP
-  var acc = VE_BOAT_ACC
-  var turn = VE_BOAT_TURN
-  if v.kind == VEHICLE_HORSE {
-    acc = VE_HORSE_ACC
-    turn = VE_HORSE_TURN
-    top = VE_HORSE_WALK
-    if run and v.fuel > 5.0 { top = VE_HORSE_GALLOP }
-  }
-  v.speed = v.speed + Math.clamp(iz * top - v.speed, -acc * dt, acc * dt)
-  if v.kind == VEHICLE_BOAT { ve_swell(vehicles_st, v, dt) }
-  # Steering follows SIGNED speed: backing up with the stick left swings the nose right
-  if Math.abs(v.speed) > 0.3 {
-    var rate = Math.clamp(Math.abs(v.speed) / 3.0, 0.4, 1.0)
-    if v.speed < 0.0 { rate = -rate }
-    v.yaw = v.yaw - ix * turn * (dt * rate)
-  }
-  let d = v.speed * dt
-  ve_travel(vehicles_st, v, v.x - Math.sin(v.yaw) * d, v.z - Math.cos(v.yaw) * d, d)
-  if v.kind == VEHICLE_HORSE { ve_stamina(v, d, dt) } else { ve_float(v, d, dt) }
+  if v.kind == VEHICLE_BOAT { ve_row(vehicles_st, v, ix, iz, dt) } else { ve_ride_horse(vehicles_st, v, ix, iz, run, dt) }
   VehicleWorld.placed(v)
   VehicleRider.ride_at(v.x, v.y + v.seat_h, v.z, v.yaw, Math.abs(v.speed))
 }
 
-# a boat only where there is water under it; a horse only on dry ground, up a walkable rise, clear
-function ve_travel(vehicles_st: mut VehiclesState, v: Vehicle, nx: float, nz: float, d: float) -> void {
-  let nh = VehicleWorld.ground(nx, nz)
-  var ok = true
-  if v.kind == VEHICLE_BOAT { ok = nh < VehicleWorld.water(nx, nz) - 0.35 } else {
-    if nh < VehicleWorld.water(nx, nz) + 0.4 { ok = false }
-    if nh - v.y > Math.abs(d) * 0.9 { ok = false }
-    if VehicleWorld.blocked(nx, nz, 0.8) { ok = false }
-  }
-  if not ok {
-    v.speed = 0.0
-    return
-  }
-  v.x = nx
-  v.z = nz
-  if v.kind != VEHICLE_BOAT { v.y = nh }
-  if Math.abs(d) > 0.0 { ve_say(vehicles_st, VEHICLE_MOVED, v, Math.abs(d)) }
+# the stick is the oars: forward and back a stroke, left and right the two pulled against each
+# other; the swell at the edge takes the outward share of a stroke
+function ve_row(vehicles_st: mut VehiclesState, v: Vehicle, ix: float, iz: float, dt: float) -> void {
+  ve_hull_read(v)
+  let take = ve_swell(vehicles_st, v, iz, dt)
+  VehicleHull.row(v.nid, iz * VE_ROW * (1.0 - take), -ix * VE_ROW_TURN)
+  let d = Math.abs(v.speed) * dt
+  if d > 0.0 { ve_say(vehicles_st, VEHICLE_MOVED, v, d) }
+}
+
+# where the hull is now, and how fast it goes along its bow
+function ve_hull_read(v: Vehicle) -> void {
+  if not VehicleHull.read(v.nid) { return }
+  v.x = VehicleHull.x()
+  v.y = VehicleHull.y()
+  v.z = VehicleHull.z()
+  v.yaw = VehicleHull.yaw()
+  v.speed = VehicleHull.speed()
 }
 
 # a boat gets a longer leash than a swimmer and the same current at the end of it: the outward
-# part of the stroke only, so a boat at the limit can always be put about
-function ve_swell(vehicles_st: mut VehiclesState, v: Vehicle, dt: float) -> void {
+# part of the stroke only, so a boat at the limit can always be put about. The share it takes.
+function ve_swell(vehicles_st: mut VehiclesState, v: Vehicle, iz: float, dt: float) -> float {
   var fx = -Math.sin(v.yaw)
   var fz = -Math.cos(v.yaw)
-  if v.speed < 0.0 {
+  if iz < 0.0 {
     fx = -fx
     fz = -fz
   }
   let take = Math.clamp(VehicleWorld.swell(v.x, v.z, fx, fz), 0.0, 1.0)
-  v.speed = v.speed * (1.0 - take)
   if take > 0.55 and vehicles_st.ve_swell_said < 0.0 {
     vehicles_st.ve_swell_said = 14.0
     ve_say(vehicles_st, VEHICLE_SWELL, v, take)
   }
   vehicles_st.ve_swell_said = vehicles_st.ve_swell_said - dt
+  return take
 }
 
-# a gallop spends stamina and a walk gives it back; every metre costs hay
-function ve_stamina(v: Vehicle, d: float, dt: float) -> void {
-  if Math.abs(v.speed) > 6.0 { v.fuel = Math.max(v.fuel - 6.0 * dt, 0.0) } else { v.fuel = Math.min(v.fuel + 3.0 * dt, 100.0) }
-  v.food = Math.max(v.food - Math.abs(d) * 0.02, 0.0)
-}
-
-# the bob on the water, higher in a wind, and the wind pushing the boat across the lake
-function ve_float(v: Vehicle, d: float, dt: float) -> void {
-  v.bob = v.bob + dt
-  let w = VehicleWorld.wind()
-  v.y = VehicleWorld.water(v.x, v.z) + (0.02 + (0.05 + 0.12 * w) * Math.sin(v.bob * 1.4))
-  let push = w * 0.6 * dt
-  let wx = v.x - Math.sin(VehicleWorld.wind_yaw()) * push
-  let wz = v.z - Math.cos(VehicleWorld.wind_yaw()) * push
-  if VehicleWorld.ground(wx, wz) < VehicleWorld.water(wx, wz) - 0.35 {
-    v.x = wx
-    v.z = wz
-  }
-}
-
-# the boats nobody is in ride the swell where they lie
+# every boat: its hull read back, and the wind pushing it across the lake, ridden or not
 export function vehicles_tick(vehicles_st: mut VehiclesState, dt: float) -> void {
   let l = ve_all(vehicles_st)
+  let w = VehicleWorld.wind() * VE_WIND
+  let wy = VehicleWorld.wind_yaw()
   for i in 0 .. len(l) {
     let v = l[i]
-    if v.kind == VEHICLE_BOAT and v.rider < 0 {
-      v.bob = v.bob + dt
-      v.y = VehicleWorld.water(v.x, v.z) + (0.02 + 0.04 * Math.sin(v.bob * 1.1))
-      VehicleWorld.placed(v)
+    if v.kind == VEHICLE_BOAT {
+      if w > 0.0 { VehicleHull.drift(v.nid, -Math.sin(wy) * w, -Math.cos(wy) * w) }
+      if v.rider < 0 {
+        ve_hull_read(v)
+        VehicleWorld.placed(v)
+      }
     }
   }
 }

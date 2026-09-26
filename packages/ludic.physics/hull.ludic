@@ -1,0 +1,26 @@
+# hull.ludic - a boat: a buoyant box floated by PhysWater, rowed along its bow and turned about its
+# middle. Its bow is -z at yaw 0, the way the valley faces (forward is (-sin yaw, -cos yaw)).
+
+# hx, hy, hz its half width, depth and length; buoyancy over 1 floats it (4: a quarter under)
+export function phys_hull_add(physics_st: mut PhysicsState, x: float, y: float, z: float, yaw: float, hx: float, hy: float, hz: float, mass: float, buoyancy: float, drag: float) -> int {
+  let id = phys_body_add(physics_st, phys_box(physics_st, hx, hy, hz), x, y, z, yaw, mass)
+  if id < 0 { return -1 }
+  phys_float(physics_st, id, buoyancy, drag, drag * 1.5)
+  return id
+}
+
+# a stroke of `forward` newtons along the bow and a turn of `turn` newton-metres about y, over the
+# next step
+export function phys_row(physics_st: mut PhysicsState, id: int, forward: float, turn: float) -> void {
+  let p = phys_pose(physics_st, id)
+  if p == null { return }
+  let yaw = phys_yaw_of(p)
+  phys_force(physics_st, id, -Math.sin(yaw) * forward, 0.0, -Math.cos(yaw) * forward)
+  phys_torque(physics_st, id, 0.0, turn, 0.0)
+}
+
+# how fast it goes along its bow (backwards is negative)
+export function phys_bow_speed(p: PhysPose) -> float {
+  let yaw = phys_yaw_of(p)
+  return -Math.sin(yaw) * p.vx - Math.cos(yaw) * p.vz
+}

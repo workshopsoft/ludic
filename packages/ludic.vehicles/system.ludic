@@ -1,7 +1,10 @@
 # system.ludic - vehicles as a system: a reset, and this player's own saved by kind (hired or not,
-# and the horse's hay); where they lie is not saved - they are called again. The idle boats' bob is
-# vehicles_tick, which the game calls where the world is run
+# and the horse's hay); where they lie is not saved - they are called again. The boats' hulls are
+# read back and pushed by the wind in vehicles_tick, which the game calls where the world is run
 export function vehicles_reset(vehicles_st: mut VehiclesState) -> void {
+  if vehicles_st.ve_list != null {
+    for i in 0 .. len(vehicles_st.ve_list) { if vehicles_st.ve_list[i].kind == VEHICLE_BOAT { VehicleHull.gone(vehicles_st.ve_list[i].nid) } }
+  }
   vehicles_st.ve_list = new []Vehicle
   vehicles_st.ve_cur = null
   vehicles_st.ve_have_dock = false

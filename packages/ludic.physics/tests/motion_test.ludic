@@ -127,4 +127,34 @@ program MotionTest {
     expect_eq(float_bits(a.z), float_bits(b.z))
     expect_eq(float_bits(a.qw), float_bits(b.qw))
   }
+
+  test "a hull floats a quarter under, is rowed along its bow, turned, and stopped by the lake bed" (physics_st: mut PhysicsState) {
+    world(physics_st)
+    let b = phys_hull_add(physics_st, 40.0, 0.5, 0.0, 1.5707963, 0.6, 0.25, 1.9, 180.0, 4.0, 1.0)
+    sim(physics_st, 4.0)
+    let p0 = phys_pose(physics_st, b)
+    expect(p0.y > -0.2)
+    expect(p0.y < 0.2)
+    for i in 0 .. 240 {
+      phys_row(physics_st, b, 420.0, 0.0)
+      phys_step(physics_st)
+    }
+    let p1 = phys_pose(physics_st, b)
+    expect(p1.x < 34.0)
+    expect(phys_bow_speed(p1) > 1.0)
+    for i in 0 .. 120 {
+      phys_row(physics_st, b, 0.0, 520.0)
+      phys_step(physics_st)
+    }
+    expect(Math.abs(phys_yaw_of(phys_pose(physics_st, b)) - phys_yaw_of(p1)) > 0.5)
+    phys_close(physics_st)
+    world(physics_st)
+    let c = phys_hull_add(physics_st, 24.0, 0.5, 0.0, 1.5707963, 0.6, 0.25, 1.9, 180.0, 4.0, 1.0)
+    for i in 0 .. 600 {
+      phys_row(physics_st, c, 420.0, 0.0)
+      phys_step(physics_st)
+    }
+    expect(phys_pose(physics_st, c).x > 19.5)
+    phys_close(physics_st)
+  }
 }

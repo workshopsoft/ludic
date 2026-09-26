@@ -1,5 +1,6 @@
-# ports.ludic - what a vehicle asks the world and its rider. Unbound, the world is dry flat ground
-# with nothing in the way and no wind, and the rider is put exactly where asked.
+# ports.ludic - what a vehicle asks the world, its hull and its rider. Unbound, the world is dry
+# flat ground with nothing in the way and no wind, and the rider is put exactly where asked; the
+# hull has no default - a boat is a body in the game's physics.
 export port VehicleWorld {
   ground: fn(float, float) -> float
   water: fn(float, float) -> float = fn ve__dry            # the surface over a point
@@ -11,6 +12,21 @@ export port VehicleWorld {
   made: fn(Vehicle) -> void = fn ve__nothing               # a new vehicle: draw it
   placed: fn(Vehicle) -> void = fn ve__nothing             # it moved: put its model there
   gone: fn(Vehicle) -> void = fn ve__nothing               # its owner left: take it away
+}
+
+# a boat's hull in the world's physics (Maroon Lake: a buoyant Jolt body), named by the vehicle's
+# nid. The water floats it and the lake bed stops it; the package rows it and reads where it is.
+export port VehicleHull {
+  put: fn(int, float, float, float, float) -> void     # (nid, x, y, z, yaw): at rest there, made if new
+  row: fn(int, float, float) -> void                   # (nid, forward N, turn N.m) over the next step
+  drift: fn(int, float, float) -> void                 # (nid, fx, fz): a push across the water (wind)
+  read: fn(int) -> bool                                 # (nid): its pose into x .. speed; false if none
+  x: fn() -> float
+  y: fn() -> float
+  z: fn() -> float
+  yaw: fn() -> float
+  speed: fn() -> float                                  # along its bow, m/s
+  gone: fn(int) -> void                                 # (nid): out of the world
 }
 
 # the body on board: the game's walking body (ludic.character, through the game)

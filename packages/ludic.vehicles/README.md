@@ -23,10 +23,18 @@ through the game).
   `safe_spot` - a wade of up to 1.25 m within its search from a boat, beside the right flank from a
   horse - and a boat too far out refuses and says so (`VEHICLE_NO_LANDING`) rather than dropping the
   rider in the lake.
-- **Steering follows signed speed**: backing up with the stick left swings the nose right.
+- **A boat is a body in the game's physics** (`VehicleHull`, phase 16; a buoyant Jolt hull in Maroon
+  Lake). The package rows it - the stick forward and back is a stroke along the bow, left and right
+  the oars pulled against each other - and reads back where the hull is and how fast it goes. The
+  water floats it, the wind (`VehicleWorld.wind`) drifts every boat, ridden or not, and the lake bed
+  stops it at the shore; the swell at the sail limit takes the outward share of a stroke.
+- **A horse's steering follows signed speed**: backing up with the stick left swings the nose right.
 - A stale rider locks a vehicle for ever, so getting off is `vehicle_dismount` or `vehicle_drop`.
 
 ## The ports
+
+`VehicleHull { put(nid, x, y, z, yaw), row(nid, forward, turn), drift(nid, fx, fz), read(nid) -> bool,
+x, y, z, yaw, speed, gone(nid) }` is required: the boat's body, named by the vehicle's nid.
 
 ```ludic
 export port VehicleWorld {
@@ -52,7 +60,7 @@ export port VehicleRider {
 | | |
 | --- | --- |
 | `VEHICLE_HORSE`, `VEHICLE_BOAT`, `VEHICLE_PLACES`, `VEHICLE_HAY_MIN` | the kinds, four places each, and the hay a horse needs to go |
-| `Vehicle { kind, nid, x, y, z, yaw, speed, fuel, food, seat_h, bob, owned, owner, rider, home_x, home_z }` | a vehicle (change one through the verbs) |
+| `Vehicle { kind, nid, x, y, z, yaw, speed, fuel, food, seat_h, owned, owner, rider, home_x, home_z }` | a vehicle (change one through the verbs) |
 | `vehicles_dock_at(x, z, yaw)`, `vehicles_rail_at(x, z, yaw)`, `vehicles_dock_yaw()` | where the places are measured from |
 | `vehicle_berth_x/z(k)`, `vehicle_post_x/z(k)`, `vehicle_bay_x/z(k)`, `vehicle_place_x/z(kind, k)` | the places |
 | `vehicle_call_for(pid, kind, k) -> bool`, `vehicle_in_place(kind, k)`, `vehicle_free_place(kind)`, `vehicle_mine_in_place(kind)` | calling one to a place |
@@ -60,7 +68,7 @@ export port VehicleRider {
 | `vehicle_mount(v) -> bool`, `vehicle_dismount() -> bool`, `vehicle_drop()` | on and off |
 | `vehicle_update(ix, iz, run, dt)` | a frame of riding from the rider's stick (bind it where the body hands its stick over) |
 | `vehicle_own(v)`, `vehicle_feed(v, hay)`, `vehicle_follow(v, x, y, z, yaw)`, `vehicles_release(pid)`, `vehicle_restore(kind, owned, food)` | hiring, hay, a tied horse's wandering, a player leaving, a saved word |
-| `vehicles_tick(dt)` | the idle boats' bob (the game calls it where the world is run) |
+| `vehicles_tick(dt)` | every boat's hull read back and pushed by the wind (the game calls it where the world is run) |
 | `vehicle_facts() -> Queue<VehicleFact>` | `{ what, nid, kind, owner, x, z, v }`: `VEHICLE_MOUNTED`, `_DISMOUNTED`, `_NO_LANDING`, `_MOVED` (v: metres), `_SWELL` (every 14 s), `_HUNGRY`, `_FED` |
 | `vehicles_reset()`, `vehicles_system() -> System` | `"vehicles"`: this player's own saved by kind (hired, hay) - where they lie is not saved |
 
@@ -71,5 +79,6 @@ ludic test packages/ludic.vehicles
 ```
 
 A fake shore with a pier head and a trough: berths and bays, calling and fetching, a taken place, a
-player leaving, a hungry horse, riding a horse into a trunk and to the water's edge, rowing to the
-shore, the swell and the wind, getting off near a shore and far from one, and the save.
+player leaving, a hungry horse, riding a horse into a trunk and to the water's edge; a real Jolt hull
+rowed out, losing its stroke to the swell, turned, stopped by the shore's bed and drifted by the
+wind; getting off near a shore and far from one, and the save.

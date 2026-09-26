@@ -15,8 +15,18 @@ function ve_add(vehicles_st: mut VehiclesState, kind: int, x: float, z: float, y
   }
   ve_put(v, x, z)
   push(ve_all(vehicles_st), v)
+  ve_settle(v)
   VehicleWorld.made(v)
   return v
+}
+
+# a boat's hull put where the vehicle now is, at rest
+function ve_settle(v: Vehicle) -> void { if v.kind == VEHICLE_BOAT { VehicleHull.put(v.nid, v.x, v.y, v.z, v.yaw) } }
+
+# gone from the world: its model and, for a boat, its hull
+function ve_gone(v: Vehicle) -> void {
+  if v.kind == VEHICLE_BOAT { VehicleHull.gone(v.nid) }
+  VehicleWorld.gone(v)
 }
 
 # at rest at (x, z): a boat on the water, a horse on the ground and tied there
@@ -48,6 +58,7 @@ export function vehicle_call_for(vehicles_st: mut VehiclesState, pid: int, kind:
   if v.rider >= 0 { return false }
   ve_put(v, vehicle_place_x(vehicles_st, kind, k), vehicle_place_z(vehicles_st, kind, k))
   v.yaw = yaw
+  ve_settle(v)
   VehicleWorld.placed(v)
   return true
 }
@@ -58,7 +69,7 @@ export function vehicles_release(vehicles_st: mut VehiclesState, pid: int) -> vo
   let keep = new []Vehicle
   let l = ve_all(vehicles_st)
   for i in 0 .. len(l) {
-    if l[i].owner != pid { push(keep, l[i]) } else { VehicleWorld.gone(l[i]) }
+    if l[i].owner != pid { push(keep, l[i]) } else { ve_gone(l[i]) }
   }
   vehicles_st.ve_list = keep
 }
