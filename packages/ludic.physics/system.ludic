@@ -1,0 +1,67 @@
+# system.ludic - the world stepped at a fixed rate in PH_SIMULATE, so frame rate never changes
+# the rules. It saves nothing: a thing at rest is saved by its owner and the world rebuilt on load.
+
+# as many fixed steps as the frame's time holds, at most ph_max_steps (a stall is not replayed)
+export function phys_tick(physics_st: mut PhysicsState, t: Tick) -> void { phys_advance(physics_st, t.dt) }
+
+export function phys_advance(physics_st: mut PhysicsState, dt: float) -> int {
+  if physics_st.ph_world == null { return 0 }
+  physics_st.ph_acc += dt
+  var n = 0
+  # a thousandth of a step of slack: 0.05 s is three steps even when float says 2.9999
+  while physics_st.ph_acc + physics_st.ph_step * 0.001 >= physics_st.ph_step and n < physics_st.ph_max_steps {
+    phys_step(physics_st)
+    physics_st.ph_acc -= physics_st.ph_step
+    n += 1
+  }
+  if physics_st.ph_acc > physics_st.ph_step or physics_st.ph_acc < 0.0 { physics_st.ph_acc = 0.0 }
+  return n
+}
+
+# exactly one step: the water, Jolt, then the contacts that matter as facts
+export function phys_step(physics_st: mut PhysicsState) -> void {
+  if physics_st.ph_world == null { return }
+  ph_buffers(physics_st)
+  ph_buoy_all(physics_st)
+  jph_world_step(physics_st.ph_world, physics_st.ph_step, physics_st.ph_sub)
+  physics_st.ph_steps += 1
+  ph_contacts(physics_st)
+}
+
+export function phys_steps(physics_st: PhysicsState) -> int { return physics_st.ph_steps }
+
+# m/s2 down is negative
+export function phys_gravity(physics_st: mut PhysicsState, y: float) -> void { if physics_st.ph_world != null { jph_world_gravity(physics_st.ph_world, y) } }
+
+function ph_contacts(physics_st: mut PhysicsState) -> void {
+  let n = jph_contacts_drain(physics_st.ph_world, physics_st.ph_ids, physics_st.ph_vals, PH_CAP)
+  for i in 0 .. n {
+    let speed = physics_st.ph_vals[i * 4 + 3]
+    if speed >= physics_st.ph_hard {
+      let f = new PhysFact
+      f.what = PHYS_HIT
+      f.a = physics_st.ph_ids[i * 2]
+      f.b = physics_st.ph_ids[i * 2 + 1]
+      f.x = physics_st.ph_vals[i * 4]
+      f.y = physics_st.ph_vals[i * 4 + 1]
+      f.z = physics_st.ph_vals[i * 4 + 2]
+      f.speed = speed
+      q_push(phys_facts(physics_st), f)
+    }
+  }
+}
+
+# contacts C had to drop because the buffer was full between two drains
+export function phys_contacts_lost(physics_st: PhysicsState) -> int {
+  if physics_st.ph_world == null { return 0 }
+  return jph_contacts_lost(physics_st.ph_world)
+}
+
+export function phys_reset(physics_st: mut PhysicsState) -> void { physics_st.ph_acc = 0.0 }
+
+export function phys_system() -> System {
+  let s = system_new("physics", PH_SIMULATE)
+  s.reset = fn phys_reset
+  s.tick = fn phys_tick
+  return s
+}

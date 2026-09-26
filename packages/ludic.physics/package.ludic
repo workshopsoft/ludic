@@ -1,0 +1,7 @@
+# ludic.physics - rigid bodies, still shapes, queries and buoyancy over Jolt Physics (phase 16),
+# built here from a pinned tag (native/build.sh). Uses ludic.base and nothing else.
+package "ludic.physics"
+version "0.1.0"
+kind source
+native "macos-arm64" "lib/macos-arm64/libludicjolt.dylib"
+native "windows-x64" "lib/windows-x64/ludicjolt.dll"

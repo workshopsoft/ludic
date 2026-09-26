@@ -1,0 +1,130 @@
+# motion_test.ludic - what moves: a crate that floats in the fake lake and drifts with its current,
+# a hard landing as a fact and a soft one not, a kinematic body pushing a crate, fixed steps
+# whatever the frame, a world closed and opened again, and the same run twice to the bit
+import "ludic.physics"
+import "ludic.base"
+program MotionTest {
+  numbers float
+
+  function lake_h(x: float, z: float) -> float {
+    if x > 20.0 { return 0.0 }
+    return PHYS_NONE
+  }
+  function lake_cz(x: float, z: float) -> float { return 0.5 }
+  bind PhysWater {
+    height: fn lake_h
+    current_z: fn lake_cz
+  }
+
+  # a lake bed 4 m down east of x = 20, a bank at 0 west of it; 64 x 64, a metre apart
+  function world(physics_st: mut PhysicsState) -> void {
+    expect(phys_open(physics_st, 1024, 1))
+    let h = floats(64 * 64)
+    for j in 0 .. 64 {
+      for i in 0 .. 64 {
+        var y = 0.0
+        if i > 20 { y = -4.0 }
+        h[j * 64 + i] = y
+      }
+    }
+    phys_ground_add(physics_st, phys_heightfield(physics_st, h, 64, 0.0, -32.0, 1.0))
+  }
+
+  function sim(physics_st: mut PhysicsState, seconds: float) -> void {
+    for i in 0 .. int(seconds * 60.0) { phys_step(physics_st) }
+  }
+
+  function count(fs: []PhysFact, what: int) -> int {
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "a crate floats level at the surface, drifts with the current, and splashes once" (physics_st: mut PhysicsState) {
+    world(physics_st)
+    let crate = phys_body_add(physics_st, phys_box(physics_st, 0.5, 0.25, 0.5), 30.0, 2.0, 0.0, 0.0, 60.0)
+    phys_float(physics_st, crate, 1.2, 2.0, 2.0)
+    sim(physics_st, 8.0)
+    let p = phys_pose(physics_st, crate)
+    expect(p.y > -0.4)
+    expect(p.y < 0.4)
+    expect(Math.abs(p.vy) < 0.2)
+    expect(Math.abs(p.qw) > 0.99)
+    expect(p.z > 0.5)
+    expect_eq(count(q_drain(phys_facts(physics_st)), PHYS_SPLASH), 1)
+    phys_sink(physics_st, crate)
+    expect(not phys_floating(physics_st, crate))
+    sim(physics_st, 4.0)
+    expect(phys_pose(physics_st, crate).y < -2.5)
+    phys_close(physics_st)
+  }
+
+  test "a hard landing is a fact, a gentle one is not" (physics_st: mut PhysicsState) {
+    world(physics_st)
+    let b = phys_box(physics_st, 0.3, 0.3, 0.3)
+    let hard = phys_body_add(physics_st, b, 5.0, 6.0, 0.0, 0.0, 10.0)
+    let soft = phys_body_add(physics_st, b, 10.0, 0.35, 0.0, 0.0, 10.0)
+    sim(physics_st, 2.0)
+    let fs = q_drain(phys_facts(physics_st))
+    var hard_hits = 0
+    var soft_hits = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == PHYS_HIT and (fs[i].a == hard or fs[i].b == hard) { hard_hits += 1;  expect(fs[i].speed >= 2.0) }
+      if fs[i].what == PHYS_HIT and (fs[i].a == soft or fs[i].b == soft) { soft_hits += 1 }
+    }
+    expect(hard_hits >= 1)
+    expect_eq(soft_hits, 0)
+    expect_eq(phys_contacts_lost(physics_st), 0)
+    phys_close(physics_st)
+  }
+
+  test "a kinematic body walking into a crate shoves it along" (physics_st: mut PhysicsState) {
+    world(physics_st)
+    let me = phys_kinematic_add(physics_st, phys_capsule(physics_st, 0.6, 0.3), 2.0, 0.95, 0.0, 0.0)
+    let crate = phys_body_add(physics_st, phys_box(physics_st, 0.3, 0.3, 0.3), 4.0, 0.3, 0.0, 0.0, 5.0)
+    sim(physics_st, 0.5)
+    for i in 0 .. 120 {
+      phys_set_kinematic_target(physics_st, me, 2.0 + float(i + 1) * 0.03, 0.95, 0.0, 0.0)
+      phys_step(physics_st)
+    }
+    expect(phys_pose(physics_st, crate).x > 5.0)
+    phys_close(physics_st)
+  }
+
+  test "steps are fixed whatever the frame, and a stall is not replayed" (physics_st: mut PhysicsState) {
+    world(physics_st)
+    expect_eq(phys_advance(physics_st, 0.05), 3)
+    expect_eq(phys_advance(physics_st, 0.01), 0)
+    expect_eq(phys_advance(physics_st, 0.01), 1)
+    expect_eq(phys_advance(physics_st, 2.0), 4)
+    expect_eq(phys_advance(physics_st, 0.0), 0)
+    expect_eq(phys_steps(physics_st), 8)
+    phys_close(physics_st)
+    expect(not phys_is_open(physics_st))
+    expect_eq(phys_advance(physics_st, 1.0), 0)
+    world(physics_st)
+    expect_eq(phys_steps(physics_st), 0)
+    phys_close(physics_st)
+  }
+
+  function tumble(physics_st: mut PhysicsState) -> PhysPose {
+    world(physics_st)
+    let b = phys_box(physics_st, 0.4, 0.2, 0.3)
+    var last = -1
+    for i in 0 .. 12 { last = phys_body_add(physics_st, b, 3.0 + float(i % 3) * 0.3, 2.0 + float(i) * 0.7, float(i % 2) * 0.2, float(i) * 0.4, 8.0) }
+    phys_impulse(physics_st, last, 20.0, 0.0, 5.0)
+    sim(physics_st, 4.0)
+    let p = phys_pose(physics_st, last)
+    phys_close(physics_st)
+    return p
+  }
+
+  test "the same pile, run twice, lands the same to the bit" (physics_st: mut PhysicsState) {
+    let a = tumble(physics_st)
+    let b = tumble(physics_st)
+    expect_eq(float_bits(a.x), float_bits(b.x))
+    expect_eq(float_bits(a.y), float_bits(b.y))
+    expect_eq(float_bits(a.z), float_bits(b.z))
+    expect_eq(float_bits(a.qw), float_bits(b.qw))
+  }
+}

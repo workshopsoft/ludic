@@ -1,0 +1,64 @@
+# queries.ludic - what is there, asked of the world as it stood after the last step. Each takes a
+# mask of what it sees (PHYS_M_*), so a body's own questions can leave out the ground or itself.
+
+export property PhysHit {
+  body: int = -1        # -1: nothing
+  fraction: float = 1.0 # how far along the ray, 0 to 1
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  nx: float = 0.0
+  ny: float = 1.0
+  nz: float = 0.0
+}
+
+# a ray from (ox, oy, oz) along (dx, dy, dz), whose length is the reach
+export function phys_ray(physics_st: mut PhysicsState, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, mask: int) -> PhysHit {
+  let h = new PhysHit
+  if physics_st.ph_world == null { return h }
+  ph_buffers(physics_st)
+  h.body = jph_ray(physics_st.ph_world, ox, oy, oz, dx, dy, dz, mask, physics_st.ph_vals)
+  if h.body == -1 { return h }
+  let v = physics_st.ph_vals
+  h.fraction = v[0]
+  h.x = v[1];  h.y = v[2];  h.z = v[3]
+  h.nx = v[4];  h.ny = v[5];  h.nz = v[6]
+  return h
+}
+
+# a ball r across let down from from_y at most depth metres: the height of what it lands on, or
+# PHYS_NONE - what CharacterGround.top_at asks, with the ground left out of the mask
+export function phys_top_at(physics_st: PhysicsState, x: float, z: float, r: float, from_y: float, depth: float, mask: int) -> float {
+  if physics_st.ph_world == null { return PHYS_NONE }
+  let y = jph_top_at(physics_st.ph_world, x, z, r, from_y, depth, mask)
+  if y < PHYS_NONE { return PHYS_NONE }
+  return y
+}
+
+# the bodies a ball at (x, y, z) touches, in the order Jolt sorts them
+export function phys_overlap(physics_st: mut PhysicsState, x: float, y: float, z: float, r: float, mask: int) -> []int {
+  let out = new []int
+  if physics_st.ph_world == null { return out }
+  ph_buffers(physics_st)
+  let n = jph_overlap(physics_st.ph_world, x, y, z, r, mask, physics_st.ph_ids, PH_CAP)
+  for i in 0 .. n { push(out, physics_st.ph_ids[i]) }
+  return out
+}
+
+export property PhysPush {
+  x: float = 0.0     # how far to move in x and z to stand clear
+  z: float = 0.0
+  n: int = 0         # how many things were in the way
+}
+
+# an upright body r wide from y0 to y1 at (x, z): the move that stands it clear - what
+# CharacterGround.push asks
+export function phys_push(physics_st: mut PhysicsState, x: float, z: float, r: float, y0: float, y1: float, mask: int) -> PhysPush {
+  let p = new PhysPush
+  if physics_st.ph_world == null { return p }
+  ph_buffers(physics_st)
+  p.n = jph_push(physics_st.ph_world, x, z, r, y0, y1, mask, physics_st.ph_vals)
+  p.x = physics_st.ph_vals[0]
+  p.z = physics_st.ph_vals[1]
+  return p
+}

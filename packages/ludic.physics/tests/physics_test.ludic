@@ -1,0 +1,97 @@
+# physics_test.ludic - the real Jolt, one world a test: a ground, a box that falls onto it and a
+# ray that finds it; still things added, asked about and removed; a boulder's top; a push out of a
+# post; a crate that floats in the fake lake; hard contacts as facts; fixed steps; the same run twice
+import "ludic.physics"
+import "ludic.base"
+program PhysicsTest {
+  numbers float
+
+  # the lake: everything east of x = 20, its surface at y = 0, drifting north at 0.5 m/s
+  function lake_h(x: float, z: float) -> float {
+    if x > 20.0 { return 0.0 }
+    return PHYS_NONE
+  }
+  function lake_cz(x: float, z: float) -> float { return 0.5 }
+  bind PhysWater {
+    height: fn lake_h
+    current_z: fn lake_cz
+  }
+
+  # 16 x 16 samples, a metre apart, flat at y = 0 from (-8, -8)
+  function ground(physics_st: mut PhysicsState) -> void {
+    expect(phys_open(physics_st, 1024, 1))
+    let h = floats(256)
+    for i in 0 .. 256 { h[i] = 0.0 }
+    let g = phys_heightfield(physics_st, h, 16, -8.0, -8.0, 1.0)
+    expect(g >= 0)
+    expect(phys_ground_add(physics_st, g) >= 0)
+  }
+
+  function sim(physics_st: mut PhysicsState, seconds: float) -> void {
+    let n = int(seconds * 60.0)
+    for i in 0 .. n { phys_step(physics_st) }
+  }
+
+  test "a box falls onto the ground, rests there, and a ray finds its top" (physics_st: mut PhysicsState) {
+    ground(physics_st)
+    let b = phys_box(physics_st, 0.5, 0.5, 0.5)
+    let id = phys_body_add(physics_st, b, 0.0, 4.0, 0.0, 0.0, 20.0)
+    expect(id != -1)
+    sim(physics_st, 3.0)
+    let p = phys_pose(physics_st, id)
+    expect(p != null)
+    expect(Math.abs(p.y - 0.5) < 0.05)
+    expect(Math.abs(p.vy) < 0.05)
+    let h = phys_ray(physics_st, 0.0, 10.0, 0.0, 0.0, -20.0, 0.0, PHYS_M_ALL)
+    expect_eq(h.body, id)
+    expect(Math.abs(h.y - 1.0) < 0.05)
+    expect(h.ny > 0.9)
+    let g = phys_ray(physics_st, 5.0, 10.0, 5.0, 0.0, -20.0, 0.0, PHYS_M_ALL)
+    expect(g.body != -1)
+    expect(g.body != id)
+    expect(Math.abs(g.y) < 0.01)
+    phys_close(physics_st)
+  }
+
+  test "a still thing is found, then removed for good" (physics_st: mut PhysicsState) {
+    ground(physics_st)
+    let post = phys_offset(physics_st, phys_cylinder(physics_st, 1.0, 0.3), 0.0, 1.0, 0.0, 0.0)
+    let id = phys_static_add(physics_st, post, 2.0, 0.0, 2.0, 0.0)
+    phys_settle(physics_st)
+    let n = phys_count(physics_st)
+    let near = phys_overlap(physics_st, 2.0, 1.0, 2.0, 0.5, PHYS_M_STATIC)
+    expect_eq(len(near), 1)
+    expect_eq(near[0], id)
+    expect_eq(len(phys_overlap(physics_st, 2.0, 1.0, 2.0, 0.5, PHYS_M_GROUND)), 0)
+    phys_remove(physics_st, id)
+    expect_eq(phys_count(physics_st), n - 1)
+    expect_eq(len(phys_overlap(physics_st, 2.0, 1.0, 2.0, 0.5, PHYS_M_STATIC)), 0)
+    expect(phys_pose(physics_st, id) == null)
+    phys_close(physics_st)
+  }
+
+  test "a boulder's top is where a foot would land, and the ground can be left out" (physics_st: mut PhysicsState) {
+    ground(physics_st)
+    phys_static_add(physics_st, phys_dome(physics_st, 1.0, 0.5), 3.0, 0.0, 3.0, 0.0)
+    phys_settle(physics_st)
+    let top = phys_top_at(physics_st, 3.0, 3.0, 0.05, 5.0, 10.0, PHYS_M_STATIC)
+    expect(Math.abs(top - 0.5) < 0.06)
+    expect(phys_top_at(physics_st, -3.0, -3.0, 0.05, 5.0, 10.0, PHYS_M_STATIC) == PHYS_NONE)
+    expect(Math.abs(phys_top_at(physics_st, -3.0, -3.0, 0.05, 5.0, 10.0, PHYS_M_SOLID)) < 0.06)
+    phys_close(physics_st)
+  }
+
+  test "a body standing in a post is pushed out of it, sideways" (physics_st: mut PhysicsState) {
+    ground(physics_st)
+    let post = phys_offset(physics_st, phys_cylinder(physics_st, 1.0, 0.3), 0.0, 1.0, 0.0, 0.0)
+    phys_static_add(physics_st, post, 0.0, 0.0, 0.0, 0.0)
+    phys_settle(physics_st)
+    let p = phys_push(physics_st, 0.5, 0.0, 0.4, 0.1, 1.8, PHYS_M_STATIC)
+    expect_eq(p.n, 1)
+    expect(p.x > 0.1)
+    expect(Math.abs(p.z) < 0.05)
+    let clear = phys_push(physics_st, 3.0, 0.0, 0.4, 0.1, 1.8, PHYS_M_STATIC)
+    expect_eq(clear.n, 0)
+    phys_close(physics_st)
+  }
+}

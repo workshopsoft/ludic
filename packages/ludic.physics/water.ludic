@@ -1,0 +1,65 @@
+# water.ludic - a body that floats: each step it is buoyed against the surface PhysWater gives,
+# carried by its current, and slowed by its drags. Reaching the water is a PHYS_SPLASH fact.
+const PH_K: int = 4
+
+# buoyancy 1 floats level with the surface, more rides higher; drags in 1/s
+export function phys_float(physics_st: mut PhysicsState, id: int, buoyancy: float, linear_drag: float, angular_drag: float) -> void {
+  ph_buffers(physics_st)
+  phys_sink(physics_st, id)
+  push(physics_st.ph_floats, id)
+  push(physics_st.ph_float_k, buoyancy)
+  push(physics_st.ph_float_k, linear_drag)
+  push(physics_st.ph_float_k, angular_drag)
+  push(physics_st.ph_float_k, 0.0)
+}
+
+# no longer floats (it is still a body)
+export function phys_sink(physics_st: mut PhysicsState, id: int) -> void {
+  if physics_st.ph_floats == null { return }
+  let ids = new []int
+  let ks = new []float
+  for i in 0 .. len(physics_st.ph_floats) {
+    if physics_st.ph_floats[i] != id {
+      push(ids, physics_st.ph_floats[i])
+      for k in 0 .. PH_K { push(ks, physics_st.ph_float_k[i * PH_K + k]) }
+    }
+  }
+  physics_st.ph_floats = ids
+  physics_st.ph_float_k = ks
+}
+
+export function phys_floating(physics_st: PhysicsState, id: int) -> bool {
+  if physics_st.ph_floats == null { return false }
+  for i in 0 .. len(physics_st.ph_floats) { if physics_st.ph_floats[i] == id { return true } }
+  return false
+}
+
+function ph_buoy_all(physics_st: mut PhysicsState) -> void {
+  let dt = physics_st.ph_step
+  for i in 0 .. len(physics_st.ph_floats) {
+    let id = physics_st.ph_floats[i]
+    if jph_body_read(physics_st.ph_world, id, physics_st.ph_vals) == 0 {
+      ph_buoy_one(physics_st, i, id, physics_st.ph_vals[0], physics_st.ph_vals[2], dt)
+    }
+  }
+}
+
+function ph_buoy_one(physics_st: mut PhysicsState, i: int, id: int, x: float, z: float, dt: float) -> void {
+  let sy = PhysWater.height(x, z)
+  if sy <= PHYS_NONE { return }
+  let k = i * PH_K
+  let cx = PhysWater.current_x(x, z)
+  let cz = PhysWater.current_z(x, z)
+  let kk = physics_st.ph_float_k
+  let wet = jph_body_buoyancy(physics_st.ph_world, id, sy, 0.0, 1.0, 0.0, kk[k], kk[k + 1], kk[k + 2], cx, cz, dt)
+  if wet == 1 and kk[k + 3] == 0.0 { ph_splash(physics_st, id, x, sy, z) }
+  physics_st.ph_float_k[k + 3] = float(wet)
+}
+
+function ph_splash(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void {
+  let f = new PhysFact
+  f.what = PHYS_SPLASH
+  f.a = id
+  f.x = x;  f.y = y;  f.z = z
+  q_push(phys_facts(physics_st), f)
+}

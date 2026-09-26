@@ -1,0 +1,12 @@
+# ludic.physics - a physics world over Jolt: shapes as handles it keeps, bodies by id, queries,
+# water that floats a body, and the contacts that matter as facts. Fixed 1/60 steps.
+module ludic_physics uses ludic_base
+numbers float
+import "ludic.base"
+import "native.ludic"
+import "state.ludic"
+import "shapes.ludic"
+import "bodies.ludic"
+import "queries.ludic"
+import "water.ludic"
+import "system.ludic"

@@ -1,0 +1,72 @@
+# state.ludic - the port, the kinds and layers, the facts, and what the world holds
+# what the package asks the world: the water's surface under a point and the current there.
+# Unbound there is no water.
+export port PhysWater {
+  height: fn(float, float) -> float = fn ph_dry
+  current_x: fn(float, float) -> float = fn ph_still
+  current_z: fn(float, float) -> float = fn ph_still
+}
+function ph_dry(x: float, z: float) -> float { return PHYS_NONE }
+function ph_still(x: float, z: float) -> float { return 0.0 }
+
+export const PHYS_NONE: float = -1000000000.0   # no height: no water, nothing under a query
+
+# what a query sees, as a mask: the ground, the still things on it, and what moves
+export const PHYS_M_GROUND: int = 1
+export const PHYS_M_STATIC: int = 2
+export const PHYS_M_MOVING: int = 4
+export const PHYS_M_SOLID: int = 3
+export const PHYS_M_ALL: int = 7
+
+# what happened
+export const PHYS_HIT: int = 0        # two bodies met at least ph_hard metres a second apart
+export const PHYS_SPLASH: int = 1     # a floating body reached the water
+
+export property PhysFact {
+  what: int = 0
+  a: int = -1
+  b: int = -1
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  speed: float = 0.0
+}
+
+export const PH_CAP: int = 512        # contacts drained a step, queries' buffers
+
+export state PhysicsState {
+  ph_world: pointer = null
+  ph_shapes: []pointer = null     # a shape id is its place here; null once freed
+  ph_step: float = 0.016666668    # seconds a step
+  ph_sub: int = 1                 # collision steps in each
+  ph_max_steps: int = 4           # a slow frame catches up this far and no further
+  ph_acc: float = 0.0
+  ph_steps: int = 0
+  ph_hard: float = 2.0            # metres a second: a contact under this is not a fact
+  ph_floats: []int = null         # buoyant bodies' ids
+  ph_float_k: []float = null      # and theirs: buoyancy, linear drag, angular drag, wet
+  ph_ids: []int = null
+  ph_vals: []float = null
+  ph_facts: Queue<PhysFact> = null
+}
+
+# the facts, oldest first
+export function phys_facts(physics_st: mut PhysicsState) -> Queue<PhysFact> {
+  if physics_st.ph_facts == null { physics_st.ph_facts = queue_new("physics.facts") }
+  return physics_st.ph_facts
+}
+
+function ph_buffers(physics_st: mut PhysicsState) -> void {
+  if physics_st.ph_ids == null { physics_st.ph_ids = words(PH_CAP * 2) }
+  if physics_st.ph_vals == null { physics_st.ph_vals = floats(PH_CAP * 4) }
+  if physics_st.ph_shapes == null { physics_st.ph_shapes = new []pointer }
+  if physics_st.ph_floats == null { physics_st.ph_floats = new []int }
+  if physics_st.ph_float_k == null { physics_st.ph_float_k = new []float }
+}
+
+# a step's length, its collision steps, and how hard a contact must be to be a fact
+export function phys_config(physics_st: mut PhysicsState, step: float, sub: int, hard: float) -> void {
+  physics_st.ph_step = step
+  physics_st.ph_sub = sub
+  physics_st.ph_hard = hard
+}

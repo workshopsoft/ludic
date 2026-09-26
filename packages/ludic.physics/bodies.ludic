@@ -1,0 +1,70 @@
+# bodies.ludic - bodies by id: still, kinematic or dynamic; removed for real; moved and pushed
+
+export property PhysPose {
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  qx: float = 0.0
+  qy: float = 0.0
+  qz: float = 0.0
+  qw: float = 1.0
+  vx: float = 0.0
+  vy: float = 0.0
+  vz: float = 0.0
+}
+
+function ph_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float, motion: int, layer: int, mass: float) -> int {
+  let s = ph_shape(physics_st, shape)
+  if physics_st.ph_world == null or s == null { return -1 }
+  return jph_body_add(physics_st.ph_world, s, x, y, z, yaw, motion, layer, mass, 0.6, 0.1)
+}
+
+# the ground: a heightfield or a mesh at the world's origin
+export function phys_ground_add(physics_st: mut PhysicsState, shape: int) -> int { return ph_add(physics_st, shape, 0.0, 0.0, 0.0, 0.0, 0, 0, 0.0) }
+# a thing that never moves: a trunk, a boulder, a tent, a bear box
+export function phys_static_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float) -> int { return ph_add(physics_st, shape, x, y, z, yaw, 0, 1, 0.0) }
+# a thing moved by the game that pushes what it meets: the player's body
+export function phys_kinematic_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float) -> int { return ph_add(physics_st, shape, x, y, z, yaw, 1, 2, 0.0) }
+# a thing that falls, rolls and floats; mass in kilograms (0: from the shape at 1000 kg/m3)
+export function phys_body_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float, mass: float) -> int { return ph_add(physics_st, shape, x, y, z, yaw, 2, 2, mass) }
+
+# after many still things are added at once, before the first query
+export function phys_settle(physics_st: mut PhysicsState) -> void { if physics_st.ph_world != null { jph_world_optimize(physics_st.ph_world) } }
+
+export function phys_count(physics_st: PhysicsState) -> int {
+  if physics_st.ph_world == null { return 0 }
+  return jph_world_bodies(physics_st.ph_world)
+}
+
+# gone from the world, for good: what a struck tent needs
+export function phys_remove(physics_st: mut PhysicsState, id: int) -> void {
+  if physics_st.ph_world == null or id < 0 { return }
+  phys_sink(physics_st, id)
+  jph_body_remove(physics_st.ph_world, id)
+}
+
+# where a body is, how it is turned and how fast it goes; null when there is no such body
+export function phys_pose(physics_st: mut PhysicsState, id: int) -> PhysPose {
+  if physics_st.ph_world == null { return null }
+  ph_buffers(physics_st)
+  if jph_body_read(physics_st.ph_world, id, physics_st.ph_vals) != 0 { return null }
+  let v = physics_st.ph_vals
+  let p = new PhysPose
+  p.x = v[0];  p.y = v[1];  p.z = v[2]
+  p.qx = v[3];  p.qy = v[4];  p.qz = v[5];  p.qw = v[6]
+  p.vx = v[7];  p.vy = v[8];  p.vz = v[9]
+  return p
+}
+
+# the heading a pose's rotation gives, in radians about y
+export function phys_yaw_of(p: PhysPose) -> float { return Math.atan2(2.0 * (p.qw * p.qy + p.qx * p.qz), 1.0 - 2.0 * (p.qy * p.qy + p.qx * p.qx)) }
+
+export function phys_place(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float, yaw: float) -> void { if physics_st.ph_world != null { jph_body_place(physics_st.ph_world, id, x, y, z, yaw) } }
+export function phys_impulse(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void { if physics_st.ph_world != null { jph_body_impulse(physics_st.ph_world, id, x, y, z) } }
+export function phys_set_velocity(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void { if physics_st.ph_world != null { jph_body_velocity(physics_st.ph_world, id, x, y, z) } }
+export function phys_awake(physics_st: PhysicsState, id: int) -> bool { return physics_st.ph_world != null and jph_body_awake(physics_st.ph_world, id) == 1 }
+
+# a kinematic body driven to where it should be one step from now, pushing what it meets
+export function phys_set_kinematic_target(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float, yaw: float) -> void {
+  if physics_st.ph_world != null { jph_body_target(physics_st.ph_world, id, x, y, z, yaw, physics_st.ph_step) }
+}
