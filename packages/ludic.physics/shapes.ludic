@@ -6,12 +6,15 @@ export function phys_open(physics_st: mut PhysicsState, max_bodies: int, threads
   phys_close(physics_st)
   ph_buffers(physics_st)
   physics_st.ph_world = jph_world_new(max_bodies, threads)
+  physics_st.ph_gen += 1
   physics_st.ph_acc = 0.0
   physics_st.ph_steps = 0
   return physics_st.ph_world != null
 }
 
 export function phys_is_open(physics_st: PhysicsState) -> bool { return physics_st.ph_world != null }
+# which world this is: a body, shape or walker id kept from an older one means nothing now
+export function phys_generation(physics_st: PhysicsState) -> int { return physics_st.ph_gen }
 
 # everything let go: the world, every body in it and every shape (a world swap, a quit)
 export function phys_close(physics_st: mut PhysicsState) -> void {

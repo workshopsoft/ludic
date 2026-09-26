@@ -42,6 +42,7 @@ export state PhysicsState {
   ph_max_steps: int = 4           # a slow frame catches up this far and no further
   ph_acc: float = 0.0
   ph_steps: int = 0
+  ph_gen: int = 0                 # how many worlds have been opened: an id from an older one is stale
   ph_hard: float = 2.0            # metres a second: a contact under this is not a fact
   ph_floats: []int = null         # buoyant bodies' ids
   ph_float_k: []float = null      # and theirs: buoyancy, linear drag, angular drag, wet
