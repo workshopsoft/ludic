@@ -36,9 +36,17 @@ export function nav_path(nav_st: mut NavState, kind: int, filter: int, sx: float
   nav_st.nv_count = 0
   if h == null { return -1 }
   let n = nvc_path(h, filter, sx, sy, sz, ex, ey, ez, nav_st.nv_out, NAV_CORNERS)
+  nav_st.nv_asked += 1
   if n > 0 { nav_st.nv_count = n }
+  if n >= 2 { nav_st.nv_found += 1 }
+  if n > 0 and nvc_partial(h) == 1 { nav_st.nv_short += 1 }
   return n
 }
+
+# how many paths were asked for, found, and cut short (the end out of reach) since the meshes loaded
+export function nav_asked(nav_st: NavState) -> int { return nav_st.nv_asked }
+export function nav_found(nav_st: NavState) -> int { return nav_st.nv_found }
+export function nav_short(nav_st: NavState) -> int { return nav_st.nv_short }
 export function nav_partial(nav_st: NavState, kind: int) -> bool {
   let h = nv_mesh(nav_st, kind)
   return h != null and nvc_partial(h) == 1

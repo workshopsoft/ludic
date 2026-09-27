@@ -51,6 +51,7 @@ import "ludic.nav"
 | `nav_next_corner(kind, filter, sx, sy, sz, ex, ey, ez) -> bool` | the next corner of that way, read back as the nearest point is (a walker's one question a frame) |
 | `nav_straight(kind, filter, sx, sy, sz, ex, ez) -> bool` | does the straight line stay walkable |
 | `nav_random_near(kind, filter, x, y, z, r, seed) -> bool`, `nav_near_x/y/z()` | a reachable point about r away, from the caller's seed |
+| `nav_asked()`, `nav_found()`, `nav_short()` | paths asked for, found and cut short since the meshes loaded (a game's measure of how often its walkers had a way) |
 | `nav_area_cost(kind, filter, area, cost)` | how dear a kind of ground is to cross by that filter |
 
 ## Tests

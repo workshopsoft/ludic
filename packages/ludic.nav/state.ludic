@@ -42,6 +42,9 @@ export state NavState {
   nv_near: []float = floats(3)
   nv_cfg: []float = floats(7)      # the configuration handed to the shim, filled in place per build
   nv_empty: []float = floats(1)    # what the shim is handed for no cylinders or no footprints
+  nv_asked: int = 0                # paths asked for, found (two corners or more), and cut short
+  nv_found: int = 0
+  nv_short: int = 0
 }
 function nv_none() -> []pointer {
   let m = new []pointer
@@ -66,4 +69,7 @@ export function nav_drop(nav_st: mut NavState, kind: int) -> void { nv_set(nav_s
 export function nav_reset(nav_st: mut NavState) -> void {
   for k in 0 .. NAV_KINDS { nv_set(nav_st, k, null) }
   nav_st.nv_count = 0
+  nav_st.nv_asked = 0
+  nav_st.nv_found = 0
+  nav_st.nv_short = 0
 }
