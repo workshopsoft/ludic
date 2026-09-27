@@ -10,7 +10,7 @@ function ca_product(ui_st: mut UiState) -> CaVal {
     ui_st.ca_i += 1
     let b = ca_factor(ui_st)
     if div and not b.bare and not a.bare and a.pct == 0.0 and b.pct == 0.0 and b.px != 0.0 {
-      a = ca_ratio(a.px / b.px)
+      a = ca_ratio(ui_st, a.px / b.px)
       continue
     }
     if div and not b.bare {
@@ -21,7 +21,7 @@ function ca_product(ui_st: mut UiState) -> CaVal {
       ui_st.ca_bad = "a number that is not 0 after /"
       return a
     }
-    if div { a = ca_scale(a, 1.0 / b.n) } else if a.bare { a = ca_scale(b, a.n) } else if b.bare { a = ca_scale(a, b.n) } else {
+    if div { a = ca_scale(ui_st, a, 1.0 / b.n) } else if a.bare { a = ca_scale(ui_st, b, a.n) } else if b.bare { a = ca_scale(ui_st, a, b.n) } else {
       ui_st.ca_bad = "a plain number on one side of *"
       return a
     }
@@ -29,13 +29,13 @@ function ca_product(ui_st: mut UiState) -> CaVal {
   return a
 }
 # a length over a length is a plain number (100vw / 1800px)
-function ca_ratio(k: float) -> CaVal {
-  let r = new CaVal
+function ca_ratio(ui_st: mut UiState, k: float) -> CaVal {
+  let r = ca_new(ui_st)
   r.n = k
   return r
 }
-function ca_scale(a: CaVal, k: float) -> CaVal {
-  let r = new CaVal
+function ca_scale(ui_st: mut UiState, a: CaVal, k: float) -> CaVal {
+  let r = ca_new(ui_st)
   r.bare = a.bare
   r.n = a.n * k
   r.px = a.px * k
@@ -46,12 +46,12 @@ function ca_factor(ui_st: mut UiState) -> CaVal {
   ca_ws(ui_st)
   if ui_st.ca_i >= len(ui_st.ca_s) {
     ui_st.ca_bad = "a value"
-    return new CaVal
+    return ca_new(ui_st)
   }
   let c = ui_st.ca_s[ui_st.ca_i]
   if c == 45 {
     ui_st.ca_i += 1
-    return ca_scale(ca_factor(ui_st), -1.0)
+    return ca_scale(ui_st, ca_factor(ui_st), -1.0)
   }
   let f = ca_fn_at(ui_st.ca_s, ui_st.ca_i)
   if f == "min" or f == "max" or f == "clamp" { return ca_fn(ui_st, f) }
@@ -71,18 +71,21 @@ function ca_number(ui_st: mut UiState) -> CaVal {
   while ui_st.ca_i < len(ui_st.ca_s) and ((ui_st.ca_s[ui_st.ca_i] >= 48 and ui_st.ca_s[ui_st.ca_i] <= 57) or ui_st.ca_s[ui_st.ca_i] == 46) { ui_st.ca_i += 1 }
   let num_end = ui_st.ca_i
   while ui_st.ca_i < len(ui_st.ca_s) and ((ui_st.ca_s[ui_st.ca_i] >= 97 and ui_st.ca_s[ui_st.ca_i] <= 122) or ui_st.ca_s[ui_st.ca_i] == 37) { ui_st.ca_i += 1 }
-  let r = new CaVal
+  let r = ca_new(ui_st)
   if num_end == at {
     ui_st.ca_bad = "a number"
     return r
   }
-  let word: string = ui_st.ca_s[at..ui_st.ca_i]
-  let unit: string = ui_st.ca_s[num_end..ui_st.ca_i]
-  if unit == "" {
-    r.n = el_num(word)
+  let s = ui_st.ca_s
+  let end = ui_st.ca_i
+  let f = el_num_in(s, at, num_end)
+  if end == num_end {
+    r.n = f
     return r
   }
   r.bare = false
-  if unit == "%" { r.pct = el_num(word) } else if unit == "px" or unit == "em" or unit == "rem" or unit == "vw" or unit == "vh" { r.px = el_unit(ui_st, word) } else { ui_st.ca_bad = `a unit calc() knows, not {unit}` }
+  if ca_unit(s, num_end, end, "%") { r.pct = f } else if ca_unit(s, num_end, end, "px") { r.px = el_px(ui_st, f) } else if ca_unit(s, num_end, end, "rem") { r.px = f * el_px(ui_st, 16.0) } else if ca_unit(s, num_end, end, "em") { r.px = f * el_em(ui_st) } else if ca_unit(s, num_end, end, "vw") { r.px = f * ui_st.ly_vp_w / 100.0 } else if ca_unit(s, num_end, end, "vh") { r.px = f * ui_st.ly_vp_h / 100.0 } else { ui_st.ca_bad = `a unit calc() knows, not {s[num_end..end]}` }
   return r
 }
+# the unit between `from` and `to` is `u`, compared in place
+function ca_unit(s: string, from: int, to: int, u: string) -> bool { return to - from == len(u) and sat(s, from, u) }

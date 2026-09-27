@@ -34,12 +34,19 @@ function ui_default_backend() -> UiBackend {
 export state UiState {
   pl_pools: []UiPool = new []UiPool      # pool.ludic: each screen's nodes and envs, used again
   pl_cur: UiPool = null
+  uv_on: bool = false                    # pool.ludic: a build is under way, so expressions' Values are pooled
+  uv_true: Val = null
+  uv_false: Val = null
   mm: UiMemo = null                      # memo.ludic: splits, gradients and keys by their text
   mm_ints: []string = null
   mm_ivals: []Val = null
   ev_depth: int = 0                      # eval.ludic: a call's arguments, in lists kept one a depth
   ev_args: []Val = new []Val
   cv_texts: []string = new []string      # units_pieces.ludic: a value's var() pieces, kept
+  ca_pool: []CaVal = new []CaVal         # calc.ludic: an evaluation's terms, used again by the next
+  ca_used: int = 0
+  ca_args: [][]CaVal = new [][]CaVal
+  ca_depth: int = 0
   fit_out: []float = new []float         # draw_content.ludic: an image's box, kept
   r3n_cut: []float = new []float         # render3d_nine.ludic: a nine-slice's edges, kept
   r3n_xs: []float = new []float

@@ -11,23 +11,28 @@ function ca_fn_at(s: string, at: int) -> string {
 function ca_word(s: string, at: int, w: string) -> bool { return at + len(w) <= len(s) and sat(s, at, w) }
 function ca_fn(ui_st: mut UiState, f: string) -> CaVal {
   ui_st.ca_i = ui_st.ca_i + len(f) + 1
-  let args = new []CaVal
+  let depth = ui_st.ca_depth         # min(calc(...)) nests: a kept list of arguments a depth
+  while len(ui_st.ca_args) <= depth { push(ui_st.ca_args, new []CaVal) }
+  let args = ui_st.ca_args[depth]
+  List.clear(args)
+  ui_st.ca_depth = depth + 1
   while ui_st.ca_bad == "" {
     push(args, ca_sum(ui_st))
     ca_ws(ui_st)
     if ui_st.ca_i < len(ui_st.ca_s) and ui_st.ca_s[ui_st.ca_i] == 44 { ui_st.ca_i += 1 } else { break }
   }
+  ui_st.ca_depth = depth
   if ui_st.ca_bad == "" and (ui_st.ca_i >= len(ui_st.ca_s) or ui_st.ca_s[ui_st.ca_i] != 41) { ui_st.ca_bad = "a closing )" }
   ui_st.ca_i += 1
-  if ui_st.ca_bad != "" { return new CaVal }
+  if ui_st.ca_bad != "" { return ca_new(ui_st) }
   if f == "clamp" and len(args) != 3 {
     ui_st.ca_bad = "clamp(least, want, most)"
-    return new CaVal
+    return ca_new(ui_st)
   }
   for i in 0 .. len(args) {
     if args[i].pct != 0.0 {
       ui_st.ca_bad = `lengths in {f}(), not a percentage`
-      return new CaVal
+      return ca_new(ui_st)
     }
   }
   if f == "clamp" { return ca_pick(ui_st, ca_pick(ui_st, args[1], args[0], false), args[2], true) }
@@ -36,7 +41,7 @@ function ca_fn(ui_st: mut UiState, f: string) -> CaVal {
   return r
 }
 # the smaller (or the larger) of two, a bare number beside a length being px
-function ca_pick(ui_st: UiState, a: CaVal, b: CaVal, smaller: bool) -> CaVal {
+function ca_pick(ui_st: mut UiState, a: CaVal, b: CaVal, smaller: bool) -> CaVal {
   if a.bare and b.bare {
     if (b.n < a.n) == smaller and b.n != a.n { return b }
     return a

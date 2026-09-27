@@ -40,6 +40,7 @@ export function ui_nodes(ui_st: mut UiState, screen: string, view: UiView) -> Ui
   }
   let t = ui_st.lib_screens[si]
   pl_begin(ui_st, screen)
+  ui_st.uv_on = true
   lc_begin(ui_st)
   ui_st.ui_view = view
   let e = env_new(ui_st, null)
@@ -55,6 +56,7 @@ export function ui_nodes(ui_st: mut UiState, screen: string, view: UiView) -> Ui
   }
   bd_kids(ui_st, t.kids, e, screen, root.children)
   cs_tree(ui_st, root)
+  ui_st.uv_on = false
   return root
 }
 # the room vw, vh and @media measure against; ui_show sets it to the screen's rectangle

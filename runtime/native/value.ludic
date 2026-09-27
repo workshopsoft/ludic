@@ -105,6 +105,79 @@ function value_set_bool(o: Val, key: pointer, b: bool) -> void {
   v.num = 0
   if b { v.num = 1 }
 }
+# a list field of an object set in place: the list under `key` is kept, and item i keeps its Value when it
+# is already that kind (a component's model, filled into the same object every frame)
+function value_list_fit(o: Val, key: pointer, n: int) -> Val {
+  let l = value_slot(o, key, 5)
+  value_lists(l)
+  while len(l.kids) > n { List.pop(l.kids) }
+  return l
+}
+function value_item(l: Val, i: int, tag: int) -> Val {
+  if i < len(l.kids) {
+    if l.kids[i].tag == tag { return l.kids[i] }
+    let v = value_new(tag)
+    l.kids[i] = v
+    return v
+  }
+  let v = value_new(tag)
+  push(l.kids, v)
+  return v
+}
+function value_set_ints(o: Val, key: pointer, xs: []int) -> void {
+  let l = value_list_fit(o, key, len(xs))
+  for i in 0 .. len(xs) {
+    let v = value_item(l, i, 1)
+    v.num = xs[i]
+  }
+}
+function value_set_floats(o: Val, key: pointer, xs: []float) -> void {
+  let l = value_list_fit(o, key, len(xs))
+  for i in 0 .. len(xs) {
+    let v = value_item(l, i, 7)
+    v.num = float_bits(xs[i])
+  }
+}
+function value_set_strs(o: Val, key: pointer, xs: []string) -> void {
+  let l = value_list_fit(o, key, len(xs))
+  for i in 0 .. len(xs) {
+    let v = value_item(l, i, 4)
+    v.txt = xs[i]
+  }
+}
+function value_set_bools(o: Val, key: pointer, xs: []bool) -> void {
+  let l = value_list_fit(o, key, len(xs))
+  for i in 0 .. len(xs) {
+    let v = value_item(l, i, 3)
+    v.num = 0
+    if xs[i] { v.num = 1 }
+  }
+}
+# a Value turned into a blank one of kind `tag`, its own lists (if it has them) kept and emptied - for
+# a pool that hands the same records out again (ludic.ui's, frame after frame)
+function value_become(v: Val, tag: int) -> Val {
+  v.tag = tag
+  v.num = 0
+  v.txt = null
+  if tag == 5 or tag == 6 { value_lists(v) }
+  if v.kids != null { value_clear(v) }
+  return v
+}
+function value_be_int(v: Val, n: int) -> Val {
+  value_become(v, 1)
+  v.num = n
+  return v
+}
+function value_be_float(v: Val, x: float) -> Val {
+  value_become(v, 7)
+  v.num = float_bits(x)
+  return v
+}
+function value_be_str(v: Val, s: pointer) -> Val {
+  value_become(v, 4)
+  v.txt = s
+  return v
+}
 # a list or an object emptied in place, its room kept - for one filled again every frame
 function value_clear(v: Val) -> void {
   if v.kids == null { return }

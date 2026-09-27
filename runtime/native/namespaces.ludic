@@ -480,6 +480,10 @@ namespace Value {
   alias as_str(value) = value_as_str
   alias free(value) = value_free
   alias clear(value) = value_clear
+  alias become(value, tag) = value_become
+  alias be_int(value, n) = value_be_int
+  alias be_float(value, x) = value_be_float
+  alias be_str(value, s) = value_be_str
 }
 namespace Json {
   alias encode(value) = json_encode
