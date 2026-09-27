@@ -5,6 +5,7 @@ module ludic_vehicles uses ludic_base
 numbers float
 import "ludic.base"
 import "kinds.ludic"
+import "table.ludic"
 import "ports.ludic"
 import "state.ludic"
 import "places.ludic"

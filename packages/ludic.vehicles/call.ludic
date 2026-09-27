@@ -1,10 +1,11 @@
 # call.ludic - a player's boat or horse brought to a place: made there the first time, fetched there
 # after; gone when its player leaves
-function ve_add(vehicles_st: VehiclesState, kind: int, x: float, z: float, yaw: float) -> Vehicle {
+function ve_add(vehicles_st: VehiclesState, kind: int, owner: int, x: float, z: float, yaw: float) -> Vehicle {
   if kind != VEHICLE_HORSE and kind != VEHICLE_BOAT { return null }
   let v = new Vehicle
   v.nid = VehicleWorld.next_id()
   v.kind = kind
+  v.owner = owner
   v.yaw = yaw
   if kind == VEHICLE_HORSE {
     v.seat_h = 1.35
@@ -14,7 +15,7 @@ function ve_add(vehicles_st: VehiclesState, kind: int, x: float, z: float, yaw: 
     v.seat_h = 0.30
   }
   ve_put(v, x, z)
-  push(ve_all(vehicles_st), v)
+  ve_file(vehicles_st.ve, v)
   ve_settle(v)
   VehicleWorld.made(v)
   return v
@@ -51,9 +52,8 @@ export function vehicle_call_for(vehicles_st: VehiclesState, pid: int, kind: int
   var yaw = vehicles_st.ve_dock_yaw
   if kind == VEHICLE_HORSE { yaw = vehicles_st.ve_rail_yaw }
   if v == null {
-    let made = ve_add(vehicles_st, kind, vehicle_place_x(vehicles_st, kind, k), vehicle_place_z(vehicles_st, kind, k), yaw)
+    let made = ve_add(vehicles_st, kind, pid, vehicle_place_x(vehicles_st, kind, k), vehicle_place_z(vehicles_st, kind, k), yaw)
     if made == null { return false }
-    made.owner = pid
     if pid == 0 { ve_apply_kept(vehicles_st, made) }
     return true
   }
@@ -68,10 +68,10 @@ export function vehicle_call_for(vehicles_st: VehiclesState, pid: int, kind: int
 # a player left: their boat and horse go with them, and their places are free
 export function vehicles_release(vehicles_st: mut VehiclesState, pid: int) -> void {
   if pid == 0 { return }
-  let keep = new []Vehicle
-  let l = ve_all(vehicles_st)
-  for i in 0 .. len(l) {
-    if l[i].owner != pid { push(keep, l[i]) } else { ve_gone(l[i]) }
+  let rows = ix_rows(vehicles_st.ve.owners, pid)
+  while len(rows) > 0 {
+    let v = ve_all(vehicles_st)[rows[len(rows) - 1]]
+    ve_gone(v)
+    ve_unfile(vehicles_st.ve, v)
   }
-  vehicles_st.ve_list = keep
 }
