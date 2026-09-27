@@ -1,7 +1,6 @@
 # tick.ludic - a step of everyone, on the machine that runs the place: the census on the half hour,
 # the day's end (only ever out of every player's sight), the walk or the act, and who noticed whom
 export function npc_tick(npc_st: mut NpcState, dt: float) -> void {
-  np_ensure()
   for i in 0 .. len(npc_st.np_posts) { if npc_st.np_posts[i].active { np_step_post(npc_st, npc_st.np_posts[i], dt) } }
   if npc_st.np_hold or npc_st.np_mirror { return }
   np_census(npc_st)
@@ -15,7 +14,6 @@ export function npc_tick(npc_st: mut NpcState, dt: float) -> void {
 
 # the posts alone: a machine that does not run the place still turns its vendors to whoever comes
 export function npc_posts_tick(npc_st: mut NpcState, dt: float) -> void {
-  np_ensure()
   for i in 0 .. len(npc_st.np_posts) { if npc_st.np_posts[i].active { np_step_post(npc_st, npc_st.np_posts[i], dt) } }
 }
 
@@ -82,7 +80,6 @@ export function npc_hold(npc_st: mut NpcState, on: bool) -> void { npc_st.np_hol
 
 # everyone gone, as a new trip starts; the posts are the place's and stay
 export function npc_reset(npc_st: mut NpcState) -> void {
-  np_ensure()
   for i in 0 .. len(npc_st.np_walkers) { npc_retire(npc_st, npc_st.np_walkers[i]) }
   npc_st.np_n = 0
   npc_st.np_next_h = 0.0

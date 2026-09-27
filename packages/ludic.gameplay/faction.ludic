@@ -9,20 +9,14 @@
 
 property Faction { id: int = 0 }
 
-const FAC_MAX: int = 32
 const REL_FRIEND: int = 0
 const REL_NEUTRAL: int = 1
 const REL_HOSTILE: int = 2
 
-# relationships stored as (rel + 1); a zero slot means "unset -> use the default".
-# A global var initialiser must be a literal, so it is allocated lazily.
-
-function fac_ensure(gameplay_st: mut GameplayState) -> void {
-}
+# relationships stored as (rel + 1); a zero slot means "unset -> use the default"
 
 # Faction.set(a, b, rel) — record a symmetric relationship between two factions.
 @Namespace(Faction) function faction_set(gameplay_st: mut GameplayState, a: int, b: int, rel: int) -> void {
-  fac_ensure(gameplay_st)
   if (a < 0) or (a >= FAC_MAX) { return }
   if (b < 0) or (b >= FAC_MAX) { return }
   gameplay_st.fac_tbl[a * FAC_MAX + b] = rel + 1
@@ -31,7 +25,6 @@ function fac_ensure(gameplay_st: mut GameplayState) -> void {
 
 # Faction.rel(a, b) — the relationship code (0 friend, 1 neutral, 2 hostile).
 @Namespace(Faction) function faction_rel(gameplay_st: mut GameplayState, a: int, b: int) -> int {
-  fac_ensure(gameplay_st)
   if (a >= 0) and (a < FAC_MAX) and (b >= 0) and (b < FAC_MAX) {
     let v = gameplay_st.fac_tbl[a * FAC_MAX + b]
     if v != 0 { return v - 1 }

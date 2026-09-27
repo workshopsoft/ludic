@@ -5,6 +5,7 @@
 fullscreen.vert|adapt.frag|
 fullscreen.vert|bloom_down.frag|
 fullscreen.vert|bloom_up.frag|
+fullscreen.vert|dof.frag|
 fullscreen.vert|heightgen.frag|#define DEM;
 fullscreen.vert|ibl_brdf.frag|
 fullscreen.vert|ibl_irradiance.frag|
@@ -17,6 +18,7 @@ fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;
 fullscreen.vert|tonemap.frag|
 fullscreen.vert|tonemap.frag|#define HDR10;
+fullscreen.vert|volumetric.frag|
 grass.mesh|model.frag|#define FOLIAGE;#define BLADE;#define MESH;
 grass.vert|model.frag|#define FOLIAGE;#define BLADE;
 grass.vert|model.frag|#define FOLIAGE;#define BLADE;#define TILES;
@@ -26,12 +28,15 @@ model.vert|bake.frag|
 model.vert|bake.frag|#define CARD;
 model.vert|bake.frag|#define FLOWER;
 model.vert|depth.frag|#define FOLIAGE;#define WIND;#define ALPHA_TEST;
+model.vert|depth.frag|#define FOLIAGE;#define WIND;#define ALPHA_TEST;#define NEAR_FADE;
 model.vert|model.frag|
 model.vert|model.frag|#define CARD;#define CHEAP;
 model.vert|model.frag|#define FOLIAGE;#define WIND;#define ALPHA_TEST;
+model.vert|model.frag|#define FOLIAGE;#define WIND;#define ALPHA_TEST;#define NEAR_FADE;
 model.vert|model.frag|#define FOLIAGE;#define WIND;#define BLADE;
 model.vert|model.frag|#define FOLIAGE;#define WIND;#define CARD;
 model.vert|model.frag|#define FOLIAGE;#define WIND;#define EQ_PASS;
+model.vert|model.frag|#define FOLIAGE;#define WIND;#define EQ_PASS;#define NEAR_FADE;
 model.vert|model.frag|#define FOLIAGE;#define WIND;#define FLOWER;
 model.vert|model.frag|#define SHADOW_PASS;#define WIND;#define CARD;
 model.vert|model.frag|#define WIND;
@@ -54,5 +59,3 @@ terrain.vert|terrain.frag|#define SUN_INLINE;#define FAR_ONLY;
 terrain.vert|terrain.frag|#define SUN_INLINE;#define NEAR_ONLY;
 terrain.vert|tersun.frag|
 water.vert|water.frag|
-fullscreen.vert|volumetric.frag|
-fullscreen.vert|dof.frag|

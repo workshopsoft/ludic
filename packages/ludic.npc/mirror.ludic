@@ -3,7 +3,6 @@
 
 # on: this machine's own walkers leave, and only the host's are drawn until it is turned off
 export function npc_mirror(npc_st: mut NpcState, on: bool) -> void {
-  np_ensure()
   if npc_st.np_mirror == on { return }
   npc_st.np_mirror = on
   for i in 0 .. len(npc_st.np_walkers) { npc_retire(npc_st, npc_st.np_walkers[i]) }
@@ -14,7 +13,6 @@ export function npc_mirroring(npc_st: NpcState) -> bool { return npc_st.np_mirro
 
 # the host's slot: somebody new in it (born), or nobody (gone)
 export function npc_put(npc_st: mut NpcState, slot: int, id: int, kind: int, look: int, seed: float, name: string, hx: float, hz: float) -> NpcPerson {
-  np_ensure()
   if slot < 0 or slot >= npc_st.np_max or kind < 0 or kind >= NPCK_COUNT { return null }
   while len(npc_st.np_walkers) <= slot {
     let q = new NpcPerson
@@ -60,7 +58,6 @@ export function npc_heard(npc_st: NpcState, slot: int, x: float, y: float, z: fl
 export function npc_heard_lately(npc_st: NpcState, p: NpcPerson) -> bool { return p.heard and npc_st.np_clock - p.heard_t <= 6.0 }
 
 export function npc_mirror_tick(npc_st: mut NpcState, dt: float) -> void {
-  np_ensure()
   npc_st.np_clock = npc_st.np_clock + dt
   let k = Math.min(1.0, dt * 8.0)
   for i in 0 .. len(npc_st.np_walkers) {

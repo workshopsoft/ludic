@@ -9,14 +9,6 @@ const DLG_NODE_MAX: int = 512
 const DLG_CHOICE_MAX: int = 1024
 
 
-function dlg_ensure(rpg_st: mut RpgState) -> void {
-  if rpg_st.dlg_reg == null {
-    rpg_st.dlg_reg = Dict.new()
-    rpg_st.dlg_tree_start = words(DLG_TREE_MAX)
-    rpg_st.dlg_node_tree = words(DLG_NODE_MAX);  rpg_st.dlg_node_text = pointers(DLG_NODE_MAX)
-    rpg_st.dlg_choice_node = words(DLG_CHOICE_MAX);  rpg_st.dlg_choice_label = pointers(DLG_CHOICE_MAX);  rpg_st.dlg_choice_next = words(DLG_CHOICE_MAX)
-  }
-}
 
 property Dialog { tree: int = 0, node: int = 0, active: int = 0 }
 
@@ -27,7 +19,6 @@ event DialogEnded { e: int = 0 }
 
 # Dialog.tree(name) — register (or fetch) a tree id.
 @Namespace(Dialog) function dialog_tree(rpg_st: mut RpgState, name: pointer) -> int {
-  dlg_ensure(rpg_st)
   let ex = Dict.get_or(rpg_st.dlg_reg, name, -1)
   if ex >= 0 { return ex }
   if rpg_st.dlg_tree_n >= DLG_TREE_MAX { return -1 }
@@ -40,7 +31,6 @@ event DialogEnded { e: int = 0 }
 # Dialog.node(tree_name, text) — add a line node; the first node added to a tree is
 # its entry point. Returns the node id.
 @Namespace(Dialog) function dialog_node(rpg_st: mut RpgState, tree_name: pointer, text: pointer) -> int {
-  dlg_ensure(rpg_st)
   let tid = dialog_tree(rpg_st, tree_name)
   if tid < 0 { return -1 }
   if rpg_st.dlg_node_n >= DLG_NODE_MAX { return -1 }
@@ -52,7 +42,6 @@ event DialogEnded { e: int = 0 }
 }
 # Dialog.choice(node, label, next_node) — add a branch (next_node -1 ends).
 @Namespace(Dialog) function dialog_choice(rpg_st: mut RpgState, node: int, label: pointer, next_node: int) -> int {
-  dlg_ensure(rpg_st)
   if rpg_st.dlg_choice_n >= DLG_CHOICE_MAX { return -1 }
   let id = rpg_st.dlg_choice_n
   rpg_st.dlg_choice_node[id] = node;  rpg_st.dlg_choice_label[id] = label;  rpg_st.dlg_choice_next[id] = next_node
@@ -71,7 +60,6 @@ function dlg_set(e: int, name: pointer, v: int) -> void {
 
 # Dialog.start(e, tree_name) — open the tree on a speaker (DialogStarted + Line).
 @Namespace(Dialog) function dialog_start(rpg_st: mut RpgState, e: int, tree_name: pointer) -> void {
-  dlg_ensure(rpg_st)
   let tid = dialog_tree(rpg_st, tree_name)
   if tid < 0 { return }
   dlg_set(e, "tree", tid)
@@ -87,7 +75,6 @@ function dlg_set(e: int, name: pointer, v: int) -> void {
 }
 # Dialog.count(e) — number of choices at the current node.
 @Namespace(Dialog) function dialog_count(rpg_st: mut RpgState, e: int) -> int {
-  dlg_ensure(rpg_st)
   if dlg_get(e, "active") == 0 { return 0 }
   let node = dlg_get(e, "node")
   var n = 0;  var i = 0
@@ -96,7 +83,6 @@ function dlg_set(e: int, name: pointer, v: int) -> void {
 }
 # Dialog.choose(e, i) — take the i-th choice (veto-able); advance or end.
 @Namespace(Dialog) function dialog_choose(rpg_st: mut RpgState, e: int, idx: int) -> int {
-  dlg_ensure(rpg_st)
   if dlg_get(e, "active") == 0 { return 0 }
   let node = dlg_get(e, "node")
   var seen = 0;  var i = 0;  var pick = -1

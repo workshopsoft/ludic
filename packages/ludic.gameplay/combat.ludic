@@ -23,10 +23,14 @@ event Died { e: int = 0, src: int = 0 }
 event Healed { e: int = 0, amount: int = 0 }
 event Crit { target: int = 0, src: int = 0 }     # the attacker's crit_pct fired
 
+# the faction table: FAC_MAX ids square, every pair unset (faction.ludic)
+const FAC_MAX: int = 32
+function fac_table() -> words { return words(FAC_MAX * FAC_MAX) }
+
 state GameplayState {
   combat_reflecting: bool = false              # thorns never reflect thorns
   combat_pending: int = 0
-  fac_tbl: words = words(FAC_MAX * FAC_MAX)
+  fac_tbl: words = fac_table()
 }
 
 # the mutable channel for lever 6: listeners rewrite the pending damage here.

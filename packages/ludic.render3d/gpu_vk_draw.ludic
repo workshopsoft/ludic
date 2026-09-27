@@ -729,6 +729,7 @@ function gvk_sc_clear(render3d_st: mut Render3dState) -> void {
 # the pool is full: finish the frame recorded so far (it may use sets from it), then start again
 function gvk_kpool_reset(render3d_st: mut Render3dState) -> void {
   gvk_flush(render3d_st)
+  gvk_frame_wait(render3d_st)
   Vk.reset_descriptor_pool(render3d_st.gvk_dev, render3d_st.gvk_kpool, 0)
   gvk_sc_clear(render3d_st)
 }
@@ -953,6 +954,7 @@ function gvk_screen_make(render3d_st: mut Render3dState, w: int, h: int) -> bool
 
 function gvk_frame_cb(render3d_st: mut Render3dState) -> pointer {
   if render3d_st.gvk_cb == null {
+    gvk_frame_wait(render3d_st)
     gvk_frame_reset(render3d_st)
     render3d_st.gvk_cb = gvk_once_begin(render3d_st)
   }
@@ -1279,7 +1281,13 @@ function gvk_flush(render3d_st: mut Render3dState) -> void {
 # - and that image is presented.
 function gvk_present(render3d_st: mut Render3dState) -> void {
   gvk_prof_frame(render3d_st)
-  if render3d_st.gvk_swap != 0 { gvk_present_window(render3d_st);  render3d_st.gvk_frame_no += 1;  gvk_retire_flush(render3d_st);  return }
+  if render3d_st.gvk_swap != 0 {
+    gvk_present_window(render3d_st)
+    render3d_st.gvk_frame_no += 1
+    # what the frame in flight retired goes when it is done (gvk_frame_wait)
+    if not render3d_st.gvk_frame_pending { gvk_retire_flush(render3d_st) }
+    return
+  }
   if render3d_st.gvk_cb == null { return }
   gvk_pass_end(render3d_st)
   gvk_once_end(render3d_st, render3d_st.gvk_cb)
@@ -1332,6 +1340,8 @@ function gvk_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
   if is_windowed() {
     win_open(w, h, 1, title)          # the window exists before main: this retitles it
     win_gl_resize(w, h)
+    # macOS: the Metal layer sets the backing scale, so it exists before the drawable is measured
+    if Os.platform() == "macos" and win_metal_layer() == null { render3d_st.gvk_why = "no Metal layer on the window";  return false }
     if render3d_st.gvk_size_buf == null { render3d_st.gvk_size_buf = words(4) }
     win_gl_drawable(render3d_st.gvk_size_buf)
     if render3d_st.gvk_size_buf[0] > 0 and render3d_st.gvk_size_buf[1] > 0 { gl_set_drawable(render3d_st.gvk_size_buf[0], render3d_st.gvk_size_buf[1]) }
@@ -1519,13 +1529,24 @@ function gvk_read_screen(render3d_st: mut Render3dState, w: int, h: int, out: po
 }
 
 # ---- the window: surface and swapchain ----------------------------------------------------------
-# Windows only for now (the Win32 surface); gpu_select keeps a window elsewhere on OpenGL.
+# The Win32 surface on Windows; on macOS a CAMetalLayer the runtime hangs off the view (MoltenVK).
 extern function win_native_window() -> pointer = "win_native_window"
 extern function win_native_instance() -> pointer = "win_native_instance"
+extern function win_metal_layer() -> pointer = "win_metal_layer"
+extern function win_visible() -> int = "win_visible"
 
-
-function gvk_surface_make(render3d_st: mut Render3dState) -> bool {
-  if render3d_st.gvk_surface != 0 { return true }
+function gvk_surface_os(render3d_st: mut Render3dState, out: pointer) -> bool {
+  if Os.platform() == "macos" {
+    let layer = win_metal_layer()
+    if layer == null { render3d_st.gvk_why = "no Metal layer on the window";  return false }
+    let mci = bytes(VkMetalSurfaceCreateInfoEXT_sizeof)
+    Vk.zero(mci, VkMetalSurfaceCreateInfoEXT_sizeof)
+    Vk.put_i32(mci, VkMetalSurfaceCreateInfoEXT_sType, VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT)
+    Vk.put_ptr(mci, VkMetalSurfaceCreateInfoEXT_pLayer, layer)
+    let rm = Vk.create_metal_surface_ext(render3d_st.gvk_inst, mci, null, out)
+    if rm != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateMetalSurfaceEXT", rm) }
+    return true
+  }
   let hwnd = win_native_window()
   if hwnd == null { render3d_st.gvk_why = "no window to present to";  return false }
   let sci = bytes(VkWin32SurfaceCreateInfoKHR_sizeof)
@@ -1533,9 +1554,15 @@ function gvk_surface_make(render3d_st: mut Render3dState) -> bool {
   Vk.put_i32(sci, VkWin32SurfaceCreateInfoKHR_sType, VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR)
   Vk.put_ptr(sci, VkWin32SurfaceCreateInfoKHR_hinstance, win_native_instance())
   Vk.put_ptr(sci, VkWin32SurfaceCreateInfoKHR_hwnd, hwnd)
-  let out = bytes(8)
   let r = Vk.create_win32_surface_khr(render3d_st.gvk_inst, sci, null, out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateWin32SurfaceKHR", r) }
+  return true
+}
+
+function gvk_surface_make(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_surface != 0 { return true }
+  let out = bytes(8)
+  if not gvk_surface_os(render3d_st, out) { return false }
   render3d_st.gvk_surface = gvk_handle(out)
   let ok = bytes(4)
   Vk.put_i32(ok, 0, 0)
@@ -1551,6 +1578,7 @@ function gvk_surface_make(render3d_st: mut Render3dState) -> bool {
 # (Re)make the swapchain for a w x h client area. The old one is handed over and then destroyed.
 function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
   if not gvk_surface_make(render3d_st) { return false }
+  gvk_frame_wait(render3d_st)
   Vk.device_wait_idle(render3d_st.gvk_dev)
   let caps = bytes(VkSurfaceCapabilitiesKHR_sizeof)
   Vk.get_physical_device_surface_capabilities_khr(render3d_st.gvk_pd, render3d_st.gvk_surface, caps)
@@ -1641,6 +1669,14 @@ function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
 function gvk_present_window(render3d_st: mut Render3dState) -> void {
   let cb = gvk_frame_cb(render3d_st)
   gvk_pass_end(render3d_st)
+  # a covered window is not drawn to: its layer would hold the frame for a drawable the compositor
+  # hands back once a second. The frame still runs, paced at about 60 Hz, so the game keeps time.
+  if win_visible() == 0 {
+    if gvk_inflight_on(render3d_st) { gvk_frame_submit(render3d_st, cb) } else { gvk_once_end(render3d_st, cb) }
+    render3d_st.gvk_cb = null
+    Time.sleep_us(16000)
+    return
+  }
   if render3d_st.gvk_swap_stale { gvk_once_end(render3d_st, cb);  render3d_st.gvk_cb = null;  gvk_swap_make(render3d_st, render3d_st.gvk_swap_w, render3d_st.gvk_swap_h);  return }
   let idx = bytes(4)
   Vk.reset_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_acq_fence)
@@ -1670,7 +1706,7 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
   Vk.cmd_blit_image(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, blit, VK_FILTER_LINEAR)
   gvk_barrier(cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
   gvk_barrier(cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
-  gvk_once_end(render3d_st, cb)
+  if gvk_inflight_on(render3d_st) { gvk_frame_submit(render3d_st, cb) } else { gvk_once_end(render3d_st, cb) }
   render3d_st.gvk_cb = null
   let pi = bytes(VkPresentInfoKHR_sizeof)
   Vk.zero(pi, VkPresentInfoKHR_sizeof)

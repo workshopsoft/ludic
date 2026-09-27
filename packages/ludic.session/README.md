@@ -34,7 +34,7 @@ down ends the night). The transport says what this machine became (`ses_set_role
 
 | | |
 | --- | --- |
-| `ply_init()`, `ply_join(pid) -> slot`, `ply_leave(p)`, `ply_leave_all()` | the roster (-1: full, or pid 0) |
+| `ply_join(pid) -> slot`, `ply_leave(p)`, `ply_leave_all()` | the roster (-1: full, or pid 0) |
 | `ply_report(p, x, y, z, yaw, speed)`, `ply_report_rest(p, rest, sleeping)`, `ply_report_name(p, name)` | what a remote machine said |
 | `ply_on`, `ply_is_local`, `ply_slot_of(pid)`, `ply_count`, `ply_pid`, `ply_name`, `ply_x/y/z/yaw/speed/rest(p)`, `ply_sleeping(p)` | who and where |
 | `ply_near(x, z)`, `ply_near_d2`, `ply_near_i()`, `ply_dist(p, x, z)` | the nearest player |

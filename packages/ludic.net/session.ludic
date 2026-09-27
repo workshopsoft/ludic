@@ -3,7 +3,6 @@
 
 # open a socket on `port` and take guests; false (net_why) when the port is taken
 export function net_host(net_st: mut NetState, port: int, token: int) -> bool {
-  net__init(net_st)
   if net_live(net_st) { return true }
   net_st.net__sock = NetSocket.open(port)
   if net_st.net__sock <= 0 {
@@ -20,7 +19,6 @@ export function net_host(net_st: mut NetState, port: int, token: int) -> bool {
 
 # dial a host at an address; the hello (net_hello_set) goes until a welcome or a refusal
 export function net_join(net_st: mut NetState, ip: int, port: int) -> bool {
-  net__init(net_st)
   if net_live(net_st) { return false }
   if not net__socket(net_st) { return false }
   for i in 0 .. NET_PEERS { np_close(net_st, i) }
@@ -42,7 +40,6 @@ function net__socket(net_st: mut NetState) -> bool {
 
 # the message just written is the hello: what a host is asked to let this machine in with
 export function net_hello_set(net_st: mut NetState) -> void {
-  net__init(net_st)
   nb_copy(net_st.net__hello_b, 0, net_st.net__wb, 0, net_st.net__wl)
   net_st.net__hello_l = net_st.net__wl
   if net_st.net__hello_l > NET_MTU - 40 { net_st.net__hello_l = NET_MTU - 40 }
@@ -50,7 +47,6 @@ export function net_hello_set(net_st: mut NetState) -> void {
 
 # (again) to that address, with a fresh connection and the hello sent anew
 export function net_dial(net_st: mut NetState, ip: int, port: int) -> void {
-  net__init(net_st)
   np_close(net_st, 0)
   net_st.net__join_ip = ip
   net_st.net__join_port = port
@@ -70,7 +66,6 @@ export function net_follow(net_st: mut NetState, ip: int, port: int) -> void {
 export function net_stand_alone(net_st: mut NetState) -> void { net_st.net__state = NET_IDLE }
 
 export function net_become_host(net_st: mut NetState, token: int) -> void {
-  net__init(net_st)
   net_st.net__state = NET_HOSTING
   net_st.net__my_pid = 1
   net_st.net__next_pid = 2

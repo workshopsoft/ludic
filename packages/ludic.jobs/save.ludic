@@ -1,7 +1,6 @@
 # save.ludic - a scope's jobs and boards in a section of their own, by key: a job the game has since
 # removed is dropped, a new one starts offered
 function jobs__reset_scope(jobs_st: mut JobsState, sc: int) -> void {
-  jobs__ensure(jobs_st)
   for i in 0 .. JOB_COUNT {
     if Jobs[i].scope != sc { continue }
     jobs_st.jobs__st[i] = JOBS_OFFERED

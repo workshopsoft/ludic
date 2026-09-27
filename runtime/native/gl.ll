@@ -398,6 +398,15 @@ define weak ptr @win_native_instance() {
 entry:
   ret ptr null
 }
+define weak ptr @win_metal_layer() {
+entry:
+  ret ptr null
+}
+; the window is always drawn to here (cocoa.ll asks macOS whether it is covered)
+define weak i32 @win_visible() {
+entry:
+  ret i32 1
+}
 ; the drawable's size, for a graphics API that follows the window without a GL context (render3d's
 ; Vulkan resize check); headless there is no window, so 0 x 0. cocoa.ll's real one wins when linked.
 ; win_set_title: cocoa.ll's in a windowed build; nothing to retitle headless

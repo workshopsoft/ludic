@@ -1,7 +1,6 @@
 # ludic.settings/rules.ludic - the whole store at once: every setting to its default, every one
 # held to its range, and the rescue set. None of these is news: whoever calls them applies it all
 export function settings_reset_all(settings_st: mut SettingsState) -> void {
-  sg_init(settings_st)
   for i in 0 .. len(settings_st.sg_defs) {
     settings_st.sg_num[i] = settings_st.sg_defs[i].num
     settings_st.sg_text[i] = settings_st.sg_defs[i].text
@@ -11,14 +10,12 @@ export function settings_reset_all(settings_st: mut SettingsState) -> void {
 # a hand-edited file, or one from a build with more choices, never hands the game a value it has
 # no case for
 export function settings_clamp_all(settings_st: mut SettingsState) -> void {
-  sg_init(settings_st)
   for i in 0 .. len(settings_st.sg_defs) { settings_st.sg_num[i] = settings_held(settings_st, i, settings_st.sg_num[i]) }
 }
 
 # the values every machine can run: each setting marked `rescue` back to its default, and the
 # rest (keys, language, volume) left the player's
 export function settings_rescue(settings_st: mut SettingsState) -> void {
-  sg_init(settings_st)
   for i in 0 .. len(settings_st.sg_defs) {
     if settings_st.sg_defs[i].rescue {
       settings_st.sg_num[i] = settings_st.sg_defs[i].num

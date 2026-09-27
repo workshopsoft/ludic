@@ -1,6 +1,5 @@
 # roster.ludic - who is here. Slot 0 is this machine's player and reads the SessionLocal port
 # live; slots 1.. are remote players, filled by what their machines report.
-export function ply_init(session_st: mut SessionState) -> void { session__init(session_st) }
 
 export function ply_on(session_st: SessionState, p: int) -> bool {
   if p == 0 { return true }
@@ -26,7 +25,6 @@ export function ply_count(session_st: SessionState) -> int {
 # a remote player comes in, standing where this one stands until they say: the first free
 # slot, or -1 when the party is full
 export function ply_join(session_st: mut SessionState, pid: int) -> int {
-  session__init(session_st)
   if pid <= 0 { return -1 }                  # 0 is this machine's player
   for p in 1 .. PLY_MAX {
     if session_st.session__slot[p].on { continue }

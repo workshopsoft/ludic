@@ -106,7 +106,8 @@ function gl_link_flags(ll: pointer) -> pointer {
 function vk_link_flags(ll: pointer) -> pointer {
   if not shq(`grep -q "@lvk_" {ll}`) { return "" }
   let home = ludic_home()
-  return ` {home}runtime/native/vk_thunks.ll {home}runtime/native/vk_mac.ll`
+  # QuartzCore: the CAMetalLayer a window presents through (cocoa.ll finds the class by name)
+  return ` {home}runtime/native/vk_thunks.ll {home}runtime/native/vk_mac.ll -Wl,-needed_framework,QuartzCore`
 }
 
 # A package that carries a native library (phase 15) is written into the IR by the compiler as

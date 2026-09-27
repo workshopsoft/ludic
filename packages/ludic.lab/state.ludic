@@ -2,7 +2,7 @@
 export state LabState {
   lb_plate: Actor = null
   lb_plate_dir: string = ""
-  lp_table: []long = null
+  lp_table: []long = lp_crc_table()
   lp_w: int = 0
   lp_h: int = 0
   lb_scene: string = ""

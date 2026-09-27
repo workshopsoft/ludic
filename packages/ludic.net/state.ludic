@@ -79,17 +79,17 @@ export state NetState {
   net__token: int = 0
   net__my_pid: int = 0
   net__next_pid: int = 2
-  net__peers: []NetPeer = null
-  net__in: []byte = null
-  net__out: []byte = null
-  net__wb: []byte = null          # the message being written
+  net__peers: []NetPeer = net__peers_new()
+  net__in: []byte = buffer(NET_MTU + 64)
+  net__out: []byte = buffer(NET_MTU + 64)
+  net__wb: []byte = buffer(NET_MTU)          # the message being written
   net__wl: int = 0
-  net__rb: []byte = null          # the message being read
+  net__rb: []byte = buffer(NET_MTU)          # the message being read
   net__rl: int = 0
   net__rp: int = 0
   net__rbad: bool = false
   net__tb: []byte = buffer(NET_MTU)          # text read out of a message, through one scratch buffer
-  net__hello_b: []byte = null     # the game's hello, sent again on every dial
+  net__hello_b: []byte = buffer(NET_MTU)     # the game's hello, sent again on every dial
   net__hello_l: int = 0
   net__hello_t: float = 0.0       # seconds since it went; -1 not yet
   net__wait_more: int = 0         # extra seconds a slow host is given (a map switch, a matchmaker)
@@ -111,19 +111,15 @@ export function net_inbox(net_st: NetState) -> Queue<NetMessage> {
   return net_st.net__inbox
 }
 
-function net__init(net_st: mut NetState) -> void {
-  if net_st.net__peers != null { return }
-  net_st.net__peers = new []NetPeer
+function net__facts__new() -> Queue<NetFact> { return queue_new("net.facts") }
+function net__inbox__new() -> Queue<NetMessage> { return queue_new("net.inbox") }
+# every peer slot, each with its own queue
+function net__peers_new() -> []NetPeer {
+  let out = new []NetPeer
   for i in 0 .. NET_PEERS {
     let p = new NetPeer
     p.queue = new []NetMsg
-    push(net_st.net__peers, p)
+    push(out, p)
   }
-  net_st.net__in = buffer(NET_MTU + 64)
-  net_st.net__out = buffer(NET_MTU + 64)
-  net_st.net__wb = buffer(NET_MTU)
-  net_st.net__rb = buffer(NET_MTU)
-  net_st.net__hello_b = buffer(NET_MTU)
+  return out
 }
-function net__facts__new() -> Queue<NetFact> { return queue_new("net.facts") }
-function net__inbox__new() -> Queue<NetMessage> { return queue_new("net.inbox") }

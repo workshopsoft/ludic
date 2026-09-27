@@ -134,6 +134,7 @@ function gvk_staging(render3d_st: mut Render3dState, n: int, usage: int) -> poin
   return Vk.get_ptr(pp, 0)
 }
 function gvk_staging_free(render3d_st: mut Render3dState) -> void {
+  gvk_frame_wait(render3d_st)                # the frame in flight may still read it
   Vk.unmap_memory(render3d_st.gvk_dev, render3d_st.gvk_st_mem)
   Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_st_buf, null)
   Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_st_mem, null)
@@ -142,6 +143,7 @@ function gvk_staging_free(render3d_st: mut Render3dState) -> void {
 
 # (Re)make the image behind a handle: glTexImage2D on a texture that already has one replaces it.
 function gvk_tex_storage(render3d_st: mut Render3dState, tex: int, array: bool, ifmt: int, w: int, h: int, layers: int, with_mips: bool) -> bool {
+  gvk_frame_wait(render3d_st)                # the frame in flight may still read it
   if tex <= 0 or tex >= len(render3d_st.gvk_tex_image) { return false }
   let vkfmt = gvk_format(ifmt)
   if vkfmt == VK_FORMAT_UNDEFINED { print(`r3d: vulkan: no image format for GL format {ifmt}`);  return false }
@@ -304,6 +306,7 @@ function gvk_tex_upload(render3d_st: mut Render3dState, tex: int, ifmt: int, w: 
 # A target made without pixels has one level; the renderer asking it for mipmaps (the exposure
 # measure reads the HDR scene's smallest level every frame) grows it a full chain, level 0 kept.
 function gvk_tex_grow_mips(render3d_st: mut Render3dState, tex: int, w: int, h: int) -> bool {
+  gvk_frame_wait(render3d_st)                # the frame in flight may still read it
   let old_image = render3d_st.gvk_tex_image[tex]
   let old_view = render3d_st.gvk_tex_view[tex]
   let old_mem = render3d_st.gvk_tex_mem[tex]
@@ -420,6 +423,7 @@ function gvk_tex_read(render3d_st: mut Render3dState, tex: int, ifmt: int, w: in
 }
 
 function gvk_tex_release(render3d_st: mut Render3dState, tex: int) -> void {
+  gvk_frame_wait(render3d_st)                # the frame in flight may still read it
   if render3d_st.gvk_tex_image[tex] == 0 { return }
   let zero: long = 0
   Vk.destroy_image_view(render3d_st.gvk_dev, render3d_st.gvk_tex_view[tex], null)
@@ -553,8 +557,8 @@ function gvk_buf_new(render3d_st: mut Render3dState) -> int {
 function gvk_buf_release(render3d_st: mut Render3dState, b: int) -> void {
   if render3d_st.gvk_buf[b] == 0 { return }
   let zero: long = 0
-  if render3d_st.gvk_buf_used[b] == render3d_st.gvk_frame_no {
-    # a draw recorded this frame still reads it: destroy it once the frame has been submitted
+  if gvk_buf_busy(render3d_st, b) {
+    # a draw recorded this frame (or the frame in flight) still reads it: destroy it once the frame has been submitted
     push(render3d_st.gvk_retired_buf, render3d_st.gvk_buf[b]);  push(render3d_st.gvk_retired_mem, render3d_st.gvk_buf_mem[b])
   } else {
     Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_buf[b], null)
@@ -562,6 +566,12 @@ function gvk_buf_release(render3d_st: mut Render3dState, b: int) -> void {
   }
   render3d_st.gvk_buf[b] = zero;  render3d_st.gvk_buf_mem[b] = zero;  render3d_st.gvk_buf_size[b] = 0;  render3d_st.gvk_buf_map[b] = null;  render3d_st.gvk_buf_used[b] = 0
 }
+# read by a draw recorded this frame, or by the presented frame still on the GPU
+function gvk_buf_busy(render3d_st: Render3dState, b: int) -> bool {
+  let u = render3d_st.gvk_buf_used[b]
+  return u == render3d_st.gvk_frame_no or (render3d_st.gvk_frame_pending and u == render3d_st.gvk_frame_no - 1)
+}
+
 # the frame's submitted work is done: storage retired during it can go
 function gvk_retire_flush(render3d_st: mut Render3dState) -> void {
   if render3d_st.gvk_retired_buf == null { return }
@@ -587,7 +597,7 @@ function gvk_buf_is_gpu(render3d_st: Render3dState, b: int) -> bool { return ren
 function gvk_buf_reserve(render3d_st: mut Render3dState, b: int, n: int) -> bool {
   if b <= 0 or b >= len(render3d_st.gvk_buf) { return false }
   # already big enough, and no draw this frame reads what is there: fill it in place
-  if render3d_st.gvk_buf[b] != 0 and render3d_st.gvk_buf_size[b] >= n and (render3d_st.gvk_buf_used[b] != render3d_st.gvk_frame_no or gvk_buf_is_gpu(render3d_st, b)) { return true }
+  if render3d_st.gvk_buf[b] != 0 and render3d_st.gvk_buf_size[b] >= n and (not gvk_buf_busy(render3d_st, b) or gvk_buf_is_gpu(render3d_st, b)) { return true }
   gvk_buf_release(render3d_st, b)
   var size = n
   if size < 64 { size = 64 }

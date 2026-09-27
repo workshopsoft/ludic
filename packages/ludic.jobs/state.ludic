@@ -1,25 +1,25 @@
 # state.ludic - each job's state and count, the posts on the boards, the done counts, the dice and
-# the facts. Made on first use, so the registries are complete by then.
+# the facts, each sized from the registries when the state is made.
 export state JobsState {
-  jobs__st: []int = null
-  jobs__hv: []int = null
-  jobs__seen: []bool = null      # an offer already said
+  jobs__st: []int = jobs__ints(JOB_COUNT, JOBS_OFFERED)
+  jobs__hv: []int = jobs__ints(JOB_COUNT, 0)
+  jobs__seen: []bool = jobs__bools(JOB_COUNT)      # an offer already said
   jobs__primed: bool = false     # the first tick after a reset learns the offers quietly
-  jobs__done_n: []int = null     # handed in, per group
-  jobs__off: []int = null
-  jobs__pk: []int = null         # kind, -1 empty
-  jobs__pp: []int = null
-  jobs__pn: []int = null
-  jobs__ph: []int = null
-  jobs__pb: []int = null         # the evidence when it went up
-  jobs__pm: []int = null
-  jobs__pr: []int = null
-  jobs__ps: []int = null
-  jobs__pd: []int = null         # the day it went up
-  jobs__total: []int = null      # handed in, per board
-  jobs__serial: []int = null     # posts made, per board: each roll its own seed
+  jobs__done_n: []int = jobs__ints(JOBS_GROUPS, 0)     # handed in, per group
+  jobs__off: []int = jobs__offsets()
+  jobs__pk: []int = jobs__ints(jobs__slots(), -1)         # kind, -1 empty
+  jobs__pp: []int = jobs__ints(jobs__slots(), -1)
+  jobs__pn: []int = jobs__ints(jobs__slots(), 0)
+  jobs__ph: []int = jobs__ints(jobs__slots(), 0)
+  jobs__pb: []int = jobs__ints(jobs__slots(), 0)         # the evidence when it went up
+  jobs__pm: []int = jobs__ints(jobs__slots(), 0)
+  jobs__pr: []int = jobs__ints(jobs__slots(), 0)
+  jobs__ps: []int = jobs__ints(jobs__slots(), JOBS_OFFERED)
+  jobs__pd: []int = jobs__ints(jobs__slots(), 0)         # the day it went up
+  jobs__total: []int = jobs__ints(BOARD_COUNT, 0)      # handed in, per board
+  jobs__serial: []int = jobs__ints(BOARD_COUNT, 0)     # posts made, per board: each roll its own seed
   jobs__seed: int = 1000
-  jobs__dice: Rng = null
+  jobs__dice: Rng = rng_new(1000)
   jobs__q: Queue<JobsFact> = jobs__q__new()
 }
 
@@ -32,31 +32,25 @@ function jobs__ints(n: int, v: int) -> []int {
   return out
 }
 
-function jobs__ensure(jobs_st: mut JobsState) -> void {
-  if jobs_st.jobs__st != null { return }
-  jobs_st.jobs__st = jobs__ints(JOB_COUNT, JOBS_OFFERED)
-  jobs_st.jobs__hv = jobs__ints(JOB_COUNT, 0)
-  jobs_st.jobs__seen = new []bool
-  for i in 0 .. JOB_COUNT { push(jobs_st.jobs__seen, false) }
-  jobs_st.jobs__done_n = jobs__ints(JOBS_GROUPS, 0)
-  jobs_st.jobs__off = new []int
+function jobs__bools(n: int) -> []bool {
+  let out = new []bool
+  for i in 0 .. n { push(out, false) }
+  return out
+}
+# every board's slots end to end: where each board's start, and how many in all
+function jobs__offsets() -> []int {
+  let out = new []int
   var n = 0
   for b in 0 .. BOARD_COUNT {
-    push(jobs_st.jobs__off, n)
+    push(out, n)
     n += JobBoards[b].slots
   }
-  jobs_st.jobs__pk = jobs__ints(n, -1)
-  jobs_st.jobs__pp = jobs__ints(n, -1)
-  jobs_st.jobs__pn = jobs__ints(n, 0)
-  jobs_st.jobs__ph = jobs__ints(n, 0)
-  jobs_st.jobs__pb = jobs__ints(n, 0)
-  jobs_st.jobs__pm = jobs__ints(n, 0)
-  jobs_st.jobs__pr = jobs__ints(n, 0)
-  jobs_st.jobs__ps = jobs__ints(n, JOBS_OFFERED)
-  jobs_st.jobs__pd = jobs__ints(n, 0)
-  jobs_st.jobs__total = jobs__ints(BOARD_COUNT, 0)
-  jobs_st.jobs__serial = jobs__ints(BOARD_COUNT, 0)
-  jobs_st.jobs__dice = rng_new(jobs_st.jobs__seed)
+  return out
+}
+function jobs__slots() -> int {
+  var n = 0
+  for b in 0 .. BOARD_COUNT { n += JobBoards[b].slots }
+  return n
 }
 
 export function jobs_facts(jobs_st: JobsState) -> Queue<JobsFact> {

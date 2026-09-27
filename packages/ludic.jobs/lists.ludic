@@ -1,6 +1,6 @@
 # lists.ludic - the written jobs as a screen lists them: a vendor's, the taken, the ones to show
 # a vendor's offers and the ones it can take back, in a group (-1 every vendor)
-export function jobs_at(jobs_st: mut JobsState, group: int, vendor: int) -> []int {
+export function jobs_at(jobs_st: JobsState, group: int, vendor: int) -> []int {
   let out = new []int
   for i in 0 .. JOB_COUNT {
     let d = Jobs[i]
@@ -13,14 +13,14 @@ export function jobs_at(jobs_st: mut JobsState, group: int, vendor: int) -> []in
 }
 
 # every job of a group taken at some point, done ones too
-export function jobs_taken(jobs_st: mut JobsState, group: int) -> []int {
+export function jobs_taken(jobs_st: JobsState, group: int) -> []int {
   let out = new []int
   for i in 0 .. JOB_COUNT { if Jobs[i].group == group and jobs_state(jobs_st, i) != JOBS_OFFERED { push(out, i) } }
   return out
 }
 
 # the first `most` of a group under way
-export function jobs_shown(jobs_st: mut JobsState, group: int, most: int) -> []int {
+export function jobs_shown(jobs_st: JobsState, group: int, most: int) -> []int {
   let out = new []int
   for i in 0 .. JOB_COUNT {
     if len(out) >= most { break }
@@ -30,7 +30,7 @@ export function jobs_shown(jobs_st: mut JobsState, group: int, most: int) -> []i
 }
 
 # the first under way and not yet met, or -1
-export function jobs_first_open(jobs_st: mut JobsState, group: int) -> int {
+export function jobs_first_open(jobs_st: JobsState, group: int) -> int {
   for i in 0 .. JOB_COUNT { if Jobs[i].group == group and jobs_state(jobs_st, i) == JOBS_ACTIVE { return i } }
   return -1
 }

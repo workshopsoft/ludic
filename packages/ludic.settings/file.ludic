@@ -1,8 +1,7 @@
 # ludic.settings/file.ludic - the store as a JSON object, by key: a switch is 0 or 1, a whole number
 # is itself, a float is thousandths (sv_put_float), text is a string. A key the file lacks keeps
 # what the store holds, and a key the store does not know is ignored.
-export function settings_to_json(settings_st: mut SettingsState) -> Val {
-  sg_init(settings_st)
+export function settings_to_json(settings_st: SettingsState) -> Val {
   let v = Value.object()
   for i in 0 .. len(settings_st.sg_defs) { settings_put(settings_st, v, i) }
   return v
@@ -23,7 +22,6 @@ export function settings_put(settings_st: SettingsState, v: Val, id: int) -> voi
 
 # every key `v` names, held to its range; quiet, since a load is applied whole by its caller
 export function settings_from_json(settings_st: mut SettingsState, v: Val) -> void {
-  sg_init(settings_st)
   if v == null { return }
   for i in 0 .. len(settings_st.sg_defs) { sg_read(settings_st, v, i) }
 }
