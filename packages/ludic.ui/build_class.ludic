@@ -5,7 +5,9 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   let cls = k.cls
   uc_load(ui_st, cls)
   let it = in_get(ui_st, key, cls)
-  let props = Value.object()
+  if it.props == null { it.props = Value.object() }
+  let props = it.props
+  Value.clear(props)
   for i in 0 .. len(k.keys) {
     let a = k.keys[i]
     if a != "class" and a != "style" and a != "id" { Value.put(props, a, ui_eval(ui_st, k.vals[i], e)) }

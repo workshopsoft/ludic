@@ -69,6 +69,12 @@ function value_put(obj: Val, key: pointer, item: Val) -> Val {
 # --- accessors --------------------------------------------------------------
 function value_kind(v: Val) -> int { return v.tag }
 function value_count(v: Val) -> int { return value_n(v) }
+# a list or an object emptied in place, its room kept - for one filled again every frame
+function value_clear(v: Val) -> void {
+  if v.kids == null { return }
+  List.clear(v.kids)
+  List.clear(v.keys)
+}
 function value_as_int(v: Val) -> int {
   if v.tag == 7 { return int(float_from_bits(v.num)) }
   return v.num

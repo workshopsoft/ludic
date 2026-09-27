@@ -40,3 +40,12 @@ function mm_int(ui_st: mut UiState, i: int) -> string {
   }
   return ui_st.mm_ints[i]
 }
+# a small whole number as a Value, made once and shared: read it, never change it (a loop's index)
+function mm_ival(ui_st: mut UiState, i: int) -> Val {
+  if i < 0 or i >= 1024 { return Value.int(i) }
+  if ui_st.mm_ivals == null {
+    ui_st.mm_ivals = new []Val
+    for k in 0 .. 1024 { push(ui_st.mm_ivals, Value.int(k)) }
+  }
+  return ui_st.mm_ivals[i]
+}

@@ -49,7 +49,7 @@ function bd_each(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiN
   for j in 0 .. Value.count(list) {
     let le = env_new(ui_st, e)
     env_bind(le, as_name, Value.at(list, j))
-    env_bind(le, at_name, Value.int(j))
+    env_bind(le, at_name, mm_ival(ui_st, j))
     var id = mm_int(ui_st, j)
     if by != null { id = ui_eval_text(ui_st, by, le) }
     bd_kids(ui_st, k.kids, le, mm_join(ui_st, key, "#", id), out)

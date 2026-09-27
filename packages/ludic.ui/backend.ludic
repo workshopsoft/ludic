@@ -36,6 +36,9 @@ export state UiState {
   pl_cur: UiPool = null
   mm: UiMemo = null                      # memo.ludic: splits, gradients and keys by their text
   mm_ints: []string = null
+  mm_ivals: []Val = null
+  ev_depth: int = 0                      # eval.ludic: a call's arguments, in lists kept one a depth
+  ev_args: []Val = new []Val
   ly_depth: int = 0                      # layout_run.ludic: the lists a line lays out with, one a depth
   ly_sizes: [][]float = new [][]float
   ly_frozen: [][]bool = new [][]bool

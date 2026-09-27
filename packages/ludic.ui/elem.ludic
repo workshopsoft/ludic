@@ -55,7 +55,7 @@ function el_text(ui_st: mut UiState, n: UiNode, s: string) -> void {
 function el_keep(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> void {
   let s = vl_text_u(ui_st, v)
   if key == "id" { n.id = s } else if key == "class" {
-    let parts = lss_split(s, 32)
+    let parts = mm_split(ui_st, s, 32)
     for i in 0 .. len(parts) {
       if len(parts[i]) > 0 { push(n.classes, parts[i]) }
     }

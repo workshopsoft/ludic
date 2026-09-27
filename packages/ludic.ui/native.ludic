@@ -78,7 +78,13 @@ export function ui_attr(n: UiNode, key: string) -> Val {
   }
   return Value.null()
 }
-export function ui_attr_text(n: UiNode, key: string) -> string { return vl_text(ui_attr(n, key)) }
+export function ui_attr_text(n: UiNode, key: string) -> string {
+  if n.akeys == null { return "" }
+  for i in 0 .. len(n.akeys) {
+    if n.akeys[i] == key { return vl_text(n.vals[i]) }
+  }
+  return ""
+}
 # a boolean attribute: present with no value is true, as HTML's are (<button autofocus>)
 export function ui_attr_on(n: UiNode, key: string) -> bool {
   if n.akeys == null { return false }
