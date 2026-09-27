@@ -46,6 +46,13 @@ export port WildlifeWorld {
   next_id: fn() -> int = fn wl_next_id
   born: fn(WildAnimal) -> void = fn wl_nothing            # a new animal: draw it
   placed: fn(WildRange, int) -> void = fn wl_range_nothing   # a range was set out
+  # (a, x, z): the next corner of this animal's way toward (x, z) into way_x / _z; false, the
+  # straight line (a navmesh's path by its habitat's taste, in Maroon Lake)
+  way: fn(WildAnimal, float, float) -> bool = fn wl_no_way
+  # (a, x, z, r, seed): a spot about r from (x, z) this animal can walk to, into way_x / _z
+  goal: fn(WildAnimal, float, float, float, int) -> bool = fn wl_no_goal
+  way_x: fn() -> float = fn wl_asked_x
+  way_z: fn() -> float = fn wl_asked_z
 }
 function wl_zero0() -> float { return 0.0 }
 function wl_zero1(p: int) -> float { return 0.0 }
@@ -73,6 +80,8 @@ function wl_no_spot(a: WildAnimal, water: bool, s: WildSpot) -> bool { return fa
 function wl_no_lure(i: int, l: WildLure) -> bool { return false }
 function wl_nothing(a: WildAnimal) -> void { }
 function wl_range_nothing(r: WildRange, i: int) -> void { }
+function wl_no_way(a: WildAnimal, x: float, z: float) -> bool { return false }
+function wl_no_goal(a: WildAnimal, x: float, z: float, r: float, seed: int) -> bool { return false }
 function wl_next_id(wildlife_st: mut WildlifeState) -> int {
   wildlife_st.wl_ids += 1
   return wildlife_st.wl_ids

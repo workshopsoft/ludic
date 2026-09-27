@@ -41,6 +41,9 @@ export property WildAnimal {
   home_z: float = 0.0
   tx: float = 0.0
   tz: float = 0.0
+  wx: float = 0.0         # the corner of its way it is walking to now (WildlifeWorld.way)
+  wz: float = 0.0
+  way_t: float = 0.0      # seconds until it asks the way again; 0 asks at once
   thirst: float = 0.0     # 0..100: over 60 it goes looking for water
   hunger: float = 0.0
   scat_t: float = 0.0     # game minutes until it might leave sign

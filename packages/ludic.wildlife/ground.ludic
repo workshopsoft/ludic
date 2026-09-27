@@ -31,7 +31,7 @@ export function wildlife_tick_ground(wildlife_st: mut WildlifeState, a: WildAnim
     }
     return
   }
-  wl_face(a, a.tx, a.tz, 2.0, dt)
+  wl_head(a, a.tx, a.tz, 2.0, dt)
   a.speed = s.walk
   wl_step(wildlife_st, a, dt)
   if wl_at_target(a, 1.5) or a.timer < 0.0 {

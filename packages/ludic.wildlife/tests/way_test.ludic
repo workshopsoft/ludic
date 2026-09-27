@@ -1,0 +1,106 @@
+# way_test.ludic - an animal walks by the world's way where the world has one: round a wall the
+# straight line runs into (by the corners WildlifeWorld.way gives), and to a wander target the world
+# says it can reach (goal); with no answer it walks straight, as before
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+program WayTest {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    forest: fn fk_forest
+    sight: fn fk_sight
+    push: fn fk_push
+    pushed_x: fn fk_pushed_x
+    pushed_z: fn fk_pushed_z
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    hidden: fn fk_is_hidden
+    noise: fn fk_noise_of
+    scent: fn fk_scent_of
+    stillness: fn fk_still_of
+    wind: fn fk_wind_of
+    wind_dir: fn fk_wind_to
+    winterness: fn fk_winter_of
+    about: fn fk_about_of
+    per_range: fn fk_one
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    born: fn fk_on_born
+    spot: fn fk_spot
+    way: fn wt_way
+    way_x: fn wt_x
+    way_z: fn wt_z
+    goal: fn wt_goal
+  }
+
+  state WayTestState {
+    wx: float = 0.0
+    wz: float = 0.0
+    asked: int = 0
+  }
+  # a wall across z = -40 for |x| < 30: the way goes round its east end, then on to the target
+  function wt_way(way_test_st: mut WayTestState, a: WildAnimal, x: float, z: float) -> bool {
+    way_test_st.asked += 1
+    way_test_st.wx = x
+    way_test_st.wz = z
+    if a.z > -38.0 and a.x < 31.0 {
+      way_test_st.wx = 32.0
+      way_test_st.wz = -40.0
+    }
+    return true
+  }
+  # a wander target a known step from home, whatever the seed
+  function wt_goal(way_test_st: mut WayTestState, a: WildAnimal, x: float, z: float, r: float, seed: int) -> bool {
+    way_test_st.wx = x + 7.0
+    way_test_st.wz = z + 3.0
+    return true
+  }
+  function wt_x(way_test_st: WayTestState) -> float { return way_test_st.wx }
+  function wt_z(way_test_st: WayTestState) -> float { return way_test_st.wz }
+
+  test "it walks round the wall by the corners it is given, and asks again as it goes" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState, way_test_st: WayTestState) {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = wildlife_make(wildlife_st, 0, 0.0, 0.0, false, 0.0, 0, 1.0, 1)
+    wildlife_tests_fake_st.fk_px[0] = 400.0
+    wildlife_tests_fake_st.fk_pz[0] = 0.0
+    wildlife_tests_fake_st.fk_hidden = true
+    a.state = WILD_WANDER
+    a.tx = 0.0
+    a.tz = -100.0
+    a.timer = 300.0
+    var east = -100.0
+    for k in 0 .. 3000 {
+      wildlife_tick(wildlife_st, 0.05, 0.0)
+      if a.z > -42.0 and a.z < -38.0 { east = Math.max(east, a.x) }
+    }
+    expect(east > 29.0)
+    expect(a.z < -60.0)
+    expect(way_test_st.asked > 10)
+  }
+
+  test "a wander target is where the world says it can walk" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState, way_test_st: WayTestState) {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = wildlife_make(wildlife_st, 0, 5.0, 5.0, false, 0.0, 0, 1.0, 1)
+    wildlife_tests_fake_st.fk_px[0] = 400.0
+    wildlife_tests_fake_st.fk_pz[0] = 0.0
+    wildlife_tests_fake_st.fk_hidden = true
+    a.hunger = 0.0
+    a.thirst = 0.0
+    a.state = WILD_IDLE
+    a.timer = -1.0
+    var k = 0
+    while a.state != WILD_WANDER and k < 2000 {
+      wildlife_tick(wildlife_st, 0.05, 0.0)
+      k += 1
+    }
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.tx, a.home_x + 7.0, 0.001)
+    expect_near(a.tz, a.home_z + 3.0, 0.001)
+  }
+}
