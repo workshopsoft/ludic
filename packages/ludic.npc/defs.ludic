@@ -131,6 +131,7 @@ export open registry NpcNames of NpcName as NPCN
 export const NPC_F_GREETED: int = 0    # a player came within notice
 export const NPC_F_TALKED: int = 1     # a player talked (line, choice -1 or the choice taken)
 export const NPC_F_ARRIVED: int = 2    # got where it was walking, and began the act
+export const NPC_F_STUCK: int = 3      # the way failed it and it fell back (`how`, at `x`, `z`)
 
 export property NpcFact {
   what: int = 0
@@ -141,4 +142,7 @@ export property NpcFact {
   line: int = -1
   choice: int = -1
   act: int = -1
+  how: int = 0                 # NPC_STUCK_*
+  x: float = 0.0
+  z: float = 0.0
 }

@@ -46,6 +46,7 @@ export function npc_walk(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void 
     p.stall = p.stall + dt
     if p.stall > p.stall_max { p.stall_max = p.stall }
     if p.detours < 10 and np_detour(p, want) {
+      np_stuck_fact(npc_st, p, NPC_STUCK_DETOUR)
       p.detours += 1
       return
     }

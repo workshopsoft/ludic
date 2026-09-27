@@ -78,5 +78,7 @@ program NpcWayTest {
     expect_eq(p.act, NPCA_SIT)
     expect(npc_d(p.x, p.z, 38.0, -25.0) < 1.3)
     expect(way_test_st.asked > 5)
+    let fs = q_drain(npc_facts(npc_st))
+    for i in 0 .. len(fs) { expect(fs[i].what != NPC_F_STUCK) }
   }
 }
