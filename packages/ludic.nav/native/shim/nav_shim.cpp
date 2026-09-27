@@ -17,7 +17,27 @@
 #define NAV_SHIM extern "C" __attribute__((visibility("default")))
 #endif
 
+#ifdef _WIN32
+extern "C" __declspec(dllimport) int __stdcall QueryPerformanceCounter(long long *);
+extern "C" __declspec(dllimport) int __stdcall QueryPerformanceFrequency(long long *);
+#else
+#include <time.h>
+#endif
+
 namespace {
+// a monotonic clock in nanoseconds, from the OS alone (KERNEL32 on Windows: no C++ runtime to ship)
+long long nav_now_ns() {
+#ifdef _WIN32
+  long long c = 0, f = 1;
+  QueryPerformanceCounter(&c);
+  QueryPerformanceFrequency(&f);
+  return (long long)((double)c * 1e9 / (double)f);
+#else
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return (long long)t.tv_sec * 1000000000LL + t.tv_nsec;
+#endif
+}
 const int NAV_MAX_POLYS = 512;     // polygons a path may cross; a longer one is cut there
 const int NAV_MAX_NODES = 4096;    // the search's open list
 const int NAV_FILTERS = 8;         // costs per kind of ground: one set per kind of walker's taste
@@ -30,6 +50,7 @@ struct Nav {
   float ext[3] = {2.0f, 4.0f, 2.0f};   // how far to look for the mesh around a point
   dtPolyRef polys[NAV_MAX_POLYS];
   int partial = 0;                     // the last path stopped short of its end
+  long long ns = 0;                    // time spent finding paths, for the measure (17.10)
 };
 
 // a navmesh with its query, from params (a set of tiles) or from one tile's data

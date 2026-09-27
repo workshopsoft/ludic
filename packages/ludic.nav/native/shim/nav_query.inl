@@ -22,8 +22,7 @@ NAV_SHIM void nav_area_cost(void *h, int f, int area, float cost) {
 // the corners of a path from one point to another, at most max of them, into out: the count, or
 // -1 when either end is off the mesh. One that cannot reach the end stops as near it as the mesh
 // allows, and nav_partial says so
-NAV_SHIM int nav_path(void *h, int f, float sx, float sy, float sz, float ex, float ey, float ez, float *out, int max) {
-  Nav *n = static_cast<Nav *>(h);
+static int nav_path_in(Nav *n, int f, float sx, float sy, float sz, float ex, float ey, float ez, float *out, int max) {
   float s[3] = {sx, sy, sz}, e[3] = {ex, ey, ez}, so[3], eo[3];
   dtPolyRef a = nav_poly_at(n, s, so), b = nav_poly_at(n, e, eo);
   n->partial = 0;
@@ -39,6 +38,15 @@ NAV_SHIM int nav_path(void *h, int f, float sx, float sy, float sz, float ex, fl
   if (dtStatusFailed(n->query->findStraightPath(so, end, n->polys, np, out, nullptr, nullptr, &count, max, 0))) return -1;
   return count;
 }
+NAV_SHIM int nav_path(void *h, int f, float sx, float sy, float sz, float ex, float ey, float ez, float *out, int max) {
+  Nav *n = static_cast<Nav *>(h);
+  long long t0 = nav_now_ns();
+  int r = nav_path_in(n, f, sx, sy, sz, ex, ey, ez, out, max);
+  n->ns += nav_now_ns() - t0;
+  return r;
+}
+// microseconds this mesh has spent finding paths
+NAV_SHIM int nav_us(void *h) { return static_cast<int>(static_cast<Nav *>(h)->ns / 1000); }
 NAV_SHIM int nav_partial(void *h) { return static_cast<Nav *>(h)->partial; }
 
 // does the straight line from one point to another stay on the mesh? 1 yes, 0 no, -1 off it

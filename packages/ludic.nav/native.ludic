@@ -11,6 +11,7 @@ extern function nvc_nearest(h: pointer, x: float, y: float, z: float, out: point
 extern function nvc_area_cost(h: pointer, f: int, area: int, cost: float) -> void = "nav_area_cost"
 extern function nvc_path(h: pointer, f: int, sx: float, sy: float, sz: float, ex: float, ey: float, ez: float, out: pointer, max: int) -> int = "nav_path"
 extern function nvc_partial(h: pointer) -> int = "nav_partial"
+extern function nvc_us(h: pointer) -> int = "nav_us"
 extern function nvc_raycast(h: pointer, f: int, sx: float, sy: float, sz: float, ex: float, ez: float) -> int = "nav_raycast"
 extern function nvc_random_near(h: pointer, f: int, x: float, y: float, z: float, r: float, seed: int, out: pointer) -> int = "nav_random_near"
 extern function nvc_stage(size: int) -> pointer = "nav_stage"
