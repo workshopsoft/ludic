@@ -178,6 +178,76 @@ function value_be_str(v: Val, s: pointer) -> Val {
   v.txt = s
   return v
 }
+# a result written into `into` when one is given (a record ludic.ui keeps and hands out again), made
+# as ever when it is null - what a component's call() answers a template with
+function value_into(into: Val, tag: int) -> Val {
+  if into == null { return value_new(tag) }
+  return value_become(into, tag)
+}
+function value_into_null(into: Val) -> Val { return value_into(into, 0) }
+function value_into_int(into: Val, n: int) -> Val {
+  let v = value_into(into, 1)
+  v.num = n
+  return v
+}
+function value_into_float(into: Val, x: float) -> Val {
+  let v = value_into(into, 7)
+  v.num = float_bits(x)
+  return v
+}
+function value_into_str(into: Val, s: pointer) -> Val {
+  let v = value_into(into, 4)
+  v.txt = s
+  return v
+}
+function value_into_bool(into: Val, b: bool) -> Val {
+  let v = value_into(into, 3)
+  if b { v.num = 1 }
+  return v
+}
+# a list result: `into`'s items are kept and changed in place where they are already that kind
+function value_into_list(into: Val, n: int) -> Val {
+  if into == null { return value_list() }
+  into.tag = 5
+  into.num = 0
+  into.txt = null
+  value_lists(into)
+  while len(into.kids) > n { List.pop(into.kids) }
+  return into
+}
+function value_into_ints(into: Val, xs: []int) -> Val {
+  let l = value_into_list(into, len(xs))
+  for i in 0 .. len(xs) {
+    let v = value_item(l, i, 1)
+    v.num = xs[i]
+  }
+  return l
+}
+function value_into_floats(into: Val, xs: []float) -> Val {
+  let l = value_into_list(into, len(xs))
+  for i in 0 .. len(xs) {
+    let v = value_item(l, i, 7)
+    v.num = float_bits(xs[i])
+  }
+  return l
+}
+function value_into_strs(into: Val, xs: []string) -> Val {
+  let l = value_into_list(into, len(xs))
+  for i in 0 .. len(xs) {
+    let v = value_item(l, i, 4)
+    v.txt = xs[i]
+  }
+  return l
+}
+function value_into_bools(into: Val, xs: []bool) -> Val {
+  let l = value_into_list(into, len(xs))
+  for i in 0 .. len(xs) {
+    let v = value_item(l, i, 3)
+    v.num = 0
+    if xs[i] { v.num = 1 }
+  }
+  return l
+}
 # a list or an object emptied in place, its room kept - for one filled again every frame
 function value_clear(v: Val) -> void {
   if v.kids == null { return }

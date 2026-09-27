@@ -10,7 +10,7 @@ export property UiClass {
   make: fn() -> pointer = null
   props: fn(pointer, Val) -> void = null
   model: fn(pointer, Val) -> Val = null   # fills the object it is given (the instance keeps one)
-  call: fn(pointer, string, Val) -> Val = null
+  call: fn(pointer, string, Val, Val) -> Val = null   # the last: where to write the answer, or null
   root: UiTpl = null            # the template, once read
   sheet: UiSheet = null
   seen_xml: string = ""         # the files as a developer's build last found them on disk

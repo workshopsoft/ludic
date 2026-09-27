@@ -12,6 +12,9 @@ export property UiPool {
   envs1: []UiEnv = null
   un: int = 0
   ue: int = 0
+  ups0: []UiPass = null         # a component root's passes (bd_pass_down)
+  ups1: []UiPass = null
+  uu: int = 0
   vals0: []Val = null           # what expressions work out while the screen is built (uv_new)
   vals1: []Val = null
   uv: int = 0
@@ -31,12 +34,15 @@ function pl_begin(ui_st: mut UiState, screen: string) -> void {
     p.envs1 = new []UiEnv
     p.vals0 = new []Val
     p.vals1 = new []Val
+    p.ups0 = new []UiPass
+    p.ups1 = new []UiPass
     push(ui_st.pl_pools, p)
   }
   p.gen = 1 - p.gen
   p.un = 0
   p.ue = 0
   p.uv = 0
+  p.uu = 0
   ui_st.pl_cur = p
 }
 # a node, blank, with its own lists (empty) - from the pool when a build is under way
@@ -121,4 +127,34 @@ function uv_bool(ui_st: mut UiState, b: bool) -> Val {
   }
   if b { return ui_st.uv_true }
   return ui_st.uv_false
+}
+# a pooled record as it is, for a call to write its answer into (a list keeps its items); null outside
+# a build, where what is answered may be kept
+function uv_hold(ui_st: mut UiState) -> Val {
+  let p = ui_st.pl_cur
+  if not ui_st.uv_on or p == null { return null }
+  var list = p.vals0
+  if p.gen == 1 { list = p.vals1 }
+  if p.uv < len(list) {
+    p.uv += 1
+    return list[p.uv - 1]
+  }
+  let v = Value.null()
+  push(list, v)
+  p.uv += 1
+  return v
+}
+function up_take(ui_st: mut UiState) -> UiPass {
+  let p = ui_st.pl_cur
+  if p == null { return new UiPass }
+  var list = p.ups0
+  if p.gen == 1 { list = p.ups1 }
+  if p.uu < len(list) {
+    p.uu += 1
+    return list[p.uu - 1]
+  }
+  let u = new UiPass
+  push(list, u)
+  p.uu += 1
+  return u
 }

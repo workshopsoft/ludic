@@ -51,7 +51,7 @@ function ev_call_with(ui_st: mut UiState, x: UiExpr, e: UiEnv, args: Val) -> Val
   var at = e
   while at != null {
     if at.inst != null {
-      let r = at.inst.cls.call(at.inst.ptr, x.s, args)
+      let r = at.inst.cls.call(at.inst.ptr, x.s, args, uv_hold(ui_st))
       if Value.kind(r) != 99 { return r }
     }
     at = at.parent
