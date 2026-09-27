@@ -24,3 +24,12 @@ export function thing_of_kind_all(things_st: ThingsState, kind: int, i: int) -> 
   if i < 0 or i >= len(rows) { return null }
   return things_st.th.tab.rec[rows[i]]
 }
+
+# the nearest active one of a kind (below 0: any) strictly within maxr of (x, z), or null
+export function thing_nearest_within(things_st: ThingsState, kind: int, x: float, z: float, maxr: float) -> Thing {
+  let tb = things_st.th.tab
+  var r = -1
+  if kind < 0 { r = tb_nearest(tb, things_st.th.grid, x, z, maxr, -1, 0) } else { r = tb_nearest_of(tb, things_st.th.grid, things_st.th.kinds, x, z, maxr, kind) }
+  if r < 0 { return null }
+  return tb.rec[r]
+}
