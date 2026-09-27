@@ -55,13 +55,15 @@ function el_pct(v: Val) -> float {
   return 0.0
 }
 # the number at the front of `12.5px`
-function el_num(s: string) -> float {
+function el_num(s: string) -> float { return el_num_in(s, 0, len(s)) }
+# the number in s from..to, read where it stands
+function el_num_in(s: string, from: int, to: int) -> float {
   var f = 0.0
   var unit = 0.0
   var neg = false
-  for i in 0 .. len(s) {
+  for i in from .. to {
     let c = s[i]
-    if c == 45 and i == 0 { neg = true } else if c == 46 { unit = 0.1 } else if c >= 48 and c <= 57 {
+    if c == 45 and i == from { neg = true } else if c == 46 { unit = 0.1 } else if c >= 48 and c <= 57 {
       if unit > 0.0 {
         f = f + float(c - 48) * unit
         unit = unit * 0.1

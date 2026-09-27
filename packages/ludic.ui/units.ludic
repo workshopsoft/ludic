@@ -1,6 +1,12 @@
 # units.ludic - lengths in px (the renderer's scale), em (the font size here), rem (the root's),
 # vw and vh (the screen's), and custom properties: --name set on an element, read by var(--name)
 # in it and everything inside it
+# the px of one em for the element being styled (a font size's em is its parent's)
+function el_em(ui_st: UiState) -> float {
+  if ui_st.el_cur == null { return el_px(ui_st, 16.0) }
+  if ui_st.el_key == "size" and ui_st.el_cur.parent != null { return cs_fs(ui_st, ui_st.el_cur.parent) }
+  return cs_fs(ui_st, ui_st.el_cur)
+}
 function el_unit(ui_st: UiState, s: string) -> float {
   let f = el_num(s)
   let n = len(s)

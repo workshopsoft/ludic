@@ -39,7 +39,7 @@ function post_free(render3d_st: mut Render3dState) -> void {
 # Multisampled scene: 1 (temporal AA alone), 2 or 4, remade at once. Vulkan draws it into
 # multisampled renderbuffers and resolves them in a pass; a device that cannot take the count asked
 # for gets the most it can (gpu_msaa_max).
-function post_msaa_live(render3d_st: Render3dState) -> bool { return gpu_is_gl(render3d_st) or gpu_msaa_max(render3d_st) > 1 }
+function post_msaa_live(render3d_st: Render3dState) -> bool { return gpu_msaa_max(render3d_st) > 1 }
 function post_set_msaa(render3d_st: mut Render3dState, n: int) -> void {
   var want = n
   if want < 1 { want = 1 }

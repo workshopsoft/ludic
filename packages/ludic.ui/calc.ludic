@@ -7,6 +7,8 @@ function ca_eval(ui_st: mut UiState, s: string) -> bool {
   ui_st.ca_s = s
   ui_st.ca_i = 0
   ui_st.ca_bad = ""
+  ui_st.ca_used = 0                 # this evaluation's terms come from the pool, from the start
+  ui_st.ca_depth = 0
   let v = ca_factor(ui_st)
   ca_ws(ui_st)
   if ui_st.ca_bad == "" and ui_st.ca_i < len(ui_st.ca_s) { ui_st.ca_bad = "nothing after its closing )" }
@@ -42,10 +44,10 @@ function ca_sum(ui_st: mut UiState) -> CaVal {
   }
   return a
 }
-function ca_add(ui_st: UiState, a: CaVal, b: CaVal, minus: bool) -> CaVal {
+function ca_add(ui_st: mut UiState, a: CaVal, b: CaVal, minus: bool) -> CaVal {
   var sign = 1.0
   if minus { sign = -1.0 }
-  let r = new CaVal
+  let r = ca_new(ui_st)
   if a.bare and b.bare {
     r.n = a.n + sign * b.n
     return r
@@ -56,10 +58,22 @@ function ca_add(ui_st: UiState, a: CaVal, b: CaVal, minus: bool) -> CaVal {
   return r
 }
 # a bare number beside a length is a length in px
-function ca_len(ui_st: UiState, a: CaVal) -> CaVal {
+function ca_len(ui_st: mut UiState, a: CaVal) -> CaVal {
   if not a.bare { return a }
-  let r = new CaVal
+  let r = ca_new(ui_st)
   r.bare = false
   r.px = el_px(ui_st, a.n)
+  return r
+}
+# a term, blank, from the pool: an evaluation is over before the next begins, and what it works out is
+# copied into ca_px / ca_pct, so its records are used again by the next one (never made a frame)
+function ca_new(ui_st: mut UiState) -> CaVal {
+  if ui_st.ca_used >= len(ui_st.ca_pool) { push(ui_st.ca_pool, new CaVal) }
+  let r = ui_st.ca_pool[ui_st.ca_used]
+  ui_st.ca_used += 1
+  r.px = 0.0
+  r.pct = 0.0
+  r.n = 0.0
+  r.bare = true
   return r
 }

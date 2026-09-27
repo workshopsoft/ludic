@@ -5,21 +5,21 @@ function ui_eval(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   if x.op == X_MEMBER {
     let o = ui_eval(ui_st, x.a, e)
     if Value.kind(o) == 6 and Value.has(o, x.s) != 0 { return Value.get(o, x.s) }
-    if Value.kind(o) == 5 and x.s == "length" { return Value.int(Value.count(o)) }
+    if Value.kind(o) == 5 and x.s == "length" { return uv_int(ui_st, Value.count(o)) }
     ui_err(ui_st, `.{x.s}: there is no such field`)
     return Value.null()
   }
   if x.op == X_INDEX { return Value.at(ui_eval(ui_st, x.a, e), Value.as_int(ui_eval(ui_st, x.b, e))) }
   if x.op == X_CALL { return ev_call(ui_st, x, e) }
-  if x.op == X_NOT { return vl_bool(not vl_truthy(ui_eval(ui_st, x.a, e))) }
-  if x.op == X_NEG { return vl_arith("-", Value.int(0), ui_eval(ui_st, x.a, e)) }
+  if x.op == X_NOT { return vl_bool(ui_st, not vl_truthy(ui_eval(ui_st, x.a, e))) }
+  if x.op == X_NEG { return vl_arith(ui_st, "-", mm_ival(ui_st, 0), ui_eval(ui_st, x.a, e)) }
   if x.op == X_AND {
-    if not vl_truthy(ui_eval(ui_st, x.a, e)) { return vl_bool(false) }
-    return vl_bool(vl_truthy(ui_eval(ui_st, x.b, e)))
+    if not vl_truthy(ui_eval(ui_st, x.a, e)) { return vl_bool(ui_st, false) }
+    return vl_bool(ui_st, vl_truthy(ui_eval(ui_st, x.b, e)))
   }
   if x.op == X_OR {
-    if vl_truthy(ui_eval(ui_st, x.a, e)) { return vl_bool(true) }
-    return vl_bool(vl_truthy(ui_eval(ui_st, x.b, e)))
+    if vl_truthy(ui_eval(ui_st, x.a, e)) { return vl_bool(ui_st, true) }
+    return vl_bool(ui_st, vl_truthy(ui_eval(ui_st, x.b, e)))
   }
   if x.op == X_COND {
     if vl_truthy(ui_eval(ui_st, x.a, e)) { return ui_eval(ui_st, x.b, e) }
@@ -27,10 +27,10 @@ function ui_eval(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   }
   if x.op == X_TEXT {
     var out = ""
-    for i in 0 .. len(x.args) { out = out + vl_text(ui_eval(ui_st, x.args[i], e)) }
-    return Value.str(out)
+    for i in 0 .. len(x.args) { out = out + vl_text_u(ui_st, ui_eval(ui_st, x.args[i], e)) }
+    return uv_str(ui_st, out)
   }
-  return vl_binary(x.s, ui_eval(ui_st, x.a, e), ui_eval(ui_st, x.b, e))
+  return vl_binary(ui_st, x.s, ui_eval(ui_st, x.a, e), ui_eval(ui_st, x.b, e))
 }
 # a call: len() and range() are the template's own, anything else is the view's
 function ev_call(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
@@ -46,10 +46,10 @@ function ev_call(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
 }
 # the call itself, its arguments evaluated; a callee reads them and keeps none
 function ev_call_with(ui_st: mut UiState, x: UiExpr, e: UiEnv, args: Val) -> Val {
-  if x.s == "len" and len(x.args) == 1 { return Value.int(Value.count(Value.at(args, 0))) }
+  if x.s == "len" and len(x.args) == 1 { return uv_int(ui_st, Value.count(Value.at(args, 0))) }
   if x.s == "range" and len(x.args) == 1 {
-    let out = Value.list()
-    for i in 0 .. Value.as_int(Value.at(args, 0)) { Value.add(out, Value.int(i)) }
+    let out = uv_list(ui_st)
+    for i in 0 .. Value.as_int(Value.at(args, 0)) { Value.add(out, uv_int(ui_st, i)) }
     return out
   }
   var at = e

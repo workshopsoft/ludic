@@ -1,0 +1,26 @@
+# capture.ludic - someone else wants to know where the providers point (a guide's arrow): until the
+# end every mark is theirs, whatever the tier, and the frame's list is left alone
+export function compass_capture_begin(compass_st: mut CompassState) -> void {
+  if compass_st.cmp_caught == null {
+    compass_st.cmp_caught = new []CompassMark
+    compass_st.cmp_cpool = new []CompassMark
+  }
+  List.clear(compass_st.cmp_caught)
+  compass_st.cmp_cused = 0
+  compass_st.cmp_capturing = true
+}
+
+# what was caught: the compass's own list and marks, good until the next capture begins
+export function compass_capture_end(compass_st: mut CompassState) -> []CompassMark {
+  compass_st.cmp_capturing = false
+  if compass_st.cmp_caught == null { compass_st.cmp_caught = new []CompassMark }
+  return compass_st.cmp_caught
+}
+
+# the capture pool's next mark, filled (one made only when the pool is short)
+function cmp_catch(compass_st: mut CompassState, x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> CompassMark {
+  if compass_st.cmp_cpool == null { compass_st.cmp_cpool = new []CompassMark }
+  if compass_st.cmp_cused >= len(compass_st.cmp_cpool) { push(compass_st.cmp_cpool, new CompassMark) }
+  compass_st.cmp_cused += 1
+  return cmp_fill(compass_st.cmp_cpool[compass_st.cmp_cused - 1], x, z, icon, colour, tier, prio, label)
+}

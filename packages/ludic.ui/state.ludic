@@ -10,7 +10,10 @@ function st_for(ui_st: mut UiState, key: string, t: UiTpl, e: UiEnv) -> Val {
     if ui_st.st_keys[i] == key { return ui_st.st_vals[i] }
   }
   let o = Value.object()
+  let was = ui_st.uv_on             # a state's start is kept for good: its values are never pooled
+  ui_st.uv_on = false
   for i in 0 .. len(decl.keys) { Value.put(o, decl.keys[i], ui_eval(ui_st, decl.vals[i], e)) }
+  ui_st.uv_on = was
   push(ui_st.st_keys, key)
   push(ui_st.st_vals, o)
   return o

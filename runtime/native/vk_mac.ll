@@ -27,6 +27,7 @@ declare i32 @lvk_bind()
 @.lvk_fmt = private unnamed_addr constant [25 x i8] c"%s/lib/libvulkan.1.dylib\00"
 @.lvk_fmtm = private unnamed_addr constant [25 x i8] c"%s/lib/libMoltenVK.dylib\00"
 @.lvk_m0 = private unnamed_addr constant [49 x i8] c"@executable_path/../Frameworks/libMoltenVK.dylib\00"
+@.lvk_mr = private unnamed_addr constant [25 x i8] c"@rpath/libMoltenVK.dylib\00"
 @.lvk_m1 = private unnamed_addr constant [35 x i8] c"@executable_path/libMoltenVK.dylib\00"
 @.lvk_m2 = private unnamed_addr constant [18 x i8] c"libMoltenVK.dylib\00"
 @lvk_lib  = internal global ptr null
@@ -40,8 +41,9 @@ entry:
 
 ; the candidates in order: a Vulkan loader first (the SDK's, so the validation layer can be
 ; stacked in development), then MoltenVK itself, which exports every vk* entry point and is what
-; a bundle ships in Contents/Frameworks - no loader, no ICD json.
-@lvk_paths = internal constant [7 x ptr] [ptr @.lvk_c0, ptr @.lvk_c1, ptr @.lvk_c2, ptr @.lvk_c3, ptr @.lvk_m0, ptr @.lvk_m1, ptr @.lvk_m2]
+; a bundle ships in Contents/Frameworks - no loader, no ICD json - or, found through the
+; executable's rpath, what ludic.render3d carries (lib/macos-arm64) for every other build.
+@lvk_paths = internal constant [8 x ptr] [ptr @.lvk_c0, ptr @.lvk_c1, ptr @.lvk_c2, ptr @.lvk_c3, ptr @.lvk_m0, ptr @.lvk_mr, ptr @.lvk_m1, ptr @.lvk_m2]
 
 define i32 @lvk_open() {
 entry:
@@ -50,14 +52,14 @@ entry:
   br i1 %open, label %ok, label %loop
 loop:
   %i = phi i32 [ 0, %entry ], [ %i1, %next ]
-  %slot = getelementptr [7 x ptr], ptr @lvk_paths, i32 0, i32 %i
+  %slot = getelementptr [8 x ptr], ptr @lvk_paths, i32 0, i32 %i
   %path = load ptr, ptr %slot
   %h = call ptr @lvk_try(ptr %path)
   %miss = icmp eq ptr %h, null
   br i1 %miss, label %next, label %got
 next:
   %i1 = add i32 %i, 1
-  %more = icmp slt i32 %i1, 7
+  %more = icmp slt i32 %i1, 8
   br i1 %more, label %loop, label %sdk
 got:
   store ptr %h, ptr @lvk_lib

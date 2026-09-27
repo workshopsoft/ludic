@@ -12,6 +12,9 @@ export property UiPool {
   envs1: []UiEnv = null
   un: int = 0
   ue: int = 0
+  vals0: []Val = null           # what expressions work out while the screen is built (uv_new)
+  vals1: []Val = null
+  uv: int = 0
 }
 # a build of `screen` begins: its other generation is handed out again from the start
 function pl_begin(ui_st: mut UiState, screen: string) -> void {
@@ -26,11 +29,14 @@ function pl_begin(ui_st: mut UiState, screen: string) -> void {
     p.nodes1 = new []UiNode
     p.envs0 = new []UiEnv
     p.envs1 = new []UiEnv
+    p.vals0 = new []Val
+    p.vals1 = new []Val
     push(ui_st.pl_pools, p)
   }
   p.gen = 1 - p.gen
   p.un = 0
   p.ue = 0
+  p.uv = 0
   ui_st.pl_cur = p
 }
 # a node, blank, with its own lists (empty) - from the pool when a build is under way
@@ -81,4 +87,38 @@ function env_fresh() -> UiEnv {
   e.vals = new []Val
   e.on_envs = new []UiEnv
   return e
+}
+# a Value an expression works out while a screen is built: from the pool while the build runs (none
+# outlives the screen's next build but one, like its nodes), made as ever outside one - an action's
+# `set`, a <state>'s start, what a handler is given are kept, so they are never pooled
+function uv_new(ui_st: mut UiState, tag: int) -> Val {
+  let p = ui_st.pl_cur
+  if not ui_st.uv_on or p == null { return Value.become(Value.null(), tag) }
+  var list = p.vals0
+  if p.gen == 1 { list = p.vals1 }
+  if p.uv < len(list) {
+    let v = list[p.uv]
+    p.uv += 1
+    return Value.become(v, tag)
+  }
+  let v = Value.become(Value.null(), tag)
+  push(list, v)
+  p.uv += 1
+  return v
+}
+function uv_int(ui_st: mut UiState, n: int) -> Val {
+  if n >= 0 and n < 1024 { return mm_ival(ui_st, n) }
+  return Value.be_int(uv_new(ui_st, 1), n)
+}
+function uv_float(ui_st: mut UiState, x: float) -> Val { return Value.be_float(uv_new(ui_st, 7), x) }
+function uv_str(ui_st: mut UiState, s: string) -> Val { return Value.be_str(uv_new(ui_st, 4), s) }
+function uv_list(ui_st: mut UiState) -> Val { return uv_new(ui_st, 5) }
+# true and false, one of each for good: read them, never change them
+function uv_bool(ui_st: mut UiState, b: bool) -> Val {
+  if ui_st.uv_true == null {
+    ui_st.uv_true = Value.bool(1)
+    ui_st.uv_false = Value.bool(0)
+  }
+  if b { return ui_st.uv_true }
+  return ui_st.uv_false
 }

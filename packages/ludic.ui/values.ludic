@@ -1,9 +1,6 @@
 # values.ludic - arithmetic, comparison, truth and text over a template's values. A sum of two
 # whole numbers stays whole; anything with a fraction in it is a float; a string in a sum joins.
-function vl_bool(b: bool) -> Val {
-  if b { return Value.bool(1) }
-  return Value.bool(0)
-}
+function vl_bool(ui_st: mut UiState, b: bool) -> Val { return uv_bool(ui_st, b) }
 function vl_num(v: Val) -> bool { return Value.kind(v) == 1 or Value.kind(v) == 2 or Value.kind(v) == 7 }
 function vl_truthy(v: Val) -> bool {
   let k = Value.kind(v)
@@ -29,25 +26,25 @@ function vl_text(v: Val) -> string {
   }
   return Json.encode(v)
 }
-function vl_arith(op: string, a: Val, b: Val) -> Val {
+function vl_arith(ui_st: mut UiState, op: string, a: Val, b: Val) -> Val {
   if Value.kind(a) == 1 and Value.kind(b) == 1 {
     let x = Value.as_int(a)
     let y = Value.as_int(b)
-    if op == "+" { return Value.int(x + y) }
-    if op == "-" { return Value.int(x - y) }
-    if op == "*" { return Value.int(x * y) }
-    if y == 0 { return Value.int(0) }
-    if op == "/" { return Value.int(x / y) }
-    return Value.int(x % y)
+    if op == "+" { return uv_int(ui_st, x + y) }
+    if op == "-" { return uv_int(ui_st, x - y) }
+    if op == "*" { return uv_int(ui_st, x * y) }
+    if y == 0 { return uv_int(ui_st, 0) }
+    if op == "/" { return uv_int(ui_st, x / y) }
+    return uv_int(ui_st, x % y)
   }
   let x = Value.as_float(a)
   let y = Value.as_float(b)
-  if op == "+" { return Value.float(x + y) }
-  if op == "-" { return Value.float(x - y) }
-  if op == "*" { return Value.float(x * y) }
-  if y == 0.0 { return Value.float(0.0) }
-  if op == "/" { return Value.float(x / y) }
-  return Value.float(x - y * float(int(x / y)))
+  if op == "+" { return uv_float(ui_st, x + y) }
+  if op == "-" { return uv_float(ui_st, x - y) }
+  if op == "*" { return uv_float(ui_st, x * y) }
+  if y == 0.0 { return uv_float(ui_st, 0.0) }
+  if op == "/" { return uv_float(ui_st, x / y) }
+  return uv_float(ui_st, x - y * float(int(x / y)))
 }
 function vl_equal(a: Val, b: Val) -> bool {
   if vl_num(a) and vl_num(b) { return Value.as_float(a) == Value.as_float(b) }
@@ -56,17 +53,17 @@ function vl_equal(a: Val, b: Val) -> bool {
   if Value.kind(a) == 3 { return Value.as_int(a) == Value.as_int(b) }
   return Value.kind(a) == 0
 }
-function vl_binary(op: string, a: Val, b: Val) -> Val {
-  if op == "==" { return vl_bool(vl_equal(a, b)) }
-  if op == "!=" { return vl_bool(not vl_equal(a, b)) }
-  if op == "+" and (Value.kind(a) == 4 or Value.kind(b) == 4) { return Value.str(vl_text(a) + vl_text(b)) }
-  if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" { return vl_arith(op, a, b) }
+function vl_binary(ui_st: mut UiState, op: string, a: Val, b: Val) -> Val {
+  if op == "==" { return vl_bool(ui_st, vl_equal(a, b)) }
+  if op == "!=" { return vl_bool(ui_st, not vl_equal(a, b)) }
+  if op == "+" and (Value.kind(a) == 4 or Value.kind(b) == 4) { return uv_str(ui_st, vl_text_u(ui_st, a) + vl_text_u(ui_st, b)) }
+  if op == "+" or op == "-" or op == "*" or op == "/" or op == "%" { return vl_arith(ui_st, op, a, b) }
   let x = Value.as_float(a)
   let y = Value.as_float(b)
-  if op == "<" { return vl_bool(x < y) }
-  if op == "<=" { return vl_bool(x <= y) }
-  if op == ">" { return vl_bool(x > y) }
-  return vl_bool(x >= y)
+  if op == "<" { return vl_bool(ui_st, x < y) }
+  if op == "<=" { return vl_bool(ui_st, x <= y) }
+  if op == ">" { return vl_bool(ui_st, x > y) }
+  return vl_bool(ui_st, x >= y)
 }
 # a value as text, whatever kind it is: a component's string prop given a number (label="{3}") reads
 # "3", not nothing

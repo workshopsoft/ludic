@@ -2,6 +2,7 @@
 # a Ludic component shown as a screen: an instance at the top, keyed by its name
 function fr_class_nodes(ui_st: mut UiState, cls: UiClass) -> UiNode {
   pl_begin(ui_st, cls.name)
+  ui_st.uv_on = true
   lc_begin(ui_st)
   ui_st.in_build += 1
   ui_st.ui_view = null
@@ -26,6 +27,7 @@ function fr_class_nodes(ui_st: mut UiState, cls: UiClass) -> UiNode {
   bd_class(ui_st, use, e, cls.name, root.children)
   in_sweep(ui_st, cls.name)
   cs_tree(ui_st, root)
+  ui_st.uv_on = false
   return root
 }
 function fr_root(ui_st: mut UiState, key: string, sheet: UiSheet) -> UiNode {
