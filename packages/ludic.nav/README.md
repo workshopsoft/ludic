@@ -48,6 +48,7 @@ import "ludic.nav"
 | `nav_save_file(kind, path)`, `nav_load_file(kind, path)`, `nav_reset()` | a baked mesh written and read; every mesh let go |
 | `nav_nearest(kind, x, y, z) -> bool`, `nav_near_x/y/z()` | the nearest walkable point within a couple of metres |
 | `nav_path(kind, filter, sx, sy, sz, ex, ey, ez) -> int`, `nav_corners()`, `nav_corner_x/y/z(i)`, `nav_partial(kind)` | a way as corners |
+| `nav_next_corner(kind, filter, sx, sy, sz, ex, ey, ez) -> bool` | the next corner of that way, read back as the nearest point is (a walker's one question a frame) |
 | `nav_straight(kind, filter, sx, sy, sz, ex, ez) -> bool` | does the straight line stay walkable |
 | `nav_random_near(kind, filter, x, y, z, r, seed) -> bool`, `nav_near_x/y/z()` | a reachable point about r away, from the caller's seed |
 | `nav_area_cost(kind, filter, area, cost)` | how dear a kind of ground is to cross by that filter |
