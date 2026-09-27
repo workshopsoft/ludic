@@ -45,7 +45,7 @@ function bd_pass_down(ui_st: mut UiState, n: UiNode, k: UiTpl, e: UiEnv) -> void
   }
   let id = tpl_attr(k, "id")
   if id != null { n.id = ui_eval_text(ui_st, id, e) }
-  let up = new UiPass
+  let up = up_take(ui_st)
   up.sheet = k.sheet
   up.style = k.style
   up.env = e

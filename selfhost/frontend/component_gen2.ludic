@@ -41,6 +41,18 @@ function cm_model_src(c: int, px: pointer, rec: pointer, head: Node) -> pointer 
   }
   return src + "  return o\n}\n"
 }
+# what a call answers, written into `into` (ludic.ui's pooled record while it builds, null otherwise)
+function cm_into(c: int, ty: pointer, x: pointer, head: Node) -> pointer {
+  if (ty == "int") { return `value_into_int(into, {x})` }
+  if (ty == "float") { return `value_into_float(into, {x})` }
+  if (ty == "string") { return `value_into_str(into, {x})` }
+  if (ty == "bool") { return `value_into_bool(into, {x})` }
+  if (ty == "[]int") { return `value_into_ints(into, {x})` }
+  if (ty == "[]float") { return `value_into_floats(into, {x})` }
+  if (ty == "[]string") { return `value_into_strs(into, {x})` }
+  if (ty == "[]bool") { return `value_into_bools(into, {x})` }
+  return cm_to(c, ty, x, head)
+}
 function cm_set(c: int, ty: pointer, k: pointer, x: pointer, head: Node) -> pointer {
   if (ty == "int") { return `  value_set_int(o, "{k}", {x})\n` }
   if (ty == "float") { return `  value_set_float(o, "{k}", {x})\n` }
@@ -61,7 +73,7 @@ function cm_to(c: int, ty: pointer, x: pointer, head: Node) -> pointer {
 # call(name, args): a function or an event by name, or "set:NAME" for a state the template sets.
 # A name it does not know answers a Value of kind 99, which the runtime reports.
 function cm_call_src(c: int, px: pointer, rec: pointer, head: Node) -> pointer {
-  var src = `function {px}call(p: pointer, name: string, args: Val) -> Val {{\n  let s: {rec} = p\n`
+  var src = `function {px}call(p: pointer, name: string, args: Val, into: Val) -> Val {{\n  let s: {rec} = p\n`
   let calls = g_cm_calls[c]
   var i = 0
   while i < len(calls) {
@@ -75,10 +87,7 @@ function cm_call_src(c: int, px: pointer, rec: pointer, head: Node) -> pointer {
     }
     src = src + `  if name == "{g_cm_cnames[c][i]}" {{\n`
     let call = f.s + "(" + args + ")"
-    if f.ty == "void" { src = src + `    {call}\n    return value_null()\n` } else {
-      let back = cm_to(c, f.ty, call, head)
-      src = src + `    return {back}\n`
-    }
+    if f.ty == "void" { src = src + `    {call}\n    return value_into_null(into)\n` } else { src = src + `    return {cm_into(c, f.ty, call, head)}\n` }
     src = src + "  }\n"
     i += 1
   }
@@ -87,11 +96,11 @@ function cm_call_src(c: int, px: pointer, rec: pointer, head: Node) -> pointer {
     if not g_cm_prop[c][i] {
       let k = g_cm_keep[c][i]
       let got = cm_from(c, g_cm_keep_ty[c][i], "value_at(args, 0)")
-      src = src + `  if name == "set:{k}" {{\n    s.{k} = {got}\n    return value_null()\n  }}\n`
+      src = src + `  if name == "set:{k}" {{\n    s.{k} = {got}\n    return value_into_null(into)\n  }}\n`
     }
     i += 1
   }
-  return src + "  return value_new(99)\n}\n"
+  return src + "  return value_into(into, 99)\n}\n"
 }
 # a parameter out of the template's argument list
 function cm_arg(c: int, p: Node, i: int) -> pointer {
