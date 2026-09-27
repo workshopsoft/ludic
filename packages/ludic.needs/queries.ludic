@@ -1,13 +1,13 @@
 # queries.ludic - what the world asks the body
-export function needs_level(needs_st: mut NeedsState, k: int) -> float {
+export function needs_level(needs_st: NeedsState, k: int) -> float {
   if not nd_ok(k) { return 0.0 }
   return nd_lv(needs_st)[k]
 }
 
-export function needs_warmth(needs_st: mut NeedsState) -> float { return nd_lv(needs_st)[NEED_WARMTH] }
-export function needs_food(needs_st: mut NeedsState) -> float { return nd_lv(needs_st)[NEED_FOOD] }
-export function needs_water(needs_st: mut NeedsState) -> float { return nd_lv(needs_st)[NEED_WATER] }
-export function needs_energy(needs_st: mut NeedsState) -> float { return nd_lv(needs_st)[NEED_ENERGY] }
+export function needs_warmth(needs_st: NeedsState) -> float { return nd_lv(needs_st)[NEED_WARMTH] }
+export function needs_food(needs_st: NeedsState) -> float { return nd_lv(needs_st)[NEED_FOOD] }
+export function needs_water(needs_st: NeedsState) -> float { return nd_lv(needs_st)[NEED_WATER] }
+export function needs_energy(needs_st: NeedsState) -> float { return nd_lv(needs_st)[NEED_ENERGY] }
 
 # seconds left before a collapse (0: no countdown), and the need it is for
 export function needs_last_legs(needs_st: NeedsState) -> float { return needs_st.nd_legs }
@@ -15,7 +15,7 @@ export function needs_last_need(needs_st: NeedsState) -> int { return needs_st.n
 export function needs_collapses(needs_st: NeedsState) -> int { return needs_st.nd_collapses }
 
 # the walk's pace, times: the ramp of each need, and 0.6 more on last legs
-export function needs_pace(needs_st: mut NeedsState) -> float {
+export function needs_pace(needs_st: NeedsState) -> float {
   let lv = nd_lv(needs_st)
   var m = nd_pace(lv[NEED_WARMTH]) * nd_pace(lv[NEED_FOOD])
   if NeedsWorld.thirst() { m = m * nd_pace(lv[NEED_WATER]) }
@@ -24,13 +24,13 @@ export function needs_pace(needs_st: mut NeedsState) -> float {
 }
 
 # running needs legs, calories and a body that is not already in trouble
-export function needs_can_run(needs_st: mut NeedsState) -> bool {
+export function needs_can_run(needs_st: NeedsState) -> bool {
   let lv = nd_lv(needs_st)
   return lv[NEED_ENERGY] > 8.0 and lv[NEED_FOOD] > 20.0 and lv[NEED_WARMTH] > 20.0 and lv[NEED_WATER] > 20.0
 }
 
 # the lowest of the four
-export function needs_lowest(needs_st: mut NeedsState) -> float {
+export function needs_lowest(needs_st: NeedsState) -> float {
   let lv = nd_lv(needs_st)
   return Math.min(Math.min(lv[NEED_WARMTH], lv[NEED_FOOD]), Math.min(lv[NEED_WATER], lv[NEED_ENERGY]))
 }

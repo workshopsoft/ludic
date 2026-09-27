@@ -1,10 +1,10 @@
 # run.ludic - `gh` game hours of whatever the body is doing, taken out of the four bars
-function nd_add(needs_st: mut NeedsState, k: int, d: float) -> void {
+function nd_add(needs_st: NeedsState, k: int, d: float) -> void {
   let lv = nd_lv(needs_st)
   lv[k] = Math.clamp(lv[k] + d, 0.0, 100.0)
 }
 
-export function needs_run(needs_st: mut NeedsState, gh: float) -> void {
+export function needs_run(needs_st: NeedsState, gh: float) -> void {
   let a = NeedsWorld.activity()
   nd_add(needs_st, NEED_FOOD, (NeedsWorld.bonus(NEED_FOOD) - nd_food_rate(a) * NeedsWorld.drain(NEED_FOOD)) * gh)
   if NeedsWorld.thirst() {

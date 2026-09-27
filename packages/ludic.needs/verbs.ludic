@@ -1,27 +1,27 @@
 # verbs.ludic - the only way the needs change from outside; each is held to 0..100
 # `n` more of a need (less, when negative): a meal, a drink, a shove from a bear
-export function needs_feed(needs_st: mut NeedsState, k: int, n: float) -> void {
+export function needs_feed(needs_st: NeedsState, k: int, n: float) -> void {
   if nd_ok(k) { nd_add(needs_st, k, n) }
 }
 
 # a meal: food, water and energy at once
-export function needs_meal(needs_st: mut NeedsState, food: float, water: float, energy: float) -> void {
+export function needs_meal(needs_st: NeedsState, food: float, water: float, energy: float) -> void {
   nd_add(needs_st, NEED_FOOD, food)
   nd_add(needs_st, NEED_WATER, water)
   nd_add(needs_st, NEED_ENERGY, energy)
 }
 
-export function needs_set(needs_st: mut NeedsState, k: int, v: float) -> void {
+export function needs_set(needs_st: NeedsState, k: int, v: float) -> void {
   if nd_ok(k) { nd_lv(needs_st)[k] = Math.clamp(v, 0.0, 100.0) }
 }
 
 # at least `v`
-export function needs_floor(needs_st: mut NeedsState, k: int, v: float) -> void {
+export function needs_floor(needs_st: NeedsState, k: int, v: float) -> void {
   if nd_ok(k) and nd_lv(needs_st)[k] < v { needs_set(needs_st, k, v) }
 }
 
 # a night: rested to what it was worth, hungrier and thirstier for it, but never empty
-export function needs_after_night(needs_st: mut NeedsState, rested: float, food_lost: float, water_lost: float) -> void {
+export function needs_after_night(needs_st: NeedsState, rested: float, food_lost: float, water_lost: float) -> void {
   let lv = nd_lv(needs_st)
   lv[NEED_ENERGY] = Math.clamp(rested, 0.0, 100.0)
   lv[NEED_FOOD] = Math.max(lv[NEED_FOOD] - food_lost, 6.0)

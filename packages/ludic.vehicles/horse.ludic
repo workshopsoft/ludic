@@ -5,7 +5,7 @@ const VE_HORSE_GALLOP: float = 11.0
 const VE_HORSE_ACC: float = 4.0
 const VE_HORSE_TURN: float = 1.6
 
-function ve_ride_horse(vehicles_st: mut VehiclesState, v: Vehicle, ix: float, iz: float, run: bool, dt: float) -> void {
+function ve_ride_horse(vehicles_st: VehiclesState, v: Vehicle, ix: float, iz: float, run: bool, dt: float) -> void {
   var top = VE_HORSE_WALK
   if run and v.fuel > 5.0 { top = VE_HORSE_GALLOP }
   v.speed = v.speed + Math.clamp(iz * top - v.speed, -VE_HORSE_ACC * dt, VE_HORSE_ACC * dt)
@@ -21,7 +21,7 @@ function ve_ride_horse(vehicles_st: mut VehiclesState, v: Vehicle, ix: float, iz
 }
 
 # a horse only on dry ground, up a walkable rise, clear of what is in its way
-function ve_travel(vehicles_st: mut VehiclesState, v: Vehicle, nx: float, nz: float, d: float) -> void {
+function ve_travel(vehicles_st: VehiclesState, v: Vehicle, nx: float, nz: float, d: float) -> void {
   let nh = VehicleWorld.ground(nx, nz)
   var ok = true
   if nh < VehicleWorld.water(nx, nz) + 0.4 { ok = false }

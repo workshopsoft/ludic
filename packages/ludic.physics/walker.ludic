@@ -26,7 +26,7 @@ function ph_walker(physics_st: PhysicsState, id: int) -> pointer {
 # r wide and h tall, feet at (x, y, z), mass in kg; -1 with no world
 export function phys_walker_add(physics_st: mut PhysicsState, r: float, h: float, x: float, y: float, z: float, max_slope: float, mass: float) -> int {
   if physics_st.ph_world == null { return -1 }
-  ph_buffers(physics_st)
+  ph_buffers()
   push(physics_st.ph_walkers, jph_char_new(physics_st.ph_world, r, h, x, y, z, max_slope, mass))
   return len(physics_st.ph_walkers) - 1
 }
@@ -56,7 +56,7 @@ export function phys_walker_step(physics_st: mut PhysicsState, id: int, dt: floa
 export function phys_walker_pose(physics_st: mut PhysicsState, id: int) -> PhysWalk {
   let k = ph_walker(physics_st, id)
   if k == null { return null }
-  ph_buffers(physics_st)
+  ph_buffers()
   jph_char_read(k, physics_st.ph_vals)
   let v = physics_st.ph_vals
   let p = new PhysWalk

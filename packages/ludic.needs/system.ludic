@@ -5,7 +5,7 @@ function needs_tick(needs_st: mut NeedsState, t: Tick) -> void {
   needs_watch(needs_st, t.dt)
 }
 
-export function needs_save(needs_st: mut NeedsState) -> Val {
+export function needs_save(needs_st: NeedsState) -> Val {
   let v = Value.object()
   sv_put_float(v, "warmth", needs_warmth(needs_st))
   sv_put_float(v, "food", needs_food(needs_st))

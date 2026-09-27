@@ -9,5 +9,8 @@ export function shop_reset(shop_st: mut ShopState) -> void {
 export function shop_system() -> System {
   let s = system_new("shop", PH_COMMIT)
   s.reset = fn shop_reset
+  s.tick = fn shop_tick
   return s
 }
+# the week's demand, rolled when the week turns - the questions read it
+function shop_tick(shop_st: mut ShopState, t: Tick) -> void { shop_roll(shop_st) }

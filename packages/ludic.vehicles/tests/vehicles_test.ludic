@@ -135,7 +135,7 @@ program VehiclesTest {
     vehicles_test_st.swell = 0.0
     vehicles_test_st.wind = 0.0
   }
-  function facts(vehicles_st: mut VehiclesState) -> []VehicleFact { return q_drain(vehicle_facts(vehicles_st)) }
+  function facts(vehicles_st: VehiclesState) -> []VehicleFact { return q_drain(vehicle_facts(vehicles_st)) }
   function count(fs: []VehicleFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

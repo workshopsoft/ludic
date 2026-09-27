@@ -46,7 +46,7 @@ export function phys_remove(physics_st: mut PhysicsState, id: int) -> void {
 # where a body is, how it is turned and how fast it goes; null when there is no such body
 export function phys_pose(physics_st: mut PhysicsState, id: int) -> PhysPose {
   if physics_st.ph_world == null { return null }
-  ph_buffers(physics_st)
+  ph_buffers()
   if jph_body_read(physics_st.ph_world, id, physics_st.ph_vals) != 0 { return null }
   let v = physics_st.ph_vals
   let p = new PhysPose
@@ -77,7 +77,7 @@ export function phys_angular_impulse(physics_st: mut PhysicsState, id: int, x: f
 # how fast it turns about y, radians a second
 export function phys_spin_y(physics_st: mut PhysicsState, id: int) -> float {
   if physics_st.ph_world == null { return 0.0 }
-  ph_buffers(physics_st)
+  ph_buffers()
   jph_body_spin(physics_st.ph_world, id, physics_st.ph_vals)
   return physics_st.ph_vals[1]
 }

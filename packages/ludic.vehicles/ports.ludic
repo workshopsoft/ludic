@@ -46,7 +46,7 @@ export state VehiclesState {
   ve_ids: int = 0
   ve_sx: float = 0.0
   ve_sz: float = 0.0
-  ve_list: []Vehicle = null
+  ve_list: []Vehicle = new []Vehicle
   ve_cur: Vehicle = null
   ve_dock_x: float = 0.0
   ve_dock_z: float = 0.0
@@ -56,7 +56,7 @@ export state VehiclesState {
   ve_rail_yaw: float = 0.0
   ve_have_dock: bool = false
   ve_swell_said: float = 0.0
-  ve_fact_q: Queue<VehicleFact> = null
+  ve_fact_q: Queue<VehicleFact> = ve_fact_q__new()
 }
 function ve__dry(x: float, z: float) -> float { return -10000.0 }
 function ve__open(x: float, z: float, r: float) -> bool { return false }
@@ -77,3 +77,4 @@ function ve__safe(vehicles_st: mut VehiclesState, x: float, z: float, from_y: fl
 }
 function ve__safe_x(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_sx }
 function ve__safe_z(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_sz }
+function ve_fact_q__new() -> Queue<VehicleFact> { return queue_new("vehicles.facts") }

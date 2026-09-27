@@ -103,7 +103,7 @@ export state CharacterState {
   chr_eyes_now: bool = false        # the last camera was the eyes: the figure is hidden
   chr_safe_x: float = 0.0
   chr_safe_z: float = 0.0
-  chr_fact_q: Queue<CharacterFact> = null
+  chr_fact_q: Queue<CharacterFact> = chr_fact_q__new()
 }
 function chr__top_plain(x: float, z: float, r: float, from_y: float, step: float, base: float) -> float { return base }
 function chr__bed_plain(x: float, z: float) -> float { return CharacterGround.height(x, z) }
@@ -124,3 +124,4 @@ function chr__zero() -> float { return 0.0 }
 function chr__no() -> bool { return false }
 function chr__yes() -> bool { return true }
 function chr__not_carried(ix: float, iz: float, run: bool, dt: float) -> void { }
+function chr_fact_q__new() -> Queue<CharacterFact> { return queue_new("character.facts") }

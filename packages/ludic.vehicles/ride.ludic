@@ -52,7 +52,7 @@ function ve_swell(vehicles_st: mut VehiclesState, v: Vehicle, iz: float, dt: flo
 }
 
 # every boat: its hull read back, and the wind pushing it across the lake, ridden or not
-export function vehicles_tick(vehicles_st: mut VehiclesState, dt: float) -> void {
+export function vehicles_tick(vehicles_st: VehiclesState, dt: float) -> void {
   let l = ve_all(vehicles_st)
   let w = VehicleWorld.wind() * VE_WIND
   let wy = VehicleWorld.wind_yaw()

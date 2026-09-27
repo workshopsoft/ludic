@@ -4,7 +4,7 @@ const PH_K: int = 4
 
 # buoyancy 1 floats level with the surface, more rides higher; drags in 1/s
 export function phys_float(physics_st: mut PhysicsState, id: int, buoyancy: float, linear_drag: float, angular_drag: float) -> void {
-  ph_buffers(physics_st)
+  ph_buffers()
   phys_sink(physics_st, id)
   push(physics_st.ph_floats, id)
   push(physics_st.ph_float_k, buoyancy)
@@ -56,7 +56,7 @@ function ph_buoy_one(physics_st: mut PhysicsState, i: int, id: int, x: float, z:
   physics_st.ph_float_k[k + 3] = float(wet)
 }
 
-function ph_splash(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void {
+function ph_splash(physics_st: PhysicsState, id: int, x: float, y: float, z: float) -> void {
   let f = new PhysFact
   f.what = PHYS_SPLASH
   f.a = id

@@ -51,7 +51,7 @@ export function shop_buy(shop_st: ShopState, it: int) -> bool {
 }
 
 # `n` to the vendor at the counter (as many as the pack has); how many went
-export function shop_sell(shop_st: mut ShopState, it: int, n: int) -> int {
+export function shop_sell(shop_st: ShopState, it: int, n: int) -> int {
   if not shop_buys(shop_st, shop_st.shop_at, it) { return 0 }
   let k = Math.min(n, ShopPack.count(it))
   if k <= 0 { return 0 }

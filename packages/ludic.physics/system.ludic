@@ -21,7 +21,7 @@ export function phys_advance(physics_st: mut PhysicsState, dt: float) -> int {
 # exactly one step: the water, Jolt, then the contacts that matter as facts
 export function phys_step(physics_st: mut PhysicsState) -> void {
   if physics_st.ph_world == null { return }
-  ph_buffers(physics_st)
+  ph_buffers()
   ph_buoy_all(physics_st)
   jph_world_step(physics_st.ph_world, physics_st.ph_step, physics_st.ph_sub)
   physics_st.ph_steps += 1

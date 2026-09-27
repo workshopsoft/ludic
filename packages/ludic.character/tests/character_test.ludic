@@ -107,7 +107,7 @@ program CharacterTest {
     char_release(character_st, CHAR_HOLD_SCREEN)
     char_teleport(character_st, x, z, yaw)
   }
-  function facts(character_st: mut CharacterState) -> []CharacterFact { return q_drain(char_facts(character_st)) }
+  function facts(character_st: CharacterState) -> []CharacterFact { return q_drain(char_facts(character_st)) }
   function count(fs: []CharacterFact, what: int) -> int {
     var n = 0
     for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }

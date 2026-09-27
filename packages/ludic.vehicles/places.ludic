@@ -42,7 +42,7 @@ export function vehicle_place_z(vehicles_st: VehiclesState, kind: int, k: int) -
 }
 
 # who is in place k: the boat lying in the berth or the horse tied in the bay, or null
-export function vehicle_in_place(vehicles_st: mut VehiclesState, kind: int, k: int) -> Vehicle {
+export function vehicle_in_place(vehicles_st: VehiclesState, kind: int, k: int) -> Vehicle {
   let px = vehicle_place_x(vehicles_st, kind, k)
   let pz = vehicle_place_z(vehicles_st, kind, k)
   let l = ve_all(vehicles_st)
@@ -64,13 +64,13 @@ export function vehicle_in_place(vehicles_st: mut VehiclesState, kind: int, k: i
 }
 
 # the first free place, or -1
-export function vehicle_free_place(vehicles_st: mut VehiclesState, kind: int) -> int {
+export function vehicle_free_place(vehicles_st: VehiclesState, kind: int) -> int {
   for k in 0 .. VEHICLE_PLACES { if vehicle_in_place(vehicles_st, kind, k) == null { return k } }
   return -1
 }
 
 # this player's own is lying in one of the places
-export function vehicle_mine_in_place(vehicles_st: mut VehiclesState, kind: int) -> bool {
+export function vehicle_mine_in_place(vehicles_st: VehiclesState, kind: int) -> bool {
   let mine = vehicle_find(vehicles_st, kind)
   if mine == null { return false }
   for k in 0 .. VEHICLE_PLACES {

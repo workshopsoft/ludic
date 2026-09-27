@@ -3,7 +3,7 @@
 const LAST_LEGS: float = 10.0
 const GENTLE_FLOOR: float = 22.0
 
-function nd_empty(needs_st: mut NeedsState) -> int {
+function nd_empty(needs_st: NeedsState) -> int {
   let lv = nd_lv(needs_st)
   if lv[NEED_WARMTH] == 0.0 { return NEED_WARMTH }
   if lv[NEED_FOOD] == 0.0 { return NEED_FOOD }
@@ -11,7 +11,7 @@ function nd_empty(needs_st: mut NeedsState) -> int {
   return -1
 }
 
-function nd_clear(needs_st: mut NeedsState) -> bool {
+function nd_clear(needs_st: NeedsState) -> bool {
   let lv = nd_lv(needs_st)
   return lv[NEED_WARMTH] > 5.0 and lv[NEED_FOOD] > 5.0 and lv[NEED_WATER] > 5.0
 }

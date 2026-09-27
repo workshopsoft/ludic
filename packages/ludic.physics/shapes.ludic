@@ -4,7 +4,7 @@
 # a world for up to max_bodies (threads 0: the cores less one, at most four); false if C refused
 export function phys_open(physics_st: mut PhysicsState, max_bodies: int, threads: int) -> bool {
   phys_close(physics_st)
-  ph_buffers(physics_st)
+  ph_buffers()
   physics_st.ph_world = jph_world_new(max_bodies, threads)
   physics_st.ph_gen += 1
   physics_st.ph_acc = 0.0
@@ -39,7 +39,7 @@ export function phys_close(physics_st: mut PhysicsState) -> void {
 
 function ph_keep(physics_st: mut PhysicsState, s: pointer) -> int {
   if s == null { return -1 }
-  ph_buffers(physics_st)
+  ph_buffers()
   push(physics_st.ph_shapes, s)
   return len(physics_st.ph_shapes) - 1
 }

@@ -8,28 +8,24 @@ export property EchoFact {
 }
 
 export state EchoState {
-  ec_xs: []float = null
+  ec_xs: []float = floats(ECHO_CAP)
   ec_n: int = 0
-  ec_kinds: []int = null
-  ec_values: []float = null
-  ec_facts: Queue<EchoFact> = null
+  ec_kinds: []int = words(ECHO_CAP)
+  ec_values: []float = floats(ECHO_CAP)
+  ec_facts: Queue<EchoFact> = ec_facts__new()
 }
 
-function ec_ready(echo_st: mut EchoState) -> void {
-  if echo_st.ec_xs == null { echo_st.ec_xs = floats(ECHO_CAP) }
-  if echo_st.ec_kinds == null { echo_st.ec_kinds = words(ECHO_CAP) }
-  if echo_st.ec_values == null { echo_st.ec_values = floats(ECHO_CAP) }
+function ec_ready() -> void {
 }
 
 # what went over, oldest first
-export function echo_facts(echo_st: mut EchoState) -> Queue<EchoFact> {
-  if echo_st.ec_facts == null { echo_st.ec_facts = queue_new("nativeecho.facts") }
+export function echo_facts(echo_st: EchoState) -> Queue<EchoFact> {
   return echo_st.ec_facts
 }
 
 # put a value in the next slot; false when the slice is full
 export function echo_put(echo_st: mut EchoState, x: float) -> bool {
-  ec_ready(echo_st)
+  ec_ready()
   if echo_st.ec_n >= ECHO_CAP { return false }
   echo_st.ec_xs[echo_st.ec_n] = x
   echo_st.ec_n += 1
@@ -40,13 +36,13 @@ export function echo_clear(echo_st: mut EchoState) -> void { echo_st.ec_n = 0 }
 
 # the sum of what was put, worked out in C
 export function echo_sum(echo_st: mut EchoState) -> float {
-  ec_ready(echo_st)
+  ec_ready()
   return ne_sum(echo_st.ec_xs, echo_st.ec_n)
 }
 
 # C walks the values and records each one over `over`; the records come back as facts
 export function echo_scan(echo_st: mut EchoState, over: float) -> int {
-  ec_ready(echo_st)
+  ec_ready()
   let hits = ne_scan(echo_st.ec_xs, echo_st.ec_n, over)
   ec_drain(echo_st)
   return hits
@@ -67,3 +63,4 @@ export function echo_lost() -> int { return ne_lost_count() }
 
 # a 64-bit value there and back
 export function echo_twice(x: long) -> long { return ne_twice(x) }
+function ec_facts__new() -> Queue<EchoFact> { return queue_new("nativeecho.facts") }

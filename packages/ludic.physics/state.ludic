@@ -36,7 +36,7 @@ export const PH_CAP: int = 512        # contacts drained a step, queries' buffer
 
 export state PhysicsState {
   ph_world: pointer = null
-  ph_shapes: []pointer = null     # a shape id is its place here; null once freed
+  ph_shapes: []pointer = new []pointer     # a shape id is its place here; null once freed
   ph_step: float = 0.016666668    # seconds a step
   ph_sub: int = 1                 # collision steps in each
   ph_max_steps: int = 4           # a slow frame catches up this far and no further
@@ -44,29 +44,22 @@ export state PhysicsState {
   ph_steps: int = 0
   ph_gen: int = 0                 # how many worlds have been opened: an id from an older one is stale
   ph_hard: float = 2.0            # metres a second: a contact under this is not a fact
-  ph_floats: []int = null         # buoyant bodies' ids
-  ph_float_k: []float = null      # and theirs: buoyancy, linear drag, angular drag, wet
+  ph_floats: []int = new []int         # buoyant bodies' ids
+  ph_float_k: []float = new []float      # and theirs: buoyancy, linear drag, angular drag, wet
   ph_rx: float = 0.0               # where the last phys_resolve put a body
   ph_rz: float = 0.0
-  ph_walkers: []pointer = null   # a walker id is its place here; null once removed
-  ph_ids: []int = null
-  ph_vals: []float = null
-  ph_facts: Queue<PhysFact> = null
+  ph_walkers: []pointer = new []pointer   # a walker id is its place here; null once removed
+  ph_ids: []int = words(PH_CAP * 2)
+  ph_vals: []float = floats(PH_CAP * 4)
+  ph_facts: Queue<PhysFact> = ph_facts__new()
 }
 
 # the facts, oldest first
-export function phys_facts(physics_st: mut PhysicsState) -> Queue<PhysFact> {
-  if physics_st.ph_facts == null { physics_st.ph_facts = queue_new("physics.facts") }
+export function phys_facts(physics_st: PhysicsState) -> Queue<PhysFact> {
   return physics_st.ph_facts
 }
 
-function ph_buffers(physics_st: mut PhysicsState) -> void {
-  if physics_st.ph_ids == null { physics_st.ph_ids = words(PH_CAP * 2) }
-  if physics_st.ph_vals == null { physics_st.ph_vals = floats(PH_CAP * 4) }
-  if physics_st.ph_shapes == null { physics_st.ph_shapes = new []pointer }
-  if physics_st.ph_floats == null { physics_st.ph_floats = new []int }
-  if physics_st.ph_float_k == null { physics_st.ph_float_k = new []float }
-  if physics_st.ph_walkers == null { physics_st.ph_walkers = new []pointer }
+function ph_buffers() -> void {
 }
 
 # a step's length, its collision steps, and how hard a contact must be to be a fact
@@ -75,3 +68,4 @@ export function phys_config(physics_st: mut PhysicsState, step: float, sub: int,
   physics_st.ph_sub = sub
   physics_st.ph_hard = hard
 }
+function ph_facts__new() -> Queue<PhysFact> { return queue_new("physics.facts") }

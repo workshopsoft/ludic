@@ -14,7 +14,7 @@ export function shop_price_buy(shop_st: ShopState, it: int) -> int {
 
 # what vendor `v` pays (-1: no vendor, no demand). ROUNDED, so cheap raw material keeps its
 # order; and a vendor that stocks the thing never pays what it charges, not even a floor of $1
-export function shop_price_sell_at(shop_st: mut ShopState, v: int, it: int) -> int {
+export function shop_price_sell_at(shop_st: ShopState, v: int, it: int) -> int {
   if not shop_item_ok(shop_st, it) { return 0 }
   let f = shop_sell_factor(shop_st) * shop_st.shop_sell_frac[it] * shop_demand_mult(shop_st, v, it)
   var p = Math.max(int(float(shop_st.shop_base[it]) * f + 0.5), 1)
@@ -23,7 +23,7 @@ export function shop_price_sell_at(shop_st: mut ShopState, v: int, it: int) -> i
 }
 
 # what the vendor at the counter pays
-export function shop_price_sell(shop_st: mut ShopState, it: int) -> int { return shop_price_sell_at(shop_st, shop_st.shop_at, it) }
+export function shop_price_sell(shop_st: ShopState, it: int) -> int { return shop_price_sell_at(shop_st, shop_st.shop_at, it) }
 
 export function shop_stocks(shop_st: ShopState, v: int, it: int) -> bool {
   if not shop_vendor_ok(shop_st, v) or shop_st.shop_vendor_list[v].stock == null { return false }

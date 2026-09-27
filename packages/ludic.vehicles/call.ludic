@@ -1,6 +1,6 @@
 # call.ludic - a player's boat or horse brought to a place: made there the first time, fetched there
 # after; gone when its player leaves
-function ve_add(vehicles_st: mut VehiclesState, kind: int, x: float, z: float, yaw: float) -> Vehicle {
+function ve_add(vehicles_st: VehiclesState, kind: int, x: float, z: float, yaw: float) -> Vehicle {
   if kind != VEHICLE_HORSE and kind != VEHICLE_BOAT { return null }
   let v = new Vehicle
   v.nid = VehicleWorld.next_id()
@@ -41,7 +41,7 @@ function ve_put(v: Vehicle, x: float, z: float) -> void {
 
 # Bring player pid's boat or horse to place k. False when the place is somebody else's, or it is
 # being ridden. A horse faces the trough: the bay lies on its near side.
-export function vehicle_call_for(vehicles_st: mut VehiclesState, pid: int, kind: int, k: int) -> bool {
+export function vehicle_call_for(vehicles_st: VehiclesState, pid: int, kind: int, k: int) -> bool {
   if not vehicles_st.ve_have_dock or k < 0 or k >= VEHICLE_PLACES { return false }
   let here = vehicle_in_place(vehicles_st, kind, k)
   let v = vehicle_of(vehicles_st, pid, kind)
@@ -78,7 +78,7 @@ export function vehicles_release(vehicles_st: mut VehiclesState, pid: int) -> vo
 export function vehicle_own(v: Vehicle) -> void { if v != null { v.owned = true } }
 
 # hay for a horse, up to a full belly
-export function vehicle_feed(vehicles_st: mut VehiclesState, v: Vehicle, amount: float) -> void {
+export function vehicle_feed(vehicles_st: VehiclesState, v: Vehicle, amount: float) -> void {
   if v == null { return }
   v.food = Math.min(v.food + amount, 100.0)
   ve_say(vehicles_st, VEHICLE_FED, v, amount)

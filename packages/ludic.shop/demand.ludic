@@ -35,7 +35,7 @@ function shop_roll_vendor(shop_st: mut ShopState, v: int) -> void {
 }
 
 # the week's lists, rolled again only when the week turns
-function shop_roll(shop_st: mut ShopState) -> void {
+export function shop_roll(shop_st: mut ShopState) -> void {
   let week = shop_week(shop_st)
   if week == shop_st.shop_week_rolled and shop_st.shop_want_list != null { return }
   shop_st.shop_week_rolled = week
@@ -48,24 +48,21 @@ function shop_roll(shop_st: mut ShopState) -> void {
   for v in 0 .. shop_vendors(shop_st) { shop_roll_vendor(shop_st, v) }
 }
 
-export function shop_wants(shop_st: mut ShopState, v: int, it: int) -> bool {
-  if not shop_vendor_ok(shop_st, v) { return false }
-  shop_roll(shop_st)
+export function shop_wants(shop_st: ShopState, v: int, it: int) -> bool {
+  if not shop_vendor_ok(shop_st, v) or shop_st.shop_want_list == null { return false }
   for k in 0 .. shop_st.shop_wants_n { if shop_st.shop_want_list[v * shop_st.shop_wants_n + k] == it { return true } }
   return false
 }
 
-export function shop_glutted(shop_st: mut ShopState, v: int, it: int) -> bool {
-  if not shop_vendor_ok(shop_st, v) { return false }
-  shop_roll(shop_st)
+export function shop_glutted(shop_st: ShopState, v: int, it: int) -> bool {
+  if not shop_vendor_ok(shop_st, v) or shop_st.shop_full_list == null { return false }
   return shop_st.shop_full_list[v] == it
 }
 
 # what a vendor wants this week, in its order
-export function shop_wanted(shop_st: mut ShopState, v: int) -> []int {
+export function shop_wanted(shop_st: ShopState, v: int) -> []int {
   let out = new []int
-  if not shop_vendor_ok(shop_st, v) { return out }
-  shop_roll(shop_st)
+  if not shop_vendor_ok(shop_st, v) or shop_st.shop_want_list == null { return out }
   for k in 0 .. shop_st.shop_wants_n {
     let it = shop_st.shop_want_list[v * shop_st.shop_wants_n + k]
     if it >= 0 { push(out, it) }
@@ -74,7 +71,7 @@ export function shop_wanted(shop_st: mut ShopState, v: int) -> []int {
 }
 
 # the week's multiplier on what `v` pays for `it` (1 with no vendor)
-export function shop_demand_mult(shop_st: mut ShopState, v: int, it: int) -> float {
+export function shop_demand_mult(shop_st: ShopState, v: int, it: int) -> float {
   if shop_wants(shop_st, v, it) { return shop_st.shop_want_mult }
   if shop_glutted(shop_st, v, it) { return shop_st.shop_glut_mult }
   return 1.0

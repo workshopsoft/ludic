@@ -15,7 +15,7 @@ export function vehicles_reset(vehicles_st: mut VehiclesState) -> void {
   q_clear(vehicle_facts(vehicles_st))
 }
 
-export function vehicles_save(vehicles_st: mut VehiclesState) -> Val {
+export function vehicles_save(vehicles_st: VehiclesState) -> Val {
   let v = Value.object()
   let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
   let b = vehicle_find(vehicles_st, VEHICLE_BOAT)
