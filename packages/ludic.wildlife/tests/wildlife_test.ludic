@@ -243,6 +243,10 @@ program WildlifeTest {
     expect_eq(wildlife_count(wildlife_st, 1), 0)
     expect(wildlife_nearest(wildlife_st, -1, 0.0, 0.0, 0.0) == a)
     expect(wildlife_nearest(wildlife_st, 1, 0.0, 0.0, 0.0) == c)
+    let near = new []WildAnimal
+    expect_eq(wildlife_near(wildlife_st, 0.0, 0.0, 40.0, near), 2)
+    expect_eq(wildlife_near_of(wildlife_st, 0, 0.0, 0.0, 200.0, near), 2)
+    expect_eq(wildlife_alive_of(wildlife_st, 1), 1)
     wildlife_remove(a)
     expect_eq(wildlife_count(wildlife_st, 0), 1)
     expect(wildlife_nearest(wildlife_st, 0, 0.0, 0.0, 0.0) == b)
