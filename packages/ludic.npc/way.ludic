@@ -56,3 +56,21 @@ function np_stuck(npc_st: mut NpcState, p: NpcPerson) -> void {
     npc_plan(npc_st, p)
   }
 }
+
+# the crowd's side (phase 18): a crowd walker says where it is going and how fast, and is handed
+# back where the crowd put it; nothing allocates, since this runs for every walker every frame
+function np_crowd_want(p: NpcPerson, speed: float) -> void {
+  p.goal_x = p.tx
+  p.goal_z = p.tz
+  p.goal_speed = speed
+}
+export function npc_set_crowd(p: NpcPerson, on: bool) -> void { p.crowd = on }
+export function npc_moved(p: NpcPerson, x: float, z: float, vx: float, vz: float) -> void {
+  let dx = x - p.x
+  let dz = z - p.z
+  p.x = x
+  p.z = z
+  p.y = NpcWorld.ground(x, z)
+  if vx * vx + vz * vz > 0.01 { p.yaw = Math.atan2(-vx, -vz) }
+  p.phase = p.phase + Math.sqrt(dx * dx + dz * dz) * 2.6
+}

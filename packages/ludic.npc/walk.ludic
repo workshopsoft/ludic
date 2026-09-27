@@ -14,7 +14,7 @@ export function npc_walk(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void 
     np_arrive(npc_st, p)
     return
   }
-  if not p.via_on {
+  if not p.via_on and not p.crowd {
     np_way(p, dt)
     gx = p.wx
     gz = p.wz
@@ -33,6 +33,10 @@ export function npc_walk(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void 
   var sp = p.speed
   if sp < 0.1 { sp = 1.2 }
   if p.stalk { sp = Math.min(sp, 0.7) }
+  if p.crowd {
+    np_crowd_want(p, sp)
+    return
+  }
   let want = Math.atan2(-dx, -dz)
   let r = 3.0 * dt
   p.yaw = p.yaw + Math.clamp(npc_wrap(want - p.yaw), -r, r)

@@ -7,6 +7,7 @@ export function npc_tick(npc_st: mut NpcState, dt: float) -> void {
   for i in 0 .. len(npc_st.np_walkers) {
     let p = npc_st.np_walkers[i]
     if not p.active or np_leaves(npc_st, p) { continue }
+    p.goal_speed = 0.0
     if p.act == NPCA_WALK { npc_walk(npc_st, p, dt) } else { npc_act(npc_st, p, dt) }
     npc_notice(npc_st, p)
   }
