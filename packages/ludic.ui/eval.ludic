@@ -34,8 +34,18 @@ function ui_eval(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
 }
 # a call: len() and range() are the template's own, anything else is the view's
 function ev_call(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
-  let args = Value.list()
+  let depth = ui_st.ev_depth
+  while len(ui_st.ev_args) <= depth { push(ui_st.ev_args, Value.list()) }
+  let args = ui_st.ev_args[depth]
+  Value.clear(args)
+  ui_st.ev_depth = depth + 1
   for i in 0 .. len(x.args) { Value.add(args, ui_eval(ui_st, x.args[i], e)) }
+  let r = ev_call_with(ui_st, x, e, args)
+  ui_st.ev_depth = depth
+  return r
+}
+# the call itself, its arguments evaluated; a callee reads them and keeps none
+function ev_call_with(ui_st: mut UiState, x: UiExpr, e: UiEnv, args: Val) -> Val {
   if x.s == "len" and len(x.args) == 1 { return Value.int(Value.count(Value.at(args, 0))) }
   if x.s == "range" and len(x.args) == 1 {
     let out = Value.list()

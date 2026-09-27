@@ -1,0 +1,51 @@
+# memo_join.ludic - a key joined from its parent's key, a separator and a part ("App/3",
+# "App/3#7", "App/3/ui-thumb"), found by comparing in place, so an element's key is made once
+# the element first appears and never again
+function mm_hash_join(a: string, sep: string, b: string) -> int {
+  var h = 216613626 ^ (MM_JOIN & 255)
+  for i in 0 .. len(a) { h = ((h ^ a[i]) * 16777619) & 2147483647 }
+  h = ((h ^ sep[0]) * 16777619) & 2147483647
+  for i in 0 .. len(b) { h = ((h ^ b[i]) * 16777619) & 2147483647 }
+  return h
+}
+function mm_is_join(k: string, a: string, sep: string, b: string) -> bool {
+  let na = len(a)
+  if len(k) != na + 1 + len(b) or k[na] != sep[0] { return false }
+  return sat(k, 0, a) and sat(k, na + 1, b)
+}
+# a + sep + b, the same string every frame
+function mm_join(ui_st: mut UiState, a: string, sep: string, b: string) -> string {
+  let m = mm_of(ui_st)
+  var at = mm_hash_join(a, sep, b) & (MM_CAP - 1)
+  while m.slots[at] != 0 {
+    let i = m.slots[at] - 1
+    if m.tags[i] == MM_JOIN and mm_is_join(m.keys[i], a, sep, b) { return m.keys[i] }
+    at = (at + 1) & (MM_CAP - 1)
+  }
+  let k = a + sep + b
+  if len(m.keys) * 4 >= MM_CAP * 3 { return k }
+  push(m.keys, k)
+  push(m.tags, MM_JOIN)
+  push(m.lists, null)
+  push(m.grads, null)
+  m.slots[at] = len(m.keys)
+  return k
+}
+# a small whole number's text, made once (a key's index, a loop's count)
+function mm_int(ui_st: mut UiState, i: int) -> string {
+  if i < 0 or i >= 1024 { return string(i) }
+  if ui_st.mm_ints == null {
+    ui_st.mm_ints = new []string
+    for k in 0 .. 1024 { push(ui_st.mm_ints, string(k)) }
+  }
+  return ui_st.mm_ints[i]
+}
+# a small whole number as a Value, made once and shared: read it, never change it (a loop's index)
+function mm_ival(ui_st: mut UiState, i: int) -> Val {
+  if i < 0 or i >= 1024 { return Value.int(i) }
+  if ui_st.mm_ivals == null {
+    ui_st.mm_ivals = new []Val
+    for k in 0 .. 1024 { push(ui_st.mm_ivals, Value.int(k)) }
+  }
+  return ui_st.mm_ivals[i]
+}

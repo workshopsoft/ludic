@@ -21,7 +21,7 @@ export function ui_forget(ui_st: mut UiState, screen: string) -> void {
   let vals = new []Val
   for i in 0 .. len(ui_st.st_keys) {
     let k = ui_st.st_keys[i]
-    let mine = len(k) >= len(screen) and k[0..len(screen)] == screen and (len(k) == len(screen) or k[len(screen)] == 47)
+    let mine = len(k) >= len(screen) and sat(k, 0, screen) and (len(k) == len(screen) or k[len(screen)] == 47)
     if not mine {
       push(keys, k)
       push(vals, ui_st.st_vals[i])

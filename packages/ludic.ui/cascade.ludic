@@ -9,11 +9,14 @@ function cs_tree(ui_st: mut UiState, n: UiNode) -> void {
   }
   if n.tag != "" { cs_node(ui_st, n) }
   for i in 0 .. len(n.children) { cs_tree(ui_st, n.children[i]) }
-  var shown = new []UiNode
+  var kept = 0
   for i in 0 .. len(n.children) {
-    if not n.children[i].hidden { push(shown, n.children[i]) }
+    if not n.children[i].hidden {
+      n.children[kept] = n.children[i]
+      kept += 1
+    }
   }
-  n.children = shown
+  while len(n.children) > kept { List.pop(n.children) }
   cs_order(n)
 }
 # twice: the font size (and zoom) first, from every rule, so an em anywhere reads the size the
@@ -51,10 +54,10 @@ function cs_rule(ui_st: mut UiState, n: UiNode, r: UiRule) -> void { cs_rule_in(
 # a rule's custom properties first, so its other declarations can read them; values read in `e`
 function cs_rule_in(ui_st: mut UiState, n: UiNode, r: UiRule, e: UiEnv) -> void {
   for j in 0 .. len(r.keys) {
-    if len(r.keys[j]) > 2 and r.keys[j][0..2] == "--" { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
+    if len(r.keys[j]) > 2 and sat(r.keys[j], 0, "--") { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
   }
   for j in 0 .. len(r.keys) {
-    if not (len(r.keys[j]) > 2 and r.keys[j][0..2] == "--") and cs_pass_ok(ui_st, r.keys[j]) { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
+    if not (len(r.keys[j]) > 2 and sat(r.keys[j], 0, "--")) and cs_pass_ok(ui_st, r.keys[j]) { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
   }
 }
 function ua_sheet(ui_st: mut UiState) -> UiSheet {

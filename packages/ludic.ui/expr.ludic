@@ -51,7 +51,7 @@ function rd_op(r: UiRd, op: string) -> bool {
   rd_ws(r)
   let n = len(op)
   if r.i + n > len(r.s) { return false }
-  if r.s[r.i..r.i + n] != op { return false }
+  if not sat(r.s, r.i, op) { return false }
   r.i += n
   return true
 }

@@ -5,12 +5,11 @@ function ui_color(ui_st: mut UiState, name0: string) -> int {
   let name = tpl_words(name0)
   ui_st.cl_alpha = 1.0
   if name == "none" or name == "" or name == "transparent" { return UI_NONE }
-  if name[0] == 35 { return cl_hex(ui_st, name[1..len(name)]) }
-  if len(name) > 4 and (name[0..4] == "rgb(" or name[0..5] == "rgba(") { return cl_rgb(ui_st, name) }
-  let pat = ` {name}=`
-  let n = len(pat)
-  for i in 0 .. len(CL_NAMES) - n + 1 {
-    if CL_NAMES[i..i + n] == pat { return cl_hex(ui_st, CL_NAMES[i + n..i + n + 6]) }
+  if name[0] == 35 { return cl_hex_at(ui_st, name, 1, len(name) - 1) }
+  if len(name) > 4 and (sat(name, 0, "rgb(") or sat(name, 0, "rgba(")) { return cl_rgb(ui_st, name) }
+  let n = len(name)
+  for i in 0 .. len(CL_NAMES) - n - 1 {
+    if CL_NAMES[i] == 32 and CL_NAMES[i + n + 1] == 61 and sat(CL_NAMES, i + 1, name) { return cl_hex_at(ui_st, CL_NAMES, i + n + 2, 6) }
   }
   ui_err(ui_st, `{name}: not a colour - #rrggbb, rgb(), rgba(), a name, or var(--a-colour)`)
   return 15658734
@@ -20,23 +19,24 @@ function cl_digit(c: int) -> int {
   if c >= 65 { return c - 55 }
   return c - 48
 }
-function cl_hex(ui_st: mut UiState, h: string) -> int {
+function cl_hex(ui_st: mut UiState, h: string) -> int { return cl_hex_at(ui_st, h, 0, len(h)) }
+# the n hex digits of `s` from `at`, read where they stand
+function cl_hex_at(ui_st: mut UiState, s: string, at: int, n: int) -> int {
   var c = 0
-  let n = len(h)
   if n == 3 or n == 4 {
-    for i in 0 .. 3 { c = c * 256 + cl_digit(h[i]) * 17 }
-    if n == 4 { ui_st.cl_alpha = float(cl_digit(h[3]) * 17) / 255.0 }
+    for i in 0 .. 3 { c = c * 256 + cl_digit(s[at + i]) * 17 }
+    if n == 4 { ui_st.cl_alpha = float(cl_digit(s[at + 3]) * 17) / 255.0 }
     return c
   }
-  for i in 0 .. 3 { c = c * 256 + cl_digit(h[i * 2]) * 16 + cl_digit(h[i * 2 + 1]) }
-  if n == 8 { ui_st.cl_alpha = float(cl_digit(h[6]) * 16 + cl_digit(h[7])) / 255.0 }
+  for i in 0 .. 3 { c = c * 256 + cl_digit(s[at + i * 2]) * 16 + cl_digit(s[at + i * 2 + 1]) }
+  if n == 8 { ui_st.cl_alpha = float(cl_digit(s[at + 6]) * 16 + cl_digit(s[at + 7])) / 255.0 }
   return c
 }
 # rgb(217, 165, 74) or rgba(0, 0, 0, 0.55)
 function cl_rgb(ui_st: mut UiState, s: string) -> int {
   var open = 0
   while open < len(s) and s[open] != 40 { open += 1 }
-  let parts = lss_split(s[open + 1..len(s) - 1], 44)
+  let parts = mm_split(ui_st, s[open + 1..len(s) - 1], 44)
   var c = 0
   for i in 0 .. Math.min(3, len(parts)) { c = c * 256 + Math.clamp(int(el_num(tpl_words(parts[i]))), 0, 255) }
   if len(parts) > 3 { ui_st.cl_alpha = el_num(tpl_words(parts[3])) }

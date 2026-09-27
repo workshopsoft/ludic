@@ -1,8 +1,8 @@
 # text_fit.ludic - text-fit: shrink 12px draws a line that does not fit its box smaller, down to that
 # size, and cuts what still does not fit with an ellipsis; line-height (a multiple of the font size,
 # px or em) spaces a text's lines. Both are inherited, as font properties are.
-function el_text_fit(ui_st: UiState, n: UiNode, s: string) -> void {
-  let parts = lss_split(tpl_words(s), 32)
+function el_text_fit(ui_st: mut UiState, n: UiNode, s: string) -> void {
+  let parts = mm_split(ui_st, tpl_words(s), 32)
   nx(n).fit_min = 0.0
   if len(parts) >= 2 and parts[0] == "shrink" { nx(n).fit_min = Math.max(el_unit(ui_st, parts[1]), 1.0) }
 }

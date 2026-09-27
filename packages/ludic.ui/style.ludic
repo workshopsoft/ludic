@@ -18,7 +18,7 @@ function sheet_read(ui_st: mut UiState, f: UiFile, t: UiTpl) -> void {
   if from != "" { src = lib_text(ui_st, lib_beside(f.path, from)) }
   lss_text(ui_st, f, src)
 }
-function lss_is(path: string) -> bool { return len(path) > 4 and path[len(path) - 4..len(path)] == ".lss" }
+function lss_is(path: string) -> bool { return len(path) > 4 and sat(path, len(path) - 4, ".lss") }
 # a stylesheet file: a file with rules and imports and nothing else
 function lss_file(ui_st: mut UiState, src: string, path: string) -> UiFile {
   let f = lib_new(ui_st, path)
@@ -64,7 +64,7 @@ function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err:
 # @import "base.lss"; - its rules come before this file's own
 function lss_import(ui_st: mut UiState, f: UiFile, what: string) -> void {
   var p = tpl_words(what)
-  if len(p) > 5 and p[0..4] == "url(" { p = p[4..len(p) - 1] }
+  if len(p) > 5 and sat(p, 0, "url(") { p = p[4..len(p) - 1] }
   if len(p) >= 2 and (p[0] == 34 or p[0] == 39) { p = p[1..len(p) - 1] }
   let other = lib_file(ui_st, lib_beside(f.path, p))
   if other != null {

@@ -71,3 +71,14 @@ function vl_binary(op: string, a: Val, b: Val) -> Val {
 # a value as text, whatever kind it is: a component's string prop given a number (label="{3}") reads
 # "3", not nothing
 export function ui_val_text(v: Val) -> string { return vl_text(v) }
+# vl_text for what is asked per element per frame: a small whole number's text comes from the table
+# made once (mm_int) rather than being written out again
+function vl_text_u(ui_st: mut UiState, v: Val) -> string {
+  let k = Value.kind(v)
+  if k == 1 { return mm_int(ui_st, Value.as_int(v)) }
+  if k == 2 or k == 7 {
+    let f = Value.as_float(v)
+    if f == float(int(f)) { return mm_int(ui_st, int(f)) }
+  }
+  return vl_text(v)
+}

@@ -22,7 +22,7 @@ function lc_note(ui_st: mut UiState, key: string, names: []string, acts: []UiAct
 }
 function lc_mine(key: string, screen: string) -> bool {
   let n = len(screen)
-  return key == screen or (len(key) > n and key[0..n] == screen and key[n] == 47)
+  return key == screen or (len(key) > n and sat(key, 0, screen) and key[n] == 47)
 }
 # the screen's mounts and unmounts since its last frame; other screens' records are kept
 function lc_run(ui_st: mut UiState, screen: string) -> void {

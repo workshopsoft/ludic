@@ -64,7 +64,7 @@ function nt_run(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void
       if (lk_in(PE_NAMES, name) or name == "hold") and Value.kind(value) == 6 { ev = value }
       Value.put(ev, "name", Value.str(name))
       Value.put(ev, "value", value)
-      let e = env_new(n.env)
+      let e = env_new(ui_st, n.env)
       env_bind(e, "event", ev)
       act_run(ui_st, n.on_acts[i], e)
     }
@@ -78,7 +78,13 @@ export function ui_attr(n: UiNode, key: string) -> Val {
   }
   return Value.null()
 }
-export function ui_attr_text(n: UiNode, key: string) -> string { return vl_text(ui_attr(n, key)) }
+export function ui_attr_text(n: UiNode, key: string) -> string {
+  if n.akeys == null { return "" }
+  for i in 0 .. len(n.akeys) {
+    if n.akeys[i] == key { return vl_text(n.vals[i]) }
+  }
+  return ""
+}
 # a boolean attribute: present with no value is true, as HTML's are (<button autofocus>)
 export function ui_attr_on(n: UiNode, key: string) -> bool {
   if n.akeys == null { return false }

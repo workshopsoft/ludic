@@ -3,10 +3,10 @@
 # it where it was taken; a press on the track jumps the thumb's middle to the pointer and holds it there.
 # the bar's parts, styled as descendants of the box, and where they are at this offset
 function sb_geo(ui_st: mut UiState, n: UiNode, off: float, room: float, most: float) -> void {
-  let bar = ct_part(n, "ui-scrollbar", "")
+  let bar = ct_part(ui_st, n, "ui-scrollbar", "")
   bar.tag = "div"
   bar.parent = n
-  push(bar.children, ct_part(n, "ui-thumb", ""))
+  push(bar.children, ct_part(ui_st, n, "ui-thumb", ""))
   cs_tree(ui_st, bar)
   ui_st.sb_bar = bar
   ui_st.sb_w = ui_px(ui_st, 6.0)

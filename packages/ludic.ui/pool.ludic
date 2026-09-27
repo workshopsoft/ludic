@@ -1,0 +1,84 @@
+# pool.ludic - what a frame is built of is kept and used again: ludic.ui builds a screen's tree anew
+# every frame, and Ludic frees nothing, so a node or an env made per element per frame was a leak
+# (the valley's HUD: ~100 MB/s). Each screen keeps two generations and alternates, so last frame's
+# tree - which an unmount's env, a hover or ui_box still reads - stays whole while this one is built.
+# So a host may read a tree until the same screen has been built twice more, and never keep it longer.
+export property UiPool {
+  key: string = ""
+  gen: int = 0
+  nodes0: []UiNode = null
+  nodes1: []UiNode = null
+  envs0: []UiEnv = null
+  envs1: []UiEnv = null
+  un: int = 0
+  ue: int = 0
+}
+# a build of `screen` begins: its other generation is handed out again from the start
+function pl_begin(ui_st: mut UiState, screen: string) -> void {
+  var p: UiPool = null
+  for i in 0 .. len(ui_st.pl_pools) {
+    if ui_st.pl_pools[i].key == screen { p = ui_st.pl_pools[i] }
+  }
+  if p == null {
+    p = new UiPool
+    p.key = screen
+    p.nodes0 = new []UiNode
+    p.nodes1 = new []UiNode
+    p.envs0 = new []UiEnv
+    p.envs1 = new []UiEnv
+    push(ui_st.pl_pools, p)
+  }
+  p.gen = 1 - p.gen
+  p.un = 0
+  p.ue = 0
+  ui_st.pl_cur = p
+}
+# a node, blank, with its own lists (empty) - from the pool when a build is under way
+function nd_take(ui_st: mut UiState) -> UiNode {
+  let p = ui_st.pl_cur
+  if p == null { return nd_fresh() }
+  var list = p.nodes0
+  if p.gen == 1 { list = p.nodes1 }
+  if p.un < len(list) {
+    let n = list[p.un]
+    p.un += 1
+    nd_reset(n)
+    return n
+  }
+  let n = nd_fresh()
+  push(list, n)
+  p.un += 1
+  return n
+}
+function nd_fresh() -> UiNode {
+  let n = new UiNode
+  n.children = new []UiNode
+  n.classes = new []string
+  n.akeys = new []string
+  n.avals = new []string
+  n.vals = new []Val
+  return n
+}
+function env_take(ui_st: mut UiState) -> UiEnv {
+  let p = ui_st.pl_cur
+  if p == null { return env_fresh() }
+  var list = p.envs0
+  if p.gen == 1 { list = p.envs1 }
+  if p.ue < len(list) {
+    let e = list[p.ue]
+    p.ue += 1
+    env_reset(e)
+    return e
+  }
+  let e = env_fresh()
+  push(list, e)
+  p.ue += 1
+  return e
+}
+function env_fresh() -> UiEnv {
+  let e = new UiEnv
+  e.names = new []string
+  e.vals = new []Val
+  e.on_envs = new []UiEnv
+  return e
+}
