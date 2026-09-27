@@ -30,6 +30,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.needs](ludic.needs/README.md) | a body's warmth, food, water and energy, and the countdown to a collapse |
 | [ludic.npc](ludic.npc/README.md) | the other people in a place: a routine by the hour, walking round what is in the way, facing a player who comes near, lines as data, a guest's copy |
 | [ludic.physics](ludic.physics/README.md) | rigid bodies, removable still shapes, queries and buoyancy over Jolt Physics (a native library, phase 16) |
+| [ludic.nav](ludic.nav/README.md) | a navmesh per kind of walker and the ways across it, over Recast & Detour (a native library, phase 17) |
 | [ludic.photo](ludic.photo/README.md) | a camera's photographs: what is in the frame, a grade on size, framing, light and the moment, the roll, its worth, the best of each subject |
 | [ludic.save](ludic.save/README.md) | versioned save files: a migration chain the game declares, torn writes told apart, a backup, a newer file refused and read-only |
 | [ludic.settings](ludic.settings/README.md) | a game's settings as data: one store, a fact per change, ranges, a safe set |

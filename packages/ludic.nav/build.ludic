@@ -1,0 +1,37 @@
+# build.ludic - a kind's mesh from triangles, or from a file a bake wrote
+# v: nv points (x, y, z); t: nt triangles (three indices each); area: one byte per triangle, 0 not
+# walkable, 1..62 a kind of ground; cyl: nc cylinders (x, y, z, r, h) nothing stands in
+export function nav_build(nav_st: mut NavState, kind: int, v: []float, nv: int, t: []int, nt: int, area: []byte, cyl: []float, nc: int, c: NavConfig) -> bool {
+  if len(v) < nv * 3 or len(t) < nt * 3 or len(area) < nt or len(cyl) < nc * 5 { return false }
+  let cfg = floats(6)
+  cfg[0] = c.cell
+  cfg[1] = c.cell_h
+  cfg[2] = c.height
+  cfg[3] = c.radius
+  cfg[4] = c.climb
+  cfg[5] = c.slope
+  return nv_set(nav_st, kind, nvc_build(v, nv, t, nt, area, cyl, nc, cfg))
+}
+
+# the polygons a kind's mesh has (0: none)
+export function nav_polygons(nav_st: NavState, kind: int) -> int {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return 0 }
+  return nvc_polys(h)
+}
+
+# a kind's mesh written to a file, and read back
+export function nav_save_file(nav_st: NavState, kind: int, path: string) -> bool {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return false }
+  let n = nvc_save(h, null, 0)
+  let buf = buffer(n)
+  if nvc_save(h, buf, n) != n { return false }
+  return Fs.write_bytes(path, buf, n)
+}
+export function nav_load_file(nav_st: mut NavState, kind: int, path: string) -> bool {
+  if not Fs.exists(path) { return false }
+  let buf = Fs.read_bytes(path)
+  if buf == null or len(buf) == 0 { return false }
+  return nv_set(nav_st, kind, nvc_load(buf, len(buf)))
+}

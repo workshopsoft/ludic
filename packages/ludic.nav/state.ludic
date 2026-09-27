@@ -1,0 +1,46 @@
+# state.ludic - the kinds of walker, what a mesh is built for, and what the package holds: a mesh
+# per kind, and the last path's corners and nearest point, read back through the verbs
+export const NAV_PERSON: int = 0      # 0.35 m wide, steps what a hiker steps (CHAR_STEP)
+export const NAV_LARGE: int = 1       # an elk, a bear, a horse
+export const NAV_SMALL: int = 2       # a hare, a marmot
+export const NAV_KINDS: int = 3
+export const NAV_CORNERS: int = 256   # a path's corners at most; a longer one is cut there
+
+# what a mesh is built for: its voxels (cell across, cell high) and its walker (height, radius,
+# the step it takes whatever its gradient, the steepest ground it walks, degrees)
+export property NavConfig {
+  cell: float = 0.3
+  cell_h: float = 0.2
+  height: float = 1.8
+  radius: float = 0.35
+  climb: float = 0.55
+  slope: float = 45.0
+}
+
+export state NavState {
+  nv_meshes: []pointer = nv_none()
+  nv_out: []float = floats(NAV_CORNERS * 3)
+  nv_count: int = 0
+  nv_near: []float = floats(3)
+}
+function nv_none() -> []pointer {
+  let m = new []pointer
+  for k in 0 .. NAV_KINDS { push(m, null) }
+  return m
+}
+function nv_mesh(nav_st: NavState, kind: int) -> pointer {
+  if kind < 0 or kind >= NAV_KINDS { return null }
+  return nav_st.nv_meshes[kind]
+}
+function nv_set(nav_st: mut NavState, kind: int, h: pointer) -> bool {
+  if kind < 0 or kind >= NAV_KINDS { return false }
+  if nav_st.nv_meshes[kind] != null { nvc_free(nav_st.nv_meshes[kind]) }
+  nav_st.nv_meshes[kind] = h
+  return h != null
+}
+
+# every mesh let go: a new map, or the world closed
+export function nav_reset(nav_st: mut NavState) -> void {
+  for k in 0 .. NAV_KINDS { nv_set(nav_st, k, null) }
+  nav_st.nv_count = 0
+}
