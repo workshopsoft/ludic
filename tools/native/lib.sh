@@ -63,7 +63,8 @@ native_link() {
       "$cxx" -dynamiclib -O2 -Wl,-install_name,@rpath/lib$name.dylib -Wl,-dead_strip "$@" -o "$out/lib$name.dylib"
       echo "native: $out/lib$name.dylib" ;;
     windows-*)
-      "$cxx" -shared -O2 "$@" -o "$out/$name.dll" -Wl,/implib:"$out/$name.lib"
+      # -implib, not /implib: Git Bash rewrites an argument starting with "/" into a Windows path
+      "$cxx" -shared -O2 "$@" -o "$out/$name.dll" -Wl,-implib:"$out/$name.lib"
       echo "native: $out/$name.dll + $name.lib" ;;
     *)
       "$cxx" -shared -O2 -fPIC -Wl,-soname,lib$name.so "$@" -o "$out/lib$name.so"
