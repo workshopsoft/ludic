@@ -1,7 +1,8 @@
-# ludic.render3d — a physically based 3D renderer over Gl.* (OpenGL 4.1 core):
-# HDRI sky + image-based lighting, a GPU-generated terrain with scanned PBR
-# materials, cascaded shadow maps, an HDR pipeline with bloom and ACES.
+# ludic.render3d — a physically based 3D renderer over Vulkan (MoltenVK on a Mac, carried here,
+# built from a pinned tag by native/build.sh): HDRI sky + image-based lighting, a GPU-generated
+# terrain with scanned PBR materials, cascaded shadow maps, an HDR pipeline with bloom and ACES.
 package "ludic.render3d"
 version "0.1.0"
 kind source
 provides "R3d"
+native "macos-arm64" "lib/macos-arm64/libMoltenVK.dylib"

@@ -455,7 +455,7 @@ function lab_plate_case() -> void {
   # from the checkout's root, where the renderer's shaders and the plate are found beside it
   let work = `{tmp_dir()}/labrun`
   shell(`rm -rf {work} build/lab/probe && mkdir -p {work}`)
-  if not shq(`yes '' | head -300 | {vk_env()}/usr/bin/time -l {bin} > {work}/run.out 2> {work}/time.out`) { bad2(lbl, capture_line(`tail -1 {work}/run.out`));  return }
+  if not shq(`yes '' | head -300 | /usr/bin/time -l {bin} > {work}/run.out 2> {work}/time.out`) { bad2(lbl, capture_line(`tail -1 {work}/run.out`));  return }
   var n = 0
   let names = ["front", "side", "above"]
   for i in 0 .. 3 {
@@ -608,22 +608,12 @@ function headless_case(path: pointer, exp: pointer, label: pointer) -> void {
   let got = capture_line(`{out} < /dev/null`)
   if got == exp { ok(label) } else { bad2(label, `got [{got}] want [{exp}]`) }
 }
-# render3d draws with Vulkan only: on a Mac with no loader beside the binary, a run finds MoltenVK
-# through the SDK - VULKAN_SDK as set, else the newest ~/VulkanSDK/<version>/macOS
-function vk_env() -> string {
-  let set = Os.env("VULKAN_SDK")
-  if set != null and set != "" { return "" }
-  let found = capture_line("ls -d $HOME/VulkanSDK/*/macOS 2>/dev/null | tail -1")
-  if len(found) == 0 { return "" }
-  # the SDK's loader finds MoltenVK only through its driver manifest
-  return `VULKAN_SDK={found} VK_ICD_FILENAMES={found}/share/vulkan/icd.d/MoltenVK_icd.json `
-}
 # a program built headless whose verdict is one of its lines (the renderer logs before it)
 function headless_line_case(path: pointer, exp: pointer, label: pointer) -> void {
   let out = `{tmp_dir()}/h_{flat(path)}`
   if not shq(`bin/ludicc --headless examples/{path}.ludic -o {out} > {out}.log 2>&1`) { bad2(label, capture_line(`grep -i error {out}.log | head -1`));  return }
-  let got = capture_line(`{vk_env()}{out} < /dev/null 2>&1 | grep -c '^{exp}$'`)
-  if got == "1" { ok(label) } else { bad2(label, capture_line(`{vk_env()}{out} < /dev/null 2>&1 | grep -i -E 'fail|cannot' | head -1`)) }
+  let got = capture_line(`{out} < /dev/null 2>&1 | grep -c '^{exp}$'`)
+  if got == "1" { ok(label) } else { bad2(label, capture_line(`{out} < /dev/null 2>&1 | grep -i -E 'fail|cannot' | head -1`)) }
 }
 # ludic migrate state and components: the header names what every member needs, a field read in a
 # member is not edited, a module named like a package keeps a state of its own, and the program
