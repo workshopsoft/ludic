@@ -1,5 +1,6 @@
 # fakes/meadow.ludic - ground built by hand for ludic.nav's tests: n metre squares a side, flat at
-# y = 0; river 1 crosses x 18..22 with a ford at z 30..34, river 2 without one, river 0 is none
+# y = 0; river 1 crosses x 18..22 with a ford at z 30..34, river 2 without one, river 0 is none;
+# 3 is no river but a band of area 2 (thicket) over the same x for z under 30
 function ground(n: int, river: int) -> NavGround {
   let g = new NavGround
   g.nv = (n + 1) * (n + 1)
@@ -24,7 +25,8 @@ function ground(n: int, river: int) -> NavGround {
       push(g.t, a + n + 1)
       push(g.t, a + n + 2)
       var k = 1
-      if river > 0 and i >= 18 and i < 22 and not (river == 1 and j >= 30 and j < 34) { k = 0 }
+      if river > 0 and river < 3 and i >= 18 and i < 22 and not (river == 1 and j >= 30 and j < 34) { k = 0 }
+      if river == 3 and i >= 18 and i < 22 and j < 30 { k = 2 }
       g.area[(j * n + i) * 2] = k
       g.area[(j * n + i) * 2 + 1] = k
     }

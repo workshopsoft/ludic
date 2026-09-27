@@ -19,7 +19,7 @@ program NavTest {
   test "a path goes round a post, and the straight line through it is not walkable" (nav_st: mut NavState) {
     expect(meadow(nav_st, NAV_PERSON, 0, true))
     expect(nav_polygons(nav_st, NAV_PERSON) > 0)
-    let n = nav_path(nav_st, NAV_PERSON, 5.0, 0.0, 20.0, 35.0, 0.0, 20.0)
+    let n = nav_path(nav_st, NAV_PERSON, 0, 5.0, 0.0, 20.0, 35.0, 0.0, 20.0)
     expect(n >= 3)
     expect(not nav_partial(nav_st, NAV_PERSON))
     expect(Math.abs(last_x(nav_st) - 35.0) < 0.1)
@@ -28,13 +28,13 @@ program NavTest {
       let dz = nav_corner_z(nav_st, i) - 20.0
       expect(dx * dx + dz * dz > 2.0 * 2.0)
     }
-    expect(not nav_straight(nav_st, NAV_PERSON, 5.0, 0.0, 20.0, 35.0, 20.0))
-    expect(nav_straight(nav_st, NAV_PERSON, 5.0, 0.0, 5.0, 35.0, 5.0))
+    expect(not nav_straight(nav_st, NAV_PERSON, 0, 5.0, 0.0, 20.0, 35.0, 20.0))
+    expect(nav_straight(nav_st, NAV_PERSON, 0, 5.0, 0.0, 5.0, 35.0, 5.0))
   }
 
   test "a river is crossed at its ford" (nav_st: mut NavState) {
     expect(meadow(nav_st, NAV_PERSON, 1, false))
-    let n = nav_path(nav_st, NAV_PERSON, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
+    let n = nav_path(nav_st, NAV_PERSON, 0, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
     expect(n >= 3)
     expect(not nav_partial(nav_st, NAV_PERSON))
     var ford = false
@@ -44,7 +44,7 @@ program NavTest {
 
   test "without a ford the path stops at the near bank and says so" (nav_st: mut NavState) {
     expect(meadow(nav_st, NAV_PERSON, 2, false))
-    let n = nav_path(nav_st, NAV_PERSON, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
+    let n = nav_path(nav_st, NAV_PERSON, 0, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
     expect(n >= 1)
     expect(nav_partial(nav_st, NAV_PERSON))
     expect(last_x(nav_st) < 18.0)
@@ -56,24 +56,36 @@ program NavTest {
     expect(Math.abs(nav_near_y(nav_st)) < 0.3)
     expect(Math.abs(nav_near_x(nav_st) - 10.0) < 0.1)
     expect(not nav_nearest(nav_st, NAV_PERSON, -50.0, 0.0, -50.0))
-    expect_eq(nav_path(nav_st, NAV_PERSON, -50.0, 0.0, -50.0, 10.0, 0.0, 10.0), -1)
-    expect_eq(nav_path(nav_st, NAV_LARGE, 5.0, 0.0, 5.0, 10.0, 0.0, 10.0), -1)
+    expect_eq(nav_path(nav_st, NAV_PERSON, 0, -50.0, 0.0, -50.0, 10.0, 0.0, 10.0), -1)
+    expect_eq(nav_path(nav_st, NAV_LARGE, 0, 5.0, 0.0, 5.0, 10.0, 0.0, 10.0), -1)
   }
 
   test "a random point near is always one a walker there can reach, and a seed is always the same point" (nav_st: mut NavState) {
     expect(meadow(nav_st, NAV_PERSON, 2, false))
     for seed in 0 .. 50 {
-      expect(nav_random_near(nav_st, NAV_PERSON, 5.0, 0.0, 10.0, 30.0, seed))
+      expect(nav_random_near(nav_st, NAV_PERSON, 0, 5.0, 0.0, 10.0, 30.0, seed))
       expect(nav_near_x(nav_st) < 18.0)
     }
-    nav_random_near(nav_st, NAV_PERSON, 5.0, 0.0, 10.0, 30.0, 7)
+    nav_random_near(nav_st, NAV_PERSON, 0, 5.0, 0.0, 10.0, 30.0, 7)
     let x7 = nav_near_x(nav_st)
     let z7 = nav_near_z(nav_st)
-    nav_random_near(nav_st, NAV_PERSON, 5.0, 0.0, 10.0, 30.0, 8)
+    nav_random_near(nav_st, NAV_PERSON, 0, 5.0, 0.0, 10.0, 30.0, 8)
     expect(Math.abs(nav_near_x(nav_st) - x7) + Math.abs(nav_near_z(nav_st) - z7) > 0.01)
-    nav_random_near(nav_st, NAV_PERSON, 5.0, 0.0, 10.0, 30.0, 7)
+    nav_random_near(nav_st, NAV_PERSON, 0, 5.0, 0.0, 10.0, 30.0, 7)
     expect_eq(nav_near_x(nav_st), x7)
     expect_eq(nav_near_z(nav_st), z7)
+  }
+
+  test "a filter that dislikes a band of thicket walks round it; the plain one goes through" (nav_st: mut NavState) {
+    expect(meadow(nav_st, NAV_PERSON, 3, false))
+    nav_area_cost(nav_st, NAV_PERSON, 1, 2, 20.0)
+    nav_path(nav_st, NAV_PERSON, 0, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
+    expect_eq(nav_corners(nav_st), 2)
+    let n = nav_path(nav_st, NAV_PERSON, 1, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
+    var round = false
+    for i in 0 .. n { if nav_corner_z(nav_st, i) > 29.0 { round = true } }
+    expect(round)
+    expect(not nav_partial(nav_st, NAV_PERSON))
   }
 
   test "a boulder's footprint is walked round" (nav_st: mut NavState) {
@@ -81,8 +93,8 @@ program NavTest {
     g.foot = square_at(20.0, 20.0, 3.0)
     g.nf = len(g.foot)
     expect(nav_build(nav_st, NAV_PERSON, g, new NavConfig))
-    expect(not nav_straight(nav_st, NAV_PERSON, 5.0, 0.0, 20.0, 35.0, 20.0))
-    expect(nav_path(nav_st, NAV_PERSON, 5.0, 0.0, 20.0, 35.0, 0.0, 20.0) >= 3)
+    expect(not nav_straight(nav_st, NAV_PERSON, 0, 5.0, 0.0, 20.0, 35.0, 20.0))
+    expect(nav_path(nav_st, NAV_PERSON, 0, 5.0, 0.0, 20.0, 35.0, 0.0, 20.0) >= 3)
   }
 
   test "a mesh saved and loaded answers as the built one did" (nav_st: mut NavState) {
@@ -90,10 +102,10 @@ program NavTest {
     let path = Os.temp_dir() + "/ludic_nav_test.navmesh"
     expect(nav_save_file(nav_st, NAV_PERSON, path))
     expect(nav_load_file(nav_st, NAV_SMALL, path))
-    let a = nav_path(nav_st, NAV_PERSON, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
+    let a = nav_path(nav_st, NAV_PERSON, 0, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
     let ax = last_x(nav_st)
     let az = last_z(nav_st)
-    let b = nav_path(nav_st, NAV_SMALL, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
+    let b = nav_path(nav_st, NAV_SMALL, 0, 5.0, 0.0, 10.0, 35.0, 0.0, 10.0)
     expect_eq(a, b)
     expect_near(last_x(nav_st), ax, 0.0001)
     expect_near(last_z(nav_st), az, 0.0001)
