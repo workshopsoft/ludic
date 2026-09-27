@@ -51,10 +51,10 @@ function cs_rule(ui_st: mut UiState, n: UiNode, r: UiRule) -> void { cs_rule_in(
 # a rule's custom properties first, so its other declarations can read them; values read in `e`
 function cs_rule_in(ui_st: mut UiState, n: UiNode, r: UiRule, e: UiEnv) -> void {
   for j in 0 .. len(r.keys) {
-    if len(r.keys[j]) > 2 and r.keys[j][0..2] == "--" { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
+    if len(r.keys[j]) > 2 and sat(r.keys[j], 0, "--") { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
   }
   for j in 0 .. len(r.keys) {
-    if not (len(r.keys[j]) > 2 and r.keys[j][0..2] == "--") and cs_pass_ok(ui_st, r.keys[j]) { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
+    if not (len(r.keys[j]) > 2 and sat(r.keys[j], 0, "--")) and cs_pass_ok(ui_st, r.keys[j]) { el_attr(ui_st, n, r.keys[j], ui_eval(ui_st, r.vals[j], e)) }
   }
 }
 function ua_sheet(ui_st: mut UiState) -> UiSheet {

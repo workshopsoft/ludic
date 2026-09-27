@@ -14,7 +14,7 @@ function el_edge(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
 # url(path) or url("path") -> path
 function el_url(s: string) -> string {
   var t = tpl_words(s)
-  if len(t) > 5 and t[0..4] == "url(" { t = tpl_words(t[4..len(t) - 1]) }
+  if len(t) > 5 and sat(t, 0, "url(") { t = tpl_words(t[4..len(t) - 1]) }
   if len(t) >= 2 and (t[0] == 34 or t[0] == 39) { t = t[1..len(t) - 1] }
   if t == "none" { return "" }
   return t
@@ -78,7 +78,7 @@ function el_secs(s: string) -> float {
   for i in 0 .. len(parts) {
     let p = parts[i]
     if len(p) > 1 and p[0] >= 48 and p[0] <= 57 or len(p) > 1 and p[0] == 46 {
-      if len(p) > 2 and p[len(p) - 2..len(p)] == "ms" { return el_num(p) / 1000.0 }
+      if len(p) > 2 and sat(p, len(p) - 2, "ms") { return el_num(p) / 1000.0 }
       return el_num(p)
     }
   }

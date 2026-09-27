@@ -67,8 +67,8 @@ function el_num(s: string) -> float {
 # start, center, end, stretch; for justify also between, around, evenly - with CSS's spellings
 function el_place(v: Val) -> int {
   var s = vl_text(v)
-  if len(s) > 6 and s[0..6] == "space-" { s = s[6..len(s)] }
-  if len(s) > 5 and s[0..5] == "flex-" { s = s[5..len(s)] }
+  if len(s) > 6 and sat(s, 0, "space-") { s = s[6..len(s)] }
+  if len(s) > 5 and sat(s, 0, "flex-") { s = s[5..len(s)] }
   if s == "center" { return UI_CENTER }
   if s == "end" or s == "right" { return UI_END }
   if s == "stretch" or s == "between" { return 3 }

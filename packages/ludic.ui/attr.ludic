@@ -1,6 +1,5 @@
 # attr.ludic - what a property sets, by its CSS name or the short one (width or w, background or
 # bg, font-size or size, ...). An attribute on an element is the same property, applied last.
-const AT_ALIAS: string = " width=w height=h min-width=min-w max-width=max-w min-height=min-h max-height=max-h padding=pad background=bg background-color=bg font-size=size opacity=alpha flex-grow=grow flex-shrink=shrink flex-direction=dir flex-wrap=wrap justify-content=justify align-items=align align-self=self row-gap=gap column-gap=gap text-align=talign "
 const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow cursor transition animation letter-spacing text-decoration "
 # a stylesheet's property: one that means nothing is said
 function el_attr(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> void {
@@ -12,7 +11,7 @@ function el_apply(ui_st: mut UiState, n: UiNode, key: string, v0: Val) -> bool {
   let k = at_alias(key)
   ui_st.el_cur = n
   ui_st.el_key = k
-  if len(k) > 2 and k[0..2] == "--" {
+  if len(k) > 2 and sat(k, 0, "--") {
     cs_var_set(n, k, vl_text(v0))
     return true
   }
@@ -20,15 +19,28 @@ function el_apply(ui_st: mut UiState, n: UiNode, key: string, v0: Val) -> bool {
   return el_size(ui_st, n, k, v) or el_box(ui_st, n, k, v) or el_flex(n, k, v) or el_look(ui_st, n, k, v) or el_place_prop(ui_st, n, k, v) or el_edge(ui_st, n, k, v) or el_more(ui_st, n, k, v)
 }
 function at_alias(key: string) -> string {
-  let pat = ` {key}=`
-  let n = len(pat)
-  for i in 0 .. len(AT_ALIAS) - n + 1 {
-    if AT_ALIAS[i..i + n] == pat {
-      var j = i + n
-      while AT_ALIAS[j] != 32 { j += 1 }
-      return AT_ALIAS[i + n..j]
-    }
-  }
+  # the CSS name to the short one; literals, so asking allocates nothing (asked per rule per element)
+  if key == "width" { return "w" }
+  if key == "height" { return "h" }
+  if key == "min-width" { return "min-w" }
+  if key == "max-width" { return "max-w" }
+  if key == "min-height" { return "min-h" }
+  if key == "max-height" { return "max-h" }
+  if key == "padding" { return "pad" }
+  if key == "background" { return "bg" }
+  if key == "background-color" { return "bg" }
+  if key == "font-size" { return "size" }
+  if key == "opacity" { return "alpha" }
+  if key == "flex-grow" { return "grow" }
+  if key == "flex-shrink" { return "shrink" }
+  if key == "flex-direction" { return "dir" }
+  if key == "flex-wrap" { return "wrap" }
+  if key == "justify-content" { return "justify" }
+  if key == "align-items" { return "align" }
+  if key == "align-self" { return "self" }
+  if key == "row-gap" { return "gap" }
+  if key == "column-gap" { return "gap" }
+  if key == "text-align" { return "talign" }
   return key
 }
 function el_size(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
@@ -49,7 +61,7 @@ function el_look(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
     n.fg = ui_color(ui_st, s)
     n.fg_a = ui_st.cl_alpha
   } else if key == "bg" {
-    if gr_is(tpl_words(s)) { nx(n).grad = gr_parse(ui_st, s) } else if len(s) > 4 and s[0..4] == "url(" { n.bg_img = el_url(s) } else if tpl_words(s) == "transparent" {
+    if gr_is(tpl_words(s)) { nx(n).grad = gr_parse(ui_st, s) } else if len(s) > 4 and sat(s, 0, "url(") { n.bg_img = el_url(s) } else if tpl_words(s) == "transparent" {
       n.bg = 0
       n.bg_a = 0.0
     } else {

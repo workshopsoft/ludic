@@ -39,3 +39,13 @@ function lib_beside(path: string, src: string) -> string {
   if cut < 0 { return src }
   return path[0..cut + 1] + src
 }
+# `s` has `p` starting at `at`: compared in place, where s[at..at + len(p)] == p made a new string
+# for every place it looked (Ludic frees nothing, and the cascade asks this per element per frame)
+function sat(s: string, at: int, p: string) -> bool {
+  let n = len(p)
+  if at < 0 or at + n > len(s) { return false }
+  for i in 0 .. n {
+    if s[at + i] != p[i] { return false }
+  }
+  return true
+}

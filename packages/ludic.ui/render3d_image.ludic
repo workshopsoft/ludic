@@ -73,7 +73,7 @@ function r3u_image_h(render3d_st: mut Render3dState, ui_st: mut UiState, src: st
 function r3u_is_cell(ui_st: UiState, src: string) -> bool {
   for k in 0 .. len(ui_st.r3u_atlas) {
     let p = ui_st.r3u_atlas[k]
-    if len(src) > len(p) and src[0..len(p)] == p and src[len(p)] == 58 { return true }
+    if len(src) > len(p) and sat(src, 0, p) and src[len(p)] == 58 { return true }
   }
   return false
 }

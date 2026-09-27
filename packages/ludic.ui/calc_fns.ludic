@@ -8,7 +8,7 @@ function ca_fn_at(s: string, at: int) -> string {
   if ca_word(s, at, "clamp(") { return "clamp" }
   return ""
 }
-function ca_word(s: string, at: int, w: string) -> bool { return at + len(w) <= len(s) and s[at..at + len(w)] == w }
+function ca_word(s: string, at: int, w: string) -> bool { return at + len(w) <= len(s) and sat(s, at, w) }
 function ca_fn(ui_st: mut UiState, f: string) -> CaVal {
   ui_st.ca_i = ui_st.ca_i + len(f) + 1
   let args = new []CaVal
