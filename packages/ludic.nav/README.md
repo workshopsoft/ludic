@@ -29,7 +29,10 @@ import "ludic.nav"
 - **A wander's goal is somewhere it can go.** `nav_random_near` answers a point about r away that a
   walker standing at the start can reach - never across a river without a ford - from a seed the
   caller draws from its own `Rng`, so the same seed is the same point on every machine.
-- **A kind of ground has a cost** (`nav_area_cost`): a trail cheaper than a meadow, scree dearer.
+- **A kind of ground has a cost, and a walker has a taste.** A mesh carries `NAV_FILTERS` (8) sets of
+  costs per area (`nav_area_cost(kind, filter, area, cost)`), and every path, straight line and
+  random point names the filter it walks by: a deer's dislikes scree, a marmot's likes it, a
+  person's prefers the town. The nearest point uses filter 0.
 - **The same question gets the same answer.** Detour is deterministic for the same mesh and the
   same points, so co-op's order of dice is untouched by asking it.
 
@@ -37,17 +40,17 @@ import "ludic.nav"
 
 | | |
 | --- | --- |
-| `NAV_PERSON`, `NAV_LARGE`, `NAV_SMALL`, `NAV_CORNERS` | the kinds of walker, and a path's most corners (256) |
+| `NAV_PERSON`, `NAV_LARGE`, `NAV_SMALL`, `NAV_FILTERS`, `NAV_CORNERS` | the kinds of walker, the filters a mesh has (8), and a path's most corners (256) |
 | `NavConfig { cell, cell_h, height, radius, climb, slope }` | what a mesh is built for (a person by default, 0.25 m cells) |
 | `NavGround { v, nv, t, nt, area, cyl, nc, foot, nf }` | what it is built from: triangles, an area byte each, cylinders (`x, y, z, r, h`) and footprints (`n`, n points `x z`, `ymin`, `ymax`) |
 | `nav_build(kind, ground, config) -> bool`, `nav_polygons(kind)` | one mesh over all of it |
 | `nav_tiled(kind, ox, oz, tile, max_tiles, max_polys) -> bool`, `nav_tile_build(kind, tx, tz, ground, config) -> int` | a map of square tiles, a tile at a time (its polygons, 0 none, -1 failed) |
 | `nav_save_file(kind, path)`, `nav_load_file(kind, path)`, `nav_reset()` | a baked mesh written and read; every mesh let go |
 | `nav_nearest(kind, x, y, z) -> bool`, `nav_near_x/y/z()` | the nearest walkable point within a couple of metres |
-| `nav_path(kind, sx, sy, sz, ex, ey, ez) -> int`, `nav_corners()`, `nav_corner_x/y/z(i)`, `nav_partial(kind)` | a way as corners |
-| `nav_straight(kind, sx, sy, sz, ex, ez) -> bool` | does the straight line stay walkable |
-| `nav_random_near(kind, x, y, z, r, seed) -> bool`, `nav_near_x/y/z()` | a reachable point about r away, from the caller's seed |
-| `nav_area_cost(kind, area, cost)` | how dear a kind of ground is to cross |
+| `nav_path(kind, filter, sx, sy, sz, ex, ey, ez) -> int`, `nav_corners()`, `nav_corner_x/y/z(i)`, `nav_partial(kind)` | a way as corners |
+| `nav_straight(kind, filter, sx, sy, sz, ex, ez) -> bool` | does the straight line stay walkable |
+| `nav_random_near(kind, filter, x, y, z, r, seed) -> bool`, `nav_near_x/y/z()` | a reachable point about r away, from the caller's seed |
+| `nav_area_cost(kind, filter, area, cost)` | how dear a kind of ground is to cross by that filter |
 
 ## Tests
 
@@ -55,7 +58,8 @@ import "ludic.nav"
 ludic test packages/ludic.nav
 ```
 
-A 40 m meadow built by hand: a path round a post and a boulder's footprint, over a river's ford,
+A 40 m meadow built by hand: a path round a post and a boulder's footprint, round a band of thicket
+by a filter that dislikes it and straight through by the plain one, over a river's ford,
 stopping at the bank of a river with none, the nearest point, random points that never cross the
 river, and a saved mesh answering as the built one did. And a 128 m meadow as four tiles: a path
 across the seams, a tile under water with no polygons, and the set saved and loaded.

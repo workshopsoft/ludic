@@ -13,19 +13,19 @@ export function nav_near_z(nav_st: NavState) -> float { return nav_st.nv_near[2]
 
 # a point about r from (x, y, z) that a walker standing there can reach (a wander's goal), read back
 # as the nearest is; the seed is the caller's dice, so the same seed is the same point everywhere
-export function nav_random_near(nav_st: NavState, kind: int, x: float, y: float, z: float, r: float, seed: int) -> bool {
+export function nav_random_near(nav_st: NavState, kind: int, filter: int, x: float, y: float, z: float, r: float, seed: int) -> bool {
   let h = nv_mesh(nav_st, kind)
   if h == null { return false }
-  return nvc_random_near(h, x, y, z, r, seed, nav_st.nv_near) == 1
+  return nvc_random_near(h, filter, x, y, z, r, seed, nav_st.nv_near) == 1
 }
 
 # a way from one point to another: its corners, first the start and last the end (or as near the end
 # as the mesh reaches - nav_partial says which); -1 when either end is off the mesh
-export function nav_path(nav_st: mut NavState, kind: int, sx: float, sy: float, sz: float, ex: float, ey: float, ez: float) -> int {
+export function nav_path(nav_st: mut NavState, kind: int, filter: int, sx: float, sy: float, sz: float, ex: float, ey: float, ez: float) -> int {
   let h = nv_mesh(nav_st, kind)
   nav_st.nv_count = 0
   if h == null { return -1 }
-  let n = nvc_path(h, sx, sy, sz, ex, ey, ez, nav_st.nv_out, NAV_CORNERS)
+  let n = nvc_path(h, filter, sx, sy, sz, ex, ey, ez, nav_st.nv_out, NAV_CORNERS)
   if n > 0 { nav_st.nv_count = n }
   return n
 }
@@ -39,13 +39,14 @@ export function nav_corner_y(nav_st: NavState, i: int) -> float { return nav_st.
 export function nav_corner_z(nav_st: NavState, i: int) -> float { return nav_st.nv_out[i * 3 + 2] }
 
 # does the straight line from (sx, sy, sz) to (ex, ez) stay walkable?
-export function nav_straight(nav_st: NavState, kind: int, sx: float, sy: float, sz: float, ex: float, ez: float) -> bool {
+export function nav_straight(nav_st: NavState, kind: int, filter: int, sx: float, sy: float, sz: float, ex: float, ez: float) -> bool {
   let h = nv_mesh(nav_st, kind)
-  return h != null and nvc_raycast(h, sx, sy, sz, ex, ez) == 1
+  return h != null and nvc_raycast(h, filter, sx, sy, sz, ex, ez) == 1
 }
 
-# how dear a kind of ground is to cross (1 is plain; a trail cheaper, scree dearer)
-export function nav_area_cost(nav_st: NavState, kind: int, area: int, cost: float) -> void {
+# how dear a kind of ground is to cross by filter f (1 is plain; a town cheaper for a person, scree
+# dearer for a deer): a query names the filter it walks by, 0 .. NAV_FILTERS - 1
+export function nav_area_cost(nav_st: NavState, kind: int, filter: int, area: int, cost: float) -> void {
   let h = nv_mesh(nav_st, kind)
-  if h != null { nvc_area_cost(h, area, cost) }
+  if h != null { nvc_area_cost(h, filter, area, cost) }
 }

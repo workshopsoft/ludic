@@ -19,12 +19,13 @@
 namespace {
 const int NAV_MAX_POLYS = 512;     // polygons a path may cross; a longer one is cut there
 const int NAV_MAX_NODES = 4096;    // the search's open list
+const int NAV_FILTERS = 8;         // costs per kind of ground: one set per kind of walker's taste
 
 // a navmesh and the one query that walks it, with the scratch a path needs
 struct Nav {
   dtNavMesh *mesh = nullptr;
   dtNavMeshQuery *query = nullptr;
-  dtQueryFilter filter;
+  dtQueryFilter filters[NAV_FILTERS];
   float ext[3] = {2.0f, 4.0f, 2.0f};   // how far to look for the mesh around a point
   dtPolyRef polys[NAV_MAX_POLYS];
   int partial = 0;                     // the last path stopped short of its end
@@ -36,8 +37,10 @@ Nav *nav_open(dtNavMesh *mesh) {
   n->mesh = mesh;
   n->query = dtAllocNavMeshQuery();
   if (!n->query || dtStatusFailed(n->query->init(n->mesh, NAV_MAX_NODES))) { dtFreeNavMeshQuery(n->query); dtFreeNavMesh(n->mesh); delete n; return nullptr; }
-  n->filter.setIncludeFlags(0xffff);
-  n->filter.setExcludeFlags(0);
+  for (int f = 0; f < NAV_FILTERS; ++f) {
+    n->filters[f].setIncludeFlags(0xffff);
+    n->filters[f].setExcludeFlags(0);
+  }
   return n;
 }
 Nav *nav_from(unsigned char *data, int size) {
@@ -45,6 +48,8 @@ Nav *nav_from(unsigned char *data, int size) {
   if (!mesh || dtStatusFailed(mesh->init(data, size, DT_TILE_FREE_DATA))) { dtFree(data); dtFreeNavMesh(mesh); return nullptr; }
   return nav_open(mesh);
 }
+// filter f, the first when f is out of range
+const dtQueryFilter *nav_filter(Nav *n, int f) { return &n->filters[f >= 0 && f < NAV_FILTERS ? f : 0]; }
 }  // namespace
 
 #include "nav_build.inl"

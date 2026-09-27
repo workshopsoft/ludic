@@ -33,11 +33,11 @@ program TilesTest {
   test "a path crosses the tiles' seams and goes round the post in the far tile" (nav_st: mut NavState) {
     expect_eq(map(nav_st, false), 0)
     expect(nav_polygons(nav_st, NAV_PERSON) > 0)
-    let n = nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
+    let n = nav_path(nav_st, NAV_PERSON, 0, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
     expect(n >= 3)
     expect(not nav_partial(nav_st, NAV_PERSON))
     expect(Math.abs(last_x(nav_st) - 120.0) < 0.1)
-    let d = nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 10.0, 120.0, 0.0, 120.0)
+    let d = nav_path(nav_st, NAV_PERSON, 0, 10.0, 0.0, 10.0, 120.0, 0.0, 120.0)
     expect(d >= 2)
     expect(not nav_partial(nav_st, NAV_PERSON))
   }
@@ -45,8 +45,8 @@ program TilesTest {
   test "a tile under water has no polygons: a way into it is none, the shore beside it is reached" (nav_st: mut NavState) {
     expect_eq(map(nav_st, true), 1)
     expect(not nav_nearest(nav_st, NAV_PERSON, 100.0, 0.0, 100.0))
-    expect_eq(nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 10.0, 70.0, 0.0, 70.0), -1)
-    expect(nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 10.0, 62.0, 0.0, 70.0) >= 2)
+    expect_eq(nav_path(nav_st, NAV_PERSON, 0, 10.0, 0.0, 10.0, 70.0, 0.0, 70.0), -1)
+    expect(nav_path(nav_st, NAV_PERSON, 0, 10.0, 0.0, 10.0, 62.0, 0.0, 70.0) >= 2)
     expect(not nav_partial(nav_st, NAV_PERSON))
     expect(Math.abs(last_z(nav_st) - 70.0) < 0.1)
   }
@@ -57,9 +57,9 @@ program TilesTest {
     expect(nav_save_file(nav_st, NAV_PERSON, path))
     expect(nav_load_file(nav_st, NAV_LARGE, path))
     expect_eq(nav_polygons(nav_st, NAV_LARGE), nav_polygons(nav_st, NAV_PERSON))
-    let a = nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
+    let a = nav_path(nav_st, NAV_PERSON, 0, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
     let ax = last_x(nav_st)
-    let b = nav_path(nav_st, NAV_LARGE, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
+    let b = nav_path(nav_st, NAV_LARGE, 0, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
     expect_eq(a, b)
     expect_near(last_x(nav_st), ax, 0.0001)
   }

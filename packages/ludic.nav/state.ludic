@@ -4,6 +4,7 @@ export const NAV_PERSON: int = 0      # 0.35 m wide, steps what a hiker steps (C
 export const NAV_LARGE: int = 1       # an elk, a bear, a horse
 export const NAV_SMALL: int = 2       # a hare, a marmot
 export const NAV_KINDS: int = 3
+export const NAV_FILTERS: int = 8     # costs per kind of ground, one set per taste (nav_area_cost)
 export const NAV_CORNERS: int = 256   # a path's corners at most; a longer one is cut there
 
 # what a mesh is built for: its voxels (cell across, cell high) and its walker (height, radius,
