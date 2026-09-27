@@ -34,3 +34,20 @@ function wl_pick_target(wildlife_st: WildlifeState, a: WildAnimal, radius: float
     a.tz = WildlifeWorld.way_z()
   }
 }
+
+# a target d metres straight away from (fx, fz): where it runs or backs off to, by the world's way -
+# round water and a cliff where there is one, and straight away as before where there is not
+function wl_away(a: WildAnimal, fx: float, fz: float, d: float) -> void {
+  var dx = a.x - fx
+  var dz = a.z - fz
+  let l = Math.sqrt(dx * dx + dz * dz)
+  if l < 0.01 {
+    dx = -Math.sin(a.yaw)
+    dz = -Math.cos(a.yaw)
+  } else {
+    dx = dx / l
+    dz = dz / l
+  }
+  a.tx = a.x + dx * d
+  a.tz = a.z + dz * d
+}
