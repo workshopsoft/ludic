@@ -145,6 +145,9 @@ function terrain_ortho_forest(render3d_st: mut Render3dState, x: float, z: float
 function terrain_use_ortho(render3d_st: mut Render3dState, path: string) -> void {
   let px = png_decode(render3d_st, path)
   if px == null { return }
+  # a map set up over another lets go of the last one's photograph first
+  if render3d_st.ter_ortho_px != null { free(render3d_st.ter_ortho_px) }
+  if render3d_st.ter_ortho_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_ortho_tex) }
   render3d_st.ter_ortho_px = px
   render3d_st.ter_ortho_w = render3d_st.tex_w
   render3d_st.ter_ortho_c = render3d_st.tex_channels
@@ -154,6 +157,7 @@ function terrain_use_ortho(render3d_st: mut Render3dState, path: string) -> void
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 }
 function terrain_use_dem(render3d_st: mut Render3dState, path: string, emin: float, emax: float, base: float, ox: float, oz: float) -> void {
+  if render3d_st.ter_dem_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_dem_tex) }
   render3d_st.ter_dem_tex = tex_load(render3d_st, path, false)
   render3d_st.ter_dem_min = emin;  render3d_st.ter_dem_max = emax;  render3d_st.ter_dem_base = base
   render3d_st.ter_ox = ox;  render3d_st.ter_oz = oz
@@ -167,6 +171,8 @@ function terrain_generate(render3d_st: mut Render3dState) -> void {
   if render3d_st.ter_dem_tex != 0 { defs = "#define DEM\n" }
   if render3d_st.ter_smooth { defs = "#define SMOOTH\n" }
   let p = r3d_program(render3d_st, "fullscreen.vert", "heightgen.frag", defs)
+  # a map generated over another: its 256 MB height texture goes first
+  if render3d_st.ter_height_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_height_tex);  render3d_st.ter_height_tex = 0 }
   render3d_st.ter_height_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR)
   let fbo = gpu_fb_new(render3d_st)
   gpu_fb_bind(render3d_st, fbo)
@@ -203,8 +209,9 @@ function terrain_generate(render3d_st: mut Render3dState) -> void {
   mesh_draw(render3d_st, render3d_st.sky_fullscreen)
   gpu_program_free(render3d_st, pn)
   gpu_tex_free(render3d_st, raw)
-  # read the heights back for placement
-  render3d_st.ter_heights = floats(TERRAIN_RES * TERRAIN_RES)
+  # read the heights back for placement, into the array a previous map had: always the same size,
+  # and made anew on every build it was 64 MB lost per world swap
+  if render3d_st.ter_heights == null { render3d_st.ter_heights = floats(TERRAIN_RES * TERRAIN_RES) }
   gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_height_tex)
   gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 4)
   gpu_tex_read(render3d_st, GPU_TEX2D, GL_RED, GL_FLOAT, data_of(render3d_st.ter_heights))
