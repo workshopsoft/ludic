@@ -51,3 +51,22 @@ NAV_SHIM int nav_raycast(void *h, float sx, float sy, float sz, float ex, float 
   if (dtStatusFailed(n->query->raycast(a, so, e, &n->filter, &t, nrm, n->polys, &np, NAV_MAX_POLYS))) return -1;
   return t >= 1.0f ? 1 : 0;
 }
+
+// a point about r from (x, y, z) that a walker there can reach, into out; 0 when there is none.
+// Detour asks a function for its dice: this one is seeded by the caller, so the same seed from the
+// package's Rng gives the same point on every machine
+static unsigned int nav_rs = 1;
+static float nav_frand() {
+  nav_rs = nav_rs * 1664525u + 1013904223u;
+  return (float)(nav_rs >> 8) * (1.0f / 16777216.0f);
+}
+NAV_SHIM int nav_random_near(void *h, float x, float y, float z, float r, int seed, float *out) {
+  Nav *n = static_cast<Nav *>(h);
+  float p[3] = {x, y, z}, on[3];
+  dtPolyRef start = nav_poly_at(n, p, on);
+  if (!start) return 0;
+  nav_rs = (unsigned int)seed * 2654435761u + 1u;
+  dtPolyRef ref = 0;
+  if (dtStatusFailed(n->query->findRandomPointAroundCircle(start, on, r, &n->filter, nav_frand, &ref, out))) return 0;
+  return ref ? 1 : 0;
+}

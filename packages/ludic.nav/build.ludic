@@ -1,8 +1,11 @@
-# build.ludic - a kind's mesh from triangles, or from a file a bake wrote
-# v: nv points (x, y, z); t: nt triangles (three indices each); area: one byte per triangle, 0 not
-# walkable, 1..62 a kind of ground; cyl: nc cylinders (x, y, z, r, h) nothing stands in
-export function nav_build(nav_st: mut NavState, kind: int, v: []float, nv: int, t: []int, nt: int, area: []byte, cyl: []float, nc: int, c: NavConfig) -> bool {
-  if len(v) < nv * 3 or len(t) < nt * 3 or len(area) < nt or len(cyl) < nc * 5 { return false }
+# build.ludic - a kind's mesh: whole from its ground, or tile by tile (a map), or from a bake's file
+function nv_ground_ok(g: NavGround) -> bool {
+  if g.v == null or g.t == null or g.area == null { return false }
+  if len(g.v) < g.nv * 3 or len(g.t) < g.nt * 3 or len(g.area) < g.nt { return false }
+  if g.nc > 0 and (g.cyl == null or len(g.cyl) < g.nc * 5) { return false }
+  return g.nf == 0 or (g.foot != null and len(g.foot) >= g.nf)
+}
+function nv_cfg(c: NavConfig) -> []float {
   let cfg = floats(6)
   cfg[0] = c.cell
   cfg[1] = c.cell_h
@@ -10,7 +13,28 @@ export function nav_build(nav_st: mut NavState, kind: int, v: []float, nv: int, 
   cfg[3] = c.radius
   cfg[4] = c.climb
   cfg[5] = c.slope
-  return nv_set(nav_st, kind, nvc_build(v, nv, t, nt, area, cyl, nc, cfg))
+  return cfg
+}
+function nv_or_none(xs: []float) -> []float {
+  if xs == null { return floats(1) }
+  return xs
+}
+
+# one mesh over the whole of g
+export function nav_build(nav_st: mut NavState, kind: int, g: NavGround, c: NavConfig) -> bool {
+  if not nv_ground_ok(g) { return false }
+  return nv_set(nav_st, kind, nvc_build(g.v, g.nv, g.t, g.nt, g.area, nv_or_none(g.cyl), g.nc, nv_or_none(g.foot), g.nf, nv_cfg(c)))
+}
+
+# an empty mesh of square tiles `tile` metres across from (ox, oz), for a map built a tile at a time
+export function nav_tiled(nav_st: mut NavState, kind: int, ox: float, oz: float, tile: float, max_tiles: int, max_polys: int) -> bool {
+  return nv_set(nav_st, kind, nvc_tiled(ox, oz, tile, max_tiles, max_polys))
+}
+# tile (tx, tz) from ground g covering it and a few metres round it: its polygons, 0 none, -1 failed
+export function nav_tile_build(nav_st: NavState, kind: int, tx: int, tz: int, g: NavGround, c: NavConfig) -> int {
+  let h = nv_mesh(nav_st, kind)
+  if h == null or not nv_ground_ok(g) { return -1 }
+  return nvc_tile_build(h, tx, tz, g.v, g.nv, g.t, g.nt, g.area, nv_or_none(g.cyl), g.nc, nv_or_none(g.foot), g.nf, nv_cfg(c))
 }
 
 # the polygons a kind's mesh has (0: none)
@@ -25,6 +49,7 @@ export function nav_save_file(nav_st: NavState, kind: int, path: string) -> bool
   let h = nv_mesh(nav_st, kind)
   if h == null { return false }
   let n = nvc_save(h, null, 0)
+  if n <= 0 { return false }
   let buf = buffer(n)
   if nvc_save(h, buf, n) != n { return false }
   return Fs.write_bytes(path, buf, n)

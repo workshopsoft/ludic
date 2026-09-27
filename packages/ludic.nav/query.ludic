@@ -11,6 +11,14 @@ export function nav_near_x(nav_st: NavState) -> float { return nav_st.nv_near[0]
 export function nav_near_y(nav_st: NavState) -> float { return nav_st.nv_near[1] }
 export function nav_near_z(nav_st: NavState) -> float { return nav_st.nv_near[2] }
 
+# a point about r from (x, y, z) that a walker standing there can reach (a wander's goal), read back
+# as the nearest is; the seed is the caller's dice, so the same seed is the same point everywhere
+export function nav_random_near(nav_st: NavState, kind: int, x: float, y: float, z: float, r: float, seed: int) -> bool {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return false }
+  return nvc_random_near(h, x, y, z, r, seed, nav_st.nv_near) == 1
+}
+
 # a way from one point to another: its corners, first the start and last the end (or as near the end
 # as the mesh reaches - nav_partial says which); -1 when either end is off the mesh
 export function nav_path(nav_st: mut NavState, kind: int, sx: float, sy: float, sz: float, ex: float, ey: float, ez: float) -> int {

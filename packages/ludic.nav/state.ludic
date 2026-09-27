@@ -7,14 +7,30 @@ export const NAV_KINDS: int = 3
 export const NAV_CORNERS: int = 256   # a path's corners at most; a longer one is cut there
 
 # what a mesh is built for: its voxels (cell across, cell high) and its walker (height, radius,
-# the step it takes whatever its gradient, the steepest ground it walks, degrees)
+# the step it takes whatever its gradient, the steepest ground it walks, degrees). A tile must be a
+# whole number of cells across, or its seams never join: 0.25 m is 256 to a 64 m tile
 export property NavConfig {
-  cell: float = 0.3
+  cell: float = 0.25
   cell_h: float = 0.2
   height: float = 1.8
   radius: float = 0.35
   climb: float = 0.55
   slope: float = 45.0
+}
+
+# what a mesh is built from: v holds nv points (x, y, z) and t nt triangles (three indices each);
+# area a byte per triangle, 0 not walkable and 1..62 a kind of ground; cyl nc cylinders (x, y, z,
+# r, h) and foot nf floats of convex footprints (n, n points x z, ymin, ymax) nothing stands in
+export property NavGround {
+  v: []float = null
+  nv: int = 0
+  t: []int = null
+  nt: int = 0
+  area: []byte = null
+  cyl: []float = null
+  nc: int = 0
+  foot: []float = null
+  nf: int = 0
 }
 
 export state NavState {

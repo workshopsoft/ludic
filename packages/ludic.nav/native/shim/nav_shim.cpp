@@ -27,24 +27,26 @@ struct Nav {
   dtQueryFilter filter;
   float ext[3] = {2.0f, 4.0f, 2.0f};   // how far to look for the mesh around a point
   dtPolyRef polys[NAV_MAX_POLYS];
-  unsigned char *data = nullptr;       // the tile as built or loaded (the mesh frees it)
-  int size = 0;
   int partial = 0;                     // the last path stopped short of its end
 };
 
-Nav *nav_from(unsigned char *data, int size) {
+// a navmesh with its query, from params (a set of tiles) or from one tile's data
+Nav *nav_open(dtNavMesh *mesh) {
   Nav *n = new Nav();
-  n->mesh = dtAllocNavMesh();
-  if (!n->mesh || dtStatusFailed(n->mesh->init(data, size, DT_TILE_FREE_DATA))) { dtFree(data); dtFreeNavMesh(n->mesh); delete n; return nullptr; }
-  n->data = data;
-  n->size = size;
+  n->mesh = mesh;
   n->query = dtAllocNavMeshQuery();
   if (!n->query || dtStatusFailed(n->query->init(n->mesh, NAV_MAX_NODES))) { dtFreeNavMeshQuery(n->query); dtFreeNavMesh(n->mesh); delete n; return nullptr; }
   n->filter.setIncludeFlags(0xffff);
   n->filter.setExcludeFlags(0);
   return n;
 }
+Nav *nav_from(unsigned char *data, int size) {
+  dtNavMesh *mesh = dtAllocNavMesh();
+  if (!mesh || dtStatusFailed(mesh->init(data, size, DT_TILE_FREE_DATA))) { dtFree(data); dtFreeNavMesh(mesh); return nullptr; }
+  return nav_open(mesh);
+}
 }  // namespace
 
 #include "nav_build.inl"
+#include "nav_tiles.inl"
 #include "nav_query.inl"
