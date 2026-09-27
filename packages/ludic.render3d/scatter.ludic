@@ -24,6 +24,7 @@ property Layer {
   inst:     floats,          # INST_FLOATS per instance
   count:    int = 0,
   cap:      int = 0,
+  have:     int = 0,            # instances inst and scratch have room for now: grown toward cap as filled
   near:     float = 0.0,        # float bits; instances beyond it draw as impostors (or not at all)
   cull:     float = 0.0,        # float bits; instances beyond it are skipped (0 = never)
   buf:      int = 0,
@@ -386,8 +387,11 @@ function layer_new(render3d_st: mut Render3dState, model: Model, cap: int, folia
   l.near = near
   l.cull = cull
   l.tint = v3_new(1.0, 1.0, 1.0)
-  l.inst = floats(cap * INST_FLOATS)
-  l.scratch = floats(cap * INST_FLOATS)
+  # room for what the layer holds, not for what it might: 45 layers at full capacity up front were
+  # 0.4 GB, most of it never filled (plan 23 of maroon-lake)
+  l.have = min(cap, 256)
+  l.inst = floats(l.have * INST_FLOATS)
+  l.scratch = floats(l.have * INST_FLOATS)
   l.last_cam = v3_new(100000.0, 0.0, 0.0)
   l.buf = gpu_buffer_new(render3d_st)
   l.imp_buf = gpu_buffer_new(render3d_st)
@@ -398,8 +402,23 @@ function layer_new(render3d_st: mut Render3dState, model: Model, cap: int, folia
   return l
 }
 
+# room for n instances (at most the layer's cap), doubling what there is so a fill costs a few copies
+function layer_room(l: Layer, n: int) -> void {
+  if n <= l.have { return }
+  var want = max(l.have * 2, n)
+  if want > l.cap { want = l.cap }
+  let inst = floats(want * INST_FLOATS)
+  if l.count > 0 { mem_copy(data_of(inst), data_of(l.inst), l.count * INST_FLOATS * 4) }
+  free(l.inst)
+  free(l.scratch)
+  l.inst = inst
+  l.scratch = floats(want * INST_FLOATS)
+  l.have = want
+}
+
 function layer_add(l: Layer, x: float, y: float, z: float, scale: float, yaw: float, seed: float, wind: float) -> void {
   if l.count >= l.cap { return }
+  layer_room(l, l.count + 1)
   let o = l.count * INST_FLOATS
   l.inst[o] = x;  l.inst[o + 1] = y;  l.inst[o + 2] = z;  l.inst[o + 3] = scale
   l.inst[o + 4] = Math.sin(yaw);  l.inst[o + 5] = Math.cos(yaw);  l.inst[o + 6] = seed;  l.inst[o + 7] = wind
