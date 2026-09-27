@@ -34,6 +34,7 @@ uniform vec4 u_tiles[256];   // per tile of the draw: corner x, corner z, indice
 uniform float u_s0;          // blade spacing at the camera (m)
 uniform float u_d0;          // distance at which the spacing has doubled (m)
 uniform float u_radius;      // no blades past this
+uniform float u_px;          // one pixel's height in radians: no blade is drawn narrower than a pixel
 uniform int u_dbg;           // R3D_GRASS_DBG: 1 lift blades 0.3 m, 2 light as ground everywhere, 3 both
 out vec3 v_wpos;
 out vec3 v_nrm;
@@ -42,9 +43,10 @@ out float v_seed;
 out vec2 v_rot;
 out float v_hull;
 out float v_quake;   // only aspens quake; written so model.frag can read it
+out vec3 v_tint;     // the blade's colour field at its root (model.frag's regionTint and patchiness, once a blade)
 
-const float CELL = 16.0;
-float hash1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+const float CELL = 4.0;   // grass.ludic GRASS_CELL: 4 m, so a near tile asks for what its blades need
+// hash1 and fbm come from noise.glsl, which a GBLADE vertex stage is given (programs.ludic)
 // An integer hash (PCG) for the per-blade values. The sine hash advanced linearly with
 // the blade index, so a cell's blades fell into diagonal rows, and the rows read as
 // streaks across the meadow with an edge wherever they thinned out.
@@ -68,7 +70,22 @@ float heightSmooth(sampler2D tex, vec2 uv) {
   return (texture(tex, vec2(o0.x, o0.y)).r * s0.x + texture(tex, vec2(o1.x, o0.y)).r * s1.x) * s0.y
        + (texture(tex, vec2(o0.x, o1.y)).r * s0.x + texture(tex, vec2(o1.x, o1.y)).r * s1.x) * s1.y;
 }
-void cull() { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); v_wpos = vec3(0.0); v_nrm = vec3(0.0, 1.0, 0.0); v_uv = vec2(0.0); v_seed = 0.0; v_rot = vec2(0.0, 1.0); v_hull = 1.0; v_quake = 0.0; }
+void cull() { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); v_wpos = vec3(0.0); v_nrm = vec3(0.0, 1.0, 0.0); v_uv = vec2(0.0); v_seed = 0.0; v_rot = vec2(0.0, 1.0); v_hull = 1.0; v_quake = 0.0; v_tint = vec3(1.0); }
+// lighting.glsl's regionTint(wpos, 0.35) times model.frag's patchiness, at the root: three fbm
+// fields a blade pixel used to pay for, when the whole blade stands on one spot
+vec3 bladeField(vec2 xz, float y) {
+  float n = fbm(xz * 0.0018 + 4.0, 3) * 0.5 + 0.5;
+  float aspen = smoothstep(0.52, 0.7, n) * smoothstep(520.0, 250.0, y);
+  float dry = smoothstep(0.35, 0.15, fbm(xz * 0.004 + 9.0, 3) * 0.5 + 0.5);
+  vec3 t = mix(vec3(1.0), vec3(1.25, 1.3, 0.85), aspen * 0.35);
+  t = mix(t, vec3(1.15, 1.05, 0.7), dry * 0.35 * 0.6);
+  float patchy = fbm(xz * 0.045, 3) * 0.5 + 0.5;
+  t *= mix(vec3(0.7, 0.8, 0.55), vec3(1.1, 1.05, 0.85), patchy);
+  // dry and green patches a few metres across, and the tussocks' own shade of the same green
+  float dryp = smoothstep(0.2, 0.8, gnoise(xz * 0.33 + 17.0) * 0.5 + 0.5);
+  t *= mix(vec3(0.92, 1.0, 0.95), vec3(1.30, 1.10, 0.62), dryp);
+  return t * (0.72 + 0.56 * (gnoise(xz * 1.9 + 41.0) * 0.5 + 0.5));
+}
 
 void main() {
 #ifdef TILES
@@ -158,6 +175,10 @@ void main() {
   // that had been cut, which is the one thing an alpine meadow is not.
   float hh = h3 * h3;
   float tall = mix(0.09, 0.60, hh) * mix(0.8, 1.2, hash1(cid * 0.1)) * (1.0 + 0.35 * smoothstep(1.0, 12.0, grow)) * life;
+  // CLUMPS: grass grows in tussocks, taller and shorter patches a metre or so across, and that
+  // relief is the texture a meadow has from above - an even height reads as felt
+  float clump = gnoise(xz * 0.85 + 3.7) * 0.5 + 0.5;
+  tall *= mix(0.45, 1.40, clump * clump * (3.0 - 2.0 * clump));
   // 2.8 cm was FIVE TIMES a blade of meadow grass, which is 3-6 mm. At 2 m from the
   // camera that is a broad dark scimitar lying along the ground rather than a blade
   // standing in a sward, and no amount of profile or colour work fixes a blade that is
@@ -165,6 +186,9 @@ void main() {
   // and too flat" note in this stage.
   float bw = 0.010 * mix(1.0, 0.45 * grow, smoothstep(1.0, 4.0, grow));
   if (far) { bw = max(bw, spacing * 0.35); tall = min(tall, spacing * 0.3); }
+  // a blade under a pixel is a vertex bill that shimmers: widen it to one and a bit, and let the
+  // thinning (spacing) keep the coverage
+  bw = max(bw, dist * u_px * 1.1);
   vec3 p = vec3(a_pos.x * bw, a_pos.y * tall, a_pos.z * tall * (0.6 + 0.8 * h4));
   vec3 n = vec3(0.0, 0.3, 1.0);
   // The shared field (wind.glsl), so the gust that crosses this meadow is the same gust that
@@ -217,6 +241,7 @@ void main() {
   v_seed = seed;
   v_rot = vec2(s, c_);
   v_quake = 0.0;
+  v_tint = bladeField(xz, h);
   v_hull = (dist > 2.0 || far || (u_dbg & 2) != 0) ? -1.0 : 1.0;   // no back-face flip, no rounding past arm's reach
   gl_Position = u_proj * u_view * vec4(w, 1.0);
 }

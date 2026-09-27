@@ -20,8 +20,8 @@ fullscreen.vert|tonemap.frag|
 fullscreen.vert|tonemap.frag|#define HDR10;
 fullscreen.vert|volumetric.frag|
 grass.mesh|model.frag|#define FOLIAGE;#define BLADE;#define MESH;
-grass.vert|model.frag|#define FOLIAGE;#define BLADE;
-grass.vert|model.frag|#define FOLIAGE;#define BLADE;#define TILES;
+grass.vert|model.frag|#define FOLIAGE;#define BLADE;#define GBLADE;
+grass.vert|model.frag|#define FOLIAGE;#define BLADE;#define GBLADE;#define TILES;
 impostor.vert|impostor.frag|
 impostor.vert|impostor.frag|#define SHADOW_PASS;
 model.vert|bake.frag|
@@ -59,3 +59,4 @@ terrain.vert|terrain.frag|#define SUN_INLINE;#define FAR_ONLY;
 terrain.vert|terrain.frag|#define SUN_INLINE;#define NEAR_ONLY;
 terrain.vert|tersun.frag|
 water.vert|water.frag|
+grass_inst.vert|model.frag|#define FOLIAGE;#define BLADE;#define GBLADE;#define GINST;

@@ -51,6 +51,8 @@ function r3d_shader_src(render3d_st: mut Render3dState, name: string, defines: s
   if render3d_st.r3d_wind_src == null { render3d_st.r3d_wind_src = r3d_shader_file(render3d_st, "wind.glsl") }
   var s = "#version 410 core\n" + render3d_st.r3d_global_defs + defines + render3d_st.r3d_wind_src
   if is_frag { s = s + render3d_st.r3d_noise_src + render3d_st.r3d_lighting_src }
+  # a blade's colour field is worked out once per vertex, not once per pixel (grass.vert)
+  else if Text.contains(defines, "#define GBLADE") { s = s + render3d_st.r3d_noise_src }
   return s + r3d_shader_file(render3d_st, name)
 }
 

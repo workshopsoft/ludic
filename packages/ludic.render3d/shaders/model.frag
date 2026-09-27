@@ -15,6 +15,9 @@ uniform mat4 u_view;
 uniform vec3 u_tint;
 uniform float u_rough_scale;
 uniform float u_emissive;     // self-lit (a flame): albedo added back after shading
+#ifdef GBLADE
+in vec3 v_tint;               // grass.vert's colour field (the mesh-shader and scatter blades work it out here)
+#endif
 #ifdef BLADE
 uniform vec3 u_blade_base;
 uniform vec3 u_blade_tip;
@@ -49,6 +52,11 @@ void main() {
 #endif
   vec3 N = normalize(v_nrm);
   if (!gl_FrontFacing && v_hull >= 0.0) N = -N;
+#ifdef BLADE
+  // A blade is thin and two-sided: the sun lights whichever face it reaches (the other glows
+  // through, below). Faced away from the sun, half the meadow was lit by the sky alone.
+  if (dot(N, u_sun_dir) < 0.0) N = -N;
+#endif
 #ifdef CARD
   // a baked card: albedo with coverage (premultiplied mips), normal in the card's own frame
   vec4 ca = texture(u_diff, v_uv);
@@ -80,7 +88,16 @@ void main() {
 #ifdef BLADE
   // a procedural blade: dark at the root, lighter at the tip; some blades gone to seed
   float t = clamp(v_uv.y, 0.0, 1.0);
-  alb = mix(u_blade_base, u_blade_tip, t * t) * regionTint(v_wpos, 0.35);
+  // most of a blade is its own green, only the sheath darker: t*t held the lower two thirds at the
+  // root colour (0.14, darker than the ground), and a meadow of those reads as dark wire
+#ifndef GBLADE
+  vec3 field = regionTint(v_wpos, 0.35);
+  float patchy = fbm(v_wpos.xz * 0.045, 3) * 0.5 + 0.5;
+  field *= mix(vec3(0.7, 0.8, 0.55), vec3(1.1, 1.05, 0.85), patchy);
+#else
+  vec3 field = v_tint;
+#endif
+  alb = mix(u_blade_base, u_blade_tip, smoothstep(0.0, 0.55, t)) * field;
   float dry = smoothstep(0.7, 0.8, fract(v_seed * 3.17));
   alb = mix(alb, vec3(0.40, 0.36, 0.13) * (0.45 + 0.55 * t), dry * 0.75);
   // A REAL BLADE, if the game gave us one. Each blade picks a column of the atlas from
@@ -110,13 +127,13 @@ void main() {
     vec3 g = photo * (1.0 / 0.3736);
     alb *= mix(vec3(1.0), min(g, vec3(1.15)), 0.85);
   }
-  float patchy = fbm(v_wpos.xz * 0.045, 3) * 0.5 + 0.5;
-  alb *= mix(vec3(0.7, 0.8, 0.55), vec3(1.1, 1.05, 0.85), patchy);
   // a far tuft is a patch of the meadow, darker than a lit blade tip and never straw
-  if (v_hull < 0.0) alb = mix(u_blade_base, u_blade_tip, 0.45) * regionTint(v_wpos, 0.35) * mix(vec3(0.7, 0.8, 0.55), vec3(1.1, 1.05, 0.85), patchy) * 0.72;
+  if (v_hull < 0.0) alb = mix(u_blade_base, u_blade_tip, 0.45) * field * 0.72;
   // a rounded cross-section reads softer than a flat card
   vec3 side = normalize(cross(N, vec3(0.0, 1.0, 0.0)) + vec3(1e-4));
   n = (v_hull < 0.0) ? N : normalize(N + side * (v_uv.x * 2.0 - 1.0) * 0.6);
+  // and a sward is lit as a mass leaning to the sky: a level normal took the light at a graze
+  n = normalize(n + vec3(0.0, 0.45, 0.0));
   // A blade's own ambient occlusion. This was mix(0.2, 1.0, t*t): 80% occluded at the
   // sheath and still 60% at half height, because t*t holds the curve down. Measured in a
   // walking-distance shot the blades came out at 24-31 of 255 against a ground of 143 -
@@ -227,6 +244,13 @@ void main() {
 #else
   float shadow = mix(1.0, sunShadow(v_wpos + N * 0.1 + vec3(0.0, 0.2, 0.0), N, viewDepth), 0.55);
 #endif
+#elif defined(BLADE)
+  // A blade stands within a shadow texel of the ground under it, and biased along its own
+  // (level) normal it read the terrain as its caster: the whole meadow in shadow, dark wire.
+  // Looked up a hand's width up, along the ground's up, trees and rocks still shade it.
+  // past arm's length a blade is a pixel or two wide: one tap is what a soft filter averages to
+  float shadow = (dist < 8.0) ? sunShadow(v_wpos + vec3(0.0, 0.25, 0.0), vec3(0.0, 1.0, 0.0), viewDepth)
+                              : sunShadowCheap(v_wpos + vec3(0.0, 0.25, 0.0), vec3(0.0, 1.0, 0.0), viewDepth);
 #else
   float shadow = sunShadow(v_wpos, N, viewDepth);
 #endif
@@ -271,6 +295,9 @@ void main() {
     float NoV = max(dot(n, vv), 0.0);
     float sheen = pow(NoH, 26.0) * 0.55 + pow(1.0 - NoV, 4.0) * 0.05;
     sheen *= smoothstep(0.10, 0.42, NoV);
+#ifdef BLADE
+    sheen *= 0.2;   // a sward seen from above is tips edge-on to the sun: the leaf's glint frosted them white
+#endif
     col += u_sun_color * sheen * shadow * cloudShadow(v_wpos) * 0.4 * (0.45 + 0.55 * arm.r);
   }
 #endif

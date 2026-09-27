@@ -1,0 +1,154 @@
+# ============================================================================
+# grass_gpu.ludic — the meadow's blades culled on the GPU (Vulkan), drawn from what survived.
+#
+# grass.vert decided every blade per VERTEX: its hashes, the ground under it, whether anything
+# grows there, its colour field - ten times for a five-row blade, and in full for every index a
+# tile asked for and threw away. That was 3.5 ms of a MoltenVK frame. Here the CPU still walks the
+# visible tiles (as grass_tiles does), but grass_cull.comp decides each candidate once and writes
+# the survivors into three bands by distance, one indirect draw each; grass_inst.vert only bends
+# and places the vertices. OpenGL keeps the per-vertex path. R3D_GRASS_GPU=0 does too, to compare.
+# ============================================================================
+
+const GG_TILES: int = 4096
+const GG_BANDS: int = 3
+const GG_NEAR: float = 6.0     # band 0, five rows
+const GG_MID: float = 16.0     # band 1, three rows; band 2 is one quad
+
+function gg_cap(b: int) -> int {
+  if b == 0 { return 16384 }
+  if b == 1 { return 49152 }
+  return 163840
+}
+function gg_base(b: int) -> int {
+  if b == 0 { return 0 }
+  if b == 1 { return 16384 }
+  return 65536
+}
+
+# once, after grass_init: the programs, the buffers and the three instanced blades
+function gg_init(render3d_st: mut Render3dState) -> void {
+  if not gpu_has_compute(render3d_st) or render3d_st.grass_prog == 0 { return }
+  if r3d_env_has(render3d_st, "R3D_GRASS_GPU") and r3d_env(render3d_st, "R3D_GRASS_GPU") == "0" { return }
+  render3d_st.gg_reset = gpu_compute(render3d_st, "grass_reset", 1)
+  render3d_st.gg_cull = gpu_compute_tex(render3d_st, "grass_cull", 3, 2)
+  render3d_st.gg_prog = r3d_program(render3d_st, "grass_inst.vert", "model.frag", "#define FOLIAGE\n#define BLADE\n#define GBLADE\n#define GINST\n")
+  if render3d_st.gg_reset == 0 or render3d_st.gg_cull == 0 or render3d_st.gg_prog == 0 { return }
+  render3d_st.gg_tiles_buf = new []int
+  for k in 0 .. 2 { push(render3d_st.gg_tiles_buf, gpu_buffer_new(render3d_st)) }
+  render3d_st.gg_tv = floats(GG_TILES * 4)
+  render3d_st.gg_out = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, render3d_st.gg_out, (gg_base(2) + gg_cap(2)) * 64, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, render3d_st.gg_out)
+  render3d_st.gg_mesh = new []Mesh
+  push(render3d_st.gg_mesh, gg_blade(render3d_st, 5))
+  push(render3d_st.gg_mesh, gg_blade(render3d_st, 3))
+  push(render3d_st.gg_mesh, gg_blade(render3d_st, 2))
+  let rec = words(GG_BANDS * 5)
+  for b in 0 .. GG_BANDS {
+    rec[b * 5] = render3d_st.gg_mesh[b].count;  rec[b * 5 + 1] = 0;  rec[b * 5 + 2] = 0;  rec[b * 5 + 3] = 0;  rec[b * 5 + 4] = gg_base(b)
+  }
+  render3d_st.gg_cmds = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, render3d_st.gg_cmds, GG_BANDS * 20, data_of(rec), GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, render3d_st.gg_cmds)
+  render3d_st.gg_on = true
+  print("r3d: grass: blades are culled on the GPU")
+}
+
+# a blade mesh reading its instance record (four vec4s) from the cull's output
+function gg_blade(render3d_st: mut Render3dState, rows: int) -> Mesh {
+  let m = grass_blade_mesh(render3d_st, rows)
+  gpu_mesh_bind_instances(render3d_st, m, render3d_st.gg_out)
+  for k in 0 .. 4 { gpu_mesh_attr_inst(render3d_st, m, 3 + k, 4, GPU_F32, 64, k * 16) }
+  gpu_mesh_done(render3d_st, m)
+  return m
+}
+
+# one tile size over one distance band: its visible tiles into gg_tv (corner, indices per cell, cells)
+function gg_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_max: float) -> void {
+  if d_min >= render3d_st.grass_radius { return }
+  let cells = size / GRASS_CELL
+  let sz = float(size)
+  let half = sz * 0.5
+  let reach = d_max + half * 1.5
+  let corner_r = half * 1.42
+  let tx0 = int(Math.floor((render3d_st.cam_pos[0] - reach) / sz))
+  let tx1 = int(Math.floor((render3d_st.cam_pos[0] + reach) / sz))
+  let tz0 = int(Math.floor((render3d_st.cam_pos[2] - reach) / sz))
+  let tz1 = int(Math.floor((render3d_st.cam_pos[2] + reach) / sz))
+  for tz in tz0 .. tz1 + 1 {
+    for tx in tx0 .. tx1 + 1 {
+      let ox = float(tx) * sz;  let oz = float(tz) * sz
+      let dx = ox + half - render3d_st.cam_pos[0];  let dz = oz + half - render3d_st.cam_pos[2]
+      let dc = Math.sqrt(dx * dx + dz * dz)
+      let dnear = Math.max(dc - corner_r, 0.0)
+      if dc < d_min or not (dnear < d_max) or render3d_st.gg_n >= GG_TILES { continue }
+      if not cam_sphere_visible(render3d_st, ox + half, terrain_height(render3d_st, ox + half, oz + half), oz + half, corner_r + 6.0) { continue }
+      let per = grass_count_at(render3d_st, dnear)
+      var total = per * cells * cells
+      if total > 65535 { total = 65535 }
+      let t = render3d_st.gg_n * 4
+      render3d_st.gg_tv[t] = ox;  render3d_st.gg_tv[t + 1] = oz;  render3d_st.gg_tv[t + 2] = float(total / (cells * cells));  render3d_st.gg_tv[t + 3] = float(cells)
+      if total > render3d_st.gg_max { render3d_st.gg_max = total }
+      render3d_st.gg_n += 1
+    }
+  }
+}
+
+# before the frame's first pass: the tiles, then the reset and the cull
+function gg_cull_frame(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.gg_on or not grass_live(render3d_st) { return }
+  render3d_st.gg_n = 0
+  render3d_st.gg_max = 0
+  gg_tiles(render3d_st, 4, 0.0, 16.0)
+  gg_tiles(render3d_st, 8, 16.0, 40.0)
+  gg_tiles(render3d_st, 16, 40.0, render3d_st.grass_radius)
+  let rb = words(4)
+  rb[0] = GG_BANDS;  rb[1] = 0;  rb[2] = 0;  rb[3] = 0
+  let cb = words(1)
+  cb[0] = render3d_st.gg_cmds
+  gpu_dispatch(render3d_st, render3d_st.gg_reset, data_of(rb), 16, cb, 1)
+  if render3d_st.gg_n == 0 { return }
+  # the tile list alternates buffers by frame, so the frame still on the GPU keeps its own
+  let tb = render3d_st.gg_tiles_buf[render3d_st.r3d_test_frame % 2]
+  gpu_buffer_upload(render3d_st, tb, render3d_st.gg_n * 16, data_of(render3d_st.gg_tv), GPU_DYNAMIC)
+  let pr = gg_params(render3d_st)
+  let bufs = words(3)
+  bufs[0] = tb;  bufs[1] = render3d_st.gg_out;  bufs[2] = render3d_st.gg_cmds
+  let texs = words(2)
+  texs[0] = render3d_st.ter_height_tex;  texs[1] = render3d_st.ter_ortho_tex
+  gpu_dispatch_tex(render3d_st, render3d_st.gg_cull, data_of(pr), 192, bufs, texs, (render3d_st.gg_max + 63) / 64, render3d_st.gg_n)
+}
+
+# grass_cull.comp's Params, std140: 12 vec4s
+function gg_params(render3d_st: Render3dState) -> words {
+  let pr = words(48)
+  for i in 0 .. 48 { pr[i] = 0 }
+  if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
+  pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(render3d_st.grass_radius)
+  var ph = render3d_st.post_h
+  if ph <= 0 { ph = gl_height() }
+  pr[20] = float_bits(render3d_st.grass_s0);  pr[21] = float_bits(render3d_st.grass_d0);  pr[22] = float_bits(2.0 * Math.tan(render3d_st.cam_fov * 0.5) / float(ph));  pr[23] = float_bits(render3d_st.ter_snow_line)
+  pr[24] = float_bits(render3d_st.ter_lake_cx);  pr[25] = float_bits(render3d_st.ter_lake_cz);  pr[26] = float_bits(render3d_st.ter_lake_ex);  pr[27] = float_bits(render3d_st.ter_lake_ez)
+  var lake = -100000.0
+  if render3d_st.ter_lake_ex != 0.0 { lake = render3d_st.ter_lake_level }
+  var sea = lake
+  if render3d_st.ter_sea_set { sea = render3d_st.ter_sea_level }
+  var oon = 0.0
+  if render3d_st.ter_ortho_tex != 0 { oon = 1.0 }
+  pr[28] = float_bits(lake);  pr[29] = float_bits(sea);  pr[30] = float_bits(oon)
+  pr[32] = float_bits(render3d_st.ter_ox);  pr[33] = float_bits(render3d_st.ter_oz);  pr[34] = float_bits(float(render3d_st.TERRAIN_HALF))
+  pr[36] = float_bits(GG_NEAR);  pr[37] = float_bits(GG_MID)
+  for b in 0 .. GG_BANDS { pr[40 + b] = gg_base(b);  pr[44 + b] = gg_cap(b) }
+  return pr
+}
+
+# the survivors: one indirect draw per band, from the records grass_cull.comp counted into
+function gg_draw(render3d_st: mut Render3dState) -> void {
+  let p = render3d_st.gg_prog
+  gpu_use_program(render3d_st, p)
+  grass_bind(render3d_st, p)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_time"), render3d_st.r3d_time)
+  gpu_cull(render3d_st, false)
+  for b in 0 .. GG_BANDS { gpu_draw_mesh_indirect(render3d_st, render3d_st.gg_mesh[b], render3d_st.gg_cmds, b * 20, 1, 0, 0) }
+  gpu_cull(render3d_st, true)
+}

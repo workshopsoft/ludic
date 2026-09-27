@@ -36,6 +36,7 @@ property Layer {
   last_cam: floats,
   rough:    float = 0.0,
   blade:    bool = false,
+  grass:    bool = false,        # ground cover the GPU blades replace: skipped while they draw (and under R3D_NOGRASS)
   flower:   bool = false,
   card:     bool = false,
   cheap:    bool = false,      # distant cover: no shadows, no wind, flat lighting
@@ -1134,6 +1135,7 @@ function scatter_draw_depth(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.sc_layers) {
     let l = render3d_st.sc_layers[i]
     if not l.foliage or l.blade or l.flower { continue }
+    if l.grass and sc_grass_replaced(render3d_st) { continue }
     if render3d_st.r3d_no_trees and l.imp != null { continue }
     layer_update(render3d_st, l)
     if l.n_lods > 1 and l.g_on {
@@ -1149,12 +1151,15 @@ function scatter_draw_depth(render3d_st: mut Render3dState) -> void {
   }
   gpu_cull(render3d_st, true)
 }
+# a layer the game flagged `grass` is ground cover the GPU blades stand in for: off while they draw
+function sc_grass_replaced(render3d_st: Render3dState) -> bool { return render3d_st.sc_skip_grass or ((render3d_st.grass_on or render3d_st.grass_force) and not render3d_st.grass_env_off and render3d_st.grass_prog != 0) }
 function scatter_draw(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.sc_layers) {
     let l = render3d_st.sc_layers[i]
     if render3d_st.sc_skip_blade and l.blade { continue }
     if render3d_st.sc_skip_flower and l.flower { continue }
     if render3d_st.sc_skip_card and l.card { continue }
+    if l.grass and sc_grass_replaced(render3d_st) { continue }
     if render3d_st.r3d_no_trees and l.imp != null and not l.card { continue }
     layer_update(render3d_st, l)
     layer_draw_near(render3d_st, l, false, null, false)
@@ -1172,6 +1177,7 @@ function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) 
     let l = render3d_st.sc_layers[i]
     if render3d_st.sc_skip_blade and l.blade { continue }
     if render3d_st.sc_skip_card and l.card { continue }
+    if l.grass and sc_grass_replaced(render3d_st) { continue }
     if render3d_st.r3d_no_trees and l.imp != null and not l.card { continue }
     layer_update(render3d_st, l)
     if l.imp != null {

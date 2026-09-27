@@ -1,0 +1,123 @@
+// grass_cull.comp - the meadow's blades, decided once a frame on the GPU (Vulkan).
+//
+// grass.vert used to do all of this per VERTEX: every blade's hashes, its place, the ground under
+// it (a four-tap bicubic height), the photograph's say on whether anything grows there, the water,
+// the slope, the snow line and its colour field - ten times over for a five-row blade, and in full
+// for every index a tile asked for and then threw away. Here each candidate is one invocation: a
+// workgroup row per visible tile (grass.ludic walks them as before), a thread per candidate blade.
+// A blade that survives is written once, as four vec4s, into its band's region, and the band's
+// indirect draw count goes up by one; grass_inst.vert only bends and places the vertices.
+// The rules are grass.vert's, kept in step with it: the same hashes give the same meadow.
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0) uniform Params {
+  vec4 planes[4];   // the side frustum planes: xyz in, w distance
+  vec4 cam;         // xyz the camera, w no blades past this (u_radius)
+  vec4 dens;        // x s0, y d0, z one pixel in radians, w the snow line
+  vec4 lake;        // the carved lake: centre x/z, half extents (z = 0: none)
+  vec4 lev;         // x the lake's level, y the sea's, z the photograph on (1), w unused
+  vec4 ts;          // the height texture: origin x/z, half extent, unused
+  vec4 bands;       // outer distance of bands 0 and 1 (x, y); band 2 is the rest
+  uvec4 base;       // each band's first record in Out
+  uvec4 cap;        // ... and how many it holds
+} pr;
+
+layout(set = 0, binding = 1) readonly buffer Tiles { vec4 tiles[]; };   // corner x/z, indices per cell, cells per side
+layout(set = 0, binding = 2) buffer Out { vec4 outv[]; };               // 4 per blade
+layout(set = 0, binding = 3) buffer Cmds { uint cmds[]; };              // VkDrawIndexedIndirectCommand per band
+layout(set = 0, binding = 4) uniform sampler2D u_height;                // height, normal (terrain's u_ts_height)
+layout(set = 0, binding = 5) uniform sampler2D u_ortho;                 // the photograph
+
+const float CELL = 4.0;   // grass.ludic GRASS_CELL
+
+uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
+float bladeHash(ivec2 cell, int j, int k) {
+  uint h = pcg(uint(cell.x + 32768) * 73856093u ^ uint(cell.y + 32768) * 19349663u ^ uint(j) * 83492791u ^ uint(k) * 2654435761u);
+  return float(h) * (1.0 / 4294967295.0);
+}
+float heightSmooth(vec2 uv) {
+  vec2 res = vec2(textureSize(u_height, 0));
+  vec2 t = uv * res - 0.5;
+  vec2 f = fract(t);
+  vec2 i = floor(t);
+  vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0;
+  vec2 w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
+  vec2 w3 = f * f * f / 6.0;
+  vec2 w2 = 1.0 - w0 - w1 - w3;
+  vec2 s0 = w0 + w1, s1 = w2 + w3;
+  vec2 o0 = (i - 1.0 + w1 / s0 + 0.5) / res;
+  vec2 o1 = (i + 1.0 + w3 / s1 + 0.5) / res;
+  return (textureLod(u_height, vec2(o0.x, o0.y), 0.0).r * s0.x + textureLod(u_height, vec2(o1.x, o0.y), 0.0).r * s1.x) * s0.y
+       + (textureLod(u_height, vec2(o0.x, o1.y), 0.0).r * s0.x + textureLod(u_height, vec2(o1.x, o1.y), 0.0).r * s1.x) * s1.y;
+}
+// grass.vert's bladeField: the region, the patchiness, the dry patches and the tussocks' shade
+vec3 bladeField(vec2 xz, float y) {
+  float n = fbm(xz * 0.0018 + 4.0, 3) * 0.5 + 0.5;
+  float aspen = smoothstep(0.52, 0.7, n) * smoothstep(520.0, 250.0, y);
+  float dry = smoothstep(0.35, 0.15, fbm(xz * 0.004 + 9.0, 3) * 0.5 + 0.5);
+  vec3 t = mix(vec3(1.0), vec3(1.25, 1.3, 0.85), aspen * 0.35);
+  t = mix(t, vec3(1.15, 1.05, 0.7), dry * 0.35 * 0.6);
+  float patchy = fbm(xz * 0.045, 3) * 0.5 + 0.5;
+  t *= mix(vec3(0.7, 0.8, 0.55), vec3(1.1, 1.05, 0.85), patchy);
+  float dryp = smoothstep(0.2, 0.8, gnoise(xz * 0.33 + 17.0) * 0.5 + 0.5);
+  t *= mix(vec3(0.92, 1.0, 0.95), vec3(1.30, 1.10, 0.62), dryp);
+  return t * (0.72 + 0.56 * (gnoise(xz * 1.9 + 41.0) * 0.5 + 0.5));
+}
+
+void main() {
+  vec4 tile = tiles[gl_WorkGroupID.y];
+  int per_cell = int(tile.z + 0.5);
+  int cells = int(tile.w + 0.5);
+  int i = int(gl_GlobalInvocationID.x);
+  if (per_cell <= 0 || i >= per_cell * cells * cells) return;
+  int c = i / per_cell;
+  int j = i - c * per_cell;
+  vec2 cell = tile.xy + vec2(float(c % cells), float(c / cells)) * CELL;
+  vec2 cid = floor(cell / CELL + 0.5);
+  ivec2 ci = ivec2(cid);
+  vec2 hv = vec2(bladeHash(ci, j, 0), bladeHash(ci, j, 1));
+  vec2 xz = cell + hv * CELL;
+  float dist = length(xz - pr.cam.xz);
+  float radius = pr.cam.w;
+  if (dist >= radius) return;
+  float spacing = pr.dens.x * (1.0 + dist / pr.dens.y);
+  float count = CELL * CELL / (spacing * spacing) * (1.0 - smoothstep(radius * 0.7, radius, dist));
+  float keep = count / float(max(per_cell, 1));
+  float r = bladeHash(ci, j, 5);
+  if (r > keep) return;
+  float life = 1.0 - smoothstep(keep * 0.75, keep, r);
+  vec2 huv = (xz - pr.ts.xy) / (2.0 * pr.ts.z) + 0.5;
+  if (huv.x < 0.0 || huv.x > 1.0 || huv.y < 0.0 || huv.y > 1.0) return;
+  vec4 ht = textureLod(u_height, huv, 0.0);
+  // the frustum, on a sphere round the blade (it stands at most 0.9 m tall)
+  vec3 root = vec3(xz.x, ht.r, xz.y);
+  for (int k = 0; k < 4; k++) { if (dot(pr.planes[k].xyz, root) + pr.planes[k].w < -1.0) return; }
+  vec3 gn = normalize(ht.gba);
+  float h3 = bladeHash(ci, j, 2), h4 = bladeHash(ci, j, 3);
+  float wl = pr.lev.y;
+  if (pr.lake.z > 0.0) { vec2 q = (xz - pr.lake.xy) / pr.lake.zw;  if (dot(q, q) < 1.0) wl = max(wl, pr.lev.x); }
+  float ok = (1.0 - smoothstep(0.30, 0.55, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(pr.dens.w - 80.0, pr.dens.w - 200.0, ht.r);
+  if (pr.lev.z > 0.5) {
+    vec3 oc = textureLod(u_ortho, huv, 1.5).rgb;
+    ok *= 0.40 + 0.60 * smoothstep(0.0, 0.025, oc.g - oc.b);
+  }
+  if (h4 > ok) return;
+  float h = heightSmooth(huv);
+  float seed = hv.x * 0.7 + hv.y * 0.3;
+  float ang = bladeHash(ci, j, 6) * 6.2831853;
+  float grow = spacing / pr.dens.x;
+  float hh = h3 * h3;
+  float tall = mix(0.09, 0.60, hh) * mix(0.8, 1.2, hash1(cid * 0.1)) * (1.0 + 0.35 * smoothstep(1.0, 12.0, grow)) * life;
+  float clump = gnoise(xz * 0.85 + 3.7) * 0.5 + 0.5;
+  tall *= mix(0.45, 1.40, clump * clump * (3.0 - 2.0 * clump));
+  float bw = 0.010 * mix(1.0, 0.45 * grow, smoothstep(1.0, 4.0, grow));
+  bw = max(bw, dist * pr.dens.z * 1.1);
+  uint b = dist < pr.bands.x ? 0u : (dist < pr.bands.y ? 1u : 2u);
+  uint slot = atomicAdd(cmds[b * 5u + 1u], 1u);
+  if (slot >= pr.cap[b]) { atomicAdd(cmds[b * 5u + 1u], 0xFFFFFFFFu); return; }
+  uint o = (pr.base[b] + slot) * 4u;
+  outv[o] = vec4(xz.x, h - 0.02, xz.y, seed);
+  outv[o + 1u] = vec4(sin(ang), cos(ang), tall, bw);
+  outv[o + 2u] = vec4(bladeField(xz, h), 0.6 + 0.8 * h4);
+  outv[o + 3u] = vec4(gn, dist);
+}

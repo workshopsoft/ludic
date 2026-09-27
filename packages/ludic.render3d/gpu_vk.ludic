@@ -85,6 +85,9 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
     Vk.put_ptr(iext_names, n_iext * 8, VK_KHR_SURFACE_EXTENSION_NAME);  n_iext += 1
     Vk.put_ptr(iext_names, n_iext * 8, surf_ext);  n_iext += 1
   }
+  # R3D_VK_LABELS: name each pass for a GPU capture (MoltenVK makes them Metal debug groups)
+  render3d_st.gvk_labels = r3d_env_has(render3d_st, "R3D_VK_LABELS") and gvk_ext_in(iexts, nie, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) and Vk.has("vkCmdBeginDebugUtilsLabelEXT") == 1
+  if render3d_st.gvk_labels { Vk.put_ptr(iext_names, n_iext * 8, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);  n_iext += 1 }
   # HDR output: an instance only lists the HDR colour spaces when it asks for them
   render3d_st.gvk_has_colorspace = render3d_st.gvk_has_surface and gvk_ext_in(iexts, nie, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME)
   if render3d_st.gvk_has_colorspace { Vk.put_ptr(iext_names, n_iext * 8, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);  n_iext += 1 }
@@ -544,8 +547,11 @@ function gvk_once_end(render3d_st: mut Render3dState, cb: pointer) -> bool {
 # CPU while the GPU draws: waiting at the present serialised the two, which cost MoltenVK a third
 # of its frame rate against OpenGL. Anything that would reuse what that frame reads - the next
 # frame's command buffer and ring, a one-off submit, a descriptor pool reset, a swapchain rebuild -
-# waits for it first (gvk_frame_wait), and a buffer it reads is busy (gvk_buf_busy). On by default
-# on macOS; R3D_VK_INFLIGHT=0/1 says otherwise.
+# waits for it first (gvk_frame_wait), and a buffer it reads is busy (gvk_buf_busy). The frame's
+# uniform ring and descriptor pool are double-buffered by frame_no & 1, so the next frame records
+# while this one draws: waiting at the next frame's start left the GPU idle for the whole of its
+# recording and MoltenVK's encoding (a third of a frame). On by default on macOS; R3D_VK_INFLIGHT=0/1
+# says otherwise.
 function gvk_inflight_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gvk_inflight < 0 {
     render3d_st.gvk_inflight = 0
@@ -571,6 +577,7 @@ function gvk_frame_submit(render3d_st: mut Render3dState, cb: pointer) -> bool {
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkQueueSubmit", r) }
   render3d_st.gvk_frame_pending = true
   render3d_st.gvk_frame_pending_cb = cb
+  render3d_st.gvk_frame_pending_no = render3d_st.gvk_frame_no
   return true
 }
 
@@ -583,7 +590,7 @@ function gvk_frame_wait(render3d_st: mut Render3dState) -> void {
   Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
   render3d_st.gvk_frame_pending = false
   render3d_st.gvk_frame_pending_cb = null
-  gvk_retire_flush(render3d_st)
+  gvk_retire_upto(render3d_st, render3d_st.gvk_frame_pending_no)
 }
 
 # ---- teardown -----------------------------------------------------------------------------
@@ -639,4 +646,31 @@ function gvk_query_result(render3d_st: Render3dState, id: int, out: words) -> bo
   if ticks < 0 { return false }
   out[0] = int(float(ticks) * render3d_st.gvk_ts_period)
   return true
+}
+
+# ---- debug labels (R3D_VK_LABELS) ------------------------------------------------------------
+function gvk_label_begin(render3d_st: mut Render3dState, name: pointer) -> void {
+  # only inside a frame: a pass the load profiles comes before the frame's pools exist
+  if render3d_st.gpu_kind != GPU_VK or render3d_st.gvk_cb == null { return }
+  let cb = render3d_st.gvk_cb
+  let li = bytes(VkDebugUtilsLabelEXT_sizeof)
+  Vk.zero(li, VkDebugUtilsLabelEXT_sizeof)
+  Vk.put_i32(li, VkDebugUtilsLabelEXT_sType, VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT)
+  Vk.put_ptr(li, VkDebugUtilsLabelEXT_pLabelName, name)
+  Vk.cmd_begin_debug_utils_label_ext(cb, li)
+  render3d_st.gvk_label_depth += 1
+}
+function gvk_label_end(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gpu_kind != GPU_VK or render3d_st.gvk_label_depth <= 0 or render3d_st.gvk_cb == null { return }
+  Vk.cmd_end_debug_utils_label_ext(render3d_st.gvk_cb)
+  render3d_st.gvk_label_depth -= 1
+}
+# the frame's command buffer ends with every label it opened closed (called where it ends: a
+# pointer compares by what it points at, so once_end cannot ask which buffer it was handed)
+function gvk_labels_close(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gvk_cb == null { render3d_st.gvk_label_depth = 0;  return }
+  while render3d_st.gvk_label_depth > 0 {
+    Vk.cmd_end_debug_utils_label_ext(render3d_st.gvk_cb)
+    render3d_st.gvk_label_depth -= 1
+  }
 }

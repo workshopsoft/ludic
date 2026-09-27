@@ -2,3 +2,5 @@
 # spv/<name>.comp.spv. Binding 0 is the uniform block of parameters, 1.. storage buffers.
 probe|probe.comp
 scatter_cull|scatter_cull.comp
+grass_reset|grass_reset.comp
+grass_cull|grass_cull.comp
