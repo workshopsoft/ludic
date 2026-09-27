@@ -78,6 +78,7 @@ the PC (Git Bash, the LLVM installer's clang). `native/LICENSE-recastnavigation`
 its filters. `nav_crowd_add(kind, x, y, z, radius, height, speed, filter, separation)` adds a walker (snapped to
 the mesh, -1 off it), `nav_crowd_target` and `nav_crowd_speed` say where and how fast, and
 `nav_crowd_step(dt)` steps every crowd. `nav_crowd_read` puts a walker into `nav_agent_x/y/z/vx/vz`,
-and `nav_crowd_us()` is what the stepping has cost. The mechanic decides and the crowd moves, and
+and `nav_crowd_us()` is what the stepping has cost. `nav_crowd_add_fixed` adds a walker the crowd avoids
+but never steers (a player), which `nav_crowd_place` puts where it is, and how fast it goes, each frame. The mechanic decides and the crowd moves, and
 dropping a mesh drops its crowd first. On the test meadow, twenty walkers crossing head-on never come
 closer than their two radii, and a step costs about 12 us.

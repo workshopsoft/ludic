@@ -81,4 +81,39 @@ program CrowdTest {
     expect(not nav_crowd_read(nav_st, NAV_PERSON, a))
     expect_eq(nav_crowd_add(nav_st, NAV_PERSON, 5.0, 0.0, 5.0, 0.35, 1.8, 1.4, 0, 2.0), -1)
   }
+
+  test "a player standing in the way is walked round and never moved" (nav_st: mut NavState) {
+    expect(nav_build(nav_st, NAV_PERSON, ground(40, 0), new NavConfig))
+    expect(nav_crowd_start(nav_st, NAV_PERSON, 16, 0.6))
+    let me = nav_crowd_add_fixed(nav_st, NAV_PERSON, 20.0, 0.0, 20.0, 0.4, 1.8)
+    expect(me >= 0)
+    let ids = new []int
+    for i in 0 .. 6 {
+      let id = nav_crowd_add(nav_st, NAV_PERSON, 4.0, 0.0, 19.0 + float(i % 3), 0.35, 1.8, 1.4, 0, 2.0)
+      expect(nav_crowd_target(nav_st, NAV_PERSON, id, 36.0, 0.0, 19.0 + float(i % 3)))
+      push(ids, id)
+    }
+    var worst = 1000.0
+    for k in 0 .. 1800 {
+      expect(nav_crowd_place(nav_st, NAV_PERSON, me, 20.0, 0.0, 20.0, 0.0, 0.0))
+      nav_crowd_step(nav_st, 1.0 / 60.0)
+      for i in 0 .. len(ids) {
+        nav_crowd_read(nav_st, NAV_PERSON, ids[i])
+        let dx = nav_agent_x(nav_st) - 20.0
+        let dz = nav_agent_z(nav_st) - 20.0
+        worst = Math.min(worst, Math.sqrt(dx * dx + dz * dz))
+      }
+    }
+    nav_crowd_place(nav_st, NAV_PERSON, me, 20.0, 0.0, 20.0, 0.0, 0.0)
+    nav_crowd_read(nav_st, NAV_PERSON, me)
+    expect_near(nav_agent_x(nav_st), 20.0, 0.01)
+    var past = 0
+    for i in 0 .. len(ids) {
+      nav_crowd_read(nav_st, NAV_PERSON, ids[i])
+      if nav_agent_x(nav_st) > 34.0 { past += 1 }
+    }
+    print(`crowd: a walker came within {worst} m of the player (radii 0.75); {past} of 6 got past`)
+    expect(worst > 0.65)
+    expect_eq(past, 6)
+  }
 }

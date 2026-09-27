@@ -27,6 +27,17 @@ export function nav_crowd_add(nav_st: NavState, kind: int, x: float, y: float, z
   if c == null { return -1 }
   return nvc_crowd_add(c, x, y, z, radius, height, speed, filter, separation)
 }
+# a walker the crowd avoids but never moves (a player): put where it is each frame with nav_crowd_place
+export function nav_crowd_add_fixed(nav_st: NavState, kind: int, x: float, y: float, z: float, radius: float, height: float) -> int {
+  let c = nv_crowd(nav_st, kind)
+  if c == null { return -1 }
+  return nvc_crowd_add_fixed(c, x, y, z, radius, height)
+}
+# walker i put at (x, y, z) going (vx, vz); false off the mesh
+export function nav_crowd_place(nav_st: NavState, kind: int, i: int, x: float, y: float, z: float, vx: float, vz: float) -> bool {
+  let c = nv_crowd(nav_st, kind)
+  return c != null and i >= 0 and nvc_crowd_place(c, i, x, y, z, vx, vz) == 1
+}
 export function nav_crowd_remove(nav_st: NavState, kind: int, i: int) -> void {
   let c = nv_crowd(nav_st, kind)
   if c != null and i >= 0 { nvc_crowd_remove(c, i) }

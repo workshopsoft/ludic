@@ -46,6 +46,43 @@ NAV_SHIM int nav_crowd_add(void *p, float x, float y, float z, float radius, flo
   if (!ref) return -1;
   return c->crowd->addAgent(near, &ap);
 }
+// a walker the crowd avoids but does not steer (a player): placed by nav_crowd_place each frame
+NAV_SHIM int nav_crowd_add_fixed(void *p, float x, float y, float z, float radius, float height) {
+  Crowd *c = static_cast<Crowd *>(p);
+  dtCrowdAgentParams ap;
+  memset(&ap, 0, sizeof(ap));
+  ap.radius = radius;
+  ap.height = height;
+  ap.maxSpeed = 20.0f;
+  ap.maxAcceleration = 1000.0f;
+  ap.collisionQueryRange = radius * 12.0f;
+  ap.pathOptimizationRange = radius * 30.0f;
+  ap.separationWeight = 0.0f;
+  ap.updateFlags = 0;
+  float pos[3] = {x, y, z}, near[3];
+  dtPolyRef ref = 0;
+  c->nav->query->findNearestPoly(pos, c->nav->ext, c->crowd->getFilter(0), &ref, near);
+  if (!ref) return -1;
+  return c->crowd->addAgent(near, &ap);
+}
+// walker i put at (x, y, z) going (vx, vz), snapped to the mesh; 0 when it is off it (left where it was)
+NAV_SHIM int nav_crowd_place(void *p, int i, float x, float y, float z, float vx, float vz) {
+  Crowd *c = static_cast<Crowd *>(p);
+  dtCrowdAgent *a = c->crowd->getEditableAgent(i);
+  if (!a || !a->active) return 0;
+  float pos[3] = {x, y, z}, near[3];
+  dtPolyRef ref = 0;
+  c->nav->query->findNearestPoly(pos, c->nav->ext, c->crowd->getFilter(0), &ref, near);
+  if (!ref) return 0;
+  a->corridor.reset(ref, near);
+  dtVcopy(a->npos, near);
+  float v[3] = {vx, 0.0f, vz};
+  dtVcopy(a->vel, v);
+  dtVcopy(a->dvel, v);
+  dtVcopy(a->nvel, v);
+  a->desiredSpeed = dtVlen(v);
+  return 1;
+}
 NAV_SHIM void nav_crowd_remove(void *p, int i) { static_cast<Crowd *>(p)->crowd->removeAgent(i); }
 
 // send walker i toward (x, y, z), snapped to the mesh; 0 when the point is off it
