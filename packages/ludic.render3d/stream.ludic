@@ -162,16 +162,24 @@ function stream_evict(render3d_st: mut Render3dState, s: Stream) -> void {
   }
   t = lo
   # everything wanted by the walk in progress stays whatever the threshold says
-  let kept = new []Chunk
+  # compacted in place, and an evicted chunk goes whole: a new list per eviction and the chunks'
+  # own records were never given back
+  var w = 0
   var i = 0
   while i < s.n {
     let c = s.chunks[i]
-    if c.used >= t or c.used == render3d_st.stream_walk_no { push(kept, c) }
-    else { if c.data != null { free(c.data) } }
+    if c.used >= t or c.used == render3d_st.stream_walk_no {
+      s.chunks[w] = c
+      w += 1
+    } else {
+      if c.data != null { free(c.data) }
+      free(c)
+    }
     i += 1
   }
-  s.chunks = kept
-  s.n = len(kept)
+  let ch = s.chunks
+  while len(ch) > w { List.pop(ch) }
+  s.n = w
   for h in 0 .. STREAM_HASH { s.htab[h] = 0 }
   i = 0
   while i < s.n { s.keys[i] = s.chunks[i].key;  stream_remember(s, s.chunks[i].key, i);  i += 1 }
