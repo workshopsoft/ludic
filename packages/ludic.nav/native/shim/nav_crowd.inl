@@ -58,11 +58,12 @@ NAV_SHIM int nav_crowd_target(void *p, int i, float x, float y, float z) {
   if (!ref) return 0;
   return c->crowd->requestMoveTarget(i, ref, near) ? 1 : 0;
 }
-// a new top speed, as a walker goes from a walk to a run
+// a new top speed, as a walker goes from a walk to a run; 0 stands it still (a new target moves it again)
 NAV_SHIM void nav_crowd_speed(void *p, int i, float speed) {
   Crowd *c = static_cast<Crowd *>(p);
   const dtCrowdAgent *a = c->crowd->getAgent(i);
   if (!a || !a->active) return;
+  if (speed < 0.01f) { c->crowd->resetMoveTarget(i); return; }   // standing: no target, not no acceleration
   dtCrowdAgentParams ap = a->params;
   ap.maxSpeed = speed;
   ap.maxAcceleration = speed * 4.0f;

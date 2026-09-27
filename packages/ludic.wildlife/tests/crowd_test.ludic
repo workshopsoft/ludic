@@ -79,5 +79,8 @@ program WildCrowdTest {
     let out = new []WildAnimal
     expect_eq(wildlife_near(wildlife_st, 0.0, -4.0, 1.0, out), 1)
     expect_eq(wildlife_near(wildlife_st, 0.0, 0.0, 1.0, out), 0)
+    expect(wildlife_listed(wildlife_st, a))
+    wildlife_clear(wildlife_st)
+    expect(not wildlife_listed(wildlife_st, a))
   }
 }

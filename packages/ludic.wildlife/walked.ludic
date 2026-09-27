@@ -43,3 +43,6 @@ export function wildlife_moved(wildlife_st: mut WildlifeState, a: WildAnimal, x:
   if r >= 0 { tb_set_xz(a.tab, WA_X, WA_Z, r, x, z) }
   wl_walked(wildlife_st, a, wl_sp(wildlife_st, a.sp), d)
 }
+
+# still one of this state's animals: false once cleared, reloaded or removed (a crowd lets it go)
+export function wildlife_listed(wildlife_st: WildlifeState, a: WildAnimal) -> bool { return a != null and a.tab == wildlife_st.wl.tab and wl_row(a) >= 0 }
