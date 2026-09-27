@@ -1,0 +1,69 @@
+# release.ludic - a loaded model let go of (model_release): its meshes go at once, a texture it
+# shares with another model stays until that one goes too, and a model loaded again afterwards is
+# whole. Prints RELEASE OK.
+#
+#   bin/ludic build examples/rendering/release.ludic --headless && ./build/release_headless
+program Release {
+  numbers float
+  import "ludic.render3d/r3d.ludic"
+
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  function scene_draw(render3d_st: mut Render3dState) -> void { }
+  function scene_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void { }
+  function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
+
+  function check(what: string, cond: bool) -> bool {
+    if not cond { print(`release: FAILED - {what}`) }
+    return cond
+  }
+  # whether handle `tex` is still a texture the renderer knows (its recorded kind is set)
+  function tex_live(render3d_st: mut Render3dState, tex: int) -> bool {
+    let o = gpu_tx_at(render3d_st, tex)
+    return tex != 0 and o >= 0 and render3d_st.gpu_tx[o] != 0
+  }
+
+  handler Boot(render3d_st: mut Render3dState) phase Start {
+    spawn Anchor {}
+    r3d_on_draw(render3d_st, fn scene_draw)
+    r3d_on_casters(render3d_st, fn scene_draw_casters)
+    r3d_on_stream_fill(render3d_st, fn stream_fill)
+    r3d_plate_mode(render3d_st, true)
+    let dir = "packages/ludic.lab/plate"
+    render3d_st.r3d_sky_path = `{dir}/sky.hdr`
+    if not r3d_init(render3d_st, 320, 180, "Release") {
+      quit()
+      return
+    }
+    var ok = true
+    # two models of the same file share its two textures
+    let a = gltf_load(render3d_st, dir, "plate.gltf", "plate")
+    let b = gltf_load(render3d_st, dir, "plate.gltf", "plate")
+    ok = check("both plates load", a != null and b != null and len(a.prims) > 0) and ok
+    let diff = a.prims[0].diff
+    ok = check("the plates share their textures", diff != 0 and b.prims[0].diff == diff and render3d_st.gltf_tex_n == 2) and ok
+    model_release(render3d_st, a)
+    ok = check("the first plate is emptied", len(a.prims) == 0) and ok
+    ok = check("what the second still uses stays", tex_live(render3d_st, diff) and render3d_st.gltf_tex_n == 2) and ok
+    model_release(render3d_st, b)
+    ok = check("the last user frees the textures", not tex_live(render3d_st, diff) and render3d_st.gltf_tex_n == 0) and ok
+    ok = check("and its material is forgotten", render3d_st.gltf_mat_n == 0) and ok
+    # one model whose two materials share a texture
+    let p = gltf_load(render3d_st, dir, "probe.gltf", "probe")
+    ok = check("the probe loads its three textures", p != null and render3d_st.gltf_tex_n == 3) and ok
+    model_release(render3d_st, p)
+    ok = check("the probe gives all three back", render3d_st.gltf_tex_n == 0 and render3d_st.gltf_mat_n == 0) and ok
+    # and loading again after a release is a fresh load, whole
+    let c = gltf_load(render3d_st, dir, "plate.gltf", "plate")
+    ok = check("a plate loaded again is whole", c != null and len(c.prims) > 0 and tex_live(render3d_st, c.prims[0].diff) and render3d_st.gltf_tex_n == 2) and ok
+    model_release(render3d_st, c)
+    ok = check("and goes again", render3d_st.gltf_tex_n == 0) and ok
+    if ok { print("RELEASE OK") } else { print("RELEASE FAILED") }
+    quit()
+  }
+
+  handler Present(render3d_st: mut Render3dState) phase Render {
+    r3d_present(render3d_st)
+  }
+}

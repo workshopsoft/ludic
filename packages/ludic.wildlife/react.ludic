@@ -9,14 +9,16 @@ function wl_react(wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dt: fl
     return true
   }
   if a.state == WILD_WARY {
-    wl_face(a, a.x + (a.x - a.sus_x), a.z + (a.z - a.sus_z), 2.6, dt)
+    wl_away(a, a.sus_x, a.sus_z, 20.0)
+    wl_head(a, a.tx, a.tz, 2.6, dt)
     a.speed = s.walk * 0.8
     wl_step(wildlife_st, a, dt)
     if a.timer < 0.0 { wl_wander(wildlife_st, a, 3.0 + wl_rnd(wildlife_st) * 4.0) }
     return true
   }
   if a.state == WILD_FLEE {
-    wl_face(a, a.x + (a.x - WildlifeWorld.player_x(np)), a.z + (a.z - WildlifeWorld.player_z(np)), 5.0, dt)
+    wl_away(a, WildlifeWorld.player_x(np), WildlifeWorld.player_z(np), 40.0)
+    wl_head(a, a.tx, a.tz, 5.0, dt)
     a.speed = s.run
     wl_step(wildlife_st, a, dt)
     if a.timer < 0.0 {

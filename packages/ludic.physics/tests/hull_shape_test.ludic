@@ -4,6 +4,11 @@ import "ludic.physics"
 import "ludic.base"
 program HullShapeTest {
   numbers float
+  function ray(physics_st: mut PhysicsState, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, mask: int) -> PhysHit {
+    let h = new PhysHit
+    phys_ray(physics_st, ox, oy, oz, dx, dy, dz, mask, h)
+    return h
+  }
 
   # a cube two metres across, its centre two metres along x from its origin
   function cube(physics_st: mut PhysicsState) -> int {
@@ -15,7 +20,7 @@ program HullShapeTest {
     }
     return phys_convex(physics_st, v, 8)
   }
-  function down(physics_st: mut PhysicsState, x: float, z: float) -> PhysHit { return phys_ray(physics_st, x, 10.0, z, 0.0, -20.0, 0.0, PHYS_M_ALL) }
+  function down(physics_st: mut PhysicsState, x: float, z: float) -> PhysHit { return ray(physics_st, x, 10.0, z, 0.0, -20.0, 0.0, PHYS_M_ALL) }
 
   test "a hull stands where its points are, and too few points are no shape" (physics_st: mut PhysicsState) {
     expect(phys_open(physics_st, 16, 1))

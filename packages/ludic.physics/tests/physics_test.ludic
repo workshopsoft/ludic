@@ -5,6 +5,21 @@ import "ludic.physics"
 import "ludic.base"
 program PhysicsTest {
   numbers float
+  function pose(physics_st: mut PhysicsState, id: int) -> PhysPose {
+    let p = new PhysPose
+    if not phys_pose(physics_st, id, p) { return null }
+    return p
+  }
+  function ray(physics_st: mut PhysicsState, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, mask: int) -> PhysHit {
+    let h = new PhysHit
+    phys_ray(physics_st, ox, oy, oz, dx, dy, dz, mask, h)
+    return h
+  }
+  function push_of(physics_st: mut PhysicsState, x: float, z: float, r: float, y0: float, y1: float, mask: int) -> PhysPush {
+    let p = new PhysPush
+    phys_push(physics_st, x, z, r, y0, y1, mask, p)
+    return p
+  }
 
   # the lake: everything east of x = 20, its surface at y = 0, drifting north at 0.5 m/s
   function lake_h(x: float, z: float) -> float {
@@ -38,15 +53,15 @@ program PhysicsTest {
     let id = phys_body_add(physics_st, b, 0.0, 4.0, 0.0, 0.0, 20.0)
     expect(id != -1)
     sim(physics_st, 3.0)
-    let p = phys_pose(physics_st, id)
+    let p = pose(physics_st, id)
     expect(p != null)
     expect(Math.abs(p.y - 0.5) < 0.05)
     expect(Math.abs(p.vy) < 0.05)
-    let h = phys_ray(physics_st, 0.0, 10.0, 0.0, 0.0, -20.0, 0.0, PHYS_M_ALL)
+    let h = ray(physics_st, 0.0, 10.0, 0.0, 0.0, -20.0, 0.0, PHYS_M_ALL)
     expect_eq(h.body, id)
     expect(Math.abs(h.y - 1.0) < 0.05)
     expect(h.ny > 0.9)
-    let g = phys_ray(physics_st, 5.0, 10.0, 5.0, 0.0, -20.0, 0.0, PHYS_M_ALL)
+    let g = ray(physics_st, 5.0, 10.0, 5.0, 0.0, -20.0, 0.0, PHYS_M_ALL)
     expect(g.body != -1)
     expect(g.body != id)
     expect(Math.abs(g.y) < 0.01)
@@ -59,14 +74,13 @@ program PhysicsTest {
     let id = phys_static_add(physics_st, post, 2.0, 0.0, 2.0, 0.0)
     phys_settle(physics_st)
     let n = phys_count(physics_st)
-    let near = phys_overlap(physics_st, 2.0, 1.0, 2.0, 0.5, PHYS_M_STATIC)
-    expect_eq(len(near), 1)
-    expect_eq(near[0], id)
-    expect_eq(len(phys_overlap(physics_st, 2.0, 1.0, 2.0, 0.5, PHYS_M_GROUND)), 0)
+    expect_eq(phys_overlap(physics_st, 2.0, 1.0, 2.0, 0.5, PHYS_M_STATIC), 1)
+    expect_eq(phys_overlap_id(physics_st, 0), id)
+    expect_eq(phys_overlap(physics_st, 2.0, 1.0, 2.0, 0.5, PHYS_M_GROUND), 0)
     phys_remove(physics_st, id)
     expect_eq(phys_count(physics_st), n - 1)
-    expect_eq(len(phys_overlap(physics_st, 2.0, 1.0, 2.0, 0.5, PHYS_M_STATIC)), 0)
-    expect(phys_pose(physics_st, id) == null)
+    expect_eq(phys_overlap(physics_st, 2.0, 1.0, 2.0, 0.5, PHYS_M_STATIC), 0)
+    expect(pose(physics_st, id) == null)
     phys_close(physics_st)
   }
 
@@ -86,11 +100,11 @@ program PhysicsTest {
     let post = phys_offset(physics_st, phys_cylinder(physics_st, 1.0, 0.3), 0.0, 1.0, 0.0, 0.0)
     phys_static_add(physics_st, post, 0.0, 0.0, 0.0, 0.0)
     phys_settle(physics_st)
-    let p = phys_push(physics_st, 0.5, 0.0, 0.4, 0.1, 1.8, PHYS_M_STATIC)
+    let p = push_of(physics_st, 0.5, 0.0, 0.4, 0.1, 1.8, PHYS_M_STATIC)
     expect_eq(p.n, 1)
     expect(p.x > 0.1)
     expect(Math.abs(p.z) < 0.05)
-    let clear = phys_push(physics_st, 3.0, 0.0, 0.4, 0.1, 1.8, PHYS_M_STATIC)
+    let clear = push_of(physics_st, 3.0, 0.0, 0.4, 0.1, 1.8, PHYS_M_STATIC)
     expect_eq(clear.n, 0)
     phys_close(physics_st)
   }
@@ -141,8 +155,8 @@ program PhysicsTest {
     expect(g >= 0)
     phys_ground_add(physics_st, g)
     phys_settle(physics_st)
-    let odd = phys_ray(physics_st, 5.5, 50.0, 10.5, 0.0, -100.0, 0.0, PHYS_M_GROUND)
-    let even = phys_ray(physics_st, 6.5, 50.0, 10.5, 0.0, -100.0, 0.0, PHYS_M_GROUND)
+    let odd = ray(physics_st, 5.5, 50.0, 10.5, 0.0, -100.0, 0.0, PHYS_M_GROUND)
+    let even = ray(physics_st, 6.5, 50.0, 10.5, 0.0, -100.0, 0.0, PHYS_M_GROUND)
     expect(Math.abs(odd.y - 2.0) < 0.01)
     expect(Math.abs(even.y - 1.0) < 0.01)
     phys_close(physics_st)

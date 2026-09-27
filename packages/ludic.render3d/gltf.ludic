@@ -50,17 +50,17 @@ function gltf_mat_remember(render3d_st: mut Render3dState, name: string, diff: i
 }
 
 function gltf_texture(render3d_st: mut Render3dState, uri: string, srgb: bool) -> int {
-  if render3d_st.gltf_tex_paths == null { render3d_st.gltf_tex_paths = new []pointer;  render3d_st.gltf_tex_ids = words(256) }
+  if render3d_st.gltf_tex_paths == null { render3d_st.gltf_tex_paths = new []pointer;  render3d_st.gltf_tex_ids = words(256);  render3d_st.gltf_tex_refs = words(256) }
   var png: string = uri
   let n = len(uri)
   if n > 4 and uri[n - 4] == '.' and uri[n - 3] == 'j' { png = uri[0 .. n - 4] + ".png" }
   let path = render3d_st.gltf_dir + "/" + png
   var i = 0
-  while i < render3d_st.gltf_tex_n { if render3d_st.gltf_tex_paths[i] == path { return render3d_st.gltf_tex_ids[i] };  i += 1 }
+  while i < render3d_st.gltf_tex_n { if render3d_st.gltf_tex_paths[i] == path { render3d_st.gltf_tex_refs[i] += 1;  return render3d_st.gltf_tex_ids[i] };  i += 1 }
   var dil = 0
   if render3d_st.gltf_cutout { dil = 24 }
   let id = tex_load_ex(render3d_st, path, srgb, dil)
-  if render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, path);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_n += 1 }
+  if render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, path);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_refs[render3d_st.gltf_tex_n] = 1;  render3d_st.gltf_tex_n += 1 }
   return id
 }
 
@@ -150,7 +150,10 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
       if ud != null { gltf_mat_remember(render3d_st, mname, pr.diff, pr.nrm, pr.arm) }
       else {
         let k = gltf_mat_find(render3d_st, mname)
-        if k >= 0 { pr.diff = render3d_st.gltf_mat_diff[k];  pr.nrm = render3d_st.gltf_mat_nrm[k];  pr.arm = render3d_st.gltf_mat_arm[k] }
+        if k >= 0 {
+          pr.diff = render3d_st.gltf_mat_diff[k];  pr.nrm = render3d_st.gltf_mat_nrm[k];  pr.arm = render3d_st.gltf_mat_arm[k]
+          gltf_tex_ref(render3d_st, pr.diff);  gltf_tex_ref(render3d_st, pr.nrm);  gltf_tex_ref(render3d_st, pr.arm)
+        }
         else { print(`gltf: material {mname} has no textures and none were loaded before it`) }
       }
     }

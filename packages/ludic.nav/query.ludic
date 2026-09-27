@@ -47,6 +47,15 @@ export function nav_path(nav_st: mut NavState, kind: int, filter: int, sx: float
 export function nav_asked(nav_st: NavState) -> int { return nav_st.nv_asked }
 export function nav_found(nav_st: NavState) -> int { return nav_st.nv_found }
 export function nav_short(nav_st: NavState) -> int { return nav_st.nv_short }
+# microseconds spent finding those paths, over every loaded mesh
+export function nav_us(nav_st: NavState) -> int {
+  var us = 0
+  for k in 0 .. NAV_KINDS {
+    let h = nv_mesh(nav_st, k)
+    if h != null { us += nvc_us(h) }
+  }
+  return us
+}
 export function nav_partial(nav_st: NavState, kind: int) -> bool {
   let h = nv_mesh(nav_st, kind)
   return h != null and nvc_partial(h) == 1

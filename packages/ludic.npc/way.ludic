@@ -1,6 +1,15 @@
 # way.ludic - where a person walks when the straight line will not do: the world's way (NpcWorld.way,
 # a navmesh by a person's taste in Maroon Lake), and without one a step round what is in the way,
-# and giving the target up after three tries
+# and giving the target up after three tries - each of those a NPC_F_STUCK fact, so the fallback is seen
+export const NPC_STUCK_DETOUR: int = 0     # a step round what was in front of it
+export const NPC_STUCK_RETRY: int = 1      # no closer for twenty seconds, or no step round: planned again
+export const NPC_STUCK_GAVE_UP: int = 2    # the third of those: the target given up
+function np_stuck_fact(npc_st: NpcState, p: NpcPerson, how: int) -> void {
+  let f = np_fact(npc_st, NPC_F_STUCK, p, -1)
+  f.how = how
+  f.x = p.x
+  f.z = p.z
+}
 
 # the next corner toward the target, asked again every half second, on reaching it, or for a new target
 const NP_WAY_EVERY: float = 0.5
@@ -39,7 +48,11 @@ function np_stuck(npc_st: mut NpcState, p: NpcPerson) -> void {
   p.fails += 1
   p.via_on = false
   if p.fails >= 3 {
+    np_stuck_fact(npc_st, p, NPC_STUCK_GAVE_UP)
     p.fails = 0
     npc_wander(npc_st, p)
-  } else { npc_plan(npc_st, p) }
+  } else {
+    np_stuck_fact(npc_st, p, NPC_STUCK_RETRY)
+    npc_plan(npc_st, p)
+  }
 }

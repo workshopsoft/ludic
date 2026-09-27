@@ -114,7 +114,7 @@ by a person's taste.
 | `npc_pick_name(body)`, `npc_name_used(n)`, `npc_name_clashes()` | names |
 | `npc_talk(p, player)`, `npc_line_for(p)`, `npc_words(p, line)`, `npc_said()`, `npc_choose(p, line, c, player)`, `npc_talked_today(p)`, `npc_greeting(p)` | talk |
 | `npc_mirror(on)`, `npc_mirroring()`, `npc_put(slot, id, kind, look, seed, name, hx, hz)`, `npc_heard(slot, x, y, z, yaw, speed, act, stalk)`, `npc_heard_lately(p)`, `npc_mirror_tick(dt)` | a guest's copy of the host's people |
-| `npc_facts() -> Queue<NpcFact>` | `NPC_F_GREETED` (`player`), `NPC_F_TALKED` (`player`, `line`, `choice`), `NPC_F_ARRIVED` (`act`) |
+| `npc_facts() -> Queue<NpcFact>` | `NPC_F_GREETED` (`player`), `NPC_F_TALKED` (`player`, `line`, `choice`), `NPC_F_ARRIVED` (`act`), `NPC_F_STUCK` (`how` - `NPC_STUCK_DETOUR`, `_RETRY`, `_GAVE_UP` - at `x`, `z`: the way failed it and it fell back) |
 | `npc_system() -> System` | `"npc"`, `PH_SIMULATE`, a reset and no tick; nothing saved |
 
 ## Tests
