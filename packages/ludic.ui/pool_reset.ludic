@@ -1,0 +1,61 @@
+# pool_reset.ludic - a pooled node put back to its defaults: every field, and the lists it owns
+# emptied and kept (generated from node.ludic - a field added there is added here)
+function nd_reset(n: UiNode) -> void {
+  nd_reset_a(n)
+  nd_reset_b(n)
+}
+function nd_reset_a(n: UiNode) -> void {
+  n.kind = 0
+  n.dir = 0
+  n.text = ""
+  n.key = ""
+  n.tag = ""
+  n.id = ""
+  if n.classes != null { List.clear(n.classes) }
+  if n.akeys != null { List.clear(n.akeys) }
+  if n.avals != null { List.clear(n.avals) }
+  if n.vals != null { List.clear(n.vals) }
+  n.style = null
+  n.sheet = null
+  if n.ups != null { List.clear(n.ups) }
+  n.parent = null
+  n.index = 0
+  n.src = ""
+  n.size = 0.0
+  n.w = -1000000.0
+  n.h = -1000000.0
+  n.w_pct = 0.0
+  n.h_pct = 0.0
+  n.pt = 0.0
+  n.pr = 0.0
+  n.pb = 0.0
+  n.pl = 0.0
+  n.mt = 0.0
+  n.mr = 0.0
+  n.mb = 0.0
+  n.ml = 0.0
+  n.border = 0.0
+  n.bt = 0.0
+  n.br = 0.0
+  n.bb = 0.0
+  n.bl = 0.0
+  n.border_c = -2
+  n.gap = 0.0
+  n.align = 0
+  n.justify = 0
+  n.talign = 0
+  n.self = -1
+  n.grow = 0.0
+  n.wrap = false
+  n.min_w = 0.0
+  n.max_w = 0.0
+  n.min_h = 0.0
+  n.max_h = 0.0
+  n.hidden = false
+  n.pos = 0
+  n.top = -1000000.0
+  n.right = -1000000.0
+  n.bottom = -1000000.0
+  n.left = -1000000.0
+  n.z = 0
+}

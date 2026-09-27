@@ -1,11 +1,12 @@
 # screen_class.ludic - a Ludic component shown as a whole screen
 # a Ludic component shown as a screen: an instance at the top, keyed by its name
 function fr_class_nodes(ui_st: mut UiState, cls: UiClass) -> UiNode {
+  pl_begin(ui_st, cls.name)
   lc_begin(ui_st)
   ui_st.in_build += 1
   ui_st.ui_view = null
   uc_load(ui_st, cls)
-  let root = fr_root(cls.name, cls.sheet)
+  let root = fr_root(ui_st, cls.name, cls.sheet)
   let use = new UiTpl
   use.tag = cls.name
   use.cls = cls
@@ -14,7 +15,7 @@ function fr_class_nodes(ui_st: mut UiState, cls: UiClass) -> UiNode {
   use.on_keys = new []string
   use.on_acts = new []UiAct
   use.kids = new []UiTpl
-  let e = env_new(null)
+  let e = env_new(ui_st, null)
   e.model = Value.object()
   root.env = e
   bd_class(ui_st, use, e, cls.name, root.children)
@@ -22,15 +23,10 @@ function fr_class_nodes(ui_st: mut UiState, cls: UiClass) -> UiNode {
   cs_tree(ui_st, root)
   return root
 }
-function fr_root(key: string, sheet: UiSheet) -> UiNode {
-  let root = new UiNode
+function fr_root(ui_st: mut UiState, key: string, sheet: UiSheet) -> UiNode {
+  let root = nd_take(ui_st)
   root.key = key
   root.tag = "screen"
   root.sheet = sheet
-  root.children = new []UiNode
-  root.classes = new []string
-  root.akeys = new []string
-  root.avals = new []string
-  root.vals = new []Val
   return root
 }

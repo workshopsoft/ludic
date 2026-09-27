@@ -32,6 +32,8 @@ function ui_default_backend() -> UiBackend {
   return UiRenderers[0].make()
 }
 export state UiState {
+  pl_pools: []UiPool = new []UiPool      # pool.ludic: each screen's nodes and envs, used again
+  pl_cur: UiPool = null
   an_frames: []UiKeyframes = new []UiKeyframes
   an_keys: []string = new []string
   an_start: []float = new []float

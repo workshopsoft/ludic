@@ -64,7 +64,7 @@ function nt_run(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void
       if (lk_in(PE_NAMES, name) or name == "hold") and Value.kind(value) == 6 { ev = value }
       Value.put(ev, "name", Value.str(name))
       Value.put(ev, "value", value)
-      let e = env_new(n.env)
+      let e = env_new(ui_st, n.env)
       env_bind(e, "event", ev)
       act_run(ui_st, n.on_acts[i], e)
     }

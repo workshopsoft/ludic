@@ -4,18 +4,13 @@
 #   input[type=text|number|key] .ui-label  .ui-field > .ui-value (+ .ui-caret while focused)
 #   select                      .ui-label  .ui-prev  .ui-value  .ui-next   (its <option>s hidden)
 # with a note="...", the label is .ui-labels > .ui-label + .ui-note
-function ct_part(n: UiNode, cls: string, text: string) -> UiNode {
-  let p = new UiNode
+function ct_part(ui_st: mut UiState, n: UiNode, cls: string, text: string) -> UiNode {
+  let p = nd_take(ui_st)
   p.key = `{n.key}/{cls}`
   p.tag = "span"
   p.env = n.env
   p.sheet = n.sheet
-  p.children = new []UiNode
-  p.classes = new []string
   push(p.classes, cls)
-  p.akeys = new []string
-  p.avals = new []string
-  p.vals = new []Val
   if text != "" {
     p.kind = UI_TEXT
     p.text = text
@@ -23,18 +18,18 @@ function ct_part(n: UiNode, cls: string, text: string) -> UiNode {
   return p
 }
 # <progress value max> and <meter value min max>: a track with a fill as far as the value
-function ct_build_bar(n: UiNode) -> void {
+function ct_build_bar(ui_st: mut UiState, n: UiNode) -> void {
   n.dir = UI_ROW
   let lo = Value.as_float(ui_attr(n, "min"))
   var hi = Value.as_float(ui_attr(n, "max"))
   if hi <= lo { hi = lo + 1.0 }
-  let fill = ct_part(n, "ui-fill", "")
+  let fill = ct_part(ui_st, n, "ui-fill", "")
   fill.w_pct = Math.clamp((Value.as_float(ui_attr(n, "value")) - lo) / (hi - lo), 0.0, 1.0) * 100.0
   push(n.children, fill)
 }
-function ct_build(ui_st: UiState, n: UiNode) -> void {
+function ct_build(ui_st: mut UiState, n: UiNode) -> void {
   if n.tag == "progress" or n.tag == "meter" {
-    ct_build_bar(n)
+    ct_build_bar(ui_st, n)
     return
   }
   n.dir = UI_ROW
@@ -46,41 +41,41 @@ function ct_build(ui_st: UiState, n: UiNode) -> void {
   }
   ct_label(ui_st, n)
   if t == "checkbox" or t == "radio" {
-    let track = ct_part(n, "ui-track", "")
-    push(track.children, ct_part(n, "ui-knob", ""))
+    let track = ct_part(ui_st, n, "ui-track", "")
+    push(track.children, ct_part(ui_st, n, "ui-knob", ""))
     push(n.children, track)
   } else if t == "range" {
-    ct_build_range(n)
+    ct_build_range(ui_st, n)
   } else {
-    let field = ct_part(n, "ui-field", "")
-    push(field.children, ct_part(n, "ui-value", ct_field_text(ui_st, n)))
-    if ui_st.fc_key == n.key and t != "key" { push(field.children, ct_part(n, "ui-caret", "")) }
+    let field = ct_part(ui_st, n, "ui-field", "")
+    push(field.children, ct_part(ui_st, n, "ui-value", ct_field_text(ui_st, n)))
+    if ui_st.fc_key == n.key and t != "key" { push(field.children, ct_part(ui_st, n, "ui-caret", "")) }
     push(n.children, field)
   }
 }
-function ct_build_range(n: UiNode) -> void {
+function ct_build_range(ui_st: mut UiState, n: UiNode) -> void {
   let lo = Value.as_float(ui_attr(n, "min"))
   var hi = Value.as_float(ui_attr(n, "max"))
   if hi <= lo { hi = lo + 1.0 }
   let v = Value.as_float(ui_attr(n, "value"))
-  let track = ct_part(n, "ui-track", "")
-  let fill = ct_part(n, "ui-fill", "")
+  let track = ct_part(ui_st, n, "ui-track", "")
+  let fill = ct_part(ui_st, n, "ui-fill", "")
   fill.w_pct = Math.clamp((v - lo) / (hi - lo), 0.0, 1.0) * 100.0
   push(track.children, fill)
-  push(track.children, ct_part(n, "ui-thumb", ""))
+  push(track.children, ct_part(ui_st, n, "ui-thumb", ""))
   push(n.children, track)
-  push(n.children, ct_part(n, "ui-value", ct_value_text(n)))
+  push(n.children, ct_part(ui_st, n, "ui-value", ct_value_text(n)))
 }
-function ct_build_select(ui_st: UiState, n: UiNode) -> void {
+function ct_build_select(ui_st: mut UiState, n: UiNode) -> void {
   let opts = n.children
   n.children = new []UiNode
   ct_label(ui_st, n)
   var shown = ""
   let at = ct_option_at(n, opts)
   if at >= 0 { shown = opts[at].text }
-  push(n.children, ct_part(n, "ui-prev", "<"))
-  push(n.children, ct_part(n, "ui-value", shown))
-  push(n.children, ct_part(n, "ui-next", ">"))
+  push(n.children, ct_part(ui_st, n, "ui-prev", "<"))
+  push(n.children, ct_part(ui_st, n, "ui-value", shown))
+  push(n.children, ct_part(ui_st, n, "ui-next", ">"))
   n.opts = opts
 }
 # which option the select's value names: an option's value="...", else its place

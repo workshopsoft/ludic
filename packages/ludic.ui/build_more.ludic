@@ -1,14 +1,14 @@
 # build_more.ludic - <let name="{value}"/> names a value for the siblings after it, and
 # <provide name="{value}"> gives it to everything inside, components included (React's context)
 function bd_let(ui_st: mut UiState, k: UiTpl, e: UiEnv) -> UiEnv {
-  let le = env_new(e)
+  let le = env_new(ui_st, e)
   for i in 0 .. len(k.keys) { env_bind(le, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
   return le
 }
 function bd_provide(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiNode) -> void {
-  let cx = env_new(e.ctx)
+  let cx = env_new(ui_st, e.ctx)
   for i in 0 .. len(k.keys) { env_bind(cx, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
-  let pe = env_new(e)
+  let pe = env_new(ui_st, e)
   pe.ctx = cx
   bd_kids(ui_st, k.kids, pe, key, out)
 }
@@ -18,12 +18,11 @@ function bd_group(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
     bd_kids(ui_st, k.kids, e, key, out)
     return
   }
-  let t = new UiNode
+  let t = nd_take(ui_st)
   t.kind = UI_TEXT
   t.key = key
   t.text = ui_tr(ui_st, ui_eval_text(ui_st, k.text, e))
   t.env = e
-  t.children = new []UiNode
   push(out, t)
 }
 # text inside text - <p>Hi <b>there</b></p>, <h3><slot/></h3> - reads as one line of it
@@ -37,5 +36,5 @@ function el_inline(n: UiNode) -> void {
     s = s + c.text
   }
   n.text = s
-  n.children = new []UiNode
+  List.clear(n.children)
 }

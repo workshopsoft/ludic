@@ -53,10 +53,10 @@ program UiPointer {
     let active = down.children[2].bg
     let mid = said(down)
     frame(ui_st, hold.x + 5.0, hold.y + 90.0, false, 0.0, false)
-    let off = frame(ui_st, -1.0, -1.0, false, 0.0, false)
+    let off = said(frame(ui_st, -1.0, -1.0, false, 0.0, false))
     frame(ui_st, -1.0, -1.0, false, 0.0, true)
     let keyed = said(frame(ui_st, -1.0, -1.0, false, 0.0, true))
     let up = frame(ui_st, -1.0, -1.0, false, 0.0, false)
-    print(`{ui_pointer_st.log}dragged {int(ui_pointer_st.dragged)} | {mid} active {active} | {said(off)} | {keyed} | {said(up)} {up.children[2].bg}`)
+    print(`{ui_pointer_st.log}dragged {int(ui_pointer_st.dragged)} | {mid} active {active} | {off} | {keyed} | {said(up)} {up.children[2].bg}`)
   }
 }

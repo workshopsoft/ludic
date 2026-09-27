@@ -11,7 +11,7 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
     if a != "class" and a != "style" and a != "id" { Value.put(props, a, ui_eval(ui_st, k.vals[i], e)) }
   }
   cls.props(it.ptr, props)
-  let ce = env_new(null)
+  let ce = env_new(ui_st, null)
   ce.model = cls.model(it.ptr)
   ce.inst = it
   ce.ctx = e.ctx
@@ -19,7 +19,6 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   ce.slot_env = e
   ce.on_names = k.on_keys
   ce.on_acts = k.on_acts
-  ce.on_envs = new []UiEnv
   for i in 0 .. len(k.on_keys) { push(ce.on_envs, e) }
   lc_note(ui_st, key, k.on_keys, k.on_acts, e)
   let at = len(out)

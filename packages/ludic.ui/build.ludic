@@ -47,7 +47,7 @@ function bd_each(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiN
   let at_name = bd_name(k, "index", "index")
   let by = tpl_attr(k, "key")
   for j in 0 .. Value.count(list) {
-    let le = env_new(e)
+    let le = env_new(ui_st, e)
     env_bind(le, as_name, Value.at(list, j))
     env_bind(le, at_name, Value.int(j))
     var id = string(j)
@@ -77,7 +77,7 @@ function bd_comp(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiN
   }
   if k.comp == null { return false }
   let c = k.comp
-  let ce = env_new(null)
+  let ce = env_new(ui_st, null)
   ce.model = e.model
   ce.ctx = e.ctx
   for i in 0 .. len(c.keys) {
@@ -86,7 +86,6 @@ function bd_comp(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiN
   for i in 0 .. len(k.keys) { env_bind(ce, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
   ce.on_names = k.on_keys
   ce.on_acts = k.on_acts
-  ce.on_envs = new []UiEnv
   for i in 0 .. len(k.on_keys) { push(ce.on_envs, e) }
   ce.slot = k
   ce.slot_env = e
