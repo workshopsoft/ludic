@@ -6,6 +6,7 @@
 #include <DetourNavMeshBuilder.h>
 #include <DetourNavMeshQuery.h>
 #include <DetourCommon.h>
+#include <DetourCrowd.h>
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
@@ -77,3 +78,4 @@ const dtQueryFilter *nav_filter(Nav *n, int f) { return &n->filters[f >= 0 && f 
 #include "nav_build.inl"
 #include "nav_tiles.inl"
 #include "nav_query.inl"
+#include "nav_crowd.inl"

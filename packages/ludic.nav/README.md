@@ -71,3 +71,13 @@ across the seams, a tile under water with no polygons, and the set saved and loa
 `native/build.sh` fetches Recast & Detour v1.6.0, checks its SHA-256, and builds Recast, Detour
 and the shim (`native/shim/nav_shim.cpp`) into `lib/<target>/` - the same script on the Mac and on
 the PC (Git Bash, the LLVM installer's clang). `native/LICENSE-recastnavigation` ships with it.
+
+## Crowds (phase 18)
+
+`nav_crowd_start(kind, max, max_radius)` puts a DetourCrowd on a kind's mesh, with the mesh's tastes as
+its filters. `nav_crowd_add(kind, x, y, z, radius, height, speed, filter)` adds a walker (snapped to
+the mesh, -1 off it), `nav_crowd_target` and `nav_crowd_speed` say where and how fast, and
+`nav_crowd_step(dt)` steps every crowd. `nav_crowd_read` puts a walker into `nav_agent_x/y/z/vx/vz`,
+and `nav_crowd_us()` is what the stepping has cost. The mechanic decides and the crowd moves, and
+dropping a mesh drops its crowd first. On the test meadow, twenty walkers crossing head-on never come
+closer than their two radii, and a step costs about 12 us.

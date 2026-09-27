@@ -1,0 +1,84 @@
+# crowd_test.ludic - a crowd on the test meadow: ten walkers crossing ten head-on, and none walks
+# through another; a crowd goes with its mesh, and nothing off the mesh joins it
+import "ludic.nav"
+import "ludic.base"
+import "fakes/meadow.ludic"
+program CrowdTest {
+  numbers float
+
+  state CrowdTestState {
+    ids: []int = new []int
+    gx: []float = new []float
+    gz: []float = new []float
+  }
+
+  # ten from the west side to the east and ten back, in rows 2.4 m apart that meet in the middle
+  function cross(nav_st: mut NavState, ct: mut CrowdTestState) -> void {
+    expect(nav_build(nav_st, NAV_PERSON, ground(40, 0), new NavConfig))
+    expect(nav_crowd_start(nav_st, NAV_PERSON, 32, 0.6))
+    for i in 0 .. 20 {
+      let east = i < 10
+      let z = 8.0 + float(i % 10) * 2.4
+      var x0 = 4.0
+      var x1 = 36.0
+      if not east {
+        x0 = 36.0
+        x1 = 4.0
+      }
+      let id = nav_crowd_add(nav_st, NAV_PERSON, x0, 0.0, z, 0.35, 1.8, 1.4, 0)
+      expect(id >= 0)
+      expect(nav_crowd_target(nav_st, NAV_PERSON, id, x1, 0.0, z))
+      push(ct.ids, id)
+      push(ct.gx, x1)
+      push(ct.gz, z)
+    }
+  }
+  # the closest any two walkers are now
+  function closest(nav_st: NavState, ct: CrowdTestState, xs: []float, zs: []float) -> float {
+    for i in 0 .. 20 {
+      nav_crowd_read(nav_st, NAV_PERSON, ct.ids[i])
+      xs[i] = nav_agent_x(nav_st)
+      zs[i] = nav_agent_z(nav_st)
+    }
+    var best = 1000.0
+    for i in 0 .. 20 {
+      for j in i + 1 .. 20 { best = Math.min(best, Math.sqrt((xs[i] - xs[j]) * (xs[i] - xs[j]) + (zs[i] - zs[j]) * (zs[i] - zs[j]))) }
+    }
+    return best
+  }
+
+  test "twenty cross head-on and none walks through another; all arrive" (nav_st: mut NavState, ct: mut CrowdTestState) {
+    cross(nav_st, ct)
+    let xs = floats(20)
+    let zs = floats(20)
+    var worst = 1000.0
+    for k in 0 .. 1800 {
+      nav_crowd_step(nav_st, 1.0 / 60.0)
+      worst = Math.min(worst, closest(nav_st, ct, xs, zs))
+    }
+    var arrived = 0
+    for i in 0 .. 20 {
+      nav_crowd_read(nav_st, NAV_PERSON, ct.ids[i])
+      let dx = nav_agent_x(nav_st) - ct.gx[i]
+      let dz = nav_agent_z(nav_st) - ct.gz[i]
+      if dx * dx + dz * dz < 1.5 * 1.5 { arrived += 1 }
+    }
+    print(`crowd: closest two ever {worst} m (two radii 0.7), {arrived} of 20 arrived, {nav_crowd_us(nav_st)} us over 1800 steps`)
+    expect(worst > 0.55)
+    expect(arrived >= 18)
+    nav_reset(nav_st)
+  }
+
+  test "a crowd goes with its mesh, and a walker off the mesh is refused" (nav_st: mut NavState) {
+    expect(not nav_crowd_start(nav_st, NAV_PERSON, 8, 0.6))
+    expect(nav_build(nav_st, NAV_PERSON, ground(40, 0), new NavConfig))
+    expect(nav_crowd_start(nav_st, NAV_PERSON, 8, 0.6))
+    expect_eq(nav_crowd_add(nav_st, NAV_PERSON, -50.0, 0.0, -50.0, 0.35, 1.8, 1.4, 0), -1)
+    let a = nav_crowd_add(nav_st, NAV_PERSON, 5.0, 0.0, 5.0, 0.35, 1.8, 1.4, 0)
+    expect(a >= 0)
+    expect(not nav_crowd_target(nav_st, NAV_PERSON, a, -50.0, 0.0, -50.0))
+    nav_drop(nav_st, NAV_PERSON)
+    expect(not nav_crowd_read(nav_st, NAV_PERSON, a))
+    expect_eq(nav_crowd_add(nav_st, NAV_PERSON, 5.0, 0.0, 5.0, 0.35, 1.8, 1.4, 0), -1)
+  }
+}

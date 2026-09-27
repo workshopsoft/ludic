@@ -1,0 +1,61 @@
+# crowd.ludic - a crowd per kind of walker (phase 18): many walkers steered along their paths at
+# once, each kept clear of the others. The mechanic decides where and how fast; the crowd moves.
+
+# a crowd on kind's mesh for at most max walkers, none wider than max_radius; false with no mesh
+export function nav_crowd_start(nav_st: mut NavState, kind: int, max: int, max_radius: float) -> bool {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return false }
+  nv_crowd_drop(nav_st, kind)
+  nav_st.nv_crowds[kind] = nvc_crowd_new(h, max, max_radius)
+  return nav_st.nv_crowds[kind] != null
+}
+function nv_crowd(nav_st: NavState, kind: int) -> pointer {
+  if kind < 0 or kind >= NAV_KINDS { return null }
+  return nav_st.nv_crowds[kind]
+}
+# let kind's crowd go (before its mesh, which it walks on)
+function nv_crowd_drop(nav_st: mut NavState, kind: int) -> void {
+  if kind < 0 or kind >= NAV_KINDS or nav_st.nv_crowds[kind] == null { return }
+  nvc_crowd_free(nav_st.nv_crowds[kind])
+  nav_st.nv_crowds[kind] = null
+}
+
+# a walker at (x, y, z) with its width, height, top speed and taste: its index, or -1
+export function nav_crowd_add(nav_st: NavState, kind: int, x: float, y: float, z: float, radius: float, height: float, speed: float, filter: int) -> int {
+  let c = nv_crowd(nav_st, kind)
+  if c == null { return -1 }
+  return nvc_crowd_add(c, x, y, z, radius, height, speed, filter)
+}
+export function nav_crowd_remove(nav_st: NavState, kind: int, i: int) -> void {
+  let c = nv_crowd(nav_st, kind)
+  if c != null and i >= 0 { nvc_crowd_remove(c, i) }
+}
+# where walker i is going, snapped to the mesh; false off it
+export function nav_crowd_target(nav_st: NavState, kind: int, i: int, x: float, y: float, z: float) -> bool {
+  let c = nv_crowd(nav_st, kind)
+  return c != null and i >= 0 and nvc_crowd_target(c, i, x, y, z) == 1
+}
+export function nav_crowd_speed(nav_st: NavState, kind: int, i: int, speed: float) -> void {
+  let c = nv_crowd(nav_st, kind)
+  if c != null and i >= 0 { nvc_crowd_speed(c, i, speed) }
+}
+# every crowd one step on
+export function nav_crowd_step(nav_st: NavState, dt: float) -> void {
+  for k in 0 .. NAV_KINDS { if nav_st.nv_crowds[k] != null { nvc_crowd_update(nav_st.nv_crowds[k], dt) } }
+}
+# walker i read into nav_agent_*; false when there is none
+export function nav_crowd_read(nav_st: NavState, kind: int, i: int) -> bool {
+  let c = nv_crowd(nav_st, kind)
+  return c != null and i >= 0 and nvc_crowd_read(c, i, nav_st.nv_agent) == 1
+}
+export function nav_agent_x(nav_st: NavState) -> float { return nav_st.nv_agent[0] }
+export function nav_agent_y(nav_st: NavState) -> float { return nav_st.nv_agent[1] }
+export function nav_agent_z(nav_st: NavState) -> float { return nav_st.nv_agent[2] }
+export function nav_agent_vx(nav_st: NavState) -> float { return nav_st.nv_agent[3] }
+export function nav_agent_vz(nav_st: NavState) -> float { return nav_st.nv_agent[5] }
+# microseconds the crowds have spent stepping
+export function nav_crowd_us(nav_st: NavState) -> int {
+  var us = 0
+  for k in 0 .. NAV_KINDS { if nav_st.nv_crowds[k] != null { us += nvc_crowd_us(nav_st.nv_crowds[k]) } }
+  return us
+}

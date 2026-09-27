@@ -45,6 +45,8 @@ export state NavState {
   nv_asked: int = 0                # paths asked for, found (two corners or more), and cut short
   nv_found: int = 0
   nv_short: int = 0
+  nv_crowds: []pointer = nv_none() # a crowd per kind, on that kind's mesh (crowd.ludic)
+  nv_agent: []float = floats(6)    # the last walker read: position, velocity
 }
 function nv_none() -> []pointer {
   let m = new []pointer
@@ -57,6 +59,7 @@ function nv_mesh(nav_st: NavState, kind: int) -> pointer {
 }
 function nv_set(nav_st: mut NavState, kind: int, h: pointer) -> bool {
   if kind < 0 or kind >= NAV_KINDS { return false }
+  nv_crowd_drop(nav_st, kind)
   if nav_st.nv_meshes[kind] != null { nvc_free(nav_st.nv_meshes[kind]) }
   nav_st.nv_meshes[kind] = h
   return h != null
