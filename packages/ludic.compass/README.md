@@ -45,6 +45,9 @@ story_marks()
 let marks = compass_capture_end()
 ```
 
+The list and its marks are the compass's own, reused, and good until the next capture begins: read
+them then, or copy what must last longer.
+
 ## The port
 
 ```ludic
