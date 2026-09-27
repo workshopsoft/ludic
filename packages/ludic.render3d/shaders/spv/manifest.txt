@@ -918,8 +918,9 @@ T d48d6a48 u_nrm 7
 T d48d6a48 u_ortho 8
 T d48d6a48 u_prefilter 9
 T d48d6a48 u_shadow 10
-T d48d6a48 u_tershadow 11
-T d48d6a48 u_ts_height 12
+T d48d6a48 u_ter_normal 11
+T d48d6a48 u_tershadow 12
+T d48d6a48 u_ts_height 13
 P cb13f3c6 grass.vert model.frag #define FOLIAGE;#define BLADE;#define GBLADE;
 B cb13f3c6 vert 0 324
 U cb13f3c6 vert u_view 0 mat4 1 0
@@ -1000,8 +1001,9 @@ T cb13f3c6 u_nrm 7
 T cb13f3c6 u_ortho 8
 T cb13f3c6 u_prefilter 9
 T cb13f3c6 u_shadow 10
-T cb13f3c6 u_tershadow 11
-T cb13f3c6 u_ts_height 12
+T cb13f3c6 u_ter_normal 11
+T cb13f3c6 u_tershadow 12
+T cb13f3c6 u_ts_height 13
 P b8cff226 grass.vert model.frag #define FOLIAGE;#define BLADE;#define GBLADE;#define TILES;
 B b8cff226 vert 0 4420
 U b8cff226 vert u_view 0 mat4 1 0
@@ -1083,8 +1085,9 @@ T b8cff226 u_nrm 7
 T b8cff226 u_ortho 8
 T b8cff226 u_prefilter 9
 T b8cff226 u_shadow 10
-T b8cff226 u_tershadow 11
-T b8cff226 u_ts_height 12
+T b8cff226 u_ter_normal 11
+T b8cff226 u_tershadow 12
+T b8cff226 u_ts_height 13
 P 3733fc38 impostor.vert impostor.frag 
 B 3733fc38 vert 0 232
 U 3733fc38 vert u_view 0 mat4 1 0
@@ -3020,8 +3023,9 @@ T 2e2908c8 u_rock_n 13
 T 2e2908c8 u_shadow 14
 T 2e2908c8 u_snow_d 15
 T 2e2908c8 u_sunshadow 16
-T 2e2908c8 u_tershadow 17
-T 2e2908c8 u_ts_height 18
+T 2e2908c8 u_ter_normal 17
+T 2e2908c8 u_tershadow 18
+T 2e2908c8 u_ts_height 19
 P 1f95f31b terrain.vert terrain.frag #define FAR_ONLY;
 B 1f95f31b vert 0 204
 U 1f95f31b vert u_half 0 float 1 0
@@ -3097,8 +3101,9 @@ T 1f95f31b u_rock_n 13
 T 1f95f31b u_shadow 14
 T 1f95f31b u_snow_d 15
 T 1f95f31b u_sunshadow 16
-T 1f95f31b u_tershadow 17
-T 1f95f31b u_ts_height 18
+T 1f95f31b u_ter_normal 17
+T 1f95f31b u_tershadow 18
+T 1f95f31b u_ts_height 19
 P f4382918 terrain.vert terrain.frag #define NEAR_ONLY;
 B f4382918 vert 0 204
 U f4382918 vert u_half 0 float 1 0
@@ -3174,8 +3179,9 @@ T f4382918 u_rock_n 13
 T f4382918 u_shadow 14
 T f4382918 u_snow_d 15
 T f4382918 u_sunshadow 16
-T f4382918 u_tershadow 17
-T f4382918 u_ts_height 18
+T f4382918 u_ter_normal 17
+T f4382918 u_tershadow 18
+T f4382918 u_ts_height 19
 P f2952361 terrain.vert terrain.frag #define SUN_INLINE;
 B f2952361 vert 0 204
 U f2952361 vert u_half 0 float 1 0
@@ -3251,8 +3257,9 @@ T f2952361 u_rock_n 13
 T f2952361 u_shadow 14
 T f2952361 u_snow_d 15
 T f2952361 u_sunshadow 16
-T f2952361 u_tershadow 17
-T f2952361 u_ts_height 18
+T f2952361 u_ter_normal 17
+T f2952361 u_tershadow 18
+T f2952361 u_ts_height 19
 P a0f2dbac terrain.vert terrain.frag #define SUN_INLINE;#define FAR_ONLY;
 B a0f2dbac vert 0 204
 U a0f2dbac vert u_half 0 float 1 0
@@ -3328,8 +3335,9 @@ T a0f2dbac u_rock_n 13
 T a0f2dbac u_shadow 14
 T a0f2dbac u_snow_d 15
 T a0f2dbac u_sunshadow 16
-T a0f2dbac u_tershadow 17
-T a0f2dbac u_ts_height 18
+T a0f2dbac u_ter_normal 17
+T a0f2dbac u_tershadow 18
+T a0f2dbac u_ts_height 19
 P 5e4589a1 terrain.vert terrain.frag #define SUN_INLINE;#define NEAR_ONLY;
 B 5e4589a1 vert 0 204
 U 5e4589a1 vert u_half 0 float 1 0
@@ -3405,8 +3413,9 @@ T 5e4589a1 u_rock_n 13
 T 5e4589a1 u_shadow 14
 T 5e4589a1 u_snow_d 15
 T 5e4589a1 u_sunshadow 16
-T 5e4589a1 u_tershadow 17
-T 5e4589a1 u_ts_height 18
+T 5e4589a1 u_ter_normal 17
+T 5e4589a1 u_tershadow 18
+T 5e4589a1 u_ts_height 19
 P bf3151c8 terrain.vert tersun.frag 
 B bf3151c8 vert 0 204
 U bf3151c8 vert u_half 0 float 1 0
@@ -3462,8 +3471,9 @@ T bf3151c8 u_height 3
 T bf3151c8 u_irradiance 4
 T bf3151c8 u_prefilter 5
 T bf3151c8 u_shadow 6
-T bf3151c8 u_tershadow 7
-T bf3151c8 u_ts_height 8
+T bf3151c8 u_ter_normal 7
+T bf3151c8 u_tershadow 8
+T bf3151c8 u_ts_height 9
 P 46e2325c water.vert water.frag 
 B 46e2325c vert 0 152
 U 46e2325c vert u_view 0 mat4 1 0

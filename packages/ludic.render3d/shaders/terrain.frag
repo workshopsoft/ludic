@@ -7,6 +7,9 @@ out vec4 o_color;
 #define gnoise(p) 0.1
 #endif
 uniform sampler2D u_height;
+// the baked terrain normal: x and z in RG16F, y rebuilt (a terrain normal always points up)
+uniform sampler2D u_ter_normal;
+vec3 terNormal(vec2 uv) { vec2 xz = texture(u_ter_normal, uv).rg;  return vec3(xz.x, sqrt(max(1.0 - dot(xz, xz), 0.0)), xz.y); }
 uniform float u_half;
 uniform float u_texel;               // height-map texel size in uv
 uniform sampler2D u_grass_d; uniform sampler2D u_grass_n; uniform sampler2D u_grass_a;
@@ -76,7 +79,7 @@ float heightSmooth(sampler2D tex, vec2 uv) {
 }
 // baked at generation (ternormal.frag) into the height texture's GBA
 vec3 terrainNormal(vec2 uv) {
-  return normalize(texture(u_height, uv).gba);
+  return terNormal(uv);
 }
 
 // stochastic (triangle-grid) sampling: three randomly offset / rotated taps blended by
@@ -223,7 +226,7 @@ void triC(bool cheap, sampler2D d, sampler2D nm, sampler2D am, vec3 p, vec3 dpx,
 uniform float u_far_split;
 uniform float u_far_band;
 float sunInline(vec3 p, float dist, float viewDepth) {
-  vec3 Ng = normalize(texture(u_height, v_huv).gba);
+  vec3 Ng = terNormal(v_huv);
   if (dist > u_far_split + u_far_band) return sunShadowCheap(p, Ng, viewDepth);
   if (dist < u_far_split - u_far_band) return sunShadow(p, Ng, viewDepth);
   return mix(sunShadow(p, Ng, viewDepth), sunShadowCheap(p, Ng, viewDepth),

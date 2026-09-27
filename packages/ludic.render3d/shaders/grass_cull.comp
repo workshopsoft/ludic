@@ -25,8 +25,9 @@ layout(set = 0, binding = 0) uniform Params {
 layout(set = 0, binding = 1) readonly buffer Tiles { vec4 tiles[]; };   // corner x/z, indices per cell, cells per side
 layout(set = 0, binding = 2) buffer Out { vec4 outv[]; };               // 4 per blade
 layout(set = 0, binding = 3) buffer Cmds { uint cmds[]; };              // VkDrawIndexedIndirectCommand per band
-layout(set = 0, binding = 4) uniform sampler2D u_height;                // height, normal (terrain's u_ts_height)
+layout(set = 0, binding = 4) uniform sampler2D u_height;                // the height (terrain's u_ts_height)
 layout(set = 0, binding = 5) uniform sampler2D u_ortho;                 // the photograph
+layout(set = 0, binding = 6) uniform sampler2D u_ter_normal;            // the normal: x and z, y rebuilt
 
 const float CELL = 4.0;   // grass.ludic GRASS_CELL
 
@@ -92,7 +93,8 @@ void main() {
   // the frustum, on a sphere round the blade (it stands at most 0.9 m tall)
   vec3 root = vec3(xz.x, ht.r, xz.y);
   for (int k = 0; k < 4; k++) { if (dot(pr.planes[k].xyz, root) + pr.planes[k].w < -1.0) return; }
-  vec3 gn = normalize(ht.gba);
+  vec2 gxz = textureLod(u_ter_normal, huv, 0.0).rg;
+  vec3 gn = vec3(gxz.x, sqrt(max(1.0 - dot(gxz, gxz), 0.0)), gxz.y);
   float h3 = bladeHash(ci, j, 2), h4 = bladeHash(ci, j, 3);
   float wl = pr.lev.y;
   if (pr.lake.z > 0.0) { vec2 q = (xz - pr.lake.xy) / pr.lake.zw;  if (dot(q, q) < 1.0) wl = max(wl, pr.lev.x); }

@@ -199,16 +199,19 @@ function terrain_generate(render3d_st: mut Render3dState) -> void {
   }
   mesh_draw(render3d_st, render3d_st.sky_fullscreen)
   # second pass: R = height, GBA = the smooth surface normal, baked once (ternormal.frag)
+  # the height stays in its own R32F (physics and every placement read it at full precision); the
+  # baked normal goes beside it as x and z in RG16F, y rebuilt where it is read - 128 MB where one
+  # RGBA32F carrying both was 256 (plan 23 of maroon-lake)
   let raw = render3d_st.ter_height_tex
-  render3d_st.ter_height_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR)
-  gpu_fb_color(render3d_st, 0, render3d_st.ter_height_tex)
+  if render3d_st.ter_normal_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_normal_tex) }
+  render3d_st.ter_normal_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
+  gpu_fb_color(render3d_st, 0, render3d_st.ter_normal_tex)
   let pn = r3d_program(render3d_st, "fullscreen.vert", "ternormal.frag", "")
   gpu_use_program(render3d_st, pn)
   r3d_bind_2d(render3d_st, pn, "u_src", 0, raw)
   u_f(render3d_st, gpu_uniform(render3d_st, pn, "u_half"), float(render3d_st.TERRAIN_HALF))
   mesh_draw(render3d_st, render3d_st.sky_fullscreen)
   gpu_program_free(render3d_st, pn)
-  gpu_tex_free(render3d_st, raw)
   # read the heights back for placement, into the array a previous map had: always the same size,
   # and made anew on every build it was 64 MB lost per world swap
   if render3d_st.ter_heights == null { render3d_st.ter_heights = floats(TERRAIN_RES * TERRAIN_RES) }
@@ -224,6 +227,7 @@ function terrain_generate(render3d_st: mut Render3dState) -> void {
 # The height field for shaders that place things on the ground (model.vert's u_ground)
 function terrain_bind_height(render3d_st: mut Render3dState, p: int) -> void {
   r3d_bind_2d(render3d_st, p, "u_ts_height", 5, render3d_st.ter_height_tex)
+  r3d_bind_2d(render3d_st, p, "u_ter_normal", 6, render3d_st.ter_normal_tex)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_ts_half"), float(render3d_st.TERRAIN_HALF))
   u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_ts_origin"), render3d_st.ter_ox, render3d_st.ter_oz)
 }
@@ -243,6 +247,7 @@ function terrain_bake_shadow(render3d_st: mut Render3dState) -> void {
   gpu_blend(render3d_st, false)
   gpu_use_program(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_height", 0, render3d_st.ter_height_tex)
+  r3d_bind_2d(render3d_st, p, "u_ter_normal", 7, render3d_st.ter_normal_tex)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_half"), float(render3d_st.TERRAIN_HALF))
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_sun"), render3d_st.sun_dir)
   mesh_draw(render3d_st, render3d_st.sky_fullscreen)
@@ -408,6 +413,7 @@ function terrain_draw_shadow(light_vp: floats) -> void {
 function terrain_bind_prog(render3d_st: mut Render3dState, p: int) -> void {
   gpu_use_program(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_height", 0, render3d_st.ter_height_tex)
+  r3d_bind_2d(render3d_st, p, "u_ter_normal", 7, render3d_st.ter_normal_tex)
   r3d_bind_2d(render3d_st, p, "u_grass_d", 1, render3d_st.ter_tex[0]);  r3d_bind_2d(render3d_st, p, "u_grass_n", 2, render3d_st.ter_tex[1]);  r3d_bind_2d(render3d_st, p, "u_grass_a", 3, render3d_st.ter_tex[2])
   # The cliff maps went with the dead cliff sample. Binding textures for uniforms the
   # shader no longer declares leaves those units pointing at nothing, which the driver
@@ -516,6 +522,7 @@ function terrain_sun_pass(render3d_st: mut Render3dState, w: int, h: int, depth:
   let p = render3d_st.ter_sun_prog
   gpu_use_program(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_height", 0, render3d_st.ter_height_tex)
+  r3d_bind_2d(render3d_st, p, "u_ter_normal", 7, render3d_st.ter_normal_tex)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_half"), float(render3d_st.TERRAIN_HALF))
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
@@ -748,6 +755,7 @@ function cdlod_select(render3d_st: mut Render3dState, level: int, ix: int, iz: i
 # frame-sized targets and the shadow texture, whose size does not depend on the map.
 function terrain_unload(render3d_st: mut Render3dState) -> void {
   if render3d_st.ter_height_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_height_tex);  render3d_st.ter_height_tex = 0 }
+  if render3d_st.ter_normal_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_normal_tex);  render3d_st.ter_normal_tex = 0 }
   if render3d_st.ter_dem_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_dem_tex);  render3d_st.ter_dem_tex = 0 }
   if render3d_st.ter_ortho_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_ortho_tex);  render3d_st.ter_ortho_tex = 0 }
   if render3d_st.ter_heights != null { free(render3d_st.ter_heights);  render3d_st.ter_heights = null }
