@@ -197,4 +197,22 @@ program ThingsTest {
     expect_eq(len(facts(things_st)), 3)
     expect_eq(things_verify(things_st), 0)
   }
+
+  test "change detection names what a verb wrote since the tick a consumer kept" (things_st: mut ThingsState) {
+    things_clear(things_st)
+    let a = put(things_st, TH_BRANCH, 1.0, 0.0)
+    let b = put(things_st, TH_BRANCH, 2.0, 0.0)
+    let seen = things_now(things_st)
+    let rows = words(0)
+    let out = new []Thing
+    expect_eq(things_changed(things_st, seen, rows, out), 0)
+    thing_hide(b)
+    expect_eq(things_changed(things_st, seen, rows, out), 1)
+    expect(out[0] == b)
+    let later = things_now(things_st)
+    thing_move(a, 9.0, 9.0, 0.0)
+    expect_eq(things_changed(things_st, later, rows, out), 1)
+    expect(out[0] == a)
+    expect_eq(things_changed(things_st, seen, rows, out), 2)
+  }
 }

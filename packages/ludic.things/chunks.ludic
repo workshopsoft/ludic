@@ -15,3 +15,20 @@ export function things_drop_chunk(things_st: mut ThingsState, chunk: int) -> int
   }
   return n
 }
+
+# change detection: the tick now, the table moving on to the next - a consumer keeps what this
+# returned and asks things_changed(since: it) for what was written after
+export function things_now(things_st: mut ThingsState) -> int {
+  let t = tb_tick(things_st.th.tab)
+  tb_advance(things_st.th.tab)
+  return t
+}
+
+# every Thing a verb wrote after `since`, into the caller's list (untouched 64-row blocks skipped)
+export function things_changed(things_st: ThingsState, since: int, rows: words, out: []Thing) -> int {
+  List.clear(out)
+  let tb = things_st.th.tab
+  let n = tb_changed_since(tb, since, rows)
+  for k in 0 .. n { push(out, tb.rec[rows[k]]) }
+  return n
+}
