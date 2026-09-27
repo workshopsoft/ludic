@@ -75,6 +75,17 @@ allocates nothing per query:
 - **Change detection.** `tb_advance(tb)` moves the table to its next tick; `tb_changed_since(tb,
   tick, out)` and `tb_added_since` name the rows written since - what a save or a message needs to
   send a delta instead of everything.
+- **Observers.** `tb_on_add(tb, fn f)` / `tb_on_remove(tb, fn f)`: `f(handle)` (its states supplied,
+  like a system's) is told each handle as its row is made and before it goes.
+- **Groups and chunks.** `tb_remove_all(tb, ix, v)` removes every row an index files under one
+  value - a kind, or a chunk of the world a stream lets go (`chunk_of(x, z, size)` packs a chunk's
+  cell into an int). An index keeps a small value (below 1024) in its own slot and gives a larger,
+  sparse one (a chunk's packed cell) a slot through a map, so each value costs one list.
+- **Change detection is per 64-row block too**: `tb_changed_since` skips a block nobody wrote
+  since. A row moved into a removal's gap keeps its own tick; the removal is the observer's.
+- **Parallel work reads, never writes, a state.** `Job.parallel_for(n, fn work, ctx)` over a
+  table's columns runs on every core; the compiler refuses a worker that takes a state as `mut`
+  (a result goes into `ctx`, a shared count through a `Sync` handle kept in the state).
 - **Stable ids.** `IntMap` (`imap_new`, `imap_put`, `imap_get(m, k, none)`, `imap_del`) maps an
   id kept in a save or a message to a handle without a scan.
 
