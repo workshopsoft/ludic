@@ -1060,7 +1060,7 @@ function emit_expr(e: Node) -> Val {
   if e.kind == E_STR  { return val(emit_str_const(e.s), "string") }
   if e.kind == E_NEW  {
     if is_slice_ty(e.s) { return emit_new_slice(e.s) }
-    return emit_new_struct(e.s, e.a)
+    return emit_new_struct(e.s, e.a, e.b)
   }
   if e.kind == E_LIST { return emit_list(e) }        # [a, b, c] -> a fresh slice
   # fn name -> the function's address, for a worker entry point. The OS-thread runtime calls it
