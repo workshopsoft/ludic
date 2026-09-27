@@ -1,7 +1,7 @@
 # ============================================================================
 # grass.ludic — procedural GPU ground cover with continuous density (no rings).
 #
-# The world is cut into 16 m cells; blade j of a cell always stands in the same place
+# The world is cut into 4 m cells; blade j of a cell always stands in the same place
 # (shaders/grass.vert). Draws are per tile: the CPU walks tiles around the camera,
 # frustum-culls them, and feeds each visible tile as many blade indices per cell as its
 # NEAREST point could need; the vertex stage then keeps only the indices that exist at
@@ -10,7 +10,7 @@
 # draw count down — the cells and their hashes are the same in every tile size.
 # ============================================================================
 
-const GRASS_CELL: int = 16
+const GRASS_CELL: int = 4
 # A photographed blade, as an atlas of straightened blades side by side (the game sets
 # this; the renderer does not name a game asset). 0 = the procedural gradient, which is
 # what this was for a year: a two-tone ramp with a hard edge, and every blade in the
@@ -89,11 +89,13 @@ function grass_blade_mesh(render3d_st: mut Render3dState, rows: int) -> Mesh {
 
 function grass_init(render3d_st: mut Render3dState) -> void {
   render3d_st.grass_merge = gpu_has_mdi(render3d_st) and not r3d_env_has(render3d_st, "R3D_GRASS_TILES")
-  var defs = "#define FOLIAGE\n#define BLADE\n"
+  var defs = "#define FOLIAGE\n#define BLADE\n#define GBLADE\n"
   if render3d_st.grass_merge {
     defs = defs + "#define TILES\n"
     render3d_st.grass_rec = words(GRASS_RECS * 5);  render3d_st.grass_tv = floats(GRASS_RECS * 4);  render3d_st.grass_chunk_tv = floats(GRASS_CHUNK * 4)
     render3d_st.grass_band_start = words(4);  render3d_st.grass_band_cells = words(4)
+    render3d_st.grass_band_mesh = new []Mesh
+    for b in 0 .. 4 { push(render3d_st.grass_band_mesh, null) }
     render3d_st.grass_cmds = gpu_buffer_new(render3d_st)
   }
   render3d_st.grass_prog = r3d_program(render3d_st, "grass.vert", "model.frag", defs)
@@ -101,6 +103,8 @@ function grass_init(render3d_st: mut Render3dState) -> void {
   # five rows, four quads: the arch above needs somewhere to bend, and at four rows a
   # blade that leans over is three straight segments and shows every join
   render3d_st.grass_mesh = grass_blade_mesh(render3d_st, 5)
+  render3d_st.grass_mesh3 = grass_blade_mesh(render3d_st, 3)
+  render3d_st.grass_mesh2 = grass_blade_mesh(render3d_st, 2)
   render3d_st.grass_wind = 2.4
   # Matched to the blade's width: a 1 cm blade at 0.11 m spacing covers a third of what a
   # 2.8 cm blade did, and the meadow goes bare. The game's graphics settings override this
@@ -108,14 +112,17 @@ function grass_init(render3d_st: mut Render3dState) -> void {
   # gets there, so the two have to agree or a shot shows something no player will see.
   # That is exactly how the last change measured as "no effect": the render was identical
   # because this line, not the settings, was deciding.
+  # The spacing doubles every 18 m and the blades stop at 70 m: at 45 m and 1600 m a 1 cm blade
+  # was under a pixel from 20 m on, costing a full blade's vertices to shimmer (5 ms of 9.7 on GL).
   render3d_st.grass_s0 = 0.066
-  render3d_st.grass_d0 = 45.0
-  render3d_st.grass_radius = 1600.0
+  render3d_st.grass_d0 = 18.0
+  render3d_st.grass_radius = 70.0
   if r3d_env_has(render3d_st, "R3D_NOBLADES") { render3d_st.grass_on = false }
   if r3d_env_has(render3d_st, "R3D_GRASS_R") { render3d_st.grass_radius = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_R"))) }
   if r3d_env_has(render3d_st, "R3D_GRASS_S0") { render3d_st.grass_s0 = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_S0"))) / 1000.0 }
   if r3d_env_has(render3d_st, "R3D_GRASS_D0") { render3d_st.grass_d0 = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_D0"))) }
   if r3d_env_has(render3d_st, "R3D_GRASS_DBG") { render3d_st.grass_dbg = Text.to_int(r3d_env(render3d_st, "R3D_GRASS_DBG")) }
+  gg_init(render3d_st)
 }
 
 # indices per 16 m cell that could exist at distance d (the count the shader computes)
@@ -126,11 +133,13 @@ function grass_count_at(render3d_st: Render3dState, d: float) -> int {
 }
 
 # one tile size over one distance band
-function grass_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_max: float) -> void {
+function grass_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_max: float, blade: Mesh) -> void {
   let p = render3d_st.grass_prog
   let cells = size / GRASS_CELL
+  if d_min >= render3d_st.grass_radius { return }
   if render3d_st.grass_merge {
-    render3d_st.grass_band_start[render3d_st.grass_band_n] = render3d_st.grass_n;  render3d_st.grass_band_cells[render3d_st.grass_band_n] = cells;  render3d_st.grass_band_n += 1
+    render3d_st.grass_band_start[render3d_st.grass_band_n] = render3d_st.grass_n;  render3d_st.grass_band_cells[render3d_st.grass_band_n] = cells
+    render3d_st.grass_band_mesh[render3d_st.grass_band_n] = blade;  render3d_st.grass_band_n += 1
   } else {
     u_i(render3d_st, gpu_uniform(render3d_st, p, "u_tile_cells"), cells)
   }
@@ -161,7 +170,7 @@ function grass_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_
             var inst = per * cells * cells
             if inst > 65535 { inst = 65535 }
             let r = render3d_st.grass_n * 5
-            render3d_st.grass_rec[r] = render3d_st.grass_mesh.count;  render3d_st.grass_rec[r + 1] = inst;  render3d_st.grass_rec[r + 2] = 0;  render3d_st.grass_rec[r + 3] = 0
+            render3d_st.grass_rec[r] = blade.count;  render3d_st.grass_rec[r + 1] = inst;  render3d_st.grass_rec[r + 2] = 0;  render3d_st.grass_rec[r + 3] = 0
             render3d_st.grass_rec[r + 4] = ((render3d_st.grass_n - render3d_st.grass_band_start[render3d_st.grass_band_n - 1]) % GRASS_CHUNK) * 65536
             let t = render3d_st.grass_n * 4
             render3d_st.grass_tv[t] = ox;  render3d_st.grass_tv[t + 1] = oz;  render3d_st.grass_tv[t + 2] = float(per);  render3d_st.grass_tv[t + 3] = 0.0
@@ -170,7 +179,7 @@ function grass_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_
         } else if per > 0 {
           u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_tile"), ox, oz)
           u_i(render3d_st, gpu_uniform(render3d_st, p, "u_per_cell"), per)
-          mesh_draw_instanced(render3d_st, render3d_st.grass_mesh, per * cells * cells)
+          mesh_draw_instanced(render3d_st, blade, per * cells * cells)
           render3d_st.grass_draws += 1
         }
       }
@@ -180,11 +189,27 @@ function grass_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_
   }
 }
 
+function grass_live(render3d_st: Render3dState) -> bool { return not render3d_st.grass_env_off and (render3d_st.grass_on or render3d_st.grass_force) and render3d_st.grass_prog != 0 }
+
 function grass_draw(render3d_st: mut Render3dState) -> void {
-  if not (render3d_st.grass_on or render3d_st.grass_force) or render3d_st.ter_reflect or render3d_st.grass_prog == 0 { return }
+  if not grass_live(render3d_st) or render3d_st.ter_reflect { return }
+  if render3d_st.gg_on { gg_draw(render3d_st);  return }
   var p = render3d_st.grass_prog
   if grass_mesh_live(render3d_st) { p = render3d_st.grass_mesh_prog }
   gpu_use_program(render3d_st, p)
+  grass_bind(render3d_st, p)
+  gpu_cull(render3d_st, false)
+  render3d_st.grass_draws = 0
+  render3d_st.grass_n = 0
+  render3d_st.grass_band_n = 0
+  gpu_mesh_bind(render3d_st, render3d_st.grass_mesh)
+  grass_bands(render3d_st)
+  if render3d_st.grass_merge { grass_flush(render3d_st) }
+  gpu_cull(render3d_st, true)
+}
+
+# the blades' uniforms, shared by the per-vertex path and the culled one (grass_gpu.ludic)
+function grass_bind(render3d_st: mut Render3dState, p: int) -> void {
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_vp"), render3d_st.cam_vp_clean)
@@ -207,6 +232,9 @@ function grass_draw(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_s0"), render3d_st.grass_s0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_d0"), render3d_st.grass_d0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), render3d_st.grass_radius)
+  var ph = render3d_st.post_h
+  if ph <= 0 { ph = gl_height() }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_px"), 2.0 * Math.tan(render3d_st.cam_fov * 0.5) / float(ph))
   u_i(render3d_st, gpu_uniform(render3d_st, p, "u_dbg"), render3d_st.grass_dbg)
   var orthotex = render3d_st.ter_ortho_tex
   var oon = 1.0
@@ -230,16 +258,16 @@ function grass_draw(render3d_st: mut Render3dState) -> void {
   # does have a faint sheen, so this is small rather than nothing - the foliage layers have
   # used 0.05 all along and never showed the fault.
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_spec_scale"), 0.008)
-  gpu_cull(render3d_st, false)
-  render3d_st.grass_draws = 0
-  render3d_st.grass_n = 0
-  render3d_st.grass_band_n = 0
-  gpu_mesh_bind(render3d_st, render3d_st.grass_mesh)
-  grass_tiles(render3d_st, 16, 0.0, 300.0)
-  grass_tiles(render3d_st, 64, 300.0, 1200.0)
-  grass_tiles(render3d_st, 256, 1200.0, render3d_st.grass_radius)
-  if render3d_st.grass_merge { grass_flush(render3d_st) }
-  gpu_cull(render3d_st, true)
+}
+
+# the per-vertex path's tiles, in four bands
+function grass_bands(render3d_st: mut Render3dState) -> void {
+  # four bands: the tile grows and the blade loses rows with distance (a band past the radius is
+  # skipped); a tile asks for what its NEAREST point needs, so a wide tile far out wastes the rest
+  grass_tiles(render3d_st, 4, 0.0, 6.0, render3d_st.grass_mesh)
+  grass_tiles(render3d_st, 4, 6.0, 16.0, render3d_st.grass_mesh3)
+  grass_tiles(render3d_st, 8, 16.0, 40.0, render3d_st.grass_mesh2)
+  grass_tiles(render3d_st, 16, 40.0, render3d_st.grass_radius, render3d_st.grass_mesh2)
 }
 
 # the records gathered this frame: uploaded once, then each band GRASS_CHUNK records a draw
@@ -253,6 +281,8 @@ function grass_flush(render3d_st: mut Render3dState) -> void {
     var e = render3d_st.grass_n
     if b + 1 < render3d_st.grass_band_n { e = render3d_st.grass_band_start[b + 1] }
     if e > s { u_i(render3d_st, gpu_uniform(render3d_st, p, "u_tile_cells"), render3d_st.grass_band_cells[b]) }
+    let blade = render3d_st.grass_band_mesh[b]
+    if e > s and not mesh { gpu_mesh_bind(render3d_st, blade) }
     var k = s
     while k < e {
       var m = e - k
@@ -275,7 +305,7 @@ function grass_flush(render3d_st: mut Render3dState) -> void {
         }
       } else {
         u_f4v(render3d_st, gpu_uniform(render3d_st, p, "u_tiles"), m, render3d_st.grass_chunk_tv)
-        gpu_draw_mesh_indirect(render3d_st, render3d_st.grass_mesh, render3d_st.grass_cmds, k * 20, m, 0, 0)
+        gpu_draw_mesh_indirect(render3d_st, blade, render3d_st.grass_cmds, k * 20, m, 0, 0)
       }
       if not mesh { render3d_st.grass_draws += 1 }
       k += m

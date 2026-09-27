@@ -31,6 +31,7 @@ uniform vec4 u_tiles[256];   // per tile of the dispatch: corner x, corner z, in
 uniform float u_s0;
 uniform float u_d0;
 uniform float u_radius;
+uniform float u_px;          // one pixel in radians (grass.vert)
 uniform int u_dbg;
 out vec3 v_wpos[];
 out vec3 v_nrm[];
@@ -40,7 +41,7 @@ out vec2 v_rot[];
 out float v_hull[];
 out float v_quake[];   // grass does not quake; written so model.frag can read it
 
-const float CELL = 16.0;
+const float CELL = 4.0;   // grass.ludic GRASS_CELL: 4 m, so a near tile asks for what its blades need
 float hash1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
 float bladeHash(ivec2 cell, int j, int k) {
@@ -115,6 +116,7 @@ void main() {
     float tall = mix(0.18, 0.42, h3) * mix(0.8, 1.2, hash1(cid * 0.1)) * (1.0 + 0.35 * smoothstep(1.0, 12.0, grow)) * life;
     float bw = 0.028 * mix(1.0, 0.45 * grow, smoothstep(1.0, 4.0, grow));
     if (far) { bw = max(bw, spacing * 0.35); tall = min(tall, spacing * 0.3); }
+    bw = max(bw, dist * u_px * 1.1);
     float gust = sin(xz.x * 0.09 + u_time * 1.1) * 0.5 + sin(xz.y * 0.13 - u_time * 0.8 + xz.x * 0.05) * 0.5;
     float ph = u_time * 1.7 + seed * 6.2831 + xz.x * 0.05 + xz.y * 0.07;
     float sway = (sin(ph) * 0.6 + sin(ph * 2.3 + 1.0) * 0.4 + gust) * u_wind;
