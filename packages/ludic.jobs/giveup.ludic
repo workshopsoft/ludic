@@ -1,0 +1,25 @@
+# giveup.ludic - letting a job go. A written job goes back on offer, but not until tomorrow, so
+# giving up is never a reroll; a post comes down and the morning puts up another in its place.
+# Either way the fact says so, and the game takes down what it had placed for it.
+export function jobs_give_up(jobs_st: mut JobsState, i: int) -> bool {
+  if not jobs_ok(i) or not jobs_under_way(jobs_st, i) { return false }
+  jobs__fact(jobs_st, JOBS_F_GIVEN_UP, i, -1, -1, jobs_st.jobs__hv[i], Jobs[i].need)
+  jobs_st.jobs__st[i] = JOBS_OFFERED
+  jobs_st.jobs__hv[i] = 0
+  jobs_st.jobs__back[i] = JobsWorld.day() + 1
+  return true
+}
+
+# the day a written job given up may be taken again, 0 never given up
+export function jobs_back_on(jobs_st: JobsState, i: int) -> int { return jobs_st.jobs__back[i] }
+
+# a post taken and not yet paid; an auto board's posts are not taken, so they are not given up
+export function jobs_post_give_up(jobs_st: mut JobsState, b: int, s: int) -> bool {
+  if not jobs_board_ok(b) or s < 0 or s >= JobBoards[b].slots or JobBoards[b].auto { return false }
+  let k = jobs_st.jobs__off[b] + s
+  let st = jobs_st.jobs__ps[k]
+  if jobs_st.jobs__pk[k] < 0 or (st != JOBS_ACTIVE and st != JOBS_READY) { return false }
+  jobs__fact(jobs_st, JOBS_F_GIVEN_UP, -1, b, s, jobs_st.jobs__ph[k], jobs_st.jobs__pn[k])
+  jobs__clear(jobs_st, k)
+  return true
+}

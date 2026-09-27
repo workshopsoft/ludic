@@ -1,0 +1,132 @@
+# giveup_test.ludic - letting a job go: a written job back on offer tomorrow, not today; a post taken
+# down and replaced in the morning; a daily never taken; the day back saved with the job
+import "ludic.jobs"
+import "ludic.base"
+program JobsGiveUpTest {
+  numbers float
+  const K_FISH: int = 0
+  const K_PHOTO: int = 1
+  const K_WOOD: int = 2
+
+  def Jobs catch { group: 0, kind: K_FISH, need: 3, money: 30, rep: 5 }
+  def Jobs deer { group: 0, kind: K_PHOTO, param: 4, need: 1, money: 20, rep: 2, minrep: 10 }
+  def Jobs ten { group: 0, kind: K_FISH, need: 10, money: 70, rep: 12, scope: JOBS_PARTY }
+  def Jobs still { group: 1, need: 0, money: 60, rep: 12, minstage: 2 }
+  def JobBoards daily { slots: 3, keep: 1, auto: true, refill: false }
+  def JobBoards ada { slots: 2, keep: 7, scope: JOBS_PARTY }
+
+  state JobsTestState {
+    rep: int = 0
+    stage: int = 0
+    day: int = 1
+    guest: bool = false
+    fish: int = 0          # the state's count of fish
+    paid: int = 0
+    paid_rep: int = 0
+    paid_scope: int = -1
+  }
+
+  function world_rep(jobs_test_st: JobsTestState, sc: int) -> int { return jobs_test_st.rep }
+  function world_stage(jobs_test_st: JobsTestState) -> int { return jobs_test_st.stage }
+  function world_day(jobs_test_st: JobsTestState) -> int { return jobs_test_st.day }
+  function world_owns(jobs_test_st: JobsTestState, sc: int) -> bool { return sc == JOBS_SELF or not jobs_test_st.guest }
+  function world_evidence(jobs_test_st: JobsTestState, kind: int, param: int) -> int {
+    if kind == K_FISH { return jobs_test_st.fish }
+    return -1
+  }
+  function world_roll(jobs_st: mut JobsState, b: int, s: int) -> void {
+    let need = jobs_roll(jobs_st, 2, 4)
+    if b == BOARD_DAILY { jobs_post(jobs_st, b, s, K_WOOD, -1, need, 7, 2) } else { jobs_post(jobs_st, b, s, K_FISH, -1, need, 9 * need, 3) }
+  }
+  function pay(jobs_test_st: mut JobsTestState, sc: int, money: int, r: int) -> void {
+    jobs_test_st.paid += money
+    jobs_test_st.paid_rep += r
+    jobs_test_st.paid_scope = sc
+  }
+
+  bind JobsWorld { rep: fn world_rep, stage: fn world_stage, day: fn world_day, owns: fn world_owns, evidence: fn world_evidence, roll: fn world_roll }
+  bind JobsPay { reward: fn pay }
+
+  function fresh(jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) -> void {
+    jobs_test_st.rep = 0
+    jobs_test_st.stage = 0
+    jobs_test_st.day = 1
+    jobs_test_st.guest = false
+    jobs_test_st.fish = 0
+    jobs_test_st.paid = 0
+    jobs_test_st.paid_rep = 0
+    jobs_reset(jobs_st)
+    jobs_party_reset(jobs_st)
+  }
+
+  function count_of(jobs_st: JobsState, what: int) -> int {
+    let fs = q_drain(jobs_facts(jobs_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "a job given up is offered again tomorrow, not today" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    expect(jobs_take(jobs_st, JOB_CATCH))
+    jobs_count(jobs_st, K_FISH, 0, 2)
+    count_of(jobs_st, JOBS_F_GIVEN_UP)
+    expect(jobs_give_up(jobs_st, JOB_CATCH))
+    expect_eq(count_of(jobs_st, JOBS_F_GIVEN_UP), 1)
+    expect_eq(jobs_state(jobs_st, JOB_CATCH), JOBS_OFFERED)
+    expect_eq(jobs_have(jobs_st, JOB_CATCH), 0)
+    expect(not jobs_offered(jobs_st, JOB_CATCH))
+    expect(not jobs_take(jobs_st, JOB_CATCH))
+    expect(not jobs_give_up(jobs_st, JOB_CATCH))
+    jobs_test_st.day = 2
+    expect(jobs_offered(jobs_st, JOB_CATCH))
+    expect(jobs_take(jobs_st, JOB_CATCH))
+    expect_eq(jobs_test_st.paid, 0)
+  }
+
+  test "a ready job can be let go too, and nothing is paid" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    jobs_take(jobs_st, JOB_CATCH)
+    jobs_count(jobs_st, K_FISH, 0, 3)
+    expect_eq(jobs_state(jobs_st, JOB_CATCH), JOBS_READY)
+    expect(jobs_give_up(jobs_st, JOB_CATCH))
+    expect(not jobs_hand_in(jobs_st, JOB_CATCH))
+    expect_eq(jobs_test_st.paid, 0)
+  }
+
+  test "a post given up comes down, and the morning puts up another" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    jobs_morning(jobs_st)
+    count_of(jobs_st, JOBS_F_OFFERED)
+    expect(jobs_post_give_up(jobs_st, BOARD_ADA, 0))
+    expect_eq(count_of(jobs_st, JOBS_F_GIVEN_UP), 1)
+    expect_eq(jobs_post_kind(jobs_st, BOARD_ADA, 0), -1)
+    expect(not jobs_post_give_up(jobs_st, BOARD_ADA, 0))
+    expect(jobs_post_kind(jobs_st, BOARD_ADA, 1) >= 0)
+    jobs_test_st.day = 2
+    jobs_morning(jobs_st)
+    expect(jobs_post_kind(jobs_st, BOARD_ADA, 0) >= 0)
+    expect_eq(jobs_post_day(jobs_st, BOARD_ADA, 0), 2)
+  }
+
+  test "a daily is not taken, so it is not given up" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    jobs_morning(jobs_st)
+    expect(not jobs_post_give_up(jobs_st, BOARD_DAILY, 0))
+    expect(jobs_post_kind(jobs_st, BOARD_DAILY, 0) >= 0)
+  }
+
+  test "the day back is saved with the job" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    jobs_take(jobs_st, JOB_CATCH)
+    jobs_give_up(jobs_st, JOB_CATCH)
+    let body = jobs_save(jobs_st)
+    fresh(jobs_st, jobs_test_st)
+    expect(jobs_offered(jobs_st, JOB_CATCH))
+    jobs_load(jobs_st, body, 1)
+    expect_eq(jobs_back_on(jobs_st, JOB_CATCH), 2)
+    expect(not jobs_offered(jobs_st, JOB_CATCH))
+    jobs_test_st.day = 2
+    expect(jobs_offered(jobs_st, JOB_CATCH))
+  }
+}
