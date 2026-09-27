@@ -25,6 +25,9 @@ import "vk_api.ludic"
 # Vk.sl_active() says whether it was. Each Vk.sl_* is the sl* export of the same name and returns
 # its sl::Result (0 is eOk); -1 means there is no Streamline (macOS, or the DLL missing). The
 # structs are plain memory, laid out as the SDK headers (include/sl_*.h, SDK 2.14.1) declare them.
+# Once a frame: on macOS drains what MoltenVK and the layer autoreleased during the last one (a
+# program pumping its own events has no other pool); nothing elsewhere.
+extern function vk_frame_pool() = "lvk_frame_pool"
 extern function vk_sl_prefer(on: int) = "lvk_sl_prefer"
 extern function vk_sl_active() -> int = "lvk_sl_active"
 extern function vk_sl_init(pref: pointer, sdk_version: long) -> int = "lsl_slInit"
