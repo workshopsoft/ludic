@@ -15,7 +15,7 @@ export function compass_begin(compass_st: mut CompassState) -> void {
 export function compass_mark(compass_st: mut CompassState, x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> void {
   if compass_st.cmp_list == null { compass_begin(compass_st) }
   if compass_st.cmp_capturing {
-    push(compass_st.cmp_caught, cmp_new(x, z, icon, colour, tier, prio, label))   # kept by the listener
+    push(compass_st.cmp_caught, cmp_catch(compass_st, x, z, icon, colour, tier, prio, label))
     return
   }
   if CompassWorld.tier() < tier { return }
@@ -38,16 +38,8 @@ export function compass_end(compass_st: mut CompassState) -> void {
 # the pool's next mark, filled (one made only when the pool is short)
 function cmp_take(compass_st: mut CompassState, x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> CompassMark {
   if compass_st.cmp_used >= len(compass_st.cmp_pool) { push(compass_st.cmp_pool, new CompassMark) }
-  let m = compass_st.cmp_pool[compass_st.cmp_used]
   compass_st.cmp_used += 1
-  m.x = x
-  m.z = z
-  m.icon = icon
-  m.colour = colour
-  m.tier = tier
-  m.prio = prio
-  m.label = label
-  return m
+  return cmp_fill(compass_st.cmp_pool[compass_st.cmp_used - 1], x, z, icon, colour, tier, prio, label)
 }
 
 function cmp_band(p: int) -> int { return Math.clamp(p, COMPASS_PLAIN, COMPASS_TRACKED) }
@@ -61,21 +53,6 @@ export function compass_gather(compass_st: mut CompassState) -> void {
     if f != null { f() }
   }
   compass_end(compass_st)
-}
-
-# someone else wants to know where the providers point (a guide's arrow): until the end every
-# mark is theirs, whatever the tier, and the frame's list is left alone
-export function compass_capture_begin(compass_st: mut CompassState) -> void {
-  compass_st.cmp_capturing = true
-  compass_st.cmp_caught = new []CompassMark
-}
-
-export function compass_capture_end(compass_st: mut CompassState) -> []CompassMark {
-  compass_st.cmp_capturing = false
-  var got = compass_st.cmp_caught
-  compass_st.cmp_caught = new []CompassMark
-  if got == null { got = new []CompassMark }
-  return got
 }
 
 export function compass_capturing(compass_st: CompassState) -> bool { return compass_st.cmp_capturing }

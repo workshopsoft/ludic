@@ -30,6 +30,8 @@ export state CompassState {
   cmp_used: int = 0
   cmp_capturing: bool = false
   cmp_caught: []CompassMark = null     # what providers said while someone was listening
+  cmp_cpool: []CompassMark = null      # the capture's marks, reused from one capture to the next
+  cmp_cused: int = 0
   cmp_ranges: []float = null
   cmp_radar_from: int = 2     # marks of at least this tier are blips; the tracked one always is
 }
@@ -40,8 +42,8 @@ export function compass_config(compass_st: mut CompassState, cap: int) -> void {
   compass_begin(compass_st)
 }
 
-function cmp_new(x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> CompassMark {
-  let m = new CompassMark
+# a pooled mark filled in place
+function cmp_fill(m: CompassMark, x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> CompassMark {
   m.x = x
   m.z = z
   m.icon = icon
