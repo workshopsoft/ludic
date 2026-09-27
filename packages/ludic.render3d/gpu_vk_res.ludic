@@ -9,7 +9,18 @@
 # The renderer names formats the way OpenGL does (they are gpu.ludic's vocabulary); these turn
 # one into the Vulkan image format that holds it. Three-channel formats have no widely
 # supported Vulkan image format, so they are stored with four and expanded on upload.
+# block-compressed formats, named here (the GL header generated for render3d carries no BPTC):
+# the values are GL's, so they sit in the same vocabulary as every other internal format
+const R3D_BC7: int = 0x8E8C
+const R3D_BC7_SRGB: int = 0x8E8D
+const R3D_BC5: int = 0x8DBD
+const R3D_BC4: int = 0x8DBB
+function gvk_is_compressed(ifmt: int) -> bool { return ifmt == R3D_BC7 or ifmt == R3D_BC7_SRGB or ifmt == R3D_BC5 or ifmt == R3D_BC4 }
 function gvk_format(ifmt: int) -> int {
+  if ifmt == R3D_BC7 { return VK_FORMAT_BC7_UNORM_BLOCK }
+  if ifmt == R3D_BC7_SRGB { return VK_FORMAT_BC7_SRGB_BLOCK }
+  if ifmt == R3D_BC5 { return VK_FORMAT_BC5_UNORM_BLOCK }
+  if ifmt == R3D_BC4 { return VK_FORMAT_BC4_UNORM_BLOCK }
   if ifmt == GL_RGBA8 or ifmt == GL_RGB8 { return VK_FORMAT_R8G8B8A8_UNORM }
   if ifmt == GL_RGB10_A2 { return VK_FORMAT_A2B10G10R10_UNORM_PACK32 }   # the HDR10 screen and LDR image
   if ifmt == GL_SRGB8_ALPHA8 or ifmt == GL_SRGB8 { return VK_FORMAT_R8G8B8A8_SRGB }
@@ -158,7 +169,8 @@ function gvk_tex_storage(render3d_st: mut Render3dState, tex: int, array: bool, 
   if samples < 1 { samples = 1 }
   if samples > 1 { levels = 1 }
   var usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-  if depth { usage = usage | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT } else { usage = usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT }
+  # a block-compressed image is only ever sampled and copied into: it cannot be drawn to
+  if depth { usage = usage | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT } else if not gvk_is_compressed(ifmt) { usage = usage | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT }
   # DLSS reads and writes the frame from compute: a float colour target is storage too while
   # Streamline is running (8-bit sRGB formats cannot be, so only the float ones)
   if render3d_st.gsl_on and samples == 1 and (vkfmt == VK_FORMAT_R16G16B16A16_SFLOAT or vkfmt == VK_FORMAT_R32_SFLOAT) { usage = usage | VK_IMAGE_USAGE_STORAGE_BIT }

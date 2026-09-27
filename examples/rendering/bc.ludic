@@ -1,0 +1,59 @@
+# bc.ludic - a texture whose .png has a .dds beside it arrives BC7-compressed with its whole mip
+# chain (plan 23.3 of maroon-lake), and one without a .dds as the .png it always was. Prints BC OK.
+#
+#   bin/ludic build examples/rendering/bc.ludic --headless && ./build/bc_headless
+program Bc {
+  numbers float
+  import "ludic.render3d/r3d.ludic"
+
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  function scene_draw(render3d_st: mut Render3dState) -> void { }
+  function scene_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void { }
+  function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
+
+  function check(what: string, cond: bool) -> bool {
+    if not cond { print(`bc: FAILED - {what}`) }
+    return cond
+  }
+  # the internal format render3d recorded for a texture
+  function fmt_of(render3d_st: mut Render3dState, tex: int) -> int {
+    let o = gpu_tx_at(render3d_st, tex)
+    if o < 0 { return 0 }
+    return render3d_st.gpu_tx[o + 4]
+  }
+
+  handler Boot(render3d_st: mut Render3dState) phase Start {
+    spawn Anchor {}
+    r3d_on_draw(render3d_st, fn scene_draw)
+    r3d_on_casters(render3d_st, fn scene_draw_casters)
+    r3d_on_stream_fill(render3d_st, fn stream_fill)
+    r3d_plate_mode(render3d_st, true)
+    let dir = "packages/ludic.lab/plate"
+    render3d_st.r3d_sky_path = `{dir}/sky.hdr`
+    if not r3d_init(render3d_st, 320, 180, "Bc") {
+      quit()
+      return
+    }
+    var ok = true
+    ok = check("this device reads BC textures", render3d_st.gvk_has_bc) and ok
+    let t = tex_load(render3d_st, `{dir}/plate_diff.png`, true)
+    ok = check("the plate's colour loads", t != 0) and ok
+    ok = check("from its .dds, as BC7 in sRGB", fmt_of(render3d_st, t) == R3D_BC7_SRGB) and ok
+    ok = check("with every level down to 1x1", render3d_st.gvk_tex_levels[t] == gvk_mip_levels(tex_width(render3d_st, t), tex_height(render3d_st, t))) and ok
+    let a = tex_load(render3d_st, `{dir}/plate_arm.png`, false)
+    ok = check("a data map's .dds is BC7 read as it is (not sRGB)", fmt_of(render3d_st, a) == R3D_BC7) and ok
+    let s = tex_load(render3d_st, `{dir}/probe_arm.png`, false)
+    ok = check("the second one loads too", s != 0) and ok
+    # a picture with no .dds: the .png, uncompressed, as before
+    let p = tex_load_ex(render3d_st, `{dir}/plate_diff.png`, true, 1)
+    ok = check("a cut-out atlas (edge-padded from the .png) is not the .dds", p != 0 and fmt_of(render3d_st, p) != R3D_BC7_SRGB) and ok
+    if ok { print("BC OK") } else { print("BC FAILED") }
+    quit()
+  }
+
+  handler Present(render3d_st: mut Render3dState) phase Render {
+    r3d_present(render3d_st)
+  }
+}
