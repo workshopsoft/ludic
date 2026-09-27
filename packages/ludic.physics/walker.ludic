@@ -53,19 +53,18 @@ export function phys_walker_step(physics_st: mut PhysicsState, id: int, dt: floa
   return jph_char_step(physics_st.ph_world, k, dt, vx, vz, jump)
 }
 
-export function phys_walker_pose(physics_st: mut PhysicsState, id: int) -> PhysWalk {
+# where a walker is, into the caller's record; false when there is no such walker
+export function phys_walker_pose(physics_st: mut PhysicsState, id: int, p: PhysWalk) -> bool {
   let k = ph_walker(physics_st, id)
-  if k == null { return null }
-  ph_buffers()
+  if k == null { return false }
   jph_char_read(k, physics_st.ph_vals)
   let v = physics_st.ph_vals
-  let p = new PhysWalk
   p.x = v[0];  p.y = v[1];  p.z = v[2]
   p.vx = v[3];  p.vy = v[4];  p.vz = v[5]
   p.ground = int(v[6])
   p.ny = v[7]
   p.body = int(v[8])
-  return p
+  return true
 }
 
 # put it somewhere, standing still: a teleport, a swap, getting off a boat
@@ -77,11 +76,12 @@ export function phys_walker_place(physics_st: mut PhysicsState, id: int, x: floa
 # a body the game keeps elsewhere, moved by its walker: put where the body is if something else
 # moved it (a teleport, a ride, a swim), then one step under the given limits; the ground after it
 export function phys_walker_move(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float, vx: float, vz: float, jump: float, step: float, max_slope: float, dt: float) -> int {
-  let p = phys_walker_pose(physics_st, id)
-  if p == null { return PHYS_IN_AIR }
-  let dx = p.x - x
-  let dy = p.y - y
-  let dz = p.z - z
+  let k = ph_walker(physics_st, id)
+  if k == null { return PHYS_IN_AIR }
+  jph_char_read(k, physics_st.ph_vals)
+  let dx = physics_st.ph_vals[0] - x
+  let dy = physics_st.ph_vals[1] - y
+  let dz = physics_st.ph_vals[2] - z
   if dx * dx + dy * dy + dz * dz > 0.0025 { phys_walker_place(physics_st, id, x, y, z) }
   phys_walker_limits(physics_st, id, step, 0.5, max_slope)
   return phys_walker_step(physics_st, id, dt, vx, vz, jump)

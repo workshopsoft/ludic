@@ -12,18 +12,19 @@ export property PhysHit {
   nz: float = 0.0
 }
 
-# a ray from (ox, oy, oz) along (dx, dy, dz), whose length is the reach
-export function phys_ray(physics_st: mut PhysicsState, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, mask: int) -> PhysHit {
-  let h = new PhysHit
-  if physics_st.ph_world == null { return h }
-  ph_buffers()
+# a ray from (ox, oy, oz) along (dx, dy, dz), whose length is the reach, into the caller's record;
+# true when it hit something (h.body -1 and h.fraction 1 when not)
+export function phys_ray(physics_st: mut PhysicsState, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, mask: int, h: PhysHit) -> bool {
+  h.body = -1
+  h.fraction = 1.0
+  if physics_st.ph_world == null { return false }
   h.body = jph_ray(physics_st.ph_world, ox, oy, oz, dx, dy, dz, mask, physics_st.ph_vals)
-  if h.body == -1 { return h }
+  if h.body == -1 { return false }
   let v = physics_st.ph_vals
   h.fraction = v[0]
   h.x = v[1];  h.y = v[2];  h.z = v[3]
   h.nx = v[4];  h.ny = v[5];  h.nz = v[6]
-  return h
+  return true
 }
 
 # a ball r across let down from from_y at most depth metres: the height of what it lands on, or
@@ -45,15 +46,13 @@ export function phys_step_top(physics_st: PhysicsState, x: float, z: float, r: f
   return y
 }
 
-# the bodies a ball at (x, y, z) touches, in the order Jolt sorts them
-export function phys_overlap(physics_st: mut PhysicsState, x: float, y: float, z: float, r: float, mask: int) -> []int {
-  let out = new []int
-  if physics_st.ph_world == null { return out }
-  ph_buffers()
-  let n = jph_overlap(physics_st.ph_world, x, y, z, r, mask, physics_st.ph_ids, PH_CAP)
-  for i in 0 .. n { push(out, physics_st.ph_ids[i]) }
-  return out
+# how many bodies a ball at (x, y, z) touches, in the order Jolt sorts them; phys_overlap_id(i)
+# reads them back until the next query
+export function phys_overlap(physics_st: mut PhysicsState, x: float, y: float, z: float, r: float, mask: int) -> int {
+  if physics_st.ph_world == null { return 0 }
+  return jph_overlap(physics_st.ph_world, x, y, z, r, mask, physics_st.ph_ids, PH_CAP)
 }
+export function phys_overlap_id(physics_st: PhysicsState, i: int) -> int { return physics_st.ph_ids[i] }
 
 export property PhysPush {
   x: float = 0.0     # how far to move in x and z to stand clear
@@ -63,14 +62,18 @@ export property PhysPush {
 
 # an upright body r wide from y0 to y1 at (x, z): the move that stands it clear - what
 # CharacterGround.push asks
-export function phys_push(physics_st: mut PhysicsState, x: float, z: float, r: float, y0: float, y1: float, mask: int) -> PhysPush {
-  let p = new PhysPush
-  if physics_st.ph_world == null { return p }
-  ph_buffers()
-  p.n = jph_push(physics_st.ph_world, x, z, r, y0, y1, mask, physics_st.ph_vals)
+export function phys_push(physics_st: mut PhysicsState, x: float, z: float, r: float, y0: float, y1: float, mask: int, p: PhysPush) -> int {
+  p.n = ph_push(physics_st, x, z, r, y0, y1, mask)
   p.x = physics_st.ph_vals[0]
   p.z = physics_st.ph_vals[1]
-  return p
+  return p.n
+}
+# how many things are in the way, the move clear in ph_vals[0], [1]
+function ph_push(physics_st: mut PhysicsState, x: float, z: float, r: float, y0: float, y1: float, mask: int) -> int {
+  physics_st.ph_vals[0] = 0.0
+  physics_st.ph_vals[1] = 0.0
+  if physics_st.ph_world == null { return 0 }
+  return jph_push(physics_st.ph_world, x, z, r, y0, y1, mask, physics_st.ph_vals)
 }
 
 # a body r wide from y0 to y1 at (x, z) moved clear of what it stands in, two passes over (a push out
@@ -82,10 +85,9 @@ export function phys_resolve(physics_st: mut PhysicsState, x: float, z: float, r
   var pz = z
   var moved = false
   for pass in 0 .. 2 {
-    let p = phys_push(physics_st, px, pz, r, y0, y1, mask)
-    if p.n > 0 {
-      px += p.x
-      pz += p.z
+    if ph_push(physics_st, px, pz, r, y0, y1, mask) > 0 {
+      px += physics_st.ph_vals[0]
+      pz += physics_st.ph_vals[1]
       moved = true
     }
   }

@@ -4,6 +4,16 @@ import "ludic.physics"
 import "ludic.base"
 program WalkerTest {
   numbers float
+  function pose(physics_st: mut PhysicsState, id: int) -> PhysPose {
+    let p = new PhysPose
+    if not phys_pose(physics_st, id, p) { return null }
+    return p
+  }
+  function wpose(physics_st: mut PhysicsState, id: int) -> PhysWalk {
+    let p = new PhysWalk
+    if not phys_walker_pose(physics_st, id, p) { return null }
+    return p
+  }
 
   function flat(physics_st: mut PhysicsState) -> void {
     expect(phys_open(physics_st, 1024, 1))
@@ -20,11 +30,11 @@ program WalkerTest {
     flat(physics_st)
     let me = phys_walker_add(physics_st, 0.35, 1.8, 0.0, 1.0, 0.0, 50.0, 70.0)
     walk(physics_st, me, 1.0, 0.0, 0.0)
-    let p = phys_walker_pose(physics_st, me)
+    let p = wpose(physics_st, me)
     expect_eq(p.ground, PHYS_ON_GROUND)
     expect(Math.abs(p.y) < 0.05)
     walk(physics_st, me, 2.0, 3.0, 0.0)
-    let q = phys_walker_pose(physics_st, me)
+    let q = wpose(physics_st, me)
     expect(Math.abs(q.x - 6.0) < 0.2)
     expect(q.body >= 0)
     phys_close(physics_st)
@@ -40,12 +50,12 @@ program WalkerTest {
     let a = phys_walker_add(physics_st, 0.35, 1.8, 0.0, 0.0, 0.0, 50.0, 70.0)
     phys_walker_limits(physics_st, a, 0.55, 0.5, 50.0)
     walk(physics_st, a, 1.5, 2.0, 0.0)
-    let pa = phys_walker_pose(physics_st, a)
+    let pa = wpose(physics_st, a)
     expect(pa.x > 2.5)
     expect(Math.abs(pa.y - 0.3) < 0.05)
     let b = phys_walker_add(physics_st, 0.35, 1.8, 0.0, 0.0, 10.0, 50.0, 70.0)
     walk(physics_st, b, 2.0, 2.0, 0.0)
-    let pb = phys_walker_pose(physics_st, b)
+    let pb = wpose(physics_st, b)
     expect(pb.x < 1.7)
     expect(Math.abs(pb.y) < 0.05)
     phys_close(physics_st)
@@ -57,11 +67,11 @@ program WalkerTest {
     walk(physics_st, me, 0.5, 0.0, 0.0)
     phys_walker_step(physics_st, me, 1.0 / 60.0, 0.0, 0.0, 5.0)
     walk(physics_st, me, 0.25, 0.0, 0.0)
-    let up = phys_walker_pose(physics_st, me)
+    let up = wpose(physics_st, me)
     expect_eq(up.ground, PHYS_IN_AIR)
     expect(up.y > 0.5)
     walk(physics_st, me, 1.5, 0.0, 0.0)
-    let down = phys_walker_pose(physics_st, me)
+    let down = wpose(physics_st, me)
     expect_eq(down.ground, PHYS_ON_GROUND)
     expect(Math.abs(down.y) < 0.05)
     phys_close(physics_st)
@@ -75,12 +85,12 @@ program WalkerTest {
       phys_walker_step(physics_st, me, 1.0 / 60.0, 2.0, 0.0, 0.0)
       phys_step(physics_st)
     }
-    expect(phys_pose(physics_st, crate).x > 2.5)
+    expect(pose(physics_st, crate).x > 2.5)
     phys_walker_place(physics_st, me, -10.0, 0.0, -10.0)
-    let p = phys_walker_pose(physics_st, me)
+    let p = wpose(physics_st, me)
     expect(Math.abs(p.x + 10.0) < 0.01)
     phys_walker_remove(physics_st, me)
-    expect(phys_walker_pose(physics_st, me) == null)
+    expect(wpose(physics_st, me) == null)
     phys_close(physics_st)
   }
 
@@ -94,11 +104,11 @@ program WalkerTest {
       phys_step(physics_st)
     }
     expect(phys_spin_y(physics_st, hull) > 0.1)
-    expect(phys_pose(physics_st, hull).z > 0.5)
-    let p = phys_pose(physics_st, hull)
+    expect(pose(physics_st, hull).z > 0.5)
+    let p = pose(physics_st, hull)
     p.x = 5.0
     phys_set_pose(physics_st, hull, p)
-    expect(Math.abs(phys_pose(physics_st, hull).x - 5.0) < 0.01)
+    expect(Math.abs(pose(physics_st, hull).x - 5.0) < 0.01)
     phys_close(physics_st)
   }
 }

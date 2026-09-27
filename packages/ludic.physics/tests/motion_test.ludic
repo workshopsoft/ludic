@@ -5,6 +5,11 @@ import "ludic.physics"
 import "ludic.base"
 program MotionTest {
   numbers float
+  function pose(physics_st: mut PhysicsState, id: int) -> PhysPose {
+    let p = new PhysPose
+    if not phys_pose(physics_st, id, p) { return null }
+    return p
+  }
 
   function lake_h(x: float, z: float) -> float {
     if x > 20.0 { return 0.0 }
@@ -45,7 +50,7 @@ program MotionTest {
     let crate = phys_body_add(physics_st, phys_box(physics_st, 0.5, 0.25, 0.5), 30.0, 2.0, 0.0, 0.0, 60.0)
     phys_float(physics_st, crate, 1.2, 2.0, 2.0)
     sim(physics_st, 8.0)
-    let p = phys_pose(physics_st, crate)
+    let p = pose(physics_st, crate)
     expect(p.y > -0.4)
     expect(p.y < 0.4)
     expect(Math.abs(p.vy) < 0.2)
@@ -55,7 +60,7 @@ program MotionTest {
     phys_sink(physics_st, crate)
     expect(not phys_floating(physics_st, crate))
     sim(physics_st, 4.0)
-    expect(phys_pose(physics_st, crate).y < -2.5)
+    expect(pose(physics_st, crate).y < -2.5)
     phys_close(physics_st)
   }
 
@@ -87,7 +92,7 @@ program MotionTest {
       phys_set_kinematic_target(physics_st, me, 2.0 + float(i + 1) * 0.03, 0.95, 0.0, 0.0)
       phys_step(physics_st)
     }
-    expect(phys_pose(physics_st, crate).x > 5.0)
+    expect(pose(physics_st, crate).x > 5.0)
     phys_close(physics_st)
   }
 
@@ -114,7 +119,7 @@ program MotionTest {
     for i in 0 .. 12 { last = phys_body_add(physics_st, b, 3.0 + float(i % 3) * 0.3, 2.0 + float(i) * 0.7, float(i % 2) * 0.2, float(i) * 0.4, 8.0) }
     phys_impulse(physics_st, last, 20.0, 0.0, 5.0)
     sim(physics_st, 4.0)
-    let p = phys_pose(physics_st, last)
+    let p = pose(physics_st, last)
     phys_close(physics_st)
     return p
   }
@@ -132,21 +137,21 @@ program MotionTest {
     world(physics_st)
     let b = phys_hull_add(physics_st, 40.0, 0.5, 0.0, 1.5707963, 0.6, 0.25, 1.9, 180.0, 4.0, 1.0)
     sim(physics_st, 4.0)
-    let p0 = phys_pose(physics_st, b)
+    let p0 = pose(physics_st, b)
     expect(p0.y > -0.2)
     expect(p0.y < 0.2)
     for i in 0 .. 240 {
       phys_row(physics_st, b, 420.0, 0.0)
       phys_step(physics_st)
     }
-    let p1 = phys_pose(physics_st, b)
+    let p1 = pose(physics_st, b)
     expect(p1.x < 34.0)
     expect(phys_bow_speed(p1) > 1.0)
     for i in 0 .. 120 {
       phys_row(physics_st, b, 0.0, 520.0)
       phys_step(physics_st)
     }
-    expect(Math.abs(phys_yaw_of(phys_pose(physics_st, b)) - phys_yaw_of(p1)) > 0.5)
+    expect(Math.abs(phys_yaw_of(pose(physics_st, b)) - phys_yaw_of(p1)) > 0.5)
     phys_close(physics_st)
     world(physics_st)
     let c = phys_hull_add(physics_st, 24.0, 0.5, 0.0, 1.5707963, 0.6, 0.25, 1.9, 180.0, 4.0, 1.0)
@@ -154,7 +159,7 @@ program MotionTest {
       phys_row(physics_st, c, 420.0, 0.0)
       phys_step(physics_st)
     }
-    expect(phys_pose(physics_st, c).x > 19.5)
+    expect(pose(physics_st, c).x > 19.5)
     phys_close(physics_st)
   }
 }
