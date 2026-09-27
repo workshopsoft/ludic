@@ -263,6 +263,18 @@ function tex_upload(render3d_st: mut Render3dState, px: pointer, srgb: bool, mip
 function tex_load(render3d_st: mut Render3dState, path: pointer, srgb: bool) -> int { return tex_load_ex(render3d_st, path, srgb, 0) }
 # ... with `dilate` passes of edge padding for a cut-out atlas (0 = none)
 function tex_load_ex(render3d_st: mut Render3dState, path: pointer, srgb: bool, dilate: int) -> int {
+  # a .dds encoded beside the .png at build time goes to the GPU compressed, its mips included
+  # (not for a cut-out atlas: its edge padding is made here, from the .png)
+  if render3d_st.gvk_has_bc and dilate == 0 {
+    let dds = dds_path_of(path)
+    if len(dds) > 0 and Fs.exists(dds) {
+      let t = tex_load_dds(render3d_st, dds, srgb)
+      if t != 0 {
+        tex_note_size(render3d_st, t)
+        return t
+      }
+    }
+  }
   let px = png_decode(render3d_st, path)
   if px == null { return 0 }
   if dilate > 0 { tex_dilate(render3d_st, px, 60, dilate) }

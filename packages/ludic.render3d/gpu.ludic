@@ -571,6 +571,18 @@ function gpu_tex_paramf(render3d_st: mut Render3dState, kind: int, pname: int, v
 }
 # the border colour clamp-to-border reads (four fixed values in `rgba`)
 function gpu_tex_border(render3d_st: Render3dState, kind: int, rgba: pointer) -> void { }
+# a block-compressed texture with its whole mip chain, into the bound 2D texture: levels as they
+# are in the file (level l at offs[l]), no decoding on the CPU and no mips made here
+function gpu_tex_compressed(render3d_st: mut Render3dState, ifmt: int, w: int, h: int, levels: int, data: pointer, offs: words) -> bool {
+  gvk_flush(render3d_st)
+  let tex = render3d_st.gpu_bound_2d
+  if not gvk_tex_storage(render3d_st, tex, false, ifmt, w, h, 1, true) { return false }
+  if render3d_st.gvk_tex_levels[tex] != levels { print(`r3d: a {w}x{h} compressed texture brought {levels} levels, not {render3d_st.gvk_tex_levels[tex]}`);  return false }
+  if not gvk_tex_upload_blocks(render3d_st, tex, w, h, levels, data, offs) { return false }
+  let o = gpu_tx_at(render3d_st, tex)
+  if o >= 0 { render3d_st.gpu_tx[o] = GPU_TEX2D;  render3d_st.gpu_tx[o + 1] = w;  render3d_st.gpu_tx[o + 2] = h;  render3d_st.gpu_tx[o + 3] = 1;  render3d_st.gpu_tx[o + 4] = ifmt;  render3d_st.gpu_tx[o + 10] = 1 }
+  return true
+}
 function gpu_tex_mips(render3d_st: mut Render3dState, kind: int) -> void {
   let mt = gpu_bound(render3d_st, kind)
   let mo = gpu_tx_at(render3d_st, mt)
