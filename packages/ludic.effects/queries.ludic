@@ -38,10 +38,22 @@ export function effects_at(effects_st: EffectsState, i: int) -> Effect {
   return e
 }
 
-# the indices of the ones that have begun, for a read-out
+# the indices of the ones that have begun, for a read-out (a frame's read-out fills its own list)
 export function effects_live(effects_st: EffectsState) -> []int {
   let out = new []int
+  effects_live_into(effects_st, out)
+  return out
+}
+
+export function effects_live_into(effects_st: EffectsState, out: []int) -> void {
+  List.clear(out)
   let all = ef_all(effects_st)
   for i in 0 .. len(all) { if ef_live(all[i]) { push(out, i) } }
-  return out
+}
+
+export function effects_live_count(effects_st: EffectsState) -> int {
+  var n = 0
+  let all = ef_all(effects_st)
+  for i in 0 .. len(all) { if ef_live(all[i]) { n += 1 } }
+  return n
 }

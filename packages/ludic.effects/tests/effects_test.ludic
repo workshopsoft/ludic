@@ -71,6 +71,11 @@ program EffectsTest {
     effects_add_after(effects_st, 20.0, LEGS, -5.0, 15.0, false, "Sugar crash")
     expect(effects_sum(effects_st, LEGS) == 8.0)
     expect_eq(len(effects_live(effects_st)), 1)
+    expect_eq(effects_live_count(effects_st), 1)
+    let kept = new []int
+    effects_live_into(effects_st, kept)
+    effects_live_into(effects_st, kept)
+    expect_eq(len(kept), 1)
     tick_minutes(25.0)
     expect(effects_sum(effects_st, LEGS) == -5.0)
     tick_minutes(20.0)
