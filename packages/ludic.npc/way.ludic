@@ -1,0 +1,45 @@
+# way.ludic - where a person walks when the straight line will not do: the world's way (NpcWorld.way,
+# a navmesh by a person's taste in Maroon Lake), and without one a step round what is in the way,
+# and giving the target up after three tries
+
+# the next corner toward the target, asked again every half second, on reaching it, or for a new target
+const NP_WAY_EVERY: float = 0.5
+function np_way(p: NpcPerson, dt: float) -> void {
+  p.way_t = p.way_t - dt
+  let fresh = p.wtx != p.tx or p.wtz != p.tz
+  if p.way_t > 0.0 and not fresh and npc_d(p.x, p.z, p.wx, p.wz) >= 1.0 { return }
+  p.way_t = NP_WAY_EVERY
+  p.wtx = p.tx
+  p.wtz = p.tz
+  p.wx = p.tx
+  p.wz = p.tz
+  if NpcWorld.way(p, p.tx, p.tz) {
+    p.wx = NpcWorld.way_x()
+    p.wz = NpcWorld.way_z()
+  }
+}
+
+function np_detour(p: NpcPerson, want: float) -> bool {
+  for k in 0 .. 8 {
+    let ang = want + float((k / 2 + 1) * (1 - 2 * (k % 2))) * 0.6
+    let x = p.x - Math.sin(ang) * 6.0
+    let z = p.z - Math.cos(ang) * 6.0
+    if npc_line_ok(p.x, p.z, x, z) {
+      p.via_on = true
+      p.vx = x
+      p.vz = z
+      p.yaw = ang
+      return true
+    }
+  }
+  return false
+}
+
+function np_stuck(npc_st: mut NpcState, p: NpcPerson) -> void {
+  p.fails += 1
+  p.via_on = false
+  if p.fails >= 3 {
+    p.fails = 0
+    npc_wander(npc_st, p)
+  } else { npc_plan(npc_st, p) }
+}

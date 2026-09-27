@@ -25,6 +25,11 @@ export port NpcWorld {
   taken: fn(string) -> bool = fn nw_free                   # a name the place already uses
   born: fn(NpcPerson) -> void = fn nw_nothing              # a new one (or a slot reused): draw it
   gone: fn(NpcPerson) -> void = fn nw_nothing              # left: stop drawing it
+  # (p, x, z): the next corner of this person's way toward (x, z) into way_x / _z; false, the
+  # straight line with its steps round (a navmesh's path by a person's taste, in Maroon Lake)
+  way: fn(NpcPerson, float, float) -> bool = fn nw_no_way
+  way_x: fn() -> float = fn nw_asked_x
+  way_z: fn() -> float = fn nw_asked_z
 }
 
 # what the story says through them: the words of a line whose `fill` is set ("" when it has nothing
@@ -76,3 +81,4 @@ export function npc_near(npc_st: mut NpcState, x: float, z: float) -> float {
 }
 
 export function npc_near_i(npc_st: NpcState) -> int { return npc_st.np_near_i }
+function nw_no_way(p: NpcPerson, x: float, z: float) -> bool { return false }

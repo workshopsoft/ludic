@@ -47,6 +47,11 @@ export property NpcPerson {
   via_on: bool = false         # a step round whatever is in the way
   vx: float = 0.0
   vz: float = 0.0
+  wx: float = 0.0              # the corner of its way it walks to now (NpcWorld.way)
+  wz: float = 0.0
+  wtx: float = 0.0             # the target that corner was asked for: a new target asks again
+  wtz: float = 0.0
+  way_t: float = 0.0           # seconds until it asks the way again
   detours: int = 0
   fails: int = 0
   stall: float = 0.0           # seconds walking without moving
