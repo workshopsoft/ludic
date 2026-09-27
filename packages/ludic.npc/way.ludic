@@ -64,7 +64,10 @@ function np_crowd_want(p: NpcPerson, speed: float) -> void {
   p.goal_z = p.tz
   p.goal_speed = speed
 }
-export function npc_set_crowd(p: NpcPerson, on: bool) -> void { p.crowd = on }
+export function npc_set_crowd(p: NpcPerson, id: int) -> void {
+  p.crowd_id = id
+  p.crowd = id >= 0
+}
 export function npc_moved(p: NpcPerson, x: float, z: float, vx: float, vz: float) -> void {
   let dx = x - p.x
   let dz = z - p.z

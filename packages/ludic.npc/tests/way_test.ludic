@@ -87,7 +87,7 @@ program NpcWayTest {
     npc_tests_fake_st.fk_want = 1
     let p = npc_spawn(npc_st, NPCK_HIKER)
     npc_set_at(p, 0.0, 0.0)
-    npc_set_crowd(p, true)
+    npc_set_crowd(p, 0)
     npc_go(npc_st, p, 38.0, -25.0, NPCA_SIT, 30.0)
     for k in 0 .. 60 { npc_tick(npc_st, 0.05) }
     expect_eq(p.x, 0.0)

@@ -42,7 +42,7 @@ program WildCrowdTest {
     wildlife_tests_fake_st.fk_px[0] = 400.0
     wildlife_tests_fake_st.fk_pz[0] = 0.0
     wildlife_tests_fake_st.fk_hidden = true
-    wildlife_set_crowd(a, true)
+    wildlife_set_crowd(a, 0)
     return a
   }
 

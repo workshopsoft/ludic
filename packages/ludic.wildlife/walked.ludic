@@ -23,8 +23,11 @@ function wl_crowd_step(a: WildAnimal) -> bool {
   return true
 }
 
-# walked by a crowd, or by its own step again (off, it keeps where the crowd left it)
-export function wildlife_set_crowd(a: WildAnimal, on: bool) -> void { a.crowd = on }
+# walked by a crowd as its walker `id`, or by its own step again with -1 (it keeps where it was left)
+export function wildlife_set_crowd(a: WildAnimal, id: int) -> void {
+  a.crowd_id = id
+  a.crowd = id >= 0
+}
 
 # where the crowd put a walker, and how fast it went: its place, its heading from its velocity, its
 # ground from the world's, and its prints as it goes

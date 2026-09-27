@@ -53,6 +53,7 @@ export property NpcPerson {
   wtz: float = 0.0
   way_t: float = 0.0           # seconds until it asks the way again
   crowd: bool = false          # walked by the world's crowd (phase 18): it decides, the crowd moves it
+  crowd_id: int = -1           # its walker in that crowd, the world's number for it
   goal_x: float = 0.0          # where it walks this tick and how fast (0 standing): what a crowd is handed
   goal_z: float = 0.0
   goal_speed: float = 0.0
