@@ -5,6 +5,8 @@ export const TH_X: int = 0          # float columns
 export const TH_Z: int = 1
 export const TH_KIND: int = 0       # int columns
 export const TH_ON: int = 1         # 1 while active
+export const TH_CHUNK: int = 2      # the chunk of the world it stands in (chunk_of, TH_CHUNK_M)
+export const TH_CHUNK_M: float = 256.0
 const TH_CELL: float = 16.0
 
 # the table and the indexes kept over it, made together
@@ -13,6 +15,7 @@ export property ThingsTable {
   grid: Grid = null
   kinds: IntIndex = null            # active Things by kind
   every: IntIndex = null            # every Thing by kind, active or not
+  chunks: IntIndex = null           # every Thing by the chunk it stands in: loaded and let go together
 }
 
 export state ThingsState {
@@ -27,11 +30,12 @@ function th_facts__new() -> Queue<ThingFact> { return queue_new("things.facts") 
 
 function th__new() -> ThingsTable {
   let th = new ThingsTable
-  let tb: Table<Thing> = table_new(2, 2)
+  let tb: Table<Thing> = table_new(2, 3)
   th.tab = tb
   th.grid = tb_grid(tb, TH_X, TH_Z, TH_ON, TH_CELL)
   th.kinds = tb_index(tb, TH_KIND, TH_ON)
   th.every = tb_index(tb, TH_KIND, -1)
+  th.chunks = tb_index(tb, TH_CHUNK, -1)
   return th
 }
 
@@ -82,7 +86,7 @@ export function things_verify(things_st: ThingsState) -> int {
     let t = tb.rec[r]
     var on = 0
     if t.active { on = 1 }
-    if tb.f[TH_X][r] != t.x or tb.f[TH_Z][r] != t.z or tb.i[TH_KIND][r] != t.kind or tb.i[TH_ON][r] != on or t.ent != tb.ent[r] { bad += 1 }
+    if tb.f[TH_X][r] != t.x or tb.f[TH_Z][r] != t.z or tb.i[TH_KIND][r] != t.kind or tb.i[TH_ON][r] != on or tb.i[TH_CHUNK][r] != chunk_of(t.x, t.z, TH_CHUNK_M) or t.ent != tb.ent[r] { bad += 1 }
   }
   return bad
 }

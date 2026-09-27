@@ -152,6 +152,30 @@ program EcsTest {
     expect_eq(tb_changed_since(tb, seen, out), 2)     # a removal is told by tb_on_remove
   }
 
+  # values far apart (a chunk's packed cell) each take one list, not every list up to them
+  function sparse_case() -> void {
+    let tb: Table<Toy> = table_new(2, 2)
+    let ix = tb_index(tb, KIND, -1)
+    let a = chunk_of(9000.0, -9000.0, 256.0)
+    let b = chunk_of(-512.0, 700.0, 256.0)
+    expect(a > 100000 and b > 100000)
+    put(tb, "a", 0.0, 0.0, a)
+    put(tb, "b", 0.0, 0.0, b)
+    let c = put(tb, "c", 0.0, 0.0, a)
+    put(tb, "d", 0.0, 0.0, 3)
+    expect_eq(ix_count(ix, a), 2)
+    expect_eq(ix_count(ix, b), 1)
+    expect_eq(ix_count(ix, 3), 1)
+    expect(len(ix.lists) < 1100)
+    tb_set_i(tb, KIND, tb_row(tb, c), b)
+    expect_eq(ix_count(ix, a), 1)
+    expect_eq(ix_count(ix, b), 2)
+    expect_eq(tb_remove_all(tb, ix, b), 2)
+    expect_eq(ix_count(ix, b), 0)
+    expect_eq(tb_len(tb), 2)
+  }
+
+  test "a sparse value takes one list" () { sparse_case() }
   test "observers hear each add, and a remove once" (hook_st: HookState) { hooks_case(hook_st) }
   test "change detection skips the blocks nobody wrote" () { blocks_case() }
   test "a removed handle misses, rows stay dense, a reused slot is a new handle" () { handles_case() }

@@ -178,4 +178,23 @@ program ThingsTest {
     keep.x = 1.0
     expect_eq(things_verify(things_st), 1)
   }
+
+  test "a chunk's Things are counted and let go together; a move carries a Thing to its new chunk" (things_st: mut ThingsState, things_test_st: ThingsTestState) {
+    things_clear(things_st)
+    put(things_st, TH_BRANCH, 10.0, 10.0)
+    put(things_st, TH_BRANCH, 20.0, 30.0)
+    let far = put(things_st, TH_BRANCH, 600.0, 10.0)
+    let here = things_chunk(10.0, 10.0)
+    expect_eq(things_chunk_count(things_st, here), 2)
+    expect_eq(things_chunk_count(things_st, things_chunk(600.0, 10.0)), 1)
+    thing_move(far, 15.0, 15.0, 0.0)
+    expect_eq(things_chunk_count(things_st, here), 3)
+    facts(things_st)
+    let gone = things_test_st.gone
+    expect_eq(things_drop_chunk(things_st, here), 3)
+    expect_eq(things_count(things_st), 0)
+    expect_eq(things_test_st.gone, gone + 3)
+    expect_eq(len(facts(things_st)), 3)
+    expect_eq(things_verify(things_st), 0)
+  }
 }
