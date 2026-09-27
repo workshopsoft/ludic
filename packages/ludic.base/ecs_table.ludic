@@ -1,0 +1,79 @@
+# ludic.base/ecs_table.ludic - a Table<T>: entities as dense rows of hot columns (floats, words)
+# and one record each for what is cold. A handle is a slot and a generation, so a stale one misses.
+export const ECS_SLOT: int = 4194303     # the low 22 bits of a handle: its slot
+export const ECS_GEN: int = 511          # the next 9: how many times the slot was reused
+export const ECS_NONE: int = -1
+
+export property Table<T> {
+  n: int = 0
+  rec: []T = null
+  ent: words = null           # row -> handle
+  f: []floats = null          # hot float columns, a value per row each
+  i: []words = null           # hot int columns
+  added: words = null         # row -> the tick it was added at
+  changed: words = null       # row -> the tick a setter last wrote it at
+  tick: int = 1
+  slot_gen: words = null      # slot -> generation
+  slot_row: words = null      # slot -> row, -1 while free
+  free: words = null
+  grids: []Grid = null
+  idx: []IntIndex = null
+}
+
+# a table of nf float and ni int columns, every value 0 in a new row
+export function table_new<T>(nf: int, ni: int) -> Table<T> {
+  let tb = new Table<T>
+  tb.rec = new []T
+  tb.ent = words(0)
+  tb.f = new []floats
+  tb.i = new []words
+  for c in 0 .. nf { push(tb.f, floats(0)) }
+  for c in 0 .. ni { push(tb.i, words(0)) }
+  tb.added = words(0)
+  tb.changed = words(0)
+  tb.slot_gen = words(0)
+  tb.slot_row = words(0)
+  tb.free = words(0)
+  tb.grids = new []Grid
+  tb.idx = new []IntIndex
+  return tb
+}
+
+export function tb_len<T>(tb: Table<T>) -> int { return tb.n }
+export function tb_rec<T>(tb: Table<T>, row: int) -> T { return tb.rec[row] }
+export function tb_handle<T>(tb: Table<T>, row: int) -> int { return tb.ent[row] }
+export function tb_tick<T>(tb: Table<T>) -> int { return tb.tick }
+# the next tick: what is written from here on is newer than anything before
+export function tb_advance<T>(tb: Table<T>) -> void { tb.tick += 1 }
+
+# the row a handle names, or -1 when it was removed (or the slot has been reused since)
+export function tb_row<T>(tb: Table<T>, h: int) -> int {
+  if h < 0 { return -1 }
+  let s = h & ECS_SLOT
+  if s >= len(tb.slot_gen) or tb.slot_gen[s] != ((h >> 22) & ECS_GEN) { return -1 }
+  return tb.slot_row[s]
+}
+
+export function tb_alive<T>(tb: Table<T>, h: int) -> bool { return tb_row(tb, h) >= 0 }
+
+# a new row holding `r`, every column 0 and filed in no index until a setter says where it is
+export function tb_add<T>(tb: Table<T>, r: T) -> int {
+  var s = 0
+  if len(tb.free) > 0 { s = List.pop(tb.free) } else {
+    s = len(tb.slot_gen)
+    push(tb.slot_gen, 0)
+    push(tb.slot_row, -1)
+  }
+  tb.slot_row[s] = tb.n
+  let h = s | (tb.slot_gen[s] << 22)
+  push(tb.rec, r)
+  push(tb.ent, h)
+  push(tb.added, tb.tick)
+  push(tb.changed, tb.tick)
+  for c in 0 .. len(tb.f) { push(tb.f[c], 0.0) }
+  for c in 0 .. len(tb.i) { push(tb.i[c], 0) }
+  tb.n += 1
+  for g in 0 .. len(tb.grids) { grid_grow(tb.grids[g]) }
+  for k in 0 .. len(tb.idx) { ix_grow(tb.idx[k]) }
+  return h
+}

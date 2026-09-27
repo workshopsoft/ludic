@@ -1,0 +1,66 @@
+# ludic.base/ecs_table_set.ludic - the setters: a write stamps the row's tick and refiles it in
+# every index that reads that column, so an index is never a frame behind what it indexes
+export function tb_f<T>(tb: Table<T>, c: int, row: int) -> float { return tb.f[c][row] }
+export function tb_i<T>(tb: Table<T>, c: int, row: int) -> int { return tb.i[c][row] }
+
+export function tb_set_f<T>(tb: Table<T>, c: int, row: int, v: float) -> void {
+  tb.f[c][row] = v
+  tb.changed[row] = tb.tick
+  for g in 0 .. len(tb.grids) {
+    let gr = tb.grids[g]
+    if gr.cx == c or gr.cz == c { tb_grid_refile(tb, gr, row) }
+  }
+}
+
+# two float columns at once, filed once: a move
+export function tb_set_xz<T>(tb: Table<T>, cx: int, cz: int, row: int, x: float, z: float) -> void {
+  tb.f[cx][row] = x
+  tb.f[cz][row] = z
+  tb.changed[row] = tb.tick
+  for g in 0 .. len(tb.grids) {
+    let gr = tb.grids[g]
+    if gr.cx == cx or gr.cz == cz or gr.cx == cz or gr.cz == cx { tb_grid_refile(tb, gr, row) }
+  }
+}
+
+export function tb_set_i<T>(tb: Table<T>, c: int, row: int, v: int) -> void {
+  tb.i[c][row] = v
+  tb.changed[row] = tb.tick
+  for g in 0 .. len(tb.grids) { if tb.grids[g].gate == c { tb_grid_refile(tb, tb.grids[g], row) } }
+  for k in 0 .. len(tb.idx) {
+    let ix = tb.idx[k]
+    if ix.col == c or ix.gate == c { tb_ix_refile(tb, ix, row) }
+  }
+}
+
+# a row written without a setter (tb.f / tb.i directly, for speed) is refiled everywhere by this
+export function tb_refile<T>(tb: Table<T>, row: int) -> void {
+  tb.changed[row] = tb.tick
+  for g in 0 .. len(tb.grids) { tb_grid_refile(tb, tb.grids[g], row) }
+  for k in 0 .. len(tb.idx) { tb_ix_refile(tb, tb.idx[k], row) }
+}
+
+export function tb_mark<T>(tb: Table<T>, row: int) -> void { tb.changed[row] = tb.tick }
+
+function tb_gate_on<T>(tb: Table<T>, gate: int, row: int) -> bool { return gate < 0 or tb.i[gate][row] != 0 }
+
+function tb_grid_refile<T>(tb: Table<T>, g: Grid, row: int) -> void {
+  grid_refile(g, row, tb.f[g.cx][row], tb.f[g.cz][row], tb_gate_on(tb, g.gate, row))
+}
+
+function tb_ix_refile<T>(tb: Table<T>, ix: IntIndex, row: int) -> void {
+  if tb_gate_on(tb, ix.gate, row) { ix_file(ix, row, tb.i[ix.col][row]) } else { ix_unfile(ix, row) }
+}
+
+# change detection: the rows a setter wrote after `since`, into `out` (cleared first); no allocation
+export function tb_changed_since<T>(tb: Table<T>, since: int, out: words) -> int {
+  List.clear(out)
+  for r in 0 .. tb.n { if tb.changed[r] > since { push(out, r) } }
+  return len(out)
+}
+
+export function tb_added_since<T>(tb: Table<T>, since: int, out: words) -> int {
+  List.clear(out)
+  for r in 0 .. tb.n { if tb.added[r] > since { push(out, r) } }
+  return len(out)
+}

@@ -1,0 +1,130 @@
+# ecs_fuzz_test.ludic - thousands of random adds, removes, moves, kind changes and gate flips, and
+# after every burst the grid and the kind index answer exactly what a scan of the rows answers
+import "ludic.base"
+program EcsFuzzTest {
+  numbers float
+  property Toy { n: int = 0 }
+  const CX: int = 0
+  const CZ: int = 1
+  const KIND: int = 0
+  const ON: int = 1
+  const KINDS: int = 6
+
+  state FuzzState {
+    seed: int = 12345
+  }
+
+  function rnd(fz: mut FuzzState, n: int) -> int {
+    fz.seed = (fz.seed * 1103515245 + 12345) & 2147483647
+    return (fz.seed >> 8) % n
+  }
+  function rpos(fz: mut FuzzState) -> float { return float(rnd(fz, 40000)) / 10.0 - 2000.0 }
+
+  function step(fz: mut FuzzState, tb: Table<Toy>) -> void {
+    let op = rnd(fz, 10)
+    if op < 4 or tb_len(tb) == 0 {
+      let toy = new Toy
+      toy.n = rnd(fz, 5)
+      let r = tb_row(tb, tb_add(tb, toy))
+      tb_set_xz(tb, CX, CZ, r, rpos(fz), rpos(fz))
+      tb_set_i(tb, KIND, r, rnd(fz, KINDS))
+      tb_set_i(tb, ON, r, rnd(fz, 4) % 3)
+      return
+    }
+    let r = rnd(fz, tb_len(tb))
+    if op < 6 { tb_remove(tb, tb_handle(tb, r)) } else if op < 8 {
+      tb_set_xz(tb, CX, CZ, r, tb_f(tb, CX, r) + float(rnd(fz, 200)) - 100.0, tb_f(tb, CZ, r) + float(rnd(fz, 200)) - 100.0)
+    } else if op < 9 { tb_set_i(tb, KIND, r, rnd(fz, KINDS)) } else { tb_set_i(tb, ON, r, 1 - tb_i(tb, ON, r)) }
+  }
+
+  # the scan's answer: the smallest squared distance among on rows matching, or -1
+  function brute_d2(tb: Table<Toy>, x: float, z: float, maxr: float, kind: int) -> float {
+    var best = -1.0
+    for r in 0 .. tb_len(tb) {
+      if tb_i(tb, ON, r) == 0 or (kind >= 0 and tb_i(tb, KIND, r) != kind) { continue }
+      let dx = tb_f(tb, CX, r) - x
+      let dz = tb_f(tb, CZ, r) - z
+      let d2 = dx * dx + dz * dz
+      if (maxr <= 0.0 or d2 <= maxr * maxr) and (best < 0.0 or d2 < best) { best = d2 }
+    }
+    return best
+  }
+
+  function keep_even(t: Toy) -> bool { return t.n % 2 == 0 }
+
+  function brute_even(tb: Table<Toy>, x: float, z: float, maxr: float) -> float {
+    var best = -1.0
+    for r in 0 .. tb_len(tb) {
+      if tb_i(tb, ON, r) == 0 or tb_rec(tb, r).n % 2 != 0 { continue }
+      let dx = tb_f(tb, CX, r) - x
+      let dz = tb_f(tb, CZ, r) - z
+      let d2 = dx * dx + dz * dz
+      if (maxr <= 0.0 or d2 < maxr * maxr) and (best < 0.0 or d2 < best) { best = d2 }
+    }
+    return best
+  }
+
+  function where_check(tb: Table<Toy>, g: Grid, ix: IntIndex, x: float, z: float, maxr: float, kind: int, recs: []Toy) -> void {
+    let want = brute_even(tb, x, z, maxr)
+    let row = tb_nearest_where(tb, g, x, z, maxr, fn keep_even)
+    if want < 0.0 { expect_eq(row, -1) } else {
+      let dx = tb_f(tb, CX, row) - x
+      let dz = tb_f(tb, CZ, row) - z
+      expect(dx * dx + dz * dz == want)
+    }
+    expect_eq(tb_within_recs(tb, g, x, z, 150.0, -1, 0, recs), brute_within(tb, x, z, 150.0, -1))
+    if kind >= 0 { expect_eq(tb_within_of_recs(tb, g, ix, x, z, 150.0, kind, recs), brute_within(tb, x, z, 150.0, kind)) }
+  }
+
+  function brute_within(tb: Table<Toy>, x: float, z: float, r: float, kind: int) -> int {
+    var n = 0
+    for i in 0 .. tb_len(tb) {
+      if tb_i(tb, ON, i) == 0 or (kind >= 0 and tb_i(tb, KIND, i) != kind) { continue }
+      let dx = tb_f(tb, CX, i) - x
+      let dz = tb_f(tb, CZ, i) - z
+      if dx * dx + dz * dz <= r * r { n += 1 }
+    }
+    return n
+  }
+
+  function check(fz: mut FuzzState, tb: Table<Toy>, g: Grid, ix: IntIndex, out: words, recs: []Toy) -> void {
+    for q in 0 .. 20 {
+      let x = rpos(fz)
+      let z = rpos(fz)
+      let kind = rnd(fz, KINDS + 1) - 1
+      var maxr = 0.0
+      if q % 2 == 1 { maxr = float(rnd(fz, 600)) }
+      var mc = KIND
+      if kind < 0 { mc = -1 }
+      let want = brute_d2(tb, x, z, maxr, kind)
+      let row = tb_nearest(tb, g, x, z, maxr, mc, kind)
+      if want < 0.0 { expect_eq(row, -1) } else {
+        expect(row >= 0)
+        let dx = tb_f(tb, CX, row) - x
+        let dz = tb_f(tb, CZ, row) - z
+        expect(dx * dx + dz * dz == want)
+      }
+      where_check(tb, g, ix, x, z, maxr, kind, recs)
+      let rad = float(rnd(fz, 400))
+      expect_eq(tb_within(tb, g, x, z, rad, mc, kind, out), brute_within(tb, x, z, rad, kind))
+    }
+    for k in 0 .. KINDS { expect_eq(ix_count(ix, k), brute_within(tb, 0.0, 0.0, 100000.0, k)) }
+  }
+
+  function fuzz_case(fz: mut FuzzState) -> void {
+    let tb: Table<Toy> = table_new(2, 2)
+    let g = tb_grid(tb, CX, CZ, ON, 16.0)
+    let ix = tb_index(tb, KIND, ON)
+    let out = words(0)
+    let recs = new []Toy
+    for burst in 0 .. 60 {
+      for s in 0 .. 150 { step(fz, tb) }
+      check(fz, tb, g, ix, out, recs)
+    }
+    tb_clear(tb)
+    expect_eq(grid_count(g), 0)
+    expect_eq(ix_count(ix, 1), 0)
+  }
+
+  test "the grid and the kind index agree with a scan through 9000 random changes" (fz: mut FuzzState) { fuzz_case(fz) }
+}

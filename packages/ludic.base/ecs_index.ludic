@@ -1,0 +1,83 @@
+# ludic.base/ecs_index.ludic - a cached query: for each value of an int column (a kind), the rows
+# holding it, kept current by the table's setters, so "every fire" is a list and "how many" a length
+export property IntIndex {
+  col: int = 0
+  gate: int = -1              # an int column: a row is filed only while it is non-zero (-1: always)
+  lists: []words = null       # value -> its rows
+  pos: words = null           # row -> where it stands in its value's list, -1 not filed
+  val: words = null           # row -> the value it is filed under
+  empty: words = null         # what a value with no rows answers
+}
+
+export function tb_index<T>(tb: Table<T>, col: int, gate: int) -> IntIndex {
+  let ix = new IntIndex
+  ix.col = col
+  ix.gate = gate
+  ix.lists = new []words
+  ix.pos = words(0)
+  ix.val = words(0)
+  ix.empty = words(0)
+  for r in 0 .. tb.n { ix_grow(ix) }
+  push(tb.idx, ix)
+  for r in 0 .. tb.n { tb_ix_refile(tb, ix, r) }
+  return ix
+}
+
+# the rows filed under v - the index's own list: read it, never push to it
+export function ix_rows(ix: IntIndex, v: int) -> words {
+  if v < 0 or v >= len(ix.lists) { return ix.empty }
+  return ix.lists[v]
+}
+export function ix_count(ix: IntIndex, v: int) -> int {
+  if v < 0 or v >= len(ix.lists) { return 0 }
+  return len(ix.lists[v])
+}
+# the first row filed under v, or -1
+export function ix_first(ix: IntIndex, v: int) -> int {
+  if ix_count(ix, v) == 0 { return -1 }
+  return ix.lists[v][0]
+}
+
+function ix_grow(ix: IntIndex) -> void {
+  push(ix.pos, -1)
+  push(ix.val, -1)
+}
+
+function ix_shrink(ix: IntIndex) -> void {
+  List.pop(ix.pos)
+  List.pop(ix.val)
+}
+
+function ix_file(ix: IntIndex, r: int, v: int) -> void {
+  if ix.pos[r] >= 0 and ix.val[r] == v { return }
+  ix_unfile(ix, r)
+  if v < 0 { return }
+  while len(ix.lists) <= v { push(ix.lists, words(0)) }
+  ix.pos[r] = len(ix.lists[v])
+  ix.val[r] = v
+  push(ix.lists[v], r)
+}
+
+# out of its list: the list's last row takes its place
+function ix_unfile(ix: IntIndex, r: int) -> void {
+  let p = ix.pos[r]
+  if p < 0 { return }
+  let l = ix.lists[ix.val[r]]
+  let last = List.pop(l)
+  if last != r {
+    l[p] = last
+    ix.pos[last] = p
+  }
+  ix.pos[r] = -1
+  ix.val[r] = -1
+}
+
+# row `from` becomes row `to` (which is not filed)
+function ix_moved(ix: IntIndex, from: int, to: int) -> void {
+  let p = ix.pos[from]
+  ix.pos[to] = p
+  ix.val[to] = ix.val[from]
+  if p >= 0 { ix.lists[ix.val[from]][p] = to }
+  ix.pos[from] = -1
+  ix.val[from] = -1
+}

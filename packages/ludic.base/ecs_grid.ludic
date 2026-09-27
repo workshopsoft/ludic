@@ -1,0 +1,79 @@
+# ludic.base/ecs_grid.ludic - a spatial hash over two float columns: square cells hashed into
+# buckets, each a doubly linked list of rows, so filing, moving and unfiling a row is O(1)
+export property Grid {
+  cx: int = 0
+  cz: int = 1
+  gate: int = -1              # an int column: a row is filed only while it is non-zero (-1: always)
+  inv: float = 0.0625         # 1 / the cell's side
+  mask: int = 255             # buckets - 1, a power of two less one
+  head: words = null          # bucket -> row + 1, 0 empty
+  next: words = null          # row -> the next row in its bucket + 1
+  prev: words = null          # row -> the previous row + 1
+  key: words = null           # row -> its packed cell, -1 while not filed
+  count: int = 0
+}
+
+function grid_cell(g: Grid, v: float) -> int { return int(Math.floor(v * g.inv)) }
+function grid_key(ix: int, iz: int) -> int { return ((ix & 32767) << 15) | (iz & 32767) }
+function grid_bucket(g: Grid, ix: int, iz: int) -> int { return ((ix * 73856093) ^ (iz * 19349663)) & g.mask }
+
+function grid_make(cx: int, cz: int, gate: int, cell: float, rows: int) -> Grid {
+  let g = new Grid
+  g.cx = cx
+  g.cz = cz
+  g.gate = gate
+  g.inv = 1.0 / cell
+  g.head = words(g.mask + 1)
+  g.next = words(0)
+  g.prev = words(0)
+  g.key = words(0)
+  for r in 0 .. rows { grid_grow(g) }
+  return g
+}
+
+# index a table spatially by columns cx and cz, in cells `cell` wide; its rows are filed at once
+export function tb_grid<T>(tb: Table<T>, cx: int, cz: int, gate: int, cell: float) -> Grid {
+  let g = grid_make(cx, cz, gate, cell, tb.n)
+  push(tb.grids, g)
+  for r in 0 .. tb.n { tb_grid_refile(tb, g, r) }
+  return g
+}
+
+export function grid_count(g: Grid) -> int { return g.count }
+
+function grid_grow(g: Grid) -> void {
+  push(g.next, 0)
+  push(g.prev, 0)
+  push(g.key, -1)
+}
+
+function grid_shrink(g: Grid) -> void {
+  List.pop(g.next)
+  List.pop(g.prev)
+  List.pop(g.key)
+}
+
+function grid_link(g: Grid, r: int, k: int, b: int) -> void {
+  let h = g.head[b]
+  g.next[r] = h
+  g.prev[r] = 0
+  if h > 0 { g.prev[h - 1] = r + 1 }
+  g.head[b] = r + 1
+  g.key[r] = k
+  g.count += 1
+}
+
+function grid_unlink(g: Grid, r: int) -> void {
+  let k = g.key[r]
+  if k < 0 { return }
+  let p = g.prev[r]
+  let n = g.next[r]
+  if p > 0 { g.next[p - 1] = n } else { g.head[grid_bucket(g, grid_key_x(k), grid_key_z(k))] = n }
+  if n > 0 { g.prev[n - 1] = p }
+  g.key[r] = -1
+  g.count -= 1
+}
+
+# a packed key back to its cell (sign-extended from 15 bits)
+function grid_key_x(k: int) -> int { return ((k >> 15) & 32767) - (((k >> 29) & 1) * 32768) }
+function grid_key_z(k: int) -> int { return (k & 32767) - (((k >> 14) & 1) * 32768) }

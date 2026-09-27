@@ -1,0 +1,40 @@
+# ludic.base/ecs_grid_file.ludic - where a row is filed follows its columns: a row that has not
+# left its cell is not touched, a moved one is relinked, and the buckets double as the rows grow
+function grid_refile(g: Grid, r: int, x: float, z: float, on: bool) -> void {
+  if not on {
+    grid_unlink(g, r)
+    return
+  }
+  let ix = grid_cell(g, x)
+  let iz = grid_cell(g, z)
+  let k = grid_key(ix, iz)
+  if g.key[r] == k { return }
+  grid_unlink(g, r)
+  grid_link(g, r, k, grid_bucket(g, ix, iz))
+  if g.count > (g.mask + 1) * 2 { grid_rehash(g) }
+}
+
+# row `from` becomes row `to` (which is not filed): its neighbours and its bucket follow it
+function grid_moved(g: Grid, from: int, to: int) -> void {
+  let k = g.key[from]
+  g.key[to] = k
+  if k < 0 { return }
+  let p = g.prev[from]
+  let n = g.next[from]
+  g.prev[to] = p
+  g.next[to] = n
+  if p > 0 { g.next[p - 1] = to + 1 } else { g.head[grid_bucket(g, grid_key_x(k), grid_key_z(k))] = to + 1 }
+  if n > 0 { g.prev[n - 1] = to + 1 }
+  g.key[from] = -1
+}
+
+# twice the buckets, every filed row linked again where its key now hashes
+function grid_rehash(g: Grid) -> void {
+  g.mask = g.mask * 2 + 1
+  g.head = words(g.mask + 1)
+  g.count = 0
+  for r in 0 .. len(g.key) {
+    let k = g.key[r]
+    if k >= 0 { grid_link(g, r, k, grid_bucket(g, grid_key_x(k), grid_key_z(k))) }
+  }
+}

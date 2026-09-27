@@ -1,0 +1,26 @@
+# near.ludic - the neighbourhood questions a frame asks many times: what is around a point, of any
+# kind or of one, into a list the CALLER keeps (in its own state, reused every frame), from the grid
+# or the kind's own list - never a walk of every Thing, and nothing allocated or written here
+export function things_near(things_st: ThingsState, x: float, z: float, r: float, out: []Thing) -> int {
+  return tb_within_recs(things_st.th.tab, things_st.th.grid, x, z, r, -1, 0, out)
+}
+
+export function things_near_of(things_st: ThingsState, kind: int, x: float, z: float, r: float, out: []Thing) -> int {
+  return tb_within_of_recs(things_st.th.tab, things_st.th.grid, things_st.th.kinds, x, z, r, kind, out)
+}
+
+# the nearest active Thing within maxr (0: any distance) that `keep` says yes to, or null
+export function thing_nearest_where(things_st: ThingsState, x: float, z: float, maxr: float, keep: fn(Thing) -> bool) -> Thing {
+  let r = tb_nearest_where(things_st.th.tab, things_st.th.grid, x, z, maxr, keep)
+  if r < 0 { return null }
+  return things_st.th.tab.rec[r]
+}
+
+# every one of a kind, active or not, counted and walked without a list
+export function things_count_all_of(things_st: ThingsState, kind: int) -> int { return ix_count(things_st.th.every, kind) }
+
+export function thing_of_kind_all(things_st: ThingsState, kind: int, i: int) -> Thing {
+  let rows = ix_rows(things_st.th.every, kind)
+  if i < 0 or i >= len(rows) { return null }
+  return things_st.th.tab.rec[rows[i]]
+}

@@ -1,38 +1,43 @@
-# queries.ludic - where the Things are. Only active Things answer, except thing_by_uid and
-# things_each_all, which ask about everything that exists. A kind below 0 is any kind.
+# queries.ludic - where the Things are, answered by the table's indexes rather than a scan. Only
+# active Things answer, except thing_by_uid and things_each_all, which ask about everything that
+# exists. A kind below 0 is any kind.
 function th_of(t: Thing, kind: int) -> bool { return kind < 0 or t.kind == kind }
 
-# the first active one of a kind (and of that id, unless id < 0), in the order placed
+# the first-placed active one of a kind (and of that id, unless id < 0)
 export function thing_find(things_st: ThingsState, kind: int, id: int) -> Thing {
-  let all = things_all(things_st)
-  for i in 0 .. len(all) {
-    let t = all[i]
-    if t.active and th_of(t, kind) and (id < 0 or t.id == id) { return t }
+  let tb = things_st.th.tab
+  var best: Thing = null
+  if kind < 0 {
+    for r in 0 .. tb_len(tb) { best = th_earlier(best, tb.rec[r], id) }
+    return best
   }
-  return null
+  let rows = ix_rows(things_st.th.kinds, kind)
+  for k in 0 .. len(rows) { best = th_earlier(best, tb.rec[rows[k]], id) }
+  return best
+}
+
+# the one of the two placed first that is active and has the id asked for
+function th_earlier(best: Thing, t: Thing, id: int) -> Thing {
+  if not t.active or (id >= 0 and t.id != id) { return best }
+  if best == null or t.uid < best.uid { return t }
+  return best
 }
 
 export function thing_by_uid(things_st: ThingsState, uid: int) -> Thing {
-  let all = things_all(things_st)
-  for i in 0 .. len(all) { if all[i].uid == uid { return all[i] } }
-  return null
+  let r = tb_row(things_st.th.tab, imap_get(things_st.th_uids, uid, -1))
+  if r < 0 { return null }
+  return things_st.th.tab.rec[r]
 }
 
 # the nearest active one of a kind to (x, z), or null
 export function thing_nearest(things_st: ThingsState, kind: int, x: float, z: float) -> Thing {
-  var best: Thing = null
-  var bd = 0.0
-  let all = things_all(things_st)
-  for i in 0 .. len(all) {
-    let t = all[i]
-    if not t.active or not th_of(t, kind) { continue }
-    let d = thing_dist2(t, x, z)
-    if best == null or d < bd {
-      best = t
-      bd = d
-    }
+  let tb = things_st.th.tab
+  var r = -1
+  if kind < 0 { r = tb_nearest(tb, things_st.th.grid, x, z, 0.0, -1, 0) } else {
+    r = tb_nearest_of(tb, things_st.th.grid, things_st.th.kinds, x, z, 0.0, kind)
   }
-  return best
+  if r < 0 { return null }
+  return tb.rec[r]
 }
 
 # the squared ground distance from a Thing to (x, z)
@@ -42,14 +47,13 @@ export function thing_dist2(t: Thing, x: float, z: float) -> float {
   return dx * dx + dz * dz
 }
 
-# every active one within r of (x, z), nearest first
+# every active one within r of (x, z), nearest first, in a new list: for a question asked now and
+# then - a frame's question is things_near, into a list the caller keeps
 export function things_within(things_st: ThingsState, x: float, z: float, r: float) -> []Thing {
+  let found = new []Thing
+  things_near(things_st, x, z, r, found)
   let out = new []Thing
-  let all = things_all(things_st)
-  for i in 0 .. len(all) {
-    let t = all[i]
-    if t.active and thing_dist2(t, x, z) <= r * r { th_insert(out, t, x, z) }
-  }
+  for k in 0 .. len(found) { th_insert(out, found[k], x, z) }
   return out
 }
 
@@ -63,18 +67,44 @@ function th_insert(out: []Thing, t: Thing, x: float, z: float) -> void {
   out[j] = t
 }
 
-# every active one of a kind, in the order placed
+# every active one of a kind, first placed first
 export function things_each(things_st: ThingsState, kind: int) -> []Thing {
-  let out = new []Thing
-  let all = things_all(things_st)
-  for i in 0 .. len(all) { if all[i].active and th_of(all[i], kind) { push(out, all[i]) } }
-  return out
+  return th_listed(things_st, ix_rows(things_st.th.kinds, kind))
 }
 
 # every one of a kind, active or not
 export function things_each_all(things_st: ThingsState, kind: int) -> []Thing {
+  return th_listed(things_st, ix_rows(things_st.th.every, kind))
+}
+
+# how many active ones of a kind there are, without a list
+export function things_count_of(things_st: ThingsState, kind: int) -> int {
+  return ix_count(things_st.th.kinds, kind)
+}
+
+function th_listed(things_st: ThingsState, rows: words) -> []Thing {
   let out = new []Thing
-  let all = things_all(things_st)
-  for i in 0 .. len(all) { if th_of(all[i], kind) { push(out, all[i]) } }
-  return out
+  for k in 0 .. len(rows) { push(out, things_st.th.tab.rec[rows[k]]) }
+  return th_by_uid_order(out)
+}
+
+function th_by_uid_order(xs: []Thing) -> []Thing {
+  for i in 1 .. len(xs) {
+    let t = xs[i]
+    var j = i
+    while j > 0 and xs[j - 1].uid > t.uid {
+      xs[j] = xs[j - 1]
+      j -= 1
+    }
+    xs[j] = t
+  }
+  return xs
+}
+
+# the i-th active one of a kind, 0 .. things_count_of(kind) - 1, in the index's order (which a
+# removal or a hide changes: walk it within a frame, never keep an i)
+export function thing_of_kind(things_st: ThingsState, kind: int, i: int) -> Thing {
+  let rows = ix_rows(things_st.th.kinds, kind)
+  if i < 0 or i >= len(rows) { return null }
+  return things_st.th.tab.rec[rows[i]]
 }

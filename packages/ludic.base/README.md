@@ -50,6 +50,49 @@ import "ludic.base"
 | `def Systems key { ... }`, `SYS_<KEY>`, `SYS_COUNT` | a system declared from any module; the list starts from these |
 | `core_init_all()`, `core_reset_all()`, `core_tick_all(t)`, `core_save_all() -> Val`, `core_load_all(v)` | the runner: in the order added, tick phase by phase |
 
+## Entities: `Table<T>` and its indexes
+
+A mechanic that keeps many of something (Things on the ground, animals, drops) keeps them as rows
+of a `Table<T>` in its state rather than as a list it scans. The table is data-oriented and
+allocates nothing per query:
+
+- **Rows are dense.** Hot data is columns - `tb.f[c]` (floats) and `tb.i[c]` (ints), one value per
+  row - and `tb.rec[row]` is a record `T` for everything cold. A removal moves the last row into
+  the gap (`tb_remove`), so a sweep over `0 .. tb_len(tb)` touches contiguous memory.
+- **Handles go stale.** `tb_add` returns a handle: a 22-bit slot and a 9-bit generation. `tb_row(tb,
+  h)` is -1 once the entity is removed, even after the slot is reused. Keep handles, never rows.
+- **Indexes are kept by the setters.** `tb_set_f`, `tb_set_xz`, `tb_set_i` (or writing `tb.f` /
+  `tb.i` directly and then `tb_refile`) stamp the row's change tick and refile it in every index
+  that reads that column, in O(1). An index is never a frame behind.
+  - `tb_grid(tb, cx, cz, gate, cell)` - a spatial hash over two float columns, gated by an int
+    column (a row is filed while it is non-zero: "active"). `tb_nearest(tb, g, x, z, maxr, mc, mv)`
+    searches rings outward and stops at the first ring that cannot hold anything nearer;
+    `tb_within(..., out)` fills a caller's `words`. Buckets double as the rows grow.
+  - `tb_index(tb, col, gate)` - a cached query: the rows holding each value of an int column (a
+    kind). `ix_rows(ix, v)`, `ix_count(ix, v)`, `ix_first(ix, v)`.
+  - `tb_nearest_of` / `tb_within_of` plan between the two: a rare kind is scanned from its own
+    list, a common one searched by rings.
+- **Change detection.** `tb_advance(tb)` moves the table to its next tick; `tb_changed_since(tb,
+  tick, out)` and `tb_added_since` name the rows written since - what a save or a message needs to
+  send a delta instead of everything.
+- **Stable ids.** `IntMap` (`imap_new`, `imap_put`, `imap_get(m, k, none)`, `imap_del`) maps an
+  id kept in a save or a message to a handle without a scan.
+
+Ludic frees nothing a safe program allocates, so a query that built a list per call leaked every
+frame. Every question here writes into a buffer the caller keeps. What each costs, against a
+`[]Record` list scanned (`M4 Pro`, one thread):
+
+| | 10 000 | 100 000 | 1 000 000 |
+| --- | --- | --- | --- |
+| nearest, any | 0.37 us (list 30) | 1.5 us (list 307) | 7.2 us (list 3075) |
+| nearest of a kind (1 in 40) | 1.4 us (list 5.8) | 3.3 us (list 56) | 12 us (list 864) |
+| by id | 0.1 us (list 1.7) | 0.09 us (list 17) | 1.5 us (list 324) |
+| within 30 m | 0.9 us | 1.5 us | 6.9 us |
+| a move, refiled | 11 ns | 14 ns | 44 ns |
+
+`tests/ecs_fuzz_test.ludic` holds the grid and the kind index against a scan through thousands of
+random adds, removes, moves, kind changes and gate flips.
+
 ## A toy mechanic
 
 ```ludic
