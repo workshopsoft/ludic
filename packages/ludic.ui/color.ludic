@@ -36,7 +36,7 @@ function cl_hex_at(ui_st: mut UiState, s: string, at: int, n: int) -> int {
 function cl_rgb(ui_st: mut UiState, s: string) -> int {
   var open = 0
   while open < len(s) and s[open] != 40 { open += 1 }
-  let parts = lss_split(s[open + 1..len(s) - 1], 44)
+  let parts = mm_split(ui_st, s[open + 1..len(s) - 1], 44)
   var c = 0
   for i in 0 .. Math.min(3, len(parts)) { c = c * 256 + Math.clamp(int(el_num(tpl_words(parts[i]))), 0, 255) }
   if len(parts) > 3 { ui_st.cl_alpha = el_num(tpl_words(parts[3])) }

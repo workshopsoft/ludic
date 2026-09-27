@@ -6,7 +6,7 @@
 # with a note="...", the label is .ui-labels > .ui-label + .ui-note
 function ct_part(ui_st: mut UiState, n: UiNode, cls: string, text: string) -> UiNode {
   let p = nd_take(ui_st)
-  p.key = `{n.key}/{cls}`
+  p.key = mm_join(ui_st, n.key, "/", cls)
   p.tag = "span"
   p.env = n.env
   p.sheet = n.sheet

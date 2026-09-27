@@ -40,8 +40,8 @@ function el_calc_len(ui_st: mut UiState, s: string) -> float {
   return ui_st.ca_px
 }
 # flex: 1  |  flex: 1 0  |  flex: 2 1 auto  |  flex: none  - the grow, then the shrink
-function el_flex_short(n: UiNode, s: string) -> void {
-  let parts = el_words(s)
+function el_flex_short(ui_st: mut UiState, n: UiNode, s: string) -> void {
+  let parts = mm_words(ui_st, s)
   if s == "none" {
     n.grow = 0.0
     nx(n).shrink = 0.0
@@ -72,7 +72,7 @@ function el_text_shadow(ui_st: mut UiState, n: UiNode, s: string) -> void {
   x.tsh_set = true
   x.tsh_c = -2
   if tpl_words(s) == "none" { return }
-  let parts = el_words(s)
+  let parts = mm_words(ui_st, s)
   var nums = 0
   var col = ""
   for i in 0 .. len(parts) {

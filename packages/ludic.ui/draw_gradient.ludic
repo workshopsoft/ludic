@@ -8,7 +8,17 @@ export property UiGradient {
   at: []float = null            # each stop's place, 0 to 1
 }
 function gr_is(s: string) -> bool { return len(s) > 16 and sat(s, 0, "linear-gradient(") }
+# a gradient is parsed once per text and shared by every element that wears it - never changed after
 function gr_parse(ui_st: mut UiState, s0: string) -> UiGradient {
+  let m = mm_of(ui_st)
+  let i = mm_find(m, MM_GRAD, s0)
+  if i >= 0 { return m.grads[i] }
+  let g = gr_parse_new(ui_st, s0)
+  let j = mm_add(m, MM_GRAD, s0)
+  if j >= 0 { m.grads[j] = g }
+  return g
+}
+function gr_parse_new(ui_st: mut UiState, s0: string) -> UiGradient {
   let s = tpl_words(s0)
   let parts = el_commas(s[16..len(s) - 1])
   let g = new UiGradient
@@ -18,7 +28,7 @@ function gr_parse(ui_st: mut UiState, s0: string) -> UiGradient {
   var from = 0
   if len(parts) > 0 and gr_dir(g, tpl_words(parts[0])) { from = 1 }
   for i in from .. len(parts) {
-    let words = el_words(tpl_words(parts[i]))
+    let words = mm_words(ui_st, tpl_words(parts[i]))
     var col = tpl_words(parts[i])
     var at = -1.0
     let last = words[len(words) - 1]

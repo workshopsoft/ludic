@@ -73,7 +73,7 @@ function cs_vars_in(ui_st: mut UiState, n: UiNode, v: Val) -> Val {
   return Value.str(tpl_words(out + s[at..len(s)]))
 }
 function cs_var_ref(ui_st: mut UiState, n: UiNode, inner: string) -> string {
-  let parts = lss_split(inner, 44)
+  let parts = mm_split(ui_st, inner, 44)
   let v = cs_var(n, tpl_words(parts[0]))
   if v != null { return v }
   if len(parts) > 1 { return tpl_words(inner[len(parts[0]) + 1..len(inner)]) }

@@ -16,7 +16,7 @@ function el_apply(ui_st: mut UiState, n: UiNode, key: string, v0: Val) -> bool {
     return true
   }
   let v = cs_vars_in(ui_st, n, v0)
-  return el_size(ui_st, n, k, v) or el_box(ui_st, n, k, v) or el_flex(n, k, v) or el_look(ui_st, n, k, v) or el_place_prop(ui_st, n, k, v) or el_edge(ui_st, n, k, v) or el_more(ui_st, n, k, v)
+  return el_size(ui_st, n, k, v) or el_box(ui_st, n, k, v) or el_flex(ui_st, n, k, v) or el_look(ui_st, n, k, v) or el_place_prop(ui_st, n, k, v) or el_edge(ui_st, n, k, v) or el_more(ui_st, n, k, v)
 }
 function at_alias(key: string) -> string {
   # the CSS name to the short one; literals, so asking allocates nothing (asked per rule per element)
@@ -47,12 +47,12 @@ function el_size(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
   if key == "w" or key == "h" { el_dim(ui_st, n, key == "w", v) } else if key == "min-w" { n.min_w = el_len(ui_st, v) } else if key == "max-w" { n.max_w = el_len(ui_st, v) } else if key == "min-h" { n.min_h = el_len(ui_st, v) } else if key == "max-h" { n.max_h = el_len(ui_st, v) } else if key == "gap" { n.gap = el_len(ui_st, v) } else { return false }
   return true
 }
-function el_flex(n: UiNode, key: string, v: Val) -> bool {
+function el_flex(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
   let s = vl_text(v)
   if key == "dir" {
     n.dir = UI_COL
     if s == "row" { n.dir = UI_ROW }
-  } else if key == "grow" { n.grow = el_num(s) } else if key == "flex" { el_flex_short(n, s) } else if key == "wrap" { n.wrap = s == "wrap" or (vl_truthy(v) and s != "false" and s != "nowrap") } else if key == "align" { n.align = el_place(v) } else if key == "self" { n.self = el_place(v) } else if key == "justify" { n.justify = el_place(v) } else if key == "talign" { n.talign = el_place(v) } else if key == "display" { n.hidden = s == "none" } else { return false }
+  } else if key == "grow" { n.grow = el_num(s) } else if key == "flex" { el_flex_short(ui_st, n, s) } else if key == "wrap" { n.wrap = s == "wrap" or (vl_truthy(v) and s != "false" and s != "nowrap") } else if key == "align" { n.align = el_place(v) } else if key == "self" { n.self = el_place(v) } else if key == "justify" { n.justify = el_place(v) } else if key == "talign" { n.talign = el_place(v) } else if key == "display" { n.hidden = s == "none" } else { return false }
   return true
 }
 function el_look(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
@@ -76,7 +76,7 @@ function el_look(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
 }
 # border: 1 #ffcc00, or 1px solid accent
 function el_border(ui_st: mut UiState, n: UiNode, s: string) -> void {
-  let parts = lss_split(s, 32)
+  let parts = mm_split(ui_st, s, 32)
   for i in 0 .. len(parts) {
     let p = parts[i]
     if len(p) > 0 and ((p[0] >= 48 and p[0] <= 57) or p[0] == 46) { el_sides_border(n, el_unit(ui_st, p)) } else if p == "none" { el_sides_border(n, 0.0) } else if len(p) > 0 and p != "solid" {

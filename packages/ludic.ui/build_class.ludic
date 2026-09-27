@@ -32,7 +32,7 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
 function bd_pass_down(ui_st: mut UiState, n: UiNode, k: UiTpl, e: UiEnv) -> void {
   let c = tpl_attr(k, "class")
   if c != null {
-    let parts = lss_split(ui_eval_text(ui_st, c, e), 32)
+    let parts = mm_split(ui_st, ui_eval_text(ui_st, c, e), 32)
     for i in 0 .. len(parts) {
       if len(parts[i]) > 0 { push(n.classes, parts[i]) }
     }

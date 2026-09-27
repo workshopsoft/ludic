@@ -8,7 +8,7 @@ function bd_kids(ui_st: mut UiState, kids: []UiTpl, e0: UiEnv, key: string, out:
   for i in 0 .. len(kids) {
     let k = kids[i]
     ui_st.ui_at = k.where
-    let ck = `{key}/{i}`
+    let ck = mm_join(ui_st, key, "/", mm_int(ui_st, i))
     if k.tag == "state" or k.tag == "style" { continue }
     if k.tag == "let" {
       e = bd_let(ui_st, k, e)
@@ -50,9 +50,9 @@ function bd_each(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiN
     let le = env_new(ui_st, e)
     env_bind(le, as_name, Value.at(list, j))
     env_bind(le, at_name, Value.int(j))
-    var id = string(j)
+    var id = mm_int(ui_st, j)
     if by != null { id = ui_eval_text(ui_st, by, le) }
-    bd_kids(ui_st, k.kids, le, `{key}#{id}`, out)
+    bd_kids(ui_st, k.kids, le, mm_join(ui_st, key, "#", id), out)
   }
 }
 # <slot/> is what the component's user put inside it; <slot name="x"/> their <template slot="x">

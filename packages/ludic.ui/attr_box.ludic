@@ -18,20 +18,27 @@ function el_box(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
 }
 # top right bottom left out of 1 to 4 lengths
 function el_sides(ui_st: mut UiState, v: Val) -> void {
-  let parts = new []float
-  if vl_num(v) { push(parts, el_px(ui_st, Value.as_float(v))) } else {
-    let words = el_words(vl_text(v))
+  var n = 0
+  if vl_num(v) {
+    ui_st.el_s0 = el_px(ui_st, Value.as_float(v))
+    n = 1
+  } else {
+    let words = mm_words(ui_st, vl_text(v))
     for i in 0 .. len(words) {
-      if len(words[i]) > 0 { push(parts, el_word_len(ui_st, words[i])) }
+      if len(words[i]) > 0 and n < 4 {
+        el_side_set(ui_st, n, el_word_len(ui_st, words[i]))
+        n += 1
+      }
     }
   }
-  while len(parts) < 4 {
-    if len(parts) == 0 { push(parts, 0.0) } else if len(parts) == 1 { push(parts, parts[0]) } else if len(parts) == 2 { push(parts, parts[0]) } else { push(parts, parts[1]) }
-  }
-  ui_st.el_s0 = parts[0]
-  ui_st.el_s1 = parts[1]
-  ui_st.el_s2 = parts[2]
-  ui_st.el_s3 = parts[3]
+  if n == 0 { ui_st.el_s0 = 0.0 }
+  if n < 2 { ui_st.el_s1 = ui_st.el_s0 }
+  if n < 3 { ui_st.el_s2 = ui_st.el_s0 }
+  if n < 4 { ui_st.el_s3 = ui_st.el_s1 }
+}
+# CSS's one to four sides, top right bottom left, without a list made for them
+function el_side_set(ui_st: mut UiState, i: int, v: float) -> void {
+  if i == 0 { ui_st.el_s0 = v } else if i == 1 { ui_st.el_s1 = v } else if i == 2 { ui_st.el_s2 = v } else { ui_st.el_s3 = v }
 }
 # a length: a number, 10px, 1.5em, 2rem, 50vw, calc(...), fill, fit or auto (a percentage is el_pct's)
 function el_len(ui_st: mut UiState, v: Val) -> float {
