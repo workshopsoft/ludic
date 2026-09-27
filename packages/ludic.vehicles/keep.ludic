@@ -4,7 +4,7 @@
 export function vehicle_own(v: Vehicle) -> void { if v != null { v.owned = true } }
 
 # hay for a horse, up to a full belly
-export function vehicle_feed(vehicles_st: VehiclesState, v: Vehicle, amount: float) -> void {
+export function vehicle_feed(vehicles_st: mut VehiclesState, v: Vehicle, amount: float) -> void {
   if v == null { return }
   v.food = Math.min(v.food + amount, 100.0)
   ve_say(vehicles_st, VEHICLE_FED, v, amount)

@@ -13,17 +13,22 @@ export function phys_float(physics_st: mut PhysicsState, id: int, buoyancy: floa
   push(physics_st.ph_float_k, 0.0)
 }
 
-# no longer floats (it is still a body)
+# no longer floats (it is still a body); every removal asks, so the lists are filtered into a kept
+# spare pair and swapped, never made anew
 export function phys_sink(physics_st: mut PhysicsState, id: int) -> void {
   if physics_st.ph_floats == null { return }
-  let ids = new []int
-  let ks = new []float
+  let ids = physics_st.ph_floats2
+  let ks = physics_st.ph_float_k2
+  List.clear(ids)
+  List.clear(ks)
   for i in 0 .. len(physics_st.ph_floats) {
     if physics_st.ph_floats[i] != id {
       push(ids, physics_st.ph_floats[i])
       for k in 0 .. PH_K { push(ks, physics_st.ph_float_k[i * PH_K + k]) }
     }
   }
+  physics_st.ph_floats2 = physics_st.ph_floats
+  physics_st.ph_float_k2 = physics_st.ph_float_k
   physics_st.ph_floats = ids
   physics_st.ph_float_k = ks
 }
@@ -56,10 +61,12 @@ function ph_buoy_one(physics_st: mut PhysicsState, i: int, id: int, x: float, z:
   physics_st.ph_float_k[k + 3] = float(wet)
 }
 
-function ph_splash(physics_st: PhysicsState, id: int, x: float, y: float, z: float) -> void {
-  let f = new PhysFact
+function ph_splash(physics_st: mut PhysicsState, id: int, x: float, y: float, z: float) -> void {
+  let f = ph_fact_record(physics_st)
   f.what = PHYS_SPLASH
   f.a = id
+  f.b = -1
+  f.speed = 0.0
   f.x = x;  f.y = y;  f.z = z
   q_push(phys_facts(physics_st), f)
 }

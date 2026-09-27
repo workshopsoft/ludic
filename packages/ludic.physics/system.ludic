@@ -33,12 +33,28 @@ export function phys_steps(physics_st: PhysicsState) -> int { return physics_st.
 # m/s2 down is negative
 export function phys_gravity(physics_st: mut PhysicsState, y: float) -> void { if physics_st.ph_world != null { jph_world_gravity(physics_st.ph_world, y) } }
 
+# a fact record no drain holds any more, made fresh (and kept) only when every one is held: a
+# fact can come every frame, and a record a frame is never given back
+function ph_fact_record(physics_st: mut PhysicsState) -> PhysFact {
+  if physics_st.ph_fnext >= len(physics_st.ph_ffree) {
+    q_unheld(phys_facts(physics_st), physics_st.ph_fpool, physics_st.ph_ffree)
+    physics_st.ph_fnext = 0
+  }
+  if physics_st.ph_fnext < len(physics_st.ph_ffree) {
+    let f = physics_st.ph_ffree[physics_st.ph_fnext]
+    physics_st.ph_fnext += 1
+    return f
+  }
+  let f = new PhysFact
+  push(physics_st.ph_fpool, f)
+  return f
+}
 function ph_contacts(physics_st: mut PhysicsState) -> void {
   let n = jph_contacts_drain(physics_st.ph_world, physics_st.ph_ids, physics_st.ph_vals, PH_CAP)
   for i in 0 .. n {
     let speed = physics_st.ph_vals[i * 4 + 3]
     if speed >= physics_st.ph_hard {
-      let f = new PhysFact
+      let f = ph_fact_record(physics_st)
       f.what = PHYS_HIT
       f.a = physics_st.ph_ids[i * 2]
       f.b = physics_st.ph_ids[i * 2 + 1]

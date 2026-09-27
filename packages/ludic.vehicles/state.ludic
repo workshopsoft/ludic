@@ -6,8 +6,26 @@ export function vehicle_facts(vehicles_st: VehiclesState) -> Queue<VehicleFact> 
   return vehicles_st.ve_fact_q
 }
 
-function ve_say(vehicles_st: VehiclesState, what: int, v: Vehicle, n: float) -> void {
+# a fact record no drain holds any more, made fresh (and kept) only when every one is held: a
+# fact can come every frame, and a record a frame is never given back
+function ve_fact_record(vehicles_st: mut VehiclesState) -> VehicleFact {
+  if vehicles_st.ve_fnext >= len(vehicles_st.ve_ffree) {
+    q_unheld(vehicle_facts(vehicles_st), vehicles_st.ve_fpool, vehicles_st.ve_ffree)
+    vehicles_st.ve_fnext = 0
+  }
+  if vehicles_st.ve_fnext < len(vehicles_st.ve_ffree) {
+    let f = vehicles_st.ve_ffree[vehicles_st.ve_fnext]
+    vehicles_st.ve_fnext += 1
+    return f
+  }
   let f = new VehicleFact
+  push(vehicles_st.ve_fpool, f)
+  return f
+}
+# how many fact records have ever been made: the peak held at once, not the facts pushed
+export function vehicle_fact_records(vehicles_st: VehiclesState) -> int { return len(vehicles_st.ve_fpool) }
+function ve_say(vehicles_st: mut VehiclesState, what: int, v: Vehicle, n: float) -> void {
+  let f = ve_fact_record(vehicles_st)
   f.what = what
   f.nid = v.nid
   f.kind = v.kind

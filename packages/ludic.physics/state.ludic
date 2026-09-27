@@ -46,12 +46,17 @@ export state PhysicsState {
   ph_hard: float = 2.0            # metres a second: a contact under this is not a fact
   ph_floats: []int = new []int         # buoyant bodies' ids
   ph_float_k: []float = new []float      # and theirs: buoyancy, linear drag, angular drag, wet
+  ph_floats2: []int = new []int        # the spare pair phys_sink filters into
+  ph_float_k2: []float = new []float
   ph_rx: float = 0.0               # where the last phys_resolve put a body
   ph_rz: float = 0.0
   ph_walkers: []pointer = new []pointer   # a walker id is its place here; null once removed
   ph_ids: []int = words(PH_CAP * 2)
   ph_vals: []float = floats(PH_CAP * 4)
   ph_facts: Queue<PhysFact> = ph_facts__new()
+  ph_fpool: []PhysFact = new []PhysFact   # every fact record made, reused once no drain holds it
+  ph_ffree: []PhysFact = new []PhysFact
+  ph_fnext: int = 0
 }
 
 # the facts, oldest first

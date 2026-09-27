@@ -32,8 +32,8 @@ export function phys_close(physics_st: mut PhysicsState) -> void {
     }
   }
   physics_st.ph_shapes = new []pointer
-  physics_st.ph_floats = new []int
-  physics_st.ph_float_k = new []float
+  List.clear(physics_st.ph_floats)
+  List.clear(physics_st.ph_float_k)
   if physics_st.ph_facts != null { q_clear(physics_st.ph_facts) }
 }
 

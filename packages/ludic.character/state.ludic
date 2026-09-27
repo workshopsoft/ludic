@@ -13,8 +13,24 @@ export function char_facts(character_st: CharacterState) -> Queue<CharacterFact>
   return character_st.chr_fact_q
 }
 
-function chr_say(character_st: CharacterState, what: int, v: float) -> void {
+# a fact record no drain holds any more, made fresh (and kept) only when every one is held: a
+# fact can come every frame, and a record a frame is never given back
+function chr_fact_record(character_st: mut CharacterState) -> CharacterFact {
+  if character_st.chr_fnext >= len(character_st.chr_ffree) {
+    q_unheld(char_facts(character_st), character_st.chr_fpool, character_st.chr_ffree)
+    character_st.chr_fnext = 0
+  }
+  if character_st.chr_fnext < len(character_st.chr_ffree) {
+    let f = character_st.chr_ffree[character_st.chr_fnext]
+    character_st.chr_fnext += 1
+    return f
+  }
   let f = new CharacterFact
+  push(character_st.chr_fpool, f)
+  return f
+}
+function chr_say(character_st: mut CharacterState, what: int, v: float) -> void {
+  let f = chr_fact_record(character_st)
   f.what = what
   f.x = character_st.chr_x
   f.y = character_st.chr_y

@@ -375,4 +375,17 @@ program VehiclesTest {
     expect_eq(len(vehicles_all(vehicles_st)), 0)
     expect(vehicle_by_nid(vehicles_st, b.nid) == null)
   }
+
+  test "a fed fact a turn, drained each turn, makes a few records and then reuses them" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
+    vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
+    let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
+    var fed = 0
+    for k in 0 .. 1000 {
+      vehicle_feed(vehicles_st, h, 1.0)
+      fed += count(facts(vehicles_st), VEHICLE_FED)
+    }
+    expect_eq(fed, 1000)
+    expect(vehicle_fact_records(vehicles_st) <= 4)
+  }
 }
