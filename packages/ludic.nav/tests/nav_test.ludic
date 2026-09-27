@@ -124,4 +124,14 @@ program NavTest {
     nav_reset(nav_st)
     expect_eq(nav_polygons(nav_st, NAV_SMALL), 0)
   }
+
+  test "the time paths take is counted, and only while a mesh is loaded" (nav_st: mut NavState) {
+    expect_eq(nav_us(nav_st), 0)
+    expect(meadow(nav_st, NAV_PERSON, 0, true))
+    for i in 0 .. 2000 { nav_path(nav_st, NAV_PERSON, 0, 5.0, 0.0, 20.0, 35.0, 0.0, 20.0) }
+    expect(nav_us(nav_st) > 0)
+    expect(nav_us(nav_st) < 2000000)
+    nav_reset(nav_st)
+    expect_eq(nav_us(nav_st), 0)
+  }
 }

@@ -4,14 +4,14 @@
 function el_unit(ui_st: UiState, s: string) -> float {
   let f = el_num(s)
   let n = len(s)
-  if n > 3 and s[n - 3..n] == "rem" { return f * el_px(ui_st, 16.0) }
-  if n > 2 and s[n - 2..n] == "em" {
+  if n > 3 and sat(s, n - 3, "rem") { return f * el_px(ui_st, 16.0) }
+  if n > 2 and sat(s, n - 2, "em") {
     if ui_st.el_cur == null { return f * el_px(ui_st, 16.0) }
     if ui_st.el_key == "size" and ui_st.el_cur.parent != null { return f * cs_fs(ui_st, ui_st.el_cur.parent) }
     return f * cs_fs(ui_st, ui_st.el_cur)
   }
-  if n > 2 and s[n - 2..n] == "vw" { return f * ui_st.ly_vp_w / 100.0 }
-  if n > 2 and s[n - 2..n] == "vh" { return f * ui_st.ly_vp_h / 100.0 }
+  if n > 2 and sat(s, n - 2, "vw") { return f * ui_st.ly_vp_w / 100.0 }
+  if n > 2 and sat(s, n - 2, "vh") { return f * ui_st.ly_vp_h / 100.0 }
   return el_px(ui_st, f)
 }
 # the font size an element has so far in its cascade (its own, else its parent's)
@@ -55,7 +55,7 @@ function cs_vars_in(ui_st: mut UiState, n: UiNode, v: Val) -> Val {
   var found = false
   var i = 0
   while i + 4 <= len(s) {
-    if s[i..i + 4] == "var(" {
+    if sat(s, i, "var(") {
       found = true
       var j = i + 4
       var depth = 1
@@ -73,7 +73,7 @@ function cs_vars_in(ui_st: mut UiState, n: UiNode, v: Val) -> Val {
   return Value.str(tpl_words(out + s[at..len(s)]))
 }
 function cs_var_ref(ui_st: mut UiState, n: UiNode, inner: string) -> string {
-  let parts = lss_split(inner, 44)
+  let parts = mm_split(ui_st, inner, 44)
   let v = cs_var(n, tpl_words(parts[0]))
   if v != null { return v }
   if len(parts) > 1 { return tpl_words(inner[len(parts[0]) + 1..len(inner)]) }

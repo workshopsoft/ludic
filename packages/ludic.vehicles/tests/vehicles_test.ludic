@@ -8,6 +8,16 @@ import "ludic.base"
 import "ludic.physics"
 program VehiclesTest {
   numbers float
+  function pose(physics_st: mut PhysicsState, id: int) -> PhysPose {
+    let p = new PhysPose
+    if not phys_pose(physics_st, id, p) { return null }
+    return p
+  }
+  function wpose(physics_st: mut PhysicsState, id: int) -> PhysWalk {
+    let p = new PhysWalk
+    if not phys_walker_pose(physics_st, id, p) { return null }
+    return p
+  }
 
   function fk_ground(x: float, z: float) -> float {
     if x > 10.0 { return -(x - 10.0) }
@@ -95,7 +105,7 @@ program VehiclesTest {
     fk_lake(physics_st)
     if vehicles_test_st.legs < 0 { vehicles_test_st.legs = phys_walker_add(physics_st, 0.8, 1.7, x, y, z, 40.0, 450.0) }
     phys_walker_move(physics_st, vehicles_test_st.legs, x, y, z, vx, vz, 0.0, 0.45, 40.0, dt)
-    let p = phys_walker_pose(physics_st, vehicles_test_st.legs)
+    let p = wpose(physics_st, vehicles_test_st.legs)
     vehicles_test_st.lx = p.x
     vehicles_test_st.ly = p.y
     vehicles_test_st.lz = p.z
@@ -120,7 +130,7 @@ program VehiclesTest {
   function fk_drift(physics_st: mut PhysicsState, vehicles_test_st: VehiclesTestState, nid: int, fx: float, fz: float) -> void { phys_force(physics_st, vehicles_test_st.hull, fx, 0.0, fz) }
   function fk_read(physics_st: mut PhysicsState, vehicles_test_st: mut VehiclesTestState, nid: int) -> bool {
     if vehicles_test_st.hull < 0 or vehicles_test_st.hull_nid != nid { return false }
-    let p = phys_pose(physics_st, vehicles_test_st.hull)
+    let p = pose(physics_st, vehicles_test_st.hull)
     if p == null { return false }
     vehicles_test_st.hx = p.x
     vehicles_test_st.hy = p.y

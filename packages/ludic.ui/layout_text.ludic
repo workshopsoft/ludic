@@ -1,6 +1,6 @@
 # layout_text.ludic - a text's size: one line, or as many as it takes to fit its room (white-space
 # normal), breaking between words; nowrap keeps one line, and text-overflow: ellipsis cuts it
-function ly_measure_text(ui_st: UiState, n: UiNode, avail: float) -> void {
+function ly_measure_text(ui_st: mut UiState, n: UiNode, avail: float) -> void {
   n.lines = null
   let lh = ly_line_h(n)
   var one = ly_text_w(ui_st, n.text, n.rsize)
@@ -19,8 +19,8 @@ function ly_measure_text(ui_st: UiState, n: UiNode, avail: float) -> void {
   n.mw = n.mw + widest
   n.mh = n.mh + lh * float(len(n.lines))
 }
-function ly_wrap(ui_st: UiState, s: string, size: float, room: float) -> []string {
-  let words = lss_split(s, 32)
+function ly_wrap(ui_st: mut UiState, s: string, size: float, room: float) -> []string {
+  let words = mm_split(ui_st, s, 32)
   let out = new []string
   var line = ""
   for i in 0 .. len(words) {

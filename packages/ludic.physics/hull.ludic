@@ -12,9 +12,9 @@ export function phys_hull_add(physics_st: mut PhysicsState, x: float, y: float, 
 # a stroke of `forward` newtons along the bow and a turn of `turn` newton-metres about y, over the
 # next step
 export function phys_row(physics_st: mut PhysicsState, id: int, forward: float, turn: float) -> void {
-  let p = phys_pose(physics_st, id)
-  if p == null { return }
-  let yaw = phys_yaw_of(p)
+  if physics_st.ph_world == null or jph_body_read(physics_st.ph_world, id, physics_st.ph_vals) != 0 { return }
+  let v = physics_st.ph_vals
+  let yaw = Math.atan2(2.0 * (v[6] * v[4] + v[3] * v[5]), 1.0 - 2.0 * (v[4] * v[4] + v[3] * v[3]))
   phys_force(physics_st, id, -Math.sin(yaw) * forward, 0.0, -Math.cos(yaw) * forward)
   phys_torque(physics_st, id, 0.0, turn, 0.0)
 }

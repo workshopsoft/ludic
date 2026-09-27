@@ -55,7 +55,7 @@ function an_apply(ui_st: mut UiState, n: UiNode) -> void {
     ui_err(ui_st, `animation {n.anim}: there is no @keyframes of that name`)
     return
   }
-  var t = (an_now(ui_st) - an_began(ui_st, `{n.key}@{n.anim}`)) / n.anim_dur
+  var t = (an_now(ui_st) - an_began(ui_st, mm_join(ui_st, n.key, "@", n.anim))) / n.anim_dur
   if n.anim_loop {
     let lap = int(t)
     t = t - float(lap)

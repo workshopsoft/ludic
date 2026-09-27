@@ -43,17 +43,16 @@ export function phys_remove(physics_st: mut PhysicsState, id: int) -> void {
   jph_body_remove(physics_st.ph_world, id)
 }
 
-# where a body is, how it is turned and how fast it goes; null when there is no such body
-export function phys_pose(physics_st: mut PhysicsState, id: int) -> PhysPose {
-  if physics_st.ph_world == null { return null }
-  ph_buffers()
-  if jph_body_read(physics_st.ph_world, id, physics_st.ph_vals) != 0 { return null }
+# where a body is, how it is turned and how fast it goes, into the caller's own record (a query asked
+# every frame allocates nothing: there is no GC); false, and p untouched, when there is no such body
+export function phys_pose(physics_st: mut PhysicsState, id: int, p: PhysPose) -> bool {
+  if physics_st.ph_world == null { return false }
+  if jph_body_read(physics_st.ph_world, id, physics_st.ph_vals) != 0 { return false }
   let v = physics_st.ph_vals
-  let p = new PhysPose
   p.x = v[0];  p.y = v[1];  p.z = v[2]
   p.qx = v[3];  p.qy = v[4];  p.qz = v[5];  p.qw = v[6]
   p.vx = v[7];  p.vy = v[8];  p.vz = v[9]
-  return p
+  return true
 }
 
 # the heading a pose's rotation gives, in radians about y

@@ -4,19 +4,14 @@ const EL_BOXES: string = " col div progress meter section header footer nav main
 const EL_TEXTS: string = " text span p label h1 h2 h3 h4 h5 h6 strong em small b i a option "
 function bd_elem(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string) -> UiNode {
   ui_st.ui_at = k.where
-  let n = new UiNode
+  let n = nd_take(ui_st)
   n.key = key
   n.tag = k.tag
   n.env = e
   n.sheet = k.sheet
   n.style = k.style
-  n.children = new []UiNode
-  n.classes = new []string
-  n.akeys = new []string
-  n.avals = new []string
-  n.vals = new []Val
   el_kind(ui_st, n, k.tag)
-  for i in 0 .. len(k.keys) { el_keep(n, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
+  for i in 0 .. len(k.keys) { el_keep(ui_st, n, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
   n.hovered = fr_was_hovered(ui_st, key)
   n.on_names = k.on_keys
   n.on_acts = k.on_acts
@@ -28,7 +23,7 @@ function bd_elem(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string) -> UiNode 
   let say = ui_attr_text(n, "translate")
   if say == "no" { ui_st.tr_no = true } else if say == "yes" { ui_st.tr_no = false }
   bd_kids(ui_st, k.kids, e, key, n.children)
-  if k.text != null { el_text(n, ui_tr(ui_st, ui_eval_text(ui_st, k.text, e))) }
+  if k.text != null { el_text(ui_st, n, ui_tr(ui_st, ui_eval_text(ui_st, k.text, e))) }
   el_inline(n)
   if k.tag == "input" or k.tag == "select" or k.tag == "progress" or k.tag == "meter" { ct_build(ui_st, n) }
   ui_st.tr_no = was_no
@@ -45,23 +40,22 @@ function el_kind(ui_st: mut UiState, n: UiNode, tag: string) -> void {
   } else if tag == "input" or tag == "select" { n.focusable = true } else if tag == "spacer" { n.kind = UI_SPACER } else if tag == "scroll" { n.kind = UI_SCROLL } else if tag == "img" { n.kind = UI_IMAGE } else if tag == "hr" { n.kind = UI_RULE } else if not lk_in(EL_BOXES, tag) { ui_err(ui_st, `<{tag}>: there is no such element`) }
 }
 # a box with words in it holds them as a text of its own, as <div>words</div> does
-function el_text(n: UiNode, s: string) -> void {
+function el_text(ui_st: mut UiState, n: UiNode, s: string) -> void {
   if n.kind != UI_BOX and n.kind != UI_SCROLL {
     n.text = s
     return
   }
-  let t = new UiNode
+  let t = nd_take(ui_st)
   t.kind = UI_TEXT
   t.text = s
   t.env = n.env
-  t.children = new []UiNode
   push(n.children, t)
 }
 # id, class, hidden, disabled and src say what the element is; the rest are applied after the rules
-function el_keep(n: UiNode, key: string, v: Val) -> void {
-  let s = vl_text(v)
+function el_keep(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> void {
+  let s = vl_text_u(ui_st, v)
   if key == "id" { n.id = s } else if key == "class" {
-    let parts = lss_split(s, 32)
+    let parts = mm_split(ui_st, s, 32)
     for i in 0 .. len(parts) {
       if len(parts[i]) > 0 { push(n.classes, parts[i]) }
     }

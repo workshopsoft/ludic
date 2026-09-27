@@ -26,6 +26,9 @@ import "ludic.physics"
 
 ## The API
 
+A query fills a record the caller keeps (`p`, `h`) and allocates nothing: it is asked every frame, and
+Ludic gives no allocation back.
+
 | | |
 | --- | --- |
 | `phys_open(st, max_bodies, threads) -> bool`, `phys_close(st)`, `phys_is_open(st)` | a world, and everything in it let go |
@@ -34,15 +37,15 @@ import "ludic.physics"
 | `phys_ground_add`, `phys_static_add`, `phys_kinematic_add`, `phys_body_add(..., mass)` | bodies: the ground, still things, what the game moves (the player), what falls and floats |
 | `phys_settle(st)` | after adding many still things, before the first query |
 | `phys_remove(st, id)`, `phys_count(st)` | gone for good |
-| `phys_pose(st, id) -> PhysPose`, `phys_yaw_of(p)` | position, rotation, velocity |
+| `phys_pose(st, id, p) -> bool`, `phys_yaw_of(p)` | position, rotation, velocity |
 | `phys_place`, `phys_impulse`, `phys_set_velocity`, `phys_set_kinematic_target`, `phys_awake` | moving a body |
-| `phys_ray(st, o, d, mask) -> PhysHit` | the first thing along a ray |
+| `phys_ray(st, o, d, mask, h) -> bool` | the first thing along a ray |
 | `phys_top_at(st, x, z, r, from_y, depth, mask) -> float` | what a foot would land on (`CharacterGround.top_at`), `PHYS_NONE` if nothing |
-| `phys_push(st, x, z, r, y0, y1, mask) -> PhysPush` | the move that stands an upright body clear (`CharacterGround.push`) |
+| `phys_push(st, x, z, r, y0, y1, mask, p) -> int` | the move that stands an upright body clear (`CharacterGround.push`) |
 | `phys_resolve(st, x, z, r, y0, y1, mask) -> bool`, `phys_resolved_x` / `_z` | pushed clear in two passes, the place kept (`CharacterGround.push`, `pushed_x` / `_z`); a thing wholly under the feet or over the head is not in the way |
 | `phys_step_top(st, x, z, r, feet, reach, mask) -> float` | the highest top a foot could step up to, anything taller than `feet + reach` left out as a wall |
-| `phys_overlap(st, x, y, z, r, mask) -> []int` | the bodies a ball touches |
-| `phys_walker_add(st, r, h, x, y, z, max_slope, mass)`, `phys_walker_step(st, id, dt, vx, vz, jump) -> ground`, `phys_walker_pose -> PhysWalk`, `phys_walker_place`, `phys_walker_limits(step_up, stick)`, `phys_walker_remove` | a walking body (Jolt's CharacterVirtual): gravity, landing, steps, slopes, following the ground down; it shoves dynamic things and rays find its `body` |
+| `phys_overlap(st, x, y, z, r, mask) -> int`, `phys_overlap_id(st, i)` | how many bodies a ball touches, and each one |
+| `phys_walker_add(st, r, h, x, y, z, max_slope, mass)`, `phys_walker_step(st, id, dt, vx, vz, jump) -> ground`, `phys_walker_pose(st, id, p) -> bool`, `phys_walker_place`, `phys_walker_limits(step_up, stick)`, `phys_walker_remove` | a walking body (Jolt's CharacterVirtual): gravity, landing, steps, slopes, following the ground down; it shoves dynamic things and rays find its `body` |
 | `phys_force`, `phys_torque`, `phys_angular_impulse`, `phys_spin_y`, `phys_set_pose(st, id, pose)` | an oar's stroke and a turn; a guest's copy put where the host said |
 | `phys_float(st, id, buoyancy, linear_drag, angular_drag)`, `phys_sink`, `phys_floating` | a body buoyed each step against `PhysWater` and carried by its current |
 | `phys_facts(st)` | `PhysFact`: `PHYS_HIT` (two bodies met at `ph_hard` m/s or more), `PHYS_SPLASH` (a floating body reached water) |

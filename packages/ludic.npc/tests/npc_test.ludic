@@ -114,7 +114,7 @@ program NpcTest {
     expect_eq(p.act, NPCA_SIT)
   }
 
-  test "nobody walks into the lake" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+  test "nobody walks into the lake, and turning back from it is told as a fallback" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
     let p = one(npc_st, npc_tests_fake_st, NPCK_HIKER)
     npc_go(npc_st, p, -80.0, 0.0, NPCA_SIT, 30.0)
     var west = 0.0
@@ -123,6 +123,12 @@ program NpcTest {
       west = Math.min(west, p.x)
     }
     expect(west > -50.5)
+    var fell = 0
+    let fs = q_drain(npc_facts(npc_st))
+    for i in 0 .. len(fs) {
+      if fs[i].what == NPC_F_STUCK and fs[i].x > -52.0 { fell += 1 }
+    }
+    expect(fell >= 1)
   }
 
   test "a step's spot is where its hours say: the shore by day, home by night" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {

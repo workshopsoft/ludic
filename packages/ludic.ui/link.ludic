@@ -20,10 +20,9 @@ function lk_kids(ui_st: mut UiState, f: UiFile, t: UiTpl) -> void {
 function lk_element(ui_st: UiState, tag: string) -> bool { return lk_in(LK_OWN, tag) or lk_in(EL_BOXES, tag) or lk_in(EL_TEXTS, tag) or nt_find(ui_st, tag) != null }
 # a word in a list of words written " a b c "
 function lk_in(words: string, w: string) -> bool {
-  let pat = ` {w} `
-  let n = len(pat)
-  for i in 0 .. len(words) - n + 1 {
-    if words[i..i + n] == pat { return true }
+  let n = len(w)
+  for i in 0 .. len(words) - n - 1 {
+    if words[i] == 32 and words[i + n + 1] == 32 and sat(words, i + 1, w) { return true }
   }
   return false
 }

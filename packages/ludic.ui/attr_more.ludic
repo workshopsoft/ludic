@@ -1,13 +1,13 @@
 # attr_more.ludic - width and height (where 0 is 0 and calc() may hold a percentage), the flex
 # shorthand, flex-shrink, order, text-shadow, pointer-events, text-fit and line-height (text_fit.ludic)
 function el_more(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
-  let s = vl_text(v)
+  let s = vl_text_u(ui_st, v)
   if key == "shrink" { nx(n).shrink = Math.max(el_num(s), 0.0) } else if key == "order" { nx(n).order = int(el_num(s)) } else if key == "text-shadow" { el_text_shadow(ui_st, n, s) } else if key == "pointer-events" { nx(n).no_pointer = tpl_words(s) == "none" } else if key == "text-fit" { el_text_fit(ui_st, n, s) } else if key == "line-height" { el_line_h(ui_st, n, s) } else { return el_fit_props(ui_st, n, key, s) }
   return true
 }
 # width or height: a length (0 included), fill, a percentage, calc(), or auto/fit (none)
 function el_dim(ui_st: mut UiState, n: UiNode, wide: bool, v: Val) -> void {
-  let s = vl_text(v)
+  let s = vl_text_u(ui_st, v)
   var fixed = UI_AUTO
   var pct = 0.0
   var off = 0.0
@@ -40,8 +40,8 @@ function el_calc_len(ui_st: mut UiState, s: string) -> float {
   return ui_st.ca_px
 }
 # flex: 1  |  flex: 1 0  |  flex: 2 1 auto  |  flex: none  - the grow, then the shrink
-function el_flex_short(n: UiNode, s: string) -> void {
-  let parts = el_words(s)
+function el_flex_short(ui_st: mut UiState, n: UiNode, s: string) -> void {
+  let parts = mm_words(ui_st, s)
   if s == "none" {
     n.grow = 0.0
     nx(n).shrink = 0.0
@@ -72,7 +72,7 @@ function el_text_shadow(ui_st: mut UiState, n: UiNode, s: string) -> void {
   x.tsh_set = true
   x.tsh_c = -2
   if tpl_words(s) == "none" { return }
-  let parts = el_words(s)
+  let parts = mm_words(ui_st, s)
   var nums = 0
   var col = ""
   for i in 0 .. len(parts) {

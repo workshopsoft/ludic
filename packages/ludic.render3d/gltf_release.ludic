@@ -1,0 +1,70 @@
+# gltf_release.ludic - a loaded model let go of: its meshes, and each texture once nothing else uses
+# it. The glTF loader shares textures between models (a path loaded once, a LOD chain borrowing its
+# LOD0's material), so each cached texture carries a count of the primitives using it.
+
+# one more primitive uses the cached texture `id` (0, or a texture the cache did not load: nothing)
+function gltf_tex_ref(render3d_st: mut Render3dState, id: int) -> void {
+  if id == 0 or render3d_st.gltf_tex_refs == null { return }
+  for i in 0 .. render3d_st.gltf_tex_n { if render3d_st.gltf_tex_ids[i] == id { render3d_st.gltf_tex_refs[i] += 1;  return } }
+}
+
+# one primitive fewer: the last one frees the texture and forgets it, with every material naming it
+function gltf_tex_unref(render3d_st: mut Render3dState, id: int) -> void {
+  if id == 0 or render3d_st.gltf_tex_refs == null { return }
+  for i in 0 .. render3d_st.gltf_tex_n {
+    if render3d_st.gltf_tex_ids[i] == id {
+      render3d_st.gltf_tex_refs[i] -= 1
+      if render3d_st.gltf_tex_refs[i] > 0 { return }
+      gpu_tex_free(render3d_st, id)
+      gltf_tex_forget(render3d_st, i)
+      gltf_mats_forget(render3d_st, id)
+      return
+    }
+  }
+}
+
+# the cache entry i goes; the last entry takes its place
+function gltf_tex_forget(render3d_st: mut Render3dState, i: int) -> void {
+  let last = render3d_st.gltf_tex_n - 1
+  let paths = render3d_st.gltf_tex_paths
+  paths[i] = paths[last]
+  render3d_st.gltf_tex_ids[i] = render3d_st.gltf_tex_ids[last]
+  render3d_st.gltf_tex_refs[i] = render3d_st.gltf_tex_refs[last]
+  List.pop(paths)
+  render3d_st.gltf_tex_n = last
+}
+
+# a remembered material whose texture was freed is forgotten, so no later load borrows it
+function gltf_mats_forget(render3d_st: mut Render3dState, id: int) -> void {
+  if render3d_st.gltf_mat_names == null { return }
+  var k = 0
+  while k < render3d_st.gltf_mat_n {
+    if render3d_st.gltf_mat_diff[k] == id or render3d_st.gltf_mat_nrm[k] == id or render3d_st.gltf_mat_arm[k] == id {
+      let last = render3d_st.gltf_mat_n - 1
+      let names = render3d_st.gltf_mat_names
+      names[k] = names[last]
+      render3d_st.gltf_mat_diff[k] = render3d_st.gltf_mat_diff[last]
+      render3d_st.gltf_mat_nrm[k] = render3d_st.gltf_mat_nrm[last]
+      render3d_st.gltf_mat_arm[k] = render3d_st.gltf_mat_arm[last]
+      List.pop(names)
+      render3d_st.gltf_mat_n = last
+    } else {
+      k += 1
+    }
+  }
+}
+
+# Let a model go: every primitive's mesh, and its textures once no other model uses them. The
+# caller says when - no actor may draw the model afterwards (a released model's prims are emptied,
+# so a stale draw of it draws nothing).
+function model_release(render3d_st: mut Render3dState, m: Model) -> void {
+  if m == null or m.prims == null { return }
+  for i in 0 .. len(m.prims) {
+    let pr = m.prims[i]
+    if pr.mesh != null { gpu_mesh_free(render3d_st, pr.mesh);  pr.mesh = null }
+    gltf_tex_unref(render3d_st, pr.diff);  gltf_tex_unref(render3d_st, pr.nrm);  gltf_tex_unref(render3d_st, pr.arm)
+    pr.diff = 0;  pr.nrm = 0;  pr.arm = 0
+  }
+  let prims = m.prims
+  while len(prims) > 0 { List.pop(prims) }
+}

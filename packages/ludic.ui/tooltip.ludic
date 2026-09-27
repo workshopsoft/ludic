@@ -39,12 +39,11 @@ function tt_under(n: UiNode, x: float, y: float) -> UiNode {
 }
 function tt_draw(ui_st: mut UiState, root: UiNode) -> void {
   if ui_st.tt_key == "" or ui_st.tt_text == "" or an_now(ui_st) - ui_st.tt_since < 0.5 { return }
-  let n = ct_part(root, "ui-tooltip", "")
+  let n = ct_part(ui_st, root, "ui-tooltip", "")
   n.tag = "div"
   n.parent = root
-  n.children = new []UiNode
   let lines = tt_lines(ui_st.tt_text)
-  for i in 0 .. len(lines) { push(n.children, ct_part(root, "ui-tooltip-text", lines[i])) }
+  for i in 0 .. len(lines) { push(n.children, ct_part(ui_st, root, "ui-tooltip-text", lines[i])) }
   cs_tree(ui_st, n)
   ly_measure(ui_st, n, ui_st.ly_vp_w * 0.4, ui_px(ui_st, 16.0), root.rfg)
   let x = Math.min(ui_st.tt_x + ui_px(ui_st, 16.0), ui_st.ly_vp_x + ui_st.ly_vp_w - n.mw)

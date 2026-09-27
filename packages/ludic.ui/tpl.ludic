@@ -29,7 +29,7 @@ function tpl_read(ui_st: mut UiState, x: Xml, file: string) -> UiTpl {
   for i in 0 .. len(x.akeys) {
     let k: string = x.akeys[i]
     let v: string = x.avals[i]
-    if len(k) > 3 and k[0..3] == "on-" {
+    if len(k) > 3 and sat(k, 0, "on-") {
       push(t.on_keys, tpl_event(k[3..len(k)]))
       push(t.on_acts, act_parse(v, err))
     } else if k == "onclick" {
@@ -68,6 +68,7 @@ function tpl_value(v: string, err: []string) -> UiExpr {
 }
 # text as a reader sees it: the ends trimmed and every run of white space one space
 function tpl_words(s: string) -> string {
+  if tpl_clean(s) { return s }
   var out = ""
   var gap = false
   for i in 0 .. len(s) {
@@ -85,4 +86,16 @@ function tpl_attr(t: UiTpl, key: string) -> UiExpr {
     if t.keys[i] == key { return t.vals[i] }
   }
   return null
+}
+# no space at either end, no two together, no tab or line break: tpl_words would give it back as is
+function tpl_clean(s: string) -> bool {
+  let n = len(s)
+  if n == 0 { return true }
+  if s[0] == 32 or s[n - 1] == 32 { return false }
+  for i in 0 .. n {
+    let c = s[i]
+    if c == 9 or c == 10 or c == 13 { return false }
+    if c == 32 and s[i + 1] == 32 { return false }
+  }
+  return true
 }

@@ -2,7 +2,7 @@
 # for pictures and natives, zoom (zoom.ludic), and a list split at its top-level commas
 function el_fit_props(ui_st: mut UiState, n: UiNode, key: string, s: string) -> bool {
   if key == "aspect-ratio" {
-    let parts = lss_split(s, 47)
+    let parts = mm_split(ui_st, s, 47)
     var r = el_num(tpl_words(parts[0]))
     if len(parts) > 1 and el_num(tpl_words(parts[1])) > 0.0 { r = r / el_num(tpl_words(parts[1])) }
     if tpl_words(s) == "auto" { r = 0.0 }

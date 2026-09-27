@@ -41,7 +41,9 @@ function ly_place_line(ui_st: mut UiState, n: UiNode, from: int, to: int, top: f
   var used = 0.0
   var grows = 0.0
   var count = 0
-  let sizes = new []float
+  let depth = ui_st.ly_depth
+  ui_st.ly_depth += 1
+  let sizes = ly_scratch(ui_st, depth)
   for i in from .. to {
     push(sizes, ly_basis(n.children[i], n.dir, main_room))
     if n.children[i].pos < 2 {
@@ -52,7 +54,7 @@ function ly_place_line(ui_st: mut UiState, n: UiNode, from: int, to: int, top: f
   }
   used = used + n.gap * float(Math.max(count - 1, 0))
   let free = main_room - used
-  if free < 0.0 { ly_shrink_line(n, from, sizes, 0.0 - free) }
+  if free < 0.0 { ly_shrink_line(ui_st, depth, n, from, sizes, 0.0 - free) }
   ly_justify(ui_st, n, free, count, grows)
   let extra = ui_st.ly_extra
   var at = ui_st.ly_lead
@@ -65,6 +67,17 @@ function ly_place_line(ui_st: mut UiState, n: UiNode, from: int, to: int, top: f
     if c.pos == 1 { ly_nudge(n, c) }
     at = at + m + n.gap + extra
   }
+  ui_st.ly_depth = depth
+}
+# a line's sizes, and its shrink's frozen flags, in lists kept one a depth (a line's children lay out
+# their own lines while it is still placing them), emptied rather than made anew
+function ly_scratch(ui_st: mut UiState, depth: int) -> []float {
+  while len(ui_st.ly_sizes) <= depth {
+    push(ui_st.ly_sizes, new []float)
+    push(ui_st.ly_frozen, new []bool)
+  }
+  List.clear(ui_st.ly_sizes[depth])
+  return ui_st.ly_sizes[depth]
 }
 # one child: `m` along the run and its own size (or the whole room, stretched) across, less margins
 function ly_place_child(ui_st: mut UiState, n: UiNode, c: UiNode, at: float, top: float, m: float, cross_room: float) -> void {

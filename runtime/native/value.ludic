@@ -24,12 +24,22 @@ property Val {
   kids: []Val
 }
 
+# a number, a string or a null is one record; only a list or an object carries lists (made when first
+# filled) - three allocations for every scalar was most of what a UI frame made and never gave back
 function value_new(tag: int) -> Val {
   let v = new Val
   v.tag = tag
+  if tag == 5 or tag == 6 { value_lists(v) }
+  return v
+}
+function value_lists(v: Val) -> void {
+  if v.kids != null { return }
   v.keys = new []pointer
   v.kids = new []Val
-  return v
+}
+function value_n(v: Val) -> int {
+  if v.kids == null { return 0 }
+  return len(v.kids)
 }
 
 # --- constructors -----------------------------------------------------------
@@ -43,8 +53,13 @@ function value_float(x: float) -> Val { let v = value_new(7); v.num = float_bits
 function value_object() -> Val { return value_new(6) }
 
 # --- builders (return the container, so calls chain) ------------------------
-function value_add(list: Val, item: Val) -> Val { push(list.kids, item); return list }
+function value_add(list: Val, item: Val) -> Val {
+  value_lists(list)
+  push(list.kids, item)
+  return list
+}
 function value_put(obj: Val, key: pointer, item: Val) -> Val {
+  value_lists(obj)
   var i = 0
   while i < len(obj.keys) { if obj.keys[i] == key { obj.kids[i] = item; return obj };  i += 1 }
   push(obj.keys, key);  push(obj.kids, item)
@@ -53,7 +68,13 @@ function value_put(obj: Val, key: pointer, item: Val) -> Val {
 
 # --- accessors --------------------------------------------------------------
 function value_kind(v: Val) -> int { return v.tag }
-function value_count(v: Val) -> int { return len(v.kids) }
+function value_count(v: Val) -> int { return value_n(v) }
+# a list or an object emptied in place, its room kept - for one filled again every frame
+function value_clear(v: Val) -> void {
+  if v.kids == null { return }
+  List.clear(v.kids)
+  List.clear(v.keys)
+}
 function value_as_int(v: Val) -> int {
   if v.tag == 7 { return int(float_from_bits(v.num)) }
   return v.num
@@ -66,21 +87,21 @@ function value_as_float(v: Val) -> float {
 }
 function value_as_str(v: Val) -> string { if v.txt == null { return "" };  return v.txt }
 function value_at(list: Val, i: int) -> Val {
-  if i < 0 or i >= len(list.kids) { return value_null() }
+  if i < 0 or i >= value_n(list) { return value_null() }
   return list.kids[i]
 }
 function value_key_at(obj: Val, i: int) -> string {
-  if i < 0 or i >= len(obj.keys) { return "" }
+  if i < 0 or i >= value_n(obj) { return "" }
   return obj.keys[i]
 }
 function value_get(obj: Val, key: pointer) -> Val {
   var i = 0
-  while i < len(obj.keys) { if obj.keys[i] == key { return obj.kids[i] };  i += 1 }
+  while i < value_n(obj) { if obj.keys[i] == key { return obj.kids[i] };  i += 1 }
   return value_null()
 }
 function value_has(obj: Val, key: pointer) -> int {
   var i = 0
-  while i < len(obj.keys) { if obj.keys[i] == key { return 1 };  i += 1 }
+  while i < value_n(obj) { if obj.keys[i] == key { return 1 };  i += 1 }
   return 0
 }
 
@@ -132,7 +153,7 @@ function json_encode(v: Val) -> string {
   if v.tag == 5 {
     var out = "["
     var i = 0
-    while i < len(v.kids) {
+    while i < value_n(v) {
       if i > 0 { out += "," }
       out += json_encode(v.kids[i])
       i += 1
@@ -141,7 +162,7 @@ function json_encode(v: Val) -> string {
   }
   var out = "{"
   var i = 0
-  while i < len(v.keys) {
+  while i < value_n(v) {
     if i > 0 { out += "," }
     out = out + json_quote(v.keys[i]) + ":" + json_encode(v.kids[i])
     i += 1
@@ -176,9 +197,11 @@ function json_parse(s: pointer) -> Val {
 # a node or hold a literal, is not for this (Ludic has no collector; plan 23 of maroon-lake).
 function value_free(v: Val) -> void {
   if v == null { return }
-  for i in 0 .. len(v.kids) { value_free(v.kids[i]) }
-  free(v.kids)
-  free(v.keys)
+  if v.kids != null {
+    for i in 0 .. len(v.kids) { value_free(v.kids[i]) }
+    free(v.kids)
+    free(v.keys)
+  }
   free(v)
 }
 function json_free(v: Val) -> void { value_free(v) }

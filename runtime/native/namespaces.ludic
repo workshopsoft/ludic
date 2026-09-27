@@ -479,6 +479,7 @@ namespace Value {
   alias as_float(value) = value_as_float
   alias as_str(value) = value_as_str
   alias free(value) = value_free
+  alias clear(value) = value_clear
 }
 namespace Json {
   alias encode(value) = json_encode

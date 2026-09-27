@@ -39,23 +39,19 @@ export function ui_nodes(ui_st: mut UiState, screen: string, view: UiView) -> Ui
     return null
   }
   let t = ui_st.lib_screens[si]
+  pl_begin(ui_st, screen)
   lc_begin(ui_st)
   ui_st.ui_view = view
-  let e = env_new(null)
+  let e = env_new(ui_st, null)
   if view != null and view.model != null { e.model = view.model() } else { e.model = Value.object() }
   e.state = st_for(ui_st, screen, t, e)
-  let root = new UiNode
+  let root = nd_take(ui_st)
   root.key = screen
-  root.children = new []UiNode
   root.env = e
   root.sheet = t.sheet
-  root.classes = new []string
-  root.akeys = new []string
-  root.avals = new []string
-  root.vals = new []Val
   root.tag = "screen"
   for i in 0 .. len(t.keys) {
-    if t.keys[i] != "name" { el_keep(root, t.keys[i], ui_eval(ui_st, t.vals[i], e)) }
+    if t.keys[i] != "name" { el_keep(ui_st, root, t.keys[i], ui_eval(ui_st, t.vals[i], e)) }
   }
   bd_kids(ui_st, t.kids, e, screen, root.children)
   cs_tree(ui_st, root)
