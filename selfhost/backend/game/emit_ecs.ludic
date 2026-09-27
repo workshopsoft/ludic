@@ -123,11 +123,15 @@ function emit_ecs_allocator() -> void {
   emit("  br label %done\n")
   emit("fresh:\n")
   emit("  %ec = load i32, ptr @L_entc\n")
+  emit(`  %full = icmp sge i32 %ec, {me}\n`)
+  emit("  br i1 %full, label %over, label %room\n")
+  emit_ecs_full(me)
+  emit("room:\n")
   emit("  %ec1 = add i32 %ec, 1\n")
   emit("  store i32 %ec1, ptr @L_entc\n")
   emit("  br label %done\n")
   emit("done:\n")
-  emit("  %e = phi i32 [ %re, %reuse ], [ %ec, %fresh ]\n")
+  emit("  %e = phi i32 [ %re, %reuse ], [ %ec, %room ]\n")
   emit("  call void @L_reset(i32 %e)\n")
   emit("  %ap = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 %e\n")
   emit("  store i32 1, ptr %ap\n")
@@ -143,4 +147,16 @@ function emit_ecs_allocator() -> void {
   emit("  %fn1 = add i32 %fn, 1\n")
   emit("  store i32 %fn1, ptr @L_freen\n")
   emit("  ret void\n}\n\n")
+}
+
+# the store is fixed at MAX_ENT: one more entity used to be written past the end of every component
+# array, silently. It stops the program instead, and says where many things belong.
+function emit_ecs_full(me: pointer) -> void {
+  g_uses_panic = true
+  emit("over:\n")
+  let prefix = emit_str_const(`{g_src_name}: panic: `)
+  let m = emit_str_const(`more than {me} entities: the built-in ECS holds {me}; keep many things in a ludic.base Table`)
+  let se = emit_bind(stdstream_rhs(2))
+  emit(`  call i32 (ptr, ptr, ...) @fprintf(ptr {se}, ptr @.fmt_panic, ptr {prefix}, ptr {m})\n`)
+  emit("  call void @exit(i32 1)\n  unreachable\n")
 }
