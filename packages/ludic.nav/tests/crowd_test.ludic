@@ -25,7 +25,7 @@ program CrowdTest {
         x0 = 36.0
         x1 = 4.0
       }
-      let id = nav_crowd_add(nav_st, NAV_PERSON, x0, 0.0, z, 0.35, 1.8, 1.4, 0)
+      let id = nav_crowd_add(nav_st, NAV_PERSON, x0, 0.0, z, 0.35, 1.8, 1.4, 0, 2.0)
       expect(id >= 0)
       expect(nav_crowd_target(nav_st, NAV_PERSON, id, x1, 0.0, z))
       push(ct.ids, id)
@@ -73,12 +73,12 @@ program CrowdTest {
     expect(not nav_crowd_start(nav_st, NAV_PERSON, 8, 0.6))
     expect(nav_build(nav_st, NAV_PERSON, ground(40, 0), new NavConfig))
     expect(nav_crowd_start(nav_st, NAV_PERSON, 8, 0.6))
-    expect_eq(nav_crowd_add(nav_st, NAV_PERSON, -50.0, 0.0, -50.0, 0.35, 1.8, 1.4, 0), -1)
-    let a = nav_crowd_add(nav_st, NAV_PERSON, 5.0, 0.0, 5.0, 0.35, 1.8, 1.4, 0)
+    expect_eq(nav_crowd_add(nav_st, NAV_PERSON, -50.0, 0.0, -50.0, 0.35, 1.8, 1.4, 0, 2.0), -1)
+    let a = nav_crowd_add(nav_st, NAV_PERSON, 5.0, 0.0, 5.0, 0.35, 1.8, 1.4, 0, 2.0)
     expect(a >= 0)
     expect(not nav_crowd_target(nav_st, NAV_PERSON, a, -50.0, 0.0, -50.0))
     nav_drop(nav_st, NAV_PERSON)
     expect(not nav_crowd_read(nav_st, NAV_PERSON, a))
-    expect_eq(nav_crowd_add(nav_st, NAV_PERSON, 5.0, 0.0, 5.0, 0.35, 1.8, 1.4, 0), -1)
+    expect_eq(nav_crowd_add(nav_st, NAV_PERSON, 5.0, 0.0, 5.0, 0.35, 1.8, 1.4, 0, 2.0), -1)
   }
 }

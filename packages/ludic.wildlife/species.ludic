@@ -30,6 +30,7 @@ export property WildSpecies {
   keep_away: float = 60.0    # how far its ranges keep from where the valley starts, m
   range: float = 100.0       # how wide one of its ranges is, m
   scale: float = 1.0         # its size, times
+  spacing: float = 2.0       # how much room it keeps from others walking by (a herd more): a crowd's separation
 }
 
 export state WildlifeState {

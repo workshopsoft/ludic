@@ -24,8 +24,9 @@ NAV_SHIM void nav_crowd_free(void *p) {
   delete c;
 }
 
-// a walker at (x, y, z): its index, or -1 when the crowd is full or the point is off the mesh
-NAV_SHIM int nav_crowd_add(void *p, float x, float y, float z, float radius, float height, float speed, int filter) {
+// a walker at (x, y, z): its index, or -1 when the crowd is full or the point is off the mesh;
+// separation is how hard it keeps its distance (a herd animal more than a loner)
+NAV_SHIM int nav_crowd_add(void *p, float x, float y, float z, float radius, float height, float speed, int filter, float separation) {
   Crowd *c = static_cast<Crowd *>(p);
   dtCrowdAgentParams ap;
   memset(&ap, 0, sizeof(ap));
@@ -35,7 +36,7 @@ NAV_SHIM int nav_crowd_add(void *p, float x, float y, float z, float radius, flo
   ap.maxAcceleration = speed * 4.0f;
   ap.collisionQueryRange = radius * 12.0f;
   ap.pathOptimizationRange = radius * 30.0f;
-  ap.separationWeight = 2.0f;
+  ap.separationWeight = separation;
   ap.updateFlags = DT_CROWD_ANTICIPATE_TURNS | DT_CROWD_OBSTACLE_AVOIDANCE | DT_CROWD_SEPARATION | DT_CROWD_OPTIMIZE_TOPO | DT_CROWD_OPTIMIZE_VIS;
   ap.obstacleAvoidanceType = 3;
   ap.queryFilterType = (unsigned char)(filter >= 0 && filter < NAV_FILTERS ? filter : 0);

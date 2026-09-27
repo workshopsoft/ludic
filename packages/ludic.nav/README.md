@@ -75,7 +75,7 @@ the PC (Git Bash, the LLVM installer's clang). `native/LICENSE-recastnavigation`
 ## Crowds (phase 18)
 
 `nav_crowd_start(kind, max, max_radius)` puts a DetourCrowd on a kind's mesh, with the mesh's tastes as
-its filters. `nav_crowd_add(kind, x, y, z, radius, height, speed, filter)` adds a walker (snapped to
+its filters. `nav_crowd_add(kind, x, y, z, radius, height, speed, filter, separation)` adds a walker (snapped to
 the mesh, -1 off it), `nav_crowd_target` and `nav_crowd_speed` say where and how fast, and
 `nav_crowd_step(dt)` steps every crowd. `nav_crowd_read` puts a walker into `nav_agent_x/y/z/vx/vz`,
 and `nav_crowd_us()` is what the stepping has cost. The mechanic decides and the crowd moves, and
