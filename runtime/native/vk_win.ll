@@ -363,3 +363,9 @@ entry:
   %r = call i64 %fn(ptr %a0, ptr %a1)
   ret i64 %r
 }
+
+; the frame's autorelease pool is a macOS matter (vk_mac.ll); Windows has nothing to drain
+define void @lvk_frame_pool() {
+entry:
+  ret void
+}

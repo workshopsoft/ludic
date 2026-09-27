@@ -225,3 +225,26 @@ entry:
   %r = call i64 %fn(ptr %a0, ptr %a1)
   ret i64 %r
 }
+
+; ---- the frame's autorelease pool --------------------------------------------------------------
+; MoltenVK and CAMetalLayer autorelease objects on every frame (the drawable, each render pass's
+; descriptor), and a program that pumps its own events never drains a pool: without this they are
+; kept for the life of the process - 160 MB/s of small allocations in a windowed valley.
+; lvk_frame_pool() pops the pool the last frame pushed and pushes the next one.
+declare ptr @objc_autoreleasePoolPush()
+declare void @objc_autoreleasePoolPop(ptr)
+@lvk_pool = internal global ptr null
+
+define void @lvk_frame_pool() {
+entry:
+  %old = load ptr, ptr @lvk_pool
+  %have = icmp ne ptr %old, null
+  br i1 %have, label %pop, label %push
+pop:
+  call void @objc_autoreleasePoolPop(ptr %old)
+  br label %push
+push:
+  %p = call ptr @objc_autoreleasePoolPush()
+  store ptr %p, ptr @lvk_pool
+  ret void
+}
