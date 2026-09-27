@@ -1,0 +1,91 @@
+# table.ludic - the animals, rows of a ludic.base Table: where each stands, its species and whether
+# it lives are columns, with a grid over the living, the living by species, and a nid to its handle.
+# The AI moves an animal by its record; wildlife_refile files every move once, after the tick.
+export const WA_X: int = 0          # float columns
+export const WA_Z: int = 1
+export const WA_SP: int = 0         # int columns
+export const WA_ALIVE: int = 1      # 1 while alive
+const WA_CELL: float = 32.0
+
+export property WildTable {
+  tab: Table<WildAnimal> = null
+  grid: Grid = null
+  species: IntIndex = null          # the living, by species
+  nids: IntMap = null
+}
+
+function wl__new() -> WildTable {
+  let w = new WildTable
+  let tb: Table<WildAnimal> = table_new(2, 2)
+  w.tab = tb
+  w.grid = tb_grid(tb, WA_X, WA_Z, WA_ALIVE, WA_CELL)
+  w.species = tb_index(tb, WA_SP, WA_ALIVE)
+  w.nids = imap_new()
+  return w
+}
+
+function wl_row(a: WildAnimal) -> int {
+  if a == null or a.tab == null { return -1 }
+  return tb_row(a.tab, a.ent)
+}
+
+# a new row for `a`, its columns from its record
+function wl_file(w: WildTable, a: WildAnimal) -> void {
+  a.tab = w.tab
+  a.ent = tb_add(w.tab, a)
+  let r = wl_row(a)
+  let tb = w.tab
+  tb.f[WA_X][r] = a.x
+  tb.f[WA_Z][r] = a.z
+  tb.i[WA_SP][r] = a.sp
+  var on = 0
+  if a.alive { on = 1 }
+  tb.i[WA_ALIVE][r] = on
+  tb_refile(tb, r)
+  if a.nid != 0 { imap_put(w.nids, a.nid, a.ent) }
+}
+
+# alive or not, the record and the row together (a copy the game is handed says so too)
+export function wildlife_set_alive(a: WildAnimal, on: bool) -> void {
+  if a == null { return }
+  a.alive = on
+  let r = wl_row(a)
+  if r < 0 { return }
+  var v = 0
+  if on { v = 1 }
+  tb_set_i(a.tab, WA_ALIVE, r, v)
+}
+
+# every row whose record moved since it was filed, refiled: once after a tick that moves them all,
+# and by the game after it moves the copies a guest is handed
+export function wildlife_refile(wildlife_st: mut WildlifeState) -> void {
+  let tb = wildlife_st.wl.tab
+  let xs = tb.f[WA_X]
+  let zs = tb.f[WA_Z]
+  for r in 0 .. tb_len(tb) {
+    let a = tb.rec[r]
+    if xs[r] != a.x or zs[r] != a.z { tb_set_xz(tb, WA_X, WA_Z, r, a.x, a.z) }
+  }
+}
+
+# after a refile, the columns say what the records say; the count of rows that do not
+export function wildlife_verify(wildlife_st: WildlifeState) -> int {
+  let tb = wildlife_st.wl.tab
+  var bad = 0
+  for r in 0 .. tb_len(tb) {
+    let a = tb.rec[r]
+    var on = 0
+    if a.alive { on = 1 }
+    if tb.f[WA_X][r] != a.x or tb.f[WA_Z][r] != a.z or tb.i[WA_SP][r] != a.sp or tb.i[WA_ALIVE][r] != on or a.ent != tb.ent[r] { bad += 1 }
+  }
+  return bad
+}
+
+# the nearest living animal of a species (below 0: any) within maxr (0: any distance), or null
+export function wildlife_nearest(wildlife_st: WildlifeState, sp: int, x: float, z: float, maxr: float) -> WildAnimal {
+  let w = wildlife_st.wl
+  var r = -1
+  if sp < 0 { r = tb_nearest(w.tab, w.grid, x, z, maxr, -1, 0) } else { r = tb_nearest_of(w.tab, w.grid, w.species, x, z, maxr, sp) }
+  if r < 0 { return null }
+  return w.tab.rec[r]
+}
