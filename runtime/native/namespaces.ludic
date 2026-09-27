@@ -478,10 +478,12 @@ namespace Value {
   alias as_int(value) = value_as_int
   alias as_float(value) = value_as_float
   alias as_str(value) = value_as_str
+  alias free(value) = value_free
 }
 namespace Json {
   alias encode(value) = json_encode
   alias parse(text) = json_parse
+  alias free(value) = json_free
 }
 namespace Xml {
   alias parse(text) = xml_parse

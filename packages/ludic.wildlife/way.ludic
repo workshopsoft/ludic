@@ -1,0 +1,36 @@
+# way.ludic - where an animal walks: by the world's path to where it is going (WildlifeWorld.way, a
+# navmesh by its habitat's taste in Maroon Lake), to a target about home it can reach (goal), and
+# straight, as before, where the world has no answer
+
+# face the way toward (tx, tz): the next corner of the world's path for it, asked again every
+# WL_WAY_EVERY seconds or on reaching the corner; without a path, the straight line as before
+const WL_WAY_EVERY: float = 0.5
+function wl_head(a: WildAnimal, tx: float, tz: float, rate: float, dt: float) -> void {
+  a.way_t = a.way_t - dt
+  let cx = a.wx - a.x
+  let cz = a.wz - a.z
+  if a.way_t <= 0.0 or cx * cx + cz * cz < 1.0 {
+    a.way_t = WL_WAY_EVERY
+    a.wx = tx
+    a.wz = tz
+    if WildlifeWorld.way(a, tx, tz) {
+      a.wx = WildlifeWorld.way_x()
+      a.wz = WildlifeWorld.way_z()
+    }
+  }
+  wl_face(a, a.wx, a.wz, rate, dt)
+}
+
+# somewhere about home: a spot the world says it can walk to when it knows, seeded by the same two
+# draws the old target took, so the dice are the same whether it knows or not
+function wl_pick_target(wildlife_st: WildlifeState, a: WildAnimal, radius: float) -> void {
+  let ang = wl_rnd(wildlife_st) * WL_TAU
+  let d = wl_rnd(wildlife_st) * radius
+  a.tx = a.home_x + Math.cos(ang) * d
+  a.tz = a.home_z + Math.sin(ang) * d
+  a.way_t = 0.0
+  if WildlifeWorld.goal(a, a.home_x, a.home_z, radius, int(ang * 100000.0) + int(d * 1000.0)) {
+    a.tx = WildlifeWorld.way_x()
+    a.tz = WildlifeWorld.way_z()
+  }
+}

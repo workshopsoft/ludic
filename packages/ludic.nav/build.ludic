@@ -47,8 +47,8 @@ export function nav_polygons(nav_st: NavState, kind: int) -> int {
   return nvc_polys(h)
 }
 
-# a kind's mesh written to a file, and read back. Reading holds the file's bytes for good (a slice
-# is never given back), so a mesh is loaded once per map, never per frame
+# a kind's mesh written to a file, and read back - through the asset pack when it is in one - into the
+# shim's own memory, which it frees once the tiles are made, so a map swap leaves nothing behind
 export function nav_save_file(nav_st: NavState, kind: int, path: string) -> bool {
   let h = nv_mesh(nav_st, kind)
   if h == null { return false }
@@ -59,8 +59,14 @@ export function nav_save_file(nav_st: NavState, kind: int, path: string) -> bool
   return Fs.write_bytes(path, buf, n)
 }
 export function nav_load_file(nav_st: mut NavState, kind: int, path: string) -> bool {
-  if not Fs.exists(path) { return false }
-  let buf = Fs.read_bytes(path)
-  if buf == null or len(buf) == 0 { return false }
-  return nv_set(nav_st, kind, nvc_load(buf, len(buf)))
+  let f = file_open(path, "rb")
+  if f == null { return false }
+  file_seek(f, 0, 2)
+  let n = file_tell(f)
+  file_seek(f, 0, 0)
+  let buf = nvc_stage(n)
+  var got = 0
+  if buf != null { got = file_read(f, buf, n) }
+  file_close(f)
+  return nv_set(nav_st, kind, nvc_load_staged(buf, got))
 }

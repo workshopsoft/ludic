@@ -1,5 +1,5 @@
 # steer.ludic - turning toward a point at a rate, a step along the facing that turns away from water
-# and a climb, and a target somewhere about home; a walker leaves a print every 2.8 m
+# and a climb; a walker leaves a print every 2.8 m (the way there and a target about home: way.ludic)
 function wl_wrap(a: float) -> float {
   var r = a
   while r > 3.1415927 { r = r - WL_TAU }
@@ -56,13 +56,6 @@ function wl_push(wildlife_st: mut WildlifeState, a: WildAnimal, s: WildSpecies, 
     wildlife_st.wl_out_z = WildlifeWorld.pushed_z()
   }
   return hit
-}
-
-function wl_pick_target(wildlife_st: WildlifeState, a: WildAnimal, radius: float) -> void {
-  let ang = wl_rnd(wildlife_st) * WL_TAU
-  let d = wl_rnd(wildlife_st) * radius
-  a.tx = a.home_x + Math.cos(ang) * d
-  a.tz = a.home_z + Math.sin(ang) * d
 }
 
 function wl_at_target(a: WildAnimal, r: float) -> bool {

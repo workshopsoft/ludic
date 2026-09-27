@@ -13,3 +13,5 @@ extern function nvc_path(h: pointer, f: int, sx: float, sy: float, sz: float, ex
 extern function nvc_partial(h: pointer) -> int = "nav_partial"
 extern function nvc_raycast(h: pointer, f: int, sx: float, sy: float, sz: float, ex: float, ez: float) -> int = "nav_raycast"
 extern function nvc_random_near(h: pointer, f: int, x: float, y: float, z: float, r: float, seed: int, out: pointer) -> int = "nav_random_near"
+extern function nvc_stage(size: int) -> pointer = "nav_stage"
+extern function nvc_load_staged(buf: pointer, size: int) -> pointer = "nav_load_staged"

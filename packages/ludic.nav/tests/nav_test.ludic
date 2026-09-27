@@ -76,6 +76,18 @@ program NavTest {
     expect_eq(nav_near_z(nav_st), z7)
   }
 
+  test "the next corner is the path's second, read back as the nearest point" (nav_st: mut NavState) {
+    expect(meadow(nav_st, NAV_PERSON, 0, true))
+    let n = nav_path(nav_st, NAV_PERSON, 0, 5.0, 0.0, 20.0, 35.0, 0.0, 20.0)
+    let cx = nav_corner_x(nav_st, 1)
+    let cz = nav_corner_z(nav_st, 1)
+    expect(n >= 3)
+    expect(nav_next_corner(nav_st, NAV_PERSON, 0, 5.0, 0.0, 20.0, 35.0, 0.0, 20.0))
+    expect_near(nav_near_x(nav_st), cx, 0.0001)
+    expect_near(nav_near_z(nav_st), cz, 0.0001)
+    expect(not nav_next_corner(nav_st, NAV_PERSON, 0, -50.0, 0.0, -50.0, 35.0, 0.0, 20.0))
+  }
+
   test "a filter that dislikes a band of thicket walks round it; the plain one goes through" (nav_st: mut NavState) {
     expect(meadow(nav_st, NAV_PERSON, 3, false))
     nav_area_cost(nav_st, NAV_PERSON, 1, 2, 20.0)

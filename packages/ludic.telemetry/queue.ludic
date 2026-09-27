@@ -92,6 +92,10 @@ function telemetry__read_obj(path: string) -> Val {
   let s = Fs.read_text(path)
   if s == null { return null }
   let v = Json.parse(s)
-  if v == null or Value.kind(v) != 6 { return null }
+  if v == null { return null }
+  if Value.kind(v) != 6 {
+    Json.free(v)
+    return null
+  }
   return v
 }

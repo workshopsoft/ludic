@@ -166,8 +166,22 @@ function jp_skip_ws(p: JP) -> void {
 function json_parse(s: pointer) -> Val {
   let p = new JP
   p.s = s;  p.i = 0;  p.n = len(s)
-  return jp_value(p)
+  let v = jp_value(p)
+  free(p)
+  return v
 }
+
+# Let a parsed tree go once what it describes is built: every node and its lists. Its strings stay -
+# a caller may keep a name it read out of the tree - and a tree put together by hand, which may share
+# a node or hold a literal, is not for this (Ludic has no collector; plan 23 of maroon-lake).
+function value_free(v: Val) -> void {
+  if v == null { return }
+  for i in 0 .. len(v.kids) { value_free(v.kids[i]) }
+  free(v.kids)
+  free(v.keys)
+  free(v)
+}
+function json_free(v: Val) -> void { value_free(v) }
 
 function jp_value(p: JP) -> Val {
   jp_skip_ws(p)
@@ -182,9 +196,29 @@ function jp_value(p: JP) -> Val {
   return jp_number(p)
 }
 
-# read a quoted string (cursor on the opening quote) -> the unescaped contents.
+# read a quoted string (cursor on the opening quote) -> the unescaped contents. One allocation for a
+# string with no escape in it: built a character at a time, every step was a string never freed
 function jp_string(p: JP) -> string {
   p.i += 1                                    # skip opening quote
+  let a = p.i
+  while p.i < p.n {
+    let c = p.s[p.i]
+    if c == '"' {
+      let out = p.s[a..p.i]
+      p.i += 1
+      return out
+    }
+    if c == '\\' {
+      p.i = a
+      return jp_string_esc(p)
+    }
+    p.i += 1
+  }
+  return p.s[a..p.n]
+}
+
+# the same with escapes in it, the rare case, a character at a time
+function jp_string_esc(p: JP) -> string {
   var out = ""
   while p.i < p.n {
     let c = p.s[p.i]

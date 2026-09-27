@@ -87,9 +87,17 @@ export port NpcWorld {       # every member has a default: a flat dry field at n
   next_id: fn() -> int, body_of: fn(int) -> int      # an id across machines; a look seed's body
   taken: fn(string) -> bool                          # a name the place keeps
   born / gone: fn(NpcPerson) -> void                 # draw it, stop drawing it
+  way: fn(NpcPerson, x, z) -> bool, way_x, way_z      # the next corner of its way toward (x, z)
 }
 export port NpcTalk { say: fn(NpcPerson, int) -> string, greeting: fn(NpcPerson) -> string }
 ```
+
+**A person walks by the world's way where the world has one.** `way` is asked for the next corner
+toward where it is going - every half second, on reaching the corner, and at once for a new target -
+and the person walks corner to corner, but begins its errand only at the target itself. With no
+answer (the default) it walks straight and steps round what is in the way, as before; the step
+round and the twenty seconds' give-up stay as the fallback. Maroon Lake binds `way` to its navmesh
+by a person's taste.
 
 ## API
 

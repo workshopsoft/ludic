@@ -1,6 +1,6 @@
-# walk.ludic - walking to the target: turn toward it, step, slid round a trunk or a tent, never into
-# the water and never up a scramble - step round it instead - and give up on a target that gets no
-# closer for twenty seconds
+# walk.ludic - walking to the target by the world's way where it has one (way.ludic): turn toward the
+# next corner, step, slid round a trunk or a tent, never into the water and never up a scramble - step
+# round it instead - and give up on a target that gets no closer for twenty seconds
 const NP_BODY_R: float = 0.35      # a person's width, for the still things
 
 export function npc_walk(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void {
@@ -10,12 +10,17 @@ export function npc_walk(npc_st: mut NpcState, p: NpcPerson, dt: float) -> void 
     gx = p.vx
     gz = p.vz
   }
-  let dx = gx - p.x
-  let dz = gz - p.z
-  if Math.sqrt(dx * dx + dz * dz) < 1.2 {
+  if npc_d(p.x, p.z, gx, gz) < 1.2 {
     np_arrive(npc_st, p)
     return
   }
+  if not p.via_on {
+    np_way(p, dt)
+    gx = p.wx
+    gz = p.wz
+  }
+  let dx = gx - p.x
+  let dz = gz - p.z
   let dg = npc_d(p.x, p.z, p.tx, p.tz)
   if dg < p.best - 1.0 {
     p.best = dg
@@ -78,29 +83,4 @@ function np_arrive(npc_st: mut NpcState, p: NpcPerson) -> void {
   p.fz = fz
   p.stall = 0.0
   if p.act != NPCA_WALK { np_fact(npc_st, NPC_F_ARRIVED, p, -1) }
-}
-
-function np_detour(p: NpcPerson, want: float) -> bool {
-  for k in 0 .. 8 {
-    let ang = want + float((k / 2 + 1) * (1 - 2 * (k % 2))) * 0.6
-    let x = p.x - Math.sin(ang) * 6.0
-    let z = p.z - Math.cos(ang) * 6.0
-    if npc_line_ok(p.x, p.z, x, z) {
-      p.via_on = true
-      p.vx = x
-      p.vz = z
-      p.yaw = ang
-      return true
-    }
-  }
-  return false
-}
-
-function np_stuck(npc_st: mut NpcState, p: NpcPerson) -> void {
-  p.fails += 1
-  p.via_on = false
-  if p.fails >= 3 {
-    p.fails = 0
-    npc_wander(npc_st, p)
-  } else { npc_plan(npc_st, p) }
 }

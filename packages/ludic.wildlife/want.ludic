@@ -10,7 +10,7 @@ function wl_seek(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bo
     a.timer = 2.0
     return true
   }
-  wl_face(a, a.spot_x, a.spot_z, 2.0, dt)
+  wl_head(a, a.spot_x, a.spot_z, 2.0, dt)
   a.speed = wl_sp(wildlife_st, a.sp).walk
   a.tx = a.spot_x
   a.tz = a.spot_z
@@ -44,6 +44,7 @@ function wl_drink(wildlife_st: WildlifeState, a: WildAnimal, dt: float, gh: floa
   let water = a.thirst > a.hunger
   if not WildlifeWorld.spot(a, water, wildlife_st.wl_spot_ask) { return false }
   a.spot = wildlife_st.wl_spot_ask.uid
+  a.way_t = 0.0
   a.spot_x = wildlife_st.wl_spot_ask.x
   a.spot_z = wildlife_st.wl_spot_ask.z
   a.spot_water = wildlife_st.wl_spot_ask.water

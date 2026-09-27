@@ -19,6 +19,16 @@ export function nav_random_near(nav_st: NavState, kind: int, filter: int, x: flo
   return nvc_random_near(h, filter, x, y, z, r, seed, nav_st.nv_near) == 1
 }
 
+# the next corner of the way from (sx, sy, sz) toward (ex, ey, ez) - the first after the start - read
+# back as the nearest point is (nav_near_x / _z), so a walker's question and a goal share one answer
+export function nav_next_corner(nav_st: mut NavState, kind: int, filter: int, sx: float, sy: float, sz: float, ex: float, ey: float, ez: float) -> bool {
+  if nav_path(nav_st, kind, filter, sx, sy, sz, ex, ey, ez) < 2 { return false }
+  nav_st.nv_near[0] = nav_st.nv_out[3]
+  nav_st.nv_near[1] = nav_st.nv_out[4]
+  nav_st.nv_near[2] = nav_st.nv_out[5]
+  return true
+}
+
 # a way from one point to another: its corners, first the start and last the end (or as near the end
 # as the mesh reaches - nav_partial says which); -1 when either end is off the mesh
 export function nav_path(nav_st: mut NavState, kind: int, filter: int, sx: float, sy: float, sz: float, ex: float, ey: float, ez: float) -> int {
@@ -26,9 +36,17 @@ export function nav_path(nav_st: mut NavState, kind: int, filter: int, sx: float
   nav_st.nv_count = 0
   if h == null { return -1 }
   let n = nvc_path(h, filter, sx, sy, sz, ex, ey, ez, nav_st.nv_out, NAV_CORNERS)
+  nav_st.nv_asked += 1
   if n > 0 { nav_st.nv_count = n }
+  if n >= 2 { nav_st.nv_found += 1 }
+  if n > 0 and nvc_partial(h) == 1 { nav_st.nv_short += 1 }
   return n
 }
+
+# how many paths were asked for, found, and cut short (the end out of reach) since the meshes loaded
+export function nav_asked(nav_st: NavState) -> int { return nav_st.nv_asked }
+export function nav_found(nav_st: NavState) -> int { return nav_st.nv_found }
+export function nav_short(nav_st: NavState) -> int { return nav_st.nv_short }
 export function nav_partial(nav_st: NavState, kind: int) -> bool {
   let h = nv_mesh(nav_st, kind)
   return h != null and nvc_partial(h) == 1

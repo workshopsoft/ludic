@@ -46,8 +46,17 @@ export port WildlifeWorld {        # every member has a default: a flat dry mead
   next_id: fn() -> int                                # an animal's id across machines
   born: fn(WildAnimal) -> void                        # draw it
   placed: fn(WildRange, int) -> void                  # a range was set out: put its water and forage down
+  way: fn(WildAnimal, float, float) -> bool           # the next corner of its way toward (x, z), into way_x / _z
+  goal: fn(WildAnimal, x, z, r, seed) -> bool         # a spot about r from (x, z) it can walk to, into way_x / _z
 }
 ```
+
+**An animal walks by the world's way where the world has one.** Wandering and going to water or
+forage face the next corner `way` gives (asked again every half second, or on reaching the corner),
+and a wander's target is a spot `goal` says it can reach, seeded by the same two draws the old
+target took - so binding them changes where an animal walks and never the order of the dice. With
+no answer (the defaults) it walks straight and turns 75 degrees off water and a climb, as before.
+Maroon Lake binds both to its navmesh, walked by the species' habitat's taste.
 
 ## API
 

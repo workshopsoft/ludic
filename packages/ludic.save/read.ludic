@@ -6,8 +6,10 @@ export function save_parse(text: string, f: SaveFormat) -> SaveRead {
   if text == null { return read_new(SAVE_NONE, null) }
   if not save_text_intact(text) { return read_new(SAVE_CORRUPT, null) }
   let v = Json.parse(text)
-  if value_kind(v) != 6 { return read_new(SAVE_CORRUPT, null) }          # 6 is an object
-  if f.is_one != null and not f.is_one(v) { return read_new(SAVE_CORRUPT, null) }
+  if value_kind(v) != 6 or (f.is_one != null and not f.is_one(v)) {      # 6 is an object
+    if v != null { Json.free(v) }                                        # a refused tree is let go
+    return read_new(SAVE_CORRUPT, null)
+  }
   return read_new(SAVE_OK, v)
 }
 
