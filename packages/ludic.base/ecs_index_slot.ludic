@@ -1,0 +1,24 @@
+# ludic.base/ecs_index_slot.ludic - where a value's list lives: a small value (a kind) is its own
+# slot; a large one (a chunk's packed cell) is given the next slot through a map, so a sparse
+# value costs one list and not every list up to it
+const IX_DENSE: int = 1024     # a value below this is its own slot; above, one is given it
+
+# the slot value v's list is in, -1 when it has none (and `make` did not ask for one)
+function ix_slot(ix: IntIndex, v: int, make: bool) -> int {
+  if v < 0 { return -1 }
+  if v < IX_DENSE {
+    if v >= len(ix.lists) {
+      if not make { return -1 }
+      while len(ix.lists) <= v { push(ix.lists, words(0)) }
+    }
+    return v
+  }
+  var s = imap_get(ix.sparse, v, -1)
+  if s < 0 and make {
+    while len(ix.lists) < IX_DENSE { push(ix.lists, words(0)) }
+    s = len(ix.lists)
+    push(ix.lists, words(0))
+    imap_put(ix.sparse, v, s)
+  }
+  return s
+}

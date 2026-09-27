@@ -192,7 +192,7 @@ program Smooth {
   handler Draw(render3d_st: mut Render3dState, smooth_st: mut SmoothState) phase Render {
     r3d_frame(render3d_st, float(Time.elapsed()))
     smooth_st.frame += 1
-    if smooth_st.frame == smooth_st.shot_at { Gl.screenshot(path: "build/smooth.ppm") }
-    Gl.swap()
+    if smooth_st.frame == smooth_st.shot_at { r3d_screenshot(render3d_st, "build/smooth.ppm") }
+    r3d_present(render3d_st)
   }
 }

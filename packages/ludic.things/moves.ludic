@@ -1,0 +1,55 @@
+# moves.ludic - a Thing moved, shown or hidden: the record and its row together, so the grid, the
+# kind indexes and the chunk index never answer for where it was or what it was
+export function thing_move(t: Thing, x: float, z: float, yaw: float) -> void {
+  thing_move_to(t, x, ThingsWorld.ground(x, z), z, yaw)
+}
+
+export function thing_move_to(t: Thing, x: float, y: float, z: float, yaw: float) -> void {
+  thing_place_at(t, x, y, z, yaw)
+  ThingsWorld.moved(t)
+}
+
+# moved without telling the port: a stand-in the game draws itself, or nothing draws
+export function thing_place_at(t: Thing, x: float, y: float, z: float, yaw: float) -> void {
+  t.x = x
+  t.y = y
+  t.z = z
+  t.yaw = yaw
+  let r = th_row(t)
+  if r >= 0 { th_moved(t.tab, r, x, z) }
+}
+
+export function thing_set_active(t: Thing, on: bool) -> void {
+  if t == null { return }
+  thing_set_on(t, on)
+  ThingsWorld.shown(t)
+}
+export function thing_hide(t: Thing) -> void { thing_set_active(t, false) }
+export function thing_show(t: Thing) -> void { thing_set_active(t, true) }
+
+# active or not without telling the port
+export function thing_set_on(t: Thing, on: bool) -> void {
+  if t == null { return }
+  t.active = on
+  let r = th_row(t)
+  if r < 0 { return }
+  var v = 0
+  if on { v = 1 }
+  tb_set_i(t.tab, TH_ON, r, v)
+}
+
+# where it stands on the ground plane, without telling the port (its height is the caller's)
+export function thing_set_xz(t: Thing, x: float, z: float) -> void {
+  if t == null { return }
+  t.x = x
+  t.z = z
+  let r = th_row(t)
+  if r >= 0 { th_moved(t.tab, r, x, z) }
+}
+
+# where a row now stands: its columns, its cell in the grid and its chunk
+function th_moved(tb: Table<Thing>, r: int, x: float, z: float) -> void {
+  tb_set_xz(tb, TH_X, TH_Z, r, x, z)
+  let c = chunk_of(x, z, TH_CHUNK_M)
+  if tb.i[TH_CHUNK][r] != c { tb_set_i(tb, TH_CHUNK, r, c) }
+}

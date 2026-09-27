@@ -1,0 +1,45 @@
+# table.ludic - the vehicles, rows of a ludic.base Table: kind and owner as columns, each player's
+# own by index, and a nid to its handle. Where one is stays on its record: a boat moves every frame
+# and there are never more than two a player to search.
+export const VE_KIND: int = 0       # int columns
+export const VE_OWNER: int = 1
+
+export property VehicleTable {
+  tab: Table<Vehicle> = null
+  owners: IntIndex = null           # every vehicle by the player it belongs to
+  nids: IntMap = null
+}
+
+function ve__new() -> VehicleTable {
+  let w = new VehicleTable
+  let tb: Table<Vehicle> = table_new(0, 2)
+  w.tab = tb
+  w.owners = tb_index(tb, VE_OWNER, -1)
+  w.nids = imap_new()
+  return w
+}
+
+# a new row for v, its kind and owner from its record
+function ve_file(w: VehicleTable, v: Vehicle) -> void {
+  v.tab = w.tab
+  v.ent = tb_add(w.tab, v)
+  let r = tb_row(w.tab, v.ent)
+  w.tab.i[VE_KIND][r] = v.kind
+  w.tab.i[VE_OWNER][r] = v.owner
+  tb_refile(w.tab, r)
+  imap_put(w.nids, v.nid, v.ent)
+}
+
+function ve_unfile(w: VehicleTable, v: Vehicle) -> void {
+  imap_del(w.nids, v.nid)
+  tb_remove(w.tab, v.ent)
+  v.ent = -1
+}
+
+# the vehicle a message names, or null
+export function vehicle_by_nid(vehicles_st: VehiclesState, nid: int) -> Vehicle {
+  let tb = vehicles_st.ve.tab
+  let r = tb_row(tb, imap_get(vehicles_st.ve.nids, nid, -1))
+  if r < 0 or tb.rec[r].nid != nid { return null }
+  return tb.rec[r]
+}

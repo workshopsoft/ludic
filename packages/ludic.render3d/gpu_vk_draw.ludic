@@ -195,15 +195,16 @@ function gvk_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
   let nb = render3d_st.gvk_cp_nbuf[c]
   var nt = 0
   if render3d_st.gvk_cp_ntex != null and c < len(render3d_st.gvk_cp_ntex) { nt = render3d_st.gvk_cp_ntex[c] }
-  let dsai = bytes(VkDescriptorSetAllocateInfo_sizeof)
+  let dsai = gvk_tmp(render3d_st, VkDescriptorSetAllocateInfo_sizeof)
   Vk.zero(dsai, VkDescriptorSetAllocateInfo_sizeof)
   Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO)
   Vk.put_i64(dsai, VkDescriptorSetAllocateInfo_descriptorPool, render3d_st.gvk_dpool)
   Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_descriptorSetCount, 1)
-  let layouts = bytes(8)
+  let layouts = gvk_tmp(render3d_st, 8)
   Vk.put_i64(layouts, 0, render3d_st.gvk_cp_dsl[c])
   Vk.put_ptr(dsai, VkDescriptorSetAllocateInfo_pSetLayouts, layouts)
-  let sets = bytes(8)
+  let sets = gvk_tmp(render3d_st, 8)
+  render3d_st.gvk_mk_set += 1
   let r = Vk.allocate_descriptor_sets(render3d_st.gvk_dev, dsai, sets)
   if r != VK_SUCCESS { gvk_fail(render3d_st, "vkAllocateDescriptorSets (compute)", r);  return }
   let set = Vk.get_i64(sets, 0)
@@ -212,11 +213,11 @@ function gvk_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
   let ww = VkWriteDescriptorSet_sizeof
   let bw = VkDescriptorBufferInfo_sizeof
   let iw = VkDescriptorImageInfo_sizeof
-  let writes = bytes(ww * (nb + 1 + nt))
+  let writes = gvk_tmp(render3d_st, ww * (nb + 1 + nt))
   Vk.zero(writes, ww * (nb + 1 + nt))
-  let infos = bytes(bw * (nb + 1))
+  let infos = gvk_tmp(render3d_st, bw * (nb + 1))
   Vk.zero(infos, bw * (nb + 1))
-  let iis = bytes(iw * (nt + 1))
+  let iis = gvk_tmp(render3d_st, iw * (nt + 1))
   Vk.zero(iis, iw * (nt + 1))
   for k in 0 .. nb + 1 {
     var buf = render3d_st.gvk_ring_buf
@@ -254,7 +255,7 @@ function gvk_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
   Vk.cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, render3d_st.gvk_cp_pipe[c])
   Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, render3d_st.gvk_cp_layout[c], 0, 1, sets, 0, null)
   Vk.cmd_dispatch(cb, gx, gy, gz)
-  let mb = bytes(VkMemoryBarrier_sizeof)
+  let mb = gvk_tmp(render3d_st, VkMemoryBarrier_sizeof)
   Vk.zero(mb, VkMemoryBarrier_sizeof)
   Vk.put_i32(mb, VkMemoryBarrier_sType, VK_STRUCTURE_TYPE_MEMORY_BARRIER)
   Vk.put_i32(mb, VkMemoryBarrier_srcAccessMask, VK_ACCESS_SHADER_WRITE_BIT)
@@ -704,6 +705,7 @@ function gvk_frame_init(render3d_st: mut Render3dState) -> bool {
   let out = bytes(8)
   render3d_st.gvk_dpools = new []long
   for k in 0 .. 2 {
+    render3d_st.gvk_mk_dpool += 1
     let r = Vk.create_descriptor_pool(render3d_st.gvk_dev, dpci, null, out)
     if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateDescriptorPool", r) }
     push(render3d_st.gvk_dpools, gvk_handle(out))
@@ -717,6 +719,8 @@ function gvk_frame_init(render3d_st: mut Render3dState) -> bool {
 }
 
 function gvk_frame_reset(render3d_st: mut Render3dState) -> void {
+  # what MoltenVK autoreleased last frame goes back here (a no-op off macOS); R3D_VK_NOPOOL=1 for an A/B
+  if not render3d_st.gvk_nopool { Vk.frame_pool() }
   let slot = render3d_st.gvk_frame_no & 1
   render3d_st.gvk_ring_off = slot * GVK_RING_BYTES
   render3d_st.gvk_ring_end = (slot + 1) * GVK_RING_BYTES
@@ -756,6 +760,7 @@ function gvk_kpool_make(render3d_st: mut Render3dState) -> bool {
   Vk.put_i32(dpci, VkDescriptorPoolCreateInfo_poolSizeCount, 2)
   Vk.put_ptr(dpci, VkDescriptorPoolCreateInfo_pPoolSizes, sizes)
   let out = bytes(8)
+  render3d_st.gvk_mk_dpool += 1
   let r = Vk.create_descriptor_pool(render3d_st.gvk_dev, dpci, null, out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateDescriptorPool (kept sets)", r) }
   render3d_st.gvk_kpool = gvk_handle(out)
@@ -764,8 +769,13 @@ function gvk_kpool_make(render3d_st: mut Render3dState) -> bool {
 }
 
 function gvk_sc_clear(render3d_st: mut Render3dState) -> void {
-  render3d_st.gvk_sc_prog = new []int;  render3d_st.gvk_sc_koff = new []int;  render3d_st.gvk_sc_set = new []long;  render3d_st.gvk_sc_next = new []int
-  render3d_st.gvk_sc_keys = new []long
+  # emptied, not replaced: five fresh lists each time the pool filled were never given back
+  if render3d_st.gvk_sc_prog == null {
+    render3d_st.gvk_sc_prog = new []int;  render3d_st.gvk_sc_koff = new []int;  render3d_st.gvk_sc_set = new []long;  render3d_st.gvk_sc_next = new []int
+    render3d_st.gvk_sc_keys = new []long
+  }
+  List.clear(render3d_st.gvk_sc_prog);  List.clear(render3d_st.gvk_sc_koff);  List.clear(render3d_st.gvk_sc_set);  List.clear(render3d_st.gvk_sc_next)
+  List.clear(render3d_st.gvk_sc_keys)
   if render3d_st.gvk_sc_head == null { render3d_st.gvk_sc_head = words(4096) }
   for i in 0 .. 4096 { render3d_st.gvk_sc_head[i] = -1 }
 }
@@ -851,9 +861,9 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
 function gvk_sc_make(render3d_st: mut Render3dState, p: int, nt: int) -> long {
   let zero: long = 0
   let v = render3d_st.gvk_prog_var[p]
-  let dsai = bytes(VkDescriptorSetAllocateInfo_sizeof)
-  let layouts = bytes(8)
-  let sets = bytes(8)
+  let dsai = gvk_tmp(render3d_st, VkDescriptorSetAllocateInfo_sizeof)
+  let layouts = gvk_tmp(render3d_st, 8)
+  let sets = gvk_tmp(render3d_st, 8)
   var r = 0
   var tries = 0
   while tries < 2 {
@@ -863,16 +873,17 @@ function gvk_sc_make(render3d_st: mut Render3dState, p: int, nt: int) -> long {
     Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_descriptorSetCount, 1)
     Vk.put_i64(layouts, 0, render3d_st.gvk_prog_dsl[p])
     Vk.put_ptr(dsai, VkDescriptorSetAllocateInfo_pSetLayouts, layouts)
+    render3d_st.gvk_mk_set += 1
     r = Vk.allocate_descriptor_sets(render3d_st.gvk_dev, dsai, sets)
     if r == VK_SUCCESS { tries = 2 } else { gvk_kpool_reset(render3d_st);  tries += 1 }
   }
   if r != VK_SUCCESS { gvk_fail(render3d_st, "vkAllocateDescriptorSets (kept sets)", r);  return zero }
   let set = Vk.get_i64(sets, 0)
   let ww = VkWriteDescriptorSet_sizeof
-  let writes = bytes(ww * (nt + 3))
+  let writes = gvk_tmp(render3d_st, ww * (nt + 3))
   Vk.zero(writes, ww * (nt + 3))
-  let bis = bytes(VkDescriptorBufferInfo_sizeof * 2)
-  let iis = bytes(VkDescriptorImageInfo_sizeof * (nt + 1))
+  let bis = gvk_tmp(render3d_st, VkDescriptorBufferInfo_sizeof * 2)
+  let iis = gvk_tmp(render3d_st, VkDescriptorImageInfo_sizeof * (nt + 1))
   var nw = 0
   var bi = 0
   for stage in 0 .. 2 {
@@ -1011,9 +1022,10 @@ function gvk_frame_cb(render3d_st: mut Render3dState) -> pointer {
 # on its own. Keyed by the image's generation, so a replaced image never reuses a stale view.
 function gvk_view_of(render3d_st: mut Render3dState, tex: int, layer1: int) -> long {
   if layer1 == 0 and render3d_st.gvk_tex_levels[tex] <= 1 and render3d_st.gvk_tex_layers[tex] <= 1 { return render3d_st.gvk_tex_view[tex] }
-  let key = `{tex}:{render3d_st.gvk_tex_gen[tex]}:{layer1}`
-  if render3d_st.gvk_layer_views == null { render3d_st.gvk_layer_views = new []string;  render3d_st.gvk_layer_view = new []long }
-  for i in 0 .. len(render3d_st.gvk_layer_views) { if render3d_st.gvk_layer_views[i] == key { return render3d_st.gvk_layer_view[i] } }
+  # keyed by numbers, not a string built on every call: the texture, its generation and the layer
+  let key = render3d_st.gvk_tex_gen[tex] * 4096 + layer1
+  if render3d_st.gvk_layer_views == null { render3d_st.gvk_layer_views = new []int;  render3d_st.gvk_layer_view = new []long;  render3d_st.gvk_layer_view_tex = new []int }
+  for i in 0 .. len(render3d_st.gvk_layer_views) { if render3d_st.gvk_layer_view_tex[i] == tex and render3d_st.gvk_layer_views[i] == key { return render3d_st.gvk_layer_view[i] } }
   let depth = render3d_st.gvk_tex_vkfmt[tex] == VK_FORMAT_D32_SFLOAT
   let vci = bytes(VkImageViewCreateInfo_sizeof)
   Vk.zero(vci, VkImageViewCreateInfo_sizeof)
@@ -1028,16 +1040,18 @@ function gvk_view_of(render3d_st: mut Render3dState, tex: int, layer1: int) -> l
   Vk.put_i32(vci, sr + VkImageSubresourceRange_layerCount, 1)
   let out = bytes(8)
   let zero: long = 0
+  render3d_st.gvk_mk_view += 1
   if Vk.create_image_view(render3d_st.gvk_dev, vci, null, out) != VK_SUCCESS { return zero }
   push(render3d_st.gvk_layer_views, key)
   push(render3d_st.gvk_layer_view, gvk_handle(out))
+  push(render3d_st.gvk_layer_view_tex, tex)
   return gvk_handle(out)
 }
 # the layer range a barrier for an attachment covers: the whole image unless one layer is drawn
-function gvk_att_barrier(render3d_st: Render3dState, cb: pointer, tex: int, layer1: int, depth: bool, old_layout: int, new_layout: int) -> void {
+function gvk_att_barrier(render3d_st: mut Render3dState, cb: pointer, tex: int, layer1: int, depth: bool, old_layout: int, new_layout: int) -> void {
   # an attachment whose image was never made (no memory for it) has nothing to transition
   if tex <= 0 or tex >= len(render3d_st.gvk_tex_image) or render3d_st.gvk_tex_image[tex] == 0 { return }
-  let b = bytes(VkImageMemoryBarrier_sizeof)
+  let b = gvk_tmp(render3d_st, VkImageMemoryBarrier_sizeof)
   Vk.zero(b, VkImageMemoryBarrier_sizeof)
   Vk.put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
   Vk.put_i32(b, VkImageMemoryBarrier_srcAccessMask, gvk_layout_access(old_layout))
@@ -1085,7 +1099,7 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
   let cb = gvk_frame_cb(render3d_st)
   gvk_pass_collect(render3d_st, render3d_st.gvk_fb_cur, rec, rec_o)
   let aw = VkRenderingAttachmentInfo_sizeof
-  let catt = bytes(aw * 3)
+  let catt = gvk_tmp(render3d_st, aw * 3)
   Vk.zero(catt, aw * 3)
   render3d_st.gvk_pass_w = 0
   render3d_st.gvk_pass_h = 0
@@ -1108,7 +1122,7 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
     render3d_st.gvk_pass_samples = gvk_tex_samples_of(render3d_st, tex)
     if render3d_st.gvk_pass_w == 0 { render3d_st.gvk_pass_w = gvk_tex_w(render3d_st, tex);  render3d_st.gvk_pass_h = gvk_tex_h(render3d_st, tex) }
   }
-  let datt = bytes(aw)
+  let datt = gvk_tmp(render3d_st, aw)
   Vk.zero(datt, aw)
   let dtex = render3d_st.gvk_pass_dep[0]
   if dtex > 0 {
@@ -1126,7 +1140,7 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
     if render3d_st.gvk_pass_w == 0 { render3d_st.gvk_pass_w = gvk_tex_w(render3d_st, dtex);  render3d_st.gvk_pass_h = gvk_tex_h(render3d_st, dtex) }
   }
   render3d_st.gvk_clear_bits = 0
-  let ri = bytes(VkRenderingInfo_sizeof)
+  let ri = gvk_tmp(render3d_st, VkRenderingInfo_sizeof)
   Vk.zero(ri, VkRenderingInfo_sizeof)
   Vk.put_i32(ri, VkRenderingInfo_sType, VK_STRUCTURE_TYPE_RENDERING_INFO)
   Vk.put_i32(ri, VkRenderingInfo_renderArea + VkRect2D_extent + VkExtent2D_width, render3d_st.gvk_pass_w)
@@ -1157,7 +1171,7 @@ function gvk_clear(render3d_st: mut Render3dState, mask: int, rec: words, rec_o:
   if not render3d_st.gvk_in_pass { render3d_st.gvk_clear_bits = render3d_st.gvk_clear_bits | mask;  return }
   let cb = render3d_st.gvk_cb
   let caw = VkClearAttachment_sizeof
-  let atts = bytes(caw * 4)
+  let atts = gvk_tmp(render3d_st, caw * 4)
   Vk.zero(atts, caw * 4)
   var n = 0
   if (mask & GL_COLOR_BUFFER_BIT) != 0 {
@@ -1174,7 +1188,7 @@ function gvk_clear(render3d_st: mut Render3dState, mask: int, rec: words, rec_o:
     n += 1
   }
   if n == 0 { return }
-  let rect = bytes(VkClearRect_sizeof)
+  let rect = gvk_tmp(render3d_st, VkClearRect_sizeof)
   Vk.zero(rect, VkClearRect_sizeof)
   Vk.put_i32(rect, VkClearRect_rect + VkRect2D_extent + VkExtent2D_width, render3d_st.gvk_pass_w)
   Vk.put_i32(rect, VkClearRect_rect + VkRect2D_extent + VkExtent2D_height, render3d_st.gvk_pass_h)
@@ -1187,8 +1201,8 @@ function gvk_tex_h(render3d_st: Render3dState, tex: int) -> int { return render3
 
 # viewport and scissor for the draw; OpenGL's rows count from the bottom and so do a Vulkan
 # target's here (no y flip), so both pass straight through
-function gvk_set_view(render3d_st: Render3dState, cb: pointer) -> void {
-  let vp = bytes(VkViewport_sizeof)
+function gvk_set_view(render3d_st: mut Render3dState, cb: pointer) -> void {
+  let vp = gvk_tmp(render3d_st, VkViewport_sizeof)
   Vk.zero(vp, VkViewport_sizeof)
   Vk.put_i32(vp, VkViewport_x, float_bits(float(render3d_st.gvk_vp[0])))
   Vk.put_i32(vp, VkViewport_y, float_bits(float(render3d_st.gvk_vp[1])))
@@ -1196,7 +1210,7 @@ function gvk_set_view(render3d_st: Render3dState, cb: pointer) -> void {
   Vk.put_i32(vp, VkViewport_height, float_bits(float(render3d_st.gvk_vp[3])))
   Vk.put_i32(vp, VkViewport_maxDepth, 0x3F800000)
   Vk.cmd_set_viewport(cb, 0, 1, vp)
-  let sc = bytes(VkRect2D_sizeof)
+  let sc = gvk_tmp(render3d_st, VkRect2D_sizeof)
   Vk.zero(sc, VkRect2D_sizeof)
   if render3d_st.gvk_sc[0] == 1 {
     Vk.put_i32(sc, VkRect2D_offset + VkOffset2D_x, render3d_st.gvk_sc[1])
@@ -1238,16 +1252,17 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
   let set = gvk_draw_set(render3d_st, p, tx, tx_w, tx_cap)
   if set == 0 { return }
   if prof { render3d_st.gvk_us_set = render3d_st.gvk_us_set + (gl_now_us() - t1) }
-  let sets = bytes(8)
+  let sets = gvk_tmp(render3d_st, 8)
   Vk.put_i64(sets, 0, set)
   Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, render3d_st.gvk_prog_layout[p], 0, 1, sets, render3d_st.gvk_set_ndyn, render3d_st.gvk_set_offs)
   let v = render3d_st.gvk_prog_var[p]
   if m != null and m.attrs != null {
     # the same bindings, in the same order, as gvk_pipeline gave the layout
-    let bufs = bytes(8 * (GPU_MAX_VBUFS + 1))
-    let offs = bytes(8 * (GPU_MAX_VBUFS + 1))
+    let bufs = gvk_tmp(render3d_st, 8 * (GPU_MAX_VBUFS + 1))
+    let offs = gvk_tmp(render3d_st, 8 * (GPU_MAX_VBUFS + 1))
     Vk.zero(offs, 8 * (GPU_MAX_VBUFS + 1))
-    let seen = words(GPU_MAX_VBUFS)
+    if render3d_st.gvk_seen == null { render3d_st.gvk_seen = words(GPU_MAX_VBUFS) }
+    let seen = render3d_st.gvk_seen
     var nbd = 0
     for i in 0 .. m.n_attrs {
       let o = i * GPU_ATTR_W
@@ -1510,7 +1525,7 @@ function gvk_resolve(render3d_st: mut Render3dState, cb: pointer, src: int, dst:
   gvk_att_barrier(render3d_st, cb, src, 0, depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, layout)
   gvk_att_barrier(render3d_st, cb, dst, 0, depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, layout)
   let aw = VkRenderingAttachmentInfo_sizeof
-  let att = bytes(aw)
+  let att = gvk_tmp(render3d_st, aw)
   Vk.zero(att, aw)
   Vk.put_i32(att, VkRenderingAttachmentInfo_sType, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO)
   Vk.put_i64(att, VkRenderingAttachmentInfo_imageView, gvk_view_of(render3d_st, src, 0))
@@ -1520,7 +1535,7 @@ function gvk_resolve(render3d_st: mut Render3dState, cb: pointer, src: int, dst:
   Vk.put_i32(att, VkRenderingAttachmentInfo_resolveImageLayout, layout)
   Vk.put_i32(att, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD)
   Vk.put_i32(att, VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
-  let ri = bytes(VkRenderingInfo_sizeof)
+  let ri = gvk_tmp(render3d_st, VkRenderingInfo_sizeof)
   Vk.zero(ri, VkRenderingInfo_sizeof)
   Vk.put_i32(ri, VkRenderingInfo_sType, VK_STRUCTURE_TYPE_RENDERING_INFO)
   Vk.put_i32(ri, VkRenderingInfo_renderArea + VkRect2D_extent + VkExtent2D_width, w)
@@ -1536,9 +1551,9 @@ function gvk_resolve(render3d_st: mut Render3dState, cb: pointer, src: int, dst:
 function gvk_copy(render3d_st: mut Render3dState, cb: pointer, src: int, dst: int, depth: bool, w: int, h: int) -> void {
   if src <= 0 or dst <= 0 or render3d_st.gvk_tex_image[src] == 0 or render3d_st.gvk_tex_image[dst] == 0 { return }
   if gvk_tex_samples_of(render3d_st, src) > 1 and gvk_tex_samples_of(render3d_st, dst) == 1 { gvk_resolve(render3d_st, cb, src, dst, depth, w, h);  return }
-  gvk_barrier(cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-  gvk_barrier(cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-  let ic = bytes(VkImageCopy_sizeof)
+  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let ic = gvk_tmp(render3d_st, VkImageCopy_sizeof)
   Vk.zero(ic, VkImageCopy_sizeof)
   var aspect = VK_IMAGE_ASPECT_COLOR_BIT
   if depth { aspect = VK_IMAGE_ASPECT_DEPTH_BIT }
@@ -1550,8 +1565,8 @@ function gvk_copy(render3d_st: mut Render3dState, cb: pointer, src: int, dst: in
   Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_height, h)
   Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_depth, 1)
   Vk.cmd_copy_image(cb, render3d_st.gvk_tex_image[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, render3d_st.gvk_tex_image[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, ic)
-  gvk_barrier(cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  gvk_barrier(cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 }
 function gvk_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> void {
   gvk_pass_end(render3d_st)
@@ -1725,20 +1740,20 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
     Time.sleep_us(16000)
     return
   }
-  if render3d_st.gvk_swap_stale { gvk_once_end(render3d_st, cb);  render3d_st.gvk_cb = null;  gvk_swap_make(render3d_st, render3d_st.gvk_swap_w, render3d_st.gvk_swap_h);  return }
-  let idx = bytes(4)
+  if render3d_st.gvk_swap_stale { gvk_once_end(render3d_st, cb);  render3d_st.gvk_cb = null;  print("r3d: vulkan: swapchain remade at acquire");  gvk_swap_make(render3d_st, render3d_st.gvk_swap_w, render3d_st.gvk_swap_h);  return }
+  let idx = gvk_tmp(render3d_st, 4)
   Vk.reset_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_acq_fence)
   let forever: long = -1
   let zero: long = 0
   var r = Vk.acquire_next_image_khr(render3d_st.gvk_dev, render3d_st.gvk_swap, forever, zero, Vk.get_i64(render3d_st.gvk_acq_fence, 0), idx)
-  if r == VK_ERROR_OUT_OF_DATE_KHR { gvk_once_end(render3d_st, cb);  render3d_st.gvk_cb = null;  gvk_swap_make(render3d_st, render3d_st.gvk_swap_w, render3d_st.gvk_swap_h);  return }
+  if r == VK_ERROR_OUT_OF_DATE_KHR { gvk_once_end(render3d_st, cb);  render3d_st.gvk_cb = null;  print("r3d: vulkan: swapchain remade at acquire");  gvk_swap_make(render3d_st, render3d_st.gvk_swap_w, render3d_st.gvk_swap_h);  return }
   Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_acq_fence, 1, forever)
   let i = Vk.get_i32(idx, 0)
   let dst = Vk.get_i64(render3d_st.gvk_swap_images, i * 8)
   let src = render3d_st.gvk_tex_image[render3d_st.gvk_screen_color]
-  gvk_barrier(cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-  gvk_barrier(cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-  let blit = bytes(VkImageBlit_sizeof)
+  gvk_barrier(render3d_st, cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+  gvk_barrier(render3d_st, cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let blit = gvk_tmp(render3d_st, VkImageBlit_sizeof)
   Vk.zero(blit, VkImageBlit_sizeof)
   Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
   Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_layerCount, 1)
@@ -1752,14 +1767,14 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
   Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_y, render3d_st.gvk_swap_h)
   Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_z, 1)
   Vk.cmd_blit_image(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, blit, VK_FILTER_LINEAR)
-  gvk_barrier(cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  gvk_barrier(cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+  gvk_barrier(render3d_st, cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_barrier(render3d_st, cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
   if gvk_inflight_on(render3d_st) { gvk_frame_submit(render3d_st, cb) } else { gvk_once_end(render3d_st, cb) }
   render3d_st.gvk_cb = null
-  let pi = bytes(VkPresentInfoKHR_sizeof)
+  let pi = gvk_tmp(render3d_st, VkPresentInfoKHR_sizeof)
   Vk.zero(pi, VkPresentInfoKHR_sizeof)
   Vk.put_i32(pi, VkPresentInfoKHR_sType, VK_STRUCTURE_TYPE_PRESENT_INFO_KHR)
-  let chains = bytes(8)
+  let chains = gvk_tmp(render3d_st, 8)
   Vk.put_i64(chains, 0, render3d_st.gvk_swap)
   Vk.put_i32(pi, VkPresentInfoKHR_swapchainCount, 1)
   Vk.put_ptr(pi, VkPresentInfoKHR_pSwapchains, chains)
@@ -1779,6 +1794,8 @@ function gvk_resize_check(render3d_st: mut Render3dState) -> bool {
   let h = render3d_st.gvk_size_buf[1]
   if w <= 0 or h <= 0 { return false }
   if w == gl_width() and h == gl_height() and not render3d_st.gvk_swap_stale { return false }
+  # a remake is rare (a resize); said, so one on every frame shows in the log
+  print(`r3d: vulkan: swapchain remade {w}x{h} (was {gl_width()}x{gl_height()}, stale {render3d_st.gvk_swap_stale})`)
   gvk_flush(render3d_st)
   gl_set_drawable(w, h)
   gvk_screen_make(render3d_st, w, h)
@@ -1816,10 +1833,25 @@ function gvk_prof_frame(render3d_st: mut Render3dState) -> void {
   if render3d_st.gvk_n_asked != render3d_st.gvk_n_draws {
     print(`r3d: vulkan: {(render3d_st.gvk_n_asked - render3d_st.gvk_n_draws) / f} draws a frame were asked for and not made ({render3d_st.gvk_n_asked / f} asked, {render3d_st.gvk_n_draws / f} made)`)
   }
+  gvk_prof_made(render3d_st)
   let zero: long = 0
   render3d_st.gvk_us_pipe = zero;  render3d_st.gvk_us_set = zero;  render3d_st.gvk_us_draw = zero
   render3d_st.gvk_n_draws = 0;  render3d_st.gvk_n_asked = 0;  render3d_st.gvk_n_flush = 0;  render3d_st.gvk_prof_frames = 0;  render3d_st.gvk_n_pipe_new = 0
 }
+
+# what was made and destroyed over those frames, and how long the caches are: a kind made every
+# frame and never destroyed, or a cache that only grows, is a leak
+function gvk_prof_made(render3d_st: mut Render3dState) -> void {
+  let r = render3d_st
+  print(`r3d: vulkan made/destroyed: images {r.gvk_mk_img}/{r.gvk_mk_x_img}, views {r.gvk_mk_view}/{r.gvk_mk_x_view}, buffers {r.gvk_mk_buf}/{r.gvk_mk_x_buf}, memory {r.gvk_mk_mem}/{r.gvk_mk_x_mem}, samplers {r.gvk_mk_smp}, sets {r.gvk_mk_set}, pools {r.gvk_mk_dpool}, cmds {r.gvk_mk_cmd}`)
+  print(`r3d: vulkan caches: layer views {gvk_len_i(r.gvk_layer_views)}, pipelines {gvk_len_s(r.gvk_pipe_keys)}, layouts {gvk_len_s(r.gvk_layout_keys)}, pipe cache {gvk_len_i(r.gvk_pc_prog)}, retired {gvk_len_l(r.gvk_retired_buf)}, buffers {gvk_len_l(r.gvk_buf)}, allocs {r.gvk_n_allocs}`)
+  render3d_st.gvk_mk_img = 0;  render3d_st.gvk_mk_x_img = 0;  render3d_st.gvk_mk_view = 0;  render3d_st.gvk_mk_x_view = 0
+  render3d_st.gvk_mk_buf = 0;  render3d_st.gvk_mk_x_buf = 0;  render3d_st.gvk_mk_mem = 0;  render3d_st.gvk_mk_x_mem = 0
+  render3d_st.gvk_mk_smp = 0;  render3d_st.gvk_mk_set = 0;  render3d_st.gvk_mk_dpool = 0;  render3d_st.gvk_mk_cmd = 0
+}
+function gvk_len_s(xs: []string) -> int { if xs == null { return 0 };  return len(xs) }
+function gvk_len_i(xs: []int) -> int { if xs == null { return 0 };  return len(xs) }
+function gvk_len_l(xs: []long) -> int { if xs == null { return 0 };  return len(xs) }
 
 # ---- the pipeline cache, by integers -----------------------------------------------------------
 # gvk_pipeline builds and keys pipelines by a string; a draw only needs to find one it already has.

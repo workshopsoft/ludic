@@ -147,7 +147,7 @@ function red_check(i: int) -> void {
 function act_src() -> pointer {
   var src = "export state LudicActions {\n  kinds: []int = new []int\n  vals: []pointer = new []pointer\n  head: int = 0\n  depth: int = 0\n}\n"
   src = src + "export function ludic_act_push(q: mut LudicActions, k: int, v: pointer) -> void {\n  push(q.kinds, k)\n  push(q.vals, v)\n}\n"
-  src = src + "export function drain_actions(q: mut LudicActions) -> void {\n  if q.depth > 0 { return }\n  q.depth = 1\n  var pass = 0\n  var round_end = len(q.kinds)\n"
+  src = src + "export function drain_actions(q: mut LudicActions) -> void {\n  if q.depth > 0 or len(q.kinds) == 0 { return }\n  q.depth = 1\n  var pass = 0\n  var round_end = len(q.kinds)\n"
   src = src + "  while q.head < len(q.kinds) {\n    if q.head == round_end {\n      pass += 1\n      round_end = len(q.kinds)\n"
   src = src + `      if pass >= {itoa(ACTION_PASSES)} {{ ludic_act_runaway(q.kinds[q.head]) }}\n    }}\n`
   src = src + "    let k = q.kinds[q.head]\n    let v = q.vals[q.head]\n    q.head += 1\n"
@@ -165,7 +165,7 @@ function act_src() -> pointer {
     }
     a += 1
   }
-  src = src + "  }\n  q.kinds = new []int\n  q.vals = new []pointer\n  q.head = 0\n  q.depth = 0\n}\n"
+  src = src + "  }\n  List.clear(q.kinds)\n  List.clear(q.vals)\n  q.head = 0\n  q.depth = 0\n}\n"   # in place: a drain a phase, seven a frame, allocates nothing
   src = src + "export function ludic_act_runaway(k: int) -> void {\n  var name = \"?\"\n"
   a = 0
   while a < len(g_act_names) {

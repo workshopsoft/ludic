@@ -56,9 +56,12 @@ function emit_ecs_storage() -> void {
   if len(g_scenes) > 0 { emith("@L_scene = internal global i32 0\n") }   # active base scene id
   emith("@L_entc = internal global i32 0\n")
   let me = itoa(MAX_ENT)
-  emith(`@L_alive = internal global [{me} x i32] zeroinitializer\n`)
-  emith(`@L_kind = internal global [{me} x i32] zeroinitializer\n`)
-  emith(`@L_freelist = internal global [{me} x i32] zeroinitializer\n`)
+  # the per-entity stores are heap blocks L_grow makes and doubles: @L_cap slots each, from MAX_ENT
+  emith("@L_cap = internal global i32 0\n")
+  emith("@L_snapcap = internal global i32 0\n")   # a snapshot's slot count, read before its stores
+  emith("@L_alive = internal global ptr null\n")
+  emith("@L_kind = internal global ptr null\n")
+  emith("@L_freelist = internal global ptr null\n")
   emith("@L_freen = internal global i32 0\n")
   # NETWORKING role registers (N3/N5): a runtime sets these; offline they hold the
   # single-player default — @L_role=1 (this peer is the authority), local id 0.
@@ -68,7 +71,7 @@ function emit_ecs_storage() -> void {
     emith("@L_role = internal global i32 1\n")       # 1 = server/authority (offline default)
     emith("@L_localid = internal global i32 0\n")    # this peer's id
   }
-  if net_has_owned() { emith(`@L_owner_arr = internal global [{me} x i32] zeroinitializer\n`) }
+  if net_has_owned() { emith("@L_owner_arr = internal global ptr null\n") }
   var i = 0
   while i < len(prog) {
     let c = prog[i]
@@ -76,8 +79,8 @@ function emit_ecs_storage() -> void {
     # header). Every property in an ECS program is a component today; a property
     # used only via `new` would not need these, but no such program mixes the two.
     if c.kind == N_COMP {
-      emith(`@S_{c.s} = internal global [{me} x %Cmp_{c.s}] zeroinitializer\n`)
-      emith(`@H_{c.s} = internal global [{me} x i8] zeroinitializer\n`)
+      emith(`@S_{c.s} = internal global ptr null\n`)
+      emith(`@H_{c.s} = internal global ptr null\n`)
     }
     # one enabled-flag global per model and per handler (default enabled)
     if c.kind == N_ARCH { emith(`@ME_{c.s} = internal global i32 1\n`) }
@@ -92,21 +95,25 @@ function emit_ecs_storage() -> void {
 # L_reset(e): clear every has-flag and the archetype kind for entity e
 function emit_ecs_allocator() -> void {
   let me = itoa(MAX_ENT)
+  emit_ecs_grow()
   emit("define void @L_reset(i32 %e) {\nentry:\n")
   var i = 0
   while i < len(prog) {
     if prog[i].kind == N_COMP {
       let hn = `%h{itoa(i)}`
-      emit("  ");  emit(hn);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(prog[i].s);  emit(", i32 0, i32 %e\n")
+      let eb1 = ecs_base(`H_{prog[i].s}`)
+      emit("  ");  emit(hn);  emit(" = getelementptr inbounds i8, ptr ");  emit(eb1);  emit(", i32 %e\n")
       emit("  store i8 0, ptr ");  emit(hn);  emit("\n")
     }
     i += 1
   }
-  emit("  %k = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n")
+  let eb2 = ecs_base("L_kind")
+  emit("  %k = getelementptr inbounds i32, ptr ");  emit(eb2);  emit(", i32 %e\n")
   emit("  store i32 0, ptr %k\n")
   # N3: reset an @Owned entity's network owner to -1 (unowned) on alloc/free
   if net_has_owned() {
-    emit("  %ow = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_owner_arr, i32 0, i32 %e\n")
+    let eb3 = ecs_base("L_owner_arr")
+    emit("  %ow = getelementptr inbounds i32, ptr ");  emit(eb3);  emit(", i32 %e\n")
     emit("  store i32 -1, ptr %ow\n")
   }
   emit("  ret void\n}\n\n")
@@ -118,29 +125,100 @@ function emit_ecs_allocator() -> void {
   emit("reuse:\n")
   emit("  %fn1 = sub i32 %fn, 1\n")
   emit("  store i32 %fn1, ptr @L_freen\n")
-  emit("  %fp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_freelist, i32 0, i32 %fn1\n")
+  let eb4 = ecs_base("L_freelist")
+  emit("  %fp = getelementptr inbounds i32, ptr ");  emit(eb4);  emit(", i32 %fn1\n")
   emit("  %re = load i32, ptr %fp\n")
   emit("  br label %done\n")
   emit("fresh:\n")
   emit("  %ec = load i32, ptr @L_entc\n")
   emit("  %ec1 = add i32 %ec, 1\n")
+  emit("  call void @L_grow(i32 %ec1)\n")         # a slot past the stores doubles them first
   emit("  store i32 %ec1, ptr @L_entc\n")
   emit("  br label %done\n")
   emit("done:\n")
   emit("  %e = phi i32 [ %re, %reuse ], [ %ec, %fresh ]\n")
   emit("  call void @L_reset(i32 %e)\n")
-  emit("  %ap = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 %e\n")
+  let eb5 = ecs_base("L_alive")
+  emit("  %ap = getelementptr inbounds i32, ptr ");  emit(eb5);  emit(", i32 %e\n")
   emit("  store i32 1, ptr %ap\n")
   emit("  ret i32 %e\n}\n\n")
 
   emit("define void @L_free_entity(i32 %e) {\nentry:\n")
-  emit("  %ap = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 %e\n")
+  let eb6 = ecs_base("L_alive")
+  emit("  %ap = getelementptr inbounds i32, ptr ");  emit(eb6);  emit(", i32 %e\n")
   emit("  store i32 0, ptr %ap\n")
   emit("  call void @L_reset(i32 %e)\n")
   emit("  %fn = load i32, ptr @L_freen\n")
-  emit("  %fp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_freelist, i32 0, i32 %fn\n")
+  let eb7 = ecs_base("L_freelist")
+  emit("  %fp = getelementptr inbounds i32, ptr ");  emit(eb7);  emit(", i32 %fn\n")
   emit("  store i32 %e, ptr %fp\n")
   emit("  %fn1 = add i32 %fn, 1\n")
   emit("  store i32 %fn1, ptr @L_freen\n")
   emit("  ret void\n}\n\n")
+}
+
+# the base of a per-entity store, loaded where it is indexed (a store moves when L_grow doubles it)
+function ecs_base(store: pointer) -> pointer {
+  let r = `%ecsb{itoa(ll_t)}`                     # its own prefix: raw functions name blocks t0, t1, ...
+  ll_t += 1
+  emit(`  {r} = load ptr, ptr @{store}\n`)
+  return r
+}
+
+# L_grow(need): every per-entity store holds at least `need` slots - doubled from MAX_ENT as the
+# entities outgrow them, the new slots zero, the mods' registered stores with them. Nothing is
+# ever moved back down: an entity's slot is its handle for its whole life.
+function emit_ecs_grow() -> void {
+  emit("define void @L_grow(i32 %need) {\nentry:\n  %cap = load i32, ptr @L_cap\n")
+  emit("  %ok = icmp sle i32 %need, %cap\n  br i1 %ok, label %done, label %grow\ngrow:\n")
+  emit(`  %c0 = icmp eq i32 %cap, 0\n  %start = select i1 %c0, i32 {itoa(MAX_ENT)}, i32 %cap\n  br label %dbl\n`)
+  emit("dbl:\n  %nc = phi i32 [ %start, %grow ], [ %nc2, %dbl2 ]\n  %enough = icmp sge i32 %nc, %need\n")
+  emit("  br i1 %enough, label %apply, label %dbl2\ndbl2:\n  %nc2 = mul i32 %nc, 2\n  br label %dbl\n")
+  emit("apply:\n  %cap64 = sext i32 %cap to i64\n  %nc64 = sext i32 %nc to i64\n")
+  emit_grow_store("L_alive", "4", 0)
+  emit_grow_store("L_kind", "4", 1)
+  emit_grow_store("L_freelist", "4", 2)
+  if net_has_owned() { emit_grow_store("L_owner_arr", "4", 3) }
+  var k = 4
+  var i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_COMP {
+      let sz = `%gs{itoa(k)}`
+      emit(`  {sz} = ptrtoint ptr getelementptr (%Cmp_{prog[i].s}, ptr null, i32 1) to i64\n`)
+      emit_grow_store(`S_{prog[i].s}`, sz, k)
+      emit_grow_store(`H_{prog[i].s}`, "1", k + 1)
+      k += 2
+    }
+    i += 1
+  }
+  emit_grow_dyn()
+  emit("fin:\n  store i32 %nc, ptr @L_cap\n  br label %done\ndone:\n  ret void\n}\n\n")
+}
+
+# one store to nc slots of `esz` bytes: reallocated (8 bytes spare, so a field-less tag is never
+# a zero-byte block), its new tail zeroed
+function emit_grow_store(store: pointer, esz: pointer, k: int) -> void {
+  let n = itoa(k)
+  emit(`  %gp{n} = load ptr, ptr @{store}\n  %gb{n} = mul i64 %nc64, {esz}\n  %gr{n} = add i64 %gb{n}, 8\n`)
+  emit(`  %gn{n} = call ptr @realloc(ptr %gp{n}, i64 %gr{n})\n  %go{n} = mul i64 %cap64, {esz}\n`)
+  emit(`  %gt{n} = getelementptr i8, ptr %gn{n}, i64 %go{n}\n  %gz{n} = sub i64 %gr{n}, %go{n}\n`)
+  emit(`  %gm{n} = call ptr @memset(ptr %gt{n}, i32 0, i64 %gz{n})\n  store ptr %gn{n}, ptr @{store}\n`)
+}
+
+# the stores a mod registered at run time (ludic_register_prop), grown the same way
+function emit_grow_dyn() -> void {
+  emit("  br label %dynh\ndynh:\n  %di = phi i32 [ 0, %apply ], [ %di1, %dynb ]\n  %dcn = load i32, ptr @dyn_count\n")
+  emit("  %dmore = icmp slt i32 %di, %dcn\n  br i1 %dmore, label %dynb, label %fin\ndynb:\n")
+  emit("  %dfp = getelementptr inbounds [32 x i32], ptr @dynF, i32 0, i32 %di\n  %dnf = load i32, ptr %dfp\n")
+  emit("  %dnf4 = mul i32 %dnf, 4\n  %desz = sext i32 %dnf4 to i64\n")
+  emit_grow_slot("dynS", "%desz", "s")
+  emit_grow_slot("dynH", "1", "h")
+  emit("  %di1 = add i32 %di, 1\n  br label %dynh\n")
+}
+
+function emit_grow_slot(table: pointer, esz: pointer, t: pointer) -> void {
+  emit(`  %d{t}p = getelementptr inbounds [32 x ptr], ptr @{table}, i32 0, i32 %di\n  %d{t}o = load ptr, ptr %d{t}p\n`)
+  emit(`  %d{t}b = mul i64 %nc64, {esz}\n  %d{t}r = add i64 %d{t}b, 8\n  %d{t}n = call ptr @realloc(ptr %d{t}o, i64 %d{t}r)\n`)
+  emit(`  %d{t}f = mul i64 %cap64, {esz}\n  %d{t}t = getelementptr i8, ptr %d{t}n, i64 %d{t}f\n  %d{t}z = sub i64 %d{t}r, %d{t}f\n`)
+  emit(`  %d{t}m = call ptr @memset(ptr %d{t}t, i32 0, i64 %d{t}z)\n  store ptr %d{t}n, ptr %d{t}p\n`)
 }

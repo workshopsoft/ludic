@@ -1,0 +1,48 @@
+# ludic.base/ecs_grid_within.ludic - every filed row within r of (x, z) matching (mc, mv), into
+# `out` (cleared first), in no order; the count is returned. A radius wider than the rows are many
+# is answered by one scan of them instead of by cells.
+export function tb_within<T>(tb: Table<T>, g: Grid, x: float, z: float, r: float, mc: int, mv: int, out: words) -> int {
+  List.clear(out)
+  if g.count == 0 { return 0 }
+  var mcol: words = null
+  if mc >= 0 { mcol = tb.i[mc] }
+  let xs = tb.f[g.cx]
+  let zs = tb.f[g.cz]
+  let ix0 = grid_cell(g, x - r)
+  let ix1 = grid_cell(g, x + r)
+  let iz0 = grid_cell(g, z - r)
+  let iz1 = grid_cell(g, z + r)
+  let cells = (ix1 - ix0 + 1) * (iz1 - iz0 + 1)
+  if cells > g.count or cells < 0 {
+    grid_within_scan(g, xs, zs, mcol, mv, x, z, r * r, out)
+    return len(out)
+  }
+  for ix in ix0 .. ix1 + 1 {
+    for iz in iz0 .. iz1 + 1 { grid_within_cell(g, xs, zs, mcol, mv, x, z, r * r, ix, iz, out) }
+  }
+  return len(out)
+}
+
+function grid_within_cell(g: Grid, xs: floats, zs: floats, mcol: words, mv: int, x: float, z: float, r2: float, ix: int, iz: int, out: words) -> void {
+  let k = grid_key(ix, iz)
+  var r = g.head[grid_bucket(g, ix, iz)]
+  while r > 0 {
+    let row = r - 1
+    if g.key[row] == k and (mcol == null or mcol[row] == mv) {
+      let dx = xs[row] - x
+      let dz = zs[row] - z
+      if dx * dx + dz * dz <= r2 { push(out, row) }
+    }
+    r = g.next[row]
+  }
+}
+
+function grid_within_scan(g: Grid, xs: floats, zs: floats, mcol: words, mv: int, x: float, z: float, r2: float, out: words) -> void {
+  for row in 0 .. len(g.key) {
+    if g.key[row] >= 0 and (mcol == null or mcol[row] == mv) {
+      let dx = xs[row] - x
+      let dz = zs[row] - z
+      if dx * dx + dz * dz <= r2 { push(out, row) }
+    }
+  }
+}

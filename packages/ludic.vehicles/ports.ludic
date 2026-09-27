@@ -45,7 +45,7 @@ export state VehiclesState {
   ve_ids: int = 0
   ve_sx: float = 0.0
   ve_sz: float = 0.0
-  ve_list: []Vehicle = new []Vehicle
+  ve: VehicleTable = ve__new()
   ve_cur: Vehicle = null
   ve_dock_x: float = 0.0
   ve_dock_z: float = 0.0

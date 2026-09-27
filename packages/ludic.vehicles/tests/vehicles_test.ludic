@@ -354,4 +354,23 @@ program VehiclesTest {
     expect_near(vehicle_find(vehicles_st, VEHICLE_HORSE).food, 77.0, 0.01)
     expect(not vehicle_find(vehicles_st, VEHICLE_BOAT).owned)
   }
+
+  test "the table: a nid finds its vehicle, each player's own by the owner index, and a release takes both" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
+    vehicle_call_for(vehicles_st, 5, VEHICLE_HORSE, 0)
+    vehicle_call_for(vehicles_st, 5, VEHICLE_BOAT, 0)
+    vehicle_call_for(vehicles_st, 6, VEHICLE_BOAT, 1)
+    let b = vehicle_of(vehicles_st, 6, VEHICLE_BOAT)
+    expect(b != null)
+    expect(vehicle_by_nid(vehicles_st, b.nid) == b)
+    expect(vehicle_of(vehicles_st, 6, VEHICLE_HORSE) == null)
+    let h = vehicle_of(vehicles_st, 5, VEHICLE_HORSE)
+    vehicles_release(vehicles_st, 5)
+    expect_eq(len(vehicles_all(vehicles_st)), 1)
+    expect(vehicle_by_nid(vehicles_st, h.nid) == null)
+    expect(vehicle_of(vehicles_st, 6, VEHICLE_BOAT) == b)
+    vehicles_reset(vehicles_st)
+    expect_eq(len(vehicles_all(vehicles_st)), 0)
+    expect(vehicle_by_nid(vehicles_st, b.nid) == null)
+  }
 }

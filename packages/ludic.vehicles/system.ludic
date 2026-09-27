@@ -2,13 +2,14 @@
 # and the horse's hay); where they lie is not saved - they are called again. The boats' hulls are
 # read back and pushed by the wind in vehicles_tick, which the game calls where the world is run
 export function vehicles_reset(vehicles_st: mut VehiclesState) -> void {
-  if vehicles_st.ve_list != null {
-    for i in 0 .. len(vehicles_st.ve_list) {
-      let v = vehicles_st.ve_list[i]
-      if v.kind == VEHICLE_BOAT { VehicleHull.gone(v.nid) } else { VehicleLegs.gone(v.nid) }
-    }
+  let l = ve_all(vehicles_st)
+  for i in 0 .. len(l) {
+    let v = l[i]
+    if v.kind == VEHICLE_BOAT { VehicleHull.gone(v.nid) } else { VehicleLegs.gone(v.nid) }
+    v.ent = -1
   }
-  vehicles_st.ve_list = new []Vehicle
+  tb_clear(vehicles_st.ve.tab)
+  imap_clear(vehicles_st.ve.nids)
   vehicles_st.ve_cur = null
   vehicles_st.ve_have_dock = false
   vehicles_st.ve_swell_said = 0.0

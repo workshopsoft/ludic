@@ -46,16 +46,23 @@ function emit_io(fn2: pointer, p: pointer, bytes: pointer) -> void {
 function emit_snapshot_blocks(fn2: pointer) -> void {
   g_iok = 0
   g_off = "0"
-  let me = itoa(MAX_ENT)
+  # the stores grow, so a snapshot says how many slots it holds first; a load grows to it before
+  # reading them back
+  let reading = (fn2 == "fread") or (g_snap_mode == "load")
+  if not reading { emit("  %sncap0 = load i32, ptr @L_cap\n  store i32 %sncap0, ptr @L_snapcap\n") }
+  emit_io(fn2, "@L_snapcap", "4")
+  emit("  %sncap = load i32, ptr @L_snapcap\n")
+  if reading { emit("  call void @L_grow(i32 %sncap)\n") }
+  emit("  %sncap64 = sext i32 %sncap to i64\n")
   emit_io(fn2, "@L_entc", "4")
   emit_io(fn2, "@L_freen", "4")
-  emit("  %nalive = mul i64 ");  emit(me);  emit(", 4\n")
-  emit_io(fn2, "@L_alive", "%nalive")
-  emit_io(fn2, "@L_freelist", "%nalive")
-  emit_io(fn2, "@L_kind", "%nalive")
+  emit("  %nalive = mul i64 %sncap64, 4\n")
+  emit_io(fn2, snap_base("L_alive", 0), "%nalive")
+  emit_io(fn2, snap_base("L_freelist", 1), "%nalive")
+  emit_io(fn2, snap_base("L_kind", 2), "%nalive")
   # N3: an @Owned world snapshots its per-entity owners too, so rollback/replication
   # round-trips ownership (like @L_kind). Gated, so non-@Owned snapshots are unchanged.
-  if net_has_owned() { emit_io(fn2, "@L_owner_arr", "%nalive") }
+  if net_has_owned() { emit_io(fn2, snap_base("L_owner_arr", 3), "%nalive") }
   var i = 0
   while i < len(prog) { if prog[i].kind == N_VAR { emit_io(fn2, `@g_{prog[i].s}`, "4") };  i += 1 }
   var ci = 0
@@ -63,14 +70,23 @@ function emit_snapshot_blocks(fn2: pointer) -> void {
   while i < len(prog) {
     if prog[i].kind == N_COMP {
       let c = prog[i].s
+      let csz1 = `%csz1_{itoa(ci)}`
       let csz = `%csz{itoa(ci)}`
-      emit("  ");  emit(csz);  emit(" = ptrtoint ptr getelementptr (%Cmp_");  emit(c);  emit(", ptr null, i32 ");  emit(me);  emit(") to i64\n")
-      emit_io(fn2, `@S_{c}`, csz)
-      emit_io(fn2, `@H_{c}`, me)
+      emit("  ");  emit(csz1);  emit(" = ptrtoint ptr getelementptr (%Cmp_");  emit(c);  emit(", ptr null, i32 1) to i64\n")
+      emit("  ");  emit(csz);  emit(" = mul i64 %sncap64, ");  emit(csz1);  emit("\n")
+      emit_io(fn2, snap_base(`S_{c}`, 4 + ci * 2), csz)
+      emit_io(fn2, snap_base(`H_{c}`, 5 + ci * 2), "%sncap64")
       ci += 1
     }
     i += 1
   }
+}
+
+# a store's base, loaded after any grow the snapshot made
+function snap_base(store: pointer, k: int) -> pointer {
+  let r = `%snb{itoa(k)}`
+  emit(`  {r} = load ptr, ptr @{store}\n`)
+  return r
 }
 
 function emit_snapshot() -> void {

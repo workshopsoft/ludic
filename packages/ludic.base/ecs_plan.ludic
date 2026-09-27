@@ -1,0 +1,46 @@
+# ludic.base/ecs_plan.ludic - a query that has both a grid and a kind index picks the cheaper way:
+# a rare kind's own list scanned, a common one found by rings with the kind as the match
+const PLAN_LIST_MAX: int = 192     # a kind with at most this many rows is scanned from its list
+
+export function tb_nearest_of<T>(tb: Table<T>, g: Grid, ix: IntIndex, x: float, z: float, maxr: float, v: int) -> int {
+  let n = ix_count(ix, v)
+  if n == 0 { return -1 }
+  if n > PLAN_LIST_MAX { return tb_nearest(tb, g, x, z, maxr, ix.col, v) }
+  let rows = ix.lists[v]
+  let xs = tb.f[g.cx]
+  let zs = tb.f[g.cz]
+  var best = -1
+  var bd = 1000000000000.0
+  if maxr > 0.0 { bd = maxr * maxr }
+  for k in 0 .. n {
+    let r = rows[k]
+    if g.gate >= 0 and tb.i[g.gate][r] == 0 { continue }
+    let dx = xs[r] - x
+    let dz = zs[r] - z
+    let d2 = dx * dx + dz * dz
+    if d2 < bd or (d2 == bd and best < 0) {
+      bd = d2
+      best = r
+    }
+  }
+  return best
+}
+
+# within r of (x, z), of kind v, into `out`
+export function tb_within_of<T>(tb: Table<T>, g: Grid, ix: IntIndex, x: float, z: float, r: float, v: int, out: words) -> int {
+  let n = ix_count(ix, v)
+  if n > PLAN_LIST_MAX { return tb_within(tb, g, x, z, r, ix.col, v, out) }
+  List.clear(out)
+  if n == 0 { return 0 }
+  let rows = ix.lists[v]
+  let xs = tb.f[g.cx]
+  let zs = tb.f[g.cz]
+  for k in 0 .. n {
+    let row = rows[k]
+    if g.gate >= 0 and tb.i[g.gate][row] == 0 { continue }
+    let dx = xs[row] - x
+    let dz = zs[row] - z
+    if dx * dx + dz * dz <= r * r { push(out, row) }
+  }
+  return len(out)
+}

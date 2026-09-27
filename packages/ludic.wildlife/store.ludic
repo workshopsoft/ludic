@@ -1,14 +1,20 @@
 # store.ludic - the animals, their own dice, and the verbs that make and take one away
 const WL_TAU: float = 6.2831853
 
+# every animal, one per row - the table's own list: read it, never push to it
 export function wildlife_all(wildlife_st: WildlifeState) -> []WildAnimal {
-  return wildlife_st.wl_list
+  return wildlife_st.wl.tab.rec
 }
 
-export function wildlife_count_all(wildlife_st: WildlifeState) -> int { return len(wildlife_all(wildlife_st)) }
+export function wildlife_count_all(wildlife_st: WildlifeState) -> int { return tb_len(wildlife_st.wl.tab) }
 
 # a new valley: every animal forgotten, quietly (the game has already let its drawings go)
-export function wildlife_clear(wildlife_st: mut WildlifeState) -> void { wildlife_st.wl_list = new []WildAnimal }
+export function wildlife_clear(wildlife_st: mut WildlifeState) -> void {
+  let tb = wildlife_st.wl.tab
+  for r in 0 .. tb_len(tb) { tb.rec[r].ent = -1 }
+  tb_clear(tb)
+  imap_clear(wildlife_st.wl.nids)
+}
 
 function wl_rng(wildlife_st: WildlifeState) -> Rng {
   return wildlife_st.wl_dice
@@ -40,7 +46,7 @@ export function wildlife_make(wildlife_st: mut WildlifeState, sp: int, x: float,
   a.scale = scale
   a.legend = legend
   a.state = WILD_IDLE
-  push(wildlife_all(wildlife_st), a)
+  wl_file(wildlife_st.wl, a)
   WildlifeWorld.born(a)
   return a
 }
@@ -67,7 +73,7 @@ export function wildlife_new(wildlife_st: mut WildlifeState, sp: int, x: float, 
 # gone for good: not drawn, not ticked
 export function wildlife_remove(a: WildAnimal) -> void {
   if a == null { return }
-  a.alive = false
+  wildlife_set_alive(a, false)
   a.shown = false
 }
 
@@ -75,15 +81,16 @@ export function wildlife_remove(a: WildAnimal) -> void {
 export function wildlife_hold(wildlife_st: mut WildlifeState, on: bool) -> void { wildlife_st.wl_hold = on }
 
 export function wildlife_by_nid(wildlife_st: WildlifeState, nid: int) -> WildAnimal {
-  let all = wildlife_all(wildlife_st)
-  for i in 0 .. len(all) { if all[i].nid == nid { return all[i] } }
-  return null
+  let tb = wildlife_st.wl.tab
+  let r = tb_row(tb, imap_get(wildlife_st.wl.nids, nid, -1))
+  if r < 0 or tb.rec[r].nid != nid { return null }
+  return tb.rec[r]
 }
 
 # how many of a species are alive, legends apart
 export function wildlife_count(wildlife_st: WildlifeState, sp: int) -> int {
   var n = 0
-  let all = wildlife_all(wildlife_st)
-  for i in 0 .. len(all) { if all[i].alive and all[i].sp == sp and not all[i].legend { n += 1 } }
+  let rows = ix_rows(wildlife_st.wl.species, sp)
+  for k in 0 .. len(rows) { if not wildlife_st.wl.tab.rec[rows[k]].legend { n += 1 } }
   return n
 }

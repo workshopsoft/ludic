@@ -34,7 +34,7 @@ export property WildSpecies {
 
 export state WildlifeState {
   wl_facts: Queue<WildFact> = wl_facts__new()
-  wl_own: []WildAnimal = null
+  wl_own: WildTable = null   # a guest's own animals, put away whole while it draws the host's
   wl_px: float = 0.0
   wl_pz: float = 0.0
   wl_ask: WildLure = new WildLure
@@ -53,7 +53,7 @@ export state WildlifeState {
   wl_fed_any: bool = false
   wl_near_i: int = 0
   wl_species: []WildSpecies = new []WildSpecies
-  wl_list: []WildAnimal = new []WildAnimal
+  wl: WildTable = wl__new()
   wl_keys: int = 0
   wl_dice: Rng = rng_new(97)
   wl_hold: bool = false      # staged: nobody thinks, everybody keeps their speed

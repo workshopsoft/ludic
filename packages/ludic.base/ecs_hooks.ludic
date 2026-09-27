@@ -1,0 +1,18 @@
+# ludic.base/ecs_hooks.ludic - observers on a table: told each handle as its row is made, and before
+# it is removed, so what depends on a table (a drawing, a message) follows it without a scan
+# an observer: a function handed an entity's handle (its states are supplied, like a system's)
+export property TbHook {
+  run: fn(int) -> void = null
+}
+
+# f is told every handle added from here on, and every handle about to be removed
+export function tb_on_add<T>(tb: Table<T>, f: fn(int) -> void) -> void {
+  let hk = new TbHook
+  hk.run = f
+  push(tb.on_add, hk)
+}
+export function tb_on_remove<T>(tb: Table<T>, f: fn(int) -> void) -> void {
+  let hk = new TbHook
+  hk.run = f
+  push(tb.on_remove, hk)
+}

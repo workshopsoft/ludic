@@ -45,14 +45,22 @@ export function thing_is_personal(t: Thing) -> bool { return thing_kind_ok(t.kin
 # set down by someone rather than grown by the world: the kind says, and the port has the last word
 export function thing_is_put_down(t: Thing) -> bool { return ThingsWorld.put_down(t) }
 
-# every active Thing whose kind ticks, `hours` of the world's clock on
-export function things_tick(things_st: ThingsState, hours: float) -> void {
-  let all = things_all(things_st)
-  for i in 0 .. len(all) {
-    let t = all[i]
-    if not t.active or not thing_kind_ok(t.kind) { continue }
-    let k = ThingKinds[t.kind]
-    if k.tick != null { k.tick(t, hours) }
+# every active Thing whose kind ticks, `hours` of the world's clock on: only the kinds that tick
+# are visited, through the kind index, from a list of handles taken first - a tick may hide one
+export function things_tick(things_st: mut ThingsState, hours: float) -> void {
+  let hs = things_st.th_hs
+  List.clear(hs)
+  let tb = things_st.th.tab
+  for k in 0 .. TH_COUNT {
+    if ThingKinds[k].tick == null { continue }
+    let rows = ix_rows(things_st.th.kinds, k)
+    for i in 0 .. len(rows) { push(hs, tb.ent[rows[i]]) }
+  }
+  for i in 0 .. len(hs) {
+    let r = tb_row(tb, hs[i])
+    if r < 0 { continue }
+    let t = tb.rec[r]
+    if t.active { ThingKinds[t.kind].tick(t, hours) }
   }
 }
 

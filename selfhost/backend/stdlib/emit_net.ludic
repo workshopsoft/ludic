@@ -121,7 +121,8 @@ function emit_net_serialize(m: Node) -> void {
       let cn = m.kids[ci].s
       let c = find_comp(cn)
       if (c != null) {
-        let s = nreg();  emit("  ");  emit(s);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(cn);  emit("], ptr @S_");  emit(cn);  emit(", i32 0, i32 %e\n")
+        let eb1 = ecs_base(`S_{cn}`)
+        let s = nreg();  emit("  ");  emit(s);  emit(" = getelementptr inbounds %Cmp_");  emit(cn);  emit(", ptr ");  emit(eb1);  emit(", i32 %e\n")
         var fj = 0
         while fj < len(c.kids) {
           if c.kids[fj].ival == 1 {
@@ -154,7 +155,8 @@ function emit_net_apply(m: Node) -> void {
       let cn = m.kids[ci].s
       let c = find_comp(cn)
       if (c != null) {
-        let s = nreg();  emit("  ");  emit(s);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(cn);  emit("], ptr @S_");  emit(cn);  emit(", i32 0, i32 %e\n")
+        let eb2 = ecs_base(`S_{cn}`)
+        let s = nreg();  emit("  ");  emit(s);  emit(" = getelementptr inbounds %Cmp_");  emit(cn);  emit(", ptr ");  emit(eb2);  emit(", i32 %e\n")
         var fj = 0
         while fj < len(c.kids) {
           if c.kids[fj].ival == 1 {
@@ -181,7 +183,8 @@ function emit_net_dispatch() -> void {
   let me = itoa(MAX_ENT)
 
   emit("define i32 @ludic_serialize(i32 %e, ptr %buf) {\nentry:\n")
-  emit("  %kp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n  %k = load i32, ptr %kp\n")
+  let eb3 = ecs_base("L_kind")
+  emit("  %kp = getelementptr inbounds i32, ptr ");  emit(eb3);  emit(", i32 %e\n  %k = load i32, ptr %kp\n")
   var k = 0
   var i = 0
   while i < len(prog) {
@@ -198,7 +201,8 @@ function emit_net_dispatch() -> void {
   emit("  ret i32 0\n}\n\n")
 
   emit("define void @ludic_apply(i32 %e, ptr %buf, i32 %len) {\nentry:\n")
-  emit("  %kp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n  %k = load i32, ptr %kp\n")
+  let eb4 = ecs_base("L_kind")
+  emit("  %kp = getelementptr inbounds i32, ptr ");  emit(eb4);  emit(", i32 %e\n  %k = load i32, ptr %kp\n")
   k = 0;  i = 0
   while i < len(prog) {
     if prog[i].kind == N_ARCH and net_model_syncs(prog[i]) {
@@ -216,7 +220,8 @@ function emit_net_dispatch() -> void {
   # ludic_sync_size(e): the replicated byte count for the entity's model — a
   # constant per kind, so a runtime can size a buffer before serialize.
   emit("define i32 @ludic_sync_size(i32 %e) {\nentry:\n")
-  emit("  %kp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n  %k = load i32, ptr %kp\n")
+  let eb5 = ecs_base("L_kind")
+  emit("  %kp = getelementptr inbounds i32, ptr ");  emit(eb5);  emit(", i32 %e\n  %k = load i32, ptr %kp\n")
   k = 0;  i = 0
   while i < len(prog) {
     if prog[i].kind == N_ARCH and net_model_syncs(prog[i]) {
@@ -239,12 +244,15 @@ function emit_net_dispatch() -> void {
 function emit_net_owner() -> void {
   let me = itoa(MAX_ENT)
   emit("define i32 @L_owner(i32 %e) {\nentry:\n")
-  emit("  %p = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_owner_arr, i32 0, i32 %e\n  %v = load i32, ptr %p\n  ret i32 %v\n}\n\n")
+  let eb6 = ecs_base("L_owner_arr")
+  emit("  %p = getelementptr inbounds i32, ptr ");  emit(eb6);  emit(", i32 %e\n  %v = load i32, ptr %p\n  ret i32 %v\n}\n\n")
   emit("define void @L_set_owner(i32 %e, i32 %id) {\nentry:\n")
-  emit("  %p = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_owner_arr, i32 0, i32 %e\n  store i32 %id, ptr %p\n  ret void\n}\n\n")
+  let eb7 = ecs_base("L_owner_arr")
+  emit("  %p = getelementptr inbounds i32, ptr ");  emit(eb7);  emit(", i32 %e\n  store i32 %id, ptr %p\n  ret void\n}\n\n")
   # is_owner(e): does the local peer own e? owner(e) == local_id().
   emit("define i32 @L_is_owner(i32 %e) {\nentry:\n")
-  emit("  %p = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_owner_arr, i32 0, i32 %e\n  %o = load i32, ptr %p\n")
+  let eb8 = ecs_base("L_owner_arr")
+  emit("  %p = getelementptr inbounds i32, ptr ");  emit(eb8);  emit(", i32 %e\n  %o = load i32, ptr %p\n")
   emit("  %lid = load i32, ptr @L_localid\n  %eq = icmp eq i32 %o, %lid\n  %r = zext i1 %eq to i32\n  ret i32 %r\n}\n\n")
 }
 

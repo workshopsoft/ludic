@@ -3,6 +3,8 @@
 export property Queue<T> {
   items: []T = null
   tag: QueueTag = null
+  none: []T = null            # what draining an empty queue hands back, never pushed to
+  spare: []T = null           # the list the last drain handed out: cleared and reused by the next
 }
 # what a queue says about itself, whatever it holds: its name and how many facts wait in it
 export property QueueTag {
@@ -22,6 +24,8 @@ export function queue_new<T>(name: string) -> Queue<T> {
   q.items = new []T
   q.tag = new QueueTag
   q.tag.name = name
+  q.none = new []T
+  q.spare = new []T
   return q
 }
 
@@ -30,18 +34,25 @@ export function q_push<T>(q: Queue<T>, v: T) -> void {
   q.tag.pending = len(q.items)
 }
 
-# the facts in the order they were pushed; the queue is empty afterwards
+# the facts in the order they were pushed; the queue is empty afterwards. Ludic frees nothing, so
+# a drain allocates nothing: the queue keeps two lists and hands one out while the other fills, and
+# an empty drain hands back one shared empty list. What a drain returns is good until the NEXT
+# drain of the same queue - read it, never push to it, never keep it.
 export function q_drain<T>(q: Queue<T>) -> []T {
+  if len(q.items) == 0 { return q.none }
   let out = q.items
-  q.items = new []T
+  List.clear(q.spare)
+  q.items = q.spare
+  q.spare = out
   q.tag.pending = 0
   return out
 }
 
 export function q_len<T>(q: Queue<T>) -> int { return len(q.items) }
 
+# in place: the live list was never handed out (a drain gives its list away and starts another)
 export function q_clear<T>(q: Queue<T>) -> void {
-  q.items = new []T
+  List.clear(q.items)
   q.tag.pending = 0
 }
 

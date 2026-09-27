@@ -230,4 +230,33 @@ program WildlifeTest {
     expect_near(r.x, r.wx, 0.001)
     expect(r.x != x0 or r.wx == r.sx)
   }
+
+  test "the table: a nid finds its animal, the living count by species, the nearest, and a refile" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    wildlife_clear(wildlife_st)
+    let a = wildlife_make(wildlife_st, 0, 10.0, 0.0, false, 0.0, 0, 1.0, 41)
+    let b = wildlife_make(wildlife_st, 0, 90.0, 0.0, false, 0.0, 0, 1.0, 42)
+    let c = wildlife_make(wildlife_st, 1, 30.0, 0.0, true, 0.0, 0, 1.0, 43)
+    expect(wildlife_by_nid(wildlife_st, 42) == b)
+    expect(wildlife_by_nid(wildlife_st, 7) == null)
+    expect_eq(wildlife_count(wildlife_st, 0), 2)
+    expect_eq(wildlife_count(wildlife_st, 1), 0)
+    expect(wildlife_nearest(wildlife_st, -1, 0.0, 0.0, 0.0) == a)
+    expect(wildlife_nearest(wildlife_st, 1, 0.0, 0.0, 0.0) == c)
+    let near = new []WildAnimal
+    expect_eq(wildlife_near(wildlife_st, 0.0, 0.0, 40.0, near), 2)
+    expect_eq(wildlife_near_of(wildlife_st, 0, 0.0, 0.0, 200.0, near), 2)
+    expect_eq(wildlife_alive_of(wildlife_st, 1), 1)
+    wildlife_remove(a)
+    expect_eq(wildlife_count(wildlife_st, 0), 1)
+    expect(wildlife_nearest(wildlife_st, 0, 0.0, 0.0, 0.0) == b)
+    b.x = -5.0
+    wildlife_refile(wildlife_st)
+    expect(wildlife_nearest(wildlife_st, -1, 0.0, 0.0, 20.0) == b)
+    expect_eq(wildlife_verify(wildlife_st), 0)
+    expect_eq(wildlife_count_all(wildlife_st), 3)
+    wildlife_clear(wildlife_st)
+    expect_eq(wildlife_count_all(wildlife_st), 0)
+    expect(wildlife_by_nid(wildlife_st, 42) == null)
+  }
 }

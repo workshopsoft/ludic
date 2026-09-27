@@ -1,0 +1,93 @@
+# ludic.base/ecs_grid_query.ludic - the nearest row: rings of cells outward from the point, stopping
+# at the first ring that cannot hold anything nearer. A match is an int column equal to a value
+# (column -1: any), or a predicate on the row's record. A question: it writes nothing but locals.
+const GRID_RINGS: int = 24        # past this many rings a scan of the filed rows is cheaper
+const GRID_FAR: float = 1000000000000.0
+
+# the nearest filed row to (x, z) within maxr (0: any distance) matching (mc, mv), or -1
+export function tb_nearest<T>(tb: Table<T>, g: Grid, x: float, z: float, maxr: float, mc: int, mv: int) -> int {
+  if g.count == 0 { return -1 }
+  var mcol: words = null
+  if mc >= 0 { mcol = tb.i[mc] }
+  let xs = tb.f[g.cx]
+  let zs = tb.f[g.cz]
+  var best = -1
+  var bd = grid_limit(maxr)
+  let cs = 1.0 / g.inv
+  let ix0 = grid_cell(g, x)
+  let iz0 = grid_cell(g, z)
+  var ring = 0
+  while ring <= GRID_RINGS {
+    if ring > 0 and grid_ring_past(ring, cs, bd) { return best }
+    let span = grid_ring_n(ring)
+    for k in 0 .. span {
+      best = grid_visit(g, xs, zs, mcol, mv, x, z, grid_ring_x(ix0, ring, k), grid_ring_z(iz0, ring, k), best, bd)
+      if best >= 0 { bd = grid_d2(xs, zs, best, x, z) }
+    }
+    ring += 1
+  }
+  for row in 0 .. len(g.key) {
+    if g.key[row] >= 0 and (mcol == null or mcol[row] == mv) and grid_d2(xs, zs, row, x, z) < bd {
+      best = row
+      bd = grid_d2(xs, zs, row, x, z)
+    }
+  }
+  return best
+}
+
+function grid_limit(maxr: float) -> float {
+  if maxr > 0.0 { return maxr * maxr }
+  return GRID_FAR
+}
+# the nearest a point of ring `ring` can be is (ring - 1) cells: past the best, nothing there wins
+function grid_ring_past(ring: int, cs: float, bd: float) -> bool {
+  let near = float(ring - 1) * cs
+  return near * near > bd
+}
+function grid_d2(xs: floats, zs: floats, row: int, x: float, z: float) -> float {
+  let dx = xs[row] - x
+  let dz = zs[row] - z
+  return dx * dx + dz * dz
+}
+
+# a ring's cells in a fixed order: 1 for ring 0, else 8 * ring round the square's edge
+function grid_ring_n(ring: int) -> int {
+  if ring == 0 { return 1 }
+  return 8 * ring
+}
+function grid_ring_x(ix0: int, ring: int, k: int) -> int {
+  if ring == 0 { return ix0 }
+  let side = 2 * ring
+  if k < side { return ix0 - ring + k }
+  if k < 2 * side { return ix0 + ring }
+  if k < 3 * side { return ix0 + ring - (k - 2 * side) }
+  return ix0 - ring
+}
+function grid_ring_z(iz0: int, ring: int, k: int) -> int {
+  if ring == 0 { return iz0 }
+  let side = 2 * ring
+  if k < side { return iz0 - ring }
+  if k < 2 * side { return iz0 - ring + (k - side) }
+  if k < 3 * side { return iz0 + ring }
+  return iz0 + ring - (k - 3 * side)
+}
+
+# one cell: its bucket's rows that are really in it and match; the better of them and `best`
+function grid_visit(g: Grid, xs: floats, zs: floats, mcol: words, mv: int, x: float, z: float, ix: int, iz: int, best: int, bd: float) -> int {
+  let k = grid_key(ix, iz)
+  var b = best
+  var d = bd
+  var r = g.head[grid_bucket(g, ix, iz)]
+  while r > 0 {
+    let row = r - 1
+    if g.key[row] == k and (mcol == null or mcol[row] == mv) {
+      let d2 = grid_d2(xs, zs, row, x, z)
+      if d2 < d {
+        d = d2
+        b = row
+      }
+    }
+    r = g.next[row]
+  }
+  return b
+}

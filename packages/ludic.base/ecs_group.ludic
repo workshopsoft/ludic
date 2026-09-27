@@ -1,0 +1,20 @@
+# ludic.base/ecs_group.ludic - a group is every row an index files under one value: a kind, or a
+# chunk of the world, loaded and let go together. A chunk's number packs its two cell coordinates.
+export function chunk_of(x: float, z: float, size: float) -> int {
+  let cx = int(Math.floor(x / size))
+  let cz = int(Math.floor(z / size))
+  return ((cx & 32767) << 15) | (cz & 32767)
+}
+
+# every row filed under v in ix removed (the observers told of each); how many went. The index's
+# own list shrinks as each goes, so it is read from its end until it is empty.
+export function tb_remove_all<T>(tb: Table<T>, ix: IntIndex, v: int) -> int {
+  var n = 0
+  let rows = ix_rows(ix, v)
+  while len(rows) > 0 {
+    let h = tb.ent[rows[len(rows) - 1]]
+    if not tb_remove(tb, h) { return n }
+    n += 1
+  }
+  return n
+}

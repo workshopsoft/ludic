@@ -1,0 +1,69 @@
+# verbs.ludic - the only ways a Thing is made, removed, moved, shown or hidden: each writes the
+# record and the table's columns together, so the grid and the kind indexes never fall behind
+export function thing_spawn(things_st: mut ThingsState, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
+  return th_place(things_st, new Thing, kind, look, x, y, z, yaw, id)
+}
+
+function th_place(things_st: mut ThingsState, t: Thing, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
+  t.kind = kind
+  t.look = look
+  t.x = x
+  t.y = y
+  t.z = z
+  t.yaw = yaw
+  t.id = id
+  things_st.th_uid += 1
+  t.uid = things_st.th_uid
+  let tb = things_st.th.tab
+  t.tab = tb
+  t.ent = tb_add(tb, t)
+  th_columns(t)
+  imap_put(things_st.th_uids, t.uid, t.ent)
+  ThingsWorld.placed(t)
+  th_fact(things_st, THING_PLACED, t)
+  return t
+}
+
+# the record's x, z, kind and active into its row, refiled once
+function th_columns(t: Thing) -> void {
+  let r = th_row(t)
+  if r < 0 { return }
+  let tb = t.tab
+  tb.f[TH_X][r] = t.x
+  tb.f[TH_Z][r] = t.z
+  tb.i[TH_KIND][r] = t.kind
+  var on = 0
+  if t.active { on = 1 }
+  tb.i[TH_ON][r] = on
+  tb.i[TH_CHUNK][r] = chunk_of(t.x, t.z, TH_CHUNK_M)
+  tb_refile(tb, r)
+}
+
+# a Thing on the ground (the port's), set into it by `sink`, used from `reach`
+export function thing_put(things_st: mut ThingsState, kind: int, look: string, x: float, z: float, yaw: float, sink: float, reach: float, id: int) -> Thing {
+  let t = new Thing
+  t.reach = reach
+  return th_place(things_st, t, kind, look, x, ThingsWorld.ground(x, z) - sink, z, yaw, id)
+}
+
+# gone for good
+export function thing_remove(things_st: mut ThingsState, t: Thing) -> void {
+  if th_row(t) < 0 { return }
+  ThingsWorld.removed(t)
+  th_fact(things_st, THING_REMOVED, t)
+  imap_del(things_st.th_uids, t.uid)
+  tb_remove(t.tab, t.ent)
+  t.ent = -1
+}
+
+# every Thing `gone` says so is removed for good; from the last row down, so the row a removal
+# moves into place has already been asked
+export function things_drop(things_st: mut ThingsState, gone: fn(Thing) -> bool) -> void {
+  let tb = things_st.th.tab
+  var r = tb_len(tb) - 1
+  while r >= 0 {
+    let t = tb.rec[r]
+    if gone(t) { thing_remove(things_st, t) }
+    r -= 1
+  }
+}

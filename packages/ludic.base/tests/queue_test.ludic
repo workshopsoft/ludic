@@ -67,7 +67,44 @@ program QueueTest {
     expect_eq(len(core_undrained(tags)), 0)
   }
 
+  # an empty drain allocates nothing and hands back the same empty list; a drained list is the
+  # caller's, untouched by what is pushed or cleared after it
+  function empty_case() -> void {
+    let q: Queue<int> = queue_new("quiet")
+    let a = q_drain(q)
+    let b = q_drain(q)
+    expect_eq(len(a), 0)
+    expect(a == b)
+    q_push(q, 5)
+    expect_eq(len(a), 0)
+    let got = q_drain(q)
+    q_push(q, 6)
+    q_clear(q)
+    expect_eq(len(got), 1)
+    expect_eq(got[0], 5)
+    expect_eq(q_len(q), 0)
+    expect_eq(len(q_drain(q)), 0)
+  }
+
   test "a queue drains in the order it was pushed" () { fifo_case() }
+  # two lists, reused: a drained list is the caller's until the next drain of that queue
+  function reuse_case() -> void {
+    let q: Queue<int> = queue_new("reused")
+    q_push(q, 1)
+    let a = q_drain(q)
+    q_push(q, 2)
+    expect_eq(a[0], 1)
+    let b = q_drain(q)
+    expect_eq(b[0], 2)
+    q_push(q, 3)
+    let c = q_drain(q)
+    expect(c == a)
+    expect_eq(len(c), 1)
+    expect_eq(c[0], 3)
+  }
+
+  test "a drain reuses the queue's two lists" () { reuse_case() }
+  test "an empty drain allocates nothing, and a drained list is the caller's" () { empty_case() }
   test "a queue holds records" () { record_case() }
   test "clear drops what is waiting" () { clear_case() }
   test "a queue's element type is told by the queue alone" () { infer_case() }

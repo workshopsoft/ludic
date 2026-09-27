@@ -4,6 +4,7 @@ export function wildlife_tick(wildlife_st: mut WildlifeState, dt: float, gh: flo
   wl_seed_scan(wildlife_st, dt)
   let all = wildlife_all(wildlife_st)
   for i in 0 .. len(all) { wl_tick_one(wildlife_st, all[i], dt, gh) }
+  wildlife_refile(wildlife_st)
 }
 
 function wl_tick_one(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float, gh: float) -> void {
