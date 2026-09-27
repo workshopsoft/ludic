@@ -17,20 +17,25 @@ function steps__party_clear(steps_st: mut StepsState) -> void {
 # a party over (or a new one): every column forgotten
 export function steps_party_reset(steps_st: mut StepsState) -> void { steps_st.steps__col = null }
 
-# the columns, emptied when the chapter they were about is not this one; seat 0 refilled
-function steps__cols(steps_st: mut StepsState) -> void {
-  if steps_st.steps__col == null or steps_st.steps__col_ch != steps_st.steps__cur { steps__party_clear(steps_st) }
-  if steps_finished(steps_st) { return }
-  for i in 0 .. steps_in(steps_st, steps_st.steps__cur) {
-    steps_st.steps__col[i] = steps_mine(steps_st, steps_kind(steps_st, steps_st.steps__cur, i), steps_param(steps_st, steps_st.steps__cur, i), steps_need(steps_st, steps_st.steps__cur, i))
+# the columns, emptied when the chapter they were about is not this one (before a teammate's go in)
+function steps__cols(steps_st: mut StepsState) -> void { if steps_st.steps__col == null or steps_st.steps__col_ch != steps_st.steps__cur { steps__party_clear(steps_st) } }
+
+# seat p's share of step i: seat 0 read live, a teammate's as they sent it for this chapter
+function steps__share(steps_st: StepsState, p: int, i: int) -> int {
+  let ch = steps_st.steps__cur
+  if p == 0 {
+    if steps_finished(steps_st) or i >= steps_in(steps_st, ch) { return 0 }
+    return steps_mine(steps_st, steps_kind(steps_st, ch, i), steps_param(steps_st, ch, i), steps_need(steps_st, ch, i))
   }
+  let k = p * STEPS_PER_CHAPTER + i
+  if steps_st.steps__col == null or steps_st.steps__col_ch != ch or k >= len(steps_st.steps__col) { return 0 }
+  return steps_st.steps__col[k]
 }
 
 # this machine's shares for the current chapter, to send to whoever owns the story
-export function steps_my_shares(steps_st: mut StepsState) -> []int {
-  steps__cols(steps_st)
+export function steps_my_shares(steps_st: StepsState) -> []int {
   let out = new []int
-  for i in 0 .. STEPS_PER_CHAPTER { push(out, steps_st.steps__col[i]) }
+  for i in 0 .. STEPS_PER_CHAPTER { push(out, steps__share(steps_st, 0, i)) }
   return out
 }
 
@@ -41,9 +46,8 @@ export function steps_share(steps_st: mut StepsState, p: int, ch: int, shares: [
   for i in 0 .. min(len(shares), STEPS_PER_CHAPTER) { steps_st.steps__col[p * STEPS_PER_CHAPTER + i] = shares[i] }
 }
 
-export function steps_share_of(steps_st: mut StepsState, p: int, i: int) -> int {
-  steps__cols(steps_st)
-  return steps_st.steps__col[p * STEPS_PER_CHAPTER + i]
+export function steps_share_of(steps_st: StepsState, p: int, i: int) -> int {
+  return steps__share(steps_st, p, i)
 }
 
 # a seat emptied: what it had goes with it
@@ -54,10 +58,10 @@ export function steps_leave(steps_st: mut StepsState, p: int) -> void {
 
 # the shares of every seat taken, combined as the pool says (seat 0 is the start)
 function steps__combined(steps_st: StepsState, i: int, how: int) -> int {
-  var v = steps_st.steps__col[i]
+  var v = steps__share(steps_st, 0, i)
   for p in 1 .. steps_st.steps__players {
     if not StepsWorld.present(p) { continue }
-    let c = steps_st.steps__col[p * STEPS_PER_CHAPTER + i]
+    let c = steps__share(steps_st, p, i)
     if how == STEPS_POOL_ANY or how == STEPS_POOL_OR { v = v | c }
     else if how == STEPS_POOL_SUM { v += c }
     else if how == STEPS_POOL_MAX { if c > v { v = c } }
@@ -66,24 +70,22 @@ function steps__combined(steps_st: StepsState, i: int, how: int) -> int {
 }
 
 # the answer to step i of the current chapter: solo this is steps_eval and nothing more
-export function steps_met(steps_st: mut StepsState, i: int) -> bool {
+export function steps_met(steps_st: StepsState, i: int) -> bool {
   let ch = steps_st.steps__cur
   let kind = steps_kind(steps_st, ch, i)
   if not StepsWorld.party() { return steps_eval(steps_st, kind, steps_param(steps_st, ch, i), steps_need(steps_st, ch, i)) }
   let how = steps_pool(steps_st, kind)
   if how == STEPS_POOL_WORLD { return steps_eval(steps_st, kind, steps_param(steps_st, ch, i), steps_need(steps_st, ch, i)) }
-  steps__cols(steps_st)
   return steps_from(steps_st, kind, steps_param(steps_st, ch, i), steps_need(steps_st, ch, i), steps__combined(steps_st, i, how), steps_players(steps_st), steps_each(steps_st, i))
 }
 
 # the party's count for step i of the current chapter, -1 for one that is not a tally
-export function steps_party_got(steps_st: mut StepsState, i: int) -> int {
+export function steps_party_got(steps_st: StepsState, i: int) -> int {
   let ch = steps_st.steps__cur
   let kind = steps_kind(steps_st, ch, i)
   let param = steps_param(steps_st, ch, i)
   if steps_got(steps_st, kind, param) < 0 { return -1 }
   let how = steps_pool(steps_st, kind)
   if not StepsWorld.party() or how == STEPS_POOL_WORLD or how == STEPS_POOL_ANY or how == STEPS_POOL_EACH { return steps_got(steps_st, kind, param) }
-  steps__cols(steps_st)
   return steps_got_from(steps_st, kind, param, steps__combined(steps_st, i, how))
 }

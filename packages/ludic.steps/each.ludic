@@ -7,21 +7,19 @@ export function steps_players(steps_st: StepsState) -> int {
 }
 
 # how many seats taken have step i's thing (seat 0 counted live)
-export function steps_each(steps_st: mut StepsState, i: int) -> int {
-  steps__cols(steps_st)
+export function steps_each(steps_st: StepsState, i: int) -> int {
   var n = 0
   for p in 0 .. steps_st.steps__players {
-    if StepsWorld.present(p) and steps_st.steps__col[p * STEPS_PER_CHAPTER + i] != 0 { n += 1 }
+    if StepsWorld.present(p) and steps__share(steps_st, p, i) != 0 { n += 1 }
   }
   return n
 }
 
 # the seats that do not have it yet
-export function steps_lacking(steps_st: mut StepsState, i: int) -> []int {
-  steps__cols(steps_st)
+export function steps_lacking(steps_st: StepsState, i: int) -> []int {
   let out = new []int
   for p in 0 .. steps_st.steps__players {
-    if StepsWorld.present(p) and steps_st.steps__col[p * STEPS_PER_CHAPTER + i] == 0 { push(out, p) }
+    if StepsWorld.present(p) and steps__share(steps_st, p, i) == 0 { push(out, p) }
   }
   return out
 }
