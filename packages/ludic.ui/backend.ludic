@@ -43,6 +43,8 @@ export state UiState {
   ev_depth: int = 0                      # eval.ludic: a call's arguments, in lists kept one a depth
   ev_args: []Val = new []Val
   cv_texts: []string = new []string      # units_pieces.ludic: a value's var() pieces, kept
+  tx_pieces: [][]string = new [][]string # eval_text.ludic: a text's pieces, a list a depth
+  tx_depth: int = 0
   ca_pool: []CaVal = new []CaVal         # calc.ludic: an evaluation's terms, used again by the next
   ca_used: int = 0
   ca_args: [][]CaVal = new [][]CaVal

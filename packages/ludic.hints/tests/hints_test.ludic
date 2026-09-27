@@ -74,6 +74,11 @@ program HintsTest {
     hints_test_st.showing = true
     hints_sort(hints_st)
     expect_eq(len(hints_rail(hints_st)), 1)
+    let kept = new []int
+    hints_rail_into(hints_st, kept)
+    hints_rail_into(hints_st, kept)
+    expect_eq(len(kept), 1)
+    expect_eq(kept[0], hints_rail(hints_st)[0])
   }
 
   test "the key opens the picked chip, the arrows walk round, the key puts it down" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {

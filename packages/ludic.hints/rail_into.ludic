@@ -1,0 +1,7 @@
+# rail_into.ludic - the rail into a list the caller keeps: a HUD asks every frame, and a list made
+# each time is never given back
+export function hints_rail_into(hints_st: HintsState, out: []int) -> void {
+  List.clear(out)
+  if not HintsWorld.showing() { return }
+  for k in 0 .. hints_st.hn_n { push(out, hints_st.hn_top[k]) }
+}

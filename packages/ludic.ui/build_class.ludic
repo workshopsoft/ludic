@@ -25,8 +25,11 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   for i in 0 .. len(k.on_keys) { push(ce.on_envs, e) }
   lc_note(ui_st, key, k.on_keys, k.on_acts, e)
   let at = len(out)
-  let root = new []UiTpl
-  push(root, cls.root)
+  if cls.roots == null or len(cls.roots) != 1 or cls.roots[0] != cls.root {
+    cls.roots = new []UiTpl       # its template as a list of one, made once (again after a reload)
+    push(cls.roots, cls.root)
+  }
+  let root = cls.roots
   bd_kids(ui_st, root, ce, key, out)
   if len(out) > at { bd_pass_down(ui_st, out[at], k, e) }
 }
