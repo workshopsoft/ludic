@@ -1,0 +1,38 @@
+# eval_text.ludic - a text with holes ("{n} left") worked out: its pieces are found in the memo by
+# comparing in place, so the text it was last frame (and the frame before) is its kept Value, and a
+# text is built only the first time it reads that way. The memo is bounded; past it a text is built as ever
+function ev_text(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
+  let depth = ui_st.tx_depth        # a hole may hold a text of its own: a kept list of pieces a depth
+  while len(ui_st.tx_pieces) <= depth { push(ui_st.tx_pieces, new []string) }
+  let ps = ui_st.tx_pieces[depth]
+  ui_st.tx_depth = depth + 1
+  List.clear(ps)
+  for i in 0 .. len(x.args) { push(ps, vl_text_u(ui_st, ui_eval(ui_st, x.args[i], e))) }
+  ui_st.tx_depth = depth
+  let m = mm_of(ui_st)
+  var h = 216613626 ^ (MM_TEXT & 255)
+  for p in 0 .. len(ps) {
+    let t = ps[p]
+    for i in 0 .. len(t) { h = ((h ^ t[i]) * 16777619) & 2147483647 }
+  }
+  var at = h & (MM_CAP - 1)
+  while m.slots[at] != 0 {
+    let i = m.slots[at] - 1
+    if m.tags[i] == MM_TEXT and tx_same(ps, m.keys[i]) { return m.vals[i] }
+    at = (at + 1) & (MM_CAP - 1)
+  }
+  var out = ""
+  for p in 0 .. len(ps) { out = out + ps[p] }
+  let j = mm_add(m, MM_TEXT, out)
+  if j < 0 { return uv_str(ui_st, out) }
+  m.vals[j] = Value.str(out)
+  return m.vals[j]
+}
+function tx_same(ps: []string, k: string) -> bool {
+  var at = 0
+  for p in 0 .. len(ps) {
+    if not sat(k, at, ps[p]) { return false }
+    at += len(ps[p])
+  }
+  return at == len(k)
+}

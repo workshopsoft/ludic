@@ -52,10 +52,11 @@ function el_text(ui_st: mut UiState, n: UiNode, s: string) -> void {
   push(n.children, t)
 }
 # id, class, hidden, disabled and src say what the element is; the rest are applied after the rules
+# an attribute's text is worked out only where it is read as text (the rest keep their Value; a selector
+# that asks for one reads it then) - a float's text written per element per frame was a leak
 function el_keep(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> void {
-  let s = vl_text_u(ui_st, v)
-  if key == "id" { n.id = s } else if key == "class" {
-    let parts = mm_split(ui_st, s, 32)
+  if key == "id" { n.id = vl_text_u(ui_st, v) } else if key == "class" {
+    let parts = mm_split(ui_st, vl_text_u(ui_st, v), 32)
     for i in 0 .. len(parts) {
       if len(parts[i]) > 0 { push(n.classes, parts[i]) }
     }
@@ -63,12 +64,12 @@ function el_keep(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> void {
     n.popover = true
     n.pos = 2
     push(n.akeys, key)
-    push(n.avals, s)
+    push(n.avals, "")
     push(n.vals, v)
-  } else if key == "tabindex" { n.focusable = s != "-1" } else if key == "hidden" { n.hidden = el_flag(v) } else if key == "disabled" { n.enabled = not el_flag(v) } else if key == "src" { n.src = s } else {
+  } else if key == "tabindex" { n.focusable = vl_text_u(ui_st, v) != "-1" } else if key == "hidden" { n.hidden = el_flag(v) } else if key == "disabled" { n.enabled = not el_flag(v) } else if key == "src" { n.src = vl_text_u(ui_st, v) } else {
     if key == "enabled" { n.enabled = el_flag(v) }
     push(n.akeys, key)
-    push(n.avals, s)
+    push(n.avals, "")
     push(n.vals, v)
   }
 }

@@ -58,7 +58,7 @@ function sel_has(xs: []string, x: string) -> bool {
 function sel_attr_of(n: UiNode, key: string) -> string {
   if n.akeys == null { return null }
   for i in 0 .. len(n.akeys) {
-    if n.akeys[i] == key { return n.avals[i] }
+    if n.akeys[i] == key { return vl_text(n.vals[i]) }
   }
   return null
 }

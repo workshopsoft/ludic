@@ -25,11 +25,7 @@ function ui_eval(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
     if vl_truthy(ui_eval(ui_st, x.a, e)) { return ui_eval(ui_st, x.b, e) }
     return ui_eval(ui_st, x.c, e)
   }
-  if x.op == X_TEXT {
-    var out = ""
-    for i in 0 .. len(x.args) { out = out + vl_text_u(ui_st, ui_eval(ui_st, x.args[i], e)) }
-    return uv_str(ui_st, out)
-  }
+  if x.op == X_TEXT { return ev_text(ui_st, x, e) }
   return vl_binary(ui_st, x.s, ui_eval(ui_st, x.a, e), ui_eval(ui_st, x.b, e))
 }
 # a call: len() and range() are the template's own, anything else is the view's

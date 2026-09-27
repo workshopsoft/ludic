@@ -5,7 +5,11 @@ export function ui_reload(ui_st: mut UiState) -> bool {
   var changed = uc_reload(ui_st)
   for i in 0 .. len(ui_st.lib_files) {
     let f = ui_st.lib_files[i]
-    if f.disk and lib_text(ui_st, f.path) != f.src { changed = true }
+    if f.disk {
+      let now = lib_text(ui_st, f.path)
+      if now != f.src { changed = true }
+      rl_let_go(now)                 # read only to compare; a change is read again below
+    }
   }
   if not changed { return false }
   ui_st.ui_errs = new []string
@@ -30,4 +34,9 @@ export function ui_reload(ui_st: mut UiState) -> bool {
   uc_invalidate(ui_st)
   print(`ui: templates reloaded`)
   return true
+}
+# a text read from disk only to be compared, given back (never a literal: lib_text's "" is not freed)
+function rl_let_go(s: string) -> void {
+  if s == null or len(s) == 0 { return }
+  unsafe { free(s) }
 }
