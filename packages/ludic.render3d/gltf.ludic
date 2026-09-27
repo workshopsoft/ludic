@@ -163,7 +163,11 @@ function gltf_load(render3d_st: mut Render3dState, dir: string, file: string, no
   render3d_st.gltf_dir = dir
   let text = Fs.read_text(dir + "/" + file)
   if text == null { print(`gltf: cannot read {dir}/{file}`);  return null }
+  # the last file's tree goes first (it is read only until the next load: ludic.anim's read.ludic),
+  # and the text once parsed - nothing gives memory back on its own (plan 23 of maroon-lake)
+  if render3d_st.gltf_doc != null { Json.free(render3d_st.gltf_doc) }
   render3d_st.gltf_doc = Json.parse(text)
+  free(text)
   let buffers = value_get(render3d_st.gltf_doc, "buffers")
   let bin_uri = value_as_str(value_get(value_at(buffers, 0), "uri"))
   render3d_st.gltf_bin = file_open(dir + "/" + bin_uri, "rb")
