@@ -14,6 +14,14 @@ export const PH_COMMIT: int = 4
 export const PH_PRESENT: int = 5
 export const PH_COUNT: int = 6
 
+# the same Tick filled again: the frame loop keeps one and hands it on, rather than a new one a frame
+export function tick_set(t: Tick, dt: float, frame: int, hours: float) -> Tick {
+  t.dt = dt
+  t.frame = frame
+  t.hours = hours
+  return t
+}
+
 export function tick_new(dt: float, frame: int, hours: float) -> Tick {
   let t = new Tick
   t.dt = dt

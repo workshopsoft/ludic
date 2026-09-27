@@ -11,6 +11,7 @@ export function vehicles_reset(vehicles_st: mut VehiclesState) -> void {
   tb_clear(vehicles_st.ve.tab)
   imap_clear(vehicles_st.ve.nids)
   vehicles_st.ve_cur = null
+  vehicles_st.ve_moved = 0.0
   vehicles_st.ve_have_dock = false
   vehicles_st.ve_swell_said = 0.0
   vehicles_st.ve_kept_horse = false

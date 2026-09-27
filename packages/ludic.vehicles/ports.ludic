@@ -43,6 +43,10 @@ export state VehiclesState {
   ve_kept_boat: bool = false
   ve_kept_food: float = 40.0
   ve_ids: int = 0
+  ve_moved: float = 0.0        # metres the ridden vehicle covered since the game last took them
+  ve_moved_kind: int = 0
+  ve_moved_x: float = 0.0
+  ve_moved_z: float = 0.0
   ve_sx: float = 0.0
   ve_sz: float = 0.0
   ve: VehicleTable = ve__new()

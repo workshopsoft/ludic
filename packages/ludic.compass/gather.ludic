@@ -1,28 +1,53 @@
 # gather.ludic - a frame's marks: begin, every provider marks, end sorts and culls. While a
 # capture is open the marks go to whoever is listening instead, whatever the tier.
-export function compass_begin(compass_st: mut CompassState) -> void { compass_st.cmp_list = new []CompassMark }
+# a frame's list and marks are the state's own, emptied and reused rather than made again
+export function compass_begin(compass_st: mut CompassState) -> void {
+  if compass_st.cmp_list == null {
+    compass_st.cmp_list = new []CompassMark
+    compass_st.cmp_back = new []CompassMark
+    compass_st.cmp_pool = new []CompassMark
+  }
+  List.clear(compass_st.cmp_list)
+  compass_st.cmp_used = 0
+}
 
 # a provider's verb: a thing at (x, z), shown from compass `tier` up
 export function compass_mark(compass_st: mut CompassState, x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> void {
   if compass_st.cmp_list == null { compass_begin(compass_st) }
-  let m = cmp_new(x, z, icon, colour, tier, prio, label)
   if compass_st.cmp_capturing {
-    push(compass_st.cmp_caught, m)
+    push(compass_st.cmp_caught, cmp_new(x, z, icon, colour, tier, prio, label))   # kept by the listener
     return
   }
   if CompassWorld.tier() < tier { return }
-  push(compass_st.cmp_list, m)
+  push(compass_st.cmp_list, cmp_take(compass_st, x, z, icon, colour, tier, prio, label))
 }
 
 # highest priority first, the providers' order kept within one; then the cap
 export function compass_end(compass_st: mut CompassState) -> void {
   if compass_st.cmp_list == null { compass_begin(compass_st) }
-  let out = new []CompassMark
+  let out = compass_st.cmp_back
+  List.clear(out)
   for p in 0 .. 3 {
     let want = COMPASS_TRACKED - p
     for i in 0 .. len(compass_st.cmp_list) { if cmp_band(compass_st.cmp_list[i].prio) == want and len(out) < compass_st.cmp_cap { push(out, compass_st.cmp_list[i]) } }
   }
+  compass_st.cmp_back = compass_st.cmp_list
   compass_st.cmp_list = out
+}
+
+# the pool's next mark, filled (one made only when the pool is short)
+function cmp_take(compass_st: mut CompassState, x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> CompassMark {
+  if compass_st.cmp_used >= len(compass_st.cmp_pool) { push(compass_st.cmp_pool, new CompassMark) }
+  let m = compass_st.cmp_pool[compass_st.cmp_used]
+  compass_st.cmp_used += 1
+  m.x = x
+  m.z = z
+  m.icon = icon
+  m.colour = colour
+  m.tier = tier
+  m.prio = prio
+  m.label = label
+  return m
 }
 
 function cmp_band(p: int) -> int { return Math.clamp(p, COMPASS_PLAIN, COMPASS_TRACKED) }
