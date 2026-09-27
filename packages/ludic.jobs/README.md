@@ -64,7 +64,8 @@ export port JobsPay { reward: fn(int, int, int) -> void }   # (scope, money, rep
 | `jobs_morning()`, `jobs_roll(lo, hi)`, `jobs_post(b, s, kind, param, need, money, rep)`, `jobs_config_seed(seed)` | posting |
 | `jobs_slots(b)`, `jobs_posted(b)`, `jobs_post_kind / _param / _need / _have / _money / _rep / _state / _day(b, s)`, `jobs_posts_done(b)`, `jobs_total(b)` | the boards |
 | `jobs_post_hand_in(b, s)`, `jobs_post_set(b, s, ...)`, `jobs_set_total(b, n)` | a post's verbs |
-| `jobs_facts() -> Queue<JobsFact>` | `{ what: JOBS_F_OFFERED / _PROGRESSED / _COMPLETED / _HANDED_IN, job, board, slot, kind, param, have, need, money, rep, scope }` |
+| `jobs_give_up(i)`, `jobs_back_on(i)`, `jobs_post_give_up(b, s)` | letting one go: a written job is offered again from the next day (the day back is saved with it), a post comes down and the morning replaces it; an auto board's posts are never taken, so never given up |
+| `jobs_facts() -> Queue<JobsFact>` | `{ what: JOBS_F_OFFERED / _PROGRESSED / _COMPLETED / _HANDED_IN / _GIVEN_UP, job, board, slot, kind, param, have, need, money, rep, scope }` |
 | `jobs_system()`, `jobs_party_system()` | `"jobs"` (yours, the tick) and `"jobs.party"` (the party's), each saving its scope's jobs and boards by key |
 
 ## Tests

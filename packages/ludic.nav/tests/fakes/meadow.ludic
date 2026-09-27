@@ -1,0 +1,61 @@
+# fakes/meadow.ludic - ground built by hand for ludic.nav's tests: n metre squares a side, flat at
+# y = 0; river 1 crosses x 18..22 with a ford at z 30..34, river 2 without one, river 0 is none
+function ground(n: int, river: int) -> NavGround {
+  let g = new NavGround
+  g.nv = (n + 1) * (n + 1)
+  g.v = floats(g.nv * 3)
+  for j in 0 .. n + 1 {
+    for i in 0 .. n + 1 {
+      let o = (j * (n + 1) + i) * 3
+      g.v[o] = float(i)
+      g.v[o + 2] = float(j)
+    }
+  }
+  g.nt = n * n * 2
+  g.t = new []int
+  g.area = buffer(g.nt)
+  for j in 0 .. n {
+    for i in 0 .. n {
+      let a = j * (n + 1) + i
+      push(g.t, a)
+      push(g.t, a + n + 1)
+      push(g.t, a + 1)
+      push(g.t, a + 1)
+      push(g.t, a + n + 1)
+      push(g.t, a + n + 2)
+      var k = 1
+      if river > 0 and i >= 18 and i < 22 and not (river == 1 and j >= 30 and j < 34) { k = 0 }
+      g.area[(j * n + i) * 2] = k
+      g.area[(j * n + i) * 2 + 1] = k
+    }
+  }
+  return g
+}
+
+# a post r wide at (x, z), from under the ground to over a walker's head
+function post_at(x: float, z: float, r: float) -> []float {
+  let c = floats(5)
+  c[0] = x
+  c[1] = -1.0
+  c[2] = z
+  c[3] = r
+  c[4] = 4.0
+  return c
+}
+
+# a square footprint 2h across at (x, z), as a boulder's is written: n, the corners, ymin, ymax
+function square_at(x: float, z: float, h: float) -> []float {
+  let f = floats(11)
+  f[0] = 4.0
+  f[1] = x - h
+  f[2] = z - h
+  f[3] = x + h
+  f[4] = z - h
+  f[5] = x + h
+  f[6] = z + h
+  f[7] = x - h
+  f[8] = z + h
+  f[9] = -1.0
+  f[10] = 3.0
+  return f
+}

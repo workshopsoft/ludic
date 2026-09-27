@@ -46,6 +46,7 @@ function prof_slot(render3d_st: mut Render3dState, name: pointer) -> int {
 
 function prof_begin(render3d_st: mut Render3dState, name: pointer) -> void {
   ds_set_pass(render3d_st, name)
+  if render3d_st.gvk_labels { gvk_label_begin(render3d_st, name) }
   if not render3d_st.prof_on { return }
   if render3d_st.prof_active >= 0 { return }        # GL_TIME_ELAPSED queries cannot nest
   let s = prof_slot(render3d_st, name)
@@ -56,6 +57,7 @@ function prof_begin(render3d_st: mut Render3dState, name: pointer) -> void {
 
 function prof_end(render3d_st: mut Render3dState) -> void {
   ds_set_pass(render3d_st, render3d_st.ds_outside)
+  if render3d_st.gvk_labels { gvk_label_end(render3d_st) }
   if not render3d_st.prof_on { return }
   if render3d_st.prof_active < 0 { return }
   gpu_query_end(render3d_st)

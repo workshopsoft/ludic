@@ -56,6 +56,9 @@ function r3d_env_flags(render3d_st: mut Render3dState) -> void {
   if r3d_env_has(render3d_st, "R3D_NOGI") { render3d_st.post_gi_strength = 0.0;  render3d_st.post_ao_strength = 0.0;  render3d_st.post_no_gi = true }
   if r3d_env_has(render3d_st, "R3D_MSAA") { render3d_st.post_ms_samples = Text.to_int(r3d_env(render3d_st, "R3D_MSAA")) }
   render3d_st.sc_skip_blade = r3d_env_has(render3d_st, "R3D_NOBLADES")
+  render3d_st.sc_skip_grass = r3d_env_has(render3d_st, "R3D_NOGRASS")
+  render3d_st.grass_force = r3d_env_has(render3d_st, "R3D_BLADES")
+  render3d_st.grass_env_off = r3d_env_has(render3d_st, "R3D_NOBLADES")
   render3d_st.sc_skip_card = r3d_env_has(render3d_st, "R3D_NOCARDS")
   render3d_st.sc_dbg_lod = r3d_env_has(render3d_st, "R3D_LODDBG")
   if r3d_env_has(render3d_st, "R3D_ANISO") {
@@ -206,6 +209,7 @@ function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
   prof_cpu_mark(render3d_st, "shadow rebake")
   stream_update_all(render3d_st)
   prof_cpu_mark(render3d_st, "streaming")
+  gg_cull_frame(render3d_st)                # before any pass: a dispatch inside one would split it
   if not render3d_st.r3d_no_shadow { prof_begin(render3d_st, "shadow");  shadow_pass(render3d_st);  prof_end(render3d_st) }
   prof_cpu_mark(render3d_st, "shadow pass")
   if render3d_st.water_on and not render3d_st.r3d_no_refl and water_reflect_visible(render3d_st) { prof_begin(render3d_st, "water reflection");  water_reflection_pass(render3d_st);  prof_end(render3d_st) }

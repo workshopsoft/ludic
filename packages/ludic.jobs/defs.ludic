@@ -49,6 +49,7 @@ export const JOBS_F_OFFERED: int = 0
 export const JOBS_F_PROGRESSED: int = 1
 export const JOBS_F_COMPLETED: int = 2
 export const JOBS_F_HANDED_IN: int = 3
+export const JOBS_F_GIVEN_UP: int = 4       # taken and let go: what the game placed for it comes down
 
 # `job` a written job, or -1 and `board` / `slot` a post; what it counted rides along, since a
 # post handed in is replaced before anyone reads the fact

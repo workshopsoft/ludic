@@ -1,0 +1,10 @@
+# ludic.nav - a navmesh per kind of walker (a person, a large animal, a small one): built from
+# triangles and the cylinders nothing stands in, or loaded from the bytes a bake saved; asked for
+# the nearest walkable point, a path as corners, and whether a straight line stays walkable.
+module ludic_nav uses ludic_base
+numbers float
+import "ludic.base"
+import "native.ludic"
+import "state.ludic"
+import "build.ludic"
+import "query.ludic"

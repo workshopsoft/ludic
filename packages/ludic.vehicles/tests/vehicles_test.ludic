@@ -1,8 +1,8 @@
 # vehicles_test.ludic - a fake shore: land at x < 10, a lake past it deepening a metre a metre, a
 # pier head at the shore facing out and a trough on the meadow, a trunk in a horse's way. Calling to
 # berths and bays, the owner and the rider, mounting a hungry horse, riding both, the swell, the wind,
-# getting off near a shore and far from one, a player leaving, and the save. The boat's hull is a
-# real ludic.physics body on the same lake.
+# getting off near a shore and far from one, a player leaving, and the save. The boat's hull and the
+# horse's legs are real ludic.physics bodies on the same ground, the trunk a post in it.
 import "ludic.vehicles"
 import "ludic.base"
 import "ludic.physics"
@@ -17,7 +17,6 @@ program VehiclesTest {
     if x > 9.5 { return 0.0 }
     return -10000.0
   }
-  function fk_blocked(x: float, z: float, r: float) -> bool { return Math.abs(x) < 1.0 + r and Math.abs(z + 60.0) < 1.0 + r }
   state VehiclesTestState {
     swell: float = 0.0
     wind: float = 0.0
@@ -38,6 +37,11 @@ program VehiclesTest {
     hyaw: float = 0.0
     hspeed: float = 0.0
     hulls: int = 0
+    legs: int = -1
+    lx: float = 0.0
+    ly: float = 0.0
+    lz: float = 0.0
+    stood: int = 0
   }
   function fk_swell(vehicles_test_st: VehiclesTestState, x: float, z: float, fx: float, fz: float) -> float {
     if fx > 0.0 { return vehicles_test_st.swell }
@@ -79,11 +83,28 @@ program VehiclesTest {
   function fk_lake(physics_st: mut PhysicsState) -> void {
     if phys_is_open(physics_st) { return }
     phys_open(physics_st, 64, 1)
-    let n = 96
+    let n = 160
     let h = floats(n * n)
-    for j in 0 .. n { for i in 0 .. n { h[j * n + i] = fk_ground(float(i) - 20.0, float(j) - 48.0) } }
-    phys_ground_add(physics_st, phys_heightfield(physics_st, h, n, -20.0, -48.0, 1.0))
+    for j in 0 .. n { for i in 0 .. n { h[j * n + i] = fk_ground(float(i) - 20.0, float(j) - 100.0) } }
+    phys_ground_add(physics_st, phys_heightfield(physics_st, h, n, -20.0, -100.0, 1.0))
+    phys_static_add(physics_st, phys_box(physics_st, 15.0, 5.0, 1.0), 0.0, 0.0, -60.0, 0.0)
   }
+
+  # the legs: the horse's own walker on that ground, made on its first step
+  function fk_walk(physics_st: mut PhysicsState, vehicles_test_st: mut VehiclesTestState, nid: int, x: float, y: float, z: float, vx: float, vz: float, dt: float) -> bool {
+    fk_lake(physics_st)
+    if vehicles_test_st.legs < 0 { vehicles_test_st.legs = phys_walker_add(physics_st, 0.8, 1.7, x, y, z, 40.0, 450.0) }
+    phys_walker_move(physics_st, vehicles_test_st.legs, x, y, z, vx, vz, 0.0, 0.45, 40.0, dt)
+    let p = phys_walker_pose(physics_st, vehicles_test_st.legs)
+    vehicles_test_st.lx = p.x
+    vehicles_test_st.ly = p.y
+    vehicles_test_st.lz = p.z
+    return true
+  }
+  function fk_lx(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.lx }
+  function fk_ly(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.ly }
+  function fk_lz(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.lz }
+  function fk_stand(vehicles_test_st: mut VehiclesTestState, nid: int, x: float, y: float, z: float) -> void { vehicles_test_st.stood += 1 }
   function fk_put(physics_st: mut PhysicsState, vehicles_test_st: mut VehiclesTestState, nid: int, x: float, y: float, z: float, yaw: float) -> void {
     fk_lake(physics_st)
     if vehicles_test_st.hull >= 0 and vehicles_test_st.hull_nid == nid {
@@ -120,8 +141,9 @@ program VehiclesTest {
   function fk_hspeed(vehicles_test_st: VehiclesTestState) -> float { return vehicles_test_st.hspeed }
   bind VehicleHull { put: fn fk_put, row: fn fk_row, drift: fn fk_drift, read: fn fk_read, x: fn fk_hx, y: fn fk_hy, z: fn fk_hz, yaw: fn fk_hyaw, speed: fn fk_hspeed, gone: fn fk_hull_gone }
   bind PhysWater { height: fn fk_water }
+  bind VehicleLegs { walk: fn fk_walk, x: fn fk_lx, y: fn fk_ly, z: fn fk_lz, stand: fn fk_stand }
 
-  bind VehicleWorld { ground: fn fk_ground, water: fn fk_water, blocked: fn fk_blocked, swell: fn fk_swell, wind: fn fk_wind, made: fn fk_made, gone: fn fk_gone, placed: fn fk_placed }
+  bind VehicleWorld { ground: fn fk_ground, water: fn fk_water, swell: fn fk_swell, wind: fn fk_wind, made: fn fk_made, gone: fn fk_gone, placed: fn fk_placed }
   bind VehicleRider { board: fn fk_board, ride_at: fn fk_ride, step_off: fn fk_off, safe_spot: fn fk_safe, safe_x: fn fk_sx, safe_z: fn fk_sz }
 
   const EAST: float = -1.5707963
@@ -207,7 +229,7 @@ program VehiclesTest {
     expect(vehicle_in_place(vehicles_st, VEHICLE_HORSE, 0) == null)
   }
 
-  test "a horse walks, gallops on stamina, stops at the water and at a trunk" (physics_st: mut PhysicsState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+  test "a horse walks, gallops on stamina, is pushed aside by a trunk it glances, stops at a fence and the water; called, it stands at its bay" (physics_st: mut PhysicsState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
     fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
     let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
@@ -221,10 +243,14 @@ program VehiclesTest {
     expect(h.z < -15.0)
     expect_near(vehicles_test_st.rz, h.z, 0.001)
     expect_near(vehicles_test_st.ry, 1.35, 0.001)
-    # the trunk at z = -60 stops it
+    # a trunk half a metre off its line pushes it aside and lets it by; the fence at z = -60 stops it
+    let x0 = h.x
+    phys_static_add(physics_st, phys_cylinder(physics_st, 3.0, 0.3), x0 + 0.5, 0.0, -35.0, 0.0)
     ride(physics_st, vehicles_st, 0.0, 1.0, true, 6.0)
-    expect(h.z > -60.0 + 1.7)
-    expect_near(h.speed, 0.0, 0.001)
+    expect(h.z > -59.0 - 0.85)
+    expect(h.z < -50.0)
+    expect(Math.abs(h.x - x0) > 0.2)
+    expect_near(h.speed, 0.0, 0.05)
     # and the lake to the east does too
     vehicle_drop(vehicles_st)
     h.x = 7.0
@@ -233,6 +259,11 @@ program VehiclesTest {
     vehicle_mount(vehicles_st, h)
     ride(physics_st, vehicles_st, 0.0, 1.0, false, 4.0)
     expect(h.x < 9.6)
+    # a horse brought to its bay is stood there
+    vehicle_drop(vehicles_st)
+    let before = vehicles_test_st.stood
+    expect(vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 1))
+    expect_eq(vehicles_test_st.stood, before + 1)
   }
 
   test "a boat is rowed out, loses its stroke to the swell, turns, is stopped by the shore's bed, drifts on the wind" (physics_st: mut PhysicsState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {

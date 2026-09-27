@@ -20,12 +20,12 @@ export function jobs_under_way(jobs_st: JobsState, i: int) -> bool {
 # on offer: not taken, the scope's standing and the story far enough, and the game allowing it
 export function jobs_offered(jobs_st: JobsState, i: int) -> bool {
   let d = Jobs[i]
-  if jobs_state(jobs_st, i) != JOBS_OFFERED { return false }
+  if jobs_state(jobs_st, i) != JOBS_OFFERED or JobsWorld.day() < jobs_st.jobs__back[i] { return false }
   return JobsWorld.rep(d.scope) >= d.minrep and JobsWorld.stage() >= d.minstage and JobsWorld.open(i)
 }
 
 export function jobs_take(jobs_st: mut JobsState, i: int) -> bool {
-  if not jobs_ok(i) or jobs_state(jobs_st, i) != JOBS_OFFERED { return false }
+  if not jobs_ok(i) or jobs_state(jobs_st, i) != JOBS_OFFERED or JobsWorld.day() < jobs_st.jobs__back[i] { return false }
   jobs_st.jobs__st[i] = JOBS_ACTIVE
   jobs_st.jobs__hv[i] = 0
   jobs__recheck_one(jobs_st, i)

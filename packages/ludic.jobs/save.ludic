@@ -5,6 +5,7 @@ function jobs__reset_scope(jobs_st: mut JobsState, sc: int) -> void {
     if Jobs[i].scope != sc { continue }
     jobs_st.jobs__st[i] = JOBS_OFFERED
     jobs_st.jobs__hv[i] = 0
+    jobs_st.jobs__back[i] = 0
   }
   for b in 0 .. BOARD_COUNT {
     if JobBoards[b].scope != sc { continue }
@@ -19,8 +20,8 @@ function jobs__save_scope(jobs_st: JobsState, sc: int) -> Val {
   let v = Value.object()
   let js = Value.object()
   for i in 0 .. JOB_COUNT {
-    if Jobs[i].scope != sc or jobs_st.jobs__st[i] == JOBS_OFFERED { continue }
-    sv_put_ints(js, Jobs[i].key, [jobs_st.jobs__st[i], jobs_st.jobs__hv[i]])
+    if Jobs[i].scope != sc or (jobs_st.jobs__st[i] == JOBS_OFFERED and jobs_st.jobs__back[i] == 0) { continue }
+    sv_put_ints(js, Jobs[i].key, [jobs_st.jobs__st[i], jobs_st.jobs__hv[i], jobs_st.jobs__back[i]])
   }
   Value.put(v, "jobs", js)
   let bs = Value.object()
@@ -48,7 +49,9 @@ function jobs__load_scope(jobs_st: mut JobsState, sc: int, v: Val) -> void {
     let js = Value.get(v, "jobs")
     for i in 0 .. JOB_COUNT {
       let p = sv_ints(js, Jobs[i].key)
-      if Jobs[i].scope == sc and len(p) == 2 { jobs_set(jobs_st, i, p[0], p[1]) }
+      if Jobs[i].scope != sc or len(p) < 2 { continue }
+      jobs_set(jobs_st, i, p[0], p[1])
+      if len(p) > 2 { jobs_st.jobs__back[i] = p[2] }
     }
   }
   if Value.has(v, "boards") == 0 { return }
