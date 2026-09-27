@@ -136,9 +136,11 @@ function emit_component_access(prop: pointer, meth: pointer, e: Node) -> Val {
     let lt = emit_bind(`icmp slt i32 {i0}, {ec}`)
     emit("  br i1 ");  emit(lt);  emit(", label %");  emit(body);  emit(", label %");  emit(endl);  emit("\n")
     emit(body);  emit(":\n")
-    let ap = emit_bind(`getelementptr inbounds [{me} x i32], ptr @L_alive, i32 0, i32 {i0}`)
+    let eb1 = ecs_base("L_alive")
+    let ap = emit_bind(`getelementptr inbounds i32, ptr {eb1}, i32 {i0}`)
     let al = emit_bind(`load i32, ptr {ap}`)
-    let hp = emit_bind(`getelementptr inbounds [{me} x i8], ptr @H_{prop}, i32 0, i32 {i0}`)
+    let eb2 = ecs_base(`H_{prop}`)
+    let hp = emit_bind(`getelementptr inbounds i8, ptr {eb2}, i32 {i0}`)
     let hv = emit_bind(`load i8, ptr {hp}`)
     let hz = emit_bind(`zext i8 {hv} to i32`)
     let both = emit_bind(`and i32 {al}, {hz}`)
@@ -154,15 +156,19 @@ function emit_component_access(prop: pointer, meth: pointer, e: Node) -> Val {
   if len(e.kids) != 1 { perr(`{prop}.{meth} takes one argument: the entity`) }
   let ev = emit_expr(e.kids[0])
   if (meth == "of") {
-    let slot = emit_bind(`getelementptr inbounds [{me} x %Cmp_{prop}], ptr @S_{prop}, i32 0, i32 {ev.code}`)
+    let eb3 = ecs_base(`S_{prop}`)
+    let slot = emit_bind(`getelementptr inbounds %Cmp_{prop}, ptr {eb3}, i32 {ev.code}`)
     return val(slot, prop)
   }
-  let in_range = emit_bind(`icmp ult i32 {ev.code}, {me}`)
+  let cap = emit_bind("load i32, ptr @L_cap")
+  let in_range = emit_bind(`icmp ult i32 {ev.code}, {cap}`)
   let idx = emit_bind(`select i1 {in_range}, i32 {ev.code}, i32 0`)
-  let ap = emit_bind(`getelementptr inbounds [{me} x i32], ptr @L_alive, i32 0, i32 {idx}`)
+  let eb4 = ecs_base("L_alive")
+  let ap = emit_bind(`getelementptr inbounds i32, ptr {eb4}, i32 {idx}`)
   let alive = emit_bind(`load i32, ptr {ap}`)
   let is_alive = emit_bind(`icmp ne i32 {alive}, 0`)
-  let hp = emit_bind(`getelementptr inbounds [{me} x i8], ptr @H_{prop}, i32 0, i32 {idx}`)
+  let eb5 = ecs_base(`H_{prop}`)
+  let hp = emit_bind(`getelementptr inbounds i8, ptr {eb5}, i32 {idx}`)
   let hv = emit_bind(`load i8, ptr {hp}`)
   let carries = emit_bind(`icmp ne i8 {hv}, 0`)
   let ok1 = emit_bind(`and i1 {in_range}, {is_alive}`)
@@ -372,7 +378,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     return emit_alias_or_fail("App", meth, e)
   }
   if (ns == "Pool") {
-    if (meth == "capacity") { return val(itoa(MAX_ENT), "int") }                 # max entities
+    if (meth == "capacity") { return val(emit_bind("load i32, ptr @L_cap"), "int") }   # the stores' size now: they grow
     if (meth == "reserved") { return val(emit_bind("load i32, ptr @L_entc"), "int") }   # slots ever allocated (high-water)
     if (meth == "free")     { return val(emit_bind("load i32, ptr @L_freen"), "int") }   # recycled slots ready for reuse
     if (meth == "live") {                                                        # currently alive = reserved - free
@@ -407,7 +413,8 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
       let at = emit_expr(e.kids[1])
       let ent = emit_bind(`call i32 @L_spawn_prefab(ptr {nm.code})`)
       let me = itoa(MAX_ENT)
-      let slot = emit_bind(`getelementptr inbounds [{me} x %Cmp_Position], ptr @S_Position, i32 0, i32 {ent}`)
+      let eb6 = ecs_base(`S_Position`)
+      let slot = emit_bind(`getelementptr inbounds %Cmp_Position, ptr {eb6}, i32 {ent}`)
       let xa = emit_bind(`getelementptr inbounds %Cmp_Position, ptr {slot}, i32 0, i32 {itoa(field_index(pos, "x"))}`)
       let ya = emit_bind(`getelementptr inbounds %Cmp_Position, ptr {slot}, i32 0, i32 {itoa(field_index(pos, "y"))}`)
       let ax = vec_x(at.code)

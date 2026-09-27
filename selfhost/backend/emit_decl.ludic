@@ -61,6 +61,7 @@ function emit_main(d: Node) -> void {
   # its framebuffer allocated. Headless it only allocates — no window, no output —
   # so a non-rendering entry game is unchanged.
   emit("  call void @L_init_runtime()\n")
+  if has_ecs() { emit("  call void @L_grow(i32 1)\n") }
   if (find_fn("rt_init") != null) { emit("  call void " + fn_sym("rt_init") + "()\n") }
   emit("  call void @L_init_globals()\n")
   emit_block(d.a)
@@ -149,6 +150,7 @@ function emit_test_runner() -> void {
   emit("  ret i32 0\n")
   emit(`{lrun0}:\n`)
   emit("  call void @L_init_runtime()\n")
+  if has_ecs() { emit("  call void @L_grow(i32 1)\n") }
   if has_ecs() { emit("  call void @rt_init()\n") }
   emit("  call void @L_init_globals()\n")
   i = 0
