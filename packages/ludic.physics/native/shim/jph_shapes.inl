@@ -17,6 +17,19 @@ JPH_SHIM void *jph_shape_dome(float r, float h) {
   return keep(RotatedTranslatedShapeSettings(Vec3(0.0f, h - big, 0.0f), Quat::sIdentity(), s).Create());
 }
 
+// a rock: the convex hull of n points (x, y, z) about its origin, its edges rounded by radius
+JPH_SHIM void *jph_shape_convex(const float *v, int n, float radius) {
+  Array<Vec3> pts;
+  pts.reserve(n);
+  for (int i = 0; i < n; ++i) pts.push_back(Vec3(v[3 * i], v[3 * i + 1], v[3 * i + 2]));
+  return keep(ConvexHullShapeSettings(pts, radius).Create());
+}
+
+// another shape, k times its size on every axis (one hull, every boulder of that shape)
+JPH_SHIM void *jph_shape_scaled(void *s, float k) {
+  return keep(ScaledShapeSettings(static_cast<Shape *>(s), Vec3::sReplicate(k)).Create());
+}
+
 // a shape moved and turned about y, inside its body
 JPH_SHIM void *jph_shape_offset(void *s, float x, float y, float z, float yaw) {
   return keep(RotatedTranslatedShapeSettings(Vec3(x, y, z), yaw_q(yaw), static_cast<Shape *>(s)).Create());

@@ -1,0 +1,30 @@
+# legs.ludic - a horse's legs in the world's physics (Maroon Lake: a Jolt walker), named by the
+# vehicle's nid. Gravity, steps, slopes and whatever stands in its way are theirs; unbound, the
+# ground is walked as it is, a rise steeper than it can take stops it and nothing else is in the way.
+export port VehicleLegs {
+  walk: fn(int, float, float, float, float, float, float) -> bool = fn ve__walk   # (nid, x, y, z, vx, vz, dt): its pose into x, y, z
+  x: fn() -> float = fn ve__lx
+  y: fn() -> float = fn ve__ly
+  z: fn() -> float = fn ve__lz
+  stand: fn(int, float, float, float) -> void = fn ve__stand   # (nid, x, y, z): tied or led there
+  gone: fn(int) -> void = fn ve__legs_gone
+}
+
+function ve__walk(vehicles_st: mut VehiclesState, nid: int, x: float, y: float, z: float, vx: float, vz: float, dt: float) -> bool {
+  vehicles_st.ve_lx = x
+  vehicles_st.ve_ly = y
+  vehicles_st.ve_lz = z
+  let nx = x + vx * dt
+  let nz = z + vz * dt
+  let nh = VehicleWorld.ground(nx, nz)
+  if nh - y > Math.sqrt(vx * vx + vz * vz) * dt * 0.9 { return true }
+  vehicles_st.ve_lx = nx
+  vehicles_st.ve_ly = nh
+  vehicles_st.ve_lz = nz
+  return true
+}
+function ve__lx(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_lx }
+function ve__ly(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_ly }
+function ve__lz(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_lz }
+function ve__stand(nid: int, x: float, y: float, z: float) -> void { }
+function ve__legs_gone(nid: int) -> void { }

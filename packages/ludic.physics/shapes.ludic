@@ -59,6 +59,18 @@ export function phys_cylinder(physics_st: mut PhysicsState, half_h: float, r: fl
 # a boulder: a dome r across and h tall, standing on its origin
 export function phys_dome(physics_st: mut PhysicsState, r: float, h: float) -> int { return ph_keep(physics_st, jph_shape_dome(r, h)) }
 
+# a rock: the convex hull of n points (x, y, z) about its origin, its edges rounded by 2 cm
+export function phys_convex(physics_st: mut PhysicsState, v: []float, n: int) -> int {
+  if n < 4 or len(v) < n * 3 { return -1 }
+  return ph_keep(physics_st, jph_shape_convex(v, n, 0.02))
+}
+# another shape k times its size, so one hull serves every boulder of its shape
+export function phys_scaled(physics_st: mut PhysicsState, shape: int, k: float) -> int {
+  let s = ph_shape(physics_st, shape)
+  if s == null { return -1 }
+  return ph_keep(physics_st, jph_shape_scaled(s, k))
+}
+
 # another shape moved and turned about y inside its body (a post whose foot is its origin)
 export function phys_offset(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float) -> int {
   let s = ph_shape(physics_st, shape)

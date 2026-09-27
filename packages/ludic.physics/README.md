@@ -29,7 +29,7 @@ import "ludic.physics"
 | | |
 | --- | --- |
 | `phys_open(st, max_bodies, threads) -> bool`, `phys_close(st)`, `phys_is_open(st)` | a world, and everything in it let go |
-| `phys_box`, `phys_sphere`, `phys_capsule`, `phys_cylinder`, `phys_dome(r, h)`, `phys_offset(shape, x, y, z, yaw)` | shapes, each an int (`-1` refused); a dome is a boulder standing on its origin |
+| `phys_box`, `phys_sphere`, `phys_capsule`, `phys_cylinder`, `phys_dome(r, h)`, `phys_convex(points, n)`, `phys_scaled(shape, k)`, `phys_offset(shape, x, y, z, yaw)` | shapes, each an int (`-1` refused); a dome is a boulder standing on its origin; a convex hull of n points (x, y, z) is a rock's own shape, made once and scaled for every rock of that shape; a body's yaw turns it as a renderer turns an instance (x' = cos x + sin z, z' = -sin x + cos z) |
 | `phys_heightfield(st, h, n, ox, oz, cell)`, `phys_mesh(st, v, nv, tri, nt)` | the ground (`PHYS_HOLE` is none) and a dock or cabin |
 | `phys_ground_add`, `phys_static_add`, `phys_kinematic_add`, `phys_body_add(..., mass)` | bodies: the ground, still things, what the game moves (the player), what falls and floats |
 | `phys_settle(st)` | after adding many still things, before the first query |

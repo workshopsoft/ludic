@@ -20,12 +20,14 @@ function ve_add(vehicles_st: VehiclesState, kind: int, x: float, z: float, yaw: 
   return v
 }
 
-# a boat's hull put where the vehicle now is, at rest
-function ve_settle(v: Vehicle) -> void { if v.kind == VEHICLE_BOAT { VehicleHull.put(v.nid, v.x, v.y, v.z, v.yaw) } }
+# a boat's hull or a horse's legs put where the vehicle now is, at rest
+function ve_settle(v: Vehicle) -> void {
+  if v.kind == VEHICLE_BOAT { VehicleHull.put(v.nid, v.x, v.y, v.z, v.yaw) } else { VehicleLegs.stand(v.nid, v.x, v.y, v.z) }
+}
 
-# gone from the world: its model and, for a boat, its hull
+# gone from the world: its model and its hull or legs
 function ve_gone(v: Vehicle) -> void {
-  if v.kind == VEHICLE_BOAT { VehicleHull.gone(v.nid) }
+  if v.kind == VEHICLE_BOAT { VehicleHull.gone(v.nid) } else { VehicleLegs.gone(v.nid) }
   VehicleWorld.gone(v)
 }
 
@@ -72,41 +74,4 @@ export function vehicles_release(vehicles_st: mut VehiclesState, pid: int) -> vo
     if l[i].owner != pid { push(keep, l[i]) } else { ve_gone(l[i]) }
   }
   vehicles_st.ve_list = keep
-}
-
-# hired or rented for the trip
-export function vehicle_own(v: Vehicle) -> void { if v != null { v.owned = true } }
-
-# hay for a horse, up to a full belly
-export function vehicle_feed(vehicles_st: VehiclesState, v: Vehicle, amount: float) -> void {
-  if v == null { return }
-  v.food = Math.min(v.food + amount, 100.0)
-  ve_say(vehicles_st, VEHICLE_FED, v, amount)
-}
-
-# a horse nobody rides goes where its animal goes, round the home it is tied at (home_x, home_z)
-export function vehicle_follow(v: Vehicle, x: float, y: float, z: float, yaw: float) -> void {
-  if v == null or v.rider >= 0 { return }
-  v.x = x
-  v.y = y
-  v.z = z
-  v.yaw = yaw
-}
-
-# a saved trip's word on this player's own: hired, and how fed
-export function vehicle_restore(vehicles_st: mut VehiclesState, kind: int, owned: bool, food: float) -> void {
-  if kind == VEHICLE_HORSE {
-    vehicles_st.ve_kept_horse = owned
-    vehicles_st.ve_kept_food = food
-  } else { vehicles_st.ve_kept_boat = owned }
-  let v = vehicle_find(vehicles_st, kind)
-  if v != null { ve_apply_kept(vehicles_st, v) }
-}
-
-
-function ve_apply_kept(vehicles_st: VehiclesState, v: Vehicle) -> void {
-  if v.kind == VEHICLE_HORSE {
-    v.owned = vehicles_st.ve_kept_horse
-    v.food = vehicles_st.ve_kept_food
-  } else { v.owned = vehicles_st.ve_kept_boat }
 }

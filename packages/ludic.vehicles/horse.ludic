@@ -1,5 +1,5 @@
-# horse.ludic - a horse under the stick: a walk, a canter on stamina, hay for every metre; it stops at
-# water, at a rise it cannot take and at a still thing in its way
+# horse.ludic - a horse under the stick: a walk, a canter on stamina, hay for every metre; it will
+# not step into water, and its legs (VehicleLegs) meet the ground and whatever stands in its way
 const VE_HORSE_WALK: float = 4.5
 const VE_HORSE_GALLOP: float = 11.0
 const VE_HORSE_ACC: float = 4.0
@@ -15,26 +15,31 @@ function ve_ride_horse(vehicles_st: VehiclesState, v: Vehicle, ix: float, iz: fl
     if v.speed < 0.0 { rate = -rate }
     v.yaw = v.yaw - ix * VE_HORSE_TURN * (dt * rate)
   }
+  let fx = -Math.sin(v.yaw)
+  let fz = -Math.cos(v.yaw)
   let d = v.speed * dt
-  ve_travel(vehicles_st, v, v.x - Math.sin(v.yaw) * d, v.z - Math.cos(v.yaw) * d, d)
-  ve_stamina(v, d, dt)
-}
-
-# a horse only on dry ground, up a walkable rise, clear of what is in its way
-function ve_travel(vehicles_st: VehiclesState, v: Vehicle, nx: float, nz: float, d: float) -> void {
-  let nh = VehicleWorld.ground(nx, nz)
-  var ok = true
-  if nh < VehicleWorld.water(nx, nz) + 0.4 { ok = false }
-  if nh - v.y > Math.abs(d) * 0.9 { ok = false }
-  if VehicleWorld.blocked(nx, nz, 0.8) { ok = false }
-  if not ok {
+  let nh = VehicleWorld.ground(v.x + fx * d, v.z + fz * d)
+  if nh < VehicleWorld.water(v.x + fx * d, v.z + fz * d) + 0.4 {
     v.speed = 0.0
     return
   }
-  v.x = nx
-  v.z = nz
-  v.y = nh
-  if Math.abs(d) > 0.0 { ve_say(vehicles_st, VEHICLE_MOVED, v, Math.abs(d)) }
+  ve_legs_walk(vehicles_st, v, fx * v.speed, fz * v.speed, dt)
+  ve_stamina(v, d, dt)
+}
+
+# the legs carry it from where it is; what they covered along its heading is its speed now, never
+# more than was asked, so a trunk or a rise it cannot take brings it to a stand
+function ve_legs_walk(vehicles_st: VehiclesState, v: Vehicle, vx: float, vz: float, dt: float) -> void {
+  if not VehicleLegs.walk(v.nid, v.x, v.y, v.z, vx, vz, dt) { return }
+  let dx = VehicleLegs.x() - v.x
+  let dz = VehicleLegs.z() - v.z
+  v.x = VehicleLegs.x()
+  v.y = VehicleLegs.y()
+  v.z = VehicleLegs.z()
+  let got = (dx * -Math.sin(v.yaw) + dz * -Math.cos(v.yaw)) / dt
+  if v.speed > 0.0 { v.speed = Math.clamp(got, 0.0, v.speed) } else { v.speed = Math.clamp(got, v.speed, 0.0) }
+  let moved = Math.sqrt(dx * dx + dz * dz)
+  if moved > 0.0 { ve_say(vehicles_st, VEHICLE_MOVED, v, moved) }
 }
 
 # a gallop spends stamina and a walk gives it back; every metre costs hay
