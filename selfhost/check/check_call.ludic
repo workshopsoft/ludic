@@ -239,6 +239,7 @@ function ck_call_named(e: Node, name: pointer) -> pointer {
   let x = ck_extern(name)
   if x != null {
     ck_raw(e, `the C function {name}`)
+    ck_extern_writes(e)
     ck_extern_arg = true
     let xt = ck_call_fn(e, name, x)
     ck_extern_arg = false

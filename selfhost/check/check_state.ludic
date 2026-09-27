@@ -137,3 +137,18 @@ function ck_state_args(e: Node, f: Node) -> void {
     i += 1
   }
 }
+# a C function is handed what it may change: a state an argument comes out of keeps the mutability
+# it was declared with, so --tighten leaves the mut on a wrapper writing through a native handle
+function ck_extern_writes(e: Node) -> void {
+  var i = 0
+  while i < len(e.kids) {
+    var a = e.kids[i]
+    if a.kind == E_FINIT { a = a.a }
+    let r = ck_chain_root(a)
+    if r != null {
+      let li = ck_local(r.s)
+      if li >= 0 and li < len(ck_from_st) and ck_from_st[li] != null and not ck_is_ro(li) { mg_local_write(ck_from_st[li]) }
+    }
+    i += 1
+  }
+}
