@@ -69,6 +69,42 @@ function value_put(obj: Val, key: pointer, item: Val) -> Val {
 # --- accessors --------------------------------------------------------------
 function value_kind(v: Val) -> int { return v.tag }
 function value_count(v: Val) -> int { return value_n(v) }
+# a scalar field of an object set in place: the Value under `key` is changed when it is already that
+# kind, and made only the first time (a component's model, filled into the same object every frame)
+function value_slot(o: Val, key: pointer, tag: int) -> Val {
+  value_lists(o)
+  var i = 0
+  while i < len(o.keys) {
+    if o.keys[i] == key {
+      if o.kids[i].tag == tag { return o.kids[i] }
+      let v = value_new(tag)
+      o.kids[i] = v
+      return v
+    }
+    i += 1
+  }
+  let v = value_new(tag)
+  push(o.keys, key)
+  push(o.kids, v)
+  return v
+}
+function value_set_int(o: Val, key: pointer, n: int) -> void {
+  let v = value_slot(o, key, 1)
+  v.num = n
+}
+function value_set_float(o: Val, key: pointer, x: float) -> void {
+  let v = value_slot(o, key, 7)
+  v.num = float_bits(x)
+}
+function value_set_str(o: Val, key: pointer, s: pointer) -> void {
+  let v = value_slot(o, key, 4)
+  v.txt = s
+}
+function value_set_bool(o: Val, key: pointer, b: bool) -> void {
+  let v = value_slot(o, key, 3)
+  v.num = 0
+  if b { v.num = 1 }
+}
 # a list or an object emptied in place, its room kept - for one filled again every frame
 function value_clear(v: Val) -> void {
   if v.kids == null { return }

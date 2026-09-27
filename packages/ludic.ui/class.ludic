@@ -9,12 +9,14 @@ export property UiClass {
   lss: string = ""
   make: fn() -> pointer = null
   props: fn(pointer, Val) -> void = null
-  model: fn(pointer) -> Val = null
+  model: fn(pointer, Val) -> Val = null   # fills the object it is given (the instance keeps one)
   call: fn(pointer, string, Val) -> Val = null
   root: UiTpl = null            # the template, once read
   sheet: UiSheet = null
   seen_xml: string = ""         # the files as a developer's build last found them on disk
   seen_lss: string = ""
+  use: UiTpl = null             # screen_class.ludic: the element that shows it as a screen, made once
+  none: Val = null              # and the empty model it is shown with
 }
 export function ui_register(ui_st: mut UiState, k: UiClass) -> int {
   push(ui_st.uc_list, k)

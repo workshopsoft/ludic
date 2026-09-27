@@ -6,6 +6,7 @@ property UiInst {
   ptr: pointer = null
   seen: int = 0
   props: Val = null             # its props, filled again each frame into the same object
+  model: Val = null             # and its model, filled in place by the class's model()
 }
 function in_get(ui_st: mut UiState, key: string, k: UiClass) -> UiInst {
   for i in 0 .. len(ui_st.in_list) {

@@ -12,7 +12,8 @@ function ly_ratio(n: UiNode, fixed_w: float, avail: float) -> void {
   } else if fixed_w < 0.0 and n.w != UI_FILL and n.h >= 0.0 { n.mw = n.h * r }
 }
 # x, y, w, h: a `nat_w` x `nat_h` picture in the node's content box by its object-fit
-export function ui_object_fit(n: UiNode, nat_w: float, nat_h: float) -> []float {
+export function ui_object_fit(n: UiNode, nat_w: float, nat_h: float) -> []float { return ui_object_fit_into(new []float, n, nat_w, nat_h) }
+function ui_object_fit_into(out: []float, n: UiNode, nat_w: float, nat_h: float) -> []float {
   let bx = n.x + n.pl + n.bl
   let by = n.y + n.pt + n.bt
   let bw = n.cw - ly_hin(n)
@@ -29,7 +30,7 @@ export function ui_object_fit(n: UiNode, nat_w: float, nat_h: float) -> []float 
     w = nat_w * s
     h = nat_h * s
   }
-  let out = new []float
+  List.clear(out)
   push(out, bx + (bw - w) / 2.0)
   push(out, by + (bh - h) / 2.0)
   push(out, w)

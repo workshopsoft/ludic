@@ -7,16 +7,21 @@ function fr_class_nodes(ui_st: mut UiState, cls: UiClass) -> UiNode {
   ui_st.ui_view = null
   uc_load(ui_st, cls)
   let root = fr_root(ui_st, cls.name, cls.sheet)
-  let use = new UiTpl
-  use.tag = cls.name
-  use.cls = cls
-  use.keys = new []string
-  use.vals = new []UiExpr
-  use.on_keys = new []string
-  use.on_acts = new []UiAct
-  use.kids = new []UiTpl
+  if cls.use == null {
+    let use = new UiTpl
+    use.tag = cls.name
+    use.cls = cls
+    use.keys = new []string
+    use.vals = new []UiExpr
+    use.on_keys = new []string
+    use.on_acts = new []UiAct
+    use.kids = new []UiTpl
+    cls.use = use
+    cls.none = Value.object()
+  }
+  let use = cls.use
   let e = env_new(ui_st, null)
-  e.model = Value.object()
+  e.model = cls.none
   root.env = e
   bd_class(ui_st, use, e, cls.name, root.children)
   in_sweep(ui_st, cls.name)

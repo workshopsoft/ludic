@@ -40,6 +40,7 @@ export state UiState {
   ev_depth: int = 0                      # eval.ludic: a call's arguments, in lists kept one a depth
   ev_args: []Val = new []Val
   cv_texts: []string = new []string      # units_pieces.ludic: a value's var() pieces, kept
+  fit_out: []float = new []float         # draw_content.ludic: an image's box, kept
   r3n_cut: []float = new []float         # render3d_nine.ludic: a nine-slice's edges, kept
   r3n_xs: []float = new []float
   r3n_ys: []float = new []float

@@ -56,7 +56,7 @@ function fr_image(ui_st: mut UiState, n: UiNode) -> void {
     nat_w = ui_st.ui_be.image_w(n.src)
     nat_h = ui_st.ui_be.image_h(n.src)
   }
-  let r = ui_object_fit(n, nat_w, nat_h)
+  let r = ui_object_fit_into(ui_st.fit_out, n, nat_w, nat_h)
   let clipped = ui_st.ui_be.clip != null and (r[2] > n.cw - ly_hin(n) or r[3] > n.ch - ly_vin(n))
   if clipped { fr_clip_push(ui_st, n.x + n.pl + n.bl, n.y + n.pt + n.bt, n.cw - ly_hin(n), n.ch - ly_vin(n)) }
   ui_st.ui_be.image(n.src, r[0], r[1], r[2], r[3], c, a)

@@ -1,7 +1,23 @@
 # color.ludic - CSS colours: #rgb, #rgba, #rrggbb, #rrggbbaa, rgb(r, g, b), rgba(r, g, b, a), the
 # basic names, transparent and none. A colour is 0xRRGGBB; its alpha is left in cl_alpha.
 const CL_NAMES: string = " black=000000 white=ffffff red=ff0000 green=008000 lime=00ff00 blue=0000ff yellow=ffff00 cyan=00ffff aqua=00ffff magenta=ff00ff fuchsia=ff00ff gray=808080 grey=808080 silver=c0c0c0 maroon=800000 olive=808000 navy=000080 purple=800080 teal=008080 orange=ffa500 "
+# a colour is worked out once per text and kept with its alpha
 function ui_color(ui_st: mut UiState, name0: string) -> int {
+  let m = mm_of(ui_st)
+  let i = mm_find(m, MM_COLOR, name0)
+  if i >= 0 {
+    ui_st.cl_alpha = m.n2[i]
+    return int(m.n1[i])
+  }
+  let c = ui_color_new(ui_st, name0)
+  let j = mm_add(m, MM_COLOR, name0)
+  if j >= 0 {
+    m.n1[j] = float(c)
+    m.n2[j] = ui_st.cl_alpha
+  }
+  return c
+}
+function ui_color_new(ui_st: mut UiState, name0: string) -> int {
   let name = tw(ui_st, name0)
   ui_st.cl_alpha = 1.0
   if name == "none" or name == "" or name == "transparent" { return UI_NONE }
