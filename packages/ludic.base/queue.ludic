@@ -56,6 +56,20 @@ export function q_clear<T>(q: Queue<T>) -> void {
   q.tag.pending = 0
 }
 
+# pool's records the queue no longer holds - neither waiting nor handed out by the last drain - put
+# into out (cleared first): what a package may fill again instead of making a new record per fact
+export function q_unheld<T>(q: Queue<T>, pool: []T, out: []T) -> int {
+  List.clear(out)
+  for i in 0 .. len(pool) {
+    let r = pool[i]
+    var held = false
+    for j in 0 .. len(q.items) { if q.items[j] == r { held = true } }
+    for j in 0 .. len(q.spare) { if q.spare[j] == r { held = true } }
+    if not held { push(out, r) }
+  }
+  return len(out)
+}
+
 # a queue's tag, for core_undrained: queues of different facts in one list
 export function q_tag<T>(q: Queue<T>) -> QueueTag { return q.tag }
 

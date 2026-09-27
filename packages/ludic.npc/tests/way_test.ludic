@@ -101,4 +101,20 @@ program NpcWayTest {
     expect_eq(p.act, NPCA_SIT)
     expect(p.phase > 100.0)
   }
+
+  test "an arrival a turn, drained each turn, makes a few fact records and then reuses them" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState, way_test_st: WayTestState) {
+    fk_setup(npc_st, npc_tests_fake_st)
+    npc_tests_fake_st.fk_want = 1
+    let p = npc_spawn(npc_st, NPCK_HIKER)
+    var arrived = 0
+    for k in 0 .. 500 {
+      npc_set_at(p, 0.0, 0.0)
+      npc_go(npc_st, p, 0.5, 0.0, NPCA_SIT, 30.0)
+      npc_tick(npc_st, 0.05)
+      let fs = q_drain(npc_facts(npc_st))
+      for i in 0 .. len(fs) { if fs[i].what == NPC_F_ARRIVED { arrived += 1 } }
+    }
+    expect(arrived > 400)
+    expect(npc_fact_records(npc_st) <= 4)
+  }
 }

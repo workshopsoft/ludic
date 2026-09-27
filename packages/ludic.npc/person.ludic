@@ -13,6 +13,9 @@ export state NpcState {
   np_n: int = 0                 # walkers about
   np_dice: Rng = rng_new(20260925)
   np_facts: Queue<NpcFact> = np_facts__new()
+  np_fpool: []NpcFact = new []NpcFact      # every fact record made, reused once no drain holds it
+  np_ffree: []NpcFact = new []NpcFact
+  np_fnext: int = 0
   np_next_h: float = 0.0        # the hour the census is next looked at
   np_hold: bool = false         # held where they stand (a shot of their poses)
   np_mirror: bool = false       # a guest drawing a host's: no routine runs here
@@ -29,8 +32,8 @@ export function npc_facts(npc_st: NpcState) -> Queue<NpcFact> {
   return npc_st.np_facts
 }
 
-function np_fact(npc_st: NpcState, what: int, p: NpcPerson, player: int) -> NpcFact {
-  let f = new NpcFact
+function np_fact(npc_st: mut NpcState, what: int, p: NpcPerson, player: int) -> NpcFact {
+  let f = np_fact_record(npc_st)
   f.what = what
   f.person = p.id
   f.slot = p.slot

@@ -54,7 +54,7 @@ function wl_approach(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -
 }
 
 # at a snare it is held; at food it eats for 14 s; at a lure it stands curious for 9
-function wl_arrive(wildlife_st: WildlifeState, a: WildAnimal) -> void {
+function wl_arrive(wildlife_st: mut WildlifeState, a: WildAnimal) -> void {
   a.state = WILD_EAT
   a.timer = 9.0
   if a.lure_kind == WILD_FEED { a.timer = 14.0 }
@@ -69,7 +69,7 @@ function wl_arrive(wildlife_st: WildlifeState, a: WildAnimal) -> void {
 }
 
 # eating what it came to; when it is done, food is credited and it wanders off
-function wl_eat(wildlife_st: WildlifeState, a: WildAnimal) -> bool {
+function wl_eat(wildlife_st: mut WildlifeState, a: WildAnimal) -> bool {
   if a.state != WILD_EAT { return false }
   a.speed = 0.0
   if a.timer < 0.0 {

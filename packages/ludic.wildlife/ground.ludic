@@ -64,7 +64,7 @@ function wl_charge(wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dh: f
 
 # Four postures read off the alert. Staring is a REACTION, not a condition: each times out and
 # hands the animal back to its business, and only a fresh rise above `seen` looks up again.
-function wl_posture(wildlife_st: WildlifeState, a: WildAnimal, np: int, dt: float) -> void {
+function wl_posture(wildlife_st: mut WildlifeState, a: WildAnimal, np: int, dt: float) -> void {
   if wl_sp(wildlife_st, a.sp).tame or a.state == WILD_EAT { return }
   if a.alert > 95.0 {
     if a.state != WILD_FLEE {

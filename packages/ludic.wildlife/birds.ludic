@@ -84,7 +84,7 @@ function wl_land(wildlife_st: mut WildlifeState, a: WildAnimal, dh: float, dt: f
 }
 
 # on the ground it pecks at seed or takes a drink at the water's edge; it leaves no droppings
-function wl_perch(wildlife_st: WildlifeState, a: WildAnimal, dh: float, dt: float) -> void {
+function wl_perch(wildlife_st: mut WildlifeState, a: WildAnimal, dh: float, dt: float) -> void {
   a.speed = 0.0
   a.y = WildlifeWorld.ground(a.x, a.z)
   a.bank = 0.0

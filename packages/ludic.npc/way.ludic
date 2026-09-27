@@ -4,7 +4,7 @@
 export const NPC_STUCK_DETOUR: int = 0     # a step round what was in front of it
 export const NPC_STUCK_RETRY: int = 1      # no closer for twenty seconds, or no step round: planned again
 export const NPC_STUCK_GAVE_UP: int = 2    # the third of those: the target given up
-function np_stuck_fact(npc_st: NpcState, p: NpcPerson, how: int) -> void {
+function np_stuck_fact(npc_st: mut NpcState, p: NpcPerson, how: int) -> void {
   let f = np_fact(npc_st, NPC_F_STUCK, p, -1)
   f.how = how
   f.x = p.x
@@ -77,3 +77,26 @@ export function npc_moved(p: NpcPerson, x: float, z: float, vx: float, vz: float
   if vx * vx + vz * vz > 0.01 { p.yaw = Math.atan2(-vx, -vz) }
   p.phase = p.phase + Math.sqrt(dx * dx + dz * dz) * 2.6
 }
+
+# a fact record no drain holds any more, made fresh (and kept) only when every one is held
+function np_fact_record(npc_st: mut NpcState) -> NpcFact {
+  if npc_st.np_fnext >= len(npc_st.np_ffree) {
+    q_unheld(npc_st.np_facts, npc_st.np_fpool, npc_st.np_ffree)
+    npc_st.np_fnext = 0
+  }
+  if npc_st.np_fnext < len(npc_st.np_ffree) {
+    let f = npc_st.np_ffree[npc_st.np_fnext]
+    npc_st.np_fnext += 1
+    f.line = -1
+    f.choice = -1
+    f.how = 0
+    f.x = 0.0
+    f.z = 0.0
+    return f
+  }
+  let f = new NpcFact
+  push(npc_st.np_fpool, f)
+  return f
+}
+# how many fact records have ever been made: the peak held at once, not the facts pushed
+export function npc_fact_records(npc_st: NpcState) -> int { return len(npc_st.np_fpool) }

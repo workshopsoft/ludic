@@ -30,7 +30,7 @@ function np_turns(act: int) -> bool {
 }
 
 # a player who came within notice since the last look is greeted - once, until they walk off
-export function npc_notice(npc_st: NpcState, p: NpcPerson) -> void {
+export function npc_notice(npc_st: mut NpcState, p: NpcPerson) -> void {
   let reach = NpcKinds[p.kind].notice
   for i in 0 .. NpcWorld.players() {
     if i >= 30 { break }

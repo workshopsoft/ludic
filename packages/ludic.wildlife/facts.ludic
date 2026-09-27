@@ -32,8 +32,31 @@ export function wildlife_facts(wildlife_st: WildlifeState) -> Queue<WildFact> {
   return wildlife_st.wl_facts
 }
 
-function wl_fact(wildlife_st: WildlifeState, what: int, a: WildAnimal) -> WildFact {
+# a fact record: one no drain holds any more, made fresh (and kept) only when every one is held - a
+# fact is pushed about once a frame, and a record a frame is never given back
+function wl_fact_record(wildlife_st: mut WildlifeState) -> WildFact {
+  if wildlife_st.wl_fnext[0] >= len(wildlife_st.wl_ffree) {
+    q_unheld(wildlife_st.wl_facts, wildlife_st.wl_fpool, wildlife_st.wl_ffree)
+    wildlife_st.wl_fnext[0] = 0
+  }
+  if wildlife_st.wl_fnext[0] < len(wildlife_st.wl_ffree) {
+    let f = wildlife_st.wl_ffree[wildlife_st.wl_fnext[0]]
+    wildlife_st.wl_fnext[0] += 1
+    f.player = 0
+    f.lure = 0
+    f.owner = -1
+    f.diet = 0
+    return f
+  }
   let f = new WildFact
+  push(wildlife_st.wl_fpool, f)
+  return f
+}
+# how many fact records have ever been made: the peak held at once, not the facts pushed
+export function wildlife_fact_records(wildlife_st: WildlifeState) -> int { return len(wildlife_st.wl_fpool) }
+
+function wl_fact(wildlife_st: mut WildlifeState, what: int, a: WildAnimal) -> WildFact {
+  let f = wl_fact_record(wildlife_st)
   f.what = what
   f.key = a.key
   f.nid = a.nid
