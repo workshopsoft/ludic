@@ -2,21 +2,21 @@
 # compressed (a PNG anything opens, with no zlib here): the shot is the PPM's pixels, filter 0
 # on every row, in deflate's stored blocks, with its CRCs and its Adler-32.
 
-function lp_table_init(lab_st: mut LabState) -> void {
-  if lab_st.lp_table != null { return }
-  lab_st.lp_table = new []long
+# the CRC-32 table, made once with the state
+function lp_crc_table() -> []long {
+  let t = new []long
   let poly: long = 3988292384            # 0xEDB88320: eight hex digits would be a 32-bit pattern
   for n in 0 .. 256 {
     var c = long(n)
     for k in 0 .. 8 {
       if (c & long(1)) != long(0) { c = (c >> long(1)) ^ poly } else { c = c >> long(1) }
     }
-    push(lab_st.lp_table, c)
+    push(t, c)
   }
+  return t
 }
 # CRC-32 of out[from .. from + n)
 function lp_crc(lab_st: mut LabState, out: []byte, from: int, n: int) -> long {
-  lp_table_init(lab_st)
   let mask: long = 4294967295
   var c = mask
   for i in from .. from + n {

@@ -15,14 +15,6 @@ const QUEST_MAX: int = 128
 const OBJ_MAX: int = 512
 
 
-function quest_ensure(rpg_st: mut RpgState) -> void {
-  if rpg_st.quest_reg == null {
-    rpg_st.quest_reg = Dict.new();  rpg_st.quest_flags = Dict.new()
-    rpg_st.quest_state = words(QUEST_MAX)
-    rpg_st.obj_qid = words(OBJ_MAX);  rpg_st.obj_kind = words(OBJ_MAX);  rpg_st.obj_target = words(OBJ_MAX)
-    rpg_st.obj_need = words(OBJ_MAX);  rpg_st.obj_have = words(OBJ_MAX)
-  }
-}
 
 event QuestStarted { quest: int = 0 }
 event QuestCompleted { quest: int = 0 }
@@ -30,7 +22,6 @@ event ObjectiveProgressed { quest: int = 0, objective: int = 0, have: int = 0, n
 
 # Quest.define(name) — register a quest (state hidden). Returns id.
 @Namespace(Quest) function quest_define(rpg_st: mut RpgState, name: pointer) -> int {
-  quest_ensure(rpg_st)
   if rpg_st.quest_n >= QUEST_MAX { return -1 }
   let id = rpg_st.quest_n
   rpg_st.quest_state[id] = 0
@@ -38,10 +29,9 @@ event ObjectiveProgressed { quest: int = 0, objective: int = 0, have: int = 0, n
   Dict.set(rpg_st.quest_reg, name, id)
   return id
 }
-@Namespace(Quest) function quest_id(rpg_st: mut RpgState, name: pointer) -> int { quest_ensure(rpg_st);  return Dict.get_or(rpg_st.quest_reg, name, -1) }
+@Namespace(Quest) function quest_id(rpg_st: mut RpgState, name: pointer) -> int { return Dict.get_or(rpg_st.quest_reg, name, -1) }
 # Quest.objective(quest_name, kind, target, need) — add an objective.
 @Namespace(Quest) function quest_objective(rpg_st: mut RpgState, quest_name: pointer, kind: int, target: int, need: int) -> int {
-  quest_ensure(rpg_st)
   let qid = quest_id(rpg_st, quest_name)
   if qid < 0 { return -1 }
   if rpg_st.obj_n >= OBJ_MAX { return -1 }
@@ -53,14 +43,12 @@ event ObjectiveProgressed { quest: int = 0, objective: int = 0, have: int = 0, n
 }
 # Quest.start(name) — activate a quest (emits QuestStarted).
 @Namespace(Quest) function quest_start(rpg_st: mut RpgState, name: pointer) -> void {
-  quest_ensure(rpg_st)
   let qid = quest_id(rpg_st, name)
   if qid < 0 { return }
   rpg_st.quest_state[qid] = 2
   emit QuestStarted(quest: qid)
 }
 @Namespace(Quest) function quest_state_of(rpg_st: mut RpgState, name: pointer) -> int {
-  quest_ensure(rpg_st)
   let qid = quest_id(rpg_st, name)
   if qid < 0 { return -1 }
   return rpg_st.quest_state[qid]
@@ -80,7 +68,6 @@ function quest_all_done(rpg_st: RpgState, qid: int) -> int {
 # quest's matching objectives tick up (target 0 on the objective = "any"); a quest
 # whose objectives are all met auto-completes.
 @Namespace(Quest) function quest_notify(rpg_st: mut RpgState, kind: int, target: int, amount: int) -> void {
-  quest_ensure(rpg_st)
   var i = 0
   while i < rpg_st.obj_n {
     let qid = rpg_st.obj_qid[i]
@@ -104,5 +91,5 @@ function quest_all_done(rpg_st: RpgState, qid: int) -> int {
 }
 
 # ---- global flag store (branching / world state) --------------------------
-@Namespace(Quest) function quest_flag(rpg_st: mut RpgState, name: pointer, value: int) -> void { quest_ensure(rpg_st);  Dict.set(rpg_st.quest_flags, name, value) }
-@Namespace(Quest) function quest_flag_get(rpg_st: mut RpgState, name: pointer) -> int { quest_ensure(rpg_st);  return Dict.get_or(rpg_st.quest_flags, name, 0) }
+@Namespace(Quest) function quest_flag(rpg_st: mut RpgState, name: pointer, value: int) -> void { Dict.set(rpg_st.quest_flags, name, value) }
+@Namespace(Quest) function quest_flag_get(rpg_st: mut RpgState, name: pointer) -> int { return Dict.get_or(rpg_st.quest_flags, name, 0) }

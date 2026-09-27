@@ -11,18 +11,12 @@ const PREFS_MAX: int = 64
 
 state PrefsState {
   prefs_path:  pointer  = null
-  prefs_names: pointers = null
-  prefs_vals:  words    = null
+  prefs_names: pointers = pointers(PREFS_MAX)
+  prefs_vals:  words    = words(PREFS_MAX)
   prefs_n:     int      = 0
 }
 
 namespace Prefs {
-  internal function init(prefs_st: mut PrefsState) -> void {
-    if prefs_st.prefs_names != null { return }
-    prefs_st.prefs_names = pointers(PREFS_MAX)
-    prefs_st.prefs_vals  = words(PREFS_MAX)
-    prefs_st.prefs_n = 0
-  }
 
   internal function find(prefs_st: PrefsState, key: pointer) -> int {
     var i = 0
@@ -31,7 +25,6 @@ namespace Prefs {
   }
 
   export function get(prefs_st: mut PrefsState, key: pointer, fallback: int) -> int {
-    init(prefs_st)
     let i = find(prefs_st, key)
     if i < 0 { return fallback }
     return prefs_st.prefs_vals[i]
@@ -45,7 +38,6 @@ namespace Prefs {
   }
 
   export function set(prefs_st: mut PrefsState, key: pointer, value: int) -> void {
-    init(prefs_st)
     var i = find(prefs_st, key)
     if i < 0 {
       if prefs_st.prefs_n >= PREFS_MAX { return }
@@ -89,7 +81,6 @@ namespace Prefs {
   }
 
   export function load(prefs_st: mut PrefsState, path: pointer) -> void {
-    init(prefs_st)
     prefs_st.prefs_path = path
     let buf = read_all(path)
     if buf == null { return }
@@ -109,7 +100,6 @@ namespace Prefs {
   }
 
   export function save(prefs_st: mut PrefsState) -> void {
-    init(prefs_st)
     if prefs_st.prefs_path == null { return }
     let f = file_open(prefs_st.prefs_path, "wb")
     if f == null { return }

@@ -1,7 +1,6 @@
 # census.ludic - making one (a slot reused before a new one, a look, a name, a start on its own
 # ground out of the players' sight where that can be had), a post's fixed person, and leaving
 export function npc_spawn(npc_st: mut NpcState, kind: int) -> NpcPerson {
-  np_ensure()
   if npc_st.np_n >= npc_st.np_max or kind < 0 or kind >= NPCK_COUNT { return null }
   var p: NpcPerson = null
   for i in 0 .. len(npc_st.np_walkers) {
@@ -94,7 +93,6 @@ export function npc_set_at(p: NpcPerson, x: float, z: float) -> void {
 # somebody fixed at a post (a vendor behind the counter): never walks, never counted, never leaves,
 # turns to a player within its kind's notice and back to `yaw` when they go
 export function npc_place(npc_st: mut NpcState, kind: int, x: float, z: float, yaw: float, name: string, look: int) -> NpcPerson {
-  np_ensure()
   let p = new NpcPerson
   p.slot = len(npc_st.np_posts)
   np_fresh(p, kind, look)

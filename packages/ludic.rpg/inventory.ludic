@@ -11,52 +11,45 @@ const INV_MAX: int = 256
 
 # ---- item registry --------------------------------------------------------
 state RpgState {
-  recipe_reg: Dict = null           # recipe name -> id
+  recipe_reg: Dict = Dict.new()           # recipe name -> id
   recipe_n: int = 0
-  recipe_out: pointers = null       # output item name
-  recipe_outqty: words = null
+  recipe_out: pointers = pointers(CRAFT_MAX)       # output item name
+  recipe_outqty: words = words(CRAFT_MAX)
   ing_n: int = 0
-  ing_rid:  words = null            # owning recipe id
-  ing_name: pointers = null         # ingredient item name
-  ing_qty:  words = null
-  dlg_reg: Dict = null              # tree name -> tree id
+  ing_rid:  words = words(CRAFT_ING_MAX)            # owning recipe id
+  ing_name: pointers = pointers(CRAFT_ING_MAX)         # ingredient item name
+  ing_qty:  words = words(CRAFT_ING_MAX)
+  dlg_reg: Dict = Dict.new()              # tree name -> tree id
   dlg_tree_n: int = 0
-  dlg_tree_start: words = null      # first node id per tree
+  dlg_tree_start: words = words(DLG_TREE_MAX)      # first node id per tree
   dlg_node_n: int = 0
-  dlg_node_tree: words = null
-  dlg_node_text: pointers = null
+  dlg_node_tree: words = words(DLG_NODE_MAX)
+  dlg_node_text: pointers = pointers(DLG_NODE_MAX)
   dlg_choice_n: int = 0
-  dlg_choice_node: words = null     # owning node
-  dlg_choice_label: pointers = null
-  dlg_choice_next: words = null     # next node id, or -1 to end
-  item_reg: Dict = null
+  dlg_choice_node: words = words(DLG_CHOICE_MAX)     # owning node
+  dlg_choice_label: pointers = pointers(DLG_CHOICE_MAX)
+  dlg_choice_next: words = words(DLG_CHOICE_MAX)     # next node id, or -1 to end
+  item_reg: Dict = Dict.new()
   item_n: int = 0
-  item_stackmax: words = null
-  item_weight:   words = null
-  item_value:    words = null
-  inv_counts: Dict = null
-  quest_reg: Dict = null            # quest name -> id
+  item_stackmax: words = words(INV_MAX)
+  item_weight:   words = words(INV_MAX)
+  item_value:    words = words(INV_MAX)
+  inv_counts: Dict = Dict.new()
+  quest_reg: Dict = Dict.new()            # quest name -> id
   quest_n: int = 0
-  quest_state: words = null
+  quest_state: words = words(QUEST_MAX)
   obj_n: int = 0
-  obj_qid:    words = null          # owning quest id
-  obj_kind:   words = null
-  obj_target: words = null          # a target id/tag (kind-specific; 0 = any)
-  obj_need:   words = null
-  obj_have:   words = null
-  quest_flags: Dict = null          # global flag store
+  obj_qid:    words = words(OBJ_MAX)          # owning quest id
+  obj_kind:   words = words(OBJ_MAX)
+  obj_target: words = words(OBJ_MAX)          # a target id/tag (kind-specific; 0 = any)
+  obj_need:   words = words(OBJ_MAX)
+  obj_have:   words = words(OBJ_MAX)
+  quest_flags: Dict = Dict.new()          # global flag store
 }
 
-function item_ensure(rpg_st: mut RpgState) -> void {
-  if rpg_st.item_reg == null {
-    rpg_st.item_reg = Dict.new()
-    rpg_st.item_stackmax = words(INV_MAX);  rpg_st.item_weight = words(INV_MAX);  rpg_st.item_value = words(INV_MAX)
-  }
-}
 
 # Item.def(name, stack_max, weight, value) — register an item template. Returns id.
 @Namespace(Item) function item_def(rpg_st: mut RpgState, name: pointer, stack_max: int, weight: int, value: int) -> int {
-  item_ensure(rpg_st)
   if rpg_st.item_n >= INV_MAX { return -1 }
   let id = rpg_st.item_n
   rpg_st.item_stackmax[id] = stack_max;  rpg_st.item_weight[id] = weight;  rpg_st.item_value[id] = value
@@ -64,7 +57,7 @@ function item_ensure(rpg_st: mut RpgState) -> void {
   Dict.set(rpg_st.item_reg, name, id)
   return id
 }
-@Namespace(Item) function item_id(rpg_st: mut RpgState, name: pointer) -> int { item_ensure(rpg_st);  return Dict.get_or(rpg_st.item_reg, name, -1) }
+@Namespace(Item) function item_id(rpg_st: mut RpgState, name: pointer) -> int { return Dict.get_or(rpg_st.item_reg, name, -1) }
 @Namespace(Item) function item_value_of(rpg_st: mut RpgState, name: pointer) -> int {
   let id = item_id(rpg_st, name);  if id < 0 { return 0 }
   return rpg_st.item_value[id]
@@ -73,7 +66,6 @@ function item_ensure(rpg_st: mut RpgState) -> void {
 # ---- per-owner counts -----------------------------------------------------
 property Inventory { gold: int = 0, weight_max: int = 0, slots: int = 0 }
 
-function inv_ensure(rpg_st: mut RpgState) -> void { if rpg_st.inv_counts == null { rpg_st.inv_counts = Dict.new() } }
 function inv_key(e: int, name: pointer) -> pointer { return `{e}/{name}` }
 
 event ItemAdded { e: int = 0, item: int = 0, qty: int = 0 }        # item = registry id
@@ -82,14 +74,12 @@ event cancellable ItemUse { e: int = 0, item: int = 0 }           # veto a use (
 
 # Inventory.add(e, name, n) — add n of an item; emits ItemAdded.
 @Namespace(Inventory) function inventory_add(rpg_st: mut RpgState, e: int, name: pointer, n: int) -> void {
-  inv_ensure(rpg_st)
   let k = inv_key(e, name)
   Dict.set(rpg_st.inv_counts, k, Dict.get_or(rpg_st.inv_counts, k, 0) + n)
   emit ItemAdded(e: e, item: item_id(rpg_st, name), qty: n)
 }
 # Inventory.count(e, name) — how many the owner holds.
 @Namespace(Inventory) function inventory_count(rpg_st: mut RpgState, e: int, name: pointer) -> int {
-  inv_ensure(rpg_st)
   return Dict.get_or(rpg_st.inv_counts, inv_key(e, name), 0)
 }
 @Namespace(Inventory) function inventory_has(rpg_st: mut RpgState, e: int, name: pointer) -> int {
@@ -98,7 +88,6 @@ event cancellable ItemUse { e: int = 0, item: int = 0 }           # veto a use (
 }
 # Inventory.remove(e, name, n) — remove up to n; returns 1 if it had enough.
 @Namespace(Inventory) function inventory_remove(rpg_st: mut RpgState, e: int, name: pointer, n: int) -> int {
-  inv_ensure(rpg_st)
   let k = inv_key(e, name)
   let have = Dict.get_or(rpg_st.inv_counts, k, 0)
   if have < n { return 0 }
