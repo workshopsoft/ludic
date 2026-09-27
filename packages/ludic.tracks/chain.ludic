@@ -1,0 +1,60 @@
+# chain.ludic - a trail to follow. Reading a print names its maker, and the next clue is the
+# newest print that animal left later within TRACK_CHAIN_R of it; reading that one moves the trail
+# on. A legend's print names no maker, a print of another animal starts a new trail, and a trail
+# not read for TRACK_CHAIN_H game hours (ten real minutes at the valley's pace) goes cold.
+export const TRACK_CHAIN_R: float = 60.0
+export const TRACK_CHAIN_H: float = 10.0
+
+function tk_chain_read(tracks_st: mut TracksState, t: Track) -> void {
+  if t.legend or t.maker < 0 {
+    tracks_st.tk_chain = -1
+    return
+  }
+  tracks_st.tk_chain = t.maker
+  tracks_st.tk_chain_x = t.x
+  tracks_st.tk_chain_z = t.z
+  tracks_st.tk_chain_made = t.made
+  tracks_st.tk_chain_h = tk_now()
+}
+
+# the animal whose trail is being followed, -1 none or gone cold
+export function tracks_chain_maker(tracks_st: TracksState) -> int {
+  if tracks_st.tk_chain < 0 or tk_now() - tracks_st.tk_chain_h > TRACK_CHAIN_H { return -1 }
+  return tracks_st.tk_chain
+}
+
+# where the trail's last read sign is (the fallback's centre: the animal itself, when near it)
+export function tracks_chain_x(tracks_st: TracksState) -> float { return tracks_st.tk_chain_x }
+export function tracks_chain_z(tracks_st: TracksState) -> float { return tracks_st.tk_chain_z }
+
+# the next clue: a slot, or -1 when the trail has none left in reach (or none is followed)
+export function tracks_chain_next(tracks_st: TracksState) -> int {
+  let m = tracks_chain_maker(tracks_st)
+  if m < 0 { return -1 }
+  return tracks_after(tracks_st, m, tracks_st.tk_chain_x, tracks_st.tk_chain_z, tracks_st.tk_chain_made, TRACK_CHAIN_R)
+}
+
+# the newest print `maker` left after `made`, within r of (x, z), -1 none
+export function tracks_after(tracks_st: TracksState, maker: int, x: float, z: float, made: float, r: float) -> int {
+  if tracks_st.tk_ring == null or maker < 0 { return -1 }
+  var best = -1
+  var best_made = made
+  for k in 0 .. tracks_st.tk_kinds {
+    for i in 0 .. tracks_st.tk_count[k] {
+      let s = k * tracks_st.tk_cap + i
+      let t = tracks_st.tk_ring[s]
+      if t.maker != maker or t.made <= best_made { continue }
+      let dx = t.x - x
+      let dz = t.z - z
+      if dx * dx + dz * dz > r * r { continue }
+      best = s
+      best_made = t.made
+    }
+  }
+  return best
+}
+
+export function tracks_maker(tracks_st: TracksState, slot: int) -> int { return tracks_st.tk_ring[slot].maker }
+
+# the trail dropped (a sign of another animal read some other way, a new world)
+export function tracks_chain_end(tracks_st: mut TracksState) -> void { tracks_st.tk_chain = -1 }

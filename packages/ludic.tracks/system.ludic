@@ -4,6 +4,7 @@ export function tracks_reset(tracks_st: mut TracksState) -> void {
   tracks_st.tk_read_n = 0
   tracks_st.tk_yaw = 0.0
   tracks_st.tk_has_yaw = false
+  tracks_st.tk_chain = -1
   q_clear(tracks_reads(tracks_st))
 }
 

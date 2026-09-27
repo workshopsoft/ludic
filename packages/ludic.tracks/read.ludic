@@ -28,6 +28,7 @@ export function tracks_read(tracks_st: mut TracksState, slot: int) -> void {
   f.first = not t.read
   t.read = true
   tracks_note_bearing(tracks_st, t.yaw)
+  tk_chain_read(tracks_st, t)
   tk_push(tracks_st, f)
 }
 

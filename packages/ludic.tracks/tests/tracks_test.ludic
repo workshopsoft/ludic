@@ -39,7 +39,7 @@ program TracksTest {
 
   test "a print goes into its kind's ring and is drawn" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
     fresh(tracks_st, tracks_test_st)
-    let i = tracks_leave(tracks_st, 1, 5.0, 6.0, 1.0, 7, false)
+    let i = tracks_leave(tracks_st, 1, 5.0, 6.0, 1.0, 7, false, -1)
     expect_eq(i, 0)
     expect_eq(tracks_count(tracks_st, 1), 1)
     expect_eq(tracks_count(tracks_st, 0), 0)
@@ -51,7 +51,7 @@ program TracksTest {
 
   test "a full ring writes over its oldest print" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
     fresh(tracks_st, tracks_test_st)
-    for n in 0 .. 5 { tracks_leave(tracks_st, 2, float(n), 0.0, 0.0, n, false) }
+    for n in 0 .. 5 { tracks_leave(tracks_st, 2, float(n), 0.0, 0.0, n, false, -1) }
     expect_eq(tracks_count(tracks_st, 2), 4)
     expect_eq(tracks_test_st.placed_last, 0)
     expect_eq(tracks_sp(tracks_st, tracks_slot(tracks_st, 2, 0)), 4)
@@ -59,7 +59,7 @@ program TracksTest {
 
   test "a print ages on the world's clock" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
     fresh(tracks_st, tracks_test_st)
-    tracks_leave(tracks_st, 1, 0.0, 0.0, 0.0, 1, false)
+    tracks_leave(tracks_st, 1, 0.0, 0.0, 0.0, 1, false, -1)
     tracks_test_st.now = 13.0
     let s = tracks_slot(tracks_st, 1, 0)
     expect(tracks_age(tracks_st, s) == 3.0)
@@ -70,15 +70,15 @@ program TracksTest {
 
   test "the nearest print within reach, or none" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
     fresh(tracks_st, tracks_test_st)
-    tracks_leave(tracks_st, 1, 10.0, 0.0, 0.0, 1, false)
-    tracks_leave(tracks_st, 2, 1.0, 1.0, 0.0, 2, false)
+    tracks_leave(tracks_st, 1, 10.0, 0.0, 0.0, 1, false, -1)
+    tracks_leave(tracks_st, 2, 1.0, 1.0, 0.0, 2, false, -1)
     expect_eq(tracks_nearest(tracks_st, 0.0, 0.0, 2.0), tracks_slot(tracks_st, 2, 0))
     expect_eq(tracks_nearest(tracks_st, 50.0, 50.0, 2.0), -1)
   }
 
   test "a print read twice is two facts and one count" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
     fresh(tracks_st, tracks_test_st)
-    tracks_leave(tracks_st, 1, 0.0, 0.0, 1.0, 3, true)
+    tracks_leave(tracks_st, 1, 0.0, 0.0, 1.0, 3, true, -1)
     let s = tracks_nearest(tracks_st, 0.0, 0.0, 2.0)
     tracks_read(tracks_st, s)
     tracks_read(tracks_st, s)
@@ -96,7 +96,7 @@ program TracksTest {
   test "a reader without the skill cannot name the animal" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
     fresh(tracks_st, tracks_test_st)
     tracks_test_st.skill = 0
-    tracks_leave(tracks_st, 1, 0.0, 0.0, 0.0, 3, false)
+    tracks_leave(tracks_st, 1, 0.0, 0.0, 0.0, 3, false, -1)
     tracks_read(tracks_st, tracks_slot(tracks_st, 1, 0))
     expect(not reads(tracks_st)[0].named)
   }
@@ -113,15 +113,15 @@ program TracksTest {
 
   test "a written-over slot is a new, unread print" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
     fresh(tracks_st, tracks_test_st)
-    tracks_leave(tracks_st, 0, 0.0, 0.0, 0.0, 1, false)
+    tracks_leave(tracks_st, 0, 0.0, 0.0, 0.0, 1, false, -1)
     tracks_read(tracks_st, tracks_slot(tracks_st, 0, 0))
-    for n in 0 .. 4 { tracks_leave(tracks_st, 0, 0.0, 0.0, 0.0, 2, false) }
+    for n in 0 .. 4 { tracks_leave(tracks_st, 0, 0.0, 0.0, 0.0, 2, false, -1) }
     expect(not tracks_was_read(tracks_st, tracks_slot(tracks_st, 0, 0)))
   }
 
   test "clearing the ground forgets the prints, not the reader" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
     fresh(tracks_st, tracks_test_st)
-    tracks_leave(tracks_st, 1, 0.0, 0.0, 0.0, 1, false)
+    tracks_leave(tracks_st, 1, 0.0, 0.0, 0.0, 1, false, -1)
     tracks_read(tracks_st, tracks_slot(tracks_st, 1, 0))
     tracks_clear(tracks_st)
     expect_eq(tracks_count(tracks_st, 1), 0)
