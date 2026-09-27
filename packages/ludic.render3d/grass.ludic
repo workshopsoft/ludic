@@ -113,6 +113,8 @@ function grass_init(render3d_st: mut Render3dState) -> void {
   render3d_st.grass_radius = 1600.0
   if r3d_env_has(render3d_st, "R3D_NOBLADES") { render3d_st.grass_on = false }
   if r3d_env_has(render3d_st, "R3D_GRASS_R") { render3d_st.grass_radius = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_R"))) }
+  if r3d_env_has(render3d_st, "R3D_GRASS_S0") { render3d_st.grass_s0 = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_S0"))) / 1000.0 }
+  if r3d_env_has(render3d_st, "R3D_GRASS_D0") { render3d_st.grass_d0 = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_D0"))) }
   if r3d_env_has(render3d_st, "R3D_GRASS_DBG") { render3d_st.grass_dbg = Text.to_int(r3d_env(render3d_st, "R3D_GRASS_DBG")) }
 }
 
@@ -179,7 +181,7 @@ function grass_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_
 }
 
 function grass_draw(render3d_st: mut Render3dState) -> void {
-  if not render3d_st.grass_on or render3d_st.ter_reflect or render3d_st.grass_prog == 0 { return }
+  if not (render3d_st.grass_on or render3d_st.grass_force) or render3d_st.ter_reflect or render3d_st.grass_prog == 0 { return }
   var p = render3d_st.grass_prog
   if grass_mesh_live(render3d_st) { p = render3d_st.grass_mesh_prog }
   gpu_use_program(render3d_st, p)

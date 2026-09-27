@@ -56,6 +56,8 @@ function r3d_env_flags(render3d_st: mut Render3dState) -> void {
   if r3d_env_has(render3d_st, "R3D_NOGI") { render3d_st.post_gi_strength = 0.0;  render3d_st.post_ao_strength = 0.0;  render3d_st.post_no_gi = true }
   if r3d_env_has(render3d_st, "R3D_MSAA") { render3d_st.post_ms_samples = Text.to_int(r3d_env(render3d_st, "R3D_MSAA")) }
   render3d_st.sc_skip_blade = r3d_env_has(render3d_st, "R3D_NOBLADES")
+  render3d_st.sc_skip_grass = r3d_env_has(render3d_st, "R3D_NOGRASS")
+  render3d_st.grass_force = r3d_env_has(render3d_st, "R3D_BLADES")
   render3d_st.sc_skip_card = r3d_env_has(render3d_st, "R3D_NOCARDS")
   render3d_st.sc_dbg_lod = r3d_env_has(render3d_st, "R3D_LODDBG")
   if r3d_env_has(render3d_st, "R3D_ANISO") {

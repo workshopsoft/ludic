@@ -560,6 +560,9 @@ function gvk_buf_release(render3d_st: mut Render3dState, b: int) -> void {
   if gvk_buf_busy(render3d_st, b) {
     # a draw recorded this frame (or the frame in flight) still reads it: destroy it once the frame has been submitted
     push(render3d_st.gvk_retired_buf, render3d_st.gvk_buf[b]);  push(render3d_st.gvk_retired_mem, render3d_st.gvk_buf_mem[b])
+    if render3d_st.gvk_retired_frame == null { render3d_st.gvk_retired_frame = new []int }
+    while len(render3d_st.gvk_retired_frame) < len(render3d_st.gvk_retired_buf) - 1 { push(render3d_st.gvk_retired_frame, 0) }
+    push(render3d_st.gvk_retired_frame, render3d_st.gvk_buf_used[b])
   } else {
     Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_buf[b], null)
     gvk_mem_free(render3d_st, gvk_mem_id(render3d_st.gvk_buf_mem[b]))
@@ -569,18 +572,32 @@ function gvk_buf_release(render3d_st: mut Render3dState, b: int) -> void {
 # read by a draw recorded this frame, or by the presented frame still on the GPU
 function gvk_buf_busy(render3d_st: Render3dState, b: int) -> bool {
   let u = render3d_st.gvk_buf_used[b]
-  return u == render3d_st.gvk_frame_no or (render3d_st.gvk_frame_pending and u == render3d_st.gvk_frame_no - 1)
+  return u == render3d_st.gvk_frame_no or (render3d_st.gvk_frame_pending and u == render3d_st.gvk_frame_pending_no)
 }
 
-# the frame's submitted work is done: storage retired during it can go
-function gvk_retire_flush(render3d_st: mut Render3dState) -> void {
+# everything submitted is done: every retired buffer can go
+function gvk_retire_flush(render3d_st: mut Render3dState) -> void { gvk_retire_upto(render3d_st, render3d_st.gvk_frame_no) }
+
+# frame `done` and every frame before it are finished: storage last read by them can go, and what
+# the frame being recorded read stays
+function gvk_retire_upto(render3d_st: mut Render3dState, done: int) -> void {
   if render3d_st.gvk_retired_buf == null { return }
+  let keep_buf = new []long
+  let keep_mem = new []long
+  let keep_frame = new []int
   for i in 0 .. len(render3d_st.gvk_retired_buf) {
-    Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_retired_buf[i], null)
-    gvk_mem_free(render3d_st, gvk_mem_id(render3d_st.gvk_retired_mem[i]))
+    var f = 0
+    if render3d_st.gvk_retired_frame != null and i < len(render3d_st.gvk_retired_frame) { f = render3d_st.gvk_retired_frame[i] }
+    if f > done {
+      push(keep_buf, render3d_st.gvk_retired_buf[i]);  push(keep_mem, render3d_st.gvk_retired_mem[i]);  push(keep_frame, f)
+    } else {
+      Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_retired_buf[i], null)
+      gvk_mem_free(render3d_st, gvk_mem_id(render3d_st.gvk_retired_mem[i]))
+    }
   }
-  render3d_st.gvk_retired_buf = new []long
-  render3d_st.gvk_retired_mem = new []long
+  render3d_st.gvk_retired_buf = keep_buf
+  render3d_st.gvk_retired_mem = keep_mem
+  render3d_st.gvk_retired_frame = keep_frame
 }
 
 # A buffer a compute pass writes: a draw later in the same frame reads what the GPU put there,
