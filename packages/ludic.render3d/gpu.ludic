@@ -201,7 +201,7 @@ function gpu_query_new(render3d_st: mut Render3dState, n: int, ids: words) -> vo
 function gpu_query_begin(render3d_st: mut Render3dState, id: int) -> void { if render3d_st.gpu_kind == GPU_VK { gvk_query_begin(render3d_st, id);  return };  gl_begin_query(GL_TIME_ELAPSED, id) }
 function gpu_query_end(render3d_st: mut Render3dState) -> void { if render3d_st.gpu_kind == GPU_VK { gvk_query_end(render3d_st);  return };  gl_end_query(GL_TIME_ELAPSED) }
 # true once the query has its result; the nanoseconds (low 32 bits) are then in out[0]
-function gpu_query_result(render3d_st: Render3dState, id: int, out: words) -> bool {
+function gpu_query_result(render3d_st: mut Render3dState, id: int, out: words) -> bool {
   if render3d_st.gpu_kind == GPU_VK { return gvk_query_result(render3d_st, id, out) }
   gl_get_query_objectiv(id, GL_QUERY_RESULT_AVAILABLE, out)
   if out[0] == 0 { return false }
