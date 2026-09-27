@@ -46,8 +46,6 @@ function gpu_select(render3d_st: mut Render3dState) -> int {
   return render3d_st.gpu_kind
 }
 function gpu_backend(render3d_st: Render3dState) -> string { return "vulkan" }
-# always false now; kept until the game stops asking (maroon-lake src/app/boot_load.ludic)
-function gpu_is_gl(render3d_st: Render3dState) -> bool { return false }
 
 # ---- render state ----------------------------------------------------------------
 # -1 = not known yet: the first set always reaches the driver, so the cache never
