@@ -3,9 +3,12 @@
 # specificity as one sheet's are. On a tie the user's rule wins (the outermost user's last), as a
 # later rule does. Then `order`, which rearranges a flex box's children without touching the tree.
 function cs_merged(ui_st: mut UiState, n: UiNode) -> void {
-  let rules = new []UiRule
-  let envs = new []UiEnv
-  let seen = new []UiSheet
+  let rules = ui_st.cs_rules          # kept and emptied: a merge runs once an element, never inside another
+  let envs = ui_st.cs_envs
+  let seen = ui_st.cs_seen
+  List.clear(rules)
+  List.clear(envs)
+  List.clear(seen)
   if n.sheet != null { cs_gather(ui_st, n, n.sheet, n.env, rules, envs, seen) }
   for i in 0 .. len(n.ups) {
     if n.ups[i].sheet != null { cs_gather(ui_st, n, n.ups[i].sheet, n.ups[i].env, rules, envs, seen) }

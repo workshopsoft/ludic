@@ -23,7 +23,7 @@ function el_sides(ui_st: mut UiState, v: Val) -> void {
     ui_st.el_s0 = el_px(ui_st, Value.as_float(v))
     n = 1
   } else {
-    let words = mm_words(ui_st, vl_text(v))
+    let words = mm_words(ui_st, vl_text_u(ui_st, v))
     for i in 0 .. len(words) {
       if len(words[i]) > 0 and n < 4 {
         el_side_set(ui_st, n, el_word_len(ui_st, words[i]))
@@ -43,7 +43,7 @@ function el_side_set(ui_st: mut UiState, i: int, v: float) -> void {
 # a length: a number, 10px, 1.5em, 2rem, 50vw, calc(...), fill, fit or auto (a percentage is el_pct's)
 function el_len(ui_st: mut UiState, v: Val) -> float {
   if vl_num(v) { return el_px(ui_st, Value.as_float(v)) }
-  let s = vl_text(v)
+  let s = vl_text_u(ui_st, v)
   if s == "fill" { return UI_FILL }
   if ca_is(s) { return el_calc_len(ui_st, s) }
   if s == "fit" or s == "auto" or (len(s) > 0 and s[len(s) - 1] == 37) { return 0.0 }

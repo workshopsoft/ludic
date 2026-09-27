@@ -12,7 +12,7 @@ function el_apply(ui_st: mut UiState, n: UiNode, key: string, v0: Val) -> bool {
   ui_st.el_cur = n
   ui_st.el_key = k
   if len(k) > 2 and sat(k, 0, "--") {
-    cs_var_set(n, k, vl_text(v0))
+    cs_var_set(n, k, vl_text_u(ui_st, v0))
     return true
   }
   let v = cs_vars_in(ui_st, n, v0)
@@ -48,7 +48,7 @@ function el_size(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
   return true
 }
 function el_flex(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
-  let s = vl_text(v)
+  let s = vl_text_u(ui_st, v)
   if key == "dir" {
     n.dir = UI_COL
     if s == "row" { n.dir = UI_ROW }
@@ -56,7 +56,7 @@ function el_flex(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
   return true
 }
 function el_look(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
-  let s = vl_text(v)
+  let s = vl_text_u(ui_st, v)
   if key == "size" { n.size = el_len(ui_st, v) } else if key == "color" {
     n.fg = ui_color(ui_st, s)
     n.fg_a = ui_st.cl_alpha

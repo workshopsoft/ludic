@@ -36,6 +36,12 @@ export state UiState {
   pl_cur: UiPool = null
   mm: UiMemo = null                      # memo.ludic: splits, gradients and keys by their text
   mm_ints: []string = null
+  ly_depth: int = 0                      # layout_run.ludic: the lists a line lays out with, one a depth
+  ly_sizes: [][]float = new [][]float
+  ly_frozen: [][]bool = new [][]bool
+  cs_rules: []UiRule = new []UiRule      # cascade_merge.ludic: a component root's rules, gathered
+  cs_envs: []UiEnv = new []UiEnv
+  cs_seen: []UiSheet = new []UiSheet
   an_frames: []UiKeyframes = new []UiKeyframes
   an_keys: []string = new []string
   an_start: []float = new []float

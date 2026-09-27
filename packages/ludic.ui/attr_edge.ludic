@@ -1,6 +1,6 @@
 # attr_edge.ludic - border-radius, outline (and its width, colour and offset), scrollbar-color
 function el_edge(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
-  let s = vl_text(v)
+  let s = vl_text_u(ui_st, v)
   if key == "border-radius" { n.radius = el_len(ui_st, v) } else if key == "outline" { el_outline(ui_st, n, s) } else if key == "outline-width" { n.outline_w = el_len(ui_st, v) } else if key == "outline-offset" { n.outline_off = el_len(ui_st, v) } else if key == "outline-color" {
     n.outline_c = ui_color(ui_st, s)
     n.outline_a = ui_st.cl_alpha

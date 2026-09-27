@@ -2,7 +2,7 @@
 # percentage is kept apart and taken of the containing block's width (left, right) or height (top,
 # bottom) when the element is placed
 function el_inset(ui_st: mut UiState, n: UiNode, side: int, v: Val) -> float {
-  let s = vl_text(v)
+  let s = vl_text_u(ui_st, v)
   var pct = 0.0
   var px = UI_AUTO
   if s != "auto" {

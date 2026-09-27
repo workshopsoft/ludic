@@ -51,7 +51,7 @@ export function ui_nodes(ui_st: mut UiState, screen: string, view: UiView) -> Ui
   root.sheet = t.sheet
   root.tag = "screen"
   for i in 0 .. len(t.keys) {
-    if t.keys[i] != "name" { el_keep(root, t.keys[i], ui_eval(ui_st, t.vals[i], e)) }
+    if t.keys[i] != "name" { el_keep(ui_st, root, t.keys[i], ui_eval(ui_st, t.vals[i], e)) }
   }
   bd_kids(ui_st, t.kids, e, screen, root.children)
   cs_tree(ui_st, root)

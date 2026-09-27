@@ -11,7 +11,7 @@ function bd_elem(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string) -> UiNode 
   n.sheet = k.sheet
   n.style = k.style
   el_kind(ui_st, n, k.tag)
-  for i in 0 .. len(k.keys) { el_keep(n, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
+  for i in 0 .. len(k.keys) { el_keep(ui_st, n, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
   n.hovered = fr_was_hovered(ui_st, key)
   n.on_names = k.on_keys
   n.on_acts = k.on_acts
@@ -52,8 +52,8 @@ function el_text(ui_st: mut UiState, n: UiNode, s: string) -> void {
   push(n.children, t)
 }
 # id, class, hidden, disabled and src say what the element is; the rest are applied after the rules
-function el_keep(n: UiNode, key: string, v: Val) -> void {
-  let s = vl_text(v)
+function el_keep(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> void {
+  let s = vl_text_u(ui_st, v)
   if key == "id" { n.id = s } else if key == "class" {
     let parts = lss_split(s, 32)
     for i in 0 .. len(parts) {

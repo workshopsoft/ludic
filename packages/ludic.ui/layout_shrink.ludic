@@ -23,9 +23,10 @@ function ly_min_h(c: UiNode) -> float {
   return c.mh
 }
 # `sizes` (the children from..to) shrunk by `over` in all
-function ly_shrink_line(n: UiNode, from: int, sizes: []float, over0: float) -> void {
+function ly_shrink_line(ui_st: mut UiState, depth: int, n: UiNode, from: int, sizes: []float, over0: float) -> void {
   var over = over0
-  let frozen = new []bool
+  let frozen = ui_st.ly_frozen[depth]
+  List.clear(frozen)
   for k in 0 .. len(sizes) { push(frozen, n.children[from + k].pos >= 2) }
   for pass in 0 .. 8 {
     var wsum = 0.0
