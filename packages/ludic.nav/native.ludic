@@ -1,0 +1,15 @@
+# native.ludic - the shim's symbols (native/shim/nav_shim.cpp). A navmesh is a handle the package
+# keeps; points come back through a float buffer it owns. None of this is exported.
+extern function nvc_build(v: pointer, nv: int, t: pointer, nt: int, area: pointer, cyl: pointer, nc: int, foot: pointer, nf: int, c: pointer) -> pointer = "nav_build"
+extern function nvc_tiled(ox: float, oz: float, tile: float, max_tiles: int, max_polys: int) -> pointer = "nav_tiled"
+extern function nvc_tile_build(h: pointer, tx: int, tz: int, v: pointer, nv: int, t: pointer, nt: int, area: pointer, cyl: pointer, nc: int, foot: pointer, nf: int, c: pointer) -> int = "nav_tile_build"
+extern function nvc_save(h: pointer, buf: pointer, cap: int) -> int = "nav_save"
+extern function nvc_load(buf: pointer, size: int) -> pointer = "nav_load"
+extern function nvc_free(h: pointer) -> void = "nav_free"
+extern function nvc_polys(h: pointer) -> int = "nav_polys"
+extern function nvc_nearest(h: pointer, x: float, y: float, z: float, out: pointer) -> int = "nav_nearest"
+extern function nvc_area_cost(h: pointer, area: int, cost: float) -> void = "nav_area_cost"
+extern function nvc_path(h: pointer, sx: float, sy: float, sz: float, ex: float, ey: float, ez: float, out: pointer, max: int) -> int = "nav_path"
+extern function nvc_partial(h: pointer) -> int = "nav_partial"
+extern function nvc_raycast(h: pointer, sx: float, sy: float, sz: float, ex: float, ez: float) -> int = "nav_raycast"
+extern function nvc_random_near(h: pointer, x: float, y: float, z: float, r: float, seed: int, out: pointer) -> int = "nav_random_near"

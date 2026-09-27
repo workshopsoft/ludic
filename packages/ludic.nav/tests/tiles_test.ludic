@@ -1,0 +1,66 @@
+# tiles_test.ludic - ludic.nav's map in tiles: a 128 m meadow as four 64 m tiles, one of them under
+# water. A path crosses the tiles' seams, the water's tile has no polygons and nothing inside it is
+# a way's end, and the set saved and loaded answers as the built one did.
+import "ludic.nav"
+import "ludic.base"
+import "fakes/meadow.ludic"
+program TilesTest {
+  numbers float
+
+  # four tiles over ground(128), the far corner's squares (x and z past 64) under water when wet
+  function map(nav_st: mut NavState, wet: bool) -> int {
+    let g = ground(128, 0)
+    if wet {
+      for j in 64 .. 128 { for i in 64 .. 128 { g.area[(j * 128 + i) * 2] = 0 } }
+      for j in 64 .. 128 { for i in 64 .. 128 { g.area[(j * 128 + i) * 2 + 1] = 0 } }
+    }
+    g.cyl = post_at(96.0, 20.0, 2.0)
+    g.nc = 1
+    expect(nav_tiled(nav_st, NAV_PERSON, 0.0, 0.0, 64.0, 16, 4096))
+    var empty = 0
+    for tz in 0 .. 2 {
+      for tx in 0 .. 2 {
+        let p = nav_tile_build(nav_st, NAV_PERSON, tx, tz, g, new NavConfig)
+        expect(p >= 0)
+        if p == 0 { empty += 1 }
+      }
+    }
+    return empty
+  }
+  function last_x(nav_st: NavState) -> float { return nav_corner_x(nav_st, nav_corners(nav_st) - 1) }
+  function last_z(nav_st: NavState) -> float { return nav_corner_z(nav_st, nav_corners(nav_st) - 1) }
+
+  test "a path crosses the tiles' seams and goes round the post in the far tile" (nav_st: mut NavState) {
+    expect_eq(map(nav_st, false), 0)
+    expect(nav_polygons(nav_st, NAV_PERSON) > 0)
+    let n = nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
+    expect(n >= 3)
+    expect(not nav_partial(nav_st, NAV_PERSON))
+    expect(Math.abs(last_x(nav_st) - 120.0) < 0.1)
+    let d = nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 10.0, 120.0, 0.0, 120.0)
+    expect(d >= 2)
+    expect(not nav_partial(nav_st, NAV_PERSON))
+  }
+
+  test "a tile under water has no polygons: a way into it is none, the shore beside it is reached" (nav_st: mut NavState) {
+    expect_eq(map(nav_st, true), 1)
+    expect(not nav_nearest(nav_st, NAV_PERSON, 100.0, 0.0, 100.0))
+    expect_eq(nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 10.0, 70.0, 0.0, 70.0), -1)
+    expect(nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 10.0, 62.0, 0.0, 70.0) >= 2)
+    expect(not nav_partial(nav_st, NAV_PERSON))
+    expect(Math.abs(last_z(nav_st) - 70.0) < 0.1)
+  }
+
+  test "the tiles saved and loaded answer as the built ones did" (nav_st: mut NavState) {
+    map(nav_st, true)
+    let path = Os.temp_dir() + "/ludic_nav_tiles.navmesh"
+    expect(nav_save_file(nav_st, NAV_PERSON, path))
+    expect(nav_load_file(nav_st, NAV_LARGE, path))
+    expect_eq(nav_polygons(nav_st, NAV_LARGE), nav_polygons(nav_st, NAV_PERSON))
+    let a = nav_path(nav_st, NAV_PERSON, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
+    let ax = last_x(nav_st)
+    let b = nav_path(nav_st, NAV_LARGE, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
+    expect_eq(a, b)
+    expect_near(last_x(nav_st), ax, 0.0001)
+  }
+}
