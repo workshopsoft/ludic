@@ -28,6 +28,11 @@ through the game).
   the oars pulled against each other - and reads back where the hull is and how fast it goes. The
   water floats it, the wind (`VehicleWorld.wind`) drifts every boat, ridden or not, and the lake bed
   stops it at the shore; the swell at the sail limit takes the outward share of a stroke.
+- **A horse walks on legs in the game's physics** (`VehicleLegs`; a Jolt walker in Maroon Lake). The
+  package decides its pace - a walk, a canter on stamina, hay for every metre - and never steps it
+  into water; the legs meet the ground, its steps and slopes, and whatever stands in its way. What
+  they cover along its heading is its speed, so a fence brings it to a stand and a trunk it glances
+  pushes it aside. A horse called to its bay or led round where it is tied is stood there (`stand`).
 - **A horse's steering follows signed speed**: backing up with the stick left swings the nose right.
 - A stale rider locks a vehicle for ever, so getting off is `vehicle_dismount` or `vehicle_drop`.
 
@@ -35,12 +40,13 @@ through the game).
 
 `VehicleHull { put(nid, x, y, z, yaw), row(nid, forward, turn), drift(nid, fx, fz), read(nid) -> bool,
 x, y, z, yaw, speed, gone(nid) }` is required: the boat's body, named by the vehicle's nid.
+`VehicleLegs { walk(nid, x, y, z, vx, vz, dt) -> bool, x, y, z, stand(nid, x, y, z), gone(nid) }` is the
+horse's: unbound, the ground is walked as it is and only a rise steeper than it can take stops it.
 
 ```ludic
 export port VehicleWorld {
   ground: fn(float, float) -> float                       # required
   water: fn(float, float) -> float                        # the surface (unbound: never wet)
-  blocked: fn(float, float, float) -> bool                # (x, z, r): a collider in a horse's way
   swell: fn(float, float, float, float) -> float          # (x, z, fx, fz): a stroke's share lost
   wind: fn() -> float                                     # 0..1
   wind_yaw: fn() -> float                                 # the yaw the wind pushes toward
