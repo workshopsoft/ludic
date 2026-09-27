@@ -45,17 +45,11 @@ export function ui_image_reload(ui_st: mut UiState, path: string) -> void {
   }
 }
 function r3u_image(render3d_st: mut Render3dState, ui_st: mut UiState, src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
-  var colon = -1
-  for i in 0 .. len(src) {
-    if colon < 0 and src[i] == 58 { colon = i }
-  }
-  if colon > 0 {
-    let prefix: string = src[0..colon]
-    for k in 0 .. len(ui_st.r3u_atlas) {
-      if ui_st.r3u_atlas[k] == prefix {
-        r3u_cell(render3d_st, ui_st, k, src[colon + 1..len(src)], x, y, w, h, c, a)
-        return
-      }
+  for k in 0 .. len(ui_st.r3u_atlas) {          # icon:NAME, the atlas and the name read in place
+    let p = ui_st.r3u_atlas[k]
+    if len(src) > len(p) and src[len(p)] == 58 and sat(src, 0, p) {
+      r3u_cell(render3d_st, ui_st, k, src, len(p) + 1, x, y, w, h, c, a)
+      return
     }
   }
   let t = r3u_tex(render3d_st, ui_st, src)
@@ -77,15 +71,17 @@ function r3u_is_cell(ui_st: UiState, src: string) -> bool {
   }
   return false
 }
-function r3u_cell(render3d_st: mut Render3dState, ui_st: mut UiState, k: int, name: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
+# the cell whose name is src from `at` on (compared where it stands), or its number
+function r3u_cell(render3d_st: mut Render3dState, ui_st: mut UiState, k: int, src: string, at: int, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
   let names = ui_st.r3u_atlas_names[k]
+  let n = len(src) - at
   var idx = -1
   for i in 0 .. len(names) {
-    if names[i] == name { idx = i }
+    if len(names[i]) == n and sat(src, at, names[i]) { idx = i }
   }
-  if idx < 0 and len(name) > 0 and name[0] >= 48 and name[0] <= 57 { idx = int(el_num(name)) }
+  if idx < 0 and n > 0 and src[at] >= 48 and src[at] <= 57 { idx = int(el_num_in(src, at, len(src))) }
   if idx < 0 {
-    ui_err(ui_st, `{ui_st.r3u_atlas[k]}:{name}: the atlas has no such picture`)
+    ui_err(ui_st, `{src}: the atlas has no such picture`)
     return
   }
   let cols = ui_st.r3u_atlas_cols[k]
