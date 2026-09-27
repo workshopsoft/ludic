@@ -1,0 +1,71 @@
+# texture_dds.ludic - a .dds beside a .png: BC7 (colour, and anything packed into three channels),
+# BC5 (a normal's x and y) or BC4 (one channel), every mip level encoded at build time. Only the
+# DX10 form with its whole chain is taken; anything else is 0 and the caller loads the .png.
+
+# DXGI's numbers for the formats read here
+const DDS_BC4: int = 80
+const DDS_BC5: int = 83
+const DDS_BC7: int = 98
+const DDS_BC7_SRGB: int = 99
+
+function dds_u32(b: []byte, o: int) -> int { return b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24) }
+
+# the .dds a .png may have beside it, or "" when the path is not a .png
+function dds_path_of(path: string) -> string {
+  let n = len(path)
+  if n < 5 or path[n - 4 .. n] != ".png" { return "" }
+  return path[0 .. n - 4] + ".dds"
+}
+
+# Load the .dds at `path` as a texture (srgb: colour, sampled as sRGB), or 0
+function tex_load_dds(render3d_st: mut Render3dState, path: string, srgb: bool) -> int {
+  let b = Fs.read_bytes(path)
+  if b == null { return 0 }
+  let id = tex_load_dds_bytes(render3d_st, b, srgb)
+  free(b)
+  if id == 0 { print(`r3d: {path} is not a DX10 .dds with its whole mip chain; the .png is used`) }
+  return id
+}
+
+function tex_load_dds_bytes(render3d_st: mut Render3dState, b: []byte, srgb: bool) -> int {
+  if len(b) < 148 or b[0] != 68 or b[1] != 68 or b[2] != 83 or b[3] != 32 { return 0 }
+  if b[84] != 68 or b[85] != 88 or b[86] != 49 or b[87] != 48 { return 0 }      # "DX10"
+  let h = dds_u32(b, 12)
+  let w = dds_u32(b, 16)
+  var levels = dds_u32(b, 28)
+  if levels < 1 { levels = 1 }
+  let dxgi = dds_u32(b, 128)
+  var ifmt = 0
+  var block = 16
+  if dxgi == DDS_BC7 or dxgi == DDS_BC7_SRGB { ifmt = R3D_BC7;  if srgb { ifmt = R3D_BC7_SRGB } }
+  if dxgi == DDS_BC5 { ifmt = R3D_BC5 }
+  if dxgi == DDS_BC4 { ifmt = R3D_BC4;  block = 8 }
+  if ifmt == 0 or w < 1 or h < 1 or levels != gvk_mip_levels(w, h) { return 0 }
+  let offs = words(levels + 1)
+  var at = 0
+  for l in 0 .. levels {
+    offs[l] = at
+    at += max((max(w >> l, 1) + 3) / 4, 1) * max((max(h >> l, 1) + 3) / 4, 1) * block
+  }
+  offs[levels] = at
+  if 148 + at > len(b) {
+    free(offs)
+    return 0
+  }
+  let id = gpu_tex_new(render3d_st)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
+  let ok = gpu_tex_compressed(render3d_st, ifmt, w, h, levels, mem_off(data_of(b), 148), offs)
+  free(offs)
+  if not ok {
+    gpu_tex_free(render3d_st, id)
+    return 0
+  }
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
+  render3d_st.tex_w = w
+  render3d_st.tex_h = h
+  return id
+}
