@@ -20,6 +20,16 @@ export function wildlife_turned(wildlife_st: WildlifeState) -> int { return wild
 export function wildlife_turned_wet(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_turned_wet }
 export function wildlife_turned_steep(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_turned_steep }
 
+# a climb is judged over half a metre ahead, not one frame's step: a few centimetres of the drawn
+# ground rise steeply over a pebble a walker steps across, and a frame's step shrinks with the rate
+const WL_LOOK: float = 0.5
+function wl_climb(a: WildAnimal, nx: float, nz: float) -> float {
+  let dx = nx - a.x
+  let dz = nz - a.z
+  let l = Math.sqrt(dx * dx + dz * dz)
+  return WildlifeWorld.ground(a.x + dx / l * WL_LOOK, a.z + dz / l * WL_LOOK) - a.y
+}
+
 function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
   let d = a.speed * dt
   if d < 0.0001 { return false }
@@ -33,7 +43,7 @@ function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bo
   let nh = WildlifeWorld.ground(nx, nz)
   let moved = Math.abs(nx - a.x) + Math.abs(nz - a.z)
   let wet = nh < WildlifeWorld.water(nx, nz) + 0.6
-  let steep = nh - a.y > d * 1.2
+  let steep = moved > 0.0001 and wl_climb(a, nx, nz) > WL_LOOK * 1.2
   if wet or steep or moved < d * 0.2 {
     if wet { wildlife_st.wl_turned_wet += 1 } else if steep { wildlife_st.wl_turned_steep += 1 }
     a.yaw = a.yaw + Math.deg_to_rad(75.0)

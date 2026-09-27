@@ -1,0 +1,71 @@
+# climb_test.ludic - a climb is judged over half a metre ahead: a pebble's few centimetres of steep
+# ground are walked over, at any frame rate, and a wall is still turned from
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+program ClimbTest {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn ct_ground
+    water: fn fk_water
+    forest: fn fk_forest
+    sight: fn fk_sight
+    push: fn fk_push
+    pushed_x: fn fk_pushed_x
+    pushed_z: fn fk_pushed_z
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    hidden: fn fk_is_hidden
+    noise: fn fk_noise_of
+    scent: fn fk_scent_of
+    stillness: fn fk_still_of
+    wind: fn fk_wind_of
+    wind_dir: fn fk_wind_to
+    winterness: fn fk_winter_of
+    about: fn fk_about_of
+    per_range: fn fk_one
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    born: fn fk_on_born
+    spot: fn fk_spot
+  }
+
+  # flat at 10 m, a pebble 4 cm high and 2 cm across at z = -10, a 3 m wall at z = -30
+  function ct_ground(x: float, z: float) -> float {
+    if z < -30.0 { return 13.0 }
+    if z < -9.99 and z > -10.01 { return 10.04 }
+    return 10.0
+  }
+  function walk(wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState, dt: float) -> float {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = wildlife_make(wildlife_st, 0, 0.0, 0.0, false, 0.0, 0, 1.0, 1)
+    wildlife_tests_fake_st.fk_px[0] = 400.0
+    wildlife_tests_fake_st.fk_pz[0] = 0.0
+    wildlife_tests_fake_st.fk_hidden = true
+    a.state = WILD_WANDER
+    a.tx = 0.0
+    a.tz = -100.0
+    a.timer = 300.0
+    var south = 0.0
+    for k in 0 .. int(40.0 / dt) {
+      wildlife_tick(wildlife_st, dt, 0.0)
+      south = Math.min(south, a.z)
+    }
+    return south
+  }
+
+  test "a pebble is walked over and a wall is not, at 60 Hz" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    let s = walk(wildlife_st, wildlife_tests_fake_st, 1.0 / 60.0)
+    expect(s < -12.0)
+    expect(s > -30.5)
+  }
+  test "and the same at 240 Hz" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    let s = walk(wildlife_st, wildlife_tests_fake_st, 1.0 / 240.0)
+    expect(s < -12.0)
+    expect(s > -30.5)
+  }
+}
