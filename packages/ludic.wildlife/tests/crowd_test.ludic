@@ -1,0 +1,83 @@
+# crowd_test.ludic - a walker a crowd moves (phase 18): it says where it is going and how fast and
+# stays where it is, standing still is a speed of 0, and where the crowd puts it is its place,
+# its heading and its prints, found there by the table's index
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+program WildCrowdTest {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    forest: fn fk_forest
+    sight: fn fk_sight
+    push: fn fk_push
+    pushed_x: fn fk_pushed_x
+    pushed_z: fn fk_pushed_z
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    hidden: fn fk_is_hidden
+    noise: fn fk_noise_of
+    scent: fn fk_scent_of
+    stillness: fn fk_still_of
+    wind: fn fk_wind_of
+    wind_dir: fn fk_wind_to
+    winterness: fn fk_winter_of
+    about: fn fk_about_of
+    per_range: fn fk_one
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    born: fn fk_on_born
+    spot: fn fk_spot
+  }
+
+
+  function walker(wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) -> WildAnimal {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = wildlife_make(wildlife_st, 0, 0.0, 0.0, false, 0.0, 0, 1.0, 1)
+    wildlife_tests_fake_st.fk_px[0] = 400.0
+    wildlife_tests_fake_st.fk_pz[0] = 0.0
+    wildlife_tests_fake_st.fk_hidden = true
+    wildlife_set_crowd(a, true)
+    return a
+  }
+
+  test "a crowd walker says where and how fast, and does not move itself" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    let a = walker(wildlife_st, wildlife_tests_fake_st)
+    a.state = WILD_WANDER
+    a.tx = 0.0
+    a.tz = -100.0
+    a.timer = 300.0
+    for k in 0 .. 120 { wildlife_tick(wildlife_st, 1.0 / 60.0, 0.0) }
+    expect_eq(a.x, 0.0)
+    expect_eq(a.z, 0.0)
+    expect_eq(a.goal_x, 0.0)
+    expect_eq(a.goal_z, -100.0)
+    expect(a.goal_speed > 0.5)
+    a.state = WILD_IDLE
+    a.timer = 300.0
+    wildlife_tick(wildlife_st, 1.0 / 60.0, 0.0)
+    expect_eq(a.goal_speed, 0.0)
+  }
+
+  test "where the crowd puts it is its place, its heading, its prints, and the index finds it there" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    let a = walker(wildlife_st, wildlife_tests_fake_st)
+    q_clear(wildlife_facts(wildlife_st))
+    for k in 1 .. 41 { wildlife_moved(wildlife_st, a, 0.0, -0.1 * float(k), 0.0, -1.2) }
+    expect_near(a.z, -4.0, 0.0001)
+    expect_near(a.y, 10.0, 0.0001)
+    expect_near(Math.sin(a.yaw), 0.0, 0.0001)
+    expect(Math.cos(a.yaw) > 0.99)
+    var prints = 0
+    let fs = q_drain(wildlife_facts(wildlife_st))
+    for i in 0 .. len(fs) { if fs[i].what == WILD_PRINT { prints += 1 } }
+    expect_eq(prints, 1)
+    let out = new []WildAnimal
+    expect_eq(wildlife_near(wildlife_st, 0.0, -4.0, 1.0, out), 1)
+    expect_eq(wildlife_near(wildlife_st, 0.0, 0.0, 1.0, out), 0)
+  }
+}

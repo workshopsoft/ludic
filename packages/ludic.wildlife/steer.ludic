@@ -11,14 +11,11 @@ function wl_face(a: WildAnimal, tx: float, tz: float, rate: float, dt: float) ->
   let want = Math.atan2(-(tx - a.x), -(tz - a.z))
   let r = rate * dt
   a.yaw = a.yaw + Math.clamp(wl_wrap(want - a.yaw), -r, r)
+  a.goal_x = tx
+  a.goal_z = tz
 }
 
 # true when it moved; a walker is slid round a still thing (a trunk, a tent), a bird is not
-# how many steps were refused and turned from since the start: how often the way was not enough
-export function wildlife_turned(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_turned }
-# of those, how many for water ahead and how many for a climb (the rest: pushed back by a still thing)
-export function wildlife_turned_wet(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_turned_wet }
-export function wildlife_turned_steep(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_turned_steep }
 
 # a climb is judged over half a metre ahead, not one frame's step: a few centimetres of the drawn
 # ground rise steeply over a pebble a walker steps across, and a frame's step shrinks with the rate
@@ -31,6 +28,7 @@ function wl_climb(a: WildAnimal, nx: float, nz: float) -> float {
 }
 
 function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
+  if a.crowd { return wl_crowd_step(a) }
   let d = a.speed * dt
   if d < 0.0001 { return false }
   var nx = a.x - Math.sin(a.yaw) * d
@@ -54,11 +52,7 @@ function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bo
   a.x = nx
   a.z = nz
   a.y = nh
-  a.track_d = a.track_d + d
-  if s.tracks and a.track_d > 2.8 {
-    a.track_d = 0.0
-    wl_fact(wildlife_st, WILD_PRINT, a)
-  }
+  wl_walked(wildlife_st, a, s, d)
   return true
 }
 

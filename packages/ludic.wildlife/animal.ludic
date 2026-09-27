@@ -44,6 +44,10 @@ export property WildAnimal {
   wx: float = 0.0         # the corner of its way it is walking to now (WildlifeWorld.way)
   wz: float = 0.0
   way_t: float = 0.0      # seconds until it asks the way again; 0 asks at once
+  crowd: bool = false     # walked by the world's crowd (phase 18): it decides, the crowd moves it
+  goal_x: float = 0.0     # where it walks this tick and how fast: what a crowd is handed
+  goal_z: float = 0.0
+  goal_speed: float = 0.0
   thirst: float = 0.0     # 0..100: over 60 it goes looking for water
   hunger: float = 0.0
   scat_t: float = 0.0     # game minutes until it might leave sign

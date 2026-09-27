@@ -1,6 +1,7 @@
 # ground.ludic - a walker's tick: its needs, the alert, then the first of charging, reacting, going
 # to its spot, walking to something set out, eating, idling and wandering that has it this tick
 export function wildlife_tick_ground(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float, gh: float) -> void {
+  a.goal_speed = 0.0
   wl_needs(wildlife_st, a, gh)
   let dh = wl_near(wildlife_st, a.x, a.z)
   let np = wildlife_st.wl_near_i

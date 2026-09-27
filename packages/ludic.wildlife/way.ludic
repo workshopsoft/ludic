@@ -6,6 +6,11 @@
 # WL_WAY_EVERY seconds or on reaching the corner; without a path, the straight line as before
 const WL_WAY_EVERY: float = 0.5
 function wl_head(a: WildAnimal, tx: float, tz: float, rate: float, dt: float) -> void {
+  if a.crowd {
+    a.goal_x = tx
+    a.goal_z = tz
+    return
+  }
   a.way_t = a.way_t - dt
   let cx = a.wx - a.x
   let cz = a.wz - a.z

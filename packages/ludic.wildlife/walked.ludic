@@ -1,0 +1,42 @@
+# walked.ludic - what a step leaves behind (a print every 2.8 m), how often a step was refused, and
+# the crowd's side (phase 18): a crowd walker only says where and how fast, and is handed back where
+# the crowd put it. Nothing here allocates: it runs for every walker every frame.
+
+# how many steps were refused and turned from since the start: how often the way was not enough
+export function wildlife_turned(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_turned }
+# of those, how many for water ahead and how many for a climb (the rest: pushed back by a still thing)
+export function wildlife_turned_wet(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_turned_wet }
+export function wildlife_turned_steep(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_turned_steep }
+
+# d metres covered: a print when it has gone far enough since the last
+function wl_walked(wildlife_st: mut WildlifeState, a: WildAnimal, s: WildSpecies, d: float) -> void {
+  a.track_d = a.track_d + d
+  if s.tracks and a.track_d > 2.8 {
+    a.track_d = 0.0
+    wl_fact(wildlife_st, WILD_PRINT, a)
+  }
+}
+
+# a crowd walker's step: its want is where it faces or heads (goal_x / _z) at this tick's speed
+function wl_crowd_step(a: WildAnimal) -> bool {
+  a.goal_speed = a.speed
+  return true
+}
+
+# walked by a crowd, or by its own step again (off, it keeps where the crowd left it)
+export function wildlife_set_crowd(a: WildAnimal, on: bool) -> void { a.crowd = on }
+
+# where the crowd put a walker, and how fast it went: its place, its heading from its velocity, its
+# ground from the world's, and its prints as it goes
+export function wildlife_moved(wildlife_st: mut WildlifeState, a: WildAnimal, x: float, z: float, vx: float, vz: float) -> void {
+  let dx = x - a.x
+  let dz = z - a.z
+  let d = Math.sqrt(dx * dx + dz * dz)
+  a.x = x
+  a.z = z
+  a.y = WildlifeWorld.ground(x, z)
+  if vx * vx + vz * vz > 0.01 { a.yaw = Math.atan2(-vx, -vz) }
+  let r = wl_row(a)
+  if r >= 0 { tb_set_xz(a.tab, WA_X, WA_Z, r, x, z) }
+  wl_walked(wildlife_st, a, wl_sp(wildlife_st, a.sp), d)
+}
