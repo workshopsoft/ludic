@@ -1,0 +1,19 @@
+# moved.ludic - the ground the ridden vehicle covers, added up rather than said a frame at a time: a
+# fact a frame was a new record a frame, and Ludic frees nothing. The game takes the sum when it asks.
+function ve_moved_add(vehicles_st: mut VehiclesState, v: Vehicle, d: float) -> void {
+  vehicles_st.ve_moved += d
+  vehicles_st.ve_moved_kind = v.kind
+  vehicles_st.ve_moved_x = v.x
+  vehicles_st.ve_moved_z = v.z
+}
+
+# the metres covered since the last take (0 when nothing moved), and the sum starts again
+export function vehicle_moved_take(vehicles_st: mut VehiclesState) -> float {
+  let d = vehicles_st.ve_moved
+  vehicles_st.ve_moved = 0.0
+  return d
+}
+# what covered them, and where it was when it last moved
+export function vehicle_moved_kind(vehicles_st: VehiclesState) -> int { return vehicles_st.ve_moved_kind }
+export function vehicle_moved_x(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_moved_x }
+export function vehicle_moved_z(vehicles_st: VehiclesState) -> float { return vehicles_st.ve_moved_z }

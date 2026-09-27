@@ -5,7 +5,7 @@ const VE_HORSE_GALLOP: float = 11.0
 const VE_HORSE_ACC: float = 4.0
 const VE_HORSE_TURN: float = 1.6
 
-function ve_ride_horse(vehicles_st: VehiclesState, v: Vehicle, ix: float, iz: float, run: bool, dt: float) -> void {
+function ve_ride_horse(vehicles_st: mut VehiclesState, v: Vehicle, ix: float, iz: float, run: bool, dt: float) -> void {
   var top = VE_HORSE_WALK
   if run and v.fuel > 5.0 { top = VE_HORSE_GALLOP }
   v.speed = v.speed + Math.clamp(iz * top - v.speed, -VE_HORSE_ACC * dt, VE_HORSE_ACC * dt)
@@ -29,7 +29,7 @@ function ve_ride_horse(vehicles_st: VehiclesState, v: Vehicle, ix: float, iz: fl
 
 # the legs carry it from where it is; what they covered along its heading is its speed now, never
 # more than was asked, so a trunk or a rise it cannot take brings it to a stand
-function ve_legs_walk(vehicles_st: VehiclesState, v: Vehicle, vx: float, vz: float, dt: float) -> void {
+function ve_legs_walk(vehicles_st: mut VehiclesState, v: Vehicle, vx: float, vz: float, dt: float) -> void {
   if not VehicleLegs.walk(v.nid, v.x, v.y, v.z, vx, vz, dt) { return }
   let dx = VehicleLegs.x() - v.x
   let dz = VehicleLegs.z() - v.z
@@ -39,7 +39,7 @@ function ve_legs_walk(vehicles_st: VehiclesState, v: Vehicle, vx: float, vz: flo
   let got = (dx * -Math.sin(v.yaw) + dz * -Math.cos(v.yaw)) / dt
   if v.speed > 0.0 { v.speed = Math.clamp(got, 0.0, v.speed) } else { v.speed = Math.clamp(got, v.speed, 0.0) }
   let moved = Math.sqrt(dx * dx + dz * dz)
-  if moved > 0.0 { ve_say(vehicles_st, VEHICLE_MOVED, v, moved) }
+  if moved > 0.0 { ve_moved_add(vehicles_st, v, moved) }
 }
 
 # a gallop spends stamina and a walk gives it back; every metre costs hay

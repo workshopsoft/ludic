@@ -20,7 +20,7 @@ function ve_row(vehicles_st: mut VehiclesState, v: Vehicle, ix: float, iz: float
   let take = ve_swell(vehicles_st, v, iz, dt)
   VehicleHull.row(v.nid, iz * VE_ROW * (1.0 - take), -ix * VE_ROW_TURN)
   let d = Math.abs(v.speed) * dt
-  if d > 0.0 { ve_say(vehicles_st, VEHICLE_MOVED, v, d) }
+  if d > 0.0 { ve_moved_add(vehicles_st, v, d) }
 }
 
 # where the hull is now, and how fast it goes along its bow

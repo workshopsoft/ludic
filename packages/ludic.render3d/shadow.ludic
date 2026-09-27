@@ -232,8 +232,10 @@ function shadow_dump(render3d_st: mut Render3dState) -> void {
 }
 
 # a uniform array's location: some drivers only answer to the "[0]" spelling
-function sh_loc(render3d_st: Render3dState, prog: int, name: string) -> int {
-  var loc = gpu_uniform(render3d_st, prog, name + "[0]")
+# an array uniform by its first element's name, else its bare one; both names are literals, because
+# building `name + "[0]"` here made a string per program per pass per frame that was never freed
+function sh_loc(render3d_st: Render3dState, prog: int, first: string, name: string) -> int {
+  var loc = gpu_uniform(render3d_st, prog, first)
   if loc < 0 { loc = gpu_uniform(render3d_st, prog, name) }
   return loc
 }
@@ -252,10 +254,10 @@ function shadow_bind(render3d_st: mut Render3dState, prog: int) -> void {
   if loc < 0 { loc = gpu_uniform(render3d_st, prog, "u_cascade_vp") }
   if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed { render3d_st.sh_printed = true;  print(`cascade vp loc {loc} / {gpu_uniform(render3d_st, prog, "u_cascade_vp")}  split loc {gpu_uniform(render3d_st, prog, "u_cascade_split")} shadow loc {gpu_uniform(render3d_st, prog, "u_shadow")}`) }
   u_mat4n(render3d_st, loc, SHADOW_CASCADES, render3d_st.sh_vp)
-  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_split"), SHADOW_CASCADES, render3d_st.sh_split)
+  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_split[0]", "u_cascade_split"), SHADOW_CASCADES, render3d_st.sh_split)
   if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed3 { render3d_st.sh_printed3 = true;  print(`range {fixed(render3d_st.sh_range[0])} {fixed(render3d_st.sh_range[1])} {fixed(render3d_st.sh_range[2])} {fixed(render3d_st.sh_range[3])} texel*1000 {fixed(render3d_st.sh_texel[0] * 1000.0)} {fixed(render3d_st.sh_texel[1] * 1000.0)} {fixed(render3d_st.sh_texel[2] * 1000.0)} {fixed(render3d_st.sh_texel[3] * 1000.0)} locs {gpu_uniform(render3d_st, prog, "u_cascade_range")} {gpu_uniform(render3d_st, prog, "u_cascade_texel")}`) }
-  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_range"), SHADOW_CASCADES, render3d_st.sh_range)
+  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_range[0]", "u_cascade_range"), SHADOW_CASCADES, render3d_st.sh_range)
   if r3d_env_has(render3d_st, "R3D_FORCE") { render3d_st.sh_force = Text.to_int(r3d_env(render3d_st, "R3D_FORCE")) }
   u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_force_cascade"), render3d_st.sh_force)
-  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_texel"), SHADOW_CASCADES, render3d_st.sh_texel)
+  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_texel[0]", "u_cascade_texel"), SHADOW_CASCADES, render3d_st.sh_texel)
 }
