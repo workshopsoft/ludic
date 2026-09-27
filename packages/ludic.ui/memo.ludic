@@ -9,10 +9,21 @@ export property UiMemo {
   tags: []int = null               # what kind of result: a separator, or a kind below
   lists: [][]string = null
   grads: []UiGradient = null
+  texts: []string = null           # a text worked out from the key: tw, el_url
+  vals: []Val = null               # a Value made from it: cs_vars_in's
+  vtpls: []UiVarTpl = null
+  n1: []float = null               # numbers worked out from the key: a colour and its alpha
+  n2: []float = null
 }
 const MM_WORDS: int = -1           # el_words: spaces, a bracket's own kept
 const MM_GRAD: int = -2
 const MM_JOIN: int = -3            # keys[i] is the joined text itself
+const MM_TW: int = -4              # tpl_words
+const MM_URL: int = -5             # el_url
+const MM_VARS: int = -6            # cs_vars_in: keys[i] is the text with every var() put in
+const MM_VTPL: int = -7            # a value's var()s parsed (units_pieces.ludic)
+const MM_COLOR: int = -8           # ui_color: n1 the colour, n2 its alpha
+const MM_BIMG: int = -9            # border-image: texts the picture, lists what follows its url()
 function mm_new() -> UiMemo {
   let m = new UiMemo
   m.slots = words(MM_CAP)
@@ -20,6 +31,11 @@ function mm_new() -> UiMemo {
   m.tags = new []int
   m.lists = new [][]string
   m.grads = new []UiGradient
+  m.texts = new []string
+  m.vals = new []Val
+  m.vtpls = new []UiVarTpl
+  m.n1 = new []float
+  m.n2 = new []float
   return m
 }
 function mm_of(ui_st: mut UiState) -> UiMemo {
@@ -51,6 +67,11 @@ function mm_add(m: UiMemo, tag: int, s: string) -> int {
   push(m.tags, tag)
   push(m.lists, null)
   push(m.grads, null)
+  push(m.texts, null)
+  push(m.vals, null)
+  push(m.vtpls, null)
+  push(m.n1, 0.0)
+  push(m.n2, 0.0)
   m.slots[at] = len(m.keys)
   return len(m.keys) - 1
 }
@@ -66,3 +87,24 @@ function mm_split(ui_st: mut UiState, s: string, c: int) -> []string {
   return parts
 }
 function mm_words(ui_st: mut UiState, s: string) -> []string { return mm_split(ui_st, s, MM_WORDS) }
+# tpl_words, made once per text (a clean one is its own answer, and nothing is kept for it)
+function tw(ui_st: mut UiState, s: string) -> string {
+  if tpl_clean(s) { return s }
+  let m = mm_of(ui_st)
+  let i = mm_find(m, MM_TW, s)
+  if i >= 0 { return m.texts[i] }
+  let t = tpl_words(s)
+  let j = mm_add(m, MM_TW, s)
+  if j >= 0 { m.texts[j] = t }
+  return t
+}
+# el_url, made once per text
+function el_url_u(ui_st: mut UiState, s: string) -> string {
+  let m = mm_of(ui_st)
+  let i = mm_find(m, MM_URL, s)
+  if i >= 0 { return m.texts[i] }
+  let t = el_url(s)
+  let j = mm_add(m, MM_URL, s)
+  if j >= 0 { m.texts[j] = t }
+  return t
+}

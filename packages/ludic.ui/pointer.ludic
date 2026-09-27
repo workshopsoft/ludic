@@ -5,11 +5,13 @@ function fr_was_hovered(ui_st: UiState, key: string) -> bool { return sel_has(ui
 function fr_pointer(ui_st: mut UiState, root: UiNode) -> void {
   let i = ui_st.in_now
   ui_st.fr_down_now = i.down
-  let keys = new []string
+  let keys = ui_st.fr_hover_sp                 # the spare list, emptied; last frame's goes spare
+  List.clear(keys)
   let top = pp_top(root)
   var scope = root
   if top != null { scope = top }
   fr_under(scope, i.x, i.y, keys)
+  ui_st.fr_hover_sp = ui_st.fr_hover
   ui_st.fr_hover = keys
   if top != null and pp_pointer(ui_st, top) { return }
   if ui_st.sc_drag != "" or ct_key_mouse(ui_st, root) { return }

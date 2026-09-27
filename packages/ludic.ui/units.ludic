@@ -46,37 +46,31 @@ function cs_var(n: UiNode, name: string) -> string {
   }
   return null
 }
-# a value with var(--name) or var(--name, fallback) in it, with each replaced by what it names
+# a value with var(--name) or var(--name, fallback) in it, with each replaced by what it names. What
+# it becomes is found by its pieces - stretches of the value and each var's text - compared in place,
+# so a result seen before (every frame's, nearly always) is its kept Value, and nothing is built
 function cs_vars_in(ui_st: mut UiState, n: UiNode, v: Val) -> Val {
   if Value.kind(v) != 4 { return v }
   let s = Value.as_str(v)
-  var at = 0
-  var out = ""
-  var found = false
-  var i = 0
-  while i + 4 <= len(s) {
-    if sat(s, i, "var(") {
-      found = true
-      var j = i + 4
-      var depth = 1
-      while j < len(s) and depth > 0 {
-        if s[j] == 40 { depth += 1 }
-        if s[j] == 41 { depth -= 1 }
-        j += 1
-      }
-      out = out + s[at..i] + cs_var_ref(ui_st, n, s[i + 4..j - 1])
-      at = j
-      i = j
-    } else { i += 1 }
+  if not cv_pieces(ui_st, n, s) { return v }
+  let m = mm_of(ui_st)
+  var at = cv_hash(ui_st) & (MM_CAP - 1)
+  while m.slots[at] != 0 {
+    let i = m.slots[at] - 1
+    if m.tags[i] == MM_VARS and cv_same(ui_st, m.keys[i]) { return m.vals[i] }
+    at = (at + 1) & (MM_CAP - 1)
   }
-  if not found { return v }
-  return Value.str(tpl_words(out + s[at..len(s)]))
+  let raw = cv_join(ui_st)
+  let r = Value.str(tpl_words(raw))
+  let j = mm_add(m, MM_VARS, raw)
+  if j >= 0 { m.vals[j] = r }
+  return r
 }
 function cs_var_ref(ui_st: mut UiState, n: UiNode, inner: string) -> string {
   let parts = mm_split(ui_st, inner, 44)
-  let v = cs_var(n, tpl_words(parts[0]))
+  let v = cs_var(n, tw(ui_st, parts[0]))
   if v != null { return v }
-  if len(parts) > 1 { return tpl_words(inner[len(parts[0]) + 1..len(inner)]) }
-  ui_err(ui_st, `var({tpl_words(parts[0])}): no element here or above sets it`)
+  if len(parts) > 1 { return tw(ui_st, inner[len(parts[0]) + 1..len(inner)]) }
+  ui_err(ui_st, `var({tw(ui_st, parts[0])}): no element here or above sets it`)
   return ""
 }

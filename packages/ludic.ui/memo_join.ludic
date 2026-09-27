@@ -28,6 +28,11 @@ function mm_join(ui_st: mut UiState, a: string, sep: string, b: string) -> strin
   push(m.tags, MM_JOIN)
   push(m.lists, null)
   push(m.grads, null)
+  push(m.texts, null)
+  push(m.vals, null)
+  push(m.vtpls, null)
+  push(m.n1, 0.0)
+  push(m.n2, 0.0)
   m.slots[at] = len(m.keys)
   return k
 }

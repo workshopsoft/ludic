@@ -8,11 +8,11 @@ function r3u_nine(render3d_st: mut Render3dState, ui_st: mut UiState, src: strin
   if t == 0 { return }
   let su = slice / float(Math.max(tex_width(render3d_st, t), 1))
   let sv = slice / float(Math.max(tex_height(render3d_st, t), 1))
-  let cut = ui_nine_cuts(x, y, w, h, dst)
-  let xs = r3u_four(cut[0], cut[1], cut[2], cut[3])
-  let ys = r3u_four(cut[4], cut[5], cut[6], cut[7])
-  let us = r3u_four(0.0, su, 1.0 - su, 1.0)
-  let vs = r3u_four(0.0, sv, 1.0 - sv, 1.0)
+  let cut = ui_nine_cuts_into(ui_st.r3n_cut, x, y, w, h, dst)
+  let xs = r3u_four(ui_st.r3n_xs, cut[0], cut[1], cut[2], cut[3])
+  let ys = r3u_four(ui_st.r3n_ys, cut[4], cut[5], cut[6], cut[7])
+  let us = r3u_four(ui_st.r3n_us, 0.0, su, 1.0 - su, 1.0)
+  let vs = r3u_four(ui_st.r3n_vs, 0.0, sv, 1.0 - sv, 1.0)
   for j in 0 .. 3 {
     for i in 0 .. 3 {
       let x0 = int(xs[i])
@@ -21,8 +21,8 @@ function r3u_nine(render3d_st: mut Render3dState, ui_st: mut UiState, src: strin
     }
   }
 }
-function r3u_four(a: float, b: float, c: float, d: float) -> []float {
-  let out = new []float
+function r3u_four(out: []float, a: float, b: float, c: float, d: float) -> []float {
+  List.clear(out)
   push(out, a)
   push(out, b)
   push(out, c)

@@ -23,23 +23,30 @@ function cm_from(c: int, ty: pointer, x: pointer) -> pointer {
   cm_err(c, `a prop or state is an int, a float, a bool, a string or a Val, not a {ty}`)
   return x
 }
+# the model is filled into the object the instance keeps (ludic.ui's): a scalar field updates its own
+# Value in place, so showing a component allocates nothing for it frame after frame
 function cm_model_src(c: int, px: pointer, rec: pointer, head: Node) -> pointer {
-  var src = `function {px}model(p: pointer) -> Val {{\n  let s: {rec} = p\n  let o = value_object()\n`
+  var src = `function {px}model(p: pointer, o: Val) -> Val {{\n  let s: {rec} = p\n`
   var i = 0
   while i < len(g_cm_keep[c]) {
     let k = g_cm_keep[c][i]
-    let put = cm_to(c, g_cm_keep_ty[c][i], "s." + k, head)
-    src = src + `  value_put(o, "{k}", {put})\n`
+    src = src + cm_set(c, g_cm_keep_ty[c][i], k, "s." + k, head)
     i += 1
   }
   i = 0
   while i < len(g_cm_fields[c]) {
     let g = g_cm_fields[c][i]
-    let put = cm_to(c, g.ty, g.s + "(s)", head)
-    src = src + `  value_put(o, "{g_cm_fnames[c][i]}", {put})\n`
+    src = src + cm_set(c, g.ty, g_cm_fnames[c][i], g.s + "(s)", head)
     i += 1
   }
   return src + "  return o\n}\n"
+}
+function cm_set(c: int, ty: pointer, k: pointer, x: pointer, head: Node) -> pointer {
+  if (ty == "int") { return `  value_set_int(o, "{k}", {x})\n` }
+  if (ty == "float") { return `  value_set_float(o, "{k}", {x})\n` }
+  if (ty == "string") { return `  value_set_str(o, "{k}", {x})\n` }
+  if (ty == "bool") { return `  value_set_bool(o, "{k}", {x})\n` }
+  return `  value_put(o, "{k}", {cm_to(c, ty, x, head)})\n`
 }
 function cm_to(c: int, ty: pointer, x: pointer, head: Node) -> pointer {
   if (ty == "Val") { return x }

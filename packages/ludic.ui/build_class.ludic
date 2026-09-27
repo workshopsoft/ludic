@@ -14,7 +14,8 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   }
   cls.props(it.ptr, props)
   let ce = env_new(ui_st, null)
-  ce.model = cls.model(it.ptr)
+  if it.model == null { it.model = Value.object() }
+  ce.model = cls.model(it.ptr, it.model)
   ce.inst = it
   ce.ctx = e.ctx
   ce.slot = k

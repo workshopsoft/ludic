@@ -8,7 +8,7 @@ function el_edge(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
     let parts = mm_split(ui_st, s, 32)
     if len(parts) > 0 { n.bar_c = ui_color(ui_st, parts[0]) }
     if len(parts) > 1 { n.bar_track = ui_color(ui_st, parts[1]) }
-  } else if key == "background-image" and gr_is(tpl_words(s)) { nx(n).grad = gr_parse(ui_st, s) } else if key == "background-image" { n.bg_img = el_url(s) } else if key == "border-image" { el_border_image(ui_st, n, s) } else if key == "box-shadow" { el_shadow(ui_st, n, s) } else if key == "animation" { el_animation(ui_st, n, s) } else if key == "transition" { n.tr_dur = el_secs(s) } else { return false }
+  } else if key == "background-image" and gr_is(tw(ui_st, s)) { nx(n).grad = gr_parse(ui_st, s) } else if key == "background-image" { n.bg_img = el_url_u(ui_st, s) } else if key == "border-image" { el_border_image(ui_st, n, s) } else if key == "box-shadow" { el_shadow(ui_st, n, s) } else if key == "animation" { el_animation(ui_st, n, s) } else if key == "transition" { n.tr_dur = el_secs(s) } else { return false }
   return true
 }
 # url(path) or url("path") -> path
@@ -21,17 +21,25 @@ function el_url(s: string) -> string {
 }
 # border-image: url(chip.png) 14 / 12px  - the source's corner size, then how wide they are drawn
 function el_border_image(ui_st: mut UiState, n: UiNode, s: string) -> void {
-  var close = 0
-  while close < len(s) and s[close] != 41 { close += 1 }
-  n.bi_src = el_url(s[0..Math.min(close + 1, len(s))])
-  let rest = mm_split(ui_st, s[Math.min(close + 1, len(s))..len(s)], 47)
-  n.bi_slice = el_num(tpl_words(rest[0]))
+  let m = mm_of(ui_st)
+  var at = mm_find(m, MM_BIMG, s)
+  if at < 0 {
+    var close = 0
+    while close < len(s) and s[close] != 41 { close += 1 }
+    at = mm_add(m, MM_BIMG, s)
+    if at < 0 { return }
+    m.texts[at] = el_url(s[0..Math.min(close + 1, len(s))])
+    m.lists[at] = lss_split(s[Math.min(close + 1, len(s))..len(s)], 47)
+  }
+  n.bi_src = m.texts[at]
+  let rest = m.lists[at]
+  n.bi_slice = el_num(tw(ui_st, rest[0]))
   n.bi_width = el_px(ui_st, n.bi_slice)
-  if len(rest) > 1 { n.bi_width = el_unit(ui_st, tpl_words(rest[1])) }
+  if len(rest) > 1 { n.bi_width = el_unit(ui_st, tw(ui_st, rest[1])) }
 }
 # box-shadow: 6px 10px 0 rgba(0, 0, 0, 0.45)  - x, y, a blur this renderer draws sharp, the colour
 function el_shadow(ui_st: mut UiState, n: UiNode, s: string) -> void {
-  if tpl_words(s) == "none" {
+  if tw(ui_st, s) == "none" {
     n.sh_c = -2
     return
   }
