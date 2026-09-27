@@ -1,0 +1,93 @@
+# units_pieces.ludic - a value with var()s, parsed once by its text into its stretches, the names it
+# asks for and their fallbacks; each frame its pieces are those stretches and what the names hold
+# here, in a list kept on the state, hashed and compared against the memo without a copy
+export property UiVarTpl {
+  lits: []string = null          # the text around the var()s: one more than there are names
+  names: []string = null
+  falls: []string = null         # a var's fallback, or null
+}
+function cv_tpl(ui_st: mut UiState, s: string) -> UiVarTpl {
+  let m = mm_of(ui_st)
+  let i = mm_find(m, MM_VTPL, s)
+  if i >= 0 { return m.vtpls[i] }
+  let t = cv_parse(ui_st, s)
+  let j = mm_add(m, MM_VTPL, s)
+  if j >= 0 { m.vtpls[j] = t }
+  return t
+}
+function cv_parse(ui_st: mut UiState, s: string) -> UiVarTpl {
+  let t = new UiVarTpl
+  t.lits = new []string
+  t.names = new []string
+  t.falls = new []string
+  var at = 0
+  var i = 0
+  while i + 4 <= len(s) {
+    if sat(s, i, "var(") {
+      var j = i + 4
+      var depth = 1
+      while j < len(s) and depth > 0 {
+        if s[j] == 40 { depth += 1 }
+        if s[j] == 41 { depth -= 1 }
+        j += 1
+      }
+      push(t.lits, s[at..i])
+      let inner = s[i + 4..j - 1]
+      let parts = lss_split(inner, 44)
+      push(t.names, tpl_words(parts[0]))
+      if len(parts) > 1 { push(t.falls, tpl_words(inner[len(parts[0]) + 1..len(inner)])) } else { push(t.falls, null) }
+      at = j
+      i = j
+    } else { i += 1 }
+  }
+  push(t.lits, s[at..len(s)])
+  return t
+}
+# this element's pieces for `s` into cv_texts; false when it has no var() at all
+function cv_pieces(ui_st: mut UiState, n: UiNode, s: string) -> bool {
+  if not cv_has(s) { return false }
+  let t = cv_tpl(ui_st, s)
+  List.clear(ui_st.cv_texts)
+  for k in 0 .. len(t.names) {
+    push(ui_st.cv_texts, t.lits[k])
+    push(ui_st.cv_texts, cv_value(ui_st, n, t, k))
+  }
+  push(ui_st.cv_texts, t.lits[len(t.names)])
+  return true
+}
+function cv_has(s: string) -> bool {
+  for i in 0 .. len(s) - 3 {
+    if s[i] == 118 and sat(s, i, "var(") { return true }
+  }
+  return false
+}
+function cv_value(ui_st: mut UiState, n: UiNode, t: UiVarTpl, k: int) -> string {
+  let v = cs_var(n, t.names[k])
+  if v != null { return v }
+  if t.falls[k] != null { return t.falls[k] }
+  ui_err(ui_st, `var({t.names[k]}): no element here or above sets it`)
+  return ""
+}
+function cv_hash(ui_st: UiState) -> int {
+  var h = 216613626 ^ (MM_VARS & 255)
+  for p in 0 .. len(ui_st.cv_texts) {
+    let t = ui_st.cv_texts[p]
+    for i in 0 .. len(t) { h = ((h ^ t[i]) * 16777619) & 2147483647 }
+  }
+  return h
+}
+# the pieces, one after another, are exactly `k`
+function cv_same(ui_st: UiState, k: string) -> bool {
+  var at = 0
+  for p in 0 .. len(ui_st.cv_texts) {
+    let t = ui_st.cv_texts[p]
+    if not sat(k, at, t) { return false }
+    at += len(t)
+  }
+  return at == len(k)
+}
+function cv_join(ui_st: UiState) -> string {
+  var out = ""
+  for p in 0 .. len(ui_st.cv_texts) { out = out + ui_st.cv_texts[p] }
+  return out
+}

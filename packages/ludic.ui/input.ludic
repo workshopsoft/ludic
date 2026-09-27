@@ -34,8 +34,10 @@ function in_read(ui_st: mut UiState) -> void {
     return
   }
   ui_st.in_was_down = ui_st.in_now.down
+  var i = ui_st.in_rec_a                       # the package's own two records, in turn (never a host's)
+  if ui_st.in_now == ui_st.in_rec_a { i = ui_st.in_rec_b }
   ui_st.in_last = ui_st.in_now
-  let i = new UiInput
+  in_reset(i)
   if ui_st.ui_be != null and ui_st.ui_be.input {
     let ps = in_pointer_scale(ui_st)
     i.x = float(Input.mouse_x()) * ps
@@ -80,4 +82,32 @@ export function ui_input(ui_st: mut UiState, i: UiInput) -> void {
   in_repeat(ui_st, i)
   ui_st.in_now = i
   ui_st.in_given = true
+}
+# every field back to its default (generated from UiInput)
+function in_reset(i: UiInput) -> void {
+  i.x = -1.0
+  i.y = -1.0
+  i.down = false
+  i.wheel = 0.0
+  i.tab = false
+  i.shift = false
+  i.up = false
+  i.down_key = false
+  i.left = false
+  i.right = false
+  i.enter = false
+  i.space = false
+  i.escape = false
+  i.backspace = false
+  i.typed = ""
+  i.key = 0
+  i.held_up = false
+  i.held_down = false
+  i.held_left = false
+  i.held_right = false
+  i.pad_a = false
+  i.pad_b = false
+  i.held_enter = false
+  i.down_right = false
+  i.down_middle = false
 }

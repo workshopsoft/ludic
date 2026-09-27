@@ -2,7 +2,7 @@
 # basic names, transparent and none. A colour is 0xRRGGBB; its alpha is left in cl_alpha.
 const CL_NAMES: string = " black=000000 white=ffffff red=ff0000 green=008000 lime=00ff00 blue=0000ff yellow=ffff00 cyan=00ffff aqua=00ffff magenta=ff00ff fuchsia=ff00ff gray=808080 grey=808080 silver=c0c0c0 maroon=800000 olive=808000 navy=000080 purple=800080 teal=008080 orange=ffa500 "
 function ui_color(ui_st: mut UiState, name0: string) -> int {
-  let name = tpl_words(name0)
+  let name = tw(ui_st, name0)
   ui_st.cl_alpha = 1.0
   if name == "none" or name == "" or name == "transparent" { return UI_NONE }
   if name[0] == 35 { return cl_hex_at(ui_st, name, 1, len(name) - 1) }
@@ -38,8 +38,8 @@ function cl_rgb(ui_st: mut UiState, s: string) -> int {
   while open < len(s) and s[open] != 40 { open += 1 }
   let parts = mm_split(ui_st, s[open + 1..len(s) - 1], 44)
   var c = 0
-  for i in 0 .. Math.min(3, len(parts)) { c = c * 256 + Math.clamp(int(el_num(tpl_words(parts[i]))), 0, 255) }
-  if len(parts) > 3 { ui_st.cl_alpha = el_num(tpl_words(parts[3])) }
+  for i in 0 .. Math.min(3, len(parts)) { c = c * 256 + Math.clamp(int(el_num(tw(ui_st, parts[i]))), 0, 255) }
+  if len(parts) > 3 { ui_st.cl_alpha = el_num(tw(ui_st, parts[3])) }
   return c
 }
 # a colour as #rrggbb, for a dump or a test

@@ -61,7 +61,7 @@ function el_look(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
     n.fg = ui_color(ui_st, s)
     n.fg_a = ui_st.cl_alpha
   } else if key == "bg" {
-    if gr_is(tpl_words(s)) { nx(n).grad = gr_parse(ui_st, s) } else if len(s) > 4 and sat(s, 0, "url(") { n.bg_img = el_url(s) } else if tpl_words(s) == "transparent" {
+    if gr_is(tw(ui_st, s)) { nx(n).grad = gr_parse(ui_st, s) } else if len(s) > 4 and sat(s, 0, "url(") { n.bg_img = el_url_u(ui_st, s) } else if tw(ui_st, s) == "transparent" {
       n.bg = 0
       n.bg_a = 0.0
     } else {

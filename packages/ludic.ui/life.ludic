@@ -2,10 +2,10 @@
 # in last frame is mounted, and one that is gone is unmounted, each once, after the frame is drawn
 # a build starts its own records: a screen built twice keeps only the last build's
 function lc_begin(ui_st: mut UiState) -> void {
-  ui_st.lc_keys = new []string
-  ui_st.lc_mounts = new []UiAct
-  ui_st.lc_unmounts = new []UiAct
-  ui_st.lc_envs = new []UiEnv
+  List.clear(ui_st.lc_keys)
+  List.clear(ui_st.lc_mounts)
+  List.clear(ui_st.lc_unmounts)
+  List.clear(ui_st.lc_envs)
 }
 function lc_note(ui_st: mut UiState, key: string, names: []string, acts: []UiAct, e: UiEnv) -> void {
   var m: UiAct = null
@@ -29,9 +29,12 @@ function lc_run(ui_st: mut UiState, screen: string) -> void {
   for i in 0 .. len(ui_st.lc_keys) {
     if ui_st.lc_mounts[i] != null and not sel_has(ui_st.lc_prev_keys, ui_st.lc_keys[i]) { act_run(ui_st, ui_st.lc_mounts[i], ui_st.lc_envs[i]) }
   }
-  let keys = new []string
-  let unmounts = new []UiAct
-  let envs = new []UiEnv
+  let keys = ui_st.lc_sp_keys                  # the spare set, emptied: the records carried over
+  let unmounts = ui_st.lc_sp_unmounts
+  let envs = ui_st.lc_sp_envs
+  List.clear(keys)
+  List.clear(unmounts)
+  List.clear(envs)
   for i in 0 .. len(ui_st.lc_prev_keys) {
     let k = ui_st.lc_prev_keys[i]
     if lc_mine(k, screen) {
@@ -47,11 +50,14 @@ function lc_run(ui_st: mut UiState, screen: string) -> void {
     push(unmounts, ui_st.lc_unmounts[i])
     push(envs, ui_st.lc_envs[i])
   }
+  ui_st.lc_sp_keys = ui_st.lc_prev_keys
+  ui_st.lc_sp_unmounts = ui_st.lc_prev_unmounts
+  ui_st.lc_sp_envs = ui_st.lc_prev_envs
   ui_st.lc_prev_keys = keys
   ui_st.lc_prev_unmounts = unmounts
   ui_st.lc_prev_envs = envs
-  ui_st.lc_keys = new []string
-  ui_st.lc_mounts = new []UiAct
-  ui_st.lc_unmounts = new []UiAct
-  ui_st.lc_envs = new []UiEnv
+  List.clear(ui_st.lc_keys)
+  List.clear(ui_st.lc_mounts)
+  List.clear(ui_st.lc_unmounts)
+  List.clear(ui_st.lc_envs)
 }

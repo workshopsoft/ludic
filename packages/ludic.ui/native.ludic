@@ -39,9 +39,9 @@ function nt_find(ui_st: UiState, tag: string) -> UiNative {
   return null
 }
 function nt_fired_clear(ui_st: mut UiState) -> void {
-  ui_st.nt_q_nodes = new []UiNode
-  ui_st.nt_q_names = new []string
-  ui_st.nt_q_vals = new []Val
+  List.clear(ui_st.nt_q_nodes)
+  List.clear(ui_st.nt_q_names)
+  List.clear(ui_st.nt_q_vals)
 }
 export function ui_fire(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void {
   push(ui_st.nt_q_nodes, n)
@@ -49,11 +49,17 @@ export function ui_fire(ui_st: mut UiState, n: UiNode, name: string, value: Val)
   push(ui_st.nt_q_vals, value)
 }
 function nt_fired_run(ui_st: mut UiState) -> void {
-  let nodes = ui_st.nt_q_nodes
+  let nodes = ui_st.nt_q_nodes                 # run from these while what they fire goes to the spares
   let names = ui_st.nt_q_names
   let vals = ui_st.nt_q_vals
+  ui_st.nt_q_nodes = ui_st.nt_sp_nodes
+  ui_st.nt_q_names = ui_st.nt_sp_names
+  ui_st.nt_q_vals = ui_st.nt_sp_vals
   nt_fired_clear(ui_st)
   for i in 0 .. len(nodes) { nt_run(ui_st, nodes[i], names[i], vals[i]) }
+  ui_st.nt_sp_nodes = nodes
+  ui_st.nt_sp_names = names
+  ui_st.nt_sp_vals = vals
 }
 # the element's on-<name>, with `event` bound to what happened
 function nt_run(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void {

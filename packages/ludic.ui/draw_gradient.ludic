@@ -19,22 +19,22 @@ function gr_parse(ui_st: mut UiState, s0: string) -> UiGradient {
   return g
 }
 function gr_parse_new(ui_st: mut UiState, s0: string) -> UiGradient {
-  let s = tpl_words(s0)
+  let s = tw(ui_st, s0)
   let parts = el_commas(s[16..len(s) - 1])
   let g = new UiGradient
   g.cols = new []int
   g.alphas = new []float
   g.at = new []float
   var from = 0
-  if len(parts) > 0 and gr_dir(g, tpl_words(parts[0])) { from = 1 }
+  if len(parts) > 0 and gr_dir(g, tw(ui_st, parts[0])) { from = 1 }
   for i in from .. len(parts) {
-    let words = mm_words(ui_st, tpl_words(parts[i]))
-    var col = tpl_words(parts[i])
+    let words = mm_words(ui_st, tw(ui_st, parts[i]))
+    var col = tw(ui_st, parts[i])
     var at = -1.0
     let last = words[len(words) - 1]
     if len(words) > 1 and last[len(last) - 1] == 37 {
       at = el_num(last) / 100.0
-      col = tpl_words(col[0..len(col) - len(last)])
+      col = tw(ui_st, col[0..len(col) - len(last)])
     }
     push(g.cols, ui_color(ui_st, col))
     push(g.alphas, ui_st.cl_alpha)

@@ -25,10 +25,13 @@ function in_get(ui_st: mut UiState, key: string, k: UiClass) -> UiInst {
 }
 # after a build of `screen`: its instances the build did not reach are unmounted
 function in_sweep(ui_st: mut UiState, screen: string) -> void {
-  let keep = new []UiInst
+  var kept = 0
   for i in 0 .. len(ui_st.in_list) {
     let it = ui_st.in_list[i]
-    if it.seen == ui_st.in_build or not lc_mine(it.key, screen) { push(keep, it) }
+    if it.seen == ui_st.in_build or not lc_mine(it.key, screen) {
+      ui_st.in_list[kept] = it
+      kept += 1
+    }
   }
-  ui_st.in_list = keep
+  while len(ui_st.in_list) > kept { List.pop(ui_st.in_list) }
 }

@@ -23,7 +23,7 @@ function fc_move(ui_st: mut UiState, step: int) -> void {
 }
 # the keys, after the tree is laid out: moving, then acting on what has the focus
 function fc_keys(ui_st: mut UiState, root: UiNode) -> void {
-  ui_st.fc_list = new []UiNode
+  List.clear(ui_st.fc_list)
   let top = pp_top(root)
   if top != null { fc_collect(ui_st, top) } else { fc_collect(ui_st, root) }
   if ct_key_capture(ui_st, ui_st.fc_list) { return }
