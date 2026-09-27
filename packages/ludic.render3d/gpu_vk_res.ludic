@@ -323,7 +323,7 @@ function gvk_tex_grow_mips(render3d_st: mut Render3dState, tex: int, w: int, h: 
   let cb = gvk_once_begin(render3d_st)
   gvk_barrier(render3d_st, cb, old_image, false, 0, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
   gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[tex], false, 0, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-  let ic = bytes(VkImageCopy_sizeof)
+  let ic = gvk_tmp(render3d_st, VkImageCopy_sizeof)
   Vk.zero(ic, VkImageCopy_sizeof)
   Vk.put_i32(ic, VkImageCopy_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
   Vk.put_i32(ic, VkImageCopy_srcSubresource + VkImageSubresourceLayers_layerCount, layers)
@@ -368,7 +368,7 @@ function gvk_tex_mips_into(render3d_st: mut Render3dState, cb: pointer, tex: int
     if dh < 1 { dh = 1 }
     gvk_barrier(render3d_st, cb, image, false, lv - 1, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
     gvk_barrier(render3d_st, cb, image, false, lv, 1, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-    let blit = bytes(VkImageBlit_sizeof)
+    let blit = gvk_tmp(render3d_st, VkImageBlit_sizeof)
     Vk.zero(blit, VkImageBlit_sizeof)
     Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
     Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_mipLevel, lv - 1)
@@ -525,9 +525,16 @@ function gvk_tex_sampler(render3d_st: mut Render3dState, tex: int, min_f: int, m
 }
 function gvk_sampler(render3d_st: mut Render3dState, min_f: int, mag_f: int, wrap_s: int, wrap_t: int, compare: int, aniso: int) -> long {
   let bias = float_bits(gvk_mip_bias(render3d_st))
-  let key = `{min_f}/{mag_f}/{wrap_s}/{wrap_t}/{compare}/{aniso}/{bias}`
-  if render3d_st.gvk_smp_keys == null { render3d_st.gvk_smp_keys = new []string;  render3d_st.gvk_smp = new []long }
-  for i in 0 .. len(render3d_st.gvk_smp_keys) { if render3d_st.gvk_smp_keys[i] == key { return render3d_st.gvk_smp[i] } }
+  # looked up by the numbers themselves: a key string built on every call (and a texture read two
+  # ways in turn misses its own cache every time) was never given back
+  if render3d_st.gvk_smp_keys == null { render3d_st.gvk_smp_keys = new []int;  render3d_st.gvk_smp = new []long }
+  let ks = render3d_st.gvk_smp_keys
+  var i = 0
+  while i < len(render3d_st.gvk_smp) {
+    let o = i * 7
+    if ks[o] == min_f and ks[o + 1] == mag_f and ks[o + 2] == wrap_s and ks[o + 3] == wrap_t and ks[o + 4] == compare and ks[o + 5] == aniso and ks[o + 6] == bias { return render3d_st.gvk_smp[i] }
+    i += 1
+  }
   var mn = min_f
   if mn == 0 { mn = GL_NEAREST_MIPMAP_LINEAR }
   var mg = mag_f
@@ -563,7 +570,7 @@ function gvk_sampler(render3d_st: mut Render3dState, min_f: int, mag_f: int, wra
   let r = Vk.create_sampler(render3d_st.gvk_dev, sci, null, out)
   if r != VK_SUCCESS { gvk_fail(render3d_st, "vkCreateSampler", r);  return zero }
   let s = gvk_handle(out)
-  push(render3d_st.gvk_smp_keys, key)
+  push(ks, min_f);  push(ks, mag_f);  push(ks, wrap_s);  push(ks, wrap_t);  push(ks, compare);  push(ks, aniso);  push(ks, bias)
   push(render3d_st.gvk_smp, s)
   return s
 }

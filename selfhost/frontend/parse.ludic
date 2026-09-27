@@ -1464,6 +1464,10 @@ function maybe_splice_runtime() -> void {
     do_import("runtime/native/process.ludic")
     cur_dir = saved
   }
+  # Vk.* draws into the runtime's window, whose size, drawable and clock (gl_width,
+  # gl_set_drawable, gl_now_us, ...) still live in the GL runtime: splice and link it too,
+  # until the window layer stands apart from OpenGL (maroon-lake docs/plan/22, 22.15)
+  if g_uses_vk { g_uses_gl = true }
   # Gl.*: splice the OpenGL surface (gl.ludic + the generated gl_api.ludic). The
   # native calls are the linked GL entry points themselves; the window attach is
   # is_windowed()-guarded, so a headless build renders into an offscreen context.

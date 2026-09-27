@@ -38,7 +38,7 @@ function ov_pick_prog(render3d_st: mut Render3dState) -> void {
   if gpu_hdr_active(render3d_st) {
     if render3d_st.ov_prog_hdr == 0 {
       r3d_program_log(render3d_st, "overlay.vert", "overlay.frag", "#define HDR10\n")
-      render3d_st.ov_prog_hdr = gpu_program(render3d_st, "#version 410 core\n#define HDR10\n" + r3d_shader_file(render3d_st, "overlay.vert"), "#version 410 core\n#define HDR10\n" + r3d_shader_file(render3d_st, "overlay.frag"), "overlay.vert", "overlay.frag", "#define HDR10\n")
+      render3d_st.ov_prog_hdr = gpu_program(render3d_st, "overlay.vert", "overlay.frag", "#define HDR10\n")
     }
     if render3d_st.ov_prog_hdr != 0 { render3d_st.ov_prog = render3d_st.ov_prog_hdr;  return }
   }
@@ -47,7 +47,7 @@ function ov_pick_prog(render3d_st: mut Render3dState) -> void {
 
 function overlay_init(render3d_st: mut Render3dState, font_dir: string) -> bool {
   r3d_program_log(render3d_st, "overlay.vert", "overlay.frag", "")
-  render3d_st.ov_prog = gpu_program(render3d_st, "#version 410 core\n" + r3d_shader_file(render3d_st, "overlay.vert"), "#version 410 core\n" + r3d_shader_file(render3d_st, "overlay.frag"), "overlay.vert", "overlay.frag", "")
+  render3d_st.ov_prog = gpu_program(render3d_st, "overlay.vert", "overlay.frag", "")
   if render3d_st.ov_prog == 0 { print("overlay: program failed");  return false }
   render3d_st.ov_prog_sdr = render3d_st.ov_prog
   render3d_st.ov_mesh = gpu_mesh_new(render3d_st)
