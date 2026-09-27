@@ -14,6 +14,9 @@ function wl_face(a: WildAnimal, tx: float, tz: float, rate: float, dt: float) ->
 }
 
 # true when it moved; a walker is slid round a still thing (a trunk, a tent), a bird is not
+# how many steps were refused and turned from since the start: how often the way was not enough
+export function wildlife_turned(wildlife_st: WildlifeState) -> int { return wildlife_st.wl_turned }
+
 function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bool {
   let d = a.speed * dt
   if d < 0.0001 { return false }
@@ -29,6 +32,7 @@ function wl_step(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float) -> bo
   if nh < WildlifeWorld.water(nx, nz) + 0.6 or nh - a.y > d * 1.2 or moved < d * 0.2 {
     a.yaw = a.yaw + Math.deg_to_rad(75.0)
     a.timer = 0.0
+    wildlife_st.wl_turned += 1
     return false
   }
   a.x = nx

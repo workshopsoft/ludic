@@ -58,6 +58,7 @@ export state WildlifeState {
   wl_dice: Rng = rng_new(97)
   wl_hold: bool = false      # staged: nobody thinks, everybody keeps their speed
   wl_spot_ask: WildSpot = new WildSpot
+  wl_turned: int = 0          # steps refused and turned 75 degrees instead: the fallback, counted
 }
 
 function wl_sp_all(wildlife_st: WildlifeState) -> []WildSpecies {
