@@ -19,7 +19,9 @@ started on first use) and the calling thread, so each index runs exactly once, i
 on (`words`, `bytes` or a `pointer`). A worker computes on what it was handed and writes only its own
 index's results: it must not `spawn`, `despawn`, `push` onto a list another thread can see, or use
 Http or Audio. `spawn` and `despawn` on a worker stop the program with a located message. Shared
-counters go through `Sync.add`, shared totals behind a `Sync.mutex`.
+counters go through `Sync.add`, shared totals behind a `Sync.mutex`. A worker may take states, but
+only to read them: every thread runs it at once, so a worker that takes one as `mut` is refused at
+compile time (a result goes into `ctx`, a count through a `Sync` handle kept in the state).
 
 ```ludic
 program Squares {

@@ -155,4 +155,64 @@ program ThingsTest {
     expect_eq(t.owner, 0)
     expect_eq(things_test_st.back, 1)
   }
+
+  test "removals keep the indexes true: nearest, find, uid and the columns agree" (things_st: mut ThingsState) {
+    things_clear(things_st)
+    var keep: Thing = null
+    for i in 0 .. 400 {
+      let t = put(things_st, TH_BRANCH + (i % 2), float(i) * 3.0 - 600.0, float(i % 17) * 5.0)
+      if i == 250 { keep = t }
+    }
+    let gone = thing_find(things_st, TH_BRANCH, -1)
+    let uid = gone.uid
+    thing_remove(things_st, gone)
+    expect(thing_by_uid(things_st, uid) == null)
+    expect(thing_by_uid(things_st, keep.uid) == keep)
+    expect_eq(things_count(things_st), 399)
+    expect_eq(things_count_of(things_st, TH_BRANCH), 199)
+    thing_move(keep, 5000.0, 5000.0, 0.0)
+    expect(thing_nearest(things_st, -1, 4990.0, 4990.0) == keep)
+    thing_hide(keep)
+    expect(thing_nearest(things_st, -1, 4990.0, 4990.0) != keep)
+    expect_eq(things_verify(things_st), 0)
+    keep.x = 1.0
+    expect_eq(things_verify(things_st), 1)
+  }
+
+  test "a chunk's Things are counted and let go together; a move carries a Thing to its new chunk" (things_st: mut ThingsState, things_test_st: ThingsTestState) {
+    things_clear(things_st)
+    put(things_st, TH_BRANCH, 10.0, 10.0)
+    put(things_st, TH_BRANCH, 20.0, 30.0)
+    let far = put(things_st, TH_BRANCH, 600.0, 10.0)
+    let here = things_chunk(10.0, 10.0)
+    expect_eq(things_chunk_count(things_st, here), 2)
+    expect_eq(things_chunk_count(things_st, things_chunk(600.0, 10.0)), 1)
+    thing_move(far, 15.0, 15.0, 0.0)
+    expect_eq(things_chunk_count(things_st, here), 3)
+    facts(things_st)
+    let gone = things_test_st.gone
+    expect_eq(things_drop_chunk(things_st, here), 3)
+    expect_eq(things_count(things_st), 0)
+    expect_eq(things_test_st.gone, gone + 3)
+    expect_eq(len(facts(things_st)), 3)
+    expect_eq(things_verify(things_st), 0)
+  }
+
+  test "change detection names what a verb wrote since the tick a consumer kept" (things_st: mut ThingsState) {
+    things_clear(things_st)
+    let a = put(things_st, TH_BRANCH, 1.0, 0.0)
+    let b = put(things_st, TH_BRANCH, 2.0, 0.0)
+    let seen = things_now(things_st)
+    let rows = words(0)
+    let out = new []Thing
+    expect_eq(things_changed(things_st, seen, rows, out), 0)
+    thing_hide(b)
+    expect_eq(things_changed(things_st, seen, rows, out), 1)
+    expect(out[0] == b)
+    let later = things_now(things_st)
+    thing_move(a, 9.0, 9.0, 0.0)
+    expect_eq(things_changed(things_st, later, rows, out), 1)
+    expect(out[0] == a)
+    expect_eq(things_changed(things_st, seen, rows, out), 2)
+  }
 }

@@ -1,0 +1,101 @@
+# ludic.base/ecs_grid_where.ludic - the grid's questions put to the rows' records: the nearest one a
+# predicate keeps, and every record within a radius into the caller's list. The predicate is called
+# with the record only; it may read anything, and must change nothing the grid indexes.
+export function tb_nearest_where<T>(tb: Table<T>, g: Grid, x: float, z: float, maxr: float, keep: fn(T) -> bool) -> int {
+  if g.count == 0 { return -1 }
+  let xs = tb.f[g.cx]
+  let zs = tb.f[g.cz]
+  var best = -1
+  var bd = grid_limit(maxr)
+  let cs = 1.0 / g.inv
+  let ix0 = grid_cell(g, x)
+  let iz0 = grid_cell(g, z)
+  var ring = 0
+  while ring <= GRID_RINGS {
+    if ring > 0 and grid_ring_past(ring, cs, bd) { return best }
+    for k in 0 .. grid_ring_n(ring) {
+      best = grid_visit_where(tb, g, xs, zs, x, z, grid_ring_x(ix0, ring, k), grid_ring_z(iz0, ring, k), best, bd, keep)
+      if best >= 0 { bd = grid_d2(xs, zs, best, x, z) }
+    }
+    ring += 1
+  }
+  for row in 0 .. len(g.key) {
+    if g.key[row] >= 0 and grid_d2(xs, zs, row, x, z) < bd and keep(tb.rec[row]) {
+      best = row
+      bd = grid_d2(xs, zs, row, x, z)
+    }
+  }
+  return best
+}
+
+function grid_visit_where<T>(tb: Table<T>, g: Grid, xs: floats, zs: floats, x: float, z: float, ix: int, iz: int, best: int, bd: float, keep: fn(T) -> bool) -> int {
+  let k = grid_key(ix, iz)
+  var b = best
+  var d = bd
+  var r = g.head[grid_bucket(g, ix, iz)]
+  while r > 0 {
+    let row = r - 1
+    if g.key[row] == k {
+      let d2 = grid_d2(xs, zs, row, x, z)
+      if d2 < d and keep(tb.rec[row]) {
+        d = d2
+        b = row
+      }
+    }
+    r = g.next[row]
+  }
+  return b
+}
+
+# every filed record within r of (x, z) matching (mc, mv), appended to `out` (cleared first) - the
+# caller's list, kept in the caller's state and reused, so a frame's question allocates nothing
+export function tb_within_recs<T>(tb: Table<T>, g: Grid, x: float, z: float, r: float, mc: int, mv: int, out: []T) -> int {
+  List.clear(out)
+  if g.count == 0 { return 0 }
+  var mcol: words = null
+  if mc >= 0 { mcol = tb.i[mc] }
+  let xs = tb.f[g.cx]
+  let zs = tb.f[g.cz]
+  let ix0 = grid_cell(g, x - r)
+  let ix1 = grid_cell(g, x + r)
+  let iz0 = grid_cell(g, z - r)
+  let iz1 = grid_cell(g, z + r)
+  let cells = (ix1 - ix0 + 1) * (iz1 - iz0 + 1)
+  if cells > g.count or cells < 0 {
+    for row in 0 .. len(g.key) {
+      if g.key[row] >= 0 and (mcol == null or mcol[row] == mv) and grid_d2(xs, zs, row, x, z) <= r * r { push(out, tb.rec[row]) }
+    }
+    return len(out)
+  }
+  for ix in ix0 .. ix1 + 1 {
+    for iz in iz0 .. iz1 + 1 { grid_recs_cell(tb, g, xs, zs, mcol, mv, x, z, r * r, ix, iz, out) }
+  }
+  return len(out)
+}
+
+function grid_recs_cell<T>(tb: Table<T>, g: Grid, xs: floats, zs: floats, mcol: words, mv: int, x: float, z: float, r2: float, ix: int, iz: int, out: []T) -> void {
+  let k = grid_key(ix, iz)
+  var r = g.head[grid_bucket(g, ix, iz)]
+  while r > 0 {
+    let row = r - 1
+    if g.key[row] == k and (mcol == null or mcol[row] == mv) and grid_d2(xs, zs, row, x, z) <= r2 { push(out, tb.rec[row]) }
+    r = g.next[row]
+  }
+}
+
+# every record of kind v (an index over column ix.col) within r, into `out`: a rare kind from its list
+export function tb_within_of_recs<T>(tb: Table<T>, g: Grid, ix: IntIndex, x: float, z: float, r: float, v: int, out: []T) -> int {
+  let n = ix_count(ix, v)
+  if n > PLAN_LIST_MAX { return tb_within_recs(tb, g, x, z, r, ix.col, v, out) }
+  List.clear(out)
+  if n == 0 { return 0 }
+  let rows = ix.lists[v]
+  let xs = tb.f[g.cx]
+  let zs = tb.f[g.cz]
+  for k in 0 .. n {
+    let row = rows[k]
+    if g.gate >= 0 and tb.i[g.gate][row] == 0 { continue }
+    if grid_d2(xs, zs, row, x, z) <= r * r { push(out, tb.rec[row]) }
+  }
+  return len(out)
+}

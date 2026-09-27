@@ -1,10 +1,42 @@
-# store.ludic - the Things, and the only verbs that make, remove, move, show and hide one; each
-# placing and removing is a fact, and the port is told at once so the game can draw it
+# store.ludic - the Things, rows of a ludic.base Table: where each stands and whether it is active
+# are columns a grid and two kind indexes are kept over, and only the verbs (verbs.ludic) make,
+# move, show, hide and remove one; each placing and removing is a fact the port hears at once
+export const TH_X: int = 0          # float columns
+export const TH_Z: int = 1
+export const TH_KIND: int = 0       # int columns
+export const TH_ON: int = 1         # 1 while active
+export const TH_CHUNK: int = 2      # the chunk of the world it stands in (chunk_of, TH_CHUNK_M)
+export const TH_CHUNK_M: float = 256.0
+const TH_CELL: float = 16.0
+
+# the table and the indexes kept over it, made together
+export property ThingsTable {
+  tab: Table<Thing> = null
+  grid: Grid = null
+  kinds: IntIndex = null            # active Things by kind
+  every: IntIndex = null            # every Thing by kind, active or not
+  chunks: IntIndex = null           # every Thing by the chunk it stands in: loaded and let go together
+}
+
 export state ThingsState {
-  th_list: []Thing = new []Thing
+  th: ThingsTable = th__new()
+  th_uids: IntMap = imap_new()
   th_uid: int = 0
   th_facts: Queue<ThingFact> = th_facts__new()
-  th_marked: int = -1
+  th_hs: words = words(0)           # things_tick's handles, taken before any tick runs
+}
+
+function th_facts__new() -> Queue<ThingFact> { return queue_new("things.facts") }
+
+function th__new() -> ThingsTable {
+  let th = new ThingsTable
+  let tb: Table<Thing> = table_new(2, 3)
+  th.tab = tb
+  th.grid = tb_grid(tb, TH_X, TH_Z, TH_ON, TH_CELL)
+  th.kinds = tb_index(tb, TH_KIND, TH_ON)
+  th.every = tb_index(tb, TH_KIND, -1)
+  th.chunks = tb_index(tb, TH_CHUNK, -1)
+  return th
 }
 
 export function things_facts(things_st: ThingsState) -> Queue<ThingFact> {
@@ -24,88 +56,37 @@ function th_fact(things_st: ThingsState, what: int, t: Thing) -> void {
 }
 
 # whether a world has been set out (things_clear) since the program began
-export function things_ready(things_st: ThingsState) -> bool { return things_st.th_list != null }
+export function things_ready(things_st: ThingsState) -> bool { return things_st.th.tab != null }
 
-# every Thing, in the order placed; the list is the package's, never to be pushed to
-export function things_all(things_st: ThingsState) -> []Thing {
-  return things_st.th_list
-}
+# every Thing, one per row - the table's own list: read it, never push to it. A removal moves the
+# last Thing into the removed one's place, so the order is the table's, not the order placed.
+export function things_all(things_st: ThingsState) -> []Thing { return things_st.th.tab.rec }
 
-export function things_count(things_st: ThingsState) -> int { return len(things_all(things_st)) }
+export function things_count(things_st: ThingsState) -> int { return tb_len(things_st.th.tab) }
 
 # a new world: every Thing forgotten, quietly (the game has already dropped its drawings)
-export function things_clear(things_st: mut ThingsState) -> void { things_st.th_list = new []Thing }
-
-export function thing_spawn(things_st: mut ThingsState, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
-  return th_place(things_st, new Thing, kind, look, x, y, z, yaw, id)
+export function things_clear(things_st: mut ThingsState) -> void {
+  let tb = things_st.th.tab
+  for r in 0 .. tb_len(tb) { tb.rec[r].ent = -1 }
+  tb_clear(tb)
+  imap_clear(things_st.th_uids)
 }
 
-function th_place(things_st: mut ThingsState, t: Thing, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
-  t.kind = kind
-  t.look = look
-  t.x = x
-  t.y = y
-  t.z = z
-  t.yaw = yaw
-  t.id = id
-  things_st.th_uid += 1
-  t.uid = things_st.th_uid
-  push(things_all(things_st), t)
-  ThingsWorld.placed(t)
-  th_fact(things_st, THING_PLACED, t)
-  return t
+# the row a Thing stands in, or -1 when it is not in the table any more
+function th_row(t: Thing) -> int {
+  if t == null or t.tab == null { return -1 }
+  return tb_row(t.tab, t.ent)
 }
 
-# a Thing on the ground (the port's), set into it by `sink`, used from `reach`
-export function thing_put(things_st: mut ThingsState, kind: int, look: string, x: float, z: float, yaw: float, sink: float, reach: float, id: int) -> Thing {
-  let t = new Thing
-  t.reach = reach
-  return th_place(things_st, t, kind, look, x, ThingsWorld.ground(x, z) - sink, z, yaw, id)
-}
-
-# gone for good
-export function thing_remove(things_st: mut ThingsState, t: Thing) -> void {
-  if t == null { return }
-  things_st.th_marked = t.uid
-  things_drop(things_st, fn th_is_marked)
-  things_st.th_marked = -1
-}
-
-function th_is_marked(things_st: ThingsState, t: Thing) -> bool { return t.uid == things_st.th_marked }
-
-# every Thing `gone` says so is removed for good
-export function things_drop(things_st: mut ThingsState, gone: fn(Thing) -> bool) -> void {
-  let keep = new []Thing
-  let all = things_all(things_st)
-  for i in 0 .. len(all) {
-    let t = all[i]
-    if gone(t) {
-      ThingsWorld.removed(t)
-      th_fact(things_st, THING_REMOVED, t)
-    } else {
-      push(keep, t)
-    }
+# the columns say what the record says: a Thing's fields written around the verbs are caught here
+export function things_verify(things_st: ThingsState) -> int {
+  let tb = things_st.th.tab
+  var bad = 0
+  for r in 0 .. tb_len(tb) {
+    let t = tb.rec[r]
+    var on = 0
+    if t.active { on = 1 }
+    if tb.f[TH_X][r] != t.x or tb.f[TH_Z][r] != t.z or tb.i[TH_KIND][r] != t.kind or tb.i[TH_ON][r] != on or tb.i[TH_CHUNK][r] != chunk_of(t.x, t.z, TH_CHUNK_M) or t.ent != tb.ent[r] { bad += 1 }
   }
-  things_st.th_list = keep
+  return bad
 }
-
-export function thing_move(t: Thing, x: float, z: float, yaw: float) -> void {
-  thing_move_to(t, x, ThingsWorld.ground(x, z), z, yaw)
-}
-
-export function thing_move_to(t: Thing, x: float, y: float, z: float, yaw: float) -> void {
-  t.x = x
-  t.y = y
-  t.z = z
-  t.yaw = yaw
-  ThingsWorld.moved(t)
-}
-
-export function thing_set_active(t: Thing, on: bool) -> void {
-  if t == null { return }
-  t.active = on
-  ThingsWorld.shown(t)
-}
-export function thing_hide(t: Thing) -> void { thing_set_active(t, false) }
-export function thing_show(t: Thing) -> void { thing_set_active(t, true) }
-function th_facts__new() -> Queue<ThingFact> { return queue_new("things.facts") }

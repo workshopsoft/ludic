@@ -1,0 +1,15 @@
+# near.ludic - the animals around a point, living ones only, into a list the CALLER keeps (in its own
+# state, reused every frame): from the grid, or a species' own list when it is rare. Nothing is
+# allocated or written here.
+export function wildlife_near(wildlife_st: WildlifeState, x: float, z: float, r: float, out: []WildAnimal) -> int {
+  let w = wildlife_st.wl
+  return tb_within_recs(w.tab, w.grid, x, z, r, -1, 0, out)
+}
+
+export function wildlife_near_of(wildlife_st: WildlifeState, sp: int, x: float, z: float, r: float, out: []WildAnimal) -> int {
+  let w = wildlife_st.wl
+  return tb_within_of_recs(w.tab, w.grid, w.species, x, z, r, sp, out)
+}
+
+# how many of a species are alive, legends included, without a walk
+export function wildlife_alive_of(wildlife_st: WildlifeState, sp: int) -> int { return ix_count(wildlife_st.wl.species, sp) }

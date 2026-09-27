@@ -1,0 +1,79 @@
+# ludic.base/ecs_map.ludic - IntMap: a key (0 or more) to a value, open addressing with linear
+# probing; what turns a stable id kept in a save or a message into a handle without a scan
+export property IntMap {
+  keys: words = null          # -1 empty, -2 a key that was deleted
+  vals: words = null
+  mask: int = 63
+  n: int = 0
+  used: int = 0               # live and deleted slots: what makes probing long
+}
+
+export function imap_new() -> IntMap {
+  let m = new IntMap
+  imap_alloc(m, 64)
+  return m
+}
+
+function imap_alloc(m: IntMap, cap: int) -> void {
+  m.keys = words(cap)
+  m.vals = words(cap)
+  for i in 0 .. cap { m.keys[i] = -1 }
+  m.mask = cap - 1
+  m.n = 0
+  m.used = 0
+}
+
+function imap_slot(m: IntMap, k: int) -> int { return ((k * -1640531535) >> 7) & m.mask }
+
+# the value under k, or `none` when there is none
+export function imap_get(m: IntMap, k: int, none: int) -> int {
+  var s = imap_slot(m, k)
+  while m.keys[s] != -1 {
+    if m.keys[s] == k { return m.vals[s] }
+    s = (s + 1) & m.mask
+  }
+  return none
+}
+
+export function imap_put(m: IntMap, k: int, v: int) -> void {
+  if (m.used + 1) * 4 > (m.mask + 1) * 3 { imap_grow(m) }
+  var s = imap_slot(m, k)
+  var tomb = -1
+  while m.keys[s] != -1 {
+    if m.keys[s] == k {
+      m.vals[s] = v
+      return
+    }
+    if m.keys[s] == -2 and tomb < 0 { tomb = s }
+    s = (s + 1) & m.mask
+  }
+  if tomb >= 0 { s = tomb } else { m.used += 1 }
+  m.keys[s] = k
+  m.vals[s] = v
+  m.n += 1
+}
+
+export function imap_del(m: IntMap, k: int) -> bool {
+  var s = imap_slot(m, k)
+  while m.keys[s] != -1 {
+    if m.keys[s] == k {
+      m.keys[s] = -2
+      m.n -= 1
+      return true
+    }
+    s = (s + 1) & m.mask
+  }
+  return false
+}
+
+export function imap_len(m: IntMap) -> int { return m.n }
+export function imap_clear(m: IntMap) -> void { imap_alloc(m, m.mask + 1) }
+
+function imap_grow(m: IntMap) -> void {
+  let ok = m.keys
+  let ov = m.vals
+  var cap = m.mask + 1
+  if m.n * 2 > cap { cap = cap * 2 }
+  imap_alloc(m, cap)
+  for i in 0 .. len(ok) { if ok[i] >= 0 { imap_put(m, ok[i], ov[i]) } }
+}

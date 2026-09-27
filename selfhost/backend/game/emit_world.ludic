@@ -96,7 +96,8 @@ function emit_world_table() -> void {
       emit("  %m");  emit(sk);  emit(" = icmp eq i32 %p, ");  emit(sk);  emit("\n")
       emit("  br i1 %m");  emit(sk);  emit(", label %g");  emit(sk);  emit(", label %gn");  emit(sk);  emit("\n")
       emit("g");  emit(sk);  emit(":\n")
-      emit("  %s");  emit(sk);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(cn);  emit("], ptr @S_");  emit(cn);  emit(", i32 0, i32 %e\n")
+      let eb1 = ecs_base(`S_{cn}`)
+      emit("  %s");  emit(sk);  emit(" = getelementptr inbounds %Cmp_");  emit(cn);  emit(", ptr ");  emit(eb1);  emit(", i32 %e\n")
       var fj = 0
       while fj < len(c.kids) {
         let ft = llty(c.kids[fj].ty);  let fk = `{sk}_{itoa(fj)}`
@@ -139,7 +140,8 @@ function emit_world_table() -> void {
       emit("  %m");  emit(sk);  emit(" = icmp eq i32 %p, ");  emit(sk);  emit("\n")
       emit("  br i1 %m");  emit(sk);  emit(", label %g");  emit(sk);  emit(", label %gn");  emit(sk);  emit("\n")
       emit("g");  emit(sk);  emit(":\n")
-      emit("  %s");  emit(sk);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(cn);  emit("], ptr @S_");  emit(cn);  emit(", i32 0, i32 %e\n")
+      let eb2 = ecs_base(`S_{cn}`)
+      emit("  %s");  emit(sk);  emit(" = getelementptr inbounds %Cmp_");  emit(cn);  emit(", ptr ");  emit(eb2);  emit(", i32 %e\n")
       var fj = 0
       while fj < len(c.kids) {
         let ft = llty(c.kids[fj].ty);  let fk = `{sk}_{itoa(fj)}`
@@ -182,7 +184,8 @@ function emit_world_table() -> void {
       emit("  %m");  emit(sk);  emit(" = icmp eq i32 %p, ");  emit(sk);  emit("\n")
       emit("  br i1 %m");  emit(sk);  emit(", label %g");  emit(sk);  emit(", label %gn");  emit(sk);  emit("\n")
       emit("g");  emit(sk);  emit(":\n")
-      emit("  %hp");  emit(sk);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(cn);  emit(", i32 0, i32 %e\n")
+      let eb3 = ecs_base(`H_{cn}`)
+      emit("  %hp");  emit(sk);  emit(" = getelementptr inbounds i8, ptr ");  emit(eb3);  emit(", i32 %e\n")
       emit("  %hv");  emit(sk);  emit(" = load i8, ptr %hp");  emit(sk);  emit("\n")
       emit("  %hr");  emit(sk);  emit(" = zext i8 %hv");  emit(sk);  emit(" to i32\n  ret i32 %hr");  emit(sk);  emit("\n")
       emit("gn");  emit(sk);  emit(":\n")
@@ -201,10 +204,10 @@ function emit_world_table() -> void {
   # zeroed. The returned id works with get/set/has/attach exactly like a built-in.
   emit("define i32 @ludic_register_prop(ptr %name, i32 %nfields) {\nentry:\n")
   emit("  %dc = load i32, ptr @dyn_count\n  %full = icmp slt i32 %dc, 32\n  br i1 %full, label %do, label %rej\n")
-  emit("do:\n  %nf4 = mul i32 %nfields, 4\n  %sz = mul i32 %nf4, ");  emit(me);  emit("\n  %szl = sext i32 %sz to i64\n")
+  emit("do:\n  %rcap = load i32, ptr @L_cap\n  %nf4 = mul i32 %nfields, 4\n  %sz = mul i32 %nf4, %rcap\n  %szl = sext i32 %sz to i64\n")
   emit("  %buf = call ptr @malloc(i64 %szl)\n  call ptr @memset(ptr %buf, i32 0, i64 %szl)\n")
   emit("  %sp = getelementptr inbounds [32 x ptr], ptr @dynS, i32 0, i32 %dc\n  store ptr %buf, ptr %sp\n")
-  emit("  %hbuf = call ptr @malloc(i64 ");  emit(me);  emit(")\n  call ptr @memset(ptr %hbuf, i32 0, i64 ");  emit(me);  emit(")\n")
+  emit("  %hcap = sext i32 %rcap to i64\n  %hbuf = call ptr @malloc(i64 %hcap)\n  call ptr @memset(ptr %hbuf, i32 0, i64 %hcap)\n")
   emit("  %hp = getelementptr inbounds [32 x ptr], ptr @dynH, i32 0, i32 %dc\n  store ptr %hbuf, ptr %hp\n")
   emit("  %fp = getelementptr inbounds [32 x i32], ptr @dynF, i32 0, i32 %dc\n  store i32 %nfields, ptr %fp\n")
   emit("  %np = getelementptr inbounds [32 x ptr], ptr @dynName, i32 0, i32 %dc\n  store ptr %name, ptr %np\n")
@@ -222,7 +225,8 @@ function emit_world_table() -> void {
   # identifies each entity's model, then reads/writes it with get/set/has above.
   emit("define i32 @ludic_entity_count() {\nentry:\n  %n = load i32, ptr @L_entc\n  ret i32 %n\n}\n\n")
   emit("define i32 @ludic_kind(i32 %e) {\nentry:\n")
-  emit("  %kp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n")
+  let eb4 = ecs_base("L_kind")
+  emit("  %kp = getelementptr inbounds i32, ptr ");  emit(eb4);  emit(", i32 %e\n")
   emit("  %k = load i32, ptr %kp\n  ret i32 %k\n}\n\n")
   emit("define i32 @ludic_model_id(ptr %name) {\nentry:\n")
   k = 0;  i = 0
@@ -287,7 +291,9 @@ function emit_world_table() -> void {
   emit("  %n = load i32, ptr @L_entc\n  br label %loop\n")
   emit("loop:\n  %e = phi i32 [ %from, %entry ], [ %e1, %cont ]\n")
   emit("  %go = icmp slt i32 %e, %n\n  br i1 %go, label %body, label %none\n")
-  emit("body:\n  %ap = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 %e\n")
+  emit("body:\n")
+  let eb5 = ecs_base("L_alive")
+  emit("  %ap = getelementptr inbounds i32, ptr ");  emit(eb5);  emit(", i32 %e\n")
   emit("  %al = load i32, ptr %ap\n  %isa = icmp ne i32 %al, 0\n  br i1 %isa, label %chk, label %cont\n")
   emit("chk:\n  %h = call i32 @ludic_has(i32 %e, i32 %p)\n  %hit = icmp ne i32 %h, 0\n  br i1 %hit, label %hitb, label %cont\n")
   emit("hitb:\n  ret i32 %e\n")
@@ -446,6 +452,7 @@ function emit_game_main() -> void {
   emit("  store i32 %argc, ptr @L_argc\n")
   emit("  store ptr %argv, ptr @L_argv\n")
   emit("  call void @L_init_runtime()\n")
+  if has_ecs() { emit("  call void @L_grow(i32 1)\n") }
   if (find_fn("rt_init") != null) { emit("  call void " + fn_sym("rt_init") + "()\n") }
   emit("  call void @L_init_globals()\n")
   emit_calls_for_phase("Start")

@@ -93,7 +93,8 @@ function emit_countdown_system() -> void {
   emit("  %n = load i32, ptr @L_entc\n  br label %loop\nloop:\n")
   emit("  %i = phi i32 [ 0, %entry ], [ %i1, %next ]\n")
   emit("  %go = icmp slt i32 %i, %n\n  br i1 %go, label %body, label %done\nbody:\n")
-  emit("  %ap = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 %i\n")
+  let eb1 = ecs_base("L_alive")
+  emit("  %ap = getelementptr inbounds i32, ptr ");  emit(eb1);  emit(", i32 %i\n")
   emit("  %al = load i32, ptr %ap\n  %alive = icmp ne i32 %al, 0\n  br i1 %alive, label %c0, label %next\n")
   var k = 0
   var i = 0
@@ -106,12 +107,14 @@ function emit_countdown_system() -> void {
       if any {
         let sk = itoa(k);  let nk = itoa(k + 1)
         emit("c");  emit(sk);  emit(":\n")
-        emit("  %h");  emit(sk);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(d.s);  emit(", i32 0, i32 %i\n")
+        let eb2 = ecs_base(`H_{d.s}`)
+        emit("  %h");  emit(sk);  emit(" = getelementptr inbounds i8, ptr ");  emit(eb2);  emit(", i32 %i\n")
         emit("  %hv");  emit(sk);  emit(" = load i8, ptr %h");  emit(sk);  emit("\n")
         emit("  %has");  emit(sk);  emit(" = icmp ne i8 %hv");  emit(sk);  emit(", 0\n")
         emit("  br i1 %has");  emit(sk);  emit(", label %t");  emit(sk);  emit(", label %c");  emit(nk);  emit("\n")
         emit("t");  emit(sk);  emit(":\n")
-        emit("  %s");  emit(sk);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(d.s);  emit("], ptr @S_");  emit(d.s);  emit(", i32 0, i32 %i\n")
+        let eb3 = ecs_base(`S_{d.s}`)
+        emit("  %s");  emit(sk);  emit(" = getelementptr inbounds %Cmp_");  emit(d.s);  emit(", ptr ");  emit(eb3);  emit(", i32 %i\n")
         f = 0
         while f < len(d.kids) {
           if (d.kids[f].ty == "countdown") {
@@ -474,7 +477,8 @@ function emit_world_despawn_fn() -> void {
   emit("define void @fn_world_despawn(i32 %e) {\nentry:\n")
   if len(g_ondespawn) > 0 {
     let me = itoa(MAX_ENT)
-    emit("  %kp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %e\n")
+    let eb4 = ecs_base("L_kind")
+    emit("  %kp = getelementptr inbounds i32, ptr ");  emit(eb4);  emit(", i32 %e\n")
     emit("  %k = load i32, ptr %kp\n")
     var i = 0
     while i < len(g_ondespawn) {
@@ -508,10 +512,14 @@ function emit_despawn_all_fn() -> void {
   emit("loop:\n  %i = phi i32 [ 0, %entry ], [ %i1, %cont ]\n")
   emit("  %n = load i32, ptr @L_entc\n  %go = icmp slt i32 %i, %n\n")
   emit("  br i1 %go, label %body, label %fin\n")
-  emit("body:\n  %ap = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_alive, i32 0, i32 %i\n")
+  emit("body:\n")
+  let eb5 = ecs_base("L_alive")
+  emit("  %ap = getelementptr inbounds i32, ptr ");  emit(eb5);  emit(", i32 %i\n")
   emit("  %al = load i32, ptr %ap\n  %isa = icmp ne i32 %al, 0\n")
   emit("  br i1 %isa, label %do, label %cont\n")
-  emit("do:\n  %kp = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 %i\n")
+  emit("do:\n")
+  let eb6 = ecs_base("L_kind")
+  emit("  %kp = getelementptr inbounds i32, ptr ");  emit(eb6);  emit(", i32 %i\n")
   emit("  %k = load i32, ptr %kp\n")
   var i = 0
   while i < len(g_ondespawn) {
@@ -608,7 +616,8 @@ function emit_event_fns() -> void {
     emit("  %n = load i32, ptr @evN_");  emit(en);  emit("\n")
     emit("  %lo = icmp sge i32 %tok, 0\n  %hi = icmp slt i32 %tok, %n\n  %ok = and i1 %lo, %hi\n")
     emit("  br i1 %ok, label %do, label %skip\n")
-    emit("do:\n  %slot = getelementptr inbounds [");  emit(cap);  emit(" x ptr], ptr @evL_");  emit(en);  emit(", i32 0, i32 %tok\n")
+    emit("do:\n")
+    emit("  %slot = getelementptr inbounds [");  emit(cap);  emit(" x ptr], ptr @evL_");  emit(en);  emit(", i32 0, i32 %tok\n")
     emit("  store ptr null, ptr %slot\n  br label %skip\n")
     emit("skip:\n  ret void\n}\n\n")
 

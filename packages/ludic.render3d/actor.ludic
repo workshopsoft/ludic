@@ -30,6 +30,7 @@ property Actor {
   cast_hidden: bool = false,
   casts:   bool = true,
   id:      int = 0,
+  row:     int = -1,       # where it stands in ac_actors, so it leaves in O(1); -1 off the stage
   cutout:  bool = false,   # alpha-tested (a flame's cards)
   emissive: float = 0.0,       # float bits: self-lit strength
   skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
@@ -82,11 +83,27 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_out_cut = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
   render3d_st.ac_actors = new []Actor
 }
+# off the stage: the last actor takes its row, so the list stays dense and nothing is rebuilt
+# (it was a new list of every other actor per removal, never freed)
 function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
-  if render3d_st.ac_actors == null { return }
-  let keep = new []Actor
-  for i in 0 .. len(render3d_st.ac_actors) { if render3d_st.ac_actors[i].id != a.id { push(keep, render3d_st.ac_actors[i]) } }
-  render3d_st.ac_actors = keep
+  let l = render3d_st.ac_actors
+  if l == null or a == null { return }
+  let r = a.row
+  if r < 0 or r >= len(l) or l[r].id != a.id { return }
+  let last = List.pop(l)
+  if last.id != a.id {
+    l[r] = last
+    last.row = r
+  }
+  a.row = -1
+}
+
+# back on the stage (an actor kept across a world swap)
+function actor_keep(render3d_st: mut Render3dState, a: Actor) -> void {
+  if a == null { return }
+  if render3d_st.ac_actors == null { render3d_st.ac_actors = new []Actor }
+  a.row = len(render3d_st.ac_actors)
+  push(render3d_st.ac_actors, a)
 }
 # colour one named part of the model (a material name from the file)
 function actor_tint_part(a: Actor, name: string, r: float, g: float, b: float) -> void {
@@ -114,8 +131,7 @@ function actor_new(render3d_st: mut Render3dState, model: Model) -> Actor {
   render3d_st.ac_next_id += 1;  a.id = render3d_st.ac_next_id
   if model != null { a.radius = Math.max(model.radius, model.height) + 1.0 }
   a.cull = 450.0
-  if render3d_st.ac_actors == null { render3d_st.ac_actors = new []Actor }
-  push(render3d_st.ac_actors, a)
+  actor_keep(render3d_st, a)
   return a
 }
 
@@ -396,6 +412,8 @@ function ac_caster_count(render3d_st: mut Render3dState, a: Actor) -> void {
 # every actor off the stage at once, for a world being replaced. Actors own no GL objects;
 # their models belong to whoever loaded them.
 function actor_clear_all(render3d_st: mut Render3dState) -> void {
-  render3d_st.ac_actors = new []Actor
+  if render3d_st.ac_actors == null { render3d_st.ac_actors = new []Actor }
+  for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].row = -1 }
+  List.clear(render3d_st.ac_actors)
   outline_clear(render3d_st)
 }

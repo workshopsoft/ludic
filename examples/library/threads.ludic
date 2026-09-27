@@ -9,17 +9,18 @@ program Threads {
   state ThreadsState {
     calls: int = 0        # an atomic handle, made on the main thread before any work
     lock: int = 0         # a mutex handle
-    total: long = 0       # guarded by `lock`
   }
 
   # out[i] = i * i: every index written exactly once, by whichever thread claimed it
   function square(i: int, out: words) -> void { out[i] = i * i }
 
-  # count the call atomically, and add i to a shared total under the mutex
-  function tally(threads_st: mut ThreadsState, i: int, ctx: pointer) -> void {
+  # count the call atomically, and add i to a shared total under the mutex. A worker may read a
+  # state (the handles in it) but never change one - every thread runs it at once - so the total
+  # lives in what the worker is handed
+  function tally(threads_st: ThreadsState, i: int, total: words) -> void {
     Sync.add(threads_st.calls, 1)
     Sync.lock(threads_st.lock)
-    threads_st.total = threads_st.total + i
+    total[0] = total[0] + i
     Sync.unlock(threads_st.lock)
   }
 
@@ -43,10 +44,11 @@ program Threads {
 
     threads_st.calls = Sync.atomic()
     threads_st.lock = Sync.mutex()
-    Job.parallel_for(N, fn tally, null)
+    let total = words(1)
+    Job.parallel_for(N, fn tally, total)
     if Sync.get(threads_st.calls) == N { print(4) }
-    let want: long = N * (N - 1) / 2
-    if threads_st.total == want { print(5) }
+    let want = N * (N - 1) / 2
+    if total[0] == want { print(5) }
 
     let ran = words(N)
     Job.parallel_for(N, fn placed, ran)

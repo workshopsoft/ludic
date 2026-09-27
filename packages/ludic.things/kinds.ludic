@@ -19,6 +19,8 @@ export property Thing {
   sz: float = 0.0
   syaw: float = 0.0
   shared: bool = false    # the game copies it to others (a party)
+  ent: int = -1           # its handle in the table, -1 once removed
+  tab: Table<Thing> = null  # the table holding it, so a verb on the Thing alone keeps the indexes
 }
 
 export property ThingKind {

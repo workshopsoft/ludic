@@ -1,0 +1,34 @@
+# chunks.ludic - the Things of one chunk of the world, counted and let go together: what a streamed
+# world asks when a chunk is loaded or dropped. A chunk is chunk_of(x, z, TH_CHUNK_M).
+export function things_chunk(x: float, z: float) -> int { return chunk_of(x, z, TH_CHUNK_M) }
+
+export function things_chunk_count(things_st: ThingsState, chunk: int) -> int { return ix_count(things_st.th.chunks, chunk) }
+
+# every Thing standing in the chunk removed for good, the port and the facts told of each as
+# thing_remove tells them; how many went
+export function things_drop_chunk(things_st: mut ThingsState, chunk: int) -> int {
+  var n = 0
+  let rows = ix_rows(things_st.th.chunks, chunk)
+  while len(rows) > 0 {
+    thing_remove(things_st, things_st.th.tab.rec[rows[len(rows) - 1]])
+    n += 1
+  }
+  return n
+}
+
+# change detection: the tick now, the table moving on to the next - a consumer keeps what this
+# returned and asks things_changed(since: it) for what was written after
+export function things_now(things_st: mut ThingsState) -> int {
+  let t = tb_tick(things_st.th.tab)
+  tb_advance(things_st.th.tab)
+  return t
+}
+
+# every Thing a verb wrote after `since`, into the caller's list (untouched 64-row blocks skipped)
+export function things_changed(things_st: ThingsState, since: int, rows: words, out: []Thing) -> int {
+  List.clear(out)
+  let tb = things_st.th.tab
+  let n = tb_changed_since(tb, since, rows)
+  for k in 0 .. n { push(out, tb.rec[rows[k]]) }
+  return n
+}

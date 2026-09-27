@@ -15,10 +15,12 @@ function emit_init_component(e: pointer, comp: pointer, rec: Node) -> void {
   let me = itoa(MAX_ENT)
   let c = find_comp(comp)
   if (c == null) { perr(`spawn: unknown property {comp}`) }
-  let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(comp);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
+  let eb1 = ecs_base(`H_{comp}`)
+  let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds i8, ptr ");  emit(eb1);  emit(", i32 ");  emit(e);  emit("\n")
   emit("  store i8 1, ptr ");  emit(hp);  emit("\n")
   let slot = nreg()
-  emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(comp);  emit("], ptr @S_");  emit(comp);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
+  let eb2 = ecs_base(`S_{comp}`)
+  emit("  ");  emit(slot);  emit(" = getelementptr inbounds %Cmp_");  emit(comp);  emit(", ptr ");  emit(eb2);  emit(", i32 ");  emit(e);  emit("\n")
   # defaults
   var f = 0
   while f < len(c.kids) {
@@ -71,7 +73,8 @@ function emit_bind_props(model: Node, e: pointer) -> void {
   while c < len(model.kids) {
     let pname = model.kids[c].s
     let slot = nreg()
-    emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(pname);  emit("], ptr @S_");  emit(pname);  emit(", i32 0, i32 ");  emit(e);  emit("\n")
+    let eb3 = ecs_base(`S_{pname}`)
+    emit("  ");  emit(slot);  emit(" = getelementptr inbounds %Cmp_");  emit(pname);  emit(", ptr ");  emit(eb3);  emit(", i32 ");  emit(e);  emit("\n")
     let vslot = emit_alloca("ptr")
     emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
     loc_push(pname, vslot, pname)
@@ -146,7 +149,8 @@ function emit_spawn(st: Node) -> pointer {
   if (find_prefab(st.s) != null) and (ak == 0) { perr(`prefab {st.s}: unknown model {model}`) }
   if ak > 0 {
     let me = itoa(MAX_ENT)
-    let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(e);  emit("\n")
+    let eb4 = ecs_base("L_kind")
+    let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds i32, ptr ");  emit(eb4);  emit(", i32 ");  emit(e);  emit("\n")
     emit("  store i32 ");  emit(itoa(ak));  emit(", ptr ");  emit(kp);  emit("\n")
     let arch = find_arch(model)
     var c = 0
@@ -179,7 +183,8 @@ function emit_despawn(st: Node) -> void {
   # @OnDespawn: dispatch on the entity's kind and run the matching model's hook
   if len(g_ondespawn) > 0 {
     let me = itoa(MAX_ENT)
-    let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i32], ptr @L_kind, i32 0, i32 ");  emit(v.code);  emit("\n")
+    let eb5 = ecs_base("L_kind")
+    let kp = nreg();  emit("  ");  emit(kp);  emit(" = getelementptr inbounds i32, ptr ");  emit(eb5);  emit(", i32 ");  emit(v.code);  emit("\n")
     let kind = emit_bind(`load i32, ptr {kp}`)
     var i = 0
     while i < len(g_ondespawn) {
@@ -205,7 +210,8 @@ function emit_despawn(st: Node) -> void {
 function emit_attach(st: Node) -> void {
   let ev = emit_expr(st.a)
   let me = itoa(MAX_ENT)
-  let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+  let eb6 = ecs_base(`H_{st.s}`)
+  let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds i8, ptr ");  emit(eb6);  emit(", i32 ");  emit(ev.code);  emit("\n")
   let cur = emit_bind(`load i8, ptr {hp}`)
   let isnew = emit_bind(`icmp eq i8 {cur}, 0`)
   let doit = lbl("attach");  let done = lbl("attdone")
@@ -223,7 +229,8 @@ function emit_attach(st: Node) -> void {
 function emit_detach(st: Node) -> void {
   let ev = emit_expr(st.a)
   let me = itoa(MAX_ENT)
-  let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+  let eb7 = ecs_base(`H_{st.s}`)
+  let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds i8, ptr ");  emit(eb7);  emit(", i32 ");  emit(ev.code);  emit("\n")
   let cur = emit_bind(`load i8, ptr {hp}`)
   let here = emit_bind(`icmp ne i8 {cur}, 0`)
   let doit = lbl("detach");  let done = lbl("detdone")
@@ -233,7 +240,8 @@ function emit_detach(st: Node) -> void {
   let hb = ondetach_body(st.s)                                 # @OnDetach reads the outgoing value
   if (hb != null) {
     let save = nloc
-    let slot = nreg();  emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(st.s);  emit("], ptr @S_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+    let eb8 = ecs_base(`S_{st.s}`)
+    let slot = nreg();  emit("  ");  emit(slot);  emit(" = getelementptr inbounds %Cmp_");  emit(st.s);  emit(", ptr ");  emit(eb8);  emit(", i32 ");  emit(ev.code);  emit("\n")
     let vslot = emit_alloca("ptr")
     emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
     loc_push(st.s, vslot, st.s)
@@ -266,13 +274,15 @@ function emit_toggle(st: Node) -> void {
   if (st.a != null) {
     let ev = emit_expr(st.a)
     let me = itoa(MAX_ENT)
-    let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x i8], ptr @H_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+    let eb9 = ecs_base(`H_{st.s}`)
+    let hp = nreg();  emit("  ");  emit(hp);  emit(" = getelementptr inbounds i8, ptr ");  emit(eb9);  emit(", i32 ");  emit(ev.code);  emit("\n")
     emit("  store i8 ");  emit(val);  emit(", ptr ");  emit(hp);  emit("\n")
     var hb: Node = null
     if st.ival == 1 { hb = onenable_body(st.s) } else { hb = ondisable_body(st.s) }
     if (hb != null) {
       let save = nloc
-      let slot = nreg();  emit("  ");  emit(slot);  emit(" = getelementptr inbounds [");  emit(me);  emit(" x %Cmp_");  emit(st.s);  emit("], ptr @S_");  emit(st.s);  emit(", i32 0, i32 ");  emit(ev.code);  emit("\n")
+      let eb10 = ecs_base(`S_{st.s}`)
+      let slot = nreg();  emit("  ");  emit(slot);  emit(" = getelementptr inbounds %Cmp_");  emit(st.s);  emit(", ptr ");  emit(eb10);  emit(", i32 ");  emit(ev.code);  emit("\n")
       let vslot = emit_alloca("ptr")
       emit("  store ptr ");  emit(slot);  emit(", ptr ");  emit(vslot);  emit("\n")
       loc_push(st.s, vslot, st.s)

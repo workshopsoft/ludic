@@ -64,4 +64,6 @@ export property WildAnimal {
   sus_z: float = 0.0
   spook: float = 0.0      # game minutes of extra wariness after being flushed
   seen: float = 0.0       # the alert it has already reacted to
+  ent: int = -1           # its handle in the table
+  tab: Table<WildAnimal> = null  # the table holding it, so a verb on the animal alone keeps the indexes
 }

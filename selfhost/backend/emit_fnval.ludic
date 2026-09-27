@@ -185,4 +185,11 @@ function check_worker_ref(e: Node) -> void {
   var ok = len(d.kids) == s + 2 and llty(d.ty) == "void"
   if ok { ok = llty(d.kids[s].ty) == "i32" and llty(d.kids[s + 1].ty) == "ptr" }
   if not ok { perr(`fn {e.s}: a worker function takes (i: int, ctx: pointer) and returns nothing`) }
+  # every thread runs it at once: a state it is handed is read by all of them, so none may change one
+  var k = 0
+  while k < s {
+    let p = d.kids[k]
+    if p.uns == 1 { perr(`fn {e.s}: a worker runs on every core at once, so it may read {p.ty} but not change it ({p.s}: mut {p.ty}); write results into ctx, shared counts through Sync.add`) }
+    k += 1
+  }
 }
