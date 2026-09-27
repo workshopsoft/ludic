@@ -10,6 +10,17 @@ program EcsTest {
   const KIND: int = 0
   const ON: int = 1
 
+  state HookState {
+    added: int = 0
+    gone: int = 0
+    last: int = -1
+  }
+  function seen_add(hook_st: mut HookState, h: int) -> void {
+    hook_st.added += 1
+    hook_st.last = h
+  }
+  function seen_gone(hook_st: mut HookState, h: int) -> void { hook_st.gone += 1 }
+
   function toy(name: string) -> Toy {
     let t = new Toy
     t.name = name
@@ -108,6 +119,41 @@ program EcsTest {
     expect_eq(imap_get(m, 14, -1), 9)
   }
 
+  function hooks_case(hook_st: HookState) -> void {
+    let tb: Table<Toy> = table_new(2, 2)
+    tb_on_add(tb, fn seen_add)
+    tb_on_remove(tb, fn seen_gone)
+    let a = put(tb, "a", 0.0, 0.0, 1)
+    expect_eq(hook_st.last, a)
+    put(tb, "b", 0.0, 0.0, 1)
+    tb_remove(tb, a)
+    tb_remove(tb, a)
+    expect_eq(hook_st.added, 2)
+    expect_eq(hook_st.gone, 1)
+  }
+
+  # 300 rows over five blocks; a change in one block is found, the untouched blocks skipped
+  function blocks_case() -> void {
+    let tb: Table<Toy> = table_new(2, 2)
+    for i in 0 .. 300 { put(tb, "x", float(i), 0.0, 1) }
+    let seen = tb_tick(tb)
+    tb_advance(tb)
+    let out = words(0)
+    expect_eq(tb_changed_since(tb, seen, out), 0)
+    tb_set_f(tb, CX, 200, 9.0)
+    tb_set_f(tb, CX, 7, 9.0)
+    expect_eq(tb_changed_since(tb, seen, out), 2)
+    expect_eq(out[0], 7)
+    expect_eq(out[1], 200)
+    let before = tb_tick(tb)
+    tb_advance(tb)
+    tb_remove(tb, tb_handle(tb, 3))
+    expect_eq(tb_changed_since(tb, before, out), 0)   # a row moved into a gap was not written
+    expect_eq(tb_changed_since(tb, seen, out), 2)     # a removal is told by tb_on_remove
+  }
+
+  test "observers hear each add, and a remove once" (hook_st: HookState) { hooks_case(hook_st) }
+  test "change detection skips the blocks nobody wrote" () { blocks_case() }
   test "a removed handle misses, rows stay dense, a reused slot is a new handle" () { handles_case() }
   test "the grid answers nearest and within, gated, after moves" () { grid_case() }
   test "the kind index follows the setters, the gate and removals" () { index_case() }

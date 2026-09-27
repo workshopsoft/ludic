@@ -1,6 +1,8 @@
 # ludic.base/ecs_table_remove.ludic - removing a row moves the last one into its place, so the
 # rows stay dense; every index is told, and the slot's generation moves on
 export function tb_remove<T>(tb: Table<T>, h: int) -> bool {
+  if tb_row(tb, h) < 0 { return false }
+  for k in 0 .. len(tb.on_remove) { tb.on_remove[k].run(h) }
   let r = tb_row(tb, h)
   if r < 0 { return false }
   for g in 0 .. len(tb.grids) { grid_unlink(tb.grids[g], r) }
@@ -23,6 +25,8 @@ function tb_move<T>(tb: Table<T>, from: int, to: int) -> void {
   for c in 0 .. len(tb.f) { tb.f[c][to] = tb.f[c][from] }
   for c in 0 .. len(tb.i) { tb.i[c][to] = tb.i[c][from] }
   tb.slot_row[tb.ent[to] & ECS_SLOT] = to
+  let b = to >> 6
+  if tb.blk[b] < tb.changed[to] { tb.blk[b] = tb.changed[to] }
   for g in 0 .. len(tb.grids) { grid_moved(tb.grids[g], from, to) }
   for k in 0 .. len(tb.idx) { ix_moved(tb.idx[k], from, to) }
 }

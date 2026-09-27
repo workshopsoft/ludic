@@ -12,13 +12,17 @@ export property Table<T> {
   i: []words = null           # hot int columns
   added: words = null         # row -> the tick it was added at
   changed: words = null       # row -> the tick a setter last wrote it at
+  blk: words = null           # 64-row block -> the newest tick any row in it was added or written at
   tick: int = 1
   slot_gen: words = null      # slot -> generation
   slot_row: words = null      # slot -> row, -1 while free
   free: words = null
   grids: []Grid = null
   idx: []IntIndex = null
+  on_add: []TbHook = null     # observers: told a handle as its row is made, and before it goes
+  on_remove: []TbHook = null
 }
+
 
 # a table of nf float and ni int columns, every value 0 in a new row
 export function table_new<T>(nf: int, ni: int) -> Table<T> {
@@ -31,11 +35,14 @@ export function table_new<T>(nf: int, ni: int) -> Table<T> {
   for c in 0 .. ni { push(tb.i, words(0)) }
   tb.added = words(0)
   tb.changed = words(0)
+  tb.blk = words(0)
   tb.slot_gen = words(0)
   tb.slot_row = words(0)
   tb.free = words(0)
   tb.grids = new []Grid
   tb.idx = new []IntIndex
+  tb.on_add = new []TbHook
+  tb.on_remove = new []TbHook
   return tb
 }
 
@@ -75,5 +82,15 @@ export function tb_add<T>(tb: Table<T>, r: T) -> int {
   tb.n += 1
   for g in 0 .. len(tb.grids) { grid_grow(tb.grids[g]) }
   for k in 0 .. len(tb.idx) { ix_grow(tb.idx[k]) }
+  tb_stamp(tb, tb.n - 1)
+  for k in 0 .. len(tb.on_add) { tb.on_add[k].run(h) }
   return h
+}
+
+# the row's tick, and its block's: what change detection reads
+function tb_stamp<T>(tb: Table<T>, row: int) -> void {
+  tb.changed[row] = tb.tick
+  let b = row >> 6
+  while len(tb.blk) <= b { push(tb.blk, 0) }
+  tb.blk[b] = tb.tick
 }

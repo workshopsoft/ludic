@@ -5,7 +5,7 @@ export function tb_i<T>(tb: Table<T>, c: int, row: int) -> int { return tb.i[c][
 
 export function tb_set_f<T>(tb: Table<T>, c: int, row: int, v: float) -> void {
   tb.f[c][row] = v
-  tb.changed[row] = tb.tick
+  tb_stamp(tb, row)
   for g in 0 .. len(tb.grids) {
     let gr = tb.grids[g]
     if gr.cx == c or gr.cz == c { tb_grid_refile(tb, gr, row) }
@@ -16,7 +16,7 @@ export function tb_set_f<T>(tb: Table<T>, c: int, row: int, v: float) -> void {
 export function tb_set_xz<T>(tb: Table<T>, cx: int, cz: int, row: int, x: float, z: float) -> void {
   tb.f[cx][row] = x
   tb.f[cz][row] = z
-  tb.changed[row] = tb.tick
+  tb_stamp(tb, row)
   for g in 0 .. len(tb.grids) {
     let gr = tb.grids[g]
     if gr.cx == cx or gr.cz == cz or gr.cx == cz or gr.cz == cx { tb_grid_refile(tb, gr, row) }
@@ -25,7 +25,7 @@ export function tb_set_xz<T>(tb: Table<T>, cx: int, cz: int, row: int, x: float,
 
 export function tb_set_i<T>(tb: Table<T>, c: int, row: int, v: int) -> void {
   tb.i[c][row] = v
-  tb.changed[row] = tb.tick
+  tb_stamp(tb, row)
   for g in 0 .. len(tb.grids) { if tb.grids[g].gate == c { tb_grid_refile(tb, tb.grids[g], row) } }
   for k in 0 .. len(tb.idx) {
     let ix = tb.idx[k]
@@ -35,12 +35,12 @@ export function tb_set_i<T>(tb: Table<T>, c: int, row: int, v: int) -> void {
 
 # a row written without a setter (tb.f / tb.i directly, for speed) is refiled everywhere by this
 export function tb_refile<T>(tb: Table<T>, row: int) -> void {
-  tb.changed[row] = tb.tick
+  tb_stamp(tb, row)
   for g in 0 .. len(tb.grids) { tb_grid_refile(tb, tb.grids[g], row) }
   for k in 0 .. len(tb.idx) { tb_ix_refile(tb, tb.idx[k], row) }
 }
 
-export function tb_mark<T>(tb: Table<T>, row: int) -> void { tb.changed[row] = tb.tick }
+export function tb_mark<T>(tb: Table<T>, row: int) -> void { tb_stamp(tb, row) }
 
 function tb_gate_on<T>(tb: Table<T>, gate: int, row: int) -> bool { return gate < 0 or tb.i[gate][row] != 0 }
 
@@ -55,12 +55,22 @@ function tb_ix_refile<T>(tb: Table<T>, ix: IntIndex, row: int) -> void {
 # change detection: the rows a setter wrote after `since`, into `out` (cleared first); no allocation
 export function tb_changed_since<T>(tb: Table<T>, since: int, out: words) -> int {
   List.clear(out)
-  for r in 0 .. tb.n { if tb.changed[r] > since { push(out, r) } }
+  for b in 0 .. len(tb.blk) {
+    if tb.blk[b] <= since { continue }
+    var end = b * 64 + 64
+    if end > tb.n { end = tb.n }
+    for r in b * 64 .. end { if tb.changed[r] > since { push(out, r) } }
+  }
   return len(out)
 }
 
 export function tb_added_since<T>(tb: Table<T>, since: int, out: words) -> int {
   List.clear(out)
-  for r in 0 .. tb.n { if tb.added[r] > since { push(out, r) } }
+  for b in 0 .. len(tb.blk) {
+    if tb.blk[b] <= since { continue }
+    var end = b * 64 + 64
+    if end > tb.n { end = tb.n }
+    for r in b * 64 .. end { if tb.added[r] > since { push(out, r) } }
+  }
   return len(out)
 }
