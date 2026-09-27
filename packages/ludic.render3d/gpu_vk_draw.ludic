@@ -1416,15 +1416,26 @@ function gvk_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
   return true
 }
 
-# a program handle for a variant; the key is gpu_program's, so gpu_program_key works on both
+# A variant is made once and shared: a program is immutable here, so every actor asking for the
+# one it wants (actor.ludic, one per actor) gets the same handle, not its own modules and pipelines.
 function gvk_program_new(render3d_st: mut Render3dState, vs: string, fs: string, defines: string) -> int {
-  render3d_st.gvk_prog_counter += 1
-  let p = render3d_st.gvk_prog_counter
   let key = `{vs}|{fs}|{Text.replace(defines, "\n", ";")}`
   if render3d_st.gpu_prog_ids == null { render3d_st.gpu_prog_ids = new []int;  render3d_st.gpu_prog_keys = new []string }
+  for i in 0 .. len(render3d_st.gpu_prog_keys) {
+    if render3d_st.gpu_prog_keys[i] == key {
+      free(key)
+      return render3d_st.gpu_prog_ids[i]
+    }
+  }
+  render3d_st.gvk_prog_counter += 1
+  let p = render3d_st.gvk_prog_counter
   push(render3d_st.gpu_prog_ids, p)
   push(render3d_st.gpu_prog_keys, key)
-  if not gvk_program(render3d_st, p, key, render3d_st.gvk_spv_dir) { return 0 }
+  # a variant that cannot be made stays 0 for everyone who asks for it later
+  if not gvk_program(render3d_st, p, key, render3d_st.gvk_spv_dir) {
+    render3d_st.gpu_prog_ids[len(render3d_st.gpu_prog_ids) - 1] = 0
+    return 0
+  }
   return p
 }
 
