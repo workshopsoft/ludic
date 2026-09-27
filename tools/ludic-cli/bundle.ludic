@@ -283,8 +283,27 @@ function bundle_natives_mac(contents: pointer, exe: pointer) -> bool {
       err(`ludic bundle: could not place {g_built_natives[i]}\n`)
       return false
     }
+    bundle_native_notices(g_built_natives[i], `{contents}/Resources`)
   }
   return true
+}
+
+# a path with every backslash made a slash (a Windows path from the compiler)
+function fwd_path(p: pointer) -> pointer {
+  var out = ""
+  var i = 0
+  while p[i] != 0 {
+    if p[i] == 92 { out = out + "/" } else { out = out + p[i..i + 1] }
+    i += 1
+  }
+  return out
+}
+
+# a native library's licence goes with every copy of it: the package's native/LICENSE* files,
+# found from the library's own path (<package>/lib/<target>/<file>)
+function bundle_native_notices(lib: pointer, dest: pointer) -> void {
+  let pkg = dir_of_path(dir_of_path(dir_of_path(fwd_path(lib))))
+  shell(`cp "{pkg}"/native/LICENSE* "{dest}/" 2>/dev/null`)
 }
 
 # copy the .dll files ludicc wrote into <exe>.natives beside the executable
@@ -297,6 +316,7 @@ function bundle_natives_win(list: pointer, root: pointer) -> bool {
       err(`ludic bundle: could not place {libs[i]}\n`)
       return false
     }
+    if libs[i] != "" { bundle_native_notices(fwd_path(libs[i]), root) }
   }
   return true
 }
