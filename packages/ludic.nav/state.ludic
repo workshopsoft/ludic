@@ -16,6 +16,7 @@ export property NavConfig {
   radius: float = 0.35
   climb: float = 0.55
   slope: float = 45.0
+  detail: float = 1.5   # the detail mesh's samples, metres apart (at least 0.9: 0 took one small test to 3.5 GB)
 }
 
 # what a mesh is built from: v holds nv points (x, y, z) and t nt triangles (three indices each);
@@ -38,6 +39,8 @@ export state NavState {
   nv_out: []float = floats(NAV_CORNERS * 3)
   nv_count: int = 0
   nv_near: []float = floats(3)
+  nv_cfg: []float = floats(7)      # the configuration handed to the shim, filled in place per build
+  nv_empty: []float = floats(1)    # what the shim is handed for no cylinders or no footprints
 }
 function nv_none() -> []pointer {
   let m = new []pointer
@@ -54,6 +57,9 @@ function nv_set(nav_st: mut NavState, kind: int, h: pointer) -> bool {
   nav_st.nv_meshes[kind] = h
   return h != null
 }
+
+# one kind's mesh let go (a bake writes each kind and drops it before the next)
+export function nav_drop(nav_st: mut NavState, kind: int) -> void { nv_set(nav_st, kind, null) }
 
 # every mesh let go: a new map, or the world closed
 export function nav_reset(nav_st: mut NavState) -> void {

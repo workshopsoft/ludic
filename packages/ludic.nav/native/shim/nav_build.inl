@@ -1,6 +1,7 @@
 // nav_build.inl - Recast's pipeline, shared by a whole mesh and a tile: rasterize the triangles,
 // filter, mark what nothing stands in, erode, regions, contours, polygons, detail, Detour's data.
-// c[] is the configuration: cell size, cell height, agent height, radius, max climb, max slope.
+// c[] is the configuration: cell size, cell height, agent height, radius, max climb, max slope, and
+// the detail mesh's sample spacing (at least 0.9 m, Recast's own limit; 0 grew without bound)
 
 // cylinders (x, y, z, r, h each) no agent may stand in: trunks, posts, tents
 static void nav_mark_cylinders(rcContext &ctx, rcCompactHeightfield &chf, const float *cyl, int nc) {
@@ -37,7 +38,7 @@ static void nav_config(rcConfig &cfg, const float *c) {
   cfg.minRegionArea = 8 * 8;
   cfg.mergeRegionArea = 20 * 20;
   cfg.maxVertsPerPoly = 6;
-  cfg.detailSampleDist = cfg.cs * 6.0f;
+  cfg.detailSampleDist = c[6] > 0.9f ? c[6] : 0.9f;
   cfg.detailSampleMaxError = cfg.ch;
 }
 
