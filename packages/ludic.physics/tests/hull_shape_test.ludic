@@ -1,0 +1,44 @@
+# hull_shape_test.ludic - a rock's shape: a convex hull of points, scaled for one boulder and
+# turned by its yaw the way a renderer turns an instance (x' = cos x + sin z, z' = -sin x + cos z)
+import "ludic.physics"
+import "ludic.base"
+program HullShapeTest {
+  numbers float
+
+  # a cube two metres across, its centre two metres along x from its origin
+  function cube(physics_st: mut PhysicsState) -> int {
+    let v = floats(8 * 3)
+    for i in 0 .. 8 {
+      v[i * 3] = 2.0 + float(i % 2) * 2.0 - 1.0
+      v[i * 3 + 1] = float((i / 2) % 2) * 2.0 - 1.0
+      v[i * 3 + 2] = float(i / 4) * 2.0 - 1.0
+    }
+    return phys_convex(physics_st, v, 8)
+  }
+  function down(physics_st: mut PhysicsState, x: float, z: float) -> PhysHit { return phys_ray(physics_st, x, 10.0, z, 0.0, -20.0, 0.0, PHYS_M_ALL) }
+
+  test "a hull stands where its points are, and too few points are no shape" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 16, 1))
+    phys_static_add(physics_st, cube(physics_st), 0.0, 0.0, 0.0, 0.0)
+    phys_settle(physics_st)
+    let h = down(physics_st, 2.0, 0.0)
+    expect(h.body >= 0)
+    expect(Math.abs(h.y - 1.0) < 0.01)
+    expect(down(physics_st, 0.0, 0.0).body < 0)
+    expect_eq(phys_convex(physics_st, floats(9), 3), -1)
+    phys_close(physics_st)
+  }
+
+  test "scaled twice as big, and turned a quarter the renderer's way" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 16, 1))
+    phys_static_add(physics_st, phys_scaled(physics_st, cube(physics_st), 2.0), 0.0, 0.0, 0.0, 1.5707963)
+    phys_settle(physics_st)
+    # (4, 0, 0) turned by +90 degrees about y is (0, 0, -4): x' = cos x + sin z, z' = -sin x + cos z
+    let h = down(physics_st, 0.0, -4.0)
+    expect(h.body >= 0)
+    expect(Math.abs(h.y - 2.0) < 0.01)
+    expect(down(physics_st, 4.0, 0.0).body < 0)
+    expect(down(physics_st, 0.0, 4.0).body < 0)
+    phys_close(physics_st)
+  }
+}
