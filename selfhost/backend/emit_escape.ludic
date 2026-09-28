@@ -44,6 +44,7 @@ var g_es_calls_f: []int = new []int                 # direct calls, caller -> ca
 var g_es_calls_t: []int = new []int
 var g_es_ln: []pointer = new []pointer              # the current function's locals and their classes
 var g_es_lc: []int = new []int
+var g_es_lt: []pointer = new []pointer              # ... and their types, where known
 var g_es_cur: int = -1
 var g_es_heap: int = -1                             # the one class for globals, states and the unknown
 
@@ -73,7 +74,78 @@ function es_bind_local(name: pointer) -> int {
   let n = es_new(0)
   push(g_es_ln, name)
   push(g_es_lc, n)
+  push(g_es_lt, null)
   return n
+}
+
+# a value of one of these types holds no reference: it takes part in no flow and no store, so a
+# number copied out of a frame's list into a state's does not make the list kept
+function es_prim(t: pointer) -> bool {
+  if t == null { return false }
+  return (t == "int") or (t == "float") or (t == "long") or (t == "double") or (t == "fixed") or (t == "bool") or (t == "byte")
+}
+function es_elem_of(t: pointer) -> pointer {
+  if t == null { return null }
+  if (t == "words") { return "int" }
+  if (t == "floats") { return "float" }
+  if (t == "doubles") { return "double" }
+  if (t == "fixeds") { return "fixed" }
+  if len(t) > 2 and t[0] == '[' and t[1] == ']' { return t[2..len(t)] }
+  return null
+}
+function es_local_ty(name: pointer) -> pointer {
+  var i = len(g_es_ln) - 1
+  while i >= 0 { if (g_es_ln[i] == name) { return g_es_lt[i] };  i -= 1 }
+  return null
+}
+# the static type of an expression, as far as the analysis can tell without emitting it
+function es_type(e: Node) -> pointer {
+  if e == null { return null }
+  let k = e.kind
+  if k == E_INT { return "int" }
+  if k == E_FLOAT { return "float" }
+  if k == E_BOOL { return "bool" }
+  if k == E_STR or k == E_SLICE { return "string" }
+  if k == E_ID {
+    if es_local(e.s) >= 0 { return es_local_ty(e.s) }
+    let g = find_global(e.s)
+    if g != null { return g.ty }
+    return null
+  }
+  if k == E_MEMBER {
+    let bt = es_type(e.a)
+    if bt != null {
+      let c = find_comp(bt)
+      if c != null { return field_type(c, e.s) }
+    }
+    return null
+  }
+  if k == E_INDEX { return es_elem_of(es_type(e.a)) }
+  if k == E_NEW { return e.s }
+  if k == E_BIN {
+    let o = e.s
+    if (o == "==") or (o == "!=") or (o == "<") or (o == ">") or (o == "<=") or (o == ">=") or (o == "and") or (o == "or") { return "bool" }
+    if (o == "+") and fr_is_textish(e) { return "string" }
+    let at = es_type(e.a)
+    if es_prim(at) { return at }
+    return null
+  }
+  if k == E_CALL and e.a != null and e.a.kind == E_ID {
+    let nm = e.a.s
+    if (nm == "len") { return "int" }
+    if (nm == "string") { return "string" }
+    if (nm == "int") or (nm == "float") or (nm == "long") or (nm == "double") or (nm == "fixed") { return nm }
+    if (nm == "words") or (nm == "floats") or (nm == "doubles") or (nm == "fixeds") { return nm }
+    let fi = es_fn(nm)
+    if fi >= 0 { return g_es_fnode[fi].ty }
+  }
+  return null
+}
+# a value's class, or -1 when its type holds no reference
+function es_ref(e: Node) -> int {
+  let v = es_val(e)
+  if es_prim(es_type(e)) { return -1 }
+  return v
 }
 function es_fn(name: pointer) -> int {
   let n = ck_tab_get(g_es_fk, g_es_fv, name)
@@ -135,14 +207,14 @@ function es_val(e: Node) -> int {
     let s = es_site(e)
     if e.a != null and e.a.kids != null {
       var i = 0
-      while i < len(e.a.kids) { es_store(es_val(e.a.kids[i].a), s);  i += 1 }
+      while i < len(e.a.kids) { es_store(es_ref(e.a.kids[i].a), s);  i += 1 }
     }
     return s
   }
   if k == E_LIST {
     let s = es_site(e)
     var i = 0
-    while i < len(e.kids) { es_store(es_val(e.kids[i]), s);  i += 1 }
+    while i < len(e.kids) { es_store(es_ref(e.kids[i]), s);  i += 1 }
     return s
   }
   if k == E_CALL { return es_call(e) }
@@ -182,7 +254,7 @@ function es_call(e: Node) -> int {
     }
     if (nm == "push") and len(e.kids) >= 2 {
       let t = es_val(e.kids[0])
-      es_store(es_val(e.kids[1]), t)
+      es_store(es_ref(e.kids[1]), t)
       # the grown buffer is the list's own
       push(g_es_site, e);  push(g_es_site_cls, t);  push(g_es_site_fn, g_es_cur);  push(g_es_site_aok, g_es_aok > 0);  push(g_es_site_grow, true)
       return -1
@@ -210,8 +282,10 @@ function es_call(e: Node) -> int {
       let d = g_es_fnode[f]
       var i = 0
       while i < len(e.kids) {
-        let v = es_val(e.kids[i])
-        if i < len(d.kids) and d.kids[i].kind == N_PARAM { es_flow(v, g_es_fparam[f] + i) } else { es_escape(v) }
+        let v = es_ref(e.kids[i])
+        if i < len(d.kids) and d.kids[i].kind == N_PARAM {
+          if not es_prim(d.kids[i].ty) { es_flow(v, g_es_fparam[f] + i) }
+        } else { es_escape(v) }
         i += 1
       }
       let r = es_new(0)
@@ -236,8 +310,10 @@ function es_call(e: Node) -> int {
       var i = 0
       let d = g_es_fnode[f]
       while i < len(e.kids) {
-        let v = es_val(e.kids[i])
-        if i < len(d.kids) and d.kids[i].kind == N_PARAM { es_flow(v, g_es_fparam[f] + i) } else { es_escape(v) }
+        let v = es_ref(e.kids[i])
+        if i < len(d.kids) and d.kids[i].kind == N_PARAM {
+          if not es_prim(d.kids[i].ty) { es_flow(v, g_es_fparam[f] + i) }
+        } else { es_escape(v) }
         i += 1
       }
       let r = es_new(0)
@@ -276,12 +352,17 @@ function es_walk_in(n: Node) -> void {
   let k = n.kind
   if k == S_LET or k == S_ASSIGN or k == S_RETURN or k == S_EXPR or k == S_EMIT { g_es_stmt = n }
   if k == S_LET {
+    var t = n.ty
+    if t == null { t = es_type(n.a) }
+    let fresh = es_local(n.s) < 0
     let c = es_bind_local(n.s)
+    if fresh { g_es_lt[len(g_es_lt) - 1] = t }
+    if es_prim(t) { es_val(n.a);  return }
     es_flow(es_val(n.a), c)
     return
   }
   if k == S_ASSIGN {
-    let v = es_val(n.b)
+    let v = es_ref(n.b)
     let t = n.a
     if t != null and t.kind == E_ID {
       let c = es_local(t.s)
@@ -292,11 +373,14 @@ function es_walk_in(n: Node) -> void {
     return
   }
   if k == S_RETURN {
-    if n.a != null and g_es_cur >= 0 { es_flow(es_val(n.a), g_es_fret[g_es_cur]) }
+    if n.a != null and g_es_cur >= 0 { es_flow(es_ref(n.a), g_es_fret[g_es_cur]) }
     return
   }
   if k == S_FOR {
-    es_bind_local(n.s)
+    if es_local(n.s) < 0 {
+      es_bind_local(n.s)
+      g_es_lt[len(g_es_lt) - 1] = "int"
+    }
     es_val(n.a);  es_val(n.b)
     es_walk(n.c)
     return
@@ -403,9 +487,10 @@ function escape_analyse() -> void {
     g_es_cur = f
     g_es_ln = new []pointer
     g_es_lc = new []int
+    g_es_lt = new []pointer
     var p = 0
     while p < len(d.kids) {
-      if d.kids[p].kind == N_PARAM { push(g_es_ln, d.kids[p].s);  push(g_es_lc, g_es_fparam[f] + p) }
+      if d.kids[p].kind == N_PARAM { push(g_es_ln, d.kids[p].s);  push(g_es_lc, g_es_fparam[f] + p);  push(g_es_lt, d.kids[p].ty) }
       p += 1
     }
     es_walk(d.a)
@@ -417,6 +502,7 @@ function escape_analyse() -> void {
   while li < len(g_onlisten) {
     g_es_ln = new []pointer
     g_es_lc = new []int
+    g_es_lt = new []pointer
     es_walk(g_onlisten[li].a)
     li += 1
   }
