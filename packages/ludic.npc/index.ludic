@@ -4,6 +4,7 @@ module ludic_npc uses ludic_base
 numbers float
 import "ludic.base"
 import "defs.ludic"
+import "pool.ludic"
 import "person.ludic"
 import "port.ludic"
 import "ground.ludic"
