@@ -812,6 +812,18 @@ function alloc_fence_rewarm_case() -> void {
   if (rc == 86) and (head == "alloc-fence: frame 3000 kept +16 B (1 made, 0 freed)") { ok(lbl) } else { bad2(lbl, `rc={string(rc)} head=[{head}]`) }
 }
 
+function alloc_fence_sites_case() -> void {
+  let lbl = "alloc_fence_sites.ludic (two lines take turns keeping memory, one through a runtime helper; each report charges its own line, never the one that allocated last)"
+  let b = `{tmp_dir()}/e_alloc_fence_sites`
+  if not game_build_ok("bin/ludicc", "examples/lang/alloc_fence_sites.ludic", b) { bad2(lbl, "did not build"); return }
+  let e = `{tmp_dir()}/afs.err`
+  sh(`R3D_ALLOC_FENCE=warn R3D_ALLOC_WARM_MAX=10 {b} < /dev/null > /dev/null 2>{e}`)
+  let texts = capture_line(`grep -c '+32 B  entry  examples/lang/alloc_fence_sites.ludic:11  str_repeat' {e}`)
+  let boxes = capture_line(`grep -c '+16 B  entry  examples/lang/alloc_fence_sites.ludic:12  new Box' {e}`)
+  let wrong = capture_line(`grep -c '+32 B  entry  examples/lang/alloc_fence_sites.ludic:12' {e}`)
+  if (texts == "25") and (boxes == "25") and (wrong == "0") { ok(lbl) } else { bad2(lbl, `texts={texts} boxes={boxes} charged-to-the-box-line={wrong}`) }
+}
+
 function alloc_fence_leak_case() -> void {
   let lbl = "alloc_fence_leak.ludic (a frame that keeps a record fails the run with exit 86 and names its line; count mode runs on)"
   let b = `{tmp_dir()}/e_alloc_fence_leak`
@@ -1176,6 +1188,7 @@ function cmd_dev_test() -> int {
   alloc_fence_leak_case()
   alloc_fence_unbounded_case()
   alloc_fence_rewarm_case()
+  alloc_fence_sites_case()
   alloc_fence_auto_case()
   arena_pool_case()
   arena_fnval_case()

@@ -1,0 +1,17 @@
+# alloc_fence_sites.ludic - 25.1: each block is charged to the line that made it. Two lines take turns
+# keeping memory, one through a runtime helper (Text.repeat) and one a record; every frame is judged
+# (R3D_ALLOC_FENCE=warn R3D_ALLOC_WARM_MAX=10) and each report names its own line - a helper once took
+# the site of whatever had allocated last
+program AllocFenceSites {
+  property Box { v: int = 0 }
+  property Keep { texts: []string = new []string, boxes: []Box = new []Box }
+  entry {
+    let k = new Keep
+    for f in 0 .. 60 {
+      if f % 2 == 0 { push(k.texts, Text.repeat("ab", 12)) }
+      else { push(k.boxes, new Box { v: f }) }
+      Mem.frame()
+    }
+    print(`texts {len(k.texts)} boxes {len(k.boxes)}`)
+  }
+}
