@@ -15,54 +15,69 @@ program Steady {
   function scene_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void { }
   function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
 
+  # The heap once the device is idle and MoltenVK's completion handlers, which release a finished
+  # command buffer on their own thread, have caught up: two reads 20 ms apart that agree. Read at
+  # once, a machine busy with other work showed ~80 KB of buffers still being handed back.
+  function settled(render3d_st: Render3dState) -> long {
+    Vk.device_wait_idle(render3d_st.gvk_dev)
+    var last = Vk.heap_bytes()
+    for k in 0 .. 100 {
+      Time.sleep_us(20000)
+      let now = Vk.heap_bytes()
+      if now == last { return now }
+      last = now
+    }
+    return last
+  }
+
   # bytes gained by the heap over n rounds of the buffer path, after a warm-up of its own
   function buffer_rounds(render3d_st: mut Render3dState, b: int, n: int) -> long {
-    let before = Vk.heap_bytes()
+    let before = settled(render3d_st)
     for i in 0 .. n {
       gpu_buffer_upload(render3d_st, b, 4096 + (i % 16) * 4096, null, GPU_DYNAMIC)
       gpu_buffer_free(render3d_st, b)
     }
-    return Vk.heap_bytes() - before
+    return settled(render3d_st) - before
   }
   function frame_rounds(render3d_st: mut Render3dState, n: int) -> long {
-    let before = Vk.heap_bytes()
+    let before = settled(render3d_st)
     for i in 0 .. n {
       r3d_frame(render3d_st, float(i) / 60.0)
       r3d_present(render3d_st)
     }
-    return Vk.heap_bytes() - before
+    return settled(render3d_st) - before
   }
 
   # bytes gained over n loads and releases of one model: its parse, its meshes and its textures
   function model_rounds(render3d_st: mut Render3dState, n: int) -> long {
-    let before = Vk.heap_bytes()
+    let before = settled(render3d_st)
     for i in 0 .. n {
       let m = gltf_load(render3d_st, "packages/ludic.lab/plate", "plate.gltf", "plate")
       model_release(render3d_st, m)
     }
-    return Vk.heap_bytes() - before
+    return settled(render3d_st) - before
   }
 
   # bytes gained over n actors placed and released (actor_release): the records come round again
   function actor_rounds(render3d_st: mut Render3dState, m: Model, n: int) -> long {
-    let before = Vk.heap_bytes()
+    let before = settled(render3d_st)
     for i in 0 .. n {
       let a = actor_new(render3d_st, m)
       actor_place(a, float(i % 7), 0.0, 0.0, 0.0)
       actor_hide_part(a, "none", true)
       actor_release(render3d_st, a)
     }
-    return Vk.heap_bytes() - before
+    return settled(render3d_st) - before
   }
 
   # bytes gained over n parses of a glTF document, each freed whole (Json.free_all): strings too
-  function parse_rounds(text: string, n: int) -> long {
-    let before = Vk.heap_bytes()
+  function parse_rounds(render3d_st: Render3dState, text: string, n: int) -> long {
+    let before = settled(render3d_st)
     for i in 0 .. n {
       let doc = Json.parse(text)
       Json.free_all(doc)
     }
-    return Vk.heap_bytes() - before
+    return settled(render3d_st) - before
   }
 
   handler Boot(render3d_st: mut Render3dState) phase Start {
@@ -87,13 +102,13 @@ program Steady {
     actor_rounds(render3d_st, am, 20)
     let grew_a = actor_rounds(render3d_st, am, 2000)
     let text = Fs.read_text("packages/ludic.lab/plate/plate.gltf")
-    parse_rounds(text, 20)
-    let grew_p = parse_rounds(text, 200)
+    parse_rounds(render3d_st, text, 20)
+    let grew_p = parse_rounds(render3d_st, text, 200)
     print(`steady: the buffer path gained {grew_b} bytes over 5000 rounds, the frame {grew_f} over 600, a glTF parsed and freed {grew_p} over 200, a model loaded and let go {grew_m} over 200, an actor placed and released {grew_a} over 2000`)
     # a few KB of slack for what the system's own libraries keep (Metal's caches, the allocator)
     var ok = grew_b < 16384
     if not ok { print("steady: FAILED - releasing and making a buffer again leaves memory behind") }
-    if grew_f >= 65536 {
+    if grew_f >= 4096 {
       ok = false
       print("steady: FAILED - a frame leaves memory behind")
     }
