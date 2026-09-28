@@ -1,0 +1,100 @@
+# emit_resource.ludic — 25.5e: a resource (a Jolt shape, a body, a GPU buffer) is a handle a function
+# @creates(Kind) makes and one @releases(Kind) gives back. A handle made and forgotten - the result of
+# a creating call thrown away, or bound to a local that is never released, passed on, stored or
+# returned - is never given back: an `rdrop` line, and resource_drops, which ludic deps ratchets.
+# (Two owners and a record's owned fields - the rest of 25.5e - wait on a resource type.)
+
+var g_res_make_fn: []pointer = new []pointer
+var g_res_make_kind: []pointer = new []pointer
+var g_res_free_fn: []pointer = new []pointer
+var g_res_free_kind: []pointer = new []pointer
+var g_res_pending_make: pointer = null
+var g_res_pending_free: pointer = null
+
+function res_kind_made_by(name: pointer) -> pointer {
+  var i = 0
+  while i < len(g_res_make_fn) { if (g_res_make_fn[i] == name) { return g_res_make_kind[i] };  i += 1 }
+  return null
+}
+
+# the creating call an expression is, if it is one
+function res_made(e: Node) -> pointer {
+  if e == null or e.kind != E_CALL or e.a == null or e.a.kind != E_ID or e.a.s == null { return null }
+  return res_kind_made_by(e.a.s)
+}
+
+# is the local `name` handed on anywhere in n: an argument, a stored or returned value, an assignment's
+# right side (anything but a read into a comparison or an arithmetic)
+function res_handed(n: Node, name: pointer) -> bool {
+  if n == null { return false }
+  if n.kind == E_CALL and n.kids != null {
+    var i = 0
+    while i < len(n.kids) {
+      let a = n.kids[i]
+      if a != null and a.kind == E_ID and (a.s == name) { return true }
+      i += 1
+    }
+  }
+  if (n.kind == S_RETURN or n.kind == S_ASSIGN) {
+    var v = n.a
+    if n.kind == S_ASSIGN { v = n.b }
+    if v != null and v.kind == E_ID and (v.s == name) { return true }
+  }
+  if n.kind == E_REC and n.kids != null {
+    var j = 0
+    while j < len(n.kids) {
+      let f = n.kids[j]
+      if f.a != null and f.a.kind == E_ID and (f.a.s == name) { return true }
+      j += 1
+    }
+  }
+  if n.kind == E_LIST and n.kids != null {
+    var l = 0
+    while l < len(n.kids) { if n.kids[l].kind == E_ID and (n.kids[l].s == name) { return true };  l += 1 }
+  }
+  if res_handed(n.a, name) or res_handed(n.b, name) or res_handed(n.c, name) { return true }
+  if n.kids != null {
+    var k = 0
+    while k < len(n.kids) { if res_handed(n.kids[k], name) { return true };  k += 1 }
+  }
+  return false
+}
+
+var g_res_drops: int = 0
+function res_walk(f: pointer, d: Node, n: Node) -> void {
+  if n == null { return }
+  if n.kind == S_EXPR and n.a != null {
+    let kind = res_made(n.a)
+    if kind != null {
+      deps_line(f, `rdrop {kind} {d.file}:{itoa(n.line)} {d.s} thrown-away`)
+      g_res_drops += 1
+    }
+  }
+  if n.kind == S_LET and n.s != null {
+    let kind = res_made(n.a)
+    if kind != null and not res_handed(d.a, n.s) {
+      deps_line(f, `rdrop {kind} {d.file}:{itoa(n.line)} {d.s} {n.s}-never-handed-on`)
+      g_res_drops += 1
+    }
+  }
+  res_walk(f, d, n.a)
+  res_walk(f, d, n.b)
+  res_walk(f, d, n.c)
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) { res_walk(f, d, n.kids[i]);  i += 1 }
+  }
+}
+
+function deps_resources(f: pointer) -> void {
+  g_res_drops = 0
+  if len(g_res_make_fn) > 0 {
+    var i = 0
+    while i < len(prog) {
+      let d = prog[i]
+      if (d.kind == N_FN or d.kind == N_SYS) and d.file != null and not is_runtime_file(d.file) { res_walk(f, d, d.a) }
+      i += 1
+    }
+  }
+  deps_line(f, `resource_drops {itoa(g_res_drops)}`)
+}

@@ -971,6 +971,12 @@ function parse_one_decl() -> void {
       eat_op(")")
       g_aok_pending = true                         # a global: `export` parses the declaration one call down
     }
+    else if a == "creates" or a == "releases" {     # 25.5e: @creates(PhysShape) / @releases(PhysShape)
+      eat_op("(")
+      let kind = eat_id()
+      eat_op(")")
+      if a == "creates" { g_res_pending_make = kind } else { g_res_pending_free = kind }
+    }
     else if a == "ClearColor" {                    # @ClearColor(colour) — Render auto-clear + auto-present (#86)
       eat_op("(")
       g_clear_color = expr()                        # a literal, a `const`, or a Color.Name — resolved when emitted
@@ -1114,6 +1120,8 @@ function parse_one_decl() -> void {
     if is_unsafe { f.uns = 1 }
     if is_det { push(g_det_names, f.s) }
     if g_aok_pending { push(g_alloc_ok_names, f.s);  g_aok_pending = false }
+    if g_res_pending_make != null { push(g_res_make_fn, f.s);  push(g_res_make_kind, g_res_pending_make);  g_res_pending_make = null }
+    if g_res_pending_free != null { push(g_res_free_fn, f.s);  push(g_res_free_kind, g_res_pending_free);  g_res_pending_free = null }
     if is_export { f.ival = 1 }
     if (sys_phase != null) { push(g_mod_sys_fn, f.s);  push(g_mod_sys_phase, sys_phase) }   # #64: register at load
     if (esys_comp != null) { push(g_esys_comp, esys_comp);  push(g_esys_fn, f.s);  push(g_esys_phase, esys_phase) }   # #62: package engine system

@@ -19,6 +19,7 @@
 #   ludic deps --allocs                  every allocation a frame can come to (25.2), with its chain from a root
 #   ludic deps --keeps                   what frame code makes and keeps past its frame (25.3), and where
 #   ludic deps --births                  what is made, kept by nothing and not the arena's: never given back
+#   ludic deps --resources               a handle a @creates(Kind) function made, thrown away or never handed on
 #
 # dependencies: module pairs (a, b) where a uses something of b, not counting b when b uses no
 # other module (a leaf); largest_cycle: the largest set of modules that all reach each other, not
@@ -57,6 +58,8 @@ var dp_fkeeps: []pointer = new []pointer          # 25.3: `fkeep <kind> <file:li
 var dp_frame_keeps: int = 0
 var dp_fbirths: []pointer = new []pointer         # 25.2: `fbirth <kind> <file:line> <fn> <where>`
 var dp_birth_leaks: int = 0
+var dp_rdrops: []pointer = new []pointer          # 25.5e: `rdrop <kind> <file:line> <fn> <how>`
+var dp_resource_drops: int = 0
 var dp_wreach_n: int = 0
 var dp_wreach_at: pointer = ""
 
@@ -98,6 +101,7 @@ function dp_load(path: pointer) -> bool {
   dp_fallocs = new []pointer;  dp_frame_allocs = 0
   dp_fkeeps = new []pointer;  dp_frame_keeps = 0
   dp_fbirths = new []pointer;  dp_birth_leaks = 0
+  dp_rdrops = new []pointer;  dp_resource_drops = 0
   dp_writes = new []pointer;  dp_aliases = new []pointer;  dp_wowner = new []pointer;  dp_wname = new []pointer;  dp_wfrom = new []pointer
   let lines = split_lines(text)
   for i in 0 .. len(lines) {
@@ -125,6 +129,8 @@ function dp_load(path: pointer) -> bool {
     if len(w) == 2 and w[0] == "frame_keeps" { dp_frame_keeps = s_to_int(w[1]) }
     if len(w) >= 4 and w[0] == "fbirth" { push(dp_fbirths, lines[i]) }
     if len(w) == 2 and w[0] == "birth_leaks" { dp_birth_leaks = s_to_int(w[1]) }
+    if len(w) >= 5 and w[0] == "rdrop" { push(dp_rdrops, lines[i]) }
+    if len(w) == 2 and w[0] == "resource_drops" { dp_resource_drops = s_to_int(w[1]) }
     if len(w) >= 5 and w[0] == "width" and w[4] == "0" and s_to_int(w[1]) > dp_wide_n {
       dp_wide_n = s_to_int(w[1])
       dp_wide_at = `{dp_fn_name(w[2])} ({w[3]})`
@@ -324,7 +330,7 @@ var dp_vals: []int = null
 var dp_cycle: []int = null
 var dp_cycle_all: []int = null        # the same with the layers' own edges counted
 function dp_numbers() -> void {
-  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside", "widest_function", "widest_reach", "widest_write_reach", "frame_allocs", "frame_keeps", "birth_leaks"]
+  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside", "widest_function", "widest_reach", "widest_write_reach", "frame_allocs", "frame_keeps", "birth_leaks", "resource_drops"]
   var mods = 0
   for k in 0 .. len(dp_mods) { if dp_own(k) { mods += 1 } }
   var deps = 0
@@ -346,7 +352,7 @@ function dp_numbers() -> void {
     }
   }
   dp_reach_best()
-  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen), dp_wide_n, dp_reach_n, dp_wreach_n, dp_frame_allocs, dp_frame_keeps, dp_birth_leaks]
+  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen), dp_wide_n, dp_reach_n, dp_wreach_n, dp_frame_allocs, dp_frame_keeps, dp_birth_leaks, dp_resource_drops]
 }
 
 # ---- the command --------------------------------------------------------------
@@ -503,6 +509,7 @@ function cmd_deps() -> int {
     else if a == "--allocs" { mode = "allocs" }
     else if a == "--keeps" { mode = "keeps" }
     else if a == "--births" { mode = "births" }
+    else if a == "--resources" { mode = "resources" }
     else if a == "--uses" or a == "--check" or a == "--baseline" or a == "--widest" or a == "--reach" or a == "--wreach" {
       if ai + 1 >= arg_count() { err(`ludic deps: {a} needs an argument\n`);  return 2 }
       mode = sslice(a, 2, slen(a))
@@ -568,6 +575,14 @@ function cmd_deps() -> int {
       print(`leak at birth: {w[2]} {w[1]}  in {w[3]}  {where}`)
     }
     print(`birth_leaks: {string(dp_birth_leaks)}`)
+    return 0
+  }
+  if mode == "resources" {                       # 25.5e: a handle made (@creates) and never given back
+    for a in 0 .. len(dp_rdrops) {
+      let w = dp_words(dp_rdrops[a])
+      print(`resource dropped: {w[1]} at {w[2]} in {w[3]}: {w[4]}`)
+    }
+    print(`resource_drops: {string(dp_resource_drops)}`)
     return 0
   }
   if mode == "widest" { dp_top(s_to_int(arg2), 0);  return 0 }
