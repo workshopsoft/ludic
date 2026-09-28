@@ -60,10 +60,19 @@ function nd_take(ui_st: mut UiState) -> UiNode {
     nd_reset(n)
     return n
   }
-  let n = nd_fresh()
-  ui_kept(list, n)
+  pl_grow_nodes(p)
   p.un += 1
-  return n
+  return list[p.un - 1]
+}
+# past a screen's most nodes: both generations grow together and by a stretch at once, so the
+# frame after (the other generation) and the next few elements find theirs already made
+@alloc_ok("a pool miss: past the most nodes a screen has had, then kept")
+function pl_grow_nodes(p: UiPool) -> void {
+  let more = Math.max(16, len(p.nodes0) / 2)
+  for i in 0 .. more {
+    push(p.nodes0, nd_fresh())
+    push(p.nodes1, nd_fresh())
+  }
 }
 @alloc_ok("a pool miss: past the most nodes a screen has had, then kept")
 function nd_fresh() -> UiNode {
@@ -73,6 +82,7 @@ function nd_fresh() -> UiNode {
   n.akeys = new []string
   n.avals = new []string
   n.vals = new []Val
+  n.ex = new UiNodeX                   # made with the node: nx() then never makes one in a frame
   return n
 }
 function env_take(ui_st: mut UiState) -> UiEnv {
