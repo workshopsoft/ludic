@@ -17,6 +17,7 @@
 #   ludic deps --reach N                 the same, the N that reach the most
 #   ludic deps --wreach N                the N that can come to CHANGE the most states
 #   ludic deps --allocs                  every allocation a frame can come to (25.2), with its chain from a root
+#   ludic deps --keeps                   what frame code makes and keeps past its frame (25.3), and where
 #
 # dependencies: module pairs (a, b) where a uses something of b, not counting b when b uses no
 # other module (a leaf); largest_cycle: the largest set of modules that all reach each other, not
@@ -51,6 +52,8 @@ var dp_fn_r: []int = null
 var dp_fn_x: []int = null             # ... and the states it can come to change
 var dp_fallocs: []pointer = new []pointer        # 25.2: `falloc <kind> <file:line> <chain>`, what a frame can allocate
 var dp_frame_allocs: int = 0
+var dp_fkeeps: []pointer = new []pointer          # 25.3: `fkeep <kind> <file:line> <kept at> <chain>`
+var dp_frame_keeps: int = 0
 var dp_wreach_n: int = 0
 var dp_wreach_at: pointer = ""
 
@@ -90,6 +93,7 @@ function dp_load(path: pointer) -> bool {
   dp_fn_at = new []pointer;  dp_fn_w = new []int;  dp_fn_r = new []int;  dp_fn_x = new []int
   dp_wreach_n = 0;  dp_wreach_at = ""
   dp_fallocs = new []pointer;  dp_frame_allocs = 0
+  dp_fkeeps = new []pointer;  dp_frame_keeps = 0
   dp_writes = new []pointer;  dp_aliases = new []pointer;  dp_wowner = new []pointer;  dp_wname = new []pointer;  dp_wfrom = new []pointer
   let lines = split_lines(text)
   for i in 0 .. len(lines) {
@@ -113,6 +117,8 @@ function dp_load(path: pointer) -> bool {
     if len(w) >= 6 and w[0] == "alias" { push(dp_aliases, lines[i]) }
     if len(w) >= 4 and w[0] == "falloc" { push(dp_fallocs, lines[i]) }
     if len(w) == 2 and w[0] == "frame_allocs" { dp_frame_allocs = s_to_int(w[1]) }
+    if len(w) >= 5 and w[0] == "fkeep" { push(dp_fkeeps, lines[i]) }
+    if len(w) == 2 and w[0] == "frame_keeps" { dp_frame_keeps = s_to_int(w[1]) }
     if len(w) >= 5 and w[0] == "width" and w[4] == "0" and s_to_int(w[1]) > dp_wide_n {
       dp_wide_n = s_to_int(w[1])
       dp_wide_at = `{dp_fn_name(w[2])} ({w[3]})`
@@ -312,7 +318,7 @@ var dp_vals: []int = null
 var dp_cycle: []int = null
 var dp_cycle_all: []int = null        # the same with the layers' own edges counted
 function dp_numbers() -> void {
-  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside", "widest_function", "widest_reach", "widest_write_reach", "frame_allocs"]
+  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside", "widest_function", "widest_reach", "widest_write_reach", "frame_allocs", "frame_keeps"]
   var mods = 0
   for k in 0 .. len(dp_mods) { if dp_own(k) { mods += 1 } }
   var deps = 0
@@ -334,7 +340,7 @@ function dp_numbers() -> void {
     }
   }
   dp_reach_best()
-  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen), dp_wide_n, dp_reach_n, dp_wreach_n, dp_frame_allocs]
+  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen), dp_wide_n, dp_reach_n, dp_wreach_n, dp_frame_allocs, dp_frame_keeps]
 }
 
 # ---- the command --------------------------------------------------------------
@@ -489,6 +495,7 @@ function cmd_deps() -> int {
     else if a == "--graph" { mode = "graph" }
     else if a == "--writes" { mode = "writes" }
     else if a == "--allocs" { mode = "allocs" }
+    else if a == "--keeps" { mode = "keeps" }
     else if a == "--uses" or a == "--check" or a == "--baseline" or a == "--widest" or a == "--reach" or a == "--wreach" {
       if ai + 1 >= arg_count() { err(`ludic deps: {a} needs an argument\n`);  return 2 }
       mode = sslice(a, 2, slen(a))
@@ -536,6 +543,14 @@ function cmd_deps() -> int {
       print(`frame alloc: {w[2]} {w[1]}  {w[3]}`)
     }
     print(`frame_allocs: {string(dp_frame_allocs)}`)
+    return 0
+  }
+  if mode == "keeps" {                           # 25.3: what frame code makes and keeps, and where it is kept
+    for a in 0 .. len(dp_fkeeps) {
+      let w = dp_words(dp_fkeeps[a])
+      print(`frame keep: {w[2]} {w[1]}  kept at {w[3]}  {w[4]}`)
+    }
+    print(`frame_keeps: {string(dp_frame_keeps)}`)
     return 0
   }
   if mode == "widest" { dp_top(s_to_int(arg2), 0);  return 0 }
