@@ -627,6 +627,9 @@ function escape_analyse() -> void {
     li += 1
   }
   es_solve()
+  # a node analysed more than once (a field's default, walked at every `new` of its record) is
+  # scratch only if every walk found it LOCAL: mark the LOCAL ones, then take the mark off any node
+  # one walk found kept
   var s = 0
   while s < len(g_es_site) {
     let n = g_es_site[s]
@@ -647,6 +650,15 @@ function escape_analyse() -> void {
       }
     }
     s += 1
+  }
+  var u = 0
+  while u < len(g_es_site) {
+    let n2 = g_es_site[u]
+    let c2 = g_es_site_cls[u]
+    let fi2 = g_es_site_fn[u]
+    let spans2 = fi2 < 0 or g_es_fspans[fi2]
+    if n2.uns == ES_SCRATCH and (c2 < 0 or (g_es_flag[c2] & (ES_ESC | ES_HEAP)) != 0 or spans2) { n2.uns = 0 }
+    u += 1
   }
 }
 

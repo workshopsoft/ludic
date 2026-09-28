@@ -1,0 +1,28 @@
+# arena_defaults.ludic - a field's default (`items: []int = new []int`) is one expression, made at every
+# `new` of its record: here for a record a pool keeps (made in frame 3, the arena running) and for a
+# frame's temporary. It must stay on the heap for both. Built with --arena and poisoned on every
+# reset, it prints `497 124747`.
+program ArenaDefaults {
+  property Bag { items: []int = new []int, n: int = 0 }
+  function temp_sum(f: int) -> int {
+    let t = new Bag
+    t.n = f
+    return t.n
+  }
+  function step(held: []Bag, f: int) -> int {
+    if f == 3 { push(held, new Bag) }
+    if len(held) > 0 { push(held[0].items, f) }
+    return temp_sum(f)
+  }
+  entry {
+    let held = new []Bag
+    var t = 0
+    for f in 0 .. 500 {
+      t += step(held, f)
+      Mem.frame()
+    }
+    var sum = 0
+    for i in 0 .. len(held[0].items) { sum += held[0].items[i] }
+    print(`{len(held[0].items)} {sum}`)
+  }
+}
