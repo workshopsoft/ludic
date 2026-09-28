@@ -35,6 +35,7 @@ export function phys_walker_add(physics_st: mut PhysicsState, r: float, h: float
       return i
     }
   }
+  @alloc_ok("a slot for the most walkers at once; a removed one's slot is reused")
   push(physics_st.ph_walkers, k)
   return len(physics_st.ph_walkers) - 1
 }

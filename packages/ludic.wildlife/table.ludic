@@ -14,6 +14,7 @@ export property WildTable {
   nids: IntMap = null
 }
 
+@alloc_ok("a table of animals: a load, or a guest taking the host's")
 function wl__new() -> WildTable {
   let w = new WildTable
   let tb: Table<WildAnimal> = table_new(2, 2)

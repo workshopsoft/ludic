@@ -10,6 +10,7 @@ function ph_keep(physics_st: mut PhysicsState, s: pointer) -> int {
     physics_st.ph_shapes[id] = s
     return id
   }
+  @alloc_ok("the id table grows to the most shapes held at once; a freed id is handed out again")
   push(physics_st.ph_shapes, s)
   return len(physics_st.ph_shapes) - 1
 }
@@ -26,6 +27,7 @@ export function phys_shape_free(physics_st: mut PhysicsState, id: int) -> void {
   if s == null { return }
   jph_shape_free(s)
   physics_st.ph_shapes[id] = null
+  @alloc_ok("the spare ids, no more than the most shapes ever held")
   push(physics_st.ph_spare, id)
 }
 

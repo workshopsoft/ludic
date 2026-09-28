@@ -14,6 +14,7 @@ export function npc_mirroring(npc_st: NpcState) -> bool { return npc_st.np_mirro
 # the host's slot: somebody new in it (born), or nobody (gone)
 export function npc_put(npc_st: mut NpcState, slot: int, id: int, kind: int, look: int, seed: float, name: string, hx: float, hz: float) -> NpcPerson {
   if slot < 0 or slot >= npc_st.np_max or kind < 0 or kind >= NPCK_COUNT { return null }
+  @alloc_ok("a guest's copy of the host's slots, no more than np_max")
   while len(npc_st.np_walkers) <= slot {
     let q = new NpcPerson
     q.slot = len(npc_st.np_walkers)
