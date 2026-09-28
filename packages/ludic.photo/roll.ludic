@@ -64,9 +64,23 @@ export function photo_facts(photo_st: PhotoState) -> Queue<PhotoFact> {
 }
 
 function pht_fact(photo_st: PhotoState, what: int, i: int) -> PhotoFact {
-  let f = new PhotoFact
+  var f = q_rec(photo_facts(photo_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new PhotoFact
+    q_ring_add(photo_facts(photo_st), f)
+  }
   f.what = what
   f.index = i
+  f.mask = 0
+  f.legend = 0
+  f.firsts = 0
+  f.grade = 0
+  f.sign = -1
+  f.stars = false
+  f.file = ""
+  f.tags = ""
+  f.v = 0
   q_push(photo_facts(photo_st), f)
   return f
 }

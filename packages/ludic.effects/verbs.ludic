@@ -2,7 +2,12 @@
 # itself; a bonus past the cap pushes out the oldest bonus; a full ring drops the nearest end.
 function ef_end(effects_st: mut EffectsState, i: int, why: int) -> void {
   let all = ef_all(effects_st)
-  let e = new EffectEnded
+  var e = q_rec(effects_ended(effects_st))
+  if e == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    e = new EffectEnded
+    q_ring_add(effects_ended(effects_st), e)
+  }
   e.kind = all[i].kind
   e.label = all[i].label
   e.why = why

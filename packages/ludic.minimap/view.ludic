@@ -40,8 +40,10 @@ export function minimap_wz(minimap_st: MinimapState, ry: float) -> float { retur
 
 # a round distance whose bar is no wider than a quarter of the window
 export function minimap_scale_metres(minimap_st: MinimapState) -> int {
-  let steps = [2000, 1000, 500, 250, 100, 50, 25]
-  for k in 0 .. len(steps) { if float(steps[k]) * minimap_scale(minimap_st) <= minimap_st.mm_size / 4.0 { return steps[k] } }
+  for k in 0 .. 7 {
+    let m = mm_scale_step(k)
+    if float(m) * minimap_scale(minimap_st) <= minimap_st.mm_size / 4.0 { return m }
+  }
   return 25
 }
 
@@ -67,4 +69,15 @@ export function minimap_recentre(minimap_st: mut MinimapState, on_you: bool) -> 
 export function minimap_focus(minimap_st: mut MinimapState, on_you: bool) -> void {
   minimap_recentre(minimap_st, on_you)
   if minimap_st.mm_zoom < minimap_st.mm_zoom_focus { minimap_st.mm_zoom = Math.clamp(minimap_st.mm_zoom_focus, minimap_st.mm_zoom_min, minimap_st.mm_zoom_max) }
+}
+
+# the round distances a scale bar can show, largest first
+function mm_scale_step(k: int) -> int {
+  if k == 0 { return 2000 }
+  if k == 1 { return 1000 }
+  if k == 2 { return 500 }
+  if k == 3 { return 250 }
+  if k == 4 { return 100 }
+  if k == 5 { return 50 }
+  return 25
 }

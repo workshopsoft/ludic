@@ -75,6 +75,7 @@ function mm_land_count(minimap_st: mut MinimapState) -> void {
 export function minimap_land_changed(minimap_st: mut MinimapState) -> void { minimap_st.mm_land_n = 0 }
 
 # the grid as one string of 0 / 1, row by row, and back (a shorter string leaves the rest unseen)
+@alloc_ok("on a save: the explored grid written out")
 export function minimap_seen_text(minimap_st: mut MinimapState) -> string {
   mm_grid(minimap_st)
   var s = ""

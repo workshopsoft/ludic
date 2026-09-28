@@ -1,0 +1,21 @@
+# ludic.base/queue_ring.ludic - a fact's record made again rather than new: Ludic frees nothing, and a
+# mechanic reports all day. q_rec hands out a record neither waiting in the queue nor handed out by
+# its last drain, or null when every one is: the caller makes one more and q_ring_add keeps it, so
+# the ring grows to the busiest frame and stays there. The caller sets every field it reads
+export function q_rec<T>(q: Queue<T>) -> T {
+  let n = len(q.ring)
+  for t in 0 .. n {
+    let r = q.ring[q.ring_at]
+    q.ring_at = (q.ring_at + 1) % n
+    if not q_holds(q, r) { return r }
+  }
+  return null
+}
+
+export function q_ring_add<T>(q: Queue<T>, r: T) -> void { kept_push(q.ring, r) }
+
+function q_holds<T>(q: Queue<T>, r: T) -> bool {
+  for i in 0 .. len(q.items) { if q.items[i] == r { return true } }
+  for i in 0 .. len(q.spare) { if q.spare[i] == r { return true } }
+  return false
+}

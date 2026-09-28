@@ -83,7 +83,12 @@ export function needs_facts(needs_st: NeedsState) -> Queue<NeedFact> {
 }
 
 function nd_fact(needs_st: NeedsState, what: int, need: int) -> void {
-  let f = new NeedFact
+  var f = q_rec(needs_facts(needs_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new NeedFact
+    q_ring_add(needs_facts(needs_st), f)
+  }
   f.what = what
   f.need = need
   q_push(needs_facts(needs_st), f)

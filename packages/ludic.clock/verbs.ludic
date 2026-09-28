@@ -13,7 +13,12 @@ export function clock_set_hours(clock_st: mut ClockState, h: float) -> void {
 function ck_turn(clock_st: mut ClockState, how: int) -> void {
   clock_st.ck_day += 1
   clock_st.ck_moon = (clock_st.ck_moon + 1.0 / clock_st.ck_moon_days) % 1.0
-  let d = new DayTurned
+  var d = q_rec(clock_days(clock_st))
+  if d == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    d = new DayTurned
+    q_ring_add(clock_days(clock_st), d)
+  }
   d.day = clock_st.ck_day
   d.how = how
   q_push(clock_days(clock_st), d)
@@ -35,7 +40,10 @@ export function clock_advance(clock_st: mut ClockState, gh: float) -> void {
 
 # a new trip: day one at the start hour, the moon somewhere in its month
 export function clock_reset(clock_st: mut ClockState) -> void {
-  clock_st.ck_dice = rng_new(ClockWorld.seed())
+  if clock_st.ck_dice == null {
+    @alloc_ok("once: the clock's dice, seeded again on every new trip after")
+    clock_st.ck_dice = rng_new(ClockWorld.seed())
+  } else { rng_seed(clock_st.ck_dice, ClockWorld.seed()) }
   clock_st.ck_day = 1
   clock_st.ck_hours = clock_st.ck_start_hours
   clock_st.ck_moon = rng_span(clock_st.ck_dice, clock_st.ck_moon_lo, clock_st.ck_moon_hi) % 1.0

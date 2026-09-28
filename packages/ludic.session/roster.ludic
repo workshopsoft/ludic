@@ -28,6 +28,7 @@ export function ply_join(session_st: mut SessionState, pid: int) -> int {
   if pid <= 0 { return -1 }                  # 0 is this machine's player
   for p in 1 .. PLY_MAX {
     if session_st.session__slot[p].on { continue }
+    @alloc_ok("once per player joining: their slot's record")
     let r = new PartyMember
     r.on = true
     r.pid = pid

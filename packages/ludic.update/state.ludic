@@ -91,7 +91,12 @@ export function update_facts(update_st: UpdateState) -> Queue<UpdateFact> {
 }
 
 function update__fact(update_st: UpdateState, what: int) -> void {
-  let f = new UpdateFact
+  var f = q_rec(update_facts(update_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new UpdateFact
+    q_ring_add(update_facts(update_st), f)
+  }
   f.what = what
   f.error = update_st.update__err
   f.target = update_st.update__target

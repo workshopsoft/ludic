@@ -134,6 +134,32 @@ program QueueTest {
   test "a queue holds records" () { record_case() }
   test "clear drops what is waiting" () { clear_case() }
   test "a pool's records are free once no drain holds them" () { unheld_case() }
+  function rec_of(q: Queue<Caught>) -> Caught {
+    var c = q_rec(q)
+    if c == null {
+      c = new Caught
+      q_ring_add(q, c)
+    }
+    return c
+  }
+  function ring_case() -> void {
+    let q: Queue<Caught> = queue_new("caught")
+    let a = rec_of(q)
+    q_push(q, a)
+    let b = rec_of(q)
+    expect(a != b)
+    q_push(q, b)
+    q_drain(q)
+    expect_eq(len(q.ring), 2)
+    let c = rec_of(q)
+    expect(c != a and c != b)
+    q_push(q, c)
+    q_drain(q)
+    let d = rec_of(q)
+    expect(d == a or d == b)
+    expect_eq(len(q.ring), 3)
+  }
+  test "a fact's record comes round again once no list holds it" () { ring_case() }
   test "a queue's element type is told by the queue alone" () { infer_case() }
   test "the undrained queues are named, and a drain clears the report" () { undrained_case() }
 }

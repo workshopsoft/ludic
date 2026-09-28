@@ -2,9 +2,9 @@
 # and which followed, and whether the map is waiting for a place to drop the next
 export function minimap_pin_remove(minimap_st: mut MinimapState, i: int) -> void {
   if i < 0 or i >= minimap_pin_count(minimap_st) { return }
-  let rest = new []MinimapPin
-  for k in 0 .. len(minimap_st.mm_pins) { if k != i { push(rest, minimap_st.mm_pins[k]) } }
-  minimap_st.mm_pins = rest
+  let l = minimap_st.mm_pins
+  for k in i .. len(l) - 1 { l[k] = l[k + 1] }
+  List.pop(l)
   if minimap_st.mm_open == i { minimap_st.mm_open = -1 } else if minimap_st.mm_open > i { minimap_st.mm_open -= 1 }
   if minimap_st.mm_followed == i { minimap_st.mm_followed = -1 } else if minimap_st.mm_followed > i { minimap_st.mm_followed -= 1 }
 }

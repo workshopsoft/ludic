@@ -83,7 +83,12 @@ export function weather_facts(weather_st: WeatherState) -> Queue<WeatherFact> {
 }
 
 function wx_fact(weather_st: WeatherState, what: int, kind: int, from: int) -> void {
-  let f = new WeatherFact
+  var f = q_rec(weather_facts(weather_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new WeatherFact
+    q_ring_add(weather_facts(weather_st), f)
+  }
   f.what = what
   f.kind = kind
   f.from = from
