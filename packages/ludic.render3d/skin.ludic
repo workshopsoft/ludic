@@ -227,3 +227,21 @@ function skin_clone(src: Skin) -> Skin {
   skin_pose(sk)
   return sk
 }
+
+# A skin loaded with a model, let go with it (model_release): every array it owns, its joints' names
+# and itself. The views into gmat, inv_bind and bones are slices of those, and freeing a view would
+# free its owner's data again, so only the lists that hold them go (a few bytes a joint stay).
+function skin_free(sk: Skin) -> void {
+  if sk == null { return }
+  if sk.names != null {
+    for i in 0 .. len(sk.names) { if sk.names[i] != null and len(sk.names[i]) > 0 { free(sk.names[i]) } }
+    free(sk.names)
+  }
+  free(sk.par);  free(sk.walk);  free(sk.rest_t);  free(sk.rest_r);  free(sk.rest_s);  free(sk.rest_g)
+  free(sk.pose_r);  free(sk.pose_t);  free(sk.gmat);  free(sk.joints);  free(sk.inv_bind);  free(sk.bones)
+  free(sk.tmp_l);  free(sk.tmp_q);  free(sk.tmp_a);  free(sk.tmp_b);  free(sk.tmp_c);  free(sk.tmp_v)
+  if sk.gmat_v != null { free(sk.gmat_v) }
+  if sk.inv_v != null { free(sk.inv_v) }
+  if sk.bones_v != null { free(sk.bones_v) }
+  free(sk)
+}

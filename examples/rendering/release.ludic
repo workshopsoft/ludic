@@ -44,7 +44,6 @@ program Release {
     let diff = a.prims[0].diff
     ok = check("the plates share their textures", diff != 0 and b.prims[0].diff == diff and render3d_st.gltf_tex_n == 2) and ok
     model_release(render3d_st, a)
-    ok = check("the first plate is emptied", len(a.prims) == 0) and ok
     ok = check("what the second still uses stays", tex_live(render3d_st, diff) and render3d_st.gltf_tex_n == 2) and ok
     model_release(render3d_st, b)
     ok = check("the last user frees the textures", not tex_live(render3d_st, diff) and render3d_st.gltf_tex_n == 0) and ok

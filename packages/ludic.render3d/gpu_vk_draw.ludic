@@ -1460,10 +1460,10 @@ function gvk_program_new(render3d_st: mut Render3dState, vs: string, fs: string,
 
 function gvk_mesh_free(render3d_st: mut Render3dState, m: Mesh) -> void {
   if m == null { return }
-  if m.vbufs != null { for i in 0 .. m.n_vbufs { if m.vbufs[i] > 0 { gvk_buf_release(render3d_st, m.vbufs[i]) } } }
+  if m.vbufs != null { for i in 0 .. m.n_vbufs { if m.vbufs[i] > 0 { gvk_buf_delete(render3d_st, m.vbufs[i]) } } }
   m.n_vbufs = 0
   m.vbo = 0
-  if m.ebo > 0 { gvk_buf_release(render3d_st, m.ebo);  m.ebo = 0 }
+  if m.ebo > 0 { gvk_buf_delete(render3d_st, m.ebo);  m.ebo = 0 }
 }
 
 function gvk_scissor(render3d_st: mut Render3dState, x: int, y: int, w: int, h: int) -> void {

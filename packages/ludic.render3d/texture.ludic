@@ -284,22 +284,23 @@ function tex_load_ex(render3d_st: mut Render3dState, path: pointer, srgb: bool, 
   return id
 }
 # the size each loaded texture was, by id: a nine-slice or a UI image asks
+# a texture's size, by its id: a slot per id (ids are reused), not a list that grows by every load
 function tex_note_size(render3d_st: mut Render3dState, id: int) -> void {
-  push(render3d_st.tex_size_ids, id)
-  push(render3d_st.tex_size_ws, render3d_st.tex_w)
-  push(render3d_st.tex_size_hs, render3d_st.tex_h)
+  if id <= 0 { return }
+  while len(render3d_st.tex_size_ws) <= id { push(render3d_st.tex_size_ws, 0);  push(render3d_st.tex_size_hs, 0) }
+  render3d_st.tex_size_ws[id] = render3d_st.tex_w
+  render3d_st.tex_size_hs[id] = render3d_st.tex_h
+}
+function tex_note_forget(render3d_st: mut Render3dState, id: int) -> void {
+  if id > 0 and id < len(render3d_st.tex_size_ws) { render3d_st.tex_size_ws[id] = 0;  render3d_st.tex_size_hs[id] = 0 }
 }
 function tex_width(render3d_st: Render3dState, id: int) -> int {
-  for i in 0 .. len(render3d_st.tex_size_ids) {
-    if render3d_st.tex_size_ids[i] == id { return render3d_st.tex_size_ws[i] }
-  }
-  return 0
+  if id <= 0 or id >= len(render3d_st.tex_size_ws) { return 0 }
+  return render3d_st.tex_size_ws[id]
 }
 function tex_height(render3d_st: Render3dState, id: int) -> int {
-  for i in 0 .. len(render3d_st.tex_size_ids) {
-    if render3d_st.tex_size_ids[i] == id { return render3d_st.tex_size_hs[i] }
-  }
-  return 0
+  if id <= 0 or id >= len(render3d_st.tex_size_hs) { return 0 }
+  return render3d_st.tex_size_hs[id]
 }
 
 # A small solid-colour fallback texture (linear rgb 0..255), for missing maps.

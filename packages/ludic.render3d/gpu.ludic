@@ -599,7 +599,9 @@ function gpu_tex_free(render3d_st: mut Render3dState, tex: int) -> void {
   if tex == 0 { return }
   let ids = gpu_tmp(render3d_st)
   ids[0] = tex
-  gvk_flush(render3d_st);  if tex < len(render3d_st.gvk_tex_image) { gvk_tex_release(render3d_st, tex) }
+  gvk_flush(render3d_st)
+  gvk_tex_give_back(render3d_st, tex)
+  tex_note_forget(render3d_st, tex)
   if render3d_st.gpu_unit_2d != null { for i in 0 .. 32 { if render3d_st.gpu_unit_2d[i] == tex { render3d_st.gpu_unit_2d[i] = 0 } } }
   if render3d_st.gpu_bound_2d == tex { render3d_st.gpu_bound_2d = 0 }
   let o = gpu_tx_at(render3d_st, tex)
@@ -699,7 +701,8 @@ function gpu_fb_free(render3d_st: mut Render3dState, fb: int) -> void {
   gvk_fb_forget(render3d_st, fb);  let fo = gpu_fb_at(render3d_st, fb);  if fo >= 0 { for i in 0 .. GPU_FB_W { render3d_st.gpu_fb[fo + i] = 0 } }
 }
 function gpu_rb_free(render3d_st: mut Render3dState, rb: int) -> void {
-  gvk_flush(render3d_st);  if rb > 0 and rb < len(render3d_st.gvk_tex_image) { gvk_tex_release(render3d_st, rb) }
+  gvk_flush(render3d_st)
+  gvk_tex_give_back(render3d_st, rb)
 }
 function gpu_viewport(render3d_st: mut Render3dState, x: int, y: int, w: int, h: int) -> void { gvk_viewport(render3d_st, x, y, w, h) }
 
