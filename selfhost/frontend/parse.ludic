@@ -483,7 +483,7 @@ function stmt() -> Node {
   let ln = toks[pi].line
   let n = stmt_body()
   if n.line == 0 { n.line = ln }
-  if aok { push(g_aok_nodes, n) }
+  if aok { n.uns = FR_AOK_STMT;  g_aok_seen = true }                # on the node, so a generic's clone carries it (gen_clone copies uns)
   return n
 }
 

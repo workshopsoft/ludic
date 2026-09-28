@@ -7,18 +7,15 @@
 
 var g_alloc_ok_names: []pointer = new []pointer    # functions and handlers under @alloc_ok("why")
 var g_frame_fields: []pointer = new []pointer      # record fields declared `@frame`
-var g_aok_nodes: []Node = new []Node               # statements under @alloc_ok("why")
 var g_aok_pending: bool = false                    # @alloc_ok read, its function or handler not yet
+const FR_AOK_STMT: int = 78                          # Node.uns on a statement under @alloc_ok("why")
+var g_aok_seen: bool = false                         # any statement is: bodies are searched only then
 
-function fr_aok_stmt(n: Node) -> bool {
-  var i = 0
-  while i < len(g_aok_nodes) { if g_aok_nodes[i] == n { return true };  i += 1 }
-  return false
-}
+function fr_aok_stmt(n: Node) -> bool { return n.uns == FR_AOK_STMT and n.kind != E_ID }
 
 # does this body hold a statement under @alloc_ok? (its function then keeps the scope's depth)
 function fr_has_aok(n: Node) -> bool {
-  if n == null or len(g_aok_nodes) == 0 { return false }
+  if n == null or not g_aok_seen { return false }
   if fr_aok_stmt(n) { return true }
   if fr_has_aok(n.a) or fr_has_aok(n.b) or fr_has_aok(n.c) { return true }
   if n.kids != null {
@@ -41,9 +38,16 @@ function fr_is_frame_field(name: pointer) -> bool {
   return false
 }
 
+# a generic's instance (kept_push$NetFact) is under its declaration's @alloc_ok
 function fr_alloc_ok(name: pointer) -> bool {
+  var base = name
+  var d = 0
+  while d < len(name) {
+    if name[d] == '$' { base = name[0..d];  d = len(name) }
+    d += 1
+  }
   var i = 0
-  while i < len(g_alloc_ok_names) { if (g_alloc_ok_names[i] == name) { return true };  i += 1 }
+  while i < len(g_alloc_ok_names) { if (g_alloc_ok_names[i] == base) or (g_alloc_ok_names[i] == name) { return true };  i += 1 }
   return false
 }
 

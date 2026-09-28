@@ -1,0 +1,395 @@
+# emit_escape.ludic — 25.3: which allocations never outlive the frame that made them. Every value a
+# function handles is in a class (flow-insensitive: a local, a parameter, a function's result, an
+# allocating construct), joined by two kinds of edge:
+#   flow   a -> b  a's value can become b's (a let, an assignment, an argument into its parameter,
+#                  a returned value into the function's result, that result into the call's value)
+#   store  v -> t  v is written into t's contents (a field, an element, a push)
+# HEAP: the class may alias memory that outlives a frame (a parameter, a state, a global, a value
+# an unknown call hands back); it flows forward. ESC: the class's values may be kept - stored into
+# something HEAP, into a global, handed to an unknown callee; it flows backward, along a flow edge
+# from the escaping class and along a store edge from an escaping or HEAP target. A load is its
+# base's class (field-insensitive), so what a record holds escapes with it.
+# An allocating construct that ends up neither ESC nor in a function that spans frames (one that
+# reaches Mem.frame) is LOCAL: uns = ES_SCRATCH marks its node, and it allocates from the current
+# scratch (the frame's arena, emit_fence_ir). A text built by + copies its pieces, so they stay apart.
+
+const ES_SCRATCH: int = 77                          # Node.uns on an allocating expression: scratch
+const ES_ESC: int = 1
+const ES_HEAP: int = 2
+
+var g_es_flag: []int = new []int
+var g_es_ft: []int = new []int                      # flow edges
+var g_es_ff: []int = new []int
+var g_es_st: []int = new []int                      # store edges: value, target
+var g_es_sv: []int = new []int
+var g_es_site: []Node = new []Node                  # allocating constructs and their classes
+var g_es_site_cls: []int = new []int
+var g_es_site_fn: []int = new []int                 # the function each site is in
+var g_es_fk: []pointer = new []pointer              # function records by name (ck_tab)
+var g_es_fv: []Node = new []Node
+var g_es_fparam: []int = new []int                  # per function: its first parameter's class
+var g_es_fret: []int = new []int                    # its result's class
+var g_es_fnode: []Node = new []Node
+var g_es_fspans: []bool = new []bool                # it reaches Mem.frame: its sites stay on the heap
+var g_es_calls_f: []int = new []int                 # direct calls, caller -> callee (function indexes)
+var g_es_calls_t: []int = new []int
+var g_es_ln: []pointer = new []pointer              # the current function's locals and their classes
+var g_es_lc: []int = new []int
+var g_es_cur: int = -1
+var g_es_heap: int = -1                             # the one class for globals, states and the unknown
+
+function es_new(flags: int) -> int { push(g_es_flag, flags);  return len(g_es_flag) - 1 }
+function es_flow(a: int, b: int) -> void { if a >= 0 and b >= 0 { push(g_es_ff, a);  push(g_es_ft, b) } }
+function es_store(v: int, t: int) -> void {
+  if v < 0 { return }
+  if t < 0 { g_es_flag[v] = g_es_flag[v] | ES_ESC;  return }
+  push(g_es_sv, v)
+  push(g_es_st, t)
+}
+function es_escape(v: int) -> void { if v >= 0 { g_es_flag[v] = g_es_flag[v] | ES_ESC } }
+
+function es_local(name: pointer) -> int {
+  var i = len(g_es_ln) - 1
+  while i >= 0 { if (g_es_ln[i] == name) { return g_es_lc[i] };  i -= 1 }
+  return -1
+}
+function es_bind_local(name: pointer) -> int {
+  let c = es_local(name)
+  if c >= 0 { return c }
+  let n = es_new(0)
+  push(g_es_ln, name)
+  push(g_es_lc, n)
+  return n
+}
+function es_fn(name: pointer) -> int {
+  let n = ck_tab_get(g_es_fk, g_es_fv, name)
+  if n == null { return -1 }
+  return n.ival
+}
+function es_site(n: Node) -> int {
+  let c = es_new(0)
+  push(g_es_site, n)
+  push(g_es_site_cls, c)
+  push(g_es_site_fn, g_es_cur)
+  return c
+}
+
+function es_is_mem_frame(n: Node) -> bool {
+  return n.kind == E_CALL and n.a != null and n.a.kind == E_MEMBER and n.a.a != null and n.a.a.kind == E_ID and (n.a.a.s == "Mem") and (n.a.s == "frame")
+}
+
+# the class of an expression's value (-1: not a reference worth following), walking its parts
+function es_val(e: Node) -> int {
+  if e == null { return -1 }
+  let k = e.kind
+  if k == E_STR or k == E_INT or k == E_BOOL or k == E_FLOAT or k == E_NULL or k == E_FNREF { return -1 }
+  if k == E_ID {
+    let c = es_local(e.s)
+    if c >= 0 { return c }
+    return g_es_heap
+  }
+  if k == E_MEMBER { return es_val(e.a) }
+  if k == E_INDEX {
+    es_val(e.b)
+    return es_val(e.a)
+  }
+  if k == E_SLICE {
+    es_val(e.a);  es_val(e.b);  es_val(e.c)
+    return es_site(e)
+  }
+  if k == E_BIN {
+    es_val(e.a)
+    es_val(e.b)
+    if (e.s == "+") and fr_is_textish(e) { return es_site(e) }
+    return -1
+  }
+  if k == E_UN { es_val(e.a);  return -1 }
+  if k == E_NEW {
+    let s = es_site(e)
+    if e.a != null and e.a.kids != null {
+      var i = 0
+      while i < len(e.a.kids) { es_store(es_val(e.a.kids[i].a), s);  i += 1 }
+    }
+    return s
+  }
+  if k == E_LIST {
+    let s = es_site(e)
+    var i = 0
+    while i < len(e.kids) { es_store(es_val(e.kids[i]), s);  i += 1 }
+    return s
+  }
+  if k == E_CALL { return es_call(e) }
+  # anything else: walk it, and what it hands back may be anything
+  es_walk(e.a);  es_walk(e.b);  es_walk(e.c)
+  if e.kids != null {
+    var j = 0
+    while j < len(e.kids) { es_walk(e.kids[j]);  j += 1 }
+  }
+  return g_es_heap
+}
+
+function es_args_escape(e: Node) -> void {
+  var i = 0
+  while i < len(e.kids) { es_escape(es_val(e.kids[i]));  i += 1 }
+}
+function es_args_walk(e: Node) -> void {
+  var i = 0
+  while i < len(e.kids) { es_val(e.kids[i]);  i += 1 }
+}
+
+function es_call(e: Node) -> int {
+  let c = e.a
+  if c != null and c.kind == E_ID and c.s != null {
+    let nm = c.s
+    if es_local(nm) >= 0 {                          # a function value in a local: anything
+      es_args_escape(e)
+      return g_es_heap
+    }
+    if (nm == "string") {
+      es_args_walk(e)
+      return es_site(e)
+    }
+    if (nm == "push") and len(e.kids) >= 2 {
+      let t = es_val(e.kids[0])
+      es_store(es_val(e.kids[1]), t)
+      # the grown buffer is the list's own
+      push(g_es_site, e);  push(g_es_site_cls, t);  push(g_es_site_fn, g_es_cur)
+      return -1
+    }
+    if (nm == "words") or (nm == "floats") or (nm == "doubles") or (nm == "buffer") or (nm == "bytes") or (nm == "fixeds") or (nm == "pointers") {
+      es_args_walk(e)
+      return es_site(e)
+    }
+    if (nm == "print") or (nm == "len") or (nm == "free") { es_args_walk(e);  return -1 }
+    let f = es_fn(nm)
+    if f >= 0 {
+      push(g_es_calls_f, g_es_cur)
+      push(g_es_calls_t, f)
+      let d = g_es_fnode[f]
+      var i = 0
+      while i < len(e.kids) {
+        let v = es_val(e.kids[i])
+        if i < len(d.kids) and d.kids[i].kind == N_PARAM { es_flow(v, g_es_fparam[f] + i) } else { es_escape(v) }
+        i += 1
+      }
+      let r = es_new(0)
+      es_flow(g_es_fret[f], r)
+      return r
+    }
+    # an intrinsic or a runtime builtin of the emitter's own: it keeps nothing it is handed, and
+    # what it hands back is its own
+    es_args_walk(e)
+    return g_es_heap
+  }
+  if es_is_mem_frame(e) {
+    if g_es_cur >= 0 { g_es_fspans[g_es_cur] = true }
+    return -1
+  }
+  if c != null and c.kind == E_MEMBER and c.a != null and c.a.kind == E_ID and ns_alias_find(c.a.s, c.s) >= 0 {
+    let al = ns_alias_find(c.a.s, c.s)
+    let f = es_fn(g_al_target[al])
+    if f >= 0 {
+      push(g_es_calls_f, g_es_cur)
+      push(g_es_calls_t, f)
+      var i = 0
+      let d = g_es_fnode[f]
+      while i < len(e.kids) {
+        let v = es_val(e.kids[i])
+        if i < len(d.kids) and d.kids[i].kind == N_PARAM { es_flow(v, g_es_fparam[f] + i) } else { es_escape(v) }
+        i += 1
+      }
+      let r = es_new(0)
+      es_flow(g_es_fret[f], r)
+      return r
+    }
+  }
+  if c != null and c.kind == E_MEMBER and c.a != null and c.a.kind == E_ID and es_local(c.a.s) < 0 and ck_global(c.a.s) == null {
+    # Ns.method, the emitter's own: what it is handed after the first may be kept in the first
+    # (List.insert, Dict.put, ...); a namespace that only reads (Text, Math) costs a false escape
+    if len(e.kids) > 0 {
+      let t = es_val(e.kids[0])
+      var i = 1
+      while i < len(e.kids) { es_store(es_val(e.kids[i]), t);  i += 1 }
+    }
+    return g_es_heap
+  }
+  # a function value in a field: anything
+  es_val(c)
+  es_args_escape(e)
+  return g_es_heap
+}
+
+function es_walk(n: Node) -> void {
+  if n == null { return }
+  let k = n.kind
+  if k == S_LET {
+    let c = es_bind_local(n.s)
+    es_flow(es_val(n.a), c)
+    return
+  }
+  if k == S_ASSIGN {
+    let v = es_val(n.b)
+    let t = n.a
+    if t != null and t.kind == E_ID {
+      let c = es_local(t.s)
+      if c >= 0 { es_flow(v, c) } else { es_escape(v) }
+      return
+    }
+    es_store(v, es_val(t))
+    return
+  }
+  if k == S_RETURN {
+    if n.a != null and g_es_cur >= 0 { es_flow(es_val(n.a), g_es_fret[g_es_cur]) }
+    return
+  }
+  if k == S_FOR {
+    es_bind_local(n.s)
+    es_val(n.a);  es_val(n.b)
+    es_walk(n.c)
+    return
+  }
+  if k == S_EXPR { es_val(n.a);  return }
+  if k == S_EMIT {                                  # an event's fields reach its listeners: kept
+    if n.a != null and n.a.kids != null {
+      var i = 0
+      while i < len(n.a.kids) { es_escape(es_val(n.a.kids[i].a));  i += 1 }
+    }
+    return
+  }
+  if k == E_REC {                                   # named values handed on (a dispatch, a spawn, ...): kept
+    if n.kids != null {
+      var i = 0
+      while i < len(n.kids) { es_escape(es_val(n.kids[i].a));  i += 1 }
+    }
+    return
+  }
+  if k == E_CALL or k == E_NEW or k == E_BIN or k == E_LIST or k == E_SLICE or k == E_ID or k == E_MEMBER or k == E_INDEX {
+    es_val(n)
+    return
+  }
+  es_walk(n.a)
+  es_walk(n.b)
+  es_walk(n.c)
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) { es_walk(n.kids[i]);  i += 1 }
+  }
+}
+
+# HEAP forward along flows; ESC backward along flows, and from an ESC or HEAP target along stores
+function es_solve() -> void {
+  var changed = true
+  while changed {
+    changed = false
+    var i = 0
+    while i < len(g_es_ff) {
+      let a = g_es_ff[i]
+      let b = g_es_ft[i]
+      if (g_es_flag[a] & ES_HEAP) != 0 and (g_es_flag[b] & ES_HEAP) == 0 { g_es_flag[b] = g_es_flag[b] | ES_HEAP;  changed = true }
+      if (g_es_flag[b] & ES_ESC) != 0 and (g_es_flag[a] & ES_ESC) == 0 { g_es_flag[a] = g_es_flag[a] | ES_ESC;  changed = true }
+      i += 1
+    }
+    i = 0
+    while i < len(g_es_sv) {
+      let v = g_es_sv[i]
+      let t = g_es_st[i]
+      if (g_es_flag[t] & (ES_ESC | ES_HEAP)) != 0 and (g_es_flag[v] & ES_ESC) == 0 { g_es_flag[v] = g_es_flag[v] | ES_ESC;  changed = true }
+      i += 1
+    }
+  }
+  # a function that reaches Mem.frame spans frames: so does every caller
+  changed = true
+  while changed {
+    changed = false
+    var j = 0
+    while j < len(g_es_calls_f) {
+      let f = g_es_calls_f[j]
+      let t = g_es_calls_t[j]
+      if f >= 0 and g_es_fspans[t] and not g_es_fspans[f] { g_es_fspans[f] = true;  changed = true }
+      j += 1
+    }
+  }
+}
+
+# mark every LOCAL allocating construct; the count of them, and of those that escape
+var g_es_local_n: int = 0
+var g_es_esc_n: int = 0
+function escape_analyse() -> void {
+  g_es_heap = es_new(ES_ESC | ES_HEAP)
+  ck_tab_init(g_es_fk, g_es_fv)
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if (d.kind == N_FN or d.kind == N_SYS or d.kind == N_MAIN) and d.s != null and ck_tab_get(g_es_fk, g_es_fv, d.s) == null {
+      let h = new Node
+      h.ival = len(g_es_fnode)
+      ck_tab_put(g_es_fk, g_es_fv, d.s, h)
+      push(g_es_fnode, d)
+      push(g_es_fspans, d.kind == N_MAIN)
+      push(g_es_fparam, len(g_es_flag))
+      var p = 0
+      while p < len(d.kids) { es_new(ES_HEAP);  p += 1 }
+      push(g_es_fret, es_new(0))
+    }
+    i += 1
+  }
+  var f = 0
+  while f < len(g_es_fnode) {
+    let d = g_es_fnode[f]
+    g_es_cur = f
+    g_es_ln = new []pointer
+    g_es_lc = new []int
+    var p = 0
+    while p < len(d.kids) {
+      if d.kids[p].kind == N_PARAM { push(g_es_ln, d.kids[p].s);  push(g_es_lc, g_es_fparam[f] + p) }
+      p += 1
+    }
+    es_walk(d.a)
+    f += 1
+  }
+  g_es_cur = -1
+  # an @On body keeps nothing it makes unless it stores it; it has no function record of its own
+  var li = 0
+  while li < len(g_onlisten) {
+    g_es_ln = new []pointer
+    g_es_lc = new []int
+    es_walk(g_onlisten[li].a)
+    li += 1
+  }
+  es_solve()
+  var s = 0
+  while s < len(g_es_site) {
+    let n = g_es_site[s]
+    let c = g_es_site_cls[s]
+    let fi = g_es_site_fn[s]
+    let spans = fi < 0 or g_es_fspans[fi]
+    if c >= 0 and (g_es_flag[c] & ES_ESC) == 0 and not spans {
+      n.uns = ES_SCRATCH
+      g_es_local_n += 1
+    } else { g_es_esc_n += 1 }
+    s += 1
+  }
+}
+
+var g_es_report: bool = false
+# --escape-report: the analysis on its own (the arena that uses it is not wired yet), each site that
+# escapes or stays LOCAL as a line on stderr, then the totals
+function escape_report() -> void {
+  escape_analyse()
+  var s = 0
+  while s < len(g_es_site) {
+    let n = g_es_site[s]
+    var what = "kept"
+    if n.uns == ES_SCRATCH { what = "local" }
+    var fname = "?"
+    let fi = g_es_site_fn[s]
+    if fi >= 0 { fname = g_es_fnode[fi].s }
+    var file = n.file
+    if file == null { file = "?" }
+    let line = `escape: {what} {file}:{itoa(n.line)} {fname}\n`
+    file_write(file_stderr(), line, len(line))
+    s += 1
+  }
+  let tot = `escape: {itoa(g_es_local_n)} local, {itoa(g_es_esc_n)} kept\n`
+  file_write(file_stderr(), tot, len(tot))
+}
