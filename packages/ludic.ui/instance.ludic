@@ -8,6 +8,8 @@ property UiInst {
   props: Val = null             # its props, filled again each frame into the same object
   model: Val = null             # and its model, filled in place by the class's model()
 }
+# builds before an unmounted instance is mounted again: the tree that last named it is good for two
+const IN_SPARE_AFTER: int = 2
 function in_get(ui_st: mut UiState, key: string, k: UiClass) -> UiInst {
   for i in 0 .. len(ui_st.in_list) {
     let it = ui_st.in_list[i]
@@ -16,12 +18,28 @@ function in_get(ui_st: mut UiState, key: string, k: UiClass) -> UiInst {
       return it
     }
   }
-  let it = new UiInst
+  let it = in_reuse(ui_st, k)
   it.key = key
-  it.cls = k
-  it.ptr = k.make()
   it.seen = ui_st.in_build
   push(ui_st.in_list, it)
+  return it
+}
+# an unmounted instance of this class, put back as new, else a new one: a prompt that comes and goes
+# as the player walks is mounted again without making another record, props and model each time
+function in_reuse(ui_st: mut UiState, k: UiClass) -> UiInst {
+  let l = ui_st.in_free
+  for i in 0 .. len(l) {
+    let it = l[i]
+    if it.cls == k and it.cls.renew != null and ui_st.in_build - it.seen >= IN_SPARE_AFTER {
+      l[i] = l[len(l) - 1]
+      List.pop(l)
+      k.renew(it.ptr)
+      return it
+    }
+  }
+  let it = new UiInst
+  it.cls = k
+  it.ptr = k.make()
   return it
 }
 # after a build of `screen`: its instances the build did not reach are unmounted
@@ -32,7 +50,7 @@ function in_sweep(ui_st: mut UiState, screen: string) -> void {
     if it.seen == ui_st.in_build or not lc_mine(it.key, screen) {
       ui_st.in_list[kept] = it
       kept += 1
-    }
+    } else { push(ui_st.in_free, it) }
   }
   while len(ui_st.in_list) > kept { List.pop(ui_st.in_list) }
 }

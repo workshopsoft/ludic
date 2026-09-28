@@ -1,0 +1,4 @@
+<div>
+  <button on-click="flip()">flip</button>
+  <if test="{on}"><Counter label="c"/></if>
+</div>

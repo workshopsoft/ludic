@@ -1,0 +1,5 @@
+<div class="counter">
+  <p>{label}: {count} ({doubled}){big() ? ' big' : ''}</p>
+  <button on-click="bump()">+</button>
+  <button on-click="set count = 0">reset</button>
+</div>

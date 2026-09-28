@@ -51,7 +51,7 @@ function ev_call_with(ui_st: mut UiState, x: UiExpr, e: UiEnv, args: Val) -> Val
   var at = e
   while at != null {
     if at.inst != null {
-      let r = at.inst.cls.call(at.inst.ptr, x.s, args, uv_hold(ui_st))
+      let r = at.inst.cls.call(at.inst.ptr, x.s, args, ev_into(ui_st))
       if Value.kind(r) != 99 { return r }
     }
     at = at.parent
@@ -62,5 +62,17 @@ function ev_call_with(ui_st: mut UiState, x: UiExpr, e: UiEnv, args: Val) -> Val
   }
   return ui_st.ui_view.call(x.s, args)
 }
+# where a call writes its answer: this build's pool, or while an action runs (the pool is off) the next
+# of EV_RING kept slots - an answer is read long before 64 more calls come round to it
+function ev_into(ui_st: mut UiState) -> Val {
+  let v = uv_hold(ui_st)
+  if v != null { return v }
+  let ring = ui_st.ev_ring
+  if len(ring) < EV_RING { push(ring, Value.null()) }
+  let at = ui_st.ev_ring_at % len(ring)
+  ui_st.ev_ring_at = at + 1
+  return ring[at]
+}
+const EV_RING: int = 64
 function ui_eval_text(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> string { return vl_text(ui_eval(ui_st, x, e)) }
 function ui_eval_bool(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> bool { return vl_truthy(ui_eval(ui_st, x, e)) }

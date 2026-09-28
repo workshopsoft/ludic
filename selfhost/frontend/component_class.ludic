@@ -16,8 +16,9 @@ function cm_class(c: int, px: pointer, head: Node) -> void {
   } else { lss = cm_lss_inline(c, lss, dir, 0) }
   var src = `function {px}class() -> UiClass {{\n  let k = new UiClass\n  k.name = "{name}"\n`
   src = src + `  k.xml_path = "{xml_path}"\n  k.xml = {px}xml_text()\n  k.lss_path = "{lss_at}"\n  k.lss = {px}lss_text()\n`
-  src = src + `  k.make = fn {px}new\n  k.props = fn {px}props\n  k.model = fn {px}model\n  k.call = fn {px}call\n  return k\n}}\n`
+  src = src + `  k.make = fn {px}new\n  k.renew = fn {px}renew\n  k.props = fn {px}props\n  k.model = fn {px}model\n  k.call = fn {px}call\n  return k\n}}\n`
   vw_parse(src, g_cm_file[c], g_cm_line[c], head.vis)
+  vw_parse(cm_renew_src(c, px, "Cmp" + name), g_cm_file[c], g_cm_line[c], head.vis)
   cm_text_fn(c, px + "xml_text", xml, head)
   cm_text_fn(c, px + "lss_text", lss, head)
   let reg = node(E_CALL)
@@ -86,4 +87,27 @@ function cm_unique(name: pointer) -> void {
     }
     i += 1
   }
+}
+# an instance's record put back as `new` made it, for ludic.ui to mount again rather than make another:
+# each field its default, or its type's zero
+function cm_renew_src(c: int, px: pointer, rec: pointer) -> pointer {
+  var src = `function {px}renew(p: pointer) -> void {{\n  let s: {rec} = p\n`
+  var i = 0
+  while i < len(g_cm_keep[c]) {
+    let f = g_cm_keep[c][i]
+    if g_cm_defs[c][i] != null {
+      src = src + `  s.{f} = {px}def_{f}(s)\n`
+    } else {
+      src = src + `  s.{f} = {cm_zero(g_cm_keep_ty[c][i])}\n`
+    }
+    i += 1
+  }
+  return src + "}\n"
+}
+function cm_zero(ty: pointer) -> pointer {
+  if ty == "int" or ty == "long" or ty == "byte" { return "0" }
+  if ty == "float" { return "0.0" }
+  if ty == "fixed" { return "fixed(0)" }
+  if ty == "bool" { return "false" }
+  return "null"
 }

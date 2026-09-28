@@ -1,0 +1,5 @@
+# Shown.ludic - a counter shown or not: each time it comes back it is a new counter
+component Shown {
+  state on: bool = true
+  on flip() { on = not on }
+}

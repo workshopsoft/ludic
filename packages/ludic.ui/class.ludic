@@ -8,6 +8,7 @@ export property UiClass {
   lss_path: string = ""
   lss: string = ""
   make: fn() -> pointer = null
+  renew: fn(pointer) -> void = null   # a record `make` made, put back as new: an instance mounted again
   props: fn(pointer, Val) -> void = null
   model: fn(pointer, Val) -> Val = null   # fills the object it is given (the instance keeps one)
   call: fn(pointer, string, Val, Val) -> Val = null   # the last: where to write the answer, or null

@@ -1,0 +1,30 @@
+# ui_remount.ludic - a component that comes and goes: mounted again, it starts as new (its state back
+# to its defaults), and a thousand comings and goings hold the heap flat, because an unmounted
+# instance is put back and mounted again rather than a record, props and model made each time
+import "ludic.ui"
+import "ui_remount_parts/Counter.ludic"
+import "ui_remount_parts/Shown.ludic"
+program UiRemount {
+  numbers float
+  function frame(ui_st: mut UiState) -> UiNode {
+    let root: UiNode = ui_nodes(ui_st, "Shown", null)
+    ui_place(ui_st, root, 0.0, 0.0, 300.0, 200.0)
+    return root
+  }
+  entry (ui_st: mut UiState) {
+    var root = frame(ui_st)
+    let c = root.children[0].children[1]
+    ui_press(ui_st, c.children[1])
+    ui_press(ui_st, c.children[1])
+    root = frame(ui_st)
+    let before = root.children[0].children[1].children[0].text
+    var at = 0
+    for i in 0 .. 2000 {
+      ui_press(ui_st, root.children[0].children[0])
+      root = frame(ui_st)
+      if i == 99 { at = Os.heap_bytes() }
+    }
+    let grew = Os.heap_bytes() - at
+    print(`{before} | {root.children[0].children[1].children[0].text} | heap {grew}`)
+  }
+}

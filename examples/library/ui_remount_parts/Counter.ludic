@@ -1,0 +1,9 @@
+# Counter.ludic - a counter that starts at 0 each time it is mounted
+component Counter {
+  prop label: string
+  prop step: int = 1
+  state count: int = 0
+  doubled: int = count * 2
+  function big() -> bool { return count > 3 }
+  on bump() { count += step }
+}
