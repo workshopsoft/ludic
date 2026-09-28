@@ -1,5 +1,7 @@
 # attr_place.ludic - position and its insets, z-index, overflow, white-space and text-overflow
+const EL_KEYS_PLACE_PROP: string = " bottom inset left overflow overflow-y position right text-overflow top white-space z-index "
 function el_place_prop(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
+  if not lk_in(EL_KEYS_PLACE_PROP, key) { return false }      # not one of its keys: no text made for it
   let s = vl_text_u(ui_st, v)
   if key == "position" {
     n.pos = 0

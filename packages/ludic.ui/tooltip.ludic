@@ -17,11 +17,16 @@ function tt_track(ui_st: mut UiState, root: UiNode, x: float, y: float) -> void 
     ui_st.tt_key = ""
     return
   }
+  let title = ui_attr_text(n, "title")
   if n.key != ui_st.tt_key {
     ui_st.tt_key = n.key
     ui_st.tt_since = an_now(ui_st)
+    ui_st.tt_src = null
   }
-  ui_st.tt_text = tt_translate(ui_st, n, ui_attr_text(n, "title"))
+  if ui_st.tt_src == null or title != ui_st.tt_src {               # translated when the element or its title changes, not a frame
+    ui_st.tt_src = title
+    ui_st.tt_text = tt_translate(ui_st, n, title)
+  }
   ui_st.tt_x = px
   ui_st.tt_y = py
 }

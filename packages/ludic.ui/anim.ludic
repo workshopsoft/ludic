@@ -75,11 +75,11 @@ function an_at(ui_st: mut UiState, n: UiNode, k: UiKeyframes, t: float) -> void 
   let a = k.rules[lo]
   let b = k.rules[hi]
   for i in 0 .. len(a.keys) {
-    let va = el_num(vl_text(ui_eval(ui_st, a.vals[i], n.env)))
+    let va = el_numv(ui_st, ui_eval(ui_st, a.vals[i], n.env))
     var vb = va
     for j in 0 .. len(b.keys) {
-      if b.keys[j] == a.keys[i] { vb = el_num(vl_text(ui_eval(ui_st, b.vals[j], n.env))) }
+      if b.keys[j] == a.keys[i] { vb = el_numv(ui_st, ui_eval(ui_st, b.vals[j], n.env)) }
     }
-    el_apply(ui_st, n, a.keys[i], Value.float(va + (vb - va) * f))
+    el_apply(ui_st, n, a.keys[i], uv_float(ui_st, va + (vb - va) * f))
   }
 }

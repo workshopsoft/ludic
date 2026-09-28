@@ -22,6 +22,6 @@ function sc_held(ui_st: mut UiState, n: UiNode, off: float, live: bool) -> float
     ui_st.sc_want_px = pxs
   }
   let v = ui_attr(n, "scroll-top")
-  if Value.kind(v) != 0 { at = ui_px(ui_st, el_num(vl_text(v))) }
+  if Value.kind(v) != 0 { at = ui_px(ui_st, el_numv(ui_st, v)) }
   return at
 }

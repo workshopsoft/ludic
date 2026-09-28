@@ -49,6 +49,7 @@ export state UiState {
   ca_used: int = 0
   ca_args: [][]CaVal = new [][]CaVal
   ca_depth: int = 0
+  tt_src: string = null                  # tooltip.ludic: the title tt_text was translated from
   fit_out: []float = new []float         # draw_content.ludic: an image's box, kept
   r3n_cut: []float = new []float         # render3d_nine.ludic: a nine-slice's edges, kept
   r3n_xs: []float = new []float

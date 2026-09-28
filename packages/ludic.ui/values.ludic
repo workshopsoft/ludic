@@ -79,3 +79,9 @@ function vl_text_u(ui_st: mut UiState, v: Val) -> string {
   }
   return vl_text(v)
 }
+# a value as a number: a number read as one, only text parsed (a float's text written per frame to be
+# read straight back was a leak - an animation's opacity, a flex-grow)
+function el_numv(ui_st: mut UiState, v: Val) -> float {
+  if vl_num(v) { return Value.as_float(v) }
+  return el_num(vl_text_u(ui_st, v))
+}

@@ -47,7 +47,13 @@ function el_size(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
   if key == "w" or key == "h" { el_dim(ui_st, n, key == "w", v) } else if key == "min-w" { n.min_w = el_len(ui_st, v) } else if key == "max-w" { n.max_w = el_len(ui_st, v) } else if key == "min-h" { n.min_h = el_len(ui_st, v) } else if key == "max-h" { n.max_h = el_len(ui_st, v) } else if key == "gap" { n.gap = el_len(ui_st, v) } else { return false }
   return true
 }
+const EL_KEYS_FLEX: string = " align dir display flex grow justify self talign wrap "
 function el_flex(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
+  if not lk_in(EL_KEYS_FLEX, key) { return false }      # not one of its keys: no text made for it
+  if key == "grow" {
+    n.grow = el_numv(ui_st, v)
+    return true
+  }
   let s = vl_text_u(ui_st, v)
   if key == "dir" {
     n.dir = UI_COL
@@ -55,7 +61,13 @@ function el_flex(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
   } else if key == "grow" { n.grow = el_num(s) } else if key == "flex" { el_flex_short(ui_st, n, s) } else if key == "wrap" { n.wrap = s == "wrap" or (vl_truthy(v) and s != "false" and s != "nowrap") } else if key == "align" { n.align = el_place(v) } else if key == "self" { n.self = el_place(v) } else if key == "justify" { n.justify = el_place(v) } else if key == "talign" { n.talign = el_place(v) } else if key == "display" { n.hidden = s == "none" } else { return false }
   return true
 }
+const EL_KEYS_LOOK: string = " alpha bg border border-bottom border-color border-left border-right border-top border-width color enabled size "
 function el_look(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
+  if not lk_in(EL_KEYS_LOOK, key) { return false }      # not one of its keys: no text made for it
+  if key == "alpha" {
+    n.alpha = el_numv(ui_st, v)
+    return true
+  }
   let s = vl_text_u(ui_st, v)
   if key == "size" { n.size = el_len(ui_st, v) } else if key == "color" {
     n.fg = ui_color(ui_st, s)
