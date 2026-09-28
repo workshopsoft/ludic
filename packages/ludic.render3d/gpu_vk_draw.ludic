@@ -1971,6 +1971,11 @@ function gvk_pipeline_fast(render3d_st: mut Render3dState, p: int, m: Mesh, st: 
   }
   # a pipeline the driver refused is remembered as 0 too: retried on every draw, each try built its
   # key and its create structs again and gave none of them back
+  return gvk_pipe_build(render3d_st, p, m, st, n_color, color_fmt, depth_fmt, samples, layout, state, bias, pass)
+}
+# The one place the pipeline cache grows: once per variant the game draws (program, vertex layout,
+# render state, formats), kept for the program's life - the fence's declared warm-up (plan 25.2)
+function gvk_pipe_build(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: int, depth_fmt: int, samples: int, layout: int, state: int, bias: int, pass: int) -> long {
   let pipe = gvk_pipeline(render3d_st, p, m, st, n_color, color_fmt, depth_fmt, samples)
   push(render3d_st.gvk_pc_prog, p);  push(render3d_st.gvk_pc_layout, layout);  push(render3d_st.gvk_pc_state, state)
   push(render3d_st.gvk_pc_bias, bias);  push(render3d_st.gvk_pc_pass, pass);  push(render3d_st.gvk_pc_pipe, pipe)
