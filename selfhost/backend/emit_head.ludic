@@ -70,6 +70,7 @@ function emit_global_init_fn() -> void {
 # 0.S: the runtime's states are made first, before it boots (rt_init reads them); the rest after
 function is_runtime_state_var(d: Node) -> bool { return d.uns == 1 and is_state_ty(d.ty) and is_runtime_file(d.file) }
 function emit_init_fn(name: pointer, runtime: bool) -> void {
+  fence_enter(name)
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
   let fbody = buf_new()
@@ -276,7 +277,7 @@ function emit_str_prelude() -> void {
   emith("  %zb = icmp eq i8 %ccb, 0\n  br i1 %zb, label %alloc, label %blb\n")
   emith("blb:\n  %ib1 = add i32 %ib, 1\n  br label %bl\n")
   emith("alloc:\n  %sum = add i32 %ia, %ib\n  %sz = add i32 %sum, 1\n")
-  emith("  %sz64 = sext i32 %sz to i64\n  %out = call ptr @malloc(i64 %sz64)\n  br label %c1\n")
+  emith("  %sz64 = sext i32 %sz to i64\n  %out = call ptr @lp_malloc(i64 %sz64)\n  br label %c1\n")
   emith("c1:\n  %i = phi i32 [ 0, %alloc ], [ %i1, %c1b ]\n")
   emith("  %d1 = icmp slt i32 %i, %ia\n  br i1 %d1, label %c1b, label %c2i\n")
   emith("c1b:\n  %s1 = getelementptr inbounds i8, ptr %a, i32 %i\n  %v1 = load i8, ptr %s1\n")
@@ -296,7 +297,7 @@ function emit_str_prelude() -> void {
 # buffer, prepends '-' for negatives, and moves them to the buffer's start.
 function emit_int_str() -> void {
   emith("define ptr @lp_int_str(i32 %n0) {\n")
-  emith("entry:\n  %buf = call ptr @malloc(i64 24)\n")
+  emith("entry:\n  %buf = call ptr @lp_malloc(i64 24)\n")
   emith("  %isneg = icmp slt i32 %n0, 0\n  %neg = sub i32 0, %n0\n")
   emith("  %n = select i1 %isneg, i32 %neg, i32 %n0\n")
   emith("  %term = getelementptr inbounds i8, ptr %buf, i32 23\n  store i8 0, ptr %term\n")
@@ -321,7 +322,7 @@ function emit_int_str() -> void {
 # at most 20 digits plus sign and NUL, so the 24-byte scratch buffer still fits.
 function emit_long_str() -> void {
   emith("define ptr @lp_long_str(i64 %n0) {\n")
-  emith("entry:\n  %buf = call ptr @malloc(i64 24)\n")
+  emith("entry:\n  %buf = call ptr @lp_malloc(i64 24)\n")
   emith("  %isneg = icmp slt i64 %n0, 0\n  %neg = sub i64 0, %n0\n")
   emith("  %n = select i1 %isneg, i64 %neg, i64 %n0\n")
   emith("  %term = getelementptr inbounds i8, ptr %buf, i32 23\n  store i8 0, ptr %term\n")
@@ -346,7 +347,7 @@ function emit_long_str() -> void {
 function emit_str_slice() -> void {
   emith("define ptr @lp_str_slice(ptr %s, i32 %start, i32 %end) {\n")
   emith("entry:\n  %len = sub i32 %end, %start\n  %sz = add i32 %len, 1\n")
-  emith("  %sz64 = sext i32 %sz to i64\n  %out = call ptr @malloc(i64 %sz64)\n  br label %loop\n")
+  emith("  %sz64 = sext i32 %sz to i64\n  %out = call ptr @lp_malloc(i64 %sz64)\n  br label %loop\n")
   emith("loop:\n  %i = phi i32 [ 0, %entry ], [ %i1, %body ]\n")
   emith("  %d = icmp slt i32 %i, %len\n  br i1 %d, label %body, label %fin\n")
   emith("body:\n  %si = add i32 %start, %i\n  %sp = getelementptr inbounds i8, ptr %s, i32 %si\n  %c = load i8, ptr %sp\n")

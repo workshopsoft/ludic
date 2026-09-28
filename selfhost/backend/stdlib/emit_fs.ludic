@@ -112,7 +112,7 @@ function emit_fs_prelude() -> void {
 function emit_fs_common() -> void {
   # duplicate %n bytes of %s into a fresh NUL-terminated buffer
   emith("define ptr @lp_fs_dup(ptr %s, i32 %n) {\n")
-  emith("entry:\n  %nz = zext i32 %n to i64\n  %t = add i64 %nz, 1\n  %m = call ptr @malloc(i64 %t)\n  call ptr @memcpy(ptr %m, ptr %s, i64 %nz)\n")
+  emith("entry:\n  %nz = zext i32 %n to i64\n  %t = add i64 %nz, 1\n  %m = call ptr @lp_malloc(i64 %t)\n  call ptr @memcpy(ptr %m, ptr %s, i64 %nz)\n")
   emith("  %end = getelementptr i8, ptr %m, i32 %n\n  store i8 0, ptr %end\n  ret ptr %m\n}\n")
 
   emith("define ptr @lp_fs_strdup(ptr %s) {\n")
@@ -142,7 +142,7 @@ function emit_fs_path() -> void {
   emith("kb:\n  %bemp = icmp eq i32 %lb, 0\n  br i1 %bemp, label %reta, label %chk\n")
   emith("reta:\n  %ra = call ptr @lp_fs_strdup(ptr %a)\n  ret ptr %ra\n")
   emith("chk:\n  %lam1 = sub i32 %la, 1\n  %pe = getelementptr i8, ptr %a, i32 %lam1\n  %ae = load i8, ptr %pe\n  %aei = zext i8 %ae to i32\n  %ends = icmp eq i32 %aei, 47\n")
-  emith("  %sep = select i1 %ends, i32 0, i32 1\n  %tot = add i32 %la, %lb\n  %tot2 = add i32 %tot, %sep\n  %tot3 = add i32 %tot2, 1\n  %totz = zext i32 %tot3 to i64\n  %m = call ptr @malloc(i64 %totz)\n")
+  emith("  %sep = select i1 %ends, i32 0, i32 1\n  %tot = add i32 %la, %lb\n  %tot2 = add i32 %tot, %sep\n  %tot3 = add i32 %tot2, 1\n  %totz = zext i32 %tot3 to i64\n  %m = call ptr @lp_malloc(i64 %totz)\n")
   emith("  %laz = zext i32 %la to i64\n  call ptr @memcpy(ptr %m, ptr %a, i64 %laz)\n")
   # write separator if needed
   emith("  br i1 %ends, label %nosep, label %wsep\n")
@@ -185,7 +185,7 @@ function emit_fs_path() -> void {
   emith("entry:\n  %base = call ptr @lp_path_base(ptr %s)\n  %ext = call ptr @lp_path_ext(ptr %s)\n")
   emith("  %bl64 = call i64 @strlen(ptr %base)\n  %bl = trunc i64 %bl64 to i32\n  %el64 = call i64 @strlen(ptr %ext)\n  %el = trunc i64 %el64 to i32\n")
   # the base and the extension are its own copies: freed once the answer is cut out of them
-  emith("  %keep = sub i32 %bl, %el\n  %r = call ptr @lp_fs_dup(ptr %base, i32 %keep)\n  call void @free(ptr %base)\n  call void @free(ptr %ext)\n  ret ptr %r\n}\n")
+  emith("  %keep = sub i32 %bl, %el\n  %r = call ptr @lp_fs_dup(ptr %base, i32 %keep)\n  call void @lp_free(ptr %base)\n  call void @lp_free(ptr %ext)\n  ret ptr %r\n}\n")
 
   emit_fs_normalize()
 }
@@ -196,9 +196,9 @@ function emit_fs_path() -> void {
 function emit_fs_normalize() -> void {
   emith("define ptr @lp_path_norm(ptr %s) {\n")
   emith("entry:\n  %len64 = call i64 @strlen(ptr %s)\n  %len = trunc i64 %len64 to i32\n  %cap = add i32 %len, 2\n  %capz = zext i32 %cap to i64\n")
-  emith("  %out = call ptr @malloc(i64 %capz)\n")
+  emith("  %out = call ptr @lp_malloc(i64 %capz)\n")
   # segst holds output offsets (i32) of each kept segment's start; size cap ints
-  emith("  %stz = mul i32 %cap, 4\n  %stzz = zext i32 %stz to i64\n  %segst = call ptr @malloc(i64 %stzz)\n")
+  emith("  %stz = mul i32 %cap, 4\n  %stzz = zext i32 %stz to i64\n  %segst = call ptr @lp_malloc(i64 %stzz)\n")
   emith("  %b0 = load i8, ptr %s\n  %b0i = zext i8 %b0 to i32\n  %abs = icmp eq i32 %b0i, 47\n")
   emith("  %ip = alloca i32\n  %op = alloca i32\n  %scp = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %scp\n")
   emith("  br i1 %abs, label %ldr, label %noldr\n")
@@ -239,8 +239,8 @@ function emit_fs_normalize() -> void {
   emith("fdefault:\n  br label %term\n")
   emith("term:\n  %eo = load i32, ptr %op\n  %ez = icmp eq i32 %eo, 0\n  br i1 %ez, label %emptyout, label %putnul\n")
   # the segment table is this call's own: freed on both ways out
-  emith("emptyout:\n  store i8 46, ptr %out\n  %e1 = getelementptr i8, ptr %out, i32 1\n  store i8 0, ptr %e1\n  call void @free(ptr %segst)\n  ret ptr %out\n")
-  emith("putnul:\n  %ep = getelementptr i8, ptr %out, i32 %eo\n  store i8 0, ptr %ep\n  call void @free(ptr %segst)\n  ret ptr %out\n}\n")
+  emith("emptyout:\n  store i8 46, ptr %out\n  %e1 = getelementptr i8, ptr %out, i32 1\n  store i8 0, ptr %e1\n  call void @lp_free(ptr %segst)\n  ret ptr %out\n")
+  emith("putnul:\n  %ep = getelementptr i8, ptr %out, i32 %eo\n  store i8 0, ptr %ep\n  call void @lp_free(ptr %segst)\n  ret ptr %out\n}\n")
 }
 
 # ---- Fs.* (libc) -----------------------------------------------------------
@@ -274,7 +274,7 @@ function emit_fs_io() -> void {
   emith("entry:\n  store i32 0, ptr %lenout\n  %f = call ptr @lp_pak_open(ptr %p, ptr @fn_str_rb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
   emith("bad:\n  ret ptr null\n")
   emith("ok:\n  call i32 @fseek(ptr %f, i64 0, i32 2)\n  %n64 = call i64 @ftell(ptr %f)\n  call i32 @fseek(ptr %f, i64 0, i32 0)\n  %n = trunc i64 %n64 to i32\n")
-  emith("  %cap = add i64 %n64, 1\n  %m = call ptr @malloc(i64 %cap)\n  %rd = call i64 @fread(ptr %m, i64 1, i64 %n64, ptr %f)\n  call i32 @fclose(ptr %f)\n")
+  emith("  %cap = add i64 %n64, 1\n  %m = call ptr @lp_malloc(i64 %cap)\n  %rd = call i64 @fread(ptr %m, i64 1, i64 %n64, ptr %f)\n  call i32 @fclose(ptr %f)\n")
   emith("  %rdi = trunc i64 %rd to i32\n  %endp = getelementptr i8, ptr %m, i32 %rdi\n  store i8 0, ptr %endp\n  store i32 %rdi, ptr %lenout\n  ret ptr %m\n}\n")
 
   emith("define ptr @lp_fs_read_text(ptr %p) {\n")
@@ -285,14 +285,14 @@ function emit_fs_io() -> void {
   emith("define i32 @lp_fs_write_text(ptr %p, ptr %s) {\n")
   # the "<p>.tmp" name is this call's own and goes on both ways out
   emith("entry:\n  %tmp = call ptr @lp_path_join_ext(ptr %p, ptr @fn_str_dottmp)\n  %f = call ptr @fopen(ptr %tmp, ptr @fn_str_wb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %bad\n")
-  emith("bad:\n  call void @free(ptr %tmp)\n  ret i32 0\n")
+  emith("bad:\n  call void @lp_free(ptr %tmp)\n  ret i32 0\n")
   emith("ok:\n  %n = call i64 @strlen(ptr %s)\n  %w = call i64 @fwrite(ptr %s, i64 1, i64 %n, ptr %f)\n  call i32 @fclose(ptr %f)\n")
-  emith("  %rr = call i32 @rename(ptr %tmp, ptr %p)\n  call void @free(ptr %tmp)\n  %ok2 = icmp eq i32 %rr, 0\n  %z = zext i1 %ok2 to i32\n  ret i32 %z\n}\n")
+  emith("  %rr = call i32 @rename(ptr %tmp, ptr %p)\n  call void @lp_free(ptr %tmp)\n  %ok2 = icmp eq i32 %rr, 0\n  %z = zext i1 %ok2 to i32\n  ret i32 %z\n}\n")
 
   # concat two strings (used to build "<p>.tmp"); local so write_text needs no
   # dependency on the Os prelude
   emith("define ptr @lp_path_join_ext(ptr %a, ptr %b) {\n")
-  emith("entry:\n  %la = call i64 @strlen(ptr %a)\n  %lb = call i64 @strlen(ptr %b)\n  %sum = add i64 %la, %lb\n  %tot = add i64 %sum, 1\n  %m = call ptr @malloc(i64 %tot)\n")
+  emith("entry:\n  %la = call i64 @strlen(ptr %a)\n  %lb = call i64 @strlen(ptr %b)\n  %sum = add i64 %la, %lb\n  %tot = add i64 %sum, 1\n  %m = call ptr @lp_malloc(i64 %tot)\n")
   emith("  call ptr @memcpy(ptr %m, ptr %a, i64 %la)\n  %m2 = getelementptr i8, ptr %m, i64 %la\n  call ptr @memcpy(ptr %m2, ptr %b, i64 %lb)\n  %ep = getelementptr i8, ptr %m, i64 %sum\n  store i8 0, ptr %ep\n  ret ptr %m\n}\n")
 
   emith("define i32 @lp_fs_append_text(ptr %p, ptr %s) {\n")
@@ -309,8 +309,8 @@ function emit_fs_io() -> void {
   emith("bad:\n  ret i32 0\n")
   # the whole file read and the "<dst>.tmp" name are this call's own: both go on every way out
   emith("ok:\n  %tmp = call ptr @lp_path_join_ext(ptr %dst, ptr @fn_str_dottmp)\n  %f = call ptr @fopen(ptr %tmp, ptr @fn_str_wb)\n  %fnz = icmp ne ptr %f, null\n  br i1 %fnz, label %w, label %badw\n")
-  emith("badw:\n  call void @free(ptr %buf)\n  call void @free(ptr %tmp)\n  ret i32 0\n")
-  emith("w:\n  %n = load i32, ptr %lp\n  %nz64 = zext i32 %n to i64\n  call i64 @fwrite(ptr %buf, i64 1, i64 %nz64, ptr %f)\n  call i32 @fclose(ptr %f)\n  %rr = call i32 @rename(ptr %tmp, ptr %dst)\n  call void @free(ptr %buf)\n  call void @free(ptr %tmp)\n  %ok2 = icmp eq i32 %rr, 0\n  %z = zext i1 %ok2 to i32\n  ret i32 %z\n}\n")
+  emith("badw:\n  call void @lp_free(ptr %buf)\n  call void @lp_free(ptr %tmp)\n  ret i32 0\n")
+  emith("w:\n  %n = load i32, ptr %lp\n  %nz64 = zext i32 %n to i64\n  call i64 @fwrite(ptr %buf, i64 1, i64 %nz64, ptr %f)\n  call i32 @fclose(ptr %f)\n  %rr = call i32 @rename(ptr %tmp, ptr %dst)\n  call void @lp_free(ptr %buf)\n  call void @lp_free(ptr %tmp)\n  %ok2 = icmp eq i32 %rr, 0\n  %z = zext i1 %ok2 to i32\n  ret i32 %z\n}\n")
 
   # mkdir: create %p and any missing parents (mkdir -p). Returns 1 if the
   # directory exists afterwards. Intermediate EEXIST errors are ignored.
@@ -320,7 +320,7 @@ function emit_fs_io() -> void {
   emith("go:\n  %sl = icmp eq i32 %ci, 47\n  br i1 %sl, label %cut, label %nx\n")
   emith("cut:\n  store i8 0, ptr %pp\n  call i32 @mkdir(ptr %dup, i32 493)\n  store i8 47, ptr %pp\n  br label %nx\n")
   emith("nx:\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %lp\n")
-  emith("fin:\n  call i32 @mkdir(ptr %dup, i32 493)\n  call void @free(ptr %dup)\n  %r = call i32 @lp_fs_is_dir(ptr %p)\n  ret i32 %r\n}\n")
+  emith("fin:\n  call i32 @mkdir(ptr %dup, i32 493)\n  call void @lp_free(ptr %dup)\n  %r = call i32 @lp_fs_is_dir(ptr %p)\n  ret i32 %r\n}\n")
 }
 
 # ---- Fs.list (+ sort) ------------------------------------------------------
@@ -330,8 +330,8 @@ function emit_fs_dir() -> void {
   # the readdir buffer before the next call. macOS/BSD dirent: d_name at offset
   # 21 (documented native layout).
   emith("define ptr @lp_fs_list(ptr %path) {\n")
-  emith("entry:\n  %h = call ptr @malloc(i64 16)\n  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  %d1 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 1\n  %d2 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 2\n")
-  emith("  %datap = alloca ptr\n  %cntp = alloca i32\n  %capp = alloca i32\n  %init = call ptr @malloc(i64 128)\n  store ptr %init, ptr %datap\n  store i32 0, ptr %cntp\n  store i32 16, ptr %capp\n")
+  emith("entry:\n  %h = call ptr @lp_malloc(i64 16)\n  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  %d1 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 1\n  %d2 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 2\n")
+  emith("  %datap = alloca ptr\n  %cntp = alloca i32\n  %capp = alloca i32\n  %init = call ptr @lp_malloc(i64 128)\n  store ptr %init, ptr %datap\n  store i32 0, ptr %cntp\n  store i32 16, ptr %capp\n")
   emith("  %dir = call ptr @opendir(ptr %path)\n  %dnz = icmp ne ptr %dir, null\n  br i1 %dnz, label %rd, label %empty\n")
   emith("rd:\n  %de = call ptr @readdir(ptr %dir)\n  %denz = icmp ne ptr %de, null\n  br i1 %denz, label %ent, label %closed\n")
   emith("ent:\n  %namep = getelementptr i8, ptr %de, i32 21\n")
@@ -343,7 +343,7 @@ function emit_fs_dir() -> void {
   emith("keep:\n  %nm = call ptr @lp_fs_strdup(ptr %namep)\n")
   # grow if full
   emith("  %cnt = load i32, ptr %cntp\n  %cap = load i32, ptr %capp\n  %full = icmp sge i32 %cnt, %cap\n  br i1 %full, label %grow, label %put\n")
-  emith("grow:\n  %nc = mul i32 %cap, 2\n  store i32 %nc, ptr %capp\n  %ncz = zext i32 %nc to i64\n  %nb = mul i64 %ncz, 8\n  %old = load ptr, ptr %datap\n  %new = call ptr @realloc(ptr %old, i64 %nb)\n  store ptr %new, ptr %datap\n  br label %put\n")
+  emith("grow:\n  %nc = mul i32 %cap, 2\n  store i32 %nc, ptr %capp\n  %ncz = zext i32 %nc to i64\n  %nb = mul i64 %ncz, 8\n  %old = load ptr, ptr %datap\n  %new = call ptr @lp_realloc(ptr %old, i64 %nb)\n  store ptr %new, ptr %datap\n  br label %put\n")
   emith("put:\n  %data = load ptr, ptr %datap\n  %cnt2 = load i32, ptr %cntp\n  %slot = getelementptr ptr, ptr %data, i32 %cnt2\n  store ptr %nm, ptr %slot\n  %cnt3 = add i32 %cnt2, 1\n  store i32 %cnt3, ptr %cntp\n  br label %rd\n")
   emith("closed:\n  call i32 @closedir(ptr %dir)\n  br label %sortit\n")
   emith("empty:\n  br label %sortit\n")
@@ -410,13 +410,13 @@ function emit_fs_mime() -> void {
   emith("entry:\n  %ext = call ptr @lp_path_ext(ptr %path)\n  %lc = call ptr @lp_mime_lc(ptr %ext)\n  %ip = alloca i32\n  store i32 0, ptr %ip\n  br label %lp\n")
   emith(`lp:\n  %i = load i32, ptr %ip\n  %lt = icmp slt i32 %i, {itoa(n)}\n  br i1 %lt, label %body, label %def\n`)
   emith(`body:\n  %kp = getelementptr [{itoa(n)} x {{ ptr, ptr }}], ptr @mime_tbl, i32 0, i32 %i, i32 0\n  %k = load ptr, ptr %kp\n  %c = call i32 @strcmp(ptr %lc, ptr %k)\n  %eq = icmp eq i32 %c, 0\n  br i1 %eq, label %hit, label %nx\n`)
-  emith(`hit:\n  %vp = getelementptr [{itoa(n)} x {{ ptr, ptr }}], ptr @mime_tbl, i32 0, i32 %i, i32 1\n  %v = load ptr, ptr %vp\n  %r = call ptr @lp_fs_strdup(ptr %v)\n  call void @free(ptr %ext)\n  call void @free(ptr %lc)\n  ret ptr %r\n`)
+  emith(`hit:\n  %vp = getelementptr [{itoa(n)} x {{ ptr, ptr }}], ptr @mime_tbl, i32 0, i32 %i, i32 1\n  %v = load ptr, ptr %vp\n  %r = call ptr @lp_fs_strdup(ptr %v)\n  call void @lp_free(ptr %ext)\n  call void @lp_free(ptr %lc)\n  ret ptr %r\n`)
   emith("nx:\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %lp\n")
-  emith(`def:\n  %d = call ptr @lp_fs_strdup(ptr {k_octet})\n  call void @free(ptr %ext)\n  call void @free(ptr %lc)\n  ret ptr %d\n}}\n`)
+  emith(`def:\n  %d = call ptr @lp_fs_strdup(ptr {k_octet})\n  call void @lp_free(ptr %ext)\n  call void @lp_free(ptr %lc)\n  ret ptr %d\n}}\n`)
 
   # lowercase an extension, dropping a leading '.' (ASCII only, for table lookup)
   emith("define ptr @lp_mime_lc(ptr %s) {\n")
-  emith("entry:\n  %l64 = call i64 @strlen(ptr %s)\n  %l = trunc i64 %l64 to i32\n  %cap = add i64 %l64, 1\n  %out = call ptr @malloc(i64 %cap)\n")
+  emith("entry:\n  %l64 = call i64 @strlen(ptr %s)\n  %l = trunc i64 %l64 to i32\n  %cap = add i64 %l64, 1\n  %out = call ptr @lp_malloc(i64 %cap)\n")
   emith("  %b0 = load i8, ptr %s\n  %b0i = zext i8 %b0 to i32\n  %isdot = icmp eq i32 %b0i, 46\n  %start = select i1 %isdot, i32 1, i32 0\n")
   emith("  %ip = alloca i32\n  %op = alloca i32\n  store i32 %start, ptr %ip\n  store i32 0, ptr %op\n  br label %lp\n")
   emith("lp:\n  %i = load i32, ptr %ip\n  %pp = getelementptr i8, ptr %s, i32 %i\n  %c = load i8, ptr %pp\n  %ci = zext i8 %c to i32\n  %z = icmp eq i32 %ci, 0\n  br i1 %z, label %done, label %go\n")
@@ -431,22 +431,22 @@ function emit_fs_mime() -> void {
 function emit_fs_sniff() -> void {
   emith("define ptr @lp_mime_sniff(ptr %path) {\n")
   emith("entry:\n  %f = call ptr @fopen(ptr %path, ptr @fn_str_rb)\n  %nz = icmp ne ptr %f, null\n  br i1 %nz, label %ok, label %fallback\n")
-  emith("ok:\n  %buf = call ptr @malloc(i64 16)\n  %rd = call i64 @fread(ptr %buf, i64 1, i64 8, ptr %f)\n  call i32 @fclose(ptr %f)\n  %rdi = trunc i64 %rd to i32\n  %has4 = icmp sge i32 %rdi, 4\n  br i1 %has4, label %chk, label %nomatch\n")
+  emith("ok:\n  %buf = call ptr @lp_malloc(i64 16)\n  %rd = call i64 @fread(ptr %buf, i64 1, i64 8, ptr %f)\n  call i32 @fclose(ptr %f)\n  %rdi = trunc i64 %rd to i32\n  %has4 = icmp sge i32 %rdi, 4\n  br i1 %has4, label %chk, label %nomatch\n")
   emith("chk:\n  %b0p = getelementptr i8, ptr %buf, i32 0\n  %b0 = load i8, ptr %b0p\n  %b0i = zext i8 %b0 to i32\n  %b1p = getelementptr i8, ptr %buf, i32 1\n  %b1 = load i8, ptr %b1p\n  %b1i = zext i8 %b1 to i32\n  %b2p = getelementptr i8, ptr %buf, i32 2\n  %b2 = load i8, ptr %b2p\n  %b2i = zext i8 %b2 to i32\n  %b3p = getelementptr i8, ptr %buf, i32 3\n  %b3 = load i8, ptr %b3p\n  %b3i = zext i8 %b3 to i32\n")
   # PNG: 89 50 4E 47
   emith("  %p0 = icmp eq i32 %b0i, 137\n  %p1 = icmp eq i32 %b1i, 80\n  %p2 = icmp eq i32 %b2i, 78\n  %p3 = icmp eq i32 %b3i, 71\n  %pa = and i1 %p0, %p1\n  %pb = and i1 %pa, %p2\n  %pc = and i1 %pb, %p3\n  br i1 %pc, label %png, label %cj\n")
-  emith("png:\n  %rpng = call ptr @lp_fs_strdup(ptr @fn_sig_png)\n  call void @free(ptr %buf)\n  ret ptr %rpng\n")
+  emith("png:\n  %rpng = call ptr @lp_fs_strdup(ptr @fn_sig_png)\n  call void @lp_free(ptr %buf)\n  ret ptr %rpng\n")
   # JPEG: FF D8 FF
   emith("cj:\n  %j0 = icmp eq i32 %b0i, 255\n  %j1 = icmp eq i32 %b1i, 216\n  %j2 = icmp eq i32 %b2i, 255\n  %ja = and i1 %j0, %j1\n  %jb = and i1 %ja, %j2\n  br i1 %jb, label %jpg, label %cg\n")
-  emith("jpg:\n  %rjpg = call ptr @lp_fs_strdup(ptr @fn_sig_jpg)\n  call void @free(ptr %buf)\n  ret ptr %rjpg\n")
+  emith("jpg:\n  %rjpg = call ptr @lp_fs_strdup(ptr @fn_sig_jpg)\n  call void @lp_free(ptr %buf)\n  ret ptr %rjpg\n")
   # GIF: 47 49 46
   emith("cg:\n  %g0 = icmp eq i32 %b0i, 71\n  %g1 = icmp eq i32 %b1i, 73\n  %g2 = icmp eq i32 %b2i, 70\n  %ga = and i1 %g0, %g1\n  %gb = and i1 %ga, %g2\n  br i1 %gb, label %gif, label %cp\n")
-  emith("gif:\n  %rgif = call ptr @lp_fs_strdup(ptr @fn_sig_gif)\n  call void @free(ptr %buf)\n  ret ptr %rgif\n")
+  emith("gif:\n  %rgif = call ptr @lp_fs_strdup(ptr @fn_sig_gif)\n  call void @lp_free(ptr %buf)\n  ret ptr %rgif\n")
   # PDF: 25 50 44 46
   emith("cp:\n  %q0 = icmp eq i32 %b0i, 37\n  %q1 = icmp eq i32 %b1i, 80\n  %q2 = icmp eq i32 %b2i, 68\n  %q3 = icmp eq i32 %b3i, 70\n  %qa = and i1 %q0, %q1\n  %qb = and i1 %qa, %q2\n  %qc = and i1 %qb, %q3\n  br i1 %qc, label %pdf, label %nomatch\n")
-  emith("pdf:\n  %rpdf = call ptr @lp_fs_strdup(ptr @fn_sig_pdf)\n  call void @free(ptr %buf)\n  ret ptr %rpdf\n")
+  emith("pdf:\n  %rpdf = call ptr @lp_fs_strdup(ptr @fn_sig_pdf)\n  call void @lp_free(ptr %buf)\n  ret ptr %rpdf\n")
   # the 16 bytes read are this call's own and go on every way out
-  emith("nomatch:\n  call void @free(ptr %buf)\n  br label %fallback\n")
+  emith("nomatch:\n  call void @lp_free(ptr %buf)\n  br label %fallback\n")
   emith("fallback:\n  %r = call ptr @lp_mime_of(ptr %path)\n  ret ptr %r\n}\n")
 
   # the small string constants the Fs/Path/Mime runtime references

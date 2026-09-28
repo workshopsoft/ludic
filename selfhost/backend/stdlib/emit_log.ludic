@@ -82,7 +82,7 @@ function emit_log_ns(meth: pointer, e: Node) -> Val {
     i += 2
   }
   emit(`  call void @lp_log_emit(i32 {lvl}, ptr {line.code})\n`)
-  emit(`  call void @free(ptr {line.code})\n`)
+  emit(`  call void @lp_free(ptr {line.code})\n`)
   emit(`  br label %{lend}\n`)
   emit(`{lend}:\n`)
   return val("0", "void")

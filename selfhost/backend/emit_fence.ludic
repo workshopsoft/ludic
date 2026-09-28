@@ -1,0 +1,203 @@
+# emit_fence.ludic — the allocation fence (docs/plan 25.1). Every allocation the emitter writes
+# goes through @lp_malloc / @lp_calloc / @lp_realloc / @lp_free, and before a Ludic-level one it
+# stores the site's number in @lp_site. The runtime (emit_fence_ir.ludic) counts nothing until
+# Mem.play(); then it tracks every block by site in a side table and, once play has settled,
+# fails a frame that ends holding more than it began with (R3D_ALLOC_FENCE=off|count|warn|fail).
+#
+# A site is (function, file, line, kind). Site 0 is "unknown": an allocation inside a runtime
+# helper the emitter reached without a site of its own inherits the last one set.
+
+var g_site_fn: []pointer = new []pointer       # per site: the function name's constant
+var g_site_file: []pointer = new []pointer     # the file name's constant
+var g_site_line: []int = new []int
+var g_site_kind: []pointer = new []pointer     # the kind's constant
+var g_cur_fn_name: pointer = "?"               # the function being emitted
+var g_site_fnc: pointer = null                 # its name's constant, made at its first site
+var g_site_filen: pointer = null               # the last file a site named, and its constant
+var g_site_filec: pointer = null
+var g_site_kinds: []pointer = new []pointer    # kinds seen, and their constants
+var g_site_kindc: []pointer = new []pointer
+var g_site_next: pointer = null                # a kind the next allocation takes (`new Foo`)
+var g_atexit_declared: bool = false            # @atexit is declared once: by the fence or by --coverage
+var g_mzs_declared: bool = false               # @malloc_zone_statistics: by the fence or by Os.heap_bytes
+# the build's defaults (--fence=, --fence-warm=, --fence-census=, else a `fence` line in the nearest
+# package.ludic); the environment overrides each at run time (R3D_ALLOC_FENCE, _WARM, _CENSUS)
+var g_fence_mode: int = 0                      # 0: headless fails, windowed fails only under R3D_DEV
+var g_fence_warm: int = 600
+var g_fence_census: pointer = null
+var g_fence_flagged: bool = false              # a flag said so: the manifest does not override it
+
+function fence_reset() -> void {
+  g_site_fn = new []pointer;  g_site_file = new []pointer;  g_site_line = new []int;  g_site_kind = new []pointer
+  g_site_kinds = new []pointer;  g_site_kindc = new []pointer
+  g_atexit_declared = false
+  g_mzs_declared = false
+  g_cur_fn_name = "?";  g_site_fnc = null;  g_site_filen = null;  g_site_filec = null;  g_site_next = null
+  push(g_site_fn, null);  push(g_site_file, null);  push(g_site_line, 0);  push(g_site_kind, null)   # site 0, named at the end
+}
+
+# the function the next sites belong to (emit_fn, emit_system_fn)
+function fence_enter(name: pointer) -> void {
+  g_cur_fn_name = name
+  g_site_fnc = null
+}
+
+function fence_kind_const(kind: pointer) -> pointer {
+  var i = 0
+  while i < len(g_site_kinds) { if (g_site_kinds[i] == kind) { return g_site_kindc[i] };  i += 1 }
+  push(g_site_kinds, kind)
+  push(g_site_kindc, emit_str_const(kind))
+  return g_site_kindc[len(g_site_kindc) - 1]
+}
+
+# a new site for the allocation about to be emitted, stored into @lp_site
+function emit_site(kind: pointer) -> void {
+  var k = kind
+  if g_site_next != null { k = g_site_next;  g_site_next = null }
+  if g_site_fnc == null { g_site_fnc = emit_str_const(g_cur_fn_name) }
+  var file = g_err_file
+  if file == null { file = "?" }
+  if (g_site_filen == null) or not (g_site_filen == file) {
+    g_site_filen = file
+    g_site_filec = emit_str_const(file)
+  }
+  let id = len(g_site_line)
+  push(g_site_fn, g_site_fnc)
+  push(g_site_file, g_site_filec)
+  push(g_site_line, g_err_line)
+  push(g_site_kind, fence_kind_const(k))
+  emit(`  store i32 {itoa(id)}, ptr @lp_site\n`)
+}
+
+# emit_bind's hook: a call that allocates gets a site first, its kind read off the callee
+function fence_bind(rest: pointer) -> void {
+  if not str_starts(rest, "call ptr @lp_") { return }
+  if str_starts(rest, "call ptr @lp_malloc(") { emit_site("alloc");  return }
+  if str_starts(rest, "call ptr @lp_calloc(") { emit_site("slice data");  return }
+  if str_starts(rest, "call ptr @lp_realloc(") { emit_site("grow");  return }
+  if str_starts(rest, "call ptr @lp_str_concat(") { emit_site("concat");  return }
+  if str_starts(rest, "call ptr @lp_int_str(") or str_starts(rest, "call ptr @lp_long_str(") { emit_site("string(n)");  return }
+  if str_starts(rest, "call ptr @lp_fp_str(") { emit_site("string(x)");  return }
+  if str_starts(rest, "call ptr @lp_str_slice(") { emit_site("substring");  return }
+  if str_starts(rest, "call ptr @lp_text_") { emit_site("Text");  return }
+}
+
+function fence_int(s: pointer) -> int {
+  var n = 0
+  var neg = false
+  var i = 0
+  if (len(s) > 0) and (s[0] == '-') { neg = true;  i = 1 }
+  while (i < len(s)) and char_is_digit(s[i]) { n = n * 10 + (s[i] - '0');  i += 1 }
+  if neg { return 0 - n }
+  return n
+}
+
+function fence_mode_of(s: pointer) -> int {
+  if (s == "off") { return 1 }
+  if (s == "count") { return 2 }
+  if (s == "warn") { return 3 }
+  if (s == "fail") { return 4 }
+  perr(`the fence is off, count, warn or fail, not {s}`)
+  return 0
+}
+
+# ludicc's --fence flags; true when `a` was one of them
+function fence_flag(a: pointer) -> bool {
+  if str_starts(a, "--fence=") { g_fence_mode = fence_mode_of(a[8..len(a)]);  g_fence_flagged = true;  return true }
+  if str_starts(a, "--fence-warm=") { g_fence_warm = fence_int(a[13..len(a)]);  g_fence_flagged = true;  return true }
+  if str_starts(a, "--fence-census=") { g_fence_census = a[15..len(a)];  g_fence_flagged = true;  return true }
+  return false
+}
+
+# `fence fail`, `fence warm 900`, `fence census "build/fence.txt"` in the package.ludic nearest the
+# program, looked for up to four directories above it
+function fence_manifest(entry: pointer) -> void {
+  if g_fence_flagged { return }
+  var dir = dir_of(entry)
+  var up = 0
+  while up < 5 {
+    var root = dir
+    if len(root) > 0 { root = root + "/" }
+    let txt = read_file(root + "package.ludic")
+    if txt != null { fence_manifest_read(txt);  return }
+    if len(dir) == 0 { dir = ".." } else { dir = dir + "/.." }
+    up += 1
+  }
+}
+
+function fence_manifest_read(txt: pointer) -> void {
+  var i = 0
+  let tn = len(txt)
+  while i < tn {
+    var e = i
+    while (e < tn) and (txt[e] != '\n') { e += 1 }
+    var le = e
+    if (le > i) and (txt[le - 1] == 13) { le -= 1 }
+    let ws = native_words(txt[i..le])
+    if (len(ws) == 2) and (ws[0] == "fence") { g_fence_mode = fence_mode_of(ws[1]) }
+    if (len(ws) == 3) and (ws[0] == "fence") and (ws[1] == "warm") { g_fence_warm = fence_int(ws[2]) }
+    if (len(ws) == 3) and (ws[0] == "fence") and (ws[1] == "census") { g_fence_census = ws[2] }
+    i = e + 1
+  }
+}
+
+# Mem.play() / Mem.rewarm() / Mem.settled() / Mem.frame() / Mem.kept() / Mem.bad_frames()
+function is_mem_fence_ns(meth: pointer) -> bool {
+  return (meth == "play") or (meth == "rewarm") or (meth == "settled") or (meth == "frame") or (meth == "kept") or (meth == "bad_frames")
+}
+
+function emit_mem_fence_ns(meth: pointer, e: Node) -> Val {
+  if (meth == "kept") { return val(emit_bind("call i64 @lp_mem_kept()"), "long") }
+  if (meth == "bad_frames") { return val(emit_bind("call i64 @lp_mem_bad_frames()"), "long") }
+  if (meth == "rewarm") { emit("  call void @lp_mem_play()\n");  return val("0", "void") }
+  emit(`  call void @lp_mem_{meth}()\n`)
+  return val("0", "void")
+}
+
+function fence_table(name: pointer, ty: pointer, vals: []pointer) -> void {
+  emith(`{name} = global [{itoa(len(vals))} x {ty}] [`)
+  var i = 0
+  while i < len(vals) {
+    if i > 0 { emith(", ") }
+    emith(ty);  emith(" ");  emith(vals[i])
+    i += 1
+  }
+  emith("]\n")
+}
+
+# the runtime, and the tables this program's sites size
+function emit_fence_runtime() -> void {
+  if g_target_win { emit_fence_win();  return }
+  if not g_fprintf_declared { emith("declare i32 @fprintf(ptr, ptr, ...)\n");  g_fprintf_declared = true }
+  if not g_atexit_declared { emith("declare i32 @atexit(ptr)\n");  g_atexit_declared = true }
+  if not g_mzs_declared { emith("declare extern_weak void @malloc_zone_statistics(ptr, ptr)\n");  g_mzs_declared = true }
+  emit_fence_globals()
+  emit_fence_entry()
+  emit_fence_table()
+  emit_fence_control()
+  emit_fence_report()
+  emit_fence_frame()
+  let unknown = emit_str_const("?")
+  g_site_fn[0] = unknown;  g_site_file[0] = unknown;  g_site_kind[0] = unknown
+  let n = len(g_site_line)
+  let sn = itoa(n)
+  var dflt = itoa(g_fence_mode)
+  if (g_fence_mode == 0) and not g_windowed { dflt = "4" }
+  emith(`@lp_fdef = global i8 {dflt}\n`)
+  emith(`@lp_warm = global i64 {itoa(g_fence_warm)}\n`)
+  if g_fence_census == null { emith("@lp_census_def = global ptr null\n") }
+  else { emith(`@lp_census_def = global ptr {emit_str_const(g_fence_census)}\n`) }
+  emith(`@lp_site_n = global i32 {sn}\n`)
+  fence_table("@lp_site_fn", "ptr", g_site_fn)
+  fence_table("@lp_site_file", "ptr", g_site_file)
+  fence_table("@lp_site_kind", "ptr", g_site_kind)
+  let lines = new []pointer
+  var i = 0
+  while i < n { push(lines, itoa(g_site_line[i]));  i += 1 }
+  fence_table("@lp_site_line", "i32", lines)
+  emith(`@lp_site_live = global [{sn} x i64] zeroinitializer\n`)
+  emith(`@lp_site_mark = global [{sn} x i64] zeroinitializer\n`)
+  emith(`@lp_site_stamp = global [{sn} x i64] zeroinitializer\n`)
+  emith(`@lp_site_base = global [{sn} x i64] zeroinitializer\n`)
+  emith(`@lp_site_ra = global [{itoa(n * 6)} x ptr] zeroinitializer\n`)
+}

@@ -259,7 +259,7 @@ function emit_fp_str_fn() -> void {
   emith("@.fmt_fpg = private unnamed_addr constant [5 x i8] c\"%.*g\\00\"\n")
   emith("@.fp_marks = private unnamed_addr constant [8 x i8] c\".eEnNiI\\00\"\n")
   emith("define ptr @lp_fp_str(double %v, i32 %single) {\n")
-  emith("entry:\n  %buf = call ptr @malloc(i64 40)\n  br label %try\n")
+  emith("entry:\n  %buf = call ptr @lp_malloc(i64 40)\n  br label %try\n")
   emith("try:\n  %p = phi i32 [ 6, %entry ], [ %p1, %again ]\n")
   emith("  %w = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf, i64 36, ptr @.fmt_fpg, i32 %p, double %v)\n")
   emith("  %r = call double @strtod(ptr %buf, ptr null)\n")
@@ -285,7 +285,7 @@ function emit_fp_buffer(t: pointer, n: Val) -> Val {
   if (t == "double") { sz = "8";  ty = "doubles" }
   let by = emit_bind(`mul i32 {n.code}, {sz}`)
   let w = emit_bind(`zext i32 {by} to i64`)
-  return val(emit_bind(`call ptr @malloc(i64 {w})`), ty)
+  return val(emit_bind(`call ptr @lp_malloc(i64 {w})`), ty)
 }
 
 # ---- Math.* on floats ---------------------------------------------------------

@@ -5,6 +5,7 @@
 
 function emit_system_fn(sys: Node) -> void {
   det_enter(sys.s)
+  fence_enter(sys.s)
   g_cur_scene = sys.c                          # scene owning this handler (null if global) — for `become`
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
@@ -376,6 +377,7 @@ function emit_scene_menu_render() -> void {
 # @scene_exit_<Name>, called at the transition point (and enter at boot for the
 # start scene). Emitted for every scene, empty body when the hook is absent.
 function emit_scene_fn(name: pointer, kind: pointer, body: Node, menu: pointer) -> void {
+  fence_enter(`scene {name}`)
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
   ret_ty = "void"
   let fbody = buf_new()
@@ -670,6 +672,7 @@ function emit_event_fns() -> void {
         g_ret_label = next
         g_err_file = g_onlisten[i].file
         vis_check(ev, en)
+        fence_enter(`@On({en})`)
         emit_block(g_onlisten[i].a)
         g_ret_label = "ret"
         if not g_term { emit(`  br label %{next}\n`) }

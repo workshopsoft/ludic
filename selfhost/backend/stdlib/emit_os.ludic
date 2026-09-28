@@ -164,13 +164,13 @@ function emit_os_prelude() -> void {
   # concatenate two NUL-terminated strings into a fresh malloc'd buffer
   emith("define ptr @lp_os_join2(ptr %a, ptr %b) {\n")
   emith("entry:\n  %la = call i64 @strlen(ptr %a)\n  %lb = call i64 @strlen(ptr %b)\n")
-  emith("  %sum = add i64 %la, %lb\n  %tot = add i64 %sum, 1\n  %m = call ptr @malloc(i64 %tot)\n")
+  emith("  %sum = add i64 %la, %lb\n  %tot = add i64 %sum, 1\n  %m = call ptr @lp_malloc(i64 %tot)\n")
   emith("  call ptr @memcpy(ptr %m, ptr %a, i64 %la)\n")
   emith("  %m2 = getelementptr i8, ptr %m, i64 %la\n  call ptr @memcpy(ptr %m2, ptr %b, i64 %lb)\n")
   emith("  %end = getelementptr i8, ptr %m, i64 %sum\n  store i8 0, ptr %end\n  ret ptr %m\n}\n")
 
   emith("define ptr @lp_os_join3(ptr %a, ptr %b, ptr %c) {\n")
-  emith("entry:\n  %ab = call ptr @lp_os_join2(ptr %a, ptr %b)\n  %r = call ptr @lp_os_join2(ptr %ab, ptr %c)\n  call void @free(ptr %ab)\n  ret ptr %r\n}\n")
+  emith("entry:\n  %ab = call ptr @lp_os_join2(ptr %a, ptr %b)\n  %r = call ptr @lp_os_join2(ptr %ab, ptr %c)\n  call void @lp_free(ptr %ab)\n  ret ptr %r\n}\n")
 
   # Windows has its own known folders and no uname; emit_win.ludic supplies them
   if g_target_win { emit_os_win_known(k_dot, k_slash);  return }
@@ -204,9 +204,9 @@ function emit_os_prelude() -> void {
   emith("define i32 @lp_os_is_darwin() {\n")
   emith("entry:\n  %c = load i32, ptr @L_os_darwin\n  %known = icmp sge i32 %c, 0\n  br i1 %known, label %done, label %probe\n")
   emith("done:\n  ret i32 %c\n")
-  emith("probe:\n  %buf = call ptr @malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n")
+  emith("probe:\n  %buf = call ptr @lp_malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n")
   emith(`  %cd = call i32 @strncmp(ptr %buf, ptr {k_darw}, i64 6)\n  %isd = icmp eq i32 %cd, 0\n`)
-  emith("  %r = select i1 %isd, i32 1, i32 0\n  call void @free(ptr %buf)\n  store i32 %r, ptr @L_os_darwin\n  ret i32 %r\n}\n")
+  emith("  %r = select i1 %isd, i32 1, i32 0\n  call void @lp_free(ptr %buf)\n  store i32 %r, ptr @L_os_darwin\n  ret i32 %r\n}\n")
 
   # $<var> when it is set and non-empty, else $HOME<rel>; the result always ends in '/'
   emith("define ptr @lp_os_xdg(ptr %var, ptr %rel) {\n")
@@ -219,7 +219,7 @@ function emit_os_prelude() -> void {
   emith("define ptr @lp_os_known(ptr %app, ptr %mac, ptr %var, ptr %rel) {\n")
   emith("entry:\n  %d = call i32 @lp_os_is_darwin()\n  %isd = icmp ne i32 %d, 0\n  br i1 %isd, label %m, label %x\n")
   emith("m:\n  %h = call ptr @lp_os_home()\n  %r1 = call ptr @lp_os_join3(ptr %h, ptr %mac, ptr %app)\n  ret ptr %r1\n")
-  emith("x:\n  %b = call ptr @lp_os_xdg(ptr %var, ptr %rel)\n  %r2 = call ptr @lp_os_join2(ptr %b, ptr %app)\n  call void @free(ptr %b)\n  ret ptr %r2\n}\n")
+  emith("x:\n  %b = call ptr @lp_os_xdg(ptr %var, ptr %rel)\n  %r2 = call ptr @lp_os_join2(ptr %b, ptr %app)\n  call void @lp_free(ptr %b)\n  ret ptr %r2\n}\n")
 
   emith(`define ptr @lp_os_save_dir(ptr %app) {{\n  %r = call ptr @lp_os_known(ptr %app, ptr {k_appsp}, ptr {k_xdg_data}, ptr {k_dot_share})\n  ret ptr %r\n}}\n`)
   emith(`define ptr @lp_os_config_dir(ptr %app) {{\n  %r = call ptr @lp_os_known(ptr %app, ptr {k_appsp}, ptr {k_xdg_cfg}, ptr {k_dot_config})\n  ret ptr %r\n}}\n`)
@@ -230,7 +230,7 @@ function emit_os_prelude() -> void {
   # snapshot the caller may iterate or index like any other []string.
   emith("define ptr @lp_os_args() {\n")
   emith("entry:\n  %c = load i32, ptr @L_argc\n  %v = load ptr, ptr @L_argv\n")
-  emith("  %h = call ptr @malloc(i64 16)\n")
+  emith("  %h = call ptr @lp_malloc(i64 16)\n")
   emith("  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  store ptr %v, ptr %d0\n")
   emith("  %d1 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 1\n  store i32 %c, ptr %d1\n")
   emith("  %d2 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 2\n  store i32 %c, ptr %d2\n")
@@ -242,7 +242,7 @@ function emit_os_prelude() -> void {
   emith("define ptr @lp_os_uts() {\n")
   emith("entry:\n  %c = load ptr, ptr @L_os_uts\n  %have = icmp ne ptr %c, null\n  br i1 %have, label %done, label %make\n")
   emith("done:\n  ret ptr %c\n")
-  emith("make:\n  %buf = call ptr @malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n  store ptr %buf, ptr @L_os_uts\n  ret ptr %buf\n}\n")
+  emith("make:\n  %buf = call ptr @lp_malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n  store ptr %buf, ptr @L_os_uts\n  ret ptr %buf\n}\n")
 
   # platform(): uname sysname (field 0, portable) mapped to a short id
   emith("define ptr @lp_os_platform() {\n")
@@ -264,7 +264,7 @@ function emit_os_prelude() -> void {
 # Os.heap_bytes: malloc_zone_statistics' in-use bytes, all zones. The symbol is weak, so a libc
 # without it links and reads 0.
 function emit_os_heap() -> void {
-  emith("declare extern_weak void @malloc_zone_statistics(ptr, ptr)\n")
+  if not g_mzs_declared { emith("declare extern_weak void @malloc_zone_statistics(ptr, ptr)\n");  g_mzs_declared = true }
   emith("define i64 @lp_os_heap_bytes() {\n")
   emith("entry:\n  %has = icmp ne ptr @malloc_zone_statistics, null\n  br i1 %has, label %read, label %none\n")
   emith("none:\n  ret i64 0\n")

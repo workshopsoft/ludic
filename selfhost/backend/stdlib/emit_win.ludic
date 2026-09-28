@@ -146,11 +146,11 @@ function emit_win_files() -> void {
 # returns block + 39 so that d_name, read at +21, is cFileName itself.
 function emit_win_dirs() -> void {
   emith("define internal ptr @opendir(ptr %path) {\n")
-  emith("entry:\n  %l = call i64 @strlen(ptr %path)\n  %cap = add i64 %l, 3\n  %pat = call ptr @malloc(i64 %cap)\n  call ptr @memcpy(ptr %pat, ptr %path, i64 %l)\n")
+  emith("entry:\n  %l = call i64 @strlen(ptr %path)\n  %cap = add i64 %l, 3\n  %pat = call ptr @lp_malloc(i64 %cap)\n  call ptr @memcpy(ptr %pat, ptr %path, i64 %l)\n")
   emith("  %e0 = getelementptr i8, ptr %pat, i64 %l\n  store i8 47, ptr %e0\n  %e1 = getelementptr i8, ptr %e0, i64 1\n  store i8 42, ptr %e1\n  %e2 = getelementptr i8, ptr %e0, i64 2\n  store i8 0, ptr %e2\n")
-  emith("  %d = call ptr @malloc(i64 368)\n  %fd = getelementptr i8, ptr %d, i64 16\n  %h = call ptr @FindFirstFileA(ptr %pat, ptr %fd)\n  call void @free(ptr %pat)\n")
+  emith("  %d = call ptr @lp_malloc(i64 368)\n  %fd = getelementptr i8, ptr %d, i64 16\n  %h = call ptr @FindFirstFileA(ptr %pat, ptr %fd)\n  call void @lp_free(ptr %pat)\n")
   emith("  %bad = icmp eq ptr %h, inttoptr (i64 -1 to ptr)\n  br i1 %bad, label %no, label %ok\n")
-  emith("no:\n  call void @free(ptr %d)\n  ret ptr null\n")
+  emith("no:\n  call void @lp_free(ptr %d)\n  ret ptr null\n")
   emith("ok:\n  store ptr %h, ptr %d\n  %fl = getelementptr i8, ptr %d, i64 8\n  store i32 1, ptr %fl\n  ret ptr %d\n}\n")
 
   emith("define internal ptr @readdir(ptr %d) {\n")
@@ -160,7 +160,7 @@ function emit_win_dirs() -> void {
   emith("give:\n  %de = getelementptr i8, ptr %d, i64 39\n  ret ptr %de\n")
   emith("end:\n  ret ptr null\n}\n")
 
-  emith("define internal i32 @closedir(ptr %d) {\nentry:\n  %h = load ptr, ptr %d\n  %r = call i32 @FindClose(ptr %h)\n  call void @free(ptr %d)\n  ret i32 0\n}\n")
+  emith("define internal i32 @closedir(ptr %d) {\nentry:\n  %h = load ptr, ptr %d\n  %r = call i32 @FindClose(ptr %h)\n  call void @lp_free(ptr %d)\n  ret i32 0\n}\n")
 }
 
 # ---- mapped files and memory streams -------------------------------------------
@@ -247,7 +247,7 @@ function emit_os_win_known(k_dot: pointer, k_slash: pointer) -> void {
   # Os.args(), as emit_os_prelude defines it
   emith("define ptr @lp_os_args() {\n")
   emith("entry:\n  %c = load i32, ptr @L_argc\n  %v = load ptr, ptr @L_argv\n")
-  emith("  %h = call ptr @malloc(i64 16)\n")
+  emith("  %h = call ptr @lp_malloc(i64 16)\n")
   emith("  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  store ptr %v, ptr %d0\n")
   emith("  %d1 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 1\n  store i32 %c, ptr %d1\n")
   emith("  %d2 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 2\n  store i32 %c, ptr %d2\n")

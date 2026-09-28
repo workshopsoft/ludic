@@ -13,7 +13,7 @@ function emit_mem_ns(meth: pointer, e: Node) -> Val {
   if (meth == "bytes") {                            # allocate n bytes -> a byte buffer
     let n = emit_expr(e.kids[0])
     let w = emit_bind(`zext i32 {n.code} to i64`)
-    return val(emit_bind(`call ptr @malloc(i64 {w})`), "pointer")
+    return val(emit_bind(`call ptr @lp_malloc(i64 {w})`), "pointer")
   }
   if (meth == "words") {                            # allocate n 32-bit words
     let n = emit_expr(e.kids[0])

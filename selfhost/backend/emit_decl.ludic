@@ -14,6 +14,7 @@ function emit_params_sig(d: Node) -> void {
 function emit_fn(d: Node) -> void {
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
   det_enter(d.s)
+  fence_enter(d.s)
   g_cur_scene = null                            # a function belongs to no scene: `become` leaves the live one
   ret_ty = d.ty
   let fbody = buf_new()
@@ -46,6 +47,7 @@ function emit_fn(d: Node) -> void {
 }
 
 function emit_main(d: Node) -> void {
+  fence_enter("entry")
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
   ret_ty = "int"
   let fbody = buf_new()
@@ -85,6 +87,7 @@ function emit_main(d: Node) -> void {
 
 # one test block -> a void function @fn__test_<idx> (mirrors emit_fn's shape).
 function emit_test_fn(t: Node, idx: int) -> void {
+  fence_enter(`test {t.s}`)
   ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0
   ret_ty = "void"
   let fbody = buf_new()
@@ -295,6 +298,7 @@ function emit_program() -> void {
   g_uses_world_despawn = false                   # #84: set when a world_despawn call is emitted (below)
   g_cov_lines = new []int
   g_cov_active = true
+  fence_reset()
   loc_name = new []pointer;  loc_reg = new []pointer;  loc_ty = new []pointer;  loc_mut = new []int
   brk_lbl = new []pointer;   cnt_lbl = new []pointer
   self_stk = new []pointer
@@ -356,8 +360,7 @@ function emit_program() -> void {
   if g_uses_pak { emit_pak_prelude() }           # @lp_pak_* asset packs + the pre-main mount ctor
   if g_uses_datert { emit_datetime_prelude() }   # @lp_days_from_civil / @lp_civil_from_days conversions
   if g_uses_panic {                               # panic/assert: located abort to stderr
-    emith("declare i32 @fprintf(ptr, ptr, ...)\n")
-    g_fprintf_declared = true
+    if not g_fprintf_declared { emith("declare i32 @fprintf(ptr, ptr, ...)\n");  g_fprintf_declared = true }
     emith("@.fmt_panic = private unnamed_addr constant [6 x i8] c\"%s%s\\0A\\00\"\n")
   }
   if g_uses_bounds {                              # a slice index out of range: located abort
@@ -366,6 +369,7 @@ function emit_program() -> void {
   }
   if g_uses_result { emith("%Result = type { i32, i32, ptr }\n") }   # issue #46: ok/err/try value
   if g_uses_option { emith("%Option = type { i32, i32 }\n") }         # issue #53: some/none value
+  emit_fence_runtime()                            # 25.1: the allocation fence and its site tables
   emit_cov_runtime()                              # issue #45: --coverage tables + exit dump
   if g_emit_module { emit_module_glue() }         # issue #64: binary-module host-ABI declares + load-time registration ctor
 }
@@ -400,7 +404,7 @@ function emit_cov_runtime() -> void {
   emith("@.cov_filefmt = private unnamed_addr constant [9 x i8] c\"FILE %s\\0A\\00\"\n")
   emith("@.cov_rowfmt = private unnamed_addr constant [7 x i8] c\"%d %d\\0A\\00\"\n")
   if not g_fprintf_declared { emith("declare i32 @fprintf(ptr, ptr, ...)\n");  g_fprintf_declared = true }
-  emith("declare i32 @atexit(ptr)\n")
+  if not g_atexit_declared { emith("declare i32 @atexit(ptr)\n");  g_atexit_declared = true }
 
   # @cov_dump: open $LUDIC_COVERAGE (or "ludic.cov"), write a FILE header then one
   # `<line> <hits>` row per instrumented line, and close.

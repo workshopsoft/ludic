@@ -19,7 +19,7 @@ function is_text_ns(meth: pointer) -> bool {
 # read: Text.to_int(string(n)) kept n's text. Every string a Text call returns is a copy of its own,
 # so it is fresh and goes once a +, == or print has read it.
 function text_gone(v: Val) -> void {
-  if v.fresh { emit(`  call void @free(ptr {v.code})\n`) }
+  if v.fresh { emit(`  call void @lp_free(ptr {v.code})\n`) }
 }
 
 function emit_text_ns(meth: pointer, e: Node) -> Val {

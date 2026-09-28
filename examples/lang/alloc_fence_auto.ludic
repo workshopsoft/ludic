@@ -1,0 +1,16 @@
+# alloc_fence_auto.ludic - nothing here names the fence but the frame's mark: tracking starts at the
+# first frame on its own, judging once R3D_ALLOC_WARM frames (600) in a row kept nothing, and frame
+# 1500 keeping a record fails the run with exit 86. Prints nothing when it fails, `through` if not.
+program AllocFenceAuto {
+  property Box { a: int = 0 }
+  entry {
+    var held = new []Box
+    for k in 0 .. 4 { push(held, new Box) }
+    for f in 0 .. 2000 {
+      if f < 300 { push(held, new Box { a: f }) }   # loading: growing, not judged
+      if f == 1500 { push(held, new Box { a: f }) }
+      Mem.frame()
+    }
+    print("through")
+  }
+}

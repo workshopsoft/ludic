@@ -104,7 +104,7 @@ function emit_crypto_prelude() -> void {
   emith("  %ip = alloca i64\n  %bp = alloca i64\n")
   # padded length = ((len + 8) / 64 + 1) * 64
   emith("  %e0 = add i64 %len, 8\n  %e1 = lshr i64 %e0, 6\n  %e2 = add i64 %e1, 1\n  %pl = shl i64 %e2, 6\n")
-  emith("  %buf = call ptr @malloc(i64 %pl)\n")
+  emith("  %buf = call ptr @lp_malloc(i64 %pl)\n")
   emith("  call ptr @memset(ptr %buf, i32 0, i64 %pl)\n")
   emith("  call ptr @memcpy(ptr %buf, ptr %msg, i64 %len)\n")
   emith("  %pmark = getelementptr i8, ptr %buf, i64 %len\n  store i8 -128, ptr %pmark\n")   # 0x80
@@ -215,7 +215,7 @@ function emit_crypto_prelude() -> void {
   emith("  %ob8 = lshr i32 %hval, 8\n  %obb8 = trunc i32 %ob8 to i8\n  %oo2 = add i64 %oi4, 2\n  %op2 = getelementptr i8, ptr %out, i64 %oo2\n  store i8 %obb8, ptr %op2\n")
   emith("  %obb0 = trunc i32 %hval to i8\n  %oo3 = add i64 %oi4, 3\n  %op3 = getelementptr i8, ptr %out, i64 %oo3\n  store i8 %obb0, ptr %op3\n")
   emith("  %oin = add i64 %oi, 1\n  store i64 %oin, ptr %ip\n  br label %oc\n")
-  emith("freeb:\n  call void @free(ptr %buf)\n  ret void\n}\n")
+  emith("freeb:\n  call void @lp_free(ptr %buf)\n  ret void\n}\n")
 
   # one hex digit (0..15) -> its lowercase ASCII byte
   emith("define i8 @lp_hex_digit(i32 %d) {\n")
@@ -223,7 +223,7 @@ function emit_crypto_prelude() -> void {
 
   # hex-encode %n bytes at %in -> a fresh null-terminated 2n-char string
   emith("define ptr @lp_hex_encode(ptr %in, i64 %n) {\n")
-  emith("entry:\n  %ip = alloca i64\n  %olen = shl i64 %n, 1\n  %olen1 = add i64 %olen, 1\n  %s = call ptr @malloc(i64 %olen1)\n  store i64 0, ptr %ip\n  br label %c\n")
+  emith("entry:\n  %ip = alloca i64\n  %olen = shl i64 %n, 1\n  %olen1 = add i64 %olen, 1\n  %s = call ptr @lp_malloc(i64 %olen1)\n  store i64 0, ptr %ip\n  br label %c\n")
   emith("c:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, %n\n  br i1 %lt, label %bdy, label %done\n")
   emith("bdy:\n  %pp = getelementptr i8, ptr %in, i64 %i\n  %byte = load i8, ptr %pp\n  %bz = zext i8 %byte to i32\n")
   emith("  %hi = lshr i32 %bz, 4\n  %lo = and i32 %bz, 15\n  %hc = call i8 @lp_hex_digit(i32 %hi)\n  %lc = call i8 @lp_hex_digit(i32 %lo)\n")
@@ -260,10 +260,10 @@ function emit_crypto_prelude() -> void {
   emith("copyk:\n  call ptr @memcpy(ptr %k0p, ptr %key, i64 %klen)\n  br label %pads\n")
   emith("pads:\n")
   # inner = SHA-256( (K0 ^ ipad) || msg ),  ipad = 0x36
-  emith("  %inlen = add i64 64, %mlen\n  %inbuf = call ptr @malloc(i64 %inlen)\n")
+  emith("  %inlen = add i64 64, %mlen\n  %inbuf = call ptr @lp_malloc(i64 %inlen)\n")
   emith("  call void @lp_xor64(ptr %inbuf, ptr %k0p, i32 54)\n")
   emith("  %inmsg = getelementptr i8, ptr %inbuf, i64 64\n  call ptr @memcpy(ptr %inmsg, ptr %msg, i64 %mlen)\n")
-  emith("  %innerp = getelementptr [32 x i8], ptr %inner, i64 0, i64 0\n  call void @lp_sha256_buf(ptr %inbuf, i64 %inlen, ptr %innerp)\n  call void @free(ptr %inbuf)\n")
+  emith("  %innerp = getelementptr [32 x i8], ptr %inner, i64 0, i64 0\n  call void @lp_sha256_buf(ptr %inbuf, i64 %inlen, ptr %innerp)\n  call void @lp_free(ptr %inbuf)\n")
   # digest = SHA-256( (K0 ^ opad) || inner ),  opad = 0x5c
   emith("  %outp = getelementptr [96 x i8], ptr %outbuf, i64 0, i64 0\n  call void @lp_xor64(ptr %outp, ptr %k0p, i32 92)\n")
   emith("  %outmsg = getelementptr i8, ptr %outbuf, i64 64\n  call ptr @memcpy(ptr %outmsg, ptr %innerp, i64 32)\n")
@@ -318,8 +318,8 @@ function emit_secure_rand_prelude() -> void {
 
   # %n secure bytes -> a fresh 2n-char lowercase hex string
   emith("define ptr @lp_random_hex(i64 %n) {\n")
-  emith("entry:\n  %buf = call ptr @malloc(i64 %n)\n  call void @lp_secure_bytes(ptr %buf, i64 %n)\n")
-  emith("  %hex = call ptr @lp_hex_encode(ptr %buf, i64 %n)\n  call void @free(ptr %buf)\n  ret ptr %hex\n}\n")
+  emith("entry:\n  %buf = call ptr @lp_malloc(i64 %n)\n  call void @lp_secure_bytes(ptr %buf, i64 %n)\n")
+  emith("  %hex = call ptr @lp_hex_encode(ptr %buf, i64 %n)\n  call void @lp_free(ptr %buf)\n  ret ptr %hex\n}\n")
 
   # one CSPRNG-drawn i32 (little-endian assembly of four secure bytes)
   emith("define i32 @lp_random_u32() {\n")
@@ -336,8 +336,8 @@ function emit_secure_rand_prelude() -> void {
   emith("define ptr @lp_base64(ptr %s) {\n")
   emith("entry:\n  %n = call i64 @strlen(ptr %s)\n")
   emith("  %n2 = add i64 %n, 2\n  %grp = udiv i64 %n2, 3\n  %bufn = mul i64 %grp, 3\n")
-  emith("  %olen = mul i64 %grp, 4\n  %olen1 = add i64 %olen, 1\n  %out = call ptr @malloc(i64 %olen1)\n")
-  emith("  %inbuf = call ptr @malloc(i64 %bufn)\n  call ptr @memset(ptr %inbuf, i32 0, i64 %bufn)\n  call ptr @memcpy(ptr %inbuf, ptr %s, i64 %n)\n")
+  emith("  %olen = mul i64 %grp, 4\n  %olen1 = add i64 %olen, 1\n  %out = call ptr @lp_malloc(i64 %olen1)\n")
+  emith("  %inbuf = call ptr @lp_malloc(i64 %bufn)\n  call ptr @memset(ptr %inbuf, i32 0, i64 %bufn)\n  call ptr @memcpy(ptr %inbuf, ptr %s, i64 %n)\n")
   emith("  %gp = alloca i64\n  store i64 0, ptr %gp\n  br label %cond\n")
   emith("cond:\n  %gi = load i64, ptr %gp\n  %lt = icmp ult i64 %gi, %grp\n  br i1 %lt, label %body, label %pad\n")
   emith("body:\n  %i3 = mul i64 %gi, 3\n")
@@ -361,5 +361,5 @@ function emit_secure_rand_prelude() -> void {
   emith("pad1:\n  %pm1 = sub i64 %olen, 1\n  %pp1 = getelementptr i8, ptr %out, i64 %pm1\n  store i8 61, ptr %pp1\n  %pm2 = sub i64 %olen, 2\n  %pp2 = getelementptr i8, ptr %out, i64 %pm2\n  store i8 61, ptr %pp2\n  br label %done\n")
   emith("maybe2:\n  br i1 %r2, label %pad2, label %done\n")
   emith("pad2:\n  %qm1 = sub i64 %olen, 1\n  %qp1 = getelementptr i8, ptr %out, i64 %qm1\n  store i8 61, ptr %qp1\n  br label %done\n")
-  emith("done:\n  call void @free(ptr %inbuf)\n  ret ptr %out\n}\n")
+  emith("done:\n  call void @lp_free(ptr %inbuf)\n  ret ptr %out\n}\n")
 }
