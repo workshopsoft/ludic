@@ -19,7 +19,7 @@ property Model {
   height: float = 0.0,       # float bits: y extent above ymin
   ymin:   float = 0.0,
   tris:   int = 0,
-  skin:   Skin           # the skeleton, for a skinned node (skin.ludic); null for a rigid model
+  @owns(Skin) skin:   Skin           # the skeleton, for a skinned node (skin.ludic); null for a rigid model
 }
 
 
