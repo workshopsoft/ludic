@@ -97,5 +97,6 @@ function telemetry__facts__new() -> Queue<TelemetryFact> { return queue_new("tel
 function telemetry__props_new() -> TelemetryProps {
   let p = new TelemetryProps
   p.sb = sb_new(TELEMETRY_LINE)
+  p.lv = words(8)
   return p
 }

@@ -1,0 +1,37 @@
+# props_nest.ludic - an object or a list inside an event's properties ($set, a photograph's subjects, the
+# party's names), written into the same kept buffer; and a signature of what was written, to tell a
+# change without keeping a copy
+export function telemetry_obj(p: TelemetryProps, k: string) -> void { tn_open(p, k, 123) }
+export function telemetry_list(p: TelemetryProps, k: string) -> void { tn_open(p, k, 91) }
+export function telemetry_obj_end(p: TelemetryProps) -> void { tn_close(p, 125) }
+export function telemetry_list_end(p: TelemetryProps) -> void { tn_close(p, 93) }
+function tn_open(p: TelemetryProps, k: string, c: int) -> void {
+  tp_key(p, k)
+  sb_byte(p.sb, c)
+  if p.lv == null { p.lv = words(8) }
+  if p.d < len(p.lv) - 1 { p.d += 1 }
+  p.lv[p.d] = 0
+}
+function tn_close(p: TelemetryProps, c: int) -> void {
+  sb_byte(p.sb, c)
+  if p.d > 0 { p.d -= 1 }
+}
+# a string in the list being written
+export function telemetry_item_str(p: TelemetryProps, s: string) -> void {
+  tp_next(p)
+  tj_str(p.sb, s)
+}
+# a string item made of numbers the caller writes itself (sb_int, sb_byte - no quote or backslash)
+export function telemetry_item_open(p: TelemetryProps) -> StrBuf {
+  tp_next(p)
+  sb_byte(p.sb, 34)
+  return p.sb
+}
+export function telemetry_item_close(p: TelemetryProps) -> void { sb_byte(p.sb, 34) }
+
+# a number standing for what has been written: equal when the bytes are (FNV-1a, 31 bits)
+export function telemetry_props_sig(p: TelemetryProps) -> int {
+  var h = 2166136261 & 2147483647
+  for i in 0 .. sb_len(p.sb) { h = ((h ^ p.sb.b[i]) * 16777619) & 2147483647 }
+  return h
+}

@@ -4,7 +4,9 @@ export const TELEMETRY_LINE: int = 2048   # the longest line an event may be; a 
 
 export property TelemetryProps {
   sb: StrBuf = null
-  n: int = 0                  # properties written
+  n: int = 0                  # properties written at the top
+  lv: []int = null            # inside an object or a list: how many written at each level
+  d: int = 0                  # how deep
 }
 
 # the writer, emptied, for the next event's properties
@@ -12,6 +14,7 @@ export function telemetry_props(telemetry_st: mut TelemetryState) -> TelemetryPr
   let p = telemetry_st.telemetry__props
   sb_clear(p.sb)
   p.n = 0
+  p.d = 0
   return p
 }
 export function telemetry_str(p: TelemetryProps, k: string, s: string) -> void {
@@ -27,10 +30,19 @@ export function telemetry_bool(p: TelemetryProps, k: string, b: bool) -> void {
   if b { sb_add(p.sb, "true") } else { sb_add(p.sb, "false") }
 }
 function tp_key(p: TelemetryProps, k: string) -> void {
-  if p.n > 0 { sb_byte(p.sb, 44) }
+  tp_next(p)
   tj_str(p.sb, k)
   sb_byte(p.sb, 58)
-  p.n += 1
+}
+# a comma before all but the first at this level, and the count kept
+function tp_next(p: TelemetryProps) -> void {
+  if p.d == 0 {
+    if p.n > 0 { sb_byte(p.sb, 44) }
+    p.n += 1
+    return
+  }
+  if p.lv[p.d] > 0 { sb_byte(p.sb, 44) }
+  p.lv[p.d] += 1
 }
 
 # a JSON string: quoted, a quote or a backslash escaped, a control byte as \u00XX

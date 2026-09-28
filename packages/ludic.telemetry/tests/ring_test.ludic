@@ -90,4 +90,33 @@ program RingTest {
     expect(Text.contains(telemetry_batch_body(telemetry_st, 4), "\"n\":3,"))
     expect(not Text.contains(telemetry_batch_body(telemetry_st, 4), "TELEMETRY_PLAYER"))
   }
+
+  test "an object and a list inside the properties are JSON, and the signature tells a change" (telemetry_st: mut TelemetryState) {
+    start(telemetry_st, 50, 65536)
+    let p = telemetry_props(telemetry_st)
+    telemetry_int(p, "grade", 3)
+    telemetry_list(p, "subjects")
+    telemetry_item_str(p, "elk")
+    telemetry_item_str(p, "deer")
+    telemetry_list_end(p)
+    telemetry_obj(p, "$set")
+    telemetry_str(p, "arch", "arm64")
+    telemetry_list(p, "looks")
+    let sb = telemetry_item_open(p)
+    sb_int(sb, 4)
+    sb_byte(sb, 44)
+    sb_int(sb, 2)
+    telemetry_item_close(p)
+    telemetry_list_end(p)
+    telemetry_obj_end(p)
+    telemetry_bool(p, "last", false)
+    let sig = telemetry_props_sig(p)
+    telemetry_event(telemetry_st, "shot", p)
+    let a = telemetry_line(telemetry_st, 0)
+    expect(Text.contains(a, "{\"grade\":3,\"subjects\":[\"elk\",\"deer\"],\"$set\":{\"arch\":\"arm64\",\"looks\":[\"4,2\"]},\"last\":false,"))
+    expect(Json.parse(a) != null)
+    let q = telemetry_props(telemetry_st)
+    telemetry_int(q, "grade", 3)
+    expect(telemetry_props_sig(q) != sig)
+  }
 }
