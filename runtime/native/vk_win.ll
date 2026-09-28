@@ -369,3 +369,9 @@ define void @lvk_frame_pool() {
 entry:
   ret void
 }
+
+; the heap's live bytes are asked for on the Mac only (vk_mac.ll); 0 here, and a test skips its check
+define i64 @lvk_heap_bytes() {
+entry:
+  ret i64 0
+}

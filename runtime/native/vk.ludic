@@ -28,6 +28,8 @@ import "vk_api.ludic"
 # Once a frame: on macOS drains what MoltenVK and the layer autoreleased during the last one (a
 # program pumping its own events has no other pool); nothing elsewhere.
 extern function vk_frame_pool() = "lvk_frame_pool"
+# malloc's live bytes (macOS; 0 elsewhere): a test that a path allocates nothing, frame after frame
+extern function vk_heap_bytes() -> long = "lvk_heap_bytes"
 extern function vk_sl_prefer(on: int) = "lvk_sl_prefer"
 extern function vk_sl_active() -> int = "lvk_sl_active"
 extern function vk_sl_init(pref: pointer, sdk_version: long) -> int = "lsl_slInit"

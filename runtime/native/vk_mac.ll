@@ -250,3 +250,17 @@ push:
   store ptr %p, ptr @lvk_pool
   ret void
 }
+
+; ---- the heap in use --------------------------------------------------------------------------
+; malloc's live bytes across the default zones, for a test that proves a path allocates nothing in
+; its steady state (render3d's examples/rendering/steady.ludic). malloc_statistics_t is four
+; words: blocks_in_use (u32, padded), size_in_use, max_size_in_use, size_allocated.
+declare void @malloc_zone_statistics(ptr, ptr)
+define i64 @lvk_heap_bytes() {
+entry:
+  %st = alloca [4 x i64], align 8
+  call void @malloc_zone_statistics(ptr null, ptr %st)
+  %p = getelementptr [4 x i64], ptr %st, i32 0, i32 1
+  %n = load i64, ptr %p
+  ret i64 %n
+}
