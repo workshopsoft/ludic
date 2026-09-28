@@ -33,6 +33,12 @@ function steps__share(steps_st: StepsState, p: int, i: int) -> int {
 }
 
 # this machine's shares for the current chapter, to send to whoever owns the story
+# the same into a list the caller keeps (a guest checks its shares every tick)
+export function steps_my_shares_into(steps_st: StepsState, out: []int) -> void {
+  List.clear(out)
+  for i in 0 .. STEPS_PER_CHAPTER { push(out, steps__share(steps_st, 0, i)) }
+}
+
 export function steps_my_shares(steps_st: StepsState) -> []int {
   let out = new []int
   for i in 0 .. STEPS_PER_CHAPTER { push(out, steps__share(steps_st, 0, i)) }

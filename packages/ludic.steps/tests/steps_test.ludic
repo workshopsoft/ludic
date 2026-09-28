@@ -154,6 +154,12 @@ program StepsTest {
     steps_share(steps_st, 1, 0, shares(2, 0))
     expect(steps_met(steps_st, 0))
     expect_eq(steps_party_got(steps_st, 0), 5)
+    let kept = new []int
+    steps_my_shares_into(steps_st, kept)
+    steps_my_shares_into(steps_st, kept)
+    let made = steps_my_shares(steps_st)
+    expect_eq(len(kept), len(made))
+    for i in 0 .. len(made) { expect_eq(kept[i], made[i]) }
     steps_set_current(steps_st, 1)
     steps_test_st.vals[K_SIGNS] = 1
     steps_share(steps_st, 1, 1, shares(2, 0))
