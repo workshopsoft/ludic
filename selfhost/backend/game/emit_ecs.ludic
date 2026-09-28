@@ -200,7 +200,8 @@ function emit_ecs_grow() -> void {
 function emit_grow_store(store: pointer, esz: pointer, k: int) -> void {
   let n = itoa(k)
   emit(`  %gp{n} = load ptr, ptr @{store}\n  %gb{n} = mul i64 %nc64, {esz}\n  %gr{n} = add i64 %gb{n}, 8\n`)
-  emit(`  %gn{n} = call ptr @lp_realloc(ptr %gp{n}, i64 %gr{n})\n  %go{n} = mul i64 %cap64, {esz}\n`)
+  emit_site("ecs store grow")
+  emit(`  %gn{n} = call ptr @lp_realloc(ptr %gp{n}, i64 %gr{n})\n  store i32 0, ptr @lp_site\n  %go{n} = mul i64 %cap64, {esz}\n`)
   emit(`  %gt{n} = getelementptr i8, ptr %gn{n}, i64 %go{n}\n  %gz{n} = sub i64 %gr{n}, %go{n}\n`)
   emit(`  %gm{n} = call ptr @memset(ptr %gt{n}, i32 0, i64 %gz{n})\n  store ptr %gn{n}, ptr @{store}\n`)
 }
@@ -218,7 +219,8 @@ function emit_grow_dyn() -> void {
 
 function emit_grow_slot(table: pointer, esz: pointer, t: pointer) -> void {
   emit(`  %d{t}p = getelementptr inbounds [32 x ptr], ptr @{table}, i32 0, i32 %di\n  %d{t}o = load ptr, ptr %d{t}p\n`)
-  emit(`  %d{t}b = mul i64 %nc64, {esz}\n  %d{t}r = add i64 %d{t}b, 8\n  %d{t}n = call ptr @lp_realloc(ptr %d{t}o, i64 %d{t}r)\n`)
+  emit_site("ecs mod store grow")
+  emit(`  %d{t}b = mul i64 %nc64, {esz}\n  %d{t}r = add i64 %d{t}b, 8\n  %d{t}n = call ptr @lp_realloc(ptr %d{t}o, i64 %d{t}r)\n  store i32 0, ptr @lp_site\n`)
   emit(`  %d{t}f = mul i64 %cap64, {esz}\n  %d{t}t = getelementptr i8, ptr %d{t}n, i64 %d{t}f\n  %d{t}z = sub i64 %d{t}r, %d{t}f\n`)
   emit(`  %d{t}m = call ptr @memset(ptr %d{t}t, i32 0, i64 %d{t}z)\n  store ptr %d{t}n, ptr %d{t}p\n`)
 }

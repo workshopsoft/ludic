@@ -22,6 +22,7 @@ function emit_bind(rest: pointer) -> pointer {
   let r = nreg()
   emit("  ");  emit(r);  emit(" = ");  emit(rest);  emit("\n")
   if want { emit("  store i8 0, ptr @lp_want\n") }
+  if g_site_reset { emit("  store i32 0, ptr @lp_site\n");  g_site_reset = false }
   return r
 }
 
