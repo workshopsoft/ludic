@@ -74,17 +74,20 @@ function mm_land_count(minimap_st: mut MinimapState) -> void {
 # the ground under the grid is not what it was (a new world): count its land again
 export function minimap_land_changed(minimap_st: mut MinimapState) -> void { minimap_st.mm_land_n = 0 }
 
-# the grid as one string of 0 / 1, row by row, and back (a shorter string leaves the rest unseen)
-@alloc_ok("on a save: the explored grid written out")
+# the grid as one string of 0 / 1, row by row, and back (a shorter string leaves the rest unseen).
+# Written into bytes the state keeps (a string a cell before, every save): good until the next save
 export function minimap_seen_text(minimap_st: mut MinimapState) -> string {
   mm_grid(minimap_st)
-  var s = ""
-  for j in 0 .. minimap_st.mm_cells {
-    var row = ""
-    for i in 0 .. minimap_st.mm_cells { if minimap_st.mm_seen[j * minimap_st.mm_cells + i] != 0 { row = row + "1" } else { row = row + "0" } }
-    s = s + row
+  let n = minimap_st.mm_cells * minimap_st.mm_cells
+  if minimap_st.mm_seen_cap < n + 1 { mm_seen_buf_make(minimap_st, n + 1) }
+  let p = minimap_st.mm_seen_buf
+  unsafe {
+    for c in 0 .. n {
+      if minimap_st.mm_seen[c] != 0 { p[c] = 49 } else { p[c] = 48 }
+    }
+    p[n] = 0
   }
-  return s
+  return p
 }
 
 export function minimap_seen_from_text(minimap_st: mut MinimapState, s: string) -> void {

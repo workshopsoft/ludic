@@ -1,6 +1,8 @@
 # grid.ludic - the explored grid: square cells round the origin, and the part of it "explored" is
 # measured over (a core, so a bigger grid does not change what a share of it means)
 export state MinimapState {
+  mm_seen_buf: pointer = null   # minimap_seen_text's bytes, kept and written again on every save
+  mm_seen_cap: int = 0
   mm_none: MinimapPin = new MinimapPin   # minimap_pin past the end: an empty mark, the same one each time
   mm_near: []int = new []int    # minimap_pins_near's answer, cleared and refilled: a compass asks every frame
   mm_land_n: int = 0            # land cells in the core, counted once per origin
@@ -78,3 +80,13 @@ export function minimap_cell(minimap_st: MinimapState, x: float, z: float) -> in
 }
 
 function mm_grid(minimap_st: mut MinimapState) -> void { if minimap_st.mm_seen == null { minimap_config(minimap_st, minimap_st.mm_cells, minimap_st.mm_cell_m) } }
+
+@alloc_ok("once per grid size: the save's bytes, kept")
+function mm_seen_buf_make(minimap_st: mut MinimapState, cap: int) -> void {
+  let old = minimap_st.mm_seen_buf
+  unsafe {
+    if old != null { free(old) }
+    minimap_st.mm_seen_buf = bytes(cap)
+  }
+  minimap_st.mm_seen_cap = cap
+}
