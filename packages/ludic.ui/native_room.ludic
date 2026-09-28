@@ -1,0 +1,24 @@
+# native_room.ludic - the fired-event queue's lists made with room already: a list's first growth
+# is made at start rather than in the frame that first fires an event
+const NT_ROOM: int = 32
+@alloc_ok("once: made with the state")
+function nt_nodes__new() -> []UiNode {
+  let xs = new []UiNode
+  for i in 0 .. NT_ROOM { push(xs, null) }
+  List.clear(xs)
+  return xs
+}
+@alloc_ok("once: made with the state")
+function nt_names__new() -> []string {
+  let xs = new []string
+  for i in 0 .. NT_ROOM { push(xs, "") }
+  List.clear(xs)
+  return xs
+}
+@alloc_ok("once: made with the state")
+function nt_vals__new() -> []Val {
+  let xs = new []Val
+  for i in 0 .. NT_ROOM { push(xs, null) }
+  List.clear(xs)
+  return xs
+}

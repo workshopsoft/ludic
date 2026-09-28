@@ -40,10 +40,16 @@ export function inv_set(inventory_st: mut InventoryState, it: int, n: int) -> vo
 
 # everything gone, silently: a new trip, or before a load
 export function inv_clear(inventory_st: mut InventoryState) -> void {
-  if inventory_st.iv_counts == null {
-    @alloc_ok("once: the counts are made the first time the pack is cleared")
-    inventory_st.iv_counts = new []int
-  }
+  if inventory_st.iv_counts == null { inventory_st.iv_counts = iv_counts__new(inv_kinds(inventory_st)) }
   List.clear(inventory_st.iv_counts)
   for i in 0 .. inv_kinds(inventory_st) { kept_push(inventory_st.iv_counts, 0) }
+}
+
+# the counts made at their full length at once: a list grown a push at a time in play is a new block
+@alloc_ok("once: the counts are made the first time the pack is cleared")
+function iv_counts__new(n: int) -> []int {
+  let xs = new []int
+  for i in 0 .. n { push(xs, 0) }
+  List.clear(xs)
+  return xs
 }

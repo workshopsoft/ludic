@@ -83,6 +83,8 @@ function ct_build_select(ui_st: mut UiState, n: UiNode) -> void {
 }
 # which option the select's value names: an option's value="...", else its place
 function ct_option_at(n: UiNode, opts: []UiNode) -> int {
+  let nv = ui_attr(n, "value")
+  if ct_numeric(nv) { return ct_option_num(nv, opts) }
   let v = ui_attr_text(n, "value")
   for i in 0 .. len(opts) {
     let ov = ui_attr_text(opts[i], "value")
@@ -95,4 +97,18 @@ function ct_field_text(ui_st: mut UiState, n: UiNode) -> string {
   if t == "key" { return ct_key_text(ui_st, n) }
   if t == "number" { return ct_num_shown(ui_st, n) }
   return ui_attr_text(n, "value")
+}
+
+# a number held by a select (the usual case: a setting's value) matched as a number: its text was
+# made every frame for every select on screen. An option with no value of its own is its index
+function ct_numeric(v: Val) -> bool { return Value.kind(v) == 1 or Value.kind(v) == 7 }
+function ct_option_num(nv: Val, opts: []UiNode) -> int {
+  let x = Value.as_float(nv)
+  for i in 0 .. len(opts) {
+    let ov = ui_attr(opts[i], "value")
+    if Value.kind(ov) == 0 and x == float(i) { return i }
+    if ct_numeric(ov) and Value.as_float(ov) == x { return i }
+    if Value.kind(ov) == 4 and el_num(Value.as_str(ov)) == x and len(Value.as_str(ov)) > 0 { return i }
+  }
+  return -1
 }
