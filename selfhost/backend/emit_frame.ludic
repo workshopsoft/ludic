@@ -325,7 +325,7 @@ function deps_births(f: pointer, seen: []bool) -> void {
       let inframe = k >= 0 and seen[k]
       # a scratch site is the arena's whenever the game's frames are running - a frame's code, a click
       # handler, a reducer - and the heap's only before the first frame: boot's code
-      let scratch = g_arena and site.uns == ES_SCRATCH and not (k >= 0 and boot[k])
+      let scratch = g_arena and site.uns == ES_SCRATCH   # boot's too: the arena starts at its first use
       if not scratch and d.file != null and not is_runtime_file(d.file) and not fr_alloc_ok(d.s) and not fr_consumed(site) {
         var kind = fr_alloc_kind(site, false)
         if kind == null { kind = "text" }

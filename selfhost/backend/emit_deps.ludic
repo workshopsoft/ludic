@@ -294,6 +294,26 @@ function dr_index(name: pointer) -> int {
   if n == null { return -1 }
   return n.ival
 }
+# the names the function being walked binds itself - its parameters, lets and loop variables - which
+# are not the top-level declarations of the same name (a local `bd` is not the function bd)
+var g_dr_locals: []pointer = new []pointer
+function dr_is_local(name: pointer) -> bool {
+  var i = 0
+  while i < len(g_dr_locals) { if (g_dr_locals[i] == name) { return true };  i += 1 }
+  return false
+}
+function dr_collect_locals(n: Node) -> void {
+  if n == null { return }
+  if (n.kind == S_LET or n.kind == S_FOR or n.kind == N_PARAM) and n.s != null { push(g_dr_locals, n.s) }
+  dr_collect_locals(n.a)
+  dr_collect_locals(n.b)
+  dr_collect_locals(n.c)
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) { dr_collect_locals(n.kids[i]);  i += 1 }
+  }
+}
+
 function dr_walk(n: Node, refs: []int) -> void {
   if n == null { return }
   if dr_port_member(n, refs) { return }
@@ -322,7 +342,7 @@ function dr_walk(n: Node, refs: []int) -> void {
       li += 1
     }
   }
-  if (n.kind == E_ID or n.kind == E_FNREF) and n.s != null {
+  if (n.kind == E_ID or n.kind == E_FNREF) and n.s != null and not (n.kind == E_ID and dr_is_local(n.s)) {
     let k = dr_index(n.s)
     if k >= 0 { push(refs, k) }
     # a registry entry held in a local and handed on whole reaches the whole registry
@@ -471,10 +491,23 @@ function deps_reach(f: pointer) -> void {
   let nw = dr_words()
   var j = 0
   while j < len(g_dr_node) {
-    let refs = new []int
+    var refs = new []int
     g_dr_rl_name = new []pointer
     g_dr_rl_reg = new []pointer
-    dr_walk(g_dr_node[j], refs)
+    g_dr_locals = new []pointer
+    let dn = g_dr_node[j]
+    if dn.kind == N_FN or dn.kind == N_SYS or dn.kind == N_BLOCK { dr_collect_locals(dn) }
+    dr_walk(dn, refs)
+    # the generated drain calls every reducer; a reducer is reached from its action's dispatch instead
+    if dn.s != null and (dn.s == "drain_actions") {
+      let kept = new []int
+      var q = 0
+      while q < len(refs) {
+        if not str_starts(g_dr_name[refs[q]], "ludic_reduce__") { push(kept, refs[q]) }
+        q += 1
+      }
+      refs = kept
+    }
     push(g_dr_refs, refs)
     let bits = new []int
     var w = 0

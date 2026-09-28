@@ -3,5 +3,6 @@
 export function hints_rail_into(hints_st: HintsState, out: []int) -> void {
   List.clear(out)
   if not HintsWorld.showing() { return }
+  @alloc_ok("into the caller's kept list, at most the rail's hints")
   for k in 0 .. hints_st.hn_n { push(out, hints_st.hn_top[k]) }
 }

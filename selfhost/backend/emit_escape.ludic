@@ -147,6 +147,15 @@ function es_type(e: Node) -> pointer {
   }
   return null
 }
+# LOCAL: never kept (ESC); and for a push's growth, whose buffer is its list's, the list may not be
+# one that outlives the frame (HEAP) either. A fresh value that flows into a local also holding kept
+# memory is still the frame's - storing it anywhere kept would have made it ESC
+function es_local_class(c: int, grow: bool) -> bool {
+  if (g_es_flag[c] & ES_ESC) != 0 { return false }
+  if grow and (g_es_flag[c] & ES_HEAP) != 0 { return false }
+  return true
+}
+
 # a value's class, or -1 when its type holds no reference
 function es_ref(e: Node) -> int {
   let v = es_val(e)
@@ -655,7 +664,7 @@ function escape_analyse() -> void {
     let spans = fi < 0 or g_es_fspans[fi]
     # LOCAL only when it can neither be kept (ESC) nor share storage with what is (HEAP): a push's
     # growth into a parameter's list is the list's own buffer, and the list may be a state's
-    if c >= 0 and (g_es_flag[c] & (ES_ESC | ES_HEAP)) == 0 and not spans {
+    if c >= 0 and es_local_class(c, g_es_site_grow[s]) and not spans {
       n.uns = ES_SCRATCH
       g_es_local_n += 1
     } else {
@@ -674,7 +683,7 @@ function escape_analyse() -> void {
     let c2 = g_es_site_cls[u]
     let fi2 = g_es_site_fn[u]
     let spans2 = fi2 < 0 or g_es_fspans[fi2]
-    if n2.uns == ES_SCRATCH and (c2 < 0 or (g_es_flag[c2] & (ES_ESC | ES_HEAP)) != 0 or spans2) { n2.uns = 0 }
+    if n2.uns == ES_SCRATCH and (c2 < 0 or not es_local_class(c2, g_es_site_grow[u]) or spans2) { n2.uns = 0 }
     u += 1
   }
 }

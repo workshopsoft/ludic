@@ -87,11 +87,13 @@ function update__installed_now(update_st: UpdateState) -> bool {
 }
 
 # a page in the player's browser (the site, the changelog)
+@alloc_ok("a click: the page opened in the browser")
 export function update_open(url: string) -> void {
   if update__mac() { System.run(`open "{url}"`) } else { System.run(`cmd /c start "" "{url}"`) }
 }
 
 # a path inside a PowerShell single-quoted string: a quote is written twice
+@alloc_ok("a PowerShell line: once per update started")
 function update__psq(p: string) -> string { return "'" + Text.replace(p, "'", "''") + "'" }
 
 function update__powershell() -> string {
