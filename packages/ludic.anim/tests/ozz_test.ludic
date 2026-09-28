@@ -1,0 +1,82 @@
+# ozz_test.ludic - a skin and a clip built in ozz at load (phase 19.1): sampled, every rotation agrees
+# with today's sampler (anim_mix) to 1e-4 a component, a joint no channel moves holds its rest, and
+# a node outside the skin is no joint
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+program OzzTest {
+  numbers float
+  const HALF: float = 0.70710678
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function skin(render3d_st: mut Render3dState) -> Skin {
+    render3d_st.gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"root\", \"children\": [1]}, {\"name\": \"bone\", \"translation\": [0, 1, 0], \"rotation\": [0, 0.2588190, 0, 0.9659258]}, {\"name\": \"other\"}], \"skins\": [{\"joints\": [0, 1]}]}")
+    return skin_load(render3d_st, 0)
+  }
+  # node 1 turns a quarter about Z over a second, in three keys, the middle one off the straight path
+  function turn() -> Clip {
+    let c = new Clip
+    c.name = "t"
+    c.n = 1
+    c.cnode = words(1)
+    c.cpath = words(1)
+    c.ckeys = words(1)
+    c.coff = words(1)
+    c.cvoff = words(1)
+    c.cnode[0] = 1
+    c.cpath[0] = AC_ROT
+    c.ckeys[0] = 3
+    c.times = floats(3)
+    c.times[1] = 0.4
+    c.times[2] = 1.0
+    c.vals = floats(12)
+    c.vals[3] = 1.0
+    c.vals[4] = 0.3
+    c.vals[6] = 0.3
+    c.vals[7] = 0.9055385
+    c.vals[10] = HALF
+    c.vals[11] = HALF
+    c.dur = 1.0
+    return c
+  }
+  # the largest component difference of two rotations, one turned to the other's sign first
+  function apart(a: floats, b: floats, i: int) -> float {
+    var d = 0.0
+    for k in 0 .. 4 { d += a[i * 4 + k] * b[i * 4 + k] }
+    var sgn = 1.0
+    if d < 0.0 { sgn = -1.0 }
+    var worst = 0.0
+    for k in 0 .. 4 { worst = Math.max(worst, Math.abs(a[i * 4 + k] - sgn * b[i * 4 + k])) }
+    return worst
+  }
+
+  test "sampled in ozz, a clip lands where anim_mix puts it, and a joint left alone holds its rest" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = skin(render3d_st)
+    let c = turn()
+    let s = anim_oz_skel(sk)
+    expect(s != null)
+    expect_eq(anim_oz_joints(s), 2)
+    let clip = anim_oz_clip(anim_st, s, c)
+    expect(clip != null)
+    let ctx = anim_oz_ctx(s)
+    let rot = floats(12)
+    let pos = floats(9)
+    let want = floats(12)
+    let wpos = floats(9)
+    let hit = words(3)
+    var worst = 0.0
+    for k in 0 .. 61 {
+      let t = float(k) * 0.0371
+      expect(anim_oz_sample(ctx, clip, t, rot, pos, 3))
+      for i in 0 .. 3 { hit[i] = 0 }
+      anim_mix(anim_st, c, sk, t, 1.0, want, wpos, hit)
+      worst = Math.max(worst, apart(rot, want, 1))
+    }
+    print(`ozz: node 1 over 61 samples, worst component {worst}; the clip is {anim_oz_clip_bytes(clip)} bytes`)
+    expect(worst < 0.0001)
+    expect_near(rot[3], 1.0, 0.0001)
+    expect_near(pos[4], 1.0, 0.001)
+    anim_oz_ctx_free(ctx)
+    anim_oz_clip_free(clip)
+    anim_oz_skel_free(s)
+  }
+}

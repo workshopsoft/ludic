@@ -3,8 +3,10 @@
 module ludic_anim uses ludic_render3d
 numbers float
 import "ludic.render3d/r3d.ludic"
+import "native.ludic"
 import "clip.ludic"
 import "read.ludic"
 import "mix.ludic"
 import "pose.ludic"
 import "bones.ludic"
+import "ozz.ludic"

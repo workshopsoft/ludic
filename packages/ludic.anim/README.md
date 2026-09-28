@@ -27,6 +27,24 @@ anim_play(sk, walk, t, idle, t2, 0.3)              # 70% walk, 30% idle, into th
 | `skin_joint(sk, name)`, `skin_joint_quiet(sk, name)` | a bone by name in the skin's OWN joints: a kit packs several rigs with the same bone names, and render3d's `skin_find` answers the file's first, which belongs to another rig (the pose is then stored and never drawn) |
 | `anim_first_key(c) -> float` | the earliest key; a read warns when it is not zero |
 
+## ozz-animation underneath
+
+[ozz-animation](https://github.com/guillaumeblanc/ozz-animation) 0.17.0 (MIT, `native/LICENSE-ozz-animation.md`)
+is compiled into `libludicozz` by `native/build.sh` from the pinned release: its base, its runtime jobs and
+the offline builders for a skeleton and a clip. There is no bake and no new file. The skeleton is
+built from a skin's parents and rest pose, taking only its own joints and their ancestors, because a
+kit holds several rigs. Each clip is built from the channels `anim_read_doc` already read.
+
+| | |
+| --- | --- |
+| `anim_oz_skel(sk) -> pointer`, `anim_oz_joints(s)`, `anim_oz_skel_free(s)` | a skin's skeleton |
+| `anim_oz_clip(c) -> pointer`, `anim_oz_clip_bytes(c)`, `anim_oz_clip_free(c)` | a clip for that skeleton, compressed (translations only with `anim_set_positions`) |
+| `anim_oz_ctx(s)`, `anim_oz_ctx_free(c)` | what one actor samples with, made once |
+| `anim_oz_sample(ctx, clip, t, rot, pos, n) -> bool` | the clip at t (wrapped), each node's local rotation (4) and translation (3) at its file node |
+
+A sampled rotation agrees with `anim_mix` to within 1e-4 a component (ozz keeps rotations in 16 bits).
+`anim_play` still runs the Ludic sampler until the callers move (Maroon Lake's phase 19).
+
 ## Rules it keeps
 
 - **Clips are named per rig.** A channel addresses its FILE's node indices, two files number their
