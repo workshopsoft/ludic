@@ -3,7 +3,7 @@
 # is made. What a slot hands out is good until the ring comes round to it again - size the ring to
 # what can be showing at once
 export property TextRing {
-  slots: []pointer = new []pointer
+  @max(64) slots: []pointer = new []pointer
   cap: int = 0
   at: int = 0
 }

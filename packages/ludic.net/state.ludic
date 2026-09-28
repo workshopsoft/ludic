@@ -51,7 +51,7 @@ export property NetMessage {
 export state NetState {
   net__cfg: NetConfig = new NetConfig
   net__facts: Queue<NetFact> = net__facts__new()
-  net__fpool: []NetFact = net__fpool__new()   # the facts' records, taken in turn (pool.ludic)
+  @max(64) net__fpool: []NetFact = net__fpool__new()   # the facts' records, taken in turn (pool.ludic)
   net__fat: int = 0
   net__watch_url: string = ""           # the room's address, made once per room
   net__seen: []string = new []string     # guests already punched for

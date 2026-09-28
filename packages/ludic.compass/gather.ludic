@@ -55,8 +55,8 @@ export function compass_gather(compass_st: mut CompassState) -> void {
 
 export function compass_capturing(compass_st: CompassState) -> bool { return compass_st.cmp_capturing }
 
-# more marks than any frame has asked for (the tracking view's peak is well under it)
-const COMPASS_POOL: int = 512
+# marks made at the start; a frame that takes more grows the pool (declared), up to its @max
+const COMPASS_POOL: int = 512           # made at start; @max(2048) on the pools is the most a frame may take
 function cmp_pool__new() -> []CompassMark {
   let xs = new []CompassMark
   for i in 0 .. COMPASS_POOL { push(xs, new CompassMark) }

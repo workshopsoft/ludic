@@ -5,15 +5,15 @@
 const MM_CAP: int = 32768          # slots; at most three quarters are used
 export property UiMemo {
   slots: words = null              # index + 1 into keys, 0 empty
-  keys: []string = null            # the text a result was made from (or the joined text itself)
-  tags: []int = null               # what kind of result: a separator, or a kind below
-  lists: [][]string = null
-  grads: []UiGradient = null
-  texts: []string = null           # a text worked out from the key: tw, el_url
-  vals: []Val = null               # a Value made from it: cs_vars_in's
-  vtpls: []UiVarTpl = null
-  n1: []float = null               # numbers worked out from the key: a colour and its alpha
-  n2: []float = null
+  @max(24576) keys: []string = null            # the text a result was made from (or the joined text itself)
+  @max(24576) tags: []int = null               # what kind of result: a separator, or a kind below
+  @max(24576) lists: [][]string = null
+  @max(24576) grads: []UiGradient = null
+  @max(24576) texts: []string = null           # a text worked out from the key: tw, el_url
+  @max(24576) vals: []Val = null               # a Value made from it: cs_vars_in's
+  @max(24576) vtpls: []UiVarTpl = null
+  @max(24576) n1: []float = null               # numbers worked out from the key: a colour and its alpha
+  @max(24576) n2: []float = null
 }
 const MM_WORDS: int = -1           # el_words: spaces, a bracket's own kept
 const MM_GRAD: int = -2
