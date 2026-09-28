@@ -2,22 +2,22 @@
 # skin_pose folds a delta D in as local = (G_p^-1 . D . G_p) . R_rest, and a channel gives the
 # absolute local L, so D = G_p . (L . R_rest^-1) . G_p^-1 (a root: D = L . R_rest^-1)
 
-function part(anim_st: mut AnimState, i: int) -> floats {
-  if anim_st.parts == null {
-    anim_st.parts = new []floats
-    for k in 0 .. 8 { push(anim_st.parts, floats(4)) }
-  }
-  return anim_st.parts[i]
+# eight quaternions of scratch, made with the state
+function pose_parts_new() -> []floats {
+  let l = new []floats
+  for k in 0 .. 8 { push(l, floats(4)) }
+  return l
 }
+function pose_part(anim_st: AnimState, i: int) -> floats { return anim_st.parts[i] }
 
 export function anim_to_pose(anim_st: mut AnimState, sk: Skin, rot: floats, pos: floats, hit: words) -> void {
-  let l = part(anim_st, 0)
-  let rinv = part(anim_st, 1)
-  let gp = part(anim_st, 2)
-  let gpi = part(anim_st, 3)
-  let tmp = part(anim_st, 4)
-  let d = part(anim_st, 5)
-  let v = part(anim_st, 6)
+  let l = pose_part(anim_st, 0)
+  let rinv = pose_part(anim_st, 1)
+  let gp = pose_part(anim_st, 2)
+  let gpi = pose_part(anim_st, 3)
+  let tmp = pose_part(anim_st, 4)
+  let d = pose_part(anim_st, 5)
+  let v = pose_part(anim_st, 6)
   for i in 0 .. sk.n_nodes {
     let p = sk.par[i]
     if (hit[i] & 1) != 0 {

@@ -3,6 +3,7 @@
 
 # Call it straight after a load and before the next one: `gltf_doc` and `gltf_bin` point at
 # whichever file was read last, so a clip that is not taken now cannot be taken later.
+@alloc_ok("a model's clips read as it loads, once per file")
 export function anim_read_doc(anim_st: mut AnimState, render3d_st: mut Render3dState, dir: string) -> int {
   clips_init()
   if render3d_st.gltf_doc == null { return 0 }
