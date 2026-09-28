@@ -147,7 +147,7 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
     prof_cpu_mark(render3d_st, "shadow fit")
     near = render3d_st.sh_split[c]
     gpu_fb_depth_layer(render3d_st, render3d_st.sh_tex, c)
-    if render3d_st.r3d_debug and c == 0 { let st = gpu_fb_status(render3d_st);  print(`shadow fbo status {st}`) }
+    if render3d_st.r3d_debug and c == 0 { shadow_debug_fbo(render3d_st) }
     gpu_clear(render3d_st, GL_DEPTH_BUFFER_BIT)
     let vp = shadow_cascade_vp(render3d_st, c)
     # shadows off (a video setting): the cascades stay cleared, so everything reads lit
@@ -159,30 +159,7 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
   gpu_depth_bias(render3d_st, 0.0, 0.0)
   gpu_fb_bind(render3d_st, 0)
   if render3d_st.r3d_debug_shadow { shadow_dump(render3d_st) }
-  if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed2 {
-    render3d_st.sh_printed2 = true
-    let q = floats(3)
-    if render3d_st.sh_probe_x != 0.0 {
-      let vp = shadow_cascade_vp(render3d_st, 2)
-      m4_xform_point(q, vp, render3d_st.sh_probe_x, render3d_st.sh_probe_y, render3d_st.sh_probe_z)
-      print(`probe base ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])}`)
-      m4_xform_point(q, vp, render3d_st.sh_probe_x, render3d_st.sh_probe_y + 15.0, render3d_st.sh_probe_z)
-      print(`probe top  ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])}  -> map texel {int((q[0] * 0.5 + 0.5) * float(render3d_st.shadow_res))} {int((q[1] * 0.5 + 0.5) * float(render3d_st.shadow_res))}`)
-      # where the top's shadow lands on the ground: walk down the sun ray
-      let gx = render3d_st.sh_probe_x + 0.0 - render3d_st.sun_dir[0] * (15.0 / render3d_st.sun_dir[1])
-      let gz = render3d_st.sh_probe_z - render3d_st.sun_dir[2] * (15.0 / render3d_st.sun_dir[1])
-      m4_xform_point(q, vp, gx, terrain_height(render3d_st, gx, gz), gz)
-      print(`shadow-of-top ground ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])} at {fixed(gx)} {fixed(gz)}`)
-    }
-    for c in 0 .. SHADOW_CASCADES {
-      let vp = shadow_cascade_vp(render3d_st, c)
-      # a point 5 m ahead of the camera on the ground
-      let px = render3d_st.cam_pos[0] + render3d_st.cam_fwd[0] * 5.0;  let pz = render3d_st.cam_pos[2] + render3d_st.cam_fwd[2] * 5.0
-      let w = m4_xform_point(q, vp, px, terrain_height(render3d_st, px, pz), pz)
-      print(`cascade {c}: ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])} w {fixed(w)}  m0 {fixed(vp[0])} m5 {fixed(vp[5])} m14 {fixed(vp[14])}`)
-    }
-    free(q)
-  }
+  if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed2 { shadow_debug_probe(render3d_st) }
 }
 
 # Debug: cascade depths as grey PPMs (build/dbg_shadow_<c>.ppm)
@@ -254,12 +231,55 @@ function shadow_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_ts_origin"), render3d_st.ter_ox, render3d_st.ter_oz)
   var loc = gpu_uniform(render3d_st, prog, "u_cascade_vp[0]")
   if loc < 0 { loc = gpu_uniform(render3d_st, prog, "u_cascade_vp") }
-  if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed { render3d_st.sh_printed = true;  print(`cascade vp loc {loc} / {gpu_uniform(render3d_st, prog, "u_cascade_vp")}  split loc {gpu_uniform(render3d_st, prog, "u_cascade_split")} shadow loc {gpu_uniform(render3d_st, prog, "u_shadow")}`) }
+  if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed { shadow_debug_locs(render3d_st, prog, loc) }
   u_mat4n(render3d_st, loc, SHADOW_CASCADES, render3d_st.sh_vp)
   u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_split[0]", "u_cascade_split"), SHADOW_CASCADES, render3d_st.sh_split)
-  if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed3 { render3d_st.sh_printed3 = true;  print(`range {fixed(render3d_st.sh_range[0])} {fixed(render3d_st.sh_range[1])} {fixed(render3d_st.sh_range[2])} {fixed(render3d_st.sh_range[3])} texel*1000 {fixed(render3d_st.sh_texel[0] * 1000.0)} {fixed(render3d_st.sh_texel[1] * 1000.0)} {fixed(render3d_st.sh_texel[2] * 1000.0)} {fixed(render3d_st.sh_texel[3] * 1000.0)} locs {gpu_uniform(render3d_st, prog, "u_cascade_range")} {gpu_uniform(render3d_st, prog, "u_cascade_texel")}`) }
+  if render3d_st.r3d_debug_shadow and not render3d_st.sh_printed3 { shadow_debug_range(render3d_st, prog) }
   u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_range[0]", "u_cascade_range"), SHADOW_CASCADES, render3d_st.sh_range)
   if r3d_env_has(render3d_st, "R3D_FORCE") { render3d_st.sh_force = Text.to_int(r3d_env(render3d_st, "R3D_FORCE")) }
   u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_force_cascade"), render3d_st.sh_force)
   u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_texel[0]", "u_cascade_texel"), SHADOW_CASCADES, render3d_st.sh_texel)
+}
+
+# R3D_DEBUG / the shadow debug switch: what the passes found, said once each (text made only then)
+@alloc_ok("debug output, only under R3D_DEBUG and the shadow debug switch")
+function shadow_debug_fbo(render3d_st: mut Render3dState) -> void {
+  let st = gpu_fb_status(render3d_st)
+  print(`shadow fbo status {st}`)
+}
+@alloc_ok("debug output, only under R3D_DEBUG and the shadow debug switch")
+function shadow_debug_probe(render3d_st: mut Render3dState) -> void {
+  render3d_st.sh_printed2 = true
+  let q = floats(3)
+  if render3d_st.sh_probe_x != 0.0 {
+    let vp = shadow_cascade_vp(render3d_st, 2)
+    m4_xform_point(q, vp, render3d_st.sh_probe_x, render3d_st.sh_probe_y, render3d_st.sh_probe_z)
+    print(`probe base ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])}`)
+    m4_xform_point(q, vp, render3d_st.sh_probe_x, render3d_st.sh_probe_y + 15.0, render3d_st.sh_probe_z)
+    print(`probe top  ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])}  -> map texel {int((q[0] * 0.5 + 0.5) * float(render3d_st.shadow_res))} {int((q[1] * 0.5 + 0.5) * float(render3d_st.shadow_res))}`)
+    # where the top's shadow lands on the ground: walk down the sun ray
+    let gx = render3d_st.sh_probe_x + 0.0 - render3d_st.sun_dir[0] * (15.0 / render3d_st.sun_dir[1])
+    let gz = render3d_st.sh_probe_z - render3d_st.sun_dir[2] * (15.0 / render3d_st.sun_dir[1])
+    m4_xform_point(q, vp, gx, terrain_height(render3d_st, gx, gz), gz)
+    print(`shadow-of-top ground ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])} at {fixed(gx)} {fixed(gz)}`)
+  }
+  for c in 0 .. SHADOW_CASCADES {
+    let vp = shadow_cascade_vp(render3d_st, c)
+    # a point 5 m ahead of the camera on the ground
+    let px = render3d_st.cam_pos[0] + render3d_st.cam_fwd[0] * 5.0;  let pz = render3d_st.cam_pos[2] + render3d_st.cam_fwd[2] * 5.0
+    let w = m4_xform_point(q, vp, px, terrain_height(render3d_st, px, pz), pz)
+    print(`cascade {c}: ndc {fixed(q[0])} {fixed(q[1])} {fixed(q[2])} w {fixed(w)}  m0 {fixed(vp[0])} m5 {fixed(vp[5])} m14 {fixed(vp[14])}`)
+  }
+  free(q)
+
+}
+@alloc_ok("debug output, only under R3D_DEBUG and the shadow debug switch")
+function shadow_debug_locs(render3d_st: mut Render3dState, prog: int, loc: int) -> void {
+  render3d_st.sh_printed = true
+  print(`cascade vp loc {loc} / {gpu_uniform(render3d_st, prog, "u_cascade_vp")}  split loc {gpu_uniform(render3d_st, prog, "u_cascade_split")} shadow loc {gpu_uniform(render3d_st, prog, "u_shadow")}`)
+}
+@alloc_ok("debug output, only under R3D_DEBUG and the shadow debug switch")
+function shadow_debug_range(render3d_st: mut Render3dState, prog: int) -> void {
+  render3d_st.sh_printed3 = true
+  print(`range {fixed(render3d_st.sh_range[0])} {fixed(render3d_st.sh_range[1])} {fixed(render3d_st.sh_range[2])} {fixed(render3d_st.sh_range[3])} texel*1000 {fixed(render3d_st.sh_texel[0] * 1000.0)} {fixed(render3d_st.sh_texel[1] * 1000.0)} {fixed(render3d_st.sh_texel[2] * 1000.0)} {fixed(render3d_st.sh_texel[3] * 1000.0)} locs {gpu_uniform(render3d_st, prog, "u_cascade_range")} {gpu_uniform(render3d_st, prog, "u_cascade_texel")}`)
 }
