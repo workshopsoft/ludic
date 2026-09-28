@@ -87,7 +87,8 @@ function skin_load(render3d_st: mut Render3dState, idx: int) -> Skin {
   for i in 0 .. n {
     let nd = value_at(nodes, i)
     var nm: string = ""
-    if value_has(nd, "name") != 0 { nm = value_as_str(value_get(nd, "name")) }
+    # a copy: the document goes, strings and all, at the next load
+    if value_has(nd, "name") != 0 { let s = value_as_str(value_get(nd, "name"));  nm = s[0 .. len(s)] }
     push(sk.names, nm)
     skin_jv3(sk.rest_t, i * 3, nd, "translation", 0.0, 0.0, 0.0)
     skin_jv3(sk.rest_s, i * 3, nd, "scale", 1.0, 1.0, 1.0)

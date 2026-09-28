@@ -1875,7 +1875,7 @@ function gvk_prof_frame(render3d_st: mut Render3dState) -> void {
 function gvk_prof_made(render3d_st: mut Render3dState) -> void {
   let r = render3d_st
   print(`r3d: vulkan made/destroyed: images {r.gvk_mk_img}/{r.gvk_mk_x_img}, views {r.gvk_mk_view}/{r.gvk_mk_x_view}, buffers {r.gvk_mk_buf}/{r.gvk_mk_x_buf}, memory {r.gvk_mk_mem}/{r.gvk_mk_x_mem}, samplers {r.gvk_mk_smp}, sets {r.gvk_mk_set}, pools {r.gvk_mk_dpool}, cmds {r.gvk_mk_cmd}`)
-  print(`r3d: vulkan caches: layer views {gvk_len_i(r.gvk_layer_views)}, pipelines {gvk_len_s(r.gvk_pipe_keys)}, layouts {gvk_len_s(r.gvk_layout_keys)}, pipe cache {gvk_len_i(r.gvk_pc_prog)}, retired {gvk_len_l(r.gvk_retired_buf)}, buffers {gvk_len_l(r.gvk_buf)}, allocs {r.gvk_n_allocs}`)
+  print(`r3d: vulkan caches: layer views {gvk_len_i(r.gvk_layer_views)}, pipelines {gvk_len_s(r.gvk_pipe_keys)}, layouts {gvk_len_i(r.gvk_lay_off)}, pipe cache {gvk_len_i(r.gvk_pc_prog)}, retired {gvk_len_l(r.gvk_retired_buf)}, buffers {gvk_len_l(r.gvk_buf)}, allocs {r.gvk_n_allocs}`)
   render3d_st.gvk_mk_img = 0;  render3d_st.gvk_mk_x_img = 0;  render3d_st.gvk_mk_view = 0;  render3d_st.gvk_mk_x_view = 0
   render3d_st.gvk_mk_buf = 0;  render3d_st.gvk_mk_x_buf = 0;  render3d_st.gvk_mk_mem = 0;  render3d_st.gvk_mk_x_mem = 0
   render3d_st.gvk_mk_smp = 0;  render3d_st.gvk_mk_set = 0;  render3d_st.gvk_mk_dpool = 0;  render3d_st.gvk_mk_cmd = 0
@@ -1893,13 +1893,44 @@ function gvk_len_l(xs: []long) -> int { if xs == null { return 0 };  return len(
 function gvk_layout_id(render3d_st: mut Render3dState, m: Mesh) -> int {
   if m == null or m.attrs == null { return 1 }
   if m.vk_layout > 0 { return m.vk_layout }
-  let key = gvk_layout_key(m)
-  if render3d_st.gvk_layout_keys == null { render3d_st.gvk_layout_keys = new []string }
-  var id = 0
-  for i in 0 .. len(render3d_st.gvk_layout_keys) { if id == 0 and render3d_st.gvk_layout_keys[i] == key { id = i + 2 } }
-  if id == 0 { push(render3d_st.gvk_layout_keys, key);  id = len(render3d_st.gvk_layout_keys) + 1 }
-  m.vk_layout = id
-  return id
+  # the layout as numbers in a buffer made once - per attribute its index, its buffer's order of
+  # first use and its six fields - matched against the layouts known: a new mesh costs nothing, and
+  # only a layout never seen before is kept (a key string per mesh was never given back)
+  if render3d_st.gvk_lay_sig == null {
+    render3d_st.gvk_lay_sig = words(GPU_MAX_ATTRS * 8);  render3d_st.gvk_lay_seen = words(GPU_MAX_ATTRS)
+    render3d_st.gvk_lay_flat = new []int;  render3d_st.gvk_lay_off = new []int;  render3d_st.gvk_lay_len = new []int
+  }
+  let sig = render3d_st.gvk_lay_sig
+  let seen = render3d_st.gvk_lay_seen
+  var n = 0
+  var ns = 0
+  for i in 0 .. m.n_attrs {
+    let o = i * GPU_ATTR_W
+    if m.attrs[o + 1] == 0 { continue }
+    var bi = -1
+    for q in 0 .. ns { if seen[q] == m.attrs[o] and bi < 0 { bi = q } }
+    if bi < 0 { bi = ns;  seen[ns] = m.attrs[o];  ns += 1 }
+    sig[n] = i;  sig[n + 1] = bi
+    for k in 1 .. 7 { sig[n + 1 + k] = m.attrs[o + k] }
+    n += 8
+  }
+  let flat = render3d_st.gvk_lay_flat
+  for e in 0 .. len(render3d_st.gvk_lay_off) {
+    if render3d_st.gvk_lay_len[e] == n {
+      let at = render3d_st.gvk_lay_off[e]
+      var same = true
+      var k = 0
+      while same and k < n { if flat[at + k] != sig[k] { same = false };  k += 1 }
+      if same {
+        m.vk_layout = e + 2
+        return m.vk_layout
+      }
+    }
+  }
+  push(render3d_st.gvk_lay_off, len(flat));  push(render3d_st.gvk_lay_len, n)
+  for k in 0 .. n { push(flat, sig[k]) }
+  m.vk_layout = len(render3d_st.gvk_lay_off) + 1
+  return m.vk_layout
 }
 function gvk_blend_index(f: int) -> int {
   if f == GL_ZERO { return 0 }

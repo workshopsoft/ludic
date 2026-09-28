@@ -33,6 +33,26 @@ program Steady {
     return Vk.heap_bytes() - before
   }
 
+  # bytes gained over n loads and releases of one model: its parse, its meshes and its textures
+  function model_rounds(render3d_st: mut Render3dState, n: int) -> long {
+    let before = Vk.heap_bytes()
+    for i in 0 .. n {
+      let m = gltf_load(render3d_st, "packages/ludic.lab/plate", "plate.gltf", "plate")
+      model_release(render3d_st, m)
+    }
+    return Vk.heap_bytes() - before
+  }
+
+  # bytes gained over n parses of a glTF document, each freed whole (Json.free_all): strings too
+  function parse_rounds(text: string, n: int) -> long {
+    let before = Vk.heap_bytes()
+    for i in 0 .. n {
+      let doc = Json.parse(text)
+      Json.free_all(doc)
+    }
+    return Vk.heap_bytes() - before
+  }
+
   handler Boot(render3d_st: mut Render3dState) phase Start {
     spawn Anchor {}
     r3d_on_draw(render3d_st, fn scene_draw)
@@ -49,13 +69,28 @@ program Steady {
     let grew_b = buffer_rounds(render3d_st, b, 5000)
     frame_rounds(render3d_st, 120)
     let grew_f = frame_rounds(render3d_st, 600)
-    print(`steady: the buffer path gained {grew_b} bytes over 5000 rounds, the frame {grew_f} over 600`)
+    model_rounds(render3d_st, 20)
+    let grew_m = model_rounds(render3d_st, 200)
+    let text = Fs.read_text("packages/ludic.lab/plate/plate.gltf")
+    parse_rounds(text, 20)
+    let grew_p = parse_rounds(text, 200)
+    print(`steady: the buffer path gained {grew_b} bytes over 5000 rounds, the frame {grew_f} over 600, a glTF parsed and freed {grew_p} over 200, a model loaded and let go {grew_m} over 200`)
     # a few KB of slack for what the system's own libraries keep (Metal's caches, the allocator)
     var ok = grew_b < 16384
     if not ok { print("steady: FAILED - releasing and making a buffer again leaves memory behind") }
     if grew_f >= 65536 {
       ok = false
       print("steady: FAILED - a frame leaves memory behind")
+    }
+    if grew_p >= 16384 {
+      ok = false
+      print("steady: FAILED - a parsed document freed whole leaves memory behind")
+    }
+    # a load keeps a few records of its own for now (handles are not reused); a document's strings
+    # left behind were ~640 KB a model, so a bound of 8 KB a round is what this holds
+    if grew_m >= 200 * 8192 {
+      ok = false
+      print("steady: FAILED - a model loaded and let go leaves memory behind")
     }
     if ok { print("STEADY OK") } else { print("STEADY FAILED") }
     quit()
