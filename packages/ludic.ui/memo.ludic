@@ -40,8 +40,22 @@ function mm_new() -> UiMemo {
   return m
 }
 function mm_of(ui_st: mut UiState) -> UiMemo {
-  if ui_st.mm == null { ui_st.mm = mm_new() }
+  if ui_st.mm == null {
+    ui_st.mm = mm_new()
+    mm_warm_pct(ui_st, ui_st.mm)
+  }
   return ui_st.mm
+}
+# every percentage a bar can be written as (0% .. 100%, to a tenth) made once at the start, so a bar
+# moving through them never makes its text in play - a text seen for the first time was still one string
+function mm_warm_pct(ui_st: mut UiState, m: UiMemo) -> void {
+  for t in 0 .. 1001 {
+    var s = mm_int(ui_st, t / 10)
+    if t % 10 != 0 { s = s + tx_tenth(t % 10) }
+    let text = s + "%"
+    let j = mm_add(m, MM_TEXT, text)
+    if j >= 0 { m.vals[j] = Value.str(text) }
+  }
 }
 # FNV-1a over the text, the tag mixed in first
 function mm_hash(tag: int, s: string) -> int {
