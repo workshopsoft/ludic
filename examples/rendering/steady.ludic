@@ -163,6 +163,18 @@ program Steady {
     let am = gltf_load(render3d_st, "packages/ludic.lab/plate", "plate.gltf", "plate")
     actor_rounds(render3d_st, am, 20)
     let grew_a = actor_rounds(render3d_st, am, 2000)
+    # with R3D_ALLOC_VK=1 MoltenVK's own host allocations are counted (plan 25.1c): what a frame
+    # leaves among them, read the same way
+    var vk_live: long = 0
+    var vk_grew: long = 0
+    if render3d_st.gvk_ac != null {
+      frame_rounds(render3d_st, 60)
+      let v0 = Vk.alloc_bytes()
+      frame_rounds(render3d_st, 600)
+      vk_live = Vk.alloc_bytes()
+      vk_grew = vk_live - v0
+      print(`steady: Vulkan's host allocations {vk_live} bytes live (object {Vk.alloc_scope_bytes(1)}, command {Vk.alloc_scope_bytes(0)}), a frame kept {vk_grew} over 600`)
+    }
     let grew_r = ramp_rounds(render3d_st, am)
     let grew_s = stream_rounds(render3d_st, am)
     let text = Fs.read_text("packages/ludic.lab/plate/plate.gltf")
@@ -193,6 +205,11 @@ program Steady {
     if grew_r >= 16384 {
       ok = false
       print("steady: FAILED - a frame drawing more than before leaves memory behind")
+    }
+    # MoltenVK 1.4.2 honours the callbacks for few of its objects (it read 0 live): only growth fails
+    if render3d_st.gvk_ac != null and vk_grew > 0 {
+      ok = false
+      print("steady: FAILED - Vulkan's counted host allocations grow with the frame")
     }
     if grew_s >= 4096 {
       ok = false

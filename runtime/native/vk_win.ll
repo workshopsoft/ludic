@@ -375,3 +375,26 @@ define i64 @lvk_heap_bytes() {
 entry:
   ret i64 0
 }
+
+; VkAllocationCallbacks (memory plan 25.1c): not measured on Windows yet - render3d gets null and
+; passes it, and the fence reads 0 (the residual there is a later step).
+define ptr @lvk_ac_ptr() {
+entry:
+  ret ptr null
+}
+define i64 @lvk_ac_bytes() {
+entry:
+  ret i64 0
+}
+define i64 @lvk_ac_peak() {
+entry:
+  ret i64 0
+}
+define i64 @lvk_ac_allocs() {
+entry:
+  ret i64 0
+}
+define i64 @lvk_ac_scope_bytes(i32 %scope) {
+entry:
+  ret i64 0
+}
