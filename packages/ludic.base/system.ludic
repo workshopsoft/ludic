@@ -17,6 +17,8 @@ export property System {
 export open registry Systems of System as SYS
 
 
+# the declared systems; a registry is not filled when a state's defaults are made, so on first ask
+@alloc_ok("once: the runner's list is made the first time it is asked, and kept")
 function cs_all(base_st: mut BaseState) -> []System {
   if base_st.cs_list == null {
     base_st.cs_list = new []System

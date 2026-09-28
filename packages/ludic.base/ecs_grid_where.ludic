@@ -63,7 +63,7 @@ export function tb_within_recs<T>(tb: Table<T>, g: Grid, x: float, z: float, r: 
   let cells = (ix1 - ix0 + 1) * (iz1 - iz0 + 1)
   if cells > g.count or cells < 0 {
     for row in 0 .. len(g.key) {
-      if g.key[row] >= 0 and (mcol == null or mcol[row] == mv) and grid_d2(xs, zs, row, x, z) <= r * r { push(out, tb.rec[row]) }
+      if g.key[row] >= 0 and (mcol == null or mcol[row] == mv) and grid_d2(xs, zs, row, x, z) <= r * r { kept_push(out, tb.rec[row]) }
     }
     return len(out)
   }
@@ -78,7 +78,7 @@ function grid_recs_cell<T>(tb: Table<T>, g: Grid, xs: floats, zs: floats, mcol: 
   var r = g.head[grid_bucket(g, ix, iz)]
   while r > 0 {
     let row = r - 1
-    if g.key[row] == k and (mcol == null or mcol[row] == mv) and grid_d2(xs, zs, row, x, z) <= r2 { push(out, tb.rec[row]) }
+    if g.key[row] == k and (mcol == null or mcol[row] == mv) and grid_d2(xs, zs, row, x, z) <= r2 { kept_push(out, tb.rec[row]) }
     r = g.next[row]
   }
 }
@@ -95,7 +95,7 @@ export function tb_within_of_recs<T>(tb: Table<T>, g: Grid, ix: IntIndex, x: flo
   for k in 0 .. n {
     let row = rows[k]
     if g.gate >= 0 and tb.i[g.gate][row] == 0 { continue }
-    if grid_d2(xs, zs, row, x, z) <= r * r { push(out, tb.rec[row]) }
+    if grid_d2(xs, zs, row, x, z) <= r * r { kept_push(out, tb.rec[row]) }
   }
   return len(out)
 }

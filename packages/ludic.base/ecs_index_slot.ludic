@@ -4,6 +4,7 @@
 const IX_DENSE: int = 1024     # a value below this is its own slot; above, one is given it
 const IX_CAP: int = 16         # rows a value's list holds before it grows: a list grown in play is a new block
 
+@alloc_ok("once per distinct value: its list is made the first time the value is filed, and kept")
 function ix_list_new() -> words {
   let l = words(IX_CAP)
   List.clear(l)
@@ -16,15 +17,15 @@ function ix_slot(ix: IntIndex, v: int, make: bool) -> int {
   if v < IX_DENSE {
     if v >= len(ix.lists) {
       if not make { return -1 }
-      while len(ix.lists) <= v { push(ix.lists, ix_list_new()) }
+      while len(ix.lists) <= v { kept_push(ix.lists, ix_list_new()) }
     }
     return v
   }
   var s = imap_get(ix.sparse, v, -1)
   if s < 0 and make {
-    while len(ix.lists) < IX_DENSE { push(ix.lists, ix_list_new()) }
+    while len(ix.lists) < IX_DENSE { kept_push(ix.lists, ix_list_new()) }
     s = len(ix.lists)
-    push(ix.lists, ix_list_new())
+    kept_push(ix.lists, ix_list_new())
     imap_put(ix.sparse, v, s)
   }
   return s

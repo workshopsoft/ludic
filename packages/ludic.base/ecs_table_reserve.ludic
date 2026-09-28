@@ -1,0 +1,43 @@
+# ludic.base/ecs_table_reserve.ludic - room made at the start: a table sized for its busiest moment
+# never grows in play, and nothing that grows is ever given back. What does grow past it is here
+export function tb_reserve<T>(tb: Table<T>, rows: int) -> void {
+  let k = rows - tb.n
+  if k <= 0 { return }
+  for j in 0 .. k { tb_push_row(tb, null, 0) }
+  for j in 0 .. k { tb_pop(tb) }
+  let s0 = len(tb.slot_gen)
+  for j in s0 .. rows {
+    push(tb.slot_gen, 0)
+    push(tb.slot_row, -1)
+    push(tb.free, 0)
+  }
+  for j in s0 .. rows {
+    List.pop(tb.slot_gen)
+    List.pop(tb.slot_row)
+    List.pop(tb.free)
+  }
+  while len(tb.blk) <= (rows >> 6) { push(tb.blk, 0) }
+  for g in 0 .. len(tb.grids) { grid_reserve(tb.grids[g], rows) }
+}
+
+# a row on every column, grid and index
+@alloc_ok("past tb_reserve's rows only: a table grows to its high-water once and keeps it")
+function tb_push_row<T>(tb: Table<T>, r: T, h: int) -> void {
+  push(tb.rec, r)
+  push(tb.ent, h)
+  push(tb.added, tb.tick)
+  push(tb.changed, tb.tick)
+  for c in 0 .. len(tb.f) { push(tb.f[c], 0.0) }
+  for c in 0 .. len(tb.i) { push(tb.i[c], 0) }
+  tb.n += 1
+  for g in 0 .. len(tb.grids) { grid_grow(tb.grids[g]) }
+  for k in 0 .. len(tb.idx) { ix_grow(tb.idx[k]) }
+}
+
+@alloc_ok("past tb_reserve's rows only: a slot is made once and reused through the free list")
+function tb_new_slot<T>(tb: Table<T>) -> int {
+  let s = len(tb.slot_gen)
+  push(tb.slot_gen, 0)
+  push(tb.slot_row, -1)
+  return s
+}

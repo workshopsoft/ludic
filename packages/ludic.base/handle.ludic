@@ -1,0 +1,62 @@
+# ludic.base/handle.ludic - ids a pool hands out, each a slot and a generation (Table's encoding): a
+# freed id's slot is reused under a new generation, so an id kept past its free misses with -1
+export property HandlePool {
+  name: string = ""
+  gen: words = null           # slot -> generation
+  live: words = null          # slot -> 1 while handed out
+  free: words = null
+  n: int = 0                  # slots made so far
+  count: int = 0              # handed out now
+  refused: int = 0            # asks past the capacity
+  strict: bool = true         # past the capacity is a panic naming the pool, else -1
+}
+
+# everything the pool will ever hold, made now: nothing after this allocates
+export function hd_pool_new(name: string, cap: int) -> HandlePool {
+  let p = new HandlePool
+  p.name = name
+  p.gen = words(cap)
+  p.live = words(cap)
+  p.free = words(cap)
+  List.clear(p.free)
+  return p
+}
+
+export function hd_new(p: HandlePool) -> int {
+  var s = -1
+  if len(p.free) > 0 { s = List.pop(p.free) }
+  else if p.n < len(p.gen) {
+    s = p.n
+    p.n += 1
+  } else { return hd_refuse(p) }
+  p.live[s] = 1
+  p.count += 1
+  return s | (p.gen[s] << 22)
+}
+
+function hd_refuse(p: HandlePool) -> int {
+  p.refused += 1
+  if p.strict { panic(`handle pool {p.name} is full at {len(p.gen)}`) }
+  return ECS_NONE
+}
+
+# the slot a handle names, or -1 when it was freed (or its slot has been handed out again since)
+export function hd_slot(p: HandlePool, h: int) -> int {
+  if h < 0 { return -1 }
+  let s = h & ECS_SLOT
+  if s >= p.n or p.live[s] == 0 or p.gen[s] != ((h >> 22) & ECS_GEN) { return -1 }
+  return s
+}
+
+export function hd_free(p: HandlePool, h: int) -> bool {
+  let s = hd_slot(p, h)
+  if s < 0 { return false }
+  p.live[s] = 0
+  p.gen[s] = (p.gen[s] + 1) & ECS_GEN
+  kept_push(p.free, s)
+  p.count -= 1
+  return true
+}
+
+export function hd_live(p: HandlePool) -> int { return p.count }
+export function hd_cap(p: HandlePool) -> int { return len(p.gen) }

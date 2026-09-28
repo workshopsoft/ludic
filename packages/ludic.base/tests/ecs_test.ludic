@@ -179,8 +179,26 @@ program EcsTest {
   test "observers hear each add, and a remove once" (hook_st: HookState) { hooks_case(hook_st) }
   test "change detection skips the blocks nobody wrote" () { blocks_case() }
   test "a removed handle misses, rows stay dense, a reused slot is a new handle" () { handles_case() }
+  function reserve_case() -> void {
+    let tb: Table<Toy> = table_new(2, 2)
+    let g = tb_grid(tb, CX, CZ, ON, 8.0)
+    let ix = tb_index(tb, KIND, ON)
+    put(tb, "a", 1.0, 1.0, 3)
+    tb_reserve(tb, 200)
+    expect_eq(tb_len(tb), 1)
+    var hs = new []int
+    for i in 0 .. 150 { push(hs, put(tb, "t", float(i), 2.0, i % 4)) }
+    expect_eq(tb_len(tb), 151)
+    expect_eq(ix_count(ix, 3), 38)
+    expect(tb_row(tb, hs[10]) >= 0)
+    expect(tb_remove(tb, hs[10]))
+    expect_eq(tb_row(tb, hs[10]), -1)
+    expect_eq(grid_count(g), 150)
+  }
+
   test "the grid answers nearest and within, gated, after moves" () { grid_case() }
   test "the kind index follows the setters, the gate and removals" () { index_case() }
   test "change ticks name the rows written since" () { ticks_case() }
   test "IntMap puts, finds, deletes and grows" () { map_case() }
+  test "a reserved table holds its rows and indexes as an unreserved one does" () { reserve_case() }
 }

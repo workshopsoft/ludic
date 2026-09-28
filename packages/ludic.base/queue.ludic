@@ -30,7 +30,7 @@ export function queue_new<T>(name: string) -> Queue<T> {
 }
 
 export function q_push<T>(q: Queue<T>, v: T) -> void {
-  push(q.items, v)
+  kept_push(q.items, v)
   q.tag.pending = len(q.items)
 }
 
@@ -65,7 +65,7 @@ export function q_unheld<T>(q: Queue<T>, pool: []T, out: []T) -> int {
     var held = false
     for j in 0 .. len(q.items) { if q.items[j] == r { held = true } }
     for j in 0 .. len(q.spare) { if q.spare[j] == r { held = true } }
-    if not held { push(out, r) }
+    if not held { kept_push(out, r) }
   }
   return len(out)
 }

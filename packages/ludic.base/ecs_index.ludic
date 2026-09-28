@@ -55,7 +55,7 @@ function ix_file(ix: IntIndex, r: int, v: int) -> void {
   if s < 0 { return }
   ix.pos[r] = len(ix.lists[s])
   ix.val[r] = s
-  push(ix.lists[s], r)
+  kept_push(ix.lists[s], r)
 }
 
 # out of its list: the list's last row takes its place

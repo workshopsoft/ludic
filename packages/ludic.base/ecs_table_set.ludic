@@ -59,7 +59,7 @@ export function tb_changed_since<T>(tb: Table<T>, since: int, out: words) -> int
     if tb.blk[b] <= since { continue }
     var end = b * 64 + 64
     if end > tb.n { end = tb.n }
-    for r in b * 64 .. end { if tb.changed[r] > since { push(out, r) } }
+    for r in b * 64 .. end { if tb.changed[r] > since { kept_push(out, r) } }
   }
   return len(out)
 }

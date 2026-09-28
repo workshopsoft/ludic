@@ -13,7 +13,7 @@ export function tb_remove<T>(tb: Table<T>, h: int) -> bool {
   let s = h & ECS_SLOT
   tb.slot_row[s] = -1
   tb.slot_gen[s] = (tb.slot_gen[s] + 1) & ECS_GEN
-  push(tb.free, s)
+  kept_push(tb.free, s)
   return true
 }
 

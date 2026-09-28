@@ -1,0 +1,38 @@
+# handle_test.ludic - a pool's ids: a freed one misses once its slot is reused, the generation wraps,
+# and past the capacity a pool that is not strict refuses rather than grows
+import "ludic.base"
+program HandleTest {
+  numbers float
+  test "a freed handle misses, and its slot comes back under a new generation" {
+    let p = hd_pool_new("bufs", 4)
+    p.strict = false
+    let a = hd_new(p)
+    let b = hd_new(p)
+    expect_eq(hd_slot(p, a), 0)
+    expect_eq(hd_slot(p, b), 1)
+    expect(hd_free(p, a))
+    expect_eq(hd_slot(p, a), -1)
+    expect(not hd_free(p, a))
+    let c = hd_new(p)
+    expect_eq(hd_slot(p, c), 0)
+    expect(c != a)
+    expect_eq(hd_slot(p, a), -1)
+    expect_eq(hd_live(p), 2)
+  }
+  test "the generation wraps after 512 reuses and the pool never grows past its capacity" {
+    let p = hd_pool_new("once", 2)
+    p.strict = false
+    var h = hd_new(p)
+    let first = h
+    for i in 0 .. 511 {
+      hd_free(p, h)
+      h = hd_new(p)
+    }
+    hd_free(p, h)
+    expect_eq(hd_new(p), first)
+    hd_new(p)
+    expect_eq(hd_new(p), -1)
+    expect_eq(p.refused, 1)
+    expect_eq(hd_cap(p), 2)
+  }
+}

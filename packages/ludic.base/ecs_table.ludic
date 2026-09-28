@@ -66,22 +66,10 @@ export function tb_alive<T>(tb: Table<T>, h: int) -> bool { return tb_row(tb, h)
 # a new row holding `r`, every column 0 and filed in no index until a setter says where it is
 export function tb_add<T>(tb: Table<T>, r: T) -> int {
   var s = 0
-  if len(tb.free) > 0 { s = List.pop(tb.free) } else {
-    s = len(tb.slot_gen)
-    push(tb.slot_gen, 0)
-    push(tb.slot_row, -1)
-  }
+  if len(tb.free) > 0 { s = List.pop(tb.free) } else { s = tb_new_slot(tb) }
   tb.slot_row[s] = tb.n
   let h = s | (tb.slot_gen[s] << 22)
-  push(tb.rec, r)
-  push(tb.ent, h)
-  push(tb.added, tb.tick)
-  push(tb.changed, tb.tick)
-  for c in 0 .. len(tb.f) { push(tb.f[c], 0.0) }
-  for c in 0 .. len(tb.i) { push(tb.i[c], 0) }
-  tb.n += 1
-  for g in 0 .. len(tb.grids) { grid_grow(tb.grids[g]) }
-  for k in 0 .. len(tb.idx) { ix_grow(tb.idx[k]) }
+  tb_push_row(tb, r, h)
   tb_stamp(tb, tb.n - 1)
   for k in 0 .. len(tb.on_add) { tb.on_add[k].run(h) }
   return h
@@ -91,6 +79,6 @@ export function tb_add<T>(tb: Table<T>, r: T) -> int {
 function tb_stamp<T>(tb: Table<T>, row: int) -> void {
   tb.changed[row] = tb.tick
   let b = row >> 6
-  while len(tb.blk) <= b { push(tb.blk, 0) }
+  while len(tb.blk) <= b { kept_push(tb.blk, 0) }
   tb.blk[b] = tb.tick
 }

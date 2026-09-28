@@ -34,6 +34,7 @@ function sb_same(sb: StrBuf, s: string) -> bool {
 }
 
 # the table's string for the buffer's bytes
+@alloc_ok("intern: one string per distinct text, up to the table's most, then kept")
 export function sb_intern(sb: StrBuf, tb: StrTable) -> string {
   let h = sb_hash(sb)
   let mask = len(tb.hs) - 1

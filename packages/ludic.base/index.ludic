@@ -3,6 +3,8 @@
 module ludic_base uses
 numbers float
 import "tick.ludic"
+import "kept.ludic"
+import "handle.ludic"
 import "queue.ludic"
 import "text_buf.ludic"
 import "text_intern.ludic"
@@ -14,6 +16,7 @@ import "system.ludic"
 import "ecs_table.ludic"
 import "ecs_hooks.ludic"
 import "ecs_table_remove.ludic"
+import "ecs_table_reserve.ludic"
 import "ecs_table_set.ludic"
 import "ecs_grid.ludic"
 import "ecs_grid_file.ludic"

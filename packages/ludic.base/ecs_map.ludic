@@ -69,6 +69,18 @@ export function imap_del(m: IntMap, k: int) -> bool {
 export function imap_len(m: IntMap) -> int { return m.n }
 export function imap_clear(m: IntMap) -> void { imap_alloc(m, m.mask + 1) }
 
+# room for `n` keys before the map grows, made now
+export function imap_reserve(m: IntMap, n: int) -> void {
+  if (m.mask + 1) * 3 >= n * 4 { return }
+  var cap = m.mask + 1
+  while cap * 3 < n * 4 { cap = cap * 2 }
+  let ok = m.keys
+  let ov = m.vals
+  imap_alloc(m, cap)
+  for i in 0 .. len(ok) { if ok[i] >= 0 { imap_put(m, ok[i], ov[i]) } }
+}
+
+@alloc_ok("past imap_reserve only: doubles when half full; the old arrays are not given back")
 function imap_grow(m: IntMap) -> void {
   let ok = m.keys
   let ov = m.vals

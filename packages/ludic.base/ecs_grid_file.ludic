@@ -29,6 +29,7 @@ function grid_moved(g: Grid, from: int, to: int) -> void {
 }
 
 # twice the buckets, every filed row linked again where its key now hashes
+@alloc_ok("past grid_reserve only: the buckets double once past the most rows filed, and are kept")
 function grid_rehash(g: Grid) -> void {
   g.mask = g.mask * 2 + 1
   g.head = words(g.mask + 1)
