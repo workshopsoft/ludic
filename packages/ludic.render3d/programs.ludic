@@ -24,6 +24,7 @@ function r3d_home() -> string {
 
 # Settle r3d_root on first use: the package as checked out beside the project, else the
 # copy that ships with the toolchain.
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function r3d_find_root(render3d_st: mut Render3dState) -> void {
   if render3d_st.r3d_root_found { return }
   render3d_st.r3d_root_found = true

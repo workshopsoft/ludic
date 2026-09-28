@@ -35,6 +35,7 @@ property GpuVariant {
 }
 
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gpu_variant_new(id: string, vs: string, fs: string, defs: string) -> GpuVariant {
   let v = new GpuVariant
   v.id = id;  v.vs = vs;  v.fs = fs;  v.defs = defs
@@ -46,6 +47,7 @@ function gpu_variant_new(id: string, vs: string, fs: string, defs: string) -> Gp
 }
 
 # Read a manifest; returns how many programs it holds (0: none, or no file).
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gpu_manifest_load(render3d_st: mut Render3dState, path: string) -> int {
   render3d_st.gpu_variants = new []GpuVariant
   let text = Fs.read_text(path)

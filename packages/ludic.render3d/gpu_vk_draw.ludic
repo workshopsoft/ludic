@@ -267,6 +267,7 @@ function gvk_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
 }
 
 # R3D_VK_PROBE=1: one dispatch over a GPU-owned buffer, read back - the compute path end to end
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gvk_compute_probe(render3d_st: mut Render3dState) -> void {
   let c = gvk_compute_new(render3d_st, "probe", 1)
   if c == 0 { print("r3d: vulkan compute probe: FAILED (no program)");  return }
@@ -681,6 +682,7 @@ function gvk_bind_texture(render3d_st: mut Render3dState, p: int, name: string, 
 # gvk_frame_reset.
 const GVK_RING_BYTES: int = 64 * 1024 * 1024
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gvk_frame_init(render3d_st: mut Render3dState) -> bool {
   let props = bytes(VkPhysicalDeviceProperties_sizeof)
   Vk.get_physical_device_properties(render3d_st.gvk_pd, props)
@@ -754,6 +756,7 @@ function gvk_ring_put(render3d_st: mut Render3dState, blk: pointer, n: int) -> i
 # sampler, so a set is never matched against a texture it no longer describes.
 const GVK_KPOOL_SETS: int = 8192
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gvk_kpool_make(render3d_st: mut Render3dState) -> bool {
   let sizes = bytes(VkDescriptorPoolSize_sizeof * 2)
   Vk.put_i32(sizes, VkDescriptorPoolSize_type, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
@@ -775,6 +778,7 @@ function gvk_kpool_make(render3d_st: mut Render3dState) -> bool {
   return true
 }
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gvk_sc_clear(render3d_st: mut Render3dState) -> void {
   # emptied, not replaced: five fresh lists each time the pool filled were never given back
   if render3d_st.gvk_sc_prog == null {
@@ -1413,6 +1417,7 @@ function gvk_screenshot(render3d_st: mut Render3dState, path: string) -> bool {
 # ---- what gpu.ludic's Vulkan branches call -----------------------------------------------------
 
 # the manifest the programs are looked up in, from the renderer's own shader directory
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gvk_manifest(render3d_st: mut Render3dState) -> bool {
   r3d_find_root(render3d_st)
   render3d_st.gvk_spv_dir = `{render3d_st.r3d_root}/shaders/spv`

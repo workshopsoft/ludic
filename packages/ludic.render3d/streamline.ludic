@@ -66,6 +66,7 @@ function gsl_boot(render3d_st: mut Render3dState) -> void {
 }
 
 # After Vk.open(), before vkCreateInstance.
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gsl_init(render3d_st: mut Render3dState) -> void {
   if render3d_st.gsl_on or Vk.sl_active() == 0 { return }
   render3d_st.gsl_feats = gsl_struct(20)

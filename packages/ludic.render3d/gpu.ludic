@@ -33,6 +33,7 @@ function gpu_name(kind: int) -> string { return "vulkan" }
 
 # Start Vulkan. There is nothing to fall back to: a machine whose Vulkan cannot start is told why
 # (gpu_fallback_reason, printed) and r3d_init fails, so the program can say so and stop.
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gpu_select(render3d_st: mut Render3dState) -> int {
   if render3d_st.gpu_kind != 0 { return render3d_st.gpu_kind }
   # a window needs a surface: Win32 on Windows, a CAMetalLayer through MoltenVK on macOS

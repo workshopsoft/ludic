@@ -37,6 +37,7 @@ function sky_dir_from_uv(o: floats, u: float, v: float) -> void {
   v3_set(o, st * Math.sin(phi), Math.cos(theta), -(st * Math.cos(phi)))
 }
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function sky_load(render3d_st: mut Render3dState, path: string) -> bool {
   render3d_st.sky_tex = tex_load_hdr(render3d_st, path)
   if render3d_st.sky_tex == 0 { return false }

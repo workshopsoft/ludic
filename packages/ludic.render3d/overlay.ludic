@@ -363,15 +363,14 @@ function ov_sub(render3d_st: mut Render3dState, tex: int, x: int, y: int, w: int
 function ov_nine(render3d_st: mut Render3dState, tex: int, tw: int, src: int, x: int, y: int, w: int, h: int, dst: int, r: float, g: float, b: float, a: float) -> void {
   ov_use_tex(render3d_st, tex)
   let s = float(src) / float(tw)
-  let xs = floats(4);  let ys = floats(4);  let us = floats(4);  let vs = floats(4)
-  xs[0] = float(x);  xs[1] = float(x + dst);  xs[2] = float(x + w - dst);  xs[3] = float(x + w)
-  ys[0] = float(y);  ys[1] = float(y + dst);  ys[2] = float(y + h - dst);  ys[3] = float(y + h)
-  us[0] = 0.0;  us[1] = s;  us[2] = 1.0 - s;  us[3] = 1.0
-  vs[0] = 0.0;  vs[1] = s;  vs[2] = 1.0 - s;  vs[3] = 1.0
+  let nb = render3d_st.ov_nine_buf                  # made once (gvk_startup_state): xs, ys, us, vs
+  nb[0 + 0] = float(x);  nb[0 + 1] = float(x + dst);  nb[0 + 2] = float(x + w - dst);  nb[0 + 3] = float(x + w)
+  nb[4 + 0] = float(y);  nb[4 + 1] = float(y + dst);  nb[4 + 2] = float(y + h - dst);  nb[4 + 3] = float(y + h)
+  nb[8 + 0] = 0.0;  nb[8 + 1] = s;  nb[8 + 2] = 1.0 - s;  nb[8 + 3] = 1.0
+  nb[12 + 0] = 0.0;  nb[12 + 1] = s;  nb[12 + 2] = 1.0 - s;  nb[12 + 3] = 1.0
   for j in 0 .. 3 {
-    for i in 0 .. 3 { ov_quad(render3d_st, xs[i], ys[j], xs[i + 1], ys[j + 1], us[i], vs[j], us[i + 1], vs[j + 1], r, g, b, a) }
+    for i in 0 .. 3 { ov_quad(render3d_st, nb[0 + i], nb[4 + j], nb[0 + i + 1], nb[4 + j + 1], nb[8 + i], nb[12 + j], nb[8 + i + 1], nb[12 + j + 1], r, g, b, a) }
   }
-  free(xs);  free(ys);  free(us);  free(vs)
 }
 # an arbitrary quad (float-bit pixel corners, clockwise from top-left) of a texture
 function ov_quad4(render3d_st: mut Render3dState, x0: float, y0: float, x1: float, y1: float, x2: float, y2: float, x3: float, y3: float, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {

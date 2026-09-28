@@ -321,6 +321,7 @@ function tex_solid(render3d_st: mut Render3dState, r: int, g: int, b: int, a: in
 
 # ---- Radiance .hdr (RGBE, new-style RLE) -> RGB float bits -------------------------
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function hdr_decode(render3d_st: mut Render3dState, path: pointer) -> floats {
   let d = r3d_read_file(render3d_st, path)
   if d == null { print(`hdr: cannot read {path}`);  return null }
@@ -437,6 +438,7 @@ function tex_target(render3d_st: mut Render3dState, w: int, h: int, ifmt: int, f
 }
 
 # Debug: the brightest texel of an RGBA float texture and where it is.
+@alloc_ok("a debug census and dumps, only under their switches")
 function tex_max(render3d_st: mut Render3dState, tex: int, w: int, h: int, tag: pointer) -> void {
   let buf = floats(w * h * 4)
   gpu_tex_bind(render3d_st, GPU_TEX2D, tex)

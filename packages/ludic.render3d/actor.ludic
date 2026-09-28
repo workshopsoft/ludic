@@ -76,6 +76,7 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   u_i(render3d_st, gpu_uniform(render3d_st, p, "u_diff"), 0);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_nrm"), 1);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_arm"), 2)
   return a
 }
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function actor_init(render3d_st: mut Render3dState) -> void {
   # the records play takes, made now: an actor first placed in play (a fish, a sign, a bed) made its
   # record, matrix and tint then (actor_release gives them back to this pool)
@@ -266,6 +267,7 @@ function outline_frame(render3d_st: mut Render3dState) -> void { if render3d_st.
 
 # R3D_ACTOR_CENSUS=<frame>: at that frame, the lit pass's actors grouped by model - skinned or rigid,
 # how many share it, the primitives each draws - so instancing is aimed at what repeats
+@alloc_ok("a debug census and dumps, only under their switches")
 function actor_census(render3d_st: Render3dState) -> void {
   let keys = new []Model
   let cnt = new []int
@@ -364,7 +366,6 @@ function actor_draw_outline_one(render3d_st: mut Render3dState, a: Actor, ap: Ac
 # depth, only the draw. (Each actor used to draw into every cascade out to 300 m - in town that was
 # about 1500 skinned shadow draws a frame against 69 in the lit pass.)
 function ac_in_light(render3d_st: mut Render3dState, vp: floats, x: float, y: float, z: float, r: float) -> bool {
-  if render3d_st.ac_lp0 == null { render3d_st.ac_lp0 = floats(3);  render3d_st.ac_lpx = floats(3);  render3d_st.ac_lpy = floats(3);  render3d_st.ac_lpz = floats(3) }
   m4_xform_point(render3d_st.ac_lp0, vp, x, y, z)
   m4_xform_point(render3d_st.ac_lpx, vp, x + r, y, z)
   m4_xform_point(render3d_st.ac_lpy, vp, x, y + r, z)
