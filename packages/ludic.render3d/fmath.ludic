@@ -157,45 +157,55 @@ function m4_ortho(m: floats, l: float, r: float, b: float, t: float, n: float, f
   m[14] = -((f + n) / (f - n))
 }
 function m4_look_at(m: floats, eye: floats, at: floats, up: floats) -> void {
-  let fwd = floats(3);  let side = floats(3);  let u = floats(3);  let t = floats(3)
-  v3_sub(t, at, eye)
-  v3_normalize(fwd, t)
-  v3_cross(t, fwd, up)
-  v3_normalize(side, t)
-  v3_cross(u, side, fwd)
+  m4_look_at_xyz(m, eye[0], eye[1], eye[2], at[0], at[1], at[2], up[0], up[1], up[2])
+}
+# the same from nine numbers, on scalars: the camera asks it every frame, and four scratch vectors
+# made and freed per call were churn
+function m4_look_at_xyz(m: floats, ex: float, ey: float, ez: float, ax: float, ay: float, az: float, ux: float, uy: float, uz: float) -> void {
+  var fx = ax - ex
+  var fy = ay - ey
+  var fz = az - ez
+  var fl = Math.sqrt(fx * fx + fy * fy + fz * fz)
+  if fl > 0.0 { fx = fx / fl;  fy = fy / fl;  fz = fz / fl }
+  var sx = fy * uz - fz * uy
+  var sy = fz * ux - fx * uz
+  var sz = fx * uy - fy * ux
+  let sl = Math.sqrt(sx * sx + sy * sy + sz * sz)
+  if sl > 0.0 { sx = sx / sl;  sy = sy / sl;  sz = sz / sl }
+  let vx = sy * fz - sz * fy
+  let vy = sz * fx - sx * fz
+  let vz = sx * fy - sy * fx
   m4_identity(m)
-  m[0] = side[0];  m[4] = side[1];  m[8] = side[2]
-  m[1] = u[0];     m[5] = u[1];     m[9] = u[2]
-  m[2] = -fwd[0];  m[6] = -fwd[1];  m[10] = -fwd[2]
-  m[12] = -v3_dot(side, eye)
-  m[13] = -v3_dot(u, eye)
-  m[14] = v3_dot(fwd, eye)
-  free(fwd);  free(side);  free(u);  free(t)
+  m[0] = sx;  m[4] = sy;  m[8] = sz
+  m[1] = vx;  m[5] = vy;  m[9] = vz
+  m[2] = -fx;  m[6] = -fy;  m[10] = -fz
+  m[12] = -(sx * ex + sy * ey + sz * ez)
+  m[13] = -(vx * ex + vy * ey + vz * ez)
+  m[14] = fx * ex + fy * ey + fz * ez
 }
 # general 4x4 inverse (cofactor expansion); o may not alias a
 function m4_inverse(o: floats, a: floats) -> bool {
-  let inv = floats(16)
-  inv[0] = a[5] * (a[10] * a[15]) + -(a[5] * (a[11] * a[14])) - a[9] * (a[6] * a[15]) + (a[9] * (a[7] * a[14]) + (a[13] * (a[6] * a[11]) - a[13] * (a[7] * a[10])))
-  inv[4] = -(a[4] * (a[10] * a[15])) + a[4] * (a[11] * a[14]) - a[8] * (a[7] * a[14]) + (a[8] * (a[6] * a[15]) + (a[12] * (a[7] * a[10]) - a[12] * (a[6] * a[11])))
-  inv[8] = a[4] * (a[9] * a[15]) + -(a[4] * (a[11] * a[13])) - a[8] * (a[5] * a[15]) + (a[8] * (a[7] * a[13]) + (a[12] * (a[5] * a[11]) - a[12] * (a[7] * a[9])))
-  inv[12] = -(a[4] * (a[9] * a[14])) + a[4] * (a[10] * a[13]) - a[8] * (a[6] * a[13]) + (a[8] * (a[5] * a[14]) + (a[12] * (a[6] * a[9]) - a[12] * (a[5] * a[10])))
-  inv[1] = -(a[1] * (a[10] * a[15])) + a[1] * (a[11] * a[14]) - a[9] * (a[3] * a[14]) + (a[9] * (a[2] * a[15]) + (a[13] * (a[3] * a[10]) - a[13] * (a[2] * a[11])))
-  inv[5] = a[0] * (a[10] * a[15]) + -(a[0] * (a[11] * a[14])) - a[8] * (a[2] * a[15]) + (a[8] * (a[3] * a[14]) + (a[12] * (a[2] * a[11]) - a[12] * (a[3] * a[10])))
-  inv[9] = -(a[0] * (a[9] * a[15])) + a[0] * (a[11] * a[13]) - a[8] * (a[3] * a[13]) + (a[8] * (a[1] * a[15]) + (a[12] * (a[3] * a[9]) - a[12] * (a[1] * a[11])))
-  inv[13] = a[0] * (a[9] * a[14]) + -(a[0] * (a[10] * a[13])) - a[8] * (a[1] * a[14]) + (a[8] * (a[2] * a[13]) + (a[12] * (a[1] * a[10]) - a[12] * (a[2] * a[9])))
-  inv[2] = a[1] * (a[6] * a[15]) + -(a[1] * (a[7] * a[14])) - a[5] * (a[2] * a[15]) + (a[5] * (a[3] * a[14]) + (a[13] * (a[2] * a[7]) - a[13] * (a[3] * a[6])))
-  inv[6] = -(a[0] * (a[6] * a[15])) + a[0] * (a[7] * a[14]) - a[4] * (a[3] * a[14]) + (a[4] * (a[2] * a[15]) + (a[12] * (a[3] * a[6]) - a[12] * (a[2] * a[7])))
-  inv[10] = a[0] * (a[5] * a[15]) + -(a[0] * (a[7] * a[13])) - a[4] * (a[1] * a[15]) + (a[4] * (a[3] * a[13]) + (a[12] * (a[1] * a[7]) - a[12] * (a[3] * a[5])))
-  inv[14] = -(a[0] * (a[5] * a[14])) + a[0] * (a[6] * a[13]) - a[4] * (a[2] * a[13]) + (a[4] * (a[1] * a[14]) + (a[12] * (a[2] * a[5]) - a[12] * (a[1] * a[6])))
-  inv[3] = -(a[1] * (a[6] * a[11])) + a[1] * (a[7] * a[10]) - a[5] * (a[3] * a[10]) + (a[5] * (a[2] * a[11]) + (a[9] * (a[3] * a[6]) - a[9] * (a[2] * a[7])))
-  inv[7] = a[0] * (a[6] * a[11]) + -(a[0] * (a[7] * a[10])) - a[4] * (a[2] * a[11]) + (a[4] * (a[3] * a[10]) + (a[8] * (a[2] * a[7]) - a[8] * (a[3] * a[6])))
-  inv[11] = -(a[0] * (a[5] * a[11])) + a[0] * (a[7] * a[9]) - a[4] * (a[3] * a[9]) + (a[4] * (a[1] * a[11]) + (a[8] * (a[3] * a[5]) - a[8] * (a[1] * a[7])))
-  inv[15] = a[0] * (a[5] * a[10]) + -(a[0] * (a[6] * a[9])) - a[4] * (a[1] * a[10]) + (a[4] * (a[2] * a[9]) + (a[8] * (a[1] * a[6]) - a[8] * (a[2] * a[5])))
-  let det = a[0] * inv[0] + a[1] * inv[4] + (a[2] * inv[8] + a[3] * inv[12])
-  if det == 0.0 { free(inv);  return false }
+  let i0 = a[5] * (a[10] * a[15]) + -(a[5] * (a[11] * a[14])) - a[9] * (a[6] * a[15]) + (a[9] * (a[7] * a[14]) + (a[13] * (a[6] * a[11]) - a[13] * (a[7] * a[10])))
+  let i4 = -(a[4] * (a[10] * a[15])) + a[4] * (a[11] * a[14]) - a[8] * (a[7] * a[14]) + (a[8] * (a[6] * a[15]) + (a[12] * (a[7] * a[10]) - a[12] * (a[6] * a[11])))
+  let i8 = a[4] * (a[9] * a[15]) + -(a[4] * (a[11] * a[13])) - a[8] * (a[5] * a[15]) + (a[8] * (a[7] * a[13]) + (a[12] * (a[5] * a[11]) - a[12] * (a[7] * a[9])))
+  let i12 = -(a[4] * (a[9] * a[14])) + a[4] * (a[10] * a[13]) - a[8] * (a[6] * a[13]) + (a[8] * (a[5] * a[14]) + (a[12] * (a[6] * a[9]) - a[12] * (a[5] * a[10])))
+  let i1 = -(a[1] * (a[10] * a[15])) + a[1] * (a[11] * a[14]) - a[9] * (a[3] * a[14]) + (a[9] * (a[2] * a[15]) + (a[13] * (a[3] * a[10]) - a[13] * (a[2] * a[11])))
+  let i5 = a[0] * (a[10] * a[15]) + -(a[0] * (a[11] * a[14])) - a[8] * (a[2] * a[15]) + (a[8] * (a[3] * a[14]) + (a[12] * (a[2] * a[11]) - a[12] * (a[3] * a[10])))
+  let i9 = -(a[0] * (a[9] * a[15])) + a[0] * (a[11] * a[13]) - a[8] * (a[3] * a[13]) + (a[8] * (a[1] * a[15]) + (a[12] * (a[3] * a[9]) - a[12] * (a[1] * a[11])))
+  let i13 = a[0] * (a[9] * a[14]) + -(a[0] * (a[10] * a[13])) - a[8] * (a[1] * a[14]) + (a[8] * (a[2] * a[13]) + (a[12] * (a[1] * a[10]) - a[12] * (a[2] * a[9])))
+  let i2 = a[1] * (a[6] * a[15]) + -(a[1] * (a[7] * a[14])) - a[5] * (a[2] * a[15]) + (a[5] * (a[3] * a[14]) + (a[13] * (a[2] * a[7]) - a[13] * (a[3] * a[6])))
+  let i6 = -(a[0] * (a[6] * a[15])) + a[0] * (a[7] * a[14]) - a[4] * (a[3] * a[14]) + (a[4] * (a[2] * a[15]) + (a[12] * (a[3] * a[6]) - a[12] * (a[2] * a[7])))
+  let i10 = a[0] * (a[5] * a[15]) + -(a[0] * (a[7] * a[13])) - a[4] * (a[1] * a[15]) + (a[4] * (a[3] * a[13]) + (a[12] * (a[1] * a[7]) - a[12] * (a[3] * a[5])))
+  let i14 = -(a[0] * (a[5] * a[14])) + a[0] * (a[6] * a[13]) - a[4] * (a[2] * a[13]) + (a[4] * (a[1] * a[14]) + (a[12] * (a[2] * a[5]) - a[12] * (a[1] * a[6])))
+  let i3 = -(a[1] * (a[6] * a[11])) + a[1] * (a[7] * a[10]) - a[5] * (a[3] * a[10]) + (a[5] * (a[2] * a[11]) + (a[9] * (a[3] * a[6]) - a[9] * (a[2] * a[7])))
+  let i7 = a[0] * (a[6] * a[11]) + -(a[0] * (a[7] * a[10])) - a[4] * (a[2] * a[11]) + (a[4] * (a[3] * a[10]) + (a[8] * (a[2] * a[7]) - a[8] * (a[3] * a[6])))
+  let i11 = -(a[0] * (a[5] * a[11])) + a[0] * (a[7] * a[9]) - a[4] * (a[3] * a[9]) + (a[4] * (a[1] * a[11]) + (a[8] * (a[3] * a[5]) - a[8] * (a[1] * a[7])))
+  let i15 = a[0] * (a[5] * a[10]) + -(a[0] * (a[6] * a[9])) - a[4] * (a[1] * a[10]) + (a[4] * (a[2] * a[9]) + (a[8] * (a[1] * a[6]) - a[8] * (a[2] * a[5])))
+  let det = a[0] * i0 + a[1] * i4 + (a[2] * i8 + a[3] * i12)
+  if det == 0.0 { return false }
   let id = 1.0 / det
-  for i in 0 .. 16 { o[i] = inv[i] * id }
-  free(inv)
+  o[0] = i0 * id;  o[1] = i1 * id;  o[2] = i2 * id;  o[3] = i3 * id;  o[4] = i4 * id;  o[5] = i5 * id;  o[6] = i6 * id;  o[7] = i7 * id
+  o[8] = i8 * id;  o[9] = i9 * id;  o[10] = i10 * id;  o[11] = i11 * id;  o[12] = i12 * id;  o[13] = i13 * id;  o[14] = i14 * id;  o[15] = i15 * id
   return true
 }
 # transform a point (w = 1) by m: o = m * (x, y, z, 1), returns w

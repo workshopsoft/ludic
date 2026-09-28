@@ -94,6 +94,7 @@ function sc_model_layout(render3d_st: Render3dState, m: Mesh) -> void {
 
 # Two crossed unit quads (x in [-0.5, 0.5], y in [0, 1]), attribute 0 = pos,
 # 1 = the quad's facing normal, 2 = uv. Scaled per layer to the atlas card size.
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function model_cross_card(render3d_st: mut Render3dState) -> Model {
   let model = new Model
   model.prims = new []Prim
@@ -378,6 +379,7 @@ function scatter_attach(render3d_st: Render3dState, m: Mesh, buf: int) -> void {
   gpu_mesh_done(render3d_st, m)
 }
 
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function layer_new(render3d_st: mut Render3dState, model: Model, cap: int, foliage: bool, wind: float, near: float, cull: float) -> Layer {
   let l = new Layer
   l.model = model
@@ -428,6 +430,7 @@ function layer_add(l: Layer, x: float, y: float, z: float, scale: float, yaw: fl
 }
 
 # ---- impostors ---------------------------------------------------------------------
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function impostor_bake(render3d_st: mut Render3dState, model: Model, tiles: int, tw: int, th: int) -> Impostor {
   let im = new Impostor
   im.tiles = tiles
@@ -583,6 +586,7 @@ function layer_arena_ok(render3d_st: Render3dState, l: Layer) -> bool {
   return true
 }
 
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function layer_arena_build(render3d_st: mut Render3dState, l: Layer) -> void {
   let n_mat = len(l.lods[0].prims)
   l.g_arena = new []Prim
@@ -706,6 +710,7 @@ function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
 # Sort a static layer's instances into square cells (call once, after placement; a
 # large layer that was never gridded gets a 96 m grid on its first update). The
 # shadow buffer is uploaded here once — casters are never culled by the view.
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function layer_grid_build(render3d_st: mut Render3dState, l: Layer, cell: float) -> void {
   if l.count == 0 { return }
   var minx = l.inst[0];  var maxx = minx;  var minz = l.inst[2];  var maxz = minz

@@ -69,6 +69,7 @@ function overlay_init(render3d_st: mut Render3dState, font_dir: string) -> bool 
 # Load (or swap to) the font atlas in `font_dir`: font.png and font.json. A game calls it
 # again to change fonts at run time - a language whose script the default atlas does not
 # carry brings its own. Returns false, and keeps the font it had, if there is none there.
+@alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 function overlay_font(render3d_st: mut Render3dState, font_dir: string) -> bool {
   let meta = Fs.read_text(font_dir + "/font.json")
   if meta == null { return false }

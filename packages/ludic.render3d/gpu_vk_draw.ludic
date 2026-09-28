@@ -25,6 +25,7 @@ function gvk_read_spv(render3d_st: mut Render3dState, path: string) -> bytes {
   return b
 }
 
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_module(render3d_st: mut Render3dState, path: string) -> long {
   let zero: long = 0
   let spv = gvk_read_spv(render3d_st, path)
@@ -49,6 +50,7 @@ function gvk_stage_first(render3d_st: Render3dState, p: int) -> int {
   if render3d_st.gvk_prog_mesh != null and p < len(render3d_st.gvk_prog_mesh) and render3d_st.gvk_prog_mesh[p] == 1 { return VK_SHADER_STAGE_MESH_BIT_EXT }
   return VK_SHADER_STAGE_VERTEX_BIT
 }
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_program(render3d_st: mut Render3dState, p: int, key: string, spv_dir: string) -> bool {
   let zero: long = 0
   if render3d_st.gvk_prog_var == null {
@@ -125,6 +127,7 @@ function gvk_program(render3d_st: mut Render3dState, p: int, key: string, spv_di
 
 function gvk_compute_new(render3d_st: mut Render3dState, name: string, n_bufs: int) -> int { return gvk_compute_new_tex(render3d_st, name, n_bufs, 0) }
 
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_compute_new_tex(render3d_st: mut Render3dState, name: string, n_bufs: int, n_tex: int) -> int {
   let zero: long = 0
   if render3d_st.gvk_cp_pipe == null {
@@ -592,6 +595,7 @@ function gvk_same(a: pointer, b: pointer, n: int) -> bool {
   return true
 }
 
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_uniform_blocks(render3d_st: mut Render3dState, p: int) -> void {
   if render3d_st.gvk_ublk_v == null {
     render3d_st.gvk_ublk_v = new []bytes;  render3d_st.gvk_ublk_f = new []bytes;  render3d_st.gvk_prog_tex = new []words;  render3d_st.gvk_prog_unit = new []words
@@ -861,6 +865,7 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
 }
 
 # a new kept set for program p with the textures in gvk_sc_tmp, written and cached
+@alloc_ok("the window changed size or a surface was lost: the screen, the swapchain and its images are made again")
 function gvk_sc_make(render3d_st: mut Render3dState, p: int, nt: int) -> long {
   let zero: long = 0
   let v = render3d_st.gvk_prog_var[p]
@@ -995,6 +1000,7 @@ function gvk_hdr_metadata(render3d_st: Render3dState) -> void {
   Vk.set_hdr_metadata_ext(render3d_st.gvk_dev, 1, chains, md)
 }
 
+@alloc_ok("the window changed size or a surface was lost: the screen, the swapchain and its images are made again")
 function gvk_screen_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
   if render3d_st.gvk_vp == null {
     render3d_st.gvk_vp = words(4);  render3d_st.gvk_sc = words(5);  render3d_st.gvk_clear_rgba = floats(4)
@@ -1024,6 +1030,7 @@ function gvk_frame_cb(render3d_st: mut Render3dState) -> pointer {
 # The view a pass draws into: level 0 only (an attachment view has exactly one level, and a target
 # the exposure measure mipmaps has several), and one layer of an array image for a cascade drawn
 # on its own. Keyed by the image's generation, so a replaced image never reuses a stale view.
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_view_of(render3d_st: mut Render3dState, tex: int, layer1: int) -> long {
   if layer1 == 0 and render3d_st.gvk_tex_levels[tex] <= 1 and render3d_st.gvk_tex_layers[tex] <= 1 { return render3d_st.gvk_tex_view[tex] }
   # keyed by numbers, not a string built on every call: the texture, its generation and the layer
@@ -1383,6 +1390,7 @@ function gvk_present(render3d_st: mut Render3dState) -> void {
 
 # The screen as a binary PPM, top row first. The frame so far is finished first, then read back;
 # row 0 of the image is OpenGL's bottom row, so rows are written last to first, as gl_screenshot does.
+@alloc_ok("asked for by the player or a tool, not by the frame")
 function gvk_screenshot(render3d_st: mut Render3dState, path: string) -> bool {
   # the screen image is PQ-encoded 10-bit while HDR is on, which an 8-bit PPM would misread
   if render3d_st.gvk_hdr_on { print("r3d: vulkan: screenshots are SDR only - turn HDR output off to take one");  return false }
@@ -1441,6 +1449,7 @@ function gvk_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
 
 # A variant is made once and shared: a program is immutable here, so every actor asking for the
 # one it wants (actor.ludic, one per actor) gets the same handle, not its own modules and pipelines.
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_program_new(render3d_st: mut Render3dState, vs: string, fs: string, defines: string) -> int {
   let key = `{vs}|{fs}|{Text.replace(defines, "\n", ";")}`
   if render3d_st.gpu_prog_ids == null { render3d_st.gpu_prog_ids = new []int;  render3d_st.gpu_prog_keys = new []string }
@@ -1655,6 +1664,7 @@ function gvk_surface_os(render3d_st: mut Render3dState, out: pointer) -> bool {
   return true
 }
 
+@alloc_ok("the window changed size or a surface was lost: the screen, the swapchain and its images are made again")
 function gvk_surface_make(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gvk_surface != 0 { return true }
   let out = bytes(8)
@@ -1672,6 +1682,7 @@ function gvk_surface_make(render3d_st: mut Render3dState) -> bool {
 }
 
 # (Re)make the swapchain for a w x h client area. The old one is handed over and then destroyed.
+@alloc_ok("the window changed size or a surface was lost: the screen, the swapchain and its images are made again")
 function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
   if not gvk_surface_make(render3d_st) { return false }
   gvk_frame_wait(render3d_st)
@@ -1854,6 +1865,7 @@ function gvk_prof(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gvk_prof_state < 0 { render3d_st.gvk_prof_state = 0;  if r3d_env_has(render3d_st, "R3D_VK_PROF") { render3d_st.gvk_prof_state = 1 } }
   return render3d_st.gvk_prof_state == 1
 }
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function gvk_prof_frame(render3d_st: mut Render3dState) -> void {
   if not gvk_prof(render3d_st) { return }
   render3d_st.gvk_prof_frames += 1
@@ -1876,6 +1888,7 @@ function gvk_prof_frame(render3d_st: mut Render3dState) -> void {
 
 # what was made and destroyed over those frames, and how long the caches are: a kind made every
 # frame and never destroyed, or a cache that only grows, is a leak
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function gvk_prof_made(render3d_st: mut Render3dState) -> void {
   let r = render3d_st
   print(`r3d: vulkan made/destroyed: images {r.gvk_mk_img}/{r.gvk_mk_x_img}, views {r.gvk_mk_view}/{r.gvk_mk_x_view}, buffers {r.gvk_mk_buf}/{r.gvk_mk_x_buf}, memory {r.gvk_mk_mem}/{r.gvk_mk_x_mem}, samplers {r.gvk_mk_smp}, sets {r.gvk_mk_set}, pools {r.gvk_mk_dpool}, cmds {r.gvk_mk_cmd}`)
@@ -1894,6 +1907,7 @@ function gvk_len_l(xs: []long) -> int { if xs == null { return 0 };  return len(
 # state packs into one int, and the pass's formats into another; the program's last hit is tried
 # first, then the entries it owns.
 
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_layout_id(render3d_st: mut Render3dState, m: Mesh) -> int {
   if m == null or m.attrs == null { return 1 }
   if m.vk_layout > 0 { return m.vk_layout }
@@ -1975,6 +1989,7 @@ function gvk_pipeline_fast(render3d_st: mut Render3dState, p: int, m: Mesh, st: 
 }
 # The one place the pipeline cache grows: once per variant the game draws (program, vertex layout,
 # render state, formats), kept for the program's life - the fence's declared warm-up (plan 25.2)
+@alloc_ok("pipeline cache: one per variant the game draws")
 function gvk_pipe_build(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: int, depth_fmt: int, samples: int, layout: int, state: int, bias: int, pass: int) -> long {
   let pipe = gvk_pipeline(render3d_st, p, m, st, n_color, color_fmt, depth_fmt, samples)
   push(render3d_st.gvk_pc_prog, p);  push(render3d_st.gvk_pc_layout, layout);  push(render3d_st.gvk_pc_state, state)

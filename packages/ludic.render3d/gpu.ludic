@@ -357,6 +357,7 @@ function gpu_gl_usage(u: int) -> int {
 }
 
 # a new mesh, its vertex array bound: the vertex, attribute and index calls below describe it
+@alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 function gpu_mesh_new(render3d_st: Render3dState) -> Mesh {
   let m = new Mesh
   m.attrs = words(GPU_MAX_ATTRS * GPU_ATTR_W)

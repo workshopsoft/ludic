@@ -245,6 +245,7 @@ property OutlineReq {
 # on the actor; a queue does not, if the first pass empties it. So a flush CLOSES the
 # batch rather than clearing it, and the next add opens a new one: every pass in a frame
 # sees the same requests, and the caller needs no frame hook.
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function outline_model(render3d_st: mut Render3dState, m: Model, mat: floats, width: float, r: float, g: float, b: float) -> void {
   if m == null or mat == null or width == 0.0 { return }
   if render3d_st.ac_oq_closed { render3d_st.ac_oq_n = 0;  render3d_st.ac_oq_closed = false }
