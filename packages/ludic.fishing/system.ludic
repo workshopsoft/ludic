@@ -5,7 +5,7 @@ export function fishing_reset(fishing_st: mut FishingState) -> void {
   fishing_st.fishing_n = 0
   fishing_st.fishing_big = 0
   fishing_st.fishing_leg = false
-  fishing_st.fishing_dice = rng_new(fishing_st.fishing_seed_n)
+  fishing_dice_seed(fishing_st, fishing_st.fishing_seed_n)
   q_clear(fishing_facts(fishing_st))
 }
 

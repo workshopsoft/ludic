@@ -2,8 +2,7 @@
 # from outside: the router's address and the port it mapped
 
 function net__stun_send(net_st: mut NetState) -> void {
-  @alloc_ok("once: the transport's dice, seeded by its config the first time a STUN request goes")
-  if net_st.net__dice == null { net_st.net__dice = rng_new(net__conf(net_st).seed) }
+  if net_st.net__dice == null { net_st.net__dice = net__dice_new(net__conf(net_st).seed) }
   if net_st.net__stun_ip == 0 {
     let c = net__conf(net_st)
     if len(c.stun_at) > 0 and net_parse_code(net_st, c.stun_at) {
@@ -63,3 +62,6 @@ function net__stun_packet(net_st: mut NetState, n: int) -> bool {
 # what this machine looks like from outside, once STUN has said (0 until then)
 export function net_outside_ip(net_st: NetState) -> int { return net_st.net__pub_ip }
 export function net_outside_port(net_st: NetState) -> int { return net_st.net__pub_port }
+
+@alloc_ok("once: the transport's dice, seeded by its config the first time a STUN request goes")
+function net__dice_new(seed: int) -> Rng { return rng_new(seed) }

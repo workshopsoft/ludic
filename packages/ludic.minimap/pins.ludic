@@ -48,6 +48,7 @@ export function minimap_pin_add(minimap_st: mut MinimapState, x: float, z: float
   p.icon = Math.clamp(icon, 0, minimap_st.mm_symbols - 1)
   p.day = MinimapWorld.day()
   p.label = label
+  @alloc_ok("a mark put down: kept, and the map holds at most its most")
   push(minimap_st.mm_pins, p)
   minimap_st.mm_last = p.icon
   return len(minimap_st.mm_pins) - 1
@@ -65,6 +66,7 @@ export function minimap_pin_put(minimap_st: mut MinimapState, x: float, z: float
   p.colour = Math.clamp(colour, 0, minimap_st.mm_colours - 1)
   p.day = day
   p.label = label
+  @alloc_ok("a mark put down: kept, and the map holds at most its most")
   push(minimap_st.mm_pins, p)
   return len(minimap_st.mm_pins) - 1
 }
@@ -91,7 +93,7 @@ export function minimap_pins_near(minimap_st: mut MinimapState, x: float, z: flo
       }
     }
     if best < 0 { break }
-    push(out, best)
+    kept_push(out, best)
   }
   return out
 }
