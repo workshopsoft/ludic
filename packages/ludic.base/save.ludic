@@ -29,6 +29,7 @@ export function save_section(root: Val, key: string, version: int, v: Val) -> vo
 }
 
 # the section at root[key]: found false (and an empty object) when there is none
+@alloc_ok("on load: a section read from the file")
 export function load_section(root: Val, key: string) -> SaveNode {
   let n = new SaveNode
   n.data = Value.object()

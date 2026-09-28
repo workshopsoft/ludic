@@ -44,6 +44,7 @@ export function things_load(things_st: mut ThingsState, v: Val, version: int) ->
   for i in 0 .. Value.count(l) { th_from_json(things_st, Value.at(l, i)) }
 }
 
+@alloc_ok("on load: a saved Thing read back")
 function th_from_json(things_st: mut ThingsState, o: Val) -> void {
   let k = thing_kind_by_key(sv_str(o, "kind", ""))
   if k < 0 { return }

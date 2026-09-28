@@ -27,6 +27,7 @@ function cs_all(base_st: mut BaseState) -> []System {
   return base_st.cs_list
 }
 
+@alloc_ok("at start: a system made for the runner")
 export function system_new(key: string, phase: int) -> System {
   let s = new System
   s.key = key
@@ -35,6 +36,7 @@ export function system_new(key: string, phase: int) -> System {
 }
 
 # a key is a save section's name, so two systems may not share one
+@alloc_ok("at start: a system added to the runner")
 export function core_add(base_st: mut BaseState, s: System) -> void {
   let all = cs_all(base_st)
   for i in 0 .. len(all) {

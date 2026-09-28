@@ -1,5 +1,6 @@
 # ludic.base/ecs_table_reserve.ludic - room made at the start: a table sized for its busiest moment
 # never grows in play, and nothing that grows is ever given back. What does grow past it is here
+@alloc_ok("at a world's start: the rows it will need")
 export function tb_reserve<T>(tb: Table<T>, rows: int) -> void {
   let k = rows - tb.n
   if k <= 0 { return }

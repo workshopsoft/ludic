@@ -68,9 +68,11 @@ export function shop_config_curve(shop_st: mut ShopState, buy_new: float, buy_be
   shop_st.shop_sell_best = sell_best
 }
 
+@alloc_ok("at start: the vendors are bound once")
 export function shop_clear_vendors(shop_st: mut ShopState) -> void { shop_st.shop_vendor_list = new []ShopVendor }
 
 # a vendor; its number is the order added
+@alloc_ok("at start: the vendors are bound once")
 export function shop_add_vendor(shop_st: mut ShopState, stock: []int, buys: []int, refuses: int) -> int {
   if shop_st.shop_vendor_list == null { shop_clear_vendors(shop_st) }
   let v = new ShopVendor

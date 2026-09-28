@@ -31,6 +31,7 @@ export function sv_str(v: Val, key: string, fallback: string) -> string {
 }
 
 # a list of ints; a missing key or a non-list is the empty list
+@alloc_ok("on load: a saved list read back")
 export function sv_ints(v: Val, key: string) -> []int {
   let out = new []int
   if not sv_has(v, key) { return out }

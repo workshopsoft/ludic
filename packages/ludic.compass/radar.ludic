@@ -1,6 +1,7 @@
 # radar.ludic - the radar's tiers: a range for each compass tier (0 is no radar), which marks it
 # shows, and where each falls on a unit disc with ahead at the top
 
+@alloc_ok("at start: the radar's rings, once")
 export function compass_config_radar(compass_st: mut CompassState, ranges: []float, from_tier: int) -> void {
   compass_st.cmp_ranges = new []float
   for i in 0 .. len(ranges) { push(compass_st.cmp_ranges, ranges[i]) }
