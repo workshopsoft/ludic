@@ -1,0 +1,12 @@
+# native.ludic - the shim's symbols (native/shim/ozz_shim.cpp). A skeleton, a clip and a context are
+# handles the package keeps. None of this is exported.
+extern function ozz_skel_new(n: int, par: pointer, rest: pointer) -> pointer = "ozz_skel_new"
+extern function ozz_skel_free(s: pointer) -> void = "ozz_skel_free"
+extern function ozz_skel_joints(s: pointer) -> int = "ozz_skel_joints"
+extern function ozz_skel_joint_of(s: pointer, node: int) -> int = "ozz_skel_joint_of"
+extern function ozz_clip_new(s: pointer, dur: float, nch: int, cnode: pointer, cpath: pointer, ckeys: pointer, coff: pointer, cvoff: pointer, times: pointer, vals: pointer, positions: int) -> pointer = "ozz_clip_new"
+extern function ozz_clip_free(c: pointer) -> void = "ozz_clip_free"
+extern function ozz_clip_bytes(c: pointer) -> int = "ozz_clip_bytes"
+extern function ozz_ctx_new(s: pointer) -> pointer = "ozz_ctx_new"
+extern function ozz_ctx_free(c: pointer) -> void = "ozz_ctx_free"
+extern function ozz_sample(ctx: pointer, clip: pointer, t: float, rot: pointer, pos: pointer, n: int) -> int = "ozz_sample"

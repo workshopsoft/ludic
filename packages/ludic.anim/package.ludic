@@ -4,3 +4,5 @@
 package "ludic.anim"
 version "0.1.0"
 kind source
+native "macos-arm64" "lib/macos-arm64/libludicozz.dylib"
+native "windows-x64" "lib/windows-x64/ludicozz.dll"

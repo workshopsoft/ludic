@@ -1,0 +1,46 @@
+# ozz.ludic - a skin's skeleton and a clip built in ozz-animation at load, and a clip sampled through
+# it (phase 19.1): the numbers are the ones the package already holds, the skin's parents and rest
+# pose and a clip's flattened channels, so nothing is baked and no file is added
+
+# the skeleton of a skin: its joints and their ancestors, and no other node - a kit's file holds
+# several rigs, and each actor samples only its own
+export function anim_oz_skel(sk: Skin) -> pointer {
+  if sk == null or sk.n_nodes <= 0 { return null }
+  let n = sk.n_nodes
+  let rest = floats(n * 10)
+  let par = words(n)
+  for i in 0 .. n { par[i] = -2 }
+  for j in 0 .. sk.n_joints {
+    var at = sk.joints[j]
+    while at >= 0 and par[at] == -2 {
+      par[at] = sk.par[at]
+      at = sk.par[at]
+    }
+  }
+  for i in 0 .. n {
+    for k in 0 .. 3 { rest[i * 10 + k] = sk.rest_t[i * 3 + k] }
+    for k in 0 .. 4 { rest[i * 10 + 3 + k] = sk.rest_r[i * 4 + k] }
+    for k in 0 .. 3 { rest[i * 10 + 7 + k] = sk.rest_s[i * 3 + k] }
+  }
+  return ozz_skel_new(n, par, rest)
+}
+export function anim_oz_skel_free(s: pointer) -> void { if s != null { ozz_skel_free(s) } }
+export function anim_oz_joints(s: pointer) -> int { return ozz_skel_joints(s) }
+
+# a clip for that skeleton; its translations only when the table plays them (anim_set_positions)
+export function anim_oz_clip(anim_st: AnimState, s: pointer, c: Clip) -> pointer {
+  if s == null or c == null { return null }
+  var p = 0
+  if anim_st.positions { p = 1 }
+  return ozz_clip_new(s, c.dur, c.n, c.cnode, c.cpath, c.ckeys, c.coff, c.cvoff, c.times, c.vals, p)
+}
+export function anim_oz_clip_free(c: pointer) -> void { if c != null { ozz_clip_free(c) } }
+export function anim_oz_clip_bytes(c: pointer) -> int { return ozz_clip_bytes(c) }
+
+# what one actor samples with, made once; a clip sampled at t into rot (4 a node) and pos (3 a node)
+export function anim_oz_ctx(s: pointer) -> pointer { return ozz_ctx_new(s) }
+export function anim_oz_ctx_free(c: pointer) -> void { if c != null { ozz_ctx_free(c) } }
+export function anim_oz_sample(ctx: pointer, clip: pointer, t: float, rot: floats, pos: floats, n: int) -> bool {
+  if ctx == null or clip == null or len(rot) < n * 4 or len(pos) < n * 3 { return false }
+  return ozz_sample(ctx, clip, t, rot, pos, n) == 1
+}
