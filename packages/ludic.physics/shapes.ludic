@@ -40,21 +40,27 @@ export function phys_close(physics_st: mut PhysicsState) -> void {
 }
 
 # a crate: half extents in metres
+@creates(PhysShape)
 export function phys_box(physics_st: mut PhysicsState, hx: float, hy: float, hz: float) -> int { return ph_keep(physics_st, jph_shape_box(hx, hy, hz)) }
+@creates(PhysShape)
 export function phys_sphere(physics_st: mut PhysicsState, r: float) -> int { return ph_keep(physics_st, jph_shape_sphere(r)) }
 # a trunk or a body: upright, its straight part 2 * half_h tall, centred on its origin
+@creates(PhysShape)
 export function phys_capsule(physics_st: mut PhysicsState, half_h: float, r: float) -> int { return ph_keep(physics_st, jph_shape_capsule(half_h, r)) }
 # a post: upright, 2 * half_h tall, centred on its origin
+@creates(PhysShape)
 export function phys_cylinder(physics_st: mut PhysicsState, half_h: float, r: float) -> int { return ph_keep(physics_st, jph_shape_cylinder(half_h, r)) }
 # a boulder: a dome r across and h tall, standing on its origin
 export function phys_dome(physics_st: mut PhysicsState, r: float, h: float) -> int { return ph_keep(physics_st, jph_shape_dome(r, h)) }
 
 # a rock: the convex hull of n points (x, y, z) about its origin, its edges rounded by 2 cm
+@creates(PhysShape)
 export function phys_convex(physics_st: mut PhysicsState, v: []float, n: int) -> int {
   if n < 4 or len(v) < n * 3 { return -1 }
   return ph_keep(physics_st, jph_shape_convex(v, n, 0.02))
 }
 # another shape k times its size, so one hull serves every boulder of its shape
+@creates(PhysShape)
 export function phys_scaled(physics_st: mut PhysicsState, shape: int, k: float) -> int {
   let s = ph_shape(physics_st, shape)
   if s == null { return -1 }
@@ -62,6 +68,7 @@ export function phys_scaled(physics_st: mut PhysicsState, shape: int, k: float) 
 }
 
 # another shape moved and turned about y inside its body (a post whose foot is its origin)
+@creates(PhysShape)
 export function phys_offset(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float) -> int {
   let s = ph_shape(physics_st, shape)
   if s == null { return -1 }
@@ -70,6 +77,7 @@ export function phys_offset(physics_st: mut PhysicsState, shape: int, x: float, 
 
 # n x n heights, row by row along z, the first at (ox, oz), cell metres apart; PHYS_HOLE is none
 export const PHYS_HOLE: float = 340282346638528859811704183484516925440.0
+@creates(PhysShape)
 export function phys_heightfield(physics_st: mut PhysicsState, h: []float, n: int, ox: float, oz: float, cell: float) -> int {
   if len(h) < n * n { return -1 }
   return ph_keep(physics_st, jph_shape_heightfield(h, n, ox, oz, cell))
@@ -77,12 +85,14 @@ export function phys_heightfield(physics_st: mut PhysicsState, h: []float, n: in
 
 # the ground as a renderer draws a cubic B-spline height map: tex is n x n texels, the first
 # texel's centre at (ox, oz), cell metres apart; the smoothing is done in C
+@creates(PhysShape)
 export function phys_heightfield_smooth(physics_st: mut PhysicsState, tex: []float, n: int, ox: float, oz: float, cell: float) -> int {
   if len(tex) < n * n { return -1 }
   return ph_keep(physics_st, jph_shape_heightfield_bspline(tex, n, ox, oz, cell))
 }
 
 # a dock or a cabin: v holds nv points (x, y, z), tri holds nt triangles (i, j, k)
+@creates(PhysShape)
 export function phys_mesh(physics_st: mut PhysicsState, v: []float, nv: int, tri: []int, nt: int) -> int {
   if len(v) < nv * 3 or len(tri) < nt * 3 { return -1 }
   return ph_keep(physics_st, jph_shape_mesh(v, nv, tri, nt))

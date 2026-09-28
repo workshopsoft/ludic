@@ -22,12 +22,14 @@ function nv_crowd_drop(nav_st: mut NavState, kind: int) -> void {
 
 # a walker at (x, y, z) with its width, height, top speed, taste and how hard it keeps its distance
 # from the others (2 an ordinary walker): its index, or -1
+@creates(NavAgent)
 export function nav_crowd_add(nav_st: NavState, kind: int, x: float, y: float, z: float, radius: float, height: float, speed: float, filter: int, separation: float) -> int {
   let c = nv_crowd(nav_st, kind)
   if c == null { return -1 }
   return nvc_crowd_add(c, x, y, z, radius, height, speed, filter, separation)
 }
 # a walker the crowd avoids but never moves (a player): put where it is each frame with nav_crowd_place
+@creates(NavAgent)
 export function nav_crowd_add_fixed(nav_st: NavState, kind: int, x: float, y: float, z: float, radius: float, height: float) -> int {
   let c = nv_crowd(nav_st, kind)
   if c == null { return -1 }
@@ -38,6 +40,7 @@ export function nav_crowd_place(nav_st: NavState, kind: int, i: int, x: float, y
   let c = nv_crowd(nav_st, kind)
   return c != null and i >= 0 and nvc_crowd_place(c, i, x, y, z, vx, vz) == 1
 }
+@releases(NavAgent)
 export function nav_crowd_remove(nav_st: NavState, kind: int, i: int) -> void {
   let c = nv_crowd(nav_st, kind)
   if c != null and i >= 0 { nvc_crowd_remove(c, i) }

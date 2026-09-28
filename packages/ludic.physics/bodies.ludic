@@ -20,12 +20,15 @@ function ph_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z:
 }
 
 # the ground: a heightfield or a mesh at the world's origin
+@creates(PhysBody)
 export function phys_ground_add(physics_st: mut PhysicsState, shape: int) -> int { return ph_add(physics_st, shape, 0.0, 0.0, 0.0, 0.0, 0, 0, 0.0) }
 # a thing that never moves: a trunk, a boulder, a tent, a bear box
 export function phys_static_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float) -> int { return ph_add(physics_st, shape, x, y, z, yaw, 0, 1, 0.0) }
 # a thing moved by the game that pushes what it meets: the player's body
+@creates(PhysBody)
 export function phys_kinematic_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float) -> int { return ph_add(physics_st, shape, x, y, z, yaw, 1, 2, 0.0) }
 # a thing that falls, rolls and floats; mass in kilograms (0: from the shape at 1000 kg/m3)
+@creates(PhysBody)
 export function phys_body_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float, mass: float) -> int { return ph_add(physics_st, shape, x, y, z, yaw, 2, 2, mass) }
 
 # after many still things are added at once, before the first query
@@ -37,6 +40,7 @@ export function phys_count(physics_st: PhysicsState) -> int {
 }
 
 # gone from the world, for good: what a struck tent needs, and the shape it owned (owned.ludic) with it
+@releases(PhysBody)
 export function phys_remove(physics_st: mut PhysicsState, id: int) -> void {
   if physics_st.ph_world == null or id < 0 { return }
   phys_sink(physics_st, id)

@@ -22,6 +22,7 @@ function ph_shape(physics_st: PhysicsState, id: int) -> pointer {
 
 # a shape let go: a body made with it keeps its own hold until it is removed, and the id may be
 # handed to the next shape made
+@releases(PhysShape)
 export function phys_shape_free(physics_st: mut PhysicsState, id: int) -> void {
   let s = ph_shape(physics_st, id)
   if s == null { return }

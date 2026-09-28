@@ -24,6 +24,7 @@ function ph_walker(physics_st: PhysicsState, id: int) -> pointer {
 }
 
 # r wide and h tall, feet at (x, y, z), mass in kg; -1 with no world
+@creates(PhysWalker)
 export function phys_walker_add(physics_st: mut PhysicsState, r: float, h: float, x: float, y: float, z: float, max_slope: float, mass: float) -> int {
   if physics_st.ph_world == null { return -1 }
   ph_buffers()
@@ -47,6 +48,7 @@ export function phys_walker_limits(physics_st: PhysicsState, id: int, step_up: f
   if k != null { jph_char_limits(k, step_up, stick, max_slope) }
 }
 
+@releases(PhysWalker)
 export function phys_walker_remove(physics_st: mut PhysicsState, id: int) -> void {
   let k = ph_walker(physics_st, id)
   if k == null { return }

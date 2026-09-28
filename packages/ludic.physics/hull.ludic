@@ -2,6 +2,7 @@
 # middle. Its bow is -z at yaw 0, the way the valley faces (forward is (-sin yaw, -cos yaw)).
 
 # hx, hy, hz its half width, depth and length; buoyancy over 1 floats it (4: a quarter under)
+@creates(PhysBody)
 export function phys_hull_add(physics_st: mut PhysicsState, x: float, y: float, z: float, yaw: float, hx: float, hy: float, hz: float, mass: float, buoyancy: float, drag: float) -> int {
   let s = phys_box(physics_st, hx, hy, hz)
   let id = phys_body_add(physics_st, s, x, y, z, yaw, mass)
