@@ -5,8 +5,10 @@
 # lit: the expression of a value made only of numeric literals with at least one
 # decimal among them (`1.5`, `-0.25`, `1.0 / 3.0`). It is `fixed` on its own and
 # is re-evaluated exactly in a float context — see emit_float.ludic.
-property Val { code: pointer = null, ty: pointer = null, lit: Node = null }
-function val(code: pointer, ty: pointer) -> Val { let v = new Val;  v.code = code;  v.ty = ty;  v.lit = null;  return v }
+# `fresh`: text this expression just malloc'd (a concatenation, a number's text) that nothing else holds
+property Val { code: pointer = null, ty: pointer = null, lit: Node = null, fresh: bool = false }
+function fresh_val(code: pointer, ty: pointer) -> Val { let v = val(code, ty);  v.fresh = true;  return v }
+function val(code: pointer, ty: pointer) -> Val { let v = new Val;  v.code = code;  v.ty = ty;  v.lit = null;  v.fresh = false;  return v }
 
 var head: Buf                 # module-level: types, globals, string constants
 var code: Buf                 # function bodies

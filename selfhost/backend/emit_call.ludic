@@ -695,9 +695,9 @@ function emit_call(e: Node) -> Val {
     let a = emit_expr(e.kids[0])
     if (llty(a.ty) == "ptr") { return a }
     if is_fp(a.ty) { return emit_fp_str(a) }
-    if (llty(a.ty) == "i64") { g_uses_longstr = true;  return val(emit_bind(`call ptr @lp_long_str(i64 {a.code})`), "string") }
+    if (llty(a.ty) == "i64") { g_uses_longstr = true;  return fresh_val(emit_bind(`call ptr @lp_long_str(i64 {a.code})`), "string") }
     g_uses_intstr = true
-    return val(emit_bind(`call ptr @lp_int_str(i32 {a.code})`), "string")
+    return fresh_val(emit_bind(`call ptr @lp_int_str(i32 {a.code})`), "string")
   }
   if (name == "print") {                          # print(x): a value + newline (string, long, or int)
     var a = emit_expr(e.kids[0])
@@ -705,6 +705,7 @@ function emit_call(e: Node) -> Val {
     if (llty(a.ty) == "ptr") { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr " + `{a.code})\n`) }
     else { if (llty(a.ty) == "i64") { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_long, i64 " + `{a.code})\n`) }
       else { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 " + `{a.code})\n`) } }
+    if a.fresh { emit(`  call void @free(ptr {a.code})\n`) }   # a template printed is held by nothing
     return val("0", "void")
   }
   if (name == "bytes") {                          # bytes(n): allocate n bytes -> a byte buffer
