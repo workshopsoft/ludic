@@ -1,0 +1,16 @@
+# L4: Math.max is typed like any call - its int is refused in an action's text field, the second
+# of two dispatches on one line (it once passed as "unknown" and failed in LLVM)
+program MathIntoText {
+  numbers float
+  action Note { text: string, a1: string = "", i1: int = 0 }
+  state Log { n: int = 0 }
+  reducer Log on Note(log: mut Log, a: Note) { log.n = log.n + a.i1 }
+  function said(k: int, d: float) -> void {
+    let m = Math.max(5, int(d / 5.0 + 0.5) * 5)
+    if k > 0 { dispatch Note { text: "about {1} m", i1: m } } else { dispatch Note { text: "about {1} m", a1: m } }
+  }
+  entry {
+    said(1, 12.0)
+    drain_actions()
+  }
+}
