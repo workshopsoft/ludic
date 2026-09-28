@@ -13,17 +13,12 @@ function vl_truthy(v: Val) -> bool {
 function vl_text(v: Val) -> string {
   let k = Value.kind(v)
   if k == 0 { return "" }
-  if k == 1 { return string(Value.as_int(v)) }
+  if k == 1 or k == 2 or k == 7 { return Value.num_text(v) }     # kept on the Value until it changes
   if k == 3 {
     if Value.as_int(v) != 0 { return "true" }
     return "false"
   }
   if k == 4 { return Value.as_str(v) }
-  if k == 2 or k == 7 {
-    let f = Value.as_float(v)
-    if f == float(int(f)) { return string(int(f)) }
-    return string(f)
-  }
   return Json.encode(v)
 }
 function vl_arith(ui_st: mut UiState, op: string, a: Val, b: Val) -> Val {

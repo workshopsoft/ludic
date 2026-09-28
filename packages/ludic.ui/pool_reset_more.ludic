@@ -38,7 +38,7 @@ function nd_reset_b(n: UiNode) -> void {
   n.scroll_y = 0.0
   n.bar_c = -1
   n.bar_track = -2
-  n.opts = null
+  if n.opts != null { List.clear(n.opts) }
   n.bg_img = ""
   n.bi_src = ""
   n.bi_slice = 0.0

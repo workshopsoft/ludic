@@ -11,10 +11,13 @@ function pp_find(n: UiNode, out: []UiNode) -> void {
 }
 # the topmost popover open in this tree, or null
 function pp_top(root: UiNode) -> UiNode {
-  let all = new []UiNode
-  pp_find(root, all)
-  if len(all) == 0 { return null }
-  return all[len(all) - 1]
+  if root.popover { return root }         # the last one pp_find would list, found with no list made
+  var found: UiNode = null
+  for i in 0 .. len(root.children) {
+    let f = pp_top(root.children[i])
+    if f != null { found = f }
+  }
+  return found
 }
 # the pointer against the popover: inside it is as usual; a press outside closes it and is spent
 function pp_pointer(ui_st: mut UiState, top: UiNode) -> bool {
@@ -26,7 +29,9 @@ function pp_pointer(ui_st: mut UiState, top: UiNode) -> bool {
   return true
 }
 function pp_draw_top(ui_st: mut UiState) -> void {
-  let list = ui_st.pop_list
-  ui_st.pop_list = new []UiNode
+  let list = ui_st.pop_list           # drawn from while what they open goes to the spare, then swapped
+  ui_st.pop_list = ui_st.pop_spare
+  List.clear(ui_st.pop_list)
   for i in 0 .. len(list) { fr_draw(ui_st, list[i]) }
+  ui_st.pop_spare = list
 }

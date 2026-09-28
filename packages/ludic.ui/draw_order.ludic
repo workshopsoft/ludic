@@ -18,9 +18,9 @@ function fr_clip_push(ui_st: mut UiState, x: float, y: float, w: float, h: float
   ui_st.ui_be.clip(x0, y0, Math.max(x1 - x0, 0.0), Math.max(y1 - y0, 0.0))
 }
 function fr_clip_pop(ui_st: mut UiState) -> void {
-  var keep = new []float
-  for i in 0 .. len(ui_st.fr_clips) - 4 { push(keep, ui_st.fr_clips[i]) }
-  ui_st.fr_clips = keep
+  for i in 0 .. 4 {                   # the top rectangle taken off in place
+    if len(ui_st.fr_clips) > 0 { List.pop(ui_st.fr_clips) }
+  }
   let n = len(ui_st.fr_clips)
   if n >= 4 { ui_st.ui_be.clip(ui_st.fr_clips[n - 4], ui_st.fr_clips[n - 3], ui_st.fr_clips[n - 2] - ui_st.fr_clips[n - 4], ui_st.fr_clips[n - 1] - ui_st.fr_clips[n - 3]) } else if ui_st.ui_be.unclip != null { ui_st.ui_be.unclip() }
 }

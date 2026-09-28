@@ -480,6 +480,7 @@ namespace Value {
   alias as_str(value) = value_as_str
   alias free(value) = value_free
   alias clear(value) = value_clear
+  alias num_text(value) = value_num_text
   alias become(value, tag) = value_become
   alias be_int(value, n) = value_be_int
   alias be_float(value, x) = value_be_float

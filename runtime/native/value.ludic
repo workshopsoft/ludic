@@ -90,11 +90,11 @@ function value_slot(o: Val, key: pointer, tag: int) -> Val {
 }
 function value_set_int(o: Val, key: pointer, n: int) -> void {
   let v = value_slot(o, key, 1)
-  v.num = n
+  value_num_set(v, n)
 }
 function value_set_float(o: Val, key: pointer, x: float) -> void {
   let v = value_slot(o, key, 7)
-  v.num = float_bits(x)
+  value_num_set(v, float_bits(x))
 }
 function value_set_str(o: Val, key: pointer, s: pointer) -> void {
   let v = value_slot(o, key, 4)
@@ -102,8 +102,8 @@ function value_set_str(o: Val, key: pointer, s: pointer) -> void {
 }
 function value_set_bool(o: Val, key: pointer, b: bool) -> void {
   let v = value_slot(o, key, 3)
-  v.num = 0
-  if b { v.num = 1 }
+  value_num_set(v, 0)
+  if b { value_num_set(v, 1) }
 }
 # a list field of an object set in place: the list under `key` is kept, and item i keeps its Value when it
 # is already that kind (a component's model, filled into the same object every frame)
@@ -128,14 +128,14 @@ function value_set_ints(o: Val, key: pointer, xs: []int) -> void {
   let l = value_list_fit(o, key, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 1)
-    v.num = xs[i]
+    value_num_set(v, xs[i])
   }
 }
 function value_set_floats(o: Val, key: pointer, xs: []float) -> void {
   let l = value_list_fit(o, key, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 7)
-    v.num = float_bits(xs[i])
+    value_num_set(v, float_bits(xs[i]))
   }
 }
 function value_set_strs(o: Val, key: pointer, xs: []string) -> void {
@@ -149,15 +149,15 @@ function value_set_bools(o: Val, key: pointer, xs: []bool) -> void {
   let l = value_list_fit(o, key, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 3)
-    v.num = 0
-    if xs[i] { v.num = 1 }
+    value_num_set(v, 0)
+    if xs[i] { value_num_set(v, 1) }
   }
 }
 # a Value turned into a blank one of kind `tag`, its own lists (if it has them) kept and emptied - for
 # a pool that hands the same records out again (ludic.ui's, frame after frame)
 function value_become(v: Val, tag: int) -> Val {
   v.tag = tag
-  v.num = 0
+  value_num_set(v, 0)
   v.txt = null
   if tag == 5 or tag == 6 { value_lists(v) }
   if v.kids != null { value_clear(v) }
@@ -165,12 +165,12 @@ function value_become(v: Val, tag: int) -> Val {
 }
 function value_be_int(v: Val, n: int) -> Val {
   value_become(v, 1)
-  v.num = n
+  value_num_set(v, n)
   return v
 }
 function value_be_float(v: Val, x: float) -> Val {
   value_become(v, 7)
-  v.num = float_bits(x)
+  value_num_set(v, float_bits(x))
   return v
 }
 function value_be_str(v: Val, s: pointer) -> Val {
@@ -187,12 +187,12 @@ function value_into(into: Val, tag: int) -> Val {
 function value_into_null(into: Val) -> Val { return value_into(into, 0) }
 function value_into_int(into: Val, n: int) -> Val {
   let v = value_into(into, 1)
-  v.num = n
+  value_num_set(v, n)
   return v
 }
 function value_into_float(into: Val, x: float) -> Val {
   let v = value_into(into, 7)
-  v.num = float_bits(x)
+  value_num_set(v, float_bits(x))
   return v
 }
 function value_into_str(into: Val, s: pointer) -> Val {
@@ -202,14 +202,14 @@ function value_into_str(into: Val, s: pointer) -> Val {
 }
 function value_into_bool(into: Val, b: bool) -> Val {
   let v = value_into(into, 3)
-  if b { v.num = 1 }
+  if b { value_num_set(v, 1) }
   return v
 }
 # a list result: `into`'s items are kept and changed in place where they are already that kind
 function value_into_list(into: Val, n: int) -> Val {
   if into == null { return value_list() }
   into.tag = 5
-  into.num = 0
+  value_num_set(into, 0)
   into.txt = null
   value_lists(into)
   while len(into.kids) > n { List.pop(into.kids) }
@@ -219,7 +219,7 @@ function value_into_ints(into: Val, xs: []int) -> Val {
   let l = value_into_list(into, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 1)
-    v.num = xs[i]
+    value_num_set(v, xs[i])
   }
   return l
 }
@@ -227,7 +227,7 @@ function value_into_floats(into: Val, xs: []float) -> Val {
   let l = value_into_list(into, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 7)
-    v.num = float_bits(xs[i])
+    value_num_set(v, float_bits(xs[i]))
   }
   return l
 }
@@ -243,10 +243,29 @@ function value_into_bools(into: Val, xs: []bool) -> Val {
   let l = value_into_list(into, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 3)
-    v.num = 0
-    if xs[i] { v.num = 1 }
+    value_num_set(v, 0)
+    if xs[i] { value_num_set(v, 1) }
   }
   return l
+}
+# a number set where it is kept: its text (value_num_text) is dropped only when the number changes
+function value_num_set(v: Val, n: int) -> void {
+  if v.num == n { return }
+  v.num = n
+  if v.tag != 4 { v.txt = null }
+}
+# a number's text, kept on the Value until the number changes (a count shown in a HUD every frame wrote
+# its text every frame; Ludic frees nothing)
+function value_num_text(v: Val) -> string {
+  if v.txt != null { return v.txt }
+  if v.tag == 1 { v.txt = string(v.num) }
+  else if v.tag == 7 {
+    let f = float_from_bits(v.num)
+    if f == float(int(f)) { v.txt = string(int(f)) } else { v.txt = string(f) }
+  }
+  else if v.tag == 2 { v.txt = json_fixed_str(v.num) }
+  if v.txt == null { return "" }
+  return v.txt
 }
 # a list or an object emptied in place, its room kept - for one filled again every frame
 function value_clear(v: Val) -> void {

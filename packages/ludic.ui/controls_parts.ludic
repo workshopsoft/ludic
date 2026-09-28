@@ -50,3 +50,16 @@ function ct_submit(ui_st: mut UiState, n: UiNode) -> void {
   ui_fire(ui_st, n, "submit", ui_attr(n, "value"))
   if ui_attr_on(n, "clear-on-submit") { ui_fire(ui_st, n, "change", Value.str("")) }
 }
+# the text is exactly i's digits, compared without writing i out
+function ct_is_int(s: string, i: int) -> bool {
+  if i < 0 or len(s) == 0 { return false }
+  var n = i
+  var at = len(s) - 1
+  while at >= 0 {
+    if s[at] != 48 + n % 10 { return false }
+    n = n / 10
+    at -= 1
+    if n == 0 { return at < 0 }
+  }
+  return false
+}

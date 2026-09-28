@@ -149,6 +149,7 @@ export state UiState {
   pe_key: string = ""         # the element the pointer is captured by
   pe_btn: int = 0
   pop_list: []UiNode = new []UiNode
+  pop_spare: []UiNode = new []UiNode
   pp_bx: float = 0.0
   pp_by: float = 0.0
   pp_bw: float = 0.0

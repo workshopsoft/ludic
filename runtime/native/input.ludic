@@ -35,6 +35,8 @@ export state RtInputState {
   input_rec:   words = null      # recorded key per frame
   input_recn:  int   = 0         # frames recorded
   input_pos:   int   = 0         # replay / record cursor
+  in_label_chr: words = null    # input_key_label: the character each key's kept name was made for
+  in_label_str: []string = null
   in_have_frame_driver: bool = false
   in_ready: bool  = false
   in_sim:   words = null         # simulated held set (Input.press / release) — persists
@@ -380,7 +382,27 @@ function input_key_released(rt_input_st: mut RtInputState, k: int) -> bool { in_
 # own layout types there: 'w' reads "W" on QWERTY and "Z" on AZERTY, and a binding
 # shown as "W" is never a key the player cannot find. Named keys and the arrows get words.
 # Headless, and on a platform that cannot ask the layout, it is the US character.
-function input_key_label(k: int) -> string {
+# a key's name, kept per key code and made again only when the layout gives the key another character -
+# a HUD asks for its keys' names every frame, and each asking made a string (Ludic frees nothing)
+function input_key_label(rt_input_st: mut RtInputState, k: int) -> string {
+  if k < 0 or k > 255 { return input_key_label_new(k) }
+  var c = -1
+  if is_windowed() { c = win_key_char(k) }
+  if rt_input_st.in_label_chr == null {
+    rt_input_st.in_label_chr = words(256)
+    rt_input_st.in_label_str = new []string
+    for i in 0 .. 256 {
+      rt_input_st.in_label_chr[i] = -2
+      push(rt_input_st.in_label_str, "")
+    }
+  }
+  if rt_input_st.in_label_chr[k] != c {
+    rt_input_st.in_label_str[k] = input_key_label_new(k)
+    rt_input_st.in_label_chr[k] = c
+  }
+  return rt_input_st.in_label_str[k]
+}
+function input_key_label_new(k: int) -> string {
   if k == 32 { return "Space" }
   if k == 10 { return "Enter" }
   if k == 27 { return "Esc" }

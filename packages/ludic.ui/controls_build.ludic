@@ -67,8 +67,11 @@ function ct_build_range(ui_st: mut UiState, n: UiNode) -> void {
   push(n.children, ct_part(ui_st, n, "ui-value", ct_value_text(n)))
 }
 function ct_build_select(ui_st: mut UiState, n: UiNode) -> void {
-  let opts = n.children
-  n.children = new []UiNode
+  if n.opts == null { n.opts = new []UiNode }    # its options moved to a list the node keeps, not a new one
+  let opts = n.opts
+  List.clear(opts)
+  for i in 0 .. len(n.children) { push(opts, n.children[i]) }
+  List.clear(n.children)
   ct_label(ui_st, n)
   var shown = ""
   let at = ct_option_at(n, opts)
@@ -76,14 +79,13 @@ function ct_build_select(ui_st: mut UiState, n: UiNode) -> void {
   push(n.children, ct_part(ui_st, n, "ui-prev", "<"))
   push(n.children, ct_part(ui_st, n, "ui-value", shown))
   push(n.children, ct_part(ui_st, n, "ui-next", ">"))
-  n.opts = opts
 }
 # which option the select's value names: an option's value="...", else its place
 function ct_option_at(n: UiNode, opts: []UiNode) -> int {
   let v = ui_attr_text(n, "value")
   for i in 0 .. len(opts) {
     let ov = ui_attr_text(opts[i], "value")
-    if ov == v or (ov == "" and string(i) == v) { return i }
+    if ov == v or (ov == "" and ct_is_int(v, i)) { return i }
   }
   return -1
 }
