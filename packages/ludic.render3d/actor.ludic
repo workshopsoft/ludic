@@ -448,3 +448,31 @@ function actor_release(render3d_st: mut Render3dState, a: Actor) -> void {
   if render3d_st.ac_spare == null { render3d_st.ac_spare = new []Actor }
   push(render3d_st.ac_spare, a)
 }
+
+# One command buffer's worth of draws at start-up, through the path every draw takes (pipeline, set,
+# buffers, draw), so Metal's pooled command storage is already the size a frame can need: a bigger
+# frame than any before once grew it in play (IOGPU, under vkQueueSubmit). Drawn into the screen
+# image before the first frame clears it.
+function r3d_warm_commands(render3d_st: mut Render3dState) -> void {
+  let n = gvk_cb_cap_of(render3d_st)
+  if Os.platform() != "macos" or n <= 0 or render3d_st.ac_lit == null { return }
+  let m = gpu_mesh_new(render3d_st)
+  let v = floats(24)
+  for k in 0 .. 3 { v[k * 8 + k] = 0.01;  v[k * 8 + 4] = 1.0 }
+  gpu_mesh_vertices(render3d_st, m, data_of(v), 96, GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, 32, 0, false)
+  gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, 32, 12, false)
+  gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, 32, 24, false)
+  let ix = words(3)
+  ix[0] = 0;  ix[1] = 1;  ix[2] = 2
+  gpu_mesh_indices(render3d_st, m, data_of(ix), 12, 4)
+  m.count = 3
+  gpu_mesh_done(render3d_st, m)
+  gpu_fb_bind(render3d_st, 0)
+  gpu_use_program(render3d_st, render3d_st.ac_lit.prog)
+  for i in 0 .. n { gpu_draw_mesh(render3d_st, m) }
+  gvk_flush(render3d_st)
+  mesh_release(render3d_st, m)
+  free(v)
+  free(ix)
+}
