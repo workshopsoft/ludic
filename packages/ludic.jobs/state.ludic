@@ -7,6 +7,7 @@ export state JobsState {
   jobs__back: []int = jobs__ints(JOB_COUNT, 0)     # given up: the first day it may be taken again
   jobs__primed: bool = false     # the first tick after a reset learns the offers quietly
   jobs__done_n: []int = jobs__ints(JOBS_GROUPS, 0)     # handed in, per group
+  jobs__lists: [][]int = jobs__lists_new(2 * JOBS_GROUPS)   # jobs_taken's and jobs_shown's answers, per group, filled in place
   jobs__off: []int = jobs__offsets()
   jobs__pk: []int = jobs__ints(jobs__slots(), -1)         # kind, -1 empty
   jobs__pp: []int = jobs__ints(jobs__slots(), -1)
