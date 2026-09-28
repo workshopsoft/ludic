@@ -224,6 +224,16 @@ function es_val(e: Node) -> int {
       var i = 0
       while i < len(e.a.kids) { es_store(es_ref(e.a.kids[i].a), s);  i += 1 }
     }
+    # a field's default is made with the record and held by it (`facts: Queue<F> = queue_new(...)`)
+    let lay = find_comp(e.s)
+    if lay != null and lay.kids != null {
+      var j = 0
+      while j < len(lay.kids) {
+        let fd = lay.kids[j]
+        if fd.a != null and not es_overridden(e, fd.s) { es_store(es_ref(fd.a), s) }
+        j += 1
+      }
+    }
     return s
   }
   if k == E_LIST {
@@ -240,6 +250,39 @@ function es_val(e: Node) -> int {
     while j < len(e.kids) { es_walk(e.kids[j]);  j += 1 }
   }
   return g_es_heap
+}
+
+function es_overridden(e: Node, field: pointer) -> bool {
+  if e.a == null or e.a.kids == null { return false }
+  var i = 0
+  while i < len(e.a.kids) { if (e.a.kids[i].s == field) { return true };  i += 1 }
+  return false
+}
+
+# the function records a call to `nm` reaches: nm itself, or every instance of a generic nm
+function es_fns_for(nm: pointer) -> []int {
+  let out = new []int
+  let f = es_fn(nm)
+  if f >= 0 {
+    push(out, f)
+    return out
+  }
+  let pre = `{nm}$`
+  var i = 0
+  while i < len(g_es_fnode) {
+    let d = g_es_fnode[i]
+    if d.s != null and str_starts(d.s, pre) { push(out, i) }
+    i += 1
+  }
+  return out
+}
+
+function es_keeps_nothing(nm: pointer) -> bool {
+  if (nm == "quit") or (nm == "exit") or (nm == "panic") or (nm == "assert") or (nm == "expect") or (nm == "expect_eq") or (nm == "expect_near") { return true }
+  if (nm == "min") or (nm == "max") or (nm == "abs") or (nm == "clamp") or (nm == "sqrt") or (nm == "floor") or (nm == "ceil") or (nm == "round") { return true }
+  if (nm == "int") or (nm == "float") or (nm == "long") or (nm == "double") or (nm == "fixed") or (nm == "as_int") or (nm == "as_fixed") { return true }
+  if (nm == "float_bits") or (nm == "float_from_bits") or (nm == "sin") or (nm == "cos") or (nm == "atan2") or (nm == "file_write") or (nm == "file_close") { return true }
+  return false
 }
 
 function es_args_escape(e: Node) -> void {
@@ -293,26 +336,47 @@ function es_call(e: Node) -> int {
       return -1
     }
     if (nm == "len") { es_args_walk(e);  return -1 }
-    let f = es_fn(nm)
-    if f >= 0 {
-      push(g_es_calls_f, g_es_cur)
-      push(g_es_calls_t, f)
-      let d = g_es_fnode[f]
+    if (nm == "view") and len(e.kids) >= 1 {        # a view shares its list's storage
+      let base = es_val(e.kids[0])
+      var vi = 1
+      while vi < len(e.kids) { es_val(e.kids[vi]);  vi += 1 }
+      return base
+    }
+    # a generic's call names the generic; its instances (ui_kept$UiNode) are what is analysed, and
+    # the call reaches every one of them
+    let fs = es_fns_for(nm)
+    if len(fs) > 0 {
+      let r = es_new(0)
+      var fi = 0
+      while fi < len(fs) {
+        let f = fs[fi]
+        push(g_es_calls_f, g_es_cur)
+        push(g_es_calls_t, f)
+        es_flow(g_es_fret[f], r)
+        fi += 1
+      }
       var i = 0
       while i < len(e.kids) {
         let v = es_ref(e.kids[i])
-        if i < len(d.kids) and d.kids[i].kind == N_PARAM {
-          if not es_prim(d.kids[i].ty) { es_flow(v, g_es_fparam[f] + i) }
-        } else { es_escape(v) }
+        var fj = 0
+        while fj < len(fs) {
+          let d = g_es_fnode[fs[fj]]
+          if i < len(d.kids) and d.kids[i].kind == N_PARAM {
+            if not es_prim(d.kids[i].ty) { es_flow(v, g_es_fparam[fs[fj]] + i) }
+          } else { es_escape(v) }
+          fj += 1
+        }
         i += 1
       }
-      let r = es_new(0)
-      es_flow(g_es_fret[f], r)
       return r
     }
-    # an intrinsic or a runtime builtin of the emitter's own: it keeps nothing it is handed, and
-    # what it hands back is its own
-    es_args_walk(e)
+    # an intrinsic known to keep nothing it is handed; anything else unknown keeps it all - the
+    # arena is only as safe as this default
+    if es_keeps_nothing(nm) {
+      es_args_walk(e)
+      return g_es_heap
+    }
+    es_args_escape(e)
     return g_es_heap
   }
   if es_is_mem_frame(e) {
@@ -541,6 +605,18 @@ function escape_analyse() -> void {
     f += 1
   }
   g_es_cur = -1
+  # a global's initializer - a state's instance, a module's table - is made to be kept
+  var gi = 0
+  while gi < len(prog) {
+    let gd = prog[gi]
+    if gd.kind == N_VAR and gd.a != null {
+      g_es_ln = new []pointer
+      g_es_lc = new []int
+      g_es_lt = new []pointer
+      es_escape(es_ref(gd.a))
+    }
+    gi += 1
+  }
   # an @On body keeps nothing it makes unless it stores it; it has no function record of its own
   var li = 0
   while li < len(g_onlisten) {
@@ -557,7 +633,9 @@ function escape_analyse() -> void {
     let c = g_es_site_cls[s]
     let fi = g_es_site_fn[s]
     let spans = fi < 0 or g_es_fspans[fi]
-    if c >= 0 and (g_es_flag[c] & ES_ESC) == 0 and not spans {
+    # LOCAL only when it can neither be kept (ESC) nor share storage with what is (HEAP): a push's
+    # growth into a parameter's list is the list's own buffer, and the list may be a state's
+    if c >= 0 and (g_es_flag[c] & (ES_ESC | ES_HEAP)) == 0 and not spans {
       n.uns = ES_SCRATCH
       g_es_local_n += 1
     } else {
