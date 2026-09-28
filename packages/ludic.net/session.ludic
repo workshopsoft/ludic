@@ -2,6 +2,7 @@
 # machine's pid is what its packets say. A token picked by the host names the session.
 
 # open a socket on `port` and take guests; false (net_why) when the port is taken
+@alloc_ok("once per party hosted")
 export function net_host(net_st: mut NetState, port: int, token: int) -> bool {
   if net_live(net_st) { return true }
   net_st.net__sock = NetSocket.open(port)
@@ -18,6 +19,7 @@ export function net_host(net_st: mut NetState, port: int, token: int) -> bool {
 }
 
 # dial a host at an address; the hello (net_hello_set) goes until a welcome or a refusal
+@alloc_ok("once per join")
 export function net_join(net_st: mut NetState, ip: int, port: int) -> bool {
   if net_live(net_st) { return false }
   if not net__socket(net_st) { return false }

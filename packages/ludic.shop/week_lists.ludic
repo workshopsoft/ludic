@@ -1,0 +1,14 @@
+# ludic.shop/week_lists.ludic - the lists a week is rolled into, made once and cleared after
+# the week's lists, every entry -1: made the first week and cleared after, the vendors being fixed
+function shop_lists_empty(shop_st: mut ShopState) -> void {
+  if shop_st.shop_want_list == null {
+    @alloc_ok("once: the lists are made the first week they are rolled")
+    shop_st.shop_want_list = new []int
+    @alloc_ok("once: as above")
+    shop_st.shop_full_list = new []int
+  }
+  List.clear(shop_st.shop_want_list)
+  List.clear(shop_st.shop_full_list)
+  for i in 0 .. shop_vendors(shop_st) * shop_st.shop_wants_n { kept_push(shop_st.shop_want_list, -1) }
+  for v in 0 .. shop_vendors(shop_st) { kept_push(shop_st.shop_full_list, -1) }
+}

@@ -30,6 +30,7 @@ function net__relay_hello(net_st: NetState) -> void {
   NetSocket.send(net_st.net__sock, net_st.net__relay_ip, net_st.net__relay_port, b, 10)
 }
 
+@alloc_ok("once, when the room falls back to the relay")
 function net__use_relay(net_st: mut NetState) -> void {
   net_st.net__via_relay = true
   net__log(`room {net_st.net__room}: no answer directly, through the relay`)

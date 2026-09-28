@@ -99,6 +99,7 @@ export function net_reset(net_st: mut NetState) -> void {
 export function net_lose(net_st: mut NetState, why: int) -> void { net__lose_with(net_st, why, "") }
 
 # ... with what the reason is about (the room code nobody had)
+@alloc_ok("once, when the party is lost")
 function net__lose_with(net_st: mut NetState, why: int, text: string) -> void {
   net_reset(net_st)
   net_st.net__state = NET_LOST

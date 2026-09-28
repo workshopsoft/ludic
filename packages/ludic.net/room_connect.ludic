@@ -1,6 +1,7 @@
 # room_connect.ludic - the matchmaker's answer: a guest dials the host it named (or is out),
 # and leaving lets the room go
 # the matchmaker let this machine down: a guest is out, a host keeps its code-less party
+@alloc_ok("once, when a room cannot be had")
 function net__room_fail(net_st: mut NetState, why: int) -> void {
   net__log(`matchmaker: {why}`)
   let was_guest = net_st.net__r_role == 2
@@ -11,6 +12,7 @@ function net__room_fail(net_st: mut NetState, why: int) -> void {
 }
 
 # the guest: to the host's outside address, or its inside one behind the same router
+@alloc_ok("once per room answer")
 function net__room_connect(net_st: mut NetState, host_pub: string, host_local: string) -> void {
   var target = host_pub
   var same_router = false

@@ -3,6 +3,7 @@
 # six of the same letters.
 const NET_ALPHA: string = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
+@alloc_ok("once per join code shown")
 export function net_code_of(ip: int, port: int) -> string {
   let a = NET_ALPHA
   let buf = buffer(11)

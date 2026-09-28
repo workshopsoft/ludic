@@ -2,6 +2,7 @@
 # expects the guest, while the guest's hello goes the other way: both routers have seen traffic
 # go out, so the replies come in
 
+@alloc_ok("once per guest punched for")
 function net__new_guest(net_st: mut NetState, pub: string, local: string) -> void {
   let key = `{pub}|{local}`
   for i in 0 .. len(net_st.net__seen) { if net_st.net__seen[i] == key { return } }
@@ -11,6 +12,7 @@ function net__new_guest(net_st: mut NetState, pub: string, local: string) -> voi
   if net_parse_code(net_st, local) { net__punch_add(net_st, net_st.net__code_ip, net_st.net__code_port) }
 }
 
+@alloc_ok("once per guest punched for")
 function net__punch_add(net_st: mut NetState, ip: int, port: int) -> void {
   if net_st.net__punch_ip == null {
     net_st.net__punch_ip = words(16)
@@ -34,6 +36,7 @@ function net__punch_tick(net_st: mut NetState, dt: float) -> void {
   if net_st.net__punch_t > 0.0 { return }
   net_st.net__punch_t = 0.5
   if net_st.net__punch_b == null {
+    @alloc_ok("once: the punch's four bytes")
     net_st.net__punch_b = buffer(4)
     nb_put8(net_st.net__punch_b, 0, 'M')
     nb_put8(net_st.net__punch_b, 1, 'P')

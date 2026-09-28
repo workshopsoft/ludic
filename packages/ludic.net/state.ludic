@@ -51,6 +51,9 @@ export property NetMessage {
 export state NetState {
   net__cfg: NetConfig = new NetConfig
   net__facts: Queue<NetFact> = net__facts__new()
+  net__fpool: []NetFact = net__fpool__new()   # the facts' records, taken in turn (pool.ludic)
+  net__fat: int = 0
+  net__watch_url: string = ""           # the room's address, made once per room
   net__seen: []string = new []string     # guests already punched for
   net__free: []NetMsg = new []NetMsg      # sent and taken (or stale): made again, never new (pool.ludic)
   net__ina: []NetMessage = new []NetMessage   # the inbox's records, two halves
