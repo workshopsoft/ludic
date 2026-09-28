@@ -77,8 +77,13 @@ function emit_init_fn(name: pointer, runtime: bool) -> void {
   falloc = buf_new()
   let saved = code
   code = fbody
-  var i = 0
-  while i < len(prog) {
+  # in the order their initializers need each other: a state's field default may read a registry
+  # (Species[sp].population) and a table may read a state's instance, whatever order they were declared in
+  let order = gi_order()
+  var oi = 0
+  while oi < len(order) {
+    let i = order[oi]
+    oi += 1
     let d = prog[i]
     if d.kind == N_VAR and global_needs_init_code(d) and is_runtime_state_var(d) == runtime {
       # an initializer is the global's own file's code: its errors, and what its module
@@ -96,7 +101,6 @@ function emit_init_fn(name: pointer, runtime: bool) -> void {
       let cv = coerce_code(v, d.ty)                 # any conversion is its own line, before the store
       emit("  store ");  emit(llty(d.ty));  emit(" ");  emit(cv);  emit(", ptr @g_");  emit(d.s);  emit("\n")
     }
-    i += 1
   }
   emit("  ret void\n")
   code = saved
@@ -354,4 +358,104 @@ function emit_str_slice() -> void {
   emith("body:\n  %si = add i32 %start, %i\n  %sp = getelementptr inbounds i8, ptr %s, i32 %si\n  %c = load i8, ptr %sp\n")
   emith("  %op = getelementptr inbounds i8, ptr %out, i32 %i\n  store i8 %c, ptr %op\n  %i1 = add i32 %i, 1\n  br label %loop\n")
   emith("fin:\n  %tp = getelementptr inbounds i8, ptr %out, i32 %len\n  store i8 0, ptr %tp\n  ret ptr %out\n}\n")
+}
+
+# ---- the order globals are initialized in ----------------------------------------------------
+# each global's initializer, followed through the functions it calls and a record's field defaults,
+# names the globals it reads; they are initialized first (a depth-first post-order, the source order
+# kept between globals that need nothing of each other, and where a cycle leaves no order)
+var g_gi_idx_k: []pointer = new []pointer
+var g_gi_idx_v: []Node = new []Node
+var g_gi_fn_seen: []pointer = new []pointer
+var g_gi_state: []int = new []int                  # 0 not visited, 1 on the path, 2 placed
+var g_gi_out: []int = new []int
+
+function gi_index(name: pointer) -> int {
+  let h = ck_tab_get(g_gi_idx_k, g_gi_idx_v, name)
+  if h == null { return -1 }
+  return h.ival
+}
+
+function gi_fn_seen(name: pointer) -> bool {
+  var i = 0
+  while i < len(g_gi_fn_seen) { if (g_gi_fn_seen[i] == name) { return true };  i += 1 }
+  return false
+}
+
+# the globals an expression reads, into out, through calls and defaults (each function once per global)
+function gi_reads(n: Node, out: []int) -> void {
+  if n == null { return }
+  if (n.kind == E_ID or n.kind == E_FNREF) and n.s != null {
+    let k = gi_index(n.s)
+    if k >= 0 {
+      let d = prog[k]
+      if d.kind == N_VAR { push(out, k) }
+      if d.kind == N_FN and not gi_fn_seen(n.s) {
+        push(g_gi_fn_seen, n.s)
+        gi_reads(d.a, out)
+      }
+    }
+  }
+  if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and n.a.s != null {
+    let k = gi_index(n.a.s)
+    if k >= 0 and prog[k].kind == N_FN and not gi_fn_seen(n.a.s) {
+      push(g_gi_fn_seen, n.a.s)
+      gi_reads(prog[k].a, out)
+    }
+  }
+  if n.kind == E_NEW and n.s != null {
+    let lay = find_comp(n.s)
+    if lay != null and lay.kids != null {
+      var f = 0
+      while f < len(lay.kids) { gi_reads(lay.kids[f].a, out);  f += 1 }
+    }
+  }
+  gi_reads(n.a, out)
+  gi_reads(n.b, out)
+  gi_reads(n.c, out)
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) { gi_reads(n.kids[i], out);  i += 1 }
+  }
+}
+
+function gi_visit(i: int) -> void {
+  if g_gi_state[i] != 0 { return }
+  g_gi_state[i] = 1
+  let d = prog[i]
+  if d.a != null {
+    let needs = new []int
+    g_gi_fn_seen = new []pointer
+    gi_reads(d.a, needs)
+    var k = 0
+    while k < len(needs) {
+      if needs[k] != i and g_gi_state[needs[k]] == 0 { gi_visit(needs[k]) }
+      k += 1
+    }
+  }
+  g_gi_state[i] = 2
+  push(g_gi_out, i)
+}
+
+function gi_order() -> []int {
+  if len(g_gi_out) > 0 { return g_gi_out }
+  ck_tab_init(g_gi_idx_k, g_gi_idx_v)
+  g_gi_state = new []int
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    push(g_gi_state, 0)
+    if (d.kind == N_VAR or d.kind == N_FN) and d.s != null and ck_tab_get(g_gi_idx_k, g_gi_idx_v, d.s) == null {
+      let h = new Node
+      h.ival = i
+      ck_tab_put(g_gi_idx_k, g_gi_idx_v, d.s, h)
+    }
+    i += 1
+  }
+  i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_VAR { gi_visit(i) }
+    i += 1
+  }
+  return g_gi_out
 }
