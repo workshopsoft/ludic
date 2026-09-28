@@ -20,6 +20,11 @@ const ES_FREED: int = 4                             # given back with free(): no
 
 var g_es_flag: []int = new []int
 var g_es_why: []Node = new []Node                   # per class: the statement that made it escape
+var g_es_own: []pointer = new []pointer             # per class: the state that holds it (25.5c's census)
+var g_es_gname: []pointer = new []pointer           # a class per state global, so each state is its own
+var g_es_gcls: []int = new []int
+var g_es_ok: []pointer = new []pointer              # file:line of a kept site -> the state that holds it
+var g_es_ov: []Node = new []Node
 var g_es_swhy: []Node = new []Node                  # per store edge: its statement
 var g_es_stmt: Node = null                          # the statement being walked
 var g_es_aok: int = 0                               # inside a statement under @alloc_ok
@@ -48,7 +53,7 @@ var g_es_lt: []pointer = new []pointer              # ... and their types, where
 var g_es_cur: int = -1
 var g_es_heap: int = -1                             # the one class for globals, states and the unknown
 
-function es_new(flags: int) -> int { push(g_es_flag, flags);  push(g_es_why, null);  return len(g_es_flag) - 1 }
+function es_new(flags: int) -> int { push(g_es_flag, flags);  push(g_es_why, null);  push(g_es_own, null);  return len(g_es_flag) - 1 }
 function es_flow(a: int, b: int) -> void { if a >= 0 and b >= 0 { push(g_es_ff, a);  push(g_es_ft, b) } }
 function es_store(v: int, t: int) -> void {
   if v < 0 { return }
@@ -174,6 +179,16 @@ function es_val(e: Node) -> int {
   if k == E_ID {
     let c = es_local(e.s)
     if c >= 0 { return c }
+    let g = find_global(e.s)
+    if g != null and is_state_ty(g.ty) {
+      var i = 0
+      while i < len(g_es_gname) { if (g_es_gname[i] == e.s) { return g_es_gcls[i] };  i += 1 }
+      let sc = es_new(ES_ESC | ES_HEAP)
+      g_es_own[sc] = g.ty
+      push(g_es_gname, e.s)
+      push(g_es_gcls, sc)
+      return sc
+    }
     return g_es_heap
   }
   if k == E_MEMBER { return es_val(e.a) }
@@ -248,9 +263,12 @@ function es_call(e: Node) -> int {
       es_args_walk(e)
       return es_site(e)
     }
-    if (nm == "keep") or (nm == "intern") {
+    if (nm == "keep") or (nm == "intern") {         # a heap copy on purpose: a site for the census's owner, never scratch
       es_args_walk(e)
-      return g_es_heap
+      let kc = es_site(e)
+      g_es_flag[kc] = g_es_flag[kc] | ES_ESC
+      g_es_site_aok[len(g_es_site_aok) - 1] = true   # deliberate: not a keep to report, nor a birth
+      return kc
     }
     if (nm == "push") and len(e.kids) >= 2 {
       let t = es_val(e.kids[0])
@@ -443,6 +461,27 @@ function es_solve() -> void {
       i += 1
     }
   }
+  # 25.5c: which state holds what - a container's owner flows forward, a stored value takes its
+  # target's, and what flowed into a value takes the value's; the first found stays
+  changed = true
+  while changed {
+    changed = false
+    var o = 0
+    while o < len(g_es_ff) {
+      let a = g_es_ff[o]
+      let b = g_es_ft[o]
+      if g_es_own[a] != null and g_es_own[b] == null { g_es_own[b] = g_es_own[a];  changed = true }
+      if g_es_own[b] != null and g_es_own[a] == null and (g_es_flag[a] & ES_ESC) != 0 { g_es_own[a] = g_es_own[b];  changed = true }
+      o += 1
+    }
+    o = 0
+    while o < len(g_es_sv) {
+      let v = g_es_sv[o]
+      let t = g_es_st[o]
+      if g_es_own[t] != null and g_es_own[v] == null { g_es_own[v] = g_es_own[t];  changed = true }
+      o += 1
+    }
+  }
   # a function that reaches Mem.frame spans frames: so does every caller
   changed = true
   while changed {
@@ -463,6 +502,7 @@ var g_es_esc_n: int = 0
 function escape_analyse() -> void {
   if g_es_done { return }
   g_es_done = true
+  ck_tab_init(g_es_ok, g_es_ov)
   g_es_heap = es_new(ES_ESC | ES_HEAP)
   ck_tab_init(g_es_fk, g_es_fv)
   var i = 0
@@ -476,7 +516,11 @@ function escape_analyse() -> void {
       push(g_es_fspans, d.kind == N_MAIN)
       push(g_es_fparam, len(g_es_flag))
       var p = 0
-      while p < len(d.kids) { es_new(ES_HEAP);  p += 1 }
+      while p < len(d.kids) {
+        let pc = es_new(ES_HEAP)
+        if d.kids[p].kind == N_PARAM and is_state_ty(d.kids[p].ty) { g_es_own[pc] = d.kids[p].ty }
+        p += 1
+      }
       push(g_es_fret, es_new(0))
     }
     i += 1
@@ -516,7 +560,14 @@ function escape_analyse() -> void {
     if c >= 0 and (g_es_flag[c] & ES_ESC) == 0 and not spans {
       n.uns = ES_SCRATCH
       g_es_local_n += 1
-    } else { g_es_esc_n += 1 }
+    } else {
+      g_es_esc_n += 1
+      if c >= 0 and g_es_own[c] != null and n.file != null {
+        let h = new Node
+        h.s = g_es_own[c]
+        ck_tab_put(g_es_ok, g_es_ov, `{n.file}:{itoa(n.line)}`, h)
+      }
+    }
     s += 1
   }
 }
@@ -577,4 +628,12 @@ function emit_keep(a: Val) -> Val {
     return val(p, a.ty)
   }
   return a
+}
+
+# the state that holds what a site makes, when the analysis ran and found one
+function es_owner_at(file: pointer, line: int) -> pointer {
+  if not g_es_done or file == null { return null }
+  let h = ck_tab_get(g_es_ok, g_es_ov, `{file}:{itoa(line)}`)
+  if h == null { return null }
+  return h.s
 }
