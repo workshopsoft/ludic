@@ -1,0 +1,48 @@
+# json_saves.ludic - Json.write_file writes a tree as JSON through a buffer the runtime keeps (the
+# .tmp and the rename as Fs.write_text), so a game can save as often as it likes and keep nothing:
+# the same text Json.encode gives, read back whole. Prints 1 2 3 and `saves grew 0` (the heap is
+# read on the Mac; 0 elsewhere).
+program JsonSaves {
+  function tree(n: int) -> Val {
+    let o = Value.object()
+    Value.put(o, "name", Value.str("camp \"north\"\nshore\\"))
+    Value.put(o, "day", Value.int(n))
+    Value.put(o, "cold", Value.int(-2147483647))
+    Value.put(o, "rep", Value.fixed(49152))
+    Value.put(o, "pace", Value.float(float(7) / float(2)))
+    Value.put(o, "wet", Value.bool(0))
+    Value.put(o, "none", Value.null())
+    let l = Value.list()
+    for i in 0 .. 40 { Value.add(l, Value.int(i * 37 - 500)) }
+    Value.put(o, "pack", l)
+    let inner = Value.object()
+    Value.put(inner, "x", Value.fixed(-8192))
+    Value.put(o, "at", inner)
+    return o
+  }
+  entry {
+    let small = Value.object()
+    Value.put(small, "a", Value.int(-7))
+    Value.put(small, "b", Value.fixed(32768))
+    Value.put(small, "c", Value.str("q\"\\\n"))
+    let sl = Value.list()
+    Value.add(sl, Value.bool(1))
+    Value.add(sl, Value.null())
+    Value.put(small, "d", sl)
+    if Json.encode(small) == "{\"a\":-7,\"b\":0.5,\"c\":\"q\\\"\\\\\\n\",\"d\":[true,null]}" { print(1) }
+    let path = Os.temp_dir() + "/json_saves_" + string(Os.pid()) + ".json"
+    let t = tree(3)
+    let wrote = Json.write_file(t, path)
+    let back = Fs.read_text(path)
+    let enc = Json.encode(t)
+    if wrote and back == enc { print(2) }
+    let again = Json.parse(back)
+    if Json.encode(again) == enc { print(3) }
+    for i in 0 .. 20 { Json.write_file(t, path) }
+    let before = Os.heap_bytes()
+    for i in 0 .. 1000 { Json.write_file(t, path) }
+    let grew = Os.heap_bytes() - before
+    Fs.remove(path)
+    print(`saves grew {grew}`)
+  }
+}

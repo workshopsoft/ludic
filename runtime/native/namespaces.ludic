@@ -488,6 +488,7 @@ namespace Value {
 }
 namespace Json {
   alias encode(value) = json_encode
+  alias write_file(value, path) = json_write_file   # encode straight to a file, keeping nothing per call
   alias parse(text) = json_parse
   alias free(value) = json_free
   alias free_all(value) = json_free_all
