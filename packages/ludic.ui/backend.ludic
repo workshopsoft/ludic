@@ -32,7 +32,7 @@ function ui_default_backend() -> UiBackend {
   return UiRenderers[0].make()
 }
 export state UiState {
-  pl_pools: []UiPool = new []UiPool      # pool.ludic: each screen's nodes and envs, used again
+  @max(512) pl_pools: []UiPool = new []UiPool      # pool.ludic: each screen's nodes and envs, used again
   pl_cur: UiPool = null
   uv_on: bool = false                    # pool.ludic: a build is under way, so expressions' Values are pooled
   uv_true: Val = null
@@ -43,7 +43,7 @@ export state UiState {
   mm_ivals: []Val = null
   ev_depth: int = 0                      # eval.ludic: a call's arguments, in lists kept one a depth
   ev_args: []Val = new []Val
-  ev_ring: []Val = new []Val             # eval.ludic: calls' answers while an action runs, EV_RING of them
+  @max(64) ev_ring: []Val = new []Val             # eval.ludic: calls' answers while an action runs, EV_RING of them
   ev_ring_at: int = 0
   cv_texts: []string = new []string      # units_pieces.ludic: a value's var() pieces, kept
   tx_pieces: [][]string = new [][]string # eval_text.ludic: a text's pieces, a list a depth
@@ -52,8 +52,8 @@ export state UiState {
   ca_used: int = 0
   ca_args: [][]CaVal = new [][]CaVal
   ca_depth: int = 0
-  pe_evs: []UiPointer = pe_evs__new()   # pointer_events.ludic: an event's record and its Value, a ring
-  pe_vals: []Val = pe_vals__new()
+  @max(16) pe_evs: []UiPointer = pe_evs__new()   # pointer_events.ludic: an event's record and its Value, a ring
+  @max(16) pe_vals: []Val = pe_vals__new()
   pe_at: int = 0
   nth_a: int = 0                         # select_nth.ludic: the a and b just read
   nth_b: int = 0
