@@ -16,6 +16,7 @@
 #   ludic deps --widest N                the N functions that take the most states, and what each reaches
 #   ludic deps --reach N                 the same, the N that reach the most
 #   ludic deps --wreach N                the N that can come to CHANGE the most states
+#   ludic deps --allocs                  every allocation a frame can come to (25.2), with its chain from a root
 #
 # dependencies: module pairs (a, b) where a uses something of b, not counting b when b uses no
 # other module (a leaf); largest_cycle: the largest set of modules that all reach each other, not
@@ -48,6 +49,8 @@ var dp_fn_at: []pointer = null        # each of the program's own functions: whe
 var dp_fn_w: []int = null
 var dp_fn_r: []int = null
 var dp_fn_x: []int = null             # ... and the states it can come to change
+var dp_fallocs: []pointer = new []pointer        # 25.2: `falloc <kind> <file:line> <chain>`, what a frame can allocate
+var dp_frame_allocs: int = 0
 var dp_wreach_n: int = 0
 var dp_wreach_at: pointer = ""
 
@@ -86,6 +89,7 @@ function dp_load(path: pointer) -> bool {
   dp_reach_n = 0;  dp_reach_at = "";  dp_reach_own = 0
   dp_fn_at = new []pointer;  dp_fn_w = new []int;  dp_fn_r = new []int;  dp_fn_x = new []int
   dp_wreach_n = 0;  dp_wreach_at = ""
+  dp_fallocs = new []pointer;  dp_frame_allocs = 0
   dp_writes = new []pointer;  dp_aliases = new []pointer;  dp_wowner = new []pointer;  dp_wname = new []pointer;  dp_wfrom = new []pointer
   let lines = split_lines(text)
   for i in 0 .. len(lines) {
@@ -107,6 +111,8 @@ function dp_load(path: pointer) -> bool {
       push(dp_en, w[4])
     }
     if len(w) >= 6 and w[0] == "alias" { push(dp_aliases, lines[i]) }
+    if len(w) >= 4 and w[0] == "falloc" { push(dp_fallocs, lines[i]) }
+    if len(w) == 2 and w[0] == "frame_allocs" { dp_frame_allocs = s_to_int(w[1]) }
     if len(w) >= 5 and w[0] == "width" and w[4] == "0" and s_to_int(w[1]) > dp_wide_n {
       dp_wide_n = s_to_int(w[1])
       dp_wide_at = `{dp_fn_name(w[2])} ({w[3]})`
@@ -306,7 +312,7 @@ var dp_vals: []int = null
 var dp_cycle: []int = null
 var dp_cycle_all: []int = null        # the same with the layers' own edges counted
 function dp_numbers() -> void {
-  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside", "widest_function", "widest_reach", "widest_write_reach"]
+  dp_names = ["modules", "dependencies", "largest_cycle", "cross_writes", "globals_written_from_outside", "widest_function", "widest_reach", "widest_write_reach", "frame_allocs"]
   var mods = 0
   for k in 0 .. len(dp_mods) { if dp_own(k) { mods += 1 } }
   var deps = 0
@@ -328,7 +334,7 @@ function dp_numbers() -> void {
     }
   }
   dp_reach_best()
-  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen), dp_wide_n, dp_reach_n, dp_wreach_n]
+  dp_vals = [mods, deps, len(dp_cycle), writes, len(seen), dp_wide_n, dp_reach_n, dp_wreach_n, dp_frame_allocs]
 }
 
 # ---- the command --------------------------------------------------------------
@@ -482,6 +488,7 @@ function cmd_deps() -> int {
     if a == "--dot" { mode = "dot" }
     else if a == "--graph" { mode = "graph" }
     else if a == "--writes" { mode = "writes" }
+    else if a == "--allocs" { mode = "allocs" }
     else if a == "--uses" or a == "--check" or a == "--baseline" or a == "--widest" or a == "--reach" or a == "--wreach" {
       if ai + 1 >= arg_count() { err(`ludic deps: {a} needs an argument\n`);  return 2 }
       mode = sslice(a, 2, slen(a))
@@ -523,6 +530,14 @@ function cmd_deps() -> int {
     return 0
   }
   if mode == "uses" { dp_uses_of(arg2);  return 0 }
+  if mode == "allocs" {                          # 25.2: every allocation a frame can come to, with its chain
+    for a in 0 .. len(dp_fallocs) {
+      let w = dp_words(dp_fallocs[a])
+      print(`frame alloc: {w[2]} {w[1]}  {w[3]}`)
+    }
+    print(`frame_allocs: {string(dp_frame_allocs)}`)
+    return 0
+  }
   if mode == "widest" { dp_top(s_to_int(arg2), 0);  return 0 }
   if mode == "reach" { dp_top(s_to_int(arg2), 1);  return 0 }
   if mode == "wreach" { dp_top(s_to_int(arg2), 2);  return 0 }
