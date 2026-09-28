@@ -29,6 +29,6 @@ export function things_changed(things_st: ThingsState, since: int, rows: words, 
   List.clear(out)
   let tb = things_st.th.tab
   let n = tb_changed_since(tb, since, rows)
-  for k in 0 .. n { push(out, tb.rec[rows[k]]) }
+  for k in 0 .. n { kept_push(out, tb.rec[rows[k]]) }
   return n
 }

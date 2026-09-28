@@ -51,6 +51,7 @@ function net__stun_packet(net_st: mut NetState, n: int) -> bool {
       }
       net_st.net__pub_ip = ip
       net_st.net__pub_port = port
+      @alloc_ok("a STUN answer: a few per session")
       net__log(`outside we are {net__addr_text(ip, port)}`)
     }
     o += 4 + ((l + 3) / 4) * 4

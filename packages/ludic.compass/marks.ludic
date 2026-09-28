@@ -26,11 +26,12 @@ export state CompassState {
   cmp_cap: int = 64
   cmp_list: []CompassMark = null       # this frame's, sorted and culled
   cmp_back: []CompassMark = null       # the list the sort fills, then swapped with cmp_list
-  cmp_pool: []CompassMark = null       # a frame's marks, reused: Ludic frees nothing
+  cmp_pool: []CompassMark = cmp_pool__new()   # a frame's marks, made with the state and reused: Ludic frees nothing
   cmp_used: int = 0
   cmp_capturing: bool = false
-  cmp_caught: []CompassMark = null     # what providers said while someone was listening
-  cmp_cpool: []CompassMark = null      # the capture's marks, reused from one capture to the next
+  cmp_caught: []CompassMark = new []CompassMark   # what providers said while someone was listening
+  cmp_cpool: []CompassMark = cmp_pool__new()   # the capture's marks, reused from one capture to the next
+  cmp_none: CompassMark = new CompassMark   # what compass_at answers past the end
   cmp_cused: int = 0
   cmp_ranges: []float = null
   cmp_radar_from: int = 2     # marks of at least this tier are blips; the tracked one always is

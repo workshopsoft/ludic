@@ -67,7 +67,12 @@ export function imap_del(m: IntMap, k: int) -> bool {
 }
 
 export function imap_len(m: IntMap) -> int { return m.n }
-export function imap_clear(m: IntMap) -> void { imap_alloc(m, m.mask + 1) }
+# every key gone, in place: the arrays are kept at the size they grew to
+export function imap_clear(m: IntMap) -> void {
+  for i in 0 .. len(m.keys) { m.keys[i] = -1 }
+  m.n = 0
+  m.used = 0
+}
 
 # room for `n` keys before the map grows, made now
 export function imap_reserve(m: IntMap, n: int) -> void {
