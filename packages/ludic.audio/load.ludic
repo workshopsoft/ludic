@@ -1,5 +1,5 @@
 # load.ludic - a clip the runtime can actually open. Audio.load takes a real FILESYSTEM path (it
-# bottoms out in AVAudioPlayer), not the pack-aware file_open every other asset arrives through: in a
+# bottoms out in AVAudioFile), not the pack-aware file_open every other asset arrives through: in a
 # bundle every clip loads as 0 while Fs.exists, which IS pack-aware, says it is there. So try the
 # runtime's path, and on 0 lift the bytes out of the pack into the cache directory and load that.
 
