@@ -36,9 +36,9 @@ export const PH_CAP: int = 512        # contacts drained a step, queries' buffer
 
 export state PhysicsState {
   ph_world: pointer = null
-  ph_shapes: []pointer = new []pointer     # a shape id is its place here; null once freed
-  ph_spare: []int = new []int              # the freed places, handed out again (shape_ids.ludic)
-  ph_own: []int = new []int                # by a body's index: the shape it owns, freed with it (owned.ludic)
+  @max(262144) ph_shapes: []pointer = new []pointer     # a shape id is its place here; null once freed
+  @max(262144) ph_spare: []int = new []int              # the freed places, handed out again (shape_ids.ludic)
+  @max(262144) ph_own: []int = new []int                # by a body's index: the shape it owns, freed with it (owned.ludic)
   ph_step: float = 0.016666668    # seconds a step
   ph_sub: int = 1                 # collision steps in each
   ph_max_steps: int = 4           # a slow frame catches up this far and no further
@@ -51,12 +51,12 @@ export state PhysicsState {
   ph_nf: int = 0
   ph_rx: float = 0.0               # where the last phys_resolve put a body
   ph_rz: float = 0.0
-  ph_walkers: []pointer = new []pointer   # a walker id is its place here; null once removed
+  @max(64) ph_walkers: []pointer = new []pointer   # a walker id is its place here; null once removed
   ph_ids: []int = words(PH_CAP * 2)
   ph_vals: []float = floats(PH_CAP * 4)
   ph_facts: Queue<PhysFact> = ph_facts__new()
-  ph_fpool: []PhysFact = ph_fpool_new()   # every fact record made, reused once no drain holds it
-  ph_ffree: []PhysFact = ph_ffree_new()
+  @max(1024) ph_fpool: []PhysFact = ph_fpool_new()   # every fact record made, reused once no drain holds it
+  @max(1024) ph_ffree: []PhysFact = ph_ffree_new()
   ph_fnext: int = 0
 }
 
