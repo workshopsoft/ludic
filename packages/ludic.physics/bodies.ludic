@@ -36,11 +36,12 @@ export function phys_count(physics_st: PhysicsState) -> int {
   return jph_world_bodies(physics_st.ph_world)
 }
 
-# gone from the world, for good: what a struck tent needs
+# gone from the world, for good: what a struck tent needs, and the shape it owned (owned.ludic) with it
 export function phys_remove(physics_st: mut PhysicsState, id: int) -> void {
   if physics_st.ph_world == null or id < 0 { return }
   phys_sink(physics_st, id)
   jph_body_remove(physics_st.ph_world, id)
+  ph_own_free(physics_st, id)
 }
 
 # where a body is, how it is turned and how fast it goes, into the caller's own record (a query asked

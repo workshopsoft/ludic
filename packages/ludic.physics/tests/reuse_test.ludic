@@ -39,4 +39,25 @@ program ReuseTest {
     expect_eq(phys_shapes(physics_st), 1)
     phys_close(physics_st)
   }
+
+  test "a body that owns its shape takes the shape with it, a thousand times over" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    let s0 = phys_cylinder(physics_st, 5.0, 0.3)
+    phys_own(physics_st, phys_static_add(physics_st, s0, 0.0, 0.0, 0.0, 0.0), s0)
+    let first = phys_static_add(physics_st, phys_cylinder(physics_st, 5.0, 0.3), 3.0, 0.0, 0.0, 0.0)
+    phys_remove(physics_st, first)
+    let before = Os.heap_bytes()
+    for k in 0 .. 1000 {
+      let s = phys_cylinder(physics_st, 5.0, 0.3)
+      let b = phys_static_add(physics_st, s, float(k % 10), 0.0, 5.0, 0.0)
+      phys_own(physics_st, b, s)
+      phys_remove(physics_st, b)
+    }
+    let grew = Os.heap_bytes() - before
+    print(`reuse: 1000 owned bodies put and removed, {phys_shapes(physics_st)} shapes held in {len(physics_st.ph_shapes)} places, heap {grew} bytes`)
+    expect(phys_shapes(physics_st) <= 2)
+    expect(len(physics_st.ph_shapes) <= 3)
+    expect(grew < long(1024))
+    phys_close(physics_st)
+  }
 }
