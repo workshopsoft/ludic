@@ -18,18 +18,18 @@ program TelemetryTest {
   function fake_now(telemetry_test_st: TelemetryTestState) -> int { return telemetry_test_st.clock }
   function fake_enabled(telemetry_test_st: TelemetryTestState) -> bool { return telemetry_test_st.on }
   function fake_can(telemetry_test_st: TelemetryTestState) -> bool { return telemetry_test_st.allowed }
-  function fake_stamp() -> string { return "2026-09-25T12:00:00Z" }
-  function fake_send(telemetry_test_st: mut TelemetryTestState, url: string, body: string) -> int {
+  function fake_clock() -> int { return 1790337600 }
+  function fake_send(telemetry_test_st: mut TelemetryTestState, url: string, body: []byte, n: int) -> int {
     if telemetry_test_st.refuse { return -1 }
     telemetry_test_st.sends += 1
     telemetry_test_st.last_url = url
-    telemetry_test_st.last_body = body
+    telemetry_test_st.last_body = text_of(body, n)
     return 7
   }
   function fake_poll(telemetry_test_st: TelemetryTestState, h: int) -> int { return telemetry_test_st.answer }
   function fake_drop(h: int) -> void { }
 
-  bind TelemetryWorld { can_send: fn fake_can, enabled: fn fake_enabled, now_ms: fn fake_now, stamp: fn fake_stamp }
+  bind TelemetryWorld { can_send: fn fake_can, enabled: fn fake_enabled, now_ms: fn fake_now, clock_s: fn fake_clock }
   bind TelemetryTransport { send: fn fake_send, poll: fn fake_poll, drop: fn fake_drop }
 
   function qfile() -> string { return Os.temp_dir() + "/ludic-telemetry-test-queue.txt" }

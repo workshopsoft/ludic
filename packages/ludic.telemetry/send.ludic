@@ -5,7 +5,7 @@ export function telemetry_tick(telemetry_st: mut TelemetryState) -> void {
   if not telemetry_st.telemetry__ready { return }
   telemetry__id_tick(telemetry_st)
   if not telemetry__enabled() {
-    if len(telemetry_st.telemetry__q) > 0 or telemetry_st.telemetry__h >= 0 { telemetry_forget(telemetry_st) }
+    if telemetry_st.telemetry__n > 0 or telemetry_st.telemetry__h >= 0 { telemetry_forget(telemetry_st) }
     return
   }
   if not telemetry__can_send(telemetry_st) { return }
@@ -24,8 +24,8 @@ export function telemetry_tick(telemetry_st: mut TelemetryState) -> void {
     telemetry__answer(telemetry_st, now)
     return
   }
-  if len(telemetry_st.telemetry__q) == 0 { return }
-  let early = telemetry_st.telemetry__fails == 0 and len(telemetry_st.telemetry__q) >= c.flush_at
+  if telemetry_st.telemetry__n == 0 { return }
+  let early = telemetry_st.telemetry__fails == 0 and telemetry_st.telemetry__n >= c.flush_at
   if early or now >= telemetry_st.telemetry__next_ms {
     telemetry_save(telemetry_st)
     telemetry__flush(telemetry_st, now)
@@ -38,7 +38,7 @@ function telemetry__answer(telemetry_st: mut TelemetryState, now: int) -> void {
   if st < 0 { return }
   telemetry_st.telemetry__h = -1
   if st > 0 {
-    telemetry__queue_drop(telemetry_st, telemetry_st.telemetry__sent_n)
+    tr_drop(telemetry_st, telemetry_st.telemetry__sent_n)
     telemetry_st.telemetry__fails = 0
     telemetry_st.telemetry__next_ms = now + telemetry__conf(telemetry_st).flush_ms
     telemetry__fact(telemetry_st, TELEMETRY_SENT, telemetry_st.telemetry__sent_n, st, 0)
@@ -50,9 +50,10 @@ function telemetry__answer(telemetry_st: mut TelemetryState, now: int) -> void {
 }
 
 function telemetry__flush(telemetry_st: mut TelemetryState, now: int) -> void {
-  if telemetry_st.telemetry__h >= 0 or len(telemetry_st.telemetry__id) == 0 or len(telemetry_st.telemetry__q) == 0 { return }
-  let n = min(telemetry__conf(telemetry_st).batch, len(telemetry_st.telemetry__q))
-  let h = telemetry__send(telemetry_st, telemetry_batch_body(telemetry_st, n))
+  if telemetry_st.telemetry__h >= 0 or len(telemetry_st.telemetry__id) == 0 or telemetry_st.telemetry__n == 0 { return }
+  let n = min(telemetry__conf(telemetry_st).batch, telemetry_st.telemetry__n)
+  tb_batch(telemetry_st, n)
+  let h = telemetry__send(telemetry_st, telemetry_st.telemetry__out.b, sb_len(telemetry_st.telemetry__out))
   if h < 0 {
     telemetry__backoff(telemetry_st, now)
     telemetry__fact(telemetry_st, TELEMETRY_FAILED, n, 0, telemetry_st.telemetry__next_ms - now)

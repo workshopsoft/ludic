@@ -1,5 +1,8 @@
 # ports.ludic - the config, and what the ports answer when the game leaves them unbound
-export function telemetry_config(telemetry_st: mut TelemetryState, c: TelemetryConfig) -> void { telemetry_st.telemetry__cfg = c }
+export function telemetry_config(telemetry_st: mut TelemetryState, c: TelemetryConfig) -> void {
+  telemetry_st.telemetry__cfg = c
+  telemetry_st.telemetry__url = c.host + c.path
+}
 
 function telemetry__conf(telemetry_st: TelemetryState) -> TelemetryConfig {
   return telemetry_st.telemetry__cfg
@@ -7,7 +10,7 @@ function telemetry__conf(telemetry_st: TelemetryState) -> TelemetryConfig {
 
 function telemetry__yes() -> bool { return true }
 function telemetry__wall_ms(telemetry_st: TelemetryState) -> int { return (Time.now() - telemetry_st.telemetry__t0) * 1000 }
-function telemetry__wall_stamp() -> string { return DateTime.format(Time.now(), "YYYY-MM-DDTHH:mm:ssZ") }
+function telemetry__wall_s() -> int { return Time.now() }
 
 function telemetry__can_send(telemetry_st: TelemetryState) -> bool {
   let c = telemetry__conf(telemetry_st)
@@ -17,13 +20,12 @@ function telemetry__can_send(telemetry_st: TelemetryState) -> bool {
 
 function telemetry__enabled() -> bool { return TelemetryWorld.enabled() }
 function telemetry__now() -> int { return TelemetryWorld.now_ms() }
-function telemetry__stamp() -> string { return TelemetryWorld.stamp() }
 
-function telemetry__http_send(url: string, body: string) -> int {
+function telemetry__http_send(url: string, body: []byte, n: int) -> int {
   let h = Http.open("POST", url)
   if h < 0 { return h }
   Http.set(h, "Content-Type", "application/json")
-  Http.body(h, body)
+  Http.body_bytes(h, data_of(body), n)
   Http.send(h)
   return h
 }
@@ -39,7 +41,7 @@ function telemetry__http_poll(h: int) -> int {
 
 function telemetry__http_drop(h: int) -> void { Http.free(h) }
 
-function telemetry__send(telemetry_st: TelemetryState, body: string) -> int { return TelemetryTransport.send(telemetry__conf(telemetry_st).host + telemetry__conf(telemetry_st).path, body) }
+function telemetry__send(telemetry_st: TelemetryState, body: []byte, n: int) -> int { return TelemetryTransport.send(telemetry_st.telemetry__url, body, n) }
 function telemetry__poll(h: int) -> int { return TelemetryTransport.poll(h) }
 
 # a request abandoned (the player said no)

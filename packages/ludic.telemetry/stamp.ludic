@@ -1,0 +1,35 @@
+# stamp.ludic - the ISO time an event happened, written from the wall clock's seconds with the date
+# worked out in whole numbers (days from the civil calendar), not a string built by DateTime
+function tj_stamp(sb: StrBuf, secs: int) -> void {
+  var days = secs / 86400
+  var rem = secs % 86400
+  if rem < 0 {
+    rem += 86400
+    days -= 1
+  }
+  let z = days + 719468
+  var era = z / 146097
+  if z < 0 { era = (z - 146096) / 146097 }
+  let doe = z - era * 146097
+  let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+  let mp = (5 * doy + 2) / 153
+  let d = doy - (153 * mp + 2) / 5 + 1
+  var m = mp + 3
+  if mp >= 10 { m = mp - 9 }
+  var y = yoe + era * 400
+  if m <= 2 { y += 1 }
+  sb_byte(sb, 34)
+  sb_int(sb, y)
+  sb_byte(sb, 45)
+  sb_int2(sb, m)
+  sb_byte(sb, 45)
+  sb_int2(sb, d)
+  sb_byte(sb, 84)
+  sb_int2(sb, rem / 3600)
+  sb_byte(sb, 58)
+  sb_int2(sb, (rem / 60) % 60)
+  sb_byte(sb, 58)
+  sb_int2(sb, rem % 60)
+  sb_add(sb, "Z\"")
+}

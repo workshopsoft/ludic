@@ -23,22 +23,31 @@ machine. With no salt, or where it cannot be read within ten seconds, it is rand
 lives in the game's id file as `{"id": ...}`; any other key the game keeps there is left alone.
 An event queued before the id is known carries a mark that the batch replaces.
 
+## Nothing is made per event
+
+Ludic gives nothing back, so an event is never a tree of values or a string of its own. Its
+properties are written as JSON into a kept buffer (`telemetry_props`), the line into another, and
+the line's bytes into one ring made at the start (`ring_bytes`, at most `queue_max` lines): past
+either, the oldest are overwritten. A batch and the queue file are written into a third kept buffer
+and go out as bytes (`Http.body_bytes`, `Fs.write_bytes`). An event's time is worked out from the
+clock's seconds, not formatted. `tests/ring_test` holds it: ten thousand events past the cap, 0 bytes.
+
 ## Config and ports (`bind`)
 
 ```ludic
 property TelemetryConfig {
   host, key, path ("/batch/"), lib        # an empty host or key sends nothing, ever
   queue_file, id_file, id_salt, id_scratch
-  flush_ms (30000), flush_at (50), batch (200), queue_max (5000), backoff_max (6), save_ms (5000)
+  flush_ms (30000), flush_at (50), batch (200), queue_max (5000), ring_bytes (1 MB), backoff_max (6), save_ms (5000)
 }
 port TelemetryWorld {
   can_send: fn() -> bool     # may this run send at all - a test, a headless run (unbound: yes)
   enabled: fn() -> bool      # the player's switch (unbound: on)
   now_ms: fn() -> int        # a clock (unbound: the wall clock, by the second)
-  stamp: fn() -> string      # an event's ISO time (unbound: now)
+  clock_s: fn() -> int       # the wall clock in seconds since 1970, for an event's time (unbound: now)
 }
 port TelemetryTransport {    # unbound: Http
-  send: fn(string, string) -> int   # url, body -> a handle, < 0 if it could not start
+  send: fn(string, []byte, int) -> int   # url, body, its length -> a handle, < 0 if it could not start
   poll: fn(int) -> int              # -1 pending, 0 failed, 1 taken
   drop: fn(int) -> void             # abandon one
 }
@@ -56,6 +65,7 @@ bind TelemetryWorld { can_send: fn my_can_send, enabled: fn my_switch }
 | --- | --- |
 | `telemetry_config(c)` | before the start |
 | `telemetry_start()` | once, at boot: the id, a session, and the queue an earlier start left (or none, if off) |
+| `telemetry_props()`, `telemetry_str(p, k, s)`, `telemetry_int(p, k, n)`, `telemetry_bool(p, k, b)` | the next event's properties, written into a buffer the state keeps |
 | `telemetry_event(name, props)` | queue one (props may be null); nothing is kept while off or while the run may not send |
 | `telemetry_tick()` | every frame: the machine id's child, a batch when due (every `flush_ms`, or at `flush_at` events), its answer, the backoff, the queue on disk every `save_ms`; off forgets |
 | `telemetry_save()` | the queue on disk now (a quit, a child about to start) |

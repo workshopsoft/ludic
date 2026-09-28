@@ -1,0 +1,125 @@
+# ring_test.ludic - an event written once into a kept line and the queue a ring of bytes: ten thousand
+# events, most past the cap in lines and in bytes, make nothing; the line is exact JSON with its time
+# worked out from the seconds; the batch puts the id in; the file round-trips with its marks
+import "ludic.telemetry"
+import "ludic.base"
+program RingTest {
+  numbers float
+  state RingTestState {
+    now: int = 1790337600
+    body: string = ""
+  }
+  function fk_now() -> int { return 0 }
+  function fk_on() -> bool { return true }
+  function fk_clock(ring_test_st: RingTestState) -> int { return ring_test_st.now }
+  function fk_send(url: string, body: []byte, n: int) -> int { return -1 }
+  function fk_poll(h: int) -> int { return -1 }
+  function fk_drop(h: int) -> void { }
+  bind TelemetryWorld { can_send: fn fk_on, enabled: fn fk_on, now_ms: fn fk_now, clock_s: fn fk_clock }
+  bind TelemetryTransport { send: fn fk_send, poll: fn fk_poll, drop: fn fk_drop }
+
+  function qfile() -> string { return Os.temp_dir() + "/ludic-telemetry-ring-queue.txt" }
+  function start(telemetry_st: mut TelemetryState, max: int, bytes: int) -> void {
+    telemetry_reset(telemetry_st)
+    if Fs.exists(qfile()) { Fs.remove(qfile()) }
+    Fs.write_text(Os.temp_dir() + "/ludic-telemetry-ring-id.json", "{\"id\":\"p-9\"}")
+    let c = new TelemetryConfig
+    c.host = "http://fake"
+    c.key = "k-9"
+    c.lib = "ring"
+    c.queue_file = qfile()
+    c.id_file = Os.temp_dir() + "/ludic-telemetry-ring-id.json"
+    c.queue_max = max
+    c.ring_bytes = bytes
+    c.batch = 3
+    telemetry_config(telemetry_st, c)
+    telemetry_start(telemetry_st)
+  }
+  function one(telemetry_st: mut TelemetryState, k: int) -> void {
+    let p = telemetry_props(telemetry_st)
+    telemetry_int(p, "n", k)
+    telemetry_str(p, "what", "a fish")
+    telemetry_bool(p, "dev", true)
+    telemetry_event(telemetry_st, "caught", p)
+  }
+
+  test "ten thousand events, past the cap in lines and in bytes, make nothing" (telemetry_st: mut TelemetryState) {
+    start(telemetry_st, 5000, 262144)
+    for k in 0 .. 200 { one(telemetry_st, k) }
+    let heap = Os.heap_bytes()
+    for k in 0 .. 10000 { one(telemetry_st, k) }
+    let grew = Os.heap_bytes() - heap
+    print(`ring: 10000 events, {telemetry_queued(telemetry_st)} held, heap {grew} bytes`)
+    expect(grew == long(0))
+    expect(Text.contains(telemetry_line(telemetry_st, telemetry_queued(telemetry_st) - 1), "\"n\":9999"))
+    start(telemetry_st, 40, 1048576)
+    let heap2 = Os.heap_bytes()
+    for k in 0 .. 10000 { one(telemetry_st, k) }
+    expect(Os.heap_bytes() - heap2 == long(0))
+    expect_eq(telemetry_queued(telemetry_st), 40)
+    expect(Text.contains(telemetry_line(telemetry_st, 0), "\"n\":9960"))
+  }
+
+  test "a line is exact JSON, escaped, its time from the seconds" (telemetry_st: mut TelemetryState, ring_test_st: mut RingTestState) {
+    start(telemetry_st, 50, 65536)
+    let p = telemetry_props(telemetry_st)
+    telemetry_str(p, "say", "a \"quote\"\\ and\na line")
+    telemetry_event(telemetry_st, "said", p)
+    ring_test_st.now = 951868799
+    telemetry_event(telemetry_st, "leap", null)
+    let a = telemetry_line(telemetry_st, 0)
+    expect(Text.contains(a, "\"properties\":{\"say\":\"a \\\"quote\\\"\\\\ and\\u000aa line\",\"$session_id\":"))
+    expect(Text.contains(a, "\"timestamp\":\"2026-09-25T12:00:00Z\"}"))
+    expect(Json.parse(a) != null)
+    expect(Text.contains(telemetry_line(telemetry_st, 1), "\"timestamp\":\"2000-02-29T23:59:59Z\""))
+    expect(Text.contains(telemetry_line(telemetry_st, 1), "\"properties\":{\"$session_id\""))
+  }
+
+  test "the batch puts the id in, and the file round-trips with its marks" (telemetry_st: mut TelemetryState) {
+    start(telemetry_st, 50, 65536)
+    for k in 0 .. 4 { one(telemetry_st, k) }
+    let body = telemetry_batch_body(telemetry_st, 3)
+    expect(Text.starts_with(body, "{\"api_key\":\"k-9\",\"batch\":[{"))
+    expect(Text.contains(body, "\"distinct_id\":\"p-9\""))
+    expect(not Text.contains(body, "\"n\":3"))
+    expect(Json.parse(body) != null)
+    telemetry_save(telemetry_st)
+    telemetry_reset(telemetry_st)
+    telemetry_start(telemetry_st)
+    expect_eq(telemetry_queued(telemetry_st), 4)
+    expect(Text.contains(telemetry_batch_body(telemetry_st, 4), "\"n\":3,"))
+    expect(not Text.contains(telemetry_batch_body(telemetry_st, 4), "TELEMETRY_PLAYER"))
+  }
+
+  test "an object and a list inside the properties are JSON, and the signature tells a change" (telemetry_st: mut TelemetryState) {
+    start(telemetry_st, 50, 65536)
+    let p = telemetry_props(telemetry_st)
+    telemetry_int(p, "grade", 3)
+    telemetry_list(p, "subjects")
+    telemetry_item_str(p, "elk")
+    telemetry_item_str(p, "deer")
+    telemetry_list_end(p)
+    telemetry_obj(p, "$set")
+    telemetry_str(p, "arch", "arm64")
+    telemetry_list(p, "looks")
+    let sb = telemetry_item_open(p)
+    sb_int(sb, 4)
+    sb_byte(sb, 44)
+    sb_int(sb, 2)
+    telemetry_item_close(p)
+    telemetry_list_end(p)
+    telemetry_obj_end(p)
+    let lk = telemetry_str_open(p, "look")
+    sb_int(lk, 7)
+    telemetry_item_close(p)
+    telemetry_bool(p, "last", false)
+    let sig = telemetry_props_sig(p)
+    telemetry_event(telemetry_st, "shot", p)
+    let a = telemetry_line(telemetry_st, 0)
+    expect(Text.contains(a, "{\"grade\":3,\"subjects\":[\"elk\",\"deer\"],\"$set\":{\"arch\":\"arm64\",\"looks\":[\"4,2\"]},\"look\":\"7\",\"last\":false,"))
+    expect(Json.parse(a) != null)
+    let q = telemetry_props(telemetry_st)
+    telemetry_int(q, "grade", 3)
+    expect(telemetry_props_sig(q) != sig)
+  }
+}

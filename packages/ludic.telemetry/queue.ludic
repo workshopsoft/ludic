@@ -1,4 +1,4 @@
-# queue.ludic - a start, an event encoded once into a line, the queue on disk, and forgetting
+# queue.ludic - a start, an event written once into a line in the ring, the queue on disk, and forgetting
 # once, at boot: who this is (from the id file, or begun from the machine), a new session, and
 # whatever an earlier start left unsent - or nothing, if the player has it off
 export function telemetry_start(telemetry_st: mut TelemetryState) -> void {
@@ -6,7 +6,7 @@ export function telemetry_start(telemetry_st: mut TelemetryState) -> void {
   telemetry_st.telemetry__ready = true
   telemetry_st.telemetry__t0 = Time.now()
   telemetry_st.telemetry__session = telemetry_random_hex(telemetry_st, 16)
-  telemetry_st.telemetry__q = new []string
+  tr_init(telemetry_st)
   telemetry_st.telemetry__id = sv_str(telemetry__read_obj(telemetry__conf(telemetry_st).id_file), "id", "")
   if len(telemetry_st.telemetry__id) == 0 { telemetry__id_begin(telemetry_st) }
   if telemetry__enabled() { telemetry__queue_load(telemetry_st) } else { telemetry_forget(telemetry_st) }
@@ -15,87 +15,80 @@ export function telemetry_start(telemetry_st: mut TelemetryState) -> void {
 # may an event be kept right now?
 export function telemetry_on(telemetry_st: TelemetryState) -> bool { return telemetry_st.telemetry__ready and telemetry__enabled() and telemetry__can_send(telemetry_st) }
 
-# an event: the properties (null for none) with the session and the library added, and the player
-# as a mark put in when the batch goes, so an event queued before the id is known is not misfiled
-export function telemetry_event(telemetry_st: mut TelemetryState, name: string, props: Val) -> void {
+# an event: its properties (null for none) with the session and the library added, the player as a
+# mark put in when the batch goes, so an event queued before the id is known is not misfiled. The
+# line is written into a kept buffer and copied into the ring: nothing is made for it
+export function telemetry_event(telemetry_st: mut TelemetryState, name: string, props: TelemetryProps) -> void {
   if not telemetry_on(telemetry_st) { return }
-  var p = props
-  if p == null { p = Value.object() }
-  Value.put(p, "$session_id", Value.str(telemetry_st.telemetry__session))
-  if len(telemetry__conf(telemetry_st).lib) > 0 { Value.put(p, "$lib", Value.str(telemetry__conf(telemetry_st).lib)) }
-  let e = Value.object()
-  Value.put(e, "event", Value.str(name))
-  Value.put(e, "distinct_id", Value.str(TELEMETRY_MARK))
-  Value.put(e, "properties", p)
-  Value.put(e, "timestamp", Value.str(telemetry__stamp()))
-  push(telemetry_st.telemetry__q, Json.encode(e))
-  telemetry_st.telemetry__dirty = true
-  let c = telemetry__conf(telemetry_st)
-  if len(telemetry_st.telemetry__q) > c.queue_max + c.batch { telemetry__queue_drop(telemetry_st, len(telemetry_st.telemetry__q) - c.queue_max) }
+  let sb = telemetry_st.telemetry__line
+  sb_clear(sb)
+  sb_add(sb, "{\"event\":")
+  tj_str(sb, name)
+  sb_add(sb, ",\"distinct_id\":\"")
+  let mk = sb_len(sb)
+  sb_add(sb, TELEMETRY_MARK)
+  sb_add(sb, "\",\"properties\":{")
+  if props != null and props.n > 0 {
+    for i in 0 .. sb_len(props.sb) { sb_byte(sb, props.sb.b[i]) }
+    sb_byte(sb, 44)
+  }
+  sb_add(sb, "\"$session_id\":")
+  tj_str(sb, telemetry_st.telemetry__session)
+  if len(telemetry__conf(telemetry_st).lib) > 0 {
+    sb_add(sb, ",\"$lib\":")
+    tj_str(sb, telemetry__conf(telemetry_st).lib)
+  }
+  sb_add(sb, "},\"timestamp\":")
+  tj_stamp(sb, TelemetryWorld.clock_s())
+  sb_byte(sb, 125)
+  if tj_full(sb) or (props != null and tj_full(props.sb)) { return }
+  tr_add(telemetry_st, sb.b, sb_len(sb), mk)
 }
 
-# the queue on disk now, if it changed (a quit, a crash about to happen, a child starting)
+# the queue on disk now, if it changed (a quit, a crash about to happen, a child starting): the lines,
+# marks and all, a line each, written from the kept buffer
 export function telemetry_save(telemetry_st: mut TelemetryState) -> void {
-  if not telemetry_st.telemetry__dirty or telemetry_st.telemetry__q == null { return }
+  if not telemetry_st.telemetry__dirty or telemetry_st.telemetry__ring == null { return }
   telemetry_st.telemetry__dirty = false
   let f = telemetry__conf(telemetry_st).queue_file
   if len(f) == 0 { return }
-  if len(telemetry_st.telemetry__q) == 0 {
+  if telemetry_st.telemetry__n == 0 {
     if Fs.exists(f) { Fs.remove(f) }
     return
   }
-  Fs.write_text(f, Text.join(telemetry_st.telemetry__q, "\n") + "\n")
+  let out = telemetry_st.telemetry__out
+  sb_clear(out)
+  for i in 0 .. telemetry_st.telemetry__n {
+    tr_line_to(telemetry_st, i, out, null)
+    sb_byte(out, 10)
+  }
+  Fs.write_bytes(f, out.b, sb_len(out))
 }
 
 # the player turned it off: nothing more is sent, and nothing queued is kept, here or on disk
 export function telemetry_forget(telemetry_st: mut TelemetryState) -> void {
   telemetry__drop_request(telemetry_st)
-  telemetry_st.telemetry__q = new []string
+  if telemetry_st.telemetry__ring != null { tr_clear(telemetry_st) }
   telemetry_st.telemetry__dirty = false
   let f = telemetry__conf(telemetry_st).queue_file
   if len(f) > 0 and Fs.exists(f) { Fs.remove(f) }
 }
 
-function telemetry__queue_load(telemetry_st: mut TelemetryState) -> void {
-  telemetry_st.telemetry__q = new []string
-  let f = telemetry__conf(telemetry_st).queue_file
-  if len(f) == 0 { return }
-  let s = Fs.read_text(f)
-  if s == null { return }
-  let parts = Text.split(s, "\n")
-  for i in 0 .. len(parts) { if len(parts[i]) > 2 { push(telemetry_st.telemetry__q, parts[i]) } }
-  let max = telemetry__conf(telemetry_st).queue_max
-  if len(telemetry_st.telemetry__q) > max { telemetry__queue_drop(telemetry_st, len(telemetry_st.telemetry__q) - max) }
-}
-
-# drop the first n lines (sent, or the oldest past the cap)
-function telemetry__queue_drop(telemetry_st: mut TelemetryState, n: int) -> void {
-  let rest = new []string
-  for i in n .. len(telemetry_st.telemetry__q) { push(rest, telemetry_st.telemetry__q[i]) }
-  telemetry_st.telemetry__q = rest
-  telemetry_st.telemetry__dirty = true
-}
-
-# the batch: the first n lines joined, with the player id put in - no parsing
-export function telemetry_batch_body(telemetry_st: TelemetryState, n: int) -> string {
-  let part = new []string
-  for i in 0 .. n { push(part, telemetry_st.telemetry__q[i]) }
-  let head = Value.object()
-  Value.put(head, "api_key", Value.str(telemetry__conf(telemetry_st).key))
-  let h: string = Json.encode(head)
-  let body = h[0..len(h) - 1] + ",\"batch\":[" + Text.join(part, ",") + "]}"
-  return Text.replace(body, TELEMETRY_MARK, telemetry_st.telemetry__id)
-}
-
-function telemetry__read_obj(path: string) -> Val {
-  if len(path) == 0 { return null }
-  let s = Fs.read_text(path)
-  if s == null { return null }
-  let v = Json.parse(s)
-  if v == null { return null }
-  if Value.kind(v) != 6 {
-    Json.free(v)
-    return null
+# the batch: the first n lines joined with the player id put in, into the kept buffer (tb_batch), and
+# as text for a test
+function tb_batch(telemetry_st: TelemetryState, n: int) -> void {
+  let out = telemetry_st.telemetry__out
+  sb_clear(out)
+  sb_add(out, "{\"api_key\":")
+  tj_str(out, telemetry__conf(telemetry_st).key)
+  sb_add(out, ",\"batch\":[")
+  for i in 0 .. n {
+    if i > 0 { sb_byte(out, 44) }
+    tr_line_to(telemetry_st, i, out, telemetry_st.telemetry__id)
   }
-  return v
+  sb_add(out, "]}")
+}
+export function telemetry_batch_body(telemetry_st: TelemetryState, n: int) -> string {
+  tb_batch(telemetry_st, Math.min(n, telemetry_st.telemetry__n))
+  return text_of(telemetry_st.telemetry__out.b, sb_len(telemetry_st.telemetry__out))
 }
