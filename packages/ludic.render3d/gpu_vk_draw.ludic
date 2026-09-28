@@ -1427,12 +1427,21 @@ function gvk_screenshot(render3d_st: mut Render3dState, path: string) -> bool {
   gvk_present(render3d_st)
   let w = render3d_st.gvk_screen_w
   let h = render3d_st.gvk_screen_h
+  # the read-back, the header and the row are this shot's own and go on every way out: a buffer the
+  # size of the screen was once kept per shot
   let px = bytes(w * h * 4)
-  if not gvk_tex_read(render3d_st, render3d_st.gvk_screen_color, GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px) { return false }
+  if not gvk_tex_read(render3d_st, render3d_st.gvk_screen_color, GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px) {
+    free(px)
+    return false
+  }
   let f = file_open(path, "wb")
-  if f == null { return false }
+  if f == null {
+    free(px)
+    return false
+  }
   let hdr = `P6\n{w} {h}\n255\n`
   file_write(f, hdr, len(hdr))
+  free(hdr)
   let row = bytes(w * 3)
   var y = h - 1
   while y >= 0 {
@@ -1444,6 +1453,8 @@ function gvk_screenshot(render3d_st: mut Render3dState, path: string) -> bool {
     y -= 1
   }
   file_close(f)
+  free(row)
+  free(px)
   return true
 }
 
