@@ -55,3 +55,10 @@ function th_clean(t: Thing) -> Thing {
 export function things_reserve(things_st: mut ThingsState, n: int) -> void { grid_reserve(things_st.th.grid, n) }
 
 export function things_spare_count(things_st: ThingsState) -> int { return len(things_st.th_spare) - things_st.th_spare_at }
+
+# a placed Thing's slot in the table: reused as Things come and go, so a list indexed by it is as
+# long as the most Things there have been at once; -1 once it is removed
+export function thing_slot(t: Thing) -> int {
+  if t == null or t.ent < 0 { return -1 }
+  return t.ent & ECS_SLOT
+}
