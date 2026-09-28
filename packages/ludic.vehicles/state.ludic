@@ -18,9 +18,7 @@ function ve_fact_record(vehicles_st: mut VehiclesState) -> VehicleFact {
     vehicles_st.ve_fnext += 1
     return f
   }
-  let f = new VehicleFact
-  push(vehicles_st.ve_fpool, f)
-  return f
+  return ve_fact_more(vehicles_st)
 }
 # how many fact records have ever been made: the peak held at once, not the facts pushed
 export function vehicle_fact_records(vehicles_st: VehiclesState) -> int { return len(vehicles_st.ve_fpool) }

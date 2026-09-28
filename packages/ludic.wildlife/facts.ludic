@@ -48,9 +48,7 @@ function wl_fact_record(wildlife_st: mut WildlifeState) -> WildFact {
     f.diet = 0
     return f
   }
-  let f = new WildFact
-  push(wildlife_st.wl_fpool, f)
-  return f
+  return wl_fact_more(wildlife_st)
 }
 # how many fact records have ever been made: the peak held at once, not the facts pushed
 export function wildlife_fact_records(wildlife_st: WildlifeState) -> int { return len(wildlife_st.wl_fpool) }

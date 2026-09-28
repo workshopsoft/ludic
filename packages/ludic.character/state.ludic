@@ -25,9 +25,7 @@ function chr_fact_record(character_st: mut CharacterState) -> CharacterFact {
     character_st.chr_fnext += 1
     return f
   }
-  let f = new CharacterFact
-  push(character_st.chr_fpool, f)
-  return f
+  return chr_fact_more(character_st)
 }
 function chr_say(character_st: mut CharacterState, what: int, v: float) -> void {
   let f = chr_fact_record(character_st)

@@ -12,3 +12,10 @@ function wl_ffree_new() -> []WildFact {
   List.clear(l)
   return l
 }
+# past them: a record for the new peak, kept in the pool for good
+@alloc_ok("a new peak of facts held at once, past the 64 made at the start; kept and reused")
+function wl_fact_more(wildlife_st: mut WildlifeState) -> WildFact {
+  let f = new WildFact
+  push(wildlife_st.wl_fpool, f)
+  return f
+}

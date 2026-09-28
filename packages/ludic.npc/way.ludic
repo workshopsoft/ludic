@@ -94,9 +94,7 @@ function np_fact_record(npc_st: mut NpcState) -> NpcFact {
     f.z = 0.0
     return f
   }
-  let f = new NpcFact
-  push(npc_st.np_fpool, f)
-  return f
+  return np_fact_more(npc_st)
 }
 # how many fact records have ever been made: the peak held at once, not the facts pushed
 export function npc_fact_records(npc_st: NpcState) -> int { return len(npc_st.np_fpool) }

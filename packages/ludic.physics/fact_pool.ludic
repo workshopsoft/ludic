@@ -12,3 +12,10 @@ function ph_ffree_new() -> []PhysFact {
   List.clear(l)
   return l
 }
+# past them: a record for the new peak, kept in the pool for good
+@alloc_ok("a new peak of facts held at once, past the 64 made at the start; kept and reused")
+function ph_fact_more(physics_st: mut PhysicsState) -> PhysFact {
+  let f = new PhysFact
+  push(physics_st.ph_fpool, f)
+  return f
+}
