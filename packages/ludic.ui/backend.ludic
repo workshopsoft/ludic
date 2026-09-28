@@ -43,7 +43,7 @@ export state UiState {
   mm_ivals: []Val = null
   ev_depth: int = 0                      # eval.ludic: a call's arguments, in lists kept one a depth
   ev_args: []Val = new []Val
-  @max(64) ev_ring: []Val = new []Val             # eval.ludic: calls' answers while an action runs, EV_RING of them
+  @max(64) ev_ring: []Val = ev_ring_new()         # eval.ludic: calls' answers while an action runs, EV_RING of them, made with the state
   ev_ring_at: int = 0
   cv_texts: []string = new []string      # units_pieces.ludic: a value's var() pieces, kept
   tx_pieces: [][]string = new [][]string # eval_text.ludic: a text's pieces, a list a depth

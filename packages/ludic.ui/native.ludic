@@ -94,6 +94,11 @@ export function ui_attr_has(n: UiNode, key: string) -> bool {
   }
   return false
 }
+# an attribute as a number, `none` when it is not there - without ui_attr's new null for a miss
+export function ui_attr_float(n: UiNode, key: string, none: float) -> float {
+  if not ui_attr_has(n, key) { return none }
+  return Value.as_float(ui_attr(n, key))
+}
 export function ui_attr_text(n: UiNode, key: string) -> string {
   if n.akeys == null { return "" }
   for i in 0 .. len(n.akeys) {

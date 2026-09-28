@@ -20,11 +20,11 @@ function ct_part(ui_st: mut UiState, n: UiNode, cls: string, text: string) -> Ui
 # <progress value max> and <meter value min max>: a track with a fill as far as the value
 function ct_build_bar(ui_st: mut UiState, n: UiNode) -> void {
   n.dir = UI_ROW
-  let lo = Value.as_float(ui_attr(n, "min"))
-  var hi = Value.as_float(ui_attr(n, "max"))
+  let lo = ui_attr_float(n, "min", 0.0)
+  var hi = ui_attr_float(n, "max", 0.0)
   if hi <= lo { hi = lo + 1.0 }
   let fill = ct_part(ui_st, n, "ui-fill", "")
-  fill.w_pct = Math.clamp((Value.as_float(ui_attr(n, "value")) - lo) / (hi - lo), 0.0, 1.0) * 100.0
+  fill.w_pct = Math.clamp((ui_attr_float(n, "value", 0.0) - lo) / (hi - lo), 0.0, 1.0) * 100.0
   ui_kept(n.children, fill)
 }
 function ct_build(ui_st: mut UiState, n: UiNode) -> void {
@@ -54,10 +54,10 @@ function ct_build(ui_st: mut UiState, n: UiNode) -> void {
   }
 }
 function ct_build_range(ui_st: mut UiState, n: UiNode) -> void {
-  let lo = Value.as_float(ui_attr(n, "min"))
-  var hi = Value.as_float(ui_attr(n, "max"))
+  let lo = ui_attr_float(n, "min", 0.0)
+  var hi = ui_attr_float(n, "max", 0.0)
   if hi <= lo { hi = lo + 1.0 }
-  let v = Value.as_float(ui_attr(n, "value"))
+  let v = ui_attr_float(n, "value", 0.0)
   let track = ct_part(ui_st, n, "ui-track", "")
   let fill = ct_part(ui_st, n, "ui-fill", "")
   fill.w_pct = Math.clamp((v - lo) / (hi - lo), 0.0, 1.0) * 100.0

@@ -77,5 +77,10 @@ function ev_into(ui_st: mut UiState) -> Val {
   return ring[at]
 }
 const EV_RING: int = 64
+function ev_ring_new() -> []Val {
+  let l = new []Val
+  for i in 0 .. EV_RING { push(l, Value.null()) }
+  return l
+}
 function ui_eval_text(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> string { return vl_text(ui_eval(ui_st, x, e)) }
 function ui_eval_bool(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> bool { return vl_truthy(ui_eval(ui_st, x, e)) }
