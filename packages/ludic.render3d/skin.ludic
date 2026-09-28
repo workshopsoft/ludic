@@ -246,3 +246,14 @@ function skin_free(sk: Skin) -> void {
   if sk.bones_v != null { free(sk.bones_v) }
   free(sk)
 }
+
+# A skin_clone given back: what the clone made for itself (its pose, its matrices and their views, its
+# scratch). The rest data, the joints and the names are its source's and stay.
+function skin_clone_free(sk: Skin) -> void {
+  if sk == null { return }
+  free(sk.pose_r);  free(sk.pose_t);  free(sk.gmat);  free(sk.bones)
+  if sk.gmat_v != null { free(sk.gmat_v) }
+  if sk.bones_v != null { free(sk.bones_v) }
+  free(sk.tmp_l);  free(sk.tmp_q);  free(sk.tmp_a);  free(sk.tmp_b);  free(sk.tmp_c);  free(sk.tmp_v)
+  free(sk)
+}
