@@ -470,9 +470,20 @@ function block() -> Node {
 # unless the specific rule already set one. The line drives --coverage and the
 # panic/expect file:line messages.
 function stmt() -> Node {
+  var aok = false
+  if is_op("@") and (toks[pi + 1].text == "alloc_ok") {   # 25.2: @alloc_ok("why") before one statement
+    pi += 2
+    eat_op("(")
+    let why = expr()
+    if why.kind != E_STR or len(why.s) == 0 { perr("@alloc_ok needs its reason: @alloc_ok(\"a memo miss, bounded by MM_CAP\")") }
+    eat_op(")")
+    skipnl()
+    aok = true
+  }
   let ln = toks[pi].line
   let n = stmt_body()
   if n.line == 0 { n.line = ln }
+  if aok { push(g_aok_nodes, n) }
   return n
 }
 
@@ -925,7 +936,6 @@ function parse_one_decl() -> void {
   var esys_phase: pointer = null
   var ns_name: pointer = null               # @Namespace(Name) — a package-provided Foo.* namespace (#62)
   var is_det = false                    # @deterministic — no floating point inside (emit_float.ludic)
-  var is_aok = false                    # @alloc_ok("why") — not counted by 25.2's frame allocations
   while is_op("@") {
     pi += 1; let a = eat_id()             # collect a leading @annotation
     if a == "export" { is_export = true }
@@ -959,7 +969,7 @@ function parse_one_decl() -> void {
       let why = expr()
       if why.kind != E_STR or len(why.s) == 0 { perr("@alloc_ok needs its reason: @alloc_ok(\"a memo miss, bounded by MM_CAP\")") }
       eat_op(")")
-      is_aok = true
+      g_aok_pending = true                         # a global: `export` parses the declaration one call down
     }
     else if a == "ClearColor" {                    # @ClearColor(colour) — Render auto-clear + auto-present (#86)
       eat_op("(")
@@ -1032,7 +1042,7 @@ function parse_one_decl() -> void {
   if is_id("handler") {
     let h = parse_system()
     if is_det { push(g_det_names, h.s) }
-    if is_aok { push(g_alloc_ok_names, h.s) }
+    if g_aok_pending { push(g_alloc_ok_names, h.s);  g_aok_pending = false }
     if (role != null) { if (role == "server") { h.ival = 1 } else { h.ival = 2 } }      # N5: @Server=1 / @Predicted=2
     if (on_event != null) { register_onlisten(on_event, h.a); return }                 # @On(Event) listener
     if (onspawn_model != null) {
@@ -1103,7 +1113,7 @@ function parse_one_decl() -> void {
     let f = parse_fn()
     if is_unsafe { f.uns = 1 }
     if is_det { push(g_det_names, f.s) }
-    if is_aok { push(g_alloc_ok_names, f.s) }
+    if g_aok_pending { push(g_alloc_ok_names, f.s);  g_aok_pending = false }
     if is_export { f.ival = 1 }
     if (sys_phase != null) { push(g_mod_sys_fn, f.s);  push(g_mod_sys_phase, sys_phase) }   # #64: register at load
     if (esys_comp != null) { push(g_esys_comp, esys_comp);  push(g_esys_fn, f.s);  push(g_esys_phase, esys_phase) }   # #62: package engine system

@@ -34,10 +34,13 @@ function emit_fn(d: Node) -> void {
   }
   let declared = fr_alloc_ok(d.s)                # 25.1: what an @alloc_ok function makes, callees too, is declared
   if declared { emit("  %decl.in = atomicrmw add ptr @lp_fdecl, i32 1 monotonic\n") }
+  let keeps = fr_has_aok(d.a)                    # a statement under @alloc_ok: a return inside it restores the depth
+  if keeps { emit("  %decl.keep = load i32, ptr @lp_fdecl\n") }
   emit_block(d.a)
   if not (rl == "void") and not block_ends(d.a) { perr(`function '{d.s}' can reach its end without returning a {ret_ty}`) }
   if not g_term { emit("  br label %ret\n") }
   emit("ret:\n")
+  if keeps { emit("  store i32 %decl.keep, ptr @lp_fdecl\n") }
   if declared { emit("  %decl.out = atomicrmw sub ptr @lp_fdecl, i32 1 monotonic\n") }
   if (rl == "void") { emit("  ret void\n") }
   else { let r = emit_bind(`load {rl}, ptr %retval`);  emit("  ret ");  emit(rl);  emit(" ");  emit(r);  emit("\n") }

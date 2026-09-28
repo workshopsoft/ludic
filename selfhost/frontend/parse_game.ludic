@@ -9,8 +9,10 @@ function parse_component() -> Node {
   while true { skipnl(); if is_op("}") { break }
     var is_computed = false
     var is_sync = false                              # @Sync — this field replicates (NETWORKING N2)
-    if is_op("@") { pi += 1; let ann = eat_id(); if ann == "Computed" { is_computed = true } else if ann == "Sync" { is_sync = true }; skipnl() }
+    var is_frame = false                             # @frame — a fn stored here runs every frame (25.2)
+    if is_op("@") { pi += 1; let ann = eat_id(); if ann == "Computed" { is_computed = true } else if ann == "Sync" { is_sync = true } else if ann == "frame" { is_frame = true }; skipnl() }
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
+    if is_frame { push(g_frame_fields, f.s) }
     if is_op("=") { pi += 1; f.a = expr() }
     if is_sync { f.ival = 1 }                         # mark the field replicable (read by emit_net)
     if is_computed { register_computed(n.s, f.s, f.ty, f.a) }   # derived: no storage

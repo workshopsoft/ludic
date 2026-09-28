@@ -7,6 +7,26 @@
 
 var g_alloc_ok_names: []pointer = new []pointer    # functions and handlers under @alloc_ok("why")
 var g_frame_fields: []pointer = new []pointer      # record fields declared `@frame`
+var g_aok_nodes: []Node = new []Node               # statements under @alloc_ok("why")
+var g_aok_pending: bool = false                    # @alloc_ok read, its function or handler not yet
+
+function fr_aok_stmt(n: Node) -> bool {
+  var i = 0
+  while i < len(g_aok_nodes) { if g_aok_nodes[i] == n { return true };  i += 1 }
+  return false
+}
+
+# does this body hold a statement under @alloc_ok? (its function then keeps the scope's depth)
+function fr_has_aok(n: Node) -> bool {
+  if n == null or len(g_aok_nodes) == 0 { return false }
+  if fr_aok_stmt(n) { return true }
+  if fr_has_aok(n.a) or fr_has_aok(n.b) or fr_has_aok(n.c) { return true }
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) { if fr_has_aok(n.kids[i]) { return true };  i += 1 }
+  }
+  return false
+}
 var g_fr_root: []bool = new []bool
 var g_fr_from: []int = new []int                   # the node a reached one was first reached from
 
@@ -76,6 +96,7 @@ function fr_alloc_kind(n: Node, text_above: bool) -> pointer {
 # the allocating constructs in one declaration, each a falloc line with its chain
 function fr_allocs(f: pointer, n: Node, k: int, text_above: bool) -> int {
   if n == null { return 0 }
+  if fr_aok_stmt(n) { return 0 }
   var found = 0
   let kind = fr_alloc_kind(n, text_above)
   if kind != null {

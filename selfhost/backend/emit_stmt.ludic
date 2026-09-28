@@ -356,6 +356,24 @@ function emit_emit(st: Node) -> Val {
 }
 
 function emit_stmt(st: Node) -> void {
+  if fr_aok_stmt(st) {                              # 25.1: @alloc_ok("why") on this statement: its allocations are declared
+    emit("  %decl.s")
+    emit(itoa(ll_t))
+    emit(" = atomicrmw add ptr @lp_fdecl, i32 1 monotonic\n")
+    ll_t += 1
+    emit_stmt_body(st)
+    if not g_term {
+      emit("  %decl.e")
+      emit(itoa(ll_t))
+      emit(" = atomicrmw sub ptr @lp_fdecl, i32 1 monotonic\n")
+      ll_t += 1
+    }
+    return
+  }
+  emit_stmt_body(st)
+}
+
+function emit_stmt_body(st: Node) -> void {
   g_err_file = st.file;  g_err_line = st.line      # so a lowering error names its statement
   emit_cov_hit(st.line)                            # --coverage: bump this line's hit counter (no-op otherwise)
   if st.kind == S_LET {
