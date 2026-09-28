@@ -71,8 +71,9 @@ export function minimap_pin(minimap_st: MinimapState, i: int) -> MinimapPin {
 }
 
 # the nearest n marks within `within` of (x, z), nearest first, leaving out the followed one
-export function minimap_pins_near(minimap_st: MinimapState, x: float, z: float, n: int, within: float) -> []int {
-  let out = new []int
+export function minimap_pins_near(minimap_st: mut MinimapState, x: float, z: float, n: int, within: float) -> []int {
+  let out = minimap_st.mm_near
+  List.clear(out)
   for k in 0 .. n {
     var best = -1
     var bd = within * within
