@@ -3,6 +3,7 @@
 
 # n random bytes as hex. Crypto.random_hex reads /dev/urandom, which Windows lacks (zeros there),
 # so it is mixed with the clock and the process and hashed: distinct per start everywhere
+@alloc_ok("the player id: once a start, and never again once written")
 export function telemetry_random_hex(telemetry_st: mut TelemetryState, n: int) -> string {
   telemetry_st.telemetry__rand_n += 1
   let seed = Crypto.random_hex(n) + "|" + `{Time.now()}|{Crypto.random_u32()}|{Os.pid()}|{telemetry_st.telemetry__rand_n}`
@@ -23,8 +24,10 @@ export function telemetry_set_id(telemetry_st: mut TelemetryState, id: string) -
   telemetry__fact(telemetry_st, TELEMETRY_ID, 0, 0, 0)
 }
 
+@alloc_ok("the player id: once a start")
 function telemetry__random_id(telemetry_st: mut TelemetryState) -> void { telemetry_set_id(telemetry_st, "r-" + telemetry_random_hex(telemetry_st, 16)) }
 
+@alloc_ok("the player id: once a start")
 function telemetry__from_machine(telemetry_st: mut TelemetryState, raw: string) -> void {
   let salt = telemetry__conf(telemetry_st).id_salt
   telemetry_set_id(telemetry_st, "m-" + Crypto.sha256(salt + ":" + Text.lower(raw))[0..32])

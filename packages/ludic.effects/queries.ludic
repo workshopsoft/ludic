@@ -48,6 +48,7 @@ export function effects_live(effects_st: EffectsState) -> []int {
 export function effects_live_into(effects_st: EffectsState, out: []int) -> void {
   List.clear(out)
   let all = ef_all(effects_st)
+  @alloc_ok("into the caller's kept list, at most the ring's size")
   for i in 0 .. len(all) { if ef_live(all[i]) { push(out, i) } }
 }
 

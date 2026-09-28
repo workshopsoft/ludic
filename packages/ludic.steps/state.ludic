@@ -63,6 +63,7 @@ export function steps_facts(steps_st: StepsState) -> Queue<StepsFact> {
   return steps_st.steps__facts
 }
 
+@alloc_ok("a step's fact: once, when a step or a chapter is met")
 function steps__fact(steps_st: StepsState, what: int, ch: int, i: int) -> void {
   var f = q_rec(steps_facts(steps_st))
   if f == null {

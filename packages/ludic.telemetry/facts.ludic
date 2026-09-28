@@ -10,7 +10,9 @@ function telemetry__fact_record(telemetry_st: mut TelemetryState) -> TelemetryFa
     telemetry_st.telemetry__fnext[0] += 1
     return f
   }
+  @alloc_ok("the fact pool grows to the most facts in flight at once")
   let f = new TelemetryFact
+  @alloc_ok("the fact pool grows to the most facts in flight at once")
   push(telemetry_st.telemetry__fpool, f)
   return f
 }

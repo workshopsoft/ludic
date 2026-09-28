@@ -8,6 +8,7 @@ export function steps_config(steps_st: mut StepsState, players: int) -> void {
   steps_st.steps__col = null
 }
 
+@alloc_ok("the party's columns: once a chapter, and when the party changes")
 function steps__party_clear(steps_st: mut StepsState) -> void {
   steps_st.steps__col = new []int
   for i in 0 .. steps_st.steps__players * STEPS_PER_CHAPTER { push(steps_st.steps__col, 0) }
@@ -36,6 +37,7 @@ function steps__share(steps_st: StepsState, p: int, i: int) -> int {
 # the same into a list the caller keeps (a guest checks its shares every tick)
 export function steps_my_shares_into(steps_st: StepsState, out: []int) -> void {
   List.clear(out)
+  @alloc_ok("into the caller's kept list, at most STEPS_PER_CHAPTER")
   for i in 0 .. STEPS_PER_CHAPTER { push(out, steps__share(steps_st, 0, i)) }
 }
 
