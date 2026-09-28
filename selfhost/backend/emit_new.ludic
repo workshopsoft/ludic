@@ -23,14 +23,16 @@ function rec_field(rec: Node, fname: pointer) -> Node {
 # `new T` / `new T { field: value, ... }` — allocate a record and seed each
 # field: a value from the override record if given, else the field's declared
 # default. `rec` is the E_REC of overrides (or null for the bare `new T`).
-function emit_new_struct(name: pointer, rec: Node) -> Val {
+# `into`: a record to fill in place of a fresh one (a dispatch's, kept by the action queue)
+function emit_new_struct(name: pointer, rec: Node, into: Node) -> Val {
   let s = layout_node(name)                     # a struct or a property — same shape
   if (s == null) and port_find(name) >= 0 { perr(`{name} is a port: it is filled once with 'bind {name} {{ ... }}' where the program is put together, not made with new`) }
   if (s == null) { perr(`unknown record type {name} in new`) }
   vis_check(s, name)
   let lty = layout_ty(name)
   let sz = emit_sizeof(lty)
-  let obj = emit_bind(`call ptr @malloc(i64 {sz})`)
+  var obj = ""
+  if into != null { obj = emit_expr(into).code } else { obj = emit_bind(`call ptr @malloc(i64 {sz})`) }
   var f = 0
   while f < len(s.kids) {
     let fd = s.kids[f]

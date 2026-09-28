@@ -11,6 +11,15 @@ program ActionsTest {
   reducer Door on Knock(d: mut Door, a: Knock) {
     if a.times >= 2 { d.open = true }
   }
+  state Tally {
+    sum: int = 0
+    words: string = ""
+  }
+  action Note { n: int = 7, word: string = "hi" }
+  reducer Tally on Note(t: mut Tally, a: Note) {
+    t.sum = t.sum + a.n
+    t.words = t.words + a.word
+  }
   function input_tick(t: Tick) -> void { dispatch Knock { times: 2 } }
   function sim_tick(d: mut Door, t: Tick) -> void {
     if d.open { d.seen = d.seen + "o" } else { d.seen = d.seen + "c" }
@@ -26,5 +35,17 @@ program ActionsTest {
     core_tick_all(b, tick_new(0.016, 1, 0.0))
     expect(d.open)
     expect_eq(d.seen, "o")
+  }
+  test "a dispatched record is kept and filled again: what a dispatch leaves out is its default, not the last one's" (t: Tally) {
+    dispatch Note { n: 1, word: "a" }
+    dispatch Note { n: 2, word: "b" }
+    drain_actions()
+    expect_eq(t.sum, 3)
+    dispatch Note { }
+    dispatch Note { word: "c" }
+    dispatch Note { n: 5 }
+    drain_actions()
+    expect_eq(t.sum, 3 + 7 + 7 + 5)
+    expect_eq(t.words, "abhichi")
   }
 }
