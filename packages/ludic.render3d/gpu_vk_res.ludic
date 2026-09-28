@@ -57,6 +57,14 @@ function gvk_channel_bytes(ifmt: int) -> int {
 # renderer asks for mipmaps after the upload; an image made without pixels is a target and gets
 # one level. Every level sits in SHADER_READ_ONLY_OPTIMAL between uses.
 
+# a texture freed for good: its image goes, and its id is handed out again by gvk_tex_new - once, and
+# only if it held an image, so a texture freed twice cannot give two new ones the same id
+function gvk_tex_give_back(render3d_st: mut Render3dState, tex: int) -> void {
+  if tex <= 0 or tex >= len(render3d_st.gvk_tex_image) or render3d_st.gvk_tex_image[tex] == 0 { return }
+  gvk_tex_release(render3d_st, tex)
+  if render3d_st.gvk_tex_spare == null { render3d_st.gvk_tex_spare = new []int }
+  push(render3d_st.gvk_tex_spare, tex)
+}
 function gvk_tex_new(render3d_st: mut Render3dState) -> int {
   let zero: long = 0
   if render3d_st.gvk_tex_image == null {
@@ -72,6 +80,18 @@ function gvk_tex_new(render3d_st: mut Render3dState) -> int {
     # handle 0 is "no texture", as it is on OpenGL
     push(render3d_st.gvk_tex_image, zero);  push(render3d_st.gvk_tex_view, zero);  push(render3d_st.gvk_tex_mem, zero)
     push(render3d_st.gvk_tex_levels, 0);  push(render3d_st.gvk_tex_layers, 0);  push(render3d_st.gvk_tex_vkfmt, 0)
+  }
+  # an id a freed texture gave back first: its generation goes on counting, so every cache keyed by
+  # (id, generation) - views, sets, samplers - tells the new texture from the old
+  if render3d_st.gvk_tex_spare != null and len(render3d_st.gvk_tex_spare) > 0 {
+    let sp = render3d_st.gvk_tex_spare
+    let t = sp[len(sp) - 1]
+    List.pop(sp)
+    render3d_st.gvk_tex_image[t] = zero;  render3d_st.gvk_tex_view[t] = zero;  render3d_st.gvk_tex_mem[t] = zero
+    render3d_st.gvk_tex_levels[t] = 0;  render3d_st.gvk_tex_layers[t] = 0;  render3d_st.gvk_tex_vkfmt[t] = 0
+    render3d_st.gvk_tex_dims_w[t] = 0;  render3d_st.gvk_tex_dims_h[t] = 0;  render3d_st.gvk_tex_glfmt[t] = 0;  render3d_st.gvk_tex_array[t] = 0
+    render3d_st.gvk_tex_smp_sig[t] = 0;  render3d_st.gvk_tex_smp[t] = zero;  render3d_st.gvk_tex_samples[t] = 0
+    return t
   }
   push(render3d_st.gvk_tex_image, zero);  push(render3d_st.gvk_tex_view, zero);  push(render3d_st.gvk_tex_mem, zero)
   push(render3d_st.gvk_tex_levels, 0);  push(render3d_st.gvk_tex_layers, 0);  push(render3d_st.gvk_tex_vkfmt, 0)
@@ -605,8 +625,27 @@ function gvk_buf_new(render3d_st: mut Render3dState) -> int {
     # handle 0 is "no buffer", as it is on OpenGL
     push(render3d_st.gvk_buf, zero);  push(render3d_st.gvk_buf_mem, zero);  push(render3d_st.gvk_buf_size, 0);  push(render3d_st.gvk_buf_map, null);  push(render3d_st.gvk_buf_used, 0)
   }
+  # a handle a deleted buffer gave back first (gvk_buf_delete)
+  if render3d_st.gvk_buf_spare != null and len(render3d_st.gvk_buf_spare) > 0 {
+    let sp = render3d_st.gvk_buf_spare
+    let b = sp[len(sp) - 1]
+    List.pop(sp)
+    return b
+  }
   push(render3d_st.gvk_buf, zero);  push(render3d_st.gvk_buf_mem, zero);  push(render3d_st.gvk_buf_size, 0);  push(render3d_st.gvk_buf_map, null);  push(render3d_st.gvk_buf_used, 0)
   return len(render3d_st.gvk_buf) - 1
+}
+
+# a buffer done with for good (a mesh freed): its storage goes, and its handle is handed out again
+# by gvk_buf_new. gvk_buf_release alone keeps the handle, for a caller that fills it again.
+function gvk_buf_delete(render3d_st: mut Render3dState, b: int) -> void {
+  if b <= 0 or b >= len(render3d_st.gvk_buf) { return }
+  gvk_buf_release(render3d_st, b)
+  if render3d_st.gvk_buf_gpu != null and b < len(render3d_st.gvk_buf_gpu) { render3d_st.gvk_buf_gpu[b] = 0 }
+  if render3d_st.gvk_buf_spare == null { render3d_st.gvk_buf_spare = new []int }
+  let sp = render3d_st.gvk_buf_spare
+  for i in 0 .. len(sp) { if sp[i] == b { return } }
+  push(sp, b)
 }
 
 function gvk_buf_release(render3d_st: mut Render3dState, b: int) -> void {

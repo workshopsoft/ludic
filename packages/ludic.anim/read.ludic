@@ -86,6 +86,7 @@ function read_one(anim_st: AnimState, render3d_st: mut Render3dState, a: Val) ->
     c.ckeys[k] = nk
     c.coff[k] = at
     for i in 0 .. nk { c.times[at + i] = tb[i] }
+    free(tb)
     if nk > 0 and c.times[at + nk - 1] > c.dur { c.dur = c.times[at + nk - 1] }
     at += nk
     let vb = gltf_accessor_floats(render3d_st, value_as_int(value_get(sp, "output")))
@@ -93,6 +94,7 @@ function read_one(anim_st: AnimState, render3d_st: mut Render3dState, a: Val) ->
     if c.cpath[k] == AC_ROT { comps = 4 }
     c.cvoff[k] = av
     for i in 0 .. nk * comps { c.vals[av + i] = vb[i] }
+    free(vb)
     av += nk * comps
     k += 1
   }

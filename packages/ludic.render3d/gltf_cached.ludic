@@ -2,7 +2,7 @@
 # model the first load made, found by comparing the names in place, so asking allocates nothing. For
 # props a game places while it plays (a fish, a sign an animal leaves); a model whose document is
 # read after the load (ludic.anim's clips) still goes through gltf_load. A model loaded here is shared
-# by every actor drawing it, and is never released.
+# by every actor drawing it; model_release takes it out of the cache as it lets it go.
 export function gltf_cached(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
   if render3d_st.gltf_kept == null {
     render3d_st.gltf_kept = new []Model
@@ -19,6 +19,23 @@ export function gltf_cached(render3d_st: mut Render3dState, dir: string, file: s
   push(render3d_st.gltf_kept_file, file)
   push(render3d_st.gltf_kept_node, node_name)
   return m
+}
+
+# a model let go (model_release) leaves the cache, so the next ask loads it afresh
+function gltf_cached_forget(render3d_st: mut Render3dState, m: Model) -> void {
+  if render3d_st.gltf_kept == null { return }
+  let kept = render3d_st.gltf_kept
+  let dirs = render3d_st.gltf_kept_dir
+  let files = render3d_st.gltf_kept_file
+  let nodes = render3d_st.gltf_kept_node
+  for i in 0 .. len(kept) {
+    if kept[i] == m {
+      let last = len(kept) - 1
+      kept[i] = kept[last];  dirs[i] = dirs[last];  files[i] = files[last];  nodes[i] = nodes[last]
+      List.pop(kept);  List.pop(dirs);  List.pop(files);  List.pop(nodes)
+      return
+    }
+  }
 }
 
 export function gltf_cached_count(render3d_st: Render3dState) -> int {

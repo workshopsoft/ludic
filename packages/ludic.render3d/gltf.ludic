@@ -45,7 +45,9 @@ function gltf_mat_find(render3d_st: Render3dState, name: string) -> int {
 function gltf_mat_remember(render3d_st: mut Render3dState, name: string, diff: int, nrm: int, arm: int) -> void {
   if render3d_st.gltf_mat_names == null { render3d_st.gltf_mat_names = new []string;  render3d_st.gltf_mat_diff = words(256);  render3d_st.gltf_mat_nrm = words(256);  render3d_st.gltf_mat_arm = words(256) }
   if gltf_mat_find(render3d_st, name) >= 0 or render3d_st.gltf_mat_n >= 256 { return }
-  push(render3d_st.gltf_mat_names, name);  render3d_st.gltf_mat_diff[render3d_st.gltf_mat_n] = diff;  render3d_st.gltf_mat_nrm[render3d_st.gltf_mat_n] = nrm;  render3d_st.gltf_mat_arm[render3d_st.gltf_mat_n] = arm
+  # its own copy of the name: a primitive frees its own with it (model_release)
+  push(render3d_st.gltf_mat_names, name[0 .. len(name)])
+  render3d_st.gltf_mat_diff[render3d_st.gltf_mat_n] = diff;  render3d_st.gltf_mat_nrm[render3d_st.gltf_mat_n] = nrm;  render3d_st.gltf_mat_arm[render3d_st.gltf_mat_n] = arm
   render3d_st.gltf_mat_n += 1
 }
 
@@ -53,14 +55,23 @@ function gltf_texture(render3d_st: mut Render3dState, uri: string, srgb: bool) -
   if render3d_st.gltf_tex_paths == null { render3d_st.gltf_tex_paths = new []pointer;  render3d_st.gltf_tex_ids = words(256);  render3d_st.gltf_tex_refs = words(256) }
   var png: string = uri
   let n = len(uri)
-  if n > 4 and uri[n - 4] == '.' and uri[n - 3] == 'j' { png = uri[0 .. n - 4] + ".png" }
+  var made = false
+  if n > 4 and uri[n - 4] == '.' and uri[n - 3] == 'j' { png = uri[0 .. n - 4] + ".png";  made = true }
   let path = render3d_st.gltf_dir + "/" + png
+  if made { free(png) }
   var i = 0
-  while i < render3d_st.gltf_tex_n { if render3d_st.gltf_tex_paths[i] == path { render3d_st.gltf_tex_refs[i] += 1;  return render3d_st.gltf_tex_ids[i] };  i += 1 }
+  while i < render3d_st.gltf_tex_n {
+    if render3d_st.gltf_tex_paths[i] == path {
+      free(path)                                   # the cache holds its own
+      render3d_st.gltf_tex_refs[i] += 1
+      return render3d_st.gltf_tex_ids[i]
+    }
+    i += 1
+  }
   var dil = 0
   if render3d_st.gltf_cutout { dil = 24 }
   let id = tex_load_ex(render3d_st, path, srgb, dil)
-  if render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, path);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_refs[render3d_st.gltf_tex_n] = 1;  render3d_st.gltf_tex_n += 1 }
+  if render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, path);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_refs[render3d_st.gltf_tex_n] = 1;  render3d_st.gltf_tex_n += 1 } else { free(path) }
   return id
 }
 
@@ -165,7 +176,9 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
 # Load the mesh of the node called `node_name` from dir/file.
 function gltf_load(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
   render3d_st.gltf_dir = dir
-  let text = Fs.read_text(dir + "/" + file)
+  let at = dir + "/" + file
+  let text = Fs.read_text(at)
+  free(at)
   if text == null { print(`gltf: cannot read {dir}/{file}`);  return null }
   # the last file's tree goes first (it is read only until the next load: ludic.anim's read.ludic),
   # and the text once parsed - nothing gives memory back on its own (plan 23 of maroon-lake)
@@ -174,7 +187,9 @@ function gltf_load(render3d_st: mut Render3dState, dir: string, file: string, no
   free(text)
   let buffers = value_get(render3d_st.gltf_doc, "buffers")
   let bin_uri = value_as_str(value_get(value_at(buffers, 0), "uri"))
-  render3d_st.gltf_bin = file_open(dir + "/" + bin_uri, "rb")
+  let bin_at = dir + "/" + bin_uri
+  render3d_st.gltf_bin = file_open(bin_at, "rb")
+  free(bin_at)
   if render3d_st.gltf_bin == null { print(`gltf: cannot open {bin_uri}`);  return null }
   let nodes = value_get(render3d_st.gltf_doc, "nodes")
   var mesh_idx = -1
