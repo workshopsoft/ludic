@@ -1,0 +1,51 @@
+# text_test.ludic - text written into a kept buffer, and interned: one string per distinct text
+import "ludic.base"
+program TextTest {
+  numbers float
+  test "a buffer takes text, numbers and a pattern, and cuts at its end rather than past it" {
+    let sb = sb_new(64)
+    sb_add(sb, "day ")
+    sb_int(sb, 42)
+    sb_add(sb, " at ")
+    sb_int2(sb, 7)
+    sb_byte(sb, 58)
+    sb_int2(sb, 5)
+    let tb = strs_new(16)
+    expect_eq(sb_intern(sb, tb), "day 42 at 07:05")
+    sb_clear(sb)
+    sb_int(sb, -310)
+    sb_add(sb, " ")
+    sb_int(sb, 0)
+    expect_eq(sb_intern(sb, tb), "-310 0")
+    sb_clear(sb)
+    sb_pat(sb, "[{1}] {2}: {3} minutes - room for {4} more", "E", "Trout", "4", "2")
+    expect_eq(sb_intern(sb, tb), "[E] Trout: 4 minutes - room for 2 more")
+    let small = sb_new(16)
+    sb_add(small, "a line longer than its buffer")
+    expect_eq(sb_len(small), 16)
+  }
+  test "the same bytes intern to the one string, made once; past the cap a plain copy" {
+    let sb = sb_new(32)
+    let tb = strs_new(3)
+    sb_add(sb, "08:03")
+    let a = sb_intern(sb, tb)
+    sb_clear(sb)
+    sb_add(sb, "08:0")
+    sb_int(sb, 3)
+    let b = sb_intern(sb, tb)
+    expect_eq(strs_count(tb), 1)
+    let ap: pointer = a
+    let bp: pointer = b
+    expect(ap == bp)
+    for i in 0 .. 5 {
+      sb_clear(sb)
+      sb_int(sb, i)
+      expect_eq(sb_intern(sb, tb), string(i))
+    }
+    expect_eq(strs_count(tb), 3)
+    sb_clear(sb)
+    sb_add(sb, "08:03")
+    let c: pointer = sb_intern(sb, tb)
+    expect(c == ap)
+  }
+}

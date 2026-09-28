@@ -4,6 +4,8 @@ module ludic_base uses
 numbers float
 import "tick.ludic"
 import "queue.ludic"
+import "text_buf.ludic"
+import "text_intern.ludic"
 import "rng.ludic"
 import "save.ludic"
 import "save_fields.ludic"
