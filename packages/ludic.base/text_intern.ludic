@@ -1,0 +1,52 @@
+# text_intern.ludic - a kept buffer's bytes as ONE string per distinct text: looked up by content
+# (FNV-1a, compared in place), copied out only the first time. Every string handed on is the
+# table's and never changes, so a memo keyed on it stays right; past `most` texts a plain copy
+export property StrTable {
+  hs: words = null                    # open addressing: each slot's hash, and its entry + 1
+  at: words = null
+  ss: []string = new []string
+  most: int = 8192
+}
+
+export function strs_new(most: int) -> StrTable {
+  let tb = new StrTable
+  tb.most = Math.max(most, 1)
+  var cap = 16
+  while cap < tb.most * 2 { cap = cap * 2 }
+  tb.hs = words(cap)
+  tb.at = words(cap)
+  return tb
+}
+
+export function strs_count(tb: StrTable) -> int { return len(tb.ss) }
+
+function sb_hash(sb: StrBuf) -> int {
+  var h = -2128831035
+  for i in 0 .. sb.n { h = (h ^ sb.b[i]) * 16777619 }
+  return h
+}
+
+function sb_same(sb: StrBuf, s: string) -> bool {
+  let sp: string = s
+  if len(sp) != sb.n { return false }
+  for i in 0 .. sb.n { if sp[i] != sb.b[i] { return false } }
+  return true
+}
+
+# the table's string for the buffer's bytes
+export function sb_intern(sb: StrBuf, tb: StrTable) -> string {
+  let h = sb_hash(sb)
+  let mask = len(tb.hs) - 1
+  var slot = h & mask
+  while tb.at[slot] != 0 {
+    let e = tb.at[slot] - 1
+    if tb.hs[slot] == h and sb_same(sb, tb.ss[e]) { return tb.ss[e] }
+    slot = (slot + 1) & mask
+  }
+  let s = text_of(sb.b, sb.n)
+  if len(tb.ss) >= tb.most { return s }
+  push(tb.ss, s)
+  tb.hs[slot] = h
+  tb.at[slot] = len(tb.ss)
+  return s
+}

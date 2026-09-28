@@ -1,0 +1,66 @@
+# text_buf.ludic - text written into a kept buffer: Ludic frees nothing, so a line built every
+# frame (a clock, a countdown) is written here and interned (text_intern.ludic), never allocated
+export property StrBuf {
+  b: []byte = null
+  n: int = 0
+}
+
+export function sb_new(cap: int) -> StrBuf {
+  let sb = new StrBuf
+  sb.b = buffer(Math.max(cap, 16))
+  return sb
+}
+
+export function sb_clear(sb: StrBuf) -> void { sb.n = 0 }
+export function sb_len(sb: StrBuf) -> int { return sb.n }
+
+# a byte, dropped past the buffer's end: a line cut short, never a write out of it
+export function sb_byte(sb: StrBuf, c: int) -> void {
+  if sb.n >= len(sb.b) { return }
+  sb.b[sb.n] = c
+  sb.n += 1
+}
+
+export function sb_add(sb: StrBuf, s: string) -> void {
+  if s == null { return }
+  let sp: string = s
+  for i in 0 .. len(sp) { sb_byte(sb, sp[i]) }
+}
+
+# a whole number in decimal, a minus sign first
+export function sb_int(sb: StrBuf, v: int) -> void {
+  var x = v
+  if x < 0 {
+    sb_byte(sb, 45)
+    x = 0 - x
+  }
+  var d = 1
+  while d <= x / 10 { d = d * 10 }
+  while d >= 1 {
+    sb_byte(sb, 48 + (x / d) % 10)
+    d = d / 10
+  }
+}
+
+# a two-digit number, a leading zero below ten (a clock's hour and minute)
+export function sb_int2(sb: StrBuf, v: int) -> void {
+  if v >= 0 and v < 10 { sb_byte(sb, 48) }
+  sb_int(sb, v)
+}
+
+# a pattern with numbered holes, "{1} of {2}", its holes filled from a..d in order. The pattern is
+# the message a translator sees, as a template literal's is, so it stays a literal at the call
+export function sb_pat(sb: StrBuf, pat: string, a: string, b: string, c: string, d: string) -> void {
+  let p: string = pat
+  var i = 0
+  while i < len(p) {
+    if p[i] == 123 and i + 2 < len(p) and p[i + 2] == 125 and p[i + 1] >= 49 and p[i + 1] <= 52 {
+      let k = p[i + 1] - 48
+      if k == 1 { sb_add(sb, a) } else if k == 2 { sb_add(sb, b) } else if k == 3 { sb_add(sb, c) } else { sb_add(sb, d) }
+      i += 3
+    } else {
+      sb_byte(sb, p[i])
+      i += 1
+    }
+  }
+}

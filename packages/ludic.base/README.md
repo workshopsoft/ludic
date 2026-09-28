@@ -178,6 +178,17 @@ program Game {
 
 Both are compiled and run by `tests/route_test.ludic` (the mechanics are `tests/toys/`).
 
+## Text without allocating: `StrBuf` and `StrTable`
+
+Ludic frees nothing, so a line built every frame - a clock, a countdown, a prompt - grows the
+program for as long as it runs. Write it into a kept `StrBuf` instead (`sb_clear`, `sb_add`,
+`sb_int`, `sb_int2`, `sb_byte`, and `sb_pat(sb, "{1} of {2}", a, b, c, d)`, whose pattern stays a
+literal at the call so a translator still finds it), then `sb_intern(sb, table)`: the `StrTable`
+hands back ONE string per distinct text, looked up by content and copied out only the first time
+those bytes are seen. What is handed on is the table's and never changes, so anything that keeps
+a string as a key stays right. Growth stops once each text has been seen (1440 clock minutes, the
+countdown's values); past `strs_new(most)` entries it falls back to a plain copy.
+
 ## Tests
 
 Each piece has a program under `tests/`, and `ludic test` runs them all, every test block in a
