@@ -135,7 +135,11 @@ function emit_len(e: Node) -> Val {
 
 function emit_push(e: Node) -> Val {
   let s = emit_expr(e.kids[0])
-  emit_push_into(s.code, llty(slice_elem(s.ty)), emit_expr(e.kids[1]))
+  let v = emit_expr(e.kids[1])
+  g_push_cap = fence_cap_of(e.kids[0])            # 25.5a: a list declared @max(n) says when it grows past n
+  let capname = g_push_capname
+  emit_push_into(s.code, llty(slice_elem(s.ty)), v)
+  g_push_capname = capname
   return val("0", "void")
 }
 
@@ -177,6 +181,17 @@ function emit_push_into(h: pointer, elt: pointer, v: Val) -> void {
   let grow = lbl("grow");  let put = lbl("put")
   emit("  br i1 ");  emit(full);  emit(", label %");  emit(grow);  emit(", label %");  emit(put);  emit("\n")
   emit(grow);  emit(":\n")
+  if g_push_cap > 0 {                              # 25.5a: growth past @max(n) is reported (R3D_ALLOC_FENCE=fail: exit 87)
+    let over = emit_bind(`icmp sge i32 {l}, {itoa(g_push_cap)}`)
+    let nm = emit_str_const(g_push_capname)
+    let sayl = lbl("capover");  let okl = lbl("capok")
+    emit(`  br i1 {over}, label %{sayl}, label %{okl}\n`)
+    emit(`{sayl}:\n`)
+    emit(`  call void @lp_cap_over(ptr {nm}, i32 {itoa(g_push_cap)}, i32 {l})\n`)
+    emit(`  br label %{okl}\n`)
+    emit(`{okl}:\n`)
+    g_push_cap = 0
+  }
   let dbl = emit_bind(`mul i32 {c}, 2`)
   let isz = emit_bind(`icmp eq i32 {c}, 0`)
   let nc = emit_bind(`select i1 {isz}, i32 8, i32 {dbl}`)

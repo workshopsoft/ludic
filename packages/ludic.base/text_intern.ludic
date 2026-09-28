@@ -45,7 +45,10 @@ export function sb_intern(sb: StrBuf, tb: StrTable) -> string {
     slot = (slot + 1) & mask
   }
   let s = text_of(sb.b, sb.n)
-  if len(tb.ss) >= tb.most { return s }
+  if len(tb.ss) >= tb.most {
+    Mem.over("a StrTable past its most (sb_intern)")   # 25.5a: a full table is a failure, not a copy per call
+    return s
+  }
   push(tb.ss, s)
   tb.hs[slot] = h
   tb.at[slot] = len(tb.ss)

@@ -75,7 +75,10 @@ function mm_find(m: UiMemo, tag: int, s: string) -> int {
 }
 # a new entry for (tag, s) with its results empty, or -1 when the table is full
 function mm_add(m: UiMemo, tag: int, s: string) -> int {
-  if len(m.keys) * 4 >= MM_CAP * 3 { return -1 }
+  if len(m.keys) * 4 >= MM_CAP * 3 {
+    Mem.over("ludic.ui's memo, three quarters of MM_CAP")   # 25.5a: past it every miss was made and lost
+    return -1
+  }
   var at = mm_hash(tag, s) & (MM_CAP - 1)
   while m.slots[at] != 0 { at = (at + 1) & (MM_CAP - 1) }
   push(m.keys, s)

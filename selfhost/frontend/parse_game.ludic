@@ -10,9 +10,23 @@ function parse_component() -> Node {
     var is_computed = false
     var is_sync = false                              # @Sync — this field replicates (NETWORKING N2)
     var is_frame = false                             # @frame — a fn stored here runs every frame (25.2)
-    if is_op("@") { pi += 1; let ann = eat_id(); if ann == "Computed" { is_computed = true } else if ann == "Sync" { is_sync = true } else if ann == "frame" { is_frame = true }; skipnl() }
+    var cap = 0                                      # @max(n) — this list never holds more than n (25.5a)
+    if is_op("@") {
+      pi += 1
+      let ann = eat_id()
+      if ann == "Computed" { is_computed = true } else if ann == "Sync" { is_sync = true } else if ann == "frame" { is_frame = true }
+      else if ann == "max" {
+        eat_op("(")
+        let ce = expr()
+        if ce.kind != E_INT or ce.ival <= 0 { perr("@max takes the most the list may hold: @max(64)") }
+        cap = ce.ival
+        eat_op(")")
+      }
+      skipnl()
+    }
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
     if is_frame { push(g_frame_fields, `{n.s}.{f.s}`) }
+    if cap > 0 { push(g_cap_keys, `{n.s}.{f.s}`);  push(g_cap_vals, cap) }
     if is_op("=") { pi += 1; f.a = expr() }
     if is_sync { f.ival = 1 }                         # mark the field replicable (read by emit_net)
     if is_computed { register_computed(n.s, f.s, f.ty, f.a) }   # derived: no storage
