@@ -1,0 +1,80 @@
+# chunks.ludic - the height field a chunk at a time (terrain_chunk_heights): 64 m chunks of 33 x 33
+# B-spline heights, each the (1 4 1) / 6 filter of the texels under it, their edges shared with their
+# neighbours bit for bit. Over a known surface written into the read-back. Prints CHUNKS OK.
+#
+#   bin/ludic build examples/rendering/chunks.ludic --headless && ./build/chunks_headless
+program Chunks {
+  numbers float
+  import "ludic.render3d/r3d.ludic"
+
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  function scene_draw(render3d_st: mut Render3dState) -> void { }
+  function scene_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void { }
+  function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
+
+  function check(what: string, cond: bool) -> bool {
+    if not cond { print(`chunks: FAILED - {what}`) }
+    return cond
+  }
+
+  handler Boot(render3d_st: mut Render3dState) phase Start {
+    spawn Anchor {}
+    r3d_on_draw(render3d_st, fn scene_draw)
+    r3d_on_casters(render3d_st, fn scene_draw_casters)
+    r3d_on_stream_fill(render3d_st, fn stream_fill)
+    render3d_st.TERRAIN_HALF = 1000
+    render3d_st.ter_smooth = true
+    render3d_st.r3d_sky_path = "packages/ludic.lab/plate/sky.hdr"
+    if not r3d_init(render3d_st, 320, 180, "Chunks") {
+      quit()
+      return
+    }
+    # a surface of its own in the read-back: what is tested is the chunking and the filter, not
+    # the ground's generation
+    for z in 0 .. TERRAIN_RES {
+      for x in 0 .. TERRAIN_RES {
+        render3d_st.ter_heights[z * TERRAIN_RES + x] = Math.sin(float(x) * 0.013) * 40.0 + Math.cos(float(z) * 0.021) * 25.0 + float((x * 7 + z * 13) % 11) * 0.1
+      }
+    }
+    var ok = true
+    let a = floats(33 * 33)
+    let b = floats(33 * 33)
+    let c = floats(33 * 33)
+    ok = check("a chunk reads", terrain_chunk_heights(render3d_st, 10, 12, 64.0, 33, a)) and ok
+    ok = check("its east neighbour reads", terrain_chunk_heights(render3d_st, 11, 12, 64.0, 33, b)) and ok
+    ok = check("its north neighbour reads", terrain_chunk_heights(render3d_st, 10, 13, 64.0, 33, c)) and ok
+    var east = true
+    var north = true
+    for k in 0 .. 33 {
+      if a[k * 33 + 32] != b[k * 33] { east = false }
+      if a[32 * 33 + k] != c[k] { north = false }
+    }
+    ok = check("the east edge is shared bit for bit", east) and ok
+    ok = check("the north edge is shared bit for bit", north) and ok
+    # sample (5, 7) of chunk (10, 12): the filter of the texels round the one under it, by hand
+    let texel = 2.0 * float(render3d_st.TERRAIN_HALF) / float(TERRAIN_RES)
+    let tx = int((10.0 * 64.0 + 5.0 * 2.0) / texel + 0.5)
+    let tz = int((12.0 * 64.0 + 7.0 * 2.0) / texel + 0.5)
+    let d = floats(33 * 33)
+    terrain_chunk_heights(render3d_st, 10, 12, 64.0, 33, d)
+    var want = 0.0
+    for dz in -1 .. 2 {
+      let r = (tz + dz) * TERRAIN_RES
+      let row = (render3d_st.ter_heights[r + tx - 1] + 4.0 * render3d_st.ter_heights[r + tx] + render3d_st.ter_heights[r + tx + 1]) / 6.0
+      if dz == 0 { want = want + 4.0 * row } else { want = want + row }
+    }
+    ok = check("a sample is the B-spline at its texel", d[7 * 33 + 5] == want / 6.0) and ok
+    var flat = true
+    for k in 1 .. 33 * 33 { if a[k] != a[0] { flat = false } }
+    ok = check("the ground has relief in it (the test reads something)", not flat) and ok
+    ok = check("too small a buffer is refused, not overrun", not terrain_chunk_heights(render3d_st, 0, 0, 64.0, 34, a)) and ok
+    if ok { print("CHUNKS OK") } else { print("CHUNKS FAILED") }
+    quit()
+  }
+
+  handler Present(render3d_st: mut Render3dState) phase Render {
+    r3d_present(render3d_st)
+  }
+}

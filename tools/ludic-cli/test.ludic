@@ -1054,6 +1054,7 @@ function cmd_dev_test() -> int {
   headless_case("rendering/ui_render3d", "ok", "ui_render3d.ludic (ludic.ui's render3d backend builds against the renderer)")
   headless_line_case("rendering/release", "RELEASE OK", "release.ludic (model_release: meshes go, a shared texture stays until its last user goes)")
   headless_line_case("rendering/bc", "BC OK", "bc.ludic (a .dds beside a .png arrives BC7-compressed with every mip level)")
+  headless_line_case("rendering/chunks", "CHUNKS OK", "chunks.ludic (the ground's B-spline heights a 64 m chunk at a time, edges shared bit for bit)")
   migrate_component_case()
   migrate_foreign_case()
   reject_case("rejected/runtime_type_clash", "PadButton is the runtime's enum", "a program's type named like one of the runtime's is refused")
