@@ -13,19 +13,30 @@ export function jobs_at(jobs_st: JobsState, group: int, vendor: int) -> []int {
 }
 
 # every job of a group taken at some point, done ones too
-export function jobs_taken(jobs_st: JobsState, group: int) -> []int {
-  let out = new []int
-  for i in 0 .. JOB_COUNT { if Jobs[i].group == group and jobs_state(jobs_st, i) != JOBS_OFFERED { push(out, i) } }
+export function jobs_taken(jobs_st: mut JobsState, group: int) -> []int {
+  let out = jobs_st.jobs__lists[group * 2]
+  List.clear(out)
+  for i in 0 .. JOB_COUNT {
+    @alloc_ok("a kept list, cleared each ask: grows once to the group's jobs")
+    if Jobs[i].group == group and jobs_state(jobs_st, i) != JOBS_OFFERED { push(out, i) }
+  }
   return out
 }
 
 # the first `most` of a group under way
-export function jobs_shown(jobs_st: JobsState, group: int, most: int) -> []int {
-  let out = new []int
+export function jobs_shown(jobs_st: mut JobsState, group: int, most: int) -> []int {
+  let out = jobs_st.jobs__lists[group * 2 + 1]
+  List.clear(out)
   for i in 0 .. JOB_COUNT {
     if len(out) >= most { break }
+    @alloc_ok("a kept list, cleared each ask: grows once to `most`")
     if Jobs[i].group == group and jobs_under_way(jobs_st, i) { push(out, i) }
   }
+  return out
+}
+function jobs__lists_new(n: int) -> [][]int {
+  let out = new [][]int
+  for i in 0 .. n { push(out, new []int) }
   return out
 }
 
