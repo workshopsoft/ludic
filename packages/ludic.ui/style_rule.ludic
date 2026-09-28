@@ -10,7 +10,10 @@ function lss_rule(f: UiFile, sels: string, body: string, err: []string) -> void 
       free(each[i])
     }
   }
-  unsafe { free(each) }
+  unsafe {
+    free(each)
+    free(decls)                        # the holder only: each rule keeps its keys and values lists
+  }
 }
 function lss_rule_add(f: UiFile, decls: UiRule, sel: string, err: []string) -> void {
   let r = new UiRule

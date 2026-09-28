@@ -322,8 +322,26 @@ function xml_parse(rt_xml_st: mut RtXmlState, s: pointer) -> Xml {
     if p.i >= p.n { break }
     if p.s[p.i] == '<' {                                   # '<'
       if xp_skip_misc(p) { }                              # prolog / comment / doctype
-      else { return xp_element(rt_xml_st, p) }
+      else {
+        let root = xp_element(rt_xml_st, p)
+        free(p)
+        return root
+      }
     } else { p.i += 1 }
   }
+  free(p)
   return xml_new("")
+}
+
+# the tree's records and lists given back once a reader has built what it keeps from it; its
+# strings (tags, text, names, values) are not, since what was built may hold them. Every element
+# is in its parent's `mixed`, with the runs of text
+function xml_free(n: Xml) -> void {
+  if n == null { return }
+  for i in 0 .. len(n.mixed) { xml_free(n.mixed[i]) }
+  free(n.akeys)
+  free(n.avals)
+  free(n.kids)
+  free(n.mixed)
+  free(n)
 }

@@ -62,6 +62,7 @@ function ex_parse(src: string, err: []string) -> UiExpr {
   rd_ws(r)
   if r.err == "" and r.i < len(r.s) { rd_fail(r, "the end") }
   if r.err != "" { push(err, r.err) }
+  unsafe { free(r) }                   # the reader only: what the expression keeps is copied out
   return e
 }
 # text with {holes}: a literal when it has none, the expression itself when it is one hole and

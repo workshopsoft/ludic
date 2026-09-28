@@ -39,7 +39,9 @@ function lib_read(ui_st: mut UiState, src: string, path: string) -> UiFile {
   let f = lib_new(ui_st, path)
   f.src = src
   tp_lines(ui_st, src)
-  let root = tpl_read(ui_st, Xml.parse(src), path)
+  let doc = Xml.parse(src)
+  let root = tpl_read(ui_st, doc, path)
+  Xml.free(doc)                        # the template keeps the tree's strings, never its nodes
   var tops = root.kids
   if root.tag != "ui" { tops = [root] }
   for i in 0 .. len(tops) { lib_top(ui_st, f, tops[i]) }

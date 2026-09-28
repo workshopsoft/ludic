@@ -40,7 +40,9 @@ function uc_load(ui_st: mut UiState, k: UiClass) -> void {
   if k.lss != "" { lss_text(ui_st, f, k.lss) }
   f.sheet = sheet_of(f)
   tp_lines(ui_st, k.xml)
-  let root = tpl_read(ui_st, Xml.parse(k.xml), k.xml_path)
+  let doc = Xml.parse(k.xml)
+  let root = tpl_read(ui_st, doc, k.xml_path)
+  Xml.free(doc)                        # the template keeps the tree's strings, never its nodes
   k.sheet = f.sheet
   lib_link(ui_st, f, root)
   k.root = root

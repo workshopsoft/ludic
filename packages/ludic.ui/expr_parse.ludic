@@ -48,10 +48,13 @@ function px_bin(op: string, a: UiExpr, b: UiExpr) -> UiExpr {
 }
 function px_cmp(r: UiRd) -> UiExpr {
   let a = px_sum(r)
-  let ops = ["==", "!=", "<=", ">=", "<", ">"]
-  for k in 0 .. len(ops) {
-    if rd_op(r, ops[k]) { return px_bin(ops[k], a, px_sum(r)) }
-  }
+  # literals, longest first: a list of them was made on every call
+  if rd_op(r, "==") { return px_bin("==", a, px_sum(r)) }
+  if rd_op(r, "!=") { return px_bin("!=", a, px_sum(r)) }
+  if rd_op(r, "<=") { return px_bin("<=", a, px_sum(r)) }
+  if rd_op(r, ">=") { return px_bin(">=", a, px_sum(r)) }
+  if rd_op(r, "<") { return px_bin("<", a, px_sum(r)) }
+  if rd_op(r, ">") { return px_bin(">", a, px_sum(r)) }
   return a
 }
 function px_sum(r: UiRd) -> UiExpr {

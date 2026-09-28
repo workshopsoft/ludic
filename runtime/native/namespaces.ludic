@@ -495,6 +495,7 @@ namespace Json {
 }
 namespace Xml {
   alias parse(text) = xml_parse
+  alias free(node) = xml_free          # the tree's records and lists; its strings are kept
   alias tag(node) = xml_tag
   alias text(node) = xml_text
   alias attr(node, key) = xml_attr

@@ -51,6 +51,8 @@ function sel_parse(src: string, err: []string) -> UiSel {
     comb = 0
   }
   if r.err != "" { push(err, r.err) }
+  unsafe { free(r) }                   # the reader only: every name read from it is a copy
+  @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   if cur == null { push(err, `"{src}" selects nothing`) }
   return cur
 }
