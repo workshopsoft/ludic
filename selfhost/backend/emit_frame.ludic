@@ -27,6 +27,27 @@ function fr_has_aok(n: Node) -> bool {
 var g_fr_root: []bool = new []bool
 var g_fr_from: []int = new []int                   # the node a reached one was first reached from
 
+function fr_capped(t: Node) -> bool {
+  if t == null or t.kind != E_MEMBER or t.s == null { return false }
+  let tail = `.{t.s}`
+  var i = 0
+  while i < len(g_cap_keys) {
+    let k = g_cap_keys[i]
+    if len(k) > len(tail) and (k[len(k) - len(tail) .. len(k)] == tail) { return true }
+    i += 1
+  }
+  return false
+}
+
+function fr_is_event_handler(name: pointer) -> bool {
+  var i = 0
+  while i + 4 <= len(name) {
+    if name[i] == '_' and name[i + 1] == 'o' and name[i + 2] == 'n' and name[i + 3] == '_' { return true }
+    i += 1
+  }
+  return false
+}
+
 function fr_phase_frame(ph: pointer) -> bool {
   return (ph == "Input") or (ph == "FixedUpdate") or (ph == "Update") or (ph == "LateUpdate") or (ph == "Render") or (ph == "Overlay")
 }
@@ -96,7 +117,11 @@ function fr_alloc_kind(n: Node, text_above: bool) -> pointer {
   if n.kind == E_BIN and (n.s == "+") and not text_above and fr_is_textish(n) { return "text" }
   if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and n.a.s != null {
     let c = n.a.s
-    if (c == "push") { return "grow" }
+    if (c == "push") {
+      # a push into a field declared @max(n) grows to n at most, and the fence fails the run past it
+      if len(n.kids) > 0 and fr_capped(n.kids[0]) { return null }
+      return "grow"
+    }
     if (c == "words") or (c == "floats") or (c == "doubles") or (c == "buffer") or (c == "bytes") or (c == "fixeds") or (c == "pointers") { return `{c}()` }
   }
   return null
@@ -150,8 +175,9 @@ function deps_frame(f: pointer) -> void {
   while i < len(prog) {
     let d = prog[i]
     if d.kind == N_SYS and d.s != null and fr_phase_frame(d.ty) { fr_mark_root(d.s) }
-    if d.kind == N_FN and d.s != null and str_starts(d.s, "ludic_reduce__") { fr_mark_root(d.s) }
-    if d.kind == N_FN and d.s != null and d.cm >= 0 { fr_mark_root(d.s) }   # a component's own: it runs while its page is open
+    # a component's own functions run while its page is open - but not its event handlers (`on click`),
+    # which run when the player does something; a reducer is reached from its action's dispatch
+    if d.kind == N_FN and d.s != null and d.cm >= 0 and not fr_is_event_handler(d.s) { fr_mark_root(d.s) }
     fr_find_roots(d)
     i += 1
   }

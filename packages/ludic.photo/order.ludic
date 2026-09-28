@@ -12,7 +12,7 @@ export function photo_sort_set(photo_st: mut PhotoState, s: int) -> void { photo
 
 # the roll in the chosen order: newest first, best first, or by subject
 export function photo_order(photo_st: mut PhotoState) -> []int {
-  photo_st.pht_order = new []int
+  List.clear(photo_st.pht_order)
   for i in 0 .. photo_st.pht_n { push(photo_st.pht_order, i) }
   if photo_st.pht_sort == PHOTO_NEWEST {
     for i in 0 .. photo_st.pht_n { photo_st.pht_order[i] = photo_st.pht_n - 1 - i }
@@ -39,13 +39,14 @@ export function photo_page_step(photo_st: mut PhotoState, d: int) -> void { phot
 
 # a page of the roll, in its order; the page is held inside the roll
 export function photo_page_list(photo_st: mut PhotoState) -> []int {
-  let out = new []int
+  let out = photo_st.pht_page_out
+  List.clear(out)
   if photo_st.pht_n == 0 { return out }
   let order = photo_order(photo_st)
   if photo_st.pht_page >= photo_pages(photo_st) { photo_st.pht_page = photo_pages(photo_st) - 1 }
   for k in 0 .. PHOTO_PAGE {
     let oi = photo_st.pht_page * PHOTO_PAGE + k
-    if oi < photo_st.pht_n { push(out, order[oi]) }
+    if oi < photo_st.pht_n { push(photo_st.pht_page_out, order[oi]) }
   }
   return out
 }

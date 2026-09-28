@@ -29,7 +29,8 @@ export property PhotoFact {
 export state PhotoState {
   pht_sort: int = 0
   pht_page: int = 0
-  pht_order: []int = null
+  @max(256) pht_order: []int = new []int      # the roll's order, refilled in place (a page asks it every frame)
+  @max(8) pht_page_out: []int = new []int     # a page of it, the same
   pht_max: int = 40
   pht_n: int = 0
   pht_day: []int = null
@@ -39,8 +40,8 @@ export state PhotoState {
   pht_sold: []int = null
   pht_grade: []int = null
   pht_why: []int = null
-  pht_tags: []string = null
-  pht_file: []string = null
+  @max(256) pht_tags: []string = null
+  @max(256) pht_file: []string = null
   pht_best: []int = null          # the best grade yet, per subject
   pht_species_shot: int = 0       # every subject ever photographed, sold or deleted
   pht_legend_shot: int = 0
@@ -63,6 +64,7 @@ export function photo_facts(photo_st: PhotoState) -> Queue<PhotoFact> {
   return photo_st.pht_fact_q
 }
 
+@alloc_ok("a photograph's fact: one per shot kept, sold or deleted")
 function pht_fact(photo_st: PhotoState, what: int, i: int) -> PhotoFact {
   var f = q_rec(photo_facts(photo_st))
   if f == null {
@@ -98,6 +100,7 @@ function pht_floats(n: int) -> []float {
 }
 
 # an empty roll of `max` frames
+@alloc_ok("a new roll: once a trip, and when the roll is emptied")
 function pht_blank(photo_st: mut PhotoState) -> void {
   photo_st.pht_n = 0
   photo_st.pht_day = pht_ints(photo_st.pht_max)
