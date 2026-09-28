@@ -13,7 +13,11 @@ program Steady {
 
   function scene_draw(render3d_st: mut Render3dState) -> void { actor_draw(render3d_st) }
   function scene_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void { }
-  function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
+  # a chunk of 20 to 51 instances, different for every cell
+  function stream_fill(render3d_st: mut Render3dState, s: Stream, cx: int, cz: int, band: int) -> void {
+    let n = 20 + ((cx * 7 + cz * 13 + band) & 31)
+    for i in 0 .. n { stream_emit(render3d_st, s, float(cx) * 32.0 + float(i), 0.0, float(cz) * 32.0, 1.0, 0.0, 0.5, 0.0) }
+  }
 
   # The heap once the device is idle and MoltenVK's completion handlers, which release a finished
   # command buffer on their own thread, have caught up: two reads 20 ms apart that agree. Read at
@@ -93,6 +97,35 @@ program Steady {
     return grew
   }
 
+  # bytes gained while the camera crosses new ground for 300 cells: a streamed layer's cache holds
+  # at most 256 chunks, so it fills, evicts and compacts on the way. Each chunk once brought its
+  # own record and copy, made as the ground was found.
+  function stream_rounds(render3d_st: mut Render3dState, m: Model) -> long {
+    render3d_st.STREAM_MAX_CHUNKS = 256
+    let l = layer_new(render3d_st, m, 20000, false, 0.0, 0.0, 400.0)
+    let st = stream_new(render3d_st, l, 32.0, 96.0, 32.0, 64.0, 80.0, 96.0)
+    cam_set(render3d_st, 0.0, 3.0, 0.0, 0.0, -10.0)
+    frame_rounds(render3d_st, 10)
+    let before = settled(render3d_st)
+    for step in 1 .. 301 {
+      cam_set(render3d_st, float(step) * 32.0, 3.0, float(step % 7) * 32.0, 0.0, -10.0)
+      frame_rounds(render3d_st, 2)
+    }
+    let grew = settled(render3d_st) - before
+    # every chunk kept, after all that evicting and compacting, still holds its own cell's instances
+    var wrong = 0
+    for i in 0 .. st.n {
+      let c = st.chunks[i]
+      let cx = c.key / 4 / 8192 - 4096
+      if c.count < 20 or float_from_bits(st.arena[c.off]) != float(cx) * 32.0 { wrong += 1 }
+    }
+    if wrong > 0 or st.n == 0 or l.count == 0 {
+      print(`steady: FAILED - {wrong} of {st.n} kept chunks hold another cell's instances ({l.count} drawn)`)
+      return 1000000
+    }
+    return grew
+  }
+
   # bytes gained over n parses of a glTF document, each freed whole (Json.free_all): strings too
   function parse_rounds(render3d_st: Render3dState, text: string, n: int) -> long {
     let before = settled(render3d_st)
@@ -131,10 +164,11 @@ program Steady {
     actor_rounds(render3d_st, am, 20)
     let grew_a = actor_rounds(render3d_st, am, 2000)
     let grew_r = ramp_rounds(render3d_st, am)
+    let grew_s = stream_rounds(render3d_st, am)
     let text = Fs.read_text("packages/ludic.lab/plate/plate.gltf")
     parse_rounds(render3d_st, text, 20)
     let grew_p = parse_rounds(render3d_st, text, 200)
-    print(`steady: the buffer path gained {grew_b} bytes over 5000 rounds, the frame {grew_f} over 600, a glTF parsed and freed {grew_p} over 200, a model loaded and let go {grew_m} over 200, an actor placed and released {grew_a} over 2000, a frame drawing 20 to 200 actors {grew_r}`)
+    print(`steady: the buffer path gained {grew_b} bytes over 5000 rounds, the frame {grew_f} over 600, a glTF parsed and freed {grew_p} over 200, a model loaded and let go {grew_m} over 200, an actor placed and released {grew_a} over 2000, a frame drawing 20 to 200 actors {grew_r}, a stream over 300 new cells {grew_s}`)
     # a few KB of slack for what the system's own libraries keep (Metal's caches, the allocator)
     var ok = grew_b < 16384
     if not ok { print("steady: FAILED - releasing and making a buffer again leaves memory behind") }
@@ -159,6 +193,10 @@ program Steady {
     if grew_r >= 16384 {
       ok = false
       print("steady: FAILED - a frame drawing more than before leaves memory behind")
+    }
+    if grew_s >= 4096 {
+      ok = false
+      print("steady: FAILED - streaming new ground leaves memory behind")
     }
     if ok { print("STEADY OK") } else { print("STEADY FAILED") }
     quit()
