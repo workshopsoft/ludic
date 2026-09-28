@@ -48,4 +48,30 @@ program TextTest {
     let c: pointer = sb_intern(sb, tb)
     expect(c == ap)
   }
+  test "a ring hands out its slots in turn, written in place, and makes nothing after it is made" {
+    let r = tr_new(3, 32)
+    let sb = sb_new(64)
+    sb_add(sb, "first")
+    let a = tr_put(r, sb)
+    expect_eq(a, "first")
+    sb_clear(sb)
+    sb_add(sb, "second")
+    let b = tr_put(r, sb)
+    expect_eq(b, "second")
+    expect_eq(a, "first")
+    let before = Os.heap_bytes()
+    for i in 0 .. 1000 {
+      sb_clear(sb)
+      sb_add(sb, "line ")
+      sb_int(sb, i)
+      tr_put(r, sb)
+    }
+    if before > 0 { expect(Os.heap_bytes() <= before) }
+    sb_clear(sb)
+    sb_add(sb, "a line far longer than the slot it has to go into")
+    expect_eq(len(tr_put(r, sb)), 31)
+    let ap: pointer = a
+    let back: pointer = tr_put(r, sb)
+    expect(ap == back or tr_slots(r) == 3)
+  }
 }
