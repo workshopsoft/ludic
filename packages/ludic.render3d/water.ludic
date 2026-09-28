@@ -25,7 +25,6 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
     # this reflection is composited into is smaller than the drawable, and a reflection
     # rendered at the window's size would be paying for pixels the water never samples
     render3d_st.water_refl = target_new(render3d_st, render3d_st.post_w / render3d_st.water_refl_div, render3d_st.post_h / render3d_st.water_refl_div, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
-    render3d_st.water_saved = floats(16 * 4 + 3)
     render3d_st.water_saved_vp = view(render3d_st.water_saved, 16, 16)
     render3d_st.water_saved_ivp = view(render3d_st.water_saved, 32, 16)
   }

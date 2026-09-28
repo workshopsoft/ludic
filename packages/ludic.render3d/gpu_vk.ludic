@@ -763,12 +763,8 @@ function gvk_startup_state(render3d_st: mut Render3dState) -> void {
   for i in 0 .. 4096 { render3d_st.gvk_pc_last[i] = -1 }
   render3d_st.gg_rb = words(4);  render3d_st.gg_cb = words(1);  render3d_st.gg_bufs = words(3)
   render3d_st.gg_texs = words(3);  render3d_st.gg_pr = words(48)
-  if render3d_st.gpu_u_tmp == null { render3d_st.gpu_u_tmp = words(4) }
   if render3d_st.gpu_unit_2d == null {
     render3d_st.gpu_unit_2d = words(32)
     for i in 0 .. 32 { render3d_st.gpu_unit_2d[i] = -1 }
   }
-  if render3d_st.cam_planes == null { render3d_st.cam_planes = floats(16) }
-  if render3d_st.ov_nine_buf == null { render3d_st.ov_nine_buf = floats(16) }
-  if render3d_st.ac_lp0 == null { render3d_st.ac_lp0 = floats(3);  render3d_st.ac_lpx = floats(3);  render3d_st.ac_lpy = floats(3);  render3d_st.ac_lpz = floats(3) }
 }

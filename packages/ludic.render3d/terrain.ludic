@@ -291,7 +291,6 @@ function terrain_height_fx(render3d_st: mut Render3dState, x: fixed, z: fixed) -
 function terrain_height_smooth(render3d_st: mut Render3dState, x: float, z: float) -> float {
   if render3d_st.ter_heights == null { return 0.0 }
   if render3d_st.ter_h_scale == 0.0 { render3d_st.ter_h_scale = float(TERRAIN_RES) / float(render3d_st.TERRAIN_HALF * 2) }
-  if render3d_st.ter_bw == null { render3d_st.ter_bw = floats(8) }
   let scale = render3d_st.ter_h_scale
   let fx = (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale - 0.5
   let fz = (z - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) * scale - 0.5
@@ -791,6 +790,5 @@ function terrain_reload(render3d_st: mut Render3dState, dem: string, emin: float
 }
 
 function ter_scratch(render3d_st: mut Render3dState) -> floats {
-  if render3d_st.ter_scr == null { render3d_st.ter_scr = floats(16) }
   return render3d_st.ter_scr
 }

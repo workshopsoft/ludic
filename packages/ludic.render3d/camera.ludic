@@ -52,7 +52,6 @@ function cam_update(render3d_st: mut Render3dState) -> void {
   cam_planes_update(render3d_st)
 }
 function cam_planes_update(render3d_st: mut Render3dState) -> void {
-  if render3d_st.cam_planes == null { render3d_st.cam_planes = floats(16) }
   let m = render3d_st.cam_vp_clean
   for p in 0 .. 4 {
     var r = 0

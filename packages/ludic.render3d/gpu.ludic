@@ -170,7 +170,7 @@ function gpu_present(render3d_st: mut Render3dState) -> void { gvk_present(rende
 # the frame as it will be presented, to a binary PPM with the top row first; before gpu_present
 function gpu_screenshot(render3d_st: mut Render3dState, path: string) -> bool { return gvk_screenshot(render3d_st, path) }
 
-function gpu_tmp(render3d_st: mut Render3dState) -> words { if render3d_st.gpu_u_tmp == null { render3d_st.gpu_u_tmp = words(4) };  return render3d_st.gpu_u_tmp }
+function gpu_tmp(render3d_st: mut Render3dState) -> words { return render3d_st.gpu_u_tmp }
 # float bits (IEEE singles in an int), like every other number in the renderer
 function u_f(render3d_st: mut Render3dState, loc: int, v: float) -> void { let t = gpu_tmp(render3d_st);  t[0] = float_bits(v);  gvk_u_set(render3d_st, loc, data_of(t), 4, 1) }
 function u_f2(render3d_st: mut Render3dState, loc: int, x: float, y: float) -> void { let t = gpu_tmp(render3d_st);  t[0] = float_bits(x);  t[1] = float_bits(y);  gvk_u_set(render3d_st, loc, data_of(t), 8, 1) }
