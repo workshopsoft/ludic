@@ -60,6 +60,7 @@ function gltf_mats_forget(render3d_st: mut Render3dState, id: int) -> void {
 # primitives, their meshes and the model itself are freed, and a model gltf_cached handed out
 # leaves its cache. The caller says when: nothing may draw the model, or hold it, afterwards. For
 # a model gltf_load or gltf_cached made (a procedural one - a card, a blade - owns its parts otherwise).
+@releases(Model)
 function model_release(render3d_st: mut Render3dState, m: Model) -> void {
   if m == null { return }
   gltf_cached_forget(render3d_st, m)
@@ -78,6 +79,7 @@ function model_release(render3d_st: mut Render3dState, m: Model) -> void {
 }
 
 # a mesh and what it holds: its buffers (their handles given back), its layout and buffer lists
+@releases(Mesh)
 function mesh_release(render3d_st: mut Render3dState, me: Mesh) -> void {
   gpu_mesh_free(render3d_st, me)
   if me.attrs != null { free(me.attrs) }

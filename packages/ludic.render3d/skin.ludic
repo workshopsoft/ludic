@@ -212,6 +212,7 @@ function skin_bind(render3d_st: mut Render3dState, sk: Skin, prog: int) -> void 
 }
 
 # the same skeleton posed on its own: shares the rest data, owns the pose and the matrices
+@creates(SkinClone)
 function skin_clone(src: Skin) -> Skin {
   let sk = new Skin
   sk.n_nodes = src.n_nodes;  sk.par = src.par;  sk.walk = src.walk
@@ -249,6 +250,7 @@ function skin_free(sk: Skin) -> void {
 
 # A skin_clone given back: what the clone made for itself (its pose, its matrices and their views, its
 # scratch). The rest data, the joints and the names are its source's and stay.
+@releases(SkinClone)
 function skin_clone_free(sk: Skin) -> void {
   if sk == null { return }
   free(sk.pose_r);  free(sk.pose_t);  free(sk.gmat);  free(sk.bones)

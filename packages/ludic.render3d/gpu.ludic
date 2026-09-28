@@ -367,6 +367,7 @@ function gpu_gl_usage(u: int) -> int {
 
 # a new mesh, its vertex array bound: the vertex, attribute and index calls below describe it
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
+@creates(Mesh)
 function gpu_mesh_new(render3d_st: Render3dState) -> Mesh {
   let m = new Mesh
   m.attrs = words(GPU_MAX_ATTRS * GPU_ATTR_W)
@@ -423,10 +424,12 @@ function gpu_mesh_attr_inst(render3d_st: Render3dState, m: Mesh, index: int, com
 }
 
 # a buffer on its own (instances, a stream): made, filled whole, freed
+@creates(GpuBuffer)
 function gpu_buffer_new(render3d_st: mut Render3dState) -> int { return gvk_buf_new(render3d_st) }
 function gpu_buffer_upload(render3d_st: mut Render3dState, buf: int, nbytes: int, data: pointer, usage: int) -> void {
   gvk_buf_upload(render3d_st, buf, nbytes, data)
 }
+@releases(GpuBuffer)
 function gpu_buffer_free(render3d_st: mut Render3dState, buf: int) -> void {
   if buf > 0 { gvk_buf_release(render3d_st, buf) }
 }
@@ -497,6 +500,7 @@ function gpu_draw_range(render3d_st: mut Render3dState, m: Mesh, first: int, cou
   gvk_draw_now(render3d_st, m, first, count, 1)
 }
 
+@releases(Mesh)
 function gpu_mesh_free(render3d_st: mut Render3dState, m: Mesh) -> void {
   gvk_mesh_free(render3d_st, m)
 }
@@ -530,6 +534,7 @@ function gpu_tx_at(render3d_st: mut Render3dState, tex: int) -> int {
 }
 function gpu_bound(render3d_st: Render3dState, kind: int) -> int { if kind == GPU_TEX2D_ARRAY { return render3d_st.gpu_bound_array };  return render3d_st.gpu_bound_2d }
 
+@creates(GpuTexture)
 function gpu_tex_new(render3d_st: mut Render3dState) -> int { return gvk_tex_new(render3d_st) }
 # does texture `tex` have an image behind it? Always on OpenGL; on Vulkan an image whose memory could
 # not be had is never made, and a caller that can fall back (a smaller shadow map) asks here.
@@ -604,6 +609,7 @@ function gpu_tex_mips(render3d_st: mut Render3dState, kind: int) -> void {
 function gpu_tex_read(render3d_st: mut Render3dState, kind: int, fmt: int, ty: int, out: pointer) -> void {
   gvk_flush(render3d_st);  let rt = gpu_bound(render3d_st, kind);  let ro = gpu_tx_at(render3d_st, rt);  if ro >= 0 { gvk_tex_read(render3d_st, rt, render3d_st.gpu_tx[ro + 4], render3d_st.gpu_tx[ro + 1], render3d_st.gpu_tx[ro + 2], fmt, ty, out) }
 }
+@releases(GpuTexture)
 function gpu_tex_free(render3d_st: mut Render3dState, tex: int) -> void {
   if tex == 0 { return }
   let ids = gpu_tmp(render3d_st)
@@ -654,6 +660,7 @@ function gpu_check(render3d_st: Render3dState, tag: string) -> int { return 0 }
 # a named checkpoint that costs nothing unless R3D_GLCHECK is set
 function gpu_debug_check(render3d_st: mut Render3dState, tag: string) -> void { }
 
+@creates(GpuFramebuffer)
 function gpu_fb_new(render3d_st: mut Render3dState) -> int { render3d_st.gvk_fb_counter += 1;  return render3d_st.gvk_fb_counter }
 function gpu_fb_bind(render3d_st: mut Render3dState, fb: int) -> void {
   gvk_rebind(render3d_st, fb)
@@ -681,6 +688,7 @@ function gpu_fb_depth_layer(render3d_st: mut Render3dState, tex: int, layer: int
   let o = gpu_fb_at(render3d_st, render3d_st.gpu_fb_cur)
   if o >= 0 { render3d_st.gpu_fb[o + 2] = tex;  render3d_st.gpu_fb[o + 3] = layer + 1 }
 }
+@creates(GpuRenderbuffer)
 function gpu_rb_new(render3d_st: mut Render3dState) -> int {
   return gvk_tex_new(render3d_st)
 }
@@ -706,9 +714,11 @@ function gpu_fb_no_color(render3d_st: mut Render3dState) -> void {
   gvk_fb_colors(render3d_st, render3d_st.gpu_fb_cur, 0)
 }
 function gpu_fb_status(render3d_st: Render3dState) -> int { return GL_FRAMEBUFFER_COMPLETE }
+@releases(GpuFramebuffer)
 function gpu_fb_free(render3d_st: mut Render3dState, fb: int) -> void {
   gvk_fb_forget(render3d_st, fb);  let fo = gpu_fb_at(render3d_st, fb);  if fo >= 0 { for i in 0 .. GPU_FB_W { render3d_st.gpu_fb[fo + i] = 0 } }
 }
+@releases(GpuRenderbuffer)
 function gpu_rb_free(render3d_st: mut Render3dState, rb: int) -> void {
   gvk_flush(render3d_st)
   gvk_tex_give_back(render3d_st, rb)
