@@ -1,0 +1,34 @@
+# alloc_fence_declared.ludic - what @alloc_ok covers is declared at run time too, in each form: a
+# function (and what it calls), one statement, and a statement inside a generic's body (every
+# instance). A frame that makes only declared memory is not judged, so the fence - failing by
+# default - lets the run through: `bad 0 kept 0`. Declared bytes are counted apart in the census.
+program AllocFenceDeclared {
+  property Rule { parts: []string = null }
+  property Memo { rules: []Rule = new []Rule, ints: []int = new []int }
+  function kept_push<T>(xs: []T, v: T) -> void {
+    @alloc_ok("a kept list: grows to the most it held")
+    push(xs, v)
+  }
+  @alloc_ok("a memo miss")
+  function split(s: string) -> []string {
+    let out = new []string
+    push(out, s[0 .. 1])
+    push(out, s[1 .. 2])
+    return out
+  }
+  function miss(m: Memo, f: int) -> void {
+    @alloc_ok("the memo keeps a rule per text")
+    let r = new Rule { parts: split(`ab{f}`) }
+    kept_push(m.rules, r)
+    kept_push(m.ints, f)
+  }
+  entry {
+    let m = new Memo
+    for f in 0 .. 900 {
+      if f > 650 and f % 25 == 0 { miss(m, f) }
+      Mem.frame()
+    }
+    let kept_now = Mem.kept()
+    print(`bad {Mem.bad_frames()} kept {kept_now}`)
+  }
+}
