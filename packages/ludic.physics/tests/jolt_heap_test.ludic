@@ -1,0 +1,34 @@
+# jolt_heap_test.ludic - Jolt's own heap, counted in the shim (plan 25): a ground coming and going a
+# thousand times holds what it held after the first hundred, and a world closed gives back what it took
+import "ludic.physics"
+import "ludic.base"
+program JoltHeapTest {
+  numbers float
+  function cycle(physics_st: mut PhysicsState, h: []float, k: int) -> void {
+    let s = phys_heightfield(physics_st, h, 33, float(k % 7) * 64.0, 0.0, 2.0)
+    let b = phys_ground_add(physics_st, s)
+    phys_step(physics_st)
+    phys_remove(physics_st, b)
+    phys_shape_free(physics_st, s)
+    phys_settle(physics_st)
+  }
+
+  test "a ground in and out a thousand times holds Jolt's heap where it settled, and closing gives it back" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    phys_close(physics_st)
+    let before = phys_heap_bytes()         # the factory and the types, made once per process
+    expect(phys_open(physics_st, 64, 1))
+    expect(phys_heap_bytes() > before)
+    let h = floats(33 * 33)
+    for k in 0 .. 100 { cycle(physics_st, h, k) }
+    let held = phys_heap_bytes()
+    let peak = phys_heap_peak()
+    for k in 0 .. 1000 { cycle(physics_st, h, k) }
+    print(`jolt heap: {held} bytes held after 100 grounds, {phys_heap_bytes()} after 1100, peak {phys_heap_peak()}, {phys_heap_allocs()} blocks asked for`)
+    expect(phys_heap_bytes() == held)
+    expect(phys_heap_peak() == peak)
+    phys_close(physics_st)
+    print(`jolt heap: {before} bytes before the world, {phys_heap_bytes()} after it closed`)
+    expect(phys_heap_bytes() == before)
+  }
+}
