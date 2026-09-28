@@ -26,6 +26,10 @@ var g_fence_mode: int = 0                      # 0: headless fails, windowed fai
 var g_fence_warm: int = 600
 var g_fence_census: pointer = null
 var g_fence_flagged: bool = false              # a flag said so: the manifest does not override it
+var g_cap_keys: []pointer = new []pointer      # 25.5a: `Type.field` declared @max(n) ...
+var g_cap_vals: []int = new []int               # ... and its n
+var g_push_cap: int = 0                         # the list being pushed to is capped (emit_push -> emit_push_into)
+var g_push_capname: pointer = null
 var g_arena: bool = false                      # 25.3: --arena / `arena on` - LOCAL sites allocate from the frame's scratch
 var g_mmap_declared: bool = false              # @mmap: by the fence's arena or by the asset pack
 var g_es_node: Node = null                     # the expression being emitted, when it is a LOCAL site
@@ -160,13 +164,18 @@ function fence_manifest_read(txt: pointer) -> void {
 
 # Mem.play() / Mem.rewarm() / Mem.settled() / Mem.frame() / Mem.kept() / Mem.bad_frames()
 function is_mem_fence_ns(meth: pointer) -> bool {
-  return (meth == "play") or (meth == "rewarm") or (meth == "settled") or (meth == "frame") or (meth == "kept") or (meth == "bad_frames")
+  return (meth == "play") or (meth == "rewarm") or (meth == "settled") or (meth == "over") or (meth == "frame") or (meth == "kept") or (meth == "bad_frames")
 }
 
 function emit_mem_fence_ns(meth: pointer, e: Node) -> Val {
   if (meth == "kept") { return val(emit_bind("call i64 @lp_mem_kept()"), "long") }
   if (meth == "bad_frames") { return val(emit_bind("call i64 @lp_mem_bad_frames()"), "long") }
   if (meth == "rewarm") { emit("  call void @lp_mem_play()\n");  return val("0", "void") }
+  if (meth == "over") {                          # 25.5a: Mem.over("what") - a package's table is full
+    let nm = emit_expr(e.kids[0])
+    emit(`  call void @lp_cap_over(ptr {nm.code}, i32 0, i32 0)\n`)
+    return val("0", "void")
+  }
   emit(`  call void @lp_mem_{meth}()\n`)
   return val("0", "void")
 }
@@ -222,4 +231,22 @@ function emit_fence_runtime() -> void {
   emith(`@lp_site_stamp = global [{sn} x i64] zeroinitializer\n`)
   emith(`@lp_site_base = global [{sn} x i64] zeroinitializer\n`)
   emith(`@lp_site_ra = global [{itoa(n * 6)} x ptr] zeroinitializer\n`)
+}
+
+# @max(n) on the list a push grows: its cap and its name, or 0
+function fence_cap_of(target: Node) -> int {
+  g_push_capname = null
+  if target == null or target.kind != E_MEMBER or target.a == null or len(g_cap_keys) == 0 { return 0 }
+  let t = static_type(target.a)
+  if t == null { return 0 }
+  let key = `{t}.{target.s}`
+  var i = 0
+  while i < len(g_cap_keys) {
+    if (g_cap_keys[i] == key) {
+      g_push_capname = key
+      return g_cap_vals[i]
+    }
+    i += 1
+  }
+  return 0
 }
