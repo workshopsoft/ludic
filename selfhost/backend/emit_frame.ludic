@@ -249,7 +249,7 @@ function deps_keeps(f: pointer, seen: []bool) -> void {
   while s < len(g_es_site) {
     let c = g_es_site_cls[s]
     let fi = g_es_site_fn[s]
-    if c >= 0 and fi >= 0 and (g_es_flag[c] & ES_ESC) != 0 and not g_es_site_aok[s] and not g_es_site_grow[s] {
+    if c >= 0 and fi >= 0 and g_es_fnode[fi].s != null and (g_es_flag[c] & ES_ESC) != 0 and not g_es_site_aok[s] and not g_es_site_grow[s] {
       let d = g_es_fnode[fi]
       let k = dr_index(d.s)
       if k >= 0 and seen[k] and not fr_alloc_ok(d.s) and d.file != null and not is_runtime_file(d.file) {
@@ -319,7 +319,7 @@ function deps_births(f: pointer, seen: []bool) -> void {
     let c = g_es_site_cls[s]
     let fi = g_es_site_fn[s]
     let site = g_es_site[s]
-    if c >= 0 and fi >= 0 and (g_es_flag[c] & (ES_ESC | ES_FREED)) == 0 and not g_es_site_aok[s] and not g_es_site_grow[s] {
+    if c >= 0 and fi >= 0 and g_es_fnode[fi].s != null and (g_es_flag[c] & (ES_ESC | ES_FREED)) == 0 and not g_es_site_aok[s] and not g_es_site_grow[s] {
       let d = g_es_fnode[fi]
       let k = dr_index(d.s)
       let inframe = k >= 0 and seen[k]
