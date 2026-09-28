@@ -608,6 +608,10 @@ function gpu_tex_free(render3d_st: mut Render3dState, tex: int) -> void {
 # a texture on a unit for a program's sampler, by the sampler's name
 function gpu_bind_sampler(render3d_st: mut Render3dState, prog: int, name: string, unit: int, kind: int, tex: int) -> void {
   gvk_bind_texture(render3d_st, prog, name, tex)
+  # as OpenGL's did, binding a texture for a sampler makes it the one a following gpu_tex_param or
+  # gpu_tex_mips acts on: render3d was written that way, and without it they reached whatever was
+  # bound last (a BC7 kit texture, which a mip blit then drew into)
+  if kind == GPU_TEX2D_ARRAY { render3d_st.gpu_bound_array = tex } else { render3d_st.gpu_bound_2d = tex }
 }
 
 # ---- render targets and passes -------------------------------------------------------------

@@ -356,6 +356,8 @@ function gvk_tex_grow_mips(render3d_st: mut Render3dState, tex: int, w: int, h: 
 }
 
 function gvk_tex_mips(render3d_st: mut Render3dState, tex: int, w: int, h: int) -> bool {
+  # a block-compressed texture brought every level with it, and cannot be blitted into
+  if gvk_is_compressed(render3d_st.gvk_tex_glfmt[tex]) { return true }
   if render3d_st.gvk_tex_levels[tex] <= 1 and (w > 1 or h > 1) and not gvk_is_depth(render3d_st.gvk_tex_glfmt[tex]) {
     if not gvk_tex_grow_mips(render3d_st, tex, w, h) { return false }
   }

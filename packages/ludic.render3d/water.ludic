@@ -324,6 +324,10 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
     # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,
     # and it must not displace the depth texture the shader reads for the shore
     r3d_bind_2d(render3d_st, p, "u_refl", 1, render3d_st.water_refl.color);  ron = 1.0
+    # the parameter and the chain are the BOUND texture's, and binding a sampler by name does not
+    # bind it: without this they went to whatever was bound last - a BC7 kit texture since 23.3,
+    # which the mip blits then drew into (Metal: "BC7 is not color renderable")
+    gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.water_refl.color)
     gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
     gpu_tex_mips(render3d_st, GPU_TEX2D)
   }
