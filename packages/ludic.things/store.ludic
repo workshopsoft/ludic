@@ -24,6 +24,8 @@ export state ThingsState {
   th_uid: int = 0
   th_facts: Queue<ThingFact> = th_facts__new()
   th_hs: words = words(0)           # things_tick's handles, taken before any tick runs
+  th_spare: []Thing = new []Thing   # removed records, made again oldest first (spare.ludic)
+  th_spare_at: int = 0
 }
 
 function th_facts__new() -> Queue<ThingFact> { return queue_new("things.facts") }
