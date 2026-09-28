@@ -163,7 +163,7 @@ function r3d_resize(render3d_st: mut Render3dState) -> void {
   post_free(render3d_st)
   post_init(render3d_st, gl_width(), gl_height())
   if render3d_st.water_refl != null { target_free(render3d_st, render3d_st.water_refl);  render3d_st.water_refl = null }
-  print(`r3d: resized to {gl_width()}x{gl_height()}`)
+  r3d_say_resized()
 }
 function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
   outline_frame(render3d_st)
@@ -196,7 +196,7 @@ function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
   # camera that moves while the hiker stands still from a picture that shakes on its own
   if render3d_st.r3d_cam_log < 0 { render3d_st.r3d_cam_log = 0;  if r3d_env_has(render3d_st, "R3D_CAM_LOG") { render3d_st.r3d_cam_log = 1 } }
   if render3d_st.r3d_cam_log == 1 {
-    print(`cam {render3d_st.r3d_test_frame} pos {int(render3d_st.cam_pos[0] * 1000.0)} {int(render3d_st.cam_pos[1] * 1000.0)} {int(render3d_st.cam_pos[2] * 1000.0)} yaw {int(render3d_st.cam_yaw * 1000.0)} pitch {int(render3d_st.cam_pitch * 1000.0)} jitter {int(render3d_st.gsl_jitter_x * 1000000.0)} {int(render3d_st.gsl_jitter_y * 1000000.0)} render {render3d_st.post_w}x{render3d_st.post_h} reset {render3d_st.gsl_reset} evalok {render3d_st.gsl_eval_ok} fresh {render3d_st.gsl_fresh}`)
+    r3d_say_test_frame(render3d_st)
   }
   # the height-field shadow rebakes as the light moves in steps (daylight), or with the sky yaw when there is no clock
   if not render3d_st.r3d_plate and ((not render3d_st.day_on and render3d_st.ter_shadow_yaw != render3d_st.sky_yaw) or render3d_st.ter_shadow_gen != render3d_st.day_gen) {
@@ -285,3 +285,9 @@ function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
   prof_collect(render3d_st)
   gpu_check(render3d_st, "frame")
 }
+
+# messages, each built in a function of its own so the path that says it holds no allocation
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function r3d_say_resized() -> void { print(`r3d: resized to {gl_width()}x{gl_height()}`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function r3d_say_test_frame(render3d_st: Render3dState) -> void { print(`cam {render3d_st.r3d_test_frame} pos {int(render3d_st.cam_pos[0] * 1000.0)} {int(render3d_st.cam_pos[1] * 1000.0)} {int(render3d_st.cam_pos[2] * 1000.0)} yaw {int(render3d_st.cam_yaw * 1000.0)} pitch {int(render3d_st.cam_pitch * 1000.0)} jitter {int(render3d_st.gsl_jitter_x * 1000000.0)} {int(render3d_st.gsl_jitter_y * 1000000.0)} render {render3d_st.post_w}x{render3d_st.post_h} reset {render3d_st.gsl_reset} evalok {render3d_st.gsl_eval_ok} fresh {render3d_st.gsl_fresh}`) }

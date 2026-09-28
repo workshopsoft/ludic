@@ -512,7 +512,7 @@ function terrain_sun_pass(render3d_st: mut Render3dState, w: int, h: int, depth:
   if not render3d_st.ter_sun_checked {
     render3d_st.ter_sun_checked = true
     let st = gpu_fb_status(render3d_st)
-    if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: sun-visibility framebuffer incomplete {st}`) }
+    if st != GL_FRAMEBUFFER_COMPLETE { terrain_say_sun_fbo(st) }
   }
   gpu_depth_test(render3d_st, true)
   gpu_depth_func(render3d_st, GL_LESS)
@@ -585,7 +585,7 @@ function terrain_draw(render3d_st: mut Render3dState) -> void {
   cdlod_select(render3d_st, CD_LEVELS - 1, 0, 0)
   if render3d_st.ter_wire { gpu_wireframe(render3d_st, false) }
   gpu_depth_func(render3d_st, GL_LESS)
-  if render3d_st.r3d_debug and not render3d_st.ter_printed { render3d_st.ter_printed = true;  print(`cdlod patches drawn: {render3d_st.cd_draws} (far {render3d_st.cd_far_draws}, near {render3d_st.cd_near_draws}, band {render3d_st.cd_draws - render3d_st.cd_far_draws - render3d_st.cd_near_draws})`) }
+  if render3d_st.r3d_debug and not render3d_st.ter_printed { render3d_st.ter_printed = true;  terrain_say_patches(render3d_st) }
 }
 
 # ---- CDLOD --------------------------------------------------------------------------
@@ -792,3 +792,9 @@ function terrain_reload(render3d_st: mut Render3dState, dem: string, emin: float
 function ter_scratch(render3d_st: mut Render3dState) -> floats {
   return render3d_st.ter_scr
 }
+
+# messages, each built in a function of its own so the path that says it holds no allocation
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function terrain_say_sun_fbo(st: int) -> void { print(`r3d: sun-visibility framebuffer incomplete {st}`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function terrain_say_patches(render3d_st: Render3dState) -> void { print(`cdlod patches drawn: {render3d_st.cd_draws} (far {render3d_st.cd_far_draws}, near {render3d_st.cd_near_draws}, band {render3d_st.cd_draws - render3d_st.cd_far_draws - render3d_st.cd_near_draws})`) }
