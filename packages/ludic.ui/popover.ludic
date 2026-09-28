@@ -25,7 +25,7 @@ function pp_pointer(ui_st: mut UiState, top: UiNode) -> bool {
   if not (i.down and not ui_st.in_was_down) { return false }
   if i.x >= top.x and i.y >= top.y and i.x < top.x + top.cw and i.y < top.y + top.ch { return false }
   ui_st.fr_press_key = ""
-  ui_fire(ui_st, top, "close", Value.null())
+  ui_fire(ui_st, top, "close", ui_st.fc_none)
   return true
 }
 function pp_draw_top(ui_st: mut UiState) -> void {

@@ -1,6 +1,12 @@
 # hold.ludic - on-hold: every frame a control is held down - by the pointer (wherever it goes until it
 # is let go), or by Enter or the pad's A on the focus - with event.dt, the seconds since the last
 # frame, and event.t, how long it has been held, on the ui clock
+function hd_ev_new() -> Val {
+  let v = Value.object()
+  value_set_float(v, "dt", 0.0)                  # its keys made with the state, so a first hold grows nothing
+  value_set_float(v, "t", 0.0)
+  return v
+}
 function hd_tick(ui_st: mut UiState, root: UiNode) -> void {
   var key = ui_st.fr_key_press
   if ui_st.fr_press_key != "" and ui_st.in_now.down { key = ui_st.fr_press_key }
@@ -16,9 +22,9 @@ function hd_tick(ui_st: mut UiState, root: UiNode) -> void {
   }
   let n = fr_node(root, key)
   if n != null {
-    let v = Value.object()
-    Value.put(v, "dt", Value.float(now - ui_st.hd_last))
-    Value.put(v, "t", Value.float(now - ui_st.hd_t0))
+    let v = ui_st.hd_ev                        # one object kept with the state, filled in place each held frame
+    value_set_float(v, "dt", now - ui_st.hd_last)
+    value_set_float(v, "t", now - ui_st.hd_t0)
     ui_fire(ui_st, n, "hold", v)
   }
   ui_st.hd_last = now

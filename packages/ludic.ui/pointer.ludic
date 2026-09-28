@@ -21,7 +21,7 @@ function fr_pointer(ui_st: mut UiState, root: UiNode) -> void {
   if i.down and ui_st.fr_press_key != "" { ct_drag(ui_st, root, ui_st.fr_press_key, i.x, i.y) }
   if not i.down and ui_st.in_was_down {
     let was = fr_node(root, ui_st.fr_press_key)
-    if was != null { ui_fire(ui_st, was, "up", Value.null()) }
+    if was != null { ui_fire(ui_st, was, "up", ui_st.fc_none) }
     if hit != null and hit.key == ui_st.fr_press_key and hit.enabled { ct_activate(ui_st, hit) }
     ui_st.fr_press_key = ""
   }
@@ -32,7 +32,7 @@ function fr_press(ui_st: mut UiState, hit: UiNode, x: float, y: float) -> void {
   if hit == null { return }
   ui_st.fr_press_key = hit.key
   if hit.focusable { ui_focus(ui_st, hit.key) }
-  if hit.enabled { ui_fire(ui_st, hit, "down", Value.null()) }
+  if hit.enabled { ui_fire(ui_st, hit, "down", ui_st.fc_none) }
   ct_press(ui_st, hit, x, y)
 }
 # :active - the press began on it, or inside it, and is still held (by the pointer, Enter or A)

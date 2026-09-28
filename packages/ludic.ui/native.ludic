@@ -62,14 +62,32 @@ function nt_fired_run(ui_st: mut UiState) -> void {
   ui_st.nt_sp_names = names
   ui_st.nt_sp_vals = vals
 }
+# an event's object, from NT_EVS kept with the state: an event is read by its handler long before
+# NT_EVS more come round to its object
+const NT_EVS: int = 16
+function nt_evs_new() -> []Val {
+  let l = new []Val
+  for i in 0 .. NT_EVS {
+    let o = Value.object()
+    value_set_str(o, "name", "")               # its keys made now, so a first event grows nothing
+    Value.put(o, "value", Value.null())
+    push(l, o)
+  }
+  return l
+}
+function nt_ev_next(ui_st: mut UiState) -> Val {
+  let at = ui_st.nt_ev_at % NT_EVS
+  ui_st.nt_ev_at = at + 1
+  return ui_st.nt_evs[at]
+}
 # the element's on-<name>, with `event` bound to what happened
 function nt_run(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void {
   if n.on_names == null or not n.enabled { return }
   for i in 0 .. len(n.on_names) {
     if n.on_names[i] == name {
-      var ev = Value.object()
+      var ev = nt_ev_next(ui_st)
       if (lk_in(PE_NAMES, name) or name == "hold") and Value.kind(value) == 6 { ev = value }
-      Value.put(ev, "name", Value.str(name))
+      value_set_str(ev, "name", name)
       Value.put(ev, "value", value)
       let e = env_new(ui_st, n.env)
       env_bind(e, "event", ev)

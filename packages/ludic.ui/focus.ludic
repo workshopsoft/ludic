@@ -27,7 +27,7 @@ function fc_keys(ui_st: mut UiState, root: UiNode) -> void {
   let top = pp_top(root)
   if top != null { fc_collect(ui_st, top) } else { fc_collect(ui_st, root) }
   if ct_key_capture(ui_st, ui_st.fc_list) { return }
-  if top != null and ui_st.in_now.escape { ui_fire(ui_st, top, "close", Value.null()) }
+  if top != null and ui_st.in_now.escape { ui_fire(ui_st, top, "close", ui_st.fc_none) }
   let i = ui_st.in_now
   if fc_find(ui_st) < 0 { fc_autofocus(ui_st) }
   let at = fc_find(ui_st)
