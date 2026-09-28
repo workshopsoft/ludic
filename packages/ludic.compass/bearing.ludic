@@ -8,7 +8,7 @@ export function compass_count(compass_st: CompassState) -> int {
 
 # the i-th mark, or an empty one past the end
 export function compass_at(compass_st: CompassState, i: int) -> CompassMark {
-  if i < 0 or i >= compass_count(compass_st) { return new CompassMark }
+  if i < 0 or i >= compass_count(compass_st) { return compass_st.cmp_none }
   return compass_st.cmp_list[i]
 }
 

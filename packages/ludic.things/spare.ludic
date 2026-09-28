@@ -4,7 +4,7 @@
 # uid change long after the removal; everything else about it is set back as new
 const TH_SPARE_LAG: int = 32
 
-function th_spare_put(things_st: mut ThingsState, t: Thing) -> void { push(things_st.th_spare, t) }
+function th_spare_put(things_st: mut ThingsState, t: Thing) -> void { kept_push(things_st.th_spare, t) }
 
 # a record for a Thing about to be placed: the oldest spare past the lag, or a new one
 function th_record(things_st: mut ThingsState) -> Thing {
@@ -69,5 +69,8 @@ export function thing_slot(t: Thing) -> int {
 # spare records made now, up to `n` waiting: a world that will place Things in play takes them
 # from the first placement instead of making new ones until enough have been removed
 export function things_spare_warm(things_st: mut ThingsState, n: int) -> void {
-  while things_spare_count(things_st) < n { push(things_st.th_spare, new Thing) }
+  while things_spare_count(things_st) < n {
+    @alloc_ok("at a world's start: the spare records it will place in play")
+    push(things_st.th_spare, new Thing)
+  }
 }

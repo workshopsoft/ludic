@@ -5,7 +5,6 @@ export function compass_begin(compass_st: mut CompassState) -> void {
   if compass_st.cmp_list == null {
     compass_st.cmp_list = new []CompassMark
     compass_st.cmp_back = new []CompassMark
-    compass_st.cmp_pool = new []CompassMark
   }
   List.clear(compass_st.cmp_list)
   compass_st.cmp_used = 0
@@ -37,7 +36,10 @@ export function compass_end(compass_st: mut CompassState) -> void {
 
 # the pool's next mark, filled (one made only when the pool is short)
 function cmp_take(compass_st: mut CompassState, x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> CompassMark {
-  if compass_st.cmp_used >= len(compass_st.cmp_pool) { push(compass_st.cmp_pool, new CompassMark) }
+  if compass_st.cmp_used >= len(compass_st.cmp_pool) {
+    @alloc_ok("past COMPASS_POOL marks in one frame only, then kept")
+    push(compass_st.cmp_pool, new CompassMark)
+  }
   compass_st.cmp_used += 1
   return cmp_fill(compass_st.cmp_pool[compass_st.cmp_used - 1], x, z, icon, colour, tier, prio, label)
 }
@@ -56,3 +58,11 @@ export function compass_gather(compass_st: mut CompassState) -> void {
 }
 
 export function compass_capturing(compass_st: CompassState) -> bool { return compass_st.cmp_capturing }
+
+# more marks than any frame has asked for (the tracking view's peak is well under it)
+const COMPASS_POOL: int = 512
+function cmp_pool__new() -> []CompassMark {
+  let xs = new []CompassMark
+  for i in 0 .. COMPASS_POOL { push(xs, new CompassMark) }
+  return xs
+}

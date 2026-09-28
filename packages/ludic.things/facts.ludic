@@ -9,7 +9,10 @@ function th_fact(things_st: mut ThingsState, what: int, t: Thing) -> void {
   }
   var pool = things_st.th_fact_a
   if things_st.th_fact_on_b { pool = things_st.th_fact_b }
-  if things_st.th_fact_n >= len(pool) { push(pool, new ThingFact) }
+  if things_st.th_fact_n >= len(pool) {
+    @alloc_ok("a pool miss: past the most facts in one drain only, then kept")
+    push(pool, new ThingFact)
+  }
   let f = pool[things_st.th_fact_n]
   things_st.th_fact_n += 1
   f.what = what

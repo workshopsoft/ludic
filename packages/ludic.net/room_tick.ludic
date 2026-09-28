@@ -69,6 +69,7 @@ function net__room_answer(net_st: mut NetState) -> void {
     net__take_relay(net_st, v)
     net_st.net__r_state = NET_R_ROOM
     net_st.net__poll_t = 0.0
+    @alloc_ok("once per room")
     net__log(`room {code}`)
     net__fact(net_st, NET_ROOM, -1, 0, 0, code)
     return
