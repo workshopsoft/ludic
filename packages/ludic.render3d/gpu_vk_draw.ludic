@@ -38,8 +38,11 @@ function gvk_module(render3d_st: mut Render3dState, path: string) -> long {
   Vk.put_ptr(smci, VkShaderModuleCreateInfo_pCode, spv)
   let out = bytes(8)
   let r = Vk.create_shader_module(render3d_st.gvk_dev, smci, render3d_st.gvk_ac, out)
+  let module = gvk_handle(out)
+  # the driver has its own copy of the code: what was read and made for the call goes
+  free(spv);  free(smci);  free(out)
   if r != VK_SUCCESS { gvk_fail(render3d_st, `vkCreateShaderModule {path}`, r);  return zero }
-  return gvk_handle(out)
+  return module
 }
 
 # The Vulkan side of a program handle the renderer already made (gpu_program): the handle's
@@ -65,9 +68,15 @@ function gvk_program(render3d_st: mut Render3dState, p: int, key: string, spv_di
   if len(parts) > 2 { defs = parts[2] }
   let v = gpu_variant_find_key(render3d_st, parts[0], parts[1], defs)
   if v == null { print(`r3d: vulkan: no SPIR-V variant for {key}`);  return false }
-  let vs = gvk_module(render3d_st, `{spv_dir}/{v.id}.vert.spv`)
+  for q in 0 .. len(parts) { free(parts[q]) }
+  free(parts)
+  let vpath = `{spv_dir}/{v.id}.vert.spv`
+  let vs = gvk_module(render3d_st, vpath)
+  free(vpath)
   if Text.ends_with(v.vs, ".mesh") { render3d_st.gvk_prog_mesh[p] = 1 } else { render3d_st.gvk_prog_mesh[p] = 0 }
-  let fs = gvk_module(render3d_st, `{spv_dir}/{v.id}.frag.spv`)
+  let fpath = `{spv_dir}/{v.id}.frag.spv`
+  let fs = gvk_module(render3d_st, fpath)
+  free(fpath)
   if vs == 0 or fs == 0 { return false }
 
   let nt = len(v.t_name)
@@ -114,9 +123,12 @@ function gvk_program(render3d_st: mut Render3dState, p: int, key: string, spv_di
   Vk.put_ptr(plci, VkPipelineLayoutCreateInfo_pSetLayouts, dsl)
   let out = bytes(8)
   r = Vk.create_pipeline_layout(render3d_st.gvk_dev, plci, render3d_st.gvk_ac, out)
+  let dsl_h = Vk.get_i64(dsl, 0)
+  let lay_h = gvk_handle(out)
+  free(binds);  free(dslci);  free(dsl);  free(plci);  free(out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, `vkCreatePipelineLayout for {key}`, r) }
   render3d_st.gvk_prog_var[p] = v;  render3d_st.gvk_prog_vs[p] = vs;  render3d_st.gvk_prog_fs[p] = fs
-  render3d_st.gvk_prog_dsl[p] = Vk.get_i64(dsl, 0);  render3d_st.gvk_prog_layout[p] = gvk_handle(out)
+  render3d_st.gvk_prog_dsl[p] = dsl_h;  render3d_st.gvk_prog_layout[p] = lay_h
   return true
 }
 
@@ -135,7 +147,9 @@ function gvk_compute_new_tex(render3d_st: mut Render3dState, name: string, n_buf
     render3d_st.gvk_cp_ntex = new []int
     push(render3d_st.gvk_cp_pipe, zero);  push(render3d_st.gvk_cp_layout, zero);  push(render3d_st.gvk_cp_dsl, zero);  push(render3d_st.gvk_cp_nbuf, 0);  push(render3d_st.gvk_cp_ntex, 0)
   }
-  let module = gvk_module(render3d_st, `{render3d_st.gvk_spv_dir}/{name}.comp.spv`)
+  let cpath = `{render3d_st.gvk_spv_dir}/{name}.comp.spv`
+  let module = gvk_module(render3d_st, cpath)
+  free(cpath)
   if module == 0 { return 0 }
   let nb = n_bufs + 1 + n_tex
   let bw = VkDescriptorSetLayoutBinding_sizeof
@@ -177,8 +191,11 @@ function gvk_compute_new_tex(render3d_st: mut Render3dState, name: string, n_buf
   Vk.put_ptr(cpci, so + VkPipelineShaderStageCreateInfo_pName, "main")
   Vk.put_i64(cpci, VkComputePipelineCreateInfo_layout, layout)
   r = Vk.create_compute_pipelines(render3d_st.gvk_dev, zero, 1, cpci, render3d_st.gvk_ac, out)
+  let pipe_h = gvk_handle(out)
+  let dsl_h = Vk.get_i64(dsl, 0)
+  free(binds);  free(dslci);  free(dsl);  free(plci);  free(cpci);  free(out)
   if r != VK_SUCCESS { gvk_fail(render3d_st, `vkCreateComputePipelines {name}`, r);  return 0 }
-  push(render3d_st.gvk_cp_pipe, gvk_handle(out));  push(render3d_st.gvk_cp_layout, layout);  push(render3d_st.gvk_cp_dsl, Vk.get_i64(dsl, 0));  push(render3d_st.gvk_cp_nbuf, n_bufs)
+  push(render3d_st.gvk_cp_pipe, pipe_h);  push(render3d_st.gvk_cp_layout, layout);  push(render3d_st.gvk_cp_dsl, dsl_h);  push(render3d_st.gvk_cp_nbuf, n_bufs)
   push(render3d_st.gvk_cp_ntex, n_tex)
   return len(render3d_st.gvk_cp_pipe) - 1
 }
@@ -330,6 +347,7 @@ function gvk_zero_vbuf_get(render3d_st: mut Render3dState) -> int {
     let z = bytes(65536)
     Vk.zero(z, 65536)
     gvk_buf_upload(render3d_st, render3d_st.gvk_zero_vbuf, 65536, z)
+    free(z)
   }
   return render3d_st.gvk_zero_vbuf
 }
@@ -374,7 +392,7 @@ function gvk_depth_op(f: int) -> int {
 # Buffers are named by the order they are first read in, not by handle: a scatter mesh re-pointed
 # at another instance buffer keeps its layout, and so its pipeline.
 function gvk_layout_key(m: Mesh) -> string {
-  if m == null or m.attrs == null { return "none" }
+  if m == null or m.attrs == null { return "none"[0 .. 4] }      # a copy: the caller frees what it gets
   var k: string = null                        # each step frees the key it grew from
   let seen = words(GPU_MAX_ATTRS)
   var ns = 0
@@ -393,7 +411,7 @@ function gvk_layout_key(m: Mesh) -> string {
     }
   }
   free(seen)
-  if k == null { return "" }
+  if k == null { return ""[0 .. 0] }
   return k
 }
 
@@ -405,7 +423,9 @@ function gvk_pipeline(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkSt
   let zero: long = 0
   let v = render3d_st.gvk_prog_var[p]
   if v == null { return zero }
-  let key = `{p}|{gvk_layout_key(m)}|{st.depth_test},{st.depth_write},{st.depth_func},{st.blend},{st.blend_src},{st.blend_dst},{st.cull},{st.cull_face},{st.color_write},{st.a2c},{st.bias},{st.bias_factor},{st.bias_units},{st.wireframe}|{n_color},{color_fmt},{depth_fmt},{samples}`
+  let lkey = gvk_layout_key(m)
+  let key = `{p}|{lkey}|{st.depth_test},{st.depth_write},{st.depth_func},{st.blend},{st.blend_src},{st.blend_dst},{st.cull},{st.cull_face},{st.color_write},{st.a2c},{st.bias},{st.bias_factor},{st.bias_units},{st.wireframe}|{n_color},{color_fmt},{depth_fmt},{samples}`
+  free(lkey)
   if render3d_st.gvk_pipe_keys == null { render3d_st.gvk_pipe_keys = new []string;  render3d_st.gvk_pipe = new []long;  render3d_st.gvk_pipe_bufs = words(GPU_MAX_VBUFS) }
   for i in 0 .. len(render3d_st.gvk_pipe_keys) { if render3d_st.gvk_pipe_keys[i] == key { return render3d_st.gvk_pipe[i] } }
 
@@ -1061,11 +1081,14 @@ function gvk_view_of(render3d_st: mut Render3dState, tex: int, layer1: int) -> l
   let out = bytes(8)
   let zero: long = 0
   render3d_st.gvk_mk_view += 1
-  if Vk.create_image_view(render3d_st.gvk_dev, vci, render3d_st.gvk_ac, out) != VK_SUCCESS { return zero }
+  let made = Vk.create_image_view(render3d_st.gvk_dev, vci, render3d_st.gvk_ac, out)
+  let view = gvk_handle(out)
+  free(vci);  free(out)
+  if made != VK_SUCCESS { return zero }
   push(render3d_st.gvk_layer_views, key)
-  push(render3d_st.gvk_layer_view, gvk_handle(out))
+  push(render3d_st.gvk_layer_view, view)
   push(render3d_st.gvk_layer_view_tex, tex)
-  return gvk_handle(out)
+  return view
 }
 # the layer range a barrier for an attachment covers: the whole image unless one layer is drawn
 function gvk_att_barrier(render3d_st: mut Render3dState, cb: pointer, tex: int, layer1: int, depth: bool, old_layout: int, new_layout: int) -> void {
