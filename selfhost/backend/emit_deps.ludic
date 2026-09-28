@@ -304,6 +304,16 @@ function dr_walk(n: Node, refs: []int) -> void {
     return
   }
   if dr_reg_field(n, refs) { return }
+  if n.kind == S_EMIT and n.s != null {           # 25.2: an emit reaches its event's listeners
+    var li = 0
+    while li < len(g_onlisten) {
+      if (g_onlisten[li].s == n.s) {
+        let lk = dr_index(`@On {n.s}#{itoa(li)}`)
+        if lk >= 0 { push(refs, lk) }
+      }
+      li += 1
+    }
+  }
   if (n.kind == E_ID or n.kind == E_FNREF) and n.s != null {
     let k = dr_index(n.s)
     if k >= 0 { push(refs, k) }
@@ -430,7 +440,7 @@ function deps_reach(f: pointer) -> void {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
-    if d.s != null and (d.kind == N_FN or d.kind == N_VAR or d.kind == N_CONST) and ck_tab_get(g_dr_find_k, g_dr_find_v, d.s) == null {
+    if d.s != null and (d.kind == N_FN or d.kind == N_VAR or d.kind == N_CONST or d.kind == N_SYS) and ck_tab_get(g_dr_find_k, g_dr_find_v, d.s) == null {
       let h = new Node
       h.ival = len(g_dr_node)
       ck_tab_put(g_dr_find_k, g_dr_find_v, d.s, h)
@@ -438,6 +448,17 @@ function deps_reach(f: pointer) -> void {
       push(g_dr_node, d)
     }
     i += 1
+  }
+  # 25.2: each @On body is a node, reached from every `emit` of its event (dr_walk)
+  var li = 0
+  while li < len(g_onlisten) {
+    let nm = `@On {g_onlisten[li].s}#{itoa(li)}`
+    let h = new Node
+    h.ival = len(g_dr_node)
+    ck_tab_put(g_dr_find_k, g_dr_find_v, nm, h)
+    push(g_dr_name, nm)
+    push(g_dr_node, g_onlisten[li])
+    li += 1
   }
   let nw = dr_words()
   var j = 0
@@ -493,4 +514,5 @@ function deps_reach(f: pointer) -> void {
     }
     j += 1
   }
+  deps_frame(f)                                  # 25.2: what a frame can come to allocate
 }

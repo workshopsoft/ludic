@@ -1,0 +1,164 @@
+# emit_frame.ludic — 25.2: what a frame can come to allocate. The roots are the code that runs every
+# frame - a handler in a frame phase, every reducer (the drain runs after each phase), an `@On` body,
+# a function stored as a System's `tick`, and one stored in a field whose type marks it `@frame`
+# (a step list) - and every allocating construct in what they reach through deps_reach's graph is a
+# `falloc` line with the shortest chain from a root. A function under `@alloc_ok("why")` counts
+# nothing and is not followed. ludic deps counts the lines (frame_allocs) and ratchets them.
+
+var g_alloc_ok_names: []pointer = new []pointer    # functions and handlers under @alloc_ok("why")
+var g_frame_fields: []pointer = new []pointer      # record fields declared `@frame`
+var g_fr_root: []bool = new []bool
+var g_fr_from: []int = new []int                   # the node a reached one was first reached from
+
+function fr_phase_frame(ph: pointer) -> bool {
+  return (ph == "Input") or (ph == "FixedUpdate") or (ph == "Update") or (ph == "LateUpdate") or (ph == "Render") or (ph == "Overlay")
+}
+
+function fr_is_frame_field(name: pointer) -> bool {
+  if (name == "tick") { return true }
+  var i = 0
+  while i < len(g_frame_fields) { if (g_frame_fields[i] == name) { return true };  i += 1 }
+  return false
+}
+
+function fr_alloc_ok(name: pointer) -> bool {
+  var i = 0
+  while i < len(g_alloc_ok_names) { if (g_alloc_ok_names[i] == name) { return true };  i += 1 }
+  return false
+}
+
+function fr_mark_root(name: pointer) -> void {
+  let k = dr_index(name)
+  if k >= 0 { g_fr_root[k] = true }
+}
+
+# `x.tick = fn f`, `tick: fn f` in a record, and the same for an @frame field: f is a root
+function fr_find_roots(n: Node) -> void {
+  if n == null { return }
+  if n.kind == S_ASSIGN and n.a != null and n.a.kind == E_MEMBER and n.a.s != null and fr_is_frame_field(n.a.s) and n.b != null and n.b.kind == E_FNREF { fr_mark_root(n.b.s) }
+  if n.kind == E_REC and n.kids != null {
+    var i = 0
+    while i < len(n.kids) {
+      let f = n.kids[i]
+      if f.s != null and fr_is_frame_field(f.s) and f.a != null and f.a.kind == E_FNREF { fr_mark_root(f.a.s) }
+      i += 1
+    }
+  }
+  fr_find_roots(n.a)
+  fr_find_roots(n.b)
+  fr_find_roots(n.c)
+  if n.kids != null {
+    var j = 0
+    while j < len(n.kids) { fr_find_roots(n.kids[j]);  j += 1 }
+  }
+}
+
+function fr_is_textish(n: Node) -> bool {
+  if n == null { return false }
+  if n.kind == E_STR { return true }
+  if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and (n.a.s == "string") { return true }
+  if n.kind == E_BIN and (n.s == "+") { return fr_is_textish(n.a) or fr_is_textish(n.b) }
+  return false
+}
+
+function fr_alloc_kind(n: Node, text_above: bool) -> pointer {
+  if n.kind == E_NEW { return `new:{n.s}` }
+  if n.kind == E_LIST { return "list" }
+  if n.kind == E_BIN and (n.s == "+") and not text_above and fr_is_textish(n) { return "text" }
+  if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and n.a.s != null {
+    let c = n.a.s
+    if (c == "push") { return "grow" }
+    if (c == "words") or (c == "floats") or (c == "doubles") or (c == "buffer") or (c == "bytes") or (c == "fixeds") or (c == "pointers") { return `{c}()` }
+  }
+  return null
+}
+
+# the allocating constructs in one declaration, each a falloc line with its chain
+function fr_allocs(f: pointer, n: Node, k: int, text_above: bool) -> int {
+  if n == null { return 0 }
+  var found = 0
+  let kind = fr_alloc_kind(n, text_above)
+  if kind != null {
+    deps_line(f, `falloc {kind} {g_dr_node[k].file}:{itoa(n.line)} {fr_chain(k)}`)
+    found += 1
+  }
+  let text = (n.kind == E_BIN) and (n.s == "+") and fr_is_textish(n)
+  found += fr_allocs(f, n.a, k, text)
+  found += fr_allocs(f, n.b, k, text)
+  found += fr_allocs(f, n.c, k, false)
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) { found += fr_allocs(f, n.kids[i], k, false);  i += 1 }
+  }
+  return found
+}
+
+# root > ... > this declaration, by the first way it was reached: the root, then the last six
+function fr_chain(k: int) -> pointer {
+  var s = g_dr_name[k]
+  var at = g_fr_from[k]
+  var steps = 0
+  var root = k
+  while at >= 0 {
+    if steps < 6 { s = `{g_dr_name[at]}>{s}` }
+    root = at
+    at = g_fr_from[at]
+    steps += 1
+  }
+  if steps > 6 { s = `{g_dr_name[root]}>..>{s}` }
+  return s
+}
+
+function deps_frame(f: pointer) -> void {
+  let n = len(g_dr_node)
+  g_fr_root = new []bool
+  g_fr_from = new []int
+  let seen = new []bool
+  var i = 0
+  while i < n { push(g_fr_root, false);  push(g_fr_from, -1);  push(seen, false);  i += 1 }
+  i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_SYS and d.s != null and fr_phase_frame(d.ty) { fr_mark_root(d.s) }
+    if d.kind == N_FN and d.s != null and str_starts(d.s, "ludic_reduce__") { fr_mark_root(d.s) }
+    fr_find_roots(d)
+    i += 1
+  }
+  var j = 0
+  while j < len(g_onlisten) {
+    fr_mark_root(`@On {g_onlisten[j].s}#{itoa(j)}`)
+    j += 1
+  }
+  # breadth first from every root, so a chain is the shortest
+  let queue = new []int
+  i = 0
+  while i < n {
+    if g_fr_root[i] and not fr_alloc_ok(g_dr_name[i]) { seen[i] = true;  push(queue, i) }
+    i += 1
+  }
+  var qh = 0
+  while qh < len(queue) {
+    let k = queue[qh]
+    qh += 1
+    let refs = g_dr_refs[k]
+    var r = 0
+    while r < len(refs) {
+      let t = refs[r]
+      if not seen[t] and not fr_alloc_ok(g_dr_name[t]) {
+        seen[t] = true
+        g_fr_from[t] = k
+        push(queue, t)
+      }
+      r += 1
+    }
+  }
+  var total = 0
+  i = 0
+  while i < len(queue) {
+    let k = queue[i]
+    let d = g_dr_node[k]
+    if (d.kind == N_FN or d.kind == N_SYS or d.kind == N_BLOCK) and d.file != null and not is_runtime_file(d.file) { total += fr_allocs(f, d.a, k, false) }
+    i += 1
+  }
+  deps_line(f, `frame_allocs {itoa(total)}`)
+}
