@@ -1,5 +1,5 @@
 # string_temps.ludic - a string made inside an expression and held by nothing (`a + "/"` in
-# `a + "/" + b`, a template's pieces, a number's text, a side only compared) is freed as soon as it
+# `a + "/" + b`, a template's pieces, a number's text, a slice, a side only compared) is freed as soon as it
 # has been used, and one that IS held - in a variable, handed to a function, a function's result -
 # is not. Prints 1 2 3 4 5 6 7 and `grew 0` (the heap is read on the Mac; 0 elsewhere).
 program StringTemps {
@@ -10,6 +10,8 @@ program StringTemps {
   function round(i: int, a: string, b: string) -> int {
     var bad = 0
     if a + "/" + b + "/" + string(i) != `{a}/{b}/{i}` { bad += 1 }
+    let p = "lake/camp.png"                     # a literal: the slices are what is made here
+    if p[len(p) - 4 .. len(p)] != ".png" or p[0 .. len(p) - 4] + ".dds" != `lake/{b[0 .. 0]}camp.dds` { bad += 1 }
     if `{i}-{i * 2}-{long(i) * 1000000000}` != string(i) + "-" + string(i * 2) + "-" + string(long(i) * 1000000000) { bad += 1 }
     return bad
   }
@@ -20,7 +22,9 @@ program StringTemps {
     # held intermediates stay good after the `+` that read them
     let mid = a + "/"
     let full = mid + b
-    if mid == "dir/" and full == "dir/file" { print(1) }
+    let head = full[0 .. 3]
+    let head2 = head + "!" + head
+    if mid == "dir/" and full == "dir/file" and head == "dir" and head2 == "dir!dir" { print(1) }
     let n = string(-42)
     let t = n + "!" + n
     if n == "-42" and t == "-42!-42" { print(2) }

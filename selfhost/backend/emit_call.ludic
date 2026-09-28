@@ -1056,7 +1056,8 @@ function emit_expr(e: Node) -> Val {
     let lo = emit_expr(e.b)
     let hi = emit_expr(e.c)
     g_uses_strslice = true
-    return val(emit_bind(`call ptr @lp_str_slice(ptr {base.code}, i32 {lo.code}, i32 {hi.code})`), "string")
+    # a copy, so it is fresh: `s[0 .. n - 4] + ".dds"` and `s[a .. b] == "x"` free it once read
+    return fresh_val(emit_bind(`call ptr @lp_str_slice(ptr {base.code}, i32 {lo.code}, i32 {hi.code})`), "string")
   }
   if e.kind == E_STR  { return val(emit_str_const(e.s), "string") }
   if e.kind == E_NEW  {
