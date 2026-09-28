@@ -27,11 +27,18 @@ function gear__offs() -> []bool {
 export function gear_facts(gear_st: GearState) -> Queue<GearFact> { return gear_st.gear__q }
 
 function gear__fact(gear_st: GearState, what: int, k: int, c: int, cost: int) -> void {
-  let f = new GearFact
+  var f = q_rec(gear_facts(gear_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new GearFact
+    q_ring_add(gear_facts(gear_st), f)
+  }
   f.what = what
   f.cost = cost
   f.kind = k
   f.charge = c
+  f.level = 0
+  f.item = -1
   if k >= 0 {
     f.level = gear_st.gear__lv[k]
     f.item = GearKinds[k].item

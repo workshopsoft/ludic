@@ -5,6 +5,8 @@ export property Queue<T> {
   tag: QueueTag = null
   none: []T = null            # what draining an empty queue hands back, never pushed to
   spare: []T = null           # the list the last drain handed out: cleared and reused by the next
+  ring: []T = null            # the facts' records, used again once no list holds them (queue_ring.ludic)
+  ring_at: int = 0
 }
 # what a queue says about itself, whatever it holds: its name and how many facts wait in it
 export property QueueTag {
@@ -26,6 +28,7 @@ export function queue_new<T>(name: string) -> Queue<T> {
   q.tag.name = name
   q.none = new []T
   q.spare = new []T
+  q.ring = new []T
   return q
 }
 

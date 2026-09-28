@@ -15,7 +15,7 @@ function tk_push(tracks_st: mut TracksState, f: TrackRead) -> void {
 export function tracks_read(tracks_st: mut TracksState, slot: int) -> void {
   if slot < 0 or tracks_st.tk_ring == null or slot >= len(tracks_st.tk_ring) { return }
   let t = tracks_st.tk_ring[slot]
-  let f = new TrackRead
+  let f = tk_rec(tracks_st)
   f.sp = t.sp
   f.source = TRACK_PRINT
   f.kind = slot / tracks_st.tk_cap
@@ -35,7 +35,7 @@ export function tracks_read(tracks_st: mut TracksState, slot: int) -> void {
 # a sign that is not a print (droppings, a legend's mark): the caller knows whether it is the
 # first reading of it
 export function tracks_note(tracks_st: mut TracksState, sp: int, source: int, legend: bool, yaw: float, first: bool) -> void {
-  let f = new TrackRead
+  let f = tk_rec(tracks_st)
   f.sp = sp
   f.source = source
   f.legend = legend
@@ -53,3 +53,19 @@ export function tracks_note_bearing(tracks_st: mut TracksState, yaw: float) -> v
 }
 
 export function tracks_set_read_count(tracks_st: mut TracksState, n: int) -> void { tracks_st.tk_read_n = n }
+
+# a reading's record from the queue's ring (ludic.base's q_rec), every field back to its default
+function tk_rec(tracks_st: mut TracksState) -> TrackRead {
+  var f = q_rec(tracks_reads(tracks_st))
+  if f == null {
+    @alloc_ok("past the ring: more readings in a frame than its records, then kept in it")
+    f = new TrackRead
+    q_ring_add(tracks_reads(tracks_st), f)
+  }
+  f.kind = 0
+  f.age = 0.0
+  f.fresh = 0
+  f.named = true
+  f.bearing = ""
+  return f
+}

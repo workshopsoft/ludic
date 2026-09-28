@@ -27,7 +27,12 @@ export function shop_sellable(shop_st: ShopState, v: int) -> []int {
 }
 
 function shop_trade_fact(shop_st: ShopState, what: int, it: int, n: int, price: int) -> void {
-  let t = new ShopTrade
+  var t = q_rec(shop_trades(shop_st))
+  if t == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    t = new ShopTrade
+    q_ring_add(shop_trades(shop_st), t)
+  }
   t.what = what
   t.vendor = shop_st.shop_at
   t.item = it

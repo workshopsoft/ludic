@@ -19,7 +19,10 @@ export function minimap_config_pins(minimap_st: mut MinimapState, max: int, symb
 }
 
 export function minimap_pins_clear(minimap_st: mut MinimapState) -> void {
-  minimap_st.mm_pins = new []MinimapPin
+  if minimap_st.mm_pins == null {
+    @alloc_ok("once: the marks' list, cleared after")
+    minimap_st.mm_pins = new []MinimapPin
+  } else { List.clear(minimap_st.mm_pins) }
   minimap_st.mm_open = -1
   minimap_st.mm_followed = -1
   minimap_st.mm_last = 0
@@ -38,6 +41,7 @@ export function minimap_pin_full(minimap_st: MinimapState) -> bool { return mini
 export function minimap_pin_add(minimap_st: mut MinimapState, x: float, z: float, icon: int, label: string) -> int {
   if minimap_st.mm_pins == null { minimap_pins_clear(minimap_st) }
   if minimap_pin_full(minimap_st) { return -1 }
+  @alloc_ok("a mark put down: kept, and the map holds at most its most")
   let p = new MinimapPin
   p.x = x
   p.z = z
@@ -53,6 +57,7 @@ export function minimap_pin_add(minimap_st: mut MinimapState, x: float, z: float
 export function minimap_pin_put(minimap_st: mut MinimapState, x: float, z: float, icon: int, colour: int, day: int, label: string) -> int {
   if minimap_st.mm_pins == null { minimap_pins_clear(minimap_st) }
   if minimap_pin_full(minimap_st) { return -1 }
+  @alloc_ok("a mark put down: kept, and the map holds at most its most")
   let p = new MinimapPin
   p.x = x
   p.z = z

@@ -46,7 +46,12 @@ export function settings_get_bool(settings_st: SettingsState, id: int) -> bool {
 export function settings_get_text(settings_st: SettingsState, id: int) -> string { return settings_st.sg_text[id] }
 
 function sg_changed(settings_st: SettingsState, id: int) -> void {
-  let c = new SettingChanged
+  var c = q_rec(settings_changes(settings_st))
+  if c == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    c = new SettingChanged
+    q_ring_add(settings_changes(settings_st), c)
+  }
   c.id = id
   c.key = settings_st.sg_defs[id].key
   q_push(settings_changes(settings_st), c)

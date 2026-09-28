@@ -18,7 +18,12 @@ export function hints_facts(hints_st: HintsState) -> Queue<HintsFact> {
 }
 
 function hn_fact(hints_st: HintsState, what: int, card: int) -> void {
-  let f = new HintsFact
+  var f = q_rec(hints_facts(hints_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new HintsFact
+    q_ring_add(hints_facts(hints_st), f)
+  }
   f.what = what
   f.card = card
   q_push(hints_facts(hints_st), f)

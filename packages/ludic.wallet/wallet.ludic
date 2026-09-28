@@ -19,7 +19,12 @@ export function wallet_can(wallet_st: WalletState, n: int) -> bool { return wall
 # the purse holds exactly n (a starting purse, a correction, the network's word)
 export function wallet_set(wallet_st: mut WalletState, n: int) -> void {
   if n == wallet_st.wl_money { return }
-  let c = new MoneyChanged
+  var c = q_rec(wallet_changes(wallet_st))
+  if c == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    c = new MoneyChanged
+    q_ring_add(wallet_changes(wallet_st), c)
+  }
   c.before = wallet_st.wl_money
   c.after = n
   wallet_st.wl_money = n

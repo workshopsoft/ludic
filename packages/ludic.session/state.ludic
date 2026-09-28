@@ -83,11 +83,21 @@ export function ses_facts(session_st: SessionState) -> Queue<SessionFact> {
 }
 
 function session__fact(session_st: SessionState, what: int, slot: int, pid: int) -> SessionFact {
-  let f = new SessionFact
+  var f = q_rec(ses_facts(session_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new SessionFact
+    q_ring_add(ses_facts(session_st), f)
+  }
   f.what = what
   f.slot = slot
   f.pid = pid
   f.role = session_st.session__role
+  f.id = 0
+  f.kind = 0
+  f.param = 0
+  f.yes = false
+  f.text = ""
   q_push(ses_facts(session_st), f)
   return f
 }

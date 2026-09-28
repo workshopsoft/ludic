@@ -48,7 +48,12 @@ export function fire_facts(fire_st: FireState) -> Queue<FireFact> {
 }
 
 function fr_fact(fire_st: FireState, what: int) -> void {
-  let f = new FireFact
+  var f = q_rec(fire_facts(fire_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new FireFact
+    q_ring_add(fire_facts(fire_st), f)
+  }
   f.what = what
   f.fuel = fire_st.fr_fuel
   q_push(fire_facts(fire_st), f)

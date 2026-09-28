@@ -7,7 +7,10 @@ function iv_change(inventory_st: mut InventoryState, it: int, after: int) -> voi
   if len(inventory_st.iv_pool) > 0 {
     c = inventory_st.iv_pool[inventory_st.iv_at]
     inventory_st.iv_at = (inventory_st.iv_at + 1) % len(inventory_st.iv_pool)
-  } else { c = new ItemChanged }
+  } else {
+    @alloc_ok("never after inv_config: the ring is made there")
+    c = new ItemChanged
+  }
   c.item = it
   c.before = before
   c.after = after

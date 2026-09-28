@@ -51,7 +51,12 @@ export function craft_refund(i: int) -> void {
 
 function craft_fact_push(crafting_st: CraftingState, i: int, queued: bool) -> void {
   let r = CraftRecipes[i]
-  let c = new Crafted
+  var c = q_rec(craft_facts(crafting_st))
+  if c == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    c = new Crafted
+    q_ring_add(craft_facts(crafting_st), c)
+  }
   c.recipe = i
   c.item = r.out
   c.n = r.n

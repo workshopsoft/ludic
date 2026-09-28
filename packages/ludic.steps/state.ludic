@@ -64,7 +64,12 @@ export function steps_facts(steps_st: StepsState) -> Queue<StepsFact> {
 }
 
 function steps__fact(steps_st: StepsState, what: int, ch: int, i: int) -> void {
-  let f = new StepsFact
+  var f = q_rec(steps_facts(steps_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new StepsFact
+    q_ring_add(steps_facts(steps_st), f)
+  }
   f.what = what
   f.chapter = ch
   f.step = i

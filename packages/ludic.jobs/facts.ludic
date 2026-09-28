@@ -11,7 +11,9 @@ function jobs__fact_record(jobs_st: mut JobsState) -> JobsFact {
     jobs_st.jobs__fnext[0] += 1
     return f
   }
+  @alloc_ok("a pool miss: past the most facts held at once, then kept in the pool")
   let f = new JobsFact
+  @alloc_ok("as above")
   push(jobs_st.jobs__fpool, f)
   return f
 }

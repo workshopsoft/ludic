@@ -12,6 +12,7 @@ export property HandlePool {
 }
 
 # everything the pool will ever hold, made now: nothing after this allocates
+@alloc_ok("a pool made at start: its owner keeps it")
 export function hd_pool_new(name: string, cap: int) -> HandlePool {
   let p = new HandlePool
   p.name = name

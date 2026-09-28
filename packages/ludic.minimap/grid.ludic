@@ -45,6 +45,7 @@ export function minimap_config(minimap_st: mut MinimapState, cells: int, cell_m:
   minimap_st.mm_cell_m = Math.max(cell_m, 0.001)
   minimap_st.mm_core0 = 0
   minimap_st.mm_core_n = minimap_st.mm_cells
+  @alloc_ok("once per map configured: its explored grid")
   minimap_st.mm_seen = new []int
   for i in 0 .. minimap_st.mm_cells * minimap_st.mm_cells { push(minimap_st.mm_seen, 0) }
   minimap_st.mm_land_n = 0

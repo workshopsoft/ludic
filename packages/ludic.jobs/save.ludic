@@ -16,6 +16,7 @@ function jobs__reset_scope(jobs_st: mut JobsState, sc: int) -> void {
   jobs_st.jobs__primed = false
 }
 
+@alloc_ok("on a save: the jobs written out")
 function jobs__save_scope(jobs_st: JobsState, sc: int) -> Val {
   let v = Value.object()
   let js = Value.object()
