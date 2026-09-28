@@ -35,7 +35,7 @@ program RouteTest {
     expect(not fishing_cast(toy_fishing_st, 500.0, 2.0))
     core_tick_all(base_st, tick_new(1.0 / 60.0, 0, 0.0))
     expect_eq(pack_total(toy_pack_st), 3)
-    expect_eq(len(core_undrained([q_tag(toy_fishing_st.caught)])), 0)
+    expect_eq(core_undrained([q_tag(toy_fishing_st.caught)], new []string), 0)
   }
 
   test "the pack saves its own section and the fishing, which saves nothing, is reset" (base_st: mut BaseState, toy_fishing_st: mut ToyFishingState, toy_pack_st: ToyPackState) {

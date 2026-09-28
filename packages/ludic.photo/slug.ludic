@@ -2,6 +2,7 @@
 # at most 24 characters, so a folder of photographs browses well
 const PHT_ALPHA: string = "0123456789abcdefghijklmnopqrstuvwxyz"
 
+@alloc_ok("on a photograph taken: its file name")
 export function photo_slug(tags: string) -> string {
   var out = ""
   var n = 0

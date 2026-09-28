@@ -34,6 +34,7 @@ export function hd_new(p: HandlePool) -> int {
   return s | (p.gen[s] << 22)
 }
 
+@alloc_ok("only when a pool is full: the words of its panic")
 function hd_refuse(p: HandlePool) -> int {
   p.refused += 1
   if p.strict { panic(`handle pool {p.name} is full at {len(p.gen)}`) }

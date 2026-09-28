@@ -40,7 +40,7 @@ import "ludic.base"
 | `Tick { dt, frame, hours }`, `tick_new(dt, frame, hours)` | what a system's tick receives |
 | `PH_INPUT`, `PH_SENSE`, `PH_SIMULATE`, `PH_RESOLVE`, `PH_COMMIT`, `PH_PRESENT`, `PH_COUNT` | the phases, in the order they run |
 | `Queue<T>`, `queue_new<T>(name)`, `q_push(q, v)`, `q_drain(q) -> []T`, `q_len(q)`, `q_clear(q)` | facts, first in first out (`queue_new`, not `q_new`: that name is render3d's quaternion). A queue keeps its own count, so its verbs take only the queue: a mechanic's verbs take only the mechanic's own state |
-| `q_tag(q) -> QueueTag`, `core_undrained(tags) -> []string` | the names of the given queues still holding facts; ask it at the end of a frame |
+| `q_tag(q) -> QueueTag`, `core_undrained(tags, out) -> int` | the names of the given queues still holding facts, into a list the caller keeps; ask it at the end of a frame |
 | `Rng`, `rng_new(seed)`, `rng_seed(r, seed)`, `rng_next(r)`, `rng_float(r)`, `rng_between(r, lo, hi)`, `rng_span(r, lo, hi)` | a xorshift32 stream of its own (`rng_between` is inclusive; `rng_range` is taken by `Random.range`) |
 | `SaveNode { found, version, data }`, `save_tree()`, `save_section(root, key, version, v)`, `load_section(root, key) -> SaveNode`, `save_encode`, `save_decode` | the save tree: `{"fishing": {"v": 3, ...}}`; `v` is reserved in a section, and a non-object value rides under `data` |
 | `sv_int`, `sv_float`, `sv_bool`, `sv_str` (key, fallback), `sv_ints` | typed reads with a fallback; a float is kept as thousandths |
