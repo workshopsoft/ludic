@@ -122,12 +122,10 @@ function actor_hide_part(a: Actor, name: string, hidden: bool) -> void {
 }
 
 function actor_new(render3d_st: mut Render3dState, model: Model) -> Actor {
-  let a = new Actor
+  let a = actor_fresh(render3d_st)
   a.model = model
   a.scale = 1.0
-  a.tint = v3_new(1.0, 1.0, 1.0)
   a.rough = 1.0
-  a.mat = m4_new()
   render3d_st.ac_next_id += 1;  a.id = render3d_st.ac_next_id
   if model != null { a.radius = Math.max(model.radius, model.height) + 1.0 }
   a.cull = 450.0
@@ -416,4 +414,37 @@ function actor_clear_all(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].row = -1 }
   List.clear(render3d_st.ac_actors)
   outline_clear(render3d_st)
+}
+
+# A record as `new Actor` makes it, with its matrix and tint: a released one when there is one.
+function actor_fresh(render3d_st: mut Render3dState) -> Actor {
+  let sp = render3d_st.ac_spare
+  if sp == null or len(sp) == 0 {
+    let a = new Actor
+    a.tint = v3_new(1.0, 1.0, 1.0)
+    a.mat = m4_new()
+    return a
+  }
+  let a = List.pop(sp)
+  a.x = 0.0;  a.y = 0.0;  a.z = 0.0;  a.yaw = 0.0;  a.scale = 0.0;  a.rough = 0.0
+  a.tint[0] = 1.0;  a.tint[1] = 1.0;  a.tint[2] = 1.0
+  m4_identity(a.mat)
+  a.visible = true;  a.cast_hidden = false;  a.casts = true;  a.row = -1
+  a.cutout = false;  a.emissive = 0.0;  a.radius = 0.0;  a.cull = 0.0;  a.outline = 0.0
+  a.skin = null;  a.ocol = null
+  return a
+}
+
+# Off the stage for good, and its record kept for the next actor_new: whoever released it never
+# touches it again. What it was lent stays its lender's (a skin clone, a rim colour); what it made
+# for itself (a part's tint, a part hidden) goes.
+function actor_release(render3d_st: mut Render3dState, a: Actor) -> void {
+  if a == null or a.id == 0 { return }        # released already
+  actor_remove(render3d_st, a)
+  if a.ptint != null { free(a.ptint);  a.ptint = null }
+  if a.hide != null { free(a.hide);  a.hide = null }
+  a.model = null;  a.skin = null;  a.ocol = null
+  a.id = 0
+  if render3d_st.ac_spare == null { render3d_st.ac_spare = new []Actor }
+  push(render3d_st.ac_spare, a)
 }
