@@ -1,0 +1,21 @@
+# alloc_fence_unbounded.ludic - 25.1: @alloc_ok says a frame's memory is bounded by its reason, and the
+# fence holds it to that: a declared site whose bytes keep rising window after window is "declared
+# but unbounded", and the failing fence fails the run (exit 86) - here a record a frame, as a screen
+# whose defaults run again on every re-mount makes. Run with small windows:
+#   R3D_ALLOC_DWIN=20 R3D_ALLOC_DRISE=4
+program AllocFenceUnbounded {
+  property Row { v: int = 0 }
+  property Memo { rows: []Row = new []Row }
+  @alloc_ok("a memo miss")
+  function remember(m: Memo, f: int) -> void {
+    push(m.rows, new Row { v: f })
+  }
+  entry {
+    let m = new Memo
+    for f in 0 .. 2000 {
+      remember(m, f)
+      Mem.frame()
+    }
+    print(`bad {Mem.bad_frames()} rows {len(m.rows)}`)
+  }
+}

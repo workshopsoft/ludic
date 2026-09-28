@@ -789,6 +789,29 @@ function panic_case() -> void {
 
 # 25.1: the fence fails a frame that keeps memory once play has settled - exit 86, naming the line and
 # the kind - and under R3D_ALLOC_FENCE=count runs on and says what was kept
+function alloc_fence_unbounded_case() -> void {
+  let lbl = "alloc_fence_unbounded.ludic (a declared site whose bytes keep rising window after window is declared but unbounded: exit 86, named; count mode runs on and the census says so)"
+  let b = `{tmp_dir()}/e_alloc_fence_unb`
+  if not game_build_ok("bin/ludicc", "examples/lang/alloc_fence_unbounded.ludic", b) { bad2(lbl, "did not build"); return }
+  let rc = sh(`R3D_ALLOC_DWIN=20 R3D_ALLOC_DRISE=4 {b} < /dev/null > {tmp_dir()}/afu.out 2>{tmp_dir()}/afu.err`)
+  let said = shq(`grep -q 'declared but unbounded' {tmp_dir()}/afu.err`)
+  let named = shq(`grep -q 'alloc_fence_unbounded.ludic:11  new Row' {tmp_dir()}/afu.err`)
+  let counted = capture_line(`R3D_ALLOC_FENCE=count R3D_ALLOC_DWIN=20 R3D_ALLOC_DRISE=4 R3D_ALLOC_CENSUS={tmp_dir()}/afu.census {b} < /dev/null 2>/dev/null`)
+  let census = capture_line(`grep '^unbounded ' {tmp_dir()}/afu.census | cut -d' ' -f2`)
+  let dsite = shq(`grep -q '^dsite [0-9]* remember ' {tmp_dir()}/afu.census`)
+  if (rc == 86) and said and named and (counted == "bad 0 rows 2000") and (census == "1") and dsite { ok(lbl) }
+  else { bad2(lbl, `rc={string(rc)} said={string(said)} named={string(named)} count=[{counted}] census=[{census}] dsite={string(dsite)}`) }
+}
+
+function alloc_fence_rewarm_case() -> void {
+  let lbl = "alloc_fence_rewarm.ludic (memory kept every frame from the start is judged once the warm-up's cap is reached, and Mem.play() again does not push the deadline back: exit 86)"
+  let b = `{tmp_dir()}/e_alloc_fence_rw`
+  if not game_build_ok("bin/ludicc", "examples/lang/alloc_fence_rewarm.ludic", b) { bad2(lbl, "did not build"); return }
+  let rc = sh(`{b} < /dev/null > /dev/null 2>{tmp_dir()}/afr.err`)
+  let head = capture_line(`grep 'alloc-fence: frame' {tmp_dir()}/afr.err | head -1`)
+  if (rc == 86) and (head == "alloc-fence: frame 3000 kept +16 B (1 made, 0 freed)") { ok(lbl) } else { bad2(lbl, `rc={string(rc)} head=[{head}]`) }
+}
+
 function alloc_fence_leak_case() -> void {
   let lbl = "alloc_fence_leak.ludic (a frame that keeps a record fails the run with exit 86 and names its line; count mode runs on)"
   let b = `{tmp_dir()}/e_alloc_fence_leak`
@@ -1151,6 +1174,8 @@ function cmd_dev_test() -> int {
   feat_case("lang/alloc_fence", "", "frames 300 kept 0 bad 0", "alloc_fence.ludic (25.1: a frame that makes only what it frees or reuses keeps nothing, and the fence passes it)")
   feat_case("lang/alloc_fence_declared", "", "bad 0 kept 0", "alloc_fence_declared.ludic (25.1: @alloc_ok on a function, a statement and a generic's statement is declared at run time; the failing fence lets it through)")
   alloc_fence_leak_case()
+  alloc_fence_unbounded_case()
+  alloc_fence_rewarm_case()
   alloc_fence_auto_case()
   arena_pool_case()
   arena_fnval_case()
