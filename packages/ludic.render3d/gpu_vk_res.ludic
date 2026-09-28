@@ -775,6 +775,14 @@ function gvk_prime(render3d_st: mut Render3dState, b: int, buf: long) -> void {
   render3d_st.gvk_prime_h[render3d_st.gvk_prime_n] = buf
   render3d_st.gvk_prime_n += 1
 }
+# In a command buffer of their own, submitted and waited for at once: recorded into the frame's, a
+# buffer released later in that frame (a guest loading its models) was destroyed before the copy ran.
+function gvk_prime_submit(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gvk_prime_n == 0 { return }
+  let cb = gvk_once_begin(render3d_st)
+  gvk_prime_flush(render3d_st, cb)
+  gvk_once_end(render3d_st, cb)
+}
 function gvk_prime_flush(render3d_st: mut Render3dState, cb: pointer) -> void {
   if render3d_st.gvk_prime_n == 0 { return }
   if render3d_st.gvk_prime_dst == 0 and not gvk_prime_target(render3d_st) {
