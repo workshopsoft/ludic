@@ -5,6 +5,7 @@ numbers float
 import "ludic.base"
 import "native.ludic"
 import "state.ludic"
+import "shape_ids.ludic"
 import "shapes.ludic"
 import "bodies.ludic"
 import "queries.ludic"
