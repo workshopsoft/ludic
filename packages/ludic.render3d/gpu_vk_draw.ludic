@@ -36,7 +36,7 @@ function gvk_module(render3d_st: mut Render3dState, path: string) -> long {
   Vk.put_i64(smci, VkShaderModuleCreateInfo_codeSize, code_size)
   Vk.put_ptr(smci, VkShaderModuleCreateInfo_pCode, spv)
   let out = bytes(8)
-  let r = Vk.create_shader_module(render3d_st.gvk_dev, smci, null, out)
+  let r = Vk.create_shader_module(render3d_st.gvk_dev, smci, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { gvk_fail(render3d_st, `vkCreateShaderModule {path}`, r);  return zero }
   return gvk_handle(out)
 }
@@ -103,7 +103,7 @@ function gvk_program(render3d_st: mut Render3dState, p: int, key: string, spv_di
   Vk.put_i32(dslci, VkDescriptorSetLayoutCreateInfo_bindingCount, nb)
   Vk.put_ptr(dslci, VkDescriptorSetLayoutCreateInfo_pBindings, binds)
   let dsl = bytes(8)
-  var r = Vk.create_descriptor_set_layout(render3d_st.gvk_dev, dslci, null, dsl)
+  var r = Vk.create_descriptor_set_layout(render3d_st.gvk_dev, dslci, render3d_st.gvk_ac, dsl)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, `vkCreateDescriptorSetLayout for {key}`, r) }
   let plci = bytes(VkPipelineLayoutCreateInfo_sizeof)
   Vk.zero(plci, VkPipelineLayoutCreateInfo_sizeof)
@@ -111,7 +111,7 @@ function gvk_program(render3d_st: mut Render3dState, p: int, key: string, spv_di
   Vk.put_i32(plci, VkPipelineLayoutCreateInfo_setLayoutCount, 1)
   Vk.put_ptr(plci, VkPipelineLayoutCreateInfo_pSetLayouts, dsl)
   let out = bytes(8)
-  r = Vk.create_pipeline_layout(render3d_st.gvk_dev, plci, null, out)
+  r = Vk.create_pipeline_layout(render3d_st.gvk_dev, plci, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, `vkCreatePipelineLayout for {key}`, r) }
   render3d_st.gvk_prog_var[p] = v;  render3d_st.gvk_prog_vs[p] = vs;  render3d_st.gvk_prog_fs[p] = fs
   render3d_st.gvk_prog_dsl[p] = Vk.get_i64(dsl, 0);  render3d_st.gvk_prog_layout[p] = gvk_handle(out)
@@ -153,7 +153,7 @@ function gvk_compute_new_tex(render3d_st: mut Render3dState, name: string, n_buf
   Vk.put_i32(dslci, VkDescriptorSetLayoutCreateInfo_bindingCount, nb)
   Vk.put_ptr(dslci, VkDescriptorSetLayoutCreateInfo_pBindings, binds)
   let dsl = bytes(8)
-  var r = Vk.create_descriptor_set_layout(render3d_st.gvk_dev, dslci, null, dsl)
+  var r = Vk.create_descriptor_set_layout(render3d_st.gvk_dev, dslci, render3d_st.gvk_ac, dsl)
   if r != VK_SUCCESS { gvk_fail(render3d_st, `vkCreateDescriptorSetLayout for compute {name}`, r);  return 0 }
   let plci = bytes(VkPipelineLayoutCreateInfo_sizeof)
   Vk.zero(plci, VkPipelineLayoutCreateInfo_sizeof)
@@ -161,7 +161,7 @@ function gvk_compute_new_tex(render3d_st: mut Render3dState, name: string, n_buf
   Vk.put_i32(plci, VkPipelineLayoutCreateInfo_setLayoutCount, 1)
   Vk.put_ptr(plci, VkPipelineLayoutCreateInfo_pSetLayouts, dsl)
   let out = bytes(8)
-  r = Vk.create_pipeline_layout(render3d_st.gvk_dev, plci, null, out)
+  r = Vk.create_pipeline_layout(render3d_st.gvk_dev, plci, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { gvk_fail(render3d_st, `vkCreatePipelineLayout for compute {name}`, r);  return 0 }
   let layout = gvk_handle(out)
   let cpci = bytes(VkComputePipelineCreateInfo_sizeof)
@@ -173,7 +173,7 @@ function gvk_compute_new_tex(render3d_st: mut Render3dState, name: string, n_buf
   Vk.put_i64(cpci, so + VkPipelineShaderStageCreateInfo_module, module)
   Vk.put_ptr(cpci, so + VkPipelineShaderStageCreateInfo_pName, "main")
   Vk.put_i64(cpci, VkComputePipelineCreateInfo_layout, layout)
-  r = Vk.create_compute_pipelines(render3d_st.gvk_dev, zero, 1, cpci, null, out)
+  r = Vk.create_compute_pipelines(render3d_st.gvk_dev, zero, 1, cpci, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { gvk_fail(render3d_st, `vkCreateComputePipelines {name}`, r);  return 0 }
   push(render3d_st.gvk_cp_pipe, gvk_handle(out));  push(render3d_st.gvk_cp_layout, layout);  push(render3d_st.gvk_cp_dsl, Vk.get_i64(dsl, 0));  push(render3d_st.gvk_cp_nbuf, n_bufs)
   push(render3d_st.gvk_cp_ntex, n_tex)
@@ -393,7 +393,7 @@ function gvk_pipeline(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkSt
   let v = render3d_st.gvk_prog_var[p]
   if v == null { return zero }
   let key = `{p}|{gvk_layout_key(m)}|{st.depth_test},{st.depth_write},{st.depth_func},{st.blend},{st.blend_src},{st.blend_dst},{st.cull},{st.cull_face},{st.color_write},{st.a2c},{st.bias},{st.bias_factor},{st.bias_units},{st.wireframe}|{n_color},{color_fmt},{depth_fmt},{samples}`
-  if render3d_st.gvk_pipe_keys == null { render3d_st.gvk_pipe_keys = new []string;  render3d_st.gvk_pipe = new []long }
+  if render3d_st.gvk_pipe_keys == null { render3d_st.gvk_pipe_keys = new []string;  render3d_st.gvk_pipe = new []long;  render3d_st.gvk_pipe_bufs = words(GPU_MAX_VBUFS) }
   for i in 0 .. len(render3d_st.gvk_pipe_keys) { if render3d_st.gvk_pipe_keys[i] == key { return render3d_st.gvk_pipe[i] } }
 
   let ss = VkPipelineShaderStageCreateInfo_sizeof
@@ -419,7 +419,7 @@ function gvk_pipeline(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkSt
   var na = 0
   var nbd = 0
   if m != null and m.attrs != null {
-    let bufs = words(GPU_MAX_VBUFS)
+    let bufs = render3d_st.gvk_pipe_bufs
     for i in 0 .. m.n_attrs {
       let o = i * GPU_ATTR_W
       if m.attrs[o + 1] == 0 { continue }
@@ -566,9 +566,12 @@ function gvk_pipeline(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkSt
   Vk.put_ptr(gpci, VkGraphicsPipelineCreateInfo_pDynamicState, dys)
   Vk.put_i64(gpci, VkGraphicsPipelineCreateInfo_layout, render3d_st.gvk_prog_layout[p])
   let out = bytes(8)
-  let r = Vk.create_graphics_pipelines(render3d_st.gvk_dev, zero, 1, gpci, null, out)
-  if r != VK_SUCCESS { gvk_fail(render3d_st, `vkCreateGraphicsPipelines for {v.vs} + {v.fs}`, r);  return zero }
+  let r = Vk.create_graphics_pipelines(render3d_st.gvk_dev, zero, 1, gpci, render3d_st.gvk_ac, out)
   let pipe = gvk_handle(out)
+  # the create infos are read by the create and go with it: a pipeline first met in play kept all of them
+  free(stages);  free(attrs);  free(bnds);  free(vin);  free(ias);  free(vps);  free(rs);  free(ms);  free(ds)
+  free(cba);  free(cbs);  free(dyn_states);  free(dys);  free(formats);  free(prci);  free(gpci);  free(out)
+  if r != VK_SUCCESS { gvk_fail(render3d_st, `vkCreateGraphicsPipelines for {v.vs} + {v.fs}`, r);  return zero }
   # R3D_VK_PROF names each pipeline as it is made: one made during play is a stall a warm-up missed
   if gvk_prof(render3d_st) { render3d_st.gvk_n_pipe_new += 1;  print(`r3d: vulkan pipeline {len(render3d_st.gvk_pipe) + 1}: {v.vs} + {v.fs}, {n_color} colour format {color_fmt}, depth {depth_fmt}, {samples}x`) }
   push(render3d_st.gvk_pipe_keys, key)
@@ -706,7 +709,7 @@ function gvk_frame_init(render3d_st: mut Render3dState) -> bool {
   render3d_st.gvk_dpools = new []long
   for k in 0 .. 2 {
     render3d_st.gvk_mk_dpool += 1
-    let r = Vk.create_descriptor_pool(render3d_st.gvk_dev, dpci, null, out)
+    let r = Vk.create_descriptor_pool(render3d_st.gvk_dev, dpci, render3d_st.gvk_ac, out)
     if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateDescriptorPool", r) }
     push(render3d_st.gvk_dpools, gvk_handle(out))
   }
@@ -761,7 +764,7 @@ function gvk_kpool_make(render3d_st: mut Render3dState) -> bool {
   Vk.put_ptr(dpci, VkDescriptorPoolCreateInfo_pPoolSizes, sizes)
   let out = bytes(8)
   render3d_st.gvk_mk_dpool += 1
-  let r = Vk.create_descriptor_pool(render3d_st.gvk_dev, dpci, null, out)
+  let r = Vk.create_descriptor_pool(render3d_st.gvk_dev, dpci, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateDescriptorPool (kept sets)", r) }
   render3d_st.gvk_kpool = gvk_handle(out)
   gvk_sc_clear(render3d_st)
@@ -1042,7 +1045,7 @@ function gvk_view_of(render3d_st: mut Render3dState, tex: int, layer1: int) -> l
   let out = bytes(8)
   let zero: long = 0
   render3d_st.gvk_mk_view += 1
-  if Vk.create_image_view(render3d_st.gvk_dev, vci, null, out) != VK_SUCCESS { return zero }
+  if Vk.create_image_view(render3d_st.gvk_dev, vci, render3d_st.gvk_ac, out) != VK_SUCCESS { return zero }
   push(render3d_st.gvk_layer_views, key)
   push(render3d_st.gvk_layer_view, gvk_handle(out))
   push(render3d_st.gvk_layer_view_tex, tex)
@@ -1636,7 +1639,7 @@ function gvk_surface_os(render3d_st: mut Render3dState, out: pointer) -> bool {
     Vk.zero(mci, VkMetalSurfaceCreateInfoEXT_sizeof)
     Vk.put_i32(mci, VkMetalSurfaceCreateInfoEXT_sType, VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT)
     Vk.put_ptr(mci, VkMetalSurfaceCreateInfoEXT_pLayer, layer)
-    let rm = Vk.create_metal_surface_ext(render3d_st.gvk_inst, mci, null, out)
+    let rm = Vk.create_metal_surface_ext(render3d_st.gvk_inst, mci, render3d_st.gvk_ac, out)
     if rm != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateMetalSurfaceEXT", rm) }
     return true
   }
@@ -1647,7 +1650,7 @@ function gvk_surface_os(render3d_st: mut Render3dState, out: pointer) -> bool {
   Vk.put_i32(sci, VkWin32SurfaceCreateInfoKHR_sType, VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR)
   Vk.put_ptr(sci, VkWin32SurfaceCreateInfoKHR_hinstance, win_native_instance())
   Vk.put_ptr(sci, VkWin32SurfaceCreateInfoKHR_hwnd, hwnd)
-  let r = Vk.create_win32_surface_khr(render3d_st.gvk_inst, sci, null, out)
+  let r = Vk.create_win32_surface_khr(render3d_st.gvk_inst, sci, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateWin32SurfaceKHR", r) }
   return true
 }
@@ -1665,7 +1668,7 @@ function gvk_surface_make(render3d_st: mut Render3dState) -> bool {
   Vk.zero(fci, VkFenceCreateInfo_sizeof)
   Vk.put_i32(fci, VkFenceCreateInfo_sType, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO)
   render3d_st.gvk_acq_fence = bytes(8)
-  return Vk.create_fence(render3d_st.gvk_dev, fci, null, render3d_st.gvk_acq_fence) == VK_SUCCESS
+  return Vk.create_fence(render3d_st.gvk_dev, fci, render3d_st.gvk_ac, render3d_st.gvk_acq_fence) == VK_SUCCESS
 }
 
 # (Re)make the swapchain for a w x h client area. The old one is handed over and then destroyed.
@@ -1736,9 +1739,9 @@ function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
   Vk.put_i32(sci, VkSwapchainCreateInfoKHR_clipped, 1)
   Vk.put_i64(sci, VkSwapchainCreateInfoKHR_oldSwapchain, render3d_st.gvk_swap)
   let out = bytes(8)
-  let r = Vk.create_swapchain_khr(render3d_st.gvk_dev, sci, null, out)
+  let r = Vk.create_swapchain_khr(render3d_st.gvk_dev, sci, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateSwapchainKHR", r) }
-  if render3d_st.gvk_swap != 0 { Vk.destroy_swapchain_khr(render3d_st.gvk_dev, render3d_st.gvk_swap, null) }
+  if render3d_st.gvk_swap != 0 { Vk.destroy_swapchain_khr(render3d_st.gvk_dev, render3d_st.gvk_swap, render3d_st.gvk_ac) }
   render3d_st.gvk_swap = gvk_handle(out)
   if render3d_st.gvk_hdr_on and render3d_st.gvk_has_hdr_meta { gvk_hdr_metadata(render3d_st) }
   Vk.put_i32(cnt, 0, 0)

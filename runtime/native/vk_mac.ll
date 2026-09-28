@@ -264,3 +264,144 @@ entry:
   %n = load i64, ptr %p
   ret i64 %n
 }
+
+; VkAllocationCallbacks (memory plan 25.1c): render3d hands @lvk_ac to every Vulkan create and
+; destroy when R3D_ALLOC_VK=1, so MoltenVK's own host allocations are counted - live bytes, the peak,
+; allocations made and bytes per VkSystemAllocationScope - for the fence to read (lvk_ac_*).
+; Metal's own allocations are never seen here. libc underneath, never the fence's allocator. Each
+; block carries a 16-byte header before it: scope (i32), the offset to malloc's block (i32), size
+; (i64); the offset is the alignment asked, at least 16, so the block keeps it. The counters are
+; atomics: MoltenVK allocates from its completion handlers' threads too.
+@lvk_ac_live = global i64 0
+@lvk_ac_peak_v = global i64 0
+@lvk_ac_n = global i64 0
+@lvk_ac_scope = global [5 x i64] zeroinitializer
+@lvk_ac = global [6 x ptr] [ptr null, ptr @lvk_ac_alloc, ptr @lvk_ac_realloc, ptr @lvk_ac_free, ptr null, ptr null]
+declare i32 @posix_memalign(ptr, i64, i64)
+declare void @free(ptr)
+declare ptr @memcpy(ptr, ptr, i64)
+
+define internal void @lvk_ac_count(i32 %scope, i64 %d, i64 %n) {
+entry:
+  %old = atomicrmw add ptr @lvk_ac_live, i64 %d seq_cst
+  %new = add i64 %old, %d
+  %pk = atomicrmw max ptr @lvk_ac_peak_v, i64 %new seq_cst
+  %nn = atomicrmw add ptr @lvk_ac_n, i64 %n seq_cst
+  %lo = icmp slt i32 %scope, 0
+  %hi = icmp sgt i32 %scope, 4
+  %bad = or i1 %lo, %hi
+  %sc = select i1 %bad, i32 1, i32 %scope
+  %sp = getelementptr [5 x i64], ptr @lvk_ac_scope, i32 0, i32 %sc
+  %sv = atomicrmw add ptr %sp, i64 %d seq_cst
+  ret void
+}
+define internal ptr @lvk_ac_alloc(ptr %ud, i64 %size, i64 %align, i32 %scope) {
+entry:
+  %z = icmp eq i64 %size, 0
+  br i1 %z, label %none, label %go
+none:
+  ret ptr null
+go:
+  %small = icmp ult i64 %align, 16
+  %a = select i1 %small, i64 16, i64 %align
+  %tot = add i64 %size, %a
+  %slot = alloca ptr, align 8
+  %r = call i32 @posix_memalign(ptr %slot, i64 %a, i64 %tot)
+  %ok = icmp eq i32 %r, 0
+  br i1 %ok, label %have, label %none
+have:
+  %base = load ptr, ptr %slot
+  %p = getelementptr i8, ptr %base, i64 %a
+  %h = getelementptr i8, ptr %p, i64 -16
+  store i32 %scope, ptr %h
+  %ha = getelementptr i8, ptr %h, i64 4
+  %a32 = trunc i64 %a to i32
+  store i32 %a32, ptr %ha
+  %hs = getelementptr i8, ptr %h, i64 8
+  store i64 %size, ptr %hs
+  call void @lvk_ac_count(i32 %scope, i64 %size, i64 1)
+  ret ptr %p
+}
+define internal void @lvk_ac_free(ptr %ud, ptr %p) {
+entry:
+  %z = icmp eq ptr %p, null
+  br i1 %z, label %done, label %go
+done:
+  ret void
+go:
+  %h = getelementptr i8, ptr %p, i64 -16
+  %scope = load i32, ptr %h
+  %ha = getelementptr i8, ptr %h, i64 4
+  %a32 = load i32, ptr %ha
+  %hs = getelementptr i8, ptr %h, i64 8
+  %size = load i64, ptr %hs
+  %neg = sub i64 0, %size
+  call void @lvk_ac_count(i32 %scope, i64 %neg, i64 0)
+  %a = zext i32 %a32 to i64
+  %na = sub i64 0, %a
+  %base = getelementptr i8, ptr %p, i64 %na
+  call void @free(ptr %base)
+  ret void
+}
+; a new block at the asked alignment, the old one's bytes copied, the old one freed: realloc itself
+; only keeps 16
+define internal ptr @lvk_ac_realloc(ptr %ud, ptr %old, i64 %size, i64 %align, i32 %scope) {
+entry:
+  %nold = icmp eq ptr %old, null
+  br i1 %nold, label %fresh, label %chk
+fresh:
+  %f = call ptr @lvk_ac_alloc(ptr %ud, i64 %size, i64 %align, i32 %scope)
+  ret ptr %f
+chk:
+  %z = icmp eq i64 %size, 0
+  br i1 %z, label %drop, label %move
+drop:
+  call void @lvk_ac_free(ptr %ud, ptr %old)
+  ret ptr null
+move:
+  %nb = call ptr @lvk_ac_alloc(ptr %ud, i64 %size, i64 %align, i32 %scope)
+  %nz = icmp eq ptr %nb, null
+  br i1 %nz, label %fail, label %copy
+fail:
+  ret ptr null
+copy:
+  %hs = getelementptr i8, ptr %old, i64 -8
+  %osz = load i64, ptr %hs
+  %less = icmp ult i64 %osz, %size
+  %n = select i1 %less, i64 %osz, i64 %size
+  %cp = call ptr @memcpy(ptr %nb, ptr %old, i64 %n)
+  call void @lvk_ac_free(ptr %ud, ptr %old)
+  ret ptr %nb
+}
+define ptr @lvk_ac_ptr() {
+entry:
+  ret ptr @lvk_ac
+}
+define i64 @lvk_ac_bytes() {
+entry:
+  %v = load atomic i64, ptr @lvk_ac_live seq_cst, align 8
+  ret i64 %v
+}
+define i64 @lvk_ac_peak() {
+entry:
+  %v = load atomic i64, ptr @lvk_ac_peak_v seq_cst, align 8
+  ret i64 %v
+}
+define i64 @lvk_ac_allocs() {
+entry:
+  %v = load atomic i64, ptr @lvk_ac_n seq_cst, align 8
+  ret i64 %v
+}
+define i64 @lvk_ac_scope_bytes(i32 %scope) {
+entry:
+  %lo = icmp slt i32 %scope, 0
+  %hi = icmp sgt i32 %scope, 4
+  %bad = or i1 %lo, %hi
+  br i1 %bad, label %none, label %read
+none:
+  ret i64 0
+read:
+  %sp = getelementptr [5 x i64], ptr @lvk_ac_scope, i32 0, i32 %scope
+  %v = load atomic i64, ptr %sp seq_cst, align 8
+  ret i64 %v
+}

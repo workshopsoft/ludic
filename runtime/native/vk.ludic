@@ -30,6 +30,11 @@ import "vk_api.ludic"
 extern function vk_frame_pool() = "lvk_frame_pool"
 # malloc's live bytes (macOS; 0 elsewhere): a test that a path allocates nothing, frame after frame
 extern function vk_heap_bytes() -> long = "lvk_heap_bytes"
+# the VkAllocationCallbacks that count MoltenVK's host allocations (memory plan 25.1c; null on
+# Windows), and what they count: live bytes now, and per VkSystemAllocationScope
+extern function vk_alloc_callbacks() -> pointer = "lvk_ac_ptr"
+extern function vk_alloc_bytes() -> long = "lvk_ac_bytes"
+extern function vk_alloc_scope_bytes(scope: int) -> long = "lvk_ac_scope_bytes"
 extern function vk_sl_prefer(on: int) = "lvk_sl_prefer"
 extern function vk_sl_active() -> int = "lvk_sl_active"
 extern function vk_sl_init(pref: pointer, sdk_version: long) -> int = "lsl_slInit"

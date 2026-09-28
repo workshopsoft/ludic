@@ -60,6 +60,9 @@ function gvk_no_command_pooling() -> void {
 function gvk_init(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gvk_ready { return true }
   gvk_no_command_pooling()
+  # MoltenVK's host allocations counted for the memory fence (plan 25.1c); every create and destroy
+  # is given the same callbacks, as Vulkan asks, so it is decided once, before the instance
+  if r3d_env_has(render3d_st, "R3D_ALLOC_VK") { render3d_st.gvk_ac = Vk.alloc_callbacks() }
   gsl_boot(render3d_st)
   if Vk.open() == 0 { render3d_st.gvk_why = "no Vulkan loader";  return false }
   gsl_init(render3d_st)
@@ -106,7 +109,7 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
     Vk.put_ptr(ici, VkInstanceCreateInfo_ppEnabledExtensionNames, iext_names)
   }
   let out = bytes(8)
-  var r = Vk.create_instance(ici, null, out)
+  var r = Vk.create_instance(ici, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateInstance", r) }
   render3d_st.gvk_inst = Vk.get_ptr(out, 0)
 
@@ -261,7 +264,7 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
     Vk.put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, n_dext)
     Vk.put_ptr(dci, VkDeviceCreateInfo_ppEnabledExtensionNames, dext_names)
   }
-  r = Vk.create_device(render3d_st.gvk_pd, dci, null, out)
+  r = Vk.create_device(render3d_st.gvk_pd, dci, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateDevice", r) }
   render3d_st.gvk_dev = Vk.get_ptr(out, 0)
   Vk.get_device_queue(render3d_st.gvk_dev, render3d_st.gvk_family, 0, out)
@@ -313,7 +316,7 @@ function gvk_alloc(render3d_st: mut Render3dState, req: bytes, want: int) -> lon
   Vk.put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, t)
   let out = gvk_tmp(render3d_st, 8)
   render3d_st.gvk_mk_mem += 1
-  let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, null, out)
+  let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { print(`r3d: vulkan: vkAllocateMemory failed (VkResult {r})`);  return zero }
   render3d_st.gvk_n_allocs += 1
   return gvk_handle(out)
@@ -354,7 +357,7 @@ function gvk_mem_raw(render3d_st: mut Render3dState, t: int, size: int, host: bo
   Vk.put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, t)
   let out = gvk_tmp(render3d_st, 8)
   render3d_st.gvk_mk_mem += 1
-  let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, null, out)
+  let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { gvk_note(render3d_st, `r3d: vulkan: vkAllocateMemory of {size} bytes failed (VkResult {r}, {render3d_st.gvk_n_allocs} allocations live)`);  return zero }
   render3d_st.gvk_n_allocs += 1
   let mem = gvk_handle(out)
@@ -473,7 +476,7 @@ function gvk_mem_free(render3d_st: mut Render3dState, a: int) -> void {
   if b < 0 {
     if render3d_st.gvk_al_map[a] != null { Vk.unmap_memory(render3d_st.gvk_dev, render3d_st.gvk_al_mem[a]) }
     render3d_st.gvk_mk_x_mem += 1
-    Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_al_mem[a], null)
+    Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_al_mem[a], render3d_st.gvk_ac)
     render3d_st.gvk_n_allocs -= 1
   } else {
     var off = render3d_st.gvk_al_off[a]
@@ -493,7 +496,7 @@ function gvk_mem_free(render3d_st: mut Render3dState, a: int) -> void {
       # the block is empty again: give it back, or a world swapped out keeps its memory for good
       if render3d_st.gvk_blk_map[b] != null { Vk.unmap_memory(render3d_st.gvk_dev, render3d_st.gvk_blk_mem[b]) }
       render3d_st.gvk_mk_x_mem += 1
-      Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_blk_mem[b], null)
+      Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_blk_mem[b], render3d_st.gvk_ac)
       render3d_st.gvk_n_allocs -= 1
       render3d_st.gvk_blk_mem[b] = zero;  render3d_st.gvk_blk_map[b] = null;  render3d_st.gvk_blk_kind[b] = -1;  render3d_st.gvk_blk_size[b] = 0
     } else {
@@ -515,17 +518,17 @@ function gvk_cmd_init(render3d_st: mut Render3dState) -> bool {
   Vk.put_i32(cpi, VkCommandPoolCreateInfo_flags, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT)
   Vk.put_i32(cpi, VkCommandPoolCreateInfo_queueFamilyIndex, render3d_st.gvk_family)
   let out = bytes(8)
-  var r = Vk.create_command_pool(render3d_st.gvk_dev, cpi, null, out)
+  var r = Vk.create_command_pool(render3d_st.gvk_dev, cpi, render3d_st.gvk_ac, out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateCommandPool", r) }
   render3d_st.gvk_pool = gvk_handle(out)
   let fci = bytes(VkFenceCreateInfo_sizeof)
   Vk.zero(fci, VkFenceCreateInfo_sizeof)
   Vk.put_i32(fci, VkFenceCreateInfo_sType, VK_STRUCTURE_TYPE_FENCE_CREATE_INFO)
   render3d_st.gvk_fence = bytes(8)
-  r = Vk.create_fence(render3d_st.gvk_dev, fci, null, render3d_st.gvk_fence)
+  r = Vk.create_fence(render3d_st.gvk_dev, fci, render3d_st.gvk_ac, render3d_st.gvk_fence)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateFence", r) }
   render3d_st.gvk_frame_fence = bytes(8)
-  r = Vk.create_fence(render3d_st.gvk_dev, fci, null, render3d_st.gvk_frame_fence)
+  r = Vk.create_fence(render3d_st.gvk_dev, fci, render3d_st.gvk_ac, render3d_st.gvk_frame_fence)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateFence", r) }
   return true
 }
@@ -645,12 +648,12 @@ function gvk_shutdown(render3d_st: mut Render3dState) -> void {
   gvk_frame_wait(render3d_st)
   Vk.device_wait_idle(render3d_st.gvk_dev)
   gsl_shutdown(render3d_st)
-  Vk.destroy_fence(render3d_st.gvk_dev, Vk.get_i64(render3d_st.gvk_fence, 0), null)
-  Vk.destroy_fence(render3d_st.gvk_dev, Vk.get_i64(render3d_st.gvk_frame_fence, 0), null)
-  Vk.destroy_command_pool(render3d_st.gvk_dev, render3d_st.gvk_pool, null)
-  if render3d_st.gvk_prime_dst != 0 { Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_prime_dst, null);  render3d_st.gvk_prime_dst = 0 }
-  Vk.destroy_device(render3d_st.gvk_dev, null)
-  Vk.destroy_instance(render3d_st.gvk_inst, null)
+  Vk.destroy_fence(render3d_st.gvk_dev, Vk.get_i64(render3d_st.gvk_fence, 0), render3d_st.gvk_ac)
+  Vk.destroy_fence(render3d_st.gvk_dev, Vk.get_i64(render3d_st.gvk_frame_fence, 0), render3d_st.gvk_ac)
+  Vk.destroy_command_pool(render3d_st.gvk_dev, render3d_st.gvk_pool, render3d_st.gvk_ac)
+  if render3d_st.gvk_prime_dst != 0 { Vk.destroy_buffer(render3d_st.gvk_dev, render3d_st.gvk_prime_dst, render3d_st.gvk_ac);  render3d_st.gvk_prime_dst = 0 }
+  Vk.destroy_device(render3d_st.gvk_dev, render3d_st.gvk_ac)
+  Vk.destroy_instance(render3d_st.gvk_inst, render3d_st.gvk_ac)
   render3d_st.gvk_ready = false
 }
 
@@ -668,7 +671,7 @@ function gvk_query_new(render3d_st: mut Render3dState, n: int, ids: words) -> vo
   Vk.put_i32(qci, VkQueryPoolCreateInfo_queryType, VK_QUERY_TYPE_TIMESTAMP)
   Vk.put_i32(qci, VkQueryPoolCreateInfo_queryCount, n * 2)
   let out = gvk_tmp(render3d_st, 8)
-  if Vk.create_query_pool(render3d_st.gvk_dev, qci, null, out) != VK_SUCCESS { return }
+  if Vk.create_query_pool(render3d_st.gvk_dev, qci, render3d_st.gvk_ac, out) != VK_SUCCESS { return }
   render3d_st.gvk_qpool = gvk_handle(out)
   Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_qpool, 0, n * 2)
 }
