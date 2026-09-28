@@ -42,9 +42,9 @@ export function tb_grid<T>(tb: Table<T>, cx: int, cz: int, gate: int, cell: floa
 export function grid_count(g: Grid) -> int { return g.count }
 
 function grid_grow(g: Grid) -> void {
-  push(g.next, 0)
-  push(g.prev, 0)
-  push(g.key, -1)
+  kept_push(g.next, 0)
+  kept_push(g.prev, 0)
+  kept_push(g.key, -1)
 }
 
 function grid_shrink(g: Grid) -> void {

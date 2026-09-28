@@ -39,8 +39,8 @@ export function ix_first(ix: IntIndex, v: int) -> int {
 }
 
 function ix_grow(ix: IntIndex) -> void {
-  push(ix.pos, -1)
-  push(ix.val, -1)
+  kept_push(ix.pos, -1)
+  kept_push(ix.val, -1)
 }
 
 function ix_shrink(ix: IntIndex) -> void {

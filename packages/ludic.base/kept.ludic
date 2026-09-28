@@ -1,4 +1,6 @@
 # ludic.base/kept.ludic - the one push the frame is allowed: into a list its owner keeps and clears,
 # which grows to the most it has ever held and stays there (a queue's halves, a query's out list)
-@alloc_ok("a kept list: it grows to the most it has held once, is cleared and reused, never dropped")
-export function kept_push<T>(xs: []T, v: T) -> void { push(xs, v) }
+export function kept_push<T>(xs: []T, v: T) -> void {
+  @alloc_ok("a kept list: it grows to the most it has held once, is cleared and reused, never dropped")
+  push(xs, v)
+}
