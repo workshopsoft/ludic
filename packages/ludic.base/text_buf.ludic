@@ -64,3 +64,10 @@ export function sb_pat(sb: StrBuf, pat: string, a: string, b: string, c: string,
     }
   }
 }
+
+# the buffer's bytes to standard output as they are (no string made, no newline added): a line a
+# frame's code writes without the fence seeing a text kept
+export function sb_stdout(sb: StrBuf) -> void {
+  if sb.n <= 0 { return }
+  unsafe { file_write(file_stdout(), data_of(sb.b), sb.n) }
+}
