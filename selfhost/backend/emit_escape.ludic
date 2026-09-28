@@ -25,6 +25,7 @@ var g_es_aok: int = 0                               # inside a statement under @
 var g_es_site_aok: []bool = new []bool              # the site is (not reported by the region rule)
 var g_es_site_grow: []bool = new []bool             # the site is a push's growth (25.5's capacities, not the rule)
 var g_es_done: bool = false
+var g_es_consumed: []Node = new []Node              # text used up where it is made (a + or == operand): freed at once
 var g_es_ft: []int = new []int                      # flow edges
 var g_es_ff: []int = new []int
 var g_es_st: []int = new []int                      # store edges: value, target
@@ -114,6 +115,10 @@ function es_val(e: Node) -> int {
   if k == E_BIN {
     es_val(e.a)
     es_val(e.b)
+    if (e.s == "+") or (e.s == "==") or (e.s == "!=") {
+      if e.a != null and (e.a.kind == E_BIN or e.a.kind == E_CALL or e.a.kind == E_SLICE) { push(g_es_consumed, e.a) }
+      if e.b != null and (e.b.kind == E_BIN or e.b.kind == E_CALL or e.b.kind == E_SLICE) { push(g_es_consumed, e.b) }
+    }
     if (e.s == "+") and fr_is_textish(e) { return es_site(e) }
     return -1
   }
