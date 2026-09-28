@@ -94,7 +94,7 @@ function emit_pak_prelude() -> void {
     emith("declare i32 @open(ptr, i32, ...)\n")
     emith("declare i32 @close(i32)\n")
     emith("declare i64 @lseek(i32, i64, i32)\n")
-    emith("declare ptr @mmap(ptr, i64, i32, i32, i32, i64)\n")
+    if not g_mmap_declared { emith("declare ptr @mmap(ptr, i64, i32, i32, i32, i64)\n");  g_mmap_declared = true }
     emith("declare ptr @fmemopen(ptr, i64, ptr)\n")
     emith("declare i32 @chdir(ptr)\n")
     emith("declare i32 @_NSGetExecutablePath(ptr, ptr)\n")

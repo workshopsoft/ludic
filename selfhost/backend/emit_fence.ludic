@@ -26,12 +26,17 @@ var g_fence_mode: int = 0                      # 0: headless fails, windowed fai
 var g_fence_warm: int = 600
 var g_fence_census: pointer = null
 var g_fence_flagged: bool = false              # a flag said so: the manifest does not override it
+var g_arena: bool = false                      # 25.3: --arena / `arena on` - LOCAL sites allocate from the frame's scratch
+var g_mmap_declared: bool = false              # @mmap: by the fence's arena or by the asset pack
+var g_es_node: Node = null                     # the expression being emitted, when it is a LOCAL site
 
 function fence_reset() -> void {
   g_site_fn = new []pointer;  g_site_file = new []pointer;  g_site_line = new []int;  g_site_kind = new []pointer
   g_site_kinds = new []pointer;  g_site_kindc = new []pointer
   g_atexit_declared = false
   g_mzs_declared = false
+  g_mmap_declared = false
+  g_es_node = null
   g_cur_fn_name = "?";  g_site_fnc = null;  g_site_filen = null;  g_site_filec = null;  g_site_next = null
   push(g_site_fn, null);  push(g_site_file, null);  push(g_site_line, 0);  push(g_site_kind, null)   # site 0, named at the end
 }
@@ -69,17 +74,25 @@ function emit_site(kind: pointer) -> void {
   emit(`  store i32 {itoa(id)}, ptr @lp_site\n`)
 }
 
-# emit_bind's hook: a call that allocates gets a site first, its kind read off the callee
-function fence_bind(rest: pointer) -> void {
-  if not str_starts(rest, "call ptr @lp_") { return }
-  if str_starts(rest, "call ptr @lp_malloc(") { emit_site("alloc");  return }
-  if str_starts(rest, "call ptr @lp_calloc(") { emit_site("slice data");  return }
-  if str_starts(rest, "call ptr @lp_realloc(") { emit_site("grow");  return }
-  if str_starts(rest, "call ptr @lp_str_concat(") { emit_site("concat");  return }
-  if str_starts(rest, "call ptr @lp_int_str(") or str_starts(rest, "call ptr @lp_long_str(") { emit_site("string(n)");  return }
-  if str_starts(rest, "call ptr @lp_fp_str(") { emit_site("string(x)");  return }
-  if str_starts(rest, "call ptr @lp_str_slice(") { emit_site("substring");  return }
-  if str_starts(rest, "call ptr @lp_text_") { emit_site("Text");  return }
+# emit_bind's hook: a call that allocates gets a site first, its kind read off the callee; when the
+# expression being emitted is a LOCAL site (25.3) it also raises @lp_want for that one call
+function fence_bind(rest: pointer) -> bool {
+  if not str_starts(rest, "call ptr @lp_") { return false }
+  var alloc = true
+  if str_starts(rest, "call ptr @lp_malloc(") { emit_site("alloc") }
+  else if str_starts(rest, "call ptr @lp_calloc(") { emit_site("slice data") }
+  else if str_starts(rest, "call ptr @lp_realloc(") { emit_site("grow") }
+  else if str_starts(rest, "call ptr @lp_str_concat(") { emit_site("concat") }
+  else if str_starts(rest, "call ptr @lp_int_str(") or str_starts(rest, "call ptr @lp_long_str(") { emit_site("string(n)") }
+  else if str_starts(rest, "call ptr @lp_fp_str(") { emit_site("string(x)") }
+  else if str_starts(rest, "call ptr @lp_str_slice(") { emit_site("substring") }
+  else if str_starts(rest, "call ptr @lp_text_") { emit_site("Text");  alloc = false }
+  else { alloc = false }
+  if alloc and g_arena and g_es_node != null {
+    emit("  store i8 1, ptr @lp_want\n")
+    return true
+  }
+  return false
 }
 
 function fence_int(s: pointer) -> int {
@@ -106,6 +119,7 @@ function fence_flag(a: pointer) -> bool {
   if str_starts(a, "--fence=") { g_fence_mode = fence_mode_of(a[8..len(a)]);  g_fence_flagged = true;  return true }
   if str_starts(a, "--fence-warm=") { g_fence_warm = fence_int(a[13..len(a)]);  g_fence_flagged = true;  return true }
   if str_starts(a, "--fence-census=") { g_fence_census = a[15..len(a)];  g_fence_flagged = true;  return true }
+  if (a == "--arena") { g_arena = true;  return true }
   return false
 }
 
@@ -137,6 +151,7 @@ function fence_manifest_read(txt: pointer) -> void {
     if (len(ws) == 2) and (ws[0] == "fence") { g_fence_mode = fence_mode_of(ws[1]) }
     if (len(ws) == 3) and (ws[0] == "fence") and (ws[1] == "warm") { g_fence_warm = fence_int(ws[2]) }
     if (len(ws) == 3) and (ws[0] == "fence") and (ws[1] == "census") { g_fence_census = ws[2] }
+    if (len(ws) == 2) and (ws[0] == "arena") and (ws[1] == "on") { g_arena = true }
     i = e + 1
   }
 }
@@ -171,6 +186,10 @@ function emit_fence_runtime() -> void {
   if not g_fprintf_declared { emith("declare i32 @fprintf(ptr, ptr, ...)\n");  g_fprintf_declared = true }
   if not g_atexit_declared { emith("declare i32 @atexit(ptr)\n");  g_atexit_declared = true }
   if not g_mzs_declared { emith("declare extern_weak void @malloc_zone_statistics(ptr, ptr)\n");  g_mzs_declared = true }
+  if not g_mmap_declared { emith("declare ptr @mmap(ptr, i64, i32, i32, i32, i64)\n");  g_mmap_declared = true }
+  var ard = "0"
+  if g_arena { ard = "1" }
+  emith(`@lp_ardef = global i8 {ard}\n`)
   emit_fence_globals()
   emit_fence_entry()
   emit_fence_table()

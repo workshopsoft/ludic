@@ -231,6 +231,7 @@ entry {
   ix_start()                                      # the lookups by name, as tables (emit_core.ludic)
   check_program()                                 # L4: the types agree before anything is emitted
   if g_es_report { escape_report() }              # 25.3: which allocations never outlive their frame
+  else if g_arena { escape_analyse() }             # 25.3: and they allocate from the frame's scratch
   if g_migrate { mg_finish() }
   # --check: every check a build makes - the emitter refuses things too (a bind to a function that is
   # gone, an unknown name) - and nothing written
