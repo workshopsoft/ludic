@@ -229,6 +229,7 @@ function deps_keeps(f: pointer, seen: []bool) -> void {
   if g_arena_strict and n > 0 { exit(1) }
   deps_births(f, seen)
   deps_resources(f)                                # 25.5e
+  deps_owned(f)
 }
 
 function fr_consumed(n: Node) -> bool {

@@ -10,6 +10,10 @@ var g_res_free_fn: []pointer = new []pointer
 var g_res_free_kind: []pointer = new []pointer
 var g_res_pending_make: pointer = null
 var g_res_pending_free: pointer = null
+var g_own_type: []pointer = new []pointer          # @owns(Kind) fields: the record's type ...
+var g_own_field: []pointer = new []pointer         # ... the field ...
+var g_own_kind: []pointer = new []pointer          # ... and the kind of handle it owns
+var g_own_pending: pointer = null
 
 function res_kind_made_by(name: pointer) -> pointer {
   var i = 0
@@ -97,4 +101,87 @@ function deps_resources(f: pointer) -> void {
     }
   }
   deps_line(f, `resource_drops {itoa(g_res_drops)}`)
+}
+
+function res_is_release(name: pointer) -> bool {
+  var i = 0
+  while i < len(g_res_free_fn) { if (g_res_free_fn[i] == name) { return true };  i += 1 }
+  return false
+}
+
+# every `base.field` handed to a call in n: into rel when the callee @releases, into all always
+function own_collect(n: Node, rel_b: []pointer, rel_f: []pointer, all_b: []pointer, all_f: []pointer, rel_line: []int) -> void {
+  if n == null { return }
+  if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and n.kids != null {
+    let releasing = res_is_release(n.a.s)
+    var i = 0
+    while i < len(n.kids) {
+      let a = n.kids[i]
+      if a != null and a.kind == E_MEMBER and a.a != null and a.a.kind == E_ID and a.s != null {
+        push(all_b, a.a.s)
+        push(all_f, a.s)
+        if releasing {
+          push(rel_b, a.a.s)
+          push(rel_f, a.s)
+          push(rel_line, n.line)
+        }
+      }
+      i += 1
+    }
+  }
+  own_collect(n.a, rel_b, rel_f, all_b, all_f, rel_line)
+  own_collect(n.b, rel_b, rel_f, all_b, all_f, rel_line)
+  own_collect(n.c, rel_b, rel_f, all_b, all_f, rel_line)
+  if n.kids != null {
+    var j = 0
+    while j < len(n.kids) { own_collect(n.kids[j], rel_b, rel_f, all_b, all_f, rel_line);  j += 1 }
+  }
+}
+
+function own_has(bs: []pointer, fs: []pointer, b: pointer, f: pointer) -> bool {
+  var i = 0
+  while i < len(bs) { if (bs[i] == b) and (fs[i] == f) { return true };  i += 1 }
+  return false
+}
+
+# 25.5e's owned fields: a function that releases one @owns field of a record (x.body) and neither
+# releases nor hands on another @owns field of the same record type (x.shape) gives the first back
+# and loses the second - phys_remove freeing the body and not its shape. `oleak` lines, owned_leaks
+var g_own_leaks: int = 0
+function deps_owned(f: pointer) -> void {
+  g_own_leaks = 0
+  if len(g_own_field) > 0 {
+    var i = 0
+    while i < len(prog) {
+      let d = prog[i]
+      if (d.kind == N_FN or d.kind == N_SYS) and d.file != null and not is_runtime_file(d.file) {
+        let rb = new []pointer
+        let rf = new []pointer
+        let rl = new []int
+        let ab = new []pointer
+        let af = new []pointer
+        own_collect(d.a, rb, rf, ab, af, rl)
+        var r = 0
+        while r < len(rb) {
+          var t = 0
+          while t < len(g_own_field) {
+            if (g_own_field[t] == rf[r]) {
+              var o = 0
+              while o < len(g_own_field) {
+                if o != t and (g_own_type[o] == g_own_type[t]) and not own_has(ab, af, rb[r], g_own_field[o]) {
+                  deps_line(f, `oleak {g_own_type[o]}.{g_own_field[o]} {d.file}:{itoa(rl[r])} {d.s} {rb[r]}.{rf[r]}`)
+                  g_own_leaks += 1
+                }
+                o += 1
+              }
+            }
+            t += 1
+          }
+          r += 1
+        }
+      }
+      i += 1
+    }
+  }
+  deps_line(f, `owned_leaks {itoa(g_own_leaks)}`)
 }

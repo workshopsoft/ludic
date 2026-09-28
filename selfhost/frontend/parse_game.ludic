@@ -15,6 +15,11 @@ function parse_component() -> Node {
       pi += 1
       let ann = eat_id()
       if ann == "Computed" { is_computed = true } else if ann == "Sync" { is_sync = true } else if ann == "frame" { is_frame = true }
+      else if ann == "owns" {                        # @owns(PhysShape) — this field holds a handle its record owns (25.5e)
+        eat_op("(")
+        g_own_pending = eat_id()
+        eat_op(")")
+      }
       else if ann == "max" {
         eat_op("(")
         let ce = expr()
@@ -27,6 +32,7 @@ function parse_component() -> Node {
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
     if is_frame { push(g_frame_fields, `{n.s}.{f.s}`) }
     if cap > 0 { push(g_cap_keys, `{n.s}.{f.s}`);  push(g_cap_vals, cap) }
+    if g_own_pending != null { push(g_own_type, n.s);  push(g_own_field, f.s);  push(g_own_kind, g_own_pending);  g_own_pending = null }
     if is_op("=") { pi += 1; f.a = expr() }
     if is_sync { f.ival = 1 }                         # mark the field replicable (read by emit_net)
     if is_computed { register_computed(n.s, f.s, f.ty, f.a) }   # derived: no storage
