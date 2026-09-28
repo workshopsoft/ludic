@@ -11,9 +11,24 @@ function fishing_fact_record(fishing_st: mut FishingState) -> FishingFact {
     fishing_st.fishing_fnext[0] += 1
     return f
   }
+  return fishing_fact_more(fishing_st)
+}
+@alloc_ok("a new peak of facts held at once, past the 64 made at the start; kept and reused")
+function fishing_fact_more(fishing_st: mut FishingState) -> FishingFact {
   let f = new FishingFact
   push(fishing_st.fishing_fpool, f)
   return f
+}
+# the records made at the start, with a free list of room for them all
+function fishing_fpool_new() -> []FishingFact {
+  let l = new []FishingFact
+  for i in 0 .. 64 { push(l, new FishingFact) }
+  return l
+}
+function fishing_ffree_new() -> []FishingFact {
+  let l = fishing_fpool_new()
+  List.clear(l)
+  return l
 }
 # how many fact records have ever been made: the peak held at once, not the facts said
 export function fishing_fact_records(fishing_st: FishingState) -> int { return len(fishing_st.fishing_fpool) }

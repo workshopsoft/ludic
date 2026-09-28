@@ -25,8 +25,8 @@ export state FishingState {
   fishing_run_next: float = 0.0
   fishing_dice: Rng = null
   fishing_fact_q: Queue<FishingFact> = fishing_fact_q__new()
-  fishing_fpool: []FishingFact = new []FishingFact   # every fact record made, reused once no drain holds it (facts.ludic)
-  fishing_ffree: []FishingFact = new []FishingFact
+  fishing_fpool: []FishingFact = fishing_fpool_new()   # every fact record made, reused once no drain holds it (facts.ludic)
+  fishing_ffree: []FishingFact = fishing_ffree_new()
   fishing_fnext: []int = words(1)
   fishing_n: int = 0              # the record: caught, the biggest (cm), a legend landed
   fishing_big: int = 0

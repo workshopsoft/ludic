@@ -49,6 +49,7 @@ export function anim_to_pose(anim_st: mut AnimState, sk: Skin, rot: floats, pos:
 }
 
 # The scratch is made ONCE and grown, never allocated per call: a call is per actor per frame.
+@alloc_ok("grown once to the largest skeleton posed, kept after")
 function scratch(anim_st: mut AnimState, n: int) -> void {
   if anim_st.cap >= n { return }
   anim_st.rot_s = floats(n * 4)

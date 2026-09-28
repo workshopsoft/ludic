@@ -2,6 +2,7 @@
 # with the same bone names, and skin_find's first hit in the file belongs to whichever came first
 export function skin_joint(sk: Skin, name: string) -> int {
   let i = skin_joint_quiet(sk, name)
+  @alloc_ok("a line for a bone the rig does not have: a fault to fix, said as it happens")
   if i < 0 { print(`skin: no joint {name} in this skin`) }
   return i
 }
