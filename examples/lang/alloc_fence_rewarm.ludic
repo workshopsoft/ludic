@@ -1,0 +1,16 @@
+# alloc_fence_rewarm.ludic - 25.1: a program that keeps memory every frame from the start is never
+# flat, so the warm-up's cap (R3D_ALLOC_WARM_MAX) starts the judging - and a screen opening every
+# 360 frames (Mem.play() again) does not push that deadline back. The failing fence fails the run.
+program AllocFenceRewarm {
+  property Box { v: int = 0 }
+  property Keep { boxes: []Box = new []Box }
+  entry {
+    let k = new Keep
+    for f in 0 .. 6000 {
+      push(k.boxes, new Box { v: f })
+      if f % 360 == 0 { Mem.play() }
+      Mem.frame()
+    }
+    print(`bad {Mem.bad_frames()} boxes {len(k.boxes)}`)
+  }
+}

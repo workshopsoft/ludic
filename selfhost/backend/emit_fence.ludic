@@ -251,6 +251,9 @@ function emit_fence_runtime() -> void {
   emith(`@lp_site_base = global [{sn} x i64] zeroinitializer\n`)
   emith(`@lp_site_scan = global [{sn} x i64] zeroinitializer\n`)
   emith(`@lp_site_dlive = global [{sn} x i64] zeroinitializer\n`)
+  emith(`@lp_site_dbase = global [{sn} x i64] zeroinitializer\n`)   # declared bytes when judging began
+  emith(`@lp_site_dhw = global [{sn} x i64] zeroinitializer\n`)     # ... their high-water mark, window to window
+  emith(`@lp_site_drise = global [{sn} x i64] zeroinitializer\n`)   # ... how long they have kept rising (-1: said)
   let owns = new []pointer
   var w = 0
   while w < n { push(owns, itoa(g_site_owner[w]));  w += 1 }
