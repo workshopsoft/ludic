@@ -38,6 +38,7 @@ export state PhysicsState {
   ph_world: pointer = null
   ph_shapes: []pointer = new []pointer     # a shape id is its place here; null once freed
   ph_spare: []int = new []int              # the freed places, handed out again (shape_ids.ludic)
+  ph_own: []int = new []int                # by a body's index: the shape it owns, freed with it (owned.ludic)
   ph_step: float = 0.016666668    # seconds a step
   ph_sub: int = 1                 # collision steps in each
   ph_max_steps: int = 4           # a slow frame catches up this far and no further

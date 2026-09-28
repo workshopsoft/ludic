@@ -3,8 +3,10 @@
 
 # hx, hy, hz its half width, depth and length; buoyancy over 1 floats it (4: a quarter under)
 export function phys_hull_add(physics_st: mut PhysicsState, x: float, y: float, z: float, yaw: float, hx: float, hy: float, hz: float, mass: float, buoyancy: float, drag: float) -> int {
-  let id = phys_body_add(physics_st, phys_box(physics_st, hx, hy, hz), x, y, z, yaw, mass)
+  let s = phys_box(physics_st, hx, hy, hz)
+  let id = phys_body_add(physics_st, s, x, y, z, yaw, mass)
   if id < 0 { return -1 }
+  phys_own(physics_st, id, s)
   phys_float(physics_st, id, buoyancy, drag, drag * 1.5)
   return id
 }

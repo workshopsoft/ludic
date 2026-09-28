@@ -1,0 +1,28 @@
+# owned.ludic - a shape a body owns: made for that body alone (a trunk's pillar, a boulder's scaled
+# hull, a dropped thing's box) and freed when the body is removed, so a still thing put in and taken out
+# again and again - a chunk that comes and goes - holds no more shapes than are standing
+const PH_INDEX: int = 8388607      # a body id's low 23 bits are its index (Jolt's BodyID)
+
+# every body owns nothing: at a world's opening, the table made once at its size and kept after
+function ph_own_reset(physics_st: mut PhysicsState, max_bodies: int) -> void {
+  if len(physics_st.ph_own) < max_bodies {
+    List.clear(physics_st.ph_own)
+    for i in 0 .. max_bodies { push(physics_st.ph_own, -1) }
+    return
+  }
+  for i in 0 .. len(physics_st.ph_own) { physics_st.ph_own[i] = -1 }
+}
+
+# body `id` owns `shape`: phys_remove frees it with the body
+export function phys_own(physics_st: mut PhysicsState, id: int, shape: int) -> void {
+  if id < 0 or shape < 0 { return }
+  let i = id & PH_INDEX
+  if i < len(physics_st.ph_own) { physics_st.ph_own[i] = shape }
+}
+
+function ph_own_free(physics_st: mut PhysicsState, id: int) -> void {
+  let i = id & PH_INDEX
+  if i >= len(physics_st.ph_own) or physics_st.ph_own[i] < 0 { return }
+  phys_shape_free(physics_st, physics_st.ph_own[i])
+  physics_st.ph_own[i] = -1
+}

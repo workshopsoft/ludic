@@ -6,6 +6,7 @@ export function phys_open(physics_st: mut PhysicsState, max_bodies: int, threads
   phys_close(physics_st)
   ph_buffers()
   physics_st.ph_world = jph_world_new(max_bodies, threads)
+  ph_own_reset(physics_st, max_bodies)
   physics_st.ph_gen += 1
   physics_st.ph_acc = 0.0
   physics_st.ph_steps = 0
