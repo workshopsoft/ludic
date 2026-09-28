@@ -85,6 +85,15 @@ export function ui_attr(n: UiNode, key: string) -> Val {
   }
   return Value.null()
 }
+# whether an element has the attribute at all: ui_attr's miss is a new null, so a question asked
+# every frame asks this first
+export function ui_attr_has(n: UiNode, key: string) -> bool {
+  if n.akeys == null { return false }
+  for i in 0 .. len(n.akeys) {
+    if n.akeys[i] == key { return true }
+  }
+  return false
+}
 export function ui_attr_text(n: UiNode, key: string) -> string {
   if n.akeys == null { return "" }
   for i in 0 .. len(n.akeys) {
