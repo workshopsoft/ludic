@@ -120,6 +120,7 @@ function fence_flag(a: pointer) -> bool {
   if str_starts(a, "--fence-warm=") { g_fence_warm = fence_int(a[13..len(a)]);  g_fence_flagged = true;  return true }
   if str_starts(a, "--fence-census=") { g_fence_census = a[15..len(a)];  g_fence_flagged = true;  return true }
   if (a == "--arena") { g_arena = true;  return true }
+  if (a == "--arena-strict") { g_arena = true;  g_arena_strict = true;  return true }
   return false
 }
 
@@ -152,6 +153,7 @@ function fence_manifest_read(txt: pointer) -> void {
     if (len(ws) == 3) and (ws[0] == "fence") and (ws[1] == "warm") { g_fence_warm = fence_int(ws[2]) }
     if (len(ws) == 3) and (ws[0] == "fence") and (ws[1] == "census") { g_fence_census = ws[2] }
     if (len(ws) == 2) and (ws[0] == "arena") and (ws[1] == "on") { g_arena = true }
+    if (len(ws) == 2) and (ws[0] == "arena") and (ws[1] == "strict") { g_arena = true;  g_arena_strict = true }
     i = e + 1
   }
 }
@@ -182,6 +184,7 @@ function fence_table(name: pointer, ty: pointer, vals: []pointer) -> void {
 
 # the runtime, and the tables this program's sites size
 function emit_fence_runtime() -> void {
+  emit_fence_intern()
   if g_target_win { emit_fence_win();  return }
   if not g_fprintf_declared { emith("declare i32 @fprintf(ptr, ptr, ...)\n");  g_fprintf_declared = true }
   if not g_atexit_declared { emith("declare i32 @atexit(ptr)\n");  g_atexit_declared = true }

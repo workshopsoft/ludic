@@ -44,6 +44,7 @@ function fr_is_frame_prop_field(prop: pointer, name: pointer) -> bool {
 
 # a generic's instance (kept_push$NetFact) is under its declaration's @alloc_ok
 function fr_alloc_ok(name: pointer) -> bool {
+  if str_starts(name, "ludic_act_") { return true }   # the action queue's own kept records, grown to its high-water mark
   var base = name
   var d = 0
   while d < len(name) {
@@ -190,4 +191,40 @@ function deps_frame(f: pointer) -> void {
     i += 1
   }
   deps_line(f, `frame_allocs {itoa(total)}`)
+  deps_keeps(f, seen)
+}
+
+var g_arena_strict: bool = false                    # --arena-strict / `arena strict`: a keep in frame code is an error
+# 25.3's region rule: an allocation in frame code that is kept past its frame (stored into a state,
+# a queue, a global, an event) is a `fkeep` line - and under strict an error naming the store.
+# keep(...) / intern(...) is the copy on purpose; @alloc_ok("why") says it is bounded
+function deps_keeps(f: pointer, seen: []bool) -> void {
+  escape_analyse()
+  var n = 0
+  var s = 0
+  while s < len(g_es_site) {
+    let c = g_es_site_cls[s]
+    let fi = g_es_site_fn[s]
+    if c >= 0 and fi >= 0 and (g_es_flag[c] & ES_ESC) != 0 and not g_es_site_aok[s] and not g_es_site_grow[s] {
+      let d = g_es_fnode[fi]
+      let k = dr_index(d.s)
+      if k >= 0 and seen[k] and not fr_alloc_ok(d.s) and d.file != null and not is_runtime_file(d.file) {
+        let site = g_es_site[s]
+        let why = g_es_why[c]
+        var at = "?"
+        if why != null and why.file != null { at = `{why.file}:{itoa(why.line)}` }
+        var kind = fr_alloc_kind(site, false)
+        if kind == null { kind = "text" }
+        deps_line(f, `fkeep {kind} {d.file}:{itoa(site.line)} {at} {fr_chain(k)}`)
+        if g_arena_strict {
+          let m = `{d.file}:{itoa(site.line)}: error: frame code keeps what it makes: this {kind} is kept at {at} ({fr_chain(k)}) - keep(...) or intern(...) to copy it on purpose, or @alloc_ok("why")\n`
+          file_write(file_stderr(), m, len(m))
+        }
+        n += 1
+      }
+    }
+    s += 1
+  }
+  deps_line(f, `frame_keeps {itoa(n)}`)
+  if g_arena_strict and n > 0 { exit(1) }
 }
