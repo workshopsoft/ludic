@@ -51,10 +51,13 @@ function fence_reset() -> void {
   push(g_site_owner, 0)
 }
 
-# the function the next sites belong to (emit_fn, emit_system_fn)
+# the function the next sites belong to (emit_fn, emit_system_fn); a LOCAL mark is honoured only
+# while emitting a function the escape analysis walked (a default's node is also emitted elsewhere)
+var g_es_walked: bool = false
 function fence_enter(name: pointer) -> void {
   g_cur_fn_name = name
   g_site_fnc = null
+  g_es_walked = g_es_done and (es_fn(name) >= 0 or str_starts(name, "@On("))
 }
 
 function fence_owner_index(own: pointer) -> int {
@@ -107,7 +110,7 @@ function fence_bind(rest: pointer) -> bool {
   else if str_starts(rest, "call ptr @lp_str_slice(") { emit_site("substring") }
   else if str_starts(rest, "call ptr @lp_text_") { emit_site("Text");  alloc = false }
   else { alloc = false }
-  if alloc and g_arena and g_es_node != null {
+  if alloc and g_arena and g_es_walked and g_es_node != null {
     emit("  store i8 1, ptr @lp_want\n")
     return true
   }
