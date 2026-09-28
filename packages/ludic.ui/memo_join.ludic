@@ -42,7 +42,8 @@ function mm_join(ui_st: mut UiState, a: string, sep: string, b: string) -> strin
 const MM_INT_MOST: int = 65536
 @alloc_ok("a memo miss: a number's text made the first time it is shown")
 function mm_int(ui_st: mut UiState, i: int) -> string {
-  if i < 0 or i >= MM_INT_MOST { return string(i) }
+  if i < 0 and i > 0 - MM_INT_MOST { return mm_int_neg(ui_st, 0 - i) }
+  if i < 0 or i >= MM_INT_MOST { return mm_int_big(ui_st, i) }
   if ui_st.mm_ints == null {
     ui_st.mm_ints = new []string
     for k in 0 .. 1024 { push(ui_st.mm_ints, string(k)) }
@@ -61,4 +62,31 @@ function mm_ival(ui_st: mut UiState, i: int) -> Val {
     for k in 0 .. 1024 { push(ui_st.mm_ivals, Value.int(k)) }
   }
   return ui_st.mm_ivals[i]
+}
+# a negative whole number's text (a coordinate, a delta), made once per value like mm_int's
+@alloc_ok("a memo miss: a negative number's text made the first time it is shown")
+function mm_int_neg(ui_st: mut UiState, n: int) -> string {
+  let l = ui_st.mm_negs
+  while len(l) <= n { push(l, "") }
+  if len(l[n]) == 0 { l[n] = string(0 - n) }
+  return l[n]
+}
+# past MM_INT_MOST: the last MM_BIG seen, kept by value, so a number held for a while is made once
+const MM_BIG: int = 16
+@alloc_ok("a number past the table: at most MM_BIG texts kept, replaced oldest first")
+function mm_int_big(ui_st: mut UiState, i: int) -> string {
+  for k in 0 .. len(ui_st.mm_big_v) {
+    if ui_st.mm_big_v[k] == i { return ui_st.mm_big_s[k] }
+  }
+  let s = string(i)
+  if len(ui_st.mm_big_v) < MM_BIG {
+    push(ui_st.mm_big_v, i)
+    push(ui_st.mm_big_s, s)
+  } else {
+    let at = ui_st.mm_big_at % MM_BIG
+    ui_st.mm_big_v[at] = i
+    ui_st.mm_big_s[at] = s
+    ui_st.mm_big_at = at + 1
+  }
+  return s
 }

@@ -92,6 +92,7 @@ function lss_upto(r: UiRd, c: int) -> string {
   return out
 }
 function lss_strip(src: string) -> string {
+  if not lss_has_comment(src) { return src }     # no comment: nothing to strip, nothing made
   var out = ""
   var at = 0
   var i = 0
@@ -106,4 +107,10 @@ function lss_strip(src: string) -> string {
   }
   if at < len(src) { out = out + src[at..len(src)] }
   return out
+}
+function lss_has_comment(src: string) -> bool {
+  for i in 0 .. len(src) - 1 {
+    if src[i] == 47 and src[i + 1] == 42 { return true }
+  }
+  return false
 }

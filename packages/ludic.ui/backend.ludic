@@ -39,6 +39,10 @@ export state UiState {
   uv_false: Val = null
   mm: UiMemo = null                      # memo.ludic: splits, gradients and keys by their text
   mm_ints: []string = null
+  mm_negs: []string = new []string        # memo_join.ludic: negative numbers' texts, and the last big ones
+  mm_big_v: []int = new []int
+  mm_big_s: []string = new []string
+  mm_big_at: int = 0
   fc_none: Val = Value.null()            # focus.ludic: the value a key's down and up carry, made once
   mm_ivals: []Val = null
   ev_depth: int = 0                      # eval.ludic: a call's arguments, in lists kept one a depth
