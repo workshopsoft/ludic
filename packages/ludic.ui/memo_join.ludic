@@ -36,14 +36,19 @@ function mm_join(ui_st: mut UiState, a: string, sep: string, b: string) -> strin
   m.slots[at] = len(m.keys)
   return k
 }
-# a small whole number's text, made once (a key's index, a loop's count)
+# a whole number's text, made once (a key's index, a count, money): 0..1023 at the start, the rest up
+# to MM_INT_MOST the first time each is shown; only past that is one made per call
+const MM_INT_MOST: int = 65536
 function mm_int(ui_st: mut UiState, i: int) -> string {
-  if i < 0 or i >= 1024 { return string(i) }
+  if i < 0 or i >= MM_INT_MOST { return string(i) }
   if ui_st.mm_ints == null {
     ui_st.mm_ints = new []string
     for k in 0 .. 1024 { push(ui_st.mm_ints, string(k)) }
   }
-  return ui_st.mm_ints[i]
+  let l = ui_st.mm_ints
+  while len(l) <= i { push(l, "") }
+  if i >= 1024 and len(l[i]) == 0 { l[i] = string(i) }
+  return l[i]
 }
 # a small whole number as a Value, made once and shared: read it, never change it (a loop's index)
 function mm_ival(ui_st: mut UiState, i: int) -> Val {

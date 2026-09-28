@@ -10,16 +10,20 @@ export function ui_scroll_set(ui_st: mut UiState, key: string, px: float) -> voi
 function sc_held(ui_st: mut UiState, n: UiNode, off: float, live: bool) -> float {
   var at = off
   if live {
-    let keys = new []string
-    let pxs = new []float
-    for i in 0 .. len(ui_st.sc_want_keys) {
-      if ui_st.sc_want_keys[i] == n.key or (n.id != "" and ui_st.sc_want_keys[i] == n.id) { at = ui_px(ui_st, ui_st.sc_want_px[i]) } else {
-        push(keys, ui_st.sc_want_keys[i])
-        push(pxs, ui_st.sc_want_px[i])
+    let keys = ui_st.sc_want_keys          # the asks for this box taken out in place, the others kept
+    let pxs = ui_st.sc_want_px
+    var kept = 0
+    for i in 0 .. len(keys) {
+      if keys[i] == n.key or (n.id != "" and keys[i] == n.id) { at = ui_px(ui_st, pxs[i]) } else {
+        keys[kept] = keys[i]
+        pxs[kept] = pxs[i]
+        kept += 1
       }
     }
-    ui_st.sc_want_keys = keys
-    ui_st.sc_want_px = pxs
+    while len(keys) > kept {
+      List.pop(keys)
+      List.pop(pxs)
+    }
   }
   let v = ui_attr(n, "scroll-top")
   if Value.kind(v) != 0 { at = ui_px(ui_st, el_numv(ui_st, v)) }

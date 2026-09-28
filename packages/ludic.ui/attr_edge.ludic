@@ -55,7 +55,7 @@ function el_shadow(ui_st: mut UiState, n: UiNode, s: string) -> void {
       if nums == 0 { n.sh_x = el_unit(ui_st, p) }
       if nums == 1 { n.sh_y = el_unit(ui_st, p) }
       nums += 1
-    } else if col == "" { col = p } else { col = col + " " + p }
+    } else if col == "" { col = p } else { col = mm_join(ui_st, col, " ", p) }
   }
   if col == "" { col = "rgba(0,0,0,0.5)" }
   n.sh_c = ui_color(ui_st, col)

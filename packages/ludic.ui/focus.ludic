@@ -49,12 +49,12 @@ function fc_keys(ui_st: mut UiState, root: UiNode) -> void {
 function fc_hold(ui_st: mut UiState, root: UiNode, n: UiNode) -> void {
   if ui_st.fr_key_press != "" and (ui_st.in_act_up or n.key != ui_st.fr_key_press) {
     let was = fr_node(root, ui_st.fr_key_press)
-    if was != null { ui_fire(ui_st, was, "up", Value.null()) }
+    if was != null { ui_fire(ui_st, was, "up", ui_st.fc_none) }
     ui_st.fr_key_press = ""
   }
   if ui_st.in_act_down and n.enabled {
     ui_st.fr_key_press = n.key
-    ui_fire(ui_st, n, "down", Value.null())
+    ui_fire(ui_st, n, "down", ui_st.fc_none)
   }
 }
 export function ui_focus(ui_st: mut UiState, key: string) -> void {
