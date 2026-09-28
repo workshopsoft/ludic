@@ -131,12 +131,28 @@ function fr_alloc_kind(n: Node, text_above: bool) -> pointer {
 function fr_allocs(f: pointer, n: Node, k: int, text_above: bool) -> int {
   if n == null { return 0 }
   if fr_aok_stmt(n) { return 0 }
+  if g_arena and n.uns == ES_SCRATCH {           # the frame's arena takes it: made and gone with the frame
+    return fr_allocs_kids(f, n, k)
+  }
   var found = 0
   let kind = fr_alloc_kind(n, text_above)
   if kind != null {
     deps_line(f, `falloc {kind} {g_dr_node[k].file}:{itoa(n.line)} {fr_chain(k)}`)
     found += 1
   }
+  let text = (n.kind == E_BIN) and (n.s == "+") and fr_is_textish(n)
+  found += fr_allocs(f, n.a, k, text)
+  found += fr_allocs(f, n.b, k, text)
+  found += fr_allocs(f, n.c, k, false)
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) { found += fr_allocs(f, n.kids[i], k, false);  i += 1 }
+  }
+  return found
+}
+
+function fr_allocs_kids(f: pointer, n: Node, k: int) -> int {
+  var found = 0
   let text = (n.kind == E_BIN) and (n.s == "+") and fr_is_textish(n)
   found += fr_allocs(f, n.a, k, text)
   found += fr_allocs(f, n.b, k, text)
@@ -165,6 +181,7 @@ function fr_chain(k: int) -> pointer {
 }
 
 function deps_frame(f: pointer) -> void {
+  if g_arena { escape_analyse() }                 # with the arena on, what it takes is not counted
   let n = len(g_dr_node)
   g_fr_root = new []bool
   g_fr_from = new []int
@@ -269,6 +286,33 @@ function fr_consumed(n: Node) -> bool {
 # frame code (a boot, a load), in a function spanning frames, or anywhere with the arena off - is
 # made and dropped, never given back. `fbirth` lines, and the birth_leaks number
 function deps_births(f: pointer, seen: []bool) -> void {
+  # what boot reaches: the Start handlers and the entry, before any frame
+  let boot = new []bool
+  let queue = new []int
+  var b = 0
+  while b < len(g_dr_node) { push(boot, false);  b += 1 }
+  b = 0
+  while b < len(g_dr_node) {
+    let bd = g_dr_node[b]
+    if (bd.kind == N_SYS and (bd.ty == "Start")) or bd.kind == N_MAIN {
+      boot[b] = true
+      push(queue, b)
+    }
+    b += 1
+  }
+  var qh = 0
+  while qh < len(queue) {
+    let refs = g_dr_refs[queue[qh]]
+    qh += 1
+    var r = 0
+    while r < len(refs) {
+      if not boot[refs[r]] {
+        boot[refs[r]] = true
+        push(queue, refs[r])
+      }
+      r += 1
+    }
+  }
   var n = 0
   var s = 0
   while s < len(g_es_site) {
@@ -279,7 +323,9 @@ function deps_births(f: pointer, seen: []bool) -> void {
       let d = g_es_fnode[fi]
       let k = dr_index(d.s)
       let inframe = k >= 0 and seen[k]
-      let scratch = g_arena and site.uns == ES_SCRATCH and inframe   # before the first frame the arena is not running
+      # a scratch site is the arena's whenever the game's frames are running - a frame's code, a click
+      # handler, a reducer - and the heap's only before the first frame: boot's code
+      let scratch = g_arena and site.uns == ES_SCRATCH and not (k >= 0 and boot[k])
       if not scratch and d.file != null and not is_runtime_file(d.file) and not fr_alloc_ok(d.s) and not fr_consumed(site) {
         var kind = fr_alloc_kind(site, false)
         if kind == null { kind = "text" }
