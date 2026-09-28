@@ -1,6 +1,7 @@
 # reload.ludic - a developer's templates and stylesheets read again when they change on disk: every
 # file is re-read in the order it was first loaded (so an import is there before its importer), and
 # the screens' state is kept, as React's fast refresh keeps it. True when anything changed.
+@alloc_ok("developer builds only: the screens' files looked at again once a second")
 export function ui_reload(ui_st: mut UiState) -> bool {
   var changed = uc_reload(ui_st)
   for i in 0 .. len(ui_st.lib_files) {

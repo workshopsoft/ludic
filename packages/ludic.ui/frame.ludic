@@ -35,6 +35,7 @@ export function ui_nodes(ui_st: mut UiState, screen: string, view: UiView) -> Ui
   let cls = uc_find(ui_st, screen)
   if si < 0 and cls != null { return fr_class_nodes(ui_st, cls) }
   if si < 0 {
+    @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     ui_err(ui_st, `there is no screen {screen} - ui_load the file that has it`)
     return null
   }

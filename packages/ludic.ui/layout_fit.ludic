@@ -31,9 +31,9 @@ function ui_object_fit_into(out: []float, n: UiNode, nat_w: float, nat_h: float)
     h = nat_h * s
   }
   List.clear(out)
-  push(out, bx + (bw - w) / 2.0)
-  push(out, by + (bh - h) / 2.0)
-  push(out, w)
-  push(out, h)
+  ui_kept(out, bx + (bw - w) / 2.0)
+  ui_kept(out, by + (bh - h) / 2.0)
+  ui_kept(out, w)
+  ui_kept(out, h)
   return out
 }

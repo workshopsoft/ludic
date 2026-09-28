@@ -25,6 +25,7 @@ function pp_anchor_of(ui_st: mut UiState, parent: UiNode, i: int) -> UiNode {
     if f != null { return f }
     at = at.parent
   }
+  @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   ui_err(ui_st, `anchor="{id}": no element has that id`)
   return null
 }

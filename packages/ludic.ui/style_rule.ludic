@@ -36,6 +36,7 @@ function lss_decls(body: string, err: []string) -> UiRule {
   }
   return r
 }
+@alloc_ok("a memo miss (mm_split) or a stylesheet being read: once per text")
 function lss_split(s: string, c: int) -> []string {
   let out = new []string
   var at = 0

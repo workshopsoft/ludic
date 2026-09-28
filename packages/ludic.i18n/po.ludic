@@ -20,6 +20,7 @@ function entry_put(e: PoEntry, mode: int, s: string) -> void {
   if mode == 4 { e.forms[len(e.forms) - 1] = e.forms[len(e.forms) - 1] + s }
 }
 
+@alloc_ok("on a language change: a .po read")
 export function i18n_parse(text: string) -> []PoEntry {
   let r = new []PoEntry
   let lines = lines_of(text)
@@ -81,6 +82,7 @@ function unquote(line: string, from: int) -> string {
 }
 
 # a header field out of the msgstr "" block: "X-Language-Name: Türkçe\n"
+@alloc_ok("on a language change: a .po's header read")
 export function i18n_header(text: string, field: string) -> string {
   var n = len(text)
   if n > 4000 { n = 4000 }

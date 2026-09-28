@@ -3,6 +3,7 @@
 # text is built only the first time it reads that way. The memo is bounded; past it a text is built as ever
 function ev_text(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   let depth = ui_st.tx_depth        # a hole may hold a text of its own: a kept list of pieces a depth
+  @alloc_ok("once per depth of nesting, then kept")
   while len(ui_st.tx_pieces) <= depth { push(ui_st.tx_pieces, new []string) }
   let ps = ui_st.tx_pieces[depth]
   ui_st.tx_depth = depth + 1
@@ -41,17 +42,17 @@ function tx_same(ps: []string, k: string) -> bool {
 function tx_piece(ui_st: mut UiState, ps: []string, v: Val) -> void {
   let k = Value.kind(v)
   if k != 2 and k != 7 {
-    push(ps, vl_text_u(ui_st, v))
+    ui_kept(ps, vl_text_u(ui_st, v))
     return
   }
   var t = int(Math.round(Value.as_float(v) * 10.0))
   if t < 0 {
-    push(ps, "-")
+    ui_kept(ps, "-")
     t = 0 - t
   }
-  push(ps, mm_int(ui_st, t / 10))
+  ui_kept(ps, mm_int(ui_st, t / 10))
   let d = t % 10
-  if d != 0 { push(ps, tx_tenth(d)) }
+  if d != 0 { ui_kept(ps, tx_tenth(d)) }
 }
 function tx_tenth(d: int) -> string {
   if d == 1 { return ".1" }

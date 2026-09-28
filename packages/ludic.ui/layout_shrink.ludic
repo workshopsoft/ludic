@@ -27,7 +27,7 @@ function ly_shrink_line(ui_st: mut UiState, depth: int, n: UiNode, from: int, si
   var over = over0
   let frozen = ui_st.ly_frozen[depth]
   List.clear(frozen)
-  for k in 0 .. len(sizes) { push(frozen, n.children[from + k].pos >= 2) }
+  for k in 0 .. len(sizes) { ui_kept(frozen, n.children[from + k].pos >= 2) }
   for pass in 0 .. 8 {
     var wsum = 0.0
     for k in 0 .. len(sizes) {

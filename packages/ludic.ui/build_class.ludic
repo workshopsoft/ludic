@@ -22,12 +22,13 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   ce.slot_env = e
   ce.on_names = k.on_keys
   ce.on_acts = k.on_acts
-  for i in 0 .. len(k.on_keys) { push(ce.on_envs, e) }
+  for i in 0 .. len(k.on_keys) { ui_kept(ce.on_envs, e) }
   lc_note(ui_st, key, k.on_keys, k.on_acts, e)
   let at = len(out)
   if cls.roots == null or len(cls.roots) != 1 or cls.roots[0] != cls.root {
+    @alloc_ok("once per class, again after a reload")
     cls.roots = new []UiTpl       # its template as a list of one, made once (again after a reload)
-    push(cls.roots, cls.root)
+    ui_kept(cls.roots, cls.root)
   }
   let root = cls.roots
   bd_kids(ui_st, root, ce, key, out)
@@ -40,7 +41,7 @@ function bd_pass_down(ui_st: mut UiState, n: UiNode, k: UiTpl, e: UiEnv) -> void
   if c != null {
     let parts = mm_split(ui_st, ui_eval_text(ui_st, c, e), 32)
     for i in 0 .. len(parts) {
-      if len(parts[i]) > 0 { push(n.classes, parts[i]) }
+      if len(parts[i]) > 0 { ui_kept(n.classes, parts[i]) }
     }
   }
   let id = tpl_attr(k, "id")
@@ -49,6 +50,7 @@ function bd_pass_down(ui_st: mut UiState, n: UiNode, k: UiTpl, e: UiEnv) -> void
   up.sheet = k.sheet
   up.style = k.style
   up.env = e
+  @alloc_ok("once per pooled node: its list is kept and cleared")
   if n.ups == null { n.ups = new []UiPass }
-  push(n.ups, up)
+  ui_kept(n.ups, up)
 }

@@ -17,6 +17,7 @@ function ui_color(ui_st: mut UiState, name0: string) -> int {
   }
   return c
 }
+@alloc_ok("a memo miss (ui_color): once per colour")
 function ui_color_new(ui_st: mut UiState, name0: string) -> int {
   let name = tw(ui_st, name0)
   ui_st.cl_alpha = 1.0
@@ -27,6 +28,7 @@ function ui_color_new(ui_st: mut UiState, name0: string) -> int {
   for i in 0 .. len(CL_NAMES) - n - 1 {
     if CL_NAMES[i] == 32 and CL_NAMES[i + n + 1] == 61 and sat(CL_NAMES, i + 1, name) { return cl_hex_at(ui_st, CL_NAMES, i + n + 2, 6) }
   }
+  @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   ui_err(ui_st, `{name}: not a colour - #rrggbb, rgb(), rgba(), a name, or var(--a-colour)`)
   return 15658734
 }

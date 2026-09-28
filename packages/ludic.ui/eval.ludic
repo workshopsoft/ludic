@@ -6,6 +6,7 @@ function ui_eval(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
     let o = ui_eval(ui_st, x.a, e)
     if Value.kind(o) == 6 and Value.has(o, x.s) != 0 { return Value.get(o, x.s) }
     if Value.kind(o) == 5 and x.s == "length" { return uv_int(ui_st, Value.count(o)) }
+    @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     ui_err(ui_st, `.{x.s}: there is no such field`)
     return Value.null()
   }
@@ -31,6 +32,7 @@ function ui_eval(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
 # a call: len() and range() are the template's own, anything else is the view's
 function ev_call(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   let depth = ui_st.ev_depth
+  @alloc_ok("once per depth of nesting, then kept")
   while len(ui_st.ev_args) <= depth { push(ui_st.ev_args, Value.list()) }
   let args = ui_st.ev_args[depth]
   Value.clear(args)
@@ -57,6 +59,7 @@ function ev_call_with(ui_st: mut UiState, x: UiExpr, e: UiEnv, args: Val) -> Val
     at = at.parent
   }
   if ui_st.ui_view == null or ui_st.ui_view.call == null {
+    @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     ui_err(ui_st, `{x.s}(): there is no function or event of that name here`)
     return Value.null()
   }
@@ -68,7 +71,7 @@ function ev_into(ui_st: mut UiState) -> Val {
   let v = uv_hold(ui_st)
   if v != null { return v }
   let ring = ui_st.ev_ring
-  if len(ring) < EV_RING { push(ring, Value.null()) }
+  if len(ring) < EV_RING { ui_kept(ring, Value.null()) }
   let at = ui_st.ev_ring_at % len(ring)
   ui_st.ev_ring_at = at + 1
   return ring[at]

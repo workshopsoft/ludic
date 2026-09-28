@@ -1,0 +1,6 @@
+# kept.ludic - the one push a frame may make: into a list the pool or the state keeps and clears,
+# which grows to the most it has held and stays there
+function ui_kept<T>(xs: []T, v: T) -> void {
+  @alloc_ok("a kept list: cleared and filled again, it grows to the most it has held once")
+  push(xs, v)
+}

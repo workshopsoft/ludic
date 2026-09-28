@@ -28,7 +28,9 @@ function cs_fs(ui_st: UiState, n: UiNode) -> float {
 }
 function cs_var_set(n: UiNode, name: string, value: string) -> void {
   if n.var_names == null {
+    @alloc_ok("once per pooled node: its lists are kept and cleared")
     n.var_names = new []string
+    @alloc_ok("once per pooled node: as above")
     n.var_vals = new []string
   }
   for i in 0 .. len(n.var_names) {
@@ -37,8 +39,8 @@ function cs_var_set(n: UiNode, name: string, value: string) -> void {
       return
     }
   }
-  push(n.var_names, name)
-  push(n.var_vals, value)
+  ui_kept(n.var_names, name)
+  ui_kept(n.var_vals, value)
 }
 function cs_var(n: UiNode, name: string) -> string {
   var at = n
@@ -77,6 +79,7 @@ function cs_var_ref(ui_st: mut UiState, n: UiNode, inner: string) -> string {
   let v = cs_var(n, tw(ui_st, parts[0]))
   if v != null { return v }
   if len(parts) > 1 { return tw(ui_st, inner[len(parts[0]) + 1..len(inner)]) }
+  @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   ui_err(ui_st, `var({tw(ui_st, parts[0])}): no element here or above sets it`)
   return ""
 }

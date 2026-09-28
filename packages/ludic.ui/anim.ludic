@@ -43,8 +43,8 @@ function an_began(ui_st: mut UiState, key: string) -> float {
   for i in 0 .. len(ui_st.an_keys) {
     if ui_st.an_keys[i] == key { return ui_st.an_start[i] }
   }
-  push(ui_st.an_keys, key)
-  push(ui_st.an_start, an_now(ui_st))
+  ui_kept(ui_st.an_keys, key)
+  ui_kept(ui_st.an_start, an_now(ui_st))
   return an_now(ui_st)
 }
 # the element's animation at this moment: each property between the stops around it
@@ -52,6 +52,7 @@ function an_apply(ui_st: mut UiState, n: UiNode) -> void {
   if n.anim == "" or n.anim_dur <= 0.0 { return }
   let k = an_find(ui_st, n.anim)
   if k == null {
+    @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     ui_err(ui_st, `animation {n.anim}: there is no @keyframes of that name`)
     return
   }

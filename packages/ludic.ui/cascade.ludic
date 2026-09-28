@@ -61,12 +61,15 @@ function cs_rule_in(ui_st: mut UiState, n: UiNode, r: UiRule, e: UiEnv) -> void 
   }
 }
 function ua_sheet(ui_st: mut UiState) -> UiSheet {
-  if ui_st.ua_sh != null { return ui_st.ua_sh }
+  if ui_st.ua_sh == null { ua_sheet_make(ui_st) }
+  return ui_st.ua_sh
+}
+@alloc_ok("once: the default sheet is read the first time a style is asked for")
+function ua_sheet_make(ui_st: mut UiState) -> void {
   let f = new UiFile
   f.path = "the default sheet"
   f.imp = new []UiFile
   f.own = new []UiRule
   lss_text(ui_st, f, UA_LSS)
   ui_st.ua_sh = sheet_of(f)
-  return ui_st.ua_sh
 }

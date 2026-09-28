@@ -15,7 +15,7 @@ function fb_keep(ui_st: mut UiState, screen: string, root: UiNode) -> void {
       return
     }
   }
-  push(ui_st.fb_roots, root)
+  ui_kept(ui_st.fb_roots, root)
 }
 # the box of the element with that id (or key) on any screen shown, in screen pixels; null if none
 export function ui_box(ui_st: UiState, id: string) -> UiBox {

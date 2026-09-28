@@ -14,6 +14,7 @@ function mm_is_join(k: string, a: string, sep: string, b: string) -> bool {
   return sat(k, 0, a) and sat(k, na + 1, b)
 }
 # a + sep + b, the same string every frame
+@alloc_ok("a memo miss: a joined key made once, bounded by MM_CAP")
 function mm_join(ui_st: mut UiState, a: string, sep: string, b: string) -> string {
   let m = mm_of(ui_st)
   var at = mm_hash_join(a, sep, b) & (MM_CAP - 1)
@@ -39,6 +40,7 @@ function mm_join(ui_st: mut UiState, a: string, sep: string, b: string) -> strin
 # a whole number's text, made once (a key's index, a count, money): 0..1023 at the start, the rest up
 # to MM_INT_MOST the first time each is shown; only past that is one made per call
 const MM_INT_MOST: int = 65536
+@alloc_ok("a memo miss: a number's text made the first time it is shown")
 function mm_int(ui_st: mut UiState, i: int) -> string {
   if i < 0 or i >= MM_INT_MOST { return string(i) }
   if ui_st.mm_ints == null {
@@ -51,6 +53,7 @@ function mm_int(ui_st: mut UiState, i: int) -> string {
   return l[i]
 }
 # a small whole number as a Value, made once and shared: read it, never change it (a loop's index)
+@alloc_ok("once: the small numbers' Values")
 function mm_ival(ui_st: mut UiState, i: int) -> Val {
   if i < 0 or i >= 1024 { return Value.int(i) }
   if ui_st.mm_ivals == null {

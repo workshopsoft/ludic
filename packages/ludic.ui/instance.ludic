@@ -21,11 +21,12 @@ function in_get(ui_st: mut UiState, key: string, k: UiClass) -> UiInst {
   let it = in_reuse(ui_st, k)
   it.key = key
   it.seen = ui_st.in_build
-  push(ui_st.in_list, it)
+  ui_kept(ui_st.in_list, it)
   return it
 }
 # an unmounted instance of this class, put back as new, else a new one: a prompt that comes and goes
 # as the player walks is mounted again without making another record, props and model each time
+@alloc_ok("a component instance: made once per instance key, then kept or reused")
 function in_reuse(ui_st: mut UiState, k: UiClass) -> UiInst {
   let l = ui_st.in_free
   for i in 0 .. len(l) {
@@ -50,7 +51,7 @@ function in_sweep(ui_st: mut UiState, screen: string) -> void {
     if it.seen == ui_st.in_build or not lc_mine(it.key, screen) {
       ui_st.in_list[kept] = it
       kept += 1
-    } else { push(ui_st.in_free, it) }
+    } else { ui_kept(ui_st.in_free, it) }
   }
   while len(ui_st.in_list) > kept { List.pop(ui_st.in_list) }
 }

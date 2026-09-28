@@ -32,6 +32,7 @@ function uc_find(ui_st: UiState, name: string) -> UiClass {
   return null
 }
 # the class's template and styles, read the first time it is shown
+@alloc_ok("once per component class: its template and styles are read the first time it is shown")
 function uc_load(ui_st: mut UiState, k: UiClass) -> void {
   if k.root != null { return }
   let f = lib_blank(k.xml_path)
@@ -46,6 +47,7 @@ function uc_load(ui_st: mut UiState, k: UiClass) -> void {
 }
 # a developer's build reads a class's files again when they change on disk: the first look is what
 # they are, and a later one that differs is taken (an @import in the styles is read from disk too)
+@alloc_ok("developer builds only: a changed file read again")
 function uc_reload(ui_st: mut UiState) -> bool {
   if ui_st.uc_list == null { return false }
   var changed = false

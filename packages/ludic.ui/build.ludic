@@ -20,7 +20,7 @@ function bd_kids(ui_st: mut UiState, kids: []UiTpl, e0: UiEnv, key: string, out:
     } else if k.tag == "else" {
       if not last_if { bd_kids(ui_st, k.kids, e, ck, out) }
       last_if = true
-    } else if k.tag == "each" { bd_each(ui_st, k, e, ck, out) } else if k.tag == "slot" { bd_slot(ui_st, k, e, ck, out) } else if not bd_comp(ui_st, k, e, ck, out) { push(out, bd_elem(ui_st, k, e, ck)) }
+    } else if k.tag == "each" { bd_each(ui_st, k, e, ck, out) } else if k.tag == "slot" { bd_slot(ui_st, k, e, ck, out) } else if not bd_comp(ui_st, k, e, ck, out) { ui_kept(out, bd_elem(ui_st, k, e, ck)) }
   }
 }
 function bd_test(ui_st: mut UiState, k: UiTpl, e: UiEnv) -> bool {
@@ -86,7 +86,7 @@ function bd_comp(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []UiN
   for i in 0 .. len(k.keys) { env_bind(ce, k.keys[i], ui_eval(ui_st, k.vals[i], e)) }
   ce.on_names = k.on_keys
   ce.on_acts = k.on_acts
-  for i in 0 .. len(k.on_keys) { push(ce.on_envs, e) }
+  for i in 0 .. len(k.on_keys) { ui_kept(ce.on_envs, e) }
   ce.slot = k
   ce.slot_env = e
   ce.ctx = e.ctx

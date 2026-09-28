@@ -14,6 +14,7 @@ function el_edge(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
   return true
 }
 # url(path) or url("path") -> path
+@alloc_ok("a memo miss (el_url_u): once per text")
 function el_url(s: string) -> string {
   var t = tpl_words(s)
   if len(t) > 5 and sat(t, 0, "url(") { t = tpl_words(t[4..len(t) - 1]) }

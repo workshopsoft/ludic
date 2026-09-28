@@ -27,6 +27,7 @@ export function i18n_use(i18n_st: mut I18nState, code: string) -> void {
 }
 
 # a .po's text as the lookups, whatever the language is called (a test, a file from elsewhere)
+@alloc_ok("on a language change: the language's messages read in")
 export function i18n_load_text(i18n_st: mut I18nState, text: string) -> void {
   let es = i18n_parse(text)
   i18n_st.exact = Dict.new()

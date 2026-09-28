@@ -45,7 +45,7 @@ function ly_place_line(ui_st: mut UiState, n: UiNode, from: int, to: int, top: f
   ui_st.ly_depth += 1
   let sizes = ly_scratch(ui_st, depth)
   for i in from .. to {
-    push(sizes, ly_basis(n.children[i], n.dir, main_room))
+    ui_kept(sizes, ly_basis(n.children[i], n.dir, main_room))
     if n.children[i].pos < 2 {
       used = used + sizes[i - from]
       grows = grows + ly_grow(n.children[i], n.dir)
@@ -73,7 +73,9 @@ function ly_place_line(ui_st: mut UiState, n: UiNode, from: int, to: int, top: f
 # their own lines while it is still placing them), emptied rather than made anew
 function ly_scratch(ui_st: mut UiState, depth: int) -> []float {
   while len(ui_st.ly_sizes) <= depth {
+    @alloc_ok("once per depth of nesting, then kept")
     push(ui_st.ly_sizes, new []float)
+    @alloc_ok("once per depth of nesting, then kept")
     push(ui_st.ly_frozen, new []bool)
   }
   List.clear(ui_st.ly_sizes[depth])

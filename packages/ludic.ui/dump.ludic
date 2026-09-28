@@ -1,5 +1,6 @@
 # dump.ludic - a laid-out tree, for a test or a look
 # every node and where it went, one line each - for a test, or a look at a layout
+@alloc_ok("developer builds only, once, under LUDIC_UI_DUMP")
 export function ui_dump(n: UiNode, depth: int) -> string {
   var pad = ""
   for d in 0 .. depth { pad = pad + "  " }

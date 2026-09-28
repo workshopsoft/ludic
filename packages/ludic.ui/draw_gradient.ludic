@@ -18,6 +18,7 @@ function gr_parse(ui_st: mut UiState, s0: string) -> UiGradient {
   if j >= 0 { m.grads[j] = g }
   return g
 }
+@alloc_ok("a memo miss (gr_parse): once per gradient")
 function gr_parse_new(ui_st: mut UiState, s0: string) -> UiGradient {
   let s = tw(ui_st, s0)
   let parts = el_commas(s[16..len(s) - 1])

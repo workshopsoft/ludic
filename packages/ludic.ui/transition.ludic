@@ -16,10 +16,10 @@ function tr_apply(ui_st: mut UiState, n: UiNode) -> void {
       return
     }
   }
-  push(ui_st.tr_keys, n.key)
-  push(ui_st.tr_from, want)
-  push(ui_st.tr_to, want)
-  push(ui_st.tr_at, now)
+  ui_kept(ui_st.tr_keys, n.key)
+  ui_kept(ui_st.tr_from, want)
+  ui_kept(ui_st.tr_to, want)
+  ui_kept(ui_st.tr_at, now)
 }
 function tr_value(ui_st: UiState, i: int, now: float, dur: float) -> float {
   let t = Math.clamp((now - ui_st.tr_at[i]) / dur, 0.0, 1.0)

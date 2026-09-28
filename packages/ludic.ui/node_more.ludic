@@ -32,6 +32,7 @@ export property UiNodeX {
   zoom: float = 1.0             # zoom: this element and everything inside it, larger or smaller
 }
 function nx(n: UiNode) -> UiNodeX {
+  @alloc_ok("once per pooled node: its extras are kept")
   if n.ex == null { n.ex = new UiNodeX }
   return n.ex
 }

@@ -25,25 +25,28 @@ function pl_begin(ui_st: mut UiState, screen: string) -> void {
   for i in 0 .. len(ui_st.pl_pools) {
     if ui_st.pl_pools[i].key == screen { p = ui_st.pl_pools[i] }
   }
-  if p == null {
-    p = new UiPool
-    p.key = screen
-    p.nodes0 = new []UiNode
-    p.nodes1 = new []UiNode
-    p.envs0 = new []UiEnv
-    p.envs1 = new []UiEnv
-    p.vals0 = new []Val
-    p.vals1 = new []Val
-    p.ups0 = new []UiPass
-    p.ups1 = new []UiPass
-    push(ui_st.pl_pools, p)
-  }
+  if p == null { p = pl_new(ui_st, screen) }
   p.gen = 1 - p.gen
   p.un = 0
   p.ue = 0
   p.uv = 0
   p.uu = 0
   ui_st.pl_cur = p
+}
+@alloc_ok("once per screen: its pool is made the first time it is built")
+function pl_new(ui_st: mut UiState, screen: string) -> UiPool {
+  let p = new UiPool
+  p.key = screen
+  p.nodes0 = new []UiNode
+  p.nodes1 = new []UiNode
+  p.envs0 = new []UiEnv
+  p.envs1 = new []UiEnv
+  p.vals0 = new []Val
+  p.vals1 = new []Val
+  p.ups0 = new []UiPass
+  p.ups1 = new []UiPass
+  push(ui_st.pl_pools, p)
+  return p
 }
 # a node, blank, with its own lists (empty) - from the pool when a build is under way
 function nd_take(ui_st: mut UiState) -> UiNode {
@@ -58,10 +61,11 @@ function nd_take(ui_st: mut UiState) -> UiNode {
     return n
   }
   let n = nd_fresh()
-  push(list, n)
+  ui_kept(list, n)
   p.un += 1
   return n
 }
+@alloc_ok("a pool miss: past the most nodes a screen has had, then kept")
 function nd_fresh() -> UiNode {
   let n = new UiNode
   n.children = new []UiNode
@@ -83,10 +87,11 @@ function env_take(ui_st: mut UiState) -> UiEnv {
     return e
   }
   let e = env_fresh()
-  push(list, e)
+  ui_kept(list, e)
   p.ue += 1
   return e
 }
+@alloc_ok("a pool miss: past the most scopes a screen has had, then kept")
 function env_fresh() -> UiEnv {
   let e = new UiEnv
   e.names = new []string
@@ -108,7 +113,7 @@ function uv_new(ui_st: mut UiState, tag: int) -> Val {
     return Value.become(v, tag)
   }
   let v = Value.become(Value.null(), tag)
-  push(list, v)
+  ui_kept(list, v)
   p.uv += 1
   return v
 }
@@ -140,10 +145,11 @@ function uv_hold(ui_st: mut UiState) -> Val {
     return list[p.uv - 1]
   }
   let v = Value.null()
-  push(list, v)
+  ui_kept(list, v)
   p.uv += 1
   return v
 }
+@alloc_ok("a pool miss: past the most passes a screen has had, then kept")
 function up_take(ui_st: mut UiState) -> UiPass {
   let p = ui_st.pl_cur
   if p == null { return new UiPass }
@@ -154,7 +160,7 @@ function up_take(ui_st: mut UiState) -> UiPass {
     return list[p.uu - 1]
   }
   let u = new UiPass
-  push(list, u)
+  ui_kept(list, u)
   p.uu += 1
   return u
 }

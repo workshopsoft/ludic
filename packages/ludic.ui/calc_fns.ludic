@@ -12,12 +12,13 @@ function ca_word(s: string, at: int, w: string) -> bool { return at + len(w) <= 
 function ca_fn(ui_st: mut UiState, f: string) -> CaVal {
   ui_st.ca_i = ui_st.ca_i + len(f) + 1
   let depth = ui_st.ca_depth         # min(calc(...)) nests: a kept list of arguments a depth
-  while len(ui_st.ca_args) <= depth { push(ui_st.ca_args, new []CaVal) }
+  @alloc_ok("once per depth of nesting, then kept")
+  while len(ui_st.ca_args) <= depth { ui_kept(ui_st.ca_args, new []CaVal) }
   let args = ui_st.ca_args[depth]
   List.clear(args)
   ui_st.ca_depth = depth + 1
   while ui_st.ca_bad == "" {
-    push(args, ca_sum(ui_st))
+    ui_kept(args, ca_sum(ui_st))
     ca_ws(ui_st)
     if ui_st.ca_i < len(ui_st.ca_s) and ui_st.ca_s[ui_st.ca_i] == 44 { ui_st.ca_i += 1 } else { break }
   }
@@ -31,6 +32,7 @@ function ca_fn(ui_st: mut UiState, f: string) -> CaVal {
   }
   for i in 0 .. len(args) {
     if args[i].pct != 0.0 {
+      @alloc_ok("only when a template is wrong: a broken screen, never a working one")
       ui_st.ca_bad = `lengths in {f}(), not a percentage`
       return ca_new(ui_st)
     }

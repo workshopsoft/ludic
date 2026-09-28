@@ -8,18 +8,7 @@ function fr_class_nodes(ui_st: mut UiState, cls: UiClass) -> UiNode {
   ui_st.ui_view = null
   uc_load(ui_st, cls)
   let root = fr_root(ui_st, cls.name, cls.sheet)
-  if cls.use == null {
-    let use = new UiTpl
-    use.tag = cls.name
-    use.cls = cls
-    use.keys = new []string
-    use.vals = new []UiExpr
-    use.on_keys = new []string
-    use.on_acts = new []UiAct
-    use.kids = new []UiTpl
-    cls.use = use
-    cls.none = Value.object()
-  }
+  if cls.use == null { fr_class_use(cls) }
   let use = cls.use
   let e = env_new(ui_st, null)
   e.model = cls.none
@@ -36,4 +25,18 @@ function fr_root(ui_st: mut UiState, key: string, sheet: UiSheet) -> UiNode {
   root.tag = "screen"
   root.sheet = sheet
   return root
+}
+
+@alloc_ok("once per component class: the tag that shows it as a screen")
+function fr_class_use(cls: UiClass) -> void {
+  let use = new UiTpl
+  use.tag = cls.name
+  use.cls = cls
+  use.keys = new []string
+  use.vals = new []UiExpr
+  use.on_keys = new []string
+  use.on_acts = new []UiAct
+  use.kids = new []UiTpl
+  cls.use = use
+  cls.none = Value.object()
 }

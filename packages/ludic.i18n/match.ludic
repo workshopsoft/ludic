@@ -46,6 +46,7 @@ function best_of(i18n_st: mut I18nState, head: int, next: words, s: string, best
   return b
 }
 
+@alloc_ok("a translation cache miss (L): once per distinct text")
 function pattern(i18n_st: mut I18nState, s: string, depth: int) -> string {
   i18n_st.hit = false
   if i18n_st.pat_n == 0 { return s }

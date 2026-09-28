@@ -13,6 +13,7 @@ function ca_eval(ui_st: mut UiState, s: string) -> bool {
   ca_ws(ui_st)
   if ui_st.ca_bad == "" and ui_st.ca_i < len(ui_st.ca_s) { ui_st.ca_bad = "nothing after its closing )" }
   if ui_st.ca_bad != "" {
+    @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     ui_err(ui_st, `{s}: calc() expected {ui_st.ca_bad}`)
     return false
   }
@@ -68,6 +69,7 @@ function ca_len(ui_st: mut UiState, a: CaVal) -> CaVal {
 # a term, blank, from the pool: an evaluation is over before the next begins, and what it works out is
 # copied into ca_px / ca_pct, so its records are used again by the next one (never made a frame)
 function ca_new(ui_st: mut UiState) -> CaVal {
+  @alloc_ok("a pool miss: past the most terms one evaluation has had")
   if ui_st.ca_used >= len(ui_st.ca_pool) { push(ui_st.ca_pool, new CaVal) }
   let r = ui_st.ca_pool[ui_st.ca_used]
   ui_st.ca_used += 1

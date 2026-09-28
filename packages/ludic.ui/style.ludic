@@ -30,6 +30,7 @@ function lss_file(ui_st: mut UiState, src: string, path: string) -> UiFile {
 function lss_text(ui_st: mut UiState, f: UiFile, src: string) -> void {
   let err = new []string
   lss_block(ui_st, f, lss_strip(src), null, err)
+  @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   for i in 0 .. len(err) { ui_err(ui_st, `{f.path}: <style> {err[i]}`) }
 }
 # rules, @imports and @media blocks; the rules in a @media block carry its condition

@@ -27,6 +27,7 @@ export function ui_native(ui_st: mut UiState, tag: string, measure: fn(UiNode, f
 export function ui_native_input(ui_st: mut UiState, tag: string, f: fn(UiNode, UiPointer) -> bool) -> void {
   let nv = nt_find(ui_st, tag)
   if nv == null {
+    @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     ui_err(ui_st, `ui_native_input: there is no native <{tag}> - ui_native it first`)
     return
   }
@@ -44,9 +45,9 @@ function nt_fired_clear(ui_st: mut UiState) -> void {
   List.clear(ui_st.nt_q_vals)
 }
 export function ui_fire(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void {
-  push(ui_st.nt_q_nodes, n)
-  push(ui_st.nt_q_names, name)
-  push(ui_st.nt_q_vals, value)
+  ui_kept(ui_st.nt_q_nodes, n)
+  ui_kept(ui_st.nt_q_names, name)
+  ui_kept(ui_st.nt_q_vals, value)
 }
 function nt_fired_run(ui_st: mut UiState) -> void {
   let nodes = ui_st.nt_q_nodes                 # run from these while what they fire goes to the spares

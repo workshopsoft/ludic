@@ -14,8 +14,8 @@ function sc_put(ui_st: mut UiState, key: string, v: float) -> void {
       return
     }
   }
-  push(ui_st.sc_keys, key)
-  push(ui_st.sc_offs, v)
+  ui_kept(ui_st.sc_keys, key)
+  ui_kept(ui_st.sc_offs, v)
 }
 # every scroll box, outermost first: its offset (from input, when `live`), then its content moved
 function sc_update(ui_st: mut UiState, n: UiNode) -> void {

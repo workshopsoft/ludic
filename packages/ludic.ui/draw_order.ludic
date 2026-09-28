@@ -11,10 +11,10 @@ function fr_clip_push(ui_st: mut UiState, x: float, y: float, w: float, h: float
     x1 = Math.min(x1, ui_st.fr_clips[n - 2])
     y1 = Math.min(y1, ui_st.fr_clips[n - 1])
   }
-  push(ui_st.fr_clips, x0)
-  push(ui_st.fr_clips, y0)
-  push(ui_st.fr_clips, x1)
-  push(ui_st.fr_clips, y1)
+  ui_kept(ui_st.fr_clips, x0)
+  ui_kept(ui_st.fr_clips, y0)
+  ui_kept(ui_st.fr_clips, x1)
+  ui_kept(ui_st.fr_clips, y1)
   ui_st.ui_be.clip(x0, y0, Math.max(x1 - x0, 0.0), Math.max(y1 - y0, 0.0))
 }
 function fr_clip_pop(ui_st: mut UiState) -> void {
@@ -28,7 +28,7 @@ function fr_clip_pop(ui_st: mut UiState) -> void {
 function fr_children(ui_st: mut UiState, n: UiNode) -> void {
   var positioned = 0
   for i in 0 .. len(n.children) {
-    if n.children[i].popover { push(ui_st.pop_list, n.children[i]) } else if n.children[i].pos == 0 { fr_draw(ui_st, n.children[i]) } else { positioned += 1 }
+    if n.children[i].popover { ui_kept(ui_st.pop_list, n.children[i]) } else if n.children[i].pos == 0 { fr_draw(ui_st, n.children[i]) } else { positioned += 1 }
   }
   if positioned == 0 { return }
   var lo = 1000000

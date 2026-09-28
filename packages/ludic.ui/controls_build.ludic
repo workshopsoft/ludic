@@ -10,7 +10,7 @@ function ct_part(ui_st: mut UiState, n: UiNode, cls: string, text: string) -> Ui
   p.tag = "span"
   p.env = n.env
   p.sheet = n.sheet
-  push(p.classes, cls)
+  ui_kept(p.classes, cls)
   if text != "" {
     p.kind = UI_TEXT
     p.text = text
@@ -25,7 +25,7 @@ function ct_build_bar(ui_st: mut UiState, n: UiNode) -> void {
   if hi <= lo { hi = lo + 1.0 }
   let fill = ct_part(ui_st, n, "ui-fill", "")
   fill.w_pct = Math.clamp((Value.as_float(ui_attr(n, "value")) - lo) / (hi - lo), 0.0, 1.0) * 100.0
-  push(n.children, fill)
+  ui_kept(n.children, fill)
 }
 function ct_build(ui_st: mut UiState, n: UiNode) -> void {
   if n.tag == "progress" or n.tag == "meter" {
@@ -42,15 +42,15 @@ function ct_build(ui_st: mut UiState, n: UiNode) -> void {
   ct_label(ui_st, n)
   if t == "checkbox" or t == "radio" {
     let track = ct_part(ui_st, n, "ui-track", "")
-    push(track.children, ct_part(ui_st, n, "ui-knob", ""))
-    push(n.children, track)
+    ui_kept(track.children, ct_part(ui_st, n, "ui-knob", ""))
+    ui_kept(n.children, track)
   } else if t == "range" {
     ct_build_range(ui_st, n)
   } else {
     let field = ct_part(ui_st, n, "ui-field", "")
-    push(field.children, ct_part(ui_st, n, "ui-value", ct_field_text(ui_st, n)))
-    if ui_st.fc_key == n.key and t != "key" { push(field.children, ct_part(ui_st, n, "ui-caret", "")) }
-    push(n.children, field)
+    ui_kept(field.children, ct_part(ui_st, n, "ui-value", ct_field_text(ui_st, n)))
+    if ui_st.fc_key == n.key and t != "key" { ui_kept(field.children, ct_part(ui_st, n, "ui-caret", "")) }
+    ui_kept(n.children, field)
   }
 }
 function ct_build_range(ui_st: mut UiState, n: UiNode) -> void {
@@ -61,24 +61,25 @@ function ct_build_range(ui_st: mut UiState, n: UiNode) -> void {
   let track = ct_part(ui_st, n, "ui-track", "")
   let fill = ct_part(ui_st, n, "ui-fill", "")
   fill.w_pct = Math.clamp((v - lo) / (hi - lo), 0.0, 1.0) * 100.0
-  push(track.children, fill)
-  push(track.children, ct_part(ui_st, n, "ui-thumb", ""))
-  push(n.children, track)
-  push(n.children, ct_part(ui_st, n, "ui-value", ct_value_text(n)))
+  ui_kept(track.children, fill)
+  ui_kept(track.children, ct_part(ui_st, n, "ui-thumb", ""))
+  ui_kept(n.children, track)
+  ui_kept(n.children, ct_part(ui_st, n, "ui-value", ct_value_shown(ui_st, n)))
 }
 function ct_build_select(ui_st: mut UiState, n: UiNode) -> void {
+  @alloc_ok("once per pooled node: its list is kept and cleared")
   if n.opts == null { n.opts = new []UiNode }    # its options moved to a list the node keeps, not a new one
   let opts = n.opts
   List.clear(opts)
-  for i in 0 .. len(n.children) { push(opts, n.children[i]) }
+  for i in 0 .. len(n.children) { ui_kept(opts, n.children[i]) }
   List.clear(n.children)
   ct_label(ui_st, n)
   var shown = ""
   let at = ct_option_at(n, opts)
   if at >= 0 { shown = opts[at].text }
-  push(n.children, ct_part(ui_st, n, "ui-prev", "<"))
-  push(n.children, ct_part(ui_st, n, "ui-value", shown))
-  push(n.children, ct_part(ui_st, n, "ui-next", ">"))
+  ui_kept(n.children, ct_part(ui_st, n, "ui-prev", "<"))
+  ui_kept(n.children, ct_part(ui_st, n, "ui-value", shown))
+  ui_kept(n.children, ct_part(ui_st, n, "ui-next", ">"))
 }
 # which option the select's value names: an option's value="...", else its place
 function ct_option_at(n: UiNode, opts: []UiNode) -> int {
@@ -89,7 +90,7 @@ function ct_option_at(n: UiNode, opts: []UiNode) -> int {
   }
   return -1
 }
-function ct_field_text(ui_st: UiState, n: UiNode) -> string {
+function ct_field_text(ui_st: mut UiState, n: UiNode) -> string {
   let t = ui_attr_text(n, "type")
   if t == "key" { return ct_key_text(ui_st, n) }
   if t == "number" { return ct_num_shown(ui_st, n) }

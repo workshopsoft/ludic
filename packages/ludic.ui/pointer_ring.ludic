@@ -1,0 +1,22 @@
+# pointer_ring.ludic - a pointer event's record and the Value its handler is given, made once
+# events are made once and taken in turn: more than a frame fires before its handlers have run
+const PE_RING: int = 16
+function pe_evs__new() -> []UiPointer {
+  let xs = new []UiPointer
+  for i in 0 .. PE_RING { push(xs, new UiPointer) }
+  return xs
+}
+function pe_vals__new() -> []Val {
+  let xs = new []Val
+  for i in 0 .. PE_RING {
+    let v = Value.object()
+    Value.put(v, "x", Value.float(0.0))
+    Value.put(v, "y", Value.float(0.0))
+    Value.put(v, "dx", Value.float(0.0))
+    Value.put(v, "dy", Value.float(0.0))
+    Value.put(v, "button", Value.int(0))
+    Value.put(v, "wheel", Value.float(0.0))
+    push(xs, v)
+  }
+  return xs
+}

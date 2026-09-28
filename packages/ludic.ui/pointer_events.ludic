@@ -55,7 +55,11 @@ function pe_down(ui_st: mut UiState, n: UiNode, b: int) -> void {
 # one event: a native's input answers at once (false: not its to take); an element's on-<kind> runs
 # once the frame is drawn, with the pointer's fields on `event`
 function pe_send(ui_st: mut UiState, n: UiNode, kind: string, b: int) -> bool {
-  let e = new UiPointer
+  let e = ui_st.pe_evs[ui_st.pe_at]
+  let v = ui_st.pe_vals[ui_st.pe_at]
+  ui_st.pe_at = (ui_st.pe_at + 1) % PE_RING
+  e.dx = 0.0
+  e.dy = 0.0
   e.kind = kind
   e.x = ui_st.in_now.x - n.x
   e.y = ui_st.in_now.y - n.y
@@ -66,13 +70,12 @@ function pe_send(ui_st: mut UiState, n: UiNode, kind: string, b: int) -> bool {
   e.button = b
   e.wheel = ui_st.in_now.wheel
   if n.kind == UI_NATIVE and n.native != null and n.native.input != null { return n.native.input(n, e) }
-  let v = Value.object()
-  Value.put(v, "x", Value.float(e.x))
-  Value.put(v, "y", Value.float(e.y))
-  Value.put(v, "dx", Value.float(e.dx))
-  Value.put(v, "dy", Value.float(e.dy))
-  Value.put(v, "button", Value.int(b))
-  Value.put(v, "wheel", Value.float(e.wheel))
+  Value.be_float(Value.get(v, "x"), e.x)
+  Value.be_float(Value.get(v, "y"), e.y)
+  Value.be_float(Value.get(v, "dx"), e.dx)
+  Value.be_float(Value.get(v, "dy"), e.dy)
+  Value.be_int(Value.get(v, "button"), b)
+  Value.be_float(Value.get(v, "wheel"), e.wheel)
   ui_fire(ui_st, n, kind, v)
   return true
 }
@@ -81,3 +84,4 @@ function pe_takes_wheel(box: UiNode, px: float, py: float) -> bool {
   let t = fr_pick(box, px, py, PK_WHEEL)
   return t != null and t != box
 }
+

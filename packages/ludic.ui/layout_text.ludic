@@ -19,7 +19,8 @@ function ly_measure_text(ui_st: mut UiState, n: UiNode, avail: float) -> void {
   n.mw = n.mw + widest
   n.mh = n.mh + lh * float(len(n.lines))
 }
-function ly_wrap(ui_st: mut UiState, s: string, size: float, room: float) -> []string {
+@alloc_ok("a memo miss: once per text, size and room (memo_more.ludic), bounded by MM_CAP")
+function ly_wrap_new(ui_st: mut UiState, s: string, size: float, room: float) -> []string {
   let words = mm_split(ui_st, s, 32)
   let out = new []string
   var line = ""
@@ -35,9 +36,9 @@ function ly_wrap(ui_st: mut UiState, s: string, size: float, room: float) -> []s
   if len(line) > 0 { push(out, line) }
   return out
 }
-# a line cut to `room` with an ellipsis, when it does not fit
-function ly_ellipsis(ui_st: UiState, s: string, size: float, room: float) -> string {
-  if ly_text_w(ui_st, s, size) <= room { return s }
+# a line cut to `room` with an ellipsis (it does not fit)
+@alloc_ok("a memo miss: once per text, size and room (memo_more.ludic), bounded by MM_CAP")
+function ly_ellipsis_new(ui_st: UiState, s: string, size: float, room: float) -> string {
   var n = len(s)
   while n > 0 and ly_text_w(ui_st, s[0..n] + "...", size) > room { n -= 1 }
   return s[0..n] + "..."

@@ -1,5 +1,6 @@
 # langs.ludic - where languages come from, later ones replacing earlier ones with the same code:
 # <lang_dir>/languages.txt (one code per line, # a comment) and every .po in the mod folder
+@alloc_ok("once at start: the shipped and dropped-in languages found")
 export function i18n_init(i18n_st: mut I18nState) -> void {
   i18n_st.codes = new []string
   i18n_st.names = new []string

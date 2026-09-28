@@ -13,6 +13,7 @@ function pp_bounds(ui_st: mut UiState, p: UiNode) -> void {
       box = pp_by_id(at, id, p)
       at = at.parent
     }
+    @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     if box == null { ui_err(ui_st, `within="{id}": no element has that id`) }
   } else {
     var at = p.parent

@@ -15,6 +15,7 @@ function cv_tpl(ui_st: mut UiState, s: string) -> UiVarTpl {
   if j >= 0 { m.vtpls[j] = t }
   return t
 }
+@alloc_ok("a memo miss (cv_tpl): once per value with var() in it")
 function cv_parse(ui_st: mut UiState, s: string) -> UiVarTpl {
   let t = new UiVarTpl
   t.lits = new []string
@@ -49,10 +50,10 @@ function cv_pieces(ui_st: mut UiState, n: UiNode, s: string) -> bool {
   let t = cv_tpl(ui_st, s)
   List.clear(ui_st.cv_texts)
   for k in 0 .. len(t.names) {
-    push(ui_st.cv_texts, t.lits[k])
-    push(ui_st.cv_texts, cv_value(ui_st, n, t, k))
+    ui_kept(ui_st.cv_texts, t.lits[k])
+    ui_kept(ui_st.cv_texts, cv_value(ui_st, n, t, k))
   }
-  push(ui_st.cv_texts, t.lits[len(t.names)])
+  ui_kept(ui_st.cv_texts, t.lits[len(t.names)])
   return true
 }
 function cv_has(s: string) -> bool {
@@ -65,6 +66,7 @@ function cv_value(ui_st: mut UiState, n: UiNode, t: UiVarTpl, k: int) -> string 
   let v = cs_var(n, t.names[k])
   if v != null { return v }
   if t.falls[k] != null { return t.falls[k] }
+  @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   ui_err(ui_st, `var({t.names[k]}): no element here or above sets it`)
   return ""
 }

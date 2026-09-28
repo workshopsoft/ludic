@@ -16,6 +16,7 @@ function el_fit_props(ui_st: mut UiState, n: UiNode, key: string, s: string) -> 
   return true
 }
 # "a, rgba(1, 2, 3, 0.5) 40%, b" -> its three parts
+@alloc_ok("a gradient being read, on a memo miss")
 function el_commas(s: string) -> []string {
   let out = new []string
   var at = 0

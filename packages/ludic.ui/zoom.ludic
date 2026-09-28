@@ -7,6 +7,7 @@ function el_zoom(ui_st: mut UiState, n: UiNode, s0: string) -> void {
   if ca_is(s) {
     if ca_eval(ui_st, s) {
       z = ui_st.ca_num
+      @alloc_ok("only when a template is wrong: a broken screen, never a working one")
       if not ui_st.ca_bare { ui_err(ui_st, `zoom: {s} - a zoom is a plain number (divide a length by a length)`) }
     }
   } else if len(s) > 1 and s[len(s) - 1] == 37 { z = el_num(s) / 100.0 } else if s != "normal" { z = el_num(s) }

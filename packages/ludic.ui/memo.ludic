@@ -25,6 +25,7 @@ const MM_VTPL: int = -7            # a value's var()s parsed (units_pieces.ludic
 const MM_COLOR: int = -8           # ui_color: n1 the colour, n2 its alpha
 const MM_BIMG: int = -9            # border-image: texts the picture, lists what follows its url()
 const MM_TEXT: int = -10           # a text with holes, keys[i] the text itself (eval_text.ludic)
+@alloc_ok("once: the memo is made the first time it is asked")
 function mm_new() -> UiMemo {
   let m = new UiMemo
   m.slots = words(MM_CAP)
@@ -48,6 +49,7 @@ function mm_of(ui_st: mut UiState) -> UiMemo {
 }
 # every percentage a bar can be written as (0% .. 100%, to a tenth) made once at the start, so a bar
 # moving through them never makes its text in play - a text seen for the first time was still one string
+@alloc_ok("once: every percentage a bar can show, made with the memo")
 function mm_warm_pct(ui_st: mut UiState, m: UiMemo) -> void {
   for t in 0 .. 1001 {
     var s = mm_int(ui_st, t / 10)
@@ -74,6 +76,7 @@ function mm_find(m: UiMemo, tag: int, s: string) -> int {
   return -1
 }
 # a new entry for (tag, s) with its results empty, or -1 when the table is full
+@alloc_ok("a memo entry: one per distinct text, bounded by MM_CAP")
 function mm_add(m: UiMemo, tag: int, s: string) -> int {
   if len(m.keys) * 4 >= MM_CAP * 3 { return -1 }
   var at = mm_hash(tag, s) & (MM_CAP - 1)

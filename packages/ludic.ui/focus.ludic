@@ -2,7 +2,7 @@
 # Shift+Tab, or the arrows), Enter and Space activate what has it, and a pointer press focuses what
 # it presses; a key field that is listening has every key to itself. A key that is gone from the screen leaves nothing focused.
 function fc_collect(ui_st: mut UiState, n: UiNode) -> void {
-  if n.focusable and n.enabled { push(ui_st.fc_list, n) }
+  if n.focusable and n.enabled { ui_kept(ui_st.fc_list, n) }
   for i in 0 .. len(n.children) { fc_collect(ui_st, n.children[i]) }
 }
 function fc_find(ui_st: UiState) -> int {

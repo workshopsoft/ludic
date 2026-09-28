@@ -81,6 +81,7 @@ function r3u_cell(render3d_st: mut Render3dState, ui_st: mut UiState, k: int, sr
   }
   if idx < 0 and n > 0 and src[at] >= 48 and src[at] <= 57 { idx = int(el_num_in(src, at, len(src))) }
   if idx < 0 {
+    @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     ui_err(ui_st, `{src}: the atlas has no such picture`)
     return
   }

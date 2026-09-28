@@ -6,7 +6,7 @@ function sb_geo(ui_st: mut UiState, n: UiNode, off: float, room: float, most: fl
   let bar = ct_part(ui_st, n, "ui-scrollbar", "")
   bar.tag = "div"
   bar.parent = n
-  push(bar.children, ct_part(ui_st, n, "ui-thumb", ""))
+  ui_kept(bar.children, ct_part(ui_st, n, "ui-thumb", ""))
   cs_tree(ui_st, bar)
   ui_st.sb_bar = bar
   ui_st.sb_w = ui_px(ui_st, 6.0)

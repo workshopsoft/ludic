@@ -65,7 +65,7 @@ function ct_num_blur(ui_st: mut UiState, root: UiNode) -> void {
   }
   ct_num_commit(ui_st, n)
 }
-function ct_num_shown(ui_st: UiState, n: UiNode) -> string {
+function ct_num_shown(ui_st: mut UiState, n: UiNode) -> string {
   if ui_st.ct_num_key == n.key { return ui_st.ct_num_text }
-  return ct_value_text(n)
+  return ct_value_shown(ui_st, n)
 }

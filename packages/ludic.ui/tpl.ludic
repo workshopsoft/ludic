@@ -49,6 +49,7 @@ function tpl_read(ui_st: mut UiState, x: Xml, file: string) -> UiTpl {
   }
   let words = tpl_words(Xml.text(x))
   if len(words) > 0 and Xml.child_count(x) == 0 { t.text = ex_text(words, err) }
+  @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   for i in 0 .. len(err) { ui_err(ui_st, `{t.where}: <{t.tag}> {err[i]}`) }
   return t
 }
@@ -67,6 +68,7 @@ function tpl_value(v: string, err: []string) -> UiExpr {
   return ex_text(v, err)
 }
 # text as a reader sees it: the ends trimmed and every run of white space one space
+@alloc_ok("a memo miss (tw) or a template being read: once per text")
 function tpl_words(s: string) -> string {
   if tpl_clean(s) { return s }
   var out = ""

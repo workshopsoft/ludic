@@ -20,12 +20,12 @@ function cs_gather(ui_st: mut UiState, n: UiNode, sh: UiSheet, e: UiEnv, rules: 
   for i in 0 .. len(seen) {
     if seen[i] == sh { return }
   }
-  push(seen, sh)
+  ui_kept(seen, sh)
   for i in 0 .. len(sh.rules) {
     let r = sh.rules[i]
     if md_ok(ui_st, r) and sel_match(ui_st, r.sel, n) {
-      push(rules, r)
-      push(envs, e)
+      ui_kept(rules, r)
+      ui_kept(envs, e)
       var j = len(rules) - 1
       while j > 0 and rules[j - 1].spec > r.spec {
         rules[j] = rules[j - 1]

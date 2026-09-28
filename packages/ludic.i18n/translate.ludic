@@ -7,13 +7,16 @@ export function L(i18n_st: mut I18nState, s: string) -> string {
   let r = whole(i18n_st, s)
   if Dict.size(i18n_st.cache) >= CACHE_MAX {
     Dict.clear(i18n_st.cache)
-    i18n_st.cache_out = new []string
+    List.clear(i18n_st.cache_out)
   }
+  @alloc_ok("a translation cache miss: the entry is kept, up to CACHE_MAX")
   Dict.set(i18n_st.cache, s, len(i18n_st.cache_out))
+  @alloc_ok("a translation cache miss: as above")
   push(i18n_st.cache_out, r)
   return r
 }
 
+@alloc_ok("a translation cache miss (L): once per distinct text, bounded by CACHE_MAX")
 function whole(i18n_st: mut I18nState, s: string) -> string {
   let n = len(s)
   if n == 0 { return s }
@@ -37,6 +40,7 @@ function whole(i18n_st: mut I18nState, s: string) -> string {
 }
 
 # a paragraph built from sentences, one at a time; English stays where a sentence is unknown
+@alloc_ok("a translation cache miss (L): once per distinct text")
 function sentences(i18n_st: mut I18nState, s: string) -> string {
   let n = len(s)
   var r = ""

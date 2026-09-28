@@ -1,0 +1,88 @@
+# memo_more.ludic - the layout's and the controls' texts, kept by what they were made from: a wrap
+# and an ellipsis by the text, its size and its room in whole pixels (two widths of one text keep
+# two entries), a tooltip's lines, a text-shadow's colour, a range's shown value by its element
+const MM_WRAP: int = -11           # lists the lines; n1 the size, n2 the room
+const MM_ELLIP: int = -12          # texts the cut line; n1 the size, n2 the room
+const MM_TTL: int = -13            # lists a title's lines
+const MM_TSH: int = -14            # texts a text-shadow's colour
+const MM_RANGE: int = -15          # keys the element's key; n1 the value, texts what it shows
+# the entry for (tag, s) made at a and b, or -1
+function mm_find_at(m: UiMemo, tag: int, s: string, a: float, b: float) -> int {
+  var at = mm_hash(tag, s) & (MM_CAP - 1)
+  while m.slots[at] != 0 {
+    let i = m.slots[at] - 1
+    if m.tags[i] == tag and m.n1[i] == a and m.n2[i] == b and m.keys[i] == s { return i }
+    at = (at + 1) & (MM_CAP - 1)
+  }
+  return -1
+}
+function ly_wrap(ui_st: mut UiState, s: string, size: float, room0: float) -> []string {
+  let room = float(int(room0))
+  let m = mm_of(ui_st)
+  let i = mm_find_at(m, MM_WRAP, s, size, room)
+  if i >= 0 { return m.lists[i] }
+  let lines = ly_wrap_new(ui_st, s, size, room)
+  let j = mm_add(m, MM_WRAP, s)
+  if j >= 0 {
+    m.lists[j] = lines
+    m.n1[j] = size
+    m.n2[j] = room
+  }
+  return lines
+}
+function ly_ellipsis(ui_st: mut UiState, s: string, size: float, room0: float) -> string {
+  if ly_text_w(ui_st, s, size) <= room0 { return s }
+  let room = float(int(room0))
+  let m = mm_of(ui_st)
+  let i = mm_find_at(m, MM_ELLIP, s, size, room)
+  if i >= 0 { return m.texts[i] }
+  let t = ly_ellipsis_new(ui_st, s, size, room)
+  let j = mm_add(m, MM_ELLIP, s)
+  if j >= 0 {
+    m.texts[j] = t
+    m.n1[j] = size
+    m.n2[j] = room
+  }
+  return t
+}
+function tt_lines(ui_st: mut UiState, s: string) -> []string {
+  let m = mm_of(ui_st)
+  let i = mm_find(m, MM_TTL, s)
+  if i >= 0 { return m.lists[i] }
+  let lines = tt_lines_new(s)
+  let j = mm_add(m, MM_TTL, s)
+  if j >= 0 { m.lists[j] = lines }
+  return lines
+}
+# a text-shadow's colour: its words from `from` on, joined once per text
+function el_tsh_col(ui_st: mut UiState, s: string, parts: []string, from: int) -> string {
+  if from < 0 { return "rgba(0,0,0,0.6)" }
+  if from == len(parts) - 1 { return parts[from] }
+  let m = mm_of(ui_st)
+  let i = mm_find(m, MM_TSH, s)
+  if i >= 0 { return m.texts[i] }
+  let t = el_tsh_join(parts, from)
+  let j = mm_add(m, MM_TSH, s)
+  if j >= 0 { m.texts[j] = t }
+  return t
+}
+@alloc_ok("a memo miss: once per text-shadow value, bounded by MM_CAP")
+function el_tsh_join(parts: []string, from: int) -> string {
+  var col = parts[from]
+  for k in from + 1 .. len(parts) { col = col + " " + parts[k] }
+  return col
+}
+# what a range shows: made again only when its value moves (a slider held still makes nothing)
+function ct_value_shown(ui_st: mut UiState, n: UiNode) -> string {
+  let f = Value.as_float(ui_attr(n, "value"))
+  let m = mm_of(ui_st)
+  var i = mm_find(m, MM_RANGE, n.key)
+  if i >= 0 and m.n1[i] == f and m.texts[i] != null { return m.texts[i] }
+  let t = ct_value_text(n)
+  if i < 0 { i = mm_add(m, MM_RANGE, n.key) }
+  if i >= 0 {
+    m.n1[i] = f
+    m.texts[i] = t
+  }
+  return t
+}

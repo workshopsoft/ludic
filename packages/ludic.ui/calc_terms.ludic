@@ -84,6 +84,7 @@ function ca_number(ui_st: mut UiState) -> CaVal {
     return r
   }
   r.bare = false
+  @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   if ca_unit(s, num_end, end, "%") { r.pct = f } else if ca_unit(s, num_end, end, "px") { r.px = el_px(ui_st, f) } else if ca_unit(s, num_end, end, "rem") { r.px = f * el_px(ui_st, 16.0) } else if ca_unit(s, num_end, end, "em") { r.px = f * el_em(ui_st) } else if ca_unit(s, num_end, end, "vw") { r.px = f * ui_st.ly_vp_w / 100.0 } else if ca_unit(s, num_end, end, "vh") { r.px = f * ui_st.ly_vp_h / 100.0 } else { ui_st.ca_bad = `a unit calc() knows, not {s[num_end..end]}` }
   return r
 }

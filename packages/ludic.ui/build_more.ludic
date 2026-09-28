@@ -23,17 +23,16 @@ function bd_group(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   t.key = key
   t.text = ui_tr(ui_st, ui_eval_text(ui_st, k.text, e))
   t.env = e
-  push(out, t)
+  ui_kept(out, t)
 }
 # text inside text - <p>Hi <b>there</b></p>, <h3><slot/></h3> - reads as one line of it
-function el_inline(n: UiNode) -> void {
+function el_inline(ui_st: mut UiState, n: UiNode) -> void {
   if n.kind != UI_TEXT or len(n.children) == 0 { return }
   var s = n.text
   for i in 0 .. len(n.children) {
     let c = n.children[i]
-    el_inline(c)
-    if len(s) > 0 and len(c.text) > 0 { s = s + " " }
-    s = s + c.text
+    el_inline(ui_st, c)
+    if len(s) == 0 { s = c.text } else if len(c.text) > 0 { s = mm_join(ui_st, s, " ", c.text) }
   }
   n.text = s
   List.clear(n.children)
