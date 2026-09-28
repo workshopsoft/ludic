@@ -220,6 +220,7 @@ function emit_header() -> void {
         j += 1
       }
       emith("@g_");  emith(d.s);  emith(" = internal global ")
+      if (llty(d.ty) == "ptr") { push(g_scan_roots, d.s) }   # 25.5b: where the reachability scan starts
       emith(llty(d.ty));  emith(" ")
       emith(global_init(d))
       emith("\n")
