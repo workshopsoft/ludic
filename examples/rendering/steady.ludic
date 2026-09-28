@@ -1,7 +1,7 @@
 # steady.ludic - render3d allocates nothing in its steady state: a buffer released and made again
 # (what a streamed or grown buffer does every few frames) and a whole frame, drawn over and over,
 # leave malloc's live bytes where they were. Prints STEADY OK. The heap is read on the Mac
-# (Vk.heap_bytes); elsewhere it reads 0 and the check passes on the run alone.
+# (Vk.heap_bytes) once the device is idle; elsewhere it reads 0 and the check passes on the run alone.
 #
 #   bin/ludic build examples/rendering/steady.ludic --headless && ./build/steady_headless
 program Steady {
@@ -95,7 +95,13 @@ program Steady {
     buffer_rounds(render3d_st, b, 500)
     let grew_b = buffer_rounds(render3d_st, b, 5000)
     frame_rounds(render3d_st, 120)
-    let grew_f = frame_rounds(render3d_st, 600)
+    # the least of three windows: a leak grows in every one, while a busy GPU's lag (a valley
+    # self-test beside it once read 87 KB) does not repeat three times
+    var grew_f = frame_rounds(render3d_st, 600)
+    for w in 0 .. 2 {
+      let g = frame_rounds(render3d_st, 600)
+      if g < grew_f { grew_f = g }
+    }
     model_rounds(render3d_st, 20)
     let grew_m = model_rounds(render3d_st, 200)
     let am = gltf_load(render3d_st, "packages/ludic.lab/plate", "plate.gltf", "plate")
@@ -116,9 +122,9 @@ program Steady {
       ok = false
       print("steady: FAILED - a parsed document freed whole leaves memory behind")
     }
-    # a load keeps a few records of its own for now (handles are not reused); a document's strings
-    # left behind were ~640 KB a model, so a bound of 8 KB a round is what this holds
-    if grew_m >= 200 * 8192 {
+    # a load and a release leave nothing: 0 over 200 (a document's strings were ~640 KB a model, a
+    # texture's create infos and its .dds path ~700 bytes a round)
+    if grew_m >= 4096 {
       ok = false
       print("steady: FAILED - a model loaded and let go leaves memory behind")
     }

@@ -212,11 +212,18 @@ function gvk_tex_storage(render3d_st: mut Render3dState, tex: int, array: bool, 
   let out = bytes(8)
   render3d_st.gvk_mk_img += 1
   var r = Vk.create_image(render3d_st.gvk_dev, ici, null, out)
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, `vkCreateImage {w}x{h}x{layers} format {vkfmt}`, r) }
+  # the create infos are read by the call they are handed to and go straight after (a texture
+  # made in play once left four of them behind)
+  free(ici)
+  if r != VK_SUCCESS {
+    free(out)
+    return gvk_fail(render3d_st, `vkCreateImage {w}x{h}x{layers} format {vkfmt}`, r)
+  }
   let image = gvk_handle(out)
   let req = bytes(VkMemoryRequirements_sizeof)
   Vk.get_image_memory_requirements(render3d_st.gvk_dev, image, req)
   let ma = gvk_mem_new(render3d_st, req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, true)
+  free(req)
   let mem: long = ma                    # the allocation id (gvk_mem_new), kept where the memory was
   let zero: long = 0
   # no memory for it (one allocation per resource meets the driver's allocation limit long before
@@ -224,10 +231,14 @@ function gvk_tex_storage(render3d_st: mut Render3dState, tex: int, array: bool, 
   if mem == 0 {
     render3d_st.gvk_mk_x_img += 1
     Vk.destroy_image(render3d_st.gvk_dev, image, null)
+    free(out)
     return gvk_fail(render3d_st, `no device memory for a {w}x{h}x{layers} image ({render3d_st.gvk_n_allocs} allocations live)`, VK_ERROR_OUT_OF_DEVICE_MEMORY)
   }
   r = Vk.bind_image_memory(render3d_st.gvk_dev, image, gvk_mem_handle(render3d_st, ma), gvk_mem_offset(render3d_st, ma))
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkBindImageMemory", r) }
+  if r != VK_SUCCESS {
+    free(out)
+    return gvk_fail(render3d_st, "vkBindImageMemory", r)
+  }
   let vci = bytes(VkImageViewCreateInfo_sizeof)
   Vk.zero(vci, VkImageViewCreateInfo_sizeof)
   Vk.put_i32(vci, VkImageViewCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO)
@@ -240,8 +251,11 @@ function gvk_tex_storage(render3d_st: mut Render3dState, tex: int, array: bool, 
   Vk.put_i32(vci, sr + VkImageSubresourceRange_layerCount, layers)
   render3d_st.gvk_mk_view += 1
   r = Vk.create_image_view(render3d_st.gvk_dev, vci, null, out)
+  free(vci)
+  let view = gvk_handle(out)
+  free(out)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateImageView", r) }
-  render3d_st.gvk_tex_image[tex] = image;  render3d_st.gvk_tex_view[tex] = gvk_handle(out);  render3d_st.gvk_tex_mem[tex] = mem
+  render3d_st.gvk_tex_image[tex] = image;  render3d_st.gvk_tex_view[tex] = view;  render3d_st.gvk_tex_mem[tex] = mem
   render3d_st.gvk_tex_levels[tex] = levels;  render3d_st.gvk_tex_layers[tex] = layers;  render3d_st.gvk_tex_vkfmt[tex] = vkfmt
   render3d_st.gvk_tex_dims_w[tex] = w;  render3d_st.gvk_tex_dims_h[tex] = h
   render3d_st.gvk_tex_glfmt[tex] = ifmt;  render3d_st.gvk_tex_gen[tex] = render3d_st.gvk_tex_gen[tex] + 1
