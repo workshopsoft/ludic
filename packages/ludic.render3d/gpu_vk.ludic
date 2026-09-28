@@ -408,8 +408,17 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
       if host { bsize = GVK_BLOCK_HOST }
       let mem = gvk_mem_raw(render3d_st, t, bsize, host, mp)
       if mem != 0 {
-        push(render3d_st.gvk_blk_mem, mem);  push(render3d_st.gvk_blk_kind, kind);  push(render3d_st.gvk_blk_size, bsize);  push(render3d_st.gvk_blk_map, mp[0])
-        blk = len(render3d_st.gvk_blk_mem) - 1;  off = 0
+        # into the record of a block given back, when there is one: a buffer made again every few
+        # frames empties a block and makes the next, and each made a new record for good
+        blk = -1
+        for e in 0 .. len(render3d_st.gvk_blk_kind) { if blk < 0 and render3d_st.gvk_blk_kind[e] == -1 and render3d_st.gvk_blk_mem[e] == 0 { blk = e } }
+        if blk < 0 {
+          push(render3d_st.gvk_blk_mem, mem);  push(render3d_st.gvk_blk_kind, kind);  push(render3d_st.gvk_blk_size, bsize);  push(render3d_st.gvk_blk_map, mp[0])
+          blk = len(render3d_st.gvk_blk_mem) - 1
+        } else {
+          render3d_st.gvk_blk_mem[blk] = mem;  render3d_st.gvk_blk_kind[blk] = kind;  render3d_st.gvk_blk_size[blk] = bsize;  render3d_st.gvk_blk_map[blk] = mp[0]
+        }
+        off = 0
         gvk_fr_put(render3d_st, blk, size, bsize - size)
       }
     }

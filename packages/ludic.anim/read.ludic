@@ -62,7 +62,7 @@ function read_one(anim_st: AnimState, render3d_st: mut Render3dState, a: Val) ->
   }
   if n_keep == 0 { return null }
   let c = new Clip
-  c.name = nm
+  c.name = nm[0 .. len(nm)]              # a copy: the document goes, strings and all, at the next load
   c.n = n_keep
   c.cnode = words(n_keep)
   c.cpath = words(n_keep)

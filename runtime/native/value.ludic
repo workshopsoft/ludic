@@ -384,6 +384,21 @@ function value_free(v: Val) -> void {
   free(v)
 }
 function json_free(v: Val) -> void { value_free(v) }
+# ... and its strings too - every string value and object key the parser made - for a tree whose
+# reader copied what it keeps (render3d's glTF documents): a parse left otherwise gives back the
+# nodes and keeps every name, ~640 KB a model
+function value_free_all(v: Val) -> void {
+  if v == null { return }
+  if v.tag == 4 and v.txt != null { free(v.txt) }
+  if v.kids != null {
+    for i in 0 .. len(v.kids) { value_free_all(v.kids[i]) }
+    if v.keys != null { for i in 0 .. len(v.keys) { if v.keys[i] != null { free(v.keys[i]) } } }
+    free(v.kids)
+    free(v.keys)
+  }
+  free(v)
+}
+function json_free_all(v: Val) -> void { value_free_all(v) }
 
 function jp_value(p: JP) -> Val {
   jp_skip_ws(p)
@@ -467,6 +482,7 @@ function jp_number(p: JP) -> Val {
       frac = (digits[di] * 65536 + frac) / 10
       di -= 1
     }
+    free(digits)                                 # one list per decimal in the document, never given back
     var raw = ip * 65536 + frac
     raw = jp_exponent(p, raw)
     if neg != 0 { raw = -raw }
