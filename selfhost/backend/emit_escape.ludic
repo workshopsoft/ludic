@@ -104,6 +104,13 @@ function es_val(e: Node) -> int {
     return -1
   }
   if k == E_UN { es_val(e.a);  return -1 }
+  if k == E_NEW and e.b != null {                  # a dispatch fills the queue's kept record: kept
+    if e.a != null and e.a.kids != null {
+      var i = 0
+      while i < len(e.a.kids) { es_escape(es_val(e.a.kids[i].a));  i += 1 }
+    }
+    return g_es_heap
+  }
   if k == E_NEW {
     let s = es_site(e)
     if e.a != null and e.a.kids != null {

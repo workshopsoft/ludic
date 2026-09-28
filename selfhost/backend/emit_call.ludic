@@ -1039,7 +1039,18 @@ function emit_call(e: Node) -> Val {
   return val(rreg, fn2.ty)
 }
 
+# 25.3: which expression is being emitted, when it is a LOCAL site - fence_bind asks for scratch
+# for that expression's own allocation, and never for one of its parts that is not one
 function emit_expr(e: Node) -> Val {
+  if (e == null) { return val("0", "int") }
+  let saved = g_es_node
+  if e.uns == ES_SCRATCH { g_es_node = e } else { g_es_node = null }
+  let v = emit_expr_raw(e)
+  g_es_node = saved
+  return v
+}
+
+function emit_expr_raw(e: Node) -> Val {
   if (e == null) { return val("0", "int") }
   if e.kind == E_INT  {
     if e.s != null { return val(e.s, "long") }     # a literal past 2^31 - 1

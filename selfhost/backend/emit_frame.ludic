@@ -31,10 +31,14 @@ function fr_phase_frame(ph: pointer) -> bool {
   return (ph == "Input") or (ph == "FixedUpdate") or (ph == "Update") or (ph == "LateUpdate") or (ph == "Render") or (ph == "Overlay")
 }
 
-function fr_is_frame_field(name: pointer) -> bool {
+# `tick` is a System's, by any name's record; any other field is a frame root only where its own
+# property says `@frame` (Prop.field), so a step list of loads with a `run` field is not one
+function fr_is_frame_field(name: pointer) -> bool { return (name == "tick") }
+function fr_is_frame_prop_field(prop: pointer, name: pointer) -> bool {
   if (name == "tick") { return true }
+  let key = `{prop}.{name}`
   var i = 0
-  while i < len(g_frame_fields) { if (g_frame_fields[i] == name) { return true };  i += 1 }
+  while i < len(g_frame_fields) { if (g_frame_fields[i] == key) { return true };  i += 1 }
   return false
 }
 
@@ -60,11 +64,11 @@ function fr_mark_root(name: pointer) -> void {
 function fr_find_roots(n: Node) -> void {
   if n == null { return }
   if n.kind == S_ASSIGN and n.a != null and n.a.kind == E_MEMBER and n.a.s != null and fr_is_frame_field(n.a.s) and n.b != null and n.b.kind == E_FNREF { fr_mark_root(n.b.s) }
-  if n.kind == E_REC and n.kids != null {
+  if n.kind == E_NEW and n.s != null and n.a != null and n.a.kind == E_REC and n.a.kids != null {
     var i = 0
-    while i < len(n.kids) {
-      let f = n.kids[i]
-      if f.s != null and fr_is_frame_field(f.s) and f.a != null and f.a.kind == E_FNREF { fr_mark_root(f.a.s) }
+    while i < len(n.a.kids) {
+      let f = n.a.kids[i]
+      if f.s != null and fr_is_frame_prop_field(n.s, f.s) and f.a != null and f.a.kind == E_FNREF { fr_mark_root(f.a.s) }
       i += 1
     }
   }
@@ -86,7 +90,7 @@ function fr_is_textish(n: Node) -> bool {
 }
 
 function fr_alloc_kind(n: Node, text_above: bool) -> pointer {
-  if n.kind == E_NEW { return `new:{n.s}` }
+  if n.kind == E_NEW and n.b == null { return `new:{n.s}` }   # a dispatch's `new` fills the queue's kept record (n.b)
   if n.kind == E_LIST { return "list" }
   if n.kind == E_BIN and (n.s == "+") and not text_above and fr_is_textish(n) { return "text" }
   if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and n.a.s != null {
