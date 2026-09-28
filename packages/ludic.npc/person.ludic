@@ -13,8 +13,8 @@ export state NpcState {
   np_n: int = 0                 # walkers about
   np_dice: Rng = rng_new(20260925)
   np_facts: Queue<NpcFact> = np_facts__new()
-  np_fpool: []NpcFact = new []NpcFact      # every fact record made, reused once no drain holds it
-  np_ffree: []NpcFact = new []NpcFact
+  np_fpool: []NpcFact = np_pool_new()      # every fact record made, reused once no drain holds it
+  np_ffree: []NpcFact = np_list_sized()
   np_fnext: int = 0
   np_next_h: float = 0.0        # the hour the census is next looked at
   np_hold: bool = false         # held where they stand (a shot of their poses)
@@ -109,4 +109,4 @@ function np_hi(lo: int, hi: int) -> int {
   if hi < lo { return lo }
   return hi
 }
-function np_facts__new() -> Queue<NpcFact> { return queue_new("npc.facts") }
+function np_facts__new() -> Queue<NpcFact> { return np_queue_sized(queue_new("npc.facts")) }

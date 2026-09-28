@@ -1,0 +1,26 @@
+# ludic.npc/pool.ludic - the facts' records and the queue's lists made at their size once, at the
+# start: a frame's facts are reused records, and a frame with more than it has seen before still
+# makes none until NP_FACTS are held at once
+const NP_FACTS: int = 64
+
+function np_pool_new() -> []NpcFact {
+  let l = new []NpcFact
+  for i in 0 .. NP_FACTS { push(l, new NpcFact) }
+  return l
+}
+# an empty list with room for them all: q_unheld fills it without growing it
+function np_list_sized() -> []NpcFact {
+  let l = np_pool_new()
+  List.clear(l)
+  return l
+}
+function np_queue_sized(q: Queue<NpcFact>) -> Queue<NpcFact> {
+  let f = new NpcFact
+  for i in 0 .. NP_FACTS {
+    push(q.items, f)
+    push(q.spare, f)
+  }
+  List.clear(q.items)
+  List.clear(q.spare)
+  return q
+}

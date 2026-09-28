@@ -102,7 +102,7 @@ program NpcWayTest {
     expect(p.phase > 100.0)
   }
 
-  test "an arrival a turn, drained each turn, makes a few fact records and then reuses them" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState, way_test_st: WayTestState) {
+  test "an arrival a turn, drained each turn, makes no fact record past the ones made at the start" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState, way_test_st: WayTestState) {
     fk_setup(npc_st, npc_tests_fake_st)
     npc_tests_fake_st.fk_want = 1
     let p = npc_spawn(npc_st, NPCK_HIKER)
@@ -115,6 +115,6 @@ program NpcWayTest {
       for i in 0 .. len(fs) { if fs[i].what == NPC_F_ARRIVED { arrived += 1 } }
     }
     expect(arrived > 400)
-    expect(npc_fact_records(npc_st) <= 4)
+    expect_eq(npc_fact_records(npc_st), 64)
   }
 }
