@@ -95,6 +95,11 @@ function ck_walk_args(e: Node) -> void {
 }
 # the builtins whose type is their name, and push, whose element must fit the slice
 function ck_builtin(e: Node, name: pointer) -> pointer {
+  if (name == "keep") and len(e.kids) == 1 { return ck_expr(e.kids[0]) }       # 25.3: a copy on the heap, the same type
+  if (name == "intern") and len(e.kids) == 1 {                                   # 25.3: one heap string per distinct text
+    ck_walk_args(e)
+    return "string"
+  }
   if (name == "string") or (name == "int") or (name == "float") or (name == "fixed") or (name == "long") or (name == "double") {
     ck_walk_args(e)
     return name

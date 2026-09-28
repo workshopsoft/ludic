@@ -18,6 +18,14 @@ const ES_ESC: int = 1
 const ES_HEAP: int = 2
 
 var g_es_flag: []int = new []int
+var g_es_why: []Node = new []Node                   # per class: the statement that made it escape
+var g_es_swhy: []Node = new []Node                  # per store edge: its statement
+var g_es_stmt: Node = null                          # the statement being walked
+var g_es_aok: int = 0                               # inside a statement under @alloc_ok
+var g_es_site_aok: []bool = new []bool              # the site is (not reported by the region rule)
+var g_es_site_grow: []bool = new []bool             # the site is a push's growth (25.5's capacities, not the rule)
+var g_es_done: bool = false
+var g_es_consumed: []Node = new []Node              # text used up where it is made (a + or == operand): freed at once
 var g_es_ft: []int = new []int                      # flow edges
 var g_es_ff: []int = new []int
 var g_es_st: []int = new []int                      # store edges: value, target
@@ -38,15 +46,20 @@ var g_es_lc: []int = new []int
 var g_es_cur: int = -1
 var g_es_heap: int = -1                             # the one class for globals, states and the unknown
 
-function es_new(flags: int) -> int { push(g_es_flag, flags);  return len(g_es_flag) - 1 }
+function es_new(flags: int) -> int { push(g_es_flag, flags);  push(g_es_why, null);  return len(g_es_flag) - 1 }
 function es_flow(a: int, b: int) -> void { if a >= 0 and b >= 0 { push(g_es_ff, a);  push(g_es_ft, b) } }
 function es_store(v: int, t: int) -> void {
   if v < 0 { return }
-  if t < 0 { g_es_flag[v] = g_es_flag[v] | ES_ESC;  return }
+  if t < 0 { es_escape(v);  return }
   push(g_es_sv, v)
   push(g_es_st, t)
+  push(g_es_swhy, g_es_stmt)
 }
-function es_escape(v: int) -> void { if v >= 0 { g_es_flag[v] = g_es_flag[v] | ES_ESC } }
+function es_escape(v: int) -> void {
+  if v < 0 { return }
+  g_es_flag[v] = g_es_flag[v] | ES_ESC
+  if g_es_why[v] == null { g_es_why[v] = g_es_stmt }
+}
 
 function es_local(name: pointer) -> int {
   var i = len(g_es_ln) - 1
@@ -71,6 +84,8 @@ function es_site(n: Node) -> int {
   push(g_es_site, n)
   push(g_es_site_cls, c)
   push(g_es_site_fn, g_es_cur)
+  push(g_es_site_aok, g_es_aok > 0)
+  push(g_es_site_grow, false)
   return c
 }
 
@@ -100,6 +115,10 @@ function es_val(e: Node) -> int {
   if k == E_BIN {
     es_val(e.a)
     es_val(e.b)
+    if (e.s == "+") or (e.s == "==") or (e.s == "!=") {
+      if e.a != null and (e.a.kind == E_BIN or e.a.kind == E_CALL or e.a.kind == E_SLICE) { push(g_es_consumed, e.a) }
+      if e.b != null and (e.b.kind == E_BIN or e.b.kind == E_CALL or e.b.kind == E_SLICE) { push(g_es_consumed, e.b) }
+    }
     if (e.s == "+") and fr_is_textish(e) { return es_site(e) }
     return -1
   }
@@ -156,11 +175,15 @@ function es_call(e: Node) -> int {
       es_args_walk(e)
       return es_site(e)
     }
+    if (nm == "keep") or (nm == "intern") {
+      es_args_walk(e)
+      return g_es_heap
+    }
     if (nm == "push") and len(e.kids) >= 2 {
       let t = es_val(e.kids[0])
       es_store(es_val(e.kids[1]), t)
       # the grown buffer is the list's own
-      push(g_es_site, e);  push(g_es_site_cls, t);  push(g_es_site_fn, g_es_cur)
+      push(g_es_site, e);  push(g_es_site_cls, t);  push(g_es_site_fn, g_es_cur);  push(g_es_site_aok, g_es_aok > 0);  push(g_es_site_grow, true)
       return -1
     }
     if (nm == "words") or (nm == "floats") or (nm == "doubles") or (nm == "buffer") or (nm == "bytes") or (nm == "fixeds") or (nm == "pointers") {
@@ -228,7 +251,18 @@ function es_call(e: Node) -> int {
 
 function es_walk(n: Node) -> void {
   if n == null { return }
+  if n.uns == FR_AOK_STMT and n.kind != E_ID {
+    g_es_aok += 1
+    es_walk_in(n)
+    g_es_aok -= 1
+    return
+  }
+  es_walk_in(n)
+}
+
+function es_walk_in(n: Node) -> void {
   let k = n.kind
+  if k == S_LET or k == S_ASSIGN or k == S_RETURN or k == S_EXPR or k == S_EMIT { g_es_stmt = n }
   if k == S_LET {
     let c = es_bind_local(n.s)
     es_flow(es_val(n.a), c)
@@ -293,14 +327,22 @@ function es_solve() -> void {
       let a = g_es_ff[i]
       let b = g_es_ft[i]
       if (g_es_flag[a] & ES_HEAP) != 0 and (g_es_flag[b] & ES_HEAP) == 0 { g_es_flag[b] = g_es_flag[b] | ES_HEAP;  changed = true }
-      if (g_es_flag[b] & ES_ESC) != 0 and (g_es_flag[a] & ES_ESC) == 0 { g_es_flag[a] = g_es_flag[a] | ES_ESC;  changed = true }
+      if (g_es_flag[b] & ES_ESC) != 0 and (g_es_flag[a] & ES_ESC) == 0 {
+        g_es_flag[a] = g_es_flag[a] | ES_ESC
+        g_es_why[a] = g_es_why[b]
+        changed = true
+      }
       i += 1
     }
     i = 0
     while i < len(g_es_sv) {
       let v = g_es_sv[i]
       let t = g_es_st[i]
-      if (g_es_flag[t] & (ES_ESC | ES_HEAP)) != 0 and (g_es_flag[v] & ES_ESC) == 0 { g_es_flag[v] = g_es_flag[v] | ES_ESC;  changed = true }
+      if (g_es_flag[t] & (ES_ESC | ES_HEAP)) != 0 and (g_es_flag[v] & ES_ESC) == 0 {
+        g_es_flag[v] = g_es_flag[v] | ES_ESC
+        g_es_why[v] = g_es_swhy[i]
+        changed = true
+      }
       i += 1
     }
   }
@@ -322,6 +364,8 @@ function es_solve() -> void {
 var g_es_local_n: int = 0
 var g_es_esc_n: int = 0
 function escape_analyse() -> void {
+  if g_es_done { return }
+  g_es_done = true
   g_es_heap = es_new(ES_ESC | ES_HEAP)
   ck_tab_init(g_es_fk, g_es_fv)
   var i = 0
@@ -399,4 +443,39 @@ function escape_report() -> void {
   }
   let tot = `escape: {itoa(g_es_local_n)} local, {itoa(g_es_esc_n)} kept\n`
   file_write(file_stderr(), tot, len(tot))
+}
+
+# keep(x): x copied onto the heap - a string's bytes, a slice's header and elements, a record's
+# fields (shallow) - so a frame's value can become a state's on purpose (25.3's region rule)
+function emit_keep(a: Val) -> Val {
+  if (a.ty == "string") {
+    let n = emit_bind(`call i64 @strlen(ptr {a.code})`)
+    let n1 = emit_bind(`add i64 {n}, 1`)
+    let p = emit_bind(`call ptr @lp_malloc(i64 {n1})`)
+    emit(`  call ptr @memcpy(ptr {p}, ptr {a.code}, i64 {n1})\n`)
+    return val(p, "string")
+  }
+  if is_slice_ty(a.ty) {
+    let esz = emit_sizeof(llty(slice_elem(a.ty)))
+    let hsz = emit_sizeof("%LSlice")
+    let h = emit_bind(`call ptr @lp_malloc(i64 {hsz})`)
+    let od = emit_bind(`load ptr, ptr {slice_field(a.code, 0)}`)
+    let ln = emit_bind(`load i32, ptr {slice_field(a.code, 1)}`)
+    let ln64 = emit_bind(`zext i32 {ln} to i64`)
+    let bytes = emit_bind(`mul i64 {ln64}, {esz}`)
+    let b1 = emit_bind(`add i64 {bytes}, 1`)
+    let d = emit_bind(`call ptr @lp_malloc(i64 {b1})`)
+    emit(`  call ptr @memcpy(ptr {d}, ptr {od}, i64 {bytes})\n`)
+    emit(`  store ptr {d}, ptr {slice_field(h, 0)}\n`)
+    emit(`  store i32 {ln}, ptr {slice_field(h, 1)}\n`)
+    emit(`  store i32 {ln}, ptr {slice_field(h, 2)}\n`)
+    return val(h, a.ty)
+  }
+  if layout_node(a.ty) != null {
+    let sz = emit_sizeof(layout_ty(a.ty))
+    let p = emit_bind(`call ptr @lp_malloc(i64 {sz})`)
+    emit(`  call ptr @memcpy(ptr {p}, ptr {a.code}, i64 {sz})\n`)
+    return val(p, a.ty)
+  }
+  return a
 }

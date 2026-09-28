@@ -57,6 +57,12 @@ function post_set_msaa(render3d_st: mut Render3dState, n: int) -> void {
 @alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function post_init(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_w = w;  render3d_st.post_h = h
+  # the exposure's two 1x1 targets: made once, here, rather than by the first frame that measured
+  if render3d_st.post_adapt_t == null {
+    render3d_st.post_adapt_t = new []Target
+    for k in 0 .. 2 { push(render3d_st.post_adapt_t, target_new(render3d_st, 1, 1, GL_R32F, GL_RED, GL_FLOAT, false, GL_NEAREST)) }
+    render3d_st.post_adapt_reset = true
+  }
   render3d_st.post_hdr = target_new(render3d_st, w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
   if render3d_st.post_ms_samples > 1 {
     render3d_st.post_ms_fbo = gpu_fb_new(render3d_st)
@@ -134,11 +140,6 @@ function post_measure(render3d_st: mut Render3dState) -> void {
   gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.post_hdr.color)
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
   gpu_tex_mips(render3d_st, GPU_TEX2D)
-  if render3d_st.post_adapt_t == null {
-    render3d_st.post_adapt_t = new []Target
-    for k in 0 .. 2 { push(render3d_st.post_adapt_t, target_new(render3d_st, 1, 1, GL_R32F, GL_RED, GL_FLOAT, false, GL_NEAREST)) }
-    render3d_st.post_adapt_reset = true
-  }
   if render3d_st.post_p_adapt == 0 { render3d_st.post_p_adapt = r3d_program(render3d_st, "fullscreen.vert", "adapt.frag", "") }
   let next = 1 - render3d_st.post_adapt_i
   target_bind(render3d_st, render3d_st.post_adapt_t[next])

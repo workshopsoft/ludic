@@ -695,6 +695,11 @@ function emit_call(e: Node) -> Val {
   }
   if (name == "len") { return emit_len(e) }
   if (name == "push") { return emit_push(e) }
+  if (name == "keep") and len(e.kids) == 1 { return emit_keep(emit_expr(e.kids[0])) }
+  if (name == "intern") and len(e.kids) == 1 {
+    let s = emit_expr(e.kids[0])
+    return val(emit_bind(`call ptr @lp_intern(ptr {s.code})`), "string")
+  }
   if (name == "string") {                            # string(x): int/bool/fixed/long -> text, a string passes through
     let a = emit_expr(e.kids[0])
     if (llty(a.ty) == "ptr") { return a }
