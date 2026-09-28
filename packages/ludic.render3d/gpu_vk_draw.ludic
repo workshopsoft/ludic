@@ -375,7 +375,7 @@ function gvk_depth_op(f: int) -> int {
 # at another instance buffer keeps its layout, and so its pipeline.
 function gvk_layout_key(m: Mesh) -> string {
   if m == null or m.attrs == null { return "none" }
-  var k = ""
+  var k: string = null                        # each step frees the key it grew from
   let seen = words(GPU_MAX_ATTRS)
   var ns = 0
   for i in 0 .. m.n_attrs {
@@ -384,8 +384,16 @@ function gvk_layout_key(m: Mesh) -> string {
     var bi = -1
     for q in 0 .. ns { if seen[q] == m.attrs[o] and bi < 0 { bi = q } }
     if bi < 0 { bi = ns;  seen[ns] = m.attrs[o];  ns += 1 }
-    k = k + `{i}:{bi}:{m.attrs[o + 1]}:{m.attrs[o + 2]}:{m.attrs[o + 3]}:{m.attrs[o + 4]}:{m.attrs[o + 5]}:{m.attrs[o + 6]};`
+    let part = `{i}:{bi}:{m.attrs[o + 1]}:{m.attrs[o + 2]}:{m.attrs[o + 3]}:{m.attrs[o + 4]}:{m.attrs[o + 5]}:{m.attrs[o + 6]};`
+    if k == null { k = part } else {
+      let nk = k + part
+      free(k)
+      free(part)
+      k = nk
+    }
   }
+  free(seen)
+  if k == null { return "" }
   return k
 }
 
@@ -982,6 +990,7 @@ function r3d_hdr_calibrate(render3d_st: mut Render3dState, peak: float, paper: f
 }
 
 # what the picture is: graded in BT.709 around D65, highlights to the calibrated peak, paper white average
+@alloc_ok("a settings change (HDR output): made once per change")
 function gvk_hdr_metadata(render3d_st: Render3dState) -> void {
   let md = bytes(VkHdrMetadataEXT_sizeof)
   Vk.zero(md, VkHdrMetadataEXT_sizeof)
@@ -1615,6 +1624,7 @@ function gvk_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> 
 }
 
 # the screen as RGB8, bottom row first, as glReadPixels hands it back (a photograph)
+@alloc_ok("asked for by the player or a tool, not by the frame")
 function gvk_read_screen(render3d_st: mut Render3dState, w: int, h: int, out: pointer) -> void {
   gvk_present(render3d_st)
   let px = bytes(render3d_st.gvk_screen_w * render3d_st.gvk_screen_h * 4)

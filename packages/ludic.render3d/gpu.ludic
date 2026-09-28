@@ -231,7 +231,9 @@ function gpu_caps_fake(render3d_st: mut Render3dState, kind: string) -> void {
   render3d_st.gpu_cap_vulkan = true;  render3d_st.gpu_cap_floor = true;  render3d_st.gpu_cap_hdr = true
   if kind == "amd" or kind == "intel" { render3d_st.gpu_cap_rt = true;  render3d_st.gpu_cap_mesh = true;  render3d_st.gpu_cap_device = `test {kind} GPU`;  return }
   render3d_st.gpu_cap_nvidia = true;  render3d_st.gpu_cap_rt = true;  render3d_st.gpu_cap_mesh = true;  render3d_st.gpu_cap_reflex = true
-  render3d_st.gpu_cap_rtx = gpu_rtx_generation(`RTX {kind[3 .. 5]}`)
+  let rtx = `RTX {kind[3 .. 5]}`
+  render3d_st.gpu_cap_rtx = gpu_rtx_generation(rtx)
+  free(rtx)
   render3d_st.gpu_cap_device = `test NVIDIA GeForce RTX {kind[3 .. 5]}`
 }
 
@@ -265,8 +267,14 @@ function gpu_caps_probe(render3d_st: mut Render3dState) -> void {
     inst = render3d_st.gvk_inst
   } else {
     let out = bytes(8)
-    if Vk.create_instance(ici, null, out) != VK_SUCCESS { return }
+    let made = Vk.create_instance(ici, null, out)
+    free(app);  free(ici)
+    if made != VK_SUCCESS {
+      free(out)
+      return
+    }
     inst = Vk.get_ptr(out, 0)
+    free(out)
     own = true
   }
   Vk.put_i32(cnt, 0, 0)
@@ -534,7 +542,6 @@ function gpu_tex_bind(render3d_st: mut Render3dState, kind: int, tex: int) -> vo
   ds_tex_bind(render3d_st)
   if kind == GPU_TEX2D_ARRAY { render3d_st.gpu_bound_array = tex } else { render3d_st.gpu_bound_2d = tex }
   if kind != GPU_TEX2D_ARRAY and render3d_st.gpu_unit_cur < 32 {
-    if render3d_st.gpu_unit_2d == null { render3d_st.gpu_unit_2d = words(32);  for i in 0 .. 32 { render3d_st.gpu_unit_2d[i] = -1 } }
     render3d_st.gpu_unit_2d[render3d_st.gpu_unit_cur] = tex
   }
 }

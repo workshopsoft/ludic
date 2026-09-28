@@ -761,14 +761,7 @@ function gvk_buf_reserve(render3d_st: mut Render3dState, b: int, n: int) -> bool
 # read once (4 bytes, copied out) at the start of the next frame's commands instead.
 const GVK_PRIME_MAX: int = 16384
 function gvk_prime(render3d_st: mut Render3dState, b: int, buf: long) -> void {
-  if Os.platform() != "macos" { return }
-  if render3d_st.gvk_prime_b == null {
-    render3d_st.gvk_prime_b = words(GVK_PRIME_MAX)
-    render3d_st.gvk_prime_h = new []long
-    let hs = render3d_st.gvk_prime_h
-    let none: long = 0
-    for i in 0 .. GVK_PRIME_MAX { push(hs, none) }
-  }
+  if Os.platform() != "macos" or render3d_st.gvk_prime_b == null { return }   # before start-up: its first draw makes it
   if render3d_st.gvk_prime_n >= GVK_PRIME_MAX { return }
   render3d_st.gvk_prime_b[render3d_st.gvk_prime_n] = b
   render3d_st.gvk_prime_h[render3d_st.gvk_prime_n] = buf
@@ -839,3 +832,12 @@ function gvk_say_no_conversion(bin: int, bout: int) -> void { print(`r3d: vulkan
 function gvk_say_no_readback(ifmt: int, fmt: int, ty: int) -> void { print(`r3d: vulkan: no read-back conversion for GL format {ifmt} as {fmt}/{ty}`) }
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
 function gvk_fail_create_buffer(render3d_st: mut Render3dState, size: int, r: int) -> bool { return gvk_fail(render3d_st, `vkCreateBuffer ({size} bytes)`, r) }
+
+# gvk_prime's queue: GVK_PRIME_MAX buffers and their handles, made with the device
+function gvk_prime_tables(render3d_st: mut Render3dState) -> void {
+  render3d_st.gvk_prime_b = words(GVK_PRIME_MAX)
+  render3d_st.gvk_prime_h = new []long
+  let hs = render3d_st.gvk_prime_h
+  let none: long = 0
+  for i in 0 .. GVK_PRIME_MAX { push(hs, none) }
+}
