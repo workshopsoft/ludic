@@ -33,7 +33,7 @@ property Actor {
   row:     int = -1,       # where it stands in ac_actors, so it leaves in O(1); -1 off the stage
   cutout:  bool = false,   # alpha-tested (a flame's cards)
   emissive: float = 0.0,       # float bits: self-lit strength
-  skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
+  @owns(SkinClone) skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
   skin_owned: bool = false, # made by actor_own_skin: actor_release frees it
   ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
   hide:    words,          # 1 per primitive: skip it (a cap taken off)

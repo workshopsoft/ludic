@@ -64,9 +64,9 @@ function r3d_bind_2d(render3d_st: mut Render3dState, prog: int, name: string, un
 
 # A framebuffer with one colour texture (and optionally a depth texture).
 property Target {
-  fbo:   int = 0,
-  color: int = 0,
-  depth: int = 0,
+  @owns(GpuFramebuffer) fbo:   int = 0,
+  @owns(GpuTexture) color: int = 0,
+  @owns(GpuTexture) depth: int = 0,
   w:     int = 0,
   h:     int = 0
 }
