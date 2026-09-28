@@ -14,3 +14,25 @@ export function save_write_to(r: SaveRead, path: string, backup: string, text: s
   if r != null and r.readonly { return false }
   return save_write(path, backup, text)
 }
+
+# save_write for a tree: the same backup, then Json.write_file (the runtime's kept buffer, .tmp and
+# rename), so a game that saves often holds nothing more for it. Read back whole, as a save is read
+export function save_write_tree(path: string, backup: string, v: Val) -> bool {
+  if len(backup) > 0 and save_file_intact(path) { Fs.copy(path, backup) }
+  if not Json.write_file(v, path) { return false }
+  return save_file_intact(path)
+}
+
+export function save_write_tree_to(r: SaveRead, path: string, backup: string, v: Val) -> bool {
+  if r != null and r.readonly { return false }
+  return save_write_tree(path, backup, v)
+}
+
+# whether the file on disk is a whole one; the text read to tell is given back
+export function save_file_intact(path: string) -> bool {
+  let s = Fs.read_text(path)
+  if s == null { return false }
+  let whole = save_text_intact(s)
+  unsafe { free(s) }
+  return whole
+}

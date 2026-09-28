@@ -17,7 +17,8 @@ export function telemetry_set_id(telemetry_st: mut TelemetryState, id: string) -
     var v = telemetry__read_obj(path)
     if v == null { v = Value.object() }
     Value.put(v, "id", Value.str(id))
-    Fs.write_text(path, Json.encode(v))
+    Json.write_file(v, path)
+    Json.free(v)
   }
   telemetry__fact(telemetry_st, TELEMETRY_ID, 0, 0, 0)
 }
