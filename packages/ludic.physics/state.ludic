@@ -46,18 +46,17 @@ export state PhysicsState {
   ph_steps: int = 0
   ph_gen: int = 0                 # how many worlds have been opened: an id from an older one is stale
   ph_hard: float = 2.0            # metres a second: a contact under this is not a fact
-  ph_floats: []int = new []int         # buoyant bodies' ids
-  ph_float_k: []float = new []float      # and theirs: buoyancy, linear drag, angular drag, wet
-  ph_floats2: []int = new []int        # the spare pair phys_sink filters into
-  ph_float_k2: []float = new []float
+  ph_floats: words = words(256)        # buoyant bodies' ids, the first ph_nf of them
+  ph_float_k: floats = floats(256 * 4)  # and theirs: buoyancy, linear drag, angular drag, wet
+  ph_nf: int = 0
   ph_rx: float = 0.0               # where the last phys_resolve put a body
   ph_rz: float = 0.0
   ph_walkers: []pointer = new []pointer   # a walker id is its place here; null once removed
   ph_ids: []int = words(PH_CAP * 2)
   ph_vals: []float = floats(PH_CAP * 4)
   ph_facts: Queue<PhysFact> = ph_facts__new()
-  ph_fpool: []PhysFact = new []PhysFact   # every fact record made, reused once no drain holds it
-  ph_ffree: []PhysFact = new []PhysFact
+  ph_fpool: []PhysFact = ph_fpool_new()   # every fact record made, reused once no drain holds it
+  ph_ffree: []PhysFact = ph_ffree_new()
   ph_fnext: int = 0
 }
 

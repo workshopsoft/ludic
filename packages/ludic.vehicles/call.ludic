@@ -1,5 +1,6 @@
 # call.ludic - a player's boat or horse brought to a place: made there the first time, fetched there
 # after; gone when its player leaves
+@alloc_ok("a player's own boat or horse, made the first time it is called and fetched after")
 function ve_add(vehicles_st: VehiclesState, kind: int, owner: int, x: float, z: float, yaw: float) -> Vehicle {
   if kind != VEHICLE_HORSE and kind != VEHICLE_BOAT { return null }
   let v = new Vehicle

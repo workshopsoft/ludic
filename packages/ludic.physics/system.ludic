@@ -45,9 +45,7 @@ function ph_fact_record(physics_st: mut PhysicsState) -> PhysFact {
     physics_st.ph_fnext += 1
     return f
   }
-  let f = new PhysFact
-  push(physics_st.ph_fpool, f)
-  return f
+  return ph_fact_more(physics_st)
 }
 function ph_contacts(physics_st: mut PhysicsState) -> void {
   let n = jph_contacts_drain(physics_st.ph_world, physics_st.ph_ids, physics_st.ph_vals, PH_CAP)

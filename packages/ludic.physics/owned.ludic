@@ -4,6 +4,7 @@
 const PH_INDEX: int = 8388607      # a body id's low 23 bits are its index (Jolt's BodyID)
 
 # every body owns nothing: at a world's opening, the table made once at its size and kept after
+@alloc_ok("the body table made at its size when a world opens, kept after")
 function ph_own_reset(physics_st: mut PhysicsState, max_bodies: int) -> void {
   if len(physics_st.ph_own) < max_bodies {
     List.clear(physics_st.ph_own)

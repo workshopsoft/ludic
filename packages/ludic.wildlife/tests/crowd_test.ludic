@@ -84,13 +84,13 @@ program WildCrowdTest {
     expect(not wildlife_listed(wildlife_st, a))
   }
 
-  test "a fact a frame, drained each frame, makes a few records and then reuses them" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "a fact a frame, drained each frame, makes no record past the ones made at the start" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     let a = walker(wildlife_st, wildlife_tests_fake_st)
     for k in 1 .. 3001 {
       wildlife_moved(wildlife_st, a, 0.0, -3.0 * float(k), 0.0, -1.2)
       let fs = q_drain(wildlife_facts(wildlife_st))
       for i in 0 .. len(fs) { expect_eq(fs[i].what, WILD_PRINT) }
     }
-    expect(wildlife_fact_records(wildlife_st) <= 4)
+    expect_eq(wildlife_fact_records(wildlife_st), 64)
   }
 }

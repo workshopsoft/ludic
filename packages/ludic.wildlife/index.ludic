@@ -4,6 +4,7 @@ module ludic_wildlife uses ludic_base
 numbers float
 import "ludic.base"
 import "species.ludic"
+import "fact_pool.ludic"
 import "animal.ludic"
 import "places.ludic"
 import "port.ludic"

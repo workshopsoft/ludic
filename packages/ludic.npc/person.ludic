@@ -6,7 +6,8 @@ export state NpcState {
   np_wx: float = 0.0
   np_wz: float = 0.0
   np_clock: float = 0.0
-  np_recent: []string = new []string     # the last few names that left
+  np_recent: []string = np_recent_new()   # the last few names that left, a ring
+  np_rnext: int = 0
   np_walkers: []NpcPerson = new []NpcPerson
   np_posts: []NpcPerson = new []NpcPerson
   np_max: int = 10              # walkers at most

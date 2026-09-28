@@ -9,6 +9,7 @@ export function npc_spawn(npc_st: mut NpcState, kind: int) -> NpcPerson {
       break
     }
   }
+  @alloc_ok("a walker for each of np_max at most; one who left is reused")
   if p == null {
     if len(npc_st.np_walkers) >= npc_st.np_max { return null }
     p = new NpcPerson

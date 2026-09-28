@@ -85,7 +85,7 @@ export function npc_reset(npc_st: mut NpcState) -> void {
   npc_st.np_n = 0
   npc_st.np_next_h = 0.0
   npc_st.np_hold = false
-  npc_st.np_recent = new []string
+  np_recent_clear(npc_st)
   q_clear(npc_facts(npc_st))
 }
 

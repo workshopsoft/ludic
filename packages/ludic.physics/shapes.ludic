@@ -35,8 +35,7 @@ export function phys_close(physics_st: mut PhysicsState) -> void {
   }
   if physics_st.ph_shapes != null { List.clear(physics_st.ph_shapes) }
   List.clear(physics_st.ph_spare)
-  List.clear(physics_st.ph_floats)
-  List.clear(physics_st.ph_float_k)
+  physics_st.ph_nf = 0
   if physics_st.ph_facts != null { q_clear(physics_st.ph_facts) }
 }
 

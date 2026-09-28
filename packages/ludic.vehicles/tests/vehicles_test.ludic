@@ -376,7 +376,7 @@ program VehiclesTest {
     expect(vehicle_by_nid(vehicles_st, b.nid) == null)
   }
 
-  test "a fed fact a turn, drained each turn, makes a few records and then reuses them" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+  test "a fed fact a turn, drained each turn, makes no record past the ones made at the start" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
     fresh(vehicles_st, vehicles_test_st)
     vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
     let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
@@ -386,6 +386,6 @@ program VehiclesTest {
       fed += count(facts(vehicles_st), VEHICLE_FED)
     }
     expect_eq(fed, 1000)
-    expect(vehicle_fact_records(vehicles_st) <= 4)
+    expect_eq(vehicle_fact_records(vehicles_st), 64)
   }
 }
