@@ -205,9 +205,9 @@ function emit_world_table() -> void {
   emit("define i32 @ludic_register_prop(ptr %name, i32 %nfields) {\nentry:\n")
   emit("  %dc = load i32, ptr @dyn_count\n  %full = icmp slt i32 %dc, 32\n  br i1 %full, label %do, label %rej\n")
   emit("do:\n  %rcap = load i32, ptr @L_cap\n  %nf4 = mul i32 %nfields, 4\n  %sz = mul i32 %nf4, %rcap\n  %szl = sext i32 %sz to i64\n")
-  emit("  %buf = call ptr @malloc(i64 %szl)\n  call ptr @memset(ptr %buf, i32 0, i64 %szl)\n")
+  emit("  %buf = call ptr @lp_malloc(i64 %szl)\n  call ptr @memset(ptr %buf, i32 0, i64 %szl)\n")
   emit("  %sp = getelementptr inbounds [32 x ptr], ptr @dynS, i32 0, i32 %dc\n  store ptr %buf, ptr %sp\n")
-  emit("  %hcap = sext i32 %rcap to i64\n  %hbuf = call ptr @malloc(i64 %hcap)\n  call ptr @memset(ptr %hbuf, i32 0, i64 %hcap)\n")
+  emit("  %hcap = sext i32 %rcap to i64\n  %hbuf = call ptr @lp_malloc(i64 %hcap)\n  call ptr @memset(ptr %hbuf, i32 0, i64 %hcap)\n")
   emit("  %hp = getelementptr inbounds [32 x ptr], ptr @dynH, i32 0, i32 %dc\n  store ptr %hbuf, ptr %hp\n")
   emit("  %fp = getelementptr inbounds [32 x i32], ptr @dynF, i32 0, i32 %dc\n  store i32 %nfields, ptr %fp\n")
   emit("  %np = getelementptr inbounds [32 x ptr], ptr @dynName, i32 0, i32 %dc\n  store ptr %name, ptr %np\n")
@@ -520,6 +520,7 @@ function emit_game_main() -> void {
   if g_has_clear_color and (find_fn("rt_present") != null) {
     emit("  call void " + fn_sym("rt_present") + "()\n")
   }
+  emit("  call void @lp_mem_frame()\n")               # 25.1: the fence judges the frame that ended
   let fcur = emit_bind("load i32, ptr @L_frame")     # Time.frame(): count completed frames
   let fnext = emit_bind(`add i32 {fcur}, 1`)
   emit("  store i32 ");  emit(fnext);  emit(", ptr @L_frame\n")

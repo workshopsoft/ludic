@@ -32,7 +32,7 @@ function emit_new_struct(name: pointer, rec: Node, into: Node) -> Val {
   let lty = layout_ty(name)
   let sz = emit_sizeof(lty)
   var obj = ""
-  if into != null { obj = emit_expr(into).code } else { obj = emit_bind(`call ptr @malloc(i64 {sz})`) }
+  if into != null { obj = emit_expr(into).code } else { g_site_next = `new {name}`;  obj = emit_bind(`call ptr @lp_malloc(i64 {sz})`) }
   var f = 0
   while f < len(s.kids) {
     let fd = s.kids[f]
@@ -52,7 +52,8 @@ function emit_new_struct(name: pointer, rec: Node, into: Node) -> Val {
 
 function emit_new_slice(ty: pointer) -> Val {
   let sz = emit_sizeof("%LSlice")
-  let h = emit_bind(`call ptr @malloc(i64 {sz})`)
+  g_site_next = `new {ty}`
+  let h = emit_bind(`call ptr @lp_malloc(i64 {sz})`)
   let d0 = nreg();  emit("  ");  emit(d0);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h);  emit(", i32 0, i32 0\n")
   emit("  store ptr null, ptr ");  emit(d0);  emit("\n")
   let d1 = nreg();  emit("  ");  emit(d1);  emit(" = getelementptr inbounds %LSlice, ptr ");  emit(h);  emit(", i32 0, i32 1\n")
@@ -67,7 +68,7 @@ function emit_sized_slice(el: pointer, n: Val) -> Val {
   let h = emit_new_slice("[]" + el)
   let esz = emit_sizeof(llty(el))
   let nn = emit_bind(`zext i32 {n.code} to i64`)
-  let data = emit_bind(`call ptr @calloc(i64 {nn}, i64 {esz})`)
+  let data = emit_bind(`call ptr @lp_calloc(i64 {nn}, i64 {esz})`)
   emit(`  store ptr {data}, ptr {slice_field(h.code, 0)}\n`)
   emit(`  store i32 {n.code}, ptr {slice_field(h.code, 1)}\n`)
   emit(`  store i32 {n.code}, ptr {slice_field(h.code, 2)}\n`)
@@ -183,7 +184,7 @@ function emit_push_into(h: pointer, elt: pointer, v: Val) -> void {
   let ncw = emit_bind(`zext i32 {nc} to i64`)
   let bytes = emit_bind(`mul i64 {ncw}, {esz}`)
   let old = emit_bind(`load ptr, ptr {dp}`)
-  let nd = emit_bind(`call ptr @realloc(ptr {old}, i64 {bytes})`)
+  let nd = emit_bind(`call ptr @lp_realloc(ptr {old}, i64 {bytes})`)
   emit("  store ptr ");  emit(nd);  emit(", ptr ");  emit(dp);  emit("\n")
   emit("  store i32 ");  emit(nc);  emit(", ptr ");  emit(cp);  emit("\n")
   emit("  br label %");  emit(put);  emit("\n")

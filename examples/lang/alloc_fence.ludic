@@ -1,0 +1,32 @@
+# alloc_fence.ludic - the allocation fence (docs/plan 25.1) judges frames once play has settled.
+# Everything a frame makes here is gone by the frame's end or goes on being reused: text only
+# compared (freed once compared), records held from before play written in place. No frame
+# keeps anything, so the run - which fails by default when one does - prints
+# `frames 300 kept 0 bad 0`.
+program AllocFence {
+  property Box { a: int = 0 }
+
+  function round(i: int, kept: []Box) -> int {
+    var bad = 0
+    if `{i}-{i * 2}` != string(i) + "-" + string(i * 2) { bad += 1 }
+    if `lake {i}` == "" { bad += 1 }
+    for k in 0 .. len(kept) { kept[k].a = i + k }   # records reused: List.clear and new ones would keep the old
+    return bad
+  }
+
+  entry {
+    var kept = new []Box
+    for k in 0 .. 8 { push(kept, new Box) }
+    Mem.play()
+    Mem.settled()
+    var bad = 0
+    var frames = 0
+    for i in 0 .. 300 {
+      bad += round(i, kept)
+      Mem.frame()
+      frames += 1
+    }
+    let kept_now = Mem.kept()                     # read before the line below makes its text
+    print(`frames {frames} kept {kept_now} bad {Mem.bad_frames()}`)
+  }
+}

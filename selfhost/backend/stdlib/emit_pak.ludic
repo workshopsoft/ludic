@@ -234,7 +234,7 @@ function emit_pak_boot() -> void {
   emith("define ptr @lp_pak_slurp(ptr %path) {\n")
   emith("entry:\n  %f = call ptr @fopen(ptr %path, ptr @.pak_rb)\n  %bad = icmp eq ptr %f, null\n  br i1 %bad, label %no, label %go\n")
   emith("go:\n  %s1 = call i32 @fseek(ptr %f, i64 0, i32 2)\n  %n64 = call i64 @ftell(ptr %f)\n  %s2 = call i32 @fseek(ptr %f, i64 0, i32 0)\n")
-  emith("  %cap = add i64 %n64, 1\n  %buf = call ptr @malloc(i64 %cap)\n  %rd = call i64 @fread(ptr %buf, i64 1, i64 %n64, ptr %f)\n")
+  emith("  %cap = add i64 %n64, 1\n  %buf = call ptr @lp_malloc(i64 %cap)\n  %rd = call i64 @fread(ptr %buf, i64 1, i64 %n64, ptr %f)\n")
   emith("  %e = getelementptr i8, ptr %buf, i64 %rd\n  store i8 0, ptr %e\n  %c = call i32 @fclose(ptr %f)\n  ret ptr %buf\n")
   emith("no:\n  ret ptr null\n}\n")
 
@@ -324,9 +324,9 @@ function emit_pak_boot() -> void {
     emith("entry:\n  %f = call ptr @lp_pak_open(ptr %path, ptr @.pak_rb)\n  %bad = icmp eq ptr %f, null\n  br i1 %bad, label %out, label %go\n")
     emith("go:\n  %s1 = call i32 @fseek(ptr %f, i64 0, i32 2)\n  %n64 = call i64 @ftell(ptr %f)\n  %s2 = call i32 @fseek(ptr %f, i64 0, i32 0)\n")
     emith("  %tiny = icmp sle i64 %n64, 0\n  br i1 %tiny, label %shut, label %read\n")
-    emith("read:\n  %buf = call ptr @malloc(i64 %n64)\n  %rd = call i64 @fread(ptr %buf, i64 1, i64 %n64, ptr %f)\n")
+    emith("read:\n  %buf = call ptr @lp_malloc(i64 %n64)\n  %rd = call i64 @fread(ptr %buf, i64 1, i64 %n64, ptr %f)\n")
     emith("  %c1 = call i32 @fclose(ptr %f)\n  %n32 = trunc i64 %rd to i32\n")
-    emith("  call void @app_set_icon(ptr %buf, i32 %n32)\n  call void @free(ptr %buf)\n  ret void\n")
+    emith("  call void @app_set_icon(ptr %buf, i32 %n32)\n  call void @lp_free(ptr %buf)\n  ret void\n")
     emith("shut:\n  %c2 = call i32 @fclose(ptr %f)\n  ret void\n")
     emith("out:\n  ret void\n}\n")
   }

@@ -787,6 +787,36 @@ function panic_case() -> void {
   else { bad2("panic", `rc={string(rc)} err=[{msg}]`) }
 }
 
+# 25.1: the fence fails a frame that keeps memory once play has settled - exit 86, naming the line and
+# the kind - and under R3D_ALLOC_FENCE=count runs on and says what was kept
+function alloc_fence_leak_case() -> void {
+  let lbl = "alloc_fence_leak.ludic (a frame that keeps a record fails the run with exit 86 and names its line; count mode runs on)"
+  let b = `{tmp_dir()}/e_alloc_fence_leak`
+  if not game_build_ok("bin/ludicc", "examples/lang/alloc_fence_leak.ludic", b) { bad2(lbl, "did not build"); return }
+  let rc = sh(`{b} < /dev/null > {tmp_dir()}/afl.out 2>{tmp_dir()}/afl.err`)
+  let head = capture_line(`grep 'alloc-fence: frame' {tmp_dir()}/afl.err | head -1`)
+  let named = shq(`grep -q 'alloc_fence_leak.ludic:11  new Box' {tmp_dir()}/afl.err`)
+  let counted = capture_line(`R3D_ALLOC_FENCE=count {b} < /dev/null`)
+  if (rc == 86) and (head == "alloc-fence: frame 50 kept +72 B (2 made, 0 freed)") and named and (counted == "kept 72 bad 1") { ok(lbl) }
+  else { bad2(lbl, `rc={string(rc)} head=[{head}] named={string(named)} count=[{counted}]`) }
+}
+
+# 25.1: with nothing but the frame's mark the fence starts itself, waits out a loading that grows,
+# judges once 600 frames in a row kept nothing, and fails the frame that keeps a record; --fence=count
+# builds a run that goes on
+function alloc_fence_auto_case() -> void {
+  let lbl = "alloc_fence_auto.ludic (the fence starts at the first frame, judges once play is flat, fails frame 1500; --fence=count runs on)"
+  let b = `{tmp_dir()}/e_alloc_fence_auto`
+  if not game_build_ok("bin/ludicc", "examples/lang/alloc_fence_auto.ludic", b) { bad2(lbl, "did not build"); return }
+  let rc = sh(`{b} < /dev/null > {tmp_dir()}/afa.out 2>{tmp_dir()}/afa.err`)
+  let head = capture_line(`grep 'alloc-fence: frame' {tmp_dir()}/afa.err | head -1`)
+  let bc = `{tmp_dir()}/e_alloc_fence_auto_c`
+  var through = ""
+  if shq(`bin/ludicc --fence=count examples/lang/alloc_fence_auto.ludic -o {bc} 2>/dev/null`) { through = capture_line(`{bc} < /dev/null`) }
+  if (rc == 86) and (head == "alloc-fence: frame 1500 kept +4 B (1 made, 0 freed)") and (through == "through") { ok(lbl) }
+  else { bad2(lbl, `rc={string(rc)} head=[{head}] count=[{through}]`) }
+}
+
 # issue #45: `bin/ludic-dev test --coverage`. Compile each test-spec with `--coverage`,
 # run it with LUDIC_COVERAGE pointed at a per-file dump, then aggregate the dumps
 # into a clean per-file line-coverage report. The instrumentation is flag-gated,
@@ -1081,6 +1111,9 @@ function cmd_dev_test() -> int {
   reject_case("rejected/long_into_int", "4294967295 does not fit one; it is a long", "a long literal given to an int is refused, not wrapped")
   feat_case("lang/runtime_temps", "", "1 2 3 4 5 grew 0 files grew 0", "runtime_temps.ludic (Log, DateTime.format, Path, Mime, Text, Os and Fs keep nothing a call does not hand back)")
   feat_case("lang/string_temps", "", "1 2 3 4 5 6 7 grew 0", "string_temps.ludic (a concatenation's pieces, a template's holes and a compared side are freed once used; a kept one is not)")
+  feat_case("lang/alloc_fence", "", "frames 300 kept 0 bad 0", "alloc_fence.ludic (25.1: a frame that makes only what it frees or reuses keeps nothing, and the fence passes it)")
+  alloc_fence_leak_case()
+  alloc_fence_auto_case()
   feat_case("lang/nested_templates", "", "outer [inner 3 {x}] \"`}\" end", "nested_templates.ludic (a template literal inside another's hole)")
   feat_case("lang/aliases", "", "10 5 3", "aliases.ludic (L6: a namespace method declared as an alias of a function, labelled or by its parameters)")
   reject_case("rejected/alias_arity", "this call to Trail.length leaves out to, which has no default", "an alias's arguments are checked against its target")

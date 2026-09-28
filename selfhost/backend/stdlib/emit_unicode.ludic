@@ -248,8 +248,8 @@ function emit_uni_str_fns() -> void {
 
   # chars(s) -> []int : a fresh %LSlice of every code point, in order
   emith("define ptr @lp_uni_chars(ptr %s) {\n")
-  emith("entry:\n  %n = call i32 @lp_uni_len(ptr %s)\n  %h = call ptr @malloc(i64 16)\n")
-  emith("  %nz = zext i32 %n to i64\n  %bytes = mul i64 %nz, 4\n  %data = call ptr @malloc(i64 %bytes)\n")
+  emith("entry:\n  %n = call i32 @lp_uni_len(ptr %s)\n  %h = call ptr @lp_malloc(i64 16)\n")
+  emith("  %nz = zext i32 %n to i64\n  %bytes = mul i64 %nz, 4\n  %data = call ptr @lp_malloc(i64 %bytes)\n")
   emith("  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  store ptr %data, ptr %d0\n")
   emith("  %d1 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 1\n  store i32 %n, ptr %d1\n")
   emith("  %d2 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 2\n  store i32 %n, ptr %d2\n")
@@ -264,7 +264,7 @@ function emit_uni_str_fns() -> void {
   # maps each code point, and re-encodes into a fresh buffer (worst case 4 bytes
   # per code point, though ASCII/Latin-1 mapping preserves byte length).
   emith("define ptr @lp_uni_case(ptr %s, i32 %up) {\n")
-  emith("entry:\n  %bl = call i64 @strlen(ptr %s)\n  %cap0 = mul i64 %bl, 4\n  %cap = add i64 %cap0, 4\n  %out = call ptr @malloc(i64 %cap)\n")
+  emith("entry:\n  %bl = call i64 @strlen(ptr %s)\n  %cap0 = mul i64 %bl, 4\n  %cap = add i64 %cap0, 4\n  %out = call ptr @lp_malloc(i64 %cap)\n")
   emith("  %ip = alloca i32\n  %op = alloca i32\n  %cp = alloca i32\n  store i32 0, ptr %ip\n  store i32 0, ptr %op\n  br label %lp\n")
   emith("lp:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
   emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %done, label %go\n")
@@ -281,7 +281,7 @@ function emit_uni_str_fns() -> void {
   emith("chk:\n  %i = load i32, ptr %ip\n  %p = getelementptr i8, ptr %s, i32 %i\n  %b = load i8, ptr %p\n  %c = zext i8 %b to i32\n")
   emith("  %z = icmp eq i32 %c, 0\n  br i1 %z, label %cut, label %go\n")
   emith("go:\n  %ni = call i32 @lp_uni_decode(ptr %s, i32 %i, ptr %cp)\n  %k1 = add i32 %k, 1\n  store i32 %k1, ptr %kp\n  store i32 %ni, ptr %ip\n  br label %lp\n")
-  emith("cut:\n  %len = load i32, ptr %ip\n  %lz = zext i32 %len to i64\n  %cap = add i64 %lz, 1\n  %out = call ptr @malloc(i64 %cap)\n  %lz2 = zext i32 %len to i64\n  call ptr @memcpy(ptr %out, ptr %s, i64 %lz2)\n")
+  emith("cut:\n  %len = load i32, ptr %ip\n  %lz = zext i32 %len to i64\n  %cap = add i64 %lz, 1\n  %out = call ptr @lp_malloc(i64 %cap)\n  %lz2 = zext i32 %len to i64\n  call ptr @memcpy(ptr %out, ptr %s, i64 %lz2)\n")
   emith("  %endp = getelementptr i8, ptr %out, i32 %len\n  store i8 0, ptr %endp\n  ret ptr %out\n}\n")
 
   emit_uni_grapheme()

@@ -384,7 +384,7 @@ function emit_datetime_prelude() -> void {
   emith("define ptr @lp_dt_pad0(i32 %v, i32 %w) {\n")
   emith("  %we = zext i32 %w to i64\n")
   emith("  %sz = add i64 %we, 1\n")
-  emith("  %buf = call ptr @malloc(i64 %sz)\n")
+  emith("  %buf = call ptr @lp_malloc(i64 %sz)\n")
   emith("  %endp = getelementptr i8, ptr %buf, i32 %w\n")
   emith("  store i8 0, ptr %endp\n")
   emith("  %kp = alloca i32\n  %vp = alloca i32\n")

@@ -37,7 +37,7 @@ function list_grow_if_full(h: pointer, elt: pointer) -> void {
   let ncw = emit_bind(`zext i32 {nc} to i64`)
   let byts = emit_bind(`mul i64 {ncw}, {esz}`)
   let old = emit_bind(`load ptr, ptr {dp}`)
-  let nd = emit_bind(`call ptr @realloc(ptr {old}, i64 {byts})`)
+  let nd = emit_bind(`call ptr @lp_realloc(ptr {old}, i64 {byts})`)
   emit("  store ptr ");  emit(nd);  emit(", ptr ");  emit(dp);  emit("\n")
   emit("  store i32 ");  emit(nc);  emit(", ptr ");  emit(cp);  emit("\n")
   emit("  br label %");  emit(done);  emit("\n")
@@ -93,7 +93,7 @@ function emit_merge_sort(h: pointer, elt: pointer, mode: int, fnsym: pointer, ke
   let esz = emit_sizeof(elt)
   let nz = emit_bind(`zext i32 {n} to i64`)
   let byts = emit_bind(`mul i64 {nz}, {esz}`)
-  let scratch = emit_bind(`call ptr @malloc(i64 {byts})`)
+  let scratch = emit_bind(`call ptr @lp_malloc(i64 {byts})`)
 
   # outer: for (width = 1; width < n; width *= 2)
   let wp = emit_alloca("i32");  store_at("i32", "1", wp)
@@ -212,7 +212,7 @@ function emit_merge_sort(h: pointer, elt: pointer, mode: int, fnsym: pointer, ke
   store_at("i32", w2, wp)                                      # width *= 2
   emit("  br label %");  emit(wc);  emit("\n")
   emit(we);  emit(":\n")
-  emit("  call void @free(ptr ");  emit(scratch);  emit(")\n")
+  emit("  call void @lp_free(ptr ");  emit(scratch);  emit(")\n")
 }
 
 # resolve a sort_by/sort_with function argument (a bare identifier naming a

@@ -270,6 +270,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_log_ns(meth) { return emit_log_ns(meth, e) }
     return emit_alias_or_fail("Log", meth, e)
   }
+  if (ns == "Mem") {
+    if is_mem_fence_ns(meth) { return emit_mem_fence_ns(meth, e) }
+    return emit_alias_or_fail("Mem", meth, e)
+  }
   if (ns == "Os") {
     if is_os_ns(meth) { return emit_os_ns(meth, e) }
     return emit_alias_or_fail("Os", meth, e)
@@ -587,7 +591,7 @@ function emit_variant_new(en: Node, ord: int, args: []Node) -> Val {
   let variant = en.kids[ord]
   let arity = len(variant.kids)
   if (len(args) != arity) { perr(`enum variant {variant.s} takes {itoa(arity)} payload(s), got {itoa(len(args))}`) }
-  let box = emit_bind(`call ptr @malloc(i64 {itoa(enum_box_size(en))})`)
+  let box = emit_bind(`call ptr @lp_malloc(i64 {itoa(enum_box_size(en))})`)
   emit("  store i32 ");  emit(itoa(ord));  emit(", ptr ");  emit(box);  emit("\n")
   var k = 0
   while k < arity {
@@ -705,13 +709,13 @@ function emit_call(e: Node) -> Val {
     if (llty(a.ty) == "ptr") { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr " + `{a.code})\n`) }
     else { if (llty(a.ty) == "i64") { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_long, i64 " + `{a.code})\n`) }
       else { emit("  call i32 (ptr, ...) @printf(ptr @.fmt_int, i32 " + `{a.code})\n`) } }
-    if a.fresh { emit(`  call void @free(ptr {a.code})\n`) }   # a template printed is held by nothing
+    if a.fresh { emit(`  call void @lp_free(ptr {a.code})\n`) }   # a template printed is held by nothing
     return val("0", "void")
   }
   if (name == "bytes") {                          # bytes(n): allocate n bytes -> a byte buffer
     let n = emit_expr(e.kids[0])
     let w = emit_bind(`zext i32 {n.code} to i64`)
-    return val(emit_bind(`call ptr @malloc(i64 {w})`), "pointer")
+    return val(emit_bind(`call ptr @lp_malloc(i64 {w})`), "pointer")
   }
   if (name == "words") { return emit_sized_slice("int", emit_expr(e.kids[0])) }   # words(n): n zeroed ints
   if (name == "buffer") and (find_fn(name) == null) { return emit_sized_slice("byte", emit_expr(e.kids[0])) }   # buffer(n): n zeroed bytes (L7)
@@ -833,7 +837,7 @@ function emit_call(e: Node) -> Val {
   if (name == "ok") and (find_fn("ok") == null) {
     g_uses_result = true
     let v = emit_expr(e.kids[0])
-    let p = emit_bind("call ptr @malloc(i64 16)")
+    let p = emit_bind("call ptr @lp_malloc(i64 16)")
     let okp = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 0`)
     emit(`  store i32 1, ptr {okp}\n`)
     let vp = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 1`)
@@ -845,7 +849,7 @@ function emit_call(e: Node) -> Val {
   if (name == "err") and (find_fn("err") == null) {
     g_uses_result = true
     let m = emit_expr(e.kids[0])
-    let p = emit_bind("call ptr @malloc(i64 16)")
+    let p = emit_bind("call ptr @lp_malloc(i64 16)")
     let okp = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 0`)
     emit(`  store i32 0, ptr {okp}\n`)
     let vp = emit_bind(`getelementptr inbounds %Result, ptr {p}, i32 0, i32 1`)
@@ -877,7 +881,7 @@ function emit_call(e: Node) -> Val {
   if (name == "some") and (find_fn("some") == null) {
     g_uses_option = true
     let v = emit_expr(e.kids[0])
-    let p = emit_bind("call ptr @malloc(i64 8)")
+    let p = emit_bind("call ptr @lp_malloc(i64 8)")
     let pp = emit_bind(`getelementptr inbounds %Option, ptr {p}, i32 0, i32 0`)
     emit(`  store i32 1, ptr {pp}\n`)
     let vp = emit_bind(`getelementptr inbounds %Option, ptr {p}, i32 0, i32 1`)
@@ -886,7 +890,7 @@ function emit_call(e: Node) -> Val {
   }
   if (name == "none") and (find_fn("none") == null) {
     g_uses_option = true
-    let p = emit_bind("call ptr @malloc(i64 8)")
+    let p = emit_bind("call ptr @lp_malloc(i64 8)")
     let pp = emit_bind(`getelementptr inbounds %Option, ptr {p}, i32 0, i32 0`)
     emit(`  store i32 0, ptr {pp}\n`)
     let vp = emit_bind(`getelementptr inbounds %Option, ptr {p}, i32 0, i32 1`)

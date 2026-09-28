@@ -72,7 +72,7 @@ function emit_uuid_prelude() -> void {
   # 16 raw bytes -> a fresh canonical 36-char string. hex-encode all 16 bytes,
   # then splice the four hyphens between the 8/4/4/4/12 groups.
   emith("define ptr @lp_uuid_format(ptr %b16) {\n")
-  emith("entry:\n  %hex = call ptr @lp_hex_encode(ptr %b16, i64 16)\n  %out = call ptr @malloc(i64 37)\n")
+  emith("entry:\n  %hex = call ptr @lp_hex_encode(ptr %b16, i64 16)\n  %out = call ptr @lp_malloc(i64 37)\n")
   emith("  call ptr @memcpy(ptr %out, ptr %hex, i64 8)\n")
   emith("  %o8 = getelementptr i8, ptr %out, i64 8\n  store i8 45, ptr %o8\n")
   emith("  %h8 = getelementptr i8, ptr %hex, i64 8\n  %o9 = getelementptr i8, ptr %out, i64 9\n  call ptr @memcpy(ptr %o9, ptr %h8, i64 4)\n")
@@ -83,7 +83,7 @@ function emit_uuid_prelude() -> void {
   emith("  %o23 = getelementptr i8, ptr %out, i64 23\n  store i8 45, ptr %o23\n")
   emith("  %h20 = getelementptr i8, ptr %hex, i64 20\n  %o24 = getelementptr i8, ptr %out, i64 24\n  call ptr @memcpy(ptr %o24, ptr %h20, i64 12)\n")
   emith("  %o36 = getelementptr i8, ptr %out, i64 36\n  store i8 0, ptr %o36\n")
-  emith("  call void @free(ptr %hex)\n  ret ptr %out\n}\n")
+  emith("  call void @lp_free(ptr %hex)\n  ret ptr %out\n}\n")
 
   # v4: 16 CSPRNG bytes, then set version (0x4x in byte 6) and variant (0b10xx in
   # byte 8). 0x80 does not fit an i8 immediate, so it is written as -128.
@@ -112,7 +112,7 @@ function emit_uuid_prelude() -> void {
 
   # the nil UUID: 36 '0' with hyphens spliced in
   emith("define ptr @lp_uuid_nil() {\n")
-  emith("entry:\n  %out = call ptr @malloc(i64 37)\n  call ptr @memset(ptr %out, i32 48, i64 36)\n")
+  emith("entry:\n  %out = call ptr @lp_malloc(i64 37)\n  call ptr @memset(ptr %out, i32 48, i64 36)\n")
   emith("  %o8 = getelementptr i8, ptr %out, i64 8\n  store i8 45, ptr %o8\n")
   emith("  %o13 = getelementptr i8, ptr %out, i64 13\n  store i8 45, ptr %o13\n")
   emith("  %o18 = getelementptr i8, ptr %out, i64 18\n  store i8 45, ptr %o18\n")
@@ -153,7 +153,7 @@ function emit_uuid_prelude() -> void {
   # parse: lowercase-normalise a valid UUID, else return the nil UUID.
   emith("define ptr @lp_uuid_parse(ptr %s) {\n")
   emith("entry:\n  %ok = call i32 @lp_uuid_valid(ptr %s)\n  %isok = icmp ne i32 %ok, 0\n  br i1 %isok, label %dup, label %nilb\n")
-  emith("dup:\n  %out = call ptr @malloc(i64 37)\n  %ip = alloca i64\n  store i64 0, ptr %ip\n  br label %cond\n")
+  emith("dup:\n  %out = call ptr @lp_malloc(i64 37)\n  %ip = alloca i64\n  store i64 0, ptr %ip\n  br label %cond\n")
   emith("cond:\n  %i = load i64, ptr %ip\n  %lt = icmp ult i64 %i, 36\n  br i1 %lt, label %body, label %fin\n")
   emith("body:\n  %p = getelementptr i8, ptr %s, i64 %i\n  %c = load i8, ptr %p\n")
   emith("  %cA = icmp uge i8 %c, 65\n  %cZ = icmp ule i8 %c, 90\n  %cup = and i1 %cA, %cZ\n  %c32 = add i8 %c, 32\n  %cl = select i1 %cup, i8 %c32, i8 %c\n")

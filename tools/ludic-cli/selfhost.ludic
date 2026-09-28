@@ -42,6 +42,8 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/frontend/component_gen2.ludic")
   push(f, "selfhost/frontend/component_class.ludic")
   push(f, "selfhost/backend/emit_core.ludic")
+  push(f, "selfhost/backend/emit_fence.ludic")
+  push(f, "selfhost/backend/emit_fence_ir.ludic")
   push(f, "selfhost/backend/emit_head.ludic")
   push(f, "selfhost/backend/emit_deps.ludic")
   push(f, "selfhost/backend/emit_addr.ludic")

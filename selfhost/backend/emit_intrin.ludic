@@ -17,7 +17,7 @@ function is_intrinsic(name: pointer) -> bool {
   return false
 }
 # emit "  <r> = <rest>\n" and return r
-function emit_bind(rest: pointer) -> pointer { let r = nreg();  emit("  ");  emit(r);  emit(" = ");  emit(rest);  emit("\n");  return r }
+function emit_bind(rest: pointer) -> pointer { fence_bind(rest);  let r = nreg();  emit("  ");  emit(r);  emit(" = ");  emit(rest);  emit("\n");  return r }
 
 function arg_code(e: Node, i: int) -> pointer { let v = emit_expr(e.kids[i]);  return v.code }
 # a buffer handed to the platform layer: a slice's elements, never its header (as an extern's are)
@@ -34,7 +34,7 @@ function emit_intrinsic(name: pointer, e: Node) -> Val {
   if (name == "resize") {
     let p = arg_code(e, 0);  let n = arg_code(e, 1)
     let w = emit_bind(`zext i32 {n} to i64`)
-    return val(emit_bind(`call ptr @realloc(ptr {p}, i64 {w})`), "pointer")
+    return val(emit_bind(`call ptr @lp_realloc(ptr {p}, i64 {w})`), "pointer")
   }
   # Every asset a Ludic program loads arrives through here — gltf_load, tex_load,
   # Audio.load, Fs.read_text and the renderer's own shader loads all bottom out at
