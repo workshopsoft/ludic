@@ -7,7 +7,7 @@ function ev_text(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   let ps = ui_st.tx_pieces[depth]
   ui_st.tx_depth = depth + 1
   List.clear(ps)
-  for i in 0 .. len(x.args) { push(ps, vl_text_u(ui_st, ui_eval(ui_st, x.args[i], e))) }
+  for i in 0 .. len(x.args) { tx_piece(ui_st, ps, ui_eval(ui_st, x.args[i], e)) }
   ui_st.tx_depth = depth
   let m = mm_of(ui_st)
   var h = 216613626 ^ (MM_TEXT & 255)
@@ -35,4 +35,32 @@ function tx_same(ps: []string, k: string) -> bool {
     at += len(ps[p])
   }
   return at == len(k)
+}
+# a hole's value as pieces: a float to one decimal from kept texts (its whole part from mm_int, its tenth a
+# literal), so a bar's width moving every frame makes no string - and reads 42.5%, never 7.470598e-07%
+function tx_piece(ui_st: mut UiState, ps: []string, v: Val) -> void {
+  let k = Value.kind(v)
+  if k != 2 and k != 7 {
+    push(ps, vl_text_u(ui_st, v))
+    return
+  }
+  var t = int(Math.round(Value.as_float(v) * 10.0))
+  if t < 0 {
+    push(ps, "-")
+    t = 0 - t
+  }
+  push(ps, mm_int(ui_st, t / 10))
+  let d = t % 10
+  if d != 0 { push(ps, tx_tenth(d)) }
+}
+function tx_tenth(d: int) -> string {
+  if d == 1 { return ".1" }
+  if d == 2 { return ".2" }
+  if d == 3 { return ".3" }
+  if d == 4 { return ".4" }
+  if d == 5 { return ".5" }
+  if d == 6 { return ".6" }
+  if d == 7 { return ".7" }
+  if d == 8 { return ".8" }
+  return ".9"
 }
