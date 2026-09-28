@@ -25,6 +25,9 @@ export state FishingState {
   fishing_run_next: float = 0.0
   fishing_dice: Rng = null
   fishing_fact_q: Queue<FishingFact> = fishing_fact_q__new()
+  fishing_fpool: []FishingFact = new []FishingFact   # every fact record made, reused once no drain holds it (facts.ludic)
+  fishing_ffree: []FishingFact = new []FishingFact
+  fishing_fnext: []int = words(1)
   fishing_n: int = 0              # the record: caught, the biggest (cm), a legend landed
   fishing_big: int = 0
   fishing_leg: bool = false
@@ -51,8 +54,8 @@ function fishing_rand(fishing_st: mut FishingState) -> float {
   return rng_float(fishing_st.fishing_dice)
 }
 
-function fishing_say(fishing_st: FishingState, what: int) -> void {
-  let f = new FishingFact
+function fishing_say(fishing_st: mut FishingState, what: int) -> void {
+  let f = fishing_fact_record(fishing_st)
   f.what = what
   f.species = fishing_st.fishing_sp
   f.cm = fishing_st.fishing_len

@@ -27,7 +27,15 @@ function ph_walker(physics_st: PhysicsState, id: int) -> pointer {
 export function phys_walker_add(physics_st: mut PhysicsState, r: float, h: float, x: float, y: float, z: float, max_slope: float, mass: float) -> int {
   if physics_st.ph_world == null { return -1 }
   ph_buffers()
-  push(physics_st.ph_walkers, jph_char_new(physics_st.ph_world, r, h, x, y, z, max_slope, mass))
+  let k = jph_char_new(physics_st.ph_world, r, h, x, y, z, max_slope, mass)
+  # a removed walker's place is taken again, so a horse called and sent away grows nothing
+  for i in 0 .. len(physics_st.ph_walkers) {
+    if physics_st.ph_walkers[i] == null {
+      physics_st.ph_walkers[i] = k
+      return i
+    }
+  }
+  push(physics_st.ph_walkers, k)
   return len(physics_st.ph_walkers) - 1
 }
 

@@ -60,7 +60,7 @@ export port MinimapWorld {       # every member has a default
 | `minimap_pin_count()`, `minimap_pin_max()`, `minimap_pin_full()`, `minimap_pin(i) -> MinimapPin` | the marks |
 | `minimap_pin_set_label/icon/colour(i, v)`, `minimap_pin_last_icon()` | editing one |
 | `minimap_pin_open()`, `minimap_pin_select(i)`, `minimap_pin_followed()`, `minimap_pin_follow(i)`, `minimap_pin_follow_toggle()` | the open one and the followed one |
-| `minimap_pins_near(x, z, n, within) -> []int` | the nearest marks, not the followed one (for a compass) |
+| `minimap_pins_near(x, z, n, within) -> []int` | the nearest marks, not the followed one (for a compass), in a list the state keeps and refills: read it, do not keep it |
 | `minimap_config_view(span, zoom_min, zoom_max, focus)`, `minimap_window(x0, y0, size)` | the view's range, and where the window is this frame |
 | `minimap_px(x)`, `minimap_py(z)`, `minimap_wx(rx)`, `minimap_wz(ry)`, `minimap_span()`, `minimap_scale()`, `minimap_scale_metres()` | projection, and a scale bar's round distance |
 | `minimap_zoom()`, `minimap_zoom_set(z)`, `minimap_zoom_step(dir)`, `minimap_zoom_about(rx, ry, factor)` | zoom |

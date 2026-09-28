@@ -16,14 +16,15 @@ export function phys_is_open(physics_st: PhysicsState) -> bool { return physics_
 # which world this is: a body, shape or walker id kept from an older one means nothing now
 export function phys_generation(physics_st: PhysicsState) -> int { return physics_st.ph_gen }
 
-# everything let go: the world, every body in it and every shape (a world swap, a quit)
+# everything let go: the world, every body in it and every shape (a world swap, a quit); the lists
+# that held them are emptied and kept, since nothing is given back
 export function phys_close(physics_st: mut PhysicsState) -> void {
   if physics_st.ph_walkers != null {
     for i in 0 .. len(physics_st.ph_walkers) {
       if physics_st.ph_walkers[i] != null { jph_char_free(physics_st.ph_walkers[i]) }
     }
   }
-  physics_st.ph_walkers = new []pointer
+  if physics_st.ph_walkers != null { List.clear(physics_st.ph_walkers) }
   if physics_st.ph_world != null { jph_world_free(physics_st.ph_world) }
   physics_st.ph_world = null
   if physics_st.ph_shapes != null {
@@ -31,7 +32,7 @@ export function phys_close(physics_st: mut PhysicsState) -> void {
       if physics_st.ph_shapes[i] != null { jph_shape_free(physics_st.ph_shapes[i]) }
     }
   }
-  physics_st.ph_shapes = new []pointer
+  if physics_st.ph_shapes != null { List.clear(physics_st.ph_shapes) }
   List.clear(physics_st.ph_spare)
   List.clear(physics_st.ph_floats)
   List.clear(physics_st.ph_float_k)

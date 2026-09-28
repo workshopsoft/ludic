@@ -111,6 +111,20 @@ program MinimapTest {
     expect_eq(near[1], 1)
   }
 
+  test "asking for the nearest marks every frame allocates nothing" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
+    fresh(minimap_st, minimap_test_st)
+    minimap_config_pins(minimap_st, 8, 8, 5)
+    minimap_pin_add(minimap_st, 110.0, 100.0, 0, "near")
+    minimap_pin_add(minimap_st, 130.0, 100.0, 0, "next")
+    minimap_pins_near(minimap_st, 100.0, 100.0, 2, 400.0)
+    let before = Os.heap_bytes()
+    for k in 0 .. 1000 { minimap_pins_near(minimap_st, 100.0 + float(k % 7), 100.0, 2, 400.0) }
+    let grew = Os.heap_bytes() - before
+    print(`minimap: 1000 asks, heap {grew} bytes`)
+    expect(grew == long(0))
+    expect_eq(len(minimap_pins_near(minimap_st, 100.0, 100.0, 2, 400.0)), 2)
+  }
+
   test "the view: the world on the window and back, zoom about a point, a pan, focus and the clamp" (minimap_st: mut MinimapState, minimap_test_st: mut MinimapTestState) {
     fresh(minimap_st, minimap_test_st)
     minimap_centre(minimap_st, 100.0, 100.0)

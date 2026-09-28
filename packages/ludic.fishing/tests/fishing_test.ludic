@@ -254,4 +254,20 @@ program FishingTest {
     expect(fishing_legend_caught(fishing_st))
     expect(not fishing_active(fishing_st))
   }
+
+  test "fifty fish, their facts drained each time, reuse a handful of records" (fishing_st: mut FishingState, fishing_test_st: mut FishingTestState) {
+    fresh(fishing_st, fishing_test_st)
+    for k in 0 .. 50 {
+      fishing_cast(fishing_st, 20.0, 0.0)
+      facts(fishing_st)
+      hook(fishing_st)
+      facts(fishing_st)
+      play(fishing_st, 12)
+      facts(fishing_st)
+      fishing_stop(fishing_st)
+      facts(fishing_st)
+    }
+    print(`fishing: 50 fish, {fishing_fact_records(fishing_st)} fact records made`)
+    expect(fishing_fact_records(fishing_st) < 30)
+  }
 }
