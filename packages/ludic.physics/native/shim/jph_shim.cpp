@@ -120,10 +120,12 @@ void *keep(const ShapeSettings::ShapeResult &r) {
 }
 } // namespace
 
-// Jolt's allocator, factory and types, once per process; 0 when ready
+#include "jph_alloc.inl"
+
+// Jolt's allocator (counted, jph_alloc.inl), factory and types, once per process; 0 when ready
 JPH_SHIM int jph_init(void) {
   if (g_ready) return 0;
-  RegisterDefaultAllocator();
+  heap_register();
   Factory::sInstance = new Factory();
   RegisterTypes();
   g_ready = true;
