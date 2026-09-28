@@ -52,6 +52,9 @@ away Things all day, so `thing_remove` keeps the record and `thing_put` / `thing
 oldest one again - set back as new, with a new `uid` - once 32 are waiting. Hold a Thing across a
 removal only by its `uid` (`thing_by_uid`), never by the record.
 
+A fact's record (`things_facts()`) is kept too: it comes back two drains after it was handed out, so
+read a drained list before the drain after next, and copy what must last longer.
+
 ## The port
 
 Every member has a default, so any may be left out of the `bind`:

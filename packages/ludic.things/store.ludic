@@ -26,6 +26,10 @@ export state ThingsState {
   th_hs: words = words(0)           # things_tick's handles, taken before any tick runs
   th_spare: []Thing = new []Thing   # removed records, made again oldest first (spare.ludic)
   th_spare_at: int = 0
+  th_fact_a: []ThingFact = new []ThingFact   # the facts' records, two halves (th_fact)
+  th_fact_b: []ThingFact = new []ThingFact
+  th_fact_n: int = 0
+  th_fact_on_b: bool = false
 }
 
 function th_facts__new() -> Queue<ThingFact> { return queue_new("things.facts") }
@@ -45,17 +49,6 @@ export function things_facts(things_st: ThingsState) -> Queue<ThingFact> {
   return things_st.th_facts
 }
 
-function th_fact(things_st: ThingsState, what: int, t: Thing) -> void {
-  let f = new ThingFact
-  f.what = what
-  f.uid = t.uid
-  f.kind = t.kind
-  f.id = t.id
-  f.owner = t.owner
-  f.x = t.x
-  f.z = t.z
-  q_push(things_facts(things_st), f)
-}
 
 # whether a world has been set out (things_clear) since the program began
 export function things_ready(things_st: ThingsState) -> bool { return things_st.th.tab != null }

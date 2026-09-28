@@ -1,0 +1,23 @@
+# facts.ludic - what happened to a Thing, pushed on the package's queue for the game to drain
+# a fact's record is one kept for it, not a new one: the halves swap whenever a fact finds the queue
+# empty (everything before it drained or cleared), so a record comes back two drains after it was
+# handed out - a reader placing a Thing while it reads the last drain's list never sees one change
+function th_fact(things_st: mut ThingsState, what: int, t: Thing) -> void {
+  if q_len(things_st.th_facts) == 0 and things_st.th_fact_n > 0 {
+    things_st.th_fact_on_b = not things_st.th_fact_on_b
+    things_st.th_fact_n = 0
+  }
+  var pool = things_st.th_fact_a
+  if things_st.th_fact_on_b { pool = things_st.th_fact_b }
+  if things_st.th_fact_n >= len(pool) { push(pool, new ThingFact) }
+  let f = pool[things_st.th_fact_n]
+  things_st.th_fact_n += 1
+  f.what = what
+  f.uid = t.uid
+  f.kind = t.kind
+  f.id = t.id
+  f.owner = t.owner
+  f.x = t.x
+  f.z = t.z
+  q_push(things_facts(things_st), f)
+}

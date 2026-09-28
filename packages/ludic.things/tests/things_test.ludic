@@ -246,4 +246,24 @@ program ThingsTest {
     expect_eq(things_spare_count(things_st), 95)
     expect_eq(thing_nearest(things_st, TH_SIGN, 9.0, 9.0).uid, warm.uid)
   }
+  test "a fact's record is kept: a drained list holds still while its reader places a Thing, and comes back two drains on" (things_st: mut ThingsState) {
+    things_reset(things_st)
+    q_clear(things_facts(things_st))
+    let a = thing_put(things_st, TH_SIGN, "sign", 1.0, 0.0, 0.0, 0.0, 2.0, 1)
+    thing_put(things_st, TH_SIGN, "sign", 2.0, 0.0, 0.0, 0.0, 2.0, 2)
+    let first = q_drain(things_facts(things_st))
+    expect_eq(len(first), 2)
+    let r0: pointer = first[0]
+    thing_put(things_st, TH_BRANCH, "branch", 3.0, 0.0, 0.0, 0.0, 1.5, 0)
+    expect_eq(first[0].uid, a.uid)
+    expect_eq(first[0].what, THING_PLACED)
+    let second = q_drain(things_facts(things_st))
+    expect_eq(len(second), 1)
+    expect_eq(second[0].kind, TH_BRANCH)
+    thing_put(things_st, TH_LURE, "lure", 4.0, 0.0, 0.0, 0.0, 2.0, 0)
+    let third = q_drain(things_facts(things_st))
+    let r2: pointer = third[0]
+    expect(r2 == r0)
+    expect_eq(third[0].kind, TH_LURE)
+  }
 }
