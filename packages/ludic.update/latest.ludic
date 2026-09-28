@@ -6,6 +6,7 @@
 # played are kept too (a launcher shows them)
 export function update_check_tick(update_st: mut UpdateState, show_current: bool) -> void {
   if update_st.update__ask == UPDATE_ASK_IDLE {
+    @alloc_ok("the feed's address: once, when the check starts")
     update_st.update__ask_h = UpdateNet.get(update__conf(update_st).feed + "/" + update__conf(update_st).latest)
     update_st.update__ask = UPDATE_ASKING
     if update_st.update__ask_h < 0 { update_st.update__ask = UPDATE_NONE }
@@ -36,16 +37,23 @@ export function update_latest(update_st: UpdateState) -> string { return update_
 export function update_shown(update_st: UpdateState) -> bool { return update_st.update__ask == UPDATE_NEWER or update_st.update__ask == UPDATE_CURRENT }
 export function update_fresh(update_st: UpdateState) -> bool { return update_st.update__ask == UPDATE_NEWER }
 
-# the notes in this language, else English, else none
-export function update_notes(update_st: UpdateState, lang: string) -> []string {
-  let out = new []string
-  if update_st.update__notes == null or Value.kind(update_st.update__notes) != 6 { return out }
+# the notes in the language the game asked for (update_notes_for), else English, else none
+export function update_notes(update_st: UpdateState, lang: string) -> []string { return update_st.update__notes_list }
+
+# the notes kept for this language: filled when the version or the language changes, so the panel
+# reading them every frame makes nothing
+export function update_notes_for(update_st: mut UpdateState, lang: string) -> void {
+  if (update_st.update__notes_lang == lang) and (update_st.update__notes_of == update_st.update__latest) { return }
+  update_st.update__notes_lang = lang
+  update_st.update__notes_of = update_st.update__latest
+  let out = update_st.update__notes_list
+  List.clear(out)
+  if update_st.update__notes == null or Value.kind(update_st.update__notes) != 6 { return }
   var key = lang
   if Value.has(update_st.update__notes, key) == 0 { key = "en" }
-  if Value.has(update_st.update__notes, key) == 0 { return out }
+  if Value.has(update_st.update__notes, key) == 0 { return }
   let l = Value.get(update_st.update__notes, key)
-  for i in 0 .. Value.count(l) { push(out, Value.as_str(Value.at(l, i))) }
-  return out
+  for i in 0 .. Value.count(l) { push(update_st.update__notes_list, Value.as_str(Value.at(l, i))) }
 }
 
 # back to before anything was asked or installed (tests)

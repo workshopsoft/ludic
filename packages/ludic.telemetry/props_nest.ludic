@@ -8,6 +8,7 @@ export function telemetry_list_end(p: TelemetryProps) -> void { tn_close(p, 93) 
 function tn_open(p: TelemetryProps, k: string, c: int) -> void {
   tp_key(p, k)
   sb_byte(p.sb, c)
+  @alloc_ok("one nesting stack per props record, the first time it nests")
   if p.lv == null { p.lv = words(8) }
   if p.d < len(p.lv) - 1 { p.d += 1 }
   p.lv[p.d] = 0

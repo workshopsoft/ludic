@@ -76,7 +76,10 @@ export function update_translocated() -> bool {
 }
 
 # can this copy update itself? A copy Velopack did not install downloads the game again instead.
-export function update_installed(update_st: UpdateState) -> bool {
+export function update_installed(update_st: UpdateState) -> bool { return update_st.update__installed }
+
+@alloc_ok("once, when the updater is configured")
+function update__installed_now(update_st: UpdateState) -> bool {
   if len(update__conf(update_st).root) > 0 { return true }
   if update_translocated() { return false }
   if update__mac() { return Fs.exists(update_dir() + "/UpdateMac") }

@@ -1,6 +1,7 @@
 # arc.ludic - an arc is a table of chapters, each a table of up to STEPS_PER_CHAPTER steps. The
 # game builds one with steps_chapter_add / steps_add; what a chapter is called is the game's.
 # empty the tables for another arc (the progress goes back to the first chapter)
+@alloc_ok("an arc's tables: once, when an arc is built")
 export function steps_arc_clear(steps_st: mut StepsState) -> void {
   steps_st.steps__n = new []int
   steps_st.steps__kind = new []int

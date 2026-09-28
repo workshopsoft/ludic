@@ -1,5 +1,6 @@
 # verbs.ludic - the only way the ring changes. The same kind from the same label replaces
 # itself; a bonus past the cap pushes out the oldest bonus; a full ring drops the nearest end.
+@alloc_ok("an effect's end: a fact per effect that runs out or is replaced")
 function ef_end(effects_st: mut EffectsState, i: int, why: int) -> void {
   let all = ef_all(effects_st)
   let e = new EffectEnded
@@ -11,6 +12,7 @@ function ef_end(effects_st: mut EffectsState, i: int, why: int) -> void {
   ef_drop(effects_st, i)
 }
 
+@alloc_ok("an effect gone: the ring rebuilt, a few times a game hour")
 function ef_drop(effects_st: mut EffectsState, i: int) -> void {
   let all = ef_all(effects_st)
   let rest = new []Effect
@@ -37,6 +39,7 @@ function ef_make_room(effects_st: mut EffectsState, bonus: bool) -> void {
 }
 
 # begin one `after` game minutes from now, lasting `minutes` once it has begun
+@alloc_ok("an effect begun: food, rest, the weather - an event, not a frame")
 export function effects_add_after(effects_st: mut EffectsState, after: float, kind: int, mag: float, minutes: float, bonus: bool, label: string) -> void {
   let all = ef_all(effects_st)
   for i in 0 .. len(all) {
@@ -62,6 +65,7 @@ export function effects_add(effects_st: mut EffectsState, kind: int, mag: float,
 }
 
 # everything stops at once, and says nothing: a new trip or a night's sleep
+@alloc_ok("a new trip or a night's sleep")
 export function effects_clear(effects_st: mut EffectsState) -> void { effects_st.ef_list = new []Effect }
 
 # run them down by `minutes` of game time; a delayed one waits first

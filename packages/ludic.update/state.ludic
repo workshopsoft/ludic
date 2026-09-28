@@ -56,6 +56,10 @@ export state UpdateState {
   update__ask_h: int = -1
   update__latest: string = ""
   update__notes: Val = null
+  update__installed: bool = false            # worked out when configured: the panel asks every frame
+  @max(256) update__notes_list: []string = new []string   # the notes in the language last asked, kept
+  update__notes_lang: string = ""
+  update__notes_of: string = ""              # ... for this version
   update__cfg: UpdateConfig = new UpdateConfig
   update__state: int = 0
   update__err: int = 0
@@ -80,7 +84,10 @@ export state UpdateState {
   update__facts: Queue<UpdateFact> = update__facts__new()
 }
 
-export function update_config(update_st: mut UpdateState, c: UpdateConfig) -> void { update_st.update__cfg = c }
+export function update_config(update_st: mut UpdateState, c: UpdateConfig) -> void {
+  update_st.update__cfg = c
+  update_st.update__installed = update__installed_now(update_st)
+}
 
 function update__conf(update_st: UpdateState) -> UpdateConfig {
   return update_st.update__cfg
