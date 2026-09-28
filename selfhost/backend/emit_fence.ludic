@@ -11,6 +11,8 @@ var g_site_fn: []pointer = new []pointer       # per site: the function name's c
 var g_site_file: []pointer = new []pointer     # the file name's constant
 var g_site_line: []int = new []int
 var g_site_kind: []pointer = new []pointer     # the kind's constant
+var g_site_owner: []int = new []int            # 25.5c: the state that holds it (index + 1 into g_owner_names, 0: none)
+var g_owner_names: []pointer = new []pointer
 var g_cur_fn_name: pointer = "?"               # the function being emitted
 var g_site_fnc: pointer = null                 # its name's constant, made at its first site
 var g_site_filen: pointer = null               # the last file a site named, and its constant
@@ -38,6 +40,7 @@ var g_es_node: Node = null                     # the expression being emitted, w
 function fence_reset() -> void {
   g_site_fn = new []pointer;  g_site_file = new []pointer;  g_site_line = new []int;  g_site_kind = new []pointer
   g_site_kinds = new []pointer;  g_site_kindc = new []pointer
+  g_site_owner = new []int;  g_owner_names = new []pointer
   g_atexit_declared = false
   g_mzs_declared = false
   g_mmap_declared = false
@@ -45,12 +48,21 @@ function fence_reset() -> void {
   g_scan_roots = new []pointer
   g_cur_fn_name = "?";  g_site_fnc = null;  g_site_filen = null;  g_site_filec = null;  g_site_next = null
   push(g_site_fn, null);  push(g_site_file, null);  push(g_site_line, 0);  push(g_site_kind, null)   # site 0, named at the end
+  push(g_site_owner, 0)
 }
 
 # the function the next sites belong to (emit_fn, emit_system_fn)
 function fence_enter(name: pointer) -> void {
   g_cur_fn_name = name
   g_site_fnc = null
+}
+
+function fence_owner_index(own: pointer) -> int {
+  if own == null { return 0 }
+  var i = 0
+  while i < len(g_owner_names) { if (g_owner_names[i] == own) { return i + 1 };  i += 1 }
+  push(g_owner_names, own)
+  return len(g_owner_names)
 }
 
 function fence_kind_const(kind: pointer) -> pointer {
@@ -77,6 +89,7 @@ function emit_site(kind: pointer) -> void {
   push(g_site_file, g_site_filec)
   push(g_site_line, g_err_line)
   push(g_site_kind, fence_kind_const(k))
+  push(g_site_owner, fence_owner_index(es_owner_at(file, g_err_line)))
   emit(`  store i32 {itoa(id)}, ptr @lp_site\n`)
 }
 
@@ -234,6 +247,16 @@ function emit_fence_runtime() -> void {
   emith(`@lp_site_stamp = global [{sn} x i64] zeroinitializer\n`)
   emith(`@lp_site_base = global [{sn} x i64] zeroinitializer\n`)
   emith(`@lp_site_scan = global [{sn} x i64] zeroinitializer\n`)
+  let owns = new []pointer
+  var w = 0
+  while w < n { push(owns, itoa(g_site_owner[w]));  w += 1 }
+  fence_table("@lp_site_owner", "i32", owns)
+  let onames = new []pointer
+  var q = 0
+  while q < len(g_owner_names) { push(onames, emit_str_const(g_owner_names[q]));  q += 1 }
+  if len(onames) == 0 { push(onames, "null") }
+  fence_table("@lp_owner_name", "ptr", onames)
+  emith(`@lp_nowners = global i32 {itoa(len(g_owner_names))}\n`)
   let roots = new []pointer
   var r = 0
   while r < len(g_scan_roots) { push(roots, `@g_{g_scan_roots[r]}`);  r += 1 }
