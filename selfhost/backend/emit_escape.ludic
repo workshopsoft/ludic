@@ -527,6 +527,13 @@ function es_solve() -> void {
       }
       i += 1
     }
+    # kept memory outlives the frame: an ESC class is HEAP too, so every alias of it (let x = y,
+    # a load, a call's result) is, and what is stored through the alias is kept
+    i = 0
+    while i < len(g_es_flag) {
+      if (g_es_flag[i] & ES_ESC) != 0 and (g_es_flag[i] & ES_HEAP) == 0 { g_es_flag[i] = g_es_flag[i] | ES_HEAP;  changed = true }
+      i += 1
+    }
     i = 0
     while i < len(g_es_sv) {
       let v = g_es_sv[i]

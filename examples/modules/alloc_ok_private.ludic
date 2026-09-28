@@ -1,0 +1,16 @@
+# alloc_ok_private.ludic - 25.1: @alloc_ok on a module's PRIVATE function, and on a statement in its
+# private generic, is declared at run time like an exported one's (the module rules rename a private
+# name, and the fence once lost the declaration with it). The failing fence lets it through:
+#   bad 0 kept 0
+import "memo"
+program AllocOkPrivate {
+  entry {
+    let m = new Memo
+    for f in 0 .. 900 {
+      if f > 650 and f % 25 == 0 { memo_miss(m, f) }
+      Mem.frame()
+    }
+    let kept_now = Mem.kept()
+    print(`bad {Mem.bad_frames()} kept {kept_now}`)
+  }
+}
