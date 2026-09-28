@@ -26,6 +26,7 @@ var g_fence_mode: int = 0                      # 0: headless fails, windowed fai
 var g_fence_warm: int = 600
 var g_fence_census: pointer = null
 var g_fence_flagged: bool = false              # a flag said so: the manifest does not override it
+var g_scan_roots: []pointer = new []pointer    # 25.5b: the program's pointer globals, the states among them
 var g_cap_keys: []pointer = new []pointer      # 25.5a: `Type.field` declared @max(n) ...
 var g_cap_vals: []int = new []int               # ... and its n
 var g_push_cap: int = 0                         # the list being pushed to is capped (emit_push -> emit_push_into)
@@ -41,6 +42,7 @@ function fence_reset() -> void {
   g_mzs_declared = false
   g_mmap_declared = false
   g_es_node = null
+  g_scan_roots = new []pointer
   g_cur_fn_name = "?";  g_site_fnc = null;  g_site_filen = null;  g_site_filec = null;  g_site_next = null
   push(g_site_fn, null);  push(g_site_file, null);  push(g_site_line, 0);  push(g_site_kind, null)   # site 0, named at the end
 }
@@ -164,12 +166,13 @@ function fence_manifest_read(txt: pointer) -> void {
 
 # Mem.play() / Mem.rewarm() / Mem.settled() / Mem.frame() / Mem.kept() / Mem.bad_frames()
 function is_mem_fence_ns(meth: pointer) -> bool {
-  return (meth == "play") or (meth == "rewarm") or (meth == "settled") or (meth == "over") or (meth == "frame") or (meth == "kept") or (meth == "bad_frames")
+  return (meth == "play") or (meth == "rewarm") or (meth == "settled") or (meth == "over") or (meth == "scan") or (meth == "frame") or (meth == "kept") or (meth == "bad_frames")
 }
 
 function emit_mem_fence_ns(meth: pointer, e: Node) -> Val {
   if (meth == "kept") { return val(emit_bind("call i64 @lp_mem_kept()"), "long") }
   if (meth == "bad_frames") { return val(emit_bind("call i64 @lp_mem_bad_frames()"), "long") }
+  if (meth == "scan") { return val(emit_bind("call i64 @lp_mem_scan()"), "long") }
   if (meth == "rewarm") { emit("  call void @lp_mem_play()\n");  return val("0", "void") }
   if (meth == "over") {                          # 25.5a: Mem.over("what") - a package's table is full
     let nm = emit_expr(e.kids[0])
@@ -230,6 +233,13 @@ function emit_fence_runtime() -> void {
   emith(`@lp_site_mark = global [{sn} x i64] zeroinitializer\n`)
   emith(`@lp_site_stamp = global [{sn} x i64] zeroinitializer\n`)
   emith(`@lp_site_base = global [{sn} x i64] zeroinitializer\n`)
+  emith(`@lp_site_scan = global [{sn} x i64] zeroinitializer\n`)
+  let roots = new []pointer
+  var r = 0
+  while r < len(g_scan_roots) { push(roots, `@g_{g_scan_roots[r]}`);  r += 1 }
+  if len(roots) == 0 { push(roots, "null") }
+  fence_table("@lp_roots", "ptr", roots)
+  emith(`@lp_nroots = global i32 {itoa(len(g_scan_roots))}\n`)
   emith(`@lp_site_ra = global [{itoa(n * 6)} x ptr] zeroinitializer\n`)
 }
 

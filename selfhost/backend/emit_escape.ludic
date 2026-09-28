@@ -16,6 +16,7 @@
 const ES_SCRATCH: int = 77                          # Node.uns on an allocating expression: scratch
 const ES_ESC: int = 1
 const ES_HEAP: int = 2
+const ES_FREED: int = 4                             # given back with free(): not a leak at birth
 
 var g_es_flag: []int = new []int
 var g_es_why: []Node = new []Node                   # per class: the statement that made it escape
@@ -190,7 +191,18 @@ function es_call(e: Node) -> int {
       es_args_walk(e)
       return es_site(e)
     }
-    if (nm == "print") or (nm == "len") or (nm == "free") { es_args_walk(e);  return -1 }
+    if (nm == "free") and len(e.kids) == 1 {        # given back: what flows into it is not kept by nothing
+      let v = es_val(e.kids[0])
+      if v >= 0 { g_es_flag[v] = g_es_flag[v] | ES_FREED }
+      return -1
+    }
+    if (nm == "print") {                            # print frees a fresh text it is handed
+      es_args_walk(e)
+      var i = 0
+      while i < len(e.kids) { push(g_es_consumed, e.kids[i]);  i += 1 }
+      return -1
+    }
+    if (nm == "len") { es_args_walk(e);  return -1 }
     let f = es_fn(nm)
     if f >= 0 {
       push(g_es_calls_f, g_es_cur)
@@ -327,6 +339,7 @@ function es_solve() -> void {
       let a = g_es_ff[i]
       let b = g_es_ft[i]
       if (g_es_flag[a] & ES_HEAP) != 0 and (g_es_flag[b] & ES_HEAP) == 0 { g_es_flag[b] = g_es_flag[b] | ES_HEAP;  changed = true }
+      if (g_es_flag[b] & ES_FREED) != 0 and (g_es_flag[a] & ES_FREED) == 0 { g_es_flag[a] = g_es_flag[a] | ES_FREED;  changed = true }
       if (g_es_flag[b] & ES_ESC) != 0 and (g_es_flag[a] & ES_ESC) == 0 {
         g_es_flag[a] = g_es_flag[a] | ES_ESC
         g_es_why[a] = g_es_why[b]
