@@ -27,6 +27,7 @@ export function photo_frame_subject(photo_st: mut PhotoState, sp: int, name: str
 }
 
 # anything else in the picture worth naming: a landmark, the water, a sign
+@alloc_ok("a shot's tags: once per photograph taken")
 export function photo_frame_tag(photo_st: mut PhotoState, text: string) -> void {
   if len(text) == 0 { return }
   if len(photo_st.pht_pending_tags) > 0 { photo_st.pht_pending_tags = photo_st.pht_pending_tags + ", " }

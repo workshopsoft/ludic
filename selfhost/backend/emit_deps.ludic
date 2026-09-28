@@ -304,6 +304,14 @@ function dr_walk(n: Node, refs: []int) -> void {
     return
   }
   if dr_reg_field(n, refs) { return }
+  if n.kind == E_NEW and n.b != null and n.s != null {   # 25.2: a dispatch reaches its action's reducers
+    let pre = `ludic_reduce__{n.s}__`
+    var ri = 0
+    while ri < len(g_dr_name) {
+      if str_starts(g_dr_name[ri], pre) { push(refs, ri) }
+      ri += 1
+    }
+  }
   if n.kind == S_EMIT and n.s != null {           # 25.2: an emit reaches its event's listeners
     var li = 0
     while li < len(g_onlisten) {
