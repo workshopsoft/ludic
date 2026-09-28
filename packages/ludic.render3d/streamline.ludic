@@ -42,6 +42,7 @@ function gsl_header(p: pointer, a: int, b: int, c: int, d: int, e: int, f: int, 
   let v: long = version
   Vk.put_i64(p, 24, v)
 }
+@alloc_ok("DLSS set-up: its structs and entry points, made once")
 function gsl_struct(size: int) -> bytes {
   let p = bytes(size)
   Vk.zero(p, size)
@@ -49,6 +50,7 @@ function gsl_struct(size: int) -> bytes {
 }
 
 # a feature's own function (slDLSSSetOptions, slReflexSleep, ...), or null
+@alloc_ok("DLSS set-up: its structs and entry points, made once")
 function gsl_fn(feature: int, name: string) -> pointer {
   let out = bytes(8)
   let zero: long = 0

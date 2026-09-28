@@ -118,17 +118,18 @@ function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
 # back on the stage (an actor kept across a world swap)
 function actor_keep(render3d_st: mut Render3dState, a: Actor) -> void {
   if a == null { return }
-  if render3d_st.ac_actors == null { render3d_st.ac_actors = new []Actor }
   a.row = len(render3d_st.ac_actors)
   push(render3d_st.ac_actors, a)
 }
 # colour one named part of the model (a material name from the file)
+@alloc_ok("an actor's part tint or hidden-part table, made once per actor and given back by actor_release")
 function actor_tint_part(a: Actor, name: string, r: float, g: float, b: float) -> void {
   if a.model == null { return }
   let n = len(a.model.prims)
   if a.ptint == null { a.ptint = words(n * 4);  for i in 0 .. n * 4 { a.ptint[i] = 0 } }
   for i in 0 .. n { if a.model.prims[i].name == name { a.ptint[i * 4] = 1;  a.ptint[i * 4 + 1] = float_bits(r);  a.ptint[i * 4 + 2] = float_bits(g);  a.ptint[i * 4 + 3] = float_bits(b) } }
 }
+@alloc_ok("an actor's part tint or hidden-part table, made once per actor and given back by actor_release")
 function actor_hide_part(a: Actor, name: string, hidden: bool) -> void {
   if a.model == null { return }
   let n = len(a.model.prims)
@@ -428,13 +429,14 @@ function ac_caster_count(render3d_st: mut Render3dState, a: Actor) -> void {
 # every actor off the stage at once, for a world being replaced. Actors own no GL objects;
 # their models belong to whoever loaded them.
 function actor_clear_all(render3d_st: mut Render3dState) -> void {
-  if render3d_st.ac_actors == null { render3d_st.ac_actors = new []Actor }
+  if render3d_st.ac_actors == null { return }
   for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].row = -1 }
   List.clear(render3d_st.ac_actors)
   outline_clear(render3d_st)
 }
 
 # A record as `new Actor` makes it, with its matrix and tint: a released one when there is one.
+@alloc_ok("the actor pool ran dry: one more record, which actor_release keeps in the pool after")
 function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   let sp = render3d_st.ac_spare
   if sp == null or len(sp) == 0 {
@@ -465,7 +467,7 @@ function actor_release(render3d_st: mut Render3dState, a: Actor) -> void {
   a.skin_owned = false
   a.model = null;  a.skin = null;  a.ocol = null
   a.id = 0
-  if render3d_st.ac_spare == null { render3d_st.ac_spare = new []Actor }
+  if render3d_st.ac_spare == null { return }   # made in actor_init, with its room
   push(render3d_st.ac_spare, a)
 }
 

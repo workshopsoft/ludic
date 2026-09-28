@@ -30,6 +30,7 @@ function gvk_note(render3d_st: mut Render3dState, msg: string) -> void {
   let line = msg + "\n"
   file_write(f, line, len(line))
   file_close(f)
+  free(line)
 }
 function gvk_handle(out: bytes) -> long { return Vk.get_i64(out, 0) }
 
@@ -747,6 +748,10 @@ function gvk_startup_state(render3d_st: mut Render3dState) -> void {
   if render3d_st.gvk_retired_frame == null { render3d_st.gvk_retired_frame = new []int }
   if render3d_st.gvk_buf_gpu == null { render3d_st.gvk_buf_gpu = new []int }
   if render3d_st.gvk_retired_buf == null { render3d_st.gvk_retired_buf = new []long;  render3d_st.gvk_retired_mem = new []long }
+  # the prime queue, and the texture and framebuffer tables grown to their working size, now
+  gvk_prime_tables(render3d_st)
+  gpu_tx_at(render3d_st, 4095)
+  gpu_fb_at(render3d_st, 1023)
   # room made now in every list play pushes into, so a push never grows one (plan 25.2)
   gvk_room_int(render3d_st.gvk_retired_frame, GVK_LIST_ROOM)
   gvk_room_long(render3d_st.gvk_retired_buf, GVK_LIST_ROOM)
