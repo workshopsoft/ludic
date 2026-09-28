@@ -240,5 +240,10 @@ program ThingsTest {
     expect(things_spare_count(things_st) <= 33)
     things_reserve(things_st, 5000)
     expect_eq(things_verify(things_st), 0)
+    things_spare_warm(things_st, 96)
+    expect_eq(things_spare_count(things_st), 96)
+    let warm = thing_put(things_st, TH_SIGN, "sign", 9.0, 9.0, 0.0, 0.0, 2.0, 2)
+    expect_eq(things_spare_count(things_st), 95)
+    expect_eq(thing_nearest(things_st, TH_SIGN, 9.0, 9.0).uid, warm.uid)
   }
 }

@@ -62,3 +62,9 @@ export function thing_slot(t: Thing) -> int {
   if t == null or t.ent < 0 { return -1 }
   return t.ent & ECS_SLOT
 }
+
+# spare records made now, up to `n` waiting: a world that will place Things in play takes them
+# from the first placement instead of making new ones until enough have been removed
+export function things_spare_warm(things_st: mut ThingsState, n: int) -> void {
+  while things_spare_count(things_st) < n { push(things_st.th_spare, new Thing) }
+}
