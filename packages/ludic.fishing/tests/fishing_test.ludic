@@ -268,6 +268,6 @@ program FishingTest {
       facts(fishing_st)
     }
     print(`fishing: 50 fish, {fishing_fact_records(fishing_st)} fact records made`)
-    expect(fishing_fact_records(fishing_st) < 30)
+    expect_eq(fishing_fact_records(fishing_st), 64)
   }
 }

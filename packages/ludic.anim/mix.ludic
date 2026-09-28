@@ -4,11 +4,6 @@
 
 export function anim_mix(anim_st: mut AnimState, c: Clip, sk: Skin, t: float, w: float, rot: floats, pos: floats, hit: words) -> void {
   if c == null or sk == null { return }
-  if anim_st.q_a == null {
-    anim_st.q_a = floats(4)
-    anim_st.q_b = floats(4)
-    anim_st.q_cur = floats(4)
-  }
   var tt = t
   if c.dur > 0.0 { tt = t % c.dur }
   for ch in 0 .. c.n {
