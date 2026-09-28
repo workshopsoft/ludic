@@ -63,6 +63,10 @@ export state RtInputState {
   in_touch_x:  words = null      # IN_TOUCH
   in_touch_y:  words = null      # IN_TOUCH
   in_tape: words = null          # INPUT_REC_CAP * IN_STRIDE
+  in_mbuf: words = null          # 6 - the window's mouse, pads and touches, read each frame into these
+  in_pbuf: words = null          # IN_PADS * 6
+  in_tbuf: words = null          # IN_TOUCH * 3
+  in_text_out: pointer = null    # the typed text as UTF-8, 64 units at four bytes: read, sliced and joined by its one reader
   in_text_buf: words = null
 }
 
@@ -262,6 +266,9 @@ function in_init(rt_input_st: mut RtInputState) -> void {
   rt_input_st.in_touch_on = words(IN_TOUCH)
   rt_input_st.in_touch_x  = words(IN_TOUCH)
   rt_input_st.in_touch_y  = words(IN_TOUCH)
+  rt_input_st.in_mbuf = words(6)
+  rt_input_st.in_pbuf = words(IN_PADS * 6)
+  rt_input_st.in_tbuf = words(IN_TOUCH * 3)
   rt_input_st.in_ready = true
 }
 
@@ -310,7 +317,7 @@ function input_device_commit(rt_input_st: mut RtInputState, k: int, replaying: i
     # headless, from the single polled key. Injection (in_sim) is OR-ed on top.
     if is_windowed() {
       win_held(rt_input_st.in_dev)
-      let mbuf = words(6)                              # [x, y, button-mask, wheel, raw dx, raw dy]
+      let mbuf = rt_input_st.in_mbuf                  # [x, y, button-mask, wheel, raw dx, raw dy]
       mbuf[4] = 0;  mbuf[5] = 0
       win_mouse(mbuf)
       rt_input_st.in_mx = mbuf[0];  rt_input_st.in_my = mbuf[1];  rt_input_st.in_mbtn = mbuf[2];  rt_input_st.in_wheel = mbuf[3]
@@ -318,7 +325,7 @@ function input_device_commit(rt_input_st: mut RtInputState, k: int, replaying: i
       # #51 — feed the platform gamepad + touch state into the same buffers the
       # read APIs use. Each is windowed-only glue (win_pad / win_touch are DCE'd
       # in a headless build); on hardware they overwrite the injected state.
-      let pbuf = words(IN_PADS * 6)                     # [conn, mask, lx, ly, rx, ry]/pad
+      let pbuf = rt_input_st.in_pbuf                  # [conn, mask, lx, ly, rx, ry]/pad
       win_pad(pbuf)
       var pi = 0
       while pi < IN_PADS {
@@ -328,7 +335,7 @@ function input_device_commit(rt_input_st: mut RtInputState, k: int, replaying: i
                       as_fixed(pbuf[pb + 4]), as_fixed(pbuf[pb + 5]))
         pi += 1
       }
-      let tbuf = words(IN_TOUCH * 3)                    # [active, x, y]/point
+      let tbuf = rt_input_st.in_tbuf                  # [active, x, y]/point
       win_touch(tbuf)
       var ti = 0
       while ti < IN_TOUCH {
@@ -448,12 +455,15 @@ function input_key_label_new(k: int) -> string {
 # Empty headless, and where the platform has no text channel.
 function input_text(rt_input_st: mut RtInputState) -> string {
   if not is_windowed() { return "" }
-  if rt_input_st.in_text_buf == null { rt_input_st.in_text_buf = words(64) }
+  if rt_input_st.in_text_buf == null {
+    rt_input_st.in_text_buf = words(64)
+    rt_input_st.in_text_out = bytes(64 * 4 + 1)
+  }
   let n = win_text(rt_input_st.in_text_buf, 64)
   if n <= 0 { return "" }
-  # one buffer for the whole text, four bytes a unit at most: a string joined a character at a time
-  # kept every shorter one and each character's own buffer
-  let out = bytes(n * 4 + 1)
+  # one buffer for the whole text, made with the state: a string joined a character at a time kept every
+  # shorter one, and a buffer per call kept one a keystroke
+  let out = rt_input_st.in_text_out
   var at = 0
   var i = 0
   while i < n {
