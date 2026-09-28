@@ -91,6 +91,25 @@ program SaveTest {
     expect(Fs.read_text(bak()) == "{\"body\": \"one\", \"version\": 3}")
   }
 
+  test "a tree is written straight to the file, and the old file backed up only when whole" {
+    fresh()
+    let v = value_object()
+    value_put(v, "body", value_str("one"))
+    value_put(v, "version", value_int(3))
+    expect(save_write_tree(path(), bak(), v))
+    expect(not Fs.exists(bak()))
+    expect(Fs.read_text(path()) == Json.encode(v))
+    value_put(v, "body", value_str("two"))
+    expect(save_write_tree(path(), bak(), v))
+    expect(save_file_intact(bak()))
+    expect(save_open(path(), bak(), fmt()).status == SAVE_OK)
+    Fs.write_text(path(), "{\"body\": \"thr")
+    expect(save_write_tree(path(), bak(), v))
+    expect(save_int(Json.parse(Fs.read_text(bak())), "version", 0) == 3)
+    let r = save_open(path(), bak(), fmt())
+    r.readonly = true
+    expect(not save_write_tree_to(r, path(), bak(), v))
+  }
   test "the backup stands in for a damaged file, and both damaged is read-only" {
     fresh()
     Fs.write_text(path(), "{\"body\": \"cut")

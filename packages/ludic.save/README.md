@@ -17,7 +17,7 @@ f.is_one = fn looks_like_a_trip                    # an object with a day in it
 let r = save_open(path, backup, f)                 # read, check, carry forward, or the backup
 if r.status == SAVE_OK { apply(r.value) }
 ...
-save_write(path, backup, Json.encode(v))           # false unless it is on disk
+save_write_tree(path, backup, v)                   # false unless it is on disk; keeps nothing
 ```
 
 ## The contract
@@ -31,7 +31,8 @@ save_write(path, backup, Json.encode(v))           # false unless it is on disk
   string closed). A best-effort JSON parser hands back half a file as a shorter, plausible one.
 - **A backup, and only of a whole file**: `save_write` copies the old file aside when it is intact,
   writes, and reads the text straight back. A caller about to delete something on the strength of
-  the answer needs to know it is on disk.
+  the answer needs to know it is on disk. `save_write_tree` does the same for a tree through
+  `Json.write_file`, so a save holds no text of its own afterwards.
 - **A newer build's file is refused and read-only.** It is never replaced by its backup (that is from
   the newer build too), and `save_write_to` refuses a read that says `readonly`. Both copies damaged
   is read-only as well. Never write over a file you could not read.
