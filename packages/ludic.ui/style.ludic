@@ -30,9 +30,11 @@ function lss_file(ui_st: mut UiState, src: string, path: string) -> UiFile {
 @alloc_ok("a stylesheet being read: once per component class (uc_load)")
 function lss_text(ui_st: mut UiState, f: UiFile, src: string) -> void {
   let err = new []string
-  let body = lss_strip(src)            # always a copy of its own (lss_strip joins its pieces)
+  let body = lss_strip(src)            # a copy of its own, unless src had no comment (then src itself)
   lss_block(ui_st, f, body, null, err)
-  unsafe { free(body) }                # every rule, selector and value read from it is a copy
+  if lss_has_comment(src) {            # else lss_strip handed src itself back, the caller's to keep
+    unsafe { free(body) }              # every rule, selector and value read from it is a copy
+  }
   @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   for i in 0 .. len(err) { ui_err(ui_st, `{f.path}: <style> {err[i]}`) }
   unsafe { free(err) }
