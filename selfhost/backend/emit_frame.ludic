@@ -44,6 +44,7 @@ function fr_is_frame_prop_field(prop: pointer, name: pointer) -> bool {
 
 # a generic's instance (kept_push$NetFact) is under its declaration's @alloc_ok
 function fr_alloc_ok(name: pointer) -> bool {
+  if str_starts(name, "ludic_act_") { return true }   # the action queue's own kept records, grown to its high-water mark
   var base = name
   var d = 0
   while d < len(name) {
