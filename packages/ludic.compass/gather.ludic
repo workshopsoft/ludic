@@ -2,10 +2,6 @@
 # capture is open the marks go to whoever is listening instead, whatever the tier.
 # a frame's list and marks are the state's own, emptied and reused rather than made again
 export function compass_begin(compass_st: mut CompassState) -> void {
-  if compass_st.cmp_list == null {
-    compass_st.cmp_list = new []CompassMark
-    compass_st.cmp_back = new []CompassMark
-  }
   List.clear(compass_st.cmp_list)
   compass_st.cmp_used = 0
 }
@@ -14,11 +10,11 @@ export function compass_begin(compass_st: mut CompassState) -> void {
 export function compass_mark(compass_st: mut CompassState, x: float, z: float, icon: int, colour: int, tier: int, prio: int, label: string) -> void {
   if compass_st.cmp_list == null { compass_begin(compass_st) }
   if compass_st.cmp_capturing {
-    push(compass_st.cmp_caught, cmp_catch(compass_st, x, z, icon, colour, tier, prio, label))
+    kept_push(compass_st.cmp_caught, cmp_catch(compass_st, x, z, icon, colour, tier, prio, label))
     return
   }
   if CompassWorld.tier() < tier { return }
-  push(compass_st.cmp_list, cmp_take(compass_st, x, z, icon, colour, tier, prio, label))
+  kept_push(compass_st.cmp_list, cmp_take(compass_st, x, z, icon, colour, tier, prio, label))
 }
 
 # highest priority first, the providers' order kept within one; then the cap
@@ -28,7 +24,7 @@ export function compass_end(compass_st: mut CompassState) -> void {
   List.clear(out)
   for p in 0 .. 3 {
     let want = COMPASS_TRACKED - p
-    for i in 0 .. len(compass_st.cmp_list) { if cmp_band(compass_st.cmp_list[i].prio) == want and len(out) < compass_st.cmp_cap { push(out, compass_st.cmp_list[i]) } }
+    for i in 0 .. len(compass_st.cmp_list) { if cmp_band(compass_st.cmp_list[i].prio) == want and len(out) < compass_st.cmp_cap { kept_push(out, compass_st.cmp_list[i]) } }
   }
   compass_st.cmp_back = compass_st.cmp_list
   compass_st.cmp_list = out

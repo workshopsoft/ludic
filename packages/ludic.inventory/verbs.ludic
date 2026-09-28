@@ -37,6 +37,10 @@ export function inv_set(inventory_st: mut InventoryState, it: int, n: int) -> vo
 
 # everything gone, silently: a new trip, or before a load
 export function inv_clear(inventory_st: mut InventoryState) -> void {
-  inventory_st.iv_counts = new []int
-  for i in 0 .. inv_kinds(inventory_st) { push(inventory_st.iv_counts, 0) }
+  if inventory_st.iv_counts == null {
+    @alloc_ok("once: the counts are made the first time the pack is cleared")
+    inventory_st.iv_counts = new []int
+  }
+  List.clear(inventory_st.iv_counts)
+  for i in 0 .. inv_kinds(inventory_st) { kept_push(inventory_st.iv_counts, 0) }
 }

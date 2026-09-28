@@ -23,6 +23,7 @@ export state InventoryState {
 }
 
 # the kinds, by the name each is saved under; the pack starts empty
+@alloc_ok("once: the pack's kinds are bound at start")
 export function inv_config(inventory_st: mut InventoryState, keys: []string) -> void {
   inventory_st.iv_keys = keys
   if len(inventory_st.iv_pool) == 0 { for i in 0 .. IV_POOL { push(inventory_st.iv_pool, new ItemChanged) } }

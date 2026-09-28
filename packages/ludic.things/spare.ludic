@@ -9,7 +9,10 @@ function th_spare_put(things_st: mut ThingsState, t: Thing) -> void { kept_push(
 # a record for a Thing about to be placed: the oldest spare past the lag, or a new one
 function th_record(things_st: mut ThingsState) -> Thing {
   let l = things_st.th_spare
-  if len(l) - things_st.th_spare_at <= TH_SPARE_LAG { return new Thing }
+  if len(l) - things_st.th_spare_at <= TH_SPARE_LAG {
+    @alloc_ok("a spare miss: only until things_spare_warm's records and the removed ones come round")
+    return new Thing
+  }
   let t = l[things_st.th_spare_at]
   things_st.th_spare_at += 1
   if things_st.th_spare_at >= 64 { th_spare_pack(things_st) }

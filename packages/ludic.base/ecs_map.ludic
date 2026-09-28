@@ -75,6 +75,7 @@ export function imap_clear(m: IntMap) -> void {
 }
 
 # room for `n` keys before the map grows, made now
+@alloc_ok("at a world's start: the keys it will need")
 export function imap_reserve(m: IntMap, n: int) -> void {
   if (m.mask + 1) * 3 >= n * 4 { return }
   var cap = m.mask + 1
