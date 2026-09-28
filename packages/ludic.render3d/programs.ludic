@@ -71,6 +71,7 @@ property Target {
   h:     int = 0
 }
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+@creates(Target)
 function target_new(render3d_st: mut Render3dState, w: int, h: int, ifmt: int, fmt: int, ty: int, with_depth: bool, filter: int) -> Target {
   let t = new Target
   t.w = w;  t.h = h
@@ -87,6 +88,7 @@ function target_new(render3d_st: mut Render3dState, w: int, h: int, ifmt: int, f
   gpu_fb_bind(render3d_st, 0)
   return t
 }
+@releases(Target)
 function target_free(render3d_st: mut Render3dState, t: Target) -> void {
   if t == null { return }
   gpu_fb_free(render3d_st, t.fbo)
