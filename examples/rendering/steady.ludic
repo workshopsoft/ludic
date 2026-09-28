@@ -1,0 +1,67 @@
+# steady.ludic - render3d allocates nothing in its steady state: a buffer released and made again
+# (what a streamed or grown buffer does every few frames) and a whole frame, drawn over and over,
+# leave malloc's live bytes where they were. Prints STEADY OK. The heap is read on the Mac
+# (Vk.heap_bytes); elsewhere it reads 0 and the check passes on the run alone.
+#
+#   bin/ludic build examples/rendering/steady.ludic --headless && ./build/steady_headless
+program Steady {
+  numbers float
+  import "ludic.render3d/r3d.ludic"
+
+  property Marker { on: int = 1 }
+  model Anchor { Marker }
+
+  function scene_draw(render3d_st: mut Render3dState) -> void { }
+  function scene_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void { }
+  function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
+
+  # bytes gained by the heap over n rounds of the buffer path, after a warm-up of its own
+  function buffer_rounds(render3d_st: mut Render3dState, b: int, n: int) -> long {
+    let before = Vk.heap_bytes()
+    for i in 0 .. n {
+      gpu_buffer_upload(render3d_st, b, 4096 + (i % 16) * 4096, null, GPU_DYNAMIC)
+      gpu_buffer_free(render3d_st, b)
+    }
+    return Vk.heap_bytes() - before
+  }
+  function frame_rounds(render3d_st: mut Render3dState, n: int) -> long {
+    let before = Vk.heap_bytes()
+    for i in 0 .. n {
+      r3d_frame(render3d_st, float(i) / 60.0)
+      r3d_present(render3d_st)
+    }
+    return Vk.heap_bytes() - before
+  }
+
+  handler Boot(render3d_st: mut Render3dState) phase Start {
+    spawn Anchor {}
+    r3d_on_draw(render3d_st, fn scene_draw)
+    r3d_on_casters(render3d_st, fn scene_draw_casters)
+    r3d_on_stream_fill(render3d_st, fn stream_fill)
+    r3d_plate_mode(render3d_st, true)
+    render3d_st.r3d_sky_path = "packages/ludic.lab/plate/sky.hdr"
+    if not r3d_init(render3d_st, 320, 180, "Steady") {
+      quit()
+      return
+    }
+    let b = gpu_buffer_new(render3d_st)
+    buffer_rounds(render3d_st, b, 500)
+    let grew_b = buffer_rounds(render3d_st, b, 5000)
+    frame_rounds(render3d_st, 120)
+    let grew_f = frame_rounds(render3d_st, 600)
+    print(`steady: the buffer path gained {grew_b} bytes over 5000 rounds, the frame {grew_f} over 600`)
+    # a few KB of slack for what the system's own libraries keep (Metal's caches, the allocator)
+    var ok = grew_b < 16384
+    if not ok { print("steady: FAILED - releasing and making a buffer again leaves memory behind") }
+    if grew_f >= 65536 {
+      ok = false
+      print("steady: FAILED - a frame leaves memory behind")
+    }
+    if ok { print("STEADY OK") } else { print("STEADY FAILED") }
+    quit()
+  }
+
+  handler Present(render3d_st: mut Render3dState) phase Render {
+    r3d_present(render3d_st)
+  }
+}

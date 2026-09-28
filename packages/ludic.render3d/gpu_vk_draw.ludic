@@ -678,7 +678,7 @@ function gvk_frame_init(render3d_st: mut Render3dState) -> bool {
   let props = bytes(VkPhysicalDeviceProperties_sizeof)
   Vk.get_physical_device_properties(render3d_st.gvk_pd, props)
   let al = Vk.get_i64(props, VkPhysicalDeviceProperties_limits + VkPhysicalDeviceLimits_minUniformBufferOffsetAlignment)
-  render3d_st.gvk_ring_align = Text.to_int(string(al))
+  render3d_st.gvk_ring_align = int(al)
   if render3d_st.gvk_ring_align < 16 { render3d_st.gvk_ring_align = 16 }
   # MSAA: the most samples (up to the 4 the scene asks for) both a colour and a depth target can take
   let lim = VkPhysicalDeviceProperties_limits
@@ -908,7 +908,7 @@ function gvk_sc_make(render3d_st: mut Render3dState, p: int, nt: int) -> long {
   }
   let iw = VkDescriptorImageInfo_sizeof
   for t in 0 .. nt {
-    let tex = Text.to_int(string(render3d_st.gvk_sc_tmp[t * 2] / 65536))
+    let tex = int(render3d_st.gvk_sc_tmp[t * 2] / 65536)
     Vk.put_i64(iis, t * iw + VkDescriptorImageInfo_sampler, render3d_st.gvk_sc_tmp[t * 2 + 1])
     Vk.put_i64(iis, t * iw + VkDescriptorImageInfo_imageView, render3d_st.gvk_tex_view[tex])
     Vk.put_i32(iis, t * iw + VkDescriptorImageInfo_imageLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
@@ -1855,9 +1855,9 @@ function gvk_prof_frame(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_prof_frames += 1
   if render3d_st.gvk_prof_frames < 120 { return }
   let f = render3d_st.gvk_prof_frames
-  let pipe = Text.to_int(string(render3d_st.gvk_us_pipe)) / f
-  let set = Text.to_int(string(render3d_st.gvk_us_set)) / f
-  let draw = Text.to_int(string(render3d_st.gvk_us_draw)) / f
+  let pipe = int(render3d_st.gvk_us_pipe) / f
+  let set = int(render3d_st.gvk_us_set) / f
+  let draw = int(render3d_st.gvk_us_draw) / f
   print(`r3d: vulkan per frame: {render3d_st.gvk_n_draws / f} draws, {render3d_st.gvk_n_flush / f} flushes; pipelines {pipe / 1000}.{(pipe / 100) % 10} ms, sets {set / 1000}.{(set / 100) % 10} ms, inside draws {draw / 1000}.{(draw / 100) % 10} ms; {render3d_st.gvk_n_pipe_new} pipelines made`)
   # every draw asked for should have been made: a gap is a layer missing from the frame, which is how
   # MoltenVK's refused skinned pipelines went unseen (the drawstats session found it by counting)

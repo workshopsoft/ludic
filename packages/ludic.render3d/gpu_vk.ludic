@@ -371,14 +371,19 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
   if t < 0 and want == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT { t = gvk_mem_type(render3d_st, allowed, 0) }
   if t < 0 { gvk_note(render3d_st, `r3d: vulkan: no memory type for properties {want}`);  return 0 }
   let host = (want & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0
-  let size = Text.to_int(string(Vk.get_i64(req, VkMemoryRequirements_size)))
-  var align = Text.to_int(string(Vk.get_i64(req, VkMemoryRequirements_alignment)))
+  let size = int(Vk.get_i64(req, VkMemoryRequirements_size))
+  var align = int(Vk.get_i64(req, VkMemoryRequirements_alignment))
   if align < 1 { align = 1 }
   var blk = -1
   var off = 0
   let zero: long = 0
-  let mp = new []pointer
-  push(mp, null)
+  # the mapped pointer comes back through a one-slot list made once, not one per allocation
+  if render3d_st.gvk_map_slot == null {
+    render3d_st.gvk_map_slot = new []pointer
+    push(render3d_st.gvk_map_slot, null)
+  }
+  let mp = render3d_st.gvk_map_slot
+  mp[0] = null
   if size <= GVK_OWN_OVER {
     var kind = t * 2
     if image { kind += 1 }
@@ -420,20 +425,15 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
   }
   var a = 0
   if len(render3d_st.gvk_al_spare) > 0 {
-    a = render3d_st.gvk_al_spare[len(render3d_st.gvk_al_spare) - 1]
-    render3d_st.gvk_al_spare = gvk_list_drop_last(render3d_st.gvk_al_spare)
+    let spare = render3d_st.gvk_al_spare
+    a = spare[len(spare) - 1]
+    List.pop(spare)
   } else {
     push(render3d_st.gvk_al_blk, -1);  push(render3d_st.gvk_al_mem, zero);  push(render3d_st.gvk_al_off, 0);  push(render3d_st.gvk_al_len, 0);  push(render3d_st.gvk_al_map, null)
     a = len(render3d_st.gvk_al_blk) - 1
   }
   render3d_st.gvk_al_blk[a] = blk;  render3d_st.gvk_al_mem[a] = own;  render3d_st.gvk_al_off[a] = off;  render3d_st.gvk_al_len[a] = size;  render3d_st.gvk_al_map[a] = map
   return a
-}
-
-function gvk_list_drop_last(l: []int) -> []int {
-  let out = new []int
-  for i in 0 .. len(l) - 1 { push(out, l[i]) }
-  return out
 }
 
 function gvk_mem_handle(render3d_st: Render3dState, a: int) -> long {
@@ -484,7 +484,7 @@ function gvk_mem_free(render3d_st: mut Render3dState, a: int) -> void {
   render3d_st.gvk_al_len[a] = 0;  render3d_st.gvk_al_mem[a] = zero;  render3d_st.gvk_al_map[a] = null;  render3d_st.gvk_al_blk[a] = -1
   push(render3d_st.gvk_al_spare, a)
 }
-function gvk_mem_id(x: long) -> int { return Text.to_int(string(x)) }
+function gvk_mem_id(x: long) -> int { return int(x) }
 
 # ---- one-shot commands --------------------------------------------------------------------
 # Uploads, bakes and read-backs record into a command buffer, submit it and wait. The frame
@@ -669,7 +669,7 @@ function gvk_query_result(render3d_st: mut Render3dState, id: int, out: words) -
   let size: long = 16
   let stride: long = 8
   if Vk.get_query_pool_results(render3d_st.gvk_dev, render3d_st.gvk_qpool, id * 2, 2, size, data, stride, VK_QUERY_RESULT_64_BIT) != VK_SUCCESS { return false }
-  let ticks = Text.to_int(string(Vk.get_i64(data, 8) - Vk.get_i64(data, 0)))
+  let ticks = int(Vk.get_i64(data, 8) - Vk.get_i64(data, 0))
   if ticks < 0 { return false }
   out[0] = int(float(ticks) * render3d_st.gvk_ts_period)
   return true
