@@ -618,8 +618,9 @@ function gvk_sampler(render3d_st: mut Render3dState, min_f: int, mag_f: int, wra
   let zero: long = 0
   render3d_st.gvk_mk_smp += 1
   let r = Vk.create_sampler(render3d_st.gvk_dev, sci, render3d_st.gvk_ac, out)
-  if r != VK_SUCCESS { gvk_fail(render3d_st, "vkCreateSampler", r);  return zero }
   let s = gvk_handle(out)
+  free(sci);  free(out)
+  if r != VK_SUCCESS { gvk_fail(render3d_st, "vkCreateSampler", r);  return zero }
   push(ks, min_f);  push(ks, mag_f);  push(ks, wrap_s);  push(ks, wrap_t);  push(ks, compare);  push(ks, aniso);  push(ks, bias)
   push(render3d_st.gvk_smp, s)
   return s
