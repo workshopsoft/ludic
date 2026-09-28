@@ -82,7 +82,14 @@ function ex_text(src: string, err: []string) -> UiExpr {
     i += 1
   }
   if at < len(src) { push(e.args, ex_lit(Value.str(src[at..len(src)]))) }
-  if len(e.args) == 0 { return ex_lit(Value.str("")) }
-  if len(e.args) == 1 { return e.args[0] }
-  return e
+  if len(e.args) > 1 { return e }
+  # one piece or none: the joining node is not kept, so it is given back
+  var one: UiExpr = null
+  if len(e.args) == 1 { one = e.args[0] }
+  unsafe {
+    free(e.args)
+    free(e)
+  }
+  if one == null { return ex_lit(Value.str("")) }
+  return one
 }

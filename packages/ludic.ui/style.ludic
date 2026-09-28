@@ -30,9 +30,12 @@ function lss_file(ui_st: mut UiState, src: string, path: string) -> UiFile {
 @alloc_ok("a stylesheet being read: once per component class (uc_load)")
 function lss_text(ui_st: mut UiState, f: UiFile, src: string) -> void {
   let err = new []string
-  lss_block(ui_st, f, lss_strip(src), null, err)
+  let body = lss_strip(src)            # always a copy of its own (lss_strip joins its pieces)
+  lss_block(ui_st, f, body, null, err)
+  unsafe { free(body) }                # every rule, selector and value read from it is a copy
   @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   for i in 0 .. len(err) { ui_err(ui_st, `{f.path}: <style> {err[i]}`) }
+  unsafe { free(err) }
 }
 # rules, @imports and @media blocks; the rules in a @media block carry its condition
 function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err: []string) -> void {
@@ -62,6 +65,7 @@ function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err:
     for i in at .. len(f.own) { f.own[i].md = md }
   }
   if r.err != "" { push(err, r.err) }
+  unsafe { free(r) }                   # the reader only: its text is the caller's
 }
 # @import "base.lss"; - its rules come before this file's own
 function lss_import(ui_st: mut UiState, f: UiFile, what: string) -> void {
