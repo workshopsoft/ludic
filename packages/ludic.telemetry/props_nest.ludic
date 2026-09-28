@@ -28,6 +28,12 @@ export function telemetry_item_open(p: TelemetryProps) -> StrBuf {
   return p.sb
 }
 export function telemetry_item_close(p: TelemetryProps) -> void { sb_byte(p.sb, 34) }
+# the same for a named string property; closed with telemetry_item_close
+export function telemetry_str_open(p: TelemetryProps, k: string) -> StrBuf {
+  tp_key(p, k)
+  sb_byte(p.sb, 34)
+  return p.sb
+}
 
 # a number standing for what has been written: equal when the bytes are (FNV-1a, 31 bits)
 export function telemetry_props_sig(p: TelemetryProps) -> int {
