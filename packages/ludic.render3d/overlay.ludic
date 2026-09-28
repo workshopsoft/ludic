@@ -45,6 +45,7 @@ function ov_pick_prog(render3d_st: mut Render3dState) -> void {
   render3d_st.ov_prog = render3d_st.ov_prog_sdr
 }
 
+@alloc_ok("start-up: the overlay's tables are made once")
 function overlay_init(render3d_st: mut Render3dState, font_dir: string) -> bool {
   r3d_program_log(render3d_st, "overlay.vert", "overlay.frag", "")
   render3d_st.ov_prog = gpu_program(render3d_st, "overlay.vert", "overlay.frag", "")
@@ -340,11 +341,14 @@ function ov_text_wrap(render3d_st: mut Render3dState, x: int, y: int, size: int,
       if sp[i] == 10 { stop = i;  break }
       if sp[i] == 32 { last_space = i }
       let piece: string = s[first .. i + 1]
-      if ov_text_w(render3d_st, size, piece) > maxw and last_space > first { stop = last_space;  break }
+      let pw = ov_text_w(render3d_st, size, piece)
+      free(piece)
+      if pw > maxw and last_space > first { stop = last_space;  break }
       i += 1
     }
     let line: string = s[first .. stop]
     ov_text(render3d_st, x, ly, size, line, r, g, b, a)
+    free(line)
     ly += size * 13 / 10
     first = stop
     while first < n and (sp[first] == 32 or sp[first] == 10) { first += 1 }

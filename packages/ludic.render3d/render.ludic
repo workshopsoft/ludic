@@ -100,9 +100,16 @@ function r3d_load_count() -> int { return 4 + TERRAIN_INIT_STEPS }
 function r3d_load_step(render3d_st: mut Render3dState, i: int) -> bool {
   let t = i - 1
   if i == 0 {
-    var sky = render3d_st.r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr"
-    if render3d_st.r3d_sky_path != null { sky = render3d_st.r3d_sky_path }
-    if not sky_load(render3d_st, sky) { return false }
+    # the default sky's path is made only when no path was given, and goes once the sky is read
+    var sky = render3d_st.r3d_sky_path
+    var made: string = null
+    if sky == null {
+      made = render3d_st.r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr"
+      sky = made
+    }
+    let got = sky_load(render3d_st, sky)
+    if made != null { free(made) }
+    if not got { return false }
     daylight_init(render3d_st)
   } else if t >= 0 and t < TERRAIN_INIT_STEPS {
     if render3d_st.r3d_plate { return true }

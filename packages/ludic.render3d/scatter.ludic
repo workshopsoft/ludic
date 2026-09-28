@@ -407,6 +407,7 @@ function layer_new(render3d_st: mut Render3dState, model: Model, cap: int, folia
 # room for n instances (at most the layer's cap), doubling what there is so a fill costs a few copies;
 # a caller writing l.inst itself reserves first
 function layer_reserve(l: Layer, n: int) -> void { layer_room(l, n) }
+@alloc_ok("a layer outgrowing its capacity, grown once to what it now holds (rare, and bounded by the scene)")
 function layer_room(l: Layer, n: int) -> void {
   if n <= l.have { return }
   var want = max(l.have * 2, n)
