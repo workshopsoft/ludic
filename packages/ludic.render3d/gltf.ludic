@@ -6,7 +6,7 @@
 # ============================================================================
 
 property Prim {
-  mesh: Mesh,
+  @owns(Mesh) mesh: Mesh,
   diff: int = 0,
   nrm:  int = 0,
   arm:  int = 0,

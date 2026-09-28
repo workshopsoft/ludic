@@ -7,7 +7,7 @@
 property Mesh {
   vao:   int = 0,            # OpenGL's vertex array object (gpu.ludic's, on that backend)
   vbo:   int = 0,            # the first vertex buffer
-  ebo:   int = 0,
+  @owns(GpuBuffer) ebo:   int = 0,
   count: int = 0,            # indices (ebo != 0) or vertices
   mode:  int = 4,            # GL_TRIANGLES
   itype: int = 0x1405,       # GL_UNSIGNED_INT

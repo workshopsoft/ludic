@@ -634,6 +634,7 @@ function gvk_sampler(render3d_st: mut Render3dState, min_f: int, mag_f: int, wra
 # destroyed at gvk_retire_flush, after the frame's work is done.
 
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
+@creates(GpuBuffer)
 function gvk_buf_new(render3d_st: mut Render3dState) -> int {
   let zero: long = 0
   if render3d_st.gvk_buf == null {
@@ -655,6 +656,7 @@ function gvk_buf_new(render3d_st: mut Render3dState) -> int {
 
 # a buffer done with for good (a mesh freed): its storage goes, and its handle is handed out again
 # by gvk_buf_new. gvk_buf_release alone keeps the handle, for a caller that fills it again.
+@releases(GpuBuffer)
 function gvk_buf_delete(render3d_st: mut Render3dState, b: int) -> void {
   if b <= 0 or b >= len(render3d_st.gvk_buf) { return }
   gvk_buf_release(render3d_st, b)
