@@ -12,15 +12,20 @@ export property ItemChanged {
   after: int = 0
 }
 
+# a change's record comes round again after this many more: far more than a frame makes between drains
+const IV_POOL: int = 512
 export state InventoryState {
   iv_keys: []string = null
   iv_counts: []int = null
   iv_changes: Queue<ItemChanged> = iv_changes__new()
+  iv_pool: []ItemChanged = new []ItemChanged   # the facts' records, made once and taken in turn
+  iv_at: int = 0
 }
 
 # the kinds, by the name each is saved under; the pack starts empty
 export function inv_config(inventory_st: mut InventoryState, keys: []string) -> void {
   inventory_st.iv_keys = keys
+  if len(inventory_st.iv_pool) == 0 { for i in 0 .. IV_POOL { push(inventory_st.iv_pool, new ItemChanged) } }
   inv_clear(inventory_st)
 }
 
