@@ -19,6 +19,7 @@ var g_site_kinds: []pointer = new []pointer    # kinds seen, and their constants
 var g_site_kindc: []pointer = new []pointer
 var g_site_next: pointer = null                # a kind the next allocation takes (`new Foo`)
 var g_atexit_declared: bool = false            # @atexit is declared once: by the fence or by --coverage
+var g_mzs_declared: bool = false               # @malloc_zone_statistics: by the fence or by Os.heap_bytes
 # the build's defaults (--fence=, --fence-warm=, --fence-census=, else a `fence` line in the nearest
 # package.ludic); the environment overrides each at run time (R3D_ALLOC_FENCE, _WARM, _CENSUS)
 var g_fence_mode: int = 0                      # 0: headless fails, windowed fails only under R3D_DEV
@@ -30,6 +31,7 @@ function fence_reset() -> void {
   g_site_fn = new []pointer;  g_site_file = new []pointer;  g_site_line = new []int;  g_site_kind = new []pointer
   g_site_kinds = new []pointer;  g_site_kindc = new []pointer
   g_atexit_declared = false
+  g_mzs_declared = false
   g_cur_fn_name = "?";  g_site_fnc = null;  g_site_filen = null;  g_site_filec = null;  g_site_next = null
   push(g_site_fn, null);  push(g_site_file, null);  push(g_site_line, 0);  push(g_site_kind, null)   # site 0, named at the end
 }
@@ -168,6 +170,7 @@ function emit_fence_runtime() -> void {
   if g_target_win { emit_fence_win();  return }
   if not g_fprintf_declared { emith("declare i32 @fprintf(ptr, ptr, ...)\n");  g_fprintf_declared = true }
   if not g_atexit_declared { emith("declare i32 @atexit(ptr)\n");  g_atexit_declared = true }
+  if not g_mzs_declared { emith("declare extern_weak void @malloc_zone_statistics(ptr, ptr)\n");  g_mzs_declared = true }
   emit_fence_globals()
   emit_fence_entry()
   emit_fence_table()

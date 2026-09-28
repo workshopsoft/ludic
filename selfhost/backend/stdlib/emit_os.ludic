@@ -264,7 +264,7 @@ function emit_os_prelude() -> void {
 # Os.heap_bytes: malloc_zone_statistics' in-use bytes, all zones. The symbol is weak, so a libc
 # without it links and reads 0.
 function emit_os_heap() -> void {
-  emith("declare extern_weak void @malloc_zone_statistics(ptr, ptr)\n")
+  if not g_mzs_declared { emith("declare extern_weak void @malloc_zone_statistics(ptr, ptr)\n");  g_mzs_declared = true }
   emith("define i64 @lp_os_heap_bytes() {\n")
   emith("entry:\n  %has = icmp ne ptr @malloc_zone_statistics, null\n  br i1 %has, label %read, label %none\n")
   emith("none:\n  ret i64 0\n")

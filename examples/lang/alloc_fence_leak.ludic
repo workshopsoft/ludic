@@ -1,6 +1,6 @@
 # alloc_fence_leak.ludic - frame 50 keeps one record in a list that outlives it. The fence fails
 # the run there (exit 86) and names this file's `new Box` line; under R3D_ALLOC_FENCE=count it
-# runs on and prints `kept 72 bad 1` (the record and the list's first growth, one frame).
+# runs on and prints `kept 80 bad 1` (the record and the list's growth, at malloc's own sizes, in one frame).
 program AllocFenceLeak {
   property Box { a: int = 0, b: int = 0 }
   entry {

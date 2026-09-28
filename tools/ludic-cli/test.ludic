@@ -797,7 +797,7 @@ function alloc_fence_leak_case() -> void {
   let head = capture_line(`grep 'alloc-fence: frame' {tmp_dir()}/afl.err | head -1`)
   let named = shq(`grep -q 'alloc_fence_leak.ludic:11  new Box' {tmp_dir()}/afl.err`)
   let counted = capture_line(`R3D_ALLOC_FENCE=count {b} < /dev/null`)
-  if (rc == 86) and (head == "alloc-fence: frame 50 kept +72 B (2 made, 0 freed)") and named and (counted == "kept 72 bad 1") { ok(lbl) }
+  if (rc == 86) and (head == "alloc-fence: frame 50 kept +80 B (2 made, 0 freed)") and named and (counted == "kept 80 bad 1") { ok(lbl) }
   else { bad2(lbl, `rc={string(rc)} head=[{head}] named={string(named)} count=[{counted}]`) }
 }
 
@@ -813,7 +813,7 @@ function alloc_fence_auto_case() -> void {
   let bc = `{tmp_dir()}/e_alloc_fence_auto_c`
   var through = ""
   if shq(`bin/ludicc --fence=count examples/lang/alloc_fence_auto.ludic -o {bc} 2>/dev/null`) { through = capture_line(`{bc} < /dev/null`) }
-  if (rc == 86) and (head == "alloc-fence: frame 1500 kept +4 B (1 made, 0 freed)") and (through == "through") { ok(lbl) }
+  if (rc == 86) and (head == "alloc-fence: frame 1500 kept +16 B (1 made, 0 freed)") and (through == "through") { ok(lbl) }
   else { bad2(lbl, `rc={string(rc)} head=[{head}] count=[{through}]`) }
 }
 
