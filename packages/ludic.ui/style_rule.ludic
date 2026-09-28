@@ -4,15 +4,22 @@ function lss_rule(f: UiFile, sels: string, body: string, err: []string) -> void 
   let each = lss_split(sels, 44)
   for i in 0 .. len(each) {
     let sel = tpl_words(each[i])
-    if len(sel) == 0 { continue }
-    let r = new UiRule
-    r.keys = decls.keys
-    r.vals = decls.vals
-    r.sel = sel_parse(sel, err)
-    if r.sel != null {
-      r.spec = sel_spec(r.sel)
-      push(f.own, r)
+    if len(sel) > 0 { lss_rule_add(f, decls, sel, err) }
+    unsafe {                           # a selector keeps its parsed parts, never its text
+      if not tpl_clean(each[i]) { free(sel) }
+      free(each[i])
     }
+  }
+  unsafe { free(each) }
+}
+function lss_rule_add(f: UiFile, decls: UiRule, sel: string, err: []string) -> void {
+  let r = new UiRule
+  r.keys = decls.keys
+  r.vals = decls.vals
+  r.sel = sel_parse(sel, err)
+  if r.sel != null {
+    r.spec = sel_spec(r.sel)
+    push(f.own, r)
   }
 }
 # `key: value; key: value`, a rule's body or a style="..." attribute
@@ -31,8 +38,11 @@ function lss_decls(body: string, err: []string) -> UiRule {
       if len(tpl_words(d)) > 0 { push(err, `"{tpl_words(d)}" is not a property: value`) }
       continue
     }
-    push(r.keys, tpl_words(d[0..colon]))
-    push(r.vals, tpl_value(tpl_words(d[colon + 1..len(d)]), err))
+    lss_decl_add(r, d, colon, err)
+  }
+  unsafe {                             # the pieces the declarations were sliced from
+    for i in 0 .. len(decls) { free(decls[i]) }
+    free(decls)
   }
   return r
 }
@@ -69,4 +79,19 @@ function sheet_add(sh: UiSheet, r: UiRule) -> void {
     i -= 1
   }
   sh.rules[i] = r
+}
+
+# one `key: value` into the rule: the key kept as read (a clean slice is its own words), the
+# value parsed (its expression copies what it keeps), and the slices nothing keeps given back
+function lss_decl_add(r: UiRule, d: string, colon: int, err: []string) -> void {
+  let kr: string = d[0..colon]
+  push(r.keys, tpl_words(kr))
+  if not tpl_clean(kr) { unsafe { free(kr) } }
+  let vr: string = d[colon + 1..len(d)]
+  let vt = tpl_words(vr)
+  push(r.vals, tpl_value(vt, err))
+  unsafe {
+    if not tpl_clean(vr) { free(vt) }
+    free(vr)
+  }
 }

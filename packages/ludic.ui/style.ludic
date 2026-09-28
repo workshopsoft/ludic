@@ -51,13 +51,17 @@ function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err:
       continue
     }
     if rd_op(r, "@keyframes") {
-      let name = lss_upto(r, 123)
-      an_read(ui_st, name, lss_upto(r, 125), err)
+      let name = lss_upto(r, 123)      # kept: the keyframes' name may be this very text
+      let kb = lss_upto(r, 125)
+      an_read(ui_st, name, kb, err)
+      unsafe { free(kb) }
       continue
     }
     if rd_op(r, "@media") {
       let cond = md_parse(lss_upto(r, 123))
-      lss_block(ui_st, f, lss_upto(r, 125), cond, err)
+      let mb = lss_upto(r, 125)
+      lss_block(ui_st, f, mb, cond, err)
+      unsafe { free(mb) }
       continue
     }
     let sels = lss_upto(r, 123)
@@ -65,6 +69,10 @@ function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err:
     let at = len(f.own)
     lss_rule(f, sels, body, err)
     for i in at .. len(f.own) { f.own[i].md = md }
+    unsafe {                           # a rule keeps what it parsed, never the text it was sliced from
+      free(sels)
+      free(body)
+    }
   }
   if r.err != "" { push(err, r.err) }
   unsafe { free(r) }                   # the reader only: its text is the caller's
@@ -95,20 +103,25 @@ function lss_upto(r: UiRd, c: int) -> string {
 }
 function lss_strip(src: string) -> string {
   if not lss_has_comment(src) { return src }     # no comment: nothing to strip, nothing made
-  var out = ""
-  var at = 0
+  # written once into bytes of its own (lss_text frees them): joined a piece at a time, every
+  # comment left the text so far behind
+  var p: pointer = null
+  unsafe { p = bytes(len(src) + 1) }
+  var n = 0
   var i = 0
-  while i + 1 < len(src) {
-    if src[i] == 47 and src[i + 1] == 42 {
-      out = out + src[at..i]
+  while i < len(src) {
+    if i + 1 < len(src) and src[i] == 47 and src[i + 1] == 42 {
       var j = i + 2
       while j + 1 < len(src) and not (src[j] == 42 and src[j + 1] == 47) { j += 1 }
       i = j + 2
-      at = i
-    } else { i += 1 }
+    } else {
+      unsafe { p[n] = src[i] }
+      n += 1
+      i += 1
+    }
   }
-  if at < len(src) { out = out + src[at..len(src)] }
-  return out
+  unsafe { p[n] = 0 }
+  return p
 }
 function lss_has_comment(src: string) -> bool {
   for i in 0 .. len(src) - 1 {

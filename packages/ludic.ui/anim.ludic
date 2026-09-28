@@ -23,15 +23,23 @@ function an_read(ui_st: mut UiState, name: string, body: string, err: []string) 
   while r.err == "" {
     rd_ws(r)
     if r.i >= len(r.s) { break }
-    let stop = tpl_words(lss_upto(r, 123))
-    let decls = lss_decls(lss_upto(r, 125), err)
+    let sr = lss_upto(r, 123)
+    let stop = tpl_words(sr)
+    let db = lss_upto(r, 125)
+    let decls = lss_decls(db, err)
     var at = el_num(stop) / 100.0
     if stop == "from" { at = 0.0 }
     if stop == "to" { at = 1.0 }
     push(k.stops, at)
     push(k.rules, decls)
+    unsafe {                           # the stop and its body are read, never kept
+      if not tpl_clean(sr) { free(stop) }
+      free(sr)
+      free(db)
+    }
   }
   push(ui_st.an_frames, k)
+  unsafe { free(r) }
 }
 function an_find(ui_st: UiState, name: string) -> UiKeyframes {
   for i in 0 .. len(ui_st.an_frames) {
