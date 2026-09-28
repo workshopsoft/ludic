@@ -94,4 +94,33 @@ program TilesTest {
     nav_reset(nav_st)
     expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 0)
   }
+
+  # the descriptors this process holds open (macOS and Linux list them under /dev/fd)
+  function open_files() -> int { return len(Fs.list("/dev/fd")) }
+
+  test "an index loaded again twenty times, its tiles in each time, holds the heap, the files and the tiles" (nav_st: mut NavState) {
+    expect_eq(map(nav_st, false), 0)
+    let path = Os.temp_dir() + "/ludic_nav_swap.navmesh"
+    expect(nav_save_file(nav_st, NAV_PERSON, path))
+    let xs = floats(1)
+    let zs = floats(1)
+    xs[0] = 64.0
+    zs[0] = 64.0
+    expect(nav_load_index(nav_st, NAV_PERSON, path))
+    nav_tiles_keep(nav_st, NAV_PERSON, xs, zs, 1, 60.0, 90.0)
+    let files = open_files()
+    let heap = Os.heap_bytes()
+    for k in 0 .. 20 {
+      expect(nav_load_index(nav_st, NAV_PERSON, path))
+      nav_tiles_keep(nav_st, NAV_PERSON, xs, zs, 1, 60.0, 90.0)
+    }
+    let grew = Os.heap_bytes() - heap
+    let now = open_files()
+    print(`nav swap: twenty loads, heap {grew} bytes, files open {files} -> {now}, tiles in {nav_tiles_in(nav_st, NAV_PERSON)}`)
+    expect(grew == long(0))
+    expect_eq(now, files)
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 4)
+    nav_reset(nav_st)
+    expect_eq(open_files(), files - 1)
+  }
 }
