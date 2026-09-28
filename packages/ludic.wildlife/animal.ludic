@@ -17,7 +17,7 @@ export const WILD_WARY: int = 13      # turned away, a step or two of distance t
 export const WILD_LAND: int = 14      # a bird gliding down to a spot
 
 export property WildAnimal {
-  key: int = 0            # unique for the run, never reused: the game's drawing is found by it
+  key: int = 0            # unique among the living; a reused record keeps it, and the game its drawing
   nid: int = 0            # its id across machines (the port's next_id)
   sp: int = 0
   legend: bool = false

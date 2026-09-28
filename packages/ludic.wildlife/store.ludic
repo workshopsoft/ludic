@@ -29,9 +29,9 @@ export function wildlife_seed(wildlife_st: WildlifeState, seed: int) -> void { r
 export function wildlife_make(wildlife_st: mut WildlifeState, sp: int, x: float, z: float, legend: bool, yaw: float, variant: int, scale: float, nid: int) -> WildAnimal {
   let s = wildlife_species(wildlife_st, sp)
   if s == null { return null }
-  let a = new WildAnimal
-  wildlife_st.wl_keys += 1
-  a.key = wildlife_st.wl_keys
+  var a = wl_reusable(wildlife_st.wl, sp)
+  let again = a != null
+  if again { wl_forget(wildlife_st.wl, a) } else { a = wl_record(wildlife_st) }
   a.nid = nid
   a.sp = sp
   a.x = x
@@ -46,7 +46,7 @@ export function wildlife_make(wildlife_st: mut WildlifeState, sp: int, x: float,
   a.scale = scale
   a.legend = legend
   a.state = WILD_IDLE
-  wl_file(wildlife_st.wl, a)
+  if again { wl_refile_one(wildlife_st.wl, a) } else { wl_file(wildlife_st.wl, a) }
   WildlifeWorld.born(a)
   return a
 }

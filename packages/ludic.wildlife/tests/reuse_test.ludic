@@ -1,0 +1,67 @@
+# reuse_test.ludic - a newcomer of a species takes the record of one removed for good: the same key
+# (and so the game's drawing), fields as new, its row living again; a legend's is never taken
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+program WildReuseTest {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    forest: fn fk_forest
+    sight: fn fk_sight
+    push: fn fk_push
+    pushed_x: fn fk_pushed_x
+    pushed_z: fn fk_pushed_z
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    hidden: fn fk_is_hidden
+    noise: fn fk_noise_of
+    scent: fn fk_scent_of
+    stillness: fn fk_still_of
+    wind: fn fk_wind_of
+    wind_dir: fn fk_wind_to
+    winterness: fn fk_winter_of
+    about: fn fk_about_of
+    per_range: fn fk_one
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    born: fn fk_on_born
+    spot: fn fk_spot
+  }
+
+
+  test "a removed animal's record is taken by the next of its species, as new, and nothing more is made" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = wildlife_new(wildlife_st, 0, 10.0, 10.0, false)
+    expect(a != null)
+    let key = a.key
+    a.fed = 3
+    a.spook = 50.0
+    wildlife_remove(a)
+    let b = wildlife_new(wildlife_st, 0, 40.0, 40.0, false)
+    expect(b == a)
+    expect_eq(b.key, key)
+    expect(b.alive and b.shown)
+    expect(b.fed == 0 and b.spook == 0.0)
+    expect(wildlife_nearest(wildlife_st, 0, 40.0, 40.0, 5.0) == b)
+    if b.nid != 0 { expect(wildlife_by_nid(wildlife_st, b.nid) == b) }
+    for k in 0 .. 100 {
+      wildlife_remove(b)
+      expect(wildlife_new(wildlife_st, 0, float(k), 0.0, false) == b)
+    }
+  }
+  test "a legend's record is never taken, and another species' neither" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    let l = wildlife_new(wildlife_st, 0, 10.0, 10.0, true)
+    wildlife_remove(l)
+    expect(wildlife_new(wildlife_st, 0, 20.0, 20.0, false) != l)
+    let c = wildlife_new(wildlife_st, 0, 30.0, 30.0, false)
+    wildlife_remove(c)
+    expect(wildlife_new(wildlife_st, 1, 30.0, 30.0, false) != c)
+  }
+}

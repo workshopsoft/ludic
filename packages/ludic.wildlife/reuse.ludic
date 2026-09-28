@@ -1,0 +1,85 @@
+# wildlife/reuse.ludic - a newcomer takes the record of one of its species removed for good: the
+# row, the key and so the game's drawing come with it, and every other field is put back as new
+function wl_reusable(w: WildTable, sp: int) -> WildAnimal {
+  let tb = w.tab
+  for r in 0 .. tb_len(tb) {
+    let a = tb.rec[r]
+    if a.sp == sp and not a.alive and not a.shown and not a.legend and a.crowd_id < 0 { return a }
+  }
+  return null
+}
+# every field but the key and the row as a new record has it
+function wl_blank(a: WildAnimal) -> void {
+  a.nid = 0
+  a.sp = 0
+  a.legend = false
+  a.variant = 0
+  a.scale = 1.0
+  a.alive = true
+  a.shown = true
+  a.pinned = false
+  a.x = 0.0
+  a.y = 0.0
+  a.z = 0.0
+  a.yaw = 0.0
+  a.speed = 0.0
+  a.phase = 0.0
+  a.fly_h = 0.0
+  a.bank = 0.0
+  a.state = 0
+  a.timer = 0.0
+  a.rg = -1
+  a.home_x = 0.0
+  a.home_z = 0.0
+  a.tx = 0.0
+  a.tz = 0.0
+  a.wx = 0.0
+  a.wz = 0.0
+  a.way_t = 0.0
+  a.crowd = false
+  a.crowd_id = -1
+  a.goal_x = 0.0
+  a.goal_z = 0.0
+  a.goal_speed = 0.0
+  a.thirst = 0.0
+  a.hunger = 0.0
+  a.scat_t = 0.0
+  a.track_d = 0.0
+  a.spot = 0
+  a.spot_x = 0.0
+  a.spot_z = 0.0
+  a.spot_water = false
+  a.lure = 0
+  a.lure_kind = 0
+  a.lure_x = 0.0
+  a.lure_z = 0.0
+  a.lure_owner = -1
+  a.calm = 0.0
+  a.fed = 0
+  a.alert = 0.0
+  a.sus_x = 0.0
+  a.sus_z = 0.0
+  a.spook = 0.0
+  a.seen = 0.0
+}
+# its old id out of the map, and every field as new
+function wl_forget(w: WildTable, a: WildAnimal) -> void {
+  if a.nid != 0 { imap_del(w.nids, a.nid) }
+  wl_blank(a)
+}
+# a record of its own, with the next key: only when none of its species waits to be reused
+@alloc_ok("an animal record past the most of its species ever at once; a removed one is reused")
+function wl_record(wildlife_st: mut WildlifeState) -> WildAnimal {
+  let a = new WildAnimal
+  wildlife_st.wl_keys += 1
+  a.key = wildlife_st.wl_keys
+  return a
+}
+# a reused record's row said again from its fields: where it stands, alive, and its new id
+function wl_refile_one(w: WildTable, a: WildAnimal) -> void {
+  let r = wl_row(a)
+  if r < 0 { return }
+  tb_set_xz(w.tab, WA_X, WA_Z, r, a.x, a.z)
+  wildlife_set_alive(a, true)
+  if a.nid != 0 { imap_put(w.nids, a.nid, a.ent) }
+}
