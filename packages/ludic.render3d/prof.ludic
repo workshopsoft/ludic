@@ -15,6 +15,7 @@ const PROF_SLOTS: int = 16
 const PROF_RING:  int = 4            # frames of latency before a result is read
 
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function prof_init(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_on = r3d_env_has(render3d_st, "R3D_PROF")
   if not render3d_st.prof_on { return }

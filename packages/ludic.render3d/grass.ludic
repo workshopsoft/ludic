@@ -87,6 +87,7 @@ function grass_blade_mesh(render3d_st: mut Render3dState, rows: int) -> Mesh {
   return m
 }
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function grass_init(render3d_st: mut Render3dState) -> void {
   render3d_st.grass_merge = gpu_has_mdi(render3d_st) and not r3d_env_has(render3d_st, "R3D_GRASS_TILES")
   var defs = "#define FOLIAGE\n#define BLADE\n#define GBLADE\n"

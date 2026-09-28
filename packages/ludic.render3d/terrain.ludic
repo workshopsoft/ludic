@@ -325,6 +325,7 @@ function terrain_height_smooth(render3d_st: mut Render3dState, x: float, z: floa
   return h
 }
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function terrain_load_textures(render3d_st: mut Render3dState) -> void {
   render3d_st.ter_tex = words(15)
   let a = render3d_st.r3d_assets + "/textures/"
@@ -361,6 +362,7 @@ function terrain_init_step(render3d_st: mut Render3dState, i: int) -> void {
   terrain_init_finish(render3d_st)
 }
 
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function terrain_init_finish(render3d_st: mut Render3dState) -> void {
   cdlod_init(render3d_st)
   render3d_st.ter_wire = r3d_env_has(render3d_st, "R3D_WIRE")
@@ -591,6 +593,7 @@ function terrain_draw(render3d_st: mut Render3dState) -> void {
 # One 32x32 patch mesh (a_xz in 0..1) drawn once per selected quadtree node; the vertex
 # shader places, scales and morphs it. Levels are drawn out to cd_range[k] = 48 * 2^k m,
 # so cells are 1 m within 48 m, 2 m to 96 m, 4 m to 192 m ... 256 m at the root.
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function cdlod_init(render3d_st: mut Render3dState) -> void {
   let m = gpu_mesh_new(render3d_st)
   let n = CD_G + 1
@@ -624,6 +627,7 @@ function cdlod_init(render3d_st: mut Render3dState) -> void {
 }
 
 # min/max height per patch at every level, from the CPU copy of the height field
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function cdlod_bounds(render3d_st: mut Render3dState) -> void {
   render3d_st.cd_min = new []floats;  render3d_st.cd_max = new []floats
   let t = TERRAIN_RES / CD_LEAVES              # texels per leaf patch side
