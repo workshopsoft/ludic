@@ -1,0 +1,48 @@
+# shape_free_test.ludic - a shape let go: its body stands until removed, its id goes to the next
+# shape made, and a ground that comes and goes a thousand times holds no more shapes than at once
+import "ludic.physics"
+import "ludic.base"
+program ShapeFreeTest {
+  numbers float
+  function down(physics_st: mut PhysicsState, x: float, z: float) -> PhysHit {
+    let h = new PhysHit
+    phys_ray(physics_st, x, 50.0, z, 0.0, -100.0, 0.0, PHYS_M_ALL, h)
+    return h
+  }
+  # a flat 33 x 33 field at height y, 2 m cells, its first sample at (ox, 0)
+  function field(physics_st: mut PhysicsState, h: []float, ox: float, y: float) -> int {
+    for i in 0 .. 33 * 33 { h[i] = y }
+    return phys_heightfield(physics_st, h, 33, ox, 0.0, 2.0)
+  }
+
+  test "a body outlives its shape's id, and the id is handed out again" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    let h = floats(33 * 33)
+    let s = field(physics_st, h, 0.0, 3.0)
+    let b = phys_ground_add(physics_st, s)
+    phys_shape_free(physics_st, s)
+    phys_settle(physics_st)
+    expect(Math.abs(down(physics_st, 10.0, 10.0).y - 3.0) < 0.01)
+    expect_eq(field(physics_st, h, 100.0, 5.0), s)
+    phys_remove(physics_st, b)
+    expect(down(physics_st, 10.0, 10.0).body < 0)
+    phys_close(physics_st)
+  }
+
+  test "a thousand chunks in and out hold two shapes and grow nothing" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    let h = floats(33 * 33)
+    let keep = phys_box(physics_st, 1.0, 1.0, 1.0)
+    for k in 0 .. 1000 {
+      let s = field(physics_st, h, float(k % 7) * 64.0, 1.0)
+      let b = phys_ground_add(physics_st, s)
+      phys_remove(physics_st, b)
+      phys_shape_free(physics_st, s)
+    }
+    expect_eq(phys_shapes(physics_st), 1)
+    expect(phys_box(physics_st, 1.0, 1.0, 1.0) != keep)
+    expect_eq(phys_shapes(physics_st), 2)
+    phys_close(physics_st)
+    expect_eq(phys_shapes(physics_st), 0)
+  }
+}

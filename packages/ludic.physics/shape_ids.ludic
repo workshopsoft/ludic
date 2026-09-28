@@ -1,0 +1,33 @@
+# shape_ids.ludic - a shape id is its place in ph_shapes. A shape let go leaves its place to the next
+# one made, so a ground that comes and goes by chunk grows nothing
+
+function ph_keep(physics_st: mut PhysicsState, s: pointer) -> int {
+  if s == null { return -1 }
+  let n = len(physics_st.ph_spare)
+  if n > 0 {
+    let id = physics_st.ph_spare[n - 1]
+    List.pop(physics_st.ph_spare)
+    physics_st.ph_shapes[id] = s
+    return id
+  }
+  push(physics_st.ph_shapes, s)
+  return len(physics_st.ph_shapes) - 1
+}
+
+function ph_shape(physics_st: PhysicsState, id: int) -> pointer {
+  if physics_st.ph_shapes == null or id < 0 or id >= len(physics_st.ph_shapes) { return null }
+  return physics_st.ph_shapes[id]
+}
+
+# a shape let go: a body made with it keeps its own hold until it is removed, and the id may be
+# handed to the next shape made
+export function phys_shape_free(physics_st: mut PhysicsState, id: int) -> void {
+  let s = ph_shape(physics_st, id)
+  if s == null { return }
+  jph_shape_free(s)
+  physics_st.ph_shapes[id] = null
+  push(physics_st.ph_spare, id)
+}
+
+# how many shapes are held: a ground that comes and goes must hold this steady
+export function phys_shapes(physics_st: PhysicsState) -> int { return len(physics_st.ph_shapes) - len(physics_st.ph_spare) }

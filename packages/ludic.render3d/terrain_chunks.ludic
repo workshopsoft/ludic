@@ -1,0 +1,40 @@
+# terrain_chunks.ludic - the height field a chunk at a time, for whatever is built per chunk (the
+# ground's physics, plan 23.5 of maroon-lake): the texels the renderer read back, as they are.
+
+# the ground's height at texel (tx, tz) as the renderer draws it - the cubic B-spline, which at a
+# texel's centre is the separable (1 4 1) / 6 filter of its neighbours, clamped at the map's edge:
+# the same numbers ludic.physics' jph_shape_heightfield_bspline makes of the whole map
+function ter_spline_at(render3d_st: Render3dState, tx: int, tz: int) -> float {
+  var sum = 0.0
+  for d in -1 .. 2 {
+    let z = min(max(tz + d, 0), TERRAIN_RES - 1)
+    let r = z * TERRAIN_RES
+    let row = (render3d_st.ter_heights[r + max(tx - 1, 0)] + 4.0 * render3d_st.ter_heights[r + tx] + render3d_st.ter_heights[r + min(tx + 1, TERRAIN_RES - 1)]) / 6.0
+    if d == 0 { sum = sum + 4.0 * row } else { sum = sum + row }
+  }
+  return sum / 6.0
+}
+
+# The heights of chunk (i, j) of a size_m grid laid from the terrain's corner (ter_ox - TERRAIN_HALF,
+# ter_oz - TERRAIN_HALF): n x n samples, row-major (z rows, x across), sample (a, b) at corner +
+# (i * size_m + a * size_m / (n - 1), j * size_m + b * size_m / (n - 1)), each the ground's
+# B-spline height at the texel under it (ter_spline_at: what the physics ground is built from).
+# Neighbours share their edge row and column, so seams agree to the bit. Into `out` (n * n floats,
+# the caller's, reused), nothing allocated. The read-back lives from terrain_generate to
+# terrain_unload - the whole of a map - so a chunk can be read any time between; false when there
+# is none (a plate, or before the map is made).
+function terrain_chunk_heights(render3d_st: Render3dState, i: int, j: int, size_m: float, n: int, out: floats) -> bool {
+  if render3d_st.ter_heights == null or n < 2 or len(out) < n * n { return false }
+  let texel = 2.0 * float(render3d_st.TERRAIN_HALF) / float(TERRAIN_RES)
+  let step = size_m / float(n - 1)
+  let x0 = float(i) * size_m
+  let z0 = float(j) * size_m
+  for b in 0 .. n {
+    let tz = min(max(int((z0 + float(b) * step) / texel + 0.5), 0), TERRAIN_RES - 1)
+    for a in 0 .. n {
+      let tx = min(max(int((x0 + float(a) * step) / texel + 0.5), 0), TERRAIN_RES - 1)
+      out[b * n + a] = ter_spline_at(render3d_st, tx, tz)
+    }
+  }
+  return true
+}
