@@ -11,7 +11,7 @@ program Steady {
   property Marker { on: int = 1 }
   model Anchor { Marker }
 
-  function scene_draw(render3d_st: mut Render3dState) -> void { }
+  function scene_draw(render3d_st: mut Render3dState) -> void { actor_draw(render3d_st) }
   function scene_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void { }
   function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
 
@@ -70,6 +70,29 @@ program Steady {
     return settled(render3d_st) - before
   }
 
+  # bytes gained while a frame draws more and more: 20 actors to 200, 30 frames at each count.
+  # MoltenVK's command pooling kept every command a frame had recorded (~650 bytes a draw more).
+  function ramp_rounds(render3d_st: mut Render3dState, m: Model) -> long {
+    let acts = new []Actor
+    for i in 0 .. 200 {
+      let a = actor_new(render3d_st, m)
+      a.cull = 0.0
+      a.visible = false
+      actor_place(a, float(i % 20) - 10.0, 0.0, -float(i / 20), 0.0)
+      push(acts, a)
+    }
+    for i in 0 .. 20 { acts[i].visible = true }
+    frame_rounds(render3d_st, 30)
+    let before = settled(render3d_st)
+    for k in 2 .. 11 {
+      for i in 0 .. k * 20 { acts[i].visible = true }
+      frame_rounds(render3d_st, 30)
+    }
+    let grew = settled(render3d_st) - before
+    for i in 0 .. 200 { actor_release(render3d_st, acts[i]) }
+    return grew
+  }
+
   # bytes gained over n parses of a glTF document, each freed whole (Json.free_all): strings too
   function parse_rounds(render3d_st: Render3dState, text: string, n: int) -> long {
     let before = settled(render3d_st)
@@ -107,10 +130,11 @@ program Steady {
     let am = gltf_load(render3d_st, "packages/ludic.lab/plate", "plate.gltf", "plate")
     actor_rounds(render3d_st, am, 20)
     let grew_a = actor_rounds(render3d_st, am, 2000)
+    let grew_r = ramp_rounds(render3d_st, am)
     let text = Fs.read_text("packages/ludic.lab/plate/plate.gltf")
     parse_rounds(render3d_st, text, 20)
     let grew_p = parse_rounds(render3d_st, text, 200)
-    print(`steady: the buffer path gained {grew_b} bytes over 5000 rounds, the frame {grew_f} over 600, a glTF parsed and freed {grew_p} over 200, a model loaded and let go {grew_m} over 200, an actor placed and released {grew_a} over 2000`)
+    print(`steady: the buffer path gained {grew_b} bytes over 5000 rounds, the frame {grew_f} over 600, a glTF parsed and freed {grew_p} over 200, a model loaded and let go {grew_m} over 200, an actor placed and released {grew_a} over 2000, a frame drawing 20 to 200 actors {grew_r}`)
     # a few KB of slack for what the system's own libraries keep (Metal's caches, the allocator)
     var ok = grew_b < 16384
     if not ok { print("steady: FAILED - releasing and making a buffer again leaves memory behind") }
@@ -131,6 +155,10 @@ program Steady {
     if grew_a >= 4096 {
       ok = false
       print("steady: FAILED - an actor placed and released leaves memory behind")
+    }
+    if grew_r >= 16384 {
+      ok = false
+      print("steady: FAILED - a frame drawing more than before leaves memory behind")
     }
     if ok { print("STEADY OK") } else { print("STEADY FAILED") }
     quit()

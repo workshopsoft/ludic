@@ -48,8 +48,18 @@ function gvk_surface_ext() -> string {
   return VK_KHR_WIN32_SURFACE_EXTENSION_NAME
 }
 
+# MoltenVK's command pooling keeps every command object a frame ever recorded and never gives one
+# back, so the heap grew each time a frame drew more than any before (~650 bytes a draw, for as long
+# as the game ran). Off, the objects are made and freed with their command buffer, at no measured
+# cost (3.7 ms either way over 520 actors). Read when the library loads, so before any Vk call.
+function gvk_no_command_pooling() -> void {
+  if Os.platform() != "macos" or Os.has_env("MVK_CONFIG_USE_COMMAND_POOLING") { return }
+  Os.set_env("MVK_CONFIG_USE_COMMAND_POOLING", "0")
+}
+
 function gvk_init(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gvk_ready { return true }
+  gvk_no_command_pooling()
   gsl_boot(render3d_st)
   if Vk.open() == 0 { render3d_st.gvk_why = "no Vulkan loader";  return false }
   gsl_init(render3d_st)
