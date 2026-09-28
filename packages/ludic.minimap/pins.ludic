@@ -66,7 +66,7 @@ export function minimap_pin_put(minimap_st: mut MinimapState, x: float, z: float
 
 # the i-th mark, or an empty one past the end
 export function minimap_pin(minimap_st: MinimapState, i: int) -> MinimapPin {
-  if i < 0 or i >= minimap_pin_count(minimap_st) { return new MinimapPin }
+  if i < 0 or i >= minimap_pin_count(minimap_st) { return minimap_st.mm_none }
   return minimap_st.mm_pins[i]
 }
 

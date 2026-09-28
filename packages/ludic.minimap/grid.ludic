@@ -1,6 +1,7 @@
 # grid.ludic - the explored grid: square cells round the origin, and the part of it "explored" is
 # measured over (a core, so a bigger grid does not change what a share of it means)
 export state MinimapState {
+  mm_none: MinimapPin = new MinimapPin   # minimap_pin past the end: an empty mark, the same one each time
   mm_near: []int = new []int    # minimap_pins_near's answer, cleared and refilled: a compass asks every frame
   mm_land_n: int = 0            # land cells in the core, counted once per origin
   mm_land_ox: float = 0.0

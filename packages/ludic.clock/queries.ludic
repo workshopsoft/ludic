@@ -12,13 +12,24 @@ export function clock_hours_in(clock_st: ClockState, dt: float) -> float { retur
 
 export function clock_is_night(clock_st: ClockState) -> bool { return clock_st.ck_hours > clock_st.ck_night_from or clock_st.ck_hours < clock_st.ck_night_to }
 
-# "07:05"
+# "07:05", from the table the state was made with
 export function clock_hhmm(clock_st: ClockState) -> string {
   let h = int(Math.floor(clock_st.ck_hours))
   let m = int(Math.floor((clock_st.ck_hours - float(h)) * 60.0))
-  var hs = `{h}`
-  var ms = `{m}`
-  if h < 10 { hs = `0{h}` }
-  if m < 10 { ms = `0{m}` }
-  return hs + ":" + ms
+  return clock_st.ck_hhmm_tab[Math.clamp(h, 0, 23) * 60 + Math.clamp(m, 0, 59)]
+}
+
+@alloc_ok("once: the day's 1440 times, made with the state")
+function ck_hhmm_table() -> []string {
+  let out = new []string
+  for t in 0 .. 1440 {
+    let h = t / 60
+    let m = t % 60
+    var hs = `{h}`
+    var ms = `{m}`
+    if h < 10 { hs = `0{h}` }
+    if m < 10 { ms = `0{m}` }
+    push(out, hs + ":" + ms)
+  }
+  return out
 }

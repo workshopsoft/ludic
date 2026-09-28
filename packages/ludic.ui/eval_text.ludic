@@ -22,6 +22,11 @@ function ev_text(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
     if m.tags[i] == MM_TEXT and tx_same(ps, m.keys[i]) { return m.vals[i] }
     at = (at + 1) & (MM_CAP - 1)
   }
+  return ev_text_new(ui_st, m, ps)
+}
+# a text read this way for the first time: joined, and kept in the memo with its Value
+@alloc_ok("a memo miss: once per distinct text, bounded by MM_CAP")
+function ev_text_new(ui_st: mut UiState, m: UiMemo, ps: []string) -> Val {
   var out = ""
   for p in 0 .. len(ps) { out = out + ps[p] }
   let j = mm_add(m, MM_TEXT, out)
