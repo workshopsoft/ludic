@@ -4,13 +4,21 @@
 export function wildlife_put_away(wildlife_st: mut WildlifeState) -> void {
   if wildlife_st.wl_own != null { return }
   wildlife_st.wl_own = wildlife_st.wl
-  wildlife_st.wl = wl__new()
+  wl__empty(wildlife_st.wl_host)
+  wildlife_st.wl = wildlife_st.wl_host
 }
 
 export function wildlife_bring_back(wildlife_st: mut WildlifeState) -> void {
   if wildlife_st.wl_own == null { return }
+  wildlife_st.wl_host = wildlife_st.wl
   wildlife_st.wl = wildlife_st.wl_own
   wildlife_st.wl_own = null
 }
 
 export function wildlife_away(wildlife_st: WildlifeState) -> bool { return wildlife_st.wl_own != null }
+
+# every animal gone from a table, keeping its rows' room for the next party
+function wl__empty(w: WildTable) -> void {
+  tb_clear(w.tab)
+  imap_clear(w.nids)
+}

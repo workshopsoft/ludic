@@ -39,6 +39,7 @@ export state WildlifeState {
   wl_ffree: []WildFact = new []WildFact   # of those, the ones free at the last look
   wl_fnext: []int = words(1)              # the next of them to hand out
   wl_own: WildTable = null   # a guest's own animals, put away whole while it draws the host's
+  wl_host: WildTable = wl__new()   # the table the host's are drawn into: made once, cleared per join
   wl_px: float = 0.0
   wl_pz: float = 0.0
   wl_ask: WildLure = new WildLure
