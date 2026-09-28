@@ -31,6 +31,7 @@ function ct_value_text(n: UiNode) -> string {
   return s + ui_attr_text(n, "unit")
 }
 # a number with `places` digits after the point, rounded
+@alloc_ok("a memo miss (ct_value_shown): once per value a range shows")
 function ct_fixed(f: float, places: int) -> string {
   var k = 1
   for i in 0 .. Math.max(places, 0) { k = k * 10 }

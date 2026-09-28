@@ -1,11 +1,13 @@
 # pointer_ring.ludic - a pointer event's record and the Value its handler is given, made once
 # events are made once and taken in turn: more than a frame fires before its handlers have run
 const PE_RING: int = 16
+@alloc_ok("once: made with the state")
 function pe_evs__new() -> []UiPointer {
   let xs = new []UiPointer
   for i in 0 .. PE_RING { push(xs, new UiPointer) }
   return xs
 }
+@alloc_ok("once: made with the state")
 function pe_vals__new() -> []Val {
   let xs = new []Val
   for i in 0 .. PE_RING {

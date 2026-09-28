@@ -26,14 +26,8 @@ function el_url(s: string) -> string {
 function el_border_image(ui_st: mut UiState, n: UiNode, s: string) -> void {
   let m = mm_of(ui_st)
   var at = mm_find(m, MM_BIMG, s)
-  if at < 0 {
-    var close = 0
-    while close < len(s) and s[close] != 41 { close += 1 }
-    at = mm_add(m, MM_BIMG, s)
-    if at < 0 { return }
-    m.texts[at] = el_url(s[0..Math.min(close + 1, len(s))])
-    m.lists[at] = lss_split(s[Math.min(close + 1, len(s))..len(s)], 47)
-  }
+  if at < 0 { at = el_bimg_read(m, s) }
+  if at < 0 { return }
   n.bi_src = m.texts[at]
   let rest = m.lists[at]
   n.bi_slice = el_num(tw(ui_st, rest[0]))
@@ -94,4 +88,15 @@ function el_secs(ui_st: mut UiState, s: string) -> float {
     }
   }
   return 0.0
+}
+
+@alloc_ok("a memo miss: once per border-image value, bounded by MM_CAP")
+function el_bimg_read(m: UiMemo, s: string) -> int {
+  var close = 0
+  while close < len(s) and s[close] != 41 { close += 1 }
+  let at = mm_add(m, MM_BIMG, s)
+  if at < 0 { return -1 }
+  m.texts[at] = el_url(s[0..Math.min(close + 1, len(s))])
+  m.lists[at] = lss_split(s[Math.min(close + 1, len(s))..len(s)], 47)
+  return at
 }

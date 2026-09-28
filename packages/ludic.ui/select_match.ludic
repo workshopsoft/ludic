@@ -77,7 +77,7 @@ function sel_pseudo_ok(ui_st: mut UiState, p: string, arg: string, n: UiNode) ->
   if p == "checked" { return ui_attr_on(n, "checked") }
   if p == "active" { return fr_active(ui_st, n) }
   if p == "capturing" { return ui_st.ct_capture != "" and n.key == ui_st.ct_capture }
-  if p == "nth-child" { return sel_nth(arg, n.index + 1) }
+  if p == "nth-child" { return sel_nth(ui_st, arg, n.index + 1) }
   @alloc_ok("only when a template is wrong: a broken screen, never a working one")
   ui_err(ui_st, `:{p}: there is no such pseudo-class here`)
   return false

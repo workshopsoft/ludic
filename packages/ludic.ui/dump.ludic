@@ -11,6 +11,7 @@ export function ui_dump(n: UiNode, depth: int) -> string {
   return out
 }
 # tag#id.class.class, or the kind of a node the template did not name
+@alloc_ok("developer builds only, once, under LUDIC_UI_DUMP")
 function dp_name(n: UiNode) -> string {
   var s = n.tag
   if s == "" { s = `({n.kind})` }
@@ -21,6 +22,7 @@ function dp_name(n: UiNode) -> string {
   return s
 }
 # the computed styles that differ from an element's defaults
+@alloc_ok("developer builds only, once, under LUDIC_UI_DUMP")
 function dp_style(n: UiNode) -> string {
   var s = ""
   if n.size > 0.0 { s = s + ` font {int(n.size)}` }

@@ -55,6 +55,8 @@ export state UiState {
   pe_evs: []UiPointer = pe_evs__new()   # pointer_events.ludic: an event's record and its Value, a ring
   pe_vals: []Val = pe_vals__new()
   pe_at: int = 0
+  nth_a: int = 0                         # select_nth.ludic: the a and b just read
+  nth_b: int = 0
   tt_src: string = null                  # tooltip.ludic: the title tt_text was translated from
   fit_out: []float = new []float         # draw_content.ludic: an image's box, kept
   r3n_cut: []float = new []float         # render3d_nine.ludic: a nine-slice's edges, kept

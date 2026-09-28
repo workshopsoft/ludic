@@ -27,6 +27,7 @@ function lss_file(ui_st: mut UiState, src: string, path: string) -> UiFile {
   f.sheet = sheet_of(f)
   return f
 }
+@alloc_ok("a stylesheet being read: once per component class (uc_load)")
 function lss_text(ui_st: mut UiState, f: UiFile, src: string) -> void {
   let err = new []string
   lss_block(ui_st, f, lss_strip(src), null, err)

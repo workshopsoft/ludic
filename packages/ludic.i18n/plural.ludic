@@ -5,6 +5,7 @@ export const PL_ABOVE_ONE: int = 1   # French, Portuguese (0 and 1 are singular)
 export const PL_ONE_FORM: int = 2    # Japanese, Chinese
 export const PL_SLAVIC: int = 3      # Russian, Ukrainian: one, few, many
 
+@alloc_ok("on a language change: its plural rule read from the header")
 function plural_rule_of(h: string) -> int {
   let k = i18n_find(h, len(h), 0, "plural=", 7)
   if k < 0 { return PL_NOT_ONE }
@@ -56,6 +57,7 @@ export function Ln(i18n_st: I18nState, one: string, many: string, n: int) -> str
   return count_in(t, n)
 }
 
+@alloc_ok("a counted line (Ln) made when the game asks for one, outside a frame; its caller keeps it")
 function count_in(t: string, n: int) -> string {
   let m = len(t)
   var r = ""

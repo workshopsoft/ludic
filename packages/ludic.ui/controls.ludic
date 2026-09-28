@@ -68,6 +68,7 @@ function ct_drag(ui_st: mut UiState, root: UiNode, key: string, x: float, y: flo
   if n != null { ct_press(ui_st, n, x, y) }
 }
 # typing into a focused text field, or the key a key field is waiting for
+@alloc_ok("on a key typed into a field, not a frame")
 function ct_typed(ui_st: mut UiState, n: UiNode) -> void {
   let t = ct_type(n)
   if t == "key" { ct_key_typed(ui_st, n) }

@@ -12,6 +12,7 @@ function an_now(ui_st: UiState) -> float {
   return float(ui_st.an_frame) / 60.0
 }
 # @keyframes NAME { from {...} 50% {...} to {...} }
+@alloc_ok("a stylesheet being read: once per component class (uc_load)")
 function an_read(ui_st: mut UiState, name: string, body: string, err: []string) -> void {
   let k = new UiKeyframes
   k.name = tpl_words(name)

@@ -16,6 +16,7 @@ export property UiTpl {
   raw: string = ""              # a <style>'s text, which is not a template's
   where: string = ""            # file:line, for an error
 }
+@alloc_ok("a template being read: once per component class (uc_load)")
 function tpl_read(ui_st: mut UiState, x: Xml, file: string) -> UiTpl {
   let t = new UiTpl
   t.tag = Xml.tag(x)

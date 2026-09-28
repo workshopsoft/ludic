@@ -37,6 +37,7 @@ function ct_num_step(ui_st: mut UiState, n: UiNode, d: int) -> void {
   ct_num_set(ui_st, n, base + ct_num_step_of(n) * float(d))
 }
 # what was typed this frame, the characters a number can hold; Backspace takes one back
+@alloc_ok("on a key typed into a number field, not a frame")
 function ct_num_typed(ui_st: mut UiState, n: UiNode) -> void {
   if ui_st.fc_key != n.key or (ui_st.in_now.typed == "" and not ui_st.in_now.backspace) { return }
   if ui_st.ct_num_key != n.key {

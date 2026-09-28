@@ -13,6 +13,7 @@ function sel_attr(r: UiRd, s: UiSel) -> void {
   }
   if not rd_op(r, "]") { rd_fail(r, "']'") }
 }
+@alloc_ok("a stylesheet being read: once per component class (uc_load)")
 function sel_pseudo(r: UiRd, s: UiSel) -> void {
   r.i += 1
   let name = sel_name(r)

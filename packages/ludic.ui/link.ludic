@@ -28,6 +28,7 @@ function lk_in(words: string, w: string) -> bool {
   return false
 }
 # `any` finds an unexported one too, to say why it cannot be used
+@alloc_ok("a template being linked: once per component class (uc_load)")
 function lk_find(f: UiFile, tag: string, any: bool) -> UiTpl {
   var colon = -1
   for i in 0 .. len(tag) {
