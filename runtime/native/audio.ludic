@@ -2,7 +2,7 @@
 # audio.ludic — the Audio.* standard library (#22).
 #
 # A small, game-shaped sound API over the platform audio backend (audio.ll,
-# AVAudioPlayer on macOS). A sound is loaded once into a handle; sfx are fired
+# AVAudioEngine on macOS). A sound is loaded once into a handle; sfx are fired
 # one-shot, music plays on a single looping channel. Playback itself is not part
 # of the deterministic simulation — the device output is real-time and
 # non-deterministic — but every *trigger* here is an ordinary function call the
@@ -21,7 +21,7 @@ const AUDIO_CAP: int = 64          # max simultaneously-loaded sounds
 
 export state RtAudioState {
   snd_ready:   bool  = false
-  snd_tab:     pointers = null    # handle (1-based) -> AVAudioPlayer pointer
+  snd_tab:     pointers = null    # handle (1-based) -> the backend's voice pointer
   snd_master:  fixed = 1.0        # master volume, applied to every play (and to audio_play_at's gain)
   snd_rate:    fixed = 1.0        # playback rate / pitch (1.0 = normal)
   snd_music:   int   = 0          # the handle currently playing as music (0 = none)
@@ -124,7 +124,7 @@ function audio_play_at(rt_audio_st: mut RtAudioState, id: int, gain: fixed, pitc
   if pn < -1.0 { pn = -1.0 }
   if pn > 1.0 { pn = 1.0 }
   var pt = pitch
-  if pt < 0.25 { pt = 0.25 }         # AVAudioPlayer's own rate range
+  if pt < 0.25 { pt = 0.25 }         # the varispeed's own rate range
   if pt > 4.0 { pt = 4.0 }
   snd_set_pan(p, pn)
   snd_play(p, 0, pt, g * rt_audio_st.snd_master)
