@@ -196,6 +196,7 @@ function wb_wet(render3d_st: mut Render3dState, x: float, z: float, off: float) 
 # walk of every rectangle, every frame. The body beyond the map (a sea runs far past it) is 64 x 64
 # coarse rectangles tested at their centre, in one last block, which only ever matter kilometres away.
 const WB_BLOCK: int = 8
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function water_cells_build(render3d_st: mut Render3dState) -> void {
   let bx0 = render3d_st.water_cx - render3d_st.water_ex;  let bx1 = render3d_st.water_cx + render3d_st.water_ex
   let bz0 = render3d_st.water_cz - render3d_st.water_ez;  let bz1 = render3d_st.water_cz + render3d_st.water_ez
@@ -256,6 +257,7 @@ function water_cells_build(render3d_st: mut Render3dState) -> void {
 }
 
 # the program and the plane are the process's, built once; the bodies are the map's
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function water_setup(render3d_st: mut Render3dState) -> void {
   if render3d_st.water_prog != 0 { return }
   render3d_st.water_mesh = mesh_grid(render3d_st, 2, 0.5)

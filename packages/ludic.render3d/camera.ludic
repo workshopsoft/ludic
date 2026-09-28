@@ -33,10 +33,10 @@ function cam_update(render3d_st: mut Render3dState) -> void {
   let cp = Math.cos(render3d_st.cam_pitch);  let sp = Math.sin(render3d_st.cam_pitch)
   v3_set(render3d_st.cam_fwd, -(sy * cp), sp, -(cy * cp))
   v3_set(render3d_st.cam_right, cy, 0.0, -sy)
-  let at = floats(3)
-  v3_add(at, render3d_st.cam_pos, render3d_st.cam_fwd)
-  let up = v3_new(0.0, 1.0, 0.0)
-  m4_look_at(render3d_st.cam_view, render3d_st.cam_pos, at, up)
+  let px = render3d_st.cam_pos[0]
+  let py = render3d_st.cam_pos[1]
+  let pz = render3d_st.cam_pos[2]
+  m4_look_at_xyz(render3d_st.cam_view, px, py, pz, px + render3d_st.cam_fwd[0], py + render3d_st.cam_fwd[1], pz + render3d_st.cam_fwd[2], 0.0, 1.0, 0.0)
   m4_perspective(render3d_st.cam_proj, render3d_st.cam_fov, render3d_st.cam_aspect, render3d_st.cam_near, render3d_st.cam_far)
   m4_mul(render3d_st.cam_vp_clean, render3d_st.cam_proj, render3d_st.cam_view)
   m4_inverse(render3d_st.cam_inv_vp_clean, render3d_st.cam_vp_clean)
@@ -49,7 +49,6 @@ function cam_update(render3d_st: mut Render3dState) -> void {
   m4_mul(render3d_st.cam_vp, render3d_st.cam_proj, render3d_st.cam_view)
   m4_inverse(render3d_st.cam_inv_vp, render3d_st.cam_vp)
   m4_inverse(render3d_st.cam_inv_proj, render3d_st.cam_proj)
-  free(at);  free(up)
   cam_planes_update(render3d_st)
 }
 function cam_planes_update(render3d_st: mut Render3dState) -> void {

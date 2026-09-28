@@ -44,6 +44,7 @@ property Stream {
 
 # microseconds spent per frame, split so the hitch can be attributed (R3D_PROF=1)
 
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function stream_new(render3d_st: mut Render3dState, layer: Layer, size: float, reach: float, b0: float, b1: float, b2: float, b3: float) -> Stream {
   if not render3d_st.stream_cap_read {
     render3d_st.stream_cap_read = true
@@ -315,6 +316,7 @@ function stream_chunk_visible(render3d_st: Render3dState, s: Stream, cx: int, cz
 }
 
 # what the caches hold, and whether they are being churned (R3D_PROF)
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function stream_census(render3d_st: Render3dState) -> void {
   if render3d_st.stream_all == null { return }
   print("")

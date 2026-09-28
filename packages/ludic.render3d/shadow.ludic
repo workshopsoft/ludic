@@ -185,6 +185,7 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
 }
 
 # Debug: cascade depths as grey PPMs (build/dbg_shadow_<c>.ppm)
+@alloc_ok("asked for by the player or a tool, not by the frame")
 function shadow_dump(render3d_st: mut Render3dState) -> void {
   let n = render3d_st.shadow_res * render3d_st.shadow_res
   let buf = floats(n * SHADOW_CASCADES)
