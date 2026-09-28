@@ -63,4 +63,35 @@ program TilesTest {
     expect_eq(a, b)
     expect_near(last_x(nav_st), ax, 0.0001)
   }
+
+  test "a saved mesh as an index: only the tiles near a player are in, and they come and go" (nav_st: mut NavState) {
+    expect_eq(map(nav_st, false), 0)
+    let path = Os.temp_dir() + "/ludic_nav_resident.navmesh"
+    expect(nav_save_file(nav_st, NAV_PERSON, path))
+    nav_reset(nav_st)
+    expect(nav_load_index(nav_st, NAV_PERSON, path))
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 0)
+    expect(not nav_nearest(nav_st, NAV_PERSON, 20.0, 0.0, 20.0))
+    let xs = floats(1)
+    let zs = floats(1)
+    xs[0] = 20.0
+    zs[0] = 20.0
+    expect_eq(nav_tiles_keep(nav_st, NAV_PERSON, xs, zs, 1, 60.0, 90.0), 1)
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 1)
+    expect(nav_nearest(nav_st, NAV_PERSON, 20.0, 0.0, 20.0))
+    expect(not nav_nearest(nav_st, NAV_PERSON, 100.0, 0.0, 100.0))
+    xs[0] = 64.0
+    zs[0] = 64.0
+    expect_eq(nav_tiles_keep(nav_st, NAV_PERSON, xs, zs, 1, 60.0, 90.0), 3)
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 4)
+    expect(nav_path(nav_st, NAV_PERSON, 0, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0) >= 3)
+    expect(not nav_partial(nav_st, NAV_PERSON))
+    xs[0] = 110.0
+    zs[0] = 110.0
+    expect_eq(nav_tiles_keep(nav_st, NAV_PERSON, xs, zs, 1, 60.0, 90.0), 1)
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 3)
+    expect(not nav_nearest(nav_st, NAV_PERSON, 20.0, 0.0, 20.0))
+    nav_reset(nav_st)
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 0)
+  }
 }

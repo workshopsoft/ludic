@@ -82,3 +82,12 @@ and `nav_crowd_us()` is what the stepping has cost. `nav_crowd_add_fixed` adds a
 but never steers (a player), which `nav_crowd_place` puts where it is, and how fast it goes, each frame. The mechanic decides and the crowd moves, and
 dropping a mesh drops its crowd first. On the test meadow, twenty walkers crossing head-on never come
 closer than their two radii, and a step costs about 12 us.
+
+## Tiles resident by chunk (phase 23.5b)
+
+`nav_load_index(kind, path)` loads a baked mesh as an index of its tiles and keeps its file open,
+with no tile in yet. `nav_tiles_keep(kind, xs, zs, n, rin, rout)` reads in the tiles within `rin`
+of any of the n points and lets go of those past `rout` of all of them. It is asked now and then,
+not every frame. The file is read through `file_open`, so a shipped game reads straight from its
+pack. `nav_tiles_in` / `_bytes` / `_all` say what is resident. Dropping the mesh closes the file.
+On Maroon the 900 / 1100 m ring round the start holds 617 of 1807 tiles, 8.9 MB of a person's mesh.

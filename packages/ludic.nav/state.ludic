@@ -47,6 +47,8 @@ export state NavState {
   nv_short: int = 0
   nv_crowds: []pointer = nv_none() # a crowd per kind, on that kind's mesh (crowd.ludic)
   nv_agent: []float = floats(6)    # the last walker read: position, velocity
+  nv_files: []pointer = nv_none()  # a file-backed mesh's file, kept open for its tiles (resident.ludic)
+  nv_tile: []float = floats(4)     # the last tile asked about: centre x, z, in, bytes
 }
 function nv_none() -> []pointer {
   let m = new []pointer
@@ -60,6 +62,8 @@ function nv_mesh(nav_st: NavState, kind: int) -> pointer {
 function nv_set(nav_st: mut NavState, kind: int, h: pointer) -> bool {
   if kind < 0 or kind >= NAV_KINDS { return false }
   nv_crowd_drop(nav_st, kind)
+  if nav_st.nv_files[kind] != null { file_close(nav_st.nv_files[kind]) }
+  nav_st.nv_files[kind] = null
   if nav_st.nv_meshes[kind] != null { nvc_free(nav_st.nv_meshes[kind]) }
   nav_st.nv_meshes[kind] = h
   return h != null

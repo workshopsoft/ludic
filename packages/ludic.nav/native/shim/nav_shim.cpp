@@ -43,6 +43,14 @@ const int NAV_MAX_POLYS = 512;     // polygons a path may cross; a longer one is
 const int NAV_MAX_NODES = 4096;    // the search's open list
 const int NAV_FILTERS = 8;         // costs per kind of ground: one set per kind of walker's taste
 
+// one tile of a file-backed mesh (nav_resident.inl): its cell, where its bytes are, whether it is in
+struct NavTileRec {
+  int x = 0, y = 0, size = 0;
+  long long offset = 0;
+  unsigned long long ref = 0;
+  bool in = false;
+};
+
 // a navmesh and the one query that walks it, with the scratch a path needs
 struct Nav {
   dtNavMesh *mesh = nullptr;
@@ -52,6 +60,7 @@ struct Nav {
   dtPolyRef polys[NAV_MAX_POLYS];
   int partial = 0;                     // the last path stopped short of its end
   long long ns = 0;                    // time spent finding paths, for the measure (17.10)
+  std::vector<NavTileRec> tiles;       // a file-backed mesh's index; empty for a built or loaded one
 };
 
 // a navmesh with its query, from params (a set of tiles) or from one tile's data
@@ -79,3 +88,4 @@ const dtQueryFilter *nav_filter(Nav *n, int f) { return &n->filters[f >= 0 && f 
 #include "nav_tiles.inl"
 #include "nav_query.inl"
 #include "nav_crowd.inl"
+#include "nav_resident.inl"
