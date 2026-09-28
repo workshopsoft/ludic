@@ -1,0 +1,85 @@
+# resident.ludic - a baked mesh whose tiles are resident by chunk (phase 23.5b): its file is indexed
+# once and kept open, and a tile is read in when a player comes within `rin` of it and let go when
+# every player is past `rout`. Only the index and the tiles near someone are in memory.
+
+# kind's mesh as an index of the file at `path`, with no tile in yet; false when it is not a mesh
+export function nav_load_index(nav_st: mut NavState, kind: int, path: string) -> bool {
+  let f = file_open(path, "rb")
+  if f == null { return false }
+  let rec = nvc_stage(40)
+  var ok = file_read(f, rec, 40) == 40
+  var h: pointer = null
+  if ok { h = nvc_index_open(rec) }
+  if h != null {
+    let count = nvc_index_count_in(rec)
+    var at = 40
+    for i in 0 .. count {
+      file_seek(f, at, 0)
+      if file_read(f, rec, 28) != 28 { break }
+      let n = nvc_index_put(h, rec, long(at))
+      if n < 0 { break }
+      at = at + 12 + n
+    }
+  }
+  nvc_unstage(rec)
+  if not nv_set(nav_st, kind, h) {
+    file_close(f)
+    return false
+  }
+  nav_st.nv_files[kind] = f
+  return true
+}
+
+# tiles within rin of any of the n points (xs, zs) read in, those past rout of all of them let go;
+# how many changed. Asked now and then (a second), not every frame
+export function nav_tiles_keep(nav_st: NavState, kind: int, xs: []float, zs: []float, n: int, rin: float, rout: float) -> int {
+  let h = nv_mesh(nav_st, kind)
+  let f = nav_st.nv_files[kind]
+  if h == null or f == null { return 0 }
+  var changed = 0
+  for i in 0 .. nvc_index_count(h) {
+    nvc_index_tile(h, i, nav_st.nv_tile)
+    var best = 1000000000000.0
+    for p in 0 .. n {
+      let dx = xs[p] - nav_st.nv_tile[0]
+      let dz = zs[p] - nav_st.nv_tile[1]
+      best = Math.min(best, dx * dx + dz * dz)
+    }
+    let is_in = nav_st.nv_tile[2] > 0.5
+    if is_in and best > rout * rout { changed += nvc_index_out(h, i) }
+    if not is_in and best < rin * rin { changed += nv_tile_read(h, f, i) }
+  }
+  return changed
+}
+function nv_tile_read(h: pointer, f: pointer, i: int) -> int {
+  let size = nvc_index_size(h, i)
+  let buf = nvc_stage(size)
+  if buf == null { return 0 }
+  file_seek(f, int(nvc_index_offset(h, i)), 0)
+  if file_read(f, buf, size) != size {
+    nvc_unstage(buf)
+    return 0
+  }
+  return nvc_index_in(h, i, buf, size)
+}
+
+# how many of kind's tiles are in, and (nav_tiles_bytes) how many bytes those hold
+export function nav_tiles_in(nav_st: NavState, kind: int) -> int { return nv_tiles_sum(nav_st, kind, false) }
+export function nav_tiles_bytes(nav_st: NavState, kind: int) -> int { return nv_tiles_sum(nav_st, kind, true) }
+function nv_tiles_sum(nav_st: NavState, kind: int, bytes: bool) -> int {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return 0 }
+  var n = 0
+  for i in 0 .. nvc_index_count(h) {
+    nvc_index_tile(h, i, nav_st.nv_tile)
+    if nav_st.nv_tile[2] > 0.5 and bytes { n += int(nav_st.nv_tile[3]) }
+    if nav_st.nv_tile[2] > 0.5 and not bytes { n += 1 }
+  }
+  return n
+}
+# how many tiles kind's file holds in all
+export function nav_tiles_all(nav_st: NavState, kind: int) -> int {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return 0 }
+  return nvc_index_count(h)
+}

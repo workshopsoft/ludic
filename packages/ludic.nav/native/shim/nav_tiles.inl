@@ -103,6 +103,7 @@ NAV_SHIM void *nav_load(const unsigned char *buf, int size) {
 
 // a file read straight into the shim's own memory rather than a Ludic slice (which is never given
 // back): nav_stage hands out the room, nav_load_staged parses it and frees it, whatever the outcome
+NAV_SHIM void nav_unstage(unsigned char *buf) { free(buf); }
 NAV_SHIM unsigned char *nav_stage(int size) { return size > 0 ? static_cast<unsigned char *>(malloc(size)) : nullptr; }
 NAV_SHIM void *nav_load_staged(unsigned char *buf, int size) {
   void *h = buf ? nav_load(buf, size) : nullptr;
