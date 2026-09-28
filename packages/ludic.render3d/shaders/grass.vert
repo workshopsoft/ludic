@@ -15,6 +15,9 @@ uniform mat4 u_vp;
 uniform vec3 u_cam_pos;
 uniform float u_time;
 uniform sampler2D u_ts_height;
+// the baked terrain normal: x and z in RG16F, y rebuilt (a terrain normal always points up)
+uniform sampler2D u_ter_normal;
+vec3 terNormal(vec2 uv) { vec2 xz = textureLod(u_ter_normal, uv, 0.0).rg;  return vec3(xz.x, sqrt(max(1.0 - dot(xz, xz), 0.0)), xz.y); }
 uniform vec2 u_ts_origin;
 uniform float u_ts_half;
 uniform sampler2D u_ortho;
@@ -133,7 +136,7 @@ void main() {
   vec4 ht = texture(u_ts_height, huv);
   vec4 croot = u_vp * vec4(xz.x, ht.r, xz.y, 1.0);
   if (croot.w < -1.0 || abs(croot.x) > croot.w * 1.25 + 1.5 || abs(croot.y) > croot.w * 1.4 + 1.5) { cull(); return; }
-  vec3 gn = normalize(ht.gba);
+  vec3 gn = terNormal(huv);
   float h3 = bladeHash(ci, j, 2), h4 = bladeHash(ci, j, 3);
   // No blades under water: the sea's line everywhere, and the lake's inside its outline. One
   // line for both left a lake above the sea with grass on its bed or a valley with none.

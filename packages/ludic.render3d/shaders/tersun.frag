@@ -12,13 +12,16 @@ in vec3 v_wpos;
 in vec2 v_huv;
 out float o_sh;
 uniform sampler2D u_height;
+// the baked terrain normal: x and z in RG16F, y rebuilt (a terrain normal always points up)
+uniform sampler2D u_ter_normal;
+vec3 terNormal(vec2 uv) { vec2 xz = texture(u_ter_normal, uv).rg;  return vec3(xz.x, sqrt(max(1.0 - dot(xz, xz), 0.0)), xz.y); }
 uniform mat4 u_view;
 uniform float u_far_split;
 uniform float u_far_band;
 void main() {
   vec3 p = v_wpos;
   if (p.y < u_clip_y) discard;
-  vec3 N = normalize(texture(u_height, v_huv).gba);
+  vec3 N = terNormal(v_huv);
   float dist = length(p - u_cam_pos);
   float viewDepth = -(u_view * vec4(p, 1.0)).z;
   // The same tier choice the ground makes, cross-faded over the same band: the near tier

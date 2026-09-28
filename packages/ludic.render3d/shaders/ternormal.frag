@@ -1,5 +1,5 @@
-// Second generation pass: copy the height into R and bake the B-spline surface normal into
-// GBA, once, at texel resolution. terrain.frag used to differentiate the bicubic height
+// Second generation pass: bake the B-spline surface normal, once, at texel resolution: x and z
+// into an RG16F beside the R32F height (y is rebuilt where it is read). terrain.frag used to differentiate the bicubic height
 // per pixel — four bicubic reads, sixteen taps — for a quantity that never changes.
 in vec2 v_uv;
 out vec4 o;
@@ -28,5 +28,5 @@ void main() {
   float hd = heightSmooth(u_src, v_uv - vec2(0, step));
   float hu = heightSmooth(u_src, v_uv + vec2(0, step));
   vec3 n = normalize(vec3(hl - hr, 2.0 * world, hd - hu));
-  o = vec4(texture(u_src, v_uv).r, n);
+  o = vec4(n.x, n.z, 0.0, 0.0);      // into RG16F: x and z, y rebuilt when read (always up)
 }
