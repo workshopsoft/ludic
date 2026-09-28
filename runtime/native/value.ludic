@@ -304,22 +304,6 @@ function value_has(obj: Val, key: pointer) -> int {
 }
 
 # --- JSON encode ------------------------------------------------------------
-# escape a string's `"` `\` and newline, wrapping it in quotes.
-function json_quote(s: pointer) -> string {
-  var out = "\""
-  var i = 0
-  let n = len(s)
-  while i < n {
-    let c = s[i]
-    if c == '"' { out += "\\\"" }
-    else { if c == '\\' { out += "\\\\" }
-    else { if c == '\n' { out += "\\n" }
-    else { out += s[i..i + 1] } } }
-    i += 1
-  }
-  return out + "\""
-}
-
 # a raw Q16.16 fixed -> its EXACT decimal string. The denominator is 2^16, so the
 # decimal always terminates (in <=16 fractional digits): emit digits until the
 # remainder hits zero. This is the exact inverse of jp_number's fixed decode, so
@@ -341,31 +325,147 @@ function json_fixed_str(raw: int) -> string {
   return sign + string(ip) + "." + fs
 }
 
-function json_encode(v: Val) -> string {
-  if v.tag == 0 { return "null" }
-  if v.tag == 1 { return string(v.num) }
-  if v.tag == 2 { return json_fixed_str(v.num) }
-  if v.tag == 3 { if v.num != 0 { return "true" };  return "false" }
-  if v.tag == 4 { return json_quote(v.txt) }
-  if v.tag == 7 { return string(float_from_bits(v.num)) }
-  if v.tag == 5 {
-    var out = "["
-    var i = 0
-    while i < value_n(v) {
-      if i > 0 { out += "," }
-      out += json_encode(v.kids[i])
-      i += 1
+# The encoder writes into one buffer the runtime keeps, grown only when a document is bigger than
+# any before: a save once built its text by `+`, keeping every piece and every number's text, and
+# the answer was one more string a game could never free. `Json.encode` copies the answer out once;
+# `Json.write_file` writes it through Fs.write_text (the .tmp and the rename) and keeps nothing.
+export state RtJsonState {
+  jb: pointer = null,      # the text so far, NUL-terminated when handed on
+  jcap: int = 0,
+  jn: int = 0
+}
+
+function jo_room(st: mut RtJsonState, more: int) -> void {
+  if st.jn + more + 1 <= st.jcap { return }
+  var cap = st.jcap
+  if cap < 4096 { cap = 4096 }
+  while cap < st.jn + more + 1 { cap = cap * 2 }
+  let nb = bytes(cap)
+  if st.jb != null {
+    let ob: bytes = st.jb
+    for i in 0 .. st.jn { nb[i] = ob[i] }
+    free(st.jb)
+  }
+  st.jb = nb
+  st.jcap = cap
+}
+function jo_put(st: mut RtJsonState, c: int) -> void {
+  jo_room(st, 1)
+  let b: bytes = st.jb
+  b[st.jn] = c
+  st.jn += 1
+}
+function jo_str(st: mut RtJsonState, s: pointer) -> void {
+  let n = len(s)
+  jo_room(st, n)
+  let b: bytes = st.jb
+  for i in 0 .. n { b[st.jn + i] = s[i] }
+  st.jn += n
+}
+# an int's digits, written in place (no text made for it)
+function jo_int(st: mut RtJsonState, v: int) -> void {
+  if v == 0 {
+    jo_put(st, '0')
+    return
+  }
+  var x: long = v
+  if x < 0 {
+    jo_put(st, '-')
+    x = -x
+  }
+  var div: long = 1
+  while div * 10 <= x { div = div * 10 }
+  while div > 0 {
+    jo_put(st, 48 + int(x / div))
+    x = x % div
+    div = div / 10
+  }
+}
+# a raw Q16.16 fixed, exactly (json_fixed_str's digits, written in place)
+function jo_fixed(st: mut RtJsonState, raw: int) -> void {
+  var a: long = raw
+  if a < 0 {
+    jo_put(st, '-')
+    a = -a
+  }
+  jo_int(st, int(a / 65536))
+  jo_put(st, '.')
+  var frac = int(a % 65536)
+  if frac == 0 {
+    jo_put(st, '0')
+    return
+  }
+  while frac != 0 {
+    frac *= 10
+    jo_put(st, 48 + frac / 65536)
+    frac = frac % 65536
+  }
+}
+function jo_quote(st: mut RtJsonState, s: pointer) -> void {
+  jo_put(st, '"')
+  let n = len(s)
+  for i in 0 .. n {
+    let c = s[i]
+    if c == '"' or c == '\\' {
+      jo_put(st, '\\')
+      jo_put(st, c)
+    } else if c == '\n' {
+      jo_put(st, '\\')
+      jo_put(st, 'n')
+    } else { jo_put(st, c) }
+  }
+  jo_put(st, '"')
+}
+function jo_val(st: mut RtJsonState, v: Val) -> void {
+  if v.tag == 0 { jo_str(st, "null") }
+  else if v.tag == 1 { jo_int(st, v.num) }
+  else if v.tag == 2 { jo_fixed(st, v.num) }
+  else if v.tag == 3 { if v.num != 0 { jo_str(st, "true") } else { jo_str(st, "false") } }
+  else if v.tag == 4 { jo_quote(st, value_as_str(v)) }
+  else if v.tag == 7 {
+    let t = string(float_from_bits(v.num))
+    jo_str(st, t)
+    free(t)
+  } else if v.tag == 5 {
+    jo_put(st, '[')
+    for i in 0 .. value_n(v) {
+      if i > 0 { jo_put(st, ',') }
+      jo_val(st, v.kids[i])
     }
-    return out + "]"
+    jo_put(st, ']')
+  } else {
+    jo_put(st, '{')
+    for i in 0 .. value_n(v) {
+      if i > 0 { jo_put(st, ',') }
+      jo_quote(st, v.keys[i])
+      jo_put(st, ':')
+      jo_val(st, v.kids[i])
+    }
+    jo_put(st, '}')
   }
-  var out = "{"
-  var i = 0
-  while i < value_n(v) {
-    if i > 0 { out += "," }
-    out = out + json_quote(v.keys[i]) + ":" + json_encode(v.kids[i])
-    i += 1
-  }
-  return out + "}"
+}
+# the whole document into the kept buffer, NUL-terminated
+function jo_doc(st: mut RtJsonState, v: Val) -> void {
+  st.jn = 0
+  jo_val(st, v)
+  jo_room(st, 0)
+  let b: bytes = st.jb
+  b[st.jn] = 0
+}
+
+function json_encode(rt_json_st: mut RtJsonState, v: Val) -> string {
+  jo_doc(rt_json_st, v)
+  let out = bytes(rt_json_st.jn + 1)
+  let b: bytes = rt_json_st.jb
+  for i in 0 .. rt_json_st.jn + 1 { out[i] = b[i] }
+  let s: string = out
+  return s
+}
+# v written to path as JSON, replacing it whole (the .tmp and the rename); nothing kept per call
+function json_write_file(rt_json_st: mut RtJsonState, v: Val, path: string) -> bool {
+  jo_doc(rt_json_st, v)
+  let s: string = rt_json_st.jb
+  return Fs.write_text(path, s)
 }
 
 # --- JSON parse -------------------------------------------------------------
