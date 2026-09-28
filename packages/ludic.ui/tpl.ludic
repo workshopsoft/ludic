@@ -40,6 +40,9 @@ function tpl_read(ui_st: mut UiState, x: Xml, file: string) -> UiTpl {
       push(t.keys, k)
       push(t.vals, tpl_value(v, err))
     }
+    # the value is parsed (an action, a style, an expression), each copying what it keeps; an
+    # empty one is the reader's own literal
+    if len(v) > 0 { unsafe { free(v) } }
   }
   if tp_mixed(x) { tp_read_mixed(ui_st, t, x, file, err) } else {
     for i in 0 .. Xml.child_count(x) { push(t.kids, tpl_read(ui_st, Xml.child(x, i), file)) }

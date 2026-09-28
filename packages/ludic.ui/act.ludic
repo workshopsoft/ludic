@@ -38,6 +38,7 @@ function act_parse(src: string, err: []string) -> UiAct {
   rd_ws(r)
   if r.err == "" and r.i < len(r.s) { rd_fail(r, "';' or the end") }
   if r.err != "" { push(err, r.err) }
+  unsafe { free(r) }                   # the reader only: names and expressions are copied out
   return a
 }
 # `set` or `emit` as the action's first word - not a function of that name, as in `set(4)`

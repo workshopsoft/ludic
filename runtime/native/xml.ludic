@@ -23,6 +23,7 @@ property Xml {
   kids:  []Xml               # child elements, in document order
   at:    int = 0             # where its '<' is in the text, for an error that names a line
   mixed: []Xml               # its elements and its runs of text ("#text"), in document order
+  joined: bool = false       # `text` is a join made here (not a run a #text node shares): free to replace
 }
 
 function xml_new(tag: pointer) -> Xml {
@@ -267,6 +268,7 @@ function xp_element(rt_xml_st: mut RtXmlState, p: XP) -> Xml {
       if p.i + 1 < p.n and p.s[p.i + 1] == '/' {           # '</' close
         p.i += 2
         let cn = xp_name(p)
+        free(cn)                                     # the closing name is only read past
         while p.i < p.n and p.s[p.i] != '>' { p.i += 1 }
         p.i += 1                                     # skip '>'
         return node
@@ -276,7 +278,7 @@ function xp_element(rt_xml_st: mut RtXmlState, p: XP) -> Xml {
         p.i += 9                                     # past "<![CDATA["
         let start = p.i
         while p.i + 2 < p.n and not (p.s[p.i] == ']' and p.s[p.i + 1] == ']' and p.s[p.i + 2] == '>') { p.i += 1 }
-        node.text += p.s[start..p.i]
+        xp_text_add(node, p.s[start..p.i], true)
         p.i += 3                                     # past "]]>"
       } else {
         if xp_skip_misc(p) { }                            # comment / PI inside content
@@ -291,15 +293,15 @@ function xp_element(rt_xml_st: mut RtXmlState, p: XP) -> Xml {
       let start = p.i
       while p.i < p.n and p.s[p.i] != '<' { p.i += 1 }
       let run = xml_unescape(rt_xml_st, p.s[start..p.i])
-      node.text += run
-      xp_text_run(node, run)
+      let kept = xp_text_run(node, run)
+      xp_text_add(node, run, not kept)
     }
   }
   return node
 }
 
 # a run of text among an element's children, kept in order unless it is only white space
-function xp_text_run(node: Xml, run: string) -> void {
+function xp_text_run(node: Xml, run: string) -> bool {
   var blank = true
   var i = 0
   while i < len(run) {
@@ -307,10 +309,26 @@ function xp_text_run(node: Xml, run: string) -> void {
     if not (c == ' ' or c == '\t' or c == '\n' or c == '\r') { blank = false }
     i += 1
   }
-  if blank { return }
+  if blank { return false }
   let t = xml_new("#text")
   t.text = run
   push(node.mixed, t)
+  return true
+}
+
+# a run joined onto the element's text. What the join leaves behind is given back: the text it
+# replaces when that was a join of its own, and the run when nothing else keeps it (`mine`)
+function xp_text_add(node: Xml, run: string, mine: bool) -> void {
+  if len(node.text) == 0 {
+    node.text = run                                  # its first text is the run itself
+    node.joined = mine
+    return
+  }
+  let old = node.text
+  node.text = old + run
+  if node.joined { free(old) }
+  if mine { free(run) }
+  node.joined = true
 }
 
 # parse a whole document -> its root element (or the synthetic empty node).
