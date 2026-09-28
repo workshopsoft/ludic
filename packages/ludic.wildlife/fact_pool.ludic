@@ -1,0 +1,14 @@
+# ludic.wildlife/fact_pool.ludic - the facts' records made at the start (WILDFACTS of them) with a free list
+# of room for all, so a frame holding a new peak of facts makes nothing until that many are held
+const WL_FACTS: int = 64
+
+function wl_fpool_new() -> []WildFact {
+  let l = new []WildFact
+  for i in 0 .. WL_FACTS { push(l, new WildFact) }
+  return l
+}
+function wl_ffree_new() -> []WildFact {
+  let l = wl_fpool_new()
+  List.clear(l)
+  return l
+}

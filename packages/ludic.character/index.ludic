@@ -6,6 +6,7 @@ numbers float
 import "ludic.base"
 import "rules.ludic"
 import "ports.ludic"
+import "fact_pool.ludic"
 import "state.ludic"
 import "queries.ludic"
 import "ground.ludic"

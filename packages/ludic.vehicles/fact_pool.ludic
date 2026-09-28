@@ -1,0 +1,14 @@
+# ludic.vehicles/fact_pool.ludic - the facts' records made at the start (VEHICLEFACTS of them) with a free list
+# of room for all, so a frame holding a new peak of facts makes nothing until that many are held
+const VE_FACTS: int = 64
+
+function ve_fpool_new() -> []VehicleFact {
+  let l = new []VehicleFact
+  for i in 0 .. VE_FACTS { push(l, new VehicleFact) }
+  return l
+}
+function ve_ffree_new() -> []VehicleFact {
+  let l = ve_fpool_new()
+  List.clear(l)
+  return l
+}

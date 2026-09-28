@@ -1,0 +1,14 @@
+# ludic.physics/fact_pool.ludic - the facts' records made at the start (PHYSFACTS of them) with a free list
+# of room for all, so a frame holding a new peak of facts makes nothing until that many are held
+const PH_FACTS: int = 64
+
+function ph_fpool_new() -> []PhysFact {
+  let l = new []PhysFact
+  for i in 0 .. PH_FACTS { push(l, new PhysFact) }
+  return l
+}
+function ph_ffree_new() -> []PhysFact {
+  let l = ph_fpool_new()
+  List.clear(l)
+  return l
+}

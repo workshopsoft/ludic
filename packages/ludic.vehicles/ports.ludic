@@ -63,8 +63,8 @@ export state VehiclesState {
   ve_ly: float = 0.0
   ve_lz: float = 0.0
   ve_fact_q: Queue<VehicleFact> = ve_fact_q__new()
-  ve_fpool: []VehicleFact = new []VehicleFact   # every fact record made, reused once no drain holds it
-  ve_ffree: []VehicleFact = new []VehicleFact
+  ve_fpool: []VehicleFact = ve_fpool_new()   # every fact record made, reused once no drain holds it
+  ve_ffree: []VehicleFact = ve_ffree_new()
   ve_fnext: int = 0
 }
 function ve__dry(x: float, z: float) -> float { return -10000.0 }

@@ -35,8 +35,8 @@ export property WildSpecies {
 
 export state WildlifeState {
   wl_facts: Queue<WildFact> = wl_facts__new()
-  wl_fpool: []WildFact = new []WildFact   # every fact record made, reused once no drain holds it
-  wl_ffree: []WildFact = new []WildFact   # of those, the ones free at the last look
+  wl_fpool: []WildFact = wl_fpool_new()   # every fact record made, reused once no drain holds it
+  wl_ffree: []WildFact = wl_ffree_new()   # of those, the ones free at the last look
   wl_fnext: []int = words(1)              # the next of them to hand out
   wl_own: WildTable = null   # a guest's own animals, put away whole while it draws the host's
   wl_px: float = 0.0

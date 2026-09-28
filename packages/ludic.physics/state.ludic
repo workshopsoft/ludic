@@ -55,8 +55,8 @@ export state PhysicsState {
   ph_ids: []int = words(PH_CAP * 2)
   ph_vals: []float = floats(PH_CAP * 4)
   ph_facts: Queue<PhysFact> = ph_facts__new()
-  ph_fpool: []PhysFact = new []PhysFact   # every fact record made, reused once no drain holds it
-  ph_ffree: []PhysFact = new []PhysFact
+  ph_fpool: []PhysFact = ph_fpool_new()   # every fact record made, reused once no drain holds it
+  ph_ffree: []PhysFact = ph_ffree_new()
   ph_fnext: int = 0
 }
 
