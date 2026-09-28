@@ -12,6 +12,7 @@ program StringTemps {
     if a + "/" + b + "/" + string(i) != `{a}/{b}/{i}` { bad += 1 }
     let p = "lake/camp.png"                     # a literal: the slices are what is made here
     if p[len(p) - 4 .. len(p)] != ".png" or p[0 .. len(p) - 4] + ".dds" != `lake/{b[0 .. 0]}camp.dds` { bad += 1 }
+    if Os.platform() == "" or Os.arch() == "" { bad += 1 }        # asked every round: nothing each time
     if `{i}-{i * 2}-{long(i) * 1000000000}` != string(i) + "-" + string(i * 2) + "-" + string(long(i) * 1000000000) { bad += 1 }
     return bad
   }

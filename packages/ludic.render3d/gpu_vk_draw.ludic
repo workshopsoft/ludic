@@ -1013,6 +1013,7 @@ function gvk_frame_cb(render3d_st: mut Render3dState) -> pointer {
     if render3d_st.gvk_frame_pending and (render3d_st.gvk_frame_pending_no & 1) == (render3d_st.gvk_frame_no & 1) { gvk_frame_wait(render3d_st) }
     gvk_frame_reset(render3d_st)
     render3d_st.gvk_cb = gvk_once_begin(render3d_st)
+    gvk_prime_flush(render3d_st, render3d_st.gvk_cb)
   }
   return render3d_st.gvk_cb
 }

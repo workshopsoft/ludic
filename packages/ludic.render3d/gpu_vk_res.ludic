@@ -753,6 +753,68 @@ function gvk_buf_reserve(render3d_st: mut Render3dState, b: int, n: int) -> bool
   r = Vk.bind_buffer_memory(render3d_st.gvk_dev, buf, gvk_mem_handle(render3d_st, ma), gvk_mem_offset(render3d_st, ma))
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkBindBufferMemory", r) }
   render3d_st.gvk_buf[b] = buf;  render3d_st.gvk_buf_mem[b] = mem;  render3d_st.gvk_buf_size[b] = size;  render3d_st.gvk_buf_map[b] = gvk_mem_ptr(render3d_st, ma)
+  gvk_prime(render3d_st, b, buf)
+  return true
+}
+
+# MoltenVK makes a buffer's Metal buffer the first time a command uses it, so one written through
+# its mapping and first drawn a thousand frames later allocated then, in play. Each new buffer is
+# read once (4 bytes, copied out) at the start of the next frame's commands instead.
+const GVK_PRIME_MAX: int = 16384
+function gvk_prime(render3d_st: mut Render3dState, b: int, buf: long) -> void {
+  if Os.platform() != "macos" { return }
+  if render3d_st.gvk_prime_b == null {
+    render3d_st.gvk_prime_b = words(GVK_PRIME_MAX)
+    render3d_st.gvk_prime_h = new []long
+    let hs = render3d_st.gvk_prime_h
+    let none: long = 0
+    for i in 0 .. GVK_PRIME_MAX { push(hs, none) }
+  }
+  if render3d_st.gvk_prime_n >= GVK_PRIME_MAX { return }
+  render3d_st.gvk_prime_b[render3d_st.gvk_prime_n] = b
+  render3d_st.gvk_prime_h[render3d_st.gvk_prime_n] = buf
+  render3d_st.gvk_prime_n += 1
+}
+function gvk_prime_flush(render3d_st: mut Render3dState, cb: pointer) -> void {
+  if render3d_st.gvk_prime_n == 0 { return }
+  if render3d_st.gvk_prime_dst == 0 and not gvk_prime_target(render3d_st) {
+    render3d_st.gvk_prime_n = 0
+    return
+  }
+  let region = gvk_tmp(render3d_st, VkBufferCopy_sizeof)
+  Vk.zero(region, VkBufferCopy_sizeof)
+  let four: long = 4
+  Vk.put_i64(region, VkBufferCopy_size, four)
+  for i in 0 .. render3d_st.gvk_prime_n {
+    let b = render3d_st.gvk_prime_b[i]
+    let h = render3d_st.gvk_prime_h[i]
+    # released and made again, or gone, since: that one is not this buffer any more
+    if b > 0 and b < len(render3d_st.gvk_buf) and render3d_st.gvk_buf[b] == h { Vk.cmd_copy_buffer(cb, h, render3d_st.gvk_prime_dst, 1, region) }
+  }
+  render3d_st.gvk_prime_n = 0
+}
+function gvk_prime_target(render3d_st: mut Render3dState) -> bool {
+  let size: long = 64
+  let bci = gvk_tmp(render3d_st, VkBufferCreateInfo_sizeof)
+  Vk.zero(bci, VkBufferCreateInfo_sizeof)
+  Vk.put_i32(bci, VkBufferCreateInfo_sType, VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO)
+  Vk.put_i64(bci, VkBufferCreateInfo_size, size)
+  Vk.put_i32(bci, VkBufferCreateInfo_usage, VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+  Vk.put_i32(bci, VkBufferCreateInfo_sharingMode, VK_SHARING_MODE_EXCLUSIVE)
+  let out = gvk_tmp(render3d_st, 8)
+  if Vk.create_buffer(render3d_st.gvk_dev, bci, null, out) != VK_SUCCESS { return false }
+  let buf = gvk_handle(out)
+  let req = gvk_tmp(render3d_st, VkMemoryRequirements_sizeof)
+  Vk.get_buffer_memory_requirements(render3d_st.gvk_dev, buf, req)
+  let ma = gvk_mem_new(render3d_st, req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false)
+  if ma == 0 {
+    Vk.destroy_buffer(render3d_st.gvk_dev, buf, null)
+    return false
+  }
+  Vk.bind_buffer_memory(render3d_st.gvk_dev, buf, gvk_mem_handle(render3d_st, ma), gvk_mem_offset(render3d_st, ma))
+  render3d_st.gvk_prime_dst = buf
+  let m: long = ma
+  render3d_st.gvk_prime_mem = m
   return true
 }
 
