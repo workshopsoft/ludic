@@ -50,9 +50,12 @@ function th_clean(t: Thing) -> Thing {
   return t
 }
 
-# room for `n` Things in the grid before it has to grow: a world that will place more in play
-# than it placed at the start sizes it once, at the start
-export function things_reserve(things_st: mut ThingsState, n: int) -> void { grid_reserve(things_st.th.grid, n) }
+# room for `n` Things (rows, grid, kind index, uid map) before any grows: a world that will place
+# more in play than it placed at the start sizes it once, at the start
+export function things_reserve(things_st: mut ThingsState, n: int) -> void {
+  tb_reserve(things_st.th.tab, n)
+  imap_reserve(things_st.th_uids, n)
+}
 
 export function things_spare_count(things_st: ThingsState) -> int { return len(things_st.th_spare) - things_st.th_spare_at }
 
