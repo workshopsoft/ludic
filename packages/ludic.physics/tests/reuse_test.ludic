@@ -1,0 +1,42 @@
+# reuse_test.ludic - what is taken away is given back: a walker made and removed two hundred times
+# holds one place in the list and no more heap, and a world closed and opened again keeps its lists
+import "ludic.physics"
+import "ludic.base"
+program ReuseTest {
+  numbers float
+
+  test "a walker made and removed takes the same place and grows nothing" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    let w = phys_walker_add(physics_st, 0.4, 1.8, 0.0, 0.0, 0.0, 50.0, 80.0)
+    phys_walker_remove(physics_st, w)
+    let before = Os.heap_bytes()
+    for k in 0 .. 200 {
+      let id = phys_walker_add(physics_st, 0.4, 1.8, float(k), 0.0, 0.0, 50.0, 80.0)
+      expect_eq(id, w)
+      phys_walker_remove(physics_st, id)
+    }
+    let grew = Os.heap_bytes() - before
+    print(`reuse: 200 walkers made and removed, {len(physics_st.ph_walkers)} place, heap {grew} bytes`)
+    expect_eq(len(physics_st.ph_walkers), 1)
+    expect(grew < long(1024))
+    phys_close(physics_st)
+  }
+
+  test "a world closed and opened again keeps the lists it held" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    phys_box(physics_st, 1.0, 1.0, 1.0)
+    phys_walker_add(physics_st, 0.4, 1.8, 0.0, 0.0, 0.0, 50.0, 80.0)
+    let shapes = physics_st.ph_shapes
+    let walkers = physics_st.ph_walkers
+    for k in 0 .. 20 {
+      phys_close(physics_st)
+      expect(phys_open(physics_st, 64, 1))
+      phys_box(physics_st, 1.0, 1.0, 1.0)
+      phys_walker_add(physics_st, 0.4, 1.8, 0.0, 0.0, 0.0, 50.0, 80.0)
+    }
+    expect(physics_st.ph_shapes == shapes)
+    expect(physics_st.ph_walkers == walkers)
+    expect_eq(phys_shapes(physics_st), 1)
+    phys_close(physics_st)
+  }
+}
