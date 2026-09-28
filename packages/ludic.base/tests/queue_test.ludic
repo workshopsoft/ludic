@@ -86,11 +86,11 @@ program QueueTest {
     q_push(b, 2)
     q_drain(b)
     let tags = [q_tag(a), q_tag(b)]
-    let names = core_undrained(tags)
-    expect_eq(len(names), 1)
+    let names = new []string
+    expect_eq(core_undrained(tags, names), 1)
     expect(names[0] == "left_behind")
     q_drain(a)
-    expect_eq(len(core_undrained(tags)), 0)
+    expect_eq(core_undrained(tags, names), 0)
   }
 
   # an empty drain allocates nothing and hands back the same empty list; a drained list is the

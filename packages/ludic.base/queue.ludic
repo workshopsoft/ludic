@@ -73,12 +73,12 @@ export function q_unheld<T>(q: Queue<T>, pool: []T, out: []T) -> int {
 # a queue's tag, for core_undrained: queues of different facts in one list
 export function q_tag<T>(q: Queue<T>) -> QueueTag { return q.tag }
 
-# the names of the given queues still holding facts; ask it at the end of a frame, where a fact
-# left behind is a route nobody wrote
-export function core_undrained(tags: []QueueTag) -> []string {
-  let out = new []string
+# the names of the given queues still holding facts, into `out` (cleared first) and counted; ask it
+# at the end of a frame, where a fact left behind is a route nobody wrote
+export function core_undrained(tags: []QueueTag, out: []string) -> int {
+  List.clear(out)
   for i in 0 .. len(tags) {
-    if tags[i] != null and tags[i].pending > 0 { push(out, tags[i].name) }
+    if tags[i] != null and tags[i].pending > 0 { kept_push(out, tags[i].name) }
   }
-  return out
+  return len(out)
 }
