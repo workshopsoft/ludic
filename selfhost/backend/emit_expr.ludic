@@ -133,9 +133,17 @@ function to_long(v: Val) -> pointer {
 function emit_str_op(op: pointer, a: Val, b: Val) -> Val {
   g_uses_str = true
   if (op == ("+")) {
-    return val(emit_bind(`call ptr @lp_str_concat(ptr {a.code}, ptr {b.code})`), "string")
+    let r = fresh_val(emit_bind(`call ptr @lp_str_concat(ptr {a.code}, ptr {b.code})`), "string")
+    # a half this expression made is copied now and held by nothing: `a + "/" + b` and every
+    # template's pieces once left one string behind per `+`
+    if a.fresh { emit(`  call void @free(ptr {a.code})\n`) }
+    if b.fresh and b.code != a.code { emit(`  call void @free(ptr {b.code})\n`) }
+    return r
   }
   let r = emit_bind(`call i32 @lp_str_eq(ptr {a.code}, ptr {b.code})`)
+  # a side made just to be compared is held by nothing once it has been: `` `{x}` == "..." ``
+  if a.fresh { emit(`  call void @free(ptr {a.code})\n`) }
+  if b.fresh and b.code != a.code { emit(`  call void @free(ptr {b.code})\n`) }
   if (op == ("!=")) {
     let c = emit_bind(`icmp eq i32 {r}, 0`)
     return val(emit_bind(`zext i1 {c} to i32`), "bool")

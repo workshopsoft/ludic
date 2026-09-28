@@ -247,7 +247,7 @@ function emit_fp_str(v: Val) -> Val {
   var d = v.code
   var single = "0"
   if (v.ty == "float") { d = emit_bind(`fpext float {v.code} to double`);  single = "1" }
-  return val(emit_bind(`call ptr @lp_fp_str(double {d}, i32 {single})`), "string")
+  return fresh_val(emit_bind(`call ptr @lp_fp_str(double {d}, i32 {single})`), "string")
 }
 
 # @lp_fp_str(v, single): "%.*g" with the fewest digits that round-trip (through

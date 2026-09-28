@@ -127,6 +127,7 @@ function emit_header() -> void {
   emith("declare ptr @getenv(ptr)\n")
   emith("declare ptr @memcpy(ptr, ptr, i64)\n")
   emith("declare ptr @memset(ptr, i32, i64)\n")
+  emith("declare ptr @memmove(ptr, ptr, i64)\n")
   emith("declare i64 @strlen(ptr)\n")
   emith("declare i32 @strcmp(ptr, ptr)\n")
   emith("declare i32 @strncmp(ptr, ptr, i64)\n")
@@ -292,7 +293,7 @@ function emit_str_prelude() -> void {
 
 # int -> decimal string, emitted (once) into any program that uses string(int)
 # (string interpolation of a number). Writes digits from the end of a 24-byte
-# buffer, prepends '-' for negatives, and returns a pointer into the buffer.
+# buffer, prepends '-' for negatives, and moves them to the buffer's start.
 function emit_int_str() -> void {
   emith("define ptr @lp_int_str(i32 %n0) {\n")
   emith("entry:\n  %buf = call ptr @malloc(i64 24)\n")
@@ -300,7 +301,7 @@ function emit_int_str() -> void {
   emith("  %n = select i1 %isneg, i32 %neg, i32 %n0\n")
   emith("  %term = getelementptr inbounds i8, ptr %buf, i32 23\n  store i8 0, ptr %term\n")
   emith("  %iszero = icmp eq i32 %n0, 0\n  br i1 %iszero, label %zc, label %dl\n")
-  emith("zc:\n  %zp = getelementptr inbounds i8, ptr %buf, i32 22\n  store i8 48, ptr %zp\n  ret ptr %zp\n")
+  emith("zc:\n  store i8 48, ptr %buf\n  %z1 = getelementptr inbounds i8, ptr %buf, i32 1\n  store i8 0, ptr %z1\n  ret ptr %buf\n")
   emith("dl:\n  br label %dloop\n")
   emith("dloop:\n  %pos = phi i32 [ 22, %dl ], [ %pos2, %dbody ]\n  %cur = phi i32 [ %n, %dl ], [ %cur2, %dbody ]\n")
   emith("  %done = icmp eq i32 %cur, 0\n  br i1 %done, label %sign, label %dbody\n")
@@ -310,7 +311,9 @@ function emit_int_str() -> void {
   emith("sign:\n  br i1 %isneg, label %addneg, label %fin\n")
   emith("addneg:\n  %sp = getelementptr inbounds i8, ptr %buf, i32 %pos\n  store i8 45, ptr %sp\n  %posn = sub i32 %pos, 1\n  br label %fin\n")
   emith("fin:\n  %fpos = phi i32 [ %pos, %sign ], [ %posn, %addneg ]\n")
-  emith("  %rpos = add i32 %fpos, 1\n  %res = getelementptr inbounds i8, ptr %buf, i32 %rpos\n  ret ptr %res\n}\n")
+  emith("  %rpos = add i32 %fpos, 1\n  %res = getelementptr inbounds i8, ptr %buf, i32 %rpos\n")
+  # the digits to the buffer's start, so what is returned is what was malloc'd and can be freed
+  emith("  %cnt = sub i32 24, %rpos\n  %cnt64 = sext i32 %cnt to i64\n  call ptr @memmove(ptr %buf, ptr %res, i64 %cnt64)\n  ret ptr %buf\n}\n")
 }
 
 # the i64 twin of fn_int_str: a signed 64-bit integer -> decimal text. Emitted
@@ -323,7 +326,7 @@ function emit_long_str() -> void {
   emith("  %n = select i1 %isneg, i64 %neg, i64 %n0\n")
   emith("  %term = getelementptr inbounds i8, ptr %buf, i32 23\n  store i8 0, ptr %term\n")
   emith("  %iszero = icmp eq i64 %n0, 0\n  br i1 %iszero, label %zc, label %dl\n")
-  emith("zc:\n  %zp = getelementptr inbounds i8, ptr %buf, i32 22\n  store i8 48, ptr %zp\n  ret ptr %zp\n")
+  emith("zc:\n  store i8 48, ptr %buf\n  %z1 = getelementptr inbounds i8, ptr %buf, i32 1\n  store i8 0, ptr %z1\n  ret ptr %buf\n")
   emith("dl:\n  br label %dloop\n")
   emith("dloop:\n  %pos = phi i32 [ 22, %dl ], [ %pos2, %dbody ]\n  %cur = phi i64 [ %n, %dl ], [ %cur2, %dbody ]\n")
   emith("  %done = icmp eq i64 %cur, 0\n  br i1 %done, label %sign, label %dbody\n")
@@ -333,7 +336,9 @@ function emit_long_str() -> void {
   emith("sign:\n  br i1 %isneg, label %addneg, label %fin\n")
   emith("addneg:\n  %sp = getelementptr inbounds i8, ptr %buf, i32 %pos\n  store i8 45, ptr %sp\n  %posn = sub i32 %pos, 1\n  br label %fin\n")
   emith("fin:\n  %fpos = phi i32 [ %pos, %sign ], [ %posn, %addneg ]\n")
-  emith("  %rpos = add i32 %fpos, 1\n  %res = getelementptr inbounds i8, ptr %buf, i32 %rpos\n  ret ptr %res\n}\n")
+  emith("  %rpos = add i32 %fpos, 1\n  %res = getelementptr inbounds i8, ptr %buf, i32 %rpos\n")
+  # the digits to the buffer's start, so what is returned is what was malloc'd and can be freed
+  emith("  %cnt = sub i32 24, %rpos\n  %cnt64 = sext i32 %cnt to i64\n  call ptr @memmove(ptr %buf, ptr %res, i64 %cnt64)\n  ret ptr %buf\n}\n")
 }
 
 # s[a..b] -> a fresh NUL-terminated copy of the bytes [a, b), emitted (once) into

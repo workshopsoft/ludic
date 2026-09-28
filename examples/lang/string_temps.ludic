@@ -1,0 +1,46 @@
+# string_temps.ludic - a string made inside an expression and held by nothing (`a + "/"` in
+# `a + "/" + b`, a template's pieces, a number's text, a side only compared) is freed as soon as it
+# has been used, and one that IS held - in a variable, handed to a function, a function's result -
+# is not. Prints 1 2 3 4 5 6 7 and `grew 0` (the heap is read on the Mac; 0 elsewhere).
+program StringTemps {
+  function keep(s: string) -> string { return s }
+  function tag(i: int) -> string { return `t{i}` }
+
+  # every shape of throwaway text, compared against itself built another way: nothing survives
+  function round(i: int, a: string, b: string) -> int {
+    var bad = 0
+    if a + "/" + b + "/" + string(i) != `{a}/{b}/{i}` { bad += 1 }
+    if `{i}-{i * 2}-{long(i) * 1000000000}` != string(i) + "-" + string(i * 2) + "-" + string(long(i) * 1000000000) { bad += 1 }
+    return bad
+  }
+
+  entry {
+    let a = "dir"
+    let b = "file"
+    # held intermediates stay good after the `+` that read them
+    let mid = a + "/"
+    let full = mid + b
+    if mid == "dir/" and full == "dir/file" { print(1) }
+    let n = string(-42)
+    let t = n + "!" + n
+    if n == "-42" and t == "-42!-42" { print(2) }
+    let k = keep(a + "+" + b)
+    let k2 = k + "=" + k
+    if k == "dir+file" and k2 == "dir+file=dir+file" { print(3) }
+    var acc = ""
+    for i in 0 .. 4 { acc += string(i) + "," }
+    if acc == "0,1,2,3," { print(4) }
+    if string(0) == "0" and string(2147483647) == "2147483647" and `{long(9000000000)}` == "9000000000" { print(5) }
+    let nested = `a{`b{1 + 1}c`}d`
+    # a function's result is its caller's to keep (keep() hands back its own argument), so only
+    # the text built round it goes
+    if nested == "ab2cd" and "[" + tag(3) + "]" == "[t3]" { print(6) }
+    var bad = 0
+    for i in 0 .. 200 { bad += round(i, a, b) }
+    if bad == 0 { print(7) }
+    let before = Vk.heap_bytes()
+    for i in 0 .. 20000 { bad += round(i, a, b) }
+    let grew = Vk.heap_bytes() - before
+    if bad == 0 { print(`grew {grew}`) } else { print(`bad {bad}`) }
+  }
+}
