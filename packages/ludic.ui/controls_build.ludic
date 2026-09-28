@@ -105,6 +105,10 @@ function ct_numeric(v: Val) -> bool { return Value.kind(v) == 1 or Value.kind(v)
 function ct_option_num(nv: Val, opts: []UiNode) -> int {
   let x = Value.as_float(nv)
   for i in 0 .. len(opts) {
+    if not ui_attr_has(opts[i], "value") {
+      if x == float(i) { return i }
+      continue
+    }
     let ov = ui_attr(opts[i], "value")
     if Value.kind(ov) == 0 and x == float(i) { return i }
     if ct_numeric(ov) and Value.as_float(ov) == x { return i }

@@ -97,11 +97,11 @@ function nt_run(ui_st: mut UiState, n: UiNode, name: string, value: Val) -> void
 }
 # an attribute of an element, as the template gave it (null when it has none) - for a native
 export function ui_attr(n: UiNode, key: string) -> Val {
-  if n.akeys == null { return Value.null() }
+  if n.akeys == null { return n.none }
   for i in 0 .. len(n.akeys) {
     if n.akeys[i] == key { return n.vals[i] }
   }
-  return Value.null()
+  return n.none
 }
 # whether an element has the attribute at all: ui_attr's miss is a new null, so a question asked
 # every frame asks this first

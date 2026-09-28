@@ -56,6 +56,7 @@ export property UiNode {
   nowrap: bool = false          # white-space: nowrap
   ellipsis: bool = false        # text-overflow: ellipsis
   lines: []string = null        # a wrapped text's lines
+  none: Val = Value.null()      # what ui_attr answers for an attribute it lacks: made with the node, read only
   var_names: []string = null    # its custom properties (--name), which its descendants inherit
   var_vals: []string = null
   fg: int = -1                  # a colour is 0xRRGGBB with its alpha beside it; -1 inherits
