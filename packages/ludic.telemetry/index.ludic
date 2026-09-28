@@ -4,8 +4,13 @@ module ludic_telemetry uses ludic_base
 numbers float
 import "ludic.base"
 import "state.ludic"
+import "facts.ludic"
 import "ports.ludic"
+import "props.ludic"
+import "stamp.ludic"
+import "ring.ludic"
 import "queue.ludic"
+import "load.ludic"
 import "send.ludic"
 import "ident.ludic"
 import "queries.ludic"

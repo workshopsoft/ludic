@@ -1,0 +1,76 @@
+# ring.ludic - the queued lines in one byte ring made at the start: a line's bytes, its length and where
+# its player mark is, oldest first. Full (lines or bytes), the oldest are overwritten; nothing is made
+# per event, per drop or per send
+
+# the ring for this start, made once at its size and kept across starts of the same size
+function tr_init(telemetry_st: mut TelemetryState) -> void {
+  let c = telemetry__conf(telemetry_st)
+  if telemetry_st.telemetry__ring == null or len(telemetry_st.telemetry__ring) != c.ring_bytes {
+    telemetry_st.telemetry__ring = buffer(c.ring_bytes)
+    telemetry_st.telemetry__out = sb_new(c.ring_bytes + c.batch * 128 + 1024)
+  }
+  if telemetry_st.telemetry__off == null or len(telemetry_st.telemetry__off) != c.queue_max {
+    telemetry_st.telemetry__off = words(c.queue_max)
+    telemetry_st.telemetry__len = words(c.queue_max)
+    telemetry_st.telemetry__mk = words(c.queue_max)
+  }
+  tr_clear(telemetry_st)
+}
+function tr_clear(telemetry_st: mut TelemetryState) -> void {
+  telemetry_st.telemetry__head = 0
+  telemetry_st.telemetry__n = 0
+  telemetry_st.telemetry__wr = 0
+}
+function tr_slot(telemetry_st: TelemetryState, i: int) -> int { return (telemetry_st.telemetry__head + i) % len(telemetry_st.telemetry__off) }
+
+# the oldest k lines gone (sent, or overwritten)
+function tr_drop(telemetry_st: mut TelemetryState, k: int) -> void {
+  let n = Math.min(k, telemetry_st.telemetry__n)
+  telemetry_st.telemetry__head = tr_slot(telemetry_st, n)
+  telemetry_st.telemetry__n -= n
+  if telemetry_st.telemetry__n == 0 { tr_clear(telemetry_st) }
+  telemetry_st.telemetry__dirty = true
+}
+
+# a line (the first `n` bytes of b) put at the ring's end, its mark `mk` bytes in (-1 none)
+function tr_add(telemetry_st: mut TelemetryState, b: []byte, n: int, mk: int) -> void {
+  let ring = telemetry_st.telemetry__ring
+  if n <= 0 or n > len(ring) { return }
+  if telemetry_st.telemetry__n == len(telemetry_st.telemetry__off) { tr_drop(telemetry_st, 1) }
+  var at = telemetry_st.telemetry__wr
+  if at + n > len(ring) { at = 0 }
+  while telemetry_st.telemetry__n > 0 and tr_over(telemetry_st, at, n) { tr_drop(telemetry_st, 1) }
+  for i in 0 .. n { ring[at + i] = b[i] }
+  let s = tr_slot(telemetry_st, telemetry_st.telemetry__n)
+  telemetry_st.telemetry__off[s] = at
+  telemetry_st.telemetry__len[s] = n
+  telemetry_st.telemetry__mk[s] = mk
+  telemetry_st.telemetry__n += 1
+  telemetry_st.telemetry__wr = at + n
+  telemetry_st.telemetry__dirty = true
+}
+# would bytes at .. at + n overwrite the oldest line
+function tr_over(telemetry_st: TelemetryState, at: int, n: int) -> bool {
+  let s = telemetry_st.telemetry__head
+  let o = telemetry_st.telemetry__off[s]
+  return o < at + n and at < o + telemetry_st.telemetry__len[s]
+}
+
+# line i (0 the oldest) onto sb, its mark written as `id` when id is not null
+function tr_line_to(telemetry_st: TelemetryState, i: int, sb: StrBuf, id: string) -> void {
+  let s = tr_slot(telemetry_st, i)
+  let o = telemetry_st.telemetry__off[s]
+  let n = telemetry_st.telemetry__len[s]
+  let mk = telemetry_st.telemetry__mk[s]
+  let ring = telemetry_st.telemetry__ring
+  var k = 0
+  while k < n {
+    if id != null and k == mk {
+      sb_add(sb, id)
+      k += len(TELEMETRY_MARK)
+    } else {
+      sb_byte(sb, ring[o + k])
+      k += 1
+    }
+  }
+}

@@ -1,0 +1,46 @@
+# load.ludic - the unsent lines a start finds on disk, read once into the ring with their marks found
+function telemetry__queue_load(telemetry_st: mut TelemetryState) -> void {
+  let f = telemetry__conf(telemetry_st).queue_file
+  if len(f) == 0 { return }
+  let b = Fs.read_bytes(f)
+  if b == null { return }
+  var start = 0
+  for i in 0 .. len(b) + 1 {
+    if i == len(b) or b[i] == 10 {
+      if i - start > 2 { tq_load_line(telemetry_st, b, start, i - start) }
+      start = i + 1
+    }
+  }
+  telemetry_st.telemetry__dirty = false
+}
+# a line read back (once, at a start): through the kept line buffer, its mark found again
+function tq_load_line(telemetry_st: mut TelemetryState, b: []byte, at: int, n: int) -> void {
+  let sb = telemetry_st.telemetry__line
+  sb_clear(sb)
+  for i in 0 .. n { sb_byte(sb, b[at + i]) }
+  if tj_full(sb) { return }
+  tr_add(telemetry_st, sb.b, n, tq_find_mark(sb.b, n))
+}
+function tq_find_mark(b: []byte, n: int) -> int {
+  let m: string = TELEMETRY_MARK
+  let k = len(m)
+  for i in 0 .. n - k + 1 {
+    var same = true
+    for j in 0 .. k { if same and b[i + j] != m[j] { same = false } }
+    if same { return i }
+  }
+  return -1
+}
+
+function telemetry__read_obj(path: string) -> Val {
+  if len(path) == 0 { return null }
+  let s = Fs.read_text(path)
+  if s == null { return null }
+  let v = Json.parse(s)
+  if v == null { return null }
+  if Value.kind(v) != 6 {
+    Json.free(v)
+    return null
+  }
+  return v
+}

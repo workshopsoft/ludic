@@ -1,0 +1,16 @@
+# facts.ludic - a fact's record reused (the ludic.wildlife idiom): a batch sent or failed is a fact
+# a fact record no drain holds any more, made (and kept) only when every one is held
+function telemetry__fact_record(telemetry_st: mut TelemetryState) -> TelemetryFact {
+  if telemetry_st.telemetry__fnext[0] >= len(telemetry_st.telemetry__ffree) {
+    q_unheld(telemetry_st.telemetry__facts, telemetry_st.telemetry__fpool, telemetry_st.telemetry__ffree)
+    telemetry_st.telemetry__fnext[0] = 0
+  }
+  if telemetry_st.telemetry__fnext[0] < len(telemetry_st.telemetry__ffree) {
+    let f = telemetry_st.telemetry__ffree[telemetry_st.telemetry__fnext[0]]
+    telemetry_st.telemetry__fnext[0] += 1
+    return f
+  }
+  let f = new TelemetryFact
+  push(telemetry_st.telemetry__fpool, f)
+  return f
+}

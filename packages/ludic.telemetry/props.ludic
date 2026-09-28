@@ -1,0 +1,60 @@
+# props.ludic - an event's properties written as JSON into a buffer the state keeps, never a tree of
+# values: a game says an event often, and Ludic gives nothing back
+export const TELEMETRY_LINE: int = 2048   # the longest line an event may be; a longer one is dropped
+
+export property TelemetryProps {
+  sb: StrBuf = null
+  n: int = 0                  # properties written
+}
+
+# the writer, emptied, for the next event's properties
+export function telemetry_props(telemetry_st: mut TelemetryState) -> TelemetryProps {
+  let p = telemetry_st.telemetry__props
+  sb_clear(p.sb)
+  p.n = 0
+  return p
+}
+export function telemetry_str(p: TelemetryProps, k: string, s: string) -> void {
+  tp_key(p, k)
+  tj_str(p.sb, s)
+}
+export function telemetry_int(p: TelemetryProps, k: string, v: int) -> void {
+  tp_key(p, k)
+  sb_int(p.sb, v)
+}
+export function telemetry_bool(p: TelemetryProps, k: string, b: bool) -> void {
+  tp_key(p, k)
+  if b { sb_add(p.sb, "true") } else { sb_add(p.sb, "false") }
+}
+function tp_key(p: TelemetryProps, k: string) -> void {
+  if p.n > 0 { sb_byte(p.sb, 44) }
+  tj_str(p.sb, k)
+  sb_byte(p.sb, 58)
+  p.n += 1
+}
+
+# a JSON string: quoted, a quote or a backslash escaped, a control byte as \u00XX
+function tj_str(sb: StrBuf, s: string) -> void {
+  sb_byte(sb, 34)
+  if s != null {
+    let sp: string = s
+    for i in 0 .. len(sp) {
+      let c = sp[i]
+      if c == 34 or c == 92 {
+        sb_byte(sb, 92)
+        sb_byte(sb, c)
+      } else if c < 32 {
+        sb_add(sb, "\\u00")
+        sb_byte(sb, tj_hex(c / 16))
+        sb_byte(sb, tj_hex(c % 16))
+      } else { sb_byte(sb, c) }
+    }
+  }
+  sb_byte(sb, 34)
+}
+function tj_hex(v: int) -> int {
+  if v < 10 { return 48 + v }
+  return 87 + v
+}
+# a line that reached the end of its buffer was cut: it is dropped rather than sent broken
+function tj_full(sb: StrBuf) -> bool { return sb_len(sb) >= len(sb.b) - 1 }

@@ -12,7 +12,8 @@ export property TelemetryConfig {
   flush_ms: int = 30000        # a batch this often
   flush_at: int = 50           # or sooner, at this many events
   batch: int = 200             # events in one request
-  queue_max: int = 5000        # the oldest go past this
+  queue_max: int = 5000        # the oldest go past this, or past ring_bytes of lines
+  ring_bytes: int = 1048576    # the lines' ring (ring.ludic), made once at the start
   backoff_max: int = 6         # the wait doubles at most this many times
   save_ms: int = 5000          # the queue on disk at most this far behind
 }
@@ -22,13 +23,13 @@ export port TelemetryWorld {
   can_send: fn() -> bool = fn telemetry__yes     # may this run send at all (a test, a dev build: no)
   enabled: fn() -> bool = fn telemetry__yes      # the player's switch; off forgets everything queued
   now_ms: fn() -> int = fn telemetry__wall_ms    # a clock in milliseconds
-  stamp: fn() -> string = fn telemetry__wall_stamp  # the ISO time an event happened
+  clock_s: fn() -> int = fn telemetry__wall_s   # the wall clock in seconds since 1970, for an event's time
 }
 
 # how a batch travels (unbound: Http). send returns a handle (< 0: could not start); poll
 # answers -1 while pending, 0 on failure, 1 when the server took it; drop abandons one.
 export port TelemetryTransport {
-  send: fn(string, string) -> int = fn telemetry__http_send
+  send: fn(string, []byte, int) -> int = fn telemetry__http_send   # (url, body, its length)
   poll: fn(int) -> int = fn telemetry__http_poll
   drop: fn(int) -> void = fn telemetry__http_drop
 }
@@ -56,8 +57,21 @@ export state TelemetryState {
   telemetry__ready: bool = false
   telemetry__id: string = ""
   telemetry__session: string = ""
-  telemetry__q: []string = null         # the queued lines, oldest first
-  telemetry__dirty: bool = false        # telemetry__q differs from the file
+  telemetry__ring: []byte = null        # the queued lines (ring.ludic), oldest first from head
+  telemetry__off: []int = null
+  telemetry__len: []int = null
+  telemetry__mk: []int = null           # where each line's player mark is, -1 none
+  telemetry__head: int = 0
+  telemetry__n: int = 0
+  telemetry__wr: int = 0
+  telemetry__line: StrBuf = sb_new(TELEMETRY_LINE)   # an event's line, written here
+  telemetry__props: TelemetryProps = telemetry__props_new()
+  telemetry__out: StrBuf = null         # a batch or the file, written here
+  telemetry__url: string = ""           # host and path, joined once at the config
+  telemetry__fpool: []TelemetryFact = new []TelemetryFact   # fact records, reused once no drain holds one
+  telemetry__ffree: []TelemetryFact = new []TelemetryFact
+  telemetry__fnext: []int = words(1)
+  telemetry__dirty: bool = false        # the ring differs from the file
   telemetry__h: int = -1                # the batch in flight
   telemetry__sent_n: int = 0            # how many lines it carries
   telemetry__next_ms: int = 0           # when the next send may go
@@ -71,8 +85,8 @@ export function telemetry_facts(telemetry_st: TelemetryState) -> Queue<Telemetry
   return telemetry_st.telemetry__facts
 }
 
-function telemetry__fact(telemetry_st: TelemetryState, what: int, count: int, status: int, retry: int) -> void {
-  let f = new TelemetryFact
+function telemetry__fact(telemetry_st: mut TelemetryState, what: int, count: int, status: int, retry: int) -> void {
+  let f = telemetry__fact_record(telemetry_st)
   f.what = what
   f.count = count
   f.status = status
@@ -80,3 +94,8 @@ function telemetry__fact(telemetry_st: TelemetryState, what: int, count: int, st
   q_push(telemetry_facts(telemetry_st), f)
 }
 function telemetry__facts__new() -> Queue<TelemetryFact> { return queue_new("telemetry.facts") }
+function telemetry__props_new() -> TelemetryProps {
+  let p = new TelemetryProps
+  p.sb = sb_new(TELEMETRY_LINE)
+  return p
+}
