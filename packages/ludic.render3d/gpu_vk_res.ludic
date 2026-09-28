@@ -62,7 +62,6 @@ function gvk_channel_bytes(ifmt: int) -> int {
 function gvk_tex_give_back(render3d_st: mut Render3dState, tex: int) -> void {
   if tex <= 0 or tex >= len(render3d_st.gvk_tex_image) or render3d_st.gvk_tex_image[tex] == 0 { return }
   gvk_tex_release(render3d_st, tex)
-  if render3d_st.gvk_tex_spare == null { render3d_st.gvk_tex_spare = new []int }
   push(render3d_st.gvk_tex_spare, tex)
 }
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
@@ -660,7 +659,6 @@ function gvk_buf_delete(render3d_st: mut Render3dState, b: int) -> void {
   if b <= 0 or b >= len(render3d_st.gvk_buf) { return }
   gvk_buf_release(render3d_st, b)
   if render3d_st.gvk_buf_gpu != null and b < len(render3d_st.gvk_buf_gpu) { render3d_st.gvk_buf_gpu[b] = 0 }
-  if render3d_st.gvk_buf_spare == null { render3d_st.gvk_buf_spare = new []int }
   let sp = render3d_st.gvk_buf_spare
   for i in 0 .. len(sp) { if sp[i] == b { return } }
   push(sp, b)
@@ -672,7 +670,6 @@ function gvk_buf_release(render3d_st: mut Render3dState, b: int) -> void {
   if gvk_buf_busy(render3d_st, b) {
     # a draw recorded this frame (or the frame in flight) still reads it: destroy it once the frame has been submitted
     push(render3d_st.gvk_retired_buf, render3d_st.gvk_buf[b]);  push(render3d_st.gvk_retired_mem, render3d_st.gvk_buf_mem[b])
-    if render3d_st.gvk_retired_frame == null { render3d_st.gvk_retired_frame = new []int }
     while len(render3d_st.gvk_retired_frame) < len(render3d_st.gvk_retired_buf) - 1 { push(render3d_st.gvk_retired_frame, 0) }
     push(render3d_st.gvk_retired_frame, render3d_st.gvk_buf_used[b])
   } else {
@@ -695,7 +692,6 @@ function gvk_retire_flush(render3d_st: mut Render3dState) -> void { gvk_retire_u
 # the frame being recorded read stays
 function gvk_retire_upto(render3d_st: mut Render3dState, done: int) -> void {
   if render3d_st.gvk_retired_buf == null { return }
-  if render3d_st.gvk_retired_frame == null { render3d_st.gvk_retired_frame = new []int }
   while len(render3d_st.gvk_retired_frame) < len(render3d_st.gvk_retired_buf) { push(render3d_st.gvk_retired_frame, 0) }
   # compacted in place: three fresh lists a frame were never given back
   var w = 0
@@ -721,7 +717,6 @@ function gvk_retire_upto(render3d_st: mut Render3dState, done: int) -> void {
 # A buffer a compute pass writes: a draw later in the same frame reads what the GPU put there,
 # so it is never swapped for fresh storage because it was used this frame (gvk_buf_reserve).
 function gvk_buf_gpu_owned(render3d_st: mut Render3dState, b: int) -> void {
-  if render3d_st.gvk_buf_gpu == null { render3d_st.gvk_buf_gpu = new []int }
   while len(render3d_st.gvk_buf_gpu) <= b { push(render3d_st.gvk_buf_gpu, 0) }
   render3d_st.gvk_buf_gpu[b] = 1
 }

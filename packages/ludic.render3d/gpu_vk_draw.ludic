@@ -799,11 +799,6 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
   let zero: long = 0
   let v = render3d_st.gvk_prog_var[p]
   gvk_uniform_blocks(render3d_st, p)
-  if render3d_st.gvk_sc_tmp == null {
-    render3d_st.gvk_sc_tmp = new []long
-    render3d_st.gvk_set_offs = bytes(16)
-    render3d_st.gvk_ub_frame = new []int;  render3d_st.gvk_ub_offv = new []int;  render3d_st.gvk_ub_offf = new []int
-  }
   while len(render3d_st.gvk_ub_frame) <= p { push(render3d_st.gvk_ub_frame, 0);  push(render3d_st.gvk_ub_offv, 0);  push(render3d_st.gvk_ub_offf, 0) }
   let nt = len(v.t_name)
   # the key: every texture as this draw resolves it, and its sampler
@@ -1268,7 +1263,6 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
   if pipe == 0 {
     # Say so, once per program: a driver that refuses a pipeline other drivers accept (MoltenVK
     # rejected every skinned one) otherwise leaves a whole layer missing from the frame in silence.
-    if render3d_st.gvk_skip_said == null { render3d_st.gvk_skip_said = words(4096);  for i in 0 .. 4096 { render3d_st.gvk_skip_said[i] = 0 } }
     if p < 4096 and render3d_st.gvk_skip_said[p] == 0 {
       render3d_st.gvk_skip_said[p] = 1
       print(`r3d: vulkan: no pipeline for {gpu_program_key(render3d_st, p)}; its draws are skipped`)
@@ -1291,7 +1285,6 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
     let bufs = gvk_tmp(render3d_st, 8 * (GPU_MAX_VBUFS + 1))
     let offs = gvk_tmp(render3d_st, 8 * (GPU_MAX_VBUFS + 1))
     Vk.zero(offs, 8 * (GPU_MAX_VBUFS + 1))
-    if render3d_st.gvk_seen == null { render3d_st.gvk_seen = words(GPU_MAX_VBUFS) }
     let seen = render3d_st.gvk_seen
     var nbd = 0
     for i in 0 .. m.n_attrs {
@@ -1435,8 +1428,7 @@ function gvk_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
     win_gl_resize(w, h)
     # macOS: the Metal layer sets the backing scale, so it exists before the drawable is measured
     if Os.platform() == "macos" and win_metal_layer() == null { render3d_st.gvk_why = "no Metal layer on the window";  return false }
-    if render3d_st.gvk_size_buf == null { render3d_st.gvk_size_buf = words(4) }
-    win_gl_drawable(render3d_st.gvk_size_buf)
+      win_gl_drawable(render3d_st.gvk_size_buf)
     if render3d_st.gvk_size_buf[0] > 0 and render3d_st.gvk_size_buf[1] > 0 { gl_set_drawable(render3d_st.gvk_size_buf[0], render3d_st.gvk_size_buf[1]) }
     gl_set_pixel_scale(win_gl_scale())
   }
@@ -1508,7 +1500,6 @@ function gvk_fb_forget(render3d_st: mut Render3dState, fb: int) -> void {
 
 # the render state gpu.ludic has cached, with OpenGL's defaults where nothing was set yet
 function gvk_state_now(render3d_st: mut Render3dState) -> GvkState {
-  if render3d_st.gvk_state == null { render3d_st.gvk_state = new GvkState }
   let st = render3d_st.gvk_state
   st.depth_test = 0;  if render3d_st.gpu_s_depth_test == 1 { st.depth_test = 1 }
   st.depth_write = 1;  if render3d_st.gpu_s_depth_write == 0 { st.depth_write = 0 }
@@ -1833,7 +1824,6 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
 # a window's client area changed: the screen images and the swapchain follow it
 function gvk_resize_check(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gvk_swap == 0 { return false }
-  if render3d_st.gvk_size_buf == null { render3d_st.gvk_size_buf = words(4) }
   win_gl_drawable(render3d_st.gvk_size_buf)
   let w = render3d_st.gvk_size_buf[0]
   let h = render3d_st.gvk_size_buf[1]
@@ -1967,12 +1957,6 @@ function gvk_pipeline_fast(render3d_st: mut Render3dState, p: int, m: Mesh, st: 
   state = state | ((st.depth_func & 15) << 8) | ((st.cull_face & 15) << 12) | (gvk_blend_index(st.blend_src) << 16) | (gvk_blend_index(st.blend_dst) << 20)
   let bias = st.bias_factor * 31 + st.bias_units
   let pass = ((n_color * 1000 + color_fmt) * 1000 + depth_fmt) * 64 + samples
-  if render3d_st.gvk_pc_prog == null {
-    render3d_st.gvk_pc_prog = new []int;  render3d_st.gvk_pc_layout = new []int;  render3d_st.gvk_pc_state = new []int;  render3d_st.gvk_pc_bias = new []int
-    render3d_st.gvk_pc_pass = new []int;  render3d_st.gvk_pc_pipe = new []long
-    render3d_st.gvk_pc_last = words(4096)
-    for i in 0 .. 4096 { render3d_st.gvk_pc_last[i] = -1 }
-  }
   if p < 4096 {
     let k = render3d_st.gvk_pc_last[p]
     if k >= 0 and render3d_st.gvk_pc_layout[k] == layout and render3d_st.gvk_pc_state[k] == state and render3d_st.gvk_pc_pass[k] == pass and render3d_st.gvk_pc_bias[k] == bias { return render3d_st.gvk_pc_pipe[k] }

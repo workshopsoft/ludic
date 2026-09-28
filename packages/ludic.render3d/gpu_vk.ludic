@@ -279,6 +279,7 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
 
   if not gvk_cmd_init(render3d_st) { return false }
   render3d_st.gvk_ready = true
+  gvk_startup_state(render3d_st)
   print(`r3d: vulkan on {render3d_st.gvk_device_name}, anisotropy up to {gvk_aniso_x(render3d_st.gvk_max_aniso)}x, multi-draw indirect {render3d_st.gvk_has_mdi}, indirect count {render3d_st.gvk_has_dic}, mesh shaders {render3d_st.gvk_has_mesh}`)
   return true
 }
@@ -543,7 +544,6 @@ function gvk_cmd_init(render3d_st: mut Render3dState) -> bool {
 const GVK_TMP_BYTES: int = 1048576
 
 function gvk_tmp(render3d_st: mut Render3dState, n: int) -> pointer {
-  if render3d_st.gvk_tmp_buf == null { render3d_st.gvk_tmp_buf = bytes(GVK_TMP_BYTES) }
   let sz = (n + 15) / 16 * 16
   if sz > GVK_TMP_BYTES { print(`r3d: vulkan: {n} bytes of scratch asked for at once`);  return null }
   if render3d_st.gvk_tmp_off + sz > GVK_TMP_BYTES { render3d_st.gvk_tmp_off = 0 }
@@ -725,4 +725,44 @@ function gvk_labels_close(render3d_st: mut Render3dState) -> void {
     Vk.cmd_end_debug_utils_label_ext(render3d_st.gvk_cb)
     render3d_st.gvk_label_depth -= 1
   }
+}
+
+# Everything a frame's draws use as scratch or as a table, made once the device is up: each was made
+# on the first draw that needed it, which put an allocation in whichever frame that was (plan 25.2)
+const GVK_PROGS_MAX: int = 4096
+function gvk_startup_state(render3d_st: mut Render3dState) -> void {
+  let zero: long = 0
+  render3d_st.gvk_tmp_buf = bytes(GVK_TMP_BYTES)
+  render3d_st.gvk_skip_said = words(4096)
+  for i in 0 .. 4096 { render3d_st.gvk_skip_said[i] = 0 }
+  render3d_st.gvk_seen = words(GPU_MAX_VBUFS)
+  if render3d_st.gvk_state == null { render3d_st.gvk_state = new GvkState }
+  render3d_st.gvk_size_buf = words(4)
+  if render3d_st.gvk_tex_spare == null { render3d_st.gvk_tex_spare = new []int }
+  if render3d_st.gvk_buf_spare == null { render3d_st.gvk_buf_spare = new []int }
+  if render3d_st.gvk_retired_frame == null { render3d_st.gvk_retired_frame = new []int }
+  if render3d_st.gvk_buf_gpu == null { render3d_st.gvk_buf_gpu = new []int }
+  render3d_st.gvk_sc_tmp = new []long
+  let sct = render3d_st.gvk_sc_tmp
+  for i in 0 .. 130 { push(sct, zero) }
+  render3d_st.gvk_set_offs = bytes(16)
+  render3d_st.gvk_ub_frame = new []int;  render3d_st.gvk_ub_offv = new []int;  render3d_st.gvk_ub_offf = new []int
+  let ubf = render3d_st.gvk_ub_frame
+  let ubv = render3d_st.gvk_ub_offv
+  let ubo = render3d_st.gvk_ub_offf
+  for i in 0 .. GVK_PROGS_MAX {
+    push(ubf, 0);  push(ubv, 0);  push(ubo, 0)
+  }
+  render3d_st.gvk_pc_prog = new []int;  render3d_st.gvk_pc_layout = new []int;  render3d_st.gvk_pc_state = new []int;  render3d_st.gvk_pc_bias = new []int
+  render3d_st.gvk_pc_pass = new []int;  render3d_st.gvk_pc_pipe = new []long
+  render3d_st.gvk_pc_last = words(4096)
+  for i in 0 .. 4096 { render3d_st.gvk_pc_last[i] = -1 }
+  render3d_st.gg_rb = words(4);  render3d_st.gg_cb = words(1);  render3d_st.gg_bufs = words(3)
+  render3d_st.gg_texs = words(3);  render3d_st.gg_pr = words(48)
+  if render3d_st.gpu_u_tmp == null { render3d_st.gpu_u_tmp = words(4) }
+  if render3d_st.gpu_unit_2d == null {
+    render3d_st.gpu_unit_2d = words(32)
+    for i in 0 .. 32 { render3d_st.gpu_unit_2d[i] = -1 }
+  }
+  if render3d_st.cam_planes == null { render3d_st.cam_planes = floats(16) }
 }

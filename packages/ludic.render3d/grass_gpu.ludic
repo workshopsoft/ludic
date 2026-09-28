@@ -102,11 +102,7 @@ function gg_cull_frame(render3d_st: mut Render3dState) -> void {
   gg_tiles(render3d_st, 4, 0.0, 16.0)
   gg_tiles(render3d_st, 8, 16.0, 40.0)
   gg_tiles(render3d_st, 16, 40.0, render3d_st.grass_radius)
-  # made once: a words() a frame is a calloc nothing frees
-  if render3d_st.gg_rb == null {
-    render3d_st.gg_rb = words(4);  render3d_st.gg_cb = words(1);  render3d_st.gg_bufs = words(3)
-    render3d_st.gg_texs = words(3);  render3d_st.gg_pr = words(48)
-  }
+  # made once, with the device (gvk_startup_state)
   let rb = render3d_st.gg_rb
   rb[0] = GG_BANDS;  rb[1] = 0;  rb[2] = 0;  rb[3] = 0
   let cb = render3d_st.gg_cb
