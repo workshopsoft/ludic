@@ -350,6 +350,7 @@ function emit_program() -> void {
   if g_uses_logrt { emit_log_prelude() }         # @L_log_level + @lp_log_emit (levelled stderr sink)
   if g_uses_osrt { emit_os_prelude() }           # @lp_os_args/platform/arch/save_dir/... (libc env + uname)
   if g_uses_pid and (not g_target_win) { emith("declare i32 @getpid()\n") }
+  if g_uses_heap { emit_os_heap() }
   if g_uses_unicodert { emit_unicode_prelude() }  # @lp_uni_len/valid/decode/case/truncate/grapheme (UTF-8)
   if g_uses_fsrt { emit_fs_prelude() }           # @fn_fs_*/fn_path_*/fn_mime_* (libc + string ops)
   if g_uses_pak { emit_pak_prelude() }           # @lp_pak_* asset packs + the pre-main mount ctor

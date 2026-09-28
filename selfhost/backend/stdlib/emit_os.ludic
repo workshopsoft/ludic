@@ -22,6 +22,8 @@
 #   Os.config_dir(app)     -> string     per-user config directory for `app`
 #   Os.cache_dir(app)      -> string     per-user cache directory for `app`
 #   Os.temp_dir()          -> string     the system temporary directory
+#   Os.heap_bytes()        -> long       malloc's live bytes (macOS; 0 elsewhere): a test that a
+#                                        path allocates nothing, with no renderer linked in
 #
 # Determinism: args/env/platform are non-deterministic host input — read them at
 # startup to configure the game, but keep them out of the replayable simulation.
@@ -39,6 +41,7 @@ function is_os_ns(meth: pointer) -> bool {
   if (meth == "exit") or (meth == "pid") or (meth == "platform") or (meth == "arch") { return true }
   if (meth == "stdout_write") or (meth == "stderr_write") { return true }
   if (meth == "save_dir") or (meth == "config_dir") or (meth == "cache_dir") or (meth == "temp_dir") { return true }
+  if (meth == "heap_bytes") { return true }
   return false
 }
 
@@ -53,6 +56,11 @@ function emit_os_ns(meth: pointer, e: Node) -> Val {
     return val(emit_bind(`load ptr, ptr {q}`), "string")
   }
   if (meth == "pid") { g_uses_pid = true;  return val(emit_bind("call i32 @getpid()"), "int") }
+  if (meth == "heap_bytes") {
+    if g_target_win { return val("0", "long") }
+    g_uses_heap = true
+    return val(emit_bind("call i64 @lp_os_heap_bytes()"), "long")
+  }
   if (meth == "exit") {
     let n = emit_expr(e.kids[0])
     emit(`  call void @exit(i32 {n.code})\n`)
@@ -242,4 +250,15 @@ function emit_os_prelude() -> void {
   emith("define ptr @lp_os_arch() {\n")
   emith("entry:\n  %buf = call ptr @malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n")
   emith("  %m = getelementptr i8, ptr %buf, i64 1024\n  ret ptr %m\n}\n")
+}
+
+# Os.heap_bytes: malloc_zone_statistics' in-use bytes, all zones. The symbol is weak, so a libc
+# without it links and reads 0.
+function emit_os_heap() -> void {
+  emith("declare extern_weak void @malloc_zone_statistics(ptr, ptr)\n")
+  emith("define i64 @lp_os_heap_bytes() {\n")
+  emith("entry:\n  %has = icmp ne ptr @malloc_zone_statistics, null\n  br i1 %has, label %read, label %none\n")
+  emith("none:\n  ret i64 0\n")
+  emith("read:\n  %st = alloca [4 x i64], align 8\n  call void @malloc_zone_statistics(ptr null, ptr %st)\n")
+  emith("  %p = getelementptr [4 x i64], ptr %st, i32 0, i32 1\n  %n = load i64, ptr %p\n  ret i64 %n\n}\n")
 }

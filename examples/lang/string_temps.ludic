@@ -42,9 +42,9 @@ program StringTemps {
     var bad = 0
     for i in 0 .. 200 { bad += round(i, a, b) }
     if bad == 0 { print(7) }
-    let before = Vk.heap_bytes()
+    let before = Os.heap_bytes()
     for i in 0 .. 20000 { bad += round(i, a, b) }
-    let grew = Vk.heap_bytes() - before
+    let grew = Os.heap_bytes() - before
     if bad == 0 { print(`grew {grew}`) } else { print(`bad {bad}`) }
   }
 }
