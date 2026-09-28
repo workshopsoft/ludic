@@ -235,9 +235,17 @@ function emit_os_prelude() -> void {
   emith("  %d2 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 2\n  store i32 %c, ptr %d2\n")
   emith("  ret ptr %h\n}\n")
 
+  # uname once, into a buffer kept for the program's life: platform() and arch() are asked every
+  # frame by some callers, and each call once malloc'd 8 KB for it and let it go
+  emith("@L_os_uts = internal global ptr null\n")
+  emith("define ptr @lp_os_uts() {\n")
+  emith("entry:\n  %c = load ptr, ptr @L_os_uts\n  %have = icmp ne ptr %c, null\n  br i1 %have, label %done, label %make\n")
+  emith("done:\n  ret ptr %c\n")
+  emith("make:\n  %buf = call ptr @malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n  store ptr %buf, ptr @L_os_uts\n  ret ptr %buf\n}\n")
+
   # platform(): uname sysname (field 0, portable) mapped to a short id
   emith("define ptr @lp_os_platform() {\n")
-  emith("entry:\n  %buf = call ptr @malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n")
+  emith("entry:\n  %buf = call ptr @lp_os_uts()\n")
   emith(`  %cd = call i32 @strncmp(ptr %buf, ptr {k_darw}, i64 6)\n  %isd = icmp eq i32 %cd, 0\n  br i1 %isd, label %mac, label %chkl\n`)
   emith(`mac:\n  ret ptr {k_macos}\n`)
   emith(`chkl:\n  %cl = call i32 @strncmp(ptr %buf, ptr {k_linux_k}, i64 5)\n  %isl = icmp eq i32 %cl, 0\n  br i1 %isl, label %lin, label %other\n`)
@@ -248,7 +256,7 @@ function emit_os_prelude() -> void {
   # bytes, so `machine` (index 4) sits at offset 1024. Documented BSD-layout
   # assumption (see the header note); other layouts are a follow-up.
   emith("define ptr @lp_os_arch() {\n")
-  emith("entry:\n  %buf = call ptr @malloc(i64 8192)\n  call i32 @uname(ptr %buf)\n")
+  emith("entry:\n  %buf = call ptr @lp_os_uts()\n")
   emith("  %m = getelementptr i8, ptr %buf, i64 1024\n  ret ptr %m\n}\n")
 }
 

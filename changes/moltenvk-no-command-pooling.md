@@ -6,3 +6,5 @@ busiest frame so far, for as long as the game ran. render3d turns it off
 (`MVK_CONFIG_USE_COMMAND_POOLING=0`, unless the environment already says otherwise) before the first
 Vulkan call; the objects are made and freed with their command buffer, at no measured cost.
 `examples/rendering/steady.ludic` ramps a frame from 20 to 200 actors and fails on what pooling left.
+A buffer written through its mapping is also read once at the start of the next frame's commands,
+so MoltenVK makes its Metal buffer then rather than at its first draw, however much later that is.
