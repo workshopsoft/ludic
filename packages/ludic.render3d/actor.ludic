@@ -82,6 +82,9 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   # record, matrix and tint then (actor_release gives them back to this pool)
   if render3d_st.ac_spare == null { render3d_st.ac_spare = new []Actor }
   let sp = render3d_st.ac_spare
+  if render3d_st.ac_actors == null { render3d_st.ac_actors = new []Actor }
+  actor_room(render3d_st.ac_actors, 4 * ACTOR_POOL)
+  actor_room(sp, 4 * ACTOR_POOL)
   for i in 0 .. ACTOR_POOL {
     let a = new Actor
     a.tint = v3_new(1.0, 1.0, 1.0)
@@ -94,7 +97,8 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
   render3d_st.ac_out = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n")
   render3d_st.ac_out_cut = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
-  render3d_st.ac_actors = new []Actor
+  let stage = render3d_st.ac_actors           # made above with its room; a new valley starts empty
+  List.clear(stage)
 }
 # off the stage: the last actor takes its row, so the list stays dense and nothing is rebuilt
 # (it was a new list of every other actor per removal, never freed)
@@ -474,4 +478,11 @@ function actor_own_skin(a: Actor) -> Skin {
   a.skin = skin_clone(a.model.skin)
   a.skin_owned = true
   return a.skin
+}
+
+# room for n more actors in a list, made at start-up: filled and emptied, it keeps what it grew to
+function actor_room(l: []Actor, n: int) -> void {
+  let have = len(l)
+  for i in 0 .. n { push(l, null) }
+  while len(l) > have { List.pop(l) }
 }

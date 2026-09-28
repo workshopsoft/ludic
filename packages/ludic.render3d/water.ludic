@@ -104,7 +104,7 @@ function water_reflect_visible(render3d_st: mut Render3dState) -> bool {
     var seen = 0
     var hidden = 0
     for i in 0 .. render3d_st.wb_ncells { if wb_cell_visible(render3d_st, i) { seen += 1;  if wb_cell_occluded(render3d_st, i) { hidden += 1 } } }
-    print(`water reflection test: {render3d_st.wb_ncells} wet rectangles in {render3d_st.wb_nblocks} blocks (built in {render3d_st.wb_build_us} us), {seen} in view, {hidden} of them behind the ground`)
+    water_say_test(render3d_st, seen, hidden)
   }
   # A rectangle in the frustum can still be behind the ground or dry where it shows: standing on a shore
   # above the lake and looking down at your feet puts water inside the view and none of it on screen.
@@ -366,3 +366,7 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
   }
   gpu_blend(render3d_st, false)
 }
+
+# messages, each built in a function of its own so the path that says it holds no allocation
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function water_say_test(render3d_st: Render3dState, seen: int, hidden: int) -> void { print(`water reflection test: {render3d_st.wb_ncells} wet rectangles in {render3d_st.wb_nblocks} blocks (built in {render3d_st.wb_build_us} us), {seen} in view, {hidden} of them behind the ground`) }

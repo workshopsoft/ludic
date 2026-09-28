@@ -327,7 +327,7 @@ function gvk_tex_upload(render3d_st: mut Render3dState, tex: int, ifmt: int, w: 
             let hv = gvk_half(Vk.get_i32(src, i))
             buf[o] = hv & 255;  buf[o + 1] = (hv >> 8) & 255
           } else {
-            print(`r3d: vulkan: no conversion from {bin}-byte to {bout}-byte samples`)
+            gvk_say_no_conversion(bin, bout)
             gvk_staging_free(render3d_st)
             return false
           }
@@ -448,7 +448,7 @@ function gvk_tex_read(render3d_st: mut Render3dState, tex: int, ifmt: int, w: in
   # a read may ask for fewer channels than the image has (the height field's R of an RGBA32F
   # bake), never more, and only in the sample size the image stores
   if cwant > cout or gvk_gl_type_bytes(ty) != bout {
-    print(`r3d: vulkan: no read-back conversion for GL format {ifmt} as {fmt}/{ty}`)
+    gvk_say_no_readback(ifmt, fmt, ty)
     return false
   }
   let n = w * h * cout * bout
@@ -741,7 +741,7 @@ function gvk_buf_reserve(render3d_st: mut Render3dState, b: int, n: int) -> bool
   let out = gvk_tmp(render3d_st, 8)
   render3d_st.gvk_mk_buf += 1
   var r = Vk.create_buffer(render3d_st.gvk_dev, bci, render3d_st.gvk_ac, out)
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, `vkCreateBuffer ({size} bytes)`, r) }
+  if r != VK_SUCCESS { return gvk_fail_create_buffer(render3d_st, size, r) }
   let buf = gvk_handle(out)
   let req = gvk_tmp(render3d_st, VkMemoryRequirements_sizeof)
   Vk.get_buffer_memory_requirements(render3d_st.gvk_dev, buf, req)
@@ -831,3 +831,11 @@ function gvk_buf_upload(render3d_st: mut Render3dState, b: int, n: int, data: po
   if data != null and n > 0 { mem_copy(render3d_st.gvk_buf_map[b], data, n) }
   return true
 }
+
+# messages, each built in a function of its own so the path that says it holds no allocation
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function gvk_say_no_conversion(bin: int, bout: int) -> void { print(`r3d: vulkan: no conversion from {bin}-byte to {bout}-byte samples`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function gvk_say_no_readback(ifmt: int, fmt: int, ty: int) -> void { print(`r3d: vulkan: no read-back conversion for GL format {ifmt} as {fmt}/{ty}`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function gvk_fail_create_buffer(render3d_st: mut Render3dState, size: int, r: int) -> bool { return gvk_fail(render3d_st, `vkCreateBuffer ({size} bytes)`, r) }

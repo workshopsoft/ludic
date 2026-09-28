@@ -40,7 +40,7 @@ function shadow_set_res(render3d_st: mut Render3dState, r: int) -> void {
   # that is refused now, rather than ending with no shadow map at all
   if not gpu_tex_ok(render3d_st, render3d_st.sh_tex) {
     render3d_st.shadow_refused = r
-    print(`r3d: shadows: no memory for {r} x {r} cascades; keeping {was}`)
+    shadow_say_no_memory(r, was)
     var size = was
     render3d_st.shadow_res = size
     gpu_tex_free(render3d_st, render3d_st.sh_tex)
@@ -283,3 +283,7 @@ function shadow_debug_range(render3d_st: mut Render3dState, prog: int) -> void {
   render3d_st.sh_printed3 = true
   print(`range {fixed(render3d_st.sh_range[0])} {fixed(render3d_st.sh_range[1])} {fixed(render3d_st.sh_range[2])} {fixed(render3d_st.sh_range[3])} texel*1000 {fixed(render3d_st.sh_texel[0] * 1000.0)} {fixed(render3d_st.sh_texel[1] * 1000.0)} {fixed(render3d_st.sh_texel[2] * 1000.0)} {fixed(render3d_st.sh_texel[3] * 1000.0)} locs {gpu_uniform(render3d_st, prog, "u_cascade_range")} {gpu_uniform(render3d_st, prog, "u_cascade_texel")}`)
 }
+
+# messages, each built in a function of its own so the path that says it holds no allocation
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function shadow_say_no_memory(r: int, was: int) -> void { print(`r3d: shadows: no memory for {r} x {r} cascades; keeping {was}`) }

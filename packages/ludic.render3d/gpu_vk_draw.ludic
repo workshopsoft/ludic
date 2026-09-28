@@ -1113,7 +1113,7 @@ function gvk_pass_no_compressed(render3d_st: mut Render3dState) -> void {
     if tex > 0 and tex < len(render3d_st.gvk_tex_glfmt) and gvk_is_compressed(render3d_st.gvk_tex_glfmt[tex]) {
       if render3d_st.gvk_bc_said < 8 {
         render3d_st.gvk_bc_said += 1
-        print(`r3d: vulkan: framebuffer {render3d_st.gvk_fb_cur} would draw into compressed texture {tex} ({gvk_tex_w(render3d_st, tex)}x{gvk_tex_h(render3d_st, tex)}); left out`)
+        gvk_say_compressed(render3d_st, tex)
       }
     } else {
       render3d_st.gvk_pass_col[w * 2] = tex;  render3d_st.gvk_pass_col[w * 2 + 1] = render3d_st.gvk_pass_col[c * 2 + 1]
@@ -1269,7 +1269,7 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
     # rejected every skinned one) otherwise leaves a whole layer missing from the frame in silence.
     if p < 4096 and render3d_st.gvk_skip_said[p] == 0 {
       render3d_st.gvk_skip_said[p] = 1
-      print(`r3d: vulkan: no pipeline for {gpu_program_key(render3d_st, p)}; its draws are skipped`)
+      gvk_say_no_pipeline(render3d_st, p)
     }
     return
   }
@@ -1835,7 +1835,7 @@ function gvk_resize_check(render3d_st: mut Render3dState) -> bool {
   if w <= 0 or h <= 0 { return false }
   if w == gl_width() and h == gl_height() and not render3d_st.gvk_swap_stale { return false }
   # a remake is rare (a resize); said, so one on every frame shows in the log
-  print(`r3d: vulkan: swapchain remade {w}x{h} (was {gl_width()}x{gl_height()}, stale {render3d_st.gvk_swap_stale})`)
+  gvk_say_swap_remade(render3d_st, w, h)
   gvk_flush(render3d_st)
   gl_set_drawable(w, h)
   gvk_screen_make(render3d_st, w, h)
@@ -1986,3 +1986,11 @@ function gvk_pipe_build(render3d_st: mut Render3dState, p: int, m: Mesh, st: Gvk
   if p < 4096 { render3d_st.gvk_pc_last[p] = len(render3d_st.gvk_pc_prog) - 1 }
   return pipe
 }
+
+# messages, each built in a function of its own so the path that says it holds no allocation
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function gvk_say_compressed(render3d_st: Render3dState, tex: int) -> void { print(`r3d: vulkan: framebuffer {render3d_st.gvk_fb_cur} would draw into compressed texture {tex} ({gvk_tex_w(render3d_st, tex)}x{gvk_tex_h(render3d_st, tex)}); left out`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function gvk_say_no_pipeline(render3d_st: Render3dState, p: int) -> void { print(`r3d: vulkan: no pipeline for {gpu_program_key(render3d_st, p)}; its draws are skipped`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function gvk_say_swap_remade(render3d_st: Render3dState, w: int, h: int) -> void { print(`r3d: vulkan: swapchain remade {w}x{h} (was {gl_width()}x{gl_height()}, stale {render3d_st.gvk_swap_stale})`) }

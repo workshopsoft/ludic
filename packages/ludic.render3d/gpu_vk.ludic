@@ -311,7 +311,7 @@ function gvk_alloc(render3d_st: mut Render3dState, req: bytes, want: int) -> lon
   # device-local is a preference; host-visible is a need
   if t < 0 and want == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT { t = gvk_mem_type(render3d_st, allowed, 0) }
   let zero: long = 0
-  if t < 0 { print(`r3d: vulkan: no memory type for properties {want}`);  return zero }
+  if t < 0 { gvk_say_no_type(want);  return zero }
   let mai = gvk_tmp(render3d_st, VkMemoryAllocateInfo_sizeof)
   Vk.zero(mai, VkMemoryAllocateInfo_sizeof)
   Vk.put_i32(mai, VkMemoryAllocateInfo_sType, VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO)
@@ -320,7 +320,7 @@ function gvk_alloc(render3d_st: mut Render3dState, req: bytes, want: int) -> lon
   let out = gvk_tmp(render3d_st, 8)
   render3d_st.gvk_mk_mem += 1
   let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, render3d_st.gvk_ac, out)
-  if r != VK_SUCCESS { print(`r3d: vulkan: vkAllocateMemory failed (VkResult {r})`);  return zero }
+  if r != VK_SUCCESS { gvk_say_alloc_failed(r);  return zero }
   render3d_st.gvk_n_allocs += 1
   return gvk_handle(out)
 }
@@ -548,7 +548,7 @@ const GVK_TMP_BYTES: int = 1048576
 
 function gvk_tmp(render3d_st: mut Render3dState, n: int) -> pointer {
   let sz = (n + 15) / 16 * 16
-  if sz > GVK_TMP_BYTES { print(`r3d: vulkan: {n} bytes of scratch asked for at once`);  return null }
+  if sz > GVK_TMP_BYTES { gvk_say_tmp_big(n);  return null }
   if render3d_st.gvk_tmp_off + sz > GVK_TMP_BYTES { render3d_st.gvk_tmp_off = 0 }
   let p = mem_off(render3d_st.gvk_tmp_buf, render3d_st.gvk_tmp_off)
   render3d_st.gvk_tmp_off += sz
@@ -746,6 +746,18 @@ function gvk_startup_state(render3d_st: mut Render3dState) -> void {
   if render3d_st.gvk_buf_spare == null { render3d_st.gvk_buf_spare = new []int }
   if render3d_st.gvk_retired_frame == null { render3d_st.gvk_retired_frame = new []int }
   if render3d_st.gvk_buf_gpu == null { render3d_st.gvk_buf_gpu = new []int }
+  if render3d_st.gvk_retired_buf == null { render3d_st.gvk_retired_buf = new []long;  render3d_st.gvk_retired_mem = new []long }
+  # room made now in every list play pushes into, so a push never grows one (plan 25.2)
+  gvk_room_int(render3d_st.gvk_retired_frame, GVK_LIST_ROOM)
+  gvk_room_long(render3d_st.gvk_retired_buf, GVK_LIST_ROOM)
+  gvk_room_long(render3d_st.gvk_retired_mem, GVK_LIST_ROOM)
+  gvk_room_int(render3d_st.gvk_fr_blk, GVK_LIST_ROOM)
+  gvk_room_int(render3d_st.gvk_fr_off, GVK_LIST_ROOM)
+  gvk_room_int(render3d_st.gvk_fr_len, GVK_LIST_ROOM)
+  gvk_room_int(render3d_st.gvk_al_spare, GVK_LIST_ROOM)
+  gvk_room_int(render3d_st.gvk_tex_spare, GVK_LIST_ROOM)
+  gvk_room_int(render3d_st.gvk_buf_spare, GVK_LIST_ROOM)
+  gvk_room_int(render3d_st.gvk_buf_gpu, 4 * GVK_LIST_ROOM)
   render3d_st.gvk_sc_tmp = new []long
   let sct = render3d_st.gvk_sc_tmp
   for i in 0 .. 130 { push(sct, zero) }
@@ -767,4 +779,28 @@ function gvk_startup_state(render3d_st: mut Render3dState) -> void {
     render3d_st.gpu_unit_2d = words(32)
     for i in 0 .. 32 { render3d_st.gpu_unit_2d[i] = -1 }
   }
+}
+
+# messages, each built in a function of its own so the path that says it holds no allocation
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function gvk_say_no_type(want: int) -> void { print(`r3d: vulkan: no memory type for properties {want}`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function gvk_say_alloc_failed(r: int) -> void { print(`r3d: vulkan: vkAllocateMemory failed (VkResult {r})`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function gvk_say_tmp_big(n: int) -> void { print(`r3d: vulkan: {n} bytes of scratch asked for at once`) }
+
+const GVK_LIST_ROOM: int = 4096
+# a list's room for n more, made now: filled and emptied again, it keeps what it grew to
+function gvk_room_int(l: []int, n: int) -> void {
+  if l == null { return }
+  let have = len(l)
+  for i in 0 .. n { push(l, 0) }
+  while len(l) > have { List.pop(l) }
+}
+function gvk_room_long(l: []long, n: int) -> void {
+  if l == null { return }
+  let have = len(l)
+  let zero: long = 0
+  for i in 0 .. n { push(l, zero) }
+  while len(l) > have { List.pop(l) }
 }
