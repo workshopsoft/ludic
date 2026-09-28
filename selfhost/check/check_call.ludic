@@ -178,6 +178,7 @@ function ck_call(e: Node) -> pointer {
     if b.kind == E_ID and ck_local(b.s) < 0 and ck_global(b.s) == null {
       # an alias (L6) is its target, labels and all, so its arguments are checked in full
       if (b.s == "Memory") { ck_raw(e, `Memory.{c.s}`) }
+      if (b.s == "Math") and is_math_ns(c.s) { return ck_math(e, c.s) }
       let al = ns_alias_find(b.s, c.s)
       if al >= 0 {
         var tf = ck_fn(g_al_target[al])
@@ -250,8 +251,46 @@ function ck_call_named(e: Node, name: pointer) -> pointer {
     mg_ref(e.a, g)                               # 0.S2: a call through a var of a function type reads it
     return ck_call_sig(e, name, g.ty)
   }
+  if is_math_builtin(name) { return ck_math(e, name) }
   ck_walk_args(e)
   return "?"
+}
+# Math.max(a, b), bare max(a, b): the emitter computes these inline, and their type is the one it
+# gives them - a float or double argument first is that type (sign an int), else the fixed-point
+# path: min, max, abs and clamp keep the first argument's type, the rounding and wrapping ones an
+# int, the rest a fixed. Left "?", a Math.max(5, n) went into a string field and failed in LLVM.
+function ck_math(e: Node, meth: pointer) -> pointer {
+  if len(e.kids) == 0 or e.kids[0].kind == E_FINIT {
+    ck_walk_args(e)
+    return "?"
+  }
+  let tys = new []pointer
+  var i = 0
+  while i < len(e.kids) {
+    push(tys, ck_expr(e.kids[i]))
+    i += 1
+  }
+  if ck_unknown(tys[0]) { return "?" }
+  if ck_is_float(tys[0]) {
+    if (meth == "sign") { return "int" }
+    var t = tys[0]
+    i = 1
+    while i < len(tys) {
+      if (tys[i] == "double") { t = "double" }
+      i += 1
+    }
+    return t
+  }
+  # a later float argument moves the emitter onto the float path only when it can see it
+  i = 1
+  while i < len(tys) {
+    if ck_unknown(tys[i]) or ck_is_float(tys[i]) { return "?" }
+    i += 1
+  }
+  if (meth == "min") or (meth == "max") or (meth == "abs") or (meth == "clamp") { return tys[0] }
+  if (meth == "sign") or (meth == "floor") or (meth == "ceil") or (meth == "round") { return "int" }
+  if (meth == "posmod") or (meth == "wrap") or (meth == "ping_pong") { return "int" }
+  return "fixed"
 }
 # emit E(field: v): each field gets the type the event declares for it
 function ck_emit(s: Node) -> void {
