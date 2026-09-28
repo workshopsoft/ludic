@@ -7,30 +7,47 @@ export function npc_name_used(npc_st: NpcState, n: string) -> bool {
   for i in 0 .. len(all) { if all[i].active and all[i].name == n { return true } }
   let posts = npc_posts(npc_st)
   for i in 0 .. len(posts) { if posts[i].active and posts[i].name == n { return true } }
-  if npc_st.np_recent != null { for i in 0 .. len(npc_st.np_recent) { if npc_st.np_recent[i] == n { return true } } }
+  for i in 0 .. len(npc_st.np_recent) { if npc_st.np_recent[i] != "" and npc_st.np_recent[i] == n { return true } }
   return false
 }
 
 # a free name from the body's pool, from a place in it the dice choose ("" when the pool is empty)
 export function npc_pick_name(npc_st: NpcState, body: int) -> string {
-  let pool = new []string
-  for i in 0 .. NPCN_COUNT { if NpcNames[i].body == body { push(pool, NpcNames[i].name) } }
-  let n = len(pool)
+  var n = 0
+  for i in 0 .. NPCN_COUNT { if NpcNames[i].body == body { n += 1 } }
   if n == 0 { return "" }
   let start = npc_between(npc_st, 0, n - 1)
   for k in 0 .. n {
-    let name = pool[(start + k) % n]
+    let name = np_name_nth(body, (start + k) % n)
     if not npc_name_used(npc_st, name) { return name }
   }
-  return pool[start]
+  return np_name_nth(body, start)
+}
+# the body's j-th name in the table, counted in place rather than gathered into a list
+function np_name_nth(body: int, j: int) -> string {
+  var seen = 0
+  for i in 0 .. NPCN_COUNT {
+    if NpcNames[i].body == body {
+      if seen == j { return NpcNames[i].name }
+      seen += 1
+    }
+  }
+  return ""
 }
 
+# the last eight who left, in a ring of slots made with the state
 function np_left(npc_st: mut NpcState, name: string) -> void {
-  push(npc_st.np_recent, name)
-  if len(npc_st.np_recent) <= 8 { return }
-  let keep = new []string
-  for i in len(npc_st.np_recent) - 8 .. len(npc_st.np_recent) { push(keep, npc_st.np_recent[i]) }
-  npc_st.np_recent = keep
+  npc_st.np_recent[npc_st.np_rnext] = name
+  npc_st.np_rnext = (npc_st.np_rnext + 1) % len(npc_st.np_recent)
+}
+function np_recent_new() -> []string {
+  let l = new []string
+  for i in 0 .. 8 { push(l, "") }
+  return l
+}
+function np_recent_clear(npc_st: mut NpcState) -> void {
+  for i in 0 .. len(npc_st.np_recent) { npc_st.np_recent[i] = "" }
+  npc_st.np_rnext = 0
 }
 
 # how many pairs share a name, the place's own names included
