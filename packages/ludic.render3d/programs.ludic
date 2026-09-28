@@ -37,6 +37,7 @@ function r3d_find_root(render3d_st: mut Render3dState) -> void {
 # Build a program from a vertex + fragment file pair (defines apply to both).
 # R3D_PROGRAMS_LOG=<file>: append every program built (vertex, fragment, defines) - the list a
 # backend that cannot compile shaders at run time (Vulkan: SPIR-V is built ahead) must cover
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function r3d_program_log(render3d_st: mut Render3dState, vs: string, fs: string, defines: string) -> void {
   if render3d_st.r3d_prog_log < 0 { render3d_st.r3d_prog_log = 0;  if r3d_env_has(render3d_st, "R3D_PROGRAMS_LOG") { render3d_st.r3d_prog_log = 1 } }
   if render3d_st.r3d_prog_log == 0 { return }
@@ -48,6 +49,7 @@ function r3d_program_log(render3d_st: mut Render3dState, vs: string, fs: string,
   file_write(f, line, len(line))
   file_close(f)
 }
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function r3d_program(render3d_st: mut Render3dState, vs: string, fs: string, defines: string) -> int {
   r3d_program_log(render3d_st, vs, fs, defines)
   let p = gpu_program(render3d_st, vs, fs, `{render3d_st.r3d_global_defs}{defines}`)
@@ -67,6 +69,7 @@ property Target {
   w:     int = 0,
   h:     int = 0
 }
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function target_new(render3d_st: mut Render3dState, w: int, h: int, ifmt: int, fmt: int, ty: int, with_depth: bool, filter: int) -> Target {
   let t = new Target
   t.w = w;  t.h = h

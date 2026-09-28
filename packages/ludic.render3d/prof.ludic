@@ -30,6 +30,7 @@ function prof_init(render3d_st: mut Render3dState) -> void {
 }
 
 # the slot index for `name`, registering it on first sight (order = frame order)
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_slot(render3d_st: mut Render3dState, name: pointer) -> int {
   var i = 0
   while i < render3d_st.prof_n {
@@ -82,6 +83,7 @@ function prof_collect(render3d_st: mut Render3dState) -> void {
   }
 }
 
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_report(render3d_st: Render3dState) -> void {
   if not render3d_st.prof_on { return }
   print("")
@@ -130,6 +132,7 @@ function prof_before_swap(render3d_st: mut Render3dState) -> void { if render3d_
 # name it without keeping a timeline.
 function prof_mark_start(render3d_st: mut Render3dState) -> void { if render3d_st.prof_on { render3d_st.prof_mark_last = gl_now_us();  render3d_st.prof_mark_best = 0;  render3d_st.prof_mark_name = null } }
 # ... and every phase's share of the average frame, past the first eight frames (loading, first fills)
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_cpu_mark(render3d_st: mut Render3dState, name: pointer) -> void {
   if not render3d_st.prof_on { return }
   let now = gl_now_us()
@@ -158,6 +161,7 @@ function prof_layer_add(render3d_st: mut Render3dState, us: long, bytes: long) -
 }
 function prof_bake_add(render3d_st: mut Render3dState, us: long) -> void { if render3d_st.prof_on { render3d_st.prof_bake_us_cur = render3d_st.prof_bake_us_cur + us } }
 
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_chunk(render3d_st: mut Render3dState, kind: int, band: int, count: int, us: long) -> void {
   if not render3d_st.prof_on { return }
   if render3d_st.prof_chunk_us == null {
@@ -169,6 +173,7 @@ function prof_chunk(render3d_st: mut Render3dState, kind: int, band: int, count:
   render3d_st.prof_gen_us_cur += us
 }
 
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_chunk_report(render3d_st: Render3dState) -> void {
   if not render3d_st.prof_on or render3d_st.prof_chunk_us == null { return }
   print("")
@@ -220,6 +225,7 @@ function prof_chunk_report(render3d_st: Render3dState) -> void {
   print(`  generation per frame (us): p95 {string(sorted[(n * 95) / 100])}  p99 {string(sorted[(n * 99) / 100])}  worst {string(sorted[n - 1])}   frames that generated: {string(busy)} of {string(n)}  total {string(t / 1000)} ms`)
 }
 
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_gen_frame(render3d_st: mut Render3dState) -> void {
   ds_frame(render3d_st)
   if not render3d_st.prof_on { return }
@@ -256,6 +262,7 @@ function prof_gen_frame(render3d_st: mut Render3dState) -> void {
 }
 
 # the distribution of REAL frame times: stutter lives in the tail, not the mean
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_ft_report(render3d_st: Render3dState) -> void {
   if not render3d_st.prof_on { return }
   if render3d_st.prof_ft == null or len(render3d_st.prof_ft) < 16 { return }
@@ -320,6 +327,7 @@ function prof_ft_report(render3d_st: Render3dState) -> void {
 
 # The slowest frames of the run, with the once-in-a-while CPU work that landed in them.
 # An average never shows a hitch; this is the list of the frames you actually felt.
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_hitch_report(render3d_st: Render3dState) -> void {
   if not render3d_st.prof_on or render3d_st.prof_dt == null or len(render3d_st.prof_dt) < 32 { return }
   let n = len(render3d_st.prof_dt)
@@ -357,6 +365,7 @@ function prof_hitch_report(render3d_st: Render3dState) -> void {
   }
 }
 
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_gen_report(render3d_st: Render3dState) -> void {
   if not render3d_st.prof_on { return }
   if render3d_st.prof_gen == null or len(render3d_st.prof_gen) < 8 { return }

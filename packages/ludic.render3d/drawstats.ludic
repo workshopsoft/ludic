@@ -31,6 +31,7 @@ const DS_KINDS: int = 5
 
 # rows: (pass, program, kind)
 
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function ds_enabled(render3d_st: mut Render3dState) -> bool {
   if render3d_st.ds_on < 0 {
     render3d_st.ds_on = 0
@@ -49,6 +50,7 @@ function ds_enabled(render3d_st: mut Render3dState) -> bool {
 }
 
 # the profiler's pass boundaries (prof_begin / prof_end), whether or not R3D_PROF is on
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function ds_set_pass(render3d_st: mut Render3dState, name: pointer) -> void {
   if render3d_st.ds_on != 1 { return }
   render3d_st.ds_last = -1
@@ -76,6 +78,7 @@ function ds_frame(render3d_st: mut Render3dState) -> void {
   }
 }
 
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function ds_draw(render3d_st: mut Render3dState, kind: int, instances: int, indices: int) -> void {
   if render3d_st.ds_on != 1 or not render3d_st.ds_counting { return }
   let p = render3d_st.gpu_prog_cur
@@ -125,6 +128,7 @@ function ds_backend(render3d_st: Render3dState) -> pointer {
   return "opengl"
 }
 
+@alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function ds_report(render3d_st: mut Render3dState) -> void {
   let n_rows = len(render3d_st.ds_row_pass)
   let n_pass = len(render3d_st.ds_pass_names)

@@ -54,6 +54,7 @@ function post_set_msaa(render3d_st: mut Render3dState, n: int) -> void {
   }
 }
 
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function post_init(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_w = w;  render3d_st.post_h = h
   render3d_st.post_hdr = target_new(render3d_st, w, h, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)

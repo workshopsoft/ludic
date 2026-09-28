@@ -336,6 +336,7 @@ const GVK_BLOCK_DEVICE: int = 67108864
 const GVK_BLOCK_HOST: int = 67108864
 const GVK_OWN_OVER: int = 16777216
 
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_mem_init(render3d_st: mut Render3dState) -> void {
   if render3d_st.gvk_al_blk != null { return }
   let zero: long = 0
@@ -377,6 +378,7 @@ function gvk_fr_put(render3d_st: mut Render3dState, b: int, off: int, len_: int)
 }
 
 # Memory for a resource from its requirements (a VkMemoryRequirements): an allocation id, 0 if none.
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, image: bool) -> int {
   gvk_mem_init(render3d_st)
   let allowed = Vk.get_i32(req, VkMemoryRequirements_memoryTypeBits)

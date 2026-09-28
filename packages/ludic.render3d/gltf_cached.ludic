@@ -4,14 +4,21 @@
 # read after the load (ludic.anim's clips) still goes through gltf_load. A model loaded here is shared
 # by every actor drawing it; model_release takes it out of the cache as it lets it go.
 export function gltf_cached(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
+  if render3d_st.gltf_kept != null {
+    for i in 0 .. len(render3d_st.gltf_kept) {
+      if render3d_st.gltf_kept_node[i] == node_name and render3d_st.gltf_kept_file[i] == file and render3d_st.gltf_kept_dir[i] == dir { return render3d_st.gltf_kept[i] }
+    }
+  }
+  return gltf_cached_load(render3d_st, dir, file, node_name)
+}
+# the first ask for a model: loaded, and kept for every ask after it
+@alloc_ok("a model loaded the first time it is asked for, kept for every ask after it")
+function gltf_cached_load(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
   if render3d_st.gltf_kept == null {
     render3d_st.gltf_kept = new []Model
     render3d_st.gltf_kept_dir = new []string
     render3d_st.gltf_kept_file = new []string
     render3d_st.gltf_kept_node = new []string
-  }
-  for i in 0 .. len(render3d_st.gltf_kept) {
-    if render3d_st.gltf_kept_node[i] == node_name and render3d_st.gltf_kept_file[i] == file and render3d_st.gltf_kept_dir[i] == dir { return render3d_st.gltf_kept[i] }
   }
   let m = gltf_load(render3d_st, dir, file, node_name)
   push(render3d_st.gltf_kept, m)
