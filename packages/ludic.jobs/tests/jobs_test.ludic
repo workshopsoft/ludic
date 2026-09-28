@@ -162,6 +162,8 @@ program JobsTest {
     jobs_morning(jobs_st)
     expect_eq(len(jobs_posted(jobs_st, BOARD_DAILY)), 3)
     expect_eq(len(jobs_posted(jobs_st, BOARD_ADA)), 2)
+    expect_eq(jobs_posted_count(jobs_st, BOARD_DAILY), 3)
+    expect_eq(jobs_posted_count(jobs_st, BOARD_ADA), 2)
     let a = jobs_post_need(jobs_st, BOARD_DAILY, 0) * 100 + jobs_post_need(jobs_st, BOARD_DAILY, 1) * 10 + jobs_post_need(jobs_st, BOARD_DAILY, 2)
     fresh(jobs_st, jobs_test_st)
     jobs_test_st.day = 3

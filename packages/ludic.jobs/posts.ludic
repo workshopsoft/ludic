@@ -20,6 +20,13 @@ export function jobs_posted(jobs_st: JobsState, b: int) -> []int {
   return out
 }
 
+# how many of a board's slots hold a post, without the list
+export function jobs_posted_count(jobs_st: JobsState, b: int) -> int {
+  var n = 0
+  for s in 0 .. jobs_slots(b) { if jobs_post_kind(jobs_st, b, s) >= 0 { n += 1 } }
+  return n
+}
+
 # how many of a board's posts are paid
 export function jobs_posts_done(jobs_st: JobsState, b: int) -> int {
   var n = 0
