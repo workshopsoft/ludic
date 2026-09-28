@@ -1,0 +1,28 @@
+# arena_alias.ludic - a record whose list is filled through a local alias (`let live = s.cells`, as
+# render3d's stream_new fills its chunk pool) and which a pool then keeps. After `let x = y`, x and y
+# are one piece of memory: what is stored through x is kept when y is. Built with --arena and
+# poisoned on every reset it prints `3 1518`, as the heap does.
+program ArenaAlias {
+  property Cell { v: int = 0 }
+  property Holder { cells: []Cell = new []Cell }
+  property Pool { all: []Holder = new []Holder }
+  function make(p: Pool, f: int) -> void {
+    let s = new Holder
+    let live = s.cells
+    for i in 0 .. 3 { push(live, new Cell { v: f + i }) }
+    push(p.all, s)
+  }
+  function step(p: Pool, f: int) -> void { if f == 500 - 1 or f == 5 { make(p, f) } }
+  entry {
+    let p = new Pool
+    for f in 0 .. 500 {
+      step(p, f)
+      Mem.frame()
+    }
+    var sum = 0
+    for i in 0 .. len(p.all[0].cells) { sum += p.all[0].cells[i].v }
+    let h = p.all[len(p.all) - 1]
+    for i in 0 .. len(h.cells) { sum += h.cells[i].v }
+    print(`{len(p.all[0].cells)} {sum}`)
+  }
+}

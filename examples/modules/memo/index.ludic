@@ -1,0 +1,22 @@
+# memo/index.ludic - a module whose @alloc_ok helpers are private: renamed by the module rules, they
+# must still be declared at run time (alloc_ok_private.ludic)
+module memo
+export property Rule { parts: []string = null }
+export property Memo { rules: []Rule = new []Rule, ints: []int = new []int }
+function kept<T>(xs: []T, v: T) -> void {
+  @alloc_ok("a kept list: grows to the most it held")
+  push(xs, v)
+}
+@alloc_ok("a memo miss")
+function split(s: string) -> []string {
+  let out = new []string
+  push(out, s[0 .. 1])
+  push(out, s[1 .. 2])
+  return out
+}
+export function memo_miss(m: Memo, f: int) -> void {
+  @alloc_ok("the memo keeps a rule per text")
+  let r = new Rule { parts: split(`ab{f}`) }
+  kept(m.rules, r)
+  kept(m.ints, f)
+}
