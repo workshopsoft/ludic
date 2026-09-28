@@ -69,8 +69,8 @@ export function net_facts(net_st: NetState) -> Queue<NetFact> {
   return net_st.net__facts
 }
 
-function net__fact(net_st: NetState, what: int, slot: int, pid: int, why: int, text: string) -> void {
-  let f = new NetFact
+function net__fact(net_st: mut NetState, what: int, slot: int, pid: int, why: int, text: string) -> void {
+  let f = net__fact_rec(net_st)
   f.what = what
   f.slot = slot
   f.pid = pid

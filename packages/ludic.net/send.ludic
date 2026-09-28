@@ -21,7 +21,7 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
     let taken = m.rel and m.id <= p.acked
     let stale = not m.rel and net_st.net__time - m.made > 0.5
     if taken or stale {
-      push(net_st.net__free, m)                                  # back to the pool
+      kept_push(net_st.net__free, m)                             # back to the pool
       continue
     }
     var due = true
@@ -33,9 +33,9 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
       count += 1
       m.sent = net_st.net__time
       if net_st.net__kind_out != null and m.kind < 64 { net_st.net__kind_out[m.kind] += size }
-      if m.rel { push(keep, m) } else { push(net_st.net__free, m) }   # a reliable one kept until acknowledged
+      if m.rel { kept_push(keep, m) } else { kept_push(net_st.net__free, m) }   # a reliable one kept until acknowledged
     } else {
-      push(keep, m)                                              # not due, or waits for the next packet
+      kept_push(keep, m)                                         # not due, or waits for the next packet
     }
   }
   p.back = p.queue
@@ -51,6 +51,7 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
   nb_put32(net_st.net__out, 16, count)
   let sent = net__relay_send(net_st, p, o)
   if sent > 0 { net_st.net__bytes_out += sent + 28 }          # with the IP and UDP headers: what the line carries
+  @alloc_ok("only while tracing every packet")
   if NetWorld.trace() { net__log(`out {o} bytes to {Udp.ip_text(p.ip)}:{p.port}: {sent}`) }
   p.ack_due = false
   return count > 0
@@ -75,7 +76,10 @@ function net__put_msg(net_st: NetState, at: int, m: NetMsg) -> int {
 
 # the per-kind byte count starts again (a game measuring what a party costs its upload)
 export function net_kind_out_clear(net_st: mut NetState) -> void {
-  net_st.net__kind_out = words(64)
+  if net_st.net__kind_out == null {
+    @alloc_ok("once: the counts are made the first time they are cleared")
+    net_st.net__kind_out = words(64)
+  }
   for k in 0 .. 64 { net_st.net__kind_out[k] = 0 }
 }
 

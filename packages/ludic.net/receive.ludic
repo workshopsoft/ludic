@@ -12,6 +12,7 @@ function net__pump(net_st: mut NetState) -> void {
 }
 
 function net__packet(net_st: mut NetState, n: int, ip: int, port: int) -> void {
+  @alloc_ok("only while tracing every packet")
   if NetWorld.trace() { net__log(`in {n} bytes from {Udp.ip_text(ip)}:{port}`) }
   if n < 20 { return }
   if net__stun_packet(net_st, n) { return }                # what the router looks like from outside

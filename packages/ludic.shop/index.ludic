@@ -5,6 +5,7 @@ numbers float
 import "ludic.base"
 import "state.ludic"
 import "demand.ludic"
+import "week_lists.ludic"
 import "prices.ludic"
 import "trade.ludic"
 import "system.ludic"

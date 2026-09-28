@@ -40,7 +40,8 @@ export state ShopState {
   shop_week_rolled: int = -1
   shop_want_list: []int = null        # shop_wants_n per vendor, -1 empty
   shop_full_list: []int = null        # one per vendor, -1 none
-  shop_dice: Rng = null
+  shop_dice: Rng = rng_new(0)
+  shop_taken: []int = new []int        # a vendor's picks while its week is rolled, kept
   shop_base: []int = null       # an item's base price
   shop_sell_frac: []float = null      # what fraction of the curve a vendor pays for it
   shop_vendor_list: []ShopVendor = null

@@ -59,7 +59,7 @@ export function np_queue(net_st: mut NetState, slot: int, kind: int, rel: bool) 
     m.id = p.next_id
     p.next_id += 1
   }
-  push(p.queue, m)
+  kept_push(p.queue, m)
 }
 
 # to everyone this machine talks to (a host: every guest but `except`; a guest: the host)

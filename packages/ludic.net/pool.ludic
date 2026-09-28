@@ -3,14 +3,12 @@
 # taken or goes stale; an inbox one comes back two drains after it was handed out
 function net__msg_take(net_st: mut NetState) -> NetMsg {
   if len(net_st.net__free) > 0 { return List.pop(net_st.net__free) }
-  let m = new NetMsg
-  m.data = buffer(NET_MTU)
-  return m
+  return net__msg_new()
 }
 
 # everything a peer had queued, back to the pool (its slot opened again, or let go)
 function net__queue_free(net_st: mut NetState, p: NetPeer) -> void {
-  for i in 0 .. len(p.queue) { push(net_st.net__free, p.queue[i]) }
+  for i in 0 .. len(p.queue) { kept_push(net_st.net__free, p.queue[i]) }
   List.clear(p.queue)
 }
 
@@ -24,9 +22,7 @@ function net__in_take(net_st: mut NetState) -> NetMessage {
   var pool = net_st.net__ina
   if net_st.net__in_on_b { pool = net_st.net__inb }
   if net_st.net__inn >= len(pool) {
-    let m = new NetMessage
-    m.data = buffer(NET_MTU)
-    push(pool, m)
+    net__in_grow(pool)
   }
   let m = pool[net_st.net__inn]
   net_st.net__inn += 1
@@ -34,3 +30,31 @@ function net__in_take(net_st: mut NetState) -> NetMessage {
 }
 
 export function net_spare_count(net_st: NetState) -> int { return len(net_st.net__free) }
+
+@alloc_ok("a pool miss: past the most messages in flight at once only, then kept")
+function net__msg_new() -> NetMsg {
+  let m = new NetMsg
+  m.data = buffer(NET_MTU)
+  return m
+}
+
+@alloc_ok("a pool miss: past the most messages in one drain only, then kept")
+function net__in_grow(pool: []NetMessage) -> void {
+  let m = new NetMessage
+  m.data = buffer(NET_MTU)
+  push(pool, m)
+}
+
+# a fact's record, from a ring made with the state: far more than a frame reports between drains
+const NET_FACTS_MOST: int = 64
+function net__fpool__new() -> []NetFact {
+  let xs = new []NetFact
+  for i in 0 .. NET_FACTS_MOST { push(xs, new NetFact) }
+  return xs
+}
+
+function net__fact_rec(net_st: mut NetState) -> NetFact {
+  let f = net_st.net__fpool[net_st.net__fat]
+  net_st.net__fat = (net_st.net__fat + 1) % len(net_st.net__fpool)
+  return f
+}

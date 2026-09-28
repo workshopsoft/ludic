@@ -15,6 +15,7 @@ export function net_room(net_st: NetState) -> string { return net_st.net__room }
 export function net_room_asking(net_st: NetState) -> bool { return net_st.net__r_state == NET_R_STUN or net_st.net__r_state == NET_R_ASK }
 
 # the host (after net_host or net_become_host): a room at the matchmaker, if there is one
+@alloc_ok("once per room opened")
 export function net_room_host(net_st: mut NetState) -> void {
   if not net_room_on(net_st) { return }
   net_st.net__r_role = 1
@@ -51,6 +52,7 @@ function net__stun_begin(net_st: mut NetState) -> void {
   net__stun_send(net_st)
 }
 
+@alloc_ok("once per request to the party server")
 function net__room_body(net_st: NetState, role_key: string) -> string {
   var pub = ""
   if net_st.net__pub_ip != 0 { pub = net__addr_text(net_st.net__pub_ip, net_st.net__pub_port) }
@@ -62,6 +64,7 @@ function net__json_str(v: Val, key: string) -> string {
   return value_as_str(value_get(v, key))
 }
 
+@alloc_ok("a STUN answer or a log line: a few per session")
 function net__addr_text(ip: int, port: int) -> string { return `{Udp.ip_text(ip)}:{port}` }
 
 function net__local_text(net_st: NetState) -> string {

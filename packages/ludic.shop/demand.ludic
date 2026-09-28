@@ -25,11 +25,12 @@ function shop_pick_one(shop_st: ShopState, v: int, taken: []int) -> int {
 }
 
 function shop_roll_vendor(shop_st: mut ShopState, v: int) -> void {
-  let taken = new []int
+  let taken = shop_st.shop_taken
+  List.clear(taken)
   for k in 0 .. shop_st.shop_wants_n {
     let it = shop_pick_one(shop_st, v, taken)
     shop_st.shop_want_list[v * shop_st.shop_wants_n + k] = it
-    if it >= 0 { push(taken, it) }
+    if it >= 0 { kept_push(taken, it) }
   }
   shop_st.shop_full_list[v] = shop_pick_one(shop_st, v, taken)
 }
@@ -39,11 +40,8 @@ export function shop_roll(shop_st: mut ShopState) -> void {
   let week = shop_week(shop_st)
   if week == shop_st.shop_week_rolled and shop_st.shop_want_list != null { return }
   shop_st.shop_week_rolled = week
-  shop_st.shop_dice = rng_new(shop_st.shop_seed + week * 37)
-  shop_st.shop_want_list = new []int
-  shop_st.shop_full_list = new []int
-  for i in 0 .. shop_vendors(shop_st) * shop_st.shop_wants_n { push(shop_st.shop_want_list, -1) }
-  for v in 0 .. shop_vendors(shop_st) { push(shop_st.shop_full_list, -1) }
+  rng_seed(shop_st.shop_dice, shop_st.shop_seed + week * 37)
+  shop_lists_empty(shop_st)
   if shop_items(shop_st) == 0 { return }
   for v in 0 .. shop_vendors(shop_st) { shop_roll_vendor(shop_st, v) }
 }
@@ -90,3 +88,4 @@ function shop_demand_reset(shop_st: mut ShopState) -> void {
   shop_st.shop_want_list = null
   shop_st.shop_full_list = null
 }
+

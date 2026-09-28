@@ -23,6 +23,7 @@ function net__room_tick(net_st: mut NetState, dt: float) -> void {
 }
 
 # a second and a half for an answer, asked three times; without one, inside addresses only
+@alloc_ok("a request to the party server: once per room stage")
 function net__room_stun_tick(net_st: mut NetState) -> void {
   if net_st.net__pub_ip == 0 and net_st.net__r_t > 0.5 and net_st.net__r_tries < 3 {
     net_st.net__r_tries += 1
@@ -63,6 +64,8 @@ function net__room_answer(net_st: mut NetState) -> void {
       return
     }
     net_st.net__room = code
+    @alloc_ok("once per room")
+    net_st.net__watch_url = `{net__conf(net_st).signal_url}/rooms/{code}`
     net__take_relay(net_st, v)
     net_st.net__r_state = NET_R_ROOM
     net_st.net__poll_t = 0.0
@@ -100,7 +103,7 @@ function net__room_watch(net_st: mut NetState, dt: float) -> void {
   net_st.net__poll_t = net_st.net__poll_t - dt
   if net_st.net__poll_t < 0.0 {
     net_st.net__poll_t = 1.0
-    net_st.net__http = Http.get(`{net__conf(net_st).signal_url}/rooms/{net_st.net__room}`)
+    net_st.net__http = Http.get(net_st.net__watch_url)
     net_st.net__r_t = 0.0
   }
 }
