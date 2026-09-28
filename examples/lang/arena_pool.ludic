@@ -1,0 +1,40 @@
+# arena_pool.ludic - a pool that keeps its records across frames through a generic push (the shape of
+# ludic.ui's nd_take and ui_kept). Built with --arena, a record the pool keeps must not come from the
+# frame's scratch: run with R3D_ARENA_CHECK=1 (each reset filled with 0xDD) it prints what it prints
+# with the arena off (R3D_ARENA=0) - `7 3498`.
+program ArenaPool {
+  property Cell { v: int = 0, tag: string = "" }
+  property Pool { cells: []Cell = new []Cell, used: int = 0 }
+  function kept<T>(xs: []T, v: T) -> void { push(xs, v) }
+  function take(p: Pool, f: int) -> Cell {
+    if p.used < len(p.cells) {
+      let c = p.cells[p.used]
+      p.used += 1
+      return c
+    }
+    let c = new Cell { v: f }
+    kept(p.cells, c)
+    p.used += 1
+    return c
+  }
+  function step(p: Pool, f: int) -> int {
+    p.used = 0
+    var s = 0
+    for k in 0 .. (f % 8) {
+      let c = take(p, f)
+      c.v = f + k
+      s += c.v
+    }
+    return s
+  }
+  entry {
+    let p = new Pool
+    for f in 0 .. 500 {
+      step(p, f)
+      Mem.frame()
+    }
+    var sum = 0
+    for i in 0 .. len(p.cells) { sum += p.cells[i].v }
+    print(`{len(p.cells)} {sum}`)
+  }
+}

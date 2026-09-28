@@ -151,6 +151,7 @@ function deps_frame(f: pointer) -> void {
     let d = prog[i]
     if d.kind == N_SYS and d.s != null and fr_phase_frame(d.ty) { fr_mark_root(d.s) }
     if d.kind == N_FN and d.s != null and str_starts(d.s, "ludic_reduce__") { fr_mark_root(d.s) }
+    if d.kind == N_FN and d.s != null and d.cm >= 0 { fr_mark_root(d.s) }   # a component's own: it runs while its page is open
     fr_find_roots(d)
     i += 1
   }
