@@ -31,6 +31,7 @@ var g_es_aok: int = 0                               # inside a statement under @
 var g_es_site_aok: []bool = new []bool              # the site is (not reported by the region rule)
 var g_es_site_grow: []bool = new []bool             # the site is a push's growth (25.5's capacities, not the rule)
 var g_es_done: bool = false
+var g_es_fnrefs: []pointer = new []pointer          # functions taken as values (fn f): called from anywhere
 var g_es_consumed: []Node = new []Node              # text used up where it is made (a + or == operand): freed at once
 var g_es_ft: []int = new []int                      # flow edges
 var g_es_ff: []int = new []int
@@ -175,7 +176,11 @@ function es_is_mem_frame(n: Node) -> bool {
 function es_val(e: Node) -> int {
   if e == null { return -1 }
   let k = e.kind
-  if k == E_STR or k == E_INT or k == E_BOOL or k == E_FLOAT or k == E_NULL or k == E_FNREF { return -1 }
+  if k == E_FNREF {                                # a function handed on as a value: whoever calls it keeps what it returns
+    if e.s != null { push(g_es_fnrefs, e.s) }
+    return -1
+  }
+  if k == E_STR or k == E_INT or k == E_BOOL or k == E_FLOAT or k == E_NULL { return -1 }
   if k == E_ID {
     let c = es_local(e.s)
     if c >= 0 { return c }
@@ -572,10 +577,13 @@ function escape_analyse() -> void {
   var i = 0
   while i < len(prog) {
     let d = prog[i]
-    if (d.kind == N_FN or d.kind == N_SYS or d.kind == N_MAIN) and d.s != null and ck_tab_get(g_es_fk, g_es_fv, d.s) == null {
+    # an entry has no name, and must be walked all the same: what it keeps, it keeps for good
+    var dn = d.s
+    if d.kind == N_MAIN and dn == null { dn = "$entry" }
+    if (d.kind == N_FN or d.kind == N_SYS or d.kind == N_MAIN) and dn != null and ck_tab_get(g_es_fk, g_es_fv, dn) == null {
       let h = new Node
       h.ival = len(g_es_fnode)
-      ck_tab_put(g_es_fk, g_es_fv, d.s, h)
+      ck_tab_put(g_es_fk, g_es_fv, dn, h)
       push(g_es_fnode, d)
       push(g_es_fspans, d.kind == N_MAIN)
       push(g_es_fparam, len(g_es_flag))
@@ -625,6 +633,15 @@ function escape_analyse() -> void {
     g_es_lt = new []pointer
     es_walk(g_onlisten[li].a)
     li += 1
+  }
+  # a function taken as a value is called where the analysis cannot see (a UiClass's make, a step
+  # list, a System's tick): its result is kept by whoever calls it, whatever it returns
+  var fr = 0
+  while fr < len(g_es_fnrefs) {
+    let fs = es_fns_for(g_es_fnrefs[fr])
+    var fq = 0
+    while fq < len(fs) { es_escape(g_es_fret[fs[fq]]);  fq += 1 }
+    fr += 1
   }
   es_solve()
   # a node analysed more than once (a field's default, walked at every `new` of its record) is
@@ -680,6 +697,12 @@ function escape_report() -> void {
     let line = `escape: {what} {file}:{itoa(n.line)} {fname}\n`
     file_write(file_stderr(), line, len(line))
     s += 1
+  }
+  var fl = 0
+  while fl < len(g_es_fnrefs) {
+    let fm = `escape: fn value {g_es_fnrefs[fl]} ({itoa(len(es_fns_for(g_es_fnrefs[fl])))} functions)\n`
+    file_write(file_stderr(), fm, len(fm))
+    fl += 1
   }
   let tot = `escape: {itoa(g_es_local_n)} local, {itoa(g_es_esc_n)} kept\n`
   file_write(file_stderr(), tot, len(tot))

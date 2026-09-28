@@ -827,6 +827,14 @@ function arena_defaults_case() -> void {
   if (poisoned == "497 124747") { ok(lbl) } else { bad2(lbl, `poisoned [{poisoned}]`) }
 }
 
+function arena_fnval_case() -> void {
+  let lbl = "arena_fnval.ludic (--arena: what a function called through a function value returns is kept; a pool holding it survives the resets)"
+  let b = `{tmp_dir()}/e_arena_fnval`
+  if not shq(`bin/ludicc --arena examples/lang/arena_fnval.ludic -o {b} 2>/dev/null`) { bad2(lbl, "did not build"); return }
+  let poisoned = capture_line(`R3D_ARENA_CHECK=1 R3D_ALLOC_FENCE=off {b} < /dev/null`)
+  if (poisoned == "5 1053") { ok(lbl) } else { bad2(lbl, `poisoned [{poisoned}]`) }
+}
+
 function arena_pool_case() -> void {
   let lbl = "arena_pool.ludic (--arena: a generic push into a kept pool keeps its records and its buffer on the heap; 0xDD poison changes nothing)"
   let b = `{tmp_dir()}/e_arena_pool`
@@ -1137,6 +1145,7 @@ function cmd_dev_test() -> int {
   alloc_fence_leak_case()
   alloc_fence_auto_case()
   arena_pool_case()
+  arena_fnval_case()
   arena_defaults_case()
   feat_case("lang/nested_templates", "", "outer [inner 3 {x}] \"`}\" end", "nested_templates.ludic (a template literal inside another's hole)")
   feat_case("lang/aliases", "", "10 5 3", "aliases.ludic (L6: a namespace method declared as an alias of a function, labelled or by its parameters)")

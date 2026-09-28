@@ -1,0 +1,25 @@
+# arena_fnval.ludic - a record made by a function called through a function value (a factory in a
+# field, as ludic.ui's UiClass.make is) and kept by a pool across frames. The analysis cannot see
+# that call, so a function taken as a value keeps what it returns: built with --arena and poisoned on
+# every reset it prints `5 1053`, as the heap does.
+program ArenaFnval {
+  property Item { v: int = 0, name: string = "" }
+  property Maker { make: fn(int) -> Item = null }
+  property Pool { items: []Item = new []Item }
+  function item_new(f: int) -> Item { return new Item { v: f, name: `item {f}` } }
+  function step(p: Pool, m: Maker, f: int) -> void {
+    if f % 100 == 3 { push(p.items, m.make(f)) }
+  }
+  entry {
+    let p = new Pool
+    let m = new Maker
+    m.make = fn item_new
+    for f in 0 .. 500 {
+      step(p, m, f)
+      Mem.frame()
+    }
+    var sum = 0
+    for i in 0 .. len(p.items) { sum += p.items[i].v + len(p.items[i].name) }
+    print(`{len(p.items)} {sum}`)
+  }
+}
