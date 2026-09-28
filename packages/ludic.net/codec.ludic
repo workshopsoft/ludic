@@ -72,9 +72,11 @@ export function nr_text(net_st: mut NetState, cap: int) -> string {
     net_st.net__rbad = true
     return ""
   }
-  nb_copy(net_st.net__tb, 0, net_st.net__rb, net_st.net__rp, n)
+  let sb = net_st.net__tsb
+  sb_clear(sb)
+  for i in 0 .. n { sb_byte(sb, net_st.net__rb[net_st.net__rp + i]) }
   net_st.net__rp += n
-  return text_of(net_st.net__tb, n)
+  return sb_intern(sb, net_st.net__ttb)
 }
 
 export function nr_bad(net_st: NetState) -> bool { return net_st.net__rbad }
@@ -87,12 +89,16 @@ export function net_read(net_st: mut NetState, m: NetMessage) -> void {
   net_st.net__rbad = false
 }
 
-# the message just written, as if it had come in (a loopback: a test, a host telling itself)
-export function net_written(net_st: NetState) -> NetMessage {
-  let m = new NetMessage
+# the message just written, as if it had come in (a loopback: a test, a host telling itself); the
+# record is kept, so it is good until the next net_written
+export function net_written(net_st: mut NetState) -> NetMessage {
+  if net_st.net__wr == null {
+    net_st.net__wr = new NetMessage
+    net_st.net__wr.data = buffer(NET_MTU)
+  }
+  let m = net_st.net__wr
   m.from = net_st.net__my_pid
   m.len = min(net_st.net__wl, NET_MTU)
-  m.data = buffer(m.len)
   nb_copy(m.data, 0, net_st.net__wb, 0, m.len)
   return m
 }

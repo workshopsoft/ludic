@@ -10,6 +10,8 @@ program NetTest {
     inbound: []Pkt = null
     from_ip: int = 0
     from_port: int = 0
+    quiet: bool = false          # sends only counted, not kept: a test of what the package holds
+    sends: int = 0
   }
 
   function fake_open(port: int) -> int { return 5 }
@@ -19,6 +21,8 @@ program NetTest {
   function fake_from_ip(net_test_st: NetTestState, h: int) -> int { return net_test_st.from_ip }
   function fake_from_port(net_test_st: NetTestState, h: int) -> int { return net_test_st.from_port }
   function fake_send(net_test_st: mut NetTestState, h: int, ip: int, port: int, b: []byte, n: int) -> int {
+    net_test_st.sends += 1
+    if net_test_st.quiet { return n }
     let p = new Pkt
     p.ip = ip
     p.port = port
@@ -273,5 +277,47 @@ program NetTest {
     expect(not net_room_on(net_st))
     expect(not net_room_join(net_st, "ABCDEF"))
     expect_eq(net_why(net_st), NET_WHY_NO_MATCHMAKER)
+  }
+  test "sending holds its bytes flat: a message's record and bytes come back once it is sent (6 s of a guest, 6000 messages)" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    let slot = np_of_pid(net_st, host_with_guest(net_st, net_test_st))
+    net_test_st.quiet = true
+    for r in 0 .. 3000 {
+      if r == 1000 { net_test_st.from_ip = Os.heap_bytes() }
+      nw_begin(net_st)
+      nw_i(net_st, r)
+      np_queue(net_st, slot, 9, false)
+      nw_begin(net_st)
+      nw_i(net_st, r + 1)
+      np_queue(net_st, slot, 9, false)
+      frame(net_st, 0.002)
+    }
+    let after = Os.heap_bytes()
+    expect(net_test_st.sends >= 3000)
+    if Os.heap_bytes() > 0 { expect(after <= net_test_st.from_ip) }
+    expect(net_spare_count(net_st) >= 1)
+  }
+
+  test "an inbox message's record is kept: a drained list holds still while more come, and comes back two drains on" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    host_with_guest(net_st, net_test_st)
+    q_clear(net_inbox(net_st))
+    arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, 0, 9, 2, 111)
+    net_begin(net_st, 0.01)
+    let first = q_drain(net_inbox(net_st))
+    expect_eq(len(first), 1)
+    let r0: pointer = first[0]
+    arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, 0, 9, 3, 222)
+    net_begin(net_st, 0.01)
+    net_read(net_st, first[0])
+    expect_eq(nr_i(net_st), 111)
+    let second = q_drain(net_inbox(net_st))
+    net_read(net_st, second[0])
+    expect_eq(nr_i(net_st), 222)
+    arrive(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, 0, 9, 4, 333)
+    net_begin(net_st, 0.01)
+    let third = q_drain(net_inbox(net_st))
+    let r2: pointer = third[0]
+    expect(r2 == r0)
+    net_read(net_st, third[0])
+    expect_eq(nr_i(net_st), 333)
   }
 }

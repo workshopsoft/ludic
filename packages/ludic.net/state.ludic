@@ -33,6 +33,7 @@ property NetPeer {
   acked: int = 0,              # the highest id it has taken from us
   ack_due: bool = false,
   queue: []NetMsg,
+  back: []NetMsg,              # the queue's other list, filled by a flush and swapped in
   closing: bool = false,       # let go once it has taken close_id
   close_id: int = 0,
   close_t: float = 0.0         # ... or at this net time, whichever comes first
@@ -51,6 +52,15 @@ export state NetState {
   net__cfg: NetConfig = new NetConfig
   net__facts: Queue<NetFact> = net__facts__new()
   net__seen: []string = new []string     # guests already punched for
+  net__free: []NetMsg = new []NetMsg      # sent and taken (or stale): made again, never new (pool.ludic)
+  net__ina: []NetMessage = new []NetMessage   # the inbox's records, two halves
+  net__inb: []NetMessage = new []NetMessage
+  net__inn: int = 0
+  net__in_on_b: bool = false
+  net__sb: []byte = buffer(32)          # a relay hello's or a STUN request's bytes
+  net__wr: NetMessage = null            # net_written's, kept
+  net__tsb: StrBuf = sb_new(NET_MTU)    # a text read out of a message, interned (a name comes every frame)
+  net__ttb: StrTable = strs_new(4096)
   net__punch_ip: words = null
   net__punch_port: words = null
   net__punch_left: words = null
@@ -88,7 +98,6 @@ export state NetState {
   net__rl: int = 0
   net__rp: int = 0
   net__rbad: bool = false
-  net__tb: []byte = buffer(NET_MTU)          # text read out of a message, through one scratch buffer
   net__hello_b: []byte = buffer(NET_MTU)     # the game's hello, sent again on every dial
   net__hello_l: int = 0
   net__hello_t: float = 0.0       # seconds since it went; -1 not yet
@@ -119,6 +128,7 @@ function net__peers_new() -> []NetPeer {
   for i in 0 .. NET_PEERS {
     let p = new NetPeer
     p.queue = new []NetMsg
+    p.back = new []NetMsg
     push(out, p)
   }
   return out

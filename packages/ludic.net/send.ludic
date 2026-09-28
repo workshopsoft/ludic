@@ -14,11 +14,16 @@ export function np_flush(net_st: mut NetState, slot: int) -> void {
 function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
   var o = 20
   var count = 0
-  let keep = new []NetMsg
+  let keep = p.back
+  List.clear(keep)
   for i in 0 .. len(p.queue) {
     let m = p.queue[i]
-    if m.rel and m.id <= p.acked { continue }                     # taken: drop it
-    if not m.rel and net_st.net__time - m.made > 0.5 { continue }        # stale
+    let taken = m.rel and m.id <= p.acked
+    let stale = not m.rel and net_st.net__time - m.made > 0.5
+    if taken or stale {
+      push(net_st.net__free, m)                                  # back to the pool
+      continue
+    }
     var due = true
     if m.rel and not (m.sent < 0.0) and net_st.net__time - m.sent < 0.25 { due = false }
     var size = 4 + m.len
@@ -28,11 +33,12 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
       count += 1
       m.sent = net_st.net__time
       if net_st.net__kind_out != null and m.kind < 64 { net_st.net__kind_out[m.kind] += size }
-      if m.rel { push(keep, m) }                                  # kept until acknowledged
+      if m.rel { push(keep, m) } else { push(net_st.net__free, m) }   # a reliable one kept until acknowledged
     } else {
       push(keep, m)                                              # not due, or waits for the next packet
     }
   }
+  p.back = p.queue
   p.queue = keep
   if count == 0 and not p.ack_due { return false }
   nb_put8(net_st.net__out, 0, 'M')

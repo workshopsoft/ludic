@@ -15,7 +15,7 @@ function net__stun_send(net_st: mut NetState) -> void {
     }
     if net_st.net__stun_ip == 0 { return }
   }
-  let b = buffer(20)
+  let b = net_st.net__sb
   nb_put8(b, 0, 0)          # a binding request, no attributes
   nb_put8(b, 1, 1)
   nb_put8(b, 2, 0)

@@ -27,6 +27,16 @@ The host is pid 1 and hands out 2 upwards (`net_accept`). Kind 1 is `NET_HELLO`,
 stranger may send a host; kind 0 is the heartbeat, never delivered. Until the game accepts a
 stranger, nothing else from it reaches the inbox.
 
+## Nothing a message makes is new
+
+A party sends and takes dozens of messages a second for as long as it plays, and Ludic frees
+nothing, so the package keeps what a message needs. A queued message's record and its bytes go back
+to a pool once it is sent (unreliable) or taken (reliable); a peer's queue is two lists swapped by a
+flush. An inbox message's record comes back two drains after it was handed out: read a drained list
+before the drain after next. `net_written()` hands out one kept record, good until the next call.
+`nr_s` / `nr_text` intern what they read (a name comes every frame), so equal texts are one string.
+The tests hold the heap flat over 6000 messages.
+
 ## Config and ports
 
 ```ludic

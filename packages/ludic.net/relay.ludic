@@ -21,7 +21,7 @@ function net__code_bytes(net_st: NetState, b: []byte, o: int) -> void {
 }
 
 function net__relay_hello(net_st: NetState) -> void {
-  let b = buffer(10)
+  let b = net_st.net__sb
   nb_put8(b, 0, 'M')
   nb_put8(b, 1, 'L')
   nb_put8(b, 2, 'R')

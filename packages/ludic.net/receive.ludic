@@ -77,15 +77,14 @@ function net__messages(net_st: mut NetState, slot: int, n: int) -> void {
 }
 
 # onto the inbox - except a heartbeat, and on a host anything but a hello before its welcome
-function net__deliver(net_st: NetState, slot: int, from: int, kind: int, o: int, ml: int) -> void {
+function net__deliver(net_st: mut NetState, slot: int, from: int, kind: int, o: int, ml: int) -> void {
   if kind == NET_BEAT { return }
   if net_st.net__state == NET_HOSTING and net_st.net__peers[slot].pid < 2 and kind != NET_HELLO { return }
-  let m = new NetMessage
+  let m = net__in_take(net_st)
   m.slot = slot
   m.from = from
   m.kind = kind
   m.len = ml
-  m.data = buffer(ml)
   nb_copy(m.data, 0, net_st.net__in, o, ml)
   q_push(net_inbox(net_st), m)
 }

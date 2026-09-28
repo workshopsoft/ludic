@@ -1,0 +1,36 @@
+# pool.ludic - a message's record and its bytes are kept, never made again: a party sends and takes
+# dozens a second for as long as it plays, and Ludic frees nothing. A queued one goes back when it is
+# taken or goes stale; an inbox one comes back two drains after it was handed out
+function net__msg_take(net_st: mut NetState) -> NetMsg {
+  if len(net_st.net__free) > 0 { return List.pop(net_st.net__free) }
+  let m = new NetMsg
+  m.data = buffer(NET_MTU)
+  return m
+}
+
+# everything a peer had queued, back to the pool (its slot opened again, or let go)
+function net__queue_free(net_st: mut NetState, p: NetPeer) -> void {
+  for i in 0 .. len(p.queue) { push(net_st.net__free, p.queue[i]) }
+  List.clear(p.queue)
+}
+
+# the halves swap whenever a message finds the inbox empty (everything before it drained or
+# cleared), so a reader of the last drain's list never sees one change
+function net__in_take(net_st: mut NetState) -> NetMessage {
+  if q_len(net_st.net__inbox) == 0 and net_st.net__inn > 0 {
+    net_st.net__in_on_b = not net_st.net__in_on_b
+    net_st.net__inn = 0
+  }
+  var pool = net_st.net__ina
+  if net_st.net__in_on_b { pool = net_st.net__inb }
+  if net_st.net__inn >= len(pool) {
+    let m = new NetMessage
+    m.data = buffer(NET_MTU)
+    push(pool, m)
+  }
+  let m = pool[net_st.net__inn]
+  net_st.net__inn += 1
+  return m
+}
+
+export function net_spare_count(net_st: NetState) -> int { return len(net_st.net__free) }

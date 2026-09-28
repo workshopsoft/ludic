@@ -28,7 +28,7 @@ function net__open(net_st: mut NetState, slot: int, ip: int, port: int, pid: int
   p.recv_id = 0
   p.acked = 0
   p.ack_due = false
-  p.queue = new []NetMsg
+  net__queue_free(net_st, p)
   p.closing = false
 }
 
@@ -37,7 +37,7 @@ export function np_close(net_st: mut NetState, slot: int) -> void {
   let p = net_st.net__peers[slot]
   p.on = false
   p.closing = false
-  p.queue = new []NetMsg
+  net__queue_free(net_st, p)
 }
 
 # the written message, for one peer (a reliable one is kept until it is taken)
@@ -45,15 +45,15 @@ export function np_queue(net_st: mut NetState, slot: int, kind: int, rel: bool) 
   if net_st.net__peers == null or slot < 0 or slot >= NET_PEERS { return }
   let p = net_st.net__peers[slot]
   if not p.on { return }
-  let m = new NetMsg
+  let m = net__msg_take(net_st)
   m.kind = kind
   m.rel = rel
+  m.id = 0
   m.sent = -1.0
   m.made = net_st.net__time
   var n = net_st.net__wl
   if n > NET_MTU - 40 { n = NET_MTU - 40 }
   m.len = n
-  m.data = buffer(n)
   nb_copy(m.data, 0, net_st.net__wb, 0, n)
   if rel {
     m.id = p.next_id
