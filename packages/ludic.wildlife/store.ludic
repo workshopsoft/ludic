@@ -94,3 +94,12 @@ export function wildlife_count(wildlife_st: WildlifeState, sp: int) -> int {
   for k in 0 .. len(rows) { if not wildlife_st.wl.tab.rec[rows[k]].legend { n += 1 } }
   return n
 }
+
+# room for `n` animals (both tables: this player's and the host's it draws) before anything grows:
+# a world that spawns in play sizes its table once, at the start
+export function wildlife_reserve(wildlife_st: mut WildlifeState, n: int) -> void {
+  tb_reserve(wildlife_st.wl.tab, n)
+  imap_reserve(wildlife_st.wl.nids, n)
+  tb_reserve(wildlife_st.wl_host.tab, n)
+  imap_reserve(wildlife_st.wl_host.nids, n)
+}
