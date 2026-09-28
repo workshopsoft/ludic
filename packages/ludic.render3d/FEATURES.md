@@ -54,7 +54,7 @@ Geometry, terrain and world
 29. GPU instancing with divisor attributes and per-instance transforms — `scatter.ludic`, `shaders/model.vert`
 30. Baked impostors (16-view atlas with coverage and normals, hull-normal blending, LOD switch) — `scatter.ludic` `impostor_bake`, `shaders/impostor.*`
 31. Baked branch-card trees: wedge slices of a scanned crown (sectors × height bands) on radial cards over the real trunk mesh — `scatter.ludic` `impostor_bake_wedges`, `model_branch_cards`
-32. Card atlases baked from scanned grass clumps and a dense procedural lupine, instanced as crossed cards — `scatter.ludic` `layer_cards`, `model_lupine_dense`
+32. Card atlases baked from scanned grass clumps and a dense procedural lupine, instanced as crossed cards — `scatter.ludic` `layer_cards`
 33. Procedural grass blades with wind, dryness and base occlusion; distant blades widen, lie flat to the ground normal and sink into the carpet at the ring's edge — `scatter.ludic` `model_blade`, `shaders/model.vert`, `shaders/model.frag` `BLADE`
 34. Wind animation (height-weighted sway, per-instance phase) — `shaders/model.vert` `WIND`
 35. Chunk-streamed ground cover with distance bands (blades in four rings, densest underfoot), deterministic per-chunk generation, nearest-first amortised over frames with an instance budget — `stream.ludic`

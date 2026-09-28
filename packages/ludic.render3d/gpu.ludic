@@ -163,7 +163,7 @@ function gpu_query_result(render3d_st: mut Render3dState, id: int, out: words) -
 # ---- the context --------------------------------------------------------------------
 function gpu_open(render3d_st: mut Render3dState, w: int, h: int, title: string) -> bool { return gvk_open(render3d_st, w, h, title) }
 function gpu_vsync(render3d_st: mut Render3dState, on: int) -> void { render3d_st.gvk_vsync = on != 0;  if render3d_st.gvk_swap != 0 { render3d_st.gvk_swap_stale = true } }
-function gpu_renderer_name(render3d_st: Render3dState) -> string { return `{render3d_st.gvk_device_name} (Vulkan)` }
+function gpu_renderer_name(render3d_st: Render3dState) -> string { return render3d_st.gvk_renderer_name }
 function gpu_resize_check(render3d_st: mut Render3dState) -> bool { return gvk_resize_check(render3d_st) }
 # the finished frame: presented to the window, or (headless) the GPU's work finished
 function gpu_present(render3d_st: mut Render3dState) -> void { gvk_present(render3d_st) }
@@ -225,6 +225,7 @@ function gpu_ext_in(props: bytes, n: int, want: string) -> bool {
 
 # R3D_CAPS=rtx50|rtx40|rtx30|amd|intel|none pretends to be a Windows machine with that GPU,
 # so the settings screen can be shot and tested anywhere
+@alloc_ok("a developer switch (R3D_CAPS): the caps faked once at start-up")
 function gpu_caps_fake(render3d_st: mut Render3dState, kind: string) -> void {
   render3d_st.gpu_cap_windows = true
   if kind == "none" { return }
@@ -237,6 +238,7 @@ function gpu_caps_fake(render3d_st: mut Render3dState, kind: string) -> void {
   render3d_st.gpu_cap_device = `test NVIDIA GeForce RTX {kind[3 .. 5]}`
 }
 
+@alloc_ok("start-up: the machine's capabilities, probed once (or on a settings page asking)")
 function gpu_caps_probe(render3d_st: mut Render3dState) -> void {
   if render3d_st.gpu_cap_probed { return }
   render3d_st.gpu_cap_probed = true
@@ -518,6 +520,7 @@ const GPU_TX_W: int = 12          # per handle: kind, w, h, layers, ifmt, min, m
 
 function gpu_gl_target(kind: int) -> int { if kind == GPU_TEX2D_ARRAY { return GL_TEXTURE_2D_ARRAY };  return GL_TEXTURE_2D }
 # the record for a handle, growing the table when a new name is larger than it
+@alloc_ok("a texture handle past the 4096 made at start-up: the table doubles to hold it (ids are reused, so it stops)")
 function gpu_tx_at(render3d_st: mut Render3dState, tex: int) -> int {
   if tex <= 0 { return -1 }
   if tex >= render3d_st.gpu_tx_cap {
@@ -642,6 +645,7 @@ function gpu_bind_sampler(render3d_st: mut Render3dState, prog: int, name: strin
 # a pass drawing into an incomplete target says which one; unset, it calls nothing.
 const GPU_FB_W: int = 8           # per handle: colour 0, colour 1, depth texture, depth layer + 1, colour rb, depth rb, samples, colour layer + 1
 
+@alloc_ok("a framebuffer handle past the 1024 made at start-up: the table doubles to hold it (bounded by targets)")
 function gpu_fb_at(render3d_st: mut Render3dState, fb: int) -> int {
   if fb <= 0 { return -1 }
   if fb >= render3d_st.gpu_fb_cap {

@@ -36,15 +36,16 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   # the mirrored camera: view' = view * R, R reflecting y about the surface (y' = 2L - y).
   # R has determinant -1, so the winding flips (front faces culled below) and the image
   # lands exactly where the main camera's pixels expect the reflection.
-  let eye = v3_new(sx, 2.0 * render3d_st.water_level - sy, sz)
-  let refl = m4_new()
+  # the pass's scratch is the state's, made once
+  let eye = render3d_st.water_eye
+  v3_set(eye, sx, 2.0 * render3d_st.water_level - sy, sz)
+  let refl = render3d_st.water_mirror
+  m4_identity(refl)
   refl[5] = -1.0
   refl[13] = 2.0 * render3d_st.water_level
-  let mv = floats(16)
+  let mv = render3d_st.water_mv
   m4_mul(mv, render3d_st.water_saved, refl)
   m4_copy(render3d_st.cam_view, mv)
-  free(mv);  free(refl)
-  let fwd = words(3);  let up = words(3);  let at = words(3)
   m4_mul(render3d_st.cam_vp, render3d_st.cam_proj, render3d_st.cam_view)
   m4_inverse(render3d_st.cam_inv_vp, render3d_st.cam_vp)
   v3_copy(render3d_st.cam_pos, eye)
@@ -79,7 +80,6 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   m4_copy(render3d_st.cam_vp, render3d_st.water_saved_vp)
   m4_copy(render3d_st.cam_inv_vp, render3d_st.water_saved_ivp)
   v3_set(render3d_st.cam_pos, sx, sy, sz)
-  free(eye);  free(fwd);  free(up);  free(at)
   gpu_fb_bind(render3d_st, 0)
 }
 

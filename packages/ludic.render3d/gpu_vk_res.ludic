@@ -62,6 +62,7 @@ function gvk_channel_bytes(ifmt: int) -> int {
 function gvk_tex_give_back(render3d_st: mut Render3dState, tex: int) -> void {
   if tex <= 0 or tex >= len(render3d_st.gvk_tex_image) or render3d_st.gvk_tex_image[tex] == 0 { return }
   gvk_tex_release(render3d_st, tex)
+  @alloc_ok("within the spare ids' room made at start-up (@max 4096)")
   push(render3d_st.gvk_tex_spare, tex)
 }
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
@@ -672,8 +673,13 @@ function gvk_buf_release(render3d_st: mut Render3dState, b: int) -> void {
   let zero: long = 0
   if gvk_buf_busy(render3d_st, b) {
     # a draw recorded this frame (or the frame in flight) still reads it: destroy it once the frame has been submitted
-    push(render3d_st.gvk_retired_buf, render3d_st.gvk_buf[b]);  push(render3d_st.gvk_retired_mem, render3d_st.gvk_buf_mem[b])
+    @alloc_ok("within the retire lists' room made at start-up (@max 4096)")
+    push(render3d_st.gvk_retired_buf, render3d_st.gvk_buf[b])
+    @alloc_ok("within the retire lists' room made at start-up (@max 4096)")
+    push(render3d_st.gvk_retired_mem, render3d_st.gvk_buf_mem[b])
+    @alloc_ok("within the retire lists' room made at start-up (@max 4096)")
     while len(render3d_st.gvk_retired_frame) < len(render3d_st.gvk_retired_buf) - 1 { push(render3d_st.gvk_retired_frame, 0) }
+    @alloc_ok("within the retire lists' room made at start-up (@max 4096)")
     push(render3d_st.gvk_retired_frame, render3d_st.gvk_buf_used[b])
   } else {
     render3d_st.gvk_mk_x_buf += 1
@@ -695,6 +701,7 @@ function gvk_retire_flush(render3d_st: mut Render3dState) -> void { gvk_retire_u
 # the frame being recorded read stays
 function gvk_retire_upto(render3d_st: mut Render3dState, done: int) -> void {
   if render3d_st.gvk_retired_buf == null { return }
+  @alloc_ok("within the retire lists' room made at start-up (@max 4096)")
   while len(render3d_st.gvk_retired_frame) < len(render3d_st.gvk_retired_buf) { push(render3d_st.gvk_retired_frame, 0) }
   # compacted in place: three fresh lists a frame were never given back
   var w = 0
@@ -720,6 +727,7 @@ function gvk_retire_upto(render3d_st: mut Render3dState, done: int) -> void {
 # A buffer a compute pass writes: a draw later in the same frame reads what the GPU put there,
 # so it is never swapped for fresh storage because it was used this frame (gvk_buf_reserve).
 function gvk_buf_gpu_owned(render3d_st: mut Render3dState, b: int) -> void {
+  @alloc_ok("within the room made at start-up (@max 16384 buffers)")
   while len(render3d_st.gvk_buf_gpu) <= b { push(render3d_st.gvk_buf_gpu, 0) }
   render3d_st.gvk_buf_gpu[b] = 1
 }

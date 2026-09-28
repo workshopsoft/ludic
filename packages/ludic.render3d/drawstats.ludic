@@ -119,6 +119,7 @@ function ds_kind_name(k: int) -> pointer {
   return "indirect"
 }
 # a per-frame mean with one decimal
+@alloc_ok("the draw-count report: printed once, at the end of a run that asked for it")
 function ds_per(render3d_st: Render3dState, v: long) -> string {
   let x = (v * 10) / render3d_st.ds_frames
   return `{string(x / 10)}.{string(x % 10)}`
