@@ -41,11 +41,13 @@ export function clock_advance(clock_st: mut ClockState, gh: float) -> void {
 # a new trip: day one at the start hour, the moon somewhere in its month
 export function clock_reset(clock_st: mut ClockState) -> void {
   if clock_st.ck_dice == null {
-    @alloc_ok("once: the clock's dice, seeded again on every new trip after")
-    clock_st.ck_dice = rng_new(ClockWorld.seed())
+    clock_st.ck_dice = ck_dice_new(ClockWorld.seed())
   } else { rng_seed(clock_st.ck_dice, ClockWorld.seed()) }
   clock_st.ck_day = 1
   clock_st.ck_hours = clock_st.ck_start_hours
   clock_st.ck_moon = rng_span(clock_st.ck_dice, clock_st.ck_moon_lo, clock_st.ck_moon_hi) % 1.0
   q_clear(clock_days(clock_st))
 }
+
+@alloc_ok("once: the clock's dice, seeded again on every new trip after")
+function ck_dice_new(seed: int) -> Rng { return rng_new(seed) }

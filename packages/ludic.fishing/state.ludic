@@ -42,7 +42,7 @@ export function fishing_config(fishing_st: mut FishingState, min_depth: float, d
   fishing_st.fishing_min_depth = min_depth
   fishing_st.fishing_deep = deep
   fishing_st.fishing_seed_n = seed
-  fishing_st.fishing_dice = rng_new(seed)
+  fishing_dice_seed(fishing_st, seed)
 }
 
 export function fishing_facts(fishing_st: FishingState) -> Queue<FishingFact> {
@@ -50,9 +50,20 @@ export function fishing_facts(fishing_st: FishingState) -> Queue<FishingFact> {
 }
 
 function fishing_rand(fishing_st: mut FishingState) -> float {
-  if fishing_st.fishing_dice == null { fishing_st.fishing_dice = rng_new(fishing_st.fishing_seed_n) }
+  if fishing_st.fishing_dice == null { fishing_dice_seed(fishing_st, fishing_st.fishing_seed_n) }
   return rng_float(fishing_st.fishing_dice)
 }
+
+# the line's dice: made the first time, seeded again after (a reset, a new trip)
+function fishing_dice_seed(fishing_st: mut FishingState, seed: int) -> void {
+  if fishing_st.fishing_dice != null {
+    rng_seed(fishing_st.fishing_dice, seed)
+    return
+  }
+  fishing_st.fishing_dice = fishing_dice_new(seed)
+}
+@alloc_ok("once: the line's dice")
+function fishing_dice_new(seed: int) -> Rng { return rng_new(seed) }
 
 function fishing_say(fishing_st: mut FishingState, what: int) -> void {
   let f = fishing_fact_record(fishing_st)
