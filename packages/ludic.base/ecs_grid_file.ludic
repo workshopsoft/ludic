@@ -38,3 +38,9 @@ function grid_rehash(g: Grid) -> void {
     if k >= 0 { grid_link(g, r, k, grid_bucket(g, grid_key_x(k), grid_key_z(k))) }
   }
 }
+
+# buckets enough for `rows` filed rows before a rehash, made now: a rehash in play makes a new
+# bucket array and nothing gives the old one back
+export function grid_reserve(g: Grid, rows: int) -> void {
+  while (g.mask + 1) * 2 < rows { grid_rehash(g) }
+}

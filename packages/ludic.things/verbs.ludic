@@ -1,7 +1,7 @@
 # verbs.ludic - the only ways a Thing is made, removed, moved, shown or hidden: each writes the
 # record and the table's columns together, so the grid and the kind indexes never fall behind
 export function thing_spawn(things_st: mut ThingsState, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
-  return th_place(things_st, new Thing, kind, look, x, y, z, yaw, id)
+  return th_place(things_st, th_record(things_st), kind, look, x, y, z, yaw, id)
 }
 
 function th_place(things_st: mut ThingsState, t: Thing, kind: int, look: string, x: float, y: float, z: float, yaw: float, id: int) -> Thing {
@@ -41,7 +41,7 @@ function th_columns(t: Thing) -> void {
 
 # a Thing on the ground (the port's), set into it by `sink`, used from `reach`
 export function thing_put(things_st: mut ThingsState, kind: int, look: string, x: float, z: float, yaw: float, sink: float, reach: float, id: int) -> Thing {
-  let t = new Thing
+  let t = th_record(things_st)
   t.reach = reach
   return th_place(things_st, t, kind, look, x, ThingsWorld.ground(x, z) - sink, z, yaw, id)
 }
@@ -54,6 +54,7 @@ export function thing_remove(things_st: mut ThingsState, t: Thing) -> void {
   imap_del(things_st.th_uids, t.uid)
   tb_remove(t.tab, t.ent)
   t.ent = -1
+  th_spare_put(things_st, t)
 }
 
 # every Thing `gone` says so is removed for good; from the last row down, so the row a removal

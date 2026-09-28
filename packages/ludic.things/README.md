@@ -47,6 +47,11 @@ def ThingKinds lure { name_of: fn bait_name, tick: fn bait_wear, put_down: true,
 | `put_down` | set down by someone rather than grown by the world: a restock leaves it (the port has the last word) |
 | `keeps` | keeps its `used` through a restock |
 
+**A removed Thing's record is placed again.** Ludic frees nothing, and a world places and takes
+away Things all day, so `thing_remove` keeps the record and `thing_put` / `thing_spawn` make the
+oldest one again - set back as new, with a new `uid` - once 32 are waiting. Hold a Thing across a
+removal only by its `uid` (`thing_by_uid`), never by the record.
+
 ## The port
 
 Every member has a default, so any may be left out of the `bind`:
@@ -73,6 +78,7 @@ the actor the moment the Thing exists (a caller often scales or tints it on the 
 | --- | --- |
 | `thing_spawn(kind, look, x, y, z, yaw, id) -> Thing`, `thing_put(kind, look, x, z, yaw, sink, reach, id) -> Thing` | a new Thing, at a height or on the ground set into it by `sink` |
 | `thing_remove(t)`, `things_drop(gone: fn(Thing) -> bool)`, `things_clear()` | gone for good (told to the port); a new world, quietly |
+| `things_reserve(n)`, `things_spare_count()` | room in the grid for `n` Things, made once at the start; how many removed records wait to be placed again |
 | `thing_move(t, x, z, yaw)`, `thing_move_to(t, x, y, z, yaw)` | on the ground there, or at a height |
 | `thing_hide(t)`, `thing_show(t)`, `thing_set_active(t, on)` | `active`, told to the port |
 | `things_all()`, `things_count()`, `things_ready()`, `thing_by_uid(uid)` | every Thing, in the order placed; whether a world was ever set out |

@@ -215,4 +215,30 @@ program ThingsTest {
     expect(out[0] == a)
     expect_eq(things_changed(things_st, seen, rows, out), 2)
   }
+  test "a removed Thing's record is placed again once enough wait, as new, with a new uid" (things_st: mut ThingsState) {
+    things_reset(things_st)
+    let first = thing_put(things_st, TH_LURE, "lure", 1.0, 1.0, 0.0, 0.0, 2.0, 7)
+    first.used = 5
+    first.owner = 3
+    thing_hide(first)
+    let old_uid = first.uid
+    thing_remove(things_st, first)
+    for i in 0 .. 32 { thing_remove(things_st, thing_put(things_st, TH_BRANCH, "branch", float(i), 0.0, 0.0, 0.0, 1.5, 0)) }
+    expect_eq(things_spare_count(things_st), 33)
+    let again = thing_put(things_st, TH_SIGN, "sign", 4.0, 4.0, 0.0, 0.0, 2.0, 1)
+    let ap: pointer = again
+    let fp: pointer = first
+    expect(ap == fp)
+    expect(again.uid != old_uid)
+    expect_eq(again.kind, TH_SIGN)
+    expect_eq(again.used, 0)
+    expect_eq(again.owner, -1)
+    expect(again.active)
+    expect_eq(thing_nearest(things_st, TH_SIGN, 4.0, 4.0).uid, again.uid)
+    expect_eq(things_verify(things_st), 0)
+    for i in 0 .. 500 { thing_remove(things_st, thing_put(things_st, TH_BRANCH, "branch", 0.0, float(i), 0.0, 0.0, 1.5, 0)) }
+    expect(things_spare_count(things_st) <= 33)
+    things_reserve(things_st, 5000)
+    expect_eq(things_verify(things_st), 0)
+  }
 }

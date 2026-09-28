@@ -1,0 +1,64 @@
+# spare.ludic - a removed Thing's record is made again rather than a new one: Ludic frees nothing,
+# and the world places and takes away Things all day (a sign an animal leaves, a bed, a drop).
+# Oldest first, and only once TH_SPARE_LAG are waiting, so anything still holding one sees its
+# uid change long after the removal; everything else about it is set back as new
+const TH_SPARE_LAG: int = 32
+
+function th_spare_put(things_st: mut ThingsState, t: Thing) -> void { push(things_st.th_spare, t) }
+
+# a record for a Thing about to be placed: the oldest spare past the lag, or a new one
+function th_record(things_st: mut ThingsState) -> Thing {
+  let l = things_st.th_spare
+  if len(l) - things_st.th_spare_at <= TH_SPARE_LAG { return new Thing }
+  let t = l[things_st.th_spare_at]
+  things_st.th_spare_at += 1
+  if things_st.th_spare_at >= 64 { th_spare_pack(things_st) }
+  return th_clean(t)
+}
+
+# the waiting ones moved to the front, in place
+function th_spare_pack(things_st: mut ThingsState) -> void {
+  let l = things_st.th_spare
+  let at = things_st.th_spare_at
+  let n = len(l) - at
+  for i in 0 .. n { l[i] = l[i + at] }
+  for i in 0 .. at { List.pop(l) }
+  things_st.th_spare_at = 0
+}
+
+function th_clean(t: Thing) -> Thing {
+  t.uid = 0
+  t.kind = 0
+  t.id = 0
+  t.look = ""
+  t.x = 0.0
+  t.y = 0.0
+  t.z = 0.0
+  t.yaw = 0.0
+  t.owner = -1
+  t.active = true
+  t.reach = 0.0
+  t.timer = 0.0
+  t.used = 0
+  t.n = 0
+  t.sx = 0.0
+  t.sz = 0.0
+  t.syaw = 0.0
+  t.shared = false
+  t.ent = -1
+  t.tab = null
+  return t
+}
+
+# room for `n` Things in the grid before it has to grow: a world that will place more in play
+# than it placed at the start sizes it once, at the start
+export function things_reserve(things_st: mut ThingsState, n: int) -> void { grid_reserve(things_st.th.grid, n) }
+
+export function things_spare_count(things_st: ThingsState) -> int { return len(things_st.th_spare) - things_st.th_spare_at }
+
+# a placed Thing's slot in the table: reused as Things come and go, so a list indexed by it is as
+# long as the most Things there have been at once; -1 once it is removed
+export function thing_slot(t: Thing) -> int {
+  if t == null or t.ent < 0 { return -1 }
+  return t.ent & ECS_SLOT
+}
