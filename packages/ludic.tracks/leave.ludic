@@ -3,7 +3,7 @@
 function tk_ok(tracks_st: TracksState, kind: int) -> bool { return tracks_st.tk_ring != null and kind >= 0 and kind < tracks_st.tk_kinds }
 
 # a print made at `made` game hours (another machine's, arriving here); the ring index, or -1
-export function tracks_leave_at(tracks_st: mut TracksState, kind: int, x: float, z: float, yaw: float, sp: int, legend: bool, made: float) -> int {
+export function tracks_leave_at(tracks_st: mut TracksState, kind: int, x: float, z: float, yaw: float, sp: int, legend: bool, maker: int, made: float) -> int {
   if not tk_ok(tracks_st, kind) { return -1 }
   var i = tracks_st.tk_next[kind]
   if tracks_st.tk_count[kind] < tracks_st.tk_cap {
@@ -17,14 +17,15 @@ export function tracks_leave_at(tracks_st: mut TracksState, kind: int, x: float,
   t.yaw = yaw
   t.sp = sp
   t.legend = legend
+  t.maker = maker
   t.made = made
   t.read = false
   TracksWorld.placed(kind, i)
   return i
 }
 
-export function tracks_leave(tracks_st: mut TracksState, kind: int, x: float, z: float, yaw: float, sp: int, legend: bool) -> int {
-  return tracks_leave_at(tracks_st, kind, x, z, yaw, sp, legend, tk_now())
+export function tracks_leave(tracks_st: mut TracksState, kind: int, x: float, z: float, yaw: float, sp: int, legend: bool, maker: int) -> int {
+  return tracks_leave_at(tracks_st, kind, x, z, yaw, sp, legend, maker, tk_now())
 }
 
 # the ground forgets every print (a new world)
@@ -34,4 +35,5 @@ export function tracks_clear(tracks_st: mut TracksState) -> void {
     tracks_st.tk_count[k] = 0
     tracks_st.tk_next[k] = 0
   }
+  tracks_st.tk_chain = -1
 }

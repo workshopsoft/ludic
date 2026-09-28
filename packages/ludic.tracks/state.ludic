@@ -28,6 +28,7 @@ export property Track {
   yaw: float = 0.0
   sp: int = 0
   legend: bool = false
+  maker: int = -1                # the animal that left it (the game's nid), -1 not known
   made: float = 0.0
   read: bool = false
 }
@@ -59,6 +60,11 @@ export state TracksState {
   tk_read_n: int = 0             # signs read for the first time, of every source
   tk_yaw: float = 0.0            # the heading of the last sign read
   tk_has_yaw: bool = false
+  tk_chain: int = -1             # the maker of the trail being followed, -1 none (chain.ludic)
+  tk_chain_x: float = 0.0        # the last of its signs read: where, and when it was made
+  tk_chain_z: float = 0.0
+  tk_chain_made: float = 0.0
+  tk_chain_h: float = 0.0        # when it was read, in game hours
   tk_reads: Queue<TrackRead> = tk_reads__new()
 }
 

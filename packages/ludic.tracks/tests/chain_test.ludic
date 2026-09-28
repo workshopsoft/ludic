@@ -1,0 +1,132 @@
+# chain_test.ludic - a trail to follow: a read print points at the newest later one its maker left
+# within reach, reading that moves the trail on, and it ends on a legend, another animal, time,
+# the ring writing over it, or a new world
+import "ludic.tracks"
+import "ludic.base"
+program TracksChainTest {
+  numbers float
+  state TracksTestState {
+    now: float = 0.0
+    skill: int = 1
+    placed_n: int = 0
+    placed_last: int = -1
+  }
+
+  function fake_now(tracks_test_st: TracksTestState) -> float { return tracks_test_st.now }
+  function fake_skill(tracks_test_st: TracksTestState) -> int { return tracks_test_st.skill }
+  function fake_bearing(yaw: float) -> string {
+    if yaw > 0.0 { return "east" }
+    return "west"
+  }
+  function fake_placed(tracks_test_st: mut TracksTestState, kind: int, i: int) -> void {
+    tracks_test_st.placed_n += 1
+    tracks_test_st.placed_last = i
+  }
+
+  bind TracksWorld { now: fn fake_now, skill: fn fake_skill, bearing: fn fake_bearing, placed: fn fake_placed }
+
+  function fresh(tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) -> void {
+    tracks_test_st.now = 10.0
+    tracks_test_st.skill = 1
+    tracks_test_st.placed_n = 0
+    tracks_test_st.placed_last = -1
+    tracks_config(tracks_st, 3, 4)
+    tracks_config_reading(tracks_st, 1, 0.5, 2.5)
+    tracks_reset(tracks_st)
+  }
+
+  function reads(tracks_st: TracksState) -> []TrackRead { return q_drain(tracks_reads(tracks_st)) }
+
+  # a deer walking east, a print every 3 m from x = 0, an hour apart each
+  function walk(tracks_st: mut TracksState, tracks_test_st: mut TracksTestState, maker: int, n: int) -> void {
+    for k in 0 .. n {
+      tracks_leave(tracks_st, 1, float(k) * 3.0, 0.0, 1.0, 7, false, maker)
+      tracks_test_st.now += 0.1
+    }
+  }
+
+  test "a read print points at the newest later one in reach, and reading it moves on" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
+    fresh(tracks_st, tracks_test_st)
+    tracks_config(tracks_st, 3, 64)
+    walk(tracks_st, tracks_test_st, 42, 40)
+    expect_eq(tracks_chain_next(tracks_st), -1)
+    tracks_read(tracks_st, tracks_nearest(tracks_st, 0.0, 0.0, 1.0))
+    expect_eq(tracks_chain_maker(tracks_st), 42)
+    let n = tracks_chain_next(tracks_st)
+    expect(n >= 0)
+    expect_eq(tracks_maker(tracks_st, n), 42)
+    expect(tracks_x(tracks_st, n) <= TRACK_CHAIN_R)
+    expect(tracks_x(tracks_st, n) > TRACK_CHAIN_R - 3.0)
+    tracks_read(tracks_st, n)
+    let m = tracks_chain_next(tracks_st)
+    expect(tracks_x(tracks_st, m) > tracks_x(tracks_st, n))
+  }
+
+  test "another animal's prints are not the trail" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
+    fresh(tracks_st, tracks_test_st)
+    tracks_config(tracks_st, 3, 64)
+    tracks_leave(tracks_st, 1, 0.0, 0.0, 1.0, 7, false, 1)
+    tracks_test_st.now += 0.1
+    tracks_leave(tracks_st, 1, 10.0, 0.0, 1.0, 7, false, 2)
+    tracks_read(tracks_st, tracks_nearest(tracks_st, 0.0, 0.0, 1.0))
+    expect_eq(tracks_chain_next(tracks_st), -1)
+    tracks_read(tracks_st, tracks_nearest(tracks_st, 10.0, 0.0, 1.0))
+    expect_eq(tracks_chain_maker(tracks_st), 2)
+  }
+
+  test "a legend's print names no maker and ends the trail" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
+    fresh(tracks_st, tracks_test_st)
+    tracks_config(tracks_st, 3, 64)
+    walk(tracks_st, tracks_test_st, 5, 4)
+    tracks_leave(tracks_st, 1, 100.0, 0.0, 1.0, 9, true, 6)
+    tracks_read(tracks_st, tracks_nearest(tracks_st, 0.0, 0.0, 1.0))
+    expect_eq(tracks_chain_maker(tracks_st), 5)
+    tracks_read(tracks_st, tracks_nearest(tracks_st, 100.0, 0.0, 1.0))
+    expect_eq(tracks_chain_maker(tracks_st), -1)
+    expect_eq(tracks_chain_next(tracks_st), -1)
+  }
+
+  test "a trail goes cold after its hours, and a new world forgets it" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
+    fresh(tracks_st, tracks_test_st)
+    tracks_config(tracks_st, 3, 64)
+    walk(tracks_st, tracks_test_st, 42, 10)
+    tracks_read(tracks_st, tracks_nearest(tracks_st, 0.0, 0.0, 1.0))
+    expect(tracks_chain_next(tracks_st) >= 0)
+    tracks_test_st.now += TRACK_CHAIN_H + 0.5
+    expect_eq(tracks_chain_maker(tracks_st), -1)
+    expect_eq(tracks_chain_next(tracks_st), -1)
+    tracks_test_st.now -= TRACK_CHAIN_H + 0.5
+    tracks_clear(tracks_st)
+    expect_eq(tracks_chain_maker(tracks_st), -1)
+  }
+
+  test "the trail survives the ring writing over the print it came from" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
+    fresh(tracks_st, tracks_test_st)
+    tracks_config(tracks_st, 3, 8)
+    walk(tracks_st, tracks_test_st, 42, 4)
+    tracks_read(tracks_st, tracks_nearest(tracks_st, 0.0, 0.0, 1.0))
+    for k in 0 .. 8 { tracks_leave(tracks_st, 1, 500.0, 0.0, 0.0, 7, false, 99) }
+    expect_eq(tracks_chain_maker(tracks_st), 42)
+    expect_eq(tracks_chain_next(tracks_st), -1)
+    tracks_leave(tracks_st, 1, 20.0, 0.0, 0.0, 7, false, 42)
+    expect_eq(tracks_x(tracks_st, tracks_chain_next(tracks_st)), 20.0)
+  }
+
+  test "followed five times along a 200 m walk, the trail ends within reach of the animal" (tracks_st: mut TracksState, tracks_test_st: mut TracksTestState) {
+    fresh(tracks_st, tracks_test_st)
+    tracks_config(tracks_st, 3, 128)
+    walk(tracks_st, tracks_test_st, 7, 67)
+    let deer_x = 66.0 * 3.0
+    var at = tracks_nearest(tracks_st, 0.0, 0.0, 1.0)
+    tracks_read(tracks_st, at)
+    for k in 0 .. 5 {
+      let n = tracks_chain_next(tracks_st)
+      if n < 0 { break }
+      expect(tracks_x(tracks_st, n) > tracks_x(tracks_st, at))
+      at = n
+      tracks_read(tracks_st, at)
+    }
+    expect(deer_x - tracks_x(tracks_st, at) <= TRACK_CHAIN_R)
+    expect(tracks_x(tracks_st, at) > 150.0)
+  }
+}
