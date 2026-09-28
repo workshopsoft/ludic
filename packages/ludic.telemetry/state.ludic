@@ -68,8 +68,8 @@ export state TelemetryState {
   telemetry__props: TelemetryProps = telemetry__props_new()
   telemetry__out: StrBuf = null         # a batch or the file, written here
   telemetry__url: string = ""           # host and path, joined once at the config
-  telemetry__fpool: []TelemetryFact = new []TelemetryFact   # fact records, reused once no drain holds one
-  telemetry__ffree: []TelemetryFact = new []TelemetryFact
+  @max(1024) telemetry__fpool: []TelemetryFact = new []TelemetryFact   # fact records, reused once no drain holds one
+  @max(1024) telemetry__ffree: []TelemetryFact = new []TelemetryFact
   telemetry__fnext: []int = words(1)
   telemetry__dirty: bool = false        # the ring differs from the file
   telemetry__h: int = -1                # the batch in flight

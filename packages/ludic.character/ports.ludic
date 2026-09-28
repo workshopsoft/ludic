@@ -104,8 +104,8 @@ export state CharacterState {
   chr_safe_x: float = 0.0
   chr_safe_z: float = 0.0
   chr_fact_q: Queue<CharacterFact> = chr_fact_q__new()
-  chr_fpool: []CharacterFact = chr_fpool_new()   # every fact record made, reused once no drain holds it
-  chr_ffree: []CharacterFact = chr_ffree_new()
+  @max(1024) chr_fpool: []CharacterFact = chr_fpool_new()   # every fact record made, reused once no drain holds it
+  @max(1024) chr_ffree: []CharacterFact = chr_ffree_new()
   chr_fnext: int = 0
 }
 function chr__top_plain(x: float, z: float, r: float, from_y: float, step: float, base: float) -> float { return base }
