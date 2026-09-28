@@ -72,17 +72,28 @@ function tpl_value(v: string, err: []string) -> UiExpr {
 @alloc_ok("a memo miss (tw) or a template being read: once per text")
 function tpl_words(s: string) -> string {
   if tpl_clean(s) { return s }
-  var out = ""
+  # written once into bytes of its own, as a TextRing slot is: a text built a character at a time
+  # left a string behind for every character
+  var p: pointer = null
+  unsafe { p = bytes(len(s) + 1) }
+  var n = 0
   var gap = false
   for i in 0 .. len(s) {
     let c = s[i]
-    if c == 32 or c == 9 or c == 10 or c == 13 { gap = len(out) > 0 } else {
-      if gap { out = out + " " }
+    if c == 32 or c == 9 or c == 10 or c == 13 { gap = n > 0 } else {
+      unsafe {
+        if gap {
+          p[n] = 32
+          n += 1
+        }
+        p[n] = c
+      }
+      n += 1
       gap = false
-      out = out + s[i..i + 1]
     }
   }
-  return out
+  unsafe { p[n] = 0 }
+  return p
 }
 function tpl_attr(t: UiTpl, key: string) -> UiExpr {
   for i in 0 .. len(t.keys) {
