@@ -144,145 +144,8 @@ function layer_cards(render3d_st: mut Render3dState, scan: Model, cap: int, wind
   return l
 }
 
-# A lupine spike (1 m tall): a stem of two crossed quads (uv.x in [0,1]) and
-# seven tiers of crossed floret quads (uv.x in [1,2]), coloured in the shader.
-function model_lupine(render3d_st: mut Render3dState) -> Model {
-  let model = new Model
-  model.prims = new []Prim
-  let pr = new Prim
-  let m = gpu_mesh_new(render3d_st)
-  # quads: stem x2 + tiers 12 x 2 + 3 leaves = 29 quads
-  let nq = 29
-  let v = gl_floats(nq * 4 * 8)
-  let idx = words(nq * 6)
-  var k = 0
-  var qi = 0
-  for q in 0 .. nq {
-    var w = 0.012;  var y0 = 0.0;  var y1 = 0.62;  var ukind = 0.0
-    var ang = 0.0
-    if q >= 2 and q < 26 {
-      let tier = (q - 2) / 2
-      let t = float(tier) / 12.0
-      w = 0.05 * (1.1 - t)
-      y0 = 0.27 + t * 0.36
-      y1 = y0 + 0.045
-      ukind = 1.0
-      ang = float(tier) / 12.0 * 2.1
-      if (q & 1) == 1 { ang = ang + PI * 0.5 }
-    } else if q >= 26 {
-      # a rosette of three leaves near the ground
-      w = 0.09;  y0 = 0.02;  y1 = 0.2;  ukind = 2.0
-      ang = float(q - 26) / 3.0 * (2.0 * PI)
-    } else {
-      if (q & 1) == 1 { ang = ang + PI * 0.5 }
-    }
-    let cx = Math.cos(ang) * w;  let cz = Math.sin(ang) * w
-    for c in 0 .. 4 {
-      var sx = -1.0;  var sy = y0;  var u = 0.0
-      if c == 1 or c == 2 { sx = 1.0;  u = 1.0 }
-      if c == 2 or c == 3 { sy = y1 }
-      gl_put_bits(v, k, float_bits(cx * sx));  gl_put_bits(v, k + 1, float_bits(sy));  gl_put_bits(v, k + 2, float_bits(cz * sx))
-      gl_put_bits(v, k + 3, float_bits(-cz));  gl_put_bits(v, k + 4, float_bits(0.2));  gl_put_bits(v, k + 5, float_bits(cx))
-      gl_put_bits(v, k + 6, float_bits(ukind + u))
-      var vv = sy
-      if ukind == 1.0 { vv = (sy - 0.27) / 0.4 }
-      if ukind == 2.0 { vv = (sy - 0.02) / 0.18 }
-      gl_put_bits(v, k + 7, float_bits(vv))
-      k += 8
-    }
-    let b = q * 4
-    idx[qi] = b;  idx[qi + 1] = b + 1;  idx[qi + 2] = b + 2;  idx[qi + 3] = b;  idx[qi + 4] = b + 2;  idx[qi + 5] = b + 3
-    qi += 6
-  }
-  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(nq * 4 * 8), GPU_STATIC)
-  sc_model_layout(render3d_st, m)
-  free(v)
-  gpu_mesh_indices(render3d_st, m, data_of(idx), nq * 6 * 4, 4)
-  free(idx)
-  m.count = nq * 6
-  gpu_mesh_done(render3d_st, m)
-  pr.mesh = m
-  if render3d_st.gltf_white == 0 { render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255);  render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255) }
-  pr.diff = render3d_st.gltf_white;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_white
-  push(model.prims, pr)
-  model.radius = 0.08;  model.height = 0.65;  model.tris = nq * 2
-  return model
-}
-
-# A dense lupine for baking into a card: a stem, ~220 small floret quads in a
-# tapering spiral (uv.x in [1,2]) and five leaves (uv.x in [2,3]).
-function model_lupine_dense(render3d_st: mut Render3dState) -> Model {
-  let model = new Model
-  model.prims = new []Prim
-  let pr = new Prim
-  let m = gpu_mesh_new(render3d_st)
-  let nfl = 220
-  let nq = 2 + nfl + 5
-  let v = gl_floats(nq * 4 * 8)
-  let idx = words(nq * 6)
-  var k = 0
-  var qi = 0
-  seed(5)
-  for q in 0 .. nq {
-    var w = 0.008;  var y0 = 0.0;  var y1 = 0.66;  var ukind = 0.0
-    var ang = 0.0;  var ox = 0.0;  var oz = 0.0;  var tilt = 0.0
-    if q >= 2 and q < 2 + nfl {
-      let t = float(q - 2) / float(nfl)
-      let yy = 0.28 + t * 0.4
-      ang = float(q) * 2.39996          # golden angle spiral
-      let rad = 0.055 * (1.05 - t)
-      ox = Math.cos(ang) * rad;  oz = Math.sin(ang) * rad
-      w = 0.028 * (1.1 - t * 0.5)
-      y0 = yy - 0.016;  y1 = yy + 0.016
-      ukind = 1.0
-      tilt = 0.6
-    } else if q >= 2 + nfl {
-      w = 0.05;  y0 = 0.03;  y1 = 0.16;  ukind = 2.0
-      ang = float(q - 2 - nfl) / 5.0 * (2.0 * PI)
-      ox = Math.cos(ang) * 0.05;  oz = Math.sin(ang) * 0.05
-    } else {
-      if (q & 1) == 1 { ang = PI * 0.5 }
-    }
-    # the quad faces outward (its normal along the spiral radius), leaning out by `tilt`
-    let nx = Math.cos(ang);  let nz = Math.sin(ang)
-    let tx = -nz;  let tz = nx                 # tangent (quad width direction)
-    for c in 0 .. 4 {
-      var sx = -1.0;  var sy = y0;  var u = 0.0
-      if c == 1 or c == 2 { sx = 1.0;  u = 1.0 }
-      if c == 2 or c == 3 { sy = y1 }
-      var lean = 0.0
-      if c == 2 or c == 3 { lean = tilt * w }
-      gl_put_bits(v, k, float_bits(ox + tx * (sx * w) + nx * lean))
-      gl_put_bits(v, k + 1, float_bits(sy))
-      gl_put_bits(v, k + 2, float_bits(oz + tz * (sx * w) + nz * lean))
-      gl_put_bits(v, k + 3, float_bits(nx));  gl_put_bits(v, k + 4, float_bits(0.35));  gl_put_bits(v, k + 5, float_bits(nz))
-      gl_put_bits(v, k + 6, float_bits(ukind + u))
-      var vv = sy
-      if ukind == 1.0 { vv = (sy - 0.27) / 0.42 }
-      if ukind == 2.0 { vv = (sy - 0.03) / 0.19 }
-      gl_put_bits(v, k + 7, float_bits(vv))
-      k += 8
-    }
-    let b = q * 4
-    idx[qi] = b;  idx[qi + 1] = b + 1;  idx[qi + 2] = b + 2;  idx[qi + 3] = b;  idx[qi + 4] = b + 2;  idx[qi + 5] = b + 3
-    qi += 6
-  }
-  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(nq * 4 * 8), GPU_STATIC)
-  sc_model_layout(render3d_st, m)
-  free(v)
-  gpu_mesh_indices(render3d_st, m, data_of(idx), nq * 6 * 4, 4)
-  free(idx)
-  m.count = nq * 6
-  gpu_mesh_done(render3d_st, m)
-  pr.mesh = m
-  if render3d_st.gltf_white == 0 { render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255);  render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255) }
-  pr.diff = render3d_st.gltf_white;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_white
-  push(model.prims, pr)
-  model.radius = 0.11;  model.height = 0.68;  model.tris = nq * 2
-  return model
-}
-
 # A procedural grass blade (1 m tall, 5 cm wide, curved): 5 rows of 2 vertices.
+@alloc_ok("a model: made once by the program that asks for it, and kept with its layer")
 function model_blade(render3d_st: mut Render3dState) -> Model {
   let model = new Model
   model.prims = new []Prim
@@ -553,6 +416,7 @@ function scatter_begin_frame(render3d_st: mut Render3dState) -> void {
 # wrote - one draw per material covering every level. Nothing is partitioned or uploaded on the CPU
 # when the view moves. PC camp benchmark: 2791 -> 2657 draws, 4.3 -> 4.1 s for 400 frames.
 const SC_REC_W: int = 20              # a VkDrawIndexedIndirectCommand
+const SC_LOD_ROOM: int = 64         # a layer's LODs plus near and far, most (sc_lod_* are made this size)
 const SC_RECS: int = 29               # 16 level x prim, 1 impostor, 12 shadow LOD (scatter_cull.comp)
 
 function layer_gpu_eligible(render3d_st: Render3dState, l: Layer) -> bool {
@@ -661,7 +525,7 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
   gpu_buffer_upload(render3d_st, l.g_dst, (n + 1) * cap * INST_FLOATS * 4, null, GPU_DYNAMIC)
   if l.g_arena == null { layer_arena_build(render3d_st, l) }
   let n_mat = len(l.g_arena)
-  let rec = words(SC_RECS * 5)
+  let rec = render3d_st.sc_gpu_rec
   for i in 0 .. SC_RECS * 5 { rec[i] = 0 }
   # material j, level k: that level's range of the merged mesh, its instances from bucket k
   for j in 0 .. n_mat {
@@ -681,10 +545,9 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
     }
   }
   gpu_buffer_upload(render3d_st, l.g_cmds, SC_RECS * SC_REC_W, data_of(rec), GPU_DYNAMIC)
-  let zeros = words(5)
+  let zeros = render3d_st.sc_gpu_zeros
   for i in 0 .. 5 { zeros[i] = 0 }
   gpu_buffer_upload(render3d_st, l.g_counts, 20, data_of(zeros), GPU_DYNAMIC)
-  free(rec);  free(zeros)
   # the card casts every instance, as on the CPU path (layer_grid_build uploads this there)
   l.n_sh = l.count
   gpu_buffer_upload(render3d_st, l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
@@ -695,7 +558,7 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
 
 # the dispatch for the view as it stands: frustum, camera, distances, the layer's shape
 function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
-  let pr = words(36)
+  let pr = render3d_st.sc_gpu_pr
   for i in 0 .. 36 { pr[i] = 0 }
   if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
   pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(l.cull)
@@ -703,10 +566,9 @@ function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
   pr[28] = l.count;  pr[29] = l.count;  pr[30] = l.n_lods;  pr[31] = 1
   # as layer_grid_gather pads a cell: the tallest instance, plus a margin
   pr[32] = float_bits(l.lods[0].height * 2.0);  pr[33] = float_bits(4.0)
-  let bufs = words(4)
+  let bufs = render3d_st.sc_gpu_bufs
   bufs[0] = l.g_src;  bufs[1] = l.g_dst;  bufs[2] = l.g_cmds;  bufs[3] = l.g_counts
   gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 144, bufs, 1)
-  free(pr);  free(bufs)
 }
 
 # Sort a static layer's instances into square cells (call once, after placement; a
@@ -789,7 +651,8 @@ function layer_grid_gather(render3d_st: Render3dState, l: Layer) -> void {
 # the impostor bucket last, and upload one buffer per level.
 function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: floats, total: int) -> void {
   let n = l.n_lods
-  let counts = words(n + 2)
+  if n + 2 > SC_LOD_ROOM { return }                 # past the room made with the state
+  let counts = render3d_st.sc_lod_counts
   for k in 0 .. n + 2 { counts[k] = 0 }
   let cull2 = l.cull * l.cull
   let open = l.lod_dist[n - 1] == 0.0      # the last level runs out to the cull distance
@@ -810,10 +673,10 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
     counts[lv] += 1
   }
   # prefix offsets (in instances) per bucket
-  let start = words(n + 2)
+  let start = render3d_st.sc_lod_start
   var acc = 0
   for k in 0 .. n + 2 { start[k] = acc;  acc += counts[k] }
-  let fill = words(n + 2)
+  let fill = render3d_st.sc_lod_fill
   for k in 0 .. n + 2 { fill[k] = start[k] }
   let tmp = l.scratch
   for i in 0 .. total {
@@ -841,7 +704,6 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
     l.n_sh = total
     if total > 0 { gpu_buffer_upload(render3d_st, l.sh_buf, total * INST_FLOATS * 4, data_of(src), GPU_DYNAMIC) }
   }
-  free(counts);  free(start);  free(fill)
 }
 
 # split the instances by distance to the camera (only when the view changed)

@@ -193,6 +193,7 @@ function stream_evict(render3d_st: mut Render3dState, s: Stream) -> void {
       w += 1
     } else {
       c.off = -1
+      @alloc_ok("within the stream's record pool, all made with the stream (STREAM_MAX_CHUNKS)")
       push(s.spare, c)
     }
     i += 1
@@ -263,6 +264,7 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
                 if need > 0 { mem_copy(mem_off(data_of(s.arena), s.top * 4), data_of(render3d_st.stream_scratch), need * 4) }
                 c.off = s.top
                 s.top += need
+                @alloc_ok("within the stream's record pool, all made with the stream (STREAM_MAX_CHUNKS)")
                 push(s.chunks, c);  s.keys[s.n] = key;  stream_remember(s, key, s.n);  s.n += 1
                 c.used = render3d_st.stream_walk_no
               } else { loose = true }
@@ -287,6 +289,7 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
               l.count += c.count
               render3d_st.stream_us_gather = render3d_st.stream_us_gather + (gl_now_us() - tg)
             }
+            @alloc_ok("within the stream's record pool, all made with the stream (STREAM_MAX_CHUNKS)")
             if loose and c != render3d_st.stream_loose { push(s.spare, c) }
           }
         }

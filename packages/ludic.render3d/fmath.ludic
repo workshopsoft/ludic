@@ -21,6 +21,7 @@ const F_PI:   int = 0x40490FDB
 
 # the n 4x4 matrices laid end to end in `m`, a view of each. Views are made once, where their
 # buffer is: a view is a small allocation, and one per matrix per frame is one nobody frees.
+@alloc_ok("views over a skeleton's matrices: made once per skeleton, with it")
 function m4_views(m: floats, n: int) -> [][]float {
   let out = new [][]float
   var i = 0
@@ -40,6 +41,7 @@ function f_rad(deg: float) -> float { return deg * (PI / 180.0) }
 function f_fx(x: float) -> fixed { return fixed(x) }
 
 # ---- vectors ----------------------------------------------------------------
+@alloc_ok("a constructor: what it makes is its caller's (records made at start-up or once per figure)")
 function v3_new(x: float, y: float, z: float) -> floats {
   let v = floats(3)
   v[0] = x
@@ -78,14 +80,15 @@ function v3_normalize(o: floats, a: floats) -> void {
   v3_scale(o, a, inv)
 }
 function v3_dist(a: floats, b: floats) -> float {
-  let t = floats(3)
-  v3_sub(t, a, b)
-  let d = v3_len(t)
-  free(t)
+  let dx = a[0] - b[0]
+  let dy = a[1] - b[1]
+  let dz = a[2] - b[2]
+  let d = Math.sqrt(dx * dx + dy * dy + dz * dz)
   return d
 }
 
 # ---- matrices (column-major, m[col*4 + row]) ------------------------------------
+@alloc_ok("a constructor: what it makes is its caller's (records made at start-up or once per figure)")
 function m4_new() -> floats { let m = floats(16);  m4_identity(m);  return m }
 function m4_identity(m: floats) -> void {
   for i in 0 .. 16 { m[i] = 0.0 }

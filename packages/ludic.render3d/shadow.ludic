@@ -80,8 +80,10 @@ function shadow_fit(render3d_st: mut Render3dState, c: int, near: float, far: fl
   # map resampled every frame: that is the crawl and flicker seen while moving.
   m4_perspective(render3d_st.sh_tmp_proj, render3d_st.cam_fov, render3d_st.cam_aspect, near, far)
   m4_inverse(render3d_st.sh_tmp_inv, render3d_st.sh_tmp_proj)          # NDC -> view space
-  let cview = v3_new(0.0, 0.0, 0.0)
-  let corners = floats(24)
+  # the fit's scratch is the state's, made once (a cascade fitted every frame made six of them)
+  let cview = render3d_st.sh_fit_cview
+  v3_set(cview, 0.0, 0.0, 0.0)
+  let corners = render3d_st.sh_fit_corners
   for i in 0 .. 8 {
     var x = -1.0;  var y = -1.0;  var z = -1.0
     if (i & 1) != 0 { x = 1.0 }
@@ -102,16 +104,16 @@ function shadow_fit(render3d_st: mut Render3dState, c: int, near: float, far: fl
   radius = radius * 1.05
   # the slice centre back into world space
   m4_inverse(render3d_st.sh_tmp_vp, render3d_st.cam_view)
-  let center = floats(3)
+  let center = render3d_st.sh_fit_center
   m4_xform_point(center, render3d_st.sh_tmp_vp, cview[0], cview[1], cview[2])
-  free(cview)
   # light view: from far along the sun direction, looking at the centre
-  let eye = floats(3)
+  let eye = render3d_st.sh_fit_eye
   # casters up to ~900 m toward the sun (a mountain across the valley), and the
   # slice itself behind the centre: a tight depth range keeps the bias small
   let back = radius + 900.0
   v3_madd(eye, center, render3d_st.sun_dir, back)
-  let up = v3_new(0.0, 1.0, 0.0)
+  let up = render3d_st.sh_fit_up
+  v3_set(up, 0.0, 1.0, 0.0)
   m4_look_at(render3d_st.sh_tmp_view, eye, center, up)
   # snap the ortho window to the shadow texel grid
   let texel = radius * 2.0 / float(render3d_st.shadow_res)
@@ -123,10 +125,9 @@ function shadow_fit(render3d_st: mut Render3dState, c: int, near: float, far: fl
   m4_ortho(render3d_st.sh_tmp_proj, nr + ox, radius + ox, nr + oy, radius + oy, 1.0, zfar)
   render3d_st.sh_range[c] = zfar - 1.0
   render3d_st.sh_texel[c] = texel
-  let out = floats(16)
+  let out = render3d_st.sh_fit_out
   m4_mul(out, render3d_st.sh_tmp_proj, render3d_st.sh_tmp_view)
   for i in 0 .. 16 { render3d_st.sh_vp[c * 16 + i] = out[i] }
-  free(out);  free(eye);  free(up);  free(center);  free(corners)
 }
 
 function shadow_cascade_vp(render3d_st: Render3dState, c: int) -> floats { return render3d_st.sh_vp_v[c] }

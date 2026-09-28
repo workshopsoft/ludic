@@ -131,6 +131,7 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
   render3d_st.gvk_pd = Vk.get_ptr(devs, pick * 8)
   Vk.get_physical_device_properties(render3d_st.gvk_pd, props)
   render3d_st.gvk_device_name = string(Vk.at(props, VkPhysicalDeviceProperties_deviceName))
+  render3d_st.gvk_renderer_name = `{render3d_st.gvk_device_name} (Vulkan)`
 
   Vk.put_i32(cnt, 0, 0)
   Vk.get_physical_device_queue_family_properties(render3d_st.gvk_pd, cnt, null)
@@ -363,7 +364,12 @@ function gvk_mem_raw(render3d_st: mut Render3dState, t: int, size: int, host: bo
   let out = gvk_tmp(render3d_st, 8)
   render3d_st.gvk_mk_mem += 1
   let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, render3d_st.gvk_ac, out)
-  if r != VK_SUCCESS { gvk_note(render3d_st, `r3d: vulkan: vkAllocateMemory of {size} bytes failed (VkResult {r}, {render3d_st.gvk_n_allocs} allocations live)`);  return zero }
+  if r != VK_SUCCESS {
+    let msg = `r3d: vulkan: vkAllocateMemory of {size} bytes failed (VkResult {r}, {render3d_st.gvk_n_allocs} allocations live)`
+    gvk_note(render3d_st, msg)
+    free(msg)
+    return zero
+  }
   render3d_st.gvk_n_allocs += 1
   let mem = gvk_handle(out)
   out_map[0] = null
@@ -378,7 +384,12 @@ function gvk_mem_raw(render3d_st: mut Render3dState, t: int, size: int, host: bo
 function gvk_fr_put(render3d_st: mut Render3dState, b: int, off: int, len_: int) -> void {
   if len_ <= 0 { return }
   for i in 0 .. len(render3d_st.gvk_fr_blk) { if render3d_st.gvk_fr_len[i] == 0 { render3d_st.gvk_fr_blk[i] = b;  render3d_st.gvk_fr_off[i] = off;  render3d_st.gvk_fr_len[i] = len_;  return } }
-  push(render3d_st.gvk_fr_blk, b);  push(render3d_st.gvk_fr_off, off);  push(render3d_st.gvk_fr_len, len_)
+  @alloc_ok("within the free ranges' room made at start-up (@max 4096)")
+  push(render3d_st.gvk_fr_blk, b)
+  @alloc_ok("within the free ranges' room made at start-up (@max 4096)")
+  push(render3d_st.gvk_fr_off, off)
+  @alloc_ok("within the free ranges' room made at start-up (@max 4096)")
+  push(render3d_st.gvk_fr_len, len_)
 }
 
 # Memory for a resource from its requirements (a VkMemoryRequirements): an allocation id, 0 if none.
@@ -510,6 +521,7 @@ function gvk_mem_free(render3d_st: mut Render3dState, a: int) -> void {
     }
   }
   render3d_st.gvk_al_len[a] = 0;  render3d_st.gvk_al_mem[a] = zero;  render3d_st.gvk_al_map[a] = null;  render3d_st.gvk_al_blk[a] = -1
+  @alloc_ok("within the spare ids' room made at start-up (@max 4096)")
   push(render3d_st.gvk_al_spare, a)
 }
 function gvk_mem_id(x: long) -> int { return int(x) }

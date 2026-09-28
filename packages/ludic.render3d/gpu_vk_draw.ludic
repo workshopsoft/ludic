@@ -341,6 +341,7 @@ function gvk_input_format(t: string) -> int {
   return VK_FORMAT_R32G32B32A32_SFLOAT
 }
 # 64 KB of zeros, the buffer every unfed input reads (one vec4 per instance, up to 4096)
+@alloc_ok("the one buffer of zeros every unfed input reads: made once")
 function gvk_zero_vbuf_get(render3d_st: mut Render3dState) -> int {
   if render3d_st.gvk_zero_vbuf == 0 {
     render3d_st.gvk_zero_vbuf = gvk_buf_new(render3d_st)
@@ -604,7 +605,12 @@ function gvk_pipeline(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkSt
   # the create infos are read by the create and go with it: a pipeline first met in play kept all of them
   free(stages);  free(attrs);  free(bnds);  free(vin);  free(ias);  free(vps);  free(rs);  free(ms);  free(ds)
   free(cba);  free(cbs);  free(dyn_states);  free(dys);  free(formats);  free(prci);  free(gpci);  free(out)
-  if r != VK_SUCCESS { gvk_fail(render3d_st, `vkCreateGraphicsPipelines for {v.vs} + {v.fs}`, r);  return zero }
+  if r != VK_SUCCESS {
+    let what = `vkCreateGraphicsPipelines for {v.vs} + {v.fs}`
+    gvk_fail(render3d_st, what, r)
+    free(what)
+    return zero
+  }
   # R3D_VK_PROF names each pipeline as it is made: one made during play is a stall a warm-up missed
   if gvk_prof(render3d_st) { render3d_st.gvk_n_pipe_new += 1;  print(`r3d: vulkan pipeline {len(render3d_st.gvk_pipe) + 1}: {v.vs} + {v.fs}, {n_color} colour format {color_fmt}, depth {depth_fmt}, {samples}x`) }
   push(render3d_st.gvk_pipe_keys, key)
@@ -832,9 +838,11 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
   let zero: long = 0
   let v = render3d_st.gvk_prog_var[p]
   gvk_uniform_blocks(render3d_st, p)
+  @alloc_ok("filled to 4096 programs at start-up (@max 4096)")
   while len(render3d_st.gvk_ub_frame) <= p { push(render3d_st.gvk_ub_frame, 0);  push(render3d_st.gvk_ub_offv, 0);  push(render3d_st.gvk_ub_offf, 0) }
   let nt = len(v.t_name)
   # the key: every texture as this draw resolves it, and its sampler
+  @alloc_ok("filled to 130 at start-up (@max 130: 64 textures a draw)")
   while len(render3d_st.gvk_sc_tmp) < nt * 2 + 2 { push(render3d_st.gvk_sc_tmp, zero) }
   for t in 0 .. nt {
     var tex = render3d_st.gvk_prog_tex[p][t]

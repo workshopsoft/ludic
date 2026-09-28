@@ -96,9 +96,11 @@ function value_set_float(o: Val, key: pointer, x: float) -> void {
   let v = value_slot(o, key, 7)
   value_num_set(v, float_bits(x))
 }
+# a component's text held interned: one copy per distinct text, so the caller's own (a template built
+# every frame) is given back with its frame rather than kept by the model
 function value_set_str(o: Val, key: pointer, s: pointer) -> void {
   let v = value_slot(o, key, 4)
-  v.txt = s
+  v.txt = intern(s)
 }
 function value_set_bool(o: Val, key: pointer, b: bool) -> void {
   let v = value_slot(o, key, 3)
@@ -142,7 +144,7 @@ function value_set_strs(o: Val, key: pointer, xs: []string) -> void {
   let l = value_list_fit(o, key, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 4)
-    v.txt = xs[i]
+    v.txt = intern(xs[i])
   }
 }
 function value_set_bools(o: Val, key: pointer, xs: []bool) -> void {
@@ -197,7 +199,7 @@ function value_into_float(into: Val, x: float) -> Val {
 }
 function value_into_str(into: Val, s: pointer) -> Val {
   let v = value_into(into, 4)
-  v.txt = s
+  v.txt = intern(s)
   return v
 }
 function value_into_bool(into: Val, b: bool) -> Val {
@@ -235,7 +237,7 @@ function value_into_strs(into: Val, xs: []string) -> Val {
   let l = value_into_list(into, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 4)
-    v.txt = xs[i]
+    v.txt = intern(xs[i])
   }
   return l
 }

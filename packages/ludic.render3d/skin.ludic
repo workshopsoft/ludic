@@ -214,6 +214,7 @@ function skin_bind(render3d_st: mut Render3dState, sk: Skin, prog: int) -> void 
 
 # the same skeleton posed on its own: shares the rest data, owns the pose and the matrices
 @creates(SkinClone)
+@alloc_ok("one per figure placed (a person, an animal): actor_release frees it with the actor")
 function skin_clone(src: Skin) -> Skin {
   let sk = new Skin
   sk.n_nodes = src.n_nodes;  sk.par = src.par;  sk.walk = src.walk

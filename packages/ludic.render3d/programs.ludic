@@ -16,6 +16,7 @@ function r3d_set_paths(render3d_st: mut Render3dState, root: string, assets: str
 
 # The install root, as the compiler computes it: $LUDIC_HOME, else the directory of the
 # `ludic` on PATH. A game running from its own tree finds this package there.
+@alloc_ok("once a run: the install root, asked only when the shaders are not beside the program")
 function r3d_home() -> string {
   let env = Os.env("LUDIC_HOME")
   if env != null and env != "" { return env }
