@@ -1,0 +1,34 @@
+# text_ring.ludic - a fixed ring of text buffers written in place: a line made per event (a notice)
+# takes the next slot, so a game shows as many as it has slots and allocates nothing after the ring
+# is made. What a slot hands out is good until the ring comes round to it again - size the ring to
+# what can be showing at once
+export property TextRing {
+  slots: []pointer = new []pointer
+  cap: int = 0
+  at: int = 0
+}
+
+export function tr_new(n: int, cap: int) -> TextRing {
+  let r = new TextRing
+  r.cap = Math.max(cap, 2)
+  for i in 0 .. Math.max(n, 1) {
+    var p: pointer = null
+    unsafe { p = bytes(r.cap) }
+    push(r.slots, p)
+  }
+  return r
+}
+
+# the buffer's text in the ring's next slot, cut to the slot's size, as a string
+export function tr_put(r: TextRing, sb: StrBuf) -> string {
+  let p = r.slots[r.at]
+  r.at = (r.at + 1) % len(r.slots)
+  let n = Math.min(sb.n, r.cap - 1)
+  unsafe {
+    for i in 0 .. n { p[i] = sb.b[i] }
+    p[n] = 0
+  }
+  return p
+}
+
+export function tr_slots(r: TextRing) -> int { return len(r.slots) }
