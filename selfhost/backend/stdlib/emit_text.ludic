@@ -15,94 +15,111 @@ function is_text_ns(meth: pointer) -> bool {
   return false
 }
 
+# A string argument made for the call (a template, string(n), a slice) is the call's to give back once
+# read: Text.to_int(string(n)) kept n's text. Every string a Text call returns is a copy of its own,
+# so it is fresh and goes once a +, == or print has read it.
+function text_gone(v: Val) -> void {
+  if v.fresh { emit(`  call void @free(ptr {v.code})\n`) }
+}
+
 function emit_text_ns(meth: pointer, e: Node) -> Val {
   if (meth == "from_int") {                          # int -> string, same as string(n)
     let n = emit_expr(e.kids[0])
     g_uses_intstr = true
-    return val(emit_bind(`call ptr @lp_int_str(i32 {n.code})`), "string")
+    return fresh_val(emit_bind(`call ptr @lp_int_str(i32 {n.code})`), "string")
   }
   if (meth == "slice") {                             # s[a..b], same substring helper
     let s0 = emit_expr(e.kids[0]);  let a = emit_expr(e.kids[1]);  let b = emit_expr(e.kids[2])
     g_uses_strslice = true
-    return val(emit_bind(`call ptr @lp_str_slice(ptr {s0.code}, i32 {a.code}, i32 {b.code})`), "string")
+    let r = fresh_val(emit_bind(`call ptr @lp_str_slice(ptr {s0.code}, i32 {a.code}, i32 {b.code})`), "string")
+    text_gone(s0)
+    return r
   }
   if (meth == "equals") {                            # byte-wise equality, same as ==
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
-    g_uses_str = true
-    return val(emit_bind(`call i32 @lp_str_eq(ptr {a.code}, ptr {b.code})`), "bool")
+    return emit_str_op("==", a, b)
   }
   if (meth == "concat") {                            # a + b, same as the + operator
     let a = emit_expr(e.kids[0]);  let b = emit_expr(e.kids[1])
-    g_uses_str = true
-    return val(emit_bind(`call ptr @lp_str_concat(ptr {a.code}, ptr {b.code})`), "string")
+    return emit_str_op("+", a, b)
   }
 
   let s = emit_expr(e.kids[0])
   if (meth == "length") {                            # byte length
     let r = emit_bind(`call i64 @strlen(ptr {s.code})`)
+    text_gone(s)
     return val(emit_bind(`trunc i64 {r} to i32`), "int")
   }
   if (meth == "char_at") {                           # the byte at index i, 0..255
     let i = emit_expr(e.kids[1])
     let a = emit_bind(`getelementptr inbounds i8, ptr {s.code}, i32 {i.code}`)
     let c = emit_bind(`load i8, ptr {a}`)
+    text_gone(s)
     return val(emit_bind(`zext i8 {c} to i32`), "int")
   }
   if (meth == "to_float") {                          # parse a leading decimal number, 0.0 if none
     fp_declare("declare double @strtod(ptr, ptr)\n")
     let d = emit_bind(`call double @strtod(ptr {s.code}, ptr null)`)
+    text_gone(s)
     return val(emit_bind(`fptrunc double {d} to float`), "float")
   }
   if (meth == "to_int") {                            # parse a leading integer, 0 if none
-    return val(emit_bind(`call i32 @atoi(ptr {s.code})`), "int")
+    let r = emit_bind(`call i32 @atoi(ptr {s.code})`)
+    text_gone(s)
+    return val(r, "int")
   }
-  if (meth == "upper") {                             # ASCII a-z -> A-Z, fresh string
+  if (meth == "upper") or (meth == "lower") or (meth == "trim") {   # a fresh copy, changed
     g_uses_textrt = true
-    return val(emit_bind(`call ptr @lp_str_upper(ptr {s.code})`), "string")
-  }
-  if (meth == "lower") {                             # ASCII A-Z -> a-z, fresh string
-    g_uses_textrt = true
-    return val(emit_bind(`call ptr @lp_str_lower(ptr {s.code})`), "string")
-  }
-  if (meth == "trim") {                              # drop leading/trailing whitespace
-    g_uses_textrt = true
-    return val(emit_bind(`call ptr @lp_str_trim(ptr {s.code})`), "string")
+    var f = "lp_str_trim"
+    if (meth == "upper") { f = "lp_str_upper" }
+    if (meth == "lower") { f = "lp_str_lower" }
+    let r = fresh_val(emit_bind(`call ptr @{f}(ptr {s.code})`), "string")
+    text_gone(s)
+    return r
   }
   if (meth == "repeat") {                            # s repeated n times
     g_uses_textrt = true
     let n = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @lp_str_repeat(ptr {s.code}, i32 {n.code})`), "string")
+    let r = fresh_val(emit_bind(`call ptr @lp_str_repeat(ptr {s.code}, i32 {n.code})`), "string")
+    text_gone(s)
+    return r
   }
-  if (meth == "pad_left") {                          # pad with spaces to width, on the left
+  if (meth == "pad_left") or (meth == "pad_right") { # pad with spaces to width
     g_uses_textrt = true
     let w = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @lp_str_pad(ptr {s.code}, i32 {w.code}, i1 1)`), "string")
-  }
-  if (meth == "pad_right") {                         # pad with spaces to width, on the right
-    g_uses_textrt = true
-    let w = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @lp_str_pad(ptr {s.code}, i32 {w.code}, i1 0)`), "string")
+    var left = "1"
+    if (meth == "pad_right") { left = "0" }
+    let r = fresh_val(emit_bind(`call ptr @lp_str_pad(ptr {s.code}, i32 {w.code}, i1 {left})`), "string")
+    text_gone(s)
+    return r
   }
   if (meth == "replace") {                           # replace every `from` with `to`
     g_uses_textrt2 = true
     let from = emit_expr(e.kids[1]);  let to = emit_expr(e.kids[2])
-    return val(emit_bind(`call ptr @lp_str_replace(ptr {s.code}, ptr {from.code}, ptr {to.code})`), "string")
+    let r = fresh_val(emit_bind(`call ptr @lp_str_replace(ptr {s.code}, ptr {from.code}, ptr {to.code})`), "string")
+    text_gone(s);  text_gone(from);  text_gone(to)
+    return r
   }
   if (meth == "split") {                             # split on a separator -> []string
     g_uses_textrt2 = true
     let sep = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @lp_str_split(ptr {s.code}, ptr {sep.code})`), "[]string")
+    let r = val(emit_bind(`call ptr @lp_str_split(ptr {s.code}, ptr {sep.code})`), "[]string")
+    text_gone(s);  text_gone(sep)
+    return r
   }
   if (meth == "join") {                              # join a []string with a separator (s is the slice)
     g_uses_textrt2 = true
     let sep = emit_expr(e.kids[1])
-    return val(emit_bind(`call ptr @lp_str_join(ptr {s.code}, ptr {sep.code})`), "string")
+    let r = fresh_val(emit_bind(`call ptr @lp_str_join(ptr {s.code}, ptr {sep.code})`), "string")
+    text_gone(sep)
+    return r
   }
   if (meth == "contains") or (meth == "index_of") {  # substring search
     let sub = emit_expr(e.kids[1])
     let p = emit_bind(`call ptr @strstr(ptr {s.code}, ptr {sub.code})`)
     if (meth == "contains") {
       let nn = emit_bind(`icmp ne ptr {p}, null`)
+      text_gone(s);  text_gone(sub)
       return val(emit_bind(`zext i1 {nn} to i32`), "bool")
     }
     let isnull = emit_bind(`icmp eq ptr {p}, null`)   # index_of -> byte offset or -1
@@ -110,6 +127,7 @@ function emit_text_ns(meth: pointer, e: Node) -> Val {
     let si = emit_bind(`ptrtoint ptr {s.code} to i64`)
     let d = emit_bind(`sub i64 {pi}, {si}`)
     let d32 = emit_bind(`trunc i64 {d} to i32`)
+    text_gone(s);  text_gone(sub)
     return val(emit_bind(`select i1 {isnull}, i32 -1, i32 {d32}`), "int")
   }
 
@@ -119,6 +137,7 @@ function emit_text_ns(meth: pointer, e: Node) -> Val {
   if (meth == "starts_with") {                       # strncmp of the head is null-safe
     let cmp = emit_bind(`call i32 @strncmp(ptr {s.code}, ptr {affix.code}, i64 {la})`)
     let eqz = emit_bind(`icmp eq i32 {cmp}, 0`)
+    text_gone(s);  text_gone(affix)
     return val(emit_bind(`zext i1 {eqz} to i32`), "bool")
   }
   # ends_with: compare the tail, but only when the affix fits (else a negative
@@ -138,5 +157,6 @@ function emit_text_ns(meth: pointer, e: Node) -> Val {
   store_at("i32", z, res)
   emit("  br label %");  emit(en);  emit("\n")
   emit(en);  emit(":\n")
+  text_gone(s);  text_gone(affix)
   return val(emit_bind(`load i32, ptr {res}`), "bool")
 }

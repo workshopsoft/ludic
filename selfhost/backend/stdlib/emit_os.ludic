@@ -110,17 +110,18 @@ function emit_os_ns(meth: pointer, e: Node) -> Val {
   if (meth == "arch")     { return val(emit_bind("call ptr @lp_os_arch()"), "string") }
   if (meth == "save_dir") {
     let a = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @lp_os_save_dir(ptr {a.code})`), "string")
+    return fresh_val(emit_bind(`call ptr @lp_os_save_dir(ptr {a.code})`), "string")
   }
   if (meth == "config_dir") {
     let a = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @lp_os_config_dir(ptr {a.code})`), "string")
+    return fresh_val(emit_bind(`call ptr @lp_os_config_dir(ptr {a.code})`), "string")
   }
   if (meth == "cache_dir") {
     let a = emit_expr(e.kids[0])
-    return val(emit_bind(`call ptr @lp_os_cache_dir(ptr {a.code})`), "string")
+    return fresh_val(emit_bind(`call ptr @lp_os_cache_dir(ptr {a.code})`), "string")
   }
-  # temp_dir
+  # temp_dir: the environment's own text on POSIX, a copy of its own on Windows
+  if g_target_win { return fresh_val(emit_bind("call ptr @lp_os_temp_dir()"), "string") }
   return val(emit_bind("call ptr @lp_os_temp_dir()"), "string")
 }
 
@@ -169,7 +170,7 @@ function emit_os_prelude() -> void {
   emith("  %end = getelementptr i8, ptr %m, i64 %sum\n  store i8 0, ptr %end\n  ret ptr %m\n}\n")
 
   emith("define ptr @lp_os_join3(ptr %a, ptr %b, ptr %c) {\n")
-  emith("entry:\n  %ab = call ptr @lp_os_join2(ptr %a, ptr %b)\n  %r = call ptr @lp_os_join2(ptr %ab, ptr %c)\n  ret ptr %r\n}\n")
+  emith("entry:\n  %ab = call ptr @lp_os_join2(ptr %a, ptr %b)\n  %r = call ptr @lp_os_join2(ptr %ab, ptr %c)\n  call void @free(ptr %ab)\n  ret ptr %r\n}\n")
 
   # Windows has its own known folders and no uname; emit_win.ludic supplies them
   if g_target_win { emit_os_win_known(k_dot, k_slash);  return }
@@ -218,7 +219,7 @@ function emit_os_prelude() -> void {
   emith("define ptr @lp_os_known(ptr %app, ptr %mac, ptr %var, ptr %rel) {\n")
   emith("entry:\n  %d = call i32 @lp_os_is_darwin()\n  %isd = icmp ne i32 %d, 0\n  br i1 %isd, label %m, label %x\n")
   emith("m:\n  %h = call ptr @lp_os_home()\n  %r1 = call ptr @lp_os_join3(ptr %h, ptr %mac, ptr %app)\n  ret ptr %r1\n")
-  emith("x:\n  %b = call ptr @lp_os_xdg(ptr %var, ptr %rel)\n  %r2 = call ptr @lp_os_join2(ptr %b, ptr %app)\n  ret ptr %r2\n}\n")
+  emith("x:\n  %b = call ptr @lp_os_xdg(ptr %var, ptr %rel)\n  %r2 = call ptr @lp_os_join2(ptr %b, ptr %app)\n  call void @free(ptr %b)\n  ret ptr %r2\n}\n")
 
   emith(`define ptr @lp_os_save_dir(ptr %app) {{\n  %r = call ptr @lp_os_known(ptr %app, ptr {k_appsp}, ptr {k_xdg_data}, ptr {k_dot_share})\n  ret ptr %r\n}}\n`)
   emith(`define ptr @lp_os_config_dir(ptr %app) {{\n  %r = call ptr @lp_os_known(ptr %app, ptr {k_appsp}, ptr {k_xdg_cfg}, ptr {k_dot_config})\n  ret ptr %r\n}}\n`)

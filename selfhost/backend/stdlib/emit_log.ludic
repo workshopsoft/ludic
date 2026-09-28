@@ -29,13 +29,17 @@ function is_log_ns(meth: pointer) -> bool {
   return false
 }
 
-# format any value as a string for a log field: a string passes through, a long
-# and an int are converted the same way the `string(...)` builtin does.
-function log_stringify(v: Val) -> pointer {
-  if (llty(v.ty) == "ptr") { return v.code }
-  if (llty(v.ty) == "i64") { g_uses_longstr = true;  return emit_bind(`call ptr @lp_long_str(i64 {v.code})`) }
+# format any value as a string for a log field: a string passes through (fresh if it was), a long
+# and an int are converted the same way the `string(...)` builtin does, into text freed once joined
+function log_stringify(v: Val) -> Val {
+  if (llty(v.ty) == "ptr") {
+    let s = val(v.code, "string")
+    s.fresh = v.fresh
+    return s
+  }
+  if (llty(v.ty) == "i64") { g_uses_longstr = true;  return fresh_val(emit_bind(`call ptr @lp_long_str(i64 {v.code})`), "string") }
   g_uses_intstr = true
-  return emit_bind(`call ptr @lp_int_str(i32 {v.code})`)
+  return fresh_val(emit_bind(`call ptr @lp_int_str(i32 {v.code})`), "string")
 }
 
 function emit_log_ns(meth: pointer, e: Node) -> Val {
@@ -55,21 +59,32 @@ function emit_log_ns(meth: pointer, e: Node) -> Val {
   if (meth == "warn")  { lvl = "3";  pfx = "[WARN] " }
   if (meth == "error") { lvl = "4";  pfx = "[ERROR] " }
   g_uses_str = true
+  # below the threshold nothing is built: the message and its fields are made, written and freed
+  # only for a line that is shown (every call once left its whole line behind, shown or not)
+  let cur = emit_bind("load i32, ptr @L_log_level")
+  let on = emit_bind(`icmp sge i32 {lvl}, {cur}`)
+  let lon = lbl("logon")
+  let lend = lbl("logend")
+  emit(`  br i1 {on}, label %{lon}, label %{lend}\n`)
+  emit(`{lon}:\n`)
   # line = "[LEVEL] " + msg, then " key=value" for each trailing pair
   var line = val(emit_str_const(pfx), "string")
   let msg = emit_expr(e.kids[0])
-  line = emit_str_op("+", line, val(log_stringify(msg), "string"))
+  line = emit_str_op("+", line, log_stringify(msg))
   var i = 1
   while (i + 1) < len(e.kids) {
     let k = emit_expr(e.kids[i])
     let v = emit_expr(e.kids[i + 1])
     line = emit_str_op("+", line, val(emit_str_const(" "), "string"))
-    line = emit_str_op("+", line, val(log_stringify(k), "string"))
+    line = emit_str_op("+", line, log_stringify(k))
     line = emit_str_op("+", line, val(emit_str_const("="), "string"))
-    line = emit_str_op("+", line, val(log_stringify(v), "string"))
+    line = emit_str_op("+", line, log_stringify(v))
     i += 2
   }
   emit(`  call void @lp_log_emit(i32 {lvl}, ptr {line.code})\n`)
+  emit(`  call void @free(ptr {line.code})\n`)
+  emit(`  br label %{lend}\n`)
+  emit(`{lend}:\n`)
   return val("0", "void")
 }
 

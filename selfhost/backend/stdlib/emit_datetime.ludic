@@ -130,10 +130,6 @@ function is_datetime_ns(meth: pointer) -> bool {
   return false
 }
 
-# concat two runtime string codes -> a fresh string code
-function dt_concat(a: pointer, b: pointer) -> pointer {
-  return emit_bind(`call ptr @lp_str_concat(ptr {a}, ptr {b})`)
-}
 
 # does the pattern have token `tok` (length tlen) starting at index i?
 function dt_tok_at(pat: pointer, n: int, i: int, tok: pointer, tlen: int) -> bool {
@@ -167,7 +163,9 @@ function emit_datetime_format(e: Node) -> Val {
   let mi = emit_bind(`sdiv i32 {m3}, 60`)
   let ss = emit_bind(`srem i32 {sod}, 60`)
   let yy = emit_bind(`srem i32 {yv}, 100`)
-  var acc = emit_str_const("")
+  # joined as ordinary text: each field's digits and each piece so far are freed once the next join
+  # has copied them, so only the answer is left (every one of them was once kept)
+  var acc = val(emit_str_const(""), "string")
   let lit = buf_new()
   var i = 0
   while i < n {
@@ -182,16 +180,16 @@ function emit_datetime_format(e: Node) -> Val {
     if (field == null) { buf_putc(lit, pat[i]);  i += 1 }
     else {
       let ls = buf_str(lit)
-      if len(ls) > 0 { acc = dt_concat(acc, emit_str_const(ls)) }
-      let piece = emit_bind(`call ptr @lp_dt_pad0(i32 {field}, i32 {width})`)
-      acc = dt_concat(acc, piece)
+      if len(ls) > 0 { acc = emit_str_op("+", acc, val(emit_str_const(ls), "string")) }
+      let piece = fresh_val(emit_bind(`call ptr @lp_dt_pad0(i32 {field}, i32 {width})`), "string")
+      acc = emit_str_op("+", acc, piece)
       lit.len = 0                                    # start a fresh literal run
       i += tlen
     }
   }
   let tail = buf_str(lit)
-  if len(tail) > 0 { acc = dt_concat(acc, emit_str_const(tail)) }
-  return val(acc, "string")
+  if len(tail) > 0 { acc = emit_str_op("+", acc, val(emit_str_const(tail), "string")) }
+  return acc
 }
 
 # DateTime.parse(s, "pattern") -> DateTime. The pattern MUST be a string literal;

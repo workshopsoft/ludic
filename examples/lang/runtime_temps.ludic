@@ -1,0 +1,55 @@
+# runtime_temps.ludic - the runtime's text builtins keep nothing a call does not hand back: a Log line
+# filtered out is never built and one written is freed, DateTime.format's pieces go, Path and Mime
+# free their working copies, Text frees a made argument, and Fs frees its temp names and buffers. Each
+# answer is fresh, so comparing it frees it. Prints 1 2 3 4 5, `grew 0` and `files grew 0` (the heap
+# is read on the Mac; 0 elsewhere).
+program RuntimeTemps {
+  function words_round(i: int) -> int {
+    var bad = 0
+    Log.debug(`frame {i}`, "n", i, "big", long(i) * 1000)
+    if DateTime.format(DateTime.from(2026, 9, 28, 12, 34, 7), "YYYY-MM-DD HH:mm:ss") != "2026-09-28 12:34:07" { bad += 1 }
+    if Path.stem("a/b/camp.tar.png") != "camp.tar" or Path.normalize("a//b/./c/../d") != "a/b/d" { bad += 1 }
+    if Path.dir("a/b/c.txt") != "a/b" or Path.base("a/b/c.txt") != "c.txt" or Path.ext("a/b/c.txt") != ".txt" { bad += 1 }
+    if Path.join("a", "b") != "a/b" or Mime.of("x.PNG") == "" { bad += 1 }
+    if Text.to_int(string(i)) != i or Text.upper(`ab{i}`) != `AB{i}` or Text.trim(`  x{i} `) != `x{i}` { bad += 1 }
+    if not Text.contains(`k{i}`, "k") or Text.replace(`a-{i}`, "-", "+") != `a+{i}` or Text.length(`{i}`) < 1 { bad += 1 }
+    if Os.save_dir("RuntimeTemps") == "" { bad += 1 }
+    return bad
+  }
+  function files_round(i: int, dir: string, a: string, b: string) -> int {
+    var bad = 0
+    if not Fs.write_text(a, "hello") { bad += 1 }
+    if not Fs.copy(a, b) { bad += 1 }
+    if not Fs.mkdir(dir) { bad += 1 }
+    if Mime.sniff(b) == "" { bad += 1 }
+    return bad
+  }
+  entry {
+    Log.set_level(3)
+    Log.warn("runtime_temps: a line that is written", "round", 1)
+    if DateTime.format(DateTime.from(2026, 1, 2, 3, 4, 5), "YY/MM/DD") == "26/01/02" { print(1) }
+    if Path.stem("x.png") == "x" and Path.normalize("/a/../b") == "/b" { print(2) }
+    let kept = Text.upper("camp")
+    let also = kept + "!"
+    if kept == "CAMP" and also == "CAMP!" { print(3) }
+    var bad = 0
+    for i in 0 .. 200 { bad += words_round(i) }
+    if bad == 0 { print(4) }
+    let before = Os.heap_bytes()
+    for i in 0 .. 20000 { bad += words_round(i) }
+    let grew = Os.heap_bytes() - before
+    let dir = Os.temp_dir() + "/runtime_temps_" + string(Os.pid())
+    let a = dir + "/a.txt"
+    let b = dir + "/b.txt"
+    Fs.mkdir(dir)
+    for i in 0 .. 20 { bad += files_round(i, dir, a, b) }
+    if bad == 0 { print(5) }
+    let fbefore = Os.heap_bytes()
+    for i in 0 .. 200 { bad += files_round(i, dir, a, b) }
+    let fgrew = Os.heap_bytes() - fbefore
+    Fs.remove(a)
+    Fs.remove(b)
+    if bad == 0 { print(`grew {grew}`) } else { print(`bad {bad}`) }
+    print(`files grew {fgrew}`)
+  }
+}

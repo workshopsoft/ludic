@@ -451,7 +451,10 @@ function input_text(rt_input_st: mut RtInputState) -> string {
   if rt_input_st.in_text_buf == null { rt_input_st.in_text_buf = words(64) }
   let n = win_text(rt_input_st.in_text_buf, 64)
   if n <= 0 { return "" }
-  var out = ""
+  # one buffer for the whole text, four bytes a unit at most: a string joined a character at a time
+  # kept every shorter one and each character's own buffer
+  let out = bytes(n * 4 + 1)
+  var at = 0
   var i = 0
   while i < n {
     var c = rt_input_st.in_text_buf[i]
@@ -460,10 +463,29 @@ function input_text(rt_input_st: mut RtInputState) -> string {
       let lo = rt_input_st.in_text_buf[i + 1]
       if lo >= 56320 and lo < 57344 { c = 65536 + ((c - 55296) * 1024) + (lo - 56320);  i = i + 1 }
     }
-    out = out + in_utf8(c)
+    at = in_utf8_into(out, at, c)
     i = i + 1
   }
-  return out
+  out[at] = 0
+  let s: string = out
+  return s
+}
+# one code point's UTF-8 bytes into out at `at`; where the next one goes
+function in_utf8_into(out: bytes, at: int, c: int) -> int {
+  if c < 128 {
+    out[at] = c
+    return at + 1
+  }
+  if c < 2048 {
+    out[at] = 192 | (c >> 6);  out[at + 1] = 128 | (c & 63)
+    return at + 2
+  }
+  if c < 65536 {
+    out[at] = 224 | (c >> 12);  out[at + 1] = 128 | ((c >> 6) & 63);  out[at + 2] = 128 | (c & 63)
+    return at + 3
+  }
+  out[at] = 240 | (c >> 18);  out[at + 1] = 128 | ((c >> 12) & 63);  out[at + 2] = 128 | ((c >> 6) & 63);  out[at + 3] = 128 | (c & 63)
+  return at + 4
 }
 # one code point as a UTF-8 string
 function in_utf8(c: int) -> string {
