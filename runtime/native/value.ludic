@@ -258,15 +258,19 @@ function value_num_set(v: Val, n: int) -> void {
 }
 # a number's text, kept on the Value until the number changes (a count shown in a HUD every frame wrote
 # its text every frame; Ludic frees nothing)
+# interned, and the text written for it given back: a number that changed dropped its last text
 function value_num_text(v: Val) -> string {
   if v.txt != null { return v.txt }
-  if v.tag == 1 { v.txt = string(v.num) }
+  var t: string = null
+  if v.tag == 1 { t = string(v.num) }
   else if v.tag == 7 {
     let f = float_from_bits(v.num)
-    if f == float(int(f)) { v.txt = string(int(f)) } else { v.txt = string(f) }
+    if f == float(int(f)) { t = string(int(f)) } else { t = string(f) }
   }
-  else if v.tag == 2 { v.txt = json_fixed_str(v.num) }
-  if v.txt == null { return "" }
+  else if v.tag == 2 { t = json_fixed_str(v.num) }
+  if t == null { return "" }
+  v.txt = intern(t)
+  free(t)
   return v.txt
 }
 # a list or an object emptied in place, its room kept - for one filled again every frame
