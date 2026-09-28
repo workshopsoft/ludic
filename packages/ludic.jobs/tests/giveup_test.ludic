@@ -129,4 +129,17 @@ program JobsGiveUpTest {
     jobs_test_st.day = 2
     expect(jobs_offered(jobs_st, JOB_CATCH))
   }
+
+  test "two hundred jobs taken and given up, their facts drained each time, reuse a handful of records" (jobs_st: mut JobsState, jobs_test_st: mut JobsTestState) {
+    fresh(jobs_st, jobs_test_st)
+    for k in 0 .. 200 {
+      jobs_take(jobs_st, JOB_CATCH)
+      count_of(jobs_st, 0)
+      jobs_give_up(jobs_st, JOB_CATCH)
+      count_of(jobs_st, 0)
+      jobs_st.jobs__back[JOB_CATCH] = -1
+    }
+    print(`jobs: 200 taken and given up, {jobs_fact_records(jobs_st)} fact records made`)
+    expect(jobs_fact_records(jobs_st) < 10)
+  }
 }

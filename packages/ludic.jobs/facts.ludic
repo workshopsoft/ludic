@@ -1,0 +1,19 @@
+# facts.ludic - a jobs fact's record: one no drain holds any more, made fresh (and kept) only when
+# every one is held. A deed that moves a job is a fact, and a record a fact is never given back
+# (the ludic.wildlife idiom)
+function jobs__fact_record(jobs_st: mut JobsState) -> JobsFact {
+  if jobs_st.jobs__fnext[0] >= len(jobs_st.jobs__ffree) {
+    q_unheld(jobs_st.jobs__q, jobs_st.jobs__fpool, jobs_st.jobs__ffree)
+    jobs_st.jobs__fnext[0] = 0
+  }
+  if jobs_st.jobs__fnext[0] < len(jobs_st.jobs__ffree) {
+    let f = jobs_st.jobs__ffree[jobs_st.jobs__fnext[0]]
+    jobs_st.jobs__fnext[0] += 1
+    return f
+  }
+  let f = new JobsFact
+  push(jobs_st.jobs__fpool, f)
+  return f
+}
+# how many fact records have ever been made: the peak held at once, not the facts said
+export function jobs_fact_records(jobs_st: JobsState) -> int { return len(jobs_st.jobs__fpool) }

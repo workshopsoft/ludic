@@ -22,6 +22,9 @@ export state JobsState {
   jobs__seed: int = 1000
   jobs__dice: Rng = rng_new(1000)
   jobs__q: Queue<JobsFact> = jobs__q__new()
+  jobs__fpool: []JobsFact = new []JobsFact   # every fact record made, reused once no drain holds it (facts.ludic)
+  jobs__ffree: []JobsFact = new []JobsFact
+  jobs__fnext: []int = words(1)
 }
 
 # the posts, every board's slots end to end from jobs__off[b]
@@ -58,8 +61,8 @@ export function jobs_facts(jobs_st: JobsState) -> Queue<JobsFact> {
   return jobs_st.jobs__q
 }
 
-function jobs__fact(jobs_st: JobsState, what: int, job: int, b: int, s: int, have: int, need: int) -> void {
-  let f = new JobsFact
+function jobs__fact(jobs_st: mut JobsState, what: int, job: int, b: int, s: int, have: int, need: int) -> void {
+  let f = jobs__fact_record(jobs_st)
   f.what = what
   f.job = job
   f.board = b
