@@ -43,7 +43,7 @@ export function hints_mutes_load(hints_st: mut HintsState, l: Val) -> void {
     if Value.kind(e) != 4 { continue }
     let k = Value.as_str(e)
     let id = hints_find(k)
-    if id >= 0 { hints_st.hn_mute[id] = true } else { push(hints_st.hn_foreign, k) }
+    if id >= 0 { hints_st.hn_mute[id] = true } else { push(hints_st.hn_foreign, intern(k)) }   # the tree is let go
   }
 }
 function hn_mutes() -> []bool {
