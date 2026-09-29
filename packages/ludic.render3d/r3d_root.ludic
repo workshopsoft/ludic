@@ -1,0 +1,33 @@
+# r3d_root.ludic - where the renderer's own files are: the package checked out beside the project,
+# else the copy in the toolchain ($LUDIC_HOME, else ~/.ludic). Not finding them is a fault
+# (gpu_fault.ludic), never a quiet start on nothing.
+
+# The install root, as the compiler computes it: $LUDIC_HOME, else ~/.ludic. A leading "~" is
+# the home directory: `env LUDIC_HOME=~/x` hands one over unexpanded, and nothing was found there.
+@alloc_ok("once a run: the install root, asked only when the shaders are not beside the program")
+function r3d_home() -> string {
+  let env = Os.env("LUDIC_HOME")
+  if env != null and env != "" { return r3d_tilde(env, Os.env("HOME")) }
+  return `{Os.env("HOME")}/.ludic`
+}
+# a path with a leading "~" or "~/" put under `home`; any other path as it is
+@alloc_ok("once a run: the install root, asked only when the shaders are not beside the program")
+function r3d_tilde(path: string, home: string) -> string {
+  if home == null or len(path) == 0 or path[0] != '~' { return path }
+  if len(path) == 1 { return home }
+  if path[1] != '/' { return path }                # ~user is another user's, not ours to guess
+  return home + path[1 .. len(path)]
+}
+
+# Settle r3d_root on first use: the package as checked out beside the project, else the
+# copy that ships with the toolchain.
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function r3d_find_root(render3d_st: mut Render3dState) -> void {
+  if render3d_st.r3d_root_found { return }
+  render3d_st.r3d_root_found = true
+  if Fs.exists(`{render3d_st.r3d_root}/shaders/lighting.glsl`) { return }
+  let home = r3d_home()
+  let alt = `{home}/packages/ludic.render3d`
+  if Fs.exists(`{alt}/shaders/lighting.glsl`) { render3d_st.r3d_root = alt;  return }
+  gpu_fault_set(render3d_st, `cannot find the renderer's shaders (looked in {render3d_st.r3d_root}/shaders and {alt}/shaders)`)
+}

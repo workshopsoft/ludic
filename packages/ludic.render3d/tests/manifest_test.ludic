@@ -1,0 +1,67 @@
+# manifest_test.ludic - the SPIR-V manifest read as the renderer reads it, with no device: a whole one
+# parses, one cut short or miscounted is refused, every program variants.list names resolves in the
+# shipped manifest, and a LUDIC_HOME with a leading "~" is found (it once started a run on nothing)
+import "ludic.render3d/r3d.ludic"
+program ManifestTest {
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function two() -> string {
+    var t = "# a manifest\nP aa fullscreen.vert sky.frag \nB aa frag 1 64\nU aa frag u_sun 0 vec3 1 0\n"
+    t = t + "P bb model.vert shadow.frag #define SHADOW_PASS;#define WIND;\nT bb u_tex 2\nI bb a_pos 0 vec3\n"
+    return t
+  }
+
+  test "a whole manifest parses, and a program is found by its key" {
+    let vs = gpu_manifest_parse(two() + "E 2\n")
+    expect(vs != null)
+    expect_eq(len(vs), 2)
+    expect(gpu_variant_in(vs, "fullscreen.vert", "sky.frag", "") != null)
+    let sh = gpu_variant_in(vs, "model.vert", "shadow.frag", "#define SHADOW_PASS;#define WIND;")
+    expect(sh != null)
+    expect_eq(gpu_variant_sampler(sh, "u_tex"), 2)
+    expect(gpu_variant_in(vs, "model.vert", "shadow.frag", "#define SHADOW_PASS;") == null)
+  }
+
+  test "a manifest cut short is refused" {
+    expect(gpu_manifest_parse(two()) == null)                       # no end line
+    let whole = two() + "E 2\n"
+    expect(gpu_manifest_parse(whole[0 .. len(whole) - 30]) == null) # cut mid-program
+    expect(gpu_manifest_parse("") == null)
+  }
+
+  test "an end line that miscounts, or anything after it, is refused" {
+    expect(gpu_manifest_parse(two() + "E 3\n") == null)
+    expect(gpu_manifest_parse(two() + "E 1\n") == null)
+    expect(gpu_manifest_parse(two() + "E 2\nP cc a.vert b.frag \n") == null)
+  }
+
+  test "every program variants.list names has a variant in the shipped manifest" {
+    let root = "packages/ludic.render3d/shaders"
+    let text = Fs.read_text(`{root}/spv/manifest.txt`)
+    expect(text != null)
+    let vs = gpu_manifest_parse(text)
+    expect(vs != null)
+    let list = Text.split(Fs.read_text(`{root}/variants.list`), "\n")
+    var asked = 0
+    for i in 0 .. len(list) {
+      let ln = Text.trim(list[i])
+      if len(ln) == 0 or ln[0] == '#' { continue }
+      let p = Text.split(ln, "|")
+      var defs = ""
+      if len(p) > 2 { defs = p[2] }
+      if gpu_variant_in(vs, p[0], p[1], defs) == null { print(`no variant for {ln}`) }
+      expect(gpu_variant_in(vs, p[0], p[1], defs) != null)
+      asked += 1
+    }
+    expect_eq(asked, len(vs))
+  }
+
+  test "a leading tilde is the home directory" {
+    expect_eq(r3d_tilde("~/workspace/gpp-lang", "/Users/me"), "/Users/me/workspace/gpp-lang")
+    expect_eq(r3d_tilde("~", "/Users/me"), "/Users/me")
+    expect_eq(r3d_tilde("/opt/ludic", "/Users/me"), "/opt/ludic")
+    expect_eq(r3d_tilde("~other/x", "/Users/me"), "~other/x")
+    expect_eq(r3d_tilde("~/x", null), "~/x")
+  }
+}

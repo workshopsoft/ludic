@@ -319,6 +319,8 @@ function cmd_shaders() -> int {
       made_c += 1
     }
   }
+  # the end line: the renderer refuses a manifest without it, or whose count is not its programs'
+  sb_puts(mf, `E {string(made)}\n`)
   if not write_file(`{outdir}/manifest.txt`, sb_str(mf)) { err("shaders: cannot write manifest.txt\n");  return 1 }
   if check {
     let real = "packages/ludic.render3d/shaders/spv"

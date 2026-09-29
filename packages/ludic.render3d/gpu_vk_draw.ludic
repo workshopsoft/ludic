@@ -66,8 +66,10 @@ function gvk_program(render3d_st: mut Render3dState, p: int, key: string, spv_di
   let parts = Text.split(key, "|")
   var defs = ""
   if len(parts) > 2 { defs = parts[2] }
+  # no manifest at all is one fault already said, not a line for every program
+  if render3d_st.gpu_variants == null or len(render3d_st.gpu_variants) == 0 { return false }
   let v = gpu_variant_find_key(render3d_st, parts[0], parts[1], defs)
-  if v == null { print(`r3d: vulkan: no SPIR-V variant for {key}`);  return false }
+  if v == null { gpu_variant_missing(render3d_st, key);  return false }
   for q in 0 .. len(parts) { free(parts[q]) }
   free(parts)
   let vpath = `{spv_dir}/{v.id}.vert.spv`

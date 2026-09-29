@@ -10,6 +10,7 @@
 #   U <id> <stage> <name> <offset> <type> <count> <stride>
 #   T <id> <name> <binding>                     a sampler, one binding across both stages
 #   I <id> <name> <location> <type>             a vertex input
+#   E <count>                                   the end: how many P lines came before it
 # This reads it, and answers the questions a backend asks while drawing: which variant a
 # program is, where a uniform lives in its stage's block, which binding a sampler has.
 # ============================================================================
@@ -46,47 +47,74 @@ function gpu_variant_new(id: string, vs: string, fs: string, defs: string) -> Gp
   return v
 }
 
-# Read a manifest; returns how many programs it holds (0: none, or no file).
+# Read a manifest; returns how many programs it holds (0: none, no file, or refused - and then
+# the renderer is at fault, so nothing starts on a partial list)
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gpu_manifest_load(render3d_st: mut Render3dState, path: string) -> int {
   render3d_st.gpu_variants = new []GpuVariant
   let text = Fs.read_text(path)
-  if text == null { return 0 }
+  if text == null { gpu_fault_set(render3d_st, `no SPIR-V manifest at {path}`);  return 0 }
+  let vs = gpu_manifest_parse(text)
+  if vs == null { gpu_fault_set(render3d_st, `the SPIR-V manifest at {path} is cut short or not a manifest (no E line, or its count is not the programs')`);  return 0 }
+  render3d_st.gpu_variants = vs
+  return len(vs)
+}
+
+# A manifest's programs, or null when it is refused: `ludic-dev shaders` ends one with `E <count>`,
+# so a file cut off anywhere (a torn copy, a short read) is told apart from one with fewer programs.
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function gpu_manifest_parse(text: string) -> []GpuVariant {
+  let out = new []GpuVariant
   let lines = Text.split(text, "\n")
   var cur: GpuVariant = null
+  var ended = -1
   for li in 0 .. len(lines) {
     let ln = lines[li]
     let lp: pointer = ln
     if len(lp) < 2 or lp[0] == '#' { continue }
+    if ended >= 0 { return null }                  # nothing may follow the end line
     let f = Text.split(ln, " ")
-    if lp[0] == 'P' and len(f) >= 4 {
-      # the defines are the rest of the line, spaces and all
-      var defs = ""
-      var k = 4
-      while k < len(f) {
-        if k > 4 { defs = defs + " " }
-        defs = defs + f[k]
-        k += 1
-      }
-      cur = gpu_variant_new(f[1], f[2], f[3], defs)
-      push(render3d_st.gpu_variants, cur)
+    if lp[0] == 'E' and len(f) == 2 {
+      ended = Text.to_int(f[1])
       continue
     }
-    if cur == null { continue }
-    if lp[0] == 'B' and len(f) >= 5 {
-      if f[2] == "vert" { cur.vblock = Text.to_int(f[4]) } else { cur.fblock = Text.to_int(f[4]) }
-    } else if lp[0] == 'U' and len(f) >= 8 {
-      var stage = 1
-      if f[2] == "vert" { stage = 0 }
-      push(cur.u_stage, stage);  push(cur.u_name, f[3]);  push(cur.u_off, Text.to_int(f[4]))
-      push(cur.u_type, f[5]);  push(cur.u_count, Text.to_int(f[6]));  push(cur.u_stride, Text.to_int(f[7]))
-    } else if lp[0] == 'T' and len(f) >= 4 {
-      push(cur.t_name, f[2]);  push(cur.t_bind, Text.to_int(f[3]))
-    } else if lp[0] == 'I' and len(f) >= 5 {
-      push(cur.i_name, f[2]);  push(cur.i_loc, Text.to_int(f[3]));  push(cur.i_type, f[4])
+    if lp[0] == 'P' and len(f) >= 4 {
+      cur = gpu_variant_new(f[1], f[2], f[3], gpu_manifest_defs(f))
+      push(out, cur)
+      continue
     }
+    if cur != null { gpu_manifest_row(cur, lp[0], f) }
   }
-  return len(render3d_st.gpu_variants)
+  if ended < 0 or ended != len(out) { return null }
+  return out
+}
+# a P line's defines: the rest of the line, spaces and all
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function gpu_manifest_defs(f: []string) -> string {
+  var defs = ""
+  var k = 4
+  while k < len(f) {
+    if k > 4 { defs = defs + " " }
+    defs = defs + f[k]
+    k += 1
+  }
+  return defs
+}
+# one B / U / T / I line into the variant it follows
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function gpu_manifest_row(cur: GpuVariant, kind: int, f: []string) -> void {
+  if kind == 'B' and len(f) >= 5 {
+    if f[2] == "vert" { cur.vblock = Text.to_int(f[4]) } else { cur.fblock = Text.to_int(f[4]) }
+  } else if kind == 'U' and len(f) >= 8 {
+    var stage = 1
+    if f[2] == "vert" { stage = 0 }
+    push(cur.u_stage, stage);  push(cur.u_name, f[3]);  push(cur.u_off, Text.to_int(f[4]))
+    push(cur.u_type, f[5]);  push(cur.u_count, Text.to_int(f[6]));  push(cur.u_stride, Text.to_int(f[7]))
+  } else if kind == 'T' and len(f) >= 4 {
+    push(cur.t_name, f[2]);  push(cur.t_bind, Text.to_int(f[3]))
+  } else if kind == 'I' and len(f) >= 5 {
+    push(cur.i_name, f[2]);  push(cur.i_loc, Text.to_int(f[3]));  push(cur.i_type, f[4])
+  }
 }
 
 # the variant for a program as r3d_program names it (defines with real newlines)
@@ -95,9 +123,13 @@ function gpu_variant_find(render3d_st: Render3dState, vs: string, fs: string, de
 }
 # ... or as variants.list writes it (';' for newlines)
 function gpu_variant_find_key(render3d_st: Render3dState, vs: string, fs: string, defs: string) -> GpuVariant {
-  if render3d_st.gpu_variants == null { return null }
-  for i in 0 .. len(render3d_st.gpu_variants) {
-    let v = render3d_st.gpu_variants[i]
+  return gpu_variant_in(render3d_st.gpu_variants, vs, fs, defs)
+}
+# ... in a list of variants (a parsed manifest), or null
+function gpu_variant_in(vars: []GpuVariant, vs: string, fs: string, defs: string) -> GpuVariant {
+  if vars == null { return null }
+  for i in 0 .. len(vars) {
+    let v = vars[i]
     if v.vs == vs and v.fs == fs and v.defs == defs { return v }
   }
   return null

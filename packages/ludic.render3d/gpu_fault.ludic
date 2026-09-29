@@ -1,0 +1,39 @@
+# gpu_fault.ludic - the renderer at fault: its files not found, its manifest missing or cut short, a
+# program the game asked for with no SPIR-V variant. A fault is never a quiet start on nothing - a
+# world with no terrain, shadows or impostors that only logged it. The game asks r3d_fault() and
+# stops: r3d_fault_exit in a headless or dev build, its own failure screen in a player's.
+
+# the first fault's reason, printed once; later ones only add to the list of missing programs
+@alloc_ok("once a run: a fault ends the run")
+function gpu_fault_set(render3d_st: mut Render3dState, why: string) -> void {
+  if len(render3d_st.r3d_fault) > 0 { return }
+  render3d_st.r3d_fault = why
+  print(`r3d: FAULT: {why}`)
+}
+# a program asked for that the manifest has no variant of
+@alloc_ok("once a run: a fault ends the run")
+function gpu_variant_missing(render3d_st: mut Render3dState, key: string) -> void {
+  if render3d_st.gvk_missing == null { render3d_st.gvk_missing = new []string }
+  push(render3d_st.gvk_missing, key)
+  print(`r3d: vulkan: no SPIR-V variant for {key}`)
+  gpu_fault_set(render3d_st, "a program the game asked for has no SPIR-V variant (ludic-dev shaders, and its variants.list)")
+}
+
+# why the renderer cannot draw what it was asked to, or "" when it can
+export function r3d_fault(render3d_st: Render3dState) -> string { return render3d_st.r3d_fault }
+# how many programs had no variant
+export function r3d_fault_missing(render3d_st: Render3dState) -> int {
+  if render3d_st.gvk_missing == null { return 0 }
+  return len(render3d_st.gvk_missing)
+}
+# the i-th of them, as `vertex|fragment|defines`
+export function r3d_fault_missing_at(render3d_st: Render3dState, i: int) -> string { return render3d_st.gvk_missing[i] }
+
+# the fault and every missing program printed, then the run ends with `code` (never 0)
+export function r3d_fault_exit(render3d_st: Render3dState, code: int) -> void {
+  print(`r3d: the renderer cannot run: {render3d_st.r3d_fault}`)
+  for i in 0 .. r3d_fault_missing(render3d_st) { print(`r3d:   missing {r3d_fault_missing_at(render3d_st, i)}`) }
+  var c = code
+  if c == 0 { c = 1 }
+  Os.exit(c)
+}
