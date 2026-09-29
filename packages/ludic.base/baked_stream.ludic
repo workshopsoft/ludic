@@ -47,3 +47,26 @@ export function baked_close(bf: BakedFile) -> void {
   file_close(bf.f)
   bf.f = null
 }
+
+# what a baked file says it is, its header alone read (the stale check: key, version, inputs hash)
+export property BakedHead {
+  key: string = ""
+  version: int = 0
+  inputs: long = 0
+}
+@alloc_ok("the stale check: once a baked file")
+export function baked_head(path: string) -> BakedHead {
+  let f = file_open(path, "rb")
+  if f == null { return null }
+  let h = buffer(288)
+  let got = file_read(f, h, 288)
+  file_close(f)
+  if got < 32 or h[0] != 76 or h[1] != 66 or h[2] != 65 or h[3] != 75 or bk_u32(h, 4) != BAKE_FORMAT { return null }
+  var e = 32
+  while e < got and h[e] != 0 { e += 1 }
+  let r = new BakedHead
+  r.key = intern(text_of(view(h, 32, e - 32), e - 32))
+  r.version = bk_u32(h, 8)
+  r.inputs = bk_u64(h, 16)
+  return r
+}
