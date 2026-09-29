@@ -1755,7 +1755,10 @@ function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
   var ew = Vk.get_i32(caps, VkSurfaceCapabilitiesKHR_currentExtent + VkExtent2D_width)
   var eh = Vk.get_i32(caps, VkSurfaceCapabilitiesKHR_currentExtent + VkExtent2D_height)
   if ew == -1 or ew <= 0 { ew = w;  eh = h }
-  if ew <= 0 or eh <= 0 { return false }        # minimised: keep the old chain until it has a size
+  if ew <= 0 or eh <= 0 {                        # minimised: keep the old chain until it has a size
+    free(caps)
+    return false
+  }
   let cnt = bytes(4)
   Vk.put_i32(cnt, 0, 0)
   Vk.get_physical_device_surface_formats_khr(render3d_st.gvk_pd, render3d_st.gvk_surface, cnt, null)
@@ -1782,6 +1785,7 @@ function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
   # the screen image carries the swapchain's depth of colour: remade when HDR comes or goes
   if hdr != render3d_st.gvk_hdr_on { render3d_st.gvk_hdr_on = hdr;  gvk_screen_make(render3d_st, render3d_st.gvk_screen_w, render3d_st.gvk_screen_h) }
   Vk.put_i32(cnt, 0, 0)
+  free(fmts)
   Vk.get_physical_device_surface_present_modes_khr(render3d_st.gvk_pd, render3d_st.gvk_surface, cnt, null)
   let nm = Vk.get_i32(cnt, 0)
   let modes = bytes(nm * 4 + 8)
@@ -1792,6 +1796,7 @@ function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
     for i in 0 .. nm { if Vk.get_i32(modes, i * 4) == VK_PRESENT_MODE_IMMEDIATE_KHR { mode = VK_PRESENT_MODE_IMMEDIATE_KHR } }
     for i in 0 .. nm { if Vk.get_i32(modes, i * 4) == VK_PRESENT_MODE_MAILBOX_KHR { mode = VK_PRESENT_MODE_MAILBOX_KHR } }
   }
+  free(modes)
   var n = Vk.get_i32(caps, VkSurfaceCapabilitiesKHR_minImageCount) + 1
   let mx = Vk.get_i32(caps, VkSurfaceCapabilitiesKHR_maxImageCount)
   if mx > 0 and n > mx { n = mx }
@@ -1814,15 +1819,25 @@ function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
   Vk.put_i64(sci, VkSwapchainCreateInfoKHR_oldSwapchain, render3d_st.gvk_swap)
   let out = bytes(8)
   let r = Vk.create_swapchain_khr(render3d_st.gvk_dev, sci, render3d_st.gvk_ac, out)
-  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkCreateSwapchainKHR", r) }
+  # the create's scratch goes on every way out: a resize once left six buffers and the image list behind
+  free(sci)
+  free(caps)
+  if r != VK_SUCCESS {
+    free(out)
+    free(cnt)
+    return gvk_fail(render3d_st, "vkCreateSwapchainKHR", r)
+  }
   if render3d_st.gvk_swap != 0 { Vk.destroy_swapchain_khr(render3d_st.gvk_dev, render3d_st.gvk_swap, render3d_st.gvk_ac) }
   render3d_st.gvk_swap = gvk_handle(out)
+  free(out)
   if render3d_st.gvk_hdr_on and render3d_st.gvk_has_hdr_meta { gvk_hdr_metadata(render3d_st) }
   Vk.put_i32(cnt, 0, 0)
   Vk.get_swapchain_images_khr(render3d_st.gvk_dev, render3d_st.gvk_swap, cnt, null)
   render3d_st.gvk_swap_n = Vk.get_i32(cnt, 0)
+  if render3d_st.gvk_swap_images != null { free(render3d_st.gvk_swap_images) }
   render3d_st.gvk_swap_images = bytes(render3d_st.gvk_swap_n * 8 + 8)
   Vk.get_swapchain_images_khr(render3d_st.gvk_dev, render3d_st.gvk_swap, cnt, render3d_st.gvk_swap_images)
+  free(cnt)
   render3d_st.gvk_swap_fmt = fmt
   render3d_st.gvk_swap_w = ew
   render3d_st.gvk_swap_h = eh
