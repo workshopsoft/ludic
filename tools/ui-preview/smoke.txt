@@ -103,8 +103,8 @@
 > tree
 < node 0
 < "root"
-< "go"
 < "Food"
+< "go"
 <= ok
 
 > box label

@@ -10,7 +10,8 @@ ludic ui-preview [--font DIR]      # the host on stdin/stdout; DIR holds the gam
 ```
 
 **The wire protocol is [protocol-v1.md](protocol-v1.md)**, frozen: every request, every reply and
-every line format. `smoke.txt` is a scripted session with what each reply must contain.
+every line format. `smoke.txt` is a scripted session with what each reply must contain, and `smoke.py` runs it
+(`python3 tools/ui-preview/smoke.py tools/ui-preview/smoke.txt bin/ludic-ui-preview`).
 
 ## What it does
 

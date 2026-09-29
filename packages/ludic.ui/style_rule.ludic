@@ -19,7 +19,7 @@ function lss_rule_add(f: UiFile, decls: UiRule, sel: string, err: []string, line
   let r = new UiRule
   r.keys = decls.keys
   r.vals = decls.vals
-  r.text = `{sel}`                     # a copy: the selector's text is given back below
+  r.text = intern(sel)                 # a copy: lss_rule frees sel (`{sel}` was sel itself, and dangled)
   r.at = `{f.path}:{line}`
   r.sel = sel_parse(sel, err)
   if r.sel != null {
