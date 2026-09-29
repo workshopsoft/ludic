@@ -25,6 +25,7 @@ export state RtAudioState {
   snd_master:  fixed = 1.0        # master volume, applied to every play (and to audio_play_at's gain)
   snd_rate:    fixed = 1.0        # playback rate / pitch (1.0 = normal)
   snd_music:   int   = 0          # the handle currently playing as music (0 = none)
+  snd_music_gain: fixed = 1.0     # the music channel's own volume, under the master
   snd_bank_name: pointers = null
   snd_bank_id:   words    = null
   snd_bank_n:    int      = 0
@@ -138,7 +139,7 @@ function audio_play_music(rt_audio_st: mut RtAudioState, id: int) -> void {
   if p == null { return }
   audio_stop_music(rt_audio_st)
   rt_audio_st.snd_music = id
-  snd_play(p, -1, rt_audio_st.snd_rate, rt_audio_st.snd_master)
+  snd_play(p, -1, rt_audio_st.snd_rate, rt_audio_st.snd_master * rt_audio_st.snd_music_gain)
 }
 
 # Stop one sound.
@@ -183,6 +184,20 @@ function audio_volume(rt_audio_st: mut RtAudioState, v: fixed) -> void {
     if rt_audio_st.snd_tab[i] != null { snd_set_volume(rt_audio_st.snd_tab[i], v) }
     i += 1
   }
+  audio_music_volume(rt_audio_st, rt_audio_st.snd_music_gain)
+}
+
+# The music channel's own volume (0.0 .. 1.0), under the master: a game's ambience loop has a
+# slider of its own without scaling every one-shot with it.
+function audio_music_volume(rt_audio_st: mut RtAudioState, v: fixed) -> void {
+  var g = v
+  if g < 0.0 { g = 0.0 }
+  if g > 1.0 { g = 1.0 }
+  rt_audio_st.snd_music_gain = g
+  if not is_windowed() { return }
+  if rt_audio_st.snd_music == 0 { return }
+  let p = audio_get(rt_audio_st, rt_audio_st.snd_music)
+  if p != null { snd_set_volume(p, rt_audio_st.snd_master * g) }
 }
 
 # Playback rate / pitch (1.0 = normal, 0.5 = an octave down, 2.0 = up).

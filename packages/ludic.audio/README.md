@@ -18,6 +18,13 @@ aud_emit_at(axe, tree.x, tree.z, 90.0)                   # heard within 90 m, pa
 aud_ui(click)
 ```
 
+## Channels
+
+A volume per kind of sound, under the master: `AUD_CH_EFFECTS` (what the player does), `AUD_CH_WILDLIFE`,
+`AUD_CH_AMBIENT` (its loop is the runtime's music channel, `Audio.music_volume`) and `AUD_CH_UI`
+(`aud_ui` plays on it). `aud_channel_set(ch, v)` holds it to 0..1; `aud_emit_on(ch, h, ...)` is
+`aud_emit` scaled by it. `aud_emit` itself stays raw, so its numbers are what a test reads.
+
 ## Ports
 
 ```ludic

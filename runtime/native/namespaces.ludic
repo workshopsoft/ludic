@@ -178,6 +178,7 @@ namespace Audio {
   alias stop_music() = audio_stop_music
   alias stop_all() = audio_stop_all
   alias volume(v) = audio_volume
+  alias music_volume(v) = audio_music_volume  # the music channel under the master
   alias pitch(v) = audio_pitch
   alias is_playing(id) = audio_is_playing
 }

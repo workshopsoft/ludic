@@ -1,0 +1,24 @@
+# channels.ludic - a volume per kind of sound, under the master: what the player does, the
+# animals, the ambience (its loop is the runtime's music channel) and the interface
+export const AUD_CH_EFFECTS: int = 0
+export const AUD_CH_WILDLIFE: int = 1
+export const AUD_CH_AMBIENT: int = 2
+export const AUD_CH_UI: int = 3
+export const AUD_CH_N: int = 4
+
+export function aud_channel(audio_st: AudioState, ch: int) -> float {
+  if ch < 0 or ch >= AUD_CH_N { return 1.0 }
+  return audio_st.ch_gain[ch]
+}
+
+export function aud_channel_set(audio_st: mut AudioState, ch: int, v: float) -> void {
+  if ch < 0 or ch >= AUD_CH_N { return }
+  let g = Math.clamp(v, 0.0, 1.0)
+  audio_st.ch_gain[ch] = g
+  if ch == AUD_CH_AMBIENT { Audio.music_volume(fixed(g)) }
+}
+
+# a sound in the world on a channel: its gain from where it is, scaled by the channel's
+export function aud_emit_on(audio_st: mut AudioState, ch: int, h: int, gain: float, pitch: float, pan: float) -> void {
+  aud_emit(audio_st, h, gain * aud_channel(audio_st, ch), pitch, pan)
+}

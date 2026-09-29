@@ -1,0 +1,23 @@
+# channels_test.ludic - a channel scales what is emitted on it, holds to 0..1, and leaves the others
+import "ludic.audio"
+program ChannelsTest {
+  numbers float
+  function t_x() -> float { return 0.0 }
+  bind AudioListener { x: fn t_x, z: fn t_x }
+
+  test "a channel's volume scales an emit on it and no other" (audio_st: mut AudioState) {
+    aud_channel_set(audio_st, AUD_CH_WILDLIFE, 0.5)
+    aud_emit_on(audio_st, AUD_CH_WILDLIFE, 7, 0.8, 1.0, 0.0)
+    expect_near(aud_last_gain(audio_st), 0.4, 0.0001)
+    aud_emit_on(audio_st, AUD_CH_EFFECTS, 7, 0.8, 1.0, 0.0)
+    expect_near(aud_last_gain(audio_st), 0.8, 0.0001)
+  }
+
+  test "a channel holds to 0..1, and an unknown one is full" (audio_st: mut AudioState) {
+    aud_channel_set(audio_st, AUD_CH_UI, 3.0)
+    expect_near(aud_channel(audio_st, AUD_CH_UI), 1.0, 0.0001)
+    aud_channel_set(audio_st, AUD_CH_AMBIENT, -1.0)
+    expect_near(aud_channel(audio_st, AUD_CH_AMBIENT), 0.0, 0.0001)
+    expect_near(aud_channel(audio_st, 9), 1.0, 0.0001)
+  }
+}

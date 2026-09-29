@@ -8,6 +8,7 @@ export state AudioState {
   emitted: int = 0
   tried: int = 0
   live: int = 0
+  ch_gain: []float = [1.0, 1.0, 1.0, 1.0]   # per channel (channels.ludic), under the master
 }
 
 export function aud_emit(audio_st: mut AudioState, h: int, gain: float, pitch: float, pan: float) -> void {
@@ -32,7 +33,7 @@ export function aud_emit_at(audio_st: mut AudioState, h: int, x: float, z: float
 export function aud_ui(audio_st: mut AudioState, h: int) -> void {
   if h == 0 { return }
   audio_st.emitted += 1
-  Audio.play(h)
+  Audio.play_at(h, fixed(aud_channel(audio_st, AUD_CH_UI)), fixed(1.0), fixed(0.0))
 }
 
 export function aud_music(h: int) -> void { if h != 0 { Audio.play_music(h) } }
