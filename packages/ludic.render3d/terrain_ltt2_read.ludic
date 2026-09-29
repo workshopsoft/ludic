@@ -1,0 +1,181 @@
+# terrain_ltt2_read.ludic — the quantized tiles opened for reading (a bake's payload, or the dev cut's
+# own file), a tile decoded into the pools as it is read, the coarse level made on the GPU from the
+# file, and a boot that takes the terrain from a bake instead of making it.
+
+# the tiles' payload at `base` in the file at `path` opened; false when it is not one this build reads
+@alloc_ok("a map being loaded: its tiles' index and pools, once")
+function tt_open_ltt2(render3d_st: mut Render3dState, path: string, base: int) -> bool {
+  tt_close(render3d_st)
+  let f = file_open(path, "rb")
+  if f == null { return false }
+  let head = words(32)
+  file_seek(f, base, 0)
+  let got = file_read(f, data_of(head), LT_HEAD)
+  if got != LT_HEAD or head[0] != LT_MAGIC or head[1] != LT_VERSION or head[2] != TT_TEX or head[5] != TERRAIN_RES or head[7] != TT_COARSE {
+    free(head)
+    file_close(f)
+    return false
+  }
+  let n = head[3]
+  let side = head[4]
+  render3d_st.tt_file = f
+  render3d_st.tt_n = n;  render3d_st.tt_oside = side;  render3d_st.ter_ortho_w = head[6]
+  render3d_st.tt_hoff = base + head[8] + n * n * 8
+  render3d_st.tt_noff = base + head[10];  render3d_st.tt_ooff = base + head[11]
+  render3d_st.tt_cnoff = base + head[13];  render3d_st.tt_cooff = base + head[14]
+  if render3d_st.tt_tab != null { free(render3d_st.tt_tab) }
+  render3d_st.tt_tab = floats(n * n * 2)
+  file_seek(f, base + head[8], 0)
+  file_read(f, data_of(render3d_st.tt_tab), n * n * 8)
+  if render3d_st.tt_coarse == null { render3d_st.tt_coarse = floats(TT_COARSE * TT_COARSE) }
+  file_seek(f, base + head[12], 0)
+  file_read(f, data_of(render3d_st.tt_coarse), TT_COARSE * TT_COARSE * 4)
+  free(head)
+  tt_pools(render3d_st, n, side)
+  return true
+}
+
+# the pools, the index, the clock and the read scratch, for n tiles a side
+@alloc_ok("a map being loaded: its tiles' pools, once")
+function tt_pools(render3d_st: mut Render3dState, n: int, side: int) -> void {
+  if render3d_st.tt_h == null { render3d_st.tt_h = floats(TT_SLOTS * TT_TEX * TT_TEX) }
+  if render3d_st.tt_nm == null { render3d_st.tt_nm = words(TT_SLOTS * TT_TEX * TT_TEX) }
+  if render3d_st.tt_o == null or len(render3d_st.tt_o) != TT_SLOTS * side * side {
+    if render3d_st.tt_o != null { free(render3d_st.tt_o) }
+    render3d_st.tt_o = words(TT_SLOTS * side * side)
+  }
+  let sc = max(TT_TEX * TT_TEX * 2, side * side * 3)
+  if render3d_st.tt_scratch == null or len(render3d_st.tt_scratch) < sc {
+    if render3d_st.tt_scratch != null { free(render3d_st.tt_scratch) }
+    render3d_st.tt_scratch = buffer(sc)
+  }
+  if render3d_st.tt_slot_of != null { free(render3d_st.tt_slot_of) }
+  render3d_st.tt_slot_of = words(n * n)
+  for t in 0 .. n * n { render3d_st.tt_slot_of[t] = -1 }
+  if render3d_st.tt_tile_in == null { render3d_st.tt_tile_in = words(TT_SLOTS);  render3d_st.tt_ref = words(TT_SLOTS) }
+  for s in 0 .. TT_SLOTS { render3d_st.tt_tile_in[s] = -1;  render3d_st.tt_ref[s] = 0 }
+  render3d_st.tt_hand = 0
+}
+
+# tile t's heights, normals and photograph decoded into slot s: exactly the values ltt2_write put back
+function tt_decode(render3d_st: mut Render3dState, t: int, s: int) -> void {
+  let f = render3d_st.tt_file
+  let sc = render3d_st.tt_scratch
+  let n2 = TT_TEX * TT_TEX
+  file_seek(f, render3d_st.tt_hoff + t * n2 * 2, 0)
+  file_read(f, data_of(sc), n2 * 2)
+  let lo = render3d_st.tt_tab[t * 2]
+  let step = render3d_st.tt_tab[t * 2 + 1]
+  for i in 0 .. n2 { render3d_st.tt_h[s * n2 + i] = lo + float(sc[i * 2] | (sc[i * 2 + 1] << 8)) * step }
+  file_seek(f, render3d_st.tt_noff + t * n2 * 2, 0)
+  file_read(f, data_of(sc), n2 * 2)
+  for i in 0 .. n2 {
+    let e = sc[i * 2] | (sc[i * 2 + 1] << 8)
+    render3d_st.tt_nm[s * n2 + i] = gvk_half(float_bits(lt_oct_dec(e, false))) | (gvk_half(float_bits(lt_oct_dec(e, true))) << 16)
+  }
+  let side = render3d_st.tt_oside
+  let o2 = side * side
+  file_seek(f, render3d_st.tt_ooff + t * o2 * 3, 0)
+  file_read(f, data_of(sc), o2 * 3)
+  for i in 0 .. o2 { render3d_st.tt_o[s * o2 + i] = (sc[i * 3] << 16) | (sc[i * 3 + 1] << 8) | sc[i * 3 + 2] }
+}
+
+# the GPU's coarse level from the file (the whole textures, if any, let go) and the page pool made
+@alloc_ok("a map being loaded: the coarse level, once")
+function ltt2_gpu_coarse(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  let c = TT_COARSE
+  let f = render3d_st.tt_file
+  let h = tex_target(render3d_st, c, c, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR)
+  gpu_tex_fill(render3d_st, h, GL_R32F, c, c, GL_RED, GL_FLOAT, data_of(render3d_st.tt_coarse))
+  let raw = buffer(c * c * 3)
+  file_seek(f, render3d_st.tt_cnoff, 0)
+  file_read(f, data_of(raw), c * c * 2)
+  let xz = floats(c * c * 2)
+  for i in 0 .. c * c {
+    let e = raw[i * 2] | (raw[i * 2 + 1] << 8)
+    xz[i * 2] = lt_oct_dec(e, false);  xz[i * 2 + 1] = lt_oct_dec(e, true)
+  }
+  let nm = tex_target(render3d_st, c, c, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
+  gpu_tex_fill(render3d_st, nm, GL_RG16F, c, c, GL_RG, GL_FLOAT, data_of(xz))
+  free(xz)
+  file_seek(f, render3d_st.tt_cooff, 0)
+  file_read(f, data_of(raw), c * c * 3)
+  let o = tex_target(render3d_st, c, c, GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  gpu_tex_fill(render3d_st, o, GL_SRGB8_ALPHA8, c, c, GL_RGB, GL_UNSIGNED_BYTE, data_of(raw))
+  free(raw)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, o)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(render3d_st, GPU_TEX2D)
+  gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
+  if render3d_st.ter_height_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_height_tex) }
+  if render3d_st.ter_normal_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_normal_tex) }
+  if render3d_st.ter_ortho_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_ortho_tex) }
+  render3d_st.ter_height_tex = h;  render3d_st.ter_normal_tex = nm;  render3d_st.ter_ortho_tex = o
+  render3d_st.gvk_tag = was
+  tp_pool(render3d_st)
+}
+
+# ---- the bake -------------------------------------------------------------------------------
+# The map as made (heights generated, photograph loaded, normals baked) written as a bake's file:
+# ludic.base's LBAK header (render3d cannot import it; the same layout) and the tiles as its payload.
+# The whole copy is left holding the quantized values, as everything will read them.
+@alloc_ok("a bake: once, at build time")
+export function terrain_tiles_bake(render3d_st: mut Render3dState, path: string, key: string, version: int, inputs_hash: long) -> bool {
+  if render3d_st.ter_heights == null or render3d_st.ter_ortho_px == null or render3d_st.ter_normal_tex == 0 { return false }
+  let f = file_open(path, "wb")
+  if f == null { return false }
+  let base = 32 + (len(key) + 7) / 8 * 8
+  let head = buffer(base)
+  for i in 0 .. base { head[i] = 0 }
+  file_write(f, data_of(head), base)
+  let n = ltt2_write(render3d_st, f, base)
+  let p = data_of(head)
+  Vk.put_i32(p, 0, BAKE_MAGIC);  Vk.put_i32(p, 4, 1);  Vk.put_i32(p, 8, version);  Vk.put_i32(p, 12, base)
+  Vk.put_i64(p, 16, inputs_hash)
+  let nl: long = n
+  Vk.put_i64(p, 24, nl)
+  for i in 0 .. len(key) { head[32 + i] = key[i] }
+  file_seek(f, 0, 0)
+  file_write(f, data_of(head), base)
+  file_close(f)
+  free(head)
+  return true
+}
+
+# A boot that takes the terrain from a bake: the tiles opened, the coarse level made, nothing
+# generated. Call it where the map was set up (in place of terrain_use_dem / terrain_use_ortho),
+# before terrain_init; false (and nothing changed) when the bake is missing or not this version, and
+# the caller makes the map as before.
+@alloc_ok("a map being loaded from its bake, once")
+export function terrain_from_baked(render3d_st: mut Render3dState, path: string, key: string, version: int, half: int, ox: float, oz: float) -> bool {
+  let base = ltt2_bake_base(path, key, version)
+  if base < 0 { return false }
+  render3d_st.TERRAIN_HALF = half
+  render3d_st.ter_ox = ox;  render3d_st.ter_oz = oz
+  render3d_st.ter_h_scale = 0.0;  render3d_st.ter_o_scale = 0.0
+  if not tt_open_ltt2(render3d_st, path, base) { return false }
+  render3d_st.tt_baked = true
+  tp_dummies(render3d_st)
+  ltt2_gpu_coarse(render3d_st)
+  return true
+}
+
+# where the payload starts in a bake's file when its key and version are these, else -1
+@alloc_ok("a bake's header read once at load")
+function ltt2_bake_base(path: string, key: string, version: int) -> int {
+  let f = file_open(path, "rb")
+  if f == null { return -1 }
+  let h = buffer(96)
+  let got = file_read(f, data_of(h), 96)
+  file_close(f)
+  let p = data_of(h)
+  var base = -1
+  if got >= 32 and Vk.get_i32(p, 0) == BAKE_MAGIC and Vk.get_i32(p, 4) == 1 and Vk.get_i32(p, 8) == version {
+    base = Vk.get_i32(p, 12)
+    for i in 0 .. len(key) { if 32 + i >= got or h[32 + i] != key[i] { base = -1 } }
+  }
+  free(h)
+  return base
+}

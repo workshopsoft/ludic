@@ -64,16 +64,7 @@ function tt_read(render3d_st: mut Render3dState, t: int) -> int {
   render3d_st.tt_hand = (s + 1) % TT_SLOTS
   let old = render3d_st.tt_tile_in[s]
   if old >= 0 { render3d_st.tt_slot_of[old] = -1 }
-  let hb = TT_TEX * TT_TEX * 4
-  file_seek(render3d_st.tt_file, render3d_st.tt_hoff + t * hb, 0)
-  file_read(render3d_st.tt_file, mem_off(data_of(render3d_st.tt_h), s * hb), hb)
-  let ob = render3d_st.tt_oside * render3d_st.tt_oside * 4
-  if ob > 0 {
-    file_seek(render3d_st.tt_file, render3d_st.tt_ooff + t * ob, 0)
-    file_read(render3d_st.tt_file, mem_off(data_of(render3d_st.tt_o), s * ob), ob)
-  }
-  file_seek(render3d_st.tt_file, render3d_st.tt_noff + t * hb, 0)
-  file_read(render3d_st.tt_file, mem_off(data_of(render3d_st.tt_nm), s * hb), hb)
+  tt_decode(render3d_st, t, s)
   render3d_st.tt_tile_in[s] = t
   render3d_st.tt_slot_of[t] = s
   render3d_st.tt_ref[s] = 1

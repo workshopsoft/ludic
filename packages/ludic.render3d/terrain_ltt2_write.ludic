@@ -1,0 +1,199 @@
+# terrain_ltt2_write.ludic — the terrain as THE quantized tiles every reader answers from (plan 26 of
+# maroon-lake): heights as u16 over each tile's own minimum and step, normals octahedral 8 + 8, the
+# photograph RGB8, and the coarse level. Written by the build-time bake and, in a dev build with no bake,
+# by the cut; either way the whole copy is put back to the quantized values, so the build's own
+# queries, the physics, the placements' bake and every machine read the same numbers.
+
+const LT_MAGIC: int = 844383308        # "LTT2"
+const LT_VERSION: int = 1
+const LT_HEAD: int = 128               # 32 words
+
+# the payload at the file's current place (its start is `base`); its length. Header written last.
+@alloc_ok("a map being made or baked: the tiles written once")
+function ltt2_write(render3d_st: mut Render3dState, f: pointer, base: int) -> int {
+  let n = TERRAIN_RES / TT_TEX
+  let side = render3d_st.ter_ortho_w / n
+  let head = words(32)
+  for k in 0 .. 32 { head[k] = 0 }
+  file_write(f, data_of(head), LT_HEAD)
+  var at = LT_HEAD
+  head[8] = at;  at += ltt2_write_heights(render3d_st, f, n)
+  let nrm = ltt2_normals_back(render3d_st)
+  head[10] = at;  at += ltt2_write_normals(f, nrm, n)
+  head[11] = at;  at += ltt2_write_ortho(render3d_st, f, n, side)
+  head[12] = at;  at += ltt2_write_coarse_h(render3d_st, f)
+  head[13] = at;  at += ltt2_write_coarse_n(f, nrm)
+  free(nrm)
+  head[14] = at;  at += ltt2_write_coarse_o(render3d_st, f)
+  head[0] = LT_MAGIC;  head[1] = LT_VERSION;  head[2] = TT_TEX;  head[3] = n;  head[4] = side
+  head[5] = TERRAIN_RES;  head[6] = render3d_st.ter_ortho_w;  head[7] = TT_COARSE;  head[15] = at
+  file_seek(f, base, 0)
+  file_write(f, data_of(head), LT_HEAD)
+  file_seek(f, base + at, 0)
+  free(head)
+  return at
+}
+
+# each tile's (min, step) table, then its heights as u16; the whole copy put back to what they decode to
+@alloc_ok("a map being made or baked: one tile's scratch and the table, freed after")
+function ltt2_write_heights(render3d_st: mut Render3dState, f: pointer, n: int) -> int {
+  let tab = floats(n * n * 2)
+  let h = render3d_st.ter_heights
+  for j in 0 .. n {
+    for i in 0 .. n {
+      var lo = 1000000.0;  var hi = -1000000.0
+      for r in 0 .. TT_TEX { for k in 0 .. TT_TEX { let v = h[(j * TT_TEX + r) * TERRAIN_RES + i * TT_TEX + k];  lo = Math.min(lo, v);  hi = Math.max(hi, v) } }
+      tab[(j * n + i) * 2] = lo;  tab[(j * n + i) * 2 + 1] = (hi - lo) / 65535.0
+    }
+  }
+  file_write(f, data_of(tab), n * n * 8)
+  let b = buffer(TT_TEX * TT_TEX * 2)
+  for j in 0 .. n {
+    for i in 0 .. n {
+      let lo = tab[(j * n + i) * 2];  let step = tab[(j * n + i) * 2 + 1]
+      for r in 0 .. TT_TEX {
+        for k in 0 .. TT_TEX {
+          let at = (j * TT_TEX + r) * TERRAIN_RES + i * TT_TEX + k
+          var q = 0
+          if step > 0.0 { q = min(max(int(Math.floor((h[at] - lo) / step + 0.5)), 0), 65535) }
+          h[at] = lo + float(q) * step
+          b[(r * TT_TEX + k) * 2] = q & 255;  b[(r * TT_TEX + k) * 2 + 1] = q >> 8
+        }
+      }
+      file_write(f, data_of(b), TT_TEX * TT_TEX * 2)
+    }
+  }
+  free(b)
+  free(tab)
+  return n * n * 8 + n * n * TT_TEX * TT_TEX * 2
+}
+
+# the baked normals read back once (RG16F: two halves a word)
+@alloc_ok("a map being made or baked: the normals read back once, freed by the caller")
+function ltt2_normals_back(render3d_st: mut Render3dState) -> words {
+  let all = words(TERRAIN_RES * TERRAIN_RES)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_normal_tex)
+  gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 4)
+  gpu_tex_read(render3d_st, GPU_TEX2D, GL_RG, GL_HALF_FLOAT, data_of(all))
+  return all
+}
+
+@alloc_ok("a map being made or baked: one tile's scratch, freed after")
+function ltt2_write_normals(f: pointer, nrm: words, n: int) -> int {
+  let b = buffer(TT_TEX * TT_TEX * 2)
+  for j in 0 .. n {
+    for i in 0 .. n {
+      for r in 0 .. TT_TEX {
+        for k in 0 .. TT_TEX {
+          let w = nrm[(j * TT_TEX + r) * TERRAIN_RES + i * TT_TEX + k]
+          let e = lt_oct_enc(lt_unhalf(w & 0xFFFF), lt_unhalf((w >> 16) & 0xFFFF))
+          b[(r * TT_TEX + k) * 2] = e & 255;  b[(r * TT_TEX + k) * 2 + 1] = e >> 8
+        }
+      }
+      file_write(f, data_of(b), TT_TEX * TT_TEX * 2)
+    }
+  }
+  free(b)
+  return n * n * TT_TEX * TT_TEX * 2
+}
+
+@alloc_ok("a map being made or baked: one tile's scratch, freed after")
+function ltt2_write_ortho(render3d_st: Render3dState, f: pointer, n: int, side: int) -> int {
+  let b = buffer(side * side * 3)
+  let w = render3d_st.ter_ortho_w
+  let c = render3d_st.ter_ortho_c
+  let px = render3d_st.ter_ortho_px
+  for j in 0 .. n {
+    for i in 0 .. n {
+      for r in 0 .. side {
+        for k in 0 .. side {
+          let o = ((j * side + r) * w + i * side + k) * c
+          let d = (r * side + k) * 3
+          b[d] = px[o];  b[d + 1] = px[o + 1];  b[d + 2] = px[o + 2]
+        }
+      }
+      file_write(f, data_of(b), side * side * 3)
+    }
+  }
+  free(b)
+  return n * n * side * side * 3
+}
+
+# the coarse heights: the mean of each 2 x 2 of the quantized ones (kept in tt_coarse too)
+function ltt2_write_coarse_h(render3d_st: mut Render3dState, f: pointer) -> int {
+  tt_make_coarse(render3d_st)
+  file_write(f, data_of(render3d_st.tt_coarse), TT_COARSE * TT_COARSE * 4)
+  return TT_COARSE * TT_COARSE * 4
+}
+
+# the coarse normals: each 2 x 2's mean direction, octahedral
+@alloc_ok("a map being made or baked: one row's scratch, freed after")
+function ltt2_write_coarse_n(f: pointer, nrm: words) -> int {
+  let k = TERRAIN_RES / TT_COARSE
+  let b = buffer(TT_COARSE * 2)
+  for j in 0 .. TT_COARSE {
+    for i in 0 .. TT_COARSE {
+      var sx = 0.0;  var sz = 0.0
+      for bb in 0 .. k { for a in 0 .. k { let w = nrm[(j * k + bb) * TERRAIN_RES + i * k + a];  sx = sx + lt_unhalf(w & 0xFFFF);  sz = sz + lt_unhalf((w >> 16) & 0xFFFF) } }
+      let e = lt_oct_enc(sx / float(k * k), sz / float(k * k))
+      b[i * 2] = e & 255;  b[i * 2 + 1] = e >> 8
+    }
+    file_write(f, data_of(b), TT_COARSE * 2)
+  }
+  free(b)
+  return TT_COARSE * TT_COARSE * 2
+}
+
+# the coarse photograph: each block's mean colour, RGB8
+@alloc_ok("a map being made or baked: one row's scratch, freed after")
+function ltt2_write_coarse_o(render3d_st: Render3dState, f: pointer) -> int {
+  let w = render3d_st.ter_ortho_w
+  let k = max(w / TT_COARSE, 1)
+  let c = render3d_st.ter_ortho_c
+  let px = render3d_st.ter_ortho_px
+  let b = buffer(TT_COARSE * 3)
+  for j in 0 .. TT_COARSE {
+    for i in 0 .. TT_COARSE {
+      for ch in 0 .. 3 {
+        var s = 0
+        for bb in 0 .. k { for a in 0 .. k { s += px[((min(j * k + bb, w - 1)) * w + min(i * k + a, w - 1)) * c + ch] } }
+        b[i * 3 + ch] = (s + k * k / 2) / (k * k)
+      }
+    }
+    file_write(f, data_of(b), TT_COARSE * 3)
+  }
+  free(b)
+  return TT_COARSE * TT_COARSE * 3
+}
+
+# a normal's x and z (y up, rebuilt) as octahedral 8 + 8 bits, and back
+function lt_oct_enc(x: float, z: float) -> int {
+  let y = Math.sqrt(Math.max(1.0 - x * x - z * z, 0.0))
+  let s = Math.abs(x) + y + Math.abs(z)
+  var px = 0.0;  var pz = 0.0
+  if s > 0.0 { px = x / s;  pz = z / s }
+  let qx = min(max(int(Math.floor((px * 0.5 + 0.5) * 255.0 + 0.5)), 0), 255)
+  let qz = min(max(int(Math.floor((pz * 0.5 + 0.5) * 255.0 + 0.5)), 0), 255)
+  return qx | (qz << 8)
+}
+# the decoded normal's x (want_z false) or z
+function lt_oct_dec(e: int, want_z: bool) -> float {
+  let px = float(e & 255) / 255.0 * 2.0 - 1.0
+  let pz = float((e >> 8) & 255) / 255.0 * 2.0 - 1.0
+  let y = Math.max(1.0 - Math.abs(px) - Math.abs(pz), 0.0)
+  let l = Math.sqrt(px * px + y * y + pz * pz)
+  if l <= 0.0 { return 0.0 }
+  if want_z { return pz / l }
+  return px / l
+}
+
+# an IEEE half's bits as a float
+function lt_unhalf(h: int) -> float {
+  let s = (h >> 15) & 1
+  let e = (h >> 10) & 31
+  let m = h & 1023
+  var v = 0.0
+  if e == 0 { v = float(m) / 16777216.0 } else { v = float_from_bits(((e - 15 + 127) << 23) | (m << 13)) }
+  if s == 1 { return -v }
+  return v
+}
