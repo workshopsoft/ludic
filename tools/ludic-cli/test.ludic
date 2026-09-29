@@ -786,6 +786,11 @@ function test_dir_case() -> void {
   if not shq(`cd {work} && {root}/bin/ludic test pk/tests -j 2 > out3.txt 2>&1`) { bad2(lbl2, capture(`cat {work}/out3.txt`));  return }
   if not shq(`grep -q 'pk/tests/scratch.ludic  (2 tests)' {work}/out3.txt`) { bad2(lbl2, capture(`cat {work}/out3.txt`));  return }
   ok(lbl2)
+  # a test program holding a phase handler: the runner boots no frame loop and calls no rt_init it lacks
+  let lbl3 = "ludic test: a program with a phase handler compiles and runs its tests"
+  write_file(`{work}/pk/tests/handler.ludic`, "program D {\n  handler K phase Input { }\n  test \"d\" {\n    expect_eq(1, 1)\n  }\n}\n")
+  if not shq(`cd {work} && {root}/bin/ludic test pk/tests/handler.ludic > out4.txt 2>&1`) { bad2(lbl3, capture(`cat {work}/out4.txt`));  return }
+  ok(lbl3)
 }
 
 # package.ludic drives the CLI: `entry` (or the one program under src/) is what
@@ -1347,6 +1352,7 @@ function cmd_dev_test() -> int {
   # phase 26: text keys - k"..." / kn"..." of type Key, checked against package.ludic's lang en.po
   feat_case("lang/i18n/i18n", "", "pause.resume yes no 13 12 hud.day(3) catch.count[2](trout) items.rope.name items.lamp.name steps.gather_wood.hint", "i18n.ludic (phase 26: k\"...\" and kn\"...\" of type Key, their marker byte, == on keys, a @Text Key field filled with its derived key, @TextKey's prefix)")
   i18n_check_case()
+  feat_case("lang/i18n_nested/i18n_nested", "", "raids.camp.arrive.steps.0.text raids.camp.arrive.steps.1.text 2 raids.camp.said.1 0 raids.quiet.arrive.steps.0.text hud.day(3)", "i18n_nested.ludic (phase 26: derived keys below a row - a nested record's, a list item's, a @Text []Key filled from en.po; null is no text; trf's trailing \"\" not counted)")
   schema_case("lang/i18n/i18n", "{\"key\": \"items.rope.name\", \"kind\": \"data\", \"kinds\": [\"data\"], \"sites\": [\"examples/lang/i18n/data/i18n_items.lres:2:1\"], \"in_source\": true, \"english\": \"Rope\"", "--emit-schema: lang.keys - a derived key, its kind, its site and en.po's English")
   schema_case("lang/i18n/i18n", "\"unused\": [\"map.close\"]", "--emit-schema: lang.unused - en.po's keys the program uses nowhere")
   schema_case("lang/i18n/i18n", "\"missing\": [\"hud.day\"], \"fuzzy\": [\"pause.close\"], \"extra\": [\"old.title\"]", "--emit-schema: lang.languages - another .po's missing, fuzzy and extra keys against en.po")

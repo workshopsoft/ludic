@@ -104,6 +104,8 @@ function es_local_ty(name: pointer) -> pointer {
   while i >= 0 { if (g_es_ln[i] == name) { return g_es_lt[i] };  i -= 1 }
   return null
 }
+# a type string() hands back as it is
+function es_passes(t: pointer) -> bool { return t != null and ((t == "string") or i18n_is_key_ty(t)) }
 # the static type of an expression, as far as the analysis can tell without emitting it
 function es_type(e: Node) -> pointer {
   if e == null { return null }
@@ -317,6 +319,9 @@ function es_call(e: Node) -> int {
       return g_es_heap
     }
     if (nm == "string") {
+      # string(s) of a string or a Key is s itself (emit_call.ludic) - no text is made, unless a
+      # template's lone hole copies it
+      if len(e.kids) == 1 and c.uns != TPL_COPY and es_passes(es_type(e.kids[0])) { return es_val(e.kids[0]) }
       es_args_walk(e)
       return es_site(e)
     }

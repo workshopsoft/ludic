@@ -202,6 +202,7 @@ entry {
   if (target != null) { g_target_win = has_sub(target, "windows") }
   else { g_target_win = host_is_windows() }
 
+  i18n_manifest(path)                             # phase 26: a `lang` line and its en.po, before the parse fills rows from it
   let src = read_file(path)
   if (src == null) { die("ludicc: cannot open input\n") }
 
@@ -224,7 +225,6 @@ entry {
 
   maybe_splice_runtime()
   fence_manifest(path)                            # 25.1: a `fence` line in the program's package.ludic
-  i18n_manifest(path)                             # phase 26: a `lang` line, and its en.po (i18n.ludic)
   ui_register_gotos()                             # `goto:` buttons -> generated UiClicked listeners
 
   # a game gets a window by default; a plain program stays headless. An explicit

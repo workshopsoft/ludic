@@ -1,0 +1,28 @@
+# The source language of the nested keys example.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#. A raid's first step, at the camp.
+msgid "raids.camp.arrive.steps.0.text"
+msgstr "Find the tracks"
+
+#. A raid's second step, at the camp.
+msgid "raids.camp.arrive.steps.1.text"
+msgstr "Count {1} footprints"
+
+#. The quiet raid's only step.
+msgid "raids.quiet.arrive.steps.0.text"
+msgstr "Wait"
+
+#. What Ada says when the camp is raided, first.
+msgid "raids.camp.said.0"
+msgstr "They came in the night."
+
+#. What Ada says when the camp is raided, second.
+msgid "raids.camp.said.1"
+msgstr "Check the box."
+
+#. The day on the HUD. {1} = the day number
+msgid "hud.day"
+msgstr "Day {1}"

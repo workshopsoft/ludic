@@ -1,0 +1,35 @@
+# i18n_nested.ludic — derived text keys below a row (LANGUAGE.md, "Text keys"): a nested record's
+# @Text Key is <registry>.<row>.<field>.<field>, a list item's adds .<index>, and a @Text []Key a row
+# leaves out takes <...>.0, .1, ... for as many as en.po has. `field: null` is no text. trf's trailing
+# "" pad its unused values and are not counted against the English's holes.
+#
+# Running it prints:  raids.camp.arrive.steps.0.text raids.camp.arrive.steps.1.text 2 raids.camp.said.1 0 raids.quiet.arrive.steps.0.text hud.day(3)
+program I18nNested {
+  property Step {
+    @Text text: Key = null
+    need: int = 0
+  }
+  property Arrive { steps: []Step = null }
+  property Raid {
+    key: string = ""
+    arrive: Arrive = null
+    @Text said: []Key = null
+  }
+  registry Raids of Raid as RD from "data/raids.lres"
+  function tr(key: Key) -> string {
+    let s = string(key)
+    return s[1..len(s)]
+  }
+  function trf(key: Key, a: string, b: string, c: string) -> string { return `{tr(key)}({a}{b}{c})` }
+  function said_n(r: Raid) -> int {
+    if r.said == null { return 0 }
+    return len(r.said)
+  }
+  entry {
+    let camp = Raids[RD_CAMP]
+    let quiet = Raids[RD_QUIET]
+    var out = `{tr(camp.arrive.steps[0].text)} {tr(camp.arrive.steps[1].text)} {said_n(camp)} {tr(camp.said[1])}`
+    out = out + ` {said_n(quiet)} {tr(quiet.arrive.steps[0].text)} {trf(k"hud.day", "3", "", "")}`
+    print(out)
+  }
+}
