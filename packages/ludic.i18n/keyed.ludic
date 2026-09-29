@@ -1,0 +1,83 @@
+# keyed.ludic - en.po, the base under every language, and a key's text: the language in use, else en.po,
+# else the key itself (in a developer's build [[key]], said once)
+
+# en.po from the languages' directory, read the first time a key is asked for (none: every key is itself)
+@alloc_ok("once: en.po read")
+function kb_ensure(i18n_st: mut I18nState) -> void {
+  if i18n_st.base_tried { return }
+  i18n_st.base_tried = true
+  let path = i18n_st.lang_dir + "/en.po"
+  if not Fs.exists(path) { return }
+  let text = Fs.read_text(path)
+  if text != null { i18n_base_text(i18n_st, text) }
+}
+
+# a .po's text as the base (en.po; a test's own)
+@alloc_ok("once: the base language's messages read in")
+export function i18n_base_text(i18n_st: mut I18nState, text: string) -> void {
+  let es = i18n_parse(text)
+  i18n_st.base_tried = true
+  i18n_st.base_exact = Dict.new()
+  i18n_st.base_out = new []string
+  i18n_st.base_plural = Dict.new()
+  i18n_st.base_forms = new []string
+  i18n_st.base_rule = plural_rule_of(i18n_header(text, "Plural-Forms"))
+  for i in 0 .. len(es) {
+    let e = es[i]
+    if len(e.plural) > 0 and len(e.forms) > 0 {
+      Dict.set(i18n_st.base_plural, e.id, len(i18n_st.base_forms) / 3)
+      for k in 0 .. 3 {
+        if k < len(e.forms) { push(i18n_st.base_forms, e.forms[k]) } else { push(i18n_st.base_forms, e.forms[len(e.forms) - 1]) }
+      }
+    } else if not (blank(e.id) or blank(e.str)) {
+      Dict.set(i18n_st.base_exact, e.id, len(i18n_st.base_out))
+      push(i18n_st.base_out, e.str)
+    }
+  }
+  kc_clear(i18n_st)
+}
+
+# a developer's build draws a key en.po lacks as [[key]] and says it once; a player's draws the key
+export function i18n_loud(i18n_st: mut I18nState, on: bool) -> void { i18n_st.loud = on }
+
+# the text a key names, in the language in use, else English, else the key
+function kb_text(i18n_st: mut I18nState, key: string) -> string {
+  if i18n_st.on and i18n_st.exact != null {
+    let e = Dict.get_or(i18n_st.exact, key, -1)
+    if e >= 0 { return i18n_st.out[e] }
+  }
+  kb_ensure(i18n_st)
+  if i18n_st.base_exact != null {
+    let b = Dict.get_or(i18n_st.base_exact, key, -1)
+    if b >= 0 { return i18n_st.base_out[b] }
+  }
+  return kb_missing(i18n_st, key)
+}
+
+# a plural key's form for n, in the language in use (by its rule), else English's, else the key
+function kb_plural(i18n_st: mut I18nState, key: string, n: int) -> string {
+  if i18n_st.on and i18n_st.plural != null {
+    let k = Dict.get_or(i18n_st.plural, key, -1)
+    if k >= 0 {
+      let f = i18n_st.forms[k * 3 + i18n_plural_form(i18n_st.plural_rule, n)]
+      if not blank(f) { return f }
+    }
+  }
+  kb_ensure(i18n_st)
+  if i18n_st.base_plural != null {
+    let b = Dict.get_or(i18n_st.base_plural, key, -1)
+    if b >= 0 { return i18n_st.base_forms[b * 3 + i18n_plural_form(i18n_st.base_rule, n)] }
+  }
+  return kb_missing(i18n_st, key)
+}
+
+@alloc_ok("a key en.po lacks: the marker made and the line said, once per key")
+function kb_missing(i18n_st: mut I18nState, key: string) -> string {
+  if not i18n_st.loud { return key }
+  if i18n_st.said == null { i18n_st.said = Dict.new() }
+  if Dict.get_or(i18n_st.said, key, -1) < 0 {
+    Dict.set(i18n_st.said, key, 1)
+    print(`i18n: no English for the key {key} (assets/lang/en.po)`)   # not drawn
+  }
+  return "[[" + key + "]]"
+}
