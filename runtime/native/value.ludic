@@ -101,6 +101,7 @@ function value_set_float(o: Val, key: pointer, x: float) -> void {
 # every frame) is given back with its frame rather than kept by the model
 function value_set_str(o: Val, key: pointer, s: pointer) -> void {
   let v = value_slot(o, key, 4)
+  jp_let_go(v)                                # the parser's text it held is freed (JP_OWNED)
   v.txt = intern(s)
 }
 function value_set_bool(o: Val, key: pointer, b: bool) -> void {
@@ -156,6 +157,7 @@ function value_set_strs(o: Val, key: pointer, xs: []string) -> void {
   let l = value_list_fit(o, key, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 4)
+    jp_let_go(v)
     v.txt = intern(xs[i])
   }
 }
@@ -170,6 +172,7 @@ function value_set_bools(o: Val, key: pointer, xs: []bool) -> void {
 # a Value turned into a blank one of kind `tag`, its own lists (if it has them) kept and emptied - for
 # a pool that hands the same records out again (ludic.ui's, frame after frame)
 function value_become(v: Val, tag: int) -> Val {
+  jp_let_go(v)
   v.tag = tag
   value_num_set(v, 0)
   v.txt = null
@@ -211,6 +214,7 @@ function value_into_float(into: Val, x: float) -> Val {
 }
 function value_into_str(into: Val, s: pointer) -> Val {
   let v = value_into(into, 4)
+  jp_let_go(v)
   v.txt = intern(s)
   return v
 }
@@ -249,6 +253,7 @@ function value_into_strs(into: Val, xs: []string) -> Val {
   let l = value_into_list(into, len(xs))
   for i in 0 .. len(xs) {
     let v = value_item(l, i, 4)
+    jp_let_go(v)
     v.txt = intern(xs[i])
   }
   return l
@@ -293,12 +298,14 @@ function value_clear(v: Val) -> void {
 }
 function value_as_int(v: Val) -> int {
   if v.tag == 7 { return int(float_from_bits(v.num)) }
+  if v.tag == 4 { return 0 }                  # a string's num is its owner mark, not a number
   return v.num
 }
 # a number as a float, whichever kind it was written as
 function value_as_float(v: Val) -> float {
   if v.tag == 7 { return float_from_bits(v.num) }
   if v.tag == 2 { return float(v.num) / 65536.0 }
+  if v.tag == 4 { return 0.0 }
   return float(v.num)
 }
 function value_as_str(v: Val) -> string { if v.txt == null { return "" };  return v.txt }
@@ -534,14 +541,31 @@ function json_free(v: Val) -> void { value_free(v) }
 # ... and its strings too - every string value and object key the parser made - for a tree whose
 # reader copied what it keeps (render3d's glTF documents): a parse left otherwise gives back the
 # nodes and keeps every name, ~640 KB a model
+# A parsed tree let go whole once read, edited or not: a string the parser made (JP_OWNED) is
+# freed; one a migration or a loader put in - a literal, an interned text - is theirs; a key is
+# interned by the parser and never freed. A node must be reachable once (no loader shares one).
+const JP_OWNED: int = 1246974528
+# a string node about to be given other text: the parser's own is freed, and the mark goes with it
+function jp_let_go(v: Val) -> void {
+  if v.tag == 4 and v.num == JP_OWNED and v.txt != null { free(v.txt) }
+  if v.tag == 4 { v.num = 0 }
+}
+function jp_owned_str(s: string) -> Val {
+  let v = value_str(s)
+  v.num = JP_OWNED
+  return v
+}
 function value_free_all(v: Val) -> void {
   if v == null { return }
-  if v.tag == 4 and v.txt != null { free(v.txt) }
+  if v.tag == 4 and v.txt != null and v.num == JP_OWNED { free(v.txt) }
   if v.kids != null {
     for i in 0 .. len(v.kids) { value_free_all(v.kids[i]) }
-    if v.keys != null { for i in 0 .. len(v.keys) { if v.keys[i] != null { free(v.keys[i]) } } }
     free(v.kids)
     free(v.keys)
+  }
+  if v.spare != null {
+    for i in 0 .. len(v.spare) { value_free_all(v.spare[i]) }
+    free(v.spare)
   }
   free(v)
 }
@@ -553,7 +577,7 @@ function jp_value(p: JP) -> Val {
   let c = p.s[p.i]
   if c == '{' { return jp_object(p) }              # '{'
   if c == '[' { return jp_list(p) }                 # '['
-  if c == '"' { return value_str(jp_string(p)) }    # '"'
+  if c == '"' { return jp_owned_str(jp_string(p)) }    # '"'
   if c == 't' { p.i += 4;  return value_bool(1) }   # true
   if c == 'f' { p.i += 5;  return value_bool(0) }   # false
   if c == 'n' { p.i += 4;  return value_null() }    # null
@@ -689,7 +713,9 @@ function jp_object(p: JP) -> Val {
   if p.i < p.n and p.s[p.i] == '}' { p.i += 1;  return out }  # empty '}'
   while p.i < p.n {
     jp_skip_ws(p)
-    let key = jp_string(p)
+    let raw = jp_string(p)
+    let key = intern(raw)                     # a key is one of a few names: interned, never freed
+    free(raw)
     jp_skip_ws(p)
     if p.i < p.n and p.s[p.i] == ':' { p.i += 1 }             # ':'
     push(out.keys, key)
