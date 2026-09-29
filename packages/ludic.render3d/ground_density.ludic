@@ -130,7 +130,7 @@ function gd_fill(render3d_st: mut Render3dState, l: int, key: int, s: int) -> vo
   }
   let n = b & 0x7FFFFFFF
   file_seek(render3d_st.gd_file, render3d_st.gd_base + a, 0)
-  if b < 0 {
+  if (b & 0x80000000) != 0 {                     # the top bit: the tile is deflated
     file_read(render3d_st.gd_file, data_of(render3d_st.gd_zbuf), min(n, len(render3d_st.gd_zbuf)))
     z_inflate(data_of(render3d_st.gd_zbuf), n, mem_off(data_of(pool), o), tb)
   } else {
