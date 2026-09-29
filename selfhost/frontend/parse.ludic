@@ -75,6 +75,7 @@ function fm_get(m: FileMap, f: pointer) -> pointer {
 var g_fm_mod: FileMap = fm_new()
 var g_fm_pkg: FileMap = fm_new()
 var g_fm_trusted: FileMap = fm_new()
+var g_fm_src: FileMap = fm_new()              # every file read, by its path: the schema's docs and spans
 function trust_file(f: pointer) -> void {
   push(g_trusted_files, f)
   fm_put(g_fm_trusted, f, "1")
@@ -110,15 +111,35 @@ function is_kw(v: pointer) -> bool { return is_id(v) }
 function perr(msg: pointer) -> void {
   var file = g_err_file
   var line = g_err_line
+  var col = 0
   if g_parsing {
     file = g_parse_file
     line = 0
-    if pi < len(toks) { line = toks[pi].line }
+    if pi < len(toks) { line = toks[pi].line;  col = toks[pi].col }
   }
   if file == null { file = "" }
+  if g_diag_json {
+    diag_add(file, line, col, "error", msg)
+    diag_exit(1)
+  }
   let m = `{file}:{line}: error: {msg}\n`
   file_write(file_stderr(), m, len(m))
   exit(1)
+}
+# an error the pass reporting it can go on from (every @Ref, every module rule broken): reported,
+# counted, and the build stops once the pass is done (diag_stop_if_errors)
+function perr_at(file: pointer, line: int, col: int, msg: pointer) -> void {
+  var f = file
+  if f == null { f = "" }
+  if g_diag_json { diag_add(f, line, col, "error", msg) }
+  else {
+    let m = `{f}:{itoa(line)}: error: {msg}\n`
+    file_write(file_stderr(), m, len(m))
+    g_dg_errors += 1
+  }
+}
+function diag_stop_if_errors() -> void {
+  if g_dg_errors > 0 { diag_exit(1) }
 }
 
 # the current token, described for a diagnostic
@@ -444,7 +465,11 @@ function record() -> Node {
   eat_op("{")
   let r = node(E_REC)
   while true { skipnl(); if is_op("}") { break }
-    let fi = node(E_FINIT); fi.s = eat_id(); eat_op(":"); fi.a = expr(); push(r.kids, fi)
+    let fi = node(E_FINIT); fi.s = eat_id(); eat_op(":")
+    let v0 = pi
+    fi.a = expr()
+    fi.sp0 = toks[v0].off;  fi.sp1 = toks[pi - 1].oend     # the schema's text of the value
+    push(r.kids, fi)
     if is_op(",") { pi += 1 } }
   eat_op("}"); return r
 }
@@ -598,7 +623,10 @@ function parse_var() -> Node {
   return n
 }
 function parse_const() -> Node {
-  pi += 1; let n = node(N_CONST); n.s = eat_id(); eat_op(":"); n.ty = ptype(); eat_op("="); n.a = expr()
+  pi += 1; let n = node(N_CONST); n.s = eat_id(); eat_op(":"); n.ty = ptype(); eat_op("=")
+  let v0 = pi
+  n.a = expr()
+  n.sp0 = toks[v0].off;  n.sp1 = toks[pi - 1].oend     # the schema's text of the value
   return n
 }
 # the language's statement / declaration words cannot name a function (`new`,
@@ -915,6 +943,7 @@ function already_loaded(full: pointer) -> bool {
 # Modifiers are `@annotations` in front of the declaration: `@export`, `@edge`,
 # `@pure`, `@deterministic`, … — one channel, not a zoo of prefix keywords.
 function parse_one_decl() -> void {
+  at_decl_reset()                             # attrs.ludic: @AppendOnly / @ByKey belong to one declaration
   var is_export = false
   var qspec: Node = null
   var onspawn_model: pointer = null
@@ -964,6 +993,7 @@ function parse_one_decl() -> void {
     else if a == "EngineSystem" { eat_op("("); esys_comp = eat_id(); eat_op(","); esys_phase = eat_id(); eat_op(")") }   # @EngineSystem(Comp, Phase) package engine system (#62)
     else if a == "Namespace" { eat_op("("); ns_name = eat_id(); eat_op(")") }   # @Namespace(Name) package Foo.* namespace (#62)
     else if a == "deterministic" { is_det = true }
+    else if (a == "AppendOnly") or (a == "ByKey") { at_decl(a) }   # a registry's, for editors (attrs.ludic)
     else if a == "alloc_ok" {                      # 25.2: @alloc_ok("why") - this allocates in a frame on purpose
       eat_op("(")
       let why = expr()
@@ -1000,6 +1030,7 @@ function parse_one_decl() -> void {
   # `export function f`, `export var v`, ...: visible from other modules (L3)
   if is_id("export") and (toks[pi + 1].kind == TK_ID) {
     pi += 1
+    g_at_keep = true
     let p0 = len(prog)
     let e0 = len(g_events)
     parse_one_decl()
@@ -1249,6 +1280,7 @@ function do_import(rel: pointer) -> void {
   }
   if already_loaded(full) { return }
   push(loaded_paths, full)
+  fm_put(g_fm_src, full, src)
   if is_float_file(g_parse_file) and not is_runtime_path(rel) and not is_float_file(full) { float_file_add(full) }
   # a module reaches as far as its own files: a package found through $LUDIC_HOME or
   # ludic_modules is not beside its importer and keeps its own module (or none)
@@ -1645,6 +1677,7 @@ function parse_program() -> void {
   g_gen_nodes = true                               # 0.S: what the finishing passes make is generated
   modules_finish()                                 # L3: the declared uses have no cycle
   registries_finish()                              # L8: each registry gets its defs
+  at_check_refs()                                  # every @Ref names a registry (attrs.ludic)
   ports_finish()                                   # L3: each port gets its one bind
   views_finish()                                   # L11: each view gets its model and call
   components_finish()                              # L11: each component gets its class

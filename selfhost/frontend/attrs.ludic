@@ -1,0 +1,164 @@
+# attrs.ludic — what an editor needs to know about a field or a registry, said on the @-syntax the
+# compiler already reads (@max(64), @owns(Kind)) and carried into `--emit-schema`:
+#
+#   property Item {
+#     @Ref(Vendors) seller: int = 0            # an index into that registry (its entries are offered)
+#     @OneOf(GR_) grade: int = 0               # one of the constants that start GR_
+#     @Range(0, 1.5) weight: float = 0.4
+#     @Unit("m/s") speed: float = 0.0
+#     @Asset("gltf") model: string = ""        # a file of that kind
+#     @Color tint: int = 0
+#   }
+#   @AppendOnly @ByKey registry Items of Item as IT from "items.lres"
+#
+# They change nothing the program does. One is checked: @Ref must name a registry that exists. A
+# field's or a registry's attributes are a group (Node.at, g_rg_at): a run of names, each with its
+# arguments as JSON values - an identifier or a string as a string, a number as written.
+var g_at_start: []int = new []int            # a group's first attribute ...
+var g_at_count: []int = new []int            # ... and how many it holds
+var g_at_name: []pointer = new []pointer
+var g_at_args: []pointer = new []pointer     # the arguments, a JSON array: ["Items"], [0, 1.5]
+var g_at_first: []pointer = new []pointer    # the first argument as written (@Ref's registry), or null
+var g_at_nargs: []int = new []int
+var g_at_open: int = -1                      # the group the attributes being read go into
+var g_at_decl: []pointer = new []pointer     # @AppendOnly / @ByKey read before a declaration
+var g_at_keep: bool = false                  # `export` parses its declaration one call down
+
+# a new group, empty; its index
+function at_group() -> int {
+  push(g_at_start, len(g_at_name))
+  push(g_at_count, 0)
+  return len(g_at_start) - 1
+}
+function at_push(g: int, name: pointer, args: pointer, first: pointer, nargs: int) -> void {
+  push(g_at_name, name)
+  push(g_at_args, args)
+  push(g_at_first, first)
+  push(g_at_nargs, nargs)
+  g_at_count[g] = g_at_count[g] + 1
+}
+# `(a, "b", -1.5)` after an attribute's name, if it is there, as a JSON array; the first argument
+# as written goes to g_at_arg0, the count to g_at_argn
+var g_at_arg0: pointer = null
+var g_at_argn: int = 0
+var g_at_allnum: bool = true                 # every argument a number
+function at_args() -> pointer {
+  g_at_arg0 = null
+  g_at_argn = 0
+  g_at_allnum = true
+  if not is_op("(") { return "[]" }
+  pi += 1
+  var out: pointer = "["
+  while not is_op(")") {
+    skipnl()
+    var neg = false
+    if is_op("-") { neg = true;  pi += 1 }
+    let t = toks[pi]
+    var v: pointer = null
+    var raw: pointer = null
+    if t.kind == TK_INT {
+      raw = itoa(t.ival)
+      if t.text != null { raw = t.text }
+      if neg { raw = "-" + raw }
+      v = raw
+    } else if t.kind == TK_FLOAT {
+      raw = t.text
+      if neg { raw = "-" + raw }
+      v = raw
+      if raw[0] == '.' or (neg and raw[1] == '.') { v = at_lead0(raw) }
+    } else if (t.kind == TK_STR or t.kind == TK_ID) and not neg {
+      g_at_allnum = false
+      raw = t.text
+      let b = buf_new()
+      jq_put(b, raw)
+      v = buf_str(b)
+    } else {
+      perr(`an attribute's argument is a name, a string or a number, not {tok_desc()}`)
+    }
+    pi += 1
+    if g_at_argn > 0 { out = out + ", " }
+    out = out + v
+    if g_at_argn == 0 { g_at_arg0 = raw }
+    g_at_argn += 1
+    skipnl()
+    if is_op(",") { pi += 1 }
+  }
+  eat_op(")")
+  return out + "]"
+}
+function at_lead0(raw: pointer) -> pointer {
+  if raw[0] == '-' { return "-0" + raw[1 .. len(raw)] }
+  return "0" + raw
+}
+# the editor attributes a field may carry, and what each takes
+function at_field_known(a: pointer) -> bool {
+  return (a == "Ref") or (a == "OneOf") or (a == "Range") or (a == "Unit") or (a == "Asset") or (a == "Color")
+}
+# one field attribute, its '@' and name already read: its arguments, checked for shape, into group g
+function at_field(g: int, a: pointer) -> void {
+  let args = at_args()
+  let n = g_at_argn
+  if (a == "Ref") or (a == "OneOf") {
+    if n != 1 or toks[pi - 2].kind != TK_ID { perr(`@{a} takes one name: @{a}(Items)`) }
+  }
+  if (a == "Range") and n != 2 { perr("@Range takes the least and the most: @Range(0, 1.5)") }
+  if (a == "Range") and not g_at_allnum { perr("@Range takes two numbers: @Range(0, 1.5)") }
+  if ((a == "Unit") or (a == "Asset")) and (n != 1 or toks[pi - 2].kind != TK_STR) { perr(`@{a} takes one string: @{a}("m/s")`) }
+  if (a == "Color") and n != 0 { perr("@Color takes nothing") }
+  at_push(g, a, args, g_at_arg0, n)
+}
+# a field's group, made the first time it needs one
+function at_field_group(f: Node) -> int {
+  if f.at < 0 { f.at = at_group() }
+  return f.at
+}
+# @AppendOnly / @ByKey before a declaration: kept for the registry it is on
+function at_decl(a: pointer) -> void {
+  push(g_at_decl, a)
+}
+function at_decl_reset() -> void {
+  if g_at_keep {
+    g_at_keep = false
+    return
+  }
+  if len(g_at_decl) > 0 { g_at_decl = new []pointer }
+}
+# the registry just declared takes the attributes read before it
+function at_registry_take() -> int {
+  if len(g_at_decl) == 0 { return -1 }
+  let g = at_group()
+  var i = 0
+  while i < len(g_at_decl) {
+    at_push(g, g_at_decl[i], "[]", null, 0)
+    i += 1
+  }
+  g_at_decl = new []pointer
+  return g
+}
+# once every registry is declared: each @Ref names one, or the build stops with every one that does not
+function at_check_refs() -> void {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_COMP {
+      var k = 0
+      while k < len(d.kids) {
+        let f = d.kids[k]
+        if f.at >= 0 { at_check_field(d, f) }
+        k += 1
+      }
+    }
+    i += 1
+  }
+  diag_stop_if_errors()
+}
+function at_check_field(d: Node, f: Node) -> void {
+  let g = f.at
+  var j = g_at_start[g]
+  while j < g_at_start[g] + g_at_count[g] {
+    if (g_at_name[j] == "Ref") and reg_find(g_at_first[j]) < 0 {
+      perr_at(f.file, f.line, f.col, `field {d.s}.{f.s}: @Ref({g_at_first[j]}) names no registry - there is no registry {g_at_first[j]}`)
+    }
+    j += 1
+  }
+}

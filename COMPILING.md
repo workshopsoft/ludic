@@ -73,6 +73,8 @@ point at a different LLVM toolchain if you have one.
 | a windowed native executable | `ludicc game.ludic -o build/game` |
 | a headless executable | `ludicc game.ludic --headless -o build/game` |
 | the IR, to read | `ludicc src.ludic --emit-llvm -o src.ll` |
+| the schema an editor reads (records, registries and their entries, consts) | `ludicc src.ludic --emit-schema schema.json` |
+| every error, as a JSON array on stdout | `ludicc src.ludic --check --diagnostics=json` |
 | a shared library † | `ludicc lib.ludic --shared -o build/liblib.dylib` |
 | a game that runs in a browser † | `ludicc game.ludic --target wasm32-unknown-unknown -o build/web/game.wasm` |
 | an object file † | `ludicc src.ludic -c -o src.o` |

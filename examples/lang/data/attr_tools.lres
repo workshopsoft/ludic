@@ -1,0 +1,8 @@
+# attr_tools.lres - the tools attributes.ludic's registry reads when it is compiled
+axe { name: "Axe", seller: VD_STORE, weight: 1.5, model: "kit/axe.gltf" }
+lantern {
+  name: "Lantern"
+  seller: VD_MARINA
+  weight: 0.75
+  stocked_at: VD_MARINA
+}

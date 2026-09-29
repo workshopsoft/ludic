@@ -1,0 +1,95 @@
+# diag.ludic — `--diagnostics=json`: every error and warning the compiler reports, collected and
+# written to stdout as one JSON array of {file, line, col, severity, message} when it exits, instead
+# of the `file:line: error: message` lines on stderr. The type checker and the module rules (vis,
+# uses) report everything they find; an error the parser or the emitter cannot go on from (a token
+# it did not expect, an unknown name while lowering) is the last one in the array. A col of 0 is a
+# place known only to its line.
+var g_diag_json: bool = false
+var g_dg_file: []pointer = new []pointer
+var g_dg_line: []int = new []int
+var g_dg_col: []int = new []int
+var g_dg_sev: []pointer = new []pointer
+var g_dg_msg: []pointer = new []pointer
+var g_dg_errors: int = 0
+
+# one diagnostic, kept for the array - once, though a pass may find it twice (a reference the
+# checker and the emitter both resolve)
+function diag_add(file: pointer, line: int, col: int, sev: pointer, msg: pointer) -> void {
+  var f = file
+  if f == null { f = "" }
+  let m = diag_trim(msg)
+  var i = 0
+  while i < len(g_dg_file) {
+    if g_dg_line[i] == line and g_dg_col[i] == col and (g_dg_msg[i] == m) and (g_dg_file[i] == f) and (g_dg_sev[i] == sev) { return }
+    i += 1
+  }
+  push(g_dg_file, f)
+  push(g_dg_line, line)
+  push(g_dg_col, col)
+  push(g_dg_sev, sev)
+  push(g_dg_msg, m)
+  if (sev == "error") { g_dg_errors += 1 }
+}
+# a message without its closing newline
+function diag_trim(m: pointer) -> pointer {
+  var n = len(m)
+  while n > 0 and (m[n - 1] == '\n' or m[n - 1] == '\r') { n -= 1 }
+  return m[0 .. n]
+}
+# `s` as a JSON string, quotes included, into b
+function jq_put(b: Buf, s: pointer) -> void {
+  buf_putc(b, '"')
+  if s != null {
+    var i = 0
+    while s[i] != 0 {
+      let c = s[i]
+      if c == '"' { buf_puts(b, "\\\"") }
+      else if c == CH_BACKSLASH { buf_puts(b, "\\\\") }
+      else if c == '\n' { buf_puts(b, "\\n") }
+      else if c == '\t' { buf_puts(b, "\\t") }
+      else if c == '\r' { buf_puts(b, "\\r") }
+      else if c >= 0 and c < 32 {
+        buf_puts(b, "\\u00")
+        buf_putc(b, jq_hex(c >> 4))
+        buf_putc(b, jq_hex(c & 15))
+      }
+      else { buf_putc(b, c) }
+      i += 1
+    }
+  }
+  buf_putc(b, '"')
+}
+function jq_hex(d: int) -> int {
+  if d < 10 { return 48 + d }
+  return 87 + d
+}
+# the array, on stdout
+function diag_flush() -> void {
+  let b = buf_new()
+  buf_puts(b, "[")
+  var i = 0
+  while i < len(g_dg_file) {
+    if i > 0 { buf_puts(b, ",") }
+    buf_puts(b, "\n  {\"file\": ")
+    jq_put(b, g_dg_file[i])
+    buf_puts(b, ", \"line\": ")
+    buf_puti(b, g_dg_line[i])
+    buf_puts(b, ", \"col\": ")
+    buf_puti(b, g_dg_col[i])
+    buf_puts(b, ", \"severity\": ")
+    jq_put(b, g_dg_sev[i])
+    buf_puts(b, ", \"message\": ")
+    jq_put(b, g_dg_msg[i])
+    buf_puts(b, "}")
+    i += 1
+  }
+  if len(g_dg_file) > 0 { buf_puts(b, "\n") }
+  buf_puts(b, "]\n")
+  let out = file_stdout()
+  file_write(out, buf_str(b), b.len)
+}
+# stop: with --diagnostics=json the array is written first
+function diag_exit(code: int) -> void {
+  if g_diag_json { diag_flush() }
+  exit(code)
+}

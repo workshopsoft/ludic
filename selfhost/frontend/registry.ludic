@@ -16,9 +16,25 @@ var g_rg_type: []pointer = new []pointer
 var g_rg_prefix: []pointer = new []pointer
 var g_rg_var: []Node = new []Node
 var g_rg_open: []int = new []int              # 1: `open registry` - other modules may def into it
+var g_rg_from: []pointer = new []pointer      # its resource file as written, or null
+var g_rg_at: []int = new []int                # its attributes (@AppendOnly, @ByKey), a group or -1
 var g_df_reg: []pointer = new []pointer
 var g_df_key: []pointer = new []pointer
 var g_df_rec: []Node = new []Node
+var g_df_kline: []int = new []int             # where its key is written (the schema's)
+var g_df_kcol: []int = new []int
+var g_df_src: []pointer = new []pointer       # the resource file it came from, or "" for a `def`
+var g_df_via: []pointer = new []pointer       # the declaration that brought it in: file:line
+# one def, and where it came from
+function df_push(reg: pointer, key: pointer, rec: Node, kline: int, kcol: int, src: pointer, via: pointer) -> void {
+  push(g_df_reg, reg)
+  push(g_df_key, key)
+  push(g_df_rec, rec)
+  push(g_df_kline, kline)
+  push(g_df_kcol, kcol)
+  push(g_df_src, src)
+  push(g_df_via, via)
+}
 
 function reg_upper(s: pointer) -> pointer {
   let n = len(s)
@@ -72,6 +88,8 @@ function parse_registry() -> void {
   push(g_rg_prefix, prefix)
   push(g_rg_var, v)
   push(g_rg_open, 0)
+  push(g_rg_from, from)
+  push(g_rg_at, at_registry_take())               # attrs.ludic
   if from != null { res_read(v, from) }
 }
 # def REGISTRY key { field: value, ... }
@@ -85,12 +103,11 @@ function parse_def() -> void {
     res_read_into(reg, from, `def {reg} from`)
     return
   }
+  let kt = toks[pi]
   let key = eat_id()
   skipnl()
   let rec = record()
-  push(g_df_reg, reg)
-  push(g_df_key, key)
-  push(g_df_rec, rec)
+  df_push(reg, key, rec, kt.line, kt.col, "", `{g_parse_file}:{itoa(kt.line)}`)
 }
 function reg_find(name: pointer) -> int {
   var i = 0

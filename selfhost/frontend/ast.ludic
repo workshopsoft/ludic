@@ -94,6 +94,10 @@ property Node {
   mg:   int = -1              # 0.S2: its index in the migration's tables (migrate.ludic)
   vw:   int = -1              # 0.S: the view a function was generated for or written in
   cm:   int = -1              # 0.S: the component a function was generated for or written in
+  col:  int = 0               # the column of its first token (1-based; 0 when generated)
+  at:   int = -1              # its attributes (@Ref(Items), @Range(0, 1), ...): a group in attrs.ludic
+  sp0:  int = -1              # a field's default, a const's value, an entry field's value: where its
+  sp1:  int = -1              #   source text starts and ends in its file (the schema's text of it)
 }
 
 # every node remembers where it was parsed (file + the line of the token the
@@ -105,6 +109,7 @@ function node(kind: int) -> Node {
   n.file = g_parse_file
   if g_parsing and pi < len(toks) {
     n.line = toks[pi].line
+    n.col = toks[pi].col
     n.pos = toks[pi].pos
     if g_gen_nodes { n.pos = -1 }            # made by the compiler, not read from a file
   }

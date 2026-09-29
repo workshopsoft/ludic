@@ -625,6 +625,49 @@ int and this is a string`). Its entries are defs of the module that wrote the li
 must be open (and exported) to it, and they take that module's place in the order: the declaring
 module's entries, then each other module's by module name, and within a file, file order.
 
+### Editor attributes and the schema (`@Ref`, `@Range`, ..., `ludic schema`)
+
+A field can say what an editor of the data should offer for it, and a registry how its entries may
+change, on the same `@` a field's `@max(64)` is written with - one or several, on the field's line or
+the lines above it:
+
+```ludic
+# doc-check: skip — the registries it names are declared elsewhere
+property Tool {
+  @Ref(Vendors) seller: int = 0            # an index into that registry: its entries are offered
+  @OneOf(GR_) grade: int = 0               # one of the constants whose names start GR_
+  @Range(0, 20.5) @Unit("kg") weight: float = 1.0
+  @Asset("gltf") model: string = ""        # a file of that kind (any string)
+  @Color tint: int = 0
+}
+@AppendOnly @ByKey
+registry Tools of Tool as TL from "data/tools.lres"
+```
+
+They change nothing the program does. One is checked: `@Ref` must name a registry the program
+declares, and a field whose `@Ref` names none is an error naming the field and the registry (every
+such field is reported, not only the first).
+
+`ludicc app.ludic --emit-schema out.json` (or `ludic schema [file] [-o out.json]`) writes what the
+compiler resolved, once the types are checked and every open registry has its entries, as one JSON
+object with `"schema_version": 1`:
+
+- `records` - every `property`, `state` and `event`: its module, file, line and column, its doc
+  comment (the comment lines above it, else the one ending its line), and its fields, each with its
+  type as text, its default as written (or null), its doc, its place and its attributes
+  (`[{"name": "Range", "args": [0, 20.5]}]`);
+- `registries` - every registry: its record, prefix, resource file, whether it is open, its own
+  attributes, and its entries in their final index order (`{"key": "axe", "constant": "TL_AXE",
+  "index": 0, "file": ..., "line": ..., "col": ..., "fields": [{"name", "value", "file", "line",
+  "col"}]}`), with `contributors`: which resource file or file of `def`s brought which keys in;
+- `consts` - every const: its type, its value as written, its module and doc;
+- `functions` - every function a `fn` value can name with no arguments (the states it takes are the
+  runtime's to supply): its return type, `fn_type` and signature.
+
+Each list is sorted by name (then file and line), a registry's entries are in index order, and the
+paths are the ones the compiler read, so two runs over the same source write the same file. The
+engine's runtime is left out.
+
 ### Default parameters, and calls that name what they change
 
 A parameter can have a default, and a call leaves out what it does not change - the last ones when
@@ -2055,6 +2098,8 @@ ludic test tests/math.ludic --test adds  # just the test named "adds" (-v: every
 ludic test -j 4                          # four tests at once (default: one per CPU)
 ludic test packages/ludic.base          # the test programs under a directory (a package's)
 ludic build --check                      # every check a build makes, nothing written
+ludic build --check --diagnostics=json   # the same, every error as a JSON array on stdout
+ludic schema -o build/schema.json        # records, registries, entries and consts, for editors
 ludic deps                               # how tangled the modules are, as the compiler resolved them
 ludic deps --check tests/deps-baseline.txt   # fail when a number rose (--baseline FILE writes them)
 
@@ -2067,6 +2112,14 @@ parse, the types, `export`, `uses` and layers, ports and binds, registries, and 
 (a function that can reach its end without its result, a bind to a function that is not there, an
 unknown name) - and writes nothing: no IR, no link. On Maroon Lake it takes about four seconds, for
 iterating on `uses` lines.
+
+With `--diagnostics=json` (`ludicc --check --diagnostics=json`) nothing goes to stderr: stdout is one
+JSON array of `{"file", "line", "col", "severity", "message"}` (`[]` when the program is clean; a
+`col` of 0 is a place known only by its line), and the exit status is 1 when any is an error. Every
+type error is in it, every `@Ref` naming no registry, and every module rule broken (`export`,
+`uses`); an error the parser or the code writer cannot go on from - a token it did not expect, an
+unknown name while lowering, a def into a registry that does not exist - ends the array, and type
+errors end it before the module rules are looked at.
 
 `ludic deps` compiles the program (the package's entry, or a file) with the compiler recording every
 reference its visibility pass resolves - from the module it is written in to the module of what it

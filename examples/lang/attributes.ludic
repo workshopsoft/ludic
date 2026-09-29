@@ -1,0 +1,38 @@
+# attributes.ludic — editor metadata on the @-syntax: which registry a field indexes, which constants
+# it takes, its range, its unit, the kind of file it names, that it is a colour, and a registry's own
+# rules (append only, saved by key). None of them changes what the program does: `ludicc
+# --emit-schema` carries them to an editor with every record, registry entry and const. One is
+# checked - @Ref must name a registry that exists.
+#
+# Running it prints:  2 1 Lantern 2
+program Attributes {
+  # a shop in the valley
+  property Vendor {
+    key: string = ""
+    name: string = ""                          # what the sign over the counter says
+  }
+  @AppendOnly @ByKey
+  registry Vendors of Vendor as VD
+  def Vendors store { name: "General store" }
+  def Vendors marina { name: "Marina" }
+
+  # a tool a camp keeps
+  property Tool {
+    key: string = ""
+    name: string = ""
+    @Ref(Vendors) seller: int = 0              # who sells it
+    @Range(0, 20.5) @Unit("kg") weight: float = 1.0
+    @Asset("gltf")
+    model: string = ""                         # its model, under assets/kit
+    @Color tint: int = 16777215
+    @OneOf(VD_) stocked_at: int = VD_STORE
+  }
+  @AppendOnly
+  registry Tools of Tool as TL from "data/attr_tools.lres"
+  const CAMP_TOOLS: int = 2 * VD_COUNT         # how many a camp can carry
+  # the tool a new camp starts with
+  function first_tool() -> string { return Tools[0].name }
+  entry {
+    print(`{TL_COUNT} {Tools[TL_LANTERN].seller} {Tools[TL_LANTERN].name} {CAMP_TOOLS / 2}`)
+  }
+}

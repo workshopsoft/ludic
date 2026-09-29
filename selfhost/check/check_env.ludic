@@ -41,9 +41,16 @@ function ck_reporting() -> bool {
 function ck_err(cat: pointer, n: Node, msg: pointer) -> void {
   var file: pointer = ""
   var line = 0
+  var col = 0
   if n != null {
     if n.file != null { file = n.file }
     line = n.line
+    col = n.col
+  }
+  if g_diag_json and not ck_reporting() {
+    diag_add(file, line, col, "error", msg)
+    ck_errors += 1
+    return
   }
   var m = `{file}:{itoa(line)}: error: {msg}\n`
   if ck_reporting() { m = `check[{cat}]: {file}:{itoa(line)}: {msg}\n` }
