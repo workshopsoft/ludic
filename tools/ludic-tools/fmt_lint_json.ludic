@@ -1,0 +1,91 @@
+# fmt_lint_json.ludic — `ludic-fmt --lint --json`: the violations --lint would print, as ONE JSON
+# array on stdout for an editor, `[{"file", "line", "col", "rule", "message"}]` ordered by file, then
+# line, then column; "col" only where the rule has one. Everything else --lint says goes to stderr.
+var lt_json: bool = false
+var lj_idx: []int = new []int           # the reports --lint would have printed, by index
+var lt_show_from: string = ""           # a buffer on stdin is judged as this path (its baseline, its scope)
+var lt_show_as: string = ""             # and reported under this name (--stdin-name, or "-")
+
+function lt_err(s: string) -> void { file_write(file_stderr(), s, len(s)) }
+function lt_shown(path: string) -> string {
+  if len(lt_show_from) > 0 and path == lt_show_from { return lt_show_as }
+  return path
+}
+function lt_strcmp(a: string, b: string) -> int {
+  var i = 0
+  while i < len(a) and i < len(b) {
+    if a[i] != b[i] { return a[i] - b[i] }
+    i += 1
+  }
+  return len(a) - len(b)
+}
+# report x before report y?
+function lj_before(x: int, y: int) -> bool {
+  let c = lt_strcmp(lr_file[x], lr_file[y])
+  if c != 0 { return c < 0 }
+  if lr_line[x] != lr_line[y] { return lr_line[x] < lr_line[y] }
+  if lr_col[x] != lr_col[y] { return lr_col[x] < lr_col[y] }
+  return lt_strcmp(lr_rule[x], lr_rule[y]) < 0
+}
+function lj_sort() -> void {
+  var i = 1
+  while i < len(lj_idx) {
+    let x = lj_idx[i]
+    var j = i - 1
+    while j >= 0 and lj_before(x, lj_idx[j]) {
+      lj_idx[j + 1] = lj_idx[j]
+      j -= 1
+    }
+    lj_idx[j + 1] = x
+    i += 1
+  }
+}
+function lj_hex(d: int) -> int {
+  if d < 10 { return '0' + d }
+  return 'a' + d - 10
+}
+# `s` as a JSON string, quotes included
+function lt_jq(b: Buf, s: string) -> void {
+  buf_putc(b, '"')
+  var i = 0
+  while i < len(s) {
+    let c = s[i] & 255
+    if c == '"' { buf_puts(b, "\\\"") }
+    else if c == '\\' { buf_puts(b, "\\\\") }
+    else if c == '\n' { buf_puts(b, "\\n") }
+    else if c == '\t' { buf_puts(b, "\\t") }
+    else if c == '\r' { buf_puts(b, "\\r") }
+    else if c < 32 {
+      buf_puts(b, "\\u00")
+      buf_putc(b, lj_hex(c >> 4))
+      buf_putc(b, lj_hex(c & 15))
+    }
+    else { buf_putc(b, c) }
+    i += 1
+  }
+  buf_putc(b, '"')
+}
+function lt_json_out() -> void {
+  lj_sort()
+  let b = buf_new()
+  buf_putc(b, '[')
+  var k = 0
+  while k < len(lj_idx) {
+    let i = lj_idx[k]
+    if k > 0 { buf_putc(b, ',') }
+    buf_puts(b, "\n  {\"file\": ")
+    lt_jq(b, lt_shown(lr_file[i]))
+    buf_puts(b, `, "line": {lr_line[i]}`)
+    if lr_col[i] > 0 { buf_puts(b, `, "col": {lr_col[i]}`) }
+    buf_puts(b, ", \"rule\": ")
+    lt_jq(b, lr_rule[i])
+    buf_puts(b, ", \"message\": ")
+    lt_jq(b, lr_msg[i])
+    buf_putc(b, '}')
+    k += 1
+  }
+  if k > 0 { buf_putc(b, '\n') }
+  buf_puts(b, "]\n")
+  let s = buf_str(b)
+  file_write(file_stdout(), s, cstr_len(s))
+}

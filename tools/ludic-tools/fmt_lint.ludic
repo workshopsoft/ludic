@@ -22,6 +22,7 @@ var lr_file: []string = new []string
 var lr_rule: []string = new []string
 var lr_line: []int = new []int
 var lr_msg: []string = new []string
+var lr_col: []int = new []int           # 1-based byte column, 0 when the rule has none (a file's length)
 
 function lt_atoi(s: string) -> int {
   var n = 0
@@ -103,9 +104,11 @@ function lint_config() -> bool {
   }
   return any
 }
-function lt_report(path: string, rule: string, line: int, msg: string) -> void {
+function lt_report(path: string, rule: string, line: int, msg: string) -> void { lt_report_at(path, rule, line, 0, msg) }
+function lt_report_at(path: string, rule: string, line: int, col: int, msg: string) -> void {
   push(lr_file, path)
   push(lr_rule, rule)
   push(lr_line, line)
+  push(lr_col, col)
   push(lr_msg, msg)
 }

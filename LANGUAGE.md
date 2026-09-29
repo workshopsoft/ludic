@@ -2431,6 +2431,28 @@ had when a rule came in, which it may keep but not add to, lowered automatically
 fixed - so a rule can arrive in a codebase that breaks it today (`ludic-fmt --init-baseline`
 writes it). A `;` or a `#` inside a string does not count.
 
+For editors and tools (`ludic fmt` finds the project the way these describe - the nearest
+`package.ludic` upwards from the working directory, or from the directory of `--stdin-name` - and runs
+the formatter from there):
+
+```bash
+ludic fmt --lint --json                       # the violations --lint prints, as one JSON array
+ludic fmt - --stdin-name src/a.ludic < buf    # a buffer formatted to stdout, as if it were src/a.ludic
+ludic fmt - --lint --json --stdin-name src/a.ludic < buf   # a buffer linted as src/a.ludic
+```
+
+`--lint --json` writes `[{"file", "line", "col", "rule", "message"}]` on stdout - every violation
+`--lint` would print, ordered by file, line and column (`col`, 1-based, is left out for a rule with no
+column: a file's length) - and everything else on stderr; the exit status is `--lint`'s (1 when a file
+has more than its baseline allows). Unlike `--lint`, it never rewrites the baseline. `-` reads the
+whole of stdin: formatting writes the result to stdout, and a buffer that does not read as Ludic - a
+string, template or key literal left open, a bracket never closed or closed by the wrong one - is
+refused with exit 2 and `<name>:<line>:<col>: error: ...` on stderr, nothing on stdout. With `--lint`,
+the buffer is judged as the file `--stdin-name` names, relative to the project: its baseline
+allowance applies, a name outside the `lint paths` breaks no rule (`[]`), and the report names it as
+given (or `-`). A project with no `lint` lines lints a buffer clean. `--stdin-name` ending `.md`
+formats the buffer as Markdown.
+
 ### Editors
 
 ```bash

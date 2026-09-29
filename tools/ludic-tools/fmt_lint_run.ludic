@@ -104,14 +104,23 @@ function lint_judge(init: bool) -> bool {
       file_close(f)
     }
   }
-  print(`  lint: {total} violation(s) in the baseline, {len(pf)} file/rule pair(s)`)
+  let summary = `  lint: {total} violation(s) in the baseline, {len(pf)} file/rule pair(s)`
+  if lt_json {
+    lt_err(`{summary}\n`)
+    lt_json_out()
+  } else { print(summary) }
   return ok
 }
 function lt_print_pair(path: string, rule: string, now: int, allow: int) -> void {
   var i = 0
   while i < len(lr_file) {
-    if lr_file[i] == path and lr_rule[i] == rule { print(`{path}:{lr_line[i]}: {rule}: {lr_msg[i]}`) }
+    if lr_file[i] == path and lr_rule[i] == rule {
+      if lt_json { push(lj_idx, i) } else { print(`{lt_shown(path)}:{lr_line[i]}: {rule}: {lr_msg[i]}`) }
+    }
     i += 1
   }
-  if allow > 0 { print(`  ({path} may have {allow} of {rule}, and has {now})`) }
+  if allow > 0 {
+    let note = `  ({lt_shown(path)} may have {allow} of {rule}, and has {now})`
+    if lt_json { lt_err(`{note}\n`) } else { print(note) }
+  }
 }

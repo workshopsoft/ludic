@@ -8,11 +8,16 @@
 #   ludic-fmt -w a.ludic         rewrite in place
 #   ludic-fmt --check a.ludic    exit 1 if unformatted
 #   ludic-fmt a.md               format the ```ludic fences in a document
-#   cat a.ludic | ludic-fmt -    filter mode (stdin -> stdout)
+#   cat a.ludic | ludic-fmt -    filter mode (stdin -> stdout); a buffer that does not read as
+#                                Ludic (an open string, an unclosed bracket) exits 2, why on stderr
+#   ludic-fmt --lint --json      the project's lint, as one JSON array on stdout
+#   ludic-fmt - --lint --json --stdin-name src/a.ludic    lint a buffer as that file
 program LudicFmt {
   import "fmt_lint.ludic"
   import "fmt_lint_rules.ludic"
   import "fmt_lint_run.ludic"
+  import "fmt_lint_json.ludic"
+  import "fmt_stdin.ludic"
   # ---- token kinds (mirror ludic_syntax.h) ----
   const LT_EOF: int = 0
   const LT_NL: int = 1
@@ -632,24 +637,43 @@ program LudicFmt {
     var failed = false
     var lint_only = false
     var lint_init = false
+    var json = false
+    var stdin_name = ""
+    var stdin_rel = ""
     let files = new []pointer
     var ai = 1
     while ai < arg_count() {
       let a = arg(ai)
+      if (a == "--json") { json = true;  ai += 1;  continue }
+      if (a == "--stdin-name") and ai + 1 < arg_count() { stdin_name = string(arg(ai + 1));  ai += 2;  continue }
+      if (a == "--stdin-rel") and ai + 1 < arg_count() { stdin_rel = string(arg(ai + 1));  ai += 2;  continue }
       if (a == "-w") or (a == "--write") { write = true }
       else { if (a == "--check") or (a == "-l") { check = true }
       else { if (a == "-q") or (a == "--quiet") { quiet = true }
       else { if (a == "--indent") { ai += 1;  if ai < arg_count() { indent = 0;  let d = arg(ai);  var di = 0;  while d[di] != 0 { indent = indent * 10 + (d[di] - 48);  di += 1 } } }
       else { if (a == "--lint") { lint_only = true }
       else { if (a == "--init-baseline") { lint_only = true;  lint_init = true }
-      else { if (a == "-h") or (a == "--help") { print("ludic-fmt — format Ludic source; --check also checks package.ludic's lint rules, --lint checks the project");  return }
+      else { if (a == "-h") or (a == "--help") { print("ludic-fmt — format Ludic source; --check also checks package.ludic's lint rules, --lint checks the project (--json: as a JSON array); - formats stdin (--stdin-name PATH: as that file)");  return }
       else { push(files, a) } } } } } } }
       ai += 1
     }
     if indent < 1 or indent > 8 { indent = 2 }
+    let stdin_dash = len(files) == 1 and (files[0] == "-")
+    if json and not lint_only { lt_err("ludic-fmt: --json goes with --lint\n");  exit(2) }
+    lt_json = json
+    lt_partial = json and not lint_init # a report for an editor never rewrites the baseline
+    # - --lint: a buffer on stdin, judged as the file --stdin-name names
+    if lint_only and stdin_dash {
+      if lint_init { lt_err("ludic-fmt: --init-baseline reads the project, not stdin\n");  exit(2) }
+      if not fs_lint_stdin(stdin_name, stdin_rel) { exit(1) }
+      return
+    }
     # --lint: the project's rules over its paths, against the baseline (L10)
     if lint_only {
-      if not lint_config() { print("ludic-fmt --lint: package.ludic states no `lint` rules");  exit(2) }
+      if not lint_config() {
+        if json { lt_err("ludic-fmt --lint: package.ludic states no `lint` rules\n") } else { print("ludic-fmt --lint: package.ludic states no `lint` rules") }
+        exit(2)
+      }
       let all = new []string
       var li = 0
       while li < len(lt_paths) {
@@ -668,9 +692,19 @@ program LudicFmt {
     let linting = check and lint_config()
 
     # stdin filter mode
-    if len(files) == 0 or (len(files) == 1 and (files[0] == "-")) {
+    if len(files) == 0 or stdin_dash {
       let text = slurp_stdin()
-      let out = format_source(text, false, indent)
+      let md = fs_ends(stdin_name, ".md") or fs_ends(stdin_name, ".markdown")
+      if not md {
+        lex(text)
+        if not fs_parses() {
+          var shown = stdin_name
+          if len(shown) == 0 { shown = "<stdin>" }
+          lt_err(`{shown}:{fs_err_line}:{fs_err_col}: error: {fs_err_msg}\n`)
+          exit(2)
+        }
+      }
+      let out = format_source(text, md, indent)
       file_write(file_stdout(), out, cstr_len(out))
       return
     }

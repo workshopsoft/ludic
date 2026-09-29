@@ -129,6 +129,28 @@ function cmd_test_tools() -> int {
   write_file(`{lp}/src/c.ludic`, "function h() -> string { return \"a; b\" }\n")
   if shq(`cd {lp} && {lfmt} --lint > /dev/null`) { ok("a ; inside a string is not a statement") } else { bad("a ; inside a string is not a statement") }
 
+  # --- for editors (R9): --lint --json, and a buffer on stdin -----------------
+  write_file(`{lp}/src/d.ludic`, "function d() -> int {\n  let a = 1;  let b = \"q\\\"\";  return a\n}\n")
+  let lj = `{lp}/lint.json`
+  if not shq(`cd {lp} && {lfmt} --lint --json > {lj} 2> {lp}/lint.err`) and shq(`python3 -m json.tool {lj} > /dev/null`) and shq(`grep -q '"file": "src/d.ludic", "line": 2, "col": 15, "rule": "one_statement"' {lj}`) and not shq(`grep -q 'lint:' {lj}`) {
+    ok("--lint --json: one JSON array on stdout, with the column, the summary on stderr")
+  } else { bad2("--lint --json", capture_line(`cat {lj}`)) }
+  shell(`cd {lp} && {lfmt} --init-baseline > /dev/null`)
+  write_file(`{lp}/src/d.ludic`, "function d() -> int { return 1 }\n")
+  let pinned = capture_line(`cat {lp}/lint-baseline.txt`)
+  shell(`cd {lp} && {lfmt} --lint --json > /dev/null 2>&1`)
+  check("--lint --json never lowers the baseline (plain --lint does)", capture_line(`cat {lp}/lint-baseline.txt`), pinned)
+  write_file(`{lp}/buf.txt`, "function g() -> int {\n  let b = 2;  return b\n}\n")
+  let sj = capture(`cd {lp} && {lfmt} - --lint --json --stdin-name src/new.ludic < buf.txt`)
+  if s_contains(sj, `"file": "src/new.ludic", "line": 2`) { ok("- --lint --json: a buffer judged as the file it stands for") } else { bad2("- --lint --json", sj) }
+  check("a buffer outside the lint paths breaks no rule", s_trim(capture(`cd {lp} && {lfmt} - --lint --json --stdin-name notes/new.ludic < buf.txt 2>/dev/null`)), "[]")
+  check("- formats stdin to stdout", capture_line(`printf 'function f() -> int{{return 1}}\n' | {fmt} -`), "function f() -> int { return 1 }")
+  let bad_rc = sh(`printf 'function f() -> int {{\n  let s = (1]\n}}\n' | {fmt} - --stdin-name x.ludic > {tmp_dir()}/bad.out 2> {tmp_dir()}/bad.err`)
+  if bad_rc == 2 and shq(`grep -q '^x.ludic:2:13: error:' {tmp_dir()}/bad.err`) and shq(`test ! -s {tmp_dir()}/bad.out`) {
+    ok("- refuses a buffer with a bracket closed by the wrong one: exit 2, where on stderr, nothing on stdout")
+  } else { bad2("- refuses an unreadable buffer", capture_line(`cat {tmp_dir()}/bad.err`)) }
+  check("- refuses an unclosed string", string(sh(`printf 'let s = "abc\n' | {fmt} - > /dev/null 2>&1`)), "2")
+
   # --- --check exit status, for CI and pre-commit hooks ----------------------
   let chk1 = sh(`{fmt} --check -q {tmp_dir()}/m.ludic`)
   check("--check exits 1 on unformatted input", string(chk1), "1")
