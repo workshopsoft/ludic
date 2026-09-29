@@ -1,0 +1,69 @@
+# attrs_node.ludic — @Node(model): a string naming a node inside the glTF another field of the same
+# record names. That field is @Asset("gltf") itself, or an @Ref(R) whose record has exactly one
+# @Asset("gltf") field (the model is found through the row). Anything else is an error naming it.
+
+# the field of record d called name, or null
+function at_field_of(d: Node, name: pointer) -> Node {
+  var k = 0
+  while k < len(d.kids) {
+    if d.kids[k].s != null and vis_plain(d.kids[k].s) == name { return d.kids[k] }
+    k += 1
+  }
+  return null
+}
+# field f's argument to attribute a as written, or null when f does not carry it
+function at_arg_of(f: Node, a: pointer) -> pointer {
+  if f.at < 0 { return null }
+  var j = g_at_start[f.at]
+  while j < g_at_start[f.at] + g_at_count[f.at] {
+    if g_at_name[j] == a { return g_at_first[j] }
+    j += 1
+  }
+  return null
+}
+function at_is_gltf(f: Node) -> bool {
+  let a = at_arg_of(f, "Asset")
+  return a != null and a == "gltf"
+}
+# the record called name (a property or record), or null
+function at_record(name: pointer) -> Node {
+  let plain = vis_plain(name)
+  var i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_COMP and prog[i].s != null and vis_plain(prog[i].s) == plain { return prog[i] }
+    i += 1
+  }
+  return null
+}
+# how many @Asset("gltf") fields record r carries
+function at_gltf_count(r: Node) -> int {
+  var n = 0
+  var k = 0
+  while k < len(r.kids) {
+    if at_is_gltf(r.kids[k]) { n += 1 }
+    k += 1
+  }
+  return n
+}
+function at_check_node(d: Node, f: Node, target: pointer) -> void {
+  let where = `field {d.s}.{f.s}: @Node({target})`
+  let t = at_field_of(d, target)
+  if t == null {
+    perr_at(f.file, f.line, f.col, `{where} names no field - {d.s} has no field {target}`)
+    return
+  }
+  if at_is_gltf(t) { return }
+  let reg = at_arg_of(t, "Ref")
+  if reg == null {
+    perr_at(f.file, f.line, f.col, `{where}: {target} is neither @Asset("gltf") nor an @Ref to a registry of models`)
+    return
+  }
+  let r = reg_find(reg)
+  if r < 0 { return }                                  # @Ref's own check says so
+  let rec = at_record(g_rg_type[r])
+  var n = 0
+  if rec != null { n = at_gltf_count(rec) }
+  if n != 1 {
+    perr_at(f.file, f.line, f.col, `{where}: {target} is an @Ref({reg}), and its record {g_rg_type[r]} has {n} @Asset("gltf") fields, not one`)
+  }
+}

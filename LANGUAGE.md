@@ -639,14 +639,19 @@ property Tool {
   @Range(0, 20.5) @Unit("kg") weight: float = 1.0
   @Asset("gltf") model: string = ""        # a file of that kind (any string)
   @Color tint: int = 0
+  @Node(model) grip: string = ""           # a node inside the glTF that `model` names
+  @Derived reach: float = 0.0              # worked out at boot: anything written is overwritten
+  @Text @Multiline blurb: string = ""      # read by the player (so translated), and prose
+  @Key bind: int = 0                       # a key code
 }
 @AppendOnly @ByKey
 registry Tools of Tool as TL from "data/tools.lres"
 ```
 
-They change nothing the program does. One is checked: `@Ref` must name a registry the program
-declares, and a field whose `@Ref` names none is an error naming the field and the registry (every
-such field is reported, not only the first).
+They change nothing the program does. Two are checked, and every field that fails is reported, not
+only the first: `@Ref` must name a registry the program declares, and `@Node(f)` must name a field
+`f` of the same record that is either `@Asset("gltf")` or an `@Ref` to a registry whose record has
+exactly one `@Asset("gltf")` field (the model is then the referenced row's).
 
 `ludicc app.ludic --emit-schema out.json` (or `ludic schema [file] [-o out.json]`) writes what the
 compiler resolved, once the types are checked and every open registry has its entries, as one JSON

@@ -1,0 +1,18 @@
+# attributes: @Node names a field of its record that names a glTF - `handle` names no field, `tag`
+# is a plain string, and `kit` refers to a registry whose record has two models (all three are reported)
+program R {
+  property Kit {
+    key: string = ""
+    @Asset("gltf") body: string = ""
+    @Asset("gltf") lod: string = ""
+  }
+  registry Kits of Kit
+  property Tool {
+    tag: string = ""
+    @Ref(Kits) kit: int = 0
+    @Node(handle) grip: string = ""
+    @Node(tag) tip: string = ""
+    @Node(kit) hook: string = ""
+  }
+  entry { print(KITS_COUNT) }
+}
