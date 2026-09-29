@@ -12,7 +12,9 @@ const LT_HEAD: int = 128               # 32 words
 @alloc_ok("a map being made or baked: the tiles written once")
 function ltt2_write(render3d_st: mut Render3dState, f: pointer, base: int) -> int {
   let n = TERRAIN_RES / TT_TEX
-  let side = render3d_st.ter_ortho_w / n
+  # a map with no photograph (Lamar's ground is painted by its materials) has no photograph sections
+  var side = 0
+  if render3d_st.ter_ortho_px != null { side = render3d_st.ter_ortho_w / n }
   let head = words(32)
   for k in 0 .. 32 { head[k] = 0 }
   file_write(f, data_of(head), LT_HEAD)
@@ -20,11 +22,13 @@ function ltt2_write(render3d_st: mut Render3dState, f: pointer, base: int) -> in
   head[8] = at;  at += ltt2_write_heights(render3d_st, f, n)
   let nrm = ltt2_normals_back(render3d_st)
   head[10] = at;  at += ltt2_write_normals(f, nrm, n)
-  head[11] = at;  at += ltt2_write_ortho(render3d_st, f, n, side)
+  head[11] = at
+  if side > 0 { at += ltt2_write_ortho(render3d_st, f, n, side) }
   head[12] = at;  at += ltt2_write_coarse_h(render3d_st, f)
   head[13] = at;  at += ltt2_write_coarse_n(f, nrm)
   free(nrm)
-  head[14] = at;  at += ltt2_write_coarse_o(render3d_st, f)
+  head[14] = at
+  if side > 0 { at += ltt2_write_coarse_o(render3d_st, f) }
   head[0] = LT_MAGIC;  head[1] = LT_VERSION;  head[2] = TT_TEX;  head[3] = n;  head[4] = side
   head[5] = TERRAIN_RES;  head[6] = render3d_st.ter_ortho_w;  head[7] = TT_COARSE;  head[15] = at
   file_seek(f, base, 0)

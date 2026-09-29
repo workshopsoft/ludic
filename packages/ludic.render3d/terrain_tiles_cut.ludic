@@ -9,7 +9,7 @@ const TT_HEAD: int = 64                    # bytes: 16 words
 
 @alloc_ok("a map being made: its tiles' file and their pools, once, not a frame")
 function terrain_tiles_cut(render3d_st: mut Render3dState) -> void {
-  if render3d_st.tt_baked or render3d_st.tt_dir == "" or render3d_st.ter_heights == null or render3d_st.ter_ortho_px == null { return }
+  if render3d_st.tt_baked or render3d_st.tt_dir == "" or render3d_st.ter_heights == null { return }
   let t0 = gl_now_us()
   tt_close(render3d_st)
   let path = `{render3d_st.tt_dir}/{render3d_st.tt_key}.tiles`

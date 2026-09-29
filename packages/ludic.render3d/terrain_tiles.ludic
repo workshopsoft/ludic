@@ -28,6 +28,7 @@ function ter_h(render3d_st: mut Render3dState, tx: int, tz: int) -> float {
 # the photograph's texel (px, pz) as 0xRRGGBB
 function ter_o(render3d_st: mut Render3dState, px: int, pz: int) -> int {
   let side = render3d_st.tt_oside
+  if side == 0 { return 0 }
   let s = tt_slot(render3d_st, (pz / side) * render3d_st.tt_n + (px / side))
   if s < 0 { return 0 }
   return render3d_st.tt_o[s * side * side + (pz % side) * side + (px % side)]

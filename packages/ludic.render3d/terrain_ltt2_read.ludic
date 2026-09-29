@@ -74,6 +74,7 @@ function tt_decode(render3d_st: mut Render3dState, t: int, s: int) -> void {
     render3d_st.tt_nm[s * n2 + i] = gvk_half(float_bits(lt_oct_dec(e, false))) | (gvk_half(float_bits(lt_oct_dec(e, true))) << 16)
   }
   let side = render3d_st.tt_oside
+  if side == 0 { return }
   let o2 = side * side
   file_seek(f, render3d_st.tt_ooff + t * o2 * 3, 0)
   file_read(f, data_of(sc), o2 * 3)
@@ -100,21 +101,31 @@ function ltt2_gpu_coarse(render3d_st: mut Render3dState) -> void {
   let nm = tex_target(render3d_st, c, c, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
   gpu_tex_fill(render3d_st, nm, GL_RG16F, c, c, GL_RG, GL_FLOAT, data_of(xz))
   free(xz)
-  file_seek(f, render3d_st.tt_cooff, 0)
-  file_read(f, data_of(raw), c * c * 3)
+  # no photograph (side 0): none on the GPU either, as a map without one has always had
+  var o = 0
+  if render3d_st.tt_oside > 0 { o = ltt2_gpu_coarse_ortho(render3d_st, raw) }
+  free(raw)
+  if render3d_st.ter_height_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_height_tex) }
+  if render3d_st.ter_normal_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_normal_tex) }
+  if render3d_st.ter_ortho_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_ortho_tex) }
+  render3d_st.ter_height_tex = h;  render3d_st.ter_normal_tex = nm
+  if o != 0 { render3d_st.ter_ortho_tex = o }
+  render3d_st.gvk_tag = was
+  tp_pool(render3d_st)
+}
+
+# the coarse photograph from the file into an sRGB texture with mips (raw: c * c * 3 bytes of scratch)
+function ltt2_gpu_coarse_ortho(render3d_st: mut Render3dState, raw: []byte) -> int {
+  let c = TT_COARSE
+  file_seek(render3d_st.tt_file, render3d_st.tt_cooff, 0)
+  file_read(render3d_st.tt_file, data_of(raw), c * c * 3)
   let o = tex_target(render3d_st, c, c, GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
   gpu_tex_fill(render3d_st, o, GL_SRGB8_ALPHA8, c, c, GL_RGB, GL_UNSIGNED_BYTE, data_of(raw))
-  free(raw)
   gpu_tex_bind(render3d_st, GPU_TEX2D, o)
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
   gpu_tex_mips(render3d_st, GPU_TEX2D)
   gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
-  if render3d_st.ter_height_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_height_tex) }
-  if render3d_st.ter_normal_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_normal_tex) }
-  if render3d_st.ter_ortho_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_ortho_tex) }
-  render3d_st.ter_height_tex = h;  render3d_st.ter_normal_tex = nm;  render3d_st.ter_ortho_tex = o
-  render3d_st.gvk_tag = was
-  tp_pool(render3d_st)
+  return o
 }
 
 # ---- the bake -------------------------------------------------------------------------------
@@ -123,7 +134,7 @@ function ltt2_gpu_coarse(render3d_st: mut Render3dState) -> void {
 # The whole copy is left holding the quantized values, as everything will read them.
 @alloc_ok("a bake: once, at build time")
 export function terrain_tiles_bake(render3d_st: mut Render3dState, path: string, key: string, version: int, inputs_hash: long) -> bool {
-  if render3d_st.ter_heights == null or render3d_st.ter_ortho_px == null or render3d_st.ter_normal_tex == 0 { return false }
+  if render3d_st.ter_heights == null or render3d_st.ter_normal_tex == 0 { return false }
   Fs.mkdir(Path.dir(path))
   let f = file_open(path, "wb")
   if f == null { return false }
