@@ -1,0 +1,5 @@
+<div>
+  <p>got {got}</p>
+  <Cell caption="a" on-click="pick(1)"/>
+  <Cell caption="b" on-click="pick(2)"/>
+</div>

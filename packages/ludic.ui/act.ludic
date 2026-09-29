@@ -26,7 +26,7 @@ function act_parse(src: string, err: []string) -> UiAct {
       push(a.exprs, px_cond(r))
     } else if act_keyword(r, "emit") {
       push(a.kinds, A_EMIT)
-      push(a.names, rd_name(r))
+      push(a.names, tpl_event(rd_name(r)))   # `emit click` reaches on-click, which is kept as press
       push(a.exprs, null)
     } else {
       push(a.kinds, A_CALL)

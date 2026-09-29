@@ -65,3 +65,20 @@ function ct_is_int(s: string, i: int) -> bool {
   }
   return false
 }
+
+# a press let go over a control: on a select's < it steps back, anywhere else on it forward (the <
+# stepped forward too, so a cycler's left arrow did the right one's job)
+function ct_activate_at(ui_st: mut UiState, n: UiNode, x: float, y: float) -> void {
+  if ct_type(n) == "select" and ct_over_part(n, "ui-prev", x, y) {
+    ct_step(ui_st, n, -1)
+    return
+  }
+  ct_activate(ui_st, n)
+}
+function ct_over_part(n: UiNode, cls: string, x: float, y: float) -> bool {
+  for i in 0 .. len(n.children) {
+    let c = n.children[i]
+    if sel_has(c.classes, cls) and x >= c.x and y >= c.y and x < c.x + c.cw and y < c.y + c.ch { return true }
+  }
+  return false
+}

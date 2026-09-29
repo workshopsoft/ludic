@@ -1,0 +1,51 @@
+# ui_select_arrows.ludic - a select is a cycler: a press let go on its < steps back and on its >
+# (or anywhere else on it, or Enter) forward. The < once stepped forward too.
+import "ludic.ui"
+program UiSelectArrows {
+  numbers float
+  state SelState { v: int = 1 }
+  view V (sel_st: mut SelState) {
+    v = sel_st.v
+    on set(x: int) { sel_st.v = x }
+  }
+  const PAGE: string = "<ui><screen name='s'><select label='Every' value='{v}' on-change='set(event.value)'><option value='{0}'>Off</option><option value='{1}'>5</option><option value='{2}'>15</option><option value='{3}'>30</option></select></screen></ui>"
+  function frame(ui_st: mut UiState, x: float, y: float, down: bool) -> UiNode {
+    let i = new UiInput
+    i.x = x
+    i.y = y
+    i.down = down
+    ui_input(ui_st, i)
+    ui_show(ui_st, "s", view_v(), 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes(ui_st, "s", view_v())
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+    return root
+  }
+  function part(n: UiNode, cls: string) -> UiNode {
+    for i in 0 .. len(n.children) {
+      if List.contains(n.children[i].classes, cls) { return n.children[i] }
+      let f = part(n.children[i], cls)
+      if f != null { return f }
+    }
+    return null
+  }
+  function click(ui_st: mut UiState, cls: string) -> void {
+    let root = frame(ui_st, -1.0, -1.0, false)
+    let p = part(root, cls)
+    let x = p.x + p.cw / 2.0
+    let y = p.y + p.ch / 2.0
+    frame(ui_st, x, y, false)
+    frame(ui_st, x, y, true)
+    frame(ui_st, x, y, false)
+    frame(ui_st, x, y, false)
+  }
+  entry (ui_st: mut UiState, sel_st: SelState) {
+    ui_backend(ui_st, new UiBackend)
+    ui_load_text(ui_st, PAGE, "s.xml")
+    frame(ui_st, -1.0, -1.0, false)
+    click(ui_st, "ui-prev")
+    let a = sel_st.v
+    click(ui_st, "ui-next")
+    click(ui_st, "ui-next")
+    print(`prev {a} next next {sel_st.v}`)
+  }
+}
