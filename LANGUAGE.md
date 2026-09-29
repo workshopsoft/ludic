@@ -715,7 +715,9 @@ field's type, `@OneOf` and `@Range` hold, an `@Ref` into a game registry is in r
 into a `@PerMap` registry names a row of that table in the same map (in any of its chunks; `""` is
 none). A key is written once in a file. Errors carry the map file's line and column, through the
 diagnostics as any other (`--diagnostics=json`); `--no-maps` leaves the maps alone, and no maps
-root is nothing to check. `LUDIC_PERMAP_SRC=<file>` appends what the compiler wrote for each table.
+root is nothing to check. `ludic build --check` reads them only for the package's `entry` (the game):
+a partial program - a unit test, a molecule, a bake's runner - lacks the game's constants and cannot
+judge them, so they are left alone there unless `--maps` asks. `LUDIC_PERMAP_SRC=<file>` appends what the compiler wrote for each table.
 
 ### Editor attributes and the schema (`@Ref`, `@Range`, ..., `ludic schema`)
 
