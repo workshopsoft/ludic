@@ -181,6 +181,7 @@ function sc_attrs(b: Buf, g: int) -> void {
       jq_put(b, g_at_name[j])
       buf_puts(b, ", \"args\": ")
       buf_puts(b, g_at_args[j])
+      if g_at_unres[j] { buf_puts(b, ", \"unresolved\": true") }
       buf_puts(b, "}")
       j += 1
     }

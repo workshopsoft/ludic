@@ -18,7 +18,8 @@
 #   }
 #   @AppendOnly @ByKey registry Items of Item as IT from "items.lres"
 #
-# They change nothing the program does. Four are checked: @Ref must name a registry that exists,
+# They change nothing the program does. A target the program does not have at all is a warning and
+# "unresolved" in the schema (a package names the game's registry it cannot import). Four are checked: @Ref must name a registry that exists,
 # @Node and @Clip a field of its record that names a glTF (attrs_node.ludic), and a listing @OneOf
 # constants that exist, and @Tint a constant that exists (a slot's row in the game's registry). A
 # field's or a registry's attributes are a group (Node.at, g_rg_at): a run of names, each with its
@@ -29,6 +30,7 @@ var g_at_name: []pointer = new []pointer
 var g_at_args: []pointer = new []pointer     # the arguments, a JSON array: ["Items"], [0, 1.5]
 var g_at_first: []pointer = new []pointer    # the first argument as written (@Ref's registry), or null
 var g_at_nargs: []int = new []int
+var g_at_unres: []bool = new []bool          # its target is not in this program (a warning; the schema says so)
 var g_at_open: int = -1                      # the group the attributes being read go into
 var g_at_decl: []pointer = new []pointer     # @AppendOnly / @ByKey read before a declaration
 var g_at_keep: bool = false                  # `export` parses its declaration one call down
@@ -44,6 +46,7 @@ function at_push(g: int, name: pointer, args: pointer, first: pointer, nargs: in
   push(g_at_args, args)
   push(g_at_first, first)
   push(g_at_nargs, nargs)
+  push(g_at_unres, false)
   g_at_count[g] = g_at_count[g] + 1
 }
 # `(a, "b", -1.5)` after an attribute's name, if it is there, as a JSON array; the first argument
@@ -176,14 +179,31 @@ function at_check_field(d: Node, f: Node) -> void {
   let g = f.at
   var j = g_at_start[g]
   while j < g_at_start[g] + g_at_count[g] {
-    if (g_at_name[j] == "Ref") and reg_find(g_at_first[j]) < 0 {
-      perr_at(f.file, f.line, f.col, `field {d.s}.{f.s}: @Ref({g_at_first[j]}) names no registry - there is no registry {g_at_first[j]}`)
-    }
+    if (g_at_name[j] == "Ref") and reg_find(g_at_first[j]) < 0 { at_target(d, f, j, "a registry") }
     if (g_at_name[j] == "Node") or (g_at_name[j] == "Clip") { at_check_node(d, f, g_at_name[j], g_at_first[j]) }
     if g_at_name[j] == "OneOf" { at_check_oneof(d, f, j) }
-    if (g_at_name[j] == "Tint") and not at_const_exists(g_at_first[j]) {
-      perr_at(f.file, f.line, f.col, `field {d.s}.{f.s}: @Tint({g_at_first[j]}) names no tint slot - there is no constant {g_at_first[j]}`)
-    }
+    if (g_at_name[j] == "Tint") and not at_const_exists(g_at_first[j]) { at_const_target(d, f, j, g_at_first[j]) }
     j += 1
   }
+}
+# a target this program does not have: a package can name the game's registry or constant without
+# importing it, so that is a warning and the schema says unresolved; a name of another kind is an error
+function at_target(d: Node, f: Node, j: int, want: pointer) -> void {
+  let x = g_at_first[j]
+  let where = `field {d.s}.{f.s}: @{g_at_name[j]}({x})`
+  if at_decl_named(x) {
+    perr_at(f.file, f.line, f.col, `{where} names {x}, which is not {want}`)
+    return
+  }
+  g_at_unres[j] = true
+  pwarn_at(f.file, f.line, f.col, `{where}: this program has no {x} - left unresolved`)
+}
+function at_const_target(d: Node, f: Node, j: int, x: pointer) -> void {
+  let where = `field {d.s}.{f.s}: @{g_at_name[j]}`
+  if at_decl_named(x) {
+    perr_at(f.file, f.line, f.col, `{where} names {x}, which is not a constant`)
+    return
+  }
+  g_at_unres[j] = true
+  pwarn_at(f.file, f.line, f.col, `{where}: this program has no constant {x} - left unresolved`)
 }

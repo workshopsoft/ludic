@@ -138,6 +138,16 @@ function perr_at(file: pointer, line: int, col: int, msg: pointer) -> void {
     g_dg_errors += 1
   }
 }
+# a warning: kept in the JSON array, or said on stderr; the build goes on
+function pwarn_at(file: pointer, line: int, col: int, msg: pointer) -> void {
+  var f = file
+  if f == null { f = "" }
+  if g_diag_json { diag_add(f, line, col, "warning", msg) }
+  else {
+    let m = `{f}:{itoa(line)}: warning: {msg}\n`
+    file_write(file_stderr(), m, len(m))
+  }
+}
 function diag_stop_if_errors() -> void {
   if g_dg_errors > 0 { diag_exit(1) }
 }

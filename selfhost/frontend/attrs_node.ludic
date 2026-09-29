@@ -75,9 +75,7 @@ function at_check_oneof(d: Node, f: Node, j: int) -> void {
   let names = at_arg_names(g_at_args[j])
   var i = 0
   while i < len(names) {
-    if not at_const_exists(names[i]) {
-      perr_at(f.file, f.line, f.col, `field {d.s}.{f.s}: @OneOf names {names[i]}, and there is no constant {names[i]}`)
-    }
+    if not at_const_exists(names[i]) { at_const_target(d, f, j, names[i]) }
     i += 1
   }
 }
@@ -101,6 +99,15 @@ function at_const_exists(name: pointer) -> bool {
   var i = 0
   while i < len(prog) {
     if prog[i].kind == N_CONST and prog[i].s != null and vis_plain(prog[i].s) == name { return true }
+    i += 1
+  }
+  return false
+}
+# a declaration of any kind (a record, a function, a const, a state ...) called name
+function at_decl_named(name: pointer) -> bool {
+  var i = 0
+  while i < len(prog) {
+    if prog[i].s != null and vis_plain(prog[i].s) == name { return true }
     i += 1
   }
   return false
