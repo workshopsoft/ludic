@@ -1,0 +1,415 @@
+# emit_schema_code_game.ludic — the "code" section's handlers, models, prefabs, scenes and fn_refs
+# (emit_schema_code.ludic says the shape of the rest).
+#
+#   handlers  name (as written: a scene's without its scene), module, at, phase (null for a hook),
+#             hook (null, "On", "OnSpawn", "OnDespawn", "OnAttach", "OnDetach", "OnEnable",
+#             "OnDisable", "OnStart", "OnQuit"), target (the hook's event, model or property),
+#             public (@Public), net ("server" for @Server, "predicted" for @Predicted, else null),
+#             queries (null, or {"these": [{"property", "filter"}], "on": model or null}), scene, layer
+#   models    name, module, at, owned (@Owned), properties [{"name", "sync"}]
+#   prefabs   name, model, module, at, components [{"property", "fields": [{"name", "value"}]}]
+#   scenes    name, module, at, start, public, shows, lasts (as written) and then, loads (the scene it
+#             goes on to), enter, exit (has one), layers
+#   fn_refs   every `fn name` written, in code or data: fn, module, at, and the slot it fills -
+#             slot_kind "registry" (slot "Registry.field", entry its key), "port" (a bind's
+#             "Port.member"), "port_default", "default" (a record field's), "record" (a `new` or a
+#             spawn's "Type.field"), "event" (an emit's "Event.field"), "arg" ("callee(i)", the i-th
+#             argument written), "assign" (`s.tick = fn f`: "s.tick"), "let" (the name) or "value"
+#             (anywhere else, slot null)
+
+# ---- handlers -------------------------------------------------------------------------------------
+function cx_handlers(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_cx_h) {
+    let h = g_cx_h[i]
+    if cx_written(h) { push(keys, sc_key(g_cx_hname[i], h.file, h.line)) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let k = xs[i]
+    let h = g_cx_h[k]
+    let hook = g_cx_hhook[k]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, g_cx_hname[k])
+    buf_puts(b, ", ")
+    cx_module(b, h.file)
+    buf_puts(b, ", ")
+    cx_at(b, h)
+    buf_puts(b, ", \"phase\": ")
+    if hook == null or (hook == "OnStart") or (hook == "OnQuit") { sc_str(b, h.ty) } else { buf_puts(b, "null") }
+    buf_puts(b, ", \"hook\": ")
+    sc_str(b, hook)
+    buf_puts(b, ", \"target\": ")
+    sc_str(b, g_cx_htarget[k])
+    buf_puts(b, ", \"public\": ")
+    sc_bool(b, g_cx_hpub[k])
+    buf_puts(b, ", \"net\": ")
+    if h.ival == 1 { jq_put(b, "server") } else if h.ival == 2 { jq_put(b, "predicted") } else { buf_puts(b, "null") }
+    buf_puts(b, ", \"queries\": ")
+    cx_queries(b, g_cx_hq[k])
+    buf_puts(b, ", \"scene\": ")
+    sc_str(b, g_cx_hscene[k])
+    buf_puts(b, ", \"layer\": ")
+    sc_str(b, g_cx_hlayer[k])
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+# @Queries(these: [P {filter}, ...], on: M): its terms, a filter as written (parse_queries_anno)
+function cx_queries(b: Buf, q: Node) -> void {
+  if q == null or q.c == null {
+    buf_puts(b, "null")
+    return
+  }
+  buf_puts(b, "{\"these\": [")
+  var on: pointer = null
+  var n = 0
+  var i = 0
+  while i < len(q.c.kids) {
+    let t = q.c.kids[i]
+    if t.ival == 1 {
+      on = t.s
+    } else {
+      if n > 0 { buf_puts(b, ", ") }
+      buf_puts(b, "{\"property\": ")
+      jq_put(b, t.s)
+      buf_puts(b, ", \"filter\": ")
+      sc_str(b, sc_text(t.file, t.sp0, t.sp1))
+      buf_puts(b, "}")
+      n += 1
+    }
+    i += 1
+  }
+  buf_puts(b, "], \"on\": ")
+  sc_str(b, on)
+  buf_puts(b, "}")
+}
+
+# ---- models and prefabs ---------------------------------------------------------------------------
+function cx_models(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_ARCH and d.s != null and cx_written(d) { push(keys, sc_key(sc_name(d.s), d.file, d.line)) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let d = prog[xs[i]]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, sc_name(d.s))
+    buf_puts(b, ", ")
+    cx_module(b, d.file)
+    buf_puts(b, ", ")
+    cx_at(b, d)
+    buf_puts(b, ", \"owned\": ")
+    sc_bool(b, d.ival == 1)
+    buf_puts(b, ", \"properties\": [")
+    var k = 0
+    while k < len(d.kids) {
+      if k > 0 { buf_puts(b, ", ") }
+      buf_puts(b, "{\"name\": ")
+      jq_put(b, sc_name(d.kids[k].s))
+      buf_puts(b, ", \"sync\": ")
+      sc_bool(b, d.kids[k].ival == 1)
+      buf_puts(b, "}")
+      k += 1
+    }
+    buf_puts(b, "]}")
+    i += 1
+  }
+}
+function cx_prefabs(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_PREFAB and d.s != null and cx_written(d) { push(keys, sc_key(sc_name(d.s), d.file, d.line)) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let d = prog[xs[i]]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, sc_name(d.s))
+    buf_puts(b, ", \"model\": ")
+    sc_str(b, sc_name(d.ty))
+    buf_puts(b, ", ")
+    cx_module(b, d.file)
+    buf_puts(b, ", ")
+    cx_at(b, d)
+    buf_puts(b, ", \"components\": [")
+    var k = 0
+    while k < len(d.kids) {
+      let ci = d.kids[k]
+      if k > 0 { buf_puts(b, ", ") }
+      buf_puts(b, "{\"property\": ")
+      jq_put(b, sc_name(ci.s))
+      buf_puts(b, ", \"fields\": [")
+      var f = 0
+      while ci.a != null and f < len(ci.a.kids) {
+        let fi = ci.a.kids[f]
+        if f > 0 { buf_puts(b, ", ") }
+        buf_puts(b, "{\"name\": ")
+        jq_put(b, fi.s)
+        buf_puts(b, ", \"value\": ")
+        sc_str(b, sc_text(fi.file, fi.sp0, fi.sp1))
+        buf_puts(b, "}")
+        f += 1
+      }
+      buf_puts(b, "]}")
+      k += 1
+    }
+    buf_puts(b, "]}")
+    i += 1
+  }
+}
+
+# ---- scenes ---------------------------------------------------------------------------------------
+function cx_scenes(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_scenes) {
+    let n = g_scenes[i]
+    if cx_written(n) and i < len(g_cx_slayers) { push(keys, sc_key(sc_name(n.s), n.file, n.line)) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let k = xs[i]
+    let n = g_scenes[k]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, sc_name(n.s))
+    buf_puts(b, ", ")
+    cx_module(b, n.file)
+    buf_puts(b, ", ")
+    cx_at(b, n)
+    buf_puts(b, ", \"start\": ")
+    sc_bool(b, n.ival == g_start_scene)
+    buf_puts(b, ", \"public\": ")
+    sc_bool(b, g_cx_spub[k])
+    buf_puts(b, ", \"shows\": ")
+    sc_str(b, n.ty)
+    buf_puts(b, ", \"lasts\": ")
+    sc_str(b, sc_text(n.file, n.sp0, n.sp1))
+    buf_puts(b, ", \"then\": ")
+    sc_str(b, g_cx_sthen[k])
+    buf_puts(b, ", \"loads\": ")
+    sc_str(b, g_cx_sloads[k])
+    buf_puts(b, ", \"enter\": ")
+    sc_bool(b, n.a != null)
+    buf_puts(b, ", \"exit\": ")
+    sc_bool(b, n.b != null)
+    buf_puts(b, ", \"layers\": ")
+    cx_list(b, g_cx_slayers[k])
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+
+# ---- fn refs --------------------------------------------------------------------------------------
+# the walk's findings: each `fn name` node met, with the slot it was met in (the first meeting wins)
+var g_cx_wn: []Node = new []Node
+var g_cx_wkind: []pointer = new []pointer
+var g_cx_wslot: []pointer = new []pointer
+var g_cx_wentry: []pointer = new []pointer
+
+function cx_fn_refs(b: Buf) -> void {
+  cx_walk_all()
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_cx_fnrefs) {
+    let n = g_cx_fnrefs[i]
+    if cx_written_or_data(n) and n.s != null { push(keys, `{cx_at_key(n)}\t{n.s}`) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  var first = true
+  var last: pointer = null
+  while i < len(xs) {
+    let n = g_cx_fnrefs[xs[i]]
+    let key = keys[xs[i]]
+    if last == null or not (key == last) {           # a node read twice is one site
+      last = key
+      var w = 0
+      while w < len(g_cx_wn) and g_cx_wn[w] != n { w += 1 }
+      sc_sep(b, first, "      ")
+      first = false
+      buf_puts(b, "{\"fn\": ")
+      jq_put(b, sc_name(n.s))
+      buf_puts(b, ", ")
+      cx_module(b, n.file)
+      buf_puts(b, ", ")
+      cx_at(b, n)
+      buf_puts(b, ", \"slot_kind\": ")
+      if w < len(g_cx_wn) { jq_put(b, g_cx_wkind[w]) } else { jq_put(b, "value") }
+      buf_puts(b, ", \"slot\": ")
+      if w < len(g_cx_wn) { sc_str(b, g_cx_wslot[w]) } else { buf_puts(b, "null") }
+      buf_puts(b, ", \"entry\": ")
+      if w < len(g_cx_wn) { sc_str(b, g_cx_wentry[w]) } else { buf_puts(b, "null") }
+      buf_puts(b, "}")
+    }
+    i += 1
+  }
+}
+# every place a `fn name` can be written, the narrowest slots first: a registry's rows, the binds, the
+# ports' defaults, then the program's declarations and the bodies kept outside them
+function cx_walk_all() -> void {
+  var i = 0
+  while i < len(g_df_rec) {
+    cx_walk_rec(g_df_rec[i], "registry", g_df_reg[i], g_df_key[i], 0)
+    i += 1
+  }
+  i = 0
+  while i < len(g_bd) {
+    if g_bd[i].a != null { cx_walk_rec(g_bd[i].a, "port", g_bd[i].s, null, 0) }
+    i += 1
+  }
+  i = 0
+  while i < len(g_pt_comp) {
+    let c = g_pt_comp[i]
+    var f = 0
+    while f < len(c.kids) {
+      cx_walk(c.kids[f].a, "port_default", `{g_pt_name[i]}.{c.kids[f].s}`, null, 0)
+      f += 1
+    }
+    i += 1
+  }
+  i = 0
+  while i < len(prog) {
+    if prog[i].file == null or not is_runtime_file(prog[i].file) { cx_walk(prog[i], "value", null, null, 0) }
+    i += 1
+  }
+  cx_walk_list(g_tests)
+  cx_walk_list(g_onlisten)
+  cx_walk_list(g_onspawn)
+  cx_walk_list(g_ondespawn)
+  cx_walk_list(g_onattach)
+  cx_walk_list(g_ondetach)
+  cx_walk_list(g_onenable)
+  cx_walk_list(g_ondisable)
+  cx_walk_list(g_scenes)
+}
+function cx_walk_list(xs: []Node) -> void {
+  var i = 0
+  while i < len(xs) {
+    cx_walk(xs[i], "value", null, null, 0)
+    i += 1
+  }
+}
+# a record literal's values, each in the slot owner.field
+function cx_walk_rec(rec: Node, kind: pointer, owner: pointer, entry: pointer, depth: int) -> void {
+  if rec == null or depth > 400 { return }
+  var i = 0
+  while i < len(rec.kids) {
+    let fi = rec.kids[i]
+    if fi.kind == E_FINIT { cx_walk(fi.a, kind, `{owner}.{fi.s}`, entry, depth + 1) } else { cx_walk(fi, "value", null, null, depth + 1) }
+    i += 1
+  }
+}
+function cx_callee(c: Node) -> pointer {
+  if c == null { return null }
+  if c.kind == E_ID and c.s != null { return sc_name(c.s) }
+  if c.kind == E_MEMBER and c.a != null and c.a.kind == E_ID and c.a.s != null and c.s != null { return `{c.a.s}.{c.s}` }
+  return null
+}
+function cx_walk(n: Node, kind: pointer, slot: pointer, entry: pointer, depth: int) -> void {
+  if n == null or depth > 400 { return }
+  let k = n.kind
+  let d = depth + 1
+  if k == E_FNREF {
+    push(g_cx_wn, n)
+    push(g_cx_wkind, kind)
+    push(g_cx_wslot, slot)
+    push(g_cx_wentry, entry)
+    return
+  }
+  if k == E_NEW and n.a != null and n.a.kind == E_REC and n.s != null {
+    cx_walk_rec(n.a, "record", sc_name(n.s), null, d)
+    cx_walk(n.b, "value", null, null, d)
+    return
+  }
+  if k == S_EMIT and n.a != null and n.s != null {
+    cx_walk_rec(n.a, "event", sc_name(n.s), null, d)
+    return
+  }
+  if (k == S_SPAWN or k == N_PREFAB) {
+    var i = 0
+    while i < len(n.kids) {
+      let ci = n.kids[i]
+      if ci.kind == E_FINIT and ci.a != null and ci.a.kind == E_REC { cx_walk_rec(ci.a, "record", sc_name(ci.s), null, d) } else { cx_walk(ci, "value", null, null, d) }
+      i += 1
+    }
+    return
+  }
+  if k == E_CALL {
+    let callee = cx_callee(n.a)
+    cx_walk(n.a, "value", null, null, d)
+    var i = 0
+    var arg = 0
+    while i < len(n.kids) {
+      let a = n.kids[i]
+      if a != null and a.pos >= 0 {
+        if callee != null { cx_walk(a, "arg", `{callee}({itoa(arg)})`, null, d) } else { cx_walk(a, "value", null, null, d) }
+        arg += 1
+      } else {
+        cx_walk(a, "value", null, null, d)
+      }
+      i += 1
+    }
+    return
+  }
+  if k == N_COMP {
+    var i = 0
+    while i < len(n.kids) {
+      if n.s != null and n.kids[i].s != null { cx_walk(n.kids[i].a, "default", `{sc_name(n.s)}.{n.kids[i].s}`, null, d) }
+      i += 1
+    }
+    return
+  }
+  if k == S_ASSIGN and n.b != null and n.b.kind == E_FNREF {   # `s.tick = fn f`: the slot as written
+    cx_walk(n.b, "assign", cx_callee(n.a), null, d)
+    return
+  }
+  if k == S_LET and n.a != null and n.a.kind == E_FNREF and n.s != null {
+    cx_walk(n.a, "let", n.s, null, d)
+    return
+  }
+  if k == E_LIST {                                  # a list of fn values fills the slot it is in
+    var i = 0
+    while i < len(n.kids) {
+      cx_walk(n.kids[i], kind, slot, entry, d)
+      i += 1
+    }
+    return
+  }
+  if k == N_SYS {                                   # its .b and .c are its layer's and scene's tags
+    cx_walk(n.a, "value", null, null, d)
+    return
+  }
+  if k == N_SCENE {
+    cx_walk(n.a, "value", null, null, d)
+    cx_walk(n.b, "value", null, null, d)
+    return
+  }
+  cx_walk(n.a, "value", null, null, d)
+  cx_walk(n.b, "value", null, null, d)
+  cx_walk(n.c, "value", null, null, d)
+  var i = 0
+  while i < len(n.kids) {
+    cx_walk(n.kids[i], "value", null, null, d)
+    i += 1
+  }
+}

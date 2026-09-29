@@ -12,6 +12,9 @@
 #               stripped (the runtime supplies them), written as a field's type is ("fn(A,B)->R")
 #   components  every UI component: props, state, derived fields, functions, events (emit_schema_ui)
 #   natives     every native tag registered with ui_native / ui_native_input by a literal
+#   units, lang @Unit's spellings; the text keys and the languages (emit_schema_lang)
+#   code        the code map: modules, states, actions, reducers, dispatch, events, ports, binds,
+#               handlers, models, prefabs, scenes and fn_refs (emit_schema_code)
 #
 # Deterministic: each list sorted by name (then file and line), an entry list in index order, the
 # paths as the compiler read them, and nothing about the run. The engine's runtime is left out.
@@ -47,6 +50,8 @@ function schema_buf() -> Buf {
   sc_units(b)
   buf_puts(b, "],\n  \"lang\": ")
   sc_lang(b)                                      # emit_schema_lang.ludic: the keys and the languages
+  buf_puts(b, ",\n  \"code\": ")
+  sc_code(b)                                      # emit_schema_code.ludic: the code map
   buf_puts(b, "\n}\n")
   return b
 }
