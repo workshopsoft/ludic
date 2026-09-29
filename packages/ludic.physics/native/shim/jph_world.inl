@@ -1,13 +1,14 @@
 // jph_world.inl - a physics world: made, stepped, emptied of its contacts, freed
 
-// a world for up to max_bodies; threads 0 means the machine's cores less one, at most four
-JPH_SHIM void *jph_world_new(int max_bodies, int threads) {
+// a world for up to max_bodies, max_pairs touching pairs and max_contacts contact constraints, with a
+// temp heap of temp_kb; threads 0 means the machine's cores less one, at most four
+JPH_SHIM void *jph_world_new(int max_bodies, int threads, int max_pairs, int max_contacts, int temp_kb) {
   if (jph_init() != 0) return nullptr;
   if (threads <= 0) {
     int hw = int(std::thread::hardware_concurrency()) - 1;
     threads = hw < 1 ? 1 : (hw > 4 ? 4 : hw);
   }
-  World *w = new World(max_bodies, threads);
+  World *w = new World(max_bodies, threads, max_pairs, max_contacts, temp_kb);
   w->sys.SetGravity(Vec3(0.0f, -9.81f, 0.0f));
   return w;
 }

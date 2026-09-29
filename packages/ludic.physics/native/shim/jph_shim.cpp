@@ -93,11 +93,11 @@ public:
 
 struct World {
   // pairs and contacts are for what MOVES: a valley of sixty thousand still trunks makes none
-  // between them, so these are Jolt's own sizes, not the body count's; the temporary memory falls
-  // back to the heap rather than aborting a step
-  World(int max_bodies, int threads)
-      : temp(32 * 1024 * 1024), jobs(cMaxPhysicsJobs, cMaxPhysicsBarriers, threads) {
-    sys.Init(max_bodies, 0, 65536, 20480, bpl, ovb, olp);
+  // between them, so they are sized for the moving things, not the body count; the temporary memory
+  // falls back to the heap rather than aborting a step. All four are the package's (phys_open)
+  World(int max_bodies, int threads, int max_pairs, int max_contacts, int temp_kb)
+      : temp(size_t(temp_kb) * 1024), jobs(cMaxPhysicsJobs, cMaxPhysicsBarriers, threads) {
+    sys.Init(max_bodies, 0, max_pairs, max_contacts, bpl, ovb, olp);
     sys.SetContactListener(&contacts);
   }
   TempAllocatorImplWithMallocFallback temp;

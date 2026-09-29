@@ -1,0 +1,25 @@
+# jolt_floor_test.ludic - what an empty world costs in Jolt's own heap at the game's size (plan 25):
+# the floor under every body, from the body table, the broad phase, the contact caches and the temp heap
+import "ludic.physics"
+import "ludic.base"
+program JoltFloorTest {
+  numbers float
+  function floor_at(physics_st: mut PhysicsState, bodies: int) -> long {
+    expect(phys_open(physics_st, 64, 1))
+    phys_close(physics_st)
+    let before = phys_heap_bytes()
+    expect(phys_open(physics_st, bodies, 0))
+    let f = phys_heap_bytes() - before
+    phys_close(physics_st)
+    return f
+  }
+
+  # it was 51839 KB at 200000 bodies with 65536 pairs, 20480 contacts and a 32 MB temp heap
+  test "an empty world at the game's size costs under 16 MB" (physics_st: mut PhysicsState) {
+    let a = floor_at(physics_st, 200000)
+    let b = floor_at(physics_st, 98304)
+    print(`jolt floor: {a / long(1024)} KB at 200000 bodies, {b / long(1024)} KB at 98304`)
+    expect(b < long(16 * 1024 * 1024))
+    expect(a > b)
+  }
+}

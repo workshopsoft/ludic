@@ -1,6 +1,6 @@
 # native.ludic - the shim's symbols (native/shim/jph_shim.cpp). A world and a shape are handles
 # the package keeps; a body is an int id. None of this is exported.
-extern function jph_world_new(max_bodies: int, threads: int) -> pointer = "jph_world_new"
+extern function jph_world_new(max_bodies: int, threads: int, max_pairs: int, max_contacts: int, temp_kb: int) -> pointer = "jph_world_new"
 extern function jph_world_free(w: pointer) -> void = "jph_world_free"
 extern function jph_world_gravity(w: pointer, y: float) -> void = "jph_world_gravity"
 extern function jph_world_step(w: pointer, dt: float, sub: int) -> int = "jph_world_step"

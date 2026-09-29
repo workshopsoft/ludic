@@ -42,6 +42,7 @@ export state PhysicsState {
   ph_step: float = 0.016666668    # seconds a step
   ph_sub: int = 1                 # collision steps in each
   ph_max_steps: int = 4           # a slow frame catches up this far and no further
+  ph_max: int = 0                 # the bodies the world was opened for: one more is a failure, not a -1
   ph_acc: float = 0.0
   ph_steps: int = 0
   ph_gen: int = 0                 # how many worlds have been opened: an id from an older one is stale
@@ -75,3 +76,9 @@ export function phys_config(physics_st: mut PhysicsState, step: float, sub: int,
   physics_st.ph_hard = hard
 }
 function ph_facts__new() -> Queue<PhysFact> { return queue_new("physics.facts") }
+
+# what moves, sized: touching pairs, contact constraints and the step's temp heap (KB). A valley's still
+# things make no pairs between them; drops, boats and the walkers do. Past a size a step fails loudly
+export const PH_PAIRS: int = 4096
+export const PH_CONTACTS: int = 2048
+export const PH_TEMP_KB: int = 4096
