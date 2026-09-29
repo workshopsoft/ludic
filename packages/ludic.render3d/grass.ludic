@@ -127,9 +127,12 @@ function grass_init(render3d_st: mut Render3dState) -> void {
 }
 
 # indices per 16 m cell that could exist at distance d (the count the shader computes)
-# no blades past the fog wall: they would be drawn only to be fogged away
+# Under a fog wall the blades end at three quarters of it. A blade's tip stands against ground
+# much farther off, and a dark blade 85% fogged read as a dark band against fully fogged ground
+# behind it; ending here, they thin out (the cull's last 30%) while the fog is still coming in.
+const GRASS_FOG_END: float = 0.75
 function grass_reach(render3d_st: Render3dState) -> float {
-  let w = render3d_st.r3d_fog_wall
+  let w = render3d_st.r3d_fog_wall * GRASS_FOG_END
   if w > 0.0 and w < render3d_st.grass_radius { return w }
   return render3d_st.grass_radius
 }
