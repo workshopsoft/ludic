@@ -51,7 +51,7 @@ function kr_fill(i18n_st: mut I18nState, t: string, args: []string) -> string {
     if h >= 1 {
       var v = ""
       if h < len(args) { v = args[h] }
-      if i18n_is_key(v) { v = keyed(i18n_st, v) }
+      if i18n_is_key(v) { v = keyed(i18n_st, v) } else if i18n_st.on and kr_words(v) { v = L(i18n_st, v) }
       r = r + t[seg..i] + v
       i = hole_end(t, i)
       seg = i
@@ -60,6 +60,13 @@ function kr_fill(i18n_st: mut I18nState, t: string, args: []string) -> string {
     i += 1
   }
   return r + t[seg..len(t)]
+}
+
+# an argument with letters in it (not a number, a time, a sign): while the game still hands English
+# into a key's holes (until its code and data are keys, phase 26.9), it gets the old English lookup
+function kr_words(s: string) -> bool {
+  for i in 0 .. len(s) { if (s[i] >= 65 and s[i] <= 90) or (s[i] >= 97 and s[i] <= 122) { return true } }
+  return false
 }
 
 # a count written as decimal digits (a leading - allowed); anything else is 0
