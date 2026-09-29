@@ -28,6 +28,8 @@ program BakedExpandTest {
     expect_eq(len(maps), 2)
     expect_eq(maps[0], "a")
     expect_eq(maps[1], "b")
+    # a first input without {map} tests one path for every map: refused, not all or none
+    expect_eq(len(bake_maps_in(root() + "/maps", root() + "/maps/a/ground_layers.lres")), 0)
   }
 
   test "a map's inputs: {map} put, the glob's matches sorted byte by byte, dot-names out" {

@@ -3,7 +3,8 @@
 # dot-names left out. tools/bake/baked.py `expand` is its checked twin, as baked_hash is the hash's: a
 # runner and the check that expand alike agree on stale. A runner's line: bake_inputs_hash(bake_expand(...)).
 
-# the inputs with `{map}` as `map` (none when "") and every glob expanded, space-separated
+# the inputs with `{map}` as `map` and every glob expanded, space-separated. A {map} row is only ever expanded
+# with a key from bake_maps: with "" its `{map}` stays, hashes as a missing path and reads as a quiet stale
 @alloc_ok("a bake's inputs: once a bake or a check")
 export function bake_expand(inputs: string, map: string) -> string {
   var ins = inputs
@@ -22,12 +23,14 @@ export function bake_expand(inputs: string, map: string) -> string {
   return out
 }
 
-# the maps a `{map}` row covers: each directory under assets/maps holding its first input, sorted
+# the maps a `{map}` row covers: each directory under assets/maps holding its first input, sorted; none when
+# the first input has no `{map}` (it would test one path for every map - all or none), and the check says so
 export function bake_maps(first_input: string) -> []string { return bake_maps_in("assets/maps", first_input) }
 # ... under another directory of maps (a test's)
 @alloc_ok("a bake's inputs: once a bake or a check")
 export function bake_maps_in(root: string, first_input: string) -> []string {
   let got = new []string
+  if not Text.contains(first_input, "{map}") { return got }
   let names = bk_sorted(Fs.list(root))
   for i in 0 .. len(names) {
     if len(names[i]) == 0 or names[i][0] == 46 { continue }
