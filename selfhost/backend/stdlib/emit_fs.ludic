@@ -39,6 +39,7 @@ function is_fs_ns(meth: pointer) -> bool {
   if (meth == "exists") or (meth == "is_dir") or (meth == "read_text") { return true }
   if (meth == "write_text") or (meth == "append_text") or (meth == "remove") { return true }
   if (meth == "size") or (meth == "mkdir") or (meth == "copy") or (meth == "list") { return true }
+  if (meth == "mount") or (meth == "unmount") { return true }
   return false
 }
 function is_path_ns(meth: pointer) -> bool {
@@ -55,6 +56,9 @@ function emit_fs_ns(meth: pointer, e: Node) -> Val {
   use_pak()
   let a = emit_expr(e.kids[0])
   if (meth == "exists")      { return val(emit_bind(`call i32 @lp_fs_exists(ptr {a.code})`), "bool") }
+  # a pack (.lpak / .lmap) mounted at run time over the packs.index ones, searched first; and let go
+  if (meth == "mount")       { return val(emit_bind(`call i32 @lp_pak_mount(ptr {a.code})`), "bool") }
+  if (meth == "unmount")     { return val(emit_bind(`call i32 @lp_pak_unmount(ptr {a.code})`), "bool") }
   if (meth == "is_dir")      { return val(emit_bind(`call i32 @lp_fs_is_dir(ptr {a.code})`), "bool") }
   if (meth == "read_text")   { return val(emit_bind(`call ptr @lp_fs_read_text(ptr {a.code})`), "string") }
   if (meth == "remove")      { return val(emit_bind(`call i32 @lp_fs_remove(ptr {a.code})`), "bool") }

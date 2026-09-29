@@ -96,6 +96,7 @@ function emit_pak_prelude() -> void {
     emith("declare i64 @lseek(i32, i64, i32)\n")
     if not g_mmap_declared { emith("declare ptr @mmap(ptr, i64, i32, i32, i32, i64)\n");  g_mmap_declared = true }
     emith("declare ptr @fmemopen(ptr, i64, ptr)\n")
+    emith("declare i32 @munmap(ptr, i64)\n")
     emith("declare i32 @chdir(ptr)\n")
     emith("declare i32 @_NSGetExecutablePath(ptr, ptr)\n")
   }
@@ -109,6 +110,8 @@ function emit_pak_prelude() -> void {
   # up to 8 packs may be mounted; the base pointer of each mapping, in mount order
   emith("@L_pak_base = internal global [8 x ptr] zeroinitializer\n")
   emith("@L_pak_n    = internal global i32 0\n")
+  emith("@L_pak_len  = internal global [8 x i64] zeroinitializer\n")   # each mapping's length, for unmount
+  emith("@L_pak_path = internal global [8 x ptr] zeroinitializer\n")   # and the path it was mounted from
   # the splash, named by packs.index and served out of the pack like any asset
   emith("@L_pak_splash   = internal global ptr null\n")
   emith("@L_pak_splashbg = internal global i32 0\n")
@@ -128,6 +131,7 @@ function emit_pak_prelude() -> void {
   }
 
   emit_pak_mount()
+  emit_pak_unmount()
   emit_pak_lookup()
   emit_pak_open()
   emit_pak_boot()
@@ -157,8 +161,33 @@ function emit_pak_mount() -> void {
   # "LPAK" read as a little-endian i32
   emith("chk:\n  %m = load i32, ptr %base\n  %okm = icmp eq i32 %m, 1262571596\n  br i1 %okm, label %keep, label %clo\n")
   emith("keep:\n  %slot = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %n\n  store ptr %base, ptr %slot\n")
+  # its length and path too, so Fs.unmount can find it and give the mapping back
+  emith("  %lslot = getelementptr [8 x i64], ptr @L_pak_len, i32 0, i32 %n\n  store i64 %end, ptr %lslot\n")
+  emith("  %pcopy = call ptr @lp_fs_strdup(ptr %path)\n  %pslot = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %n\n  store ptr %pcopy, ptr %pslot\n")
   emith("  %n1 = add i32 %n, 1\n  store i32 %n1, ptr @L_pak_n\n  %c1 = call i32 @close(i32 %fd)\n  ret i32 1\n")
   emith("clo:\n  %c2 = call i32 @close(i32 %fd)\n  ret i32 0\n")
+  emith("no:\n  ret i32 0\n}\n")
+}
+
+# unmount(path): the pack mounted from exactly that path given back and taken out of the search, the
+# ones after it moving up a slot; 1 when it was mounted. A map pack downloaded at run time comes and
+# goes (Fs.mount / Fs.unmount); a FILE* still open over one of its entries must be closed first
+function emit_pak_unmount() -> void {
+  emith("define i32 @lp_pak_unmount(ptr %path) {\n")
+  emith("entry:\n  %n = load i32, ptr @L_pak_n\n  %ip = alloca i32\n  store i32 0, ptr %ip\n  br label %find\n")
+  emith("find:\n  %i = load i32, ptr %ip\n  %end = icmp sge i32 %i, %n\n  br i1 %end, label %no, label %cmp\n")
+  emith("cmp:\n  %pp = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %i\n  %p = load ptr, ptr %pp\n  %isnull = icmp eq ptr %p, null\n  br i1 %isnull, label %next, label %str\n")
+  emith("str:\n  %c = call i32 @strcmp(ptr %p, ptr %path)\n  %same = icmp eq i32 %c, 0\n  br i1 %same, label %drop, label %next\n")
+  emith("next:\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %find\n")
+  emith("drop:\n  %bp = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %i\n  %base = load ptr, ptr %bp\n  %lp = getelementptr [8 x i64], ptr @L_pak_len, i32 0, i32 %i\n  %len = load i64, ptr %lp\n")
+  if g_target_win { emith("  %u = call i32 @UnmapViewOfFile(ptr %base)\n") } else { emith("  %u = call i32 @munmap(ptr %base, i64 %len)\n") }
+  emith("  call void @lp_free(ptr %p)\n  %jp = alloca i32\n  store i32 %i, ptr %jp\n  br label %shift\n")
+  emith("shift:\n  %j = load i32, ptr %jp\n  %j1 = add i32 %j, 1\n  %more = icmp slt i32 %j1, %n\n  br i1 %more, label %mv, label %done\n")
+  emith("mv:\n  %sb = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %j1\n  %vb = load ptr, ptr %sb\n  %db = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %j\n  store ptr %vb, ptr %db\n")
+  emith("  %sl = getelementptr [8 x i64], ptr @L_pak_len, i32 0, i32 %j1\n  %vl = load i64, ptr %sl\n  %dl = getelementptr [8 x i64], ptr @L_pak_len, i32 0, i32 %j\n  store i64 %vl, ptr %dl\n")
+  emith("  %sp = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %j1\n  %vp = load ptr, ptr %sp\n  %dp = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %j\n  store ptr %vp, ptr %dp\n")
+  emith("  store i32 %j1, ptr %jp\n  br label %shift\n")
+  emith("done:\n  %n1 = sub i32 %n, 1\n  store i32 %n1, ptr @L_pak_n\n  %last = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %n1\n  store ptr null, ptr %last\n  ret i32 1\n")
   emith("no:\n  ret i32 0\n}\n")
 }
 

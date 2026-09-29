@@ -10,10 +10,11 @@ export state BakeState {
   said: []string = new []string       # the keys a dev build has said it made at run time
 }
 
-# assets/baked/<map>/<file>, or assets/baked/<file> for no map
+# a map's bake: assets/baked/maps/<map>/<file>, which ships in that map's own pack (.lmap), never the
+# game's; anything else: assets/baked/<file>, in the game's pack
 export function baked_path(map: string, file: string) -> string {
   if len(map) == 0 { return "assets/baked/" + file }
-  return "assets/baked/" + map + "/" + file
+  return "assets/baked/maps/" + map + "/" + file
 }
 
 # the payload of a baked file that is this bake at this version, or null (missing, not a baked file,
