@@ -1,12 +1,10 @@
 # mount.ludic - getting on, and getting off onto a spot the rider's own safe-spot rule found: the
 # same one answer a seat and a stand-up use, so a landing is never inside a boulder or on a bank
 # the body cannot climb off
-export const VEHICLE_HAY_MIN: float = 10.0     # a horse with less hay than this will not go
-
 # this machine's player onto v; false when it is somebody else's, taken, or a hungry horse
 export function vehicle_mount(vehicles_st: mut VehiclesState, v: Vehicle) -> bool {
   if v == null or v.owner != 0 or v.rider >= 0 or vehicles_st.ve_cur != null { return false }
-  if v.kind == VEHICLE_HORSE and v.food < VEHICLE_HAY_MIN {
+  if v.kind == VEHICLE_HORSE and v.food < vehicle_spec(vehicles_st, v.kind).hay_min {
     ve_say(vehicles_st, VEHICLE_HUNGRY, v, v.food)
     return false
   }
@@ -17,21 +15,22 @@ export function vehicle_mount(vehicles_st: mut VehiclesState, v: Vehicle) -> boo
   return true
 }
 
-# Off, onto the nearest spot a body could stand and walk off: from a boat a wade of up to 1.25 m
-# within ten metres, from a horse beside its right flank. False (and said) when a boat is too far out.
+# Off, onto the nearest spot a body could stand and walk off: from a boat a wade of up to its spec's
+# off_depth, from a horse off_side out by its right flank. False (and said) when a boat is too far out.
 export function vehicle_dismount(vehicles_st: mut VehiclesState) -> bool {
   let v = vehicles_st.ve_cur
   if v == null { return false }
+  let sp = vehicle_spec(vehicles_st, v.kind)
   if v.kind == VEHICLE_BOAT {
-    if not VehicleRider.safe_spot(v.x, v.z, VehicleWorld.water(v.x, v.z), 1.25) {
+    if not VehicleRider.safe_spot(v.x, v.z, VehicleWorld.water(v.x, v.z), sp.off_depth) {
       ve_say(vehicles_st, VEHICLE_NO_LANDING, v, 0.0)
       return false
     }
     VehicleRider.step_off(VehicleRider.safe_x(), VehicleRider.safe_z())
     ve_moor(v)
   } else {
-    let wx = v.x + Math.cos(v.yaw) * 1.2
-    let wz = v.z - Math.sin(v.yaw) * 1.2
+    let wx = v.x + Math.cos(v.yaw) * sp.off_side
+    let wz = v.z - Math.sin(v.yaw) * sp.off_side
     if VehicleRider.safe_spot(wx, wz, VehicleWorld.ground(v.x, v.z), 0.0) {
       VehicleRider.step_off(VehicleRider.safe_x(), VehicleRider.safe_z())
     } else { VehicleRider.step_off(v.x, v.z) }

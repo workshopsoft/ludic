@@ -52,6 +52,7 @@ export state VehiclesState {
   ve_sz: float = 0.0
   ve: VehicleTable = ve__new()
   ve_cur: Vehicle = null
+  @max(8) ve_specs: []VehicleSpec = ve_specs_new()   # each kind's numbers (vehicles_spec), kept across a reset
   ve_dock_x: float = 0.0
   ve_dock_z: float = 0.0
   ve_dock_yaw: float = 0.0

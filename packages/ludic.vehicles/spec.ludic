@@ -1,0 +1,40 @@
+# spec.ludic - a kind's numbers, handed in by the game from its own table before any vehicle of the
+# kind is made (vehicles_spec): where the rider sits, its pace, its oars, its hay, where one gets off
+export property VehicleSpec {
+  seat_h: float = 0.0       # m: the rider sits this far above it
+  walk: float = 0.0         # m/s: a horse's walk
+  run: float = 0.0          # m/s: its gallop
+  acc: float = 0.0          # m/s2: how fast it gets there
+  turn: float = 0.0         # rad/s at a full stick
+  row: float = 0.0          # N: a full stroke forward
+  row_turn: float = 0.0     # N.m: the oars pulled against each other
+  wind: float = 0.0         # N on it in a full wind
+  hay_per_m: float = 0.0    # hay (0..100) every metre costs
+  hay_min: float = 0.0      # with less hay than this it will not go
+  run_min: float = 0.0      # stamina (0..100) a gallop needs
+  tire_at: float = 0.0      # m/s: faster than this is a gallop, and tires it
+  tire: float = 0.0         # stamina a second spent at a gallop
+  rest: float = 0.0         # and given back a second at a walk
+  off_side: float = 0.0     # m: a rider gets off this far out to its right
+  off_depth: float = 0.0    # m: the deepest wade a rider gets off into
+}
+
+export const VEHICLE_KINDS: int = 8     # kinds a game may give numbers to, 0 .. 7
+
+function ve_specs_new() -> []VehicleSpec {
+  let l = new []VehicleSpec
+  for i in 0 .. VEHICLE_KINDS { push(l, null) }
+  return l
+}
+
+# kind's numbers from now on; a kind that has none cannot be called
+export function vehicles_spec(vehicles_st: mut VehiclesState, kind: int, spec: VehicleSpec) -> void {
+  if kind < 0 or kind >= VEHICLE_KINDS { return }
+  vehicles_st.ve_specs[kind] = spec
+}
+
+# a kind's numbers, or null when the game gave it none
+export function vehicle_spec(vehicles_st: VehiclesState, kind: int) -> VehicleSpec {
+  if kind < 0 or kind >= VEHICLE_KINDS { return null }
+  return vehicles_st.ve_specs[kind]
+}

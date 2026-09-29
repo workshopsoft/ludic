@@ -16,12 +16,17 @@ through the game).
 
 ## The rules it keeps
 
+- **A kind's numbers are the game's data.** The package keeps the rules (a walk and a gallop on
+  stamina, a stroke and a turn, where a rider gets off) and no numbers: the game hands each kind a
+  `VehicleSpec` with `vehicles_spec(kind, spec)` - in Maroon Lake from its `VehicleKinds` table -
+  once, before any vehicle is made. A kind with no spec cannot be called; a reset keeps the specs.
+
 - **Nothing is parked for anyone.** A vehicle has an `owner` and a `rider`; `vehicle_find(kind)` is
   this player's own and nothing else may pick "the" boat. A place is taken while a boat lies in it
   or a horse is tied at it (`home_x`, `home_z`), within half a place's spacing.
 - **Where a body is put down is one question with one answer.** Getting off asks the rider's
-  `safe_spot` - a wade of up to 1.25 m within its search from a boat, beside the right flank from a
-  horse - and a boat too far out refuses and says so (`VEHICLE_NO_LANDING`) rather than dropping the
+  `safe_spot` - a wade of up to the spec's `off_depth` within its search from a boat, `off_side` out
+  by the right flank from a horse - and a boat too far out refuses and says so (`VEHICLE_NO_LANDING`) rather than dropping the
   rider in the lake.
 - **A boat is a body in the game's physics** (`VehicleHull`, phase 16; a buoyant Jolt hull in Maroon
   Lake). The package rows it - the stick forward and back is a stroke along the bow, left and right
@@ -66,7 +71,9 @@ export port VehicleRider {
 
 | | |
 | --- | --- |
-| `VEHICLE_HORSE`, `VEHICLE_BOAT`, `VEHICLE_PLACES`, `VEHICLE_HAY_MIN` | the kinds, four places each, and the hay a horse needs to go |
+| `VEHICLE_HORSE`, `VEHICLE_BOAT`, `VEHICLE_PLACES`, `VEHICLE_KINDS` | the kinds, four places each, and how many kinds may have a spec |
+| `VehicleSpec { seat_h, walk, run, acc, turn, row, row_turn, wind, hay_per_m, hay_min, run_min, tire_at, tire, rest, off_side, off_depth }` | a kind's numbers: the seat, a horse's pace, stamina and hay, a boat's oars and wind, where one gets off |
+| `vehicles_spec(kind, spec)`, `vehicle_spec(kind)` | set a kind's numbers (at boot), and ask them |
 | `Vehicle { kind, nid, x, y, z, yaw, speed, fuel, food, seat_h, owned, owner, rider, home_x, home_z }` | a vehicle (change one through the verbs) |
 | `vehicles_dock_at(x, z, yaw)`, `vehicles_rail_at(x, z, yaw)`, `vehicles_dock_yaw()` | where the places are measured from |
 | `vehicle_berth_x/z(k)`, `vehicle_post_x/z(k)`, `vehicle_bay_x/z(k)`, `vehicle_place_x/z(kind, k)` | the places |
@@ -85,7 +92,8 @@ export port VehicleRider {
 ludic test packages/ludic.vehicles
 ```
 
-A fake shore with a pier head and a trough: berths and bays, calling and fetching, a taken place, a
+A fake shore with a pier head and a trough, and Maroon Lake's numbers as the specs: a kind with no
+spec refused and a spec's walk and seat obeyed, berths and bays, calling and fetching, a taken place, a
 player leaving, a hungry horse, riding a horse into a trunk and to the water's edge; a real Jolt hull
 rowed out, losing its stroke to the swell, turned, stopped by the shore's bed and drifted by the
 wind; getting off near a shore and far from one, and the save.

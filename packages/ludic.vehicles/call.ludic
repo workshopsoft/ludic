@@ -3,17 +3,17 @@
 @alloc_ok("a player's own boat or horse, made the first time it is called and fetched after")
 function ve_add(vehicles_st: VehiclesState, kind: int, owner: int, x: float, z: float, yaw: float) -> Vehicle {
   if kind != VEHICLE_HORSE and kind != VEHICLE_BOAT { return null }
+  let spec = vehicle_spec(vehicles_st, kind)
+  if spec == null { return null }
   let v = new Vehicle
   v.nid = VehicleWorld.next_id()
   v.kind = kind
   v.owner = owner
   v.yaw = yaw
+  v.seat_h = spec.seat_h
   if kind == VEHICLE_HORSE {
-    v.seat_h = 1.35
     v.fuel = 100.0
     v.food = 40.0
-  } else {
-    v.seat_h = 0.30
   }
   ve_put(v, x, z)
   ve_file(vehicles_st.ve, v)

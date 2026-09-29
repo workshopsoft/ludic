@@ -1,19 +1,16 @@
 # horse.ludic - a horse under the stick: a walk, a canter on stamina, hay for every metre; it will
 # not step into water, and its legs (VehicleLegs) meet the ground and whatever stands in its way
-const VE_HORSE_WALK: float = 4.5
-const VE_HORSE_GALLOP: float = 11.0
-const VE_HORSE_ACC: float = 4.0
-const VE_HORSE_TURN: float = 1.6
-
+# (its numbers are its kind's VehicleSpec: walk, run, acc, turn, the stamina and the hay)
 function ve_ride_horse(vehicles_st: mut VehiclesState, v: Vehicle, ix: float, iz: float, run: bool, dt: float) -> void {
-  var top = VE_HORSE_WALK
-  if run and v.fuel > 5.0 { top = VE_HORSE_GALLOP }
-  v.speed = v.speed + Math.clamp(iz * top - v.speed, -VE_HORSE_ACC * dt, VE_HORSE_ACC * dt)
+  let sp = vehicle_spec(vehicles_st, v.kind)
+  var top = sp.walk
+  if run and v.fuel > sp.run_min { top = sp.run }
+  v.speed = v.speed + Math.clamp(iz * top - v.speed, -sp.acc * dt, sp.acc * dt)
   # Steering follows SIGNED speed: backing up with the stick left swings the nose right
   if Math.abs(v.speed) > 0.3 {
     var rate = Math.clamp(Math.abs(v.speed) / 3.0, 0.4, 1.0)
     if v.speed < 0.0 { rate = -rate }
-    v.yaw = v.yaw - ix * VE_HORSE_TURN * (dt * rate)
+    v.yaw = v.yaw - ix * sp.turn * (dt * rate)
   }
   let fx = -Math.sin(v.yaw)
   let fz = -Math.cos(v.yaw)
@@ -24,7 +21,7 @@ function ve_ride_horse(vehicles_st: mut VehiclesState, v: Vehicle, ix: float, iz
     return
   }
   ve_legs_walk(vehicles_st, v, fx * v.speed, fz * v.speed, dt)
-  ve_stamina(v, d, dt)
+  ve_stamina(sp, v, d, dt)
 }
 
 # the legs carry it from where it is; what they covered along its heading is its speed now, never
@@ -43,8 +40,8 @@ function ve_legs_walk(vehicles_st: mut VehiclesState, v: Vehicle, vx: float, vz:
 }
 
 # a gallop spends stamina and a walk gives it back; every metre costs hay
-function ve_stamina(v: Vehicle, d: float, dt: float) -> void {
-  if Math.abs(v.speed) > 6.0 { v.fuel = Math.max(v.fuel - 6.0 * dt, 0.0) } else { v.fuel = Math.min(v.fuel + 3.0 * dt, 100.0) }
-  v.food = Math.max(v.food - Math.abs(d) * 0.02, 0.0)
+function ve_stamina(sp: VehicleSpec, v: Vehicle, d: float, dt: float) -> void {
+  if Math.abs(v.speed) > sp.tire_at { v.fuel = Math.max(v.fuel - sp.tire * dt, 0.0) } else { v.fuel = Math.min(v.fuel + sp.rest * dt, 100.0) }
+  v.food = Math.max(v.food - Math.abs(d) * sp.hay_per_m, 0.0)
 }
 

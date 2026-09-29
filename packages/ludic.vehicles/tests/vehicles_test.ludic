@@ -158,8 +158,37 @@ program VehiclesTest {
 
   const EAST: float = -1.5707963
 
+  # Maroon Lake's numbers for its two kinds (its vehicle_kinds.lres), as a game hands them in
+  function horse_spec() -> VehicleSpec {
+    let s = new VehicleSpec
+    s.seat_h = 1.35
+    s.walk = 4.5
+    s.run = 11.0
+    s.acc = 4.0
+    s.turn = 1.6
+    s.hay_per_m = 0.02
+    s.hay_min = 10.0
+    s.run_min = 5.0
+    s.tire_at = 6.0
+    s.tire = 6.0
+    s.rest = 3.0
+    s.off_side = 1.2
+    return s
+  }
+  function boat_spec() -> VehicleSpec {
+    let s = new VehicleSpec
+    s.seat_h = 0.30
+    s.row = 630.0
+    s.row_turn = 270.0
+    s.wind = 70.0
+    s.off_depth = 1.25
+    return s
+  }
+
   function fresh(vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) -> void {
     vehicles_reset(vehicles_st)
+    vehicles_spec(vehicles_st, VEHICLE_HORSE, horse_spec())
+    vehicles_spec(vehicles_st, VEHICLE_BOAT, boat_spec())
     vehicles_dock_at(vehicles_st, 10.0, 0.0, EAST)
     vehicles_rail_at(vehicles_st, 0.0, 5.0, 0.0)
     vehicles_test_st.made = 0
@@ -187,6 +216,27 @@ program VehiclesTest {
     expect_near(vehicle_berth_z(vehicles_st, 0), -3.3, 0.01)
     expect_near(vehicle_post_x(vehicles_st, 3), 16.15, 0.01)
     expect_near(vehicle_bay_z(vehicles_st, 2), 3.6, 0.01)
+  }
+
+  test "a kind with no numbers cannot be called; its spec's numbers are the horse's pace and its seat" (physics_st: mut PhysicsState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
+    vehicles_spec(vehicles_st, VEHICLE_BOAT, null)
+    expect(not vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0))
+    let slow = horse_spec()
+    slow.walk = 2.5
+    slow.seat_h = 1.1
+    vehicles_spec(vehicles_st, VEHICLE_HORSE, slow)
+    expect(vehicle_spec(vehicles_st, VEHICLE_HORSE) == slow)
+    vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0)
+    let h = vehicle_find(vehicles_st, VEHICLE_HORSE)
+    expect_near(h.seat_h, 1.1, 0.001)
+    vehicle_mount(vehicles_st, h)
+    ride(physics_st, vehicles_st, 0.0, 1.0, false, 3.0)
+    expect_near(h.speed, 2.5, 0.05)
+    expect_near(vehicles_test_st.ry - h.y, 1.1, 0.001)
+    vehicle_drop(vehicles_st)
+    vehicles_reset(vehicles_st)
+    expect(vehicle_spec(vehicles_st, VEHICLE_HORSE) == slow)   # a reset keeps the numbers
   }
 
   test "the first call makes a vehicle, a later one fetches it, and a taken place refuses" (vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {

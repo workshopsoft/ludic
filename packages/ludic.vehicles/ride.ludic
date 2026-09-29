@@ -1,9 +1,6 @@
 # ride.ludic - the rider's stick steers what they are on: a horse walks, canters on stamina and
 # stops at water, a slope or a trunk; a boat is rowed - a stroke and a turn handed to its hull,
 # which the water floats, the wind drifts and the lake bed stops
-const VE_ROW: float = 630.0          # N: a full stroke forward, about 3 m/s on Maroon Lake's hull
-const VE_ROW_TURN: float = 270.0     # N.m: the oars pulled against each other, about 1.1 rad/s
-const VE_WIND: float = 70.0          # N on a boat in a full wind
 
 export function vehicle_update(vehicles_st: mut VehiclesState, ix: float, iz: float, run: bool, dt: float) -> void {
   let v = vehicles_st.ve_cur
@@ -18,7 +15,8 @@ export function vehicle_update(vehicles_st: mut VehiclesState, ix: float, iz: fl
 function ve_row(vehicles_st: mut VehiclesState, v: Vehicle, ix: float, iz: float, dt: float) -> void {
   ve_hull_read(v)
   let take = ve_swell(vehicles_st, v, iz, dt)
-  VehicleHull.row(v.nid, iz * VE_ROW * (1.0 - take), -ix * VE_ROW_TURN)
+  let sp = vehicle_spec(vehicles_st, v.kind)
+  VehicleHull.row(v.nid, iz * sp.row * (1.0 - take), -ix * sp.row_turn)
   let d = Math.abs(v.speed) * dt
   if d > 0.0 { ve_moved_add(vehicles_st, v, d) }
 }
@@ -55,13 +53,14 @@ function ve_swell(vehicles_st: mut VehiclesState, v: Vehicle, iz: float, dt: flo
 # called or left, its hull read back and held there
 export function vehicles_tick(vehicles_st: VehiclesState, dt: float) -> void {
   let l = ve_all(vehicles_st)
-  let w = VehicleWorld.wind() * VE_WIND
+  let w = VehicleWorld.wind()
   let wy = VehicleWorld.wind_yaw()
   for i in 0 .. len(l) {
     let v = l[i]
     if v.kind != VEHICLE_BOAT { continue }
     if v.rider >= 0 {
-      if w > 0.0 { VehicleHull.drift(v.nid, -Math.sin(wy) * w, -Math.cos(wy) * w) }
+      let f = w * vehicle_spec(vehicles_st, v.kind).wind
+      if f > 0.0 { VehicleHull.drift(v.nid, -Math.sin(wy) * f, -Math.cos(wy) * f) }
       continue
     }
     if not VehicleWorld.active(v.x, v.z) { continue }   # outside every zone: left where it lies
