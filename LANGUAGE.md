@@ -2078,6 +2078,10 @@ let msg = `hello {name}, you have {count + 1} messages`
 so a string, a char or another template literal inside it is taken whole - `` `a {wrap(`b {n}`)} c` ``
 is one literal, and a brace or a backtick inside a string in a hole is text.
 
+A template is always a new string. `` `{s}` `` - one string hole and nothing else - is a copy of
+`s`, not `s` itself (where `str(s)` passes a string through), so it can be kept after `s` is given
+back.
+
 **Slicing.** `s[a..b]` is a fresh substring of the bytes `[a, b)`, and `len(s)`
 is a string's byte length — so `path[0..len(path) - 6]` trims an extension and
 `s[i]` still indexes a single byte. `expr with { field: … }`

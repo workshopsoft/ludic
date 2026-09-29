@@ -293,8 +293,10 @@ function parse_interp(raw: pointer) -> Node {
     }
   }
   if lj > 0 or (acc == null) { acc = interp_add(acc, interp_lit(lit, lj)) }
+  if acc.kind == E_CALL { acc.a.uns = TPL_COPY }  # `{s}` alone is a new string, never s itself (emit_call.ludic)
   return acc
 }
+const TPL_COPY: int = 91                                    # on the callee of a template's lone string(hole)
 
 # emit E(field: v, ...) — shared by the statement form and the expression form.
 # As an expression it yields a cancellable event's cancelled flag (0/1); a

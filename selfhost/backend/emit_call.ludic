@@ -190,6 +190,12 @@ function first_arg_is_text(e: Node) -> bool {
 
 # a namespace that computes inline also takes the methods an `alias` gives it (L6): Time.now_us
 # is declared in runtime/native/namespaces.ludic beside Time.now, which the compiler computes
+# "" - the other half of a template's lone string hole, copied by concatenation
+function tpl_empty() -> Node {
+  let n = node(E_STR)
+  n.s = ""
+  return n
+}
 function emit_alias_or_fail(ns: pointer, meth: pointer, e: Node) -> Val {
   let al = ns_alias_find(ns, meth)
   if al < 0 { perr(`unknown builtin {ns}.{meth}`) }
@@ -706,6 +712,9 @@ function emit_call(e: Node) -> Val {
   }
   if (name == "string") {                            # string(x): int/bool/fixed/long -> text, a string passes through
     let a = emit_expr(e.kids[0])
+    # but a template that is one string hole (`{s}`) makes a copy: written as one, it was kept as
+    # one, and the original freed under it (ludic.ui's rule text)
+    if (llty(a.ty) == "ptr") and e.a.uns == TPL_COPY and not a.fresh { return emit_str_op("+", a, emit_expr(tpl_empty())) }
     if (llty(a.ty) == "ptr") { return a }
     if is_fp(a.ty) { return emit_fp_str(a) }
     if (llty(a.ty) == "i64") { g_uses_longstr = true;  return fresh_val(emit_bind(`call ptr @lp_long_str(i64 {a.code})`), "string") }
