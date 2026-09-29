@@ -70,7 +70,7 @@ export function things_restock(things_st: ThingsState) -> void {
   let all = things_all(things_st)
   for i in 0 .. len(all) {
     let t = all[i]
-    if thing_is_put_down(t) { continue }
+    if thing_is_put_down(t) or not ThingsWorld.restocks(t.x, t.z) { continue }
     if not ThingKinds[t.kind].keeps { t.used = 0 }
     if not t.active { thing_show(t) }
   }

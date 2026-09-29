@@ -64,6 +64,7 @@ export function vehicles_tick(vehicles_st: VehiclesState, dt: float) -> void {
       if w > 0.0 { VehicleHull.drift(v.nid, -Math.sin(wy) * w, -Math.cos(wy) * w) }
       continue
     }
+    if not VehicleWorld.active(v.x, v.z) { continue }   # outside every zone: left where it lies
     ve_hull_read(v)
     ve_hold(v)
     VehicleWorld.placed(v)

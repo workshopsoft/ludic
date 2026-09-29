@@ -1,0 +1,5 @@
+# ludic.zones - where the world is simulated: a disc per player, overlapping discs merged into
+# clusters, asked whether a point is inside any. Uses ludic.base and nothing else.
+package "ludic.zones"
+version "0.1.0"
+kind source

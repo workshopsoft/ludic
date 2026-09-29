@@ -38,6 +38,7 @@ export port WildlifeWorld {
   taught: fn() -> bool = fn wl_no0                        # food carries further, feeders mind less
   about: fn(WildAnimal) -> int = fn wl_about              # WILD_ABOUT, _AWAY or _GONE
   ranges: fn(int) -> int = fn wl_two                      # ranges a species gets on this map
+  active: fn(float, float) -> bool = fn wl_yes2           # simulated here: outside, an animal is frozen
   per_range: fn(int) -> int = fn wl_three                 # and how many live in each
   spot: fn(WildAnimal, bool, WildSpot) -> bool = fn wl_no_spot   # water (true) or forage for it
   lures: fn() -> int = fn wl_none0                        # how many things to ask `lure` about
@@ -62,6 +63,7 @@ function wl_no0() -> bool { return false }
 function wl_no1(p: int) -> bool { return false }
 function wl_no2(x: float, z: float) -> bool { return false }
 function wl_yes1(u: int) -> bool { return true }
+function wl_yes2(x: float, z: float) -> bool { return true }
 function wl_clear(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool { return true }
 function wl_no_push(x: float, z: float, r: float, y0: float, y1: float) -> bool { return false }
 function wl_asked_x(wildlife_st: WildlifeState) -> float { return wildlife_st.wl_ask_x }

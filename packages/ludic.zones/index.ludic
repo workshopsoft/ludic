@@ -1,0 +1,8 @@
+# ludic.zones - a disc per player (x, z, r), the discs that overlap merged into clusters with a
+# bounding circle, and the questions a world asks of them; fixed arrays, nothing made per frame
+module ludic_zones uses ludic_base
+numbers float
+import "ludic.base"
+import "state.ludic"
+import "merge.ludic"
+import "ask.ludic"
