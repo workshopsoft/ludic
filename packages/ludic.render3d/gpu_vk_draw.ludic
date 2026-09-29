@@ -1670,7 +1670,15 @@ function gvk_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> 
 @alloc_ok("asked for by the player or a tool, not by the frame")
 function gvk_read_screen(render3d_st: mut Render3dState, w: int, h: int, out: pointer) -> void {
   gvk_present(render3d_st)
-  let px = bytes(render3d_st.gvk_screen_w * render3d_st.gvk_screen_h * 4)
+  # one read-back buffer, kept and replaced only when the screen's size changes: a buffer the size of
+  # the screen was made on every read and dropped (23 MB a photograph at 3024x1898)
+  let need = render3d_st.gvk_screen_w * render3d_st.gvk_screen_h * 4
+  if render3d_st.gvk_read_px == null or render3d_st.gvk_read_cap != need {
+    if render3d_st.gvk_read_px != null { free(render3d_st.gvk_read_px) }
+    render3d_st.gvk_read_px = bytes(need)
+    render3d_st.gvk_read_cap = need
+  }
+  let px = render3d_st.gvk_read_px
   if not gvk_tex_read(render3d_st, render3d_st.gvk_screen_color, GL_RGBA8, render3d_st.gvk_screen_w, render3d_st.gvk_screen_h, GL_RGBA, GL_UNSIGNED_BYTE, px) { return }
   let dst: pointer = out
   for y in 0 .. h {
