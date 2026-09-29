@@ -67,7 +67,7 @@ function terrain_coast(render3d_st: mut Render3dState, cx: float, cz: float, mar
 
 # the photograph's colour at world (x, z): packed 0xRRGGBB (0 outside the map)
 function terrain_ortho(render3d_st: mut Render3dState, x: float, z: float) -> int {
-  if render3d_st.ter_ortho_px == null { return 0 }
+  if render3d_st.ter_ortho_px == null and render3d_st.tt_file == null { return 0 }
   if render3d_st.ter_o_scale == 0.0 { render3d_st.ter_o_scale = float(render3d_st.ter_ortho_w) / float(render3d_st.TERRAIN_HALF * 2) }
   let scale = render3d_st.ter_o_scale
   var ix = int(Math.floor((x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale))
@@ -75,6 +75,7 @@ function terrain_ortho(render3d_st: mut Render3dState, x: float, z: float) -> in
   if ix < 0 { ix = 0 };  if iz < 0 { iz = 0 }
   if ix > render3d_st.ter_ortho_w - 1 { ix = render3d_st.ter_ortho_w - 1 };  if iz > render3d_st.ter_ortho_w - 1 { iz = render3d_st.ter_ortho_w - 1 }
   let o = (iz * render3d_st.ter_ortho_w + ix) * render3d_st.ter_ortho_c
+  if render3d_st.ter_ortho_px == null { return ter_o(render3d_st, ix, iz) }
   return (render3d_st.ter_ortho_px[o] << 16) | (render3d_st.ter_ortho_px[o + 1] << 8) | render3d_st.ter_ortho_px[o + 2]
 }
 # The three classifiers below all read the same pixel. A caller that wants more than
@@ -162,6 +163,8 @@ function terrain_use_ortho__t(render3d_st: mut Render3dState, path: string) -> v
   gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_ortho_tex)
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  # a photograph that comes after the height field: now both are here, they can go to tiles
+  if render3d_st.cd_range != null { terrain_tiles_cut(render3d_st) }
 }
 # the GPU memory it makes is counted as VKM_TERRAIN (R3D_VKMEM)
 function terrain_use_dem(render3d_st: mut Render3dState, path: string, emin: float, emax: float, base: float, ox: float, oz: float) -> void {
@@ -300,7 +303,7 @@ function terrain_bake_pass(render3d_st: mut Render3dState, p: int, target: int) 
 # of thousands of candidates per chunk. Hoisted, they cost nothing.
 
 function terrain_height(render3d_st: mut Render3dState, x: float, z: float) -> float {
-  if render3d_st.ter_heights == null { return 0.0 }          # a plate (r3d_plate_mode): flat at y = 0
+  if not ter_present(render3d_st) { return 0.0 }          # a plate (r3d_plate_mode): flat at y = 0
   if render3d_st.ter_h_scale == 0.0 { render3d_st.ter_h_scale = float(TERRAIN_RES) / float(render3d_st.TERRAIN_HALF * 2) }
   let scale = render3d_st.ter_h_scale
   let fx = (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale
@@ -310,10 +313,10 @@ function terrain_height(render3d_st: mut Render3dState, x: float, z: float) -> f
   if ix > TERRAIN_RES - 2 { ix = TERRAIN_RES - 2 };  if iz > TERRAIN_RES - 2 { iz = TERRAIN_RES - 2 }
   let tx = Math.clamp(fx - float(ix), 0.0, 1.0)
   let tz = Math.clamp(fz - float(iz), 0.0, 1.0)
-  let h00 = render3d_st.ter_heights[iz * TERRAIN_RES + ix]
-  let h10 = render3d_st.ter_heights[iz * TERRAIN_RES + ix + 1]
-  let h01 = render3d_st.ter_heights[(iz + 1) * TERRAIN_RES + ix]
-  let h11 = render3d_st.ter_heights[(iz + 1) * TERRAIN_RES + ix + 1]
+  let h00 = ter_h(render3d_st, ix, iz)
+  let h10 = ter_h(render3d_st, ix + 1, iz)
+  let h01 = ter_h(render3d_st, ix, iz + 1)
+  let h11 = ter_h(render3d_st, ix + 1, iz + 1)
   return Math.lerp(Math.lerp(h00, h10, tx), Math.lerp(h01, h11, tx), tz)
 }
 # the same for Q16.16 callers
@@ -325,7 +328,7 @@ function terrain_height_fx(render3d_st: mut Render3dState, x: fixed, z: fixed) -
 # and one buried to the knee in it. Sixteen taps; for things that move, not for the
 # thousands of placement queries a chunk makes.
 function terrain_height_smooth(render3d_st: mut Render3dState, x: float, z: float) -> float {
-  if render3d_st.ter_heights == null { return 0.0 }
+  if not ter_present(render3d_st) { return 0.0 }
   if render3d_st.ter_h_scale == 0.0 { render3d_st.ter_h_scale = float(TERRAIN_RES) / float(render3d_st.TERRAIN_HALF * 2) }
   let scale = render3d_st.ter_h_scale
   let fx = (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale - 0.5
@@ -353,7 +356,7 @@ function terrain_height_smooth(render3d_st: mut Render3dState, x: float, z: floa
     for i in 0 .. 4 {
       var rx = ix - 1 + i
       if rx < 0 { rx = 0 };  if rx > TERRAIN_RES - 1 { rx = TERRAIN_RES - 1 }
-      row = row + render3d_st.ter_bw[i] * render3d_st.ter_heights[rz * TERRAIN_RES + rx]
+      row = row + render3d_st.ter_bw[i] * ter_h(render3d_st, rx, rz)
     }
     h = h + render3d_st.ter_bw[4 + j] * row
   }
@@ -680,6 +683,7 @@ function cdlod_init(render3d_st: mut Render3dState) -> void {
   if r3d_env_has(render3d_st, "R3D_CD_R0") { r = float(Text.to_int(r3d_env(render3d_st, "R3D_CD_R0"))) }
   for l in 0 .. CD_LEVELS { render3d_st.cd_range[l] = r;  r = r * 2.0 }
   cdlod_bounds(render3d_st)
+  terrain_tiles_cut(render3d_st)
 }
 
 # min/max height per patch at every level, from the CPU copy of the height field
@@ -696,7 +700,7 @@ function cdlod_bounds(render3d_st: mut Render3dState) -> void {
         let ty = min(j * t + y, TERRAIN_RES - 1)
         for x in 0 .. t + 1 {
           let tx = min(i * t + x, TERRAIN_RES - 1)
-          let h = render3d_st.ter_heights[ty * TERRAIN_RES + tx]
+          let h = ter_h(render3d_st, tx, ty)
           mn = Math.min(mn, h);  mx = Math.max(mx, h)
         }
       }
@@ -819,6 +823,7 @@ function terrain_unload(render3d_st: mut Render3dState) -> void {
   if render3d_st.ter_dem_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_dem_tex);  render3d_st.ter_dem_tex = 0 }
   if render3d_st.ter_ortho_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_ortho_tex);  render3d_st.ter_ortho_tex = 0 }
   if render3d_st.ter_heights != null { free(render3d_st.ter_heights);  render3d_st.ter_heights = null }
+  tt_close(render3d_st)
   if render3d_st.ter_ortho_px != null { free(render3d_st.ter_ortho_px);  render3d_st.ter_ortho_px = null }
   render3d_st.ter_ortho_w = 0
   if render3d_st.cd_min != null {
@@ -843,6 +848,7 @@ function terrain_reload(render3d_st: mut Render3dState, dem: string, emin: float
   terrain_generate(render3d_st)
   terrain_bake_shadow(render3d_st)
   cdlod_bounds(render3d_st)
+  terrain_tiles_cut(render3d_st)
   gpu_check(render3d_st, "terrain reload")
 }
 
