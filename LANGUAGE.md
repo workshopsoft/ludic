@@ -642,6 +642,7 @@ property Tool {
   @Color tint: int = 0
   @Node(model) grip: string = ""           # a node inside the glTF that `model` names
   @Clip(model) swing: string = ""          # a clip inside it
+  @Color @Tint(TSLOT_SHELL) shell: int = 0 # a colour for that tint slot
   @Derived reach: float = 0.0              # worked out at boot: anything written is overwritten
   @Text @Multiline blurb: string = ""      # read by the player (so translated), and prose
   @Key bind: int = 0                       # a key code
@@ -650,11 +651,11 @@ property Tool {
 registry Tools of Tool as TL from "data/tools.lres"
 ```
 
-They change nothing the program does. Three are checked, and every field that fails is reported, not
+They change nothing the program does. Four are checked, and every field that fails is reported, not
 only the first: `@Ref` must name a registry the program declares; `@OneOf` with one argument ending
-in `_` is a prefix, and otherwise each argument is a constant that must exist; and `@Node(f)` or
-`@Clip(f)` must name a field
-`f` of the same record that is either `@Asset("gltf")` or an `@Ref` to a registry whose record has
+in `_` is a prefix, and otherwise each argument is a constant that must exist; `@Tint(C)` must name a
+constant that exists (a row of the program's tint-slot registry); and `@Node(f)` or `@Clip(f)` must
+name a field `f` of the same record that is either `@Asset("gltf")` or an `@Ref` to a registry whose record has
 exactly one `@Asset("gltf")` field (the model is then the referenced row's).
 
 `ludicc app.ludic --emit-schema out.json` (or `ludic schema [file] [-o out.json]`) writes what the
