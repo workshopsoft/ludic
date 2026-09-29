@@ -8,8 +8,8 @@
 #               entries in their final order - key, constant, index, where each entry and each of its
 #               field values is written - with which file contributed which entries
 #   consts      every const: its type and its value as written
-#   functions   every function a `fn` value can name with no arguments (the states it takes are the
-#               runtime's to supply)
+#   functions   every function a `fn` value can name: fn_type is the type a field sees, the states
+#               stripped (the runtime supplies them), written as a field's type is ("fn(A,B)->R")
 #
 # Deterministic: each list sorted by name (then file and line), an entry list in index order, the
 # paths as the compiler read them, and nothing about the run. The engine's runtime is left out.
@@ -529,13 +529,6 @@ function sc_functions(b: Buf) -> void {
     let d = prog[i]
     var ok = d.kind == N_FN and d.s != null and d.tps == null and sc_written(d)
     if ok { ok = not sc_generic_fn(gens, d.s) }
-    if ok {
-      var k = 0
-      while k < len(d.kids) {
-        if d.kids[k].kind == N_PARAM and not sc_is_state_param(d.kids[k]) { ok = false }
-        k += 1
-      }
-    }
     if ok { push(xs, i);  push(keys, sc_key(sc_name(d.s), d.file, d.line)) }
     else { push(keys, "") }
     i += 1
@@ -550,6 +543,8 @@ function sc_functions(b: Buf) -> void {
 function sc_function(b: Buf, d: Node, first: bool) -> void {
   let ret = sc_ty(d.ty)
   var ps: pointer = ""
+  var args: pointer = ""
+  var params: pointer = ""
   var states: pointer = ""
   var k = 0
   while k < len(d.kids) {
@@ -561,8 +556,15 @@ function sc_function(b: Buf, d: Node, first: bool) -> void {
       ps = ps + p.s + ": " + mt + sc_ty(p.ty)
       let bq = buf_new()
       jq_put(bq, sc_ty(p.ty))
-      if len(states) > 0 { states = states + ", " }
-      states = states + buf_str(bq)
+      if sc_is_state_param(p) {
+        if len(states) > 0 { states = states + ", " }
+        states = states + buf_str(bq)
+      } else {
+        if len(args) > 0 { args = args + "," }
+        args = args + sc_ty(p.ty)
+        if len(params) > 0 { params = params + ", " }
+        params = params + buf_str(bq)
+      }
     }
     k += 1
   }
@@ -578,7 +580,10 @@ function sc_function(b: Buf, d: Node, first: bool) -> void {
   buf_puts(b, ", \"returns\": ")
   jq_put(b, ret)
   buf_puts(b, ", \"fn_type\": ")
-  jq_put(b, `fn() -> {ret}`)
+  jq_put(b, "fn(" + args + ")->" + ret)
+  buf_puts(b, ", \"params\": [")
+  buf_puts(b, params)
+  buf_puts(b, "]")
   buf_puts(b, ", \"signature\": ")
   jq_put(b, `function {sc_name(d.s)}({ps}) -> {ret}`)
   buf_puts(b, ", \"states\": [")

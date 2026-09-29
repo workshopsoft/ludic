@@ -661,8 +661,10 @@ object with `"schema_version": 1`:
   "index": 0, "file": ..., "line": ..., "col": ..., "fields": [{"name", "value", "file", "line",
   "col"}]}`), with `contributors`: which resource file or file of `def`s brought which keys in;
 - `consts` - every const: its type, its value as written, its module and doc;
-- `functions` - every function a `fn` value can name with no arguments (the states it takes are the
-  runtime's to supply): its return type, `fn_type` and signature.
+- `functions` - every function a `fn` value can name, exported or not: its module, return type,
+  `params` (the arguments a caller passes), `states` (what the runtime supplies), `signature`, and
+  `fn_type` - the type a `fn` field sees, the states stripped, spelled as a field's type is
+  (`fn(NpcPerson,float)->bool`), so matching a function to a field is comparing two strings.
 
 Each list is sorted by name (then file and line), a registry's entries are in index order, and the
 paths are the ones the compiler read, so two runs over the same source write the same file. The

@@ -1234,6 +1234,7 @@ function cmd_dev_test() -> int {
   reject_case("rejected/ref_unknown", "field Tool.seller: @Ref(Vendorz) names no registry", "@Ref names a registry that exists")
   schema_case("lang/attributes", "{\"name\": \"weight\", \"type\": \"float\", \"default\": \"1.0\", \"file\": \"examples/lang/attributes.ludic\", \"line\": 24, \"col\": 33, \"attributes\": [{\"name\": \"Range\", \"args\": [0, 20.5]}, {\"name\": \"Unit\", \"args\": [\"kg\"]}]", "--emit-schema: a field's type, default, place and attributes")
   schema_case("lang/attributes", "{\"key\": \"lantern\", \"constant\": \"TL_LANTERN\", \"index\": 1, \"file\": \"examples/lang/data/attr_tools.lres\", \"line\": 3, \"col\": 1", "--emit-schema: a resource entry's constant, index and place")
+  schema_case("lang/attributes", "\"fn_type\": \"fn(Tool,int)->float\", \"params\": [\"Tool\", \"int\"]", "--emit-schema: a function with arguments, its fn_type spelled as a field's")
   reject_case("rejected/registry_twice", "def Furnishings crate is declared twice", "a registry's key is declared once")
   reject_case("rejected/registry_field", "Furnishing has no field colour", "a def's fields are the record's")
   feat_case("modules/open_registry", "", "clock animals weather / 2 2 3", "open_registry.ludic (L8+L3: an open registry takes other modules' defs; its own entries first, then by module name)")
