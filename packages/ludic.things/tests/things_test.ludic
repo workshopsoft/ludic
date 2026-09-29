@@ -10,6 +10,7 @@ program ThingsTest {
     shows: int = 0
     back: int = 0
     wood: int = 0
+    edge: float = 1000000.0   # a morning reaches x below this (the game's zones)
   }
 
   function lit_prompt(t: Thing) -> string {
@@ -42,7 +43,8 @@ program ThingsTest {
   function on_removed(things_test_st: mut ThingsTestState, t: Thing) -> void { things_test_st.gone += 1 }
   function on_shown(things_test_st: mut ThingsTestState, t: Thing) -> void { things_test_st.shows += 1 }
   function on_restored(things_test_st: mut ThingsTestState, t: Thing) -> void { things_test_st.back += 1 }
-  bind ThingsWorld { ground: fn hill, placed: fn on_placed, removed: fn on_removed, shown: fn on_shown, restored: fn on_restored }
+  function in_reach(things_test_st: ThingsTestState, x: float, z: float) -> bool { return x < things_test_st.edge }
+  bind ThingsWorld { restocks: fn in_reach, ground: fn hill, placed: fn on_placed, removed: fn on_removed, shown: fn on_shown, restored: fn on_restored }
 
   function put(things_st: mut ThingsState, kind: int, x: float, z: float) -> Thing { return thing_spawn(things_st, kind, "m", x, 0.0, z, 0.0, 0) }
   function facts(things_st: ThingsState) -> []ThingFact { return q_drain(things_facts(things_st)) }
@@ -129,7 +131,7 @@ program ThingsTest {
     expect(l.active)
     things_tick(things_st, 0.6)
     expect(not l.active)
-    things_restock(things_st)
+    things_restock(things_st, 1)
     expect(b.active)
     expect(not l.active)
     expect_eq(f.used, 1)
@@ -291,5 +293,28 @@ program ThingsTest {
     expect_eq(t.seat, 7)
     expect_eq(t.seats, 2)
     expect_eq(t.taken, 0)
+  }
+
+  test "a Thing a morning missed is restocked once a morning would reach it, and only once" (things_st: mut ThingsState, things_test_st: mut ThingsTestState) {
+    things_clear(things_st)
+    let near = put(things_st, TH_BRANCH, 0.0, 0.0)
+    let far = put(things_st, TH_BRANCH, 500.0, 0.0)
+    thing_use(things_st, near)
+    thing_use(things_st, far)
+    things_test_st.edge = 100.0
+    things_restock(things_st, 3)
+    expect(near.active)
+    expect_eq(near.dawn, 3)
+    expect(not far.active)
+    let out = new []Thing
+    expect_eq(things_catch_up(things_st, things_chunk(500.0, 0.0), 3, out), 0)
+    expect(not far.active)
+    things_test_st.edge = 1000000.0
+    expect_eq(things_catch_up(things_st, things_chunk(500.0, 0.0), 3, out), 1)
+    expect(far.active)
+    expect_eq(far.dawn, 3)
+    expect(out[0] == far)
+    expect_eq(things_catch_up(things_st, things_chunk(500.0, 0.0), 3, out), 0)
+    expect_eq(things_catch_up(things_st, things_chunk(0.0, 0.0), 3, out), 0)
   }
 }

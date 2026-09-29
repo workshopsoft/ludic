@@ -21,6 +21,7 @@ export property Thing {
   seat: int = -1          # the first of its model's seat rows in the game's table; -1 none
   seats: int = 0          # how many seat rows follow it
   taken: int = 0          # a bit per seat someone is sitting in; never saved
+  dawn: int = 0           # the last day a restock reached it (a morning, or a catch-up)
   shared: bool = false    # the game copies it to others (a party)
   ent: int = -1           # its handle in the table, -1 once removed
   tab: Table<Thing> = null  # the table holding it, so a verb on the Thing alone keeps the indexes
