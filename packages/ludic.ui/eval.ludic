@@ -29,7 +29,7 @@ function ui_eval(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   if x.op == X_TEXT { return ev_text(ui_st, x, e) }
   return vl_binary(ui_st, x.s, ui_eval(ui_st, x.a, e), ui_eval(ui_st, x.b, e))
 }
-# a call: len() and range() are the template's own, anything else is the view's
+# a call: len(), range() and t() are the template's own, anything else is the view's
 function ev_call(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   let depth = ui_st.ev_depth
   @alloc_ok("once per depth of nesting, then kept")
@@ -45,6 +45,7 @@ function ev_call(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
 # the call itself, its arguments evaluated; a callee reads them and keeps none
 function ev_call_with(ui_st: mut UiState, x: UiExpr, e: UiEnv, args: Val) -> Val {
   if x.s == "len" and len(x.args) == 1 { return uv_int(ui_st, Value.count(Value.at(args, 0))) }
+  if x.s == "t" and len(x.args) >= 1 { return ev_t(ui_st, args) }   # tkey.ludic: a key, and its holes
   if x.s == "range" and len(x.args) == 1 {
     let out = uv_list(ui_st)
     for i in 0 .. Value.as_int(Value.at(args, 0)) { Value.add(out, uv_int(ui_st, i)) }

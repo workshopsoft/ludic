@@ -1,0 +1,26 @@
+# ui_tkey.ludic - t() in a template: the key marked (byte 1) with its holes after it, each after a byte
+# 31, as the text the translator gets at draw time; a key and holes that read the same twice are one
+# text. Printed with the bytes made visible: `#pause.resume #hud.day|12 #hud.at|lake|3 same`.
+import "ludic.ui"
+program UiTkey {
+  numbers float
+  const BODY: string = "<screen name='k'><p>{t('pause.resume')}</p><p>{t('hud.day', 12)}</p><p>{t('hud.at', 'lake', 3)}</p></screen>"
+  function shown(s: string) -> string {
+    var out = ""
+    for i in 0 .. len(s) {
+      if s[i] == 1 { out = out + "#" } else if s[i] == 31 { out = out + "|" } else { out = out + s[i .. i + 1] }
+    }
+    return out
+  }
+  entry (ui_st: mut UiState) {
+    ui_backend(ui_st, new UiBackend)
+    ui_load_text(ui_st, "<ui>" + BODY + "</ui>", "k.xml")
+    let r: UiNode = ui_nodes(ui_st, "k", null)
+    ui_place(ui_st, r, 0.0, 0.0, 400.0, 300.0)
+    let a = r.children[0].text
+    let r2: UiNode = ui_nodes(ui_st, "k", null)
+    var same = "same"
+    if not (r2.children[1].text == r.children[1].text) { same = "differ" }
+    print(`{shown(a)} {shown(r.children[1].text)} {shown(r.children[2].text)} {same}`)
+  }
+}

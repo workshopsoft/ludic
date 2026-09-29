@@ -10,6 +10,10 @@ function ev_text(ui_st: mut UiState, x: UiExpr, e: UiEnv) -> Val {
   List.clear(ps)
   for i in 0 .. len(x.args) { tx_piece(ui_st, ps, ui_eval(ui_st, x.args[i], e)) }
   ui_st.tx_depth = depth
+  return tx_memo(ui_st, ps)
+}
+# the text these pieces join into, from the memo when it read this way before, else joined and kept
+function tx_memo(ui_st: mut UiState, ps: []string) -> Val {
   let m = mm_of(ui_st)
   var h = 216613626 ^ (MM_TEXT & 255)
   for p in 0 .. len(ps) {

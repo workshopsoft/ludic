@@ -34,6 +34,8 @@ function ui_default_backend() -> UiBackend {
   return UiRenderers[0].make()
 }
 export state UiState {
+  tk_mark: string = tk_byte(1)                    # tkey.ludic: a key's mark, and the byte between its holes
+  tk_sep: string = tk_byte(31)
   @max(64) ov_path: []string = new []string       # override.ludic: paths a studio's text stands in for ...
   @max(64) ov_text: []string = new []string       # ... and the texts
   @max(256) ph_keys: []string = new []string      # held.ludic: elements a preview holds a pseudo-class on for ...
