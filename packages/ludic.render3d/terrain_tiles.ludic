@@ -17,16 +17,41 @@ export function terrain_tiles_to(render3d_st: mut Render3dState, dir: string, ke
   render3d_st.tt_key = intern(key)
 }
 
-# the height texel (tx, tz): the whole copy's, or its tile's
+# The texels as every question reads them: the whole copy, a resident tile, else the file through a
+# scratch of the question's own (terrain_height_file.ludic). A question never takes a slot or moves the
+# clock, so who asks and in what order leaves the cache as the loaders (tt_*_load) put it.
+
+# the height texel (tx, tz)
 function ter_h(render3d_st: mut Render3dState, tx: int, tz: int) -> float {
+  if render3d_st.ter_heights != null { return render3d_st.ter_heights[tz * TERRAIN_RES + tx] }
+  let t = (tz >> TT_SHIFT) * render3d_st.tt_n + (tx >> TT_SHIFT)
+  if render3d_st.tt_file == null or t < 0 or t >= len(render3d_st.tt_slot_of) { return 0.0 }
+  let at = (tz & TT_MASK) * TT_TEX + (tx & TT_MASK)
+  let s = render3d_st.tt_slot_of[t]
+  if s >= 0 { return render3d_st.tt_h[s * TT_TEX * TT_TEX + at] }
+  return render3d_st.tf_h[tf_entry(render3d_st, t) * TT_TEX * TT_TEX + at]
+}
+
+# the photograph's texel (px, pz) as 0xRRGGBB
+function ter_o(render3d_st: mut Render3dState, px: int, pz: int) -> int {
+  let side = render3d_st.tt_oside
+  if side == 0 or render3d_st.tt_file == null { return 0 }
+  let t = (pz / side) * render3d_st.tt_n + (px / side)
+  if t < 0 or t >= len(render3d_st.tt_slot_of) { return 0 }
+  let at = (pz % side) * side + (px % side)
+  let s = render3d_st.tt_slot_of[t]
+  if s >= 0 { return render3d_st.tt_o[s * side * side + at] }
+  return render3d_st.tfo_px[tfo_entry(render3d_st, t) * side * side + at]
+}
+
+# ---- the loaders' reads: the GPU's pages fill from these, so what they need is kept resident ----
+function tt_h_load(render3d_st: mut Render3dState, tx: int, tz: int) -> float {
   if render3d_st.ter_heights != null { return render3d_st.ter_heights[tz * TERRAIN_RES + tx] }
   let s = tt_slot(render3d_st, (tz >> TT_SHIFT) * render3d_st.tt_n + (tx >> TT_SHIFT))
   if s < 0 { return 0.0 }
   return render3d_st.tt_h[s * TT_TEX * TT_TEX + (tz & TT_MASK) * TT_TEX + (tx & TT_MASK)]
 }
-
-# the photograph's texel (px, pz) as 0xRRGGBB
-function ter_o(render3d_st: mut Render3dState, px: int, pz: int) -> int {
+function tt_o_load(render3d_st: mut Render3dState, px: int, pz: int) -> int {
   let side = render3d_st.tt_oside
   if side == 0 { return 0 }
   let s = tt_slot(render3d_st, (pz / side) * render3d_st.tt_n + (px / side))
@@ -35,7 +60,7 @@ function ter_o(render3d_st: mut Render3dState, px: int, pz: int) -> int {
 }
 
 # the baked normal at height texel (tx, tz): x and z as two halves in a word (RG16F), for the GPU's tiles
-function ter_n(render3d_st: mut Render3dState, tx: int, tz: int) -> int {
+function tt_n_load(render3d_st: mut Render3dState, tx: int, tz: int) -> int {
   let s = tt_slot(render3d_st, (tz >> TT_SHIFT) * render3d_st.tt_n + (tx >> TT_SHIFT))
   if s < 0 { return 0 }
   return render3d_st.tt_nm[s * TT_TEX * TT_TEX + (tz & TT_MASK) * TT_TEX + (tx & TT_MASK)]
@@ -44,7 +69,7 @@ function ter_n(render3d_st: mut Render3dState, tx: int, tz: int) -> int {
 # is there a height field to ask at all (a plate has none)
 function ter_present(render3d_st: Render3dState) -> bool { return render3d_st.ter_heights != null or render3d_st.tt_file != null }
 
-# the slot tile t is in, read from the file first when it is not
+# the slot tile t is in, read from the file first when it is not: the loaders' alone
 function tt_slot(render3d_st: mut Render3dState, t: int) -> int {
   if render3d_st.tt_file == null or t < 0 or t >= len(render3d_st.tt_slot_of) { return -1 }
   let s = render3d_st.tt_slot_of[t]

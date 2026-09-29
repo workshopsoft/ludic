@@ -1,35 +1,64 @@
-# height_file_test.ludic - terrain_height_file against terrain_height over a tiles file written here (no
-# device): the same answer to the bit, resident or not, and a sweep of the whole map leaves the page
-# cache - its slots, what they hold and the clock - exactly as it was
+# height_file_test.ludic - the terrain's questions over a tiles file written here (no device): heights and
+# the photograph are the file's texels to the bit, resident or not, and a sweep of the whole map by the
+# questions and by a ground layer's fill leaves the page cache - its slots, what they hold, the clock - as it was
 import "ludic.render3d/r3d.ludic"
 program HeightFileTest {
   numbers float
   # never called: naming Input links the engine's runtime, which render3d's textures stand on
   function links_runtime() -> bool { return Input.key_pressed(0) }
 
-  # an LTT2 file with heights only (no photograph; normals and the coarse level read short, unused here)
+  const HF_SIDE: int = 2        # photograph texels a tile a side
+
+  # the u16 written at texel i of tile t, and what texel (tx, tz) decodes to
+  function hf_q(t: int, i: int) -> int { return (i * 37 + (i >> 5) * 11 + t * 5) & 65535 }
+  function hf_texel(tx: int, tz: int) -> float {
+    let n = TERRAIN_RES / TT_TEX
+    let t = (tz >> 5) * n + (tx >> 5)
+    let q = hf_q(t, (tz & 31) * TT_TEX + (tx & 31))
+    return (float(t % 50) * 3.5 - 40.0) + float(q) * (0.01 + float(t % 7) * 0.001)
+  }
+  # the photograph texel (px, pz) as written
+  function hf_rgb(px: int, pz: int) -> int {
+    let n = TERRAIN_RES / TT_TEX
+    let t = (pz / HF_SIDE) * n + px / HF_SIDE
+    let i = (pz % HF_SIDE) * HF_SIDE + px % HF_SIDE
+    return (((t * 3 + i) & 255) << 16) | (((t >> 3) & 255) << 8) | (i * 60)
+  }
+
+  # an LTT2 file of heights and a photograph (the normals and the coarse level read short, unused here)
   function hf_write(path: string) -> bool {
     let n = TERRAIN_RES / TT_TEX
     let n2 = TT_TEX * TT_TEX
+    let o2 = HF_SIDE * HF_SIDE
     let hat = LT_HEAD + n * n * 8
-    let size = hat + n * n * n2 * 2
+    let oat = hat + n * n * n2 * 2
+    let size = oat + n * n * o2 * 3
     let b = buffer(size)
     for k in 0 .. LT_HEAD { b[k] = 0 }
     hf_put(b, 0, LT_MAGIC)
     hf_put(b, 4, LT_VERSION)
     hf_put(b, 8, TT_TEX)
     hf_put(b, 12, n)
+    hf_put(b, 16, HF_SIDE)
     hf_put(b, 20, TERRAIN_RES)
+    hf_put(b, 24, n * HF_SIDE)
     hf_put(b, 28, TT_COARSE)
     hf_put(b, 32, LT_HEAD)
-    for k in 10 .. 15 { hf_put(b, k * 4, size) }
+    hf_put(b, 40, size)
+    hf_put(b, 44, oat)
+    for k in 12 .. 15 { hf_put(b, k * 4, size) }
     for t in 0 .. n * n {
       hf_put(b, LT_HEAD + t * 8, float_bits(float(t % 50) * 3.5 - 40.0))
       hf_put(b, LT_HEAD + t * 8 + 4, float_bits(0.01 + float(t % 7) * 0.001))
       for i in 0 .. n2 {
-        let q = (i * 37 + (i >> 5) * 11 + t * 5) & 65535
-        b[hat + (t * n2 + i) * 2] = q & 255
-        b[hat + (t * n2 + i) * 2 + 1] = q >> 8
+        b[hat + (t * n2 + i) * 2] = hf_q(t, i) & 255
+        b[hat + (t * n2 + i) * 2 + 1] = hf_q(t, i) >> 8
+      }
+      for i in 0 .. o2 {
+        let c = hf_rgb((t % n) * HF_SIDE + i % HF_SIDE, (t / n) * HF_SIDE + i / HF_SIDE)
+        b[oat + (t * o2 + i) * 3] = c >> 16
+        b[oat + (t * o2 + i) * 3 + 1] = (c >> 8) & 255
+        b[oat + (t * o2 + i) * 3 + 2] = c & 255
       }
     }
     return Fs.write_bytes(path, b, size)
@@ -45,75 +74,98 @@ program HeightFileTest {
     render3d_st.ter_ox = 0.0
     render3d_st.ter_oz = 0.0
     render3d_st.ter_h_scale = 0.0
+    render3d_st.ter_o_scale = 0.0
     return tt_open_ltt2(render3d_st, path, 0)
   }
 
-  test "the same answer as terrain_height, whether its tile is resident or not" (render3d_st: mut Render3dState) {
-    expect(hf_open(render3d_st, "same"))
-    terrain_tiles_prefetch(render3d_st, 1000.0, -500.0, 200.0, 100)
-    let pts = floats(2 * 160 * 160)
-    let got = floats(160 * 160)
-    for j in 0 .. 160 {
-      for i in 0 .. 160 {
-        let k = j * 160 + i
-        pts[k * 2] = -3000.0 + float(i) * 37.3
-        pts[k * 2 + 1] = -3100.0 + float(j) * 41.7
-        got[k] = terrain_height_file(render3d_st, pts[k * 2], pts[k * 2 + 1])
-      }
-    }
-    var off = 0
-    for k in 0 .. 160 * 160 { if terrain_height(render3d_st, pts[k * 2], pts[k * 2 + 1]) != got[k] { off += 1 } }
-    expect_eq(off, 0)
-    # and again now that terrain_height has paged most of them in
-    for k in 0 .. 160 * 160 { if terrain_height_file(render3d_st, pts[k * 2], pts[k * 2 + 1]) != got[k] { off += 1 } }
-    expect_eq(off, 0)
-    # a texel square across a tile corner, and the map's edges
-    for c in 0 .. 5 {
-      let x = -4096.0 + 64.0 * float(c * 13 + 1) - 1.0
-      let z = -4096.0 + 64.0 * float(c * 7 + 2) - 0.5
-      expect_eq(terrain_height_file(render3d_st, x, z), terrain_height(render3d_st, x, z))
-    }
-    expect_eq(terrain_height_file(render3d_st, -5000.0, 5000.0), terrain_height(render3d_st, -5000.0, 5000.0))
+  # terrain_height's bilinear, over the texels as written
+  function hf_expect(x: float, z: float) -> float {
+    let fx = (x + 4096.0) * float(TERRAIN_RES) / 8192.0
+    let fz = (z + 4096.0) * float(TERRAIN_RES) / 8192.0
+    let ix = min(max(int(Math.floor(fx)), 0), TERRAIN_RES - 2)
+    let iz = min(max(int(Math.floor(fz)), 0), TERRAIN_RES - 2)
+    let tx = Math.clamp(fx - float(ix), 0.0, 1.0)
+    let tz = Math.clamp(fz - float(iz), 0.0, 1.0)
+    let a = Math.lerp(hf_texel(ix, iz), hf_texel(ix + 1, iz), tx)
+    return Math.lerp(a, Math.lerp(hf_texel(ix, iz + 1), hf_texel(ix + 1, iz + 1), tx), tz)
   }
 
-  test "a sweep of the whole map leaves every slot, what it holds and the clock as they were" (render3d_st: mut Render3dState) {
+  test "heights and the photograph are the file's texels, whether their tile is resident or not" (render3d_st: mut Render3dState) {
+    expect(hf_open(render3d_st, "same"))
+    terrain_tiles_prefetch(render3d_st, 1000.0, -500.0, 200.0, 100)
+    var off = 0
+    for j in 0 .. 160 {
+      for i in 0 .. 160 {
+        let x = -3000.0 + float(i) * 37.3
+        let z = -3100.0 + float(j) * 41.7
+        if terrain_height(render3d_st, x, z) != hf_expect(x, z) { off += 1 }
+        if terrain_height_file(render3d_st, x, z) != hf_expect(x, z) { off += 1 }
+        let px = min(max(int(Math.floor((x + 4096.0) * 256.0 / 8192.0)), 0), 255)
+        let pz = min(max(int(Math.floor((z + 4096.0) * 256.0 / 8192.0)), 0), 255)
+        if terrain_ortho(render3d_st, x, z) != hf_rgb(px, pz) { off += 1 }
+      }
+    }
+    expect_eq(off, 0)
+    for c in 0 .. 5 {
+      let x = -4096.0 + 64.0 * float(c * 13 + 1) - 1.0     # a texel square across a tile corner
+      let z = -4096.0 + 64.0 * float(c * 7 + 2) - 0.5
+      expect_eq(terrain_height(render3d_st, x, z), hf_expect(x, z))
+    }
+    expect_eq(terrain_height(render3d_st, -5000.0, 5000.0), hf_expect(-5000.0, 5000.0))
+  }
+
+  test "a sweep of the whole map by the questions leaves every slot, what it holds and the clock as they were" (render3d_st: mut Render3dState) {
     expect(hf_open(render3d_st, "sweep"))
     terrain_tiles_prefetch(render3d_st, -200.0, 300.0, 300.0, 200)
-    expect(terrain_height(render3d_st, 2000.0, 2000.0) != 0.12345)     # a tile paged the ordinary way too
-    let n2 = len(render3d_st.tt_slot_of)
-    let slots = len(render3d_st.tt_tile_in)
-    let slot_of = words(n2)
-    for t in 0 .. n2 { slot_of[t] = render3d_st.tt_slot_of[t] }
-    let tile_in = words(slots)
-    let refs = words(slots)
-    for s in 0 .. slots {
-      tile_in[s] = render3d_st.tt_tile_in[s]
-      refs[s] = render3d_st.tt_ref[s]
-    }
-    let h = floats(len(render3d_st.tt_h))
-    for i in 0 .. len(h) { h[i] = render3d_st.tt_h[i] }
-    let hand = render3d_st.tt_hand
-    let reads = render3d_st.tt_reads
-    let frame_reads = render3d_st.tt_frame_reads
+    let was = hf_snap(render3d_st)
     var sum = 0.0
+    var ortho = 0
     var z = -4096.0
     while z <= 4096.0 {
       var x = -4096.0
       while x <= 4096.0 {
-        sum = sum + terrain_height_file(render3d_st, x, z)
+        sum = sum + terrain_height(render3d_st, x, z) + terrain_height_file(render3d_st, x, z) + terrain_height_smooth(render3d_st, x, z)
+        ortho = ortho ^ terrain_ortho(render3d_st, x, z)
         x = x + 16.0
       }
       z = z + 16.0
     }
     expect(sum != 0.0)
-    var moved = 0
-    for t in 0 .. n2 { if render3d_st.tt_slot_of[t] != slot_of[t] { moved += 1 } }
-    for s in 0 .. slots { if render3d_st.tt_tile_in[s] != tile_in[s] or render3d_st.tt_ref[s] != refs[s] { moved += 1 } }
-    for i in 0 .. len(h) { if render3d_st.tt_h[i] != h[i] { moved += 1 } }
-    expect_eq(moved, 0)
-    expect_eq(render3d_st.tt_hand, hand)
-    expect_eq(render3d_st.tt_reads, reads)
-    expect_eq(render3d_st.tt_frame_reads, frame_reads)
+    expect(ortho != 0)
+    expect_eq(hf_moved(render3d_st, was), 0)
+  }
+
+  test "a ground layer's fill over the whole map leaves the slots as they were" (render3d_st: mut Render3dState) {
+    expect(hf_open(render3d_st, "fill"))
+    expect(hf_density(render3d_st, Os.temp_dir() + "/r3d_height_file_fill.lgd2"))
+    terrain_tiles_prefetch(render3d_st, 0.0, 0.0, 250.0, 200)
+    let was = hf_snap(render3d_st)
+    if render3d_st.stream_scratch == null { render3d_st.stream_scratch = floats(4096 * INST_FLOATS) }
+    let s = new Stream
+    s.size = 64.0
+    s.ox = -4096.0
+    s.oz = -4096.0
+    s.cur = new Chunk
+    let g = new GroundFill
+    g.step0 = 8.0
+    g.trample = false
+    var n = 0
+    var bad = 0
+    for cz in 0 .. 32 {
+      for cx in 0 .. 32 {
+        s.cur.count = 0
+        ground_fill(render3d_st, s, cx * 4, cz * 4, 0, g)
+        n += s.cur.count
+        for k in 0 .. s.cur.count {
+          let x = render3d_st.stream_scratch[k * INST_FLOATS]
+          let z = render3d_st.stream_scratch[k * INST_FLOATS + 2]
+          if render3d_st.stream_scratch[k * INST_FLOATS + 1] != hf_expect(x, z) - g.sink { bad += 1 }
+        }
+      }
+    }
+    expect(n > 32 * 32 * 32)
+    expect_eq(bad, 0)
+    expect_eq(hf_moved(render3d_st, was), 0)
   }
 
   test "with the whole copy kept it is terrain_height" (render3d_st: mut Render3dState) {
@@ -125,5 +177,65 @@ program HeightFileTest {
       let z = 3900.0 - float(k) * 17.13
       expect_eq(terrain_height_file(render3d_st, x, z), terrain_height(render3d_st, x, z))
     }
+  }
+
+  # one layer, every tile one value (a word in the index): full density everywhere
+  function hf_density(render3d_st: mut Render3dState, path: string) -> bool {
+    let n = TERRAIN_RES / TT_TEX
+    let size = GD_HEADW * 4 + n * n * 8
+    let b = buffer(size)
+    for k in 0 .. size { b[k] = 0 }
+    hf_put(b, 0, GD_MAGIC)
+    hf_put(b, 4, GD_VERSION)
+    hf_put(b, 8, n)
+    hf_put(b, 12, GD_SIDE)
+    hf_put(b, 16, 1)
+    hf_put(b, 32, 1)
+    hf_put(b, 36, GD_HEADW * 4)
+    for t in 0 .. n * n {
+      hf_put(b, GD_HEADW * 4 + t * 8, 1)
+      hf_put(b, GD_HEADW * 4 + t * 8 + 4, 255)
+    }
+    return Fs.write_bytes(path, b, size) and gd_open_at(render3d_st, path, 0)
+  }
+  # the page cache as it stands: which tile each slot holds, the clock, the heights, the read counts
+  property HfSnap {
+    slot_of: words = null,
+    tile_in: words = null,
+    refs: words = null,
+    h: floats = null,
+    o: words = null,
+    hand: int = 0,
+    reads: int = 0,
+    frame_reads: int = 0
+  }
+  function hf_snap(render3d_st: Render3dState) -> HfSnap {
+    let a = new HfSnap
+    a.slot_of = words(len(render3d_st.tt_slot_of))
+    for t in 0 .. len(a.slot_of) { a.slot_of[t] = render3d_st.tt_slot_of[t] }
+    a.tile_in = words(len(render3d_st.tt_tile_in))
+    a.refs = words(len(render3d_st.tt_tile_in))
+    for s in 0 .. len(a.tile_in) {
+      a.tile_in[s] = render3d_st.tt_tile_in[s]
+      a.refs[s] = render3d_st.tt_ref[s]
+    }
+    a.h = floats(len(render3d_st.tt_h))
+    for i in 0 .. len(a.h) { a.h[i] = render3d_st.tt_h[i] }
+    a.o = words(len(render3d_st.tt_o))
+    for i in 0 .. len(a.o) { a.o[i] = render3d_st.tt_o[i] }
+    a.hand = render3d_st.tt_hand
+    a.reads = render3d_st.tt_reads
+    a.frame_reads = render3d_st.tt_frame_reads
+    return a
+  }
+  # how many of those differ now
+  function hf_moved(render3d_st: Render3dState, a: HfSnap) -> int {
+    var moved = 0
+    for t in 0 .. len(a.slot_of) { if render3d_st.tt_slot_of[t] != a.slot_of[t] { moved += 1 } }
+    for s in 0 .. len(a.tile_in) { if render3d_st.tt_tile_in[s] != a.tile_in[s] or render3d_st.tt_ref[s] != a.refs[s] { moved += 1 } }
+    for i in 0 .. len(a.h) { if render3d_st.tt_h[i] != a.h[i] { moved += 1 } }
+    for i in 0 .. len(a.o) { if render3d_st.tt_o[i] != a.o[i] { moved += 1 } }
+    if render3d_st.tt_hand != a.hand or render3d_st.tt_reads != a.reads or render3d_st.tt_frame_reads != a.frame_reads { moved += 1 }
+    return moved
   }
 }
