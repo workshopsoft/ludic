@@ -1,0 +1,19 @@
+# ---- ludic ui-preview ---------------------------------------------------------
+# A game's ludic.ui components previewed for a studio over stdio: ludic.ui with a backend that
+# records its draw calls, and component classes the studio describes. No game code, no GPU, no
+# network. The studio spawns it; tools/ui-preview/protocol-v1.md is the contract.
+#
+#   ludic ui-preview [--font DIR]    the host, on stdin and stdout
+function cmd_ui_preview() -> int {
+  var args = ""
+  var ai = 2
+  while ai < arg_count() {
+    args = `{args} {sh_single(arg(ai))}`
+    ai += 1
+  }
+  let bin = `{ludic_home()}bin/{exe_name("ludic-ui-preview")}`
+  if is_exec(bin) { return sh(`exec {sh_single(bin)}{args}`) }
+  if capture_line(`command -v {exe_name("ludic-ui-preview")} 2>/dev/null`) != "" { return sh(`exec {exe_name("ludic-ui-preview")}{args}`) }
+  err("ludic ui-preview: no bin/ludic-ui-preview in this install (a checkout builds it with: ludic-dev build)\n")
+  return 1
+}

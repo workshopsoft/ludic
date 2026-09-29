@@ -1,0 +1,79 @@
+# draw.ludic - the recording backend: every UiBackend primitive a line of the frame's draw list
+# (protocol-v1.md, "The draw list"), in the order ludic.ui draws them
+function pv_backend() -> UiBackend {
+  let b = new UiBackend
+  b.rect = fn pv_rect
+  b.round = fn pv_round
+  b.ring = fn pv_ring
+  b.text = fn pv_text_draw
+  b.measure = fn pv_measure_be
+  b.image = fn pv_image
+  b.image_w = fn pv_image_w
+  b.image_h = fn pv_image_h
+  b.nine = fn pv_nine
+  b.clip = fn pv_clip
+  b.unclip = fn pv_unclip
+  b.scale = fn pv_scale
+  b.now = fn pv_now
+  b.translate = fn pv_translate
+  b.sound = fn pv_sound
+  b.read = fn pv_read
+  b.said = fn pv_said
+  b.emitted = fn pv_emitted
+  b.input = false
+  return b
+}
+function pv_box(o: PvOut, x: float, y: float, w: float, h: float) -> void {
+  pv_num(o, x)
+  pv_num(o, y)
+  pv_num(o, w)
+  pv_num(o, h)
+}
+function pv_rect(pv: mut PvState, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
+  pv_s(pv.out, "rect")
+  pv_box(pv.out, x, y, w, h)
+  pv_rgba(pv.out, c, a)
+  pv_nl(pv.out)
+}
+function pv_round(pv: mut PvState, x: float, y: float, w: float, h: float, r: float, c: int, a: float) -> void {
+  pv_s(pv.out, "round")
+  pv_box(pv.out, x, y, w, h)
+  pv_num(pv.out, r)
+  pv_rgba(pv.out, c, a)
+  pv_nl(pv.out)
+}
+function pv_ring(pv: mut PvState, x: float, y: float, w: float, h: float, r: float, t: float, c: int, a: float) -> void {
+  pv_s(pv.out, "ring")
+  pv_box(pv.out, x, y, w, h)
+  pv_num(pv.out, r)
+  pv_num(pv.out, t)
+  pv_rgba(pv.out, c, a)
+  pv_nl(pv.out)
+}
+function pv_text_draw(pv: mut PvState, x: float, y: float, s: string, size: float, c: int, a: float) -> void {
+  pv_s(pv.out, "text")
+  pv_num(pv.out, x)
+  pv_num(pv.out, y)
+  pv_num(pv.out, size)
+  pv_num(pv.out, pv_measure(pv, s, size))
+  pv_rgba(pv.out, c, a)
+  pv_q(pv.out, s)
+  pv_nl(pv.out)
+}
+function pv_measure_be(pv: PvState, s: string, size: float) -> float { return pv_measure(pv, s, size) }
+function pv_clip(pv: mut PvState, x: float, y: float, w: float, h: float) -> void {
+  pv_s(pv.out, "clip")
+  pv_box(pv.out, x, y, w, h)
+  pv_nl(pv.out)
+}
+function pv_unclip(pv: mut PvState) -> void {
+  pv_s(pv.out, "unclip")
+  pv_nl(pv.out)
+}
+# screen pixels a design pixel: the viewport's own, else render3d's (the height over 1080)
+function pv_scale(pv: PvState) -> float {
+  if pv.vs > 0.0 { return pv.vs }
+  return pv.vh / 1080.0
+}
+function pv_now(pv: PvState) -> float { return pv.t }
+function pv_translate(i18n_st: mut I18nState, s: string) -> string { return L(i18n_st, s) }

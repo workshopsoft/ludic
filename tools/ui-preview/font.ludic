@@ -1,0 +1,80 @@
+# font.ludic - text measured as ludic.render3d's overlay measures it (overlay_font, ov_text_w), from
+# the same font.json and with no GPU: a glyph's advance times the size in whole pixels, summed, and
+# the sum cut to a whole pixel. With no font, a character is half the size wide.
+const PV_MAP_N: int = 8192
+@alloc_ok("a font read: once per font line")
+function pv_font_load(pv: mut PvState, dir: string) -> bool {
+  let meta = Fs.read_text(dir + "/font.json")
+  if meta == null { return false }
+  let j = Json.parse(meta)
+  if Value.kind(j) != 6 or Value.has(j, "adv") == 0 { return false }
+  let adv = Value.get(j, "adv")
+  let n = Value.count(adv)
+  var first = 32
+  if Value.has(j, "first") != 0 { first = Value.as_int(Value.get(j, "first")) }
+  let codes = Value.get(j, "codes")
+  pv.fn_adv = new []float
+  pv.fn_map = new []int
+  pv.fn_hi_cp = new []int
+  pv.fn_hi_g = new []int
+  for i in 0 .. n { push(pv.fn_adv, Value.as_float(Value.at(adv, i))) }
+  for c in 0 .. PV_MAP_N { push(pv.fn_map, 0) }
+  for i in 0 .. n {
+    var cp = first + i
+    if Value.kind(codes) == 5 and i < Value.count(codes) { cp = Value.as_int(Value.at(codes, i)) }
+    if cp >= 0 and cp < PV_MAP_N { pv.fn_map[cp] = i + 1 } else if cp >= PV_MAP_N {
+      push(pv.fn_hi_cp, cp)
+      push(pv.fn_hi_g, i)
+    }
+  }
+  pv.fn_space = 0
+  if pv.fn_map[32] > 0 { pv.fn_space = pv.fn_map[32] - 1 }
+  pv.fn_qmark = pv.fn_space
+  if pv.fn_map[63] > 0 { pv.fn_qmark = pv.fn_map[63] - 1 }
+  pv.font_dir = dir
+  pv.fn_on = true
+  return true
+}
+# the glyph for a code point, as ov_glyph: a control character is a space, a missing one is '?'
+function pv_glyph(pv: PvState, cp: int) -> int {
+  if cp < 32 { return pv.fn_space }
+  if cp < PV_MAP_N {
+    let g = pv.fn_map[cp]
+    if g > 0 { return g - 1 }
+    return pv.fn_qmark
+  }
+  for i in 0 .. len(pv.fn_hi_cp) {
+    if pv.fn_hi_cp[i] == cp { return pv.fn_hi_g[i] }
+  }
+  return pv.fn_qmark
+}
+# the bytes the UTF-8 sequence at s[i] takes, as ov_u8 reads it (a broken one is one byte)
+function pv_u8_len(s: string, i: int) -> int {
+  let n = len(s)
+  let b0 = s[i] & 255
+  if b0 >= 240 and b0 < 248 and i + 3 < n { return 4 }
+  if b0 >= 224 and b0 < 240 and i + 2 < n { return 3 }
+  if b0 >= 192 and b0 < 224 and i + 1 < n { return 2 }
+  return 1
+}
+function pv_u8_cp(s: string, i: int, k: int) -> int {
+  let b0 = s[i] & 255
+  if k == 4 { return ((b0 & 7) << 18) | ((s[i + 1] & 63) << 12) | ((s[i + 2] & 63) << 6) | (s[i + 3] & 63) }
+  if k == 3 { return ((b0 & 15) << 12) | ((s[i + 1] & 63) << 6) | (s[i + 2] & 63) }
+  if k == 2 { return ((b0 & 31) << 6) | (s[i + 1] & 63) }
+  if b0 >= 128 { return 63 }
+  return b0
+}
+# the width of s at `size` pixels a em, in whole pixels
+function pv_measure(pv: PvState, s: string, size: float) -> float {
+  let px = float(int(size))
+  var w = 0.0
+  var i = 0
+  let n = len(s)
+  while i < n {
+    let k = pv_u8_len(s, i)
+    if pv.fn_on { w = w + pv.fn_adv[pv_glyph(pv, pv_u8_cp(s, i, k))] * px } else { w = w + 0.5 * px }
+    i += k
+  }
+  return float(int(w))
+}

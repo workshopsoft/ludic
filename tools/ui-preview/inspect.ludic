@@ -1,0 +1,72 @@
+# inspect.ludic - `tree`, `box <id>` and `rules <id>`: the last frame's elements, one's box and
+# computed style, and the rules that style it with where each was written
+function pv_tree(pv: mut PvState, ui_st: UiState) -> string {
+  let root = ui_root(ui_st, pv.root)
+  if root == null { return "tree: no frame shown yet" }
+  pv_node(pv.out, root, 0)
+  return ""
+}
+function pv_node(o: PvOut, n: UiNode, depth: int) -> void {
+  pv_s(o, "node")
+  pv_int(o, depth)
+  pv_int(o, n.kind)
+  pv_q(o, n.key)
+  pv_q(o, n.tag)
+  pv_q(o, n.id)
+  pv_byte(o, 32)
+  pv_byte(o, 34)
+  if n.classes != null {
+    for i in 0 .. len(n.classes) {
+      if i > 0 { pv_byte(o, 32) }
+      pv_s(o, n.classes[i])
+    }
+  }
+  pv_byte(o, 34)
+  pv_box(o, n.x, n.y, n.cw, n.ch)
+  pv_q(o, n.text)
+  pv_nl(o)
+  if n.children == null { return }
+  for i in 0 .. len(n.children) { pv_node(o, n.children[i], depth + 1) }
+}
+# the element whose id (or key) that is, on the root's last frame
+function pv_find(pv: PvState, ui_st: UiState, id: string) -> UiNode { return ui_find(ui_st, id) }
+function pv_box_cmd(pv: mut PvState, ui_st: UiState, id: string) -> string {
+  let n = pv_find(pv, ui_st, id)
+  if n == null { return `box {id}: no element has that id or key` }
+  let o = pv.out
+  pv_s(o, "box")
+  pv_q(o, n.key)
+  pv_box(o, n.x, n.y, n.cw, n.ch)
+  pv_nl(o)
+  pv_style(o, n)
+  return ""
+}
+function pv_rules_cmd(pv: mut PvState, ui_st: mut UiState, id: string) -> string {
+  let n = ui_find(ui_st, id)
+  if n == null { return `rules {id}: no element has that id or key` }
+  ui_rules_of(ui_st, n, pv.rules)
+  for i in 0 .. len(pv.rules) { pv_rule(pv.out, pv.rules[i], "rule") }
+  if n.style != null { pv_rule(pv.out, n.style, "inline") }
+  return ""
+}
+@alloc_ok("an inspector's question: a rule's file cut from its place")
+function pv_rule(o: PvOut, r: UiRule, word: string) -> void {
+  pv_s(o, word)
+  let colon = pv_last_colon(r.at)
+  if colon > 0 and pv_digits_only(r.at, colon + 1) {
+    pv_q(o, r.at[0..colon])
+    pv_int(o, pv_int_of(r.at[colon + 1..len(r.at)]))
+  } else {
+    pv_q(o, r.at)
+    pv_int(o, 0)
+  }
+  pv_int(o, r.spec)
+  pv_q(o, r.text)
+  pv_nl(o)
+  for k in 0 .. len(r.keys) {
+    pv_s(o, "decl")
+    pv_q(o, r.keys[k])
+    pv_q(o, ui_rule_value(r, k))
+    pv_nl(o)
+  }
+}

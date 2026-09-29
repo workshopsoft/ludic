@@ -1,0 +1,66 @@
+# calls.ludic - a component's functions, answered from the story: `calls <Name> {"pct": [80, 20],
+# "label": {"0": "Food", "*": "?"}, "ready": true}`. A list is indexed by the first argument, an
+# object keyed by the arguments' text ("," between several; "*" when none matches), anything else is
+# the answer whatever the arguments. A call made by an action (a press, not a build) is an event, and
+# so is `set`; a name the story does not answer is null, and said once as a miss.
+function pv_call(pv: mut PvState, ui_st: UiState, p: pointer, name: string, args: Val, into: Val) -> Val {
+  let m: PvInst = p
+  if len(name) > 4 and pv_sat(name, 0, "set:") { return pv_set(pv, m, name, args, into) }
+  let building = ui_building(ui_st)
+  if not building { pv_call_event(pv, m, name, args) }
+  let s = pv_story(pv, m.cls)
+  if s != null and s.calls != null and Value.kind(s.calls) == 6 and Value.has(s.calls, name) != 0 { return pv_answer(Value.get(s.calls, name), args, into) }
+  if building { pv_miss(pv, m.cls, name) }
+  return value_into_null(into)
+}
+@alloc_ok("an action's call: a press, never a build")
+function pv_call_event(pv: mut PvState, m: PvInst, name: string, args: Val) -> void {
+  pv_s(pv.ev, "call")
+  pv_q(pv.ev, m.cls)
+  pv_q(pv.ev, name)
+  pv_json(pv.ev, args)
+  pv_nl(pv.ev)
+}
+# `set name = value` in the template: kept on the instance (a copy: the value is ludic.ui's to reuse)
+@alloc_ok("an action's set: a press, never a build")
+function pv_set(pv: mut PvState, m: PvInst, name: string, args: Val, into: Val) -> Val {
+  let key = name[4..len(name)]
+  let v = pv_copy(Value.at(args, 0))
+  Value.put(m.sets, key, v)
+  pv_s(pv.ev, "set")
+  pv_q(pv.ev, m.cls)
+  pv_q(pv.ev, key)
+  pv_json(pv.ev, v)
+  pv_nl(pv.ev)
+  return value_into_null(into)
+}
+@alloc_ok("a miss: said once per class and name")
+function pv_miss(pv: mut PvState, cls: string, name: string) -> void {
+  for i in 0 .. len(pv.miss_cls) {
+    if pv.miss_cls[i] == cls and pv.miss_fn[i] == name { return }
+  }
+  push(pv.miss_cls, cls)
+  push(pv.miss_fn, name)
+  pv_s(pv.ev, "miss")
+  pv_q(pv.ev, cls)
+  pv_q(pv.ev, name)
+  pv_nl(pv.ev)
+}
+# the story's answer to one call; a scalar is written into `into`, as a component's call writes it
+@alloc_ok("a story's answer keyed by several arguments: a tool's frame, never the game's")
+function pv_answer(spec: Val, args: Val, into: Val) -> Val {
+  var v = spec
+  if Value.kind(spec) == 5 { v = Value.at(spec, Value.as_int(Value.at(args, 0))) } else if Value.kind(spec) == 6 {
+    var key = ""
+    if Value.count(args) > 0 { key = ui_val_text(Value.at(args, 0)) }
+    for i in 1 .. Value.count(args) { key = key + "," + ui_val_text(Value.at(args, i)) }
+    if Value.has(spec, key) != 0 { v = Value.get(spec, key) } else { v = Value.get(spec, "*") }
+  }
+  let k = Value.kind(v)
+  if k == 1 { return value_into_int(into, Value.as_int(v)) }
+  if k == 7 or k == 2 { return value_into_float(into, Value.as_float(v)) }
+  if k == 3 { return value_into_bool(into, Value.as_int(v) != 0) }
+  if k == 4 { return value_into_str(into, Value.as_str(v)) }
+  if k == 0 { return value_into_null(into) }
+  return v
+}

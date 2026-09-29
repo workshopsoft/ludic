@@ -41,7 +41,7 @@ function in_reuse(ui_st: mut UiState, k: UiClass) -> UiInst {
   }
   let it = new UiInst
   it.cls = k
-  it.ptr = k.make()
+  if k.make_of != null { it.ptr = k.make_of(k) } else { it.ptr = k.make() }
   it.fresh = true
   return it
 }

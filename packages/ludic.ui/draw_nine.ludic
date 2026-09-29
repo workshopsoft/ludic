@@ -4,7 +4,7 @@
 # x0 x1 x2 x3 then y0 y1 y2 y3: the columns' and the rows' edges
 export function ui_nine_cuts(x: float, y: float, w: float, h: float, dst: float) -> []float { return ui_nine_cuts_into(new []float, x, y, w, h, dst) }
 # the same into a list the caller keeps, emptied first
-function ui_nine_cuts_into(out: []float, x: float, y: float, w: float, h: float, dst: float) -> []float {
+export function ui_nine_cuts_into(out: []float, x: float, y: float, w: float, h: float, dst: float) -> []float {
   let dx = Math.max(Math.min(dst, w / 2.0), 0.0)
   let dy = Math.max(Math.min(dst, h / 2.0), 0.0)
   List.clear(out)

@@ -1,0 +1,97 @@
+# cmd_world.ludic - the requests that set what the preview draws against: the viewport, the font,
+# the language, atlases, pictures' sizes and files the studio holds unsaved
+function pv_viewport(pv: mut PvState, w: []string) -> string {
+  if len(w) < 3 { return "viewport: <w> <h> [<scale>]" }
+  let vw = pv_float(w[1])
+  let vh = pv_float(w[2])
+  if vw <= 0.0 or vh <= 0.0 { return "viewport: a width and a height above 0" }
+  pv.vw = vw
+  pv.vh = vh
+  pv.vs = 0.0
+  if len(w) >= 4 { pv.vs = pv_float(w[3]) }
+  return ""
+}
+function pv_font_cmd(pv: mut PvState, w: []string) -> string {
+  if len(w) < 2 { return "font: <dir>" }
+  let dir = pv_text(w[1])
+  if not pv_font_load(pv, dir) { return `font {dir}: no font.json with "adv" there` }
+  return ""
+}
+# `locale <po path>`: the .po every drawn text is looked up in; "" or "en" is English again
+@alloc_ok("a request: a language read")
+function pv_locale(pv: mut PvState, i18n_st: mut I18nState, w: []string) -> string {
+  if len(w) < 2 { return "locale: <po path>" }
+  let path = pv_text(w[1])
+  if path == "" or path == "en" {
+    i18n_off(i18n_st)
+    pv.locale = ""
+    return ""
+  }
+  let text = pv_read(pv, path)
+  if text == null { return `locale {path}: cannot read it` }
+  i18n_load_text(i18n_st, text)
+  pv.locale = path
+  return ""
+}
+# `atlas <prefix> <name> <cols> <rows> [<names>]`: <img src="prefix:cell"> is a cell of atlas `name`
+@alloc_ok("a request: an atlas named, once")
+function pv_atlas(pv: mut PvState, w: []string) -> string {
+  if len(w) < 5 { return "atlas: <prefix> <name> <cols> <rows> [<names as a JSON list>]" }
+  let names = new []string
+  if len(w) >= 6 {
+    let l = pv_val(w[5])
+    for i in 0 .. Value.count(l) { push(names, ui_val_text(Value.at(l, i))) }
+  }
+  let prefix = pv_text(w[1])
+  var at = -1
+  for i in 0 .. len(pv.at_prefix) {
+    if pv.at_prefix[i] == prefix { at = i }
+  }
+  if at < 0 {
+    push(pv.at_prefix, prefix)
+    push(pv.at_name, "")
+    push(pv.at_cols, 1)
+    push(pv.at_rows, 1)
+    push(pv.at_names, names)
+    at = len(pv.at_prefix) - 1
+  }
+  pv.at_name[at] = pv_text(w[2])
+  pv.at_cols[at] = Math.max(pv_int_of(w[3]), 1)
+  pv.at_rows[at] = Math.max(pv_int_of(w[4]), 1)
+  pv.at_names[at] = names
+  return ""
+}
+# `image <path> <w> <h>`: a picture's natural size, for object-fit
+@alloc_ok("a request: a picture's size, once")
+function pv_image_cmd(pv: mut PvState, w: []string) -> string {
+  if len(w) < 4 { return "image: <path> <w> <h>" }
+  let path = pv_text(w[1])
+  for i in 0 .. len(pv.im_path) {
+    if pv.im_path[i] == path {
+      pv.im_w[i] = pv_float(w[2])
+      pv.im_h[i] = pv_float(w[3])
+      return ""
+    }
+  }
+  push(pv.im_path, path)
+  push(pv.im_w, pv_float(w[2]))
+  push(pv.im_h, pv_float(w[3]))
+  return ""
+}
+# `file <path> <text>`: what reading that path gives (an @import, a .po), over the disk's
+@alloc_ok("a request: a file's text, kept until replaced")
+function pv_file(pv: mut PvState, ui_st: mut UiState, w: []string) -> string {
+  if len(w) < 3 { return "file: <path> <text>" }
+  let path = pv_text(w[1])
+  let text = pv_text(w[2])
+  ui_file_forget(ui_st, path)
+  for i in 0 .. len(pv.fl_path) {
+    if pv.fl_path[i] == path {
+      pv.fl_text[i] = text
+      return ""
+    }
+  }
+  push(pv.fl_path, path)
+  push(pv.fl_text, text)
+  return ""
+}

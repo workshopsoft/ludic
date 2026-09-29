@@ -324,7 +324,7 @@ function build_artifacts(ver: pointer) -> bool {
     let name = `ludic-{ver}-{plat}-{arch}`
     let stage = `{tmp_dir()}/{name}`
     shell(`rm -rf {stage} && mkdir -p {stage}/bin`)
-    if not shq(`cp bin/ludic bin/ludicc bin/ludic-fmt bin/ludic-lsp {stage}/bin/`) {
+    if not shq(`cp bin/ludic bin/ludicc bin/ludic-fmt bin/ludic-lsp bin/ludic-ui-preview {stage}/bin/`) {
       err("release: the toolchain is not built (run: ludic-dev build)\n")
       return false
     }

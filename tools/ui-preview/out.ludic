@@ -1,0 +1,78 @@
+# out.ludic - the reply stream: lines written into a buffer made once and grown when a frame needs
+# more, then written and flushed whole, so a draw list makes no string per primitive
+property PvOut {
+  p: pointer = null
+  n: int = 0
+  cap: int = 0
+}
+extern function fflush(f: pointer) -> int = "fflush"
+function pv_room(o: PvOut, more: int) -> void {
+  if o.n + more + 1 <= o.cap { return }
+  var cap = o.cap * 2
+  if cap < 65536 { cap = 65536 }
+  while cap < o.n + more + 1 { cap = cap * 2 }
+  var q: pointer = null
+  unsafe {
+    q = bytes(cap)
+    for i in 0 .. o.n { q[i] = o.p[i] }
+    if o.p != null { free(o.p) }
+  }
+  o.p = q
+  o.cap = cap
+}
+function pv_byte(o: PvOut, c: int) -> void {
+  pv_room(o, 1)
+  unsafe { o.p[o.n] = c }
+  o.n += 1
+}
+# text as it is (a word of the protocol)
+function pv_s(o: PvOut, s: string) -> void {
+  let k = len(s)
+  pv_room(o, k)
+  unsafe {
+    for i in 0 .. k { o.p[o.n + i] = s[i] }
+  }
+  o.n += k
+}
+# a space, then a word
+function pv_w(o: PvOut, s: string) -> void {
+  pv_byte(o, 32)
+  pv_s(o, s)
+}
+# a space, then text as a JSON string: " and \ escaped, control bytes as \n \r \t or \u00XX, UTF-8 as is
+function pv_q(o: PvOut, s: string) -> void {
+  pv_byte(o, 32)
+  pv_byte(o, 34)
+  for i in 0 .. len(s) {
+    let c = s[i] & 255
+    if c == 34 or c == 92 {
+      pv_byte(o, 92)
+      pv_byte(o, c)
+    } else if c == 10 {
+      pv_s(o, "\\n")
+    } else if c == 13 {
+      pv_s(o, "\\r")
+    } else if c == 9 {
+      pv_s(o, "\\t")
+    } else if c < 32 {
+      pv_s(o, "\\u00")
+      pv_byte(o, pv_hexch(c / 16))
+      pv_byte(o, pv_hexch(c % 16))
+    } else { pv_byte(o, c) }
+  }
+  pv_byte(o, 34)
+}
+function pv_hexch(d: int) -> int {
+  if d < 10 { return 48 + d }
+  return 87 + d
+}
+# the line so far ends
+function pv_nl(o: PvOut) -> void { pv_byte(o, 10) }
+# everything buffered goes to stdout now, and the buffer is empty again
+function pv_flush(o: PvOut) -> void {
+  if o.n == 0 { return }
+  let f = file_stdout()
+  unsafe { file_write(f, o.p, o.n) }
+  fflush(f)
+  o.n = 0
+}

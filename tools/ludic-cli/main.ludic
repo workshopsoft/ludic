@@ -32,6 +32,7 @@ program Ludic {
   import "scripts.ludic"
   import "deps.ludic"
   import "schema.ludic"
+  import "ui_preview.ludic"
   import "testpar.ludic"
   import "migrate.ludic"
 
@@ -78,6 +79,7 @@ program Ludic {
     print("  doctor                        check that the install is complete and usable")
     print("  fmt [--check] [paths...]      format Ludic source in place (--check: report, write nothing)")
     print("  lsp                           run the language server on stdio (what editors spawn)")
+    print("  ui-preview [--font DIR]       preview a game's ludic.ui components for a studio, on stdio")
     print("  help                          this message")
     print("")
     print("package scripts (package.ludic):")
@@ -110,6 +112,7 @@ program Ludic {
     if (cmd == "clean") { return cmd_clean() }
     if (cmd == "fmt") { return cmd_fmt() }
     if (cmd == "lsp") { return cmd_lsp() }
+    if (cmd == "ui-preview") { return cmd_ui_preview() }
     if (cmd == "doctor") { return cmd_doctor() }
     if (cmd == "upgrade") { return cmd_upgrade() }
     if (cmd == "script") { return cmd_script() }

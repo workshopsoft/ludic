@@ -1,0 +1,28 @@
+# input_keys.ludic - the names `input key` and `input pad` take, and a frame's presses cleared
+function pv_key(i: PvIn, k: string) -> string {
+  let o = i.once
+  if k == "tab" { o.tab = true } else if k == "backtab" {
+    o.tab = true
+    o.shift = true
+  } else if k == "up" { o.up = true } else if k == "down" { o.down_key = true } else if k == "left" { o.left = true } else if k == "right" { o.right = true } else if k == "enter" { o.enter = true } else if k == "space" { o.space = true } else if k == "escape" { o.escape = true } else if k == "backspace" { o.backspace = true } else if len(k) > 0 and k[0] >= 48 and k[0] <= 57 { o.key = pv_int_of(k) } else { return `input key {k}: not a key` }
+  return ""
+}
+function pv_pad(i: PvIn, b: string, on: bool) -> string {
+  if b == "a" { i.pad_a = on } else if b == "b" { i.pad_b = on } else if b == "up" { i.hold_up = on } else if b == "down" { i.hold_down = on } else if b == "left" { i.hold_left = on } else if b == "right" { i.hold_right = on } else if b == "enter" { i.hold_enter = on } else { return `input pad {b}: not a button` }
+  return ""
+}
+function pv_in_blank(o: UiInput) -> void {
+  o.wheel = 0.0
+  o.tab = false
+  o.shift = false
+  o.up = false
+  o.down_key = false
+  o.left = false
+  o.right = false
+  o.enter = false
+  o.space = false
+  o.escape = false
+  o.backspace = false
+  o.typed = ""
+  o.key = 0
+}

@@ -1,0 +1,89 @@
+# mock.ludic - a component class the studio describes: its template and styles as sent, its model the
+# story's (`model`), its props what the parent's tag gives it, its state what the template has set,
+# and its functions answered from the story's table (`calls`, calls.ludic)
+property PvInst {
+  cls: string = ""
+  props: Val = null
+  sets: Val = null               # what `set name = value` wrote, over the story's model
+}
+# what the story says of a class: its model and its function table
+property PvStory {
+  name: string = ""
+  model: Val = null
+  calls: Val = null
+}
+function pv_story(pv: PvState, name: string) -> PvStory {
+  for i in 0 .. len(pv.stories) {
+    if pv.stories[i].name == name { return pv.stories[i] }
+  }
+  return null
+}
+@alloc_ok("a story line: once per request")
+function pv_story_get(pv: mut PvState, name: string) -> PvStory {
+  let s = pv_story(pv, name)
+  if s != null { return s }
+  let t = new PvStory
+  t.name = name
+  push(pv.stories, t)
+  return t
+}
+@alloc_ok("a component instance: made once per instance, as a component's record is")
+function pv_make(k: UiClass) -> pointer {
+  let m = new PvInst
+  m.cls = k.name
+  m.sets = Value.object()
+  return m
+}
+function pv_renew(p: pointer) -> void {
+  let m: PvInst = p
+  Value.clear(m.sets)
+}
+function pv_props(p: pointer, v: Val) -> void {
+  let m: PvInst = p
+  m.props = v
+}
+# the story's model, then the props, then what was set: the later wins
+function pv_model(pv: PvState, p: pointer, o: Val) -> Val {
+  let m: PvInst = p
+  Value.clear(o)
+  let s = pv_story(pv, m.cls)
+  if s != null and s.model != null and Value.kind(s.model) == 6 { pv_merge(o, s.model) }
+  if m.props != null { pv_merge(o, m.props) }
+  pv_merge(o, m.sets)
+  return o
+}
+function pv_merge(o: Val, src: Val) -> void {
+  for i in 0 .. Value.count(src) { Value.put(o, Value.key_at(src, i), Value.at(src, i)) }
+}
+@alloc_ok("once per class the studio names")
+function pv_class_new(name: string) -> UiClass {
+  let k = new UiClass
+  k.name = name
+  k.make_of = fn pv_make
+  k.renew = fn pv_renew
+  k.props = fn pv_props
+  k.model = fn pv_model
+  k.call = fn pv_call
+  return k
+}
+# a class for every component tag in a template that the studio has not sent yet: an empty one, so
+# the template links, and the studio's `load` of it later fills it in place
+@alloc_ok("a template's tags read: once per load")
+function pv_placeholders(ui_st: mut UiState, xml: string, own: string) -> void {
+  let n = len(xml)
+  for i in 0 .. n - 1 {
+    if xml[i] == 60 and xml[i + 1] >= 65 and xml[i + 1] <= 90 {
+      var j = i + 1
+      while j < n and pv_name_ch(xml[j]) { j += 1 }
+      if j < n and xml[j] == 58 { continue }     # kit:Name, a template import's own
+      let tag = xml[i + 1..j]
+      if tag != own and ui_class(ui_st, tag) == null {
+        let k = pv_class_new(tag)
+        k.xml = "<row/>"
+        k.xml_path = tag + ".xml"
+        ui_register(ui_st, k)
+      }
+    }
+  }
+}
+function pv_name_ch(c: int) -> bool { return (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95 }
