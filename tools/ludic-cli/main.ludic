@@ -22,6 +22,7 @@
 program Ludic {
   import "prelude.ludic"
   import "build.ludic"
+  import "split.ludic"
   import "project.ludic"
   import "pkg.ludic"
   import "assets.ludic"
