@@ -493,6 +493,7 @@ function gvk_tex_release(render3d_st: mut Render3dState, tex: int) -> void {
   render3d_st.gvk_tex_image[tex] = zero;  render3d_st.gvk_tex_view[tex] = zero;  render3d_st.gvk_tex_mem[tex] = zero
   render3d_st.gvk_tex_levels[tex] = 0;  render3d_st.gvk_tex_layers[tex] = 0;  render3d_st.gvk_tex_vkfmt[tex] = 0
   render3d_st.gvk_tex_gen[tex] = render3d_st.gvk_tex_gen[tex] + 1
+  render3d_st.gvk_sc_dead += 1                # its kept sets are dead now (gvk_frame_reset)
 }
 
 # the per-level and per-layer views gvk_view_of made of a texture go with it: kept, each held its
