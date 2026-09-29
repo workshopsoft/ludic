@@ -1,0 +1,87 @@
+# split_build.ludic - the program's IR compiled on every core: llvm-split cuts it into N parts, one
+# clang each runs at once, and the link takes their objects where it took the one .ll. Most of a
+# build was one clang -O2 on one file (the game: 32 s of 41). Needs an llvm-split and a clang of
+# the same LLVM (a newer LLVM's parts do not read in an older clang): $LUDIC_LLVM (a bin directory),
+# else Homebrew's. Anything missing, or a part that does not compile, falls back to the one clang.
+
+function split_there(p: pointer) -> bool {
+  let f = file_open(p, "rb")
+  if f == null { return false }
+  file_close(f)
+  return true
+}
+
+# the LLVM bin directory to split with, or null (Windows' shell cannot run the parts at once yet)
+function split_dir() -> pointer {
+  if host_is_windows() { return null }
+  if getenv_or("LUDIC_SPLIT", "1") == "0" { return null }
+  let d = getenv_or("LUDIC_LLVM", "/opt/homebrew/opt/llvm/bin")
+  if not split_there(`{d}/llvm-split`) or not split_there(`{d}/clang`) { return null }
+  return d
+}
+
+# how many parts: $LUDIC_JOBS, else the cores, no more than the free memory allows at 1.5 GB a clang
+function split_jobs(tmp: pointer) -> int {
+  let j = getenv("LUDIC_JOBS")
+  if j != null { return split_int(j) }
+  let probe = `{tmp}.cores`
+  let aw = "awk '/Pages free/{f=$3} /Pages inactive/{i=$3} END{print int((f+i)*p/1073741824)}'"
+  run(`echo $(sysctl -n hw.ncpu) $(vm_stat | {aw} p=$(sysctl -n hw.pagesize)) > "{probe}" 2>/dev/null`)
+  let f = file_open(probe, "rb")
+  if f == null { return 1 }
+  let buf = bytes(64)
+  let n = file_read(f, buf, 63)
+  file_close(f)
+  remove_file(`"{probe}"`)
+  if n <= 0 { return 1 }
+  buf[n] = 0
+  var cores = 0
+  var i = 0
+  while i < n and buf[i] >= '0' and buf[i] <= '9' { cores = cores * 10 + (buf[i] - '0');  i += 1 }
+  while i < n and buf[i] == ' ' { i += 1 }
+  var gb = 0
+  while i < n and buf[i] >= '0' and buf[i] <= '9' { gb = gb * 10 + (buf[i] - '0');  i += 1 }
+  let by_mem = (gb * 2) / 3
+  if by_mem < cores { return by_mem }
+  return cores
+}
+function split_int(s: pointer) -> int {
+  var v = 0
+  var i = 0
+  while i < len(s) and s[i] >= '0' and s[i] <= '9' { v = v * 10 + (s[i] - '0');  i += 1 }
+  return v
+}
+
+# the IR at `ll` compiled in parts at -O`opt`: their objects, quoted and space-separated, for the
+# link to take in place of the .ll; null when it was not split (the caller compiles the .ll whole)
+function split_compile(ll: pointer, out: pointer, opt: pointer) -> pointer {
+  let d = split_dir()
+  if d == null { return null }
+  let n = split_jobs(out)
+  if n < 2 { return null }
+  let pre = `{out}.part`
+  if run(`"{d}/llvm-split" -j {n} -o "{pre}" "{ll}"`) != 0 { return null }
+  var sh = ""
+  var i = 0
+  while i < n {
+    sh = sh + `"{d}/clang" -x ir -O{opt} -mmacosx-version-min=11.0 -Wno-override-module -Wno-missing-sysroot -c "{pre}{itoa(i)}" -o "{pre}{itoa(i)}.o" & `
+    i += 1
+  }
+  run(`/bin/sh -c '{sh}wait'`)
+  var objs = ""
+  var ok = true
+  i = 0
+  while i < n {
+    remove_file(`"{pre}{itoa(i)}"`)
+    if not split_there(`{pre}{itoa(i)}.o`) { ok = false }
+    objs = objs + ` "{pre}{itoa(i)}.o"`
+    i += 1
+  }
+  if not ok {
+    split_clean(out)
+    return null
+  }
+  return objs
+}
+# the parts' objects, once linked (or when a part failed)
+function split_clean(out: pointer) -> void { run(`rm -f "{out}".part*.o`) }

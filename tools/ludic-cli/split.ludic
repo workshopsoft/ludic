@@ -1,0 +1,49 @@
+# split.ludic - `ludic build` on every core: the program's IR cut into N parts (llvm-split), a clang
+# each at once, their objects linked where the one .ll was (the game: clang was 32 s of a 41 s
+# build, on one core). ludicc's own link does the same (selfhost/split_build.ludic). It needs an
+# llvm-split and a clang of one LLVM - $LUDIC_LLVM, else Homebrew's - or it compiles the .ll whole.
+
+function split_opt() -> pointer { return getenv_or("LUDIC_OPT", "2") }   # 1: a developer's faster build
+
+# " a.o b.o ..." for the link, or "" when not split (the caller compiles the .ll as before)
+function split_objs(ll: pointer, out: pointer) -> pointer {
+  if host_windows() or getenv_or("LUDIC_SPLIT", "1") == "0" { return "" }
+  let d = getenv_or("LUDIC_LLVM", "/opt/homebrew/opt/llvm/bin")
+  if not is_exec(`"{d}/llvm-split"`) or not is_exec(`"{d}/clang"`) { return "" }
+  let n = split_n()
+  if n < 2 { return "" }
+  let pre = tmp_path(`{file_of_path(out)}.part`)
+  if not shq(`"{d}/llvm-split" -j {n} -o "{pre}" "{ll}"`) { return "" }
+  var sh = ""
+  for i in 0 .. n {
+    sh = sh + `"{d}/clang" -x ir -O{split_opt()} -mmacosx-version-min=11.0 -Wno-override-module -Wno-missing-sysroot -c "{pre}{i}" -o "{pre}{i}.o" & `
+  }
+  shell(`{sh}wait`)
+  var objs = ""
+  var ok = true
+  for i in 0 .. n {
+    shell(`rm -f "{pre}{i}"`)
+    if not file_exists(`"{pre}{i}.o"`) { ok = false }
+    objs = objs + ` "{pre}{i}.o"`
+  }
+  if ok { return objs }
+  shell(`rm -f {objs}`)
+  return ""
+}
+
+# $LUDIC_JOBS, else the cores - no more than the free memory allows at 1.5 GB a clang
+function split_n() -> int {
+  let j = getenv("LUDIC_JOBS")
+  if j != null { return s_to_int(j) }
+  let aw = "awk '/Pages free/{f=$3} /Pages inactive/{i=$3} END{print int((f+i)*p/1073741824)}'"
+  let line = capture_line(`echo $(sysctl -n hw.ncpu) $(vm_stat | {aw} p=$(sysctl -n hw.pagesize))`)
+  var cores = 0
+  var i = 0
+  while i < len(line) and line[i] >= '0' and line[i] <= '9' { cores = cores * 10 + (line[i] - '0');  i += 1 }
+  while i < len(line) and line[i] == ' ' { i += 1 }
+  var gb = 0
+  while i < len(line) and line[i] >= '0' and line[i] <= '9' { gb = gb * 10 + (line[i] - '0');  i += 1 }
+  let by_mem = (gb * 2) / 3
+  if by_mem < cores { return by_mem }
+  return cores
+}

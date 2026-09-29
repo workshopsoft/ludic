@@ -54,7 +54,12 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
 
   if mode == 2 {
     if not shq(`{ludicc()} --headless{title_flag()}{unsafe_flag()} {src} --emit-llvm -o {ll}`) { return false }
-    if not shq(`{cc()} -O2 {ll}{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`) { return false }
+    let objs = split_objs(ll, out)                 # on every core when it can (split.ludic)
+    var input = ll
+    if objs != "" { input = objs }
+    let linked = shq(`{cc()} -O{split_opt()} {input}{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
+    if objs != "" { shell(`rm -f {objs}`) }
+    if not linked { return false }
     g_built_natives = native_libs_of(ll)
     if not save { shell(`rm -f {ll}`) }
     return true
@@ -65,7 +70,12 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   # canonical `ludicc -o` path links it only when Audio.* is used.
   let cocoa = `{home}runtime/native/cocoa.ll`
   let audio = `{home}runtime/native/audio.ll`
-  if not shq(`{cc()} -O2 {ll} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`) { return false }
+  let objs = split_objs(ll, out)
+  var input = ll
+  if objs != "" { input = objs }
+  let linked = shq(`{cc()} -O{split_opt()} {input} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
+  if objs != "" { shell(`rm -f {objs}`) }
+  if not linked { return false }
   g_built_natives = native_libs_of(ll)
   if not save { shell(`rm -f {ll}`) }
   return true

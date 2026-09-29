@@ -109,6 +109,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/backend/stdlib/emit_net.ludic")
   push(f, "selfhost/backend/game/emit_ui.ludic")
   push(f, "selfhost/backend/emit_decl.ludic")
+  push(f, "selfhost/split_build.ludic")
   push(f, "selfhost/main.ludic")
   return f
 }

@@ -357,6 +357,7 @@ function cmd_bundle_windows() -> int {
   let staged = tmp_path("bundle_exe")
   var flags = "--windowed --gui"
   if res != "" { flags = flags + ` --link "{res}"` }
+  Os.set_env("LUDIC_OPT", "2")                   # a shipped game is -O2, whatever a developer's shell says
   if not shq(`{ludicc()} {flags}{title_flag()} {entry} --natives-out {staged}.natives -o {staged}`) { return 1 }
   if not shq(`cp "{staged}.exe" "{root}/{name}.exe"`) {
     err("ludic bundle: could not place the executable\n")

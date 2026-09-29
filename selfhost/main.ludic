@@ -280,7 +280,11 @@ entry {
   # -Wno-override-module: the emitted IR carries no target triple, so clang
   # substitutes the host's and warns about it on every single build. There is
   # nothing to act on — the host default is exactly what we want — so it is off.
-  var cmd = `{cc} -O2 -Wno-override-module {ll}`
+  # $LUDIC_OPT=1 is a developer's faster build (never a bundle's: ludic bundle sets 2)
+  let opt = getenv_or("LUDIC_OPT", "2")
+  let objs = split_compile(ll, out, opt)           # on every core when it can (split_build.ludic)
+  var cmd = `{cc} -O{opt} -Wno-override-module {ll}`
+  if objs != null { cmd = `{cc} -O{opt} -Wno-override-module{objs}` }
   if g_target_win {
     # The Windows window: win32.ll (user32, gdi32 for the software present, xinput
     # for pads), and audio_win.ll when the program uses Audio.*, as on macOS.
@@ -389,6 +393,7 @@ entry {
   var line = cmd
   if host_is_windows() { line = `"{cmd}"` }
   let rc = run(line)
+  if objs != null { split_clean(out) }
   if not save { remove_file(ll) }
   if rc != 0 { die("ludicc: link failed\n") }
   if natives_out != null {
