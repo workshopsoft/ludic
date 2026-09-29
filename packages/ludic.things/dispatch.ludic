@@ -10,7 +10,9 @@ export function thing_name(t: Thing) -> string {
     let s = k.name_of(t)
     if s != "" { return s }
   }
-  return k.name
+  if k.name == null { return "" }
+  @alloc_ok("a cast: a key's marked text, nothing is made")
+  return string(k.name)
 }
 
 export function thing_prompt(t: Thing) -> string {

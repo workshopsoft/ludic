@@ -23,9 +23,9 @@ export property JobDef {
   minrep: int = 0      # standing in its scope before it is offered
   minstage: int = 0    # how far the game's story must be
   @OneOf(JOBS_SELF, JOBS_PARTY, JOBS_OFFERED, JOBS_ACTIVE, JOBS_DONE, JOBS_READY, JOBS_GROUPS) scope: int = JOBS_SELF
-  @Text title: string = ""
-  @Text @Multiline text: string = ""
-  @Text @Multiline how: string = ""
+  @Text title: Key = null
+  @Text @Multiline text: Key = null
+  @Text @Multiline how: Key = null
   icon: string = ""
 }
 

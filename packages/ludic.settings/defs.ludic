@@ -9,7 +9,7 @@ export property SettingDef {
   key: string = ""        # its name in the file; a registry fills it with the entry's own name
   @OneOf(SETTING_) kind: int = 0           # SETTING_*
   num: float = 0.0        # the default: 0 or 1 for a switch, a whole number, a float
-  @Text text: string = ""       # the default of a text setting
+  text: string = ""             # the default of a text setting (a value, not words)
   lo: float = 0.0         # the range, inclusive; a value outside it is the default again
   hi: float = -1.0        # hi below lo: any value
   rescue: bool = false    # a rescue start puts it back to its default

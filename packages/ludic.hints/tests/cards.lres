@@ -1,3 +1,3 @@
 # cards.lres - two cards from a file, after the test's own defs
-bear { urgency: HINTS_URGENT, line: "Bear near", title: "A bear", icon: "bear" }
-fire { urgency: HINTS_NOTE, line: "Light the fire", later: "Carry three logs." }
+bear { urgency: HINTS_URGENT, line: k"hints.bear_near", title: k"hints.a_bear", icon: "bear" }
+fire { urgency: HINTS_NOTE, line: k"hints.light_fire", later: k"hints.carry_logs" }
