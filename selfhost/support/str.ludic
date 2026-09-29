@@ -20,12 +20,19 @@ function str_starts(s: pointer, prefix: pointer) -> bool {
 # integer -> fresh decimal string
 function itoa(v: int) -> pointer {
   if v == 0 { let z = bytes(2); z[0] = '0'; z[1] = 0; return z }
-  var neg = false
+  # digits are taken off v as it is, never off -v: the most negative int has no positive twin, and
+  # -v overflowed back to itself, so a 0x80000000 in an i32 was emitted as a bare "-"
+  let neg = v < 0
   var x = v
-  if x < 0 { neg = true;  x = -x }
-  let tmp = bytes(16)
+  let tmp = bytes(24)
   var n = 0
-  while x > 0 { tmp[n] = 48 + x % 10;  x /= 10;  n += 1 }
+  while x != 0 {
+    var d = x % 10
+    if d < 0 { d = -d }
+    tmp[n] = 48 + d
+    x /= 10
+    n += 1
+  }
   var total = n
   if neg { total += 1 }
   let out = bytes(total + 1)

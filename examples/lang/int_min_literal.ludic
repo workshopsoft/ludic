@@ -1,0 +1,10 @@
+# int_min_literal.ludic - a literal that lands on the most negative int (0x80000000 in an int) is
+# emitted as -2147483648. It once came out as a bare "-", invalid IR. Prints `-2147483648 -1 1`.
+program IntMinLiteral {
+  entry {
+    let x = len(Os.args()) - 5
+    let top = x & 0x80000000
+    let low = x | 0x7FFFFFFF
+    print(`{top} {low} {(x & 0x80000000) != 0}`)
+  }
+}
