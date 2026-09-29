@@ -4,7 +4,7 @@
 # by the cut; either way the whole copy is put back to the quantized values, so the build's own
 # queries, the physics, the placements' bake and every machine read the same numbers.
 
-const LT_MAGIC: int = 844383308        # "LTT2"
+const LT_MAGIC: int = 844387404        # "LTT2" read as a little-endian u32: 0x3254544C
 const LT_VERSION: int = 1
 const LT_HEAD: int = 128               # 32 words
 
