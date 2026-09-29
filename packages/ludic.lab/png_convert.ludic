@@ -1,0 +1,71 @@
+# png_convert.ludic - previews of textures that are not 8-bit, as 8-bit pixels for lab_png_write. Each says
+# its mapping, because a preview is only honest when you know what a grey level means. Little-endian
+# samples as a GPU stores them; nothing here is ever read back into a texture.
+
+# the 32-bit float at src[at]
+export function lab_f32_at(src: []byte, at: int) -> float {
+  let bits = (src[at] & 255) | ((src[at + 1] & 255) << 8) | ((src[at + 2] & 255) << 16) | ((src[at + 3] & 255) << 24)
+  return float_from_bits(bits)
+}
+# the 16-bit half float at src[at]; infinities and NaNs read as the largest half (65504)
+export function lab_f16_at(src: []byte, at: int) -> float {
+  let h = (src[at] & 255) | ((src[at + 1] & 255) << 8)
+  let e = (h >> 10) & 31
+  let m = float(h & 1023)
+  var v = 65504.0
+  if e == 0 { v = m * Math.pow(2.0, -24.0) }
+  if e > 0 and e < 31 { v = (1.0 + m / 1024.0) * Math.pow(2.0, float(e - 15)) }
+  if (h & 32768) != 0 { return -v }
+  return v
+}
+function lp_byte(x: float) -> int { return int(Math.clamp(x * 255.0 + 0.5, 0.0, 255.0)) }
+
+# n R32F samples at src[at] as grey: the smallest value black, the largest white, linear between
+# (a flat field is black). The range is the image's own, so two previews are not on one scale
+@alloc_ok("a bake's preview, once")
+export function lab_px_r32f_norm(src: []byte, at: int, n: int) -> []byte {
+  var lo = lab_f32_at(src, at)
+  var hi = lo
+  for i in 0 .. n {
+    let v = lab_f32_at(src, at + i * 4)
+    lo = Math.min(lo, v)
+    hi = Math.max(hi, v)
+  }
+  let out = buffer(n)
+  var span = hi - lo
+  if span <= 0.0 { span = 1.0 }
+  for i in 0 .. n { out[i] = lp_byte((lab_f32_at(src, at + i * 4) - lo) / span) }
+  return out
+}
+
+# n RG16F samples at src[at] as RGB: red and green each x255 clamped to 0..1, blue 0 (a table of two
+# numbers in 0..1, such as the BRDF lookup or a distance and a mask)
+@alloc_ok("a bake's preview, once")
+export function lab_px_rg16f(src: []byte, at: int, n: int) -> []byte {
+  let out = buffer(n * 3)
+  for i in 0 .. n {
+    out[i * 3] = lp_byte(lab_f16_at(src, at + i * 4))
+    out[i * 3 + 1] = lp_byte(lab_f16_at(src, at + i * 4 + 2))
+    out[i * 3 + 2] = 0
+  }
+  return out
+}
+
+# sRGB's encoding of a linear value in 0..1
+function lp_srgb(x: float) -> float {
+  if x <= 0.0031308 { return x * 12.92 }
+  return 1.055 * Math.pow(x, 1.0 / 2.4) - 0.055
+}
+# n RGBA16F samples at src[at] (linear HDR light) as RGB: each channel x/(1+x) (Reinhard: 1.0 lands at
+# half and nothing clips), then sRGB-encoded; alpha dropped. No exposure is applied
+@alloc_ok("a bake's preview, once")
+export function lab_px_rgba16f_hdr(src: []byte, at: int, n: int) -> []byte {
+  let out = buffer(n * 3)
+  for i in 0 .. n {
+    for c in 0 .. 3 {
+      let x = Math.max(lab_f16_at(src, at + i * 8 + c * 2), 0.0)
+      out[i * 3 + c] = lp_byte(lp_srgb(x / (1.0 + x)))
+    }
+  }
+  return out
+}

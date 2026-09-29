@@ -134,7 +134,7 @@ function r3d_load_step(render3d_st: mut Render3dState, i: int) -> bool {
     var sky = render3d_st.r3d_sky_path
     var made: string = null
     if sky == null {
-      made = render3d_st.r3d_assets + "/hdri/kloofendal_48d_partly_cloudy_puresky_4k.hdr"
+      made = render3d_st.r3d_assets + "/hdri/" + SKY_DEFAULT_HDRI + ".hdr"
       sky = made
     }
     let got = sky_load(render3d_st, sky)

@@ -1,0 +1,108 @@
+# bake_load.ludic — the game names where a bake of the renderer's work lives, and the renderer takes the
+# textures from it when it is current and makes them as it always has when it is not: an impostor's
+# atlases (and again when a fog opens past its cards), the sky's image-based light, the grass carpet.
+
+# ---- a bundle's parts, for whoever writes a preview of one (bake_pack's layout) ----
+function bake_part_count(data: []byte) -> int {
+  if data == null or len(data) < 4 { return 0 }
+  return Vk.get_i32(data_of(data), 0)
+}
+function bake_part_len(data: []byte, i: int) -> int { return Vk.get_i32(data_of(data), 4 + i * 4) }
+# where part i's bytes begin in the bundle
+function bake_part_off(data: []byte, i: int) -> int {
+  var at = 4 + bake_part_count(data) * 4
+  for k in 0 .. i { at += bake_part_len(data, k) }
+  return at
+}
+
+# ---- an impostor ----
+# where an impostor's bake lives (the game's name for it), whether or not its atlases came from it
+function impostor_source(im: Impostor, path: string, key: string, version: int) -> void {
+  im.src_path = intern(path)
+  im.src_key = intern(key)
+  im.src_version = version
+}
+
+# an impostor of this shape from its bake, or null (missing, stale, or not this shape) for the caller to paint
+@alloc_ok("a bake read once at a map load")
+function impostor_from_baked(render3d_st: mut Render3dState, model: Model, tiles: int, tw: int, th: int, path: string, key: string, version: int) -> Impostor {
+  let b = r3d_baked_read(path, key, version)
+  if b == null { return null }
+  let im = impostor_from_bytes(render3d_st, model, tiles, tw, th, b)
+  free(b)
+  if im == null { return null }
+  impostor_source(im, path, key, version)
+  im.src_ok = true
+  return im
+}
+# the atlases filled from the bake again (a fog opening past the cards); false, and none kept, when it cannot be
+@alloc_ok("a bake read once when a fog opens")
+function impostor_refill(render3d_st: mut Render3dState, im: Impostor) -> bool {
+  let b = r3d_baked_read(im.src_path, im.src_key, im.src_version)
+  if b == null { return false }
+  let ok = impostor_fill(render3d_st, im, b)
+  free(b)
+  if not ok {
+    gpu_tex_free(render3d_st, im.albedo);  gpu_tex_free(render3d_st, im.normal)
+    im.albedo = 0;  im.normal = 0
+  }
+  return ok
+}
+
+# ---- the sky's image-based light ----
+# the directory the sky's bakes are in, under the key and version they were baked as: before r3d_init.
+# A bake is one HDRI at the start yaw at one prefilter width; any other turn of the sky is convolved
+function sky_baked_in(render3d_st: mut Render3dState, dir: string, key: string, version: int) -> void {
+  render3d_st.sky_bake_dir = intern(dir)
+  render3d_st.sky_bake_key = intern(key)
+  render3d_st.sky_bake_version = version
+}
+# the HDRI's name without its directory or ".hdr": what the sky's bakes are named by
+@alloc_ok("a bake's name, made at a load")
+function sky_hdri_name(render3d_st: Render3dState) -> string {
+  let p = render3d_st.r3d_sky_path
+  if p == null { return SKY_DEFAULT_HDRI }
+  var from = 0
+  for i in 0 .. len(p) { if p[i] == 47 { from = i + 1 } }
+  var to = len(p)
+  if to - from > 4 and p[to - 4] == 46 { to -= 4 }
+  return p[from .. to]
+}
+# <dir>/<hdri>_y<start yaw in whole degrees>_w<prefilter width>.bin, the file one bake is
+@alloc_ok("a bake's name, made at a load")
+function sky_bake_file(render3d_st: Render3dState, w: int) -> string {
+  let deg = int(Math.round(Math.rad_to_deg(render3d_st.sky_start_yaw)))
+  return `{render3d_st.sky_bake_dir}/{sky_hdri_name(render3d_st)}_y{deg}_w{w}.bin`
+}
+# the IBL set from its bake when the sky is at the start yaw and a bake of this width is current
+@alloc_ok("a bake read once at a load or a new light quality")
+function sky_ibl_try_baked(render3d_st: mut Render3dState) -> bool {
+  if len(render3d_st.sky_bake_dir) == 0 or render3d_st.sky_yaw != render3d_st.sky_start_yaw { return false }
+  let path = sky_bake_file(render3d_st, render3d_st.sky_prefilter_w)
+  let b = r3d_baked_read(path, render3d_st.sky_bake_key, render3d_st.sky_bake_version)
+  var ok = false
+  if b != null { ok = sky_ibl_from_bytes(render3d_st, b) }
+  if b != null { free(b) }
+  if not ok and not render3d_st.sky_bake_said { sky_say_missing(path) }
+  if not ok { render3d_st.sky_bake_said = true }
+  return ok
+}
+function sky_say_missing(path: string) -> void { print(`bake: {path} missing or stale - the sky's light made at run time (ludic bake)`) }
+
+# ---- the grass carpet ----
+function carpet_bytes(render3d_st: mut Render3dState, tex: int) -> []byte { return bake_pack(render3d_st, bake_list1(tex)) }
+# the carpet texture (RGBA8, res square) from its bake, finished as carpet_bake finishes it; 0 when missing
+@alloc_ok("a bake read once at a map load")
+function carpet_from_baked(render3d_st: mut Render3dState, path: string, key: string, version: int, res: int) -> int {
+  let b = r3d_baked_read(path, key, version)
+  if b == null { return 0 }
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SCATTER
+  let tex = tex_target(render3d_st, res, res, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  let ok = bake_unpack(render3d_st, b, bake_list1(tex))
+  free(b)
+  if ok { carpet_finish(render3d_st, tex) } else { gpu_tex_free(render3d_st, tex) }
+  render3d_st.gvk_tag = was
+  if ok { return tex }
+  return 0
+}

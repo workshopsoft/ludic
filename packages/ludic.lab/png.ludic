@@ -1,39 +1,6 @@
 # png.ludic - the renderer writes a frame as a PPM; the lab keeps it as a PNG, stored rather than
-# compressed (a PNG anything opens, with no zlib here): the shot is the PPM's pixels, filter 0
-# on every row, in deflate's stored blocks, with its CRCs and its Adler-32.
+# compressed (png_write.ludic: a PNG anything opens, with no zlib here).
 
-# the CRC-32 table, made once with the state
-function lp_crc_table() -> []long {
-  let t = new []long
-  let poly: long = 3988292384            # 0xEDB88320: eight hex digits would be a 32-bit pattern
-  for n in 0 .. 256 {
-    var c = long(n)
-    for k in 0 .. 8 {
-      if (c & long(1)) != long(0) { c = (c >> long(1)) ^ poly } else { c = c >> long(1) }
-    }
-    push(t, c)
-  }
-  return t
-}
-# CRC-32 of out[from .. from + n)
-function lp_crc(lab_st: mut LabState, out: []byte, from: int, n: int) -> long {
-  let mask: long = 4294967295
-  var c = mask
-  for i in from .. from + n {
-    let k = int((c ^ long(out[i])) & long(255))
-    c = lab_st.lp_table[k] ^ (c >> long(8))
-  }
-  return c ^ mask
-}
-function lp_put32(out: []byte, at: int, v: long) -> void {
-  out[at] = int((v >> long(24)) & long(255))
-  out[at + 1] = int((v >> long(16)) & long(255))
-  out[at + 2] = int((v >> long(8)) & long(255))
-  out[at + 3] = int(v & long(255))
-}
-function lp_tag(out: []byte, at: int, tag: string) -> void {
-  for i in 0 .. 4 { out[at + i] = tag[i] }
-}
 # a PPM's header: "P6", width, height, maxval, each after white space; returns the pixel offset
 function lp_ppm_header(lab_st: mut LabState, d: []byte) -> int {
   var i = 2
@@ -60,68 +27,10 @@ export function lab_ppm_to_png(lab_st: mut LabState, ppm: string, png: string) -
   let px = lp_ppm_header(lab_st, d)
   let w = lab_st.lp_w
   let h = lab_st.lp_h
-  let row = w * 3 + 1
-  let raw = row * h
-  let blocks = (raw + 65534) / 65535
-  let idat = 2 + blocks * 5 + raw + 4
-  let total = 8 + 25 + 12 + idat + 12
-  let out = buffer(total)
-  let sig = [137, 80, 78, 71, 13, 10, 26, 10]
-  for i in 0 .. 8 { out[i] = sig[i] }
-  var at = 8
-  lp_put32(out, at, long(13))
-  lp_tag(out, at + 4, "IHDR")
-  lp_put32(out, at + 8, long(w))
-  lp_put32(out, at + 12, long(h))
-  out[at + 16] = 8
-  out[at + 17] = 2
-  out[at + 18] = 0
-  out[at + 19] = 0
-  out[at + 20] = 0
-  lp_put32(out, at + 21, lp_crc(lab_st, out, at + 4, 17))
-  at += 25
-  lp_put32(out, at, long(idat))
-  lp_tag(out, at + 4, "IDAT")
-  var o = at + 8
-  out[o] = 120
-  out[o + 1] = 1
-  o += 2
-  var a = 1
-  var b = 0
-  var left = raw
-  var k = 0                                # the byte of the raw stream being written
-  while left > 0 {
-    let n = Math.min(left, 65535)
-    left -= n
-    var fin = 0
-    if left == 0 { fin = 1 }
-    out[o] = fin
-    out[o + 1] = n & 255
-    out[o + 2] = (n >> 8) & 255
-    out[o + 3] = (~n) & 255
-    out[o + 4] = ((~n) >> 8) & 255
-    o += 5
-    for j in 0 .. n {
-      let y = k / row
-      let x = k % row
-      var v = 0
-      if x > 0 { v = d[px + y * w * 3 + x - 1] }
-      out[o] = v
-      a = (a + v) % 65521
-      b = (b + a) % 65521
-      o += 1
-      k += 1
-    }
-  }
-  lp_put32(out, o, long(b) * long(65536) + long(a))
-  o += 4
-  lp_put32(out, o, lp_crc(lab_st, out, at + 4, o - at - 4))
-  o += 4
-  lp_put32(out, o, long(0))
-  lp_tag(out, o + 4, "IEND")
-  lp_put32(out, o + 8, lp_crc(lab_st, out, o + 4, 4))
-  o += 12
-  if not Fs.write_bytes(png, out, o) { return false }
+  if px + w * h * 3 > len(d) { return false }
+  let out = buffer(lp_png_size(w, h, 3))
+  let n = lp_encode(lab_st.lp_table, w, h, 3, d, px, out)
+  if not Fs.write_bytes(png, out, n) { return false }
   Fs.remove(ppm)
   return true
 }

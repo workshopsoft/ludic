@@ -16,7 +16,11 @@ property Impostor {
   model:  Model,           # what it was baked from, to bake it again (fog_impostors.ludic)
   tw:     int = 0,
   th:     int = 0,
-  flower: bool = false
+  flower: bool = false,
+  src_path: string = "",   # its bake file, where the game names one (bake_load.ludic): what a fog opening reads
+  src_key: string = "",
+  src_version: int = 0,
+  src_ok: bool = false     # its atlases came from that bake, so a re-open reads it rather than painting
 }
 property Layer {
   model:    Model,
@@ -1230,14 +1234,18 @@ function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: 
   gpu_fb_free(render3d_st, fbo)
   gpu_rb_free(render3d_st, rb)
   gpu_buffer_free(render3d_st, buf)
+  carpet_finish(render3d_st, tex)
+  gpu_check(render3d_st, "carpet bake")
+  return tex
+}
+# the carpet tile made ready to wear: repeat-wrapped and mipmapped (a bake's too, bake_load.ludic)
+function carpet_finish(render3d_st: mut Render3dState, tex: int) -> void {
   gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
   gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
   gpu_tex_mips(render3d_st, GPU_TEX2D)
-  gpu_check(render3d_st, "carpet bake")
-  return tex
 }
 
 # ---- another map at run time ------------------------------------------------------------

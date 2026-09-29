@@ -6,6 +6,7 @@
 # ============================================================================
 
 const SKY_PREFILTER_LEVELS: int = 6
+const SKY_DEFAULT_HDRI: string = "kloofendal_48d_partly_cloudy_puresky_4k"   # under <assets>/hdri/, when no path is given
 
 # The yaw to bake the light at the first time (radians, float bits). A game that turns the sky at
 # start sets it before r3d_init, so the image-based light is baked once at that yaw rather than at
@@ -90,7 +91,13 @@ function sky_set_quality(render3d_st: mut Render3dState, w: int) -> void {
   if render3d_st.sky_irradiance != 0 { sky_precompute(render3d_st) }
 }
 
+# the IBL set for the sky as it is turned now: from its bake where there is a current one (bake_load.ludic)
 function sky_precompute(render3d_st: mut Render3dState) -> void {
+  if sky_ibl_try_baked(render3d_st) { return }
+  sky_compute(render3d_st)
+}
+# the IBL set convolved from the HDRI on the GPU
+function sky_compute(render3d_st: mut Render3dState) -> void {
   gpu_depth_test(render3d_st, false)
   sky_ibl_make(render3d_st)
   if render3d_st.sky_p_irr == 0 { render3d_st.sky_p_irr = r3d_program(render3d_st, "fullscreen.vert", "ibl_irradiance.frag", "");  render3d_st.sky_p_pre = r3d_program(render3d_st, "fullscreen.vert", "ibl_prefilter.frag", "");  render3d_st.sky_p_brdf = r3d_program(render3d_st, "fullscreen.vert", "ibl_brdf.frag", "") }
