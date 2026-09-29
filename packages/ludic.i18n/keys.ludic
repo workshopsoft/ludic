@@ -1,6 +1,6 @@
-# keys.ludic - a key as the game carries it: its text behind a marker byte (the compiler's k"..." is
-# exactly that), holes as byte 31 then each argument, a plural's count first. Nothing here needs the
-# language: the text is made where it is drawn (L), so code that makes text never takes I18nState.
+# keys.ludic - a key as the game carries it: the compiler's Key (k"..." is its text behind byte 1, kn"..."
+# behind byte 2), made into a string with holes as byte 31 then each argument, a plural's count first.
+# Nothing here needs the language: the text is made where it is drawn (L), never taking I18nState.
 export const I18N_KEY: int = 1         # k"pause.resume" is "\\x01pause.resume"
 export const I18N_PLURAL: int = 2      # kn"catch.count": a count chooses the form
 export const I18N_SEP: int = 31        # between the key and each argument
@@ -22,16 +22,15 @@ export function key_text(k: string) -> string {
   return k[1..e]
 }
 
-# the text of a key: drawn translated where it is drawn (a free cast once the key is typed)
-export function tr(k: string) -> string { return k }
+# the text of a key: drawn translated where it is drawn (its marked text, a free cast)
+export function tr(k: Key) -> string { return string(k) }
 # a key's text with its holes, {1} .. {4}, filled by strings already made (a number, a name, another key)
-export function trf(k: string, a: string, b: string, c: string, d: string) -> string {
-  var mark = I18N_KEY
-  if i18n_is_key(k) { mark = k[0] }
-  return kx_join(mark, key_text(k), a, b, c, d, kx_count(a, b, c, d))
+export function trf(k: Key, a: string, b: string, c: string, d: string) -> string {
+  let s = string(k)
+  return kx_join(I18N_KEY, key_text(s), a, b, c, d, kx_count(a, b, c, d))
 }
 # a plural key's text by n: the count is {1}, a .. c are {2} .. {4}
-export function trn(k: string, n: int, a: string, b: string, c: string) -> string { return kx_join(I18N_PLURAL, key_text(k), `{n}`, a, b, c, 1 + kx_count(a, b, c, "")) }
+export function trn(k: Key, n: int, a: string, b: string, c: string) -> string { return kx_join(I18N_PLURAL, key_text(string(k)), `{n}`, a, b, c, 1 + kx_count(a, b, c, "")) }
 
 function kx_count(a: string, b: string, c: string, d: string) -> int {
   if len(d) > 0 { return 4 }
