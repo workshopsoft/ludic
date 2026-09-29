@@ -1,5 +1,5 @@
 # fog_impostors.ludic — a layer's impostor atlases are let go while the fog wall is nearer than its
-# cards begin (the layer's `near`), and baked again when the fog opens past it. Inside the wall every
+# cards begin (the layer's `near`), and baked again (or read again from its bake) when the fog opens past it. Inside the wall every
 # instance is a mesh, and the meshes' LOD2 cast its shadows, so a card is neither drawn nor cast.
 
 # does the wall let any of this layer's instances be drawn as a card?
@@ -22,7 +22,8 @@ function fog_impostor(render3d_st: mut Render3dState, l: Layer) -> void {
     let t0 = gl_now_us()
     let was = render3d_st.gvk_tag
     render3d_st.gvk_tag = VKM_IMPOSTOR
-    impostor_paint(render3d_st, im)
+    # a baked impostor is read again rather than drawn again (bake_load.ludic)
+    if not (im.src_ok and impostor_refill(render3d_st, im)) { impostor_paint(render3d_st, im) }
     render3d_st.gvk_tag = was
     render3d_st.fog_imp_rebake_us = render3d_st.fog_imp_rebake_us + (gl_now_us() - t0)
     render3d_st.fog_imp_rebaked += 1

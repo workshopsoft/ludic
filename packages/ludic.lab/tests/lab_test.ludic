@@ -1,4 +1,4 @@
-# lab_test.ludic - what the lab computes without a window: the PNG it keeps a shot as, the cameras
+# lab_test.ludic - what the lab computes without a window: the PNGs it writes (a shot, raw pixels), the cameras
 # a scene names, and the scenes a program adds
 import "ludic.lab"
 program LabTest {
@@ -33,6 +33,30 @@ program LabTest {
     expect_eq(p[n - 2], 96)
     expect_eq(p[n - 1], 130)
     expect(not Fs.exists(`{dir}/lab_test.ppm`))
+  }
+
+  test "raw pixels become a PNG of their channel count" (lab_png_st: LabPngState) {
+    let dir = Os.temp_dir()
+    let px = buffer(3 * 2 * 4)
+    for i in 0 .. 24 { px[i] = i * 10 }
+    expect(lab_png_write(lab_png_st, `{dir}/lab_test_rgba.png`, 3, 2, 4, px))
+    let p = Fs.read_bytes(`{dir}/lab_test_rgba.png`)
+    expect_eq(p[19], 3)                        # width
+    expect_eq(p[25], 6)                        # colour type RGBA
+    expect_eq(len(p), lp_png_size(3, 2, 4))
+    expect(not lab_png_write(lab_png_st, `{dir}/lab_test_short.png`, 9, 9, 4, px))
+  }
+
+  test "a half float and a float read as the numbers they store" {
+    let b = buffer(8)
+    b[0] = 0;  b[1] = 60                       # half 1.0 = 0x3C00
+    b[2] = 0;  b[3] = 192                      # half -2.0 = 0xC000
+    b[4] = 0;  b[5] = 0;  b[6] = 128;  b[7] = 63   # float 1.0 = 0x3F800000
+    expect_near(lab_f16_at(b, 0), 1.0, 0.0001)
+    expect_near(lab_f16_at(b, 2), -2.0, 0.0001)
+    expect_near(lab_f32_at(b, 4), 1.0, 0.0001)
+    let g = lab_px_rgba16f_hdr(b, 0, 1)        # 1.0 -> 0.5 -> sRGB 188
+    expect_eq(g[0] & 255, 188)
   }
 
   test "a camera at a point looks back at it" (lab_st: mut LabState) {
