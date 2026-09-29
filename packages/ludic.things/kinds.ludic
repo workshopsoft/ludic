@@ -15,9 +15,12 @@ export property Thing {
   timer: float = 0.0      # a clock the kind decides the meaning of
   used: int = 0           # the kind's own state (split for today, which sign, ...)
   n: int = 0              # a counter the kind decides the meaning of
-  sx: float = 0.0         # where using it puts the user, and which way that faces
+  sx: float = 0.0         # a heading or a point the kind decides the meaning of
   sz: float = 0.0
   syaw: float = 0.0
+  seat: int = -1          # the first of its model's seat rows in the game's table; -1 none
+  seats: int = 0          # how many seat rows follow it
+  taken: int = 0          # a bit per seat someone is sitting in; never saved
   shared: bool = false    # the game copies it to others (a party)
   ent: int = -1           # its handle in the table, -1 once removed
   tab: Table<Thing> = null  # the table holding it, so a verb on the Thing alone keeps the indexes

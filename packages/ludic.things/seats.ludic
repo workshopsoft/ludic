@@ -1,0 +1,37 @@
+# seats.ludic - a Thing's seats: a run of the game's seat rows, and a bit per seat
+# for whoever sits in it. The rows are the game's; the package keeps only which are taken.
+
+export const THING_SEATS_MAX: int = 30
+
+# the Thing's seats are rows first .. first + n - 1 of the game's table; none are taken
+export function thing_set_seats(t: Thing, first: int, n: int) -> void {
+  t.seat = first
+  t.seats = Math.clamp(n, 0, THING_SEATS_MAX)
+  if first < 0 { t.seats = 0 }
+  t.taken = 0
+}
+
+export function thing_seat_taken(t: Thing, i: int) -> bool {
+  if i < 0 or i >= t.seats { return true }
+  return (t.taken >> i) & 1 == 1
+}
+
+# false when it is not one of the Thing's seats or someone is in it
+export function thing_seat_take(t: Thing, i: int) -> bool {
+  if thing_seat_taken(t, i) { return false }
+  t.taken = t.taken | (1 << i)
+  return true
+}
+
+export function thing_seat_leave(t: Thing, i: int) -> void {
+  if i < 0 or i >= t.seats or (t.taken >> i) & 1 == 0 { return }
+  t.taken = t.taken - (1 << i)
+}
+
+# the first seat nobody is in, or -1
+export function thing_seat_free(t: Thing) -> int {
+  for i in 0 .. t.seats {
+    if not thing_seat_taken(t, i) { return i }
+  }
+  return -1
+}

@@ -17,6 +17,8 @@ export function body_step(character_st: CharacterState) -> float { return charac
 export function body_sitting(character_st: CharacterState) -> bool { return character_st.chr_sit }
 export function body_sit_mode(character_st: CharacterState) -> int { return character_st.chr_sit_mode }
 export function body_sit_t(character_st: CharacterState) -> float { return character_st.chr_sit_t }
+export function body_sit_y(character_st: CharacterState) -> float { return character_st.chr_sit_y }
+export function body_sit_h(character_st: CharacterState) -> float { return character_st.chr_sit_h }
 export function body_swimming(character_st: CharacterState) -> bool { return character_st.chr_swim }
 export function body_diving(character_st: CharacterState) -> bool { return character_st.chr_dive }
 export function body_depth(character_st: CharacterState) -> float { return character_st.chr_depth }

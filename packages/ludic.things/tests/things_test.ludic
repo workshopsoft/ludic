@@ -266,4 +266,30 @@ program ThingsTest {
     expect(r2 == r0)
     expect_eq(third[0].kind, TH_LURE)
   }
+
+  test "a Thing's seats: taken one at a time, left, saved without who sits in them" (things_st: mut ThingsState) {
+    things_clear(things_st)
+    let l = put(things_st, TH_LURE, 3.0, 4.0)
+    thing_set_seats(l, 7, 2)
+    expect_eq(thing_seat_free(l), 0)
+    expect(thing_seat_take(l, 0))
+    expect(not thing_seat_take(l, 0))
+    expect(not thing_seat_take(l, 2))
+    expect_eq(thing_seat_free(l), 1)
+    expect(thing_seat_take(l, 1))
+    expect_eq(thing_seat_free(l), -1)
+    thing_seat_leave(l, 0)
+    thing_seat_leave(l, 0)
+    expect_eq(thing_seat_free(l), 0)
+    let root = save_tree()
+    save_section(root, "things", 1, things_save(things_st))
+    let text = save_encode(root)
+    things_clear(things_st)
+    let n = load_section(save_decode(text), "things")
+    things_load(things_st, n.data, n.version)
+    let t = thing_find(things_st, TH_LURE, -1)
+    expect_eq(t.seat, 7)
+    expect_eq(t.seats, 2)
+    expect_eq(t.taken, 0)
+  }
 }

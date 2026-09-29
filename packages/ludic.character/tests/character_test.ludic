@@ -292,7 +292,7 @@ program CharacterTest {
   test "a seat against the boulder holds the body still: the walker never pushes it off the seat" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
     fresh(character_st, 0.0, 4.5, 0.0)
     char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0)
-    char_sit(character_st, 0.0, 5.7, 0.0, CHAR_SIT_SEAT)
+    char_sit(character_st, 0.0, body_y(character_st) + 0.45, 5.7, 0.0, CHAR_SIT_SEAT, 0.45)
     for i in 0 .. 90 { char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
     var most = 0.0
     for i in 0 .. 120 {
@@ -349,7 +349,7 @@ program CharacterTest {
     expect(body_eyes_now(character_st))
     expect_near(body_eye_y(character_st), 1.62, 0.05)
     expect_eq(char_fps_toggle(character_st), CHAR_EYES_OFF)
-    char_sit(character_st, 0.0, 0.0, 0.0, CHAR_SIT_SEAT)
+    char_sit(character_st, 0.0, 0.45, 0.0, 0.0, CHAR_SIT_SEAT, 0.45)
     expect_eq(char_fps_toggle(character_st), CHAR_EYES_SITTING)
   }
 }

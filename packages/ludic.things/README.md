@@ -20,7 +20,8 @@ property Thing {
   active                 # false: taken, hidden, used up for now
   reach                  # how close it is used from (0: its kind's)
   timer, used, n         # state the kind decides the meaning of
-  sx, sz, syaw           # where using it puts the user, and which way that faces
+  sx, sz, syaw           # a heading or a point the kind decides the meaning of
+  seat, seats, taken     # its seats: the first of the game's seat rows, how many, a bit per one sat in
   shared                 # the game copies it to others (a party)
 }
 ```
@@ -83,6 +84,7 @@ the actor the moment the Thing exists (a caller often scales or tints it on the 
 | `thing_remove(t)`, `things_drop(gone: fn(Thing) -> bool)`, `things_clear()` | gone for good (told to the port); a new world, quietly |
 | `things_reserve(n)`, `things_spare_count()` | room in the grid for `n` Things, made once at the start; how many removed records wait to be placed again |
 | `thing_move(t, x, z, yaw)`, `thing_move_to(t, x, y, z, yaw)` | on the ground there, or at a height |
+| `thing_set_seats(t, first, n)`, `thing_seat_take(t, i) -> bool`, `thing_seat_leave(t, i)`, `thing_seat_taken(t, i)`, `thing_seat_free(t) -> int` | its seats: a run of the game's seat rows (`seat`, `seats`, saved) and a bit per seat someone is in (`taken`, never saved; up to `THING_SEATS_MAX`) |
 | `thing_hide(t)`, `thing_show(t)`, `thing_set_active(t, on)` | `active`, told to the port |
 | `things_all()`, `things_count()`, `things_ready()`, `thing_by_uid(uid)` | every Thing, in the order placed; whether a world was ever set out |
 | `thing_find(kind, id)`, `thing_nearest(kind, x, z)`, `things_within(x, z, r)`, `things_each(kind)`, `things_each_all(kind)`, `thing_dist2(t, x, z)` | where they are: only active ones answer except the `_all`; a kind below 0 is any; `within` is nearest first |

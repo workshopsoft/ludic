@@ -76,8 +76,12 @@ export state CharacterState {
   chr_sit_mode: int = 0
   chr_sit_t: float = 0.0            # 0 standing .. 1 sat, eased over a quarter second
   chr_sit_x: float = 0.0            # the seat's point, walked to over the blend
+  chr_sit_y: float = 0.0            # the seat's top
   chr_sit_z: float = 0.0
+  chr_sit_h: float = 0.0            # the seat's top above the feet; 0 on the ground
   chr_sit_yaw: float = 0.0
+  chr_leave_x: float = 0.0          # where standing up leaves the seat for
+  chr_leave_z: float = 0.0
   chr_swim: bool = false
   chr_dive: bool = false
   chr_depth: float = 0.0            # metres below the surface
