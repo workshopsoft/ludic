@@ -47,6 +47,18 @@ program LabTest {
     expect(not lab_png_write(lab_png_st, `{dir}/lab_test_short.png`, 9, 9, 4, px))
   }
 
+  test "16-bit samples become a 16-bit PNG, two bytes a sample" (lab_png_st: LabPngState) {
+    let dir = Os.temp_dir()
+    let px = buffer(3 * 2 * 2)
+    for i in 0 .. 12 { px[i] = i * 20 }
+    expect(lab_png_write16_from(lab_png_st, `{dir}/lab_test_r16.png`, 3, 2, 1, px, 0))
+    let p = Fs.read_bytes(`{dir}/lab_test_r16.png`)
+    expect_eq(p[24], 16)                       # bit depth
+    expect_eq(p[25], 0)                        # colour type grey
+    expect_eq(len(p), lp_png_bytes(3 * 2, 2))
+    expect(not lab_png_write16_from(lab_png_st, `{dir}/lab_test_r16_short.png`, 3, 3, 1, px, 0))
+  }
+
   test "a half float and a float read as the numbers they store" {
     let b = buffer(8)
     b[0] = 0;  b[1] = 60                       # half 1.0 = 0x3C00
