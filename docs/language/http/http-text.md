@@ -11,7 +11,7 @@ ns: Http
 member: text
 ---
 
-Returns the response body as a NUL-terminated string. Pair with <code>Json.parse</code> (#44) for JSON APIs.
+Returns the response body as a NUL-terminated string: a copy that stays yours after <code>Http.free</code> lets the handle go, so read it once and keep what you read. Pair with <code>Json.parse</code> (#44) for JSON APIs.
 
 ```ludic
 program Demo {

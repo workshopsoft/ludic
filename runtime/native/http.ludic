@@ -237,9 +237,13 @@ function http_ok(rt_http_st: mut RtHttpState, h: int) -> bool {
   return (st >= 200) and (st < 300)
 }
 
+# the body as text: a COPY, the caller's to keep - the handle's own buffer goes with Http.free, and a
+# text read before the free and used after it wrote an empty file (maroon-lake's maps.json)
 function http_text(rt_http_st: mut RtHttpState, h: int) -> string {
   if not http_valid(rt_http_st, h) { return null }
-  return rt_http_st.h_body[h - 1]
+  let b = rt_http_st.h_body[h - 1]
+  if b == null { return null }
+  return http_slice_dup(b, 0, rt_http_st.h_blen[h - 1])
 }
 
 function http_body_len(rt_http_st: mut RtHttpState, h: int) -> int {
@@ -250,7 +254,12 @@ function http_body_len(rt_http_st: mut RtHttpState, h: int) -> int {
 function http_header_of(rt_http_st: mut RtHttpState, h: int, name: pointer) -> string {
   if not http_valid(rt_http_st, h) { return null }
   let s = h - 1
-  if rt_http_st.h_native[s] == 1 { return hs_header(s, name) }
+  # a copy on both paths: the native value is the response's own, released with Http.free
+  if rt_http_st.h_native[s] == 1 {
+    let v = hs_header(s, name)
+    if v == null { return null }
+    return http_slice_dup(v, 0, http_cstr_len(v))
+  }
   return http_find_header(rt_http_st.h_hdr[s], name)
 }
 

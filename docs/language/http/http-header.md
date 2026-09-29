@@ -11,7 +11,7 @@ ns: Http
 member: header
 ---
 
-Returns a response header value by name (case-insensitive), or an empty result if absent.
+Returns a response header value by name (case-insensitive), or an empty result if absent. The value is a copy, yours to keep after <code>Http.free</code>.
 
 ```ludic
 program Demo {
