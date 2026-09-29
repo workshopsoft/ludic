@@ -18,8 +18,8 @@ function tp_fill(render3d_st: mut Render3dState, t: int, base: int, k: int) -> v
     for a in 0 .. hs {
       let tx = min(max(i0 + a, 0), TERRAIN_RES - 1)
       let o = (b * hs + a) * 4
-      Vk.put_i32(p, ho + o, float_bits(ter_h(render3d_st, tx, tz)))
-      Vk.put_i32(p, no + o, ter_n(render3d_st, tx, tz))
+      Vk.put_i32(p, ho + o, float_bits(tt_h_load(render3d_st, tx, tz)))
+      Vk.put_i32(p, no + o, tt_n_load(render3d_st, tx, tz))
     }
   }
   tp_fill_ortho(render3d_st, t, base + n * n * 4 + 2 * TP_BUDGET * hb, k)
@@ -38,7 +38,7 @@ function tp_fill_ortho(render3d_st: mut Render3dState, t: int, at: int, k: int) 
   for b in 0 .. os {
     let pz = min(max(j0 + b, 0), top)
     for a in 0 .. os {
-      let v = ter_o(render3d_st, min(max(i0 + a, 0), top), pz)
+      let v = tt_o_load(render3d_st, min(max(i0 + a, 0), top), pz)
       let o = o0 + (b * os + a) * 4
       p[o] = (v >> 16) & 255
       p[o + 1] = (v >> 8) & 255

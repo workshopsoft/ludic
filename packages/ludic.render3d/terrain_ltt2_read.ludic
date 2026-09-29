@@ -55,6 +55,7 @@ function tt_pools(render3d_st: mut Render3dState, n: int, side: int) -> void {
   if render3d_st.tt_tile_in == null { render3d_st.tt_tile_in = words(TT_SLOTS);  render3d_st.tt_ref = words(TT_SLOTS) }
   for s in 0 .. TT_SLOTS { render3d_st.tt_tile_in[s] = -1;  render3d_st.tt_ref[s] = 0 }
   render3d_st.tt_hand = 0
+  tf_size(render3d_st, side)
 }
 
 # tile t's heights, normals and photograph decoded into slot s: exactly the values ltt2_write put back

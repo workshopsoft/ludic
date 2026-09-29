@@ -1,35 +1,11 @@
-# terrain_height_file.ludic — terrain_height's exact answer that never pages: a tile not resident is
-# read from the file into a scratch of this query's own, so who asks and in what order never changes
-# which tiles the cache holds (and so never moves what is drawn from it). For wide sweeps at boot.
+# terrain_height_file.ludic — the file scratch the terrain's questions read a tile through when it is not
+# resident (ter_h, ter_o), so a question never takes a slot: who asks and in what order leaves the cache
+# as the loaders put it. terrain_height_file stays as the name callers wrote against; it is terrain_height.
 const TF_KEEP: int = 4          # tiles the scratch keeps: a texel square at a corner spans four
 
-export function terrain_height_file(render3d_st: mut Render3dState, x: float, z: float) -> float {
-  if not ter_present(render3d_st) { return 0.0 }
-  let scale = float(TERRAIN_RES) / float(render3d_st.TERRAIN_HALF * 2)
-  let fx = (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale
-  let fz = (z - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) * scale
-  let ix = min(max(int(Math.floor(fx)), 0), TERRAIN_RES - 2)
-  let iz = min(max(int(Math.floor(fz)), 0), TERRAIN_RES - 2)
-  let tx = Math.clamp(fx - float(ix), 0.0, 1.0)
-  let tz = Math.clamp(fz - float(iz), 0.0, 1.0)
-  let h00 = tf_texel(render3d_st, ix, iz)
-  let h10 = tf_texel(render3d_st, ix + 1, iz)
-  let h01 = tf_texel(render3d_st, ix, iz + 1)
-  let h11 = tf_texel(render3d_st, ix + 1, iz + 1)
-  return Math.lerp(Math.lerp(h00, h10, tx), Math.lerp(h01, h11, tx), tz)
-}
+export function terrain_height_file(render3d_st: mut Render3dState, x: float, z: float) -> float { return terrain_height(render3d_st, x, z) }
 
-# a height texel: the whole copy's, a resident tile's, else the scratch's (read from the file there)
-function tf_texel(render3d_st: mut Render3dState, tx: int, tz: int) -> float {
-  if render3d_st.ter_heights != null { return render3d_st.ter_heights[tz * TERRAIN_RES + tx] }
-  let t = (tz >> TT_SHIFT) * render3d_st.tt_n + (tx >> TT_SHIFT)
-  let at = (tz & TT_MASK) * TT_TEX + (tx & TT_MASK)
-  let s = render3d_st.tt_slot_of[t]
-  if s >= 0 { return render3d_st.tt_h[s * TT_TEX * TT_TEX + at] }
-  return render3d_st.tf_h[tf_entry(render3d_st, t) * TT_TEX * TT_TEX + at]
-}
-
-# the scratch entry holding tile t, read from the file (as tt_decode reads its heights) when none does
+# the scratch entry holding tile t's heights, read from the file (as tt_decode reads them) when none does
 function tf_entry(render3d_st: mut Render3dState, t: int) -> int {
   for e in 0 .. TF_KEEP { if render3d_st.tf_tile[e] == t + 1 { return e } }
   let e = render3d_st.tf_next
@@ -45,8 +21,39 @@ function tf_entry(render3d_st: mut Render3dState, t: int) -> int {
   return e
 }
 
+# ... and of its photograph (the scratch sized to the map's tiles when they were opened, tf_size)
+function tfo_entry(render3d_st: mut Render3dState, t: int) -> int {
+  for e in 0 .. TF_KEEP { if render3d_st.tfo_tile[e] == t + 1 { return e } }
+  let e = render3d_st.tfo_next
+  render3d_st.tfo_next = (e + 1) % TF_KEEP
+  let o2 = render3d_st.tt_oside * render3d_st.tt_oside
+  let raw = render3d_st.tf_raw
+  file_seek(render3d_st.tt_file, render3d_st.tt_ooff + t * o2 * 3, 0)
+  file_read(render3d_st.tt_file, data_of(raw), o2 * 3)
+  for i in 0 .. o2 { render3d_st.tfo_px[e * o2 + i] = (raw[i * 3] << 16) | (raw[i * 3 + 1] << 8) | raw[i * 3 + 2] }
+  render3d_st.tfo_tile[e] = t + 1
+  return e
+}
+
+# the photograph's scratch and the read buffer made for `side` texels a tile, once a size
+@alloc_ok("a map being loaded: the questions' photograph scratch, once a size")
+function tf_size(render3d_st: mut Render3dState, side: int) -> void {
+  if len(render3d_st.tfo_px) < TF_KEEP * side * side {
+    free(render3d_st.tfo_px)
+    render3d_st.tfo_px = words(TF_KEEP * side * side)
+  }
+  if len(render3d_st.tf_raw) < side * side * 3 {
+    free(render3d_st.tf_raw)
+    render3d_st.tf_raw = buffer(side * side * 3)
+  }
+}
+
 # the scratch forgotten: the tiles' file closed or replaced (another map's tile t is another tile)
 function tf_forget(render3d_st: mut Render3dState) -> void {
-  for e in 0 .. TF_KEEP { render3d_st.tf_tile[e] = 0 }
+  for e in 0 .. TF_KEEP {
+    render3d_st.tf_tile[e] = 0
+    render3d_st.tfo_tile[e] = 0
+  }
   render3d_st.tf_next = 0
+  render3d_st.tfo_next = 0
 }
