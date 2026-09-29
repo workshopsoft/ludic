@@ -29,7 +29,7 @@ game's too (`NpcAct.clip` is a hint: `"walk"`, `"idle"`, or `""` for a pose of i
 - **`NpcSpots`** - where a step goes; `find(p, step)` sends the person (`npc_go` / `npc_do`, or
   `npc_step_go`) or says it cannot. The package's own: `here`, `home`, `near_home`, `near_here`,
   `shore_home`, `shore_here` (facing the water) and `wander`; a game adds its own (a sign, an animal).
-- **`NpcActs`** - what somebody does; the package's `walk` (`NPCA_WALK`) and `idle` come first.
+- **`NpcActs`** - what somebody does; the package's `walk` (`NPCA_WALK`) and `idle` come first, from `acts.lres`.
   `turns` (false: keeps its eyes on its work), `clip`, and `tick(p, dt)` (the game's while it lasts;
   true: decided).
 - **`NpcNames`** (`name`, `body`) and **`NpcLines`** - see below.

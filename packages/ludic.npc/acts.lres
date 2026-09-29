@@ -1,0 +1,4 @@
+# acts.lres - the package's own acts, first in NpcActs so NPCA_WALK is 0 and NPCA_IDLE 1; a game's
+# acts are appended after them (`def NpcActs from ...`)
+walk { clip: "walk" }
+idle { clip: "idle" }

@@ -121,8 +121,7 @@ export property NpcAct {
 }
 
 export open registry NpcActs of NpcAct as NPCA
-def NpcActs walk { clip: "walk" }
-def NpcActs idle { clip: "idle" }
+def NpcActs from "acts.lres"
 
 # a name somebody can have; `body` the game's (a pool per model), so a Nora is drawn as a woman
 export property NpcName {
