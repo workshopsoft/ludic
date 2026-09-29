@@ -61,6 +61,7 @@ out float v_hull;            // 0 at the crown's axis .. 1 at its rim
 uniform float u_flutter;
 out float v_near;                // 0 in the camera's face, 1 past arm's length (NEAR_FADE)
 out float v_quake;
+out float v_lh;                  // height above the model's base (m): a small plant's ground occlusion
 void main() {
   float s = i_rot.x, c = i_rot.y;
   v_quake = 0.0;
@@ -68,6 +69,7 @@ void main() {
 #ifdef CARD
   p = vec3(p.x * u_card_w, p.y * u_card_h, p.z * u_card_w);
 #endif
+  v_lh = max(p.y, 0.0);
   vec3 n = a_nrm;
 #ifdef BLADE
   // distant blades: wider so a thinner field keeps its coverage, lit like the ground

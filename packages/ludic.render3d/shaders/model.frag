@@ -6,6 +6,9 @@ in vec2 v_rot;
 in float v_hull;
 in float v_quake;   // an aspen leaf turning its pale side up
 in float v_near;    // 0 in the camera's face, 1 past arm's length (NEAR_FADE)
+#if defined(FOLIAGE) && !defined(BLADE)
+in float v_lh;      // height above the model's base (model.vert)
+#endif
 uniform float u_model_h;
 out vec4 o_color;
 uniform sampler2D u_diff;
@@ -208,6 +211,12 @@ void main() {
   if (u_model_h > 2.0) arm.r *= mix(0.5, 1.0, v_hull);
 #endif
   alb *= u_tint * (0.85 + 0.3 * fract(v_seed * 7.13));
+#if defined(FOLIAGE) && !defined(BLADE)
+  // A fern or a clump stands IN the sward, and its low leaves see the sky through it no more than the
+  // blades beside them do. Its own occlusion map knows nothing of the grass around it, so by night -
+  // when the sky's light is nearly all the light there is - it stood out lit against the meadow.
+  if (u_model_h <= 2.0) arm.r *= mix(0.35, 1.0, smoothstep(0.0, 0.9, v_lh));
+#endif
   // The quake made visible. A turning aspen leaf shows its pale, almost white underside, so
   // the crown does not merely move - it GLITTERS, leaf by leaf, and that is what reads at a
   // distance and in a still frame. Toward the viewer is the pale side; away is the face.
