@@ -113,4 +113,15 @@ program AnimSetTest {
     }
     expect(playing(pl) == "rig_idle")
   }
+  test "the playing choice is named as the set names it; a state the rig has no clip for cannot be asked" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = skin(render3d_st)
+    let pl = rig(anim_st)
+    expect(animset_choice(pl) == "")
+    animset_param(pl, "speed", 1.0)
+    animset_tick(anim_st, pl, sk, 0.016)
+    expect(animset_choice(pl) == "walk")
+    expect(animset_can(pl, "wave"))
+    expect(not animset_can(pl, "bow"))
+    expect(not animset_can(pl, "nope"))
+  }
 }

@@ -6,6 +6,7 @@ export function animset_tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, d
   let d = AnimSets[pl.set].states[pl.state]
   let k = as_pick(pl, d)
   if k < 0 { return false }
+  pl.pick = k
   pl.rate = as_rate(pl, d, d.choices[k])
   as_switch(pl, d, pl.clips[pl.base[pl.state] + k])
   let adv = dt * pl.rate

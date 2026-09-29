@@ -1,5 +1,5 @@
 # sets.lres - the test's one set: a ground state picking by speed bands, a one-shot that hands back,
-# and a hop the code never asks for, taken when toy_hops says so
+# a hop the code never asks for, taken when toy_hops says so, and a bow no rig carries
 toy {
   entry: "ground"
   params: ["speed"]
@@ -14,7 +14,8 @@ toy {
       ]
     },
     { key: "wave", loop: false, next: "ground", choices: [{ clip: "wave" }] },
-    { key: "hop", choices: [{ clip: "hop" }] }
+    { key: "hop", choices: [{ clip: "hop" }] },
+    { key: "bow", loop: false, next: "ground", choices: [{ clip: "bow" }] }
   ]
   transitions: [{ from: "ground", to: "hop", blend: 0.1, when: fn toy_hops }]
 }

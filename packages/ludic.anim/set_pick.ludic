@@ -15,6 +15,17 @@ export function animset_request(pl: AnimPlayer, key: string) -> void {
   pl.want = i
 }
 
+# the state is in the set and the rig carries one of its clips: a one-shot with none is not asked for
+export function animset_can(pl: AnimPlayer, key: string) -> bool {
+  if pl.set < 0 or pl.clips == null { return false }
+  let i = as_state(AnimSets[pl.set], key)
+  if i < 0 { return false }
+  let d = AnimSets[pl.set].states[i]
+  if d.choices == null { return false }
+  for c in 0 .. len(d.choices) { if pl.clips[pl.base[i] + c] != null { return true } }
+  return false
+}
+
 function as_param_at(pl: AnimPlayer, name: string) -> int {
   if pl.set < 0 { return -1 }
   let s = AnimSets[pl.set]

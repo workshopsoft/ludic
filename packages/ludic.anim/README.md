@@ -68,7 +68,9 @@ and transitions (from a state or `"*"`, with a fade; with `@frame when: fn() -> 
 own the frame it answers true). The code binds an `AnimPlayer` to a set and a rig
 (`animset_bind`), sets parameters (`animset_param`), asks for a state (`animset_request`, taken once
 however often it is asked) and ticks it into a skin (`animset_tick`). A one-shot (`loop: false`)
-holds its last pose and hands on to `next`. Clip names are made once per rig; a tick makes nothing.
+holds its last pose and hands on to `next`. `animset_choice` names the playing choice's clip as the set
+does ("sit_seat", no rig), and `animset_can(key)` says whether the rig carries any of a state's clips, so a
+one-shot with none yet is not asked for. Clip names are made once per rig; a tick makes nothing.
 
 ## Tests
 

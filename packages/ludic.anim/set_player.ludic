@@ -20,10 +20,16 @@ export property AnimPlayer {
   mix: float = 1.0
   fade: float = 0.2
   rate: float = 1.0
+  pick: int = -1            # which of the state's choices plays
 }
 
 export function animset_clip(pl: AnimPlayer) -> Clip { return pl.clip }
 export function animset_time(pl: AnimPlayer) -> float { return pl.t }
 export function animset_rate(pl: AnimPlayer) -> float { return pl.rate }
+# the playing choice's clip as the set names it, without the rig ("sit_seat"); "" before a tick
+export function animset_choice(pl: AnimPlayer) -> string {
+  if pl.set < 0 or pl.pick < 0 { return "" }
+  return AnimSets[pl.set].states[pl.state].choices[pl.pick].clip
+}
 export function animset_ready(pl: AnimPlayer) -> bool { return pl.ready }
 export function animset_bound(pl: AnimPlayer, set: int, rig: string) -> bool { return pl.set == set and pl.rig == rig and pl.names != null }
