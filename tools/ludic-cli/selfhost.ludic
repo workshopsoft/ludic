@@ -49,6 +49,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/backend/emit_escape.ludic")
   push(f, "selfhost/backend/emit_resource.ludic")
   push(f, "selfhost/backend/emit_head.ludic")
+  push(f, "selfhost/backend/emit_lazy.ludic")
   push(f, "selfhost/backend/emit_deps.ludic")
   push(f, "selfhost/backend/emit_addr.ludic")
   push(f, "selfhost/backend/emit_intrin.ludic")

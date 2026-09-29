@@ -97,7 +97,7 @@ function emit_inj_thunk(d: Node) -> pointer {
   while i < len(d.kids) {
     let p = d.kids[i]
     if i < k {
-      body = body + `  %s{itoa(i)} = load ptr, ptr @g_state${p.ty}\n`
+      if is_lazy_state(find_global(state_global(p.ty))) { body = body + `  %s{itoa(i)} = call ptr @S_state${p.ty}()\n` } else { body = body + `  %s{itoa(i)} = load ptr, ptr @g_state${p.ty}\n` }
       if len(args) > 0 { args = args + ", " }
       args = args + `ptr %s{itoa(i)}`
     } else {

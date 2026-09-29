@@ -66,6 +66,7 @@ function global_needs_init_code(d: Node) -> bool {
 function emit_global_init_fn() -> void {
   emit_init_fn("L_init_runtime", true)
   emit_init_fn("L_init_globals", false)
+  emit_state_getters()
 }
 # 0.S: the runtime's states are made first, before it boots (rt_init reads them); the rest after
 function is_runtime_state_var(d: Node) -> bool { return d.uns == 1 and is_state_ty(d.ty) and is_runtime_file(d.file) }
@@ -85,7 +86,7 @@ function emit_init_fn(name: pointer, runtime: bool) -> void {
     let i = order[oi]
     oi += 1
     let d = prog[i]
-    if d.kind == N_VAR and global_needs_init_code(d) and is_runtime_state_var(d) == runtime {
+    if d.kind == N_VAR and global_needs_init_code(d) and is_runtime_state_var(d) == runtime and not is_lazy_state(d) {
       # an initializer is the global's own file's code: its errors, and what its module
       # may see (L3), are that file's - not whichever statement was lowered last
       g_err_file = d.file

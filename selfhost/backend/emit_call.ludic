@@ -1103,6 +1103,8 @@ function emit_expr_raw(e: Node) -> Val {
         if is_fp(g.ty) { return val(to_fp(cv, g.ty, `const {e.s}`), g.ty) }
         return cv
       }
+      let lz = lazy_state_read(g, e.s)             # a state: made on first read (emit_lazy.ludic)
+      if lz != null { return val(lz, g.ty) }
       let r = emit_bind(`load {llty(g.ty)}, ptr @g_{e.s}`)
       return val(r, g.ty)
     }
