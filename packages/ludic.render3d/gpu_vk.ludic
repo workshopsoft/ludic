@@ -424,6 +424,10 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
   }
   let mp = render3d_st.gvk_map_slot
   mp[0] = null
+  # a range in a block is carved a whole number of alignments long, so what is left after it starts
+  # aligned: carved at the bare size, every small buffer left a sliver before the next one that no
+  # later one could use - 3,718 of them among 3,968 buffers, and the free list past its bound
+  let span = (size + align - 1) / align * align
   if size <= gvk_own_over(render3d_st) {
     var kind = t * 2
     if image { kind += 1 }
@@ -433,12 +437,12 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
       if n > 0 and render3d_st.gvk_blk_kind[render3d_st.gvk_fr_blk[i]] == kind {
         let start = (render3d_st.gvk_fr_off[i] + align - 1) / align * align
         let end = render3d_st.gvk_fr_off[i] + n
-        if start + size <= end {
+        if start + span <= end {
           blk = render3d_st.gvk_fr_blk[i];  off = start
           let front = start - render3d_st.gvk_fr_off[i]
-          let back = end - (start + size)
+          let back = end - (start + span)
           if front > 0 { render3d_st.gvk_fr_len[i] = front } else { render3d_st.gvk_fr_len[i] = 0 }
-          gvk_fr_put(render3d_st, blk, start + size, back)
+          gvk_fr_put(render3d_st, blk, start + span, back)
         }
       }
       i += 1
@@ -459,7 +463,7 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
           render3d_st.gvk_blk_mem[blk] = mem;  render3d_st.gvk_blk_kind[blk] = kind;  render3d_st.gvk_blk_size[blk] = bsize;  render3d_st.gvk_blk_map[blk] = mp[0]
         }
         off = 0
-        gvk_fr_put(render3d_st, blk, size, bsize - size)
+        gvk_fr_put(render3d_st, blk, span, bsize - span)
       }
     }
   }
@@ -481,7 +485,9 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
     push(render3d_st.gvk_al_blk, -1);  push(render3d_st.gvk_al_mem, zero);  push(render3d_st.gvk_al_off, 0);  push(render3d_st.gvk_al_len, 0);  push(render3d_st.gvk_al_map, null)
     a = len(render3d_st.gvk_al_blk) - 1
   }
-  render3d_st.gvk_al_blk[a] = blk;  render3d_st.gvk_al_mem[a] = own;  render3d_st.gvk_al_off[a] = off;  render3d_st.gvk_al_len[a] = size;  render3d_st.gvk_al_map[a] = map
+  var len_ = size
+  if blk >= 0 { len_ = span }                 # what the block gives back when it is freed
+  render3d_st.gvk_al_blk[a] = blk;  render3d_st.gvk_al_mem[a] = own;  render3d_st.gvk_al_off[a] = off;  render3d_st.gvk_al_len[a] = len_;  render3d_st.gvk_al_map[a] = map
   return a
 }
 
