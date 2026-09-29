@@ -765,6 +765,10 @@ function gvk_frame_init(render3d_st: mut Render3dState) -> bool {
 function gvk_frame_reset(render3d_st: mut Render3dState) -> void {
   # what MoltenVK autoreleased last frame goes back here (a no-op off macOS); R3D_VK_NOPOOL=1 for an A/B
   if not render3d_st.gvk_nopool { Vk.frame_pool() }
+  # a freed texture's kept sets never match again (its generation moved on) and were held until the
+  # pool filled - 8192 sets, hours of play: past GVK_SC_DEAD_MAX releases the pool starts over, and a
+  # draw still in use makes its set again the first time it is drawn
+  if render3d_st.gvk_sc_dead >= GVK_SC_DEAD_MAX { gvk_kpool_reset(render3d_st) }
   let slot = render3d_st.gvk_frame_no & 1
   render3d_st.gvk_ring_off = slot * GVK_RING_BYTES
   render3d_st.gvk_ring_end = (slot + 1) * GVK_RING_BYTES
@@ -790,6 +794,7 @@ function gvk_ring_put(render3d_st: mut Render3dState, blk: pointer, n: int) -> i
 # texture's handle and generation (bumped when the image behind a handle is replaced) and its
 # sampler, so a set is never matched against a texture it no longer describes.
 const GVK_KPOOL_SETS: int = 8192
+const GVK_SC_DEAD_MAX: int = 256          # textures released before the kept sets start over
 
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gvk_kpool_make(render3d_st: mut Render3dState) -> bool {
@@ -822,6 +827,7 @@ function gvk_sc_clear(render3d_st: mut Render3dState) -> void {
   }
   List.clear(render3d_st.gvk_sc_prog);  List.clear(render3d_st.gvk_sc_koff);  List.clear(render3d_st.gvk_sc_set);  List.clear(render3d_st.gvk_sc_next)
   List.clear(render3d_st.gvk_sc_keys)
+  render3d_st.gvk_sc_dead = 0
   if render3d_st.gvk_sc_head == null { render3d_st.gvk_sc_head = words(4096) }
   for i in 0 .. 4096 { render3d_st.gvk_sc_head[i] = -1 }
 }
@@ -901,7 +907,7 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
 }
 
 # a new kept set for program p with the textures in gvk_sc_tmp, written and cached
-@alloc_ok("the window changed size or a surface was lost: the screen, the swapchain and its images are made again")
+@alloc_ok("the kept-set cache: at most GVK_KPOOL_SETS (8192) sets and their keys, then gvk_kpool_reset empties the pool and the cache and it fills again")
 function gvk_sc_make(render3d_st: mut Render3dState, p: int, nt: int) -> long {
   let zero: long = 0
   let v = render3d_st.gvk_prog_var[p]
