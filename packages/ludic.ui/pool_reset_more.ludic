@@ -2,7 +2,7 @@
 function nd_reset_b(n: UiNode) -> void {
   n.nowrap = false
   n.ellipsis = false
-  if n.lines != null { List.clear(n.lines) }
+  n.lines = null                       # the memo's list (ly_wrap), shared by every node with that text: never cleared
   if n.var_names != null { List.clear(n.var_names) }
   if n.var_vals != null { List.clear(n.var_vals) }
   n.fg = -1

@@ -142,6 +142,32 @@
 < 0 0 1 1 #ffffff 1
 <= ok
 
+# wrapped text stays drawn: a pooled node's reset once emptied the memo's shared lines, so a text
+# that wraps vanished from the third frame on (two generations a screen)
+> load "Wrap" "<div class=\"c\"><p>Seesaibling aus dem Nordbecken</p></div>" ".c { width: 120px }"
+<= ok
+
+> show "Wrap"
+<= ok
+
+> frame 0
+< "Seesaibling aus"
+< "dem Nordbecken"
+<= ok
+
+> frame 1
+< "Seesaibling aus"
+<= ok
+
+> frame 2
+< "Seesaibling aus"
+< "dem Nordbecken"
+<= ok
+
+> frame 3
+< "dem Nordbecken"
+<= ok
+
 > frobnicate
 <= fail "unknown request frobnicate"
 

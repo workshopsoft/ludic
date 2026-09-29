@@ -55,7 +55,7 @@ export property UiNode {
   z: int = 0
   nowrap: bool = false          # white-space: nowrap
   ellipsis: bool = false        # text-overflow: ellipsis
-  lines: []string = null        # a wrapped text's lines
+  lines: []string = null        # a wrapped text's lines: the memo's (ly_wrap), not the node's
   none: Val = Value.null()      # what ui_attr answers for an attribute it lacks: made with the node, read only
   var_names: []string = null    # its custom properties (--name), which its descendants inherit
   var_vals: []string = null
