@@ -64,7 +64,7 @@ A template error is NOT a `fail`: the request succeeded and the error is reporte
 | `font <text dir>` | none. Reads `<dir>/font.json` (§5.3); `fail` if it has no `adv` list |
 | `viewport <num w> <num h> [<num scale>]` | none. The frame's size in screen pixels, and screen pixels a design pixel; with no scale, `h / 1080` (the game's own rule). Default 1920 1080 |
 | `locale <text po path>` | none. Every text a template shows is looked up in that gettext file as the game looks it up (ludic.i18n: exact, then patterns with holes, then sentence by sentence). `""` or `en` is English. The path is read through `file` overrides first |
-| `load <text Name> <text xml> <text lss> [<text xml path> [<text lss path>]]` | events only (`err`). Registers component class `Name`, or replaces its template and styles in place if it exists. Paths default to `Name.xml` and `Name.lss`; they name the files in errors and rules, and an `@import` in the styles is read from beside the xml path. Every capitalised tag in the template naming a class not yet loaded gets an empty class (`<row/>`) of that name, filled in place when the studio loads it; the studio sends every class a story names before it `show`s the root |
+| `load <text Name> <text xml> <text lss> [<text xml path> [<text lss path>]]` | events only (`err`). Registers component class `Name`, or replaces its template and styles in place if it exists. Paths default to `Name.xml` and `Name.lss`; they name the files in errors and rules, and an `@import` in the styles is resolved beside the lss path (§4.1). Every capitalised tag in the template naming a class not yet loaded gets an empty class (`<row/>`) of that name, filled in place when the studio loads it; the studio sends every class a story names before it `show`s the root |
 | `model <text Name> <json object>` | none. The class's model: every key is a name its template reads. Props from the parent's tag and values the template `set`s are laid over it |
 | `calls <text Name> <json object>` | none. How the class's functions answer (§7) |
 | `show <text Name>` | none. The class a `frame` shows, as a whole screen; `fail` if it is not loaded |
@@ -86,6 +86,15 @@ A template error is NOT a `fail`: the request succeeded and the error is reporte
 | `quit` | none; the process ends after `ok` |
 
 Input takes effect in the next `frame`; a press's events are reported by that frame.
+
+### 4.1 Paths
+
+This is the rule v1 keeps. A later version will not change it silently.
+
+- **The rule is for `@import` only.** A `locale` path and an `image` source are read exactly as written, relative to the host's working directory, and a `file` override for either uses that same text.
+- **A leading `/` in an `@import`** means the game's root, which is the host's working directory. The slash is dropped: `@import "/src/ui/kit/theme.lss"` reads `src/ui/kit/theme.lss`. So an absolute filesystem path cannot be imported; start the host in the game's folder and write the path from there.
+- **Any other `@import`** is joined to the directory of the sheet that imports it. For a class's own styles, that is its lss path as `load` gave it. For an imported sheet, it is that sheet's resolved path. So a sheet loaded as `src/ui/hud/Hud.lss` that imports `../kit/theme.lss` reads `src/ui/hud/../kit/theme.lss`, with no normalising of `..`. A class loaded under an absolute lss path imports under absolute paths.
+- **A `file` override** applies to exactly the resolved path, byte for byte: `src/ui/kit/theme.lss` for the first example, and `src/ui/hud/../kit/theme.lss` for the second. Neither `/src/...` nor a normalised form matches.
 
 ## 5. The frame
 

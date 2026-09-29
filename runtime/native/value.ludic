@@ -605,36 +605,67 @@ function jp_string(p: JP) -> string {
   return p.s[a..p.n]
 }
 
-# the same with escapes in it, the rare case, a character at a time
+# the same with escapes in it: decoded in one pass into one buffer, sized by the text up to the closing
+# quote: an escape decodes to at most one and a half times its bytes (\uXXXX is six bytes and at most
+# three out; a \u with bad hex is U+FFFD, three for two).
+# Joining the result a character at a time kept every shorter copy - a long escaped text made
+# gigabytes of them (ui-preview's model, 6.5 GB in three seconds).
 function jp_string_esc(p: JP) -> string {
-  var out = ""
+  var end = p.i
+  while end < p.n and p.s[end] != '"' {
+    if p.s[end] == '\\' { end += 1 }
+    end += 1
+  }
+  if end > p.n { end = p.n }
+  let out = bytes((end - p.i) * 3 / 2 + 4)          # a \u with bad hex is U+FFFD: three bytes for two
+  var w = 0
   while p.i < p.n {
     let c = p.s[p.i]
-    if c == '"' { p.i += 1;  return out }       # closing quote
+    if c == '"' {                                     # closing quote
+      p.i += 1
+      out[w] = 0
+      let done: string = out
+      return done
+    }
     if c == '\\' {                                    # escape
       p.i += 1
       if p.i < p.n {
         let e = p.s[p.i]
-        if e == 'n' { out += "\n" }
-        else if e == 't' { out += "\t" }
-        else if e == 'r' { out += "\r" }
-        else if e == 'b' or e == 'f' or e == 'u' {
-          var code = 8
-          if e == 'f' { code = 12 }
-          if e == 'u' { code = jp_code(p) }            # leaves p.i on the escape's last hex digit
-          let u = jp_utf8(code)
-          out += u
-          free(u)
-        }
-        else { out += p.s[p.i..p.i + 1] }      # \" \\ \/ -> the literal char
+        if e == 'n' { out[w] = 10;  w += 1 }
+        else if e == 't' { out[w] = 9;  w += 1 }
+        else if e == 'r' { out[w] = 13;  w += 1 }
+        else if e == 'b' { out[w] = 8;  w += 1 }
+        else if e == 'f' { out[w] = 12;  w += 1 }
+        else if e == 'u' { w = jp_put_utf8(out, w, jp_code(p)) }   # leaves p.i on the escape's last hex digit
+        else { out[w] = e;  w += 1 }                  # \" \\ \/ -> the literal char
         p.i += 1
       }
     } else {
-      out += p.s[p.i..p.i + 1]
+      out[w] = c
+      w += 1
       p.i += 1
     }
   }
-  return out
+  out[w] = 0
+  let rest: string = out
+  return rest
+}
+# one code point's UTF-8 bytes into out at w; where the next one goes
+function jp_put_utf8(out: bytes, w: int, c: int) -> int {
+  if c < 128 {
+    out[w] = c
+    return w + 1
+  }
+  if c < 2048 {
+    out[w] = 192 | (c >> 6);  out[w + 1] = 128 | (c & 63)
+    return w + 2
+  }
+  if c < 65536 {
+    out[w] = 224 | (c >> 12);  out[w + 1] = 128 | ((c >> 6) & 63);  out[w + 2] = 128 | (c & 63)
+    return w + 3
+  }
+  out[w] = 240 | (c >> 18);  out[w + 1] = 128 | ((c >> 12) & 63);  out[w + 2] = 128 | ((c >> 6) & 63);  out[w + 3] = 128 | (c & 63)
+  return w + 4
 }
 
 # \uXXXX, p.i on the 'u': the code point, a surrogate pair joined (\ud83d\ude00 is one emoji); a
@@ -670,18 +701,6 @@ function jp_hex4(p: JP, at: int) -> int {
     v = v * 16 + d
   }
   return v
-}
-# one code point as a UTF-8 string
-function jp_utf8(c: int) -> string {
-  let out = bytes(5)
-  var n = 0
-  if c < 128 { out[0] = c;  n = 1 }
-  else if c < 2048 { out[0] = 192 | (c >> 6);  out[1] = 128 | (c & 63);  n = 2 }
-  else if c < 65536 { out[0] = 224 | (c >> 12);  out[1] = 128 | ((c >> 6) & 63);  out[2] = 128 | (c & 63);  n = 3 }
-  else { out[0] = 240 | (c >> 18);  out[1] = 128 | ((c >> 12) & 63);  out[2] = 128 | ((c >> 6) & 63);  out[3] = 128 | (c & 63);  n = 4 }
-  out[n] = 0
-  let t: string = out
-  return t
 }
 
 # read a number; a '.' makes it a fixed node, otherwise an int node.
