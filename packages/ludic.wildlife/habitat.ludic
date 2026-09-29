@@ -16,14 +16,26 @@ export function wildlife_habitat_ok(hab: int, x: float, z: float) -> bool {
   return s > 0.25 or h > 80.0
 }
 
+# a species' ground: its painted habitat where the map has one (never under water), else its kind's rule
+export function wildlife_habitat_of(sp: int, hab: int, x: float, z: float) -> bool {
+  let painted = WildlifeWorld.habitat_in(sp, x, z)
+  if painted < 0 { return wildlife_habitat_ok(hab, x, z) }
+  return painted == 1 and WildlifeWorld.ground(x, z) >= WildlifeWorld.water(x, z) + 0.8
+}
+
 # a spot of `hab` d0..d1 metres from (x0, z0); where it is, is wildlife_spot_x / _z
 export function wildlife_find_spot(wildlife_st: mut WildlifeState, hab: int, x0: float, z0: float, d0: float, d1: float) -> bool {
+  return wildlife_find_spot_of(wildlife_st, -1, hab, x0, z0, d0, d1)
+}
+
+# the same for a species (sp >= 0): inside its painted habitat when the map has one
+export function wildlife_find_spot_of(wildlife_st: mut WildlifeState, sp: int, hab: int, x0: float, z0: float, d0: float, d1: float) -> bool {
   for t in 0 .. 60 {
     let ang = wl_rnd(wildlife_st) * WL_TAU
     let d = d0 + wl_rnd(wildlife_st) * (d1 - d0)
     let x = x0 + Math.cos(ang) * d
     let z = z0 + Math.sin(ang) * d
-    if wildlife_habitat_ok(hab, x, z) {
+    if (sp < 0 and wildlife_habitat_ok(hab, x, z)) or (sp >= 0 and wildlife_habitat_of(sp, hab, x, z)) {
       wildlife_st.wl_px = x
       wildlife_st.wl_pz = z
       return true

@@ -1,0 +1,82 @@
+# painted_test.ludic - a map that paints a species' habitat and a range: its ranges and animals keep
+# inside it, the painted range stands where it was painted, and a species with none keeps its rule
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+program WildPaintedTest {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    forest: fn fk_forest
+    sight: fn fk_sight
+    push: fn fk_push
+    pushed_x: fn fk_pushed_x
+    pushed_z: fn fk_pushed_z
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    hidden: fn fk_is_hidden
+    noise: fn fk_noise_of
+    scent: fn fk_scent_of
+    stillness: fn fk_still_of
+    wind: fn fk_wind_of
+    wind_dir: fn fk_wind_to
+    winterness: fn fk_winter_of
+    about: fn fk_about_of
+    per_range: fn fk_one
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    born: fn fk_on_born
+    spot: fn fk_spot
+    habitat_in: fn pt_habitat
+    range_at: fn pt_range
+  }
+
+  # the deer's habitat is the square x 500..700, z -100..100; its first range is painted at (600, 0)
+  function pt_habitat(sp: int, x: float, z: float) -> int {
+    if sp != 0 { return -1 }
+    if x >= 500.0 and x <= 700.0 and z >= -100.0 and z <= 100.0 { return 1 }
+    return 0
+  }
+  function pt_range(sp: int, k: int, r: WildRange) -> bool {
+    if sp != 0 or k != 0 { return false }
+    r.x = 600.0
+    r.z = 0.0
+    r.r = 80.0
+    return true
+  }
+  function pt_inside(x: float, z: float) -> bool { return x >= 500.0 and x <= 700.0 and z >= -100.0 and z <= 100.0 }
+
+  test "a painted range stands where it was painted, and every deer range and deer keeps to the paint" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    wildlife_spawn(wildlife_st, 0.0, 0.0)
+    let rs = wildlife_ranges(wildlife_st)
+    var first = -1
+    for i in 0 .. len(rs) { if first < 0 and rs[i].sp == 0 { first = i } }
+    expect(first >= 0)
+    expect_eq(rs[first].sx, 600.0)
+    expect_eq(rs[first].r, 80.0)
+    for i in 0 .. len(rs) { if rs[i].sp == 0 { expect(pt_inside(rs[i].sx, rs[i].sz)) } }
+    let all = wildlife_all(wildlife_st)
+    var deer = 0
+    for i in 0 .. len(all) {
+      if all[i].sp == 0 {
+        deer += 1
+        expect(pt_inside(all[i].x, all[i].z))
+      }
+    }
+    expect(deer >= 1)
+  }
+
+  test "a species with nothing painted keeps its kind's rule" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    expect(wildlife_habitat_of(1, WILD_FOREST, 0.0, 500.0))
+    expect(not wildlife_habitat_of(1, WILD_FOREST, 0.0, 0.0))
+    expect(not wildlife_habitat_of(0, WILD_MEADOW, 0.0, 0.0))
+    expect(wildlife_habitat_of(0, WILD_MEADOW, 550.0, 0.0))
+  }
+}

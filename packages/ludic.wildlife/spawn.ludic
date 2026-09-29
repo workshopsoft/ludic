@@ -14,7 +14,7 @@ function wl_fill(wildlife_st: mut WildlifeState, i: int, want: int) -> int {
   let r = wildlife_range(wildlife_st, i)
   var made = 0
   for k in 0 .. want {
-    if not wildlife_find_spot(wildlife_st, wl_sp(wildlife_st, r.sp).habitat, r.x, r.z, 0.0, r.r) { continue }
+    if not wildlife_find_spot_of(wildlife_st, r.sp, wl_sp(wildlife_st, r.sp).habitat, r.x, r.z, 0.0, r.r) { continue }
     let a = wildlife_new(wildlife_st, r.sp, wildlife_st.wl_px, wildlife_st.wl_pz, false)
     if a != null {
       a.rg = i
@@ -38,7 +38,7 @@ export function wildlife_repopulate(wildlife_st: mut WildlifeState) -> int {
     let want = WildlifeWorld.per_range(rs[i].sp)
     if want == 0 or wildlife_range_alive(wildlife_st, i) >= want { continue }
     for t in 0 .. 12 {
-      if not wildlife_find_spot(wildlife_st, wl_sp(wildlife_st, rs[i].sp).habitat, rs[i].x, rs[i].z, 0.0, rs[i].r) { continue }
+      if not wildlife_find_spot_of(wildlife_st, rs[i].sp, wl_sp(wildlife_st, rs[i].sp).habitat, rs[i].x, rs[i].z, 0.0, rs[i].r) { continue }
       if wl_near(wildlife_st, wildlife_st.wl_px, wildlife_st.wl_pz) < 200.0 { continue }
       let a = wildlife_new(wildlife_st, rs[i].sp, wildlife_st.wl_px, wildlife_st.wl_pz, false)
       if a != null {

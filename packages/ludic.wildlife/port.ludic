@@ -38,6 +38,9 @@ export port WildlifeWorld {
   taught: fn() -> bool = fn wl_no0                        # food carries further, feeders mind less
   about: fn(WildAnimal) -> int = fn wl_about              # WILD_ABOUT, _AWAY or _GONE
   ranges: fn(int) -> int = fn wl_two                      # ranges a species gets on this map
+  # (sp, x, z): the map's painted habitat for a species: 1 inside, 0 outside, -1 none painted (the rule)
+  habitat_in: fn(int, float, float) -> int = fn wl_unpainted
+  range_at: fn(int, int, WildRange) -> bool = fn wl_no_range   # (sp, k): the k-th painted range, x, z, r
   active: fn(float, float) -> bool = fn wl_yes2           # simulated here: outside, an animal is frozen
   per_range: fn(int) -> int = fn wl_three                 # and how many live in each
   spot: fn(WildAnimal, bool, WildSpot) -> bool = fn wl_no_spot   # water (true) or forage for it
@@ -78,6 +81,8 @@ function wl_nine() -> float { return 9.0 }
 function wl_about(a: WildAnimal) -> int { return WILD_ABOUT }
 function wl_two(sp: int) -> int { return 2 }
 function wl_three(sp: int) -> int { return 3 }
+function wl_unpainted(sp: int, x: float, z: float) -> int { return -1 }
+function wl_no_range(sp: int, k: int, r: WildRange) -> bool { return false }
 function wl_no_spot(a: WildAnimal, water: bool, s: WildSpot) -> bool { return false }
 function wl_no_lure(i: int, l: WildLure) -> bool { return false }
 function wl_nothing(a: WildAnimal) -> void { }

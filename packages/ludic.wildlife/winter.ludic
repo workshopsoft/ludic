@@ -1,0 +1,45 @@
+# winter.ludic - where a range winters, and a range the map paints rather than the dice
+
+# downhill, toward the timber, never into the water: shelter is worth 25 m of height
+function wl_pick_winter(r: WildRange) -> void {
+  let up = WildlifeWorld.ground(r.sx, r.sz) - WildlifeWorld.water(r.sx, r.sz)
+  let reach = Math.min(60.0 + up * 6.0, 520.0)
+  r.wx = r.sx
+  r.wz = r.sz
+  var best = up
+  for k in 0 .. 24 {
+    let ang = float(k) * Math.deg_to_rad(15.0)
+    for step in 1 .. 5 {
+      let d = reach * (float(step) / 4.0)
+      let px = r.sx + Math.cos(ang) * d
+      let pz = r.sz + Math.sin(ang) * d
+      let h = WildlifeWorld.ground(px, pz) - WildlifeWorld.water(px, pz)
+      if h < 3.0 or WildlifeWorld.slope(px, pz) > 0.6 { continue }
+      var score = h
+      if WildlifeWorld.forest(px, pz) { score = score - 25.0 }
+      if score < best {
+        best = score
+        r.wx = px
+        r.wz = pz
+      }
+    }
+  }
+}
+
+# the map's own k-th range for a species, when it paints one: no dice drawn
+function wl_range_painted(wildlife_st: mut WildlifeState, sp: int, k: int) -> bool {
+  let q = wildlife_st.wl_ask_rg
+  q.r = 0.0
+  if not WildlifeWorld.range_at(sp, k, q) { return false }
+  let r = new WildRange
+  r.sp = sp
+  r.x = q.x
+  r.z = q.z
+  r.r = q.r
+  if r.r <= 0.0 { r.r = wl_sp(wildlife_st, sp).range }
+  r.sx = r.x
+  r.sz = r.z
+  wl_pick_winter(r)
+  push(wildlife_ranges(wildlife_st), r)
+  return true
+}
