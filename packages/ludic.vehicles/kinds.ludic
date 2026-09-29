@@ -17,8 +17,9 @@ export property Vehicle {
   owned: bool = false     # hired or rented for the trip
   owner: int = 0          # the player it belongs to (0: this machine's)
   rider: int = -1         # the player on it, -1 nobody
-  home_x: float = 0.0     # a horse is tied where its home is
+  home_x: float = 0.0     # a horse is tied where its home is; a boat nobody rows is moored there
   home_z: float = 0.0
+  home_yaw: float = 0.0   # and a moored boat faces as it was left
   ent: int = -1           # its handle in the table
   tab: Table<Vehicle> = null
 }

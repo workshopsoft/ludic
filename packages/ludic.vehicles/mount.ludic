@@ -28,6 +28,7 @@ export function vehicle_dismount(vehicles_st: mut VehiclesState) -> bool {
       return false
     }
     VehicleRider.step_off(VehicleRider.safe_x(), VehicleRider.safe_z())
+    ve_moor(v)
   } else {
     let wx = v.x + Math.cos(v.yaw) * 1.2
     let wz = v.z - Math.sin(v.yaw) * 1.2
@@ -49,6 +50,7 @@ export function vehicle_drop(vehicles_st: mut VehiclesState) -> void {
   if vehicles_st.ve_cur != null {
     vehicles_st.ve_cur.rider = -1
     vehicles_st.ve_cur.speed = 0.0
+    if vehicles_st.ve_cur.kind == VEHICLE_BOAT { ve_moor(vehicles_st.ve_cur) }
   }
   vehicles_st.ve_cur = null
 }

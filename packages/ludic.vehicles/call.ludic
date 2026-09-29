@@ -39,8 +39,14 @@ function ve_put(v: Vehicle, x: float, z: float) -> void {
   v.z = z
   v.speed = 0.0
   if v.kind == VEHICLE_BOAT { v.y = VehicleWorld.water(x, z) + 0.02 } else { v.y = VehicleWorld.ground(x, z) }
-  v.home_x = x
-  v.home_z = z
+  ve_moor(v)
+}
+
+# a boat nobody rows holds here (vehicles_tick); a horse is tied here
+function ve_moor(v: Vehicle) -> void {
+  v.home_x = v.x
+  v.home_z = v.z
+  v.home_yaw = v.yaw
 }
 
 # Bring player pid's boat or horse to place k. False when the place is somebody else's, or it is
@@ -59,8 +65,8 @@ export function vehicle_call_for(vehicles_st: VehiclesState, pid: int, kind: int
     return true
   }
   if v.rider >= 0 { return false }
-  ve_put(v, vehicle_place_x(vehicles_st, kind, k), vehicle_place_z(vehicles_st, kind, k))
   v.yaw = yaw
+  ve_put(v, vehicle_place_x(vehicles_st, kind, k), vehicle_place_z(vehicles_st, kind, k))
   ve_settle(v)
   VehicleWorld.placed(v)
   return true
