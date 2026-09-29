@@ -3,7 +3,7 @@ id: annot-clearcolor
 name: "@ClearColor"
 category: annotations
 kind: annotation
-tokens: "@ClearColor"
+tokens: @ClearColor
 sig: "@ClearColor(0xRRGGBB) handler Draw phase Render { … }"
 tip: Declare a clear colour so the Render phase auto-clears + auto-presents for you.
 order: 62
