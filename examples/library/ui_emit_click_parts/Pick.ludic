@@ -1,0 +1,4 @@
+component Pick {
+  state got: int = -1
+  on pick(i: int) { got = i }
+}

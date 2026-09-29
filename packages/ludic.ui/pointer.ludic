@@ -22,7 +22,7 @@ function fr_pointer(ui_st: mut UiState, root: UiNode) -> void {
   if not i.down and ui_st.in_was_down {
     let was = fr_node(root, ui_st.fr_press_key)
     if was != null { ui_fire(ui_st, was, "up", ui_st.fc_none) }
-    if hit != null and hit.key == ui_st.fr_press_key and hit.enabled { ct_activate(ui_st, hit) }
+    if hit != null and hit.key == ui_st.fr_press_key and hit.enabled { ct_activate_at(ui_st, hit, i.x, i.y) }
     ui_st.fr_press_key = ""
   }
 }

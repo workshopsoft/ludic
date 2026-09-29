@@ -1,0 +1,40 @@
+# ui_emit_click.ludic - a component whose button says `emit click` is answered by its user's
+# on-click, by the mouse or a press: on-click is kept as on-press, and the emit once looked for
+# "click" and found nothing (the pack's items and the wardrobe's picks did not respond)
+import "ludic.ui"
+import "ui_emit_click_parts/Cell.ludic"
+import "ui_emit_click_parts/Pick.ludic"
+program UiEmitClick {
+  numbers float
+  function frame(ui_st: mut UiState, x: float, y: float, down: bool) -> UiNode {
+    let i = new UiInput
+    i.x = x
+    i.y = y
+    i.down = down
+    ui_input(ui_st, i)
+    ui_show(ui_st, "Pick", null, 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes(ui_st, "Pick", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+    return root
+  }
+  function first_text(n: UiNode) -> string {
+    if n.text != "" { return n.text }
+    for i in 0 .. len(n.children) { let t = first_text(n.children[i]); if t != "" { return t } }
+    return ""
+  }
+  entry (ui_st: mut UiState) {
+    var root = frame(ui_st, -1.0, -1.0, false)
+    root = frame(ui_st, -1.0, -1.0, false)
+    let b = root.children[0].children[2].children[0]
+    let x = b.x + b.cw / 2.0
+    let y = b.y + b.ch / 2.0
+    root = frame(ui_st, x, y, false)
+    root = frame(ui_st, x, y, true)
+    root = frame(ui_st, x, y, false)
+    root = frame(ui_st, x, y, false)
+    let clicked = first_text(root)
+    ui_press(ui_st, root.children[0].children[1].children[0])
+    root = frame(ui_st, x, y, false)
+    print(`{clicked} | pressed: {first_text(root)}`)
+  }
+}
