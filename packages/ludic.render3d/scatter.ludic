@@ -41,6 +41,7 @@ property Layer {
   fog_src:  int = -1,
   ck_off:   words,             # per baked chunk: where its slab starts in inst, or -1 (layer_chunks.ludic)
   ck_cnt:   words,
+  lc_rec:   floats,            # one decoded record, reused
   fog_all:  bool = false,  # the wall keeps (nearly) all of it: casters from sh_buf, no rebuild
   fog_wall: float = 0.0,
   fog_x:    float = 0.0,

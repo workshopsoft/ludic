@@ -1,0 +1,68 @@
+# place_rec.ludic — a baked placement's record, the ONE encoder and decoder the bake, the ring, the
+# physics and the renderer all use (so they cannot drift). Two formats: FULL, 12 bytes, for the fixed
+# kinds (trees, boulders, stones); PACKED, 7 bytes, for the stream kinds (grass, flowers, willow). An
+# encode takes the cell a value falls in and a decode its centre, so decoding and encoding again is
+# stable. A record is read from a []byte at a byte offset (the game cannot index a pointer).
+
+export const PREC_FULL: int = 0
+export const PREC_PACKED: int = 1
+
+export function prec_size(fmt: int) -> int {
+  if fmt == PREC_PACKED { return 7 }
+  return 12
+}
+
+function prec_q(v: float, steps: int) -> int { return min(max(int(Math.floor(v * float(steps))), 0), steps - 1) }
+function prec_r(v: float, top: int) -> int { return min(max(int(Math.floor(v * float(top) + 0.5)), 0), top) }
+function prec_wrap(yaw: float) -> float {
+  let t = 2.0 * PI
+  return yaw - Math.floor(yaw / t) * t
+}
+
+# one instance in world units into b at byte `at`, against its chunk (x0, z0, size, y_base) and kind (lo, hi)
+export function prec_put(fmt: int, b: []byte, at: int, x: float, y: float, z: float, scale: float, yaw: float, seed: float, wind: float, x0: float, z0: float, size: float, y_base: float, lo: float, hi: float) -> void {
+  var sn = 0.0
+  if hi > lo { sn = (scale - lo) / (hi - lo) }
+  if fmt == PREC_PACKED {
+    let qx = prec_q((x - x0) / size, 4096)
+    let qz = prec_q((z - z0) / size, 4096)
+    let qy = min(max(int(Math.floor((y - y_base) * 100.0 + 0.5)), 0), 4095)
+    let lw = qx | (qz << 12) | ((qy & 255) << 24)
+    let hw = ((qy >> 8) & 15) | (prec_r(sn, 63) << 4) | ((prec_r(prec_wrap(yaw) / (2.0 * PI), 64) & 63) << 10) | (prec_r(seed, 15) << 16) | (prec_r(wind, 15) << 20)
+    b[at] = lw & 255;  b[at + 1] = (lw >> 8) & 255;  b[at + 2] = (lw >> 16) & 255;  b[at + 3] = (lw >> 24) & 255
+    b[at + 4] = hw & 255;  b[at + 5] = (hw >> 8) & 255;  b[at + 6] = (hw >> 16) & 255
+    return
+  }
+  let qx = prec_q((x - x0) / size, 65536)
+  let qz = prec_q((z - z0) / size, 65536)
+  let qy = min(max(int(Math.floor((y - y_base) * 100.0 + 0.5)), 0), 65535)
+  b[at] = qx & 255;  b[at + 1] = qx >> 8;  b[at + 2] = qz & 255;  b[at + 3] = qz >> 8
+  b[at + 4] = qy & 255;  b[at + 5] = qy >> 8
+  b[at + 6] = prec_r(sn, 255);  b[at + 7] = prec_r(prec_wrap(yaw) / (2.0 * PI), 256) & 255
+  b[at + 8] = prec_r(seed, 255);  b[at + 9] = prec_r(wind, 255);  b[at + 10] = 0;  b[at + 11] = 0
+}
+
+# record i of the run at byte `at` into out[0 .. 8], the layers' instance layout:
+# x, y, z, scale, sin yaw, cos yaw, seed, wind
+export function prec_get(fmt: int, b: []byte, at: int, i: int, x0: float, z0: float, size: float, y_base: float, lo: float, hi: float, out: floats) -> void {
+  let o = at + i * prec_size(fmt)
+  var qx = 0;  var qz = 0;  var qy = 0;  var qs = 0;  var qa = 0;  var qe = 0;  var qw = 0
+  var xs = 65536.0;  var ss = 255.0;  var as = 256.0;  var es = 255.0
+  if fmt == PREC_PACKED {
+    let lw = b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)
+    let hw = b[o + 4] | (b[o + 5] << 8) | (b[o + 6] << 16)
+    qx = lw & 4095;  qz = (lw >> 12) & 4095;  qy = ((lw >> 24) & 255) | ((hw & 15) << 8)
+    qs = (hw >> 4) & 63;  qa = (hw >> 10) & 63;  qe = (hw >> 16) & 15;  qw = (hw >> 20) & 15
+    xs = 4096.0;  ss = 63.0;  as = 64.0;  es = 15.0
+  } else {
+    qx = b[o] | (b[o + 1] << 8);  qz = b[o + 2] | (b[o + 3] << 8);  qy = b[o + 4] | (b[o + 5] << 8)
+    qs = b[o + 6];  qa = b[o + 7];  qe = b[o + 8];  qw = b[o + 9]
+  }
+  let yaw = float(qa) / as * 2.0 * PI
+  out[0] = x0 + (float(qx) + 0.5) * size / xs
+  out[1] = y_base + float(qy) * 0.01
+  out[2] = z0 + (float(qz) + 0.5) * size / xs
+  out[3] = lo + float(qs) / ss * (hi - lo)
+  out[4] = Math.sin(yaw);  out[5] = Math.cos(yaw)
+  out[6] = float(qe) / es;  out[7] = float(qw) / es
+}
