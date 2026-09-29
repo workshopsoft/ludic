@@ -680,6 +680,11 @@ Each list is sorted by name (then file and line), a registry's entries are in in
 paths are the ones the compiler read, so two runs over the same source write the same file. The
 engine's runtime is left out.
 
+`Build.schema_hash()` is a `long`: FNV-1a 64 of exactly those bytes, for the program being built,
+worked out once and only when the program names it - so a tool talking to a running build can tell
+whether it was compiled from the data in front of it. It is 0 in a release (`ludicc --release`,
+which `ludic bundle` passes).
+
 ### Default parameters, and calls that name what they change
 
 A parameter can have a default, and a call leaves out what it does not change - the last ones when

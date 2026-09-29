@@ -1232,6 +1232,7 @@ function cmd_dev_test() -> int {
   feat_case("lang/registry", "", "3 Crate true 2 fire_ring -1", "registry.ludic (L8: a registry filled by def declarations - index constants, a count, the key, a lookup)")
   reject_case("rejected/registry_unknown", "there is no registry Tables", "a def names a registry that exists")
   feat_case("lang/attributes", "", "2 1 Lantern 2", "attributes.ludic (editor attributes: @Ref, @OneOf, @Range, @Unit, @Asset, @Color, @AppendOnly, @ByKey - no effect on the program)")
+  feat_case("lang/schema_hash", "", "true", "schema_hash.ludic (Build.schema_hash(): FNV-1a 64 of the program's own schema, 0 in a release)")
   reject_case("rejected/ref_unknown", "field Tool.seller: @Ref(Vendorz) names no registry", "@Ref names a registry that exists")
   reject_case("rejected/node_bad", "field Tool.grip: @Node(handle) names no field", "@Node names a field of its record")
   schema_case("lang/attributes", "{\"name\": \"weight\", \"type\": \"float\", \"default\": \"1.0\", \"file\": \"examples/lang/attributes.ludic\", \"line\": 24, \"col\": 33, \"attributes\": [{\"name\": \"Range\", \"args\": [0, 20.5]}, {\"name\": \"Unit\", \"args\": [\"kg\"]}]", "--emit-schema: a field's type, default, place and attributes")

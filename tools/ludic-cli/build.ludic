@@ -49,11 +49,11 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
     var flags = "--windowed"
     if mode == 2 { flags = "--headless" }
     if save { flags = flags + " --save-temps" }
-    return shq(`{ludicc()} {flags}{title_flag()}{unsafe_flag()} {src} -o {out}`)
+    return shq(`{ludicc()} {flags}{title_flag()}{unsafe_flag()}{release_flag()} {src} -o {out}`)
   }
 
   if mode == 2 {
-    if not shq(`{ludicc()} --headless{title_flag()}{unsafe_flag()} {src} --emit-llvm -o {ll}`) { return false }
+    if not shq(`{ludicc()} --headless{title_flag()}{unsafe_flag()}{release_flag()} {src} --emit-llvm -o {ll}`) { return false }
     let objs = split_objs(ll, out)                 # on every core when it can (split.ludic)
     var input = ll
     if objs != "" { input = objs }
@@ -65,7 +65,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
     return true
   }
 
-  if not shq(`{ludicc()} --windowed{title_flag()}{unsafe_flag()} {src} --emit-llvm -o {ll}`) { return false }
+  if not shq(`{ludicc()} --windowed{title_flag()}{unsafe_flag()}{release_flag()} {src} --emit-llvm -o {ll}`) { return false }
   # audio.ll (#22) is always linked here — unused snd_* are dead-stripped; the
   # canonical `ludicc -o` path links it only when Audio.* is used.
   let cocoa = `{home}runtime/native/cocoa.ll`
@@ -85,6 +85,12 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
 # opens under that name rather than the `program` name; "" otherwise, and for a name the
 # shell line could not carry safely.
 # ` --unsafe` when the build said so: the project's own files may write `unsafe` (L7)
+# ludic bundle: what ships is a release, and Build.schema_hash() is 0 in it
+var g_release_build: bool = false
+function release_flag() -> pointer {
+  if g_release_build { return " --release" }
+  return ""
+}
 var g_unsafe_build: bool = false
 function unsafe_flag() -> pointer {
   if g_unsafe_build { return " --unsafe" }

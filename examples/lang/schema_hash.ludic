@@ -1,0 +1,14 @@
+# schema_hash.ludic — Build.schema_hash(): FNV-1a 64 of the program's own schema (what `ludic schema`
+# prints), so a tool can tell which data a running build was compiled from; 0 in a release build
+# (`ludicc --release`, which ludic bundle passes).
+#
+# Running it prints:  true
+program SchemaHash {
+  property Tool {
+    key: string = ""
+    weight: float = 1.0
+  }
+  registry Tools of Tool as TL
+  def Tools axe { weight: 2.5 }
+  entry { print(`{Build.schema_hash() != long(0)}`) }
+}

@@ -360,6 +360,7 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Regex" { g_uses_regex = true }   # splice the regex runtime on demand
       if e.a.kind == E_ID and e.a.s == "Random" { g_uses_rng = true }   # splice the seeded random numbers on demand
       if e.a.kind == E_ID and e.a.s == "Fs" and (e.s == "read_bytes" or e.s == "write_bytes") { g_uses_bytes = true }
+      if e.a.kind == E_ID and e.a.s == "Build" and e.s == "schema_hash" { g_uses_schema_hash = true }   # the schema hashed after the checker
       if e.a.kind == E_ID and (e.a.s == "BigInt" or e.a.s == "Decimal") { g_uses_bignum = true }   # splice the bignum runtime on demand
       if e.a.kind == E_ID and (e.a.s == "Dict" or e.a.s == "Set") { g_uses_dict = true }   # splice the hash-table runtime on demand
       if e.a.kind == E_ID and (e.a.s == "Huge" or e.a.s == "Angle" or e.a.s == "Percent") { g_uses_numeric = true }   # splice the huge/angle/percent runtime on demand
