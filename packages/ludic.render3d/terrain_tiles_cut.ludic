@@ -3,7 +3,6 @@
 # start, so no older generator's tiles are ever read; its header goes in last, so a start that died
 # writing it leaves a file whose magic is not there rather than one that looks whole.
 
-const TT_MAGIC: int = 1415074892          # "LTTT"
 const TT_VERSION: int = 1
 const TT_HEAD: int = 64                    # bytes: 16 words
 
