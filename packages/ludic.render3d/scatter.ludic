@@ -387,6 +387,7 @@ function impostor_paint(render3d_st: mut Render3dState, im: Impostor) -> void {
       let pr = model.prims[i]
       r3d_bind_2d(render3d_st, bake, "u_diff", 0, pr.diff)
       r3d_bind_2d(render3d_st, bake, "u_arm", 2, pr.arm)
+      prim_factors(render3d_st, bake, pr)
       mesh_draw_instanced(render3d_st, pr.mesh, 1)
     }
   }
@@ -962,6 +963,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
     scatter_attach(render3d_st, pr.mesh, vb)
     if not card {
       r3d_bind_2d(render3d_st, p, "u_diff", 0, pr.diff)
+      prim_factors(render3d_st, p, pr)
       if not shadow { r3d_bind_2d(render3d_st, p, "u_nrm", 1, pr.nrm);  r3d_bind_2d(render3d_st, p, "u_arm", 2, pr.arm) }
     }
     if render3d_st.sc_ind_base >= 0 { gpu_draw_mesh_indirect(render3d_st, pr.mesh, l.g_cmds, (render3d_st.sc_ind_base + i * render3d_st.sc_ind_stride) * SC_REC_W, render3d_st.sc_ind_n, 0, 0) }
@@ -1057,6 +1059,7 @@ function layer_draw_depth(render3d_st: mut Render3dState, l: Layer, model: Model
     let pr = model.prims[i]
     scatter_attach(render3d_st, pr.mesh, vb)
     r3d_bind_2d(render3d_st, p, "u_diff", 0, pr.diff)
+    prim_factors(render3d_st, p, pr)
     if render3d_st.sc_ind_base >= 0 { gpu_draw_mesh_indirect(render3d_st, pr.mesh, l.g_cmds, (render3d_st.sc_ind_base + i * render3d_st.sc_ind_stride) * SC_REC_W, render3d_st.sc_ind_n, 0, 0) }
     else { mesh_draw_instanced(render3d_st, pr.mesh, cnt) }
   }

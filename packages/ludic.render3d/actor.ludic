@@ -220,6 +220,7 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
       else { u_v3(render3d_st, ap.l_tint, a.tint) }
     }
     gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+    prim_factors(render3d_st, ap.prog, pr)
     if not shadow {
       gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
       gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
