@@ -642,6 +642,8 @@ property Tool {
   @Color tint: int = 0
   @Node(model) grip: string = ""           # a node inside the glTF that `model` names
   @Clip(model) swing: string = ""          # a clip inside it
+  @Material(model) finish: string = ""     # a material inside it
+  @OneOf("box", "hull") shape: string = "" # a string field: one of these words
   @Color @Tint(TSLOT_SHELL) shell: int = 0 # a colour for that tint slot
   @Derived reach: float = 0.0              # worked out at boot: anything written is overwritten
   @Text @Multiline blurb: string = ""      # read by the player (so translated), and prose
@@ -651,12 +653,15 @@ property Tool {
 registry Tools of Tool as TL from "data/tools.lres"
 ```
 
-They change nothing the program does. Four are checked, and every field that fails is reported, not
-only the first: `@Ref` must name a registry the program declares; `@OneOf` with one argument ending
-in `_` is a prefix, and otherwise each argument is a constant that must exist; `@Tint(C)` must name a
-constant that exists (a row of the program's tint-slot registry); and `@Node(f)` or `@Clip(f)` must
-name a field `f` of the same record that is either `@Asset("gltf")` or an `@Ref` to a registry whose record has
-exactly one `@Asset("gltf")` field (the model is then the referenced row's).
+They change nothing the program does. A target that no part of the program declares - the registry
+an `@Ref` names, the constant of an `@Tint` or a listed `@OneOf` - is a warning, and the schema marks
+the attribute `"unresolved": true`: a package can name the game's registry without importing it.
+Everything else is an error, every one reported: a target that exists but is another kind
+(`@Ref(Vendor)` on a record); `@OneOf` of the wrong kind for its field - on a string field the
+arguments are words (`@OneOf("box", "hull")`) and every registry row's value must be one of them, on
+any other field a prefix ending in `_` or constants; and `@Node(f)`, `@Clip(f)` or `@Material(f)`
+naming anything but a field `f` of the same record that is `@Asset("gltf")`, or an `@Ref` to a
+registry whose record has exactly one `@Asset("gltf")` field (the model is then the row's).
 
 `ludicc app.ludic --emit-schema out.json` (or `ludic schema [file] [-o out.json]`) writes what the
 compiler resolved, once the types are checked and every open registry has its entries, as one JSON
