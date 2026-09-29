@@ -1,0 +1,3 @@
+# i18n.ludic's items: a @Text name is a Key, derived when the row gives none (items.rope.name)
+rope { weight: 0.4 }
+lamp { name: k"items.lamp.name", weight: 1.2 }

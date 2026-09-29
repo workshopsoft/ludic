@@ -6,6 +6,7 @@ function vw_set(v: int, ty: pointer, o: pointer, k: pointer, x: pointer, head: N
   if (ty == "int") { return `  value_set_int({o}, "{k}", {x})\n` }
   if (ty == "float") { return `  value_set_float({o}, "{k}", {x})\n` }
   if (ty == "string") { return `  value_set_str({o}, "{k}", {x})\n` }
+  if i18n_is_key_ty(ty) { return `  value_set_str({o}, "{k}", string({x}))\n` }   # a Key: its marked text, for t(expr)
   if (ty == "bool") { return `  value_set_bool({o}, "{k}", {x})\n` }
   if (ty == "[]int") { return `  value_set_ints({o}, "{k}", {x})\n` }
   if (ty == "[]float") { return `  value_set_floats({o}, "{k}", {x})\n` }

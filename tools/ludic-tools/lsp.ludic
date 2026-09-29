@@ -236,9 +236,9 @@ program LudicLsp {
   # ludic-dev syntax: begin - generated from `ludicc --emit-syntax` (selfhost/frontend/vocab.ludic); run `ludic-dev syntax`, do not edit
   function is_type_word(w: pointer) -> bool {
     if (w == "int") or (w == "long") or (w == "float") or (w == "double") or (w == "fixed") or (w == "bool") { return true }
-    if (w == "byte") or (w == "string") or (w == "pointer") or (w == "void") or (w == "entity") or (w == "countdown") { return true }
-    if (w == "words") or (w == "floats") or (w == "doubles") or (w == "fixeds") or (w == "pointers") or (w == "Vector") { return true }
-    if (w == "IVec2") or (w == "Rect") { return true }
+    if (w == "byte") or (w == "string") or (w == "Key") or (w == "pointer") or (w == "void") or (w == "entity") { return true }
+    if (w == "countdown") or (w == "words") or (w == "floats") or (w == "doubles") or (w == "fixeds") or (w == "pointers") { return true }
+    if (w == "Vector") or (w == "IVec2") or (w == "Rect") { return true }
     return false
   }
   function is_phase_word(w: pointer) -> bool {

@@ -184,7 +184,7 @@
         { "name": "keyword.operator.logical.ludic", "comment": "ludic-dev syntax: operator", "match": "\\b(and|or|not)\\b" },
         { "name": "keyword.other.clause.ludic", "comment": "ludic-dev syntax: modifier", "match": "\\b(export|internal|friend|uses|open|of|as|from|numbers|unsafe|mut|phase|query|on|cancellable|public|layer|start|shows|lasts|then|loads|system)\\b" },
         { "name": "storage.type.ludic", "comment": "ludic-dev syntax: declaration", "match": "\\b(program|module|import|property|state|event|action|reducer|enum|model|prefab|scene|handler|ui|namespace|alias|port|bind|registry|def|component|view|prop|const|var|function|fn|extern|entry|test)\\b" },
-        { "name": "support.type.primitive.ludic", "comment": "ludic-dev syntax: types", "match": "\\b(int|long|float|double|fixed|bool|byte|string|pointer|void|entity|countdown|words|floats|doubles|fixeds|pointers|Vector|IVec2|Rect)\\b" },
+        { "name": "support.type.primitive.ludic", "comment": "ludic-dev syntax: types", "match": "\\b(int|long|float|double|fixed|bool|byte|string|Key|pointer|void|entity|countdown|words|floats|doubles|fixeds|pointers|Vector|IVec2|Rect)\\b" },
         { "name": "constant.language.boolean.ludic", "comment": "ludic-dev syntax: constant", "match": "\\b(true|false|null)\\b" },
         { "name": "constant.language.phase.ludic", "comment": "ludic-dev syntax: phases", "match": "\\b(Start|Input|FixedUpdate|Update|LateUpdate|Render|Overlay)\\b" }
       ]

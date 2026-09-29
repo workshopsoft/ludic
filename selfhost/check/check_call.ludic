@@ -100,6 +100,7 @@ function ck_builtin(e: Node, name: pointer) -> pointer {
     ck_walk_args(e)
     return "string"
   }
+  if (name == "string") and ck_tpl_hole(e) { return ck_hole(e) }
   if (name == "string") or (name == "int") or (name == "float") or (name == "fixed") or (name == "long") or (name == "double") {
     ck_walk_args(e)
     return name
@@ -312,4 +313,13 @@ function ck_emit(s: Node) -> void {
     }
     i += 1
   }
+}
+# a template literal's {hole}: text, never a key - a Key there would draw its marked name untranslated
+function ck_tpl_hole(e: Node) -> bool {
+  return e.a != null and (e.a.uns == TPL_HOLE or e.a.uns == TPL_COPY) and len(e.kids) == 1
+}
+function ck_hole(e: Node) -> pointer {
+  let t = ck_expr(e.kids[0])
+  if ck_is_key(t) { ck_err("key", e.kids[0], "a Key in a template's {hole}: a key names a text, it is not one - translate it with trf(k\"...\", ...) (tr(key) for no values), or say string(key) outside the template if the marked name is really wanted") }
+  return "string"
 }

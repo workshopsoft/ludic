@@ -1,0 +1,7 @@
+# phase 26: a template's t('key') is checked against en.po like a key literal - refused when en.po lacks
+# it; t('hud.day') with no value for its {1} is a warning
+import "ludic.ui"
+program TMissing {
+  import "parts/Menu.ludic"
+  entry { print(1) }
+}

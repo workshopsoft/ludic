@@ -800,6 +800,7 @@ object with `"schema_version": 1`:
   `handler` the `fn` value it passes last (else null). A tag worked out at run time cannot be known
   and is left out.
 - `units` - `@Unit`'s canonical spellings.
+- `lang` - the text keys and the languages (see Text keys), or null without a `lang` line.
 
 Each list is sorted by name (then file and line), a registry's entries are in index order, and the
 paths are the ones the compiler read, so two runs over the same source write the same file. The
@@ -809,6 +810,82 @@ engine's runtime is left out.
 worked out once and only when the program names it - so a tool talking to a running build can tell
 whether it was compiled from the data in front of it. It is 0 in a release (`ludicc --release`,
 which `ludic bundle` passes).
+
+### Text keys (`Key`, `k"..."`, `lang`)
+
+A text the player reads is named by a KEY, and the key's English is a language file like any
+other's. `package.ludic` says where the languages are and which is the source:
+
+```
+lang "assets/lang" en            # the directory, and the source language: assets/lang/en.po
+```
+
+In code a key is a literal of the builtin type `Key` - `k"module.purpose"`, or `kn"..."` for a key
+whose text has plural forms - written against its quote (`k "x"` is a name and a string, as ever):
+
+```ludic
+# doc-check: skip — tr / trf / trn are ludic.i18n's
+let title = tr(k"pause.resume")               # tr(key: Key) -> string
+let day = trf(k"hud.day", txt_num(n))         # the English's holes {1}..{4}, in order
+let got = trn(kn"catch.count", n, fish)       # {1} is the count, the rest follow
+```
+
+A `Key` is not a `string`, and a `string` is not a `Key`: giving one where the other is wanted is an
+error either way, and so is `+` on a key. Keys compare with `==` and `!=`, and are fields, parameters,
+results, list elements and registry values like any other type (`null` is none). At run time a key is
+its text after a marker byte - byte 1, or 2 for `kn"..."` - so `k"pause.resume"` is the string
+`"\x01pause.resume"`: the runtime's `tr` is a cast, and a translator knows a key from English.
+`string(key)` gives that marked text, for a runtime that needs it; a program itself makes text with
+`tr`, and a key in a template literal's hole (`` `at {k}` ``) is an error - write `trf(k"...", ...)`.
+`trn` takes a plural key and `tr` / `trf` refuse one, with or without a `lang` line. (A program that
+declares its own type named `Key` keeps it; the builtin is then out of reach.)
+
+**The data.** A registry's `@Text` field is text by derivation: its key is
+`<registry>.<row>.<field>` - the registry's name in snake case (`Items` -> `items`, `GearKinds` ->
+`gear_kinds`), a list field adding `.<index>` and a nested record `.<field>` - or, with
+`@TextKey("steps")` on the registry, `steps.<row>.<field>`. A `@PerMap` table's is
+`maps.<map>.<table>.<row>.<field>`. When the field's type is `Key` and a row of a compiled registry
+gives it no value, the compiler fills in the derived key (marked, as a literal is), so code writes
+`tr(Items[i].name)` and the `.lres` never spells a key; a row may still name one, `name:
+k"items.lamp.name"`, in a resource file or a map's file alike.
+
+```ludic
+# doc-check: skip — the data file is the game's
+property Item {
+  key: string = ""
+  @Text name: Key = null           # items.<row>.name, filled in when the row gives none
+}
+registry Items of Item as IT from "data/items.lres"
+@TextKey("steps") registry StepKinds of StepKind from "steps.lres"   # steps.<row>.<field>
+```
+
+**The templates.** A component's text is a key too: `{t('pause.resume')}`, `title="{t('pause.close')}"`,
+`{t('hud.day', day)}`; `t(expr)` takes a key worked out at run time (a `Key` field reaches a template
+as its marked text). Words outside an element with `translate="no"` are English still waiting for a
+key.
+
+**The checks.** With a `lang` line and its source `.po` there, the compiler holds every key to it,
+each diagnostic at its `file:line:col`:
+
+- a `k"..."` literal, a template's `t('...')` literal, or a key a data row names or derives that the
+  source `.po` does not have is an **error**; so is a `kn"..."` whose entry has no `msgid_plural`;
+- a call of `trf` or `trn` with a key literal, and a template's `t('key', ...)`, gives as many values
+  after the key as the English's highest hole `{n}` (`trn`'s count is `{1}`), or it is a **warning**;
+- **English left** - a template's words outside `translate="no"`, a text attribute's words (`title`,
+  `label`, `hint`, `text`, `caption`, and any other whose value is not a keyword), a quoted choice
+  inside a hole that reads as words, and a `@Text` row whose value is still English - is a
+  **warning**, and `ludic deps` counts them as `english_left`, a ratchet like every number there;
+- one English under several keys (a split) wants a `#.` description on each, for a translator to
+  tell them apart: a **warning** at the `.po`'s line.
+
+With no `lang` line nothing is checked and nothing is said (a package test uses key literals freely); a
+`lang` line whose source `.po` is missing checks nothing, and the first key literal says so once.
+The source `.po` is gettext's: `msgid` (the key), `msgid_plural` and `msgstr[n]`, `#,` flags
+(`fuzzy`), `#.` descriptions, `msgctxt` (read and ignored: the key is the context), strings over several lines; `#~`
+entries are obsolete. `ludic schema` carries a `"lang"` object (null without a `lang` line): every
+key used with its kind (`code`, `template`, `data`), its sites, its English, whether it is a plural,
+and its description; `unused` (the source's keys used nowhere), `undescribed`, `split`, and per other
+language in the directory its `missing`, `fuzzy` and `extra` keys.
 
 ### Default parameters, and calls that name what they change
 
@@ -1330,6 +1407,7 @@ for a complete title screen.
 | `bool` | boolean | `i32` |
 | `entity` | entity handle | `i32` |
 | `string` | text (a string literal, an interpolation, a concatenation) | `ptr` |
+| `Key` | a text key, `k"pause.resume"` (see Text keys) - not a `string`, and no string is one | `ptr` |
 | `pointer` | raw address (runtime/FFI, records, anything untyped) | `ptr` |
 | `byte` | one byte value (what `p[i]` on a `bytes` buffer reads) | `i8` |
 | `bytes` | buffer of bytes — `b[i]` reads/writes one byte | `ptr` |

@@ -1,0 +1,32 @@
+# Turkish: one key missing (hud.day), one fuzzy (pause.close) and one en.po does not have (old.title)
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "pause.resume"
+msgstr "Devam et"
+
+#, fuzzy
+msgid "pause.close"
+msgstr "Kapat"
+
+msgid "map.close"
+msgstr "Kapat"
+
+msgid "catch.count"
+msgid_plural "catch.count"
+msgstr[0] "{1} {2} tutuldu"
+msgstr[1] "{1} {2} tutuldu"
+
+msgid "items.rope.name"
+msgstr "Halat"
+
+msgid "items.lamp.name"
+msgstr "Fener"
+
+msgid "steps.gather_wood.hint"
+msgstr "Odun topla"
+
+msgid "old.title"
+msgstr "Eski"

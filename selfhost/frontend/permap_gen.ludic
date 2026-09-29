@@ -233,6 +233,10 @@ function pm_gen_field(b: Buf, sn: pointer, fd: Node, i: int) -> void {
   let k = pm_kind(fd.ty)
   let x = fd.s
   let n = itoa(i)
+  if k == PM_STR and i18n_is_key_ty(fd.ty) {
+    pm_l(b, `      r.{x} = lres_key(t, c)`)
+    return
+  }
   if k == PM_INT or k == PM_FLOAT or k == PM_BOOL or k == PM_STR {
     pm_l(b, `      r.{x} = {pm_scalar_read(k)}(t, c)`)
     return
@@ -256,6 +260,8 @@ function pm_gen_field(b: Buf, sn: pointer, fd: Node, i: int) -> void {
     pm_l(b, `          {sn}__reset_{el}(pl, e{n})`)
     pm_l(b, `          if lres_is_rec(t, k{n}) {{ {sn}__fill_{el}(t, pl, e{n}, k{n}) }}`)
     pm_l(b, `          push(r.{x}, e{n})`)
+  } else if i18n_is_key_ty(el) {
+    pm_l(b, `          push(r.{x}, lres_key(t, k{n}))`)
   } else {
     pm_l(b, `          push(r.{x}, {pm_scalar_read(ek)}(t, k{n}))`)
   }

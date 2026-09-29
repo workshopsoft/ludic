@@ -1,0 +1,12 @@
+# phase 26: trn wants a plural key kn"...", and tr / trf refuse one
+program KeyRules {
+  function tr(key: Key) -> string { return string(key) }
+  function trf(key: Key, a: string) -> string { return string(key) + a }
+  function trn(key: Key, n: int) -> string { return string(key) }
+  entry {
+    print(trn(k"hud.day", 2))
+    print(trf(kn"catch.count", "1"))
+    print(tr(kn"catch.count"))
+    print(tr(k"pause.resume"))
+  }
+}

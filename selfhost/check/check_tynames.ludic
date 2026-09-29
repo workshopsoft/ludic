@@ -60,6 +60,7 @@ function ck_ty_args(s: pointer, tps: pointer) -> pointer {
 function ck_ty_known(name: pointer, tps: pointer) -> bool {
   if ck_tab_get(ck_ty_k, ck_ty_v, name) != null { return true }
   if (name == "Vector") or (name == "IVec2") or (name == "Rect") { return true }   # the packed value types
+  if (name == "Key") { return true }                                                 # k"..." (i18n.ludic)
   if is_state_ty(name) or ck_record(name) != null or ck_enum(name) != null { return true }
   if gen_template(g_gen_recs, name) != null { return true }
   if tps != null {

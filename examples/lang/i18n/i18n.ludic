@@ -1,0 +1,41 @@
+# i18n.ludic — keys, not English (LANGUAGE.md, "Text keys"). A text the player reads is named by a
+# key, k"pause.resume", of the builtin type Key: not a string, and no string is one. Its English is
+# lang/en.po (package.ludic says `lang "lang" en`), and the compiler checks every key against it. A
+# registry's @Text Key field a row leaves out is filled with its derived key - <registry>.<row>.<field>,
+# or the registry's @TextKey prefix. At run time a Key is its text after a marker byte (1, or 2 for a
+# plural kn"..."), so ludic.i18n's tr() is a cast; here tr, trf and trn are stand-ins that show the key.
+#
+# Running it prints:  pause.resume yes no 13 12 hud.day(3) catch.count[2](trout) items.rope.name items.lamp.name steps.gather_wood.hint
+program I18n {
+  property Item {
+    key: string = ""
+    @Text name: Key = null
+    weight: float = 0.0
+  }
+  registry Items of Item as IT from "data/i18n_items.lres"
+  property StepKind {
+    key: string = ""
+    @Text hint: Key = null
+  }
+  @TextKey("steps") registry StepKinds of StepKind as SK
+  def StepKinds gather_wood { }
+  # ludic.i18n's three, stood in for: the key's text without its marker
+  function tr(key: Key) -> string {
+    let s = string(key)
+    return s[1..len(s)]
+  }
+  function trf(key: Key, a: string) -> string { return `{tr(key)}({a})` }
+  function trn(key: Key, n: int, a: string) -> string { return `{tr(key)}[{n}]({a})` }
+  function yn(b: bool) -> string {
+    if b { return "yes" }
+    return "no"
+  }
+  entry {
+    let resume = k"pause.resume"
+    let same = resume == k"pause.resume"
+    let other = resume == k"pause.close"
+    var out = `{tr(resume)} {yn(same)} {yn(other)} {len(string(resume))} {len(string(kn"catch.count"))} {trf(k"hud.day", "3")}`
+    out = out + ` {trn(kn"catch.count", 2, "trout")} {tr(Items[IT_ROPE].name)} {tr(Items[IT_LAMP].name)} {tr(StepKinds[SK_GATHER_WOOD].hint)}`
+    print(out)
+  }
+}

@@ -75,7 +75,7 @@ static const char* LUDIC_KW_STMT[] = {
     "dispatch","try","and","or","not", 0
 };
 static const char* LUDIC_TYPES[] = {
-    "int","long","float","double","fixed","bool","byte","string","pointer","void","entity",
+    "int","long","float","double","fixed","bool","byte","string","Key","pointer","void","entity",
     "countdown","words","floats","doubles","fixeds","pointers","Vector","IVec2","Rect", 0
 };
 static const char* LUDIC_PHASES[] = {
@@ -84,10 +84,10 @@ static const char* LUDIC_PHASES[] = {
 static const char* LUDIC_ATTRIBUTES[] = {
     "Ref","OneOf","Range","Unit","Asset","Color","Node","Clip","Material","Tint","Derived","Text",
     "Multiline","Key","Computed","Sync","frame","max","owns","AppendOnly","ByKey","PerMap",
-    "Chunked","export","Public","On","Queries","OnSpawn","OnDespawn","OnAttach","OnDetach",
-    "OnEnable","OnDisable","OnStart","OnQuit","Owned","Server","Predicted","ToServer","ToClients",
-    "System","EngineSystem","Namespace","deterministic","ClearColor","alloc_ok","creates",
-    "releases","Handles","Reads","Writes", 0
+    "Chunked","TextKey","export","Public","On","Queries","OnSpawn","OnDespawn","OnAttach",
+    "OnDetach","OnEnable","OnDisable","OnStart","OnQuit","Owned","Server","Predicted","ToServer",
+    "ToClients","System","EngineSystem","Namespace","deterministic","ClearColor","alloc_ok",
+    "creates","releases","Handles","Reads","Writes", 0
 };
 /* ludic-dev syntax: end */
 static const char* LUDIC_WIDGETS[] = {

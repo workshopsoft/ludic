@@ -163,6 +163,7 @@ function vocab_types() -> void {
   vc_ty("bool", "primitive", "true or false.")
   vc_ty("byte", "primitive", "An unsigned 8-bit value.")
   vc_ty("string", "primitive", "Text, UTF-8.")
+  vc_ty("Key", "primitive", "A text key, k\"module.purpose\" (kn\"...\" a plural): names a text, is not one; tr(key) makes the text.")
   vc_ty("pointer", "primitive", "An untyped address (raw memory needs unsafe).")
   vc_ty("void", "primitive", "No value: a function that returns nothing.")
   vc_ty("entity", "primitive", "A handle to an entity.")
@@ -203,7 +204,7 @@ function vocab_attributes() -> void {
   vc_at("Material", "checked", "field", "(model_field)", "A material inside the glTF that field names.")
   vc_at("Tint", "checked", "field", "(SLOT)", "A colour for that tint slot (a constant).")
   vc_at("Derived", "checked", "field", "", "Worked out at boot: anything written in the data is overwritten.")
-  vc_at("Text", "checked", "field", "", "Read by the player, so translated.")
+  vc_at("Text", "checked", "field", "", "Read by the player, so translated: a Key field's key is derived, <registry>.<row>.<field>.")
   vc_at("Multiline", "checked", "field", "", "Prose: edited as several lines.")
   vc_at("Key", "checked", "field", "", "A key code.")
   # a field's, with an effect
@@ -217,6 +218,7 @@ function vocab_attributes() -> void {
   vc_at("ByKey", "checked", "registry", "", "Entries are saved by key, so their order is free.")
   vc_at("PerMap", "checked", "registry", "", "Its rows are read per map, from that map's directory, when the map loads.")
   vc_at("Chunked", "checked", "registry", "(n)", "A @PerMap table read a chunk of n by n metres at a time.")
+  vc_at("TextKey", "checked", "registry", "(\"prefix\")", "The prefix of its @Text fields' derived keys, in place of the registry's name in snake case.")
   # a declaration's
   vc_at("export", "checked", "declaration", "", "The declaration is exported (the same as the export keyword).")
   vc_at("Public", "checked", "handler", "", "Promotes a lifecycle hook to an event other code may hear.")
@@ -294,6 +296,8 @@ function vocab_literals() -> void {
   vc("literal", "1.5", "decimal", "", "", "A fixed, or a float in a numbers float file.")
   vc("literal", "'a'", "char", "", "", "A character's code, an int.")
   vc("literal", "\"text\"", "string", "", "", "A string; \\n \\t \\r \\0 \\\\ \\\" are escapes.")
+  vc("literal", "k\"module.purpose\"", "key", "", "", "A Key, checked against the source language's .po; written against its quote.")
+  vc("literal", "kn\"module.purpose\"", "plural key", "", "", "A plural Key, for trn: its .po entry has a msgid_plural.")
   vc("literal", "`a {expr} b`", "template", "", "", "A string with holes; {{ and }} are braces.")
   vc("literal", "# ...", "comment", "", "", "A comment to the end of the line.")
 }

@@ -92,6 +92,7 @@ function parse_registry() -> void {
   push(g_rg_var, v)
   push(g_rg_open, 0)
   push(g_rg_from, from)
+  i18n_registry_declared()                        # i18n.ludic: its @TextKey, before the attributes are taken
   push(g_rg_at, at_registry_take())               # attrs.ludic
   pm_declared(pm, chunk, v.s)
   if from != null and not pm { res_read(v, from) }

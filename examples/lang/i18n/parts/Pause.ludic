@@ -1,0 +1,7 @@
+# Pause.ludic - i18n_ui.ludic's component: its text is keys (Pause.xml), one of them a field the
+# template reads - a Key reaches a template as its marked text, for t(expr)
+component Pause {
+  prop day: int = 1
+  prop caught: int = 0
+  back: Key = k"pause.close"
+}

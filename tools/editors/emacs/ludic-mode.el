@@ -26,7 +26,7 @@
     "continue" "new" "spawn" "despawn" "enable" "disable" "attach" "detach" "emit" "cancel"
     "dispatch" "try" "and" "or" "not"))
 (defconst ludic--types
-  '("int" "long" "float" "double" "fixed" "bool" "byte" "string" "pointer" "void" "entity"
+  '("int" "long" "float" "double" "fixed" "bool" "byte" "string" "Key" "pointer" "void" "entity"
     "countdown" "words" "floats" "doubles" "fixeds" "pointers" "Vector" "IVec2" "Rect"))
 (defconst ludic--phases
   '("Start" "Input" "FixedUpdate" "Update" "LateUpdate" "Render" "Overlay"))

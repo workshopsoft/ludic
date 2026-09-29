@@ -40,7 +40,10 @@ function ck_expr(e: Node) -> pointer {
     if is_float_file(e.file) { return "float" }
     return "fixed"
   }
-  if k == E_STR { return "string" }
+  if k == E_STR {
+    if e.ival == KEY_LIT or e.ival == KEY_PLURAL { return "Key" }   # k"..." / kn"..." (i18n.ludic)
+    return "string"
+  }
   if k == E_SLICE { ck_walk(e);  return "string" }
   if k == E_BOOL { return "bool" }
   if k == E_NULL { return "null" }

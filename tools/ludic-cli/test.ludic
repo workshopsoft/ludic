@@ -74,6 +74,18 @@ function permap_check_case() -> void {
   if not s_contains(capture(`cat {js}`), "the unit is spelled") or not s_contains(capture(`cat {js}`), "deg") { bad2(lbl, capture_line(`head -3 {js}`));  return }
   ok(lbl)
 }
+# phase 26: a template checks clean against en.po, its one line of words a warning, and ludic deps
+# counts it as english_left
+function i18n_check_case() -> void {
+  let lbl = "--check: a component's template against en.po - clean, \"Paused\" English left (a warning), english_left 1 in ludic deps"
+  let js = `{tmp_dir()}/dj_i18n.json`
+  if not shq(`bin/ludicc examples/lang/i18n/i18n_ui.ludic --check --diagnostics=json > {js} 2>/dev/null`) { bad2(lbl, capture_line(`head -3 {js}`));  return }
+  let got = capture(`cat {js}`)
+  if not s_contains(got, "English left: a template's words") or not s_contains(got, "Paused") { bad2(lbl, capture_line(`head -3 {js}`));  return }
+  let dp = capture(`bin/ludic deps examples/lang/i18n/i18n_ui.ludic 2>&1`)
+  if not s_contains(dp, "english_left: 1") { bad2(lbl, `ludic deps said [{s_trim(dp)}]`);  return }
+  ok(lbl)
+}
 # --check --diagnostics=json: refused, with exactly `n` ERRORS on stdout (warnings beside them are not
 # counted), one of the diagnostics holding `want`
 function diag_json_case(path: pointer, n: int, want: pointer, label: pointer) -> void {
@@ -514,7 +526,7 @@ function deps_case() -> void {
   let lbl = "ludic deps: the numbers, --check against a baseline, --dot, --writes"
   let p = "examples/modules/tangle.ludic"
   let got = capture(`bin/ludic deps {p} 2>&1`)
-  let want = "modules: 3\ndependencies: 2\nlargest_cycle: 2\ncross_writes: 1\nglobals_written_from_outside: 1\nwidest_function: 1\nwidest_reach: 1\nwidest_write_reach: 1\nframe_allocs: 0\nframe_keeps: 0\nbirth_leaks: 0\nresource_drops: 0\nowned_leaks: 0\nin the largest cycle: a b\nthe widest function: a_run (examples/modules/tangle/a/index.ludic:3), 1 state\nthe widest write reach: a_run (examples/modules/tangle/a/index.ludic:3), 1 state it can come to change\n"
+  let want = "modules: 3\ndependencies: 2\nlargest_cycle: 2\ncross_writes: 1\nglobals_written_from_outside: 1\nwidest_function: 1\nwidest_reach: 1\nwidest_write_reach: 1\nframe_allocs: 0\nframe_keeps: 0\nbirth_leaks: 0\nresource_drops: 0\nowned_leaks: 0\nenglish_left: 0\nin the largest cycle: a b\nthe widest function: a_run (examples/modules/tangle/a/index.ludic:3), 1 state\nthe widest write reach: a_run (examples/modules/tangle/a/index.ludic:3), 1 state it can come to change\n"
   if not (s_trim(got) == s_trim(want)) { bad2(lbl, `said [{s_trim(got)}]`);  return }
   let base = `{tmp_dir()}/deps-base.txt`
   if not shq(`bin/ludic deps {p} --baseline {base} > /dev/null`) { bad2(lbl, "--baseline failed");  return }
@@ -1284,6 +1296,27 @@ function cmd_dev_test() -> int {
   diag_json_case("rejected/permap_maps/permap_maps", 6, "there is no Spots row nowhere in this map", "--check reads every map: a cross-row @Ref names a row of the same map")
   diag_json_case("rejected/permap_maps/permap_maps", 6, "the key t1 is also written at", "--check reads every map: a chunked table's key is unique across the map's chunk files, both places named")
   diag_json_case("rejected/permap_maps/permap_maps", 6, "this map has no examples/rejected/permap_maps/maps/m1/blades.png", "--check reads every map: a game-wide row's @Asset(..., map) file is in each map's directory, unless optional")
+  # phase 26: text keys - k"..." / kn"..." of type Key, checked against package.ludic's lang en.po
+  feat_case("lang/i18n/i18n", "", "pause.resume yes no 13 12 hud.day(3) catch.count[2](trout) items.rope.name items.lamp.name steps.gather_wood.hint", "i18n.ludic (phase 26: k\"...\" and kn\"...\" of type Key, their marker byte, == on keys, a @Text Key field filled with its derived key, @TextKey's prefix)")
+  i18n_check_case()
+  schema_case("lang/i18n/i18n", "{\"key\": \"items.rope.name\", \"kind\": \"data\", \"kinds\": [\"data\"], \"sites\": [\"examples/lang/i18n/data/i18n_items.lres:2:1\"], \"in_source\": true, \"english\": \"Rope\"", "--emit-schema: lang.keys - a derived key, its kind, its site and en.po's English")
+  schema_case("lang/i18n/i18n", "\"unused\": [\"map.close\"]", "--emit-schema: lang.unused - en.po's keys the program uses nowhere")
+  schema_case("lang/i18n/i18n", "\"missing\": [\"hud.day\"], \"fuzzy\": [\"pause.close\"], \"extra\": [\"old.title\"]", "--emit-schema: lang.languages - another .po's missing, fuzzy and extra keys against en.po")
+  schema_case("lang/i18n/i18n", "{\"english\": \"Close\", \"keys\": [\"map.close\", \"pause.close\"]}", "--emit-schema: lang.split - one English under several keys")
+  diag_json_case("rejected/i18n_keys/key_missing", 2, "the key pause.gone is not in examples/rejected/i18n_keys/lang/en.po", "a key literal en.po does not have is refused, at its line and column")
+  diag_json_case("rejected/i18n_keys/key_missing", 2, "is a plural key, and examples/rejected/i18n_keys/lang/en.po:7 gives pause.resume no msgid_plural", "kn\"...\" is a plural key: en.po's entry has a msgid_plural")
+  diag_json_case("rejected/i18n_keys/key_missing", 2, "trf: hud.day is given 2 value(s), and its English in examples/rejected/i18n_keys/lang/en.po has 1 hole(s)", "trf given more values than the key's English has holes: a warning")
+  diag_json_case("rejected/i18n_keys/key_missing", 2, "shop.close has no #. description, and its English", "one English split into several keys wants a #. description on each: a warning at en.po's line")
+  diag_json_case("rejected/i18n_keys/key_mixup", 3, "argument 1 of show wants a string and this is a Key", "a Key is not a string")
+  diag_json_case("rejected/i18n_keys/key_mixup", 3, "argument 1 of name_of wants a Key and this is a string", "a string is not a Key")
+  diag_json_case("rejected/i18n_keys/key_mixup", 3, "+ on a Key", "a Key joins no text")
+  diag_json_case("rejected/i18n_keys/key_hole", 2, "a Key in a template's {hole}", "a Key in a template literal's hole is refused: it would draw its marked name, untranslated")
+  diag_json_case("rejected/i18n_keys/key_rules", 3, "trn counts, so its key is a plural one", "trn wants a plural key, kn\"...\"")
+  diag_json_case("rejected/i18n_keys/key_rules", 3, "a plural key needs its count", "tr / trf refuse a plural key")
+  diag_json_case("rejected/i18n_keys/data_missing", 1, "things.axe.name (the derived key of a @Text field the row gives no value): the key things.axe.name is not in", "a @Text Key field a row leaves out: its derived key must be in en.po")
+  diag_json_case("rejected/i18n_keys/data_missing", 1, "English left: things.axe.blurb is", "a @Text string field still holding English: a warning")
+  diag_json_case("rejected/i18n_keys/t_missing", 1, "t('menu.gone'): the key menu.gone is not in", "a template's t('key') is checked against en.po")
+  diag_json_case("rejected/i18n_keys/t_missing", 1, "t(): hud.day is given 0 value(s)", "a template's t('key') given fewer values than the English has holes: a warning")
   feat_case("lang/defaults", "", "a 300.0 8.0 / b 120.0 8.0 / c! 300.0 8.0 / d 300.0 2.0 / x / y", "defaults.ludic (L11: default parameters, positional then named arguments, in a generic too)")
   reject_case("rejected/default_missing", "this call to f leaves out a, which has no default", "a call leaves out only what has a default")
   reject_case("rejected/default_unknown", "f has no parameter c", "a named argument names a parameter the function has")

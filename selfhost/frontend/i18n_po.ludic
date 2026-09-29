@@ -1,0 +1,252 @@
+# i18n_po.ludic — a gettext .po file, read for the key checks (i18n.ludic). What is kept of each
+# entry: its msgid (a key, since phase 26), whether it has a msgid_plural, its msgstr (or every
+# msgstr[n], joined by a newline, so a hole in any form is seen), the first form alone (the English a
+# split key is found by), the `#, fuzzy` flag, the `#.` extracted comments (the translator's
+# description, lines joined by a newline) and the line its msgid is written on. msgctxt is read and
+# kept but keys nothing; `#~` obsolete entries, `#:` references, `#|` previous ids and translator
+# comments are skipped; a string may run over several "..." lines. The header (msgid "") is left out.
+property PoFile {
+  path: pointer = null
+  ids: []pointer = null
+  plural: []bool = null
+  strs: []pointer = null        # every form, joined
+  first: []pointer = null       # msgstr, or msgstr[0]
+  fuzzy: []bool = null
+  desc: []pointer = null        # the #. lines, or null
+  ctxt: []pointer = null
+  line: []int = null
+  slots: []int = null           # the index by msgid: open addressing, -1 empty
+}
+
+# the entry being read
+var g_po_cid: pointer = null
+var g_po_cpl: bool = false
+var g_po_cstr: []pointer = new []pointer
+var g_po_cfuzzy: bool = false
+var g_po_cdesc: pointer = null
+var g_po_cctxt: pointer = null
+var g_po_cline: int = 0
+var g_po_field: int = 0       # what a continuation line adds to: 1 msgid, 2 plural, 3 msgstr (form g_po_form), 4 msgctxt
+var g_po_form: int = 0
+var g_po_seen_str: bool = false
+
+function po_new(path: pointer) -> PoFile {
+  let p = new PoFile
+  p.path = path
+  p.ids = new []pointer
+  p.plural = new []bool
+  p.strs = new []pointer
+  p.first = new []pointer
+  p.fuzzy = new []bool
+  p.desc = new []pointer
+  p.ctxt = new []pointer
+  p.line = new []int
+  p.slots = new []int
+  return p
+}
+function po_reset_cur() -> void {
+  g_po_cid = null
+  g_po_cpl = false
+  g_po_cstr = new []pointer
+  g_po_cfuzzy = false
+  g_po_cdesc = null
+  g_po_cctxt = null
+  g_po_cline = 0
+  g_po_field = 0
+  g_po_form = 0
+  g_po_seen_str = false
+}
+# the entry read so far goes into the file (the header and an id-less fragment do not)
+function po_flush(p: PoFile) -> void {
+  if g_po_cid != null and len(g_po_cid) > 0 {
+    var all: pointer = ""
+    var first: pointer = ""
+    var i = 0
+    while i < len(g_po_cstr) {
+      var f = g_po_cstr[i]
+      if f == null { f = "" }
+      if i == 0 { first = f }
+      if i > 0 { all = all + "\n" }
+      all = all + f
+      i += 1
+    }
+    push(p.ids, g_po_cid)
+    push(p.plural, g_po_cpl)
+    push(p.strs, all)
+    push(p.first, first)
+    push(p.fuzzy, g_po_cfuzzy)
+    push(p.desc, g_po_cdesc)
+    push(p.ctxt, g_po_cctxt)
+    push(p.line, g_po_cline)
+  }
+  po_reset_cur()
+}
+# the text of the "..." starting at or after s[i], its escapes read
+function po_quoted(s: pointer, i0: int) -> pointer {
+  var i = i0
+  let n = len(s)
+  while i < n and s[i] != '"' { i += 1 }
+  if i >= n { return "" }
+  i += 1
+  let b = buf_new()
+  while i < n and s[i] != '"' {
+    var c = s[i]
+    if c == CH_BACKSLASH and i + 1 < n {
+      i += 1
+      c = unescape(s[i])
+    }
+    buf_putc(b, c)
+    i += 1
+  }
+  return buf_str(b)
+}
+function po_add_to(field: int, text: pointer) -> void {
+  if field == 1 { g_po_cid = g_po_cid + text }
+  else if field == 4 { g_po_cctxt = g_po_cctxt + text }
+  else if field == 3 {
+    while len(g_po_cstr) <= g_po_form { push(g_po_cstr, "") }
+    g_po_cstr[g_po_form] = g_po_cstr[g_po_form] + text
+  }
+}
+# a keyword line starts a new entry when the last one already had its msgstr
+function po_maybe_new(p: PoFile) -> void {
+  if g_po_seen_str { po_flush(p) }
+}
+function po_read(path: pointer) -> PoFile {
+  let src = read_file(path)
+  if src == null { return null }
+  let p = po_new(path)
+  po_reset_cur()
+  var i = 0
+  var ln = 1
+  let n = len(src)
+  while i < n {
+    var e = i
+    while e < n and src[e] != '\n' { e += 1 }
+    var le = e
+    if le > i and src[le - 1] == 13 { le -= 1 }
+    var a = i
+    while a < le and (src[a] == ' ' or src[a] == 9) { a += 1 }
+    let line = src[a .. le]
+    po_line(p, line, ln)
+    i = e + 1
+    ln += 1
+  }
+  po_flush(p)
+  po_index(p)
+  return p
+}
+function po_line(p: PoFile, line: pointer, ln: int) -> void {
+  let n = len(line)
+  if n == 0 {
+    po_flush(p)
+    return
+  }
+  if line[0] == '#' {
+    if n > 1 and line[1] == '~' { return }         # obsolete
+    po_maybe_new(p)
+    if n > 1 and line[1] == '.' {
+      var t = 2
+      if t < n and line[t] == ' ' { t += 1 }
+      let d = line[t .. n]
+      if g_po_cdesc == null { g_po_cdesc = d } else { g_po_cdesc = g_po_cdesc + "\n" + d }
+    }
+    if n > 1 and line[1] == ',' and has_sub(line, "fuzzy") { g_po_cfuzzy = true }
+    return
+  }
+  if line[0] == '"' {
+    po_add_to(g_po_field, po_quoted(line, 0))
+    return
+  }
+  if str_starts(line, "msgctxt") {
+    po_maybe_new(p)
+    g_po_cctxt = po_quoted(line, 7)
+    g_po_field = 4
+    return
+  }
+  if str_starts(line, "msgid_plural") {
+    g_po_cpl = true
+    g_po_field = 2
+    return
+  }
+  if str_starts(line, "msgid") {
+    po_maybe_new(p)
+    g_po_cid = po_quoted(line, 5)
+    g_po_cline = ln
+    g_po_field = 1
+    return
+  }
+  if str_starts(line, "msgstr") {
+    g_po_seen_str = true
+    g_po_form = 0
+    if n > 6 and line[6] == '[' {
+      var k = 7
+      var v = 0
+      while k < n and char_is_digit(line[k]) { v = v * 10 + (line[k] - 48);  k += 1 }
+      g_po_form = v
+    }
+    g_po_field = 3
+    po_add_to(3, po_quoted(line, 6))
+  }
+}
+
+# ---- the index by msgid --------------------------------------------------------------------------
+function po_hash(s: pointer) -> int {
+  var h = 5381
+  var i = 0
+  let n = len(s)
+  while i < n {
+    h = (h * 33 + s[i]) & 16777215
+    i += 1
+  }
+  return h
+}
+function po_index(p: PoFile) -> void {
+  var cap = 64
+  while cap < len(p.ids) * 2 + 1 { cap = cap * 2 }
+  p.slots = new []int
+  var i = 0
+  while i < cap {
+    push(p.slots, -1)
+    i += 1
+  }
+  i = 0
+  while i < len(p.ids) {
+    var h = po_hash(p.ids[i]) & (cap - 1)
+    var dup = false
+    while p.slots[h] >= 0 and not dup {
+      if (p.ids[p.slots[h]] == p.ids[i]) { dup = true } else { h = (h + 1) & (cap - 1) }
+    }
+    if not dup { p.slots[h] = i }                 # the first entry of an id is the one read
+    i += 1
+  }
+}
+# the entry for key, or -1
+function po_find(p: PoFile, key: pointer) -> int {
+  if p == null or key == null { return -1 }
+  let cap = len(p.slots)
+  if cap == 0 { return -1 }
+  var h = po_hash(key) & (cap - 1)
+  while p.slots[h] >= 0 {
+    if (p.ids[p.slots[h]] == key) { return p.slots[h] }
+    h = (h + 1) & (cap - 1)
+  }
+  return -1
+}
+# the highest hole {n} in a text, 0 when it has none ({{ is a brace, not a hole)
+function po_max_hole(s: pointer) -> int {
+  var best = 0
+  var i = 0
+  let n = len(s)
+  while i < n {
+    if s[i] == '{' and i + 1 < n and s[i + 1] == '{' { i += 2;  continue }
+    if s[i] == '{' {
+      var k = i + 1
+      var v = 0
+      while k < n and char_is_digit(s[k]) { v = v * 10 + (s[k] - 48);  k += 1 }
+      if k > i + 1 and k < n and s[k] == '}' and v > best { best = v }
+    }
+    i += 1
+  }
+  return best
+}

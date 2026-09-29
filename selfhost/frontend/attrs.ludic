@@ -176,6 +176,7 @@ function at_decl_clear() -> void {
   g_at_decl_args = new []pointer
   g_pm_pending = false                         # permap.ludic: @PerMap and @Chunked belong to one declaration
   g_pm_chunk_pending = 0
+  g_tk_pending = null                          # i18n.ludic: @TextKey belongs to one declaration too
 }
 # the registry just declared takes the attributes read before it
 function at_registry_take() -> int {
