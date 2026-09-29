@@ -1064,9 +1064,16 @@ function gvk_screen_make(render3d_st: mut Render3dState, w: int, h: int) -> bool
   }
   render3d_st.gvk_screen_w = w
   render3d_st.gvk_screen_h = h
-  if render3d_st.gvk_screen_color == 0 { render3d_st.gvk_screen_color = gvk_tex_new(render3d_st);  render3d_st.gvk_screen_depth = gvk_tex_new(render3d_st) }
+  # a small window (r3d_small) draws its interface flat and tests no depth: its screen has no depth
+  # image (8 MB at 1920 x 1080), and a pass or a clear with no depth attachment leaves depth alone
+  if render3d_st.gvk_screen_color == 0 {
+    render3d_st.gvk_screen_color = gvk_tex_new(render3d_st)
+    if not render3d_st.r3d_small { render3d_st.gvk_screen_depth = gvk_tex_new(render3d_st) }
+  }
   render3d_st.gvk_vp[0] = 0;  render3d_st.gvk_vp[1] = 0;  render3d_st.gvk_vp[2] = w;  render3d_st.gvk_vp[3] = h
-  return gvk_tex_storage(render3d_st, render3d_st.gvk_screen_color, false, gvk_screen_fmt(render3d_st), w, h, 1, false) and gvk_tex_storage(render3d_st, render3d_st.gvk_screen_depth, false, GL_DEPTH_COMPONENT32F, w, h, 1, false)
+  if not gvk_tex_storage(render3d_st, render3d_st.gvk_screen_color, false, gvk_screen_fmt(render3d_st), w, h, 1, false) { return false }
+  if render3d_st.gvk_screen_depth == 0 { return true }
+  return gvk_tex_storage(render3d_st, render3d_st.gvk_screen_depth, false, GL_DEPTH_COMPONENT32F, w, h, 1, false)
 }
 
 function gvk_frame_cb(render3d_st: mut Render3dState) -> pointer {
