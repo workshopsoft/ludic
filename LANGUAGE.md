@@ -715,7 +715,9 @@ field's type, `@OneOf` and `@Range` hold, an `@Ref` into a game registry is in r
 into a `@PerMap` registry names a row of that table in the same map (in any of its chunks; `""` is
 none). A key is written once in a file. Errors carry the map file's line and column, through the
 diagnostics as any other (`--diagnostics=json`); `--no-maps` leaves the maps alone, and no maps
-root is nothing to check. `LUDIC_PERMAP_SRC=<file>` appends what the compiler wrote for each table.
+root is nothing to check. `ludic build --check` reads them only for the package's `entry` (the game):
+a partial program - a unit test, a molecule, a bake's runner - lacks the game's constants and cannot
+judge them, so they are left alone there unless `--maps` asks. `LUDIC_PERMAP_SRC=<file>` appends what the compiler wrote for each table.
 
 ### Editor attributes and the schema (`@Ref`, `@Range`, ..., `ludic schema`)
 
@@ -731,6 +733,7 @@ property Tool {
   @OneOf(GR_GOLD, GR_SILVER) medal: int = 0 # or one of these constants
   @Range(0, 20.5) @Unit("kg") weight: float = 1.0
   @Asset("gltf") model: string = ""        # a file of that kind (any string)
+  @Asset("png", map) density: string = ""  # a path under EACH map's directory (assets/maps/<key>/...)
   @Color tint: int = 0
   @Node(model) grip: string = ""           # a node inside the glTF that `model` names
   @Clip(model) swing: string = ""          # a clip inside it
@@ -759,7 +762,11 @@ Everything else is an error, every one reported: a target that exists but is ano
 arguments are words (`@OneOf("box", "hull")`) and every registry row's value must be one of them, on
 any other field a prefix ending in `_` or constants; and `@Node(f)`, `@Clip(f)` or `@Material(f)`
 naming anything but a field `f` of the same record that is `@Asset("gltf")`, or an `@Ref` to a
-registry whose record has exactly one `@Asset("gltf")` field (the model is then the row's).
+registry whose record has exactly one `@Asset("gltf")` field (the model is then the row's). `@Asset(kind, map)` names a file under each map's
+directory, not the game's root: `ludicc --check` looks for it in every map - a @PerMap row's in its own
+map, a game-wide row's in all of them - and refuses a map that lacks it, unless the field says
+`@Asset(kind, map, optional)`; the schema marks it `"scope": "map"`. A plain `@Asset(kind)` is not
+looked for.
 
 `ludicc app.ludic --emit-schema out.json` (or `ludic schema [file] [-o out.json]`) writes what the
 compiler resolved, once the types are checked and every open registry has its entries, as one JSON
