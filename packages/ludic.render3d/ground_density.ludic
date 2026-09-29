@@ -68,6 +68,7 @@ function gd_cache_reset(render3d_st: mut Render3dState, tiles: int) -> void {
 
 export function ground_density_close(render3d_st: mut Render3dState) -> void {
   if render3d_st.gd_file != null { file_close(render3d_st.gd_file);  render3d_st.gd_file = null }
+  render3d_st.gb_layer = -1   # a layer index means nothing in the next map's file (grass_density_layer)
 }
 
 # the slot holding layer l's tile t, read in when it is not (a clock, as the terrain's tiles)

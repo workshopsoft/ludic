@@ -1,0 +1,100 @@
+# grass_density.ludic — the blades grow where the map's painted density says, when it has one: a layer of
+# the ground densities (ground_density.ludic; a PNG like any ground layer's, the same 2 m texel and 64 m
+# tiles), named by grass_density_layer. Without one grass_cull.comp keeps its rules (grass_rule_at here).
+#
+# The cull decides every blade on the GPU, so the density must be there too - but not all of it: 4096^2
+# bytes is 16 MB, and the blades stand within grass_reach (70 m at most). The GPU holds a window of
+# GB_TILES x GB_TILES density tiles round the camera's (5 x 64 m: 160^2 bytes, 25 KB, twice while a re-fill
+# swaps), re-filled from the CPU tile cache when the camera crosses into another tile. The camera stays in
+# the middle tile, so the window reaches at least 128 m every way. A host-visible storage buffer, not a
+# texture: filling a texture waits for the GPU (gpu_tex_fill), a buffer's re-fill swaps under the frame
+# still reading it (gvk_buf_reserve), and the cull does its own bilinear in four reads.
+
+const GB_TILES: int = 5
+const GB_NONE: int = -1000000
+
+# The layer of the ground densities the blades grow by (-1: none, the rules). Call it after
+# ground_density_open, with the index the blades' PNG had in its list; closing the densities forgets it.
+export function grass_density_layer(render3d_st: mut Render3dState, l: int) -> void {
+  render3d_st.gb_layer = l
+  render3d_st.gb_tx = GB_NONE
+}
+
+# the side, in texels, a density PNG must have for this renderer (as every ground layer's)
+export function grass_density_texels() -> int { return TERRAIN_RES / TT_TEX * GD_SIDE }
+
+# whether the blades read a density: a layer named, and the densities open with it
+function gb_on(render3d_st: Render3dState) -> bool {
+  let l = render3d_st.gb_layer
+  if l < 0 or render3d_st.gd_file == null or render3d_st.gb_win == null or l >= render3d_st.gd_layers { return false }
+  return render3d_st.gd_ch[l] > 0
+}
+
+# the densities' texel in metres
+function gb_texel(render3d_st: Render3dState) -> float { return 2.0 * float(render3d_st.TERRAIN_HALF) / float(render3d_st.gd_n * GD_SIDE) }
+
+# once, with the cull's buffers: the window's bytes and its buffer, at its full size (zeros)
+@alloc_ok("start-up: the density window's bytes and buffer, once")
+function gb_init(render3d_st: mut Render3dState) -> void {
+  let side = GB_TILES * GD_SIDE
+  render3d_st.gb_win = words(side * side / 4)
+  for i in 0 .. side * side / 4 { render3d_st.gb_win[i] = 0 }
+  render3d_st.gb_buf = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, render3d_st.gb_buf, side * side, data_of(render3d_st.gb_win), GPU_DYNAMIC)
+}
+
+# before the cull: the window re-filled and sent when the camera is no longer in its middle tile
+function gb_frame(render3d_st: mut Render3dState) -> void {
+  if not gb_on(render3d_st) { return }
+  let texel = gb_texel(render3d_st)
+  let tm = texel * float(GD_SIDE)
+  let half = float(render3d_st.TERRAIN_HALF)
+  let ctx = int(Math.floor((render3d_st.cam_pos[0] - render3d_st.ter_ox + half) / tm))
+  let ctz = int(Math.floor((render3d_st.cam_pos[2] - render3d_st.ter_oz + half) / tm))
+  let tx = (ctx - GB_TILES / 2) * GD_SIDE
+  let tz = (ctz - GB_TILES / 2) * GD_SIDE
+  if tx == render3d_st.gb_tx and tz == render3d_st.gb_tz { return }
+  for j in 0 .. GB_TILES {
+    for i in 0 .. GB_TILES { gb_fill_tile(render3d_st, i, j, ctx - GB_TILES / 2 + i, ctz - GB_TILES / 2 + j) }
+  }
+  let side = GB_TILES * GD_SIDE
+  gpu_buffer_upload(render3d_st, render3d_st.gb_buf, side * side, data_of(render3d_st.gb_win), GPU_DYNAMIC)
+  render3d_st.gb_tx = tx
+  render3d_st.gb_tz = tz
+}
+
+# window tile (i, j) from the map's tile (mx, mz): its density bytes, four to a word; zeros off the map
+function gb_fill_tile(render3d_st: mut Render3dState, i: int, j: int, mx: int, mz: int) -> void {
+  let l = render3d_st.gb_layer
+  let n = render3d_st.gd_n
+  let wq = GB_TILES * GD_SIDE / 4
+  let inside = mx >= 0 and mz >= 0 and mx < n and mz < n
+  var at = 0
+  var ch = 1
+  if inside {
+    at = gd_slot(render3d_st, l, mz * n + mx) * GD_SIDE * GD_SIDE * 2
+    ch = render3d_st.gd_ch[l]
+  }
+  let pool = render3d_st.gd_pool
+  for r in 0 .. GD_SIDE {
+    for q in 0 .. GD_SIDE / 4 {
+      var w = 0
+      if inside {
+        let o = at + (r * GD_SIDE + q * 4) * ch
+        w = pool[o] | (pool[o + ch] << 8) | (pool[o + 2 * ch] << 16) | (pool[o + 3 * ch] << 24)
+      }
+      render3d_st.gb_win[(j * GD_SIDE + r) * wq + i * GD_SIDE / 4 + q] = w
+    }
+  }
+}
+
+# grass_cull.comp's Params word 72: the window's world corner, its texel and side; a side of 0 is the rules
+function gb_params(render3d_st: Render3dState, pr: words) -> void {
+  if not gb_on(render3d_st) or render3d_st.gb_tx == GB_NONE { return }
+  let texel = gb_texel(render3d_st)
+  let half = float(render3d_st.TERRAIN_HALF)
+  pr[72] = float_bits(render3d_st.ter_ox - half + float(render3d_st.gb_tx) * texel)
+  pr[73] = float_bits(render3d_st.ter_oz - half + float(render3d_st.gb_tz) * texel)
+  pr[74] = float_bits(texel)
+  pr[75] = float_bits(float(GB_TILES * GD_SIDE))
+}
