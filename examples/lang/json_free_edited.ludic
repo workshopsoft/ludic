@@ -1,0 +1,24 @@
+# json_free_edited.ludic - a parsed file let go whole (Json.free_all) after it was migrated and read:
+# a literal key and a literal string put in, a string set in place, a copy kept - only what the
+# parser made is freed, so nothing crashes, the copy reads on, and a thousand loads keep nothing:
+#   names Sam|Ada grew 32
+program JsonFreeEdited {
+  function read_one(text: string, keep: []string) -> void {
+    let v = Json.parse(text)
+    Value.put(v, "sver", Value.str("2"))
+    value_set_str(v, "name", "Ada")
+    if len(keep) < 2 { push(keep, intern(Value.as_str(Value.get(v, "who")))) }
+    Json.free_all(v)
+  }
+  entry {
+    let keep = new []string
+    let text = "{\"name\": \"Sam\", \"who\": \"Sam\", \"pins\": [\"a\", \"b\"], \"n\": 3}"
+    read_one(text, keep)
+    push(keep, "Ada")
+    for f in 0 .. 1100 {
+      read_one(text, keep)
+      Mem.frame()
+    }
+    print(`names {keep[0]}|{keep[1]} grew {Mem.kept()}`)
+  }
+}

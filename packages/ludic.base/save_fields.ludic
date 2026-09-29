@@ -27,7 +27,7 @@ export function sv_str(v: Val, key: string, fallback: string) -> string {
   if not sv_has(v, key) { return fallback }
   let s = Value.get(v, key)
   if Value.kind(s) != 4 { return fallback }
-  return Value.as_str(s)
+  return intern(Value.as_str(s))   # a copy of its own: the tree it came from is let go whole once read
 }
 
 # a list of ints; a missing key or a non-list is the empty list
