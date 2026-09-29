@@ -715,12 +715,29 @@ function gvk_bind_texture(render3d_st: mut Render3dState, p: int, name: string, 
 # Each draw's blocks are copied into one host-visible ring buffer at the device's alignment and
 # its descriptor set comes from a pool that is reset with the frame. Both are rewound at
 # gvk_frame_reset.
-const GVK_RING_BYTES: int = 64 * 1024 * 1024
+# 16 MB a half: the valley's heaviest measured frame used 3 MB (2761 draws), and a frame that ever
+# needs more grows it for the frames after (gvk_ring_grow). At 64 MB it held 128 MB for 3 MB of use.
+const GVK_RING_BYTES: int = 16 * 1024 * 1024
 const GVK_RING_SMALL: int = 4 * 1024 * 1024       # a UI's frame: a few hundred small blocks
 function gvk_ring_bytes(render3d_st: Render3dState) -> int {
+  if render3d_st.gvk_ring_half > 0 { return render3d_st.gvk_ring_half }
   if render3d_st.r3d_small { return GVK_RING_SMALL }
   return GVK_RING_BYTES
 }
+
+# a frame ran out of ring: the next frame starts on one twice the size. The kept descriptor sets bind
+# the ring buffer itself, so they are made again; the frame that ran out lost those draws once
+function gvk_ring_grow(render3d_st: mut Render3dState) -> void {
+  render3d_st.gvk_ring_full = false
+  gvk_frame_wait(render3d_st)
+  let half = gvk_ring_bytes(render3d_st) * 2
+  gvk_buf_release(render3d_st, render3d_st.gvk_ring_buf)
+  if not gvk_buf_reserve(render3d_st, render3d_st.gvk_ring_buf, half * 2) { return }
+  render3d_st.gvk_ring_half = half
+  gvk_kpool_reset(render3d_st)
+  gvk_say_ring_grew(half)
+}
+function gvk_say_ring_grew(half: int) -> void { print(`r3d: vulkan: a frame outgrew the uniform ring; {half / 1048576} MB a half from now`) }
 
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gvk_frame_init(render3d_st: mut Render3dState) -> bool {
@@ -735,6 +752,8 @@ function gvk_frame_init(render3d_st: mut Render3dState) -> bool {
   render3d_st.gvk_msaa_max = 1
   if (counts & VK_SAMPLE_COUNT_2_BIT) != 0 { render3d_st.gvk_msaa_max = 2 }
   if (counts & VK_SAMPLE_COUNT_4_BIT) != 0 { render3d_st.gvk_msaa_max = 4 }
+  # R3D_RING_KB=<n>: start on a ring that small, to watch it grow
+  if r3d_env_has(render3d_st, "R3D_RING_KB") { render3d_st.gvk_ring_half = Text.to_int(r3d_env(render3d_st, "R3D_RING_KB")) * 1024 }
   render3d_st.gvk_ring_buf = gvk_buf_new(render3d_st)
   # one half per frame slot: the cached sets bind this one buffer, and each draw's offset says the half
   if not gvk_buf_reserve(render3d_st, render3d_st.gvk_ring_buf, gvk_ring_bytes(render3d_st) * 2) { return false }
@@ -774,6 +793,7 @@ function gvk_frame_reset(render3d_st: mut Render3dState) -> void {
   # pool filled - 8192 sets, hours of play: past GVK_SC_DEAD_MAX releases the pool starts over, and a
   # draw still in use makes its set again the first time it is drawn
   if render3d_st.gvk_sc_dead >= GVK_SC_DEAD_MAX { gvk_kpool_reset(render3d_st) }
+  if render3d_st.gvk_ring_full { gvk_ring_grow(render3d_st) }
   let slot = render3d_st.gvk_frame_no & 1
   render3d_st.gvk_ring_off = slot * gvk_ring_bytes(render3d_st)
   render3d_st.gvk_ring_end = (slot + 1) * gvk_ring_bytes(render3d_st)
@@ -784,9 +804,11 @@ function gvk_frame_reset(render3d_st: mut Render3dState) -> void {
 # a block into the ring; its offset, or -1 when the frame has used the whole ring
 function gvk_ring_put(render3d_st: mut Render3dState, blk: pointer, n: int) -> int {
   let at = (render3d_st.gvk_ring_off + render3d_st.gvk_ring_align - 1) / render3d_st.gvk_ring_align * render3d_st.gvk_ring_align
-  if at + n > render3d_st.gvk_ring_end { return -1 }
+  if at + n > render3d_st.gvk_ring_end { render3d_st.gvk_ring_full = true;  return -1 }
   mem_copy(mem_off(render3d_st.gvk_buf_map[render3d_st.gvk_ring_buf], at), blk, n)
   render3d_st.gvk_ring_off = at + n
+  let used = render3d_st.gvk_ring_off - (render3d_st.gvk_ring_end - gvk_ring_bytes(render3d_st))
+  if used > render3d_st.gvk_ring_peak { render3d_st.gvk_ring_peak = used }
   return at
 }
 

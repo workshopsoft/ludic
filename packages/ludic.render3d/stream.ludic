@@ -39,7 +39,8 @@ property Stream {
   htab:    words,          # open-addressed key -> chunk index + 1 (0 = empty)
   arena:   words,          # every kept chunk's instances, in the order of `chunks`
   top:     int = 0,        # words of the arena in use
-  spare:   []Chunk         # records not in use: all of them are made with the stream
+  spare:   []Chunk,        # records not in use: all of them are made with the stream
+  cap0:    int = 0         # the layer's capacity for the whole reach (fog_streams.ludic)
 }
 
 # microseconds spent per frame, split so the hitch can be attributed (R3D_PROF=1)
@@ -82,6 +83,8 @@ function stream_new__t(render3d_st: mut Render3dState, layer: Layer, size: float
   for i in 0 .. STREAM_HASH { s.htab[i] = 0 }
   if render3d_st.stream_all == null { render3d_st.stream_all = new []Stream }
   push(render3d_st.stream_all, s)
+  s.cap0 = layer.cap
+  fog_stream(render3d_st, s)
   return s
 }
 

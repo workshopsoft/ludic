@@ -47,6 +47,9 @@ function vkmem_report(render3d_st: Render3dState) -> void {
   for k in 0 .. VKM_N { if cnt[k] > 0 { vkmem_say_row(vkmem_name(k), img[k], buf[k], host[k], cnt[k]) } }
   vkmem_big(render3d_st)
   vkmem_cpu(render3d_st)
+  vkmem_layers(render3d_st)
+  vkmem_big_bufs(render3d_st)
+  vkmem_say_ring(render3d_st.gvk_ring_peak, gvk_ring_bytes(render3d_st))
 }
 
 # the largest images, with their owner, size and format
@@ -93,11 +96,15 @@ function vkmem_say_img(name: string, n: int, w: int, h: int, layers: int, levels
 function vkmem_cpu(render3d_st: Render3dState) -> void {
   var lay = 0
   var cap = 0
+  var st = 0
   for i in 0 .. len(render3d_st.sc_layers) {
     let l = render3d_st.sc_layers[i]
-    lay += vkmem_fl(l.inst) + vkmem_fl(l.scratch) + vkmem_fl(l.gsorted) + vkmem_fl(l.vis)
+    let b = vkmem_fl(l.inst) + vkmem_fl(l.scratch) + vkmem_fl(l.gsorted) + vkmem_fl(l.vis)
+    lay += b
+    if l.streamed { st += b }
     cap += l.cap
   }
+  vkmem_say_streamed(st)
   var str = 0
   if render3d_st.stream_all != null { for i in 0 .. len(render3d_st.stream_all) { str += len(render3d_st.stream_all[i].arena) * 4 } }
   let ter = vkmem_fl(render3d_st.ter_heights) + TERRAIN_RES * TERRAIN_RES * 3
@@ -108,3 +115,50 @@ function vkmem_fl(f: floats) -> int {
   return len(f) * 4
 }
 function vkmem_say_cpu(n: int, cap: int, lay: int, str: int, ter: int, water: int) -> void { print(`vkmem: cpu: {n} scatter layers (cap {cap} instances) {vkmem_mb(lay)} MB, stream arenas {vkmem_mb(str)} MB, terrain copies {vkmem_mb(ter)} MB, water cells {vkmem_mb(water)} MB`) }
+
+# the scatter layers' GPU buffers by use: drawn, cards, casters, levels, the GPU cull's
+function vkmem_layers(render3d_st: Render3dState) -> void {
+  var main = 0
+  var imp = 0
+  var sh = 0
+  var lod = 0
+  var gc = 0
+  var fog = 0
+  for i in 0 .. len(render3d_st.sc_layers) {
+    let l = render3d_st.sc_layers[i]
+    main += vkmem_buf(render3d_st, l.buf);  imp += vkmem_buf(render3d_st, l.imp_buf);  sh += vkmem_buf(render3d_st, l.sh_buf)
+    fog += vkmem_buf(render3d_st, l.fog_buf)
+    if l.lod_buf != null { for k in 0 .. len(l.lod_buf) { lod += vkmem_buf(render3d_st, l.lod_buf[k]) } }
+    gc += vkmem_buf(render3d_st, l.g_src) + vkmem_buf(render3d_st, l.g_dst) + vkmem_buf(render3d_st, l.g_cmds) + vkmem_buf(render3d_st, l.g_counts)
+  }
+  vkmem_say_layers(main, imp, sh, lod, gc, fog)
+}
+function vkmem_buf(render3d_st: Render3dState, b: int) -> int {
+  if b <= 0 or b >= len(render3d_st.gvk_buf_size) { return 0 }
+  return render3d_st.gvk_buf_size[b]
+}
+function vkmem_say_layers(main: int, imp: int, sh: int, lod: int, gc: int, fog: int) -> void { print(`vkmem: scatter buffers: drawn {vkmem_mb(main)} MB, cards {vkmem_mb(imp)} MB, whole-map casters {vkmem_mb(sh)} MB, levels {vkmem_mb(lod)} MB, GPU cull {vkmem_mb(gc)} MB, fog casters {vkmem_mb(fog)} MB`) }
+
+# the largest buffer allocations: their size and owner, and the buffer handle that holds each
+@alloc_ok("a report printed once, under R3D_VKMEM")
+function vkmem_big_bufs(render3d_st: Render3dState) -> void {
+  let n = len(render3d_st.gvk_al_len)
+  let done = words(n)
+  for i in 0 .. n { done[i] = 0 }
+  for r in 0 .. 15 {
+    var best = -1
+    var bn = 0
+    for a in 1 .. n {
+      if done[a] != 0 or (render3d_st.gvk_al_tag[a] & 2) != 0 { continue }
+      if render3d_st.gvk_al_len[a] > bn { bn = render3d_st.gvk_al_len[a];  best = a }
+    }
+    if best < 0 { return }
+    done[best] = 1
+    var holder = -1
+    for b in 1 .. len(render3d_st.gvk_buf_mem) { if int(render3d_st.gvk_buf_mem[b]) == best { holder = b } }
+    vkmem_say_buf(vkmem_name(render3d_st.gvk_al_tag[best] / 4), bn, holder)
+  }
+}
+function vkmem_say_buf(name: string, n: int, holder: int) -> void { print(`vkmem:   buffer {n / 1024} KB  handle {holder}  {name}`) }
+function vkmem_say_ring(peak: int, half: int) -> void { print(`vkmem: uniform ring: {peak / 1024} KB used at most of a frame, {half / 1048576} MB per half`) }
+function vkmem_say_streamed(n: int) -> void { print(`vkmem: cpu: of which the streamed layers {vkmem_mb(n)} MB`) }
