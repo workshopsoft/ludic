@@ -48,34 +48,48 @@ typedef struct {
 } LLex;
 
 /* ---------- the vocabulary ------------------------------------------------*/
-/* Reserved words, grouped so editors can colour them differently. The groups
- * mirror the compiler's parser: anything parse_decl() dispatches on is a
- * declaration keyword, anything stmt() dispatches on is a statement keyword. */
-static const char* LUDIC_KW_DECL[] = {
-    "program","import","property","model","enum","ui","namespace",
-    "const","var","function","extern","handler","entry","event","scene","test", 0
-};
-static const char* LUDIC_KW_CLAUSE[] = {
-    "phase","query","on","cancellable","public","layer","start", 0
-};
+/* Keywords by role (declaring, modifying, statement), the built-in types, the
+ * phases and the attribute names: one vocabulary, printed by the compiler
+ * (`ludicc --emit-syntax`, selfhost/frontend/vocab.ludic, which is held to the
+ * parser's own recognisers) and written between the marked lines below by
+ * `ludic-dev syntax`; `ludic-dev syntax --check` fails when they fall behind. */
 /* Documented design targets the self-hosted parser does not accept yet. Kept
  * out of the highlighted vocabulary (they would read as working keywords) until
- * they are implemented; check-vocabulary.py verifies the lists above are a
- * subset of what selfhost/parse*.ludic actually dispatches on. */
+ * they are implemented. */
 static const char* LUDIC_KW_RESERVED[] = {
     0
 };
+/* ludic-dev syntax: begin - generated from `ludicc --emit-syntax` (selfhost/frontend/vocab.ludic); run `ludic-dev syntax`, do not edit */
+static const char* LUDIC_KW_DECL[] = {
+    "program","module","import","property","state","event","action","reducer","enum","model",
+    "prefab","scene","handler","ui","namespace","alias","port","bind","registry","def","component",
+    "view","prop","const","var","function","fn","extern","entry","test", 0
+};
+static const char* LUDIC_KW_CLAUSE[] = {
+    "export","internal","friend","uses","open","of","as","from","numbers","unsafe","mut","phase",
+    "query","on","cancellable","public","layer","start","shows","lasts","then","loads","system", 0
+};
 static const char* LUDIC_KW_STMT[] = {
-    "let","return","if","else","while","for","in","spawn","despawn",
-    "enable","disable","match","machine","state","become","where","prefab",
-    "and","or","not","break","continue","new","emit","cancel","try", 0
+    "let","if","else","while","for","in","where","match","machine","become","return","break",
+    "continue","new","spawn","despawn","enable","disable","attach","detach","emit","cancel",
+    "dispatch","try","and","or","not", 0
 };
 static const char* LUDIC_TYPES[] = {
-    "int","long","fixed","float","double","countdown","bool","entity","string","pointer","byte","words","fixeds","floats","doubles","pointers","Vector","IVec2","Rect","void", 0
+    "int","long","float","double","fixed","bool","byte","string","pointer","void","entity",
+    "countdown","words","floats","doubles","fixeds","pointers","Vector","IVec2","Rect", 0
 };
 static const char* LUDIC_PHASES[] = {
     "Start","Input","FixedUpdate","Update","LateUpdate","Render","Overlay", 0
 };
+static const char* LUDIC_ATTRIBUTES[] = {
+    "Ref","OneOf","Range","Unit","Asset","Color","Node","Clip","Material","Tint","Derived","Text",
+    "Multiline","Key","Computed","Sync","frame","max","owns","AppendOnly","ByKey","PerMap",
+    "Chunked","export","Public","On","Queries","OnSpawn","OnDespawn","OnAttach","OnDetach",
+    "OnEnable","OnDisable","OnStart","OnQuit","Owned","Server","Predicted","ToServer","ToClients",
+    "System","EngineSystem","Namespace","deterministic","ClearColor","alloc_ok","creates",
+    "releases","Handles","Reads","Writes", 0
+};
+/* ludic-dev syntax: end */
 static const char* LUDIC_WIDGETS[] = {
     "panel","col","row","label","button","image","spacer", 0
 };

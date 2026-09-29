@@ -224,13 +224,23 @@ function on_type_definition(msg: JVal, id: JVal) -> void {
 # `model: Model` and `a.model` are all ordinary names. A word is a keyword only
 # where it could start or continue a declaration.
 
+# a keyword that may stand as a name where one is written (written by `ludic-dev syntax`)
+# ludic-dev syntax: begin - generated from `ludicc --emit-syntax` (selfhost/frontend/vocab.ludic); run `ludic-dev syntax`, do not edit
 function is_contextual_word(w: pointer) -> bool {
-  if (w == "program") or (w == "import") or (w == "property") or (w == "model") or (w == "enum") or (w == "ui") { return true }
-  if (w == "function") or (w == "extern") or (w == "handler") or (w == "entry") or (w == "event") or (w == "scene") { return true }
-  if (w == "phase") or (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
-  if (w == "state") or (w == "machine") or (w == "prefab") or (w == "namespace") or (w == "test") { return true }
+  if (w == "program") or (w == "module") or (w == "import") or (w == "property") or (w == "state") or (w == "event") { return true }
+  if (w == "action") or (w == "reducer") or (w == "enum") or (w == "model") or (w == "prefab") or (w == "scene") { return true }
+  if (w == "handler") or (w == "ui") or (w == "namespace") or (w == "alias") or (w == "port") or (w == "bind") { return true }
+  if (w == "registry") or (w == "def") or (w == "component") or (w == "view") or (w == "prop") or (w == "const") { return true }
+  if (w == "var") or (w == "function") or (w == "fn") or (w == "extern") or (w == "entry") or (w == "test") { return true }
+  if (w == "export") or (w == "internal") or (w == "friend") or (w == "uses") or (w == "open") or (w == "of") { return true }
+  if (w == "as") or (w == "from") or (w == "numbers") or (w == "unsafe") or (w == "mut") or (w == "phase") { return true }
+  if (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
+  if (w == "shows") or (w == "lasts") or (w == "then") or (w == "loads") or (w == "system") or (w == "in") { return true }
+  if (w == "where") or (w == "enable") or (w == "disable") or (w == "attach") or (w == "detach") or (w == "emit") { return true }
+  if (w == "dispatch") or (w == "try") { return true }
   return false
 }
+# ludic-dev syntax: end
 
 function demote_contextual_keywords(D: Doc) -> void {
   let N = ntok(D)

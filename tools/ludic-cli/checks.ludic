@@ -484,19 +484,7 @@ function grammar_alt(root: JVal, node: pointer, marker: pointer) -> []pointer {
   return out
 }
 
-# keywords the self-host parser dispatches on: is_id("x") + streq(t.text, "x")
-function parser_keywords() -> []pointer {
-  let out = new []pointer
-  add_parser_kw(out, "selfhost/frontend/parse.ludic")
-  add_parser_kw(out, "selfhost/frontend/parse_game.ludic")
-  return out
-}
-function add_parser_kw(out: []pointer, path: pointer) -> void {
-  let t = read_file(path)
-  if t == null { return }
-  add_lower(out, collect_after(t, "is_id(" + dq()))
-  add_lower(out, collect_after(t, "streq(t.text, " + dq()))
-}
+# the lower-case names among `src` into `out` (a set)
 function add_lower(out: []pointer, src: []pointer) -> void {
   var i = 0
   while i < len(src) { if all_lower(src[i]) { set_add(out, src[i]) };  i += 1 }
@@ -537,7 +525,6 @@ function cmd_check_vocab() -> int {
   let h_widgets = table_set(h, "LUDIC_WIDGETS")
   let h_builtins = c_table_names(h, "LUDIC_BUILTINS")
   let h_intrinsics = c_table_names(h, "LUDIC_INTRINSICS")
-  let h_reserved = table_set(h, "LUDIC_KW_RESERVED")
 
   # --- against the JetBrains lexer ---
   let kt = read_file("tools/editors/jetbrains/src/main/kotlin/io/ludic/ide/LudicTokens.kt")
@@ -561,16 +548,26 @@ function cmd_check_vocab() -> int {
     cmp_sets("primitive types", h_types, grammar_alt(g, "keyword", "fixed"), "ludic.tmLanguage.json")
   }
 
-  # --- against the self-host parser ---
-  let pkw = parser_keywords()
-  if len(pkw) == 0 {
-    cv_problem("could not extract any keywords from selfhost/frontend/parse*.ludic")
-  } else {
-    cmp_unparsed("declaration keywords", h_decl, pkw, h_reserved)
-    cmp_unparsed("clause keywords", h_clause, pkw, h_reserved)
-    # reserved words the parser now accepts should be promoted
-    var i = 0
-    while i < len(h_reserved) { if set_has(pkw, h_reserved[i]) { cv_problem("LUDIC_KW_RESERVED lists a keyword the parser now accepts — promote it: " + h_reserved[i]) };  i += 1 }
+  # --- the keyword, type and phase tables, the docs and the parser, against the compiler's own
+  # vocabulary (ludicc --emit-syntax; syntax_gen.ludic) ---
+  if sx_vocab() == null { cv_problem("bin/ludicc has no --emit-syntax: rebuild it (ludic-dev build)") }
+  else {
+    g_sx_prob = new []pointer
+    let ts = sx_targets()
+    var ti = 0
+    while ti < len(ts) {
+      let text = read_file(ts[ti])
+      if text != null {
+        let want = sx_regenerate(ts[ti], text)
+        if want != null and not (want == text) { cv_problem(ts[ti] + " is behind the vocabulary - run ludic-dev syntax") }
+      }
+      sx_carries(ts[ti])
+      ti += 1
+    }
+    sx_docs()
+    sx_parser()
+    var pi2 = 0
+    while pi2 < len(g_sx_prob) { cv_problem(g_sx_prob[pi2]);  pi2 += 1 }
   }
 
   if CV_N > 0 {
@@ -581,16 +578,6 @@ function cmd_check_vocab() -> int {
   return 0
 }
 
-# keywords in `kws` the parser never dispatches on (minus reserved) are a problem
-function cmp_unparsed(label: pointer, kws: []pointer, pkw: []pointer, reserved: []pointer) -> void {
-  var i = 0
-  while i < len(kws) {
-    if not set_has(pkw, kws[i]) {
-      if not set_has(reserved, kws[i]) { cv_problem("ludic_syntax.h lists a " + label + " the selfhost parser never dispatches on: " + kws[i]) }
-    }
-    i += 1
-  }
-}
 
 # ============================================================================
 # json/xml asset validation — replaces the python3 json.load / xml.dom checks

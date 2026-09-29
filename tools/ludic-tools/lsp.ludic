@@ -226,21 +226,38 @@ program LudicLsp {
     if c == ',' or c == ':' or c == '.' or c == '!' or c == '@' or c == ';' { return true }                         # , : . ! @ ;
     return c == '&' or c == '|' or c == '^' or c == '~'                                                        # & | ^ ~
   }
+  # the vocabulary, written by `ludic-dev syntax` from `ludicc --emit-syntax`
+  # ludic-dev syntax: begin - generated from `ludicc --emit-syntax` (selfhost/frontend/vocab.ludic); run `ludic-dev syntax`, do not edit
   function is_type_word(w: pointer) -> bool {
-    return (w == "int") or (w == "long") or (w == "fixed") or (w == "float") or (w == "double") or (w == "floats") or (w == "doubles") or (w == "countdown") or (w == "bool") or (w == "entity") or (w == "string") or (w == "pointer") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "pointers") or (w == "Vector") or (w == "IVec2") or (w == "Rect") or (w == "void")
-  }
-  function is_phase_word(w: pointer) -> bool {
-    return (w == "Start") or (w == "Input") or (w == "FixedUpdate") or (w == "Update") or (w == "LateUpdate") or (w == "Render")
-  }
-  function is_keyword_word(w: pointer) -> bool {
-    if (w == "program") or (w == "import") or (w == "property") or (w == "model") or (w == "enum") or (w == "ui") { return true }
-    if (w == "const") or (w == "var") or (w == "function") or (w == "extern") or (w == "handler") or (w == "entry") or (w == "event") or (w == "scene") or (w == "mut") { return true }
-    if (w == "phase") or (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
-    if (w == "let") or (w == "return") or (w == "if") or (w == "else") or (w == "while") or (w == "for") or (w == "in") or (w == "spawn") or (w == "despawn") { return true }
-    if (w == "enable") or (w == "disable") or (w == "match") or (w == "machine") or (w == "state") or (w == "become") or (w == "where") or (w == "prefab") { return true }
-    if (w == "and") or (w == "or") or (w == "not") or (w == "break") or (w == "continue") or (w == "new") or (w == "emit") or (w == "cancel") { return true }
+    if (w == "int") or (w == "long") or (w == "float") or (w == "double") or (w == "fixed") or (w == "bool") { return true }
+    if (w == "byte") or (w == "string") or (w == "pointer") or (w == "void") or (w == "entity") or (w == "countdown") { return true }
+    if (w == "words") or (w == "floats") or (w == "doubles") or (w == "fixeds") or (w == "pointers") or (w == "Vector") { return true }
+    if (w == "IVec2") or (w == "Rect") { return true }
     return false
   }
+  function is_phase_word(w: pointer) -> bool {
+    if (w == "Start") or (w == "Input") or (w == "FixedUpdate") or (w == "Update") or (w == "LateUpdate") or (w == "Render") { return true }
+    if (w == "Overlay") { return true }
+    return false
+  }
+  function is_keyword_word(w: pointer) -> bool {
+    if (w == "program") or (w == "module") or (w == "import") or (w == "property") or (w == "state") or (w == "event") { return true }
+    if (w == "action") or (w == "reducer") or (w == "enum") or (w == "model") or (w == "prefab") or (w == "scene") { return true }
+    if (w == "handler") or (w == "ui") or (w == "namespace") or (w == "alias") or (w == "port") or (w == "bind") { return true }
+    if (w == "registry") or (w == "def") or (w == "component") or (w == "view") or (w == "prop") or (w == "const") { return true }
+    if (w == "var") or (w == "function") or (w == "fn") or (w == "extern") or (w == "entry") or (w == "test") { return true }
+    if (w == "export") or (w == "internal") or (w == "friend") or (w == "uses") or (w == "open") or (w == "of") { return true }
+    if (w == "as") or (w == "from") or (w == "numbers") or (w == "unsafe") or (w == "mut") or (w == "phase") { return true }
+    if (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
+    if (w == "shows") or (w == "lasts") or (w == "then") or (w == "loads") or (w == "system") or (w == "let") { return true }
+    if (w == "if") or (w == "else") or (w == "while") or (w == "for") or (w == "in") or (w == "where") { return true }
+    if (w == "match") or (w == "machine") or (w == "become") or (w == "return") or (w == "break") or (w == "continue") { return true }
+    if (w == "new") or (w == "spawn") or (w == "despawn") or (w == "enable") or (w == "disable") or (w == "attach") { return true }
+    if (w == "detach") or (w == "emit") or (w == "cancel") or (w == "dispatch") or (w == "try") or (w == "and") { return true }
+    if (w == "or") or (w == "not") { return true }
+    return false
+  }
+  # ludic-dev syntax: end
   function is_widget_word(w: pointer) -> bool {
     return (w == "panel") or (w == "col") or (w == "row") or (w == "label") or (w == "button") or (w == "image") or (w == "spacer")
   }

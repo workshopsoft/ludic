@@ -1437,6 +1437,8 @@ function cmd_dev_test() -> int {
   smoke("library/cursor_capture")                    # #89 Input.cursor_mode compiles (no-op headless; windowed links cocoa.ll)
   smoke("rendering/gl_triangle")                     # Gl.* (OpenGL 4.1 core) compiles headless; the run needs a GPU context
 
+  syntax_cases()
+
   print("== the compiler and the CLI (ludicc / ludic) ==")
   # ludicc comes out of the IR seed with clang alone; the CLI is then compiled
   # by it, from Ludic.

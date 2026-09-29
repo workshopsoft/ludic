@@ -10,23 +10,27 @@
 
 ;;; Code:
 
-;; The vocabulary mirrors tools/ludic-tools/ludic_syntax.h; that header is the reference.
+;; The vocabulary is written by `ludic-dev syntax` from the compiler's own table
+;; (`ludicc --emit-syntax`) between the marked lines.
+;; ludic-dev syntax: begin - generated from `ludicc --emit-syntax` (selfhost/frontend/vocab.ludic); run `ludic-dev syntax`, do not edit
 (defconst ludic--declaration-keywords
-  '("program" "import" "property" "model" "enum" "ui" "namespace"
-    "const" "var" "function" "extern" "handler" "entry" "event" "scene" "test" "prefab"))
-
+  '("program" "module" "import" "property" "state" "event" "action" "reducer" "enum" "model"
+    "prefab" "scene" "handler" "ui" "namespace" "alias" "port" "bind" "registry" "def"
+    "component" "view" "prop" "const" "var" "function" "fn" "extern" "entry" "test"))
 (defconst ludic--clause-keywords
-  '("phase" "query" "on" "cancellable" "public" "layer" "start" "shows" "lasts" "loads" "then" "export" "internal"))
-
+  '("export" "internal" "friend" "uses" "open" "of" "as" "from" "numbers" "unsafe" "mut" "phase"
+    "query" "on" "cancellable" "public" "layer" "start" "shows" "lasts" "then" "loads"
+    "system"))
 (defconst ludic--statement-keywords
-  '("let" "return" "if" "else" "while" "for" "in" "spawn" "despawn"
-    "enable" "disable" "attach" "detach" "match" "machine" "state" "become" "where"
-    "and" "or" "not" "break" "continue" "new" "emit" "cancel" "try"))
-
+  '("let" "if" "else" "while" "for" "in" "where" "match" "machine" "become" "return" "break"
+    "continue" "new" "spawn" "despawn" "enable" "disable" "attach" "detach" "emit" "cancel"
+    "dispatch" "try" "and" "or" "not"))
 (defconst ludic--types
-  '("int" "long" "fixed" "countdown" "bool" "entity" "string" "pointer" "byte"
-    "words" "fixeds" "pointers" "Vector" "IVec2" "Rect" "void"))
-(defconst ludic--phases '("Start" "Input" "FixedUpdate" "Update" "LateUpdate" "Render" "Overlay"))
+  '("int" "long" "float" "double" "fixed" "bool" "byte" "string" "pointer" "void" "entity"
+    "countdown" "words" "floats" "doubles" "fixeds" "pointers" "Vector" "IVec2" "Rect"))
+(defconst ludic--phases
+  '("Start" "Input" "FixedUpdate" "Update" "LateUpdate" "Render" "Overlay"))
+;; ludic-dev syntax: end
 
 (defconst ludic-font-lock-keywords
   (list
