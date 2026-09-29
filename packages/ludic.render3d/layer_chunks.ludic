@@ -1,0 +1,65 @@
+# layer_chunks.ludic — a fixed layer (trees, boulders, stones) held as the baked chunks that are in, not
+# the whole map: a slab per chunk in the layer's instance list, put when the ring brings the chunk in
+# and dropped when it goes, the list re-uploaded at most once a frame. A record is 12 bytes: u16 x, u16 z
+# (1/65536 of the chunk), u16 y (cm above y_base), u8 scale (the kind's lo..hi), u8 yaw, u8 seed, u8 wind.
+
+const LC_REC: int = 12
+
+# the layer made ready for chunks of an n x n grid: its slab index, once at map load, and nothing in it
+@alloc_ok("a map being loaded: a layer's chunk index, once")
+export function layer_chunks_begin(l: Layer, n: int) -> void {
+  if l.ck_off == null or len(l.ck_off) != n * n {
+    if l.ck_off != null { free(l.ck_off);  free(l.ck_cnt) }
+    l.ck_off = words(n * n);  l.ck_cnt = words(n * n)
+  }
+  for i in 0 .. n * n { l.ck_off[i] = -1;  l.ck_cnt[i] = 0 }
+  l.count = 0
+  layer_chunks_changed(l)
+}
+
+# chunk `id`'s records put into the layer (replacing what it had); as many as the layer has room for
+export function layer_chunk_put(l: Layer, id: int, recs: pointer, count: int, size: float, x0: float, z0: float, y_base: float, lo: float, hi: float) -> void {
+  if l.ck_off == null or id < 0 or id >= len(l.ck_off) { return }
+  if l.ck_off[id] >= 0 { layer_chunk_drop(l, id) }
+  let n = min(count, l.cap - l.count)
+  if n <= 0 { return }
+  layer_room(l, l.count + n)
+  let span = size / 65536.0
+  let sr = (hi - lo) / 255.0
+  for i in 0 .. n {
+    let r = i * LC_REC
+    let o = (l.count + i) * INST_FLOATS
+    let yaw = float(recs[r + 7]) * (2.0 * PI / 256.0)
+    l.inst[o] = x0 + float(recs[r] | (recs[r + 1] << 8)) * span
+    l.inst[o + 1] = y_base + float(recs[r + 4] | (recs[r + 5] << 8)) * 0.01
+    l.inst[o + 2] = z0 + float(recs[r + 2] | (recs[r + 3] << 8)) * span
+    l.inst[o + 3] = lo + float(recs[r + 6]) * sr
+    l.inst[o + 4] = Math.sin(yaw);  l.inst[o + 5] = Math.cos(yaw)
+    l.inst[o + 6] = float(recs[r + 8]) / 255.0;  l.inst[o + 7] = float(recs[r + 9]) / 255.0
+  }
+  l.ck_off[id] = l.count
+  l.ck_cnt[id] = n
+  l.count += n
+  layer_chunks_changed(l)
+}
+
+# chunk `id`'s slab taken out: the instances after it move down, and the slabs after it with them
+export function layer_chunk_drop(l: Layer, id: int) -> void {
+  if l.ck_off == null or id < 0 or id >= len(l.ck_off) or l.ck_off[id] < 0 { return }
+  let off = l.ck_off[id]
+  let n = l.ck_cnt[id]
+  for k in (off + n) * INST_FLOATS .. l.count * INST_FLOATS { l.inst[k - n * INST_FLOATS] = l.inst[k] }
+  for c in 0 .. len(l.ck_off) { if l.ck_off[c] > off { l.ck_off[c] = l.ck_off[c] - n } }
+  l.ck_off[id] = -1
+  l.ck_cnt[id] = 0
+  l.count -= n
+  layer_chunks_changed(l)
+}
+
+# the layer's list changed: the GPU cull's buffers and the view's partition are made again next frame.
+# A layer on the CPU path keeps the grid it had (a baked layer is meant for the GPU cull).
+function layer_chunks_changed(l: Layer) -> void {
+  l.g_on = false
+  l.g_n = -1
+  l.view_gen = -1
+}
