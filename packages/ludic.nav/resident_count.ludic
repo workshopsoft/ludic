@@ -1,0 +1,21 @@
+# resident_count.ludic - what a file-backed mesh holds now: its tiles in, their bytes, and how many it has
+# how many of kind's tiles are in, and (nav_tiles_bytes) how many bytes those hold
+export function nav_tiles_in(nav_st: NavState, kind: int) -> int { return nv_tiles_sum(nav_st, kind, false) }
+export function nav_tiles_bytes(nav_st: NavState, kind: int) -> int { return nv_tiles_sum(nav_st, kind, true) }
+function nv_tiles_sum(nav_st: NavState, kind: int, bytes: bool) -> int {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return 0 }
+  var n = 0
+  for i in 0 .. nvc_index_count(h) {
+    nvc_index_tile(h, i, nav_st.nv_tile)
+    if nav_st.nv_tile[2] > 0.5 and bytes { n += int(nav_st.nv_tile[3]) }
+    if nav_st.nv_tile[2] > 0.5 and not bytes { n += 1 }
+  }
+  return n
+}
+# how many tiles kind's file holds in all
+export function nav_tiles_all(nav_st: NavState, kind: int) -> int {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return 0 }
+  return nvc_index_count(h)
+}

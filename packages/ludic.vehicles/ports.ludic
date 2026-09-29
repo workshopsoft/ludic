@@ -11,6 +11,7 @@ export port VehicleWorld {
   made: fn(Vehicle) -> void = fn ve__nothing               # a new vehicle: draw it
   placed: fn(Vehicle) -> void = fn ve__nothing             # it moved: put its model there
   gone: fn(Vehicle) -> void = fn ve__nothing               # its owner left: take it away
+  active: fn(float, float) -> bool = fn ve__yes2           # simulated here: outside, a moored boat is left as it is
 }
 
 # a boat's hull in the world's physics (Maroon Lake: a buoyant Jolt body), named by the vehicle's
@@ -70,6 +71,7 @@ export state VehiclesState {
 function ve__dry(x: float, z: float) -> float { return -10000.0 }
 function ve__calm(x: float, z: float, fx: float, fz: float) -> float { return 0.0 }
 function ve__zero() -> float { return 0.0 }
+function ve__yes2(x: float, z: float) -> bool { return true }
 function ve__next(vehicles_st: mut VehiclesState) -> int {
   vehicles_st.ve_ids += 1
   return vehicles_st.ve_ids

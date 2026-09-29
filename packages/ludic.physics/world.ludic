@@ -1,0 +1,43 @@
+# world.ludic - the world opened and closed: its sizes, and everything in it let go at once
+
+# a world for up to max_bodies (threads 0: the cores less one, at most four); false if C refused.
+# Pairs, contacts and the temp heap are sized for the things that MOVE (PH_PAIRS, ...)
+export function phys_open(physics_st: mut PhysicsState, max_bodies: int, threads: int) -> bool { return phys_open_sized(physics_st, max_bodies, threads, PH_PAIRS, PH_CONTACTS, PH_TEMP_KB) }
+# the same with Jolt's other three sizes given: touching pairs, contact constraints, the temp heap in KB
+export function phys_open_sized(physics_st: mut PhysicsState, max_bodies: int, threads: int, max_pairs: int, max_contacts: int, temp_kb: int) -> bool {
+  phys_close(physics_st)
+  ph_buffers()
+  physics_st.ph_world = jph_world_new(max_bodies, threads, max_pairs, max_contacts, temp_kb)
+  physics_st.ph_max = max_bodies
+  ph_own_reset(physics_st, max_bodies)
+  physics_st.ph_gen += 1
+  physics_st.ph_acc = 0.0
+  physics_st.ph_steps = 0
+  return physics_st.ph_world != null
+}
+
+export function phys_is_open(physics_st: PhysicsState) -> bool { return physics_st.ph_world != null }
+# which world this is: a body, shape or walker id kept from an older one means nothing now
+export function phys_generation(physics_st: PhysicsState) -> int { return physics_st.ph_gen }
+
+# everything let go: the world, every body in it and every shape (a world swap, a quit); the lists
+# that held them are emptied and kept, since nothing is given back
+export function phys_close(physics_st: mut PhysicsState) -> void {
+  if physics_st.ph_walkers != null {
+    for i in 0 .. len(physics_st.ph_walkers) {
+      if physics_st.ph_walkers[i] != null { jph_char_free(physics_st.ph_walkers[i]) }
+    }
+  }
+  if physics_st.ph_walkers != null { List.clear(physics_st.ph_walkers) }
+  if physics_st.ph_world != null { jph_world_free(physics_st.ph_world) }
+  physics_st.ph_world = null
+  if physics_st.ph_shapes != null {
+    for i in 0 .. len(physics_st.ph_shapes) {
+      if physics_st.ph_shapes[i] != null { jph_shape_free(physics_st.ph_shapes[i]) }
+    }
+  }
+  if physics_st.ph_shapes != null { List.clear(physics_st.ph_shapes) }
+  List.clear(physics_st.ph_spare)
+  physics_st.ph_nf = 0
+  if physics_st.ph_facts != null { q_clear(physics_st.ph_facts) }
+}

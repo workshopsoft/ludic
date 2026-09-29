@@ -23,7 +23,8 @@ export function phys_step(physics_st: mut PhysicsState) -> void {
   if physics_st.ph_world == null { return }
   ph_buffers()
   ph_buoy_all(physics_st)
-  jph_world_step(physics_st.ph_world, physics_st.ph_step, physics_st.ph_sub)
+  # 25.5a: Jolt's pairs or contacts full (PH_PAIRS, PH_CONTACTS) is a failure: past it things pass through
+  if jph_world_step(physics_st.ph_world, physics_st.ph_step, physics_st.ph_sub) != 0 { Mem.over("a physics step past phys_open's pairs or contacts") }
   physics_st.ph_steps += 1
   ph_contacts(physics_st)
 }

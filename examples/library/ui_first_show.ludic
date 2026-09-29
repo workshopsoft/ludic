@@ -1,0 +1,27 @@
+# ui_first_show.ludic - a component shown for the first time once the fence is judging (a prompt's key
+# hint mid-walk) makes its instance's props and model: declared, once per instance, and the failing
+# fence lets it through; hidden and shown again, the instance is reused and nothing more is made:
+#   bad 0 shown 3
+import "ludic.ui"
+import "ui_first_show_parts/Cell.ludic"
+import "ui_first_show_parts/Host.ludic"
+program UiFirstShow {
+  numbers float
+  function frame(ui_st: mut UiState) -> UiNode {
+    let root: UiNode = ui_nodes(ui_st, "Host", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+    return root
+  }
+  entry (ui_st: mut UiState) {
+    var shown = 0
+    for f in 0 .. 1400 {
+      let root = frame(ui_st)
+      if f == 700 or f == 900 or f == 1000 or f == 1100 or f == 1200 {
+        ui_press(ui_st, root.children[0].children[0])
+        if f != 900 and f != 1100 { shown += 1 }
+      }
+      Mem.frame()
+    }
+    print(`bad {Mem.bad_frames()} shown {shown}`)
+  }
+}

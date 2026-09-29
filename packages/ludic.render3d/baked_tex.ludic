@@ -1,0 +1,75 @@
+# baked_tex.ludic - textures a game baked at build time (`ludic bake`, assets/baked/), read before the PNG
+# they came from: a boot decodes, pads and converts nothing it can take ready-made. The file is ludic.base's
+# baked form (a 32-byte "LBAK" header, then the payload), read by hand here since render3d uses no package.
+# Missing, or of another key or version, and the PNG is decoded as it always was.
+#   assets/baked/png/<path under assets/>.tex      a PNG's samples: u32 w, h, channels, depth, then them
+#   assets/baked/cutouts/<path under assets/>.bc7  a cut-out atlas, padded as tex_dilate pads it: a .dds
+const BAKED_PNG_KEY: string = "png_sheets"   # the Bakes row (Maroon Lake's bakes.lres) and the key in its header
+const BAKED_PNG_VERSION: int = 1
+const BAKED_CUT_KEY: string = "cutouts"
+const BAKED_CUT_VERSION: int = 1
+
+function baked_u32(b: []byte, o: int) -> int { return b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24) }
+
+# where the bake of `path` (a PNG under assets/) lives, or "" for any other path
+@alloc_ok("a load: the baked file's name")
+function baked_tex_path(path: string, dir: string, ext: string) -> string {
+  let n = len(path)
+  if n < 12 or path[0 .. 7] != "assets/" or path[n - 4 .. n] != ".png" { return "" }
+  return `assets/baked/{dir}/{path[7 .. n - 4]}{ext}`
+}
+
+# the payload's offset in a baked file of this key and version, or -1 (not one, or another's)
+function baked_payload(b: []byte, key: string, version: int) -> int {
+  if b == null or len(b) < 40 { return -1 }
+  if b[0] != 76 or b[1] != 66 or b[2] != 65 or b[3] != 75 { return -1 }      # "LBAK"
+  if baked_u32(b, 4) != 1 or baked_u32(b, 8) != version { return -1 }
+  let off = baked_u32(b, 12)
+  if off < 32 + len(key) or off > len(b) { return -1 }
+  for i in 0 .. len(key) { if b[32 + i] != key[i] { return -1 } }
+  if b[32 + len(key)] != 0 { return -1 }
+  return off
+}
+
+# a PNG's samples as the bake left them (tex_w .. tex_depth set, the caller frees them), or null
+@alloc_ok("a load: the baked file read, its samples kept by the caller")
+function baked_png(render3d_st: mut Render3dState, path: pointer) -> pointer {
+  let bp = baked_tex_path(path, "png", ".tex")
+  if bp == "" or not Fs.exists(bp) { return null }
+  let b = Fs.read_bytes(bp)
+  let off = baked_payload(b, BAKED_PNG_KEY, BAKED_PNG_VERSION)
+  if off < 0 or off + 16 > len(b) {
+    if b != null { free(b) }
+    print(`r3d: {bp} is not this build's bake; {path} is decoded`)
+    return null
+  }
+  let w = baked_u32(b, off)
+  let h = baked_u32(b, off + 4)
+  let ch = baked_u32(b, off + 8)
+  let depth = baked_u32(b, off + 12)
+  let n = w * h * ch * (depth / 8)
+  if w < 1 or h < 1 or ch < 1 or ch > 4 or (depth != 8 and depth != 16) or off + 16 + n > len(b) {
+    free(b)
+    return null
+  }
+  let out = bytes(n + 8)
+  mem_copy(out, mem_off(data_of(b), off + 16), n)
+  free(b)
+  render3d_st.tex_w = w;  render3d_st.tex_h = h;  render3d_st.tex_channels = ch;  render3d_st.tex_depth = depth
+  return out
+}
+
+# a cut-out atlas as the bake padded and compressed it (a texture id), or 0
+@alloc_ok("a load: the baked file read and let go")
+function baked_cutout(render3d_st: mut Render3dState, path: pointer, srgb: bool) -> int {
+  if not render3d_st.gvk_has_bc { return 0 }
+  let bp = baked_tex_path(path, "cutouts", ".bc7")
+  if bp == "" or not Fs.exists(bp) { return 0 }
+  let b = Fs.read_bytes(bp)
+  let off = baked_payload(b, BAKED_CUT_KEY, BAKED_CUT_VERSION)
+  var id = 0
+  if off >= 0 { id = tex_load_dds_at(render3d_st, b, off, srgb) }
+  if b != null { free(b) }
+  if id == 0 { print(`r3d: {bp} is not this build's bake; {path} is padded here`) }
+  return id
+}

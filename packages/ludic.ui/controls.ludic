@@ -31,9 +31,9 @@ function ct_activate(ui_st: mut UiState, n: UiNode) -> void {
 function ct_step(ui_st: mut UiState, n: UiNode, d: int) -> void {
   let t = ct_type(n)
   if t == "select" and n.opts != null and len(n.opts) > 0 {
-    let at = (ct_option_at(n, n.opts) + d + len(n.opts)) % len(n.opts)
-    let ov = ui_attr(n.opts[at], "value")
-    if Value.kind(ov) == 0 { ct_change(ui_st, n, Value.int(at)) } else { ct_change(ui_st, n, ov) }
+    let from = ct_option_at(n, n.opts)
+    let at = ct_opt_step(n.opts, from, d)                 # past a disabled option
+    if at != from { ct_opt_pick(ui_st, n, n.opts, at) }
   }
   if t == "number" { ct_num_step(ui_st, n, d) }
   if t == "range" {

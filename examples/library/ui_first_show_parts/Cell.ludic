@@ -1,0 +1,3 @@
+component Cell {
+  prop caption: string = ""
+}

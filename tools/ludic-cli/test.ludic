@@ -370,6 +370,9 @@ function bundle_case() -> void {
   # the identifier is derived from the package path when the manifest omits it
   let id = capture_line(`plutil -extract CFBundleIdentifier raw "{app}/Contents/Info.plist" 2>/dev/null`)
   if id != "io.workshopsoft.probe-app" { bad2(lbl, `bundle id came out [{id}]`);  return }
+  # `app env` is what Launch Services starts it with (a Finder or `open` start)
+  let env = capture_line(`plutil -extract LSEnvironment.MallocLargeCache raw "{app}/Contents/Info.plist" 2>/dev/null`)
+  if env != "0" { bad2(lbl, `LSEnvironment.MallocLargeCache came out [{env}]`);  return }
   if not shq(`codesign --verify "{app}" > /dev/null 2>&1`) { bad2(lbl, "the signature does not verify");  return }
   # and it runs from a directory with none of its assets, reading them from the pack
   let got = s_trim(capture(`cd / && "{app}/Contents/MacOS/Probe App" 2>&1`))
@@ -388,6 +391,7 @@ function bundle_manifest_src() -> pointer {
   s = s + "app name \"Probe App\"" + nl()
   s = s + "app icon \"assets/icon.png\"" + nl()
   s = s + "app copyright \"(c) 2026 A & B\"" + nl()
+  s = s + "app env \"MallocLargeCache=0\"" + nl()
   s = s + "pack \"assets\"" + nl()
   return s
 }
@@ -1248,6 +1252,8 @@ function cmd_dev_test() -> int {
   controller_case("library/ui_emit_click", "", "got 2 | pressed: got 1", "ui_emit_click.ludic (L11: a component's `emit click` reaches its user's on-click, by the mouse and by a press)")
   controller_case("library/ui_select_arrows", "", "prev 0 next next 2", "ui_select_arrows.ludic (L11: a select's < steps back and its > forward)")
   controller_case("library/ui_pointer_through", "", "pressed 1, hovered #4a5058; > hovered 1", "ui_pointer_through.ludic (L11: the pointer looks through a root with no size to a positioned panel's button; a select's > answers :hover)")
+  controller_case("library/ui_first_show", "", "bad 0 shown 3", "ui_first_show.ludic (L11: a component first shown once the fence is judging makes its props and model declared, once per instance; shown again, it is reused)")
+  controller_case("library/ui_select_disabled", "", "clamped 2 next-on 0 next 0 prev 2", "ui_select_disabled.ludic (L11: <option disabled>: a value on one is set to the nearest enabled, the arrow toward them drawn disabled, the arrows step past them)")
   controller_case("library/ui_submit", "", "[hi] chat '' | [hi][yo][Ada] chat '' name 'Ada'", "ui_submit.ludic (L11: on-submit on a text field by Enter or A, clear-on-submit, the focus kept)")
   controller_case("library/ui_zoom", "", "plain 100 pad 10 text 16 h 20 | half 50 pad 5 text 8 h 10 | half of twice 100 | fit 50 em 16", "ui_zoom.ludic (L11: zoom scales a subtree's lengths, text and layout, multiplies, and takes min() and a length over a length)")
   controller_case("library/ui_hold", "", "31 frames 500 ms t 500 | 121 frames 500 ms t 500 | pad 16 frames 250 ms t 250 | dududu", "ui_hold.ludic (L11: on-hold every frame a button is held, by the pointer or A, with dt and t on the clock at any rate)")

@@ -1,0 +1,3 @@
+<div class="item">
+  <button class="cell" on-click="emit click"><p>{caption}</p></button>
+</div>

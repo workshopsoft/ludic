@@ -1,0 +1,70 @@
+# merge.ludic - discs that overlap (or touch) are one cluster, transitively; a cluster's bounding
+# circle is centred on its discs' box and reaches the farthest edge
+export function zones_merge(zones_st: mut ZonesState) -> void {
+  for i in 0 .. ZONES_MAX { zones_st.zn_up[i] = i }
+  for i in 0 .. ZONES_MAX {
+    if zones_st.zn_on[i] == 0 { continue }
+    for j in i + 1 .. ZONES_MAX { if zones_st.zn_on[j] != 0 and zn_touch(zones_st, i, j) { zn_join(zones_st, i, j) } }
+  }
+  zones_st.zn_ncl = 0
+  for i in 0 .. ZONES_MAX { zones_st.zn_cl[i] = -1 }
+  for i in 0 .. ZONES_MAX {
+    if zones_st.zn_on[i] == 0 { continue }
+    let root = zn_root(zones_st, i)
+    if zones_st.zn_cl[root] < 0 {
+      zones_st.zn_cl[root] = zones_st.zn_ncl
+      zones_st.zn_ncl += 1
+    }
+    zones_st.zn_cl[i] = zones_st.zn_cl[root]
+  }
+  for c in 0 .. zones_st.zn_ncl { zn_bound(zones_st, c) }
+}
+
+function zn_touch(zones_st: ZonesState, i: int, j: int) -> bool {
+  let dx = zones_st.zn_x[i] - zones_st.zn_x[j]
+  let dz = zones_st.zn_z[i] - zones_st.zn_z[j]
+  let rr = zones_st.zn_r[i] + zones_st.zn_r[j]
+  return dx * dx + dz * dz <= rr * rr
+}
+
+function zn_root(zones_st: ZonesState, i: int) -> int {
+  var k = i
+  while zones_st.zn_up[k] != k { k = zones_st.zn_up[k] }
+  return k
+}
+
+function zn_join(zones_st: mut ZonesState, i: int, j: int) -> void {
+  let a = zn_root(zones_st, i)
+  let b = zn_root(zones_st, j)
+  if a < b { zones_st.zn_up[b] = a }
+  if b < a { zones_st.zn_up[a] = b }
+}
+
+function zn_bound(zones_st: mut ZonesState, c: int) -> void {
+  var x0 = 1000000000.0
+  var x1 = -1000000000.0
+  var z0 = 1000000000.0
+  var z1 = -1000000000.0
+  var n = 0
+  for i in 0 .. ZONES_MAX {
+    if zones_st.zn_on[i] == 0 or zones_st.zn_cl[i] != c { continue }
+    x0 = Math.min(x0, zones_st.zn_x[i] - zones_st.zn_r[i])
+    x1 = Math.max(x1, zones_st.zn_x[i] + zones_st.zn_r[i])
+    z0 = Math.min(z0, zones_st.zn_z[i] - zones_st.zn_r[i])
+    z1 = Math.max(z1, zones_st.zn_z[i] + zones_st.zn_r[i])
+    n += 1
+  }
+  let cx = (x0 + x1) * 0.5
+  let cz = (z0 + z1) * 0.5
+  var r = 0.0
+  for i in 0 .. ZONES_MAX {
+    if zones_st.zn_on[i] == 0 or zones_st.zn_cl[i] != c { continue }
+    let dx = zones_st.zn_x[i] - cx
+    let dz = zones_st.zn_z[i] - cz
+    r = Math.max(r, Math.sqrt(dx * dx + dz * dz) + zones_st.zn_r[i])
+  }
+  zones_st.zn_cx[c] = cx
+  zones_st.zn_cz[c] = cz
+  zones_st.zn_cr[c] = r
+  zones_st.zn_cn[c] = n
+}

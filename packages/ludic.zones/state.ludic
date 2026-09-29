@@ -1,0 +1,41 @@
+# state.ludic - the discs by player slot and the clusters the last merge made
+export const ZONES_MAX: int = 16             # player slots a world can hold (at least PLY_MAX)
+export const ZONES_NO_FOG: float = 900.0     # the radius of a player who sees to the horizon
+export const ZONES_PAST_FOG: float = 40.0    # simulated this far past what a player can see
+export const ZONES_LEAST: float = 150.0      # and never less than this
+
+export state ZonesState {
+  zn_on: words = words(ZONES_MAX)
+  zn_x: []float = floats(ZONES_MAX)
+  zn_z: []float = floats(ZONES_MAX)
+  zn_r: []float = floats(ZONES_MAX)
+  zn_cl: words = words(ZONES_MAX)             # each disc's cluster, after zones_merge
+  zn_up: words = words(ZONES_MAX)             # the merge's union-find
+  zn_ncl: int = 0
+  zn_cx: []float = floats(ZONES_MAX)         # each cluster's bounding circle
+  zn_cz: []float = floats(ZONES_MAX)
+  zn_cr: []float = floats(ZONES_MAX)
+  zn_cn: words = words(ZONES_MAX)             # how many discs it holds
+}
+
+# a player's radius from how far they see: fog_dist <= 0 is no fog; never past no fog's, so a far fog
+# never keeps more of the world than none does
+export function zones_radius(fog_dist: float) -> float {
+  if fog_dist <= 0.0 { return ZONES_NO_FOG }
+  return Math.min(Math.max(fog_dist + ZONES_PAST_FOG, ZONES_LEAST), ZONES_NO_FOG)
+}
+
+export function zones_set(zones_st: mut ZonesState, pid: int, x: float, z: float, r: float) -> void {
+  if pid < 0 or pid >= ZONES_MAX { return }
+  zones_st.zn_on[pid] = 1
+  zones_st.zn_x[pid] = x
+  zones_st.zn_z[pid] = z
+  zones_st.zn_r[pid] = r
+}
+
+export function zones_clear(zones_st: mut ZonesState, pid: int) -> void { if pid >= 0 and pid < ZONES_MAX { zones_st.zn_on[pid] = 0 } }
+
+export function zones_reset(zones_st: mut ZonesState) -> void {
+  for i in 0 .. ZONES_MAX { zones_st.zn_on[i] = 0 }
+  zones_st.zn_ncl = 0
+}

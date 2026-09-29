@@ -1,0 +1,72 @@
+# baked_stream.ludic - a large bake read a piece at a time (placements by chunk, terrain by tile): the
+# header checked once, the file kept open, and each read into the caller's own buffer at a payload
+# offset, so a ring streaming chunks in makes nothing per chunk. Pack-aware (file_open)
+export property BakedFile {
+  f: pointer = null
+  off: int = 0                  # where the payload starts in the file
+  n: long = 0                   # the payload's length
+}
+
+# this bake's file kept open for reading, or null (missing, or another format, key or version)
+@alloc_ok("once per baked file opened: its header and record")
+export function baked_open_range(path: string, key: string, version: int) -> BakedFile {
+  let f = file_open(path, "rb")
+  if f == null { return null }
+  let want = 32 + len(key) + 1
+  let h = buffer(want)
+  if file_read(f, h, want) != want or bk_head_ok(h, want, key, version) < 0 {
+    file_close(f)
+    return null
+  }
+  let bf = new BakedFile
+  bf.f = f
+  bf.off = bk_u32(h, 12)
+  bf.n = bk_u64(h, 24)
+  return bf
+}
+
+# `n` bytes from payload offset `at` into `into` (from its start): the count read, 0 on a failure;
+# held to the buffer and to the payload
+export function baked_read(bf: BakedFile, at: int, n: int, into: []byte) -> int {
+  if bf == null or bf.f == null or at < 0 or n <= 0 { return 0 }
+  var k = n
+  if k > len(into) { k = len(into) }
+  if long(at) + long(k) > bf.n { k = int(bf.n - long(at)) }
+  if k <= 0 { return 0 }
+  if file_seek(bf.f, bf.off + at, 0) != 0 { return 0 }
+  return file_read(bf.f, into, k)
+}
+
+export function baked_len(bf: BakedFile) -> long {
+  if bf == null { return 0 }
+  return bf.n
+}
+
+export function baked_close(bf: BakedFile) -> void {
+  if bf == null or bf.f == null { return }
+  file_close(bf.f)
+  bf.f = null
+}
+
+# what a baked file says it is, its header alone read (the stale check: key, version, inputs hash)
+export property BakedHead {
+  key: string = ""
+  version: int = 0
+  inputs: long = 0
+}
+@alloc_ok("the stale check: once a baked file")
+export function baked_head(path: string) -> BakedHead {
+  let f = file_open(path, "rb")
+  if f == null { return null }
+  let h = buffer(288)
+  let got = file_read(f, h, 288)
+  file_close(f)
+  if got < 32 or h[0] != 76 or h[1] != 66 or h[2] != 65 or h[3] != 75 or bk_u32(h, 4) != BAKE_FORMAT { return null }
+  var e = 32
+  while e < got and h[e] != 0 { e += 1 }
+  let r = new BakedHead
+  r.key = intern(text_of(view(h, 32, e - 32), e - 32))
+  r.version = bk_u32(h, 8)
+  r.inputs = bk_u64(h, 16)
+  return r
+}

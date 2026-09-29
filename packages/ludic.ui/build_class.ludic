@@ -5,17 +5,8 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   let cls = k.cls
   uc_load(ui_st, cls)
   let it = in_get(ui_st, key, cls)
-  if it.props == null { it.props = Value.object() }
-  let props = it.props
-  Value.clear(props)
-  for i in 0 .. len(k.keys) {
-    let a = k.keys[i]
-    if a != "class" and a != "style" and a != "id" { Value.put(props, a, ui_eval(ui_st, k.vals[i], e)) }
-  }
-  cls.props(it.ptr, props)
   let ce = env_new(ui_st, null)
-  if it.model == null { it.model = Value.object() }
-  ce.model = cls.model(it.ptr, it.model)
+  if it.fresh { ce.model = bd_first_fill(ui_st, it, k, e) } else { ce.model = bd_fill(ui_st, it, k, e) }
   ce.inst = it
   ce.ctx = e.ctx
   ce.slot = k
@@ -33,6 +24,26 @@ function bd_class(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   let root = cls.roots
   bd_kids(ui_st, root, ce, key, out)
   if len(out) > at { bd_pass_down(ui_st, out[at], k, e) }
+}
+# an instance's props and model, filled in place into the objects it keeps (a reused one's are kept)
+function bd_fill(ui_st: mut UiState, it: UiInst, k: UiTpl, e: UiEnv) -> Val {
+  if it.props == null { it.props = Value.object() }
+  let props = it.props
+  Value.clear(props)
+  for i in 0 .. len(k.keys) {
+    let a = k.keys[i]
+    if a != "class" and a != "style" and a != "id" { Value.put(props, a, ui_eval(ui_st, k.vals[i], e)) }
+  }
+  it.cls.props(it.ptr, props)
+  if it.model == null { it.model = Value.object() }
+  return it.cls.model(it.ptr, it.model)
+}
+# a new instance's first fill makes its props and model objects and every Value in them - once per
+# instance, which in_reuse bounds (a prompt's key hint first shown mid-walk was judged as a frame's keep)
+@alloc_ok("a new component instance's first build: its props and model, then kept or reused")
+function bd_first_fill(ui_st: mut UiState, it: UiInst, k: UiTpl, e: UiEnv) -> Val {
+  it.fresh = false
+  return bd_fill(ui_st, it, k, e)
 }
 # <Card class="wide" style="margin: 4px" id="c"> puts those on the card's own root element; when that
 # root is itself a component, each user in turn adds theirs (the outermost's id wins)

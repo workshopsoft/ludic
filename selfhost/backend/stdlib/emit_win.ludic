@@ -62,6 +62,7 @@ function emit_win_prelude() -> void {
   emith("declare i32 @FindClose(ptr)\n")
   emith("declare ptr @CreateFileMappingA(ptr, ptr, i32, i32, i32, ptr)\n")
   emith("declare ptr @MapViewOfFile(ptr, i32, i32, i32, i64)\n")
+  emith("declare i32 @UnmapViewOfFile(ptr)\n")
   emith("declare i32 @CloseHandle(ptr)\n")
   emith("declare i32 @GetModuleFileNameA(ptr, ptr, i32)\n")
   emith("declare i32 @GetTempPathA(i32, ptr)\n")

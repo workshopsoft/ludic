@@ -20,6 +20,7 @@
 program LudicDev {
   import "prelude.ludic"
   import "build.ludic"
+  import "split.ludic"
   import "toolchain.ludic"
   import "selfhost.ludic"
   import "tools.ludic"

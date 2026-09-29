@@ -7,6 +7,7 @@ property UiInst {
   seen: int = 0
   props: Val = null             # its props, filled again each frame into the same object
   model: Val = null             # and its model, filled in place by the class's model()
+  fresh: bool = false           # made, not reused: its first build makes its props and model
 }
 # builds before an unmounted instance is mounted again: the tree that last named it is good for two
 const IN_SPARE_AFTER: int = 2
@@ -41,6 +42,7 @@ function in_reuse(ui_st: mut UiState, k: UiClass) -> UiInst {
   let it = new UiInst
   it.cls = k
   it.ptr = k.make()
+  it.fresh = true
   return it
 }
 # after a build of `screen`: its instances the build did not reach are unmounted

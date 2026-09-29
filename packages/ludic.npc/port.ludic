@@ -5,6 +5,7 @@ export port NpcWorld {
   water: fn(float, float) -> float = fn nw_dry             # the water's surface there
   slope: fn(float, float) -> float = fn nw_zero2
   allowed: fn(float, float) -> bool = fn nw_yes2           # a person may stop here (not the player's camp)
+  active: fn(float, float) -> bool = fn nw_yes2            # simulated here: outside, a walker is frozen and none is born
   # (x, z, r, feet, head): true when a still thing takes a body of radius r there; pushed_x / _z say where
   push: fn(float, float, float, float, float) -> bool = fn nw_no_push
   pushed_x: fn() -> float = fn nw_asked_x

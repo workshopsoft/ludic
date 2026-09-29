@@ -15,54 +15,93 @@
 # megabytes of texture at load, and there the table is worth its 2 KB.
 # ============================================================================
 
-# ---- bit reader (DEFLATE packs bits least-significant-first) ---------------
-export state RtInflateState {
-  z_src:    pointer = null
-  z_len:    int = 0
-  z_pos:    int = 0
-  z_bitbuf: int = 0
-  z_bitcnt: int = 0
-  z_err:    int = 0
-  z_lbase: words = null
-  z_lext:  words = null
-  z_dbase: words = null
-  z_dext:  words = null
+# ---- the context ------------------------------------------------------------
+# Everything one inflate works in: the bit reader, the RFC's length and distance tables, and every
+# table and scratch list a block builds, made once with the context (z_inflate_new) and rebuilt in
+# place - so an inflate allocates nothing, and each thread that inflates holds a context of its own.
+# RtInflateState keeps one for the callers that inflate on the program's own thread.
+export property ZInflate {
+  src:    pointer = null
+  len:    int = 0
+  pos:    int = 0
+  bitbuf: int = 0
+  bitcnt: int = 0
+  err:    int = 0
+  lbase:  words = null
+  lext:   words = null
+  dbase:  words = null
+  dext:   words = null
+  lit:    words = null
+  dist:   words = null
+  clen:   words = null
+  lengths: words = null
+  dl:     words = null
+  offs:   words = null
+  firstc: words = null
 }
 
-function z_start(rt_inflate_st: mut RtInflateState, src: pointer, len: int) -> void {
-  z_tables_once(rt_inflate_st)
-  rt_inflate_st.z_src = src
-  rt_inflate_st.z_len = len
-  rt_inflate_st.z_pos = 0
-  rt_inflate_st.z_bitbuf = 0
-  rt_inflate_st.z_bitcnt = 0
-  rt_inflate_st.z_err = 0
+export state RtInflateState {
+  z_ctx: ZInflate = z_inflate_new()
+}
+
+@alloc_ok("once per context: every table an inflate works in, rebuilt in place ever after")
+export function z_inflate_new() -> ZInflate {
+  let z = new ZInflate
+  z.lbase = words(29)
+  z.lext = words(29)
+  for s in 0 .. 29 {
+    z.lbase[s] = z_len_base(s)
+    z.lext[s] = z_len_extra(s)
+  }
+  z.dbase = words(30)
+  z.dext = words(30)
+  for s in 0 .. 30 {
+    z.dbase[s] = z_dist_base(s)
+    z.dext[s] = z_dist_extra(s)
+  }
+  z.lit = z_table_new(288)
+  z.dist = z_table_new(30)
+  z.clen = z_table_new(19)
+  z.lengths = words(320)
+  z.dl = words(32)
+  z.offs = words(16)
+  z.firstc = words(17)
+  return z
+}
+
+function z_start(z: ZInflate, src: pointer, len: int) -> void {
+  z.src = src
+  z.len = len
+  z.pos = 0
+  z.bitbuf = 0
+  z.bitcnt = 0
+  z.err = 0
 }
 
 # Fill the bit buffer to at least `n` bits without consuming any (n <= 16, so the
 # buffer never shifts a byte past bit 15 and cannot reach the sign bit).
-function z_need(rt_inflate_st: mut RtInflateState, n: int) -> void {
-  while rt_inflate_st.z_bitcnt < n {
-    if rt_inflate_st.z_pos >= rt_inflate_st.z_len { return }
-    rt_inflate_st.z_bitbuf = (rt_inflate_st.z_bitbuf | (rt_inflate_st.z_src[rt_inflate_st.z_pos] << rt_inflate_st.z_bitcnt))
-    rt_inflate_st.z_pos += 1
-    rt_inflate_st.z_bitcnt += 8
+function z_need(z: ZInflate, n: int) -> void {
+  while z.bitcnt < n {
+    if z.pos >= z.len { return }
+    z.bitbuf = (z.bitbuf | (z.src[z.pos] << z.bitcnt))
+    z.pos += 1
+    z.bitcnt += 8
   }
 }
 
-function z_bits(rt_inflate_st: mut RtInflateState, need: int) -> int {
-  var val = rt_inflate_st.z_bitbuf
-  while rt_inflate_st.z_bitcnt < need {
-    if rt_inflate_st.z_pos >= rt_inflate_st.z_len {
-      rt_inflate_st.z_err = 1
+function z_bits(z: ZInflate, need: int) -> int {
+  var val = z.bitbuf
+  while z.bitcnt < need {
+    if z.pos >= z.len {
+      z.err = 1
       return 0
     }
-    val = (val | (rt_inflate_st.z_src[rt_inflate_st.z_pos] << rt_inflate_st.z_bitcnt))
-    rt_inflate_st.z_pos += 1
-    rt_inflate_st.z_bitcnt += 8
+    val = (val | (z.src[z.pos] << z.bitcnt))
+    z.pos += 1
+    z.bitcnt += 8
   }
-  rt_inflate_st.z_bitbuf = (val >> need)
-  rt_inflate_st.z_bitcnt -= need
+  z.bitbuf = (val >> need)
+  z.bitcnt -= need
   return (val & ((1 << need) - 1))
 }
 
@@ -81,7 +120,7 @@ function z_table_new(nsym: int) -> words {
 }
 
 # lengths[i] = code length of symbol i (0 = symbol unused)
-function z_table_build(table: words, lengths: words, n: int) -> void {
+function z_table_build(z: ZInflate, table: words, lengths: words, n: int) -> void {
   for i in 0 .. 16 {
     table[i] = 0
   }
@@ -91,7 +130,7 @@ function z_table_build(table: words, lengths: words, n: int) -> void {
   }
   table[0] = 0                 # length 0 means "not present"
   # offset of each length's first symbol
-  let offs: words = words(16)
+  let offs = z.offs
   offs[1] = 0
   for l in 1 .. 15 {
     offs[l + 1] = offs[l] + table[l]
@@ -103,14 +142,13 @@ function z_table_build(table: words, lengths: words, n: int) -> void {
       offs[l] += 1
     }
   }
-  free(offs)
 
   # ---- the fast lookup ----
   for i in 0 .. Z_FASTSZ {
     table[16 + i] = 0
   }
   # first canonical code of each length
-  let firstc: words = words(17)
+  let firstc = z.firstc
   var code = 0
   for l in 1 .. 16 {
     code = ((code + table[l - 1]) << 1)
@@ -143,17 +181,16 @@ function z_table_build(table: words, lengths: words, n: int) -> void {
       k += 1
     }
   }
-  free(firstc)
 }
 
-function z_decode(rt_inflate_st: mut RtInflateState, table: words) -> int {
-  z_need(rt_inflate_st, Z_FAST)
-  if rt_inflate_st.z_bitcnt >= Z_FAST {
-    let e = table[16 + (rt_inflate_st.z_bitbuf & (Z_FASTSZ - 1))]
+function z_decode(z: ZInflate, table: words) -> int {
+  z_need(z, Z_FAST)
+  if z.bitcnt >= Z_FAST {
+    let e = table[16 + (z.bitbuf & (Z_FASTSZ - 1))]
     if e != 0 {
       let l = (e >> 16)
-      rt_inflate_st.z_bitbuf = (rt_inflate_st.z_bitbuf >> l)
-      rt_inflate_st.z_bitcnt -= l
+      z.bitbuf = (z.bitbuf >> l)
+      z.bitcnt -= l
       return (e & 65535)
     }
   }
@@ -162,7 +199,7 @@ function z_decode(rt_inflate_st: mut RtInflateState, table: words) -> int {
   var first = 0
   var index = 0
   for len in 1 .. 16 {
-    code = (code | z_bits(rt_inflate_st, 1))
+    code = (code | z_bits(z, 1))
     let count = table[len]
     if code - first < count {
       return table[Z_SYMS + index + (code - first)]
@@ -171,7 +208,7 @@ function z_decode(rt_inflate_st: mut RtInflateState, table: words) -> int {
     first = ((first + count) << 1)
     code = (code << 1)
   }
-  rt_inflate_st.z_err = 1
+  z.err = 1
   return -1
 }
 
@@ -202,49 +239,33 @@ function z_dist_extra(sym: int) -> int {
   return (sym - 2) / 2
 }
 
-# The RFC tables above are pure functions of the symbol; compute them once rather
-# than dividing per match.
-
-function z_tables_once(rt_inflate_st: mut RtInflateState) -> void {
-  if rt_inflate_st.z_lbase != null { return }
-  rt_inflate_st.z_lbase = words(29)
-  rt_inflate_st.z_lext = words(29)
-  for s in 0 .. 29 {
-    rt_inflate_st.z_lbase[s] = z_len_base(s)
-    rt_inflate_st.z_lext[s] = z_len_extra(s)
-  }
-  rt_inflate_st.z_dbase = words(30)
-  rt_inflate_st.z_dext = words(30)
-  for s in 0 .. 30 {
-    rt_inflate_st.z_dbase[s] = z_dist_base(s)
-    rt_inflate_st.z_dext[s] = z_dist_extra(s)
-  }
-}
+# The RFC tables above are pure functions of the symbol, computed once per context (z_inflate_new)
+# rather than divided per match.
 
 # ---- block decoders -------------------------------------------------------
 # `out` is the destination window; returns the new write position, or -1.
-function z_stored(rt_inflate_st: mut RtInflateState, out: pointer, at: int, cap: int) -> int {
-  rt_inflate_st.z_bitbuf = 0
-  rt_inflate_st.z_bitcnt = 0                        # stored blocks are byte-aligned
-  if rt_inflate_st.z_pos + 4 > rt_inflate_st.z_len { return -1 }
-  let n = rt_inflate_st.z_src[rt_inflate_st.z_pos] + (rt_inflate_st.z_src[rt_inflate_st.z_pos + 1] << 8)
-  rt_inflate_st.z_pos += 4                   # LEN then its one's complement
+function z_stored(z: ZInflate, out: pointer, at: int, cap: int) -> int {
+  z.bitbuf = 0
+  z.bitcnt = 0                        # stored blocks are byte-aligned
+  if z.pos + 4 > z.len { return -1 }
+  let n = z.src[z.pos] + (z.src[z.pos + 1] << 8)
+  z.pos += 4                   # LEN then its one's complement
   var w = at
   for i in 0 .. n {
-    if rt_inflate_st.z_pos >= rt_inflate_st.z_len { return -1 }
+    if z.pos >= z.len { return -1 }
     if w >= cap { return -1 }
-    out[w] = rt_inflate_st.z_src[rt_inflate_st.z_pos]
+    out[w] = z.src[z.pos]
     w += 1
-    rt_inflate_st.z_pos += 1
+    z.pos += 1
   }
   return w
 }
 
-function z_codes(rt_inflate_st: mut RtInflateState, out: pointer, at: int, cap: int, lit: words, dist: words) -> int {
+function z_codes(z: ZInflate, out: pointer, at: int, cap: int, lit: words, dist: words) -> int {
   var w = at
-  var sym = z_decode(rt_inflate_st, lit)
+  var sym = z_decode(z, lit)
   while sym != 256 {
-    if rt_inflate_st.z_err != 0 { return -1 }
+    if z.err != 0 { return -1 }
     if sym < 0 { return -1 }
     if sym < 256 {
       if w >= cap { return -1 }
@@ -254,11 +275,11 @@ function z_codes(rt_inflate_st: mut RtInflateState, out: pointer, at: int, cap: 
     if sym > 256 {
       let s = sym - 257
       if s >= 29 { return -1 }
-      let length = rt_inflate_st.z_lbase[s] + z_bits(rt_inflate_st, rt_inflate_st.z_lext[s])
-      let d = z_decode(rt_inflate_st, dist)
+      let length = z.lbase[s] + z_bits(z, z.lext[s])
+      let d = z_decode(z, dist)
       if d < 0 { return -1 }
       if d >= 30 { return -1 }
-      let distance = rt_inflate_st.z_dbase[d] + z_bits(rt_inflate_st, rt_inflate_st.z_dext[d])
+      let distance = z.dbase[d] + z_bits(z, z.dext[d])
       if distance > w { return -1 }
       if w + length > cap { return -1 }      # bounds once, not per byte
       var sp = w - distance
@@ -270,44 +291,43 @@ function z_codes(rt_inflate_st: mut RtInflateState, out: pointer, at: int, cap: 
         k += 1
       }
     }
-    sym = z_decode(rt_inflate_st, lit)
+    sym = z_decode(z, lit)
   }
   return w
 }
 
-function z_fixed_tables(lit: words, dist: words) -> void {
-  let lengths: words = words(288)
+function z_fixed_tables(z: ZInflate, lit: words, dist: words) -> void {
+  let lengths = z.lengths
   for i in 0 .. 144 { lengths[i] = 8 }
   for i in 144 .. 256 { lengths[i] = 9 }
   for i in 256 .. 280 { lengths[i] = 7 }
   for i in 280 .. 288 { lengths[i] = 8 }
-  z_table_build(lit, lengths, 288)
+  z_table_build(z, lit, lengths, 288)
   for i in 0 .. 30 { lengths[i] = 5 }
-  z_table_build(dist, lengths, 30)
-  free(lengths)
+  z_table_build(z, dist, lengths, 30)
 }
 
-function z_dynamic_tables(rt_inflate_st: mut RtInflateState, lit: words, dist: words) -> int {
-  let nlen = z_bits(rt_inflate_st, 5) + 257
-  let ndist = z_bits(rt_inflate_st, 5) + 1
-  let ncode = z_bits(rt_inflate_st, 4) + 4
+function z_dynamic_tables(z: ZInflate, lit: words, dist: words) -> int {
+  let nlen = z_bits(z, 5) + 257
+  let ndist = z_bits(z, 5) + 1
+  let ncode = z_bits(z, 4) + 4
   if nlen > 286 { return 0 }
   if ndist > 30 { return 0 }
 
-  let lengths: words = words(320)
+  let lengths = z.lengths
   for i in 0 .. 19 { lengths[i] = 0 }
   # the code-length alphabet is transmitted in this fixed permutation
   # 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 — biased by '0' so it is one literal
   let order = "@AB08796:5;4<3=2>1?"
   for i in 0 .. ncode {
-    lengths[order[i] - 48] = z_bits(rt_inflate_st, 3)
+    lengths[order[i] - 48] = z_bits(z, 3)
   }
-  let clen = z_table_new(19)
-  z_table_build(clen, lengths, 19)
+  let clen = z.clen
+  z_table_build(z, clen, lengths, 19)
 
   var n = 0
   while n < nlen + ndist {
-    let sym = z_decode(rt_inflate_st, clen)
+    let sym = z_decode(z, clen)
     if sym < 0 { return 0 }
     if sym < 16 {
       lengths[n] = sym
@@ -319,10 +339,10 @@ function z_dynamic_tables(rt_inflate_st: mut RtInflateState, lit: words, dist: w
       if sym == 16 {
         if n == 0 { return 0 }
         prev = lengths[n - 1]
-        rep = 3 + z_bits(rt_inflate_st, 2)
+        rep = 3 + z_bits(z, 2)
       }
-      if sym == 17 { rep = 3 + z_bits(rt_inflate_st, 3) }
-      if sym == 18 { rep = 11 + z_bits(rt_inflate_st, 7) }
+      if sym == 17 { rep = 3 + z_bits(z, 3) }
+      if sym == 18 { rep = 11 + z_bits(z, 7) }
       for k in 0 .. rep {
         if n < 320 {
           lengths[n] = prev
@@ -331,51 +351,51 @@ function z_dynamic_tables(rt_inflate_st: mut RtInflateState, lit: words, dist: w
       }
     }
   }
-  z_table_build(lit, lengths, nlen)
+  z_table_build(z, lit, lengths, nlen)
   # the distance lengths follow the literal ones in the same buffer
-  let dl: words = words(32)
+  let dl = z.dl
   for i in 0 .. ndist { dl[i] = lengths[nlen + i] }
-  z_table_build(dist, dl, ndist)
-  free(dl)
-  free(lengths)
-  free(clen)
+  z_table_build(z, dist, dl, ndist)
   return 1
 }
 
-# Inflate a raw DEFLATE stream. Returns bytes written, or -1.
-function z_inflate(rt_inflate_st: mut RtInflateState, src: pointer, len: int, out: pointer, cap: int) -> int {
-  z_start(rt_inflate_st, src, len)
-  let lit = z_table_new(288)
-  let dist = z_table_new(30)
+# Inflate a raw DEFLATE stream in context z. Returns bytes written, or -1.
+export function z_inflate_in(z: ZInflate, src: pointer, len: int, out: pointer, cap: int) -> int {
+  z_start(z, src, len)
+  let lit = z.lit
+  let dist = z.dist
   var w = 0
   var final = 0
   while final == 0 {
-    final = z_bits(rt_inflate_st, 1)
-    let btype = z_bits(rt_inflate_st, 2)
-    if rt_inflate_st.z_err != 0 { return -1 }
-    if btype == 0 { w = z_stored(rt_inflate_st, out, w, cap) }
+    final = z_bits(z, 1)
+    let btype = z_bits(z, 2)
+    if z.err != 0 { return -1 }
+    if btype == 0 { w = z_stored(z, out, w, cap) }
     if btype == 1 {
-      z_fixed_tables(lit, dist)
-      w = z_codes(rt_inflate_st, out, w, cap, lit, dist)
+      z_fixed_tables(z, lit, dist)
+      w = z_codes(z, out, w, cap, lit, dist)
     }
     if btype == 2 {
-      if z_dynamic_tables(rt_inflate_st, lit, dist) == 0 { return -1 }
-      w = z_codes(rt_inflate_st, out, w, cap, lit, dist)
+      if z_dynamic_tables(z, lit, dist) == 0 { return -1 }
+      w = z_codes(z, out, w, cap, lit, dist)
     }
     if btype == 3 { return -1 }
     if w < 0 { return -1 }
   }
-  free(lit)
-  free(dist)
   return w
 }
 
+# the program thread's inflate, in the context its state holds
+function z_inflate(rt_inflate_st: RtInflateState, src: pointer, len: int, out: pointer, cap: int) -> int { return z_inflate_in(rt_inflate_st.z_ctx, src, len, out, cap) }
+function z_uncompress(rt_inflate_st: RtInflateState, src: pointer, len: int, out: pointer, cap: int) -> int { return z_uncompress_in(rt_inflate_st.z_ctx, src, len, out, cap) }
+function z_gunzip(rt_inflate_st: RtInflateState, src: pointer, len: int, out: pointer, cap: int) -> int { return z_gunzip_in(rt_inflate_st.z_ctx, src, len, out, cap) }
+
 # zlib wrapper (RFC 1950): two header bytes, then DEFLATE, then Adler-32.
-function z_uncompress(rt_inflate_st: mut RtInflateState, src: pointer, len: int, out: pointer, cap: int) -> int {
+export function z_uncompress_in(z: ZInflate, src: pointer, len: int, out: pointer, cap: int) -> int {
   if len < 2 { return -1 }
   let cmf = src[0]
   if (cmf & 15) != 8 { return -1 }
-  return z_inflate(rt_inflate_st, offset(src, 2), len - 2, out, cap)
+  return z_inflate_in(z, offset(src, 2), len - 2, out, cap)
 }
 
 # gzip framing (RFC 1952): a 10-byte header (magic 1f 8b, CM=8, FLG, 4-byte MTIME,
@@ -384,7 +404,7 @@ function z_uncompress(rt_inflate_st: mut RtInflateState, src: pointer, len: int,
 # the header + optional fields, inflate the body, and ignore the trailer — the
 # CRC is a redundancy check, not needed to decode (PNG likewise ignores ancillary
 # CRCs). Returns bytes written, or -1.
-function z_gunzip(rt_inflate_st: mut RtInflateState, src: pointer, len: int, out: pointer, cap: int) -> int {
+export function z_gunzip_in(z: ZInflate, src: pointer, len: int, out: pointer, cap: int) -> int {
   if len < 18 { return -1 }                 # 10 header + 8 trailer minimum
   if src[0] != 31 { return -1 }             # 0x1f
   if src[1] != 139 { return -1 }            # 0x8b
@@ -406,5 +426,5 @@ function z_gunzip(rt_inflate_st: mut RtInflateState, src: pointer, len: int, out
   }
   if (flg & 2) != 0 { pos += 2 }       # FHCRC: 2-byte header CRC
   if pos + 8 > len { return -1 }
-  return z_inflate(rt_inflate_st, offset(src, pos), len - pos - 8, out, cap)
+  return z_inflate_in(z, offset(src, pos), len - pos - 8, out, cap)
 }

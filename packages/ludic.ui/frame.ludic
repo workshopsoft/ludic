@@ -5,6 +5,7 @@
 
 export function ui_show(ui_st: mut UiState, screen: string, view: UiView, x: float, y: float, w: float, h: float) -> void {
   in_read(ui_st)
+  ct_opt_forget(ui_st)                           # a clamp found by a build this frame did not show
   dv_before(ui_st)
   ui_st.an_frame += 1
   ui_viewport(ui_st, w, h)
@@ -12,6 +13,7 @@ export function ui_show(ui_st: mut UiState, screen: string, view: UiView, x: flo
   if root == null { return }
   ui_place(ui_st, root, x, y, w, h)
   nt_fired_clear(ui_st)
+  ct_opt_flush(ui_st)                            # a select's value on a disabled option, set now
   sc_undo(root)
   sc_update(ui_st, root)
   fr_pointer(ui_st, root)

@@ -1,0 +1,47 @@
+# keep_near_test.ludic - a file-backed mesh's tiles kept by a distance the game answers (its players'
+# zones): a zone round one corner brings in its tile only, growing it brings in its neighbours, an
+# edge nudged back and forth changes nothing, and a zone moved far away lets them all go
+import "ludic.nav"
+import "ludic.base"
+import "fakes/meadow.ludic"
+program KeepNearTest {
+  numbers float
+
+  state NearState {
+    x: float = 0.0
+    z: float = 0.0
+    r: float = 0.0
+  }
+  # metres from (x, z) to the zone's edge, 0 inside: what ludic.zones' zones_nearest answers
+  function near(near_st: NearState, x: float, z: float) -> float {
+    let d = Math.sqrt((x - near_st.x) * (x - near_st.x) + (z - near_st.z) * (z - near_st.z))
+    return Math.max(d - near_st.r, 0.0)
+  }
+  function in_zone(nav_st: NavState) -> int { return nav_tiles_keep_near(nav_st, NAV_PERSON, fn near, 46.0, 200.0) }
+
+  test "tiles come in within the zone, an edge nudged back and forth changes nothing, and a far zone lets them go" (nav_st: mut NavState, near_st: mut NearState) {
+    let g = ground(128, 0)
+    expect(nav_tiled(nav_st, NAV_PERSON, 0.0, 0.0, 64.0, 16, 4096))
+    for tz in 0 .. 2 { for tx in 0 .. 2 { expect(nav_tile_build(nav_st, NAV_PERSON, tx, tz, g, new NavConfig) > 0) } }
+    let path = Os.temp_dir() + "/ludic_nav_near.navmesh"
+    expect(nav_save_file(nav_st, NAV_PERSON, path))
+    nav_reset(nav_st)
+    expect(nav_load_index(nav_st, NAV_PERSON, path))
+    near_st.x = 10.0
+    near_st.z = 10.0
+    near_st.r = 5.0
+    expect_eq(in_zone(nav_st), 1)
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 1)
+    near_st.r = 80.0
+    expect_eq(in_zone(nav_st), 3)
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 4)
+    for k in 0 .. 20 {
+      near_st.r = 5.0 + float(k % 2) * 100.0
+      expect_eq(in_zone(nav_st), 0)
+    }
+    near_st.x = 2000.0
+    expect_eq(in_zone(nav_st), 4)
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), 0)
+    nav_reset(nav_st)
+  }
+}

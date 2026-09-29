@@ -1,0 +1,66 @@
+# baked.ludic - what is deterministic made at build time (`ludic bake`) by the game's own code, and
+# read at run time. Every baked file: a 32-byte header - "LBAK", the header's format, the bake's
+# generator version, the payload's offset, a hash of its inputs, the payload's length - its key, and
+# the payload, whose layout is the bake's own. The runtime checks the header, never the inputs:
+# `ludic bake --check` holds a baked file to its inputs at build time.
+export const BAKE_FORMAT: int = 1
+const BAKE_HEAD: int = 32
+
+export state BakeState {
+  said: []string = new []string       # the keys a dev build has said it made at run time
+}
+
+# a map's bake: assets/baked/maps/<map>/<file>, which ships in that map's own pack (.lmap), never the
+# game's; anything else: assets/baked/<file>, in the game's pack
+export function baked_path(map: string, file: string) -> string {
+  if len(map) == 0 { return "assets/baked/" + file }
+  return "assets/baked/maps/" + map + "/" + file
+}
+
+# the payload of a baked file that is this bake at this version, or null (missing, not a baked file,
+# another format, another key or version: the caller makes it at run time)
+export function baked_open(path: string, key: string, version: int) -> []byte {
+  let b = Fs.read_bytes(path)
+  if b == null or len(b) < BAKE_HEAD { return null }
+  let off = bk_head_ok(b, len(b), key, version)
+  if off < 0 or long(off) + bk_u64(b, 24) > long(len(b)) { return null }
+  return view(b, off, int(bk_u64(b, 24)))        # the payload, in place: no copy of a large bake
+}
+
+# the payload's offset when `b` (its first `have` bytes) is this bake's header and key, else -1
+function bk_head_ok(b: []byte, have: int, key: string, version: int) -> int {
+  if have < BAKE_HEAD or b[0] != 76 or b[1] != 66 or b[2] != 65 or b[3] != 75 { return -1 }   # "LBAK"
+  if bk_u32(b, 4) != BAKE_FORMAT or bk_u32(b, 8) != version { return -1 }
+  let off = bk_u32(b, 12)
+  if off < BAKE_HEAD + len(key) + 1 or have < BAKE_HEAD + len(key) + 1 { return -1 }
+  for i in 0 .. len(key) { if b[BAKE_HEAD + i] != key[i] { return -1 } }
+  if b[BAKE_HEAD + len(key)] != 0 { return -1 }
+  return off
+}
+
+# a dev build's line, once a key: the bake is missing or stale, so it is made at run time
+export function bake_missing(bake_st: mut BakeState, key: string) -> void {
+  for i in 0 .. len(bake_st.said) { if bake_st.said[i] == key { return } }
+  push(bake_st.said, key)
+  print(`bake: {key} missing or stale - made at run time (ludic bake)`)
+}
+
+# a baked file written: its header, key and `n` bytes of payload; the directories made
+export function bake_write(path: string, key: string, version: int, inputs_hash: long, payload: []byte, n: int) -> bool {
+  let off = BAKE_HEAD + ((len(key) + 1 + 7) / 8) * 8
+  let b = buffer(off + n)
+  b[0] = 76
+  b[1] = 66
+  b[2] = 65
+  b[3] = 75
+  bk_put32(b, 4, BAKE_FORMAT)
+  bk_put32(b, 8, version)
+  bk_put32(b, 12, off)
+  bk_put64(b, 16, inputs_hash)
+  bk_put64(b, 24, long(n))
+  for i in 0 .. len(key) { b[BAKE_HEAD + i] = key[i] }
+  for i in 0 .. n { b[off + i] = payload[i] }
+  let slash = bk_last_slash(path)
+  if slash > 0 { Fs.mkdir(path[0 .. slash]) }
+  return Fs.write_bytes(path, b, off + n)
+}
