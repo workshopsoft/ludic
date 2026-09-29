@@ -1,0 +1,508 @@
+# syntax_gen.ludic — one vocabulary, written into every editor's grammar and checked everywhere
+# else (`ludic-dev syntax [--check]`).
+#
+# The vocabulary is what `ludicc --emit-syntax` prints (selfhost/frontend/vocab.ludic, held to the
+# parser's own recognisers). From it, between marked lines, this writes:
+#
+#   tools/ludic-tools/ludic_syntax.h                  LUDIC_KW_DECL / _CLAUSE / _STMT, LUDIC_TYPES,
+#                                                     LUDIC_PHASES, LUDIC_ATTRIBUTES
+#   tools/ludic-tools/lsp.ludic, lsp/types.ludic      the server's word tests (keyword, type, phase,
+#                                                     the words that may also be names)
+#   tools/editors/shared/ludic.tmLanguage.json        every pattern marked "ludic-dev syntax: <group>"
+#   (and its copy in tools/editors/vscode/syntaxes/)
+#   tools/editors/jetbrains/.../LudicTokens.kt        LudicVocabulary's keyword, type and phase sets
+#   tools/editors/emacs/ludic-mode.el                 the keyword, type and phase lists
+#
+# and it checks what cannot be written: that docs/language has a page for every keyword, type,
+# phase and attribute, and that the parser tests no word and reads no attribute the vocabulary
+# lacks (a scan of selfhost/frontend) - nor the vocabulary lists one the parser never tests.
+#
+#   ludic-dev syntax           rewrite the marked regions from the vocabulary
+#   ludic-dev syntax --check   fail, naming each, on a region behind the vocabulary or a gap
+
+var g_sx: JVal = null
+var g_sx_prob: []pointer = new []pointer
+
+# the vocabulary, from bin/ludicc (null when that compiler has no --emit-syntax)
+function sx_vocab() -> JVal {
+  if g_sx != null { return g_sx }
+  ensure_ludicc()
+  let js = tmp_path("syntax.json")
+  if not shq(`bin/ludicc --emit-syntax > {js} 2> {tmp_path("syntax.err")}`) { return null }
+  let s = read_file(js)
+  if s == null or slen(s) == 0 or s[0] != '{' { return null }
+  g_sx = json_parse(s)
+  return g_sx
+}
+
+# the `key` of every entry of `list` whose role is `role` ("" for all)
+function sx_words(list: pointer, key: pointer, role: pointer) -> []pointer {
+  let out = new []pointer
+  let xs = j_get(g_sx, list)
+  var i = 0
+  while i < len(xs.kids) {
+    let e = xs.kids[i]
+    if slen(role) == 0 or j_get(e, "role").s == role { push(out, j_get(e, key).s) }
+    i += 1
+  }
+  return out
+}
+function sx_kw(role: pointer) -> []pointer { return sx_words("keywords", "word", role) }
+# a statement is written like one, and and/or/not highlight with them
+function sx_stmt() -> []pointer { return set_union(sx_kw("statement"), sx_kw("operator")) }
+# every keyword that is not a literal (true, false and null lex as booleans)
+function sx_all_kw() -> []pointer { return set_union(set_union(sx_kw("declaration"), sx_kw("modifier")), sx_stmt()) }
+# the words the language server lets stand as a name where one is written (`var view = ...`,
+# `a.model`): every word the parser does not reserve, and every declaring or modifying word
+function sx_contextual() -> []pointer {
+  let out = new []pointer
+  let xs = j_get(g_sx, "keywords")
+  var i = 0
+  while i < len(xs.kids) {
+    let e = xs.kids[i]
+    let r = j_get(e, "role").s
+    if (j_get(e, "reserved").b == 0 and r != "constant" and r != "operator") or r == "declaration" or r == "modifier" { push(out, j_get(e, "word").s) }
+    i += 1
+  }
+  return out
+}
+function sx_attr_names() -> []pointer {
+  let out = new []pointer
+  let xs = sx_words("attributes", "name", "")
+  var i = 0
+  while i < len(xs) { push(out, "@" + xs[i]);  i += 1 }
+  return out
+}
+
+# ---- writing a list in each file's own spelling ----
+# words quoted with `q`, joined by `sep`, after `lead` on the first line and under `indent` on the
+# rest, wrapped before column `width`; `last` follows the final word (a C table's terminating 0)
+function sx_wrap(words: []pointer, q: pointer, sep: pointer, lead: pointer, indent: pointer, width: int, last: pointer) -> pointer {
+  var out = lead
+  var col = slen(lead)
+  var fresh = true
+  var i = 0
+  while i < len(words) {
+    var item = q + words[i] + q
+    if i + 1 < len(words) { item = item + s_trim(sep) } else { item = item + last }
+    var gap = ""
+    if not fresh { gap = sep_gap(sep) }
+    if not fresh and col + slen(gap) + slen(item) > width {
+      out = out + "\n" + indent
+      col = slen(indent)
+      gap = ""
+    }
+    out = out + gap + item
+    col = col + slen(gap) + slen(item)
+    fresh = false
+    i += 1
+  }
+  return out
+}
+# the spaces a separator puts between two items (", " -> " ", "," -> "")
+function sep_gap(sep: pointer) -> pointer {
+  if s_ends(sep, " ") { return " " }
+  return ""
+}
+function sx_c_table(name: pointer, words: []pointer) -> pointer {
+  return "static const char* " + name + "[] = {\n" + sx_wrap(words, "\"", ",", "    ", "    ", 100, ", 0") + "\n};\n"
+}
+function sx_kt_set(name: pointer, words: []pointer) -> pointer {
+  return "    val " + name + " = setOf(\n" + sx_wrap(words, "\"", ", ", "        ", "        ", 100, "") + "\n    )\n"
+}
+function sx_el_list(name: pointer, words: []pointer) -> pointer {
+  return "(defconst " + name + "\n" + sx_wrap(words, "\"", " ", "  '(", "    ", 96, "))") + "\n"
+}
+# a Ludic word test: `if (w == "a") or ... { return true }`, six to a line
+function sx_ludic_test(fname: pointer, words: []pointer, ind: pointer) -> pointer {
+  var out = ind + "function " + fname + "(w: pointer) -> bool {\n"
+  var i = 0
+  while i < len(words) {
+    var line = ind + "  if "
+    var k = 0
+    while k < 6 and i < len(words) {
+      if k > 0 { line = line + " or " }
+      line = line + "(w == \"" + words[i] + "\")"
+      k += 1
+      i += 1
+    }
+    out = out + line + " { return true }\n"
+  }
+  return out + ind + "  return false\n" + ind + "}\n"
+}
+# a TextMate alternation, as it is written inside a JSON string: \\b(a|b|c)\\b
+function sx_tm_alt(words: []pointer) -> pointer {
+  var out = ""
+  var i = 0
+  while i < len(words) {
+    if i > 0 { out = out + "|" }
+    out = out + words[i]
+    i += 1
+  }
+  return "\\\\b(" + out + ")\\\\b"
+}
+
+# ---- the regions ----
+function sx_begin_note() -> pointer { return "ludic-dev syntax: begin - generated from `ludicc --emit-syntax` (selfhost/frontend/vocab.ludic); run `ludic-dev syntax`, do not edit" }
+function sx_header_region() -> pointer {
+  var o = "/* " + sx_begin_note() + " */\n"
+  o = o + sx_c_table("LUDIC_KW_DECL", sx_kw("declaration"))
+  o = o + sx_c_table("LUDIC_KW_CLAUSE", sx_kw("modifier"))
+  o = o + sx_c_table("LUDIC_KW_STMT", sx_stmt())
+  o = o + sx_c_table("LUDIC_TYPES", sx_words("types", "name", ""))
+  o = o + sx_c_table("LUDIC_PHASES", sx_words("phases", "name", ""))
+  o = o + sx_c_table("LUDIC_ATTRIBUTES", sx_words("attributes", "name", ""))
+  return o + "/* ludic-dev syntax: end */\n"
+}
+function sx_kotlin_region() -> pointer {
+  var o = "    // " + sx_begin_note() + "\n"
+  o = o + sx_kt_set("DECL", sx_kw("declaration"))
+  o = o + sx_kt_set("CLAUSE", sx_kw("modifier"))
+  o = o + sx_kt_set("STMT", sx_stmt())
+  o = o + sx_kt_set("PRIMITIVES", sx_words("types", "name", ""))
+  o = o + sx_kt_set("PHASES", sx_words("phases", "name", ""))
+  return o + "    // ludic-dev syntax: end\n"
+}
+function sx_emacs_region() -> pointer {
+  var o = ";; " + sx_begin_note() + "\n"
+  o = o + sx_el_list("ludic--declaration-keywords", sx_kw("declaration"))
+  o = o + sx_el_list("ludic--clause-keywords", sx_kw("modifier"))
+  o = o + sx_el_list("ludic--statement-keywords", sx_stmt())
+  o = o + sx_el_list("ludic--types", sx_words("types", "name", ""))
+  o = o + sx_el_list("ludic--phases", sx_words("phases", "name", ""))
+  return o + ";; ludic-dev syntax: end\n"
+}
+function sx_lsp_region() -> pointer {
+  var o = "  # " + sx_begin_note() + "\n"
+  o = o + sx_ludic_test("is_type_word", sx_words("types", "name", ""), "  ")
+  o = o + sx_ludic_test("is_phase_word", sx_words("phases", "name", ""), "  ")
+  o = o + sx_ludic_test("is_keyword_word", sx_all_kw(), "  ")
+  return o + "  # ludic-dev syntax: end\n"
+}
+function sx_lsp_types_region() -> pointer {
+  return "# " + sx_begin_note() + "\n" + sx_ludic_test("is_contextual_word", sx_contextual(), "") + "# ludic-dev syntax: end\n"
+}
+
+# `text` with the lines from the one holding "ludic-dev syntax: begin" to the one holding
+# "ludic-dev syntax: end" replaced by `region`; null when the markers are not there
+function sx_splice(text: pointer, region: pointer) -> pointer {
+  let b = s_index(text, "ludic-dev syntax: begin", 0)
+  if b < 0 { return null }
+  let e = s_index(text, "ludic-dev syntax: end", b)
+  if e < 0 { return null }
+  var ls = b
+  while ls > 0 and text[ls - 1] != '\n' { ls -= 1 }
+  var le = e
+  while text[le] != 0 and text[le] != '\n' { le += 1 }
+  if text[le] == '\n' { le += 1 }
+  return sslice(text, 0, ls) + region + sslice(text, le, slen(text))
+}
+
+# the TextMate grammar: each pattern whose line says "comment": "ludic-dev syntax: <group>" has its
+# "match" on that line rewritten
+function sx_tm_group(group: pointer) -> pointer {
+  if group == "declaration" { return sx_tm_alt(sx_kw("declaration")) }
+  if group == "modifier" { return sx_tm_alt(sx_kw("modifier")) }
+  if group == "statement" { return sx_tm_alt(sx_kw("statement")) }
+  if group == "operator" { return sx_tm_alt(sx_kw("operator")) }
+  if group == "constant" { return sx_tm_alt(sx_kw("constant")) }
+  if group == "types" { return sx_tm_alt(sx_words("types", "name", "")) }
+  if group == "phases" { return sx_tm_alt(sx_words("phases", "name", "")) }
+  if group == "phase-clause" {
+    let alt = sx_tm_alt(sx_words("phases", "name", ""))
+    return "\\\\b(phase)\\\\s+" + sslice(alt, 3, slen(alt))
+  }
+  return null
+}
+function sx_tm_rewrite(text: pointer) -> pointer {
+  let marker = "\"comment\": \"ludic-dev syntax: "
+  var out = ""
+  var i = 0
+  let n = slen(text)
+  while i < n {
+    let ln = line_at(text, i)
+    i = i + slen(ln) + 1
+    var line = ln
+    let m = s_index(ln, marker, 0)
+    if m >= 0 {
+      let g0 = m + slen(marker)
+      let group = sslice(ln, g0, s_index(ln, "\"", g0))
+      let alt = sx_tm_group(group)
+      let mq = s_index(ln, "\"match\": \"", 0)
+      if alt == null or mq < 0 { push(g_sx_prob, `ludic.tmLanguage.json: an unknown group "{group}" or no "match" beside it`) }
+      else {
+        let a = mq + 10
+        var e = a
+        while ln[e] != 0 and ln[e] != '"' { if ln[e] == '\\' { e += 1 };  e += 1 }
+        line = sslice(ln, 0, a) + alt + sslice(ln, e, slen(ln))
+      }
+    }
+    out = out + line
+    if i <= n { out = out + "\n" }
+  }
+  return out
+}
+
+# the files and what each should hold; kind: "region" (between the markers) or "tm"
+function sx_targets() -> []pointer {
+  let t = new []pointer
+  push(t, "tools/ludic-tools/ludic_syntax.h")
+  push(t, "tools/ludic-tools/lsp.ludic")
+  push(t, "tools/ludic-tools/lsp/types.ludic")
+  push(t, "tools/editors/jetbrains/src/main/kotlin/io/ludic/ide/LudicTokens.kt")
+  push(t, "tools/editors/emacs/ludic-mode.el")
+  push(t, "tools/editors/shared/ludic.tmLanguage.json")
+  push(t, "tools/editors/vscode/syntaxes/ludic.tmLanguage.json")
+  return t
+}
+# what `path` should read, from what it reads now; null (and a problem) when it cannot be written
+function sx_regenerate(path: pointer, text: pointer) -> pointer {
+  if s_ends(path, ".tmLanguage.json") { return sx_tm_rewrite(text) }
+  var region: pointer = null
+  if s_ends(path, "ludic_syntax.h") { region = sx_header_region() }
+  if s_ends(path, "ludic-tools/lsp.ludic") { region = sx_lsp_region() }
+  if s_ends(path, "lsp/types.ludic") { region = sx_lsp_types_region() }
+  if s_ends(path, "LudicTokens.kt") { region = sx_kotlin_region() }
+  if s_ends(path, "ludic-mode.el") { region = sx_emacs_region() }
+  let out = sx_splice(text, region)
+  if out == null { push(g_sx_prob, `{path}: no "ludic-dev syntax: begin" ... "end" lines to write between`) }
+  return out
+}
+
+# ---- what cannot be generated, checked ----
+# the words a file's text quotes (every "..." in it), for "does it carry every keyword"
+function sx_quoted(text: pointer) -> []pointer {
+  let out = new []pointer
+  var i = 0
+  let n = slen(text)
+  while i < n {
+    if text[i] == '"' {
+      var j = i + 1
+      while j < n and text[j] != '"' and text[j] != '\n' { j += 1 }
+      set_add(out, sslice(text, i + 1, j))
+      i = j + 1
+    } else { i += 1 }
+  }
+  return out
+}
+# the alternations of a TextMate grammar: every a|b|c word inside \b( )\b
+function sx_tm_words(text: pointer) -> []pointer {
+  let out = new []pointer
+  let open = bx3('\\', 'b', '(')
+  var i = 0
+  while true {
+    let p = s_index(text, open, i)
+    if p < 0 { break }
+    let e = s_index(text, ")", p)                  # an alternation holds no ')'; the \\b after it is escaped twice here
+    if e < 0 { break }
+    let alts = split_pipe(sslice(text, p + 3, e))
+    var k = 0
+    while k < len(alts) { set_add(out, alts[k]);  k += 1 }
+    i = e + 1
+  }
+  return out
+}
+# every word of `want` missing from `have` is a problem naming the file
+function sx_need(file: pointer, what: pointer, want: []pointer, have: []pointer) -> int {
+  var missing = 0
+  var i = 0
+  while i < len(want) {
+    if not set_has(have, want[i]) {
+      push(g_sx_prob, `{file} is missing the {what} {want[i]}`)
+      missing += 1
+    }
+    i += 1
+  }
+  return missing
+}
+# does `file` carry every keyword, type and phase of the vocabulary? (the number missing)
+function sx_carries(file: pointer) -> int {
+  let t = read_file(file)
+  if t == null { push(g_sx_prob, `{file}: cannot read it`);  return 1 }
+  var have: []pointer = null
+  if s_ends(file, ".tmLanguage.json") { have = sx_tm_words(t) } else { have = sx_quoted(t) }
+  # the server's other file holds only the words that may stand as names
+  if s_ends(file, "lsp/types.ludic") { return sx_need(file, "keyword that may be a name", sx_contextual(), have) }
+  var n = sx_need(file, "keyword", sx_all_kw(), have)
+  n += sx_need(file, "type", sx_words("types", "name", ""), have)
+  n += sx_need(file, "phase", sx_words("phases", "name", ""), have)
+  return n
+}
+
+# docs/language: every keyword, type, phase and attribute is some page's token
+function sx_docs() -> int {
+  let tokens = new []pointer
+  let pairs = new []pointer
+  collect_docs(tokens, pairs)
+  var n = sx_need("docs/language", "page for the keyword", set_union(sx_all_kw(), sx_kw("constant")), tokens)
+  n += sx_need("docs/language", "page for the type", sx_words("types", "name", ""), tokens)
+  n += sx_need("docs/language", "page for the phase", sx_words("phases", "name", ""), tokens)
+  n += sx_need("docs/language", "page for the attribute", sx_attr_names(), tokens)
+  return n
+}
+
+# the parser, scanned: the lower-case words it tests (is_id("w"), text == "w") and the attributes
+# it reads (a == "Name", ann == "Name") across selfhost/frontend
+function sx_parser_scan(words: []pointer, attrs: []pointer) -> void {
+  let list = capture("ls selfhost/frontend/*.ludic")
+  var i = 0
+  let n = slen(list)
+  while i < n {
+    let path = s_trim(line_at(list, i))
+    i = i + slen(line_at(list, i)) + 1
+    if slen(path) == 0 or s_ends(path, "/vocab.ludic") { continue }
+    let t = read_file(path)
+    if t == null { continue }
+    add_lower(words, collect_after(t, "is_id(" + dq()))
+    add_lower(words, collect_after(t, "is_kw(" + dq()))
+    add_lower(words, collect_after(t, "text == " + dq()))
+    sx_add_attrs(attrs, collect_after(t, " a == " + dq()))
+    sx_add_attrs(attrs, collect_after(t, "(a == " + dq()))
+    sx_add_attrs(attrs, collect_after(t, " ann == " + dq()))
+    sx_add_attrs(attrs, collect_after(t, "(ann == " + dq()))
+  }
+}
+function sx_add_attrs(out: []pointer, src: []pointer) -> void {
+  var i = 0
+  while i < len(src) {
+    let w = src[i]
+    if slen(w) > 0 and sx_ident(w) and not (w == "gltf") { set_add(out, w) }   # "gltf": @Asset's argument
+    i += 1
+  }
+}
+function sx_ident(w: pointer) -> bool {
+  var i = 0
+  while w[i] != 0 {
+    let c = w[i]
+    if not ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_') { return false }
+    i += 1
+  }
+  return true
+}
+# both directions: nothing the parser tests is missing from the vocabulary, and nothing the
+# vocabulary lists as read is something the parser never tests
+function sx_parser() -> int {
+  let words = new []pointer
+  let attrs = new []pointer
+  sx_parser_scan(words, attrs)
+  if len(words) == 0 { push(g_sx_prob, "could not read any word the parser tests from selfhost/frontend");  return 1 }
+  # words the parser tests that are not the language's words: a builtin it notes, a type after `numbers`
+  let known = set_union(set_union(sx_all_kw(), sx_kw("constant")), sx_words("types", "name", ""))
+  let vattrs = sx_words("attributes", "name", "")
+  var n = 0
+  var i = 0
+  while i < len(words) {
+    let w = words[i]
+    if not set_has(known, w) and not set_has(vattrs, w) and not (w == "text_of") {
+      push(g_sx_prob, `the parser tests the word {w}, which vocab.ludic lacks - add its row and run ludic-dev syntax`)
+      n += 1
+    }
+    i += 1
+  }
+  i = 0
+  while i < len(attrs) {
+    if not set_has(vattrs, attrs[i]) {
+      push(g_sx_prob, `the parser reads @{attrs[i]}, which vocab.ludic lacks - add its row and run ludic-dev syntax`)
+      n += 1
+    }
+    i += 1
+  }
+  let kws = set_union(sx_all_kw(), sx_kw("constant"))
+  i = 0
+  while i < len(kws) {
+    if not set_has(words, kws[i]) { push(g_sx_prob, `vocab.ludic lists the keyword {kws[i]}, which the parser never tests`);  n += 1 }
+    i += 1
+  }
+  let checked = sx_words("attributes", "name", "checked")
+  i = 0
+  while i < len(checked) {
+    if not set_has(attrs, checked[i]) { push(g_sx_prob, `vocab.ludic lists @{checked[i]} as read, and the parser never reads it`);  n += 1 }
+    i += 1
+  }
+  return n
+}
+
+# ---- the command ----
+function sx_report(what: pointer) -> int {
+  if len(g_sx_prob) == 0 { return 0 }
+  err(`{what}:\n`)
+  var i = 0
+  while i < len(g_sx_prob) { err(`  - {g_sx_prob[i]}\n`);  i += 1 }
+  return 1
+}
+# usage: ludic-dev syntax [--check]
+function cmd_syntax_gen() -> int {
+  let check = argn(2, "") == "--check"
+  if sx_vocab() == null { err("ludic-dev syntax: bin/ludicc has no --emit-syntax (run ludic-dev build)\n");  return 2 }
+  g_sx_prob = new []pointer
+  let ts = sx_targets()
+  var changed = 0
+  var i = 0
+  while i < len(ts) {
+    let path = ts[i]
+    i += 1
+    let text = read_file(path)
+    if text == null { push(g_sx_prob, `{path}: cannot read it`);  continue }
+    let want = sx_regenerate(path, text)
+    if want == null or want == text { continue }
+    if check { push(g_sx_prob, `{path} is behind the vocabulary - run ludic-dev syntax`) }
+    else {
+      write_file(path, want)
+      print(`  wrote {path}`)
+      changed += 1
+    }
+  }
+  if check {
+    i = 0
+    while i < len(ts) { sx_carries(ts[i]);  i += 1 }
+    sx_docs()
+    sx_parser()
+    return sx_report("the vocabulary and what is written from it disagree")
+  }
+  if changed == 0 { print("  every grammar already says what ludicc --emit-syntax does") }
+  return sx_report("ludic-dev syntax")
+}
+
+# ---- the regression suite's cases (test.ludic): one line each ----
+function syntax_cases() -> void {
+  print("== one vocabulary: ludic syntax --json, and every grammar, the server and the docs against it ==")
+  if not shq("bin/ludic syntax --json > /dev/null 2>&1") or sx_vocab() == null { bad("ludic syntax --json printed no vocabulary");  return }
+  # the words editor tooling had lost track of (the scripting proposal's R8)
+  let r8 = ["module", "uses", "port", "bind", "action", "reducer", "dispatch", "registry", "def", "open", "component", "prop", "view", "alias", "friend", "unsafe", "numbers", "of", "as", "from", "attach", "detach"]
+  let kws = sx_all_kw()
+  var gone = ""
+  var i = 0
+  while i < len(r8) { if not set_has(kws, r8[i]) { gone = gone + " " + r8[i] };  i += 1 }
+  if slen(gone) == 0 { ok("ludic syntax --json: every keyword, among them module, uses, port, bind, action, reducer, dispatch, registry, def, component, view") }
+  else { bad2("ludic syntax --json lacks keywords", gone) }
+  let ats = sx_words("attributes", "name", "")
+  let r8a = ["Ref", "OneOf", "Range", "Unit", "Asset", "Color", "Node", "Clip", "Material", "Tint", "Derived", "Text", "Multiline", "Key", "AppendOnly", "ByKey", "PerMap", "Chunked", "max", "owns", "frame", "Sync", "Computed", "alloc_ok"]
+  gone = ""
+  i = 0
+  while i < len(r8a) { if not set_has(ats, r8a[i]) { gone = gone + " @" + r8a[i] };  i += 1 }
+  if slen(gone) == 0 { ok("ludic syntax --json: every attribute, with where it goes, its arguments and its doc") }
+  else { bad2("ludic syntax --json lacks attributes", gone) }
+  let ts = sx_targets()
+  i = 0
+  while i < len(ts) {
+    g_sx_prob = new []pointer
+    let path = ts[i]
+    i += 1
+    let text = read_file(path)
+    var behind = false
+    if text != null {
+      let want = sx_regenerate(path, text)
+      behind = want == null or not (want == text)
+    }
+    let missing = sx_carries(path)
+    if missing == 0 and not behind { ok(`{path} carries the vocabulary's words (as ludic-dev syntax writes them)`) }
+    else if missing > 0 { bad2(`{path} is missing words`, g_sx_prob[0]) }
+    else { bad2(`{path} is behind the vocabulary`, "run ludic-dev syntax") }
+  }
+  g_sx_prob = new []pointer
+  if sx_docs() == 0 { ok("docs/language has a page for every keyword, type, phase and attribute") }
+  else { bad2(`docs/language lacks {string(len(g_sx_prob))} page(s)`, g_sx_prob[0]) }
+  g_sx_prob = new []pointer
+  if sx_parser() == 0 { ok("the parser tests no word and reads no attribute the vocabulary lacks, and the reverse") }
+  else { bad2("the parser and vocab.ludic disagree", g_sx_prob[0]) }
+}

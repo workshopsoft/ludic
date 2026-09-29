@@ -2324,6 +2324,7 @@ ludic test packages/ludic.base          # the test programs under a directory (a
 ludic build --check                      # every check a build makes, nothing written
 ludic build --check --diagnostics=json   # the same, every error as a JSON array on stdout
 ludic schema -o build/schema.json        # records, registries, entries, consts, components and natives, for editors
+ludic syntax --json                      # the language's vocabulary: keywords, declarations, types, phases, attributes, operators
 ludic deps                               # how tangled the modules are, as the compiler resolved them
 ludic deps --check tests/deps-baseline.txt   # fail when a number rose (--baseline FILE writes them)
 
@@ -2438,6 +2439,16 @@ Markdown, so documentation gets the same highlighting and checking as source.
 Plugins for VS Code and JetBrains IDEs, plus configuration for Neovim, Helix,
 Emacs, Sublime and Zed, are in `tools/editors/` — see
 [tools/editors/README.md](tools/editors/README.md).
+
+The vocabulary every editor highlights with is the compiler's: `ludic syntax
+--json` (`ludicc --emit-syntax`) prints every keyword with its role and whether
+the parser reserves it, every declaration's form, the built-in types and phases,
+every attribute with what it goes on, its arguments and what it means, the
+operators and the literal forms. The grammars in `tools/editors/`, the language
+server's word lists and `ludic_syntax.h` are written from it between marked lines
+(`bin/ludic-dev syntax`), and `bin/ludic-dev syntax --check` fails when one falls
+behind, when docs/language lacks a page for an entry, or when the parser tests a
+word the vocabulary does not have.
 
 ## Working programs
 

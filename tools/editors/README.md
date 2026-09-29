@@ -146,11 +146,21 @@ output. The formatter cannot change what a program means.
 
 ## Keeping it honest
 
-The vocabulary is written down in five places that cannot include each other —
-the compiler's two tables, `ludic_syntax.h`, the TextMate grammar (JSON), and the
-JetBrains lexer (Kotlin). Adding a builtin and forgetting the rest is silent
-failure, so `bin/ludic-dev check-vocabulary` (written in Ludic) compares all five, and
-`bin/ludic-dev test-tools` runs it.
+The language's words come from one place: the compiler's vocabulary table
+(`selfhost/frontend/vocab.ludic`), printed by `ludic syntax --json` (`ludicc
+--emit-syntax`) and held to the parser's own recognisers. The keyword, type and
+phase lists in `ludic_syntax.h`, the TextMate grammar (every pattern marked
+`"comment": "ludic-dev syntax: <group>"`), the JetBrains lexer's
+`LudicVocabulary`, `ludic-mode.el` and the language server are written from it
+between `ludic-dev syntax: begin` / `end` lines by `bin/ludic-dev syntax`; do not
+edit inside them.
 
-When you add a keyword or builtin: put it in `ludic_syntax.h`, then run
-`bin/ludic-dev test-tools` and let it tell you which copies still need it.
+`bin/ludic-dev syntax --check` (and `check-vocabulary`, which `test-tools` runs,
+and the regression suite) fails when a generated list is behind, when a grammar
+lacks a word, when docs/language has no page for a keyword, type, phase or
+attribute, or when the parser (`selfhost/frontend`) tests a word or reads an
+attribute the vocabulary lacks. Builtins are still listed in `ludic_syntax.h`,
+and `check-vocabulary` compares them with the grammar and the Kotlin lexer.
+
+When you add a keyword or an attribute: add its row to `vocab.ludic`, rebuild the
+compiler, run `bin/ludic-dev syntax`, and write its docs/language page.

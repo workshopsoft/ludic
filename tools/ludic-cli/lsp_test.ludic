@@ -286,6 +286,20 @@ function cmd_test_lsp() -> int {
   lsp_notify("textDocument/didSave", `{{"textDocument":{lsp_doc(ccf)}}}`)
   lsp_request("textDocument/documentSymbol", `{{"textDocument":{lsp_doc(ccf)}}}`)
 
+  # ---- the declarations a module file holds (R8): exported records, a registry with its
+  # attributes, states, events, actions, ports, enums, reducers and components, every member
+  let dsrc = "module kits uses base\n\n# a kit\nexport property Kit {\n  key: string = \"\"\n  @Asset(\"gltf\") model: string = \"\"\n  @Node(model) grip: string = \"\"\n  @Ref(Kits) spare: int = 0\n  pick: fn(int, float) -> bool\n}\n\n# every kit\n@AppendOnly @ByKey\nexport registry Kits of Kit as KIT from \"kits.lres\"\nexport state KitState {\n  held: int = -1\n  seen: []int\n}\nexport event KitDropped { kit: int, x: float }\nexport action PickKit { kit: int }\nexport port KitWorld {\n  ground: fn(float, float) -> float\n}\nenum Grade { Low, High }\nreducer KitState on PickKit(st: mut KitState, a: PickKit) {\n  st.held = a.kit\n}\ncomponent Tray(k: KitState) {\n  prop step: int = 1\n  state open: bool = false\n  on press() { }\n}\nexport function kit_weight(k: Kit) -> int { return k.spare }\n"
+  let dfile = tmp_path("lsp_decls.ludic")
+  write_file(dfile, dsrc)
+  lsp_open(dfile, "ludic")
+  let duri = lsp_doc(dfile)
+  let dsyms = lsp_request("textDocument/documentSymbol", `{{"textDocument":{duri}}}`)
+  let dref = lsp_request("textDocument/definition", `{{"textDocument":{duri},"position":{position_of(dsrc, "@Ref(Kits)", 6)}}}`)
+  let dhov = lsp_request("textDocument/hover", `{{"textDocument":{duri},"position":{position_of(dsrc, "@Ref(Kits)", 6)}}}`)
+  let dnode = lsp_request("textDocument/definition", `{{"textDocument":{duri},"position":{position_of(dsrc, "@Node(model)", 7)}}}`)
+  let dty = lsp_request("textDocument/definition", `{{"textDocument":{duri},"position":{position_of(dsrc, "kit_weight(k: Kit)", 14)}}}`)
+  let dat = lsp_request("textDocument/hover", `{{"textDocument":{duri},"position":{position_of(dsrc, "@Ref(Kits)", 1)}}}`)
+
   # ---- workspace-wide symbol search ---------------------------------------
   let ws = lsp_request("workspace/symbol", `{{"query":"Stats"}}`)
 
@@ -456,5 +470,43 @@ function cmd_test_lsp() -> int {
   check_true("a name inside a template hole resolves", Text.contains(j_get(j_get(lsp_result(thov), "contents"), "value").s, "param variant: int"))
   check("find-usages reaches into template holes", loc_lines_key(lsp_result(trefs)), "1,3,4")
   check_true("positions after a multi-line template stay on the right line", Text.contains(j_get(j_get(lsp_result(tafter), "contents"), "value").s, "let multi"))
+  # a module file's declarations, each by its own name and kind, with every member as a child
+  let dk = lsp_result(dsyms)
+  check_true("an exported property is a struct named for itself, all its fields children", lsp_sym_is(dk, "Kit", 23, 5))
+  check_true("a registry is a symbol of its own, with what it holds", lsp_sym_is(dk, "Kits", 18, 0) and Text.contains(lsp_sym_detail(dk, "Kits"), "of Kit as KIT"))
+  check_true("a state is a struct with its fields", lsp_sym_is(dk, "KitState", 23, 2))
+  check_true("an event and an action are events", lsp_sym_is(dk, "KitDropped", 24, 2) and lsp_sym_is(dk, "PickKit", 24, 1))
+  check_true("a port is an interface, a fn-typed member written out", lsp_sym_is(dk, "KitWorld", 11, 1) and Text.contains(lsp_sym_detail(dk, "KitWorld"), "fn(float, float) -> float"))
+  check_true("an enum and its members", lsp_sym_is(dk, "Grade", 10, 2))
+  check_true("a reducer is named for its state and its action", lsp_sym_is(dk, "KitState on PickKit", 12, -1))
+  check_true("a component holds its props, state and events", lsp_sym_is(dk, "Tray", 5, 3))
+  check_true("an exported function is still a function", lsp_sym_is(dk, "kit_weight", 12, -1))
+  check_true("go-to-definition on @Ref(Kits) reaches the registry", j_get(j_get(j_get(lsp_result(dref), "range"), "start"), "line").num == 13)
+  check_true("hover on @Ref(Kits) shows the registry", Text.contains(j_get(j_get(lsp_result(dhov), "contents"), "value").s, "registry Kits of Kit"))
+  check_true("go-to-definition on @Node(model) reaches the field it names", j_get(j_get(j_get(lsp_result(dnode), "range"), "start"), "line").num == 5)
+  check_true("go-to-definition on an exported record's type name", j_get(j_get(j_get(lsp_result(dty), "range"), "start"), "line").num == 3)
+  check_true("hover on an attribute shows its reference page", Text.contains(j_get(j_get(lsp_result(dat), "contents"), "value").s, "@Ref(Registry)"))
   return report()
+}
+
+# the symbol named `name` among `syms` has LSP kind `kind` and, unless n is -1, n children
+function lsp_sym_is(syms: JVal, name: pointer, kind: int, n: int) -> bool {
+  var i = 0
+  while i < len(syms.kids) {
+    let y = syms.kids[i]
+    if j_get(y, "name").s == name {
+      if j_get(y, "kind").num != kind { return false }
+      return n < 0 or len(j_get(y, "children").kids) == n
+    }
+    i += 1
+  }
+  return false
+}
+function lsp_sym_detail(syms: JVal, name: pointer) -> pointer {
+  var i = 0
+  while i < len(syms.kids) {
+    if j_get(syms.kids[i], "name").s == name { return j_get(syms.kids[i], "detail").s }
+    i += 1
+  }
+  return ""
 }

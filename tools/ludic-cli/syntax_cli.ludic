@@ -1,0 +1,86 @@
+# ---- ludic syntax -------------------------------------------------------------
+# The language's vocabulary as the compiler holds it (`ludicc --emit-syntax`,
+# selfhost/frontend/vocab.ludic): every keyword with its role and whether it is
+# reserved, every declaration's form, the built-in types, the phases, every
+# attribute with where it goes, what it takes and what it means, the operators and
+# the literal forms. An editor's grammar is written from it (`ludic-dev syntax`).
+#
+#   ludic syntax              one line per entry: kind, name, role
+#   ludic syntax --json       the JSON, as the compiler writes it
+#   ludic syntax ... -o FILE  into FILE
+
+# the vocabulary's JSON from the compiler, or null when it cannot say
+function syntax_json_text() -> pointer {
+  ensure_ludicc()
+  let js = tmp_path("syntax.json")
+  if not shq(`{ludicc()} --emit-syntax > {sh_single(js)} 2> {tmp_path("syntax.err")}`) { return null }
+  let s = read_file(js)
+  if s == null or slen(s) == 0 or s[0] != '{' { return null }
+  return s
+}
+
+function cmd_syntax() -> int {
+  var json = false
+  var dest = ""
+  var ai = 2
+  while ai < arg_count() {
+    let a = arg(ai)
+    if a == "--json" { json = true }
+    else if a == "-o" or a == "--out" {
+      if ai + 1 >= arg_count() { err(`ludic syntax: {a} needs a file\n`);  return 2 }
+      ai += 1
+      dest = arg(ai)
+    }
+    else {
+      err(`ludic syntax: unknown argument {a}\n`)
+      err("  usage: ludic syntax [--json] [-o FILE]\n")
+      return 2
+    }
+    ai += 1
+  }
+  let s = syntax_json_text()
+  if s == null { err("ludic syntax: the compiler wrote no vocabulary (is it older than ludic syntax?)\n");  return 1 }
+  var text = s
+  if not json { text = syntax_lines(s) }
+  if dest == "" { out(text);  return 0 }
+  if not write_file(dest, text) { err(`ludic syntax: cannot write {dest}\n`);  return 1 }
+  return 0
+}
+
+# the plain listing, `keyword  module  declaration`, one entry a line - read off the JSON's own
+# layout (a list opens on `  "name": [`, one entry per line after it) rather than parsed
+function syntax_lines(s: pointer) -> pointer {
+  var o = ""
+  var kind = ""
+  let n = slen(s)
+  var i = 0
+  while i < n {
+    let ln = line_at(s, i)
+    i = i + slen(ln) + 1
+    if s_starts(ln, "  \"") and s_contains(ln, "[") {
+      kind = sslice(ln, 3, s_index(ln, "\"", 3) - 1)         # "keywords" -> keyword
+      continue
+    }
+    if not s_starts(ln, "    {\"") { continue }
+    var name = syntax_field(ln, s_index(ln, "\": ", 0) + 3)
+    if kind == "attribute" { name = "@" + name }
+    var role = ""
+    let r = s_index(ln, "\"role\": ", 0)
+    if r >= 0 { role = syntax_field(ln, r + 8) }
+    let f = s_index(ln, "\"form\": ", 0)
+    if f >= 0 { role = syntax_field(ln, f + 8) }
+    o = o + kind + "\t" + name + "\t" + role + "\n"
+  }
+  return o
+}
+# the JSON string starting at ln[q] (its opening quote), unescaped
+function syntax_field(ln: pointer, q: int) -> pointer {
+  var o = ""
+  var i = q + 1
+  while ln[i] != 0 and ln[i] != '"' {
+    if ln[i] == '\\' { i += 1 }
+    o = o + sslice(ln, i, i + 1)
+    i += 1
+  }
+  return o
+}
