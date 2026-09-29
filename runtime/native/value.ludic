@@ -22,6 +22,7 @@ property Val {
   txt:  pointer = null
   keys: []pointer
   kids: []Val
+  spare: []Val = null     # a list's items cut off when it last shrank, handed out again as it grows
 }
 
 # a number, a string or a null is one record; only a list or an object carries lists (made when first
@@ -112,19 +113,29 @@ function value_set_bool(o: Val, key: pointer, b: bool) -> void {
 function value_list_fit(o: Val, key: pointer, n: int) -> Val {
   let l = value_slot(o, key, 5)
   value_lists(l)
-  while len(l.kids) > n { List.pop(l.kids) }
+  while len(l.kids) > n { value_spare_put(l, List.pop(l.kids)) }
   return l
 }
+# a list's item i as kind `tag`: its own Value turned when it is another kind, a spare from when the
+# list was last longer, and made only past the most it has held (a list that shrank and grew back
+# made a new Value per item every time)
 function value_item(l: Val, i: int, tag: int) -> Val {
   if i < len(l.kids) {
     if l.kids[i].tag == tag { return l.kids[i] }
-    let v = value_new(tag)
-    l.kids[i] = v
-    return v
+    return value_become(l.kids[i], tag)
+  }
+  if l.spare != null and len(l.spare) > 0 {
+    let s = value_become(List.pop(l.spare), tag)
+    push(l.kids, s)
+    return s
   }
   let v = value_new(tag)
   push(l.kids, v)
   return v
+}
+function value_spare_put(l: Val, v: Val) -> void {
+  if l.spare == null { l.spare = new []Val }
+  push(l.spare, v)
 }
 function value_set_ints(o: Val, key: pointer, xs: []int) -> void {
   let l = value_list_fit(o, key, len(xs))
@@ -486,6 +497,16 @@ function jp_skip_ws(p: JP) -> void {
     if c == ' ' or c == '\t' or c == '\n' or c == '\r' { p.i += 1 }
     else { return }
   }
+}
+
+# a JSON file read and parsed, and its text given back: the tree's strings are the parser's own, so
+# a reader of Json.parse(Fs.read_text(path)) kept the whole file for good, on every read
+function json_read_file(path: string) -> Val {
+  let s = Fs.read_text(path)
+  if s == null { return null }
+  let v = json_parse(s)
+  free(s)
+  return v
 }
 
 function json_parse(s: pointer) -> Val {

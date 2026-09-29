@@ -46,7 +46,7 @@ function ct_range_set(ui_st: mut UiState, n: UiNode, v0: float) -> void {
   let lo = Value.as_float(ui_attr(n, "min"))
   let hi = Value.as_float(ui_attr(n, "max"))
   let v = Math.clamp(v0, lo, Math.max(hi, lo))
-  if v != Value.as_float(ui_attr(n, "value")) { ui_fire(ui_st, n, "change", Value.float(v)) }
+  if v != Value.as_float(ui_attr(n, "value")) { ui_fire_float(ui_st, n, "change", v) }
 }
 # a range's track pressed or dragged: the value where the pointer is
 function ct_press(ui_st: mut UiState, n: UiNode, x: float, y: float) -> void {

@@ -1,0 +1,16 @@
+# value_list_regrow.ludic - a model's list filled in place that shrinks and grows back, frame after
+# frame, makes nothing: the items cut off are the list's spares, handed out again as it grows (each
+# regrowth once made a new Value per item, and the failing fence stopped it at the warm-up's cap):
+#   bad 0 xs 2
+program ValueListRegrow {
+  entry {
+    let o = Value.object()
+    let long = ["a", "b", "c", "d", "e", "f"]
+    let short = ["x", "y"]
+    for f in 0 .. 3500 {
+      if f % 2 == 0 { value_set_strs(o, "xs", long) } else { value_set_strs(o, "xs", short) }
+      Mem.frame()
+    }
+    print(`bad {Mem.bad_frames()} xs {Value.count(Value.get(o, "xs"))}`)
+  }
+}
