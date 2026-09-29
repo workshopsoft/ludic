@@ -2,6 +2,7 @@
 # takes the best subject's grade - which is what a photographer would say about it
 export function photo_frame_begin(photo_st: mut PhotoState) -> void {
   photo_st.pht_pending_tags = ""
+  sb_clear(photo_st.pht_tag_sb)
   photo_st.pht_pending_mask = 0
   photo_st.pht_pending_legend = 0
   photo_st.pht_pending_grade = 0
@@ -27,11 +28,29 @@ export function photo_frame_subject(photo_st: mut PhotoState, sp: int, name: str
 }
 
 # anything else in the picture worth naming: a landmark, the water, a sign
-@alloc_ok("a shot's tags: once per photograph taken")
+# (a viewfinder composes every frame: the text is written into a kept buffer and interned)
 export function photo_frame_tag(photo_st: mut PhotoState, text: string) -> void {
   if len(text) == 0 { return }
-  if len(photo_st.pht_pending_tags) > 0 { photo_st.pht_pending_tags = photo_st.pht_pending_tags + ", " }
-  photo_st.pht_pending_tags = photo_st.pht_pending_tags + text
+  let sb = photo_st.pht_tag_sb
+  if sb_len(sb) > 0 { sb_add(sb, ", ") }
+  sb_add(sb, text)
+  photo_st.pht_pending_tags = pht_tags_text(photo_st)
+}
+
+# past the table's most, a copy only when the text changed - never one a frame
+@alloc_ok("a tag text past 4096 distinct ones: one copy per change")
+function pht_tags_text(photo_st: PhotoState) -> string {
+  let sb = photo_st.pht_tag_sb
+  let tb = photo_st.pht_tag_tb
+  if strs_count(tb) < tb.most { return sb_intern(sb, tb) }
+  if pht_same(sb, photo_st.pht_pending_tags) { return photo_st.pht_pending_tags }
+  return keep(text_of(sb.b, sb_len(sb)))
+}
+
+function pht_same(sb: StrBuf, s: string) -> bool {
+  if len(s) != sb_len(sb) { return false }
+  for i in 0 .. sb_len(sb) { if s[i] != sb.b[i] { return false } }
+  return true
 }
 
 export function photo_frame_sign(photo_st: mut PhotoState, sign: int) -> void { photo_st.pht_pending_sign = sign }

@@ -47,6 +47,8 @@ export state PhotoState {
   pht_legend_shot: int = 0
   pht_cover: int = -1             # the one frame a game shows for the whole roll
   pht_pending_tags: string = ""
+  pht_tag_sb: StrBuf = sb_new(512)   # the tags written in place, then one string per distinct text
+  pht_tag_tb: StrTable = strs_new(4096)
   pht_pending_mask: int = 0
   pht_pending_legend: int = 0
   pht_pending_grade: int = 0
