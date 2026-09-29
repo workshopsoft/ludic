@@ -358,7 +358,8 @@ function gvk_mem_init(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_blk_mem = new []long;  render3d_st.gvk_blk_kind = new []int;  render3d_st.gvk_blk_size = new []int;  render3d_st.gvk_blk_map = new []pointer
   render3d_st.gvk_fr_blk = new []int;  render3d_st.gvk_fr_off = new []int;  render3d_st.gvk_fr_len = new []int
   render3d_st.gvk_al_blk = new []int;  render3d_st.gvk_al_mem = new []long;  render3d_st.gvk_al_off = new []int;  render3d_st.gvk_al_len = new []int
-  render3d_st.gvk_al_map = new []pointer;  render3d_st.gvk_al_spare = new []int
+  render3d_st.gvk_al_map = new []pointer;  render3d_st.gvk_al_spare = new []int;  render3d_st.gvk_al_tag = new []int
+  push(render3d_st.gvk_al_tag, 0)
   push(render3d_st.gvk_al_blk, -1);  push(render3d_st.gvk_al_mem, zero);  push(render3d_st.gvk_al_off, 0);  push(render3d_st.gvk_al_len, 0);  push(render3d_st.gvk_al_map, null)
 }
 
@@ -483,10 +484,15 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
     List.pop(spare)
   } else {
     push(render3d_st.gvk_al_blk, -1);  push(render3d_st.gvk_al_mem, zero);  push(render3d_st.gvk_al_off, 0);  push(render3d_st.gvk_al_len, 0);  push(render3d_st.gvk_al_map, null)
+    push(render3d_st.gvk_al_tag, 0)
     a = len(render3d_st.gvk_al_blk) - 1
   }
   var len_ = size
   if blk >= 0 { len_ = span }                 # what the block gives back when it is freed
+  var tg = render3d_st.gvk_tag * 4
+  if image { tg += 2 }
+  if host { tg += 1 }
+  render3d_st.gvk_al_tag[a] = tg
   render3d_st.gvk_al_blk[a] = blk;  render3d_st.gvk_al_mem[a] = own;  render3d_st.gvk_al_off[a] = off;  render3d_st.gvk_al_len[a] = len_;  render3d_st.gvk_al_map[a] = map
   return a
 }

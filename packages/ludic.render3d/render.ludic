@@ -190,7 +190,14 @@ function r3d_screenshot(render3d_st: mut Render3dState, path: string) -> bool { 
 function r3d_present(render3d_st: mut Render3dState) -> void { gpu_present(render3d_st) }
 
 # the drawable changed size: the camera's aspect and every screen-sized target follow
+# the GPU memory it makes is counted as VKM_TARGET (R3D_VKMEM)
 function r3d_resize(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TARGET
+  r3d_resize__t(render3d_st)
+  render3d_st.gvk_tag = was
+}
+function r3d_resize__t(render3d_st: mut Render3dState) -> void {
   render3d_st.cam_aspect = float(gl_width()) / float(gl_height())
   cam_update(render3d_st)
   post_free(render3d_st)
@@ -198,7 +205,14 @@ function r3d_resize(render3d_st: mut Render3dState) -> void {
   if render3d_st.water_refl != null { target_free(render3d_st, render3d_st.water_refl);  render3d_st.water_refl = null }
   r3d_say_resized()
 }
+# the GPU memory it makes is counted as VKM_FRAME (R3D_VKMEM)
 function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_FRAME
+  r3d_frame__t(render3d_st, time)
+  render3d_st.gvk_tag = was
+}
+function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   outline_frame(render3d_st)
   if not render3d_st.r3d_ready { return }
   if gpu_resize_check(render3d_st) { r3d_resize(render3d_st) }
@@ -206,6 +220,7 @@ function r3d_frame(render3d_st: mut Render3dState, time: float) -> void {
   # or a fullscreen change does. Headless has no window to resize, and this path is where
   # a stale attachment or a texture freed twice shows up.
   render3d_st.r3d_test_frame += 1
+  vkmem_tick(render3d_st)
   if render3d_st.r3d_test_resize == 0 and r3d_env_has(render3d_st, "R3D_RESIZE_AT") { render3d_st.r3d_test_resize = Text.to_int(r3d_env(render3d_st, "R3D_RESIZE_AT")) }
   # R3D_RESIZE_AT=<n>: from frame n on, rebuild every screen-sized buffer every few
   # frames at a different size, as dragging a window edge or entering fullscreen does.

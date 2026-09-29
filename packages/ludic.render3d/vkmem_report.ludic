@@ -1,0 +1,110 @@
+# vkmem_report.ludic — where the GPU memory is, by owner (R3D_VKMEM=<frame>, printed once at that frame).
+# Every allocation carries the owner its maker was wrapped in (gvk_tag); a block's unused room is
+# counted apart, since it is memory the driver holds for us whoever it will be given to.
+
+const VKM_OTHER: int = 0
+const VKM_MODEL: int = 1
+const VKM_TERRAIN: int = 2
+const VKM_SCATTER: int = 3
+const VKM_GRASS: int = 4
+const VKM_SHADOW: int = 5
+const VKM_TARGET: int = 6
+const VKM_SKY: int = 7
+const VKM_WATER: int = 8
+const VKM_TEXTURE: int = 9
+const VKM_FRAME: int = 10
+const VKM_IMPOSTOR: int = 11
+const VKM_N: int = 12
+
+function vkmem_tick(render3d_st: mut Render3dState) -> void {
+  if render3d_st.vkmem_at == 0 {
+    render3d_st.vkmem_at = -1
+    if r3d_env_has(render3d_st, "R3D_VKMEM") { render3d_st.vkmem_at = Text.to_int(r3d_env(render3d_st, "R3D_VKMEM")) }
+  }
+  if render3d_st.vkmem_at > 0 and render3d_st.r3d_test_frame == render3d_st.vkmem_at { vkmem_report(render3d_st) }
+}
+
+@alloc_ok("a report printed once, under R3D_VKMEM")
+function vkmem_report(render3d_st: Render3dState) -> void {
+  if render3d_st.gvk_al_tag == null { return }
+  let img = words(VKM_N);  let buf = words(VKM_N);  let host = words(VKM_N);  let cnt = words(VKM_N)
+  for k in 0 .. VKM_N { img[k] = 0;  buf[k] = 0;  host[k] = 0;  cnt[k] = 0 }
+  var used = 0
+  var own = 0
+  for a in 1 .. len(render3d_st.gvk_al_len) {
+    let n = render3d_st.gvk_al_len[a]
+    if n <= 0 { continue }
+    let t = render3d_st.gvk_al_tag[a]
+    let who = Math.min(t / 4, VKM_N - 1)
+    if (t & 1) != 0 { host[who] += n } else if (t & 2) != 0 { img[who] += n } else { buf[who] += n }
+    cnt[who] += 1
+    used += n
+    if render3d_st.gvk_al_blk[a] < 0 { own += n }
+  }
+  var blocks = 0
+  for b in 0 .. len(render3d_st.gvk_blk_size) { blocks += render3d_st.gvk_blk_size[b] }
+  vkmem_say_head(used, blocks + own, blocks + own - used)
+  for k in 0 .. VKM_N { if cnt[k] > 0 { vkmem_say_row(vkmem_name(k), img[k], buf[k], host[k], cnt[k]) } }
+  vkmem_big(render3d_st)
+  vkmem_cpu(render3d_st)
+}
+
+# the largest images, with their owner, size and format
+@alloc_ok("a report printed once, under R3D_VKMEM")
+function vkmem_big(render3d_st: Render3dState) -> void {
+  let n = len(render3d_st.gvk_tex_mem)
+  let done = words(n)
+  for i in 0 .. n { done[i] = 0 }
+  for r in 0 .. 25 {
+    var best = -1
+    var bn = 0
+    for i in 1 .. n {
+      let a = int(render3d_st.gvk_tex_mem[i])
+      if done[i] != 0 or a <= 0 or a >= len(render3d_st.gvk_al_len) { continue }
+      if render3d_st.gvk_al_len[a] > bn { bn = render3d_st.gvk_al_len[a];  best = i }
+    }
+    if best < 0 { return }
+    done[best] = 1
+    let a = int(render3d_st.gvk_tex_mem[best])
+    vkmem_say_img(vkmem_name(render3d_st.gvk_al_tag[a] / 4), bn, render3d_st.gvk_tex_dims_w[best], render3d_st.gvk_tex_dims_h[best], render3d_st.gvk_tex_layers[best], render3d_st.gvk_tex_levels[best], render3d_st.gvk_tex_vkfmt[best])
+  }
+}
+
+function vkmem_name(k: int) -> string {
+  if k == VKM_MODEL { return "models (gltf_load)" }
+  if k == VKM_TERRAIN { return "terrain" }
+  if k == VKM_SCATTER { return "scatter + streams" }
+  if k == VKM_GRASS { return "grass" }
+  if k == VKM_SHADOW { return "shadow maps" }
+  if k == VKM_TARGET { return "frame targets" }
+  if k == VKM_SKY { return "sky" }
+  if k == VKM_WATER { return "water" }
+  if k == VKM_TEXTURE { return "textures (game)" }
+  if k == VKM_FRAME { return "made in a frame" }
+  if k == VKM_IMPOSTOR { return "impostor atlases" }
+  return "other"
+}
+function vkmem_mb(n: int) -> int { return n / 1048576 }
+function vkmem_say_head(used: int, held: int, slack: int) -> void { print(`vkmem: {vkmem_mb(used)} MB in use, {vkmem_mb(held)} MB held from the driver, {vkmem_mb(slack)} MB unused room in blocks`) }
+function vkmem_say_row(name: string, img: int, buf: int, host: int, n: int) -> void { print(`vkmem:   {name}: images {vkmem_mb(img)} MB, device buffers {vkmem_mb(buf)} MB, host buffers {vkmem_mb(host)} MB ({n} allocations)`) }
+function vkmem_say_img(name: string, n: int, w: int, h: int, layers: int, levels: int, fmt: int) -> void { print(`vkmem:   image {n / 1024} KB  {w}x{h}x{layers} mips {levels} vkformat {fmt}  {name}`) }
+
+# the renderer's own big arrays on the CPU heap
+function vkmem_cpu(render3d_st: Render3dState) -> void {
+  var lay = 0
+  var cap = 0
+  for i in 0 .. len(render3d_st.sc_layers) {
+    let l = render3d_st.sc_layers[i]
+    lay += vkmem_fl(l.inst) + vkmem_fl(l.scratch) + vkmem_fl(l.gsorted) + vkmem_fl(l.vis)
+    cap += l.cap
+  }
+  var str = 0
+  if render3d_st.stream_all != null { for i in 0 .. len(render3d_st.stream_all) { str += len(render3d_st.stream_all[i].arena) * 4 } }
+  let ter = vkmem_fl(render3d_st.ter_heights) + TERRAIN_RES * TERRAIN_RES * 3
+  vkmem_say_cpu(len(render3d_st.sc_layers), cap, lay, str, ter, vkmem_fl(render3d_st.wb_cells))
+}
+function vkmem_fl(f: floats) -> int {
+  if f == null { return 0 }
+  return len(f) * 4
+}
+function vkmem_say_cpu(n: int, cap: int, lay: int, str: int, ter: int, water: int) -> void { print(`vkmem: cpu: {n} scatter layers (cap {cap} instances) {vkmem_mb(lay)} MB, stream arenas {vkmem_mb(str)} MB, terrain copies {vkmem_mb(ter)} MB, water cells {vkmem_mb(water)} MB`) }
