@@ -26,8 +26,9 @@ through the game).
 - **A boat is a body in the game's physics** (`VehicleHull`, phase 16; a buoyant Jolt hull in Maroon
   Lake). The package rows it - the stick forward and back is a stroke along the bow, left and right
   the oars pulled against each other - and reads back where the hull is and how fast it goes. The
-  water floats it, the wind (`VehicleWorld.wind`) drifts every boat, ridden or not, and the lake bed
-  stops it at the shore; the swell at the sail limit takes the outward share of a stroke.
+  water floats it, the wind (`VehicleWorld.wind`) drifts a rowed boat, and the lake bed stops it at
+  the shore. A boat nobody rows is moored where it was called or left (`home_x`, `home_z`,
+  `home_yaw`): its hull is put back there whenever it strays, so it never crosses the lake alone; the swell at the sail limit takes the outward share of a stroke.
 - **A horse walks on legs in the game's physics** (`VehicleLegs`; a Jolt walker in Maroon Lake). The
   package decides its pace - a walk, a canter on stamina, hay for every metre - and never steps it
   into water; the legs meet the ground, its steps and slopes, and whatever stands in its way. What
@@ -74,7 +75,7 @@ export port VehicleRider {
 | `vehicle_mount(v) -> bool`, `vehicle_dismount() -> bool`, `vehicle_drop()` | on and off |
 | `vehicle_update(ix, iz, run, dt)` | a frame of riding from the rider's stick (bind it where the body hands its stick over) |
 | `vehicle_own(v)`, `vehicle_feed(v, hay)`, `vehicle_follow(v, x, y, z, yaw)`, `vehicles_release(pid)`, `vehicle_restore(kind, owned, food)` | hiring, hay, a tied horse's wandering, a player leaving, a saved word |
-| `vehicles_tick(dt)` | every boat's hull read back and pushed by the wind (the game calls it where the world is run) |
+| `vehicles_tick(dt)` | every boat's hull read back: a rowed one pushed by the wind, one nobody rows held at its mooring (the game calls it where the world is run) |
 | `vehicle_facts() -> Queue<VehicleFact>` | `{ what, nid, kind, owner, x, z, v }`: `VEHICLE_MOUNTED`, `_DISMOUNTED`, `_NO_LANDING`, `_MOVED` (v: metres), `_SWELL` (every 14 s), `_HUNGRY`, `_FED` |
 | `vehicles_reset()`, `vehicles_system() -> System` | `"vehicles"`: this player's own saved by kind (hired, hay) - where they lie is not saved |
 

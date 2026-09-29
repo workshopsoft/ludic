@@ -51,19 +51,35 @@ function ve_swell(vehicles_st: mut VehiclesState, v: Vehicle, iz: float, dt: flo
   return take
 }
 
-# every boat: its hull read back, and the wind pushing it across the lake, ridden or not
+# every boat: a rowed one pushed by the wind across the lake; one nobody rows moored where it was
+# called or left, its hull read back and held there
 export function vehicles_tick(vehicles_st: VehiclesState, dt: float) -> void {
   let l = ve_all(vehicles_st)
   let w = VehicleWorld.wind() * VE_WIND
   let wy = VehicleWorld.wind_yaw()
   for i in 0 .. len(l) {
     let v = l[i]
-    if v.kind == VEHICLE_BOAT {
+    if v.kind != VEHICLE_BOAT { continue }
+    if v.rider >= 0 {
       if w > 0.0 { VehicleHull.drift(v.nid, -Math.sin(wy) * w, -Math.cos(wy) * w) }
-      if v.rider < 0 {
-        ve_hull_read(v)
-        VehicleWorld.placed(v)
-      }
+      continue
     }
+    ve_hull_read(v)
+    ve_hold(v)
+    VehicleWorld.placed(v)
   }
+}
+
+# a moored hull that has moved off its mooring (a knock, the swell) is put back on it, at rest
+function ve_hold(v: Vehicle) -> void {
+  let dx = v.x - v.home_x
+  let dz = v.z - v.home_z
+  let dyaw = Math.abs(Math.atan2(Math.sin(v.yaw - v.home_yaw), Math.cos(v.yaw - v.home_yaw)))
+  if dx * dx + dz * dz < 0.0004 and dyaw < 0.01 and Math.abs(v.speed) < 0.01 { return }
+  v.x = v.home_x
+  v.z = v.home_z
+  v.yaw = v.home_yaw
+  v.y = VehicleWorld.water(v.x, v.z) + 0.02
+  v.speed = 0.0
+  VehicleHull.put(v.nid, v.x, v.y, v.z, v.yaw)
 }

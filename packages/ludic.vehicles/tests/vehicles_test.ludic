@@ -309,6 +309,31 @@ program VehiclesTest {
     expect(b.z < z0 - 0.2)
   }
 
+  test "a boat nobody rows holds its berth in a wind, and one left out on the lake holds where it was left" (physics_st: mut PhysicsState, vehicles_st: mut VehiclesState, vehicles_test_st: mut VehiclesTestState) {
+    fresh(vehicles_st, vehicles_test_st)
+    vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0)
+    let b = vehicle_find(vehicles_st, VEHICLE_BOAT)
+    let bx = b.x
+    let bz = b.z
+    vehicles_test_st.wind = 1.0
+    ride(physics_st, vehicles_st, 0.0, 0.0, false, 8.0)
+    expect_near(b.x, bx, 0.2)
+    expect_near(b.z, bz, 0.2)
+    expect(vehicle_in_place(vehicles_st, VEHICLE_BOAT, 0) != null)
+    vehicles_test_st.wind = 0.0
+    vehicle_mount(vehicles_st, b)
+    ride(physics_st, vehicles_st, 0.0, 1.0, false, 4.0)
+    vehicle_drop(vehicles_st)
+    let lx = b.x
+    let lz = b.z
+    expect(lx > bx + 4.0)
+    vehicles_test_st.wind = 1.0
+    ride(physics_st, vehicles_st, 0.0, 0.0, false, 8.0)
+    expect_near(b.x, lx, 0.2)
+    expect_near(b.z, lz, 0.2)
+    expect(Math.abs(b.speed) < 0.05)
+  }
+
   function char_turn(a: float) -> float {
     var d = a
     while d > 3.14159265 { d -= 6.2831853 }
