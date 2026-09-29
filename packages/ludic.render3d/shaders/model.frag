@@ -12,6 +12,10 @@ in float v_lh;      // height above the model's base (model.vert)
 uniform float u_model_h;
 out vec4 o_color;
 uniform sampler2D u_diff;
+// a glTF material's factors, as 1 - factor (a program never given them reads 1) and its emission
+uniform vec4 u_fac_base_inv;
+uniform vec2 u_fac_mr_inv;
+uniform vec3 u_fac_emis;
 uniform sampler2D u_nrm;
 uniform sampler2D u_arm;
 uniform mat4 u_view;
@@ -189,7 +193,7 @@ void main() {
   n = normalize(N + side * (fract(v_uv.x) * 2.0 - 1.0) * 0.7);
   arm = vec3(0.9, 0.7, 0.0);
 #else
-  vec4 d = texture(u_diff, v_uv);
+  vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv);
 #ifdef ALPHA_TEST
   // A needle sprig's alpha averages away in the mips, so a plain 0.5 test strips the
   // crown bare past 50 m. Scale the alpha back up by the mip level (Castano's alpha
@@ -205,6 +209,7 @@ void main() {
   mat3 tbn = cotangentFrame(N, v_wpos, v_uv);
   n = normalize(tbn * tn);
   arm = texture(u_arm, v_uv).rgb;
+  arm.gb *= vec2(1.0) - u_fac_mr_inv;
   n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
   alb = d.rgb;
   // a crown's interior is occluded by its own cards
@@ -312,6 +317,7 @@ void main() {
 #endif
   col += alb * u_emissive;
   if (any(isnan(col))) col = vec3(0.0);
+  col += u_fac_emis;
   col = applyFog(col, v_wpos, dist);
 #ifdef CARD
   o_color = vec4(sane(col), cardAlpha);

@@ -6,9 +6,10 @@ in float v_seed;
 layout(location = 0) out vec4 o_albedo;
 layout(location = 1) out vec4 o_normal;
 uniform sampler2D u_diff;
+uniform vec4 u_fac_base_inv;   // a glTF material's base colour factor, as 1 - factor
 uniform sampler2D u_arm;
 void main() {
-  vec4 d = texture(u_diff, v_uv);
+  vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv);
   if (d.a < 0.5) discard;          // cut-out cards (needles, blades, leaves) bake with their shape
   vec3 N = normalize(v_nrm);
   if (!gl_FrontFacing) N = -N;
