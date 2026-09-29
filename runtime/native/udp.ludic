@@ -12,6 +12,8 @@
 # Like Http.* and Time.now it is OUT-OF-BAND: it depends on the network and the wall clock
 # and must never feed a deterministic lockstep/replay simulation directly.
 #
+# Udp.open_local(port) binds 127.0.0.1 alone, for a port only this machine's tools should reach.
+#
 # An address is an int: a.b.c.d is (a << 24) | (b << 16) | (c << 8) | d. Udp.ip("10.0.0.2")
 # and Udp.ip_text(ip) convert, Udp.resolve("example.com") looks a host name up (it blocks
 # for as long as the system's resolver takes), and Udp.local_ip() is the address this
@@ -22,6 +24,7 @@
 # ============================================================================
 
 extern function lu_udp_open(port: int) -> int = "lu_udp_open"
+extern function lu_udp_open_local(port: int) -> int = "lu_udp_open_local"
 extern function lu_udp_port(h: int) -> int = "lu_udp_port"
 extern function lu_udp_send(h: int, ip: int, port: int, buf: pointer, n: int) -> int = "lu_udp_send"
 extern function lu_udp_recv(h: int, buf: pointer, cap: int, ipport: pointer) -> int = "lu_udp_recv"
@@ -53,6 +56,13 @@ function udp_open(rt_udp_st: mut RtUdpState, port: int) -> int {
   udp_init(rt_udp_st)
   if (port < 0) or (port > 65535) { return 0 }
   return lu_udp_open(port)
+}
+# the same bound to 127.0.0.1 only: a port this machine's own tools reach (a dev link) and the
+# LAN never can
+function udp_open_local(rt_udp_st: mut RtUdpState, port: int) -> int {
+  udp_init(rt_udp_st)
+  if (port < 0) or (port > 65535) { return 0 }
+  return lu_udp_open_local(port)
 }
 # the port a socket is bound to (the one the system picked, for port 0)
 function udp_port(h: int) -> int { return lu_udp_port(h) }
