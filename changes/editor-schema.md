@@ -5,7 +5,7 @@ schema [file] [-o FILE]`) writes what the compiler resolved once the program typ
 record with its fields' types, defaults, doc comments and places; every registry with its record,
 prefix, resource file, openness and its entries in their final order after the open-registry merge
 (key, constant, index, file:line:col of the entry and of each field value, and which file brought
-which entries in); every const; and the functions a `fn` value can name with no arguments.
+which entries in); every const; and every function a `fn` value can name, with the `fn_type` a field sees (its states stripped).
 Deterministic, `"schema_version": 1`. Fields and registries carry editor attributes on the existing
 `@` syntax - `@Ref(Registry)`, `@OneOf(PREFIX_)`, `@Range(lo, hi)`, `@Unit("m/s")`, `@Asset("gltf")`,
 `@Color`, and `@AppendOnly` / `@ByKey` on a registry - which change nothing but go into the schema;

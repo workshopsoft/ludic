@@ -32,6 +32,8 @@ program Attributes {
   const CAMP_TOOLS: int = 2 * VD_COUNT         # how many a camp can carry
   # the tool a new camp starts with
   function first_tool() -> string { return Tools[0].name }
+  # what a pack of n of a tool weighs - a fn(Tool,int)->float an editor can offer a field of that type
+  function pack_weight(t: Tool, n: int) -> float { return t.weight * float(n) }
   entry {
     print(`{TL_COUNT} {Tools[TL_LANTERN].seller} {Tools[TL_LANTERN].name} {CAMP_TOOLS / 2}`)
   }
