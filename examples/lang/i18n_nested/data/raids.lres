@@ -1,0 +1,4 @@
+# i18n_nested.ludic's raids: no row spells a key - a nested record's @Text Key, a list of them and a
+# @Text []Key are all derived; `null` says a row has no text there
+camp { arrive: { steps: [ { need: 2 }, { need: 5 } ] } }
+quiet { arrive: { steps: [ { need: 1 } ] }, said: null }
