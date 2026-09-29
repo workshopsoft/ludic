@@ -1,0 +1,77 @@
+# nest.ludic - a line bracketed inside another (bytes 29 .. 30 round it: a game's txt_key / txt_line, a
+# key's line in another's hole or glued to words): each bracket made into its text first, outermost in, then
+# the whole. A line wholly inside one bracket is made already, and not looked up again as English;
+# a key whole takes this path only through its arguments, which keyed() has unescaped by then
+export const I18N_OPEN: int = 29
+export const I18N_CLOSE: int = 30
+
+export function kx_nested(s: string) -> bool {
+  let p: string = s
+  for i in 0 .. len(p) { if p[i] == I18N_OPEN or p[i] == I18N_CLOSE { return true } }
+  return false
+}
+
+# what L does with such a line: made once per distinct line in this language, kept with the keys
+function kx_nest_line(i18n_st: mut I18nState, s: string) -> string {
+  if i18n_st.kc == null { kc_clear(i18n_st) }
+  let ci = Dict.get_or(i18n_st.kc, s, -1)
+  if ci >= 0 { return i18n_st.kc_out[ci] }
+  let q: string = s
+  var r = kx_flat(i18n_st, s)
+  if not (q[0] == I18N_OPEN and q[len(q) - 1] == I18N_CLOSE) { r = L(i18n_st, r) }
+  if Dict.size(i18n_st.kc) >= CACHE_MAX { kc_clear(i18n_st) }
+  @alloc_ok("a line with a line inside it, made into text: kept, up to CACHE_MAX")
+  Dict.set(i18n_st.kc, s, len(i18n_st.kc_out))
+  @alloc_ok("a line with a line inside it: as above")
+  push(i18n_st.kc_out, r)
+  return r
+}
+
+# each outermost bracket made into its text (what is inside is made the same way, by L), then any
+# bracket left without a partner taken out
+@alloc_ok("a line with a line inside it (a cache miss): once per distinct line")
+function kx_flat(i18n_st: mut I18nState, s: string) -> string {
+  let p: string = s
+  var r = ""
+  var seg = 0
+  var i = 0
+  while i < len(p) {
+    let c = kx_close(p, i)
+    if p[i] == I18N_OPEN and c > i {
+      r = r + s[seg..i] + L(i18n_st, s[i + 1..c])
+      seg = c + 1
+      i = c + 1
+    } else {
+      i += 1
+    }
+  }
+  return kx_strip(r + s[seg..len(p)])
+}
+
+# where the bracket opening at i closes, or -1 when it never does
+function kx_close(p: string, i: int) -> int {
+  var depth = 0
+  for j in i .. len(p) {
+    if p[j] == I18N_OPEN { depth += 1 }
+    if p[j] == I18N_CLOSE {
+      depth -= 1
+      if depth == 0 { return j }
+    }
+  }
+  return -1
+}
+
+# a close with no open before it (or an open with no close): no stray byte drawn
+@alloc_ok("as above")
+function kx_strip(s: string) -> string {
+  let p: string = s
+  var r = ""
+  var seg = 0
+  for i in 0 .. len(p) {
+    if p[i] == I18N_OPEN or p[i] == I18N_CLOSE {
+      r = r + s[seg..i]
+      seg = i + 1
+    }
+  }
+  return r + s[seg..len(p)]
+}
