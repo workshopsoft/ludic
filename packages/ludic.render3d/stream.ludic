@@ -44,8 +44,16 @@ property Stream {
 
 # microseconds spent per frame, split so the hitch can be attributed (R3D_PROF=1)
 
-@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+# the GPU memory it makes is counted as VKM_SCATTER (R3D_VKMEM)
 function stream_new(render3d_st: mut Render3dState, layer: Layer, size: float, reach: float, b0: float, b1: float, b2: float, b3: float) -> Stream {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SCATTER
+  let r = stream_new__t(render3d_st, layer, size, reach, b0, b1, b2, b3)
+  render3d_st.gvk_tag = was
+  return r
+}
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function stream_new__t(render3d_st: mut Render3dState, layer: Layer, size: float, reach: float, b0: float, b1: float, b2: float, b3: float) -> Stream {
   if not render3d_st.stream_cap_read {
     render3d_st.stream_cap_read = true
     if r3d_env_has(render3d_st, "R3D_STREAM_CAP") { render3d_st.STREAM_MAX_CHUNKS = Text.to_int(r3d_env(render3d_st, "R3D_STREAM_CAP")) }

@@ -26,8 +26,15 @@ function gg_base(b: int) -> int {
 }
 
 # once, after grass_init: the programs, the buffers and the three instanced blades
-@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+# the GPU memory it makes is counted as VKM_GRASS (R3D_VKMEM)
 function gg_init(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_GRASS
+  gg_init__t(render3d_st)
+  render3d_st.gvk_tag = was
+}
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function gg_init__t(render3d_st: mut Render3dState) -> void {
   if not gpu_has_compute(render3d_st) or render3d_st.grass_prog == 0 { return }
   if r3d_env_has(render3d_st, "R3D_GRASS_GPU") and r3d_env(render3d_st, "R3D_GRASS_GPU") == "0" { return }
   render3d_st.gg_reset = gpu_compute(render3d_st, "grass_reset", 1)

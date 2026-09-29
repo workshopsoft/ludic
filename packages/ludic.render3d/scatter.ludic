@@ -248,8 +248,16 @@ function scatter_attach(render3d_st: Render3dState, m: Mesh, buf: int) -> void {
   gpu_mesh_done(render3d_st, m)
 }
 
-@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+# the GPU memory it makes is counted as VKM_SCATTER (R3D_VKMEM)
 function layer_new(render3d_st: mut Render3dState, model: Model, cap: int, foliage: bool, wind: float, near: float, cull: float) -> Layer {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SCATTER
+  let r = layer_new__t(render3d_st, model, cap, foliage, wind, near, cull)
+  render3d_st.gvk_tag = was
+  return r
+}
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function layer_new__t(render3d_st: mut Render3dState, model: Model, cap: int, foliage: bool, wind: float, near: float, cull: float) -> Layer {
   let l = new Layer
   l.model = model
   l.cap = cap
@@ -301,8 +309,16 @@ function layer_add(l: Layer, x: float, y: float, z: float, scale: float, yaw: fl
 }
 
 # ---- impostors ---------------------------------------------------------------------
-@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+# the GPU memory it makes is counted as VKM_IMPOSTOR (R3D_VKMEM)
 function impostor_bake(render3d_st: mut Render3dState, model: Model, tiles: int, tw: int, th: int) -> Impostor {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_IMPOSTOR
+  let r = impostor_bake__t(render3d_st, model, tiles, tw, th)
+  render3d_st.gvk_tag = was
+  return r
+}
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function impostor_bake__t(render3d_st: mut Render3dState, model: Model, tiles: int, tw: int, th: int) -> Impostor {
   let im = new Impostor
   im.tiles = tiles
   im.radius = model.radius * 1.02
@@ -1113,7 +1129,15 @@ function cb_rnd(render3d_st: mut Render3dState) -> float {
   render3d_st.cb_state = (render3d_st.cb_state * 1103515245 + 12345) & 0x7FFFFFFF
   return float((render3d_st.cb_state >> 8) & 0xFFFF) / 65536.0
 }
+# the GPU memory it makes is counted as VKM_SCATTER (R3D_VKMEM)
 function carpet_bake(render3d_st: mut Render3dState, layers: []Layer, count: int, tile: float, res: int) -> int {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SCATTER
+  let r = carpet_bake__t(render3d_st, layers, count, tile, res)
+  render3d_st.gvk_tag = was
+  return r
+}
+function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: int, tile: float, res: int) -> int {
   let tex = tex_target(render3d_st, res, res, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
   let fbo = gpu_fb_new(render3d_st)
   gpu_fb_bind(render3d_st, fbo)

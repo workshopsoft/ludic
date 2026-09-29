@@ -142,7 +142,14 @@ function terrain_ortho_forest(render3d_st: mut Render3dState, x: float, z: float
   return 0.0
 }
 
+# the GPU memory it makes is counted as VKM_TERRAIN (R3D_VKMEM)
 function terrain_use_ortho(render3d_st: mut Render3dState, path: string) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  terrain_use_ortho__t(render3d_st, path)
+  render3d_st.gvk_tag = was
+}
+function terrain_use_ortho__t(render3d_st: mut Render3dState, path: string) -> void {
   let px = png_decode(render3d_st, path)
   if px == null { return }
   # a map set up over another lets go of the last one's photograph first
@@ -156,7 +163,14 @@ function terrain_use_ortho(render3d_st: mut Render3dState, path: string) -> void
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 }
+# the GPU memory it makes is counted as VKM_TERRAIN (R3D_VKMEM)
 function terrain_use_dem(render3d_st: mut Render3dState, path: string, emin: float, emax: float, base: float, ox: float, oz: float) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  terrain_use_dem__t(render3d_st, path, emin, emax, base, ox, oz)
+  render3d_st.gvk_tag = was
+}
+function terrain_use_dem__t(render3d_st: mut Render3dState, path: string, emin: float, emax: float, base: float, ox: float, oz: float) -> void {
   if render3d_st.ter_dem_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_dem_tex) }
   render3d_st.ter_dem_tex = tex_load(render3d_st, path, false)
   render3d_st.ter_dem_min = emin;  render3d_st.ter_dem_max = emax;  render3d_st.ter_dem_base = base
@@ -166,7 +180,14 @@ function terrain_use_dem(render3d_st: mut Render3dState, path: string, emin: flo
   gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
 }
 
+# the GPU memory it makes is counted as VKM_TERRAIN (R3D_VKMEM)
 function terrain_generate(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  terrain_generate__t(render3d_st)
+  render3d_st.gvk_tag = was
+}
+function terrain_generate__t(render3d_st: mut Render3dState) -> void {
   var defs = ""
   if render3d_st.ter_dem_tex != 0 { defs = "#define DEM\n" }
   if render3d_st.ter_smooth { defs = "#define SMOOTH\n" }
@@ -324,8 +345,15 @@ function terrain_height_smooth(render3d_st: mut Render3dState, x: float, z: floa
   return h
 }
 
-@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+# the GPU memory it makes is counted as VKM_TERRAIN (R3D_VKMEM)
 function terrain_load_textures(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  terrain_load_textures__t(render3d_st)
+  render3d_st.gvk_tag = was
+}
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function terrain_load_textures__t(render3d_st: mut Render3dState) -> void {
   render3d_st.ter_tex = words(15)
   let a = render3d_st.r3d_assets + "/textures/"
   render3d_st.ter_tex[0] = tex_load(render3d_st, a + "aerial_grass_rock_diff_2k.png", true)
@@ -346,7 +374,14 @@ function terrain_load_textures(render3d_st: mut Render3dState) -> void {
   if r3d_env_has(render3d_st, "R3D_TEXDBG") { for i in 0 .. 15 { print(`ter_tex[{string(i)}] = {string(render3d_st.ter_tex[i])}`) } }
 }
 
+# the GPU memory it makes is counted as VKM_TERRAIN (R3D_VKMEM)
 function terrain_init(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  terrain_init__t(render3d_st)
+  render3d_st.gvk_tag = was
+}
+function terrain_init__t(render3d_st: mut Render3dState) -> void {
   for i in 0 .. TERRAIN_INIT_STEPS { terrain_init_step(render3d_st, i) }
 }
 
@@ -361,8 +396,15 @@ function terrain_init_step(render3d_st: mut Render3dState, i: int) -> void {
   terrain_init_finish(render3d_st)
 }
 
-@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+# the GPU memory it makes is counted as VKM_TERRAIN (R3D_VKMEM)
 function terrain_init_finish(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  terrain_init_finish__t(render3d_st)
+  render3d_st.gvk_tag = was
+}
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function terrain_init_finish__t(render3d_st: mut Render3dState) -> void {
   cdlod_init(render3d_st)
   render3d_st.ter_wire = r3d_env_has(render3d_st, "R3D_WIRE")
   render3d_st.ter_force_far = r3d_env_has(render3d_st, "R3D_TFARONLY")

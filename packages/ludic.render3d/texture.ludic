@@ -265,8 +265,16 @@ function tex_upload(render3d_st: mut Render3dState, px: pointer, srgb: bool, mip
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 function tex_load(render3d_st: mut Render3dState, path: pointer, srgb: bool) -> int { return tex_load_ex(render3d_st, path, srgb, 0) }
 # ... with `dilate` passes of edge padding for a cut-out atlas (0 = none)
-@alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
+# the GPU memory it makes is counted as VKM_TEXTURE (R3D_VKMEM)
 function tex_load_ex(render3d_st: mut Render3dState, path: pointer, srgb: bool, dilate: int) -> int {
+  let was = render3d_st.gvk_tag
+  if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+  let r = tex_load_ex__t(render3d_st, path, srgb, dilate)
+  render3d_st.gvk_tag = was
+  return r
+}
+@alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
+function tex_load_ex__t(render3d_st: mut Render3dState, path: pointer, srgb: bool, dilate: int) -> int {
   # a .dds encoded beside the .png at build time goes to the GPU compressed, its mips included
   # (not for a cut-out atlas: its edge padding is made here, from the .png)
   if render3d_st.gvk_has_bc and dilate == 0 {
@@ -410,7 +418,15 @@ function hdr_decode(render3d_st: mut Render3dState, path: pointer) -> floats {
 }
 
 # Load an equirectangular .hdr as an RGB16F texture with mips (clamped in v).
+# the GPU memory it makes is counted as VKM_TEXTURE (R3D_VKMEM)
 function tex_load_hdr(render3d_st: mut Render3dState, path: pointer) -> int {
+  let was = render3d_st.gvk_tag
+  if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+  let r = tex_load_hdr__t(render3d_st, path)
+  render3d_st.gvk_tag = was
+  return r
+}
+function tex_load_hdr__t(render3d_st: mut Render3dState, path: pointer) -> int {
   let px = hdr_decode(render3d_st, path)
   if px == null { return 0 }
   let id = gpu_tex_new(render3d_st)
@@ -484,8 +500,16 @@ function tex_dump(render3d_st: mut Render3dState, tex: int, w: int, h: int, path
 
 # A binary PPM (P6, what Gl.screenshot writes) as an RGB8 texture, box-filtered down by
 # `shrink` (a photo thumbnail); 0 when the file is missing.
-@alloc_ok("a load: an image read from disk")
+# the GPU memory it makes is counted as VKM_TEXTURE (R3D_VKMEM)
 function tex_load_ppm(render3d_st: mut Render3dState, path: pointer, shrink: int) -> int {
+  let was = render3d_st.gvk_tag
+  if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+  let r = tex_load_ppm__t(render3d_st, path, shrink)
+  render3d_st.gvk_tag = was
+  return r
+}
+@alloc_ok("a load: an image read from disk")
+function tex_load_ppm__t(render3d_st: mut Render3dState, path: pointer, shrink: int) -> int {
   let d = r3d_read_file(render3d_st, path)
   if d == null { return 0 }
   let size = render3d_st.tex_file_len

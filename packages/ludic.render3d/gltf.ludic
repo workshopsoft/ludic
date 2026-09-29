@@ -175,9 +175,17 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
 }
 
 # Load the mesh of the node called `node_name` from dir/file.
+# the GPU memory it makes is counted as VKM_MODEL (R3D_VKMEM)
+function gltf_load(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_MODEL
+  let r = gltf_load__t(render3d_st, dir, file, node_name)
+  render3d_st.gvk_tag = was
+  return r
+}
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 @creates(Model)
-function gltf_load(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
+function gltf_load__t(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
   render3d_st.gltf_dir = dir
   let at = dir + "/" + file
   let text = Fs.read_text(at)

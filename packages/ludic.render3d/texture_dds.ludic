@@ -18,8 +18,16 @@ function dds_path_of(path: string) -> string {
 }
 
 # Load the .dds at `path` as a texture (srgb: colour, sampled as sRGB), or 0
-@alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
+# the GPU memory it makes is counted as VKM_TEXTURE (R3D_VKMEM)
 function tex_load_dds(render3d_st: mut Render3dState, path: string, srgb: bool) -> int {
+  let was = render3d_st.gvk_tag
+  if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+  let r = tex_load_dds__t(render3d_st, path, srgb)
+  render3d_st.gvk_tag = was
+  return r
+}
+@alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
+function tex_load_dds__t(render3d_st: mut Render3dState, path: string, srgb: bool) -> int {
   let b = Fs.read_bytes(path)
   if b == null { return 0 }
   let id = tex_load_dds_bytes(render3d_st, b, srgb)
@@ -28,7 +36,15 @@ function tex_load_dds(render3d_st: mut Render3dState, path: string, srgb: bool) 
   return id
 }
 
+# the GPU memory it makes is counted as VKM_TEXTURE (R3D_VKMEM)
 function tex_load_dds_bytes(render3d_st: mut Render3dState, b: []byte, srgb: bool) -> int {
+  let was = render3d_st.gvk_tag
+  if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+  let r = tex_load_dds_bytes__t(render3d_st, b, srgb)
+  render3d_st.gvk_tag = was
+  return r
+}
+function tex_load_dds_bytes__t(render3d_st: mut Render3dState, b: []byte, srgb: bool) -> int {
   if len(b) < 148 or b[0] != 68 or b[1] != 68 or b[2] != 83 or b[3] != 32 { return 0 }
   if b[84] != 68 or b[85] != 88 or b[86] != 49 or b[87] != 48 { return 0 }      # "DX10"
   let h = dds_u32(b, 12)
