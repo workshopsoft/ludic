@@ -526,7 +526,7 @@ function deps_case() -> void {
   let lbl = "ludic deps: the numbers, --check against a baseline, --dot, --writes"
   let p = "examples/modules/tangle.ludic"
   let got = capture(`bin/ludic deps {p} 2>&1`)
-  let want = "modules: 3\ndependencies: 2\nlargest_cycle: 2\ncross_writes: 1\nglobals_written_from_outside: 1\nwidest_function: 1\nwidest_reach: 1\nwidest_write_reach: 1\nframe_allocs: 0\nframe_keeps: 0\nbirth_leaks: 0\nresource_drops: 0\nowned_leaks: 0\nin the largest cycle: a b\nthe widest function: a_run (examples/modules/tangle/a/index.ludic:3), 1 state\nthe widest write reach: a_run (examples/modules/tangle/a/index.ludic:3), 1 state it can come to change\n"
+  let want = "modules: 3\ndependencies: 2\nlargest_cycle: 2\ncross_writes: 1\nglobals_written_from_outside: 1\nwidest_function: 1\nwidest_reach: 1\nwidest_write_reach: 1\nframe_allocs: 0\nframe_keeps: 0\nbirth_leaks: 0\nresource_drops: 0\nowned_leaks: 0\nenglish_left: 0\nin the largest cycle: a b\nthe widest function: a_run (examples/modules/tangle/a/index.ludic:3), 1 state\nthe widest write reach: a_run (examples/modules/tangle/a/index.ludic:3), 1 state it can come to change\n"
   if not (s_trim(got) == s_trim(want)) { bad2(lbl, `said [{s_trim(got)}]`);  return }
   let base = `{tmp_dir()}/deps-base.txt`
   if not shq(`bin/ludic deps {p} --baseline {base} > /dev/null`) { bad2(lbl, "--baseline failed");  return }
