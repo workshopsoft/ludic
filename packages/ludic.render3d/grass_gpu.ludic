@@ -11,8 +11,7 @@
 
 const GG_TILES: int = 4096
 const GG_BANDS: int = 3
-const GG_NEAR: float = 6.0     # band 0, five rows
-const GG_MID: float = 16.0     # band 1, three rows; band 2 is one quad
+# band 0 is the kind's rows_near out to its band_near, band 1 rows_mid to band_mid, band 2 rows_far
 
 function gg_cap(b: int) -> int {
   if b == 0 { return 16384 }
@@ -48,9 +47,9 @@ function gg_init__t(render3d_st: mut Render3dState) -> void {
   gpu_buffer_upload(render3d_st, render3d_st.gg_out, (gg_base(2) + gg_cap(2)) * 64, null, GPU_DYNAMIC)
   gpu_buffer_gpu_owned(render3d_st, render3d_st.gg_out)
   render3d_st.gg_mesh = new []Mesh
-  push(render3d_st.gg_mesh, gg_blade(render3d_st, 5))
-  push(render3d_st.gg_mesh, gg_blade(render3d_st, 3))
-  push(render3d_st.gg_mesh, gg_blade(render3d_st, 2))
+  for b in 0 .. GG_BANDS { push(render3d_st.gg_mesh, null) }
+  gg_meshes_build(render3d_st)
+  # each band's index count is grass_reset.comp's to write, every frame, from the blade it draws
   let rec = words(GG_BANDS * 5)
   for b in 0 .. GG_BANDS {
     rec[b * 5] = render3d_st.gg_mesh[b].count;  rec[b * 5 + 1] = 0;  rec[b * 5 + 2] = 0;  rec[b * 5 + 3] = 0;  rec[b * 5 + 4] = gg_base(b)
@@ -60,6 +59,17 @@ function gg_init__t(render3d_st: mut Render3dState) -> void {
   gpu_buffer_gpu_owned(render3d_st, render3d_st.gg_cmds)
   render3d_st.gg_on = true
   print("r3d: grass: blades are culled on the GPU")
+}
+
+# the three instanced blades at the kind's rows, the old ones let go (grass_meshes_build)
+@alloc_ok("start-up, and a kind of another shape set at a world build: the blade meshes are made once")
+function gg_meshes_build(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gg_mesh == null { return }
+  let k = grass_kind(render3d_st)
+  for b in 0 .. GG_BANDS { mesh_free(render3d_st, render3d_st.gg_mesh[b]) }
+  render3d_st.gg_mesh[0] = gg_blade(render3d_st, k.rows_near)
+  render3d_st.gg_mesh[1] = gg_blade(render3d_st, k.rows_mid)
+  render3d_st.gg_mesh[2] = gg_blade(render3d_st, k.rows_far)
 }
 
 # a blade mesh reading its instance record (four vec4s) from the cull's output
@@ -74,7 +84,7 @@ function gg_blade(render3d_st: mut Render3dState, rows: int) -> Mesh {
 # one tile size over one distance band: its visible tiles into gg_tv (corner, indices per cell, cells)
 function gg_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_max: float) -> void {
   if d_min >= grass_reach(render3d_st) { return }
-  let cells = size / GRASS_CELL
+  let cells = size / render3d_st.grass_cell
   let sz = float(size)
   let half = sz * 0.5
   let reach = d_max + half * 1.5
@@ -113,9 +123,11 @@ function gg_cull_frame(render3d_st: mut Render3dState) -> void {
   # made once, with the device (gvk_startup_state)
   let rb = render3d_st.gg_rb
   rb[0] = GG_BANDS;  rb[1] = 0;  rb[2] = 0;  rb[3] = 0
+  for b in 0 .. 4 { rb[4 + b] = 0 }
+  for b in 0 .. GG_BANDS { rb[4 + b] = render3d_st.gg_mesh[b].count }
   let cb = render3d_st.gg_cb
   cb[0] = render3d_st.gg_cmds
-  gpu_dispatch(render3d_st, render3d_st.gg_reset, data_of(rb), 16, cb, 1)
+  gpu_dispatch(render3d_st, render3d_st.gg_reset, data_of(rb), 32, cb, 1)
   if render3d_st.gg_n == 0 { return }
   # the tile list alternates buffers by frame, so the frame still on the GPU keeps its own
   let tb = render3d_st.gg_tiles_buf[render3d_st.r3d_test_frame % 2]
@@ -126,7 +138,7 @@ function gg_cull_frame(render3d_st: mut Render3dState) -> void {
   let texs = render3d_st.gg_texs
   texs[0] = render3d_st.ter_height_tex;  texs[1] = render3d_st.ter_ortho_tex;  texs[2] = render3d_st.ter_normal_tex
   gg_page_texs(render3d_st, texs)
-  gpu_dispatch_tex(render3d_st, render3d_st.gg_cull, data_of(pr), 208, bufs, texs, (render3d_st.gg_max + 63) / 64, render3d_st.gg_n)
+  gpu_dispatch_tex(render3d_st, render3d_st.gg_cull, data_of(pr), 288, bufs, texs, (render3d_st.gg_max + 63) / 64, render3d_st.gg_n)
 }
 
 # the page pool's four, after the three whole-map ones (the stand-ins while paging is off)
@@ -136,10 +148,10 @@ function gg_page_texs(render3d_st: mut Render3dState, texs: words) -> void {
   if render3d_st.tp_on { texs[3] = render3d_st.tp_page_tex;  texs[4] = render3d_st.tp_h_tex;  texs[5] = render3d_st.tp_n_tex;  texs[6] = render3d_st.tp_o_tex }
 }
 
-# grass_cull.comp's Params, std140: 13 vec4s, into the block made once in gg_cull_frame
+# grass_cull.comp's Params, std140: 18 vec4s, into the block made once with the device
 function gg_params(render3d_st: mut Render3dState) -> words {
   let pr = render3d_st.gg_pr
-  for i in 0 .. 52 { pr[i] = 0 }
+  for i in 0 .. 72 { pr[i] = 0 }
   if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
   pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(grass_reach(render3d_st))
   var ph = render3d_st.post_h
@@ -154,7 +166,7 @@ function gg_params(render3d_st: mut Render3dState) -> words {
   if render3d_st.ter_ortho_tex != 0 { oon = 1.0 }
   pr[28] = float_bits(lake);  pr[29] = float_bits(sea);  pr[30] = float_bits(oon)
   pr[32] = float_bits(render3d_st.ter_ox);  pr[33] = float_bits(render3d_st.ter_oz);  pr[34] = float_bits(float(render3d_st.TERRAIN_HALF))
-  pr[36] = float_bits(GG_NEAR);  pr[37] = float_bits(GG_MID)
+  grass_params_kind(render3d_st, pr)
   for b in 0 .. GG_BANDS { pr[40 + b] = gg_base(b);  pr[44 + b] = gg_cap(b) }
   # the page pool (terrain_pages.ludic): on in lev.w, and its dims as the terrain's shaders take them
   if render3d_st.tp_on { pr[31] = float_bits(1.0) }

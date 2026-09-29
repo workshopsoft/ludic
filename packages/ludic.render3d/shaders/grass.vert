@@ -119,6 +119,12 @@ uniform float u_d0;          // distance at which the spacing has doubled (m)
 uniform float u_radius;      // no blades past this
 uniform float u_px;          // one pixel's height in radians: no blade is drawn narrower than a pixel
 uniform int u_dbg;           // R3D_GRASS_DBG: 1 lift blades 0.3 m, 2 light as ground everywhere, 3 both
+// the grass kind (grass_kind.ludic, grass_bind_kind); grass_cull.comp's Params carry the same four
+uniform vec4 u_gk_tall;      // tall_min, tall_max, cell_lo, cell_hi
+uniform vec4 u_gk_grow;      // tall_far, width, width_far, clump_freq
+uniform vec4 u_gk_clump;     // clump_lo, clump_hi, arch, arch_var
+uniform vec4 u_gk_ground;    // slope_lo, slope_hi, snow_in, snow_out
+uniform vec4 u_gk_ortho;     // ortho_floor, ortho_gain, ortho_green, cell (m)
 out vec3 v_wpos;
 out vec3 v_nrm;
 out vec2 v_uv;
@@ -128,7 +134,7 @@ out float v_hull;
 out float v_quake;   // only aspens quake; written so model.frag can read it
 out vec3 v_tint;     // the blade's colour field at its root (model.frag's regionTint and patchiness, once a blade)
 
-const float CELL = 4.0;   // grass.ludic GRASS_CELL: 4 m, so a near tile asks for what its blades need
+#define CELL u_gk_ortho.w   // the kind's cell (4 m by default, so a near tile asks for what its blades need)
 // hash1 and fbm come from noise.glsl, which a GBLADE vertex stage is given (programs.ludic)
 // An integer hash (PCG) for the per-blade values. The sine hash advanced linearly with
 // the blade index, so a cell's blades fell into diagonal rows, and the rows read as
@@ -207,7 +213,7 @@ void main() {
   // line for both left a lake above the sea with grass on its bed or a valley with none.
   float wl = u_sea_level;
   if (u_lake.z > 0.0) { vec2 q = (xz - u_lake.xy) / u_lake.zw;  if (dot(q, q) < 1.0) wl = max(wl, u_lake_level); }
-  float ok = (1.0 - smoothstep(0.30, 0.55, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(u_snow_line - 80.0, u_snow_line - 200.0, ht.r);
+  float ok = (1.0 - smoothstep(u_gk_ground.x, u_gk_ground.y, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(u_snow_line - u_gk_ground.z, u_snow_line - u_gk_ground.w, ht.r);
   if (u_ortho_on > 0.5) {
     vec3 oc = textureLod(u_ortho, huv, tpOrthoLod(1.5)).rgb;
     // Is this ground vegetated, by the photograph? The test used to be green DOMINANCE -
@@ -218,7 +224,7 @@ void main() {
     // and -0.002 six hundred metres away, flipping between full density and a quarter over
     // open meadow; g - b reads +0.076 and +0.014 and separates plant from rock and snow
     // just as well, because rock and snow are neutral and vegetation is not.
-    ok *= 0.40 + 0.60 * smoothstep(0.0, 0.025, oc.g - oc.b);
+    ok *= u_gk_ortho.x + u_gk_ortho.y * smoothstep(0.0, u_gk_ortho.z, oc.g - oc.b);
   }
   if (h4 > ok) { cull(); return; }
   // the root on the drawn surface: the CDLOD mesh follows the B-spline to within
@@ -242,22 +248,22 @@ void main() {
   // are what carry the silhouette against the light. An even 0.18-0.42 spread read as a lawn
   // that had been cut, which is the one thing an alpine meadow is not.
   float hh = h3 * h3;
-  float tall = mix(0.09, 0.60, hh) * mix(0.8, 1.2, hash1(cid * 0.1)) * (1.0 + 0.35 * smoothstep(1.0, 12.0, grow)) * life;
+  float tall = mix(u_gk_tall.x, u_gk_tall.y, hh) * mix(u_gk_tall.z, u_gk_tall.w, hash1(cid * 0.1)) * (1.0 + u_gk_grow.x * smoothstep(1.0, 12.0, grow)) * life;
   // CLUMPS: grass grows in tussocks, taller and shorter patches a metre or so across, and that
   // relief is the texture a meadow has from above - an even height reads as felt
-  float clump = gnoise(xz * 0.85 + 3.7) * 0.5 + 0.5;
-  tall *= mix(0.45, 1.40, clump * clump * (3.0 - 2.0 * clump));
+  float clump = gnoise(xz * u_gk_grow.w + 3.7) * 0.5 + 0.5;
+  tall *= mix(u_gk_clump.x, u_gk_clump.y, clump * clump * (3.0 - 2.0 * clump));
   // 2.8 cm was FIVE TIMES a blade of meadow grass, which is 3-6 mm. At 2 m from the
   // camera that is a broad dark scimitar lying along the ground rather than a blade
   // standing in a sward, and no amount of profile or colour work fixes a blade that is
   // the wrong size. Measured, not guessed: it is the one number behind every "too wide
   // and too flat" note in this stage.
-  float bw = 0.010 * mix(1.0, 0.45 * grow, smoothstep(1.0, 4.0, grow));
+  float bw = u_gk_grow.y * mix(1.0, u_gk_grow.z * grow, smoothstep(1.0, 4.0, grow));
   if (far) { bw = max(bw, spacing * 0.35); tall = min(tall, spacing * 0.3); }
   // a blade under a pixel is a vertex bill that shimmers: widen it to one and a bit, and let the
   // thinning (spacing) keep the coverage
   bw = max(bw, dist * u_px * 1.1);
-  vec3 p = vec3(a_pos.x * bw, a_pos.y * tall, a_pos.z * tall * (0.6 + 0.8 * h4));
+  vec3 p = vec3(a_pos.x * bw, a_pos.y * tall, a_pos.z * tall * (u_gk_clump.z + u_gk_clump.w * h4));
   vec3 n = vec3(0.0, 0.3, 1.0);
   // The shared field (wind.glsl), so the gust that crosses this meadow is the same gust that
   // reaches the trees behind it a moment later. The two sines that used to live here were a

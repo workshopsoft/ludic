@@ -116,6 +116,7 @@ uniform float u_d0;
 uniform float u_radius;
 uniform float u_px;          // one pixel in radians (grass.vert)
 uniform int u_dbg;
+uniform vec4 u_gk_ortho;     // the grass kind's (grass_bind_kind): w its cell (m); the rest is grass.vert's
 out vec3 v_wpos[];
 out vec3 v_nrm[];
 out vec2 v_uv[];
@@ -124,7 +125,9 @@ out vec2 v_rot[];
 out float v_hull[];
 out float v_quake[];   // grass does not quake; written so model.frag can read it
 
-const float CELL = 4.0;   // grass.ludic GRASS_CELL: 4 m, so a near tile asks for what its blades need
+// The kind's cell, as the CPU's tiles count it. Nothing else of the kind reaches this path yet: its
+// shape, sizes and density test are an older copy of grass.vert's, kept as they draw today.
+#define CELL u_gk_ortho.w
 float hash1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
 uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
 float bladeHash(ivec2 cell, int j, int k) {

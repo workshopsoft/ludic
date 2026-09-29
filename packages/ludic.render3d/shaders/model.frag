@@ -31,6 +31,10 @@ uniform vec3 u_blade_tip;
 uniform sampler2D u_blade_tex;   // straightened photographic blades, side by side
 uniform float u_blade_cols;      // how many are in it
 uniform float u_blade_tex_on;
+// the grass kind (grass_kind.ludic, grass_bind_look): the scatter's blade layers bind it too
+uniform vec4 u_gk_seed;          // gone to seed: colour, and how far a seeded blade goes to it
+uniform vec4 u_gk_look;          // seed_lo, seed_hi (the share gone to seed), tuft_mix, tuft_shade
+uniform vec4 u_gk_mat;           // ao_root, roughness
 #endif
 #ifdef CARD
 uniform float u_cull;        // the layer's cull distance (m); 0 = none
@@ -105,8 +109,8 @@ void main() {
   vec3 field = v_tint;
 #endif
   alb = mix(u_blade_base, u_blade_tip, smoothstep(0.0, 0.55, t)) * field;
-  float dry = smoothstep(0.7, 0.8, fract(v_seed * 3.17));
-  alb = mix(alb, vec3(0.40, 0.36, 0.13) * (0.45 + 0.55 * t), dry * 0.75);
+  float dry = smoothstep(u_gk_look.x, u_gk_look.y, fract(v_seed * 3.17));
+  alb = mix(alb, u_gk_seed.rgb * (0.45 + 0.55 * t), dry * u_gk_seed.w);
   // A REAL BLADE, if the game gave us one. Each blade picks a column of the atlas from
   // its own seed and runs v from sheath to tip, so a meadow is eight different plants
   // rather than one plant ten thousand times. The photograph carries the midrib, the
@@ -135,7 +139,7 @@ void main() {
     alb *= mix(vec3(1.0), min(g, vec3(1.15)), 0.85);
   }
   // a far tuft is a patch of the meadow, darker than a lit blade tip and never straw
-  if (v_hull < 0.0) alb = mix(u_blade_base, u_blade_tip, 0.45) * field * 0.72;
+  if (v_hull < 0.0) alb = mix(u_blade_base, u_blade_tip, u_gk_look.z) * field * u_gk_look.w;
   // a rounded cross-section reads softer than a flat card
   vec3 side = normalize(cross(N, vec3(0.0, 1.0, 0.0)) + vec3(1e-4));
   n = (v_hull < 0.0) ? N : normalize(N + side * (v_uv.x * 2.0 - 1.0) * 0.6);
@@ -149,7 +153,7 @@ void main() {
   // an occlusion term; grass albedo is capped near 0.5 and this was dividing it by five.
   // A blade is a thin thing standing in open air: shaded at the root by its neighbours,
   // not buried.
-  arm = vec3(mix(0.55, 1.0, t), 0.85, 0.0);
+  arm = vec3(mix(u_gk_mat.x, 1.0, t), u_gk_mat.y, 0.0);
 #elif defined(CARD)
   // thin grass is lit from either side: face the card toward the sun before shading
   if (dot(N, u_sun_dir) < 0.0) N = -N;

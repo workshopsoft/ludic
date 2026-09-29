@@ -21,6 +21,12 @@ layout(set = 0, binding = 0) uniform Params {
   uvec4 base;       // each band's first record in Out
   uvec4 cap;        // ... and how many it holds
   vec4 tp;          // the page pool (u_tp_dims): tiles a side, height texels a tile, photograph texels a tile, height texels a side
+  // the grass kind (grass_kind.ludic, grass_params_kind): grass.vert's u_gk_* by the same names
+  vec4 gk_tall;     // tall_min, tall_max, cell_lo, cell_hi
+  vec4 gk_grow;     // tall_far, width, width_far, clump_freq
+  vec4 gk_clump;    // clump_lo, clump_hi, arch, arch_var
+  vec4 gk_ground;   // slope_lo, slope_hi, snow_in, snow_out
+  vec4 gk_ortho;    // ortho_floor, ortho_gain, ortho_green, cell (m)
 } pr;
 
 layout(set = 0, binding = 1) readonly buffer Tiles { vec4 tiles[]; };   // corner x/z, indices per cell, cells per side
@@ -36,7 +42,7 @@ layout(set = 0, binding = 8) uniform sampler2DArray u_tp_h;             // (T + 
 layout(set = 0, binding = 9) uniform sampler2DArray u_tp_nrm;
 layout(set = 0, binding = 10) uniform sampler2DArray u_tp_ortho;        // (S + 2)^2 a layer
 
-const float CELL = 4.0;   // grass.ludic GRASS_CELL
+#define CELL pr.gk_ortho.w   // the kind's cell (m)
 
 uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
 float bladeHash(ivec2 cell, int j, int k) {
@@ -132,10 +138,10 @@ void main() {
   float h3 = bladeHash(ci, j, 2), h4 = bladeHash(ci, j, 3);
   float wl = pr.lev.y;
   if (pr.lake.z > 0.0) { vec2 q = (xz - pr.lake.xy) / pr.lake.zw;  if (dot(q, q) < 1.0) wl = max(wl, pr.lev.x); }
-  float ok = (1.0 - smoothstep(0.30, 0.55, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(pr.dens.w - 80.0, pr.dens.w - 200.0, ht.r);
+  float ok = (1.0 - smoothstep(pr.gk_ground.x, pr.gk_ground.y, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(pr.dens.w - pr.gk_ground.z, pr.dens.w - pr.gk_ground.w, ht.r);
   if (pr.lev.z > 0.5) {
     vec3 oc = groundO(huv);
-    ok *= 0.40 + 0.60 * smoothstep(0.0, 0.025, oc.g - oc.b);
+    ok *= pr.gk_ortho.x + pr.gk_ortho.y * smoothstep(0.0, pr.gk_ortho.z, oc.g - oc.b);
   }
   if (h4 > ok) return;
   float h = heightSmooth(huv);
@@ -143,10 +149,10 @@ void main() {
   float ang = bladeHash(ci, j, 6) * 6.2831853;
   float grow = spacing / pr.dens.x;
   float hh = h3 * h3;
-  float tall = mix(0.09, 0.60, hh) * mix(0.8, 1.2, hash1(cid * 0.1)) * (1.0 + 0.35 * smoothstep(1.0, 12.0, grow)) * life;
-  float clump = gnoise(xz * 0.85 + 3.7) * 0.5 + 0.5;
-  tall *= mix(0.45, 1.40, clump * clump * (3.0 - 2.0 * clump));
-  float bw = 0.010 * mix(1.0, 0.45 * grow, smoothstep(1.0, 4.0, grow));
+  float tall = mix(pr.gk_tall.x, pr.gk_tall.y, hh) * mix(pr.gk_tall.z, pr.gk_tall.w, hash1(cid * 0.1)) * (1.0 + pr.gk_grow.x * smoothstep(1.0, 12.0, grow)) * life;
+  float clump = gnoise(xz * pr.gk_grow.w + 3.7) * 0.5 + 0.5;
+  tall *= mix(pr.gk_clump.x, pr.gk_clump.y, clump * clump * (3.0 - 2.0 * clump));
+  float bw = pr.gk_grow.y * mix(1.0, pr.gk_grow.z * grow, smoothstep(1.0, 4.0, grow));
   bw = max(bw, dist * pr.dens.z * 1.1);
   uint b = dist < pr.bands.x ? 0u : (dist < pr.bands.y ? 1u : 2u);
   uint slot = atomicAdd(cmds[b * 5u + 1u], 1u);
@@ -154,6 +160,6 @@ void main() {
   uint o = (pr.base[b] + slot) * 4u;
   outv[o] = vec4(xz.x, h - 0.02, xz.y, seed);
   outv[o + 1u] = vec4(sin(ang), cos(ang), tall, bw);
-  outv[o + 2u] = vec4(bladeField(xz, h), 0.6 + 0.8 * h4);
+  outv[o + 2u] = vec4(bladeField(xz, h), pr.gk_clump.z + pr.gk_clump.w * h4);
   outv[o + 3u] = vec4(gn, dist);
 }
