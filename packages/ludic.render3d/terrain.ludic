@@ -253,6 +253,7 @@ function terrain_generate__t(render3d_st: mut Render3dState) -> void {
 
 # The height field for shaders that place things on the ground (model.vert's u_ground)
 function terrain_bind_height(render3d_st: mut Render3dState, p: int) -> void {
+  tp_bind(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_ts_height", 5, render3d_st.ter_height_tex)
   r3d_bind_2d(render3d_st, p, "u_ter_normal", 6, render3d_st.ter_normal_tex)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_ts_half"), float(render3d_st.TERRAIN_HALF))
@@ -287,6 +288,7 @@ function terrain_bake_pass(render3d_st: mut Render3dState, p: int, target: int) 
   gpu_depth_test(render3d_st, false)
   gpu_blend(render3d_st, false)
   gpu_use_program(render3d_st, p)
+  tp_bind(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_height", 0, render3d_st.ter_height_tex)
   r3d_bind_2d(render3d_st, p, "u_ter_normal", 7, render3d_st.ter_normal_tex)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_half"), float(render3d_st.TERRAIN_HALF))
@@ -400,6 +402,7 @@ function terrain_init(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_tag = was
 }
 function terrain_init__t(render3d_st: mut Render3dState) -> void {
+  tp_dummies(render3d_st)
   for i in 0 .. TERRAIN_INIT_STEPS { terrain_init_step(render3d_st, i) }
 }
 
@@ -473,6 +476,7 @@ function terrain_draw_shadow(light_vp: floats) -> void {
 # selection can switch between them per patch without re-binding anything but the node.
 function terrain_bind_prog(render3d_st: mut Render3dState, p: int) -> void {
   gpu_use_program(render3d_st, p)
+  tp_bind(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_height", 0, render3d_st.ter_height_tex)
   r3d_bind_2d(render3d_st, p, "u_ter_normal", 7, render3d_st.ter_normal_tex)
   r3d_bind_2d(render3d_st, p, "u_grass_d", 1, render3d_st.ter_tex[0]);  r3d_bind_2d(render3d_st, p, "u_grass_n", 2, render3d_st.ter_tex[1]);  r3d_bind_2d(render3d_st, p, "u_grass_a", 3, render3d_st.ter_tex[2])
@@ -582,6 +586,7 @@ function terrain_sun_pass(render3d_st: mut Render3dState, w: int, h: int, depth:
   gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT)
   let p = render3d_st.ter_sun_prog
   gpu_use_program(render3d_st, p)
+  tp_bind(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_height", 0, render3d_st.ter_height_tex)
   r3d_bind_2d(render3d_st, p, "u_ter_normal", 7, render3d_st.ter_normal_tex)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_half"), float(render3d_st.TERRAIN_HALF))
@@ -822,6 +827,7 @@ function terrain_unload(render3d_st: mut Render3dState) -> void {
   if render3d_st.ter_normal_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_normal_tex);  render3d_st.ter_normal_tex = 0 }
   if render3d_st.ter_dem_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_dem_tex);  render3d_st.ter_dem_tex = 0 }
   if render3d_st.ter_ortho_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_ortho_tex);  render3d_st.ter_ortho_tex = 0 }
+  tp_pool_free(render3d_st)
   if render3d_st.ter_heights != null { free(render3d_st.ter_heights);  render3d_st.ter_heights = null }
   tt_close(render3d_st)
   if render3d_st.ter_ortho_px != null { free(render3d_st.ter_ortho_px);  render3d_st.ter_ortho_px = null }

@@ -35,6 +35,7 @@ function terrain_tiles_cut(render3d_st: mut Render3dState) -> void {
   if r3d_env_has(render3d_st, "R3D_TT_CHECK") { tt_check(render3d_st) }
   free(render3d_st.ter_heights);  render3d_st.ter_heights = null
   free(render3d_st.ter_ortho_px);  render3d_st.ter_ortho_px = null
+  tp_cut(render3d_st)
   tt_say_cut(path, TT_HEAD + n * n * (TT_TEX * TT_TEX * 2 + side * side) * 4, (gl_now_us() - t0) / 1000)
 }
 

@@ -38,7 +38,7 @@ function gg_init__t(render3d_st: mut Render3dState) -> void {
   if not gpu_has_compute(render3d_st) or render3d_st.grass_prog == 0 { return }
   if r3d_env_has(render3d_st, "R3D_GRASS_GPU") and r3d_env(render3d_st, "R3D_GRASS_GPU") == "0" { return }
   render3d_st.gg_reset = gpu_compute(render3d_st, "grass_reset", 1)
-  render3d_st.gg_cull = gpu_compute_tex(render3d_st, "grass_cull", 3, 3)
+  render3d_st.gg_cull = gpu_compute_tex(render3d_st, "grass_cull", 3, 7)
   render3d_st.gg_prog = r3d_program(render3d_st, "grass_inst.vert", "model.frag", "#define FOLIAGE\n#define BLADE\n#define GBLADE\n#define GINST\n")
   if render3d_st.gg_reset == 0 or render3d_st.gg_cull == 0 or render3d_st.gg_prog == 0 { return }
   render3d_st.gg_tiles_buf = new []int
@@ -125,13 +125,21 @@ function gg_cull_frame(render3d_st: mut Render3dState) -> void {
   bufs[0] = tb;  bufs[1] = render3d_st.gg_out;  bufs[2] = render3d_st.gg_cmds
   let texs = render3d_st.gg_texs
   texs[0] = render3d_st.ter_height_tex;  texs[1] = render3d_st.ter_ortho_tex;  texs[2] = render3d_st.ter_normal_tex
-  gpu_dispatch_tex(render3d_st, render3d_st.gg_cull, data_of(pr), 192, bufs, texs, (render3d_st.gg_max + 63) / 64, render3d_st.gg_n)
+  gg_page_texs(render3d_st, texs)
+  gpu_dispatch_tex(render3d_st, render3d_st.gg_cull, data_of(pr), 208, bufs, texs, (render3d_st.gg_max + 63) / 64, render3d_st.gg_n)
 }
 
-# grass_cull.comp's Params, std140: 12 vec4s, into the block made once in gg_cull_frame
+# the page pool's four, after the three whole-map ones (the stand-ins while paging is off)
+function gg_page_texs(render3d_st: mut Render3dState, texs: words) -> void {
+  tp_dummies(render3d_st)
+  texs[3] = render3d_st.tp_dummy_page;  texs[4] = render3d_st.tp_dummy_h;  texs[5] = render3d_st.tp_dummy_n;  texs[6] = render3d_st.tp_dummy_o
+  if render3d_st.tp_on { texs[3] = render3d_st.tp_page_tex;  texs[4] = render3d_st.tp_h_tex;  texs[5] = render3d_st.tp_n_tex;  texs[6] = render3d_st.tp_o_tex }
+}
+
+# grass_cull.comp's Params, std140: 13 vec4s, into the block made once in gg_cull_frame
 function gg_params(render3d_st: mut Render3dState) -> words {
   let pr = render3d_st.gg_pr
-  for i in 0 .. 48 { pr[i] = 0 }
+  for i in 0 .. 52 { pr[i] = 0 }
   if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
   pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(grass_reach(render3d_st))
   var ph = render3d_st.post_h
@@ -148,6 +156,9 @@ function gg_params(render3d_st: mut Render3dState) -> words {
   pr[32] = float_bits(render3d_st.ter_ox);  pr[33] = float_bits(render3d_st.ter_oz);  pr[34] = float_bits(float(render3d_st.TERRAIN_HALF))
   pr[36] = float_bits(GG_NEAR);  pr[37] = float_bits(GG_MID)
   for b in 0 .. GG_BANDS { pr[40 + b] = gg_base(b);  pr[44 + b] = gg_cap(b) }
+  # the page pool (terrain_pages.ludic): on in lev.w, and its dims as the terrain's shaders take them
+  if render3d_st.tp_on { pr[31] = float_bits(1.0) }
+  pr[48] = float_bits(float(render3d_st.tt_n));  pr[49] = float_bits(float(TT_TEX));  pr[50] = float_bits(float(render3d_st.tt_oside));  pr[51] = float_bits(float(TERRAIN_RES))
   return pr
 }
 

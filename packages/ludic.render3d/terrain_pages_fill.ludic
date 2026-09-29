@@ -1,0 +1,74 @@
+# terrain_pages_fill.ludic — a tile's three layers written into the staging, border and all, and the
+# frame's copies recorded (terrain_pages_frame.ludic). The staging half is laid out as the page table,
+# then TP_BUDGET heights, TP_BUDGET normals and TP_BUDGET photographs.
+
+# the k-th load of the frame: tile t's heights and normals, (TT_TEX + 2) a side, each texel the one
+# the whole copy held at that place, clamped at the map's edge
+function tp_fill(render3d_st: mut Render3dState, t: int, base: int, k: int) -> void {
+  let n = render3d_st.tt_n
+  let hs = TT_TEX + 2
+  let hb = hs * hs * 4
+  let ho = base + n * n * 4 + k * hb
+  let no = base + n * n * 4 + TP_BUDGET * hb + k * hb
+  let i0 = (t % n) * TT_TEX - 1
+  let j0 = (t / n) * TT_TEX - 1
+  let p = render3d_st.tp_st_ptr
+  for b in 0 .. hs {
+    let tz = min(max(j0 + b, 0), TERRAIN_RES - 1)
+    for a in 0 .. hs {
+      let tx = min(max(i0 + a, 0), TERRAIN_RES - 1)
+      let o = (b * hs + a) * 4
+      Vk.put_i32(p, ho + o, float_bits(ter_h(render3d_st, tx, tz)))
+      Vk.put_i32(p, no + o, ter_n(render3d_st, tx, tz))
+    }
+  }
+  tp_fill_ortho(render3d_st, t, base + n * n * 4 + 2 * TP_BUDGET * hb, k)
+}
+
+# ... and its photograph, (tt_oside + 2) a side, as sRGB RGBA8 bytes with alpha 255
+function tp_fill_ortho(render3d_st: mut Render3dState, t: int, at: int, k: int) -> void {
+  let n = render3d_st.tt_n
+  let side = render3d_st.tt_oside
+  let os = side + 2
+  let top = n * side - 1
+  let o0 = at + k * os * os * 4
+  let i0 = (t % n) * side - 1
+  let j0 = (t / n) * side - 1
+  let p: pointer = render3d_st.tp_st_ptr
+  for b in 0 .. os {
+    let pz = min(max(j0 + b, 0), top)
+    for a in 0 .. os {
+      let v = ter_o(render3d_st, min(max(i0 + a, 0), top), pz)
+      let o = o0 + (b * os + a) * 4
+      p[o] = (v >> 16) & 255
+      p[o + 1] = (v >> 8) & 255
+      p[o + 2] = v & 255
+      p[o + 3] = 255
+    }
+  }
+}
+
+# the frame's k loads into their slots, then the page table if it changed: all in cb, no submit
+function tp_upload(render3d_st: mut Render3dState, cb: pointer, base: int, k: int) -> void {
+  let n = render3d_st.tt_n
+  let hs = TT_TEX + 2
+  let hb = hs * hs * 4
+  let os = render3d_st.tt_oside + 2
+  let p0 = base + n * n * 4
+  let slots = render3d_st.tp_cand_s
+  gpu_layers_copy(render3d_st, cb, render3d_st.tp_h_tex, hs, hs, p0, hb, slots, k)
+  gpu_layers_copy(render3d_st, cb, render3d_st.tp_n_tex, hs, hs, p0 + TP_BUDGET * hb, hb, slots, k)
+  gpu_layers_copy(render3d_st, cb, render3d_st.tp_o_tex, os, os, p0 + 2 * TP_BUDGET * hb, os * os * 4, slots, k)
+  if not render3d_st.tp_dirty { return }
+  mem_copy(mem_off(render3d_st.tp_st_ptr, base), data_of(render3d_st.tp_page), n * n * 4)
+  gpu_layers_copy(render3d_st, cb, render3d_st.tp_page_tex, n, n, base, 0, render3d_st.tp_zero, 1)
+  render3d_st.tp_dirty = false
+}
+
+# R3D_VKMEM: one line on the pool, next to the rest of the report
+function tp_report(render3d_st: Render3dState) -> void {
+  if not render3d_st.tp_on { return }
+  tp_say_report(render3d_st.tp_slots - render3d_st.tp_nfree, render3d_st.tp_slots, render3d_st.tp_frame_loads, render3d_st.tp_loads, render3d_st.tp_bytes, render3d_st.tp_reach)
+}
+@alloc_ok("a report printed once, under R3D_VKMEM")
+function tp_say_report(res: int, slots: int, now: int, all: int, bytes: int, r: float) -> void { print(`vkmem: terrain pages: {res} of {slots} slots resident, {now} loaded this frame, {all} over the run, {bytes / 1024} KB on the GPU, {int(r)} m round the camera`) }
