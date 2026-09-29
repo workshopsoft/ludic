@@ -1,0 +1,18 @@
+# The source language of the refused examples: two keys, and one English under two undescribed keys.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#. On the pause menu: returns to play.
+msgid "pause.resume"
+msgstr "Resume"
+
+#. The day on the HUD. {1} = the day number
+msgid "hud.day"
+msgstr "Day {1}"
+
+msgid "shop.close"
+msgstr "Close"
+
+msgid "map.close"
+msgstr "Close"

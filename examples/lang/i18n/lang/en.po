@@ -1,0 +1,40 @@
+# The example's source language: the English of every key i18n.ludic and i18n_ui.ludic use.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. On the pause menu: returns to play.
+msgid "pause.resume"
+msgstr "Resume"
+
+#. On the pause menu: closes the menu and returns to play.
+msgid "pause.close"
+msgstr "Close"
+
+#. On the map screen: closes the map.
+msgid "map.close"
+msgstr "Close"
+
+#. The day on the HUD. {1} = the day number
+msgid "hud.day"
+msgstr "Day {1}"
+
+#. A catch, counted. {1} = how many, {2} = the species
+msgid "catch.count"
+msgid_plural "catch.count"
+msgstr[0] "{1} {2} caught"
+msgstr[1] "{1} {2} "
+"caught"
+
+#. An item's name: a coil of rope.
+msgid "items.rope.name"
+msgstr "Rope"
+
+#. An item's name: a brass lamp.
+msgid "items.lamp.name"
+msgstr "Lamp"
+
+#. What a chapter step says to do: gather firewood.
+msgid "steps.gather_wood.hint"
+msgstr "Gather wood"

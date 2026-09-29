@@ -1,0 +1,12 @@
+# phase 26: a @Text Key field a row leaves out takes its derived key (things.axe.name), and en.po must
+# have it; a @Text string field still holding English is a warning, counted as english_left
+program DataMissing {
+  property Thing {
+    key: string = ""
+    @Text name: Key = null
+    @Text blurb: string = ""
+  }
+  registry Things of Thing as TH
+  def Things axe { blurb: "A sharp axe" }
+  entry { print(TH_COUNT) }
+}

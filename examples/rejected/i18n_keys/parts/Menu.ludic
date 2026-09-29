@@ -1,0 +1,4 @@
+# Menu.ludic - t_missing.ludic's component: one key en.po lacks
+component Menu {
+  prop day: int = 1
+}

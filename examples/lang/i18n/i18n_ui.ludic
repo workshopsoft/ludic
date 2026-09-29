@@ -1,0 +1,9 @@
+# i18n_ui.ludic — a component's template against lang/en.po: every t('key', ...) in a {hole} names
+# a key en.po has, and gives as many values as its English has holes. Words a player would read that
+# are not a key are "English left" (a warning, counted by ludic deps as english_left) - here the
+# "Paused" line; an element with translate="no" is left alone. `ludicc --check` reports both.
+import "ludic.ui"
+program I18nUi {
+  import "parts/Pause.ludic"
+  entry { print(1) }
+}

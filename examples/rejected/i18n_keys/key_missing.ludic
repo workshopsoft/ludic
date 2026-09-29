@@ -1,0 +1,11 @@
+# phase 26: a key literal en.po does not have is refused, and so is a plural key (kn"...") whose
+# en.po entry has no msgid_plural; trf given more values than the English has holes is a warning
+program KeyMissing {
+  function tr(key: Key) -> string { return string(key) }
+  function trf(key: Key, a: string, b: string) -> string { return string(key) + a + b }
+  entry {
+    print(tr(k"pause.gone"))
+    print(tr(kn"pause.resume"))
+    print(trf(k"hud.day", "1", "2"))
+  }
+}

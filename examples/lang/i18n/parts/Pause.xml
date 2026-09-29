@@ -1,0 +1,8 @@
+<div class="pause">
+  <p>{t('pause.resume')}</p>
+  <button title="{t('pause.close')}">{t('hud.day', day)}</button>
+  <button>{t(back)}</button>
+  <p>{t('catch.count', caught, 'trout')}</p>
+  <p translate="no">Maroon Lake 0.5 <b>beta</b></p>
+  <p>Paused</p>
+</div>

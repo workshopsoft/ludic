@@ -1,0 +1,11 @@
+# phase 26: a Key is not a string and a string is not a Key - text is made from a key, and a key is
+# written k"..."; nor does a key join text with +
+program KeyMixup {
+  function show(s: string) -> void { print(s) }
+  function name_of(k: Key) -> Key { return k }
+  entry {
+    show(k"pause.resume")
+    let k2 = name_of("Resume")
+    print(k2 + "!")
+  }
+}
