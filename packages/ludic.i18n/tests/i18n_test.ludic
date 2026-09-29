@@ -114,6 +114,19 @@ program I18nTest {
     expect(i18n_font_now(i18n_st) == "font_default")
   }
 
+  test "a language switched back to is its kept tables, not its file read again; a new probe reads it" (i18n_st: mut I18nState, i18n_test_st: mut I18nTestState) {
+    fresh(i18n_st, i18n_test_st)
+    i18n_use(i18n_st, "tt")
+    let first = L(i18n_st, "Settings")
+    Fs.write_text(dir() + "/tt.po", header("Tongue", "") + po_line("Settings", "Changed"))
+    i18n_use(i18n_st, "en")
+    i18n_use(i18n_st, "tt")
+    expect(L(i18n_st, "Settings") == first)
+    i18n_init(i18n_st)
+    i18n_use(i18n_st, "tt")
+    expect(L(i18n_st, "Settings") == "Changed")
+  }
+
   test "a mod in the player's folder is found, replaces a shipped code, and goes when removed" (i18n_st: mut I18nState, i18n_test_st: mut I18nTestState) {
     fresh(i18n_st, i18n_test_st)
     Fs.write_text(mods() + "/zz.po", header("Mod Tongue", "") + po_line("Settings", "Mettings"))

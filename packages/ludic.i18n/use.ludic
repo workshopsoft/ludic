@@ -7,10 +7,16 @@ export function i18n_use(i18n_st: mut I18nState, code: string) -> void {
   let forced = I18nWorld.forced()
   if len(forced) > 0 { k = i18n_index(i18n_st, forced) }
   var font = ""
-  if k > 0 {
+  if k > 0 and tables_have(i18n_st, k) {
+    tables_put(i18n_st, i18n_st.tabs[k])
+    i18n_st.on = true
+    i18n_st.cur = i18n_st.codes[k]
+    font = i18n_st.fonts[k]
+  } else if k > 0 {
     let text = Fs.read_text(i18n_st.paths[k])
     if text != null {
       i18n_load_text(i18n_st, text)
+      tables_file(i18n_st, k)
       i18n_st.on = true
       i18n_st.cur = i18n_st.codes[k]
       font = i18n_st.fonts[k]

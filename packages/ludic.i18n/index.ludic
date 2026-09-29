@@ -3,6 +3,7 @@ module ludic_i18n uses
 numbers float
 import "ports.ludic"
 import "state.ludic"
+import "tables.ludic"
 import "bytes.ludic"
 import "po.ludic"
 import "langs.ludic"
