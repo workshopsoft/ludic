@@ -11,3 +11,6 @@ holes, text still written in English (a template's words, a `@Text` row's value 
 `english_left` by `ludic deps`) and one English split into keys without `#.` descriptions are
 warnings. `ludic schema` gains `"lang"`: every key with its sites, unused and undescribed keys, splits,
 and each other language's missing, fuzzy and extra keys.
+A `Key` in a template literal's hole is an error (write `trf(k"...", ...)`), `trn` takes only a plural
+key and `tr` / `trf` refuse one; a program with no `lang` line (a package test) uses key literals
+unchecked and silently.

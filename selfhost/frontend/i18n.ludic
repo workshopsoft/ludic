@@ -225,15 +225,14 @@ function i18n_ks_name(kind: int) -> pointer {
   if kind == KS_DATA { return "data" }
   return "code"
 }
-# a key used: in en.po, and a plural one as a plural there. Nothing to check against: said once
+# a key used: in en.po, and a plural one as a plural there. A lang line with no en.po: said once;
+# no lang line at all (a package test) checks nothing and says nothing
 function i18n_use(key: pointer, plural: bool, kind: int, file: pointer, line: int, col: int) -> void {
   if not i18n_site(key, kind, file, line, col) { return }
   if g_i18n_en == null {
-    if kind != KS_TEMPLATE and not g_i18n_nopo_warned {
+    if g_i18n_on and kind != KS_TEMPLATE and not g_i18n_nopo_warned {
       g_i18n_nopo_warned = true
-      var why = "this program's package.ludic has no `lang \"assets/lang\" en` line"
-      if g_i18n_on { why = `{g_i18n_en_path} is not there` }
-      pwarn_at(file, line, col, `k"{key}": no en.po to check against - {why}; no key is checked`)
+      pwarn_at(file, line, col, `k"{key}": no en.po to check against - {g_i18n_en_path} is not there; no key is checked`)
     }
     return
   }
@@ -312,7 +311,7 @@ function i18n_walk(n: Node) -> void {
   if i18n_is_key(n) and not i18n_is_data_file(n.file) {
     i18n_use(i18n_key_text(n), n.ival == KEY_PLURAL, KS_CODE, n.file, n.line, i18n_col(n))
   }
-  if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and g_i18n_en != null { i18n_call(n) }
+  if n.kind == E_CALL and n.a != null and n.a.kind == E_ID { i18n_call(n) }
   i18n_walk(n.a)
   i18n_walk(n.b)
   i18n_walk(n.c)
@@ -322,15 +321,25 @@ function i18n_walk(n: Node) -> void {
     i += 1
   }
 }
-# trf(k"...", a, b) / trn(kn"...", n, a): the values after the key against its holes
+# tr(k"...") / trf(k"...", a, b) / trn(kn"...", n, a): a plural key only with trn, and trn only with
+# one (en.po or not); then the values after the key against its holes
 function i18n_call(n: Node) -> void {
   let nm = vis_plain(n.a.s)
-  if not (nm == "trf") and not (nm == "trn") { return }
+  if not (nm == "tr") and not (nm == "trf") and not (nm == "trn") { return }
   var k = 0
   while k < len(n.kids) and not i18n_is_key(n.kids[k]) { k += 1 }
   if k >= len(n.kids) { return }
   let e = n.kids[k]
-  i18n_holes(i18n_key_text(e), len(n.kids) - k - 1, nm, e.file, e.line, i18n_col(e))
+  let key = i18n_key_text(e)
+  let plural = e.ival == KEY_PLURAL
+  if nm == "trn" and not plural {
+    perr_at(e.file, e.line, i18n_col(e), `trn(k"{key}", ...): trn counts, so its key is a plural one - write kn"{key}" (and give en.po a msgid_plural)`)
+  }
+  if plural and not (nm == "trn") {
+    perr_at(e.file, e.line, i18n_col(e), `{nm}(kn"{key}", ...): a plural key needs its count - write trn(kn"{key}", n, ...)`)
+  }
+  if nm == "tr" or g_i18n_en == null { return }
+  i18n_holes(key, len(n.kids) - k - 1, nm, e.file, e.line, i18n_col(e))
 }
 # a node's column in its file: a template literal's hole is lexed on its own, so its tokens' columns
 # are the hole's - the file offset says where it really is

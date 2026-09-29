@@ -1,2 +1,2 @@
-# the key checks' refusals (key_missing, t_missing, key_mixup, data_missing): lang/en.po is the source
+# the key checks' refusals (key_missing, t_missing, key_mixup, data_missing, key_hole, key_rules): lang/en.po is the source
 lang "lang" en
