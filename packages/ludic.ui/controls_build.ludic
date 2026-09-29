@@ -67,21 +67,6 @@ function ct_build_range(ui_st: mut UiState, n: UiNode) -> void {
   ui_kept(n.children, track)
   ui_kept(n.children, ct_part(ui_st, n, "ui-value", ct_value_shown(ui_st, n)))
 }
-function ct_build_select(ui_st: mut UiState, n: UiNode) -> void {
-  @alloc_ok("once per pooled node: its list is kept and cleared")
-  if n.opts == null { n.opts = new []UiNode }    # its options moved to a list the node keeps, not a new one
-  let opts = n.opts
-  List.clear(opts)
-  for i in 0 .. len(n.children) { ui_kept(opts, n.children[i]) }
-  List.clear(n.children)
-  ct_label(ui_st, n)
-  var shown = ""
-  let at = ct_option_at(n, opts)
-  if at >= 0 { shown = opts[at].text }
-  ui_kept(n.children, ct_part(ui_st, n, "ui-prev", "<"))
-  ui_kept(n.children, ct_part(ui_st, n, "ui-value", shown))
-  ui_kept(n.children, ct_part(ui_st, n, "ui-next", ">"))
-}
 # which option the select's value names: an option's value="...", else its place
 function ct_option_at(n: UiNode, opts: []UiNode) -> int {
   let nv = ui_attr(n, "value")

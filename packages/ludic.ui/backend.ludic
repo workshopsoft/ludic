@@ -53,6 +53,8 @@ export state UiState {
   nt_ev_at: int = 0
   nt_nums: []Val = nt_nums_new()        # fired.ludic: the numbers a scroll or a slider reports, a ring
   nt_num_at: int = 0
+  ct_clamp_n: []UiNode = new []UiNode   # controls_opts.ludic: selects whose value a build clamped
+  ct_clamp_i: []int = new []int
   hd_ev: Val = hd_ev_new()               # hold.ludic: the held control's event, filled in place
   cv_texts: []string = new []string      # units_pieces.ludic: a value's var() pieces, kept
   tx_pieces: [][]string = new [][]string # eval_text.ludic: a text's pieces, a list a depth
