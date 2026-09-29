@@ -1,10 +1,7 @@
 # stream_baked.ludic — a stream filled from baked chunks instead of generated ones (plan 26 of
 # maroon-lake). The bake stores every instance of a kind once per 64 m chunk, at full density and in a
 # shuffled order, so a distance band draws a PREFIX of it: a nearer band holds everything a farther one
-# does. A record is 12 bytes: u16 x, u16 z (1/65536 of the chunk), u16 y (cm above the chunk's y_base),
-# u8 scale (lo..hi, the kind's range), u8 yaw, u8 seed, u8 wind.
-
-const SB_REC: int = 12
+# does. The stream kinds' records are 7 bytes (below); the fixed layers' 12 (layer_chunks.ludic).
 
 # the stream's cells laid on the baked chunks' grid: `size` metres from the corner (ox, oz)
 export function stream_set_grid(s: Stream, ox: float, oz: float) -> void {
@@ -12,19 +9,46 @@ export function stream_set_grid(s: Stream, ox: float, oz: float) -> void {
   s.oz = oz
 }
 
-# the first `keep` records of a chunk emitted into the chunk being filled (inside r3d_stream_fill)
-export function stream_emit_baked(render3d_st: mut Render3dState, s: Stream, recs: pointer, count: int, keep: int, x0: float, z0: float, y_base: float, lo: float, hi: float) -> void {
+# ---- the stream kinds' 7-byte record (the one pack and unpack both the bake and the game use) ----
+# 56 bits, least significant first, bytes little-endian: x 12 (1/4096 of the chunk), z 12, y 12 (over
+# the chunk's y span: y_base + v / 4095 * y_span), scale 6 (lo + v / 63 * (hi - lo)), yaw 6 (v / 64 of a
+# turn), seed 4 (v / 15), wind 4 (v / 15). Read as a low word (bytes 0-3) and a high one (4-6), so no
+# field needs a 64-bit int.
+const SB7_REC: int = 7
+
+# one record's fields (already quantized) written at `at` in `out`
+export function sb7_pack(out: []byte, at: int, x: int, z: int, y: int, scale: int, yaw: int, seed: int, wind: int) -> void {
+  let lo = (x & 4095) | ((z & 4095) << 12) | ((y & 255) << 24)
+  let hi = ((y >> 8) & 15) | ((scale & 63) << 4) | ((yaw & 63) << 10) | ((seed & 15) << 16) | ((wind & 15) << 20)
+  out[at] = lo & 255;  out[at + 1] = (lo >> 8) & 255;  out[at + 2] = (lo >> 16) & 255;  out[at + 3] = (lo >> 24) & 255
+  out[at + 4] = hi & 255;  out[at + 5] = (hi >> 8) & 255;  out[at + 6] = (hi >> 16) & 255
+}
+
+# field k of the record at `at` (0 x, 1 z, 2 y, 3 scale, 4 yaw, 5 seed, 6 wind), as its integer
+export function sb7_field(recs: pointer, at: int, k: int) -> int {
+  let lo = recs[at] | (recs[at + 1] << 8) | (recs[at + 2] << 16) | ((recs[at + 3] & 255) << 24)
+  let hi = recs[at + 4] | (recs[at + 5] << 8) | (recs[at + 6] << 16)
+  if k == 0 { return lo & 4095 }
+  if k == 1 { return (lo >> 12) & 4095 }
+  if k == 2 { return ((lo >> 24) & 255) | ((hi & 15) << 8) }
+  if k == 3 { return (hi >> 4) & 63 }
+  if k == 4 { return (hi >> 10) & 63 }
+  if k == 5 { return (hi >> 16) & 15 }
+  return (hi >> 20) & 15
+}
+
+# the first `keep` 7-byte records of a stream kind's chunk emitted into the chunk being filled
+export function stream_emit_baked(render3d_st: mut Render3dState, s: Stream, recs: pointer, count: int, keep: int, x0: float, z0: float, y_base: float, y_span: float, lo: float, hi: float) -> void {
   let n = min(keep, count)
-  let span = s.size / 65536.0
-  let sr = (hi - lo) / 255.0
+  let span = s.size / 4096.0
   for i in 0 .. n {
-    let o = i * SB_REC
-    let x = x0 + float(recs[o] | (recs[o + 1] << 8)) * span
-    let z = z0 + float(recs[o + 2] | (recs[o + 3] << 8)) * span
-    let y = y_base + float(recs[o + 4] | (recs[o + 5] << 8)) * 0.01
-    let scale = lo + float(recs[o + 6]) * sr
-    let yaw = float(recs[o + 7]) * (2.0 * PI / 256.0)
-    stream_emit(render3d_st, s, x, y, z, scale, yaw, float(recs[o + 8]) / 255.0, float(recs[o + 9]) / 255.0)
+    let o = i * SB7_REC
+    let x = x0 + float(sb7_field(recs, o, 0)) * span
+    let z = z0 + float(sb7_field(recs, o, 1)) * span
+    let y = y_base + float(sb7_field(recs, o, 2)) / 4095.0 * y_span
+    let scale = lo + float(sb7_field(recs, o, 3)) / 63.0 * (hi - lo)
+    let yaw = float(sb7_field(recs, o, 4)) * (2.0 * PI / 64.0)
+    stream_emit(render3d_st, s, x, y, z, scale, yaw, float(sb7_field(recs, o, 5)) / 15.0, float(sb7_field(recs, o, 6)) / 15.0)
   }
 }
 
