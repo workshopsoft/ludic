@@ -1,6 +1,7 @@
 # keyed_args.ludic - a key's arguments as the decoder reads them: unescaped, looked up while still English, a count
 
-# an argument as it was handed in: each 27 before a 27 or a 31 taken off
+# an argument as it was handed in: each 27 before a 27 or a 31 taken off, outside a bracket only (a
+# bracketed line inside it was carried raw, and its own escapes are its own)
 @alloc_ok("a key made into text (a cache miss): an argument that held a key with holes")
 function kr_unescape(s: string) -> string {
   var esc = false
@@ -8,9 +9,11 @@ function kr_unescape(s: string) -> string {
   if not esc { return s }
   let buf = buffer(len(s))
   var n = 0
+  var d = 0
   var i = 0
   while i < len(s) {
-    if s[i] == I18N_ESC and i + 1 < len(s) { i += 1 }
+    d = kx_depth(d, s[i])
+    if d == 0 and s[i] == I18N_ESC and i + 1 < len(s) { i += 1 }
     buf[n] = s[i]
     n += 1
     i += 1

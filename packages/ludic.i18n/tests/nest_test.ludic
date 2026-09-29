@@ -5,7 +5,7 @@ program I18nNestTest {
   numbers float
   function q(s: string) -> string { return "\"" + s + "\"" }
   function po_line(id: string, tr: string) -> string { return "msgid " + q(id) + "\nmsgstr " + q(tr) + "\n\n" }
-  function en() -> string { return po_line("hud.day", "Day {1}") + po_line("pause.quit", "Quit") + po_line("shop.ada", "Ada: {1}") }
+  function en() -> string { return po_line("hud.day", "Day {1}") + po_line("pause.quit", "Quit") + po_line("shop.ada", "Ada: {1}") + po_line("lore.talk", "{1} is back, {2}.") + po_line("lore.brief", "{1} {2} {3}") }
   function tt() -> string { return po_line("hud.day", "{1}. Gun") + po_line("pause.quit", "Cik") + po_line("Settings", "Ayarlar") }
   function b(s: string) -> string {
     let o = buffer(1)
@@ -38,5 +38,18 @@ program I18nNestTest {
     c[0] = I18N_CLOSE
     expect(L(i18n_st, "Quit" + text_of(c, 1)) == "Quit")
     expect(kx_nested("Quit") == false)
+  }
+
+  test "a key whose hole holds a key with two holes, bare, bracketed as a game's txt_key puts it, or in trf" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    let talk = trf(k"lore.talk", "Old Maroon", "under the far shore", "", "")
+    let brief = trf(k"lore.brief", "Lightning.", talk, tr(k"pause.quit"), "")
+    let whole = "Lightning. Old Maroon is back, under the far shore. Quit"
+    expect(L(i18n_st, brief) == whole)
+    let sep = buffer(1)
+    sep[0] = I18N_SEP
+    expect(L(i18n_st, b(tr(k"shop.ada") + text_of(sep, 1) + b(brief))) == "Ada: " + whole)   # txt_key's shape: raw inside
+    expect(L(i18n_st, trf(k"shop.ada", b(brief), "", "", "")) == "Ada: " + whole)
+    expect(L(i18n_st, trf(k"shop.ada", brief, "", "", "")) == "Ada: " + whole)
   }
 }
