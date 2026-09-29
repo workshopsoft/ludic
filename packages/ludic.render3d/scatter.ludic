@@ -226,8 +226,10 @@ function scatter_init(render3d_st: mut Render3dState) -> void {
   render3d_st.sc_prog_card_shadow = r3d_program(render3d_st, "model.vert", "model.frag", "#define SHADOW_PASS\n#define WIND\n#define CARD\n")
   render3d_st.sc_prog_card_cheap = r3d_program(render3d_st, "model.vert", "model.frag", "#define CARD\n#define CHEAP\n")
   # a dry alpine meadow: brown-olive roots, straw with a little green at the tips
-  render3d_st.sc_blade_base = v3_new(0.045, 0.06, 0.025)
-  render3d_st.sc_blade_tip = v3_new(0.22, 0.27, 0.13)
+  # (the default GrassKind's base and tip, grass_kind.ludic)
+  render3d_st.sc_blade_base = v3_new(0.0, 0.0, 0.0)
+  render3d_st.sc_blade_tip = v3_new(0.0, 0.0, 0.0)
+  grass_kind_colours(render3d_st)
   render3d_st.sc_blade_tint = v3_new(1.0, 1.0, 1.0)
   render3d_st.sc_prog_shadow = r3d_program(render3d_st, "model.vert", "shadow.frag", "#define SHADOW_PASS\n")
   render3d_st.sc_prog_shadow_wind = r3d_program(render3d_st, "model.vert", "shadow.frag", "#define SHADOW_PASS\n#define WIND\n")
@@ -951,6 +953,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
     }
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rough_scale"), l.rough)
     if l.blade { u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_base"), render3d_st.sc_blade_base);  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_tip"), render3d_st.sc_blade_tip) }
+    if l.blade { grass_bind_look(render3d_st, p) }
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_cull"), r3d_reach(render3d_st, l.cull))
     sky_bind_lighting(render3d_st, p)
     shadow_bind(render3d_st, p)

@@ -926,7 +926,7 @@ T 74258189 u_tershadow 7
 T 74258189 u_tershadow_aux 8
 T 74258189 u_ts_height 9
 P d48d6a48 grass.mesh model.frag #define FOLIAGE;#define BLADE;#define MESH;
-B d48d6a48 vert 0 4420
+B d48d6a48 vert 0 4448
 U d48d6a48 vert u_view 0 mat4 1 0
 U d48d6a48 vert u_proj 64 mat4 1 0
 U d48d6a48 vert u_vp 128 mat4 1 0
@@ -949,7 +949,8 @@ U d48d6a48 vert u_d0 4404 float 1 0
 U d48d6a48 vert u_radius 4408 float 1 0
 U d48d6a48 vert u_px 4412 float 1 0
 U d48d6a48 vert u_dbg 4416 int 1 0
-B d48d6a48 frag 1 1028
+U d48d6a48 vert u_gk_ortho 4432 vec4 1 0
+B d48d6a48 frag 1 1088
 U d48d6a48 frag u_cascade_vp 0 mat4 5 64
 U d48d6a48 frag u_cascade_split 320 float 5 16
 U d48d6a48 frag u_cascade_range 400 float 5 16
@@ -998,6 +999,9 @@ U d48d6a48 frag u_blade_base 992 vec3 1 0
 U d48d6a48 frag u_blade_tip 1008 vec3 1 0
 U d48d6a48 frag u_blade_cols 1020 float 1 0
 U d48d6a48 frag u_blade_tex_on 1024 float 1 0
+U d48d6a48 frag u_gk_seed 1040 vec4 1 0
+U d48d6a48 frag u_gk_look 1056 vec4 1 0
+U d48d6a48 frag u_gk_mat 1072 vec4 1 0
 T d48d6a48 u_arm 2
 T d48d6a48 u_blade_tex 3
 T d48d6a48 u_brdf 4
@@ -1015,7 +1019,7 @@ T d48d6a48 u_tp_nrm 15
 T d48d6a48 u_tp_page 16
 T d48d6a48 u_ts_height 17
 P cb13f3c6 grass.vert model.frag #define FOLIAGE;#define BLADE;#define GBLADE;
-B cb13f3c6 vert 0 356
+B cb13f3c6 vert 0 448
 U cb13f3c6 vert u_view 0 mat4 1 0
 U cb13f3c6 vert u_proj 64 mat4 1 0
 U cb13f3c6 vert u_vp 128 mat4 1 0
@@ -1040,9 +1044,14 @@ U cb13f3c6 vert u_d0 340 float 1 0
 U cb13f3c6 vert u_radius 344 float 1 0
 U cb13f3c6 vert u_px 348 float 1 0
 U cb13f3c6 vert u_dbg 352 int 1 0
+U cb13f3c6 vert u_gk_tall 368 vec4 1 0
+U cb13f3c6 vert u_gk_grow 384 vec4 1 0
+U cb13f3c6 vert u_gk_clump 400 vec4 1 0
+U cb13f3c6 vert u_gk_ground 416 vec4 1 0
+U cb13f3c6 vert u_gk_ortho 432 vec4 1 0
 I cb13f3c6 a_pos 0 vec3
 I cb13f3c6 a_uv 2 vec2
-B cb13f3c6 frag 1 1028
+B cb13f3c6 frag 1 1088
 U cb13f3c6 frag u_cascade_vp 0 mat4 5 64
 U cb13f3c6 frag u_cascade_split 320 float 5 16
 U cb13f3c6 frag u_cascade_range 400 float 5 16
@@ -1091,6 +1100,9 @@ U cb13f3c6 frag u_blade_base 992 vec3 1 0
 U cb13f3c6 frag u_blade_tip 1008 vec3 1 0
 U cb13f3c6 frag u_blade_cols 1020 float 1 0
 U cb13f3c6 frag u_blade_tex_on 1024 float 1 0
+U cb13f3c6 frag u_gk_seed 1040 vec4 1 0
+U cb13f3c6 frag u_gk_look 1056 vec4 1 0
+U cb13f3c6 frag u_gk_mat 1072 vec4 1 0
 T cb13f3c6 u_arm 2
 T cb13f3c6 u_blade_tex 3
 T cb13f3c6 u_brdf 4
@@ -1108,7 +1120,7 @@ T cb13f3c6 u_tp_nrm 15
 T cb13f3c6 u_tp_page 16
 T cb13f3c6 u_ts_height 17
 P b8cff226 grass.vert model.frag #define FOLIAGE;#define BLADE;#define GBLADE;#define TILES;
-B b8cff226 vert 0 4452
+B b8cff226 vert 0 4544
 U b8cff226 vert u_view 0 mat4 1 0
 U b8cff226 vert u_proj 64 mat4 1 0
 U b8cff226 vert u_vp 128 mat4 1 0
@@ -1134,9 +1146,14 @@ U b8cff226 vert u_d0 4436 float 1 0
 U b8cff226 vert u_radius 4440 float 1 0
 U b8cff226 vert u_px 4444 float 1 0
 U b8cff226 vert u_dbg 4448 int 1 0
+U b8cff226 vert u_gk_tall 4464 vec4 1 0
+U b8cff226 vert u_gk_grow 4480 vec4 1 0
+U b8cff226 vert u_gk_clump 4496 vec4 1 0
+U b8cff226 vert u_gk_ground 4512 vec4 1 0
+U b8cff226 vert u_gk_ortho 4528 vec4 1 0
 I b8cff226 a_pos 0 vec3
 I b8cff226 a_uv 2 vec2
-B b8cff226 frag 1 1028
+B b8cff226 frag 1 1088
 U b8cff226 frag u_cascade_vp 0 mat4 5 64
 U b8cff226 frag u_cascade_split 320 float 5 16
 U b8cff226 frag u_cascade_range 400 float 5 16
@@ -1185,6 +1202,9 @@ U b8cff226 frag u_blade_base 992 vec3 1 0
 U b8cff226 frag u_blade_tip 1008 vec3 1 0
 U b8cff226 frag u_blade_cols 1020 float 1 0
 U b8cff226 frag u_blade_tex_on 1024 float 1 0
+U b8cff226 frag u_gk_seed 1040 vec4 1 0
+U b8cff226 frag u_gk_look 1056 vec4 1 0
+U b8cff226 frag u_gk_mat 1072 vec4 1 0
 T b8cff226 u_arm 2
 T b8cff226 u_blade_tex 3
 T b8cff226 u_brdf 4
@@ -2015,7 +2035,7 @@ I f4a2b586 a_pos 0 vec3
 I f4a2b586 i_pos 3 vec4
 I f4a2b586 a_nrm 1 vec3
 I f4a2b586 a_uv 2 vec2
-B f4a2b586 frag 1 1028
+B f4a2b586 frag 1 1088
 U f4a2b586 frag u_cascade_vp 0 mat4 5 64
 U f4a2b586 frag u_cascade_split 320 float 5 16
 U f4a2b586 frag u_cascade_range 400 float 5 16
@@ -2064,6 +2084,9 @@ U f4a2b586 frag u_blade_base 992 vec3 1 0
 U f4a2b586 frag u_blade_tip 1008 vec3 1 0
 U f4a2b586 frag u_blade_cols 1020 float 1 0
 U f4a2b586 frag u_blade_tex_on 1024 float 1 0
+U f4a2b586 frag u_gk_seed 1040 vec4 1 0
+U f4a2b586 frag u_gk_look 1056 vec4 1 0
+U f4a2b586 frag u_gk_mat 1072 vec4 1 0
 T f4a2b586 u_arm 2
 T f4a2b586 u_blade_tex 3
 T f4a2b586 u_brdf 4
@@ -3909,7 +3932,7 @@ I b20fdcb5 i_ground 6 vec4
 I b20fdcb5 a_pos 0 vec3
 I b20fdcb5 i_tint 5 vec4
 I b20fdcb5 a_uv 2 vec2
-B b20fdcb5 frag 1 1028
+B b20fdcb5 frag 1 1088
 U b20fdcb5 frag u_cascade_vp 0 mat4 5 64
 U b20fdcb5 frag u_cascade_split 320 float 5 16
 U b20fdcb5 frag u_cascade_range 400 float 5 16
@@ -3958,6 +3981,9 @@ U b20fdcb5 frag u_blade_base 992 vec3 1 0
 U b20fdcb5 frag u_blade_tip 1008 vec3 1 0
 U b20fdcb5 frag u_blade_cols 1020 float 1 0
 U b20fdcb5 frag u_blade_tex_on 1024 float 1 0
+U b20fdcb5 frag u_gk_seed 1040 vec4 1 0
+U b20fdcb5 frag u_gk_look 1056 vec4 1 0
+U b20fdcb5 frag u_gk_mat 1072 vec4 1 0
 T b20fdcb5 u_arm 2
 T b20fdcb5 u_blade_tex 3
 T b20fdcb5 u_brdf 4

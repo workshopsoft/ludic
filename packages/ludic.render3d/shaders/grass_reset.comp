@@ -1,8 +1,10 @@
 // grass_reset.comp - zero each band's instance count before grass_cull.comp counts into it. On the
-// GPU, in order, because the frame before may still be drawing from the same records.
+// GPU, in order, because the frame before may still be drawing from the same records. Each band's
+// index count is written here too, from the blade the CPU draws it with, so a grass kind of other
+// rows (grass_kind_set) reaches the draw in the frame's own order.
 layout(local_size_x = 1) in;
-layout(set = 0, binding = 0) uniform Params { uvec4 n; } pr;
+layout(set = 0, binding = 0) uniform Params { uvec4 n; uvec4 idx; } pr;
 layout(set = 0, binding = 1) buffer Cmds { uint cmds[]; };
 void main() {
-  for (uint b = 0u; b < pr.n.x; b++) { cmds[b * 5u + 1u] = 0u; }
+  for (uint b = 0u; b < pr.n.x; b++) { cmds[b * 5u] = pr.idx[b];  cmds[b * 5u + 1u] = 0u; }
 }

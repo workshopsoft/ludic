@@ -1,0 +1,136 @@
+# ============================================================================
+# grass_kind.ludic — what one kind of GPU blade IS, handed in by the game as data.
+#
+# Every number here was a constant in grass.ludic, grass_gpu.ludic or the blade shaders (grass.vert,
+# grass_cull.comp, model.frag's BLADE path) until the game's meadow became a row of its own. The
+# defaults are those constants exactly, so a game that sets nothing draws what it always drew.
+# grass_kind_set hands a kind over; the graphics settings only ever thin it (grass_quality).
+# ============================================================================
+
+property GrassKind {
+  cell: float = 4.0          # the hash cell (m): 1, 2 or 4, so the 4, 8 and 16 m tiles hold whole cells
+  s0: float = 0.066          # blade spacing at the camera (m)
+  d0: float = 18.0           # the distance at which the spacing has doubled (m)
+  radius: float = 70.0       # no blades past this (m)
+  band_near: float = 6.0     # full-row blades inside this (m)
+  band_mid: float = 16.0     # mid-row blades inside this; one quad past it
+  rows_near: int = 5
+  rows_mid: int = 3
+  rows_far: int = 2
+  # the profile (grass_blade_mesh): narrow at the sheath, widest at `neck`, tapering to a point, arched
+  neck: float = 0.22         # where the blade is widest, as a share of its length
+  root_w: float = 0.50       # its width at the sheath, of the blade's width
+  swell_w: float = 0.33      # what it gains by the neck
+  tip_w: float = 0.05        # the point, floored so the last quad is not degenerate
+  bend: float = 0.52         # how far the tip arches, of the blade's height
+  # height (m), biased short: tall_min..tall_max over h^2, times the cell's own factor
+  tall_min: float = 0.09
+  tall_max: float = 0.60
+  cell_lo: float = 0.8
+  cell_hi: float = 1.2
+  tall_far: float = 0.35     # height gained where the spacing has grown twelvefold
+  clump_freq: float = 0.85   # the tussocks' noise frequency (per m)
+  clump_lo: float = 0.45     # a tussock's height factor, low to high
+  clump_hi: float = 1.40
+  width: float = 0.010       # blade width at the camera (m)
+  width_far: float = 0.45    # how it widens with the spacing
+  arch: float = 0.6          # the arch: arch + arch_var * a per-blade hash
+  arch_var: float = 0.8
+  # where it grows
+  slope_lo: float = 0.30     # 1 - normal.y where blades start to thin ...
+  slope_hi: float = 0.55     # ... and are gone
+  snow_in: float = 80.0      # blades thin from this far under the snow line ...
+  snow_out: float = 200.0    # ... and are full this far under it
+  ortho_floor: float = 0.40  # density on ground the photograph calls bare ...
+  ortho_gain: float = 0.60   # ... and what vegetated ground adds to it
+  ortho_green: float = 0.025 # the photograph's g - b at which ground counts as vegetated
+  # colour (linear albedo): root to tip; the blades gone to seed; the far tufts
+  base_r: float = 0.045
+  base_g: float = 0.06
+  base_b: float = 0.025
+  tip_r: float = 0.22
+  tip_g: float = 0.27
+  tip_b: float = 0.13
+  seed_r: float = 0.40
+  seed_g: float = 0.36
+  seed_b: float = 0.13
+  seed_lo: float = 0.7       # a blade's seed hash past this starts to go to seed ...
+  seed_hi: float = 0.8       # ... and past this has
+  seed_mix: float = 0.75
+  tuft_mix: float = 0.45     # a far tuft: this far from root to tip colour ...
+  tuft_shade: float = 0.72   # ... and this dark
+  ao_root: float = 0.55      # the blade's own occlusion at the root
+  rough: float = 0.85
+  spec: float = 0.008        # its sheen (u_spec_scale)
+  wind: float = 2.4
+}
+
+# the kind in use, made with its defaults the first time it is asked for (render3d's start-up)
+@alloc_ok("start-up: the default kind is made once")
+function grass_kind(render3d_st: mut Render3dState) -> GrassKind {
+  if render3d_st.grass_kind == null { render3d_st.grass_kind = new GrassKind }
+  return render3d_st.grass_kind
+}
+
+# The game's kind (a row of its data). The renderer keeps the record, so hand a new one or call this
+# again after changing one; the blade meshes are rebuilt only when the rows or the profile changed.
+function grass_kind_set(render3d_st: mut Render3dState, k: GrassKind) -> void {
+  if k == null { return }
+  let was = grass_kind(render3d_st)
+  render3d_st.grass_kind = k
+  if not grass_shape_same(was, k) { grass_meshes_build(render3d_st) }
+  grass_derive(render3d_st)
+  grass_kind_colours(render3d_st)
+}
+
+# The graphics settings' tier: no closer spacing than s0_min and no farther than r_max (0: no limit).
+# A tier thins the kind; it never makes a sparse kind denser.
+function grass_quality(render3d_st: mut Render3dState, s0_min: float, r_max: float) -> void {
+  render3d_st.grass_q_s0 = s0_min
+  render3d_st.grass_q_r = r_max
+  grass_derive(render3d_st)
+}
+
+# the spacing, the doubling distance and the reach the tiles and the shaders use: the kind's, held
+# to the tier, then the developer's switches
+function grass_derive(render3d_st: mut Render3dState) -> void {
+  let k = grass_kind(render3d_st)
+  render3d_st.grass_s0 = Math.max(k.s0, render3d_st.grass_q_s0)
+  render3d_st.grass_d0 = k.d0
+  render3d_st.grass_radius = k.radius
+  if render3d_st.grass_q_r > 0.0 { render3d_st.grass_radius = Math.min(k.radius, render3d_st.grass_q_r) }
+  if r3d_env_has(render3d_st, "R3D_GRASS_R") { render3d_st.grass_radius = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_R"))) }
+  if r3d_env_has(render3d_st, "R3D_GRASS_S0") { render3d_st.grass_s0 = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_S0"))) / 1000.0 }
+  if r3d_env_has(render3d_st, "R3D_GRASS_D0") { render3d_st.grass_d0 = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_D0"))) }
+  render3d_st.grass_cell = grass_cell_of(k)
+}
+
+# the cell in whole metres, held to one the 4 m tile divides
+function grass_cell_of(k: GrassKind) -> int {
+  let c = int(k.cell + 0.5)
+  if c == 1 or c == 2 { return c }
+  return 4
+}
+
+# the root and tip colour the blades (and the scatter's blade layers) start from; the game's season
+# may move them afterwards, as it always has
+function grass_kind_colours(render3d_st: mut Render3dState) -> void {
+  let k = grass_kind(render3d_st)
+  if render3d_st.sc_blade_base != null { v3_set(render3d_st.sc_blade_base, k.base_r, k.base_g, k.base_b) }
+  if render3d_st.sc_blade_tip != null { v3_set(render3d_st.sc_blade_tip, k.tip_r, k.tip_g, k.tip_b) }
+}
+
+# whether two kinds build the same blade meshes
+function grass_shape_same(a: GrassKind, b: GrassKind) -> bool {
+  if a.rows_near != b.rows_near or a.rows_mid != b.rows_mid or a.rows_far != b.rows_far { return false }
+  return a.neck == b.neck and a.root_w == b.root_w and a.swell_w == b.swell_w and a.tip_w == b.tip_w and a.bend == b.bend
+}
+
+# The blade's profile at t (0 sheath .. 1 tip): its width, of the blade's width, and its arch, of
+# its height. The one source for the meshes and the game's preview; grass.mesh keeps a copy.
+function grass_profile_w(k: GrassKind, t: float) -> float {
+  let grow = Math.min(t / k.neck, 1.0)
+  let wide = (k.root_w + k.swell_w * grow) * (1.0 - t * (t * t))
+  return Math.max(wide, k.tip_w)
+}
+function grass_profile_bend(k: GrassKind, t: float) -> float { return t * t * k.bend }
