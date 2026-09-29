@@ -4,6 +4,7 @@
 export const I18N_KEY: int = 1         # k"pause.resume" is "\\x01pause.resume"
 export const I18N_PLURAL: int = 2      # kn"catch.count": a count chooses the form
 export const I18N_SEP: int = 31        # between the key and each argument
+export const I18N_ESC: int = 27        # inside an argument, before a 27 or a 31 of its own (a key with its own holes)
 
 # is this a key (or a key with its arguments), rather than English
 export function i18n_is_key(s: string) -> bool { return len(s) > 0 and (s[0] == I18N_KEY or s[0] == I18N_PLURAL) }
@@ -47,22 +48,40 @@ function kx_count(a: string, b: string, c: string, d: string) -> int {
 # the marker, the name, then each of the first `n` arguments after a byte 31
 function kx_join(mark: int, name: string, a: string, b: string, c: string, d: string, n: int) -> string {
   var size = 1 + len(name)
-  if n > 0 { size += 1 + len(a) }
-  if n > 1 { size += 1 + len(b) }
-  if n > 2 { size += 1 + len(c) }
-  if n > 3 { size += 1 + len(d) }
+  if n > 0 { size += 1 + kx_len(a) }
+  if n > 1 { size += 1 + kx_len(b) }
+  if n > 2 { size += 1 + kx_len(c) }
+  if n > 3 { size += 1 + kx_len(d) }
   let buf = buffer(size)
   buf[0] = mark
   var at = kx_put(buf, 1, name)
-  if n > 0 { at = kx_put(buf, kx_sep(buf, at), a) }
-  if n > 1 { at = kx_put(buf, kx_sep(buf, at), b) }
-  if n > 2 { at = kx_put(buf, kx_sep(buf, at), c) }
-  if n > 3 { at = kx_put(buf, kx_sep(buf, at), d) }
+  if n > 0 { at = kx_arg(buf, kx_sep(buf, at), a) }
+  if n > 1 { at = kx_arg(buf, kx_sep(buf, at), b) }
+  if n > 2 { at = kx_arg(buf, kx_sep(buf, at), c) }
+  if n > 3 { at = kx_arg(buf, kx_sep(buf, at), d) }
   return text_of(buf, size)
 }
 function kx_sep(buf: []byte, at: int) -> int {
   buf[at] = I18N_SEP
   return at + 1
+}
+# an argument's bytes, a 27 before each 27 or 31 of its own, so a key with holes can be one
+function kx_len(s: string) -> int {
+  var n = len(s)
+  for i in 0 .. len(s) { if s[i] == I18N_SEP or s[i] == I18N_ESC { n += 1 } }
+  return n
+}
+function kx_arg(buf: []byte, at: int, s: string) -> int {
+  var j = at
+  for i in 0 .. len(s) {
+    if s[i] == I18N_SEP or s[i] == I18N_ESC {
+      buf[j] = I18N_ESC
+      j += 1
+    }
+    buf[j] = s[i]
+    j += 1
+  }
+  return j
 }
 function kx_put(buf: []byte, at: int, s: string) -> int {
   for i in 0 .. len(s) { buf[at + i] = s[i] }

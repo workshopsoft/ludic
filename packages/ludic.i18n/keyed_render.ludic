@@ -28,8 +28,14 @@ function kr_make(i18n_st: mut I18nState, s: string) -> string {
   var start = 1
   var i = 1
   while i <= len(s) {
-    if i == len(s) or s[i] == I18N_SEP {
-      push(args, s[start..i])
+    if i < len(s) and s[i] == I18N_ESC {
+      i += 2                                # an escaped byte belongs to its argument
+      continue
+    }
+    if i >= len(s) or s[i] == I18N_SEP {
+      var e = i
+      if e > len(s) { e = len(s) }
+      push(args, kr_unescape(s[start..e]))
       start = i + 1
     }
     i += 1
@@ -60,22 +66,4 @@ function kr_fill(i18n_st: mut I18nState, t: string, args: []string) -> string {
     i += 1
   }
   return r + t[seg..len(t)]
-}
-
-# an argument with letters in it (not a number, a time, a sign): while the game still hands English
-# into a key's holes (until its code and data are keys, phase 26.9), it gets the old English lookup
-function kr_words(s: string) -> bool {
-  for i in 0 .. len(s) { if (s[i] >= 65 and s[i] <= 90) or (s[i] >= 97 and s[i] <= 122) { return true } }
-  return false
-}
-
-# a count written as decimal digits (a leading - allowed); anything else is 0
-function kr_int(s: string) -> int {
-  var v = 0
-  var neg = false
-  for i in 0 .. len(s) {
-    if i == 0 and s[i] == 45 { neg = true } else if s[i] >= 48 and s[i] <= 57 { v = v * 10 + (s[i] - 48) }
-  }
-  if neg { return -v }
-  return v
 }
