@@ -25,3 +25,22 @@ export function stream_band_keep(count: int, share: float) -> int {
   if count == 0 { return 0 }
   return max(1, min(count, int(float(count) * share + 0.5)))
 }
+
+# ---- the bake's capture -----------------------------------------------------------------------
+# The game's own fill for chunk (cx, cz) at a band, run outside any frame into a chunk of its own: what
+# the bake records. The instances are left in stream_scratch (INST_FLOATS each: x, y, z, scale, sin yaw,
+# cos yaw, seed, wind; stream_captured reads them) and their count is returned. Build-time only.
+@alloc_ok("a bake's capture chunk, made on the first capture")
+export function stream_capture(render3d_st: mut Render3dState, s: Stream, cx: int, cz: int, band: int) -> int {
+  if render3d_st.stream_scratch == null { render3d_st.stream_scratch = floats(STREAM_CHUNK_MAX * INST_FLOATS) }
+  if render3d_st.stream_capture_c == null { render3d_st.stream_capture_c = new Chunk }
+  let c = render3d_st.stream_capture_c
+  c.key = stream_key(cx, cz, band);  c.count = 0;  c.off = -1;  c.used = 0
+  s.cur = c
+  r3d_stream_fill(render3d_st, s, cx, cz, band)
+  s.cur = null
+  return c.count
+}
+
+# field k (0 .. INST_FLOATS - 1) of captured instance i
+export function stream_captured(render3d_st: Render3dState, i: int, k: int) -> float { return render3d_st.stream_scratch[i * INST_FLOATS + k] }
