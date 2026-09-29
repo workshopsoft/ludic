@@ -30,6 +30,9 @@
 # widest_reach: the most states any of them can come to - what it takes, and through calls, `fn f`
 # and globals holding fn values (a step list, a registry of systems) what those take (0.R4);
 # widest_write_reach: of those, the most it can come to change - taken `mut` somewhere down (0.R5).
+# Both leave out the ROOTS - a function that reads fn values out of a table (a dispatcher), which reaches
+# every state by definition - and count every other function without going through one, so the frame
+# and the boot count their own work; the roots are listed on a line of their own.
 var dp_mods: []pointer = null
 var dp_pkg: []int = null
 var dp_uses: []pointer = null
@@ -52,6 +55,12 @@ var dp_fn_at: []pointer = null        # each of the program's own functions: whe
 var dp_fn_w: []int = null
 var dp_fn_r: []int = null
 var dp_fn_x: []int = null             # ... and the states it can come to change
+var dp_fn_root: []bool = null         # ... whether it is a ROOT: reads fn values out of a table (a dispatcher)
+var dp_fn_r2: []int = null            # ... what it reaches and changes NOT going through a dispatcher
+var dp_fn_x2: []int = null
+var dp_root_n: int = 0                # the roots, left out of widest_reach / widest_write_reach, and the widest of them
+var dp_root_reach: int = 0
+var dp_root_at: pointer = ""
 var dp_fallocs: []pointer = new []pointer        # 25.2: `falloc <kind> <file:line> <chain>`, what a frame can allocate
 var dp_frame_allocs: int = 0
 var dp_fkeeps: []pointer = new []pointer          # 25.3: `fkeep <kind> <file:line> <kept at> <chain>`
@@ -98,7 +107,8 @@ function dp_load(path: pointer) -> bool {
   dp_ef = new []int;  dp_et = new []int;  dp_ec = new []int;  dp_en = new []pointer
   dp_wide_n = 0;  dp_wide_at = ""
   dp_reach_n = 0;  dp_reach_at = "";  dp_reach_own = 0
-  dp_fn_at = new []pointer;  dp_fn_w = new []int;  dp_fn_r = new []int;  dp_fn_x = new []int
+  dp_fn_at = new []pointer;  dp_fn_w = new []int;  dp_fn_r = new []int;  dp_fn_x = new []int;  dp_fn_root = new []bool;  dp_fn_r2 = new []int;  dp_fn_x2 = new []int
+  dp_root_n = 0;  dp_root_reach = 0;  dp_root_at = ""
   dp_wreach_n = 0;  dp_wreach_at = ""
   dp_fallocs = new []pointer;  dp_frame_allocs = 0
   dp_fkeeps = new []pointer;  dp_frame_keeps = 0
@@ -143,6 +153,9 @@ function dp_load(path: pointer) -> bool {
     if len(w) >= 5 and (w[0] == "width" or w[0] == "reach" or w[0] == "wreach") and w[4] == "0" {
       let k = dp_fn(`{dp_fn_name(w[2])} ({w[3]})`)
       if w[0] == "width" { dp_fn_w[k] = s_to_int(w[1]) } else if w[0] == "reach" { dp_fn_r[k] = s_to_int(w[1]) } else { dp_fn_x[k] = s_to_int(w[1]) }
+      if len(w) >= 6 and w[5] == "1" { dp_fn_root[k] = true }
+      if len(w) >= 7 and w[0] == "reach" { dp_fn_r2[k] = s_to_int(w[6]) }
+      if len(w) >= 7 and w[0] == "wreach" { dp_fn_x2[k] = s_to_int(w[6]) }
     }
     if len(w) >= 5 and w[0] == "write" {
       push(dp_wowner, w[1])
@@ -160,19 +173,34 @@ function dp_fn(at: pointer) -> int {
   push(dp_fn_w, 0)
   push(dp_fn_r, 0)
   push(dp_fn_x, 0)
+  push(dp_fn_root, false)
+  push(dp_fn_r2, 0)
+  push(dp_fn_x2, 0)
   return len(dp_fn_at) - 1
 }
 # after the load: the widest reach (a function reaches at least what it takes)
+# over the functions that are not roots, each counted without going through a dispatcher: a root (a
+# step list's walker, a registry of systems) reaches every state by definition, and what calls one would
+# only rise with each new state - no split could lower it. The roots are listed on a line of their own.
 function dp_reach_best() -> void {
   for i in 0 .. len(dp_fn_at) {
     if dp_fn_r[i] < dp_fn_w[i] { dp_fn_r[i] = dp_fn_w[i] }
-    if dp_fn_r[i] > dp_reach_n {
-      dp_reach_n = dp_fn_r[i]
+    if dp_fn_r2[i] < dp_fn_w[i] { dp_fn_r2[i] = dp_fn_w[i] }
+    if dp_fn_root[i] {
+      dp_root_n += 1
+      if dp_fn_r[i] > dp_root_reach {
+        dp_root_reach = dp_fn_r[i]
+        dp_root_at = dp_fn_at[i]
+      }
+      continue
+    }
+    if dp_fn_r2[i] > dp_reach_n {
+      dp_reach_n = dp_fn_r2[i]
       dp_reach_at = dp_fn_at[i]
       dp_reach_own = dp_fn_w[i]
     }
-    if dp_fn_x[i] > dp_wreach_n {
-      dp_wreach_n = dp_fn_x[i]
+    if dp_fn_x2[i] > dp_wreach_n {
+      dp_wreach_n = dp_fn_x2[i]
       dp_wreach_at = dp_fn_at[i]
     }
   }
@@ -195,7 +223,9 @@ function dp_top(n: int, by: int) -> void {
   for i in 0 .. len(order) {
     let k = order[i]
     if shown < n and (dp_fn_w[k] > 0 or dp_fn_r[k] > 0) {
-      print(`{dp_pad(string(dp_fn_w[k]), 5)}  {dp_pad(string(dp_fn_r[k]), 7)}  {dp_pad(string(dp_fn_x[k]), 7)}  {dp_fn_at[k]}`)
+      var mark = ""
+      if dp_fn_root[k] { mark = "  (root)" }
+      print(`{dp_pad(string(dp_fn_w[k]), 5)}  {dp_pad(string(dp_fn_r[k]), 7)}  {dp_pad(string(dp_fn_x[k]), 7)}  {dp_fn_at[k]}{mark}`)
       shown += 1
     }
   }
@@ -369,6 +399,7 @@ function dp_print_numbers() -> void {
   if dp_reach_n > dp_reach_own { print(`the widest reach: {dp_reach_at}, {string(dp_reach_n)} states ({string(dp_reach_n - dp_reach_own)} through calls and fn values it does not take)`) }
   if dp_wreach_n == 1 { print(`the widest write reach: {dp_wreach_at}, 1 state it can come to change`) }
   if dp_wreach_n > 1 { print(`the widest write reach: {dp_wreach_at}, {string(dp_wreach_n)} states it can come to change`) }
+  if dp_root_n > 0 { print(`roots, left out of the reaches (they walk a table of fn values; the rest are counted without going through one): {string(dp_root_n)}, the widest {dp_root_at}, {string(dp_root_reach)} states`) }
   let layers = dp_layers()
   if layers != "" {
     print(`layers: {layers}`)
