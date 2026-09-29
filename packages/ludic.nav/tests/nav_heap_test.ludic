@@ -1,0 +1,73 @@
+# nav_heap_test.ludic - Recast's and Detour's own memory, counted in the shim (plan 25): a player
+# crossing the map and coming back, again and again, leaves the resident tiles and the native bytes
+# where the first crossing left them; walkers in and out of a crowd grow nothing; a reset gives it back
+import "ludic.nav"
+import "ludic.base"
+import "fakes/meadow.ludic"
+program NavHeapTest {
+  numbers float
+
+  # a 128 m meadow as four 64 m tiles, saved as a file the index reads
+  function saved(nav_st: mut NavState, path: string) -> void {
+    let g = ground(128, 0)
+    expect(nav_tiled(nav_st, NAV_PERSON, 0.0, 0.0, 64.0, 16, 4096))
+    for tz in 0 .. 2 { for tx in 0 .. 2 { expect(nav_tile_build(nav_st, NAV_PERSON, tx, tz, g, new NavConfig) > 0) } }
+    expect(nav_save_file(nav_st, NAV_PERSON, path))
+    nav_reset(nav_st)
+  }
+  # one crossing: from the near corner to the far one and back, the ring kept at each end
+  function cross(nav_st: NavState, xs: []float, zs: []float) -> int {
+    var changed = 0
+    xs[0] = 110.0
+    zs[0] = 110.0
+    changed += nav_tiles_keep(nav_st, NAV_PERSON, xs, zs, 1, 60.0, 90.0)
+    xs[0] = 20.0
+    zs[0] = 20.0
+    changed += nav_tiles_keep(nav_st, NAV_PERSON, xs, zs, 1, 60.0, 90.0)
+    return changed
+  }
+
+  test "crossing the map and coming back fifty times holds the tiles and the native bytes of the first crossing" (nav_st: mut NavState) {
+    let path = Os.temp_dir() + "/ludic_nav_heap.navmesh"
+    saved(nav_st, path)
+    let before = nav_heap_bytes()
+    expect(nav_load_index(nav_st, NAV_PERSON, path))
+    let xs = floats(1)
+    let zs = floats(1)
+    xs[0] = 20.0
+    zs[0] = 20.0
+    nav_tiles_keep(nav_st, NAV_PERSON, xs, zs, 1, 60.0, 90.0)
+    expect(cross(nav_st, xs, zs) > 0)
+    let tiles = nav_tiles_in(nav_st, NAV_PERSON)
+    let held = nav_heap_bytes()
+    let peak = nav_heap_peak()
+    var changed = 0
+    for k in 0 .. 50 { changed += cross(nav_st, xs, zs) }
+    print(`nav heap: {before} bytes before the index, {held} after one crossing, {nav_heap_bytes()} after fifty more ({changed} tiles in or out), peak {peak} -> {nav_heap_peak()}`)
+    expect(changed >= 100)
+    expect_eq(nav_tiles_in(nav_st, NAV_PERSON), tiles)
+    expect(nav_heap_bytes() == held)
+    expect(nav_heap_peak() == peak)
+    nav_reset(nav_st)
+    expect(nav_heap_bytes() == before)
+  }
+
+  test "walkers in and out of a crowd a thousand times grow nothing, and the crowd goes with its mesh" (nav_st: mut NavState) {
+    let before = nav_heap_bytes()
+    expect(nav_build(nav_st, NAV_PERSON, ground(40, 0), new NavConfig))
+    expect(nav_crowd_start(nav_st, NAV_PERSON, 16, 0.6))
+    for k in 0 .. 10 { nav_crowd_remove(nav_st, NAV_PERSON, nav_crowd_add(nav_st, NAV_PERSON, 5.0, 0.0, 5.0, 0.35, 1.8, 1.4, 0, 2.0)) }
+    let held = nav_heap_bytes()
+    for k in 0 .. 1000 {
+      let a = nav_crowd_add(nav_st, NAV_PERSON, 5.0 + float(k % 30), 0.0, 5.0, 0.35, 1.8, 1.4, 0, 2.0)
+      expect(a >= 0)
+      nav_crowd_target(nav_st, NAV_PERSON, a, 30.0, 0.0, 30.0)
+      nav_crowd_step(nav_st, 1.0 / 60.0)
+      nav_crowd_remove(nav_st, NAV_PERSON, a)
+    }
+    print(`nav heap: a crowd's {held} bytes, {nav_heap_bytes()} after a thousand walkers came and went`)
+    expect(nav_heap_bytes() == held)
+    nav_reset(nav_st)
+    expect(nav_heap_bytes() == before)
+  }
+}

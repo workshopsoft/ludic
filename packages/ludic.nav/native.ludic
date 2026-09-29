@@ -37,3 +37,11 @@ extern function nvc_index_size(h: pointer, i: int) -> int = "nav_index_size"
 extern function nvc_index_in(h: pointer, i: int, data: pointer, size: int) -> int = "nav_index_in"
 extern function nvc_index_out(h: pointer, i: int) -> int = "nav_index_out"
 extern function nvc_load_staged(buf: pointer, size: int) -> pointer = "nav_load_staged"
+extern function nvc_heap_bytes() -> long = "nav_heap_bytes"
+extern function nvc_heap_peak() -> long = "nav_heap_peak"
+extern function nvc_heap_allocs() -> long = "nav_heap_allocs"
+# the bytes Recast and Detour hold now (every tile in, the queries, the crowds), the most they ever
+# held, and how many blocks they asked for: counted in the shim, apart from the game's heap
+export function nav_heap_bytes() -> long { return nvc_heap_bytes() }
+export function nav_heap_peak() -> long { return nvc_heap_peak() }
+export function nav_heap_allocs() -> long { return nvc_heap_allocs() }

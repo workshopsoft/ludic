@@ -72,6 +72,12 @@ across the seams, a tile under water with no polygons, and the set saved and loa
 and the shim (`native/shim/nav_shim.cpp`) into `lib/<target>/` - the same script on the Mac and on
 the PC (Git Bash, the LLVM installer's clang). `native/LICENSE-recastnavigation` ships with it.
 
+Every byte Recast and Detour allocate - the tiles in, the queries, the crowds - goes through a counted
+allocator registered when the library loads (`native/shim/nav_alloc.inl`, as ludic.physics counts
+Jolt's): `nav_heap_bytes()`, `nav_heap_peak()` and `nav_heap_allocs()`. A tile's bytes are staged from
+it too, since Detour frees them with the tile. `tests/nav_heap_test` holds fifty crossings of the map
+and a thousand crowd walkers to the bytes of the first, and a reset to the bytes before the mesh.
+
 ## Crowds (phase 18)
 
 `nav_crowd_start(kind, max, max_radius)` puts a DetourCrowd on a kind's mesh, with the mesh's tastes as

@@ -57,8 +57,8 @@ NAV_SHIM int nav_index_size(void *h, int i) { return static_cast<Nav *>(h)->tile
 // tile i's bytes (staged by nav_stage, owned from here on) added to the mesh; 0 when refused
 NAV_SHIM int nav_index_in(void *h, int i, unsigned char *data, int size) {
   Nav *n = static_cast<Nav *>(h);
-  if (i < 0 || i >= (int)n->tiles.size() || n->tiles[i].in || !data) { free(data); return 0; }
-  if (dtStatusFailed(n->mesh->addTile(data, size, DT_TILE_FREE_DATA, (dtTileRef)n->tiles[i].ref, nullptr))) { free(data); return 0; }
+  if (i < 0 || i >= (int)n->tiles.size() || n->tiles[i].in || !data) { dtFree(data); return 0; }
+  if (dtStatusFailed(n->mesh->addTile(data, size, DT_TILE_FREE_DATA, (dtTileRef)n->tiles[i].ref, nullptr))) { dtFree(data); return 0; }
   n->tiles[i].in = true;
   return 1;
 }

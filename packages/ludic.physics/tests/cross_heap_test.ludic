@@ -1,0 +1,85 @@
+# cross_heap_test.ludic - a player crossing a 1 km map corner to corner and back, the ground and its
+# still things kept to a ring of 64 m chunks round them as the game keeps them: each chunk a heightfield
+# ground, twelve trunks (an owned post each, as solid_pillar) and six boulders (an owned scaled hull each). Crossing
+# again and again leaves the bodies, the shapes and Jolt's own bytes where the first crossing left them.
+import "ludic.physics"
+import "ludic.base"
+program CrossHeapTest {
+  numbers float
+  const N: int = 16                 # chunks a side
+  const RING: int = 2               # chunks either side of the player's that are in
+
+  state CrossState {
+    ground: []int = words(N * N)
+    shape: []int = words(N * N)
+    things: []int = words(N * N * 18)
+    on: []bool = new []bool
+    h: []float = floats(33 * 33)
+    hull: int = -1
+  }
+
+  function chunk_in(physics_st: mut PhysicsState, cs: mut CrossState, c: int) -> void {
+    let ox = float(c % N) * 64.0
+    let oz = float(c / N) * 64.0
+    cs.shape[c] = phys_heightfield(physics_st, cs.h, 33, ox, oz, 2.0)
+    cs.ground[c] = phys_ground_add(physics_st, cs.shape[c])
+    for k in 0 .. 12 {
+      let s = phys_cylinder(physics_st, 1.5, 0.12)
+      let b = phys_static_add(physics_st, s, ox + 4.0 + float(k) * 5.0, 1.5, oz + 10.0, 0.0)
+      phys_own(physics_st, b, s)
+      cs.things[c * 18 + k] = b
+    }
+    for k in 0 .. 6 {
+      let s = phys_scaled(physics_st, cs.hull, 0.5 + float(k) * 0.3)
+      let b = phys_static_add(physics_st, s, ox + 8.0 + float(k) * 9.0, 0.0, oz + 40.0, float(k))
+      phys_own(physics_st, b, s)
+      cs.things[c * 18 + 12 + k] = b
+    }
+    cs.on[c] = true
+  }
+  function chunk_out(physics_st: mut PhysicsState, cs: mut CrossState, c: int) -> void {
+    for k in 0 .. 18 { phys_remove(physics_st, cs.things[c * 18 + k]) }
+    phys_remove(physics_st, cs.ground[c])
+    phys_shape_free(physics_st, cs.shape[c])
+    cs.on[c] = false
+  }
+  # the ring kept round chunk (px, pz): those past it out, those in it in, and the broad phase rebuilt
+  function keep(physics_st: mut PhysicsState, cs: mut CrossState, px: int, pz: int) -> void {
+    for c in 0 .. N * N {
+      let near = Math.abs(c % N - px) <= RING and Math.abs(c / N - pz) <= RING
+      if cs.on[c] and not near { chunk_out(physics_st, cs, c) }
+      if not cs.on[c] and near { chunk_in(physics_st, cs, c) }
+    }
+    phys_settle(physics_st)
+    phys_step(physics_st)
+  }
+  function crossing(physics_st: mut PhysicsState, cs: mut CrossState) -> void {
+    for k in 0 .. N { keep(physics_st, cs, k, k) }
+    for k in 0 .. N { keep(physics_st, cs, N - 1 - k, N - 1 - k) }
+  }
+
+  test "crossing the map and back six times holds the bodies, the shapes and Jolt's bytes of the first crossing" (physics_st: mut PhysicsState, cross_st: mut CrossState) {
+    expect(phys_open(physics_st, 4096, 1))
+    for i in 0 .. N * N { push(cross_st.on, false) }
+    for j in 0 .. 33 { for i in 0 .. 33 { cross_st.h[j * 33 + i] = 0.02 * float(i + j) } }
+    let pts = floats(24)
+    for i in 0 .. 8 {
+      pts[i * 3] = float(i % 2) * 2.0 - 1.0
+      pts[i * 3 + 1] = float((i / 2) % 2)
+      pts[i * 3 + 2] = float(i / 4) * 2.0 - 1.0
+    }
+    cross_st.hull = phys_convex(physics_st, pts, 8)
+    crossing(physics_st, cross_st)
+    let bodies = phys_count(physics_st)
+    let shapes = phys_shapes(physics_st)
+    let held = phys_heap_bytes()
+    let peak = phys_heap_peak()
+    for k in 0 .. 6 { crossing(physics_st, cross_st) }
+    print(`cross heap: {bodies} bodies, {shapes} shapes and {held} Jolt bytes after one crossing; {phys_count(physics_st)}, {phys_shapes(physics_st)} and {phys_heap_bytes()} after six more; peak {peak} -> {phys_heap_peak()}`)
+    expect_eq(phys_count(physics_st), bodies)
+    expect_eq(phys_shapes(physics_st), shapes)
+    expect(phys_heap_bytes() == held)
+    expect(phys_heap_peak() == peak)
+    phys_close(physics_st)
+  }
+}

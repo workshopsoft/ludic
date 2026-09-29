@@ -7,6 +7,8 @@
 #include <DetourNavMeshQuery.h>
 #include <DetourCommon.h>
 #include <DetourCrowd.h>
+#include <RecastAlloc.h>
+#include <DetourAlloc.h>
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
@@ -17,6 +19,8 @@
 #else
 #define NAV_SHIM extern "C" __attribute__((visibility("default")))
 #endif
+
+#include "nav_alloc.inl"
 
 #ifdef _WIN32
 extern "C" __declspec(dllimport) int __stdcall QueryPerformanceCounter(long long *);
