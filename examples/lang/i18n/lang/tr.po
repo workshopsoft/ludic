@@ -30,3 +30,15 @@ msgstr "Odun topla"
 
 msgid "old.title"
 msgstr "Eski"
+
+msgid "ui.right_click"
+msgstr "Sağ tık"
+
+msgid "ui.middle_click"
+msgstr "Orta tık"
+
+msgid "ui.left_click"
+msgstr "Sol tık"
+
+msgid "ui.press_key"
+msgstr "bir tuşa bas..."

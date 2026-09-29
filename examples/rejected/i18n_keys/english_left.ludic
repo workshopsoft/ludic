@@ -1,0 +1,7 @@
+# phase 26.9: English left in a program with a `lang` line is an error - a template's own words, and
+# a text attribute's, outside translate="no"
+import "ludic.ui"
+program EnglishLeft {
+  import "parts/Words.ludic"
+  entry { print(1) }
+}

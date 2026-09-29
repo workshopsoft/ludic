@@ -877,6 +877,12 @@ its text after a marker byte - byte 1, or 2 for `kn"..."` - so `k"pause.resume"`
 `trn` takes a plural key and `tr` / `trf` refuse one, with or without a `lang` line. (A program that
 declares its own type named `Key` keeps it; the builtin is then out of reach.)
 
+**A package's own words** are keys too. ludic.ui's key field says "Right click" as `ui_tk(ui_st,
+k"ui.right_click", "Right click")`: translated through the program's translator when one is bound, the
+plain text otherwise (a program with no languages). A program with a `lang` line that imports ludic.ui
+therefore carries `ui.right_click`, `ui.middle_click`, `ui.left_click` and `ui.press_key` in its
+source `.po`, and the check says so if it does not.
+
 **The data.** A registry's `@Text` field is text by derivation: its key is
 `<registry>.<row>.<field>` - the registry's name in snake case (`Items` -> `items`, `GearKinds` ->
 `gear_kinds`), a list field adding `.<index>` and a nested record `.<field>` - or, with
@@ -914,8 +920,8 @@ each diagnostic at its `file:line:col`:
   are padding and not counted), or it is a **warning**;
 - **English left** - a template's words outside `translate="no"`, a text attribute's words (`title`,
   `label`, `hint`, `text`, `caption`, and any other whose value is not a keyword), a quoted choice
-  inside a hole that reads as words, and a `@Text` row whose value is still English - is a
-  **warning**, and `ludic deps` counts them as `english_left`, a ratchet like every number there;
+  inside a hole that reads as words, and a `@Text` row whose value is still English - is an
+  **error** (a warning until the migration was done; `ludic deps` still counts it as `english_left`);
 - one English under several keys (a split) wants a `#.` description on each, for a translator to
   tell them apart: a **warning** at the `.po`'s line.
 

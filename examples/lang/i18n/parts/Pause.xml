@@ -4,5 +4,4 @@
   <button>{t(back)}</button>
   <p>{t('catch.count', caught, 'trout')}</p>
   <p translate="no">Maroon Lake 0.5 <b>beta</b></p>
-  <p>Paused</p>
 </div>

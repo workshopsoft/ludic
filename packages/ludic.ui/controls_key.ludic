@@ -41,7 +41,7 @@ function ct_key_pressed_away(ui_st: mut UiState, hit: UiNode) -> void {
   if ui_st.ct_capture != "" and (hit == null or hit.key != ui_st.ct_capture) { ui_st.ct_capture = "" }
 }
 function ct_key_text(ui_st: UiState, n: UiNode) -> string {
-  if ui_st.ct_capture == n.key { return ui_tr(ui_st, "press a key...") }
+  if ui_st.ct_capture == n.key { return ui_tk(ui_st, k"ui.press_key", "press a key...") }
   if Value.kind(ui_attr(n, "shown")) != 0 { return ui_tr(ui_st, ui_attr_text(n, "shown")) }
   let v = Value.as_int(ui_attr(n, "value"))
   if v >= UI_MOUSE_LEFT and v <= UI_MOUSE_MIDDLE { return ct_mouse_name(ui_st, v) }

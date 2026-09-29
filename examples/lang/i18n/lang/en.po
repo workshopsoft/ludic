@@ -38,3 +38,19 @@ msgstr "Lamp"
 #. What a chapter step says to do: gather firewood.
 msgid "steps.gather_wood.hint"
 msgstr "Gather wood"
+
+#. ludic.ui's key field: its value when the binding is the right mouse button.
+msgid "ui.right_click"
+msgstr "Right click"
+
+#. ludic.ui's key field: the middle mouse button.
+msgid "ui.middle_click"
+msgstr "Middle click"
+
+#. ludic.ui's key field: the left mouse button.
+msgid "ui.left_click"
+msgstr "Left click"
+
+#. ludic.ui's key field: listening for the key the player presses next.
+msgid "ui.press_key"
+msgstr "press a key..."

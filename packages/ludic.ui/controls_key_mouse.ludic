@@ -16,7 +16,7 @@ function ct_key_mouse(ui_st: mut UiState, root: UiNode) -> bool {
   return true
 }
 function ct_mouse_name(ui_st: UiState, v: int) -> string {
-  if v == UI_MOUSE_RIGHT { return ui_tr(ui_st, "Right click") }
-  if v == UI_MOUSE_MIDDLE { return ui_tr(ui_st, "Middle click") }
-  return ui_tr(ui_st, "Left click")
+  if v == UI_MOUSE_RIGHT { return ui_tk(ui_st, k"ui.right_click", "Right click") }
+  if v == UI_MOUSE_MIDDLE { return ui_tk(ui_st, k"ui.middle_click", "Middle click") }
+  return ui_tk(ui_st, k"ui.left_click", "Left click")
 }
