@@ -90,6 +90,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/backend/emit_fnval.ludic")
   push(f, "selfhost/backend/emit_vis.ludic")
   push(f, "selfhost/backend/emit_schema.ludic")
+  push(f, "selfhost/backend/emit_schema_ui.ludic")
   push(f, "selfhost/backend/emit_schema_hash.ludic")
   push(f, "selfhost/check/check_state.ludic")
   push(f, "selfhost/check/check_index.ludic")

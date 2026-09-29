@@ -14,6 +14,9 @@ function cm_class(c: int, px: pointer, head: Node) -> void {
     lss = ""
     lss_at = ""
   } else { lss = cm_lss_inline(c, lss, dir, 0) }
+  g_cm_xml_path[c] = xml_path
+  g_cm_lss_path[c] = lss_at
+  g_cm_xml[c] = xml
   var src = `function {px}class() -> UiClass {{\n  let k = new UiClass\n  k.name = "{name}"\n`
   src = src + `  k.xml_path = "{xml_path}"\n  k.xml = {px}xml_text()\n  k.lss_path = "{lss_at}"\n  k.lss = {px}lss_text()\n`
   src = src + `  k.make = fn {px}new\n  k.renew = fn {px}renew\n  k.props = fn {px}props\n  k.model = fn {px}model\n  k.call = fn {px}call\n  return k\n}}\n`

@@ -10,6 +10,8 @@
 #   consts      every const: its type and its value as written
 #   functions   every function a `fn` value can name: fn_type is the type a field sees, the states
 #               stripped (the runtime supplies them), written as a field's type is ("fn(A,B)->R")
+#   components  every UI component: props, state, derived fields, functions, events (emit_schema_ui)
+#   natives     every native tag registered with ui_native / ui_native_input by a literal
 #
 # Deterministic: each list sorted by name (then file and line), an entry list in index order, the
 # paths as the compiler read them, and nothing about the run. The engine's runtime is left out.
@@ -36,6 +38,11 @@ function schema_buf() -> Buf {
   sc_consts(b)
   buf_puts(b, "\n  ],\n  \"functions\": [")
   sc_functions(b)
+  sc_natives_find()
+  buf_puts(b, "\n  ],\n  \"components\": [")
+  sc_components(b)
+  buf_puts(b, "\n  ],\n  \"natives\": [")
+  sc_natives(b)
   buf_puts(b, "\n  ]\n}\n")
   return b
 }

@@ -34,11 +34,24 @@ var g_cm_cnames: [][]pointer = new [][]pointer
 var g_cm_head: []Node = new []Node
 var g_cm_hdr: []int = new []int              # 0.S: where state parameters go (after the name)
 var g_cm_ps: [][]Node = new [][]Node         # the states it declares
+# for the schema (emit_schema_ui.ludic): where the declaration and each prop or state are written,
+# a prop's or state's default as text offsets, a field's line, which calls are events, and the files
+var g_cm_at: [][]int = new [][]int           # the `component` word: line, col, pos
+var g_cm_kat: [][]int = new [][]int          # per prop or state: line, col, pos, sp0, sp1 (5 each)
+var g_cm_fline: [][]int = new [][]int
+var g_cm_isev: [][]bool = new [][]bool
+var g_cm_xml_path: []pointer = new []pointer
+var g_cm_lss_path: []pointer = new []pointer  # "" when it has no stylesheet
+var g_cm_xml: []pointer = new []pointer
 
 function cm_prefix(name: pointer) -> pointer { return `cmp_{reg_lower(name)}_` }
 
 # component NAME { members }
 function parse_ui_component() -> void {
+  let at = new []int
+  push(at, toks[pi].line)
+  push(at, toks[pi].col)
+  push(at, toks[pi].pos)
   pi += 1
   let name = eat_id()
   push(g_cm_hdr, toks[pi - 1].end)
@@ -58,6 +71,13 @@ function parse_ui_component() -> void {
   push(g_cm_fnames, new []pointer)
   push(g_cm_calls, new []Node)
   push(g_cm_cnames, new []pointer)
+  push(g_cm_at, at)
+  push(g_cm_kat, new []int)
+  push(g_cm_fline, new []int)
+  push(g_cm_isev, new []bool)
+  push(g_cm_xml_path, "")
+  push(g_cm_lss_path, "")
+  push(g_cm_xml, "")
   skipnl()
   eat_op("{")
   while true {
@@ -76,6 +96,11 @@ function parse_ui_component() -> void {
 function cm_member(c: int, px: pointer) -> void {
   if is_id("prop") or is_id("state") {
     let is_prop = is_id("prop")
+    push(g_cm_kat[c], toks[pi].line)
+    push(g_cm_kat[c], toks[pi].col)
+    push(g_cm_kat[c], toks[pi].pos)
+    var sp0 = -1
+    var sp1 = -1
     pi += 1
     let fname = eat_id()
     eat_op(":")
@@ -86,8 +111,13 @@ function cm_member(c: int, px: pointer) -> void {
     var def: Node = null
     if is_op("=") {
       pi += 1
+      let v0 = pi
       def = cm_getter(px + "def_" + fname, ty, expr())
+      sp0 = toks[v0].off
+      sp1 = toks[pi - 1].oend
     }
+    push(g_cm_kat[c], sp0)
+    push(g_cm_kat[c], sp1)
     if def != null { def.cm = c }
     push(g_cm_defs[c], def)
     return
@@ -98,11 +128,13 @@ function cm_member(c: int, px: pointer) -> void {
     let f = parse_fn()
     f.cm = c
     push(g_cm_cnames[c], f.s)
+    push(g_cm_isev[c], ev)
     if ev { f.s = px + "on_" + f.s } else { f.s = px + f.s }
     push(g_cm_calls[c], f)
     push(prog, f)
     return
   }
+  push(g_cm_fline[c], toks[pi].line)
   let fname = eat_id()
   var ty: pointer = null
   if is_op(":") {

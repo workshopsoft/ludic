@@ -1,7 +1,7 @@
 # Counter.ludic — a component: what it takes (props), keeps (state), works out and does
 component Counter {
   prop label: string
-  prop step: int = 1
+  prop step: int = 1          # how much one press adds
   state count: int = 0
   doubled: int = count * 2
   function big() -> bool { return count > 3 }

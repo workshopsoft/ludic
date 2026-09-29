@@ -680,6 +680,19 @@ object with `"schema_version": 1`:
   `params` (the arguments a caller passes), `states` (what the runtime supplies), `signature`, and
   `fn_type` - the type a `fn` field sees, the states stripped, spelled as a field's type is
   (`fn(NpcPerson,float)->bool`), so matching a function to a field is comparing two strings.
+- `components` - every UI component (see Components): its module, place, doc, `xml` and `lss` (the
+  template's and the stylesheet's paths, `lss` null when it has none); `props` and `state`, the
+  instance's own fields in the order written, each with its type, its default as written (or null),
+  its place and doc (a prop's `attributes` are `[]`: a component's members take none); `states_read`,
+  the program's states its header names, which the runtime supplies and the template never sees;
+  `derived`, the fields worked out each frame, with their types (an inferred one resolved);
+  `functions` (`{"name", "params": [["i", "int"]], "result"}`) and `events` (its `on` handlers,
+  `{"name", "params"}`) as the template calls them, the header's states and the instance stripped;
+  and `natives`, the registered native tags its template uses as elements;
+- `natives` - every `ui_native` / `ui_native_input` call whose tag is a string literal:
+  `{"tag", "via", "handler", "module", "file", "line", "col"}`, `via` the function called and
+  `handler` the `fn` value it passes last (else null). A tag worked out at run time cannot be known
+  and is left out.
 
 Each list is sorted by name (then file and line), a registry's entries are in index order, and the
 paths are the ones the compiler read, so two runs over the same source write the same file. The
@@ -2121,7 +2134,7 @@ ludic test -j 4                          # four tests at once (default: one per 
 ludic test packages/ludic.base          # the test programs under a directory (a package's)
 ludic build --check                      # every check a build makes, nothing written
 ludic build --check --diagnostics=json   # the same, every error as a JSON array on stdout
-ludic schema -o build/schema.json        # records, registries, entries and consts, for editors
+ludic schema -o build/schema.json        # records, registries, entries, consts, components and natives, for editors
 ludic deps                               # how tangled the modules are, as the compiler resolved them
 ludic deps --check tests/deps-baseline.txt   # fail when a number rose (--baseline FILE writes them)
 

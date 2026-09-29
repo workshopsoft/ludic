@@ -1,0 +1,296 @@
+# emit_schema_ui.ludic — the schema's UI side (emit_schema.ludic): every component, as a UI editor
+# needs to know it, and every native tag the program registers with ludic.ui.
+#
+#   components  each `component` (component.ludic): its module, place, doc, template and stylesheet
+#               paths; its props and its state (both fields of the instance, a prop given by the
+#               parent's attribute, a state kept by the instance and set by the template's `set:`),
+#               each with its type, its default as written, its doc and place; `states_read`, the
+#               program's states its header names (supplied by the runtime, never seen by the
+#               template); `derived`, the fields worked out each frame; `functions` and `events`,
+#               what the template calls, with the header's states and the instance stripped; and
+#               `natives`, the registered native tags its template uses
+#   natives     each call of ui_native / ui_native_input whose tag is a string literal: the tag, the
+#               function called, the handler it names (a `fn` value, else null) and the place. A tag
+#               worked out at run time cannot be known here and is left out.
+
+# ---- natives ----------------------------------------------------------------------------------
+var g_sn_tag: []pointer = new []pointer
+var g_sn_via: []pointer = new []pointer
+var g_sn_fn: []pointer = new []pointer       # the handler's name, or null
+var g_sn_call: []Node = new []Node
+
+function sc_natives_find() -> void {
+  g_sn_tag = new []pointer
+  g_sn_via = new []pointer
+  g_sn_fn = new []pointer
+  g_sn_call = new []Node
+  var i = 0
+  while i < len(prog) {
+    sc_nt_walk(prog[i])
+    i += 1
+  }
+}
+function sc_nt_walk(n: Node) -> void {
+  if n == null { return }
+  if n.kind == E_CALL and n.a != null and n.a.kind == E_ID { sc_nt_call(n) }
+  sc_nt_walk(n.a)
+  sc_nt_walk(n.b)
+  sc_nt_walk(n.c)
+  var i = 0
+  while i < len(n.kids) {
+    sc_nt_walk(n.kids[i])
+    i += 1
+  }
+}
+# ui_native(ui_st, tag, measure, draw) / ui_native_input(ui_st, tag, f): the tag counted from the end,
+# since the leading state may be written or supplied
+function sc_nt_call(n: Node) -> void {
+  let via = vis_plain(n.a.s)
+  if not (via == "ui_native") and not (via == "ui_native_input") { return }
+  if n.file == null or n.pos < 0 or is_runtime_file(n.file) { return }
+  let f = find_fn(n.a.s)
+  if f == null { return }
+  var np = 0
+  var ti = -1
+  var k = 0
+  while k < len(f.kids) {
+    if f.kids[k].kind == N_PARAM {
+      if (f.kids[k].s == "tag") { ti = np }
+      np += 1
+    }
+    k += 1
+  }
+  if ti < 0 { return }
+  let ai = len(n.kids) - (np - ti)
+  if ai < 0 or ai >= len(n.kids) { return }
+  let t = n.kids[ai]
+  if t.kind != E_STR or t.s == null { return }
+  var j = 0
+  while j < len(g_sn_call) {
+    let o = g_sn_call[j]
+    if (g_sn_tag[j] == t.s) and (g_sn_via[j] == via) and (o.file == n.file) and o.a.line == n.a.line and o.a.col == n.a.col { return }
+    j += 1
+  }
+  var h: pointer = null
+  let last = n.kids[len(n.kids) - 1]
+  if last.kind == E_FNREF and last.s != null { h = sc_name(last.s) }
+  push(g_sn_tag, t.s)
+  push(g_sn_via, via)
+  push(g_sn_fn, h)
+  push(g_sn_call, n)
+}
+function sc_natives(b: Buf) -> void {
+  let xs = new []int
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_sn_tag) {
+    let n = g_sn_call[i]
+    push(xs, i)
+    push(keys, sc_key(g_sn_tag[i], n.file, n.a.line) + "\t" + g_sn_via[i])
+    i += 1
+  }
+  sc_sort(xs, keys)
+  i = 0
+  while i < len(xs) {
+    let j = xs[i]
+    let n = g_sn_call[j]
+    sc_sep(b, i == 0, "    ")
+    buf_puts(b, "{\"tag\": ")
+    jq_put(b, g_sn_tag[j])
+    buf_puts(b, ", \"via\": ")
+    jq_put(b, g_sn_via[j])
+    buf_puts(b, ", \"handler\": ")
+    sc_str(b, g_sn_fn[j])
+    buf_puts(b, ", \"module\": ")
+    sc_str(b, sc_mod(n.file))
+    buf_puts(b, ", ")
+    sc_at(b, n.file, n.a.line, n.a.col)           # where the function's name is written
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+
+# ---- components -------------------------------------------------------------------------------
+function sc_components(b: Buf) -> void {
+  let xs = new []int
+  let keys = new []pointer
+  var c = 0
+  while c < len(g_cm_name) {
+    if not is_runtime_file(g_cm_file[c]) {
+      push(xs, c)
+      push(keys, sc_key(g_cm_name[c], g_cm_file[c], g_cm_at[c][0]))
+    } else {
+      push(keys, "")
+    }
+    c += 1
+  }
+  sc_sort(xs, keys)
+  var i = 0
+  while i < len(xs) {
+    sc_component(b, xs[i], i == 0)
+    i += 1
+  }
+}
+function sc_component(b: Buf, c: int, first: bool) -> void {
+  let file = g_cm_file[c]
+  sc_sep(b, first, "    ")
+  buf_puts(b, "{\"name\": ")
+  jq_put(b, g_cm_name[c])
+  buf_puts(b, ", \"module\": ")
+  sc_str(b, sc_mod(file))
+  buf_puts(b, ", \"exported\": ")
+  sc_bool(b, g_cm_head[c].vis == 1)
+  buf_puts(b, ", ")
+  sc_at(b, file, g_cm_at[c][0], g_cm_at[c][1])
+  buf_puts(b, ",\n     \"xml\": ")
+  jq_put(b, g_cm_xml_path[c])
+  buf_puts(b, ", \"lss\": ")
+  var lss: pointer = g_cm_lss_path[c]
+  if len(lss) == 0 { lss = null }
+  sc_str(b, lss)
+  buf_puts(b, ",\n     \"doc\": ")
+  sc_str(b, sc_doc(file, g_cm_at[c][2]))
+  buf_puts(b, ",\n     \"props\": [")
+  sc_cm_keeps(b, c, true)
+  buf_puts(b, "],\n     \"state\": [")
+  sc_cm_keeps(b, c, false)
+  buf_puts(b, "],\n     \"states_read\": [")
+  var k = 0
+  while k < len(g_cm_ps[c]) {
+    if k > 0 { buf_puts(b, ", ") }
+    jq_put(b, sc_ty(g_cm_ps[c][k].ty))
+    k += 1
+  }
+  buf_puts(b, "],\n     \"derived\": [")
+  k = 0
+  while k < len(g_cm_fields[c]) {
+    sc_sep(b, k == 0, "       ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, g_cm_fnames[c][k])
+    buf_puts(b, ", \"type\": ")
+    jq_put(b, sc_ty(g_cm_fields[c][k].ty))
+    buf_puts(b, ", \"line\": ")
+    buf_puti(b, g_cm_fline[c][k])
+    buf_puts(b, "}")
+    k += 1
+  }
+  if len(g_cm_fields[c]) > 0 { buf_puts(b, "\n     ") }
+  buf_puts(b, "],\n     \"functions\": [")
+  sc_cm_calls(b, c, false)
+  buf_puts(b, "],\n     \"events\": [")
+  sc_cm_calls(b, c, true)
+  buf_puts(b, "],\n     \"natives\": [")
+  sc_cm_natives(b, c)
+  buf_puts(b, "]}")
+}
+# its props (or its state), in the order written: the instance's fields
+function sc_cm_keeps(b: Buf, c: int, props: bool) -> void {
+  let file = g_cm_file[c]
+  var n = 0
+  var i = 0
+  while i < len(g_cm_keep[c]) {
+    if g_cm_prop[c][i] == props {
+      let a = i * 5
+      sc_sep(b, n == 0, "       ")
+      buf_puts(b, "{\"name\": ")
+      jq_put(b, g_cm_keep[c][i])
+      buf_puts(b, ", \"type\": ")
+      jq_put(b, sc_ty(g_cm_keep_ty[c][i]))
+      buf_puts(b, ", \"default\": ")
+      sc_str(b, sc_text(file, g_cm_kat[c][a + 3], g_cm_kat[c][a + 4]))
+      buf_puts(b, ", ")
+      sc_at(b, file, g_cm_kat[c][a], g_cm_kat[c][a + 1])
+      if props { buf_puts(b, ", \"attributes\": []") }
+      buf_puts(b, ", \"doc\": ")
+      sc_str(b, sc_doc(file, g_cm_kat[c][a + 2]))
+      buf_puts(b, "}")
+      n += 1
+    }
+    i += 1
+  }
+  if n > 0 { buf_puts(b, "\n     ") }
+}
+# its functions (or its `on` events) as the template calls them: past the header's states and the
+# instance, which the runtime supplies
+function sc_cm_calls(b: Buf, c: int, events: bool) -> void {
+  var n = 0
+  var i = 0
+  while i < len(g_cm_calls[c]) {
+    if g_cm_isev[c][i] == events {
+      let f = g_cm_calls[c][i]
+      sc_sep(b, n == 0, "       ")
+      buf_puts(b, "{\"name\": ")
+      jq_put(b, g_cm_cnames[c][i])
+      buf_puts(b, ", \"params\": [")
+      var k = 0
+      var np = 0
+      while k < len(f.kids) {
+        let p = f.kids[k]
+        if p.kind == N_PARAM and not (p.s == "self") and not sc_is_state_param(p) {
+          if np > 0 { buf_puts(b, ", ") }
+          buf_puts(b, "[")
+          jq_put(b, p.s)
+          buf_puts(b, ", ")
+          jq_put(b, sc_ty(p.ty))
+          buf_puts(b, "]")
+          np += 1
+        }
+        k += 1
+      }
+      buf_puts(b, "]")
+      if not events {
+        buf_puts(b, ", \"result\": ")
+        jq_put(b, sc_ty(f.ty))
+      }
+      buf_puts(b, ", \"line\": ")
+      buf_puti(b, f.line)
+      buf_puts(b, "}")
+      n += 1
+    }
+    i += 1
+  }
+  if n > 0 { buf_puts(b, "\n     ") }
+}
+# the registered native tags its template uses as elements, sorted, each once
+function sc_cm_natives(b: Buf, c: int) -> void {
+  let xml = g_cm_xml[c]
+  let tags = new []pointer
+  let xs = new []int
+  var i = 0
+  while i < len(g_sn_tag) {
+    let t = g_sn_tag[i]
+    var seen = false
+    var j = 0
+    while j < len(tags) {
+      if (tags[j] == t) { seen = true }
+      j += 1
+    }
+    if not seen and sc_xml_uses(xml, t) {
+      push(xs, len(tags))
+      push(tags, t)
+    }
+    i += 1
+  }
+  sc_sort(xs, tags)
+  i = 0
+  while i < len(xs) {
+    if i > 0 { buf_puts(b, ", ") }
+    jq_put(b, tags[xs[i]])
+    i += 1
+  }
+}
+# `<tag` followed by a space, a '/' or a '>' somewhere in the template
+function sc_xml_uses(xml: pointer, tag: pointer) -> bool {
+  if xml == null { return false }
+  let n = len(xml)
+  let m = len(tag)
+  var i = 0
+  while i + m + 1 < n {
+    if xml[i] == '<' and xml[i + 1] == tag[0] and (xml[i + 1 .. i + 1 + m] == tag) {
+      let e = xml[i + 1 + m]
+      if e == ' ' or e == '/' or e == '>' or e == '\n' or e == '\t' or e == '\r' { return true }
+    }
+    i += 1
+  }
+  return false
+}

@@ -22,3 +22,10 @@ A target no part of the program declares (an `@Ref` registry, an `@Tint` or list
 a warning and `"unresolved": true` in the schema, so a package can name the game's registry; a name of
 another kind is an error. `@OneOf` on a string field takes words, and every registry row's value is
 checked against them.
+
+The schema has a `components` list: each UI component's module, place, doc, template and stylesheet
+paths, its `props` and `state` (type, default as written, place, doc), `states_read` (the states its
+header names, apart from its model), `derived` fields with their types, and the `functions` and
+`events` its template calls with their parameters (states and instance stripped), and the
+registered native tags its template uses. A `natives` list gives every `ui_native` /
+`ui_native_input` call with a literal tag: the tag, the function called, its handler and its place.
