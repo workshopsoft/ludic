@@ -34,7 +34,7 @@ function gd_open_at(render3d_st: mut Render3dState, path: string, base: int) -> 
   let head = words(GD_HEADW)
   file_seek(f, base, 0)
   let got = file_read(f, data_of(head), GD_HEADW * 4)
-  if got != GD_HEADW * 4 or head[0] != GD_MAGIC or head[1] != GD_VERSION or head[3] != GD_SIDE {
+  if got != GD_HEADW * 4 or head[0] != GD_MAGIC or head[1] != GD_VERSION or head[3] != GD_SIDE or head[4] > GD_LAYERS {
     free(head)
     file_close(f)
     return false
@@ -46,8 +46,23 @@ function gd_open_at(render3d_st: mut Render3dState, path: string, base: int) -> 
   for l in 0 .. GD_LAYERS { render3d_st.gd_ch[l] = 0;  render3d_st.gd_off[l] = 0 }
   for l in 0 .. layers { render3d_st.gd_ch[l] = head[8 + l * 2];  render3d_st.gd_off[l] = head[9 + l * 2] }
   free(head)
+  gd_index_read(render3d_st, layers * n * n)
   gd_cache_reset(render3d_st, layers * n * n)
   return true
+}
+
+# every layer's tile index read whole (8 bytes a tile: 1.8 MB for fourteen layers on an 8 km map)
+@alloc_ok("a map being loaded: the densities' index, made once and reused")
+function gd_index_read(render3d_st: mut Render3dState, tiles: int) -> void {
+  if render3d_st.gd_idx == null or len(render3d_st.gd_idx) < tiles * 2 {
+    if render3d_st.gd_idx != null { free(render3d_st.gd_idx) }
+    render3d_st.gd_idx = words(max(tiles * 2, 2))
+  }
+  let per = render3d_st.gd_n * render3d_st.gd_n
+  for l in 0 .. render3d_st.gd_layers {
+    file_seek(render3d_st.gd_file, render3d_st.gd_base + render3d_st.gd_off[l], 0)
+    file_read(render3d_st.gd_file, mem_off(data_of(render3d_st.gd_idx), l * per * 8), per * 8)
+  }
 }
 
 # the cache made (once) and emptied, and the index of where each layer's tile is: -1 where it is not in
@@ -55,6 +70,7 @@ function gd_open_at(render3d_st: mut Render3dState, path: string, base: int) -> 
 function gd_cache_reset(render3d_st: mut Render3dState, tiles: int) -> void {
   if render3d_st.gd_pool == null {
     render3d_st.gd_pool = buffer(GD_SLOTS * GD_SIDE * GD_SIDE * 2)
+    render3d_st.gd_zbuf = buffer(GD_SIDE * GD_SIDE * 2)
     render3d_st.gd_key = words(GD_SLOTS);  render3d_st.gd_ref = words(GD_SLOTS)
   }
   if render3d_st.gd_slot_of == null or len(render3d_st.gd_slot_of) < tiles {
@@ -86,13 +102,40 @@ function gd_slot(render3d_st: mut Render3dState, l: int, t: int) -> int {
   }
   render3d_st.gd_hand = (s + 1) % GD_SLOTS
   if render3d_st.gd_key[s] >= 0 { render3d_st.gd_slot_of[render3d_st.gd_key[s]] = -1 }
-  let tb = GD_SIDE * GD_SIDE * render3d_st.gd_ch[l]
-  file_seek(render3d_st.gd_file, render3d_st.gd_base + render3d_st.gd_off[l] + t * tb, 0)
-  file_read(render3d_st.gd_file, mem_off(data_of(render3d_st.gd_pool), s * GD_SIDE * GD_SIDE * 2), tb)
+  gd_fill(render3d_st, l, key, s)
   render3d_st.gd_key[s] = key
   render3d_st.gd_slot_of[key] = s
   render3d_st.gd_ref[s] = 1
   return s
+}
+
+# layer l's tile `key` (its place in the index) into slot s: nothing (zeros), one value, or its bytes read
+# and - when the bake deflated them - inflated
+function gd_fill(render3d_st: mut Render3dState, l: int, key: int, s: int) -> void {
+  let ch = render3d_st.gd_ch[l]
+  let tb = GD_SIDE * GD_SIDE * ch
+  let o = s * GD_SIDE * GD_SIDE * 2
+  let pool = render3d_st.gd_pool
+  let a = render3d_st.gd_idx[key * 2]
+  let b = render3d_st.gd_idx[key * 2 + 1]
+  if a == 0 or a == 1 {
+    var v = 0
+    var g = 0
+    if a == 1 { v = b & 255;  g = (b >> 8) & 255 }
+    for p in 0 .. GD_SIDE * GD_SIDE {
+      pool[o + p * ch] = v
+      if ch == 2 { pool[o + p * 2 + 1] = g }
+    }
+    return
+  }
+  let n = b & 0x7FFFFFFF
+  file_seek(render3d_st.gd_file, render3d_st.gd_base + a, 0)
+  if b < 0 {
+    file_read(render3d_st.gd_file, data_of(render3d_st.gd_zbuf), min(n, len(render3d_st.gd_zbuf)))
+    z_inflate(data_of(render3d_st.gd_zbuf), n, mem_off(data_of(pool), o), tb)
+  } else {
+    file_read(render3d_st.gd_file, mem_off(data_of(pool), o), min(n, tb))
+  }
 }
 
 # layer l's texel (tx, tz) (clamped to the map), channel c (0 density, 1 scale), 0..255
