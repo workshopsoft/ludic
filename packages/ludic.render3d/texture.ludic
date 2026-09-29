@@ -115,6 +115,8 @@ function png_unfilter(raw: pointer, cur: int, prev: int, stride: int, fbpp: int,
 
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 function png_decode(render3d_st: mut Render3dState, path: pointer) -> pointer {
+  let bk = baked_png(render3d_st, path)               # a build that baked it (baked_tex.ludic)
+  if bk != null { return bk }
   let d = r3d_read_file(render3d_st, path)
   if d == null { print(`png: cannot read {path}`);  return null }
   let size = render3d_st.tex_file_len
@@ -308,6 +310,13 @@ function tex_load_ex__t(render3d_st: mut Render3dState, path: pointer, srgb: boo
     if t != 0 {
       tex_note_size(render3d_st, t)
       return t
+    }
+  }
+  if dilate > 0 {
+    let cut = baked_cutout(render3d_st, path, srgb)   # padded and compressed at build time
+    if cut != 0 {
+      tex_note_size(render3d_st, cut)
+      return cut
     }
   }
   let px = png_decode(render3d_st, path)
