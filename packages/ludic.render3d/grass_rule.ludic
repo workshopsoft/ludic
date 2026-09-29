@@ -1,0 +1,53 @@
+# grass_rule.ludic — grass_cull.comp's bladeRules on the CPU: whether the ground at (x, z) grows blades, 0..1,
+# for the migration that paints it into a map's blades density (keep the two in step). Every term here varies
+# slower than a 2 m texel - the slope, the water's margin, the snow line, the photograph - so a painted texel
+# holds it; what varies within one (each blade's hashes, the tussocks, the colour field) stays in the shader.
+
+# the ground's keep at (x, z), under the kind in use and the map's water and snow
+export function grass_rule_at(render3d_st: mut Render3dState, x: float, z: float) -> float {
+  let k = grass_kind(render3d_st)
+  let e = terrain_texel(render3d_st)
+  let y = terrain_height(render3d_st, x, z)
+  let gx = (terrain_height(render3d_st, x + e, z) - terrain_height(render3d_st, x - e, z)) / (2.0 * e)
+  let gz = (terrain_height(render3d_st, x, z + e) - terrain_height(render3d_st, x, z - e)) / (2.0 * e)
+  let ny = 1.0 / Math.sqrt(1.0 + gx * gx + gz * gz)
+  let snow = render3d_st.ter_snow_line
+  var ok = (1.0 - gr_smooth(k.slope_lo, k.slope_hi, 1.0 - ny)) * gr_smooth(0.0, 0.6, y - gr_water(render3d_st, x, z) - 0.15)
+  ok = ok * gr_smooth(snow - k.snow_in, snow - k.snow_out, y)
+  if ok <= 0.0 or render3d_st.ter_ortho_tex == 0 { return ok }
+  # the photograph varies inside a texel: its term averaged over four points of it
+  var o = 0.0
+  for s in 0 .. 4 {
+    let c = terrain_ortho(render3d_st, x + (float(s % 2) - 0.5) * e * 0.5, z + (float(s / 2) - 0.5) * e * 0.5)
+    let gb = gr_linear((c >> 8) & 255) - gr_linear(c & 255)
+    o = o + k.ortho_floor + k.ortho_gain * gr_smooth(0.0, k.ortho_green, gb)
+  }
+  return ok * o * 0.25
+}
+
+# the water line there: the sea's, or the carved lake's inside its ellipse (as gg_params hands them over)
+function gr_water(render3d_st: Render3dState, x: float, z: float) -> float {
+  var lake = -100000.0
+  if render3d_st.ter_lake_ex != 0.0 { lake = render3d_st.ter_lake_level }
+  var wl = lake
+  if render3d_st.ter_sea_set { wl = render3d_st.ter_sea_level }
+  if render3d_st.ter_lake_ex > 0.0 {
+    let qx = (x - render3d_st.ter_lake_cx) / render3d_st.ter_lake_ex
+    let qz = (z - render3d_st.ter_lake_cz) / render3d_st.ter_lake_ez
+    if qx * qx + qz * qz < 1.0 { wl = Math.max(wl, lake) }
+  }
+  return wl
+}
+
+# GLSL's smoothstep, edges either way round as the shader's snow line has them
+function gr_smooth(e0: float, e1: float, v: float) -> float {
+  let t = Math.clamp((v - e0) / (e1 - e0), 0.0, 1.0)
+  return t * t * (3.0 - 2.0 * t)
+}
+
+# an sRGB byte as the shader reads it from the photograph's sRGB texture: linear
+function gr_linear(c: int) -> float {
+  let v = float(c) / 255.0
+  if v <= 0.04045 { return v / 12.92 }
+  return Math.pow((v + 0.055) / 1.055, 2.4)
+}

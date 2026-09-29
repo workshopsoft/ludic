@@ -16,7 +16,9 @@ export property GroundFill {
   wind_lo: float = 0.6,
   wind_hi: float = 1.0,
   sink: float = 0.03,
-  trample: bool = true
+  trample: bool = true,
+  scale_var: float = 0.0,    # each instance's own size: x (1 +- var), from its hash (a flower is not its neighbour)
+  band_grow: float = 0.0     # a far band's instances larger by this a band, to keep the cover as the step widens
 }
 
 # how much of a candidate at (x, z) the game lets stand (the camp, the town): 0..1, asked only when the row says
@@ -56,7 +58,8 @@ export function ground_fill(render3d_st: mut Render3dState, s: Stream, cx: int, 
       if g.trample and render3d_st.gd_trample_cb != null { keep = keep * render3d_st.gd_trample_cb(px, pz) }
       let e = i * 65536 + j
       if gf_hash(g.layer, cx, cz, band, e, 2) >= keep { continue }
-      let sc = Math.lerp(g.scale_lo, g.scale_hi, ground_density_at(render3d_st, g.layer, px, pz, 1))
+      var sc = Math.lerp(g.scale_lo, g.scale_hi, ground_density_at(render3d_st, g.layer, px, pz, 1))
+      sc = sc * (1.0 + (gf_hash(g.layer, cx, cz, band, e, 6) * 2.0 - 1.0) * g.scale_var) * (1.0 + g.band_grow * float(band))
       let h = terrain_height(render3d_st, px, pz) - g.sink
       stream_emit(render3d_st, s, px, h, pz, sc, gf_hash(g.layer, cx, cz, band, e, 3) * 2.0 * PI, gf_hash(g.layer, cx, cz, band, e, 4), Math.lerp(g.wind_lo, g.wind_hi, gf_hash(g.layer, cx, cz, band, e, 5)))
     }

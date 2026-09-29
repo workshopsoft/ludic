@@ -27,20 +27,22 @@ layout(set = 0, binding = 0) uniform Params {
   vec4 gk_clump;    // clump_lo, clump_hi, arch, arch_var
   vec4 gk_ground;   // slope_lo, slope_hi, snow_in, snow_out
   vec4 gk_ortho;    // ortho_floor, ortho_gain, ortho_green, cell (m)
+  vec4 bd;          // the painted density's window (grass_density.ludic): world x/z of its corner, m a texel, texels a side (0: the rules)
 } pr;
 
 layout(set = 0, binding = 1) readonly buffer Tiles { vec4 tiles[]; };   // corner x/z, indices per cell, cells per side
 layout(set = 0, binding = 2) buffer Out { vec4 outv[]; };               // 4 per blade
 layout(set = 0, binding = 3) buffer Cmds { uint cmds[]; };              // VkDrawIndexedIndirectCommand per band
-layout(set = 0, binding = 4) uniform sampler2D u_height;                // the height (terrain's u_ts_height)
-layout(set = 0, binding = 5) uniform sampler2D u_ortho;                 // the photograph
-layout(set = 0, binding = 6) uniform sampler2D u_ter_normal;            // the normal: x and z, y rebuilt
+layout(set = 0, binding = 4) readonly buffer Dens { uint dens[]; };      // the density's window, four texels a word
+layout(set = 0, binding = 5) uniform sampler2D u_height;                // the height (terrain's u_ts_height)
+layout(set = 0, binding = 6) uniform sampler2D u_ortho;                 // the photograph
+layout(set = 0, binding = 7) uniform sampler2D u_ter_normal;            // the normal: x and z, y rebuilt
 // the page pool (terrain_pages.ludic): while it is on, the three above are the coarse whole-map level
 // and the tiles round the camera are layers of these, addressed through the page table
-layout(set = 0, binding = 7) uniform sampler2D u_tp_page;               // slot + 1 per tile, 0 = coarse
-layout(set = 0, binding = 8) uniform sampler2DArray u_tp_h;             // (T + 2)^2 a layer, a texel of border
-layout(set = 0, binding = 9) uniform sampler2DArray u_tp_nrm;
-layout(set = 0, binding = 10) uniform sampler2DArray u_tp_ortho;        // (S + 2)^2 a layer
+layout(set = 0, binding = 8) uniform sampler2D u_tp_page;               // slot + 1 per tile, 0 = coarse
+layout(set = 0, binding = 9) uniform sampler2DArray u_tp_h;             // (T + 2)^2 a layer, a texel of border
+layout(set = 0, binding = 10) uniform sampler2DArray u_tp_nrm;
+layout(set = 0, binding = 11) uniform sampler2DArray u_tp_ortho;        // (S + 2)^2 a layer
 
 #define CELL pr.gk_ortho.w   // the kind's cell (m)
 
@@ -91,6 +93,34 @@ float heightSmooth(vec2 uv) {
   return (groundH(vec2(o0.x, o0.y)) * s0.x + groundH(vec2(o1.x, o0.y)) * s1.x) * s0.y
        + (groundH(vec2(o0.x, o1.y)) * s0.x + groundH(vec2(o1.x, o1.y)) * s1.x) * s1.y;
 }
+// the painted density, 0..1, bilinear over texel centres as ground_density_at reads it on the CPU
+float densTexel(ivec2 t, int side) {
+  t = clamp(t, ivec2(0), ivec2(side - 1));
+  uint k = uint(t.y * side + t.x);
+  return float((dens[k >> 2u] >> ((k & 3u) * 8u)) & 0xFFu) * (1.0 / 255.0);
+}
+float bladeDensity(vec2 xz) {
+  int side = int(pr.bd.w + 0.5);
+  vec2 f = (xz - pr.bd.xy) / pr.bd.z - 0.5;
+  vec2 i0 = floor(f);
+  vec2 a = f - i0;
+  ivec2 i = ivec2(i0);
+  float lo = mix(densTexel(i, side), densTexel(i + ivec2(1, 0), side), a.x);
+  float hi = mix(densTexel(i + ivec2(0, 1), side), densTexel(i + ivec2(1, 1), side), a.x);
+  return mix(lo, hi, a.y);
+}
+// today's rules, where no density is painted: the slope, the water's margin, the snow line, the photograph
+// (grass_rule_at in grass_density.ludic is this on the CPU, for the migration that paints them: keep in step)
+float bladeRules(vec2 xz, vec2 huv, float y, vec3 gn) {
+  float wl = pr.lev.y;
+  if (pr.lake.z > 0.0) { vec2 q = (xz - pr.lake.xy) / pr.lake.zw;  if (dot(q, q) < 1.0) wl = max(wl, pr.lev.x); }
+  float ok = (1.0 - smoothstep(pr.gk_ground.x, pr.gk_ground.y, 1.0 - gn.y)) * smoothstep(0.0, 0.6, y - wl - 0.15) * smoothstep(pr.dens.w - pr.gk_ground.z, pr.dens.w - pr.gk_ground.w, y);
+  if (pr.lev.z > 0.5) {
+    vec3 oc = groundO(huv);
+    ok *= pr.gk_ortho.x + pr.gk_ortho.y * smoothstep(0.0, pr.gk_ortho.z, oc.g - oc.b);
+  }
+  return ok;
+}
 // grass.vert's bladeField: the region, the patchiness, the dry patches and the tussocks' shade
 vec3 bladeField(vec2 xz, float y) {
   float n = fbm(xz * 0.0018 + 4.0, 3) * 0.5 + 0.5;
@@ -136,13 +166,8 @@ void main() {
   vec2 gxz = groundN(huv);
   vec3 gn = vec3(gxz.x, sqrt(max(1.0 - dot(gxz, gxz), 0.0)), gxz.y);
   float h3 = bladeHash(ci, j, 2), h4 = bladeHash(ci, j, 3);
-  float wl = pr.lev.y;
-  if (pr.lake.z > 0.0) { vec2 q = (xz - pr.lake.xy) / pr.lake.zw;  if (dot(q, q) < 1.0) wl = max(wl, pr.lev.x); }
-  float ok = (1.0 - smoothstep(pr.gk_ground.x, pr.gk_ground.y, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(pr.dens.w - pr.gk_ground.z, pr.dens.w - pr.gk_ground.w, ht.r);
-  if (pr.lev.z > 0.5) {
-    vec3 oc = groundO(huv);
-    ok *= pr.gk_ortho.x + pr.gk_ortho.y * smoothstep(0.0, pr.gk_ortho.z, oc.g - oc.b);
-  }
+  // where it grows: the map's painted density when it has one, else the rules; the hashes stay procedural
+  float ok = pr.bd.w > 0.5 ? bladeDensity(xz) : bladeRules(xz, huv, ht.r, gn);
   if (h4 > ok) return;
   float h = heightSmooth(huv);
   float seed = hv.x * 0.7 + hv.y * 0.3;
