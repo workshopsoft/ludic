@@ -16,6 +16,7 @@ fullscreen.vert|ssao_blur.frag|
 fullscreen.vert|ssgi.frag|
 fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;
+fullscreen.vert|tershadow.frag|#define NOISE_ONLY;#define TS_AUX;
 fullscreen.vert|tonemap.frag|
 fullscreen.vert|tonemap.frag|#define HDR10;
 fullscreen.vert|volumetric.frag|

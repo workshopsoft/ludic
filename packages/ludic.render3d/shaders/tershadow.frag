@@ -10,7 +10,7 @@
 // The second channel is the distance to the occluder that set the bound, which widens
 // the penumbra the way a real shadow softens with distance from its caster.
 in vec2 v_uv;
-out vec4 o;
+out vec4 o;   // TS_AUX: the occluder distance and the cloud mask (RG16F); else the lowest lit height (R32F)
 uniform sampler2D u_height;
 uniform float u_half;
 uniform vec3 u_sun;
@@ -31,9 +31,13 @@ void main() {
       step *= 1.045;
     }
   }
-  // the cloud layer's mask, once, into B: sampled by cloudShadow() with the sun offset and
+  // the cloud layer's mask, once, into the aux target's G: sampled by cloudShadow() with the sun offset and
   // the drift applied as a uv shift, instead of a five-octave fbm in every lit pixel of
   // every pass
   float cloud = smoothstep(0.02, 0.32, fbm(xz * 0.0011, 5));
-  o = vec4(lit, at, cloud, 1.0);
+#ifdef TS_AUX
+  o = vec4(at, cloud, 0.0, 1.0);
+#else
+  o = vec4(lit, 0.0, 0.0, 1.0);
+#endif
 }
