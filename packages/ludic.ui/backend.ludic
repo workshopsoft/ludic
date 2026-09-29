@@ -20,6 +20,8 @@ export property UiBackend {
   read: fn(string) -> string = null        # a template file's text (else Fs.read_text)
   now: fn() -> float = null                # seconds, for animation (else frames at 60 a second)
   input: bool = true               # false: take no input from Input.* (a test drives it)
+  said: fn(string) -> void = null          # a template error, for a host that reports it itself (else printed)
+  emitted: fn(string) -> void = null       # `emit name` ran, whether or not a handler took it (a host's log)
 }
 # a renderer a program installs by importing it (render3d.ludic): the first one is the backend
 property UiRenderer {

@@ -1,0 +1,72 @@
+# cmds.ludic - one request run: its words to the command they name, then the reply's end - the draw
+# list or the answer, then the events, then `ok` or `fail "<why>"` (protocol-v1.md, "Replies")
+const PV_PROTOCOL: int = 1
+@alloc_ok("a request's reply")
+function pv_run(pv: mut PvState, ui_st: mut UiState, i18n_st: mut I18nState, w: []string) -> bool {
+  if len(w) == 0 {                   # a blank line is answered too: one reply a line, always
+    pv_end(pv, "")
+    return true
+  }
+  let c = w[0]
+  var why = ""
+  if c == "hello" { pv.ok_more = pv_hello(pv) } else if c == "quit" {
+    pv_end(pv, "")
+    return false
+  } else if c == "frame" { why = pv_frame(pv, ui_st, w) } else if c == "load" { why = pv_load(pv, ui_st, w) } else if c == "model" { why = pv_story_cmd(pv, w, false) } else if c == "calls" { why = pv_story_cmd(pv, w, true) } else if c == "show" { why = pv_show(pv, ui_st, w) } else if c == "native" { why = pv_native(pv, ui_st, w) } else if c == "input" { why = pv_input(pv, w) } else if c == "viewport" { why = pv_viewport(pv, w) } else if c == "font" { why = pv_font_cmd(pv, w) } else if c == "locale" { why = pv_locale(pv, i18n_st, w) } else if c == "atlas" { why = pv_atlas(pv, w) } else if c == "image" { why = pv_image_cmd(pv, w) } else if c == "file" { why = pv_file(pv, ui_st, w) } else if c == "tree" { why = pv_tree(pv, ui_st) } else if c == "box" { why = pv_id_cmd(pv, ui_st, w, false) } else if c == "rules" { why = pv_id_cmd(pv, ui_st, w, true) } else if c == "reset" { why = pv_reset(pv, ui_st) } else { why = `unknown request {c}` }
+  pv_end(pv, why)
+  return true
+}
+function pv_id_cmd(pv: mut PvState, ui_st: mut UiState, w: []string, rules: bool) -> string {
+  if len(w) < 2 { return `{w[0]}: <id or key>` }
+  if rules { return pv_rules_cmd(pv, ui_st, pv_text(w[1])) }
+  return pv_box_cmd(pv, ui_st, pv_text(w[1]))
+}
+# the reply's end: what was drawn or answered, what happened, and the verdict
+function pv_end(pv: mut PvState, why: string) -> void {
+  pv_flush(pv.out)
+  pv_flush(pv.ev)
+  if why == "" {
+    pv_s(pv.out, "ok")
+    if pv.ok_more != "" { pv_s(pv.out, pv.ok_more) }
+  } else {
+    pv_s(pv.out, "fail")
+    pv_q(pv.out, why)
+  }
+  pv_nl(pv.out)
+  pv_flush(pv.out)
+  pv.ok_more = ""
+}
+@alloc_ok("a request's reply")
+function pv_hello(pv: mut PvState) -> string {
+  let o = pv.ev                      # borrowed to quote the font's path; empty again below
+  pv_s(o, " ui-preview")
+  pv_int(o, PV_PROTOCOL)
+  pv_q(o, pv.font_dir)
+  pv_q(o, pv.locale)
+  var s: pointer = null
+  unsafe {
+    s = bytes(o.n + 1)
+    for i in 0 .. o.n { s[i] = o.p[i] }
+    s[o.n] = 0
+  }
+  o.n = 0
+  return s
+}
+# `frame <t>`: the clock at t seconds, this frame's input, the root laid out and drawn
+function pv_frame(pv: mut PvState, ui_st: mut UiState, w: []string) -> string {
+  if pv.root == "" { return "frame: show a class first" }
+  if len(w) >= 2 { pv.t = pv_float(w[1]) }
+  pv_frame_input(pv, ui_st)
+  pv_s(pv.out, "frame")
+  pv_num(pv.out, pv.t)
+  pv_nl(pv.out)
+  ui_show(ui_st, pv.root, null, 0.0, 0.0, pv.vw, pv.vh)
+  pv_s(pv.out, "end")
+  pv_nl(pv.out)
+  return ""
+}
+# `reset`: the root's template state and instances forgotten, as a screen shown for the first time
+function pv_reset(pv: mut PvState, ui_st: mut UiState) -> string {
+  if pv.root != "" { ui_forget(ui_st, pv.root) }
+  return ""
+}

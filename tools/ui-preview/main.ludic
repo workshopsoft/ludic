@@ -1,0 +1,88 @@
+# main.ludic - ludic ui-preview: a game's ludic.ui components previewed for a studio, over stdio. It is
+# ludic.ui itself with a backend that records instead of drawing, and component classes the studio
+# describes (their templates, styles, models and function answers): no game code, no GPU, no
+# network. One request a line in, a reply a request out; protocol-v1.md is the whole contract.
+#   ui-preview [--font DIR]
+import "ludic.ui"
+import "ludic.i18n"
+program UiPreview {
+  numbers float
+  import "out.ludic"
+  import "num.ludic"
+  import "line.ludic"
+  import "font.ludic"
+  import "draw.ludic"
+  import "images.ludic"
+  import "events.ludic"
+  import "json.ludic"
+  import "mock.ludic"
+  import "calls.ludic"
+  import "input.ludic"
+  import "input_keys.ludic"
+  import "inspect.ludic"
+  import "computed.ludic"
+  import "cmd_load.ludic"
+  import "cmd_world.ludic"
+  import "cmds.ludic"
+  state PvState {
+    out: PvOut = new PvOut          # the reply: the draw list or an answer
+    ev: PvOut = new PvOut           # what happened, written after it
+    inb: PvOut = new PvOut          # the request being read
+    words: []string = new []string
+    ok_more: string = ""
+    font_dir: string = ""
+    locale: string = ""
+    fn_on: bool = false
+    fn_adv: []float = new []float
+    fn_map: []int = new []int
+    fn_hi_cp: []int = new []int
+    fn_hi_g: []int = new []int
+    fn_space: int = 0
+    fn_qmark: int = 0
+    vw: float = 1920.0
+    vh: float = 1080.0
+    vs: float = 0.0                 # 0: the height over 1080, as render3d's backend
+    t: float = 0.0
+    root: string = ""
+    stories: []PvStory = new []PvStory
+    miss_cls: []string = new []string
+    miss_fn: []string = new []string
+    nt_tag: []string = new []string
+    nt_w: []float = new []float
+    nt_h: []float = new []float
+    at_prefix: []string = new []string
+    at_name: []string = new []string
+    at_cols: []int = new []int
+    at_rows: []int = new []int
+    at_names: [][]string = new [][]string
+    im_path: []string = new []string
+    im_w: []float = new []float
+    im_h: []float = new []float
+    fl_path: []string = new []string
+    fl_text: []string = new []string
+    inp: PvIn = new PvIn
+    in_a: UiInput = new UiInput
+    in_b: UiInput = new UiInput
+    in_flip: bool = false
+    cuts: []float = new []float
+    rules: []UiRule = new []UiRule
+  }
+  entry (pv: mut PvState, ui_st: mut UiState, i18n_st: mut I18nState) {
+    ui_backend(ui_st, pv_backend())
+    var ai = 1
+    while ai < Os.arg_count() {
+      if Os.arg(ai) == "--font" and ai + 1 < Os.arg_count() {
+        ai += 1
+        if not pv_font_load(pv, Os.arg(ai)) { Os.stderr_write(`ui-preview: no font.json with "adv" in {Os.arg(ai)}\n`) }
+      }
+      ai += 1
+    }
+    var going = true
+    while going {
+      let line = pv_read_line(pv.inb)
+      if line == null { break }
+      pv_words(line, pv.words)
+      going = pv_run(pv, ui_st, i18n_st, pv.words)
+    }
+  }
+}

@@ -8,6 +8,7 @@ export property UiClass {
   lss_path: string = ""
   lss: string = ""
   make: fn() -> pointer = null
+  make_of: fn(UiClass) -> pointer = null   # instead of make: one constructor a host's classes share, handed the class
   renew: fn(pointer) -> void = null   # a record `make` made, put back as new: an instance mounted again
   props: fn(pointer, Val) -> void = null
   model: fn(pointer, Val) -> Val = null   # fills the object it is given (the instance keeps one)
@@ -24,6 +25,8 @@ export function ui_register(ui_st: mut UiState, k: UiClass) -> int {
   push(ui_st.uc_list, k)
   return len(ui_st.uc_list)
 }
+# the class of that name, for a host that changes a class it registered (null: none)
+export function ui_class(ui_st: UiState, name: string) -> UiClass { return uc_find(ui_st, name) }
 function uc_find(ui_st: UiState, name: string) -> UiClass {
   if ui_st.uc_list == null { return null }
   for i in 0 .. len(ui_st.uc_list) {
@@ -37,7 +40,11 @@ function uc_load(ui_st: mut UiState, k: UiClass) -> void {
   if k.root != null { return }
   let f = lib_blank(k.xml_path)
   f.src = k.xml
-  if k.lss != "" { lss_text(ui_st, f, k.lss) }
+  if k.lss != "" {
+    if k.lss_path != "" { f.path = k.lss_path }   # its rules and errors say the stylesheet they are in
+    lss_text(ui_st, f, k.lss)
+    f.path = k.xml_path
+  }
   f.sheet = sheet_of(f)
   tp_lines(ui_st, k.xml)
   let doc = Xml.parse(k.xml)

@@ -1,0 +1,67 @@
+# json.ludic - a Value written into the reply as one line of JSON (strings quoted as pv_q quotes every
+# string, numbers as pv_num writes them), and a Value copied deep
+function pv_json(o: PvOut, v: Val) -> void {
+  pv_byte(o, 32)
+  pv_json_in(o, v)
+}
+function pv_json_in(o: PvOut, v: Val) -> void {
+  let k = Value.kind(v)
+  if k == 1 {
+    pv_digits(o, Value.as_int(v))
+  } else if k == 2 or k == 7 {
+    let at = o.n
+    pv_num(o, Value.as_float(v))
+    pv_unspace(o, at)
+  } else if k == 3 {
+    if Value.as_int(v) != 0 { pv_s(o, "true") } else { pv_s(o, "false") }
+  } else if k == 4 {
+    let at = o.n
+    pv_q(o, Value.as_str(v))
+    pv_unspace(o, at)
+  } else if k == 5 {
+    pv_byte(o, 91)
+    for i in 0 .. Value.count(v) {
+      if i > 0 { pv_byte(o, 44) }
+      pv_json_in(o, Value.at(v, i))
+    }
+    pv_byte(o, 93)
+  } else if k == 6 {
+    pv_byte(o, 123)
+    for i in 0 .. Value.count(v) {
+      if i > 0 { pv_byte(o, 44) }
+      let at = o.n
+      pv_q(o, Value.key_at(v, i))
+      pv_unspace(o, at)
+      pv_byte(o, 58)
+      pv_json_in(o, Value.at(v, i))
+    }
+    pv_byte(o, 125)
+  } else { pv_s(o, "null") }
+}
+# the space pv_num and pv_q put before what they write (at `at`), taken back inside a JSON value
+function pv_unspace(o: PvOut, at: int) -> void {
+  unsafe {
+    for i in at .. o.n - 1 { o.p[i] = o.p[i + 1] }
+  }
+  o.n -= 1
+}
+# a Value and everything under it made again, so nothing is shared with the original
+@alloc_ok("an action's set: a press, never a build")
+function pv_copy(v: Val) -> Val {
+  let k = Value.kind(v)
+  if k == 1 { return Value.int(Value.as_int(v)) }
+  if k == 2 or k == 7 { return Value.float(Value.as_float(v)) }
+  if k == 3 { return Value.bool(Value.as_int(v)) }
+  if k == 4 { return Value.str(Value.as_str(v)) }
+  if k == 5 {
+    let l = Value.list()
+    for i in 0 .. Value.count(v) { Value.add(l, pv_copy(Value.at(v, i))) }
+    return l
+  }
+  if k == 6 {
+    let o = Value.object()
+    for i in 0 .. Value.count(v) { Value.put(o, Value.key_at(v, i), pv_copy(Value.at(v, i))) }
+    return o
+  }
+  return Value.null()
+}

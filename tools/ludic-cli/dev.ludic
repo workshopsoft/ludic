@@ -48,7 +48,7 @@ program LudicDev {
     print("which ships to users and carries none of the below.")
     print("")
     print("build:")
-    print("  build                         build the whole toolchain into bin/ (ludicc, ludic, ludic-dev, ludic-fmt, ludic-lsp)")
+    print("  build                         build the whole toolchain into bin/ (ludicc, ludic, ludic-dev, ludic-fmt, ludic-lsp, ludic-ui-preview)")
     print("  build-cli                     build just bin/ludicc from the IR seed")
     print("  tools [--install] [--test]    build the editor toolchain (ludic-fmt, ludic-lsp)")
     print("  clean                         remove build/")

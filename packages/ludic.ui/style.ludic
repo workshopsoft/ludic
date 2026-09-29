@@ -8,6 +8,8 @@ export property UiRule {
   md: UiMedia = null            # the @media it sits in, if any
   keys: []string = null
   vals: []UiExpr = null
+  text: string = ""             # its selector as written, and where: "file.lss:12" (for an inspector)
+  at: string = ""
 }
 export property UiSheet {
   rules: []UiRule = null
@@ -31,7 +33,7 @@ function lss_file(ui_st: mut UiState, src: string, path: string) -> UiFile {
 function lss_text(ui_st: mut UiState, f: UiFile, src: string) -> void {
   let err = new []string
   let body = lss_strip(src)            # a copy of its own, unless src had no comment (then src itself)
-  lss_block(ui_st, f, body, null, err)
+  lss_block(ui_st, f, body, null, err, 1)
   if lss_has_comment(src) {            # else lss_strip handed src itself back, the caller's to keep
     unsafe { free(body) }              # every rule, selector and value read from it is a copy
   }
@@ -39,13 +41,18 @@ function lss_text(ui_st: mut UiState, f: UiFile, src: string) -> void {
   for i in 0 .. len(err) { ui_err(ui_st, `{f.path}: <style> {err[i]}`) }
   unsafe { free(err) }
 }
-# rules, @imports and @media blocks; the rules in a @media block carry its condition
-function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err: []string) -> void {
+# rules, @imports and @media blocks; the rules in a @media block carry its condition. `line` is the
+# line src starts on, so each rule knows where it was written (a host's inspector asks)
+function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err: []string, line0: int) -> void {
   let r = new UiRd
   r.s = src
+  var line = line0
+  var seen = 0
   while r.err == "" {
     rd_ws(r)
     if r.i >= len(r.s) { break }
+    line = line + lss_lines(src, seen, r.i)
+    seen = r.i
     if rd_op(r, "@import") {
       lss_import(ui_st, f, lss_upto(r, 59))
       continue
@@ -59,15 +66,16 @@ function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err:
     }
     if rd_op(r, "@media") {
       let cond = md_parse(lss_upto(r, 123))
+      let mline = line + lss_lines(src, seen, r.i)
       let mb = lss_upto(r, 125)
-      lss_block(ui_st, f, mb, cond, err)
+      lss_block(ui_st, f, mb, cond, err, mline)
       unsafe { free(mb) }
       continue
     }
     let sels = lss_upto(r, 123)
     let body = lss_upto(r, 125)
     let at = len(f.own)
-    lss_rule(f, sels, body, err)
+    lss_rule(f, sels, body, err, line + lss_lead(sels))
     for i in at .. len(f.own) { f.own[i].md = md }
     unsafe {                           # a rule keeps what it parsed, never the text it was sliced from
       free(sels)
@@ -76,6 +84,22 @@ function lss_block(ui_st: mut UiState, f: UiFile, src: string, md: UiMedia, err:
   }
   if r.err != "" { push(err, r.err) }
   unsafe { free(r) }                   # the reader only: its text is the caller's
+}
+# the line breaks in src between two offsets
+function lss_lines(src: string, from: int, to: int) -> int {
+  var n = 0
+  for i in from .. to {
+    if src[i] == 10 { n += 1 }
+  }
+  return n
+}
+# the line breaks before a selector's first word (rd_ws stops at the first non-space)
+function lss_lead(s: string) -> int {
+  var n = 0
+  for i in 0 .. len(s) {
+    if s[i] == 10 { n += 1 } else if s[i] != 32 and s[i] != 9 and s[i] != 13 { return n }
+  }
+  return n
 }
 # @import "base.lss"; - its rules come before this file's own
 function lss_import(ui_st: mut UiState, f: UiFile, what: string) -> void {
@@ -112,7 +136,13 @@ function lss_strip(src: string) -> string {
   while i < len(src) {
     if i + 1 < len(src) and src[i] == 47 and src[i + 1] == 42 {
       var j = i + 2
-      while j + 1 < len(src) and not (src[j] == 42 and src[j + 1] == 47) { j += 1 }
+      while j + 1 < len(src) and not (src[j] == 42 and src[j + 1] == 47) {
+        if src[j] == 10 {                 # a comment's line breaks stay, so a rule's line is its own
+          unsafe { p[n] = 10 }
+          n += 1
+        }
+        j += 1
+      }
       i = j + 2
     } else {
       unsafe { p[n] = src[i] }

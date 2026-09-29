@@ -1,0 +1,59 @@
+# num.ludic - numbers and colours written into the reply: a space, then the number
+# a whole number, in decimal
+function pv_int(o: PvOut, n: int) -> void {
+  pv_byte(o, 32)
+  pv_digits(o, n)
+}
+function pv_digits(o: PvOut, n0: int) -> void {
+  var n = n0
+  if n < 0 {
+    pv_byte(o, 45)
+    n = 0 - n
+  }
+  if n >= 10 { pv_digits(o, n / 10) }
+  pv_byte(o, 48 + n % 10)
+}
+# a real number rounded to thousandths, with no trailing zeros: 12, 12.5, -0.125
+function pv_num(o: PvOut, x: float) -> void {
+  pv_byte(o, 32)
+  var a = x
+  var neg = false
+  if a < 0.0 {
+    a = 0.0 - a
+    neg = true
+  }
+  if a > 2000000.0 {                 # past what thousandths hold in an int: whole units
+    if neg { pv_byte(o, 45) }
+    pv_digits(o, int(a))
+    return
+  }
+  let c = int(a * 1000.0 + 0.5)
+  if neg and c != 0 { pv_byte(o, 45) }
+  pv_digits(o, c / 1000)
+  var f = c % 1000
+  if f == 0 { return }
+  pv_byte(o, 46)
+  var d = 100
+  while f > 0 {
+    pv_byte(o, 48 + f / d)
+    f = f % d
+    d = d / 10
+  }
+}
+# a colour, 0xRRGGBB, as #rrggbb (lower case); a negative (none, inherit) is #000000
+function pv_hex(o: PvOut, c0: int) -> void {
+  pv_byte(o, 32)
+  pv_byte(o, 35)
+  var c = c0
+  if c < 0 { c = 0 }
+  var shift = 1048576
+  for i in 0 .. 6 {
+    pv_byte(o, pv_hexch((c / shift) % 16))
+    shift = shift / 16
+  }
+}
+# a colour and its alpha, as every primitive and style line carries them
+function pv_rgba(o: PvOut, c: int, a: float) -> void {
+  pv_hex(o, c)
+  pv_num(o, a)
+}

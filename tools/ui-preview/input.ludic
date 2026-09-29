@@ -1,0 +1,78 @@
+# input.ludic - `input ...`: what the player does, held (the pointer, the pad, shift) until changed,
+# or pressed once (a key, the wheel, typed text) and handed to the next frame only
+property PvIn {
+  x: float = -1.0
+  y: float = -1.0
+  buttons: int = 0
+  shift: bool = false
+  pad_a: bool = false
+  pad_b: bool = false
+  hold_up: bool = false
+  hold_down: bool = false
+  hold_left: bool = false
+  hold_right: bool = false
+  hold_enter: bool = false
+  once: UiInput = new UiInput        # this frame's presses, cleared once a frame takes them
+}
+# the request's words after `input`; "" when they were understood, else what was wrong
+function pv_input(pv: mut PvState, w: []string) -> string {
+  let i = pv.inp
+  if len(w) < 2 { return "input: pointer, wheel, key, text, pad or shift" }
+  let what = w[1]
+  if what == "pointer" and len(w) >= 5 {
+    i.x = pv_float(w[2])
+    i.y = pv_float(w[3])
+    i.buttons = pv_int_of(w[4])
+    return ""
+  }
+  if what == "wheel" and len(w) >= 3 {
+    i.once.wheel = i.once.wheel + pv_float(w[2])
+    return ""
+  }
+  if what == "text" and len(w) >= 3 {
+    i.once.typed = i.once.typed + pv_text(w[2])
+    return ""
+  }
+  if what == "shift" and len(w) >= 3 {
+    i.shift = pv_int_of(w[2]) != 0
+    return ""
+  }
+  if what == "key" and len(w) >= 3 { return pv_key(i, pv_text(w[2])) }
+  if what == "pad" and len(w) >= 4 { return pv_pad(i, pv_text(w[2]), pv_int_of(w[3]) != 0) }
+  return `input {what}: not understood`
+}
+# the frame's input: the held state and the presses, into the record ludic.ui is not holding
+function pv_frame_input(pv: mut PvState, ui_st: mut UiState) -> void {
+  let i = pv.inp
+  var r = pv.in_a
+  if pv.in_flip { r = pv.in_b }
+  pv.in_flip = not pv.in_flip
+  let o = i.once
+  r.x = i.x
+  r.y = i.y
+  r.down = (i.buttons & 1) != 0
+  r.down_right = (i.buttons & 2) != 0
+  r.down_middle = (i.buttons & 4) != 0
+  r.wheel = o.wheel
+  r.tab = o.tab
+  r.shift = i.shift or o.shift
+  r.up = o.up
+  r.down_key = o.down_key
+  r.left = o.left
+  r.right = o.right
+  r.enter = o.enter
+  r.space = o.space
+  r.escape = o.escape
+  r.backspace = o.backspace
+  r.typed = o.typed
+  r.key = o.key
+  r.held_up = i.hold_up
+  r.held_down = i.hold_down
+  r.held_left = i.hold_left
+  r.held_right = i.hold_right
+  r.pad_a = i.pad_a
+  r.pad_b = i.pad_b
+  r.held_enter = i.hold_enter
+  ui_input(ui_st, r)
+  pv_in_blank(o)                     # the presses taken: the next frame starts with none
+}

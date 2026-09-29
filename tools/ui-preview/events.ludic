@@ -1,0 +1,74 @@
+# events.ludic - what happened while a request ran, kept apart from the draw list and written after
+# it (protocol-v1.md, "Events"): template errors, calls, emits, sets, sounds and misses
+# a template error: ludic.ui's text, its file and line split off the front when it has them
+@alloc_ok("a template error: said once (ludic.ui says each once)")
+function pv_err(pv: mut PvState, msg: string) -> void {
+  let o = pv.ev
+  var cut = -1
+  for i in 0 .. len(msg) - 1 {
+    if cut < 0 and msg[i] == 58 and msg[i + 1] == 32 { cut = i }
+  }
+  var file = ""
+  var line = 0
+  var rest = msg
+  if cut > 0 {
+    let head = msg[0..cut]
+    let colon = pv_last_colon(head)
+    if colon > 0 and pv_digits_only(head, colon + 1) {
+      file = head[0..colon]
+      line = pv_int_of(head[colon + 1..len(head)])
+      rest = msg[cut + 2..len(msg)]
+    } else if pv_pathish(head) {
+      file = head
+      rest = msg[cut + 2..len(msg)]
+    }
+  }
+  pv_s(o, "err")
+  pv_q(o, file)
+  pv_int(o, line)
+  pv_int(o, 0)
+  pv_q(o, rest)
+  pv_nl(o)
+}
+function pv_last_colon(s: string) -> int {
+  var at = -1
+  for i in 0 .. len(s) {
+    if s[i] == 58 { at = i }
+  }
+  return at
+}
+function pv_digits_only(s: string, from: int) -> bool {
+  if from >= len(s) { return false }
+  for i in from .. len(s) {
+    if s[i] < 48 or s[i] > 57 { return false }
+  }
+  return true
+}
+# a name with a dot or a slash in it, and no space: a file
+function pv_pathish(s: string) -> bool {
+  var dot = false
+  for i in 0 .. len(s) {
+    if s[i] == 32 { return false }
+    if s[i] == 46 or s[i] == 47 { dot = true }
+  }
+  return dot
+}
+function pv_said(pv: mut PvState, msg: string) -> void { pv_err(pv, msg) }
+# `emit name` ran in a template (a click's is "press", as ludic.ui keeps it)
+function pv_emitted(pv: mut PvState, name: string) -> void {
+  pv_s(pv.ev, "emit")
+  pv_q(pv.ev, name)
+  pv_nl(pv.ev)
+}
+function pv_sound(pv: mut PvState, name: string) -> void {
+  pv_s(pv.ev, "sound")
+  pv_q(pv.ev, name)
+  pv_nl(pv.ev)
+}
+# a template file's text: one the studio sent (`file`), else the disk's
+function pv_read(pv: PvState, path: string) -> string {
+  for i in 0 .. len(pv.fl_path) {
+    if pv.fl_path[i] == path { return pv.fl_text[i] }
+  }
+  return Fs.read_text(path)
+}

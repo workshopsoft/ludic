@@ -1,0 +1,83 @@
+# cmd_load.ludic - the requests that describe components: load, model, calls, show, native, file
+# `load <Name> <xml> <lss> [<xml path> [<lss path>]]`: a class registered, or changed in place
+@alloc_ok("a request: a class's text and names, once per load")
+function pv_load(pv: mut PvState, ui_st: mut UiState, w: []string) -> string {
+  if len(w) < 4 { return "load: <Name> <xml> <lss> [<xml path> [<lss path>]]" }
+  let name = pv_text(w[1])
+  let xml = pv_text(w[2])
+  let lss = pv_text(w[3])
+  var xp = name + ".xml"
+  var lp = name + ".lss"
+  if len(w) >= 5 { xp = pv_text(w[4]) }
+  if len(w) >= 6 { lp = pv_text(w[5]) }
+  ui_errors_clear(ui_st)
+  pv_placeholders(ui_st, xml, name)
+  var k = ui_class(ui_st, name)
+  if k == null {
+    k = pv_class_new(name)
+    ui_register(ui_st, k)
+  }
+  k.xml = xml
+  k.lss = lss
+  k.xml_path = xp
+  k.lss_path = lp
+  k.root = null
+  k.sheet = null
+  ui_class_load(ui_st, k)
+  return ""
+}
+# `model <Name> <json object>` and `calls <Name> <json object>`: the story's side of a class
+@alloc_ok("a request: the story's data, kept until replaced")
+function pv_story_cmd(pv: mut PvState, w: []string, calls: bool) -> string {
+  if len(w) < 3 { return `{w[0]}: <Name> <json object>` }
+  let v = pv_val(w[2])
+  if Value.kind(v) != 6 { return `{w[0]}: the story's value must be a JSON object` }
+  let s = pv_story_get(pv, pv_text(w[1]))
+  if calls { s.calls = v } else { s.model = v }
+  return ""
+}
+# `show <Name>`: the class a frame shows, as a screen of its own
+@alloc_ok("a request")
+function pv_show(pv: mut PvState, ui_st: UiState, w: []string) -> string {
+  if len(w) < 2 { return "show: <Name>" }
+  let name = pv_text(w[1])
+  if ui_class(ui_st, name) == null { return `show {name}: load it first` }
+  pv.root = name
+  return ""
+}
+# `native <tag> [<w> <h>]`: a tag the game draws itself, a placeholder box of that content size
+@alloc_ok("a request: a native tag, once")
+function pv_native(pv: mut PvState, ui_st: mut UiState, w: []string) -> string {
+  if len(w) < 2 { return "native: <tag> [<w> <h>]" }
+  let tag = pv_text(w[1])
+  var at = -1
+  for i in 0 .. len(pv.nt_tag) {
+    if pv.nt_tag[i] == tag { at = i }
+  }
+  if at < 0 {
+    push(pv.nt_tag, tag)
+    push(pv.nt_w, 0.0)
+    push(pv.nt_h, 0.0)
+    at = len(pv.nt_tag) - 1
+    ui_native(ui_st, tag, fn pv_nat_measure, fn pv_nat_draw)
+  }
+  if len(w) >= 4 {
+    pv.nt_w[at] = pv_float(w[2])
+    pv.nt_h[at] = pv_float(w[3])
+  }
+  return ""
+}
+function pv_nat_measure(pv: PvState, n: UiNode, avail: float) -> void {
+  for i in 0 .. len(pv.nt_tag) {
+    if pv.nt_tag[i] == n.tag {
+      n.mw = pv.nt_w[i] * pv_scale(pv)
+      n.mh = pv.nt_h[i] * pv_scale(pv)
+    }
+  }
+}
+function pv_nat_draw(pv: mut PvState, n: UiNode) -> void {
+  pv_s(pv.out, "native")
+  pv_q(pv.out, n.tag)
+  pv_box(pv.out, n.x, n.y, n.cw, n.ch)
+  pv_nl(pv.out)
+}

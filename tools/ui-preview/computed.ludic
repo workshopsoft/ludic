@@ -1,0 +1,78 @@
+# computed.ludic - an element's computed style after the cascade and layout, one `style` line each
+# (protocol-v1.md, "box")
+function pv_style(o: PvOut, n: UiNode) -> void {
+  pv_st(o, "font-size")
+  pv_num(o, n.rsize)
+  pv_nl(o)
+  pv_st(o, "color")
+  pv_rgba(o, n.rfg, n.rfg_a)
+  pv_nl(o)
+  pv_st(o, "background")
+  if n.bg < 0 { pv_w(o, "none") } else { pv_rgba(o, n.bg, n.bg_a) }
+  pv_nl(o)
+  pv_st(o, "opacity")
+  pv_num(o, n.alpha)
+  pv_nl(o)
+  pv_four(o, "padding", n.pt, n.pr, n.pb, n.pl)
+  pv_four(o, "margin", n.mt, n.mr, n.mb, n.ml)
+  pv_four(o, "border-width", n.bt, n.br, n.bb, n.bl)
+  pv_st(o, "border-color")
+  if n.border_c < 0 { pv_w(o, "none") } else { pv_rgba(o, n.border_c, n.border_a) }
+  pv_nl(o)
+  pv_one(o, "border-radius", n.radius)
+  pv_one(o, "gap", n.gap)
+  pv_one(o, "flex-grow", n.grow)
+  pv_st(o, "flex-direction")
+  if n.dir == UI_ROW { pv_w(o, "row") } else { pv_w(o, "column") }
+  pv_nl(o)
+  pv_st(o, "align-items")
+  pv_w(o, pv_place_word(n.align, false))
+  pv_nl(o)
+  pv_st(o, "justify-content")
+  pv_w(o, pv_place_word(n.justify, true))
+  pv_nl(o)
+  pv_st(o, "position")
+  pv_w(o, pv_pos_word(n.pos))
+  pv_int(o, n.z)
+  pv_nl(o)
+  pv_st(o, "content")
+  pv_num(o, n.mw)
+  pv_num(o, n.mh)
+  pv_nl(o)
+  pv_st(o, "enabled")
+  if n.enabled { pv_w(o, "true") } else { pv_w(o, "false") }
+  pv_nl(o)
+}
+function pv_st(o: PvOut, name: string) -> void {
+  pv_s(o, "style ")
+  pv_s(o, name)
+}
+function pv_one(o: PvOut, name: string, v: float) -> void {
+  pv_st(o, name)
+  pv_num(o, v)
+  pv_nl(o)
+}
+function pv_four(o: PvOut, name: string, t: float, r: float, b: float, l: float) -> void {
+  pv_st(o, name)
+  pv_num(o, t)
+  pv_num(o, r)
+  pv_num(o, b)
+  pv_num(o, l)
+  pv_nl(o)
+}
+function pv_place_word(v: int, justify: bool) -> string {
+  if v == UI_START { return "start" }
+  if v == UI_CENTER { return "center" }
+  if v == UI_END { return "end" }
+  if justify and v == UI_BETWEEN { return "space-between" }
+  if justify and v == UI_AROUND { return "space-around" }
+  if justify and v == UI_EVENLY { return "space-evenly" }
+  if v == UI_STRETCH { return "stretch" }
+  return "start"
+}
+function pv_pos_word(p: int) -> string {
+  if p == 1 { return "relative" }
+  if p == 2 { return "absolute" }
+  if p == 3 { return "fixed" }
+  return "static"
+}

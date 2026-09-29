@@ -226,6 +226,7 @@ install_from_source() {
   _stage="${TMP}/stage"
   mkdir -p "${_stage}/bin"
   cp "${_src}"/bin/ludic "${_src}"/bin/ludicc "${_src}"/bin/ludic-fmt "${_src}"/bin/ludic-lsp "${_stage}/bin/"
+  if [ -x "${_src}/bin/ludic-ui-preview" ]; then cp "${_src}/bin/ludic-ui-preview" "${_stage}/bin/"; fi
   cp -R "${_src}/runtime" "${_stage}/runtime"
   cp -R "${_src}/packages" "${_stage}/packages"
   cp "${_src}/VERSION" "${_src}/LICENSE" "${_src}/README.md" "${_stage}/"

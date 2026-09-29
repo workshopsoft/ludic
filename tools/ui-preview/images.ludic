@@ -1,0 +1,81 @@
+# images.ludic - pictures in the draw list: a cell of an atlas the studio named (`atlas`), placed as
+# ludic.ui's render3d backend places one (square, centred, the cell's share of the sheet), else a file
+# by its path; a nine-slice by its path with the box's cuts. Natural sizes come from `image` lines.
+function pv_atlas_of(pv: PvState, src: string) -> int {
+  for k in 0 .. len(pv.at_prefix) {
+    let p = pv.at_prefix[k]
+    if len(src) > len(p) and src[len(p)] == 58 and pv_sat(src, 0, p) { return k }
+  }
+  return -1
+}
+# the cell `src` names after its prefix: by name, else by number (-1: none)
+function pv_cell(pv: PvState, k: int, src: string) -> int {
+  let at = len(pv.at_prefix[k]) + 1
+  let n = len(src) - at
+  let names = pv.at_names[k]
+  var idx = -1
+  for i in 0 .. len(names) {
+    if len(names[i]) == n and pv_sat(src, at, names[i]) { idx = i }
+  }
+  if idx >= 0 or n == 0 or src[at] < 48 or src[at] > 57 { return idx }
+  idx = 0
+  for i in at .. len(src) {
+    if src[i] >= 48 and src[i] <= 57 { idx = idx * 10 + src[i] - 48 }
+  }
+  return idx
+}
+function pv_image(pv: mut PvState, src: string, x: float, y: float, w: float, h: float, c: int, a: float) -> void {
+  let o = pv.out
+  let k = pv_atlas_of(pv, src)
+  if k < 0 {
+    pv_s(o, "image path")
+    pv_q(o, src)
+    pv_box(o, x, y, w, h)
+    pv_box(o, 0.0, 0.0, 1.0, 1.0)
+  } else {
+    let idx = pv_cell(pv, k, src)
+    if idx < 0 {                       # as render3d's backend: nothing drawn, and the template is wrong
+      pv_err(pv, `{src}: the atlas has no such picture`)
+      return
+    }
+    let cols = pv.at_cols[k]
+    let rows = pv.at_rows[k]
+    let s = Math.min(w, h)
+    pv_s(o, "image atlas")
+    pv_q(o, pv.at_name[k])
+    pv_int(o, idx)
+    pv_box(o, float(int(x + (w - s) / 2.0)), float(int(y + (h - s) / 2.0)), float(int(s)), float(int(s)))
+    let u0 = float(idx % cols) / float(cols)
+    let v0 = float(idx / cols) / float(rows)
+    pv_box(o, u0, v0, u0 + 1.0 / float(cols), v0 + 1.0 / float(rows))
+  }
+  pv_rgba(o, c, a)
+  pv_nl(o)
+}
+# a picture's own size: an atlas cell is 1 by 1 (drawn square), a file what an `image` line said
+function pv_image_w(pv: PvState, src: string) -> float {
+  if pv_atlas_of(pv, src) >= 0 { return 1.0 }
+  for i in 0 .. len(pv.im_path) {
+    if pv.im_path[i] == src { return pv.im_w[i] }
+  }
+  return 0.0
+}
+function pv_image_h(pv: PvState, src: string) -> float {
+  if pv_atlas_of(pv, src) >= 0 { return 1.0 }
+  for i in 0 .. len(pv.im_path) {
+    if pv.im_path[i] == src { return pv.im_h[i] }
+  }
+  return 0.0
+}
+function pv_nine(pv: mut PvState, src: string, slice: float, x: float, y: float, w: float, h: float, dst: float, c: int, a: float) -> void {
+  let o = pv.out
+  let cut = ui_nine_cuts_into(pv.cuts, x, y, w, h, dst)
+  pv_s(o, "nine")
+  pv_q(o, src)
+  pv_num(o, slice)
+  pv_box(o, x, y, w, h)
+  pv_num(o, dst)
+  for i in 0 .. 8 { pv_num(o, cut[i]) }
+  pv_rgba(o, c, a)
+  pv_nl(o)
+}

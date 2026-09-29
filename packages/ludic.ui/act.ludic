@@ -60,6 +60,7 @@ function act_run(ui_st: mut UiState, a: UiAct, e: UiEnv) -> void {
   }
 }
 function act_emit(ui_st: mut UiState, name: string, e: UiEnv) -> void {
+  if ui_st.ui_be != null and ui_st.ui_be.emitted != null { ui_st.ui_be.emitted(name) }
   var at = e
   while at != null {
     if at.on_names != null {

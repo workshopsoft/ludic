@@ -1,10 +1,10 @@
 # style_rule.ludic - a rule read, the cascade a file sees, and a node's rules applied to it
-function lss_rule(f: UiFile, sels: string, body: string, err: []string) -> void {
+function lss_rule(f: UiFile, sels: string, body: string, err: []string, line: int) -> void {
   let decls = lss_decls(body, err)
   let each = lss_split(sels, 44)
   for i in 0 .. len(each) {
     let sel = tpl_words(each[i])
-    if len(sel) > 0 { lss_rule_add(f, decls, sel, err) }
+    if len(sel) > 0 { lss_rule_add(f, decls, sel, err, line) }
     unsafe {                           # a selector keeps its parsed parts, never its text
       if not tpl_clean(each[i]) { free(sel) }
       free(each[i])
@@ -15,10 +15,12 @@ function lss_rule(f: UiFile, sels: string, body: string, err: []string) -> void 
     free(decls)                        # the holder only: each rule keeps its keys and values lists
   }
 }
-function lss_rule_add(f: UiFile, decls: UiRule, sel: string, err: []string) -> void {
+function lss_rule_add(f: UiFile, decls: UiRule, sel: string, err: []string, line: int) -> void {
   let r = new UiRule
   r.keys = decls.keys
   r.vals = decls.vals
+  r.text = `{sel}`                     # a copy: the selector's text is given back below
+  r.at = `{f.path}:{line}`
   r.sel = sel_parse(sel, err)
   if r.sel != null {
     r.spec = sel_spec(r.sel)
