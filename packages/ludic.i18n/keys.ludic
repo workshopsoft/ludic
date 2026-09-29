@@ -1,0 +1,67 @@
+# keys.ludic - a key as the game carries it: its text behind a marker byte (the compiler's k"..." is
+# exactly that), holes as byte 31 then each argument, a plural's count first. Nothing here needs the
+# language: the text is made where it is drawn (L), so code that makes text never takes I18nState.
+export const I18N_KEY: int = 1         # k"pause.resume" is "\\x01pause.resume"
+export const I18N_PLURAL: int = 2      # kn"catch.count": a count chooses the form
+export const I18N_SEP: int = 31        # between the key and each argument
+
+# is this a key (or a key with its arguments), rather than English
+export function i18n_is_key(s: string) -> bool { return len(s) > 0 and (s[0] == I18N_KEY or s[0] == I18N_PLURAL) }
+
+# a key named at run time (a test, a table's own key): "pause.resume" marked
+@alloc_ok("a key made from its name: a test's, or a table's once")
+export function i18n_key(name: string) -> string { return kx_join(I18N_KEY, name, "", "", "", "", 0) }
+@alloc_ok("a plural key made from its name: a test's")
+export function i18n_key_plural(name: string) -> string { return kx_join(I18N_PLURAL, name, "", "", "", "", 0) }
+
+# the key's name without its marker ("pause.resume"), or the string as it is
+export function key_text(k: string) -> string {
+  if not i18n_is_key(k) { return k }
+  var e = 1
+  while e < len(k) and k[e] != I18N_SEP { e += 1 }
+  return k[1..e]
+}
+
+# the text of a key: drawn translated where it is drawn (a free cast once the key is typed)
+export function tr(k: string) -> string { return k }
+# a key's text with its holes, {1} .. {4}, filled by strings already made (a number, a name, another key)
+export function trf(k: string, a: string, b: string, c: string, d: string) -> string {
+  var mark = I18N_KEY
+  if i18n_is_key(k) { mark = k[0] }
+  return kx_join(mark, key_text(k), a, b, c, d, kx_count(a, b, c, d))
+}
+# a plural key's text by n: the count is {1}, a .. c are {2} .. {4}
+export function trn(k: string, n: int, a: string, b: string, c: string) -> string { return kx_join(I18N_PLURAL, key_text(k), `{n}`, a, b, c, 1 + kx_count(a, b, c, "")) }
+
+function kx_count(a: string, b: string, c: string, d: string) -> int {
+  if len(d) > 0 { return 4 }
+  if len(c) > 0 { return 3 }
+  if len(b) > 0 { return 2 }
+  if len(a) > 0 { return 1 }
+  return 0
+}
+
+# the marker, the name, then each of the first `n` arguments after a byte 31
+function kx_join(mark: int, name: string, a: string, b: string, c: string, d: string, n: int) -> string {
+  var size = 1 + len(name)
+  if n > 0 { size += 1 + len(a) }
+  if n > 1 { size += 1 + len(b) }
+  if n > 2 { size += 1 + len(c) }
+  if n > 3 { size += 1 + len(d) }
+  let buf = buffer(size)
+  buf[0] = mark
+  var at = kx_put(buf, 1, name)
+  if n > 0 { at = kx_put(buf, kx_sep(buf, at), a) }
+  if n > 1 { at = kx_put(buf, kx_sep(buf, at), b) }
+  if n > 2 { at = kx_put(buf, kx_sep(buf, at), c) }
+  if n > 3 { at = kx_put(buf, kx_sep(buf, at), d) }
+  return text_of(buf, size)
+}
+function kx_sep(buf: []byte, at: int) -> int {
+  buf[at] = I18N_SEP
+  return at + 1
+}
+function kx_put(buf: []byte, at: int, s: string) -> int {
+  for i in 0 .. len(s) { buf[at + i] = s[i] }
+  return at + len(s)
+}

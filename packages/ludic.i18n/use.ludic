@@ -3,6 +3,7 @@ export function i18n_use(i18n_st: mut I18nState, code: string) -> void {
   if i18n_st.codes == null { i18n_init(i18n_st) }
   i18n_st.on = false
   i18n_st.cur = "en"
+  kc_clear(i18n_st)
   var k = i18n_index(i18n_st, code)
   let forced = I18nWorld.forced()
   if len(forced) > 0 { k = i18n_index(i18n_st, forced) }
@@ -36,6 +37,7 @@ export function i18n_use(i18n_st: mut I18nState, code: string) -> void {
 @alloc_ok("on a language change: the language's messages read in")
 export function i18n_load_text(i18n_st: mut I18nState, text: string) -> void {
   let es = i18n_parse(text)
+  kc_clear(i18n_st)
   i18n_st.exact = Dict.new()
   i18n_st.out = new []string
   i18n_st.cache = Dict.new()
@@ -82,6 +84,7 @@ export function i18n_load_text(i18n_st: mut I18nState, text: string) -> void {
 
 # English again: nothing loaded, nothing translated
 export function i18n_off(i18n_st: mut I18nState) -> void {
+  kc_clear(i18n_st)
   i18n_st.on = false
   i18n_st.cur = "en"
 }

@@ -1,0 +1,74 @@
+# keyed_render.ludic - a marked string made into text where it is drawn: its key looked up (a plural's by
+# its count), its holes filled with its arguments, each argument that is itself a key made first
+
+# what L does with a key: made once per distinct marked string in this language, then kept
+function keyed(i18n_st: mut I18nState, s: string) -> string {
+  if i18n_st.kc == null { kc_clear(i18n_st) }
+  let ci = Dict.get_or(i18n_st.kc, s, -1)
+  if ci >= 0 { return i18n_st.kc_out[ci] }
+  let r = kr_make(i18n_st, s)
+  if Dict.size(i18n_st.kc) >= CACHE_MAX { kc_clear(i18n_st) }
+  @alloc_ok("a key made into text: the result kept, up to CACHE_MAX")
+  Dict.set(i18n_st.kc, s, len(i18n_st.kc_out))
+  @alloc_ok("a key made into text: as above")
+  push(i18n_st.kc_out, r)
+  return r
+}
+
+# a language's change makes every kept text stale
+@alloc_ok("on a language change: the made keys let go")
+function kc_clear(i18n_st: mut I18nState) -> void {
+  i18n_st.kc = Dict.new()
+  i18n_st.kc_out = new []string
+}
+
+@alloc_ok("a key made into text (a cache miss): once per distinct marked string")
+function kr_make(i18n_st: mut I18nState, s: string) -> string {
+  let args = new []string
+  var start = 1
+  var i = 1
+  while i <= len(s) {
+    if i == len(s) or s[i] == I18N_SEP {
+      push(args, s[start..i])
+      start = i + 1
+    }
+    i += 1
+  }
+  let key = args[0]
+  var t = ""
+  if s[0] == I18N_PLURAL and len(args) > 1 { t = kb_plural(i18n_st, key, kr_int(args[1])) } else { t = kb_text(i18n_st, key) }
+  return kr_fill(i18n_st, t, args)
+}
+
+# {k} is argument k (args[0] is the key); a missing one is empty, a key is made into its own text
+@alloc_ok("a key made into text (a cache miss): its holes filled")
+function kr_fill(i18n_st: mut I18nState, t: string, args: []string) -> string {
+  var r = ""
+  var seg = 0
+  var i = 0
+  while i < len(t) {
+    let h = hole_at(t, i)
+    if h >= 1 {
+      var v = ""
+      if h < len(args) { v = args[h] }
+      if i18n_is_key(v) { v = keyed(i18n_st, v) }
+      r = r + t[seg..i] + v
+      i = hole_end(t, i)
+      seg = i
+      continue
+    }
+    i += 1
+  }
+  return r + t[seg..len(t)]
+}
+
+# a count written as decimal digits (a leading - allowed); anything else is 0
+function kr_int(s: string) -> int {
+  var v = 0
+  var neg = false
+  for i in 0 .. len(s) {
+    if i == 0 and s[i] == 45 { neg = true } else if s[i] >= 48 and s[i] <= 57 { v = v * 10 + (s[i] - 48) }
+  }
+  if neg { return -v }
+  return v
+}

@@ -45,6 +45,16 @@ export state I18nState {
   forms: []string = null              # three forms per entry, "" where the file has fewer
   plural_rule: int = 0                # PL_*
   tabs: []I18nTables = null           # by language: its lookups once read, kept for the next switch
+  base_exact: Dict = null             # en.po, under every language: a key -> index into base_out
+  base_out: []string = null
+  base_plural: Dict = null            # a plural key -> index into base_forms / 3
+  base_forms: []string = null
+  base_rule: int = 0
+  base_tried: bool = false
+  kc: Dict = null                     # a marked string (key and args) -> index into kc_out, in this language
+  kc_out: []string = null
+  loud: bool = false                  # a developer's build: a key en.po lacks draws as [[key]], said once
+  said: Dict = null
 }
 
 # where the shipped languages are (a directory with languages.txt and <code>.po), and the atlas a
