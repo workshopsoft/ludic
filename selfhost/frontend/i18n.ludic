@@ -183,28 +183,71 @@ function i18n_has_text(f: Node) -> bool {
 function i18n_is_key_ty(t: pointer) -> bool { return t != null and (t == "Key") and find_comp(t) == null }
 # a compiled registry's row (reg_fill): a @Text Key field it gives no value takes its derived key
 function i18n_fill_row(r: int, key: pointer, rec: Node, comp: Node, kline: int, kcol: int) -> void {
-  if comp == null { return }
+  i18n_fill_rec(rec, comp, `{i18n_prefix(r)}.{key}`, kline, kcol)
+}
+# a record at `base` (a row, or a record nested in one): a @Text Key it leaves out takes base.field,
+# a @Text []Key it leaves out takes base.field.0, .1, ... as many as en.po has; given ones are walked
+function i18n_fill_rec(rec: Node, comp: Node, base: pointer, kline: int, kcol: int) -> void {
+  if rec == null or comp == null { return }
   var i = 0
   while i < len(comp.kids) {
     let f = comp.kids[i]
-    if f.kind == N_FIELD and i18n_has_text(f) and i18n_is_key_ty(f.ty) and not reg_rec_has(rec, f.s) {
-      let fi = node(E_FINIT)
-      fi.s = f.s
-      fi.file = rec.file
-      fi.line = kline
-      fi.col = kcol
-      let ks = node(E_STR)
-      ks.s = key_marked(KEY_LIT, `{i18n_prefix(r)}.{key}.{f.s}`)
-      ks.ival = KEY_LIT
-      ks.ty = "derived"                          # the checks know it was not written
-      ks.file = rec.file
-      ks.line = kline
-      ks.col = kcol
-      fi.a = ks
-      push(rec.kids, fi)
+    if f.kind == N_FIELD {
+      let path = `{base}.{f.s}`
+      let fi = i18n_field_init(rec, f.s)
+      if fi != null { i18n_fill_val(fi.a, f.ty, path, kline, kcol) }
+      else if i18n_has_text(f) and i18n_is_key_ty(f.ty) { push(rec.kids, i18n_finit(f.s, i18n_derived(path, rec.file, kline, kcol), rec.file, kline, kcol)) }
+      else if i18n_has_text(f) and i18n_is_keys_ty(f.ty) { i18n_fill_list(rec, f.s, path, kline, kcol) }
     }
     i += 1
   }
+}
+function i18n_fill_val(e: Node, ty: pointer, path: pointer, kline: int, kcol: int) -> void {
+  if e == null { return }
+  if e.kind == E_NEW and e.a != null and e.a.kind == E_REC { i18n_fill_rec(e.a, find_comp(e.s), path, kline, kcol) }
+  else if e.kind == E_REC and ty != null { i18n_fill_rec(e, find_comp(ty), path, kline, kcol) }
+  else if e.kind == E_LIST {
+    var el: pointer = null
+    if ty != null and is_slice_ty(ty) { el = slice_elem(ty) }
+    var i = 0
+    while i < len(e.kids) {
+      i18n_fill_val(e.kids[i], el, `{path}.{itoa(i)}`, kline, kcol)
+      i += 1
+    }
+  }
+}
+# a []Key the row leaves out: en.po's path.0, path.1, ... while they last (none without an en.po)
+function i18n_fill_list(rec: Node, name: pointer, path: pointer, kline: int, kcol: int) -> void {
+  if g_i18n_en == null { return }
+  let lst = node(E_LIST)
+  lst.file = rec.file
+  lst.line = kline
+  var i = 0
+  while po_find(g_i18n_en, `{path}.{itoa(i)}`) >= 0 {
+    push(lst.kids, i18n_derived(`{path}.{itoa(i)}`, rec.file, kline, kcol))
+    i += 1
+  }
+  if i > 0 { push(rec.kids, i18n_finit(name, lst, rec.file, kline, kcol)) }
+}
+function i18n_is_keys_ty(t: pointer) -> bool { return t != null and is_slice_ty(t) and i18n_is_key_ty(slice_elem(t)) }
+function i18n_derived(key: pointer, file: pointer, line: int, col: int) -> Node {
+  let ks = node(E_STR)
+  ks.s = key_marked(KEY_LIT, key)
+  ks.ival = KEY_LIT
+  ks.ty = "derived"                              # the checks know it was not written
+  ks.file = file
+  ks.line = line
+  ks.col = col
+  return ks
+}
+function i18n_finit(name: pointer, v: Node, file: pointer, line: int, col: int) -> Node {
+  let fi = node(E_FINIT)
+  fi.s = name
+  fi.file = file
+  fi.line = line
+  fi.col = col
+  fi.a = v
+  return fi
 }
 
 # ---- the sites and the key checks ----------------------------------------------------------------
@@ -339,8 +382,11 @@ function i18n_call(n: Node) -> void {
     perr_at(e.file, e.line, i18n_col(e), `{nm}(kn"{key}", ...): a plural key needs its count - write trn(kn"{key}", n, ...)`)
   }
   if nm == "tr" or g_i18n_en == null { return }
-  i18n_holes(key, len(n.kids) - k - 1, nm, e.file, e.line, i18n_col(e))
+  var last = len(n.kids)
+  while last > k + 1 and i18n_is_pad(n.kids[last - 1]) { last -= 1 }   # trailing "" fill trf / trn's unused slots
+  i18n_holes(key, last - k - 1, nm, e.file, e.line, i18n_col(e))
 }
+function i18n_is_pad(e: Node) -> bool { return e != null and e.kind == E_STR and not i18n_is_key(e) and (e.s == null or len(e.s) == 0) }
 # a node's column in its file: a template literal's hole is lexed on its own, so its tokens' columns
 # are the hole's - the file offset says where it really is
 function i18n_col(n: Node) -> int {

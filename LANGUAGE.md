@@ -883,7 +883,10 @@ declares its own type named `Key` keeps it; the builtin is then out of reach.)
 `@TextKey("steps")` on the registry, `steps.<row>.<field>`. A `@PerMap` table's is
 `maps.<map>.<table>.<row>.<field>`. When the field's type is `Key` and a row of a compiled registry
 gives it no value, the compiler fills in the derived key (marked, as a literal is), so code writes
-`tr(Items[i].name)` and the `.lres` never spells a key; a row may still name one, `name:
+`tr(Items[i].name)` and the `.lres` never spells a key. The same holds below the row: a nested
+record's field adds `.<field>` and a list item `.<index>` (`disruptions.<row>.arrive.steps.0.text`), and a
+`@Text []Key` a row leaves out takes `<...>.0`, `.1`, ... for as many as the source `.po` has; `field:
+null` is no text, and is not checked; a row may still name one, `name:
 k"items.lamp.name"`, in a resource file or a map's file alike.
 
 ```ludic
@@ -907,7 +910,8 @@ each diagnostic at its `file:line:col`:
 - a `k"..."` literal, a template's `t('...')` literal, or a key a data row names or derives that the
   source `.po` does not have is an **error**; so is a `kn"..."` whose entry has no `msgid_plural`;
 - a call of `trf` or `trn` with a key literal, and a template's `t('key', ...)`, gives as many values
-  after the key as the English's highest hole `{n}` (`trn`'s count is `{1}`), or it is a **warning**;
+  after the key as the English's highest hole `{n}` (`trn`'s count is `{1}`; trailing `""` literals
+  are padding and not counted), or it is a **warning**;
 - **English left** - a template's words outside `translate="no"`, a text attribute's words (`title`,
   `label`, `hint`, `text`, `caption`, and any other whose value is not a keyword), a quoted choice
   inside a hole that reads as words, and a `@Text` row whose value is still English - is a
