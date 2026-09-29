@@ -370,6 +370,9 @@ function bundle_case() -> void {
   # the identifier is derived from the package path when the manifest omits it
   let id = capture_line(`plutil -extract CFBundleIdentifier raw "{app}/Contents/Info.plist" 2>/dev/null`)
   if id != "io.workshopsoft.probe-app" { bad2(lbl, `bundle id came out [{id}]`);  return }
+  # `app env` is what Launch Services starts it with (a Finder or `open` start)
+  let env = capture_line(`plutil -extract LSEnvironment.MallocLargeCache raw "{app}/Contents/Info.plist" 2>/dev/null`)
+  if env != "0" { bad2(lbl, `LSEnvironment.MallocLargeCache came out [{env}]`);  return }
   if not shq(`codesign --verify "{app}" > /dev/null 2>&1`) { bad2(lbl, "the signature does not verify");  return }
   # and it runs from a directory with none of its assets, reading them from the pack
   let got = s_trim(capture(`cd / && "{app}/Contents/MacOS/Probe App" 2>&1`))
@@ -388,6 +391,7 @@ function bundle_manifest_src() -> pointer {
   s = s + "app name \"Probe App\"" + nl()
   s = s + "app icon \"assets/icon.png\"" + nl()
   s = s + "app copyright \"(c) 2026 A & B\"" + nl()
+  s = s + "app env \"MallocLargeCache=0\"" + nl()
   s = s + "pack \"assets\"" + nl()
   return s
 }

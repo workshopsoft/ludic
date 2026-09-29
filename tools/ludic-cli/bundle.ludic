@@ -26,6 +26,7 @@
 #   app category   "public.app-category.adventure-games"
 #   app copyright  "(c) 2026 Workshopsoft"
 #   app min_macos  "12.0"
+#   app env        "MallocLargeCache=0"   (repeatable: LSEnvironment, what Launch Services starts it with)
 #
 # Only `app name` is really needed; everything else has a defensible default
 # derived from the manifest.
@@ -187,6 +188,7 @@ function info_plist(m: Manifest, exe: pointer, has_icon: bool) -> pointer {
   # A game renders at the display's real resolution; without this the window is
   # upscaled from 1x and everything drawn in it is soft on any Retina screen.
   s = s + plist_bool("NSHighResolutionCapable", true)
+  s = s + plist_env(m)
   s = s + "</dict>" + nl()
   s = s + "</plist>" + nl()
   return s
@@ -202,6 +204,24 @@ function min_macos(m: Manifest) -> pointer {
 
 function plist_str(k: pointer, v: pointer) -> pointer {
   return `  <key>{k}</key>` + nl() + `  <string>{xml_escape(v)}</string>` + nl()
+}
+
+# every `app env "K=V"`: the environment Launch Services starts the app with (Finder, `open`, the
+# Dock) - a switch a library reads only as a process starts, such as libmalloc's MallocLargeCache
+function plist_env(m: Manifest) -> pointer {
+  var body = ""
+  var i = 0
+  while i + 1 < len(m.app) {
+    if m.app[i] == "env" {
+      let kv = m.app[i + 1]
+      var eq = 0
+      while eq < len(kv) and kv[eq] != '=' { eq += 1 }
+      if eq > 0 and eq < len(kv) { body = body + plist_str(kv[0..eq], kv[eq + 1..len(kv)]) }
+    }
+    i += 2
+  }
+  if body == "" { return "" }
+  return "  <key>LSEnvironment</key>" + nl() + "  <dict>" + nl() + body + "  </dict>" + nl()
 }
 
 function plist_bool(k: pointer, v: bool) -> pointer {
