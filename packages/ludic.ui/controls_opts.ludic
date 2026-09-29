@@ -1,0 +1,76 @@
+# controls_opts.ludic - <option disabled="{...}">: a select steps past a disabled option (arrows, a
+# press, the pad), a value naming one is shown and set as the nearest enabled option, and the arrow
+# whose next option is disabled is drawn disabled - the options that way are off (a host's cap)
+function ct_opt_on(opts: []UiNode, i: int) -> bool { return i >= 0 and i < len(opts) and opts[i].enabled }
+
+# from `at` d steps at a time, wrapping, to the first enabled option; `at` itself when none is
+function ct_opt_step(opts: []UiNode, at: int, d: int) -> int {
+  let n = len(opts)
+  var i = at
+  for k in 0 .. n {
+    i = (i + d + n) % n
+    if opts[i].enabled { return i }
+  }
+  return at
+}
+
+# the enabled option nearest `at` (the lower of two as near); -1 when none is
+function ct_opt_nearest(opts: []UiNode, at: int) -> int {
+  if ct_opt_on(opts, at) { return at }
+  for r in 1 .. len(opts) {
+    if ct_opt_on(opts, at - r) { return at - r }
+    if ct_opt_on(opts, at + r) { return at + r }
+  }
+  return -1
+}
+
+# a select's value on a disabled option: the nearest enabled one is what it shows, and is set
+# (set once the build is done: an event fired while the tree is built is cleared with the frame's)
+function ct_opt_clamp(ui_st: mut UiState, n: UiNode, opts: []UiNode, at: int) -> int {
+  if at < 0 or ct_opt_on(opts, at) { return at }
+  let to = ct_opt_nearest(opts, at)
+  if to >= 0 {
+    ui_kept(ui_st.ct_clamp_n, n)
+    ui_kept(ui_st.ct_clamp_i, to)
+  }
+  return to
+}
+# the clamps a build found, set now that the frame's events are cleared; stale ones are dropped
+function ct_opt_flush(ui_st: mut UiState) -> void {
+  for i in 0 .. len(ui_st.ct_clamp_n) {
+    let n = ui_st.ct_clamp_n[i]
+    if n.opts != null and ui_st.ct_clamp_i[i] < len(n.opts) { ct_opt_pick(ui_st, n, n.opts, ui_st.ct_clamp_i[i]) }
+  }
+  ct_opt_forget(ui_st)
+}
+function ct_opt_forget(ui_st: mut UiState) -> void {
+  List.clear(ui_st.ct_clamp_n)
+  List.clear(ui_st.ct_clamp_i)
+}
+function ct_opt_pick(ui_st: mut UiState, n: UiNode, opts: []UiNode, at: int) -> void {
+  let ov = ui_attr(opts[at], "value")
+  if Value.kind(ov) == 0 { ct_change(ui_st, n, Value.int(at)) } else { ct_change(ui_st, n, ov) }
+}
+
+# a select: its label, < and >, and the option its value names between them (<option>s kept aside)
+function ct_build_select(ui_st: mut UiState, n: UiNode) -> void {
+  @alloc_ok("once per pooled node: its list is kept and cleared")
+  if n.opts == null { n.opts = new []UiNode }    # its options moved to a list the node keeps, not a new one
+  let opts = n.opts
+  List.clear(opts)
+  for i in 0 .. len(n.children) { ui_kept(opts, n.children[i]) }
+  List.clear(n.children)
+  ct_label(ui_st, n)
+  var shown = ""
+  let at = ct_opt_clamp(ui_st, n, opts, ct_option_at(n, opts))
+  if at >= 0 { shown = opts[at].text }
+  let prev = ct_part(ui_st, n, "ui-prev", "<")
+  let next = ct_part(ui_st, n, "ui-next", ">")
+  if at >= 0 and len(opts) > 1 {
+    prev.enabled = ct_opt_on(opts, (at - 1 + len(opts)) % len(opts))
+    next.enabled = ct_opt_on(opts, (at + 1) % len(opts))
+  }
+  ui_kept(n.children, prev)
+  ui_kept(n.children, ct_part(ui_st, n, "ui-value", shown))
+  ui_kept(n.children, next)
+}
