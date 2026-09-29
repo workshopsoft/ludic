@@ -1,0 +1,133 @@
+# bake_parts.ludic — the renderer's deterministic work as bytes a build-time bake can keep, and the same
+# textures made from those bytes at run time instead of being computed again. Each pair is: *_bytes
+# (run the work as the renderer always has, read the result back) and *_from_bytes (make the textures
+# as the work would have, then fill them). A bundle is a word count of parts, each a word length and
+# its bytes, so a reader can check it before using it.
+
+# the parts of a bundle packed after a header of their lengths
+@alloc_ok("a bake: made once at build time, or read once at load")
+function bake_pack(render3d_st: mut Render3dState, texs: words) -> []byte {
+  var total = 4 + len(texs) * 4
+  for i in 0 .. len(texs) { total += gpu_tex_byte_size(render3d_st, texs[i]) }
+  let out = buffer(total)
+  let p = data_of(out)
+  Vk.put_i32(p, 0, len(texs))
+  var at = 4 + len(texs) * 4
+  for i in 0 .. len(texs) {
+    let n = gpu_tex_byte_size(render3d_st, texs[i])
+    Vk.put_i32(p, 4 + i * 4, n)
+    gpu_tex_read_all(render3d_st, texs[i], mem_off(p, at))
+    at += n
+  }
+  return out
+}
+
+# the textures filled from a bundle bake_pack made of textures of the same shapes; false when it does not fit
+function bake_unpack(render3d_st: mut Render3dState, data: []byte, texs: words) -> bool {
+  let p = data_of(data)
+  if len(data) < 4 or Vk.get_i32(p, 0) != len(texs) { return false }
+  var at = 4 + len(texs) * 4
+  for i in 0 .. len(texs) {
+    let n = Vk.get_i32(p, 4 + i * 4)
+    if n != gpu_tex_byte_size(render3d_st, texs[i]) or at + n > len(data) { return false }
+    if not gpu_tex_write_all(render3d_st, texs[i], mem_off(p, at)) { return false }
+    at += n
+  }
+  return true
+}
+
+@alloc_ok("a bake's list of textures, once")
+function bake_list2(a: int, b: int) -> words {
+  let w = words(2)
+  w[0] = a;  w[1] = b
+  return w
+}
+@alloc_ok("a bake's list of textures, once")
+function bake_list3(a: int, b: int, c: int) -> words {
+  let w = words(3)
+  w[0] = a;  w[1] = b;  w[2] = c
+  return w
+}
+
+# ---- an impostor: its albedo and normal atlases (level 0; mips are made after) ----
+function impostor_bytes(render3d_st: mut Render3dState, im: Impostor) -> []byte { return bake_pack(render3d_st, bake_list2(im.albedo, im.normal)) }
+
+# an impostor with the bake's shape (model, tiles and tile size as impostor_bake takes them) from bytes
+function impostor_from_bytes(render3d_st: mut Render3dState, model: Model, tiles: int, tw: int, th: int, data: []byte) -> Impostor {
+  let im = new Impostor
+  im.tiles = tiles;  im.radius = model.radius * 1.02;  im.height = model.height
+  im.model = model;  im.tw = tw;  im.th = th;  im.flower = render3d_st.sc_bake_flower
+  impostor_fill(render3d_st, im, data)
+  return im
+}
+
+# an impostor's atlases made and filled from bytes (at a load, or when a fog opens past its cards)
+function impostor_fill(render3d_st: mut Render3dState, im: Impostor, data: []byte) -> bool {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_IMPOSTOR
+  let aw = im.tiles * im.tw
+  im.albedo = tex_target(render3d_st, aw, im.th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  im.normal = tex_target(render3d_st, aw, im.th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  let ok = bake_unpack(render3d_st, data, bake_list2(im.albedo, im.normal))
+  for t in 0 .. 2 {
+    var tex = im.albedo
+    if t == 1 { tex = im.normal }
+    gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_mips(render3d_st, GPU_TEX2D)
+  }
+  render3d_st.gvk_tag = was
+  return ok
+}
+
+# ---- the terrain's height-field sun shadow: R32F lit height, RG16F distance and cloud mask ----
+function terrain_shadow_bytes(render3d_st: mut Render3dState) -> []byte {
+  terrain_bake_shadow(render3d_st)
+  return bake_pack(render3d_st, bake_list2(render3d_st.ter_shadow_tex, render3d_st.ter_shadow_aux))
+}
+function terrain_shadow_from_bytes(render3d_st: mut Render3dState, data: []byte) -> bool {
+  if render3d_st.ter_shadow_tex == 0 { render3d_st.ter_shadow_tex = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR) }
+  if render3d_st.ter_shadow_aux == 0 { render3d_st.ter_shadow_aux = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR) }
+  let ok = bake_unpack(render3d_st, data, bake_list2(render3d_st.ter_shadow_tex, render3d_st.ter_shadow_aux))
+  if ok { render3d_st.ter_shadow_yaw = render3d_st.sky_yaw }
+  return ok
+}
+
+# ---- the sky's image-based lighting: irradiance, the prefiltered levels, the BRDF table ----
+# for the HDRI already loaded and the yaw already set (the yaw is part of what a bake is keyed on)
+function sky_ibl_bytes(render3d_st: mut Render3dState) -> []byte {
+  sky_precompute(render3d_st)
+  return bake_pack(render3d_st, bake_list3(render3d_st.sky_irradiance, render3d_st.sky_prefilter, render3d_st.sky_brdf))
+}
+
+# the IBL set made from a bake of the same HDRI, yaw and prefilter width; false (and nothing kept) when
+# it does not fit, and the caller computes it
+function sky_ibl_from_bytes(render3d_st: mut Render3dState, data: []byte) -> bool {
+  sky_ibl_make(render3d_st)
+  if not bake_unpack(render3d_st, data, bake_list3(render3d_st.sky_irradiance, render3d_st.sky_prefilter, render3d_st.sky_brdf)) { return false }
+  render3d_st.sky_baked = true
+  render3d_st.sky_baked_yaw = render3d_st.sky_yaw
+  return true
+}
+
+# ---- reading a bake's file (ludic.base's format; render3d cannot import ludic.base) ----
+# "LBAK" | u32 format 1 | u32 version | u32 payload offset | u64 inputs hash | u64 payload length | key
+const BAKE_MAGIC: int = 1262567756     # "LBAK", little-endian
+
+# the payload of the bake at `path` when its key and version are these, else null (missing, stale, torn)
+@alloc_ok("a bake read once at load")
+function r3d_baked_read(path: string, key: string, version: int) -> []byte {
+  if not Fs.exists(path) { return null }
+  let all = Fs.read_bytes(path)
+  if all == null or len(all) < 32 { return null }
+  let p = data_of(all)
+  if Vk.get_i32(p, 0) != BAKE_MAGIC or Vk.get_i32(p, 4) != 1 or Vk.get_i32(p, 8) != version { return null }
+  let off = Vk.get_i32(p, 12)
+  let n = Vk.get_i32(p, 24)
+  if off < 32 or off + n > len(all) { return null }
+  for i in 0 .. len(key) { if off <= 32 + i or all[32 + i] != key[i] { return null } }
+  let out = buffer(n)
+  mem_copy(data_of(out), mem_off(p, off), n)
+  free(all)
+  return out
+}

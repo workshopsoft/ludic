@@ -1,0 +1,61 @@
+# gpu_vk_readback.ludic — a texture's level 0, every layer, read back as the bytes it stores, and put back
+# from them: what a build-time bake keeps of a texture the renderer made (bake_parts.ludic).
+
+# the bytes a texture's level 0 takes, every layer, in the format it is stored in
+function gpu_tex_byte_size(render3d_st: Render3dState, tex: int) -> int {
+  let ifmt = render3d_st.gvk_tex_glfmt[tex]
+  return render3d_st.gvk_tex_dims_w[tex] * render3d_st.gvk_tex_dims_h[tex] * render3d_st.gvk_tex_layers[tex] * gvk_channels(ifmt) * gvk_channel_bytes(ifmt)
+}
+
+# level 0 of layer `layer` into `out` (w * h * channels * bytes), as stored
+function gvk_tex_read_layer(render3d_st: mut Render3dState, tex: int, layer: int, out: pointer) -> bool {
+  let ifmt = render3d_st.gvk_tex_glfmt[tex]
+  let w = render3d_st.gvk_tex_dims_w[tex]
+  let h = render3d_st.gvk_tex_dims_h[tex]
+  let layers = render3d_st.gvk_tex_layers[tex]
+  let n = w * h * gvk_channels(ifmt) * gvk_channel_bytes(ifmt)
+  let src = gvk_staging(render3d_st, n, VK_BUFFER_USAGE_TRANSFER_DST_BIT)
+  if src == null { return false }
+  let image = render3d_st.gvk_tex_image[tex]
+  let levels = render3d_st.gvk_tex_levels[tex]
+  let cb = gvk_once_begin(render3d_st)
+  gvk_barrier(render3d_st, cb, image, false, 0, levels, layers, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+  let bic = gvk_tmp(render3d_st, VkBufferImageCopy_sizeof)
+  Vk.zero(bic, VkBufferImageCopy_sizeof)
+  Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+  Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_baseArrayLayer, layer)
+  Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_layerCount, 1)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_width, w)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_height, h)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
+  Vk.cmd_copy_image_to_buffer(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, render3d_st.gvk_st_buf, 1, bic)
+  gvk_barrier(render3d_st, cb, image, false, 0, levels, layers, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  let ok = gvk_once_end(render3d_st, cb)
+  if ok { mem_copy(out, src, n) }
+  gvk_staging_free(render3d_st)
+  return ok
+}
+
+# every layer's level 0 into `out` (gpu_tex_byte_size bytes), layer after layer
+function gpu_tex_read_all(render3d_st: mut Render3dState, tex: int, out: pointer) -> bool {
+  let layers = render3d_st.gvk_tex_layers[tex]
+  let per = gpu_tex_byte_size(render3d_st, tex) / max(layers, 1)
+  for l in 0 .. layers { if not gvk_tex_read_layer(render3d_st, tex, l, mem_off(out, l * per)) { return false } }
+  return true
+}
+
+# level 0 of every layer written from bytes read back by gpu_tex_read_all; the texture's storage must
+# already be what it was (same format, size and layers). Mips, where it has them, are the caller's
+function gpu_tex_write_all(render3d_st: mut Render3dState, tex: int, data: pointer) -> bool {
+  let ifmt = render3d_st.gvk_tex_glfmt[tex]
+  let c = gvk_channels(ifmt)
+  let b = gvk_channel_bytes(ifmt)
+  var fmt = GL_RGBA
+  if c == 1 { fmt = GL_RED }
+  if c == 2 { fmt = GL_RG }
+  if c == 3 { fmt = GL_RGB }
+  var ty = GL_UNSIGNED_BYTE
+  if b == 2 { ty = GL_HALF_FLOAT }
+  if b == 4 { ty = GL_FLOAT }
+  return gvk_tex_upload(render3d_st, tex, ifmt, render3d_st.gvk_tex_dims_w[tex], render3d_st.gvk_tex_dims_h[tex], render3d_st.gvk_tex_layers[tex], fmt, ty, data)
+}
