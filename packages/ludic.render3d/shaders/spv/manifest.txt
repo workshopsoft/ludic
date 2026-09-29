@@ -199,6 +199,53 @@ T 5161e6ba u_src 7
 T 5161e6ba u_tershadow 8
 T 5161e6ba u_tershadow_aux 9
 T 5161e6ba u_ts_height 10
+P 5b8c3ae8 fullscreen.vert heightgen.frag 
+B 5b8c3ae8 frag 1 836
+U 5b8c3ae8 frag u_cascade_vp 0 mat4 5 64
+U 5b8c3ae8 frag u_cascade_split 320 float 5 16
+U 5b8c3ae8 frag u_cascade_range 400 float 5 16
+U 5b8c3ae8 frag u_cascade_texel 480 float 5 16
+U 5b8c3ae8 frag u_sun_dir 560 vec3 1 0
+U 5b8c3ae8 frag u_sun_color 576 vec3 1 0
+U 5b8c3ae8 frag u_cam_pos 592 vec3 1 0
+U 5b8c3ae8 frag u_prefilter_levels 604 float 1 0
+U 5b8c3ae8 frag u_fog_density 608 float 1 0
+U 5b8c3ae8 frag u_fog_height_falloff 612 float 1 0
+U 5b8c3ae8 frag u_fog_base 616 float 1 0
+U 5b8c3ae8 frag u_clip_y 620 float 1 0
+U 5b8c3ae8 frag u_spec_scale 624 float 1 0
+U 5b8c3ae8 frag u_sky_rot 632 vec2 1 0
+U 5b8c3ae8 frag u_ground_alb 640 vec3 1 0
+U 5b8c3ae8 frag u_ground_alb_hi 656 vec3 1 0
+U 5b8c3ae8 frag u_ground_hi_y 668 float 1 0
+U 5b8c3ae8 frag u_ground_hi_w 672 float 1 0
+U 5b8c3ae8 frag u_ibl_scale 688 vec3 1 0
+U 5b8c3ae8 frag u_daylight 700 float 1 0
+U 5b8c3ae8 frag u_fire_pos 704 vec3 1 0
+U 5b8c3ae8 frag u_fire_color 720 vec3 1 0
+U 5b8c3ae8 frag u_hand_pos 736 vec3 1 0
+U 5b8c3ae8 frag u_hand_color 752 vec3 1 0
+U 5b8c3ae8 frag u_hand_dir 768 vec3 1 0
+U 5b8c3ae8 frag u_hand_cone 780 float 1 0
+U 5b8c3ae8 frag u_hand_reach 784 float 1 0
+U 5b8c3ae8 frag u_ts_origin 792 vec2 1 0
+U 5b8c3ae8 frag u_ts_half 800 float 1 0
+U 5b8c3ae8 frag u_ts_on 804 float 1 0
+U 5b8c3ae8 frag u_force_cascade 808 int 1 0
+U 5b8c3ae8 frag u_cloud_shadow 812 float 1 0
+U 5b8c3ae8 frag u_time 816 float 1 0
+U 5b8c3ae8 frag u_fog_inscatter 820 float 1 0
+U 5b8c3ae8 frag u_fog_desat 824 float 1 0
+U 5b8c3ae8 frag u_fog_wall 828 float 1 0
+U 5b8c3ae8 frag u_half 832 float 1 0
+T 5b8c3ae8 u_brdf 2
+T 5b8c3ae8 u_dem 3
+T 5b8c3ae8 u_irradiance 4
+T 5b8c3ae8 u_prefilter 5
+T 5b8c3ae8 u_shadow 6
+T 5b8c3ae8 u_tershadow 7
+T 5b8c3ae8 u_tershadow_aux 8
+T 5b8c3ae8 u_ts_height 9
 P 4be7acd9 fullscreen.vert heightgen.frag #define DEM;
 B 4be7acd9 frag 1 920
 U 4be7acd9 frag u_cascade_vp 0 mat4 5 64
@@ -257,6 +304,53 @@ T 4be7acd9 u_shadow 6
 T 4be7acd9 u_tershadow 7
 T 4be7acd9 u_tershadow_aux 8
 T 4be7acd9 u_ts_height 9
+P c60a9a25 fullscreen.vert heightgen.frag #define SMOOTH;
+B c60a9a25 frag 1 836
+U c60a9a25 frag u_cascade_vp 0 mat4 5 64
+U c60a9a25 frag u_cascade_split 320 float 5 16
+U c60a9a25 frag u_cascade_range 400 float 5 16
+U c60a9a25 frag u_cascade_texel 480 float 5 16
+U c60a9a25 frag u_sun_dir 560 vec3 1 0
+U c60a9a25 frag u_sun_color 576 vec3 1 0
+U c60a9a25 frag u_cam_pos 592 vec3 1 0
+U c60a9a25 frag u_prefilter_levels 604 float 1 0
+U c60a9a25 frag u_fog_density 608 float 1 0
+U c60a9a25 frag u_fog_height_falloff 612 float 1 0
+U c60a9a25 frag u_fog_base 616 float 1 0
+U c60a9a25 frag u_clip_y 620 float 1 0
+U c60a9a25 frag u_spec_scale 624 float 1 0
+U c60a9a25 frag u_sky_rot 632 vec2 1 0
+U c60a9a25 frag u_ground_alb 640 vec3 1 0
+U c60a9a25 frag u_ground_alb_hi 656 vec3 1 0
+U c60a9a25 frag u_ground_hi_y 668 float 1 0
+U c60a9a25 frag u_ground_hi_w 672 float 1 0
+U c60a9a25 frag u_ibl_scale 688 vec3 1 0
+U c60a9a25 frag u_daylight 700 float 1 0
+U c60a9a25 frag u_fire_pos 704 vec3 1 0
+U c60a9a25 frag u_fire_color 720 vec3 1 0
+U c60a9a25 frag u_hand_pos 736 vec3 1 0
+U c60a9a25 frag u_hand_color 752 vec3 1 0
+U c60a9a25 frag u_hand_dir 768 vec3 1 0
+U c60a9a25 frag u_hand_cone 780 float 1 0
+U c60a9a25 frag u_hand_reach 784 float 1 0
+U c60a9a25 frag u_ts_origin 792 vec2 1 0
+U c60a9a25 frag u_ts_half 800 float 1 0
+U c60a9a25 frag u_ts_on 804 float 1 0
+U c60a9a25 frag u_force_cascade 808 int 1 0
+U c60a9a25 frag u_cloud_shadow 812 float 1 0
+U c60a9a25 frag u_time 816 float 1 0
+U c60a9a25 frag u_fog_inscatter 820 float 1 0
+U c60a9a25 frag u_fog_desat 824 float 1 0
+U c60a9a25 frag u_fog_wall 828 float 1 0
+U c60a9a25 frag u_half 832 float 1 0
+T c60a9a25 u_brdf 2
+T c60a9a25 u_dem 3
+T c60a9a25 u_irradiance 4
+T c60a9a25 u_prefilter 5
+T c60a9a25 u_shadow 6
+T c60a9a25 u_tershadow 7
+T c60a9a25 u_tershadow_aux 8
+T c60a9a25 u_ts_height 9
 P 858f5089 fullscreen.vert ibl_brdf.frag 
 B 858f5089 frag 0 832
 U 858f5089 frag u_cascade_vp 0 mat4 5 64
@@ -3995,4 +4089,4 @@ T b20fdcb5 u_shadow 9
 T b20fdcb5 u_tershadow 10
 T b20fdcb5 u_tershadow_aux 11
 T b20fdcb5 u_ts_height 12
-E 59
+E 61

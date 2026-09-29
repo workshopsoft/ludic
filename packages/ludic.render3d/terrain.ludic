@@ -191,10 +191,7 @@ function terrain_generate(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_tag = was
 }
 function terrain_generate__t(render3d_st: mut Render3dState) -> void {
-  var defs = ""
-  if render3d_st.ter_dem_tex != 0 { defs = "#define DEM\n" }
-  if render3d_st.ter_smooth { defs = "#define SMOOTH\n" }
-  let p = r3d_program(render3d_st, "fullscreen.vert", "heightgen.frag", defs)
+  let p = r3d_program(render3d_st, "fullscreen.vert", "heightgen.frag", ter_heightgen_defs(render3d_st.ter_dem_tex != 0, render3d_st.ter_smooth))
   # a map generated over another: its 256 MB height texture goes first
   if render3d_st.ter_height_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_height_tex);  render3d_st.ter_height_tex = 0 }
   render3d_st.ter_height_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR)
@@ -453,10 +450,9 @@ function terrain_init_finish__t(render3d_st: mut Render3dState) -> void {
   # (terrain.frag, SUN_INLINE): one rasterisation of the patches instead of two, in the frame and in
   # the reflection. R3D_SUN_PASS=1 keeps the pass there too, for comparing.
   render3d_st.ter_sun_inline = render3d_st.gpu_kind == GPU_VK and not r3d_env_has(render3d_st, "R3D_SUN_PASS")
-  if render3d_st.ter_sun_inline { defs = defs + "#define SUN_INLINE\n" }
-  render3d_st.ter_prog = r3d_program(render3d_st, "terrain.vert", "terrain.frag", defs)
-  render3d_st.ter_prog_far = r3d_program(render3d_st, "terrain.vert", "terrain.frag", defs + "#define FAR_ONLY\n")
-  render3d_st.ter_prog_near = r3d_program(render3d_st, "terrain.vert", "terrain.frag", defs + "#define NEAR_ONLY\n")
+  render3d_st.ter_prog = r3d_program(render3d_st, "terrain.vert", "terrain.frag", ter_prog_defs(defs, render3d_st.ter_sun_inline, 0))
+  render3d_st.ter_prog_far = r3d_program(render3d_st, "terrain.vert", "terrain.frag", ter_prog_defs(defs, render3d_st.ter_sun_inline, 1))
+  render3d_st.ter_prog_near = r3d_program(render3d_st, "terrain.vert", "terrain.frag", ter_prog_defs(defs, render3d_st.ter_sun_inline, 2))
   render3d_st.ter_sun_prog = r3d_program(render3d_st, "terrain.vert", "tersun.frag", "")
   render3d_st.ter_far_split = 200.0
   if r3d_env_has(render3d_st, "R3D_TFAR") { render3d_st.ter_far_split = float(Text.to_int(r3d_env(render3d_st, "R3D_TFAR"))) }

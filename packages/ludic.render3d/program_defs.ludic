@@ -1,0 +1,25 @@
+# program_defs.ludic - the defines of every program whose defines are decided at run time, each a pure
+# function of what decides it, so tests/manifest_test can ask for every one a run could and hold the
+# SPIR-V manifest to them. A new program made with computed defines gets its function here, and a line there.
+
+# the height field's generator: from a survey (DEM), smoothed (SMOOTH wins), or noise alone
+function ter_heightgen_defs(dem: bool, smooth: bool) -> string {
+  if smooth { return "#define SMOOTH\n" }
+  if dem { return "#define DEM\n" }
+  return ""
+}
+# the ground's program: `debug` the dev switches' defines ("" in every shipped run), the cascades read
+# inside it on Vulkan (SUN_INLINE; R3D_SUN_PASS keeps a pass), tier 0 both, 1 far only, 2 near only
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function ter_prog_defs(debug: string, sun_inline: bool, tier: int) -> string {
+  var d = debug
+  if sun_inline { d = d + "#define SUN_INLINE\n" }
+  if tier == 1 { d = d + "#define FAR_ONLY\n" }
+  if tier == 2 { d = d + "#define NEAR_ONLY\n" }
+  return d
+}
+# the blades: merged into tiles where the device draws indirect (TILES), else a draw a chunk
+function grass_defs(merge: bool) -> string {
+  if merge { return "#define FOLIAGE\n#define BLADE\n#define GBLADE\n#define TILES\n" }
+  return "#define FOLIAGE\n#define BLADE\n#define GBLADE\n"
+}

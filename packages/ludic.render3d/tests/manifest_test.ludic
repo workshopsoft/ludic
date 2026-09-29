@@ -64,4 +64,121 @@ program ManifestTest {
     expect_eq(r3d_tilde("~other/x", "/Users/me"), "~other/x")
     expect_eq(r3d_tilde("~/x", null), "~/x")
   }
+
+  # ---- every program render3d can ask for, not only what variants.list names ----
+  # A request is r3d_program / gpu_program / ac_prog_new(state, vertex, fragment, defines). With all three
+  # literal it is read straight out of the source; with computed defines its site is one of KNOWN, whose
+  # defines are program_defs.ludic's functions, asked below for every value. A new computed site fails
+  # here by name until it is given a function there and a line in `computed_all`.
+  function shipped() -> []GpuVariant { return gpu_manifest_parse(Fs.read_text("packages/ludic.render3d/shaders/spv/manifest.txt")) }
+  function known_computed(file: string) -> int {
+    if file == "programs.ludic" { return 1 }          # r3d_program itself, handing on to gpu_program
+    if file == "actor.ludic" { return 1 }             # ac_prog_new's own call: its callers are literal
+    if file == "terrain.ludic" { return 4 }           # heightgen and the ground's three tiers
+    if file == "grass.ludic" { return 1 }             # the blades
+    return 0
+  }
+  # the defines as the manifest keys them: the source's "\n" escapes as ';'
+  function key_defs(lit: string) -> string {
+    var out = ""
+    var i = 0
+    while i < len(lit) {
+      if lit[i] == 92 and i + 1 < len(lit) and lit[i + 1] == 110 {
+        out = out + ";"
+        i += 2
+      } else {
+        out = out + lit[i .. i + 1]
+        i += 1
+      }
+    }
+    return out
+  }
+  function is_lit(a: string) -> bool { return len(a) >= 2 and a[0] == 34 and a[len(a) - 1] == 34 }
+  function unq(a: string) -> string { return a[1 .. len(a) - 1] }
+  # the top-level arguments of the call whose '(' is at `open`, trimmed
+  function args_at(src: string, open: int) -> []string {
+    let out = new []string
+    var depth = 0
+    var inq = false
+    var start = open + 1
+    var i = open + 1
+    while i < len(src) {
+      let c = src[i]
+      if c == 34 { inq = not inq }
+      if not inq {
+        if c == 40 { depth += 1 }
+        if c == 41 and depth == 0 {
+          push(out, Text.trim(src[start .. i]))
+          return out
+        }
+        if c == 41 { depth -= 1 }
+        if c == 44 and depth == 0 {
+          push(out, Text.trim(src[start .. i]))
+          start = i + 1
+        }
+      }
+      i += 1
+    }
+    return out
+  }
+  # checks every request in one file against the manifest; returns how many had computed arguments
+  function file_requests(vs: []GpuVariant, file: string, missing: []string) -> int {
+    let src = Fs.read_text(`packages/ludic.render3d/{file}`)
+    var computed = 0
+    let names = ["r3d_program(", "gpu_program(", "ac_prog_new("]
+    for n in 0 .. len(names) {
+      let parts = Text.split(src, names[n])
+      var at = 0
+      for k in 0 .. len(parts) - 1 {
+        at += len(parts[k])
+        let before = parts[k]
+        let fn_decl = Text.ends_with(before, "function ")
+        let ident = len(before) > 0 and (char_word(before[len(before) - 1]))
+        if not fn_decl and not ident {
+          let a = args_at(src, at + len(names[n]) - 1)
+          if len(a) == 4 and is_lit(a[1]) and is_lit(a[2]) and is_lit(a[3]) {
+            if gpu_variant_in(vs, unq(a[1]), unq(a[2]), key_defs(unq(a[3]))) == null { push(missing, `{file}: {a[1]} {a[2]} {a[3]}`) }
+          } else {
+            computed += 1
+          }
+        }
+        at += len(names[n])
+      }
+    }
+    return computed
+  }
+  function char_word(c: int) -> bool { return (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95 or c == 46 }
+  # every value a computed site can take (dev switches' debug views left out: they are not shipped)
+  function computed_all(vs: []GpuVariant, missing: []string) -> void {
+    let flags = [false, true]
+    for a in 0 .. 2 {
+      for b in 0 .. 2 { need(vs, "fullscreen.vert", "heightgen.frag", ter_heightgen_defs(flags[a], flags[b]), missing) }
+      for t in 0 .. 3 { need(vs, "terrain.vert", "terrain.frag", ter_prog_defs("", flags[a], t), missing) }
+      need(vs, "grass.vert", "model.frag", grass_defs(flags[a]), missing)
+    }
+  }
+  function need(vs: []GpuVariant, v: string, f: string, defs: string, missing: []string) -> void {
+    let k = Text.replace(defs, "\n", ";")
+    if gpu_variant_in(vs, v, f, k) == null { push(missing, `{v}|{f}|{k}`) }
+  }
+
+  test "every program render3d can ask for has a variant in the shipped manifest" {
+    let vs = shipped()
+    expect(vs != null)
+    let missing = new []string
+    let files = Fs.list("packages/ludic.render3d")
+    var asked_files = 0
+    for i in 0 .. len(files) {
+      if not Text.ends_with(files[i], ".ludic") { continue }
+      let computed = file_requests(vs, files[i], missing)
+      if computed != known_computed(files[i]) { print(`{files[i]}: {computed} requests with computed arguments, {known_computed(files[i])} known - give the new one a function in program_defs.ludic`) }
+      expect_eq(computed, known_computed(files[i]))
+      asked_files += 1
+    }
+    expect(asked_files > 20)
+    computed_all(vs, missing)
+    for i in 0 .. len(missing) { print(`no SPIR-V variant for {missing[i]}`) }
+    expect_eq(len(missing), 0)
+  }
+
 }

@@ -6,7 +6,9 @@ fullscreen.vert|adapt.frag|
 fullscreen.vert|bloom_down.frag|
 fullscreen.vert|bloom_up.frag|
 fullscreen.vert|dof.frag|
+fullscreen.vert|heightgen.frag|
 fullscreen.vert|heightgen.frag|#define DEM;
+fullscreen.vert|heightgen.frag|#define SMOOTH;
 fullscreen.vert|ibl_brdf.frag|
 fullscreen.vert|ibl_irradiance.frag|
 fullscreen.vert|ibl_prefilter.frag|
