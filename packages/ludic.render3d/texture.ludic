@@ -198,28 +198,49 @@ function tex_dilate(render3d_st: Render3dState, px: pointer, thresh: int, passes
   var i = 0
   while i < w * h { let o = i * c;  if px[o] + px[o + 1] + px[o + 2] < thresh { mask[i] = 1 } else { mask[i] = 0 };  i += 1 }
   let next = bytes(w * h)
+  let j = new DilateJob
+  j.px = px;  j.mask = mask;  j.next = next;  j.w = w;  j.h = h;  j.c = c
+  let blocks = (h + TEX_DILATE_ROWS - 1) / TEX_DILATE_ROWS
   for pass in 0 .. passes {
     mem_copy(next, mask, w * h)
-    var y = 0
-    while y < h {
-      var x = 0
-      while x < w {
-        let k = y * w + x
-        if mask[k] == 1 {
-          var r = 0;  var g = 0;  var b = 0;  var n = 0
-          if x > 0 and mask[k - 1] == 0 { let o = (k - 1) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
-          if x < w - 1 and mask[k + 1] == 0 { let o = (k + 1) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
-          if y > 0 and mask[k - w] == 0 { let o = (k - w) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
-          if y < h - 1 and mask[k + w] == 0 { let o = (k + w) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
-          if n > 0 { let o = k * c;  px[o] = r / n;  px[o + 1] = g / n;  px[o + 2] = b / n;  next[k] = 0 }
-        }
-        x += 1
-      }
-      y += 1
-    }
+    Job.parallel_for(blocks, fn tex_dilate_rows, j)
     mem_copy(mask, next, w * h)
   }
   free(mask);  free(next)
+}
+
+# A pass's rows on every core. Within a pass a row writes only its own still-masked texels and reads
+# only neighbours the mask already let go, which no row writes this pass - so rows are independent and
+# the result is the one row-by-row order gave. The worker is handed plain buffers and makes nothing.
+const TEX_DILATE_ROWS: int = 16
+property DilateJob {
+  px: pointer = null
+  mask: pointer = null
+  next: pointer = null
+  w: int = 0
+  h: int = 0
+  c: int = 0
+}
+function tex_dilate_rows(b: int, j: DilateJob) -> void {
+  let w = j.w;  let c = j.c;  let px = j.px;  let mask = j.mask;  let next = j.next
+  var y = b * TEX_DILATE_ROWS
+  let y1 = min(j.h, y + TEX_DILATE_ROWS)
+  while y < y1 {
+    var x = 0
+    while x < w {
+      let k = y * w + x
+      if mask[k] == 1 {
+        var r = 0;  var g = 0;  var bl = 0;  var n = 0
+        if x > 0 and mask[k - 1] == 0 { let o = (k - 1) * c;  r += px[o];  g += px[o + 1];  bl += px[o + 2];  n += 1 }
+        if x < w - 1 and mask[k + 1] == 0 { let o = (k + 1) * c;  r += px[o];  g += px[o + 1];  bl += px[o + 2];  n += 1 }
+        if y > 0 and mask[k - w] == 0 { let o = (k - w) * c;  r += px[o];  g += px[o + 1];  bl += px[o + 2];  n += 1 }
+        if y < j.h - 1 and mask[k + w] == 0 { let o = (k + w) * c;  r += px[o];  g += px[o + 1];  bl += px[o + 2];  n += 1 }
+        if n > 0 { let o = k * c;  px[o] = r / n;  px[o + 1] = g / n;  px[o + 2] = bl / n;  next[k] = 0 }
+      }
+      x += 1
+    }
+    y += 1
+  }
 }
 
 # Upload the last-decoded samples as a 2D texture. srgb: colour data (8-bit only).

@@ -1,0 +1,77 @@
+# dilate.ludic - render3d's cut-out padding, now a pass's rows on every core, gives exactly the
+# bytes the one-thread version gave: the old loop is kept here as the oracle, over a patterned atlas
+#
+#   bin/ludic build examples/rendering/dilate.ludic --headless && ./build/dilate_headless   (prints DILATE OK)
+program Dilate {
+  numbers float
+  import "ludic.render3d/r3d.ludic"
+
+  # the dilate as it was, one row after another
+  function oracle(px: []byte, w: int, h: int, c: int, thresh: int, passes: int) -> void {
+    let mask = buffer(w * h)
+    for i in 0 .. w * h { let o = i * c;  if px[o] + px[o + 1] + px[o + 2] < thresh { mask[i] = 1 } else { mask[i] = 0 } }
+    let next = buffer(w * h)
+    for pass in 0 .. passes {
+      for q in 0 .. w * h { next[q] = mask[q] }
+      for y in 0 .. h {
+        for x in 0 .. w {
+          let k = y * w + x
+          if mask[k] == 1 {
+            var r = 0;  var g = 0;  var b = 0;  var n = 0
+            if x > 0 and mask[k - 1] == 0 { let o = (k - 1) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
+            if x < w - 1 and mask[k + 1] == 0 { let o = (k + 1) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
+            if y > 0 and mask[k - w] == 0 { let o = (k - w) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
+            if y < h - 1 and mask[k + w] == 0 { let o = (k + w) * c;  r += px[o];  g += px[o + 1];  b += px[o + 2];  n += 1 }
+            if n > 0 { let o = k * c;  px[o] = r / n;  px[o + 1] = g / n;  px[o + 2] = b / n;  next[k] = 0 }
+          }
+        }
+      }
+      for q in 0 .. w * h { mask[q] = next[q] }
+    }
+  }
+
+  # blades and blobs of colour on black, different in every row and column
+  function atlas(w: int, h: int, c: int) -> []byte {
+    let px = buffer(w * h * c)
+    for y in 0 .. h {
+      for x in 0 .. w {
+        let o = (y * w + x) * c
+        let lit = ((x * 7 + y * 13) % 29 < 6) or ((x / 9 + y / 11) % 5 == 0)
+        for k in 0 .. c { px[o + k] = 0 }
+        if lit {
+          px[o] = (x * 3 + y) % 256
+          px[o + 1] = (x + y * 5) % 256
+          px[o + 2] = (x * y) % 256
+        }
+        if c == 4 { px[o + 3] = 255 }
+      }
+    }
+    return px
+  }
+
+  handler Boot(render3d_st: mut Render3dState) phase Start {
+    var ok = true
+    for c in 3 .. 5 {
+      let w = 173
+      let h = 101
+      let a = atlas(w, h, c)
+      let b = atlas(w, h, c)
+      render3d_st.tex_w = w
+      render3d_st.tex_h = h
+      render3d_st.tex_channels = c
+      render3d_st.tex_depth = 8
+      tex_dilate_bytes(render3d_st, a, 60, 24)
+      oracle(b, w, h, c, 60, 24)
+      let orig = atlas(w, h, c)
+      var same = 0
+      var moved = 0
+      for i in 0 .. w * h * c {
+        if a[i] == b[i] { same += 1 }
+        if a[i] != orig[i] { moved += 1 }
+      }
+      if same != w * h * c or moved == 0 { ok = false }   # the same bytes, and the padding did pad
+    }
+    if ok { print("DILATE OK") } else { print("DILATE FAILED") }
+    quit()
+  }
+}
