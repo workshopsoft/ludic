@@ -44,7 +44,8 @@ export function char_camera_third(character_st: mut CharacterState, dt: float) -
   character_st.chr_eye_z = cz
   let ddx = ax - cx
   let ddz = az - cz
-  character_st.chr_eye_yaw = Math.atan2(-ddx, -ddz)
+  # straight over or under the pivot the offset has no heading of its own: keep the look's
+  if ddx * ddx + ddz * ddz > 0.0025 { character_st.chr_eye_yaw = Math.atan2(-ddx, -ddz) } else { character_st.chr_eye_yaw = character_st.chr_cam_yaw }
   character_st.chr_eye_pitch = Math.atan2(character_st.chr_piv_y - cyy, Math.sqrt(ddx * ddx + ddz * ddz))
 }
 

@@ -13,3 +13,19 @@ export function aim_use(aim_st: AimState, kind: int) -> int {
   if aim_st.am_kind == kind and aim_st.am_dist < AIM_USE_MAX { return AIM_USE_NOTHING }
   return AIM_USE_NEAREST
 }
+
+# whether (x, z) is before the view: within `cos_min` of the camera's heading, seen from the body.
+# Anything at the feet counts, where a heading means nothing, and so does all of it when the view
+# looks straight up or down
+const AIM_FEET: float = 1.2
+export function aim_ahead(x: float, z: float, cos_min: float) -> bool {
+  let dx = x - AimView.body_x()
+  let dz = z - AimView.body_z()
+  let d = Math.sqrt(dx * dx + dz * dz)
+  if d < AIM_FEET { return true }
+  let fx = AimView.fx()
+  let fz = AimView.fz()
+  let f = Math.sqrt(fx * fx + fz * fz)
+  if f < 0.0001 { return true }
+  return (dx * fx + dz * fz) / (d * f) >= cos_min
+}

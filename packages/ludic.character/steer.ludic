@@ -55,7 +55,9 @@ function chr_gait(character_st: mut CharacterState, dist: float, dyaw: float, dp
   }
 }
 
+# as far up and down as a view goes, a degree short of straight (where the heading would flip)
+const CHR_PITCH_MAX: float = 1.553
 function chr_look(character_st: mut CharacterState, dyaw: float, dpitch: float) -> void {
   character_st.chr_cam_yaw = character_st.chr_cam_yaw + dyaw
-  character_st.chr_cam_pitch = Math.clamp(character_st.chr_cam_pitch + dpitch, -0.96, 0.61)
+  character_st.chr_cam_pitch = Math.clamp(character_st.chr_cam_pitch + dpitch, -CHR_PITCH_MAX, CHR_PITCH_MAX)
 }
