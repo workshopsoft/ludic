@@ -208,6 +208,7 @@ function pmk_map(md: pointer) -> void {
     r += 1
   }
   pmk_dups()
+  pmk_chunk_dups()
   var e = 0
   while e < len(g_pmk_rec) {
     let rr = g_pmk_reg[e]
@@ -233,6 +234,30 @@ function pmk_dups() -> void {
     if (keys[xs[i]] == keys[xs[i - 1]]) {
       let k = xs[i]
       pmk_err(g_pmk_file[k], g_pmk_kline[k], g_pmk_kcol[k], `the key {g_pmk_key[k]} is written twice in this file`)
+    }
+    i += 1
+  }
+}
+# a chunked table's key is unique across its map (a row's id is (map, key), and a tree moved into
+# another chunk keeps it): a key in two of a map's chunk files is refused, naming both
+function pmk_chunk_dups() -> void {
+  let xs = new []int
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_pmk_key) {
+    if g_rg_chunk[g_pmk_reg[i]] > 0 {
+      push(xs, i)
+      push(keys, `{g_rg_name[g_pmk_reg[i]]}\n{g_pmk_key[i]}`)
+    } else { push(keys, "") }
+    i += 1
+  }
+  sc_sort(xs, keys)
+  i = 1
+  while i < len(xs) {
+    let a = xs[i - 1]
+    let k = xs[i]
+    if (keys[k] == keys[a]) and not (g_pmk_file[k] == g_pmk_file[a]) {
+      pmk_err(g_pmk_file[k], g_pmk_kline[k], g_pmk_kcol[k], `the key {g_pmk_key[k]} is also written at {g_pmk_file[a]}:{itoa(g_pmk_kline[a])} - a chunked table's key is unique across its map`)
     }
     i += 1
   }

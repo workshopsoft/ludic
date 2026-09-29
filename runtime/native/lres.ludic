@@ -43,6 +43,9 @@ property LresTree {
   fval: []float = new []float  # a float (an int's value too)
   sval: []string = new []string   # a string, a name, a fn's name (interned)
   name: []string = new []string   # an entry's key, a field's name ("" in a list)
+  local: bool = false          # a chunk's file: an entry's key is left in the file (koff, klen), never interned
+  koff: []int = new []int      # per entry, when local: where its key starts in buf ...
+  klen: []int = new []int      # ... and how long it is
   kid: []int = new []int       # the first child of a record or a list, -1
   nxt: []int = new []int       # the next sibling, -1
   line: []int = new []int
@@ -62,6 +65,42 @@ property LresTree {
   cflt: []bool = new []bool
   civ: []int = new []int
   cfv: []float = new []float
+}
+
+# a chunk slot's own keys: a chunked table's keys are unique across a map (t0 .. t91842), so interning
+# them would fill the intern table as a player walks and keep every one for good. Row i's key lives
+# in buffer i, rewritten in place when the slot is refilled and grown only past the longest key it held.
+property LresKeys {
+  bufs: []pointer = new []pointer
+  caps: []int = new []int
+}
+# entry e's key as row i of a slot: in the slot's own buffer, or interned for a whole-map table (ks null)
+@alloc_ok("a slot's key buffer past the most rows or the longest key it has held (high water)")
+function lres_key_of(t: LresTree, e: int, ks: LresKeys, i: int) -> string {
+  if ks == null or not t.local { return t.name[e] }
+  let n = t.klen[e]
+  if i >= len(ks.bufs) {
+    var c = 16
+    while c < n + 1 { c = c * 2 }
+    push(ks.bufs, bytes(c))
+    push(ks.caps, c)
+  } else if ks.caps[i] < n + 1 {
+    var c = ks.caps[i] * 2
+    while c < n + 1 { c = c * 2 }
+    ks.bufs[i] = resize(ks.bufs[i], c)
+    ks.caps[i] = c
+  }
+  let kb = ks.bufs[i]
+  let buf = t.buf
+  let a = t.koff[e]
+  var j = 0
+  while j < n {
+    kb[j] = buf[a + j]
+    j += 1
+  }
+  kb[n] = 0
+  let k: string = kb
+  return k
 }
 
 # a key -> row index table over interned keys: open addressing, rebuilt in place on every load
@@ -203,6 +242,8 @@ function lres_node(t: LresTree, kind: int, line: int, col: int) -> int {
     t.nxt[i] = -1
     t.line[i] = line
     t.col[i] = col
+    t.koff[i] = 0
+    t.klen[i] = 0
   } else {
     push(t.kind, kind)
     push(t.ival, 0)
@@ -213,6 +254,8 @@ function lres_node(t: LresTree, kind: int, line: int, col: int) -> int {
     push(t.nxt, -1)
     push(t.line, line)
     push(t.col, col)
+    push(t.koff, 0)
+    push(t.klen, 0)
   }
   t.nn = i + 1
   return i
@@ -267,15 +310,21 @@ function lres_intern(t: LresTree, a: int, b: int) -> string {
   return intern(sb)
 }
 function lres_ident(t: LresTree) -> string {
+  let a = lres_ident_at(t)
+  if a < 0 { return "" }
+  return lres_intern(t, a, t.p)
+}
+# a name's first byte, the cursor left past it; -1 (and the tree bad) when there is none
+function lres_ident_at(t: LresTree) -> int {
   let c = lres_ch(t)
   if not lres_is_alpha(c) {
     lres_fail(t, "a name was expected here")
-    return ""
+    return -1
   }
   let buf = t.buf
   let a = t.p
   while t.p < t.n and (lres_is_alpha(buf[t.p]) or lres_is_digit(buf[t.p])) { t.p += 1 }
-  return lres_intern(t, a, t.p)
+  return a
 }
 function lres_link(t: LresTree, parent: int, last: int, k: int) -> void {
   if last < 0 { t.kid[parent] = k } else { t.nxt[last] = k }
@@ -291,16 +340,22 @@ function lres_parse(t: LresTree) -> void {
     if t.p >= t.n { return }
     let line = t.ln
     let col = t.p - t.ls + 1
-    let key = lres_ident(t)
+    let ka = lres_ident_at(t)
     if t.bad { return }
+    let kb = t.p
+    var key = ""
+    if not t.local { key = lres_intern(t, ka, kb) }
     lres_skip(t)
     if lres_ch(t) != '{' {
+      if t.local { key = lres_intern(t, ka, kb) }   # a wrong file only: its message names the key
       lres_fail(t, `the entry {key} is its key and a record: {key} {{ field: value }}`)
       return
     }
     let e = lres_record(t)
     if t.bad { return }
     t.name[e] = key
+    t.koff[e] = ka
+    t.klen[e] = kb - ka
     t.line[e] = line
     t.col[e] = col
     if last < 0 { t.top = e } else { t.nxt[last] = e }
@@ -614,7 +669,9 @@ function lres_no_fn(t: LresTree, n: int, ty: string) -> void {
   lres_fail_node(t, n, `there is no function {t.sval[n]} of type {ty}`)
 }
 function lres_dup(t: LresTree, n: int) -> void {
-  lres_fail_node(t, n, `the key {t.name[n]} is written twice`)
+  var key = t.name[n]
+  if t.local { key = lres_intern(t, t.koff[n], t.koff[n] + t.klen[n]) }   # a wrong file only
+  lres_fail_node(t, n, `the key {key} is written twice`)
 }
 
 # ---- the program's constants, by name ------------------------------------------------------------

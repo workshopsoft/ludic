@@ -694,10 +694,12 @@ refills them in place - the rows list and each row's lists are emptied and refil
 back to its record's defaults (a template made once) - and a record is made only when a load needs
 more of its type than any load before it. Nothing is allocated past that high water, so a frame may
 call `instances_in`. Never keep a row, a row's list or a chunk's rows across a load or an `_out`: keep
-the key or the index, or copy the numbers. A string field (and a key) is interned, and safe to keep;
-the program's interned texts are bounded (49152 distinct, 4 MB, past which each is a heap copy the
-fence reports), so a chunked table's keys should repeat from chunk to chunk (`i0`, `i1`, ...) - its
-row id is `(cx, cz, key)` - rather than count across the whole map. A record may hold a record of its
+the key or the index, or copy the numbers. A string field, and a whole-map table's key, is interned
+and safe to keep. A CHUNKED table's keys are unique across its map (`t0` .. `t91842`: a row's id is
+`(map, key)`, and a tree moved into another chunk keeps it; `ludicc --check` refuses a key written in
+two chunk files, naming both), so they are NOT interned - interning every key a player walks past would
+fill the bounded intern table and keep them all: a slot's keys live in the slot's own buffers,
+rewritten when the slot is refilled. Keep such a key past `_out` with `intern(row.key)`. A record may hold a record of its
 own type only through a list. The reader
 (the runtime's `lres.ludic`) keeps its own buffers the same way: the file's bytes in one that grows
 only for a bigger file, its tree as parallel lists reused from file to file.
