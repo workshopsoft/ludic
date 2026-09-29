@@ -1,6 +1,7 @@
 # baked_hash.ludic - a bake's inputs as one number, and the header's little-endian fields. The hash
-# is FNV-1a 64 over each input in order: its path's bytes, a 0, then its bytes (tools/bake/baked.py
-# and the check compute the same)
+# is FNV-1a 64 over each input in order: its path's bytes, a 0, then its bytes - or, for an input that
+# is itself a bake ("LBAK"), its payload alone, so a re-bake that makes the same bytes under a new
+# header leaves what reads it current (tools/bake/baked.py and the check compute the same)
 const BK_FNV_OFFSET: long = -3750763034362895579    # 0xcbf29ce484222325
 const BK_FNV_PRIME: long = 1099511628211
 
@@ -17,13 +18,32 @@ export function bake_inputs_hash(inputs: string) -> long {
       for i in 0 .. len(p) { h = bk_fnv(h, p[i]) }
       h = bk_fnv(h, 0)
       let b = Fs.read_bytes(p)
-      if b != null { for i in 0 .. len(b) { h = bk_fnv(h, b[i]) } }
+      if b != null { h = bk_fnv_bytes(h, b) }
     }
     a = e
   }
   return h
 }
 function bk_fnv(h: long, c: int) -> long { return (h ^ long(c & 255)) * BK_FNV_PRIME }
+# an input's bytes into the hash: a baked file's payload, anything else whole
+function bk_fnv_bytes(h0: long, b: []byte) -> long {
+  var h = h0
+  var lo = 0
+  var hi = len(b)
+  if bk_is_bake(b) {
+    lo = bk_u32(b, 12)
+    let n = bk_u64(b, 24)
+    if lo > len(b) { lo = len(b) }
+    if n < long(hi - lo) { hi = lo + int(n) }
+  }
+  for i in lo .. hi { h = bk_fnv(h, b[i]) }
+  return h
+}
+# "LBAK" and a whole header
+function bk_is_bake(b: []byte) -> bool {
+  if len(b) < 32 { return false }
+  return b[0] == 76 and b[1] == 66 and b[2] == 65 and b[3] == 75
+}
 
 function bk_u32(b: []byte, at: int) -> int { return (b[at] & 255) | ((b[at + 1] & 255) << 8) | ((b[at + 2] & 255) << 16) | ((b[at + 3] & 255) << 24) }
 function bk_u64(b: []byte, at: int) -> long { return long(bk_u32(b, at)) & 4294967295 | (long(bk_u32(b, at + 4)) << 32) }
