@@ -119,7 +119,7 @@ function r3d_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
   print(`r3d: {gl_width()}x{gl_height()} on {renderer}`)
   prof_init(render3d_st)
   cam_init(render3d_st, float(gl_width()) / float(gl_height()))
-  return true
+  return len(render3d_st.r3d_fault) == 0
 }
 
 # The load, as steps a loading screen can show between: 0 the sky and its image-based light,
@@ -128,6 +128,10 @@ function r3d_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
 # grass and the sky pass. The order is r3d_init's.
 function r3d_load_count() -> int { return 4 + TERRAIN_INIT_STEPS }
 function r3d_load_step(render3d_st: mut Render3dState, i: int) -> bool {
+  if not r3d_load_step_run(render3d_st, i) { return false }
+  return len(render3d_st.r3d_fault) == 0           # a step that made a program with no variant fails
+}
+function r3d_load_step_run(render3d_st: mut Render3dState, i: int) -> bool {
   let t = i - 1
   if i == 0 {
     # the default sky's path is made only when no path was given, and goes once the sky is read
