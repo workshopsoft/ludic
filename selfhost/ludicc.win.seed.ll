@@ -22312,417 +22312,420 @@ entry:
 @.str21327 = private unnamed_addr constant [3 x i8] c":\0A\00"
 @.str21328 = private unnamed_addr constant [31 x i8] c"  call void @L_init_runtime()\0A\00"
 @.str21329 = private unnamed_addr constant [28 x i8] c"  call void @L_grow(i32 1)\0A\00"
-@.str21330 = private unnamed_addr constant [24 x i8] c"  call void @rt_init()\0A\00"
-@.str21331 = private unnamed_addr constant [31 x i8] c"  call void @L_init_globals()\0A\00"
-@.str21332 = private unnamed_addr constant [8 x i8] c"ok   - \00"
-@.str21333 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32246: index out of range: \00"
-@.str21334 = private unnamed_addr constant [8 x i8] c"FAIL - \00"
-@.str21335 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32247: index out of range: \00"
-@.str21336 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32248: index out of range: \00"
-@.str21337 = private unnamed_addr constant [5 x i8] c"tcmp\00"
-@.str21338 = private unnamed_addr constant [5 x i8] c"trun\00"
-@.str21339 = private unnamed_addr constant [6 x i8] c"tskip\00"
-@.str21340 = private unnamed_addr constant [22 x i8] c"load ptr, ptr %filter\00"
-@.str21341 = private unnamed_addr constant [13 x i8] c"icmp eq ptr \00"
-@.str21342 = private unnamed_addr constant [7 x i8] c", null\00"
-@.str21343 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str21344 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str21345 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str21346 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21347 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str21348 = private unnamed_addr constant [22 x i8] c"call i32 @strcmp(ptr \00"
-@.str21349 = private unnamed_addr constant [7 x i8] c", ptr \00"
-@.str21350 = private unnamed_addr constant [2 x i8] c")\00"
-@.str21351 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
-@.str21352 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str21353 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str21354 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str21355 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str21356 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21357 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str21358 = private unnamed_addr constant [19 x i8] c"load i32, ptr %ran\00"
-@.str21359 = private unnamed_addr constant [9 x i8] c"add i32 \00"
-@.str21360 = private unnamed_addr constant [4 x i8] c", 1\00"
-@.str21361 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
-@.str21362 = private unnamed_addr constant [12 x i8] c", ptr %ran\0A\00"
-@.str21363 = private unnamed_addr constant [33 x i8] c"  store i32 0, ptr @L_test_fail\0A\00"
-@.str21364 = private unnamed_addr constant [31 x i8] c"  call void @L_init_globals()\0A\00"
-@.str21365 = private unnamed_addr constant [31 x i8] c"  call void @L_reset_states()\0A\00"
-@.str21366 = private unnamed_addr constant [23 x i8] c"  call void @fn__test_\00"
-@.str21367 = private unnamed_addr constant [4 x i8] c"()\0A\00"
-@.str21368 = private unnamed_addr constant [27 x i8] c"load i32, ptr @L_test_fail\00"
-@.str21369 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
-@.str21370 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str21371 = private unnamed_addr constant [6 x i8] c"tpass\00"
-@.str21372 = private unnamed_addr constant [6 x i8] c"tfail\00"
-@.str21373 = private unnamed_addr constant [6 x i8] c"tdone\00"
-@.str21374 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str21375 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str21376 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str21377 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21378 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str21379 = private unnamed_addr constant [51 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr \00"
-@.str21380 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str21381 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str21382 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21383 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str21384 = private unnamed_addr constant [22 x i8] c"load i32, ptr %failed\00"
-@.str21385 = private unnamed_addr constant [9 x i8] c"add i32 \00"
-@.str21386 = private unnamed_addr constant [4 x i8] c", 1\00"
-@.str21387 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
-@.str21388 = private unnamed_addr constant [15 x i8] c", ptr %failed\0A\00"
-@.str21389 = private unnamed_addr constant [51 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr \00"
-@.str21390 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str21391 = private unnamed_addr constant [13 x i8] c"  br label %\00"
-@.str21392 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21393 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str21330 = private unnamed_addr constant [8 x i8] c"rt_init\00"
+@.str21331 = private unnamed_addr constant [13 x i8] c"  call void \00"
+@.str21332 = private unnamed_addr constant [8 x i8] c"rt_init\00"
+@.str21333 = private unnamed_addr constant [4 x i8] c"()\0A\00"
+@.str21334 = private unnamed_addr constant [31 x i8] c"  call void @L_init_globals()\0A\00"
+@.str21335 = private unnamed_addr constant [8 x i8] c"ok   - \00"
+@.str21336 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32246: index out of range: \00"
+@.str21337 = private unnamed_addr constant [8 x i8] c"FAIL - \00"
+@.str21338 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32247: index out of range: \00"
+@.str21339 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32248: index out of range: \00"
+@.str21340 = private unnamed_addr constant [5 x i8] c"tcmp\00"
+@.str21341 = private unnamed_addr constant [5 x i8] c"trun\00"
+@.str21342 = private unnamed_addr constant [6 x i8] c"tskip\00"
+@.str21343 = private unnamed_addr constant [22 x i8] c"load ptr, ptr %filter\00"
+@.str21344 = private unnamed_addr constant [13 x i8] c"icmp eq ptr \00"
+@.str21345 = private unnamed_addr constant [7 x i8] c", null\00"
+@.str21346 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str21347 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str21348 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str21349 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21350 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str21351 = private unnamed_addr constant [22 x i8] c"call i32 @strcmp(ptr \00"
+@.str21352 = private unnamed_addr constant [7 x i8] c", ptr \00"
+@.str21353 = private unnamed_addr constant [2 x i8] c")\00"
+@.str21354 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
+@.str21355 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str21356 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str21357 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str21358 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str21359 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21360 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str21361 = private unnamed_addr constant [19 x i8] c"load i32, ptr %ran\00"
+@.str21362 = private unnamed_addr constant [9 x i8] c"add i32 \00"
+@.str21363 = private unnamed_addr constant [4 x i8] c", 1\00"
+@.str21364 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str21365 = private unnamed_addr constant [12 x i8] c", ptr %ran\0A\00"
+@.str21366 = private unnamed_addr constant [33 x i8] c"  store i32 0, ptr @L_test_fail\0A\00"
+@.str21367 = private unnamed_addr constant [31 x i8] c"  call void @L_init_globals()\0A\00"
+@.str21368 = private unnamed_addr constant [31 x i8] c"  call void @L_reset_states()\0A\00"
+@.str21369 = private unnamed_addr constant [23 x i8] c"  call void @fn__test_\00"
+@.str21370 = private unnamed_addr constant [4 x i8] c"()\0A\00"
+@.str21371 = private unnamed_addr constant [27 x i8] c"load i32, ptr @L_test_fail\00"
+@.str21372 = private unnamed_addr constant [13 x i8] c"icmp ne i32 \00"
+@.str21373 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str21374 = private unnamed_addr constant [6 x i8] c"tpass\00"
+@.str21375 = private unnamed_addr constant [6 x i8] c"tfail\00"
+@.str21376 = private unnamed_addr constant [6 x i8] c"tdone\00"
+@.str21377 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str21378 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str21379 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str21380 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21381 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str21382 = private unnamed_addr constant [51 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr \00"
+@.str21383 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str21384 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str21385 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21386 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str21387 = private unnamed_addr constant [22 x i8] c"load i32, ptr %failed\00"
+@.str21388 = private unnamed_addr constant [9 x i8] c"add i32 \00"
+@.str21389 = private unnamed_addr constant [4 x i8] c", 1\00"
+@.str21390 = private unnamed_addr constant [13 x i8] c"  store i32 \00"
+@.str21391 = private unnamed_addr constant [15 x i8] c", ptr %failed\0A\00"
+@.str21392 = private unnamed_addr constant [51 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr \00"
+@.str21393 = private unnamed_addr constant [3 x i8] c")\0A\00"
 @.str21394 = private unnamed_addr constant [13 x i8] c"  br label %\00"
 @.str21395 = private unnamed_addr constant [2 x i8] c"\0A\00"
 @.str21396 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str21397 = private unnamed_addr constant [6 x i8] c"tnone\00"
-@.str21398 = private unnamed_addr constant [5 x i8] c"tsum\00"
-@.str21399 = private unnamed_addr constant [19 x i8] c"load i32, ptr %ran\00"
-@.str21400 = private unnamed_addr constant [22 x i8] c"load ptr, ptr %filter\00"
-@.str21401 = private unnamed_addr constant [13 x i8] c"icmp ne ptr \00"
-@.str21402 = private unnamed_addr constant [7 x i8] c", null\00"
-@.str21403 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
-@.str21404 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str21405 = private unnamed_addr constant [8 x i8] c"and i1 \00"
-@.str21406 = private unnamed_addr constant [3 x i8] c", \00"
-@.str21407 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
-@.str21408 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str21409 = private unnamed_addr constant [10 x i8] c", label %\00"
-@.str21410 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21411 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str21412 = private unnamed_addr constant [56 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_test_none, ptr \00"
-@.str21413 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str21414 = private unnamed_addr constant [13 x i8] c"  ret i32 1\0A\00"
-@.str21415 = private unnamed_addr constant [3 x i8] c":\0A\00"
-@.str21416 = private unnamed_addr constant [22 x i8] c"load i32, ptr %failed\00"
-@.str21417 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
-@.str21418 = private unnamed_addr constant [3 x i8] c", \00"
-@.str21419 = private unnamed_addr constant [55 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_test_sum, i32 \00"
-@.str21420 = private unnamed_addr constant [7 x i8] c", i32 \00"
-@.str21421 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str21422 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
-@.str21423 = private unnamed_addr constant [4 x i8] c", 0\00"
-@.str21424 = private unnamed_addr constant [11 x i8] c"select i1 \00"
-@.str21425 = private unnamed_addr constant [15 x i8] c", i32 0, i32 1\00"
-@.str21426 = private unnamed_addr constant [11 x i8] c"  ret i32 \00"
-@.str21427 = private unnamed_addr constant [4 x i8] c"\0A}\0A\00"
-@.str21428 = private unnamed_addr constant [20 x i8] c"check_duplicate_fns\00"
-@.str21429 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32314: index out of range: \00"
-@.str21430 = private unnamed_addr constant [11 x i8] c"function '\00"
-@.str21431 = private unnamed_addr constant [30 x i8] c"' is defined twice (first in \00"
-@.str21432 = private unnamed_addr constant [2 x i8] c":\00"
-@.str21433 = private unnamed_addr constant [2 x i8] c")\00"
-@.str21434 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21435 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21436 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21397 = private unnamed_addr constant [13 x i8] c"  br label %\00"
+@.str21398 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21399 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str21400 = private unnamed_addr constant [6 x i8] c"tnone\00"
+@.str21401 = private unnamed_addr constant [5 x i8] c"tsum\00"
+@.str21402 = private unnamed_addr constant [19 x i8] c"load i32, ptr %ran\00"
+@.str21403 = private unnamed_addr constant [22 x i8] c"load ptr, ptr %filter\00"
+@.str21404 = private unnamed_addr constant [13 x i8] c"icmp ne ptr \00"
+@.str21405 = private unnamed_addr constant [7 x i8] c", null\00"
+@.str21406 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
+@.str21407 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str21408 = private unnamed_addr constant [8 x i8] c"and i1 \00"
+@.str21409 = private unnamed_addr constant [3 x i8] c", \00"
+@.str21410 = private unnamed_addr constant [9 x i8] c"  br i1 \00"
+@.str21411 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str21412 = private unnamed_addr constant [10 x i8] c", label %\00"
+@.str21413 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21414 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str21415 = private unnamed_addr constant [56 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_test_none, ptr \00"
+@.str21416 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str21417 = private unnamed_addr constant [13 x i8] c"  ret i32 1\0A\00"
+@.str21418 = private unnamed_addr constant [3 x i8] c":\0A\00"
+@.str21419 = private unnamed_addr constant [22 x i8] c"load i32, ptr %failed\00"
+@.str21420 = private unnamed_addr constant [9 x i8] c"sub i32 \00"
+@.str21421 = private unnamed_addr constant [3 x i8] c", \00"
+@.str21422 = private unnamed_addr constant [55 x i8] c"  call i32 (ptr, ...) @printf(ptr @.fmt_test_sum, i32 \00"
+@.str21423 = private unnamed_addr constant [7 x i8] c", i32 \00"
+@.str21424 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str21425 = private unnamed_addr constant [13 x i8] c"icmp eq i32 \00"
+@.str21426 = private unnamed_addr constant [4 x i8] c", 0\00"
+@.str21427 = private unnamed_addr constant [11 x i8] c"select i1 \00"
+@.str21428 = private unnamed_addr constant [15 x i8] c", i32 0, i32 1\00"
+@.str21429 = private unnamed_addr constant [11 x i8] c"  ret i32 \00"
+@.str21430 = private unnamed_addr constant [4 x i8] c"\0A}\0A\00"
+@.str21431 = private unnamed_addr constant [20 x i8] c"check_duplicate_fns\00"
+@.str21432 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32314: index out of range: \00"
+@.str21433 = private unnamed_addr constant [11 x i8] c"function '\00"
+@.str21434 = private unnamed_addr constant [30 x i8] c"' is defined twice (first in \00"
+@.str21435 = private unnamed_addr constant [2 x i8] c":\00"
+@.str21436 = private unnamed_addr constant [2 x i8] c")\00"
 @.str21437 = private unnamed_addr constant [1 x i8] c"\00"
 @.str21438 = private unnamed_addr constant [1 x i8] c"\00"
 @.str21439 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21440 = private unnamed_addr constant [3 x i8] c": \00"
-@.str21441 = private unnamed_addr constant [10 x i8] c"dup_whose\00"
-@.str21442 = private unnamed_addr constant [126 x i8] c" exports it, and exported names are one namespace - rename this one, or declare it without export inside a module of your own\00"
-@.str21443 = private unnamed_addr constant [22 x i8] c"check_duplicate_decls\00"
-@.str21444 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32351: index out of range: \00"
-@.str21445 = private unnamed_addr constant [2 x i8] c":\00"
-@.str21446 = private unnamed_addr constant [2 x i8] c"'\00"
-@.str21447 = private unnamed_addr constant [30 x i8] c"' is defined twice (first in \00"
+@.str21440 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21441 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21442 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21443 = private unnamed_addr constant [3 x i8] c": \00"
+@.str21444 = private unnamed_addr constant [10 x i8] c"dup_whose\00"
+@.str21445 = private unnamed_addr constant [126 x i8] c" exports it, and exported names are one namespace - rename this one, or declare it without export inside a module of your own\00"
+@.str21446 = private unnamed_addr constant [22 x i8] c"check_duplicate_decls\00"
+@.str21447 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32351: index out of range: \00"
 @.str21448 = private unnamed_addr constant [2 x i8] c":\00"
-@.str21449 = private unnamed_addr constant [2 x i8] c")\00"
-@.str21450 = private unnamed_addr constant [13 x i8] c"emit_program\00"
-@.str21451 = private unnamed_addr constant [10 x i8] c"new []Val\00"
-@.str21452 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32399: index out of range: \00"
-@.str21453 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32401: index out of range: \00"
-@.str21454 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32419: index out of range: \00"
-@.str21455 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32419: index out of range: \00"
-@.str21456 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32424: index out of range: \00"
-@.str21457 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32424: index out of range: \00"
-@.str21458 = private unnamed_addr constant [36 x i8] c"@L_running = internal global i32 1\0A\00"
-@.str21459 = private unnamed_addr constant [23 x i8] c"declare i32 @getpid()\0A\00"
-@.str21460 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
-@.str21461 = private unnamed_addr constant [68 x i8] c"@.fmt_panic = private unnamed_addr constant [6 x i8] c\22%s%s\5C0A\5C00\22\0A\00"
-@.str21462 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
-@.str21463 = private unnamed_addr constant [78 x i8] c"@.fmt_bounds = private unnamed_addr constant [14 x i8] c\22%s%d, len %d\5C0A\5C00\22\0A\00"
-@.str21464 = private unnamed_addr constant [34 x i8] c"%Result = type { i32, i32, ptr }\0A\00"
-@.str21465 = private unnamed_addr constant [29 x i8] c"%Option = type { i32, i32 }\0A\00"
-@.str21466 = private unnamed_addr constant [33 x i8] c"@L_cov_lines = internal global [\00"
-@.str21467 = private unnamed_addr constant [10 x i8] c" x i32] [\00"
-@.str21468 = private unnamed_addr constant [3 x i8] c", \00"
-@.str21469 = private unnamed_addr constant [5 x i8] c"i32 \00"
-@.str21470 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32482: index out of range: \00"
-@.str21471 = private unnamed_addr constant [17 x i8] c"emit_cov_runtime\00"
-@.str21472 = private unnamed_addr constant [3 x i8] c"]\0A\00"
-@.str21473 = private unnamed_addr constant [32 x i8] c"@L_cov_hits = internal global [\00"
-@.str21474 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
-@.str21475 = private unnamed_addr constant [32 x i8] c"@L_cov_n = internal global i32 \00"
-@.str21476 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21477 = private unnamed_addr constant [15 x i8] c"LUDIC_COVERAGE\00"
-@.str21478 = private unnamed_addr constant [10 x i8] c"ludic.cov\00"
-@.str21479 = private unnamed_addr constant [2 x i8] c"w\00"
-@.str21480 = private unnamed_addr constant [73 x i8] c"@.cov_filefmt = private unnamed_addr constant [9 x i8] c\22FILE %s\5C0A\5C00\22\0A\00"
-@.str21481 = private unnamed_addr constant [70 x i8] c"@.cov_rowfmt = private unnamed_addr constant [7 x i8] c\22%d %d\5C0A\5C00\22\0A\00"
-@.str21482 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
-@.str21483 = private unnamed_addr constant [26 x i8] c"declare i32 @atexit(ptr)\0A\00"
-@.str21484 = private unnamed_addr constant [34 x i8] c"define void @cov_dump() {\0Aentry:\0A\00"
-@.str21485 = private unnamed_addr constant [31 x i8] c"  %env = call ptr @getenv(ptr \00"
-@.str21486 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str21487 = private unnamed_addr constant [35 x i8] c"  %noenv = icmp eq ptr %env, null\0A\00"
-@.str21488 = private unnamed_addr constant [33 x i8] c"  %path = select i1 %noenv, ptr \00"
-@.str21489 = private unnamed_addr constant [12 x i8] c", ptr %env\0A\00"
-@.str21490 = private unnamed_addr constant [39 x i8] c"  %f = call ptr @fopen(ptr %path, ptr \00"
-@.str21491 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str21492 = private unnamed_addr constant [31 x i8] c"  %bad = icmp eq ptr %f, null\0A\00"
-@.str21493 = private unnamed_addr constant [41 x i8] c"  br i1 %bad, label %done, label %write\0A\00"
-@.str21494 = private unnamed_addr constant [8 x i8] c"write:\0A\00"
-@.str21495 = private unnamed_addr constant [68 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr %f, ptr @.cov_filefmt, ptr \00"
-@.str21496 = private unnamed_addr constant [3 x i8] c")\0A\00"
-@.str21497 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
-@.str21498 = private unnamed_addr constant [7 x i8] c"loop:\0A\00"
-@.str21499 = private unnamed_addr constant [46 x i8] c"  %i = phi i32 [ 0, %write ], [ %i1, %body ]\0A\00"
-@.str21500 = private unnamed_addr constant [26 x i8] c"  %go = icmp slt i32 %i, \00"
-@.str21501 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21502 = private unnamed_addr constant [40 x i8] c"  br i1 %go, label %body, label %close\0A\00"
-@.str21503 = private unnamed_addr constant [7 x i8] c"body:\0A\00"
-@.str21504 = private unnamed_addr constant [33 x i8] c"  %lp = getelementptr inbounds [\00"
-@.str21505 = private unnamed_addr constant [42 x i8] c" x i32], ptr @L_cov_lines, i32 0, i32 %i\0A\00"
-@.str21506 = private unnamed_addr constant [27 x i8] c"  %lv = load i32, ptr %lp\0A\00"
-@.str21507 = private unnamed_addr constant [33 x i8] c"  %hp = getelementptr inbounds [\00"
-@.str21508 = private unnamed_addr constant [41 x i8] c" x i32], ptr @L_cov_hits, i32 0, i32 %i\0A\00"
-@.str21509 = private unnamed_addr constant [27 x i8] c"  %hv = load i32, ptr %hp\0A\00"
-@.str21510 = private unnamed_addr constant [81 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr %f, ptr @.cov_rowfmt, i32 %lv, i32 %hv)\0A\00"
-@.str21511 = private unnamed_addr constant [23 x i8] c"  %i1 = add i32 %i, 1\0A\00"
-@.str21512 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
-@.str21513 = private unnamed_addr constant [8 x i8] c"close:\0A\00"
-@.str21514 = private unnamed_addr constant [34 x i8] c"  %rc = call i32 @fclose(ptr %f)\0A\00"
-@.str21515 = private unnamed_addr constant [18 x i8] c"  br label %done\0A\00"
-@.str21516 = private unnamed_addr constant [21 x i8] c"done:\0A  ret void\0A}\0A\0A\00"
-@.str21517 = private unnamed_addr constant [34 x i8] c"define void @cov_init() {\0Aentry:\0A\00"
-@.str21518 = private unnamed_addr constant [40 x i8] c"  %r = call i32 @atexit(ptr @cov_dump)\0A\00"
-@.str21519 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
-@.str21520 = private unnamed_addr constant [122 x i8] c"@llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @cov_init, ptr null }]\0A\00"
-@.str21521 = private unnamed_addr constant [9 x i8] c"ir_flush\00"
-@.str21522 = private unnamed_addr constant [3 x i8] c"wb\00"
-@.str21523 = private unnamed_addr constant [3 x i8] c"rb\00"
-@.str21524 = private unnamed_addr constant [12 x i8] c"split_there\00"
-@.str21525 = private unnamed_addr constant [12 x i8] c"LUDIC_SPLIT\00"
-@.str21526 = private unnamed_addr constant [2 x i8] c"1\00"
-@.str21527 = private unnamed_addr constant [2 x i8] c"0\00"
-@.str21528 = private unnamed_addr constant [11 x i8] c"LUDIC_LLVM\00"
-@.str21529 = private unnamed_addr constant [27 x i8] c"/opt/homebrew/opt/llvm/bin\00"
-@.str21530 = private unnamed_addr constant [12 x i8] c"/llvm-split\00"
-@.str21531 = private unnamed_addr constant [10 x i8] c"split_dir\00"
-@.str21532 = private unnamed_addr constant [7 x i8] c"/clang\00"
-@.str21533 = private unnamed_addr constant [11 x i8] c"LUDIC_JOBS\00"
-@.str21534 = private unnamed_addr constant [7 x i8] c".cores\00"
-@.str21535 = private unnamed_addr constant [11 x i8] c"split_jobs\00"
-@.str21536 = private unnamed_addr constant [83 x i8] c"awk '/Pages free/{f=$3} /Pages inactive/{i=$3} END{print int((f+i)*p/1073741824)}'\00"
-@.str21537 = private unnamed_addr constant [39 x i8] c"echo $(sysctl -n hw.ncpu) $(vm_stat | \00"
-@.str21538 = private unnamed_addr constant [33 x i8] c" p=$(sysctl -n hw.pagesize)) > \22\00"
-@.str21539 = private unnamed_addr constant [14 x i8] c"\22 2>/dev/null\00"
-@.str21540 = private unnamed_addr constant [3 x i8] c"rb\00"
-@.str21541 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21542 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21543 = private unnamed_addr constant [6 x i8] c".part\00"
-@.str21544 = private unnamed_addr constant [14 x i8] c"split_compile\00"
+@.str21449 = private unnamed_addr constant [2 x i8] c"'\00"
+@.str21450 = private unnamed_addr constant [30 x i8] c"' is defined twice (first in \00"
+@.str21451 = private unnamed_addr constant [2 x i8] c":\00"
+@.str21452 = private unnamed_addr constant [2 x i8] c")\00"
+@.str21453 = private unnamed_addr constant [13 x i8] c"emit_program\00"
+@.str21454 = private unnamed_addr constant [10 x i8] c"new []Val\00"
+@.str21455 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32399: index out of range: \00"
+@.str21456 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32401: index out of range: \00"
+@.str21457 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32419: index out of range: \00"
+@.str21458 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32419: index out of range: \00"
+@.str21459 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32424: index out of range: \00"
+@.str21460 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32424: index out of range: \00"
+@.str21461 = private unnamed_addr constant [36 x i8] c"@L_running = internal global i32 1\0A\00"
+@.str21462 = private unnamed_addr constant [23 x i8] c"declare i32 @getpid()\0A\00"
+@.str21463 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
+@.str21464 = private unnamed_addr constant [68 x i8] c"@.fmt_panic = private unnamed_addr constant [6 x i8] c\22%s%s\5C0A\5C00\22\0A\00"
+@.str21465 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
+@.str21466 = private unnamed_addr constant [78 x i8] c"@.fmt_bounds = private unnamed_addr constant [14 x i8] c\22%s%d, len %d\5C0A\5C00\22\0A\00"
+@.str21467 = private unnamed_addr constant [34 x i8] c"%Result = type { i32, i32, ptr }\0A\00"
+@.str21468 = private unnamed_addr constant [29 x i8] c"%Option = type { i32, i32 }\0A\00"
+@.str21469 = private unnamed_addr constant [33 x i8] c"@L_cov_lines = internal global [\00"
+@.str21470 = private unnamed_addr constant [10 x i8] c" x i32] [\00"
+@.str21471 = private unnamed_addr constant [3 x i8] c", \00"
+@.str21472 = private unnamed_addr constant [5 x i8] c"i32 \00"
+@.str21473 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:32482: index out of range: \00"
+@.str21474 = private unnamed_addr constant [17 x i8] c"emit_cov_runtime\00"
+@.str21475 = private unnamed_addr constant [3 x i8] c"]\0A\00"
+@.str21476 = private unnamed_addr constant [32 x i8] c"@L_cov_hits = internal global [\00"
+@.str21477 = private unnamed_addr constant [25 x i8] c" x i32] zeroinitializer\0A\00"
+@.str21478 = private unnamed_addr constant [32 x i8] c"@L_cov_n = internal global i32 \00"
+@.str21479 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21480 = private unnamed_addr constant [15 x i8] c"LUDIC_COVERAGE\00"
+@.str21481 = private unnamed_addr constant [10 x i8] c"ludic.cov\00"
+@.str21482 = private unnamed_addr constant [2 x i8] c"w\00"
+@.str21483 = private unnamed_addr constant [73 x i8] c"@.cov_filefmt = private unnamed_addr constant [9 x i8] c\22FILE %s\5C0A\5C00\22\0A\00"
+@.str21484 = private unnamed_addr constant [70 x i8] c"@.cov_rowfmt = private unnamed_addr constant [7 x i8] c\22%d %d\5C0A\5C00\22\0A\00"
+@.str21485 = private unnamed_addr constant [37 x i8] c"declare i32 @fprintf(ptr, ptr, ...)\0A\00"
+@.str21486 = private unnamed_addr constant [26 x i8] c"declare i32 @atexit(ptr)\0A\00"
+@.str21487 = private unnamed_addr constant [34 x i8] c"define void @cov_dump() {\0Aentry:\0A\00"
+@.str21488 = private unnamed_addr constant [31 x i8] c"  %env = call ptr @getenv(ptr \00"
+@.str21489 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str21490 = private unnamed_addr constant [35 x i8] c"  %noenv = icmp eq ptr %env, null\0A\00"
+@.str21491 = private unnamed_addr constant [33 x i8] c"  %path = select i1 %noenv, ptr \00"
+@.str21492 = private unnamed_addr constant [12 x i8] c", ptr %env\0A\00"
+@.str21493 = private unnamed_addr constant [39 x i8] c"  %f = call ptr @fopen(ptr %path, ptr \00"
+@.str21494 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str21495 = private unnamed_addr constant [31 x i8] c"  %bad = icmp eq ptr %f, null\0A\00"
+@.str21496 = private unnamed_addr constant [41 x i8] c"  br i1 %bad, label %done, label %write\0A\00"
+@.str21497 = private unnamed_addr constant [8 x i8] c"write:\0A\00"
+@.str21498 = private unnamed_addr constant [68 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr %f, ptr @.cov_filefmt, ptr \00"
+@.str21499 = private unnamed_addr constant [3 x i8] c")\0A\00"
+@.str21500 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
+@.str21501 = private unnamed_addr constant [7 x i8] c"loop:\0A\00"
+@.str21502 = private unnamed_addr constant [46 x i8] c"  %i = phi i32 [ 0, %write ], [ %i1, %body ]\0A\00"
+@.str21503 = private unnamed_addr constant [26 x i8] c"  %go = icmp slt i32 %i, \00"
+@.str21504 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21505 = private unnamed_addr constant [40 x i8] c"  br i1 %go, label %body, label %close\0A\00"
+@.str21506 = private unnamed_addr constant [7 x i8] c"body:\0A\00"
+@.str21507 = private unnamed_addr constant [33 x i8] c"  %lp = getelementptr inbounds [\00"
+@.str21508 = private unnamed_addr constant [42 x i8] c" x i32], ptr @L_cov_lines, i32 0, i32 %i\0A\00"
+@.str21509 = private unnamed_addr constant [27 x i8] c"  %lv = load i32, ptr %lp\0A\00"
+@.str21510 = private unnamed_addr constant [33 x i8] c"  %hp = getelementptr inbounds [\00"
+@.str21511 = private unnamed_addr constant [41 x i8] c" x i32], ptr @L_cov_hits, i32 0, i32 %i\0A\00"
+@.str21512 = private unnamed_addr constant [27 x i8] c"  %hv = load i32, ptr %hp\0A\00"
+@.str21513 = private unnamed_addr constant [81 x i8] c"  call i32 (ptr, ptr, ...) @fprintf(ptr %f, ptr @.cov_rowfmt, i32 %lv, i32 %hv)\0A\00"
+@.str21514 = private unnamed_addr constant [23 x i8] c"  %i1 = add i32 %i, 1\0A\00"
+@.str21515 = private unnamed_addr constant [18 x i8] c"  br label %loop\0A\00"
+@.str21516 = private unnamed_addr constant [8 x i8] c"close:\0A\00"
+@.str21517 = private unnamed_addr constant [34 x i8] c"  %rc = call i32 @fclose(ptr %f)\0A\00"
+@.str21518 = private unnamed_addr constant [18 x i8] c"  br label %done\0A\00"
+@.str21519 = private unnamed_addr constant [21 x i8] c"done:\0A  ret void\0A}\0A\0A\00"
+@.str21520 = private unnamed_addr constant [34 x i8] c"define void @cov_init() {\0Aentry:\0A\00"
+@.str21521 = private unnamed_addr constant [40 x i8] c"  %r = call i32 @atexit(ptr @cov_dump)\0A\00"
+@.str21522 = private unnamed_addr constant [15 x i8] c"  ret void\0A}\0A\0A\00"
+@.str21523 = private unnamed_addr constant [122 x i8] c"@llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @cov_init, ptr null }]\0A\00"
+@.str21524 = private unnamed_addr constant [9 x i8] c"ir_flush\00"
+@.str21525 = private unnamed_addr constant [3 x i8] c"wb\00"
+@.str21526 = private unnamed_addr constant [3 x i8] c"rb\00"
+@.str21527 = private unnamed_addr constant [12 x i8] c"split_there\00"
+@.str21528 = private unnamed_addr constant [12 x i8] c"LUDIC_SPLIT\00"
+@.str21529 = private unnamed_addr constant [2 x i8] c"1\00"
+@.str21530 = private unnamed_addr constant [2 x i8] c"0\00"
+@.str21531 = private unnamed_addr constant [11 x i8] c"LUDIC_LLVM\00"
+@.str21532 = private unnamed_addr constant [27 x i8] c"/opt/homebrew/opt/llvm/bin\00"
+@.str21533 = private unnamed_addr constant [12 x i8] c"/llvm-split\00"
+@.str21534 = private unnamed_addr constant [10 x i8] c"split_dir\00"
+@.str21535 = private unnamed_addr constant [7 x i8] c"/clang\00"
+@.str21536 = private unnamed_addr constant [11 x i8] c"LUDIC_JOBS\00"
+@.str21537 = private unnamed_addr constant [7 x i8] c".cores\00"
+@.str21538 = private unnamed_addr constant [11 x i8] c"split_jobs\00"
+@.str21539 = private unnamed_addr constant [83 x i8] c"awk '/Pages free/{f=$3} /Pages inactive/{i=$3} END{print int((f+i)*p/1073741824)}'\00"
+@.str21540 = private unnamed_addr constant [39 x i8] c"echo $(sysctl -n hw.ncpu) $(vm_stat | \00"
+@.str21541 = private unnamed_addr constant [33 x i8] c" p=$(sysctl -n hw.pagesize)) > \22\00"
+@.str21542 = private unnamed_addr constant [14 x i8] c"\22 2>/dev/null\00"
+@.str21543 = private unnamed_addr constant [3 x i8] c"rb\00"
+@.str21544 = private unnamed_addr constant [2 x i8] c"\22\00"
 @.str21545 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21546 = private unnamed_addr constant [17 x i8] c"/llvm-split\22 -j \00"
-@.str21547 = private unnamed_addr constant [6 x i8] c" -o \22\00"
-@.str21548 = private unnamed_addr constant [4 x i8] c"\22 \22\00"
-@.str21549 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21550 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21551 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21552 = private unnamed_addr constant [17 x i8] c"/clang\22 -x ir -O\00"
-@.str21553 = private unnamed_addr constant [74 x i8] c" -mmacosx-version-min=11.0 -Wno-override-module -Wno-missing-sysroot -c \22\00"
-@.str21554 = private unnamed_addr constant [7 x i8] c"\22 -o \22\00"
-@.str21555 = private unnamed_addr constant [7 x i8] c".o\22 & \00"
-@.str21556 = private unnamed_addr constant [13 x i8] c"/bin/sh -c '\00"
-@.str21557 = private unnamed_addr constant [6 x i8] c"wait'\00"
-@.str21558 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21559 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21560 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21561 = private unnamed_addr constant [3 x i8] c".o\00"
-@.str21562 = private unnamed_addr constant [3 x i8] c" \22\00"
-@.str21563 = private unnamed_addr constant [4 x i8] c".o\22\00"
-@.str21564 = private unnamed_addr constant [8 x i8] c"rm -f \22\00"
-@.str21565 = private unnamed_addr constant [12 x i8] c"split_clean\00"
-@.str21566 = private unnamed_addr constant [10 x i8] c"\22.part*.o\00"
-@.str21567 = private unnamed_addr constant [10 x i8] c"base_name\00"
-@.str21568 = private unnamed_addr constant [12 x i8] c"strip_ludic\00"
-@.str21569 = private unnamed_addr constant [7 x i8] c".ludic\00"
-@.str21570 = private unnamed_addr constant [2 x i8] c"/\00"
-@.str21571 = private unnamed_addr constant [13 x i8] c"ensure_slash\00"
-@.str21572 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21573 = private unnamed_addr constant [6 x i8] c"error\00"
-@.str21574 = private unnamed_addr constant [4 x i8] c"die\00"
-@.str21575 = private unnamed_addr constant [6 x i8] c"chomp\00"
-@.str21576 = private unnamed_addr constant [8 x i8] c"has_sub\00"
-@.str21577 = private unnamed_addr constant [9 x i8] c"win_path\00"
-@.str21578 = private unnamed_addr constant [15 x i8] c"if not exist \22\00"
-@.str21579 = private unnamed_addr constant [9 x i8] c"make_dir\00"
-@.str21580 = private unnamed_addr constant [10 x i8] c"\22 mkdir \22\00"
-@.str21581 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21582 = private unnamed_addr constant [10 x i8] c"mkdir -p \00"
-@.str21583 = private unnamed_addr constant [12 x i8] c"del /f /q \22\00"
-@.str21584 = private unnamed_addr constant [12 x i8] c"remove_file\00"
-@.str21585 = private unnamed_addr constant [8 x i8] c"\22 2>nul\00"
-@.str21586 = private unnamed_addr constant [7 x i8] c"rm -f \00"
-@.str21587 = private unnamed_addr constant [9 x i8] c"LUDIC_CC\00"
-@.str21588 = private unnamed_addr constant [36 x i8] c"C:/Program Files/LLVM/bin/clang.exe\00"
-@.str21589 = private unnamed_addr constant [3 x i8] c"rb\00"
-@.str21590 = private unnamed_addr constant [8 x i8] c"find_cc\00"
-@.str21591 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21592 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21593 = private unnamed_addr constant [6 x i8] c"clang\00"
-@.str21594 = private unnamed_addr constant [8 x i8] c"VERSION\00"
-@.str21595 = private unnamed_addr constant [24 x i8] c"ludic (version unknown)\00"
-@.str21596 = private unnamed_addr constant [7 x i8] c"ludic \00"
-@.str21597 = private unnamed_addr constant [13 x i8] c"show_version\00"
-@.str21598 = private unnamed_addr constant [15 x i8] c"L_init_globals\00"
-@.str21599 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21600 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21601 = private unnamed_addr constant [2 x i8] c",\00"
+@.str21546 = private unnamed_addr constant [6 x i8] c".part\00"
+@.str21547 = private unnamed_addr constant [14 x i8] c"split_compile\00"
+@.str21548 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21549 = private unnamed_addr constant [17 x i8] c"/llvm-split\22 -j \00"
+@.str21550 = private unnamed_addr constant [6 x i8] c" -o \22\00"
+@.str21551 = private unnamed_addr constant [4 x i8] c"\22 \22\00"
+@.str21552 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21553 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21554 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21555 = private unnamed_addr constant [17 x i8] c"/clang\22 -x ir -O\00"
+@.str21556 = private unnamed_addr constant [74 x i8] c" -mmacosx-version-min=11.0 -Wno-override-module -Wno-missing-sysroot -c \22\00"
+@.str21557 = private unnamed_addr constant [7 x i8] c"\22 -o \22\00"
+@.str21558 = private unnamed_addr constant [7 x i8] c".o\22 & \00"
+@.str21559 = private unnamed_addr constant [13 x i8] c"/bin/sh -c '\00"
+@.str21560 = private unnamed_addr constant [6 x i8] c"wait'\00"
+@.str21561 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21562 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21563 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21564 = private unnamed_addr constant [3 x i8] c".o\00"
+@.str21565 = private unnamed_addr constant [3 x i8] c" \22\00"
+@.str21566 = private unnamed_addr constant [4 x i8] c".o\22\00"
+@.str21567 = private unnamed_addr constant [8 x i8] c"rm -f \22\00"
+@.str21568 = private unnamed_addr constant [12 x i8] c"split_clean\00"
+@.str21569 = private unnamed_addr constant [10 x i8] c"\22.part*.o\00"
+@.str21570 = private unnamed_addr constant [10 x i8] c"base_name\00"
+@.str21571 = private unnamed_addr constant [12 x i8] c"strip_ludic\00"
+@.str21572 = private unnamed_addr constant [7 x i8] c".ludic\00"
+@.str21573 = private unnamed_addr constant [2 x i8] c"/\00"
+@.str21574 = private unnamed_addr constant [13 x i8] c"ensure_slash\00"
+@.str21575 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21576 = private unnamed_addr constant [6 x i8] c"error\00"
+@.str21577 = private unnamed_addr constant [4 x i8] c"die\00"
+@.str21578 = private unnamed_addr constant [6 x i8] c"chomp\00"
+@.str21579 = private unnamed_addr constant [8 x i8] c"has_sub\00"
+@.str21580 = private unnamed_addr constant [9 x i8] c"win_path\00"
+@.str21581 = private unnamed_addr constant [15 x i8] c"if not exist \22\00"
+@.str21582 = private unnamed_addr constant [9 x i8] c"make_dir\00"
+@.str21583 = private unnamed_addr constant [10 x i8] c"\22 mkdir \22\00"
+@.str21584 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21585 = private unnamed_addr constant [10 x i8] c"mkdir -p \00"
+@.str21586 = private unnamed_addr constant [12 x i8] c"del /f /q \22\00"
+@.str21587 = private unnamed_addr constant [12 x i8] c"remove_file\00"
+@.str21588 = private unnamed_addr constant [8 x i8] c"\22 2>nul\00"
+@.str21589 = private unnamed_addr constant [7 x i8] c"rm -f \00"
+@.str21590 = private unnamed_addr constant [9 x i8] c"LUDIC_CC\00"
+@.str21591 = private unnamed_addr constant [36 x i8] c"C:/Program Files/LLVM/bin/clang.exe\00"
+@.str21592 = private unnamed_addr constant [3 x i8] c"rb\00"
+@.str21593 = private unnamed_addr constant [8 x i8] c"find_cc\00"
+@.str21594 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21595 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21596 = private unnamed_addr constant [6 x i8] c"clang\00"
+@.str21597 = private unnamed_addr constant [8 x i8] c"VERSION\00"
+@.str21598 = private unnamed_addr constant [24 x i8] c"ludic (version unknown)\00"
+@.str21599 = private unnamed_addr constant [7 x i8] c"ludic \00"
+@.str21600 = private unnamed_addr constant [13 x i8] c"show_version\00"
+@.str21601 = private unnamed_addr constant [15 x i8] c"L_init_globals\00"
 @.str21602 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21603 = private unnamed_addr constant [2 x i8] c",\00"
-@.str21604 = private unnamed_addr constant [12 x i8] c"assets/maps\00"
+@.str21603 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21604 = private unnamed_addr constant [2 x i8] c",\00"
 @.str21605 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21606 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21607 = private unnamed_addr constant [13 x i8] c"new [][]Node\00"
-@.str21608 = private unnamed_addr constant [13 x i8] c"new [][]bool\00"
-@.str21609 = private unnamed_addr constant [3 x i8] c"en\00"
-@.str21610 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21611 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21612 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21606 = private unnamed_addr constant [2 x i8] c",\00"
+@.str21607 = private unnamed_addr constant [12 x i8] c"assets/maps\00"
+@.str21608 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21609 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21610 = private unnamed_addr constant [13 x i8] c"new [][]Node\00"
+@.str21611 = private unnamed_addr constant [13 x i8] c"new [][]bool\00"
+@.str21612 = private unnamed_addr constant [3 x i8] c"en\00"
 @.str21613 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21614 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str21615 = private unnamed_addr constant [4 x i8] c"ret\00"
-@.str21616 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str21617 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21618 = private unnamed_addr constant [5 x i8] c"void\00"
-@.str21619 = private unnamed_addr constant [6 x i8] c"entry\00"
-@.str21620 = private unnamed_addr constant [10 x i8] c"--version\00"
-@.str21621 = private unnamed_addr constant [11 x i8] c"--windowed\00"
-@.str21622 = private unnamed_addr constant [11 x i8] c"--headless\00"
-@.str21623 = private unnamed_addr constant [12 x i8] c"--emit-llvm\00"
-@.str21624 = private unnamed_addr constant [9 x i8] c"--unsafe\00"
-@.str21625 = private unnamed_addr constant [14 x i8] c"--emit-module\00"
-@.str21626 = private unnamed_addr constant [6 x i8] c"--fmt\00"
-@.str21627 = private unnamed_addr constant [13 x i8] c"--save-temps\00"
-@.str21628 = private unnamed_addr constant [6 x i8] c"--run\00"
-@.str21629 = private unnamed_addr constant [8 x i8] c"--check\00"
-@.str21630 = private unnamed_addr constant [10 x i8] c"--no-maps\00"
-@.str21631 = private unnamed_addr constant [10 x i8] c"--release\00"
-@.str21632 = private unnamed_addr constant [19 x i8] c"--diagnostics=json\00"
-@.str21633 = private unnamed_addr constant [19 x i8] c"--diagnostics=text\00"
-@.str21634 = private unnamed_addr constant [14 x i8] c"--emit-syntax\00"
-@.str21635 = private unnamed_addr constant [13 x i8] c"--stdin-file\00"
-@.str21636 = private unnamed_addr constant [14 x i8] c"--emit-schema\00"
-@.str21637 = private unnamed_addr constant [10 x i8] c"--globals\00"
-@.str21638 = private unnamed_addr constant [16 x i8] c"--migrate-state\00"
-@.str21639 = private unnamed_addr constant [16 x i8] c"--migrate-prune\00"
-@.str21640 = private unnamed_addr constant [18 x i8] c"--migrate-tighten\00"
-@.str21641 = private unnamed_addr constant [18 x i8] c"--migrate-runtime\00"
-@.str21642 = private unnamed_addr constant [11 x i8] c"--coverage\00"
-@.str21643 = private unnamed_addr constant [9 x i8] c"--target\00"
-@.str21644 = private unnamed_addr constant [6 x i8] c"--gui\00"
-@.str21645 = private unnamed_addr constant [8 x i8] c"--title\00"
-@.str21646 = private unnamed_addr constant [14 x i8] c"--natives-out\00"
-@.str21647 = private unnamed_addr constant [7 x i8] c"--link\00"
-@.str21648 = private unnamed_addr constant [3 x i8] c"-o\00"
-@.str21649 = private unnamed_addr constant [16 x i8] c"--escape-report\00"
-@.str21650 = private unnamed_addr constant [31 x i8] c"ludicc: ignoring unknown flag \00"
-@.str21651 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21652 = private unnamed_addr constant [108 x i8] c"usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--target triple] [--emit-llvm] [--save-temps]\0A\00"
-@.str21653 = private unnamed_addr constant [8 x i8] c"windows\00"
-@.str21654 = private unnamed_addr constant [27 x i8] c"ludicc: cannot open input\0A\00"
-@.str21655 = private unnamed_addr constant [11 x i8] c"LUDIC_DEPS\00"
-@.str21656 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21657 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21658 = private unnamed_addr constant [10 x i8] c"/dev/null\00"
-@.str21659 = private unnamed_addr constant [3 x i8] c"wb\00"
-@.str21660 = private unnamed_addr constant [22 x i8] c"ludicc: cannot write \00"
-@.str21661 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21662 = private unnamed_addr constant [5 x i8] c"TEMP\00"
-@.str21663 = private unnamed_addr constant [2 x i8] c".\00"
-@.str21664 = private unnamed_addr constant [12 x i8] c"/ludic-run-\00"
-@.str21665 = private unnamed_addr constant [16 x i8] c"/tmp/ludic-run-\00"
-@.str21666 = private unnamed_addr constant [5 x i8] c".exe\00"
-@.str21667 = private unnamed_addr constant [5 x i8] c".exe\00"
-@.str21668 = private unnamed_addr constant [4 x i8] c".ll\00"
-@.str21669 = private unnamed_addr constant [25 x i8] c"ludicc: cannot write IR\0A\00"
-@.str21670 = private unnamed_addr constant [10 x i8] c"LUDIC_OPT\00"
-@.str21671 = private unnamed_addr constant [2 x i8] c"2\00"
-@.str21672 = private unnamed_addr constant [4 x i8] c" -O\00"
-@.str21673 = private unnamed_addr constant [23 x i8] c" -Wno-override-module \00"
-@.str21674 = private unnamed_addr constant [4 x i8] c" -O\00"
-@.str21675 = private unnamed_addr constant [22 x i8] c" -Wno-override-module\00"
-@.str21676 = private unnamed_addr constant [24 x i8] c"runtime/native/win32.ll\00"
-@.str21677 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21678 = private unnamed_addr constant [63 x i8] c" -luser32 -lgdi32 -lxinput -lole32 -Wl,/ignore:importeddllmain\00"
-@.str21679 = private unnamed_addr constant [28 x i8] c"runtime/native/audio_win.ll\00"
+@.str21614 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21615 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21616 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21617 = private unnamed_addr constant [2 x i8] c"?\00"
+@.str21618 = private unnamed_addr constant [4 x i8] c"ret\00"
+@.str21619 = private unnamed_addr constant [2 x i8] c"?\00"
+@.str21620 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21621 = private unnamed_addr constant [5 x i8] c"void\00"
+@.str21622 = private unnamed_addr constant [6 x i8] c"entry\00"
+@.str21623 = private unnamed_addr constant [10 x i8] c"--version\00"
+@.str21624 = private unnamed_addr constant [11 x i8] c"--windowed\00"
+@.str21625 = private unnamed_addr constant [11 x i8] c"--headless\00"
+@.str21626 = private unnamed_addr constant [12 x i8] c"--emit-llvm\00"
+@.str21627 = private unnamed_addr constant [9 x i8] c"--unsafe\00"
+@.str21628 = private unnamed_addr constant [14 x i8] c"--emit-module\00"
+@.str21629 = private unnamed_addr constant [6 x i8] c"--fmt\00"
+@.str21630 = private unnamed_addr constant [13 x i8] c"--save-temps\00"
+@.str21631 = private unnamed_addr constant [6 x i8] c"--run\00"
+@.str21632 = private unnamed_addr constant [8 x i8] c"--check\00"
+@.str21633 = private unnamed_addr constant [10 x i8] c"--no-maps\00"
+@.str21634 = private unnamed_addr constant [10 x i8] c"--release\00"
+@.str21635 = private unnamed_addr constant [19 x i8] c"--diagnostics=json\00"
+@.str21636 = private unnamed_addr constant [19 x i8] c"--diagnostics=text\00"
+@.str21637 = private unnamed_addr constant [14 x i8] c"--emit-syntax\00"
+@.str21638 = private unnamed_addr constant [13 x i8] c"--stdin-file\00"
+@.str21639 = private unnamed_addr constant [14 x i8] c"--emit-schema\00"
+@.str21640 = private unnamed_addr constant [10 x i8] c"--globals\00"
+@.str21641 = private unnamed_addr constant [16 x i8] c"--migrate-state\00"
+@.str21642 = private unnamed_addr constant [16 x i8] c"--migrate-prune\00"
+@.str21643 = private unnamed_addr constant [18 x i8] c"--migrate-tighten\00"
+@.str21644 = private unnamed_addr constant [18 x i8] c"--migrate-runtime\00"
+@.str21645 = private unnamed_addr constant [11 x i8] c"--coverage\00"
+@.str21646 = private unnamed_addr constant [9 x i8] c"--target\00"
+@.str21647 = private unnamed_addr constant [6 x i8] c"--gui\00"
+@.str21648 = private unnamed_addr constant [8 x i8] c"--title\00"
+@.str21649 = private unnamed_addr constant [14 x i8] c"--natives-out\00"
+@.str21650 = private unnamed_addr constant [7 x i8] c"--link\00"
+@.str21651 = private unnamed_addr constant [3 x i8] c"-o\00"
+@.str21652 = private unnamed_addr constant [16 x i8] c"--escape-report\00"
+@.str21653 = private unnamed_addr constant [31 x i8] c"ludicc: ignoring unknown flag \00"
+@.str21654 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21655 = private unnamed_addr constant [108 x i8] c"usage: ludicc <file.ludic> [-o out] [--windowed|--headless] [--target triple] [--emit-llvm] [--save-temps]\0A\00"
+@.str21656 = private unnamed_addr constant [8 x i8] c"windows\00"
+@.str21657 = private unnamed_addr constant [27 x i8] c"ludicc: cannot open input\0A\00"
+@.str21658 = private unnamed_addr constant [11 x i8] c"LUDIC_DEPS\00"
+@.str21659 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21660 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21661 = private unnamed_addr constant [10 x i8] c"/dev/null\00"
+@.str21662 = private unnamed_addr constant [3 x i8] c"wb\00"
+@.str21663 = private unnamed_addr constant [22 x i8] c"ludicc: cannot write \00"
+@.str21664 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21665 = private unnamed_addr constant [5 x i8] c"TEMP\00"
+@.str21666 = private unnamed_addr constant [2 x i8] c".\00"
+@.str21667 = private unnamed_addr constant [12 x i8] c"/ludic-run-\00"
+@.str21668 = private unnamed_addr constant [16 x i8] c"/tmp/ludic-run-\00"
+@.str21669 = private unnamed_addr constant [5 x i8] c".exe\00"
+@.str21670 = private unnamed_addr constant [5 x i8] c".exe\00"
+@.str21671 = private unnamed_addr constant [4 x i8] c".ll\00"
+@.str21672 = private unnamed_addr constant [25 x i8] c"ludicc: cannot write IR\0A\00"
+@.str21673 = private unnamed_addr constant [10 x i8] c"LUDIC_OPT\00"
+@.str21674 = private unnamed_addr constant [2 x i8] c"2\00"
+@.str21675 = private unnamed_addr constant [4 x i8] c" -O\00"
+@.str21676 = private unnamed_addr constant [23 x i8] c" -Wno-override-module \00"
+@.str21677 = private unnamed_addr constant [4 x i8] c" -O\00"
+@.str21678 = private unnamed_addr constant [22 x i8] c" -Wno-override-module\00"
+@.str21679 = private unnamed_addr constant [24 x i8] c"runtime/native/win32.ll\00"
 @.str21680 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21681 = private unnamed_addr constant [19 x i8] c" -lxaudio2 -lole32\00"
-@.str21682 = private unnamed_addr constant [24 x i8] c"runtime/native/cocoa.ll\00"
+@.str21681 = private unnamed_addr constant [63 x i8] c" -luser32 -lgdi32 -lxinput -lole32 -Wl,/ignore:importeddllmain\00"
+@.str21682 = private unnamed_addr constant [28 x i8] c"runtime/native/audio_win.ll\00"
 @.str21683 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21684 = private unnamed_addr constant [79 x i8] c" -framework Cocoa -Wl,-needed_framework,GameController -Wl,-rpath,@loader_path\00"
-@.str21685 = private unnamed_addr constant [24 x i8] c"runtime/native/audio.ll\00"
+@.str21684 = private unnamed_addr constant [19 x i8] c" -lxaudio2 -lole32\00"
+@.str21685 = private unnamed_addr constant [24 x i8] c"runtime/native/cocoa.ll\00"
 @.str21686 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21687 = private unnamed_addr constant [36 x i8] c" -Wl,-needed_framework,AVFoundation\00"
-@.str21688 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21689 = private unnamed_addr constant [30 x i8] c"runtime/native/threads_win.ll\00"
-@.str21690 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21691 = private unnamed_addr constant [26 x i8] c"runtime/native/threads.ll\00"
-@.str21692 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21693 = private unnamed_addr constant [26 x i8] c"runtime/native/udp_win.ll\00"
-@.str21694 = private unnamed_addr constant [10 x i8] c" -lws2_32\00"
+@.str21687 = private unnamed_addr constant [79 x i8] c" -framework Cocoa -Wl,-needed_framework,GameController -Wl,-rpath,@loader_path\00"
+@.str21688 = private unnamed_addr constant [24 x i8] c"runtime/native/audio.ll\00"
+@.str21689 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21690 = private unnamed_addr constant [36 x i8] c" -Wl,-needed_framework,AVFoundation\00"
+@.str21691 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21692 = private unnamed_addr constant [30 x i8] c"runtime/native/threads_win.ll\00"
+@.str21693 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21694 = private unnamed_addr constant [26 x i8] c"runtime/native/threads.ll\00"
 @.str21695 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21696 = private unnamed_addr constant [22 x i8] c"runtime/native/udp.ll\00"
-@.str21697 = private unnamed_addr constant [12 x i8] c" -ladvapi32\00"
+@.str21696 = private unnamed_addr constant [26 x i8] c"runtime/native/udp_win.ll\00"
+@.str21697 = private unnamed_addr constant [10 x i8] c" -lws2_32\00"
 @.str21698 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21699 = private unnamed_addr constant [30 x i8] c"runtime/native/process_win.ll\00"
-@.str21700 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21701 = private unnamed_addr constant [26 x i8] c"runtime/native/process.ll\00"
-@.str21702 = private unnamed_addr constant [27 x i8] c"runtime/native/http_win.ll\00"
+@.str21699 = private unnamed_addr constant [22 x i8] c"runtime/native/udp.ll\00"
+@.str21700 = private unnamed_addr constant [12 x i8] c" -ladvapi32\00"
+@.str21701 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21702 = private unnamed_addr constant [30 x i8] c"runtime/native/process_win.ll\00"
 @.str21703 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21704 = private unnamed_addr constant [11 x i8] c" -lwinhttp\00"
-@.str21705 = private unnamed_addr constant [23 x i8] c"runtime/native/http.ll\00"
+@.str21704 = private unnamed_addr constant [26 x i8] c"runtime/native/process.ll\00"
+@.str21705 = private unnamed_addr constant [27 x i8] c"runtime/native/http_win.ll\00"
 @.str21706 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21707 = private unnamed_addr constant [34 x i8] c" -Wl,-needed_framework,Foundation\00"
-@.str21708 = private unnamed_addr constant [25 x i8] c"runtime/native/gl_win.ll\00"
-@.str21709 = private unnamed_addr constant [32 x i8] c"runtime/native/gl_thunks_win.ll\00"
-@.str21710 = private unnamed_addr constant [31 x i8] c"runtime/native/gl_win_nowin.ll\00"
-@.str21711 = private unnamed_addr constant [27 x i8] c"runtime/native/win32_gl.ll\00"
-@.str21712 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21713 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21714 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21715 = private unnamed_addr constant [29 x i8] c" -luser32 -lgdi32 -lopengl32\00"
-@.str21716 = private unnamed_addr constant [21 x i8] c"runtime/native/gl.ll\00"
-@.str21717 = private unnamed_addr constant [28 x i8] c"runtime/native/gl_thunks.ll\00"
-@.str21718 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21719 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21720 = private unnamed_addr constant [19 x i8] c" -framework OpenGL\00"
-@.str21721 = private unnamed_addr constant [28 x i8] c"runtime/native/vk_thunks.ll\00"
-@.str21722 = private unnamed_addr constant [25 x i8] c"runtime/native/vk_mac.ll\00"
-@.str21723 = private unnamed_addr constant [25 x i8] c"runtime/native/vk_win.ll\00"
-@.str21724 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21725 = private unnamed_addr constant [2 x i8] c" \00"
-@.str21726 = private unnamed_addr constant [34 x i8] c" -Wl,-needed_framework,QuartzCore\00"
-@.str21727 = private unnamed_addr constant [50 x i8] c" -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup\00"
-@.str21728 = private unnamed_addr constant [3 x i8] c" \22\00"
-@.str21729 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:33054: index out of range: \00"
-@.str21730 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21731 = private unnamed_addr constant [5 x i8] c" -o \00"
-@.str21732 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21707 = private unnamed_addr constant [11 x i8] c" -lwinhttp\00"
+@.str21708 = private unnamed_addr constant [23 x i8] c"runtime/native/http.ll\00"
+@.str21709 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21710 = private unnamed_addr constant [34 x i8] c" -Wl,-needed_framework,Foundation\00"
+@.str21711 = private unnamed_addr constant [25 x i8] c"runtime/native/gl_win.ll\00"
+@.str21712 = private unnamed_addr constant [32 x i8] c"runtime/native/gl_thunks_win.ll\00"
+@.str21713 = private unnamed_addr constant [31 x i8] c"runtime/native/gl_win_nowin.ll\00"
+@.str21714 = private unnamed_addr constant [27 x i8] c"runtime/native/win32_gl.ll\00"
+@.str21715 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21716 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21717 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21718 = private unnamed_addr constant [29 x i8] c" -luser32 -lgdi32 -lopengl32\00"
+@.str21719 = private unnamed_addr constant [21 x i8] c"runtime/native/gl.ll\00"
+@.str21720 = private unnamed_addr constant [28 x i8] c"runtime/native/gl_thunks.ll\00"
+@.str21721 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21722 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21723 = private unnamed_addr constant [19 x i8] c" -framework OpenGL\00"
+@.str21724 = private unnamed_addr constant [28 x i8] c"runtime/native/vk_thunks.ll\00"
+@.str21725 = private unnamed_addr constant [25 x i8] c"runtime/native/vk_mac.ll\00"
+@.str21726 = private unnamed_addr constant [25 x i8] c"runtime/native/vk_win.ll\00"
+@.str21727 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21728 = private unnamed_addr constant [2 x i8] c" \00"
+@.str21729 = private unnamed_addr constant [34 x i8] c" -Wl,-needed_framework,QuartzCore\00"
+@.str21730 = private unnamed_addr constant [50 x i8] c" -Wl,/subsystem:windows -Wl,/entry:mainCRTStartup\00"
+@.str21731 = private unnamed_addr constant [3 x i8] c" \22\00"
+@.str21732 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:33054: index out of range: \00"
 @.str21733 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21734 = private unnamed_addr constant [21 x i8] c"ludicc: link failed\0A\00"
-@.str21735 = private unnamed_addr constant [1 x i8] c"\00"
-@.str21736 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:33069: index out of range: \00"
-@.str21737 = private unnamed_addr constant [2 x i8] c"\0A\00"
-@.str21738 = private unnamed_addr constant [3 x i8] c"wb\00"
-@.str21739 = private unnamed_addr constant [2 x i8] c"\22\00"
-@.str21740 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21734 = private unnamed_addr constant [5 x i8] c" -o \00"
+@.str21735 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21736 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21737 = private unnamed_addr constant [21 x i8] c"ludicc: link failed\0A\00"
+@.str21738 = private unnamed_addr constant [1 x i8] c"\00"
+@.str21739 = private unnamed_addr constant [55 x i8] c"build/cfree/selfhost.ludic:33069: index out of range: \00"
+@.str21740 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str21741 = private unnamed_addr constant [3 x i8] c"wb\00"
+@.str21742 = private unnamed_addr constant [2 x i8] c"\22\00"
+@.str21743 = private unnamed_addr constant [2 x i8] c"\22\00"
 define i32 @lp_str_eq(ptr %a, ptr %b) {
 entry:
   br label %loop
@@ -23585,56 +23588,56 @@ sod:
   store i32 %fcnt, ptr %d2
   ret ptr %h
 }
-@.str21741 = private unnamed_addr constant [4 x i8] c"png\00"
-@.str21742 = private unnamed_addr constant [10 x i8] c"image/png\00"
-@.str21743 = private unnamed_addr constant [4 x i8] c"jpg\00"
-@.str21744 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
-@.str21745 = private unnamed_addr constant [5 x i8] c"jpeg\00"
-@.str21746 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
-@.str21747 = private unnamed_addr constant [4 x i8] c"gif\00"
-@.str21748 = private unnamed_addr constant [10 x i8] c"image/gif\00"
-@.str21749 = private unnamed_addr constant [4 x i8] c"bmp\00"
-@.str21750 = private unnamed_addr constant [10 x i8] c"image/bmp\00"
-@.str21751 = private unnamed_addr constant [5 x i8] c"webp\00"
-@.str21752 = private unnamed_addr constant [11 x i8] c"image/webp\00"
-@.str21753 = private unnamed_addr constant [4 x i8] c"svg\00"
-@.str21754 = private unnamed_addr constant [14 x i8] c"image/svg+xml\00"
-@.str21755 = private unnamed_addr constant [4 x i8] c"txt\00"
-@.str21756 = private unnamed_addr constant [11 x i8] c"text/plain\00"
-@.str21757 = private unnamed_addr constant [3 x i8] c"md\00"
-@.str21758 = private unnamed_addr constant [14 x i8] c"text/markdown\00"
-@.str21759 = private unnamed_addr constant [4 x i8] c"csv\00"
-@.str21760 = private unnamed_addr constant [9 x i8] c"text/csv\00"
-@.str21761 = private unnamed_addr constant [5 x i8] c"html\00"
-@.str21762 = private unnamed_addr constant [10 x i8] c"text/html\00"
-@.str21763 = private unnamed_addr constant [4 x i8] c"htm\00"
-@.str21764 = private unnamed_addr constant [10 x i8] c"text/html\00"
-@.str21765 = private unnamed_addr constant [4 x i8] c"css\00"
-@.str21766 = private unnamed_addr constant [9 x i8] c"text/css\00"
-@.str21767 = private unnamed_addr constant [3 x i8] c"js\00"
-@.str21768 = private unnamed_addr constant [16 x i8] c"text/javascript\00"
-@.str21769 = private unnamed_addr constant [5 x i8] c"json\00"
-@.str21770 = private unnamed_addr constant [17 x i8] c"application/json\00"
-@.str21771 = private unnamed_addr constant [4 x i8] c"xml\00"
-@.str21772 = private unnamed_addr constant [16 x i8] c"application/xml\00"
-@.str21773 = private unnamed_addr constant [4 x i8] c"zip\00"
-@.str21774 = private unnamed_addr constant [16 x i8] c"application/zip\00"
-@.str21775 = private unnamed_addr constant [4 x i8] c"pdf\00"
-@.str21776 = private unnamed_addr constant [16 x i8] c"application/pdf\00"
-@.str21777 = private unnamed_addr constant [4 x i8] c"wav\00"
-@.str21778 = private unnamed_addr constant [10 x i8] c"audio/wav\00"
-@.str21779 = private unnamed_addr constant [4 x i8] c"ogg\00"
-@.str21780 = private unnamed_addr constant [10 x i8] c"audio/ogg\00"
-@.str21781 = private unnamed_addr constant [4 x i8] c"mp3\00"
-@.str21782 = private unnamed_addr constant [11 x i8] c"audio/mpeg\00"
-@.str21783 = private unnamed_addr constant [4 x i8] c"ttf\00"
-@.str21784 = private unnamed_addr constant [9 x i8] c"font/ttf\00"
-@.str21785 = private unnamed_addr constant [4 x i8] c"otf\00"
-@.str21786 = private unnamed_addr constant [9 x i8] c"font/otf\00"
-@.str21787 = private unnamed_addr constant [6 x i8] c"ludic\00"
-@.str21788 = private unnamed_addr constant [13 x i8] c"text/x-ludic\00"
-@.str21789 = private unnamed_addr constant [25 x i8] c"application/octet-stream\00"
-@mime_tbl = private unnamed_addr constant [24 x { ptr, ptr }] [{ ptr, ptr } { ptr @.str21741, ptr @.str21742 }, { ptr, ptr } { ptr @.str21743, ptr @.str21744 }, { ptr, ptr } { ptr @.str21745, ptr @.str21746 }, { ptr, ptr } { ptr @.str21747, ptr @.str21748 }, { ptr, ptr } { ptr @.str21749, ptr @.str21750 }, { ptr, ptr } { ptr @.str21751, ptr @.str21752 }, { ptr, ptr } { ptr @.str21753, ptr @.str21754 }, { ptr, ptr } { ptr @.str21755, ptr @.str21756 }, { ptr, ptr } { ptr @.str21757, ptr @.str21758 }, { ptr, ptr } { ptr @.str21759, ptr @.str21760 }, { ptr, ptr } { ptr @.str21761, ptr @.str21762 }, { ptr, ptr } { ptr @.str21763, ptr @.str21764 }, { ptr, ptr } { ptr @.str21765, ptr @.str21766 }, { ptr, ptr } { ptr @.str21767, ptr @.str21768 }, { ptr, ptr } { ptr @.str21769, ptr @.str21770 }, { ptr, ptr } { ptr @.str21771, ptr @.str21772 }, { ptr, ptr } { ptr @.str21773, ptr @.str21774 }, { ptr, ptr } { ptr @.str21775, ptr @.str21776 }, { ptr, ptr } { ptr @.str21777, ptr @.str21778 }, { ptr, ptr } { ptr @.str21779, ptr @.str21780 }, { ptr, ptr } { ptr @.str21781, ptr @.str21782 }, { ptr, ptr } { ptr @.str21783, ptr @.str21784 }, { ptr, ptr } { ptr @.str21785, ptr @.str21786 }, { ptr, ptr } { ptr @.str21787, ptr @.str21788 }]
+@.str21744 = private unnamed_addr constant [4 x i8] c"png\00"
+@.str21745 = private unnamed_addr constant [10 x i8] c"image/png\00"
+@.str21746 = private unnamed_addr constant [4 x i8] c"jpg\00"
+@.str21747 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
+@.str21748 = private unnamed_addr constant [5 x i8] c"jpeg\00"
+@.str21749 = private unnamed_addr constant [11 x i8] c"image/jpeg\00"
+@.str21750 = private unnamed_addr constant [4 x i8] c"gif\00"
+@.str21751 = private unnamed_addr constant [10 x i8] c"image/gif\00"
+@.str21752 = private unnamed_addr constant [4 x i8] c"bmp\00"
+@.str21753 = private unnamed_addr constant [10 x i8] c"image/bmp\00"
+@.str21754 = private unnamed_addr constant [5 x i8] c"webp\00"
+@.str21755 = private unnamed_addr constant [11 x i8] c"image/webp\00"
+@.str21756 = private unnamed_addr constant [4 x i8] c"svg\00"
+@.str21757 = private unnamed_addr constant [14 x i8] c"image/svg+xml\00"
+@.str21758 = private unnamed_addr constant [4 x i8] c"txt\00"
+@.str21759 = private unnamed_addr constant [11 x i8] c"text/plain\00"
+@.str21760 = private unnamed_addr constant [3 x i8] c"md\00"
+@.str21761 = private unnamed_addr constant [14 x i8] c"text/markdown\00"
+@.str21762 = private unnamed_addr constant [4 x i8] c"csv\00"
+@.str21763 = private unnamed_addr constant [9 x i8] c"text/csv\00"
+@.str21764 = private unnamed_addr constant [5 x i8] c"html\00"
+@.str21765 = private unnamed_addr constant [10 x i8] c"text/html\00"
+@.str21766 = private unnamed_addr constant [4 x i8] c"htm\00"
+@.str21767 = private unnamed_addr constant [10 x i8] c"text/html\00"
+@.str21768 = private unnamed_addr constant [4 x i8] c"css\00"
+@.str21769 = private unnamed_addr constant [9 x i8] c"text/css\00"
+@.str21770 = private unnamed_addr constant [3 x i8] c"js\00"
+@.str21771 = private unnamed_addr constant [16 x i8] c"text/javascript\00"
+@.str21772 = private unnamed_addr constant [5 x i8] c"json\00"
+@.str21773 = private unnamed_addr constant [17 x i8] c"application/json\00"
+@.str21774 = private unnamed_addr constant [4 x i8] c"xml\00"
+@.str21775 = private unnamed_addr constant [16 x i8] c"application/xml\00"
+@.str21776 = private unnamed_addr constant [4 x i8] c"zip\00"
+@.str21777 = private unnamed_addr constant [16 x i8] c"application/zip\00"
+@.str21778 = private unnamed_addr constant [4 x i8] c"pdf\00"
+@.str21779 = private unnamed_addr constant [16 x i8] c"application/pdf\00"
+@.str21780 = private unnamed_addr constant [4 x i8] c"wav\00"
+@.str21781 = private unnamed_addr constant [10 x i8] c"audio/wav\00"
+@.str21782 = private unnamed_addr constant [4 x i8] c"ogg\00"
+@.str21783 = private unnamed_addr constant [10 x i8] c"audio/ogg\00"
+@.str21784 = private unnamed_addr constant [4 x i8] c"mp3\00"
+@.str21785 = private unnamed_addr constant [11 x i8] c"audio/mpeg\00"
+@.str21786 = private unnamed_addr constant [4 x i8] c"ttf\00"
+@.str21787 = private unnamed_addr constant [9 x i8] c"font/ttf\00"
+@.str21788 = private unnamed_addr constant [4 x i8] c"otf\00"
+@.str21789 = private unnamed_addr constant [9 x i8] c"font/otf\00"
+@.str21790 = private unnamed_addr constant [6 x i8] c"ludic\00"
+@.str21791 = private unnamed_addr constant [13 x i8] c"text/x-ludic\00"
+@.str21792 = private unnamed_addr constant [25 x i8] c"application/octet-stream\00"
+@mime_tbl = private unnamed_addr constant [24 x { ptr, ptr }] [{ ptr, ptr } { ptr @.str21744, ptr @.str21745 }, { ptr, ptr } { ptr @.str21746, ptr @.str21747 }, { ptr, ptr } { ptr @.str21748, ptr @.str21749 }, { ptr, ptr } { ptr @.str21750, ptr @.str21751 }, { ptr, ptr } { ptr @.str21752, ptr @.str21753 }, { ptr, ptr } { ptr @.str21754, ptr @.str21755 }, { ptr, ptr } { ptr @.str21756, ptr @.str21757 }, { ptr, ptr } { ptr @.str21758, ptr @.str21759 }, { ptr, ptr } { ptr @.str21760, ptr @.str21761 }, { ptr, ptr } { ptr @.str21762, ptr @.str21763 }, { ptr, ptr } { ptr @.str21764, ptr @.str21765 }, { ptr, ptr } { ptr @.str21766, ptr @.str21767 }, { ptr, ptr } { ptr @.str21768, ptr @.str21769 }, { ptr, ptr } { ptr @.str21770, ptr @.str21771 }, { ptr, ptr } { ptr @.str21772, ptr @.str21773 }, { ptr, ptr } { ptr @.str21774, ptr @.str21775 }, { ptr, ptr } { ptr @.str21776, ptr @.str21777 }, { ptr, ptr } { ptr @.str21778, ptr @.str21779 }, { ptr, ptr } { ptr @.str21780, ptr @.str21781 }, { ptr, ptr } { ptr @.str21782, ptr @.str21783 }, { ptr, ptr } { ptr @.str21784, ptr @.str21785 }, { ptr, ptr } { ptr @.str21786, ptr @.str21787 }, { ptr, ptr } { ptr @.str21788, ptr @.str21789 }, { ptr, ptr } { ptr @.str21790, ptr @.str21791 }]
 define ptr @lp_mime_of(ptr %path) {
 entry:
   %ext = call ptr @lp_path_ext(ptr %path)
@@ -23664,7 +23667,7 @@ nx:
   store i32 %i1, ptr %ip
   br label %lp
 def:
-  %d = call ptr @lp_fs_strdup(ptr @.str21789)
+  %d = call ptr @lp_fs_strdup(ptr @.str21792)
   call void @lp_free(ptr %ext)
   call void @lp_free(ptr %lc)
   ret ptr %d
@@ -294041,36 +294044,36 @@ entry:
   %t96 = alloca ptr
   %t108 = alloca i32
   %t129 = alloca ptr
-  %t162 = alloca ptr
-  %t177 = alloca ptr
-  %t191 = alloca ptr
-  %t193 = alloca ptr
-  %t195 = alloca ptr
-  %t197 = alloca ptr
-  %t199 = alloca ptr
+  %t167 = alloca ptr
+  %t182 = alloca ptr
+  %t196 = alloca ptr
+  %t198 = alloca ptr
+  %t200 = alloca ptr
+  %t202 = alloca ptr
   %t204 = alloca ptr
-  %t223 = alloca ptr
+  %t209 = alloca ptr
   %t228 = alloca ptr
-  %t241 = alloca ptr
+  %t233 = alloca ptr
   %t246 = alloca ptr
-  %t259 = alloca ptr
+  %t251 = alloca ptr
   %t264 = alloca ptr
-  %t266 = alloca ptr
-  %t268 = alloca ptr
-  %t270 = alloca ptr
-  %t291 = alloca ptr
+  %t269 = alloca ptr
+  %t271 = alloca ptr
+  %t273 = alloca ptr
+  %t275 = alloca ptr
   %t296 = alloca ptr
-  %t316 = alloca ptr
-  %t318 = alloca ptr
-  %t320 = alloca ptr
-  %t322 = alloca ptr
+  %t301 = alloca ptr
+  %t321 = alloca ptr
+  %t323 = alloca ptr
+  %t325 = alloca ptr
   %t327 = alloca ptr
   %t332 = alloca ptr
-  %t339 = alloca ptr
-  %t357 = alloca ptr
-  %t364 = alloca ptr
-  %t375 = alloca ptr
+  %t337 = alloca ptr
+  %t344 = alloca ptr
+  %t362 = alloca ptr
+  %t369 = alloca ptr
   %t380 = alloca ptr
+  %t385 = alloca ptr
   call void @fn_emith(ptr @.str21272)
   call void @fn_emit_state_reset()
   call void @fn_emith(ptr @.str21273)
@@ -294385,254 +294388,253 @@ then19:
   call void @fn_emit(ptr @.str21329)
   br label %ifend21
 ifend21:
-  %t139 = call i32 @fn_has_ecs()
-  %t140 = icmp ne i32 %t139, 0
-  br i1 %t140, label %then22, label %ifend24
+  %t139 = call ptr @fn_find_fn(ptr @.str21330)
+  %t140 = icmp ne ptr %t139, null
+  %t141 = zext i1 %t140 to i32
+  %t142 = icmp ne i32 %t141, 0
+  br i1 %t142, label %then22, label %ifend24
 then22:
-  call void @fn_emit(ptr @.str21330)
+  %t143 = call ptr @fn_fn_sym(ptr @.str21332)
+  store i32 10762, ptr @lp_site
+  %t144 = call ptr @lp_str_concat(ptr @.str21331, ptr %t143)
+  store i32 0, ptr @lp_site
+  store i32 10763, ptr @lp_site
+  %t145 = call ptr @lp_str_concat(ptr %t144, ptr @.str21333)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t144)
+  call void @fn_emit(ptr %t145)
   br label %ifend24
 ifend24:
-  call void @fn_emit(ptr @.str21331)
+  call void @fn_emit(ptr @.str21334)
   store i32 0, ptr %t0
   br label %wcond25
 wcond25:
-  %t141 = load i32, ptr %t0
-  %t142 = load ptr, ptr @g_g_tests
-  %t143 = getelementptr inbounds %LSlice, ptr %t142, i32 0, i32 1
-  %t144 = load i32, ptr %t143
-  %t145 = icmp slt i32 %t141, %t144
-  %t146 = zext i1 %t145 to i32
-  %t147 = icmp ne i32 %t146, 0
-  br i1 %t147, label %wbody26, label %wend27
+  %t146 = load i32, ptr %t0
+  %t147 = load ptr, ptr @g_g_tests
+  %t148 = getelementptr inbounds %LSlice, ptr %t147, i32 0, i32 1
+  %t149 = load i32, ptr %t148
+  %t150 = icmp slt i32 %t146, %t149
+  %t151 = zext i1 %t150 to i32
+  %t152 = icmp ne i32 %t151, 0
+  br i1 %t152, label %wbody26, label %wend27
 wbody26:
-  %t148 = load ptr, ptr @g_g_tests
-  %t149 = load i32, ptr %t0
-  %t150 = getelementptr inbounds %LSlice, ptr %t148, i32 0, i32 0
-  %t151 = load ptr, ptr %t150
-  %t152 = getelementptr inbounds %LSlice, ptr %t148, i32 0, i32 1
-  %t153 = load i32, ptr %t152
-  %t154 = icmp ult i32 %t149, %t153
-  br i1 %t154, label %ixok28, label %ixbad29
+  %t153 = load ptr, ptr @g_g_tests
+  %t154 = load i32, ptr %t0
+  %t155 = getelementptr inbounds %LSlice, ptr %t153, i32 0, i32 0
+  %t156 = load ptr, ptr %t155
+  %t157 = getelementptr inbounds %LSlice, ptr %t153, i32 0, i32 1
+  %t158 = load i32, ptr %t157
+  %t159 = icmp ult i32 %t154, %t158
+  br i1 %t159, label %ixok28, label %ixbad29
 ixbad29:
-  store i32 10762, ptr @lp_site
-  %t155 = call ptr @lp_win_stdio(i32 2)
+  store i32 10764, ptr @lp_site
+  %t160 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t155, ptr @.fmt_bounds, ptr @.str21333, i32 %t149, i32 %t153)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t160, ptr @.fmt_bounds, ptr @.str21336, i32 %t154, i32 %t158)
   call void @exit(i32 1)
   unreachable
 ixok28:
-  %t156 = getelementptr inbounds ptr, ptr %t151, i32 %t149
-  %t157 = load ptr, ptr %t156
-  %t158 = getelementptr inbounds %Cmp_Node, ptr %t157, i32 0, i32 1
-  %t159 = load ptr, ptr %t158
-  store i32 10763, ptr @lp_site
-  %t160 = call ptr @lp_str_concat(ptr @.str21332, ptr %t159)
+  %t161 = getelementptr inbounds ptr, ptr %t156, i32 %t154
+  %t162 = load ptr, ptr %t161
+  %t163 = getelementptr inbounds %Cmp_Node, ptr %t162, i32 0, i32 1
+  %t164 = load ptr, ptr %t163
+  store i32 10765, ptr @lp_site
+  %t165 = call ptr @lp_str_concat(ptr @.str21335, ptr %t164)
   store i32 0, ptr @lp_site
-  %t161 = call ptr @fn_emit_str_const(ptr %t160)
-  store ptr %t161, ptr %t162
-  %t163 = load ptr, ptr @g_g_tests
-  %t164 = load i32, ptr %t0
-  %t165 = getelementptr inbounds %LSlice, ptr %t163, i32 0, i32 0
-  %t166 = load ptr, ptr %t165
-  %t167 = getelementptr inbounds %LSlice, ptr %t163, i32 0, i32 1
-  %t168 = load i32, ptr %t167
-  %t169 = icmp ult i32 %t164, %t168
-  br i1 %t169, label %ixok30, label %ixbad31
+  %t166 = call ptr @fn_emit_str_const(ptr %t165)
+  store ptr %t166, ptr %t167
+  %t168 = load ptr, ptr @g_g_tests
+  %t169 = load i32, ptr %t0
+  %t170 = getelementptr inbounds %LSlice, ptr %t168, i32 0, i32 0
+  %t171 = load ptr, ptr %t170
+  %t172 = getelementptr inbounds %LSlice, ptr %t168, i32 0, i32 1
+  %t173 = load i32, ptr %t172
+  %t174 = icmp ult i32 %t169, %t173
+  br i1 %t174, label %ixok30, label %ixbad31
 ixbad31:
-  store i32 10764, ptr @lp_site
-  %t170 = call ptr @lp_win_stdio(i32 2)
+  store i32 10766, ptr @lp_site
+  %t175 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t170, ptr @.fmt_bounds, ptr @.str21335, i32 %t164, i32 %t168)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t175, ptr @.fmt_bounds, ptr @.str21338, i32 %t169, i32 %t173)
   call void @exit(i32 1)
   unreachable
 ixok30:
-  %t171 = getelementptr inbounds ptr, ptr %t166, i32 %t164
-  %t172 = load ptr, ptr %t171
-  %t173 = getelementptr inbounds %Cmp_Node, ptr %t172, i32 0, i32 1
-  %t174 = load ptr, ptr %t173
-  store i32 10765, ptr @lp_site
-  %t175 = call ptr @lp_str_concat(ptr @.str21334, ptr %t174)
+  %t176 = getelementptr inbounds ptr, ptr %t171, i32 %t169
+  %t177 = load ptr, ptr %t176
+  %t178 = getelementptr inbounds %Cmp_Node, ptr %t177, i32 0, i32 1
+  %t179 = load ptr, ptr %t178
+  store i32 10767, ptr @lp_site
+  %t180 = call ptr @lp_str_concat(ptr @.str21337, ptr %t179)
   store i32 0, ptr @lp_site
-  %t176 = call ptr @fn_emit_str_const(ptr %t175)
-  store ptr %t176, ptr %t177
-  %t178 = load ptr, ptr @g_g_tests
-  %t179 = load i32, ptr %t0
-  %t180 = getelementptr inbounds %LSlice, ptr %t178, i32 0, i32 0
-  %t181 = load ptr, ptr %t180
-  %t182 = getelementptr inbounds %LSlice, ptr %t178, i32 0, i32 1
-  %t183 = load i32, ptr %t182
-  %t184 = icmp ult i32 %t179, %t183
-  br i1 %t184, label %ixok32, label %ixbad33
+  %t181 = call ptr @fn_emit_str_const(ptr %t180)
+  store ptr %t181, ptr %t182
+  %t183 = load ptr, ptr @g_g_tests
+  %t184 = load i32, ptr %t0
+  %t185 = getelementptr inbounds %LSlice, ptr %t183, i32 0, i32 0
+  %t186 = load ptr, ptr %t185
+  %t187 = getelementptr inbounds %LSlice, ptr %t183, i32 0, i32 1
+  %t188 = load i32, ptr %t187
+  %t189 = icmp ult i32 %t184, %t188
+  br i1 %t189, label %ixok32, label %ixbad33
 ixbad33:
-  store i32 10766, ptr @lp_site
-  %t185 = call ptr @lp_win_stdio(i32 2)
+  store i32 10768, ptr @lp_site
+  %t190 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t185, ptr @.fmt_bounds, ptr @.str21336, i32 %t179, i32 %t183)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t190, ptr @.fmt_bounds, ptr @.str21339, i32 %t184, i32 %t188)
   call void @exit(i32 1)
   unreachable
 ixok32:
-  %t186 = getelementptr inbounds ptr, ptr %t181, i32 %t179
-  %t187 = load ptr, ptr %t186
-  %t188 = getelementptr inbounds %Cmp_Node, ptr %t187, i32 0, i32 1
-  %t189 = load ptr, ptr %t188
-  %t190 = call ptr @fn_emit_str_const(ptr %t189)
-  store ptr %t190, ptr %t191
-  %t192 = call ptr @fn_lbl(ptr @.str21337)
-  store ptr %t192, ptr %t193
-  %t194 = call ptr @fn_lbl(ptr @.str21338)
-  store ptr %t194, ptr %t195
-  %t196 = call ptr @fn_lbl(ptr @.str21339)
-  store ptr %t196, ptr %t197
-  %t198 = call ptr @fn_emit_bind(ptr @.str21340)
-  store ptr %t198, ptr %t199
-  %t200 = load ptr, ptr %t199
-  store i32 10767, ptr @lp_site
-  %t201 = call ptr @lp_str_concat(ptr @.str21341, ptr %t200)
-  store i32 0, ptr @lp_site
-  store i32 10768, ptr @lp_site
-  %t202 = call ptr @lp_str_concat(ptr %t201, ptr @.str21342)
-  store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t201)
-  %t203 = call ptr @fn_emit_bind(ptr %t202)
+  %t191 = getelementptr inbounds ptr, ptr %t186, i32 %t184
+  %t192 = load ptr, ptr %t191
+  %t193 = getelementptr inbounds %Cmp_Node, ptr %t192, i32 0, i32 1
+  %t194 = load ptr, ptr %t193
+  %t195 = call ptr @fn_emit_str_const(ptr %t194)
+  store ptr %t195, ptr %t196
+  %t197 = call ptr @fn_lbl(ptr @.str21340)
+  store ptr %t197, ptr %t198
+  %t199 = call ptr @fn_lbl(ptr @.str21341)
+  store ptr %t199, ptr %t200
+  %t201 = call ptr @fn_lbl(ptr @.str21342)
+  store ptr %t201, ptr %t202
+  %t203 = call ptr @fn_emit_bind(ptr @.str21343)
   store ptr %t203, ptr %t204
   %t205 = load ptr, ptr %t204
   store i32 10769, ptr @lp_site
-  %t206 = call ptr @lp_str_concat(ptr @.str21343, ptr %t205)
+  %t206 = call ptr @lp_str_concat(ptr @.str21344, ptr %t205)
   store i32 0, ptr @lp_site
   store i32 10770, ptr @lp_site
-  %t207 = call ptr @lp_str_concat(ptr %t206, ptr @.str21344)
+  %t207 = call ptr @lp_str_concat(ptr %t206, ptr @.str21345)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t206)
-  %t208 = load ptr, ptr %t195
+  %t208 = call ptr @fn_emit_bind(ptr %t207)
+  store ptr %t208, ptr %t209
+  %t210 = load ptr, ptr %t209
   store i32 10771, ptr @lp_site
-  %t209 = call ptr @lp_str_concat(ptr %t207, ptr %t208)
+  %t211 = call ptr @lp_str_concat(ptr @.str21346, ptr %t210)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t207)
   store i32 10772, ptr @lp_site
-  %t210 = call ptr @lp_str_concat(ptr %t209, ptr @.str21345)
+  %t212 = call ptr @lp_str_concat(ptr %t211, ptr @.str21347)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t209)
-  %t211 = load ptr, ptr %t193
+  call void @lp_free(ptr %t211)
+  %t213 = load ptr, ptr %t200
   store i32 10773, ptr @lp_site
-  %t212 = call ptr @lp_str_concat(ptr %t210, ptr %t211)
-  store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t210)
-  store i32 10774, ptr @lp_site
-  %t213 = call ptr @lp_str_concat(ptr %t212, ptr @.str21346)
+  %t214 = call ptr @lp_str_concat(ptr %t212, ptr %t213)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t212)
-  call void @fn_emit(ptr %t213)
-  %t214 = load ptr, ptr %t193
+  store i32 10774, ptr @lp_site
+  %t215 = call ptr @lp_str_concat(ptr %t214, ptr @.str21348)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t214)
+  %t216 = load ptr, ptr %t198
   store i32 10775, ptr @lp_site
-  %t215 = call ptr @lp_str_concat(ptr %t214, ptr @.str21347)
+  %t217 = call ptr @lp_str_concat(ptr %t215, ptr %t216)
   store i32 0, ptr @lp_site
-  call void @fn_emit(ptr %t215)
-  %t216 = load ptr, ptr %t199
+  call void @lp_free(ptr %t215)
   store i32 10776, ptr @lp_site
-  %t217 = call ptr @lp_str_concat(ptr @.str21348, ptr %t216)
-  store i32 0, ptr @lp_site
-  store i32 10777, ptr @lp_site
   %t218 = call ptr @lp_str_concat(ptr %t217, ptr @.str21349)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t217)
-  %t219 = load ptr, ptr %t191
+  call void @fn_emit(ptr %t218)
+  %t219 = load ptr, ptr %t198
+  store i32 10777, ptr @lp_site
+  %t220 = call ptr @lp_str_concat(ptr %t219, ptr @.str21350)
+  store i32 0, ptr @lp_site
+  call void @fn_emit(ptr %t220)
+  %t221 = load ptr, ptr %t204
   store i32 10778, ptr @lp_site
-  %t220 = call ptr @lp_str_concat(ptr %t218, ptr %t219)
+  %t222 = call ptr @lp_str_concat(ptr @.str21351, ptr %t221)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t218)
   store i32 10779, ptr @lp_site
-  %t221 = call ptr @lp_str_concat(ptr %t220, ptr @.str21350)
+  %t223 = call ptr @lp_str_concat(ptr %t222, ptr @.str21352)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t220)
-  %t222 = call ptr @fn_emit_bind(ptr %t221)
-  store ptr %t222, ptr %t223
-  %t224 = load ptr, ptr %t223
+  call void @lp_free(ptr %t222)
+  %t224 = load ptr, ptr %t196
   store i32 10780, ptr @lp_site
-  %t225 = call ptr @lp_str_concat(ptr @.str21351, ptr %t224)
+  %t225 = call ptr @lp_str_concat(ptr %t223, ptr %t224)
   store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t223)
   store i32 10781, ptr @lp_site
-  %t226 = call ptr @lp_str_concat(ptr %t225, ptr @.str21352)
+  %t226 = call ptr @lp_str_concat(ptr %t225, ptr @.str21353)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t225)
   %t227 = call ptr @fn_emit_bind(ptr %t226)
   store ptr %t227, ptr %t228
   %t229 = load ptr, ptr %t228
   store i32 10782, ptr @lp_site
-  %t230 = call ptr @lp_str_concat(ptr @.str21353, ptr %t229)
+  %t230 = call ptr @lp_str_concat(ptr @.str21354, ptr %t229)
   store i32 0, ptr @lp_site
   store i32 10783, ptr @lp_site
-  %t231 = call ptr @lp_str_concat(ptr %t230, ptr @.str21354)
+  %t231 = call ptr @lp_str_concat(ptr %t230, ptr @.str21355)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t230)
-  %t232 = load ptr, ptr %t195
+  %t232 = call ptr @fn_emit_bind(ptr %t231)
+  store ptr %t232, ptr %t233
+  %t234 = load ptr, ptr %t233
   store i32 10784, ptr @lp_site
-  %t233 = call ptr @lp_str_concat(ptr %t231, ptr %t232)
+  %t235 = call ptr @lp_str_concat(ptr @.str21356, ptr %t234)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t231)
   store i32 10785, ptr @lp_site
-  %t234 = call ptr @lp_str_concat(ptr %t233, ptr @.str21355)
+  %t236 = call ptr @lp_str_concat(ptr %t235, ptr @.str21357)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t233)
-  %t235 = load ptr, ptr %t197
+  call void @lp_free(ptr %t235)
+  %t237 = load ptr, ptr %t200
   store i32 10786, ptr @lp_site
-  %t236 = call ptr @lp_str_concat(ptr %t234, ptr %t235)
-  store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t234)
-  store i32 10787, ptr @lp_site
-  %t237 = call ptr @lp_str_concat(ptr %t236, ptr @.str21356)
+  %t238 = call ptr @lp_str_concat(ptr %t236, ptr %t237)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t236)
-  call void @fn_emit(ptr %t237)
-  %t238 = load ptr, ptr %t195
+  store i32 10787, ptr @lp_site
+  %t239 = call ptr @lp_str_concat(ptr %t238, ptr @.str21358)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t238)
+  %t240 = load ptr, ptr %t202
   store i32 10788, ptr @lp_site
-  %t239 = call ptr @lp_str_concat(ptr %t238, ptr @.str21357)
+  %t241 = call ptr @lp_str_concat(ptr %t239, ptr %t240)
   store i32 0, ptr @lp_site
-  call void @fn_emit(ptr %t239)
-  %t240 = call ptr @fn_emit_bind(ptr @.str21358)
-  store ptr %t240, ptr %t241
-  %t242 = load ptr, ptr %t241
+  call void @lp_free(ptr %t239)
   store i32 10789, ptr @lp_site
-  %t243 = call ptr @lp_str_concat(ptr @.str21359, ptr %t242)
+  %t242 = call ptr @lp_str_concat(ptr %t241, ptr @.str21359)
   store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t241)
+  call void @fn_emit(ptr %t242)
+  %t243 = load ptr, ptr %t200
   store i32 10790, ptr @lp_site
   %t244 = call ptr @lp_str_concat(ptr %t243, ptr @.str21360)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t243)
-  %t245 = call ptr @fn_emit_bind(ptr %t244)
+  call void @fn_emit(ptr %t244)
+  %t245 = call ptr @fn_emit_bind(ptr @.str21361)
   store ptr %t245, ptr %t246
   %t247 = load ptr, ptr %t246
   store i32 10791, ptr @lp_site
-  %t248 = call ptr @lp_str_concat(ptr @.str21361, ptr %t247)
+  %t248 = call ptr @lp_str_concat(ptr @.str21362, ptr %t247)
   store i32 0, ptr @lp_site
   store i32 10792, ptr @lp_site
-  %t249 = call ptr @lp_str_concat(ptr %t248, ptr @.str21362)
+  %t249 = call ptr @lp_str_concat(ptr %t248, ptr @.str21363)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t248)
-  call void @fn_emit(ptr %t249)
-  call void @fn_emit(ptr @.str21363)
-  %t250 = load i32, ptr %t0
-  %t251 = icmp sgt i32 %t250, 0
-  %t252 = zext i1 %t251 to i32
-  %t253 = icmp ne i32 %t252, 0
-  br i1 %t253, label %then34, label %ifend36
-then34:
-  call void @fn_emit(ptr @.str21364)
-  call void @fn_emit(ptr @.str21365)
-  br label %ifend36
-ifend36:
-  %t254 = load i32, ptr %t0
-  %t255 = call ptr @fn_itoa(i32 %t254)
+  %t250 = call ptr @fn_emit_bind(ptr %t249)
+  store ptr %t250, ptr %t251
+  %t252 = load ptr, ptr %t251
   store i32 10793, ptr @lp_site
-  %t256 = call ptr @lp_str_concat(ptr @.str21366, ptr %t255)
+  %t253 = call ptr @lp_str_concat(ptr @.str21364, ptr %t252)
   store i32 0, ptr @lp_site
   store i32 10794, ptr @lp_site
-  %t257 = call ptr @lp_str_concat(ptr %t256, ptr @.str21367)
+  %t254 = call ptr @lp_str_concat(ptr %t253, ptr @.str21365)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t256)
-  call void @fn_emit(ptr %t257)
-  %t258 = call ptr @fn_emit_bind(ptr @.str21368)
-  store ptr %t258, ptr %t259
-  %t260 = load ptr, ptr %t259
+  call void @lp_free(ptr %t253)
+  call void @fn_emit(ptr %t254)
+  call void @fn_emit(ptr @.str21366)
+  %t255 = load i32, ptr %t0
+  %t256 = icmp sgt i32 %t255, 0
+  %t257 = zext i1 %t256 to i32
+  %t258 = icmp ne i32 %t257, 0
+  br i1 %t258, label %then34, label %ifend36
+then34:
+  call void @fn_emit(ptr @.str21367)
+  call void @fn_emit(ptr @.str21368)
+  br label %ifend36
+ifend36:
+  %t259 = load i32, ptr %t0
+  %t260 = call ptr @fn_itoa(i32 %t259)
   store i32 10795, ptr @lp_site
   %t261 = call ptr @lp_str_concat(ptr @.str21369, ptr %t260)
   store i32 0, ptr @lp_site
@@ -294640,286 +294642,297 @@ ifend36:
   %t262 = call ptr @lp_str_concat(ptr %t261, ptr @.str21370)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t261)
-  %t263 = call ptr @fn_emit_bind(ptr %t262)
+  call void @fn_emit(ptr %t262)
+  %t263 = call ptr @fn_emit_bind(ptr @.str21371)
   store ptr %t263, ptr %t264
-  %t265 = call ptr @fn_lbl(ptr @.str21371)
-  store ptr %t265, ptr %t266
-  %t267 = call ptr @fn_lbl(ptr @.str21372)
-  store ptr %t267, ptr %t268
-  %t269 = call ptr @fn_lbl(ptr @.str21373)
-  store ptr %t269, ptr %t270
-  %t271 = load ptr, ptr %t264
+  %t265 = load ptr, ptr %t264
   store i32 10797, ptr @lp_site
-  %t272 = call ptr @lp_str_concat(ptr @.str21374, ptr %t271)
+  %t266 = call ptr @lp_str_concat(ptr @.str21372, ptr %t265)
   store i32 0, ptr @lp_site
   store i32 10798, ptr @lp_site
-  %t273 = call ptr @lp_str_concat(ptr %t272, ptr @.str21375)
+  %t267 = call ptr @lp_str_concat(ptr %t266, ptr @.str21373)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t272)
-  %t274 = load ptr, ptr %t268
+  call void @lp_free(ptr %t266)
+  %t268 = call ptr @fn_emit_bind(ptr %t267)
+  store ptr %t268, ptr %t269
+  %t270 = call ptr @fn_lbl(ptr @.str21374)
+  store ptr %t270, ptr %t271
+  %t272 = call ptr @fn_lbl(ptr @.str21375)
+  store ptr %t272, ptr %t273
+  %t274 = call ptr @fn_lbl(ptr @.str21376)
+  store ptr %t274, ptr %t275
+  %t276 = load ptr, ptr %t269
   store i32 10799, ptr @lp_site
-  %t275 = call ptr @lp_str_concat(ptr %t273, ptr %t274)
+  %t277 = call ptr @lp_str_concat(ptr @.str21377, ptr %t276)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t273)
   store i32 10800, ptr @lp_site
-  %t276 = call ptr @lp_str_concat(ptr %t275, ptr @.str21376)
+  %t278 = call ptr @lp_str_concat(ptr %t277, ptr @.str21378)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t275)
-  %t277 = load ptr, ptr %t266
+  call void @lp_free(ptr %t277)
+  %t279 = load ptr, ptr %t273
   store i32 10801, ptr @lp_site
-  %t278 = call ptr @lp_str_concat(ptr %t276, ptr %t277)
-  store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t276)
-  store i32 10802, ptr @lp_site
-  %t279 = call ptr @lp_str_concat(ptr %t278, ptr @.str21377)
+  %t280 = call ptr @lp_str_concat(ptr %t278, ptr %t279)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t278)
-  call void @fn_emit(ptr %t279)
-  %t280 = load ptr, ptr %t266
+  store i32 10802, ptr @lp_site
+  %t281 = call ptr @lp_str_concat(ptr %t280, ptr @.str21379)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t280)
+  %t282 = load ptr, ptr %t271
   store i32 10803, ptr @lp_site
-  %t281 = call ptr @lp_str_concat(ptr %t280, ptr @.str21378)
+  %t283 = call ptr @lp_str_concat(ptr %t281, ptr %t282)
   store i32 0, ptr @lp_site
-  call void @fn_emit(ptr %t281)
-  %t282 = load ptr, ptr %t162
+  call void @lp_free(ptr %t281)
   store i32 10804, ptr @lp_site
-  %t283 = call ptr @lp_str_concat(ptr @.str21379, ptr %t282)
-  store i32 0, ptr @lp_site
-  store i32 10805, ptr @lp_site
   %t284 = call ptr @lp_str_concat(ptr %t283, ptr @.str21380)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t283)
   call void @fn_emit(ptr %t284)
-  %t285 = load ptr, ptr %t270
+  %t285 = load ptr, ptr %t271
+  store i32 10805, ptr @lp_site
+  %t286 = call ptr @lp_str_concat(ptr %t285, ptr @.str21381)
+  store i32 0, ptr @lp_site
+  call void @fn_emit(ptr %t286)
+  %t287 = load ptr, ptr %t167
   store i32 10806, ptr @lp_site
-  %t286 = call ptr @lp_str_concat(ptr @.str21381, ptr %t285)
+  %t288 = call ptr @lp_str_concat(ptr @.str21382, ptr %t287)
   store i32 0, ptr @lp_site
   store i32 10807, ptr @lp_site
-  %t287 = call ptr @lp_str_concat(ptr %t286, ptr @.str21382)
-  store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t286)
-  call void @fn_emit(ptr %t287)
-  %t288 = load ptr, ptr %t268
-  store i32 10808, ptr @lp_site
   %t289 = call ptr @lp_str_concat(ptr %t288, ptr @.str21383)
   store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t288)
   call void @fn_emit(ptr %t289)
-  %t290 = call ptr @fn_emit_bind(ptr @.str21384)
-  store ptr %t290, ptr %t291
-  %t292 = load ptr, ptr %t291
-  store i32 10809, ptr @lp_site
-  %t293 = call ptr @lp_str_concat(ptr @.str21385, ptr %t292)
+  %t290 = load ptr, ptr %t275
+  store i32 10808, ptr @lp_site
+  %t291 = call ptr @lp_str_concat(ptr @.str21384, ptr %t290)
   store i32 0, ptr @lp_site
+  store i32 10809, ptr @lp_site
+  %t292 = call ptr @lp_str_concat(ptr %t291, ptr @.str21385)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t291)
+  call void @fn_emit(ptr %t292)
+  %t293 = load ptr, ptr %t273
   store i32 10810, ptr @lp_site
   %t294 = call ptr @lp_str_concat(ptr %t293, ptr @.str21386)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t293)
-  %t295 = call ptr @fn_emit_bind(ptr %t294)
+  call void @fn_emit(ptr %t294)
+  %t295 = call ptr @fn_emit_bind(ptr @.str21387)
   store ptr %t295, ptr %t296
   %t297 = load ptr, ptr %t296
   store i32 10811, ptr @lp_site
-  %t298 = call ptr @lp_str_concat(ptr @.str21387, ptr %t297)
+  %t298 = call ptr @lp_str_concat(ptr @.str21388, ptr %t297)
   store i32 0, ptr @lp_site
   store i32 10812, ptr @lp_site
-  %t299 = call ptr @lp_str_concat(ptr %t298, ptr @.str21388)
+  %t299 = call ptr @lp_str_concat(ptr %t298, ptr @.str21389)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t298)
-  call void @fn_emit(ptr %t299)
-  %t300 = load ptr, ptr %t177
+  %t300 = call ptr @fn_emit_bind(ptr %t299)
+  store ptr %t300, ptr %t301
+  %t302 = load ptr, ptr %t301
   store i32 10813, ptr @lp_site
-  %t301 = call ptr @lp_str_concat(ptr @.str21389, ptr %t300)
+  %t303 = call ptr @lp_str_concat(ptr @.str21390, ptr %t302)
   store i32 0, ptr @lp_site
   store i32 10814, ptr @lp_site
-  %t302 = call ptr @lp_str_concat(ptr %t301, ptr @.str21390)
+  %t304 = call ptr @lp_str_concat(ptr %t303, ptr @.str21391)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t301)
-  call void @fn_emit(ptr %t302)
-  %t303 = load ptr, ptr %t270
+  call void @lp_free(ptr %t303)
+  call void @fn_emit(ptr %t304)
+  %t305 = load ptr, ptr %t182
   store i32 10815, ptr @lp_site
-  %t304 = call ptr @lp_str_concat(ptr @.str21391, ptr %t303)
+  %t306 = call ptr @lp_str_concat(ptr @.str21392, ptr %t305)
   store i32 0, ptr @lp_site
   store i32 10816, ptr @lp_site
-  %t305 = call ptr @lp_str_concat(ptr %t304, ptr @.str21392)
-  store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t304)
-  call void @fn_emit(ptr %t305)
-  %t306 = load ptr, ptr %t270
-  store i32 10817, ptr @lp_site
   %t307 = call ptr @lp_str_concat(ptr %t306, ptr @.str21393)
   store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t306)
   call void @fn_emit(ptr %t307)
-  %t308 = load ptr, ptr %t197
-  store i32 10818, ptr @lp_site
+  %t308 = load ptr, ptr %t275
+  store i32 10817, ptr @lp_site
   %t309 = call ptr @lp_str_concat(ptr @.str21394, ptr %t308)
   store i32 0, ptr @lp_site
-  store i32 10819, ptr @lp_site
+  store i32 10818, ptr @lp_site
   %t310 = call ptr @lp_str_concat(ptr %t309, ptr @.str21395)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t309)
   call void @fn_emit(ptr %t310)
-  %t311 = load ptr, ptr %t197
-  store i32 10820, ptr @lp_site
+  %t311 = load ptr, ptr %t275
+  store i32 10819, ptr @lp_site
   %t312 = call ptr @lp_str_concat(ptr %t311, ptr @.str21396)
   store i32 0, ptr @lp_site
   call void @fn_emit(ptr %t312)
-  %t313 = load i32, ptr %t0
-  %t314 = add i32 %t313, 1
-  store i32 %t314, ptr %t0
+  %t313 = load ptr, ptr %t202
+  store i32 10820, ptr @lp_site
+  %t314 = call ptr @lp_str_concat(ptr @.str21397, ptr %t313)
+  store i32 0, ptr @lp_site
+  store i32 10821, ptr @lp_site
+  %t315 = call ptr @lp_str_concat(ptr %t314, ptr @.str21398)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t314)
+  call void @fn_emit(ptr %t315)
+  %t316 = load ptr, ptr %t202
+  store i32 10822, ptr @lp_site
+  %t317 = call ptr @lp_str_concat(ptr %t316, ptr @.str21399)
+  store i32 0, ptr @lp_site
+  call void @fn_emit(ptr %t317)
+  %t318 = load i32, ptr %t0
+  %t319 = add i32 %t318, 1
+  store i32 %t319, ptr %t0
   br label %wcond25
 wend27:
-  %t315 = call ptr @fn_lbl(ptr @.str21397)
-  store ptr %t315, ptr %t316
-  %t317 = call ptr @fn_lbl(ptr @.str21398)
-  store ptr %t317, ptr %t318
-  %t319 = call ptr @fn_emit_bind(ptr @.str21399)
-  store ptr %t319, ptr %t320
-  %t321 = call ptr @fn_emit_bind(ptr @.str21400)
-  store ptr %t321, ptr %t322
-  %t323 = load ptr, ptr %t322
-  store i32 10821, ptr @lp_site
-  %t324 = call ptr @lp_str_concat(ptr @.str21401, ptr %t323)
-  store i32 0, ptr @lp_site
-  store i32 10822, ptr @lp_site
-  %t325 = call ptr @lp_str_concat(ptr %t324, ptr @.str21402)
-  store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t324)
-  %t326 = call ptr @fn_emit_bind(ptr %t325)
+  %t320 = call ptr @fn_lbl(ptr @.str21400)
+  store ptr %t320, ptr %t321
+  %t322 = call ptr @fn_lbl(ptr @.str21401)
+  store ptr %t322, ptr %t323
+  %t324 = call ptr @fn_emit_bind(ptr @.str21402)
+  store ptr %t324, ptr %t325
+  %t326 = call ptr @fn_emit_bind(ptr @.str21403)
   store ptr %t326, ptr %t327
-  %t328 = load ptr, ptr %t320
+  %t328 = load ptr, ptr %t327
   store i32 10823, ptr @lp_site
-  %t329 = call ptr @lp_str_concat(ptr @.str21403, ptr %t328)
+  %t329 = call ptr @lp_str_concat(ptr @.str21404, ptr %t328)
   store i32 0, ptr @lp_site
   store i32 10824, ptr @lp_site
-  %t330 = call ptr @lp_str_concat(ptr %t329, ptr @.str21404)
+  %t330 = call ptr @lp_str_concat(ptr %t329, ptr @.str21405)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t329)
   %t331 = call ptr @fn_emit_bind(ptr %t330)
   store ptr %t331, ptr %t332
-  %t333 = load ptr, ptr %t327
+  %t333 = load ptr, ptr %t325
   store i32 10825, ptr @lp_site
-  %t334 = call ptr @lp_str_concat(ptr @.str21405, ptr %t333)
+  %t334 = call ptr @lp_str_concat(ptr @.str21406, ptr %t333)
   store i32 0, ptr @lp_site
   store i32 10826, ptr @lp_site
-  %t335 = call ptr @lp_str_concat(ptr %t334, ptr @.str21406)
+  %t335 = call ptr @lp_str_concat(ptr %t334, ptr @.str21407)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t334)
-  %t336 = load ptr, ptr %t332
+  %t336 = call ptr @fn_emit_bind(ptr %t335)
+  store ptr %t336, ptr %t337
+  %t338 = load ptr, ptr %t332
   store i32 10827, ptr @lp_site
-  %t337 = call ptr @lp_str_concat(ptr %t335, ptr %t336)
+  %t339 = call ptr @lp_str_concat(ptr @.str21408, ptr %t338)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t335)
-  %t338 = call ptr @fn_emit_bind(ptr %t337)
-  store ptr %t338, ptr %t339
-  %t340 = load ptr, ptr %t339
   store i32 10828, ptr @lp_site
-  %t341 = call ptr @lp_str_concat(ptr @.str21407, ptr %t340)
+  %t340 = call ptr @lp_str_concat(ptr %t339, ptr @.str21409)
   store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t339)
+  %t341 = load ptr, ptr %t337
   store i32 10829, ptr @lp_site
-  %t342 = call ptr @lp_str_concat(ptr %t341, ptr @.str21408)
+  %t342 = call ptr @lp_str_concat(ptr %t340, ptr %t341)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t341)
-  %t343 = load ptr, ptr %t316
+  call void @lp_free(ptr %t340)
+  %t343 = call ptr @fn_emit_bind(ptr %t342)
+  store ptr %t343, ptr %t344
+  %t345 = load ptr, ptr %t344
   store i32 10830, ptr @lp_site
-  %t344 = call ptr @lp_str_concat(ptr %t342, ptr %t343)
+  %t346 = call ptr @lp_str_concat(ptr @.str21410, ptr %t345)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t342)
   store i32 10831, ptr @lp_site
-  %t345 = call ptr @lp_str_concat(ptr %t344, ptr @.str21409)
+  %t347 = call ptr @lp_str_concat(ptr %t346, ptr @.str21411)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t344)
-  %t346 = load ptr, ptr %t318
+  call void @lp_free(ptr %t346)
+  %t348 = load ptr, ptr %t321
   store i32 10832, ptr @lp_site
-  %t347 = call ptr @lp_str_concat(ptr %t345, ptr %t346)
-  store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t345)
-  store i32 10833, ptr @lp_site
-  %t348 = call ptr @lp_str_concat(ptr %t347, ptr @.str21410)
+  %t349 = call ptr @lp_str_concat(ptr %t347, ptr %t348)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t347)
-  call void @fn_emit(ptr %t348)
-  %t349 = load ptr, ptr %t316
+  store i32 10833, ptr @lp_site
+  %t350 = call ptr @lp_str_concat(ptr %t349, ptr @.str21412)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t349)
+  %t351 = load ptr, ptr %t323
   store i32 10834, ptr @lp_site
-  %t350 = call ptr @lp_str_concat(ptr %t349, ptr @.str21411)
+  %t352 = call ptr @lp_str_concat(ptr %t350, ptr %t351)
   store i32 0, ptr @lp_site
-  call void @fn_emit(ptr %t350)
-  %t351 = load ptr, ptr %t322
+  call void @lp_free(ptr %t350)
   store i32 10835, ptr @lp_site
-  %t352 = call ptr @lp_str_concat(ptr @.str21412, ptr %t351)
-  store i32 0, ptr @lp_site
-  store i32 10836, ptr @lp_site
   %t353 = call ptr @lp_str_concat(ptr %t352, ptr @.str21413)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t352)
   call void @fn_emit(ptr %t353)
-  call void @fn_emit(ptr @.str21414)
-  %t354 = load ptr, ptr %t318
-  store i32 10837, ptr @lp_site
-  %t355 = call ptr @lp_str_concat(ptr %t354, ptr @.str21415)
+  %t354 = load ptr, ptr %t321
+  store i32 10836, ptr @lp_site
+  %t355 = call ptr @lp_str_concat(ptr %t354, ptr @.str21414)
   store i32 0, ptr @lp_site
   call void @fn_emit(ptr %t355)
-  %t356 = call ptr @fn_emit_bind(ptr @.str21416)
-  store ptr %t356, ptr %t357
-  %t358 = load ptr, ptr %t320
-  store i32 10838, ptr @lp_site
-  %t359 = call ptr @lp_str_concat(ptr @.str21417, ptr %t358)
+  %t356 = load ptr, ptr %t327
+  store i32 10837, ptr @lp_site
+  %t357 = call ptr @lp_str_concat(ptr @.str21415, ptr %t356)
   store i32 0, ptr @lp_site
+  store i32 10838, ptr @lp_site
+  %t358 = call ptr @lp_str_concat(ptr %t357, ptr @.str21416)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t357)
+  call void @fn_emit(ptr %t358)
+  call void @fn_emit(ptr @.str21417)
+  %t359 = load ptr, ptr %t323
   store i32 10839, ptr @lp_site
   %t360 = call ptr @lp_str_concat(ptr %t359, ptr @.str21418)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t359)
-  %t361 = load ptr, ptr %t357
+  call void @fn_emit(ptr %t360)
+  %t361 = call ptr @fn_emit_bind(ptr @.str21419)
+  store ptr %t361, ptr %t362
+  %t363 = load ptr, ptr %t325
   store i32 10840, ptr @lp_site
-  %t362 = call ptr @lp_str_concat(ptr %t360, ptr %t361)
+  %t364 = call ptr @lp_str_concat(ptr @.str21420, ptr %t363)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t360)
-  %t363 = call ptr @fn_emit_bind(ptr %t362)
-  store ptr %t363, ptr %t364
-  %t365 = load ptr, ptr %t364
   store i32 10841, ptr @lp_site
-  %t366 = call ptr @lp_str_concat(ptr @.str21419, ptr %t365)
+  %t365 = call ptr @lp_str_concat(ptr %t364, ptr @.str21421)
   store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t364)
+  %t366 = load ptr, ptr %t362
   store i32 10842, ptr @lp_site
-  %t367 = call ptr @lp_str_concat(ptr %t366, ptr @.str21420)
+  %t367 = call ptr @lp_str_concat(ptr %t365, ptr %t366)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t366)
-  %t368 = load ptr, ptr %t357
+  call void @lp_free(ptr %t365)
+  %t368 = call ptr @fn_emit_bind(ptr %t367)
+  store ptr %t368, ptr %t369
+  %t370 = load ptr, ptr %t369
   store i32 10843, ptr @lp_site
-  %t369 = call ptr @lp_str_concat(ptr %t367, ptr %t368)
+  %t371 = call ptr @lp_str_concat(ptr @.str21422, ptr %t370)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t367)
   store i32 10844, ptr @lp_site
-  %t370 = call ptr @lp_str_concat(ptr %t369, ptr @.str21421)
+  %t372 = call ptr @lp_str_concat(ptr %t371, ptr @.str21423)
   store i32 0, ptr @lp_site
-  call void @lp_free(ptr %t369)
-  call void @fn_emit(ptr %t370)
-  %t371 = load ptr, ptr %t357
+  call void @lp_free(ptr %t371)
+  %t373 = load ptr, ptr %t362
   store i32 10845, ptr @lp_site
-  %t372 = call ptr @lp_str_concat(ptr @.str21422, ptr %t371)
-  store i32 0, ptr @lp_site
-  store i32 10846, ptr @lp_site
-  %t373 = call ptr @lp_str_concat(ptr %t372, ptr @.str21423)
+  %t374 = call ptr @lp_str_concat(ptr %t372, ptr %t373)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t372)
-  %t374 = call ptr @fn_emit_bind(ptr %t373)
-  store ptr %t374, ptr %t375
-  %t376 = load ptr, ptr %t375
+  store i32 10846, ptr @lp_site
+  %t375 = call ptr @lp_str_concat(ptr %t374, ptr @.str21424)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t374)
+  call void @fn_emit(ptr %t375)
+  %t376 = load ptr, ptr %t362
   store i32 10847, ptr @lp_site
-  %t377 = call ptr @lp_str_concat(ptr @.str21424, ptr %t376)
+  %t377 = call ptr @lp_str_concat(ptr @.str21425, ptr %t376)
   store i32 0, ptr @lp_site
   store i32 10848, ptr @lp_site
-  %t378 = call ptr @lp_str_concat(ptr %t377, ptr @.str21425)
+  %t378 = call ptr @lp_str_concat(ptr %t377, ptr @.str21426)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t377)
   %t379 = call ptr @fn_emit_bind(ptr %t378)
   store ptr %t379, ptr %t380
   %t381 = load ptr, ptr %t380
   store i32 10849, ptr @lp_site
-  %t382 = call ptr @lp_str_concat(ptr @.str21426, ptr %t381)
+  %t382 = call ptr @lp_str_concat(ptr @.str21427, ptr %t381)
   store i32 0, ptr @lp_site
   store i32 10850, ptr @lp_site
-  %t383 = call ptr @lp_str_concat(ptr %t382, ptr @.str21427)
+  %t383 = call ptr @lp_str_concat(ptr %t382, ptr @.str21428)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t382)
-  call void @fn_emit(ptr %t383)
+  %t384 = call ptr @fn_emit_bind(ptr %t383)
+  store ptr %t384, ptr %t385
+  %t386 = load ptr, ptr %t385
+  store i32 10851, ptr @lp_site
+  %t387 = call ptr @lp_str_concat(ptr @.str21429, ptr %t386)
+  store i32 0, ptr @lp_site
+  store i32 10852, ptr @lp_site
+  %t388 = call ptr @lp_str_concat(ptr %t387, ptr @.str21430)
+  store i32 0, ptr @lp_site
+  call void @lp_free(ptr %t387)
+  call void @fn_emit(ptr %t388)
   br label %ret
 ret:
   ret void
@@ -294934,7 +294947,7 @@ entry:
   %t47 = alloca ptr
   %t0 = getelementptr %LSlice, ptr null, i32 1
   %t1 = ptrtoint ptr %t0 to i64
-  store i32 10851, ptr @lp_site
+  store i32 10853, ptr @lp_site
   %t2 = call ptr @lp_malloc(i64 %t1)
   store i32 0, ptr @lp_site
   %t3 = getelementptr inbounds %LSlice, ptr %t2, i32 0, i32 0
@@ -294946,7 +294959,7 @@ entry:
   store ptr %t2, ptr %t6
   %t7 = getelementptr %LSlice, ptr null, i32 1
   %t8 = ptrtoint ptr %t7 to i64
-  store i32 10852, ptr @lp_site
+  store i32 10854, ptr @lp_site
   %t9 = call ptr @lp_malloc(i64 %t8)
   store i32 0, ptr @lp_site
   %t10 = getelementptr inbounds %LSlice, ptr %t9, i32 0, i32 0
@@ -294980,10 +294993,10 @@ wbody1:
   %t30 = icmp ult i32 %t25, %t29
   br i1 %t30, label %ixok3, label %ixbad4
 ixbad4:
-  store i32 10853, ptr @lp_site
+  store i32 10855, ptr @lp_site
   %t31 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t31, ptr @.fmt_bounds, ptr @.str21429, i32 %t25, i32 %t29)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t31, ptr @.fmt_bounds, ptr @.str21432, i32 %t25, i32 %t29)
   call void @exit(i32 1)
   unreachable
 ixok3:
@@ -295022,34 +295035,34 @@ then8:
   %t58 = load ptr, ptr %t34
   %t59 = getelementptr inbounds %Cmp_Node, ptr %t58, i32 0, i32 1
   %t60 = load ptr, ptr %t59
-  store i32 10854, ptr @lp_site
-  %t61 = call ptr @lp_str_concat(ptr @.str21430, ptr %t60)
+  store i32 10856, ptr @lp_site
+  %t61 = call ptr @lp_str_concat(ptr @.str21433, ptr %t60)
   store i32 0, ptr @lp_site
-  store i32 10855, ptr @lp_site
-  %t62 = call ptr @lp_str_concat(ptr %t61, ptr @.str21431)
+  store i32 10857, ptr @lp_site
+  %t62 = call ptr @lp_str_concat(ptr %t61, ptr @.str21434)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t61)
   %t63 = load ptr, ptr %t47
   %t64 = getelementptr inbounds %Cmp_Node, ptr %t63, i32 0, i32 9
   %t65 = load ptr, ptr %t64
-  store i32 10856, ptr @lp_site
+  store i32 10858, ptr @lp_site
   %t66 = call ptr @lp_str_concat(ptr %t62, ptr %t65)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t62)
-  store i32 10857, ptr @lp_site
-  %t67 = call ptr @lp_str_concat(ptr %t66, ptr @.str21432)
+  store i32 10859, ptr @lp_site
+  %t67 = call ptr @lp_str_concat(ptr %t66, ptr @.str21435)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t66)
   %t68 = load ptr, ptr %t47
   %t69 = getelementptr inbounds %Cmp_Node, ptr %t68, i32 0, i32 8
   %t70 = load i32, ptr %t69
   %t71 = call ptr @fn_itoa(i32 %t70)
-  store i32 10858, ptr @lp_site
+  store i32 10860, ptr @lp_site
   %t72 = call ptr @lp_str_concat(ptr %t67, ptr %t71)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t67)
-  store i32 10859, ptr @lp_site
-  %t73 = call ptr @lp_str_concat(ptr %t72, ptr @.str21433)
+  store i32 10861, ptr @lp_site
+  %t73 = call ptr @lp_str_concat(ptr %t72, ptr @.str21436)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t72)
   call void @fn_perr(ptr %t73)
@@ -295179,7 +295192,7 @@ entry:
   %t5 = call ptr @fn_pkg_of_file(ptr %t4)
   store ptr %t5, ptr %t6
   %t7 = load ptr, ptr %t6
-  %t8 = call i32 @lp_str_eq(ptr %t7, ptr @.str21434)
+  %t8 = call i32 @lp_str_eq(ptr %t7, ptr @.str21437)
   %t9 = icmp ne i32 %t8, 0
   br i1 %t9, label %then0, label %ifend2
 then0:
@@ -295191,18 +295204,18 @@ then0:
   br label %ifend2
 ifend2:
   %t14 = load ptr, ptr %t6
-  %t15 = call i32 @lp_str_eq(ptr %t14, ptr @.str21435)
+  %t15 = call i32 @lp_str_eq(ptr %t14, ptr @.str21438)
   %t16 = icmp ne i32 %t15, 0
   br i1 %t16, label %then3, label %ifend5
 then3:
-  store ptr @.str21436, ptr %retval
+  store ptr @.str21439, ptr %retval
   br label %ret
 ifend5:
   %t18 = load ptr, ptr %t0
   %t19 = getelementptr inbounds %Cmp_Node, ptr %t18, i32 0, i32 9
   %t20 = load ptr, ptr %t19
   %t21 = call ptr @fn_pkg_of_file(ptr %t20)
-  %t22 = call i32 @lp_str_eq(ptr %t21, ptr @.str21437)
+  %t22 = call i32 @lp_str_eq(ptr %t21, ptr @.str21440)
   %t23 = icmp eq i32 %t22, 0
   %t24 = zext i1 %t23 to i32
   %t25 = icmp ne i32 %t24, 0
@@ -295214,7 +295227,7 @@ sc6:
   %t28 = getelementptr inbounds %Cmp_Node, ptr %t27, i32 0, i32 9
   %t29 = load ptr, ptr %t28
   %t30 = call ptr @fn_pkg_of_file(ptr %t29)
-  %t31 = call i32 @lp_str_eq(ptr %t30, ptr @.str21438)
+  %t31 = call i32 @lp_str_eq(ptr %t30, ptr @.str21441)
   %t32 = icmp eq i32 %t31, 0
   %t33 = zext i1 %t32 to i32
   %t34 = icmp ne i32 %t33, 0
@@ -295226,15 +295239,15 @@ scend7:
   %t37 = icmp ne i32 %t36, 0
   br i1 %t37, label %then8, label %ifend10
 then8:
-  store ptr @.str21439, ptr %retval
+  store ptr @.str21442, ptr %retval
   br label %ret
 ifend10:
   %t38 = load ptr, ptr %t6
-  store i32 10860, ptr @lp_site
-  %t39 = call ptr @lp_str_concat(ptr @.str21440, ptr %t38)
+  store i32 10862, ptr @lp_site
+  %t39 = call ptr @lp_str_concat(ptr @.str21443, ptr %t38)
   store i32 0, ptr @lp_site
-  store i32 10861, ptr @lp_site
-  %t40 = call ptr @lp_str_concat(ptr %t39, ptr @.str21442)
+  store i32 10863, ptr @lp_site
+  %t40 = call ptr @lp_str_concat(ptr %t39, ptr @.str21445)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t39)
   store ptr %t40, ptr %retval
@@ -295257,7 +295270,7 @@ entry:
   %t68 = alloca ptr
   %t0 = getelementptr %LSlice, ptr null, i32 1
   %t1 = ptrtoint ptr %t0 to i64
-  store i32 10862, ptr @lp_site
+  store i32 10864, ptr @lp_site
   %t2 = call ptr @lp_malloc(i64 %t1)
   store i32 0, ptr @lp_site
   %t3 = getelementptr inbounds %LSlice, ptr %t2, i32 0, i32 0
@@ -295269,7 +295282,7 @@ entry:
   store ptr %t2, ptr %t6
   %t7 = getelementptr %LSlice, ptr null, i32 1
   %t8 = ptrtoint ptr %t7 to i64
-  store i32 10863, ptr @lp_site
+  store i32 10865, ptr @lp_site
   %t9 = call ptr @lp_malloc(i64 %t8)
   store i32 0, ptr @lp_site
   %t10 = getelementptr inbounds %LSlice, ptr %t9, i32 0, i32 0
@@ -295320,10 +295333,10 @@ wbody1:
   %t42 = icmp ult i32 %t37, %t41
   br i1 %t42, label %ixok5, label %ixbad6
 ixbad6:
-  store i32 10864, ptr @lp_site
+  store i32 10866, ptr @lp_site
   %t43 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t43, ptr @.fmt_bounds, ptr @.str21444, i32 %t37, i32 %t41)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t43, ptr @.fmt_bounds, ptr @.str21447, i32 %t37, i32 %t41)
   call void @exit(i32 1)
   unreachable
 ixok5:
@@ -295343,13 +295356,13 @@ ixok5:
 then7:
   %t56 = load i32, ptr %t51
   %t57 = call ptr @fn_itoa(i32 %t56)
-  store i32 10865, ptr @lp_site
-  %t58 = call ptr @lp_str_concat(ptr %t57, ptr @.str21445)
+  store i32 10867, ptr @lp_site
+  %t58 = call ptr @lp_str_concat(ptr %t57, ptr @.str21448)
   store i32 0, ptr @lp_site
   %t59 = load ptr, ptr %t46
   %t60 = getelementptr inbounds %Cmp_Node, ptr %t59, i32 0, i32 1
   %t61 = load ptr, ptr %t60
-  store i32 10866, ptr @lp_site
+  store i32 10868, ptr @lp_site
   %t62 = call ptr @lp_str_concat(ptr %t58, ptr %t61)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t58)
@@ -295376,40 +295389,40 @@ then10:
   %t79 = load ptr, ptr %t46
   %t80 = getelementptr inbounds %Cmp_Node, ptr %t79, i32 0, i32 1
   %t81 = load ptr, ptr %t80
-  store i32 10867, ptr @lp_site
-  %t82 = call ptr @lp_str_concat(ptr @.str21446, ptr %t81)
+  store i32 10869, ptr @lp_site
+  %t82 = call ptr @lp_str_concat(ptr @.str21449, ptr %t81)
   store i32 0, ptr @lp_site
-  store i32 10868, ptr @lp_site
-  %t83 = call ptr @lp_str_concat(ptr %t82, ptr @.str21447)
+  store i32 10870, ptr @lp_site
+  %t83 = call ptr @lp_str_concat(ptr %t82, ptr @.str21450)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t82)
   %t84 = load ptr, ptr %t68
   %t85 = getelementptr inbounds %Cmp_Node, ptr %t84, i32 0, i32 9
   %t86 = load ptr, ptr %t85
-  store i32 10869, ptr @lp_site
+  store i32 10871, ptr @lp_site
   %t87 = call ptr @lp_str_concat(ptr %t83, ptr %t86)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t83)
-  store i32 10870, ptr @lp_site
-  %t88 = call ptr @lp_str_concat(ptr %t87, ptr @.str21448)
+  store i32 10872, ptr @lp_site
+  %t88 = call ptr @lp_str_concat(ptr %t87, ptr @.str21451)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t87)
   %t89 = load ptr, ptr %t68
   %t90 = getelementptr inbounds %Cmp_Node, ptr %t89, i32 0, i32 8
   %t91 = load i32, ptr %t90
   %t92 = call ptr @fn_itoa(i32 %t91)
-  store i32 10871, ptr @lp_site
+  store i32 10873, ptr @lp_site
   %t93 = call ptr @lp_str_concat(ptr %t88, ptr %t92)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t88)
-  store i32 10872, ptr @lp_site
-  %t94 = call ptr @lp_str_concat(ptr %t93, ptr @.str21449)
+  store i32 10874, ptr @lp_site
+  %t94 = call ptr @lp_str_concat(ptr %t93, ptr @.str21452)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t93)
   %t95 = load ptr, ptr %t68
   %t96 = load ptr, ptr %t46
   %t97 = call ptr @fn_dup_whose(ptr %t95, ptr %t96)
-  store i32 10873, ptr @lp_site
+  store i32 10875, ptr @lp_site
   %t98 = call ptr @lp_str_concat(ptr %t94, ptr %t97)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t94)
@@ -295451,7 +295464,7 @@ entry:
   store i32 0, ptr @g_g_uses_fpstr
   %t2 = getelementptr %LSlice, ptr null, i32 1
   %t3 = ptrtoint ptr %t2 to i64
-  store i32 10874, ptr @lp_site
+  store i32 10876, ptr @lp_site
   %t4 = call ptr @lp_malloc(i64 %t3)
   store i32 0, ptr @lp_site
   %t5 = getelementptr inbounds %LSlice, ptr %t4, i32 0, i32 0
@@ -295463,7 +295476,7 @@ entry:
   store ptr %t4, ptr @g_g_fp_decls
   %t8 = getelementptr %LSlice, ptr null, i32 1
   %t9 = ptrtoint ptr %t8 to i64
-  store i32 10875, ptr @lp_site
+  store i32 10877, ptr @lp_site
   %t10 = call ptr @lp_malloc(i64 %t9)
   store i32 0, ptr @lp_site
   %t11 = getelementptr inbounds %LSlice, ptr %t10, i32 0, i32 0
@@ -295484,7 +295497,7 @@ entry:
   store i32 0, ptr @g_g_uses_world_despawn
   %t14 = getelementptr %LSlice, ptr null, i32 1
   %t15 = ptrtoint ptr %t14 to i64
-  store i32 10876, ptr @lp_site
+  store i32 10878, ptr @lp_site
   %t16 = call ptr @lp_malloc(i64 %t15)
   store i32 0, ptr @lp_site
   %t17 = getelementptr inbounds %LSlice, ptr %t16, i32 0, i32 0
@@ -295498,7 +295511,7 @@ entry:
   call void @fn_fence_reset()
   %t20 = getelementptr %LSlice, ptr null, i32 1
   %t21 = ptrtoint ptr %t20 to i64
-  store i32 10877, ptr @lp_site
+  store i32 10879, ptr @lp_site
   %t22 = call ptr @lp_malloc(i64 %t21)
   store i32 0, ptr @lp_site
   %t23 = getelementptr inbounds %LSlice, ptr %t22, i32 0, i32 0
@@ -295510,7 +295523,7 @@ entry:
   store ptr %t22, ptr @g_loc_name
   %t26 = getelementptr %LSlice, ptr null, i32 1
   %t27 = ptrtoint ptr %t26 to i64
-  store i32 10878, ptr @lp_site
+  store i32 10880, ptr @lp_site
   %t28 = call ptr @lp_malloc(i64 %t27)
   store i32 0, ptr @lp_site
   %t29 = getelementptr inbounds %LSlice, ptr %t28, i32 0, i32 0
@@ -295522,7 +295535,7 @@ entry:
   store ptr %t28, ptr @g_loc_reg
   %t32 = getelementptr %LSlice, ptr null, i32 1
   %t33 = ptrtoint ptr %t32 to i64
-  store i32 10879, ptr @lp_site
+  store i32 10881, ptr @lp_site
   %t34 = call ptr @lp_malloc(i64 %t33)
   store i32 0, ptr @lp_site
   %t35 = getelementptr inbounds %LSlice, ptr %t34, i32 0, i32 0
@@ -295534,7 +295547,7 @@ entry:
   store ptr %t34, ptr @g_loc_ty
   %t38 = getelementptr %LSlice, ptr null, i32 1
   %t39 = ptrtoint ptr %t38 to i64
-  store i32 10880, ptr @lp_site
+  store i32 10882, ptr @lp_site
   %t40 = call ptr @lp_malloc(i64 %t39)
   store i32 0, ptr @lp_site
   %t41 = getelementptr inbounds %LSlice, ptr %t40, i32 0, i32 0
@@ -295546,7 +295559,7 @@ entry:
   store ptr %t40, ptr @g_loc_mut
   %t44 = getelementptr %LSlice, ptr null, i32 1
   %t45 = ptrtoint ptr %t44 to i64
-  store i32 10881, ptr @lp_site
+  store i32 10883, ptr @lp_site
   %t46 = call ptr @lp_malloc(i64 %t45)
   store i32 0, ptr @lp_site
   %t47 = getelementptr inbounds %LSlice, ptr %t46, i32 0, i32 0
@@ -295558,7 +295571,7 @@ entry:
   store ptr %t46, ptr @g_brk_lbl
   %t50 = getelementptr %LSlice, ptr null, i32 1
   %t51 = ptrtoint ptr %t50 to i64
-  store i32 10882, ptr @lp_site
+  store i32 10884, ptr @lp_site
   %t52 = call ptr @lp_malloc(i64 %t51)
   store i32 0, ptr @lp_site
   %t53 = getelementptr inbounds %LSlice, ptr %t52, i32 0, i32 0
@@ -295570,7 +295583,7 @@ entry:
   store ptr %t52, ptr @g_cnt_lbl
   %t56 = getelementptr %LSlice, ptr null, i32 1
   %t57 = ptrtoint ptr %t56 to i64
-  store i32 10883, ptr @lp_site
+  store i32 10885, ptr @lp_site
   %t58 = call ptr @lp_malloc(i64 %t57)
   store i32 0, ptr @lp_site
   %t59 = getelementptr inbounds %LSlice, ptr %t58, i32 0, i32 0
@@ -295582,7 +295595,7 @@ entry:
   store ptr %t58, ptr @g_self_stk
   %t62 = getelementptr %LSlice, ptr null, i32 1
   %t63 = ptrtoint ptr %t62 to i64
-  store i32 10884, ptr @lp_site
+  store i32 10886, ptr @lp_site
   %t64 = call ptr @lp_malloc(i64 %t63)
   store i32 0, ptr @lp_site
   %t65 = getelementptr inbounds %LSlice, ptr %t64, i32 0, i32 0
@@ -295622,10 +295635,10 @@ wbody4:
   %t84 = icmp ult i32 %t79, %t83
   br i1 %t84, label %ixok6, label %ixbad7
 ixbad7:
-  store i32 10885, ptr @lp_site
+  store i32 10887, ptr @lp_site
   %t85 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t85, ptr @.fmt_bounds, ptr @.str21452, i32 %t79, i32 %t83)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t85, ptr @.fmt_bounds, ptr @.str21455, i32 %t79, i32 %t83)
   call void @exit(i32 1)
   unreachable
 ixok6:
@@ -295652,10 +295665,10 @@ then8:
   %t103 = icmp ult i32 %t98, %t102
   br i1 %t103, label %ixok11, label %ixbad12
 ixbad12:
-  store i32 10886, ptr @lp_site
+  store i32 10888, ptr @lp_site
   %t104 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t104, ptr @.fmt_bounds, ptr @.str21453, i32 %t98, i32 %t102)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t104, ptr @.fmt_bounds, ptr @.str21456, i32 %t98, i32 %t102)
   call void @exit(i32 1)
   unreachable
 ixok11:
@@ -295767,10 +295780,10 @@ wbody40:
   %t153 = icmp ult i32 %t148, %t152
   br i1 %t153, label %ixok42, label %ixbad43
 ixbad43:
-  store i32 10887, ptr @lp_site
+  store i32 10889, ptr @lp_site
   %t154 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t154, ptr @.fmt_bounds, ptr @.str21454, i32 %t148, i32 %t152)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t154, ptr @.fmt_bounds, ptr @.str21457, i32 %t148, i32 %t152)
   call void @exit(i32 1)
   unreachable
 ixok42:
@@ -295792,10 +295805,10 @@ then44:
   %t168 = icmp ult i32 %t163, %t167
   br i1 %t168, label %ixok47, label %ixbad48
 ixbad48:
-  store i32 10888, ptr @lp_site
+  store i32 10890, ptr @lp_site
   %t169 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t169, ptr @.fmt_bounds, ptr @.str21455, i32 %t163, i32 %t167)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t169, ptr @.fmt_bounds, ptr @.str21458, i32 %t163, i32 %t167)
   call void @exit(i32 1)
   unreachable
 ixok47:
@@ -295839,10 +295852,10 @@ wbody53:
   %t189 = icmp ult i32 %t184, %t188
   br i1 %t189, label %ixok55, label %ixbad56
 ixbad56:
-  store i32 10889, ptr @lp_site
+  store i32 10891, ptr @lp_site
   %t190 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t190, ptr @.fmt_bounds, ptr @.str21456, i32 %t184, i32 %t188)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t190, ptr @.fmt_bounds, ptr @.str21459, i32 %t184, i32 %t188)
   call void @exit(i32 1)
   unreachable
 ixok55:
@@ -295864,10 +295877,10 @@ then57:
   %t204 = icmp ult i32 %t199, %t203
   br i1 %t204, label %ixok60, label %ixbad61
 ixbad61:
-  store i32 10890, ptr @lp_site
+  store i32 10892, ptr @lp_site
   %t205 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t205, ptr @.fmt_bounds, ptr @.str21457, i32 %t199, i32 %t203)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t205, ptr @.fmt_bounds, ptr @.str21460, i32 %t199, i32 %t203)
   call void @exit(i32 1)
   unreachable
 ixok60:
@@ -295905,7 +295918,7 @@ scend63:
   %t220 = icmp ne i32 %t219, 0
   br i1 %t220, label %then64, label %ifend66
 then64:
-  call void @fn_emith(ptr @.str21458)
+  call void @fn_emith(ptr @.str21461)
   br label %ifend66
 ifend66:
   %t221 = load i32, ptr @g_g_uses_world_despawn
@@ -296038,7 +296051,7 @@ scend116:
   %t263 = icmp ne i32 %t262, 0
   br i1 %t263, label %then117, label %ifend119
 then117:
-  call void @fn_emith(ptr @.str21459)
+  call void @fn_emith(ptr @.str21462)
   br label %ifend119
 ifend119:
   %t264 = load i32, ptr @g_g_uses_heap
@@ -296093,11 +296106,11 @@ then138:
   %t281 = icmp ne i32 %t280, 0
   br i1 %t281, label %then141, label %ifend143
 then141:
-  call void @fn_emith(ptr @.str21460)
+  call void @fn_emith(ptr @.str21463)
   store i32 1, ptr @g_g_fprintf_declared
   br label %ifend143
 ifend143:
-  call void @fn_emith(ptr @.str21461)
+  call void @fn_emith(ptr @.str21464)
   br label %ifend140
 ifend140:
   %t282 = load i32, ptr @g_g_uses_bounds
@@ -296110,25 +296123,25 @@ then144:
   %t287 = icmp ne i32 %t286, 0
   br i1 %t287, label %then147, label %ifend149
 then147:
-  call void @fn_emith(ptr @.str21462)
+  call void @fn_emith(ptr @.str21465)
   store i32 1, ptr @g_g_fprintf_declared
   br label %ifend149
 ifend149:
-  call void @fn_emith(ptr @.str21463)
+  call void @fn_emith(ptr @.str21466)
   br label %ifend146
 ifend146:
   %t288 = load i32, ptr @g_g_uses_result
   %t289 = icmp ne i32 %t288, 0
   br i1 %t289, label %then150, label %ifend152
 then150:
-  call void @fn_emith(ptr @.str21464)
+  call void @fn_emith(ptr @.str21467)
   br label %ifend152
 ifend152:
   %t290 = load i32, ptr @g_g_uses_option
   %t291 = icmp ne i32 %t290, 0
   br i1 %t291, label %then153, label %ifend155
 then153:
-  call void @fn_emith(ptr @.str21465)
+  call void @fn_emith(ptr @.str21468)
   br label %ifend155
 ifend155:
   call void @fn_emit_fence_runtime()
@@ -296177,10 +296190,10 @@ ifend5:
   %t12 = load i32, ptr %t7
   %t13 = call ptr @fn_itoa(i32 %t12)
   store ptr %t13, ptr %t14
-  call void @fn_emith(ptr @.str21466)
+  call void @fn_emith(ptr @.str21469)
   %t15 = load ptr, ptr %t14
   call void @fn_emith(ptr %t15)
-  call void @fn_emith(ptr @.str21467)
+  call void @fn_emith(ptr @.str21470)
   store i32 0, ptr %t16
   br label %wcond6
 wcond6:
@@ -296197,10 +296210,10 @@ wbody7:
   %t25 = icmp ne i32 %t24, 0
   br i1 %t25, label %then9, label %ifend11
 then9:
-  call void @fn_emith(ptr @.str21468)
+  call void @fn_emith(ptr @.str21471)
   br label %ifend11
 ifend11:
-  call void @fn_emith(ptr @.str21469)
+  call void @fn_emith(ptr @.str21472)
   %t26 = load ptr, ptr @g_g_cov_lines
   %t27 = load i32, ptr %t16
   %t28 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 0
@@ -296210,10 +296223,10 @@ ifend11:
   %t32 = icmp ult i32 %t27, %t31
   br i1 %t32, label %ixok12, label %ixbad13
 ixbad13:
-  store i32 10891, ptr @lp_site
+  store i32 10893, ptr @lp_site
   %t33 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t33, ptr @.fmt_bounds, ptr @.str21470, i32 %t27, i32 %t31)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t33, ptr @.fmt_bounds, ptr @.str21473, i32 %t27, i32 %t31)
   call void @exit(i32 1)
   unreachable
 ixok12:
@@ -296226,38 +296239,38 @@ ixok12:
   store i32 %t38, ptr %t16
   br label %wcond6
 wend8:
-  call void @fn_emith(ptr @.str21472)
-  call void @fn_emith(ptr @.str21473)
+  call void @fn_emith(ptr @.str21475)
+  call void @fn_emith(ptr @.str21476)
   %t39 = load ptr, ptr %t14
   call void @fn_emith(ptr %t39)
-  call void @fn_emith(ptr @.str21474)
+  call void @fn_emith(ptr @.str21477)
   %t40 = load ptr, ptr %t14
-  store i32 10892, ptr @lp_site
-  %t41 = call ptr @lp_str_concat(ptr @.str21475, ptr %t40)
+  store i32 10894, ptr @lp_site
+  %t41 = call ptr @lp_str_concat(ptr @.str21478, ptr %t40)
   store i32 0, ptr @lp_site
-  store i32 10893, ptr @lp_site
-  %t42 = call ptr @lp_str_concat(ptr %t41, ptr @.str21476)
+  store i32 10895, ptr @lp_site
+  %t42 = call ptr @lp_str_concat(ptr %t41, ptr @.str21479)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t41)
   call void @fn_emith(ptr %t42)
   %t43 = load ptr, ptr @g_g_src_name
   %t44 = call ptr @fn_emit_str_const(ptr %t43)
   store ptr %t44, ptr %t45
-  %t46 = call ptr @fn_emit_str_const(ptr @.str21477)
+  %t46 = call ptr @fn_emit_str_const(ptr @.str21480)
   store ptr %t46, ptr %t47
-  %t48 = call ptr @fn_emit_str_const(ptr @.str21478)
+  %t48 = call ptr @fn_emit_str_const(ptr @.str21481)
   store ptr %t48, ptr %t49
-  %t50 = call ptr @fn_emit_str_const(ptr @.str21479)
+  %t50 = call ptr @fn_emit_str_const(ptr @.str21482)
   store ptr %t50, ptr %t51
-  call void @fn_emith(ptr @.str21480)
-  call void @fn_emith(ptr @.str21481)
+  call void @fn_emith(ptr @.str21483)
+  call void @fn_emith(ptr @.str21484)
   %t52 = load i32, ptr @g_g_fprintf_declared
   %t53 = icmp eq i32 %t52, 0
   %t54 = zext i1 %t53 to i32
   %t55 = icmp ne i32 %t54, 0
   br i1 %t55, label %then14, label %ifend16
 then14:
-  call void @fn_emith(ptr @.str21482)
+  call void @fn_emith(ptr @.str21485)
   store i32 1, ptr @g_g_fprintf_declared
   br label %ifend16
 ifend16:
@@ -296267,76 +296280,73 @@ ifend16:
   %t59 = icmp ne i32 %t58, 0
   br i1 %t59, label %then17, label %ifend19
 then17:
-  call void @fn_emith(ptr @.str21483)
+  call void @fn_emith(ptr @.str21486)
   store i32 1, ptr @g_g_atexit_declared
   br label %ifend19
 ifend19:
-  call void @fn_emit(ptr @.str21484)
+  call void @fn_emit(ptr @.str21487)
   %t60 = load ptr, ptr %t47
-  store i32 10894, ptr @lp_site
-  %t61 = call ptr @lp_str_concat(ptr @.str21485, ptr %t60)
+  store i32 10896, ptr @lp_site
+  %t61 = call ptr @lp_str_concat(ptr @.str21488, ptr %t60)
   store i32 0, ptr @lp_site
-  store i32 10895, ptr @lp_site
-  %t62 = call ptr @lp_str_concat(ptr %t61, ptr @.str21486)
+  store i32 10897, ptr @lp_site
+  %t62 = call ptr @lp_str_concat(ptr %t61, ptr @.str21489)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t61)
   call void @fn_emit(ptr %t62)
-  call void @fn_emit(ptr @.str21487)
+  call void @fn_emit(ptr @.str21490)
   %t63 = load ptr, ptr %t49
-  store i32 10896, ptr @lp_site
-  %t64 = call ptr @lp_str_concat(ptr @.str21488, ptr %t63)
+  store i32 10898, ptr @lp_site
+  %t64 = call ptr @lp_str_concat(ptr @.str21491, ptr %t63)
   store i32 0, ptr @lp_site
-  store i32 10897, ptr @lp_site
-  %t65 = call ptr @lp_str_concat(ptr %t64, ptr @.str21489)
+  store i32 10899, ptr @lp_site
+  %t65 = call ptr @lp_str_concat(ptr %t64, ptr @.str21492)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t64)
   call void @fn_emit(ptr %t65)
   %t66 = load ptr, ptr %t51
-  store i32 10898, ptr @lp_site
-  %t67 = call ptr @lp_str_concat(ptr @.str21490, ptr %t66)
+  store i32 10900, ptr @lp_site
+  %t67 = call ptr @lp_str_concat(ptr @.str21493, ptr %t66)
   store i32 0, ptr @lp_site
-  store i32 10899, ptr @lp_site
-  %t68 = call ptr @lp_str_concat(ptr %t67, ptr @.str21491)
+  store i32 10901, ptr @lp_site
+  %t68 = call ptr @lp_str_concat(ptr %t67, ptr @.str21494)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t67)
   call void @fn_emit(ptr %t68)
-  call void @fn_emit(ptr @.str21492)
-  call void @fn_emit(ptr @.str21493)
-  call void @fn_emit(ptr @.str21494)
+  call void @fn_emit(ptr @.str21495)
+  call void @fn_emit(ptr @.str21496)
+  call void @fn_emit(ptr @.str21497)
   %t69 = load ptr, ptr %t45
-  store i32 10900, ptr @lp_site
-  %t70 = call ptr @lp_str_concat(ptr @.str21495, ptr %t69)
+  store i32 10902, ptr @lp_site
+  %t70 = call ptr @lp_str_concat(ptr @.str21498, ptr %t69)
   store i32 0, ptr @lp_site
-  store i32 10901, ptr @lp_site
-  %t71 = call ptr @lp_str_concat(ptr %t70, ptr @.str21496)
+  store i32 10903, ptr @lp_site
+  %t71 = call ptr @lp_str_concat(ptr %t70, ptr @.str21499)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t70)
   call void @fn_emit(ptr %t71)
-  call void @fn_emit(ptr @.str21497)
-  call void @fn_emit(ptr @.str21498)
-  call void @fn_emit(ptr @.str21499)
+  call void @fn_emit(ptr @.str21500)
+  call void @fn_emit(ptr @.str21501)
+  call void @fn_emit(ptr @.str21502)
   %t72 = load ptr, ptr %t14
-  store i32 10902, ptr @lp_site
-  %t73 = call ptr @lp_str_concat(ptr @.str21500, ptr %t72)
+  store i32 10904, ptr @lp_site
+  %t73 = call ptr @lp_str_concat(ptr @.str21503, ptr %t72)
   store i32 0, ptr @lp_site
-  store i32 10903, ptr @lp_site
-  %t74 = call ptr @lp_str_concat(ptr %t73, ptr @.str21501)
+  store i32 10905, ptr @lp_site
+  %t74 = call ptr @lp_str_concat(ptr %t73, ptr @.str21504)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t73)
   call void @fn_emit(ptr %t74)
-  call void @fn_emit(ptr @.str21502)
-  call void @fn_emit(ptr @.str21503)
-  call void @fn_emit(ptr @.str21504)
-  %t75 = load ptr, ptr %t14
-  call void @fn_emit(ptr %t75)
   call void @fn_emit(ptr @.str21505)
   call void @fn_emit(ptr @.str21506)
   call void @fn_emit(ptr @.str21507)
-  %t76 = load ptr, ptr %t14
-  call void @fn_emit(ptr %t76)
+  %t75 = load ptr, ptr %t14
+  call void @fn_emit(ptr %t75)
   call void @fn_emit(ptr @.str21508)
   call void @fn_emit(ptr @.str21509)
   call void @fn_emit(ptr @.str21510)
+  %t76 = load ptr, ptr %t14
+  call void @fn_emit(ptr %t76)
   call void @fn_emit(ptr @.str21511)
   call void @fn_emit(ptr @.str21512)
   call void @fn_emit(ptr @.str21513)
@@ -296346,7 +296356,10 @@ ifend19:
   call void @fn_emit(ptr @.str21517)
   call void @fn_emit(ptr @.str21518)
   call void @fn_emit(ptr @.str21519)
-  call void @fn_emith(ptr @.str21520)
+  call void @fn_emit(ptr @.str21520)
+  call void @fn_emit(ptr @.str21521)
+  call void @fn_emit(ptr @.str21522)
+  call void @fn_emith(ptr @.str21523)
   br label %ret
 ret:
   ret void
@@ -296364,7 +296377,7 @@ entry:
   %t1 = call ptr @fn_native_ir_lines()
   %t2 = load ptr, ptr @g_head
   %t3 = call ptr @fn_buf_str(ptr %t2)
-  store i32 10904, ptr @lp_site
+  store i32 10906, ptr @lp_site
   %t4 = call ptr @lp_str_concat(ptr %t1, ptr %t3)
   store i32 0, ptr @lp_site
   store ptr %t4, ptr %t5
@@ -296377,7 +296390,7 @@ entry:
   %t12 = icmp ne i32 %t11, 0
   br i1 %t12, label %then0, label %ifend2
 then0:
-  store i32 10905, ptr @lp_site
+  store i32 10907, ptr @lp_site
   %t13 = call ptr @lp_win_stdio(i32 1)
   store i32 0, ptr @lp_site
   store ptr %t13, ptr %t14
@@ -296401,8 +296414,8 @@ then0:
   br label %ret
 ifend2:
   %t31 = load ptr, ptr %t0
-  store i32 10906, ptr @lp_site
-  %t32 = call ptr @lp_pak_open(ptr %t31, ptr @.str21522)
+  store i32 10908, ptr @lp_site
+  %t32 = call ptr @lp_pak_open(ptr %t31, ptr @.str21525)
   store i32 0, ptr @lp_site
   store ptr %t32, ptr %t33
   %t34 = load ptr, ptr %t33
@@ -296446,8 +296459,8 @@ entry:
   %t3 = alloca ptr
   store ptr %arg_p, ptr %t0
   %t1 = load ptr, ptr %t0
-  store i32 10907, ptr @lp_site
-  %t2 = call ptr @lp_pak_open(ptr %t1, ptr @.str21523)
+  store i32 10909, ptr @lp_site
+  %t2 = call ptr @lp_pak_open(ptr %t1, ptr @.str21526)
   store i32 0, ptr @lp_site
   store ptr %t2, ptr %t3
   %t4 = load ptr, ptr %t3
@@ -296480,19 +296493,19 @@ then0:
   store ptr null, ptr %retval
   br label %ret
 ifend2:
-  %t2 = call ptr @fn_getenv_or(ptr @.str21525, ptr @.str21526)
-  %t3 = call i32 @lp_str_eq(ptr %t2, ptr @.str21527)
+  %t2 = call ptr @fn_getenv_or(ptr @.str21528, ptr @.str21529)
+  %t3 = call i32 @lp_str_eq(ptr %t2, ptr @.str21530)
   %t4 = icmp ne i32 %t3, 0
   br i1 %t4, label %then3, label %ifend5
 then3:
   store ptr null, ptr %retval
   br label %ret
 ifend5:
-  %t5 = call ptr @fn_getenv_or(ptr @.str21528, ptr @.str21529)
+  %t5 = call ptr @fn_getenv_or(ptr @.str21531, ptr @.str21532)
   store ptr %t5, ptr %t6
   %t8 = load ptr, ptr %t6
-  store i32 10908, ptr @lp_site
-  %t9 = call ptr @lp_str_concat(ptr %t8, ptr @.str21530)
+  store i32 10910, ptr @lp_site
+  %t9 = call ptr @lp_str_concat(ptr %t8, ptr @.str21533)
   store i32 0, ptr @lp_site
   %t10 = call i32 @fn_split_there(ptr %t9)
   %t11 = icmp eq i32 %t10, 0
@@ -296503,8 +296516,8 @@ ifend5:
   br i1 %t13, label %scend7, label %sc6
 sc6:
   %t15 = load ptr, ptr %t6
-  store i32 10909, ptr @lp_site
-  %t16 = call ptr @lp_str_concat(ptr %t15, ptr @.str21532)
+  store i32 10911, ptr @lp_site
+  %t16 = call ptr @lp_str_concat(ptr %t15, ptr @.str21535)
   store i32 0, ptr @lp_site
   %t17 = call i32 @fn_split_there(ptr %t16)
   %t18 = icmp eq i32 %t17, 0
@@ -296549,7 +296562,7 @@ entry:
   %t114 = alloca i32
   %t158 = alloca i32
   store ptr %arg_tmp, ptr %t0
-  %t1 = call ptr @getenv(ptr @.str21533)
+  %t1 = call ptr @getenv(ptr @.str21536)
   store ptr %t1, ptr %t2
   %t3 = load ptr, ptr %t2
   %t4 = icmp ne ptr %t3, null
@@ -296563,32 +296576,32 @@ then0:
   br label %ret
 ifend2:
   %t9 = load ptr, ptr %t0
-  store i32 10910, ptr @lp_site
-  %t10 = call ptr @lp_str_concat(ptr %t9, ptr @.str21534)
+  store i32 10912, ptr @lp_site
+  %t10 = call ptr @lp_str_concat(ptr %t9, ptr @.str21537)
   store i32 0, ptr @lp_site
   store ptr %t10, ptr %t11
-  store ptr @.str21536, ptr %t12
+  store ptr @.str21539, ptr %t12
   %t13 = load ptr, ptr %t12
-  store i32 10911, ptr @lp_site
-  %t14 = call ptr @lp_str_concat(ptr @.str21537, ptr %t13)
+  store i32 10913, ptr @lp_site
+  %t14 = call ptr @lp_str_concat(ptr @.str21540, ptr %t13)
   store i32 0, ptr @lp_site
-  store i32 10912, ptr @lp_site
-  %t15 = call ptr @lp_str_concat(ptr %t14, ptr @.str21538)
+  store i32 10914, ptr @lp_site
+  %t15 = call ptr @lp_str_concat(ptr %t14, ptr @.str21541)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t14)
   %t16 = load ptr, ptr %t11
-  store i32 10913, ptr @lp_site
+  store i32 10915, ptr @lp_site
   %t17 = call ptr @lp_str_concat(ptr %t15, ptr %t16)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t15)
-  store i32 10914, ptr @lp_site
-  %t18 = call ptr @lp_str_concat(ptr %t17, ptr @.str21539)
+  store i32 10916, ptr @lp_site
+  %t18 = call ptr @lp_str_concat(ptr %t17, ptr @.str21542)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t17)
   %t19 = call i32 @system(ptr %t18)
   %t20 = load ptr, ptr %t11
-  store i32 10915, ptr @lp_site
-  %t21 = call ptr @lp_pak_open(ptr %t20, ptr @.str21540)
+  store i32 10917, ptr @lp_site
+  %t21 = call ptr @lp_pak_open(ptr %t20, ptr @.str21543)
   store i32 0, ptr @lp_site
   store ptr %t21, ptr %t22
   %t23 = load ptr, ptr %t22
@@ -296601,7 +296614,7 @@ then3:
   br label %ret
 ifend5:
   %t27 = zext i32 64 to i64
-  store i32 10916, ptr @lp_site
+  store i32 10918, ptr @lp_site
   %t28 = call ptr @lp_malloc(i64 %t27)
   store i32 0, ptr @lp_site
   store ptr %t28, ptr %t29
@@ -296614,11 +296627,11 @@ ifend5:
   %t36 = load ptr, ptr %t22
   call i32 @fclose(ptr %t36)
   %t37 = load ptr, ptr %t11
-  store i32 10917, ptr @lp_site
-  %t38 = call ptr @lp_str_concat(ptr @.str21541, ptr %t37)
+  store i32 10919, ptr @lp_site
+  %t38 = call ptr @lp_str_concat(ptr @.str21544, ptr %t37)
   store i32 0, ptr @lp_site
-  store i32 10918, ptr @lp_site
-  %t39 = call ptr @lp_str_concat(ptr %t38, ptr @.str21542)
+  store i32 10920, ptr @lp_site
+  %t39 = call ptr @lp_str_concat(ptr %t38, ptr @.str21545)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t38)
   call void @fn_remove_file(ptr %t39)
@@ -296935,47 +296948,47 @@ then3:
   br label %ret
 ifend5:
   %t16 = load ptr, ptr %t1
-  store i32 10919, ptr @lp_site
-  %t17 = call ptr @lp_str_concat(ptr %t16, ptr @.str21543)
+  store i32 10921, ptr @lp_site
+  %t17 = call ptr @lp_str_concat(ptr %t16, ptr @.str21546)
   store i32 0, ptr @lp_site
   store ptr %t17, ptr %t18
   %t19 = load ptr, ptr %t4
-  store i32 10920, ptr @lp_site
-  %t20 = call ptr @lp_str_concat(ptr @.str21545, ptr %t19)
+  store i32 10922, ptr @lp_site
+  %t20 = call ptr @lp_str_concat(ptr @.str21548, ptr %t19)
   store i32 0, ptr @lp_site
-  store i32 10921, ptr @lp_site
-  %t21 = call ptr @lp_str_concat(ptr %t20, ptr @.str21546)
+  store i32 10923, ptr @lp_site
+  %t21 = call ptr @lp_str_concat(ptr %t20, ptr @.str21549)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t20)
   %t22 = load i32, ptr %t11
-  store i32 10922, ptr @lp_site
+  store i32 10924, ptr @lp_site
   %t23 = call ptr @lp_int_str(i32 %t22)
   store i32 0, ptr @lp_site
-  store i32 10923, ptr @lp_site
+  store i32 10925, ptr @lp_site
   %t24 = call ptr @lp_str_concat(ptr %t21, ptr %t23)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t21)
   call void @lp_free(ptr %t23)
-  store i32 10924, ptr @lp_site
-  %t25 = call ptr @lp_str_concat(ptr %t24, ptr @.str21547)
+  store i32 10926, ptr @lp_site
+  %t25 = call ptr @lp_str_concat(ptr %t24, ptr @.str21550)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t24)
   %t26 = load ptr, ptr %t18
-  store i32 10925, ptr @lp_site
+  store i32 10927, ptr @lp_site
   %t27 = call ptr @lp_str_concat(ptr %t25, ptr %t26)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t25)
-  store i32 10926, ptr @lp_site
-  %t28 = call ptr @lp_str_concat(ptr %t27, ptr @.str21548)
+  store i32 10928, ptr @lp_site
+  %t28 = call ptr @lp_str_concat(ptr %t27, ptr @.str21551)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t27)
   %t29 = load ptr, ptr %t0
-  store i32 10927, ptr @lp_site
+  store i32 10929, ptr @lp_site
   %t30 = call ptr @lp_str_concat(ptr %t28, ptr %t29)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t28)
-  store i32 10928, ptr @lp_site
-  %t31 = call ptr @lp_str_concat(ptr %t30, ptr @.str21549)
+  store i32 10930, ptr @lp_site
+  %t31 = call ptr @lp_str_concat(ptr %t30, ptr @.str21552)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t30)
   %t32 = call i32 @system(ptr %t31)
@@ -296987,7 +297000,7 @@ then6:
   store ptr null, ptr %retval
   br label %ret
 ifend8:
-  store ptr @.str21550, ptr %t36
+  store ptr @.str21553, ptr %t36
   store i32 0, ptr %t37
   br label %wcond9
 wcond9:
@@ -297000,53 +297013,53 @@ wcond9:
 wbody10:
   %t43 = load ptr, ptr %t36
   %t44 = load ptr, ptr %t4
-  store i32 10929, ptr @lp_site
-  %t45 = call ptr @lp_str_concat(ptr @.str21551, ptr %t44)
+  store i32 10931, ptr @lp_site
+  %t45 = call ptr @lp_str_concat(ptr @.str21554, ptr %t44)
   store i32 0, ptr @lp_site
-  store i32 10930, ptr @lp_site
-  %t46 = call ptr @lp_str_concat(ptr %t45, ptr @.str21552)
+  store i32 10932, ptr @lp_site
+  %t46 = call ptr @lp_str_concat(ptr %t45, ptr @.str21555)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t45)
   %t47 = load ptr, ptr %t2
-  store i32 10931, ptr @lp_site
+  store i32 10933, ptr @lp_site
   %t48 = call ptr @lp_str_concat(ptr %t46, ptr %t47)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t46)
-  store i32 10932, ptr @lp_site
-  %t49 = call ptr @lp_str_concat(ptr %t48, ptr @.str21553)
+  store i32 10934, ptr @lp_site
+  %t49 = call ptr @lp_str_concat(ptr %t48, ptr @.str21556)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t48)
   %t50 = load ptr, ptr %t18
-  store i32 10933, ptr @lp_site
+  store i32 10935, ptr @lp_site
   %t51 = call ptr @lp_str_concat(ptr %t49, ptr %t50)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t49)
   %t52 = load i32, ptr %t37
   %t53 = call ptr @fn_itoa(i32 %t52)
-  store i32 10934, ptr @lp_site
+  store i32 10936, ptr @lp_site
   %t54 = call ptr @lp_str_concat(ptr %t51, ptr %t53)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t51)
-  store i32 10935, ptr @lp_site
-  %t55 = call ptr @lp_str_concat(ptr %t54, ptr @.str21554)
+  store i32 10937, ptr @lp_site
+  %t55 = call ptr @lp_str_concat(ptr %t54, ptr @.str21557)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t54)
   %t56 = load ptr, ptr %t18
-  store i32 10936, ptr @lp_site
+  store i32 10938, ptr @lp_site
   %t57 = call ptr @lp_str_concat(ptr %t55, ptr %t56)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t55)
   %t58 = load i32, ptr %t37
   %t59 = call ptr @fn_itoa(i32 %t58)
-  store i32 10937, ptr @lp_site
+  store i32 10939, ptr @lp_site
   %t60 = call ptr @lp_str_concat(ptr %t57, ptr %t59)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t57)
-  store i32 10938, ptr @lp_site
-  %t61 = call ptr @lp_str_concat(ptr %t60, ptr @.str21555)
+  store i32 10940, ptr @lp_site
+  %t61 = call ptr @lp_str_concat(ptr %t60, ptr @.str21558)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t60)
-  store i32 10939, ptr @lp_site
+  store i32 10941, ptr @lp_site
   %t62 = call ptr @lp_str_concat(ptr %t43, ptr %t61)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t61)
@@ -297057,15 +297070,15 @@ wbody10:
   br label %wcond9
 wend11:
   %t65 = load ptr, ptr %t36
-  store i32 10940, ptr @lp_site
-  %t66 = call ptr @lp_str_concat(ptr @.str21556, ptr %t65)
+  store i32 10942, ptr @lp_site
+  %t66 = call ptr @lp_str_concat(ptr @.str21559, ptr %t65)
   store i32 0, ptr @lp_site
-  store i32 10941, ptr @lp_site
-  %t67 = call ptr @lp_str_concat(ptr %t66, ptr @.str21557)
+  store i32 10943, ptr @lp_site
+  %t67 = call ptr @lp_str_concat(ptr %t66, ptr @.str21560)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t66)
   %t68 = call i32 @system(ptr %t67)
-  store ptr @.str21558, ptr %t69
+  store ptr @.str21561, ptr %t69
   store i32 1, ptr %t70
   store i32 0, ptr %t37
   br label %wcond12
@@ -297078,28 +297091,28 @@ wcond12:
   br i1 %t75, label %wbody13, label %wend14
 wbody13:
   %t76 = load ptr, ptr %t18
-  store i32 10942, ptr @lp_site
-  %t77 = call ptr @lp_str_concat(ptr @.str21559, ptr %t76)
+  store i32 10944, ptr @lp_site
+  %t77 = call ptr @lp_str_concat(ptr @.str21562, ptr %t76)
   store i32 0, ptr @lp_site
   %t78 = load i32, ptr %t37
   %t79 = call ptr @fn_itoa(i32 %t78)
-  store i32 10943, ptr @lp_site
+  store i32 10945, ptr @lp_site
   %t80 = call ptr @lp_str_concat(ptr %t77, ptr %t79)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t77)
-  store i32 10944, ptr @lp_site
-  %t81 = call ptr @lp_str_concat(ptr %t80, ptr @.str21560)
+  store i32 10946, ptr @lp_site
+  %t81 = call ptr @lp_str_concat(ptr %t80, ptr @.str21563)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t80)
   call void @fn_remove_file(ptr %t81)
   %t82 = load ptr, ptr %t18
   %t83 = load i32, ptr %t37
   %t84 = call ptr @fn_itoa(i32 %t83)
-  store i32 10945, ptr @lp_site
+  store i32 10947, ptr @lp_site
   %t85 = call ptr @lp_str_concat(ptr %t82, ptr %t84)
   store i32 0, ptr @lp_site
-  store i32 10946, ptr @lp_site
-  %t86 = call ptr @lp_str_concat(ptr %t85, ptr @.str21561)
+  store i32 10948, ptr @lp_site
+  %t86 = call ptr @lp_str_concat(ptr %t85, ptr @.str21564)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t85)
   %t87 = call i32 @fn_split_there(ptr %t86)
@@ -297113,20 +297126,20 @@ then15:
 ifend17:
   %t91 = load ptr, ptr %t69
   %t92 = load ptr, ptr %t18
-  store i32 10947, ptr @lp_site
-  %t93 = call ptr @lp_str_concat(ptr @.str21562, ptr %t92)
+  store i32 10949, ptr @lp_site
+  %t93 = call ptr @lp_str_concat(ptr @.str21565, ptr %t92)
   store i32 0, ptr @lp_site
   %t94 = load i32, ptr %t37
   %t95 = call ptr @fn_itoa(i32 %t94)
-  store i32 10948, ptr @lp_site
+  store i32 10950, ptr @lp_site
   %t96 = call ptr @lp_str_concat(ptr %t93, ptr %t95)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t93)
-  store i32 10949, ptr @lp_site
-  %t97 = call ptr @lp_str_concat(ptr %t96, ptr @.str21563)
+  store i32 10951, ptr @lp_site
+  %t97 = call ptr @lp_str_concat(ptr %t96, ptr @.str21566)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t96)
-  store i32 10950, ptr @lp_site
+  store i32 10952, ptr @lp_site
   %t98 = call ptr @lp_str_concat(ptr %t91, ptr %t97)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t97)
@@ -297160,11 +297173,11 @@ entry:
   %t0 = alloca ptr
   store ptr %arg_out, ptr %t0
   %t1 = load ptr, ptr %t0
-  store i32 10951, ptr @lp_site
-  %t2 = call ptr @lp_str_concat(ptr @.str21564, ptr %t1)
+  store i32 10953, ptr @lp_site
+  %t2 = call ptr @lp_str_concat(ptr @.str21567, ptr %t1)
   store i32 0, ptr @lp_site
-  store i32 10952, ptr @lp_site
-  %t3 = call ptr @lp_str_concat(ptr %t2, ptr @.str21566)
+  store i32 10954, ptr @lp_site
+  %t3 = call ptr @lp_str_concat(ptr %t2, ptr @.str21569)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t2)
   %t4 = call i32 @system(ptr %t3)
@@ -297217,7 +297230,7 @@ wend2:
   %t23 = load i32, ptr %t2
   %t24 = add i32 %t23, 1
   %t25 = load i32, ptr %t3
-  store i32 10953, ptr @lp_site
+  store i32 10955, ptr @lp_site
   %t26 = call ptr @lp_str_slice(ptr %t22, i32 %t24, i32 %t25)
   store i32 0, ptr @lp_site
   store ptr %t26, ptr %retval
@@ -297247,10 +297260,10 @@ then0:
   %t10 = load i32, ptr %t4
   %t11 = sub i32 %t10, 6
   %t12 = load i32, ptr %t4
-  store i32 10954, ptr @lp_site
+  store i32 10956, ptr @lp_site
   %t13 = call ptr @lp_str_slice(ptr %t9, i32 %t11, i32 %t12)
   store i32 0, ptr @lp_site
-  %t14 = call i32 @lp_str_eq(ptr %t13, ptr @.str21569)
+  %t14 = call i32 @lp_str_eq(ptr %t13, ptr @.str21572)
   call void @lp_free(ptr %t13)
   %t15 = icmp ne i32 %t14, 0
   br i1 %t15, label %then3, label %ifend5
@@ -297258,7 +297271,7 @@ then3:
   %t16 = load ptr, ptr %t0
   %t17 = load i32, ptr %t4
   %t18 = sub i32 %t17, 6
-  store i32 10955, ptr @lp_site
+  store i32 10957, ptr @lp_site
   %t19 = call ptr @lp_str_slice(ptr %t16, i32 0, i32 %t18)
   store i32 0, ptr @lp_site
   store ptr %t19, ptr %retval
@@ -297339,8 +297352,8 @@ then3:
   br label %ret
 ifend5:
   %t20 = load ptr, ptr %t0
-  store i32 10956, ptr @lp_site
-  %t21 = call ptr @lp_str_concat(ptr %t20, ptr @.str21570)
+  store i32 10958, ptr @lp_site
+  %t21 = call ptr @lp_str_concat(ptr %t20, ptr @.str21573)
   store i32 0, ptr @lp_site
   store ptr %t21, ptr %retval
   br label %ret
@@ -297358,11 +297371,11 @@ entry:
   br i1 %t2, label %then0, label %ifend2
 then0:
   %t3 = load ptr, ptr %t0
-  call void @fn_diag_add(ptr @.str21572, i32 0, i32 0, ptr @.str21573, ptr %t3)
+  call void @fn_diag_add(ptr @.str21575, i32 0, i32 0, ptr @.str21576, ptr %t3)
   call void @fn_diag_exit(i32 1)
   br label %ifend2
 ifend2:
-  store i32 10957, ptr @lp_site
+  store i32 10959, ptr @lp_site
   %t4 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
   %t5 = load ptr, ptr %t0
@@ -297463,7 +297476,7 @@ wbody1:
 wend2:
   %t53 = load ptr, ptr %t0
   %t54 = load i32, ptr %t4
-  store i32 10958, ptr @lp_site
+  store i32 10960, ptr @lp_site
   %t55 = call ptr @lp_str_slice(ptr %t53, i32 0, i32 %t54)
   store i32 0, ptr @lp_site
   store ptr %t55, ptr %retval
@@ -297508,7 +297521,7 @@ wbody1:
   %t20 = load i32, ptr %t10
   %t21 = load i32, ptr %t9
   %t22 = add i32 %t20, %t21
-  store i32 10959, ptr @lp_site
+  store i32 10961, ptr @lp_site
   %t23 = call ptr @lp_str_slice(ptr %t18, i32 %t19, i32 %t22)
   store i32 0, ptr @lp_site
   %t24 = load ptr, ptr %t1
@@ -297547,7 +297560,7 @@ entry:
   %t5 = load i32, ptr %t4
   %t6 = add i32 %t5, 1
   %t7 = zext i32 %t6 to i64
-  store i32 10960, ptr @lp_site
+  store i32 10962, ptr @lp_site
   %t8 = call ptr @lp_malloc(i64 %t7)
   store i32 0, ptr @lp_site
   store ptr %t8, ptr %t9
@@ -297621,28 +297634,28 @@ then0:
   %t4 = call ptr @fn_win_path(ptr %t3)
   store ptr %t4, ptr %t5
   %t6 = load ptr, ptr %t5
-  store i32 10961, ptr @lp_site
-  %t7 = call ptr @lp_str_concat(ptr @.str21578, ptr %t6)
+  store i32 10963, ptr @lp_site
+  %t7 = call ptr @lp_str_concat(ptr @.str21581, ptr %t6)
   store i32 0, ptr @lp_site
-  store i32 10962, ptr @lp_site
-  %t8 = call ptr @lp_str_concat(ptr %t7, ptr @.str21580)
+  store i32 10964, ptr @lp_site
+  %t8 = call ptr @lp_str_concat(ptr %t7, ptr @.str21583)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t7)
   %t9 = load ptr, ptr %t5
-  store i32 10963, ptr @lp_site
+  store i32 10965, ptr @lp_site
   %t10 = call ptr @lp_str_concat(ptr %t8, ptr %t9)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t8)
-  store i32 10964, ptr @lp_site
-  %t11 = call ptr @lp_str_concat(ptr %t10, ptr @.str21581)
+  store i32 10966, ptr @lp_site
+  %t11 = call ptr @lp_str_concat(ptr %t10, ptr @.str21584)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t10)
   %t12 = call i32 @system(ptr %t11)
   br label %ifend2
 else1:
   %t13 = load ptr, ptr %t0
-  store i32 10965, ptr @lp_site
-  %t14 = call ptr @lp_str_concat(ptr @.str21582, ptr %t13)
+  store i32 10967, ptr @lp_site
+  %t14 = call ptr @lp_str_concat(ptr @.str21585, ptr %t13)
   store i32 0, ptr @lp_site
   %t15 = call i32 @system(ptr %t14)
   br label %ifend2
@@ -297662,19 +297675,19 @@ entry:
 then0:
   %t3 = load ptr, ptr %t0
   %t4 = call ptr @fn_win_path(ptr %t3)
-  store i32 10966, ptr @lp_site
-  %t5 = call ptr @lp_str_concat(ptr @.str21583, ptr %t4)
+  store i32 10968, ptr @lp_site
+  %t5 = call ptr @lp_str_concat(ptr @.str21586, ptr %t4)
   store i32 0, ptr @lp_site
-  store i32 10967, ptr @lp_site
-  %t6 = call ptr @lp_str_concat(ptr %t5, ptr @.str21585)
+  store i32 10969, ptr @lp_site
+  %t6 = call ptr @lp_str_concat(ptr %t5, ptr @.str21588)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t5)
   %t7 = call i32 @system(ptr %t6)
   br label %ifend2
 else1:
   %t8 = load ptr, ptr %t0
-  store i32 10968, ptr @lp_site
-  %t9 = call ptr @lp_str_concat(ptr @.str21586, ptr %t8)
+  store i32 10970, ptr @lp_site
+  %t9 = call ptr @lp_str_concat(ptr @.str21589, ptr %t8)
   store i32 0, ptr @lp_site
   %t10 = call i32 @system(ptr %t9)
   br label %ifend2
@@ -297690,7 +297703,7 @@ entry:
   %t1 = alloca ptr
   %t9 = alloca ptr
   %t12 = alloca ptr
-  %t0 = call ptr @getenv(ptr @.str21587)
+  %t0 = call ptr @getenv(ptr @.str21590)
   store ptr %t0, ptr %t1
   %t2 = load ptr, ptr %t1
   %t3 = icmp ne ptr %t2, null
@@ -297706,10 +297719,10 @@ ifend2:
   %t8 = icmp ne i32 %t7, 0
   br i1 %t8, label %then3, label %ifend5
 then3:
-  store ptr @.str21588, ptr %t9
+  store ptr @.str21591, ptr %t9
   %t10 = load ptr, ptr %t9
-  store i32 10969, ptr @lp_site
-  %t11 = call ptr @lp_pak_open(ptr %t10, ptr @.str21589)
+  store i32 10971, ptr @lp_site
+  %t11 = call ptr @lp_pak_open(ptr %t10, ptr @.str21592)
   store i32 0, ptr @lp_site
   store ptr %t11, ptr %t12
   %t13 = load ptr, ptr %t12
@@ -297721,11 +297734,11 @@ then6:
   %t17 = load ptr, ptr %t12
   call i32 @fclose(ptr %t17)
   %t18 = load ptr, ptr %t9
-  store i32 10970, ptr @lp_site
-  %t19 = call ptr @lp_str_concat(ptr @.str21591, ptr %t18)
+  store i32 10972, ptr @lp_site
+  %t19 = call ptr @lp_str_concat(ptr @.str21594, ptr %t18)
   store i32 0, ptr @lp_site
-  store i32 10971, ptr @lp_site
-  %t20 = call ptr @lp_str_concat(ptr %t19, ptr @.str21592)
+  store i32 10973, ptr @lp_site
+  %t20 = call ptr @lp_str_concat(ptr %t19, ptr @.str21595)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t19)
   store ptr %t20, ptr %retval
@@ -297733,7 +297746,7 @@ then6:
 ifend8:
   br label %ifend5
 ifend5:
-  store ptr @.str21593, ptr %retval
+  store ptr @.str21596, ptr %retval
   br label %ret
 ret:
   %t21 = load ptr, ptr %retval
@@ -297744,7 +297757,7 @@ define void @fn_show_version() {
 entry:
   %t3 = alloca ptr
   %t0 = call ptr @fn_ludic_home()
-  %t1 = call ptr @fn_join_path(ptr %t0, ptr @.str21594)
+  %t1 = call ptr @fn_join_path(ptr %t0, ptr @.str21597)
   %t2 = call ptr @fn_read_file(ptr %t1)
   store ptr %t2, ptr %t3
   %t4 = load ptr, ptr %t3
@@ -297753,13 +297766,13 @@ entry:
   %t7 = icmp ne i32 %t6, 0
   br i1 %t7, label %then0, label %else1
 then0:
-  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr @.str21595)
+  call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr @.str21598)
   br label %ifend2
 else1:
   %t8 = load ptr, ptr %t3
   %t9 = call ptr @fn_chomp(ptr %t8)
-  store i32 10972, ptr @lp_site
-  %t10 = call ptr @lp_str_concat(ptr @.str21596, ptr %t9)
+  store i32 10974, ptr @lp_site
+  %t10 = call ptr @lp_str_concat(ptr @.str21599, ptr %t9)
   store i32 0, ptr @lp_site
   call i32 (ptr, ...) @printf(ptr @.fmt_line, ptr %t10)
   call void @lp_free(ptr %t10)
@@ -297787,7 +297800,7 @@ define void @L_init_globals() {
 entry:
   %t0 = getelementptr %LSlice, ptr null, i32 1
   %t1 = ptrtoint ptr %t0 to i64
-  store i32 10973, ptr @lp_site
+  store i32 10975, ptr @lp_site
   %t2 = call ptr @lp_malloc(i64 %t1)
   store i32 0, ptr @lp_site
   %t3 = getelementptr inbounds %LSlice, ptr %t2, i32 0, i32 0
@@ -297799,7 +297812,7 @@ entry:
   store ptr %t2, ptr @g_g_dg_file
   %t6 = getelementptr %LSlice, ptr null, i32 1
   %t7 = ptrtoint ptr %t6 to i64
-  store i32 10974, ptr @lp_site
+  store i32 10976, ptr @lp_site
   %t8 = call ptr @lp_malloc(i64 %t7)
   store i32 0, ptr @lp_site
   %t9 = getelementptr inbounds %LSlice, ptr %t8, i32 0, i32 0
@@ -297811,7 +297824,7 @@ entry:
   store ptr %t8, ptr @g_g_dg_line
   %t12 = getelementptr %LSlice, ptr null, i32 1
   %t13 = ptrtoint ptr %t12 to i64
-  store i32 10975, ptr @lp_site
+  store i32 10977, ptr @lp_site
   %t14 = call ptr @lp_malloc(i64 %t13)
   store i32 0, ptr @lp_site
   %t15 = getelementptr inbounds %LSlice, ptr %t14, i32 0, i32 0
@@ -297823,7 +297836,7 @@ entry:
   store ptr %t14, ptr @g_g_dg_col
   %t18 = getelementptr %LSlice, ptr null, i32 1
   %t19 = ptrtoint ptr %t18 to i64
-  store i32 10976, ptr @lp_site
+  store i32 10978, ptr @lp_site
   %t20 = call ptr @lp_malloc(i64 %t19)
   store i32 0, ptr @lp_site
   %t21 = getelementptr inbounds %LSlice, ptr %t20, i32 0, i32 0
@@ -297835,7 +297848,7 @@ entry:
   store ptr %t20, ptr @g_g_dg_sev
   %t24 = getelementptr %LSlice, ptr null, i32 1
   %t25 = ptrtoint ptr %t24 to i64
-  store i32 10977, ptr @lp_site
+  store i32 10979, ptr @lp_site
   %t26 = call ptr @lp_malloc(i64 %t25)
   store i32 0, ptr @lp_site
   %t27 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 0
@@ -297845,10 +297858,10 @@ entry:
   %t29 = getelementptr inbounds %LSlice, ptr %t26, i32 0, i32 2
   store i32 0, ptr %t29
   store ptr %t26, ptr @g_g_dg_msg
-  store ptr @.str21599, ptr @g_g_parse_file
+  store ptr @.str21602, ptr @g_g_parse_file
   %t30 = getelementptr %LSlice, ptr null, i32 1
   %t31 = ptrtoint ptr %t30 to i64
-  store i32 10978, ptr @lp_site
+  store i32 10980, ptr @lp_site
   %t32 = call ptr @lp_malloc(i64 %t31)
   store i32 0, ptr @lp_site
   %t33 = getelementptr inbounds %LSlice, ptr %t32, i32 0, i32 0
@@ -297860,7 +297873,7 @@ entry:
   store ptr %t32, ptr @g_g_float_files
   %t36 = getelementptr %LSlice, ptr null, i32 1
   %t37 = ptrtoint ptr %t36 to i64
-  store i32 10979, ptr @lp_site
+  store i32 10981, ptr @lp_site
   %t38 = call ptr @lp_malloc(i64 %t37)
   store i32 0, ptr @lp_site
   %t39 = getelementptr inbounds %LSlice, ptr %t38, i32 0, i32 0
@@ -297880,7 +297893,7 @@ entry:
   store ptr %t45, ptr @g_g_fm_src
   %t46 = getelementptr %LSlice, ptr null, i32 1
   %t47 = ptrtoint ptr %t46 to i64
-  store i32 10980, ptr @lp_site
+  store i32 10982, ptr @lp_site
   %t48 = call ptr @lp_malloc(i64 %t47)
   store i32 0, ptr @lp_site
   %t49 = getelementptr inbounds %LSlice, ptr %t48, i32 0, i32 0
@@ -297892,7 +297905,7 @@ entry:
   store ptr %t48, ptr @g_g_mod_file
   %t52 = getelementptr %LSlice, ptr null, i32 1
   %t53 = ptrtoint ptr %t52 to i64
-  store i32 10981, ptr @lp_site
+  store i32 10983, ptr @lp_site
   %t54 = call ptr @lp_malloc(i64 %t53)
   store i32 0, ptr @lp_site
   %t55 = getelementptr inbounds %LSlice, ptr %t54, i32 0, i32 0
@@ -297904,7 +297917,7 @@ entry:
   store ptr %t54, ptr @g_g_mod_name
   %t58 = getelementptr %LSlice, ptr null, i32 1
   %t59 = ptrtoint ptr %t58 to i64
-  store i32 10982, ptr @lp_site
+  store i32 10984, ptr @lp_site
   %t60 = call ptr @lp_malloc(i64 %t59)
   store i32 0, ptr @lp_site
   %t61 = getelementptr inbounds %LSlice, ptr %t60, i32 0, i32 0
@@ -297916,10 +297929,10 @@ entry:
   store ptr %t60, ptr @g_g_mod_friends
   %t64 = call ptr @fn_fm_new()
   store ptr %t64, ptr @g_g_fm_float
-  store ptr @.str21600, ptr @g_g_err_file
+  store ptr @.str21603, ptr @g_g_err_file
   %t65 = getelementptr %LSlice, ptr null, i32 1
   %t66 = ptrtoint ptr %t65 to i64
-  store i32 10983, ptr @lp_site
+  store i32 10985, ptr @lp_site
   %t67 = call ptr @lp_malloc(i64 %t66)
   store i32 0, ptr @lp_site
   %t68 = getelementptr inbounds %LSlice, ptr %t67, i32 0, i32 0
@@ -297931,7 +297944,7 @@ entry:
   store ptr %t67, ptr @g_g_rt_wants
   %t71 = getelementptr %LSlice, ptr null, i32 1
   %t72 = ptrtoint ptr %t71 to i64
-  store i32 10984, ptr @lp_site
+  store i32 10986, ptr @lp_site
   %t73 = call ptr @lp_malloc(i64 %t72)
   store i32 0, ptr @lp_site
   %t74 = getelementptr inbounds %LSlice, ptr %t73, i32 0, i32 0
@@ -297943,7 +297956,7 @@ entry:
   store ptr %t73, ptr @g_g_gi_name
   %t77 = getelementptr %LSlice, ptr null, i32 1
   %t78 = ptrtoint ptr %t77 to i64
-  store i32 10985, ptr @lp_site
+  store i32 10987, ptr @lp_site
   %t79 = call ptr @lp_malloc(i64 %t78)
   store i32 0, ptr @lp_site
   %t80 = getelementptr inbounds %LSlice, ptr %t79, i32 0, i32 0
@@ -297955,7 +297968,7 @@ entry:
   store ptr %t79, ptr @g_g_gi_gen
   %t83 = getelementptr %LSlice, ptr null, i32 1
   %t84 = ptrtoint ptr %t83 to i64
-  store i32 10986, ptr @lp_site
+  store i32 10988, ptr @lp_site
   %t85 = call ptr @lp_malloc(i64 %t84)
   store i32 0, ptr @lp_site
   %t86 = getelementptr inbounds %LSlice, ptr %t85, i32 0, i32 0
@@ -297967,7 +297980,7 @@ entry:
   store ptr %t85, ptr @g_g_gi_args
   %t89 = getelementptr %LSlice, ptr null, i32 1
   %t90 = ptrtoint ptr %t89 to i64
-  store i32 10987, ptr @lp_site
+  store i32 10989, ptr @lp_site
   %t91 = call ptr @lp_malloc(i64 %t90)
   store i32 0, ptr @lp_site
   %t92 = getelementptr inbounds %LSlice, ptr %t91, i32 0, i32 0
@@ -297979,7 +297992,7 @@ entry:
   store ptr %t91, ptr @g_g_gi_open
   %t95 = getelementptr %LSlice, ptr null, i32 1
   %t96 = ptrtoint ptr %t95 to i64
-  store i32 10988, ptr @lp_site
+  store i32 10990, ptr @lp_site
   %t97 = call ptr @lp_malloc(i64 %t96)
   store i32 0, ptr @lp_site
   %t98 = getelementptr inbounds %LSlice, ptr %t97, i32 0, i32 0
@@ -297991,7 +298004,7 @@ entry:
   store ptr %t97, ptr @g_g_gi_file
   %t101 = getelementptr %LSlice, ptr null, i32 1
   %t102 = ptrtoint ptr %t101 to i64
-  store i32 10989, ptr @lp_site
+  store i32 10991, ptr @lp_site
   %t103 = call ptr @lp_malloc(i64 %t102)
   store i32 0, ptr @lp_site
   %t104 = getelementptr inbounds %LSlice, ptr %t103, i32 0, i32 0
@@ -298003,7 +298016,7 @@ entry:
   store ptr %t103, ptr @g_g_gi_line
   %t107 = getelementptr %LSlice, ptr null, i32 1
   %t108 = ptrtoint ptr %t107 to i64
-  store i32 10990, ptr @lp_site
+  store i32 10992, ptr @lp_site
   %t109 = call ptr @lp_malloc(i64 %t108)
   store i32 0, ptr @lp_site
   %t110 = getelementptr inbounds %LSlice, ptr %t109, i32 0, i32 0
@@ -298015,7 +298028,7 @@ entry:
   store ptr %t109, ptr @g_g_al_ns
   %t113 = getelementptr %LSlice, ptr null, i32 1
   %t114 = ptrtoint ptr %t113 to i64
-  store i32 10991, ptr @lp_site
+  store i32 10993, ptr @lp_site
   %t115 = call ptr @lp_malloc(i64 %t114)
   store i32 0, ptr @lp_site
   %t116 = getelementptr inbounds %LSlice, ptr %t115, i32 0, i32 0
@@ -298027,7 +298040,7 @@ entry:
   store ptr %t115, ptr @g_g_al_meth
   %t119 = getelementptr %LSlice, ptr null, i32 1
   %t120 = ptrtoint ptr %t119 to i64
-  store i32 10992, ptr @lp_site
+  store i32 10994, ptr @lp_site
   %t121 = call ptr @lp_malloc(i64 %t120)
   store i32 0, ptr @lp_site
   %t122 = getelementptr inbounds %LSlice, ptr %t121, i32 0, i32 0
@@ -298039,7 +298052,7 @@ entry:
   store ptr %t121, ptr @g_g_al_target
   %t125 = getelementptr %LSlice, ptr null, i32 1
   %t126 = ptrtoint ptr %t125 to i64
-  store i32 10993, ptr @lp_site
+  store i32 10995, ptr @lp_site
   %t127 = call ptr @lp_malloc(i64 %t126)
   store i32 0, ptr @lp_site
   %t128 = getelementptr inbounds %LSlice, ptr %t127, i32 0, i32 0
@@ -298051,7 +298064,7 @@ entry:
   store ptr %t127, ptr @g_g_al_labels
   %t131 = getelementptr %LSlice, ptr null, i32 1
   %t132 = ptrtoint ptr %t131 to i64
-  store i32 10994, ptr @lp_site
+  store i32 10996, ptr @lp_site
   %t133 = call ptr @lp_malloc(i64 %t132)
   store i32 0, ptr @lp_site
   %t134 = getelementptr inbounds %LSlice, ptr %t133, i32 0, i32 0
@@ -298063,7 +298076,7 @@ entry:
   store ptr %t133, ptr @g_g_al_file
   %t137 = getelementptr %LSlice, ptr null, i32 1
   %t138 = ptrtoint ptr %t137 to i64
-  store i32 10995, ptr @lp_site
+  store i32 10997, ptr @lp_site
   %t139 = call ptr @lp_malloc(i64 %t138)
   store i32 0, ptr @lp_site
   %t140 = getelementptr inbounds %LSlice, ptr %t139, i32 0, i32 0
@@ -298075,7 +298088,7 @@ entry:
   store ptr %t139, ptr @g_g_mu_mod
   %t143 = getelementptr %LSlice, ptr null, i32 1
   %t144 = ptrtoint ptr %t143 to i64
-  store i32 10996, ptr @lp_site
+  store i32 10998, ptr @lp_site
   %t145 = call ptr @lp_malloc(i64 %t144)
   store i32 0, ptr @lp_site
   %t146 = getelementptr inbounds %LSlice, ptr %t145, i32 0, i32 0
@@ -298087,7 +298100,7 @@ entry:
   store ptr %t145, ptr @g_g_mu_list
   %t149 = getelementptr %LSlice, ptr null, i32 1
   %t150 = ptrtoint ptr %t149 to i64
-  store i32 10997, ptr @lp_site
+  store i32 10999, ptr @lp_site
   %t151 = call ptr @lp_malloc(i64 %t150)
   store i32 0, ptr @lp_site
   %t152 = getelementptr inbounds %LSlice, ptr %t151, i32 0, i32 0
@@ -298099,7 +298112,7 @@ entry:
   store ptr %t151, ptr @g_g_mu_file
   %t155 = getelementptr %LSlice, ptr null, i32 1
   %t156 = ptrtoint ptr %t155 to i64
-  store i32 10998, ptr @lp_site
+  store i32 11000, ptr @lp_site
   %t157 = call ptr @lp_malloc(i64 %t156)
   store i32 0, ptr @lp_site
   %t158 = getelementptr inbounds %LSlice, ptr %t157, i32 0, i32 0
@@ -298111,7 +298124,7 @@ entry:
   store ptr %t157, ptr @g_g_mu_line
   %t161 = getelementptr %LSlice, ptr null, i32 1
   %t162 = ptrtoint ptr %t161 to i64
-  store i32 10999, ptr @lp_site
+  store i32 11001, ptr @lp_site
   %t163 = call ptr @lp_malloc(i64 %t162)
   store i32 0, ptr @lp_site
   %t164 = getelementptr inbounds %LSlice, ptr %t163, i32 0, i32 0
@@ -298123,7 +298136,7 @@ entry:
   store ptr %t163, ptr @g_g_fr_scope
   %t167 = getelementptr %LSlice, ptr null, i32 1
   %t168 = ptrtoint ptr %t167 to i64
-  store i32 11000, ptr @lp_site
+  store i32 11002, ptr @lp_site
   %t169 = call ptr @lp_malloc(i64 %t168)
   store i32 0, ptr @lp_site
   %t170 = getelementptr inbounds %LSlice, ptr %t169, i32 0, i32 0
@@ -298135,7 +298148,7 @@ entry:
   store ptr %t169, ptr @g_g_ly_mod
   %t173 = getelementptr %LSlice, ptr null, i32 1
   %t174 = ptrtoint ptr %t173 to i64
-  store i32 11001, ptr @lp_site
+  store i32 11003, ptr @lp_site
   %t175 = call ptr @lp_malloc(i64 %t174)
   store i32 0, ptr @lp_site
   %t176 = getelementptr inbounds %LSlice, ptr %t175, i32 0, i32 0
@@ -298147,7 +298160,7 @@ entry:
   store ptr %t175, ptr @g_g_ly_name
   %t179 = getelementptr %LSlice, ptr null, i32 1
   %t180 = ptrtoint ptr %t179 to i64
-  store i32 11002, ptr @lp_site
+  store i32 11004, ptr @lp_site
   %t181 = call ptr @lp_malloc(i64 %t180)
   store i32 0, ptr @lp_site
   %t182 = getelementptr inbounds %LSlice, ptr %t181, i32 0, i32 0
@@ -298159,7 +298172,7 @@ entry:
   store ptr %t181, ptr @g_g_pk_file
   %t185 = getelementptr %LSlice, ptr null, i32 1
   %t186 = ptrtoint ptr %t185 to i64
-  store i32 11003, ptr @lp_site
+  store i32 11005, ptr @lp_site
   %t187 = call ptr @lp_malloc(i64 %t186)
   store i32 0, ptr @lp_site
   %t188 = getelementptr inbounds %LSlice, ptr %t187, i32 0, i32 0
@@ -298169,10 +298182,10 @@ entry:
   %t190 = getelementptr inbounds %LSlice, ptr %t187, i32 0, i32 2
   store i32 0, ptr %t190
   store ptr %t187, ptr @g_g_pk_name
-  store ptr @.str21601, ptr @g_g_mu_done
+  store ptr @.str21604, ptr @g_g_mu_done
   %t191 = getelementptr %LSlice, ptr null, i32 1
   %t192 = ptrtoint ptr %t191 to i64
-  store i32 11004, ptr @lp_site
+  store i32 11006, ptr @lp_site
   %t193 = call ptr @lp_malloc(i64 %t192)
   store i32 0, ptr @lp_site
   %t194 = getelementptr inbounds %LSlice, ptr %t193, i32 0, i32 0
@@ -298184,7 +298197,7 @@ entry:
   store ptr %t193, ptr @g_g_native_libs
   %t197 = getelementptr %LSlice, ptr null, i32 1
   %t198 = ptrtoint ptr %t197 to i64
-  store i32 11005, ptr @lp_site
+  store i32 11007, ptr @lp_site
   %t199 = call ptr @lp_malloc(i64 %t198)
   store i32 0, ptr @lp_site
   %t200 = getelementptr inbounds %LSlice, ptr %t199, i32 0, i32 0
@@ -298196,7 +298209,7 @@ entry:
   store ptr %t199, ptr @g_g_native_pkgs
   %t203 = getelementptr %LSlice, ptr null, i32 1
   %t204 = ptrtoint ptr %t203 to i64
-  store i32 11006, ptr @lp_site
+  store i32 11008, ptr @lp_site
   %t205 = call ptr @lp_malloc(i64 %t204)
   store i32 0, ptr @lp_site
   %t206 = getelementptr inbounds %LSlice, ptr %t205, i32 0, i32 0
@@ -298208,7 +298221,7 @@ entry:
   store ptr %t205, ptr @g_g_pt_name
   %t209 = getelementptr %LSlice, ptr null, i32 1
   %t210 = ptrtoint ptr %t209 to i64
-  store i32 11007, ptr @lp_site
+  store i32 11009, ptr @lp_site
   %t211 = call ptr @lp_malloc(i64 %t210)
   store i32 0, ptr @lp_site
   %t212 = getelementptr inbounds %LSlice, ptr %t211, i32 0, i32 0
@@ -298220,7 +298233,7 @@ entry:
   store ptr %t211, ptr @g_g_pt_comp
   %t215 = getelementptr %LSlice, ptr null, i32 1
   %t216 = ptrtoint ptr %t215 to i64
-  store i32 11008, ptr @lp_site
+  store i32 11010, ptr @lp_site
   %t217 = call ptr @lp_malloc(i64 %t216)
   store i32 0, ptr @lp_site
   %t218 = getelementptr inbounds %LSlice, ptr %t217, i32 0, i32 0
@@ -298232,7 +298245,7 @@ entry:
   store ptr %t217, ptr @g_g_pt_var
   %t221 = getelementptr %LSlice, ptr null, i32 1
   %t222 = ptrtoint ptr %t221 to i64
-  store i32 11009, ptr @lp_site
+  store i32 11011, ptr @lp_site
   %t223 = call ptr @lp_malloc(i64 %t222)
   store i32 0, ptr @lp_site
   %t224 = getelementptr inbounds %LSlice, ptr %t223, i32 0, i32 0
@@ -298244,7 +298257,7 @@ entry:
   store ptr %t223, ptr @g_g_pt_bind
   %t227 = getelementptr %LSlice, ptr null, i32 1
   %t228 = ptrtoint ptr %t227 to i64
-  store i32 11010, ptr @lp_site
+  store i32 11012, ptr @lp_site
   %t229 = call ptr @lp_malloc(i64 %t228)
   store i32 0, ptr @lp_site
   %t230 = getelementptr inbounds %LSlice, ptr %t229, i32 0, i32 0
@@ -298256,7 +298269,7 @@ entry:
   store ptr %t229, ptr @g_g_bd
   %t233 = getelementptr %LSlice, ptr null, i32 1
   %t234 = ptrtoint ptr %t233 to i64
-  store i32 11011, ptr @lp_site
+  store i32 11013, ptr @lp_site
   %t235 = call ptr @lp_malloc(i64 %t234)
   store i32 0, ptr @lp_site
   %t236 = getelementptr inbounds %LSlice, ptr %t235, i32 0, i32 0
@@ -298268,7 +298281,7 @@ entry:
   store ptr %t235, ptr @g_g_rn_mod
   %t239 = getelementptr %LSlice, ptr null, i32 1
   %t240 = ptrtoint ptr %t239 to i64
-  store i32 11012, ptr @lp_site
+  store i32 11014, ptr @lp_site
   %t241 = call ptr @lp_malloc(i64 %t240)
   store i32 0, ptr @lp_site
   %t242 = getelementptr inbounds %LSlice, ptr %t241, i32 0, i32 0
@@ -298280,7 +298293,7 @@ entry:
   store ptr %t241, ptr @g_g_rn_old
   %t245 = getelementptr %LSlice, ptr null, i32 1
   %t246 = ptrtoint ptr %t245 to i64
-  store i32 11013, ptr @lp_site
+  store i32 11015, ptr @lp_site
   %t247 = call ptr @lp_malloc(i64 %t246)
   store i32 0, ptr @lp_site
   %t248 = getelementptr inbounds %LSlice, ptr %t247, i32 0, i32 0
@@ -298292,7 +298305,7 @@ entry:
   store ptr %t247, ptr @g_g_rn_new
   %t251 = getelementptr %LSlice, ptr null, i32 1
   %t252 = ptrtoint ptr %t251 to i64
-  store i32 11014, ptr @lp_site
+  store i32 11016, ptr @lp_site
   %t253 = call ptr @lp_malloc(i64 %t252)
   store i32 0, ptr @lp_site
   %t254 = getelementptr inbounds %LSlice, ptr %t253, i32 0, i32 0
@@ -298304,7 +298317,7 @@ entry:
   store ptr %t253, ptr @g_g_rn_fn
   %t257 = getelementptr %LSlice, ptr null, i32 1
   %t258 = ptrtoint ptr %t257 to i64
-  store i32 11015, ptr @lp_site
+  store i32 11017, ptr @lp_site
   %t259 = call ptr @lp_malloc(i64 %t258)
   store i32 0, ptr @lp_site
   %t260 = getelementptr inbounds %LSlice, ptr %t259, i32 0, i32 0
@@ -298316,7 +298329,7 @@ entry:
   store ptr %t259, ptr @g_g_rt_mod
   %t263 = getelementptr %LSlice, ptr null, i32 1
   %t264 = ptrtoint ptr %t263 to i64
-  store i32 11016, ptr @lp_site
+  store i32 11018, ptr @lp_site
   %t265 = call ptr @lp_malloc(i64 %t264)
   store i32 0, ptr @lp_site
   %t266 = getelementptr inbounds %LSlice, ptr %t265, i32 0, i32 0
@@ -298328,7 +298341,7 @@ entry:
   store ptr %t265, ptr @g_g_rt_old
   %t269 = getelementptr %LSlice, ptr null, i32 1
   %t270 = ptrtoint ptr %t269 to i64
-  store i32 11017, ptr @lp_site
+  store i32 11019, ptr @lp_site
   %t271 = call ptr @lp_malloc(i64 %t270)
   store i32 0, ptr @lp_site
   %t272 = getelementptr inbounds %LSlice, ptr %t271, i32 0, i32 0
@@ -298340,7 +298353,7 @@ entry:
   store ptr %t271, ptr @g_g_rt_new
   %t275 = getelementptr %LSlice, ptr null, i32 1
   %t276 = ptrtoint ptr %t275 to i64
-  store i32 11018, ptr @lp_site
+  store i32 11020, ptr @lp_site
   %t277 = call ptr @lp_malloc(i64 %t276)
   store i32 0, ptr @lp_site
   %t278 = getelementptr inbounds %LSlice, ptr %t277, i32 0, i32 0
@@ -298352,7 +298365,7 @@ entry:
   store ptr %t277, ptr @g_g_re_mod
   %t281 = getelementptr %LSlice, ptr null, i32 1
   %t282 = ptrtoint ptr %t281 to i64
-  store i32 11019, ptr @lp_site
+  store i32 11021, ptr @lp_site
   %t283 = call ptr @lp_malloc(i64 %t282)
   store i32 0, ptr @lp_site
   %t284 = getelementptr inbounds %LSlice, ptr %t283, i32 0, i32 0
@@ -298364,7 +298377,7 @@ entry:
   store ptr %t283, ptr @g_g_re_old
   %t287 = getelementptr %LSlice, ptr null, i32 1
   %t288 = ptrtoint ptr %t287 to i64
-  store i32 11020, ptr @lp_site
+  store i32 11022, ptr @lp_site
   %t289 = call ptr @lp_malloc(i64 %t288)
   store i32 0, ptr @lp_site
   %t290 = getelementptr inbounds %LSlice, ptr %t289, i32 0, i32 0
@@ -298376,7 +298389,7 @@ entry:
   store ptr %t289, ptr @g_g_re_new
   %t293 = getelementptr %LSlice, ptr null, i32 1
   %t294 = ptrtoint ptr %t293 to i64
-  store i32 11021, ptr @lp_site
+  store i32 11023, ptr @lp_site
   %t295 = call ptr @lp_malloc(i64 %t294)
   store i32 0, ptr @lp_site
   %t296 = getelementptr inbounds %LSlice, ptr %t295, i32 0, i32 0
@@ -298388,7 +298401,7 @@ entry:
   store ptr %t295, ptr @g_g_state_names
   %t299 = getelementptr %LSlice, ptr null, i32 1
   %t300 = ptrtoint ptr %t299 to i64
-  store i32 11022, ptr @lp_site
+  store i32 11024, ptr @lp_site
   %t301 = call ptr @lp_malloc(i64 %t300)
   store i32 0, ptr @lp_site
   %t302 = getelementptr inbounds %LSlice, ptr %t301, i32 0, i32 0
@@ -298400,7 +298413,7 @@ entry:
   store ptr %t301, ptr @g_g_act_names
   %t305 = getelementptr %LSlice, ptr null, i32 1
   %t306 = ptrtoint ptr %t305 to i64
-  store i32 11023, ptr @lp_site
+  store i32 11025, ptr @lp_site
   %t307 = call ptr @lp_malloc(i64 %t306)
   store i32 0, ptr @lp_site
   %t308 = getelementptr inbounds %LSlice, ptr %t307, i32 0, i32 0
@@ -298412,7 +298425,7 @@ entry:
   store ptr %t307, ptr @g_g_act_nodes
   %t311 = getelementptr %LSlice, ptr null, i32 1
   %t312 = ptrtoint ptr %t311 to i64
-  store i32 11024, ptr @lp_site
+  store i32 11026, ptr @lp_site
   %t313 = call ptr @lp_malloc(i64 %t312)
   store i32 0, ptr @lp_site
   %t314 = getelementptr inbounds %LSlice, ptr %t313, i32 0, i32 0
@@ -298424,7 +298437,7 @@ entry:
   store ptr %t313, ptr @g_g_red_nodes
   %t317 = getelementptr %LSlice, ptr null, i32 1
   %t318 = ptrtoint ptr %t317 to i64
-  store i32 11025, ptr @lp_site
+  store i32 11027, ptr @lp_site
   %t319 = call ptr @lp_malloc(i64 %t318)
   store i32 0, ptr @lp_site
   %t320 = getelementptr inbounds %LSlice, ptr %t319, i32 0, i32 0
@@ -298436,7 +298449,7 @@ entry:
   store ptr %t319, ptr @g_g_red_state
   %t323 = getelementptr %LSlice, ptr null, i32 1
   %t324 = ptrtoint ptr %t323 to i64
-  store i32 11026, ptr @lp_site
+  store i32 11028, ptr @lp_site
   %t325 = call ptr @lp_malloc(i64 %t324)
   store i32 0, ptr @lp_site
   %t326 = getelementptr inbounds %LSlice, ptr %t325, i32 0, i32 0
@@ -298448,7 +298461,7 @@ entry:
   store ptr %t325, ptr @g_g_red_action
   %t329 = getelementptr %LSlice, ptr null, i32 1
   %t330 = ptrtoint ptr %t329 to i64
-  store i32 11027, ptr @lp_site
+  store i32 11029, ptr @lp_site
   %t331 = call ptr @lp_malloc(i64 %t330)
   store i32 0, ptr @lp_site
   %t332 = getelementptr inbounds %LSlice, ptr %t331, i32 0, i32 0
@@ -298460,7 +298473,7 @@ entry:
   store ptr %t331, ptr @g_g_dsp_ids
   %t335 = getelementptr %LSlice, ptr null, i32 1
   %t336 = ptrtoint ptr %t335 to i64
-  store i32 11028, ptr @lp_site
+  store i32 11030, ptr @lp_site
   %t337 = call ptr @lp_malloc(i64 %t336)
   store i32 0, ptr @lp_site
   %t338 = getelementptr inbounds %LSlice, ptr %t337, i32 0, i32 0
@@ -298472,7 +298485,7 @@ entry:
   store ptr %t337, ptr @g_g_dsp_names
   %t341 = getelementptr %LSlice, ptr null, i32 1
   %t342 = ptrtoint ptr %t341 to i64
-  store i32 11029, ptr @lp_site
+  store i32 11031, ptr @lp_site
   %t343 = call ptr @lp_malloc(i64 %t342)
   store i32 0, ptr @lp_site
   %t344 = getelementptr inbounds %LSlice, ptr %t343, i32 0, i32 0
@@ -298484,7 +298497,7 @@ entry:
   store ptr %t343, ptr @g_g_dsp_at
   %t347 = getelementptr %LSlice, ptr null, i32 1
   %t348 = ptrtoint ptr %t347 to i64
-  store i32 11030, ptr @lp_site
+  store i32 11032, ptr @lp_site
   %t349 = call ptr @lp_malloc(i64 %t348)
   store i32 0, ptr @lp_site
   %t350 = getelementptr inbounds %LSlice, ptr %t349, i32 0, i32 0
@@ -298496,7 +298509,7 @@ entry:
   store ptr %t349, ptr @g_g_ma_node
   %t353 = getelementptr %LSlice, ptr null, i32 1
   %t354 = ptrtoint ptr %t353 to i64
-  store i32 11031, ptr @lp_site
+  store i32 11033, ptr @lp_site
   %t355 = call ptr @lp_malloc(i64 %t354)
   store i32 0, ptr @lp_site
   %t356 = getelementptr inbounds %LSlice, ptr %t355, i32 0, i32 0
@@ -298508,7 +298521,7 @@ entry:
   store ptr %t355, ptr @g_g_ma_call
   %t359 = getelementptr %LSlice, ptr null, i32 1
   %t360 = ptrtoint ptr %t359 to i64
-  store i32 11032, ptr @lp_site
+  store i32 11034, ptr @lp_site
   %t361 = call ptr @lp_malloc(i64 %t360)
   store i32 0, ptr @lp_site
   %t362 = getelementptr inbounds %LSlice, ptr %t361, i32 0, i32 0
@@ -298520,7 +298533,7 @@ entry:
   store ptr %t361, ptr @g_g_ma_state
   %t365 = getelementptr %LSlice, ptr null, i32 1
   %t366 = ptrtoint ptr %t365 to i64
-  store i32 11033, ptr @lp_site
+  store i32 11035, ptr @lp_site
   %t367 = call ptr @lp_malloc(i64 %t366)
   store i32 0, ptr @lp_site
   %t368 = getelementptr inbounds %LSlice, ptr %t367, i32 0, i32 0
@@ -298532,7 +298545,7 @@ entry:
   store ptr %t367, ptr @g_g_ma_excess
   %t371 = getelementptr %LSlice, ptr null, i32 1
   %t372 = ptrtoint ptr %t371 to i64
-  store i32 11034, ptr @lp_site
+  store i32 11036, ptr @lp_site
   %t373 = call ptr @lp_malloc(i64 %t372)
   store i32 0, ptr @lp_site
   %t374 = getelementptr inbounds %LSlice, ptr %t373, i32 0, i32 0
@@ -298544,7 +298557,7 @@ entry:
   store ptr %t373, ptr @g_g_mg_vars
   %t377 = getelementptr %LSlice, ptr null, i32 1
   %t378 = ptrtoint ptr %t377 to i64
-  store i32 11035, ptr @lp_site
+  store i32 11037, ptr @lp_site
   %t379 = call ptr @lp_malloc(i64 %t378)
   store i32 0, ptr @lp_site
   %t380 = getelementptr inbounds %LSlice, ptr %t379, i32 0, i32 0
@@ -298556,7 +298569,7 @@ entry:
   store ptr %t379, ptr @g_g_mg_vstate
   %t383 = getelementptr %LSlice, ptr null, i32 1
   %t384 = ptrtoint ptr %t383 to i64
-  store i32 11036, ptr @lp_site
+  store i32 11038, ptr @lp_site
   %t385 = call ptr @lp_malloc(i64 %t384)
   store i32 0, ptr @lp_site
   %t386 = getelementptr inbounds %LSlice, ptr %t385, i32 0, i32 0
@@ -298568,7 +298581,7 @@ entry:
   store ptr %t385, ptr @g_g_mg_written
   %t389 = getelementptr %LSlice, ptr null, i32 1
   %t390 = ptrtoint ptr %t389 to i64
-  store i32 11037, ptr @lp_site
+  store i32 11039, ptr @lp_site
   %t391 = call ptr @lp_malloc(i64 %t390)
   store i32 0, ptr @lp_site
   %t392 = getelementptr inbounds %LSlice, ptr %t391, i32 0, i32 0
@@ -298580,7 +298593,7 @@ entry:
   store ptr %t391, ptr @g_g_mg_let
   %t395 = getelementptr %LSlice, ptr null, i32 1
   %t396 = ptrtoint ptr %t395 to i64
-  store i32 11038, ptr @lp_site
+  store i32 11040, ptr @lp_site
   %t397 = call ptr @lp_malloc(i64 %t396)
   store i32 0, ptr @lp_site
   %t398 = getelementptr inbounds %LSlice, ptr %t397, i32 0, i32 0
@@ -298592,7 +298605,7 @@ entry:
   store ptr %t397, ptr @g_g_mr_unit
   %t401 = getelementptr %LSlice, ptr null, i32 1
   %t402 = ptrtoint ptr %t401 to i64
-  store i32 11039, ptr @lp_site
+  store i32 11041, ptr @lp_site
   %t403 = call ptr @lp_malloc(i64 %t402)
   store i32 0, ptr @lp_site
   %t404 = getelementptr inbounds %LSlice, ptr %t403, i32 0, i32 0
@@ -298604,7 +298617,7 @@ entry:
   store ptr %t403, ptr @g_g_ms_name
   %t407 = getelementptr %LSlice, ptr null, i32 1
   %t408 = ptrtoint ptr %t407 to i64
-  store i32 11040, ptr @lp_site
+  store i32 11042, ptr @lp_site
   %t409 = call ptr @lp_malloc(i64 %t408)
   store i32 0, ptr @lp_site
   %t410 = getelementptr inbounds %LSlice, ptr %t409, i32 0, i32 0
@@ -298616,7 +298629,7 @@ entry:
   store ptr %t409, ptr @g_g_ms_mod
   %t413 = getelementptr %LSlice, ptr null, i32 1
   %t414 = ptrtoint ptr %t413 to i64
-  store i32 11041, ptr @lp_site
+  store i32 11043, ptr @lp_site
   %t415 = call ptr @lp_malloc(i64 %t414)
   store i32 0, ptr @lp_site
   %t416 = getelementptr inbounds %LSlice, ptr %t415, i32 0, i32 0
@@ -298628,7 +298641,7 @@ entry:
   store ptr %t415, ptr @g_g_ms_param
   %t419 = getelementptr %LSlice, ptr null, i32 1
   %t420 = ptrtoint ptr %t419 to i64
-  store i32 11042, ptr @lp_site
+  store i32 11044, ptr @lp_site
   %t421 = call ptr @lp_malloc(i64 %t420)
   store i32 0, ptr @lp_site
   %t422 = getelementptr inbounds %LSlice, ptr %t421, i32 0, i32 0
@@ -298640,7 +298653,7 @@ entry:
   store ptr %t421, ptr @g_g_ms_export
   %t425 = getelementptr %LSlice, ptr null, i32 1
   %t426 = ptrtoint ptr %t425 to i64
-  store i32 11043, ptr @lp_site
+  store i32 11045, ptr @lp_site
   %t427 = call ptr @lp_malloc(i64 %t426)
   store i32 0, ptr @lp_site
   %t428 = getelementptr inbounds %LSlice, ptr %t427, i32 0, i32 0
@@ -298652,7 +298665,7 @@ entry:
   store ptr %t427, ptr @g_g_mu_node
   %t431 = getelementptr %LSlice, ptr null, i32 1
   %t432 = ptrtoint ptr %t431 to i64
-  store i32 11044, ptr @lp_site
+  store i32 11046, ptr @lp_site
   %t433 = call ptr @lp_malloc(i64 %t432)
   store i32 0, ptr @lp_site
   %t434 = getelementptr inbounds %LSlice, ptr %t433, i32 0, i32 0
@@ -298664,7 +298677,7 @@ entry:
   store ptr %t433, ptr @g_g_mu_kind
   %t437 = getelementptr %LSlice, ptr null, i32 1
   %t438 = ptrtoint ptr %t437 to i64
-  store i32 11045, ptr @lp_site
+  store i32 11047, ptr @lp_site
   %t439 = call ptr @lp_malloc(i64 %t438)
   store i32 0, ptr @lp_site
   %t440 = getelementptr inbounds %LSlice, ptr %t439, i32 0, i32 0
@@ -298676,7 +298689,7 @@ entry:
   store ptr %t439, ptr @g_g_mu_need
   %t443 = getelementptr %LSlice, ptr null, i32 1
   %t444 = ptrtoint ptr %t443 to i64
-  store i32 11046, ptr @lp_site
+  store i32 11048, ptr @lp_site
   %t445 = call ptr @lp_malloc(i64 %t444)
   store i32 0, ptr @lp_site
   %t446 = getelementptr inbounds %LSlice, ptr %t445, i32 0, i32 0
@@ -298688,7 +298701,7 @@ entry:
   store ptr %t445, ptr @g_g_mu_mut
   %t449 = getelementptr %LSlice, ptr null, i32 1
   %t450 = ptrtoint ptr %t449 to i64
-  store i32 11047, ptr @lp_site
+  store i32 11049, ptr @lp_site
   %t451 = call ptr @lp_malloc(i64 %t450)
   store i32 0, ptr @lp_site
   %t452 = getelementptr inbounds %LSlice, ptr %t451, i32 0, i32 0
@@ -298700,7 +298713,7 @@ entry:
   store ptr %t451, ptr @g_g_mc_call
   %t455 = getelementptr %LSlice, ptr null, i32 1
   %t456 = ptrtoint ptr %t455 to i64
-  store i32 11048, ptr @lp_site
+  store i32 11050, ptr @lp_site
   %t457 = call ptr @lp_malloc(i64 %t456)
   store i32 0, ptr @lp_site
   %t458 = getelementptr inbounds %LSlice, ptr %t457, i32 0, i32 0
@@ -298712,7 +298725,7 @@ entry:
   store ptr %t457, ptr @g_g_mc_unit
   %t461 = getelementptr %LSlice, ptr null, i32 1
   %t462 = ptrtoint ptr %t461 to i64
-  store i32 11049, ptr @lp_site
+  store i32 11051, ptr @lp_site
   %t463 = call ptr @lp_malloc(i64 %t462)
   store i32 0, ptr @lp_site
   %t464 = getelementptr inbounds %LSlice, ptr %t463, i32 0, i32 0
@@ -298724,7 +298737,7 @@ entry:
   store ptr %t463, ptr @g_g_mc_callee
   %t467 = getelementptr %LSlice, ptr null, i32 1
   %t468 = ptrtoint ptr %t467 to i64
-  store i32 11050, ptr @lp_site
+  store i32 11052, ptr @lp_site
   %t469 = call ptr @lp_malloc(i64 %t468)
   store i32 0, ptr @lp_site
   %t470 = getelementptr inbounds %LSlice, ptr %t469, i32 0, i32 0
@@ -298736,7 +298749,7 @@ entry:
   store ptr %t469, ptr @g_g_mr_node
   %t473 = getelementptr %LSlice, ptr null, i32 1
   %t474 = ptrtoint ptr %t473 to i64
-  store i32 11051, ptr @lp_site
+  store i32 11053, ptr @lp_site
   %t475 = call ptr @lp_malloc(i64 %t474)
   store i32 0, ptr @lp_site
   %t476 = getelementptr inbounds %LSlice, ptr %t475, i32 0, i32 0
@@ -298748,7 +298761,7 @@ entry:
   store ptr %t475, ptr @g_g_mr_var
   %t479 = getelementptr %LSlice, ptr null, i32 1
   %t480 = ptrtoint ptr %t479 to i64
-  store i32 11052, ptr @lp_site
+  store i32 11054, ptr @lp_site
   %t481 = call ptr @lp_malloc(i64 %t480)
   store i32 0, ptr @lp_site
   %t482 = getelementptr inbounds %LSlice, ptr %t481, i32 0, i32 0
@@ -298760,7 +298773,7 @@ entry:
   store ptr %t481, ptr @g_g_mr_ui
   %t485 = getelementptr %LSlice, ptr null, i32 1
   %t486 = ptrtoint ptr %t485 to i64
-  store i32 11053, ptr @lp_site
+  store i32 11055, ptr @lp_site
   %t487 = call ptr @lp_malloc(i64 %t486)
   store i32 0, ptr @lp_site
   %t488 = getelementptr inbounds %LSlice, ptr %t487, i32 0, i32 0
@@ -298770,10 +298783,10 @@ entry:
   %t490 = getelementptr inbounds %LSlice, ptr %t487, i32 0, i32 2
   store i32 0, ptr %t490
   store ptr %t487, ptr @g_g_mg_report
-  store ptr @.str21602, ptr @g_g_mg_entry
+  store ptr @.str21605, ptr @g_g_mg_entry
   %t491 = getelementptr %LSlice, ptr null, i32 1
   %t492 = ptrtoint ptr %t491 to i64
-  store i32 11054, ptr @lp_site
+  store i32 11056, ptr @lp_site
   %t493 = call ptr @lp_malloc(i64 %t492)
   store i32 0, ptr @lp_site
   %t494 = getelementptr inbounds %LSlice, ptr %t493, i32 0, i32 0
@@ -298785,7 +298798,7 @@ entry:
   store ptr %t493, ptr @g_g_mg_fv_name
   %t497 = getelementptr %LSlice, ptr null, i32 1
   %t498 = ptrtoint ptr %t497 to i64
-  store i32 11055, ptr @lp_site
+  store i32 11057, ptr @lp_site
   %t499 = call ptr @lp_malloc(i64 %t498)
   store i32 0, ptr @lp_site
   %t500 = getelementptr inbounds %LSlice, ptr %t499, i32 0, i32 0
@@ -298797,7 +298810,7 @@ entry:
   store ptr %t499, ptr @g_g_mg_fv_node
   %t503 = getelementptr %LSlice, ptr null, i32 1
   %t504 = ptrtoint ptr %t503 to i64
-  store i32 11056, ptr @lp_site
+  store i32 11058, ptr @lp_site
   %t505 = call ptr @lp_malloc(i64 %t504)
   store i32 0, ptr @lp_site
   %t506 = getelementptr inbounds %LSlice, ptr %t505, i32 0, i32 0
@@ -298809,7 +298822,7 @@ entry:
   store ptr %t505, ptr @g_g_mc_passed
   %t509 = getelementptr %LSlice, ptr null, i32 1
   %t510 = ptrtoint ptr %t509 to i64
-  store i32 11057, ptr @lp_site
+  store i32 11059, ptr @lp_site
   %t511 = call ptr @lp_malloc(i64 %t510)
   store i32 0, ptr @lp_site
   %t512 = getelementptr inbounds %LSlice, ptr %t511, i32 0, i32 0
@@ -298819,10 +298832,10 @@ entry:
   %t514 = getelementptr inbounds %LSlice, ptr %t511, i32 0, i32 2
   store i32 0, ptr %t514
   store ptr %t511, ptr @g_g_mg_lines
-  store ptr @.str21603, ptr @g_g_mg_keys
+  store ptr @.str21606, ptr @g_g_mg_keys
   %t515 = getelementptr %LSlice, ptr null, i32 1
   %t516 = ptrtoint ptr %t515 to i64
-  store i32 11058, ptr @lp_site
+  store i32 11060, ptr @lp_site
   %t517 = call ptr @lp_malloc(i64 %t516)
   store i32 0, ptr @lp_site
   %t518 = getelementptr inbounds %LSlice, ptr %t517, i32 0, i32 0
@@ -298834,7 +298847,7 @@ entry:
   store ptr %t517, ptr @g_g_mv_need
   %t521 = getelementptr %LSlice, ptr null, i32 1
   %t522 = ptrtoint ptr %t521 to i64
-  store i32 11059, ptr @lp_site
+  store i32 11061, ptr @lp_site
   %t523 = call ptr @lp_malloc(i64 %t522)
   store i32 0, ptr @lp_site
   %t524 = getelementptr inbounds %LSlice, ptr %t523, i32 0, i32 0
@@ -298846,7 +298859,7 @@ entry:
   store ptr %t523, ptr @g_g_mv_mut
   %t527 = getelementptr %LSlice, ptr null, i32 1
   %t528 = ptrtoint ptr %t527 to i64
-  store i32 11060, ptr @lp_site
+  store i32 11062, ptr @lp_site
   %t529 = call ptr @lp_malloc(i64 %t528)
   store i32 0, ptr @lp_site
   %t530 = getelementptr inbounds %LSlice, ptr %t529, i32 0, i32 0
@@ -298858,7 +298871,7 @@ entry:
   store ptr %t529, ptr @g_g_mcm_need
   %t533 = getelementptr %LSlice, ptr null, i32 1
   %t534 = ptrtoint ptr %t533 to i64
-  store i32 11061, ptr @lp_site
+  store i32 11063, ptr @lp_site
   %t535 = call ptr @lp_malloc(i64 %t534)
   store i32 0, ptr @lp_site
   %t536 = getelementptr inbounds %LSlice, ptr %t535, i32 0, i32 0
@@ -298870,7 +298883,7 @@ entry:
   store ptr %t535, ptr @g_g_mcm_mut
   %t539 = getelementptr %LSlice, ptr null, i32 1
   %t540 = ptrtoint ptr %t539 to i64
-  store i32 11062, ptr @lp_site
+  store i32 11064, ptr @lp_site
   %t541 = call ptr @lp_malloc(i64 %t540)
   store i32 0, ptr @lp_site
   %t542 = getelementptr inbounds %LSlice, ptr %t541, i32 0, i32 0
@@ -298882,7 +298895,7 @@ entry:
   store ptr %t541, ptr @g_g_mg_pbv
   %t545 = getelementptr %LSlice, ptr null, i32 1
   %t546 = ptrtoint ptr %t545 to i64
-  store i32 11063, ptr @lp_site
+  store i32 11065, ptr @lp_site
   %t547 = call ptr @lp_malloc(i64 %t546)
   store i32 0, ptr @lp_site
   %t548 = getelementptr inbounds %LSlice, ptr %t547, i32 0, i32 0
@@ -298894,7 +298907,7 @@ entry:
   store ptr %t547, ptr @g_g_rg_name
   %t551 = getelementptr %LSlice, ptr null, i32 1
   %t552 = ptrtoint ptr %t551 to i64
-  store i32 11064, ptr @lp_site
+  store i32 11066, ptr @lp_site
   %t553 = call ptr @lp_malloc(i64 %t552)
   store i32 0, ptr @lp_site
   %t554 = getelementptr inbounds %LSlice, ptr %t553, i32 0, i32 0
@@ -298906,7 +298919,7 @@ entry:
   store ptr %t553, ptr @g_g_rg_type
   %t557 = getelementptr %LSlice, ptr null, i32 1
   %t558 = ptrtoint ptr %t557 to i64
-  store i32 11065, ptr @lp_site
+  store i32 11067, ptr @lp_site
   %t559 = call ptr @lp_malloc(i64 %t558)
   store i32 0, ptr @lp_site
   %t560 = getelementptr inbounds %LSlice, ptr %t559, i32 0, i32 0
@@ -298918,7 +298931,7 @@ entry:
   store ptr %t559, ptr @g_g_rg_prefix
   %t563 = getelementptr %LSlice, ptr null, i32 1
   %t564 = ptrtoint ptr %t563 to i64
-  store i32 11066, ptr @lp_site
+  store i32 11068, ptr @lp_site
   %t565 = call ptr @lp_malloc(i64 %t564)
   store i32 0, ptr @lp_site
   %t566 = getelementptr inbounds %LSlice, ptr %t565, i32 0, i32 0
@@ -298930,7 +298943,7 @@ entry:
   store ptr %t565, ptr @g_g_rg_var
   %t569 = getelementptr %LSlice, ptr null, i32 1
   %t570 = ptrtoint ptr %t569 to i64
-  store i32 11067, ptr @lp_site
+  store i32 11069, ptr @lp_site
   %t571 = call ptr @lp_malloc(i64 %t570)
   store i32 0, ptr @lp_site
   %t572 = getelementptr inbounds %LSlice, ptr %t571, i32 0, i32 0
@@ -298942,7 +298955,7 @@ entry:
   store ptr %t571, ptr @g_g_rg_open
   %t575 = getelementptr %LSlice, ptr null, i32 1
   %t576 = ptrtoint ptr %t575 to i64
-  store i32 11068, ptr @lp_site
+  store i32 11070, ptr @lp_site
   %t577 = call ptr @lp_malloc(i64 %t576)
   store i32 0, ptr @lp_site
   %t578 = getelementptr inbounds %LSlice, ptr %t577, i32 0, i32 0
@@ -298954,7 +298967,7 @@ entry:
   store ptr %t577, ptr @g_g_rg_from
   %t581 = getelementptr %LSlice, ptr null, i32 1
   %t582 = ptrtoint ptr %t581 to i64
-  store i32 11069, ptr @lp_site
+  store i32 11071, ptr @lp_site
   %t583 = call ptr @lp_malloc(i64 %t582)
   store i32 0, ptr @lp_site
   %t584 = getelementptr inbounds %LSlice, ptr %t583, i32 0, i32 0
@@ -298966,7 +298979,7 @@ entry:
   store ptr %t583, ptr @g_g_rg_at
   %t587 = getelementptr %LSlice, ptr null, i32 1
   %t588 = ptrtoint ptr %t587 to i64
-  store i32 11070, ptr @lp_site
+  store i32 11072, ptr @lp_site
   %t589 = call ptr @lp_malloc(i64 %t588)
   store i32 0, ptr @lp_site
   %t590 = getelementptr inbounds %LSlice, ptr %t589, i32 0, i32 0
@@ -298978,7 +298991,7 @@ entry:
   store ptr %t589, ptr @g_g_df_reg
   %t593 = getelementptr %LSlice, ptr null, i32 1
   %t594 = ptrtoint ptr %t593 to i64
-  store i32 11071, ptr @lp_site
+  store i32 11073, ptr @lp_site
   %t595 = call ptr @lp_malloc(i64 %t594)
   store i32 0, ptr @lp_site
   %t596 = getelementptr inbounds %LSlice, ptr %t595, i32 0, i32 0
@@ -298990,7 +299003,7 @@ entry:
   store ptr %t595, ptr @g_g_df_key
   %t599 = getelementptr %LSlice, ptr null, i32 1
   %t600 = ptrtoint ptr %t599 to i64
-  store i32 11072, ptr @lp_site
+  store i32 11074, ptr @lp_site
   %t601 = call ptr @lp_malloc(i64 %t600)
   store i32 0, ptr @lp_site
   %t602 = getelementptr inbounds %LSlice, ptr %t601, i32 0, i32 0
@@ -299002,7 +299015,7 @@ entry:
   store ptr %t601, ptr @g_g_df_rec
   %t605 = getelementptr %LSlice, ptr null, i32 1
   %t606 = ptrtoint ptr %t605 to i64
-  store i32 11073, ptr @lp_site
+  store i32 11075, ptr @lp_site
   %t607 = call ptr @lp_malloc(i64 %t606)
   store i32 0, ptr @lp_site
   %t608 = getelementptr inbounds %LSlice, ptr %t607, i32 0, i32 0
@@ -299014,7 +299027,7 @@ entry:
   store ptr %t607, ptr @g_g_df_kline
   %t611 = getelementptr %LSlice, ptr null, i32 1
   %t612 = ptrtoint ptr %t611 to i64
-  store i32 11074, ptr @lp_site
+  store i32 11076, ptr @lp_site
   %t613 = call ptr @lp_malloc(i64 %t612)
   store i32 0, ptr @lp_site
   %t614 = getelementptr inbounds %LSlice, ptr %t613, i32 0, i32 0
@@ -299026,7 +299039,7 @@ entry:
   store ptr %t613, ptr @g_g_df_kcol
   %t617 = getelementptr %LSlice, ptr null, i32 1
   %t618 = ptrtoint ptr %t617 to i64
-  store i32 11075, ptr @lp_site
+  store i32 11077, ptr @lp_site
   %t619 = call ptr @lp_malloc(i64 %t618)
   store i32 0, ptr @lp_site
   %t620 = getelementptr inbounds %LSlice, ptr %t619, i32 0, i32 0
@@ -299038,7 +299051,7 @@ entry:
   store ptr %t619, ptr @g_g_df_src
   %t623 = getelementptr %LSlice, ptr null, i32 1
   %t624 = ptrtoint ptr %t623 to i64
-  store i32 11076, ptr @lp_site
+  store i32 11078, ptr @lp_site
   %t625 = call ptr @lp_malloc(i64 %t624)
   store i32 0, ptr @lp_site
   %t626 = getelementptr inbounds %LSlice, ptr %t625, i32 0, i32 0
@@ -299050,7 +299063,7 @@ entry:
   store ptr %t625, ptr @g_g_df_via
   %t629 = getelementptr %LSlice, ptr null, i32 1
   %t630 = ptrtoint ptr %t629 to i64
-  store i32 11077, ptr @lp_site
+  store i32 11079, ptr @lp_site
   %t631 = call ptr @lp_malloc(i64 %t630)
   store i32 0, ptr @lp_site
   %t632 = getelementptr inbounds %LSlice, ptr %t631, i32 0, i32 0
@@ -299062,7 +299075,7 @@ entry:
   store ptr %t631, ptr @g_g_at_start
   %t635 = getelementptr %LSlice, ptr null, i32 1
   %t636 = ptrtoint ptr %t635 to i64
-  store i32 11078, ptr @lp_site
+  store i32 11080, ptr @lp_site
   %t637 = call ptr @lp_malloc(i64 %t636)
   store i32 0, ptr @lp_site
   %t638 = getelementptr inbounds %LSlice, ptr %t637, i32 0, i32 0
@@ -299074,7 +299087,7 @@ entry:
   store ptr %t637, ptr @g_g_at_count
   %t641 = getelementptr %LSlice, ptr null, i32 1
   %t642 = ptrtoint ptr %t641 to i64
-  store i32 11079, ptr @lp_site
+  store i32 11081, ptr @lp_site
   %t643 = call ptr @lp_malloc(i64 %t642)
   store i32 0, ptr @lp_site
   %t644 = getelementptr inbounds %LSlice, ptr %t643, i32 0, i32 0
@@ -299086,7 +299099,7 @@ entry:
   store ptr %t643, ptr @g_g_at_name
   %t647 = getelementptr %LSlice, ptr null, i32 1
   %t648 = ptrtoint ptr %t647 to i64
-  store i32 11080, ptr @lp_site
+  store i32 11082, ptr @lp_site
   %t649 = call ptr @lp_malloc(i64 %t648)
   store i32 0, ptr @lp_site
   %t650 = getelementptr inbounds %LSlice, ptr %t649, i32 0, i32 0
@@ -299098,7 +299111,7 @@ entry:
   store ptr %t649, ptr @g_g_at_args
   %t653 = getelementptr %LSlice, ptr null, i32 1
   %t654 = ptrtoint ptr %t653 to i64
-  store i32 11081, ptr @lp_site
+  store i32 11083, ptr @lp_site
   %t655 = call ptr @lp_malloc(i64 %t654)
   store i32 0, ptr @lp_site
   %t656 = getelementptr inbounds %LSlice, ptr %t655, i32 0, i32 0
@@ -299110,7 +299123,7 @@ entry:
   store ptr %t655, ptr @g_g_at_first
   %t659 = getelementptr %LSlice, ptr null, i32 1
   %t660 = ptrtoint ptr %t659 to i64
-  store i32 11082, ptr @lp_site
+  store i32 11084, ptr @lp_site
   %t661 = call ptr @lp_malloc(i64 %t660)
   store i32 0, ptr @lp_site
   %t662 = getelementptr inbounds %LSlice, ptr %t661, i32 0, i32 0
@@ -299122,7 +299135,7 @@ entry:
   store ptr %t661, ptr @g_g_at_nargs
   %t665 = getelementptr %LSlice, ptr null, i32 1
   %t666 = ptrtoint ptr %t665 to i64
-  store i32 11083, ptr @lp_site
+  store i32 11085, ptr @lp_site
   %t667 = call ptr @lp_malloc(i64 %t666)
   store i32 0, ptr @lp_site
   %t668 = getelementptr inbounds %LSlice, ptr %t667, i32 0, i32 0
@@ -299134,7 +299147,7 @@ entry:
   store ptr %t667, ptr @g_g_at_unres
   %t671 = getelementptr %LSlice, ptr null, i32 1
   %t672 = ptrtoint ptr %t671 to i64
-  store i32 11084, ptr @lp_site
+  store i32 11086, ptr @lp_site
   %t673 = call ptr @lp_malloc(i64 %t672)
   store i32 0, ptr @lp_site
   %t674 = getelementptr inbounds %LSlice, ptr %t673, i32 0, i32 0
@@ -299146,7 +299159,7 @@ entry:
   store ptr %t673, ptr @g_g_at_decl
   %t677 = getelementptr %LSlice, ptr null, i32 1
   %t678 = ptrtoint ptr %t677 to i64
-  store i32 11085, ptr @lp_site
+  store i32 11087, ptr @lp_site
   %t679 = call ptr @lp_malloc(i64 %t678)
   store i32 0, ptr @lp_site
   %t680 = getelementptr inbounds %LSlice, ptr %t679, i32 0, i32 0
@@ -299158,7 +299171,7 @@ entry:
   store ptr %t679, ptr @g_g_at_strs
   %t683 = getelementptr %LSlice, ptr null, i32 1
   %t684 = ptrtoint ptr %t683 to i64
-  store i32 11086, ptr @lp_site
+  store i32 11088, ptr @lp_site
   %t685 = call ptr @lp_malloc(i64 %t684)
   store i32 0, ptr @lp_site
   %t686 = getelementptr inbounds %LSlice, ptr %t685, i32 0, i32 0
@@ -299170,7 +299183,7 @@ entry:
   store ptr %t685, ptr @g_g_at_decl_args
   %t689 = getelementptr %LSlice, ptr null, i32 1
   %t690 = ptrtoint ptr %t689 to i64
-  store i32 11087, ptr @lp_site
+  store i32 11089, ptr @lp_site
   %t691 = call ptr @lp_malloc(i64 %t690)
   store i32 0, ptr @lp_site
   %t692 = getelementptr inbounds %LSlice, ptr %t691, i32 0, i32 0
@@ -299182,7 +299195,7 @@ entry:
   store ptr %t691, ptr @g_g_vc_kind
   %t695 = getelementptr %LSlice, ptr null, i32 1
   %t696 = ptrtoint ptr %t695 to i64
-  store i32 11088, ptr @lp_site
+  store i32 11090, ptr @lp_site
   %t697 = call ptr @lp_malloc(i64 %t696)
   store i32 0, ptr @lp_site
   %t698 = getelementptr inbounds %LSlice, ptr %t697, i32 0, i32 0
@@ -299194,7 +299207,7 @@ entry:
   store ptr %t697, ptr @g_g_vc_name
   %t701 = getelementptr %LSlice, ptr null, i32 1
   %t702 = ptrtoint ptr %t701 to i64
-  store i32 11089, ptr @lp_site
+  store i32 11091, ptr @lp_site
   %t703 = call ptr @lp_malloc(i64 %t702)
   store i32 0, ptr @lp_site
   %t704 = getelementptr inbounds %LSlice, ptr %t703, i32 0, i32 0
@@ -299206,7 +299219,7 @@ entry:
   store ptr %t703, ptr @g_g_vc_role
   %t707 = getelementptr %LSlice, ptr null, i32 1
   %t708 = ptrtoint ptr %t707 to i64
-  store i32 11090, ptr @lp_site
+  store i32 11092, ptr @lp_site
   %t709 = call ptr @lp_malloc(i64 %t708)
   store i32 0, ptr @lp_site
   %t710 = getelementptr inbounds %LSlice, ptr %t709, i32 0, i32 0
@@ -299218,7 +299231,7 @@ entry:
   store ptr %t709, ptr @g_g_vc_form
   %t713 = getelementptr %LSlice, ptr null, i32 1
   %t714 = ptrtoint ptr %t713 to i64
-  store i32 11091, ptr @lp_site
+  store i32 11093, ptr @lp_site
   %t715 = call ptr @lp_malloc(i64 %t714)
   store i32 0, ptr @lp_site
   %t716 = getelementptr inbounds %LSlice, ptr %t715, i32 0, i32 0
@@ -299230,7 +299243,7 @@ entry:
   store ptr %t715, ptr @g_g_vc_on
   %t719 = getelementptr %LSlice, ptr null, i32 1
   %t720 = ptrtoint ptr %t719 to i64
-  store i32 11092, ptr @lp_site
+  store i32 11094, ptr @lp_site
   %t721 = call ptr @lp_malloc(i64 %t720)
   store i32 0, ptr @lp_site
   %t722 = getelementptr inbounds %LSlice, ptr %t721, i32 0, i32 0
@@ -299242,7 +299255,7 @@ entry:
   store ptr %t721, ptr @g_g_vc_doc
   %t725 = getelementptr %LSlice, ptr null, i32 1
   %t726 = ptrtoint ptr %t725 to i64
-  store i32 11093, ptr @lp_site
+  store i32 11095, ptr @lp_site
   %t727 = call ptr @lp_malloc(i64 %t726)
   store i32 0, ptr @lp_site
   %t728 = getelementptr inbounds %LSlice, ptr %t727, i32 0, i32 0
@@ -299254,7 +299267,7 @@ entry:
   store ptr %t727, ptr @g_g_rg_permap
   %t731 = getelementptr %LSlice, ptr null, i32 1
   %t732 = ptrtoint ptr %t731 to i64
-  store i32 11094, ptr @lp_site
+  store i32 11096, ptr @lp_site
   %t733 = call ptr @lp_malloc(i64 %t732)
   store i32 0, ptr @lp_site
   %t734 = getelementptr inbounds %LSlice, ptr %t733, i32 0, i32 0
@@ -299264,10 +299277,10 @@ entry:
   %t736 = getelementptr inbounds %LSlice, ptr %t733, i32 0, i32 2
   store i32 0, ptr %t736
   store ptr %t733, ptr @g_g_rg_chunk
-  store ptr @.str21604, ptr @g_g_pm_root
+  store ptr @.str21607, ptr @g_g_pm_root
   %t737 = getelementptr %LSlice, ptr null, i32 1
   %t738 = ptrtoint ptr %t737 to i64
-  store i32 11095, ptr @lp_site
+  store i32 11097, ptr @lp_site
   %t739 = call ptr @lp_malloc(i64 %t738)
   store i32 0, ptr @lp_site
   %t740 = getelementptr inbounds %LSlice, ptr %t739, i32 0, i32 0
@@ -299279,7 +299292,7 @@ entry:
   store ptr %t739, ptr @g_g_pm_recs
   %t743 = getelementptr %LSlice, ptr null, i32 1
   %t744 = ptrtoint ptr %t743 to i64
-  store i32 11096, ptr @lp_site
+  store i32 11098, ptr @lp_site
   %t745 = call ptr @lp_malloc(i64 %t744)
   store i32 0, ptr @lp_site
   %t746 = getelementptr inbounds %LSlice, ptr %t745, i32 0, i32 0
@@ -299291,7 +299304,7 @@ entry:
   store ptr %t745, ptr @g_g_pm_pooled
   %t749 = getelementptr %LSlice, ptr null, i32 1
   %t750 = ptrtoint ptr %t749 to i64
-  store i32 11097, ptr @lp_site
+  store i32 11099, ptr @lp_site
   %t751 = call ptr @lp_malloc(i64 %t750)
   store i32 0, ptr @lp_site
   %t752 = getelementptr inbounds %LSlice, ptr %t751, i32 0, i32 0
@@ -299303,7 +299316,7 @@ entry:
   store ptr %t751, ptr @g_g_pm_fnty
   %t755 = getelementptr %LSlice, ptr null, i32 1
   %t756 = ptrtoint ptr %t755 to i64
-  store i32 11098, ptr @lp_site
+  store i32 11100, ptr @lp_site
   %t757 = call ptr @lp_malloc(i64 %t756)
   store i32 0, ptr @lp_site
   %t758 = getelementptr inbounds %LSlice, ptr %t757, i32 0, i32 0
@@ -299315,7 +299328,7 @@ entry:
   store ptr %t757, ptr @g_g_pmc_names
   %t761 = getelementptr %LSlice, ptr null, i32 1
   %t762 = ptrtoint ptr %t761 to i64
-  store i32 11099, ptr @lp_site
+  store i32 11101, ptr @lp_site
   %t763 = call ptr @lp_malloc(i64 %t762)
   store i32 0, ptr @lp_site
   %t764 = getelementptr inbounds %LSlice, ptr %t763, i32 0, i32 0
@@ -299327,7 +299340,7 @@ entry:
   store ptr %t763, ptr @g_g_pmc_isf
   %t767 = getelementptr %LSlice, ptr null, i32 1
   %t768 = ptrtoint ptr %t767 to i64
-  store i32 11100, ptr @lp_site
+  store i32 11102, ptr @lp_site
   %t769 = call ptr @lp_malloc(i64 %t768)
   store i32 0, ptr @lp_site
   %t770 = getelementptr inbounds %LSlice, ptr %t769, i32 0, i32 0
@@ -299339,7 +299352,7 @@ entry:
   store ptr %t769, ptr @g_g_pmc_iv
   %t773 = getelementptr %LSlice, ptr null, i32 1
   %t774 = ptrtoint ptr %t773 to i64
-  store i32 11101, ptr @lp_site
+  store i32 11103, ptr @lp_site
   %t775 = call ptr @lp_malloc(i64 %t774)
   store i32 0, ptr @lp_site
   %t776 = getelementptr inbounds %LSlice, ptr %t775, i32 0, i32 0
@@ -299351,7 +299364,7 @@ entry:
   store ptr %t775, ptr @g_g_pmc_ftext
   %t779 = getelementptr %LSlice, ptr null, i32 1
   %t780 = ptrtoint ptr %t779 to i64
-  store i32 11102, ptr @lp_site
+  store i32 11104, ptr @lp_site
   %t781 = call ptr @lp_malloc(i64 %t780)
   store i32 0, ptr @lp_site
   %t782 = getelementptr inbounds %LSlice, ptr %t781, i32 0, i32 0
@@ -299363,7 +299376,7 @@ entry:
   store ptr %t781, ptr @g_g_pmc_all
   %t785 = getelementptr %LSlice, ptr null, i32 1
   %t786 = ptrtoint ptr %t785 to i64
-  store i32 11103, ptr @lp_site
+  store i32 11105, ptr @lp_site
   %t787 = call ptr @lp_malloc(i64 %t786)
   store i32 0, ptr @lp_site
   %t788 = getelementptr inbounds %LSlice, ptr %t787, i32 0, i32 0
@@ -299375,7 +299388,7 @@ entry:
   store ptr %t787, ptr @g_g_pmc_node
   %t791 = getelementptr %LSlice, ptr null, i32 1
   %t792 = ptrtoint ptr %t791 to i64
-  store i32 11104, ptr @lp_site
+  store i32 11106, ptr @lp_site
   %t793 = call ptr @lp_malloc(i64 %t792)
   store i32 0, ptr @lp_site
   %t794 = getelementptr inbounds %LSlice, ptr %t793, i32 0, i32 0
@@ -299387,7 +299400,7 @@ entry:
   store ptr %t793, ptr @g_g_pmk_reg
   %t797 = getelementptr %LSlice, ptr null, i32 1
   %t798 = ptrtoint ptr %t797 to i64
-  store i32 11105, ptr @lp_site
+  store i32 11107, ptr @lp_site
   %t799 = call ptr @lp_malloc(i64 %t798)
   store i32 0, ptr @lp_site
   %t800 = getelementptr inbounds %LSlice, ptr %t799, i32 0, i32 0
@@ -299399,7 +299412,7 @@ entry:
   store ptr %t799, ptr @g_g_pmk_key
   %t803 = getelementptr %LSlice, ptr null, i32 1
   %t804 = ptrtoint ptr %t803 to i64
-  store i32 11106, ptr @lp_site
+  store i32 11108, ptr @lp_site
   %t805 = call ptr @lp_malloc(i64 %t804)
   store i32 0, ptr @lp_site
   %t806 = getelementptr inbounds %LSlice, ptr %t805, i32 0, i32 0
@@ -299411,7 +299424,7 @@ entry:
   store ptr %t805, ptr @g_g_pmk_rec
   %t809 = getelementptr %LSlice, ptr null, i32 1
   %t810 = ptrtoint ptr %t809 to i64
-  store i32 11107, ptr @lp_site
+  store i32 11109, ptr @lp_site
   %t811 = call ptr @lp_malloc(i64 %t810)
   store i32 0, ptr @lp_site
   %t812 = getelementptr inbounds %LSlice, ptr %t811, i32 0, i32 0
@@ -299423,7 +299436,7 @@ entry:
   store ptr %t811, ptr @g_g_pmk_kline
   %t815 = getelementptr %LSlice, ptr null, i32 1
   %t816 = ptrtoint ptr %t815 to i64
-  store i32 11108, ptr @lp_site
+  store i32 11110, ptr @lp_site
   %t817 = call ptr @lp_malloc(i64 %t816)
   store i32 0, ptr @lp_site
   %t818 = getelementptr inbounds %LSlice, ptr %t817, i32 0, i32 0
@@ -299435,7 +299448,7 @@ entry:
   store ptr %t817, ptr @g_g_pmk_kcol
   %t821 = getelementptr %LSlice, ptr null, i32 1
   %t822 = ptrtoint ptr %t821 to i64
-  store i32 11109, ptr @lp_site
+  store i32 11111, ptr @lp_site
   %t823 = call ptr @lp_malloc(i64 %t822)
   store i32 0, ptr @lp_site
   %t824 = getelementptr inbounds %LSlice, ptr %t823, i32 0, i32 0
@@ -299447,7 +299460,7 @@ entry:
   store ptr %t823, ptr @g_g_pmk_file
   %t827 = getelementptr %LSlice, ptr null, i32 1
   %t828 = ptrtoint ptr %t827 to i64
-  store i32 11110, ptr @lp_site
+  store i32 11112, ptr @lp_site
   %t829 = call ptr @lp_malloc(i64 %t828)
   store i32 0, ptr @lp_site
   %t830 = getelementptr inbounds %LSlice, ptr %t829, i32 0, i32 0
@@ -299459,7 +299472,7 @@ entry:
   store ptr %t829, ptr @g_g_pmk_ref_reg
   %t833 = getelementptr %LSlice, ptr null, i32 1
   %t834 = ptrtoint ptr %t833 to i64
-  store i32 11111, ptr @lp_site
+  store i32 11113, ptr @lp_site
   %t835 = call ptr @lp_malloc(i64 %t834)
   store i32 0, ptr @lp_site
   %t836 = getelementptr inbounds %LSlice, ptr %t835, i32 0, i32 0
@@ -299471,7 +299484,7 @@ entry:
   store ptr %t835, ptr @g_g_pmk_ref_key
   %t839 = getelementptr %LSlice, ptr null, i32 1
   %t840 = ptrtoint ptr %t839 to i64
-  store i32 11112, ptr @lp_site
+  store i32 11114, ptr @lp_site
   %t841 = call ptr @lp_malloc(i64 %t840)
   store i32 0, ptr @lp_site
   %t842 = getelementptr inbounds %LSlice, ptr %t841, i32 0, i32 0
@@ -299481,11 +299494,11 @@ entry:
   %t844 = getelementptr inbounds %LSlice, ptr %t841, i32 0, i32 2
   store i32 0, ptr %t844
   store ptr %t841, ptr @g_g_pmk_ref_at
-  store ptr @.str21605, ptr @g_g_pmk_mod
-  store ptr @.str21606, ptr @g_g_pmk_md
+  store ptr @.str21608, ptr @g_g_pmk_mod
+  store ptr @.str21609, ptr @g_g_pmk_md
   %t845 = getelementptr %LSlice, ptr null, i32 1
   %t846 = ptrtoint ptr %t845 to i64
-  store i32 11113, ptr @lp_site
+  store i32 11115, ptr @lp_site
   %t847 = call ptr @lp_malloc(i64 %t846)
   store i32 0, ptr @lp_site
   %t848 = getelementptr inbounds %LSlice, ptr %t847, i32 0, i32 0
@@ -299497,7 +299510,7 @@ entry:
   store ptr %t847, ptr @g_g_vw_name
   %t851 = getelementptr %LSlice, ptr null, i32 1
   %t852 = ptrtoint ptr %t851 to i64
-  store i32 11114, ptr @lp_site
+  store i32 11116, ptr @lp_site
   %t853 = call ptr @lp_malloc(i64 %t852)
   store i32 0, ptr @lp_site
   %t854 = getelementptr inbounds %LSlice, ptr %t853, i32 0, i32 0
@@ -299509,7 +299522,7 @@ entry:
   store ptr %t853, ptr @g_g_vw_node
   %t857 = getelementptr %LSlice, ptr null, i32 1
   %t858 = ptrtoint ptr %t857 to i64
-  store i32 11115, ptr @lp_site
+  store i32 11117, ptr @lp_site
   %t859 = call ptr @lp_malloc(i64 %t858)
   store i32 0, ptr @lp_site
   %t860 = getelementptr inbounds %LSlice, ptr %t859, i32 0, i32 0
@@ -299521,7 +299534,7 @@ entry:
   store ptr %t859, ptr @g_g_vw_fields
   %t863 = getelementptr %LSlice, ptr null, i32 1
   %t864 = ptrtoint ptr %t863 to i64
-  store i32 11116, ptr @lp_site
+  store i32 11118, ptr @lp_site
   %t865 = call ptr @lp_malloc(i64 %t864)
   store i32 0, ptr @lp_site
   %t866 = getelementptr inbounds %LSlice, ptr %t865, i32 0, i32 0
@@ -299533,7 +299546,7 @@ entry:
   store ptr %t865, ptr @g_g_vw_fnames
   %t869 = getelementptr %LSlice, ptr null, i32 1
   %t870 = ptrtoint ptr %t869 to i64
-  store i32 11117, ptr @lp_site
+  store i32 11119, ptr @lp_site
   %t871 = call ptr @lp_malloc(i64 %t870)
   store i32 0, ptr @lp_site
   %t872 = getelementptr inbounds %LSlice, ptr %t871, i32 0, i32 0
@@ -299545,7 +299558,7 @@ entry:
   store ptr %t871, ptr @g_g_vw_calls
   %t875 = getelementptr %LSlice, ptr null, i32 1
   %t876 = ptrtoint ptr %t875 to i64
-  store i32 11118, ptr @lp_site
+  store i32 11120, ptr @lp_site
   %t877 = call ptr @lp_malloc(i64 %t876)
   store i32 0, ptr @lp_site
   %t878 = getelementptr inbounds %LSlice, ptr %t877, i32 0, i32 0
@@ -299557,7 +299570,7 @@ entry:
   store ptr %t877, ptr @g_g_vw_cnames
   %t881 = getelementptr %LSlice, ptr null, i32 1
   %t882 = ptrtoint ptr %t881 to i64
-  store i32 11119, ptr @lp_site
+  store i32 11121, ptr @lp_site
   %t883 = call ptr @lp_malloc(i64 %t882)
   store i32 0, ptr @lp_site
   %t884 = getelementptr inbounds %LSlice, ptr %t883, i32 0, i32 0
@@ -299569,7 +299582,7 @@ entry:
   store ptr %t883, ptr @g_g_vw_helpers
   %t887 = getelementptr %LSlice, ptr null, i32 1
   %t888 = ptrtoint ptr %t887 to i64
-  store i32 11120, ptr @lp_site
+  store i32 11122, ptr @lp_site
   %t889 = call ptr @lp_malloc(i64 %t888)
   store i32 0, ptr @lp_site
   %t890 = getelementptr inbounds %LSlice, ptr %t889, i32 0, i32 0
@@ -299581,7 +299594,7 @@ entry:
   store ptr %t889, ptr @g_g_vw_hdr
   %t893 = getelementptr %LSlice, ptr null, i32 1
   %t894 = ptrtoint ptr %t893 to i64
-  store i32 11121, ptr @lp_site
+  store i32 11123, ptr @lp_site
   %t895 = call ptr @lp_malloc(i64 %t894)
   store i32 0, ptr @lp_site
   %t896 = getelementptr inbounds %LSlice, ptr %t895, i32 0, i32 0
@@ -299593,7 +299606,7 @@ entry:
   store ptr %t895, ptr @g_g_vw_nps
   %t899 = getelementptr %LSlice, ptr null, i32 1
   %t900 = ptrtoint ptr %t899 to i64
-  store i32 11122, ptr @lp_site
+  store i32 11124, ptr @lp_site
   %t901 = call ptr @lp_malloc(i64 %t900)
   store i32 0, ptr @lp_site
   %t902 = getelementptr inbounds %LSlice, ptr %t901, i32 0, i32 0
@@ -299605,7 +299618,7 @@ entry:
   store ptr %t901, ptr @g_g_vw_ps
   %t905 = getelementptr %LSlice, ptr null, i32 1
   %t906 = ptrtoint ptr %t905 to i64
-  store i32 11123, ptr @lp_site
+  store i32 11125, ptr @lp_site
   %t907 = call ptr @lp_malloc(i64 %t906)
   store i32 0, ptr @lp_site
   %t908 = getelementptr inbounds %LSlice, ptr %t907, i32 0, i32 0
@@ -299617,7 +299630,7 @@ entry:
   store ptr %t907, ptr @g_g_cm_name
   %t911 = getelementptr %LSlice, ptr null, i32 1
   %t912 = ptrtoint ptr %t911 to i64
-  store i32 11124, ptr @lp_site
+  store i32 11126, ptr @lp_site
   %t913 = call ptr @lp_malloc(i64 %t912)
   store i32 0, ptr @lp_site
   %t914 = getelementptr inbounds %LSlice, ptr %t913, i32 0, i32 0
@@ -299629,7 +299642,7 @@ entry:
   store ptr %t913, ptr @g_g_cm_file
   %t917 = getelementptr %LSlice, ptr null, i32 1
   %t918 = ptrtoint ptr %t917 to i64
-  store i32 11125, ptr @lp_site
+  store i32 11127, ptr @lp_site
   %t919 = call ptr @lp_malloc(i64 %t918)
   store i32 0, ptr @lp_site
   %t920 = getelementptr inbounds %LSlice, ptr %t919, i32 0, i32 0
@@ -299641,7 +299654,7 @@ entry:
   store ptr %t919, ptr @g_g_cm_line
   %t923 = getelementptr %LSlice, ptr null, i32 1
   %t924 = ptrtoint ptr %t923 to i64
-  store i32 11126, ptr @lp_site
+  store i32 11128, ptr @lp_site
   %t925 = call ptr @lp_malloc(i64 %t924)
   store i32 0, ptr @lp_site
   %t926 = getelementptr inbounds %LSlice, ptr %t925, i32 0, i32 0
@@ -299653,7 +299666,7 @@ entry:
   store ptr %t925, ptr @g_g_cm_vis
   %t929 = getelementptr %LSlice, ptr null, i32 1
   %t930 = ptrtoint ptr %t929 to i64
-  store i32 11127, ptr @lp_site
+  store i32 11129, ptr @lp_site
   %t931 = call ptr @lp_malloc(i64 %t930)
   store i32 0, ptr @lp_site
   %t932 = getelementptr inbounds %LSlice, ptr %t931, i32 0, i32 0
@@ -299665,7 +299678,7 @@ entry:
   store ptr %t931, ptr @g_g_cm_keep
   %t935 = getelementptr %LSlice, ptr null, i32 1
   %t936 = ptrtoint ptr %t935 to i64
-  store i32 11128, ptr @lp_site
+  store i32 11130, ptr @lp_site
   %t937 = call ptr @lp_malloc(i64 %t936)
   store i32 0, ptr @lp_site
   %t938 = getelementptr inbounds %LSlice, ptr %t937, i32 0, i32 0
@@ -299677,7 +299690,7 @@ entry:
   store ptr %t937, ptr @g_g_cm_keep_ty
   %t941 = getelementptr %LSlice, ptr null, i32 1
   %t942 = ptrtoint ptr %t941 to i64
-  store i32 11129, ptr @lp_site
+  store i32 11131, ptr @lp_site
   %t943 = call ptr @lp_malloc(i64 %t942)
   store i32 0, ptr @lp_site
   %t944 = getelementptr inbounds %LSlice, ptr %t943, i32 0, i32 0
@@ -299689,7 +299702,7 @@ entry:
   store ptr %t943, ptr @g_g_cm_prop
   %t947 = getelementptr %LSlice, ptr null, i32 1
   %t948 = ptrtoint ptr %t947 to i64
-  store i32 11130, ptr @lp_site
+  store i32 11132, ptr @lp_site
   %t949 = call ptr @lp_malloc(i64 %t948)
   store i32 0, ptr @lp_site
   %t950 = getelementptr inbounds %LSlice, ptr %t949, i32 0, i32 0
@@ -299701,7 +299714,7 @@ entry:
   store ptr %t949, ptr @g_g_cm_defs
   %t953 = getelementptr %LSlice, ptr null, i32 1
   %t954 = ptrtoint ptr %t953 to i64
-  store i32 11131, ptr @lp_site
+  store i32 11133, ptr @lp_site
   %t955 = call ptr @lp_malloc(i64 %t954)
   store i32 0, ptr @lp_site
   %t956 = getelementptr inbounds %LSlice, ptr %t955, i32 0, i32 0
@@ -299713,7 +299726,7 @@ entry:
   store ptr %t955, ptr @g_g_cm_fields
   %t959 = getelementptr %LSlice, ptr null, i32 1
   %t960 = ptrtoint ptr %t959 to i64
-  store i32 11132, ptr @lp_site
+  store i32 11134, ptr @lp_site
   %t961 = call ptr @lp_malloc(i64 %t960)
   store i32 0, ptr @lp_site
   %t962 = getelementptr inbounds %LSlice, ptr %t961, i32 0, i32 0
@@ -299725,7 +299738,7 @@ entry:
   store ptr %t961, ptr @g_g_cm_fnames
   %t965 = getelementptr %LSlice, ptr null, i32 1
   %t966 = ptrtoint ptr %t965 to i64
-  store i32 11133, ptr @lp_site
+  store i32 11135, ptr @lp_site
   %t967 = call ptr @lp_malloc(i64 %t966)
   store i32 0, ptr @lp_site
   %t968 = getelementptr inbounds %LSlice, ptr %t967, i32 0, i32 0
@@ -299737,7 +299750,7 @@ entry:
   store ptr %t967, ptr @g_g_cm_calls
   %t971 = getelementptr %LSlice, ptr null, i32 1
   %t972 = ptrtoint ptr %t971 to i64
-  store i32 11134, ptr @lp_site
+  store i32 11136, ptr @lp_site
   %t973 = call ptr @lp_malloc(i64 %t972)
   store i32 0, ptr @lp_site
   %t974 = getelementptr inbounds %LSlice, ptr %t973, i32 0, i32 0
@@ -299749,7 +299762,7 @@ entry:
   store ptr %t973, ptr @g_g_cm_cnames
   %t977 = getelementptr %LSlice, ptr null, i32 1
   %t978 = ptrtoint ptr %t977 to i64
-  store i32 11135, ptr @lp_site
+  store i32 11137, ptr @lp_site
   %t979 = call ptr @lp_malloc(i64 %t978)
   store i32 0, ptr @lp_site
   %t980 = getelementptr inbounds %LSlice, ptr %t979, i32 0, i32 0
@@ -299761,7 +299774,7 @@ entry:
   store ptr %t979, ptr @g_g_cm_head
   %t983 = getelementptr %LSlice, ptr null, i32 1
   %t984 = ptrtoint ptr %t983 to i64
-  store i32 11136, ptr @lp_site
+  store i32 11138, ptr @lp_site
   %t985 = call ptr @lp_malloc(i64 %t984)
   store i32 0, ptr @lp_site
   %t986 = getelementptr inbounds %LSlice, ptr %t985, i32 0, i32 0
@@ -299773,7 +299786,7 @@ entry:
   store ptr %t985, ptr @g_g_cm_hdr
   %t989 = getelementptr %LSlice, ptr null, i32 1
   %t990 = ptrtoint ptr %t989 to i64
-  store i32 11137, ptr @lp_site
+  store i32 11139, ptr @lp_site
   %t991 = call ptr @lp_malloc(i64 %t990)
   store i32 0, ptr @lp_site
   %t992 = getelementptr inbounds %LSlice, ptr %t991, i32 0, i32 0
@@ -299785,7 +299798,7 @@ entry:
   store ptr %t991, ptr @g_g_cm_ps
   %t995 = getelementptr %LSlice, ptr null, i32 1
   %t996 = ptrtoint ptr %t995 to i64
-  store i32 11138, ptr @lp_site
+  store i32 11140, ptr @lp_site
   %t997 = call ptr @lp_malloc(i64 %t996)
   store i32 0, ptr @lp_site
   %t998 = getelementptr inbounds %LSlice, ptr %t997, i32 0, i32 0
@@ -299797,7 +299810,7 @@ entry:
   store ptr %t997, ptr @g_g_cm_at
   %t1001 = getelementptr %LSlice, ptr null, i32 1
   %t1002 = ptrtoint ptr %t1001 to i64
-  store i32 11139, ptr @lp_site
+  store i32 11141, ptr @lp_site
   %t1003 = call ptr @lp_malloc(i64 %t1002)
   store i32 0, ptr @lp_site
   %t1004 = getelementptr inbounds %LSlice, ptr %t1003, i32 0, i32 0
@@ -299809,7 +299822,7 @@ entry:
   store ptr %t1003, ptr @g_g_cm_kat
   %t1007 = getelementptr %LSlice, ptr null, i32 1
   %t1008 = ptrtoint ptr %t1007 to i64
-  store i32 11140, ptr @lp_site
+  store i32 11142, ptr @lp_site
   %t1009 = call ptr @lp_malloc(i64 %t1008)
   store i32 0, ptr @lp_site
   %t1010 = getelementptr inbounds %LSlice, ptr %t1009, i32 0, i32 0
@@ -299821,7 +299834,7 @@ entry:
   store ptr %t1009, ptr @g_g_cm_fline
   %t1013 = getelementptr %LSlice, ptr null, i32 1
   %t1014 = ptrtoint ptr %t1013 to i64
-  store i32 11141, ptr @lp_site
+  store i32 11143, ptr @lp_site
   %t1015 = call ptr @lp_malloc(i64 %t1014)
   store i32 0, ptr @lp_site
   %t1016 = getelementptr inbounds %LSlice, ptr %t1015, i32 0, i32 0
@@ -299833,7 +299846,7 @@ entry:
   store ptr %t1015, ptr @g_g_cm_isev
   %t1019 = getelementptr %LSlice, ptr null, i32 1
   %t1020 = ptrtoint ptr %t1019 to i64
-  store i32 11142, ptr @lp_site
+  store i32 11144, ptr @lp_site
   %t1021 = call ptr @lp_malloc(i64 %t1020)
   store i32 0, ptr @lp_site
   %t1022 = getelementptr inbounds %LSlice, ptr %t1021, i32 0, i32 0
@@ -299845,7 +299858,7 @@ entry:
   store ptr %t1021, ptr @g_g_cm_xml_path
   %t1025 = getelementptr %LSlice, ptr null, i32 1
   %t1026 = ptrtoint ptr %t1025 to i64
-  store i32 11143, ptr @lp_site
+  store i32 11145, ptr @lp_site
   %t1027 = call ptr @lp_malloc(i64 %t1026)
   store i32 0, ptr @lp_site
   %t1028 = getelementptr inbounds %LSlice, ptr %t1027, i32 0, i32 0
@@ -299857,7 +299870,7 @@ entry:
   store ptr %t1027, ptr @g_g_cm_lss_path
   %t1031 = getelementptr %LSlice, ptr null, i32 1
   %t1032 = ptrtoint ptr %t1031 to i64
-  store i32 11144, ptr @lp_site
+  store i32 11146, ptr @lp_site
   %t1033 = call ptr @lp_malloc(i64 %t1032)
   store i32 0, ptr @lp_site
   %t1034 = getelementptr inbounds %LSlice, ptr %t1033, i32 0, i32 0
@@ -299869,7 +299882,7 @@ entry:
   store ptr %t1033, ptr @g_g_cm_xml
   %t1037 = getelementptr %LSlice, ptr null, i32 1
   %t1038 = ptrtoint ptr %t1037 to i64
-  store i32 11145, ptr @lp_site
+  store i32 11147, ptr @lp_site
   %t1039 = call ptr @lp_malloc(i64 %t1038)
   store i32 0, ptr @lp_site
   %t1040 = getelementptr inbounds %LSlice, ptr %t1039, i32 0, i32 0
@@ -299879,11 +299892,11 @@ entry:
   %t1042 = getelementptr inbounds %LSlice, ptr %t1039, i32 0, i32 2
   store i32 0, ptr %t1042
   store ptr %t1039, ptr @g_g_po_cstr
-  store ptr @.str21609, ptr @g_g_i18n_src
-  store ptr @.str21610, ptr @g_g_i18n_en_path
+  store ptr @.str21612, ptr @g_g_i18n_src
+  store ptr @.str21613, ptr @g_g_i18n_en_path
   %t1043 = getelementptr %LSlice, ptr null, i32 1
   %t1044 = ptrtoint ptr %t1043 to i64
-  store i32 11146, ptr @lp_site
+  store i32 11148, ptr @lp_site
   %t1045 = call ptr @lp_malloc(i64 %t1044)
   store i32 0, ptr @lp_site
   %t1046 = getelementptr inbounds %LSlice, ptr %t1045, i32 0, i32 0
@@ -299895,7 +299908,7 @@ entry:
   store ptr %t1045, ptr @g_g_rg_textkey
   %t1049 = getelementptr %LSlice, ptr null, i32 1
   %t1050 = ptrtoint ptr %t1049 to i64
-  store i32 11147, ptr @lp_site
+  store i32 11149, ptr @lp_site
   %t1051 = call ptr @lp_malloc(i64 %t1050)
   store i32 0, ptr @lp_site
   %t1052 = getelementptr inbounds %LSlice, ptr %t1051, i32 0, i32 0
@@ -299907,7 +299920,7 @@ entry:
   store ptr %t1051, ptr @g_g_ks_key
   %t1055 = getelementptr %LSlice, ptr null, i32 1
   %t1056 = ptrtoint ptr %t1055 to i64
-  store i32 11148, ptr @lp_site
+  store i32 11150, ptr @lp_site
   %t1057 = call ptr @lp_malloc(i64 %t1056)
   store i32 0, ptr @lp_site
   %t1058 = getelementptr inbounds %LSlice, ptr %t1057, i32 0, i32 0
@@ -299919,7 +299932,7 @@ entry:
   store ptr %t1057, ptr @g_g_ks_kind
   %t1061 = getelementptr %LSlice, ptr null, i32 1
   %t1062 = ptrtoint ptr %t1061 to i64
-  store i32 11149, ptr @lp_site
+  store i32 11151, ptr @lp_site
   %t1063 = call ptr @lp_malloc(i64 %t1062)
   store i32 0, ptr @lp_site
   %t1064 = getelementptr inbounds %LSlice, ptr %t1063, i32 0, i32 0
@@ -299931,7 +299944,7 @@ entry:
   store ptr %t1063, ptr @g_g_ks_file
   %t1067 = getelementptr %LSlice, ptr null, i32 1
   %t1068 = ptrtoint ptr %t1067 to i64
-  store i32 11150, ptr @lp_site
+  store i32 11152, ptr @lp_site
   %t1069 = call ptr @lp_malloc(i64 %t1068)
   store i32 0, ptr @lp_site
   %t1070 = getelementptr inbounds %LSlice, ptr %t1069, i32 0, i32 0
@@ -299943,7 +299956,7 @@ entry:
   store ptr %t1069, ptr @g_g_ks_line
   %t1073 = getelementptr %LSlice, ptr null, i32 1
   %t1074 = ptrtoint ptr %t1073 to i64
-  store i32 11151, ptr @lp_site
+  store i32 11153, ptr @lp_site
   %t1075 = call ptr @lp_malloc(i64 %t1074)
   store i32 0, ptr @lp_site
   %t1076 = getelementptr inbounds %LSlice, ptr %t1075, i32 0, i32 0
@@ -299953,13 +299966,13 @@ entry:
   %t1078 = getelementptr inbounds %LSlice, ptr %t1075, i32 0, i32 2
   store i32 0, ptr %t1078
   store ptr %t1075, ptr @g_g_ks_col
-  store ptr @.str21611, ptr @g_g_xk_src
-  store ptr @.str21612, ptr @g_g_xk_file
-  store ptr @.str21613, ptr @g_g_xk_last_name
-  store ptr @.str21614, ptr @g_g_src_name
+  store ptr @.str21614, ptr @g_g_xk_src
+  store ptr @.str21615, ptr @g_g_xk_file
+  store ptr @.str21616, ptr @g_g_xk_last_name
+  store ptr @.str21617, ptr @g_g_src_name
   %t1079 = getelementptr %LSlice, ptr null, i32 1
   %t1080 = ptrtoint ptr %t1079 to i64
-  store i32 11152, ptr @lp_site
+  store i32 11154, ptr @lp_site
   %t1081 = call ptr @lp_malloc(i64 %t1080)
   store i32 0, ptr @lp_site
   %t1082 = getelementptr inbounds %LSlice, ptr %t1081, i32 0, i32 0
@@ -299971,7 +299984,7 @@ entry:
   store ptr %t1081, ptr @g_g_ix_tagged
   %t1085 = getelementptr %LSlice, ptr null, i32 1
   %t1086 = ptrtoint ptr %t1085 to i64
-  store i32 11153, ptr @lp_site
+  store i32 11155, ptr @lp_site
   %t1087 = call ptr @lp_malloc(i64 %t1086)
   store i32 0, ptr @lp_site
   %t1088 = getelementptr inbounds %LSlice, ptr %t1087, i32 0, i32 0
@@ -299983,7 +299996,7 @@ entry:
   store ptr %t1087, ptr @g_g_ix_keys
   %t1091 = getelementptr %LSlice, ptr null, i32 1
   %t1092 = ptrtoint ptr %t1091 to i64
-  store i32 11154, ptr @lp_site
+  store i32 11156, ptr @lp_site
   %t1093 = call ptr @lp_malloc(i64 %t1092)
   store i32 0, ptr @lp_site
   %t1094 = getelementptr inbounds %LSlice, ptr %t1093, i32 0, i32 0
@@ -299993,10 +300006,10 @@ entry:
   %t1096 = getelementptr inbounds %LSlice, ptr %t1093, i32 0, i32 2
   store i32 0, ptr %t1096
   store ptr %t1093, ptr @g_g_ix_vals
-  store ptr @.str21615, ptr @g_g_ret_label
+  store ptr @.str21618, ptr @g_g_ret_label
   %t1097 = getelementptr %LSlice, ptr null, i32 1
   %t1098 = ptrtoint ptr %t1097 to i64
-  store i32 11155, ptr @lp_site
+  store i32 11157, ptr @lp_site
   %t1099 = call ptr @lp_malloc(i64 %t1098)
   store i32 0, ptr @lp_site
   %t1100 = getelementptr inbounds %LSlice, ptr %t1099, i32 0, i32 0
@@ -300008,7 +300021,7 @@ entry:
   store ptr %t1099, ptr @g_g_site_fn
   %t1103 = getelementptr %LSlice, ptr null, i32 1
   %t1104 = ptrtoint ptr %t1103 to i64
-  store i32 11156, ptr @lp_site
+  store i32 11158, ptr @lp_site
   %t1105 = call ptr @lp_malloc(i64 %t1104)
   store i32 0, ptr @lp_site
   %t1106 = getelementptr inbounds %LSlice, ptr %t1105, i32 0, i32 0
@@ -300020,7 +300033,7 @@ entry:
   store ptr %t1105, ptr @g_g_site_file
   %t1109 = getelementptr %LSlice, ptr null, i32 1
   %t1110 = ptrtoint ptr %t1109 to i64
-  store i32 11157, ptr @lp_site
+  store i32 11159, ptr @lp_site
   %t1111 = call ptr @lp_malloc(i64 %t1110)
   store i32 0, ptr @lp_site
   %t1112 = getelementptr inbounds %LSlice, ptr %t1111, i32 0, i32 0
@@ -300032,7 +300045,7 @@ entry:
   store ptr %t1111, ptr @g_g_site_line
   %t1115 = getelementptr %LSlice, ptr null, i32 1
   %t1116 = ptrtoint ptr %t1115 to i64
-  store i32 11158, ptr @lp_site
+  store i32 11160, ptr @lp_site
   %t1117 = call ptr @lp_malloc(i64 %t1116)
   store i32 0, ptr @lp_site
   %t1118 = getelementptr inbounds %LSlice, ptr %t1117, i32 0, i32 0
@@ -300044,7 +300057,7 @@ entry:
   store ptr %t1117, ptr @g_g_site_kind
   %t1121 = getelementptr %LSlice, ptr null, i32 1
   %t1122 = ptrtoint ptr %t1121 to i64
-  store i32 11159, ptr @lp_site
+  store i32 11161, ptr @lp_site
   %t1123 = call ptr @lp_malloc(i64 %t1122)
   store i32 0, ptr @lp_site
   %t1124 = getelementptr inbounds %LSlice, ptr %t1123, i32 0, i32 0
@@ -300056,7 +300069,7 @@ entry:
   store ptr %t1123, ptr @g_g_site_owner
   %t1127 = getelementptr %LSlice, ptr null, i32 1
   %t1128 = ptrtoint ptr %t1127 to i64
-  store i32 11160, ptr @lp_site
+  store i32 11162, ptr @lp_site
   %t1129 = call ptr @lp_malloc(i64 %t1128)
   store i32 0, ptr @lp_site
   %t1130 = getelementptr inbounds %LSlice, ptr %t1129, i32 0, i32 0
@@ -300066,10 +300079,10 @@ entry:
   %t1132 = getelementptr inbounds %LSlice, ptr %t1129, i32 0, i32 2
   store i32 0, ptr %t1132
   store ptr %t1129, ptr @g_g_owner_names
-  store ptr @.str21616, ptr @g_g_cur_fn_name
+  store ptr @.str21619, ptr @g_g_cur_fn_name
   %t1133 = getelementptr %LSlice, ptr null, i32 1
   %t1134 = ptrtoint ptr %t1133 to i64
-  store i32 11161, ptr @lp_site
+  store i32 11163, ptr @lp_site
   %t1135 = call ptr @lp_malloc(i64 %t1134)
   store i32 0, ptr @lp_site
   %t1136 = getelementptr inbounds %LSlice, ptr %t1135, i32 0, i32 0
@@ -300081,7 +300094,7 @@ entry:
   store ptr %t1135, ptr @g_g_site_kinds
   %t1139 = getelementptr %LSlice, ptr null, i32 1
   %t1140 = ptrtoint ptr %t1139 to i64
-  store i32 11162, ptr @lp_site
+  store i32 11164, ptr @lp_site
   %t1141 = call ptr @lp_malloc(i64 %t1140)
   store i32 0, ptr @lp_site
   %t1142 = getelementptr inbounds %LSlice, ptr %t1141, i32 0, i32 0
@@ -300093,7 +300106,7 @@ entry:
   store ptr %t1141, ptr @g_g_site_kindc
   %t1145 = getelementptr %LSlice, ptr null, i32 1
   %t1146 = ptrtoint ptr %t1145 to i64
-  store i32 11163, ptr @lp_site
+  store i32 11165, ptr @lp_site
   %t1147 = call ptr @lp_malloc(i64 %t1146)
   store i32 0, ptr @lp_site
   %t1148 = getelementptr inbounds %LSlice, ptr %t1147, i32 0, i32 0
@@ -300105,7 +300118,7 @@ entry:
   store ptr %t1147, ptr @g_g_scan_roots
   %t1151 = getelementptr %LSlice, ptr null, i32 1
   %t1152 = ptrtoint ptr %t1151 to i64
-  store i32 11164, ptr @lp_site
+  store i32 11166, ptr @lp_site
   %t1153 = call ptr @lp_malloc(i64 %t1152)
   store i32 0, ptr @lp_site
   %t1154 = getelementptr inbounds %LSlice, ptr %t1153, i32 0, i32 0
@@ -300117,7 +300130,7 @@ entry:
   store ptr %t1153, ptr @g_g_cap_keys
   %t1157 = getelementptr %LSlice, ptr null, i32 1
   %t1158 = ptrtoint ptr %t1157 to i64
-  store i32 11165, ptr @lp_site
+  store i32 11167, ptr @lp_site
   %t1159 = call ptr @lp_malloc(i64 %t1158)
   store i32 0, ptr @lp_site
   %t1160 = getelementptr inbounds %LSlice, ptr %t1159, i32 0, i32 0
@@ -300129,7 +300142,7 @@ entry:
   store ptr %t1159, ptr @g_g_cap_vals
   %t1163 = getelementptr %LSlice, ptr null, i32 1
   %t1164 = ptrtoint ptr %t1163 to i64
-  store i32 11166, ptr @lp_site
+  store i32 11168, ptr @lp_site
   %t1165 = call ptr @lp_malloc(i64 %t1164)
   store i32 0, ptr @lp_site
   %t1166 = getelementptr inbounds %LSlice, ptr %t1165, i32 0, i32 0
@@ -300141,7 +300154,7 @@ entry:
   store ptr %t1165, ptr @g_g_alloc_ok_names
   %t1169 = getelementptr %LSlice, ptr null, i32 1
   %t1170 = ptrtoint ptr %t1169 to i64
-  store i32 11167, ptr @lp_site
+  store i32 11169, ptr @lp_site
   %t1171 = call ptr @lp_malloc(i64 %t1170)
   store i32 0, ptr @lp_site
   %t1172 = getelementptr inbounds %LSlice, ptr %t1171, i32 0, i32 0
@@ -300153,7 +300166,7 @@ entry:
   store ptr %t1171, ptr @g_g_frame_fields
   %t1175 = getelementptr %LSlice, ptr null, i32 1
   %t1176 = ptrtoint ptr %t1175 to i64
-  store i32 11168, ptr @lp_site
+  store i32 11170, ptr @lp_site
   %t1177 = call ptr @lp_malloc(i64 %t1176)
   store i32 0, ptr @lp_site
   %t1178 = getelementptr inbounds %LSlice, ptr %t1177, i32 0, i32 0
@@ -300165,7 +300178,7 @@ entry:
   store ptr %t1177, ptr @g_g_fr_root
   %t1181 = getelementptr %LSlice, ptr null, i32 1
   %t1182 = ptrtoint ptr %t1181 to i64
-  store i32 11169, ptr @lp_site
+  store i32 11171, ptr @lp_site
   %t1183 = call ptr @lp_malloc(i64 %t1182)
   store i32 0, ptr @lp_site
   %t1184 = getelementptr inbounds %LSlice, ptr %t1183, i32 0, i32 0
@@ -300177,7 +300190,7 @@ entry:
   store ptr %t1183, ptr @g_g_fr_from
   %t1187 = getelementptr %LSlice, ptr null, i32 1
   %t1188 = ptrtoint ptr %t1187 to i64
-  store i32 11170, ptr @lp_site
+  store i32 11172, ptr @lp_site
   %t1189 = call ptr @lp_malloc(i64 %t1188)
   store i32 0, ptr @lp_site
   %t1190 = getelementptr inbounds %LSlice, ptr %t1189, i32 0, i32 0
@@ -300189,7 +300202,7 @@ entry:
   store ptr %t1189, ptr @g_g_es_flag
   %t1193 = getelementptr %LSlice, ptr null, i32 1
   %t1194 = ptrtoint ptr %t1193 to i64
-  store i32 11171, ptr @lp_site
+  store i32 11173, ptr @lp_site
   %t1195 = call ptr @lp_malloc(i64 %t1194)
   store i32 0, ptr @lp_site
   %t1196 = getelementptr inbounds %LSlice, ptr %t1195, i32 0, i32 0
@@ -300201,7 +300214,7 @@ entry:
   store ptr %t1195, ptr @g_g_es_why
   %t1199 = getelementptr %LSlice, ptr null, i32 1
   %t1200 = ptrtoint ptr %t1199 to i64
-  store i32 11172, ptr @lp_site
+  store i32 11174, ptr @lp_site
   %t1201 = call ptr @lp_malloc(i64 %t1200)
   store i32 0, ptr @lp_site
   %t1202 = getelementptr inbounds %LSlice, ptr %t1201, i32 0, i32 0
@@ -300213,7 +300226,7 @@ entry:
   store ptr %t1201, ptr @g_g_es_own
   %t1205 = getelementptr %LSlice, ptr null, i32 1
   %t1206 = ptrtoint ptr %t1205 to i64
-  store i32 11173, ptr @lp_site
+  store i32 11175, ptr @lp_site
   %t1207 = call ptr @lp_malloc(i64 %t1206)
   store i32 0, ptr @lp_site
   %t1208 = getelementptr inbounds %LSlice, ptr %t1207, i32 0, i32 0
@@ -300225,7 +300238,7 @@ entry:
   store ptr %t1207, ptr @g_g_es_gname
   %t1211 = getelementptr %LSlice, ptr null, i32 1
   %t1212 = ptrtoint ptr %t1211 to i64
-  store i32 11174, ptr @lp_site
+  store i32 11176, ptr @lp_site
   %t1213 = call ptr @lp_malloc(i64 %t1212)
   store i32 0, ptr @lp_site
   %t1214 = getelementptr inbounds %LSlice, ptr %t1213, i32 0, i32 0
@@ -300237,7 +300250,7 @@ entry:
   store ptr %t1213, ptr @g_g_es_gcls
   %t1217 = getelementptr %LSlice, ptr null, i32 1
   %t1218 = ptrtoint ptr %t1217 to i64
-  store i32 11175, ptr @lp_site
+  store i32 11177, ptr @lp_site
   %t1219 = call ptr @lp_malloc(i64 %t1218)
   store i32 0, ptr @lp_site
   %t1220 = getelementptr inbounds %LSlice, ptr %t1219, i32 0, i32 0
@@ -300249,7 +300262,7 @@ entry:
   store ptr %t1219, ptr @g_g_es_ok
   %t1223 = getelementptr %LSlice, ptr null, i32 1
   %t1224 = ptrtoint ptr %t1223 to i64
-  store i32 11176, ptr @lp_site
+  store i32 11178, ptr @lp_site
   %t1225 = call ptr @lp_malloc(i64 %t1224)
   store i32 0, ptr @lp_site
   %t1226 = getelementptr inbounds %LSlice, ptr %t1225, i32 0, i32 0
@@ -300261,7 +300274,7 @@ entry:
   store ptr %t1225, ptr @g_g_es_ov
   %t1229 = getelementptr %LSlice, ptr null, i32 1
   %t1230 = ptrtoint ptr %t1229 to i64
-  store i32 11177, ptr @lp_site
+  store i32 11179, ptr @lp_site
   %t1231 = call ptr @lp_malloc(i64 %t1230)
   store i32 0, ptr @lp_site
   %t1232 = getelementptr inbounds %LSlice, ptr %t1231, i32 0, i32 0
@@ -300273,7 +300286,7 @@ entry:
   store ptr %t1231, ptr @g_g_es_swhy
   %t1235 = getelementptr %LSlice, ptr null, i32 1
   %t1236 = ptrtoint ptr %t1235 to i64
-  store i32 11178, ptr @lp_site
+  store i32 11180, ptr @lp_site
   %t1237 = call ptr @lp_malloc(i64 %t1236)
   store i32 0, ptr @lp_site
   %t1238 = getelementptr inbounds %LSlice, ptr %t1237, i32 0, i32 0
@@ -300285,7 +300298,7 @@ entry:
   store ptr %t1237, ptr @g_g_es_site_aok
   %t1241 = getelementptr %LSlice, ptr null, i32 1
   %t1242 = ptrtoint ptr %t1241 to i64
-  store i32 11179, ptr @lp_site
+  store i32 11181, ptr @lp_site
   %t1243 = call ptr @lp_malloc(i64 %t1242)
   store i32 0, ptr @lp_site
   %t1244 = getelementptr inbounds %LSlice, ptr %t1243, i32 0, i32 0
@@ -300297,7 +300310,7 @@ entry:
   store ptr %t1243, ptr @g_g_es_site_grow
   %t1247 = getelementptr %LSlice, ptr null, i32 1
   %t1248 = ptrtoint ptr %t1247 to i64
-  store i32 11180, ptr @lp_site
+  store i32 11182, ptr @lp_site
   %t1249 = call ptr @lp_malloc(i64 %t1248)
   store i32 0, ptr @lp_site
   %t1250 = getelementptr inbounds %LSlice, ptr %t1249, i32 0, i32 0
@@ -300309,7 +300322,7 @@ entry:
   store ptr %t1249, ptr @g_g_es_fnrefs
   %t1253 = getelementptr %LSlice, ptr null, i32 1
   %t1254 = ptrtoint ptr %t1253 to i64
-  store i32 11181, ptr @lp_site
+  store i32 11183, ptr @lp_site
   %t1255 = call ptr @lp_malloc(i64 %t1254)
   store i32 0, ptr @lp_site
   %t1256 = getelementptr inbounds %LSlice, ptr %t1255, i32 0, i32 0
@@ -300321,7 +300334,7 @@ entry:
   store ptr %t1255, ptr @g_g_es_consumed
   %t1259 = getelementptr %LSlice, ptr null, i32 1
   %t1260 = ptrtoint ptr %t1259 to i64
-  store i32 11182, ptr @lp_site
+  store i32 11184, ptr @lp_site
   %t1261 = call ptr @lp_malloc(i64 %t1260)
   store i32 0, ptr @lp_site
   %t1262 = getelementptr inbounds %LSlice, ptr %t1261, i32 0, i32 0
@@ -300333,7 +300346,7 @@ entry:
   store ptr %t1261, ptr @g_g_es_ft
   %t1265 = getelementptr %LSlice, ptr null, i32 1
   %t1266 = ptrtoint ptr %t1265 to i64
-  store i32 11183, ptr @lp_site
+  store i32 11185, ptr @lp_site
   %t1267 = call ptr @lp_malloc(i64 %t1266)
   store i32 0, ptr @lp_site
   %t1268 = getelementptr inbounds %LSlice, ptr %t1267, i32 0, i32 0
@@ -300345,7 +300358,7 @@ entry:
   store ptr %t1267, ptr @g_g_es_ff
   %t1271 = getelementptr %LSlice, ptr null, i32 1
   %t1272 = ptrtoint ptr %t1271 to i64
-  store i32 11184, ptr @lp_site
+  store i32 11186, ptr @lp_site
   %t1273 = call ptr @lp_malloc(i64 %t1272)
   store i32 0, ptr @lp_site
   %t1274 = getelementptr inbounds %LSlice, ptr %t1273, i32 0, i32 0
@@ -300357,7 +300370,7 @@ entry:
   store ptr %t1273, ptr @g_g_es_st
   %t1277 = getelementptr %LSlice, ptr null, i32 1
   %t1278 = ptrtoint ptr %t1277 to i64
-  store i32 11185, ptr @lp_site
+  store i32 11187, ptr @lp_site
   %t1279 = call ptr @lp_malloc(i64 %t1278)
   store i32 0, ptr @lp_site
   %t1280 = getelementptr inbounds %LSlice, ptr %t1279, i32 0, i32 0
@@ -300369,7 +300382,7 @@ entry:
   store ptr %t1279, ptr @g_g_es_sv
   %t1283 = getelementptr %LSlice, ptr null, i32 1
   %t1284 = ptrtoint ptr %t1283 to i64
-  store i32 11186, ptr @lp_site
+  store i32 11188, ptr @lp_site
   %t1285 = call ptr @lp_malloc(i64 %t1284)
   store i32 0, ptr @lp_site
   %t1286 = getelementptr inbounds %LSlice, ptr %t1285, i32 0, i32 0
@@ -300381,7 +300394,7 @@ entry:
   store ptr %t1285, ptr @g_g_es_site
   %t1289 = getelementptr %LSlice, ptr null, i32 1
   %t1290 = ptrtoint ptr %t1289 to i64
-  store i32 11187, ptr @lp_site
+  store i32 11189, ptr @lp_site
   %t1291 = call ptr @lp_malloc(i64 %t1290)
   store i32 0, ptr @lp_site
   %t1292 = getelementptr inbounds %LSlice, ptr %t1291, i32 0, i32 0
@@ -300393,7 +300406,7 @@ entry:
   store ptr %t1291, ptr @g_g_es_site_cls
   %t1295 = getelementptr %LSlice, ptr null, i32 1
   %t1296 = ptrtoint ptr %t1295 to i64
-  store i32 11188, ptr @lp_site
+  store i32 11190, ptr @lp_site
   %t1297 = call ptr @lp_malloc(i64 %t1296)
   store i32 0, ptr @lp_site
   %t1298 = getelementptr inbounds %LSlice, ptr %t1297, i32 0, i32 0
@@ -300405,7 +300418,7 @@ entry:
   store ptr %t1297, ptr @g_g_es_site_fn
   %t1301 = getelementptr %LSlice, ptr null, i32 1
   %t1302 = ptrtoint ptr %t1301 to i64
-  store i32 11189, ptr @lp_site
+  store i32 11191, ptr @lp_site
   %t1303 = call ptr @lp_malloc(i64 %t1302)
   store i32 0, ptr @lp_site
   %t1304 = getelementptr inbounds %LSlice, ptr %t1303, i32 0, i32 0
@@ -300417,7 +300430,7 @@ entry:
   store ptr %t1303, ptr @g_g_es_fk
   %t1307 = getelementptr %LSlice, ptr null, i32 1
   %t1308 = ptrtoint ptr %t1307 to i64
-  store i32 11190, ptr @lp_site
+  store i32 11192, ptr @lp_site
   %t1309 = call ptr @lp_malloc(i64 %t1308)
   store i32 0, ptr @lp_site
   %t1310 = getelementptr inbounds %LSlice, ptr %t1309, i32 0, i32 0
@@ -300429,7 +300442,7 @@ entry:
   store ptr %t1309, ptr @g_g_es_fv
   %t1313 = getelementptr %LSlice, ptr null, i32 1
   %t1314 = ptrtoint ptr %t1313 to i64
-  store i32 11191, ptr @lp_site
+  store i32 11193, ptr @lp_site
   %t1315 = call ptr @lp_malloc(i64 %t1314)
   store i32 0, ptr @lp_site
   %t1316 = getelementptr inbounds %LSlice, ptr %t1315, i32 0, i32 0
@@ -300441,7 +300454,7 @@ entry:
   store ptr %t1315, ptr @g_g_es_fparam
   %t1319 = getelementptr %LSlice, ptr null, i32 1
   %t1320 = ptrtoint ptr %t1319 to i64
-  store i32 11192, ptr @lp_site
+  store i32 11194, ptr @lp_site
   %t1321 = call ptr @lp_malloc(i64 %t1320)
   store i32 0, ptr @lp_site
   %t1322 = getelementptr inbounds %LSlice, ptr %t1321, i32 0, i32 0
@@ -300453,7 +300466,7 @@ entry:
   store ptr %t1321, ptr @g_g_es_fret
   %t1325 = getelementptr %LSlice, ptr null, i32 1
   %t1326 = ptrtoint ptr %t1325 to i64
-  store i32 11193, ptr @lp_site
+  store i32 11195, ptr @lp_site
   %t1327 = call ptr @lp_malloc(i64 %t1326)
   store i32 0, ptr @lp_site
   %t1328 = getelementptr inbounds %LSlice, ptr %t1327, i32 0, i32 0
@@ -300465,7 +300478,7 @@ entry:
   store ptr %t1327, ptr @g_g_es_fnode
   %t1331 = getelementptr %LSlice, ptr null, i32 1
   %t1332 = ptrtoint ptr %t1331 to i64
-  store i32 11194, ptr @lp_site
+  store i32 11196, ptr @lp_site
   %t1333 = call ptr @lp_malloc(i64 %t1332)
   store i32 0, ptr @lp_site
   %t1334 = getelementptr inbounds %LSlice, ptr %t1333, i32 0, i32 0
@@ -300477,7 +300490,7 @@ entry:
   store ptr %t1333, ptr @g_g_es_fspans
   %t1337 = getelementptr %LSlice, ptr null, i32 1
   %t1338 = ptrtoint ptr %t1337 to i64
-  store i32 11195, ptr @lp_site
+  store i32 11197, ptr @lp_site
   %t1339 = call ptr @lp_malloc(i64 %t1338)
   store i32 0, ptr @lp_site
   %t1340 = getelementptr inbounds %LSlice, ptr %t1339, i32 0, i32 0
@@ -300489,7 +300502,7 @@ entry:
   store ptr %t1339, ptr @g_g_es_calls_f
   %t1343 = getelementptr %LSlice, ptr null, i32 1
   %t1344 = ptrtoint ptr %t1343 to i64
-  store i32 11196, ptr @lp_site
+  store i32 11198, ptr @lp_site
   %t1345 = call ptr @lp_malloc(i64 %t1344)
   store i32 0, ptr @lp_site
   %t1346 = getelementptr inbounds %LSlice, ptr %t1345, i32 0, i32 0
@@ -300501,7 +300514,7 @@ entry:
   store ptr %t1345, ptr @g_g_es_calls_t
   %t1349 = getelementptr %LSlice, ptr null, i32 1
   %t1350 = ptrtoint ptr %t1349 to i64
-  store i32 11197, ptr @lp_site
+  store i32 11199, ptr @lp_site
   %t1351 = call ptr @lp_malloc(i64 %t1350)
   store i32 0, ptr @lp_site
   %t1352 = getelementptr inbounds %LSlice, ptr %t1351, i32 0, i32 0
@@ -300513,7 +300526,7 @@ entry:
   store ptr %t1351, ptr @g_g_es_ln
   %t1355 = getelementptr %LSlice, ptr null, i32 1
   %t1356 = ptrtoint ptr %t1355 to i64
-  store i32 11198, ptr @lp_site
+  store i32 11200, ptr @lp_site
   %t1357 = call ptr @lp_malloc(i64 %t1356)
   store i32 0, ptr @lp_site
   %t1358 = getelementptr inbounds %LSlice, ptr %t1357, i32 0, i32 0
@@ -300525,7 +300538,7 @@ entry:
   store ptr %t1357, ptr @g_g_es_lc
   %t1361 = getelementptr %LSlice, ptr null, i32 1
   %t1362 = ptrtoint ptr %t1361 to i64
-  store i32 11199, ptr @lp_site
+  store i32 11201, ptr @lp_site
   %t1363 = call ptr @lp_malloc(i64 %t1362)
   store i32 0, ptr @lp_site
   %t1364 = getelementptr inbounds %LSlice, ptr %t1363, i32 0, i32 0
@@ -300537,7 +300550,7 @@ entry:
   store ptr %t1363, ptr @g_g_es_lt
   %t1367 = getelementptr %LSlice, ptr null, i32 1
   %t1368 = ptrtoint ptr %t1367 to i64
-  store i32 11200, ptr @lp_site
+  store i32 11202, ptr @lp_site
   %t1369 = call ptr @lp_malloc(i64 %t1368)
   store i32 0, ptr @lp_site
   %t1370 = getelementptr inbounds %LSlice, ptr %t1369, i32 0, i32 0
@@ -300549,7 +300562,7 @@ entry:
   store ptr %t1369, ptr @g_g_res_make_fn
   %t1373 = getelementptr %LSlice, ptr null, i32 1
   %t1374 = ptrtoint ptr %t1373 to i64
-  store i32 11201, ptr @lp_site
+  store i32 11203, ptr @lp_site
   %t1375 = call ptr @lp_malloc(i64 %t1374)
   store i32 0, ptr @lp_site
   %t1376 = getelementptr inbounds %LSlice, ptr %t1375, i32 0, i32 0
@@ -300561,7 +300574,7 @@ entry:
   store ptr %t1375, ptr @g_g_res_make_kind
   %t1379 = getelementptr %LSlice, ptr null, i32 1
   %t1380 = ptrtoint ptr %t1379 to i64
-  store i32 11202, ptr @lp_site
+  store i32 11204, ptr @lp_site
   %t1381 = call ptr @lp_malloc(i64 %t1380)
   store i32 0, ptr @lp_site
   %t1382 = getelementptr inbounds %LSlice, ptr %t1381, i32 0, i32 0
@@ -300573,7 +300586,7 @@ entry:
   store ptr %t1381, ptr @g_g_res_free_fn
   %t1385 = getelementptr %LSlice, ptr null, i32 1
   %t1386 = ptrtoint ptr %t1385 to i64
-  store i32 11203, ptr @lp_site
+  store i32 11205, ptr @lp_site
   %t1387 = call ptr @lp_malloc(i64 %t1386)
   store i32 0, ptr @lp_site
   %t1388 = getelementptr inbounds %LSlice, ptr %t1387, i32 0, i32 0
@@ -300585,7 +300598,7 @@ entry:
   store ptr %t1387, ptr @g_g_res_free_kind
   %t1391 = getelementptr %LSlice, ptr null, i32 1
   %t1392 = ptrtoint ptr %t1391 to i64
-  store i32 11204, ptr @lp_site
+  store i32 11206, ptr @lp_site
   %t1393 = call ptr @lp_malloc(i64 %t1392)
   store i32 0, ptr @lp_site
   %t1394 = getelementptr inbounds %LSlice, ptr %t1393, i32 0, i32 0
@@ -300597,7 +300610,7 @@ entry:
   store ptr %t1393, ptr @g_g_own_type
   %t1397 = getelementptr %LSlice, ptr null, i32 1
   %t1398 = ptrtoint ptr %t1397 to i64
-  store i32 11205, ptr @lp_site
+  store i32 11207, ptr @lp_site
   %t1399 = call ptr @lp_malloc(i64 %t1398)
   store i32 0, ptr @lp_site
   %t1400 = getelementptr inbounds %LSlice, ptr %t1399, i32 0, i32 0
@@ -300609,7 +300622,7 @@ entry:
   store ptr %t1399, ptr @g_g_own_field
   %t1403 = getelementptr %LSlice, ptr null, i32 1
   %t1404 = ptrtoint ptr %t1403 to i64
-  store i32 11206, ptr @lp_site
+  store i32 11208, ptr @lp_site
   %t1405 = call ptr @lp_malloc(i64 %t1404)
   store i32 0, ptr @lp_site
   %t1406 = getelementptr inbounds %LSlice, ptr %t1405, i32 0, i32 0
@@ -300621,7 +300634,7 @@ entry:
   store ptr %t1405, ptr @g_g_own_kind
   %t1409 = getelementptr %LSlice, ptr null, i32 1
   %t1410 = ptrtoint ptr %t1409 to i64
-  store i32 11207, ptr @lp_site
+  store i32 11209, ptr @lp_site
   %t1411 = call ptr @lp_malloc(i64 %t1410)
   store i32 0, ptr @lp_site
   %t1412 = getelementptr inbounds %LSlice, ptr %t1411, i32 0, i32 0
@@ -300633,7 +300646,7 @@ entry:
   store ptr %t1411, ptr @g_g_gi_idx_k
   %t1415 = getelementptr %LSlice, ptr null, i32 1
   %t1416 = ptrtoint ptr %t1415 to i64
-  store i32 11208, ptr @lp_site
+  store i32 11210, ptr @lp_site
   %t1417 = call ptr @lp_malloc(i64 %t1416)
   store i32 0, ptr @lp_site
   %t1418 = getelementptr inbounds %LSlice, ptr %t1417, i32 0, i32 0
@@ -300645,7 +300658,7 @@ entry:
   store ptr %t1417, ptr @g_g_gi_idx_v
   %t1421 = getelementptr %LSlice, ptr null, i32 1
   %t1422 = ptrtoint ptr %t1421 to i64
-  store i32 11209, ptr @lp_site
+  store i32 11211, ptr @lp_site
   %t1423 = call ptr @lp_malloc(i64 %t1422)
   store i32 0, ptr @lp_site
   %t1424 = getelementptr inbounds %LSlice, ptr %t1423, i32 0, i32 0
@@ -300657,7 +300670,7 @@ entry:
   store ptr %t1423, ptr @g_g_gi_fn_seen
   %t1427 = getelementptr %LSlice, ptr null, i32 1
   %t1428 = ptrtoint ptr %t1427 to i64
-  store i32 11210, ptr @lp_site
+  store i32 11212, ptr @lp_site
   %t1429 = call ptr @lp_malloc(i64 %t1428)
   store i32 0, ptr @lp_site
   %t1430 = getelementptr inbounds %LSlice, ptr %t1429, i32 0, i32 0
@@ -300669,7 +300682,7 @@ entry:
   store ptr %t1429, ptr @g_g_gi_state
   %t1433 = getelementptr %LSlice, ptr null, i32 1
   %t1434 = ptrtoint ptr %t1433 to i64
-  store i32 11211, ptr @lp_site
+  store i32 11213, ptr @lp_site
   %t1435 = call ptr @lp_malloc(i64 %t1434)
   store i32 0, ptr @lp_site
   %t1436 = getelementptr inbounds %LSlice, ptr %t1435, i32 0, i32 0
@@ -300681,7 +300694,7 @@ entry:
   store ptr %t1435, ptr @g_g_gi_out
   %t1439 = getelementptr %LSlice, ptr null, i32 1
   %t1440 = ptrtoint ptr %t1439 to i64
-  store i32 11212, ptr @lp_site
+  store i32 11214, ptr @lp_site
   %t1441 = call ptr @lp_malloc(i64 %t1440)
   store i32 0, ptr @lp_site
   %t1442 = getelementptr inbounds %LSlice, ptr %t1441, i32 0, i32 0
@@ -300693,7 +300706,7 @@ entry:
   store ptr %t1441, ptr @g_g_dp_key
   %t1445 = getelementptr %LSlice, ptr null, i32 1
   %t1446 = ptrtoint ptr %t1445 to i64
-  store i32 11213, ptr @lp_site
+  store i32 11215, ptr @lp_site
   %t1447 = call ptr @lp_malloc(i64 %t1446)
   store i32 0, ptr @lp_site
   %t1448 = getelementptr inbounds %LSlice, ptr %t1447, i32 0, i32 0
@@ -300705,7 +300718,7 @@ entry:
   store ptr %t1447, ptr @g_g_dp_cnt
   %t1451 = getelementptr %LSlice, ptr null, i32 1
   %t1452 = ptrtoint ptr %t1451 to i64
-  store i32 11214, ptr @lp_site
+  store i32 11216, ptr @lp_site
   %t1453 = call ptr @lp_malloc(i64 %t1452)
   store i32 0, ptr @lp_site
   %t1454 = getelementptr inbounds %LSlice, ptr %t1453, i32 0, i32 0
@@ -300717,7 +300730,7 @@ entry:
   store ptr %t1453, ptr @g_g_dp_name
   %t1457 = getelementptr %LSlice, ptr null, i32 1
   %t1458 = ptrtoint ptr %t1457 to i64
-  store i32 11215, ptr @lp_site
+  store i32 11217, ptr @lp_site
   %t1459 = call ptr @lp_malloc(i64 %t1458)
   store i32 0, ptr @lp_site
   %t1460 = getelementptr inbounds %LSlice, ptr %t1459, i32 0, i32 0
@@ -300729,7 +300742,7 @@ entry:
   store ptr %t1459, ptr @g_g_dp_writes
   %t1463 = getelementptr %LSlice, ptr null, i32 1
   %t1464 = ptrtoint ptr %t1463 to i64
-  store i32 11216, ptr @lp_site
+  store i32 11218, ptr @lp_site
   %t1465 = call ptr @lp_malloc(i64 %t1464)
   store i32 0, ptr @lp_site
   %t1466 = getelementptr inbounds %LSlice, ptr %t1465, i32 0, i32 0
@@ -300741,7 +300754,7 @@ entry:
   store ptr %t1465, ptr @g_g_dp_al_local
   %t1469 = getelementptr %LSlice, ptr null, i32 1
   %t1470 = ptrtoint ptr %t1469 to i64
-  store i32 11217, ptr @lp_site
+  store i32 11219, ptr @lp_site
   %t1471 = call ptr @lp_malloc(i64 %t1470)
   store i32 0, ptr @lp_site
   %t1472 = getelementptr inbounds %LSlice, ptr %t1471, i32 0, i32 0
@@ -300753,7 +300766,7 @@ entry:
   store ptr %t1471, ptr @g_g_dp_al_owner
   %t1475 = getelementptr %LSlice, ptr null, i32 1
   %t1476 = ptrtoint ptr %t1475 to i64
-  store i32 11218, ptr @lp_site
+  store i32 11220, ptr @lp_site
   %t1477 = call ptr @lp_malloc(i64 %t1476)
   store i32 0, ptr @lp_site
   %t1478 = getelementptr inbounds %LSlice, ptr %t1477, i32 0, i32 0
@@ -300765,7 +300778,7 @@ entry:
   store ptr %t1477, ptr @g_g_dp_al_global
   %t1481 = getelementptr %LSlice, ptr null, i32 1
   %t1482 = ptrtoint ptr %t1481 to i64
-  store i32 11219, ptr @lp_site
+  store i32 11221, ptr @lp_site
   %t1483 = call ptr @lp_malloc(i64 %t1482)
   store i32 0, ptr @lp_site
   %t1484 = getelementptr inbounds %LSlice, ptr %t1483, i32 0, i32 0
@@ -300777,7 +300790,7 @@ entry:
   store ptr %t1483, ptr @g_g_dp_aliases
   %t1487 = getelementptr %LSlice, ptr null, i32 1
   %t1488 = ptrtoint ptr %t1487 to i64
-  store i32 11220, ptr @lp_site
+  store i32 11222, ptr @lp_site
   %t1489 = call ptr @lp_malloc(i64 %t1488)
   store i32 0, ptr @lp_site
   %t1490 = getelementptr inbounds %LSlice, ptr %t1489, i32 0, i32 0
@@ -300789,7 +300802,7 @@ entry:
   store ptr %t1489, ptr @g_g_dr_name
   %t1493 = getelementptr %LSlice, ptr null, i32 1
   %t1494 = ptrtoint ptr %t1493 to i64
-  store i32 11221, ptr @lp_site
+  store i32 11223, ptr @lp_site
   %t1495 = call ptr @lp_malloc(i64 %t1494)
   store i32 0, ptr @lp_site
   %t1496 = getelementptr inbounds %LSlice, ptr %t1495, i32 0, i32 0
@@ -300801,7 +300814,7 @@ entry:
   store ptr %t1495, ptr @g_g_dr_node
   %t1499 = getelementptr %LSlice, ptr null, i32 1
   %t1500 = ptrtoint ptr %t1499 to i64
-  store i32 11222, ptr @lp_site
+  store i32 11224, ptr @lp_site
   %t1501 = call ptr @lp_malloc(i64 %t1500)
   store i32 0, ptr @lp_site
   %t1502 = getelementptr inbounds %LSlice, ptr %t1501, i32 0, i32 0
@@ -300813,7 +300826,7 @@ entry:
   store ptr %t1501, ptr @g_g_dr_refs
   %t1505 = getelementptr %LSlice, ptr null, i32 1
   %t1506 = ptrtoint ptr %t1505 to i64
-  store i32 11223, ptr @lp_site
+  store i32 11225, ptr @lp_site
   %t1507 = call ptr @lp_malloc(i64 %t1506)
   store i32 0, ptr @lp_site
   %t1508 = getelementptr inbounds %LSlice, ptr %t1507, i32 0, i32 0
@@ -300825,7 +300838,7 @@ entry:
   store ptr %t1507, ptr @g_g_dr_bits
   %t1511 = getelementptr %LSlice, ptr null, i32 1
   %t1512 = ptrtoint ptr %t1511 to i64
-  store i32 11224, ptr @lp_site
+  store i32 11226, ptr @lp_site
   %t1513 = call ptr @lp_malloc(i64 %t1512)
   store i32 0, ptr @lp_site
   %t1514 = getelementptr inbounds %LSlice, ptr %t1513, i32 0, i32 0
@@ -300837,7 +300850,7 @@ entry:
   store ptr %t1513, ptr @g_g_dr_wbits
   %t1517 = getelementptr %LSlice, ptr null, i32 1
   %t1518 = ptrtoint ptr %t1517 to i64
-  store i32 11225, ptr @lp_site
+  store i32 11227, ptr @lp_site
   %t1519 = call ptr @lp_malloc(i64 %t1518)
   store i32 0, ptr @lp_site
   %t1520 = getelementptr inbounds %LSlice, ptr %t1519, i32 0, i32 0
@@ -300849,7 +300862,7 @@ entry:
   store ptr %t1519, ptr @g_g_dr_find_k
   %t1523 = getelementptr %LSlice, ptr null, i32 1
   %t1524 = ptrtoint ptr %t1523 to i64
-  store i32 11226, ptr @lp_site
+  store i32 11228, ptr @lp_site
   %t1525 = call ptr @lp_malloc(i64 %t1524)
   store i32 0, ptr @lp_site
   %t1526 = getelementptr inbounds %LSlice, ptr %t1525, i32 0, i32 0
@@ -300861,7 +300874,7 @@ entry:
   store ptr %t1525, ptr @g_g_dr_rl_name
   %t1529 = getelementptr %LSlice, ptr null, i32 1
   %t1530 = ptrtoint ptr %t1529 to i64
-  store i32 11227, ptr @lp_site
+  store i32 11229, ptr @lp_site
   %t1531 = call ptr @lp_malloc(i64 %t1530)
   store i32 0, ptr @lp_site
   %t1532 = getelementptr inbounds %LSlice, ptr %t1531, i32 0, i32 0
@@ -300873,7 +300886,7 @@ entry:
   store ptr %t1531, ptr @g_g_dr_rl_reg
   %t1535 = getelementptr %LSlice, ptr null, i32 1
   %t1536 = ptrtoint ptr %t1535 to i64
-  store i32 11228, ptr @lp_site
+  store i32 11230, ptr @lp_site
   %t1537 = call ptr @lp_malloc(i64 %t1536)
   store i32 0, ptr @lp_site
   %t1538 = getelementptr inbounds %LSlice, ptr %t1537, i32 0, i32 0
@@ -300885,7 +300898,7 @@ entry:
   store ptr %t1537, ptr @g_g_dr_find_v
   %t1541 = getelementptr %LSlice, ptr null, i32 1
   %t1542 = ptrtoint ptr %t1541 to i64
-  store i32 11229, ptr @lp_site
+  store i32 11231, ptr @lp_site
   %t1543 = call ptr @lp_malloc(i64 %t1542)
   store i32 0, ptr @lp_site
   %t1544 = getelementptr inbounds %LSlice, ptr %t1543, i32 0, i32 0
@@ -300897,7 +300910,7 @@ entry:
   store ptr %t1543, ptr @g_g_dr_disp_of
   %t1547 = getelementptr %LSlice, ptr null, i32 1
   %t1548 = ptrtoint ptr %t1547 to i64
-  store i32 11230, ptr @lp_site
+  store i32 11232, ptr @lp_site
   %t1549 = call ptr @lp_malloc(i64 %t1548)
   store i32 0, ptr @lp_site
   %t1550 = getelementptr inbounds %LSlice, ptr %t1549, i32 0, i32 0
@@ -300909,7 +300922,7 @@ entry:
   store ptr %t1549, ptr @g_g_dr_root
   %t1553 = getelementptr %LSlice, ptr null, i32 1
   %t1554 = ptrtoint ptr %t1553 to i64
-  store i32 11231, ptr @lp_site
+  store i32 11233, ptr @lp_site
   %t1555 = call ptr @lp_malloc(i64 %t1554)
   store i32 0, ptr @lp_site
   %t1556 = getelementptr inbounds %LSlice, ptr %t1555, i32 0, i32 0
@@ -300921,7 +300934,7 @@ entry:
   store ptr %t1555, ptr @g_g_dr_hf
   %t1559 = getelementptr %LSlice, ptr null, i32 1
   %t1560 = ptrtoint ptr %t1559 to i64
-  store i32 11232, ptr @lp_site
+  store i32 11234, ptr @lp_site
   %t1561 = call ptr @lp_malloc(i64 %t1560)
   store i32 0, ptr @lp_site
   %t1562 = getelementptr inbounds %LSlice, ptr %t1561, i32 0, i32 0
@@ -300933,7 +300946,7 @@ entry:
   store ptr %t1561, ptr @g_g_dr_locals
   %t1565 = getelementptr %LSlice, ptr null, i32 1
   %t1566 = ptrtoint ptr %t1565 to i64
-  store i32 11233, ptr @lp_site
+  store i32 11235, ptr @lp_site
   %t1567 = call ptr @lp_malloc(i64 %t1566)
   store i32 0, ptr @lp_site
   %t1568 = getelementptr inbounds %LSlice, ptr %t1567, i32 0, i32 0
@@ -300945,7 +300958,7 @@ entry:
   store ptr %t1567, ptr @g_g_dr_bits2
   %t1571 = getelementptr %LSlice, ptr null, i32 1
   %t1572 = ptrtoint ptr %t1571 to i64
-  store i32 11234, ptr @lp_site
+  store i32 11236, ptr @lp_site
   %t1573 = call ptr @lp_malloc(i64 %t1572)
   store i32 0, ptr @lp_site
   %t1574 = getelementptr inbounds %LSlice, ptr %t1573, i32 0, i32 0
@@ -300957,7 +300970,7 @@ entry:
   store ptr %t1573, ptr @g_g_dr_cur2
   %t1577 = getelementptr %LSlice, ptr null, i32 1
   %t1578 = ptrtoint ptr %t1577 to i64
-  store i32 11235, ptr @lp_site
+  store i32 11237, ptr @lp_site
   %t1579 = call ptr @lp_malloc(i64 %t1578)
   store i32 0, ptr @lp_site
   %t1580 = getelementptr inbounds %LSlice, ptr %t1579, i32 0, i32 0
@@ -300969,7 +300982,7 @@ entry:
   store ptr %t1579, ptr @g_g_dr_refs2
   %t1583 = getelementptr %LSlice, ptr null, i32 1
   %t1584 = ptrtoint ptr %t1583 to i64
-  store i32 11236, ptr @lp_site
+  store i32 11238, ptr @lp_site
   %t1585 = call ptr @lp_malloc(i64 %t1584)
   store i32 0, ptr @lp_site
   %t1586 = getelementptr inbounds %LSlice, ptr %t1585, i32 0, i32 0
@@ -300981,7 +300994,7 @@ entry:
   store ptr %t1585, ptr @g_g_dr_wbits2
   %t1589 = getelementptr %LSlice, ptr null, i32 1
   %t1590 = ptrtoint ptr %t1589 to i64
-  store i32 11237, ptr @lp_site
+  store i32 11239, ptr @lp_site
   %t1591 = call ptr @lp_malloc(i64 %t1590)
   store i32 0, ptr @lp_site
   %t1592 = getelementptr inbounds %LSlice, ptr %t1591, i32 0, i32 0
@@ -300991,10 +301004,10 @@ entry:
   %t1594 = getelementptr inbounds %LSlice, ptr %t1591, i32 0, i32 2
   store i32 0, ptr %t1594
   store ptr %t1591, ptr @g_g_det_names
-  store ptr @.str21617, ptr @g_g_det_ctx
+  store ptr @.str21620, ptr @g_g_det_ctx
   %t1595 = getelementptr %LSlice, ptr null, i32 1
   %t1596 = ptrtoint ptr %t1595 to i64
-  store i32 11238, ptr @lp_site
+  store i32 11240, ptr @lp_site
   %t1597 = call ptr @lp_malloc(i64 %t1596)
   store i32 0, ptr @lp_site
   %t1598 = getelementptr inbounds %LSlice, ptr %t1597, i32 0, i32 0
@@ -301006,7 +301019,7 @@ entry:
   store ptr %t1597, ptr @g_g_inj_done
   %t1601 = getelementptr %LSlice, ptr null, i32 1
   %t1602 = ptrtoint ptr %t1601 to i64
-  store i32 11239, ptr @lp_site
+  store i32 11241, ptr @lp_site
   %t1603 = call ptr @lp_malloc(i64 %t1602)
   store i32 0, ptr @lp_site
   %t1604 = getelementptr inbounds %LSlice, ptr %t1603, i32 0, i32 0
@@ -301018,7 +301031,7 @@ entry:
   store ptr %t1603, ptr @g_g_sn_tag
   %t1607 = getelementptr %LSlice, ptr null, i32 1
   %t1608 = ptrtoint ptr %t1607 to i64
-  store i32 11240, ptr @lp_site
+  store i32 11242, ptr @lp_site
   %t1609 = call ptr @lp_malloc(i64 %t1608)
   store i32 0, ptr @lp_site
   %t1610 = getelementptr inbounds %LSlice, ptr %t1609, i32 0, i32 0
@@ -301030,7 +301043,7 @@ entry:
   store ptr %t1609, ptr @g_g_sn_via
   %t1613 = getelementptr %LSlice, ptr null, i32 1
   %t1614 = ptrtoint ptr %t1613 to i64
-  store i32 11241, ptr @lp_site
+  store i32 11243, ptr @lp_site
   %t1615 = call ptr @lp_malloc(i64 %t1614)
   store i32 0, ptr @lp_site
   %t1616 = getelementptr inbounds %LSlice, ptr %t1615, i32 0, i32 0
@@ -301042,7 +301055,7 @@ entry:
   store ptr %t1615, ptr @g_g_sn_fn
   %t1619 = getelementptr %LSlice, ptr null, i32 1
   %t1620 = ptrtoint ptr %t1619 to i64
-  store i32 11242, ptr @lp_site
+  store i32 11244, ptr @lp_site
   %t1621 = call ptr @lp_malloc(i64 %t1620)
   store i32 0, ptr @lp_site
   %t1622 = getelementptr inbounds %LSlice, ptr %t1621, i32 0, i32 0
@@ -301054,7 +301067,7 @@ entry:
   store ptr %t1621, ptr @g_g_sn_call
   %t1625 = getelementptr %LSlice, ptr null, i32 1
   %t1626 = ptrtoint ptr %t1625 to i64
-  store i32 11243, ptr @lp_site
+  store i32 11245, ptr @lp_site
   %t1627 = call ptr @lp_malloc(i64 %t1626)
   store i32 0, ptr @lp_site
   %t1628 = getelementptr inbounds %LSlice, ptr %t1627, i32 0, i32 0
@@ -301066,7 +301079,7 @@ entry:
   store ptr %t1627, ptr @g_g_cx_emits
   %t1631 = getelementptr %LSlice, ptr null, i32 1
   %t1632 = ptrtoint ptr %t1631 to i64
-  store i32 11244, ptr @lp_site
+  store i32 11246, ptr @lp_site
   %t1633 = call ptr @lp_malloc(i64 %t1632)
   store i32 0, ptr @lp_site
   %t1634 = getelementptr inbounds %LSlice, ptr %t1633, i32 0, i32 0
@@ -301078,7 +301091,7 @@ entry:
   store ptr %t1633, ptr @g_g_cx_fnrefs
   %t1637 = getelementptr %LSlice, ptr null, i32 1
   %t1638 = ptrtoint ptr %t1637 to i64
-  store i32 11245, ptr @lp_site
+  store i32 11247, ptr @lp_site
   %t1639 = call ptr @lp_malloc(i64 %t1638)
   store i32 0, ptr @lp_site
   %t1640 = getelementptr inbounds %LSlice, ptr %t1639, i32 0, i32 0
@@ -301090,7 +301103,7 @@ entry:
   store ptr %t1639, ptr @g_g_cx_h
   %t1643 = getelementptr %LSlice, ptr null, i32 1
   %t1644 = ptrtoint ptr %t1643 to i64
-  store i32 11246, ptr @lp_site
+  store i32 11248, ptr @lp_site
   %t1645 = call ptr @lp_malloc(i64 %t1644)
   store i32 0, ptr @lp_site
   %t1646 = getelementptr inbounds %LSlice, ptr %t1645, i32 0, i32 0
@@ -301102,7 +301115,7 @@ entry:
   store ptr %t1645, ptr @g_g_cx_hname
   %t1649 = getelementptr %LSlice, ptr null, i32 1
   %t1650 = ptrtoint ptr %t1649 to i64
-  store i32 11247, ptr @lp_site
+  store i32 11249, ptr @lp_site
   %t1651 = call ptr @lp_malloc(i64 %t1650)
   store i32 0, ptr @lp_site
   %t1652 = getelementptr inbounds %LSlice, ptr %t1651, i32 0, i32 0
@@ -301114,7 +301127,7 @@ entry:
   store ptr %t1651, ptr @g_g_cx_hhook
   %t1655 = getelementptr %LSlice, ptr null, i32 1
   %t1656 = ptrtoint ptr %t1655 to i64
-  store i32 11248, ptr @lp_site
+  store i32 11250, ptr @lp_site
   %t1657 = call ptr @lp_malloc(i64 %t1656)
   store i32 0, ptr @lp_site
   %t1658 = getelementptr inbounds %LSlice, ptr %t1657, i32 0, i32 0
@@ -301126,7 +301139,7 @@ entry:
   store ptr %t1657, ptr @g_g_cx_htarget
   %t1661 = getelementptr %LSlice, ptr null, i32 1
   %t1662 = ptrtoint ptr %t1661 to i64
-  store i32 11249, ptr @lp_site
+  store i32 11251, ptr @lp_site
   %t1663 = call ptr @lp_malloc(i64 %t1662)
   store i32 0, ptr @lp_site
   %t1664 = getelementptr inbounds %LSlice, ptr %t1663, i32 0, i32 0
@@ -301138,7 +301151,7 @@ entry:
   store ptr %t1663, ptr @g_g_cx_hq
   %t1667 = getelementptr %LSlice, ptr null, i32 1
   %t1668 = ptrtoint ptr %t1667 to i64
-  store i32 11250, ptr @lp_site
+  store i32 11252, ptr @lp_site
   %t1669 = call ptr @lp_malloc(i64 %t1668)
   store i32 0, ptr @lp_site
   %t1670 = getelementptr inbounds %LSlice, ptr %t1669, i32 0, i32 0
@@ -301150,7 +301163,7 @@ entry:
   store ptr %t1669, ptr @g_g_cx_hpub
   %t1673 = getelementptr %LSlice, ptr null, i32 1
   %t1674 = ptrtoint ptr %t1673 to i64
-  store i32 11251, ptr @lp_site
+  store i32 11253, ptr @lp_site
   %t1675 = call ptr @lp_malloc(i64 %t1674)
   store i32 0, ptr @lp_site
   %t1676 = getelementptr inbounds %LSlice, ptr %t1675, i32 0, i32 0
@@ -301162,7 +301175,7 @@ entry:
   store ptr %t1675, ptr @g_g_cx_hscene
   %t1679 = getelementptr %LSlice, ptr null, i32 1
   %t1680 = ptrtoint ptr %t1679 to i64
-  store i32 11252, ptr @lp_site
+  store i32 11254, ptr @lp_site
   %t1681 = call ptr @lp_malloc(i64 %t1680)
   store i32 0, ptr @lp_site
   %t1682 = getelementptr inbounds %LSlice, ptr %t1681, i32 0, i32 0
@@ -301174,7 +301187,7 @@ entry:
   store ptr %t1681, ptr @g_g_cx_hlayer
   %t1685 = getelementptr %LSlice, ptr null, i32 1
   %t1686 = ptrtoint ptr %t1685 to i64
-  store i32 11253, ptr @lp_site
+  store i32 11255, ptr @lp_site
   %t1687 = call ptr @lp_malloc(i64 %t1686)
   store i32 0, ptr @lp_site
   %t1688 = getelementptr inbounds %LSlice, ptr %t1687, i32 0, i32 0
@@ -301186,7 +301199,7 @@ entry:
   store ptr %t1687, ptr @g_g_cx_hlisten
   %t1691 = getelementptr %LSlice, ptr null, i32 1
   %t1692 = ptrtoint ptr %t1691 to i64
-  store i32 11254, ptr @lp_site
+  store i32 11256, ptr @lp_site
   %t1693 = call ptr @lp_malloc(i64 %t1692)
   store i32 0, ptr @lp_site
   %t1694 = getelementptr inbounds %LSlice, ptr %t1693, i32 0, i32 0
@@ -301198,7 +301211,7 @@ entry:
   store ptr %t1693, ptr @g_g_cx_slayers
   %t1697 = getelementptr %LSlice, ptr null, i32 1
   %t1698 = ptrtoint ptr %t1697 to i64
-  store i32 11255, ptr @lp_site
+  store i32 11257, ptr @lp_site
   %t1699 = call ptr @lp_malloc(i64 %t1698)
   store i32 0, ptr @lp_site
   %t1700 = getelementptr inbounds %LSlice, ptr %t1699, i32 0, i32 0
@@ -301210,7 +301223,7 @@ entry:
   store ptr %t1699, ptr @g_g_cx_sthen
   %t1703 = getelementptr %LSlice, ptr null, i32 1
   %t1704 = ptrtoint ptr %t1703 to i64
-  store i32 11256, ptr @lp_site
+  store i32 11258, ptr @lp_site
   %t1705 = call ptr @lp_malloc(i64 %t1704)
   store i32 0, ptr @lp_site
   %t1706 = getelementptr inbounds %LSlice, ptr %t1705, i32 0, i32 0
@@ -301222,7 +301235,7 @@ entry:
   store ptr %t1705, ptr @g_g_cx_sloads
   %t1709 = getelementptr %LSlice, ptr null, i32 1
   %t1710 = ptrtoint ptr %t1709 to i64
-  store i32 11257, ptr @lp_site
+  store i32 11259, ptr @lp_site
   %t1711 = call ptr @lp_malloc(i64 %t1710)
   store i32 0, ptr @lp_site
   %t1712 = getelementptr inbounds %LSlice, ptr %t1711, i32 0, i32 0
@@ -301234,7 +301247,7 @@ entry:
   store ptr %t1711, ptr @g_g_cx_spub
   %t1715 = getelementptr %LSlice, ptr null, i32 1
   %t1716 = ptrtoint ptr %t1715 to i64
-  store i32 11258, ptr @lp_site
+  store i32 11260, ptr @lp_site
   %t1717 = call ptr @lp_malloc(i64 %t1716)
   store i32 0, ptr @lp_site
   %t1718 = getelementptr inbounds %LSlice, ptr %t1717, i32 0, i32 0
@@ -301246,7 +301259,7 @@ entry:
   store ptr %t1717, ptr @g_g_cx_wn
   %t1721 = getelementptr %LSlice, ptr null, i32 1
   %t1722 = ptrtoint ptr %t1721 to i64
-  store i32 11259, ptr @lp_site
+  store i32 11261, ptr @lp_site
   %t1723 = call ptr @lp_malloc(i64 %t1722)
   store i32 0, ptr @lp_site
   %t1724 = getelementptr inbounds %LSlice, ptr %t1723, i32 0, i32 0
@@ -301258,7 +301271,7 @@ entry:
   store ptr %t1723, ptr @g_g_cx_wkind
   %t1727 = getelementptr %LSlice, ptr null, i32 1
   %t1728 = ptrtoint ptr %t1727 to i64
-  store i32 11260, ptr @lp_site
+  store i32 11262, ptr @lp_site
   %t1729 = call ptr @lp_malloc(i64 %t1728)
   store i32 0, ptr @lp_site
   %t1730 = getelementptr inbounds %LSlice, ptr %t1729, i32 0, i32 0
@@ -301270,7 +301283,7 @@ entry:
   store ptr %t1729, ptr @g_g_cx_wslot
   %t1733 = getelementptr %LSlice, ptr null, i32 1
   %t1734 = ptrtoint ptr %t1733 to i64
-  store i32 11261, ptr @lp_site
+  store i32 11263, ptr @lp_site
   %t1735 = call ptr @lp_malloc(i64 %t1734)
   store i32 0, ptr @lp_site
   %t1736 = getelementptr inbounds %LSlice, ptr %t1735, i32 0, i32 0
@@ -301282,7 +301295,7 @@ entry:
   store ptr %t1735, ptr @g_g_cx_wentry
   %t1739 = getelementptr %LSlice, ptr null, i32 1
   %t1740 = ptrtoint ptr %t1739 to i64
-  store i32 11262, ptr @lp_site
+  store i32 11264, ptr @lp_site
   %t1741 = call ptr @lp_malloc(i64 %t1740)
   store i32 0, ptr @lp_site
   %t1742 = getelementptr inbounds %LSlice, ptr %t1741, i32 0, i32 0
@@ -301294,7 +301307,7 @@ entry:
   store ptr %t1741, ptr @g_ck_ro
   %t1745 = getelementptr %LSlice, ptr null, i32 1
   %t1746 = ptrtoint ptr %t1745 to i64
-  store i32 11263, ptr @lp_site
+  store i32 11265, ptr @lp_site
   %t1747 = call ptr @lp_malloc(i64 %t1746)
   store i32 0, ptr @lp_site
   %t1748 = getelementptr inbounds %LSlice, ptr %t1747, i32 0, i32 0
@@ -301306,7 +301319,7 @@ entry:
   store ptr %t1747, ptr @g_ck_alias
   %t1751 = getelementptr %LSlice, ptr null, i32 1
   %t1752 = ptrtoint ptr %t1751 to i64
-  store i32 11264, ptr @lp_site
+  store i32 11266, ptr @lp_site
   %t1753 = call ptr @lp_malloc(i64 %t1752)
   store i32 0, ptr @lp_site
   %t1754 = getelementptr inbounds %LSlice, ptr %t1753, i32 0, i32 0
@@ -301318,7 +301331,7 @@ entry:
   store ptr %t1753, ptr @g_ck_ro_st
   %t1757 = getelementptr %LSlice, ptr null, i32 1
   %t1758 = ptrtoint ptr %t1757 to i64
-  store i32 11265, ptr @lp_site
+  store i32 11267, ptr @lp_site
   %t1759 = call ptr @lp_malloc(i64 %t1758)
   store i32 0, ptr @lp_site
   %t1760 = getelementptr inbounds %LSlice, ptr %t1759, i32 0, i32 0
@@ -301330,7 +301343,7 @@ entry:
   store ptr %t1759, ptr @g_ck_from_st
   %t1763 = getelementptr %LSlice, ptr null, i32 1
   %t1764 = ptrtoint ptr %t1763 to i64
-  store i32 11266, ptr @lp_site
+  store i32 11268, ptr @lp_site
   %t1765 = call ptr @lp_malloc(i64 %t1764)
   store i32 0, ptr @lp_site
   %t1766 = getelementptr inbounds %LSlice, ptr %t1765, i32 0, i32 0
@@ -301342,7 +301355,7 @@ entry:
   store ptr %t1765, ptr @g_ck_fn_k
   %t1769 = getelementptr %LSlice, ptr null, i32 1
   %t1770 = ptrtoint ptr %t1769 to i64
-  store i32 11267, ptr @lp_site
+  store i32 11269, ptr @lp_site
   %t1771 = call ptr @lp_malloc(i64 %t1770)
   store i32 0, ptr @lp_site
   %t1772 = getelementptr inbounds %LSlice, ptr %t1771, i32 0, i32 0
@@ -301354,7 +301367,7 @@ entry:
   store ptr %t1771, ptr @g_ck_fn_v
   %t1775 = getelementptr %LSlice, ptr null, i32 1
   %t1776 = ptrtoint ptr %t1775 to i64
-  store i32 11268, ptr @lp_site
+  store i32 11270, ptr @lp_site
   %t1777 = call ptr @lp_malloc(i64 %t1776)
   store i32 0, ptr @lp_site
   %t1778 = getelementptr inbounds %LSlice, ptr %t1777, i32 0, i32 0
@@ -301366,7 +301379,7 @@ entry:
   store ptr %t1777, ptr @g_ck_gl_k
   %t1781 = getelementptr %LSlice, ptr null, i32 1
   %t1782 = ptrtoint ptr %t1781 to i64
-  store i32 11269, ptr @lp_site
+  store i32 11271, ptr @lp_site
   %t1783 = call ptr @lp_malloc(i64 %t1782)
   store i32 0, ptr @lp_site
   %t1784 = getelementptr inbounds %LSlice, ptr %t1783, i32 0, i32 0
@@ -301378,7 +301391,7 @@ entry:
   store ptr %t1783, ptr @g_ck_gl_v
   %t1787 = getelementptr %LSlice, ptr null, i32 1
   %t1788 = ptrtoint ptr %t1787 to i64
-  store i32 11270, ptr @lp_site
+  store i32 11272, ptr @lp_site
   %t1789 = call ptr @lp_malloc(i64 %t1788)
   store i32 0, ptr @lp_site
   %t1790 = getelementptr inbounds %LSlice, ptr %t1789, i32 0, i32 0
@@ -301390,7 +301403,7 @@ entry:
   store ptr %t1789, ptr @g_ck_rec_k
   %t1793 = getelementptr %LSlice, ptr null, i32 1
   %t1794 = ptrtoint ptr %t1793 to i64
-  store i32 11271, ptr @lp_site
+  store i32 11273, ptr @lp_site
   %t1795 = call ptr @lp_malloc(i64 %t1794)
   store i32 0, ptr @lp_site
   %t1796 = getelementptr inbounds %LSlice, ptr %t1795, i32 0, i32 0
@@ -301402,7 +301415,7 @@ entry:
   store ptr %t1795, ptr @g_ck_rec_v
   %t1799 = getelementptr %LSlice, ptr null, i32 1
   %t1800 = ptrtoint ptr %t1799 to i64
-  store i32 11272, ptr @lp_site
+  store i32 11274, ptr @lp_site
   %t1801 = call ptr @lp_malloc(i64 %t1800)
   store i32 0, ptr @lp_site
   %t1802 = getelementptr inbounds %LSlice, ptr %t1801, i32 0, i32 0
@@ -301414,7 +301427,7 @@ entry:
   store ptr %t1801, ptr @g_ck_en_k
   %t1805 = getelementptr %LSlice, ptr null, i32 1
   %t1806 = ptrtoint ptr %t1805 to i64
-  store i32 11273, ptr @lp_site
+  store i32 11275, ptr @lp_site
   %t1807 = call ptr @lp_malloc(i64 %t1806)
   store i32 0, ptr @lp_site
   %t1808 = getelementptr inbounds %LSlice, ptr %t1807, i32 0, i32 0
@@ -301426,7 +301439,7 @@ entry:
   store ptr %t1807, ptr @g_ck_en_v
   %t1811 = getelementptr %LSlice, ptr null, i32 1
   %t1812 = ptrtoint ptr %t1811 to i64
-  store i32 11274, ptr @lp_site
+  store i32 11276, ptr @lp_site
   %t1813 = call ptr @lp_malloc(i64 %t1812)
   store i32 0, ptr @lp_site
   %t1814 = getelementptr inbounds %LSlice, ptr %t1813, i32 0, i32 0
@@ -301438,7 +301451,7 @@ entry:
   store ptr %t1813, ptr @g_ck_ex_k
   %t1817 = getelementptr %LSlice, ptr null, i32 1
   %t1818 = ptrtoint ptr %t1817 to i64
-  store i32 11275, ptr @lp_site
+  store i32 11277, ptr @lp_site
   %t1819 = call ptr @lp_malloc(i64 %t1818)
   store i32 0, ptr @lp_site
   %t1820 = getelementptr inbounds %LSlice, ptr %t1819, i32 0, i32 0
@@ -301450,7 +301463,7 @@ entry:
   store ptr %t1819, ptr @g_ck_ex_v
   %t1823 = getelementptr %LSlice, ptr null, i32 1
   %t1824 = ptrtoint ptr %t1823 to i64
-  store i32 11276, ptr @lp_site
+  store i32 11278, ptr @lp_site
   %t1825 = call ptr @lp_malloc(i64 %t1824)
   store i32 0, ptr @lp_site
   %t1826 = getelementptr inbounds %LSlice, ptr %t1825, i32 0, i32 0
@@ -301462,7 +301475,7 @@ entry:
   store ptr %t1825, ptr @g_ck_names
   %t1829 = getelementptr %LSlice, ptr null, i32 1
   %t1830 = ptrtoint ptr %t1829 to i64
-  store i32 11277, ptr @lp_site
+  store i32 11279, ptr @lp_site
   %t1831 = call ptr @lp_malloc(i64 %t1830)
   store i32 0, ptr @lp_site
   %t1832 = getelementptr inbounds %LSlice, ptr %t1831, i32 0, i32 0
@@ -301472,10 +301485,10 @@ entry:
   %t1834 = getelementptr inbounds %LSlice, ptr %t1831, i32 0, i32 2
   store i32 0, ptr %t1834
   store ptr %t1831, ptr @g_ck_tys
-  store ptr @.str21618, ptr @g_ck_ret
+  store ptr @.str21621, ptr @g_ck_ret
   %t1835 = getelementptr %LSlice, ptr null, i32 1
   %t1836 = ptrtoint ptr %t1835 to i64
-  store i32 11278, ptr @lp_site
+  store i32 11280, ptr @lp_site
   %t1837 = call ptr @lp_malloc(i64 %t1836)
   store i32 0, ptr @lp_site
   %t1838 = getelementptr inbounds %LSlice, ptr %t1837, i32 0, i32 0
@@ -301487,7 +301500,7 @@ entry:
   store ptr %t1837, ptr @g_ck_shadow_seen
   %t1841 = getelementptr %LSlice, ptr null, i32 1
   %t1842 = ptrtoint ptr %t1841 to i64
-  store i32 11279, ptr @lp_site
+  store i32 11281, ptr @lp_site
   %t1843 = call ptr @lp_malloc(i64 %t1842)
   store i32 0, ptr @lp_site
   %t1844 = getelementptr inbounds %LSlice, ptr %t1843, i32 0, i32 0
@@ -301499,7 +301512,7 @@ entry:
   store ptr %t1843, ptr @g_g_gen_recs
   %t1847 = getelementptr %LSlice, ptr null, i32 1
   %t1848 = ptrtoint ptr %t1847 to i64
-  store i32 11280, ptr @lp_site
+  store i32 11282, ptr @lp_site
   %t1849 = call ptr @lp_malloc(i64 %t1848)
   store i32 0, ptr @lp_site
   %t1850 = getelementptr inbounds %LSlice, ptr %t1849, i32 0, i32 0
@@ -301511,7 +301524,7 @@ entry:
   store ptr %t1849, ptr @g_g_gen_fns
   %t1853 = getelementptr %LSlice, ptr null, i32 1
   %t1854 = ptrtoint ptr %t1853 to i64
-  store i32 11281, ptr @lp_site
+  store i32 11283, ptr @lp_site
   %t1855 = call ptr @lp_malloc(i64 %t1854)
   store i32 0, ptr @lp_site
   %t1856 = getelementptr inbounds %LSlice, ptr %t1855, i32 0, i32 0
@@ -301523,7 +301536,7 @@ entry:
   store ptr %t1855, ptr @g_g_gen_out
   %t1859 = getelementptr %LSlice, ptr null, i32 1
   %t1860 = ptrtoint ptr %t1859 to i64
-  store i32 11282, ptr @lp_site
+  store i32 11284, ptr @lp_site
   %t1861 = call ptr @lp_malloc(i64 %t1860)
   store i32 0, ptr @lp_site
   %t1862 = getelementptr inbounds %LSlice, ptr %t1861, i32 0, i32 0
@@ -301535,7 +301548,7 @@ entry:
   store ptr %t1861, ptr @g_g_gen_work
   %t1865 = getelementptr %LSlice, ptr null, i32 1
   %t1866 = ptrtoint ptr %t1865 to i64
-  store i32 11283, ptr @lp_site
+  store i32 11285, ptr @lp_site
   %t1867 = call ptr @lp_malloc(i64 %t1866)
   store i32 0, ptr @lp_site
   %t1868 = getelementptr inbounds %LSlice, ptr %t1867, i32 0, i32 0
@@ -301547,7 +301560,7 @@ entry:
   store ptr %t1867, ptr @g_ck_ty_k
   %t1871 = getelementptr %LSlice, ptr null, i32 1
   %t1872 = ptrtoint ptr %t1871 to i64
-  store i32 11284, ptr @lp_site
+  store i32 11286, ptr @lp_site
   %t1873 = call ptr @lp_malloc(i64 %t1872)
   store i32 0, ptr @lp_site
   %t1874 = getelementptr inbounds %LSlice, ptr %t1873, i32 0, i32 0
@@ -301636,7 +301649,7 @@ entry:
   store i32 0, ptr %t9
   %t10 = getelementptr %LSlice, ptr null, i32 1
   %t11 = ptrtoint ptr %t10 to i64
-  store i32 11285, ptr @lp_site
+  store i32 11287, ptr @lp_site
   %t12 = call ptr @lp_malloc(i64 %t11)
   store i32 0, ptr @lp_site
   %t13 = getelementptr inbounds %LSlice, ptr %t12, i32 0, i32 0
@@ -301664,7 +301677,7 @@ wbody1:
   %t27 = load ptr, ptr %t26
   store ptr %t27, ptr %t28
   %t29 = load ptr, ptr %t28
-  %t30 = call i32 @lp_str_eq(ptr %t29, ptr @.str21620)
+  %t30 = call i32 @lp_str_eq(ptr %t29, ptr @.str21623)
   %t31 = icmp ne i32 %t30, 0
   br i1 %t31, label %then3, label %else4
 then3:
@@ -301672,7 +301685,7 @@ then3:
   br label %ifend5
 else4:
   %t32 = load ptr, ptr %t28
-  %t33 = call i32 @lp_str_eq(ptr %t32, ptr @.str21621)
+  %t33 = call i32 @lp_str_eq(ptr %t32, ptr @.str21624)
   %t34 = icmp ne i32 %t33, 0
   br i1 %t34, label %then6, label %else7
 then6:
@@ -301680,7 +301693,7 @@ then6:
   br label %ifend8
 else7:
   %t35 = load ptr, ptr %t28
-  %t36 = call i32 @lp_str_eq(ptr %t35, ptr @.str21622)
+  %t36 = call i32 @lp_str_eq(ptr %t35, ptr @.str21625)
   %t37 = icmp ne i32 %t36, 0
   br i1 %t37, label %then9, label %else10
 then9:
@@ -301688,7 +301701,7 @@ then9:
   br label %ifend11
 else10:
   %t38 = load ptr, ptr %t28
-  %t39 = call i32 @lp_str_eq(ptr %t38, ptr @.str21623)
+  %t39 = call i32 @lp_str_eq(ptr %t38, ptr @.str21626)
   %t40 = icmp ne i32 %t39, 0
   br i1 %t40, label %then12, label %else13
 then12:
@@ -301696,7 +301709,7 @@ then12:
   br label %ifend14
 else13:
   %t41 = load ptr, ptr %t28
-  %t42 = call i32 @lp_str_eq(ptr %t41, ptr @.str21624)
+  %t42 = call i32 @lp_str_eq(ptr %t41, ptr @.str21627)
   %t43 = icmp ne i32 %t42, 0
   br i1 %t43, label %then15, label %else16
 then15:
@@ -301704,7 +301717,7 @@ then15:
   br label %ifend17
 else16:
   %t44 = load ptr, ptr %t28
-  %t45 = call i32 @lp_str_eq(ptr %t44, ptr @.str21625)
+  %t45 = call i32 @lp_str_eq(ptr %t44, ptr @.str21628)
   %t46 = icmp ne i32 %t45, 0
   br i1 %t46, label %then18, label %else19
 then18:
@@ -301713,7 +301726,7 @@ then18:
   br label %ifend20
 else19:
   %t47 = load ptr, ptr %t28
-  %t48 = call i32 @lp_str_eq(ptr %t47, ptr @.str21626)
+  %t48 = call i32 @lp_str_eq(ptr %t47, ptr @.str21629)
   %t49 = icmp ne i32 %t48, 0
   br i1 %t49, label %then21, label %else22
 then21:
@@ -301721,7 +301734,7 @@ then21:
   br label %ifend23
 else22:
   %t50 = load ptr, ptr %t28
-  %t51 = call i32 @lp_str_eq(ptr %t50, ptr @.str21627)
+  %t51 = call i32 @lp_str_eq(ptr %t50, ptr @.str21630)
   %t52 = icmp ne i32 %t51, 0
   br i1 %t52, label %then24, label %else25
 then24:
@@ -301729,7 +301742,7 @@ then24:
   br label %ifend26
 else25:
   %t53 = load ptr, ptr %t28
-  %t54 = call i32 @lp_str_eq(ptr %t53, ptr @.str21628)
+  %t54 = call i32 @lp_str_eq(ptr %t53, ptr @.str21631)
   %t55 = icmp ne i32 %t54, 0
   br i1 %t55, label %then27, label %else28
 then27:
@@ -301737,7 +301750,7 @@ then27:
   br label %ifend29
 else28:
   %t56 = load ptr, ptr %t28
-  %t57 = call i32 @lp_str_eq(ptr %t56, ptr @.str21629)
+  %t57 = call i32 @lp_str_eq(ptr %t56, ptr @.str21632)
   %t58 = icmp ne i32 %t57, 0
   br i1 %t58, label %then30, label %else31
 then30:
@@ -301745,7 +301758,7 @@ then30:
   br label %ifend32
 else31:
   %t59 = load ptr, ptr %t28
-  %t60 = call i32 @lp_str_eq(ptr %t59, ptr @.str21630)
+  %t60 = call i32 @lp_str_eq(ptr %t59, ptr @.str21633)
   %t61 = icmp ne i32 %t60, 0
   br i1 %t61, label %then33, label %else34
 then33:
@@ -301753,7 +301766,7 @@ then33:
   br label %ifend35
 else34:
   %t62 = load ptr, ptr %t28
-  %t63 = call i32 @lp_str_eq(ptr %t62, ptr @.str21631)
+  %t63 = call i32 @lp_str_eq(ptr %t62, ptr @.str21634)
   %t64 = icmp ne i32 %t63, 0
   br i1 %t64, label %then36, label %else37
 then36:
@@ -301761,7 +301774,7 @@ then36:
   br label %ifend38
 else37:
   %t65 = load ptr, ptr %t28
-  %t66 = call i32 @lp_str_eq(ptr %t65, ptr @.str21632)
+  %t66 = call i32 @lp_str_eq(ptr %t65, ptr @.str21635)
   %t67 = icmp ne i32 %t66, 0
   br i1 %t67, label %then39, label %else40
 then39:
@@ -301769,7 +301782,7 @@ then39:
   br label %ifend41
 else40:
   %t68 = load ptr, ptr %t28
-  %t69 = call i32 @lp_str_eq(ptr %t68, ptr @.str21633)
+  %t69 = call i32 @lp_str_eq(ptr %t68, ptr @.str21636)
   %t70 = icmp ne i32 %t69, 0
   br i1 %t70, label %then42, label %else43
 then42:
@@ -301777,7 +301790,7 @@ then42:
   br label %ifend44
 else43:
   %t71 = load ptr, ptr %t28
-  %t72 = call i32 @lp_str_eq(ptr %t71, ptr @.str21634)
+  %t72 = call i32 @lp_str_eq(ptr %t71, ptr @.str21637)
   %t73 = icmp ne i32 %t72, 0
   br i1 %t73, label %then45, label %else46
 then45:
@@ -301785,7 +301798,7 @@ then45:
   br label %ifend47
 else46:
   %t74 = load ptr, ptr %t28
-  %t75 = call i32 @lp_str_eq(ptr %t74, ptr @.str21635)
+  %t75 = call i32 @lp_str_eq(ptr %t74, ptr @.str21638)
   %t76 = icmp ne i32 %t75, 0
   br i1 %t76, label %then48, label %else49
 then48:
@@ -301809,7 +301822,7 @@ ifend53:
   br label %ifend50
 else49:
   %t88 = load ptr, ptr %t28
-  %t89 = call i32 @lp_str_eq(ptr %t88, ptr @.str21636)
+  %t89 = call i32 @lp_str_eq(ptr %t88, ptr @.str21639)
   %t90 = icmp ne i32 %t89, 0
   br i1 %t90, label %then54, label %else55
 then54:
@@ -301833,7 +301846,7 @@ ifend59:
   br label %ifend56
 else55:
   %t102 = load ptr, ptr %t28
-  %t103 = call i32 @lp_str_eq(ptr %t102, ptr @.str21637)
+  %t103 = call i32 @lp_str_eq(ptr %t102, ptr @.str21640)
   %t104 = icmp ne i32 %t103, 0
   br i1 %t104, label %then60, label %else61
 then60:
@@ -301841,7 +301854,7 @@ then60:
   br label %ifend62
 else61:
   %t105 = load ptr, ptr %t28
-  %t106 = call i32 @lp_str_eq(ptr %t105, ptr @.str21638)
+  %t106 = call i32 @lp_str_eq(ptr %t105, ptr @.str21641)
   %t107 = icmp ne i32 %t106, 0
   br i1 %t107, label %then63, label %else64
 then63:
@@ -301867,7 +301880,7 @@ ifend68:
   br label %ifend65
 else64:
   %t119 = load ptr, ptr %t28
-  %t120 = call i32 @lp_str_eq(ptr %t119, ptr @.str21639)
+  %t120 = call i32 @lp_str_eq(ptr %t119, ptr @.str21642)
   %t121 = icmp ne i32 %t120, 0
   br i1 %t121, label %then69, label %else70
 then69:
@@ -301875,7 +301888,7 @@ then69:
   br label %ifend71
 else70:
   %t122 = load ptr, ptr %t28
-  %t123 = call i32 @lp_str_eq(ptr %t122, ptr @.str21640)
+  %t123 = call i32 @lp_str_eq(ptr %t122, ptr @.str21643)
   %t124 = icmp ne i32 %t123, 0
   br i1 %t124, label %then72, label %else73
 then72:
@@ -301884,7 +301897,7 @@ then72:
   br label %ifend74
 else73:
   %t125 = load ptr, ptr %t28
-  %t126 = call i32 @lp_str_eq(ptr %t125, ptr @.str21641)
+  %t126 = call i32 @lp_str_eq(ptr %t125, ptr @.str21644)
   %t127 = icmp ne i32 %t126, 0
   br i1 %t127, label %then75, label %else76
 then75:
@@ -301892,7 +301905,7 @@ then75:
   br label %ifend77
 else76:
   %t128 = load ptr, ptr %t28
-  %t129 = call i32 @lp_str_eq(ptr %t128, ptr @.str21642)
+  %t129 = call i32 @lp_str_eq(ptr %t128, ptr @.str21645)
   %t130 = icmp ne i32 %t129, 0
   br i1 %t130, label %then78, label %else79
 then78:
@@ -301900,7 +301913,7 @@ then78:
   br label %ifend80
 else79:
   %t131 = load ptr, ptr %t28
-  %t132 = call i32 @lp_str_eq(ptr %t131, ptr @.str21643)
+  %t132 = call i32 @lp_str_eq(ptr %t131, ptr @.str21646)
   %t133 = icmp ne i32 %t132, 0
   br i1 %t133, label %then81, label %else82
 then81:
@@ -301924,7 +301937,7 @@ ifend86:
   br label %ifend83
 else82:
   %t145 = load ptr, ptr %t28
-  %t146 = call i32 @lp_str_eq(ptr %t145, ptr @.str21644)
+  %t146 = call i32 @lp_str_eq(ptr %t145, ptr @.str21647)
   %t147 = icmp ne i32 %t146, 0
   br i1 %t147, label %then87, label %else88
 then87:
@@ -301932,7 +301945,7 @@ then87:
   br label %ifend89
 else88:
   %t148 = load ptr, ptr %t28
-  %t149 = call i32 @lp_str_eq(ptr %t148, ptr @.str21645)
+  %t149 = call i32 @lp_str_eq(ptr %t148, ptr @.str21648)
   %t150 = icmp ne i32 %t149, 0
   br i1 %t150, label %then90, label %else91
 then90:
@@ -301956,7 +301969,7 @@ ifend95:
   br label %ifend92
 else91:
   %t162 = load ptr, ptr %t28
-  %t163 = call i32 @lp_str_eq(ptr %t162, ptr @.str21646)
+  %t163 = call i32 @lp_str_eq(ptr %t162, ptr @.str21649)
   %t164 = icmp ne i32 %t163, 0
   br i1 %t164, label %then96, label %else97
 then96:
@@ -301980,7 +301993,7 @@ ifend101:
   br label %ifend98
 else97:
   %t176 = load ptr, ptr %t28
-  %t177 = call i32 @lp_str_eq(ptr %t176, ptr @.str21647)
+  %t177 = call i32 @lp_str_eq(ptr %t176, ptr @.str21650)
   %t178 = icmp ne i32 %t177, 0
   br i1 %t178, label %then102, label %else103
 then102:
@@ -302015,7 +302028,7 @@ grow108:
   %t202 = zext i32 %t199 to i64
   %t203 = mul i64 %t202, %t201
   %t204 = load ptr, ptr %t193
-  store i32 11286, ptr @lp_site
+  store i32 11288, ptr @lp_site
   %t205 = call ptr @lp_realloc(ptr %t204, i64 %t203)
   store i32 0, ptr @lp_site
   store ptr %t205, ptr %t193
@@ -302032,7 +302045,7 @@ ifend107:
   br label %ifend104
 else103:
   %t209 = load ptr, ptr %t28
-  %t210 = call i32 @lp_str_eq(ptr %t209, ptr @.str21648)
+  %t210 = call i32 @lp_str_eq(ptr %t209, ptr @.str21651)
   %t211 = icmp ne i32 %t210, 0
   br i1 %t211, label %then110, label %else111
 then110:
@@ -302056,7 +302069,7 @@ ifend115:
   br label %ifend112
 else111:
   %t223 = load ptr, ptr %t28
-  %t224 = call i32 @lp_str_eq(ptr %t223, ptr @.str21649)
+  %t224 = call i32 @lp_str_eq(ptr %t223, ptr @.str21652)
   %t225 = icmp ne i32 %t224, 0
   br i1 %t225, label %then116, label %else117
 then116:
@@ -302080,15 +302093,15 @@ else120:
   br i1 %t235, label %then122, label %else123
 then122:
   %t236 = load ptr, ptr %t28
-  store i32 11287, ptr @lp_site
-  %t237 = call ptr @lp_str_concat(ptr @.str21650, ptr %t236)
+  store i32 11289, ptr @lp_site
+  %t237 = call ptr @lp_str_concat(ptr @.str21653, ptr %t236)
   store i32 0, ptr @lp_site
-  store i32 11288, ptr @lp_site
-  %t238 = call ptr @lp_str_concat(ptr %t237, ptr @.str21651)
+  store i32 11290, ptr @lp_site
+  %t238 = call ptr @lp_str_concat(ptr %t237, ptr @.str21654)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t237)
   store ptr %t238, ptr %t239
-  store i32 11289, ptr @lp_site
+  store i32 11291, ptr @lp_site
   %t240 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
   %t241 = load ptr, ptr %t239
@@ -302177,7 +302190,7 @@ wend2:
   %t254 = icmp ne i32 %t253, 0
   br i1 %t254, label %then125, label %ifend127
 then125:
-  call void @fn_die(ptr @.str21652)
+  call void @fn_die(ptr @.str21655)
   br label %ifend127
 ifend127:
   %t255 = load ptr, ptr %t7
@@ -302187,7 +302200,7 @@ ifend127:
   br i1 %t258, label %then128, label %else129
 then128:
   %t259 = load ptr, ptr %t7
-  %t260 = call i32 @fn_has_sub(ptr %t259, ptr @.str21653)
+  %t260 = call i32 @fn_has_sub(ptr %t259, ptr @.str21656)
   store i32 %t260, ptr @g_g_target_win
   br label %ifend130
 else129:
@@ -302204,7 +302217,7 @@ ifend130:
   %t268 = icmp ne i32 %t267, 0
   br i1 %t268, label %then131, label %ifend133
 then131:
-  call void @fn_die(ptr @.str21654)
+  call void @fn_die(ptr @.str21657)
   br label %ifend133
 ifend133:
   %t269 = load ptr, ptr @g_g_fm_src
@@ -302357,8 +302370,8 @@ ifend157:
   store i32 %t339, ptr %t336
   br i1 %t338, label %sc161, label %scend162
 sc161:
-  %t340 = call ptr @fn_getenv_or(ptr @.str21655, ptr @.str21656)
-  %t341 = call i32 @lp_str_eq(ptr %t340, ptr @.str21657)
+  %t340 = call ptr @fn_getenv_or(ptr @.str21658, ptr @.str21659)
+  %t341 = call i32 @lp_str_eq(ptr %t340, ptr @.str21660)
   %t342 = icmp ne i32 %t341, 0
   %t343 = zext i1 %t342 to i32
   store i32 %t343, ptr %t336
@@ -302368,8 +302381,8 @@ scend162:
   %t345 = icmp ne i32 %t344, 0
   br i1 %t345, label %then163, label %ifend165
 then163:
-  store i32 11290, ptr @lp_site
-  %t346 = call ptr @lp_pak_open(ptr @.str21658, ptr @.str21659)
+  store i32 11292, ptr @lp_site
+  %t346 = call ptr @lp_pak_open(ptr @.str21661, ptr @.str21662)
   store i32 0, ptr @lp_site
   store ptr %t346, ptr %t347
   %t348 = load ptr, ptr %t347
@@ -302400,11 +302413,11 @@ then169:
   br i1 %t360, label %then172, label %ifend174
 then172:
   %t361 = load ptr, ptr @g_g_schema_out
-  store i32 11291, ptr @lp_site
-  %t362 = call ptr @lp_str_concat(ptr @.str21660, ptr %t361)
+  store i32 11293, ptr @lp_site
+  %t362 = call ptr @lp_str_concat(ptr @.str21663, ptr %t361)
   store i32 0, ptr @lp_site
-  store i32 11292, ptr @lp_site
-  %t363 = call ptr @lp_str_concat(ptr %t362, ptr @.str21661)
+  store i32 11294, ptr @lp_site
+  %t363 = call ptr @lp_str_concat(ptr %t362, ptr @.str21664)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t362)
   call void @fn_die(ptr %t363)
@@ -302519,15 +302532,15 @@ then199:
   %t417 = icmp ne i32 %t416, 0
   br i1 %t417, label %then202, label %else203
 then202:
-  %t418 = call ptr @fn_getenv_or(ptr @.str21662, ptr @.str21663)
+  %t418 = call ptr @fn_getenv_or(ptr @.str21665, ptr @.str21666)
   %t419 = call ptr @fn_fwd_slashes(ptr %t418)
-  store i32 11293, ptr @lp_site
-  %t420 = call ptr @lp_str_concat(ptr %t419, ptr @.str21664)
+  store i32 11295, ptr @lp_site
+  %t420 = call ptr @lp_str_concat(ptr %t419, ptr @.str21667)
   store i32 0, ptr @lp_site
   %t421 = load ptr, ptr %t0
   %t422 = call ptr @fn_base_name(ptr %t421)
   %t423 = call ptr @fn_strip_ludic(ptr %t422)
-  store i32 11294, ptr @lp_site
+  store i32 11296, ptr @lp_site
   %t424 = call ptr @lp_str_concat(ptr %t420, ptr %t423)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t420)
@@ -302537,8 +302550,8 @@ else203:
   %t425 = load ptr, ptr %t0
   %t426 = call ptr @fn_base_name(ptr %t425)
   %t427 = call ptr @fn_strip_ludic(ptr %t426)
-  store i32 11295, ptr @lp_site
-  %t428 = call ptr @lp_str_concat(ptr @.str21665, ptr %t427)
+  store i32 11297, ptr @lp_site
+  %t428 = call ptr @lp_str_concat(ptr @.str21668, ptr %t427)
   store i32 0, ptr @lp_site
   store ptr %t428, ptr %t1
   br label %ifend204
@@ -302564,10 +302577,10 @@ then208:
   %t441 = load i32, ptr %t434
   %t442 = sub i32 %t441, 4
   %t443 = load i32, ptr %t434
-  store i32 11296, ptr @lp_site
+  store i32 11298, ptr @lp_site
   %t444 = call ptr @lp_str_slice(ptr %t440, i32 %t442, i32 %t443)
   store i32 0, ptr @lp_site
-  %t445 = call i32 @lp_str_eq(ptr %t444, ptr @.str21666)
+  %t445 = call i32 @lp_str_eq(ptr %t444, ptr @.str21669)
   call void @lp_free(ptr %t444)
   store i32 %t445, ptr %t435
   br label %ifend210
@@ -302579,8 +302592,8 @@ ifend210:
   br i1 %t449, label %then211, label %ifend213
 then211:
   %t450 = load ptr, ptr %t1
-  store i32 11297, ptr @lp_site
-  %t451 = call ptr @lp_str_concat(ptr %t450, ptr @.str21667)
+  store i32 11299, ptr @lp_site
+  %t451 = call ptr @lp_str_concat(ptr %t450, ptr @.str21670)
   store i32 0, ptr @lp_site
   store ptr %t451, ptr %t1
   br label %ifend213
@@ -302603,8 +302616,8 @@ then214:
   br label %ifend216
 ifend216:
   %t462 = load ptr, ptr %t1
-  store i32 11298, ptr @lp_site
-  %t463 = call ptr @lp_str_concat(ptr %t462, ptr @.str21668)
+  store i32 11300, ptr @lp_site
+  %t463 = call ptr @lp_str_concat(ptr %t462, ptr @.str21671)
   store i32 0, ptr @lp_site
   store ptr %t463, ptr %t464
   %t465 = load ptr, ptr %t464
@@ -302614,14 +302627,14 @@ ifend216:
   %t469 = icmp ne i32 %t468, 0
   br i1 %t469, label %then217, label %ifend219
 then217:
-  call void @fn_die(ptr @.str21669)
+  call void @fn_die(ptr @.str21672)
   br label %ifend219
 ifend219:
   %t470 = call ptr @fn_find_cc()
   store ptr %t470, ptr %t471
   %t472 = call ptr @fn_ludic_home()
   store ptr %t472, ptr %t473
-  %t474 = call ptr @fn_getenv_or(ptr @.str21670, ptr @.str21671)
+  %t474 = call ptr @fn_getenv_or(ptr @.str21673, ptr @.str21674)
   store ptr %t474, ptr %t475
   %t476 = load ptr, ptr %t464
   %t477 = load ptr, ptr %t1
@@ -302629,20 +302642,20 @@ ifend219:
   %t479 = call ptr @fn_split_compile(ptr %t476, ptr %t477, ptr %t478)
   store ptr %t479, ptr %t480
   %t481 = load ptr, ptr %t471
-  store i32 11299, ptr @lp_site
-  %t482 = call ptr @lp_str_concat(ptr %t481, ptr @.str21672)
+  store i32 11301, ptr @lp_site
+  %t482 = call ptr @lp_str_concat(ptr %t481, ptr @.str21675)
   store i32 0, ptr @lp_site
   %t483 = load ptr, ptr %t475
-  store i32 11300, ptr @lp_site
+  store i32 11302, ptr @lp_site
   %t484 = call ptr @lp_str_concat(ptr %t482, ptr %t483)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t482)
-  store i32 11301, ptr @lp_site
-  %t485 = call ptr @lp_str_concat(ptr %t484, ptr @.str21673)
+  store i32 11303, ptr @lp_site
+  %t485 = call ptr @lp_str_concat(ptr %t484, ptr @.str21676)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t484)
   %t486 = load ptr, ptr %t464
-  store i32 11302, ptr @lp_site
+  store i32 11304, ptr @lp_site
   %t487 = call ptr @lp_str_concat(ptr %t485, ptr %t486)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t485)
@@ -302654,20 +302667,20 @@ ifend219:
   br i1 %t492, label %then220, label %ifend222
 then220:
   %t493 = load ptr, ptr %t471
-  store i32 11303, ptr @lp_site
-  %t494 = call ptr @lp_str_concat(ptr %t493, ptr @.str21674)
+  store i32 11305, ptr @lp_site
+  %t494 = call ptr @lp_str_concat(ptr %t493, ptr @.str21677)
   store i32 0, ptr @lp_site
   %t495 = load ptr, ptr %t475
-  store i32 11304, ptr @lp_site
+  store i32 11306, ptr @lp_site
   %t496 = call ptr @lp_str_concat(ptr %t494, ptr %t495)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t494)
-  store i32 11305, ptr @lp_site
-  %t497 = call ptr @lp_str_concat(ptr %t496, ptr @.str21675)
+  store i32 11307, ptr @lp_site
+  %t497 = call ptr @lp_str_concat(ptr %t496, ptr @.str21678)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t496)
   %t498 = load ptr, ptr %t480
-  store i32 11306, ptr @lp_site
+  store i32 11308, ptr @lp_site
   %t499 = call ptr @lp_str_concat(ptr %t497, ptr %t498)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t497)
@@ -302683,19 +302696,19 @@ then223:
   br i1 %t503, label %then226, label %ifend228
 then226:
   %t504 = load ptr, ptr %t473
-  %t505 = call ptr @fn_join_path(ptr %t504, ptr @.str21676)
+  %t505 = call ptr @fn_join_path(ptr %t504, ptr @.str21679)
   store ptr %t505, ptr %t506
   %t507 = load ptr, ptr %t488
-  store i32 11307, ptr @lp_site
-  %t508 = call ptr @lp_str_concat(ptr %t507, ptr @.str21677)
+  store i32 11309, ptr @lp_site
+  %t508 = call ptr @lp_str_concat(ptr %t507, ptr @.str21680)
   store i32 0, ptr @lp_site
   %t509 = load ptr, ptr %t506
-  store i32 11308, ptr @lp_site
+  store i32 11310, ptr @lp_site
   %t510 = call ptr @lp_str_concat(ptr %t508, ptr %t509)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t508)
-  store i32 11309, ptr @lp_site
-  %t511 = call ptr @lp_str_concat(ptr %t510, ptr @.str21678)
+  store i32 11311, ptr @lp_site
+  %t511 = call ptr @lp_str_concat(ptr %t510, ptr @.str21681)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t510)
   store ptr %t511, ptr %t488
@@ -302704,19 +302717,19 @@ then226:
   br i1 %t513, label %then229, label %ifend231
 then229:
   %t514 = load ptr, ptr %t473
-  %t515 = call ptr @fn_join_path(ptr %t514, ptr @.str21679)
+  %t515 = call ptr @fn_join_path(ptr %t514, ptr @.str21682)
   store ptr %t515, ptr %t516
   %t517 = load ptr, ptr %t488
-  store i32 11310, ptr @lp_site
-  %t518 = call ptr @lp_str_concat(ptr %t517, ptr @.str21680)
+  store i32 11312, ptr @lp_site
+  %t518 = call ptr @lp_str_concat(ptr %t517, ptr @.str21683)
   store i32 0, ptr @lp_site
   %t519 = load ptr, ptr %t516
-  store i32 11311, ptr @lp_site
+  store i32 11313, ptr @lp_site
   %t520 = call ptr @lp_str_concat(ptr %t518, ptr %t519)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t518)
-  store i32 11312, ptr @lp_site
-  %t521 = call ptr @lp_str_concat(ptr %t520, ptr @.str21681)
+  store i32 11314, ptr @lp_site
+  %t521 = call ptr @lp_str_concat(ptr %t520, ptr @.str21684)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t520)
   store ptr %t521, ptr %t488
@@ -302731,19 +302744,19 @@ else224:
   br i1 %t523, label %then232, label %ifend234
 then232:
   %t524 = load ptr, ptr %t473
-  %t525 = call ptr @fn_join_path(ptr %t524, ptr @.str21682)
+  %t525 = call ptr @fn_join_path(ptr %t524, ptr @.str21685)
   store ptr %t525, ptr %t526
   %t527 = load ptr, ptr %t488
-  store i32 11313, ptr @lp_site
-  %t528 = call ptr @lp_str_concat(ptr %t527, ptr @.str21683)
+  store i32 11315, ptr @lp_site
+  %t528 = call ptr @lp_str_concat(ptr %t527, ptr @.str21686)
   store i32 0, ptr @lp_site
   %t529 = load ptr, ptr %t526
-  store i32 11314, ptr @lp_site
+  store i32 11316, ptr @lp_site
   %t530 = call ptr @lp_str_concat(ptr %t528, ptr %t529)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t528)
-  store i32 11315, ptr @lp_site
-  %t531 = call ptr @lp_str_concat(ptr %t530, ptr @.str21684)
+  store i32 11317, ptr @lp_site
+  %t531 = call ptr @lp_str_concat(ptr %t530, ptr @.str21687)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t530)
   store ptr %t531, ptr %t488
@@ -302752,19 +302765,19 @@ then232:
   br i1 %t533, label %then235, label %ifend237
 then235:
   %t534 = load ptr, ptr %t473
-  %t535 = call ptr @fn_join_path(ptr %t534, ptr @.str21685)
+  %t535 = call ptr @fn_join_path(ptr %t534, ptr @.str21688)
   store ptr %t535, ptr %t536
   %t537 = load ptr, ptr %t488
-  store i32 11316, ptr @lp_site
-  %t538 = call ptr @lp_str_concat(ptr %t537, ptr @.str21686)
+  store i32 11318, ptr @lp_site
+  %t538 = call ptr @lp_str_concat(ptr %t537, ptr @.str21689)
   store i32 0, ptr @lp_site
   %t539 = load ptr, ptr %t536
-  store i32 11317, ptr @lp_site
+  store i32 11319, ptr @lp_site
   %t540 = call ptr @lp_str_concat(ptr %t538, ptr %t539)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t538)
-  store i32 11318, ptr @lp_site
-  %t541 = call ptr @lp_str_concat(ptr %t540, ptr @.str21687)
+  store i32 11320, ptr @lp_site
+  %t541 = call ptr @lp_str_concat(ptr %t540, ptr @.str21690)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t540)
   store ptr %t541, ptr %t488
@@ -302783,12 +302796,12 @@ then238:
   br i1 %t545, label %then241, label %else242
 then241:
   %t546 = load ptr, ptr %t488
-  store i32 11319, ptr @lp_site
-  %t547 = call ptr @lp_str_concat(ptr %t546, ptr @.str21688)
+  store i32 11321, ptr @lp_site
+  %t547 = call ptr @lp_str_concat(ptr %t546, ptr @.str21691)
   store i32 0, ptr @lp_site
   %t548 = load ptr, ptr %t473
-  %t549 = call ptr @fn_join_path(ptr %t548, ptr @.str21689)
-  store i32 11320, ptr @lp_site
+  %t549 = call ptr @fn_join_path(ptr %t548, ptr @.str21692)
+  store i32 11322, ptr @lp_site
   %t550 = call ptr @lp_str_concat(ptr %t547, ptr %t549)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t547)
@@ -302796,12 +302809,12 @@ then241:
   br label %ifend243
 else242:
   %t551 = load ptr, ptr %t488
-  store i32 11321, ptr @lp_site
-  %t552 = call ptr @lp_str_concat(ptr %t551, ptr @.str21690)
+  store i32 11323, ptr @lp_site
+  %t552 = call ptr @lp_str_concat(ptr %t551, ptr @.str21693)
   store i32 0, ptr @lp_site
   %t553 = load ptr, ptr %t473
-  %t554 = call ptr @fn_join_path(ptr %t553, ptr @.str21691)
-  store i32 11322, ptr @lp_site
+  %t554 = call ptr @fn_join_path(ptr %t553, ptr @.str21694)
+  store i32 11324, ptr @lp_site
   %t555 = call ptr @lp_str_concat(ptr %t552, ptr %t554)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t552)
@@ -302819,29 +302832,29 @@ then244:
   br i1 %t559, label %then247, label %else248
 then247:
   %t560 = load ptr, ptr %t488
-  store i32 11323, ptr @lp_site
-  %t561 = call ptr @lp_str_concat(ptr %t560, ptr @.str21692)
+  store i32 11325, ptr @lp_site
+  %t561 = call ptr @lp_str_concat(ptr %t560, ptr @.str21695)
   store i32 0, ptr @lp_site
   %t562 = load ptr, ptr %t473
-  %t563 = call ptr @fn_join_path(ptr %t562, ptr @.str21693)
-  store i32 11324, ptr @lp_site
+  %t563 = call ptr @fn_join_path(ptr %t562, ptr @.str21696)
+  store i32 11326, ptr @lp_site
   %t564 = call ptr @lp_str_concat(ptr %t561, ptr %t563)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t561)
-  store i32 11325, ptr @lp_site
-  %t565 = call ptr @lp_str_concat(ptr %t564, ptr @.str21694)
+  store i32 11327, ptr @lp_site
+  %t565 = call ptr @lp_str_concat(ptr %t564, ptr @.str21697)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t564)
   store ptr %t565, ptr %t488
   br label %ifend249
 else248:
   %t566 = load ptr, ptr %t488
-  store i32 11326, ptr @lp_site
-  %t567 = call ptr @lp_str_concat(ptr %t566, ptr @.str21695)
+  store i32 11328, ptr @lp_site
+  %t567 = call ptr @lp_str_concat(ptr %t566, ptr @.str21698)
   store i32 0, ptr @lp_site
   %t568 = load ptr, ptr %t473
-  %t569 = call ptr @fn_join_path(ptr %t568, ptr @.str21696)
-  store i32 11327, ptr @lp_site
+  %t569 = call ptr @fn_join_path(ptr %t568, ptr @.str21699)
+  store i32 11329, ptr @lp_site
   %t570 = call ptr @lp_str_concat(ptr %t567, ptr %t569)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t567)
@@ -302867,8 +302880,8 @@ scend251:
   br i1 %t579, label %then252, label %ifend254
 then252:
   %t580 = load ptr, ptr %t488
-  store i32 11328, ptr @lp_site
-  %t581 = call ptr @lp_str_concat(ptr %t580, ptr @.str21697)
+  store i32 11330, ptr @lp_site
+  %t581 = call ptr @lp_str_concat(ptr %t580, ptr @.str21700)
   store i32 0, ptr @lp_site
   store ptr %t581, ptr %t488
   br label %ifend254
@@ -302882,12 +302895,12 @@ then255:
   br i1 %t585, label %then258, label %else259
 then258:
   %t586 = load ptr, ptr %t488
-  store i32 11329, ptr @lp_site
-  %t587 = call ptr @lp_str_concat(ptr %t586, ptr @.str21698)
+  store i32 11331, ptr @lp_site
+  %t587 = call ptr @lp_str_concat(ptr %t586, ptr @.str21701)
   store i32 0, ptr @lp_site
   %t588 = load ptr, ptr %t473
-  %t589 = call ptr @fn_join_path(ptr %t588, ptr @.str21699)
-  store i32 11330, ptr @lp_site
+  %t589 = call ptr @fn_join_path(ptr %t588, ptr @.str21702)
+  store i32 11332, ptr @lp_site
   %t590 = call ptr @lp_str_concat(ptr %t587, ptr %t589)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t587)
@@ -302895,12 +302908,12 @@ then258:
   br label %ifend260
 else259:
   %t591 = load ptr, ptr %t488
-  store i32 11331, ptr @lp_site
-  %t592 = call ptr @lp_str_concat(ptr %t591, ptr @.str21700)
+  store i32 11333, ptr @lp_site
+  %t592 = call ptr @lp_str_concat(ptr %t591, ptr @.str21703)
   store i32 0, ptr @lp_site
   %t593 = load ptr, ptr %t473
-  %t594 = call ptr @fn_join_path(ptr %t593, ptr @.str21701)
-  store i32 11332, ptr @lp_site
+  %t594 = call ptr @fn_join_path(ptr %t593, ptr @.str21704)
+  store i32 11334, ptr @lp_site
   %t595 = call ptr @lp_str_concat(ptr %t592, ptr %t594)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t592)
@@ -302918,38 +302931,38 @@ then261:
   br i1 %t599, label %then264, label %else265
 then264:
   %t600 = load ptr, ptr %t473
-  %t601 = call ptr @fn_join_path(ptr %t600, ptr @.str21702)
+  %t601 = call ptr @fn_join_path(ptr %t600, ptr @.str21705)
   store ptr %t601, ptr %t602
   %t603 = load ptr, ptr %t488
-  store i32 11333, ptr @lp_site
-  %t604 = call ptr @lp_str_concat(ptr %t603, ptr @.str21703)
+  store i32 11335, ptr @lp_site
+  %t604 = call ptr @lp_str_concat(ptr %t603, ptr @.str21706)
   store i32 0, ptr @lp_site
   %t605 = load ptr, ptr %t602
-  store i32 11334, ptr @lp_site
+  store i32 11336, ptr @lp_site
   %t606 = call ptr @lp_str_concat(ptr %t604, ptr %t605)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t604)
-  store i32 11335, ptr @lp_site
-  %t607 = call ptr @lp_str_concat(ptr %t606, ptr @.str21704)
+  store i32 11337, ptr @lp_site
+  %t607 = call ptr @lp_str_concat(ptr %t606, ptr @.str21707)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t606)
   store ptr %t607, ptr %t488
   br label %ifend266
 else265:
   %t608 = load ptr, ptr %t473
-  %t609 = call ptr @fn_join_path(ptr %t608, ptr @.str21705)
+  %t609 = call ptr @fn_join_path(ptr %t608, ptr @.str21708)
   store ptr %t609, ptr %t610
   %t611 = load ptr, ptr %t488
-  store i32 11336, ptr @lp_site
-  %t612 = call ptr @lp_str_concat(ptr %t611, ptr @.str21706)
+  store i32 11338, ptr @lp_site
+  %t612 = call ptr @lp_str_concat(ptr %t611, ptr @.str21709)
   store i32 0, ptr @lp_site
   %t613 = load ptr, ptr %t610
-  store i32 11337, ptr @lp_site
+  store i32 11339, ptr @lp_site
   %t614 = call ptr @lp_str_concat(ptr %t612, ptr %t613)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t612)
-  store i32 11338, ptr @lp_site
-  %t615 = call ptr @lp_str_concat(ptr %t614, ptr @.str21707)
+  store i32 11340, ptr @lp_site
+  %t615 = call ptr @lp_str_concat(ptr %t614, ptr @.str21710)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t614)
   store ptr %t615, ptr %t488
@@ -302966,83 +302979,83 @@ then267:
   br i1 %t619, label %then270, label %else271
 then270:
   %t620 = load ptr, ptr %t473
-  %t621 = call ptr @fn_join_path(ptr %t620, ptr @.str21708)
+  %t621 = call ptr @fn_join_path(ptr %t620, ptr @.str21711)
   store ptr %t621, ptr %t622
   %t623 = load ptr, ptr %t473
-  %t624 = call ptr @fn_join_path(ptr %t623, ptr @.str21709)
+  %t624 = call ptr @fn_join_path(ptr %t623, ptr @.str21712)
   store ptr %t624, ptr %t625
   %t626 = load ptr, ptr %t473
-  %t627 = call ptr @fn_join_path(ptr %t626, ptr @.str21710)
+  %t627 = call ptr @fn_join_path(ptr %t626, ptr @.str21713)
   store ptr %t627, ptr %t628
   %t629 = load i32, ptr @g_g_windowed
   %t630 = icmp ne i32 %t629, 0
   br i1 %t630, label %then273, label %ifend275
 then273:
   %t631 = load ptr, ptr %t473
-  %t632 = call ptr @fn_join_path(ptr %t631, ptr @.str21711)
+  %t632 = call ptr @fn_join_path(ptr %t631, ptr @.str21714)
   store ptr %t632, ptr %t628
   br label %ifend275
 ifend275:
   %t633 = load ptr, ptr %t488
-  store i32 11339, ptr @lp_site
-  %t634 = call ptr @lp_str_concat(ptr %t633, ptr @.str21712)
+  store i32 11341, ptr @lp_site
+  %t634 = call ptr @lp_str_concat(ptr %t633, ptr @.str21715)
   store i32 0, ptr @lp_site
   %t635 = load ptr, ptr %t622
-  store i32 11340, ptr @lp_site
+  store i32 11342, ptr @lp_site
   %t636 = call ptr @lp_str_concat(ptr %t634, ptr %t635)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t634)
-  store i32 11341, ptr @lp_site
-  %t637 = call ptr @lp_str_concat(ptr %t636, ptr @.str21713)
+  store i32 11343, ptr @lp_site
+  %t637 = call ptr @lp_str_concat(ptr %t636, ptr @.str21716)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t636)
   %t638 = load ptr, ptr %t625
-  store i32 11342, ptr @lp_site
+  store i32 11344, ptr @lp_site
   %t639 = call ptr @lp_str_concat(ptr %t637, ptr %t638)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t637)
-  store i32 11343, ptr @lp_site
-  %t640 = call ptr @lp_str_concat(ptr %t639, ptr @.str21714)
+  store i32 11345, ptr @lp_site
+  %t640 = call ptr @lp_str_concat(ptr %t639, ptr @.str21717)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t639)
   %t641 = load ptr, ptr %t628
-  store i32 11344, ptr @lp_site
+  store i32 11346, ptr @lp_site
   %t642 = call ptr @lp_str_concat(ptr %t640, ptr %t641)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t640)
-  store i32 11345, ptr @lp_site
-  %t643 = call ptr @lp_str_concat(ptr %t642, ptr @.str21715)
+  store i32 11347, ptr @lp_site
+  %t643 = call ptr @lp_str_concat(ptr %t642, ptr @.str21718)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t642)
   store ptr %t643, ptr %t488
   br label %ifend272
 else271:
   %t644 = load ptr, ptr %t473
-  %t645 = call ptr @fn_join_path(ptr %t644, ptr @.str21716)
+  %t645 = call ptr @fn_join_path(ptr %t644, ptr @.str21719)
   store ptr %t645, ptr %t646
   %t647 = load ptr, ptr %t473
-  %t648 = call ptr @fn_join_path(ptr %t647, ptr @.str21717)
+  %t648 = call ptr @fn_join_path(ptr %t647, ptr @.str21720)
   store ptr %t648, ptr %t649
   %t650 = load ptr, ptr %t488
-  store i32 11346, ptr @lp_site
-  %t651 = call ptr @lp_str_concat(ptr %t650, ptr @.str21718)
+  store i32 11348, ptr @lp_site
+  %t651 = call ptr @lp_str_concat(ptr %t650, ptr @.str21721)
   store i32 0, ptr @lp_site
   %t652 = load ptr, ptr %t646
-  store i32 11347, ptr @lp_site
+  store i32 11349, ptr @lp_site
   %t653 = call ptr @lp_str_concat(ptr %t651, ptr %t652)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t651)
-  store i32 11348, ptr @lp_site
-  %t654 = call ptr @lp_str_concat(ptr %t653, ptr @.str21719)
+  store i32 11350, ptr @lp_site
+  %t654 = call ptr @lp_str_concat(ptr %t653, ptr @.str21722)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t653)
   %t655 = load ptr, ptr %t649
-  store i32 11349, ptr @lp_site
+  store i32 11351, ptr @lp_site
   %t656 = call ptr @lp_str_concat(ptr %t654, ptr %t655)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t654)
-  store i32 11350, ptr @lp_site
-  %t657 = call ptr @lp_str_concat(ptr %t656, ptr @.str21720)
+  store i32 11352, ptr @lp_site
+  %t657 = call ptr @lp_str_concat(ptr %t656, ptr @.str21723)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t656)
   store ptr %t657, ptr %t488
@@ -303055,35 +303068,35 @@ ifend269:
   br i1 %t659, label %then276, label %ifend278
 then276:
   %t660 = load ptr, ptr %t473
-  %t661 = call ptr @fn_join_path(ptr %t660, ptr @.str21721)
+  %t661 = call ptr @fn_join_path(ptr %t660, ptr @.str21724)
   store ptr %t661, ptr %t662
   %t663 = load ptr, ptr %t473
-  %t664 = call ptr @fn_join_path(ptr %t663, ptr @.str21722)
+  %t664 = call ptr @fn_join_path(ptr %t663, ptr @.str21725)
   store ptr %t664, ptr %t665
   %t666 = load i32, ptr @g_g_target_win
   %t667 = icmp ne i32 %t666, 0
   br i1 %t667, label %then279, label %ifend281
 then279:
   %t668 = load ptr, ptr %t473
-  %t669 = call ptr @fn_join_path(ptr %t668, ptr @.str21723)
+  %t669 = call ptr @fn_join_path(ptr %t668, ptr @.str21726)
   store ptr %t669, ptr %t665
   br label %ifend281
 ifend281:
   %t670 = load ptr, ptr %t488
-  store i32 11351, ptr @lp_site
-  %t671 = call ptr @lp_str_concat(ptr %t670, ptr @.str21724)
+  store i32 11353, ptr @lp_site
+  %t671 = call ptr @lp_str_concat(ptr %t670, ptr @.str21727)
   store i32 0, ptr @lp_site
   %t672 = load ptr, ptr %t662
-  store i32 11352, ptr @lp_site
+  store i32 11354, ptr @lp_site
   %t673 = call ptr @lp_str_concat(ptr %t671, ptr %t672)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t671)
-  store i32 11353, ptr @lp_site
-  %t674 = call ptr @lp_str_concat(ptr %t673, ptr @.str21725)
+  store i32 11355, ptr @lp_site
+  %t674 = call ptr @lp_str_concat(ptr %t673, ptr @.str21728)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t673)
   %t675 = load ptr, ptr %t665
-  store i32 11354, ptr @lp_site
+  store i32 11356, ptr @lp_site
   %t676 = call ptr @lp_str_concat(ptr %t674, ptr %t675)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t674)
@@ -303095,8 +303108,8 @@ ifend281:
   br i1 %t680, label %then282, label %ifend284
 then282:
   %t681 = load ptr, ptr %t488
-  store i32 11355, ptr @lp_site
-  %t682 = call ptr @lp_str_concat(ptr %t681, ptr @.str21726)
+  store i32 11357, ptr @lp_site
+  %t682 = call ptr @lp_str_concat(ptr %t681, ptr @.str21729)
   store i32 0, ptr @lp_site
   store ptr %t682, ptr %t488
   br label %ifend284
@@ -303120,8 +303133,8 @@ scend286:
   br i1 %t691, label %then287, label %ifend289
 then287:
   %t692 = load ptr, ptr %t488
-  store i32 11356, ptr @lp_site
-  %t693 = call ptr @lp_str_concat(ptr %t692, ptr @.str21727)
+  store i32 11358, ptr @lp_site
+  %t693 = call ptr @lp_str_concat(ptr %t692, ptr @.str21730)
   store i32 0, ptr @lp_site
   store ptr %t693, ptr %t488
   br label %ifend289
@@ -303129,7 +303142,7 @@ ifend289:
   %t694 = load ptr, ptr %t488
   %t695 = load ptr, ptr %t1
   %t696 = call ptr @fn_native_link_args(ptr %t695)
-  store i32 11357, ptr @lp_site
+  store i32 11359, ptr @lp_site
   %t697 = call ptr @lp_str_concat(ptr %t694, ptr %t696)
   store i32 0, ptr @lp_site
   store ptr %t697, ptr %t488
@@ -303146,8 +303159,8 @@ wcond290:
   br i1 %t705, label %wbody291, label %wend292
 wbody291:
   %t706 = load ptr, ptr %t488
-  store i32 11358, ptr @lp_site
-  %t707 = call ptr @lp_str_concat(ptr %t706, ptr @.str21728)
+  store i32 11360, ptr @lp_site
+  %t707 = call ptr @lp_str_concat(ptr %t706, ptr @.str21731)
   store i32 0, ptr @lp_site
   %t708 = load ptr, ptr %t16
   %t709 = load i32, ptr %t698
@@ -303158,21 +303171,21 @@ wbody291:
   %t714 = icmp ult i32 %t709, %t713
   br i1 %t714, label %ixok293, label %ixbad294
 ixbad294:
-  store i32 11359, ptr @lp_site
+  store i32 11361, ptr @lp_site
   %t715 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t715, ptr @.fmt_bounds, ptr @.str21729, i32 %t709, i32 %t713)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t715, ptr @.fmt_bounds, ptr @.str21732, i32 %t709, i32 %t713)
   call void @exit(i32 1)
   unreachable
 ixok293:
   %t716 = getelementptr inbounds ptr, ptr %t711, i32 %t709
   %t717 = load ptr, ptr %t716
-  store i32 11360, ptr @lp_site
+  store i32 11362, ptr @lp_site
   %t718 = call ptr @lp_str_concat(ptr %t707, ptr %t717)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t707)
-  store i32 11361, ptr @lp_site
-  %t719 = call ptr @lp_str_concat(ptr %t718, ptr @.str21730)
+  store i32 11363, ptr @lp_site
+  %t719 = call ptr @lp_str_concat(ptr %t718, ptr @.str21733)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t718)
   store ptr %t719, ptr %t488
@@ -303182,11 +303195,11 @@ ixok293:
   br label %wcond290
 wend292:
   %t722 = load ptr, ptr %t488
-  store i32 11362, ptr @lp_site
-  %t723 = call ptr @lp_str_concat(ptr %t722, ptr @.str21731)
+  store i32 11364, ptr @lp_site
+  %t723 = call ptr @lp_str_concat(ptr %t722, ptr @.str21734)
   store i32 0, ptr @lp_site
   %t724 = load ptr, ptr %t1
-  store i32 11363, ptr @lp_site
+  store i32 11365, ptr @lp_site
   %t725 = call ptr @lp_str_concat(ptr %t723, ptr %t724)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t723)
@@ -303198,11 +303211,11 @@ wend292:
   br i1 %t729, label %then295, label %ifend297
 then295:
   %t730 = load ptr, ptr %t488
-  store i32 11364, ptr @lp_site
-  %t731 = call ptr @lp_str_concat(ptr @.str21732, ptr %t730)
+  store i32 11366, ptr @lp_site
+  %t731 = call ptr @lp_str_concat(ptr @.str21735, ptr %t730)
   store i32 0, ptr @lp_site
-  store i32 11365, ptr @lp_site
-  %t732 = call ptr @lp_str_concat(ptr %t731, ptr @.str21733)
+  store i32 11367, ptr @lp_site
+  %t732 = call ptr @lp_str_concat(ptr %t731, ptr @.str21736)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t731)
   store ptr %t732, ptr %t727
@@ -303237,7 +303250,7 @@ ifend303:
   %t749 = icmp ne i32 %t748, 0
   br i1 %t749, label %then304, label %ifend306
 then304:
-  call void @fn_die(ptr @.str21734)
+  call void @fn_die(ptr @.str21737)
   br label %ifend306
 ifend306:
   %t750 = load ptr, ptr %t17
@@ -303246,7 +303259,7 @@ ifend306:
   %t753 = icmp ne i32 %t752, 0
   br i1 %t753, label %then307, label %ifend309
 then307:
-  store ptr @.str21735, ptr %t754
+  store ptr @.str21738, ptr %t754
   store i32 0, ptr %t755
   br label %wcond310
 wcond310:
@@ -303269,20 +303282,20 @@ wbody311:
   %t770 = icmp ult i32 %t765, %t769
   br i1 %t770, label %ixok313, label %ixbad314
 ixbad314:
-  store i32 11366, ptr @lp_site
+  store i32 11368, ptr @lp_site
   %t771 = call ptr @lp_win_stdio(i32 2)
   store i32 0, ptr @lp_site
-  call i32 (ptr, ptr, ...) @fprintf(ptr %t771, ptr @.fmt_bounds, ptr @.str21736, i32 %t765, i32 %t769)
+  call i32 (ptr, ptr, ...) @fprintf(ptr %t771, ptr @.fmt_bounds, ptr @.str21739, i32 %t765, i32 %t769)
   call void @exit(i32 1)
   unreachable
 ixok313:
   %t772 = getelementptr inbounds ptr, ptr %t767, i32 %t765
   %t773 = load ptr, ptr %t772
-  store i32 11367, ptr @lp_site
+  store i32 11369, ptr @lp_site
   %t774 = call ptr @lp_str_concat(ptr %t763, ptr %t773)
   store i32 0, ptr @lp_site
-  store i32 11368, ptr @lp_site
-  %t775 = call ptr @lp_str_concat(ptr %t774, ptr @.str21737)
+  store i32 11370, ptr @lp_site
+  %t775 = call ptr @lp_str_concat(ptr %t774, ptr @.str21740)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t774)
   store ptr %t775, ptr %t754
@@ -303292,8 +303305,8 @@ ixok313:
   br label %wcond310
 wend312:
   %t778 = load ptr, ptr %t17
-  store i32 11369, ptr @lp_site
-  %t779 = call ptr @lp_pak_open(ptr %t778, ptr @.str21738)
+  store i32 11371, ptr @lp_site
+  %t779 = call ptr @lp_pak_open(ptr %t778, ptr @.str21741)
   store i32 0, ptr @lp_site
   store ptr %t779, ptr %t780
   %t781 = load ptr, ptr %t780
@@ -303326,11 +303339,11 @@ then318:
 then321:
   %t798 = load ptr, ptr %t1
   %t799 = call ptr @fn_win_path(ptr %t798)
-  store i32 11370, ptr @lp_site
-  %t800 = call ptr @lp_str_concat(ptr @.str21739, ptr %t799)
+  store i32 11372, ptr @lp_site
+  %t800 = call ptr @lp_str_concat(ptr @.str21742, ptr %t799)
   store i32 0, ptr @lp_site
-  store i32 11371, ptr @lp_site
-  %t801 = call ptr @lp_str_concat(ptr %t800, ptr @.str21740)
+  store i32 11373, ptr @lp_site
+  %t801 = call ptr @lp_str_concat(ptr %t800, ptr @.str21743)
   store i32 0, ptr @lp_site
   call void @lp_free(ptr %t800)
   %t802 = call i32 @system(ptr %t801)
