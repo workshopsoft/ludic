@@ -91,6 +91,7 @@ program I18nKeysTest {
     let elk = tr(k"species.elk.a_name")
     expect(L(i18n_st, "Saw " + elk + ", 30 cm.") == "Saw an elk, 30 cm." and L(i18n_st, "Saw " + elk + ".") == "Saw an elk.")
     expect(L(i18n_st, elk + ": 30 cm") == "an elk: 30 cm" and L(i18n_st, elk + "\n" + tr(k"pause.quit")) == "an elk\nQuit")
+    expect(L(i18n_st, "Not owned.  " + tr(k"pause.quit")) == "Not owned.  Quit" and L(i18n_st, elk + "Quit") == "an elkQuit")
     expect(L(i18n_st, trf(k"catch.saw", "Seen: " + elk, "5:30", "", "")) == "You saw Seen: an elk at 5:30.")
     i18n_load_text(i18n_st, tt())
     expect(L(i18n_st, "Day " + tr(k"pause.resume")) == "Devam. gun")      # the name made, then the line's own pattern
