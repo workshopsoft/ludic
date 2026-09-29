@@ -340,6 +340,16 @@ function gvk_alloc(render3d_st: mut Render3dState, req: bytes, want: int) -> lon
 const GVK_BLOCK_DEVICE: int = 67108864
 const GVK_BLOCK_HOST: int = 67108864
 const GVK_OWN_OVER: int = 16777216
+# a small window's (r3d_small): a UI's few sheets, not a world's hundreds of textures
+const GVK_BLOCK_SMALL: int = 8388608
+function gvk_block_bytes(render3d_st: Render3dState) -> int {
+  if render3d_st.r3d_small { return GVK_BLOCK_SMALL }
+  return GVK_BLOCK_DEVICE
+}
+function gvk_own_over(render3d_st: Render3dState) -> int {
+  if render3d_st.r3d_small { return GVK_BLOCK_SMALL / 2 }
+  return GVK_OWN_OVER
+}
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_mem_init(render3d_st: mut Render3dState) -> void {
@@ -414,7 +424,7 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
   }
   let mp = render3d_st.gvk_map_slot
   mp[0] = null
-  if size <= GVK_OWN_OVER {
+  if size <= gvk_own_over(render3d_st) {
     var kind = t * 2
     if image { kind += 1 }
     var i = 0
@@ -434,8 +444,8 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
       i += 1
     }
     if blk < 0 {
-      var bsize = GVK_BLOCK_DEVICE
-      if host { bsize = GVK_BLOCK_HOST }
+      var bsize = gvk_block_bytes(render3d_st)
+      if host and not render3d_st.r3d_small { bsize = GVK_BLOCK_HOST }
       let mem = gvk_mem_raw(render3d_st, t, bsize, host, mp)
       if mem != 0 {
         # into the record of a block given back, when there is one: a buffer made again every few
