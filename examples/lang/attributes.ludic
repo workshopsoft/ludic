@@ -37,6 +37,7 @@ program Attributes {
   registry Tools of Tool as TL from "data/attr_tools.lres"
   # a tool hung on the camp's rack: which, and from which node of ITS model
   property RackSlot {
+    @Ref(Items) item: int = 0                  # a registry this program lacks: a warning, unresolved
     @Ref(Tools) tool: int = 0
     @Node(tool) hook: string = "grip"
   }

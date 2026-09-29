@@ -1,9 +1,10 @@
-# attributes: @Ref names a registry - there is no registry Vendorz, nor Shops (both are reported)
+# attributes: @Ref names a registry - Vendor is a record, which is an error; Shops is in no part of
+# this program, which is only a warning (a package may name the game's registry it cannot import)
 program R {
   property Vendor { key: string = "" }
   registry Vendors of Vendor
   property Tool {
-    @Ref(Vendorz) seller: int = 0
+    @Ref(Vendor) seller: int = 0
     @Ref(Shops) shop: int = 0
   }
   entry { print(VENDORS_COUNT) }
