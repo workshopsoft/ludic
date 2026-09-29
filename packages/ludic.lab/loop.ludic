@@ -33,6 +33,7 @@ function lab_caption(lab_st: LabState, render3d_st: mut Render3dState) -> void {
   if len(lab_st.lb_note) > 0 { ov_text(render3d_st, 20, 42, 18, lab_st.lb_note, 0.8, 0.8, 0.8, 1.0) }
   ov_end(render3d_st)
 }
+@alloc_ok("lab: a shot's path per picture taken")
 function lab_take(lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
   lab_st.lb_wait += 1
   if lab_st.lb_wait < lab_st.lb_settle { return }
