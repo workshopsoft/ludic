@@ -28,6 +28,7 @@ export property GearValue {
   at: []float = null
 }
 
+@ByKey
 export open registry GearValues of GearValue as GV
 
 # something that burns down while it runs: `full` units, `per_hour` of them an hour, or the value
@@ -41,6 +42,7 @@ export property GearCharge {
   hand: bool = true
 }
 
+@ByKey
 export open registry GearCharges of GearCharge as CHARGE
 
 export const GEAR_BOUGHT: int = 0       # a tier was bought

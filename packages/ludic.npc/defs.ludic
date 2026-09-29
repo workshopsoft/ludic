@@ -101,6 +101,7 @@ export property NpcKind {
   steps: []NpcStep = null
 }
 
+@AppendOnly
 export open registry NpcKinds of NpcKind as NPCK
 
 # where a step goes: `find` sends the person there (npc_go / npc_do) or says it cannot
@@ -131,6 +132,7 @@ export property NpcName {
   body: int = 0
 }
 
+@AppendOnly
 export open registry NpcNames of NpcName as NPCN
 
 export const NPC_F_GREETED: int = 0    # a player came within notice

@@ -44,6 +44,7 @@ export property JobBoard {
   @OneOf(JOBS_SELF, JOBS_PARTY, JOBS_OFFERED, JOBS_ACTIVE, JOBS_DONE, JOBS_READY, JOBS_GROUPS) scope: int = JOBS_SELF
 }
 
+@AppendOnly
 export open registry JobBoards of JobBoard as BOARD
 
 export const JOBS_F_OFFERED: int = 0

@@ -18,6 +18,7 @@ export property NpcLine {
   choices: []NpcChoice = null
 }
 
+@AppendOnly
 export open registry NpcLines of NpcLine as NPCL
 
 
