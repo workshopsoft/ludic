@@ -38,6 +38,7 @@ var g_uses_logrt: bool = false  # Log.* was emitted -> emit the log level regist
 var g_uses_osrt: bool = false  # Os.* (prelude-backed methods) was emitted -> emit the Os runtime
 var g_uses_pid: bool = false   # Os.pid() was emitted -> declare libc getpid
 var g_uses_heap: bool = false  # Os.heap_bytes() was emitted -> @lp_os_heap_bytes
+var g_uses_relief: bool = false  # Os.heap_relief() was emitted -> @lp_os_heap_relief
 var g_uses_unicodert: bool = false  # Unicode.* was emitted -> emit the UTF-8 runtime
 var g_uses_fsrt: bool = false  # Fs.*/Path.*/Mime.* was emitted -> emit the filesystem runtime
 var g_uses_pak: bool = false   # file_open was emitted -> emit the asset-pack runtime (implies fsrt)
