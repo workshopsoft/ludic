@@ -1,0 +1,40 @@
+# baked_hash.ludic - a bake's inputs as one number, and the header's little-endian fields. The hash
+# is FNV-1a 64 over each input in order: its path's bytes, a 0, then its bytes (tools/bake/baked.py
+# and the check compute the same)
+const BK_FNV_OFFSET: long = -3750763034362895579    # 0xcbf29ce484222325
+const BK_FNV_PRIME: long = 1099511628211
+
+# `inputs` space-separated, as a Bakes row lists them; a missing input hashes as its path alone
+export function bake_inputs_hash(inputs: string) -> long {
+  var h = BK_FNV_OFFSET
+  var a = 0
+  while a < len(inputs) {
+    while a < len(inputs) and inputs[a] == 32 { a += 1 }
+    var e = a
+    while e < len(inputs) and inputs[e] != 32 { e += 1 }
+    if e > a {
+      let p = inputs[a .. e]
+      for i in 0 .. len(p) { h = bk_fnv(h, p[i]) }
+      h = bk_fnv(h, 0)
+      let b = Fs.read_bytes(p)
+      if b != null { for i in 0 .. len(b) { h = bk_fnv(h, b[i]) } }
+    }
+    a = e
+  }
+  return h
+}
+function bk_fnv(h: long, c: int) -> long { return (h ^ long(c & 255)) * BK_FNV_PRIME }
+
+function bk_u32(b: []byte, at: int) -> int { return (b[at] & 255) | ((b[at + 1] & 255) << 8) | ((b[at + 2] & 255) << 16) | ((b[at + 3] & 255) << 24) }
+function bk_u64(b: []byte, at: int) -> long { return long(bk_u32(b, at)) & 4294967295 | (long(bk_u32(b, at + 4)) << 32) }
+function bk_put32(b: []byte, at: int, v: int) -> void {
+  for i in 0 .. 4 { b[at + i] = (v >> (i * 8)) & 255 }
+}
+function bk_put64(b: []byte, at: int, v: long) -> void {
+  for i in 0 .. 8 { b[at + i] = int((v >> long(i * 8)) & 255) }
+}
+function bk_last_slash(p: string) -> int {
+  var k = -1
+  for i in 0 .. len(p) { if p[i] == 47 { k = i } }
+  return k
+}

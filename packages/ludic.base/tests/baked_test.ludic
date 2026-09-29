@@ -1,0 +1,47 @@
+# baked_test.ludic - a baked file round-trips its payload; another version or key reads as null; the
+# inputs hash is FNV-1a 64 over path, 0 and bytes (tools/bake/baked.py computes the same)
+import "ludic.base"
+program BakedTest {
+  function dir() -> string { return Os.temp_dir() + "/ludic-baked-test" }
+  test "a baked file's payload comes back, for its key and version only" {
+    let p = buffer(5)
+    for i in 0 .. 5 { p[i] = 65 + i }
+    let path = dir() + "/a/b.bin"
+    expect(bake_write(path, "tiles", 3, 42, p, 5))
+    let b = baked_open(path, "tiles", 3)
+    expect(b != null)
+    expect_eq(len(b), 5)
+    expect_eq(b[4], 69)
+    expect(baked_open(path, "tiles", 4) == null)
+    expect(baked_open(path, "tile", 3) == null)
+    expect(baked_open(dir() + "/none.bin", "tiles", 3) == null)
+  }
+  test "a streamed bake reads a piece of its payload at an offset into the caller's buffer" {
+    let p = buffer(10)
+    for i in 0 .. 10 { p[i] = 48 + i }
+    let path = dir() + "/s.bin"
+    expect(bake_write(path, "chunks", 1, 0, p, 10))
+    let bf = baked_open_range(path, "chunks", 1)
+    expect(bf != null)
+    expect(baked_len(bf) == 10)
+    let into = buffer(4)
+    expect_eq(baked_read(bf, 6, 4, into), 4)
+    expect_eq(into[0], 54)
+    expect_eq(baked_read(bf, 8, 4, into), 2)
+    baked_close(bf)
+    expect(baked_open_range(path, "chunks", 2) == null)
+  }
+
+  test "the inputs hash follows the path and the bytes" {
+    Fs.write_text(dir() + "/in.txt", "abc")
+    let h1 = bake_inputs_hash(dir() + "/in.txt")
+    Fs.write_text(dir() + "/in.txt", "abd")
+    expect(bake_inputs_hash(dir() + "/in.txt") != h1)
+    expect(bake_inputs_hash("") == -3750763034362895579)
+  }
+  test "a dev build says a missing bake once" (bake_st: mut BakeState) {
+    bake_missing(bake_st, "k")
+    bake_missing(bake_st, "k")
+    expect_eq(len(bake_st.said), 1)
+  }
+}
