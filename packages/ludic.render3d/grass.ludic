@@ -127,6 +127,13 @@ function grass_init(render3d_st: mut Render3dState) -> void {
 }
 
 # indices per 16 m cell that could exist at distance d (the count the shader computes)
+# no blades past the fog wall: they would be drawn only to be fogged away
+function grass_reach(render3d_st: Render3dState) -> float {
+  let w = render3d_st.r3d_fog_wall
+  if w > 0.0 and w < render3d_st.grass_radius { return w }
+  return render3d_st.grass_radius
+}
+
 function grass_count_at(render3d_st: Render3dState, d: float) -> int {
   let spacing = render3d_st.grass_s0 * (1.0 + d / render3d_st.grass_d0)
   let n = float(GRASS_CELL * GRASS_CELL) / (spacing * spacing)
@@ -137,7 +144,7 @@ function grass_count_at(render3d_st: Render3dState, d: float) -> int {
 function grass_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_max: float, blade: Mesh) -> void {
   let p = render3d_st.grass_prog
   let cells = size / GRASS_CELL
-  if d_min >= render3d_st.grass_radius { return }
+  if d_min >= grass_reach(render3d_st) { return }
   if render3d_st.grass_merge {
     render3d_st.grass_band_start[render3d_st.grass_band_n] = render3d_st.grass_n;  render3d_st.grass_band_cells[render3d_st.grass_band_n] = cells
     render3d_st.grass_band_mesh[render3d_st.grass_band_n] = blade;  render3d_st.grass_band_n += 1
@@ -228,11 +235,11 @@ function grass_bind(render3d_st: mut Render3dState, p: int) -> void {
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), render3d_st.sc_blade_tint)
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_base"), render3d_st.sc_blade_base)
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_tip"), render3d_st.sc_blade_tip)
-  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_cull"), render3d_st.grass_radius)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_cull"), grass_reach(render3d_st))
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_model_h"), 0.0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_s0"), render3d_st.grass_s0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_d0"), render3d_st.grass_d0)
-  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), render3d_st.grass_radius)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), grass_reach(render3d_st))
   var ph = render3d_st.post_h
   if ph <= 0 { ph = gl_height() }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_px"), 2.0 * Math.tan(render3d_st.cam_fov * 0.5) / float(ph))
@@ -268,7 +275,7 @@ function grass_bands(render3d_st: mut Render3dState) -> void {
   grass_tiles(render3d_st, 4, 0.0, 6.0, render3d_st.grass_mesh)
   grass_tiles(render3d_st, 4, 6.0, 16.0, render3d_st.grass_mesh3)
   grass_tiles(render3d_st, 8, 16.0, 40.0, render3d_st.grass_mesh2)
-  grass_tiles(render3d_st, 16, 40.0, render3d_st.grass_radius, render3d_st.grass_mesh2)
+  grass_tiles(render3d_st, 16, 40.0, grass_reach(render3d_st), render3d_st.grass_mesh2)
 }
 
 # the records gathered this frame: uploaded once, then each band GRASS_CHUNK records a draw

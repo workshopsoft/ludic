@@ -221,7 +221,9 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
   render3d_st.stream_walks += 1
   render3d_st.stream_walk_no += 1
   let tw = gl_now_us()
-  let r = int(s.reach / s.size) + 1
+  # past the fog wall nothing is generated, gathered or kept wanted
+  let reach = r3d_reach(render3d_st, s.reach)
+  let r = int(reach / s.size) + 1
   # rings outward from the camera's cell: the nearest chunks are generated first
   var ring = 0
   while ring <= r {
@@ -236,7 +238,7 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
           let dx = wx - cam_x;  let dz = wz - cam_z
           let d = Math.sqrt(dx * dx + dz * dz)
           let band = stream_band(s, d)
-          if band < 4 and band >= s.min_band and d < s.reach + s.size {
+          if band < 4 and band >= s.min_band and d < reach + s.size {
             let key = stream_key(cx, cz, band)
             var c = stream_find(s, key)
             if c != null { c.used = render3d_st.stream_walk_no }

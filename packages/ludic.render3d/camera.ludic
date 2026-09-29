@@ -70,6 +70,7 @@ function cam_planes_update(render3d_st: mut Render3dState) -> void {
 # is a sphere (float bits) at least partly inside the side planes of the view?
 function cam_sphere_visible(render3d_st: Render3dState, x: float, y: float, z: float, r: float) -> bool {
   if render3d_st.cam_planes == null { return true }
+  if r3d_beyond_fog(render3d_st, x, y, z, r) { return false }
   let nr = -r
   for p in 0 .. 4 {
     let o = p * 4
@@ -77,6 +78,14 @@ function cam_sphere_visible(render3d_st: Render3dState, x: float, y: float, z: f
     if dist < nr { return false }
   }
   return true
+}
+# is a sphere wholly past the fog wall? Nothing there is seen, so nothing there is drawn or animated
+export function r3d_beyond_fog(render3d_st: Render3dState, x: float, y: float, z: float, r: float) -> bool {
+  let w = render3d_st.r3d_fog_wall
+  if w <= 0.0 { return false }
+  let dx = x - render3d_st.cam_pos[0];  let dy = y - render3d_st.cam_pos[1];  let dz = z - render3d_st.cam_pos[2]
+  let far = w + R3D_FOG_MARGIN + r
+  return dx * dx + dy * dy + dz * dz > far * far
 }
 # fly: forward/strafe in metres, turn in radians
 function cam_move(render3d_st: mut Render3dState, fwd: float, strafe: float, up: float, dyaw: float, dpitch: float) -> void {
