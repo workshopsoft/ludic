@@ -50,6 +50,7 @@ entry:
 
 declare i32 @dladdr(ptr, ptr)
 declare i32 @setenv(ptr, ptr, i32)
+declare i32 @unsetenv(ptr)
 declare ptr @strrchr(ptr, i32)
 declare i32 @access(ptr, i32)
 @.lvk_e1 = private unnamed_addr constant [19 x i8] c"VK_INSTANCE_LAYERS\00"
@@ -57,6 +58,7 @@ declare i32 @access(ptr, i32)
 @.lvk_e3 = private unnamed_addr constant [14 x i8] c"R3D_VK_LOADER\00"
 @.lvk_df = private unnamed_addr constant [16 x i8] c"VK_DRIVER_FILES\00"
 @.lvk_if = private unnamed_addr constant [17 x i8] c"VK_ICD_FILENAMES\00"
+@.lvk_any = private unnamed_addr constant [18 x i8] c"R3D_VK_ANY_DRIVER\00"
 @.lvk_gipa = private unnamed_addr constant [22 x i8] c"vkGetInstanceProcAddr\00"
 @.lvk_icd = private unnamed_addr constant [23 x i8] c"%.*s/MoltenVK_icd.json\00"
 
@@ -76,16 +78,15 @@ entry:
 }
 
 ; The loader told to use our MoltenVK and no other: VK_DRIVER_FILES set to the ICD json beside the
-; libMoltenVK.dylib the program is linked against (found through dladdr), unless the caller named a
-; driver already, or there is no json there (a bundle ships none).
+; libMoltenVK.dylib the program is linked against (found through dladdr), over whatever the shell had -
+; the SDK's setup-env.sh exports both VK_DRIVER_FILES and VK_ICD_FILENAMES at its own MoltenVK, and a
+; validation run must see the driver the game uses - and VK_ICD_FILENAMES cleared. R3D_VK_ANY_DRIVER=1
+; leaves the shell's choice alone; nothing is set where there is no json (a bundle ships none).
 define internal void @lvk_pin_icd() {
 entry:
-  %df = call ptr @getenv(ptr @.lvk_df)
-  %if = call ptr @getenv(ptr @.lvk_if)
-  %hdf = icmp ne ptr %df, null
-  %hif = icmp ne ptr %if, null
-  %named = or i1 %hdf, %hif
-  br i1 %named, label %out, label %find
+  %any = call ptr @getenv(ptr @.lvk_any)
+  %keep = icmp ne ptr %any, null
+  br i1 %keep, label %out, label %find
 find:
   %h = call ptr @dlopen(ptr @.lvk_mr, i32 6)
   %noh = icmp eq ptr %h, null
@@ -115,7 +116,8 @@ json:
   %there = icmp eq i32 %acc, 0
   br i1 %there, label %pin, label %out
 pin:
-  %s = call i32 @setenv(ptr @.lvk_df, ptr %buf, i32 0)
+  %s = call i32 @setenv(ptr @.lvk_df, ptr %buf, i32 1)
+  %u = call i32 @unsetenv(ptr @.lvk_if)
   br label %out
 out:
   ret void
