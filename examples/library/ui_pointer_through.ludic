@@ -1,0 +1,55 @@
+# ui_pointer_through.ludic - a screen whose root <div> holds only a positioned panel (a component's
+# root round a modal) has no size of its own; the pointer looks through it, so the panel's button is
+# pressed and hovered - once nothing under it was. A select's < and > answer :hover as elements do.
+import "ludic.ui"
+program UiPointerThrough {
+  numbers float
+  state ThroughState {
+    got: int = 0
+    v: int = 1
+  }
+  view V (through_st: mut ThroughState) {
+    v = through_st.v
+    on hit() { through_st.got += 1 }
+    on set(x: int) { through_st.v = x }
+  }
+  const PAGE: string = "<ui><screen name='s'><div><div style='position: fixed; left: 40px; top: 40px; width: 300px; height: 200px'><button id='b' style='width: 120px; height: 40px' on-click='hit()'>Go</button><select value='{v}' on-change='set(event.value)'><option value='{0}'>A</option><option value='{1}'>B</option></select></div></div></screen></ui>"
+  function frame(ui_st: mut UiState, x: float, y: float, down: bool) -> UiNode {
+    let i = new UiInput
+    i.x = x
+    i.y = y
+    i.down = down
+    ui_input(ui_st, i)
+    ui_show(ui_st, "s", view_v(), 0.0, 0.0, 400.0, 400.0)
+    let root: UiNode = ui_nodes(ui_st, "s", view_v())
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+    return root
+  }
+  function find(n: UiNode, tag: string, cls: string) -> UiNode {
+    var has = cls == ""
+    for i in 0 .. len(n.classes) { if n.classes[i] == cls { has = true } }
+    if n.tag == tag and has { return n }
+    for i in 0 .. len(n.children) {
+      let f = find(n.children[i], tag, cls)
+      if f != null { return f }
+    }
+    return null
+  }
+  entry (ui_st: mut UiState, through_st: ThroughState) {
+    ui_backend(ui_st, new UiBackend)
+    ui_load_text(ui_st, PAGE, "s.xml")
+    var root = frame(ui_st, -1.0, -1.0, false)
+    let b = find(root, "button", "")
+    let x = b.x + b.cw / 2.0
+    let y = b.y + b.ch / 2.0
+    frame(ui_st, x, y, false)
+    root = frame(ui_st, x, y, false)
+    let hover = ui_hex(find(root, "button", "").bg)
+    frame(ui_st, x, y, true)
+    frame(ui_st, x, y, false)
+    let nx = find(root, "span", "ui-next")
+    frame(ui_st, nx.x + nx.cw / 2.0, nx.y + nx.ch / 2.0, false)
+    root = frame(ui_st, nx.x + nx.cw / 2.0, nx.y + nx.ch / 2.0, false)
+    print(`pressed {through_st.got}, hovered {hover}; > hovered {find(root, "span", "ui-next").hovered}`)
+  }
+}

@@ -36,10 +36,17 @@ function fr_pick(n: UiNode, px: float, py: float, kind: int) -> UiNode {
   while k >= 0 {
     let c = n.children[k]
     if c.pos == 0 and not c.popover and fr_in(c, px, py) { return fr_pick_in(n, c, px, py, kind) }
+    if c.pos == 0 and not c.popover and fr_empty(c) {
+      let r = fr_pick(c, px, py, kind)
+      if r != null and r != c { return r }
+    }
     k -= 1
   }
   return fr_wants(n, kind)
 }
+# a box with no size of its own - a component's root <div> round a positioned screen - holds no point
+# and clips nothing: what it holds is looked through it (a screen in one was pressed and hovered never)
+function fr_empty(n: UiNode) -> bool { return n.children != null and (n.cw <= 0.0 or n.ch <= 0.0) }
 function fr_pick_in(n: UiNode, c: UiNode, px: float, py: float, kind: int) -> UiNode {
   let r = fr_pick(c, px, py, kind)
   if r != null { return r }

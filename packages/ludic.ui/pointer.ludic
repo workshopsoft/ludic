@@ -42,8 +42,9 @@ function fr_active(ui_st: UiState, n: UiNode) -> bool {
   return ui_st.fr_key_press != "" and lc_mine(ui_st.fr_key_press, n.key)
 }
 function fr_under(n: UiNode, px: float, py: float, keys: []string) -> void {
-  if px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch { return }
-  if n.key != "" { ui_kept(keys, n.key) }
+  let out = px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch
+  if out and not fr_empty(n) { return }
+  if not out and n.key != "" { ui_kept(keys, n.key) }
   for i in 0 .. len(n.children) { fr_under(n.children[i], px, py, keys) }
 }
 # the control (or pressable element) the pointer is on: out from the topmost element under it
