@@ -1,0 +1,15 @@
+# rail_slots.ludic - the rail's places: made for a count, emptied in place
+# the rail emptied in place: made again only when it is to hold another count
+function hn_empty(hints_st: mut HintsState) -> void {
+  if len(hints_st.hn_top) != hints_st.hn_shown {
+    hints_st.hn_top = hn_slots(hints_st.hn_shown)
+    return
+  }
+  for i in 0 .. len(hints_st.hn_top) { hints_st.hn_top[i] = -1 }
+}
+# a rail of n empty places
+function hn_slots(n: int) -> []int {
+  let out = new []int
+  for i in 0 .. n { push(out, -1) }
+  return out
+}

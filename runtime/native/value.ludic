@@ -133,6 +133,7 @@ function value_item(l: Val, i: int, tag: int) -> Val {
   push(l.kids, v)
   return v
 }
+@alloc_ok("a list's spares: grown only past the most it has ever cut off, then kept")
 function value_spare_put(l: Val, v: Val) -> void {
   if l.spare == null { l.spare = new []Val }
   push(l.spare, v)

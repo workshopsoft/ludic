@@ -68,6 +68,11 @@ function cs_vars_in(ui_st: mut UiState, n: UiNode, v: Val) -> Val {
     if m.tags[i] == MM_VARS and cv_same(ui_st, m.keys[i]) { return m.vals[i] }
     at = (at + 1) & (MM_CAP - 1)
   }
+  return cs_vars_miss(ui_st, m)
+}
+# a value's var()s resolved to something not seen before: built once and kept in the memo
+@alloc_ok("a memo miss: a var() value first seen, then kept, up to MM_CAP")
+function cs_vars_miss(ui_st: mut UiState, m: UiMemo) -> Val {
   let raw = cv_join(ui_st)
   let r = Value.str(tpl_words(raw))
   let j = mm_add(m, MM_VARS, raw)

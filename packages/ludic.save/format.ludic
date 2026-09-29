@@ -42,6 +42,7 @@ export property SaveRead {
   migrated: bool = false,
   readonly: bool = false,
   from_backup: bool = false,
+  intact: bool = true,        # save_read: whether the text was whole (the words for a refusal)
   value: Val = null
 }
 
