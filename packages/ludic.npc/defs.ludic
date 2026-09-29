@@ -76,8 +76,8 @@ export property NpcStep {
   from: float = 0.0
   to: float = 24.0
   weight: int = 1
-  spot: int = 0
-  act: int = 1
+  @Ref(NpcSpots) spot: int = 0
+  @Ref(NpcActs) act: int = 1
   lo: int = 10
   hi: int = 30
   near: float = 0.0
@@ -120,13 +120,14 @@ export property NpcAct {
   tick: fn(NpcPerson, float) -> bool = null
 }
 
+@AppendOnly
 export open registry NpcActs of NpcAct as NPCA
 def NpcActs from "acts.lres"
 
 # a name somebody can have; `body` the game's (a pool per model), so a Nora is drawn as a woman
 export property NpcName {
   key: string = ""
-  name: string = ""
+  @Text name: string = ""
   body: int = 0
 }
 

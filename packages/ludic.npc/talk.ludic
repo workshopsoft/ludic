@@ -2,18 +2,18 @@
 # anything to say winning, each line in its turn given its `chance`; a line's words are its `text`,
 # or the story's (NpcTalk.say) when it `fill`s; a line may offer choices, each answered by a line
 export property NpcChoice {
-  text: string = ""
-  line: string = ""            # the key of the line that answers it ("" ends the talk)
+  @Text text: string = ""
+  @Text line: string = ""            # the key of the line that answers it ("" ends the talk)
   code: int = -1               # the game's, carried by the Talked fact
 }
 
 export property NpcLine {
   key: string = ""
-  kind: int = -1               # NPCK_* (-1: anyone)
-  act: int = -1                # NPCA_* (-1: whatever they are doing)
+  @Ref(NpcKinds) kind: int = -1               # NPCK_* (-1: anyone)
+  @Ref(NpcActs) act: int = -1                # NPCA_* (-1: whatever they are doing)
   prio: int = 0
   chance: int = 100            # percent: how often this line is even considered
-  text: string = ""
+  @Text text: string = ""
   fill: bool = false
   choices: []NpcChoice = null
 }

@@ -28,16 +28,16 @@ export const WEATHER_WANT_CLEAR: int = 3   # clear the sky and keep it clear
 
 # one kind of weather; its place in the list the game hands in is its number
 export property WeatherKind {
-  name: string = ""
+  @Text name: string = ""
   clear: bool = false        # the kind a sky eases out to: nothing falls, amount goes to 0
   wet: bool = false          # rain or snow is falling (weather_wet)
-  soak: float = 0.0          # how wet the ground gets under it, 0..1
+  @Range(0, 1) soak: float = 0.0          # how wet the ground gets under it, 0..1
   overcast: float = 0.0
   cold: float = 0.0          # extra cold per game hour, in the game's units
-  wind: float = 0.2          # the strength the wind builds toward, 0..1
+  @Range(0, 1) wind: float = 0.2          # the strength the wind builds toward, 0..1
   wind_dir: float = -1.0     # radians the wind blows toward; below 0, the valley's daily turn
   thunder: bool = false
-  spell_lo: float = 2.0      # game hours a spell lasts, drawn in [lo, hi)
+  @Unit("h") spell_lo: float = 2.0      # game hours a spell lasts, drawn in [lo, hi)
   spell_hi: float = 8.0
   odds: []float = null       # weights for the next spell, per kind
 }

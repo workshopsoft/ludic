@@ -6,19 +6,20 @@ export const CRAFT_HANDS: int = 0
 # (0 is made at once) and `hold` seconds of holding the button (0 is a click)
 export property CraftRecipe {
   key: string = ""
-  out: int = 0
+  @Ref(Items) out: int = 0
   n: int = 1
-  ins: []int = null
+  @Ref(Items) ins: []int = null
   ns: []int = null
-  station: int = 0
+  @Ref(Stations) station: int = 0
   minutes: int = 0
   hold: float = 0.0
-  group: int = 0
+  @Ref(CraftGroups) group: int = 0
   learned: bool = true
 }
 
 # the game fills it: `def CraftRecipes torch { out: IT_TORCH, ins: [IT_WOOD], ns: [1] }`. A
 # station holds a recipe by its index, so a game that saves that appends, never inserts.
+@AppendOnly
 export open registry CraftRecipes of CraftRecipe as CRAFT
 
 # a recipe was made: handed over (`queued` false) or put into its station (`queued` true)

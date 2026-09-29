@@ -4,26 +4,27 @@
 # `mult` is per level from 0 (unowned), for the one number a kind scales.
 export property GearKind {
   key: string = ""
-  vendor: int = 0
+  @Ref(Vendors) vendor: int = 0
   icon: string = ""
   tiers: int = 0
-  blurb: string = ""
-  howto: string = ""
+  @Text @Multiline blurb: string = ""
+  @Text @Multiline howto: string = ""
   names: []string = null
   cost: []int = null
   rep: []int = null
-  item: int = -1
+  @Ref(Items) item: int = -1
   start: int = 0           # the level a new trip begins at
   mult: []float = null
 }
 
 # saved by key, so order is free
+@ByKey
 export open registry GearKinds of GearKind as GEAR
 
 # a number a kind's tier decides: `at` per level from 0, the last one holding past its end
 export property GearValue {
   key: string = ""
-  gear: int = 0
+  @Ref(GearKinds) gear: int = 0
   at: []float = null
 }
 
@@ -33,10 +34,10 @@ export open registry GearValues of GearValue as GV
 # `rate` (-1: per_hour) - a flashlight's drain is its tier's. `hand` runs only while held.
 export property GearCharge {
   key: string = ""
-  item: int = -1
+  @Ref(Items) item: int = -1
   full: float = 100.0
   per_hour: float = 0.0
-  rate: int = -1
+  @Ref(GearValues) rate: int = -1
   hand: bool = true
 }
 

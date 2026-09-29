@@ -31,8 +31,8 @@ export const STEPS_PER_CHAPTER: int = 6
 
 export property StepsKind {
   key: string = ""
-  shape: int = STEPS_SHAPE_YES
-  pool: int = STEPS_POOL_WORLD
+  @OneOf(STEPS_SHAPE_) shape: int = STEPS_SHAPE_YES
+  @OneOf(STEPS_POOL_) pool: int = STEPS_POOL_WORLD
   shows: bool = false          # a panel shows its count against what it wants
 }
 

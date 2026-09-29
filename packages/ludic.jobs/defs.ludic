@@ -13,23 +13,24 @@ export const JOBS_GROUPS: int = 8      # the game's lists (a board of notices, a
 # narrows it (-1 any), `need` 0 is never ready by counting. Money and rep are paid through JobsPay.
 export property JobDef {
   key: string = ""
-  group: int = 0
-  vendor: int = 0
-  kind: int = -1
-  param: int = -1
+  @OneOf(JG_) group: int = 0
+  @Ref(Vendors) vendor: int = 0
+  @Ref(JobKinds) kind: int = -1
+  @Ref(Species) param: int = -1
   need: int = 1
   money: int = 0
   rep: int = 0
   minrep: int = 0      # standing in its scope before it is offered
   minstage: int = 0    # how far the game's story must be
-  scope: int = JOBS_SELF
-  title: string = ""
-  text: string = ""
-  how: string = ""
+  @OneOf(JOBS_SELF, JOBS_PARTY, JOBS_OFFERED, JOBS_ACTIVE, JOBS_DONE, JOBS_READY, JOBS_GROUPS) scope: int = JOBS_SELF
+  @Text title: string = ""
+  @Text @Multiline text: string = ""
+  @Text @Multiline how: string = ""
   icon: string = ""
 }
 
 # the game's jobs; saved by key, so order is free
+@ByKey
 export open registry Jobs of JobDef as JOB
 
 # a board of posts rolled by the game (JobsWorld.roll): `keep` days a post stays up, `auto` pays
@@ -40,7 +41,7 @@ export property JobBoard {
   keep: int = 1
   auto: bool = false
   refill: bool = true
-  scope: int = JOBS_SELF
+  @OneOf(JOBS_SELF, JOBS_PARTY, JOBS_OFFERED, JOBS_ACTIVE, JOBS_DONE, JOBS_READY, JOBS_GROUPS) scope: int = JOBS_SELF
 }
 
 export open registry JobBoards of JobBoard as BOARD

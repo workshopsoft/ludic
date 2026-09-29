@@ -25,7 +25,7 @@ export property Thing {
 
 export property ThingKind {
   key: string = ""        # the entry's own name: what the save calls the kind
-  name: string = ""       # what it is called when nothing about the one in front of you changes it
+  @Text name: string = ""       # what it is called when nothing about the one in front of you changes it
   reach: float = 2.2      # how close it is used from, when the Thing does not say
   personal: bool = false  # one belongs to whoever put it down
   saved: bool = false     # the save's section keeps a placed one (the port has the last word)
@@ -39,6 +39,7 @@ export property ThingKind {
 }
 
 # the game fills it: `def ThingKinds tent { name: "The tent", use: fn tent_use }`
+@ByKey
 export open registry ThingKinds of ThingKind as TH
 
 export const THING_PLACED: int = 0
