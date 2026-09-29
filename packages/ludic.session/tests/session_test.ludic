@@ -6,13 +6,15 @@ program SessionTest {
   numbers float
   state SessionTestState {
     me_x: float = 0.0
+    me_rest: float = 1.0
   }
   let me_z: float = 0.0
   function fx(session_test_st: SessionTestState) -> float { return session_test_st.me_x }
   function fy() -> float { return 0.0 }
   function fz() -> float { return me_z }
   function fname() -> string { return "me" }
-  bind SessionLocal { x: fn fx, y: fn fy, z: fn fz, name: fn fname }
+  function frest(session_test_st: SessionTestState) -> float { return session_test_st.me_rest }
+  bind SessionLocal { x: fn fx, y: fn fy, z: fn fz, rest: fn frest, name: fn fname }
 
   function whats(session_st: SessionState) -> []int {
     let fs = q_drain(ses_facts(session_st))
@@ -59,6 +61,30 @@ program SessionTest {
     for i in 0 .. PLY_MAX - 1 { expect(ply_join(session_st, 10 + i) > 0) }
     expect_eq(ply_join(session_st, 99), -1)
     expect_eq(ply_count(session_st), PLY_MAX)
+    ply_leave(session_st, 2)
+    expect(not ply_on(session_st, 2))
+    expect_eq(ply_join(session_st, 98), 2)
+    ply_leave_all(session_st)
+    expect_eq(ply_count(session_st), 1)
+  }
+
+  test "alone, the nearest player is this one, at its own distance" (session_st: mut SessionState, session_test_st: mut SessionTestState) {
+    session_test_st.me_x = 3.0
+    expect_near(ply_near(session_st, 40.0, -21.0), Math.sqrt(37.0 * 37.0 + 21.0 * 21.0), 0.001)
+    expect_eq(ply_near_i(session_st), 0)
+  }
+
+  test "the party's rest is the least-resting player's: one sitting does not hurry the other" (session_st: mut SessionState, session_test_st: mut SessionTestState) {
+    session_test_st.me_rest = 4.0
+    expect(ply_rest_least(session_st) == 4.0)
+    let p = ply_join(session_st, 21)
+    expect(ply_rest_least(session_st) == 1.0)
+    ply_report_rest(session_st, p, 3.0, false)
+    expect(ply_rest_least(session_st) == 3.0)
+    ply_leave(session_st, p)
+    expect(ply_rest_least(session_st) == 4.0)
+    session_test_st.me_rest = 1.0
+    expect(ply_rest_least(session_st) == 1.0)
   }
 
   test "the nearest player, whoever it is" (session_st: mut SessionState, session_test_st: mut SessionTestState) {
