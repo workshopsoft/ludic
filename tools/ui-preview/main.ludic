@@ -20,6 +20,7 @@ program UiPreview {
   import "input.ludic"
   import "input_keys.ludic"
   import "inspect.ludic"
+  import "cmd_hold.ludic"
   import "computed.ludic"
   import "cmd_load.ludic"
   import "cmd_world.ludic"

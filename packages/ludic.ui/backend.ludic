@@ -34,6 +34,8 @@ function ui_default_backend() -> UiBackend {
   return UiRenderers[0].make()
 }
 export state UiState {
+  @max(256) ph_keys: []string = new []string      # held.ludic: elements a preview holds a pseudo-class on for ...
+  @max(256) ph_bits: []int = new []int            # ... and which (hover 1, active 2, focus 4, focus-visible 8, checked 16, disabled 32)
   @max(512) pl_pools: []UiPool = new []UiPool      # pool.ludic: each screen's nodes and envs, used again
   pl_cur: UiPool = null
   uv_on: bool = false                    # pool.ludic: a build is under way, so expressions' Values are pooled

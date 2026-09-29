@@ -1,0 +1,21 @@
+# cmd_hold.ludic - `hold <id or key> <pseudo>`: a pseudo-class held on for an element from the next frame,
+# on top of the real input (ludic.ui's held.ludic); "" as the pseudo lets that element's holds go, and
+# "" "" every hold. Holds are by the element's key, so they survive `model` and `load`; `reset` clears.
+function pv_hold(ui_st: mut UiState, w: []string) -> string {
+  if len(w) < 3 { return "hold: <id or key> <hover|active|focus|focus-visible|checked|disabled>, \"\" to let go" }
+  let id = pv_text(w[1])
+  let pseudo = pv_text(w[2])
+  if id == "" {
+    if pseudo != "" { return "hold: a pseudo-class needs an element" }
+    ui_hold_clear(ui_st, "")
+    return ""
+  }
+  let n = ui_find(ui_st, id)
+  if n == null { return `no element {id}` }
+  if pseudo == "" {
+    ui_hold_clear(ui_st, n.key)
+    return ""
+  }
+  if not ui_hold(ui_st, n.key, pseudo) { return `hold: {pseudo} cannot be held (hover, active, focus, focus-visible, checked, disabled)` }
+  return ""
+}

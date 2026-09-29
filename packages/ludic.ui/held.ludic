@@ -1,0 +1,47 @@
+# held.ludic - a pseudo-class held on for an element whatever the input says: a preview shows a story's
+# button hovered or focused without playing the pointer (ui-preview's `hold`). Keyed by the element's
+# key, so a hold outlives a rebuild; nothing holds anything in a game, and the matcher's check is empty.
+function ph_bit(p: string) -> int {
+  if p == "hover" { return 1 }
+  if p == "active" { return 2 }
+  if p == "focus" { return 4 }
+  if p == "focus-visible" { return 12 }          # focus-visible is focus too
+  if p == "checked" { return 16 }
+  if p == "disabled" { return 32 }
+  return 0
+}
+# hold `pseudo` on for the element keyed `key`; false for a pseudo-class that cannot be held
+@alloc_ok("a preview's hold: an element and a pseudo-class a story asks for, kept until cleared")
+export function ui_hold(ui_st: mut UiState, key: string, pseudo: string) -> bool {
+  let b = ph_bit(pseudo)
+  if b == 0 { return false }
+  for i in 0 .. len(ui_st.ph_keys) {
+    if ui_st.ph_keys[i] == key {
+      ui_st.ph_bits[i] = ui_st.ph_bits[i] | b
+      return true
+    }
+  }
+  push(ui_st.ph_keys, intern(key))
+  push(ui_st.ph_bits, b)
+  return true
+}
+# let go of what an element holds, or of every hold ("")
+export function ui_hold_clear(ui_st: mut UiState, key: string) -> void {
+  for i in 0 .. len(ui_st.ph_keys) {
+    if key == "" or ui_st.ph_keys[i] == key { ui_st.ph_bits[i] = 0 }
+  }
+  if key == "" {
+    List.clear(ui_st.ph_keys)
+    List.clear(ui_st.ph_bits)
+  }
+}
+# is pseudo-class p held on for n
+function ph_on(ui_st: UiState, p: string, n: UiNode) -> bool {
+  var want = ph_bit(p)
+  if p == "focus-visible" { want = 8 }
+  if want == 0 { return false }
+  for i in 0 .. len(ui_st.ph_keys) {
+    if ui_st.ph_keys[i] == n.key { return (ui_st.ph_bits[i] & want) != 0 }
+  }
+  return false
+}

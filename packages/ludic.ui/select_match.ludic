@@ -63,6 +63,7 @@ function sel_attr_of(n: UiNode, key: string) -> string {
   return null
 }
 function sel_pseudo_ok(ui_st: mut UiState, p: string, arg: string, n: UiNode) -> bool {
+  if len(ui_st.ph_keys) > 0 and ph_on(ui_st, p, n) { return true }   # held.ludic: a preview's held pseudo-class
   if p == "hover" { return n.hovered }
   if p == "focus" { return ui_st.fc_key != "" and n.key == ui_st.fc_key }
   if p == "focus-visible" { return ui_st.fc_visible and ui_st.fc_key != "" and n.key == ui_st.fc_key }

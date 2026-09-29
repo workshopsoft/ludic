@@ -168,6 +168,45 @@
 < "dem Nordbecken"
 <= ok
 
+# hold: a pseudo-class held on without input - the :hover rule draws from the next frame, rules lists
+# it, and letting go puts the plain background back
+> load "Hov" "<row><button id=\"b\" class=\"b\">Go</button></row>" ".b { background: #0000ff; }\n.b:hover { background: #00ff00; }"
+<= ok
+
+> show "Hov"
+<= ok
+
+> frame 0
+< #0000ff
+<! #00ff00
+<= ok
+
+> hold "b" "hover"
+<= ok
+
+> frame 1
+< #00ff00
+<= ok
+
+> rules "b"
+< ".b:hover"
+<= ok
+
+> hold "nothing" "hover"
+<= fail "no element nothing"
+
+> hold "b" "wobble"
+< fail
+<= fail "hold: wobble cannot be held (hover, active, focus, focus-visible, checked, disabled)"
+
+> hold "" ""
+<= ok
+
+> frame 2
+< #0000ff
+<! #00ff00
+<= ok
+
 > frobnicate
 <= fail "unknown request frobnicate"
 
