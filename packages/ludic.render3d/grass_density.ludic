@@ -54,13 +54,19 @@ function gb_frame(render3d_st: mut Render3dState) -> void {
   let tx = (ctx - GB_TILES / 2) * GD_SIDE
   let tz = (ctz - GB_TILES / 2) * GD_SIDE
   if tx == render3d_st.gb_tx and tz == render3d_st.gb_tz { return }
+  gb_window_fill(render3d_st, ctx, ctz)
+  let side = GB_TILES * GD_SIDE
+  gpu_buffer_upload(render3d_st, render3d_st.gb_buf, side * side, data_of(render3d_st.gb_win), GPU_DYNAMIC)
+}
+
+# the window's bytes, on the CPU, for the camera in map tile (ctx, ctz): the GB_TILES x GB_TILES tiles round
+# it, zeros off the map, and its corner (gb_tx, gb_tz) in texels. gb_frame sends it; a test reads gb_win
+function gb_window_fill(render3d_st: mut Render3dState, ctx: int, ctz: int) -> void {
   for j in 0 .. GB_TILES {
     for i in 0 .. GB_TILES { gb_fill_tile(render3d_st, i, j, ctx - GB_TILES / 2 + i, ctz - GB_TILES / 2 + j) }
   }
-  let side = GB_TILES * GD_SIDE
-  gpu_buffer_upload(render3d_st, render3d_st.gb_buf, side * side, data_of(render3d_st.gb_win), GPU_DYNAMIC)
-  render3d_st.gb_tx = tx
-  render3d_st.gb_tz = tz
+  render3d_st.gb_tx = (ctx - GB_TILES / 2) * GD_SIDE
+  render3d_st.gb_tz = (ctz - GB_TILES / 2) * GD_SIDE
 }
 
 # window tile (i, j) from the map's tile (mx, mz): its density bytes, four to a word; zeros off the map
