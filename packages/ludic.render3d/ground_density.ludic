@@ -1,0 +1,121 @@
+# ground_density.ludic — a map's painted ground densities read a 64 m tile at a time (a seek into the bake's
+# file, or a dev build's own copy of it) into a small clock cache: nothing of a layer is held whole. A texel
+# is 2 m (GD_SIDE texels a 64 m tile side); a layer has R (the chance a cell keeps one) and maybe G (scale).
+
+const GD_SIDE: int = 32
+const GD_SLOTS: int = 256              # tiles held at once, 2 KB each at most
+
+# the densities of the bake at `path` (key, version), or of a dev build's copy written from the PNGs to
+# `dev_path` when the bake is missing or stale; false when neither is there
+@alloc_ok("a map being loaded: the densities' index and cache, once")
+export function ground_density_open(render3d_st: mut Render3dState, path: string, key: string, version: int, pngs: []string, dev_path: string) -> bool {
+  ground_density_close(render3d_st)
+  var base = ltt2_bake_base(path, key, version)
+  var file = path
+  if base < 0 and len(pngs) > 0 and len(dev_path) > 0 {
+    gd_say_dev(path)
+    Fs.mkdir(Path.dir(dev_path))
+    let f = file_open(dev_path, "wb")
+    if f == null { return false }
+    let n = gd_write_payload(render3d_st, f, 0, pngs, TERRAIN_RES / TT_TEX, GD_SIDE)
+    file_close(f)
+    if n < 0 { return false }
+    base = 0
+    file = dev_path
+  }
+  if base < 0 { return false }
+  return gd_open_at(render3d_st, file, base)
+}
+
+@alloc_ok("a map being loaded: the densities' index and cache, once")
+function gd_open_at(render3d_st: mut Render3dState, path: string, base: int) -> bool {
+  let f = file_open(path, "rb")
+  if f == null { return false }
+  let head = words(GD_HEADW)
+  file_seek(f, base, 0)
+  let got = file_read(f, data_of(head), GD_HEADW * 4)
+  if got != GD_HEADW * 4 or head[0] != GD_MAGIC or head[1] != GD_VERSION or head[3] != GD_SIDE {
+    free(head)
+    file_close(f)
+    return false
+  }
+  let n = head[2]
+  let layers = head[4]
+  render3d_st.gd_file = f;  render3d_st.gd_base = base;  render3d_st.gd_n = n;  render3d_st.gd_layers = layers
+  if render3d_st.gd_ch == null { render3d_st.gd_ch = words(GD_LAYERS);  render3d_st.gd_off = words(GD_LAYERS) }
+  for l in 0 .. GD_LAYERS { render3d_st.gd_ch[l] = 0;  render3d_st.gd_off[l] = 0 }
+  for l in 0 .. layers { render3d_st.gd_ch[l] = head[8 + l * 2];  render3d_st.gd_off[l] = head[9 + l * 2] }
+  free(head)
+  gd_cache_reset(render3d_st, layers * n * n)
+  return true
+}
+
+# the cache made (once) and emptied, and the index of where each layer's tile is: -1 where it is not in
+@alloc_ok("a map being loaded: the densities' cache and index, once")
+function gd_cache_reset(render3d_st: mut Render3dState, tiles: int) -> void {
+  if render3d_st.gd_pool == null {
+    render3d_st.gd_pool = buffer(GD_SLOTS * GD_SIDE * GD_SIDE * 2)
+    render3d_st.gd_key = words(GD_SLOTS);  render3d_st.gd_ref = words(GD_SLOTS)
+  }
+  if render3d_st.gd_slot_of == null or len(render3d_st.gd_slot_of) < tiles {
+    if render3d_st.gd_slot_of != null { free(render3d_st.gd_slot_of) }
+    render3d_st.gd_slot_of = words(max(tiles, 1))
+  }
+  for t in 0 .. len(render3d_st.gd_slot_of) { render3d_st.gd_slot_of[t] = -1 }
+  for s in 0 .. GD_SLOTS { render3d_st.gd_key[s] = -1;  render3d_st.gd_ref[s] = 0 }
+  render3d_st.gd_hand = 0
+}
+
+export function ground_density_close(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gd_file != null { file_close(render3d_st.gd_file);  render3d_st.gd_file = null }
+}
+
+# the slot holding layer l's tile t, read in when it is not (a clock, as the terrain's tiles)
+function gd_slot(render3d_st: mut Render3dState, l: int, t: int) -> int {
+  let key = l * render3d_st.gd_n * render3d_st.gd_n + t
+  let have = render3d_st.gd_slot_of[key]
+  if have >= 0 {
+    render3d_st.gd_ref[have] = 1
+    return have
+  }
+  var s = render3d_st.gd_hand
+  while render3d_st.gd_ref[s] != 0 {
+    render3d_st.gd_ref[s] = 0
+    s = (s + 1) % GD_SLOTS
+  }
+  render3d_st.gd_hand = (s + 1) % GD_SLOTS
+  if render3d_st.gd_key[s] >= 0 { render3d_st.gd_slot_of[render3d_st.gd_key[s]] = -1 }
+  let tb = GD_SIDE * GD_SIDE * render3d_st.gd_ch[l]
+  file_seek(render3d_st.gd_file, render3d_st.gd_base + render3d_st.gd_off[l] + t * tb, 0)
+  file_read(render3d_st.gd_file, mem_off(data_of(render3d_st.gd_pool), s * GD_SIDE * GD_SIDE * 2), tb)
+  render3d_st.gd_key[s] = key
+  render3d_st.gd_slot_of[key] = s
+  render3d_st.gd_ref[s] = 1
+  return s
+}
+
+# layer l's texel (tx, tz) (clamped to the map), channel c (0 density, 1 scale), 0..255
+function gd_texel(render3d_st: mut Render3dState, l: int, tx: int, tz: int, c: int) -> int {
+  let w = render3d_st.gd_n * GD_SIDE
+  let x = min(max(tx, 0), w - 1)
+  let z = min(max(tz, 0), w - 1)
+  let ch = render3d_st.gd_ch[l]
+  if c >= ch { return 128 }
+  let s = gd_slot(render3d_st, l, (z / GD_SIDE) * render3d_st.gd_n + x / GD_SIDE)
+  return render3d_st.gd_pool[s * GD_SIDE * GD_SIDE * 2 + ((z % GD_SIDE) * GD_SIDE + x % GD_SIDE) * ch + c]
+}
+
+# layer l's channel c at world (x, z), bilinear over texel centres, 0..1
+export function ground_density_at(render3d_st: mut Render3dState, l: int, x: float, z: float, c: int) -> float {
+  if render3d_st.gd_file == null or l < 0 or l >= render3d_st.gd_layers or render3d_st.gd_ch[l] == 0 { return 0.0 }
+  let texel = 2.0 * float(render3d_st.TERRAIN_HALF) / float(render3d_st.gd_n * GD_SIDE)
+  let fx = (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) / texel - 0.5
+  let fz = (z - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) / texel - 0.5
+  let ix = int(Math.floor(fx));  let iz = int(Math.floor(fz))
+  let ax = fx - float(ix);  let az = fz - float(iz)
+  let a = Math.lerp(float(gd_texel(render3d_st, l, ix, iz, c)), float(gd_texel(render3d_st, l, ix + 1, iz, c)), ax)
+  let b = Math.lerp(float(gd_texel(render3d_st, l, ix, iz + 1, c)), float(gd_texel(render3d_st, l, ix + 1, iz + 1, c)), ax)
+  return Math.lerp(a, b, az) / 255.0
+}
+
+function gd_say_dev(path: string) -> void { print(`bake: {path} missing or stale - the ground densities cut from their PNGs at run time (ludic bake)`) }

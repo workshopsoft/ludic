@@ -1,0 +1,64 @@
+# ground_fill.ludic — a ground layer's instances in one chunk of its stream, placed from its painted density
+# and nothing else: a candidate in each cell of the band's step, moved by the jitter, kept when a hash of
+# (layer, chunk, band, cell) falls under the density there (times the game's trample, where it asks). The
+# same numbers on every machine and in the editor's preview; the camera decides only which chunks.
+
+# a ground layer's numbers, as the game's row (GroundLayers) gives them; `layer` is its index in the densities
+export property GroundFill {
+  layer: int = 0,
+  step0: float = 1.4,
+  step1: float = 1.4,
+  step2: float = 1.4,
+  step3: float = 1.4,
+  jitter: float = 1.0,
+  scale_lo: float = 1.0,
+  scale_hi: float = 1.0,
+  wind_lo: float = 0.6,
+  wind_hi: float = 1.0,
+  sink: float = 0.03,
+  trample: bool = true
+}
+
+# how much of a candidate at (x, z) the game lets stand (the camp, the town): 0..1, asked only when the row says
+export function r3d_on_ground_trample(render3d_st: mut Render3dState, f: fn(float, float) -> float) -> void { render3d_st.gd_trample_cb = f }
+
+function gf_step(g: GroundFill, band: int) -> float {
+  if band == 0 { return g.step0 }
+  if band == 1 { return g.step1 }
+  if band == 2 { return g.step2 }
+  return g.step3
+}
+
+# a hash of the candidate and one of its draws, 0..1 (a 32-bit mix: the same on every machine)
+function gf_hash(a: int, b: int, c: int, d: int, e: int, k: int) -> float {
+  var h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791) ^ (d * 2654435761) ^ (e * 1597334677) ^ (k * 3812015801)
+  h = h & 0xFFFFFFFF
+  h = ((h ^ (h >> 16)) * 0x7feb352d) & 0xFFFFFFFF
+  h = ((h ^ (h >> 15)) * 0x846ca68b) & 0xFFFFFFFF
+  h = h ^ (h >> 16)
+  return float(h & 0xFFFFFF) / 16777216.0
+}
+
+# chunk (cx, cz) of stream s at `band`, from layer g (call it inside the game's r3d_stream_fill)
+export function ground_fill(render3d_st: mut Render3dState, s: Stream, cx: int, cz: int, band: int, g: GroundFill) -> void {
+  let step = gf_step(g, band)
+  if step <= 0.0 or render3d_st.gd_file == null { return }
+  let x0 = s.ox + float(cx) * s.size
+  let z0 = s.oz + float(cz) * s.size
+  let cells = int(Math.ceil(s.size / step))
+  for j in 0 .. cells {
+    for i in 0 .. cells {
+      let px = x0 + (float(i) + 0.5 + (gf_hash(g.layer, cx, cz, band, i * 65536 + j, 0) - 0.5) * g.jitter) * step
+      let pz = z0 + (float(j) + 0.5 + (gf_hash(g.layer, cx, cz, band, i * 65536 + j, 1) - 0.5) * g.jitter) * step
+      if px < x0 or px >= x0 + s.size or pz < z0 or pz >= z0 + s.size { continue }
+      var keep = ground_density_at(render3d_st, g.layer, px, pz, 0)
+      if keep <= 0.0 { continue }
+      if g.trample and render3d_st.gd_trample_cb != null { keep = keep * render3d_st.gd_trample_cb(px, pz) }
+      let e = i * 65536 + j
+      if gf_hash(g.layer, cx, cz, band, e, 2) >= keep { continue }
+      let sc = Math.lerp(g.scale_lo, g.scale_hi, ground_density_at(render3d_st, g.layer, px, pz, 1))
+      let h = terrain_height(render3d_st, px, pz) - g.sink
+      stream_emit(render3d_st, s, px, h, pz, sc, gf_hash(g.layer, cx, cz, band, e, 3) * 2.0 * PI, gf_hash(g.layer, cx, cz, band, e, 4), Math.lerp(g.wind_lo, g.wind_hi, gf_hash(g.layer, cx, cz, band, e, 5)))
+    }
+  }
+}

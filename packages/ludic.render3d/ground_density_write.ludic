@@ -1,0 +1,82 @@
+# ground_density_write.ludic — a map's painted ground densities (one PNG per ground layer: R the chance a cell
+# keeps one, G an optional scale) cut into the terrain's 64 m tiles and written as one file (LGD1), the
+# build-time bake's payload or a dev build's own copy. One layer is decoded, cut and let go at a time.
+
+const GD_MAGIC: int = 826557260        # "LGD1" read as a little-endian u32: 0x3144474C
+const GD_VERSION: int = 1
+const GD_HEADW: int = 136              # words: magic, version, n, side, layers, 3 spare, then (channels, offset) x 64
+const GD_LAYERS: int = 64
+
+# the layers' PNGs (paths, in the rows' order) written to f from `base`; the payload's length, or -1.
+# n tiles a side of `side` texels each (the PNGs must be n * side square)
+@alloc_ok("a bake, or a dev build's map load: the densities cut once")
+function gd_write_payload(render3d_st: mut Render3dState, f: pointer, base: int, pngs: []string, n: int, side: int) -> int {
+  let layers = min(len(pngs), GD_LAYERS)
+  let head = words(GD_HEADW)
+  for k in 0 .. GD_HEADW { head[k] = 0 }
+  let hbytes = GD_HEADW * 4
+  file_write(f, data_of(head), hbytes)
+  var at = hbytes
+  let tile = buffer(side * side * 2)
+  for l in 0 .. layers {
+    let px = png_decode_bytes(render3d_st, pngs[l], null)
+    if px == null or render3d_st.tex_w != n * side or render3d_st.tex_h != n * side { gd_say_bad(pngs[l], n * side);  return -1 }
+    let c = render3d_st.tex_channels
+    var ch = 1
+    if c >= 2 { ch = 2 }
+    head[8 + l * 2] = ch;  head[9 + l * 2] = at
+    at += gd_write_layer(f, px, c, ch, n, side, tile)
+    free(px)
+  }
+  free(tile)
+  head[0] = GD_MAGIC;  head[1] = GD_VERSION;  head[2] = n;  head[3] = side;  head[4] = layers
+  file_seek(f, base, 0)
+  file_write(f, data_of(head), hbytes)
+  file_seek(f, base + at, 0)
+  free(head)
+  return at
+}
+
+# one layer's tiles, tile after tile; its bytes
+function gd_write_layer(f: pointer, px: []byte, c: int, ch: int, n: int, side: int, tile: []byte) -> int {
+  let w = n * side
+  for j in 0 .. n {
+    for i in 0 .. n {
+      for r in 0 .. side {
+        for k in 0 .. side {
+          let o = ((j * side + r) * w + i * side + k) * c
+          tile[(r * side + k) * ch] = px[o]
+          if ch == 2 { tile[(r * side + k) * 2 + 1] = px[o + 1] }
+        }
+      }
+      file_write(f, data_of(tile), side * side * ch)
+    }
+  }
+  return n * n * side * side * ch
+}
+
+# The bake: the densities as a bake's file (ludic.base's LBAK header, as terrain_tiles_bake writes it)
+@alloc_ok("a bake: once, at build time")
+export function ground_density_bake(render3d_st: mut Render3dState, path: string, key: string, version: int, inputs_hash: long, pngs: []string) -> bool {
+  Fs.mkdir(Path.dir(path))
+  let f = file_open(path, "wb")
+  if f == null { return false }
+  let base = 32 + (len(key) + 1 + 7) / 8 * 8
+  let head = buffer(base)
+  for i in 0 .. base { head[i] = 0 }
+  file_write(f, data_of(head), base)
+  let n = gd_write_payload(render3d_st, f, base, pngs, TERRAIN_RES / TT_TEX, GD_SIDE)
+  let p = data_of(head)
+  Vk.put_i32(p, 0, BAKE_MAGIC);  Vk.put_i32(p, 4, 1);  Vk.put_i32(p, 8, version);  Vk.put_i32(p, 12, base)
+  Vk.put_i64(p, 16, inputs_hash)
+  let nl: long = max(n, 0)
+  Vk.put_i64(p, 24, nl)
+  for i in 0 .. len(key) { head[32 + i] = key[i] }
+  file_seek(f, 0, 0)
+  file_write(f, data_of(head), base)
+  file_close(f)
+  free(head)
+  return n >= 0
+}
+
+function gd_say_bad(path: string, want: int) -> void { print(`r3d: ground: {path} is missing or not {want} x {want}; the densities are not written`) }
