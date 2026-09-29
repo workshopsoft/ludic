@@ -166,7 +166,8 @@ function sym_hover_code(O: Doc, si: int) -> pointer {
 function record_hover_code(O: Doc, si: int) -> pointer {
   let y = O.syms[si]
   let b = buf_new()
-  if y.kind == LS_COMPONENT { buf_puts(b, "property ") } else { buf_puts(b, "model ") }
+  if not (y.decl == "") { buf_puts(b, y.decl);  buf_puts(b, " ") }
+  else if y.kind == LS_COMPONENT { buf_puts(b, "property ") } else { buf_puts(b, "model ") }
   buf_puts(b, y.name)
   buf_puts(b, " {")
   var n = 0
