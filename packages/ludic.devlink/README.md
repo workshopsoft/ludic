@@ -11,7 +11,12 @@ An editor's live link into a running dev build: the wire protocol v1 frozen in
   `cam_get` / `cam_set` / `cam_release`, `goto`, `map_load`, `time`, `weather`, `shot`, `pause` / `resume`,
   `step`. `map_load`, `shot` and `step` answer later by id (5 s at most, one at a time). While
   `coop()` says a session is connected, everything but `ping` and `hello` is refused.
+- **The interface's verbs** are `DevlinkUi` members, the same default: `ui_screen` answers the screen's root
+  class and every component up; `ui_model "<Class>" "<out>"` and `ui_tree "<out>"` have the game write the
+  first instance's model, or the whole tree, to that file (no `..`) and answer `ok "<out>"`, so a datagram
+  stays small; `ui_override "<path>" "<file>"` has the interface read a template or stylesheet from that file
+  and reload it keeping state (`""` for the file clears one, `"" ""` clears all). All answer at once.
 - **Call `devlink_tick`** once a frame from something that runs while the game is paused (not from a
   system the pause stops), or `resume` could never arrive.
 
-Tests: `ludic test packages/ludic.devlink` (a fake transport and world; each answer byte for byte).
+Tests: `ludic test packages/ludic.devlink` (a fake transport, world and interface; each answer byte for byte).

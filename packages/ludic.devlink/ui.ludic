@@ -1,0 +1,17 @@
+# ui.ludic - what the link asks the game's interface (ludic.ui): which screen is up, a component's model
+# or the whole tree written to a file, and a template or stylesheet read from another file for a while.
+# Every member defaults to "not offered"; the big answers go through a file, as a shot does.
+export property DevlinkUiScreen {
+  root: string = ""                        # the screen's root class
+  components: string = ""                  # every component up, comma-separated
+}
+
+export port DevlinkUi {
+  screen: fn(DevlinkUiScreen) -> int = fn dlu_screen
+  model: fn(string, string) -> int = fn dlu_s2        # class, out path -> 0 written, -1 no such instance
+  tree: fn(string) -> int = fn dlu_s1                 # out path -> 0 written, -1 failed
+  override: fn(string, string) -> int = fn dlu_s2     # path, file ("" clears it; "" "" clears all) -> 0, -1
+}
+function dlu_screen(s: DevlinkUiScreen) -> int { return DL_UNBOUND }
+function dlu_s1(a: string) -> int { return DL_UNBOUND }
+function dlu_s2(a: string, b: string) -> int { return DL_UNBOUND }

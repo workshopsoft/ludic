@@ -26,4 +26,5 @@ export state DevlinkState {
   dl_pend_port: int = 0
   dl_pend_t: float = 0.0
   dl_cam: DevlinkCam = new DevlinkCam
+  dl_ui: DevlinkUiScreen = new DevlinkUiScreen
 }

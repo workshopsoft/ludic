@@ -1,0 +1,90 @@
+# devlink_ui_test.ludic - the ui verbs against a fake transport and a fake interface: each answer byte for
+# byte, a path with .. refused, an instance that is not there, the overrides set and cleared, not offered
+import "ludic.devlink"
+import "ludic.base"
+program DevlinkUiTest {
+  numbers float
+  state FakeUiState {
+    inbox: string = ""
+    sent: string = ""
+    offered: bool = true
+    last: string = ""             # what the interface was last asked, "a|b"
+  }
+  function fk_open(port: int) -> int { return 3 }
+  function fk_recv(fake_ui_st: mut FakeUiState, h: int, b: []byte, cap: int) -> int {
+    let s = fake_ui_st.inbox
+    fake_ui_st.inbox = ""
+    for i in 0 .. len(s) { b[i] = s[i] }
+    return len(s)
+  }
+  function fk_ip(h: int) -> int { return 2130706433 }
+  function fk_port(h: int) -> int { return 5555 }
+  @alloc_ok("a test: the answer kept to compare")
+  function fk_send(fake_ui_st: mut FakeUiState, h: int, ip: int, port: int, b: []byte, n: int) -> int {
+    fake_ui_st.sent = text_of(b, n)
+    return n
+  }
+  function fk_loop(ip: int) -> bool { return true }
+  function fk_on() -> bool { return true }
+  bind DevlinkNet { open: fn fk_open, recv: fn fk_recv, from_ip: fn fk_ip, from_port: fn fk_port, send: fn fk_send, loopback: fn fk_loop }
+  bind DevlinkWorld { enabled: fn fk_on }
+
+  function fu_screen(fake_ui_st: FakeUiState, s: DevlinkUiScreen) -> int {
+    if not fake_ui_st.offered { return DL_UNBOUND }
+    s.root = "PauseMenu"
+    s.components = "Screen,Heading,Footer"
+    return 0
+  }
+  @alloc_ok("a test: what the interface was asked")
+  function fu_model(fake_ui_st: mut FakeUiState, cls: string, path: string) -> int {
+    fake_ui_st.last = cls + "|" + path
+    if cls == "Ghost" { return -1 }
+    return 0
+  }
+  function fu_tree(fake_ui_st: mut FakeUiState, path: string) -> int {
+    fake_ui_st.last = path
+    return 0
+  }
+  @alloc_ok("a test: what the interface was asked")
+  function fu_override(fake_ui_st: mut FakeUiState, path: string, file: string) -> int {
+    fake_ui_st.last = path + "|" + file
+    return 0
+  }
+  bind DevlinkUi { screen: fn fu_screen, model: fn fu_model, tree: fn fu_tree, override: fn fu_override }
+
+  function ask(devlink_st: mut DevlinkState, fake_ui_st: mut FakeUiState, line: string) -> string {
+    fake_ui_st.inbox = line
+    fake_ui_st.sent = ""
+    devlink_tick(devlink_st, tick_new(0.016, 0, 0.0))
+    return fake_ui_st.sent
+  }
+
+  test "ui_screen names the root and every component; unbound says not offered" (devlink_st: mut DevlinkState, fake_ui_st: mut FakeUiState) {
+    expect(ask(devlink_st, fake_ui_st, "1 ui_screen") == "1 ok \"PauseMenu\" \"Screen,Heading,Footer\"")
+    expect(ask(devlink_st, fake_ui_st, "2 ui_screen extra") == "2 err bad_args \"bad arguments\"")
+    fake_ui_st.offered = false
+    expect(ask(devlink_st, fake_ui_st, "3 ui_screen") == "3 err unbound \"not offered\"")
+  }
+
+  test "ui_model and ui_tree write where they are told, never past .., and say a missing instance" (devlink_st: mut DevlinkState, fake_ui_st: mut FakeUiState) {
+    expect(ask(devlink_st, fake_ui_st, "4 ui_model \"PauseMenu\" \"/tmp/m.json\"") == "4 ok \"/tmp/m.json\"")
+    expect(fake_ui_st.last == "PauseMenu|/tmp/m.json")
+    expect(ask(devlink_st, fake_ui_st, "5 ui_model \"Ghost\" \"/tmp/g.json\"") == "5 err failed \"no such instance\"")
+    expect(ask(devlink_st, fake_ui_st, "6 ui_model \"PauseMenu\" \"/tmp/../etc/x\"") == "6 err bad_args \"a path without ..\"")
+    expect(ask(devlink_st, fake_ui_st, "7 ui_model \"PauseMenu\"") == "7 err bad_args \"bad arguments\"")
+    expect(ask(devlink_st, fake_ui_st, "8 ui_model \"\" \"/tmp/m.json\"") == "8 err bad_args \"a class and a path\"")
+    expect(ask(devlink_st, fake_ui_st, "9 ui_tree \"/tmp/tree.json\"") == "9 ok \"/tmp/tree.json\"")
+    expect(ask(devlink_st, fake_ui_st, "10 ui_tree \"\"") == "10 err bad_args \"a path without ..\"")
+  }
+
+  test "ui_override sets one, clears one with \"\", clears all with \"\" \"\"; a file past .. is refused" (devlink_st: mut DevlinkState, fake_ui_st: mut FakeUiState) {
+    expect(ask(devlink_st, fake_ui_st, "11 ui_override \"src/ui/menus/PauseMenu.xml\" \"/tmp/p.xml\"") == "11 ok")
+    expect(fake_ui_st.last == "src/ui/menus/PauseMenu.xml|/tmp/p.xml")
+    expect(ask(devlink_st, fake_ui_st, "12 ui_override \"src/ui/menus/PauseMenu.xml\" \"\"") == "12 ok")
+    expect(fake_ui_st.last == "src/ui/menus/PauseMenu.xml|")
+    expect(ask(devlink_st, fake_ui_st, "13 ui_override \"\" \"\"") == "13 ok")
+    expect(fake_ui_st.last == "|")
+    expect(ask(devlink_st, fake_ui_st, "14 ui_override \"\" \"/tmp/p.xml\"") == "14 err bad_args \"a file without .., or \\\"\\\" \\\"\\\" to clear all\"")
+    expect(ask(devlink_st, fake_ui_st, "15 ui_override \"a.xml\" \"../b.xml\"") == "15 err bad_args \"a file without .., or \\\"\\\" \\\"\\\" to clear all\"")
+  }
+}
