@@ -1,0 +1,4 @@
+component Host {
+  state on: bool = false
+  on flip() { on = not on }
+}

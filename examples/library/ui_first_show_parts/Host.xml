@@ -1,0 +1,4 @@
+<div>
+  <button class="t" on-click="flip()">t</button>
+  <if test="{on}"><Cell caption="a"/></if>
+</div>
