@@ -279,6 +279,12 @@ var g_dr_find_k: []pointer = new []pointer
 var g_dr_rl_name: []pointer = new []pointer     # a local holding one entry of a registry ...
 var g_dr_rl_reg: []pointer = new []pointer      # ... and which registry
 var g_dr_find_v: []Node = new []Node
+# a ROOT reaches through a table of fn values (a step list, a registry of systems), or calls what does:
+# it reaches every state by definition, so the ratchet's widest_reach and widest_write_reach leave it out
+var g_dr_disp: bool = false                     # the function being walked reads a fn value out of a table
+var g_dr_disp_of: []bool = new []bool
+var g_dr_root: []bool = new []bool
+var g_dr_hf: []int = new []int                  # per node: does a global hold fn values (-1 not yet asked)
 function dr_state_ix(t: pointer) -> int {
   var i = 0
   while i < len(g_state_names) {
@@ -328,7 +334,10 @@ function dr_walk(n: Node, refs: []int) -> void {
     let pre = `ludic_reduce__{n.s}__`
     var ri = 0
     while ri < len(g_dr_name) {
-      if str_starts(g_dr_name[ri], pre) { push(refs, ri) }
+      if str_starts(g_dr_name[ri], pre) {
+        push(refs, ri)
+        push(g_dr_cur2, ri)
+      }
       ri += 1
     }
   }
@@ -337,7 +346,10 @@ function dr_walk(n: Node, refs: []int) -> void {
     while li < len(g_onlisten) {
       if (g_onlisten[li].s == n.s) {
         let lk = dr_index(`@On {n.s}#{itoa(li)}`)
-        if lk >= 0 { push(refs, lk) }
+        if lk >= 0 {
+          push(refs, lk)
+          push(g_dr_cur2, lk)
+        }
       }
       li += 1
     }
@@ -345,9 +357,14 @@ function dr_walk(n: Node, refs: []int) -> void {
   if (n.kind == E_ID or n.kind == E_FNREF) and n.s != null and not (n.kind == E_ID and dr_is_local(n.s)) {
     let k = dr_index(n.s)
     if k >= 0 { push(refs, k) }
+    if k >= 0 and n.kind == E_ID { push(g_dr_cur2, k) }   # a call or a read; a `fn f` written is not one
+    if n.kind == E_ID and k >= 0 and dr_holds_fn(k) { g_dr_disp = true }   # a table of fn values read
     # a registry entry held in a local and handed on whole reaches the whole registry
     let rl = dr_reg_local(n.s)
-    if k < 0 and rl != null and dr_index(rl) >= 0 { push(refs, dr_index(rl)) }
+    if k < 0 and rl != null and dr_index(rl) >= 0 {
+      push(refs, dr_index(rl))
+      push(g_dr_cur2, dr_index(rl))
+    }
   }
   dr_walk(n.a, refs)
   dr_walk(n.b, refs)
@@ -357,6 +374,77 @@ function dr_walk(n: Node, refs: []int) -> void {
     while i < len(n.kids) {
       dr_walk(n.kids[i], refs)
       i += 1
+    }
+  }
+}
+# a global whose value holds `fn f` somewhere (a step list, a registry of systems), asked once
+function dr_holds_fn(k: int) -> bool {
+  while len(g_dr_hf) <= k { push(g_dr_hf, -1) }
+  if g_dr_hf[k] < 0 {
+    let d = g_dr_node[k]
+    g_dr_hf[k] = 0
+    if d.kind == N_VAR and dr_has_fnref(d.a, 0) { g_dr_hf[k] = 1 }
+  }
+  return g_dr_hf[k] == 1
+}
+function dr_has_fnref(n: Node, depth: int) -> bool {
+  if n == null or depth > 6 { return false }
+  if n.kind == E_FNREF { return true }
+  if dr_has_fnref(n.a, depth + 1) or dr_has_fnref(n.b, depth + 1) { return true }
+  if n.kids != null {
+    var i = 0
+    while i < len(n.kids) {
+      if dr_has_fnref(n.kids[i], depth + 1) { return true }
+      i += 1
+    }
+  }
+  return false
+}
+# the roots are the dispatchers: a function that reads fn values out of a table (a step list's walker,
+# a registry of systems) reaches every state by definition. Every other function is also measured
+# WITHOUT going through one, and through its calls only - a `fn f` it writes into a list is supplied its
+# states where the list is walked (g_dr_bits2) - so the frame, the boot and a list's builder count only
+# their own work, and a refactor of them moves the number
+var g_dr_bits2: [][]int = new [][]int
+var g_dr_cur2: []int = new []int                # the function being walked: its calls and reads, no `fn f` written
+var g_dr_refs2: [][]int = new [][]int           # per node: those, the edges the second count follows
+var g_dr_wbits2: [][]int = new [][]int
+function dr_roots(nw: int) -> void {
+  g_dr_root = new []bool
+  g_dr_bits2 = new [][]int
+  g_dr_wbits2 = new [][]int
+  var j = 0
+  while j < len(g_dr_node) {
+    push(g_dr_root, g_dr_disp_of[j])
+    let b = new []int
+    let wb = new []int
+    var w = 0
+    while w < nw {
+      push(b, 0)
+      push(wb, 0)
+      w += 1
+    }
+    dr_own(g_dr_node[j], b, false)
+    dr_own(g_dr_node[j], wb, true)
+    push(g_dr_bits2, b)
+    push(g_dr_wbits2, wb)
+    j += 1
+  }
+  var changed = true
+  while changed {
+    changed = false
+    j = 0
+    while j < len(g_dr_node) {
+      let refs = g_dr_refs2[j]
+      var r = 0
+      while r < len(refs) {
+        if not g_dr_disp_of[refs[r]] {
+          if dr_join(g_dr_bits2[j], g_dr_bits2[refs[r]], nw) { changed = true }
+          if dr_join(g_dr_wbits2[j], g_dr_wbits2[refs[r]], nw) { changed = true }
+        }
+        r += 1
+      }
+      j += 1
     }
   }
 }
@@ -416,7 +504,10 @@ function dr_reg_field(n: Node, refs: []int) -> bool {
     if e.kind == E_NEW and e.a != null {
       var j = 0
       while j < len(e.a.kids) {
-        if (e.a.kids[j].s == n.s) { dr_walk(e.a.kids[j].a, refs) }
+        if (e.a.kids[j].s == n.s) {
+          if e.a.kids[j].a != null and e.a.kids[j].a.kind == E_FNREF { g_dr_disp = true }   # a step list walked
+          dr_walk(e.a.kids[j].a, refs)
+        }
         j += 1
       }
     }
@@ -497,7 +588,11 @@ function deps_reach(f: pointer) -> void {
     g_dr_locals = new []pointer
     let dn = g_dr_node[j]
     if dn.kind == N_FN or dn.kind == N_SYS or dn.kind == N_BLOCK { dr_collect_locals(dn) }
+    g_dr_disp = false
+    g_dr_cur2 = new []int
     dr_walk(dn, refs)
+    push(g_dr_disp_of, g_dr_disp)
+    push(g_dr_refs2, g_dr_cur2)
     # the generated drain calls every reducer; a reducer is reached from its action's dispatch instead
     if dn.s != null and (dn.s == "drain_actions") {
       let kept = new []int
@@ -542,6 +637,7 @@ function deps_reach(f: pointer) -> void {
       j += 1
     }
   }
+  dr_roots(nw)
   j = 0
   while j < len(g_dr_node) {
     let d = g_dr_node[j]
@@ -549,9 +645,12 @@ function deps_reach(f: pointer) -> void {
       let n = dr_count(g_dr_bits[j])
       var pkg = 0
       if not (pkg_of_file(d.file) == "") { pkg = 1 }
-      if n > 0 { deps_line(f, `reach {itoa(n)} {d.s} {d.file}:{itoa(d.line)} {itoa(pkg)}`) }
+      var root = "0"
+      if g_dr_root[j] { root = "1" }
+      # the reach, whether it is a root, and the reach not going through any dispatcher
+      if n > 0 { deps_line(f, `reach {itoa(n)} {d.s} {d.file}:{itoa(d.line)} {itoa(pkg)} {root} {itoa(dr_count(g_dr_bits2[j]))}`) }
       let wn = dr_count(g_dr_wbits[j])
-      if wn > 0 { deps_line(f, `wreach {itoa(wn)} {d.s} {d.file}:{itoa(d.line)} {itoa(pkg)}`) }
+      if wn > 0 { deps_line(f, `wreach {itoa(wn)} {d.s} {d.file}:{itoa(d.line)} {itoa(pkg)} {root} {itoa(dr_count(g_dr_wbits2[j]))}`) }
     }
     j += 1
   }

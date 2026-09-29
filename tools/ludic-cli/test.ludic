@@ -621,14 +621,15 @@ function actions_deps_case() -> void {
   let got = capture(`bin/ludic deps examples/actions/modules.ludic 2>&1`)
   if s_contains(got, "largest_cycle: 1") and s_contains(got, "dependencies: 0") and s_contains(got, "the widest function: reducer Bag on PickUp (") { ok(lbl) } else { bad2(lbl, s_trim(got)) }
 }
-# 0.R4: a step list takes no state and reaches every state its steps take; --widest and --reach
-# list the functions by what they take and by what they reach
+# 0.R4: a step list takes no state and reaches every state its steps take - a ROOT, left out of
+# widest_reach and listed on its own line, and what calls it (one) is counted without going through
+# it; --widest and --reach list the functions by what they take and by what they reach, a root marked
 function deps_reach_case() -> void {
-  let lbl = "ludic deps: the reach through fn values, --widest N and --reach N"
+  let lbl = "ludic deps: the reach through fn values, the roots apart, --widest N and --reach N"
   let got = capture(`bin/ludic deps examples/state/reach.ludic 2>&1`)
-  if not s_contains(got, "widest_reach: 3") or not s_contains(got, "the widest reach: one (examples/state/reach.ludic:13), 3 states (2 through calls and fn values it does not take)") { bad2(lbl, s_trim(got));  return }
+  if not s_contains(got, "widest_reach: 1") or not s_contains(got, "roots, left out of the reaches (they walk a table of fn values; the rest are counted without going through one): 1, the widest run_steps (examples/state/reach.ludic:10), 2 states") { bad2(lbl, s_trim(got));  return }
   let top = capture(`bin/ludic deps examples/state/reach.ludic --reach 2 2>&1`)
-  if not s_contains(top, "    1        3        3  one (examples/state/reach.ludic:13)\n    0        2        2  run_steps (examples/state/reach.ludic:10)") { bad2(lbl, s_trim(top));  return }
+  if not s_contains(top, "    1        3        3  one (examples/state/reach.ludic:13)\n    0        2        2  run_steps (examples/state/reach.ludic:10)  (root)") { bad2(lbl, s_trim(top));  return }
   let wide = capture(`bin/ludic deps examples/state/reach.ludic --widest 1 2>&1`)
   if s_contains(wide, "takes  reaches  changes  function") and s_contains(wide, "one (examples/state/reach.ludic:13)") and not s_contains(wide, "step_a") { ok(lbl) } else { bad2(lbl, s_trim(wide)) }
 }
