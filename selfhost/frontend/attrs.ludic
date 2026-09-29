@@ -136,6 +136,7 @@ function at_field(g: int, a: pointer) -> void {
   if (a == "Range") and n != 2 { perr("@Range takes the least and the most: @Range(0, 1.5)") }
   if (a == "Range") and not g_at_allnum { perr("@Range takes two numbers: @Range(0, 1.5)") }
   if ((a == "Unit") or (a == "Asset")) and (n != 1 or toks[pi - 2].kind != TK_STR) { perr(`@{a} takes one string: @{a}("m/s")`) }
+  if a == "Unit" { at_unit_check(g_at_arg0, toks[pi - 2]) }
   if at_flag(a) and n != 0 { perr(`@{a} takes nothing`) }
   at_push(g, a, args, g_at_arg0, n)
 }
@@ -144,16 +145,27 @@ function at_field_group(f: Node) -> int {
   if f.at < 0 { f.at = at_group() }
   return f.at
 }
-# @AppendOnly / @ByKey before a declaration: kept for the registry it is on
+# @AppendOnly / @ByKey / @PerMap / @Chunked(64) before a declaration: kept for the registry it is on
+var g_at_decl_args: []pointer = new []pointer
 function at_decl(a: pointer) -> void {
+  at_decl_with(a, "[]")
+}
+function at_decl_with(a: pointer, args: pointer) -> void {
   push(g_at_decl, a)
+  push(g_at_decl_args, args)
 }
 function at_decl_reset() -> void {
   if g_at_keep {
     g_at_keep = false
     return
   }
-  if len(g_at_decl) > 0 { g_at_decl = new []pointer }
+  if len(g_at_decl) > 0 { at_decl_clear() }
+}
+function at_decl_clear() -> void {
+  g_at_decl = new []pointer
+  g_at_decl_args = new []pointer
+  g_pm_pending = false                         # permap.ludic: @PerMap and @Chunked belong to one declaration
+  g_pm_chunk_pending = 0
 }
 # the registry just declared takes the attributes read before it
 function at_registry_take() -> int {
@@ -161,10 +173,16 @@ function at_registry_take() -> int {
   let g = at_group()
   var i = 0
   while i < len(g_at_decl) {
-    at_push(g, g_at_decl[i], "[]", null, 0)
+    var first: pointer = null
+    var n = 0
+    if not (g_at_decl_args[i] == "[]") {
+      first = g_at_decl_args[i][1 .. len(g_at_decl_args[i]) - 1]
+      n = 1
+    }
+    at_push(g, g_at_decl[i], g_at_decl_args[i], first, n)
     i += 1
   }
-  g_at_decl = new []pointer
+  at_decl_clear()
   return g
 }
 # once every registry is declared: each @Ref names one, each @Node / @Clip a glTF field and a
@@ -191,6 +209,9 @@ function at_check_field(d: Node, f: Node) -> void {
   var j = g_at_start[g]
   while j < g_at_start[g] + g_at_count[g] {
     if (g_at_name[j] == "Ref") and reg_find(g_at_first[j]) < 0 { at_target(d, f, j, "a registry") }
+    if (g_at_name[j] == "Ref") and pm_named(g_at_first[j]) and not (f.ty == "string") {
+      perr_at(f.file, f.line, f.col, `field {d.s}.{f.s}: @Ref({g_at_first[j]}) names a @PerMap registry, whose rows have no index a program can hold - use a string key: @Ref({g_at_first[j]}) {f.s}: string = ""`)
+    }
     if (g_at_name[j] == "Node") or (g_at_name[j] == "Clip") or (g_at_name[j] == "Material") { at_check_node(d, f, g_at_name[j], g_at_first[j]) }
     if g_at_name[j] == "OneOf" { at_check_oneof(d, f, j) }
     if (g_at_name[j] == "Tint") and not at_const_exists(g_at_first[j]) { at_const_target(d, f, j, g_at_first[j]) }
@@ -217,4 +238,51 @@ function at_const_target(d: Node, f: Node, j: int, x: pointer) -> void {
   }
   g_at_unres[j] = true
   pwarn_at(f.file, f.line, f.col, `{where}: this program has no constant {x} - left unresolved`)
+}
+
+# ---- units ----------------------------------------------------------------------------------------
+# @Unit's spellings are ASCII, one each, so an editor and a converter read one word for one unit:
+# "deg" is the angle, never "°". Anything else is a warning naming the canonical spelling.
+function at_units() -> []pointer {
+  let us = new []pointer
+  push(us, "m");  push(us, "m/s");  push(us, "m/s2");  push(us, "s");  push(us, "min");  push(us, "h");  push(us, "d")
+  push(us, "deg");  push(us, "rad");  push(us, "rad/s");  push(us, "kg");  push(us, "N");  push(us, "N.m");  push(us, "%");  push(us, "px")
+  return us
+}
+function at_unit_known(u: pointer) -> bool {
+  let us = at_units()
+  var i = 0
+  while i < len(us) {
+    if (us[i] == u) { return true }
+    i += 1
+  }
+  return false
+}
+# the canonical spelling of a unit written another way, or null when there is no obvious one
+function at_unit_canon(u: pointer) -> pointer {
+  if (u == "°") or (u == "degrees") or (u == "degree") or (u == "degs") { return "deg" }
+  if (u == "sec") or (u == "secs") or (u == "second") or (u == "seconds") { return "s" }
+  if (u == "m/s^2") or (u == "m/s²") or (u == "m/s/s") { return "m/s2" }
+  if (u == "Nm") or (u == "N m") or (u == "N*m") or (u == "N·m") { return "N.m" }
+  if (u == "radians") or (u == "radian") { return "rad" }
+  if (u == "rad/sec") { return "rad/s" }
+  if (u == "meters") or (u == "metres") or (u == "meter") or (u == "metre") { return "m" }
+  if (u == "mps") or (u == "m/sec") { return "m/s" }
+  if (u == "minutes") or (u == "minute") or (u == "mins") { return "min" }
+  if (u == "hours") or (u == "hour") or (u == "hr") or (u == "hrs") { return "h" }
+  if (u == "days") or (u == "day") { return "d" }
+  if (u == "kilograms") or (u == "kilogram") or (u == "kgs") { return "kg" }
+  if (u == "percent") or (u == "pct") { return "%" }
+  if (u == "pixels") or (u == "pixel") { return "px" }
+  if (u == "newtons") or (u == "newton") { return "N" }
+  return null
+}
+function at_unit_check(u: pointer, t: Tok) -> void {
+  if u == null or at_unit_known(u) { return }
+  let c = at_unit_canon(u)
+  if c != null {
+    pwarn_at(g_parse_file, t.line, t.col, `@Unit("{u}"): the unit is spelled "{c}"`)
+    return
+  }
+  pwarn_at(g_parse_file, t.line, t.col, `@Unit("{u}") is not a known unit (m, m/s, m/s2, s, min, h, d, deg, rad, rad/s, kg, N, N.m, %, px)`)
 }

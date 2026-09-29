@@ -64,6 +64,8 @@ function reg_lower(s: pointer) -> pointer {
 }
 # registry NAME of TYPE [as PREFIX]
 function parse_registry() -> void {
+  let pm = g_pm_pending                           # @PerMap / @Chunked(n) (permap.ludic)
+  let chunk = g_pm_chunk_pending
   pi += 1
   let v = node(N_VAR)
   v.s = eat_id()
@@ -72,6 +74,7 @@ function parse_registry() -> void {
   let t = ptype()
   var prefix = reg_upper(v.s)
   if is_id("as") {
+    if pm { perr(`registry {v.s}: a @PerMap registry has no 'as PREFIX' - its keys are not known when the game compiles, so it has no constants; find a row by its key with {pm_snake(v.s)}_find`) }
     pi += 1
     prefix = eat_id()
   }
@@ -82,7 +85,7 @@ function parse_registry() -> void {
     pi += 1
   }
   v.ty = "[]" + t
-  push(prog, v)
+  if not pm { push(prog, v) }                     # a map-scoped table is a state, written when the program is read
   push(g_rg_name, v.s)
   push(g_rg_type, t)
   push(g_rg_prefix, prefix)
@@ -90,7 +93,8 @@ function parse_registry() -> void {
   push(g_rg_open, 0)
   push(g_rg_from, from)
   push(g_rg_at, at_registry_take())               # attrs.ludic
-  if from != null { res_read(v, from) }
+  pm_declared(pm, chunk, v.s)
+  if from != null and not pm { res_read(v, from) }
 }
 # def REGISTRY key { field: value, ... }
 # def REGISTRY from "file.lres" - every entry of a resource file, as defs of this file's module

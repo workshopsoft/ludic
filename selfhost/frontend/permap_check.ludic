@@ -1,0 +1,549 @@
+# permap_check.ludic — `ludicc --check` reads every map there is, so a map can't ship a wrong field.
+#
+# Each directory under the maps root is a map. For each @PerMap registry, its file in each map (for
+# a @Chunked one, every file its pattern matches, {cx} and {cz} any integers) is read with the
+# compiler's own resource parser and every entry checked against the record, as a compiled table's
+# entries are: the field exists, its value is of the field's type, a constant it names exists (and is
+# one lres_consts__ carries), a `fn name` names a function of the field's type, and the attributes
+# hold - @OneOf, @Range, an @Ref into a game registry in range, and an @Ref into another @PerMap
+# registry names a row of that table in the same map (in any of its chunks). A key is written once
+# in a file. Errors carry the map file's line and column and go through the diagnostics.
+# `--no-maps` leaves the maps alone; no maps root, nothing to check.
+
+# one error in a map's file, with its column in the text form too
+function pmk_err(file: pointer, line: int, col: int, msg: pointer) -> void {
+  if g_diag_json {
+    diag_add(file, line, col, "error", msg)
+    return
+  }
+  let m = `{file}:{itoa(line)}:{itoa(col)}: error: {msg}\n`
+  file_write(file_stderr(), m, len(m))
+  g_dg_errors += 1
+}
+function pmk_err_at(n: Node, msg: pointer) -> void { pmk_err(n.file, n.line, n.col, msg) }
+
+# ---- the directory ------------------------------------------------------------------------------
+function pmk_hash(s: pointer) -> int {
+  var h = 5381
+  var i = 0
+  while i < len(s) {
+    h = (h * 33 + s[i]) & 16777215
+    i += 1
+  }
+  return h
+}
+# the names in dir: its directories (dirs) or its files, sorted as the shell lists them
+function pmk_list(dir: pointer, dirs: bool) -> []pointer {
+  let out = new []pointer
+  var tmpd = getenv_or("TMPDIR", "/tmp")
+  if host_is_windows() { tmpd = fwd_slashes(getenv_or("TEMP", ".")) }
+  let tmp = `{ensure_slash(tmpd)}ludicc-maps-{itoa(pmk_hash(dir + g_act_main))}.txt`
+  if host_is_windows() {
+    var flag = "/a-d"
+    if dirs { flag = "/ad" }
+    run(`dir /b /on {flag} "{win_path(dir)}" > "{win_path(tmp)}" 2>nul`)
+  } else {
+    run(`ls -1p '{dir}' > '{tmp}' 2>/dev/null`)
+  }
+  let txt = read_file(tmp)
+  remove_file(tmp)
+  if txt == null { return out }
+  var i = 0
+  let n = len(txt)
+  while i < n {
+    var e = i
+    while e < n and txt[e] != '\n' { e += 1 }
+    var le = e
+    if le > i and txt[le - 1] == 13 { le -= 1 }
+    if le > i {
+      var w = txt[i .. le]
+      if host_is_windows() { push(out, w) }
+      else {
+        let isdir = w[len(w) - 1] == '/'
+        if isdir { w = w[0 .. len(w) - 1] }
+        if isdir == dirs { push(out, w) }
+      }
+    }
+    i = e + 1
+  }
+  return out
+}
+# is s an integer, as a chunk's coordinate is written: -3, 0, 12
+function pmk_is_int(s: pointer) -> bool {
+  var i = 0
+  if len(s) > 1 and s[0] == '-' { i = 1 }
+  if i >= len(s) { return false }
+  while i < len(s) {
+    if s[i] < '0' or s[i] > '9' { return false }
+    i += 1
+  }
+  return true
+}
+# does the file name `name` fit the pattern's last part, {cx} and {cz} integers
+function pmk_match(pat: pointer, name: pointer) -> bool {
+  var i = 0
+  var j = 0
+  while i < len(pat) {
+    if pat[i] == '{' and i + 3 < len(pat) and pat[i + 1] == 'c' and pat[i + 3] == '}' {
+      i += 4
+      # the integer runs to where the pattern's next literal byte is (or the end)
+      var k = j
+      if k < len(name) and name[k] == '-' { k += 1 }
+      while k < len(name) and name[k] >= '0' and name[k] <= '9' { k += 1 }
+      if not pmk_is_int(name[j .. k]) { return false }
+      j = k
+    } else {
+      if j >= len(name) or name[j] != pat[i] { return false }
+      i += 1
+      j += 1
+    }
+  }
+  return j == len(name)
+}
+# the files of registry r in the map directory md
+function pmk_files(r: int, md: pointer) -> []pointer {
+  let out = new []pointer
+  let from = g_rg_from[r]
+  if g_rg_chunk[r] == 0 {
+    let p = `{md}/{from}`
+    if read_file(p) != null { push(out, p) }
+    return out
+  }
+  var last = -1
+  var i = 0
+  while i < len(from) {
+    if from[i] == '/' { last = i }
+    i += 1
+  }
+  var dir = md
+  var pat = from
+  if last >= 0 {
+    dir = `{md}/{from[0 .. last]}`
+    pat = from[last + 1 .. len(from)]
+  }
+  let names = pmk_list(dir, false)
+  i = 0
+  while i < len(names) {
+    if pmk_match(pat, names[i]) { push(out, `{dir}/{names[i]}`) }
+    i += 1
+  }
+  return out
+}
+
+# ---- one map's rows ---------------------------------------------------------------------------
+var g_pmk_reg: []int = new []int              # per entry read: its registry, key, record, file
+var g_pmk_key: []pointer = new []pointer
+var g_pmk_rec: []Node = new []Node
+var g_pmk_kline: []int = new []int
+var g_pmk_kcol: []int = new []int
+var g_pmk_file: []pointer = new []pointer
+var g_pmk_ref_reg: []pointer = new []pointer  # per cross-row @Ref met: the table, the key, where
+var g_pmk_ref_key: []pointer = new []pointer
+var g_pmk_ref_at: []Node = new []Node
+var g_pmk_mod: pointer = ""                   # the module of the registry being checked
+
+function pmk_read(r: int, path: pointer) -> void {
+  let src = read_file(path)
+  if src == null { return }
+  let saved_toks = toks
+  let saved_pi = pi
+  let saved_file = g_parse_file
+  let saved_parsing = g_parsing
+  g_parse_file = path
+  g_parsing = true
+  g_res_mode = true
+  lex_at(src, 1)
+  pi = 0
+  while true {
+    skipnl()
+    if toks[pi].kind == TK_EOF { break }
+    let kt = toks[pi]
+    let key = eat_id()
+    skipnl()
+    let rec = record()
+    push(g_pmk_reg, r)
+    push(g_pmk_key, key)
+    push(g_pmk_rec, rec)
+    push(g_pmk_kline, kt.line)
+    push(g_pmk_kcol, kt.col)
+    push(g_pmk_file, path)
+  }
+  g_res_mode = false
+  toks = saved_toks
+  pi = saved_pi
+  g_parse_file = saved_file
+  g_parsing = saved_parsing
+}
+
+# every map directory under the root
+function pm_check_maps() -> void {
+  if not g_pm_any or g_pm_no_maps { return }
+  let maps = pmk_list(g_pm_root, true)
+  var m = 0
+  while m < len(maps) {
+    pmk_map(`{g_pm_root}/{maps[m]}`)
+    m += 1
+  }
+}
+function pmk_map(md: pointer) -> void {
+  g_pmk_reg = new []int
+  g_pmk_key = new []pointer
+  g_pmk_rec = new []Node
+  g_pmk_kline = new []int
+  g_pmk_kcol = new []int
+  g_pmk_file = new []pointer
+  g_pmk_ref_reg = new []pointer
+  g_pmk_ref_key = new []pointer
+  g_pmk_ref_at = new []Node
+  var r = 0
+  while r < len(g_rg_name) {
+    if pm_is(r) {
+      let fs = pmk_files(r, md)
+      var i = 0
+      while i < len(fs) {
+        pmk_read(r, fs[i])
+        i += 1
+      }
+    }
+    r += 1
+  }
+  pmk_dups()
+  var e = 0
+  while e < len(g_pmk_rec) {
+    let rr = g_pmk_reg[e]
+    g_pmk_mod = module_of(g_rg_var[rr].file)
+    pmk_rec(g_pmk_rec[e], find_comp(g_rg_type[rr]), true)
+    e += 1
+  }
+  pmk_refs()
+}
+# a key written twice in one file
+function pmk_dups() -> void {
+  let xs = new []int
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_pmk_key) {
+    push(xs, i)
+    push(keys, `{g_pmk_file[i]}\n{g_pmk_key[i]}`)
+    i += 1
+  }
+  sc_sort(xs, keys)
+  i = 1
+  while i < len(xs) {
+    if (keys[xs[i]] == keys[xs[i - 1]]) {
+      let k = xs[i]
+      pmk_err(g_pmk_file[k], g_pmk_kline[k], g_pmk_kcol[k], `the key {g_pmk_key[k]} is written twice in this file`)
+    }
+    i += 1
+  }
+}
+# every cross-row @Ref met names a row of its table in this map
+function pmk_refs() -> void {
+  let xs = new []int
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_pmk_key) {
+    push(xs, i)
+    push(keys, `{g_rg_name[g_pmk_reg[i]]}\n{g_pmk_key[i]}`)
+    i += 1
+  }
+  sc_sort(xs, keys)
+  let sorted = new []pointer
+  i = 0
+  while i < len(xs) {
+    push(sorted, keys[xs[i]])
+    i += 1
+  }
+  i = 0
+  while i < len(g_pmk_ref_key) {
+    let want = `{g_pmk_ref_reg[i]}\n{g_pmk_ref_key[i]}`
+    if not pmk_sorted_has(sorted, want) {
+      pmk_err_at(g_pmk_ref_at[i], `there is no {g_pmk_ref_reg[i]} row {g_pmk_ref_key[i]} in this map`)
+    }
+    i += 1
+  }
+}
+function pmk_sorted_has(xs: []pointer, s: pointer) -> bool {
+  var lo = 0
+  var hi = len(xs) - 1
+  while lo <= hi {
+    let mid = (lo + hi) / 2
+    if (xs[mid] == s) { return true }
+    if reg_str_less(s, xs[mid]) { hi = mid - 1 } else { lo = mid + 1 }
+  }
+  return false
+}
+
+# ---- an entry against its record ----------------------------------------------------------------
+function pmk_rec(rec: Node, comp: Node, row: bool) -> void {
+  var i = 0
+  while i < len(rec.kids) {
+    let fi = rec.kids[i]
+    let fx = field_index(comp, fi.s)
+    if fx < 0 {
+      pmk_err_at(fi, `{vis_plain(comp.s)} has no field {fi.s}`)
+    } else if row and (fi.s == "key") {
+      pmk_err_at(fi, "a row's key is its entry's name - drop the key field")
+    } else {
+      pmk_value(fi.a, comp.kids[fx], comp.kids[fx].ty, fi)
+    }
+    i += 1
+  }
+}
+function pmk_desc(e: Node) -> pointer {
+  if e.kind == E_INT or (e.kind == E_UN and e.a != null and e.a.kind == E_INT) { return "an int" }
+  if e.kind == E_FLOAT or (e.kind == E_UN and e.a != null and e.a.kind == E_FLOAT) { return "a float" }
+  if e.kind == E_STR { return "a string" }
+  if e.kind == E_BOOL { return "true or false" }
+  if e.kind == E_ID { return `the name {e.s}` }
+  if e.kind == E_REC { return "a record" }
+  if e.kind == E_LIST { return "a list" }
+  if e.kind == E_FNREF { return `fn {e.s}` }
+  return "an expression (a map's value is a literal, a constant's name or fn name)"
+}
+function pmk_want(e: Node, f: Node, what: pointer) -> void {
+  pmk_err_at(e, `{f.s} wants {what}, not {pmk_desc(e)}`)
+}
+# a number literal's text (with its sign), or null
+function pmk_num(e: Node) -> pointer {
+  if e.kind == E_INT { return itoa(e.ival) }
+  if e.kind == E_FLOAT and e.s != null { return e.s }
+  if e.kind == E_UN and (e.s == "-") and e.a != null {
+    let t = pmk_num(e.a)
+    if t == null { return null }
+    if t[0] == '-' { return t[1 .. len(t)] }
+    return "-" + t
+  }
+  return null
+}
+# value e for field f of type ty; its attributes checked on each scalar
+function pmk_value(e: Node, f: Node, ty: pointer, at: Node) -> void {
+  let k = pm_kind(ty)
+  if k == PM_REC {
+    if e.kind != E_REC { pmk_want(e, f, "a record { ... }");  return }
+    pmk_rec(e, find_comp(ty), false)
+    return
+  }
+  if k == PM_LIST {
+    if e.kind != E_LIST { pmk_want(e, f, "a list [ ... ]");  return }
+    var i = 0
+    while i < len(e.kids) {
+      pmk_value(e.kids[i], f, slice_elem(ty), at)
+      i += 1
+    }
+    return
+  }
+  if k == PM_FN {
+    if e.kind != E_FNREF { pmk_want(e, f, "fn name");  return }
+    let cs = pm_fn_cands(ty, g_pmk_mod)
+    var i = 0
+    while i < len(cs) {
+      if (vis_plain(cs[i].s) == e.s) { return }
+      i += 1
+    }
+    pmk_err_at(e, `there is no function {e.s} of type {ty} (field {f.s})`)
+    return
+  }
+  if k == PM_BOOL {
+    if e.kind != E_BOOL { pmk_want(e, f, "true or false") }
+    return
+  }
+  if k == PM_STR {
+    if e.kind != E_STR { pmk_want(e, f, "a \"string\"");  return }
+    pmk_attrs_str(e, f)
+    return
+  }
+  # a number: a literal, or a constant by name
+  var text = pmk_num(e)
+  var cname: pointer = null
+  if text == null and e.kind == E_ID {
+    let c = pmc_lookup(e.s)
+    if c < 0 {
+      if pmc_find(e.s) != null { pmk_err_at(e, `the constant {e.s} is not one a map can name: its value is not a literal or a sum of them`) }
+      else { pmk_err_at(e, `unknown constant {e.s}`) }
+      return
+    }
+    if k == PM_INT and g_pmc_isf[c] {
+      pmk_err_at(e, `{e.s} is a float constant, and {f.s} wants an int`)
+      return
+    }
+    cname = e.s
+    if g_pmc_isf[c] { text = g_pmc_ftext[c] } else { text = itoa(g_pmc_iv[c]) }
+  }
+  if text == null {
+    if k == PM_INT { pmk_want(e, f, "an int") } else { pmk_want(e, f, "a float") }
+    return
+  }
+  if k == PM_INT and e.kind != E_ID and pmk_has_dot(text) {
+    pmk_want(e, f, "an int")
+    return
+  }
+  pmk_attrs_num(e, f, text, cname)
+}
+function pmk_has_dot(t: pointer) -> bool {
+  var i = 0
+  while i < len(t) {
+    if t[i] == '.' or t[i] == 'e' or t[i] == 'E' { return true }
+    i += 1
+  }
+  return false
+}
+
+# ---- attributes ---------------------------------------------------------------------------------
+function pmk_attrs_str(e: Node, f: Node) -> void {
+  if f.at < 0 { return }
+  var j = g_at_start[f.at]
+  while j < g_at_start[f.at] + g_at_count[f.at] {
+    let a = g_at_name[j]
+    if (a == "OneOf") and g_at_strs[j] {
+      let words = at_arg_names(g_at_args[j])
+      if not at_word_in(e.s, words) { pmk_err_at(e, `{f.s} is "{e.s}", and it is @OneOf({at_words_text(words)})`) }
+    }
+    if (a == "Ref") and pm_named(g_at_first[j]) and len(e.s) > 0 {
+      push(g_pmk_ref_reg, g_at_first[j])
+      push(g_pmk_ref_key, e.s)
+      push(g_pmk_ref_at, e)
+    }
+    j += 1
+  }
+}
+function pmk_attrs_num(e: Node, f: Node, text: pointer, cname: pointer) -> void {
+  if f.at < 0 { return }
+  var j = g_at_start[f.at]
+  while j < g_at_start[f.at] + g_at_count[f.at] {
+    let a = g_at_name[j]
+    if a == "Range" {
+      let ns = pmk_arg_nums(g_at_args[j])
+      if len(ns) == 2 and (pmk_cmp(text, ns[0]) < 0 or pmk_cmp(text, ns[1]) > 0) {
+        pmk_err_at(e, `{f.s} is {text}, outside its @Range({ns[0]}, {ns[1]})`)
+      }
+    }
+    if (a == "Ref") and not g_at_unres[j] {
+      let r = reg_find(g_at_first[j])
+      if r >= 0 and not pm_is(r) {
+        let n = len(reg_order(r))
+        if pmk_cmp(text, "-1") < 0 or pmk_cmp(text, itoa(n)) >= 0 {
+          pmk_err_at(e, `{f.s} is {text}, and @Ref({g_rg_name[r]}) has {itoa(n)} entries (0 to {itoa(n - 1)}, or -1 for none)`)
+        }
+      }
+    }
+    if (a == "OneOf") and not g_at_strs[j] { pmk_oneof(e, f, j, text, cname) }
+    j += 1
+  }
+}
+# @OneOf(GR_) or @OneOf(A, B): a name must be one of them; a literal must be one's value
+function pmk_oneof(e: Node, f: Node, j: int, text: pointer, cname: pointer) -> void {
+  let names = at_arg_names(g_at_args[j])
+  let first = g_at_first[j]
+  let prefix = g_at_nargs[j] == 1 and first[len(first) - 1] == '_'
+  if cname != null {
+    if prefix and str_starts(cname, first) { return }
+    if not prefix and at_word_in(cname, names) { return }
+  } else {
+    var i = 0
+    while i < len(g_pmc_names) {
+      var fits = false
+      if prefix { fits = str_starts(g_pmc_names[i], first) } else { fits = at_word_in(g_pmc_names[i], names) }
+      if fits and not g_pmc_isf[i] and (itoa(g_pmc_iv[i]) == text) { return }
+      i += 1
+    }
+  }
+  var shown = text
+  if cname != null { shown = cname }
+  var list = first
+  if not prefix { list = at_words_text(names) }
+  pmk_err_at(e, `{f.s} is {shown}, and it is @OneOf({list})`)
+}
+# @Range's two numbers, as written
+function pmk_arg_nums(args: pointer) -> []pointer {
+  let out = new []pointer
+  var i = 1
+  let n = len(args)
+  while i < n {
+    while i < n and (args[i] == ' ' or args[i] == ',') { i += 1 }
+    let a = i
+    while i < n and args[i] != ',' and args[i] != ']' and args[i] != ' ' { i += 1 }
+    if i > a { push(out, args[a .. i]) }
+    if i < n and args[i] == ']' { return out }
+  }
+  return out
+}
+# two decimal numbers compared exactly, from their text: <0, 0, >0 (an exponent is not read)
+function pmk_cmp(a: pointer, b: pointer) -> int {
+  let na = len(a) > 0 and a[0] == '-'
+  let nb = len(b) > 0 and b[0] == '-'
+  let za = pmk_zero(a)
+  let zb = pmk_zero(b)
+  var sa = 1
+  if na and not za { sa = -1 }
+  if za { sa = 0 }
+  var sb = 1
+  if nb and not zb { sb = -1 }
+  if zb { sb = 0 }
+  if sa != sb {
+    if sa < sb { return -1 }
+    return 1
+  }
+  if sa == 0 { return 0 }
+  let m = pmk_mag(a, b)
+  if sa < 0 { return 0 - m }
+  return m
+}
+function pmk_zero(t: pointer) -> bool {
+  var i = 0
+  while i < len(t) {
+    if t[i] >= '1' and t[i] <= '9' { return false }
+    if t[i] == 'e' or t[i] == 'E' { return true }
+    i += 1
+  }
+  return true
+}
+# |a| against |b|
+function pmk_mag(a: pointer, b: pointer) -> int {
+  let ia = pmk_ipart(a)
+  let ib = pmk_ipart(b)
+  if len(ia) != len(ib) {
+    if len(ia) < len(ib) { return -1 }
+    return 1
+  }
+  var i = 0
+  while i < len(ia) {
+    if ia[i] != ib[i] {
+      if ia[i] < ib[i] { return -1 }
+      return 1
+    }
+    i += 1
+  }
+  let fa = pmk_fpart(a)
+  let fb = pmk_fpart(b)
+  i = 0
+  while i < len(fa) or i < len(fb) {
+    var ca = '0'
+    var cb = '0'
+    if i < len(fa) { ca = fa[i] }
+    if i < len(fb) { cb = fb[i] }
+    if ca != cb {
+      if ca < cb { return -1 }
+      return 1
+    }
+    i += 1
+  }
+  return 0
+}
+# the integer digits, leading zeros gone
+function pmk_ipart(t: pointer) -> pointer {
+  var i = 0
+  if len(t) > 0 and (t[0] == '-' or t[0] == '+') { i = 1 }
+  while i < len(t) - 1 and t[i] == '0' and t[i + 1] >= '0' and t[i + 1] <= '9' { i += 1 }
+  var j = i
+  while j < len(t) and t[j] >= '0' and t[j] <= '9' { j += 1 }
+  return t[i .. j]
+}
+function pmk_fpart(t: pointer) -> pointer {
+  var i = 0
+  while i < len(t) and t[i] != '.' { i += 1 }
+  if i >= len(t) { return "" }
+  var j = i + 1
+  while j < len(t) and t[j] >= '0' and t[j] <= '9' { j += 1 }
+  return t[i + 1 .. j]
+}

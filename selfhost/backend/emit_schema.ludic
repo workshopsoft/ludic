@@ -43,7 +43,9 @@ function schema_buf() -> Buf {
   sc_components(b)
   buf_puts(b, "\n  ],\n  \"natives\": [")
   sc_natives(b)
-  buf_puts(b, "\n  ]\n}\n")
+  buf_puts(b, "\n  ],\n  \"units\": [")
+  sc_units(b)
+  buf_puts(b, "]\n}\n")
   return b
 }
 
@@ -189,6 +191,7 @@ function sc_attrs(b: Buf, g: int) -> void {
       buf_puts(b, ", \"args\": ")
       buf_puts(b, g_at_args[j])
       if g_at_unres[j] { buf_puts(b, ", \"unresolved\": true") }
+      if (g_at_name[j] == "Ref") and g_at_first[j] != null and pm_named(g_at_first[j]) { buf_puts(b, ", \"scope\": \"map\"") }
       buf_puts(b, "}")
       j += 1
     }
@@ -365,7 +368,7 @@ function sc_registry(b: Buf, r: int, first: bool) -> void {
   buf_puts(b, ", \"record\": ")
   jq_put(b, sc_ty(g_rg_type[r]))
   buf_puts(b, ", \"prefix\": ")
-  jq_put(b, g_rg_prefix[r])
+  if pm_is(r) { buf_puts(b, "null") } else { jq_put(b, g_rg_prefix[r]) }   # a map's rows have no constants
   buf_puts(b, ", \"source\": ")
   sc_str(b, g_rg_from[r])
   buf_puts(b, ", \"open\": ")
@@ -374,6 +377,14 @@ function sc_registry(b: Buf, r: int, first: bool) -> void {
   sc_bool(b, v.vis == 1)
   buf_puts(b, ", \"module\": ")
   sc_str(b, sc_mod(v.file))
+  if pm_is(r) {                                     # permap.ludic: read per map at run time, per chunk when chunked
+    buf_puts(b, ", \"scope\": \"map\", \"chunk\": ")
+    if g_rg_chunk[r] > 0 { buf_puti(b, g_rg_chunk[r]) } else { buf_puts(b, "null") }
+    buf_puts(b, ", \"maps\": ")
+    jq_put(b, g_pm_root)
+  } else {
+    buf_puts(b, ", \"scope\": \"game\", \"chunk\": null")
+  }
   buf_puts(b, ",\n     ")
   sc_at(b, v.file, v.line, v.col)
   buf_puts(b, ", \"attributes\": ")
@@ -604,4 +615,15 @@ function sc_function(b: Buf, d: Node, first: bool) -> void {
   buf_puts(b, "], \"doc\": ")
   sc_str(b, sc_doc(d.file, d.pos))
   buf_puts(b, "}")
+}
+
+# @Unit's canonical spellings (attrs.ludic): what an editor offers and a converter reads
+function sc_units(b: Buf) -> void {
+  let us = at_units()
+  var i = 0
+  while i < len(us) {
+    if i > 0 { buf_puts(b, ", ") }
+    jq_put(b, us[i])
+    i += 1
+  }
 }

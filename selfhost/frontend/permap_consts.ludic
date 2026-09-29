@@ -1,0 +1,182 @@
+# permap_consts.ludic — a map's row names a constant (MDL_TENT2, SP_DEER, a registry's KEY) and it is
+# resolved when the map loads. So a program with a @PerMap registry carries its int and float
+# constants by name: `lres_consts__()` returns them as one text, "NAME i 12;NAME f 1.5;", sorted by
+# name, which lres.ludic indexes once and searches in place. A constant is in it when the compiler
+# can work out its value here - a literal, a sum or a shift of literals and other constants, a
+# registry's index; anything else (a call, a field) is left out, and a row naming it fails to load
+# as "unknown constant", as `ludicc --check` says it will. When two modules each have a private
+# constant of one name, the first declared is the one a map reads.
+var g_pmc_ival: int = 0
+var g_pmc_fval: pointer = null
+var g_pmc_names: []pointer = new []pointer    # the table: plain name, whether a float, its value
+var g_pmc_isf: []bool = new []bool
+var g_pmc_iv: []int = new []int
+var g_pmc_ftext: []pointer = new []pointer
+
+# every constant of the program's own files by name (as written), sorted; the first declared first
+var g_pmc_all: []pointer = new []pointer
+var g_pmc_node: []Node = new []Node
+function pmc_index() -> void {
+  let xs = new []int
+  let keys = new []pointer
+  let nodes = new []Node
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_CONST and d.s != null and d.file != null and not is_runtime_file(d.file) {
+      push(xs, len(nodes))
+      push(keys, vis_plain(d.s))
+      push(nodes, d)
+    }
+    i += 1
+  }
+  sc_sort(xs, keys)
+  g_pmc_all = new []pointer
+  g_pmc_node = new []Node
+  i = 0
+  while i < len(xs) {
+    push(g_pmc_all, keys[xs[i]])
+    push(g_pmc_node, nodes[xs[i]])
+    i += 1
+  }
+}
+# the const declared as name (as written), or null
+function pmc_find(name: pointer) -> Node {
+  var lo = 0
+  var hi = len(g_pmc_all) - 1
+  var found = -1
+  while lo <= hi {
+    let mid = (lo + hi) / 2
+    let m = g_pmc_all[mid]
+    if (m == name) {
+      found = mid
+      hi = mid - 1
+    } else if reg_str_less(name, m) { hi = mid - 1 } else { lo = mid + 1 }
+  }
+  if found < 0 { return null }
+  return g_pmc_node[found]
+}
+# an int expression's value into g_pmc_ival; false when it is not one this can work out
+function pmc_int(e: Node, depth: int) -> bool {
+  if e == null or depth > 24 { return false }
+  if e.kind == E_INT {
+    g_pmc_ival = e.ival
+    return true
+  }
+  if e.kind == E_UN and (e.s == "-") {
+    if not pmc_int(e.a, depth + 1) { return false }
+    g_pmc_ival = 0 - g_pmc_ival
+    return true
+  }
+  if e.kind == E_UN and (e.s == "~") {
+    if not pmc_int(e.a, depth + 1) { return false }
+    g_pmc_ival = ~g_pmc_ival
+    return true
+  }
+  if e.kind == E_ID {
+    let d = pmc_find(e.s)
+    if d == null or not (d.ty == "int") { return false }
+    return pmc_int(d.a, depth + 1)
+  }
+  if e.kind == E_BIN {
+    if not pmc_int(e.a, depth + 1) { return false }
+    let a = g_pmc_ival
+    if not pmc_int(e.b, depth + 1) { return false }
+    let b = g_pmc_ival
+    let op = e.s
+    if (op == "+") { g_pmc_ival = a + b;  return true }
+    if (op == "-") { g_pmc_ival = a - b;  return true }
+    if (op == "*") { g_pmc_ival = a * b;  return true }
+    if (op == "/") and b != 0 { g_pmc_ival = a / b;  return true }
+    if (op == "%") and b != 0 { g_pmc_ival = a % b;  return true }
+    if (op == "<<") { g_pmc_ival = a << b;  return true }
+    if (op == ">>") { g_pmc_ival = a >> b;  return true }
+    if (op == "&") { g_pmc_ival = a & b;  return true }
+    if (op == "|") { g_pmc_ival = a | b;  return true }
+    if (op == "^") { g_pmc_ival = a ^ b;  return true }
+  }
+  return false
+}
+# a float constant's value as text (strtod reads it at run time): a literal, maybe negated, or
+# another float constant
+function pmc_float(e: Node, depth: int) -> bool {
+  if e == null or depth > 24 { return false }
+  if e.kind == E_FLOAT and e.s != null {
+    g_pmc_fval = e.s
+    return true
+  }
+  if e.kind == E_INT {
+    g_pmc_fval = itoa(e.ival)
+    return true
+  }
+  if e.kind == E_UN and (e.s == "-") {
+    if not pmc_float(e.a, depth + 1) { return false }
+    if g_pmc_fval[0] == '-' { g_pmc_fval = g_pmc_fval[1 .. len(g_pmc_fval)] } else { g_pmc_fval = "-" + g_pmc_fval }
+    return true
+  }
+  if e.kind == E_ID {
+    let d = pmc_find(e.s)
+    if d == null or not (d.ty == "float") { return false }
+    return pmc_float(d.a, depth + 1)
+  }
+  return false
+}
+# every constant a map may name, sorted, first of each name kept
+function pmc_collect() -> void {
+  pmc_index()
+  g_pmc_names = new []pointer
+  g_pmc_isf = new []bool
+  g_pmc_iv = new []int
+  g_pmc_ftext = new []pointer
+  var i = 0
+  while i < len(g_pmc_all) {
+    let d = g_pmc_node[i]
+    let nm = g_pmc_all[i]
+    let first = i == 0 or not (g_pmc_all[i - 1] == nm)
+    if first and (d.ty == "int") and pmc_int(d.a, 0) {
+      push(g_pmc_names, nm)
+      push(g_pmc_isf, false)
+      push(g_pmc_iv, g_pmc_ival)
+      push(g_pmc_ftext, "")
+    } else if first and (d.ty == "float") and pmc_float(d.a, 0) {
+      push(g_pmc_names, nm)
+      push(g_pmc_isf, true)
+      push(g_pmc_iv, 0)
+      push(g_pmc_ftext, g_pmc_fval)
+    }
+    i += 1
+  }
+}
+# the index of name in the sorted table, or -1
+function pmc_lookup(name: pointer) -> int {
+  var lo = 0
+  var hi = len(g_pmc_names) - 1
+  while lo <= hi {
+    let mid = (lo + hi) / 2
+    let m = g_pmc_names[mid]
+    if (m == name) { return mid }
+    if reg_str_less(name, m) { hi = mid - 1 } else { lo = mid + 1 }
+  }
+  return -1
+}
+# lres_consts__(), in the runtime's name space
+function pm_consts_gen() -> void {
+  pmc_collect()
+  let b = buf_new()
+  buf_puts(b, "function lres_consts__() -> string {\n  return \"")
+  var i = 0
+  while i < len(g_pmc_names) {
+    buf_puts(b, g_pmc_names[i])
+    if g_pmc_isf[i] {
+      buf_puts(b, " f ")
+      buf_puts(b, g_pmc_ftext[i])
+    } else {
+      buf_puts(b, " i ")
+      buf_puts(b, itoa(g_pmc_iv[i]))
+    }
+    buf_puts(b, ";")
+    i += 1
+  }
+  buf_puts(b, "\"\n}\n")
+  pm_parse_src(buf_str(b), "runtime/native/lres_consts.ludic", 1, 0)
+}

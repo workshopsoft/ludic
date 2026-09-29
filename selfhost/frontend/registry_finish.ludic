@@ -8,14 +8,16 @@ function registries_finish() -> void {
       g_parsing = false
       perr(`def {g_df_reg[d]} {g_df_key[d]}: there is no registry {g_df_reg[d]}`)
     }
+    pm_def_check(d)                                # permap.ludic: a map-scoped registry takes no def
     reg_def_check(d)                               # registry_open.ludic: open, and visible
     d += 1
   }
   var r = 0
   while r < len(g_rg_name) {
-    reg_fill(r)
+    if not pm_is(r) { reg_fill(r) }
     r += 1
   }
+  pm_finish()                                      # permap.ludic: each map-scoped registry's state and verbs
 }
 function reg_fill(r: int) -> void {
   let v = g_rg_var[r]

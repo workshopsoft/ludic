@@ -1,0 +1,481 @@
+# permap_gen.ludic — what a @PerMap registry becomes: Ludic, written here and read like the rest
+# (as reg_find_fn writes a registry's find), in the registry's file and module, exported with it.
+#
+# For `@PerMap registry Props of PropRow from "props.lres"`:
+#   state Props { rows: []PropRow, map: string, err: string, ... }       the table, one per program
+#   props_load(st: mut Props, map: string) -> bool                         <root>/<map>/props.lres
+#   props_clear(st: mut Props), props_find(st: Props, key: string) -> int, props_path(st: Props, rel: string) -> string
+# For `@PerMap @Chunked(64) registry Instances of InstRow from "instances/{cx}_{cz}.lres"`:
+#   property InstancesChunk { cx: int, cz: int, on: bool, rows: []InstRow, ... }
+#   state Instances { chunks: []InstancesChunk, map: string, err: string, ... }
+#   instances_in(st, map, cx, cz) -> int, instances_out(st, cx, cz), instances_slot(st, cx, cz) -> int,
+#   instances_find(st, slot, key) -> int, instances_clear(st), instances_path(st, rel) -> string
+#
+# THE TABLE OWNS ITS ROWS, and everything in them. A pool (R__Pool, one per table or chunk slot)
+# keeps every row record the table ever made, every record a row's list ever took (by type, handed
+# out again from the start on each load), and a template of each record type made once with its
+# defaults. A load rewinds the pool, clears `rows` and each row's lists in place and refills them;
+# a record is made only when a load needs more of that type than any load before it. So nothing
+# may keep a row, a row's list or a chunk's rows across a load or an _out - keep the key or the
+# index. A string is interned, so a string field is safe to keep.
+
+# parse generated source as declarations of `file` at `line`, each exported when vis is 1
+# (LUDIC_PERMAP_SRC=<file>: what was written, appended there - to read what a table became)
+function pm_parse_src(src: pointer, file: pointer, line: int, vis: int) -> void {
+  let dump = getenv("LUDIC_PERMAP_SRC")
+  if dump != null {
+    let df = file_open(dump, "ab")
+    if df != null {
+      file_write(df, src, len(src))
+      file_close(df)
+    }
+  }
+  let saved_toks = toks
+  let saved_pi = pi
+  let saved_file = g_parse_file
+  let saved_parsing = g_parsing
+  g_parse_file = file
+  g_parsing = true
+  lex_at(src, line)
+  pi = 0
+  let at = len(prog)
+  while true {
+    skipnl()
+    if toks[pi].kind == TK_EOF { break }
+    parse_one_decl()
+  }
+  var k = at
+  while k < len(prog) {
+    prog[k].vis = vis
+    k += 1
+  }
+  toks = saved_toks
+  pi = saved_pi
+  g_parse_file = saved_file
+  g_parsing = saved_parsing
+}
+function pm_l(b: Buf, s: pointer) -> void {
+  buf_puts(b, s)
+  buf_puts(b, "\n")
+}
+# a string literal of s (a path, a type), quotes and escapes included
+function pm_q(s: pointer) -> pointer {
+  let b = buf_new()
+  buf_putc(b, '"')
+  var i = 0
+  while i < len(s) {
+    let c = s[i]
+    if c == '"' or c == 92 { buf_putc(b, 92) }
+    buf_putc(b, c)
+    i += 1
+  }
+  buf_putc(b, '"')
+  return buf_str(b)
+}
+
+function pm_gen(r: int) -> void {
+  let v = g_rg_var[r]
+  let R = g_rg_name[r]
+  let sn = pm_snake(R)
+  let chunked = g_rg_chunk[r] > 0
+  let b = buf_new()
+  pm_gen_pool(b, R)
+  if chunked { pm_gen_chunk_types(b, R, g_rg_type[r]) } else { pm_gen_state(b, R, g_rg_type[r]) }
+  pm_gen_records(b, sn, R)
+  pm_gen_fns(b, sn, module_of(v.file))
+  pm_gen_rows(b, sn, R, g_rg_type[r])
+  if chunked { pm_gen_chunk_verbs(b, r, sn, R) } else { pm_gen_whole_verbs(b, r, sn, R) }
+  pm_l(b, `@alloc_ok("a path handed to a caller at load time - for an asset a row names - never in a frame")`)
+  pm_l(b, `function {sn}_path(st: {R}, rel: string) -> string {{`)
+  pm_l(b, `  return {pm_q(g_pm_root + "/")} + st.map + "/" + rel`)
+  pm_l(b, "}")
+  pm_parse_src(buf_str(b), v.file, v.line, v.vis)
+}
+
+# the pool: every row and every list's record the table ever made, and each type's template
+function pm_gen_pool(b: Buf, R: pointer) -> void {
+  pm_l(b, `property {R}__Pool {{`)
+  pm_l(b, `  rows: []{g_pm_recs[0]} = new []{g_pm_recs[0]}`)
+  var i = 0
+  while i < len(g_pm_recs) {
+    let P = g_pm_recs[i]
+    pm_l(b, `  t_{P}: {P} = new {P}`)
+    if g_pm_pooled[i] {
+      pm_l(b, `  p_{P}: []{P} = new []{P}`)
+      pm_l(b, `  c_{P}: int = 0`)
+    }
+    i += 1
+  }
+  pm_l(b, "}")
+}
+function pm_gen_state(b: Buf, R: pointer, T: pointer) -> void {
+  pm_l(b, `state {R} {{`)
+  pm_l(b, `  rows: []{T} = new []{T}`)
+  pm_l(b, `  map: string = ""`)
+  pm_l(b, `  err: string = ""`)
+  pm_l(b, `  lt__: LresTree = new LresTree`)
+  pm_l(b, `  pl__: {R}__Pool = new {R}__Pool`)
+  pm_l(b, `  hs__: LresHash = new LresHash`)
+  pm_l(b, "}")
+}
+function pm_gen_chunk_types(b: Buf, R: pointer, T: pointer) -> void {
+  pm_l(b, `property {R}Chunk {{`)
+  pm_l(b, `  cx: int = 0`)
+  pm_l(b, `  cz: int = 0`)
+  pm_l(b, `  on: bool = false`)
+  pm_l(b, `  rows: []{T} = new []{T}`)
+  pm_l(b, `  pl__: {R}__Pool = new {R}__Pool`)
+  pm_l(b, `  hs__: LresHash = new LresHash`)
+  pm_l(b, "}")
+  pm_l(b, `state {R} {{`)
+  pm_l(b, `  chunks: []{R}Chunk = new []{R}Chunk`)
+  pm_l(b, `  map: string = ""`)
+  pm_l(b, `  err: string = ""`)
+  pm_l(b, `  lt__: LresTree = new LresTree`)
+  pm_l(b, "}")
+}
+
+# per record type: take one from the pool, reset one to its defaults, fill one from a node
+function pm_gen_records(b: Buf, sn: pointer, R: pointer) -> void {
+  pm_l(b, `function {sn}__rewind(pl: {R}__Pool) -> void {{`)
+  var i = 0
+  while i < len(g_pm_recs) {
+    if g_pm_pooled[i] { pm_l(b, `  pl.c_{g_pm_recs[i]} = 0`) }
+    i += 1
+  }
+  pm_l(b, "}")
+  i = 0
+  while i < len(g_pm_recs) {
+    let P = g_pm_recs[i]
+    if g_pm_pooled[i] {
+      pm_l(b, `@alloc_ok("a {P} past the most a load of this table has used: made once, kept in its pool (high water)")`)
+      pm_l(b, `function {sn}__take_{P}(pl: {R}__Pool) -> {P} {{`)
+      pm_l(b, `  if pl.c_{P} < len(pl.p_{P}) {{`)
+      pm_l(b, `    let r = pl.p_{P}[pl.c_{P}]`)
+      pm_l(b, `    pl.c_{P} += 1`)
+      pm_l(b, "    return r")
+      pm_l(b, "  }")
+      pm_l(b, `  let r = new {P}`)
+      pm_l(b, `  push(pl.p_{P}, r)`)
+      pm_l(b, `  pl.c_{P} += 1`)
+      pm_l(b, "  return r")
+      pm_l(b, "}")
+    }
+    pm_gen_reset(b, sn, R, P)
+    pm_gen_fill(b, sn, R, P)
+    i += 1
+  }
+}
+# every field back to the template's value; a list emptied in place (its scalars from the template
+# again), a nested record reset in place - never the template's own list or record, which would alias
+function pm_gen_reset(b: Buf, sn: pointer, R: pointer, P: pointer) -> void {
+  let c = find_comp(P)
+  pm_l(b, `@alloc_ok("a record's own list or record, made the first time the record is reset (high water)")`)
+  pm_l(b, `function {sn}__reset_{P}(pl: {R}__Pool, r: {P}) -> void {{`)
+  pm_l(b, `  let d = pl.t_{P}`)
+  var i = 0
+  while i < len(c.kids) {
+    let f = c.kids[i]
+    let k = pm_kind(f.ty)
+    let x = f.s
+    if k == PM_LIST {
+      pm_l(b, `  if r.{x} == null {{ r.{x} = new {f.ty} }} else {{ List.clear(r.{x}) }}`)
+      if pm_kind(slice_elem(f.ty)) != PM_REC {
+        pm_l(b, `  if d.{x} != null {{`)
+        pm_l(b, `    var i{itoa(i)} = 0`)
+        pm_l(b, `    while i{itoa(i)} < len(d.{x}) {{`)
+        pm_l(b, `      push(r.{x}, d.{x}[i{itoa(i)}])`)
+        pm_l(b, `      i{itoa(i)} += 1`)
+        pm_l(b, "    }")
+        pm_l(b, "  }")
+      }
+    } else if k == PM_REC {
+      pm_l(b, `  if r.{x} == null {{ r.{x} = new {f.ty} }}`)
+      pm_l(b, `  {sn}__reset_{f.ty}(pl, r.{x})`)
+    } else {
+      pm_l(b, `  r.{x} = d.{x}`)
+    }
+    i += 1
+  }
+  pm_l(b, "}")
+}
+# a record node's fields into r; a wrong one is the reader's error (lres_ok says so)
+function pm_gen_fill(b: Buf, sn: pointer, R: pointer, P: pointer) -> void {
+  let c = find_comp(P)
+  pm_l(b, `@alloc_ok("a row's list grows only past the most it has held (high water)")`)
+  pm_l(b, `function {sn}__fill_{P}(t: LresTree, pl: {R}__Pool, r: {P}, n: int) -> void {{`)
+  pm_l(b, "  var c = lres_kid(t, n)")
+  pm_l(b, "  while c >= 0 and lres_ok(t) {")
+  pm_l(b, "    let f = lres_name(t, c)")
+  var i = 0
+  while i < len(c.kids) {
+    let fd = c.kids[i]
+    var els = "else "
+    if i == 0 { els = "" }
+    pm_l(b, `    {els}if f == {pm_q(fd.s)} {{`)
+    pm_gen_field(b, sn, fd, i)
+    pm_l(b, "    }")
+    i += 1
+  }
+  if len(c.kids) > 0 { pm_l(b, `    else {{ lres_no_field(t, c, {pm_q(P)}) }}`) } else { pm_l(b, `    lres_no_field(t, c, {pm_q(P)})`) }
+  pm_l(b, "    c = lres_next(t, c)")
+  pm_l(b, "  }")
+  pm_l(b, "}")
+}
+function pm_scalar_read(k: int) -> pointer {
+  if k == PM_INT { return "lres_int" }
+  if k == PM_FLOAT { return "lres_float" }
+  if k == PM_BOOL { return "lres_bool" }
+  return "lres_str"
+}
+function pm_gen_field(b: Buf, sn: pointer, fd: Node, i: int) -> void {
+  let k = pm_kind(fd.ty)
+  let x = fd.s
+  let n = itoa(i)
+  if k == PM_INT or k == PM_FLOAT or k == PM_BOOL or k == PM_STR {
+    pm_l(b, `      r.{x} = {pm_scalar_read(k)}(t, c)`)
+    return
+  }
+  if k == PM_FN {
+    pm_l(b, `      r.{x} = {sn}__fn_{itoa(pm_fn_index(fd.ty))}(t, c, r.{x})`)
+    return
+  }
+  if k == PM_REC {
+    pm_l(b, `      if lres_is_rec(t, c) {{ {sn}__fill_{fd.ty}(t, pl, r.{x}, c) }}`)
+    return
+  }
+  let el = slice_elem(fd.ty)
+  let ek = pm_kind(el)
+  pm_l(b, "      if lres_is_list(t, c) {")
+  pm_l(b, `        List.clear(r.{x})`)
+  pm_l(b, `        var k{n} = lres_kid(t, c)`)
+  pm_l(b, `        while k{n} >= 0 {{`)
+  if ek == PM_REC {
+    pm_l(b, `          let e{n} = {sn}__take_{el}(pl)`)
+    pm_l(b, `          {sn}__reset_{el}(pl, e{n})`)
+    pm_l(b, `          if lres_is_rec(t, k{n}) {{ {sn}__fill_{el}(t, pl, e{n}, k{n}) }}`)
+    pm_l(b, `          push(r.{x}, e{n})`)
+  } else {
+    pm_l(b, `          push(r.{x}, {pm_scalar_read(ek)}(t, k{n}))`)
+  }
+  pm_l(b, `          k{n} = lres_next(t, k{n})`)
+  pm_l(b, "        }")
+  pm_l(b, "      }")
+}
+
+# per fn type a field holds: `fn name` -> the function, among the program's functions of that type
+# the registry's module can see (the schema's fn_type)
+function pm_gen_fns(b: Buf, sn: pointer, mod: pointer) -> void {
+  var i = 0
+  while i < len(g_pm_fnty) {
+    let ft = g_pm_fnty[i]
+    pm_l(b, `function {sn}__fn_{itoa(i)}(t: LresTree, c: int, cur: {ft}) -> {ft} {{`)
+    pm_l(b, "  let nm = lres_fn(t, c)")
+    let cands = pm_fn_cands(ft, mod)
+    var j = 0
+    while j < len(cands) {
+      let nm = vis_plain(cands[j].s)
+      pm_l(b, `  if nm == {pm_q(nm)} {{ return fn {nm} }}`)
+      j += 1
+    }
+    pm_l(b, `  if len(nm) > 0 {{ lres_no_fn(t, c, {pm_q(ft)}) }}`)
+    pm_l(b, "  return cur")
+    pm_l(b, "}")
+    i += 1
+  }
+}
+# a function's type as a fn value of it has: its parameters past the states, its result
+function pm_fn_type(d: Node) -> pointer {
+  var args: pointer = ""
+  var k = 0
+  while k < len(d.kids) {
+    let p = d.kids[k]
+    if p.kind == N_PARAM and not (is_state_ty(p.ty) or is_state_ty(vis_plain(p.ty))) {
+      if len(args) > 0 { args = args + "," }
+      args = args + p.ty
+    }
+    k += 1
+  }
+  var ret: pointer = "void"
+  if d.ty != null { ret = d.ty }
+  return "fn(" + args + ")->" + ret
+}
+# the functions of type ft that module mod can name: its own, the runtime's, another's exported one
+# it `uses` - written in the program, not generic
+function pm_fn_cands(ft: pointer, mod: pointer) -> []Node {
+  let out = new []Node
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_FN and d.s != null and d.tps == null and d.pos >= 0 and d.file != null and not is_runtime_file(d.file) {
+      if (pm_fn_type(d) == ft) and pm_fn_visible(d, mod) { push(out, d) }
+    }
+    i += 1
+  }
+  return out
+}
+function pm_fn_visible(d: Node, mod: pointer) -> bool {
+  let to = module_of(d.file)
+  if not module_may_use(mod, module_for_uses(d.file)) { return false }
+  if (to == "") or (to == mod) { return true }
+  return d.vis == 1 or module_friend_of(mod, to)
+}
+
+# the rows of one file: each entry a row, reset, filled and keyed; the keys hashed as they come
+function pm_gen_rows(b: Buf, sn: pointer, R: pointer, T: pointer) -> void {
+  pm_l(b, `@alloc_ok("a row past the most this table has held: made once, kept in its pool (high water)")`)
+  pm_l(b, `function {sn}__row(pl: {R}__Pool, i: int) -> {T} {{`)
+  pm_l(b, "  if i < len(pl.rows) { return pl.rows[i] }")
+  pm_l(b, `  let r = new {T}`)
+  pm_l(b, "  push(pl.rows, r)")
+  pm_l(b, "  return r")
+  pm_l(b, "}")
+  pm_l(b, `@alloc_ok("the rows list grows only past the most rows this table has held (high water)")`)
+  pm_l(b, `function {sn}__fill_rows(t: LresTree, pl: {R}__Pool, rows: []{T}, hs: LresHash) -> bool {{`)
+  pm_l(b, "  List.clear(rows)")
+  pm_l(b, `  {sn}__rewind(pl)`)
+  pm_l(b, "  lres_hash_reset(hs, lres_entries(t))")
+  pm_l(b, "  var e = lres_top(t)")
+  pm_l(b, "  var i = 0")
+  pm_l(b, "  while e >= 0 and lres_ok(t) {")
+  pm_l(b, `    let r = {sn}__row(pl, i)`)
+  pm_l(b, `    {sn}__reset_{T}(pl, r)`)
+  pm_l(b, `    {sn}__fill_{T}(t, pl, r, e)`)
+  pm_l(b, "    r.key = lres_name(t, e)")
+  pm_l(b, "    if lres_hash_put(hs, r.key, i) >= 0 { lres_dup(t, e) }")
+  pm_l(b, "    push(rows, r)")
+  pm_l(b, "    i += 1")
+  pm_l(b, "    e = lres_next(t, e)")
+  pm_l(b, "  }")
+  pm_l(b, "  if lres_ok(t) { return true }")
+  pm_l(b, `  {sn}__drop(pl, rows, hs)`)
+  pm_l(b, "  return false")
+  pm_l(b, "}")
+  pm_l(b, `function {sn}__drop(pl: {R}__Pool, rows: []{T}, hs: LresHash) -> void {{`)
+  pm_l(b, "  List.clear(rows)")
+  pm_l(b, `  {sn}__rewind(pl)`)
+  pm_l(b, "  lres_hash_reset(hs, 0)")
+  pm_l(b, "}")
+}
+# `<root>/<map>/` and the file, with {cx} / {cz} written as the chunk's numbers, into the reader's path
+function pm_gen_path(b: Buf, r: int) -> void {
+  pm_l(b, `  lres_path_begin(t, {pm_q(g_pm_root + "/")})`)
+  pm_l(b, "  lres_path_add(t, map)")
+  pm_l(b, `  lres_path_add(t, "/")`)
+  let from = g_rg_from[r]
+  var a = 0
+  var i = 0
+  while i < len(from) {
+    if from[i] == '{' and i + 3 < len(from) and from[i + 1] == 'c' and (from[i + 2] == 'x' or from[i + 2] == 'z') and from[i + 3] == '}' {
+      if i > a { pm_l(b, `  lres_path_add(t, {pm_q(from[a .. i])})`) }
+      if from[i + 2] == 'x' { pm_l(b, "  lres_path_int(t, cx)") } else { pm_l(b, "  lres_path_int(t, cz)") }
+      i += 4
+      a = i
+    } else {
+      i += 1
+    }
+  }
+  if len(from) > a { pm_l(b, `  lres_path_add(t, {pm_q(from[a .. len(from)])})`) }
+}
+function pm_gen_whole_verbs(b: Buf, r: int, sn: pointer, R: pointer) -> void {
+  pm_l(b, `@alloc_ok("a load grows the table's rows and lists only past its high water; an error's message only when a file is wrong")`)
+  pm_l(b, `function {sn}_load(st: mut {R}, map: string) -> bool {{`)
+  pm_l(b, "  let t = st.lt__")
+  pm_gen_path(b, r)
+  pm_l(b, "  let got = lres_read(t)")
+  pm_l(b, "  if got == 0 { lres_missing(t) }")
+  pm_l(b, `  if got <= 0 or not {sn}__fill_rows(t, st.pl__, st.rows, st.hs__) {{`)
+  pm_l(b, `    {sn}__drop(st.pl__, st.rows, st.hs__)`)
+  pm_l(b, "    st.err = lres_error(t)")
+  pm_l(b, "    st.map = \"\"")
+  pm_l(b, "    return false")
+  pm_l(b, "  }")
+  pm_l(b, "  st.map = intern(map)")
+  pm_l(b, "  st.err = \"\"")
+  pm_l(b, "  return true")
+  pm_l(b, "}")
+  pm_l(b, `function {sn}_clear(st: mut {R}) -> void {{`)
+  pm_l(b, `  {sn}__drop(st.pl__, st.rows, st.hs__)`)
+  pm_l(b, "  st.map = \"\"")
+  pm_l(b, "  st.err = \"\"")
+  pm_l(b, "}")
+  pm_l(b, `function {sn}_find(st: {R}, key: string) -> int {{`)
+  pm_l(b, "  return lres_hash_get(st.hs__, key)")
+  pm_l(b, "}")
+}
+function pm_gen_chunk_verbs(b: Buf, r: int, sn: pointer, R: pointer) -> void {
+  pm_l(b, `function {sn}__off(ch: {R}Chunk) -> void {{`)
+  pm_l(b, "  ch.on = false")
+  pm_l(b, `  {sn}__drop(ch.pl__, ch.rows, ch.hs__)`)
+  pm_l(b, "}")
+  pm_l(b, `function {sn}_slot(st: {R}, cx: int, cz: int) -> int {{`)
+  pm_l(b, "  var i = 0")
+  pm_l(b, "  while i < len(st.chunks) {")
+  pm_l(b, "    let ch = st.chunks[i]")
+  pm_l(b, "    if ch.on and ch.cx == cx and ch.cz == cz { return i }")
+  pm_l(b, "    i += 1")
+  pm_l(b, "  }")
+  pm_l(b, "  return -1")
+  pm_l(b, "}")
+  pm_l(b, `@alloc_ok("a chunk slot past the most chunks this table has held at once, and rows past a slot's high water: made once and kept; an error's message only when a file is wrong")`)
+  pm_l(b, `function {sn}_in(st: mut {R}, map: string, cx: int, cz: int) -> int {{`)
+  pm_l(b, "  if not (st.map == map) {")
+  pm_l(b, "    var j = 0")
+  pm_l(b, "    while j < len(st.chunks) {")
+  pm_l(b, `      {sn}__off(st.chunks[j])`)
+  pm_l(b, "      j += 1")
+  pm_l(b, "    }")
+  pm_l(b, "    st.map = intern(map)")
+  pm_l(b, "  }")
+  pm_l(b, `  let have = {sn}_slot(st, cx, cz)`)
+  pm_l(b, "  if have >= 0 { return have }")
+  pm_l(b, "  var s = -1")
+  pm_l(b, "  var i = 0")
+  pm_l(b, "  while i < len(st.chunks) and s < 0 {")
+  pm_l(b, "    if not st.chunks[i].on { s = i }")
+  pm_l(b, "    i += 1")
+  pm_l(b, "  }")
+  pm_l(b, "  if s < 0 {")
+  pm_l(b, `    push(st.chunks, new {R}Chunk)`)
+  pm_l(b, "    s = len(st.chunks) - 1")
+  pm_l(b, "  }")
+  pm_l(b, "  let ch = st.chunks[s]")
+  pm_l(b, `  {sn}__off(ch)`)
+  pm_l(b, "  ch.cx = cx")
+  pm_l(b, "  ch.cz = cz")
+  pm_l(b, "  let t = st.lt__")
+  pm_gen_path(b, r)
+  pm_l(b, "  let got = lres_read(t)")
+  pm_l(b, "  if got == 0 {")
+  pm_l(b, "    ch.on = true")
+  pm_l(b, "    st.err = \"\"")
+  pm_l(b, "    return s")
+  pm_l(b, "  }")
+  pm_l(b, `  if got < 0 or not {sn}__fill_rows(t, ch.pl__, ch.rows, ch.hs__) {{`)
+  pm_l(b, `    {sn}__off(ch)`)
+  pm_l(b, "    st.err = lres_error(t)")
+  pm_l(b, "    return -1")
+  pm_l(b, "  }")
+  pm_l(b, "  ch.on = true")
+  pm_l(b, "  st.err = \"\"")
+  pm_l(b, "  return s")
+  pm_l(b, "}")
+  pm_l(b, `function {sn}_out(st: mut {R}, cx: int, cz: int) -> void {{`)
+  pm_l(b, `  let s = {sn}_slot(st, cx, cz)`)
+  pm_l(b, `  if s >= 0 {{ {sn}__off(st.chunks[s]) }}`)
+  pm_l(b, "}")
+  pm_l(b, `function {sn}_clear(st: mut {R}) -> void {{`)
+  pm_l(b, "  var i = 0")
+  pm_l(b, "  while i < len(st.chunks) {")
+  pm_l(b, `    {sn}__off(st.chunks[i])`)
+  pm_l(b, "    i += 1")
+  pm_l(b, "  }")
+  pm_l(b, "  st.map = \"\"")
+  pm_l(b, "  st.err = \"\"")
+  pm_l(b, "}")
+  pm_l(b, `function {sn}_find(st: {R}, slot: int, key: string) -> int {{`)
+  pm_l(b, "  if slot < 0 or slot >= len(st.chunks) { return -1 }")
+  pm_l(b, "  if not st.chunks[slot].on { return -1 }")
+  pm_l(b, "  return lres_hash_get(st.chunks[slot].hs__, key)")
+  pm_l(b, "}")
+}

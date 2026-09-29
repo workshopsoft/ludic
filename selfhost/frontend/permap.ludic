@@ -1,0 +1,309 @@
+# permap.ludic — map-scoped tables: a registry whose rows are read when a map loads.
+#
+#   @PerMap @ByKey registry Props of PropRow from "props.lres"
+#   @PerMap @Chunked(64) registry Instances of InstRow from "instances/{cx}_{cz}.lres"
+#
+# Its entries are not compiled in: they live under `<maps root>/<map>/`, one directory a map (the
+# root is package.ludic's `maps "assets/maps"`), and are read at run time by runtime/native/lres.ludic,
+# which is spliced when a program declares one. So it has no `as PREFIX` and no constants - a row
+# is found by its key. What the compiler writes instead, in the declaring module and exported with
+# the registry (permap_gen.ludic): a state named after the registry, its verbs (props_load,
+# props_clear, props_find, props_path; instances_in / _out / _slot / _find / _clear / _path) and a
+# typed fill for the record, every row, list and record of it pooled so a load allocates nothing
+# past the table's high water. `ludicc --check` reads every map directory there is and checks its
+# files against the record (permap_check.ludic).
+var g_pm_pending: bool = false          # @PerMap was read before the declaration being parsed
+var g_pm_chunk_pending: int = 0         # ... and @Chunked(n)
+var g_rg_permap: []bool = new []bool    # per registry: map-scoped
+var g_rg_chunk: []int = new []int       # per registry: its chunk's size in metres, 0 for a whole-map table
+var g_pm_any: bool = false              # a @PerMap registry exists: lres.ludic is spliced
+var g_pm_root: pointer = "assets/maps"  # where the maps are, as the program opens it
+var g_pm_no_maps: bool = false          # --no-maps: --check leaves the map directories alone
+
+# `@Chunked(64)` before a declaration, its '@' and name read
+function pm_parse_chunked() -> void {
+  eat_op("(")
+  let e = expr()
+  eat_op(")")
+  if e.kind != E_INT or e.ival <= 0 { perr("@Chunked takes a chunk's size in metres: @Chunked(64)") }
+  g_pm_chunk_pending = e.ival
+  at_decl_with("Chunked", `[{itoa(e.ival)}]`)
+}
+# a registry just declared: is it map-scoped, and how big are its chunks
+function pm_declared(pm: bool, chunk: int, name: pointer) -> void {
+  push(g_rg_permap, pm)
+  push(g_rg_chunk, chunk)
+  if chunk > 0 and not pm { perr(`registry {name}: @Chunked is for a @PerMap registry - @PerMap @Chunked({itoa(chunk)}) registry {name} ...`) }
+}
+function pm_is(r: int) -> bool { return r >= 0 and r < len(g_rg_permap) and g_rg_permap[r] }
+function pm_named(name: pointer) -> bool { return pm_is(reg_find(name)) }
+
+# the registry's name as its verbs' prefix: GroundLayers -> ground_layers, NPCKinds -> npc_kinds
+function pm_snake(s: pointer) -> pointer {
+  let b = buf_new()
+  let n = len(s)
+  var i = 0
+  while i < n {
+    let c = s[i]
+    let up = c >= 'A' and c <= 'Z'
+    if up and i > 0 {
+      let p = s[i - 1]
+      let plow = (p >= 'a' and p <= 'z') or (p >= '0' and p <= '9')
+      var nlow = false
+      if i + 1 < n { nlow = s[i + 1] >= 'a' and s[i + 1] <= 'z' }
+      let pup = p >= 'A' and p <= 'Z'
+      if plow or (pup and nlow) { buf_putc(b, '_') }
+    }
+    if up { buf_putc(b, c + 32) } else { buf_putc(b, c) }
+    i += 1
+  }
+  return buf_str(b)
+}
+
+# package.ludic's `maps "assets/maps"`, looked for as the fence's lines are - the nearest package.ludic
+# up to four directories above the program - and taken relative to that file's directory
+function pm_manifest(entry: pointer) -> void {
+  var dir = dir_of(entry)
+  var up = 0
+  while up < 5 {
+    var root = dir
+    if len(root) > 0 and not is_sep(root[len(root) - 1]) { root = root + "/" }
+    let txt = read_file(root + "package.ludic")
+    if txt != null {
+      g_pm_root = pm_norm(join_path(root, "assets/maps"))
+      pm_manifest_read(txt, root)
+      return
+    }
+    if len(dir) == 0 { dir = ".." } else { dir = dir + "/.." }
+    up += 1
+  }
+}
+function pm_manifest_read(txt: pointer, root: pointer) -> void {
+  var i = 0
+  let tn = len(txt)
+  while i < tn {
+    var e = i
+    while (e < tn) and (txt[e] != '\n') { e += 1 }
+    var le = e
+    if (le > i) and (txt[le - 1] == 13) { le -= 1 }
+    let ws = native_words(txt[i..le])
+    if (len(ws) == 2) and (ws[0] == "maps") { g_pm_root = pm_norm(join_path(root, pm_trim_slash(ws[1]))) }
+    i = e + 1
+  }
+}
+# a path with its `.` and `x/..` steps taken out and '/' between them: the name the asset pack
+# knows a file by is "assets/maps/...", never "src/../assets/maps/..."
+function pm_norm(p: pointer) -> pointer {
+  let parts = new []pointer
+  var abs = len(p) > 0 and is_sep(p[0])
+  var i = 0
+  let n = len(p)
+  while i <= n {
+    var j = i
+    while j < n and not is_sep(p[j]) { j += 1 }
+    let w = p[i .. j]
+    if len(w) == 0 or (w == ".") { }
+    else if (w == "..") and len(parts) > 0 and not (parts[len(parts) - 1] == "..") { let dropped = List.pop(parts) }
+    else { push(parts, w) }
+    i = j + 1
+  }
+  var out: pointer = ""
+  if abs { out = "/" }
+  var k = 0
+  while k < len(parts) {
+    if k > 0 { out = out + "/" }
+    out = out + parts[k]
+    k += 1
+  }
+  if len(out) == 0 { return "." }
+  return out
+}
+function pm_trim_slash(s: pointer) -> pointer {
+  var n = len(s)
+  while n > 1 and is_sep(s[n - 1]) { n -= 1 }
+  return s[0 .. n]
+}
+
+# ---- the declaration's rules ----------------------------------------------------------------------
+const PM_BAD: int = 0
+const PM_INT: int = 1
+const PM_FLOAT: int = 2
+const PM_BOOL: int = 3
+const PM_STR: int = 4
+const PM_REC: int = 5
+const PM_LIST: int = 6
+const PM_FN: int = 7
+function pm_kind(ty: pointer) -> int {
+  if ty == null { return PM_BAD }
+  if (ty == "int") { return PM_INT }
+  if (ty == "float") { return PM_FLOAT }
+  if (ty == "bool") { return PM_BOOL }
+  if (ty == "string") { return PM_STR }
+  if str_starts(ty, "fn(") { return PM_FN }
+  if is_slice_ty(ty) { return PM_LIST }
+  let c = find_comp(ty)
+  if c != null and c.tps == null and c.uns != 2 { return PM_REC }
+  return PM_BAD
+}
+# the record types a table's rows reach (its own first), whether each is a list's element (and so
+# pooled), and the fn types its fields hold (each gets a resolver) - checked as they are found
+var g_pm_recs: []pointer = new []pointer
+var g_pm_pooled: []bool = new []bool
+var g_pm_fnty: []pointer = new []pointer
+function pm_rec_index(ty: pointer) -> int {
+  var i = 0
+  while i < len(g_pm_recs) {
+    if (g_pm_recs[i] == ty) { return i }
+    i += 1
+  }
+  return -1
+}
+function pm_fn_index(ty: pointer) -> int {
+  var i = 0
+  while i < len(g_pm_fnty) {
+    if (g_pm_fnty[i] == ty) { return i }
+    i += 1
+  }
+  return -1
+}
+function pm_add_rec(ty: pointer, pooled: bool) -> void {
+  let i = pm_rec_index(ty)
+  if i >= 0 {
+    if pooled { g_pm_pooled[i] = true }
+    return
+  }
+  push(g_pm_recs, ty)
+  push(g_pm_pooled, pooled)
+}
+function pm_collect(r: int) -> void {
+  g_pm_recs = new []pointer
+  g_pm_pooled = new []bool
+  g_pm_fnty = new []pointer
+  pm_add_rec(g_rg_type[r], false)
+  var k = 0
+  while k < len(g_pm_recs) {
+    let c = find_comp(g_pm_recs[k])
+    var i = 0
+    while i < len(c.kids) {
+      pm_collect_field(r, c, c.kids[i])
+      i += 1
+    }
+    k += 1
+  }
+}
+function pm_collect_field(r: int, c: Node, f: Node) -> void {
+  let k = pm_kind(f.ty)
+  let where = `field {c.s}.{f.s} of @PerMap registry {g_rg_name[r]}`
+  if k == PM_BAD {
+    perr_at(f.file, f.line, f.col, `{where}: a map's row holds an int, a float, a bool, a string, a record, a list of those or a fn value, not {f.ty}`)
+    return
+  }
+  if k == PM_REC and ((f.ty == c.s) or pm_single_reaches(f.ty, c.s, 0)) {
+    perr_at(f.file, f.line, f.col, `{where}: a record in a map's row holds itself only through a list - {c.s} would be made without end`)
+    return
+  }
+  if k == PM_REC { pm_add_rec(f.ty, false) }
+  if k == PM_FN and pm_fn_index(f.ty) < 0 { push(g_pm_fnty, f.ty) }
+  if k == PM_LIST {
+    let ek = pm_kind(slice_elem(f.ty))
+    if ek == PM_BAD or ek == PM_LIST or ek == PM_FN {
+      perr_at(f.file, f.line, f.col, `{where}: a list in a map's row holds ints, floats, bools, strings or records, not {slice_elem(f.ty)}`)
+      return
+    }
+    if ek == PM_REC { pm_add_rec(slice_elem(f.ty), true) }
+  }
+}
+# does record ty reach record target through its record fields (not through a list)?
+function pm_single_reaches(ty: pointer, target: pointer, depth: int) -> bool {
+  if depth > 16 { return true }
+  let c = find_comp(ty)
+  if c == null { return false }
+  var i = 0
+  while i < len(c.kids) {
+    let f = c.kids[i]
+    if pm_kind(f.ty) == PM_REC {
+      if (f.ty == target) or pm_single_reaches(f.ty, target, depth + 1) { return true }
+    }
+    i += 1
+  }
+  return false
+}
+# what a @PerMap declaration may not be, said at the declaration
+function pm_validate(r: int) -> bool {
+  let v = g_rg_var[r]
+  let name = g_rg_name[r]
+  let before = g_dg_errors
+  if g_rg_open[r] == 1 { perr_at(v.file, v.line, v.col, `registry {name}: a @PerMap registry is not open - its rows come from each map's files, not from defs`) }
+  let from = g_rg_from[r]
+  if from == null {
+    perr_at(v.file, v.line, v.col, `registry {name}: a @PerMap registry says which file under each map holds it - @PerMap registry {name} of {g_rg_type[r]} from "{pm_snake(name)}.lres"`)
+    return false
+  }
+  let chunked = g_rg_chunk[r] > 0
+  let has = has_sub(from, "{cx}") and has_sub(from, "{cz}")
+  let any = has_sub(from, "{cx}") or has_sub(from, "{cz}")
+  if chunked and not has { perr_at(v.file, v.line, v.col, `registry {name}: a @Chunked registry's file names its chunk - from "{pm_snake(name)}/{{cx}}_{{cz}}.lres"`) }
+  if not chunked and any { perr_at(v.file, v.line, v.col, `registry {name}: {{cx}} and {{cz}} name a chunk - declare it @Chunked(size)`) }
+  if chunked and pm_placeholder_in_dir(from) { perr_at(v.file, v.line, v.col, `registry {name}: {{cx}} and {{cz}} go in the file's own name, not in a directory above it`) }
+  let c = find_comp(g_rg_type[r])
+  if c == null {
+    perr_at(v.file, v.line, v.col, `registry {name}: there is no record {g_rg_type[r]}`)
+    return false
+  }
+  if c.tps != null { perr_at(v.file, v.line, v.col, `registry {name}: a @PerMap registry's record is not generic`) }
+  if len(c.kids) == 0 or not (c.kids[0].s == "key") or not (c.kids[0].ty == "string") {
+    perr_at(c.file, c.line, c.col, `record {c.s} of @PerMap registry {name}: its first field is the row's key - key: string = ""`)
+    return false
+  }
+  pm_collect(r)
+  return g_dg_errors == before
+}
+function pm_placeholder_in_dir(from: pointer) -> bool {
+  var last = -1
+  var i = 0
+  while i < len(from) {
+    if from[i] == '/' { last = i }
+    i += 1
+  }
+  if last < 0 { return false }
+  let dir = from[0 .. last]
+  return has_sub(dir, "{cx}") or has_sub(dir, "{cz}")
+}
+# a def into a map-scoped registry
+function pm_def_check(d: int) -> void {
+  let r = reg_find(g_df_reg[d])
+  if not pm_is(r) { return }
+  g_err_file = g_df_rec[d].file
+  g_err_line = g_df_rec[d].line
+  g_parsing = false
+  perr(`def {g_rg_name[r]} {g_df_key[d]}: {g_rg_name[r]} is a @PerMap registry - its rows are read from each map's {g_rg_from[r]} when the map loads, not written with def`)
+}
+
+# every map-scoped registry, once the program is read: its state, verbs and fill
+function pm_finish() -> void {
+  var any = false
+  var r = 0
+  while r < len(g_rg_name) {
+    if pm_is(r) { any = true }
+    r += 1
+  }
+  if not any { return }
+  g_pm_any = true
+  pm_manifest(g_act_main)
+  let ok = new []bool
+  r = 0
+  while r < len(g_rg_name) {
+    push(ok, pm_is(r) and pm_validate(r))
+    r += 1
+  }
+  diag_stop_if_errors()
+  pm_consts_gen()                                   # permap_consts.ludic: the constants by name
+  r = 0
+  while r < len(g_rg_name) {
+    if ok[r] {
+      pm_collect(r)
+      pm_gen(r)                                     # permap_gen.ludic
+    }
+    r += 1
+  }
+}

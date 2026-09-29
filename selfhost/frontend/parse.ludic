@@ -1007,6 +1007,11 @@ function parse_one_decl() -> void {
     else if a == "Namespace" { eat_op("("); ns_name = eat_id(); eat_op(")") }   # @Namespace(Name) package Foo.* namespace (#62)
     else if a == "deterministic" { is_det = true }
     else if (a == "AppendOnly") or (a == "ByKey") { at_decl(a) }   # a registry's, for editors (attrs.ludic)
+    else if a == "PerMap" {                        # a map-scoped registry (permap.ludic)
+      at_decl(a)
+      g_pm_pending = true
+    }
+    else if a == "Chunked" { pm_parse_chunked() }  # @Chunked(64): read a chunk at a time
     else if a == "alloc_ok" {                      # 25.2: @alloc_ok("why") - this allocates in a frame on purpose
       eat_op("(")
       let why = expr()
@@ -1046,10 +1051,16 @@ function parse_one_decl() -> void {
     g_at_keep = true
     let p0 = len(prog)
     let e0 = len(g_events)
+    let r0 = len(g_rg_var)
     parse_one_decl()
     var k = p0
     while k < len(prog) {
       prog[k].vis = 1
+      k += 1
+    }
+    k = r0
+    while k < len(g_rg_var) {                      # a @PerMap registry's own node is not in prog
+      g_rg_var[k].vis = 1
       k += 1
     }
     k = e0
@@ -1528,6 +1539,12 @@ function maybe_splice_runtime() -> void {
   if g_uses_udp {
     cur_dir = ""
     do_import("runtime/native/udp.ludic")
+    cur_dir = saved
+  }
+  # a @PerMap registry: the .lres reader its generated fill calls (permap.ludic)
+  if g_pm_any {
+    cur_dir = ""
+    do_import("runtime/native/lres.ludic")
     cur_dir = saved
   }
   # Process.*: splice the child-process library. Spawning is native (process.ll /

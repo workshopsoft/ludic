@@ -158,6 +158,7 @@ entry {
     else if a == "--save-temps" { save = true }
     else if a == "--run" { run = true }
     else if a == "--check" { g_check_only = true }
+    else if a == "--no-maps" { g_pm_no_maps = true }     # --check leaves the map directories alone (permap_check.ludic)
     else if a == "--release" { g_release = true }        # what ships: Build.schema_hash() is 0 (emit_schema_hash.ludic)
     else if a == "--diagnostics=json" { g_diag_json = true }     # every error, as JSON on stdout (diag.ludic)
     else if a == "--diagnostics=text" { g_diag_json = false }
@@ -257,6 +258,7 @@ entry {
   # --check: every check a build makes - the emitter refuses things too (a bind to a function that is
   # gone, an unknown name) - and nothing written
   if g_check_only {
+    pm_check_maps()                               # every map's tables against their records (permap_check.ludic)
     emit_program()
     if g_dg_errors > 0 { diag_exit(1) }
     diag_exit(0)
