@@ -1,0 +1,55 @@
+# fog_impostors.ludic — a layer's impostor atlases are let go while the fog wall is nearer than its
+# cards begin (the layer's `near`), and baked again when the fog opens past it. Inside the wall every
+# instance is a mesh, and the meshes' LOD2 cast its shadows, so a card is neither drawn nor cast.
+
+# does the wall let any of this layer's instances be drawn as a card?
+function fog_needs_cards(render3d_st: Render3dState, l: Layer) -> bool {
+  let w = render3d_st.r3d_fog_wall
+  if w <= 0.0 or l.near <= 0.0 { return true }
+  return w + R3D_FOG_MARGIN >= l.near
+}
+
+# one layer brought in line with the wall: its atlases released, or baked again
+function fog_impostor(render3d_st: mut Render3dState, l: Layer) -> void {
+  let im = l.imp
+  if im == null or im.model == null { return }
+  let want = fog_needs_cards(render3d_st, l)
+  if not want and im.albedo != 0 {
+    gpu_tex_free(render3d_st, im.albedo);  gpu_tex_free(render3d_st, im.normal)
+    im.albedo = 0;  im.normal = 0
+    render3d_st.fog_imp_released += 1
+  } else if want and im.albedo == 0 {
+    let t0 = gl_now_us()
+    let was = render3d_st.gvk_tag
+    render3d_st.gvk_tag = VKM_IMPOSTOR
+    impostor_paint(render3d_st, im)
+    render3d_st.gvk_tag = was
+    render3d_st.fog_imp_rebake_us = render3d_st.fog_imp_rebake_us + (gl_now_us() - t0)
+    render3d_st.fog_imp_rebaked += 1
+  }
+}
+
+# every layer, on a change of the wall
+function fog_impostors(render3d_st: mut Render3dState) -> void {
+  render3d_st.fog_imp_rebake_us = 0
+  for i in 0 .. len(render3d_st.sc_layers) { fog_impostor(render3d_st, render3d_st.sc_layers[i]) }
+  if render3d_st.r3d_debug and render3d_st.fog_imp_rebaked > 0 { fog_say_rebake(render3d_st.fog_imp_rebaked, render3d_st.fog_imp_rebake_us) }
+}
+function fog_say_rebake(n: int, us: int) -> void { print(`r3d: fog: {n} impostor atlases baked again in {us / 1000} ms`) }
+
+# R3D_FOG_AT=<frame> with R3D_FOG_TO=<m>: the wall changed mid-run, as the Settings row does
+function fog_at_tick(render3d_st: mut Render3dState) -> void {
+  if render3d_st.fog_at == 0 {
+    render3d_st.fog_at = -1
+    if r3d_env_has(render3d_st, "R3D_FOG_AT") and r3d_env_has(render3d_st, "R3D_FOG_TO") {
+      render3d_st.fog_at = Text.to_int(r3d_env(render3d_st, "R3D_FOG_AT"))
+      render3d_st.fog_at_m = float(Text.to_int(r3d_env(render3d_st, "R3D_FOG_TO")))
+    }
+  }
+  if render3d_st.fog_at > 0 and render3d_st.r3d_test_frame == render3d_st.fog_at {
+    let t0 = gl_now_us()
+    r3d_fog_wall(render3d_st, render3d_st.fog_at_m)
+    fog_say_change(render3d_st.fog_at_m, gl_now_us() - t0, render3d_st.fog_imp_released, render3d_st.fog_imp_rebaked)
+  }
+}
+function fog_say_change(m: float, us: int, rel: int, re: int) -> void { print(`r3d: fog: wall {int(m)} m set in {us / 1000} ms ({rel} atlases let go, {re} baked again so far)`) }
