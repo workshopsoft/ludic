@@ -75,7 +75,7 @@ port I18nWorld {
 | --- | --- |
 | `L(s) -> string` | what the game draws, in the language in use (cached) |
 | `Ln(one, many, n) -> string` | a count's form, with `{1}` the count; English is one for 1, many otherwise (the old form) |
-| `tr(k)`, `trf(k, a, b, c, d)`, `trn(k, n, a, b, c) -> string` | a key, a key with its holes' arguments, a plural key by `n`: made into text by `L` |
+| `tr(k: Key)`, `trf(k: Key, a, b, c, d)`, `trn(k: Key, n, a, b, c) -> string` | a key (`k"..."`), a key with its holes' arguments, a plural key (`kn"..."`) by `n`: made into text by `L` |
 | `i18n_key(name)`, `i18n_key_plural(name)`, `key_text(k)`, `i18n_is_key(s)` | a key named at run time, its name without the marker, whether a string is one |
 | `i18n_base_text(text)`, `i18n_loud(on)` | the base (en.po) from text, for a test; a developer's build's loud missing key |
 | `i18n_init()`, `i18n_count()`, `i18n_index(code)`, `i18n_code_at(i)`, `i18n_name_at(i)`, `i18n_font_at(i)`, `i18n_mod_dir()` | the languages found, "en" first |
