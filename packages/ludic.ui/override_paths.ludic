@@ -1,0 +1,37 @@
+# override_paths.ludic - which override a path is: compared normalised (a lab build names its components
+# lab/../src/ui/..., a studio names them src/ui/... or by an absolute path), an absolute path matching
+# the relative one it ends with. Nothing is normalised while no override stands.
+@alloc_ok("only while a studio's override stands: the path asked, normalised")
+function ov_find(ui_st: UiState, path: string) -> int {
+  if len(ui_st.ov_path) == 0 or path == "" { return -1 }   # a game: nothing overridden, nothing made
+  let p = Path.normalize(path)
+  for i in 0 .. len(ui_st.ov_path) {
+    if ov_same(ui_st.ov_path[i], p) { return i }
+  }
+  return -1
+}
+# two normalised paths name one file: equal, or an absolute one ends with /<the relative one>
+function ov_same(a: string, b: string) -> bool {
+  if a == b { return true }
+  if len(a) > 0 and a[0] == 47 and len(b) > 0 and b[0] != 47 { return ov_ends(a, b) }
+  if len(b) > 0 and b[0] == 47 and len(a) > 0 and a[0] != 47 { return ov_ends(b, a) }
+  return false
+}
+function ov_ends(abs: string, rel: string) -> bool {
+  let n = len(rel)
+  let m = len(abs)
+  if n + 1 > m or abs[m - n - 1] != 47 { return false }
+  for i in 0 .. n {
+    if abs[m - n + i] != rel[i] { return false }
+  }
+  return true
+}
+# every loaded file an override names read again, by the path it was loaded under
+@alloc_ok("a studio's edit, never a frame")
+function ov_forget(ui_st: mut UiState, key: string) -> void {
+  for i in 0 .. len(ui_st.lib_files) {
+    let f = ui_st.lib_files[i]
+    if ov_same(key, Path.normalize(f.path)) { ui_file_forget(ui_st, f.path) }
+  }
+  uc_invalidate(ui_st)
+}

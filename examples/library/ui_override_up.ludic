@@ -1,0 +1,26 @@
+# ui_override_up.ludic - the override through a component registered under a path with `..` in it, as a
+# game's lab build registers every component (lab/../src/ui/...): the studio names the file as the game's
+# root has it, and it still matches. Prints `counters|[a=0]|+|[b=0]|+|outside| 1 1` - the override shown,
+# and the same file found by its plain path and by a ./ path.
+import "ludic.ui"
+import "../library/ui_component_parts/Counter.ludic"
+import "../library/ui_component_parts/App.ludic"
+program UiOverrideUp {
+  numbers float
+  function texts(n: UiNode, out: []string) -> void {
+    if n.text != "" { push(out, n.text) }
+    for i in 0 .. len(n.children) { texts(n.children[i], out) }
+  }
+  entry (ui_st: mut UiState) {
+    ui_override(ui_st, "examples/library/ui_component_parts/Counter.xml", "<div class=\"counter\"><p>[{label}={count}]</p><button on-click=\"bump()\">+</button></div>")
+    let root: UiNode = ui_nodes(ui_st, "App", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+    let out = new []string
+    texts(root, out)
+    var joined = ""
+    for i in 0 .. len(out) { joined = joined + out[i] + "|" }
+    let plain = ui_overridden(ui_st, "examples/library/ui_component_parts/Counter.xml")
+    let dotted = ui_overridden(ui_st, "./examples/library/../library/ui_component_parts/Counter.xml")
+    print(`{joined} {plain} {dotted}`)
+  }
+}
