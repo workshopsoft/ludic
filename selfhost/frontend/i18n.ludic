@@ -1,0 +1,472 @@
+# i18n.ludic — keys, not English (phase 26 of Maroon Lake's plan). A text the player reads is named
+# by a key, and the key's English is en.po, a language like any other:
+#
+#   lang "assets/lang" en            # package.ludic: the languages' directory and the source language
+#   tr(k"pause.resume")              # a Key, the builtin type of k"...": not a string, nor a string one
+#   trn(kn"catch.count", n, name)    # a plural key: en.po's entry has a msgid_plural
+#   <button>{t('pause.resume')}</button>            # a template's text (i18n_xml.ludic)
+#   @TextKey("steps") registry StepKinds of StepKind from "steps.lres"
+#   property StepKind { @Text hint: Key = null }   # the row's key is steps.<row>.hint, filled in
+#
+# At run time a Key is its text after a marker byte - 1 for k"...", 2 for kn"..." - so the runtime's
+# tr(k) is a cast and the translator knows a key from English. What the compiler checks, once the
+# program is read (i18n_check, after the types): every key literal is in en.po (a kn"" one with a
+# msgid_plural); trf / trn and a template's t() give as many values as the English has holes (a
+# warning); a registry's @Text field left in the data as English, and a template's words outside
+# translate="no", are "English left" (a warning each, counted as `english_left` by ludic deps); a
+# @Text Key field with no value is filled with its derived key, which en.po must have; and the same
+# English under several keys wants a `#.` description on each (a warning at en.po's line). With no
+# `lang` line, or no en.po, nothing is checked, and a program's first key literal says so once.
+const KEY_LIT: int = 1
+const KEY_PLURAL: int = 2
+const KS_CODE: int = 0
+const KS_TEMPLATE: int = 1
+const KS_DATA: int = 2
+
+var g_i18n_on: bool = false              # a `lang` line was read
+var g_i18n_dir: pointer = null           # its directory, as the program opens it
+var g_i18n_src: pointer = "en"
+var g_i18n_en: PoFile = null             # <dir>/<src>.po, or null when it is not there
+var g_i18n_en_path: pointer = ""
+var g_i18n_nopo_warned: bool = false
+var g_i18n_english_left: int = 0         # ludic deps' english_left
+var g_i18n_done: bool = false
+var g_rg_textkey: []pointer = new []pointer   # per registry: its @TextKey prefix, or null
+var g_tk_pending: pointer = null         # @TextKey("x") read before the registry being parsed
+# every key used, one row a site: the key, where, and what kind of source (KS_*)
+var g_ks_key: []pointer = new []pointer
+var g_ks_kind: []int = new []int
+var g_ks_file: []pointer = new []pointer
+var g_ks_line: []int = new []int
+var g_ks_col: []int = new []int
+var g_ks_seen: StrSet = null
+var g_i18n_what: pointer = null          # how a message names the key, when not as its literal
+
+# ---- the literal ---------------------------------------------------------------------------------
+# k"..." (ival 1) or kn"..." (ival 2): a string node holding the marker byte and the key
+function key_lit_node(t: Tok) -> Node {
+  let n = node(E_STR)
+  n.line = t.line
+  n.col = t.col
+  n.s = key_marked(t.ival, t.text)
+  n.ival = t.ival
+  return n
+}
+function key_marked(kind: int, key: pointer) -> pointer {
+  let k = len(key)
+  let b = bytes(k + 2)
+  b[0] = kind
+  var i = 0
+  while i < k {
+    b[i + 1] = key[i]
+    i += 1
+  }
+  b[k + 1] = 0
+  return b
+}
+function i18n_is_key(e: Node) -> bool { return e != null and e.kind == E_STR and (e.ival == KEY_LIT or e.ival == KEY_PLURAL) }
+function i18n_key_text(e: Node) -> pointer { return e.s[1 .. len(e.s)] }
+
+# ---- a set of strings, grown as it fills ---------------------------------------------------------
+property StrSet {
+  keys: []pointer = null
+  n: int = 0
+}
+function ss_new(cap: int) -> StrSet {
+  let s = new StrSet
+  s.keys = new []pointer
+  var i = 0
+  while i < cap {
+    push(s.keys, null)
+    i += 1
+  }
+  return s
+}
+function ss_slot(s: StrSet, k: pointer) -> int {
+  let cap = len(s.keys)
+  var h = po_hash(k) & (cap - 1)
+  while s.keys[h] != null and not (s.keys[h] == k) { h = (h + 1) & (cap - 1) }
+  return h
+}
+function ss_has(s: StrSet, k: pointer) -> bool { return s.keys[ss_slot(s, k)] != null }
+# true when k was not in the set
+function ss_add(s: StrSet, k: pointer) -> bool {
+  if (s.n + 1) * 2 > len(s.keys) {
+    let old = s.keys
+    let bigger = ss_new(len(old) * 2)
+    var i = 0
+    while i < len(old) {
+      if old[i] != null { bigger.keys[ss_slot(bigger, old[i])] = old[i] }
+      i += 1
+    }
+    s.keys = bigger.keys
+  }
+  let h = ss_slot(s, k)
+  if s.keys[h] != null { return false }
+  s.keys[h] = k
+  s.n += 1
+  return true
+}
+
+# ---- the manifest --------------------------------------------------------------------------------
+# package.ludic's `lang "assets/lang" en`, looked for as `maps` is: the nearest package.ludic up to four
+# directories above the program, the directory taken relative to it
+function i18n_manifest(entry: pointer) -> void {
+  var dir = dir_of(entry)
+  var up = 0
+  while up < 5 {
+    var root = dir
+    if len(root) > 0 and not is_sep(root[len(root) - 1]) { root = root + "/" }
+    let txt = read_file(root + "package.ludic")
+    if txt != null {
+      i18n_manifest_read(txt, root)
+      return
+    }
+    if len(dir) == 0 { dir = ".." } else { dir = dir + "/.." }
+    up += 1
+  }
+}
+function i18n_manifest_read(txt: pointer, root: pointer) -> void {
+  var i = 0
+  let tn = len(txt)
+  while i < tn {
+    var e = i
+    while (e < tn) and (txt[e] != '\n') { e += 1 }
+    var le = e
+    if (le > i) and (txt[le - 1] == 13) { le -= 1 }
+    let ws = native_words(txt[i..le])
+    if (len(ws) == 2 or len(ws) == 3) and (ws[0] == "lang") {
+      g_i18n_on = true
+      g_i18n_dir = pm_norm(join_path(root, pm_trim_slash(ws[1])))
+      if len(ws) == 3 { g_i18n_src = ws[2] }
+    }
+    i = e + 1
+  }
+  if g_i18n_on {
+    g_i18n_en_path = `{g_i18n_dir}/{g_i18n_src}.po`
+    g_i18n_en = po_read(g_i18n_en_path)
+  }
+}
+
+# ---- @TextKey and the derived keys ---------------------------------------------------------------
+# @TextKey("steps") before a registry, its '@' and name read
+function i18n_parse_textkey() -> void {
+  eat_op("(")
+  if toks[pi].kind != TK_STR or len(toks[pi].text) == 0 { perr("@TextKey takes the prefix of the registry's text keys: @TextKey(\"steps\")") }
+  g_tk_pending = toks[pi].text
+  pi += 1
+  eat_op(")")
+  let b = buf_new()
+  jq_put(b, g_tk_pending)
+  at_decl_with("TextKey", `[{buf_str(b)}]`)
+}
+# the registry just declared takes it
+function i18n_registry_declared() -> void {
+  push(g_rg_textkey, g_tk_pending)
+  g_tk_pending = null
+}
+# where a registry's derived keys start: its @TextKey, else its name in snake case (Items -> items,
+# GearKinds -> gear_kinds). One rule, asked by the fill, the checks and the schema alike
+function i18n_prefix(r: int) -> pointer {
+  if r >= 0 and r < len(g_rg_textkey) and g_rg_textkey[r] != null { return g_rg_textkey[r] }
+  return pm_snake(vis_plain(g_rg_name[r]))
+}
+function i18n_has_text(f: Node) -> bool {
+  if f == null or f.at < 0 { return false }
+  var j = g_at_start[f.at]
+  while j < g_at_start[f.at] + g_at_count[f.at] {
+    if (g_at_name[j] == "Text") { return true }
+    j += 1
+  }
+  return false
+}
+function i18n_is_key_ty(t: pointer) -> bool { return t != null and (t == "Key") and find_comp(t) == null }
+# a compiled registry's row (reg_fill): a @Text Key field it gives no value takes its derived key
+function i18n_fill_row(r: int, key: pointer, rec: Node, comp: Node, kline: int, kcol: int) -> void {
+  if comp == null { return }
+  var i = 0
+  while i < len(comp.kids) {
+    let f = comp.kids[i]
+    if f.kind == N_FIELD and i18n_has_text(f) and i18n_is_key_ty(f.ty) and not reg_rec_has(rec, f.s) {
+      let fi = node(E_FINIT)
+      fi.s = f.s
+      fi.file = rec.file
+      fi.line = kline
+      fi.col = kcol
+      let ks = node(E_STR)
+      ks.s = key_marked(KEY_LIT, `{i18n_prefix(r)}.{key}.{f.s}`)
+      ks.ival = KEY_LIT
+      ks.ty = "derived"                          # the checks know it was not written
+      ks.file = rec.file
+      ks.line = kline
+      ks.col = kcol
+      fi.a = ks
+      push(rec.kids, fi)
+    }
+    i += 1
+  }
+}
+
+# ---- the sites and the key checks ----------------------------------------------------------------
+function i18n_site(key: pointer, kind: int, file: pointer, line: int, col: int) -> bool {
+  if g_ks_seen == null { g_ks_seen = ss_new(1024) }
+  var f = file
+  if f == null { f = "" }
+  if not ss_add(g_ks_seen, `{f}:{itoa(line)}:{itoa(col)}:{key}`) { return false }
+  push(g_ks_key, key)
+  push(g_ks_kind, kind)
+  push(g_ks_file, f)
+  push(g_ks_line, line)
+  push(g_ks_col, col)
+  return true
+}
+function i18n_ks_name(kind: int) -> pointer {
+  if kind == KS_TEMPLATE { return "template" }
+  if kind == KS_DATA { return "data" }
+  return "code"
+}
+# a key used: in en.po, and a plural one as a plural there. Nothing to check against: said once
+function i18n_use(key: pointer, plural: bool, kind: int, file: pointer, line: int, col: int) -> void {
+  if not i18n_site(key, kind, file, line, col) { return }
+  if g_i18n_en == null {
+    if kind != KS_TEMPLATE and not g_i18n_nopo_warned {
+      g_i18n_nopo_warned = true
+      var why = "this program's package.ludic has no `lang \"assets/lang\" en` line"
+      if g_i18n_on { why = `{g_i18n_en_path} is not there` }
+      pwarn_at(file, line, col, `k"{key}": no en.po to check against - {why}; no key is checked`)
+    }
+    return
+  }
+  let i = po_find(g_i18n_en, key)
+  var lit = `k"{key}"`
+  if plural { lit = `kn"{key}"` }
+  if kind == KS_TEMPLATE { lit = `t('{key}')` }
+  if g_i18n_what != null { lit = g_i18n_what }
+  if i < 0 {
+    perr_at(file, line, col, `{lit}: the key {key} is not in {g_i18n_en_path}`)
+    return
+  }
+  if plural and not g_i18n_en.plural[i] {
+    perr_at(file, line, col, `{lit} is a plural key, and {g_i18n_en_path}:{itoa(g_i18n_en.line[i])} gives {key} no msgid_plural`)
+  }
+}
+# trf / trn / t(): as many values as en.po's English has holes ({1} is trn's count)
+function i18n_holes(key: pointer, given: int, what: pointer, file: pointer, line: int, col: int) -> void {
+  let i = po_find(g_i18n_en, key)
+  if i < 0 { return }
+  let want = po_max_hole(g_i18n_en.strs[i])
+  if want == given { return }
+  pwarn_at(file, line, col, `{what}: {key} is given {itoa(given)} value(s), and its English in {g_i18n_en_path} has {itoa(want)} hole(s)`)
+}
+# words a player would read: two letters together, or any byte of a non-ASCII character
+function i18n_wordy(s: pointer) -> bool {
+  if s == null { return false }
+  var run = 0
+  var i = 0
+  while i < len(s) {
+    let c = s[i]
+    if c < 0 or c >= 128 { return true }
+    if (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') { run += 1 } else { run = 0 }
+    if run >= 2 { return true }
+    i += 1
+  }
+  return false
+}
+function i18n_short(s: pointer) -> pointer {
+  var t = s
+  if len(t) > 40 { t = t[0 .. 37] + "..." }
+  let b = buf_new()
+  var i = 0
+  while i < len(t) {
+    if t[i] == '\n' { buf_puts(b, " ") } else { buf_putc(b, t[i]) }
+    i += 1
+  }
+  return buf_str(b)
+}
+function i18n_english_left(file: pointer, line: int, col: int, msg: pointer) -> void {
+  g_i18n_english_left += 1
+  pwarn_at(file, line, col, `English left: {msg}`)
+}
+
+# ---- the whole check -----------------------------------------------------------------------------
+function i18n_check() -> void {
+  if g_i18n_done { return }
+  g_i18n_done = true
+  if g_i18n_on { i18n_walk_data() }                # first: a def's key literal is a data site
+  var i = 0
+  while i < len(prog) {
+    if not is_runtime_file(prog[i].file) { i18n_walk(prog[i]) }
+    i += 1
+  }
+  if not g_i18n_on { return }
+  i18n_walk_templates()                            # i18n_xml.ludic
+  i18n_split_check()
+}
+function i18n_is_data_file(f: pointer) -> bool {
+  if f == null { return false }
+  let n = len(f)
+  return n > 5 and (f[n - 5 .. n] == ".lres")
+}
+function i18n_walk(n: Node) -> void {
+  if n == null { return }
+  if i18n_is_key(n) and not i18n_is_data_file(n.file) {
+    i18n_use(i18n_key_text(n), n.ival == KEY_PLURAL, KS_CODE, n.file, n.line, i18n_col(n))
+  }
+  if n.kind == E_CALL and n.a != null and n.a.kind == E_ID and g_i18n_en != null { i18n_call(n) }
+  i18n_walk(n.a)
+  i18n_walk(n.b)
+  i18n_walk(n.c)
+  var i = 0
+  while i < len(n.kids) {
+    i18n_walk(n.kids[i])
+    i += 1
+  }
+}
+# trf(k"...", a, b) / trn(kn"...", n, a): the values after the key against its holes
+function i18n_call(n: Node) -> void {
+  let nm = vis_plain(n.a.s)
+  if not (nm == "trf") and not (nm == "trn") { return }
+  var k = 0
+  while k < len(n.kids) and not i18n_is_key(n.kids[k]) { k += 1 }
+  if k >= len(n.kids) { return }
+  let e = n.kids[k]
+  i18n_holes(i18n_key_text(e), len(n.kids) - k - 1, nm, e.file, e.line, i18n_col(e))
+}
+# a node's column in its file: a template literal's hole is lexed on its own, so its tokens' columns
+# are the hole's - the file offset says where it really is
+function i18n_col(n: Node) -> int {
+  if n.pos < 0 or n.file == null { return n.col }
+  let src = fm_get(g_fm_src, n.file)
+  if src == null or len(src) <= n.pos { return n.col }
+  var a = n.pos
+  while a > 0 and src[a - 1] != '\n' { a -= 1 }
+  return n.pos - a + 1
+}
+
+# ---- the data: every compiled registry's rows ----------------------------------------------------
+function i18n_walk_data() -> void {
+  var d = 0
+  while d < len(g_df_reg) {
+    let r = reg_find(g_df_reg[d])
+    if r >= 0 and not pm_is(r) {
+      let comp = find_comp(g_rg_type[r])
+      if comp != null { i18n_data_rec(g_df_rec[d], comp, `{i18n_prefix(r)}.{g_df_key[d]}`) }
+    }
+    d += 1
+  }
+}
+# a @PerMap registry's rows in one map, once --check has read them (permap_check.ludic)
+function i18n_permap_rows(md: pointer) -> void {
+  if not g_i18n_on { return }
+  var m = md
+  var cut = len(m)
+  while cut > 0 and is_sep(m[cut - 1]) { cut -= 1 }
+  m = m[0 .. cut]
+  var s = cut
+  while s > 0 and not is_sep(m[s - 1]) { s -= 1 }
+  let map = m[s .. cut]
+  var e = 0
+  while e < len(g_pmk_rec) {
+    let r = g_pmk_reg[e]
+    let comp = find_comp(g_rg_type[r])
+    if comp != null { i18n_data_rec(g_pmk_rec[e], comp, `maps.{map}.{i18n_prefix(r)}.{g_pmk_key[e]}`) }
+    e += 1
+  }
+}
+function i18n_field_init(rec: Node, name: pointer) -> Node {
+  var i = 0
+  while i < len(rec.kids) {
+    let fi = rec.kids[i]
+    if fi.kind == E_FINIT and (fi.s == name) { return fi }
+    i += 1
+  }
+  return null
+}
+function i18n_data_rec(rec: Node, comp: Node, base: pointer) -> void {
+  if rec == null or comp == null { return }
+  var i = 0
+  while i < len(comp.kids) {
+    let f = comp.kids[i]
+    if f.kind == N_FIELD {
+      let fi = i18n_field_init(rec, f.s)
+      let key = `{base}.{f.s}`
+      let text = i18n_has_text(f)
+      if fi != null { i18n_data_val(fi.a, f.ty, key, text) }
+      else if text and i18n_is_key_ty(f.ty) {
+        # a map's row: its key is derived and must be in en.po (the fill is compiled registries')
+        g_i18n_what = `{key}, the derived key of a @Text field the row gives no value,`
+        i18n_use(key, false, KS_DATA, rec.file, rec.line, rec.col)
+        g_i18n_what = null
+      }
+    }
+    i += 1
+  }
+}
+function i18n_data_val(e: Node, ty: pointer, key: pointer, text: bool) -> void {
+  if e == null { return }
+  if i18n_is_key(e) {
+    if e.ty != null and (e.ty == "derived") { g_i18n_what = `{key}, the derived key of a @Text field the row gives no value,` }
+    i18n_use(i18n_key_text(e), e.ival == KEY_PLURAL, KS_DATA, e.file, e.line, e.col)
+    g_i18n_what = null
+    return
+  }
+  if e.kind == E_STR {
+    if text and i18n_wordy(e.s) {
+      let dummy = i18n_site(key, KS_DATA, e.file, e.line, e.col)
+      i18n_english_left(e.file, e.line, e.col, `{key} is "{i18n_short(e.s)}" in the data - its English goes to en.po under {key}`)
+    }
+    return
+  }
+  if e.kind == E_LIST {
+    var el: pointer = null
+    if ty != null and is_slice_ty(ty) { el = slice_elem(ty) }
+    var i = 0
+    while i < len(e.kids) {
+      i18n_data_val(e.kids[i], el, `{key}.{itoa(i)}`, text)
+      i += 1
+    }
+    return
+  }
+  if e.kind == E_NEW and e.a != null and e.a.kind == E_REC {
+    i18n_data_rec(e.a, find_comp(e.s), key)
+    return
+  }
+  if e.kind == E_REC and ty != null { i18n_data_rec(e, find_comp(ty), key) }
+}
+
+# ---- one English, several keys -------------------------------------------------------------------
+# the English a key was split into wants a `#.` on each key, so a translator can choose other words
+function i18n_split_check() -> void {
+  let p = g_i18n_en
+  if p == null { return }
+  let xs = new []int
+  let keys = new []pointer
+  var i = 0
+  while i < len(p.ids) {
+    push(xs, i)
+    push(keys, p.first[i])
+    i += 1
+  }
+  sc_sort(xs, keys)
+  var a = 0
+  while a < len(xs) {
+    var b = a + 1
+    while b < len(xs) and (p.first[xs[b]] == p.first[xs[a]]) { b += 1 }
+    if b - a > 1 and len(p.first[xs[a]]) > 0 {
+      var names: pointer = ""
+      var k = a
+      while k < b {
+        if k > a { names = names + ", " }
+        names = names + p.ids[xs[k]]
+        k += 1
+      }
+      k = a
+      while k < b {
+        let j = xs[k]
+        if p.desc[j] == null { pwarn_at(p.path, p.line[j], 1, `{p.ids[j]} has no #. description, and its English "{i18n_short(p.first[j])}" is split into {itoa(b - a)} keys ({names}) - say where it appears, so a translator can tell them apart`) }
+        k += 1
+      }
+    }
+    a = b
+  }
+}

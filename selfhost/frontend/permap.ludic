@@ -139,6 +139,7 @@ function pm_kind(ty: pointer) -> int {
   if (ty == "float") { return PM_FLOAT }
   if (ty == "bool") { return PM_BOOL }
   if (ty == "string") { return PM_STR }
+  if i18n_is_key_ty(ty) { return PM_STR }          # a Key is text at run time: k"..." in a map's row
   if str_starts(ty, "fn(") { return PM_FN }
   if is_slice_ty(ty) { return PM_LIST }
   let c = find_comp(ty)

@@ -74,5 +74,13 @@ function ck_give(to: pointer, from: pointer, e: Node, what: pointer) -> void {
     ck_err(cat, e, `{what} wants {ck_a(to)} and this is a pointer: a slice is made with words(n), floats(n) or new, not from an address`)
     return
   }
+  if (cat == "key") and ck_is_key(to) {
+    ck_err(cat, e, `{what} wants a Key and this is {ck_a(from)}: a key is written k"module.purpose" (kn"..." for a plural)`)
+    return
+  }
+  if (cat == "key") {
+    ck_err(cat, e, `{what} wants {ck_a(to)} and this is a Key: text is made from a key (tr(key)), never the key itself`)
+    return
+  }
   ck_err(cat, e, `{what} wants {ck_a(to)} and this is {ck_a(from)}`)
 }

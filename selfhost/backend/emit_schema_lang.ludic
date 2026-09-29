@@ -1,0 +1,224 @@
+# emit_schema_lang.ludic — the schema's "lang" (emit_schema.ludic): what a language editor needs of
+# the keys (i18n.ludic). null when the program's package.ludic has no `lang` line; otherwise
+#
+#   dir, source, file   the languages' directory, the source language and its .po (null if missing)
+#   keys          every key used, sorted: its kind (code, template or data - the first site's, and
+#                 `kinds` all of them), every site as "file:line:col", whether en.po has it, its
+#                 English, whether it is a plural, and en.po's #. description (or null)
+#   unused        en.po's keys used nowhere
+#   undescribed   en.po's keys with no #. description
+#   split         one English under several keys: [{english, keys}] - each wants a description
+#   languages     every other .po in the directory: {code: {file, missing, fuzzy, extra}} - en.po's
+#                 keys it lacks (or leaves empty), its fuzzy ones, and what it has that en.po does not
+function sc_lang(b: Buf) -> void {
+  if not g_i18n_on {
+    buf_puts(b, "null")
+    return
+  }
+  let en = g_i18n_en
+  buf_puts(b, "{\n    \"dir\": ")
+  jq_put(b, g_i18n_dir)
+  buf_puts(b, ",\n    \"source\": ")
+  jq_put(b, g_i18n_src)
+  buf_puts(b, ",\n    \"file\": ")
+  if en == null { buf_puts(b, "null") } else { jq_put(b, g_i18n_en_path) }
+  buf_puts(b, ",\n    \"keys\": [")
+  let used = ss_new(1024)
+  sc_lang_keys(b, used)
+  buf_puts(b, "\n    ],\n    \"unused\": [")
+  if en != null { sc_lang_ids(b, en, used, 0) }
+  buf_puts(b, "],\n    \"undescribed\": [")
+  if en != null { sc_lang_ids(b, en, used, 1) }
+  buf_puts(b, "],\n    \"split\": [")
+  if en != null { sc_lang_split(b, en) }
+  buf_puts(b, "\n    ],\n    \"languages\": {")
+  sc_lang_others(b, en)
+  buf_puts(b, "\n    }\n  }")
+}
+function sc_lang_keys(b: Buf, used: StrSet) -> void {
+  let xs = new []int
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_ks_key) {
+    push(xs, i)
+    push(keys, `{g_ks_key[i]}\t{g_ks_file[i]}\t{itoa(1000000 + g_ks_line[i])}\t{itoa(1000000 + g_ks_col[i])}`)
+    i += 1
+  }
+  sc_sort(xs, keys)
+  var a = 0
+  var first = true
+  while a < len(xs) {
+    let key = g_ks_key[xs[a]]
+    var z = a + 1
+    while z < len(xs) and (g_ks_key[xs[z]] == key) { z += 1 }
+    let dummy = ss_add(used, key)
+    sc_sep(b, first, "      ")
+    first = false
+    buf_puts(b, "{\"key\": ")
+    jq_put(b, key)
+    buf_puts(b, ", \"kind\": ")
+    jq_put(b, i18n_ks_name(g_ks_kind[xs[a]]))
+    buf_puts(b, ", \"kinds\": [")
+    var kd = 0
+    var nk = 0
+    while kd < 3 {
+      var has = false
+      var q = a
+      while q < z {
+        if g_ks_kind[xs[q]] == kd { has = true }
+        q += 1
+      }
+      if has {
+        if nk > 0 { buf_puts(b, ", ") }
+        jq_put(b, i18n_ks_name(kd))
+        nk += 1
+      }
+      kd += 1
+    }
+    buf_puts(b, "], \"sites\": [")
+    var s = a
+    while s < z {
+      let j = xs[s]
+      if s > a { buf_puts(b, ", ") }
+      jq_put(b, `{g_ks_file[j]}:{itoa(g_ks_line[j])}:{itoa(g_ks_col[j])}`)
+      s += 1
+    }
+    buf_puts(b, "]")
+    let e = po_find(g_i18n_en, key)
+    buf_puts(b, ", \"in_source\": ")
+    sc_bool(b, e >= 0)
+    buf_puts(b, ", \"english\": ")
+    if e >= 0 { jq_put(b, g_i18n_en.first[e]) } else { buf_puts(b, "null") }
+    buf_puts(b, ", \"plural\": ")
+    sc_bool(b, e >= 0 and g_i18n_en.plural[e])
+    buf_puts(b, ", \"description\": ")
+    if e >= 0 { sc_str(b, g_i18n_en.desc[e]) } else { buf_puts(b, "null") }
+    buf_puts(b, "}")
+    a = z
+  }
+}
+# en.po's ids, sorted: those used nowhere (what 0), or those with no description (what 1)
+function sc_lang_ids(b: Buf, en: PoFile, used: StrSet, what: int) -> void {
+  let xs = new []int
+  var i = 0
+  while i < len(en.ids) {
+    var take = false
+    if what == 0 { take = not ss_has(used, en.ids[i]) }
+    if what == 1 { take = en.desc[i] == null }
+    if take { push(xs, i) }
+    i += 1
+  }
+  sc_sort(xs, en.ids)
+  i = 0
+  while i < len(xs) {
+    if i > 0 { buf_puts(b, ", ") }
+    jq_put(b, en.ids[xs[i]])
+    i += 1
+  }
+}
+function sc_lang_split(b: Buf, en: PoFile) -> void {
+  let xs = new []int
+  let keys = new []pointer
+  var i = 0
+  while i < len(en.ids) {
+    push(xs, i)
+    push(keys, `{en.first[i]}\t{en.ids[i]}`)
+    i += 1
+  }
+  sc_sort(xs, keys)
+  var first = true
+  var a = 0
+  while a < len(xs) {
+    var z = a + 1
+    while z < len(xs) and (en.first[xs[z]] == en.first[xs[a]]) { z += 1 }
+    if z - a > 1 and len(en.first[xs[a]]) > 0 {
+      sc_sep(b, first, "      ")
+      first = false
+      buf_puts(b, "{\"english\": ")
+      jq_put(b, en.first[xs[a]])
+      buf_puts(b, ", \"keys\": [")
+      var k = a
+      while k < z {
+        if k > a { buf_puts(b, ", ") }
+        jq_put(b, en.ids[xs[k]])
+        k += 1
+      }
+      buf_puts(b, "]}")
+    }
+    a = z
+  }
+}
+# every other language in the directory, against en.po
+function sc_lang_others(b: Buf, en: PoFile) -> void {
+  let fs = pmk_list(g_i18n_dir, false)
+  var first = true
+  var i = 0
+  while i < len(fs) {
+    let f = fs[i]
+    let n = len(f)
+    if n > 3 and (f[n - 3 .. n] == ".po") and not (f[0 .. n - 3] == g_i18n_src) {
+      let p = po_read(`{g_i18n_dir}/{f}`)
+      if p != null {
+        sc_sep(b, first, "      ")
+        first = false
+        jq_put(b, f[0 .. n - 3])
+        buf_puts(b, ": {\"file\": ")
+        jq_put(b, p.path)
+        buf_puts(b, ", \"missing\": [")
+        sc_lang_diff(b, en, p, 0)
+        buf_puts(b, "], \"fuzzy\": [")
+        sc_lang_diff(b, en, p, 1)
+        buf_puts(b, "], \"extra\": [")
+        sc_lang_diff(b, en, p, 2)
+        buf_puts(b, "]}")
+      }
+    }
+    i += 1
+  }
+}
+# 0: en.po's keys p lacks or leaves empty; 1: p's fuzzy keys; 2: p's keys en.po does not have
+function sc_lang_diff(b: Buf, en: PoFile, p: PoFile, what: int) -> void {
+  let names = new []pointer
+  var i = 0
+  if what == 0 and en != null {
+    while i < len(en.ids) {
+      let j = po_find(p, en.ids[i])
+      if j < 0 or sc_lang_empty(p.strs[j]) { push(names, en.ids[i]) }
+      i += 1
+    }
+  }
+  if what == 1 {
+    while i < len(p.ids) {
+      if p.fuzzy[i] { push(names, p.ids[i]) }
+      i += 1
+    }
+  }
+  if what == 2 {
+    while i < len(p.ids) {
+      if po_find(en, p.ids[i]) < 0 { push(names, p.ids[i]) }
+      i += 1
+    }
+  }
+  let xs = new []int
+  i = 0
+  while i < len(names) {
+    push(xs, i)
+    i += 1
+  }
+  sc_sort(xs, names)
+  i = 0
+  while i < len(xs) {
+    if i > 0 { buf_puts(b, ", ") }
+    jq_put(b, names[xs[i]])
+    i += 1
+  }
+}
+# every form empty (the forms are joined by newlines)
+function sc_lang_empty(s: pointer) -> bool {
+  var i = 0
+  while i < len(s) {
+    if s[i] != '\n' { return false }
+    i += 1
+  }
+  return true
+}

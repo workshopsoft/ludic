@@ -34,6 +34,7 @@ function ck_compare(e: Node, op: pointer, l: pointer, r: pointer, a: Node, b: No
   let cr = ck_class(r)
   # a pointer holding text is compared with a string all through the runtime and the compiler
   if ((l == "pointer") and (cr == "string")) or ((r == "pointer") and (cl == "string")) { return }
+  if ((l == "pointer") and (cr == "key")) or ((r == "pointer") and (cl == "key")) { return }
   if cl != cr {
     ck_err("compare", e, `{op} between {ck_a(l)} and {ck_a(r)}`)
     return
@@ -46,6 +47,10 @@ function ck_compare(e: Node, op: pointer, l: pointer, r: pointer, a: Node, b: No
 # `string` and the untyped `pointer` are both text to an operator (the emitter's is_textish)
 function ck_is_text(t: pointer) -> bool { return (t == "string") or (t == "pointer") }
 function ck_arith(e: Node, op: pointer, l: pointer, r: pointer, a: Node, b: Node) -> pointer {
+  if ck_is_key(l) or ck_is_key(r) {
+    ck_err("key", e, `{op} on a Key: a key names a text, it is not one - make the text with tr(key)`)
+    return "?"
+  }
   if ck_is_text(l) or ck_is_text(r) {
     if ck_unknown(l) or ck_unknown(r) { return "string" }
     if ck_is_text(l) and ck_is_text(r) and (op == "+") { return "string" }

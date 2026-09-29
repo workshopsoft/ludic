@@ -5,6 +5,11 @@
 # functions are kept apart, and a pointer is trusted to be whatever it is given as.
 var ck_extern_arg: bool = false          # an extern's arguments are being given: a slice goes as its data
 function ck_unknown(t: pointer) -> bool { return t == null or (t == "?") }
+# the builtin Key, the type of k"..." - unless the program declares a type of that name itself
+function ck_is_key(t: pointer) -> bool {
+  if t == null or not (t == "Key") { return false }
+  return ck_record(t) == null and ck_enum(t) == null
+}
 function ck_is_int(t: pointer) -> bool {
   if (t == "int") or (t == "long") or (t == "byte") or (t == "i64") or (t == "u8") { return true }
   let en = ck_enum(t)
@@ -38,6 +43,7 @@ function ck_is_lit(e: Node) -> bool {
 function ck_class(t: pointer) -> pointer {
   if ck_is_num(t) { return "number" }
   if (t == "string") { return "string" }
+  if ck_is_key(t) { return "key" }
   if (t == "bool") { return "bool" }
   return "reference"
 }
@@ -85,6 +91,8 @@ function ck_mismatch(to: pointer, from: pointer, e: Node) -> pointer {
   }
   if (from == "pointer") and is_slice_ty(to) { return "pointer-slice" }
   if (to == "pointer") or (from == "pointer") { return null }
+  # a Key (k"...") is not text and text is not a Key, either way round (i18n.ludic)
+  if ck_is_key(to) or ck_is_key(from) { return "key" }
   if (to == "string") { return "kind" }
   if ck_is_rec(to) and ck_is_rec(from) { return "record" }
   if ck_is_rec(to) and ((from == "string") or is_slice_ty(from)) { return "kind" }

@@ -10,6 +10,7 @@ const TK_NL:  int = 4
 const TK_EOF: int = 5
 const TK_FLOAT: int = 6
 const TK_INTERP: int = 7      # `text {expr} text` — raw content, split by the parser
+const TK_KEY: int = 8         # k"pause.resume" / kn"catch.count" — a text key (i18n.ludic); ival 1 or 2
 
 property Tok { kind: int = 0, text: pointer = null, ival: int = 0, line: int = 0, pos: int = -1, end: int = -1, col: int = 0, off: int = -1, oend: int = -1 }
 # col: the token's column (1-based) on its line; off / oend: where it starts and ends in the text
@@ -244,6 +245,23 @@ function lex_at(src: pointer, first_line: int) -> void {
     if char_is_alpha(c) {
       let start = i
       while i < n and char_is_alnum(src[i]) { i += 1 }
+      # `k"..."` / `kn"..."`: a key literal, the name written against the quote (`k "x"` is a name
+      # and a string, as it always was)
+      let kw = i - start
+      if i < n and src[i] == '"' and ((kw == 1 and c == 'k') or (kw == 2 and c == 'k' and src[start + 1] == 'n')) {
+        i += 1
+        let kout = bytes(n)
+        var kj = 0
+        while i < n and src[i] != '"' and src[i] != '\n' {
+          if src[i] == CH_BACKSLASH { kout[kj] = unescape(src[i + 1]);  kj += 1;  i += 2 }
+          else { kout[kj] = src[i];  kj += 1;  i += 1 }
+        }
+        if i >= n or src[i] != '"' { lex_fail(line, "a key literal is never closed with \" on its line") }
+        i += 1
+        kout[kj] = 0
+        tok_push(TK_KEY, kout, kw, line)
+        continue
+      }
       tok_push(TK_ID, src[start..i], 0, line)
       continue
     }

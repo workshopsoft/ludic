@@ -61,6 +61,7 @@ function reg_fill(r: int) -> void {
       push(rec.kids, fi)
     }
     if comp != null { res_type_fields(rec, comp) }   # L9: nested records take their field's type
+    i18n_fill_row(r, key, rec, comp, g_df_kline[d], g_df_kcol[d])   # a @Text Key left out: its derived key
     let nw = node(E_NEW)
     nw.s = t
     nw.a = rec

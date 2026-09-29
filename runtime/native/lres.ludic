@@ -4,7 +4,7 @@
 # A @PerMap registry's rows are not compiled in: they are read when a map loads, or a chunk comes
 # in, from `<maps root>/<map>/<file>`. This file reads one .lres - the grammar the compiler's
 # resource files use: entries `key { field: value, ... }`, nested records `{ ... }`, lists `[ ... ]`,
-# "strings" (\n \r \t \0 and \x for any other x), numbers (-3, 0x1F, 1.5, 2e-3), true / false, a
+# "strings" (\n \r \t \0 and \x for any other x), text keys k"a.b" and kn"a.b", numbers (-3, 0x1F, 1.5, 2e-3), true / false, a
 # constant by NAME, `fn name`, and `#` comments to the end of a line; commas and newlines separate.
 #
 # ludicc splices it when a program declares a @PerMap registry, and writes the typed fill for each
@@ -27,6 +27,7 @@ const LRES_K_STR: int = 5
 const LRES_K_BOOL: int = 6
 const LRES_K_NAME: int = 7
 const LRES_K_FN: int = 8
+const LRES_K_KEY: int = 9      # k"pause.resume" / kn"catch.count": a text key, kept after its marker byte
 
 # one reader: the file, its tree, the program's constants by name, and the first error
 property LresTree {
@@ -431,6 +432,7 @@ function lres_value(t: LresTree) -> int {
   if c == '[' { return lres_list(t) }
   if c == '"' { return lres_string(t) }
   if c == '-' or c == '+' or c == '.' or lres_is_digit(c) { return lres_number(t) }
+  if c == 'k' and lres_key_ahead(t) { return lres_keylit(t) }
   if lres_is_alpha(c) {
     let line = t.ln
     let col = t.p - t.ls + 1
@@ -545,13 +547,43 @@ function lres_number_end(t: LresTree, k: int) -> int {
   if lres_is_alpha(c) or lres_is_digit(c) { lres_fail(t, "this is not a number") }
   return k
 }
-function lres_string(t: LresTree) -> int {
+# k"..." or kn"...", the cursor on the k
+function lres_key_ahead(t: LresTree) -> bool {
+  let buf = t.buf
+  if t.p + 1 < t.n and buf[t.p + 1] == '"' { return true }
+  return t.p + 2 < t.n and buf[t.p + 1] == 'n' and buf[t.p + 2] == '"'
+}
+# the key's text after its marker byte (1, or 2 for a plural), as the compiler writes k"..."
+function lres_keylit(t: LresTree) -> int {
+  let line = t.ln
+  let col = t.p - t.ls + 1
+  let buf = t.buf
+  var mark = 1
+  t.p += 1
+  if buf[t.p] == 'n' {
+    mark = 2
+    t.p += 1
+  }
+  let s = lres_string_marked(t, mark)
+  t.kind[s] = LRES_K_KEY
+  t.line[s] = line
+  t.col[s] = col
+  return s
+}
+function lres_string(t: LresTree) -> int { return lres_string_marked(t, 0) }
+function lres_string_marked(t: LresTree, mark: int) -> int {
   let s = lres_node(t, LRES_K_STR, t.ln, t.p - t.ls + 1)
   let oline = t.ln
   let ocol = t.p - t.ls + 1
   t.p += 1
   let buf = t.buf
   var k = 0
+  if mark > 0 {
+    lres_sb_room(t, 2)
+    let sb0 = t.sb
+    sb0[0] = mark
+    k = 1
+  }
   while true {
     if t.p >= t.n {
       lres_fail_at(t, oline, ocol, "this string is never closed with \"")
@@ -601,6 +633,7 @@ function lres_kind_text(k: int) -> string {
   if k == LRES_K_STR { return "a string" }
   if k == LRES_K_BOOL { return "true or false" }
   if k == LRES_K_NAME { return "a name" }
+  if k == LRES_K_KEY { return "a key" }
   return "fn name"
 }
 function lres_want(t: LresTree, n: int, what: string) -> void {
@@ -645,6 +678,15 @@ function lres_str(t: LresTree, n: int) -> string {
   if t.kind[n] == LRES_K_STR { return t.sval[n] }
   lres_want(t, n, "a \"string\"")
   return ""
+}
+# a Key field's value: k"..." (its marker kept, as the compiler writes the literal)
+function lres_key(t: LresTree, n: int) -> Key {
+  if t.kind[n] == LRES_K_KEY {
+    let p: pointer = t.sval[n]
+    return p
+  }
+  lres_want(t, n, "a key k\"...\"")
+  return null
 }
 # `fn name`: the name, which the fill resolves among the program's functions of the field's type
 function lres_fn(t: LresTree, n: int) -> string {
