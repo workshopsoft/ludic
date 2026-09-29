@@ -2,7 +2,8 @@
 # What an editor of a program's data needs, from the compiler's own view: every record with its
 # fields, types, defaults, docs and attributes (@Ref, @Range, ...), every registry with its entries
 # in their final order and where each is written, every const, and the functions a `fn` value can
-# name. The compiler writes it (`ludicc --emit-schema`, selfhost/backend/emit_schema.ludic) once the
+# name, the text keys, and the code map (modules, actions, events, ports, handlers, scenes, fn refs).
+# The compiler writes it (`ludicc --emit-schema`, selfhost/backend/emit_schema.ludic) once the
 # program has type-checked.
 #
 #   ludic schema [file]              the JSON on stdout

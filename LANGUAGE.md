@@ -801,6 +801,43 @@ object with `"schema_version": 1`:
   and is left out.
 - `units` - `@Unit`'s canonical spellings.
 - `lang` - the text keys and the languages (see Text keys), or null without a `lang` line.
+- `code` - the program's code map, so an editor needs no scan of its own. Every place is
+  `"file:line:col"` (`"at"`); what the runtime declares and what the compiler writes itself are left
+  out. It holds:
+  - `modules` - `{"name", "package", "layer", "uses", "uses_at", "friend", "files"}`: `uses` null
+    without a `uses` line, `friend` null, or `{"of": null}` for a friend of every module and
+    `{"of": [...]}` for `friend module lab of a, b`; `files` its source files and the resource files
+    read into its registries;
+  - `states`, `actions` (`{"name", "module", "at"}`), `reducers` (`{"state", "action", "module",
+    "at"}`) and `dispatch` (every `dispatch`: `{"action", "module", "at"}`);
+  - `events` - `{"name", "module", "at", "cancellable", "net"}` (`net` `"toserver"` for
+    `@ToServer`, `"toclients"` for `@ToClients`, else null), its `emits` (every `emit`'s place) and
+    its `listeners` (the `@On` handlers: `{"handler", "module", "at"}`);
+  - `ports` - `{"name", "module", "at", "bound", "members"}`, each member `{"name", "type", "default",
+    "required"}` (its `fn` type as a field's is spelled, its default as written); and `binds` - one
+    row per member a `bind` gives: `{"port", "member", "fn", "value", "module", "at"}`, `fn` the
+    function a `fn name` names (null for a variable bound to a member that takes nothing) and
+    `value` as written;
+  - `handlers` - `{"name", "module", "at", "phase", "hook", "target", "public", "net", "queries",
+    "scene", "layer"}`: `phase` null for a hook, `hook` null or `"On"`, `"OnSpawn"`, `"OnDespawn"`,
+    `"OnAttach"`, `"OnDetach"`, `"OnEnable"`, `"OnDisable"`, `"OnStart"`, `"OnQuit"` with `target`
+    the event, model or property it names; `net` `"server"` (`@Server`), `"predicted"`
+    (`@Predicted`) or null; `queries` null or `{"these": [{"property", "filter"}], "on"}` (a
+    filter as written, or null); a scene's handler has its name as written and its `scene` and
+    `layer`;
+  - `models` (`{"name", "module", "at", "owned", "properties": [{"name", "sync"}]}`), `prefabs`
+    (`{"name", "model", "module", "at", "components": [{"property", "fields": [{"name",
+    "value"}]}]}`) and `scenes` (`{"name", "module", "at", "start", "public", "shows", "lasts",
+    "then", "loads", "enter", "exit", "layers"}`: `lasts` as written, `then` the scene it goes on to,
+    `loads` the scene a `loads then` one goes on to, `enter` / `exit` whether it has the block);
+  - `fn_refs` - every `fn name` written, in code or in a resource file: `{"fn", "module", "at",
+    "slot_kind", "slot", "entry"}`, the slot it fills: `"registry"` (`"Registry.field"`, `entry` the
+    row's key), `"port"` (a bind's `"Port.member"`), `"port_default"`, `"default"` (a record
+    field's default, `"Type.field"`), `"record"` (a `new` or a spawn's `"Type.field"`), `"event"`
+    (an `emit`'s `"Event.field"`), `"arg"` (`"callee(i)"`, the i-th argument written), `"assign"`
+    (`s.tick = fn f`: `"s.tick"`), `"let"` (the name), or `"value"` with a null slot.
+
+  Named lists are sorted by name (then file and line), sites by place.
 
 Each list is sorted by name (then file and line), a registry's entries are in index order, and the
 paths are the ones the compiler read, so two runs over the same source write the same file. The
@@ -2323,7 +2360,7 @@ ludic test -j 4                          # four tests at once (default: one per 
 ludic test packages/ludic.base          # the test programs under a directory (a package's)
 ludic build --check                      # every check a build makes, nothing written
 ludic build --check --diagnostics=json   # the same, every error as a JSON array on stdout
-ludic schema -o build/schema.json        # records, registries, entries, consts, components and natives, for editors
+ludic schema -o build/schema.json        # records, registries, entries, consts, components, natives, lang and the code map, for editors
 ludic deps                               # how tangled the modules are, as the compiler resolved them
 ludic deps --check tests/deps-baseline.txt   # fail when a number rose (--baseline FILE writes them)
 
