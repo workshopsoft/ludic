@@ -192,3 +192,12 @@ function ltt2_bake_base(path: string, key: string, version: int) -> int {
   free(h)
   return base
 }
+
+# The map's tiles let go of the file they read from, before the pack that holds it is unmounted (a world
+# swap): the file closed and the page pool stopped. Until terrain_reload (or terrain_from_baked) opens the
+# next map's, the GPU keeps what is resident and the coarse level, and a query answers 0. Nothing else
+# render3d reads from a bake stays open: the shadow's and the textures' bytes are copied and closed.
+export function terrain_tiles_close(render3d_st: mut Render3dState) -> void {
+  tt_close(render3d_st)
+  render3d_st.tp_on = false
+}
