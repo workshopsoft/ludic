@@ -36,8 +36,11 @@ function gvk_tex_read_layer(render3d_st: mut Render3dState, tex: int, layer: int
   return ok
 }
 
-# every layer's level 0 into `out` (gpu_tex_byte_size bytes), layer after layer
+# every layer's level 0 into `out` (gpu_tex_byte_size bytes), layer after layer. The frame so far goes
+# first: the copy is a submit of its own, and read before the draws that fill the texture were submitted
+# it took whatever the image held - a bake of the sky's BRDF table came out all zeros at one width in three
 function gpu_tex_read_all(render3d_st: mut Render3dState, tex: int, out: pointer) -> bool {
+  gvk_flush(render3d_st)
   let layers = render3d_st.gvk_tex_layers[tex]
   let per = gpu_tex_byte_size(render3d_st, tex) / max(layers, 1)
   for l in 0 .. layers { if not gvk_tex_read_layer(render3d_st, tex, l, mem_off(out, l * per)) { return false } }
@@ -47,6 +50,7 @@ function gpu_tex_read_all(render3d_st: mut Render3dState, tex: int, out: pointer
 # level 0 of every layer written from bytes read back by gpu_tex_read_all; the texture's storage must
 # already be what it was (same format, size and layers). Mips, where it has them, are the caller's
 function gpu_tex_write_all(render3d_st: mut Render3dState, tex: int, data: pointer) -> bool {
+  gvk_flush(render3d_st)                          # after whatever the frame so far drew into it
   let ifmt = render3d_st.gvk_tex_glfmt[tex]
   let c = gvk_channels(ifmt)
   let b = gvk_channel_bytes(ifmt)
