@@ -1,0 +1,110 @@
+# fmt_stdin.ludic — `ludic-fmt -`: a buffer on stdin, formatted to stdout, for an editor. The
+# formatter works on tokens and never fails, so a buffer it cannot read as Ludic - a string, a
+# template or a key literal left open, a bracket never closed or closed by the wrong one - would come
+# back re-indented around the fault; such a buffer is refused instead, with where on stderr.
+var fs_err_line: int = 0
+var fs_err_col: int = 0
+var fs_err_msg: string = ""
+
+function fs_fail(i: int, msg: string) -> bool {
+  fs_err_line = tk_line[i] + 1
+  fs_err_col = tk_start[i] - linestart[tk_line[i]] + 1
+  fs_err_msg = msg
+  return false
+}
+# a string-ish token that reached the end of its line (or the text) without its closing quote
+function fs_open_quote(i: int) -> bool {
+  let t = tok_text(i)
+  let n = tok_len(i)
+  var q = t[0]
+  var body = 1
+  if q == 'k' {
+    q = '"'
+    body = 2
+    if n > 1 and t[1] == 'n' { body = 3 }
+  }
+  if n <= body { return true }
+  if t[n - 1] != q { return true }
+  return t[n - 2] == '\\' and not fs_escaped_end(t, n)
+}
+# is the backslash before the last byte itself escaped (`"a\\"` is closed, `"a\"` is not)?
+function fs_escaped_end(t: pointer, n: int) -> bool {
+  var k = n - 2
+  var run = 0
+  while k >= 1 and t[k] == '\\' {
+    run += 1
+    k -= 1
+  }
+  return run % 2 == 0
+}
+function fs_closer(c: int) -> int {
+  if c == '(' { return ')' }
+  if c == '[' { return ']' }
+  return '}'
+}
+# lex(text) first; true when the tokens read as Ludic, else fs_err_* say where they stop
+function fs_parses() -> bool {
+  let open = new []int
+  var i = 0
+  while i < ntok() {
+    let k = tk_kind[i]
+    if k == LT_STR and fs_open_quote(i) { return fs_fail(i, "this string is never closed") }
+    if k == LT_OP and tok_len(i) == 1 {
+      let c = src[tk_start[i]]
+      if c == '(' or c == '[' or c == '{' { push(open, i) }
+      if c == ')' or c == ']' or c == '}' {
+        if len(open) == 0 { return fs_fail(i, `a {string(tok_text(i))} with nothing open to close`) }
+        let o = open[len(open) - 1]
+        let want = fs_closer(src[tk_start[o]])
+        if c != want {
+          let at = `{tk_line[o] + 1}:{tk_start[o] - linestart[tk_line[o]] + 1}`
+          return fs_fail(i, `a {string(tok_text(i))} where the {string(tok_text(o))} opened at {at} wants its close`)
+        }
+        let closed = List.pop(open)
+      }
+    }
+    i += 1
+  }
+  if len(open) > 0 {
+    let o = open[len(open) - 1]
+    return fs_fail(o, `this {string(tok_text(o))} is never closed`)
+  }
+  return true
+}
+function fs_ends(s: string, suf: string) -> bool {
+  if len(suf) > len(s) { return false }
+  return s[len(s) - len(suf) .. len(s)] == suf
+}
+function fs_strip_dot(p: string) -> string {
+  var s = p
+  while len(s) >= 2 and s[0] == '.' and s[1] == '/' { s = s[2 .. len(s)] }
+  while len(s) > 1 and s[len(s) - 1] == '/' { s = s[0 .. len(s) - 1] }
+  return s
+}
+# is a buffer standing for `rel` (relative to the project) one --lint would walk?
+function fs_in_scope(rel: string) -> bool {
+  if not fs_ends(rel, ".ludic") { return false }
+  var i = 0
+  while i < len(lt_paths) {
+    let p = fs_strip_dot(lt_paths[i])
+    if p == "." or rel == p { return true }
+    if len(rel) > len(p) and rel[0 .. len(p)] == p and rel[len(p)] == '/' { return true }
+    i += 1
+  }
+  return false
+}
+# `ludic-fmt - --lint [--json]`: the buffer judged as the file it stands for, against the baseline,
+# which is never rewritten from a buffer. A buffer outside the project's lint paths breaks no rule.
+function fs_lint_stdin(name: string, rel_in: string) -> bool {
+  var rel = fs_strip_dot(rel_in)
+  if len(rel) == 0 { rel = fs_strip_dot(name) }
+  var shown = name
+  if len(shown) == 0 { shown = "-" }
+  if len(rel) == 0 { rel = "-" }
+  lt_show_from = rel
+  lt_show_as = shown
+  let text = string(slurp_stdin())
+  if lint_config() and (rel == "-" or fs_in_scope(rel)) { lint_file(rel, text) }
+  lt_partial = true
+  return lint_judge(false)
+}

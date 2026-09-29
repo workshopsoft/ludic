@@ -19,7 +19,8 @@ This is the v1 implementation of the direction decided in issue #63.
 
 ```
 ludic add <module>[@version]   add a dependency to package.ludic, then resolve + fetch + link
-ludic get                      resolve every dependency in package.ludic, link them, write the lock
+ludic remove <module>          the inverse of add: drop the require, what only it locked, its links
+ludic get [--json]             resolve every dependency in package.ludic, link them, write the lock
 ludic update [module]          bump a dependency (or all) to its latest published version, then relock
 ludic verify                   check every locked package against the store by content hash
 ludic vendor                   copy the resolved packages into ./vendor for hermetic/offline builds
@@ -28,6 +29,23 @@ ludic vendor                   copy the resolved packages into ./vendor for herm
 `ludic add` with no `@version` picks the latest published tag and records it as the
 minimum. All the install commands print the resolved build list and write
 `package.lock.ludic`.
+
+`ludic get --json` prints what the run changed in the lock as one JSON object on stdout (the
+resolver's lines go to stderr): `{"added": [...], "removed": [...], "changed": [...], "unchanged": n}`,
+an added or removed entry being the lock's line - `{"name", "version", "hash", "kind", "provides"}` -
+and a changed one `{"name", "from", "to", "from_hash", "to_hash"}` (the versions, and the content
+hashes beside them). The lock is compared before and after, in memory.
+
+`ludic remove <module>` takes the `require` line out of `package.ludic` and re-reads the dependency
+graph from the store's own copy of each locked package's manifest - no network - so the lock keeps
+exactly what the remaining requires still reach: a package another one still requires stays locked
+(at the version it had; `ludic get` settles versions), and what only the removed one brought in
+leaves the lock with it. Each package leaving the lock loses its `ludic_modules/` link - the link
+`add` made, never the store entry it points at, which other projects share; anything there that is
+not such a link is left and reported, as is a copy under `vendor/`. A module `package.ludic` does
+not require is refused (exit 1). Source that still imports a removed package is a warning, not a
+failure - the caller may be about to delete it. If the store has no copy of a locked package, only
+the named module leaves the lock, and it says so.
 
 ## The manifest — `package.ludic`
 

@@ -280,6 +280,11 @@ function parse_build_args(start: int) -> pointer {
     else if a == "--no-maps" { g_no_maps_build = true }     # --check leaves the map directories alone
     else if a == "--maps" { g_maps_build = true }           # ... or reads them, whatever program it checks
     else if a == "--diagnostics=json" { g_check_build = true;  g_diag_json_build = true }   # every error, as JSON on stdout
+    else if a == "--stdin-file" {                           # stdin is that file's unsaved text: checked, never built
+      ai += 1
+      if ai < arg_count() { g_stdin_file_build = arg(ai);  g_check_build = true }
+      else { err("ludic: --stdin-file needs a path\n");  g_argerr = true }
+    }
     else if a == "-o" {
       ai += 1
       if ai < arg_count() { g_out = arg(ai) }
@@ -287,7 +292,7 @@ function parse_build_args(start: int) -> pointer {
     }
     else if a[0] == '-' {
       err(`ludic: unknown option {a}\n`)
-      err("  build/run take: [file] [--headless|--windowed] [-o out] [--save-temps] [--check [--diagnostics=json] [--maps|--no-maps]]\n")
+      err("  build/run take: [file] [--headless|--windowed] [-o out] [--save-temps] [--check [--diagnostics=json] [--stdin-file path] [--maps|--no-maps]]\n")
       g_argerr = true
     }
     else { src = a }
@@ -311,6 +316,7 @@ function output_path(entry: pointer) -> pointer {
 # and nothing emitted or linked; a fraction of a build's time, for iterating on uses lines
 var g_check_build: bool = false
 var g_diag_json_build: bool = false     # --diagnostics=json: the compiler's JSON array is the whole stdout
+var g_stdin_file_build: pointer = ""     # --stdin-file <path>: the compiler reads stdin where it would read <path>
 var g_no_maps_build: bool = false
 var g_maps_build: bool = false
 # the maps are checked with the package's entry - the game - and left alone for any other program: a
@@ -330,13 +336,17 @@ function bld_same_path(a: pointer, b: pointer) -> bool {
   if len(y) > 2 and y[0] == '.' and y[1] == '/' { y = y[2..len(y)] }
   return x == y
 }
+function stdin_file_flag() -> pointer {
+  if g_stdin_file_build == "" { return "" }
+  return ` --stdin-file {sh_single(g_stdin_file_build)}`
+}
 function check_app(src: pointer) -> int {
   ensure_ludicc()
   if g_diag_json_build {
-    if not shq(`{ludicc()} --check --diagnostics=json{no_maps_flag(src)}{title_flag()}{unsafe_flag()} {src}`) { return 1 }
+    if not shq(`{ludicc()} --check --diagnostics=json{no_maps_flag(src)}{title_flag()}{unsafe_flag()}{stdin_file_flag()} {src}`) { return 1 }
     return 0
   }
-  if not shq(`{ludicc()} --check{no_maps_flag(src)}{title_flag()}{unsafe_flag()} {src}`) { return 1 }
+  if not shq(`{ludicc()} --check{no_maps_flag(src)}{title_flag()}{unsafe_flag()}{stdin_file_flag()} {src}`) { return 1 }
   print(`checked {src}`)
   return 0
 }
@@ -561,7 +571,8 @@ function strip_ext(p: pointer) -> pointer {
 # ---- ludic fmt / lsp --------------------------------------------------------
 
 # ludic fmt [--check] [paths...] — format the project's source in place (src/ and
-# tests/ by default), or the paths named. --check writes nothing and exits
+# tests/ by default), or the paths named. `--lint [--json]` checks the project's style rules and
+# `-` formats stdin to stdout, both from the project's root (fmt_in_project). --check writes nothing and exits
 # non-zero if anything is unformatted, which is what a pre-commit hook or CI
 # wants.
 #
@@ -572,17 +583,34 @@ function strip_ext(p: pointer) -> pointer {
 function cmd_fmt() -> int {
   var mode = "-w"
   var args = ""
+  var lint = false
+  var json = false
+  var stdin = false
+  var name = ""
   var ai = 2
   while ai < arg_count() {
     let a = arg(ai)
     if a == "--check" { mode = "--check" }
+    else if a == "--lint" { lint = true }
+    else if a == "--json" { json = true }
+    else if a == "-" { stdin = true }
+    else if a == "--stdin-name" and ai + 1 < arg_count() {
+      name = arg(ai + 1)
+      ai += 1
+    }
     else if a[0] == '-' {
       err(`ludic fmt: unknown option {a}\n`)
-      err("  usage: ludic fmt [--check] [paths...]\n")
+      err("  usage: ludic fmt [--check] [paths...] | ludic fmt --lint [--json] | ludic fmt - [--stdin-name PATH] [--lint [--json]]\n")
       return 1
     }
     else { args = `{args} {a}` }
     ai += 1
+  }
+  if json and not lint { err("ludic fmt: --json goes with --lint\n");  return 1 }
+  if name != "" and not stdin { err("ludic fmt: --stdin-name goes with - (the buffer on stdin)\n");  return 1 }
+  if lint or stdin {
+    if args != "" { err("ludic fmt: --lint walks the project's `lint paths`, and - reads stdin; neither takes paths\n");  return 1 }
+    return fmt_in_project(lint, json, stdin, name)
   }
   if args == "" {
     let found = capture_line("find src tests -name '*.ludic' 2>/dev/null | sort")
@@ -593,6 +621,21 @@ function cmd_fmt() -> int {
     args = ` {found}`
   }
   return sh(`{tool("ludic-fmt")} {mode}{args}`)
+}
+
+# `ludic fmt --lint` and `ludic fmt -`: ludic-fmt run from the project's root - the nearest directory
+# upwards holding a package.ludic, from the --stdin-name's directory or else this one - so its `lint`
+# lines, paths and baseline apply, with the buffer standing for its path relative to that root.
+function fmt_in_project(lint: bool, json: bool, stdin: bool, name: pointer) -> int {
+  var flags = ""
+  if stdin { flags = ` - --stdin-name {sh_single(name)} --stdin-rel "$rel"` }
+  if lint { flags = flags + " --lint" }
+  if json { flags = flags + " --json" }
+  var s = `F={sh_single(tool("ludic-fmt"))}; case "$F" in /*) ;; */*) F="$PWD/$F" ;; esac; n={sh_single(name)}; `
+  s = s + `if [ -n "$n" ] && a=$(cd -- "$(dirname -- "$n")" 2>/dev/null && pwd -P); then b=$(basename -- "$n"); else a=$(pwd -P); b=; fi; `
+  s = s + `r=$a; while [ "$r" != / ] && [ ! -f "$r/package.ludic" ]; do r=$(dirname -- "$r"); done; rel=; `
+  s = s + `if [ -f "$r/package.ludic" ]; then if [ -n "$b" ]; then rel=${{a#"$r"}}; rel=${{rel#/}}; rel=${{rel:+$rel/}}$b; fi; cd -- "$r" || exit 2; fi; `
+  return sh(s + `exec "$F"{flags}`)
 }
 
 # ludic lsp — the language server on stdio. Editors are configured to run this,

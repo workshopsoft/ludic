@@ -40,6 +40,7 @@ program LudicDev {
   import "assets.ludic"
   import "release.ludic"
   import "pkg.ludic"
+  import "pkg_lock.ludic"
   import "pkg_test.ludic"
 
   function usage() -> void {

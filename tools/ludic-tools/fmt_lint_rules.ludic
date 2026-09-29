@@ -26,8 +26,9 @@ function lint_comments(path: string, ls: []string) -> void {
     } else {
       if run > 0 {
         let header = not code_seen and start == 0
-        if header and lt_max_header > 0 and run > lt_max_header { lt_report(path, "max_header_lines", start + 1, `the opening comment is {run} lines (the limit is {lt_max_header})`) }
-        if not header and lt_max_comment > 0 and run > lt_max_comment { lt_report(path, "max_comment_lines", start + 1, `a comment of {run} lines (the limit is {lt_max_comment}): say why in a line or two; the story goes in the commit or docs/`) }
+        let col = lt_indent(ls[start]) + 1
+        if header and lt_max_header > 0 and run > lt_max_header { lt_report_at(path, "max_header_lines", start + 1, col, `the opening comment is {run} lines (the limit is {lt_max_header})`) }
+        if not header and lt_max_comment > 0 and run > lt_max_comment { lt_report_at(path, "max_comment_lines", start + 1, col, `a comment of {run} lines (the limit is {lt_max_comment}): say why in a line or two; the story goes in the commit or docs/`) }
         run = 0
       }
       if not blank { code_seen = true }
@@ -35,6 +36,14 @@ function lint_comments(path: string, ls: []string) -> void {
     i += 1
   }
 }
+# the spaces and tabs a line opens with
+function lt_indent(line: string) -> int {
+  var i = 0
+  while i < len(line) and (line[i] == ' ' or line[i] == 9) { i += 1 }
+  return i
+}
+# a token's 1-based byte column on its line
+function lt_tok_col(i: int) -> int { return tk_start[i] - linestart[tk_line[i]] + 1 }
 # 0 a blank line, 1 a comment line, 2 code
 function lt_words_raw(line: string) -> int {
   var i = 0
@@ -48,7 +57,7 @@ function lint_statements(path: string) -> void {
   while i < ntok() {
     if tk_kind[i] == LT_OP and tok_len(i) == 1 and src[tk_start[i]] == ';' {
       let k = tk_kind[i + 1]
-      if k != LT_NL and k != LT_COMMENT and k != LT_EOF { lt_report(path, "one_statement", tk_line[i] + 1, "two statements on one line") }
+      if k != LT_NL and k != LT_COMMENT and k != LT_EOF { lt_report_at(path, "one_statement", tk_line[i] + 1, lt_tok_col(i + 1), "two statements on one line") }
     }
     i += 1
   }
@@ -60,7 +69,7 @@ function lint_functions(path: string) -> void {
       let end = lt_fn_end(i)
       if end >= 0 {
         let n = tk_line[end] - tk_line[i] + 1
-        if n > lt_max_fn { lt_report(path, "max_function_lines", tk_line[i] + 1, `{lt_fn_name(i)} is {n} lines (the limit is {lt_max_fn})`) }
+        if n > lt_max_fn { lt_report_at(path, "max_function_lines", tk_line[i] + 1, lt_tok_col(i), `{lt_fn_name(i)} is {n} lines (the limit is {lt_max_fn})`) }
       }
     }
     i += 1

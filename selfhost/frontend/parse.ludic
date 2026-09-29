@@ -304,6 +304,7 @@ const TPL_HOLE: int = 92                                    # on the callee of e
 # non-cancellable event yields 0.
 function parse_emit() -> Node {
   pi += 1; let n = node(S_EMIT); n.s = eat_id()
+  cx_emit(n)                                  # the schema's code map (emit_schema_code.ludic)
   let r = node(E_REC)
   eat_op("("); skipnl()
   while not is_op(")") {
@@ -344,7 +345,7 @@ function p_primary() -> Node {
     if (t.text == "spawn") { return parse_spawn() }    # spawn as an expression: the new entity
     # fn name — a top-level function as a value, for a worker entry point (Job.parallel_for)
     # `fn` stays an ordinary name before an operator word (`p < fn and ...`) or at the end of a line
-    if (t.text == "fn") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 1].line == t.line) and (toks[pi + 1].text != "and") and (toks[pi + 1].text != "or") and (toks[pi + 1].text != "not") and (toks[pi + 1].text != "in") and (toks[pi + 1].text != "is") { pi += 1;  let n = node(E_FNREF);  n.line = t.line;  n.s = eat_id();  return n }
+    if (t.text == "fn") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 1].line == t.line) and (toks[pi + 1].text != "and") and (toks[pi + 1].text != "or") and (toks[pi + 1].text != "not") and (toks[pi + 1].text != "in") and (toks[pi + 1].text != "is") { pi += 1;  let n = node(E_FNREF);  n.line = t.line;  n.s = eat_id();  cx_fnref(n);  return n }
     # try EXPR else { ... } — evaluate a fallible (result-typed) expression; on
     # `ok` the whole expression is its payload, on `err` the else block runs (with
     # the message bound to `error`) and its trailing expression is the fallback.
@@ -954,6 +955,30 @@ function already_loaded(full: pointer) -> bool {
   return false
 }
 
+# a handler's hook, for the schema's code map: the attribute that made it one, and what it names
+function decl_hook(ev: pointer, sp: pointer, dsp: pointer, att: pointer, det: pointer, en: pointer, dis: pointer, ph: pointer) -> pointer {
+  if ev != null { return "On" }
+  if sp != null { return "OnSpawn" }
+  if dsp != null { return "OnDespawn" }
+  if att != null { return "OnAttach" }
+  if det != null { return "OnDetach" }
+  if en != null { return "OnEnable" }
+  if dis != null { return "OnDisable" }
+  if ph != null {
+    if (ph == "Start") { return "OnStart" }
+    return "OnQuit"
+  }
+  return null
+}
+function decl_hook_target(ev: pointer, sp: pointer, dsp: pointer, att: pointer, det: pointer, en: pointer, dis: pointer) -> pointer {
+  if ev != null { return ev }
+  if sp != null { return sp }
+  if dsp != null { return dsp }
+  if att != null { return att }
+  if det != null { return det }
+  if en != null { return en }
+  return dis
+}
 # parse one top-level declaration (or resolve an import) into `prog`.
 # Modifiers are `@annotations` in front of the declaration: `@export`, `@edge`,
 # `@pure`, `@deterministic`, … — one channel, not a zoo of prefix keywords.
@@ -1108,7 +1133,9 @@ function parse_one_decl() -> void {
     if is_det { push(g_det_names, h.s) }
     if g_aok_pending { push(g_alloc_ok_names, h.s);  g_aok_pending = false }
     if (role != null) { if (role == "server") { h.ival = 1 } else { h.ival = 2 } }      # N5: @Server=1 / @Predicted=2
-    if (on_event != null) { register_onlisten(on_event, h.a); return }                 # @On(Event) listener
+    cx_handler(h, h.s, decl_hook(on_event, onspawn_model, ondespawn_model, onattach_prop, ondetach_prop, onenable_prop, ondisable_prop, hook_phase),
+      decl_hook_target(on_event, onspawn_model, ondespawn_model, onattach_prop, ondetach_prop, onenable_prop, ondisable_prop), qspec, is_public, null, null)   # the schema's code map
+    if (on_event != null) { register_onlisten(on_event, h.a);  cx_listened();  return }  # @On(Event) listener
     if (onspawn_model != null) {
       register_onspawn(onspawn_model, h.a)                                            # spawn hook
       if is_public { ensure_event(`model_{onspawn_model}_spawn`, false) }             # @Public -> model_<M>_spawn

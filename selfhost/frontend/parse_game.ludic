@@ -189,7 +189,7 @@ function parse_queries_anno() -> Node {
         let pname = eat_id()
         let v = node(E_ID); v.s = pname; push(qn.kids, v)              # binding var = property name
         let t = node(E_ID); t.s = pname; t.ival = 0; push(terms.kids, t)
-        if is_op("{") { pi += 1; let ce = expr(); eat_op("}")
+        if is_op("{") { pi += 1; let f0 = pi; let ce = expr(); t.sp0 = toks[f0].off; t.sp1 = toks[pi - 1].oend; eat_op("}")
           let cb = node(E_ID); cb.s = pname; wh = mk_and(wh, qualify_fields(ce, cb)) }
         if is_op(",") { pi += 1 }
         skipnl()
@@ -249,12 +249,13 @@ function parse_scene() -> void {
   while is_id("start") or is_id("public") or is_id("shows") or is_id("lasts") or is_id("loads") {
     if is_id("start") { pi += 1; g_start_scene = g_scene_count }
     else if is_id("shows") { pi += 1; n.ty = eat_id() }    # shows Menu: the engine opens, renders and closes it
-    else if is_id("lasts") { pi += 1; lasts = expr(); if not is_id("then") { perr("lasts N needs `then Scene`") }; pi += 1; then_scene = eat_id() }
+    else if is_id("lasts") { pi += 1; let l0 = pi; lasts = expr(); n.sp0 = toks[l0].off; n.sp1 = toks[pi - 1].oend; if not is_id("then") { perr("lasts N needs `then Scene`") }; pi += 1; then_scene = eat_id() }
     else if is_id("loads") { pi += 1; if not is_id("then") { perr("loads needs `then Scene`") }; pi += 1; loads_then = eat_id(); g_uses_atlas = true }
     else { pi += 1; is_pub = true }
   }
   g_scene_count += 1
   if is_pub { ensure_event_empty(`scene_{n.s}_enter`);  ensure_event_empty(`scene_{n.s}_exit`) }
+  var layers = ","                           # the schema's code map (emit_schema_code.ludic)
   skipnl(); eat_op("{")
   while true {
     skipnl(); if is_op("}") { break }
@@ -273,6 +274,7 @@ function parse_scene() -> void {
     }
     if is_id("layer") {                      # layer Name [public] { handler .. }
       pi += 1; let lname = eat_id()
+      layers = layers + lname + ","
       if is_id("public") { pi += 1; ensure_event_empty(`layer_{lname}_show`);  ensure_event_empty(`layer_{lname}_hide`) }
       skipnl(); eat_op("{")
       let ltag = node(E_ID); ltag.s = lname   # the layer name, tagged onto each handler
@@ -287,6 +289,7 @@ function parse_scene() -> void {
         }
         if not is_id("handler") { perr("expected 'handler' in layer") }
         let h = parse_system()               # N_SYS: .s name, .ty phase, .a body
+        cx_handler(h, h.s, null, null, qspec, false, n.s, lname)
         if (qspec != null) { qspec.a = h.a;  let wrap = node(N_BLOCK);  push(wrap.kids, qspec);  h.a = wrap }
         h.s = `{n.s}_{h.s}`                  # scene-qualified: two scenes may both have a `Draw` handler
         h.c = n                              # tag the owning scene (null = global)
@@ -302,6 +305,7 @@ function parse_scene() -> void {
   eat_op("}")
   if (lasts != null) { scene_add_timer(n, lasts, then_scene) }
   if (loads_then != null) { scene_add_loader(n, loads_then) }
+  cx_scene(layers, then_scene, loads_then, is_pub)
   push(g_scenes, n)
 }
 

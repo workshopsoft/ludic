@@ -1,0 +1,459 @@
+# emit_schema_code.ludic — the schema's "code" (emit_schema.ludic): the program's code map as the
+# compiler read it, so an editor needs no scan of its own. Every place is "file:line:col".
+#
+#   modules    name, package, layer, uses (null without a `uses` line) and where, friend, files
+#   states     name, module, at                    actions   name, module, at
+#   reducers   state, action, module, at           dispatch  action, module, at
+#   events     name, module, at, cancellable, net (@ToServer / @ToClients), emits (sites) and
+#              listeners (the @On handlers: handler, module, at)
+#   ports      name, module, at, bound, members (name, type, default as written, required)
+#   binds      port, member, fn (the function a `fn name` names, else null), value as written, at
+#   handlers   (emit_schema_code_game.ludic) name, module, at, phase, hook, target, public, net,
+#              queries, scene, layer
+#   models, prefabs, scenes, fn_refs (emit_schema_code_game.ludic)
+#
+# Each list is sorted by name (then file and line) or, for sites, by place. What the runtime
+# declares, and what the compiler writes itself, is left out.
+
+# ---- what the parser records for it ------------------------------------------------------------
+var g_cx_emits: []Node = new []Node             # every `emit E(...)` read
+var g_cx_fnrefs: []Node = new []Node            # every `fn name` read, in code or data
+var g_cx_h: []Node = new []Node                 # every handler written: its node (name, phase, net role)
+var g_cx_hname: []pointer = new []pointer       # its name as written (a scene's are qualified later)
+var g_cx_hhook: []pointer = new []pointer       # null, "On", "OnSpawn", "OnDespawn", ..., "OnStart", "OnQuit"
+var g_cx_htarget: []pointer = new []pointer     # the event, model or property the hook names
+var g_cx_hq: []Node = new []Node                # its @Queries (an S_QUERY), or null
+var g_cx_hpub: []bool = new []bool              # @Public
+var g_cx_hscene: []pointer = new []pointer      # the scene and layer it is written in, or null
+var g_cx_hlayer: []pointer = new []pointer
+var g_cx_hlisten: []Node = new []Node           # an @On handler's listener (g_onlisten), whose event is resolved
+var g_cx_slayers: []pointer = new []pointer     # per g_scenes entry: ",a,b," its layers
+var g_cx_sthen: []pointer = new []pointer       # `lasts N then T`'s T, or null (N is the scene's sp0..sp1)
+var g_cx_sloads: []pointer = new []pointer      # `loads then T`'s T, or null
+var g_cx_spub: []bool = new []bool
+
+function cx_emit(n: Node) -> void { push(g_cx_emits, n) }
+function cx_fnref(n: Node) -> void { push(g_cx_fnrefs, n) }
+function cx_handler(h: Node, name: pointer, hook: pointer, target: pointer, q: Node, pub: bool, scene: pointer, layer: pointer) -> void {
+  push(g_cx_h, h)
+  push(g_cx_hname, name)
+  push(g_cx_hhook, hook)
+  push(g_cx_htarget, target)
+  push(g_cx_hq, q)
+  push(g_cx_hpub, pub)
+  push(g_cx_hscene, scene)
+  push(g_cx_hlayer, layer)
+  push(g_cx_hlisten, null)
+}
+# the handler just recorded is an @On listener, the one just registered
+function cx_listened() -> void {
+  let k = len(g_cx_hlisten) - 1
+  if k >= 0 and len(g_onlisten) > 0 { g_cx_hlisten[k] = g_onlisten[len(g_onlisten) - 1] }
+}
+function cx_scene(layers: pointer, then_scene: pointer, loads: pointer, pub: bool) -> void {
+  push(g_cx_slayers, layers)
+  push(g_cx_sthen, then_scene)
+  push(g_cx_sloads, loads)
+  push(g_cx_spub, pub)
+}
+
+# ---- the section ----------------------------------------------------------------------------------
+function sc_code(b: Buf) -> void {
+  buf_puts(b, "{\n    \"modules\": [")
+  cx_modules(b)
+  buf_puts(b, "\n    ],\n    \"states\": [")
+  cx_decls(b, 2)
+  buf_puts(b, "\n    ],\n    \"actions\": [")
+  cx_decls(b, 3)
+  buf_puts(b, "\n    ],\n    \"reducers\": [")
+  cx_reducers(b)
+  buf_puts(b, "\n    ],\n    \"dispatch\": [")
+  cx_dispatch(b)
+  buf_puts(b, "\n    ],\n    \"events\": [")
+  cx_events(b)
+  buf_puts(b, "\n    ],\n    \"ports\": [")
+  cx_ports(b)
+  buf_puts(b, "\n    ],\n    \"binds\": [")
+  cx_binds(b)
+  buf_puts(b, "\n    ],\n    \"handlers\": [")
+  cx_handlers(b)
+  buf_puts(b, "\n    ],\n    \"models\": [")
+  cx_models(b)
+  buf_puts(b, "\n    ],\n    \"prefabs\": [")
+  cx_prefabs(b)
+  buf_puts(b, "\n    ],\n    \"scenes\": [")
+  cx_scenes(b)
+  buf_puts(b, "\n    ],\n    \"fn_refs\": [")
+  cx_fn_refs(b)
+  buf_puts(b, "\n    ]\n  }")
+}
+
+# ---- places ---------------------------------------------------------------------------------------
+function cx_at_text(n: Node) -> pointer {
+  return `{n.file}:{itoa(n.line)}:{itoa(n.col)}`
+}
+function cx_at(b: Buf, n: Node) -> void {
+  buf_puts(b, "\"at\": ")
+  if n == null or n.file == null { buf_puts(b, "null") } else { jq_put(b, cx_at_text(n)) }
+}
+# a key that sorts by place
+function cx_at_key(n: Node) -> pointer {
+  var f = n.file
+  if f == null { f = "" }
+  return `{f}\t{itoa(1000000 + n.line)}\t{itoa(1000000 + n.col)}`
+}
+# written by the program, in a file it read (not the runtime's, not the compiler's own)
+function cx_written(n: Node) -> bool {
+  return n != null and n.file != null and n.pos >= 0 and not is_runtime_file(n.file)
+}
+# or read from a resource file, whose tokens carry no offset (lex_at)
+function cx_written_or_data(n: Node) -> bool {
+  if cx_written(n) { return true }
+  if n == null or n.file == null { return false }
+  let k = len(n.file)
+  return k > 5 and (n.file[k - 5 .. k] == ".lres")
+}
+function cx_module(b: Buf, file: pointer) -> void {
+  buf_puts(b, "\"module\": ")
+  sc_str(b, sc_mod(file))
+}
+# ",a,b," as a JSON array, each name once
+function cx_list(b: Buf, list: pointer) -> void {
+  buf_puts(b, "[")
+  let seen = ss_new(64)
+  var n = 0
+  var i = 1
+  while i < len(list) {
+    var j = i
+    while j < len(list) and list[j] != ',' { j += 1 }
+    if j > i {
+      let name = list[i .. j]
+      if ss_add(seen, name) {
+        if n > 0 { buf_puts(b, ", ") }
+        jq_put(b, name)
+        n += 1
+      }
+    }
+    i = j + 1
+  }
+  buf_puts(b, "]")
+}
+# the indices 0..n-1 sorted by keys
+function cx_order(keys: []pointer) -> []int {
+  let xs = new []int
+  var i = 0
+  while i < len(keys) {
+    if keys[i] != null { push(xs, i) }
+    i += 1
+  }
+  sc_sort(xs, keys)
+  return xs
+}
+
+# ---- modules --------------------------------------------------------------------------------------
+function cx_mod_names(names: []pointer, seen: StrSet, from: []pointer) -> void {
+  var i = 0
+  while i < len(from) {
+    if from[i] != null and len(from[i]) > 0 and ss_add(seen, from[i]) { push(names, from[i]) }
+    i += 1
+  }
+}
+function cx_modules(b: Buf) -> void {
+  let names = new []pointer
+  let seen = ss_new(256)
+  cx_mod_names(names, seen, g_mod_name)
+  cx_mod_names(names, seen, g_mu_mod)
+  cx_mod_names(names, seen, g_mod_friends)
+  let xs = cx_order(names)
+  var a = 0
+  while a < len(xs) {
+    let m = names[xs[a]]
+    sc_sep(b, a == 0, "      ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, m)
+    let files = new []pointer
+    var i = 0
+    while i < len(g_mod_file) {
+      if (g_mod_name[i] == m) and not is_runtime_file(g_mod_file[i]) { push(files, g_mod_file[i]) }
+      i += 1
+    }
+    var pkg: pointer = null
+    if len(files) > 0 and len(pkg_of_file(files[0])) > 0 { pkg = pkg_of_file(files[0]) }
+    buf_puts(b, ", \"package\": ")
+    sc_str(b, pkg)
+    let ly = mod_layer(m)
+    buf_puts(b, ", \"layer\": ")
+    if len(ly) == 0 { buf_puts(b, "null") } else { jq_put(b, ly) }
+    let u = mod_find_uses(m)
+    buf_puts(b, ", \"uses\": ")
+    if u < 0 { buf_puts(b, "null") } else { cx_list(b, g_mu_list[u]) }
+    buf_puts(b, ", \"uses_at\": ")
+    if u < 0 { buf_puts(b, "null") } else { jq_put(b, `{g_mu_file[u]}:{itoa(g_mu_line[u])}`) }
+    buf_puts(b, ", \"friend\": ")
+    cx_friend(b, m)
+    buf_puts(b, ", \"files\": [")
+    let fx = cx_order(files)
+    i = 0
+    while i < len(fx) {
+      if i > 0 { buf_puts(b, ", ") }
+      jq_put(b, files[fx[i]])
+      i += 1
+    }
+    buf_puts(b, "]}")
+    a += 1
+  }
+}
+# null, or {"of": null} for a friend of every module, else {"of": [the modules]}
+function cx_friend(b: Buf, m: pointer) -> void {
+  var all = false
+  var list: pointer = null
+  var i = 0
+  while i < len(g_mod_friends) {
+    if (g_mod_friends[i] == m) {
+      if len(g_fr_scope[i]) == 0 { all = true } else if list == null { list = g_fr_scope[i] } else { list = list + g_fr_scope[i] }
+    }
+    i += 1
+  }
+  if not all and list == null {
+    buf_puts(b, "null")
+    return
+  }
+  buf_puts(b, "{\"of\": ")
+  if all { buf_puts(b, "null") } else { cx_list(b, list) }
+  buf_puts(b, "}")
+}
+
+# ---- states, actions, reducers, dispatch ----------------------------------------------------------
+# the records of one kind (2 a state, 3 an action) in prog
+function cx_decls(b: Buf, uns: int) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_COMP and d.uns == uns and d.s != null and cx_written(d) { push(keys, sc_key(sc_name(d.s), d.file, d.line)) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let d = prog[xs[i]]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, sc_name(d.s))
+    buf_puts(b, ", ")
+    cx_module(b, d.file)
+    buf_puts(b, ", ")
+    cx_at(b, d)
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+function cx_reducers(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_red_nodes) {
+    let f = g_red_nodes[i]
+    if cx_written(f) { push(keys, `{g_red_state[i]}\t{g_red_action[i]}\t{cx_at_key(f)}`) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let k = xs[i]
+    let f = g_red_nodes[k]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"state\": ")
+    jq_put(b, g_red_state[k])
+    buf_puts(b, ", \"action\": ")
+    jq_put(b, g_red_action[k])
+    buf_puts(b, ", ")
+    cx_module(b, f.file)
+    buf_puts(b, ", ")
+    cx_at(b, f)
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+function cx_dispatch(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_dsp_at) {
+    let n = g_dsp_at[i]
+    if cx_written(n) { push(keys, cx_at_key(n)) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let n = g_dsp_at[xs[i]]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"action\": ")
+    jq_put(b, sc_name(g_dsp_names[xs[i]]))
+    buf_puts(b, ", ")
+    cx_module(b, n.file)
+    buf_puts(b, ", ")
+    cx_at(b, n)
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+
+# ---- events ---------------------------------------------------------------------------------------
+function cx_events(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_events) {
+    let e = g_events[i]
+    if e.s != null and cx_written(e) { push(keys, sc_key(sc_name(e.s), e.file, e.line)) } else { push(keys, null) }
+    i += 1
+  }
+  let ekeys = new []pointer                       # the emits, by place
+  i = 0
+  while i < len(g_cx_emits) {
+    if cx_written(g_cx_emits[i]) { push(ekeys, cx_at_key(g_cx_emits[i])) } else { push(ekeys, null) }
+    i += 1
+  }
+  let ex = cx_order(ekeys)
+  let hkeys = new []pointer                       # the listeners, by place
+  i = 0
+  while i < len(g_cx_h) {
+    if g_cx_hlisten[i] != null and cx_written(g_cx_h[i]) { push(hkeys, cx_at_key(g_cx_h[i])) } else { push(hkeys, null) }
+    i += 1
+  }
+  let hx = cx_order(hkeys)
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let e = g_events[xs[i]]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, sc_name(e.s))
+    buf_puts(b, ", ")
+    cx_module(b, e.file)
+    buf_puts(b, ", ")
+    cx_at(b, e)
+    buf_puts(b, ", \"cancellable\": ")
+    sc_bool(b, e.ival == 1)
+    buf_puts(b, ", \"net\": ")
+    sc_str(b, e.ty)
+    buf_puts(b, ", \"emits\": [")
+    var n = 0
+    var k = 0
+    while k < len(ex) {
+      let s = g_cx_emits[ex[k]]
+      if (s.s == e.s) {
+        if n > 0 { buf_puts(b, ", ") }
+        jq_put(b, cx_at_text(s))
+        n += 1
+      }
+      k += 1
+    }
+    buf_puts(b, "], \"listeners\": [")
+    n = 0
+    k = 0
+    while k < len(hx) {
+      let h = hx[k]
+      if (g_cx_hlisten[h].s == e.s) {
+        if n > 0 { buf_puts(b, ", ") }
+        buf_puts(b, "{\"handler\": ")
+        jq_put(b, g_cx_hname[h])
+        buf_puts(b, ", ")
+        cx_module(b, g_cx_h[h].file)
+        buf_puts(b, ", ")
+        cx_at(b, g_cx_h[h])
+        buf_puts(b, "}")
+        n += 1
+      }
+      k += 1
+    }
+    buf_puts(b, "]}")
+    i += 1
+  }
+}
+
+# ---- ports and binds ------------------------------------------------------------------------------
+function cx_ports(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_pt_name) {
+    let c = g_pt_comp[i]
+    if cx_written(c) { push(keys, sc_key(g_pt_name[i], c.file, c.line)) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let k = xs[i]
+    let c = g_pt_comp[k]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, g_pt_name[k])
+    buf_puts(b, ", ")
+    cx_module(b, c.file)
+    buf_puts(b, ", ")
+    cx_at(b, c)
+    buf_puts(b, ", \"bound\": ")
+    sc_bool(b, g_pt_bind[k] != null)
+    buf_puts(b, ", \"members\": [")
+    var f = 0
+    while f < len(c.kids) {
+      let fi = c.kids[f]
+      if f > 0 { buf_puts(b, ", ") }
+      buf_puts(b, "{\"name\": ")
+      jq_put(b, fi.s)
+      buf_puts(b, ", \"type\": ")
+      jq_put(b, sc_ty(fi.ty))
+      buf_puts(b, ", \"default\": ")
+      sc_str(b, sc_text(fi.file, fi.sp0, fi.sp1))
+      buf_puts(b, ", \"required\": ")
+      sc_bool(b, fi.a == null)
+      buf_puts(b, "}")
+      f += 1
+    }
+    buf_puts(b, "]}")
+    i += 1
+  }
+}
+# one row per member a bind gives
+function cx_binds(b: Buf) -> void {
+  let keys = new []pointer
+  let rows = new []Node
+  let ports = new []pointer
+  var i = 0
+  while i < len(g_bd) {
+    let bd = g_bd[i]
+    if cx_written(bd) and bd.a != null {
+      var k = 0
+      while k < len(bd.a.kids) {
+        let fi = bd.a.kids[k]
+        if fi.kind == E_FINIT {
+          push(keys, cx_at_key(fi))
+          push(rows, fi)
+          push(ports, bd.s)
+        }
+        k += 1
+      }
+    }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let fi = rows[xs[i]]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"port\": ")
+    jq_put(b, ports[xs[i]])
+    buf_puts(b, ", \"member\": ")
+    jq_put(b, fi.s)
+    buf_puts(b, ", \"fn\": ")
+    if fi.a != null and fi.a.kind == E_FNREF and fi.a.pos >= 0 { jq_put(b, sc_name(fi.a.s)) } else { buf_puts(b, "null") }
+    buf_puts(b, ", \"value\": ")
+    sc_str(b, sc_text(fi.file, fi.sp0, fi.sp1))
+    buf_puts(b, ", ")
+    cx_module(b, fi.file)
+    buf_puts(b, ", ")
+    cx_at(b, fi)
+    buf_puts(b, "}")
+    i += 1
+  }
+}

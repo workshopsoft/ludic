@@ -1,0 +1,116 @@
+# pkg_lock.ludic — the package manager's answers for editors and tools: `ludic get --json` (what a
+# get changed in package.lock.ludic, as one JSON object on stdout) and `ludic remove <module>`, the
+# inverse of `ludic add`. Neither touches the network: the diff is of the lock before and after, and
+# a removal re-reads the dependency graph from the store's own copies of each package.ludic.
+
+# the human lines of add / get / update: on stdout, or on stderr under --json
+var g_pkg_err: bool = false
+function pkg_say(line: pointer) -> void {
+  if g_pkg_err { err(line + nl()) } else { print(line) }
+}
+function pkg_has_flag(flag: pointer) -> bool {
+  var ai = 2
+  while ai < arg_count() {
+    if arg(ai) == flag { return true }
+    ai += 1
+  }
+  return false
+}
+
+# ---- JSON out --------------------------------------------------------------------
+
+function pkg_hex(d: int) -> pointer {
+  let b = bytes(2)
+  b[0] = '0' + d
+  if d > 9 { b[0] = 'a' + d - 10 }
+  b[1] = 0
+  return b
+}
+function pkg_jesc(c: int) -> pointer {
+  if c == '"' { return "\\\"" }
+  if c == 92 { return "\\\\" }
+  if c == '\n' { return "\\n" }
+  if c == '\t' { return "\\t" }
+  if c == '\r' { return "\\r" }
+  return "\\u00" + pkg_hex(c >> 4) + pkg_hex(c & 15)
+}
+# `s` as a JSON string, quotes included
+function pkg_jq(s: pointer) -> pointer {
+  var o = "\""
+  let n = slen(s)
+  var start = 0
+  var i = 0
+  while i < n {
+    let c = s[i] & 255
+    if c == '"' or c == 92 or c < 32 {
+      o = o + sslice(s, start, i) + pkg_jesc(c)
+      start = i + 1
+    }
+    i += 1
+  }
+  return o + sslice(s, start, n) + "\""
+}
+# a lock line as the lock records it
+function lock_entry_json(m: Manifest) -> pointer {
+  var o = `{{"name": {pkg_jq(m.module)}, "version": {pkg_jq(m.ver)}, "hash": {pkg_jq(m.hash)}, "kind": {pkg_jq(m.kind)}, "provides": [`
+  var p = 0
+  while p < len(m.provides) {
+    if p > 0 { o = o + ", " }
+    o = o + pkg_jq(m.provides[p])
+    p += 1
+  }
+  return o + "]}"
+}
+function lock_index(ms: []Manifest, module: pointer) -> int {
+  var i = 0
+  while i < len(ms) {
+    if ms[i].module == module { return i }
+    i += 1
+  }
+  return -1
+}
+function json_list(items: []pointer) -> pointer {
+  if len(items) == 0 { return "[]" }
+  var o = "["
+  var i = 0
+  while i < len(items) {
+    if i > 0 { o = o + "," }
+    o = o + nl() + "    " + items[i]
+    i += 1
+  }
+  return o + nl() + "  ]"
+}
+# what changed between two locks: {"added", "removed", "changed", "unchanged"}. A module whose version
+# or content hash moved is changed; `from` / `to` are its versions, the hashes beside them.
+function lock_diff_json(before: []Manifest, after: []Manifest) -> pointer {
+  let added = new []pointer
+  let removed = new []pointer
+  let changed = new []pointer
+  var same = 0
+  var i = 0
+  while i < len(after) {
+    let m = after[i]
+    let at = lock_index(before, m.module)
+    if at < 0 { push(added, lock_entry_json(m)) }
+    else {
+      let o = before[at]
+      if o.ver == m.ver and o.hash == m.hash { same += 1 }
+      else { push(changed, `{{"name": {pkg_jq(m.module)}, "from": {pkg_jq(o.ver)}, "to": {pkg_jq(m.ver)}, "from_hash": {pkg_jq(o.hash)}, "to_hash": {pkg_jq(m.hash)}}}`) }
+    }
+    i += 1
+  }
+  i = 0
+  while i < len(before) {
+    if lock_index(after, before[i].module) < 0 { push(removed, lock_entry_json(before[i])) }
+    i += 1
+  }
+  var o = "{" + nl() + `  "added": {json_list(added)},` + nl()
+  o = o + `  "removed": {json_list(removed)},` + nl()
+  o = o + `  "changed": {json_list(changed)},` + nl()
+  return o + `  "unchanged": {string(same)}` + nl() + "}" + nl()
+}
+function read_lock_or_empty() -> []Manifest {
+  let t = read_file("package.lock.ludic")
+  if t == null { return new []Manifest }
+  return parse_lock(t)
+}

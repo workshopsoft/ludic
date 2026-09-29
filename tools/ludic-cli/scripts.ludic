@@ -12,7 +12,7 @@
 
 # the built-in commands a hook can wrap (every user command that does work)
 function is_hookable(cmd: pointer) -> bool {
-  return (cmd == "build") or (cmd == "run") or (cmd == "test") or (cmd == "deps") or (cmd == "schema") or (cmd == "migrate") or (cmd == "bundle") or (cmd == "pack") or (cmd == "clean") or (cmd == "fmt") or (cmd == "get") or (cmd == "add") or (cmd == "update") or (cmd == "verify") or (cmd == "vendor") or (cmd == "assets") or (cmd == "build-lib")
+  return (cmd == "build") or (cmd == "run") or (cmd == "test") or (cmd == "deps") or (cmd == "schema") or (cmd == "migrate") or (cmd == "bundle") or (cmd == "pack") or (cmd == "clean") or (cmd == "fmt") or (cmd == "get") or (cmd == "add") or (cmd == "remove") or (cmd == "update") or (cmd == "verify") or (cmd == "vendor") or (cmd == "assets") or (cmd == "build-lib")
 }
 
 # the directory this `ludic` binary lives in, with no trailing slash
@@ -32,6 +32,17 @@ function script_env(event: pointer, phase: pointer) -> pointer {
   return env
 }
 
+# a command whose stdout is for a program (`--json`) or whose stdin is a buffer (`ludic fmt -`): its
+# hooks read nothing and say everything on stderr, so neither is spoilt
+function machine_output() -> bool {
+  var ai = 2
+  while ai < arg_count() {
+    if arg(ai) == "--json" or arg(ai) == "-" { return true }
+    ai += 1
+  }
+  return false
+}
+
 # run every `hook <phase> <event>` in order; the first failure's exit code, or 0
 function run_hooks(phase: pointer, event: pointer) -> int {
   if not file_exists("package.ludic") { return 0 }
@@ -40,8 +51,14 @@ function run_hooks(phase: pointer, event: pointer) -> int {
   while i + 2 < len(m.hooks) {
     if m.hooks[i] == phase and m.hooks[i + 1] == event {
       let cmd = m.hooks[i + 2]
-      say(`> {phase} {event}: {cmd}`)
-      let rc = sh(`{script_env(event, phase)}{cmd}`)
+      var rc = 0
+      if machine_output() {
+        err(`> {phase} {event}: {cmd}\n`)
+        rc = sh(`{script_env(event, phase)}( {cmd} ) < /dev/null 1>&2`)
+      } else {
+        say(`> {phase} {event}: {cmd}`)
+        rc = sh(`{script_env(event, phase)}{cmd}`)
+      }
       if rc != 0 {
         err(`ludic: the {phase} {event} hook failed (exit {string(rc)}): {cmd}\n`)
         return rc

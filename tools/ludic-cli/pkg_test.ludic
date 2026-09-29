@@ -12,6 +12,13 @@ function pt_write(path: pointer, body: pointer) -> void {
   write_file(path, body)
 }
 
+# a file's text, "" when it is not there
+function pt_read(path: pointer) -> pointer {
+  let t = read_file(path)
+  if t == null { return "" }
+  return t
+}
+
 # commit the current tree of `dir` and tag it `tag`
 function pt_commit_tag(dir: pointer, tag: pointer) -> void {
   shell(`git -C {dir} add -A`)
@@ -169,6 +176,38 @@ function cmd_test_pkg() -> int {
   if shq(`( cd {proj} && {envp} {root}/bin/ludic vendor > {work}/vendor.out 2>&1 )`) and file_exists(`{proj}/vendor/example.test/util/util.ludic`) {
     ok("ludic vendor copies the resolved packages into ./vendor")
   } else { bad2("ludic vendor failed", capture_line(`tail -1 {work}/vendor.out`)) }
+
+  # ---- for editors (R9): get --json says what changed in the lock; remove undoes add ----
+  let proj5 = `{work}/proj5`
+  pt_write(`{proj5}/package.ludic`, `package "app"` + nl() + `version "0.0.0"` + nl() + `require "example.test/greeter" "1.0.0"` + nl())
+  pt_write(`{proj5}/src/app.ludic`, "program App {\n  import \"example.test/greeter/greet.ludic\"\n}\n")
+  shell(`( cd {proj5} && {envp} {root}/bin/ludic get --json > {work}/gj.json 2> {work}/gj.err )`)
+  let gj = pt_read(`{work}/gj.json`)
+  if s_contains(gj, `"name": "example.test/greeter", "version": "1.0.0"`) and s_contains(gj, `"name": "example.test/util", "version": "1.0.0"`) and s_contains(gj, `"unchanged": 0`) and shq(`python3 -m json.tool {work}/gj.json > /dev/null`) and not s_contains(gj, "resolving") {
+    ok("ludic get --json: a fresh lock is two added packages, one JSON object on stdout")
+  } else { bad2("ludic get --json (fresh)", gj) }
+  pt_write(`{proj5}/package.ludic`, `package "app"` + nl() + `version "0.0.0"` + nl() + `require "example.test/greeter" "1.0.0"` + nl() + `require "example.test/util" "1.2.0"` + nl())
+  let gj2 = capture(`( cd {proj5} && {envp} {root}/bin/ludic get --json 2>/dev/null )`)
+  if s_contains(gj2, `"added": []`) and s_contains(gj2, `"name": "example.test/util", "from": "1.0.0", "to": "1.2.0"`) and s_contains(gj2, `"unchanged": 1`) {
+    ok("ludic get --json: a raised minimum is a change from one version to the other")
+  } else { bad2("ludic get --json (changed)", gj2) }
+  if not shq(`( cd {proj5} && {root}/bin/ludic remove example.test/nothere > {work}/rm0.out 2>&1 )`) and shq(`grep -q 'does not require' {work}/rm0.out`) {
+    ok("ludic remove refuses a module package.ludic does not require")
+  } else { bad2("ludic remove of an unrequired module", capture_line(`cat {work}/rm0.out`)) }
+  let store_n = capture_line(`ls {store} | wc -l`)
+  shell(`( cd {proj5} && LUDIC_STORE={store} {root}/bin/ludic remove example.test/util > {work}/rm1.out 2>&1 )`)
+  let lk1 = pt_read(`{proj5}/package.lock.ludic`)
+  if not s_contains(pt_read(`{proj5}/package.ludic`), "example.test/util") and s_contains(lk1, "example.test/util") and file_exists(`{proj5}/ludic_modules/example.test/util`) {
+    ok("ludic remove keeps what another package still requires locked and linked")
+  } else { bad2("ludic remove dropped a package still required", capture_line(`cat {work}/rm1.out`)) }
+  shell(`( cd {proj5} && LUDIC_STORE={store} {root}/bin/ludic remove example.test/greeter > {work}/rm2.out 2>&1 )`)
+  let lk2 = pt_read(`{proj5}/package.lock.ludic`)
+  if not s_contains(lk2, "example.test/") and not file_exists(`{proj5}/ludic_modules`) and capture_line(`ls {store} | wc -l`) == store_n {
+    ok("ludic remove drops the require, what only it locked and its links, and leaves the shared store alone")
+  } else { bad2("ludic remove of the last require", capture_line(`cat {work}/rm2.out`)) }
+  if shq(`grep -q 'still imported by' {work}/rm2.out`) and shq(`grep -q 'src/app.ludic' {work}/rm2.out`) {
+    ok("ludic remove warns about source still importing what it removed")
+  } else { bad("ludic remove said nothing about src/app.ludic importing the package") }
 
   # ---- package-declarable engine-system + namespace (issue #62) -------------
   # A source package registers a compile-time engine system (@EngineSystem) and a

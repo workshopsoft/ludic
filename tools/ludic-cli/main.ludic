@@ -25,6 +25,8 @@ program Ludic {
   import "split.ludic"
   import "project.ludic"
   import "pkg.ludic"
+  import "pkg_lock.ludic"
+  import "pkg_remove.ludic"
   import "assets.ludic"
   import "packignore.ludic"
   import "pack.ludic"
@@ -49,6 +51,7 @@ program Ludic {
     print("                                compile to build/<name> (a native binary, nothing to ship beside it)")
     print("  build [file] --check          only check it: types, modules, uses and ports; nothing emitted")
     print("  build [file] --check --diagnostics=json   every error as a JSON array on stdout")
+    print("  build [file] --check --stdin-file PATH    stdin is PATH's unsaved text (an editor's buffer)")
     print("  test [file|dir...] [-j N] [-v] [--test NAME]")
     print("                                compile and run the project's tests (-v: every test's line)")
     print("  deps [file] [--graph|--dot|--writes|--uses MOD|--check F|--baseline F]")
@@ -60,7 +63,9 @@ program Ludic {
     print("")
     print("packages:")
     print("  add <module>[@version]        add a dependency, then resolve + fetch + link")
-    print("  get                           resolve every package.ludic dependency and write the lock")
+    print("  remove <module>               drop a dependency: its require, what only it locked, its ludic_modules/ link")
+    print("  get [--json]                  resolve every package.ludic dependency and write the lock")
+    print("                                (--json: what changed in the lock, as a JSON object on stdout)")
     print("  update [module]               bump a dependency (or all) to its latest published version")
     print("  verify                        check every locked package against the store by content hash")
     print("  vendor                        copy the resolved packages into ./vendor for offline builds")
@@ -80,6 +85,9 @@ program Ludic {
     print("  upgrade [version]             reinstall from the docs site (the same script that installed it)")
     print("  doctor                        check that the install is complete and usable")
     print("  fmt [--check] [paths...]      format Ludic source in place (--check: report, write nothing)")
+    print("  fmt --lint [--json]           check the project's `lint` rules (--json: one JSON array on stdout)")
+    print("  fmt - [--stdin-name PATH]     format stdin to stdout under the project's rules, as if it were PATH")
+    print("  fmt - --lint [--json] [--stdin-name PATH]   lint stdin as PATH")
     print("  lsp                           run the language server on stdio (what editors spawn)")
     print("  ui-preview [--font DIR]       preview a game's ludic.ui components for a studio, on stdio")
     print("  help                          this message")
@@ -123,6 +131,7 @@ program Ludic {
 
     if (cmd == "add") { return cmd_pkg_add() }
     if (cmd == "get") { return cmd_pkg_get() }
+    if (cmd == "remove") { return cmd_pkg_remove() }
     if (cmd == "update") { return cmd_pkg_update() }
     if (cmd == "verify") { return cmd_pkg_verify() }
     if (cmd == "vendor") { return cmd_pkg_vendor() }

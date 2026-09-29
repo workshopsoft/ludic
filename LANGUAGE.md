@@ -801,6 +801,43 @@ object with `"schema_version": 1`:
   and is left out.
 - `units` - `@Unit`'s canonical spellings.
 - `lang` - the text keys and the languages (see Text keys), or null without a `lang` line.
+- `code` - the program's code map, so an editor needs no scan of its own. Every place is
+  `"file:line:col"` (`"at"`); what the runtime declares and what the compiler writes itself are left
+  out. It holds:
+  - `modules` - `{"name", "package", "layer", "uses", "uses_at", "friend", "files"}`: `uses` null
+    without a `uses` line, `friend` null, or `{"of": null}` for a friend of every module and
+    `{"of": [...]}` for `friend module lab of a, b`; `files` its source files and the resource files
+    read into its registries;
+  - `states`, `actions` (`{"name", "module", "at"}`), `reducers` (`{"state", "action", "module",
+    "at"}`) and `dispatch` (every `dispatch`: `{"action", "module", "at"}`);
+  - `events` - `{"name", "module", "at", "cancellable", "net"}` (`net` `"toserver"` for
+    `@ToServer`, `"toclients"` for `@ToClients`, else null), its `emits` (every `emit`'s place) and
+    its `listeners` (the `@On` handlers: `{"handler", "module", "at"}`);
+  - `ports` - `{"name", "module", "at", "bound", "members"}`, each member `{"name", "type", "default",
+    "required"}` (its `fn` type as a field's is spelled, its default as written); and `binds` - one
+    row per member a `bind` gives: `{"port", "member", "fn", "value", "module", "at"}`, `fn` the
+    function a `fn name` names (null for a variable bound to a member that takes nothing) and
+    `value` as written;
+  - `handlers` - `{"name", "module", "at", "phase", "hook", "target", "public", "net", "queries",
+    "scene", "layer"}`: `phase` null for a hook, `hook` null or `"On"`, `"OnSpawn"`, `"OnDespawn"`,
+    `"OnAttach"`, `"OnDetach"`, `"OnEnable"`, `"OnDisable"`, `"OnStart"`, `"OnQuit"` with `target`
+    the event, model or property it names; `net` `"server"` (`@Server`), `"predicted"`
+    (`@Predicted`) or null; `queries` null or `{"these": [{"property", "filter"}], "on"}` (a
+    filter as written, or null); a scene's handler has its name as written and its `scene` and
+    `layer`;
+  - `models` (`{"name", "module", "at", "owned", "properties": [{"name", "sync"}]}`), `prefabs`
+    (`{"name", "model", "module", "at", "components": [{"property", "fields": [{"name",
+    "value"}]}]}`) and `scenes` (`{"name", "module", "at", "start", "public", "shows", "lasts",
+    "then", "loads", "enter", "exit", "layers"}`: `lasts` as written, `then` the scene it goes on to,
+    `loads` the scene a `loads then` one goes on to, `enter` / `exit` whether it has the block);
+  - `fn_refs` - every `fn name` written, in code or in a resource file: `{"fn", "module", "at",
+    "slot_kind", "slot", "entry"}`, the slot it fills: `"registry"` (`"Registry.field"`, `entry` the
+    row's key), `"port"` (a bind's `"Port.member"`), `"port_default"`, `"default"` (a record
+    field's default, `"Type.field"`), `"record"` (a `new` or a spawn's `"Type.field"`), `"event"`
+    (an `emit`'s `"Event.field"`), `"arg"` (`"callee(i)"`, the i-th argument written), `"assign"`
+    (`s.tick = fn f`: `"s.tick"`), `"let"` (the name), or `"value"` with a null slot.
+
+  Named lists are sorted by name (then file and line), sites by place.
 
 Each list is sorted by name (then file and line), a registry's entries are in index order, and the
 paths are the ones the compiler read, so two runs over the same source write the same file. The
@@ -2323,7 +2360,8 @@ ludic test -j 4                          # four tests at once (default: one per 
 ludic test packages/ludic.base          # the test programs under a directory (a package's)
 ludic build --check                      # every check a build makes, nothing written
 ludic build --check --diagnostics=json   # the same, every error as a JSON array on stdout
-ludic schema -o build/schema.json        # records, registries, entries, consts, components and natives, for editors
+ludic build --check --diagnostics=json --stdin-file src/a.ludic < buf   # stdin in place of src/a.ludic
+ludic schema -o build/schema.json        # records, registries, entries, consts, components, natives, lang and the code map, for editors
 ludic syntax --json                      # the language's vocabulary: keywords, declarations, types, phases, attributes, operators
 ludic deps                               # how tangled the modules are, as the compiler resolved them
 ludic deps --check tests/deps-baseline.txt   # fail when a number rose (--baseline FILE writes them)
@@ -2345,6 +2383,17 @@ type error is in it, every `@Ref` naming no registry, and every module rule brok
 `uses`); an error the parser or the code writer cannot go on from - a token it did not expect, an
 unknown name while lowering, a def into a registry that does not exist - ends the array, and type
 errors end it before the module rules are looked at.
+
+`--stdin-file <path>` (`ludicc --check --stdin-file <path>`; on `ludic build` it implies `--check`)
+checks an unsaved buffer: the program is the usual one - the package's entry, or the file named - but
+wherever the compiler would open `<path>` it reads the text on stdin instead, read once and whole (an
+empty stdin is an empty file). That is any file it opens: the entry, an import reached through a
+barrel, a component's `.xml` or `.lss`, an `.lres`. The two paths are compared after normalising
+both - `\` made `/`, a relative path put under the directory the compiler was started in, `.`, `..`
+and doubled `/` folded, and case on Windows - so `./src/foo/../foo/bar.ludic` is `src/foo/bar.ludic`.
+Diagnostics name the file as a check of the saved file would, with lines and columns in the
+buffer's text. A `<path>` the program never opens is one warning on that path, rather than a clean
+report on the saved files.
 
 `ludic deps` compiles the program (the package's entry, or a file) with the compiler recording every
 reference its visibility pass resolves - from the module it is written in to the module of what it
@@ -2419,6 +2468,28 @@ lint baseline "tests/lint-baseline.txt"
 had when a rule came in, which it may keep but not add to, lowered automatically as they are
 fixed - so a rule can arrive in a codebase that breaks it today (`ludic-fmt --init-baseline`
 writes it). A `;` or a `#` inside a string does not count.
+
+For editors and tools (`ludic fmt` finds the project the way these describe - the nearest
+`package.ludic` upwards from the working directory, or from the directory of `--stdin-name` - and runs
+the formatter from there):
+
+```bash
+ludic fmt --lint --json                       # the violations --lint prints, as one JSON array
+ludic fmt - --stdin-name src/a.ludic < buf    # a buffer formatted to stdout, as if it were src/a.ludic
+ludic fmt - --lint --json --stdin-name src/a.ludic < buf   # a buffer linted as src/a.ludic
+```
+
+`--lint --json` writes `[{"file", "line", "col", "rule", "message"}]` on stdout - every violation
+`--lint` would print, ordered by file, line and column (`col`, 1-based, is left out for a rule with no
+column: a file's length) - and everything else on stderr; the exit status is `--lint`'s (1 when a file
+has more than its baseline allows). Unlike `--lint`, it never rewrites the baseline. `-` reads the
+whole of stdin: formatting writes the result to stdout, and a buffer that does not read as Ludic - a
+string, template or key literal left open, a bracket never closed or closed by the wrong one - is
+refused with exit 2 and `<name>:<line>:<col>: error: ...` on stderr, nothing on stdout. With `--lint`,
+the buffer is judged as the file `--stdin-name` names, relative to the project: its baseline
+allowance applies, a name outside the `lint paths` breaks no rule (`[]`), and the report names it as
+given (or `-`). A project with no `lint` lines lints a buffer clean. `--stdin-name` ending `.md`
+formats the buffer as Markdown.
 
 ### Editors
 

@@ -99,6 +99,52 @@ function diag_json_case(path: pointer, n: int, want: pointer, label: pointer) ->
   if s_contains(capture(`cat {js}`), want) { ok(label) } else { bad2(label, `no diagnostic holds [{want}]`) }
 }
 
+# --stdin-file <path>: stdin stands for <path> wherever the program opens it. A buffer that breaks an
+# import reached through its barrel (spelt with `..`) is refused at the buffer's line under the file's
+# usual name; a buffer that fixes a refused entry checks clean; a path nothing opens is a warning.
+function stdin_file_cases() -> void {
+  let lbl = "--stdin-file: an unsaved buffer checked in place of its file"
+  let fish = "examples/modules/kinds/fishing/index.ludic"
+  let js = `{tmp_dir()}/sf_break.json`
+  let spelt = "./examples/modules/kinds/fishing/../fishing/index.ludic"
+  if shq(`sed 's/return fishing_st.landed/return "seven"/' {fish} | bin/ludicc examples/modules/private_kinds.ludic --check --diagnostics=json --stdin-file {spelt} > {js} 2>/dev/null`) {
+    bad2(lbl, "a buffer with an error checked clean");  return
+  }
+  let broke = capture(`cat {js}`)
+  if not s_contains(broke, `"file": "{fish}", "line": 21`) { bad2(lbl, `no error at the buffer's line 21 of {fish}: {s_trim(broke)}`);  return }
+  let js2 = `{tmp_dir()}/sf_fix.json`
+  let fix = "sed -e 's/print(on + 1)/print(1)/' -e 's/half(1, 2)/half(1)/' -e 's/-> int { return \"seven\" }/-> int { return 7 }/'"
+  let clean = shq(`{fix} examples/rejected/every_error.ludic | bin/ludicc examples/rejected/every_error.ludic --check --diagnostics=json --stdin-file examples/rejected/every_error.ludic > {js2} 2>/dev/null`)
+  let said = s_trim(capture(`cat {js2}`))
+  if not clean or not (said == "[]") { bad2(lbl, `a buffer that fixes the saved file's errors said {said}`);  return }
+  let js3 = `{tmp_dir()}/sf_none.json`
+  shq(`printf '' | bin/ludicc examples/modules/private_kinds.ludic --check --diagnostics=json --stdin-file examples/nowhere.ludic > {js3} 2>/dev/null`)
+  if not s_contains(capture(`cat {js3}`), "the program does not reach this file") { bad2(lbl, "a path the program never opens was not reported");  return }
+  ok(lbl)
+}
+
+# `ludic fmt` for editors (R9): run from a directory under the project, `--lint --json` and `-` find
+# the nearest package.ludic upwards and judge a buffer as the file --stdin-name names, relative to it
+function fmt_editor_cases() -> void {
+  let lbl = "ludic fmt --lint --json and ludic fmt - from inside a project"
+  let p = `{tmp_dir()}/fmt_ed`
+  let here = capture_line("pwd")
+  shell(`rm -rf {p} && mkdir -p {p}/src/deep`)
+  write_file(`{p}/package.ludic`, "package \"t\"\nlint one_statement\nlint paths \"src\"\n")
+  write_file(`{p}/src/deep/a.ludic`, "function f() -> int {\n  let a = 1;  return a\n}\n")
+  let js = `{p}/out.json`
+  if shq(`cd {p}/src/deep && {here}/bin/ludic fmt --lint --json > {js} 2>/dev/null`) { bad2(lbl, "--lint --json passed a file breaking one_statement");  return }
+  let said = capture(`cat {js}`)
+  if not s_contains(said, `"file": "src/deep/a.ludic", "line": 2, "col": 15`) { bad2(lbl, `--lint --json said {s_trim(said)}`);  return }
+  let one = capture(`cd {p}/src/deep && {here}/bin/ludic fmt - --lint --json --stdin-name a.ludic < a.ludic 2>/dev/null`)
+  if not s_contains(one, `"file": "a.ludic", "line": 2`) { bad2(lbl, `a buffer linted as src/deep/a.ludic said {s_trim(one)}`);  return }
+  let out = capture(`cd {p}/src/deep && printf 'function g() -> int{{return 2}}\n' | {here}/bin/ludic fmt - --stdin-name {p}/src/deep/b.ludic`)
+  if not (s_trim(out) == "function g() -> int { return 2 }") { bad2(lbl, `ludic fmt - wrote {s_trim(out)}`);  return }
+  if shq(`printf '{{\n' | {here}/bin/ludic fmt - > /dev/null 2>&1`) { bad2(lbl, "ludic fmt - accepted an unclosed brace");  return }
+  if shq(`{here}/bin/ludic fmt --json > /dev/null 2>&1`) { bad2(lbl, "--json without --lint was accepted");  return }
+  ok(lbl)
+}
+
 # a feature example that consumes an in-repo controller package (packages/): same
 # as feat_case, but the compiler is pointed at packages/ via LUDIC_MODULES so a
 # `import "ludic.foo/bar.ludic"` resolves, and LUDIC_HOME anchors the engine
@@ -1227,6 +1273,8 @@ function cmd_dev_test() -> int {
   diag_json_case("rejected/every_error", 3, "\"line\": 8, \"col\": 15, \"severity\": \"error\", \"message\": \"half takes 1 argument(s) and this call gives 2\"", "--diagnostics=json: every type error as {file, line, col, severity, message}")
   diag_json_case("rejected/ref_unknown", 1, "@Ref(Shops): this program has no Shops - left unresolved", "--diagnostics=json: an @Ref to a registry the program lacks is a warning beside the error")
   diag_json_case("rejected/node_bad", 8, "crate.shape is \\\"cube\\\", and field Tool.shape is @OneOf(", "--diagnostics=json: every @Node / @Clip / @Material with no model field, @OneOf of the wrong kind or a row outside its words, and the targets the program lacks as warnings")
+  stdin_file_cases()
+  fmt_editor_cases()
   feat_case("lang/generics", "", "7 Crater Lake a 2 west 7 0.75 2.5 1", "generics.ludic (L5: generic records and functions, nested instances, fn-typed parameters and fields, inference from the result's slot)")
   reject_case("rejected/generic_unbound", "cannot tell what T is in this call to pool_new", "a call whose type arguments nothing decides is refused")
   reject_case("rejected/generic_mismatch", "words wants a Pool<string> and this is a Pool<int>", "two instances of one generic are two types")
@@ -1303,6 +1351,21 @@ function cmd_dev_test() -> int {
   schema_case("lang/i18n/i18n", "\"unused\": [\"map.close\"]", "--emit-schema: lang.unused - en.po's keys the program uses nowhere")
   schema_case("lang/i18n/i18n", "\"missing\": [\"hud.day\"], \"fuzzy\": [\"pause.close\"], \"extra\": [\"old.title\"]", "--emit-schema: lang.languages - another .po's missing, fuzzy and extra keys against en.po")
   schema_case("lang/i18n/i18n", "{\"english\": \"Close\", \"keys\": [\"map.close\", \"pause.close\"]}", "--emit-schema: lang.split - one English under several keys")
+  schema_case("actions/modules", "{\"state\": \"Bag\", \"action\": \"PickUp\", \"module\": \"bag\", \"at\": \"examples/actions/mods/bag/index.ludic:4:16\"}", "--emit-schema: code.reducers - a reducer's state, action, module and place")
+  schema_case("actions/modules", "{\"action\": \"PickUp\", \"module\": null, \"at\": \"examples/actions/modules.ludic:8:21\"}", "--emit-schema: code.dispatch - every dispatch site")
+  schema_case("modules/ports", "{\"name\": \"Clock\", \"module\": \"clock\", \"at\": \"examples/modules/station/clock/index.ludic:4:13\", \"bound\": true, \"members\": [{\"name\": \"now\", \"type\": \"fn()->int\", \"default\": null, \"required\": true}, {\"name\": \"day\", \"type\": \"fn()->int\", \"default\": \"fn first_day\", \"required\": false}]}", "--emit-schema: code.ports - a port's members, their fn types and defaults")
+  schema_case("modules/ports", "{\"port\": \"Clock\", \"member\": \"now\", \"fn\": \"game_hours\", \"value\": \"fn game_hours\", \"module\": \"app\", \"at\": \"examples/modules/station/app/index.ludic:3:14\"}", "--emit-schema: code.binds - a bind's member, the function it names and where")
+  schema_case("modules/ports", "{\"name\": \"clock\", \"package\": null, \"layer\": null, \"uses\": [\"units\"], \"uses_at\": \"examples/modules/station/clock/index.ludic:3\", \"friend\": null, \"files\": [\"examples/modules/station/clock/index.ludic\"]}", "--emit-schema: code.modules - a module's uses and files")
+  schema_case("modules/friend_of", "{\"name\": \"lab\", \"package\": null, \"layer\": null, \"uses\": null, \"uses_at\": null, \"friend\": {\"of\": [\"bank\"]}", "--emit-schema: code.modules - a friend module and whose names it sees")
+  schema_case("networking/net_demo", "{\"name\": \"Move\", \"module\": null, \"at\": \"examples/networking/net_demo.ludic:24:19\", \"cancellable\": false, \"net\": \"toserver\", \"emits\": [\"examples/networking/net_demo.ludic:32:10\"], \"listeners\": [{\"handler\": \"DoMove\", \"module\": null, \"at\": \"examples/networking/net_demo.ludic:25:21\"}]}", "--emit-schema: code.events - a remote event, its emit sites and @On listeners")
+  schema_case("networking/net_demo", "{\"name\": \"Ship\", \"module\": null, \"at\": \"examples/networking/net_demo.ludic:22:16\", \"owned\": true, \"properties\": [{\"name\": \"Pos\", \"sync\": true}]}", "--emit-schema: code.models - an @Owned model and its @Sync property")
+  schema_case("networking/net_roles", "\"phase\": \"Update\", \"hook\": null, \"target\": null, \"public\": false, \"net\": \"server\"", "--emit-schema: code.handlers - an @Server handler's phase and net role")
+  schema_case("lang/annotations", "\"queries\": {\"these\": [{\"property\": \"Transform\", \"filter\": \"scale > 0\"}, {\"property\": \"Velocity\", \"filter\": \"dx > 0 or dy > 0\"}], \"on\": \"Actor\"}", "--emit-schema: code.handlers - @Queries' terms, filters and model")
+  schema_case("lang/annotations", "\"phase\": null, \"hook\": \"OnSpawn\", \"target\": \"Actor\"", "--emit-schema: code.handlers - a lifecycle hook and the model it names")
+  schema_case("lang/scenes", "{\"name\": \"Title\", \"module\": null, \"at\": \"examples/lang/scenes.ludic:24:9\", \"start\": true, \"public\": false, \"shows\": null, \"lasts\": null, \"then\": null, \"loads\": null, \"enter\": true, \"exit\": true, \"layers\": [\"Main\"]}", "--emit-schema: code.scenes - the start scene, its blocks and layers")
+  schema_case("lang/scenes", "\"scene\": \"Play\", \"layer\": \"Hud\"", "--emit-schema: code.handlers - a scene's handler, its scene and layer")
+  schema_case("state/write_reach", "{\"fn\": \"log_note\", \"module\": null, \"at\": \"examples/state/write_reach.ludic:21:37\", \"slot_kind\": \"registry\", \"slot\": \"Kinds.note\", \"entry\": \"box\"}", "--emit-schema: code.fn_refs - a fn in a registry row, the field and row it fills")
+  schema_case("modules/ports", "\"slot_kind\": \"port_default\", \"slot\": \"Clock.day\"", "--emit-schema: code.fn_refs - a port member's default")
   diag_json_case("rejected/i18n_keys/key_missing", 2, "the key pause.gone is not in examples/rejected/i18n_keys/lang/en.po", "a key literal en.po does not have is refused, at its line and column")
   diag_json_case("rejected/i18n_keys/key_missing", 2, "is a plural key, and examples/rejected/i18n_keys/lang/en.po:7 gives pause.resume no msgid_plural", "kn\"...\" is a plural key: en.po's entry has a msgid_plural")
   diag_json_case("rejected/i18n_keys/key_missing", 2, "trf: hud.day is given 2 value(s), and its English in examples/rejected/i18n_keys/lang/en.po has 1 hole(s)", "trf given more values than the key's English has holes: a warning")
