@@ -23,30 +23,61 @@ function impostor_source(im: Impostor, path: string, key: string, version: int) 
   im.src_version = version
 }
 
-# an impostor of this shape from its bake, or null (missing, stale, or not this shape) for the caller to paint
+# an impostor of this shape from its bake - both atlases BC7 with their mips, as tools/textures/bake_impostors.py
+# makes them - or null (missing, stale, not this shape, or a GPU without BC) for the caller to paint
 @alloc_ok("a bake read once at a map load")
 function impostor_from_baked(render3d_st: mut Render3dState, model: Model, tiles: int, tw: int, th: int, path: string, key: string, version: int) -> Impostor {
-  let b = r3d_baked_read(path, key, version)
-  if b == null { return null }
-  let im = impostor_from_bytes(render3d_st, model, tiles, tw, th, b)
-  free(b)
-  if im == null { return null }
+  let im = new Impostor
+  im.tiles = tiles;  im.radius = model.radius * 1.02;  im.height = model.height
+  im.model = model;  im.tw = tw;  im.th = th;  im.flower = render3d_st.sc_bake_flower
   impostor_source(im, path, key, version)
+  if not impostor_refill(render3d_st, im) { return null }
   im.src_ok = true
   return im
 }
-# the atlases filled from the bake again (a fog opening past the cards); false, and none kept, when it cannot be
-@alloc_ok("a bake read once when a fog opens")
+# the atlases made from the bake (at a load, and again when a fog opens past the cards); false, and none
+# kept, when it cannot be
+@alloc_ok("a bake read once at a load or when a fog opens")
 function impostor_refill(render3d_st: mut Render3dState, im: Impostor) -> bool {
+  if not render3d_st.gvk_has_bc { return false }
   let b = r3d_baked_read(im.src_path, im.src_key, im.src_version)
   if b == null { return false }
-  let ok = impostor_fill(render3d_st, im, b)
+  let ok = impostor_fill_bc7(render3d_st, im, b)
   free(b)
+  return ok
+}
+# the two atlases from a bundle of two BC7 .dds (albedo, normal) whose size is the impostor's
+function impostor_fill_bc7(render3d_st: mut Render3dState, im: Impostor, data: []byte) -> bool {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_IMPOSTOR
+  im.albedo = 0;  im.normal = 0
+  if bake_part_count(data) == 2 {
+    im.albedo = impostor_bc7_part(render3d_st, im, data, 0)
+    im.normal = impostor_bc7_part(render3d_st, im, data, 1)
+  }
+  let ok = im.albedo != 0 and im.normal != 0
   if not ok {
     gpu_tex_free(render3d_st, im.albedo);  gpu_tex_free(render3d_st, im.normal)
     im.albedo = 0;  im.normal = 0
   }
+  render3d_st.gvk_tag = was
   return ok
+}
+# one atlas: its baked levels uploaded as they are (no gpu_tex_mips), sampled as a painted atlas is
+function impostor_bc7_part(render3d_st: mut Render3dState, im: Impostor, data: []byte, part: int) -> int {
+  let at = bake_part_off(data, part)
+  if at + bake_part_len(data, part) > len(data) { return 0 }
+  let id = tex_load_dds_at(render3d_st, data, at, false)
+  if id == 0 { return 0 }
+  if render3d_st.tex_w != im.tiles * im.tw or render3d_st.tex_h != im.th {
+    gpu_tex_free(render3d_st, id)
+    return 0
+  }
+  # tex_load_dds_at repeats and filters anisotropically; a painted atlas (tex_target) is clamped, with neither
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fixed(1.0))   # 1.0 is off, as a painted atlas has it
+  return id
 }
 
 # ---- the sky's image-based light ----
