@@ -1,0 +1,58 @@
+# mixed.ludic - a key's text glued into an English line ("A {1}, {2} cm." given a name that is a key, or a
+# name + "\n" + its blurb): each marked name made in the language in use, then the line as English. Interim,
+# until every such line is a key of its own (26.9); a mark with arguments cannot be told from the line after it
+
+# a key's name: its alphabet, and a full stop at its end left to the sentence
+function kx_name_byte(c: int) -> bool { return (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95 or c == 46 or c == 45 }
+
+function kx_name_end(s: string, i: int) -> int {
+  var e = i
+  while e < len(s) and kx_name_byte(s[e]) { e += 1 }
+  while e > i and s[e - 1] == 46 { e -= 1 }
+  return e
+}
+
+# a string with a mark that is not the whole of it: a mark past its start, or words after a key's name
+export function kx_mixed(s: string) -> bool {
+  let n = len(s)
+  if n == 0 { return false }
+  if i18n_is_key(s) {
+    let e = kx_name_end(s, 1)
+    return e < n and s[e] != I18N_SEP
+  }
+  for i in 1 .. n { if s[i] == I18N_KEY or s[i] == I18N_PLURAL { return true } }
+  return false
+}
+
+# what L does with such a line: made once per distinct line in this language, kept with the keys
+function kx_line(i18n_st: mut I18nState, s: string) -> string {
+  if i18n_st.kc == null { kc_clear(i18n_st) }
+  let ci = Dict.get_or(i18n_st.kc, s, -1)
+  if ci >= 0 { return i18n_st.kc_out[ci] }
+  var r = kx_unmix(i18n_st, s)
+  if i18n_st.on { r = whole(i18n_st, r) }
+  if Dict.size(i18n_st.kc) >= CACHE_MAX { kc_clear(i18n_st) }
+  @alloc_ok("a line with a key glued in, made into text: kept, up to CACHE_MAX")
+  Dict.set(i18n_st.kc, s, len(i18n_st.kc_out))
+  @alloc_ok("a line with a key glued in: as above")
+  push(i18n_st.kc_out, r)
+  return r
+}
+
+@alloc_ok("a line with a key glued in (a cache miss): once per distinct line")
+function kx_unmix(i18n_st: mut I18nState, s: string) -> string {
+  var r = ""
+  var start = 0
+  var i = 0
+  while i < len(s) {
+    if s[i] == I18N_KEY or s[i] == I18N_PLURAL {
+      let e = kx_name_end(s, i + 1)
+      r = r + s[start..i] + keyed(i18n_st, s[i..e])
+      start = e
+      i = e
+    } else {
+      i += 1
+    }
+  }
+  return r + s[start..len(s)]
+}

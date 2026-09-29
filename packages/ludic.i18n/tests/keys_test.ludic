@@ -85,4 +85,15 @@ program I18nKeysTest {
     expect(L(i18n_st, trf(k"catch.saw", "Day 3", "5:30", "", "")) == "5:30 saatinde 3. gun gordun.")       # a pattern
     expect(L(i18n_st, trf(k"catch.saw", "Nowhere known", "7", "", "")) == "7 saatinde Nowhere known gordun.")  # no line: as it is
   }
+
+  test "a key's text glued into an English line is made where it sits, until the line is a key of its own" (i18n_st: mut I18nState) {
+    start (i18n_st)
+    let elk = tr(k"species.elk.a_name")
+    expect(L(i18n_st, "Saw " + elk + ", 30 cm.") == "Saw an elk, 30 cm." and L(i18n_st, "Saw " + elk + ".") == "Saw an elk.")
+    expect(L(i18n_st, elk + ": 30 cm") == "an elk: 30 cm" and L(i18n_st, elk + "\n" + tr(k"pause.quit")) == "an elk\nQuit")
+    expect(L(i18n_st, trf(k"catch.saw", "Seen: " + elk, "5:30", "", "")) == "You saw Seen: an elk at 5:30.")
+    i18n_load_text(i18n_st, tt())
+    expect(L(i18n_st, "Day " + tr(k"pause.resume")) == "Devam. gun")      # the name made, then the line's own pattern
+    expect(L(i18n_st, trf(k"catch.saw", elk, "5:30", "", "")) == "5:30 saatinde bir geyik gordun.")   # a key whole is untouched
+  }
 }
