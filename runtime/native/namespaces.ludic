@@ -205,6 +205,7 @@ namespace Http {
 }
 namespace Udp {
   alias open(port) = udp_open
+  alias open_local(port) = udp_open_local
   alias port(socket) = udp_port
   alias send(socket, ip, port, bytes, len) = udp_send
   alias recv(socket, bytes, cap) = udp_recv

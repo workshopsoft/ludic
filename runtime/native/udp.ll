@@ -71,14 +71,29 @@ none:
   ret i32 -1
 }
 
+; open: every interface (a party's port, reached from the LAN and beyond)
 define i32 @lu_udp_open(i32 %port) {
+entry:
+  %h = call i32 @lu_udp_open_at(i32 0, i32 %port)
+  ret i32 %h
+}
+
+; open_local: 127.0.0.1 only - a port for this machine's own tools, never reachable from the LAN
+define i32 @lu_udp_open_local(i32 %port) {
+entry:
+  %h = call i32 @lu_udp_open_at(i32 2130706433, i32 %port)
+  ret i32 %h
+}
+
+; bound to one address (host order: 0 any, 0x7f000001 loopback), non-blocking, in a free slot
+define internal i32 @lu_udp_open_at(i32 %ip, i32 %port) {
 entry:
   %sa = alloca [16 x i8]
   %fd = call i32 @socket(i32 2, i32 2, i32 17)
   %bad = icmp slt i32 %fd, 0
   br i1 %bad, label %fail, label %bindit
 bindit:
-  call void @lu_addr(ptr %sa, i32 0, i32 %port)
+  call void @lu_addr(ptr %sa, i32 %ip, i32 %port)
   %b = call i32 @bind(i32 %fd, ptr %sa, i32 16)
   %bb = icmp ne i32 %b, 0
   br i1 %bb, label %closefail, label %nonblock
