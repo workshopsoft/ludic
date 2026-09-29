@@ -411,7 +411,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     var ap = render3d_st.ac_sh
     if a.cutout { ap = render3d_st.ac_sh_cut }
     if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { ac_caster_count(render3d_st, a) }
-    actor_draw_one(render3d_st, a, ap, true)
+    if ac_proxy_figure(render3d_st, a) { actor_draw_proxy(render3d_st, a) } else { actor_draw_one(render3d_st, a, ap, true) }
   }
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at {
     print(`actor census, cascade {render3d_st.sh_cascade}: {render3d_st.ac_cc_actors} actors cast {render3d_st.ac_cc_draws} draws ({render3d_st.ac_cc_skinned} of them skinned, {render3d_st.ac_cc_cut} cutout)`)
@@ -491,4 +491,88 @@ function actor_room(l: []Actor, n: int) -> void {
   let have = len(l)
   for i in 0 .. n { push(l, null) }
   while len(l) > have { List.pop(l) }
+}
+
+# ---- a figure's shadow past 60 m: one capsule ---------------------------------------------------
+# A dressed figure is up to 86 skinned pieces, and the far cascades (2 and out: receivers from 60 m)
+# drew each piece of every walker in them - most of a forest frame's shadow pass. Nobody can tell a
+# garment's shadow from the body's there, so a figure casts one capsule its own height instead.
+# Animals (a piece or two) and anything rigid keep their own shape.
+const AC_PROXY_CASCADE: int = 2
+const AC_PROXY_SIDES: int = 8
+const AC_PROXY_R: float = 0.13          # the capsule's radius, as a fraction of the figure's height
+function ac_proxy_figure(render3d_st: Render3dState, a: Actor) -> bool {
+  if render3d_st.sh_cascade < AC_PROXY_CASCADE { return false }
+  if a.skin == null and a.model.skin == null { return false }
+  return len(a.model.prims) > 8
+}
+function actor_draw_proxy(render3d_st: mut Render3dState, a: Actor) -> void {
+  let m = ac_proxy_mesh(render3d_st)
+  let ap = render3d_st.ac_sh
+  gpu_use_program(render3d_st, ap.prog)
+  let h = a.model.height
+  m4_scaling(render3d_st.ac_proxy_s, h * AC_PROXY_R, h, h * AC_PROXY_R)
+  m4_mul(render3d_st.ac_proxy_m, a.mat, render3d_st.ac_proxy_s)
+  u_mat4(render3d_st, ap.l_model, render3d_st.ac_proxy_m)
+  u_f(render3d_st, ap.l_skin, 0.0)
+  gpu_cull(render3d_st, false)
+  mesh_draw(render3d_st, m)
+}
+# a unit capsule (radius 1, height 1, feet at the origin): a ring of AC_PROXY_SIDES at each end of the
+# body and a cone to a point below and above them
+@alloc_ok("made once: the capsule every far figure casts, and its two matrices")
+function ac_proxy_mesh(render3d_st: mut Render3dState) -> Mesh {
+  if render3d_st.ac_proxy != null { return render3d_st.ac_proxy }
+  render3d_st.ac_proxy_s = m4_new()
+  render3d_st.ac_proxy_m = m4_new()
+  let n = AC_PROXY_SIDES
+  let nv = 2 + 2 * n
+  let pos = gl_floats(nv * 3)
+  let nrm = gl_floats(nv * 3)
+  let uv = gl_floats(nv * 2)
+  ac_proxy_vert(pos, nrm, 0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0)
+  ac_proxy_vert(pos, nrm, 1, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0)
+  for i in 0 .. n {
+    let t = float(i) * 6.2831853 / float(n)
+    let cx = Math.cos(t)
+    let sz = Math.sin(t)
+    ac_proxy_vert(pos, nrm, 2 + i, cx, AC_PROXY_R, sz, cx, 0.0, sz)
+    ac_proxy_vert(pos, nrm, 2 + n + i, cx, 1.0 - AC_PROXY_R, sz, cx, 0.0, sz)
+  }
+  for i in 0 .. nv * 2 { gl_put_bits(uv, i, float_bits(0.0)) }
+  let m = gpu_mesh_new(render3d_st)
+  gpu_mesh_vertices(render3d_st, m, pos, gl_bytes_of(nv * 3), GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, 0, 0, false)
+  gpu_mesh_vertices(render3d_st, m, nrm, gl_bytes_of(nv * 3), GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, 0, 0, false)
+  gpu_mesh_vertices(render3d_st, m, uv, gl_bytes_of(nv * 2), GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, 0, 0, false)
+  free(pos)
+  free(nrm)
+  free(uv)
+  let ni = n * 12
+  let idx = words(ni)
+  var k = 0
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    let b0 = 2 + i
+    let b1 = 2 + j
+    let t0 = 2 + n + i
+    let t1 = 2 + n + j
+    idx[k] = 0;  idx[k + 1] = b0;  idx[k + 2] = b1
+    idx[k + 3] = b0;  idx[k + 4] = t0;  idx[k + 5] = t1
+    idx[k + 6] = b0;  idx[k + 7] = t1;  idx[k + 8] = b1
+    idx[k + 9] = 1;  idx[k + 10] = t1;  idx[k + 11] = t0
+    k += 12
+  }
+  gpu_mesh_indices(render3d_st, m, data_of(idx), ni * 4, 4)
+  free(idx)
+  m.count = ni
+  gpu_mesh_done(render3d_st, m)
+  render3d_st.ac_proxy = m
+  return m
+}
+function ac_proxy_vert(pos: pointer, nrm: pointer, v: int, x: float, y: float, z: float, nx: float, ny: float, nz: float) -> void {
+  gl_put_bits(pos, v * 3, float_bits(x));  gl_put_bits(pos, v * 3 + 1, float_bits(y));  gl_put_bits(pos, v * 3 + 2, float_bits(z))
+  gl_put_bits(nrm, v * 3, float_bits(nx));  gl_put_bits(nrm, v * 3 + 1, float_bits(ny));  gl_put_bits(nrm, v * 3 + 2, float_bits(nz))
 }
