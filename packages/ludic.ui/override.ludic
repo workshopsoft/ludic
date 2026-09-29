@@ -1,0 +1,91 @@
+# override.ludic - a template's or a stylesheet's text given from outside, in place of its file: a
+# studio editing a running game's interface (devlink's ui_override). Every read of that path answers
+# the given text, a component whose file it is swaps its own and is shown again with its state kept,
+# and letting go puts the file back. A game overrides nothing; a read asks an empty list first.
+
+# from now on `path` reads as `text`; its component (or every importer) is reloaded, state kept
+@alloc_ok("a studio's edit: the text kept until it is let go, never a frame")
+export function ui_override(ui_st: mut UiState, path: string, text: string) -> void {
+  let t = keep(text)
+  var found = false
+  for i in 0 .. len(ui_st.ov_path) {
+    if ui_st.ov_path[i] == path {
+      ui_st.ov_text[i] = t
+      found = true
+    }
+  }
+  if not found {
+    push(ui_st.ov_path, intern(path))
+    push(ui_st.ov_text, t)
+  }
+  ov_classes(ui_st, path, t)
+  ui_file_forget(ui_st, path)            # a file an import read is read again; every class re-shown
+}
+# let go of `path`'s override ("" every override): the file reads from disk again, a component's
+# own text comes back
+@alloc_ok("a studio's edit, never a frame")
+export function ui_override_clear(ui_st: mut UiState, path: string) -> void {
+  var keep_p = new []string
+  var keep_t = new []string
+  for i in 0 .. len(ui_st.ov_path) {
+    let p = ui_st.ov_path[i]
+    if path == "" or p == path {
+      ov_restore(ui_st, p)
+      ui_file_forget(ui_st, p)
+    } else {
+      push(keep_p, p)
+      push(keep_t, ui_st.ov_text[i])
+    }
+  }
+  List.clear(ui_st.ov_path)
+  List.clear(ui_st.ov_text)
+  for i in 0 .. len(keep_p) {
+    push(ui_st.ov_path, keep_p[i])
+    push(ui_st.ov_text, keep_t[i])
+  }
+}
+# is `path` overridden, and its text (null when it is not)
+export function ui_overridden(ui_st: UiState, path: string) -> bool { return ov_find(ui_st, path) >= 0 }
+function ov_find(ui_st: UiState, path: string) -> int {
+  for i in 0 .. len(ui_st.ov_path) {
+    if ui_st.ov_path[i] == path { return i }
+  }
+  return -1
+}
+# a component whose template or stylesheet is `path` takes `text`, its own kept to come back to
+function ov_classes(ui_st: mut UiState, path: string, text: string) -> void {
+  if ui_st.uc_list == null { return }
+  for i in 0 .. len(ui_st.uc_list) {
+    let k = ui_st.uc_list[i]
+    if k.xml_path == path or k.lss_path == path {
+      if k.ov_xml == null {
+        k.ov_xml = k.xml
+        k.ov_lss = k.lss
+      }
+      if k.xml_path == path { k.xml = text } else { k.lss = text }
+      k.root = null
+    }
+  }
+}
+function ov_restore(ui_st: mut UiState, path: string) -> void {
+  if ui_st.uc_list == null { return }
+  for i in 0 .. len(ui_st.uc_list) {
+    let k = ui_st.uc_list[i]
+    if k.ov_xml != null and (k.xml_path == path or k.lss_path == path) {
+      if k.xml_path == path { k.xml = k.ov_xml } else { k.lss = k.ov_lss }
+      if not ov_class_held(ui_st, k, path) {
+        k.ov_xml = null
+        k.ov_lss = null
+      }
+      k.root = null
+    }
+  }
+}
+# does the class's other file still have an override (so its own texts are still needed later)
+function ov_class_held(ui_st: UiState, k: UiClass, going: string) -> bool {
+  for i in 0 .. len(ui_st.ov_path) {
+    let p = ui_st.ov_path[i]
+    if p != going and (p == k.xml_path or p == k.lss_path) { return true }
+  }
+  return false
+}

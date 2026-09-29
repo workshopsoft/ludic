@@ -1,0 +1,36 @@
+# ui_override.ludic - a template's text given from outside in place of its file (a studio editing a
+# running game's interface): the component is shown again with the new template and its state kept,
+# and letting go brings the file back, the state still kept. Prints three lines: the counters as the
+# files have them, as the override has them, and as the files have them again.
+import "ludic.ui"
+import "ui_component_parts/Counter.ludic"
+import "ui_component_parts/App.ludic"
+program UiOverride {
+  numbers float
+  function texts(n: UiNode, out: []string) -> void {
+    if n.text != "" { push(out, n.text) }
+    for i in 0 .. len(n.children) { texts(n.children[i], out) }
+  }
+  function frame(ui_st: mut UiState) -> UiNode {
+    let root: UiNode = ui_nodes(ui_st, "App", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+    return root
+  }
+  function said(ui_st: mut UiState) -> string {
+    let out = new []string
+    texts(frame(ui_st), out)
+    var joined = ""
+    for i in 0 .. len(out) { joined = joined + out[i] + "|" }
+    return joined
+  }
+  entry (ui_st: mut UiState) {
+    let root = frame(ui_st)
+    ui_press(ui_st, root.children[0].children[1].children[1])     # counter a: + once
+    print(said(ui_st))
+    let xml = "examples/library/ui_component_parts/Counter.xml"
+    ui_override(ui_st, xml, "<div class=\"counter\"><p>[{label}={count}]</p><button on-click=\"bump()\">+</button></div>")
+    print(`{said(ui_st)} {ui_overridden(ui_st, xml)}`)
+    ui_override_clear(ui_st, "")
+    print(`{said(ui_st)} {ui_overridden(ui_st, xml)}`)
+  }
+}

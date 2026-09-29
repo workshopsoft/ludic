@@ -18,6 +18,8 @@ export property UiClass {
   seen_xml: string = ""         # the files as a developer's build last found them on disk
   seen_lss: string = ""
   use: UiTpl = null             # screen_class.ludic: the element that shows it as a screen, made once
+  ov_xml: string = null         # override.ludic: its own template and styles, kept while a studio's text stands in
+  ov_lss: string = null
   roots: []UiTpl = null         # build_class.ludic: [root], for bd_kids
   none: Val = null              # and the empty model it is shown with
 }
@@ -62,6 +64,7 @@ function uc_reload(ui_st: mut UiState) -> bool {
   var changed = false
   for i in 0 .. len(ui_st.uc_list) {
     let k = ui_st.uc_list[i]
+    if ov_find(ui_st, k.xml_path) >= 0 or ov_find(ui_st, k.lss_path) >= 0 { continue }   # a studio's text stands
     if k.xml_path != "" and Fs.exists(k.xml_path) {
       let x = lib_text(ui_st, k.xml_path)
       var l = ""
