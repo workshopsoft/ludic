@@ -1,0 +1,3 @@
+# the key-based text example (i18n.ludic, i18n_ui.ludic): its languages are lang/<code>.po, and
+# lang/en.po is the source every key is checked against
+lang "lang" en

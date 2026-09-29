@@ -220,6 +220,7 @@ function pmk_map(md: pointer) -> void {
   }
   pmk_refs()
   pmk_game_assets()
+  i18n_permap_rows(md)                             # i18n.ludic: its text keys and English left
 }
 # a key written twice in one file
 function pmk_dups() -> void {
@@ -321,6 +322,7 @@ function pmk_rec(rec: Node, comp: Node, row: bool) -> void {
 function pmk_desc(e: Node) -> pointer {
   if e.kind == E_INT or (e.kind == E_UN and e.a != null and e.a.kind == E_INT) { return "an int" }
   if e.kind == E_FLOAT or (e.kind == E_UN and e.a != null and e.a.kind == E_FLOAT) { return "a float" }
+  if i18n_is_key(e) { return "a key" }
   if e.kind == E_STR { return "a string" }
   if e.kind == E_BOOL { return "true or false" }
   if e.kind == E_ID { return `the name {e.s}` }
@@ -376,8 +378,12 @@ function pmk_value(e: Node, f: Node, ty: pointer, at: Node) -> void {
     if e.kind != E_BOOL { pmk_want(e, f, "true or false") }
     return
   }
+  if k == PM_STR and i18n_is_key_ty(ty) {
+    if not i18n_is_key(e) { pmk_want(e, f, "a key k\"...\"") }
+    return
+  }
   if k == PM_STR {
-    if e.kind != E_STR { pmk_want(e, f, "a \"string\"");  return }
+    if e.kind != E_STR or i18n_is_key(e) { pmk_want(e, f, "a \"string\"");  return }
     pmk_attrs_str(e, f)
     return
   }

@@ -121,6 +121,7 @@ function deps_flush() -> void {
   }
   deps_widths(f)
   deps_reach(f)
+  deps_line(f, `english_left {itoa(g_i18n_english_left)}`)   # phase 26: text left in English (i18n.ludic)
   file_close(f)
 }
 

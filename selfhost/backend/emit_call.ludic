@@ -1092,7 +1092,10 @@ function emit_expr_raw(e: Node) -> Val {
     # a copy, so it is fresh: `s[0 .. n - 4] + ".dds"` and `s[a .. b] == "x"` free it once read
     return fresh_val(emit_bind(`call ptr @lp_str_slice(ptr {base.code}, i32 {lo.code}, i32 {hi.code})`), "string")
   }
-  if e.kind == E_STR  { return val(emit_str_const(e.s), "string") }
+  if e.kind == E_STR  {
+    if e.ival == KEY_LIT or e.ival == KEY_PLURAL { return val(emit_str_const(e.s), "Key") }   # its marker byte, then the key
+    return val(emit_str_const(e.s), "string")
+  }
   if e.kind == E_NEW  {
     if is_slice_ty(e.s) { return emit_new_slice(e.s) }
     return emit_new_struct(e.s, e.a, e.b)

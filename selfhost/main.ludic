@@ -222,6 +222,7 @@ entry {
 
   maybe_splice_runtime()
   fence_manifest(path)                            # 25.1: a `fence` line in the program's package.ludic
+  i18n_manifest(path)                             # phase 26: a `lang` line, and its en.po (i18n.ludic)
   ui_register_gotos()                             # `goto:` buttons -> generated UiClicked listeners
 
   # a game gets a window by default; a plain program stays headless. An explicit
@@ -240,6 +241,7 @@ entry {
   if g_migrate { mg_collect() }                   # 0.S2: the vars that move (migrate.ludic)
   ix_start()                                      # the lookups by name, as tables (emit_core.ludic)
   check_program()                                 # L4: the types agree before anything is emitted
+  i18n_check()                                    # phase 26: keys against en.po, English left (i18n.ludic)
   if g_es_report { escape_report() }              # 25.3: which allocations never outlive their frame
   else if g_arena { escape_analyse() }             # 25.3: and they allocate from the frame's scratch
   if g_arena_strict and (getenv_or("LUDIC_DEPS", "") == "") {   # 25.3: the region rule, before anything is emitted

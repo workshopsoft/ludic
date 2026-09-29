@@ -1,0 +1,5 @@
+<div class="menu">
+  <p>{t('pause.resume')}</p>
+  <p>{t('menu.gone')}</p>
+  <p>{t('hud.day')}</p>
+</div>

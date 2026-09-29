@@ -334,6 +334,7 @@ function p_primary() -> Node {
   if t.kind == TK_INT { let n = node(E_INT); n.ival = t.ival; n.s = t.text; pi += 1; return n }   # s: a long literal's digits
   if t.kind == TK_FLOAT { let n = node(E_FLOAT); n.ival = t.ival; n.s = t.text; pi += 1; return n }
   if t.kind == TK_STR { let n = node(E_STR); n.s = t.text; pi += 1; return n }
+  if t.kind == TK_KEY { pi += 1;  return key_lit_node(t) }      # k"..." / kn"..." (i18n.ludic)
   if t.kind == TK_ID {
     if (t.text == "true")  { let n = node(E_BOOL); n.ival = 1; pi += 1; return n }
     if (t.text == "false") { let n = node(E_BOOL); n.ival = 0; pi += 1; return n }
@@ -1012,6 +1013,7 @@ function parse_one_decl() -> void {
       g_pm_pending = true
     }
     else if a == "Chunked" { pm_parse_chunked() }  # @Chunked(64): read a chunk at a time
+    else if a == "TextKey" { i18n_parse_textkey() }  # @TextKey("steps"): the registry's text keys (i18n.ludic)
     else if a == "alloc_ok" {                      # 25.2: @alloc_ok("why") - this allocates in a frame on purpose
       eat_op("(")
       let why = expr()

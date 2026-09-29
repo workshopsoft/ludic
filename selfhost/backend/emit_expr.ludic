@@ -174,7 +174,7 @@ function emit_bin(e: Node) -> Val {
 # text types: `==` on two of these compares content, not the pointers. Besides
 # `string`, that is the untyped raw pointer — `pointer`, and `ptr`, the element of
 # a `pointers` buffer — which runtime code uses to carry text.
-function is_textish(t: pointer) -> bool { return (t == "string") or (t == "pointer") or (t == "ptr") }
+function is_textish(t: pointer) -> bool { return (t == "string") or (t == "pointer") or (t == "ptr") or ((t == "Key") and find_comp(t) == null) }
 
 # lower `a <op> b` on two already-evaluated operands. Shared by binary expressions
 # and compound assignment (`x += y` is exactly `x = x + y`), so both agree on

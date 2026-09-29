@@ -45,7 +45,9 @@ function schema_buf() -> Buf {
   sc_natives(b)
   buf_puts(b, "\n  ],\n  \"units\": [")
   sc_units(b)
-  buf_puts(b, "]\n}\n")
+  buf_puts(b, "],\n  \"lang\": ")
+  sc_lang(b)                                      # emit_schema_lang.ludic: the keys and the languages
+  buf_puts(b, "\n}\n")
   return b
 }
 
