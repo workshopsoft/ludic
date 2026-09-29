@@ -1,0 +1,23 @@
+# check_builtins.ludic — the names a call always takes as the compiler's own, whatever the program
+# declares: emit_call's built-ins that no `find_fn` guard lets a declared function take. A function
+# so named is refused (ck_runtime_shadows) - a call would never reach it: a `words(st, k)` helper
+# once compiled as words(n) with a pointer for its size. Every other built-in yields to a declared
+# function, in the checker as in codegen; `ludic-dev syntax --check` holds this table to emit_call.
+function is_call_builtin(name: pointer) -> bool {
+  if (name == "apply") or (name == "assert") or (name == "bytes") or (name == "data_of") { return true }
+  if (name == "expect") or (name == "expect_eq") or (name == "expect_near") or (name == "fixed") { return true }
+  if (name == "floor") or (name == "intern") or (name == "is_owner") or (name == "is_server") { return true }
+  if (name == "keep") or (name == "key") or (name == "len") or (name == "load") { return true }
+  if (name == "local_id") or (name == "net_poll") or (name == "net_pump") or (name == "net_send") { return true }
+  if (name == "owner") or (name == "panic") or (name == "print") or (name == "push") { return true }
+  if (name == "quit") or (name == "save") or (name == "self") or (name == "serialize") { return true }
+  if (name == "set_local_id") or (name == "set_owner") or (name == "set_role") or (name == "string") { return true }
+  if (name == "sync_size") or (name == "tick_fixed") or (name == "tick_render") or (name == "view") { return true }
+  if (name == "words") or (name == "world_attach_dyn") or (name == "world_count") or (name == "world_detach_dyn") { return true }
+  if (name == "world_field_count") or (name == "world_field_id") or (name == "world_field_name") or (name == "world_field_type") { return true }
+  if (name == "world_get") or (name == "world_has") or (name == "world_kind") or (name == "world_load") { return true }
+  if (name == "world_model_id") or (name == "world_prop_count") or (name == "world_prop_id") or (name == "world_prop_name") { return true }
+  if (name == "world_query_next") or (name == "world_register_prop") or (name == "world_save") or (name == "world_set") { return true }
+  if (name == "world_size") or (name == "world_spawn") { return true }
+  return false
+}

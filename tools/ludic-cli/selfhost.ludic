@@ -112,6 +112,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/check/check_ops.ludic")
   push(f, "selfhost/check/check_call.ludic")
   push(f, "selfhost/check/check_stmt.ludic")
+  push(f, "selfhost/check/check_builtins.ludic")
   push(f, "selfhost/check/check_gen.ludic")
   push(f, "selfhost/check/check_gen_call.ludic")
   push(f, "selfhost/check/check_tynames.ludic")

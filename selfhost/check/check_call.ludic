@@ -231,6 +231,15 @@ function ck_call_named(e: Node, name: pointer) -> pointer {
     return "?"
   }
   if ck_raw_builtin(name) { ck_raw(e, `{name}()`) }
+  # a built-in no call always takes (not is_call_builtin) yields to a function the program declares,
+  # as codegen's does: the checker once typed a `buffer` helper as buffer(n) while codegen called it
+  if not is_call_builtin(name) {
+    let uf = ck_fn(name)
+    if uf != null {
+      ck_vis(uf, name, e)
+      return ck_call_fn(e, name, uf)
+    }
+  }
   let bt = ck_builtin(e, name)
   if bt != null { return bt }
   let f = ck_fn(name)

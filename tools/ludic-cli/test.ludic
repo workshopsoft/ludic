@@ -1375,6 +1375,8 @@ function cmd_dev_test() -> int {
   schema_case("lang/scenes", "\"scene\": \"Play\", \"layer\": \"Hud\"", "--emit-schema: code.handlers - a scene's handler, its scene and layer")
   schema_case("state/write_reach", "{\"fn\": \"log_note\", \"module\": null, \"at\": \"examples/state/write_reach.ludic:21:37\", \"slot_kind\": \"registry\", \"slot\": \"Kinds.note\", \"entry\": \"box\"}", "--emit-schema: code.fn_refs - a fn in a registry row, the field and row it fills")
   schema_case("modules/ports", "\"slot_kind\": \"port_default\", \"slot\": \"Clock.day\"", "--emit-schema: code.fn_refs - a port member's default")
+  diag_json_case("rejected/builtin_call_name", 2, "words is a built-in of the compiler, and a call to it would never reach this function; choose another name", "a function named like a built-in a call always takes (words, keep) is refused at its declaration")
+  feat_case("functions/builtin_yield", "", "ab 4", "builtin_yield.ludic (a built-in a declared function may take - buffer - yields to it in the checker as in codegen)")
   diag_json_case("rejected/i18n_keys/key_missing", 2, "the key pause.gone is not in examples/rejected/i18n_keys/lang/en.po", "a key literal en.po does not have is refused, at its line and column")
   diag_json_case("rejected/i18n_keys/key_missing", 2, "is a plural key, and examples/rejected/i18n_keys/lang/en.po:7 gives pause.resume no msgid_plural", "kn\"...\" is a plural key: en.po's entry has a msgid_plural")
   diag_json_case("rejected/i18n_keys/key_missing", 2, "trf: hud.day is given 2 value(s), and its English in examples/rejected/i18n_keys/lang/en.po has 1 hole(s)", "trf given more values than the key's English has holes: a warning")

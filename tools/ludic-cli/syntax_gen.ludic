@@ -422,6 +422,53 @@ function sx_parser() -> int {
   return n
 }
 
+# ---- the built-ins a call always takes, held to emit_call ----
+# every `name == "x"` on one of a function's top-level `if` lines (after head, to the next function);
+# guarded skips the lines a declared function can take (`find_fn(`)
+function sx_name_tests(text: pointer, head: pointer, guarded: bool) -> []pointer {
+  let out = new []pointer
+  let n = slen(text)
+  var inside = false
+  var i = 0
+  while i < n {
+    let line = line_at(text, i)
+    i = i + slen(line) + 1
+    if s_starts(line, "function ") { inside = s_starts(line, head) }
+    else if inside and s_starts(line, "  if (") and not (guarded and s_contains(line, "find_fn(")) {
+      var at = s_index(line, "name == \"", 0)
+      while at >= 0 {
+        let a = at + 9
+        var b = a
+        while b < slen(line) and line[b] != '"' { b += 1 }
+        let w = line[a .. b]
+        if not set_has(out, w) { push(out, w) }
+        at = s_index(line, "name == \"", b)
+      }
+    }
+  }
+  return out
+}
+# selfhost/check/check_builtins.ludic's table against emit_call's unguarded built-ins, both ways
+function sx_builtins() -> int {
+  let ec = read_file("selfhost/backend/emit_call.ludic")
+  let tb = read_file("selfhost/check/check_builtins.ludic")
+  if ec == null or tb == null { push(g_sx_prob, "cannot read emit_call.ludic or check_builtins.ludic");  return 1 }
+  let want = sx_name_tests(ec, "function emit_call(", true)
+  let have = sx_name_tests(tb, "function is_call_builtin(", false)
+  var n = 0
+  var i = 0
+  while i < len(want) {
+    if not set_has(have, want[i]) { push(g_sx_prob, `emit_call always takes {want[i]}(...), and check_builtins.ludic does not refuse a function of that name - add it`);  n += 1 }
+    i += 1
+  }
+  i = 0
+  while i < len(have) {
+    if not set_has(want, have[i]) { push(g_sx_prob, `check_builtins.ludic refuses {have[i]}, which emit_call no longer always takes - drop it`);  n += 1 }
+    i += 1
+  }
+  return n
+}
+
 # ---- the command ----
 function sx_report(what: pointer) -> int {
   if len(g_sx_prob) == 0 { return 0 }
@@ -457,6 +504,7 @@ function cmd_syntax_gen() -> int {
     while i < len(ts) { sx_carries(ts[i]);  i += 1 }
     sx_docs()
     sx_parser()
+    sx_builtins()
     return sx_report("the vocabulary and what is written from it disagree")
   }
   if changed == 0 { print("  every grammar already says what ludicc --emit-syntax does") }

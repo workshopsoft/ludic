@@ -1,0 +1,11 @@
+# builtin_yield.ludic - a built-in that a declared function may take (buffer, floats, double, ...)
+# yields to it in the checker as in codegen: this `buffer` is the program's own, returning text.
+#
+# Prints:  ab 4
+program BuiltinYield {
+  function buffer(a: string, b: string) -> string { return a + b }
+  entry {
+    let s = buffer("a", "b")
+    print(`{s} {len(floats(4))}`)
+  }
+}
