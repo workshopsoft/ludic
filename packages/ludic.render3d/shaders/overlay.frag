@@ -1,4 +1,4 @@
-// 2D overlay: an image texture, the font atlas (white glyphs on alpha) or a flat colour, times a
+// 2D overlay: an image texture, the font atlas (glyph coverage, R8) or a flat colour, times a
 // colour. Which one is the vertex's own: v carries 4 x the mode (0 image, 1 font, 2 flat) on top of
 // its real coordinate, so text, panels and an image's quads share a draw (overlay.ludic, ov_use_tex).
 in vec2 v_uv;
@@ -27,7 +27,7 @@ void main() {
   if (mode > 1.5) {
     o_color = v_col;
   } else if (mode > 0.5) {
-    o_color = vec4(v_col.rgb, v_col.a * texture(u_font, uv).a);
+    o_color = vec4(v_col.rgb, v_col.a * texture(u_font, uv).r);   // the atlas is its coverage alone (R8)
   } else {
     vec4 t = texture(u_tex, uv);
     o_color = vec4(v_col.rgb * t.rgb, v_col.a * t.a);
