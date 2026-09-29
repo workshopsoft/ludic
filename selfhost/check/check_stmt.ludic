@@ -212,7 +212,7 @@ function ck_runtime_shadows() -> void {
   var u = 0
   while u < g_prog_user_end {
     let d = prog[u]
-    if d.kind == N_FN and (is_intrinsic(d.s) or is_intrinsic2(d.s)) { ck_err("shadow", d, `{d.s} is a built-in of the compiler, and a call to it would never reach this function; choose another name`) }
+    if d.kind == N_FN and (is_intrinsic(d.s) or is_intrinsic2(d.s) or is_call_builtin(d.s)) { ck_err("shadow", d, `{d.s} is a built-in of the compiler, and a call to it would never reach this function; choose another name`) }
     u += 1
   }
   var r = g_prog_user_end

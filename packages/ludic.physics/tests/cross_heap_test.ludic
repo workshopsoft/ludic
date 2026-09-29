@@ -44,7 +44,7 @@ program CrossHeapTest {
     cs.on[c] = false
   }
   # the ring kept round chunk (px, pz): those past it out, those in it in, and the broad phase rebuilt
-  function keep(physics_st: mut PhysicsState, cs: mut CrossState, px: int, pz: int) -> void {
+  function keep_cell(physics_st: mut PhysicsState, cs: mut CrossState, px: int, pz: int) -> void {
     for c in 0 .. N * N {
       let near = Math.abs(c % N - px) <= RING and Math.abs(c / N - pz) <= RING
       if cs.on[c] and not near { chunk_out(physics_st, cs, c) }
@@ -54,8 +54,8 @@ program CrossHeapTest {
     phys_step(physics_st)
   }
   function crossing(physics_st: mut PhysicsState, cs: mut CrossState) -> void {
-    for k in 0 .. N { keep(physics_st, cs, k, k) }
-    for k in 0 .. N { keep(physics_st, cs, N - 1 - k, N - 1 - k) }
+    for k in 0 .. N { keep_cell(physics_st, cs, k, k) }
+    for k in 0 .. N { keep_cell(physics_st, cs, N - 1 - k, N - 1 - k) }
   }
 
   test "crossing the map and back six times holds the bodies, the shapes and Jolt's bytes of the first crossing" (physics_st: mut PhysicsState, cross_st: mut CrossState) {

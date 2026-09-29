@@ -36,7 +36,6 @@ var g_at_nargs: []int = new []int
 var g_at_unres: []bool = new []bool          # its target is not in this program (a warning; the schema says so)
 var g_at_open: int = -1                      # the group the attributes being read go into
 var g_at_decl: []pointer = new []pointer     # @AppendOnly / @ByKey read before a declaration
-var g_at_keep: bool = false                  # `export` parses its declaration one call down
 
 # a new group, empty; its index
 function at_group() -> int {
@@ -165,10 +164,6 @@ function at_decl_with(a: pointer, args: pointer) -> void {
   push(g_at_decl_args, args)
 }
 function at_decl_reset() -> void {
-  if g_at_keep {
-    g_at_keep = false
-    return
-  }
   if len(g_at_decl) > 0 { at_decl_clear() }
 }
 function at_decl_clear() -> void {

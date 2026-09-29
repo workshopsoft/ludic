@@ -3,7 +3,7 @@
 # has been used, and one that IS held - in a variable, handed to a function, a function's result -
 # is not. Prints 1 2 3 4 5 6 7 and `grew 0` (the heap is read on the Mac; 0 elsewhere).
 program StringTemps {
-  function keep(s: string) -> string { return s }
+  function hand(s: string) -> string { return s }
   function tag(i: int) -> string { return `t{i}` }
 
   # every shape of throwaway text, compared against itself built another way: nothing survives
@@ -29,7 +29,7 @@ program StringTemps {
     let n = string(-42)
     let t = n + "!" + n
     if n == "-42" and t == "-42!-42" { print(2) }
-    let k = keep(a + "+" + b)
+    let k = hand(a + "+" + b)
     let k2 = k + "=" + k
     if k == "dir+file" and k2 == "dir+file=dir+file" { print(3) }
     var acc = ""
@@ -37,7 +37,7 @@ program StringTemps {
     if acc == "0,1,2,3," { print(4) }
     if string(0) == "0" and string(2147483647) == "2147483647" and `{long(9000000000)}` == "9000000000" { print(5) }
     let nested = `a{`b{1 + 1}c`}d`
-    # a function's result is its caller's to keep (keep() hands back its own argument), so only
+    # a function's result is its caller's to keep (hand() hands back its own argument), so only
     # the text built round it goes
     if nested == "ab2cd" and "[" + tag(3) + "]" == "[t3]" { print(6) }
     var bad = 0

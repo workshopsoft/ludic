@@ -1,0 +1,8 @@
+# builtin_call_name.ludic - a function named like a built-in a call always takes is refused at its
+# declaration: every call to `words` is words(n), n zeroed ints, so this helper would never run (a
+# pointer became its size). (Rejected on purpose: tools/ludic-cli/test.ludic.)
+program BuiltinCallName {
+  function words(n: int, k: string) -> string { return k }
+  function keep(s: string) -> string { return s }
+  entry { print(words(1, keep("x"))) }
+}
