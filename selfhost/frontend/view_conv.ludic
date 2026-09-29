@@ -6,6 +6,7 @@ function vw_conv(v: int, ty: pointer, x: pointer, head: Node) -> pointer {
   if (ty == "int") { return `value_int({x})` }
   if (ty == "float") { return `value_float({x})` }
   if (ty == "string") { return `value_str({x})` }
+  if i18n_is_key_ty(ty) { return `value_str(string({x}))` }     # a Key: its marked text, for a template's t(expr)
   if (ty == "bool") {
     vw_helper(`function view_val_bool(b: bool) -> Val {{\n  if b {{ return value_bool(1) }}\n  return value_bool(0)\n}}\n`, "view_val_bool", head)
     return `view_val_bool({x})`

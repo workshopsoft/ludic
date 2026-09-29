@@ -394,7 +394,7 @@ function i18n_data_rec(rec: Node, comp: Node, base: pointer) -> void {
       if fi != null { i18n_data_val(fi.a, f.ty, key, text) }
       else if text and i18n_is_key_ty(f.ty) {
         # a map's row: its key is derived and must be in en.po (the fill is compiled registries')
-        g_i18n_what = `{key}, the derived key of a @Text field the row gives no value,`
+        g_i18n_what = `{key} (the derived key of a @Text field the row gives no value)`
         i18n_use(key, false, KS_DATA, rec.file, rec.line, rec.col)
         g_i18n_what = null
       }
@@ -405,7 +405,7 @@ function i18n_data_rec(rec: Node, comp: Node, base: pointer) -> void {
 function i18n_data_val(e: Node, ty: pointer, key: pointer, text: bool) -> void {
   if e == null { return }
   if i18n_is_key(e) {
-    if e.ty != null and (e.ty == "derived") { g_i18n_what = `{key}, the derived key of a @Text field the row gives no value,` }
+    if e.ty != null and (e.ty == "derived") { g_i18n_what = `{key} (the derived key of a @Text field the row gives no value)` }
     i18n_use(i18n_key_text(e), e.ival == KEY_PLURAL, KS_DATA, e.file, e.line, e.col)
     g_i18n_what = null
     return
