@@ -411,8 +411,9 @@ function terrain_init__t(render3d_st: mut Render3dState) -> void {
 # shadow, 2 the ground's materials, 3 the patch tree and the terrain programs.
 const TERRAIN_INIT_STEPS: int = 4
 function terrain_init_step(render3d_st: mut Render3dState, i: int) -> void {
-  if i == 0 { terrain_generate(render3d_st);  return }
-  if i == 1 { terrain_bake_shadow(render3d_st);  return }
+  if i == 0 { if not render3d_st.tt_baked { terrain_generate(render3d_st) };  return }
+  # a baked terrain whose shadow came from its own bake (terrain_shadow_from_bytes) keeps it
+  if i == 1 { if not (render3d_st.tt_baked and render3d_st.ter_shadow_tex != 0) { terrain_bake_shadow(render3d_st) };  return }
   if i == 2 { terrain_load_textures(render3d_st);  return }
   terrain_init_finish(render3d_st)
 }
