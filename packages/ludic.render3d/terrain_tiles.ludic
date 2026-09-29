@@ -1,0 +1,181 @@
+# terrain_tiles.ludic — the height field and the photograph on the CPU as tiles read from a file, so
+# only the tiles something asks about are in memory (plan 26 of maroon-lake). The game turns it on with
+# terrain_tiles_to(dir, key) before the map is made; without that the whole copies stay, as before.
+# Every answer is the texel the whole copy held: a tile not in is read from the file there and then,
+# so what a query returns never depends on what happens to be resident - two machines, and the
+# placements at boot, get the same numbers to the bit.
+
+const TT_TEX: int = 32          # height texels a tile a side: 64 m at 2 m (a build-time constant)
+const TT_SHIFT: int = 5
+const TT_MASK: int = 31
+const TT_SLOTS: int = 2048      # tiles held at once: 8 MB each of heights, photograph and normals
+const TT_WARN_READS: int = 8    # a frame that reads more from the file than this is said, once
+
+# where a map's tiles are written, and under what name: set by the game before the map is made
+export function terrain_tiles_to(render3d_st: mut Render3dState, dir: string, key: string) -> void {
+  render3d_st.tt_dir = intern(dir)
+  render3d_st.tt_key = intern(key)
+}
+
+# the height texel (tx, tz): the whole copy's, or its tile's
+function ter_h(render3d_st: mut Render3dState, tx: int, tz: int) -> float {
+  if render3d_st.ter_heights != null { return render3d_st.ter_heights[tz * TERRAIN_RES + tx] }
+  let s = tt_slot(render3d_st, (tz >> TT_SHIFT) * render3d_st.tt_n + (tx >> TT_SHIFT))
+  if s < 0 { return 0.0 }
+  return render3d_st.tt_h[s * TT_TEX * TT_TEX + (tz & TT_MASK) * TT_TEX + (tx & TT_MASK)]
+}
+
+# the photograph's texel (px, pz) as 0xRRGGBB
+function ter_o(render3d_st: mut Render3dState, px: int, pz: int) -> int {
+  let side = render3d_st.tt_oside
+  let s = tt_slot(render3d_st, (pz / side) * render3d_st.tt_n + (px / side))
+  if s < 0 { return 0 }
+  return render3d_st.tt_o[s * side * side + (pz % side) * side + (px % side)]
+}
+
+# the baked normal at height texel (tx, tz): x and z as two halves in a word (RG16F), for the GPU's tiles
+function ter_n(render3d_st: mut Render3dState, tx: int, tz: int) -> int {
+  let s = tt_slot(render3d_st, (tz >> TT_SHIFT) * render3d_st.tt_n + (tx >> TT_SHIFT))
+  if s < 0 { return 0 }
+  return render3d_st.tt_nm[s * TT_TEX * TT_TEX + (tz & TT_MASK) * TT_TEX + (tx & TT_MASK)]
+}
+
+# is there a height field to ask at all (a plate has none)
+function ter_present(render3d_st: Render3dState) -> bool { return render3d_st.ter_heights != null or render3d_st.tt_file != null }
+
+# the slot tile t is in, read from the file first when it is not
+function tt_slot(render3d_st: mut Render3dState, t: int) -> int {
+  if render3d_st.tt_file == null or t < 0 or t >= len(render3d_st.tt_slot_of) { return -1 }
+  let s = render3d_st.tt_slot_of[t]
+  if s >= 0 {
+    render3d_st.tt_ref[s] = 1
+    return s
+  }
+  return tt_read(render3d_st, t)
+}
+
+# a slot let go (the clock: one asked for since the hand last passed keeps its place), and tile t read into it
+function tt_read(render3d_st: mut Render3dState, t: int) -> int {
+  var s = render3d_st.tt_hand
+  while render3d_st.tt_ref[s] != 0 {
+    render3d_st.tt_ref[s] = 0
+    s = (s + 1) % TT_SLOTS
+  }
+  render3d_st.tt_hand = (s + 1) % TT_SLOTS
+  let old = render3d_st.tt_tile_in[s]
+  if old >= 0 { render3d_st.tt_slot_of[old] = -1 }
+  let hb = TT_TEX * TT_TEX * 4
+  file_seek(render3d_st.tt_file, render3d_st.tt_hoff + t * hb, 0)
+  file_read(render3d_st.tt_file, mem_off(data_of(render3d_st.tt_h), s * hb), hb)
+  let ob = render3d_st.tt_oside * render3d_st.tt_oside * 4
+  if ob > 0 {
+    file_seek(render3d_st.tt_file, render3d_st.tt_ooff + t * ob, 0)
+    file_read(render3d_st.tt_file, mem_off(data_of(render3d_st.tt_o), s * ob), ob)
+  }
+  file_seek(render3d_st.tt_file, render3d_st.tt_noff + t * hb, 0)
+  file_read(render3d_st.tt_file, mem_off(data_of(render3d_st.tt_nm), s * hb), hb)
+  render3d_st.tt_tile_in[s] = t
+  render3d_st.tt_slot_of[t] = s
+  render3d_st.tt_ref[s] = 1
+  render3d_st.tt_reads += 1
+  render3d_st.tt_frame_reads += 1
+  return s
+}
+
+# at a frame's start: say a frame that read too much from the file (once), and count the next
+function tt_frame(render3d_st: mut Render3dState) -> void {
+  if render3d_st.tt_frame_reads > TT_WARN_READS and not render3d_st.tt_warned {
+    render3d_st.tt_warned = true
+    tt_say_reads(render3d_st.tt_frame_reads)
+  }
+  render3d_st.tt_frame_reads = 0
+}
+function tt_say_reads(n: int) -> void { print(`r3d: terrain: a frame read {n} tiles from the file (said once; terrain_tiles_prefetch keeps them in ahead)`) }
+
+# the tiles within r of (x, z) read in ahead of being asked, at most `budget` a call
+export function terrain_tiles_prefetch(render3d_st: mut Render3dState, x: float, z: float, r: float, budget: int) -> void {
+  if render3d_st.tt_file == null { return }
+  let tile_m = float(TT_TEX) * 2.0 * float(render3d_st.TERRAIN_HALF) / float(TERRAIN_RES)
+  let fx = (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) / tile_m
+  let fz = (z - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) / tile_m
+  let rt = r / tile_m + 1.0
+  let n = render3d_st.tt_n
+  var left = budget
+  for j in max(int(fz - rt), 0) .. min(int(fz + rt) + 1, n) {
+    for i in max(int(fx - rt), 0) .. min(int(fx + rt) + 1, n) {
+      let t = j * n + i
+      if left > 0 and render3d_st.tt_slot_of[t] < 0 {
+        tt_read(render3d_st, t)
+        render3d_st.tt_frame_reads -= 1
+        left -= 1
+      }
+    }
+  }
+}
+
+# metres a height texel spans (the chunks' sample spacing), whether or not the whole copy is kept
+export function terrain_texel(render3d_st: Render3dState) -> float { return 2.0 * float(render3d_st.TERRAIN_HALF) / float(TERRAIN_RES) }
+
+# ---- a height without the cache: read-only ----------------------------------------------------
+# For what asks often and only locally - a line of sight, the aim, a photograph's check - and must
+# not take render3d_st mut down its whole path: the tile if it is in, else the coarse whole-map level
+# (TT_COARSE a side, the mean of 2 x 2 texels). It never reads the file, so over ground nobody is near
+# it can be a few decimetres off the exact answer; anything two machines must agree on asks
+# terrain_height.
+const TT_COARSE: int = 2048
+const TT_ABSENT: float = -1000000.0   # tt_peek: that texel is not in memory
+
+export function terrain_height_near(render3d_st: Render3dState, x: float, z: float) -> float {
+  if render3d_st.ter_heights == null and render3d_st.tt_file == null { return 0.0 }
+  let scale = float(TERRAIN_RES) / float(render3d_st.TERRAIN_HALF * 2)
+  let fx = (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale
+  let fz = (z - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) * scale
+  let ix = min(max(int(Math.floor(fx)), 0), TERRAIN_RES - 2)
+  let iz = min(max(int(Math.floor(fz)), 0), TERRAIN_RES - 2)
+  let tx = Math.clamp(fx - float(ix), 0.0, 1.0)
+  let tz = Math.clamp(fz - float(iz), 0.0, 1.0)
+  let h00 = tt_peek(render3d_st, ix, iz)
+  let h10 = tt_peek(render3d_st, ix + 1, iz)
+  let h01 = tt_peek(render3d_st, ix, iz + 1)
+  let h11 = tt_peek(render3d_st, ix + 1, iz + 1)
+  if h00 == TT_ABSENT or h10 == TT_ABSENT or h01 == TT_ABSENT or h11 == TT_ABSENT { return tt_coarse_at(render3d_st, fx, fz) }
+  return Math.lerp(Math.lerp(h00, h10, tx), Math.lerp(h01, h11, tx), tz)
+}
+
+# a height texel if it is in memory (the whole copy, or a resident tile), else TT_ABSENT
+function tt_peek(render3d_st: Render3dState, tx: int, tz: int) -> float {
+  if render3d_st.ter_heights != null { return render3d_st.ter_heights[tz * TERRAIN_RES + tx] }
+  let s = render3d_st.tt_slot_of[(tz >> TT_SHIFT) * render3d_st.tt_n + (tx >> TT_SHIFT)]
+  if s < 0 { return TT_ABSENT }
+  return render3d_st.tt_h[s * TT_TEX * TT_TEX + (tz & TT_MASK) * TT_TEX + (tx & TT_MASK)]
+}
+
+# the coarse level at fine texel position (fx, fz), bilinear: coarse texel c's centre is fine 2c + 0.5
+function tt_coarse_at(render3d_st: Render3dState, fx: float, fz: float) -> float {
+  let c = render3d_st.tt_coarse
+  if c == null { return 0.0 }
+  let cx = (fx - 0.5) * 0.5
+  let cz = (fz - 0.5) * 0.5
+  let ix = min(max(int(Math.floor(cx)), 0), TT_COARSE - 2)
+  let iz = min(max(int(Math.floor(cz)), 0), TT_COARSE - 2)
+  let tx = Math.clamp(cx - float(ix), 0.0, 1.0)
+  let tz = Math.clamp(cz - float(iz), 0.0, 1.0)
+  let a = Math.lerp(c[iz * TT_COARSE + ix], c[iz * TT_COARSE + ix + 1], tx)
+  let b = Math.lerp(c[(iz + 1) * TT_COARSE + ix], c[(iz + 1) * TT_COARSE + ix + 1], tx)
+  return Math.lerp(a, b, tz)
+}
+
+# the coarse level from the whole copy, before it goes
+@alloc_ok("a map being made: the coarse level, once")
+function tt_make_coarse(render3d_st: mut Render3dState) -> void {
+  if render3d_st.tt_coarse == null { render3d_st.tt_coarse = floats(TT_COARSE * TT_COARSE) }
+  let h = render3d_st.ter_heights
+  let k = TERRAIN_RES / TT_COARSE
+  for j in 0 .. TT_COARSE {
+    for i in 0 .. TT_COARSE {
+      var sum = 0.0
+      for b in 0 .. k { for a in 0 .. k { sum = sum + h[(j * k + b) * TERRAIN_RES + i * k + a] } }
+      render3d_st.tt_coarse[j * TT_COARSE + i] = sum / float(k * k)
+    }
+  }
+}

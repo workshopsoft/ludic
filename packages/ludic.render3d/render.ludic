@@ -77,6 +77,8 @@ function r3d_env_flags(render3d_st: mut Render3dState) -> void {
   render3d_st.r3d_no_trees = r3d_env_has(render3d_st, "R3D_NOTREES")
   render3d_st.r3d_no_refl = r3d_env_has(render3d_st, "R3D_NOREFL")
   # R3D_FOG_WALL=<m>: the fog wall at that distance, for a shot (a game sets it with r3d_fog_wall)
+  # R3D_TERRAIN_TILES=<dir>: the height field and photograph as tiles in that directory (terrain_tiles_to)
+  if r3d_env_has(render3d_st, "R3D_TERRAIN_TILES") and render3d_st.tt_dir == "" { terrain_tiles_to(render3d_st, r3d_env(render3d_st, "R3D_TERRAIN_TILES"), "terrain") }
   if r3d_env_has(render3d_st, "R3D_FOG_WALL") { render3d_st.r3d_fog_wall = float(Text.to_int(r3d_env(render3d_st, "R3D_FOG_WALL"))) }
   if r3d_env_has(render3d_st, "R3D_DEBUG") { render3d_st.r3d_debug = true }
   if r3d_env_has(render3d_st, "R3D_DBGSHADOW") { render3d_st.r3d_debug_shadow = true }
@@ -224,6 +226,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   # a stale attachment or a texture freed twice shows up.
   render3d_st.r3d_test_frame += 1
   vkmem_tick(render3d_st)
+  tt_frame(render3d_st)
   fog_at_tick(render3d_st)
   if render3d_st.r3d_test_resize == 0 and r3d_env_has(render3d_st, "R3D_RESIZE_AT") { render3d_st.r3d_test_resize = Text.to_int(r3d_env(render3d_st, "R3D_RESIZE_AT")) }
   # R3D_RESIZE_AT=<n>: from frame n on, rebuild every screen-sized buffer every few

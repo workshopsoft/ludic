@@ -1,0 +1,160 @@
+# terrain_tiles_cut.ludic — the whole height field and photograph written out tile by tile, once a map is
+# made, and let go. The file is written fresh every time a map is made and never read by another
+# start, so no older generator's tiles are ever read; its header goes in last, so a start that died
+# writing it leaves a file whose magic is not there rather than one that looks whole.
+
+const TT_MAGIC: int = 1415074892          # "LTTT"
+const TT_VERSION: int = 1
+const TT_HEAD: int = 64                    # bytes: 16 words
+
+@alloc_ok("a map being made: its tiles' file and their pools, once, not a frame")
+function terrain_tiles_cut(render3d_st: mut Render3dState) -> void {
+  if render3d_st.tt_dir == "" or render3d_st.ter_heights == null or render3d_st.ter_ortho_px == null { return }
+  let t0 = gl_now_us()
+  tt_close(render3d_st)
+  let n = TERRAIN_RES / TT_TEX
+  let side = render3d_st.ter_ortho_w / n
+  let path = `{render3d_st.tt_dir}/{render3d_st.tt_key}.tiles`
+  Fs.mkdir(render3d_st.tt_dir)
+  let f = file_open(path, "wb")
+  if f == null { tt_say_no_file(path);  return }
+  let head = words(16)
+  for k in 0 .. 16 { head[k] = 0 }
+  file_write(f, data_of(head), TT_HEAD)
+  var sum = tt_write_heights(render3d_st, f, n)
+  sum = tt_write_ortho(render3d_st, f, n, side, sum)
+  sum = tt_write_normals(render3d_st, f, n, sum)
+  head[0] = TT_MAGIC;  head[1] = TT_VERSION;  head[2] = TT_TEX;  head[3] = n;  head[4] = side;  head[5] = TERRAIN_RES
+  head[6] = render3d_st.ter_ortho_w;  head[7] = sum
+  file_seek(f, 0, 0)
+  file_write(f, data_of(head), TT_HEAD)
+  file_close(f)
+  free(head)
+  tt_open(render3d_st, path, n, side)
+  tt_make_coarse(render3d_st)
+  if r3d_env_has(render3d_st, "R3D_TT_CHECK") { tt_check(render3d_st) }
+  free(render3d_st.ter_heights);  render3d_st.ter_heights = null
+  free(render3d_st.ter_ortho_px);  render3d_st.ter_ortho_px = null
+  tt_say_cut(path, TT_HEAD + n * n * (TT_TEX * TT_TEX * 2 + side * side) * 4, (gl_now_us() - t0) / 1000)
+}
+
+# the heights, tile after tile, each a TT_TEX-row block straight out of the whole copy; their checksum
+function tt_write_heights(render3d_st: Render3dState, f: pointer, n: int) -> int {
+  var sum = 0
+  let base = data_of(render3d_st.ter_heights)
+  for j in 0 .. n {
+    for i in 0 .. n {
+      for r in 0 .. TT_TEX {
+        let at = (j * TT_TEX + r) * TERRAIN_RES + i * TT_TEX
+        file_write(f, mem_off(base, at * 4), TT_TEX * 4)
+        for k in 0 .. TT_TEX { sum = tt_mix(sum, float_bits(render3d_st.ter_heights[at + k])) }
+      }
+    }
+  }
+  return sum
+}
+
+# the photograph, tile after tile, each texel packed 0xRRGGBB into a word
+@alloc_ok("a map being made: one tile's scratch, freed after")
+function tt_write_ortho(render3d_st: Render3dState, f: pointer, n: int, side: int, sum0: int) -> int {
+  var sum = sum0
+  let buf = words(side * side)
+  let w = render3d_st.ter_ortho_w
+  let c = render3d_st.ter_ortho_c
+  let px = render3d_st.ter_ortho_px
+  for j in 0 .. n {
+    for i in 0 .. n {
+      for r in 0 .. side {
+        for k in 0 .. side {
+          let o = ((j * side + r) * w + i * side + k) * c
+          let v = (px[o] << 16) | (px[o + 1] << 8) | px[o + 2]
+          buf[r * side + k] = v
+          sum = tt_mix(sum, v)
+        }
+      }
+      file_write(f, data_of(buf), side * side * 4)
+    }
+  }
+  free(buf)
+  return sum
+}
+
+# the baked normals (RG16F: x and z, two halves a word), read back once and written tile after tile
+@alloc_ok("a map being made: the normals read back once, freed after")
+function tt_write_normals(render3d_st: mut Render3dState, f: pointer, n: int, sum0: int) -> int {
+  var sum = sum0
+  let all = words(TERRAIN_RES * TERRAIN_RES)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_normal_tex)
+  gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 4)
+  gpu_tex_read(render3d_st, GPU_TEX2D, GL_RG, GL_HALF_FLOAT, data_of(all))
+  let base = data_of(all)
+  for j in 0 .. n {
+    for i in 0 .. n {
+      for r in 0 .. TT_TEX {
+        let at = (j * TT_TEX + r) * TERRAIN_RES + i * TT_TEX
+        file_write(f, mem_off(base, at * 4), TT_TEX * 4)
+        for k in 0 .. TT_TEX { sum = tt_mix(sum, all[at + k]) }
+      }
+    }
+  }
+  free(all)
+  return sum
+}
+
+function tt_mix(h: int, v: int) -> int { return ((h ^ (v & 0xFFFFFFFF)) * 16777619) & 0xFFFFFFFF }
+
+# the file opened for the tiles' reads, and the pools, the index and the clock made for it
+@alloc_ok("a map being made: its tiles' file and their pools, once, not a frame")
+function tt_open(render3d_st: mut Render3dState, path: string, n: int, side: int) -> void {
+  render3d_st.tt_file = file_open(path, "rb")
+  render3d_st.tt_n = n;  render3d_st.tt_oside = side
+  render3d_st.tt_hoff = TT_HEAD
+  render3d_st.tt_ooff = TT_HEAD + n * n * TT_TEX * TT_TEX * 4
+  render3d_st.tt_noff = render3d_st.tt_ooff + n * n * side * side * 4
+  if render3d_st.tt_nm == null { render3d_st.tt_nm = words(TT_SLOTS * TT_TEX * TT_TEX) }
+  if render3d_st.tt_h == null { render3d_st.tt_h = floats(TT_SLOTS * TT_TEX * TT_TEX) }
+  if render3d_st.tt_o == null or len(render3d_st.tt_o) != TT_SLOTS * side * side {
+    if render3d_st.tt_o != null { free(render3d_st.tt_o) }
+    render3d_st.tt_o = words(TT_SLOTS * side * side)
+  }
+  if render3d_st.tt_slot_of != null { free(render3d_st.tt_slot_of) }
+  render3d_st.tt_slot_of = words(n * n)
+  for t in 0 .. n * n { render3d_st.tt_slot_of[t] = -1 }
+  if render3d_st.tt_tile_in == null { render3d_st.tt_tile_in = words(TT_SLOTS);  render3d_st.tt_ref = words(TT_SLOTS) }
+  for s in 0 .. TT_SLOTS { render3d_st.tt_tile_in[s] = -1;  render3d_st.tt_ref[s] = 0 }
+  render3d_st.tt_hand = 0
+}
+
+# the last map's file let go (a world swap, or the map made again)
+function tt_close(render3d_st: mut Render3dState) -> void {
+  if render3d_st.tt_file != null { file_close(render3d_st.tt_file);  render3d_st.tt_file = null }
+}
+
+function tt_say_no_file(path: string) -> void { print(`r3d: terrain: cannot write {path}; the whole height field stays in memory`) }
+function tt_say_cut(path: string, bytes: int, ms: int) -> void { print(`r3d: terrain: tiles written to {path} ({bytes / 1048576} MB, {ms} ms); the whole copies let go`) }
+
+# R3D_TT_CHECK: the tiles' answer against the whole copy's at 4000 points (must be exact), and the
+# coarse level's (what terrain_height_near falls back to) - while both are still here
+@alloc_ok("a developer check, once, under R3D_TT_CHECK")
+function tt_check(render3d_st: mut Render3dState) -> void {
+  var worst = 0.0
+  var worst_c = 0.0
+  var seed = 12345
+  let half = float(render3d_st.TERRAIN_HALF) * 0.98
+  for k in 0 .. 4000 {
+    seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF
+    let x = render3d_st.ter_ox + (float(seed % 100000) / 50000.0 - 1.0) * half
+    seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF
+    let z = render3d_st.ter_oz + (float(seed % 100000) / 50000.0 - 1.0) * half
+    let whole = terrain_height(render3d_st, x, z)
+    let keep = render3d_st.ter_heights
+    render3d_st.ter_heights = null
+    let tiled = terrain_height(render3d_st, x, z)
+    let scale = float(TERRAIN_RES) / float(render3d_st.TERRAIN_HALF * 2)
+    let coarse = tt_coarse_at(render3d_st, (x - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) * scale, (z - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) * scale)
+    render3d_st.ter_heights = keep
+    worst = Math.max(worst, Math.abs(tiled - whole))
+    worst_c = Math.max(worst_c, Math.abs(coarse - whole))
+  }
+  print(`r3d: terrain: tiles vs the whole copy at 4000 points: worst {worst} m; the coarse level: worst {worst_c} m`)
+}

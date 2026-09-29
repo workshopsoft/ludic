@@ -99,7 +99,7 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
 function water_reflect_visible(render3d_st: mut Render3dState) -> bool {
   if render3d_st.wb_primary < 0 { return false }
   if render3d_st.wb_refl_always < 0 { render3d_st.wb_refl_always = 0;  if r3d_env_has(render3d_st, "R3D_REFL_ALWAYS") { render3d_st.wb_refl_always = 1 } }
-  if render3d_st.wb_refl_always == 1 or render3d_st.ter_heights == null { return true }
+  if render3d_st.wb_refl_always == 1 or not ter_present(render3d_st) { return true }
   if render3d_st.wb_ncells < 0 { let t0 = gl_now_us();  water_cells_build(render3d_st);  render3d_st.wb_build_us = gl_now_us() - t0 }
   if render3d_st.wb_dbg < 0 { render3d_st.wb_dbg = 0;  if r3d_env_has(render3d_st, "R3D_REFL_DBG") { render3d_st.wb_dbg = 1 } }
   if render3d_st.wb_dbg == 1 {
