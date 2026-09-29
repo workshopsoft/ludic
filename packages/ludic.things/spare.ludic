@@ -50,6 +50,7 @@ function th_clean(t: Thing) -> Thing {
   t.seat = -1
   t.seats = 0
   t.taken = 0
+  t.dawn = 0
   t.shared = false
   t.ent = -1
   t.tab = null

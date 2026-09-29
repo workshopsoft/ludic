@@ -22,6 +22,7 @@ property Thing {
   timer, used, n         # state the kind decides the meaning of
   sx, sz, syaw           # a heading or a point the kind decides the meaning of
   seat, seats, taken     # its seats: the first of the game's seat rows, how many, a bit per one sat in
+  dawn                   # the last day a restock reached it (saved), for the catch-up
   shared                 # the game copies it to others (a party)
 }
 ```
@@ -89,7 +90,8 @@ the actor the moment the Thing exists (a caller often scales or tints it on the 
 | `things_all()`, `things_count()`, `things_ready()`, `thing_by_uid(uid)` | every Thing, in the order placed; whether a world was ever set out |
 | `thing_find(kind, id)`, `thing_nearest(kind, x, z)`, `things_within(x, z, r)`, `things_each(kind)`, `things_each_all(kind)`, `thing_dist2(t, x, z)` | where they are: only active ones answer except the `_all`; a kind below 0 is any; `within` is nearest first |
 | `thing_name(t)`, `thing_prompt(t)`, `thing_use(t)`, `thing_can_use(t)`, `thing_reach(t)`, `thing_kind(t)`, `thing_is_personal(t)`, `thing_is_put_down(t)` | the dispatcher |
-| `things_tick(hours)`, `things_restock()` | every active kind that ticks; every Thing the world grew back and unused |
+| `things_tick(hours)`, `things_restock(day)` | every active kind that ticks; every Thing the world grew back and unused where a morning reaches (`ThingsWorld.restocks`), its `dawn` set to the day |
+| `things_catch_up(chunk, day, out)` | a chunk's Things that missed a dawn (`dawn < day`) and a morning now reaches, restocked as that morning would have (no dice), into the caller's list |
 | `things_facts() -> Queue<ThingFact>` | `{ what, uid, kind, id, owner, x, z }`: `THING_PLACED`, `THING_REMOVED`, `THING_USED` |
 | `thing_kind_ok(k)`, `thing_kind_by_key(key)` | the kinds |
 | `things_system() -> System` | `"things"`, `PH_COMMIT`: its save section - every active Thing the port keeps, its kind by KEY, so the game may reorder its kinds - and a reset that removes the kept ones for the load to put back |

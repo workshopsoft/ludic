@@ -31,6 +31,7 @@ function th_to_json(t: Thing) -> Val {
   sv_put_float(o, "syaw", t.syaw)
   sv_put_int(o, "seat", t.seat)
   sv_put_int(o, "seats", t.seats)
+  sv_put_int(o, "dawn", t.dawn)
   return o
 }
 
@@ -61,6 +62,7 @@ function th_from_json(things_st: mut ThingsState, o: Val) -> void {
   t.syaw = sv_float(o, "syaw", 0.0)
   t.seat = sv_int(o, "seat", -1)
   t.seats = sv_int(o, "seats", 0)
+  t.dawn = sv_int(o, "dawn", 0)
   let x = sv_float(o, "x", 0.0)
   let z = sv_float(o, "z", 0.0)
   let y = sv_float(o, "y", ThingsWorld.ground(x, z))

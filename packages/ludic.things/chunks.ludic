@@ -16,6 +16,20 @@ export function things_drop_chunk(things_st: mut ThingsState, chunk: int) -> int
   return n
 }
 
+# the chunk's Things that missed a dawn and a morning would now reach, restocked as that morning
+# would have (no dice: a restock rolls none) and filed into the caller's list; how many
+export function things_catch_up(things_st: ThingsState, chunk: int, day: int, out: []Thing) -> int {
+  List.clear(out)
+  let rows = ix_rows(things_st.th.chunks, chunk)
+  for i in 0 .. len(rows) {
+    let t = things_st.th.tab.rec[rows[i]]
+    if t.dawn >= day or thing_is_put_down(t) or not ThingsWorld.restocks(t.x, t.z) { continue }
+    th_restock_one(t, day)
+    kept_push(out, t)
+  }
+  return len(out)
+}
+
 # change detection: the tick now, the table moving on to the next - a consumer keeps what this
 # returned and asks things_changed(since: it) for what was written after
 export function things_now(things_st: mut ThingsState) -> int {
