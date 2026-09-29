@@ -44,9 +44,11 @@ program ZonesTest {
     expect(Math.abs(zones_nearest(zones_st, 350.0, 100.0) - 100.0) < 0.001)
   }
 
-  test "a player's radius: past the fog, never under the least, the horizon with none" (zones_st: mut ZonesState) {
+  test "a player's radius: past the fog, never under the least nor over no fog's" (zones_st: mut ZonesState) {
     expect(zones_radius(0.0) == ZONES_NO_FOG)
     expect(zones_radius(30.0) == ZONES_LEAST)
     expect(zones_radius(500.0) == 540.0)
+    expect(zones_radius(1000.0) == ZONES_NO_FOG)     # a kilometre's fog keeps no more than none
+    expect(zones_radius(860.0) == ZONES_NO_FOG)
   }
 }

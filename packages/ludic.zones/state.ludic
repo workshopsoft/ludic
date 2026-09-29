@@ -18,10 +18,11 @@ export state ZonesState {
   zn_cn: words = words(ZONES_MAX)             # how many discs it holds
 }
 
-# a player's radius from how far they see: fog_dist <= 0 is no fog
+# a player's radius from how far they see: fog_dist <= 0 is no fog; never past no fog's, so a far fog
+# never keeps more of the world than none does
 export function zones_radius(fog_dist: float) -> float {
   if fog_dist <= 0.0 { return ZONES_NO_FOG }
-  return Math.max(fog_dist + ZONES_PAST_FOG, ZONES_LEAST)
+  return Math.min(Math.max(fog_dist + ZONES_PAST_FOG, ZONES_LEAST), ZONES_NO_FOG)
 }
 
 export function zones_set(zones_st: mut ZonesState, pid: int, x: float, z: float, r: float) -> void {

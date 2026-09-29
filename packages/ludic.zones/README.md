@@ -1,7 +1,7 @@
 # ludic.zones
 
 Where a world is simulated: a disc per player - `(x, z, r)`, `r = zones_radius(fog)`, that is the
-fog distance plus 40 m and never under 150 m, 900 m with no fog - and the discs that overlap merged
+fog distance plus 40 m, never under 150 m nor over 900 m, and 900 m with no fog - and the discs that overlap merged
 into clusters with a bounding circle. Uses `ludic.base` and nothing else.
 
 - `zones_set(pid, x, z, r)`, `zones_clear(pid)`, `zones_reset()`; `zones_merge()` once a frame
