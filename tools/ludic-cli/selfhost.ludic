@@ -17,6 +17,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/frontend/ast.ludic")
   push(f, "selfhost/frontend/lex.ludic")
   push(f, "selfhost/frontend/diag.ludic")
+  push(f, "selfhost/frontend/stdin_file.ludic")
   push(f, "selfhost/frontend/parse.ludic")
   push(f, "selfhost/frontend/parse_game.ludic")
   push(f, "selfhost/frontend/generics.ludic")

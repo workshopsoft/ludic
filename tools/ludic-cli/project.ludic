@@ -280,6 +280,11 @@ function parse_build_args(start: int) -> pointer {
     else if a == "--no-maps" { g_no_maps_build = true }     # --check leaves the map directories alone
     else if a == "--maps" { g_maps_build = true }           # ... or reads them, whatever program it checks
     else if a == "--diagnostics=json" { g_check_build = true;  g_diag_json_build = true }   # every error, as JSON on stdout
+    else if a == "--stdin-file" {                           # stdin is that file's unsaved text: checked, never built
+      ai += 1
+      if ai < arg_count() { g_stdin_file_build = arg(ai);  g_check_build = true }
+      else { err("ludic: --stdin-file needs a path\n");  g_argerr = true }
+    }
     else if a == "-o" {
       ai += 1
       if ai < arg_count() { g_out = arg(ai) }
@@ -287,7 +292,7 @@ function parse_build_args(start: int) -> pointer {
     }
     else if a[0] == '-' {
       err(`ludic: unknown option {a}\n`)
-      err("  build/run take: [file] [--headless|--windowed] [-o out] [--save-temps] [--check [--diagnostics=json] [--maps|--no-maps]]\n")
+      err("  build/run take: [file] [--headless|--windowed] [-o out] [--save-temps] [--check [--diagnostics=json] [--stdin-file path] [--maps|--no-maps]]\n")
       g_argerr = true
     }
     else { src = a }
@@ -311,6 +316,7 @@ function output_path(entry: pointer) -> pointer {
 # and nothing emitted or linked; a fraction of a build's time, for iterating on uses lines
 var g_check_build: bool = false
 var g_diag_json_build: bool = false     # --diagnostics=json: the compiler's JSON array is the whole stdout
+var g_stdin_file_build: pointer = ""     # --stdin-file <path>: the compiler reads stdin where it would read <path>
 var g_no_maps_build: bool = false
 var g_maps_build: bool = false
 # the maps are checked with the package's entry - the game - and left alone for any other program: a
@@ -330,13 +336,17 @@ function bld_same_path(a: pointer, b: pointer) -> bool {
   if len(y) > 2 and y[0] == '.' and y[1] == '/' { y = y[2..len(y)] }
   return x == y
 }
+function stdin_file_flag() -> pointer {
+  if g_stdin_file_build == "" { return "" }
+  return ` --stdin-file {sh_single(g_stdin_file_build)}`
+}
 function check_app(src: pointer) -> int {
   ensure_ludicc()
   if g_diag_json_build {
-    if not shq(`{ludicc()} --check --diagnostics=json{no_maps_flag(src)}{title_flag()}{unsafe_flag()} {src}`) { return 1 }
+    if not shq(`{ludicc()} --check --diagnostics=json{no_maps_flag(src)}{title_flag()}{unsafe_flag()}{stdin_file_flag()} {src}`) { return 1 }
     return 0
   }
-  if not shq(`{ludicc()} --check{no_maps_flag(src)}{title_flag()}{unsafe_flag()} {src}`) { return 1 }
+  if not shq(`{ludicc()} --check{no_maps_flag(src)}{title_flag()}{unsafe_flag()}{stdin_file_flag()} {src}`) { return 1 }
   print(`checked {src}`)
   return 0
 }
