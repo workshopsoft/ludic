@@ -175,6 +175,10 @@ function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool 
   if a.model == null { return false }
   if not a.visible and not (shadow and a.cast_hidden) { return false }
   if shadow and not a.casts { return false }
+  # an actor with no radius given is sized generously, since a building or the dock may be one
+  var fr = a.radius * a.scale
+  if fr <= 0.0 { fr = 20.0 }
+  if r3d_beyond_fog(render3d_st, a.x, a.y, a.z, fr) { return false }
   if a.cull != 0.0 {
     let dx = a.x - render3d_st.cam_pos[0];  let dz = a.z - render3d_st.cam_pos[2]
     let d2 = dx * dx + dz * dz

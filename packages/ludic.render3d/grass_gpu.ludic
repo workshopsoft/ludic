@@ -66,7 +66,7 @@ function gg_blade(render3d_st: mut Render3dState, rows: int) -> Mesh {
 
 # one tile size over one distance band: its visible tiles into gg_tv (corner, indices per cell, cells)
 function gg_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_max: float) -> void {
-  if d_min >= render3d_st.grass_radius { return }
+  if d_min >= grass_reach(render3d_st) { return }
   let cells = size / GRASS_CELL
   let sz = float(size)
   let half = sz * 0.5
@@ -102,7 +102,7 @@ function gg_cull_frame(render3d_st: mut Render3dState) -> void {
   render3d_st.gg_max = 0
   gg_tiles(render3d_st, 4, 0.0, 16.0)
   gg_tiles(render3d_st, 8, 16.0, 40.0)
-  gg_tiles(render3d_st, 16, 40.0, render3d_st.grass_radius)
+  gg_tiles(render3d_st, 16, 40.0, grass_reach(render3d_st))
   # made once, with the device (gvk_startup_state)
   let rb = render3d_st.gg_rb
   rb[0] = GG_BANDS;  rb[1] = 0;  rb[2] = 0;  rb[3] = 0
@@ -126,7 +126,7 @@ function gg_params(render3d_st: mut Render3dState) -> words {
   let pr = render3d_st.gg_pr
   for i in 0 .. 48 { pr[i] = 0 }
   if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
-  pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(render3d_st.grass_radius)
+  pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(grass_reach(render3d_st))
   var ph = render3d_st.post_h
   if ph <= 0 { ph = gl_height() }
   pr[20] = float_bits(render3d_st.grass_s0);  pr[21] = float_bits(render3d_st.grass_d0);  pr[22] = float_bits(2.0 * Math.tan(render3d_st.cam_fov * 0.5) / float(ph));  pr[23] = float_bits(render3d_st.ter_snow_line)

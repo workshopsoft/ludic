@@ -54,7 +54,10 @@ const R3D_FOG_MARGIN: float = 8.0
 export function r3d_fog_wall(render3d_st: mut Render3dState, dist: float) -> void {
   var d = dist
   if d < 0.0 { d = 0.0 }
+  if d == render3d_st.r3d_fog_wall { return }
   render3d_st.r3d_fog_wall = d
+  # every layer and stream re-gathers for the new reach
+  render3d_st.sc_view_gen += 1
   cam_update(render3d_st)
 }
 # how far anything is drawn: the fog wall and a margin, or `far` (0: no limit of its own) without one

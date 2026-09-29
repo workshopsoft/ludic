@@ -32,6 +32,12 @@ property Layer {
   imp_buf:  int = 0,
   sh_buf:   int = 0,       # every instance, for shadow casting (no cull, no LOD split)
   n_sh:     int = 0,
+  fog_buf:  int = 0,       # the casters inside the fog wall (fog_casters.ludic)
+  fog_n:    int = 0,
+  fog_src:  int = -1,
+  fog_wall: float = 0.0,
+  fog_x:    float = 0.0,
+  fog_z:    float = 0.0,
   n_far:    int = 0,
   scratch:  floats,
   last_cam: floats,
@@ -261,6 +267,7 @@ function layer_new(render3d_st: mut Render3dState, model: Model, cap: int, folia
   l.buf = gpu_buffer_new(render3d_st)
   l.imp_buf = gpu_buffer_new(render3d_st)
   l.sh_buf = gpu_buffer_new(render3d_st)
+  l.fog_buf = gpu_buffer_new(render3d_st)
   l.rough = 1.0
   for i in 0 .. len(model.prims) { scatter_attach(render3d_st, model.prims[i].mesh, l.buf) }
   push(render3d_st.sc_layers, l)
@@ -983,8 +990,11 @@ function layer_draw_shadow(render3d_st: mut Render3dState, l: Layer, light_vp: f
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_face_dir"), render3d_st.sun_dir)
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
   gpu_cull(render3d_st, false)
-  scatter_attach(render3d_st, render3d_st.sc_card, l.sh_buf)
-  mesh_draw_instanced(render3d_st, render3d_st.sc_card, l.n_sh)
+  let buf = fog_casters(render3d_st, l)
+  let n = fog_casters_n(render3d_st, l)
+  if n == 0 { return }
+  scatter_attach(render3d_st, render3d_st.sc_card, buf)
+  mesh_draw_instanced(render3d_st, render3d_st.sc_card, n)
 }
 
 
@@ -1196,6 +1206,7 @@ function scatter_clear_all(render3d_st: mut Render3dState) -> void {
     if l.buf != 0 { gpu_buffer_free(render3d_st, l.buf) }
     if l.imp_buf != 0 { gpu_buffer_free(render3d_st, l.imp_buf) }
     if l.sh_buf != 0 { gpu_buffer_free(render3d_st, l.sh_buf) }
+    if l.fog_buf != 0 { gpu_buffer_free(render3d_st, l.fog_buf) }
     if l.lod_buf != null { for k in 0 .. l.n_lods { gpu_buffer_free(render3d_st, l.lod_buf[k]) } }
     if l.inst != null { free(l.inst) }
     if l.scratch != null { free(l.scratch) }
