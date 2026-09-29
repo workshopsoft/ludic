@@ -24,7 +24,7 @@ program Attributes {
     @Range(0, 20.5) @Unit("kg") weight: float = 1.0
     @Asset("gltf")
     model: string = ""                         # its model, under assets/kit
-    @Color tint: int = 16777215
+    @Color @Tint(VD_STORE) tint: int = 16777215
     @OneOf(VD_) stocked_at: int = VD_STORE
     @Node(model) grip: string = "grip"        # where a hand holds it, a node in that model
     @Derived reach: float = 0.0                # worked out at boot from the model
