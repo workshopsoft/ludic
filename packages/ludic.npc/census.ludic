@@ -27,6 +27,7 @@ export function npc_spawn(npc_st: mut NpcState, kind: int) -> NpcPerson {
     let start = k.start
     start(p)
   } else { npc_start_near(npc_st, p, NpcWorld.origin_x(), NpcWorld.origin_z(), 6.0, 30.0) }
+  if not NpcWorld.active(p.x, p.z) { return null }   # nobody is born outside every zone; the slot waits
   p.active = true
   npc_st.np_n += 1
   NpcWorld.born(p)

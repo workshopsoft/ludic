@@ -1,0 +1,41 @@
+# ask.ludic - the questions: inside any disc, how far outside the nearest, and the clusters. With no
+# disc set yet (a world before its first frame) everywhere is inside, so nothing freezes by accident
+export function zones_any(zones_st: ZonesState) -> bool {
+  for i in 0 .. ZONES_MAX { if zones_st.zn_on[i] != 0 { return true } }
+  return false
+}
+
+export function zones_contains(zones_st: ZonesState, x: float, z: float) -> bool {
+  var any = false
+  for i in 0 .. ZONES_MAX {
+    if zones_st.zn_on[i] == 0 { continue }
+    any = true
+    let dx = x - zones_st.zn_x[i]
+    let dz = z - zones_st.zn_z[i]
+    if dx * dx + dz * dz <= zones_st.zn_r[i] * zones_st.zn_r[i] { return true }
+  }
+  return not any
+}
+
+# metres from (x, z) to the edge of the nearest disc: 0 inside one (and 0 with no disc set)
+export function zones_nearest(zones_st: ZonesState, x: float, z: float) -> float {
+  var best = -1.0
+  for i in 0 .. ZONES_MAX {
+    if zones_st.zn_on[i] == 0 { continue }
+    let dx = x - zones_st.zn_x[i]
+    let dz = z - zones_st.zn_z[i]
+    let d = Math.max(Math.sqrt(dx * dx + dz * dz) - zones_st.zn_r[i], 0.0)
+    if best < 0.0 or d < best { best = d }
+  }
+  if best < 0.0 { return 0.0 }
+  return best
+}
+
+export function zones_on(zones_st: ZonesState, pid: int) -> bool { return pid >= 0 and pid < ZONES_MAX and zones_st.zn_on[pid] != 0 }
+export function zones_r(zones_st: ZonesState, pid: int) -> float { return zones_st.zn_r[pid] }
+export function zones_cluster_of(zones_st: ZonesState, pid: int) -> int { return zones_st.zn_cl[pid] }
+export function zones_clusters(zones_st: ZonesState) -> int { return zones_st.zn_ncl }
+export function zones_cluster_x(zones_st: ZonesState, c: int) -> float { return zones_st.zn_cx[c] }
+export function zones_cluster_z(zones_st: ZonesState, c: int) -> float { return zones_st.zn_cz[c] }
+export function zones_cluster_r(zones_st: ZonesState, c: int) -> float { return zones_st.zn_cr[c] }
+export function zones_cluster_n(zones_st: ZonesState, c: int) -> int { return zones_st.zn_cn[c] }

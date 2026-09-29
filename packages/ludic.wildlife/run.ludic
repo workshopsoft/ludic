@@ -1,5 +1,5 @@
-# run.ludic - one step of every animal: the port says whether it is about at this hour; anything
-# within 900 m of a player thinks; the gait follows the ground covered; player 0 sees what is near
+# run.ludic - one step of every animal inside a zone (WildlifeWorld.active): the port says whether it
+# is about at this hour; within 900 m of a player it thinks; player 0 sees what is near
 export function wildlife_tick(wildlife_st: mut WildlifeState, dt: float, gh: float) -> void {
   wl_seed_scan(wildlife_st, dt)
   let all = wildlife_all(wildlife_st)
@@ -9,6 +9,7 @@ export function wildlife_tick(wildlife_st: mut WildlifeState, dt: float, gh: flo
 
 function wl_tick_one(wildlife_st: mut WildlifeState, a: WildAnimal, dt: float, gh: float) -> void {
   if not a.alive { return }
+  if not WildlifeWorld.active(a.x, a.z) { return }   # outside every zone: its state kept, no dice drawn
   let about = WildlifeWorld.about(a)
   if about == WILD_AWAY {
     a.shown = false
