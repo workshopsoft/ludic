@@ -23,6 +23,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.effects](ludic.effects/README.md) | timed modifiers that run down in game time (a meal's warmth, a drink's legs) |
 | [ludic.fire](ludic.fire/README.md) | a camp fire: fuel, the rain on it, warmth at a distance, whether it will cook |
 | [ludic.zones](ludic.zones/README.md) | where the world is simulated: a disc per player from their fog, merged into clusters |
+| [ludic.devlink](ludic.devlink/README.md) | an editor's live link into a running dev build: loopback UDP, one request a frame, verbs as ports |
 | [ludic.fishing](ludic.fishing/README.md) | a rod at the water: cast, bite, the reel's fight, the landing; species as an open registry |
 | [ludic.hints](ludic.hints/README.md) | a rail of what is true now, most urgent first, each a card that teaches it and can be muted by key |
 | [ludic.i18n](ludic.i18n/README.md) | a game in any language: gettext `.po` files, patterns with holes, plurals, a mod folder, a font per language |

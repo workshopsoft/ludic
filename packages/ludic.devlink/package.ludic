@@ -1,0 +1,5 @@
+# ludic.devlink - a running dev build driven by an editor over a loopback UDP line protocol (v1, frozen in
+# game-editor/proposals/2026-09-29-devlink/protocol-v1.md). Uses ludic.base and nothing else.
+package "ludic.devlink"
+version "0.1.0"
+kind source

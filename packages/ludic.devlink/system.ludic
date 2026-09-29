@@ -1,0 +1,30 @@
+# system.ludic - a frame of the link, first thing in PH_INPUT: a waiting answer sent when it is done, then
+# at most one request read, answered and sent. A build whose `enabled` says no never opens the socket.
+export function devlink_system() -> System {
+  let s = system_new("devlink", PH_INPUT)
+  s.tick = fn devlink_tick
+  return s
+}
+
+export function devlink_tick(devlink_st: mut DevlinkState, t: Tick) -> void {
+  if not DevlinkWorld.enabled() { return }
+  if devlink_st.dl_h < 0 {
+    if devlink_st.dl_tried { return }
+    devlink_st.dl_tried = true
+    devlink_st.dl_h = DevlinkNet.open(DevlinkWorld.port())
+    if devlink_st.dl_h < 0 { return }
+  }
+  let h = devlink_st.dl_h
+  if devlink_late(devlink_st, t.dt) { DevlinkNet.send(h, devlink_st.dl_pend_ip, devlink_st.dl_pend_port, devlink_st.dl_out, devlink_st.dl_o) }
+  let n = DevlinkNet.recv(h, devlink_st.dl_in, DL_BUF)
+  if n <= 0 { return }
+  devlink_st.dl_ip = DevlinkNet.from_ip(h)
+  devlink_st.dl_port = DevlinkNet.from_port(h)
+  if not DevlinkNet.loopback(devlink_st.dl_ip) { return }       # only this machine
+  devlink_st.dl_n = n
+  devlink_handle(devlink_st)
+  if devlink_st.dl_o > 0 { DevlinkNet.send(h, devlink_st.dl_ip, devlink_st.dl_port, devlink_st.dl_out, devlink_st.dl_o) }
+}
+
+# whether a request is waiting on a slow answer (a map load, a shot, steps)
+export function devlink_waiting(devlink_st: DevlinkState) -> bool { return devlink_st.dl_pend != DL_NONE }

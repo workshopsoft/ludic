@@ -1,0 +1,13 @@
+# ludic.devlink - one request a frame from an editor on this machine: parsed in place from one fixed 8 KB
+# buffer and answered into another, each verb a port member the game binds; the slow ones answer later
+module ludic_devlink uses ludic_base
+numbers float
+import "ludic.base"
+import "port.ludic"
+import "state.ludic"
+import "wire_read.ludic"
+import "wire_write.ludic"
+import "verbs.ludic"
+import "verbs_world.ludic"
+import "late.ludic"
+import "system.ludic"

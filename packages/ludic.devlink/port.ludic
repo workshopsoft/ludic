@@ -1,0 +1,67 @@
+# port.ludic - what the link asks the game, every member defaulting to "not offered": an unbound build
+# answers ping and hello and nothing else. DevlinkNet is the transport (Udp in a game, a fake in a test).
+export const DL_UNBOUND: int = -2          # a member the game left at its default
+export property DevlinkCam {
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  pitch: float = 0.0
+}
+
+export port DevlinkNet {
+  open: fn(int) -> int = fn dln_none1                 # port -> a handle, < 0 none
+  recv: fn(int, []byte, int) -> int = fn dln_none3    # handle, buffer, cap -> bytes (0 none)
+  from_ip: fn(int) -> int = fn dln_none1              # the last datagram's sender
+  from_port: fn(int) -> int = fn dln_none1
+  send: fn(int, int, int, []byte, int) -> int = fn dln_none5    # handle, ip, port, bytes, n
+  loopback: fn(int) -> bool = fn dln_no1              # is this sender this machine
+}
+
+export port DevlinkWorld {
+  enabled: fn() -> bool = fn dlw_no                   # a dev build (dev_tools); a release never opens
+  port: fn() -> int = fn dlw_port
+  game: fn() -> string = fn dlw_game
+  build: fn() -> string = fn dlw_zero
+  schema: fn() -> long = fn dlw_schema               # the build's schema hash (Build.schema_hash), 0 unknown
+  map: fn() -> string = fn dlw_blank
+  offers: fn() -> string = fn dlw_blank               # the verbs bound, comma-separated
+  coop: fn() -> bool = fn dlw_no                      # a co-op session is connected
+  camera_get: fn(DevlinkCam) -> int = fn dlw_cam
+  camera_set: fn(float, float, float, float, float) -> int = fn dlw_n5
+  camera_release: fn() -> int = fn dlw_n0
+  teleport: fn(float, float, float, bool, DevlinkCam) -> int = fn dlw_tp   # x, z, yaw, yaw given, where it stood
+  load_map: fn(string) -> int = fn dlw_s                # 0 started, -1 no such map
+  map_state: fn() -> int = fn dlw_n0                    # 1 loaded, 0 loading, -1 failed
+  set_time: fn(float, int) -> int = fn dlw_ti           # hour, day (-1 keep)
+  set_weather: fn(string) -> int = fn dlw_s             # 0 set, -1 no such weather
+  screenshot: fn(string) -> int = fn dlw_s              # the frame now being made, written there
+  shot_state: fn() -> int = fn dlw_n0                   # 1 written, 0 not yet, -1 failed
+  shot_w: fn() -> int = fn dlw_z0
+  shot_h: fn() -> int = fn dlw_z0
+  pause: fn(bool) -> int = fn dlw_b
+  step: fn(int) -> int = fn dlw_i
+  steps_left: fn() -> int = fn dlw_z0
+}
+function dln_none1(a: int) -> int { return -1 }
+function dln_none3(a: int, b: []byte, c: int) -> int { return 0 }
+function dln_none5(a: int, b: int, c: int, d: []byte, e: int) -> int { return -1 }
+function dln_no1(a: int) -> bool { return false }
+function dlw_no() -> bool { return false }
+function dlw_port() -> int { return 47200 }
+function dlw_game() -> string { return "ludic" }  # not drawn
+function dlw_zero() -> string { return "0" }
+function dlw_schema() -> long {
+  let z: long = 0
+  return z
+}
+function dlw_blank() -> string { return "" }
+function dlw_cam(c: DevlinkCam) -> int { return DL_UNBOUND }
+function dlw_n5(a: float, b: float, c: float, d: float, e: float) -> int { return DL_UNBOUND }
+function dlw_n0() -> int { return DL_UNBOUND }
+function dlw_z0() -> int { return 0 }
+function dlw_tp(x: float, z: float, yaw: float, has: bool, c: DevlinkCam) -> int { return DL_UNBOUND }
+function dlw_s(s: string) -> int { return DL_UNBOUND }
+function dlw_ti(h: float, d: int) -> int { return DL_UNBOUND }
+function dlw_b(b: bool) -> int { return DL_UNBOUND }
+function dlw_i(n: int) -> int { return DL_UNBOUND }

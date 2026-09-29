@@ -1,0 +1,87 @@
+# verbs_world.ludic - the verbs that move the player or the world: goto, map_load, time, weather, shot, step
+function dl_goto(st: mut DevlinkState, id: int) -> void {
+  let x = dl_float(st)
+  let z = dl_float(st)
+  var yaw = 0.0
+  var has = false
+  if not dl_done(st) {
+    yaw = dl_float(st)
+    has = true
+  }
+  if dl_bad_args(st, id) { return }
+  let c = st.dl_cam
+  if DevlinkWorld.teleport(x, z, yaw, has, c) == DL_UNBOUND {
+    dl_err(st, id, "unbound", "not offered")
+    return
+  }
+  dl_ok(st, id)
+  dl_xyz(st, c.x, c.y, c.z)
+}
+
+# a quoted argument as text for the game (made per request, never per frame)
+@alloc_ok("one request's key or path: once per request, in a dev build")
+function dl_text(st: DevlinkState, n: int) -> string { return text_of(st.dl_str, n) }
+
+function dl_map(st: mut DevlinkState, id: int) -> void {
+  let n = dl_quoted(st)
+  if dl_bad_args(st, id) { return }
+  if dl_busy(st, id) { return }
+  let r = DevlinkWorld.load_map(dl_text(st, n))
+  if r == DL_UNBOUND { dl_err(st, id, "unbound", "not offered") }
+  else if r < 0 { dl_err(st, id, "failed", "no such map") }
+  else { dl_park(st, id, DL_MAP) }
+}
+
+function dl_time(st: mut DevlinkState, id: int) -> void {
+  let h = dl_float(st)
+  var day = -1
+  if not dl_done(st) { day = dl_int(st) }
+  if dl_bad_args(st, id) or h < 0.0 or h > 24.0 {
+    if st.dl_o == 0 { dl_err(st, id, "bad_args", "an hour is 0 to 24") }
+    return
+  }
+  dl_answer(st, id, DevlinkWorld.set_time(h, day))
+}
+
+function dl_weather(st: mut DevlinkState, id: int) -> void {
+  let n = dl_quoted(st)
+  if dl_bad_args(st, id) { return }
+  let r = DevlinkWorld.set_weather(dl_text(st, n))
+  if r == -1 { dl_err(st, id, "bad_args", "unknown weather") } else { dl_answer(st, id, r) }
+}
+
+# a .ppm and no "..": the one file an editor may name; w and h, when given, are the frame's own
+function dl_shot(st: mut DevlinkState, id: int) -> void {
+  let n = dl_quoted(st)
+  if not dl_done(st) {
+    dl_int(st)
+    dl_int(st)
+  }
+  if dl_bad_args(st, id) { return }
+  if n < 5 or n > len(st.dl_path) or not dl_ppm(st, n) {
+    dl_err(st, id, "bad_args", "a .ppm path without ..")
+    return
+  }
+  if dl_busy(st, id) { return }
+  for i in 0 .. n { st.dl_path[i] = st.dl_str[i] }
+  st.dl_path_n = n
+  let r = DevlinkWorld.screenshot(dl_text(st, n))
+  if r == DL_UNBOUND { dl_err(st, id, "unbound", "not offered") } else { dl_park(st, id, DL_SHOT) }
+}
+function dl_ppm(st: DevlinkState, n: int) -> bool {
+  let b = st.dl_str
+  if b[n - 4] != 46 or b[n - 3] != 112 or b[n - 2] != 112 or b[n - 1] != 109 { return false }
+  for i in 0 .. n - 1 { if b[i] == 46 and b[i + 1] == 46 { return false } }
+  return true
+}
+
+function dl_step(st: mut DevlinkState, id: int) -> void {
+  let n = dl_int(st)
+  if dl_bad_args(st, id) or n < 1 or n > 600 {
+    if st.dl_o == 0 { dl_err(st, id, "bad_args", "n is 1 to 600") }
+    return
+  }
+  if dl_busy(st, id) { return }
+  let r = DevlinkWorld.step(n)
+  if r == DL_UNBOUND { dl_err(st, id, "unbound", "not offered") } else { dl_park(st, id, DL_STEP) }
+}

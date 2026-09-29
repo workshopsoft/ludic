@@ -1,0 +1,151 @@
+# devlink_test.ludic - the v1 protocol against a fake transport and a fake world: each answer byte for byte,
+# bad arguments, a stranger dropped, co-op refused, the late answers and their timeout, a closed build
+import "ludic.devlink"
+import "ludic.base"
+program DevlinkTest {
+  numbers float
+  state FakeLinkState {
+    on: bool = true
+    opened: int = 0
+    inbox: string = ""
+    from: int = 2130706433        # 127.0.0.1
+    sent: string = ""
+    coop: bool = false
+    cx: float = 0.0
+    cyaw: float = 0.0
+    map_st: int = 0
+    shot_st: int = 0
+    steps: int = 0
+    last: string = ""             # the last text a verb was handed
+  }
+  function fk_open(fake_link_st: mut FakeLinkState, port: int) -> int {
+    fake_link_st.opened += 1
+    return 7
+  }
+  function fk_recv(fake_link_st: mut FakeLinkState, h: int, b: []byte, cap: int) -> int {
+    let n = len(fake_link_st.inbox)
+    for i in 0 .. n { b[i] = fake_link_st.inbox[i] }
+    fake_link_st.inbox = ""
+    return n
+  }
+  function fk_ip(fake_link_st: FakeLinkState, h: int) -> int { return fake_link_st.from }
+  function fk_port(h: int) -> int { return 5555 }
+  function fk_send(fake_link_st: mut FakeLinkState, h: int, ip: int, port: int, b: []byte, n: int) -> int {
+    fake_link_st.sent = text_of(b, n)
+    return n
+  }
+  function fk_loop(ip: int) -> bool { return ip == 2130706433 }
+  bind DevlinkNet { open: fn fk_open, recv: fn fk_recv, from_ip: fn fk_ip, from_port: fn fk_port, send: fn fk_send, loopback: fn fk_loop }
+
+  function fw_on(fake_link_st: FakeLinkState) -> bool { return fake_link_st.on }
+  function fw_game() -> string { return "maroon-lake" }
+  function fw_map() -> string { return "maroon" }
+  function fw_schema() -> long {
+    let h: long = 81985529216486895
+    return h
+  }
+  function fw_offers() -> string { return "cam_get,cam_set,goto,map_load,shot,step" }
+  function fw_coop(fake_link_st: FakeLinkState) -> bool { return fake_link_st.coop }
+  function fw_cam_get(c: DevlinkCam) -> int {
+    c.x = 1038.5
+    c.y = -38.0
+    c.z = -405.25
+    c.yaw = 124.0
+    c.pitch = -10.0
+    return 0
+  }
+  function fw_cam_set(fake_link_st: mut FakeLinkState, x: float, y: float, z: float, yaw: float, pitch: float) -> int {
+    fake_link_st.cx = x
+    fake_link_st.cyaw = yaw
+    return 0
+  }
+  function fw_tp(x: float, z: float, yaw: float, has: bool, c: DevlinkCam) -> int {
+    c.x = x
+    c.y = 2919.5
+    c.z = z
+    return 0
+  }
+  function fw_load(fake_link_st: mut FakeLinkState, key: string) -> int {
+    fake_link_st.last = key
+    if key == "nowhere" { return -1 }
+    return 0
+  }
+  function fw_map_st(fake_link_st: FakeLinkState) -> int { return fake_link_st.map_st }
+  function fw_weather(fake_link_st: mut FakeLinkState, key: string) -> int {
+    fake_link_st.last = key
+    return 0
+  }
+  function fw_shot(fake_link_st: mut FakeLinkState, path: string) -> int {
+    fake_link_st.last = path
+    return 0
+  }
+  function fw_shot_st(fake_link_st: FakeLinkState) -> int { return fake_link_st.shot_st }
+  function fw_w() -> int { return 1920 }
+  function fw_h() -> int { return 1080 }
+  function fw_step(fake_link_st: mut FakeLinkState, n: int) -> int {
+    fake_link_st.steps = n
+    return 0
+  }
+  function fw_left(fake_link_st: FakeLinkState) -> int { return fake_link_st.steps }
+  bind DevlinkWorld { enabled: fn fw_on, game: fn fw_game, schema: fn fw_schema, map: fn fw_map, offers: fn fw_offers, coop: fn fw_coop, camera_get: fn fw_cam_get, camera_set: fn fw_cam_set, teleport: fn fw_tp, load_map: fn fw_load, map_state: fn fw_map_st, set_weather: fn fw_weather, screenshot: fn fw_shot, shot_state: fn fw_shot_st, shot_w: fn fw_w, shot_h: fn fw_h, step: fn fw_step, steps_left: fn fw_left }
+
+  # one frame with `line` waiting (or nothing), and what the link sent (or "")
+  function ask(devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState, line: string, dt: float) -> string {
+    fake_link_st.inbox = line
+    fake_link_st.sent = ""
+    devlink_tick(devlink_st, tick_new(dt, 0, 0.0))
+    return fake_link_st.sent
+  }
+
+  test "ping and hello, and the answers to the camera, byte for byte" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "1 ping", 0.016) == "1 ok")
+    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"maroon-lake\" \"0\" \"0123456789abcdef\" \"maroon\" \"cam_get,cam_set,goto,map_load,shot,step\"")
+    expect(ask(devlink_st, fake_link_st, "3 cam_get", 0.016) == "3 ok 1038.500 -38.000 -405.250 124.000 -10.000")
+    expect(ask(devlink_st, fake_link_st, "4 cam_set 12.5 3 -7 90.25 -5", 0.016) == "4 ok")
+    expect(fake_link_st.cx == 12.5 and fake_link_st.cyaw == 90.25)
+    expect(ask(devlink_st, fake_link_st, "5 goto 100 -200.5", 0.016) == "5 ok 100.000 2919.500 -200.500")
+    expect_eq(fake_link_st.opened, 1)
+  }
+
+  test "bad arguments, an unknown verb, a verb not offered, a stranger and co-op" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "6 cam_set 1 2", 0.016) == "6 err bad_args \"bad arguments\"")
+    expect(ask(devlink_st, fake_link_st, "7 cam_set 1 2 3 4 5x", 0.016) == "7 err bad_args \"bad arguments\"")
+    expect(ask(devlink_st, fake_link_st, "8 fly", 0.016) == "8 err unknown_verb \"no such verb\"")
+    expect(ask(devlink_st, fake_link_st, "9 cam_release", 0.016) == "9 err unbound \"not offered\"")
+    expect(ask(devlink_st, fake_link_st, "10 time 25", 0.016) == "10 err bad_args \"an hour is 0 to 24\"")
+    expect(ask(devlink_st, fake_link_st, "hello", 0.016) == "")                  # no id: nothing to answer
+    fake_link_st.from = 167772161                                                # 10.0.0.1
+    expect(ask(devlink_st, fake_link_st, "11 ping", 0.016) == "")
+    fake_link_st.from = 2130706433
+    fake_link_st.coop = true
+    expect(ask(devlink_st, fake_link_st, "12 cam_get", 0.016) == "12 err refused \"co-op session connected\"")
+    expect(ask(devlink_st, fake_link_st, "13 ping", 0.016) == "13 ok")
+  }
+
+  test "map_load, shot and step answer later by id; a second slow one is refused; five seconds is a timeout" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "20 map_load \"nowhere\"", 0.016) == "20 err failed \"no such map\"")
+    expect(ask(devlink_st, fake_link_st, "21 map_load \"lamar\"", 0.016) == "")
+    expect(fake_link_st.last == "lamar")
+    expect(ask(devlink_st, fake_link_st, "22 step 3", 0.016) == "22 err refused \"busy with an earlier request\"")
+    expect(ask(devlink_st, fake_link_st, "", 0.016) == "")
+    fake_link_st.map_st = 1
+    expect(ask(devlink_st, fake_link_st, "", 0.016) == "21 ok")
+    expect(ask(devlink_st, fake_link_st, "23 shot \"../x.ppm\"", 0.016) == "23 err bad_args \"a .ppm path without ..\"")
+    expect(ask(devlink_st, fake_link_st, "24 shot \"/tmp/a b\\\"c.ppm\" 640 360", 0.016) == "")
+    expect(fake_link_st.last == "/tmp/a b\"c.ppm")
+    fake_link_st.shot_st = 1
+    expect(ask(devlink_st, fake_link_st, "", 0.016) == "24 ok \"/tmp/a b\\\"c.ppm\" 1920 1080")
+    expect(ask(devlink_st, fake_link_st, "25 step 2", 0.016) == "")
+    fake_link_st.steps = 0
+    expect(ask(devlink_st, fake_link_st, "", 0.016) == "25 ok")
+    fake_link_st.map_st = 0
+    expect(ask(devlink_st, fake_link_st, "26 map_load \"lamar\"", 0.016) == "")
+    expect(ask(devlink_st, fake_link_st, "", 6.0) == "26 err failed \"timed out\"")
+  }
+
+  test "a build that is not a dev build never opens the socket" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    fake_link_st.on = false
+    expect(ask(devlink_st, fake_link_st, "1 ping", 0.016) == "")
+    expect_eq(fake_link_st.opened, 0)
+  }
+}

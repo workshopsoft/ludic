@@ -1,0 +1,93 @@
+# wire_read.ludic - reading a request in place: numbers, words and quoted strings from dl_in, nothing made
+function dl_skip(st: mut DevlinkState) -> void { while st.dl_at < st.dl_n and (st.dl_in[st.dl_at] == 32 or st.dl_in[st.dl_at] == 10 or st.dl_in[st.dl_at] == 13) { st.dl_at += 1 } }
+
+function dl_done(st: mut DevlinkState) -> bool {
+  dl_skip(st)
+  return st.dl_at >= st.dl_n
+}
+
+# the word at the cursor is `w` (and ends there): then past it
+function dl_word(st: mut DevlinkState, w: string) -> bool {
+  dl_skip(st)
+  let n = len(w)
+  if st.dl_at + n > st.dl_n { return false }
+  for i in 0 .. n { if st.dl_in[st.dl_at + i] != w[i] { return false } }
+  if st.dl_at + n < st.dl_n and st.dl_in[st.dl_at + n] != 32 and st.dl_in[st.dl_at + n] != 10 and st.dl_in[st.dl_at + n] != 13 { return false }
+  st.dl_at += n
+  return true
+}
+
+function dl_int(st: mut DevlinkState) -> int {
+  dl_skip(st)
+  var neg = false
+  if st.dl_at < st.dl_n and st.dl_in[st.dl_at] == 45 {
+    neg = true
+    st.dl_at += 1
+  }
+  var v = 0
+  var digits = 0
+  while st.dl_at < st.dl_n and st.dl_in[st.dl_at] >= 48 and st.dl_in[st.dl_at] <= 57 and digits < 10 {
+    v = v * 10 + (st.dl_in[st.dl_at] - 48)
+    st.dl_at += 1
+    digits += 1
+  }
+  if digits == 0 or (st.dl_at < st.dl_n and st.dl_in[st.dl_at] > 32) { st.dl_bad = true }
+  if neg { return -v }
+  return v
+}
+
+function dl_float(st: mut DevlinkState) -> float {
+  dl_skip(st)
+  var neg = false
+  if st.dl_at < st.dl_n and st.dl_in[st.dl_at] == 45 {
+    neg = true
+    st.dl_at += 1
+  }
+  var v = 0.0
+  var digits = 0
+  while st.dl_at < st.dl_n and st.dl_in[st.dl_at] >= 48 and st.dl_in[st.dl_at] <= 57 {
+    v = v * 10.0 + float(st.dl_in[st.dl_at] - 48)
+    st.dl_at += 1
+    digits += 1
+  }
+  if st.dl_at < st.dl_n and st.dl_in[st.dl_at] == 46 {
+    st.dl_at += 1
+    var f = 0.1
+    while st.dl_at < st.dl_n and st.dl_in[st.dl_at] >= 48 and st.dl_in[st.dl_at] <= 57 {
+      v = v + f * float(st.dl_in[st.dl_at] - 48)
+      f = f * 0.1
+      st.dl_at += 1
+      digits += 1
+    }
+  }
+  if digits == 0 or (st.dl_at < st.dl_n and st.dl_in[st.dl_at] > 32) { st.dl_bad = true }
+  if neg { return -v }
+  return v
+}
+
+# a quoted string into dl_str, unescaped: its length, or -1 (dl_bad) when it is not one
+function dl_quoted(st: mut DevlinkState) -> int {
+  dl_skip(st)
+  if st.dl_at >= st.dl_n or st.dl_in[st.dl_at] != 34 {
+    st.dl_bad = true
+    return -1
+  }
+  st.dl_at += 1
+  var n = 0
+  while st.dl_at < st.dl_n and st.dl_in[st.dl_at] != 34 {
+    var c = st.dl_in[st.dl_at]
+    if c == 92 and st.dl_at + 1 < st.dl_n {
+      st.dl_at += 1
+      c = st.dl_in[st.dl_at]
+    }
+    st.dl_str[n] = c
+    n += 1
+    st.dl_at += 1
+  }
+  if st.dl_at >= st.dl_n {
+    st.dl_bad = true
+    return -1
+  }
+  st.dl_at += 1
+  return n
+}

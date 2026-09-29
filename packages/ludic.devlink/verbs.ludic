@@ -1,0 +1,86 @@
+# verbs.ludic - one request read and answered (or parked to answer later): dl_o bytes of dl_out to send
+export function devlink_handle(st: mut DevlinkState) -> void {
+  st.dl_at = 0
+  st.dl_o = 0
+  st.dl_bad = false
+  let id = dl_int(st)
+  if st.dl_bad or id < 0 { return }                  # no id, nothing to answer to
+  if dl_word(st, "ping") { dl_ok(st, id) }
+  else if dl_word(st, "hello") { dl_hello(st, id) }
+  else if DevlinkWorld.coop() { dl_err(st, id, "refused", "co-op session connected") }
+  else { dl_verb(st, id) }
+}
+
+function dl_hello(st: mut DevlinkState, id: int) -> void {
+  dl_ok(st, id)
+  dl_s(st, " 1 ")
+  dl_q(st, DevlinkWorld.game())
+  dl_b(st, 32)
+  dl_q(st, DevlinkWorld.build())
+  dl_b(st, 32)
+  dl_b(st, 34)
+  dl_hex(st, DevlinkWorld.schema())
+  dl_b(st, 34)
+  dl_b(st, 32)
+  dl_q(st, DevlinkWorld.map())
+  dl_b(st, 32)
+  dl_q(st, DevlinkWorld.offers())
+}
+
+function dl_verb(st: mut DevlinkState, id: int) -> void {
+  if dl_word(st, "cam_get") { dl_cam_get(st, id) }
+  else if dl_word(st, "cam_set") { dl_cam_set(st, id) }
+  else if dl_word(st, "cam_release") { dl_answer(st, id, DevlinkWorld.camera_release()) }
+  else if dl_word(st, "goto") { dl_goto(st, id) }
+  else if dl_word(st, "map_load") { dl_map(st, id) }
+  else if dl_word(st, "time") { dl_time(st, id) }
+  else if dl_word(st, "weather") { dl_weather(st, id) }
+  else if dl_word(st, "shot") { dl_shot(st, id) }
+  else if dl_word(st, "pause") { dl_answer(st, id, DevlinkWorld.pause(true)) }
+  else if dl_word(st, "resume") { dl_answer(st, id, DevlinkWorld.pause(false)) }
+  else if dl_word(st, "step") { dl_step(st, id) }
+  else { dl_err(st, id, "unknown_verb", "no such verb") }
+}
+
+# a member's answer: ok, or not offered
+function dl_answer(st: mut DevlinkState, id: int, r: int) -> void {
+  if r == DL_UNBOUND { dl_err(st, id, "unbound", "not offered") } else { dl_ok(st, id) }
+}
+function dl_bad_args(st: mut DevlinkState, id: int) -> bool {
+  if not st.dl_bad and dl_done(st) { return false }
+  dl_err(st, id, "bad_args", "bad arguments")
+  return true
+}
+
+function dl_cam_get(st: mut DevlinkState, id: int) -> void {
+  if dl_bad_args(st, id) { return }
+  let c = st.dl_cam
+  if DevlinkWorld.camera_get(c) == DL_UNBOUND {
+    dl_err(st, id, "unbound", "not offered")
+    return
+  }
+  dl_ok(st, id)
+  dl_xyz(st, c.x, c.y, c.z)
+  dl_b(st, 32)
+  dl_f(st, c.yaw)
+  dl_b(st, 32)
+  dl_f(st, c.pitch)
+}
+function dl_xyz(st: mut DevlinkState, x: float, y: float, z: float) -> void {
+  dl_b(st, 32)
+  dl_f(st, x)
+  dl_b(st, 32)
+  dl_f(st, y)
+  dl_b(st, 32)
+  dl_f(st, z)
+}
+
+function dl_cam_set(st: mut DevlinkState, id: int) -> void {
+  let x = dl_float(st)
+  let y = dl_float(st)
+  let z = dl_float(st)
+  let yaw = dl_float(st)
+  let pitch = dl_float(st)
+  if dl_bad_args(st, id) { return }
+  dl_answer(st, id, DevlinkWorld.camera_set(x, y, z, yaw, pitch))
+}

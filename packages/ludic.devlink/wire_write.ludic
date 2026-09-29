@@ -1,0 +1,78 @@
+# wire_write.ludic - an answer written in place into dl_out: text, numbers and quoted strings, nothing made
+function dl_b(st: mut DevlinkState, c: int) -> void {
+  if st.dl_o < DL_BUF {
+    st.dl_out[st.dl_o] = c
+    st.dl_o += 1
+  }
+}
+function dl_s(st: mut DevlinkState, s: string) -> void { for i in 0 .. len(s) { dl_b(st, s[i]) } }
+
+function dl_i(st: mut DevlinkState, v: int) -> void {
+  var n = v
+  if n < 0 {
+    dl_b(st, 45)
+    n = -n
+  }
+  var div = 1
+  while div <= n / 10 { div = div * 10 }
+  while div > 0 {
+    dl_b(st, 48 + (n / div) % 10)
+    div = div / 10
+  }
+}
+
+# three decimals, which is a millimetre and a thousandth of a degree
+function dl_f(st: mut DevlinkState, v: float) -> void {
+  var m = int(Math.floor(Math.abs(v) * 1000.0 + 0.5))
+  if v < 0.0 and m > 0 { dl_b(st, 45) }
+  dl_i(st, m / 1000)
+  dl_b(st, 46)
+  let f = m % 1000
+  dl_b(st, 48 + f / 100)
+  dl_b(st, 48 + (f / 10) % 10)
+  dl_b(st, 48 + f % 10)
+}
+
+# a hash as sixteen lower-case hex digits, or "0" when there is none
+function dl_hex(st: mut DevlinkState, v: long) -> void {
+  let zero: long = 0
+  if v == zero {
+    dl_b(st, 48)
+    return
+  }
+  for i in 0 .. 16 {
+    let d = int((v >> (60 - i * 4)) & 15)
+    if d < 10 { dl_b(st, 48 + d) } else { dl_b(st, 87 + d) }
+  }
+}
+
+function dl_q(st: mut DevlinkState, s: string) -> void {
+  dl_b(st, 34)
+  for i in 0 .. len(s) {
+    if s[i] == 34 or s[i] == 92 { dl_b(st, 92) }
+    dl_b(st, s[i])
+  }
+  dl_b(st, 34)
+}
+function dl_q_bytes(st: mut DevlinkState, b: []byte, n: int) -> void {
+  dl_b(st, 34)
+  for i in 0 .. n {
+    if b[i] == 34 or b[i] == 92 { dl_b(st, 92) }
+    dl_b(st, b[i])
+  }
+  dl_b(st, 34)
+}
+
+function dl_ok(st: mut DevlinkState, id: int) -> void {
+  st.dl_o = 0
+  dl_i(st, id)
+  dl_s(st, " ok")
+}
+function dl_err(st: mut DevlinkState, id: int, code: string, msg: string) -> void {
+  st.dl_o = 0
+  dl_i(st, id)
+  dl_s(st, " err ")
+  dl_s(st, code)
+  dl_b(st, 32)
+  dl_q(st, msg)
+}
