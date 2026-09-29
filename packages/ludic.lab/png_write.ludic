@@ -1,4 +1,4 @@
-# png_write.ludic - raw 8-bit pixels (1 to 4 channels) as a PNG anything opens: filter 0 on every row,
+# png_write.ludic - raw 8- or 16-bit pixels (1 to 4 channels) as a PNG anything opens: filter 0 on every row,
 # deflate's stored blocks (no zlib here), the CRCs and the Adler-32. Needs nothing else of the lab, so a
 # program with a lab of its own imports this file alone: import "ludic.lab/png_write.ludic"
 
@@ -48,28 +48,30 @@ function lp_colour_type(channels: int) -> int {
 
 # the header, then the pixels, then the end, into one buffer; the length written, or -1
 @alloc_ok("a bake's preview or a lab shot: one image written, once")
-function lp_encode(table: []long, w: int, h: int, channels: int, px: []byte, at: int, out: []byte) -> int {
+function lp_encode(table: []long, w: int, h: int, channels: int, px: []byte, at: int, out: []byte) -> int { return lp_encode_depth(table, w, h, channels, 8, px, at, out) }
+# ... with `depth` bits a sample (8, or 16: two bytes each, most significant first, as PNG stores them)
+@alloc_ok("a bake's preview or a lab shot: one image written, once")
+function lp_encode_depth(table: []long, w: int, h: int, channels: int, depth: int, px: []byte, at: int, out: []byte) -> int {
   let sig = [137, 80, 78, 71, 13, 10, 26, 10]
   for i in 0 .. 8 { out[i] = sig[i] }
   lp_put32(out, 8, long(13))
   lp_tag(out, 12, "IHDR")
   lp_put32(out, 16, long(w))
   lp_put32(out, 20, long(h))
-  out[24] = 8
+  out[24] = depth
   out[25] = lp_colour_type(channels)
   out[26] = 0
   out[27] = 0
   out[28] = 0
   lp_put32(out, 29, lp_crc_of(table, out, 12, 17))
-  let o = lp_idat(table, w, h, channels, px, at, out, 33)
+  let o = lp_idat(table, w * channels * depth / 8, h, px, at, out, 33)
   lp_put32(out, o, long(0))
   lp_tag(out, o + 4, "IEND")
   lp_put32(out, o + 8, lp_crc_of(table, out, o + 4, 4))
   return o + 12
 }
-# the IDAT chunk at `at0`: every row behind a filter byte of 0, in stored blocks; where it ends
-function lp_idat(table: []long, w: int, h: int, channels: int, px: []byte, at: int, out: []byte, at0: int) -> int {
-  let stride = w * channels
+# the IDAT chunk at `at0`: every row (`stride` bytes) behind a filter byte of 0, in stored blocks; where it ends
+function lp_idat(table: []long, stride: int, h: int, px: []byte, at: int, out: []byte, at0: int) -> int {
   let row = stride + 1
   let raw = row * h
   let blocks = (raw + 65534) / 65535
@@ -112,8 +114,10 @@ function lp_idat(table: []long, w: int, h: int, channels: int, px: []byte, at: i
 }
 
 # the bytes a PNG of this size takes, stored
-function lp_png_size(w: int, h: int, channels: int) -> int {
-  let raw = (w * channels + 1) * h
+function lp_png_size(w: int, h: int, channels: int) -> int { return lp_png_bytes(w * channels, h) }
+# ... of rows `stride` bytes long
+function lp_png_bytes(stride: int, h: int) -> int {
+  let raw = (stride + 1) * h
   return 8 + 25 + 12 + 2 + ((raw + 65534) / 65535) * 5 + raw + 4 + 12
 }
 
@@ -130,4 +134,15 @@ export function lab_png_write_from(lab_png_st: LabPngState, path: string, w: int
 }
 export function lab_png_write(lab_png_st: LabPngState, path: string, w: int, h: int, channels: int, px: []byte) -> bool {
   return lab_png_write_from(lab_png_st, path, w, h, channels, px, 0)
+}
+# w x h pixels of `channels` 16-bit samples each, two bytes a sample most significant first (a height map:
+# 1 channel, read back by render3d's decoder as R16), rows top down, starting at px[at]
+@alloc_ok("a bake or a test's fixture: one image written, once")
+export function lab_png_write16_from(lab_png_st: LabPngState, path: string, w: int, h: int, channels: int, px: []byte, at: int) -> bool {
+  if channels < 1 or channels > 4 or w <= 0 or h <= 0 or at + w * h * channels * 2 > len(px) { return false }
+  let out = buffer(lp_png_bytes(w * channels * 2, h))
+  let n = lp_encode_depth(lab_png_st.table, w, h, channels, 16, px, at, out)
+  let ok = Fs.write_bytes(path, out, n)
+  free(out)
+  return ok
 }

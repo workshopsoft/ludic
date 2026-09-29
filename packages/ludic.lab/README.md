@@ -61,7 +61,7 @@ showing its own models - adds them from its own module with `def LabScenes <name
 | `lab_settle(frames)`, `lab_font(dir)`, `lab_title(s)`, `lab_note(s)` | how long a shot settles; the overlay font for captions (none by default); the window's title; a line under the caption |
 | `lab_scene()`, `lab_frame()`, `lab_time()` | the scene, and the lab's clock |
 | `lab_ppm_to_png(ppm, png)` | a frame as a PNG (stored, not compressed) |
-| `lab_png_write(path, w, h, channels, px)`, `lab_png_write_from(..., px, at)` | 8-bit pixels (1 grey, 2 grey + alpha, 3 RGB, 4 RGBA) as a PNG, the same way; `png_write.ludic` needs nothing else of the lab, so a program with a lab of its own imports it alone (`import "ludic.lab/png_write.ludic"`, state `LabPngState`) |
+| `lab_png_write(path, w, h, channels, px)`, `lab_png_write_from(..., px, at)`, `lab_png_write16_from(..., px, at)` | 8-bit pixels (1 grey, 2 grey + alpha, 3 RGB, 4 RGBA) as a PNG, the same way, or 16-bit ones (two bytes a sample, most significant first: a height map a test writes); `png_write.ludic` needs nothing else of the lab, so a program with a lab of its own imports it alone (`import "ludic.lab/png_write.ludic"`, state `LabPngState`) |
 | `lab_px_r32f_norm`, `lab_px_rg16f`, `lab_px_rgba16f_hdr` (`png_convert.ludic`) | previews of float textures as 8-bit pixels: R32F min..max to black..white; RG16F as red and green x255, blue 0; HDR RGBA16F as x/(1+x) then sRGB, alpha dropped |
 
 ## The plate's files
