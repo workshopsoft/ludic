@@ -316,7 +316,8 @@ vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   col = mix(col, fogCol, f);
   // the fog wall: from three tenths of its distance to all of it, everything goes to the sky's colour
   if (u_fog_wall > 0.0) {
-    float w = smoothstep(0.3 * u_fog_wall, u_fog_wall, dist);
+    // full by 0.85 of the wall, so whatever is cut at the wall is cut inside solid fog
+    float w = smoothstep(0.3 * u_fog_wall, 0.85 * u_fog_wall, dist);
     col = mix(col, fogWallCol(dir), w);
   }
   return col;
