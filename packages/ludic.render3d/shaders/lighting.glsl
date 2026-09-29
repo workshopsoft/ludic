@@ -158,7 +158,8 @@ float shadowSlope(int c, vec3 wpos, vec3 n, float tanT) {
 // ground texel, G = distance to the occluder that set it. Any receiver — ground, crown,
 // card, water — compares its own height, so everything agrees on where the hill's
 // shadow falls. The penumbra widens with the occluder's distance like a real one.
-uniform sampler2D u_tershadow;
+uniform sampler2D u_tershadow;      // R: the lowest lit height
+uniform sampler2D u_tershadow_aux;  // R: the occluder distance, G: the cloud mask
 uniform vec2 u_ts_origin;
 uniform float u_ts_half;
 uniform float u_ts_on;
@@ -177,7 +178,7 @@ float terrainShadow(vec3 wpos) {
   if (u_ts_on < 0.5) return 1.0;
   vec2 uv = (wpos.xz - u_ts_origin) / (2.0 * u_ts_half) + 0.5;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 1.0;
-  vec2 s = texture(u_tershadow, uv).rg;
+  vec2 s = vec2(texture(u_tershadow, uv).r, texture(u_tershadow_aux, uv).r);
   float w = 0.6 + 0.02 * s.y;
   return smoothstep(-w, w, wpos.y + 0.25 - s.x);
 }
@@ -219,7 +220,7 @@ float sunShadow(vec3 wpos, vec3 n, float viewDepth) {
 // patchy sunlight: a cloud layer projected along the sun onto the ground
 uniform float u_cloud_shadow;     // strength
 uniform float u_time;
-// the mask is baked into the height-field shadow texture's B (tershadow.frag); the
+// the mask is baked beside the height-field shadow, in its aux texture's G (tershadow.frag); the
 // projection along the sun and the drift are a uv shift
 float cloudShadow(vec3 wpos) {
   if (u_cloud_shadow <= 0.0 || u_ts_on < 0.5) return 1.0;
@@ -228,7 +229,7 @@ float cloudShadow(vec3 wpos) {
   c += vec2(u_time * 3.0, u_time * 1.2);
   vec2 uv = (c - u_ts_origin) / (2.0 * u_ts_half) + 0.5;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 1.0;
-  return 1.0 - u_cloud_shadow * texture(u_tershadow, uv).b;
+  return 1.0 - u_cloud_shadow * texture(u_tershadow_aux, uv).g;
 }
 
 // regional vegetation colour: aspen groves and drier ridges read lighter and yellower than

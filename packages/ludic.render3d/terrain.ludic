@@ -242,6 +242,9 @@ function terrain_generate__t(render3d_st: mut Render3dState) -> void {
   gpu_fb_bind(render3d_st, 0)
   gpu_fb_free(render3d_st, fbo)
   gpu_program_free(render3d_st, p)
+  # the survey is read only here: kept, it was 44 MB (R16 with mips) for the life of the map. A
+  # world swap loads its own again (terrain_reload), and nothing else generates
+  if render3d_st.ter_dem_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_dem_tex);  render3d_st.ter_dem_tex = 0 }
   gpu_check(render3d_st, "terrain generate")
 }
 
@@ -257,12 +260,26 @@ function terrain_bind_height(render3d_st: mut Render3dState, p: int) -> void {
 # the sun moves; r3d_frame calls it again when sky_set_yaw has changed the yaw.
 function terrain_bake_shadow(render3d_st: mut Render3dState) -> void {
   if render3d_st.sun_dir == null { return }
-  if render3d_st.ter_shadow_tex == 0 { render3d_st.ter_shadow_tex = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_RGBA32F, GL_RGBA, GL_FLOAT, GL_LINEAR) }
+  # the lowest lit height needs 32 bits (a receiver 3000 m up compares against it to a quarter metre);
+  # the occluder's distance and the cloud mask do not, and go beside it in RG16F - 32 MB where one
+  # RGBA32F carrying all three (and an unused fourth) was 64
+  if render3d_st.ter_shadow_tex == 0 { render3d_st.ter_shadow_tex = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR) }
+  if render3d_st.ter_shadow_aux == 0 { render3d_st.ter_shadow_aux = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR) }
   if render3d_st.ter_shadow_prog == 0 { render3d_st.ter_shadow_prog = r3d_program(render3d_st, "fullscreen.vert", "tershadow.frag", "#define NOISE_ONLY\n") }
-  let p = render3d_st.ter_shadow_prog
+  if render3d_st.ter_shadow_prog_aux == 0 { render3d_st.ter_shadow_prog_aux = r3d_program(render3d_st, "fullscreen.vert", "tershadow.frag", "#define NOISE_ONLY\n#define TS_AUX\n") }
+  # two passes, one target each: a pipeline takes one colour format for all its targets, and the two
+  # are R32F and RG16F (drawn together, the second's writes went nowhere and nothing was lit)
+  terrain_bake_pass(render3d_st, render3d_st.ter_shadow_prog, render3d_st.ter_shadow_tex)
+  terrain_bake_pass(render3d_st, render3d_st.ter_shadow_prog_aux, render3d_st.ter_shadow_aux)
+  render3d_st.ter_shadow_yaw = render3d_st.sky_yaw
+  gpu_check(render3d_st, "terrain shadow bake")
+}
+
+# one of the bake's two targets drawn: the march is the same, the define picks what it writes
+function terrain_bake_pass(render3d_st: mut Render3dState, p: int, target: int) -> void {
   let fbo = gpu_fb_new(render3d_st)
   gpu_fb_bind(render3d_st, fbo)
-  gpu_fb_color(render3d_st, 0, render3d_st.ter_shadow_tex)
+  gpu_fb_color(render3d_st, 0, target)
   gpu_viewport(render3d_st, 0, 0, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES)
   gpu_depth_test(render3d_st, false)
   gpu_blend(render3d_st, false)
@@ -274,8 +291,6 @@ function terrain_bake_shadow(render3d_st: mut Render3dState) -> void {
   mesh_draw(render3d_st, render3d_st.sky_fullscreen)
   gpu_fb_bind(render3d_st, 0)
   gpu_fb_free(render3d_st, fbo)
-  render3d_st.ter_shadow_yaw = render3d_st.sky_yaw
-  gpu_check(render3d_st, "terrain shadow bake")
 }
 
 # height at world (x, z) — float bits, bilinear over the CPU copy

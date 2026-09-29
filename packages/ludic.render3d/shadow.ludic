@@ -239,9 +239,11 @@ function shadow_bind(render3d_st: mut Render3dState, prog: int) -> void {
   r3d_bind_tex(render3d_st, prog, "u_shadow", 15, GPU_TEX2D_ARRAY, render3d_st.sh_tex)
   # the height-field shadow (terrain.ludic); a stand-in texture keeps the unit valid before the bake
   var ts = render3d_st.ter_shadow_tex
+  var ta = render3d_st.ter_shadow_aux
   var ts_on = 1.0
-  if ts == 0 { ts = render3d_st.ter_height_tex;  ts_on = 0.0 }
+  if ts == 0 or ta == 0 { ts = render3d_st.ter_height_tex;  ta = render3d_st.ter_height_tex;  ts_on = 0.0 }
   r3d_bind_2d(render3d_st, prog, "u_tershadow", 6, ts)
+  r3d_bind_2d(render3d_st, prog, "u_tershadow_aux", 7, ta)
   terrain_bind_height(render3d_st, prog)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ts_on"), ts_on)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ts_half"), float(render3d_st.TERRAIN_HALF))
