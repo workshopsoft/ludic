@@ -1,0 +1,39 @@
+# mounted.ludic - which components the last frame showed, and one's model: an editor's questions of a
+# running game's interface (devlink's ui_screen and ui_model), asked on request and never a frame.
+
+# the class names of the components mounted in the last build, in tree order (every root the frame
+# drew, a node at a time) and each once, into the caller's list
+@alloc_ok("an inspector's question: the caller's list grows to the most classes shown at once")
+export function ui_mounted(ui_st: UiState, out: []string) -> void {
+  List.clear(out)
+  for r in 0 .. len(ui_st.fb_roots) { mt_walk(ui_st, ui_st.fb_roots[r], out) }
+  for i in 0 .. len(ui_st.in_list) {            # a mounted one the walk did not meet, in the order made
+    let it = ui_st.in_list[i]
+    if it.seen == ui_st.in_build { mt_add(out, it.cls.name) }
+  }
+}
+@alloc_ok("an inspector's question: the caller's list grows to the most classes shown at once")
+function mt_walk(ui_st: UiState, n: UiNode, out: []string) -> void {
+  if n == null { return }
+  for i in 0 .. len(ui_st.in_list) {
+    let it = ui_st.in_list[i]
+    if it.seen == ui_st.in_build and it.key == n.key { mt_add(out, it.cls.name) }
+  }
+  for c in 0 .. len(n.children) { mt_walk(ui_st, n.children[c], out) }
+}
+@alloc_ok("an inspector's question: the caller's list grows to the most classes shown at once")
+function mt_add(out: []string, name: string) -> void {
+  for i in 0 .. len(out) {
+    if out[i] == name { return }
+  }
+  push(out, name)
+}
+# the model of the first mounted instance of `cls` (the Val its class's model() fills), or null: read
+# it now, as the next frame fills the same object again
+export function ui_model_of(ui_st: UiState, cls: string) -> Val {
+  for i in 0 .. len(ui_st.in_list) {
+    let it = ui_st.in_list[i]
+    if it.seen == ui_st.in_build and it.cls != null and it.cls.name == cls { return it.model }
+  }
+  return null
+}

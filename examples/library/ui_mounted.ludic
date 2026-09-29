@@ -1,0 +1,18 @@
+# ui_mounted.ludic - an editor's questions of a running interface: which components the last frame
+# showed (in tree order, each once) and one's model, read in place. App shows two Counters: the list
+# is App then Counter, a Counter has a model, and a class not shown has none. Prints `App|Counter| 1 1`.
+import "ludic.ui"
+import "ui_component_parts/Counter.ludic"
+import "ui_component_parts/App.ludic"
+program UiMounted {
+  numbers float
+  entry (ui_st: mut UiState) {
+    let root: UiNode = ui_nodes(ui_st, "App", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 400.0)
+    let names = new []string
+    ui_mounted(ui_st, names)
+    var joined = ""
+    for i in 0 .. len(names) { joined = joined + names[i] + "|" }
+    print(`{joined} {ui_model_of(ui_st, "Counter") != null} {ui_model_of(ui_st, "Nothing") == null}`)
+  }
+}
