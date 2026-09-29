@@ -24,8 +24,41 @@ uniform float u_ground;
 uniform sampler2D u_ts_height;
 uniform vec2 u_ts_origin;
 uniform float u_ts_half;
-float heightSmooth(sampler2D tex, vec2 uv) {
-  vec2 res = vec2(textureSize(tex, 0));
+// terpage.glsl, pasted (the reference copy and its rules are there)
+// ---- the page table ----------------------------------------------------------------------
+#ifndef TP_HELPERS
+#define TP_HELPERS
+uniform sampler2D u_tp_page;   // R32F, a texel a tile: slot + 1, 0 = not resident
+uniform float u_tp_on;         // 1 while paging; 0 reads the whole maps exactly as before
+uniform vec4 u_tp_dims;        // tiles a side, height texels a tile, photo texels a tile, full height res
+// the layer holding a full-map uv, or -1: paging off, off the map, or not resident
+float tpSlot(vec2 uv) {
+  if (u_tp_on < 0.5 || uv.x < 0.0 || uv.y < 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return -1.0;
+  ivec2 t = min(ivec2(floor(uv * u_tp_dims.x)), ivec2(int(u_tp_dims.x) - 1));
+  return texelFetch(u_tp_page, t, 0).r - 1.0;
+}
+// a full-map uv inside its tile's layer of k texels a side, past the one-texel border
+vec2 tpUV(vec2 uv, float k) { return (1.0 + fract(uv * u_tp_dims.x) * k) / (k + 2.0); }
+#endif
+// ---- height (vertex and mesh stages) -----------------------------------------------------
+#ifndef TP_HEIGHT
+#define TP_HEIGHT
+#ifndef TP_HMAP
+#define TP_HMAP u_ts_height
+#endif
+uniform sampler2DArray u_tp_h;
+// bilinear height, fine where a tile is resident. Outside a fragment stage texture() IS level 0
+// (glslang emits the same explicit-lod sample), so this is the old read bit for bit.
+float terHeight(vec2 uv) {
+  float s = tpSlot(uv);
+  if (s >= 0.0) return textureLod(u_tp_h, vec3(tpUV(uv, u_tp_dims.y), s), 0.0).r;
+  return textureLod(TP_HMAP, uv, 0.0).r;
+}
+// The B-spline through four bilinear taps (heightSmooth). Paging on, the texel is the FULL
+// map's - the coarse map's own size would halve the surface's detail - and each tap finds its
+// own tile, so a patch straddling two tiles, or a tile and the coarse map, stays one surface.
+float terHeightSmooth(vec2 uv) {
+  vec2 res = u_tp_on > 0.5 ? vec2(u_tp_dims.w) : vec2(textureSize(TP_HMAP, 0));
   vec2 t = uv * res - 0.5;
   vec2 f = fract(t);
   vec2 i = floor(t);
@@ -36,9 +69,10 @@ float heightSmooth(sampler2D tex, vec2 uv) {
   vec2 s0 = w0 + w1, s1 = w2 + w3;
   vec2 o0 = (i - 1.0 + w1 / s0 + 0.5) / res;
   vec2 o1 = (i + 1.0 + w3 / s1 + 0.5) / res;
-  return (texture(tex, vec2(o0.x, o0.y)).r * s0.x + texture(tex, vec2(o1.x, o0.y)).r * s1.x) * s0.y
-       + (texture(tex, vec2(o0.x, o1.y)).r * s0.x + texture(tex, vec2(o1.x, o1.y)).r * s1.x) * s1.y;
+  return (terHeight(vec2(o0.x, o0.y)) * s0.x + terHeight(vec2(o1.x, o0.y)) * s1.x) * s0.y
+       + (terHeight(vec2(o0.x, o1.y)) * s0.x + terHeight(vec2(o1.x, o1.y)) * s1.x) * s1.y;
 }
+#endif
 out vec3 v_wpos;
 // The foliage prepass (depth.frag) and the lit pass after it compile this same source
 // into two programs and compare depths for equality: the position must come out
@@ -149,7 +183,7 @@ void main() {
   vec3 w = p + i_pos.xyz;
   if (u_ground > 0.5) {
     vec2 huv = (i_pos.xz - u_ts_origin) / (2.0 * u_ts_half) + 0.5;
-    w.y = heightSmooth(u_ts_height, huv) - 0.03 + p.y;
+    w.y = terHeightSmooth(huv) - 0.03 + p.y;
   }
   v_wpos = w;
   v_nrm = n;
