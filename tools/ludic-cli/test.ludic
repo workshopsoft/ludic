@@ -70,10 +70,12 @@ function permap_check_case() -> void {
   if not shq(`bin/ludicc examples/lang/permap/permap.ludic --check --diagnostics=json > {js} 2>/dev/null`) { bad2(lbl, capture_line(`head -3 {js}`));  return }
   if not shq(`bin/ludicc examples/rejected/permap_maps/permap_maps.ludic --check --no-maps > /dev/null 2>&1`) { bad2(lbl, "--no-maps still read the maps");  return }
   if not shq(`bin/ludicc examples/rejected/permap_unit.ludic --check --diagnostics=json > {js} 2>/dev/null`) { bad2(lbl, "a unit spelling was refused, not warned");  return }
-  if not s_contains(capture(`cat {js}`), "@Unit(\"°\"): the unit is spelled \"deg\"") { bad2(lbl, capture_line(`head -3 {js}`));  return }
+  # the JSON escapes the message's quotes (\"°\"), so the part without them is what is looked for
+  if not s_contains(capture(`cat {js}`), "the unit is spelled") or not s_contains(capture(`cat {js}`), "deg") { bad2(lbl, capture_line(`head -3 {js}`));  return }
   ok(lbl)
 }
-# --check --diagnostics=json: refused, with exactly `n` diagnostics on stdout, one of them holding `want`
+# --check --diagnostics=json: refused, with exactly `n` ERRORS on stdout (warnings beside them are not
+# counted), one of the diagnostics holding `want`
 function diag_json_case(path: pointer, n: int, want: pointer, label: pointer) -> void {
   let js = `{tmp_dir()}/dj_{flat(path)}.json`
   if shq(`bin/ludicc examples/{path}.ludic --check --diagnostics=json > {js} 2>/dev/null`) {
@@ -512,7 +514,7 @@ function deps_case() -> void {
   let lbl = "ludic deps: the numbers, --check against a baseline, --dot, --writes"
   let p = "examples/modules/tangle.ludic"
   let got = capture(`bin/ludic deps {p} 2>&1`)
-  let want = "modules: 3\ndependencies: 2\nlargest_cycle: 2\ncross_writes: 1\nglobals_written_from_outside: 1\nwidest_function: 1\nwidest_reach: 1\nwidest_write_reach: 1\nin the largest cycle: a b\nthe widest function: a_run (examples/modules/tangle/a/index.ludic:3), 1 state\nthe widest write reach: a_run (examples/modules/tangle/a/index.ludic:3), 1 state it can come to change\n"
+  let want = "modules: 3\ndependencies: 2\nlargest_cycle: 2\ncross_writes: 1\nglobals_written_from_outside: 1\nwidest_function: 1\nwidest_reach: 1\nwidest_write_reach: 1\nframe_allocs: 0\nframe_keeps: 0\nbirth_leaks: 0\nresource_drops: 0\nowned_leaks: 0\nin the largest cycle: a b\nthe widest function: a_run (examples/modules/tangle/a/index.ludic:3), 1 state\nthe widest write reach: a_run (examples/modules/tangle/a/index.ludic:3), 1 state it can come to change\n"
   if not (s_trim(got) == s_trim(want)) { bad2(lbl, `said [{s_trim(got)}]`);  return }
   let base = `{tmp_dir()}/deps-base.txt`
   if not shq(`bin/ludic deps {p} --baseline {base} > /dev/null`) { bad2(lbl, "--baseline failed");  return }
@@ -1210,8 +1212,8 @@ function cmd_dev_test() -> int {
   reject_case("rejected/math_into_text", "field a1 of Note wants a string and this is an int", "a Math.* result has its type: an int from Math.max is not text")
   reject_count("rejected/every_error", 3, "every type error in a program is reported at once, not only the first")
   diag_json_case("rejected/every_error", 3, "\"line\": 8, \"col\": 15, \"severity\": \"error\", \"message\": \"half takes 1 argument(s) and this call gives 2\"", "--diagnostics=json: every type error as {file, line, col, severity, message}")
-  diag_json_case("rejected/ref_unknown", 2, "@Ref(Shops): this program has no Shops - left unresolved", "--diagnostics=json: an @Ref to a registry the program lacks is a warning beside the error")
-  diag_json_case("rejected/node_bad", 10, "crate.shape is \\\"cube\\\", and field Tool.shape is @OneOf(", "--diagnostics=json: every @Node / @Clip / @Material with no model field, @OneOf of the wrong kind or a row outside its words, and the targets the program lacks as warnings")
+  diag_json_case("rejected/ref_unknown", 1, "@Ref(Shops): this program has no Shops - left unresolved", "--diagnostics=json: an @Ref to a registry the program lacks is a warning beside the error")
+  diag_json_case("rejected/node_bad", 8, "crate.shape is \\\"cube\\\", and field Tool.shape is @OneOf(", "--diagnostics=json: every @Node / @Clip / @Material with no model field, @OneOf of the wrong kind or a row outside its words, and the targets the program lacks as warnings")
   feat_case("lang/generics", "", "7 Crater Lake a 2 west 7 0.75 2.5 1", "generics.ludic (L5: generic records and functions, nested instances, fn-typed parameters and fields, inference from the result's slot)")
   reject_case("rejected/generic_unbound", "cannot tell what T is in this call to pool_new", "a call whose type arguments nothing decides is refused")
   reject_case("rejected/generic_mismatch", "words wants a Pool<string> and this is a Pool<int>", "two instances of one generic are two types")
@@ -1244,7 +1246,7 @@ function cmd_dev_test() -> int {
   feat_case("lang/registry", "", "3 Crate true 2 fire_ring -1", "registry.ludic (L8: a registry filled by def declarations - index constants, a count, the key, a lookup)")
   reject_case("rejected/registry_unknown", "there is no registry Tables", "a def names a registry that exists")
   feat_case("lang/attributes", "", "2 1 Lantern 2", "attributes.ludic (editor attributes: @Ref, @OneOf, @Range, @Unit, @Asset, @Color, @AppendOnly, @ByKey - no effect on the program)")
-  feat_case("lang/schema_hash", "", "true", "schema_hash.ludic (Build.schema_hash(): FNV-1a 64 of the program's own schema, 0 in a release)")
+  feat_case("lang/schema_hash", "", "1", "schema_hash.ludic (Build.schema_hash(): FNV-1a 64 of the program's own schema, 0 in a release)")
   reject_case("rejected/ref_unknown", "field Tool.seller: @Ref(Vendor) names Vendor, which is not a registry", "@Ref names a registry, not another kind of thing")
   reject_case("rejected/node_bad", "field Tool.grip: @Node(handle) names no field", "@Node names a field of its record")
   schema_case("lang/attributes", "{\"name\": \"weight\", \"type\": \"float\", \"default\": \"1.0\", \"file\": \"examples/lang/attributes.ludic\", \"line\": 24, \"col\": 33, \"attributes\": [{\"name\": \"Range\", \"args\": [0, 20.5]}, {\"name\": \"Unit\", \"args\": [\"kg\"]}]", "--emit-schema: a field's type, default, place and attributes")

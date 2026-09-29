@@ -43,6 +43,18 @@ function emit_state_getter(d: Node) -> void {
   emit("}\n\n")
 }
 
+# the test runner's fresh start between tests: every lazy state forgotten, so its getter makes it
+# anew from its defaults (0.S: each test's states are fresh) - L_init_globals no longer makes them
+function emit_state_reset() -> void {
+  emith("define void @L_reset_states() {\nentry:\n")
+  var i = 0
+  while i < len(prog) {
+    if is_lazy_state(prog[i]) { emith(`  store ptr null, ptr @g_{prog[i].s}\n`) }
+    i += 1
+  }
+  emith("  ret void\n}\n")
+}
+
 # a read of a state global: its getter's answer, or null when it is not lazy
 function lazy_state_read(g: Node, s: pointer) -> pointer {
   if not is_lazy_state(g) { return null }

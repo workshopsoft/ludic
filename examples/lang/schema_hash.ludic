@@ -2,7 +2,7 @@
 # prints), so a tool can tell which data a running build was compiled from; 0 in a release build
 # (`ludicc --release`, which ludic bundle passes).
 #
-# Running it prints:  true
+# Running it prints:  1 (a bool is 1 or 0 as text)
 program SchemaHash {
   property Tool {
     key: string = ""

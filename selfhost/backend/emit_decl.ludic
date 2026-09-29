@@ -113,6 +113,7 @@ function emit_test_fn(t: Node, idx: int) -> void {
 # emit every test body plus the runner @main that drives them.
 function emit_test_runner() -> void {
   emith("@L_test_fail = internal global i32 0\n")
+  emit_state_reset()
   emith("@.fmt_test_sum = private unnamed_addr constant [28 x i8] c\"== %d passed, %d failed ==\\0A\\00\"\n")
   emith("@.fmt_test_none = private unnamed_addr constant [20 x i8] c\"no test named \\22%s\\22\\0A\\00\"\n")
   var i = 0
@@ -181,7 +182,10 @@ function emit_test_runner() -> void {
     emit(`  store i32 {rn1}, ptr %ran\n`)
     emit("  store i32 0, ptr @L_test_fail\n")
     # 0.S: every state fresh for each test - the states are what changes, and they are made here
-    if i > 0 { emit("  call void @L_init_globals()\n") }
+    if i > 0 {
+      emit("  call void @L_init_globals()\n")
+      emit("  call void @L_reset_states()\n")            # a lazy state is made by its getter, not above
+    }
     emit(`  call void @fn__test_{itoa(i)}()\n`)
     let f = emit_bind("load i32, ptr @L_test_fail")
     let isbad = emit_bind(`icmp ne i32 {f}, 0`)

@@ -33,6 +33,7 @@ program BakedTest {
   }
 
   test "the inputs hash follows the path and the bytes" {
+    Fs.mkdir(dir())                     # each test has a temp directory of its own, empty
     Fs.write_text(dir() + "/in.txt", "abc")
     let h1 = bake_inputs_hash(dir() + "/in.txt")
     Fs.write_text(dir() + "/in.txt", "abd")
