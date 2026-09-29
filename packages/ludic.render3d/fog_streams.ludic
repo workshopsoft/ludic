@@ -1,0 +1,48 @@
+# fog_streams.ludic — a streamed layer's arrays and its stream's cache are sized for the reach the fog
+# wall leaves it. Both were made for the stream's whole reach (800 m for the far cover) and kept
+# whatever the fog; under a wall the ground cover inside it is a sliver of that.
+
+const FOG_STREAM_SLACK: float = 2.0    # room over the area's share: the bands are not evenly dense
+const FOG_STREAM_MIN: int = 4096       # instances: the least a layer is ever given
+
+# the capacity a stream's layer needs at the wall: its area's share of the whole reach, with slack
+function fog_stream_cap(render3d_st: Render3dState, s: Stream) -> int {
+  let reach = r3d_reach(render3d_st, s.reach)
+  if render3d_st.r3d_fog_wall <= 0.0 or reach <= 0.0 or reach >= s.reach { return s.cap0 }
+  let k = (reach + s.size) / (s.reach + s.size)
+  let share = Math.min(1.0, k * k * FOG_STREAM_SLACK)
+  return Math.max(FOG_STREAM_MIN, Math.min(s.cap0, int(float(s.cap0) * share)))
+}
+
+# the layer's arrays and the stream's arena made at that capacity, and the cache emptied to refill
+@alloc_ok("a fog change from Settings: a streamed layer's arrays made again at the reach the wall leaves")
+function fog_stream(render3d_st: mut Render3dState, s: Stream) -> void {
+  let cap = fog_stream_cap(render3d_st, s)
+  let l = s.layer
+  if cap == l.cap { return }
+  free(l.inst);  free(l.scratch)
+  l.cap = cap;  l.have = cap;  l.count = 0
+  l.inst = floats(cap * INST_FLOATS)
+  l.scratch = floats(cap * INST_FLOATS)
+  if l.lvl != null { free(l.lvl);  l.lvl = words(cap) }
+  free(s.arena)
+  s.arena = words(Math.max(cap, 4096) * 2 * INST_FLOATS)
+  s.top = 0
+  let chunks = s.chunks
+  while len(chunks) > 0 {
+    let c = List.pop(chunks)
+    c.off = -1
+    push(s.spare, c)
+  }
+  s.n = 0
+  for h in 0 .. STREAM_HASH { s.htab[h] = 0 }
+  # regrown within the frame budget from the next update, not all in one frame
+  s.last_cx = 999998
+  s.pending = true
+  l.view_gen = -1
+}
+
+function fog_streams(render3d_st: mut Render3dState) -> void {
+  if render3d_st.stream_all == null { return }
+  for i in 0 .. len(render3d_st.stream_all) { fog_stream(render3d_st, render3d_st.stream_all[i]) }
+}
