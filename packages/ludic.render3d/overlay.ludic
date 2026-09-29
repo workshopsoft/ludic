@@ -67,6 +67,29 @@ function overlay_init(render3d_st: mut Render3dState, font_dir: string) -> bool 
   return true
 }
 
+# The atlas is white glyphs on alpha, and the overlay reads only the coverage: it is kept as one
+# byte a texel (R8). As RGBA a 3072 x 2688 atlas was 44 MB with its mips, the most of any UI texture.
+@alloc_ok("loading a font: a load, not a frame")
+function ov_font_tex(render3d_st: mut Render3dState, path: string) -> int {
+  let px = png_decode(render3d_st, path)
+  if px == null { return 0 }
+  if render3d_st.tex_channels != 4 or render3d_st.tex_depth != 8 {
+    let id0 = tex_upload(render3d_st, px, false, true)
+    free(px)
+    tex_note_size(render3d_st, id0)
+    return id0
+  }
+  let n = render3d_st.tex_w * render3d_st.tex_h
+  let a = bytes(n)
+  for i in 0 .. n { a[i] = px[i * 4 + 3] }
+  free(px)
+  render3d_st.tex_channels = 1
+  let id = tex_upload(render3d_st, a, false, true)
+  free(a)
+  tex_note_size(render3d_st, id)
+  return id
+}
+
 # Load (or swap to) the font atlas in `font_dir`: font.png and font.json. A game calls it
 # again to change fonts at run time - a language whose script the default atlas does not
 # carry brings its own. Returns false, and keeps the font it had, if there is none there.
@@ -74,7 +97,7 @@ function overlay_init(render3d_st: mut Render3dState, font_dir: string) -> bool 
 function overlay_font(render3d_st: mut Render3dState, font_dir: string) -> bool {
   let meta = Fs.read_text(font_dir + "/font.json")
   if meta == null { return false }
-  let tex = tex_load_ex(render3d_st, font_dir + "/font.png", false, 0)
+  let tex = ov_font_tex(render3d_st, font_dir + "/font.png")
   if tex == 0 { return false }
   let j = Json.parse(meta)
   render3d_st.ov_font_cols = jint(j, "cols", 16);  render3d_st.ov_font_rows = jint(j, "rows", 6)
