@@ -30,6 +30,8 @@ program Attributes {
     @Derived reach: float = 0.0                # worked out at boot from the model
     @Text @Multiline blurb: string = ""        # what the shop says about it
     @Key bind: int = 0                         # the key that takes it in hand
+    @Clip(model) swing: string = "swing"       # the clip it plays in use
+    @OneOf(VD_STORE, VD_MARINA) sold_at: int = VD_MARINA
   }
   @AppendOnly
   registry Tools of Tool as TL from "data/attr_tools.lres"

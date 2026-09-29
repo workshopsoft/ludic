@@ -1200,7 +1200,7 @@ function cmd_dev_test() -> int {
   reject_count("rejected/every_error", 3, "every type error in a program is reported at once, not only the first")
   diag_json_case("rejected/every_error", 3, "\"line\": 8, \"col\": 15, \"severity\": \"error\", \"message\": \"half takes 1 argument(s) and this call gives 2\"", "--diagnostics=json: every type error as {file, line, col, severity, message}")
   diag_json_case("rejected/ref_unknown", 2, "@Ref(Shops) names no registry", "--diagnostics=json: every @Ref that names no registry")
-  diag_json_case("rejected/node_bad", 3, "its record Kit has 2 @Asset(", "--diagnostics=json: every @Node that names no model field")
+  diag_json_case("rejected/node_bad", 5, "@OneOf names KITS_NONE, and there is no constant KITS_NONE", "--diagnostics=json: every @Node / @Clip that names no model field, and every @OneOf constant that does not exist")
   feat_case("lang/generics", "", "7 Crater Lake a 2 west 7 0.75 2.5 1", "generics.ludic (L5: generic records and functions, nested instances, fn-typed parameters and fields, inference from the result's slot)")
   reject_case("rejected/generic_unbound", "cannot tell what T is in this call to pool_new", "a call whose type arguments nothing decides is refused")
   reject_case("rejected/generic_mismatch", "words wants a Pool<string> and this is a Pool<int>", "two instances of one generic are two types")
