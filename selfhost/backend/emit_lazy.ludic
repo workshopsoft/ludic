@@ -1,0 +1,50 @@
+# emit_lazy.ludic - a program's state made when it is first injected, not before Boot: a process that
+# takes a short path through the program (the launcher's watcher, which only spawns and waits) never
+# makes the states it does not touch - the camera's frame buffers, the town's tables, the pools.
+# @S_<global>() is the getter every read of a state global calls: made on first call, by its own
+# initializer, after every registry and plain global (L_init_globals) - so a default may read them.
+# What it makes is declared (@lp_fdecl): a state first touched in play is made once, not kept per frame.
+function is_lazy_state(d: Node) -> bool {
+  if d == null or d.kind != N_VAR or d.uns != 1 or d.a == null { return false }
+  return str_prefix(d.s, "state$") and is_state_ty(d.ty) and not is_runtime_file(d.file)
+}
+
+function emit_state_getters() -> void {
+  var i = 0
+  while i < len(prog) {
+    if is_lazy_state(prog[i]) { emit_state_getter(prog[i]) }
+    i += 1
+  }
+}
+
+function emit_state_getter(d: Node) -> void {
+  let name = `S_{d.s}`
+  fence_enter(name)
+  ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
+  ret_ty = "ptr"
+  let fbody = buf_new()
+  falloc = buf_new()
+  let saved = code
+  code = fbody
+  g_err_file = d.file
+  g_err_line = d.line
+  emit(`  %p0 = load ptr, ptr @g_{d.s}\n  %z0 = icmp eq ptr %p0, null\n  br i1 %z0, label %make, label %have\nhave:\n  ret ptr %p0\nmake:\n`)
+  emit("  %decl.in = atomicrmw add ptr @lp_fdecl, i32 1 monotonic\n")
+  let v = emit_expr(d.a)
+  let cv = coerce_code(v, d.ty)
+  emit(`  store ptr {cv}, ptr @g_{d.s}\n`)
+  emit("  %decl.out = atomicrmw sub ptr @lp_fdecl, i32 1 monotonic\n")
+  emit(`  ret ptr {cv}\n`)
+  code = saved
+  emit(`define ptr @{name}() {{\nentry:\n`)
+  emit(buf_str(falloc))
+  emit("  br label %start\nstart:\n")
+  emit(buf_str(fbody))
+  emit("}\n\n")
+}
+
+# a read of a state global: its getter's answer, or null when it is not lazy
+function lazy_state_read(g: Node, s: pointer) -> pointer {
+  if not is_lazy_state(g) { return null }
+  return emit_bind(`call ptr @S_{s}()`)
+}

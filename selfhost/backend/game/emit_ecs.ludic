@@ -4,6 +4,9 @@
 # parts of compiler/back/ir_decl.c.
 
 const MAX_ENT: int = 1024
+# the stores' first size, doubled as entities come: one slot per property type is made for every
+# program at start, so 1024 of them made ~1,500 stores 48 MB in a process that spawns nothing
+const ECS_FIRST: int = 8
 
 function has_systems() -> bool {
   var i = 0
@@ -171,7 +174,7 @@ function ecs_base(store: pointer) -> pointer {
 function emit_ecs_grow() -> void {
   emit("define void @L_grow(i32 %need) {\nentry:\n  %cap = load i32, ptr @L_cap\n")
   emit("  %ok = icmp sle i32 %need, %cap\n  br i1 %ok, label %done, label %grow\ngrow:\n")
-  emit(`  %c0 = icmp eq i32 %cap, 0\n  %start = select i1 %c0, i32 {itoa(MAX_ENT)}, i32 %cap\n  br label %dbl\n`)
+  emit(`  %c0 = icmp eq i32 %cap, 0\n  %start = select i1 %c0, i32 {itoa(ECS_FIRST)}, i32 %cap\n  br label %dbl\n`)
   emit("dbl:\n  %nc = phi i32 [ %start, %grow ], [ %nc2, %dbl2 ]\n  %enough = icmp sge i32 %nc, %need\n")
   emit("  br i1 %enough, label %apply, label %dbl2\ndbl2:\n  %nc2 = mul i32 %nc, 2\n  br label %dbl\n")
   emit("apply:\n  %cap64 = sext i32 %cap to i64\n  %nc64 = sext i32 %nc to i64\n")
