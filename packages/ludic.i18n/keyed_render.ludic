@@ -27,12 +27,15 @@ function kr_make(i18n_st: mut I18nState, s: string) -> string {
   let args = new []string
   var start = 1
   var i = 1
+  var depth = 0
   while i <= len(s) {
     if i < len(s) and s[i] == I18N_ESC {
       i += 2                                # an escaped byte belongs to its argument
       continue
     }
-    if i >= len(s) or s[i] == I18N_SEP {
+    if i < len(s) and s[i] == I18N_OPEN { depth += 1 }            # a bracketed line's own 31s are its own
+    if i < len(s) and s[i] == I18N_CLOSE and depth > 0 { depth -= 1 }
+    if i >= len(s) or (s[i] == I18N_SEP and depth == 0) {
       var e = i
       if e > len(s) { e = len(s) }
       push(args, kr_unescape(s[start..e]))
@@ -57,7 +60,7 @@ function kr_fill(i18n_st: mut I18nState, t: string, args: []string) -> string {
     if h >= 1 {
       var v = ""
       if h < len(args) { v = args[h] }
-      if i18n_is_key(v) or kx_mixed(v) { v = L(i18n_st, v) } else if i18n_st.on and kr_words(v) { v = L(i18n_st, v) }
+      if i18n_is_key(v) or kx_mixed(v) or kx_nested(v) { v = L(i18n_st, v) } else if i18n_st.on and kr_words(v) { v = L(i18n_st, v) }
       r = r + t[seg..i] + v
       i = hole_end(t, i)
       seg = i

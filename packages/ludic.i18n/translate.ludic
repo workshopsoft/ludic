@@ -1,8 +1,10 @@
 # translate.ludic - what the game draws, in the language in use: a key (keyed_render.ludic); else, the old
 # English form, exact, else a pattern, else padding taken off, else a paragraph a sentence at a time
 export function L(i18n_st: mut I18nState, s: string) -> string {
-  if kx_mixed(s) { return kx_line(i18n_st, s) }
-  if i18n_is_key(s) { return keyed(i18n_st, s) }
+  let mixed = kx_mixed(s)
+  if i18n_is_key(s) and not mixed { return keyed(i18n_st, s) }   # a key whole: its arguments are made in it
+  if kx_nested(s) { return kx_nest_line(i18n_st, s) }
+  if mixed { return kx_line(i18n_st, s) }
   if not i18n_st.on { return s }
   let ci = Dict.get_or(i18n_st.cache, s, -1)
   if ci >= 0 { return i18n_st.cache_out[ci] }

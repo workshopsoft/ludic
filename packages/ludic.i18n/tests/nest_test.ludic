@@ -1,0 +1,42 @@
+# nest_test.ludic - a line bracketed inside another (bytes 29 .. 30) is made first, innermost out, in the
+# language in use; a line wholly in one bracket is not looked up again, and a stray bracket draws nothing
+import "ludic.i18n"
+program I18nNestTest {
+  numbers float
+  function q(s: string) -> string { return "\"" + s + "\"" }
+  function po_line(id: string, tr: string) -> string { return "msgid " + q(id) + "\nmsgstr " + q(tr) + "\n\n" }
+  function en() -> string { return po_line("hud.day", "Day {1}") + po_line("pause.quit", "Quit") + po_line("shop.ada", "Ada: {1}") }
+  function tt() -> string { return po_line("hud.day", "{1}. Gun") + po_line("pause.quit", "Cik") + po_line("Settings", "Ayarlar") }
+  function b(s: string) -> string {
+    let o = buffer(1)
+    o[0] = I18N_OPEN
+    let c = buffer(1)
+    c[0] = I18N_CLOSE
+    return text_of(o, 1) + s + text_of(c, 1)
+  }
+  function start(i18n_st: mut I18nState) -> void {
+    i18n_off(i18n_st)
+    i18n_loud(i18n_st, false)
+    i18n_base_text(i18n_st, en())
+  }
+
+  test "a bracketed line is made first, and a line wholly in one bracket is its text" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    let day = b(trf(k"hud.day", "3", "", "", ""))
+    expect(L(i18n_st, day) == "Day 3")
+    expect(L(i18n_st, "[E] " + day) == "[E] Day 3")
+    expect(L(i18n_st, trf(k"shop.ada", day, "", "", "")) == "Ada: Day 3")
+    expect(L(i18n_st, b(trf(k"shop.ada", day, "", "", ""))) == "Ada: Day 3")
+    i18n_load_text(i18n_st, tt())
+    expect(L(i18n_st, "Settings " + day) == "Settings 3. Gun")     # the rest is English, looked up as it was
+    expect(L(i18n_st, b("Settings")) == "Ayarlar")
+  }
+
+  test "a bracket with no partner draws nothing of itself" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    let c = buffer(1)
+    c[0] = I18N_CLOSE
+    expect(L(i18n_st, "Quit" + text_of(c, 1)) == "Quit")
+    expect(kx_nested("Quit") == false)
+  }
+}
