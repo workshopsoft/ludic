@@ -53,6 +53,27 @@ function reject_count(path: pointer, n: int, label: pointer) -> void {
   if (got == string(n)) { ok(label) } else { bad2(label, `reported {got} error(s), not {n}`) }
 }
 
+# --emit-schema: the example's schema holds `want` (a line of its JSON, exactly as written)
+function schema_case(path: pointer, want: pointer, label: pointer) -> void {
+  let js = `{tmp_dir()}/sc_{flat(path)}.json`
+  if not shq(`bin/ludicc examples/{path}.ludic --emit-schema {js} 2>{tmp_dir()}/sc.err`) {
+    bad2(label, capture_line(`grep -i error {tmp_dir()}/sc.err | head -1`))
+    return
+  }
+  if s_contains(capture(`cat {js}`), want) { ok(label) } else { bad2(label, `the schema has no [{want}]`) }
+}
+# --check --diagnostics=json: refused, with exactly `n` diagnostics on stdout, one of them holding `want`
+function diag_json_case(path: pointer, n: int, want: pointer, label: pointer) -> void {
+  let js = `{tmp_dir()}/dj_{flat(path)}.json`
+  if shq(`bin/ludicc examples/{path}.ludic --check --diagnostics=json > {js} 2>/dev/null`) {
+    bad2(label, "checked clean, and should have been refused")
+    return
+  }
+  let got = capture_line(`grep -c '"severity": "error"' {js}`)
+  if not (got == string(n)) { bad2(label, `reported {got} error(s), not {n}`);  return }
+  if s_contains(capture(`cat {js}`), want) { ok(label) } else { bad2(label, `no diagnostic holds [{want}]`) }
+}
+
 # a feature example that consumes an in-repo controller package (packages/): same
 # as feat_case, but the compiler is pointed at packages/ via LUDIC_MODULES so a
 # `import "ludic.foo/bar.ludic"` resolves, and LUDIC_HOME anchors the engine
@@ -1177,6 +1198,8 @@ function cmd_dev_test() -> int {
   reject_case("rejected/text_plus_number", "text joins text only", "text plus a number is refused")
   reject_case("rejected/math_into_text", "field a1 of Note wants a string and this is an int", "a Math.* result has its type: an int from Math.max is not text")
   reject_count("rejected/every_error", 3, "every type error in a program is reported at once, not only the first")
+  diag_json_case("rejected/every_error", 3, "\"line\": 8, \"col\": 15, \"severity\": \"error\", \"message\": \"half takes 1 argument(s) and this call gives 2\"", "--diagnostics=json: every type error as {file, line, col, severity, message}")
+  diag_json_case("rejected/ref_unknown", 2, "@Ref(Shops) names no registry", "--diagnostics=json: every @Ref that names no registry")
   feat_case("lang/generics", "", "7 Crater Lake a 2 west 7 0.75 2.5 1", "generics.ludic (L5: generic records and functions, nested instances, fn-typed parameters and fields, inference from the result's slot)")
   reject_case("rejected/generic_unbound", "cannot tell what T is in this call to pool_new", "a call whose type arguments nothing decides is refused")
   reject_case("rejected/generic_mismatch", "words wants a Pool<string> and this is a Pool<int>", "two instances of one generic are two types")
@@ -1207,6 +1230,10 @@ function cmd_dev_test() -> int {
   reject_case("rejected/alias_twice", "Trail.length is declared twice", "a namespace method is declared once")
   feat_case("lang/registry", "", "3 Crate true 2 fire_ring -1", "registry.ludic (L8: a registry filled by def declarations - index constants, a count, the key, a lookup)")
   reject_case("rejected/registry_unknown", "there is no registry Tables", "a def names a registry that exists")
+  feat_case("lang/attributes", "", "2 1 Lantern 2", "attributes.ludic (editor attributes: @Ref, @OneOf, @Range, @Unit, @Asset, @Color, @AppendOnly, @ByKey - no effect on the program)")
+  reject_case("rejected/ref_unknown", "field Tool.seller: @Ref(Vendorz) names no registry", "@Ref names a registry that exists")
+  schema_case("lang/attributes", "{\"name\": \"weight\", \"type\": \"float\", \"default\": \"1.0\", \"file\": \"examples/lang/attributes.ludic\", \"line\": 24, \"col\": 33, \"attributes\": [{\"name\": \"Range\", \"args\": [0, 20.5]}, {\"name\": \"Unit\", \"args\": [\"kg\"]}]", "--emit-schema: a field's type, default, place and attributes")
+  schema_case("lang/attributes", "{\"key\": \"lantern\", \"constant\": \"TL_LANTERN\", \"index\": 1, \"file\": \"examples/lang/data/attr_tools.lres\", \"line\": 3, \"col\": 1", "--emit-schema: a resource entry's constant, index and place")
   reject_case("rejected/registry_twice", "def Furnishings crate is declared twice", "a registry's key is declared once")
   reject_case("rejected/registry_field", "Furnishing has no field colour", "a def's fields are the record's")
   feat_case("modules/open_registry", "", "clock animals weather / 2 2 3", "open_registry.ludic (L8+L3: an open registry takes other modules' defs; its own entries first, then by module name)")

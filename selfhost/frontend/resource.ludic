@@ -28,6 +28,10 @@ function res_read_into(reg: pointer, from: pointer, who: pointer) -> void {
   let saved_pi = pi
   let saved_file = g_parse_file
   let saved_parsing = g_parsing
+  var via_line = 0
+  if saved_pi > 0 { via_line = saved_toks[saved_pi - 1].line }
+  let via = `{saved_file}:{itoa(via_line)}`
+  fm_put(g_fm_src, path, src)                   # the schema's spans and docs read it again
   if not (module_of(saved_file) == "") { module_set(path, module_of(saved_file)) }
   if is_float_file(saved_file) and not is_float_file(path) { float_file_add(path) }
   g_parse_file = path
@@ -38,12 +42,11 @@ function res_read_into(reg: pointer, from: pointer, who: pointer) -> void {
   while true {
     skipnl()
     if toks[pi].kind == TK_EOF { break }
+    let kt = toks[pi]
     let key = eat_id()
     skipnl()
     let rec = record()
-    push(g_df_reg, reg)
-    push(g_df_key, key)
-    push(g_df_rec, rec)
+    df_push(reg, key, rec, kt.line, kt.col, path, via)
   }
   g_res_mode = false
   toks = saved_toks

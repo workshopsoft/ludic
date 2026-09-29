@@ -61,7 +61,8 @@ function vis_check(d: Node, what0: pointer) -> void {
     if vis_reporting() {
       vis_say(`uses: {d.file}:{itoa(d.line)}: {uto}.{what} used from {here} (module {from})\n`)
     } else {
-      perr(`{from} uses {uto}.{what} ({d.file}:{itoa(d.line)}): add 'uses {uto}' to {from}'s module line, or take it through a port`)
+      let um = `{from} uses {uto}.{what} ({d.file}:{itoa(d.line)}): add 'uses {uto}' to {from}'s module line, or take it through a port`
+      if g_diag_json { diag_add(here, g_err_line, 0, "error", um) } else { perr(um) }
     }
   }
   let to = module_of(d.file)
@@ -72,5 +73,10 @@ function vis_check(d: Node, what0: pointer) -> void {
     vis_say(`vis: {d.file}:{itoa(d.line)}: {to}.{what} used from {here}\n`)
     return
   }
-  perr(`{what} is private to module {to}; mark it 'export' where it is declared ({d.file})`)
+  let pm = `{what} is private to module {to}; mark it 'export' where it is declared ({d.file})`
+  if g_diag_json {
+    diag_add(here, g_err_line, 0, "error", pm)
+    return
+  }
+  perr(pm)
 }

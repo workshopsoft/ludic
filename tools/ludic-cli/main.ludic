@@ -31,6 +31,7 @@ program Ludic {
   import "bundle.ludic"
   import "scripts.ludic"
   import "deps.ludic"
+  import "schema.ludic"
   import "testpar.ludic"
   import "migrate.ludic"
 
@@ -45,10 +46,12 @@ program Ludic {
     print("  build [file] [--headless] [-o out]")
     print("                                compile to build/<name> (a native binary, nothing to ship beside it)")
     print("  build [file] --check          only check it: types, modules, uses and ports; nothing emitted")
+    print("  build [file] --check --diagnostics=json   every error as a JSON array on stdout")
     print("  test [file|dir...] [-j N] [-v] [--test NAME]")
     print("                                compile and run the project's tests (-v: every test's line)")
     print("  deps [file] [--graph|--dot|--writes|--uses MOD|--check F|--baseline F]")
     print("                                the module graph as the compiler sees it, and how tangled it is")
+    print("  schema [file] [-o FILE]       records, registries and their entries, consts, as JSON (for editors)")
     print("  migrate state [file] [--prune] [--runtime]  module-level vars into states, passed as parameters (0.S); --prune drops states nothing uses, --tighten also mut nothing writes")
     print("  clean                         remove build/")
     print("")
@@ -102,6 +105,7 @@ program Ludic {
     if (cmd == "run") { return cmd_run() }
     if (cmd == "test") { return cmd_test() }
     if (cmd == "deps") { return cmd_deps() }
+    if (cmd == "schema") { return cmd_schema() }
     if (cmd == "migrate") { return cmd_migrate() }
     if (cmd == "clean") { return cmd_clean() }
     if (cmd == "fmt") { return cmd_fmt() }

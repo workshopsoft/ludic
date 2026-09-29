@@ -1,0 +1,589 @@
+# emit_schema.ludic — `ludicc --emit-schema FILE`: what an editor of the program's data needs, from
+# the compiler's own view once the types are checked and every open registry has its entries. One
+# JSON object, schema_version 1:
+#
+#   records     every property, state and event: its fields with their types, defaults, docs and
+#               attributes (attrs.ludic)
+#   registries  every registry: its record, prefix, resource file, open or not, attributes, and its
+#               entries in their final order - key, constant, index, where each entry and each of its
+#               field values is written - with which file contributed which entries
+#   consts      every const: its type and its value as written
+#   functions   every function a `fn` value can name with no arguments (the states it takes are the
+#               runtime's to supply)
+#
+# Deterministic: each list sorted by name (then file and line), an entry list in index order, the
+# paths as the compiler read them, and nothing about the run. The engine's runtime is left out.
+var g_schema_out: pointer = null
+
+function schema_write(path: pointer) -> bool {
+  let b = buf_new()
+  buf_puts(b, "{\n  \"schema_version\": 1,\n  \"entry\": ")
+  jq_put(b, g_mg_entry)
+  buf_puts(b, ",\n  \"records\": [")
+  sc_records(b)
+  buf_puts(b, "\n  ],\n  \"registries\": [")
+  sc_registries(b)
+  buf_puts(b, "\n  ],\n  \"consts\": [")
+  sc_consts(b)
+  buf_puts(b, "\n  ],\n  \"functions\": [")
+  sc_functions(b)
+  buf_puts(b, "\n  ]\n}\n")
+  let f = file_open(path, "wb")
+  if f == null { return false }
+  file_write(f, buf_str(b), b.len)
+  file_close(f)
+  return true
+}
+
+# ---- names and text ---------------------------------------------------------------------------
+# a declaration's name as written: without the module a private clash renamed it for
+function sc_name(s: pointer) -> pointer {
+  if s == null { return "" }
+  var i = 0
+  while i < len(g_rt_new) {
+    if (g_rt_new[i] == s) { return g_rt_old[i] }
+    i += 1
+  }
+  i = 0
+  while i < len(g_re_new) {
+    if (g_re_new[i] == s) { return g_re_old[i] }
+    i += 1
+  }
+  return vis_plain(s)
+}
+# a type as written: Pool<Thing> for the instance Pool$Thing, a private record by its own name
+function sc_ty(t: pointer) -> pointer {
+  if t == null { return "void" }
+  var out: pointer = ""
+  var a = 0
+  var i = 0
+  let n = len(t)
+  while i <= n {
+    if i == n or not gen_name_ch(t[i]) {
+      if i > a { out = out + sc_ty_word(t[a .. i]) }
+      if i < n { out = out + t[i .. i + 1] }
+      a = i + 1
+    }
+    i += 1
+  }
+  return out
+}
+function sc_ty_word(w: pointer) -> pointer {
+  let g = gen_find(w)
+  if g < 0 { return sc_name(w) }
+  let args = gen_split(g_gi_args[g])
+  var out = sc_name(g_gi_gen[g]) + "<"
+  var i = 0
+  while i < len(args) {
+    if i > 0 { out = out + ", " }
+    out = out + sc_ty(args[i])
+    i += 1
+  }
+  return out + ">"
+}
+function sc_src_of(file: pointer) -> pointer {
+  if file == null { return null }
+  let s = fm_get(g_fm_src, file)
+  if s == null or len(s) == 0 { return null }
+  return s
+}
+# the text between two offsets of a file, or null
+function sc_text(file: pointer, a: int, b: int) -> pointer {
+  let s = sc_src_of(file)
+  if s == null or a < 0 or b <= a or b > len(s) { return null }
+  return s[a .. b]
+}
+# the comment block on the lines above a declaration (past its @attribute lines), else the comment
+# that ends its own line; null when it has neither
+function sc_doc(file: pointer, pos: int) -> pointer {
+  let s = sc_src_of(file)
+  if s == null or pos < 0 or pos >= len(s) { return null }
+  var ls = pos
+  while ls > 0 and s[ls - 1] != '\n' { ls -= 1 }
+  let lines = new []pointer
+  var e = ls
+  while e > 0 {
+    let le = e - 1
+    var bgn = le
+    while bgn > 0 and s[bgn - 1] != '\n' { bgn -= 1 }
+    var k = bgn
+    while k < le and (s[k] == ' ' or s[k] == '\t') { k += 1 }
+    if k < le and s[k] == '#' {
+      push(lines, sc_comment(s, k, le))
+      e = bgn
+    } else if k < le and s[k] == '@' {
+      e = bgn
+    } else {
+      break
+    }
+  }
+  if len(lines) > 0 {
+    var out: pointer = ""
+    var j = len(lines) - 1
+    while j >= 0 {
+      out = out + lines[j]
+      if j > 0 { out = out + "\n" }
+      j -= 1
+    }
+    return out
+  }
+  # the comment at the end of its own line, outside any string
+  var i = pos
+  var q = 0
+  while i < len(s) and s[i] != '\n' {
+    let c = s[i]
+    if q != 0 {
+      if c == CH_BACKSLASH { i += 1 }
+      else if c == q { q = 0 }
+    }
+    else if c == '"' or c == '`' { q = c }
+    else if c == '#' {
+      var le2 = i
+      while le2 < len(s) and s[le2] != '\n' { le2 += 1 }
+      return sc_comment(s, i, le2)
+    }
+    i += 1
+  }
+  return null
+}
+# a comment's text: past its '#' and one space, without the end of its line
+function sc_comment(s: pointer, hash: int, le: int) -> pointer {
+  var a = hash + 1
+  if a < le and s[a] == ' ' { a += 1 }
+  var z = le
+  while z > a and (s[z - 1] == ' ' or s[z - 1] == '\t' or s[z - 1] == '\r') { z -= 1 }
+  return s[a .. z]
+}
+function sc_str(b: Buf, s: pointer) -> void {
+  if s == null { buf_puts(b, "null") } else { jq_put(b, s) }
+}
+function sc_mod(file: pointer) -> pointer {
+  let m = module_of(file)
+  if m == null or len(m) == 0 { return null }
+  return m
+}
+function sc_bool(b: Buf, v: bool) -> void {
+  if v { buf_puts(b, "true") } else { buf_puts(b, "false") }
+}
+# a group of attributes as a JSON array
+function sc_attrs(b: Buf, g: int) -> void {
+  buf_puts(b, "[")
+  if g >= 0 {
+    var j = g_at_start[g]
+    while j < g_at_start[g] + g_at_count[g] {
+      if j > g_at_start[g] { buf_puts(b, ", ") }
+      buf_puts(b, "{\"name\": ")
+      jq_put(b, g_at_name[j])
+      buf_puts(b, ", \"args\": ")
+      buf_puts(b, g_at_args[j])
+      buf_puts(b, "}")
+      j += 1
+    }
+  }
+  buf_puts(b, "]")
+}
+# "file", "line", "col" of a place
+function sc_at(b: Buf, file: pointer, line: int, col: int) -> void {
+  buf_puts(b, "\"file\": ")
+  sc_str(b, file)
+  buf_puts(b, ", \"line\": ")
+  buf_puti(b, line)
+  buf_puts(b, ", \"col\": ")
+  buf_puti(b, col)
+}
+function sc_sep(b: Buf, first: bool, indent: pointer) -> void {
+  if not first { buf_puts(b, ",") }
+  buf_puts(b, "\n")
+  buf_puts(b, indent)
+}
+
+# ---- order ------------------------------------------------------------------------------------
+# indices sorted by their keys, ties kept in the order given (a merge sort)
+function sc_sort(xs: []int, keys: []pointer) -> void {
+  let tmp = new []int
+  var i = 0
+  while i < len(xs) { push(tmp, 0);  i += 1 }
+  sc_msort(xs, keys, 0, len(xs), tmp)
+}
+function sc_msort(xs: []int, keys: []pointer, lo: int, hi: int, tmp: []int) -> void {
+  if hi - lo < 2 { return }
+  let mid = (lo + hi) / 2
+  sc_msort(xs, keys, lo, mid, tmp)
+  sc_msort(xs, keys, mid, hi, tmp)
+  var i = lo
+  var j = mid
+  var k = lo
+  while k < hi {
+    if j >= hi or (i < mid and not reg_str_less(keys[xs[j]], keys[xs[i]])) {
+      tmp[k] = xs[i]
+      i += 1
+    } else {
+      tmp[k] = xs[j]
+      j += 1
+    }
+    k += 1
+  }
+  k = lo
+  while k < hi {
+    xs[k] = tmp[k]
+    k += 1
+  }
+}
+# a key that sorts by name, then file, then line
+function sc_key(name: pointer, file: pointer, line: int) -> pointer {
+  var f = file
+  if f == null { f = "" }
+  let ln = itoa(1000000 + line)
+  return name + "\t" + f + "\t" + ln
+}
+# a declaration the program wrote (not the runtime's, not one the compiler made)
+function sc_written(d: Node) -> bool {
+  return d.file != null and d.pos >= 0 and not is_runtime_file(d.file)
+}
+
+# ---- records ----------------------------------------------------------------------------------
+function sc_records(b: Buf) -> void {
+  let ds = new []Node
+  let xs = new []int
+  let keys = new []pointer
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_COMP and d.s != null and sc_written(d) and gen_find(d.s) < 0 {
+      push(xs, len(ds))
+      push(keys, sc_key(sc_name(d.s), d.file, d.line))
+      push(ds, d)
+    }
+    i += 1
+  }
+  i = 0
+  while i < len(g_events) {
+    let e = g_events[i]
+    if e.s != null and sc_written(e) {
+      push(xs, len(ds))
+      push(keys, sc_key(sc_name(e.s), e.file, e.line))
+      push(ds, e)
+    }
+    i += 1
+  }
+  sc_sort(xs, keys)
+  i = 0
+  while i < len(xs) {
+    sc_record(b, ds[xs[i]], i == 0)
+    i += 1
+  }
+}
+function sc_record(b: Buf, d: Node, first: bool) -> void {
+  sc_sep(b, first, "    ")
+  var kind = "property"
+  if d.kind == N_EVENT { kind = "event" } else if d.uns == 2 { kind = "state" }
+  buf_puts(b, "{\"name\": ")
+  jq_put(b, sc_name(d.s))
+  buf_puts(b, ", \"kind\": ")
+  jq_put(b, kind)
+  buf_puts(b, ", \"module\": ")
+  sc_str(b, sc_mod(d.file))
+  buf_puts(b, ", \"exported\": ")
+  sc_bool(b, d.vis == 1)
+  buf_puts(b, ", ")
+  sc_at(b, d.file, d.line, d.col)
+  buf_puts(b, ", \"type_params\": ")
+  if d.tps == null { buf_puts(b, "null") } else { jq_put(b, d.tps) }
+  buf_puts(b, ",\n     \"doc\": ")
+  sc_str(b, sc_doc(d.file, d.pos))
+  buf_puts(b, ",\n     \"fields\": [")
+  var n = 0
+  var k = 0
+  while k < len(d.kids) {
+    let f = d.kids[k]
+    if f.kind == N_FIELD and f.pos >= 0 {
+      sc_field(b, f, n == 0)
+      n += 1
+    }
+    k += 1
+  }
+  if n > 0 { buf_puts(b, "\n     ") }
+  buf_puts(b, "]}")
+}
+function sc_field(b: Buf, f: Node, first: bool) -> void {
+  sc_sep(b, first, "      ")
+  buf_puts(b, "{\"name\": ")
+  jq_put(b, f.s)
+  buf_puts(b, ", \"type\": ")
+  jq_put(b, sc_ty(f.ty))
+  buf_puts(b, ", \"default\": ")
+  sc_str(b, sc_text(f.file, f.sp0, f.sp1))
+  buf_puts(b, ", ")
+  sc_at(b, f.file, f.line, f.col)
+  buf_puts(b, ", \"attributes\": ")
+  sc_attrs(b, f.at)
+  buf_puts(b, ", \"doc\": ")
+  sc_str(b, sc_doc(f.file, f.pos))
+  buf_puts(b, "}")
+}
+
+# ---- registries -------------------------------------------------------------------------------
+function sc_registries(b: Buf) -> void {
+  let xs = new []int
+  let keys = new []pointer
+  var r = 0
+  while r < len(g_rg_name) {
+    let v = g_rg_var[r]
+    if v.file != null and not is_runtime_file(v.file) {
+      push(xs, r)
+      push(keys, sc_key(g_rg_name[r], v.file, v.line))
+    } else {
+      push(keys, "")
+    }
+    r += 1
+  }
+  sc_sort(xs, keys)
+  var i = 0
+  while i < len(xs) {
+    sc_registry(b, xs[i], i == 0)
+    i += 1
+  }
+}
+function sc_registry(b: Buf, r: int, first: bool) -> void {
+  let v = g_rg_var[r]
+  sc_sep(b, first, "    ")
+  buf_puts(b, "{\"name\": ")
+  jq_put(b, g_rg_name[r])
+  buf_puts(b, ", \"record\": ")
+  jq_put(b, sc_ty(g_rg_type[r]))
+  buf_puts(b, ", \"prefix\": ")
+  jq_put(b, g_rg_prefix[r])
+  buf_puts(b, ", \"source\": ")
+  sc_str(b, g_rg_from[r])
+  buf_puts(b, ", \"open\": ")
+  sc_bool(b, g_rg_open[r] == 1)
+  buf_puts(b, ", \"exported\": ")
+  sc_bool(b, v.vis == 1)
+  buf_puts(b, ", \"module\": ")
+  sc_str(b, sc_mod(v.file))
+  buf_puts(b, ",\n     ")
+  sc_at(b, v.file, v.line, v.col)
+  buf_puts(b, ", \"attributes\": ")
+  sc_attrs(b, g_rg_at[r])
+  buf_puts(b, ", \"doc\": ")
+  sc_str(b, sc_doc(v.file, v.pos))
+  let order = reg_order(r)
+  buf_puts(b, ",\n     \"count\": ")
+  buf_puti(b, len(order))
+  buf_puts(b, ",\n     \"contributors\": [")
+  sc_contributors(b, order)
+  buf_puts(b, "],\n     \"entries\": [")
+  var o = 0
+  while o < len(order) {
+    sc_entry(b, r, order[o], o)
+    o += 1
+  }
+  if len(order) > 0 { buf_puts(b, "\n     ") }
+  buf_puts(b, "]}")
+}
+# who brought an entry in: a resource file by the declaration that read it, `def`s by their file
+function sc_contrib_id(d: int) -> pointer {
+  if len(g_df_src[d]) == 0 { return "def\n" + g_df_rec[d].file }
+  return g_df_src[d] + "\n" + g_df_via[d]
+}
+# which file brought which entries in, in the order they first appear in the registry
+function sc_contributors(b: Buf, order: []int) -> void {
+  let seen = new []pointer
+  var o = 0
+  while o < len(order) {
+    let d = order[o]
+    let id = sc_contrib_id(d)
+    var known = false
+    var j = 0
+    while j < len(seen) {
+      if (seen[j] == id) { known = true }
+      j += 1
+    }
+    if not known {
+      push(seen, id)
+      if len(seen) > 1 { buf_puts(b, ",") }
+      buf_puts(b, "\n       {\"kind\": ")
+      var file = g_df_src[d]
+      if len(file) == 0 {
+        jq_put(b, "def")
+        file = g_df_rec[d].file
+      } else {
+        jq_put(b, "resource")
+      }
+      buf_puts(b, ", \"file\": ")
+      sc_str(b, file)
+      buf_puts(b, ", \"via\": ")
+      jq_put(b, g_df_via[d])
+      buf_puts(b, ", \"module\": ")
+      sc_str(b, sc_mod(g_df_rec[d].file))
+      buf_puts(b, ", \"keys\": [")
+      var n = 0
+      var p = o
+      while p < len(order) {
+        let e = order[p]
+        if (sc_contrib_id(e) == id) {
+          if n > 0 { buf_puts(b, ", ") }
+          jq_put(b, g_df_key[e])
+          n += 1
+        }
+        p += 1
+      }
+      buf_puts(b, "]}")
+    }
+    o += 1
+  }
+  if len(seen) > 0 { buf_puts(b, "\n     ") }
+}
+function sc_entry(b: Buf, r: int, d: int, index: int) -> void {
+  let rec = g_df_rec[d]
+  sc_sep(b, index == 0, "       ")
+  buf_puts(b, "{\"key\": ")
+  jq_put(b, g_df_key[d])
+  buf_puts(b, ", \"constant\": ")
+  jq_put(b, `{g_rg_prefix[r]}_{reg_upper(g_df_key[d])}`)
+  buf_puts(b, ", \"index\": ")
+  buf_puti(b, index)
+  buf_puts(b, ", ")
+  sc_at(b, rec.file, g_df_kline[d], g_df_kcol[d])
+  buf_puts(b, ", \"fields\": [")
+  var n = 0
+  var k = 0
+  while k < len(rec.kids) {
+    let fi = rec.kids[k]
+    if fi.kind == E_FINIT and fi.sp0 >= 0 {
+      if n > 0 { buf_puts(b, ",") }
+      buf_puts(b, "\n         {\"name\": ")
+      jq_put(b, fi.s)
+      buf_puts(b, ", \"value\": ")
+      sc_str(b, sc_text(fi.file, fi.sp0, fi.sp1))
+      buf_puts(b, ", ")
+      sc_at(b, fi.file, fi.line, fi.col)
+      buf_puts(b, "}")
+      n += 1
+    }
+    k += 1
+  }
+  if n > 0 { buf_puts(b, "\n       ") }
+  buf_puts(b, "]}")
+}
+
+# ---- consts -----------------------------------------------------------------------------------
+function sc_consts(b: Buf) -> void {
+  let xs = new []int
+  let keys = new []pointer
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_CONST and d.s != null and sc_written(d) { push(xs, i);  push(keys, sc_key(sc_name(d.s), d.file, d.line)) }
+    else { push(keys, "") }
+    i += 1
+  }
+  sc_sort(xs, keys)
+  i = 0
+  while i < len(xs) {
+    let d = prog[xs[i]]
+    sc_sep(b, i == 0, "    ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, sc_name(d.s))
+    buf_puts(b, ", \"type\": ")
+    jq_put(b, sc_ty(d.ty))
+    buf_puts(b, ", \"value\": ")
+    sc_str(b, sc_text(d.file, d.sp0, d.sp1))
+    buf_puts(b, ", \"module\": ")
+    sc_str(b, sc_mod(d.file))
+    buf_puts(b, ", \"exported\": ")
+    sc_bool(b, d.vis == 1)
+    buf_puts(b, ", ")
+    sc_at(b, d.file, d.line, d.col)
+    buf_puts(b, ", \"doc\": ")
+    sc_str(b, sc_doc(d.file, d.pos))
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+
+# ---- functions a fn value can name ------------------------------------------------------------
+function sc_is_state_param(p: Node) -> bool {
+  return is_state_ty(p.ty) or is_state_ty(sc_name(p.ty))
+}
+function sc_generic_fn(names: []pointer, s: pointer) -> bool {
+  let base = vis_plain(s)
+  var i = 0
+  while i < len(names) {
+    if (names[i] == base) { return true }
+    i += 1
+  }
+  return false
+}
+function sc_functions(b: Buf) -> void {
+  let gens = new []pointer
+  var i = 0
+  while i < len(prog) {
+    if prog[i].kind == N_FN and prog[i].tps != null and prog[i].s != null { push(gens, vis_plain(prog[i].s)) }
+    i += 1
+  }
+  let xs = new []int
+  let keys = new []pointer
+  i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    var ok = d.kind == N_FN and d.s != null and d.tps == null and sc_written(d)
+    if ok { ok = not sc_generic_fn(gens, d.s) }
+    if ok {
+      var k = 0
+      while k < len(d.kids) {
+        if d.kids[k].kind == N_PARAM and not sc_is_state_param(d.kids[k]) { ok = false }
+        k += 1
+      }
+    }
+    if ok { push(xs, i);  push(keys, sc_key(sc_name(d.s), d.file, d.line)) }
+    else { push(keys, "") }
+    i += 1
+  }
+  sc_sort(xs, keys)
+  i = 0
+  while i < len(xs) {
+    sc_function(b, prog[xs[i]], i == 0)
+    i += 1
+  }
+}
+function sc_function(b: Buf, d: Node, first: bool) -> void {
+  let ret = sc_ty(d.ty)
+  var ps: pointer = ""
+  var states: pointer = ""
+  var k = 0
+  while k < len(d.kids) {
+    let p = d.kids[k]
+    if p.kind == N_PARAM {
+      var mt: pointer = ""
+      if p.uns == 1 { mt = "mut " }
+      if len(ps) > 0 { ps = ps + ", " }
+      ps = ps + p.s + ": " + mt + sc_ty(p.ty)
+      let bq = buf_new()
+      jq_put(bq, sc_ty(p.ty))
+      if len(states) > 0 { states = states + ", " }
+      states = states + buf_str(bq)
+    }
+    k += 1
+  }
+  sc_sep(b, first, "    ")
+  buf_puts(b, "{\"name\": ")
+  jq_put(b, sc_name(d.s))
+  buf_puts(b, ", \"module\": ")
+  sc_str(b, sc_mod(d.file))
+  buf_puts(b, ", \"exported\": ")
+  sc_bool(b, d.vis == 1)
+  buf_puts(b, ", ")
+  sc_at(b, d.file, d.line, d.col)
+  buf_puts(b, ", \"returns\": ")
+  jq_put(b, ret)
+  buf_puts(b, ", \"fn_type\": ")
+  jq_put(b, `fn() -> {ret}`)
+  buf_puts(b, ", \"signature\": ")
+  jq_put(b, `function {sc_name(d.s)}({ps}) -> {ret}`)
+  buf_puts(b, ", \"states\": [")
+  buf_puts(b, states)
+  buf_puts(b, "], \"doc\": ")
+  sc_str(b, sc_doc(d.file, d.pos))
+  buf_puts(b, "}")
+}

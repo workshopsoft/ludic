@@ -11,12 +11,15 @@ const TK_EOF: int = 5
 const TK_FLOAT: int = 6
 const TK_INTERP: int = 7      # `text {expr} text` — raw content, split by the parser
 
-property Tok { kind: int = 0, text: pointer = null, ival: int = 0, line: int = 0, pos: int = -1, end: int = -1 }
+property Tok { kind: int = 0, text: pointer = null, ival: int = 0, line: int = 0, pos: int = -1, end: int = -1, col: int = 0, off: int = -1, oend: int = -1 }
+# col: the token's column (1-based) on its line; off / oend: where it starts and ends in the text
+# lexed, whatever the base (a resource file's own offsets, for the schema's spans - never a rewrite)
 
 # where the tokens are in their file (0.S's migration rewrites source by position): a file's own
 # text starts at 0, an interpolation hole at its place in the file, and generated code has none (-1)
 var g_lex_base: int = -1
 var lx_start: int = 0
+var lx_line0: int = 0             # where the line being lexed starts in the text
 
 var toks: []Tok
 
@@ -24,6 +27,8 @@ function tok_push(kind: int, text: pointer, ival: int, line: int) -> void {
   let t = new Tok
   t.kind = kind;  t.text = text;  t.ival = ival;  t.line = line
   if g_lex_base >= 0 { t.pos = g_lex_base + lx_start }
+  t.off = lx_start
+  t.col = lx_start - lx_line0 + 1
   push(toks, t)
 }
 
@@ -103,6 +108,10 @@ function hole_end(s: pointer, i0: int, n: int) -> int {
 
 # report a lexical error in the standard `file:line: error: msg` shape and stop
 function lex_fail(line: int, msg: pointer) -> void {
+  if g_diag_json {
+    diag_add(g_parse_file, line, lx_start - lx_line0 + 1, "error", msg)
+    diag_exit(1)
+  }
   let m = `{g_parse_file}:{line}: error: {msg}\n`
   file_write(file_stderr(), m, len(m))
   exit(1)
@@ -119,6 +128,7 @@ function lex(src: pointer) -> void {
 # re-lexed on its own, and keeps the line of the string it sits in)
 function lex_at(src: pointer, first_line: int) -> void {
   toks = new []Tok
+  lx_line0 = 0
   var i = 0
   var line = first_line
   let n = len(src)
@@ -127,11 +137,12 @@ function lex_at(src: pointer, first_line: int) -> void {
     # the token the last turn pushed ends where this one starts looking
     if len(toks) > lx_n {
       if g_lex_base >= 0 { toks[len(toks) - 1].end = g_lex_base + i }
+      toks[len(toks) - 1].oend = i
       lx_n = len(toks)
     }
     lx_start = i
     let c = src[i]
-    if c == '\n' { tok_push(TK_NL, null, 0, line); line += 1; i += 1; continue }
+    if c == '\n' { tok_push(TK_NL, null, 0, line); line += 1; i += 1; lx_line0 = i; continue }
     if c == ' ' or c == '\t' or c == '\r' { i += 1; continue }
     if c == '#' {                                   # '#' comment to end of line
       while i < n and src[i] != '\n' { i += 1 }
@@ -255,6 +266,7 @@ function lex_at(src: pointer, first_line: int) -> void {
     lex_error(line, c)
   }
   if len(toks) > lx_n and g_lex_base >= 0 { toks[len(toks) - 1].end = g_lex_base + i }
+  if len(toks) > lx_n { toks[len(toks) - 1].oend = i }
   lx_start = i
   tok_push(TK_EOF, null, 0, line)
 }

@@ -1,0 +1,10 @@
+# attributes: @Ref names a registry - there is no registry Vendorz, nor Shops (both are reported)
+program R {
+  property Vendor { key: string = "" }
+  registry Vendors of Vendor
+  property Tool {
+    @Ref(Vendorz) seller: int = 0
+    @Ref(Shops) shop: int = 0
+  }
+  entry { print(VENDORS_COUNT) }
+}

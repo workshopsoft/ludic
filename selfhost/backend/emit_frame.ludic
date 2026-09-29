@@ -261,8 +261,12 @@ function deps_keeps(f: pointer, seen: []bool) -> void {
         if kind == null { kind = "text" }
         deps_line(f, `fkeep {kind} {d.file}:{itoa(site.line)} {at} {fr_chain(k)}`)
         if g_arena_strict {
-          let m = `{d.file}:{itoa(site.line)}: error: frame code keeps what it makes: this {kind} is kept at {at} ({fr_chain(k)}) - keep(...) or intern(...) to copy it on purpose, or @alloc_ok("why")\n`
-          file_write(file_stderr(), m, len(m))
+          let fm = `frame code keeps what it makes: this {kind} is kept at {at} ({fr_chain(k)}) - keep(...) or intern(...) to copy it on purpose, or @alloc_ok("why")`
+          if g_diag_json { diag_add(d.file, site.line, site.col, "error", fm) }
+          else {
+            let m = `{d.file}:{itoa(site.line)}: error: {fm}\n`
+            file_write(file_stderr(), m, len(m))
+          }
         }
         n += 1
       }
@@ -270,7 +274,7 @@ function deps_keeps(f: pointer, seen: []bool) -> void {
     s += 1
   }
   deps_line(f, `frame_keeps {itoa(n)}`)
-  if g_arena_strict and n > 0 { exit(1) }
+  if g_arena_strict and n > 0 { diag_exit(1) }
   deps_births(f, seen)
   deps_resources(f)                                # 25.5e
   deps_owned(f)

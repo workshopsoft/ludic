@@ -1,0 +1,48 @@
+# ---- ludic schema -------------------------------------------------------------
+# What an editor of a program's data needs, from the compiler's own view: every record with its
+# fields, types, defaults, docs and attributes (@Ref, @Range, ...), every registry with its entries
+# in their final order and where each is written, every const, and the functions a `fn` value can
+# name. The compiler writes it (`ludicc --emit-schema`, selfhost/backend/emit_schema.ludic) once the
+# program has type-checked.
+#
+#   ludic schema [file]              the JSON on stdout
+#   ludic schema [file] -o FILE      into FILE
+#   ludic schema --unsafe ...        a program whose own files write `unsafe`
+function cmd_schema() -> int {
+  var src = ""
+  var dest = ""
+  var ai = 2
+  while ai < arg_count() {
+    let a = arg(ai)
+    if a == "-o" or a == "--out" {
+      if ai + 1 >= arg_count() { err(`ludic schema: {a} needs a file\n`);  return 2 }
+      ai += 1
+      dest = arg(ai)
+    }
+    else if a == "--unsafe" { g_unsafe_build = true }
+    else if a[0] == '-' {
+      err(`ludic schema: unknown option {a}\n`)
+      err("  usage: ludic schema [file] [-o FILE] [--unsafe]\n")
+      return 2
+    }
+    else { src = a }
+    ai += 1
+  }
+  let entry = find_entry(src)
+  if entry == "" { return no_entry() }
+  ensure_ludicc()
+  var target = dest
+  if target == "" { target = tmp_path("schema.json") }
+  let errs = tmp_path("schema.err")
+  if not shq(`{ludicc()} --headless{unsafe_flag()} {sh_single(entry)} --emit-schema {sh_single(target)} 2> {errs}`) {
+    err(`ludic schema: {entry} did not compile:\n`)
+    err(capture(`grep -i error {errs} | head -20`))
+    return 1
+  }
+  if dest == "" {
+    let s = read_file(target)
+    if s == null { err("ludic schema: the compiler wrote no schema (is it older than ludic schema?)\n");  return 1 }
+    out(s)
+  }
+  return 0
+}

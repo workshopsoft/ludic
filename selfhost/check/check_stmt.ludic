@@ -337,6 +337,7 @@ function check_program() -> void {
   }
   gen_finish()
   if ck_errors > 0 and not ck_reporting() and not g_migrate {
+    if g_diag_json { diag_exit(1) }
     let m = `{itoa(ck_errors)} type error(s)\n`
     file_write(file_stderr(), m, len(m))
     exit(1)

@@ -135,6 +135,10 @@ function fp_promote_note(from: pointer, t: pointer) -> void {
   if g_warn_promote == 0 { return }
   var file = g_err_file
   if (file == null) { file = "" }
+  if g_diag_json {
+    diag_add(file, g_err_line, 0, "warning", `a computed {from} is promoted to {t}`)
+    return
+  }
   let m = `{file}:{itoa(g_err_line)}: warning: a computed {from} is promoted to {t}\n`
   file_write(file_stderr(), m, len(m))
 }
