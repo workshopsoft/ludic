@@ -40,7 +40,9 @@ property Stream {
   arena:   words,          # every kept chunk's instances, in the order of `chunks`
   top:     int = 0,        # words of the arena in use
   spare:   []Chunk,        # records not in use: all of them are made with the stream
-  cap0:    int = 0         # the layer's capacity for the whole reach (fog_streams.ludic)
+  cap0:    int = 0,        # the layer's capacity for the whole reach (fog_streams.ludic)
+  ox:      float = 0.0,    # the grid's corner: 0 for cells from world zero, the terrain's for baked chunks
+  oz:      float = 0.0
 }
 
 # microseconds spent per frame, split so the hitch can be attributed (R3D_PROF=1)
@@ -220,8 +222,8 @@ function stream_evict(render3d_st: mut Render3dState, s: Stream) -> void {
 }
 
 function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, cam_z: float) -> void {
-  let ccx = int(Math.floor(cam_x / s.size))
-  let ccz = int(Math.floor(cam_z / s.size))
+  let ccx = int(Math.floor((cam_x - s.ox) / s.size))
+  let ccz = int(Math.floor((cam_z - s.oz) / s.size))
   if ccx == s.last_cx and ccz == s.last_cz and not s.pending and s.view_gen == render3d_st.sc_view_gen { return }
   let first = s.last_cx == 999999
   s.view_gen = render3d_st.sc_view_gen
@@ -244,8 +246,8 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
       while cx <= ccx + ring {
         let edge = (cz == ccz - ring) or (cz == ccz + ring) or (cx == ccx - ring) or (cx == ccx + ring)
         if edge {
-          let wx = (float(cx) + 0.5) * s.size
-          let wz = (float(cz) + 0.5) * s.size
+          let wx = s.ox + (float(cx) + 0.5) * s.size
+          let wz = s.oz + (float(cz) + 0.5) * s.size
           let dx = wx - cam_x;  let dz = wz - cam_z
           let d = Math.sqrt(dx * dx + dz * dz)
           let band = stream_band(s, d)
@@ -323,8 +325,8 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
 # whose short shadows still fall inside it.
 function stream_chunk_visible(render3d_st: Render3dState, s: Stream, cx: int, cz: int, c: Chunk) -> bool {
   let half = s.size * 0.5
-  let wx = float(cx) * s.size + half
-  let wz = float(cz) * s.size + half
+  let wx = s.ox + float(cx) * s.size + half
+  let wz = s.oz + float(cz) * s.size + half
   let hy = (c.ymax - c.ymin) * 0.5
   let cy = c.ymin + hy
   let r = Math.sqrt(half * half * 2.0 + hy * hy) + 8.0
