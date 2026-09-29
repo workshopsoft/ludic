@@ -36,6 +36,7 @@ function fog_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_base"), render3d_st.r3d_fog_base)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_inscatter"), render3d_st.r3d_fog_inscatter)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_desat"), render3d_st.r3d_fog_desat)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_wall"), render3d_st.r3d_fog_wall)
   u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_alb"), render3d_st.r3d_ground_alb_r, render3d_st.r3d_ground_alb_g, render3d_st.r3d_ground_alb_b)
   u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_alb_hi"), render3d_st.r3d_ground_hi_r, render3d_st.r3d_ground_hi_g, render3d_st.r3d_ground_hi_b)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_hi_y"), render3d_st.r3d_ground_hi_y)
@@ -46,11 +47,31 @@ function fog_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_time"), render3d_st.r3d_time)
 }
 
+# The fog wall (a game's fog setting): dist > 0 hides everything past dist in the sky's colour - from
+# three tenths of it to all of it - and draws nothing past it in any pass: the far plane, every scatter
+# layer's reach, the shadow cascades. dist <= 0 leaves everything as it was.
+const R3D_FOG_MARGIN: float = 8.0
+export function r3d_fog_wall(render3d_st: mut Render3dState, dist: float) -> void {
+  var d = dist
+  if d < 0.0 { d = 0.0 }
+  render3d_st.r3d_fog_wall = d
+  cam_update(render3d_st)
+}
+# how far anything is drawn: the fog wall and a margin, or `far` (0: no limit of its own) without one
+function r3d_reach(render3d_st: Render3dState, far: float) -> float {
+  if render3d_st.r3d_fog_wall <= 0.0 { return far }
+  let w = render3d_st.r3d_fog_wall + R3D_FOG_MARGIN
+  if far <= 0.0 or far > w { return w }
+  return far
+}
+
 # profiling switches (environment): R3D_NOSHADOW R3D_NOGI R3D_MSAA=n R3D_NOBLADES R3D_NOCARDS R3D_NOTREES R3D_NEAR=m
 function r3d_env_flags(render3d_st: mut Render3dState) -> void {
   render3d_st.r3d_no_shadow = r3d_env_has(render3d_st, "R3D_NOSHADOW")
   render3d_st.r3d_no_trees = r3d_env_has(render3d_st, "R3D_NOTREES")
   render3d_st.r3d_no_refl = r3d_env_has(render3d_st, "R3D_NOREFL")
+  # R3D_FOG_WALL=<m>: the fog wall at that distance, for a shot (a game sets it with r3d_fog_wall)
+  if r3d_env_has(render3d_st, "R3D_FOG_WALL") { render3d_st.r3d_fog_wall = float(Text.to_int(r3d_env(render3d_st, "R3D_FOG_WALL"))) }
   if r3d_env_has(render3d_st, "R3D_DEBUG") { render3d_st.r3d_debug = true }
   if r3d_env_has(render3d_st, "R3D_DBGSHADOW") { render3d_st.r3d_debug_shadow = true }
   if r3d_env_has(render3d_st, "R3D_NOGI") { render3d_st.post_gi_strength = 0.0;  render3d_st.post_ao_strength = 0.0;  render3d_st.post_no_gi = true }
@@ -152,6 +173,8 @@ function r3d_draw_sky(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sky_gain"), 0.95)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sky_relight"), render3d_st.r3d_sky_relight)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sky_sat"), 1.35)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_fog_wall"), render3d_st.r3d_fog_wall)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_fog_inscatter"), render3d_st.r3d_fog_inscatter)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_time"), render3d_st.r3d_time)
   mesh_draw(render3d_st, render3d_st.sky_fullscreen)
   gpu_depth_write(render3d_st, true)

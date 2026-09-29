@@ -285,6 +285,13 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
 // is that air.
 uniform float u_fog_inscatter;   // how hard the air scatters the sun forward
 uniform float u_fog_desat;       // how fast distance takes a surface's own colour away
+uniform float u_fog_wall;        // r3d_fog_wall: > 0, the distance past which nothing is seen
+// the colour the fog wall hides things in: the sky at the horizon under this view, and the sun
+// scattered through it, so what is far melts into the sky behind it (the sky's band meets it)
+vec3 fogWallCol(vec3 dir) {
+  vec3 c = skyPrefiltered(vec3(dir.x, max(dir.y, 0.02), dir.z), 0.6);
+  return c + u_sun_color * u_fog_inscatter * pow(max(dot(dir, u_sun_dir), 0.0), 8.0);
+}
 vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   vec3 dir = normalize(wpos - u_cam_pos);
   float hf = u_fog_height_falloff;
@@ -306,5 +313,11 @@ vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   // hour rather than only at the one where the sky was already grey.
   float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = mix(col, vec3(l), clamp(f * u_fog_desat, 0.0, 1.0));
-  return mix(col, fogCol, f);
+  col = mix(col, fogCol, f);
+  // the fog wall: from three tenths of its distance to all of it, everything goes to the sky's colour
+  if (u_fog_wall > 0.0) {
+    float w = smoothstep(0.3 * u_fog_wall, u_fog_wall, dist);
+    col = mix(col, fogWallCol(dir), w);
+  }
+  return col;
 }

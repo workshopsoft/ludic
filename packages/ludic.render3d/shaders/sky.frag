@@ -112,5 +112,11 @@ void main() {
   float below = smoothstep(0.0, -0.08, dir.y);
   vec3 fogCol = skyPrefiltered(vec3(dir.x, 0.02, dir.z), 0.6);
   col = mix(col, fogCol, below);
+  // under a fog wall the horizon band is the fog's own colour, higher the thicker the fog, so what
+  // the wall hides meets the sky with no seam; the sky overhead stays
+  if (u_fog_wall > 0.0) {
+    float band = clamp(90.0 / u_fog_wall, 0.06, 0.75);
+    col = mix(col, fogWallCol(dir), 1.0 - smoothstep(-0.02, band, dir.y));
+  }
   o_color = vec4(sane(col), 1.0);
 }

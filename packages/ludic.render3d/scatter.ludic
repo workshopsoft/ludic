@@ -561,7 +561,7 @@ function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
   let pr = render3d_st.sc_gpu_pr
   for i in 0 .. 36 { pr[i] = 0 }
   if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
-  pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(l.cull)
+  pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(r3d_reach(render3d_st, l.cull))
   for k in 0 .. l.n_lods { pr[20 + k] = float_bits(l.lod_dist[k]);  pr[24 + k] = len(l.lods[k].prims) }
   pr[28] = l.count;  pr[29] = l.count;  pr[30] = l.n_lods;  pr[31] = 1
   # as layer_grid_gather pads a cell: the tallest instance, plus a margin
@@ -622,7 +622,7 @@ function layer_grid_build(render3d_st: mut Render3dState, l: Layer, cell: float)
 function layer_grid_gather(render3d_st: Render3dState, l: Layer) -> void {
   let cell = l.gcell
   let half = cell * 0.5
-  let reach = l.cull + cell * 0.71
+  let reach = r3d_reach(render3d_st, l.cull) + cell * 0.71
   var n = 0
   for iz in 0 .. l.gnz {
     let wz = l.gz0 + float(iz) * cell + half
@@ -631,7 +631,7 @@ function layer_grid_gather(render3d_st: Render3dState, l: Layer) -> void {
       let cnt = l.gstart[c + 1] - l.gstart[c]
       if cnt == 0 { continue }
       let wx = l.gx0 + float(ix) * cell + half
-      if l.cull != 0.0 {
+      if r3d_reach(render3d_st, l.cull) != 0.0 {
         let dx = wx - render3d_st.cam_pos[0];  let dz = wz - render3d_st.cam_pos[2]
         if Math.sqrt(dx * dx + dz * dz) > reach { continue }
       }
@@ -654,14 +654,15 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
   if n + 2 > SC_LOD_ROOM { return }                 # past the room made with the state
   let counts = render3d_st.sc_lod_counts
   for k in 0 .. n + 2 { counts[k] = 0 }
-  let cull2 = l.cull * l.cull
+  let lc = r3d_reach(render3d_st, l.cull)
+  let cull2 = lc * lc
   let open = l.lod_dist[n - 1] == 0.0      # the last level runs out to the cull distance
   for i in 0 .. total {
     let o = i * INST_FLOATS
     let dx = src[o] - render3d_st.cam_pos[0];  let dz = src[o + 2] - render3d_st.cam_pos[2]
     let d2 = dx * dx + dz * dz
     var lv = n + 1                           # n + 1 = dropped
-    if l.cull == 0.0 or not (d2 > cull2) {
+    if lc == 0.0 or not (d2 > cull2) {
       let d = Math.sqrt(d2)
       lv = n                                 # n = the impostor bucket
       var k = 0
@@ -727,7 +728,8 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
   var total = l.count
   if l.gcell != 0.0 { layer_grid_gather(render3d_st, l);  src = l.vis;  total = l.n_vis }
   let near2 = l.near * l.near
-  let cull2 = l.cull * l.cull
+  let lc = r3d_reach(render3d_st, l.cull)
+  let cull2 = lc * lc
   var nn = 0
   var nf = 0
   let far_off = l.cap * INST_FLOATS    # far instances fill the scratch from its end backwards
@@ -743,7 +745,7 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
     let dx = src[o] - render3d_st.cam_pos[0]
     let dz = src[o + 2] - render3d_st.cam_pos[2]
     let d2 = dx * dx + dz * dz
-    if l.cull != 0.0 and d2 > cull2 { i += 1;  continue }
+    if lc != 0.0 and d2 > cull2 { i += 1;  continue }
     if l.near == 0.0 or d2 < near2 {
       let q = nn * INST_FLOATS
       for k in 0 .. INST_FLOATS { tmp[q + k] = src[o + k] }
@@ -905,7 +907,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
     }
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rough_scale"), l.rough)
     if l.blade { u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_base"), render3d_st.sc_blade_base);  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_tip"), render3d_st.sc_blade_tip) }
-    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_cull"), l.cull)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_cull"), r3d_reach(render3d_st, l.cull))
     sky_bind_lighting(render3d_st, p)
     shadow_bind(render3d_st, p)
     fog_bind(render3d_st, p)
