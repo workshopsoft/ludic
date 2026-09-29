@@ -12,7 +12,11 @@ property Impostor {
   normal: int = 0,
   tiles:  int = 16,
   radius: float = 0.0,
-  height: float = 0.0
+  height: float = 0.0,
+  model:  Model,           # what it was baked from, to bake it again (fog_impostors.ludic)
+  tw:     int = 0,
+  th:     int = 0,
+  flower: bool = false
 }
 property Layer {
   model:    Model,
@@ -323,6 +327,18 @@ function impostor_bake__t(render3d_st: mut Render3dState, model: Model, tiles: i
   im.tiles = tiles
   im.radius = model.radius * 1.02
   im.height = model.height
+  im.model = model;  im.tw = tw;  im.th = th;  im.flower = render3d_st.sc_bake_flower
+  impostor_paint(render3d_st, im)
+  return im
+}
+
+# the atlases drawn from the model: at the bake, and again when a fog that let them go opens
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function impostor_paint(render3d_st: mut Render3dState, im: Impostor) -> void {
+  let model = im.model
+  let tiles = im.tiles
+  let tw = im.tw
+  let th = im.th
   let aw = tiles * tw
   im.albedo = tex_target(render3d_st, aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
   im.normal = tex_target(render3d_st, aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
@@ -349,7 +365,7 @@ function impostor_bake__t(render3d_st: mut Render3dState, model: Model, tiles: i
   let r = im.radius
   let hh = model.height * 0.5
   var bake = render3d_st.sc_bake_prog
-  if render3d_st.sc_bake_flower { bake = render3d_st.sc_bake_flower_prog }
+  if im.flower { bake = render3d_st.sc_bake_flower_prog }
   gpu_use_program(render3d_st, bake)
   for t in 0 .. tiles {
     let a = 2.0 * PI * (float(t) / float(tiles))
@@ -387,7 +403,6 @@ function impostor_bake__t(render3d_st: mut Render3dState, model: Model, tiles: i
     render3d_st.tex_dump_alpha = true;  tex_dump(render3d_st, im.albedo, aw, th, `build/atlas_{render3d_st.sc_dump_n}_alpha.ppm`);  render3d_st.tex_dump_alpha = false
     tex_dump(render3d_st, im.albedo, aw, th, `build/atlas_{render3d_st.sc_dump_n}_color.ppm`)
   }
-  return im
 }
 
 # Give a layer a LOD chain. `dists` (float bits) are the outer distances of each level;
@@ -410,9 +425,10 @@ function layer_set_lods(render3d_st: mut Render3dState, l: Layer, models: []Mode
 # mark level k as the layer's crossed card (drawn with the card program and its atlas)
 function layer_lod_card(l: Layer, k: int) -> void { l.lod_card[k] = 1 }
 
-function layer_set_impostor(render3d_st: Render3dState, l: Layer, im: Impostor) -> void {
+function layer_set_impostor(render3d_st: mut Render3dState, l: Layer, im: Impostor) -> void {
   l.imp = im
   scatter_attach(render3d_st, render3d_st.sc_card, l.imp_buf)
+  fog_impostor(render3d_st, l)
 }
 
 # ---- per frame -----------------------------------------------------------------------
@@ -952,7 +968,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
 }
 
 function layer_draw_far(render3d_st: mut Render3dState, l: Layer, shadow: bool, light_vp: floats) -> void {
-  if l.imp == null or (l.n_far == 0 and not l.g_on) { return }
+  if l.imp == null or l.imp.albedo == 0 or (l.n_far == 0 and not l.g_on) { return }
   var p = render3d_st.sc_imp_prog
   if shadow { p = render3d_st.sc_imp_prog_shadow }
   gpu_use_program(render3d_st, p)
@@ -994,7 +1010,7 @@ function layer_draw_far(render3d_st: mut Render3dState, l: Layer, shadow: bool, 
 # as you approach it. The card is also far the cheaper of the two, which is what pays for
 # casting the whole set into all five cascades.
 function layer_draw_shadow(render3d_st: mut Render3dState, l: Layer, light_vp: floats) -> void {
-  if l.n_sh == 0 or l.imp == null { return }
+  if l.n_sh == 0 or l.imp == null or l.imp.albedo == 0 { return }
   let p = render3d_st.sc_imp_prog_shadow
   gpu_use_program(render3d_st, p)
   let im = l.imp

@@ -59,6 +59,7 @@ export function r3d_fog_wall(render3d_st: mut Render3dState, dist: float) -> voi
   # every layer and stream re-gathers for the new reach
   render3d_st.sc_view_gen += 1
   cam_update(render3d_st)
+  fog_impostors(render3d_st)
 }
 # how far anything is drawn: the fog wall and a margin, or `far` (0: no limit of its own) without one
 function r3d_reach(render3d_st: Render3dState, far: float) -> float {
@@ -221,6 +222,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   # a stale attachment or a texture freed twice shows up.
   render3d_st.r3d_test_frame += 1
   vkmem_tick(render3d_st)
+  fog_at_tick(render3d_st)
   if render3d_st.r3d_test_resize == 0 and r3d_env_has(render3d_st, "R3D_RESIZE_AT") { render3d_st.r3d_test_resize = Text.to_int(r3d_env(render3d_st, "R3D_RESIZE_AT")) }
   # R3D_RESIZE_AT=<n>: from frame n on, rebuild every screen-sized buffer every few
   # frames at a different size, as dragging a window edge or entering fullscreen does.
