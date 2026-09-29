@@ -25,7 +25,25 @@
     "annot-system",
     "annot-enginesystem",
     "annot-namespace",
-    "annot-clearcolor"
+    "annot-clearcolor",
+    "annot-alloc_ok",
+    "annot-appendonly",
+    "annot-asset",
+    "annot-color",
+    "annot-derived",
+    "annot-deterministic",
+    "annot-frame",
+    "annot-key",
+    "annot-max",
+    "annot-node",
+    "annot-oneof",
+    "annot-owns",
+    "annot-permap",
+    "annot-range",
+    "annot-ref",
+    "annot-text",
+    "annot-tint",
+    "annot-unit"
   ],
   "builtins": [
     "fn-print",
@@ -86,7 +104,8 @@
     "kw-machine",
     "kw-state",
     "kw-become",
-    "kw-try"
+    "kw-try",
+    "kw-dispatch"
   ],
   "ease": [
     "ease-in",
@@ -119,7 +138,8 @@
     "fn-world_register_prop",
     "fn-world_attach_dyn",
     "fn-world_detach_dyn",
-    "fn-world_query_next"
+    "fn-world_query_next",
+    "kw-system"
   ],
   "events": [
     "kw-event",
@@ -211,7 +231,8 @@
     "op-access",
     "op-interp",
     "op-literals",
-    "op-comment"
+    "op-comment",
+    "kw-true"
   ],
   "phases": [
     "phase-fixedupdate",
@@ -240,7 +261,11 @@
     "kw-on",
     "kw-enter",
     "kw-exit",
-    "kw-start"
+    "kw-start",
+    "kw-lasts",
+    "kw-loads",
+    "kw-shows",
+    "kw-then"
   ],
   "screen": [
     "screen-clear",
@@ -276,7 +301,29 @@
     "kw-extern",
     "kw-ui",
     "kw-enum",
-    "kw-namespace"
+    "kw-namespace",
+    "kw-action",
+    "kw-alias",
+    "kw-as",
+    "kw-bind",
+    "kw-component",
+    "kw-def",
+    "kw-export",
+    "kw-friend",
+    "kw-from",
+    "kw-internal",
+    "kw-module",
+    "kw-mut",
+    "kw-numbers",
+    "kw-of",
+    "kw-open",
+    "kw-port",
+    "kw-prop",
+    "kw-reducer",
+    "kw-registry",
+    "kw-unsafe",
+    "kw-uses",
+    "kw-view"
   ],
   "system": [
     "system-run",

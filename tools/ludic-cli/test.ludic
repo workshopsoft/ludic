@@ -99,6 +99,30 @@ function diag_json_case(path: pointer, n: int, want: pointer, label: pointer) ->
   if s_contains(capture(`cat {js}`), want) { ok(label) } else { bad2(label, `no diagnostic holds [{want}]`) }
 }
 
+# --stdin-file <path>: stdin stands for <path> wherever the program opens it. A buffer that breaks an
+# import reached through its barrel (spelt with `..`) is refused at the buffer's line under the file's
+# usual name; a buffer that fixes a refused entry checks clean; a path nothing opens is a warning.
+function stdin_file_cases() -> void {
+  let lbl = "--stdin-file: an unsaved buffer checked in place of its file"
+  let fish = "examples/modules/kinds/fishing/index.ludic"
+  let js = `{tmp_dir()}/sf_break.json`
+  let spelt = "./examples/modules/kinds/fishing/../fishing/index.ludic"
+  if shq(`sed 's/return fishing_st.landed/return "seven"/' {fish} | bin/ludicc examples/modules/private_kinds.ludic --check --diagnostics=json --stdin-file {spelt} > {js} 2>/dev/null`) {
+    bad2(lbl, "a buffer with an error checked clean");  return
+  }
+  let broke = capture(`cat {js}`)
+  if not s_contains(broke, `"file": "{fish}", "line": 21`) { bad2(lbl, `no error at the buffer's line 21 of {fish}: {s_trim(broke)}`);  return }
+  let js2 = `{tmp_dir()}/sf_fix.json`
+  let fix = "sed -e 's/print(on + 1)/print(1)/' -e 's/half(1, 2)/half(1)/' -e 's/-> int { return \"seven\" }/-> int { return 7 }/'"
+  let clean = shq(`{fix} examples/rejected/every_error.ludic | bin/ludicc examples/rejected/every_error.ludic --check --diagnostics=json --stdin-file examples/rejected/every_error.ludic > {js2} 2>/dev/null`)
+  let said = s_trim(capture(`cat {js2}`))
+  if not clean or not (said == "[]") { bad2(lbl, `a buffer that fixes the saved file's errors said {said}`);  return }
+  let js3 = `{tmp_dir()}/sf_none.json`
+  shq(`printf '' | bin/ludicc examples/modules/private_kinds.ludic --check --diagnostics=json --stdin-file examples/nowhere.ludic > {js3} 2>/dev/null`)
+  if not s_contains(capture(`cat {js3}`), "the program does not reach this file") { bad2(lbl, "a path the program never opens was not reported");  return }
+  ok(lbl)
+}
+
 # a feature example that consumes an in-repo controller package (packages/): same
 # as feat_case, but the compiler is pointed at packages/ via LUDIC_MODULES so a
 # `import "ludic.foo/bar.ludic"` resolves, and LUDIC_HOME anchors the engine
@@ -1227,6 +1251,7 @@ function cmd_dev_test() -> int {
   diag_json_case("rejected/every_error", 3, "\"line\": 8, \"col\": 15, \"severity\": \"error\", \"message\": \"half takes 1 argument(s) and this call gives 2\"", "--diagnostics=json: every type error as {file, line, col, severity, message}")
   diag_json_case("rejected/ref_unknown", 1, "@Ref(Shops): this program has no Shops - left unresolved", "--diagnostics=json: an @Ref to a registry the program lacks is a warning beside the error")
   diag_json_case("rejected/node_bad", 8, "crate.shape is \\\"cube\\\", and field Tool.shape is @OneOf(", "--diagnostics=json: every @Node / @Clip / @Material with no model field, @OneOf of the wrong kind or a row outside its words, and the targets the program lacks as warnings")
+  stdin_file_cases()
   feat_case("lang/generics", "", "7 Crater Lake a 2 west 7 0.75 2.5 1", "generics.ludic (L5: generic records and functions, nested instances, fn-typed parameters and fields, inference from the result's slot)")
   reject_case("rejected/generic_unbound", "cannot tell what T is in this call to pool_new", "a call whose type arguments nothing decides is refused")
   reject_case("rejected/generic_mismatch", "words wants a Pool<string> and this is a Pool<int>", "two instances of one generic are two types")
@@ -1484,6 +1509,8 @@ function cmd_dev_test() -> int {
   smoke("networking/net_rt")
   smoke("library/cursor_capture")                    # #89 Input.cursor_mode compiles (no-op headless; windowed links cocoa.ll)
   smoke("rendering/gl_triangle")                     # Gl.* (OpenGL 4.1 core) compiles headless; the run needs a GPU context
+
+  syntax_cases()
 
   print("== the compiler and the CLI (ludicc / ludic) ==")
   # ludicc comes out of the IR seed with clang alone; the CLI is then compiled

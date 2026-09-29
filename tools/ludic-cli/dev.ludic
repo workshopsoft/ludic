@@ -30,6 +30,7 @@ program LudicDev {
   import "lsp_test.ludic"
   import "forgejo.ludic"
   import "checks.ludic"
+  import "syntax_gen.ludic"
   import "docgen.ludic"
   import "docgen_gen.ludic"
   import "docgen_check.ludic"
@@ -67,6 +68,7 @@ program LudicDev {
     print("  check-docs                    every ```ludic doc fence parses (or is marked skip/expect-error)")
     print("  check-impl                    every implemented feature has a docs/language page")
     print("  check-vocabulary              the vocabulary is in sync across grammar / lexer / header / parser")
+    print("  syntax [--check]              write every grammar's keyword, type and phase lists from ludicc --emit-syntax")
     print("  lint-asset <file>             validate one editor .json / .xml asset")
     print("  docs-gen [--out DIR]          generate the documentation site (default build/pages)")
     print("  docs-check [DIR]              coverage/integrity guard over a generated docs site")
@@ -108,6 +110,7 @@ program LudicDev {
     if (cmd == "check-docs") { return cmd_check_docs() }
     if (cmd == "check-impl") { return cmd_check_impl() }
     if (cmd == "check-vocabulary") { return cmd_check_vocab() }
+    if (cmd == "syntax") { return cmd_syntax_gen() }
     if (cmd == "lint-asset") { return cmd_lint_asset() }
     if (cmd == "docs-palette") { return cmd_docs_palette() }
     if (cmd == "glgen") { return cmd_glgen() }

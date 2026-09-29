@@ -2,6 +2,8 @@
 # The compiler reads one .ludic file whole and emits LLVM IR text to stdout.
 
 function read_file(path: pointer) -> pointer {
+  let unsaved = stdin_file_serve(path)            # --stdin-file: the buffer stands for its file (stdin_file.ludic)
+  if unsaved != null { return unsaved }
   let f = file_open(path, "rb")
   if (f == null) { return null }
   file_seek(f, 0, 2)

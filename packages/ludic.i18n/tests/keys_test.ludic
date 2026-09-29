@@ -32,38 +32,38 @@ program I18nKeysTest {
 
   test "a key is its English under en.po, its own language's text when there is one, else English, else itself" (i18n_st: mut I18nState) {
     start (i18n_st)
-    expect(L(i18n_st, i18n_key("pause.resume")) == "Resume")
-    expect(L(i18n_st, tr(i18n_key("pause.quit"))) == "Quit")
+    expect(L(i18n_st, tr(k"pause.resume")) == "Resume")
+    expect(L(i18n_st, tr(k"pause.quit")) == "Quit")
     i18n_load_text(i18n_st, tt())
-    expect(L(i18n_st, i18n_key("pause.resume")) == "Devam")
+    expect(L(i18n_st, tr(k"pause.resume")) == "Devam")
     expect(L(i18n_st, i18n_key("pause.quit")) == "Quit")                  # the language lacks it: English
     expect(L(i18n_st, i18n_key("nowhere.at_all")) == "nowhere.at_all")    # en.po lacks it: the key
     i18n_loud(i18n_st, true)
     expect(L(i18n_st, i18n_key("nowhere.else")) == "[[nowhere.else]]")   # a developer's build says so
     i18n_off(i18n_st)
-    expect(L(i18n_st, i18n_key("pause.resume")) == "Resume")              # back to English: nothing stale kept
+    expect(L(i18n_st, tr(k"pause.resume")) == "Resume")              # back to English: nothing stale kept
   }
 
   test "holes take their arguments in the language's order, and an argument that is a key is made first" (i18n_st: mut I18nState) {
     start (i18n_st)
-    expect(L(i18n_st, trf(i18n_key("hud.day"), "12", "", "", "")) == "Day 12")
-    let saw = trf(i18n_key("catch.saw"), i18n_key("species.elk.a_name"), "5:30", "", "")
+    expect(L(i18n_st, trf(k"hud.day", "12", "", "", "")) == "Day 12")
+    let saw = trf(k"catch.saw", tr(k"species.elk.a_name"), "5:30", "", "")
     expect(L(i18n_st, saw) == "You saw an elk at 5:30.")
     i18n_load_text(i18n_st, tt())
-    expect(L(i18n_st, trf(i18n_key("hud.day"), "12", "", "", "")) == "12. Gun")
+    expect(L(i18n_st, trf(k"hud.day", "12", "", "", "")) == "12. Gun")
     expect(L(i18n_st, saw) == "5:30 saatinde bir geyik gordun.")
-    expect(L(i18n_st, trf(i18n_key("hud.day"), "", "", "", "")) == ". Gun")    # a missing argument is empty
+    expect(L(i18n_st, trf(k"hud.day", "", "", "", "")) == ". Gun")    # a missing argument is empty
     expect(key_text(saw) == "catch.saw" and key_text("Settings") == "Settings")
   }
 
   test "a plural key takes its form by the count, by each language's own rule, falling back to English's" (i18n_st: mut I18nState) {
     start (i18n_st)
-    expect(L(i18n_st, trn(i18n_key("pack.items"), 1, "", "", "")) == "1 item")
-    expect(L(i18n_st, trn(i18n_key("pack.items"), 3, "", "", "")) == "3 items")
+    expect(L(i18n_st, trn(kn"pack.items", 1, "", "", "")) == "1 item")
+    expect(L(i18n_st, trn(kn"pack.items", 3, "", "", "")) == "3 items")
     i18n_load_text(i18n_st, tt())
-    expect(L(i18n_st, trn(i18n_key("pack.items"), 21, "", "", "")) == "21 esya")     # n%10 == 1
-    expect(L(i18n_st, trn(i18n_key("pack.items"), 5, "", "", "")) == "5 esyalar")
-    expect(L(i18n_st, trn(i18n_key("catch.count"), 2, "", "", "")) == "2 trout")      # the language lacks it
+    expect(L(i18n_st, trn(kn"pack.items", 21, "", "", "")) == "21 esya")     # n%10 == 1
+    expect(L(i18n_st, trn(kn"pack.items", 5, "", "", "")) == "5 esyalar")
+    expect(L(i18n_st, trn(kn"catch.count", 2, "", "", "")) == "2 trout")      # the language lacks it
   }
 
   test "the old English form still works beside keys, so a game can move over a file at a time" (i18n_st: mut I18nState) {
@@ -71,7 +71,7 @@ program I18nKeysTest {
     expect(L(i18n_st, "Settings") == "Settings")
     i18n_load_text(i18n_st, tt())
     expect(L(i18n_st, "Settings") == "Ayarlar")
-    expect(L(i18n_st, i18n_key("pause.resume")) == "Devam")
+    expect(L(i18n_st, tr(k"pause.resume")) == "Devam")
     expect(not i18n_is_key("Settings") and i18n_is_key(i18n_key("x")) and i18n_is_key(i18n_key_plural("x")))
   }
 }

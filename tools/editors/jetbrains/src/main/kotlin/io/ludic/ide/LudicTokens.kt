@@ -55,24 +55,37 @@ object LudicTokens {
 }
 
 /**
- * The vocabulary, mirroring tools/ludic-tools/ludic_syntax.h. When the language
- * grows a keyword both sides change together; that header is the reference.
+ * The vocabulary. The keyword, type and phase sets are written by `ludic-dev
+ * syntax` from the compiler's own table (`ludicc --emit-syntax`); the rest
+ * mirrors tools/ludic-tools/ludic_syntax.h.
  */
 object LudicVocabulary {
+    // ludic-dev syntax: begin - generated from `ludicc --emit-syntax` (selfhost/frontend/vocab.ludic); run `ludic-dev syntax`, do not edit
     val DECL = setOf(
-        "program", "import", "property", "model", "enum", "ui", "namespace",
-        "const", "var", "function", "extern", "handler", "entry", "event", "scene", "test"
+        "program", "module", "import", "property", "state", "event", "action", "reducer", "enum",
+        "model", "prefab", "scene", "handler", "ui", "namespace", "alias", "port", "bind",
+        "registry", "def", "component", "view", "prop", "const", "var", "function", "fn", "extern",
+        "entry", "test"
     )
     val CLAUSE = setOf(
-        "phase", "query", "on", "cancellable", "public", "layer", "start"
+        "export", "internal", "friend", "uses", "open", "of", "as", "from", "numbers", "unsafe",
+        "mut", "phase", "query", "on", "cancellable", "public", "layer", "start", "shows", "lasts",
+        "then", "loads", "system"
     )
     val STMT = setOf(
-        "let", "return", "if", "else", "while", "for", "in", "spawn", "despawn",
-        "enable", "disable", "match", "machine", "prefab", "state", "become", "where",
-        "and", "or", "not", "break", "continue", "new", "emit", "cancel", "try"
+        "let", "if", "else", "while", "for", "in", "where", "match", "machine", "become", "return",
+        "break", "continue", "new", "spawn", "despawn", "enable", "disable", "attach", "detach",
+        "emit", "cancel", "dispatch", "try", "and", "or", "not"
     )
-    val PRIMITIVES = setOf("int", "long", "fixed", "float", "double", "countdown", "bool", "entity", "string", "pointer", "byte", "words", "fixeds", "floats", "doubles", "pointers", "Vector", "IVec2", "Rect", "void")
-    val PHASES = setOf("Start", "Input", "FixedUpdate", "Update", "LateUpdate", "Render", "Overlay")
+    val PRIMITIVES = setOf(
+        "int", "long", "float", "double", "fixed", "bool", "byte", "string", "Key", "pointer",
+        "void", "entity", "countdown", "words", "floats", "doubles", "fixeds", "pointers", "Vector",
+        "IVec2", "Rect"
+    )
+    val PHASES = setOf(
+        "Start", "Input", "FixedUpdate", "Update", "LateUpdate", "Render", "Overlay"
+    )
+    // ludic-dev syntax: end
     val WIDGETS = setOf("panel", "col", "row", "label", "button", "image", "spacer")
 
     val BUILTINS = setOf(
