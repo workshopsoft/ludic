@@ -85,7 +85,7 @@ function rt_init(rt_core_st: mut RtCoreState, rt_image_st: mut RtImageState, rt_
   rt_tt_init(rt_truetype_st)
   rt_ui_init(rt_ui_st)
   rt_clear(rt_core_st, rt_rng_st, 0)
-  if is_windowed() {
+  if is_windowed() and not window_later() {
     win_open(rt_fbw, rt_fbh, 3, game_title())
   }
 }
