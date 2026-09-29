@@ -431,7 +431,7 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
   let span = (size + align - 1) / align * align
   # an impostor atlas has memory of its own: a fog wall lets it go (fog_impostors.ludic), and inside a
   # shared block its room went back to nobody while the block's other tenants stayed
-  if size <= gvk_own_over(render3d_st) and render3d_st.gvk_tag != VKM_IMPOSTOR {
+  if size <= gvk_own_over(render3d_st) and render3d_st.gvk_tag != VKM_IMPOSTOR and render3d_st.gvk_tag != VKM_SHADOW {
     var kind = t * 2
     if image { kind += 1 }
     var i = 0
