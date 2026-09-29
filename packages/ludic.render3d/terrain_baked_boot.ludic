@@ -1,0 +1,37 @@
+# terrain_baked_boot.ludic — the game names its map's baked terrain (the tiles and the sun's shadow) before the
+# map is made; the renderer's own start (r3d_init's terrain step) and terrain_reload then take it from
+# them, and make the map from its survey as before when a bake is missing or not this version.
+
+# the map's bakes: the tiles' file and the shadow's, under the key and version they were baked as.
+# "" for a path turns that one off. Before r3d_init at boot, and before terrain_reload on a swap
+export function terrain_baked_at(render3d_st: mut Render3dState, tiles: string, shadow: string, key: string, version: int) -> void {
+  render3d_st.tb_tiles = intern(tiles)
+  render3d_st.tb_shadow = intern(shadow)
+  render3d_st.tb_key = intern(key)
+  render3d_st.tb_version = version
+}
+
+# the map from its bake when there is one: true (nothing to generate), else false and nothing changed
+function terrain_baked_try(render3d_st: mut Render3dState) -> bool {
+  render3d_st.tt_baked = false
+  if len(render3d_st.tb_tiles) == 0 { return false }
+  if not terrain_from_baked(render3d_st, render3d_st.tb_tiles, render3d_st.tb_key, render3d_st.tb_version, render3d_st.TERRAIN_HALF, render3d_st.r3d_dem_ox, render3d_st.r3d_dem_oz) {
+    tb_say_missing(render3d_st.tb_tiles)
+    return false
+  }
+  terrain_baked_shadow(render3d_st)
+  return true
+}
+
+# the sun's height-field shadow from its bake, when there is one (else terrain_init bakes it from the coarse level)
+@alloc_ok("a bake read once at load")
+function terrain_baked_shadow(render3d_st: mut Render3dState) -> void {
+  render3d_st.tb_shadow_ok = false
+  if len(render3d_st.tb_shadow) == 0 { return }
+  let b = r3d_baked_read(render3d_st.tb_shadow, render3d_st.tb_key, render3d_st.tb_version)
+  if b != null { render3d_st.tb_shadow_ok = terrain_shadow_from_bytes(render3d_st, b) }
+  if not render3d_st.tb_shadow_ok { tb_say_missing(render3d_st.tb_shadow) }
+  if b != null { free(b) }
+}
+
+function tb_say_missing(path: string) -> void { print(`bake: {path} missing or stale - the terrain made at run time (ludic bake)`) }
