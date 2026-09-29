@@ -290,6 +290,10 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
     if is_path_ns(meth) { return emit_path_ns(meth, e) }
     return emit_alias_or_fail("Path", meth, e)
   }
+  if (ns == "Build") {
+    if is_build_ns(meth) { return emit_build_ns(meth, e) }
+    return emit_alias_or_fail("Build", meth, e)
+  }
   if (ns == "Mime") {
     if is_mime_ns(meth) { return emit_mime_ns(meth, e) }
     return emit_alias_or_fail("Mime", meth, e)

@@ -355,7 +355,7 @@ function cmd_bundle_windows() -> int {
   # 1. the executable - staged under a name with no spaces, as on macOS
   let res = windows_icon_res(manifest_app(m, "icon"))
   let staged = tmp_path("bundle_exe")
-  var flags = "--windowed --gui"
+  var flags = "--windowed --gui --release"
   if res != "" { flags = flags + ` --link "{res}"` }
   Os.set_env("LUDIC_OPT", "2")                   # a shipped game is -O2, whatever a developer's shell says
   if not shq(`{ludicc()} {flags}{title_flag()} {entry} --natives-out {staged}.natives -o {staged}`) { return 1 }
@@ -441,6 +441,7 @@ function cmd_bundle() -> int {
   #    out of the path it is given.
   let exe = `{contents}/MacOS/{name}`
   let staged = `{tmp_dir()}/bundle_exe`
+  g_release_build = true
   if not compile_app(entry, staged, 1, false) { return 1 }
   if not shq(`cp {staged} "{exe}"`) {
     err("ludic bundle: could not place the executable\n")

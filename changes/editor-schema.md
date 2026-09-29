@@ -14,3 +14,6 @@ so is `@Node` / `@Clip` naming a field that is not a glTF (`@Asset("gltf")`, or 
 a listing `@OneOf` (`@OneOf(A, B)`, not a prefix `@OneOf(P_)`) naming a constant that does not exist, and `@Tint` naming no constant. A field may now carry several attributes. `ludicc --check
 --diagnostics=json` (`ludic build --check --diagnostics=json`) prints every error as one JSON array
 of `{file, line, col, severity, message}` on stdout; tokens and nodes now know their column.
+
+`Build.schema_hash()` answers FNV-1a 64 of the program's own schema (the bytes `ludic schema` prints),
+computed only when a program names it, and 0 under `ludicc --release`, which `ludic bundle` now passes.

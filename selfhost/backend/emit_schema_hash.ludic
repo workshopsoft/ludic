@@ -1,0 +1,46 @@
+# emit_schema_hash.ludic — Build.schema_hash(): FNV-1a 64 of the program's own schema (the bytes
+# `ludic schema` prints), so a tool talking to a running build can tell it was built from other
+# data. Worked out once, only when the program asks for it, and 0 in a release (`--release`,
+# ludic bundle). The compiler's int is 32 bits, so the hash is kept as four 16-bit limbs.
+var g_release: bool = false                  # --release: what ships carries no schema hash
+var g_uses_schema_hash: bool = false         # the program names Build.schema_hash (parse.ludic)
+var g_sh_lo: int = 0                         # the hash's low and high 32 bits, once worked out
+var g_sh_hi: int = 0
+var g_sh_done: bool = false
+
+# after the checker: the schema as --emit-schema would write it, hashed
+function schema_hash_compute() -> void {
+  if g_release or not g_uses_schema_hash { return }
+  let b = schema_buf()
+  let s = buf_str(b)
+  var h0 = 8997                              # 522109ce484222325, low limb first
+  var h1 = 33826
+  var h2 = 40164
+  var h3 = 52210
+  var i = 0
+  while i < b.len {
+    h0 = h0 ^ (s[i] & 255)
+    # times 256000001b3: limb 0 of the prime is 435, limb 2 is 256
+    var r0 = h0 * 435
+    var r1 = h1 * 435 + (r0 >> 16)
+    var r2 = h2 * 435 + h0 * 256 + (r1 >> 16)
+    var r3 = h3 * 435 + h1 * 256 + (r2 >> 16)
+    h0 = r0 & 65535
+    h1 = r1 & 65535
+    h2 = r2 & 65535
+    h3 = r3 & 65535
+    i += 1
+  }
+  g_sh_lo = (h1 << 16) | h0
+  g_sh_hi = (h3 << 16) | h2
+  g_sh_done = true
+}
+
+function is_build_ns(meth: pointer) -> bool { return meth == "schema_hash" }
+function emit_build_ns(meth: pointer, e: Node) -> Val {
+  if not g_sh_done { return val("0", "long") }
+  let lo = emit_bind(`zext i32 {itoa(g_sh_lo)} to i64`)
+  let hi = emit_bind(`zext i32 {itoa(g_sh_hi)} to i64`)
+  let up = emit_bind(`shl i64 {hi}, 32`)
+  return val(emit_bind(`or i64 {up}, {lo}`), "long")
+}

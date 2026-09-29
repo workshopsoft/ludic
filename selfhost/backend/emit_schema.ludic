@@ -16,6 +16,15 @@
 var g_schema_out: pointer = null
 
 function schema_write(path: pointer) -> bool {
+  let b = schema_buf()
+  let f = file_open(path, "wb")
+  if f == null { return false }
+  file_write(f, buf_str(b), b.len)
+  file_close(f)
+  return true
+}
+# the schema's bytes, exactly as --emit-schema writes them
+function schema_buf() -> Buf {
   let b = buf_new()
   buf_puts(b, "{\n  \"schema_version\": 1,\n  \"entry\": ")
   jq_put(b, g_mg_entry)
@@ -28,11 +37,7 @@ function schema_write(path: pointer) -> bool {
   buf_puts(b, "\n  ],\n  \"functions\": [")
   sc_functions(b)
   buf_puts(b, "\n  ]\n}\n")
-  let f = file_open(path, "wb")
-  if f == null { return false }
-  file_write(f, buf_str(b), b.len)
-  file_close(f)
-  return true
+  return b
 }
 
 # ---- names and text ---------------------------------------------------------------------------
