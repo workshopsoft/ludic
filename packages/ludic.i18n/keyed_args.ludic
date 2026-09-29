@@ -21,13 +21,6 @@ function kr_unescape(s: string) -> string {
   return text_of(buf, n)
 }
 
-# an argument with letters in it (not a number, a time, a sign): while the game still hands English
-# into a key's holes (until its code and data are keys, phase 26.9), it gets the old English lookup
-function kr_words(s: string) -> bool {
-  for i in 0 .. len(s) { if (s[i] >= 65 and s[i] <= 90) or (s[i] >= 97 and s[i] <= 122) { return true } }
-  return false
-}
-
 # a count written as decimal digits (a leading - allowed); anything else is 0
 function kr_int(s: string) -> int {
   var v = 0

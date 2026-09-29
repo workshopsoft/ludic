@@ -3,7 +3,6 @@
 
 
 const CACHE_MAX: int = 4000
-const CAPS: int = 16
 
 export function i18n_on(i18n_st: I18nState) -> bool { return i18n_st.on }
 export function i18n_current(i18n_st: I18nState) -> string { return i18n_st.cur }
@@ -12,7 +11,6 @@ export function i18n_exact_count(i18n_st: I18nState) -> int {
   if i18n_st.out == null { return 0 }
   return len(i18n_st.out)
 }
-export function i18n_pattern_count(i18n_st: I18nState) -> int { return i18n_st.pat_n }
 
 # the overlay's own font, as the overlay was opened with it
 export function i18n_font_base(i18n_st: mut I18nState, path: string) -> void { i18n_st.font_now = path }

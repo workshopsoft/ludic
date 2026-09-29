@@ -60,7 +60,7 @@ function kr_fill(i18n_st: mut I18nState, t: string, args: []string) -> string {
     if h >= 1 {
       var v = ""
       if h < len(args) { v = args[h] }
-      if i18n_is_key(v) or kx_mixed(v) or kx_nested(v) { v = L(i18n_st, v) } else if i18n_st.on and kr_words(v) { v = L(i18n_st, v) }
+      if i18n_is_key(v) or kx_mixed(v) or kx_nested(v) { v = L(i18n_st, v) }
       r = r + t[seg..i] + v
       i = hole_end(t, i)
       seg = i

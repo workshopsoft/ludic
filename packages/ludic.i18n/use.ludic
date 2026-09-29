@@ -40,43 +40,14 @@ export function i18n_load_text(i18n_st: mut I18nState, text: string) -> void {
   kc_clear(i18n_st)
   i18n_st.exact = Dict.new()
   i18n_st.out = new []string
-  i18n_st.cache = Dict.new()
-  i18n_st.cache_out = new []string
-  i18n_st.caps = new []string
-  for c in 0 .. CAPS { push(i18n_st.caps, "") }
   i18n_st.plural = Dict.new()
   i18n_st.forms = new []string
   i18n_st.plural_rule = plural_rule_of(i18n_header(text, "Plural-Forms"))
-  var np = 0
-  var nlit = 0
-  for i in 0 .. len(es) {
-    if blank(es[i].id) or blank(es[i].str) { continue }
-    let h = holes(es[i].id)
-    if h > 0 {
-      np += 1
-      nlit += h + 1
-    }
-  }
-  i18n_st.pat_out = new []string
-  i18n_st.lits = new []string
-  i18n_st.pat_l0 = words(np + 1)
-  i18n_st.pat_nl = words(np + 1)
-  i18n_st.pat_sc = words(np + 1)
-  i18n_st.pat_ph = words(nlit + 1)
-  i18n_st.nx_p = words(np + 1)
-  i18n_st.nx_s = words(np + 1)
-  i18n_st.nx_g = words(np + 1)
-  i18n_st.pfx = Dict.new()
-  i18n_st.sfx = Dict.new()
-  i18n_st.gen_head = 0
-  i18n_st.pat_n = 0
   for i in 0 .. len(es) {
     let e = es[i]
     if len(e.plural) > 0 { plural_add(i18n_st, e) } else if not (blank(e.id) or blank(e.str)) {
-      if holes(e.id) > 0 { add_pattern(i18n_st, e.id, e.str) } else {
-        Dict.set(i18n_st.exact, e.id, len(i18n_st.out))
-        push(i18n_st.out, e.str)
-      }
+      Dict.set(i18n_st.exact, e.id, len(i18n_st.out))
+      push(i18n_st.out, e.str)
     }
   }
   i18n_st.on = true
