@@ -27,6 +27,7 @@ function terrain_tiles_cut(render3d_st: mut Render3dState) -> void {
 # the last map's file let go (a world swap, or the map made again)
 function tt_close(render3d_st: mut Render3dState) -> void {
   if render3d_st.tt_file != null { file_close(render3d_st.tt_file);  render3d_st.tt_file = null }
+  tf_forget(render3d_st)
 }
 
 function tt_say_no_file(path: string) -> void { print(`r3d: terrain: cannot write {path}; the whole height field stays in memory`) }
