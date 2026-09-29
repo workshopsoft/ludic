@@ -35,12 +35,6 @@ export function hints_config(hints_st: mut HintsState, shown: int, every: float)
   hints_st.hn_every = every
   hints_st.hn_top = hn_slots(shown)
 }
-# a rail of n empty places
-function hn_slots(n: int) -> []int {
-  let out = new []int
-  for i in 0 .. n { push(out, -1) }
-  return out
-}
 
 # the next pass comes on the next tick rather than in a second
 export function hints_refresh(hints_st: mut HintsState) -> void { hints_st.hn_t = 0.0 }
@@ -96,7 +90,7 @@ export function hints_pick(hints_st: HintsState) -> int { return hints_st.hn_pic
 export function hints_hot(hints_st: HintsState, k: int) -> bool { return k == hints_st.hn_pick }
 
 export function hints_reset(hints_st: mut HintsState) -> void {
-  hints_st.hn_top = hn_slots(hints_st.hn_shown)
+  hn_empty(hints_st)
   hints_st.hn_n = 0
   hints_st.hn_t = 0.0
   hints_st.hn_pick = 0

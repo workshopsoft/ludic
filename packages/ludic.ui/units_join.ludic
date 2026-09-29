@@ -1,0 +1,17 @@
+# units_join.ludic - a var() value's pieces joined, for a memo miss (units.ludic)
+# the pieces as one text, made at its length at once (joined by + it left a text per piece behind)
+function cv_join(ui_st: UiState) -> string {
+  var n = 0
+  for p in 0 .. len(ui_st.cv_texts) { n += len(ui_st.cv_texts[p]) }
+  var out: pointer = null
+  unsafe { out = bytes(n + 1) }
+  var at = 0
+  for p in 0 .. len(ui_st.cv_texts) {
+    let t = ui_st.cv_texts[p]
+    unsafe { for i in 0 .. len(t) { out[at + i] = t[i] } }
+    at += len(t)
+  }
+  unsafe { out[n] = 0 }
+  let s: string = out
+  return s
+}

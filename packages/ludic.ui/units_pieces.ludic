@@ -88,8 +88,3 @@ function cv_same(ui_st: UiState, k: string) -> bool {
   }
   return at == len(k)
 }
-function cv_join(ui_st: UiState) -> string {
-  var out = ""
-  for p in 0 .. len(ui_st.cv_texts) { out = out + ui_st.cv_texts[p] }
-  return out
-}

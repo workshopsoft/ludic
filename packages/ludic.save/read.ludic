@@ -13,7 +13,17 @@ export function save_parse(text: string, f: SaveFormat) -> SaveRead {
   return read_new(SAVE_OK, v)
 }
 
-export function save_read(path: string, f: SaveFormat) -> SaveRead { return save_parse(Fs.read_text(path), f) }
+# the file read and parsed, and its text given back - the tree's strings are the parser's own, and a
+# load that kept the whole file for good kept it on every load and every menu card read
+export function save_read(path: string, f: SaveFormat) -> SaveRead {
+  let text = Fs.read_text(path)
+  let r = save_parse(text, f)
+  if text != null {
+    r.intact = save_text_intact(text)
+    free(text)
+  }
+  return r
+}
 
 # The version checks, then the chain. True when the object is now in today's shape; a newer file is
 # SAVE_FUTURE and read-only, an older one than the format carries is SAVE_CORRUPT.
