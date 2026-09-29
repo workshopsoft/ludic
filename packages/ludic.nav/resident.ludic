@@ -51,6 +51,23 @@ export function nav_tiles_keep(nav_st: NavState, kind: int, xs: []float, zs: []f
   }
   return changed
 }
+# the same ring by a distance the game answers: near(x, z) is how far (x, z) is from what must be
+# loaded (0 inside it). A tile comes in when its centre is within pad of that, and goes only past
+# pad + hyst, so a player at an edge does not read one in and out; how many changed
+export function nav_tiles_keep_near(nav_st: NavState, kind: int, near: fn(float, float) -> float, pad: float, hyst: float) -> int {
+  let h = nv_mesh(nav_st, kind)
+  let f = nav_st.nv_files[kind]
+  if h == null or f == null { return 0 }
+  var changed = 0
+  for i in 0 .. nvc_index_count(h) {
+    nvc_index_tile(h, i, nav_st.nv_tile)
+    let m = near(nav_st.nv_tile[0], nav_st.nv_tile[1]) - pad
+    let is_in = nav_st.nv_tile[2] > 0.5
+    if is_in and m > hyst { changed += nvc_index_out(h, i) }
+    if not is_in and m < 0.0 { changed += nv_tile_read(h, f, i) }
+  }
+  return changed
+}
 function nv_tile_read(h: pointer, f: pointer, i: int) -> int {
   let size = nvc_index_size(h, i)
   let buf = nvc_stage(size)
@@ -61,25 +78,4 @@ function nv_tile_read(h: pointer, f: pointer, i: int) -> int {
     return 0
   }
   return nvc_index_in(h, i, buf, size)
-}
-
-# how many of kind's tiles are in, and (nav_tiles_bytes) how many bytes those hold
-export function nav_tiles_in(nav_st: NavState, kind: int) -> int { return nv_tiles_sum(nav_st, kind, false) }
-export function nav_tiles_bytes(nav_st: NavState, kind: int) -> int { return nv_tiles_sum(nav_st, kind, true) }
-function nv_tiles_sum(nav_st: NavState, kind: int, bytes: bool) -> int {
-  let h = nv_mesh(nav_st, kind)
-  if h == null { return 0 }
-  var n = 0
-  for i in 0 .. nvc_index_count(h) {
-    nvc_index_tile(h, i, nav_st.nv_tile)
-    if nav_st.nv_tile[2] > 0.5 and bytes { n += int(nav_st.nv_tile[3]) }
-    if nav_st.nv_tile[2] > 0.5 and not bytes { n += 1 }
-  }
-  return n
-}
-# how many tiles kind's file holds in all
-export function nav_tiles_all(nav_st: NavState, kind: int) -> int {
-  let h = nv_mesh(nav_st, kind)
-  if h == null { return 0 }
-  return nvc_index_count(h)
 }
