@@ -6,16 +6,84 @@ out vec4 o_color;
 #define ridged(p, o) 0.3
 #define gnoise(p) 0.1
 #endif
-uniform sampler2D u_height;
+// no u_height here: the vertex stage reads the ground, and every declared sampler counts
+// against the stage's limit (MoltenVK) whether it is read or not
 // the baked terrain normal: x and z in RG16F, y rebuilt (a terrain normal always points up)
 uniform sampler2D u_ter_normal;
-vec3 terNormal(vec2 uv) { vec2 xz = texture(u_ter_normal, uv).rg;  return vec3(xz.x, sqrt(max(1.0 - dot(xz, xz), 0.0)), xz.y); }
 uniform float u_half;
 uniform float u_texel;               // height-map texel size in uv
 uniform sampler2D u_grass_d; uniform sampler2D u_grass_n; uniform sampler2D u_grass_a;
 uniform sampler2D u_ortho;
 uniform sampler2D u_sunshadow;   // the sun visibility this pixel already has (tersun.frag)
 uniform float u_ortho_on;
+#define TP_FRAGMENT
+// terpage.glsl, pasted (the reference copy and its rules are there)
+// ---- the page table ----------------------------------------------------------------------
+#ifndef TP_HELPERS
+#define TP_HELPERS
+uniform sampler2D u_tp_page;   // R32F, a texel a tile: slot + 1, 0 = not resident
+uniform float u_tp_on;         // 1 while paging; 0 reads the whole maps exactly as before
+uniform vec4 u_tp_dims;        // tiles a side, height texels a tile, photo texels a tile, full height res
+// the layer holding a full-map uv, or -1: paging off, off the map, or not resident
+float tpSlot(vec2 uv) {
+  if (u_tp_on < 0.5 || uv.x < 0.0 || uv.y < 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return -1.0;
+  ivec2 t = min(ivec2(floor(uv * u_tp_dims.x)), ivec2(int(u_tp_dims.x) - 1));
+  return texelFetch(u_tp_page, t, 0).r - 1.0;
+}
+// a full-map uv inside its tile's layer of k texels a side, past the one-texel border
+vec2 tpUV(vec2 uv, float k) { return (1.0 + fract(uv * u_tp_dims.x) * k) / (k + 2.0); }
+#endif
+// ---- the baked normal (x, z; y is rebuilt by the caller) ----------------------------------
+#ifndef TP_NORMAL
+#define TP_NORMAL
+uniform sampler2DArray u_tp_nrm;
+vec2 terNormalXZ(vec2 uv) {
+#ifdef TP_FRAGMENT
+  if (u_tp_on < 0.5) return texture(u_ter_normal, uv).rg;
+  // taken before the per-pixel branch: a neighbour on another tile must not decide the level
+  vec2 dx = dFdx(uv), dy = dFdy(uv);
+#endif
+  float s = tpSlot(uv);
+  if (s >= 0.0) return textureLod(u_tp_nrm, vec3(tpUV(uv, u_tp_dims.y), s), 0.0).rg;
+#ifdef TP_FRAGMENT
+  return textureGrad(u_ter_normal, uv, dx, dy).rg;
+#else
+  return textureLod(u_ter_normal, uv, 0.0).rg;
+#endif
+}
+#endif
+// ---- the photograph ----------------------------------------------------------------------
+#ifndef TP_ORTHO
+#define TP_ORTHO
+uniform sampler2DArray u_tp_ortho;
+// level-0 colour, fine where a tile is resident; the coarse map (with its mips) elsewhere
+vec3 terOrtho(vec2 uv) {
+#ifdef TP_FRAGMENT
+  if (u_tp_on < 0.5) return texture(u_ortho, uv).rgb;
+  vec2 dx = dFdx(uv), dy = dFdy(uv);
+#endif
+  float s = tpSlot(uv);
+  if (s >= 0.0) return textureLod(u_tp_ortho, vec3(tpUV(uv, u_tp_dims.z), s), 0.0).rgb;
+#ifdef TP_FRAGMENT
+  return textureGrad(u_ortho, uv, dx, dy).rgb;
+#else
+  return textureLod(u_ortho, uv, 0.0).rgb;
+#endif
+}
+#endif
+// ---- the photograph's measures (declares no sampler: a stage reading u_ortho blurred needs no tile)
+#ifndef TP_ORTHO_LOD
+#define TP_ORTHO_LOD
+// the FULL photograph's texels a side, for filters that weigh by the texel (orthoSmooth)
+vec2 tpOrthoRes() { return u_tp_on > 0.5 ? vec2(u_tp_dims.z * u_tp_dims.x) : vec2(textureSize(u_ortho, 0)); }
+// A blurred read (textureLod 1..2.5) names a level of the FULL photograph; on the coarse map
+// the same detail is that many levels lower, so the ground's far colour does not soften.
+float tpOrthoLod(float lod) {
+  if (u_tp_on < 0.5) return lod;
+  return max(lod - log2(u_tp_dims.z * u_tp_dims.x / float(textureSize(u_ortho, 0).x)), 0.0);
+}
+#endif
+vec3 terNormal(vec2 uv) { vec2 xz = terNormalXZ(uv);  return vec3(xz.x, sqrt(max(1.0 - dot(xz, xz), 0.0)), xz.y); }
 uniform sampler2D u_rock_d;  uniform sampler2D u_rock_n;  uniform sampler2D u_rock_a;
 uniform sampler2D u_snow_d;  uniform sampler2D u_carpet;   // the clump cards baked straight down (alpha = coverage)
 uniform float u_carpet_on;
@@ -44,7 +112,7 @@ uniform vec2 u_origin;           // world offset of the terrain grid
 // applied inside sunShadow() for every receiver in the scene.
 // bicubic (B-spline) sample through four bilinear taps: the 10 m photo pixels stop reading as squares
 vec3 orthoSmooth(vec2 uv) {
-  vec2 res = vec2(textureSize(u_ortho, 0));
+  vec2 res = tpOrthoRes();   // the full photograph's texel, whichever map is bound
   vec2 t = uv * res - 0.5;
   vec2 f = fract(t);
   vec2 i = floor(t);
@@ -52,8 +120,8 @@ vec3 orthoSmooth(vec2 uv) {
   vec2 w3 = f * f * f / 6.0, w2 = 1.0 - w0 - w1 - w3;
   vec2 s0 = w0 + w1, s1 = w2 + w3;
   vec2 o0 = (i - 1.0 + w1 / s0 + 0.5) / res, o1 = (i + 1.0 + w3 / s1 + 0.5) / res;
-  return (texture(u_ortho, vec2(o0.x, o0.y)).rgb * s0.x + texture(u_ortho, vec2(o1.x, o0.y)).rgb * s1.x) * s0.y
-       + (texture(u_ortho, vec2(o0.x, o1.y)).rgb * s0.x + texture(u_ortho, vec2(o1.x, o1.y)).rgb * s1.x) * s1.y;
+  return (terOrtho(vec2(o0.x, o0.y)) * s0.x + terOrtho(vec2(o1.x, o0.y)) * s1.x) * s0.y
+       + (terOrtho(vec2(o0.x, o1.y)) * s0.x + terOrtho(vec2(o1.x, o1.y)) * s1.x) * s1.y;
 }
 uniform mat4 u_view;
 
@@ -210,7 +278,7 @@ vec3 dbg_n; vec3 dbg_alb; float dbg_shadow; vec3 dbg_mat;
 float fbmC(bool cheap, vec2 q, int o) { return cheap ? 0.0 : fbm(q, o); }
 float ridgedC(bool cheap, vec2 q, int o) { return cheap ? 0.35 : ridged(q, o); }
 float gnoiseC(bool cheap, vec2 q) { return cheap ? 0.0 : gnoise(q); }
-vec3 orthoC(bool cheap, vec2 uv) { return cheap ? textureLod(u_ortho, uv, 1.0).rgb : orthoSmooth(uv); }
+vec3 orthoC(bool cheap, vec2 uv) { return cheap ? textureLod(u_ortho, uv, tpOrthoLod(1.0)).rgb : orthoSmooth(uv); }
 vec4 carpetC(bool cheap, vec2 uv, vec2 dx, vec2 dy) { return cheap ? textureGrad(u_carpet, uv, dx, dy) : sampleCarpet(uv, dx, dy); }
 void matC(bool cheap, sampler2D d, sampler2D nm, sampler2D am, vec2 uv, vec2 dx, vec2 dy, out vec3 alb, out vec3 nrm, out vec3 arm) {
   if (cheap) samplePlain(d, nm, am, uv, dx, dy, alb, nrm, arm); else sampleMat(d, nm, am, uv, dx, dy, alb, nrm, arm);
@@ -267,14 +335,14 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   if (orthoOn) {
     oc = orthoC(cheap, v_huv);
     // (classified from a ~40 m blur: thresholding the raw 10 m pixels drew hard squares)
-    vec3 ocf = textureLod(u_ortho, v_huv, 2.0).rgb;
+    vec3 ocf = textureLod(u_ortho, v_huv, tpOrthoLod(2.0)).rgb;
     float gx = ocf.g - max(ocf.r, ocf.b);
     // (the photograph is sampled linear: sRGB 72 is 0.06, 92 is 0.11)
     forestW = smoothstep(0.12, 0.06, max(ocf.r, max(ocf.g, ocf.b))) * smoothstep(0.004, 0.012, gx) * smoothstep(waterLine(p.xz) + 0.8, waterLine(p.xz) + 1.8, p.y);
     // Classify from a ~60 m blur, never from the pixels: the survey's 10 m pixels carry
     // a foot trail as a broken line of bare ground, and thresholding them painted it
     // across the meadow as tan dashes (and, on the CPU, lined boulders up along it).
-    vec3 ocl = textureLod(u_ortho, v_huv, 2.5).rgb;
+    vec3 ocl = textureLod(u_ortho, v_huv, tpOrthoLod(2.5)).rgb;
     float mxc = max(ocl.r, max(ocl.g, ocl.b)), mnc = min(ocl.r, min(ocl.g, ocl.b));
     float greenEx = ocl.g - max(ocl.r, ocl.b);
     screeC = smoothstep(0.008, -0.002, greenEx) * smoothstep(0.06, 0.12, mxc) * (1.0 - smoothstep(0.55, 0.75, mxc)) * smoothstep(waterLine(p.xz) + 0.2, waterLine(p.xz) + 1.2, p.y);

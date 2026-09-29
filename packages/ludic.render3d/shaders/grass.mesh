@@ -19,11 +19,91 @@ uniform float u_time;
 uniform sampler2D u_ts_height;
 // the baked terrain normal: x and z in RG16F, y rebuilt (a terrain normal always points up)
 uniform sampler2D u_ter_normal;
-vec3 terNormal(vec2 uv) { vec2 xz = textureLod(u_ter_normal, uv, 0.0).rg;  return vec3(xz.x, sqrt(max(1.0 - dot(xz, xz), 0.0)), xz.y); }
 uniform vec2 u_ts_origin;
 uniform float u_ts_half;
 uniform sampler2D u_ortho;
 uniform float u_ortho_on;
+// terpage.glsl, pasted (the reference copy and its rules are there)
+// ---- the page table ----------------------------------------------------------------------
+#ifndef TP_HELPERS
+#define TP_HELPERS
+uniform sampler2D u_tp_page;   // R32F, a texel a tile: slot + 1, 0 = not resident
+uniform float u_tp_on;         // 1 while paging; 0 reads the whole maps exactly as before
+uniform vec4 u_tp_dims;        // tiles a side, height texels a tile, photo texels a tile, full height res
+// the layer holding a full-map uv, or -1: paging off, off the map, or not resident
+float tpSlot(vec2 uv) {
+  if (u_tp_on < 0.5 || uv.x < 0.0 || uv.y < 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return -1.0;
+  ivec2 t = min(ivec2(floor(uv * u_tp_dims.x)), ivec2(int(u_tp_dims.x) - 1));
+  return texelFetch(u_tp_page, t, 0).r - 1.0;
+}
+// a full-map uv inside its tile's layer of k texels a side, past the one-texel border
+vec2 tpUV(vec2 uv, float k) { return (1.0 + fract(uv * u_tp_dims.x) * k) / (k + 2.0); }
+#endif
+// ---- height (vertex and mesh stages) -----------------------------------------------------
+#ifndef TP_HEIGHT
+#define TP_HEIGHT
+#ifndef TP_HMAP
+#define TP_HMAP u_ts_height
+#endif
+uniform sampler2DArray u_tp_h;
+// bilinear height, fine where a tile is resident. Outside a fragment stage texture() IS level 0
+// (glslang emits the same explicit-lod sample), so this is the old read bit for bit.
+float terHeight(vec2 uv) {
+  float s = tpSlot(uv);
+  if (s >= 0.0) return textureLod(u_tp_h, vec3(tpUV(uv, u_tp_dims.y), s), 0.0).r;
+  return textureLod(TP_HMAP, uv, 0.0).r;
+}
+// The B-spline through four bilinear taps (heightSmooth). Paging on, the texel is the FULL
+// map's - the coarse map's own size would halve the surface's detail - and each tap finds its
+// own tile, so a patch straddling two tiles, or a tile and the coarse map, stays one surface.
+float terHeightSmooth(vec2 uv) {
+  vec2 res = u_tp_on > 0.5 ? vec2(u_tp_dims.w) : vec2(textureSize(TP_HMAP, 0));
+  vec2 t = uv * res - 0.5;
+  vec2 f = fract(t);
+  vec2 i = floor(t);
+  vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0;
+  vec2 w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
+  vec2 w3 = f * f * f / 6.0;
+  vec2 w2 = 1.0 - w0 - w1 - w3;
+  vec2 s0 = w0 + w1, s1 = w2 + w3;
+  vec2 o0 = (i - 1.0 + w1 / s0 + 0.5) / res;
+  vec2 o1 = (i + 1.0 + w3 / s1 + 0.5) / res;
+  return (terHeight(vec2(o0.x, o0.y)) * s0.x + terHeight(vec2(o1.x, o0.y)) * s1.x) * s0.y
+       + (terHeight(vec2(o0.x, o1.y)) * s0.x + terHeight(vec2(o1.x, o1.y)) * s1.x) * s1.y;
+}
+#endif
+// ---- the baked normal (x, z; y is rebuilt by the caller) ----------------------------------
+#ifndef TP_NORMAL
+#define TP_NORMAL
+uniform sampler2DArray u_tp_nrm;
+vec2 terNormalXZ(vec2 uv) {
+#ifdef TP_FRAGMENT
+  if (u_tp_on < 0.5) return texture(u_ter_normal, uv).rg;
+  // taken before the per-pixel branch: a neighbour on another tile must not decide the level
+  vec2 dx = dFdx(uv), dy = dFdy(uv);
+#endif
+  float s = tpSlot(uv);
+  if (s >= 0.0) return textureLod(u_tp_nrm, vec3(tpUV(uv, u_tp_dims.y), s), 0.0).rg;
+#ifdef TP_FRAGMENT
+  return textureGrad(u_ter_normal, uv, dx, dy).rg;
+#else
+  return textureLod(u_ter_normal, uv, 0.0).rg;
+#endif
+}
+#endif
+// ---- the photograph's measures (declares no sampler: a stage reading u_ortho blurred needs no tile)
+#ifndef TP_ORTHO_LOD
+#define TP_ORTHO_LOD
+// the FULL photograph's texels a side, for filters that weigh by the texel (orthoSmooth)
+vec2 tpOrthoRes() { return u_tp_on > 0.5 ? vec2(u_tp_dims.z * u_tp_dims.x) : vec2(textureSize(u_ortho, 0)); }
+// A blurred read (textureLod 1..2.5) names a level of the FULL photograph; on the coarse map
+// the same detail is that many levels lower, so the ground's far colour does not soften.
+float tpOrthoLod(float lod) {
+  if (u_tp_on < 0.5) return lod;
+  return max(lod - log2(u_tp_dims.z * u_tp_dims.x / float(textureSize(u_ortho, 0).x)), 0.0);
+}
+#endif
+vec3 terNormal(vec2 uv) { vec2 xz = terNormalXZ(uv);  return vec3(xz.x, sqrt(max(1.0 - dot(xz, xz), 0.0)), xz.y); }
 uniform float u_lake_level;
 uniform float u_sea_level;
 uniform vec4 u_lake;
@@ -50,22 +130,6 @@ uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >>
 float bladeHash(ivec2 cell, int j, int k) {
   uint h = pcg(uint(cell.x + 32768) * 73856093u ^ uint(cell.y + 32768) * 19349663u ^ uint(j) * 83492791u ^ uint(k) * 2654435761u);
   return float(h) * (1.0 / 4294967295.0);
-}
-// no implicit level of detail outside a fragment shader: every lookup names level 0
-float heightSmooth(sampler2D tex, vec2 uv) {
-  vec2 res = vec2(textureSize(tex, 0));
-  vec2 t = uv * res - 0.5;
-  vec2 f = fract(t);
-  vec2 i = floor(t);
-  vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0;
-  vec2 w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
-  vec2 w3 = f * f * f / 6.0;
-  vec2 w2 = 1.0 - w0 - w1 - w3;
-  vec2 s0 = w0 + w1, s1 = w2 + w3;
-  vec2 o0 = (i - 1.0 + w1 / s0 + 0.5) / res;
-  vec2 o1 = (i + 1.0 + w3 / s1 + 0.5) / res;
-  return (textureLod(tex, vec2(o0.x, o0.y), 0.0).r * s0.x + textureLod(tex, vec2(o1.x, o0.y), 0.0).r * s1.x) * s0.y
-       + (textureLod(tex, vec2(o0.x, o1.y), 0.0).r * s0.x + textureLod(tex, vec2(o1.x, o1.y), 0.0).r * s1.x) * s1.y;
 }
 
 void main() {
@@ -95,7 +159,7 @@ void main() {
     float life = 1.0 - smoothstep(0.8, 1.0, fj / max(count, 1.0));
     vec2 huv = (xz - u_ts_origin) / (2.0 * u_ts_half) + 0.5;
     if (huv.x < 0.0 || huv.x > 1.0 || huv.y < 0.0 || huv.y > 1.0) continue;
-    vec4 ht = textureLod(u_ts_height, huv, 0.0);
+    vec4 ht = vec4(terHeight(huv));   // only .r is read
     vec4 croot = u_vp * vec4(xz.x, ht.r, xz.y, 1.0);
     if (croot.w < -1.0 || abs(croot.x) > croot.w * 1.25 + 1.5 || abs(croot.y) > croot.w * 1.4 + 1.5) continue;
     vec3 gn = terNormal(huv);
@@ -104,12 +168,12 @@ void main() {
     if (u_lake.z > 0.0) { vec2 q = (xz - u_lake.xy) / u_lake.zw;  if (dot(q, q) < 1.0) wl = max(wl, u_lake_level); }
     float ok = (1.0 - smoothstep(0.30, 0.55, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(u_snow_line - 80.0, u_snow_line - 200.0, ht.r);
     if (u_ortho_on > 0.5) {
-      vec3 oc = textureLod(u_ortho, huv, 1.5).rgb;
+      vec3 oc = textureLod(u_ortho, huv, tpOrthoLod(1.5)).rgb;
       ok *= 0.25 + 0.75 * smoothstep(0.0, 0.02, oc.g - max(oc.r, oc.b));
     }
     if (h4 > ok) continue;
     bool far = dist > 300.0;
-    float h = far ? ht.r : heightSmooth(u_ts_height, huv);
+    float h = far ? ht.r : terHeightSmooth(huv);
     if (far) h += 0.03;
     if ((u_dbg & 1) != 0) h += 0.3;
     float seed = hv.x * 0.7 + hv.y * 0.3;
