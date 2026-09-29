@@ -41,6 +41,13 @@ export function ply_rest(session_st: SessionState, p: int) -> float {
   return session_st.session__slot[p].rest
 }
 
+# how much the party's rest speeds the clock: only as much as the least-resting player on
+export function ply_rest_least(session_st: SessionState) -> float {
+  var m = ply_rest(session_st, 0)
+  for p in 1 .. PLY_MAX { if ply_on(session_st, p) { m = Math.min(m, ply_rest(session_st, p)) } }
+  return m
+}
+
 export function ply_sleeping(session_st: SessionState, p: int) -> bool {
   if p == 0 { return session_st.session__me_sleeping }
   return ply_on(session_st, p) and session_st.session__slot[p].sleeping

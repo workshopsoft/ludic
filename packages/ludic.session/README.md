@@ -37,6 +37,7 @@ down ends the night). The transport says what this machine became (`ses_set_role
 | `ply_join(pid) -> slot`, `ply_leave(p)`, `ply_leave_all()` | the roster (-1: full, or pid 0) |
 | `ply_report(p, x, y, z, yaw, speed)`, `ply_report_rest(p, rest, sleeping)`, `ply_report_name(p, name)` | what a remote machine said |
 | `ply_on`, `ply_is_local`, `ply_slot_of(pid)`, `ply_count`, `ply_pid`, `ply_name`, `ply_x/y/z/yaw/speed/rest(p)`, `ply_sleeping(p)` | who and where |
+| `ply_rest_least()` | the party's rest for the clock: the least any player on is resting (1 while one is on their feet) |
 | `ply_near(x, z)`, `ply_near_d2`, `ply_near_i()`, `ply_dist(p, x, z)` | the nearest player |
 | `ses_role()`, `ses_set_role(r)`, `ses_owns_world()`, `ses_live()`, `ses_hosting()`, `ses_guest()`, `ses_night_passes()` | roles |
 | `ses_set_party(max, open)`, `ses_set_open(b)`, `ses_max()`, `ses_open()`, `ses_room_for_one()` | the party a host allows |
