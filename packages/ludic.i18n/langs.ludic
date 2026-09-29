@@ -6,6 +6,7 @@ export function i18n_init(i18n_st: mut I18nState) -> void {
   i18n_st.names = new []string
   i18n_st.paths = new []string
   i18n_st.fonts = new []string
+  i18n_st.tabs = new []I18nTables
   lang_add(i18n_st, "en", "English", "", "")
   let idx = Fs.read_text(i18n_st.lang_dir + "/languages.txt")
   if idx != null {
@@ -37,6 +38,7 @@ function lang_add(i18n_st: mut I18nState, code: string, name: string, path: stri
       i18n_st.names[i] = name
       i18n_st.paths[i] = path
       i18n_st.fonts[i] = font
+      if tables_have(i18n_st, i) { i18n_st.tabs[i] = null }   # another file for it: read that one next time
       return
     }
   }

@@ -20,6 +20,22 @@ export function settings_put(settings_st: SettingsState, v: Val, id: int) -> voi
   }
 }
 
+# the store written into a kept object in place, in the file's own form: a Value is made only the
+# first time its key is seen (a screen reading the settings made a new tree on every change)
+export function settings_fill_json(settings_st: SettingsState, v: Val) -> void {
+  for i in 0 .. len(settings_st.sg_defs) {
+    let d = settings_st.sg_defs[i]
+    if not d.saved { continue }
+    if d.kind == SETTING_TEXT {
+      value_set_str(v, d.key, settings_st.sg_text[i])
+    } else if d.kind == SETTING_FLOAT {
+      value_set_int(v, d.key, int(Math.floor(settings_st.sg_num[i] * 1000.0 + 0.5)))
+    } else {
+      value_set_int(v, d.key, int(settings_st.sg_num[i]))
+    }
+  }
+}
+
 # every key `v` names, held to its range; quiet, since a load is applied whole by its caller
 export function settings_from_json(settings_st: mut SettingsState, v: Val) -> void {
   if v == null { return }
@@ -30,7 +46,7 @@ function sg_read(settings_st: mut SettingsState, v: Val, id: int) -> void {
   let d = settings_st.sg_defs[id]
   if not d.saved or Value.kind(v) != 6 or Value.has(v, d.key) == 0 { return }
   if d.kind == SETTING_TEXT {
-    settings_st.sg_text[id] = sv_str(v, d.key, settings_st.sg_text[id])
+    settings_st.sg_text[id] = intern(sv_str(v, d.key, settings_st.sg_text[id]))   # the file's tree is let go
   } else if d.kind == SETTING_FLOAT {
     settings_st.sg_num[id] = settings_held(settings_st, id, sv_float(v, d.key, settings_st.sg_num[id]))
   } else {

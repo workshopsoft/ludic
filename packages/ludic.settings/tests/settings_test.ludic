@@ -35,6 +35,21 @@ program SettingsTest {
     expect_eq(fs[1].id, TOY_LANG)
   }
 
+  test "the store filled into a kept object changes its Values in place" (settings_st: mut SettingsState) {
+    declare(settings_st)
+    let o = Value.object()
+    settings_fill_json(settings_st, o)
+    let q = Value.get(o, "shadow_q")
+    let l = Value.get(o, "lang")
+    settings_set_int(settings_st, TOY_SHADOW_Q, 3)
+    settings_set_text(settings_st, TOY_LANG, "tr")
+    settings_fill_json(settings_st, o)
+    expect(Value.get(o, "shadow_q") == q)
+    expect(Value.get(o, "lang") == l)
+    expect_eq(Value.as_int(q), 3)
+    expect(Value.as_str(l) == "tr")
+  }
+
   test "a value out of range is the default" (settings_st: mut SettingsState) {
     declare(settings_st)
     settings_set_int(settings_st, TOY_SHADOW_Q, 9)

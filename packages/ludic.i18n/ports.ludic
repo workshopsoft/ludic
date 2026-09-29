@@ -44,6 +44,7 @@ export state I18nState {
   plural: Dict = null                 # a plural msgid (the singular) -> index into forms / 3
   forms: []string = null              # three forms per entry, "" where the file has fewer
   plural_rule: int = 0                # PL_*
+  tabs: []I18nTables = null           # by language: its lookups once read, kept for the next switch
 }
 
 # where the shipped languages are (a directory with languages.txt and <code>.po), and the atlas a

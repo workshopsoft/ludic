@@ -1,0 +1,16 @@
+# fired.ludic - the number a control reports on each frame it moves (a box scrolled, a slider dragged),
+# from a ring of Values kept with the state: a fresh Value.float a frame was kept by nothing. The
+# queue runs within the frame, long before NT_NUMS more come round to one
+const NT_NUMS: int = 64
+function nt_nums_new() -> []Val {
+  let l = new []Val
+  for i in 0 .. NT_NUMS { push(l, Value.float(0.0)) }
+  return l
+}
+export function ui_fire_float(ui_st: mut UiState, n: UiNode, name: string, x: float) -> void {
+  let at = ui_st.nt_num_at % NT_NUMS
+  ui_st.nt_num_at = at + 1
+  let v = ui_st.nt_nums[at]
+  Value.be_float(v, x)
+  ui_fire(ui_st, n, name, v)
+}

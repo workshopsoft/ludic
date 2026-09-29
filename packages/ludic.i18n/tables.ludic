@@ -1,0 +1,88 @@
+# tables.ludic - a language's lookups, kept once read: switching back to it is a copy of references,
+# not the .po parsed again (every change of language once dropped the old tables for good)
+property I18nTables {
+  exact: Dict = null
+  out: []string = null
+  lits: []string = null
+  pat_out: []string = null
+  pat_l0: words = null
+  pat_nl: words = null
+  pat_sc: words = null
+  pat_ph: words = null
+  pat_n: int = 0
+  pfx: Dict = null
+  sfx: Dict = null
+  gen_head: int = 0
+  nx_p: words = null
+  nx_s: words = null
+  nx_g: words = null
+  cache: Dict = null
+  cache_out: []string = null
+  caps: []string = null
+  plural: Dict = null
+  forms: []string = null
+  plural_rule: int = 0
+}
+
+@alloc_ok("once per language: its lookups, kept")
+function tables_keep(i18n_st: I18nState) -> I18nTables {
+  let t = new I18nTables
+  t.exact = i18n_st.exact
+  t.out = i18n_st.out
+  t.lits = i18n_st.lits
+  t.pat_out = i18n_st.pat_out
+  t.pat_l0 = i18n_st.pat_l0
+  t.pat_nl = i18n_st.pat_nl
+  t.pat_sc = i18n_st.pat_sc
+  t.pat_ph = i18n_st.pat_ph
+  t.pat_n = i18n_st.pat_n
+  t.pfx = i18n_st.pfx
+  t.sfx = i18n_st.sfx
+  t.gen_head = i18n_st.gen_head
+  t.nx_p = i18n_st.nx_p
+  t.nx_s = i18n_st.nx_s
+  t.nx_g = i18n_st.nx_g
+  t.cache = i18n_st.cache
+  t.cache_out = i18n_st.cache_out
+  t.caps = i18n_st.caps
+  t.plural = i18n_st.plural
+  t.forms = i18n_st.forms
+  t.plural_rule = i18n_st.plural_rule
+  return t
+}
+
+function tables_put(i18n_st: mut I18nState, t: I18nTables) -> void {
+  i18n_st.exact = t.exact
+  i18n_st.out = t.out
+  i18n_st.lits = t.lits
+  i18n_st.pat_out = t.pat_out
+  i18n_st.pat_l0 = t.pat_l0
+  i18n_st.pat_nl = t.pat_nl
+  i18n_st.pat_sc = t.pat_sc
+  i18n_st.pat_ph = t.pat_ph
+  i18n_st.pat_n = t.pat_n
+  i18n_st.pfx = t.pfx
+  i18n_st.sfx = t.sfx
+  i18n_st.gen_head = t.gen_head
+  i18n_st.nx_p = t.nx_p
+  i18n_st.nx_s = t.nx_s
+  i18n_st.nx_g = t.nx_g
+  i18n_st.cache = t.cache
+  i18n_st.cache_out = t.cache_out
+  i18n_st.caps = t.caps
+  i18n_st.plural = t.plural
+  i18n_st.forms = t.forms
+  i18n_st.plural_rule = t.plural_rule
+}
+
+function tables_have(i18n_st: I18nState, k: int) -> bool {
+  if i18n_st.tabs == null or k >= len(i18n_st.tabs) { return false }
+  return i18n_st.tabs[k] != null
+}
+
+@alloc_ok("once per language: the slot its lookups are kept in")
+function tables_file(i18n_st: mut I18nState, k: int) -> void {
+  if i18n_st.tabs == null { i18n_st.tabs = new []I18nTables }
+  while len(i18n_st.tabs) <= k { push(i18n_st.tabs, null) }
+  i18n_st.tabs[k] = tables_keep(i18n_st)
+}

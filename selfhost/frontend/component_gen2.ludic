@@ -62,7 +62,12 @@ function cm_set(c: int, ty: pointer, k: pointer, x: pointer, head: Node) -> poin
   if (ty == "[]float") { return `  value_set_floats(o, "{k}", {x})\n` }
   if (ty == "[]string") { return `  value_set_strs(o, "{k}", {x})\n` }
   if (ty == "[]bool") { return `  value_set_bools(o, "{k}", {x})\n` }
-  return `  value_put(o, "{k}", {cm_to(c, ty, x, head)})\n`
+  let line = vw_set(0, ty, "o", k, x, head)       # a record or a list of them: filled in place (view_fill)
+  if line == null {
+    cm_err(c, `a {ty} is something a template cannot read`)
+    return ""
+  }
+  return line
 }
 function cm_to(c: int, ty: pointer, x: pointer, head: Node) -> pointer {
   if (ty == "Val") { return x }

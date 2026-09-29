@@ -35,6 +35,7 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/frontend/defaults.ludic")
   push(f, "selfhost/frontend/view.ludic")
   push(f, "selfhost/frontend/view_conv.ludic")
+  push(f, "selfhost/frontend/view_fill.ludic")
   push(f, "selfhost/frontend/view_finish.ludic")
   push(f, "selfhost/frontend/component.ludic")
   push(f, "selfhost/frontend/component_rw.ludic")

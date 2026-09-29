@@ -1,0 +1,54 @@
+# view_fill.ludic - a component's field as a Value FILLED IN PLACE: a record is the object under its
+# key with each field set, a list of records is the list under its key with each item filled, so a
+# model built every frame makes Values only the first time (value_put of a fresh conversion kept a
+# whole new tree each frame - the HUD's notifications were one). What cannot be filled converts.
+function vw_set(v: int, ty: pointer, o: pointer, k: pointer, x: pointer, head: Node) -> pointer {
+  if (ty == "int") { return `  value_set_int({o}, "{k}", {x})\n` }
+  if (ty == "float") { return `  value_set_float({o}, "{k}", {x})\n` }
+  if (ty == "string") { return `  value_set_str({o}, "{k}", {x})\n` }
+  if (ty == "bool") { return `  value_set_bool({o}, "{k}", {x})\n` }
+  if (ty == "[]int") { return `  value_set_ints({o}, "{k}", {x})\n` }
+  if (ty == "[]float") { return `  value_set_floats({o}, "{k}", {x})\n` }
+  if (ty == "[]string") { return `  value_set_strs({o}, "{k}", {x})\n` }
+  if (ty == "[]bool") { return `  value_set_bools({o}, "{k}", {x})\n` }
+  if (ty == "Val") { return `  value_put({o}, "{k}", {x})\n` }
+  if len(ty) > 2 and ty[0] == '[' and ty[1] == ']' {
+    let et: pointer = ty[2..len(ty)]
+    if find_comp(et) != null {
+      vw_fill_fn(v, et, head)
+      let name = `view_set_list_{vw_mangle(et)}`
+      vw_helper(`function {name}(o: Val, k: string, xs: {ty}) -> void {{\n  let l = value_list_fit(o, k, len(xs))\n  var i = 0\n  while i < len(xs) {{\n    let d = value_item(l, i, 6)\n    if xs[i] == null {{ value_become(d, 0) }} else {{ view_fill_{vw_mangle(et)}(d, xs[i]) }}\n    i += 1\n  }}\n}}\n`, name, head)
+      return `  {name}({o}, "{k}", {x})\n`
+    }
+  }
+  if find_comp(ty) != null {
+    vw_fill_fn(v, ty, head)
+    let m = vw_mangle(ty)
+    let name = `view_set_{m}`
+    vw_helper(`function {name}(o: Val, k: string, r: {ty}) -> void {{\n  if r == null {{\n    value_slot(o, k, 0)\n    return\n  }}\n  view_fill_{m}(value_slot(o, k, 6), r)\n}}\n`, name, head)
+    return `  {name}({o}, "{k}", {x})\n`
+  }
+  let c = vw_conv(v, ty, x, head)
+  if c == null { return null }
+  return `  value_put({o}, "{k}", {c})\n`
+}
+
+# view_fill_T(d, r): every field of r a template could read, set into the object d in place. Its name
+# is taken before its body is written, so a record that holds its own kind fills through itself
+function vw_fill_fn(v: int, ty: pointer, head: Node) -> void {
+  let name = `view_fill_{vw_mangle(ty)}`
+  if vw_have(name) { return }
+  push(g_vw_helpers, name)
+  let comp = find_comp(ty)
+  var src = `function {name}(d: Val, r: {ty}) -> void {{\n`
+  var i = 0
+  while i < len(comp.kids) {
+    let f = comp.kids[i]
+    if f.ty != null {
+      let line = vw_set(v, f.ty, "d", f.s, `r.{f.s}`, head)
+      if line != null { src = src + line }
+    }
+    i += 1
+  }
+  vw_parse(src + "}\n", head.file, head.line, 1)
+}

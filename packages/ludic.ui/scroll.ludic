@@ -32,7 +32,7 @@ function sc_walk(ui_st: mut UiState, n: UiNode, live: bool) -> void {
     var off = held
     if live { off = sc_input(ui_st, n, off, room, most) }
     off = Math.clamp(off, 0.0, most)
-    if live and off != Math.clamp(held, 0.0, most) { ui_fire(ui_st, n, "scroll", Value.float(off / ui_px(ui_st, 1.0))) }
+    if live and off != Math.clamp(held, 0.0, most) { ui_fire_float(ui_st, n, "scroll", off / ui_px(ui_st, 1.0)) }
     sc_put(ui_st, n.key, off)
     n.scroll_y = off
     if off != 0.0 {
