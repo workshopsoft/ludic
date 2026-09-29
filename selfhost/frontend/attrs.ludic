@@ -3,15 +3,23 @@
 #
 #   property Item {
 #     @Ref(Vendors) seller: int = 0            # an index into that registry (its entries are offered)
-#     @OneOf(GR_) grade: int = 0               # one of the constants that start GR_
+#     @OneOf(GR_) grade: int = 0               # one of the constants that start GR_ ...
+#     @OneOf(WILD_MEADOW, WILD_SHORE) hab: int = 0   # ... or one of these (each must exist)
 #     @Range(0, 1.5) weight: float = 0.4
 #     @Unit("m/s") speed: float = 0.0
 #     @Asset("gltf") model: string = ""        # a file of that kind
 #     @Color tint: int = 0
+#     @Node(model) grip: string = ""           # a node inside the glTF the field `model` names
+#     @Clip(model) idle: string = ""           # a clip inside that glTF
+#     @Derived reach: float = 0.0              # worked out at boot: anything written is overwritten
+#     @Text @Multiline blurb: string = ""      # read by the player, so translated; prose
+#     @Key bind: int = 0                       # a key code
 #   }
 #   @AppendOnly @ByKey registry Items of Item as IT from "items.lres"
 #
-# They change nothing the program does. One is checked: @Ref must name a registry that exists. A
+# They change nothing the program does. Three are checked: @Ref must name a registry that exists,
+# @Node and @Clip a field of its record that names a glTF (attrs_node.ludic), and a listing @OneOf
+# constants that exist. A
 # field's or a registry's attributes are a group (Node.at, g_rg_at): a run of names, each with its
 # arguments as JSON values - an identifier or a string as a string, a number as written.
 var g_at_start: []int = new []int            # a group's first attribute ...
@@ -42,10 +50,12 @@ function at_push(g: int, name: pointer, args: pointer, first: pointer, nargs: in
 var g_at_arg0: pointer = null
 var g_at_argn: int = 0
 var g_at_allnum: bool = true                 # every argument a number
+var g_at_allid: bool = true                  # every argument a name
 function at_args() -> pointer {
   g_at_arg0 = null
   g_at_argn = 0
   g_at_allnum = true
+  g_at_allid = true
   if not is_op("(") { return "[]" }
   pi += 1
   var out: pointer = "["
@@ -54,6 +64,7 @@ function at_args() -> pointer {
     var neg = false
     if is_op("-") { neg = true;  pi += 1 }
     let t = toks[pi]
+    if t.kind != TK_ID { g_at_allid = false }
     var v: pointer = null
     var raw: pointer = null
     if t.kind == TK_INT {
@@ -92,19 +103,25 @@ function at_lead0(raw: pointer) -> pointer {
 }
 # the editor attributes a field may carry, and what each takes
 function at_field_known(a: pointer) -> bool {
-  return (a == "Ref") or (a == "OneOf") or (a == "Range") or (a == "Unit") or (a == "Asset") or (a == "Color")
+  if (a == "Ref") or (a == "OneOf") or (a == "Range") or (a == "Unit") or (a == "Asset") or (a == "Color") { return true }
+  return (a == "Node") or (a == "Clip") or at_flag(a)
+}
+# the attributes that take nothing: they say what a field is
+function at_flag(a: pointer) -> bool {
+  return (a == "Color") or (a == "Derived") or (a == "Text") or (a == "Multiline") or (a == "Key")
 }
 # one field attribute, its '@' and name already read: its arguments, checked for shape, into group g
 function at_field(g: int, a: pointer) -> void {
   let args = at_args()
   let n = g_at_argn
-  if (a == "Ref") or (a == "OneOf") {
+  if (a == "Ref") or (a == "Node") or (a == "Clip") {
     if n != 1 or toks[pi - 2].kind != TK_ID { perr(`@{a} takes one name: @{a}(Items)`) }
   }
+  if (a == "OneOf") and (n < 1 or not g_at_allid) { perr("@OneOf takes a prefix or constants: @OneOf(GR_) or @OneOf(GR_GOLD, GR_SILVER)") }
   if (a == "Range") and n != 2 { perr("@Range takes the least and the most: @Range(0, 1.5)") }
   if (a == "Range") and not g_at_allnum { perr("@Range takes two numbers: @Range(0, 1.5)") }
   if ((a == "Unit") or (a == "Asset")) and (n != 1 or toks[pi - 2].kind != TK_STR) { perr(`@{a} takes one string: @{a}("m/s")`) }
-  if (a == "Color") and n != 0 { perr("@Color takes nothing") }
+  if at_flag(a) and n != 0 { perr(`@{a} takes nothing`) }
   at_push(g, a, args, g_at_arg0, n)
 }
 # a field's group, made the first time it needs one
@@ -135,7 +152,9 @@ function at_registry_take() -> int {
   g_at_decl = new []pointer
   return g
 }
-# once every registry is declared: each @Ref names one, or the build stops with every one that does not
+# once every registry is declared: each @Ref names one, each @Node / @Clip a glTF field and a
+# listing @OneOf constants that exist, or the build
+# stops with every one that does not
 function at_check_refs() -> void {
   var i = 0
   while i < len(prog) {
@@ -159,6 +178,8 @@ function at_check_field(d: Node, f: Node) -> void {
     if (g_at_name[j] == "Ref") and reg_find(g_at_first[j]) < 0 {
       perr_at(f.file, f.line, f.col, `field {d.s}.{f.s}: @Ref({g_at_first[j]}) names no registry - there is no registry {g_at_first[j]}`)
     }
+    if (g_at_name[j] == "Node") or (g_at_name[j] == "Clip") { at_check_node(d, f, g_at_name[j], g_at_first[j]) }
+    if g_at_name[j] == "OneOf" { at_check_oneof(d, f, j) }
     j += 1
   }
 }

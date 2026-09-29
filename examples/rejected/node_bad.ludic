@@ -1,0 +1,21 @@
+# attributes: @Node / @Clip name a field of its record that names a glTF - `handle` names no field,
+# `tag` is a plain string, `kit` refers to a registry whose record has two models - and a listing
+# @OneOf names constants that exist, which KITS_NONE is not (all five are reported)
+program R {
+  property Kit {
+    key: string = ""
+    @Asset("gltf") body: string = ""
+    @Asset("gltf") lod: string = ""
+  }
+  registry Kits of Kit
+  property Tool {
+    tag: string = ""
+    @Ref(Kits) kit: int = 0
+    @Node(handle) grip: string = ""
+    @Node(tag) tip: string = ""
+    @Node(kit) hook: string = ""
+    @Clip(tag) swing: string = ""
+    @OneOf(KITS_COUNT, KITS_NONE) which: int = 0
+  }
+  entry { print(KITS_COUNT) }
+}
