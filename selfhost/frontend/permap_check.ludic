@@ -141,6 +141,7 @@ var g_pmk_ref_reg: []pointer = new []pointer  # per cross-row @Ref met: the tabl
 var g_pmk_ref_key: []pointer = new []pointer
 var g_pmk_ref_at: []Node = new []Node
 var g_pmk_mod: pointer = ""                   # the module of the registry being checked
+var g_pmk_md: pointer = ""                    # the map directory being checked
 
 function pmk_read(r: int, path: pointer) -> void {
   let src = read_file(path)
@@ -186,6 +187,7 @@ function pm_check_maps() -> void {
   }
 }
 function pmk_map(md: pointer) -> void {
+  g_pmk_md = md
   g_pmk_reg = new []int
   g_pmk_key = new []pointer
   g_pmk_rec = new []Node
@@ -217,6 +219,7 @@ function pmk_map(md: pointer) -> void {
     e += 1
   }
   pmk_refs()
+  pmk_game_assets()
 }
 # a key written twice in one file
 function pmk_dups() -> void {
@@ -414,6 +417,57 @@ function pmk_has_dot(t: pointer) -> bool {
   return false
 }
 
+# ---- map-relative assets: @Asset("png", map) -----------------------------------------------------
+function pmk_exists(p: pointer) -> bool {
+  let fh = file_open(p, "rb")
+  if fh == null { return false }
+  file_close(fh)
+  return true
+}
+# a value of an @Asset(kind, map) field, at node at: the file is in this map's directory, unless optional
+function pmk_asset(at: Node, f: Node, v: pointer) -> void {
+  let m = at_asset_map(f)
+  if m != 1 { return }
+  let p = `{g_pmk_md}/{v}`
+  if not pmk_exists(p) { pmk_err_at(at, `{f.s} is "{v}", and this map has no {p} - @Asset(..., map) is a path under each map's directory`) }
+}
+# a game-wide registry's rows whose @Asset(kind, map) field names a file: that file in every map
+function pmk_game_assets() -> void {
+  var r = 0
+  while r < len(g_rg_name) {
+    if not pm_is(r) { pmk_game_asset_reg(r) }
+    r += 1
+  }
+}
+function pmk_game_asset_reg(r: int) -> void {
+  let comp = find_comp(g_rg_type[r])
+  if comp == null { return }
+  var d = 0
+  while d < len(g_df_rec) {
+    if (g_df_reg[d] == g_rg_name[r]) { pmk_game_asset_row(comp, g_df_rec[d]) }
+    d += 1
+  }
+}
+function pmk_game_asset_row(comp: Node, rec: Node) -> void {
+  var k = 0
+  while k < len(rec.kids) {
+    let fi = rec.kids[k]
+    if fi.kind == E_FINIT and fi.a != null and fi.a.kind == E_STR and len(fi.a.s) > 0 {
+      let f = pmk_field_of(comp, fi.s)
+      if f != null { pmk_asset(fi, f, fi.a.s) }
+    }
+    k += 1
+  }
+}
+function pmk_field_of(comp: Node, name: pointer) -> Node {
+  var i = 0
+  while i < len(comp.kids) {
+    if comp.kids[i].s != null and (comp.kids[i].s == name) { return comp.kids[i] }
+    i += 1
+  }
+  return null
+}
+
 # ---- attributes ---------------------------------------------------------------------------------
 function pmk_attrs_str(e: Node, f: Node) -> void {
   if f.at < 0 { return }
@@ -424,6 +478,7 @@ function pmk_attrs_str(e: Node, f: Node) -> void {
       let words = at_arg_names(g_at_args[j])
       if not at_word_in(e.s, words) { pmk_err_at(e, `{f.s} is "{e.s}", and it is @OneOf({at_words_text(words)})`) }
     }
+    if (a == "Asset") and len(e.s) > 0 { pmk_asset(e, f, e.s) }
     if (a == "Ref") and pm_named(g_at_first[j]) and len(e.s) > 0 {
       push(g_pmk_ref_reg, g_at_first[j])
       push(g_pmk_ref_key, e.s)

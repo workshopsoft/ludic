@@ -1,7 +1,8 @@
 # permap_maps.ludic - `ludicc --check` reads every map directory and checks its tables against their
-# records. maps/m1 holds five mistakes, each refused at its file, line and column: a field the
-# record lacks, a value of the wrong type, a constant nobody declared, a key naming no row, and a
-# chunked table's key written in two of the map's chunk files (t1, in trees/-1_0 and trees/0_0).
+# records. maps/m1 holds six mistakes, each refused at its file, line and column: a field the record
+# lacks, a value of the wrong type, a constant nobody declared, a key naming no row, a chunked table's
+# key written in two chunk files (t1, in trees/-1_0 and trees/0_0), and a game-wide row's
+# @Asset(..., map) file the map lacks (blades.png; the optional one, wild.png, may be missing).
 program PerMapMaps {
   numbers float
   const MDL_TENT: int = 7
@@ -15,6 +16,13 @@ program PerMapMaps {
   }
   @PerMap @ByKey registry Props of PropRow from "props.lres"
   property Tree { key: string = "", x: float = 0.0 }
+  property Grass {
+    key: string = ""
+    @Asset("png", map) density: string = ""
+    @Asset("png", map, optional) wild: string = ""
+  }
+  registry Grasses of Grass
+  def Grasses meadow { density: "blades.png", wild: "wild.png" }
   @PerMap @Chunked(64) registry Trees of Tree from "trees/{cx}_{cz}.lres"
   entry (props: mut Props) {
     print(`{props_load(props, "m1")}`)

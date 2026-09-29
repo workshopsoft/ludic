@@ -191,6 +191,7 @@ function sc_attrs(b: Buf, g: int) -> void {
       buf_puts(b, ", \"args\": ")
       buf_puts(b, g_at_args[j])
       if g_at_unres[j] { buf_puts(b, ", \"unresolved\": true") }
+      if (g_at_name[j] == "Asset") and len(at_arg_names(g_at_args[j])) >= 2 { buf_puts(b, ", \"scope\": \"map\"") }
       if (g_at_name[j] == "Ref") and g_at_first[j] != null and pm_named(g_at_first[j]) { buf_puts(b, ", \"scope\": \"map\"") }
       buf_puts(b, "}")
       j += 1

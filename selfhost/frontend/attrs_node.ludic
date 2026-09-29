@@ -167,3 +167,18 @@ function at_decl_named(name: pointer) -> bool {
   }
   return false
 }
+# a field's @Asset: 0 none or a game path, 1 a path under each map's directory, 2 the same and optional
+function at_asset_map(f: Node) -> int {
+  if f.at < 0 { return 0 }
+  var j = g_at_start[f.at]
+  while j < g_at_start[f.at] + g_at_count[f.at] {
+    if g_at_name[j] == "Asset" {
+      let w = at_arg_names(g_at_args[j])
+      if len(w) >= 3 { return 2 }
+      if len(w) == 2 { return 1 }
+      return 0
+    }
+    j += 1
+  }
+  return 0
+}
