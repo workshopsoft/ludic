@@ -1,0 +1,122 @@
+# stdin_file.ludic — `--stdin-file <path>`: an unsaved buffer checked in place of its file. The text
+# on stdin is read once, whole, and read_file (io.ludic) hands a copy of it back wherever the program
+# opens <path> - an import, a barrel, a component's .xml / .lss, an .lres - so diagnostics follow
+# typing without a save. Two paths are the same file when they are after normalise_path: separators
+# made '/', a relative path put under $PWD, `.` / `..` / `//` folded (and case folded on Windows).
+var g_sf_path: pointer = null       # <path> as given: what a warning about it names
+var g_sf_norm: pointer = null       # ... normalised, what each open is compared against
+var g_sf_base: pointer = null       # ... its last part, the cheap test before normalising an open
+var g_sf_text: pointer = null       # stdin, NUL-terminated
+var g_sf_len: int = 0
+var g_sf_served: bool = false       # the program opened <path> at least once
+
+# the flag: remember the path and take stdin now, once (an empty stdin is an empty file)
+function stdin_file_set(path: pointer) -> void {
+  g_sf_path = path
+  g_sf_norm = normalise_path(path)
+  g_sf_base = base_name(g_sf_norm)
+  var cap = 4096
+  var buf = bytes(cap + 1)
+  var n = 0
+  var c = read_char()
+  while c >= 0 {
+    if n == cap { cap *= 2;  buf = resize(buf, cap + 1) }
+    buf[n] = c
+    n += 1
+    c = read_char()
+  }
+  buf[n] = 0
+  g_sf_text = buf
+  g_sf_len = n
+}
+
+# read_file's first question: the buffer's text (a copy, as a read of the file would be) when
+# `path` is <path>, else null
+function stdin_file_serve(path: pointer) -> pointer {
+  if g_sf_text == null { return null }
+  if not sf_tail_is(path, g_sf_base) { return null }
+  if normalise_path(path) != g_sf_norm { return null }
+  let out = bytes(g_sf_len + 1)
+  var i = 0
+  while i < g_sf_len { out[i] = g_sf_text[i];  i += 1 }
+  out[g_sf_len] = 0
+  g_sf_served = true
+  return out
+}
+
+# a buffer for a file the program never opened was checked against nothing: say so rather than
+# report the saved files clean
+function stdin_file_unreached() -> void {
+  if g_sf_text == null or g_sf_served { return }
+  pwarn_at(g_sf_path, 1, 0, `--stdin-file {g_sf_path}: the program does not reach this file, so the buffer was not checked`)
+}
+
+# does `path`'s last part equal `base`? (no allocation: every read_file asks)
+function sf_tail_is(path: pointer, base: pointer) -> bool {
+  var n = 0
+  while path[n] != 0 { n += 1 }
+  let m = len(base)
+  if n < m { return false }
+  if n > m and not is_sep(path[n - m - 1]) { return false }
+  var i = 0
+  while i < m {
+    if sf_fold(path[n - m + i]) != sf_fold(base[i]) { return false }
+    i += 1
+  }
+  return true
+}
+function sf_fold(c: int) -> int {
+  if c >= 'A' and c <= 'Z' and host_is_windows() { return c + 32 }
+  return c
+}
+
+# one spelling per file: '/' separators, absolute (a relative path is under $PWD, the directory the
+# compiler was started in), no `.`, `..` or empty parts; lower case on Windows
+function normalise_path(p: pointer) -> pointer {
+  var s = fwd_slashes(p)
+  let abs = (len(s) > 0 and s[0] == '/') or (len(s) > 1 and s[1] == ':')
+  if not abs {
+    let cwd = getenv("PWD")
+    if cwd != null and len(cwd) > 0 { s = fwd_slashes(cwd) + "/" + s }
+  }
+  let parts = new []pointer         # the first np are the path so far
+  var np = 0
+  var start = 0
+  var i = 0
+  let n = len(s)
+  while i <= n {
+    if i == n or s[i] == '/' {
+      let part = s[start..i]
+      if part == ".." and np > 0 and parts[np - 1] != ".." { np -= 1 }
+      else if part != "" and part != "." {
+        if np < len(parts) { parts[np] = part } else { push(parts, part) }
+        np += 1
+      }
+      start = i + 1
+    }
+    i += 1
+  }
+  var out = ""
+  if len(s) > 0 and s[0] == '/' { out = "/" }
+  i = 0
+  while i < np {
+    if i > 0 { out = out + "/" }
+    out = out + parts[i]
+    i += 1
+  }
+  if host_is_windows() { out = sf_lower(out) }
+  return out
+}
+function sf_lower(s: pointer) -> pointer {
+  let n = len(s)
+  let out = bytes(n + 1)
+  var i = 0
+  while i < n {
+    var c = s[i]
+    if c >= 'A' and c <= 'Z' { c += 32 }
+    out[i] = c
+    i += 1
+  }
+  out[n] = 0
+  return out
+}

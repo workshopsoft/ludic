@@ -2323,6 +2323,7 @@ ludic test -j 4                          # four tests at once (default: one per 
 ludic test packages/ludic.base          # the test programs under a directory (a package's)
 ludic build --check                      # every check a build makes, nothing written
 ludic build --check --diagnostics=json   # the same, every error as a JSON array on stdout
+ludic build --check --diagnostics=json --stdin-file src/a.ludic < buf   # stdin in place of src/a.ludic
 ludic schema -o build/schema.json        # records, registries, entries, consts, components and natives, for editors
 ludic deps                               # how tangled the modules are, as the compiler resolved them
 ludic deps --check tests/deps-baseline.txt   # fail when a number rose (--baseline FILE writes them)
@@ -2344,6 +2345,17 @@ type error is in it, every `@Ref` naming no registry, and every module rule brok
 `uses`); an error the parser or the code writer cannot go on from - a token it did not expect, an
 unknown name while lowering, a def into a registry that does not exist - ends the array, and type
 errors end it before the module rules are looked at.
+
+`--stdin-file <path>` (`ludicc --check --stdin-file <path>`; on `ludic build` it implies `--check`)
+checks an unsaved buffer: the program is the usual one - the package's entry, or the file named - but
+wherever the compiler would open `<path>` it reads the text on stdin instead, read once and whole (an
+empty stdin is an empty file). That is any file it opens: the entry, an import reached through a
+barrel, a component's `.xml` or `.lss`, an `.lres`. The two paths are compared after normalising
+both - `\` made `/`, a relative path put under the directory the compiler was started in, `.`, `..`
+and doubled `/` folded, and case on Windows - so `./src/foo/../foo/bar.ludic` is `src/foo/bar.ludic`.
+Diagnostics name the file as a check of the saved file would, with lines and columns in the
+buffer's text. A `<path>` the program never opens is one warning on that path, rather than a clean
+report on the saved files.
 
 `ludic deps` compiles the program (the package's entry, or a file) with the compiler recording every
 reference its visibility pass resolves - from the module it is written in to the module of what it

@@ -162,6 +162,7 @@ entry {
     else if a == "--release" { g_release = true }        # what ships: Build.schema_hash() is 0 (emit_schema_hash.ludic)
     else if a == "--diagnostics=json" { g_diag_json = true }     # every error, as JSON on stdout (diag.ludic)
     else if a == "--diagnostics=text" { g_diag_json = false }
+    else if a == "--stdin-file" { ai += 1;  if ai < arg_count() { stdin_file_set(arg(ai)) } }   # stdin stands for that file (stdin_file.ludic)
     else if a == "--emit-schema" { ai += 1;  if ai < arg_count() { g_schema_out = arg(ai) } }   # emit_schema.ludic
     else if a == "--globals" { g_allow_globals = true }
     else if a == "--migrate-state" {                     # 0.S2: write the plan ludic migrate state applies
@@ -262,10 +263,12 @@ entry {
   if g_check_only {
     pm_check_maps()                               # every map's tables against their records (permap_check.ludic)
     emit_program()
+    stdin_file_unreached()                        # --stdin-file naming a file nothing opened
     if g_dg_errors > 0 { diag_exit(1) }
     diag_exit(0)
   }
   emit_program()
+  stdin_file_unreached()
   if g_dg_errors > 0 { diag_exit(1) }             # errors a pass went on from (diag.ludic)
   deps_flush()                                    # LUDIC_DEPS=<file>: the module graph (ludic deps)
 
