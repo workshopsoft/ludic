@@ -1,0 +1,6 @@
+<div class="words">
+  <p>{t('pause.resume')}</p>
+  <p>Paused</p>
+  <button title="Close it">{t('hud.day', day)}</button>
+  <p translate="no">Maroon Lake 0.5</p>
+</div>

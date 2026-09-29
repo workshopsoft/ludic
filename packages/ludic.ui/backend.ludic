@@ -236,6 +236,12 @@ function ui_tr(ui_st: UiState, s: string) -> string {
   if ui_st.ui_be != null and ui_st.ui_be.translate != null { return ui_st.ui_be.translate(s) }
   return s
 }
+# ludic.ui's own words by key (ui.* in the program's en.po); a program with no translator bound has
+# no languages, and draws `plain`
+function ui_tk(ui_st: UiState, k: Key, plain: string) -> string {
+  if ui_st.tr_no or ui_st.ui_be == null or ui_st.ui_be.translate == null { return plain }
+  return ui_st.ui_be.translate(string(k))
+}
 function ui_sound(ui_st: UiState, name: string) -> void {
   if ui_st.ui_be != null and ui_st.ui_be.sound != null { ui_st.ui_be.sound(name) }
 }

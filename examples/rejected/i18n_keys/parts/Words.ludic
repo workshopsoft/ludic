@@ -1,0 +1,4 @@
+# Words.ludic - english_left.ludic's component: words where keys belong
+component Words {
+  prop day: int = 1
+}

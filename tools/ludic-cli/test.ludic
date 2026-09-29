@@ -77,13 +77,13 @@ function permap_check_case() -> void {
 # phase 26: a template checks clean against en.po, its one line of words a warning, and ludic deps
 # counts it as english_left
 function i18n_check_case() -> void {
-  let lbl = "--check: a component's template against en.po - clean, \"Paused\" English left (a warning), english_left 1 in ludic deps"
+  let lbl = "--check: a component's template against en.po - clean, english_left 0 in ludic deps"
   let js = `{tmp_dir()}/dj_i18n.json`
   if not shq(`bin/ludicc examples/lang/i18n/i18n_ui.ludic --check --diagnostics=json > {js} 2>/dev/null`) { bad2(lbl, capture_line(`head -3 {js}`));  return }
   let got = capture(`cat {js}`)
-  if not s_contains(got, "English left: a template's words") or not s_contains(got, "Paused") { bad2(lbl, capture_line(`head -3 {js}`));  return }
+  if s_contains(got, "\"error\"") { bad2(lbl, capture_line(`head -3 {js}`));  return }
   let dp = capture(`bin/ludic deps examples/lang/i18n/i18n_ui.ludic 2>&1`)
-  if not s_contains(dp, "english_left: 1") { bad2(lbl, `ludic deps said [{s_trim(dp)}]`);  return }
+  if not s_contains(dp, "english_left: 0") { bad2(lbl, `ludic deps said [{s_trim(dp)}]`);  return }
   ok(lbl)
 }
 # --check --diagnostics=json: refused, with exactly `n` ERRORS on stdout (warnings beside them are not
@@ -1354,7 +1354,7 @@ function cmd_dev_test() -> int {
   i18n_check_case()
   feat_case("lang/i18n_nested/i18n_nested", "", "raids.camp.arrive.steps.0.text raids.camp.arrive.steps.1.text 2 raids.camp.said.1 0 raids.quiet.arrive.steps.0.text hud.day(3)", "i18n_nested.ludic (phase 26: derived keys below a row - a nested record's, a list item's, a @Text []Key filled from en.po; null is no text; trf's trailing \"\" not counted)")
   schema_case("lang/i18n/i18n", "{\"key\": \"items.rope.name\", \"kind\": \"data\", \"kinds\": [\"data\"], \"sites\": [\"examples/lang/i18n/data/i18n_items.lres:2:1\"], \"in_source\": true, \"english\": \"Rope\"", "--emit-schema: lang.keys - a derived key, its kind, its site and en.po's English")
-  schema_case("lang/i18n/i18n", "\"unused\": [\"map.close\"]", "--emit-schema: lang.unused - en.po's keys the program uses nowhere")
+  schema_case("lang/i18n/i18n", "\"unused\": [\"map.close\", \"ui.left_click\", \"ui.middle_click\", \"ui.press_key\", \"ui.right_click\"]", "--emit-schema: lang.unused - en.po's keys the program uses nowhere")
   schema_case("lang/i18n/i18n", "\"missing\": [\"hud.day\"], \"fuzzy\": [\"pause.close\"], \"extra\": [\"old.title\"]", "--emit-schema: lang.languages - another .po's missing, fuzzy and extra keys against en.po")
   schema_case("lang/i18n/i18n", "{\"english\": \"Close\", \"keys\": [\"map.close\", \"pause.close\"]}", "--emit-schema: lang.split - one English under several keys")
   schema_case("actions/modules", "{\"state\": \"Bag\", \"action\": \"PickUp\", \"module\": \"bag\", \"at\": \"examples/actions/mods/bag/index.ludic:4:16\"}", "--emit-schema: code.reducers - a reducer's state, action, module and place")
@@ -1387,8 +1387,9 @@ function cmd_dev_test() -> int {
   diag_json_case("rejected/i18n_keys/key_hole", 2, "a Key in a template's {hole}", "a Key in a template literal's hole is refused: it would draw its marked name, untranslated")
   diag_json_case("rejected/i18n_keys/key_rules", 3, "trn counts, so its key is a plural one", "trn wants a plural key, kn\"...\"")
   diag_json_case("rejected/i18n_keys/key_rules", 3, "a plural key needs its count", "tr / trf refuse a plural key")
-  diag_json_case("rejected/i18n_keys/data_missing", 1, "things.axe.name (the derived key of a @Text field the row gives no value): the key things.axe.name is not in", "a @Text Key field a row leaves out: its derived key must be in en.po")
-  diag_json_case("rejected/i18n_keys/data_missing", 1, "English left: things.axe.blurb is", "a @Text string field still holding English: a warning")
+  diag_json_case("rejected/i18n_keys/data_missing", 2, "things.axe.name (the derived key of a @Text field the row gives no value): the key things.axe.name is not in", "a @Text Key field a row leaves out: its derived key must be in en.po")
+  diag_json_case("rejected/i18n_keys/data_missing", 2, "English left: things.axe.blurb is", "a @Text string field still holding English: an error (26.9)")
+  diag_json_case("rejected/i18n_keys/english_left", 2, "English left: a template's words (\\\"Paused\\\")", "a template's words outside translate=\"no\": an error (26.9)")
   diag_json_case("rejected/i18n_keys/t_missing", 1, "t('menu.gone'): the key menu.gone is not in", "a template's t('key') is checked against en.po")
   diag_json_case("rejected/i18n_keys/t_missing", 1, "t(): hud.day is given 0 value(s)", "a template's t('key') given fewer values than the English has holes: a warning")
   feat_case("lang/defaults", "", "a 300.0 8.0 / b 120.0 8.0 / c! 300.0 8.0 / d 300.0 2.0 / x / y", "defaults.ludic (L11: default parameters, positional then named arguments, in a generic too)")

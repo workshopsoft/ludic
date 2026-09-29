@@ -22,3 +22,19 @@ msgid "catch.count"
 msgid_plural "catch.count"
 msgstr[0] "{1} fish"
 msgstr[1] "{1} fish"
+
+#. ludic.ui's key field: its value when the binding is the right mouse button.
+msgid "ui.right_click"
+msgstr "Right click"
+
+#. ludic.ui's key field: the middle mouse button.
+msgid "ui.middle_click"
+msgstr "Middle click"
+
+#. ludic.ui's key field: the left mouse button.
+msgid "ui.left_click"
+msgstr "Left click"
+
+#. ludic.ui's key field: listening for the key the player presses next.
+msgid "ui.press_key"
+msgstr "press a key..."

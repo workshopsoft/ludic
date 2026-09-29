@@ -1,5 +1,5 @@
 # phase 26: a @Text Key field a row leaves out takes its derived key (things.axe.name), and en.po must
-# have it; a @Text string field still holding English is a warning, counted as english_left
+# have it; a @Text string field still holding English is an error (26.9), counted as english_left
 program DataMissing {
   property Thing {
     key: string = ""
