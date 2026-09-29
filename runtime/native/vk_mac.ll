@@ -39,20 +39,106 @@ entry:
   ret ptr %h
 }
 
-; the candidates in order: a Vulkan loader first (the SDK's, so the validation layer can be
-; stacked in development), then MoltenVK itself, which exports every vk* entry point and is what
-; a bundle ships in Contents/Frameworks - no loader, no ICD json - or, found through the
-; executable's rpath, what ludic.render3d carries (lib/macos-arm64) for every other build.
-@lvk_paths = internal constant [8 x ptr] [ptr @.lvk_c0, ptr @.lvk_c1, ptr @.lvk_c2, ptr @.lvk_c3, ptr @.lvk_m0, ptr @.lvk_mr, ptr @.lvk_m1, ptr @.lvk_m2]
+; The candidates in order. MoltenVK itself first - it exports every vk* entry point, it is what a bundle
+; ships in Contents/Frameworks and what ludic.render3d carries (lib/macos-arm64), and the program is
+; linked against it, so dlopen hands back the copy already loaded. A Vulkan loader (the SDK's, found
+; in /usr/local/lib) loads its OWN MoltenVK as an ICD: two in one process, each keeping its pools,
+; and the program drew through the SDK's. The loader comes first only when layers are asked for
+; (VK_INSTANCE_LAYERS, VK_LOADER_LAYERS_ENABLE, R3D_VK_LOADER), and is then pinned to ours (lvk_pin_icd).
+@lvk_direct = internal constant [8 x ptr] [ptr @.lvk_m0, ptr @.lvk_mr, ptr @.lvk_m1, ptr @.lvk_m2, ptr @.lvk_c0, ptr @.lvk_c1, ptr @.lvk_c2, ptr @.lvk_c3]
+@lvk_layered = internal constant [8 x ptr] [ptr @.lvk_c0, ptr @.lvk_c1, ptr @.lvk_c2, ptr @.lvk_c3, ptr @.lvk_m0, ptr @.lvk_mr, ptr @.lvk_m1, ptr @.lvk_m2]
+
+declare i32 @dladdr(ptr, ptr)
+declare i32 @setenv(ptr, ptr, i32)
+declare ptr @strrchr(ptr, i32)
+declare i32 @access(ptr, i32)
+@.lvk_e1 = private unnamed_addr constant [19 x i8] c"VK_INSTANCE_LAYERS\00"
+@.lvk_e2 = private unnamed_addr constant [24 x i8] c"VK_LOADER_LAYERS_ENABLE\00"
+@.lvk_e3 = private unnamed_addr constant [14 x i8] c"R3D_VK_LOADER\00"
+@.lvk_df = private unnamed_addr constant [16 x i8] c"VK_DRIVER_FILES\00"
+@.lvk_if = private unnamed_addr constant [17 x i8] c"VK_ICD_FILENAMES\00"
+@.lvk_gipa = private unnamed_addr constant [22 x i8] c"vkGetInstanceProcAddr\00"
+@.lvk_icd = private unnamed_addr constant [23 x i8] c"%.*s/MoltenVK_icd.json\00"
+
+; 1 when a layer is asked for: the loader is what stacks one
+define internal i32 @lvk_want_loader() {
+entry:
+  %a = call ptr @getenv(ptr @.lvk_e1)
+  %b = call ptr @getenv(ptr @.lvk_e2)
+  %c = call ptr @getenv(ptr @.lvk_e3)
+  %ha = icmp ne ptr %a, null
+  %hb = icmp ne ptr %b, null
+  %hc = icmp ne ptr %c, null
+  %ab = or i1 %ha, %hb
+  %abc = or i1 %ab, %hc
+  %r = zext i1 %abc to i32
+  ret i32 %r
+}
+
+; The loader told to use our MoltenVK and no other: VK_DRIVER_FILES set to the ICD json beside the
+; libMoltenVK.dylib the program is linked against (found through dladdr), unless the caller named a
+; driver already, or there is no json there (a bundle ships none).
+define internal void @lvk_pin_icd() {
+entry:
+  %df = call ptr @getenv(ptr @.lvk_df)
+  %if = call ptr @getenv(ptr @.lvk_if)
+  %hdf = icmp ne ptr %df, null
+  %hif = icmp ne ptr %if, null
+  %named = or i1 %hdf, %hif
+  br i1 %named, label %out, label %find
+find:
+  %h = call ptr @dlopen(ptr @.lvk_mr, i32 6)
+  %noh = icmp eq ptr %h, null
+  br i1 %noh, label %out, label %sym
+sym:
+  %f = call ptr @dlsym(ptr %h, ptr @.lvk_gipa)
+  %nof = icmp eq ptr %f, null
+  br i1 %nof, label %out, label %where
+where:
+  %info = alloca [4 x ptr]
+  %got = call i32 @dladdr(ptr %f, ptr %info)
+  %nogot = icmp eq i32 %got, 0
+  br i1 %nogot, label %out, label %dir
+dir:
+  %fname = load ptr, ptr %info
+  %slash = call ptr @strrchr(ptr %fname, i32 47)
+  %noslash = icmp eq ptr %slash, null
+  br i1 %noslash, label %out, label %json
+json:
+  %pa = ptrtoint ptr %fname to i64
+  %pb = ptrtoint ptr %slash to i64
+  %len64 = sub i64 %pb, %pa
+  %len = trunc i64 %len64 to i32
+  %buf = alloca [1024 x i8]
+  %w = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf, i64 1024, ptr @.lvk_icd, i32 %len, ptr %fname)
+  %acc = call i32 @access(ptr %buf, i32 0)
+  %there = icmp eq i32 %acc, 0
+  br i1 %there, label %pin, label %out
+pin:
+  %s = call i32 @setenv(ptr @.lvk_df, ptr %buf, i32 0)
+  br label %out
+out:
+  ret void
+}
 
 define i32 @lvk_open() {
 entry:
   %have = load ptr, ptr @lvk_lib
   %open = icmp ne ptr %have, null
-  br i1 %open, label %ok, label %loop
+  br i1 %open, label %ok, label %pick
+pick:
+  %wl = call i32 @lvk_want_loader()
+  %layered = icmp ne i32 %wl, 0
+  br i1 %layered, label %pinned, label %start
+pinned:
+  call void @lvk_pin_icd()
+  br label %start
+start:
+  %paths = select i1 %layered, ptr @lvk_layered, ptr @lvk_direct
+  br label %loop
 loop:
-  %i = phi i32 [ 0, %entry ], [ %i1, %next ]
-  %slot = getelementptr [8 x ptr], ptr @lvk_paths, i32 0, i32 %i
+  %i = phi i32 [ 0, %start ], [ %i1, %next ]
+  %slot = getelementptr [8 x ptr], ptr %paths, i32 0, i32 %i
   %path = load ptr, ptr %slot
   %h = call ptr @lvk_try(ptr %path)
   %miss = icmp eq ptr %h, null
