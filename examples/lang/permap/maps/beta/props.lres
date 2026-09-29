@@ -1,0 +1,2 @@
+# fewer rows than alpha: a reload shrinks the table in place
+crate { model: 12, pts: [{ x: 9.0 }] }

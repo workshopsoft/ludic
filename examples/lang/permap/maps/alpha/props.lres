@@ -1,0 +1,6 @@
+# alpha's props: a constant by name, a nested list of records, a list of strings, a nested
+# record, a fn by name, and a cross-row @Ref (home names a row of alpha's spots.lres)
+tent { model: MDL_TENT, yaw: 90.0, role: "camp", home: "fire", tags: ["guy", "fly"],
+       pts: [{ x: 1.0, z: 2.0 }, { x: 3.5, z: -4 }], at: { x: 5 }, pick: fn twice }
+bench { model: MDL_BENCH, scale: G_SCALE, lit: true, home: "" }
+sign { model: 3, role: "say \"hi\"" }

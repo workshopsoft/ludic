@@ -62,6 +62,17 @@ function schema_case(path: pointer, want: pointer, label: pointer) -> void {
   }
   if s_contains(capture(`cat {js}`), want) { ok(label) } else { bad2(label, `the schema has no [{want}]`) }
 }
+# @PerMap: --check reads the example's maps and finds them clean; --no-maps leaves a broken map alone;
+# a @Unit spelled another way is a warning naming the canonical one
+function permap_check_case() -> void {
+  let lbl = "--check: every map of lang/permap is clean, --no-maps skips a broken one, @Unit(\"°\") warns \"deg\""
+  let js = `{tmp_dir()}/dj_permap.json`
+  if not shq(`bin/ludicc examples/lang/permap/permap.ludic --check --diagnostics=json > {js} 2>/dev/null`) { bad2(lbl, capture_line(`head -3 {js}`));  return }
+  if not shq(`bin/ludicc examples/rejected/permap_maps/permap_maps.ludic --check --no-maps > /dev/null 2>&1`) { bad2(lbl, "--no-maps still read the maps");  return }
+  if not shq(`bin/ludicc examples/rejected/permap_unit.ludic --check --diagnostics=json > {js} 2>/dev/null`) { bad2(lbl, "a unit spelling was refused, not warned");  return }
+  if not s_contains(capture(`cat {js}`), "@Unit(\"°\"): the unit is spelled \"deg\"") { bad2(lbl, capture_line(`head -3 {js}`));  return }
+  ok(lbl)
+}
 # --check --diagnostics=json: refused, with exactly `n` diagnostics on stdout, one of them holding `want`
 function diag_json_case(path: pointer, n: int, want: pointer, label: pointer) -> void {
   let js = `{tmp_dir()}/dj_{flat(path)}.json`
@@ -1256,6 +1267,17 @@ function cmd_dev_test() -> int {
   feat_case("lang/resources", "", "2 Axe 2 Split 10 0 1", "resources.ludic (L9: a registry read from a resource file at compile time, nested records typed by the schema)")
   reject_case("rejected/resource_field", "bad_tools.lres:3: error: field weight of Tool wants a float", "a resource file's entry is checked at its own line")
   reject_case("rejected/resource_missing", "cannot read the resource file data/no_such.lres", "a registry's resource file must exist")
+  feat_case("lang/permap/permap", "", "yes yes 3 7 90 2 -4 fly 5 42 0 9 3 yes 8 / yes 1 -1 0 crate 12 1 0 0 21 same examples/lang/permap/maps/beta/density/a.png / 0 1 2 2 7 1 0 1 1 / -1 1 0 2 3 / no 0 examples/lang/permap/maps/bad/one/props.lres:2:18: PropRow has no field colour", "permap.ludic (@PerMap: rows read per map - constants and fn by name, nested lists, a cross-row @Ref, a reload shrinking in place, chunks in/out/in, a missing chunk empty, a bad file false + file:line:col; built under arena strict)")
+  permap_check_case()
+  schema_case("lang/permap/permap", "\"prefix\": null, \"source\": \"instances/{cx}_{cz}.lres\", \"open\": false, \"exported\": false, \"module\": null, \"scope\": \"map\", \"chunk\": 64", "--emit-schema: a @PerMap registry has scope map, its chunk size and no prefix")
+  schema_case("lang/permap/permap", "{\"name\": \"Ref\", \"args\": [\"Spots\"], \"scope\": \"map\"}", "--emit-schema: an @Ref into a map table says scope map")
+  schema_case("lang/permap/permap", "\"units\": [\"m\", \"m/s\", \"m/s2\"", "--emit-schema: the canonical @Unit spellings")
+  reject_case("rejected/permap_ref_int", "names a @PerMap registry, whose rows have no index a program can hold - use a string key", "@Ref into a @PerMap registry is on a string field")
+  reject_case("rejected/permap_prefix", "a @PerMap registry has no 'as PREFIX'", "a @PerMap registry has no prefix and no constants")
+  diag_json_case("rejected/permap_maps/permap_maps", 4, "\"line\": 2, \"col\": 18, \"severity\": \"error\", \"message\": \"PropRow has no field colour\"", "--check reads every map: a field its record lacks, at the map file's line and column")
+  diag_json_case("rejected/permap_maps/permap_maps", 4, "model wants an int, not a string", "--check reads every map: a value of the wrong type")
+  diag_json_case("rejected/permap_maps/permap_maps", 4, "unknown constant MDL_BENCH", "--check reads every map: a constant nobody declared")
+  diag_json_case("rejected/permap_maps/permap_maps", 4, "there is no Spots row nowhere in this map", "--check reads every map: a cross-row @Ref names a row of the same map")
   feat_case("lang/defaults", "", "a 300.0 8.0 / b 120.0 8.0 / c! 300.0 8.0 / d 300.0 2.0 / x / y", "defaults.ludic (L11: default parameters, positional then named arguments, in a generic too)")
   reject_case("rejected/default_missing", "this call to f leaves out a, which has no default", "a call leaves out only what has a default")
   reject_case("rejected/default_unknown", "f has no parameter c", "a named argument names a parameter the function has")

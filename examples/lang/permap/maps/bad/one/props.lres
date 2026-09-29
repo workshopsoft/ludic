@@ -1,0 +1,2 @@
+# a field PropRow does not have (a map one directory down, which --check does not read as a map)
+lamp { model: 1, colour: 3 }

@@ -1,0 +1,5 @@
+tent { model: MDL_TENT, home: "fire" }
+lamp { model: 1, colour: 3 }
+crate { model: "big" }
+bench { model: MDL_BENCH }
+sign { model: 2, scale: 0.5, home: "nowhere" }

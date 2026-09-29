@@ -1,0 +1,4 @@
+# the map-scoped tables' example (permap.ludic): its maps are the directories under maps/, and its
+# frame code is held to the arena's region rule - the generated verbs keep nothing a frame makes
+maps "maps"
+arena strict

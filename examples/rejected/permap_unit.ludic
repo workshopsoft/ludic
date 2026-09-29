@@ -1,0 +1,6 @@
+# permap_unit.ludic - @Unit's spellings are ASCII, one per unit: "°" builds, with a warning naming
+# "deg" (it lives among the rejected examples for the warning it draws, not for an error)
+program PerMapUnit {
+  property Sign { @Unit("°") yaw: float = 0.0, @Unit("m/s") speed: float = 0.0 }
+  entry { print(1) }
+}

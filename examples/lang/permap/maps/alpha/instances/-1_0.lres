@@ -1,0 +1,3 @@
+# the chunk west of the origin: {cx} is -1
+t1 { kind: MDL_TENT, x: -10.0, z: 3.0 }
+t2 { kind: 2, x: -20.5 }

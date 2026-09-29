@@ -1,0 +1,7 @@
+# permap_prefix.ludic - a @PerMap registry's keys are not known when the program compiles, so it has
+# no `as PREFIX` and no constants
+program PerMapPrefix {
+  property Spot { key: string = "" }
+  @PerMap registry Spots of Spot as SPOT from "spots.lres"
+  entry { print(1) }
+}

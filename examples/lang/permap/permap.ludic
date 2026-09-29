@@ -1,0 +1,86 @@
+# permap.ludic — map-scoped tables: a @PerMap registry's rows are not compiled in, they are read
+# from `<maps root>/<map>/<file>` when a map loads (package.ludic says `maps "maps"`), and a
+# @Chunked one a chunk at a time. The compiler writes the table's state and its verbs - props_load,
+# props_find, props_path; instances_in, _out, _slot, _find - and pools every row, list and record, so
+# a reload refills them in place and allocates nothing past the table's high water.
+#
+# Running it prints:  yes yes 3 7 90 2 -4 fly 5 42 0 9 3 yes 8 / yes 1 -1 0 crate 12 1 0 0 21 same examples/lang/permap/maps/beta/density/a.png / 0 1 2 2 7 1 0 1 1 / -1 1 0 2 3 / no 0 examples/lang/permap/maps/bad/one/props.lres:2:18: PropRow has no field colour
+program PerMap {
+  numbers float
+  const MDL_TENT: int = 7
+  const MDL_BENCH: int = MDL_TENT + 2
+  const G_SCALE: float = 1.5
+  property Pt { x: float = 0.0, z: float = 0.0 }
+  # a place on the map, found by key
+  property Spot {
+    key: string = ""
+    @OneOf("camp", "view", "work") kind: string = "view"
+    x: float = 0.0
+  }
+  @PerMap @ByKey registry Spots of Spot from "spots.lres"
+  # a prop placed on the map
+  property PropRow {
+    key: string = ""
+    model: int = 0
+    @Unit("deg") yaw: float = 0.0
+    scale: float = 1.0
+    lit: bool = false
+    role: string = ""
+    @Ref(Spots) home: string = ""
+    pts: []Pt = new []Pt
+    tags: []string = new []string
+    at: Pt = new Pt
+    pick: fn(int) -> int = fn keep_n
+  }
+  @PerMap @ByKey registry Props of PropRow from "props.lres"
+  property InstRow { key: string = "", kind: int = 0, x: float = 0.0, z: float = 0.0 }
+  @PerMap @Chunked(64) registry Instances of InstRow from "instances/{cx}_{cz}.lres"
+  # a frame's streaming: the ring moved, a chunk comes in and one goes out - frame code, which the
+  # region rule (`arena strict` in package.ludic) holds to keeping nothing it makes
+  event Stream { cx: int = 0, cz: int = 0 }
+  @On(Stream) handler Streamed(inst: mut Instances, props: Props) {
+    let s = instances_in(inst, "alpha", cx, cz)
+    if s >= 0 and props_find(props, "tent") < 0 { instances_out(inst, cx, cz) }
+  }
+  function keep_n(n: int) -> int { return n }
+  function twice(n: int) -> int { return n * 2 }
+  function yn(b: bool) -> string {
+    if b { return "yes" }
+    return "no"
+  }
+  entry (props: mut Props, spots: mut Spots, inst: mut Instances) {
+    # a whole-map table: constants by name, a nested list, a cross-row @Ref found by its key
+    let a = props_load(props, "alpha")
+    let s = spots_load(spots, "alpha")
+    let t = props.rows[props_find(props, "tent")]
+    let pick = t.pick
+    let bench = props.rows[props_find(props, "bench")]
+    let sign = props.rows[2]
+    var out = `{yn(a)} {yn(s)} {len(props.rows)} {t.model} {int(t.yaw)} {len(t.pts)} {int(t.pts[1].z)} {t.tags[1]} {int(t.at.x)} {pick(21)} {spots_find(spots, t.home)}`
+    out = out + ` {bench.model} {int(bench.scale * 2.0)} {yn(bench.lit)} {len(sign.role)}`
+    # a reload with fewer rows: row 0's record is reused, reset and refilled - no stale row, no stale list
+    let kept = props.rows[0]
+    let b = props_load(props, "beta")
+    let c = props.rows[0]
+    var same = "new"
+    if c == kept { same = "same" }
+    let pick2 = c.pick
+    out = out + ` / {yn(b)} {len(props.rows)} {props_find(props, "tent")} {props_find(props, "crate")} {c.key} {c.model} {len(c.pts)} {len(c.tags)} {len(c.role)} {pick2(21)} {same} {props_path(props, "density/a.png")}`
+    # a chunked table: a negative and a positive chunk, and one with no file (an empty chunk)
+    let s1 = instances_in(inst, "alpha", -1, 0)
+    let s2 = instances_in(inst, "alpha", 0, 2)
+    let s3 = instances_in(inst, "alpha", 5, 5)
+    out = out + ` / {s1} {s2} {s3} {len(inst.chunks[s1].rows)} {inst.chunks[s1].rows[0].kind} {len(inst.chunks[s2].rows)} {len(inst.chunks[s3].rows)} {instances_find(inst, s1, "t2")} {instances_slot(inst, 0, 2)}`
+    # out and in again: the free slot is taken back, nothing new is made
+    instances_out(inst, -1, 0)
+    let gone = instances_slot(inst, -1, 0)
+    let s4 = instances_in(inst, "alpha", 0, 2)
+    let s5 = instances_in(inst, "alpha", -1, 0)
+    out = out + ` / {gone} {s4} {s5} {len(inst.chunks[s5].rows)} {len(inst.chunks)}`
+    # a wrong file: false, an empty table, and the error at its line and column
+    let bad = props_load(props, "bad/one")
+    out = out + ` / {yn(bad)} {len(props.rows)} {props.err}`
+    print(out)
+    emit Stream(cx: 0, cz: 2)
+  }
+}

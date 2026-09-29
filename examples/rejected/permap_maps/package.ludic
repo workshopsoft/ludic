@@ -1,0 +1,2 @@
+# permap_maps.ludic's maps, each file with one thing `ludicc --check` must refuse
+maps "maps"

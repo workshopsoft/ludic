@@ -1,0 +1,2 @@
+fire { kind: "camp", x: 1.0 }
+view { kind: "view", x: -2.5 }

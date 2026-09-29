@@ -1,0 +1,19 @@
+# permap_maps.ludic - `ludicc --check` reads every map directory and checks its tables against their
+# records. maps/m1 holds four mistakes, each refused at its file, line and column: a field the
+# record lacks, a value of the wrong type, a constant nobody declared, and a key naming no row.
+program PerMapMaps {
+  numbers float
+  const MDL_TENT: int = 7
+  property Spot { key: string = "", x: float = 0.0 }
+  @PerMap registry Spots of Spot from "spots.lres"
+  property PropRow {
+    key: string = ""
+    model: int = 0
+    scale: float = 1.0
+    @Ref(Spots) home: string = ""
+  }
+  @PerMap @ByKey registry Props of PropRow from "props.lres"
+  entry (props: mut Props) {
+    print(`{props_load(props, "m1")}`)
+  }
+}

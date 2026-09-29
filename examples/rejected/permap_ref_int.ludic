@@ -1,0 +1,12 @@
+# permap_ref_int.ludic - an @Ref into a @PerMap registry names a row by its key: a map's rows have
+# no index a program could hold, so the field is a string
+program PerMapRefInt {
+  property Spot { key: string = "" }
+  @PerMap registry Spots of Spot from "spots.lres"
+  property Npc {
+    key: string = ""
+    @Ref(Spots) home: int = 0
+  }
+  @PerMap registry Npcs of Npc from "npcs.lres"
+  entry { print(1) }
+}
