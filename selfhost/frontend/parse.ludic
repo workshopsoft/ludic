@@ -248,7 +248,7 @@ function interp_add(acc: Node, part: Node) -> Node {
   return mkbin("+", acc, part)
 }
 function interp_str(e: Node) -> Node {                  # wrap a hole in string(...)
-  let c = node(E_CALL); let id = node(E_ID); id.s = "string"; c.a = id; push(c.kids, e); return c
+  let c = node(E_CALL); let id = node(E_ID); id.s = "string"; id.uns = TPL_HOLE; c.a = id; push(c.kids, e); return c
 }
 var g_interp_line: int = 1                                  # the line the interpolated string sits on
 var g_interp_pos: int = -1                                  # the backtick's place in its file
@@ -297,6 +297,7 @@ function parse_interp(raw: pointer) -> Node {
   return acc
 }
 const TPL_COPY: int = 91                                    # on the callee of a template's lone string(hole)
+const TPL_HOLE: int = 92                                    # on the callee of every other string(hole) (a Key is refused there)
 
 # emit E(field: v, ...) — shared by the statement form and the expression form.
 # As an expression it yields a cancellable event's cancelled flag (0/1); a

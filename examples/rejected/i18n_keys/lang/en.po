@@ -16,3 +16,9 @@ msgstr "Close"
 
 msgid "map.close"
 msgstr "Close"
+
+#. The catch on the HUD. {1} = how many
+msgid "catch.count"
+msgid_plural "catch.count"
+msgstr[0] "{1} fish"
+msgstr[1] "{1} fish"

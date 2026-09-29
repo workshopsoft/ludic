@@ -3,9 +3,10 @@
 program KeyMissing {
   function tr(key: Key) -> string { return string(key) }
   function trf(key: Key, a: string, b: string) -> string { return string(key) + a + b }
+  function trn(key: Key, n: int) -> string { return string(key) }
   entry {
     print(tr(k"pause.gone"))
-    print(tr(kn"pause.resume"))
+    print(trn(kn"pause.resume", 1))
     print(trf(k"hud.day", "1", "2"))
   }
 }

@@ -1,0 +1,9 @@
+# phase 26: a Key in a template literal's {hole} is refused - it would draw its marked name, never
+# translated; text is made with tr / trf
+program KeyHole {
+  entry {
+    let k = k"pause.resume"
+    print(`{k}`)
+    print(`at {k}!`)
+  }
+}

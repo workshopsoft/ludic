@@ -836,7 +836,9 @@ results, list elements and registry values like any other type (`null` is none).
 its text after a marker byte - byte 1, or 2 for `kn"..."` - so `k"pause.resume"` is the string
 `"\x01pause.resume"`: the runtime's `tr` is a cast, and a translator knows a key from English.
 `string(key)` gives that marked text, for a runtime that needs it; a program itself makes text with
-`tr`. (A program that declares its own type named `Key` keeps it; the builtin is then out of reach.)
+`tr`, and a key in a template literal's hole (`` `at {k}` ``) is an error - write `trf(k"...", ...)`.
+`trn` takes a plural key and `tr` / `trf` refuse one, with or without a `lang` line. (A program that
+declares its own type named `Key` keeps it; the builtin is then out of reach.)
 
 **The data.** A registry's `@Text` field is text by derivation: its key is
 `<registry>.<row>.<field>` - the registry's name in snake case (`Items` -> `items`, `GearKinds` ->
@@ -876,9 +878,10 @@ each diagnostic at its `file:line:col`:
 - one English under several keys (a split) wants a `#.` description on each, for a translator to
   tell them apart: a **warning** at the `.po`'s line.
 
-With no `lang` line, or no source `.po`, nothing is checked, and the first key literal says so once.
+With no `lang` line nothing is checked and nothing is said (a package test uses key literals freely); a
+`lang` line whose source `.po` is missing checks nothing, and the first key literal says so once.
 The source `.po` is gettext's: `msgid` (the key), `msgid_plural` and `msgstr[n]`, `#,` flags
-(`fuzzy`), `#.` descriptions, `msgctxt` (read, keying nothing), strings over several lines; `#~`
+(`fuzzy`), `#.` descriptions, `msgctxt` (read and ignored: the key is the context), strings over several lines; `#~`
 entries are obsolete. `ludic schema` carries a `"lang"` object (null without a `lang` line): every
 key used with its kind (`code`, `template`, `data`), its sites, its English, whether it is a plural,
 and its description; `unused` (the source's keys used nowhere), `undescribed`, `split`, and per other
