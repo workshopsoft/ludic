@@ -5,4 +5,5 @@ lantern {
   seller: VD_MARINA
   weight: 0.75
   stocked_at: VD_MARINA
+  shape: "hull"
 }

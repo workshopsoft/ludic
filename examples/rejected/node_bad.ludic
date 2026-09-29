@@ -1,6 +1,8 @@
 # attributes: @Node / @Clip name a field of their record that names a glTF - `handle` names no field,
-# `tag` is a plain string, and `kit` refers to a registry whose record has two models: four errors.
-# @OneOf's KITS_NONE and @Tint's TSLOT_NONE are in no part of the program: two warnings.
+# `tag` is a plain string, and `kit` refers to a registry whose record has two models.
+# @Material(tag) is the same fault; words on an int, constants on a string, and a row whose shape is
+# no word of its @OneOf are the rest: eight errors. @OneOf's KITS_NONE and @Tint's TSLOT_NONE are in
+# no part of the program: two warnings.
 program R {
   property Kit {
     key: string = ""
@@ -17,6 +19,12 @@ program R {
     @Clip(tag) swing: string = ""
     @OneOf(KITS_COUNT, KITS_NONE) which: int = 0
     @Tint(TSLOT_NONE) shade: int = 0
+    @Material(tag) paint: string = ""
+    @OneOf("a", "b") size: int = 0
+    @OneOf(KITS_COUNT) form: string = ""
+    @OneOf("box", "hull") shape: string = "box"
   }
+  registry Tools of Tool
+  def Tools crate { shape: "cube" }
   entry { print(KITS_COUNT) }
 }

@@ -1,4 +1,5 @@
-# attrs_node.ludic — @Node(model) / @Clip(model): a string naming a node or a clip inside the glTF
+# attrs_node.ludic — @Node(model) / @Clip(model) / @Material(model): a string naming a node, a clip or a
+# material inside the glTF
 # another field of the same record names. That field is @Asset("gltf") itself, or an @Ref(R) whose record has exactly one
 # @Asset("gltf") field (the model is found through the row). Anything else is an error naming it.
 
@@ -68,16 +69,70 @@ function at_check_node(d: Node, f: Node, a: pointer, target: pointer) -> void {
   }
 }
 
-# @OneOf: one argument ending in _ is a prefix; otherwise every argument is a constant that must exist
+# @OneOf: on a string field, words, and every row's value one of them; otherwise one argument ending
+# in _ is a prefix, or every argument a constant that must exist
 function at_check_oneof(d: Node, f: Node, j: int) -> void {
+  let where = `field {d.s}.{f.s}: @OneOf`
+  let words = g_at_strs[j]
+  let is_text = f.ty != null and f.ty == "string"
+  if words and not is_text {
+    perr_at(f.file, f.line, f.col, `{where} lists words, and {f.s} is not a string - name constants instead`)
+    return
+  }
+  if is_text and not words {
+    perr_at(f.file, f.line, f.col, `{where} names constants, and {f.s} is a string - list the words it may hold: @OneOf("a", "b")`)
+    return
+  }
+  let names = at_arg_names(g_at_args[j])
+  if words {
+    at_check_rows(d, f, names)
+    return
+  }
   let first = g_at_first[j]
   if g_at_nargs[j] == 1 and first[len(first) - 1] == '_' { return }
-  let names = at_arg_names(g_at_args[j])
   var i = 0
   while i < len(names) {
     if not at_const_exists(names[i]) { at_const_target(d, f, j, names[i]) }
     i += 1
   }
+}
+# every registry row of record d that writes field f as a string: one of the words
+function at_check_rows(d: Node, f: Node, words: []pointer) -> void {
+  let plain = vis_plain(d.s)
+  var i = 0
+  while i < len(g_df_rec) {
+    let r = reg_find(g_df_reg[i])
+    if r >= 0 and vis_plain(g_rg_type[r]) == plain { at_check_row(d, f, g_df_rec[i], g_df_key[i], words) }
+    i += 1
+  }
+}
+function at_check_row(d: Node, f: Node, rec: Node, key: pointer, words: []pointer) -> void {
+  var k = 0
+  while k < len(rec.kids) {
+    let fi = rec.kids[k]
+    if fi.kind == E_FINIT and fi.s == f.s and fi.a != null and fi.a.kind == E_STR and not at_word_in(fi.a.s, words) {
+      perr_at(fi.file, fi.line, fi.col, `{key}.{f.s} is "{fi.a.s}", and field {d.s}.{f.s} is @OneOf({at_words_text(words)})`)
+    }
+    k += 1
+  }
+}
+function at_word_in(w: pointer, words: []pointer) -> bool {
+  var i = 0
+  while i < len(words) {
+    if words[i] == w { return true }
+    i += 1
+  }
+  return false
+}
+function at_words_text(words: []pointer) -> pointer {
+  var out: pointer = ""
+  var i = 0
+  while i < len(words) {
+    if i > 0 { out = out + ", " }
+    out = out + "\"" + words[i] + "\""
+    i += 1
+  }
+  return out
 }
 # the names in an attribute's JSON arguments (["A", "B"]): each a quoted identifier
 function at_arg_names(args: pointer) -> []pointer {

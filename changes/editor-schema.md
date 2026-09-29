@@ -8,7 +8,7 @@ prefix, resource file, openness and its entries in their final order after the o
 which entries in); every const; and every function a `fn` value can name, with the `fn_type` a field sees (its states stripped).
 Deterministic, `"schema_version": 1`. Fields and registries carry editor attributes on the existing
 `@` syntax - `@Ref(Registry)`, `@OneOf(PREFIX_)`, `@Range(lo, hi)`, `@Unit("m/s")`, `@Asset("gltf")`,
-`@Color`, `@Node(field)`, `@Clip(field)`, `@Tint(SLOT)`, `@Derived`, `@Text`, `@Multiline`, `@Key`, and `@AppendOnly` / `@ByKey` on
+`@Color`, `@Node(field)`, `@Clip(field)`, `@Material(field)`, `@Tint(SLOT)`, `@Derived`, `@Text`, `@Multiline`, `@Key`, and `@AppendOnly` / `@ByKey` on
 a registry - which change nothing but go into the schema; `@Ref` naming no registry is an error, and
 so is `@Node` / `@Clip` naming a field that is not a glTF (`@Asset("gltf")`, or an `@Ref` to one), and
 a listing `@OneOf` (`@OneOf(A, B)`, not a prefix `@OneOf(P_)`) naming a constant that does not exist, and `@Tint` naming no constant. A field may now carry several attributes. `ludicc --check
@@ -17,3 +17,8 @@ of `{file, line, col, severity, message}` on stdout; tokens and nodes now know t
 
 `Build.schema_hash()` answers FNV-1a 64 of the program's own schema (the bytes `ludic schema` prints),
 computed only when a program names it, and 0 under `ludicc --release`, which `ludic bundle` now passes.
+
+A target no part of the program declares (an `@Ref` registry, an `@Tint` or listed `@OneOf` constant) is
+a warning and `"unresolved": true` in the schema, so a package can name the game's registry; a name of
+another kind is an error. `@OneOf` on a string field takes words, and every registry row's value is
+checked against them.
