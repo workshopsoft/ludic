@@ -63,6 +63,12 @@ program UpdateTest {
     System.run("rm -rf '" + dir() + "'")
     Fs.mkdir(dir())
     Fs.mkdir(pkgs())
+    configure(update_st, root)
+    update_reset(update_st)
+  }
+  # whether this copy was installed is worked out when the updater is configured, so a test that
+  # changes the disk or the executable's place configures again
+  function configure(update_st: mut UpdateState, root: bool) -> void {
     let c = new UpdateConfig
     c.feed = "http://feed"
     c.app_id = "Game"
@@ -71,7 +77,6 @@ program UpdateTest {
     c.packages = pkgs()
     c.scratch = hashf()
     update_config(update_st, c)
-    update_reset(update_st)
   }
 
   function asset(ty: string, ver: string, size: int) -> string {
@@ -116,8 +121,11 @@ program UpdateTest {
     update_check_tick(update_st, false)
     expect(update_fresh(update_st))
     expect(update_latest(update_st) == "1.2.0")
+    update_notes_for(update_st, "tr")                  # the game's tick keeps them for its language
     expect_eq(len(update_notes(update_st, "tr")), 1)
-    expect_eq(len(update_notes(update_st, "de")), 2)
+    expect_eq(len(update_notes(update_st, "de")), 0)   # not kept for German yet
+    update_notes_for(update_st, "de")
+    expect_eq(len(update_notes(update_st, "de")), 2)   # no German: English
   }
 
   test "the version being played is shown only when asked" (update_st: mut UpdateState, update_test_st: mut UpdateTestState) {
@@ -175,8 +183,10 @@ program UpdateTest {
     Fs.mkdir(dir() + "/Game.app/Contents")
     Fs.mkdir(dir() + "/Game.app/Contents/MacOS")
     Fs.write_text(dir() + "/Game.app/Contents/MacOS/UpdateMac", "x")
+    configure(update_st, false)
     expect(update_installed(update_st))
     update_test_st.exe = "/private/var/folders/x/AppTranslocation/y/Game.app/Contents/MacOS/Game"
+    configure(update_st, false)
     expect(not update_installed(update_st))
   }
 

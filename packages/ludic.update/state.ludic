@@ -59,6 +59,7 @@ export state UpdateState {
   update__installed: bool = false            # worked out when configured: the panel asks every frame
   @max(256) update__notes_list: []string = new []string   # the notes in the language last asked, kept
   update__notes_lang: string = ""
+  update__notes_none: []string = new []string   # update_notes for a language not kept: always empty, never pushed to
   update__notes_of: string = ""              # ... for this version
   update__cfg: UpdateConfig = new UpdateConfig
   update__state: int = 0

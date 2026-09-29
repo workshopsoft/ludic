@@ -37,8 +37,12 @@ export function update_latest(update_st: UpdateState) -> string { return update_
 export function update_shown(update_st: UpdateState) -> bool { return update_st.update__ask == UPDATE_NEWER or update_st.update__ask == UPDATE_CURRENT }
 export function update_fresh(update_st: UpdateState) -> bool { return update_st.update__ask == UPDATE_NEWER }
 
-# the notes in the language the game asked for (update_notes_for), else English, else none
-export function update_notes(update_st: UpdateState, lang: string) -> []string { return update_st.update__notes_list }
+# the notes update_notes_for last kept, for that language (else English); none for a language it was
+# not asked for - a question makes nothing, so it cannot fill them itself
+export function update_notes(update_st: UpdateState, lang: string) -> []string {
+  if lang != update_st.update__notes_lang { return update_st.update__notes_none }
+  return update_st.update__notes_list
+}
 
 # the notes kept for this language: filled when the version or the language changes, so the panel
 # reading them every frame makes nothing
