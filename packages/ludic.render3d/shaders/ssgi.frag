@@ -2,6 +2,7 @@
 // frame's lit colour; half resolution, denoised over time by the TAA history it feeds
 in vec2 v_uv;
 out vec4 o_color;
+uniform float u_ao_far;
 uniform sampler2D u_depth;
 uniform sampler2D u_prev_color;      // last frame's anti-aliased HDR colour
 uniform mat4 u_inv_proj;
@@ -18,7 +19,8 @@ vec3 viewPos(vec2 uv) {
 }
 void main() {
   vec3 P = viewPos(v_uv);
-  if (-P.z > 900.0) { o_color = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  // past 900 m, or where a fog wall has already hidden everything (u_ao_far, post.ludic)
+  if (-P.z > (u_ao_far > 0.0 ? u_ao_far : 900.0)) { o_color = vec4(0.0, 0.0, 0.0, 1.0); return; }
   vec3 Pr = viewPos(v_uv + vec2(u_texel.x, 0.0)), Pl = viewPos(v_uv - vec2(u_texel.x, 0.0));
   vec3 Pu = viewPos(v_uv + vec2(0.0, u_texel.y)), Pd = viewPos(v_uv - vec2(0.0, u_texel.y));
   vec3 dx = (abs(Pr.z - P.z) < abs(P.z - Pl.z)) ? Pr - P : P - Pl;

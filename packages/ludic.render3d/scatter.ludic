@@ -39,6 +39,7 @@ property Layer {
   fog_buf:  int = 0,       # the casters inside the fog wall (fog_casters.ludic)
   fog_n:    int = 0,
   fog_src:  int = -1,
+  fog_all:  bool = false,  # the wall keeps (nearly) all of it: casters from sh_buf, no rebuild
   fog_wall: float = 0.0,
   fog_x:    float = 0.0,
   fog_z:    float = 0.0,

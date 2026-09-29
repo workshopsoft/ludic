@@ -319,7 +319,7 @@ vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   if (u_fog_wall > 0.0) {
     // full by 0.85 of the wall, so whatever is cut at the wall is cut inside solid fog
     float w = smoothstep(0.3 * u_fog_wall, 0.85 * u_fog_wall, dist);
-    col = mix(col, fogWallCol(dir), w);
+    if (w > 0.0) col = mix(col, fogWallCol(dir), w);
   }
   return col;
 }

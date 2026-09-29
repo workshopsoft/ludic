@@ -11,7 +11,10 @@ function fog_casters(render3d_st: mut Render3dState, l: Layer) -> int {
   if w <= 0.0 { return l.sh_buf }
   let dx = render3d_st.cam_pos[0] - l.fog_x
   let dz = render3d_st.cam_pos[2] - l.fog_z
-  if l.fog_wall == w and l.fog_src == l.n_sh and dx * dx + dz * dz < FOG_CAST_STEP * FOG_CAST_STEP { return l.fog_buf }
+  if l.fog_wall == w and l.fog_src == l.n_sh and (l.fog_all or dx * dx + dz * dz < FOG_CAST_STEP * FOG_CAST_STEP) {
+    if l.fog_all { return l.sh_buf }
+    return l.fog_buf
+  }
   l.fog_wall = w;  l.fog_src = l.n_sh
   l.fog_x = render3d_st.cam_pos[0];  l.fog_z = render3d_st.cam_pos[2]
   let far = w + R3D_FOG_MARGIN + FOG_CAST_THROW + FOG_CAST_STEP
@@ -30,11 +33,15 @@ function fog_casters(render3d_st: mut Render3dState, l: Layer) -> int {
     n += 1
   }
   l.fog_n = n
+  # a wall that keeps nearly the whole layer (a kilometre): the static list, and no rebuild as the camera
+  # moves - copying and uploading 60k cards every 4 m bought nothing there
+  l.fog_all = n * 5 >= total * 4
+  if l.fog_all { return l.sh_buf }
   if n > 0 { gpu_buffer_upload(render3d_st, l.fog_buf, n * INST_FLOATS * 4, data_of(dst), GPU_DYNAMIC) }
   return l.fog_buf
 }
 
 function fog_casters_n(render3d_st: Render3dState, l: Layer) -> int {
-  if render3d_st.r3d_fog_wall <= 0.0 { return l.n_sh }
+  if render3d_st.r3d_fog_wall <= 0.0 or l.fog_all { return l.n_sh }
   return l.fog_n
 }
