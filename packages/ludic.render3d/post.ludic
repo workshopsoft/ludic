@@ -235,6 +235,10 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_texel"), 1.0 / float(render3d_st.post_w), 1.0 / float(render3d_st.post_h))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_radius"), render3d_st.post_ao_radius)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_intensity"), render3d_st.post_ao_intensity)
+  # nothing to shade past where a fog wall is solid (0.85 of it)
+  var ao_far = 900.0
+  if render3d_st.r3d_fog_wall > 0.0 { ao_far = Math.min(ao_far, 0.85 * render3d_st.r3d_fog_wall) }
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_ao_far"), ao_far)
   var contact = render3d_st.post_contact
   if r3d_env_has(render3d_st, "R3D_NOCONTACT") { contact = 0.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_contact"), contact)
@@ -266,10 +270,17 @@ function post_volumetric_pass(render3d_st: mut Render3dState) -> void {
   u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_cam_pos"), render3d_st.cam_pos)
   u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_sun_dir"), render3d_st.sun_dir)
   u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_sun_color"), render3d_st.sun_color)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_steps"), render3d_st.post_vol_steps)
+  # under a fog wall the air is marched only as far as it, with steps in proportion (at least 8)
+  var vfar = render3d_st.post_vol_far
+  var vsteps = render3d_st.post_vol_steps
+  if render3d_st.r3d_fog_wall > 0.0 and render3d_st.r3d_fog_wall < vfar {
+    vsteps = Math.max(8.0, Math.floor(vsteps * render3d_st.r3d_fog_wall / vfar))
+    vfar = render3d_st.r3d_fog_wall
+  }
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_steps"), vsteps)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_density"), render3d_st.post_vol_density)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_falloff"), render3d_st.post_vol_falloff)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_far"), render3d_st.post_vol_far)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_far"), vfar)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_g"), render3d_st.post_vol_g)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_mist"), render3d_st.post_vol_mist)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_vol, "u_vol_mist_h"), render3d_st.post_vol_mist_h)
