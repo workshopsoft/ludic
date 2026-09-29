@@ -3,7 +3,7 @@
   "name": "Ludic",
   "scopeName": "source.ludic",
   "fileTypes": ["ludic"],
-  "comment": "Static grammar for Ludic. It is the fallback: when ludic-lsp is running, its semantic tokens refine everything here with real name resolution. Generated shapes are kept in sync with tools/ludic-tools/ludic_syntax.h.",
+  "comment": "Static grammar for Ludic. It is the fallback: when ludic-lsp is running, its semantic tokens refine everything here with real name resolution. The keyword, type and phase alternations are written by `ludic-dev syntax` from the compiler's own vocabulary (`ludicc --emit-syntax`): every pattern marked \"ludic-dev syntax: <group>\".",
   "patterns": [
     { "include": "#comment" },
     { "include": "#declaration" },
@@ -126,7 +126,7 @@
           "captures": { "1": { "name": "keyword.control.import.ludic" } }
         },
         {
-          "match": "\\b(phase)\\s+(Start|Input|FixedUpdate|Update|LateUpdate|Render)\\b",
+          "comment": "ludic-dev syntax: phase-clause", "match": "\\b(phase)\\s+(Start|Input|FixedUpdate|Update|LateUpdate|Render|Overlay)\\b",
           "captures": {
             "1": { "name": "keyword.other.clause.ludic" },
             "2": { "name": "constant.language.phase.ludic" }
@@ -180,14 +180,13 @@
     },
     "keyword": {
       "patterns": [
-        { "name": "keyword.control.ludic", "match": "\\b(if|else|while|for|in|match|machine|become|return|spawn|despawn|enable|disable|attach|detach|emit|cancel|where|break|continue|new|try)\\b" },
-        { "name": "keyword.operator.logical.ludic", "match": "\\b(and|or|not)\\b" },
-        { "name": "keyword.other.clause.ludic", "match": "\\b(phase|query|on|cancellable|public|layer|start|shows|lasts|loads|then|export|internal)\\b" },
-        { "name": "keyword.other.ludic", "match": "\\b(import|extern)\\b" },
-        { "name": "storage.type.ludic", "match": "\\b(program|property|model|prefab|namespace|enum|ui|const|var|let|function|fn|handler|entry|event|scene|state|test)\\b" },
-        { "name": "support.type.primitive.ludic", "match": "\\b(int|long|fixed|float|double|countdown|bool|entity|string|pointer|byte|words|fixeds|floats|doubles|pointers|Vector|IVec2|Rect|void)\\b" },
-        { "name": "constant.language.boolean.ludic", "match": "\\b(true|false|null)\\b" },
-        { "name": "constant.language.phase.ludic", "match": "\\b(Start|Input|FixedUpdate|Update|LateUpdate|Render|Overlay)\\b" }
+        { "name": "keyword.control.ludic", "comment": "ludic-dev syntax: statement", "match": "\\b(let|if|else|while|for|in|where|match|machine|become|return|break|continue|new|spawn|despawn|enable|disable|attach|detach|emit|cancel|dispatch|try)\\b" },
+        { "name": "keyword.operator.logical.ludic", "comment": "ludic-dev syntax: operator", "match": "\\b(and|or|not)\\b" },
+        { "name": "keyword.other.clause.ludic", "comment": "ludic-dev syntax: modifier", "match": "\\b(export|internal|friend|uses|open|of|as|from|numbers|unsafe|mut|phase|query|on|cancellable|public|layer|start|shows|lasts|then|loads|system)\\b" },
+        { "name": "storage.type.ludic", "comment": "ludic-dev syntax: declaration", "match": "\\b(program|module|import|property|state|event|action|reducer|enum|model|prefab|scene|handler|ui|namespace|alias|port|bind|registry|def|component|view|prop|const|var|function|fn|extern|entry|test)\\b" },
+        { "name": "support.type.primitive.ludic", "comment": "ludic-dev syntax: types", "match": "\\b(int|long|float|double|fixed|bool|byte|string|Key|pointer|void|entity|countdown|words|floats|doubles|fixeds|pointers|Vector|IVec2|Rect)\\b" },
+        { "name": "constant.language.boolean.ludic", "comment": "ludic-dev syntax: constant", "match": "\\b(true|false|null)\\b" },
+        { "name": "constant.language.phase.ludic", "comment": "ludic-dev syntax: phases", "match": "\\b(Start|Input|FixedUpdate|Update|LateUpdate|Render|Overlay)\\b" }
       ]
     },
     "widget": {
@@ -241,7 +240,7 @@
       "patterns": [
         { "name": "keyword.operator.arrow.ludic", "match": "->|=>" },
         { "name": "keyword.operator.range.ludic", "match": "\\.\\." },
-        { "name": "keyword.operator.bitwise.ludic", "match": "<<|>>|&|\\|\\^|~" },
+        { "name": "keyword.operator.bitwise.ludic", "match": "<<|>>|&|\\||\\^|~" },
         { "name": "keyword.operator.comparison.ludic", "match": "==|!=|<=|>=|<|>" },
         { "name": "keyword.operator.assignment.ludic", "match": "\\+=|-=|\\*=|/=|=" },
         { "name": "keyword.operator.arithmetic.ludic", "match": "[+\\-*/%]" }

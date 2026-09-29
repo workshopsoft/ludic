@@ -1,0 +1,424 @@
+# vocab.ludic — the language's vocabulary as one table, written out by `ludicc --emit-syntax`
+# (`ludic syntax --json`): every keyword with its role, every declaration's form, every built-in type
+# and phase, every attribute with where it goes, what it takes and what it means, every operator.
+#
+# The parser dispatches on words where it meets them rather than from a table, so this is the table
+# beside it, and it is held to the parser from both sides: the emitter asks the parser's own
+# recognisers of every row it prints (is_reserved_word, is_phase_name, at_field_known) and refuses to
+# print a row they disagree with, and `ludic-dev syntax --check` scans selfhost/frontend for every word
+# and attribute the parser tests and fails on one this table lacks. The editor grammars, the language
+# server's word lists and docs/language are generated from or checked against what this prints.
+var g_vc_kind: []pointer = new []pointer     # keyword, declaration, type, phase, attribute, operator, literal
+var g_vc_name: []pointer = new []pointer
+var g_vc_role: []pointer = new []pointer
+var g_vc_form: []pointer = new []pointer     # how it is written (an attribute's arguments, a declaration's shape)
+var g_vc_on: []pointer = new []pointer       # an attribute's targets, space-separated
+var g_vc_doc: []pointer = new []pointer
+
+function vc(kind: pointer, name: pointer, role: pointer, form: pointer, on: pointer, doc: pointer) -> void {
+  push(g_vc_kind, kind)
+  push(g_vc_name, name)
+  push(g_vc_role, role)
+  push(g_vc_form, form)
+  push(g_vc_on, on)
+  push(g_vc_doc, doc)
+}
+function vc_kw(role: pointer, w: pointer, doc: pointer) -> void { vc("keyword", w, role, "", "", doc) }
+function vc_decl(name: pointer, form: pointer, doc: pointer) -> void { vc("declaration", name, "", form, "", doc) }
+function vc_ty(name: pointer, role: pointer, doc: pointer) -> void { vc("type", name, role, "", "", doc) }
+function vc_at(name: pointer, role: pointer, on: pointer, args: pointer, doc: pointer) -> void { vc("attribute", name, role, args, on, doc) }
+function vc_op(op: pointer, role: pointer, doc: pointer) -> void { vc("operator", op, role, "", "", doc) }
+
+function vocab_keywords() -> void {
+  # declaring: a word that starts a declaration (or a member of one)
+  vc_kw("declaration", "program", "A program block: the unit that holds every declaration of a game.")
+  vc_kw("declaration", "module", "Names the module a directory is (module bank uses base): only what it exports is reachable from outside.")
+  vc_kw("declaration", "import", "Brings another file or a directory's barrel into the program.")
+  vc_kw("declaration", "property", "A record type; on an entity, a component.")
+  vc_kw("declaration", "state", "A module's changing data: one instance, reached only as a parameter. Inside a machine, one of its states.")
+  vc_kw("declaration", "event", "Something that happened, fired with emit and heard by @On listeners.")
+  vc_kw("declaration", "action", "What a player asked for, dispatched and applied by each state's reducer.")
+  vc_kw("declaration", "reducer", "Applies an action to one state: reducer HikerState on Move(h: mut HikerState, a: Move).")
+  vc_kw("declaration", "enum", "A set of named integer variants.")
+  vc_kw("declaration", "model", "An entity kind: the components an entity of it carries.")
+  vc_kw("declaration", "prefab", "A model with preset component values.")
+  vc_kw("declaration", "scene", "A scene: its layers, its handlers and how it moves on.")
+  vc_kw("declaration", "handler", "A system that runs in a phase, optionally once per entity a query matches.")
+  vc_kw("declaration", "ui", "A retained-mode widget tree.")
+  vc_kw("declaration", "namespace", "A Foo.* namespace declared in Ludic, its methods aliases of functions.")
+  vc_kw("declaration", "alias", "Inside a namespace: a method that is another function (alias length = trail_length).")
+  vc_kw("declaration", "port", "A question a module asks the world, as named fn members the program binds once.")
+  vc_kw("declaration", "bind", "Answers a port: bind ClockWorld { rest_scale: my_rest_scale }.")
+  vc_kw("declaration", "registry", "A table of named entries of one record type: registry Items of Item as IT from \"items.lres\".")
+  vc_kw("declaration", "def", "One entry of a registry: def Items rope { ... }, or def R from \"file.lres\".")
+  vc_kw("declaration", "component", "A UI component: its props, state, functions and events, beside its .xml template and .lss styles.")
+  vc_kw("declaration", "view", "The bridge to a UI template: the fields it may read and the queries and events it may call.")
+  vc_kw("declaration", "prop", "Inside a component: a value its parent hands it.")
+  vc_kw("declaration", "const", "A named constant.")
+  vc_kw("declaration", "var", "A mutable binding (a local; at module level only with --globals).")
+  vc_kw("declaration", "function", "A function.")
+  vc_kw("declaration", "fn", "A function type (fn(int, float) -> bool), or a function value written fn name.")
+  vc_kw("declaration", "extern", "A function implemented outside Ludic, linked by name.")
+  vc_kw("declaration", "entry", "The program's entry point.")
+  vc_kw("declaration", "test", "A named test block: test \"name\" { expect ... }.")
+  # modifying: a word inside a declaration's head
+  vc_kw("modifier", "export", "Makes a declaration visible outside its module.")
+  vc_kw("modifier", "internal", "Inside a namespace: a function kept out of the Name.* surface.")
+  vc_kw("modifier", "friend", "friend module lab [of A, B]: this file's module sees the private names of those modules (of every one without of).")
+  vc_kw("modifier", "uses", "The modules a module may reach: module sky uses base, events.")
+  vc_kw("modifier", "open", "open registry R: other modules may add entries with def.")
+  vc_kw("modifier", "of", "registry R of Record: the record its entries are; friend module m of A, B: whose private names it sees.")
+  vc_kw("modifier", "as", "registry R of T as P: the prefix of its generated constants (P_KEY).")
+  vc_kw("modifier", "from", "registry R ... from \"file.lres\": the resource file its entries are read from.")
+  vc_kw("modifier", "numbers", "numbers float: a bare 1.5 in this file is a float.")
+  vc_kw("modifier", "unsafe", "unsafe function / unsafe { ... }: raw memory is allowed inside.")
+  vc_kw("modifier", "mut", "A parameter the function may change: h: mut HikerState.")
+  vc_kw("modifier", "phase", "The phase a handler runs in: handler Move phase Update.")
+  vc_kw("modifier", "query", "The components a handler iterates: for (p, v) in query [Pos, Vel].")
+  vc_kw("modifier", "on", "reducer S on Action; attach P on e; an event's listener in a component or scene.")
+  vc_kw("modifier", "cancellable", "event cancellable E: a listener may veto it with cancel.")
+  vc_kw("modifier", "public", "A public scene or layer: its show and hide are events other code may listen to.")
+  vc_kw("modifier", "layer", "A scene's layer of handlers; enable/disable layer L.")
+  vc_kw("modifier", "start", "The scene a program starts in.")
+  vc_kw("modifier", "shows", "scene S shows Menu: the engine opens, renders and closes that ui.")
+  vc_kw("modifier", "lasts", "scene S lasts N then Next: a timed scene.")
+  vc_kw("modifier", "then", "The scene a timed scene moves on to.")
+  vc_kw("modifier", "loads", "scene S loads then Next: pumps the asset queue with a bar, then moves on.")
+  vc_kw("modifier", "system", "disable system S: an engine system left out at compile time.")
+  # statements: a word that starts or shapes a statement
+  vc_kw("statement", "let", "An immutable binding; at module level, immutable all the way down.")
+  vc_kw("statement", "if", "Runs a block when a condition holds.")
+  vc_kw("statement", "else", "The branch taken when the if's condition does not hold.")
+  vc_kw("statement", "while", "Loops while a condition holds.")
+  vc_kw("statement", "for", "for i in a..b, or for (vars) in query [...].")
+  vc_kw("statement", "in", "Separates a for's variables from what they range over; module m in layer L.")
+  vc_kw("statement", "where", "A query's filter: for (p) in query [Pos] where p.x > 0.")
+  vc_kw("statement", "match", "Picks the arm whose values match.")
+  vc_kw("statement", "machine", "A state machine over a value, one block per state.")
+  vc_kw("statement", "become", "Moves a machine (or the program) to another state or scene.")
+  vc_kw("statement", "return", "Returns from a function.")
+  vc_kw("statement", "break", "Leaves the innermost loop.")
+  vc_kw("statement", "continue", "Skips to the innermost loop's next turn.")
+  vc_kw("statement", "new", "Makes a record or a slice: new Item, new []int.")
+  vc_kw("statement", "spawn", "Creates an entity of a model.")
+  vc_kw("statement", "despawn", "Removes an entity.")
+  vc_kw("statement", "enable", "Turns a property, a layer or a handler back on.")
+  vc_kw("statement", "disable", "Turns a property, a layer, a handler or an engine system off.")
+  vc_kw("statement", "attach", "Adds a property to an entity: attach P on e { field: v }.")
+  vc_kw("statement", "detach", "Removes a property from an entity: detach P on e.")
+  vc_kw("statement", "emit", "Fires an event: emit WoodChopped(n: 3).")
+  vc_kw("statement", "cancel", "Vetoes a cancellable event from its listener.")
+  vc_kw("statement", "dispatch", "Queues an action for the reducers: dispatch Move(dx: 1.0).")
+  vc_kw("statement", "try", "try EXPR else { ... }: a fallible value's payload, or the else block's fallback.")
+  # operator words and literal words
+  vc_kw("operator", "and", "Logical and (short-circuit).")
+  vc_kw("operator", "or", "Logical or (short-circuit).")
+  vc_kw("operator", "not", "Logical not.")
+  vc_kw("constant", "true", "The boolean true.")
+  vc_kw("constant", "false", "The boolean false.")
+  vc_kw("constant", "null", "No record, no slice, no string.")
+}
+
+# every declaration, in the shape it is written
+function vocab_declarations() -> void {
+  vc_decl("program", "program Name { declarations }", "The whole game, or a unit of it.")
+  vc_decl("module", "module name [in layer L] [uses a, b]", "The module a directory's files belong to, and what it may reach.")
+  vc_decl("friend", "friend module name [of a, b]", "A module that sees others' private names (the lab).")
+  vc_decl("import", "import \"path\"", "A file, a directory's barrel or a package.")
+  vc_decl("numbers", "numbers float", "This file's bare decimals are floats.")
+  vc_decl("export", "export <declaration>", "The declaration is visible outside its module.")
+  vc_decl("property", "property Name[<T>] { field: Type = default, ... }", "A record; on an entity, a component.")
+  vc_decl("state", "state Name { field: Type = default, ... }", "A module's changing data, one instance, passed as a parameter.")
+  vc_decl("event", "event [cancellable] Name { field: Type, ... }", "Something that happened.")
+  vc_decl("action", "action Name { field: Type, ... }", "What a player asked for.")
+  vc_decl("reducer", "reducer State on Action(st: mut State, reads..., a: Action) { ... }", "Applies an action to one state.")
+  vc_decl("enum", "enum Name { A, B, C }", "Named integer variants.")
+  vc_decl("model", "model Name { Component, ... }", "An entity kind.")
+  vc_decl("prefab", "prefab Name of Model { Component { field: v } }", "A model with preset values.")
+  vc_decl("scene", "scene Name [start] [public] [shows Ui] [lasts N then Next] [loads then Next] { layer L { handlers } }", "A scene.")
+  vc_decl("handler", "handler Name[(states)] phase Phase { ... }", "A system run every frame in its phase.")
+  vc_decl("ui", "ui Name { widgets }", "A retained widget tree.")
+  vc_decl("namespace", "namespace Name { [export|internal] function ... | alias m = f }", "A Name.* namespace.")
+  vc_decl("port", "port Name { member: fn(T) -> R [= default], ... }", "Questions a module asks the world.")
+  vc_decl("bind", "bind Port { member: function_name, ... }", "The program's answers to a port.")
+  vc_decl("registry", "[open] registry Name of Record [as PREFIX] [from \"file.lres\"]", "A table of named entries.")
+  vc_decl("def", "def Registry key { field: value, ... } | def Registry from \"file.lres\"", "Entries of a registry.")
+  vc_decl("view", "view Name[(states)] { field = expr, function q(...), on e(...) }", "What a template may read and do.")
+  vc_decl("component", "component Name[(states)] { prop p: T = v, state s: T = v, function ..., on e(...) { } }", "A UI component, beside Name.xml and Name.lss.")
+  vc_decl("const", "const NAME: Type = value", "A constant.")
+  vc_decl("let", "let name: Type = value", "An immutable module-level value.")
+  vc_decl("var", "var name: Type = value", "A module-level variable (only with --globals).")
+  vc_decl("function", "[unsafe] function name[<T>](p: T, st: mut S) -> R { ... }", "A function.")
+  vc_decl("extern", "extern function name(p: T) -> R = \"symbol\"", "A foreign function.")
+  vc_decl("entry", "entry[(states)] { ... }", "The program's entry point.")
+  vc_decl("test", "test \"name\" { ... }", "A test block.")
+}
+
+function vocab_types() -> void {
+  vc_ty("int", "primitive", "A 32-bit signed integer.")
+  vc_ty("long", "primitive", "A 64-bit signed integer.")
+  vc_ty("float", "primitive", "A 32-bit IEEE float.")
+  vc_ty("double", "primitive", "A 64-bit IEEE float.")
+  vc_ty("fixed", "primitive", "A Q16.16 fixed-point number.")
+  vc_ty("bool", "primitive", "true or false.")
+  vc_ty("byte", "primitive", "An unsigned 8-bit value.")
+  vc_ty("string", "primitive", "Text, UTF-8.")
+  vc_ty("Key", "primitive", "A text key, k\"module.purpose\" (kn\"...\" a plural): names a text, is not one; tr(key) makes the text.")
+  vc_ty("pointer", "primitive", "An untyped address (raw memory needs unsafe).")
+  vc_ty("void", "primitive", "No value: a function that returns nothing.")
+  vc_ty("entity", "primitive", "A handle to an entity.")
+  vc_ty("countdown", "primitive", "A timer that runs down by itself.")
+  vc_ty("words", "slice", "A bounds-checked []int buffer: words(n).")
+  vc_ty("floats", "slice", "A bounds-checked []float buffer: floats(n).")
+  vc_ty("doubles", "slice", "A bounds-checked []double buffer: doubles(n).")
+  vc_ty("fixeds", "slice", "A bounds-checked []fixed buffer: fixeds(n).")
+  vc_ty("pointers", "slice", "A []pointer buffer: pointers(n).")
+  vc_ty("Vector", "value", "A packed 2D vector value.")
+  vc_ty("IVec2", "value", "A packed integer 2D vector value.")
+  vc_ty("Rect", "value", "A packed rectangle value.")
+}
+
+function vocab_phases() -> void {
+  vc("phase", "Start", "", "", "", "Once, before the first frame.")
+  vc("phase", "Input", "", "", "", "Every frame: read the devices.")
+  vc("phase", "FixedUpdate", "", "", "", "At the fixed simulation rate.")
+  vc("phase", "Update", "", "", "", "Every frame: the game's rules.")
+  vc("phase", "LateUpdate", "", "", "", "Every frame, after Update.")
+  vc("phase", "Render", "", "", "", "Every frame: draw.")
+  vc("phase", "Overlay", "", "", "", "Every frame, after Render: what is drawn on top.")
+}
+
+# role: "checked" - the parser reads it and it means something; "recorded" - read past, kept as a
+# label (no effect). on: where it goes - field, registry, declaration, function, handler, property,
+# model, event, statement.
+function vocab_attributes() -> void {
+  # a field's, for editors and the schema (attrs.ludic) - they change nothing the program does
+  vc_at("Ref", "checked", "field", "(Registry)", "An index into (or, for a @PerMap registry, the key of) an entry of that registry.")
+  vc_at("OneOf", "checked", "field", "(PREFIX_) | (CONST, ...) | (\"word\", ...)", "One of the constants with that prefix, one of those constants, or on a string field one of those words.")
+  vc_at("Range", "checked", "field", "(lo, hi)", "The least and the most the value may be.")
+  vc_at("Unit", "checked", "field", "(\"m/s\")", "The value's unit, one canonical ASCII spelling (m, m/s, s, deg, kg, ...).")
+  vc_at("Asset", "checked", "field", "(\"kind\"[, map[, optional]])", "A path to a file of that kind; with map, under each map's directory.")
+  vc_at("Color", "checked", "field", "", "A colour.")
+  vc_at("Node", "checked", "field", "(model_field)", "A node inside the glTF that field names.")
+  vc_at("Clip", "checked", "field", "(model_field)", "An animation clip inside the glTF that field names.")
+  vc_at("Material", "checked", "field", "(model_field)", "A material inside the glTF that field names.")
+  vc_at("Tint", "checked", "field", "(SLOT)", "A colour for that tint slot (a constant).")
+  vc_at("Derived", "checked", "field", "", "Worked out at boot: anything written in the data is overwritten.")
+  vc_at("Text", "checked", "field", "", "Read by the player, so translated: a Key field's key is derived, <registry>.<row>.<field>.")
+  vc_at("Multiline", "checked", "field", "", "Prose: edited as several lines.")
+  vc_at("Key", "checked", "field", "", "A key code.")
+  # a field's, with an effect
+  vc_at("Computed", "checked", "field", "", "A derived field expanded inline wherever it is read, never stored.")
+  vc_at("Sync", "checked", "field property model", "", "Replicates over the network: the field, every field of the property, or that component of the model.")
+  vc_at("frame", "checked", "field", "", "A fn stored here runs every frame: a root of the frame-allocation count.")
+  vc_at("max", "checked", "field", "(n)", "The most the list may hold; growing past it fails the run.")
+  vc_at("owns", "checked", "field", "(Kind)", "The field holds a handle of that kind its record owns: releasing a sibling and losing it is counted.")
+  # a registry's
+  vc_at("AppendOnly", "checked", "registry", "", "Entries are only ever appended: an entry's index is saved.")
+  vc_at("ByKey", "checked", "registry", "", "Entries are saved by key, so their order is free.")
+  vc_at("PerMap", "checked", "registry", "", "Its rows are read per map, from that map's directory, when the map loads.")
+  vc_at("Chunked", "checked", "registry", "(n)", "A @PerMap table read a chunk of n by n metres at a time.")
+  vc_at("TextKey", "checked", "registry", "(\"prefix\")", "The prefix of its @Text fields' derived keys, in place of the registry's name in snake case.")
+  # a declaration's
+  vc_at("export", "checked", "declaration", "", "The declaration is exported (the same as the export keyword).")
+  vc_at("Public", "checked", "handler", "", "Promotes a lifecycle hook to an event other code may hear.")
+  vc_at("On", "checked", "handler function", "(Event)", "A listener: runs when that event is emitted.")
+  vc_at("Queries", "checked", "handler", "(these: [...], on: ...)", "The handler runs once per entity the query matches.")
+  vc_at("OnSpawn", "checked", "handler", "(Model)", "Runs when an entity of that model spawns.")
+  vc_at("OnDespawn", "checked", "handler", "(Model[, reason: r])", "Runs when an entity of that model despawns.")
+  vc_at("OnAttach", "checked", "handler", "(Property)", "Runs when that property is attached to an entity.")
+  vc_at("OnDetach", "checked", "handler", "(Property)", "Runs when that property is detached.")
+  vc_at("OnEnable", "checked", "handler", "(Property)", "Runs when that property is enabled.")
+  vc_at("OnDisable", "checked", "handler", "(Property)", "Runs when that property is disabled.")
+  vc_at("OnStart", "checked", "handler", "", "Runs once at boot.")
+  vc_at("OnQuit", "checked", "handler", "", "Runs once at shutdown.")
+  vc_at("Owned", "checked", "model", "", "Its entities carry a network owner.")
+  vc_at("Server", "checked", "handler", "", "Runs only where the world is owned.")
+  vc_at("Predicted", "checked", "handler", "", "Runs on the owner and is predicted elsewhere.")
+  vc_at("ToServer", "checked", "event", "", "A remote event sent to the server.")
+  vc_at("ToClients", "checked", "event", "", "A remote event sent to every client.")
+  vc_at("System", "checked", "function", "[(Phase)]", "A binary module's system, registered when it loads.")
+  vc_at("EngineSystem", "checked", "function", "(Component, Phase)", "A package's compile-time engine system.")
+  vc_at("Namespace", "checked", "function", "(Name)", "A package-provided Name.* namespace.")
+  vc_at("deterministic", "checked", "handler function", "", "No floating point inside: it must replay the same everywhere.")
+  vc_at("ClearColor", "checked", "declaration", "(0xRRGGBB)", "The Render phase clears to this colour and presents by itself.")
+  vc_at("alloc_ok", "checked", "function handler statement", "(\"why\")", "Allocates in a frame on purpose; the reason is required.")
+  vc_at("creates", "checked", "function", "(Kind)", "Returns a handle of that kind the caller must release.")
+  vc_at("releases", "checked", "function", "(Kind)", "Releases a handle of that kind.")
+  # read past and kept as a label
+  vc_at("Handles", "recorded", "handler program", "(Name)", "Names what a handler (or a program) is responsible for; no effect.")
+  vc_at("Reads", "recorded", "handler", "(Component, ...)", "Documents the components a handler reads; no effect.")
+  vc_at("Writes", "recorded", "handler", "(Component, ...)", "Documents the components a handler writes; no effect.")
+}
+
+function vocab_operators() -> void {
+  vc_op("+", "arithmetic", "Add; joins strings.")
+  vc_op("-", "arithmetic", "Subtract; negate.")
+  vc_op("*", "arithmetic", "Multiply.")
+  vc_op("/", "arithmetic", "Divide.")
+  vc_op("%", "arithmetic", "Remainder.")
+  vc_op("&", "bitwise", "Bitwise and.")
+  vc_op("|", "bitwise", "Bitwise or.")
+  vc_op("^", "bitwise", "Bitwise exclusive or.")
+  vc_op("~", "bitwise", "Bitwise not.")
+  vc_op("<<", "bitwise", "Shift left.")
+  vc_op(">>", "bitwise", "Shift right.")
+  vc_op("==", "comparison", "Equal (strings by content, records by identity).")
+  vc_op("!=", "comparison", "Not equal.")
+  vc_op("<", "comparison", "Less than.")
+  vc_op("<=", "comparison", "Less than or equal.")
+  vc_op(">", "comparison", "Greater than.")
+  vc_op(">=", "comparison", "Greater than or equal.")
+  vc_op("=", "assignment", "Assign.")
+  vc_op("+=", "assignment", "Add and assign.")
+  vc_op("-=", "assignment", "Subtract and assign.")
+  vc_op("*=", "assignment", "Multiply and assign.")
+  vc_op("/=", "assignment", "Divide and assign.")
+  vc_op("->", "punctuation", "A function's result type.")
+  vc_op("=>", "punctuation", "A match arm.")
+  vc_op("..", "range", "A range (for i in a..b) or a slice of a string (s[a..b]).")
+  vc_op(".", "access", "A field, a method or a namespace member.")
+  vc_op(":", "punctuation", "A type annotation; a named argument or field value.")
+  vc_op(",", "punctuation", "Separates items.")
+  vc_op("@", "punctuation", "Starts an attribute.")
+  vc_op(";", "punctuation", "Ends a statement, as a newline does.")
+  vc_op("(", "bracket", "Opens a call, a parameter list or a group.")
+  vc_op(")", "bracket", "Closes a call, a parameter list or a group.")
+  vc_op("[", "bracket", "Opens an index, a slice type or a list literal.")
+  vc_op("]", "bracket", "Closes an index, a slice type or a list literal.")
+  vc_op("{", "bracket", "Opens a block, a record or a template hole.")
+  vc_op("}", "bracket", "Closes a block, a record or a template hole.")
+}
+
+function vocab_literals() -> void {
+  vc("literal", "123", "integer", "", "", "An int; a bare decimal is a float in a numbers float file.")
+  vc("literal", "0xFF", "hex", "", "", "An int in hexadecimal.")
+  vc("literal", "1.5", "decimal", "", "", "A fixed, or a float in a numbers float file.")
+  vc("literal", "'a'", "char", "", "", "A character's code, an int.")
+  vc("literal", "\"text\"", "string", "", "", "A string; \\n \\t \\r \\0 \\\\ \\\" are escapes.")
+  vc("literal", "k\"module.purpose\"", "key", "", "", "A Key, checked against the source language's .po; written against its quote.")
+  vc("literal", "kn\"module.purpose\"", "plural key", "", "", "A plural Key, for trn: its .po entry has a msgid_plural.")
+  vc("literal", "`a {expr} b`", "template", "", "", "A string with holes; {{ and }} are braces.")
+  vc("literal", "# ...", "comment", "", "", "A comment to the end of the line.")
+}
+
+function vocab_fill() -> void {
+  if len(g_vc_name) > 0 { return }
+  vocab_keywords()
+  vocab_declarations()
+  vocab_types()
+  vocab_phases()
+  vocab_attributes()
+  vocab_operators()
+  vocab_literals()
+}
+
+# a row the parser's own recognisers disagree with is refused, naming it
+function vocab_check() -> void {
+  var i = 0
+  while i < len(g_vc_name) {
+    let k = g_vc_kind[i]
+    let n = g_vc_name[i]
+    if (k == "phase") and not is_phase_name(n) { die(`ludicc --emit-syntax: vocab.ludic lists the phase {n}, which the parser refuses\n`) }
+    if (k == "attribute") and (g_vc_on[i] == "field") and (g_vc_role[i] == "checked") and not vc_field_attr(n) {
+      die(`ludicc --emit-syntax: vocab.ludic lists the field attribute @{n}, which the parser does not read\n`)
+    }
+    i += 1
+  }
+}
+function vc_field_attr(a: pointer) -> bool {
+  return at_field_known(a) or (a == "Computed") or (a == "Sync") or (a == "frame") or (a == "max") or (a == "owns")
+}
+
+function vc_list(b: Buf, kind: pointer, key: pointer) -> void {
+  buf_puts(b, ",\n  \"")
+  buf_puts(b, kind)
+  buf_puts(b, "\": [")
+  var first = true
+  var i = 0
+  while i < len(g_vc_name) {
+    if g_vc_kind[i] == vc_kind_of(kind) {
+      if not first { buf_puts(b, ",") }
+      first = false
+      buf_puts(b, "\n    {\"")
+      buf_puts(b, key)
+      buf_puts(b, "\": ")
+      jq_put(b, g_vc_name[i])
+      vc_fields(b, i)
+      buf_puts(b, ", \"doc\": ")
+      jq_put(b, g_vc_doc[i])
+      buf_puts(b, "}")
+    }
+    i += 1
+  }
+  buf_puts(b, "\n  ]")
+}
+function vc_kind_of(list: pointer) -> pointer {
+  if list == "keywords" { return "keyword" }
+  if list == "declarations" { return "declaration" }
+  if list == "types" { return "type" }
+  if list == "phases" { return "phase" }
+  if list == "attributes" { return "attribute" }
+  if list == "operators" { return "operator" }
+  return "literal"
+}
+function vc_fields(b: Buf, i: int) -> void {
+  let k = g_vc_kind[i]
+  if len(g_vc_role[i]) > 0 {
+    buf_puts(b, ", \"role\": ")
+    jq_put(b, g_vc_role[i])
+  }
+  if k == "keyword" {
+    buf_puts(b, ", \"reserved\": ")
+    if is_reserved_word(g_vc_name[i]) { buf_puts(b, "true") } else { buf_puts(b, "false") }
+  }
+  if k == "declaration" {
+    buf_puts(b, ", \"form\": ")
+    jq_put(b, g_vc_form[i])
+  }
+  if k == "attribute" {
+    buf_puts(b, ", \"on\": [")
+    vc_words(b, g_vc_on[i])
+    buf_puts(b, "], \"args\": ")
+    if len(g_vc_form[i]) == 0 { buf_puts(b, "null") } else { jq_put(b, g_vc_form[i]) }
+  }
+}
+# "a b c" as "a", "b", "c"
+function vc_words(b: Buf, s: pointer) -> void {
+  var a = 0
+  var first = true
+  let n = len(s)
+  while a < n {
+    var e = a
+    while e < n and s[e] != ' ' { e += 1 }
+    if e > a {
+      if not first { buf_puts(b, ", ") }
+      first = false
+      jq_put(b, s[a .. e])
+    }
+    a = e + 1
+  }
+}
+
+# the whole vocabulary as JSON: deterministic, in the table's order
+function syntax_json() -> pointer {
+  vocab_fill()
+  vocab_check()
+  let b = buf_new()
+  buf_puts(b, "{\n  \"syntax_version\": 1")
+  vc_list(b, "keywords", "word")
+  vc_list(b, "declarations", "kind")
+  vc_list(b, "types", "name")
+  vc_list(b, "phases", "name")
+  vc_list(b, "attributes", "name")
+  vc_list(b, "operators", "op")
+  vc_list(b, "literals", "form")
+  buf_puts(b, "\n}\n")
+  return buf_str(b)
+}
+# ludicc --emit-syntax: the vocabulary on stdout, and nothing else is read or built
+function syntax_emit() -> void {
+  let s = syntax_json()
+  file_write(file_stdout(), s, len(s))
+  exit(0)
+}

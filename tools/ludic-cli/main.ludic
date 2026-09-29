@@ -34,6 +34,7 @@ program Ludic {
   import "scripts.ludic"
   import "deps.ludic"
   import "schema.ludic"
+  import "syntax_cli.ludic"
   import "ui_preview.ludic"
   import "testpar.ludic"
   import "migrate.ludic"
@@ -56,6 +57,7 @@ program Ludic {
     print("  deps [file] [--graph|--dot|--writes|--uses MOD|--check F|--baseline F]")
     print("                                the module graph as the compiler sees it, and how tangled it is")
     print("  schema [file] [-o FILE]       records, registries and their entries, consts, as JSON (for editors)")
+    print("  syntax [--json] [-o FILE]     the language's vocabulary: keywords, declarations, types, phases, attributes, operators")
     print("  migrate state [file] [--prune] [--runtime]  module-level vars into states, passed as parameters (0.S); --prune drops states nothing uses, --tighten also mut nothing writes")
     print("  clean                         remove build/")
     print("")
@@ -116,6 +118,7 @@ program Ludic {
     if (cmd == "test") { return cmd_test() }
     if (cmd == "deps") { return cmd_deps() }
     if (cmd == "schema") { return cmd_schema() }
+    if (cmd == "syntax") { return cmd_syntax() }
     if (cmd == "migrate") { return cmd_migrate() }
     if (cmd == "clean") { return cmd_clean() }
     if (cmd == "fmt") { return cmd_fmt() }

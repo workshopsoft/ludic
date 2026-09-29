@@ -48,6 +48,11 @@ program LudicLsp {
   const LS_QUERYVAR: int = 15
   const LS_STATE: int = 16
   const LS_IMPORT: int = 17
+  const LS_REGISTRY: int = 18     # registry R of T: a table of named entries
+  const LS_ENUM: int = 19
+  const LS_ENUMMEMBER: int = 20
+  const LS_VIEW: int = 21         # a UI component or a view
+  const LS_REDUCER: int = 22      # reducer S on A: named "S on A" in the outline
 
   # ---- semantic classes ----
   const SC_NONE: int = 0
@@ -175,6 +180,7 @@ program LudicLsp {
     exported: int = 0
     init: int = 0               # first token of the initializer (let/var/const), or -1
     mutable: int = 0            # a `var` local
+    decl: pointer = null        # the word that declared it (property, state, event, action, port, ...)
   }
   property Doc {
     path: pointer = null
@@ -226,21 +232,38 @@ program LudicLsp {
     if c == ',' or c == ':' or c == '.' or c == '!' or c == '@' or c == ';' { return true }                         # , : . ! @ ;
     return c == '&' or c == '|' or c == '^' or c == '~'                                                        # & | ^ ~
   }
+  # the vocabulary, written by `ludic-dev syntax` from `ludicc --emit-syntax`
+  # ludic-dev syntax: begin - generated from `ludicc --emit-syntax` (selfhost/frontend/vocab.ludic); run `ludic-dev syntax`, do not edit
   function is_type_word(w: pointer) -> bool {
-    return (w == "int") or (w == "long") or (w == "fixed") or (w == "float") or (w == "double") or (w == "floats") or (w == "doubles") or (w == "countdown") or (w == "bool") or (w == "entity") or (w == "string") or (w == "pointer") or (w == "byte") or (w == "words") or (w == "fixeds") or (w == "pointers") or (w == "Vector") or (w == "IVec2") or (w == "Rect") or (w == "void")
-  }
-  function is_phase_word(w: pointer) -> bool {
-    return (w == "Start") or (w == "Input") or (w == "FixedUpdate") or (w == "Update") or (w == "LateUpdate") or (w == "Render")
-  }
-  function is_keyword_word(w: pointer) -> bool {
-    if (w == "program") or (w == "import") or (w == "property") or (w == "model") or (w == "enum") or (w == "ui") { return true }
-    if (w == "const") or (w == "var") or (w == "function") or (w == "extern") or (w == "handler") or (w == "entry") or (w == "event") or (w == "scene") or (w == "mut") { return true }
-    if (w == "phase") or (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
-    if (w == "let") or (w == "return") or (w == "if") or (w == "else") or (w == "while") or (w == "for") or (w == "in") or (w == "spawn") or (w == "despawn") { return true }
-    if (w == "enable") or (w == "disable") or (w == "match") or (w == "machine") or (w == "state") or (w == "become") or (w == "where") or (w == "prefab") { return true }
-    if (w == "and") or (w == "or") or (w == "not") or (w == "break") or (w == "continue") or (w == "new") or (w == "emit") or (w == "cancel") { return true }
+    if (w == "int") or (w == "long") or (w == "float") or (w == "double") or (w == "fixed") or (w == "bool") { return true }
+    if (w == "byte") or (w == "string") or (w == "Key") or (w == "pointer") or (w == "void") or (w == "entity") { return true }
+    if (w == "countdown") or (w == "words") or (w == "floats") or (w == "doubles") or (w == "fixeds") or (w == "pointers") { return true }
+    if (w == "Vector") or (w == "IVec2") or (w == "Rect") { return true }
     return false
   }
+  function is_phase_word(w: pointer) -> bool {
+    if (w == "Start") or (w == "Input") or (w == "FixedUpdate") or (w == "Update") or (w == "LateUpdate") or (w == "Render") { return true }
+    if (w == "Overlay") { return true }
+    return false
+  }
+  function is_keyword_word(w: pointer) -> bool {
+    if (w == "program") or (w == "module") or (w == "import") or (w == "property") or (w == "state") or (w == "event") { return true }
+    if (w == "action") or (w == "reducer") or (w == "enum") or (w == "model") or (w == "prefab") or (w == "scene") { return true }
+    if (w == "handler") or (w == "ui") or (w == "namespace") or (w == "alias") or (w == "port") or (w == "bind") { return true }
+    if (w == "registry") or (w == "def") or (w == "component") or (w == "view") or (w == "prop") or (w == "const") { return true }
+    if (w == "var") or (w == "function") or (w == "fn") or (w == "extern") or (w == "entry") or (w == "test") { return true }
+    if (w == "export") or (w == "internal") or (w == "friend") or (w == "uses") or (w == "open") or (w == "of") { return true }
+    if (w == "as") or (w == "from") or (w == "numbers") or (w == "unsafe") or (w == "mut") or (w == "phase") { return true }
+    if (w == "query") or (w == "on") or (w == "cancellable") or (w == "public") or (w == "layer") or (w == "start") { return true }
+    if (w == "shows") or (w == "lasts") or (w == "then") or (w == "loads") or (w == "system") or (w == "let") { return true }
+    if (w == "if") or (w == "else") or (w == "while") or (w == "for") or (w == "in") or (w == "where") { return true }
+    if (w == "match") or (w == "machine") or (w == "become") or (w == "return") or (w == "break") or (w == "continue") { return true }
+    if (w == "new") or (w == "spawn") or (w == "despawn") or (w == "enable") or (w == "disable") or (w == "attach") { return true }
+    if (w == "detach") or (w == "emit") or (w == "cancel") or (w == "dispatch") or (w == "try") or (w == "and") { return true }
+    if (w == "or") or (w == "not") { return true }
+    return false
+  }
+  # ludic-dev syntax: end
   function is_widget_word(w: pointer) -> bool {
     return (w == "panel") or (w == "col") or (w == "row") or (w == "label") or (w == "button") or (w == "image") or (w == "spacer")
   }
@@ -449,7 +472,7 @@ program LudicLsp {
   function sym_add(kind: int, nametok: int, parent: int) -> int {
     let s = new Sym
     s.kind = kind;  s.tok = nametok;  s.parent = parent
-    s.name = "";  s.ty = "";  s.detail = "";  s.doc = "";  s.init = -1;  s.mutable = 0
+    s.name = "";  s.ty = "";  s.detail = "";  s.doc = "";  s.init = -1;  s.mutable = 0;  s.decl = ""
     if nametok >= 0 { s.start = pD.tk_start[nametok];  s.end = pD.tk_end[nametok];  s.name = ttext(pD, nametok) }
     s.bstart = 0;  s.bend = cstr_len(pD.text)
     push(pD.syms, s)
@@ -457,6 +480,62 @@ program LudicLsp {
   }
   function cur_match() -> int { if pi < ntok(pD) { return pD.tmatch[pi] };  return -1 }
   function skip_group() -> void { let m = cur_match();  if m < 0 { padv();  return };  pi = m + 1;  pskipnl() }
+  # past a bracketed group, staying on its line (skip_group also takes the newlines after it)
+  function lp_jump_group() -> void { let m = cur_match();  if m < 0 { pi += 1 } else { pi = m + 1 } }
+  # the tokens up to the end of this line as written, joined by single spaces (after a leading one)
+  function lp_rest_of_line() -> pointer {
+    let b = buf_new()
+    while pi < ntok(pD) and pk() != LT_EOF and pk() != LT_NL {
+      if pk() != LT_COMMENT { buf_putc(b, ' ');  buf_puts(b, ttext(pD, pi)) }
+      pi += 1
+    }
+    return buf_str(b)
+  }
+  # a component's or a view's body: its props and state (and a view's fields) as fields, its
+  # functions and events as functions
+  function lp_view_body(sidx: int) -> void {
+    let close = cur_match()
+    pD.syms[sidx].bstart = pD.tk_start[pi]
+    if close >= 0 { pD.syms[sidx].bend = pD.tk_end[close] } else { pD.syms[sidx].bend = cstr_len(pD.text) }
+    padv()
+    while pi < ntok(pD) and pk() != LT_EOF and not pis("}") {
+      if close >= 0 and pi >= close { break }
+      let before = pi
+      if pis("function") { lp_decl(sidx) }
+      else if pis("on") {
+        padv()
+        let nt = pname()
+        if nt >= 0 {
+          let f = sym_add(LS_FN, nt, sidx)
+          pD.syms[f].detail = "on " + pD.syms[f].name
+          if pis("(") { lp_params(f, LS_PARAM, buf_new()) }
+        }
+        while pi < ntok(pD) and pk() != LT_EOF and not pis("{") and pk() != LT_NL { pi += 1 }
+        if pis("{") { skip_group() }
+      }
+      else {
+        var word = ""
+        if pis("prop") or pis("state") { word = pword();  padv() }
+        let ft = pname()
+        if ft >= 0 and (pis(":") or pis("=")) {
+          let f = sym_add(LS_FIELD, ft, sidx)
+          if pis(":") { padv();  pD.syms[f].ty = lp_type_text() }
+          var head = word
+          if (head == "") { head = pD.syms[sidx].name + "." }
+          else { head = head + " " }
+          pD.syms[f].detail = head + pD.syms[f].name + ": " + pD.syms[f].ty
+        }
+        while pi < ntok(pD) and pk() != LT_EOF and pk() != LT_NL and not pis(",") and not pis("}") {
+          if close >= 0 and pi >= close { break }
+          if pis("(") or pis("{") or pis("[") { lp_jump_group() } else { pi += 1 }
+        }
+      }
+      if pi == before { padv() } else { pskipnl() }
+      if pis(",") { padv() }
+    }
+    if close >= 0 { pi = close + 1 } else { padv() }
+    pskipnl()
+  }
 
   # `name: Type` pairs inside ( ) — record params, build the signature into sig
   function lp_params(owner: int, kind: int, sig: Buf) -> void {
@@ -498,7 +577,28 @@ program LudicLsp {
     }
     let tt = pname()
     if tt < 0 { return "" }
-    return pre + ttext(pD, tt)
+    var ty = pre + ttext(pD, tt)
+    # a function type, `fn(int, float) -> bool`, and a generic's arguments, `Pool<Item>`, as written
+    if (ttext(pD, tt) == "fn") and pis("(") {
+      let m = cur_match()
+      if m >= 0 {
+        ty = ty + pD.src[pD.tk_start[pi]..pD.tk_end[m]]
+        pi = m + 1
+        if pis("->") { pi += 1;  ty = ty + " -> " + lp_type_text() }
+      }
+    }
+    else if pis("<") {
+      let a = pi
+      var depth = 0
+      while pi < ntok(pD) and pk() != LT_EOF and pk() != LT_NL {
+        if pis("<") { depth += 1 }
+        if pis(">") { depth -= 1 }
+        pi += 1
+        if depth == 0 { break }
+      }
+      ty = ty + pD.src[pD.tk_start[a]..pD.tk_end[pi - 1]]
+    }
+    return ty
   }
 
   # (a, b) variable list -> token indices into out; returns count
@@ -641,10 +741,33 @@ program LudicLsp {
     }
   }
 
+  var lp_anchor: int = -1        # where a declaration begins when `export`, `unsafe` or @attributes lead it
+
   # one top-level declaration
   function lp_decl(parent: int) -> void {
     let w = pword()
-    let decl_tok = pi
+    var decl_tok = pi
+    if lp_anchor >= 0 { decl_tok = lp_anchor;  lp_anchor = -1 }
+    # a lead-in: @Attr(args) (a registry's @AppendOnly, a handler's @On(E)), `export` or `unsafe`
+    # before a declaration - read past, the declaration keeps where it began and says it is exported
+    if pk() == LT_ANNO {
+      padv()
+      if pis("(") { skip_group() }
+      lp_anchor = decl_tok
+      lp_decl(parent)
+      return
+    }
+    if (w == "export" or w == "unsafe") and pi + 1 < ntok(pD) and not tis(pD, pi + 1, "function") and not tis(pD, pi + 1, "pure") {
+      let first = len(pD.syms)
+      padv()
+      lp_anchor = decl_tok
+      lp_decl(parent)
+      if w == "export" {
+        var q = first
+        while q < len(pD.syms) { if pD.syms[q].parent == parent { pD.syms[q].exported = 1 };  q += 1 }
+      }
+      return
+    }
 
     if w == "import" {
       padv()
@@ -660,18 +783,23 @@ program LudicLsp {
       }
       return
     }
-    var wd = w
-    if w == "export" and tis(pD, pi + 1, "state") { padv();  wd = "state" }
-    if (wd == "property") or (wd == "model") or (wd == "state") {      # a state: a record with one instance
-      let is_comp = (wd == "property") or (wd == "state")
-      padv();  let nt = pname();  if nt < 0 { return }
+    let wd = w
+    # records: a property, a state (one instance), an event, an action, a port (its members are
+    # fn-typed), a model (its members are components)
+    if (wd == "property") or (wd == "model") or (wd == "state") or (wd == "event") or (wd == "action") or (wd == "port") {
+      let is_comp = not (wd == "model")
+      padv()
+      if wd == "event" and pis("cancellable") { padv() }
+      let nt = pname();  if nt < 0 { return }
       var kind = LS_ARCHETYPE
       if is_comp { kind = LS_COMPONENT }
       let sidx = sym_add(kind, nt, parent)
+      pD.syms[sidx].decl = wd
       pD.syms[sidx].doc = collect_doc(pD, decl_tok)
-      while pk() == LT_ANNO { padv() }
+      if pis("<") { while pi < ntok(pD) and not pis(">") and pk() != LT_EOF { padv() };  padv() }   # property Pool<T>
+      while pk() == LT_ANNO { padv();  if pis("(") { skip_group() } }
       let det = buf_new()
-      buf_puts(det, w);  buf_putc(det, ' ');  buf_puts(det, pD.syms[sidx].name);  buf_puts(det, " {")
+      buf_puts(det, wd);  buf_putc(det, ' ');  buf_puts(det, pD.syms[sidx].name);  buf_puts(det, " {")
       if not pis("{") { pD.syms[sidx].detail = buf_str(det);  return }
       let close = cur_match()
       pD.syms[sidx].bstart = pD.tk_start[pi]
@@ -681,14 +809,19 @@ program LudicLsp {
       while pi < ntok(pD) and pk() != LT_EOF and not pis("}") {
         if close >= 0 and pi >= close { break }
         if pis(",") { padv();  continue }
-        while pk() == LT_ANNO { padv() }               # @Sync / @Computed on a field
+        while pk() == LT_ANNO { padv();  if pis("(") { skip_group() } }   # @Ref(Items), @Range(0, 1), @Sync ...
         let ft = pname();  if ft < 0 { padv();  continue }
         let f = sym_add(LS_FIELD, ft, sidx)
         var fty = ""
         if pis(":") { padv();  fty = lp_type_text() }
         pD.syms[f].ty = fty
         pD.syms[f].detail = concat3(pD.syms[sidx].name, ".", concat3(pD.syms[f].name, ": ", fty))
-        if pis("=") { padv();  while pi < ntok(pD) and not pis(",") and not pis("}") and pk() != LT_EOF { if pis("(") or pis("{") or pis("[") { skip_group() } else { padv() } } }
+        # the rest of the member - a fn type's parameters and result, a generic's arguments, the
+        # default - ends at a comma, the closing brace or the end of its line
+        while pi < ntok(pD) and pk() != LT_EOF and pk() != LT_NL and not pis(",") and not pis("}") {
+          if close >= 0 and pi >= close { break }
+          if pis("(") or pis("{") or pis("[") { lp_jump_group() } else { pi += 1 }
+        }
         if not first { buf_putc(det, ',') }
         buf_putc(det, ' ');  buf_puts(det, pD.syms[f].name);  buf_puts(det, ": ");  buf_puts(det, fty)
         first = false
@@ -699,9 +832,86 @@ program LudicLsp {
       pskipnl()
       return
     }
-    if (w == "const") or (w == "var") {
+    if w == "open" and tis(pD, pi + 1, "registry") { padv();  lp_anchor = decl_tok;  lp_decl(parent);  return }
+    if w == "registry" {                       # registry Name of Record [as P] [from "file.lres"]
+      padv();  let nt = pname();  if nt < 0 { return }
+      let sidx = sym_add(LS_REGISTRY, nt, parent)
+      pD.syms[sidx].decl = "registry"
+      pD.syms[sidx].doc = collect_doc(pD, decl_tok)
+      if pis("of") { pD.syms[sidx].ty = ttext(pD, pi + 1) }       # its record, for go-to-type
+      pD.syms[sidx].detail = "registry " + pD.syms[sidx].name + lp_rest_of_line()
+      pskipnl()
+      return
+    }
+    if w == "enum" {                           # enum Name { A, B = 2, C }
+      padv();  let nt = pname();  if nt < 0 { return }
+      let sidx = sym_add(LS_ENUM, nt, parent)
+      pD.syms[sidx].decl = "enum"
+      pD.syms[sidx].doc = collect_doc(pD, decl_tok)
+      pD.syms[sidx].detail = "enum " + pD.syms[sidx].name
+      if pis("{") {
+        let close = cur_match()
+        pD.syms[sidx].bstart = pD.tk_start[pi]
+        if close >= 0 { pD.syms[sidx].bend = pD.tk_end[close] }
+        padv()
+        while pi < ntok(pD) and pk() != LT_EOF and not pis("}") {
+          if close >= 0 and pi >= close { break }
+          let mt = pname()
+          if mt < 0 { padv();  continue }
+          let m = sym_add(LS_ENUMMEMBER, mt, sidx)
+          pD.syms[m].detail = pD.syms[sidx].name + "." + pD.syms[m].name
+          while pi < ntok(pD) and pk() != LT_EOF and pk() != LT_NL and not pis(",") and not pis("}") { pi += 1 }
+          if pis(",") { padv() } else { pskipnl() }
+        }
+        if close >= 0 { pi = close + 1 } else { padv() }
+        pskipnl()
+      }
+      return
+    }
+    if (w == "component") or (w == "view") {  # component Name[(states)] { prop / state / function / on }
+      padv();  let nt = pname();  if nt < 0 { return }
+      let sidx = sym_add(LS_VIEW, nt, parent)
+      pD.syms[sidx].decl = w
+      pD.syms[sidx].doc = collect_doc(pD, decl_tok)
+      pD.syms[sidx].detail = w + " " + pD.syms[sidx].name
+      if pis("(") { lp_params(sidx, LS_PARAM, buf_new()) }
+      if pis("{") { lp_view_body(sidx) }
+      return
+    }
+    if w == "reducer" {                        # reducer State on Action(states, a: Action) { ... }
+      padv();  let nt = pname();  if nt < 0 { return }
+      let sidx = sym_add(LS_REDUCER, nt, parent)
+      pD.syms[sidx].decl = "reducer"
+      pD.syms[sidx].doc = collect_doc(pD, decl_tok)
+      if pis("on") { padv();  let at = pname();  if at >= 0 { pD.syms[sidx].name = pD.syms[sidx].name + " on " + ttext(pD, at) } }
+      pD.syms[sidx].detail = "reducer " + pD.syms[sidx].name
+      if pis("(") { lp_params(sidx, LS_PARAM, buf_new()) }
+      if pis("{") {
+        let close = cur_match()
+        pD.syms[sidx].bstart = pD.tk_start[pi]
+        if close >= 0 { pD.syms[sidx].bend = pD.tk_end[close] } else { pD.syms[sidx].bend = cstr_len(pD.text) }
+        var q = 0
+        while q < len(pD.syms) { if pD.syms[q].parent == sidx and pD.syms[q].kind == LS_PARAM { pD.syms[q].bstart = pD.syms[sidx].bstart;  pD.syms[q].bend = pD.syms[sidx].bend };  q += 1 }
+        lp_block(sidx, pD.syms[sidx].bend)
+      }
+      return
+    }
+    # a def's entry and a bind's answers are data: their bodies hold no declaration
+    if (w == "def") or (w == "bind") {
+      padv()
+      while pi < ntok(pD) and pk() != LT_EOF and pk() != LT_NL and not pis("{") { pi += 1 }
+      if pis("{") { skip_group() } else { pskipnl() }
+      return
+    }
+    # a line that says what a file is: module / friend module / numbers float
+    if (w == "module") or (w == "friend") or (w == "numbers") {
+      while pi < ntok(pD) and pk() != LT_EOF and pk() != LT_NL { pi += 1 }
+      pskipnl()
+      return
+    }
+    if (w == "const") or (w == "var") or (w == "let") {
       var kind = LS_VAR
-      if w == "const" { kind = LS_CONST }
+      if (w == "const") or (w == "let") { kind = LS_CONST }
       padv();  let nt = pname();  if nt < 0 { return }
       let sidx = sym_add(kind, nt, parent)
       pD.syms[sidx].doc = collect_doc(pD, decl_tok)
@@ -922,10 +1132,10 @@ program LudicLsp {
   # ============================================================================
   function is_local_kind(k: int) -> bool { return k == LS_LOCAL or k == LS_PARAM or k == LS_QUERYVAR or k == LS_STATE }
   function is_toplevel_kind(k: int) -> bool {
-    return k == LS_COMPONENT or k == LS_ARCHETYPE or k == LS_CONST or k == LS_VAR or k == LS_FN or k == LS_EXTERN or k == LS_SYSTEM or k == LS_UI or k == LS_WIDGET or k == LS_SCENE or k == LS_LAYER or k == LS_UNIT
+    return k == LS_COMPONENT or k == LS_ARCHETYPE or k == LS_CONST or k == LS_VAR or k == LS_FN or k == LS_EXTERN or k == LS_SYSTEM or k == LS_UI or k == LS_WIDGET or k == LS_SCENE or k == LS_LAYER or k == LS_UNIT or k == LS_REGISTRY or k == LS_ENUM or k == LS_VIEW
   }
   function is_outline_kind(k: int) -> bool {
-    return k == LS_UNIT or k == LS_COMPONENT or k == LS_FIELD or k == LS_ARCHETYPE or k == LS_CONST or k == LS_VAR or k == LS_FN or k == LS_EXTERN or k == LS_SYSTEM or k == LS_UI or k == LS_WIDGET or k == LS_SCENE or k == LS_LAYER
+    return k == LS_UNIT or k == LS_COMPONENT or k == LS_FIELD or k == LS_ARCHETYPE or k == LS_CONST or k == LS_VAR or k == LS_FN or k == LS_EXTERN or k == LS_SYSTEM or k == LS_UI or k == LS_WIDGET or k == LS_SCENE or k == LS_LAYER or k == LS_REGISTRY or k == LS_ENUM or k == LS_ENUMMEMBER or k == LS_VIEW or k == LS_REDUCER
   }
 
   # ---- paths & URIs ----
@@ -1199,6 +1409,37 @@ program LudicLsp {
     }
     return best
   }
+  # a name the whole unit sees: a top-level kind, and not a member of a component or a view
+  function is_top_sym(D: Doc, k: int) -> bool {
+    let y = D.syms[k]
+    if not is_toplevel_kind(y.kind) { return false }
+    return y.parent < 0 or D.syms[y.parent].kind != LS_VIEW
+  }
+  # the field an attribute's argument names - `@Node(model)`, `@Clip(model)` - in the record the
+  # attribute is written in, or -1 (a registry, `@Ref(Items)`, and a constant resolve as any name)
+  function attr_arg_field(D: Doc, tok: int) -> int {
+    var p = prev_sig(D, tok)
+    while p >= 0 and (tis(D, p, ",") or D.tk_kind[p] == LT_ID or D.tk_kind[p] == LT_STR or D.tk_kind[p] == LT_INT or D.tk_kind[p] == LT_FLOAT) { p = prev_sig(D, p) }
+    if p < 0 or not tis(D, p, "(") { return -1 }
+    let a = prev_sig(D, p)
+    if a < 0 or D.tk_kind[a] != LT_ANNO { return -1 }
+    let off = D.tk_start[tok]
+    let name = ttext(D, tok)
+    var rec = -1
+    var i = 0
+    while i < len(D.syms) {
+      let y = D.syms[i]
+      if (y.kind == LS_COMPONENT or y.kind == LS_ARCHETYPE) and off >= y.bstart and off <= y.bend and y.bend > y.bstart { rec = i }
+      i += 1
+    }
+    if rec < 0 { return -1 }
+    i = 0
+    while i < len(D.syms) {
+      if D.syms[i].kind == LS_FIELD and D.syms[i].parent == rec and (D.syms[i].name == name) { return i }
+      i += 1
+    }
+    return -1
+  }
   # returns sym index in g_owner (set), or -1
   function find_top(D: Doc, name: pointer) -> int {
     let rel = related(D)
@@ -1206,7 +1447,7 @@ program LudicLsp {
     while i < len(rel) {
       var k = 0
       while k < len(rel[i].syms) {
-        if is_toplevel_kind(rel[i].syms[k].kind) and (rel[i].syms[k].name == name) { g_owner = rel[i];  return k }
+        if is_top_sym(rel[i], k) and (rel[i].syms[k].name == name) { g_owner = rel[i];  return k }
         k += 1
       }
       i += 1
@@ -1215,7 +1456,7 @@ program LudicLsp {
     while i < len(g_docs) {
       var k = 0
       while k < len(g_docs[i].syms) {
-        if is_toplevel_kind(g_docs[i].syms[k].kind) and (g_docs[i].syms[k].name == name) { g_owner = g_docs[i];  return k }
+        if is_top_sym(g_docs[i], k) and (g_docs[i].syms[k].name == name) { g_owner = g_docs[i];  return k }
         k += 1
       }
       i += 1
@@ -1259,6 +1500,8 @@ program LudicLsp {
     }
     let l = find_local(D, name, D.tk_start[tok])
     if l >= 0 { g_owner = D;  g_symidx = l;  return tok }
+    let af = attr_arg_field(D, tok)
+    if af >= 0 { g_owner = D;  g_symidx = af;  return tok }
     let t = find_top(D, name)
     if t >= 0 { g_symidx = t;  return tok }
     g_owner = null;  g_symidx = -1
@@ -1664,6 +1907,10 @@ program LudicLsp {
     if k == LS_PARAM { return SC_PARAM }
     if k == LS_QUERYVAR or k == LS_LOCAL or k == LS_STATE { return SC_VARIABLE }
     if k == LS_UNIT { return SC_UI }
+    if k == LS_REGISTRY or k == LS_ENUMMEMBER { return SC_CONST }
+    if k == LS_ENUM { return SC_TYPE }
+    if k == LS_VIEW { return SC_UI }
+    if k == LS_REDUCER { return SC_FUNCTION }
     return SC_UNKNOWN
   }
   function classify(D: Doc) -> void {
@@ -2228,7 +2475,20 @@ program LudicLsp {
     if k == LS_WIDGET { return 14 }
     if k == LS_SCENE { return 3 }
     if k == LS_LAYER { return 3 }
+    if k == LS_REGISTRY { return 18 }
+    if k == LS_ENUM { return 10 }
+    if k == LS_ENUMMEMBER { return 22 }
+    if k == LS_VIEW { return 5 }
+    if k == LS_REDUCER { return 12 }
     return 13
+  }
+  # a symbol's LSP SymbolKind: a record says which it is by the word that declared it
+  function sym_lsp_kind(y: Sym) -> int {
+    if y.kind == LS_COMPONENT {
+      if (y.decl == "event") or (y.decl == "action") { return 24 }
+      if (y.decl == "port") { return 11 }
+    }
+    return lsp_symbol_kind(y.kind)
   }
   function comp_kind_of(k: int) -> int {
     if k == LS_COMPONENT { return 22 }
@@ -2242,6 +2502,10 @@ program LudicLsp {
     if k == LS_SCENE { return 11 }
     if k == LS_LAYER { return 11 }
     if k == LS_FIELD { return 5 }
+    if k == LS_REGISTRY { return 21 }
+    if k == LS_ENUM { return 13 }
+    if k == LS_ENUMMEMBER { return 20 }
+    if k == LS_VIEW { return 7 }
     return 6
   }
 
@@ -2353,7 +2617,7 @@ program LudicLsp {
         first = 0
         buf_puts(o, "{\"name\":");  jstr_out(o, y.name)
         buf_puts(o, ",\"detail\":");  jstr_out(o, y.detail)
-        buf_puts(o, ",\"kind\":");  buf_puti(o, lsp_symbol_kind(y.kind))
+        buf_puts(o, ",\"kind\":");  buf_puti(o, sym_lsp_kind(y))
         buf_puts(o, ",\"range\":")
         var a = y.start;  var b = y.end
         if y.bend > y.end and y.bstart >= y.start { b = y.bend }
@@ -2750,7 +3014,7 @@ program LudicLsp {
           if keep {
             if first == 0 { buf_putc(o, ',') }
             first = 0
-            buf_puts(o, "{\"name\":");  jstr_out(o, y.name);  buf_puts(o, ",\"kind\":");  buf_puti(o, lsp_symbol_kind(y.kind));  buf_puts(o, ",\"location\":");  put_location(o, D, y.start, y.end);  buf_putc(o, '}')
+            buf_puts(o, "{\"name\":");  jstr_out(o, y.name);  buf_puts(o, ",\"kind\":");  buf_puti(o, sym_lsp_kind(y));  buf_puts(o, ",\"location\":");  put_location(o, D, y.start, y.end);  buf_putc(o, '}')
           }
         }
         k += 1
