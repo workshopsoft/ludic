@@ -32,7 +32,10 @@ export function char_update(character_st: mut CharacterState, ix0: float, iz0: f
     mag = 1.0
   }
   chr_steer(character_st, dx, dz, mag, run, dt)
-  let dist = chr_travel(character_st, dx, dz, -Math.sin(character_st.chr_yaw), -Math.cos(character_st.chr_yaw), jump, dt)
+  # seated, the seat holds the body (chr_sit_tick): handed to the walker too, it was pushed off a
+  # log or a bench and pulled back each frame, and shook
+  var dist = 0.0
+  if not character_st.chr_sit or character_st.chr_swim { dist = chr_travel(character_st, dx, dz, -Math.sin(character_st.chr_yaw), -Math.cos(character_st.chr_yaw), jump, dt) }
   chr_gait(character_st, dist, dyaw, dpitch, dt)
   char_camera(character_st, dt)
 }

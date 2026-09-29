@@ -289,6 +289,24 @@ program CharacterTest {
     character_test_st.riding = false
   }
 
+  test "a seat against the boulder holds the body still: the walker never pushes it off the seat" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
+    fresh(character_st, 0.0, 4.5, 0.0)
+    char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0)
+    char_sit(character_st, 0.0, 5.7, 0.0, CHAR_SIT_SEAT)
+    for i in 0 .. 90 { char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    var most = 0.0
+    for i in 0 .. 120 {
+      let x0 = body_x(character_st)
+      let y0 = body_y(character_st)
+      let z0 = body_z(character_st)
+      char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0)
+      most = Math.max(most, Math.abs(body_x(character_st) - x0) + Math.abs(body_y(character_st) - y0) + Math.abs(body_z(character_st) - z0))
+    }
+    expect(body_sitting(character_st))
+    expect(most < 0.0005)
+    expect_near(body_z(character_st), 5.7, 0.01)
+  }
+
   test "a hold stops the stick, and only its own reason lets it go" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
     fresh(character_st, 0.0, 0.0, 0.0)
     character_test_st.mz = 1.0

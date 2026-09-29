@@ -14,7 +14,7 @@ function chr_steer(character_st: mut CharacterState, dx: float, dz: float, mag: 
     if run { top = character_st.chr_run_speed * CharacterBody.pace() }
     if CharacterBody.sneaking() { top = 1.3 }
     target = mag * top * lined
-  } else if CharacterBody.holding() and not character_st.chr_air {
+  } else if CharacterBody.holding() and not character_st.chr_air and not character_st.chr_sit {
     # a hold turns the body to the thing being worked, so the work is seen being done
     chr_turn_to(character_st, CharacterBody.hold_x() - character_st.chr_x, CharacterBody.hold_z() - character_st.chr_z, 6.0 * dt)
   }
