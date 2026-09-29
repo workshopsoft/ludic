@@ -58,6 +58,18 @@ A sampled rotation agrees with `anim_mix` to within 1e-4 a component (ozz keeps 
   and a channel gives the absolute local L, so D = G_p (L R_rest^-1) G_p^-1.
 - The scratch is made once and grown: a call is per actor per frame.
 
+## Animation sets
+
+Which clip plays when, as data: `AnimSets` is an open registry (`@ByKey`, `ASET_*`) a game fills with
+`def AnimSets from "assets/data/anim_sets.lres"`. A set is a graph - states (nodes) each with an
+ordered list of choices, the first whose `need` bands all hold and whose clip the rig carries playing
+(`rate`, or `rate_by` a parameter over the `ground` a cycle covers, held to `rate_min` / `rate_max`),
+and transitions (from a state or `"*"`, with a fade; with `@frame when: fn() -> bool`, taken on their
+own the frame it answers true). The code binds an `AnimPlayer` to a set and a rig
+(`animset_bind`), sets parameters (`animset_param`), asks for a state (`animset_request`, taken once
+however often it is asked) and ticks it into a skin (`animset_tick`). A one-shot (`loop: false`)
+holds its last pose and hands on to `next`. Clip names are made once per rig; a tick makes nothing.
+
 ## Tests
 
 ```bash
@@ -65,4 +77,6 @@ ludic test packages/ludic.anim
 ```
 
 A two-bone skin made from a glTF document with no GPU: sampling, wrapping, the cross-fade,
-translations off by default, and clips read out of a `.bin` written to the temp directory.
+translations off by default, and clips read out of a `.bin` written to the temp directory. And an
+animation set on a rig of hand-made clips (`animset_test`, `sets.lres`): need bands, the rate clamp,
+a one-shot's `next`, a `when` edge, and a request taken once.

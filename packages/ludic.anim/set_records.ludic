@@ -1,0 +1,55 @@
+# set_records.ludic - a rig's animation graph as the studio draws it: states are nodes,
+# transitions edges, and inside a state an ordered list of choices (a 1D blend by bands)
+
+# a band's test on one parameter the code sets each frame: holds while over < value < under
+export property AnimCond {
+  param: string = ""
+  over: float = -1000000.0
+  under: float = 1000000.0
+}
+
+# one clip a state may play: `clip` follows the rig's prefix (`walk` is `<rig>_walk`) and plays
+# when every `need` holds (none: the state's default)
+export property AnimChoice {
+  clip: string = ""
+  need: []AnimCond = null
+  rate: float = 1.0
+  rate_by: string = ""   # or the rate is this parameter over `ground`,
+  ground: float = 0.0    # the m/s one cycle covers, so the feet cover the ground the body does
+}
+
+# a node: the first choice that holds AND whose clip the rig carries plays. `blend` is the fade
+# between its own choices and into it; `keep_phase` carries a cycle's phase across such a change
+export property AnimStateDef {
+  key: string = ""
+  choices: []AnimChoice = null
+  rate_min: float = 0.0
+  rate_max: float = 1000000.0
+  blend: float = 0.2
+  keep_phase: bool = true
+  loop: bool = true
+  next: string = ""   # a one-shot's state once it has played through (loop: false)
+}
+
+# an edge: from a state (or "*", any) to another, with its fade. With no `when` it is the fade taken
+# when the code asks for `to`; with one, it is taken on its own the frame the function answers true
+export property AnimTransition {
+  from: string = ""
+  to: string = ""
+  blend: float = 0.2
+  @frame when: fn() -> bool = null
+}
+
+# a graph for a kind of rig: its parameters, its states (the first is where it starts unless
+# `entry` says) and its transitions
+export property AnimSet {
+  key: string = ""
+  entry: string = ""
+  params: []string = null
+  states: []AnimStateDef = null
+  transitions: []AnimTransition = null
+}
+
+# open: a game fills it (`def AnimSets from "assets/data/anim_sets.lres"`), a set's place its ASET_ number
+@ByKey
+export open registry AnimSets of AnimSet as ASET

@@ -1,0 +1,20 @@
+# sets.lres - the test's one set: a ground state picking by speed bands, a one-shot that hands back,
+# and a hop the code never asks for, taken when toy_hops says so
+toy {
+  entry: "ground"
+  params: ["speed"]
+  states: [
+    {
+      key: "ground"
+      rate_min: 0.5, rate_max: 2.0, blend: 0.2
+      choices: [
+        { clip: "run", rate_by: "speed", ground: 2.0, need: [{ param: "speed", over: 4.0 }] },
+        { clip: "walk", rate_by: "speed", ground: 4.0, need: [{ param: "speed", over: 0.5 }] },
+        { clip: "idle" }
+      ]
+    },
+    { key: "wave", loop: false, next: "ground", choices: [{ clip: "wave" }] },
+    { key: "hop", choices: [{ clip: "hop" }] }
+  ]
+  transitions: [{ from: "ground", to: "hop", blend: 0.1, when: fn toy_hops }]
+}

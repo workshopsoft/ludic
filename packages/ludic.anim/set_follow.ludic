@@ -1,0 +1,40 @@
+# set_follow.ludic - moving between states: a `when` edge out of the current state that answers
+# true, else the state the code asked for, faded by the edge between them or the target's own blend
+function as_follow(pl: AnimPlayer) -> void {
+  pl.fresh = false
+  let s = AnimSets[pl.set]
+  var to = pl.want
+  var blend = -1.0
+  if s.transitions != null {
+    for i in 0 .. len(s.transitions) {
+      let tr = s.transitions[i]
+      if tr.when == null or not as_leaves(s, tr, pl.state) { continue }
+      if tr.when() {
+        to = as_state(s, tr.to)
+        blend = tr.blend
+        break
+      }
+    }
+  }
+  if to < 0 or to == pl.state { return }
+  if blend < 0.0 { blend = as_blend(s, pl.state, to) }
+  pl.state = to
+  pl.want = to
+  pl.fresh = true
+  pl.fade_next = blend
+}
+
+function as_leaves(s: AnimSet, tr: AnimTransition, from: int) -> bool {
+  return tr.from == "*" or tr.from == s.states[from].key
+}
+
+# the edge the code's request crosses, if the graph has one; else the target's own fade
+function as_blend(s: AnimSet, from: int, to: int) -> float {
+  if s.transitions != null {
+    for i in 0 .. len(s.transitions) {
+      let tr = s.transitions[i]
+      if tr.when == null and tr.to == s.states[to].key and as_leaves(s, tr, from) { return tr.blend }
+    }
+  }
+  return s.states[to].blend
+}

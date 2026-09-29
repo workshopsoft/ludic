@@ -1,0 +1,53 @@
+# set_bind.ludic - a player given a set and a rig: the clip names are made once per rig, and
+# looked up again (without making anything) until the model has loaded and read its clips
+@alloc_ok("a rig's clip names and tables, made once when the rig changes")
+function as_names(pl: AnimPlayer, set: int, rig: string) -> void {
+  let s = AnimSets[set]
+  pl.set = set
+  pl.rig = intern(rig)
+  pl.names = new []string
+  pl.clips = new []Clip
+  pl.base = new []int
+  pl.vals = new []float
+  for i in 0 .. len(s.states) {
+    push(pl.base, len(pl.names))
+    let d = s.states[i]
+    for c in 0 .. len(d.choices) {
+      push(pl.names, intern(rig + "_" + d.choices[c].clip))
+      push(pl.clips, null)
+    }
+  }
+  if s.params != null { for i in 0 .. len(s.params) { push(pl.vals, 0.0) } }
+}
+
+# Bind (or look again). A new rig is a different skeleton: nothing of the last one's cross-fade
+# may carry over. Ready once the entry state's default - its last choice - is found.
+export function animset_bind(anim_st: AnimState, pl: AnimPlayer, set: int, rig: string) -> bool {
+  if animset_bound(pl, set, rig) and pl.ready { return true }
+  if not animset_bound(pl, set, rig) {
+    as_names(pl, set, rig)
+    pl.ready = false
+  }
+  for i in 0 .. len(pl.names) { pl.clips[i] = anim_find(anim_st, pl.names[i]) }
+  let s = AnimSets[set]
+  pl.state = as_entry(s)
+  pl.want = pl.state
+  pl.asked = ""
+  pl.clip = null
+  pl.prev = null
+  let d = s.states[pl.state]
+  let n = len(d.choices)
+  pl.ready = n > 0 and pl.clips[pl.base[pl.state] + n - 1] != null
+  return pl.ready
+}
+
+function as_entry(s: AnimSet) -> int {
+  let i = as_state(s, s.entry)
+  if i < 0 { return 0 }
+  return i
+}
+
+export function as_state(s: AnimSet, key: string) -> int {
+  for i in 0 .. len(s.states) { if s.states[i].key == key { return i } }
+  return -1
+}

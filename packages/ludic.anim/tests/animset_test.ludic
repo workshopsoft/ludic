@@ -1,0 +1,116 @@
+# animset_test.ludic - an animation set played on a fake rig (clips made by hand, a two-bone skin
+# from a glTF document with no GPU): a choice by its need bands, rate_by held to the state's range,
+# a one-shot handing on to `next`, a `when` edge, and a request taken once
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+program AnimSetTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimSets from "sets.lres"
+  state ToyState {
+    hop: bool = false
+  }
+  function toy_hops(toy_st: ToyState) -> bool { return toy_st.hop }
+
+  function skin(render3d_st: mut Render3dState) -> Skin {
+    render3d_st.gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"root\", \"children\": [1]}, {\"name\": \"bone\", \"translation\": [0, 1, 0]}], \"skins\": [{\"joints\": [0, 1]}]}")
+    return skin_load(render3d_st, 0)
+  }
+  # one rotation channel on the bone, `dur` seconds long
+  function clip(name: string, dur: float) -> Clip {
+    let c = new Clip
+    c.name = name
+    c.n = 1
+    c.cnode = words(1)
+    c.cpath = words(1)
+    c.ckeys = words(1)
+    c.coff = words(1)
+    c.cvoff = words(1)
+    c.cnode[0] = 1
+    c.cpath[0] = AC_ROT
+    c.ckeys[0] = 2
+    c.times = floats(2)
+    c.times[1] = dur
+    c.vals = floats(8)
+    c.vals[3] = 1.0
+    c.vals[7] = 1.0
+    c.dur = dur
+    return c
+  }
+  # the rig "rig": every clip the set names, bound and ready
+  function rig(anim_st: mut AnimState) -> AnimPlayer {
+    anim_clear(anim_st)
+    anim_add(anim_st, clip("rig_idle", 1.0))
+    anim_add(anim_st, clip("rig_walk", 1.0))
+    anim_add(anim_st, clip("rig_run", 1.0))
+    anim_add(anim_st, clip("rig_wave", 0.5))
+    anim_add(anim_st, clip("rig_hop", 1.0))
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, ASET_TOY, "rig"))
+    return pl
+  }
+  function playing(pl: AnimPlayer) -> string { return animset_clip(pl).name }
+
+  test "a state plays its first choice whose need bands hold" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = skin(render3d_st)
+    let pl = rig(anim_st)
+    expect(animset_tick(anim_st, pl, sk, 0.016))
+    expect(playing(pl) == "rig_idle")
+    animset_param(pl, "speed", 1.0)
+    expect(animset_tick(anim_st, pl, sk, 0.016))
+    expect(playing(pl) == "rig_walk")
+    animset_param(pl, "speed", 5.0)
+    expect(animset_tick(anim_st, pl, sk, 0.016))
+    expect(playing(pl) == "rig_run")
+    animset_param(pl, "speed", 4.0)
+    expect(animset_tick(anim_st, pl, sk, 0.016))
+    expect(playing(pl) == "rig_walk")
+  }
+  test "rate_by is the parameter over the ground a cycle covers, held to the state's range" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = skin(render3d_st)
+    let pl = rig(anim_st)
+    animset_param(pl, "speed", 3.0)
+    animset_tick(anim_st, pl, sk, 0.016)
+    expect_eq(animset_rate(pl), 0.75)
+    animset_param(pl, "speed", 1.0)
+    animset_tick(anim_st, pl, sk, 0.016)
+    expect_eq(animset_rate(pl), 0.5)
+    animset_param(pl, "speed", 9.0)
+    animset_tick(anim_st, pl, sk, 0.016)
+    expect_eq(animset_rate(pl), 2.0)
+  }
+  test "a one-shot plays through and hands on to its next state" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = skin(render3d_st)
+    let pl = rig(anim_st)
+    animset_request(pl, "wave")
+    animset_tick(anim_st, pl, sk, 0.1)
+    expect(playing(pl) == "rig_wave")
+    animset_tick(anim_st, pl, sk, 0.3)
+    animset_tick(anim_st, pl, sk, 0.3)
+    expect(playing(pl) == "rig_wave")
+    animset_tick(anim_st, pl, sk, 0.016)
+    expect(playing(pl) == "rig_idle")
+  }
+  test "a when edge is taken the frame its function says so" (anim_st: mut AnimState, render3d_st: mut Render3dState, toy_st: mut ToyState) {
+    let sk = skin(render3d_st)
+    let pl = rig(anim_st)
+    toy_st.hop = false
+    animset_tick(anim_st, pl, sk, 0.016)
+    expect(playing(pl) == "rig_idle")
+    toy_st.hop = true
+    animset_tick(anim_st, pl, sk, 0.016)
+    expect(playing(pl) == "rig_hop")
+    toy_st.hop = false
+  }
+  test "a request asked every frame is taken once, not re-applied after the graph moves on" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = skin(render3d_st)
+    let pl = rig(anim_st)
+    for i in 0 .. 12 {
+      animset_request(pl, "wave")
+      animset_tick(anim_st, pl, sk, 0.1)
+    }
+    expect(playing(pl) == "rig_idle")
+  }
+}

@@ -1,0 +1,56 @@
+# set_pick.ludic - the code's side: a parameter set, a state asked for; and the choice a state
+# makes from them. Nothing here makes anything: it runs every frame.
+export function animset_param(pl: AnimPlayer, name: string, v: float) -> void {
+  let i = as_param_at(pl, name)
+  if i >= 0 { pl.vals[i] = v }
+}
+
+# a state by name, taken once: the code may ask every frame, and a `when` edge that moved the
+# player on since is not undone by the same request again
+export function animset_request(pl: AnimPlayer, key: string) -> void {
+  if pl.set < 0 or key == pl.asked { return }
+  let i = as_state(AnimSets[pl.set], key)
+  if i < 0 { return }
+  pl.asked = key
+  pl.want = i
+}
+
+function as_param_at(pl: AnimPlayer, name: string) -> int {
+  if pl.set < 0 { return -1 }
+  let s = AnimSets[pl.set]
+  if s.params == null { return -1 }
+  for i in 0 .. len(s.params) { if s.params[i] == name { return i } }
+  return -1
+}
+
+function as_value(pl: AnimPlayer, name: string) -> float {
+  let i = as_param_at(pl, name)
+  if i < 0 { return 0.0 }
+  return pl.vals[i]
+}
+
+function as_holds(pl: AnimPlayer, c: AnimChoice) -> bool {
+  if c.need == null { return true }
+  for k in 0 .. len(c.need) {
+    let n = c.need[k]
+    let v = as_value(pl, n.param)
+    if not (v > n.over and v < n.under) { return false }
+  }
+  return true
+}
+
+# the state's first choice that holds and whose clip the rig has; -1 none
+function as_pick(pl: AnimPlayer, d: AnimStateDef) -> int {
+  if d.choices == null { return -1 }
+  let b = pl.base[pl.state]
+  for c in 0 .. len(d.choices) {
+    if pl.clips[b + c] != null and as_holds(pl, d.choices[c]) { return c }
+  }
+  return -1
+}
+
+function as_rate(pl: AnimPlayer, d: AnimStateDef, c: AnimChoice) -> float {
+  var r = c.rate
+  if c.rate_by != "" and c.ground > 0.0 { r = as_value(pl, c.rate_by) / c.ground }
+  return Math.clamp(r, d.rate_min, d.rate_max)
+}

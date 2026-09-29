@@ -1,0 +1,29 @@
+# set_player.ludic - one actor playing a set: which rig its clips were found for, the state it
+# is in and the one the code last asked for, and the two clips being cross-faded
+export property AnimPlayer {
+  set: int = -1
+  rig: string = ""          # the clips' prefix it was bound with ("hiker_m")
+  names: []string = null    # every choice's full clip name, state by state, made once per rig
+  clips: []Clip = null      # the same, found; null where the rig has no such clip
+  base: []int = null        # where each state's choices start in names and clips
+  vals: []float = null      # the set's parameters, in its order
+  ready: bool = false       # the entry state's default clip is found: the model has loaded
+  state: int = 0
+  want: int = 0
+  asked: string = ""        # the last state asked for: a request is taken once, not every frame
+  fresh: bool = false       # the state changed this frame: its first clip starts at zero
+  fade_next: float = -1.0   # the fade a state change asked for
+  clip: Clip = null
+  t: float = 0.0
+  prev: Clip = null
+  pt: float = 0.0
+  mix: float = 1.0
+  fade: float = 0.2
+  rate: float = 1.0
+}
+
+export function animset_clip(pl: AnimPlayer) -> Clip { return pl.clip }
+export function animset_time(pl: AnimPlayer) -> float { return pl.t }
+export function animset_rate(pl: AnimPlayer) -> float { return pl.rate }
+export function animset_ready(pl: AnimPlayer) -> bool { return pl.ready }
+export function animset_bound(pl: AnimPlayer, set: int, rig: string) -> bool { return pl.set == set and pl.rig == rig and pl.names != null }

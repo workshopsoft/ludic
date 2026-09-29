@@ -1,0 +1,52 @@
+# set_tick.ludic - a frame of a player: follow the graph, pick the clip, cross-fade on a change,
+# advance both clips by the same step and play them into the skin (ludic.anim)
+export function animset_tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> bool {
+  if not pl.ready or sk == null { return false }
+  as_follow(pl)
+  let d = AnimSets[pl.set].states[pl.state]
+  let k = as_pick(pl, d)
+  if k < 0 { return false }
+  pl.rate = as_rate(pl, d, d.choices[k])
+  as_switch(pl, d, pl.clips[pl.base[pl.state] + k])
+  let adv = dt * pl.rate
+  pl.t = pl.t + adv
+  pl.pt = pl.pt + adv
+  as_one_shot(pl, d)
+  if pl.mix < 1.0 { pl.mix = Math.min(1.0, pl.mix + dt / pl.fade) }
+  # anim_play blends TOWARD its second clip, so the weight is how much of the old one is left
+  return anim_play(anim_st, sk, pl.clip, pl.t, pl.prev, pl.pt, 1.0 - pl.mix)
+}
+
+# a new clip fades in from the old one. Within a state it carries the PHASE across: two leg cycles
+# restarted at zero put the far leg forward for the length of the fade, which reads as a stumble.
+function as_switch(pl: AnimPlayer, d: AnimStateDef, want: Clip) -> void {
+  var fade = d.blend
+  if pl.fade_next > 0.0 { fade = pl.fade_next }
+  pl.fade_next = -1.0
+  if pl.clip == null {
+    pl.clip = want
+    pl.t = 0.0
+    pl.prev = null
+    pl.mix = 1.0
+    return
+  }
+  if want == pl.clip { return }
+  var ph = 0.0
+  if d.keep_phase and not pl.fresh and pl.clip.dur > 0.0 { ph = pl.t % pl.clip.dur / pl.clip.dur }
+  pl.prev = pl.clip
+  pl.pt = pl.t
+  pl.clip = want
+  pl.t = ph * want.dur
+  pl.fade = fade
+  pl.mix = 0.0
+  if not (fade > 0.0) { pl.mix = 1.0 }
+}
+
+# a clip that does not loop holds its last pose, and hands over to its `next` state when played
+function as_one_shot(pl: AnimPlayer, d: AnimStateDef) -> void {
+  if d.loop or pl.clip.dur <= 0.0 or pl.t < pl.clip.dur { return }
+  pl.t = pl.clip.dur * 0.999
+  if d.next == "" { return }
+  let i = as_state(AnimSets[pl.set], d.next)
+  if i >= 0 { pl.want = i }
+}
