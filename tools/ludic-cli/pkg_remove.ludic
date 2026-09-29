@@ -1,0 +1,134 @@
+# pkg_remove.ludic — `ludic remove <module>`, the inverse of `ludic add`: the `require` line leaves
+# package.ludic, and the lock keeps exactly what the remaining requires still reach. The graph is
+# read from the store's copies of each locked package.ludic, so nothing is fetched; what the removal
+# leaves unreachable leaves the lock and its ludic_modules/ link (the link `add` made, never the store
+# entry it points at, which other projects share). Source still importing a removed package is a
+# warning: the caller may be about to delete it.
+
+# package.ludic's text with every `require "<module>" ...` line dropped
+function drop_require(txt: pointer, module: pointer) -> pointer {
+  var out = ""
+  let n = slen(txt)
+  var i = 0
+  while i < n {
+    let line = line_at(txt, i)
+    i = i + slen(line) + 1
+    let ts = tok_line(line)
+    if not (len(ts) >= 2 and ts[0] == "require" and ts[1] == module) { out = out + line + nl() }
+  }
+  return out
+}
+function requires(m: Manifest, module: pointer) -> bool {
+  var i = 0
+  while i < len(m.deps) {
+    if m.deps[i].module == module { return true }
+    i += 1
+  }
+  return false
+}
+
+var g_graph_unknown: pointer = ""       # a locked package the store has no copy of, when there is one
+
+# the locked entries the root's requires still reach, through the store's package.ludic files
+function lock_reachable(root: Manifest, locked: []Manifest) -> []Manifest {
+  let seen = new []pointer
+  let todo = new []pointer
+  var d = 0
+  while d < len(root.deps) {
+    push(todo, root.deps[d].module)
+    d += 1
+  }
+  while len(todo) > 0 {
+    let m = List.pop(todo)
+    let at = lock_index(locked, m)
+    if find_mod(seen, m) < 0 and at >= 0 {
+      push(seen, m)
+      let dir = `{store_root()}{strip_prefix(locked[at].hash, "sha256:")}`
+      if not shq(`test -d "{dir}"`) { g_graph_unknown = m }
+      else {
+        let mt = read_file(`{dir}/package.ludic`)
+        if mt != null {
+          let dm = parse_manifest(mt)
+          var k = 0
+          while k < len(dm.deps) {
+            push(todo, dm.deps[k].module)
+            k += 1
+          }
+        }
+      }
+    }
+  }
+  let keep = new []Manifest
+  var i = 0
+  while i < len(locked) {
+    if find_mod(seen, locked[i].module) >= 0 { push(keep, locked[i]) }
+    i += 1
+  }
+  return keep
+}
+
+# take down the ludic_modules/ view `add` linked, and the directories it leaves empty
+function unlink_module(module: pointer) -> void {
+  let link = `ludic_modules/{module}`
+  if shq(`test -L "{link}"`) {
+    shell(`rm -f "{link}"; d=$(dirname "{link}"); while [ "$d" != ludic_modules ] && [ "$d" != . ] && rmdir "$d" 2>/dev/null; do d=$(dirname "$d"); done; rmdir ludic_modules 2>/dev/null`)
+  } else if shq(`test -e "{link}"`) {
+    err(`ludic remove: warning: {link} is not a link 'ludic add' made; left as it is\n`)
+  }
+  if shq(`test -e "vendor/{module}"`) { err(`ludic remove: vendor/{module} is still there (run 'ludic vendor' again)\n`) }
+}
+
+# the project's own files that still import `module`
+function warn_importers(module: pointer) -> void {
+  let hits = split_lines(capture(`grep -rlF --include='*.ludic' --exclude-dir=ludic_modules --exclude-dir=vendor --exclude-dir=build --exclude-dir=.git -e 'import "{module}/' -e 'import "{module}"' . | sed 's|^\\./||' | LC_ALL=C sort`))
+  if len(hits) == 0 { return }
+  err(`ludic remove: warning: {module} is still imported by:\n`)
+  var i = 0
+  while i < len(hits) {
+    err(`  {hits[i]}\n`)
+    i += 1
+  }
+}
+
+# ludic remove <module> — drop a dependency: the require, what only it brought into the lock, the links
+function cmd_pkg_remove() -> int {
+  if arg_count() < 3 { err("usage: ludic remove <module>\n");  return 1 }
+  let module = split_spec(arg(2))[0]
+  let txt = read_file("package.ludic")
+  if txt == null { err("ludic remove: no package.ludic in the current directory\n");  return 1 }
+  let locked = read_lock_or_empty()
+  if not requires(parse_manifest(txt), module) {
+    var why = ""
+    if lock_index(locked, module) >= 0 { why = " (the lock has it because another package requires it)" }
+    err(`ludic remove: package.ludic does not require {module}{why}\n`)
+    return 1
+  }
+  if not write_file("package.ludic", drop_require(txt, module)) { err("ludic remove: cannot write package.ludic\n");  return 1 }
+  print(`ludic remove: {module} is no longer required`)
+  if file_exists("package.lock.ludic") {
+    var keep = lock_reachable(read_root_manifest(), locked)
+    if g_graph_unknown != "" {
+      err(`ludic remove: the store has no copy of {g_graph_unknown}, so only {module} leaves the lock; 'ludic get' settles the rest\n`)
+      keep = new []Manifest
+      var j = 0
+      while j < len(locked) {
+        if not (locked[j].module == module) { push(keep, locked[j]) }
+        j += 1
+      }
+    }
+    if not write_lock(keep) { err("ludic remove: cannot write package.lock.ludic\n");  return 1 }
+    var i = 0
+    while i < len(locked) {
+      let m = locked[i]
+      if lock_index(keep, m.module) < 0 {
+        unlink_module(m.module)
+        print(`  removed {m.module}  {m.ver}`)
+        if not (m.module == module) { warn_importers(m.module) }
+      }
+      i += 1
+    }
+    if lock_index(keep, module) >= 0 { print(`  {module} stays locked: another package still requires it`) }
+  }
+  warn_importers(module)
+  return 0
+}

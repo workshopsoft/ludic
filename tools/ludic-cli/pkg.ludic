@@ -1,5 +1,5 @@
 # pkg.ludic — the Ludic package manager (issue #63), the `ludic add`/`get`/
-# `update`/`verify`/`vendor` commands.
+# `update`/`verify`/`vendor` commands (`remove` and `get --json`: pkg_remove.ludic, pkg_lock.ludic).
 #
 # It realises the v1 direction decided in the RFC:
 #
@@ -484,7 +484,7 @@ function write_lock(sels: []Manifest) -> bool {
 function do_install(root: Manifest) -> int {
   let sels = resolve(root)
   if len(sels) == 0 {
-    print("no dependencies to resolve")
+    pkg_say("no dependencies to resolve")
     write_lock(sels)
     return 0
   }
@@ -505,11 +505,11 @@ function do_install(root: Manifest) -> int {
     if slen(h) == 0 { err(`ludic: failed to snapshot {m.module}@{m.ver}\n`);  return 1 }
     m.hash = `sha256:{h}`
     link_module(m.module, h)
-    print(`  {m.module}  {m.ver}  ({m.kind})  sha256:{sslice(h, 0, 12)}…`)
+    pkg_say(`  {m.module}  {m.ver}  ({m.kind})  sha256:{sslice(h, 0, 12)}…`)
     i += 1
   }
   if not write_lock(sels) { err("ludic: cannot write package.lock.ludic\n");  return 1 }
-  print(`resolved {string(len(sels))} package(s) — see package.lock.ludic; linked under ludic_modules/`)
+  pkg_say(`resolved {string(len(sels))} package(s) — see package.lock.ludic; linked under ludic_modules/`)
   return 0
 }
 
@@ -596,12 +596,19 @@ function cmd_pkg_add() -> int {
   return do_install(read_root_manifest())
 }
 
-# ludic get — resolve + fetch + link every dependency in package.ludic, write lock
+# ludic get [--json] — resolve + fetch + link every dependency in package.ludic, write lock. --json
+# says what changed in the lock as one JSON object on stdout (lock_diff_json), the rest on stderr.
 function cmd_pkg_get() -> int {
   let txt = read_file("package.ludic")
   if txt == null { err("ludic: no package.ludic in the current directory (ludic add <module> to start one)\n");  return 1 }
-  print("resolving dependencies (MVS)…")
-  return do_install(parse_manifest(txt))
+  let json = pkg_has_flag("--json")
+  let before = read_lock_or_empty()
+  g_pkg_err = json
+  pkg_say("resolving dependencies (MVS)…")
+  let rc = do_install(parse_manifest(txt))
+  if rc != 0 or not json { return rc }
+  out(lock_diff_json(before, read_lock_or_empty()))
+  return 0
 }
 
 # ludic update [module] — bump a dep (or all) to its latest published version, relock

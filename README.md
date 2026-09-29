@@ -144,6 +144,7 @@ cached in a content-addressed store:
 ```bash
 ludic add git.workshopsoft.io/user/pkg   # resolve, fetch, link into ludic_modules/
 ludic get                                # install from package.ludic, write the lock
+ludic remove git.workshopsoft.io/user/pkg   # the inverse of add
 ludic verify                             # check locked packages against the store
 ```
 
