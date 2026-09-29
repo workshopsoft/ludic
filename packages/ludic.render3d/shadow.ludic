@@ -31,6 +31,7 @@ function shadow_init__t(render3d_st: mut Render3dState) -> void {
   render3d_st.sh_split[0] = 16.0;  render3d_st.sh_split[1] = 60.0;  render3d_st.sh_split[2] = 250.0;  render3d_st.sh_split[3] = 1100.0;  render3d_st.sh_split[4] = 6000.0
   render3d_st.sh_tmp_proj = m4_new();  render3d_st.sh_tmp_vp = m4_new();  render3d_st.sh_tmp_inv = m4_new();  render3d_st.sh_tmp_view = m4_new()
   render3d_st.sh_corner = floats(3)
+  shadow_fog(render3d_st)
 }
 
 # A shadow resolution setting: 1024, 2048 or 4096 per cascade. The depth layers are made again at
@@ -64,7 +65,8 @@ function shadow_set_res(render3d_st: mut Render3dState, r: int) -> void {
 function shadow_make_tex(render3d_st: mut Render3dState) -> void {
   render3d_st.sh_tex = gpu_tex_new(render3d_st)
   gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.sh_tex)
-  gpu_tex_image3d(render3d_st, GL_DEPTH_COMPONENT32F, render3d_st.shadow_res, render3d_st.shadow_res, SHADOW_CASCADES, GL_DEPTH_COMPONENT, GL_FLOAT, null)
+  render3d_st.sh_layers = shadow_layers_for(render3d_st)
+  gpu_tex_image3d(render3d_st, GL_DEPTH_COMPONENT32F, render3d_st.shadow_res, render3d_st.shadow_res, render3d_st.sh_layers, GL_DEPTH_COMPONENT, GL_FLOAT, null)
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
@@ -159,6 +161,8 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
     prof_cpu_mark(render3d_st, "shadow fit")
     let past = wall > 0.0 and near >= wall
     near = render3d_st.sh_split[c]
+    # a cascade the fog's shadow array has no layer for: fitted (its uniforms stay sane), never drawn
+    if c >= render3d_st.sh_layers { continue }
     gpu_fb_depth_layer(render3d_st, render3d_st.sh_tex, c)
     if render3d_st.r3d_debug and c == 0 { shadow_debug_fbo(render3d_st) }
     gpu_clear(render3d_st, GL_DEPTH_BUFFER_BIT)
@@ -179,7 +183,7 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
 @alloc_ok("asked for by the player or a tool, not by the frame")
 function shadow_dump(render3d_st: mut Render3dState) -> void {
   let n = render3d_st.shadow_res * render3d_st.shadow_res
-  let buf = floats(n * SHADOW_CASCADES)
+  let buf = floats(n * render3d_st.sh_layers)
   gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.sh_tex)
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE)
   gpu_tex_read(render3d_st, GPU_TEX2D_ARRAY, GL_DEPTH_COMPONENT, GL_FLOAT, data_of(buf))
@@ -300,3 +304,25 @@ function shadow_debug_range(render3d_st: mut Render3dState, prog: int) -> void {
 # messages, each built in a function of its own so the path that says it holds no allocation
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
 function shadow_say_no_memory(r: int, was: int) -> void { print(`r3d: shadows: no memory for {r} x {r} cascades; keeping {was}`) }
+
+# ---- the fog wall -----------------------------------------------------------------------------
+# A cascade that begins past the wall is never drawn, so the array holds only the ones that begin
+# inside it (16 MB each at 2048): two at 30 m, three at 175 m, all five without a fog. A layer the
+# array lacks clamps to its last, and what reads it lies past the wall, fully fogged.
+function shadow_layers_for(render3d_st: Render3dState) -> int {
+  let wall = r3d_reach(render3d_st, 0.0)
+  if wall <= 0.0 or render3d_st.sh_split == null { return SHADOW_CASCADES }
+  var n = 1
+  while n < SHADOW_CASCADES and render3d_st.sh_split[n - 1] < wall { n += 1 }
+  return n
+}
+
+# the array made again when the wall changes how many cascades it needs
+function shadow_fog(render3d_st: mut Render3dState) -> void {
+  if render3d_st.sh_tex == 0 or shadow_layers_for(render3d_st) == render3d_st.sh_layers { return }
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SHADOW
+  gpu_tex_free(render3d_st, render3d_st.sh_tex)
+  shadow_make_tex(render3d_st)
+  render3d_st.gvk_tag = was
+}
