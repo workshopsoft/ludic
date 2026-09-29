@@ -982,7 +982,36 @@ function decl_hook_target(ev: pointer, sp: pointer, dsp: pointer, att: pointer, 
 # parse one top-level declaration (or resolve an import) into `prog`.
 # Modifiers are `@annotations` in front of the declaration: `@export`, `@edge`,
 # `@pure`, `@deterministic`, … — one channel, not a zoo of prefix keywords.
+var g_decl_exported: bool = false               # `export` read in front of the declaration being parsed
 function parse_one_decl() -> void {
+  let p0 = len(prog)
+  let e0 = len(g_events)
+  let r0 = len(g_rg_var)
+  let outer = g_decl_exported
+  g_decl_exported = false
+  parse_one_decl_in()
+  if g_decl_exported { decl_mark_exported(p0, e0, r0) }
+  g_decl_exported = outer
+}
+# `export function f`, `export var v`, ...: what the declaration added is visible from other modules (L3)
+function decl_mark_exported(p0: int, e0: int, r0: int) -> void {
+  var k = p0
+  while k < len(prog) {
+    prog[k].vis = 1
+    k += 1
+  }
+  k = r0
+  while k < len(g_rg_var) {                        # a @PerMap registry's own node is not in prog
+    g_rg_var[k].vis = 1
+    k += 1
+  }
+  k = e0
+  while k < len(g_events) {
+    g_events[k].vis = 1
+    k += 1
+  }
+}
+function parse_one_decl_in() -> void {
   at_decl_reset()                             # attrs.ludic: @AppendOnly / @ByKey belong to one declaration
   var is_export = false
   var qspec: Node = null
@@ -1005,7 +1034,14 @@ function parse_one_decl() -> void {
   var esys_phase: pointer = null
   var ns_name: pointer = null               # @Namespace(Name) — a package-provided Foo.* namespace (#62)
   var is_det = false                    # @deterministic — no floating point inside (emit_float.ludic)
-  while is_op("@") {
+  # attributes and `export` in any order: `@ToClients export event E` keeps its @ToClients
+  while is_op("@") or (is_id("export") and (toks[pi + 1].kind == TK_ID or toks[pi + 1].text == "@")) {
+    if is_id("export") {
+      pi += 1
+      g_decl_exported = true
+      skipnl()
+      continue
+    }
     pi += 1; let a = eat_id()             # collect a leading @annotation
     if a == "export" { is_export = true }
     else if a == "Public" { is_public = true }                              # @Public hook promotion
@@ -1045,7 +1081,7 @@ function parse_one_decl() -> void {
       let why = expr()
       if why.kind != E_STR or len(why.s) == 0 { perr("@alloc_ok needs its reason: @alloc_ok(\"a memo miss, bounded by MM_CAP\")") }
       eat_op(")")
-      g_aok_pending = true                         # a global: `export` parses the declaration one call down
+      g_aok_pending = true                         # a global: the declaration after the attributes reads it
     }
     else if a == "creates" or a == "releases" {     # 25.5e: @creates(PhysShape) / @releases(PhysShape)
       eat_op("(")
@@ -1071,31 +1107,6 @@ function parse_one_decl() -> void {
   }
   if is_id("module") and toks[pi + 1].kind == TK_ID {
     mod_parse_line()                              # module NAME [uses A, B]
-    return
-  }
-  # `export function f`, `export var v`, ...: visible from other modules (L3)
-  if is_id("export") and (toks[pi + 1].kind == TK_ID) {
-    pi += 1
-    g_at_keep = true
-    let p0 = len(prog)
-    let e0 = len(g_events)
-    let r0 = len(g_rg_var)
-    parse_one_decl()
-    var k = p0
-    while k < len(prog) {
-      prog[k].vis = 1
-      k += 1
-    }
-    k = r0
-    while k < len(g_rg_var) {                      # a @PerMap registry's own node is not in prog
-      g_rg_var[k].vis = 1
-      k += 1
-    }
-    k = e0
-    while k < len(g_events) {
-      g_events[k].vis = 1
-      k += 1
-    }
     return
   }
   if is_id("numbers") and (toks[pi + 1].text == "float") {

@@ -1,0 +1,18 @@
+# net_export.ludic - attributes and `export` in either order: `@ToClients export event` is as remote
+# as `export @ToClients event`, and `@Sync export property` / `@Owned export model` keep theirs.
+# (Before, the attributes read in front of `export` were dropped, and the event went local unsaid.)
+program NetExport {
+  @ToClients
+  export event Said { x: int = 0 }
+  export @ToClients event Told { x: int = 0 }
+  @ToServer export event Asked { x: int = 0 }
+  @ToClients event Local { x: int = 0 }
+  @Sync export property Spot { x: int = 0 }
+  @Owned export model Walker { @Sync Spot }
+  handler Talk phase Update {
+    emit Said(x: 1)
+    emit Told(x: 1)
+    emit Asked(x: 1)
+    emit Local(x: 1)
+  }
+}
