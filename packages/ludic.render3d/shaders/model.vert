@@ -96,14 +96,30 @@ void main() {
   // height whatever the tree is, and the base does not move at all.
   float th = max(u_model_h * i_pos.w, 0.001);
   float hn = (u_model_h > 2.0) ? clamp(hgt / th, 0.0, 1.0) : min(hgt, 1.0);
-  float reach = (u_model_h > 2.0) ? th * 0.22 : 0.35;
+  // A tree bends a few per cent of its height at the top in a gust, not a fifth of it: at 0.22 a 14 m
+  // aspen's crown swung three metres and the bole read as rope. The side-to-side part is slower too.
+  float reach = (u_model_h > 2.0) ? th * 0.045 : 0.35;
   p.x += sway * hn * hn * reach;
-  p.z += sway * hn * hn * reach * 0.43 * cos(ph * 0.7);
+  p.z += sway * hn * hn * reach * 0.25 * cos(ph * 0.37);
+  if (u_model_h > 2.0) {
+    // Each branch moves as one piece: nothing at the trunk, more the further out along it, and
+    // phased by which way it points out of the trunk - the same all along a branch, where a phase
+    // from the vertex's own place wiggled it like a rope - so neighbouring branches are out of step.
+    float br = length(a_pos.xz) * i_pos.w;
+    float bout = smoothstep(0.35, 2.5, br);
+    float bph = u_time * 1.9 + atan(a_pos.z, a_pos.x + 1e-4) * 2.0 + i_rot.z * 6.2831;
+    float bamp = (0.25 + windGust(i_pos.xz, u_time)) * u_wind * i_rot.w * bout * br * 0.035;
+    p.y += sin(bph) * bamp;
+    p.x += cos(bph * 0.8) * bamp * 0.5;
+    p.z += sin(bph * 0.7 + 1.3) * bamp * 0.5;
+  }
   if (u_flutter > 0.0) {
     // per-leaf, not per-tree: the phase comes from the vertex's own place on the card, so
     // neighbouring leaves are never in step - a crown that trembles as one block reads as
     // the whole tree shivering.
-    float qp = u_time * 8.5 + a_pos.x * 11.3 + a_pos.z * 9.7 + a_pos.y * 4.1 + i_rot.z * 6.2831;
+    // a slow change across the model: a leaf card's corners move together and so do a few
+    // centimetres of twig, where eleven radians a metre bent every branch along its length
+    float qp = u_time * 8.5 + a_pos.x * 3.1 + a_pos.z * 2.7 + a_pos.y * 1.9 + i_rot.z * 6.2831;
     float q = sin(qp) * 0.65 + sin(qp * 1.73 + 1.1) * 0.35;
     // ...and only out on the CROWN. The mask was height alone, so on an aspen every vertex
     // of a ten metre bole above 1.2 m trembled along with the leaves and the TRUNK moved
@@ -113,9 +129,9 @@ void main() {
     float rmask = 1.0;
     if (u_model_h > 2.0) rmask = smoothstep(0.22, 0.75, length(a_pos.xz) / max(u_model_h * 0.22, 0.05));
     float amp = u_flutter * (0.40 + 0.60 * windGust(i_pos.xz, u_time)) * smoothstep(0.0, 1.2, hgt) * rmask;
-    p.x += q * amp * 0.10;
-    p.y += q * amp * 0.05;
-    p.z += cos(qp * 0.9) * amp * 0.10;
+    p.x += q * amp * 0.05;
+    p.y += q * amp * 0.025;
+    p.z += cos(qp * 0.9) * amp * 0.05;
     v_quake = q * amp;
   }
 #endif
