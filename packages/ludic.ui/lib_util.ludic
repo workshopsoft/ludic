@@ -24,6 +24,8 @@ function lib_blank(path: string) -> UiFile {
   return f
 }
 function lib_text(ui_st: UiState, path: string) -> string {
+  let o = ov_find(ui_st, path)
+  if o >= 0 { return `{ui_st.ov_text[o]}` }   # a copy: a caller may give back what it read (rl_let_go)
   var src = ""
   if ui_st.ui_be != null and ui_st.ui_be.read != null { src = ui_st.ui_be.read(path) } else { src = Fs.read_text(path) }
   if src == null { return "" }
