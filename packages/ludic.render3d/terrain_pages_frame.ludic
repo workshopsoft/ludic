@@ -1,0 +1,124 @@
+# terrain_pages_frame.ludic — which fine tiles the GPU holds, once a frame (terrain_pages.ludic). Tiles
+# within the reach and a tile of the camera are wanted, nearest first, at most TP_BUDGET loaded a frame;
+# a resident tile goes only past the reach and two tiles, so walking a tile edge back and forth loads
+# nothing. A load is written into the kept staging (the half the frame in flight is not reading) and
+# copied into its slot inside the frame's own command buffer. Nothing here allocates.
+
+const TP_BUDGET: int = 8
+
+function tp_frame(render3d_st: mut Render3dState) -> void {
+  render3d_st.tp_frame_loads = 0
+  if not render3d_st.tp_on or render3d_st.cam_pos == null { return }
+  let tile_m = tp_tile_m(render3d_st)
+  let fx = (render3d_st.cam_pos[0] - render3d_st.ter_ox + float(render3d_st.TERRAIN_HALF)) / tile_m
+  let fz = (render3d_st.cam_pos[2] - render3d_st.ter_oz + float(render3d_st.TERRAIN_HALF)) / tile_m
+  let n = render3d_st.tt_n
+  let ct = min(max(int(Math.floor(fz)), 0), n - 1) * n + min(max(int(Math.floor(fx)), 0), n - 1)
+  # the same tile as last time with nothing left over: every wanted tile is in already
+  if ct == render3d_st.tp_cam_t and not render3d_st.tp_short { return }
+  render3d_st.tp_cam_t = ct
+  let rt = render3d_st.tp_reach / tile_m
+  tp_evict(render3d_st, fx, fz, rt + 2.0)
+  let m = tp_pick(render3d_st, fx, fz, rt + 1.0)
+  if m > 0 or render3d_st.tp_dirty { tp_load(render3d_st, m, fx, fz, rt + 1.0) }
+}
+
+# tile t's centre from (fx, fz), in tiles
+function tp_dist(t: int, n: int, fx: float, fz: float) -> float {
+  let dx = float(t % n) + 0.5 - fx
+  let dz = float(t / n) + 0.5 - fz
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+# every resident tile farther than `out` let go
+function tp_evict(render3d_st: mut Render3dState, fx: float, fz: float, out: float) -> void {
+  for s in 0 .. render3d_st.tp_slots {
+    let t = render3d_st.tp_tile_of[s]
+    if t >= 0 and tp_dist(t, render3d_st.tt_n, fx, fz) > out { tp_drop(render3d_st, s) }
+  }
+}
+function tp_drop(render3d_st: mut Render3dState, s: int) -> void {
+  render3d_st.tp_page[render3d_st.tp_tile_of[s]] = 0.0
+  render3d_st.tp_tile_of[s] = -1
+  render3d_st.tp_free[render3d_st.tp_nfree] = s
+  render3d_st.tp_nfree += 1
+  render3d_st.tp_dirty = true
+}
+
+# the nearest TP_BUDGET wanted tiles not in, into tp_cand; whether more were left is tp_short
+function tp_pick(render3d_st: mut Render3dState, fx: float, fz: float, want: float) -> int {
+  let n = render3d_st.tt_n
+  var m = 0
+  var missing = 0
+  for j in max(int(Math.floor(fz - want)), 0) .. min(int(fz + want) + 1, n) {
+    for i in max(int(Math.floor(fx - want)), 0) .. min(int(fx + want) + 1, n) {
+      let t = j * n + i
+      if render3d_st.tp_page[t] != 0.0 { continue }
+      let d = tp_dist(t, n, fx, fz)
+      if d > want { continue }
+      missing += 1
+      m = tp_cand_put(render3d_st, m, t, d)
+    }
+  }
+  render3d_st.tp_short = missing > m
+  return m
+}
+# tile t at distance d into the sorted candidates, the farthest falling off the end
+function tp_cand_put(render3d_st: mut Render3dState, m: int, t: int, d: float) -> int {
+  var k = m
+  if k == TP_BUDGET {
+    if d >= render3d_st.tp_cand_d[k - 1] { return m }
+    k = TP_BUDGET - 1
+  }
+  while k > 0 and render3d_st.tp_cand_d[k - 1] > d {
+    render3d_st.tp_cand[k] = render3d_st.tp_cand[k - 1]
+    render3d_st.tp_cand_d[k] = render3d_st.tp_cand_d[k - 1]
+    k -= 1
+  }
+  render3d_st.tp_cand[k] = t
+  render3d_st.tp_cand_d[k] = d
+  return min(m + 1, TP_BUDGET)
+}
+
+# a free slot, or the farthest resident tile past `keep` given up for one; -1 when every slot is wanted
+function tp_take(render3d_st: mut Render3dState, fx: float, fz: float, keep: float) -> int {
+  if render3d_st.tp_nfree == 0 {
+    var far = -1
+    var fd = keep
+    for s in 0 .. render3d_st.tp_slots {
+      let t = render3d_st.tp_tile_of[s]
+      if t < 0 { continue }
+      let d = tp_dist(t, render3d_st.tt_n, fx, fz)
+      if d > fd { fd = d;  far = s }
+    }
+    if far < 0 { return -1 }
+    tp_drop(render3d_st, far)
+  }
+  render3d_st.tp_nfree -= 1
+  return render3d_st.tp_free[render3d_st.tp_nfree]
+}
+
+# the frame's loads written and copied, and the page table after them when it changed
+function tp_load(render3d_st: mut Render3dState, m: int, fx: float, fz: float, keep: float) -> void {
+  # the frame's command buffer first: opening it waits for the frame that read this half last
+  let cb = gpu_upload_cb(render3d_st)
+  let base = (render3d_st.gvk_frame_no & 1) * tp_half_bytes(render3d_st)
+  # the tiles' reads from the file are the pool's own, not a frame asking too much (tt_frame)
+  let reads = render3d_st.tt_frame_reads
+  var k = 0
+  for c in 0 .. m {
+    let s = tp_take(render3d_st, fx, fz, keep)
+    if s < 0 { render3d_st.tp_short = true;  break }
+    let t = render3d_st.tp_cand[c]
+    tp_fill(render3d_st, t, base, k)
+    render3d_st.tp_cand_s[k] = s
+    render3d_st.tp_tile_of[s] = t
+    render3d_st.tp_page[t] = float(s + 1)
+    render3d_st.tp_dirty = true
+    k += 1
+  }
+  render3d_st.tt_frame_reads = reads
+  render3d_st.tp_frame_loads = k
+  render3d_st.tp_loads += k
+  tp_upload(render3d_st, cb, base, k)
+}

@@ -1,0 +1,94 @@
+# gpu_vk_layers.ludic — what the terrain's page pool asks of Vulkan (terrain_pages.ludic): a staging
+# buffer kept for the process, regions of it copied into chosen layers of an array texture inside the
+# frame's own command buffer (no submit of their own), and a one-off linear blit for a coarse level.
+
+# a host-visible staging buffer of n bytes kept for good (the pool's uploads reuse it every frame)
+@alloc_ok("made once per resource and kept for its life: the page pool's staging buffer")
+function gpu_staging_keep(render3d_st: mut Render3dState, n: int) -> pointer {
+  gvk_flush(render3d_st)
+  let p = gvk_staging(render3d_st, n, VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+  if p == null { return null }
+  render3d_st.tp_st_buf = render3d_st.gvk_st_buf
+  render3d_st.tp_st_mem = render3d_st.gvk_st_mem
+  render3d_st.tp_st_bytes = n
+  return p
+}
+# ... and let go (a map whose tiles need a larger one)
+function gpu_staging_drop(render3d_st: mut Render3dState) -> void {
+  if render3d_st.tp_st_buf == 0 { return }
+  gvk_flush(render3d_st)
+  let buf = render3d_st.gvk_st_buf
+  let mem = render3d_st.gvk_st_mem
+  render3d_st.gvk_st_buf = render3d_st.tp_st_buf
+  render3d_st.gvk_st_mem = render3d_st.tp_st_mem
+  gvk_staging_free(render3d_st)
+  render3d_st.gvk_st_buf = buf
+  render3d_st.gvk_st_mem = mem
+  let zero: long = 0
+  render3d_st.tp_st_buf = zero;  render3d_st.tp_st_mem = zero;  render3d_st.tp_st_ptr = null;  render3d_st.tp_st_bytes = 0
+}
+
+# the frame's command buffer, outside any pass, for copies recorded before the frame's draws
+function gpu_upload_cb(render3d_st: mut Render3dState) -> pointer {
+  gvk_pass_end(render3d_st)
+  return gvk_frame_cb(render3d_st)
+}
+
+# n regions of the kept staging buffer, each w x h texels starting at base + k * stride, into layer
+# layers[k] of tex's level 0: one barrier each way around them all, recorded into cb
+function gpu_layers_copy(render3d_st: mut Render3dState, cb: pointer, tex: int, w: int, h: int, base: int, stride: int, layers: words, n: int) -> void {
+  if n <= 0 or tex <= 0 or cb == null { return }
+  let image = render3d_st.gvk_tex_image[tex]
+  let all = render3d_st.gvk_tex_layers[tex]
+  let levels = render3d_st.gvk_tex_levels[tex]
+  gvk_barrier(render3d_st, cb, image, false, 0, levels, all, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let sz = VkBufferImageCopy_sizeof
+  let bic = gvk_tmp(render3d_st, sz * n)
+  Vk.zero(bic, sz * n)
+  let sub = VkBufferImageCopy_imageSubresource
+  for k in 0 .. n {
+    let at: long = base + k * stride
+    Vk.put_i64(bic, k * sz + VkBufferImageCopy_bufferOffset, at)
+    Vk.put_i32(bic, k * sz + sub + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+    Vk.put_i32(bic, k * sz + sub + VkImageSubresourceLayers_baseArrayLayer, layers[k])
+    Vk.put_i32(bic, k * sz + sub + VkImageSubresourceLayers_layerCount, 1)
+    Vk.put_i32(bic, k * sz + VkBufferImageCopy_imageExtent + VkExtent3D_width, w)
+    Vk.put_i32(bic, k * sz + VkBufferImageCopy_imageExtent + VkExtent3D_height, h)
+    Vk.put_i32(bic, k * sz + VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
+  }
+  Vk.cmd_copy_buffer_to_image(cb, render3d_st.tp_st_buf, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, n, bic)
+  gvk_barrier(render3d_st, cb, image, false, 0, levels, all, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+}
+
+# level 0 of src (sw x sh) filtered into level 0 of dst (dw x dh), once: a coarse level made on the GPU
+function gpu_tex_blit(render3d_st: mut Render3dState, src: int, sw: int, sh: int, dst: int, dw: int, dh: int) -> bool {
+  gvk_flush(render3d_st)
+  let si = render3d_st.gvk_tex_image[src]
+  let di = render3d_st.gvk_tex_image[dst]
+  if si == 0 or di == 0 { return false }
+  let cb = gvk_once_begin(render3d_st)
+  gvk_barrier(render3d_st, cb, si, false, 0, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+  gvk_barrier(render3d_st, cb, di, false, 0, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let blit = gvk_tmp(render3d_st, VkImageBlit_sizeof)
+  Vk.zero(blit, VkImageBlit_sizeof)
+  Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+  Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_layerCount, 1)
+  Vk.put_i32(blit, VkImageBlit_srcOffsets + VkOffset3D_sizeof + VkOffset3D_x, sw)
+  Vk.put_i32(blit, VkImageBlit_srcOffsets + VkOffset3D_sizeof + VkOffset3D_y, sh)
+  Vk.put_i32(blit, VkImageBlit_srcOffsets + VkOffset3D_sizeof + VkOffset3D_z, 1)
+  Vk.put_i32(blit, VkImageBlit_dstSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+  Vk.put_i32(blit, VkImageBlit_dstSubresource + VkImageSubresourceLayers_layerCount, 1)
+  Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_x, dw)
+  Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_y, dh)
+  Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_z, 1)
+  Vk.cmd_blit_image(cb, si, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, di, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, blit, VK_FILTER_LINEAR)
+  gvk_barrier(render3d_st, cb, si, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_barrier(render3d_st, cb, di, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  return gvk_once_end(render3d_st, cb)
+}
+
+# pixels into level 0 of a texture made without them (tex_target), laid out as gvk_tex_upload takes them
+function gpu_tex_fill(render3d_st: mut Render3dState, tex: int, ifmt: int, w: int, h: int, fmt: int, ty: int, data: pointer) -> bool {
+  gvk_flush(render3d_st)
+  return gvk_tex_upload(render3d_st, tex, ifmt, w, h, 1, fmt, ty, data)
+}

@@ -15,11 +15,12 @@ layout(set = 0, binding = 0) uniform Params {
   vec4 cam;         // xyz the camera, w no blades past this (u_radius)
   vec4 dens;        // x s0, y d0, z one pixel in radians, w the snow line
   vec4 lake;        // the carved lake: centre x/z, half extents (z = 0: none)
-  vec4 lev;         // x the lake's level, y the sea's, z the photograph on (1), w unused
+  vec4 lev;         // x the lake's level, y the sea's, z the photograph on (1), w the page pool on (1)
   vec4 ts;          // the height texture: origin x/z, half extent, unused
   vec4 bands;       // outer distance of bands 0 and 1 (x, y); band 2 is the rest
   uvec4 base;       // each band's first record in Out
   uvec4 cap;        // ... and how many it holds
+  vec4 tp;          // the page pool (u_tp_dims): tiles a side, height texels a tile, photograph texels a tile, height texels a side
 } pr;
 
 layout(set = 0, binding = 1) readonly buffer Tiles { vec4 tiles[]; };   // corner x/z, indices per cell, cells per side
@@ -28,6 +29,12 @@ layout(set = 0, binding = 3) buffer Cmds { uint cmds[]; };              // VkDra
 layout(set = 0, binding = 4) uniform sampler2D u_height;                // the height (terrain's u_ts_height)
 layout(set = 0, binding = 5) uniform sampler2D u_ortho;                 // the photograph
 layout(set = 0, binding = 6) uniform sampler2D u_ter_normal;            // the normal: x and z, y rebuilt
+// the page pool (terrain_pages.ludic): while it is on, the three above are the coarse whole-map level
+// and the tiles round the camera are layers of these, addressed through the page table
+layout(set = 0, binding = 7) uniform sampler2D u_tp_page;               // slot + 1 per tile, 0 = coarse
+layout(set = 0, binding = 8) uniform sampler2DArray u_tp_h;             // (T + 2)^2 a layer, a texel of border
+layout(set = 0, binding = 9) uniform sampler2DArray u_tp_nrm;
+layout(set = 0, binding = 10) uniform sampler2DArray u_tp_ortho;        // (S + 2)^2 a layer
 
 const float CELL = 4.0;   // grass.ludic GRASS_CELL
 
@@ -36,8 +43,35 @@ float bladeHash(ivec2 cell, int j, int k) {
   uint h = pcg(uint(cell.x + 32768) * 73856093u ^ uint(cell.y + 32768) * 19349663u ^ uint(j) * 83492791u ^ uint(k) * 2654435761u);
   return float(h) * (1.0 / 4294967295.0);
 }
+// the resident tile's slot under a full-map uv, or -1 (then the coarse level answers)
+float tpSlot(vec2 uv) {
+  if (pr.lev.w < 0.5) return -1.0;
+  ivec2 t = ivec2(floor(clamp(uv, 0.0, 0.999999) * pr.tp.x));
+  return texelFetch(u_tp_page, t, 0).r - 1.0;
+}
+// where a full-map uv falls in its slot's layer of side T (+ a border of one)
+vec3 tpUv(vec2 uv, float side, float slot) {
+  vec2 f = fract(clamp(uv, 0.0, 0.999999) * pr.tp.x);
+  return vec3((1.0 + f * side) / (side + 2.0), slot);
+}
+float groundH(vec2 uv) {
+  float s = tpSlot(uv);
+  if (s >= 0.0) return textureLod(u_tp_h, tpUv(uv, pr.tp.y, s), 0.0).r;
+  return textureLod(u_height, uv, 0.0).r;
+}
+vec2 groundN(vec2 uv) {
+  float s = tpSlot(uv);
+  if (s >= 0.0) return textureLod(u_tp_nrm, tpUv(uv, pr.tp.y, s), 0.0).rg;
+  return textureLod(u_ter_normal, uv, 0.0).rg;
+}
+// the photograph: a resident tile's layer has no mips, so it is read at its own level
+vec3 groundO(vec2 uv) {
+  float s = tpSlot(uv);
+  if (s >= 0.0) return textureLod(u_tp_ortho, tpUv(uv, pr.tp.z, s), 0.0).rgb;
+  return textureLod(u_ortho, uv, 1.5).rgb;
+}
 float heightSmooth(vec2 uv) {
-  vec2 res = vec2(textureSize(u_height, 0));
+  vec2 res = pr.lev.w > 0.5 ? vec2(pr.tp.w) : vec2(textureSize(u_height, 0));
   vec2 t = uv * res - 0.5;
   vec2 f = fract(t);
   vec2 i = floor(t);
@@ -48,8 +82,8 @@ float heightSmooth(vec2 uv) {
   vec2 s0 = w0 + w1, s1 = w2 + w3;
   vec2 o0 = (i - 1.0 + w1 / s0 + 0.5) / res;
   vec2 o1 = (i + 1.0 + w3 / s1 + 0.5) / res;
-  return (textureLod(u_height, vec2(o0.x, o0.y), 0.0).r * s0.x + textureLod(u_height, vec2(o1.x, o0.y), 0.0).r * s1.x) * s0.y
-       + (textureLod(u_height, vec2(o0.x, o1.y), 0.0).r * s0.x + textureLod(u_height, vec2(o1.x, o1.y), 0.0).r * s1.x) * s1.y;
+  return (groundH(vec2(o0.x, o0.y)) * s0.x + groundH(vec2(o1.x, o0.y)) * s1.x) * s0.y
+       + (groundH(vec2(o0.x, o1.y)) * s0.x + groundH(vec2(o1.x, o1.y)) * s1.x) * s1.y;
 }
 // grass.vert's bladeField: the region, the patchiness, the dry patches and the tussocks' shade
 vec3 bladeField(vec2 xz, float y) {
@@ -89,18 +123,18 @@ void main() {
   float life = 1.0 - smoothstep(keep * 0.75, keep, r);
   vec2 huv = (xz - pr.ts.xy) / (2.0 * pr.ts.z) + 0.5;
   if (huv.x < 0.0 || huv.x > 1.0 || huv.y < 0.0 || huv.y > 1.0) return;
-  vec4 ht = textureLod(u_height, huv, 0.0);
+  vec4 ht = vec4(groundH(huv));
   // the frustum, on a sphere round the blade (it stands at most 0.9 m tall)
   vec3 root = vec3(xz.x, ht.r, xz.y);
   for (int k = 0; k < 4; k++) { if (dot(pr.planes[k].xyz, root) + pr.planes[k].w < -1.0) return; }
-  vec2 gxz = textureLod(u_ter_normal, huv, 0.0).rg;
+  vec2 gxz = groundN(huv);
   vec3 gn = vec3(gxz.x, sqrt(max(1.0 - dot(gxz, gxz), 0.0)), gxz.y);
   float h3 = bladeHash(ci, j, 2), h4 = bladeHash(ci, j, 3);
   float wl = pr.lev.y;
   if (pr.lake.z > 0.0) { vec2 q = (xz - pr.lake.xy) / pr.lake.zw;  if (dot(q, q) < 1.0) wl = max(wl, pr.lev.x); }
   float ok = (1.0 - smoothstep(0.30, 0.55, 1.0 - gn.y)) * smoothstep(0.0, 0.6, ht.r - wl - 0.15) * smoothstep(pr.dens.w - 80.0, pr.dens.w - 200.0, ht.r);
   if (pr.lev.z > 0.5) {
-    vec3 oc = textureLod(u_ortho, huv, 1.5).rgb;
+    vec3 oc = groundO(huv);
     ok *= 0.40 + 0.60 * smoothstep(0.0, 0.025, oc.g - oc.b);
   }
   if (h4 > ok) return;

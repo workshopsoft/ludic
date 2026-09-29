@@ -33,10 +33,10 @@ function terrain_tiles_cut(render3d_st: mut Render3dState) -> void {
   tt_open(render3d_st, path, n, side)
   tt_make_coarse(render3d_st)
   if r3d_env_has(render3d_st, "R3D_TT_CHECK") { tt_check(render3d_st) }
-  free(render3d_st.ter_heights);  render3d_st.ter_heights = null
-  free(render3d_st.ter_ortho_px);  render3d_st.ter_ortho_px = null
+  tp_cut(render3d_st)
   tt_say_cut(path, TT_HEAD + n * n * (TT_TEX * TT_TEX * 2 + side * side) * 4, (gl_now_us() - t0) / 1000)
 }
+
 
 # the heights, tile after tile, each a TT_TEX-row block straight out of the whole copy; their checksum
 function tt_write_heights(render3d_st: Render3dState, f: pointer, n: int) -> int {
@@ -131,7 +131,7 @@ function tt_close(render3d_st: mut Render3dState) -> void {
 }
 
 function tt_say_no_file(path: string) -> void { print(`r3d: terrain: cannot write {path}; the whole height field stays in memory`) }
-function tt_say_cut(path: string, bytes: int, ms: int) -> void { print(`r3d: terrain: tiles written to {path} ({bytes / 1048576} MB, {ms} ms); the whole copies let go`) }
+function tt_say_cut(path: string, bytes: int, ms: int) -> void { print(`r3d: terrain: tiles written to {path} ({bytes / 1048576} MB, {ms} ms); the whole copies kept until terrain_tiles_build_done`) }
 
 # R3D_TT_CHECK: the tiles' answer against the whole copy's at 4000 points (must be exact), and the
 # coarse level's (what terrain_height_near falls back to) - while both are still here
@@ -158,3 +158,16 @@ function tt_check(render3d_st: mut Render3dState) -> void {
   }
   print(`r3d: terrain: tiles vs the whole copy at 4000 points: worst {worst} m; the coarse level: worst {worst_c} m`)
 }
+
+# The world's build places trees, rocks and cover over the whole map, asking exact heights
+# everywhere before any ring exists: through the tiles that read the file some 25 000 times. So the
+# whole copies stay through the build, and the game lets them go here when it is done (the end of
+# world_things, and after a swap's terrain_reload). Queries answer the same before and after.
+export function terrain_tiles_build_done(render3d_st: mut Render3dState) -> void {
+  if render3d_st.tt_file == null { return }
+  if render3d_st.ter_heights != null { free(render3d_st.ter_heights);  render3d_st.ter_heights = null }
+  if render3d_st.ter_ortho_px != null { free(render3d_st.ter_ortho_px);  render3d_st.ter_ortho_px = null }
+  render3d_st.tt_frame_reads = 0
+  tt_say_done()
+}
+function tt_say_done() -> void { print("r3d: terrain: the world is built; the whole height and photograph copies let go, tiles from here") }
