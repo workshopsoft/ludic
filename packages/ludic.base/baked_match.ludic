@@ -1,0 +1,53 @@
+# baked_match.ludic - the two small questions a bake's glob asks (baked_expand.ludic): does a name match a
+# pattern of literal bytes and `*`, and which of two paths comes first byte by byte (Python's str order)
+
+# `*` matches any run of bytes, including none; everything else only itself
+function bk_match(name: string, pat: string) -> bool {
+  var n = 0
+  var p = 0
+  var star = -1
+  var mark = 0
+  while n < len(name) {
+    if p < len(pat) and pat[p] != 42 and pat[p] == name[n] {
+      n += 1
+      p += 1
+    } else if p < len(pat) and pat[p] == 42 {
+      star = p
+      mark = n
+      p += 1
+    } else if star >= 0 {
+      p = star + 1
+      mark += 1
+      n = mark
+    } else {
+      return false
+    }
+  }
+  while p < len(pat) and pat[p] == 42 { p += 1 }
+  return p == len(pat)
+}
+
+# a before b, byte by byte, the shorter first on a tie
+function bk_before(a: string, b: string) -> bool {
+  var i = 0
+  while i < len(a) and i < len(b) {
+    if a[i] != b[i] { return (a[i] & 255) < (b[i] & 255) }
+    i += 1
+  }
+  return len(a) < len(b)
+}
+# a list sorted in place by bk_before (a directory's names: a few dozen); null is an empty list
+@alloc_ok("a bake's inputs: once a bake or a check")
+function bk_sorted(xs: []string) -> []string {
+  if xs == null { return new []string }
+  for i in 1 .. len(xs) {
+    let x = xs[i]
+    var j = i - 1
+    while j >= 0 and bk_before(x, xs[j]) {
+      xs[j + 1] = xs[j]
+      j -= 1
+    }
+    xs[j + 1] = x
+  }
+  return xs
+}

@@ -1,0 +1,74 @@
+# baked_expand.ludic - a Bakes row's inputs as they are hashed, following the data: `{map}` put as one
+# map's key, and each input with a `*` put as the paths it matches, sorted as whole paths byte by byte,
+# dot-names left out. tools/bake/baked.py `expand` is its checked twin, as baked_hash is the hash's: a
+# runner and the check that expand alike agree on stale. A runner's line: bake_inputs_hash(bake_expand(...)).
+
+# the inputs with `{map}` as `map` (none when "") and every glob expanded, space-separated
+@alloc_ok("a bake's inputs: once a bake or a check")
+export function bake_expand(inputs: string, map: string) -> string {
+  var ins = inputs
+  if len(map) > 0 { ins = Text.replace(inputs, "{map}", map) }
+  let parts = Text.split(ins, " ")
+  var out = ""
+  for i in 0 .. len(parts) {
+    if len(parts[i]) == 0 { continue }
+    var hits = new []string
+    if Text.contains(parts[i], "*") { hits = bk_sorted(bk_glob(parts[i])) } else { push(hits, parts[i]) }
+    for k in 0 .. len(hits) {
+      if len(out) > 0 { out = out + " " }
+      out = out + hits[k]
+    }
+  }
+  return out
+}
+
+# the maps a `{map}` row covers: each directory under assets/maps holding its first input, sorted
+export function bake_maps(first_input: string) -> []string { return bake_maps_in("assets/maps", first_input) }
+# ... under another directory of maps (a test's)
+@alloc_ok("a bake's inputs: once a bake or a check")
+export function bake_maps_in(root: string, first_input: string) -> []string {
+  let got = new []string
+  let names = bk_sorted(Fs.list(root))
+  for i in 0 .. len(names) {
+    if len(names[i]) == 0 or names[i][0] == 46 { continue }
+    if Fs.exists(Text.replace(first_input, "{map}", names[i])) { push(got, names[i]) }
+  }
+  return got
+}
+
+# every existing path a pattern matches, a directory level at a time
+@alloc_ok("a bake's inputs: once a bake or a check")
+function bk_glob(pat: string) -> []string {
+  let segs = Text.split(pat, "/")
+  var at = new []string
+  if len(pat) > 0 and pat[0] == 47 { push(at, "/") } else { push(at, "") }
+  for s in 0 .. len(segs) {
+    if len(segs[s]) == 0 { continue }
+    let next = new []string
+    for a in 0 .. len(at) { bk_glob_step(at[a], segs[s], next) }
+    at = next
+  }
+  let out = new []string
+  for i in 0 .. len(at) { if len(at[i]) > 0 and Fs.exists(at[i]) { push(out, at[i]) } }
+  return out
+}
+# one directory level of a glob: a literal segment joined on, a pattern matched against the listing
+@alloc_ok("a bake's inputs: once a bake or a check")
+function bk_glob_step(dir: string, seg: string, next: []string) -> void {
+  if not Text.contains(seg, "*") {
+    push(next, bk_join(dir, seg))
+    return
+  }
+  var d = dir
+  if len(d) == 0 { d = "." }
+  let names = Fs.list(d)
+  if names == null { return }
+  for k in 0 .. len(names) {
+    if len(names[k]) > 0 and names[k][0] != 46 and bk_match(names[k], seg) { push(next, bk_join(dir, names[k])) }
+  }
+}
+function bk_join(dir: string, name: string) -> string {
+  if len(dir) == 0 { return name }
+  if dir[len(dir) - 1] == 47 { return dir + name }
+  return dir + "/" + name
+}

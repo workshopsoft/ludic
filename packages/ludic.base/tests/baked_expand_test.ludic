@@ -1,0 +1,48 @@
+# baked_expand_test.ludic - a Bakes row's inputs expanded as tools/bake/baked.py `expand` does: `{map}` over
+# the map directories holding the first input (dot-directories out), a glob as its matches sorted as whole
+# paths byte by byte (dot-names out), a glob that matches nothing gone, a literal kept even when missing
+import "ludic.base"
+program BakedExpandTest {
+  function root() -> string { return Os.temp_dir() + "/ludic-bake-expand" }
+  function put(path: string) -> void { Fs.write_text(path, "x") }
+  function dirs(ps: []string) -> void { for i in 0 .. len(ps) { Fs.mkdir(root() + ps[i]) } }
+  # maps a and b hold a layers file, c does not, .git is a dot-directory; b's ground has four PNGs
+  function fixture() -> void {
+    dirs(["", "/maps", "/maps/a", "/maps/a/ground", "/maps/b", "/maps/b/ground", "/maps/c", "/maps/.git", "/m", "/m-x"])
+    put(root() + "/maps/a/ground_layers.lres")
+    put(root() + "/maps/a/ground/x.png")
+    put(root() + "/maps/b/ground_layers.lres")
+    put(root() + "/maps/b/ground/z.png")
+    put(root() + "/maps/b/ground/a.png")
+    put(root() + "/maps/b/ground/a-b.png")
+    put(root() + "/maps/b/ground/.hidden.png")
+    put(root() + "/maps/b/ground/notes.txt")
+    put(root() + "/maps/.git/ground_layers.lres")
+    put(root() + "/m/f.txt")
+    put(root() + "/m-x/f.txt")
+  }
+
+  test "a {map} row covers each map directory holding its first input, sorted" {
+    fixture()
+    let maps = bake_maps_in(root() + "/maps", root() + "/maps/{map}/ground_layers.lres")
+    expect_eq(len(maps), 2)
+    expect_eq(maps[0], "a")
+    expect_eq(maps[1], "b")
+  }
+
+  test "a map's inputs: {map} put, the glob's matches sorted byte by byte, dot-names out" {
+    fixture()
+    let r = root()
+    let row = r + "/maps/{map}/ground_layers.lres " + r + "/maps/{map}/ground/*.png tools/x.py"
+    let got = bake_expand(row, "b")
+    expect_eq(got, `{r}/maps/b/ground_layers.lres {r}/maps/b/ground/a-b.png {r}/maps/b/ground/a.png {r}/maps/b/ground/z.png tools/x.py`)
+  }
+
+  test "whole paths sort across directories, a glob with no match is gone, a literal stays" {
+    fixture()
+    let r = root()
+    expect_eq(bake_expand(`{r}/m*/f.txt`, ""), `{r}/m-x/f.txt {r}/m/f.txt`)
+    expect_eq(bake_expand(`{r}/none/*.png`, ""), "")
+    expect_eq(bake_expand(`{r}/missing.lres  {r}/maps/a/ground/*.png`, ""), `{r}/missing.lres {r}/maps/a/ground/x.png`)
+  }
+}
