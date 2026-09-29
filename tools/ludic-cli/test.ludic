@@ -786,6 +786,11 @@ function test_dir_case() -> void {
   if not shq(`cd {work} && {root}/bin/ludic test pk/tests -j 2 > out3.txt 2>&1`) { bad2(lbl2, capture(`cat {work}/out3.txt`));  return }
   if not shq(`grep -q 'pk/tests/scratch.ludic  (2 tests)' {work}/out3.txt`) { bad2(lbl2, capture(`cat {work}/out3.txt`));  return }
   ok(lbl2)
+  # a test program holding a phase handler: the runner boots no frame loop and calls no rt_init it lacks
+  let lbl3 = "ludic test: a program with a phase handler compiles and runs its tests"
+  write_file(`{work}/pk/tests/handler.ludic`, "program D {\n  handler K phase Input { }\n  test \"d\" {\n    expect_eq(1, 1)\n  }\n}\n")
+  if not shq(`cd {work} && {root}/bin/ludic test pk/tests/handler.ludic > out4.txt 2>&1`) { bad2(lbl3, capture(`cat {work}/out4.txt`));  return }
+  ok(lbl3)
 }
 
 # package.ludic drives the CLI: `entry` (or the one program under src/) is what

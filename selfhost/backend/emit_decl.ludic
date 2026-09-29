@@ -161,7 +161,7 @@ function emit_test_runner() -> void {
   emit(`{lrun0}:\n`)
   emit("  call void @L_init_runtime()\n")
   if has_ecs() { emit("  call void @L_grow(i32 1)\n") }
-  if has_ecs() { emit("  call void @rt_init()\n") }
+  if (find_fn("rt_init") != null) { emit("  call void " + fn_sym("rt_init") + "()\n") }   # as emit_main: a handler alone makes no rt_init
   emit("  call void @L_init_globals()\n")
   i = 0
   while i < len(g_tests) {
