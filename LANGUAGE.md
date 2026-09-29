@@ -625,6 +625,96 @@ int and this is a string`). Its entries are defs of the module that wrote the li
 must be open (and exported) to it, and they take that module's place in the order: the declaring
 module's entries, then each other module's by module name, and within a file, file order.
 
+### Map-scoped tables (`@PerMap`, `@Chunked`)
+
+A registry can hold what is on a map rather than what is in the game: its rows are not compiled in,
+they are read when a map loads, from that map's own directory.
+
+```ludic
+# doc-check: skip — its rows are files under each map's directory
+property PropRow {
+  key: string = ""                 # the entry's key, as every registry record
+  @Ref(Models) model: int = 0      # a literal, or any constant by name: MDL_TENT2
+  x: float = 0.0
+  @Unit("deg") yaw: float = 0.0
+  @Ref(Spots) home: string = ""    # a row of another map table, by its key
+}
+@PerMap @ByKey registry Props of PropRow from "props.lres"
+@PerMap @Chunked(64) registry Instances of InstRow from "instances/{cx}_{cz}.lres"
+```
+
+The maps are the directories under the maps root, which `package.ludic` names (`maps "assets/maps"`,
+the default; taken relative to the package's directory): `assets/maps/maroon/props.lres`,
+`assets/maps/maroon/instances/12_-3.lres`. `from` is relative to the map's directory; in a
+`@Chunked(n)` registry, `{cx}` and `{cz}` are the chunk's integer coordinates, `floor(x / n)` and
+`floor(z / n)`, written as decimals (`-3`), and they go in the file's own name, not a directory above
+it. The files are ordinary `.lres` entries (`key { field: value, ... }`, see Resource files), read
+through the same open every asset takes, so a mounted pack serves them and a dev run reads the
+directory. A map's row may hold an `int`, a `float`, a `bool`, a `string`, a nested record, a list of
+any of those (not a list of lists or of `fn` values), or a `fn` value written `fn name` (resolved
+among the functions of the field's type the registry's module can name). An `int` field takes a
+literal or any `int` constant by name, a `float` field any number or number constant; the program
+carries its constants by name for that, when a `@PerMap` registry exists. The record's first field
+is `key: string`, filled from the entry's key. Rows are in file order.
+
+A `@PerMap` registry has no `as PREFIX` and no `_KEY` constants - its keys are not known when the
+game compiles - takes no `def`, and is never `open`. The compiler writes, in the declaring module and
+exported with the registry, a `state` named after it and its verbs, prefixed with the registry's name
+in snake case (`GroundLayers` -> `ground_layers_`):
+
+```ludic
+# doc-check: skip — what the compiler writes for the two registries above
+state Props { rows: []PropRow, map: string, err: string, ... }
+props_load(st: mut Props, map: string) -> bool     # <root>/<map>/props.lres; false + st.err if missing or wrong
+props_clear(st: mut Props) -> void
+props_find(st: Props, key: string) -> int          # the row's index, or -1
+props_path(st: Props, rel: string) -> string       # "<root>/<st.map>/<rel>", for an asset a row names
+
+property InstancesChunk { cx: int, cz: int, on: bool, rows: []InstRow, ... }
+state Instances { chunks: []InstancesChunk, map: string, err: string, ... }
+instances_in(st: mut Instances, map: string, cx: int, cz: int) -> int   # its slot; no file is an empty chunk, a wrong one -1 + st.err
+instances_out(st: mut Instances, cx: int, cz: int) -> void
+instances_slot(st: Instances, cx: int, cz: int) -> int                   # -1 when that chunk is not in
+instances_find(st: Instances, slot: int, key: string) -> int             # a row of that slot, or -1
+instances_clear(st: mut Instances) -> void
+instances_path(st: Instances, rel: string) -> string
+```
+
+Read `props.rows[i]` and `len(props.rows)`, `st.chunks[s].rows`. An error is `"file:line:col: what"`
+(`maps/alpha/props.lres:2:18: PropRow has no field colour`, `unknown constant MDL_TENT3`), and a
+failed load leaves the table empty, never half filled. `_find` is a hash over the row keys, rebuilt
+in place on every load: O(1) and allocation-free. `_in` for a chunk that is already in hands back its
+slot; `_in` with another map than the one the chunks came from puts every chunk out first. `_path`
+makes one string: it is for load time, not a frame. A row's id for co-op is `(map, key)` for a
+whole-map table and `(cx, cz, key)` for a chunked one - both stable, because they are data.
+
+**The table owns its rows, and everything in them.** Every row record, every list inside a row and
+every record in such a list is pooled: a reload of the map, or a chunk slot refilled, resets and
+refills them in place - the rows list and each row's lists are emptied and refilled, each record set
+back to its record's defaults (a template made once) - and a record is made only when a load needs
+more of its type than any load before it. Nothing is allocated past that high water, so a frame may
+call `instances_in`. Never keep a row, a row's list or a chunk's rows across a load or an `_out`: keep
+the key or the index, or copy the numbers. A string field (and a key) is interned, and safe to keep;
+the program's interned texts are bounded (49152 distinct, 4 MB, past which each is a heap copy the
+fence reports), so a chunked table's keys should repeat from chunk to chunk (`i0`, `i1`, ...) - its
+row id is `(cx, cz, key)` - rather than count across the whole map. A record may hold a record of its
+own type only through a list. The reader
+(the runtime's `lres.ludic`) keeps its own buffers the same way: the file's bytes in one that grows
+only for a bigger file, its tree as parallel lists reused from file to file.
+
+`@Ref(T)` where `T` is a `@PerMap` registry goes on a `string` field holding the row's key (an `int`
+field is refused: "use a string key"); its schema attribute says `"scope": "map"`.
+
+**Every map is checked with the program.** `ludicc --check` (and `ludic build --check`) reads every
+directory under the maps root as a map and checks, with the compiler's own resource parser, each
+registry's file in it (each file a chunked pattern matches) against the record: the field exists,
+its value has the field's type, a constant it names exists, `fn name` names a function of the
+field's type, `@OneOf` and `@Range` hold, an `@Ref` into a game registry is in range, and an `@Ref`
+into a `@PerMap` registry names a row of that table in the same map (in any of its chunks; `""` is
+none). A key is written once in a file. Errors carry the map file's line and column, through the
+diagnostics as any other (`--diagnostics=json`); `--no-maps` leaves the maps alone, and no maps
+root is nothing to check. `LUDIC_PERMAP_SRC=<file>` appends what the compiler wrote for each table.
+
 ### Editor attributes and the schema (`@Ref`, `@Range`, ..., `ludic schema`)
 
 A field can say what an editor of the data should offer for it, and a registry how its entries may
@@ -653,6 +743,12 @@ property Tool {
 registry Tools of Tool as TL from "data/tools.lres"
 ```
 
+`@Unit` takes one of the canonical ASCII spellings - `m`, `m/s`, `m/s2`, `s`, `min`, `h`, `d`, `deg`,
+`rad`, `rad/s`, `kg`, `N`, `N.m`, `%`, `px` - so one word means one unit to an editor and a converter:
+the angle is `"deg"`, never `"°"`. Any other spelling is a warning naming the canonical one where
+there is an obvious one (`"°"`, `"degrees"` -> `deg`, `"sec"` -> `s`, `"m/s^2"` -> `m/s2`, `"Nm"` ->
+`N.m`), else listing them; the schema carries the list as `"units"`.
+
 They change nothing the program does. A target that no part of the program declares - the registry
 an `@Ref` names, the constant of an `@Tint` or a listed `@OneOf` - is a warning, and the schema marks
 the attribute `"unresolved": true`: a package can name the game's registry without importing it.
@@ -671,8 +767,9 @@ object with `"schema_version": 1`:
   comment (the comment lines above it, else the one ending its line), and its fields, each with its
   type as text, its default as written (or null), its doc, its place and its attributes
   (`[{"name": "Range", "args": [0, 20.5]}]`);
-- `registries` - every registry: its record, prefix, resource file, whether it is open, its own
-  attributes, and its entries in their final index order (`{"key": "axe", "constant": "TL_AXE",
+- `registries` - every registry: its record, prefix (null for a `@PerMap` one), resource file,
+  whether it is open, its `"scope"` (`"map"` for `@PerMap`, else `"game"`), its `"chunk"` size (or
+  null) and, for a map-scoped one, the `"maps"` root; its own attributes, and its entries in their final index order (`{"key": "axe", "constant": "TL_AXE",
   "index": 0, "file": ..., "line": ..., "col": ..., "fields": [{"name", "value", "file", "line",
   "col"}]}`), with `contributors`: which resource file or file of `def`s brought which keys in;
 - `consts` - every const: its type, its value as written, its module and doc;
@@ -693,6 +790,7 @@ object with `"schema_version": 1`:
   `{"tag", "via", "handler", "module", "file", "line", "col"}`, `via` the function called and
   `handler` the `fn` value it passes last (else null). A tag worked out at run time cannot be known
   and is left out.
+- `units` - `@Unit`'s canonical spellings.
 
 Each list is sorted by name (then file and line), a registry's entries are in index order, and the
 paths are the ones the compiler read, so two runs over the same source write the same file. The

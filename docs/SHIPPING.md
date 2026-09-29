@@ -48,6 +48,7 @@ pack "assets"
 | `app sign` | a codesigning identity | ad-hoc (`-`) |
 | `app out` | where to write the bundle | `build/<name>.app` |
 | `pack` | an asset root, repeatable | `assets/` if it exists |
+| `maps` | where the maps' own tables are, one directory a map (`@PerMap` registries, LANGUAGE.md) - the compiler builds it into the program and `ludicc --check` reads every map under it | `assets/maps` |
 
 Only `app name` is worth setting deliberately. The identifier is derived from the
 package path when you omit it - `git.workshopsoft.io/workshopsoft/maroon-lake`
