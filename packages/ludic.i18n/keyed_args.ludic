@@ -1,0 +1,37 @@
+# keyed_args.ludic - a key's arguments as the decoder reads them: unescaped, looked up while still English, a count
+
+# an argument as it was handed in: each 27 before a 27 or a 31 taken off
+@alloc_ok("a key made into text (a cache miss): an argument that held a key with holes")
+function kr_unescape(s: string) -> string {
+  var esc = false
+  for i in 0 .. len(s) { if s[i] == I18N_ESC { esc = true } }
+  if not esc { return s }
+  let buf = buffer(len(s))
+  var n = 0
+  var i = 0
+  while i < len(s) {
+    if s[i] == I18N_ESC and i + 1 < len(s) { i += 1 }
+    buf[n] = s[i]
+    n += 1
+    i += 1
+  }
+  return text_of(buf, n)
+}
+
+# an argument with letters in it (not a number, a time, a sign): while the game still hands English
+# into a key's holes (until its code and data are keys, phase 26.9), it gets the old English lookup
+function kr_words(s: string) -> bool {
+  for i in 0 .. len(s) { if (s[i] >= 65 and s[i] <= 90) or (s[i] >= 97 and s[i] <= 122) { return true } }
+  return false
+}
+
+# a count written as decimal digits (a leading - allowed); anything else is 0
+function kr_int(s: string) -> int {
+  var v = 0
+  var neg = false
+  for i in 0 .. len(s) {
+    if i == 0 and s[i] == 45 { neg = true } else if s[i] >= 48 and s[i] <= 57 { v = v * 10 + (s[i] - 48) }
+  }
+  if neg { return -v }
+  return v
+}

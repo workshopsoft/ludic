@@ -53,6 +53,8 @@ program I18nKeysTest {
     expect(L(i18n_st, trf(k"hud.day", "12", "", "", "")) == "12. Gun")
     expect(L(i18n_st, saw) == "5:30 saatinde bir geyik gordun.")
     expect(L(i18n_st, trf(k"hud.day", "", "", "", "")) == ". Gun")    # a missing argument is empty
+    let nested = trf(k"catch.saw", trf(k"hud.day", "3", "", "", ""), "5:30", "", "")   # a key with holes inside a hole
+    expect(L(i18n_st, nested) == "5:30 saatinde 3. Gun gordun.")
     expect(key_text(saw) == "catch.saw" and key_text("Settings") == "Settings")
   }
 
@@ -76,11 +78,11 @@ program I18nKeysTest {
   }
 
   test "an English value handed into a key's hole still gets its old English line, until it is a key itself" (i18n_st: mut I18nState) {
-    start(i18n_st)
+    start (i18n_st)
     expect(L(i18n_st, trf(k"catch.saw", "Settings", "5:30", "", "")) == "You saw Settings at 5:30.")
     i18n_load_text(i18n_st, tt())
     expect(L(i18n_st, trf(k"catch.saw", "Settings", "5:30", "", "")) == "5:30 saatinde Ayarlar gordun.")   # exact
     expect(L(i18n_st, trf(k"catch.saw", "Day 3", "5:30", "", "")) == "5:30 saatinde 3. gun gordun.")       # a pattern
-    expect(L(i18n_st, trf(k"catch.saw", "Nowhere known", "7", "", "")) == "7 saatinde Nowhere known gordun.") # no line: as it is
+    expect(L(i18n_st, trf(k"catch.saw", "Nowhere known", "7", "", "")) == "7 saatinde Nowhere known gordun.")  # no line: as it is
   }
 }
