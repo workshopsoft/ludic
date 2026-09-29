@@ -1,0 +1,753 @@
+# ============================================================================
+# lres.ludic — the reader behind map-scoped tables (`@PerMap registry R of T from "file.lres"`).
+#
+# A @PerMap registry's rows are not compiled in: they are read when a map loads, or a chunk comes
+# in, from `<maps root>/<map>/<file>`. This file reads one .lres - the grammar the compiler's
+# resource files use: entries `key { field: value, ... }`, nested records `{ ... }`, lists `[ ... ]`,
+# "strings" (\n \r \t \0 and \x for any other x), numbers (-3, 0x1F, 1.5, 2e-3), true / false, a
+# constant by NAME, `fn name`, and `#` comments to the end of a line; commas and newlines separate.
+#
+# ludicc splices it when a program declares a @PerMap registry, and writes the typed fill for each
+# record (`r__fill_T`, frontend/permap_gen.ludic) on top of the few questions below.
+#
+# NOTHING HERE ALLOCATES PAST ITS HIGH WATER. A tree is a flat pool of nodes kept as parallel
+# lists that are reused from one file to the next (`nn` is how many are in use); the file's bytes go
+# into a buffer that grows only when a bigger file comes; a string is unescaped into a kept scratch
+# buffer and interned (intern() copies a text once and hands the same one back after), so a string
+# field is safe to keep; the path being opened is built in a kept buffer, so no concatenation. Only
+# an error's message is made on the heap, and only when a file is wrong.
+# ============================================================================
+numbers float
+
+const LRES_K_REC: int = 1
+const LRES_K_LIST: int = 2
+const LRES_K_INT: int = 3
+const LRES_K_FLOAT: int = 4
+const LRES_K_STR: int = 5
+const LRES_K_BOOL: int = 6
+const LRES_K_NAME: int = 7
+const LRES_K_FN: int = 8
+
+# one reader: the file, its tree, the program's constants by name, and the first error
+property LresTree {
+  buf: pointer = null          # the file's bytes, NUL-terminated; grows to the largest file read
+  bcap: int = 0
+  n: int = 0                   # bytes in the file being read
+  sb: pointer = null           # a string being unescaped, before it is interned
+  scap: int = 0
+  pb: pointer = null           # the path being opened, NUL-terminated
+  pcap: int = 0
+  plen: int = 0
+  kind: []int = new []int      # per node: LRES_K_*
+  ival: []int = new []int      # an int, a bool (0/1)
+  fval: []float = new []float  # a float (an int's value too)
+  sval: []string = new []string   # a string, a name, a fn's name (interned)
+  name: []string = new []string   # an entry's key, a field's name ("" in a list)
+  kid: []int = new []int       # the first child of a record or a list, -1
+  nxt: []int = new []int       # the next sibling, -1
+  line: []int = new []int
+  col: []int = new []int
+  nn: int = 0                  # nodes in use
+  top: int = -1                # the first entry
+  ntop: int = 0                # how many entries
+  p: int = 0                   # the cursor, its line and where that line starts
+  ln: int = 1
+  ls: int = 0
+  bad: bool = false
+  err: string = ""             # "file:line:col: what" - the first thing wrong
+  cready: bool = false         # the constants' index is built (on the first name read)
+  ctab: string = ""            # "NAME i 12;NAME f 1.5;..." sorted by name, written by the compiler
+  coff: []int = new []int
+  clen: []int = new []int
+  cflt: []bool = new []bool
+  civ: []int = new []int
+  cfv: []float = new []float
+}
+
+# a key -> row index table over interned keys: open addressing, rebuilt in place on every load
+property LresHash {
+  slot: []int = new []int      # a row's index + 1; 0 is empty
+  keys: []string = new []string
+  mask: int = 0
+}
+
+# ---- the path ------------------------------------------------------------------------------------
+function lres_path_room(t: LresTree, need: int) -> void {
+  if need <= t.pcap { return }
+  var c = t.pcap * 2
+  if c < 256 { c = 256 }
+  while c < need { c = c * 2 }
+  if t.pb == null { t.pb = bytes(c) } else { t.pb = resize(t.pb, c) }
+  t.pcap = c
+}
+function lres_path_begin(t: LresTree, root: string) -> void {
+  t.plen = 0
+  lres_path_room(t, 1)
+  let pb = t.pb
+  pb[0] = 0
+  lres_path_add(t, root)
+}
+function lres_path_add(t: LresTree, s: string) -> void {
+  let k = len(s)
+  lres_path_room(t, t.plen + k + 1)
+  let pb = t.pb
+  var i = 0
+  while i < k {
+    pb[t.plen + i] = s[i]
+    i += 1
+  }
+  t.plen += k
+  pb[t.plen] = 0
+}
+# a chunk's coordinate, as decimal: -3 is "-3"
+function lres_path_int(t: LresTree, v: int) -> void {
+  lres_path_room(t, t.plen + 13)
+  let pb = t.pb
+  var x = v
+  if x < 0 {
+    pb[t.plen] = '-'
+    t.plen += 1
+    x = 0 - x
+  }
+  let d0 = t.plen
+  if x == 0 {
+    pb[t.plen] = '0'
+    t.plen += 1
+  }
+  while x > 0 {
+    pb[t.plen] = '0' + x % 10
+    t.plen += 1
+    x = x / 10
+  }
+  var a = d0
+  var b = t.plen - 1
+  while a < b {
+    let c = pb[a]
+    pb[a] = pb[b]
+    pb[b] = c
+    a += 1
+    b -= 1
+  }
+  pb[t.plen] = 0
+}
+
+# ---- reading -------------------------------------------------------------------------------------
+# the file at the path built: 1 read and parsed, 0 there is no such file, -1 it is wrong (t.err)
+function lres_read(t: LresTree) -> int {
+  t.bad = false
+  t.err = ""
+  t.nn = 0
+  t.top = -1
+  t.ntop = 0
+  let f = file_open(t.pb, "rb")
+  if f == null { return 0 }
+  file_seek(f, 0, 2)
+  var n = file_tell(f)
+  file_seek(f, 0, 0)
+  if n < 0 { n = 0 }
+  if n + 1 > t.bcap {
+    var c = t.bcap * 2
+    if c < 4096 { c = 4096 }
+    while c < n + 1 { c = c * 2 }
+    if t.buf == null { t.buf = bytes(c) } else { t.buf = resize(t.buf, c) }
+    t.bcap = c
+  }
+  let buf = t.buf
+  var got = 0
+  if n > 0 { got = file_read(f, buf, n) }
+  file_close(f)
+  if got < 0 { got = 0 }
+  t.n = got
+  buf[got] = 0
+  lres_parse(t)
+  if t.bad { return -1 }
+  return 1
+}
+# a whole-map table's file that is not there: an error (a chunk's is an empty chunk)
+function lres_missing(t: LresTree) -> void {
+  t.bad = true
+  t.err = `{lres_path_text(t)}: there is no such file`
+}
+function lres_path_text(t: LresTree) -> string {
+  if t.pb == null { return "" }
+  return `{t.pb}`
+}
+
+# ---- errors --------------------------------------------------------------------------------------
+# the first thing wrong, at a line and column of the file
+function lres_fail_at(t: LresTree, line: int, col: int, msg: string) -> void {
+  if t.bad { return }
+  t.bad = true
+  t.err = `{lres_path_text(t)}:{line}:{col}: {msg}`
+}
+function lres_fail(t: LresTree, msg: string) -> void {
+  lres_fail_at(t, t.ln, t.p - t.ls + 1, msg)
+}
+function lres_fail_node(t: LresTree, n: int, msg: string) -> void {
+  lres_fail_at(t, t.line[n], t.col[n], msg)
+}
+function lres_ok(t: LresTree) -> bool { return not t.bad }
+function lres_error(t: LresTree) -> string { return t.err }
+
+# ---- the tree ------------------------------------------------------------------------------------
+# a node, reused from an earlier file when the pool has one
+function lres_node(t: LresTree, kind: int, line: int, col: int) -> int {
+  let i = t.nn
+  if i < len(t.kind) {
+    t.kind[i] = kind
+    t.ival[i] = 0
+    t.fval[i] = 0.0
+    t.sval[i] = ""
+    t.name[i] = ""
+    t.kid[i] = -1
+    t.nxt[i] = -1
+    t.line[i] = line
+    t.col[i] = col
+  } else {
+    push(t.kind, kind)
+    push(t.ival, 0)
+    push(t.fval, 0.0)
+    push(t.sval, "")
+    push(t.name, "")
+    push(t.kid, -1)
+    push(t.nxt, -1)
+    push(t.line, line)
+    push(t.col, col)
+  }
+  t.nn = i + 1
+  return i
+}
+function lres_ch(t: LresTree) -> int {
+  if t.p >= t.n { return 0 }
+  let buf = t.buf
+  return buf[t.p]
+}
+function lres_is_alpha(c: int) -> bool {
+  return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_'
+}
+function lres_is_digit(c: int) -> bool { return c >= '0' and c <= '9' }
+# blanks, newlines, commas and comments
+function lres_skip(t: LresTree) -> void {
+  let buf = t.buf
+  while t.p < t.n {
+    let c = buf[t.p]
+    if c == ' ' or c == 9 or c == 13 or c == ',' {
+      t.p += 1
+    } else if c == 10 {
+      t.p += 1
+      t.ln += 1
+      t.ls = t.p
+    } else if c == '#' {
+      while t.p < t.n and buf[t.p] != 10 { t.p += 1 }
+    } else {
+      return
+    }
+  }
+}
+# the scratch string, grown to hold n bytes and its NUL
+function lres_sb_room(t: LresTree, n: int) -> void {
+  if n <= t.scap { return }
+  var c = t.scap * 2
+  if c < 256 { c = 256 }
+  while c < n { c = c * 2 }
+  if t.sb == null { t.sb = bytes(c) } else { t.sb = resize(t.sb, c) }
+  t.scap = c
+}
+# bytes a..b of the file, interned
+function lres_intern(t: LresTree, a: int, b: int) -> string {
+  lres_sb_room(t, b - a + 1)
+  let sb = t.sb
+  let buf = t.buf
+  var i = a
+  while i < b {
+    sb[i - a] = buf[i]
+    i += 1
+  }
+  sb[b - a] = 0
+  return intern(sb)
+}
+function lres_ident(t: LresTree) -> string {
+  let c = lres_ch(t)
+  if not lres_is_alpha(c) {
+    lres_fail(t, "a name was expected here")
+    return ""
+  }
+  let buf = t.buf
+  let a = t.p
+  while t.p < t.n and (lres_is_alpha(buf[t.p]) or lres_is_digit(buf[t.p])) { t.p += 1 }
+  return lres_intern(t, a, t.p)
+}
+function lres_link(t: LresTree, parent: int, last: int, k: int) -> void {
+  if last < 0 { t.kid[parent] = k } else { t.nxt[last] = k }
+}
+# the whole file: its entries, each `key { ... }`
+function lres_parse(t: LresTree) -> void {
+  t.p = 0
+  t.ln = 1
+  t.ls = 0
+  var last = -1
+  while not t.bad {
+    lres_skip(t)
+    if t.p >= t.n { return }
+    let line = t.ln
+    let col = t.p - t.ls + 1
+    let key = lres_ident(t)
+    if t.bad { return }
+    lres_skip(t)
+    if lres_ch(t) != '{' {
+      lres_fail(t, `the entry {key} is its key and a record: {key} {{ field: value }}`)
+      return
+    }
+    let e = lres_record(t)
+    if t.bad { return }
+    t.name[e] = key
+    t.line[e] = line
+    t.col[e] = col
+    if last < 0 { t.top = e } else { t.nxt[last] = e }
+    last = e
+    t.ntop += 1
+  }
+}
+function lres_record(t: LresTree) -> int {
+  let r = lres_node(t, LRES_K_REC, t.ln, t.p - t.ls + 1)
+  let oline = t.ln
+  let ocol = t.p - t.ls + 1
+  t.p += 1
+  var last = -1
+  while not t.bad {
+    lres_skip(t)
+    let c = lres_ch(t)
+    if c == '}' {
+      t.p += 1
+      return r
+    }
+    if t.p >= t.n {
+      lres_fail_at(t, oline, ocol, "this record is never closed with }")
+      return r
+    }
+    let fline = t.ln
+    let fcol = t.p - t.ls + 1
+    let fname = lres_ident(t)
+    if t.bad { return r }
+    lres_skip(t)
+    if lres_ch(t) != ':' {
+      lres_fail(t, `the field {fname} wants a ':' and its value`)
+      return r
+    }
+    t.p += 1
+    lres_skip(t)
+    let v = lres_value(t)
+    if t.bad { return r }
+    t.name[v] = fname
+    t.line[v] = fline
+    t.col[v] = fcol
+    lres_link(t, r, last, v)
+    last = v
+  }
+  return r
+}
+function lres_list(t: LresTree) -> int {
+  let l = lres_node(t, LRES_K_LIST, t.ln, t.p - t.ls + 1)
+  let oline = t.ln
+  let ocol = t.p - t.ls + 1
+  t.p += 1
+  var last = -1
+  while not t.bad {
+    lres_skip(t)
+    let c = lres_ch(t)
+    if c == ']' {
+      t.p += 1
+      return l
+    }
+    if t.p >= t.n {
+      lres_fail_at(t, oline, ocol, "this list is never closed with ]")
+      return l
+    }
+    let v = lres_value(t)
+    if t.bad { return l }
+    lres_link(t, l, last, v)
+    last = v
+  }
+  return l
+}
+function lres_value(t: LresTree) -> int {
+  let c = lres_ch(t)
+  if c == '{' { return lres_record(t) }
+  if c == '[' { return lres_list(t) }
+  if c == '"' { return lres_string(t) }
+  if c == '-' or c == '+' or c == '.' or lres_is_digit(c) { return lres_number(t) }
+  if lres_is_alpha(c) {
+    let line = t.ln
+    let col = t.p - t.ls + 1
+    let id = lres_ident(t)
+    if id == "true" or id == "false" {
+      let b = lres_node(t, LRES_K_BOOL, line, col)
+      if id == "true" { t.ival[b] = 1 }
+      return b
+    }
+    if id == "fn" {
+      let buf = t.buf
+      while t.p < t.n and (buf[t.p] == ' ' or buf[t.p] == 9) { t.p += 1 }
+      let f = lres_node(t, LRES_K_FN, line, col)
+      t.sval[f] = lres_ident(t)
+      return f
+    }
+    let k = lres_node(t, LRES_K_NAME, line, col)
+    t.sval[k] = id
+    return k
+  }
+  lres_fail(t, "a value was expected: a number, a \"string\", true, false, a NAME, fn name, { ... } or [ ... ]")
+  return lres_node(t, LRES_K_INT, t.ln, t.p - t.ls + 1)
+}
+function lres_hex(c: int) -> int {
+  if c >= '0' and c <= '9' { return c - '0' }
+  if c >= 'a' and c <= 'f' { return c - 'a' + 10 }
+  if c >= 'A' and c <= 'F' { return c - 'A' + 10 }
+  return -1
+}
+function lres_number(t: LresTree) -> int {
+  let line = t.ln
+  let col = t.p - t.ls + 1
+  let buf = t.buf
+  let a = t.p
+  var neg = false
+  if buf[t.p] == '-' {
+    neg = true
+    t.p += 1
+  } else if buf[t.p] == '+' {
+    t.p += 1
+  }
+  if t.p + 1 < t.n and buf[t.p] == '0' and (buf[t.p + 1] == 'x' or buf[t.p + 1] == 'X') {
+    t.p += 2
+    var v = 0
+    var any = false
+    while t.p < t.n and (lres_hex(buf[t.p]) >= 0 or buf[t.p] == '_') {
+      if buf[t.p] != '_' {
+        v = v * 16 + lres_hex(buf[t.p])
+        any = true
+      }
+      t.p += 1
+    }
+    if not any { lres_fail_at(t, line, col, "0x wants hex digits") }
+    if neg { v = 0 - v }
+    let h = lres_node(t, LRES_K_INT, line, col)
+    t.ival[h] = v
+    t.fval[h] = float(v)
+    return lres_number_end(t, h)
+  }
+  var v = 0
+  var digits = 0
+  var fl = false
+  while t.p < t.n {
+    let c = buf[t.p]
+    if lres_is_digit(c) {
+      v = v * 10 + (c - '0')
+      digits += 1
+      t.p += 1
+    } else if c == '_' {
+      t.p += 1
+    } else if c == '.' and not fl and t.p + 1 < t.n and lres_is_digit(buf[t.p + 1]) {
+      fl = true
+      t.p += 1
+    } else if (c == 'e' or c == 'E') and digits > 0 {
+      fl = true
+      t.p += 1
+      if t.p < t.n and (buf[t.p] == '-' or buf[t.p] == '+') { t.p += 1 }
+    } else {
+      break
+    }
+  }
+  if digits == 0 {
+    lres_fail_at(t, line, col, "a number was expected")
+    return lres_node(t, LRES_K_INT, line, col)
+  }
+  if not fl {
+    if neg { v = 0 - v }
+    let i = lres_node(t, LRES_K_INT, line, col)
+    t.ival[i] = v
+    t.fval[i] = float(v)
+    return lres_number_end(t, i)
+  }
+  lres_sb_room(t, t.p - a + 1)
+  let sb = t.sb
+  var k = 0
+  var j = a
+  while j < t.p {
+    if buf[j] != '_' {
+      sb[k] = buf[j]
+      k += 1
+    }
+    j += 1
+  }
+  sb[k] = 0
+  let f = lres_node(t, LRES_K_FLOAT, line, col)
+  t.fval[f] = Text.to_float(sb)
+  return lres_number_end(t, f)
+}
+# a number runs into nothing: `12ab` is wrong, not 12 and a name
+function lres_number_end(t: LresTree, k: int) -> int {
+  let c = lres_ch(t)
+  if lres_is_alpha(c) or lres_is_digit(c) { lres_fail(t, "this is not a number") }
+  return k
+}
+function lres_string(t: LresTree) -> int {
+  let s = lres_node(t, LRES_K_STR, t.ln, t.p - t.ls + 1)
+  let oline = t.ln
+  let ocol = t.p - t.ls + 1
+  t.p += 1
+  let buf = t.buf
+  var k = 0
+  while true {
+    if t.p >= t.n {
+      lres_fail_at(t, oline, ocol, "this string is never closed with \"")
+      return s
+    }
+    var c = buf[t.p]
+    if c == '"' {
+      t.p += 1
+      break
+    }
+    if c == 10 {
+      t.ln += 1
+      t.ls = t.p + 1
+    }
+    if c == 92 and t.p + 1 < t.n {
+      t.p += 1
+      c = buf[t.p]
+      if c == 'n' { c = 10 }
+      else if c == 'r' { c = 13 }
+      else if c == 't' { c = 9 }
+      else if c == '0' { c = 0 }
+    }
+    lres_sb_room(t, k + 2)
+    let sb = t.sb
+    sb[k] = c
+    k += 1
+    t.p += 1
+  }
+  lres_sb_room(t, k + 1)
+  let sb = t.sb
+  sb[k] = 0
+  t.sval[s] = intern(sb)
+  return s
+}
+
+# ---- the questions a typed fill asks --------------------------------------------------------------
+function lres_top(t: LresTree) -> int { return t.top }
+function lres_entries(t: LresTree) -> int { return t.ntop }
+function lres_kid(t: LresTree, n: int) -> int { return t.kid[n] }
+function lres_next(t: LresTree, n: int) -> int { return t.nxt[n] }
+function lres_name(t: LresTree, n: int) -> string { return t.name[n] }
+function lres_kind_text(k: int) -> string {
+  if k == LRES_K_REC { return "a record" }
+  if k == LRES_K_LIST { return "a list" }
+  if k == LRES_K_INT { return "an int" }
+  if k == LRES_K_FLOAT { return "a float" }
+  if k == LRES_K_STR { return "a string" }
+  if k == LRES_K_BOOL { return "true or false" }
+  if k == LRES_K_NAME { return "a name" }
+  return "fn name"
+}
+function lres_want(t: LresTree, n: int, what: string) -> void {
+  var who = t.name[n]
+  if len(who) == 0 { who = "an element" }
+  lres_fail_node(t, n, `{who} wants {what}, not {lres_kind_text(t.kind[n])}`)
+}
+function lres_int(t: LresTree, n: int) -> int {
+  let k = t.kind[n]
+  if k == LRES_K_INT { return t.ival[n] }
+  if k == LRES_K_NAME {
+    let c = lres_const(t, t.sval[n])
+    if c >= 0 and not t.cflt[c] { return t.civ[c] }
+    if c >= 0 { lres_fail_node(t, n, `{t.sval[n]} is a float constant, and {t.name[n]} wants an int`) }
+    else { lres_fail_node(t, n, `unknown constant {t.sval[n]}`) }
+    return 0
+  }
+  lres_want(t, n, "an int")
+  return 0
+}
+function lres_float(t: LresTree, n: int) -> float {
+  let k = t.kind[n]
+  if k == LRES_K_FLOAT or k == LRES_K_INT { return t.fval[n] }
+  if k == LRES_K_NAME {
+    let c = lres_const(t, t.sval[n])
+    if c >= 0 {
+      if t.cflt[c] { return t.cfv[c] }
+      return float(t.civ[c])
+    }
+    lres_fail_node(t, n, `unknown constant {t.sval[n]}`)
+    return 0.0
+  }
+  lres_want(t, n, "a float")
+  return 0.0
+}
+function lres_bool(t: LresTree, n: int) -> bool {
+  if t.kind[n] == LRES_K_BOOL { return t.ival[n] != 0 }
+  lres_want(t, n, "true or false")
+  return false
+}
+function lres_str(t: LresTree, n: int) -> string {
+  if t.kind[n] == LRES_K_STR { return t.sval[n] }
+  lres_want(t, n, "a \"string\"")
+  return ""
+}
+# `fn name`: the name, which the fill resolves among the program's functions of the field's type
+function lres_fn(t: LresTree, n: int) -> string {
+  if t.kind[n] == LRES_K_FN { return t.sval[n] }
+  lres_want(t, n, "fn name")
+  return ""
+}
+function lres_is_rec(t: LresTree, n: int) -> bool {
+  if t.kind[n] == LRES_K_REC { return true }
+  lres_want(t, n, "a record { ... }")
+  return false
+}
+function lres_is_list(t: LresTree, n: int) -> bool {
+  if t.kind[n] == LRES_K_LIST { return true }
+  lres_want(t, n, "a list [ ... ]")
+  return false
+}
+function lres_no_field(t: LresTree, n: int, rec: string) -> void {
+  lres_fail_node(t, n, `{rec} has no field {t.name[n]}`)
+}
+function lres_no_fn(t: LresTree, n: int, ty: string) -> void {
+  lres_fail_node(t, n, `there is no function {t.sval[n]} of type {ty}`)
+}
+function lres_dup(t: LresTree, n: int) -> void {
+  lres_fail_node(t, n, `the key {t.name[n]} is written twice`)
+}
+
+# ---- the program's constants, by name ------------------------------------------------------------
+# lres_consts__() is written by the compiler: every int and float constant it could evaluate, as
+# "NAME i 12;NAME f 1.5;", sorted by name. The index is made once, on the first name a file uses.
+function lres_consts_index(t: LresTree) -> void {
+  t.cready = true
+  let s = lres_consts__()
+  t.ctab = s
+  let n = len(s)
+  var i = 0
+  while i < n {
+    let a = i
+    while i < n and s[i] != ' ' { i += 1 }
+    let nl = i - a
+    i += 1
+    let fl = i < n and s[i] == 'f'
+    i += 2
+    let va = i
+    while i < n and s[i] != ';' { i += 1 }
+    push(t.coff, a)
+    push(t.clen, nl)
+    push(t.cflt, fl)
+    if fl {
+      lres_sb_room(t, i - va + 1)
+      let sb = t.sb
+      var j = va
+      while j < i {
+        sb[j - va] = s[j]
+        j += 1
+      }
+      sb[i - va] = 0
+      push(t.civ, 0)
+      push(t.cfv, Text.to_float(sb))
+    } else {
+      var v = 0
+      var neg = false
+      var j = va
+      if j < i and s[j] == '-' {
+        neg = true
+        j += 1
+      }
+      while j < i {
+        v = v * 10 + (s[j] - '0')
+        j += 1
+      }
+      if neg { v = 0 - v }
+      push(t.civ, v)
+      push(t.cfv, 0.0)
+    }
+    i += 1
+  }
+}
+# name against the table's entry c: <0, 0, >0
+function lres_const_cmp(t: LresTree, name: string, c: int) -> int {
+  let s = t.ctab
+  let off = t.coff[c]
+  let m = t.clen[c]
+  let k = len(name)
+  var i = 0
+  while i < k and i < m {
+    let x = name[i]
+    let y = s[off + i]
+    if x != y { return x - y }
+    i += 1
+  }
+  return k - m
+}
+# the constant called name: its index in the table, or -1
+function lres_const(t: LresTree, name: string) -> int {
+  if not t.cready { lres_consts_index(t) }
+  var lo = 0
+  var hi = len(t.coff) - 1
+  while lo <= hi {
+    let mid = (lo + hi) / 2
+    let d = lres_const_cmp(t, name, mid)
+    if d == 0 { return mid }
+    if d < 0 { hi = mid - 1 } else { lo = mid + 1 }
+  }
+  return -1
+}
+
+# ---- rows by key ---------------------------------------------------------------------------------
+function lres_hash_of(s: string) -> int {
+  var h = -2128831035
+  let n = len(s)
+  var i = 0
+  while i < n {
+    h = (h ^ s[i]) * 16777619
+    i += 1
+  }
+  return h
+}
+# empty, sized for n keys; the slots grow only past the most a table has ever had
+function lres_hash_reset(h: LresHash, n: int) -> void {
+  var size = 16
+  while size < n * 2 { size = size * 2 }
+  while len(h.slot) < size {
+    push(h.slot, 0)
+    push(h.keys, "")
+  }
+  var i = 0
+  while i < size {
+    h.slot[i] = 0
+    h.keys[i] = ""
+    i += 1
+  }
+  h.mask = size - 1
+}
+# key -> i; when the key is already there, the index it has (and nothing changes), else -1
+function lres_hash_put(h: LresHash, key: string, i: int) -> int {
+  var at = lres_hash_of(key) & h.mask
+  while true {
+    let v = h.slot[at]
+    if v == 0 {
+      h.slot[at] = i + 1
+      h.keys[at] = key
+      return -1
+    }
+    if h.keys[at] == key { return v - 1 }
+    at = (at + 1) & h.mask
+  }
+  return -1
+}
+# the row whose key is key, or -1
+function lres_hash_get(h: LresHash, key: string) -> int {
+  if h.mask == 0 { return -1 }
+  var at = lres_hash_of(key) & h.mask
+  while true {
+    let v = h.slot[at]
+    if v == 0 { return -1 }
+    if h.keys[at] == key { return v - 1 }
+    at = (at + 1) & h.mask
+  }
+  return -1
+}
