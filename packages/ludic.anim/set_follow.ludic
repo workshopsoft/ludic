@@ -33,7 +33,7 @@ function as_blend(s: AnimSet, from: int, to: int) -> float {
   if s.transitions != null {
     for i in 0 .. len(s.transitions) {
       let tr = s.transitions[i]
-      if tr.when == null and tr.to == s.states[to].key and as_leaves(s, tr, from) { return tr.blend }
+      if tr.when == null and tr.via == "" and tr.to == s.states[to].key and as_leaves(s, tr, from) { return tr.blend }
     }
   }
   return s.states[to].blend

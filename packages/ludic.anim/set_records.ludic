@@ -38,6 +38,7 @@ export property AnimTransition {
   to: string = ""
   blend: float = 0.2
   @frame when: fn() -> bool = null
+  via: string = ""       # a one-shot the code's request goes by when the rig carries its clip (its next hands on to `to`)
 }
 
 # a graph for a kind of rig: its parameters, its states (the first is where it starts unless

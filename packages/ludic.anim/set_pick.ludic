@@ -11,8 +11,22 @@ export function animset_request(pl: AnimPlayer, key: string) -> void {
   if pl.set < 0 or key == pl.asked { return }
   let i = as_state(AnimSets[pl.set], key)
   if i < 0 { return }
+  let v = as_via(pl, key)
   pl.asked = key
   pl.want = i
+  if v >= 0 { pl.want = v }
+}
+
+# the one-shot a request goes by: a `via` edge from where the code last asked (or "*") to this state,
+# whose clip the rig carries; -1 for none
+function as_via(pl: AnimPlayer, key: string) -> int {
+  let s = AnimSets[pl.set]
+  if s.transitions == null { return -1 }
+  for i in 0 .. len(s.transitions) {
+    let tr = s.transitions[i]
+    if tr.via != "" and tr.to == key and (tr.from == "*" or tr.from == pl.asked) and animset_can(pl, tr.via) { return as_state(s, tr.via) }
+  }
+  return -1
 }
 
 # the state is in the set and the rig carries one of its clips: a one-shot with none is not asked for
