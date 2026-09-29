@@ -17,7 +17,8 @@ export function gear_best(gear_st: GearState, k: int) -> bool { return gear_leve
 # a tier's name, "" for none
 export function gear_level_name(k: int, lv: int) -> string {
   if lv <= 0 or lv > GearKinds[k].tiers { return "" }
-  return GearKinds[k].names[lv - 1]
+  @alloc_ok("a cast: a key's marked text, nothing is made")
+  return string(GearKinds[k].names[lv - 1])
 }
 
 # the tier on offer next: its name, cost and the standing it wants

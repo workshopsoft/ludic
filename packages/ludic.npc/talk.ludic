@@ -2,8 +2,8 @@
 # anything to say winning, each line in its turn given its `chance`; a line's words are its `text`,
 # or the story's (NpcTalk.say) when it `fill`s; a line may offer choices, each answered by a line
 export property NpcChoice {
-  @Text text: string = ""
-  @Text line: string = ""            # the key of the line that answers it ("" ends the talk)
+  @Text text: Key = null             # its words (the derived key npc_lines.<row>.choices.<i>.text)
+  line: string = ""                  # the key of the line that answers it ("" ends the talk)
   code: int = -1               # the game's, carried by the Talked fact
 }
 
@@ -13,7 +13,7 @@ export property NpcLine {
   @Ref(NpcActs) act: int = -1                # NPCA_* (-1: whatever they are doing)
   prio: int = 0
   chance: int = 100            # percent: how often this line is even considered
-  @Text text: string = ""
+  @Text text: Key = null       # its words, a text key (null when it `fill`s)
   fill: bool = false
   choices: []NpcChoice = null
 }
@@ -30,7 +30,9 @@ function np_line_fits(p: NpcPerson, l: NpcLine) -> bool {
 export function npc_words(p: NpcPerson, line: int) -> string {
   if line < 0 or line >= NPCL_COUNT { return "" }
   if NpcLines[line].fill { return NpcTalk.say(p, line) }
-  return NpcLines[line].text
+  if NpcLines[line].text == null { return "" }
+  @alloc_ok("a cast: a key's marked text, nothing is made")
+  return string(NpcLines[line].text)
 }
 
 # the line it would say now (-1: none), its words kept for npc_said()

@@ -4,11 +4,11 @@ import "ludic.hints"
 import "ludic.base"
 program HintsTest {
   numbers float
-  def Hints thirsty { urgency: HINTS_NOTE, line: "Thirsty - drink", title: "Water", s1: "Drink at a shore", pic1: "water", item2: 7 }
-  def Hints parched { urgency: HINTS_URGENT, line: "You must drink now", title: "Water, now" }
-  def Hints rain { urgency: HINTS_TIP, line: "Rain coming" }
-  def Hints cold { urgency: HINTS_WARN, line: "Cold" }
-  def Hints night { urgency: HINTS_TIP, line: "Night soon" }
+  def Hints thirsty { urgency: HINTS_NOTE, line: k"hints.thirsty", title: k"hints.water", s1: k"hints.drink_shore", pic1: "water", item2: 7 }
+  def Hints parched { urgency: HINTS_URGENT, line: k"hints.drink_now", title: k"hints.water_now" }
+  def Hints rain { urgency: HINTS_TIP, line: k"hints.rain" }
+  def Hints cold { urgency: HINTS_WARN, line: k"hints.cold" }
+  def Hints night { urgency: HINTS_TIP, line: k"hints.night" }
   def Hints from "cards.lres"
 
   state HintsTestState {
@@ -40,10 +40,10 @@ program HintsTest {
     expect_eq(HINT_COUNT, 7)
     expect_eq(hints_find("parched"), HINT_PARCHED)
     expect_eq(Hints[HINT_BEAR].urgency, HINTS_URGENT)
-    expect(Hints[HINT_FIRE].later == "Carry three logs.")
+    expect(Hints[HINT_FIRE].later == k"hints.carry_logs")
     expect(hints_step_icon(HINT_THIRSTY, 1) == "water")
     expect_eq(hints_step_item(HINT_THIRSTY, 2), 7)
-    expect(hints_step_text(HINT_THIRSTY, 1) == "Drink at a shore")
+    expect(hints_step_text(HINT_THIRSTY, 1) == string(k"hints.drink_shore"))
   }
 
   test "the most urgent true cards, capped, ties in registry order" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {

@@ -203,7 +203,7 @@ program NpcTest {
     let p = one(npc_st, npc_tests_fake_st, NPCK_CAMPER)
     npc_do(npc_st, p, NPCA_FISH, 100.0)
     expect_eq(npc_talk(npc_st, p, 0), NPCL_HUSH)
-    expect(npc_said(npc_st) == "Shh.")
+    expect(npc_said(npc_st) == string(k"npc.shh"))
     expect(npc_talked_today(p))
     npc_do(npc_st, p, NPCA_IDLE, 100.0)
     expect_eq(npc_line_for(npc_st, p), NPCL_HELLO)
@@ -212,7 +212,7 @@ program NpcTest {
     expect(npc_said(npc_st) == `{p.name} saw a bear.`)
     npc_test_st.news_on = false
     expect_eq(npc_choose(npc_st, p, NPCL_HELLO, 0, 0), NPCL_FISH_NO)
-    expect(npc_said(npc_st) == "Not today.")
+    expect(npc_said(npc_st) == string(k"npc.not_today"))
     expect_eq(npc_choose(npc_st, p, NPCL_HELLO, 1, 0), -1)
     let fs = q_drain(npc_facts(npc_st))
     expect_eq(len(fs), 3)

@@ -15,6 +15,7 @@ export function i18n_key(name: string) -> string { return kx_join(I18N_KEY, name
 export function i18n_key_plural(name: string) -> string { return kx_join(I18N_PLURAL, name, "", "", "", "", 0) }
 
 # the key's name without its marker ("pause.resume"), or the string as it is
+@alloc_ok("a key's name: a slice of text already made, kept by whoever holds the key")
 export function key_text(k: string) -> string {
   if not i18n_is_key(k) { return k }
   var e = 1
@@ -23,13 +24,16 @@ export function key_text(k: string) -> string {
 }
 
 # the text of a key: drawn translated where it is drawn (its marked text, a free cast)
+@alloc_ok("a cast: the key's own marked text, nothing is made")
 export function tr(k: Key) -> string { return string(k) }
 # a key's text with its holes, {1} .. {4}, filled by strings already made (a number, a name, another key)
+@alloc_ok("a line with its holes, made when something happens and kept by what shows it")
 export function trf(k: Key, a: string, b: string, c: string, d: string) -> string {
   let s = string(k)
   return kx_join(I18N_KEY, key_text(s), a, b, c, d, kx_count(a, b, c, d))
 }
 # a plural key's text by n: the count is {1}, a .. c are {2} .. {4}
+@alloc_ok("a count's line, made when something happens and kept by what shows it")
 export function trn(k: Key, n: int, a: string, b: string, c: string) -> string { return kx_join(I18N_PLURAL, key_text(string(k)), `{n}`, a, b, c, 1 + kx_count(a, b, c, "")) }
 
 function kx_count(a: string, b: string, c: string, d: string) -> int {

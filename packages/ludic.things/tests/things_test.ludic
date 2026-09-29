@@ -32,11 +32,11 @@ program ThingsTest {
   }
   function far_reach(t: Thing) -> float { return 9.0 }
 
-  def ThingKinds tent { name: "A tent", name_of: fn tent_name }
-  def ThingKinds fire { name: "The fire", prompt: fn lit_prompt, use: fn lit_use, keeps: true }
-  def ThingKinds branch { name: "Firewood", reach: 1.5, use: fn branch_use }
-  def ThingKinds lure { name: "A lure", tick: fn lure_tick, put_down: true, saved: true }
-  def ThingKinds sign { name: "A sign", reach_of: fn far_reach }
+  def ThingKinds tent { name: k"things.tent", name_of: fn tent_name }
+  def ThingKinds fire { name: k"things.fire", prompt: fn lit_prompt, use: fn lit_use, keeps: true }
+  def ThingKinds branch { name: k"things.firewood", reach: 1.5, use: fn branch_use }
+  def ThingKinds lure { name: k"things.lure", tick: fn lure_tick, put_down: true, saved: true }
+  def ThingKinds sign { name: k"things.sign", reach_of: fn far_reach }
 
   function hill(x: float, z: float) -> float { return x * 0.5 }
   function on_placed(things_test_st: mut ThingsTestState, t: Thing) -> void { things_test_st.drawn += 1 }
@@ -102,7 +102,7 @@ program ThingsTest {
   test "the kind answers: name, prompt, use, reach" (things_st: mut ThingsState) {
     things_clear(things_st)
     let t = put(things_st, TH_TENT, 0.0, 0.0)
-    expect(thing_name(t) == "A tent")
+    expect(thing_name(t) == string(k"things.tent"))
     t.owner = 0
     expect(thing_name(t) == "Your tent")
     let f = put(things_st, TH_FIRE, 0.0, 0.0)

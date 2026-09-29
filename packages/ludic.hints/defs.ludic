@@ -11,18 +11,18 @@ export property HintCard {
   @OneOf(HINTS_TIP, HINTS_NOTE, HINTS_WARN, HINTS_URGENT) urgency: int = HINTS_TIP
   icon: string = ""
   @Ref(Items) item: int = -1
-  @Text line: string = ""          # the chip on the rail: five or six words
-  @Text title: string = ""         # the card's heading
-  @Text s1: string = ""            # three steps, each with a picture
-  @Text s2: string = ""
-  @Text s3: string = ""
+  @Text line: Key = null          # the chip on the rail: five or six words
+  @Text title: Key = null         # the card's heading
+  @Text s1: Key = null            # three steps, each with a picture
+  @Text s2: Key = null
+  @Text s3: Key = null
   pic1: string = ""
   pic2: string = ""
   pic3: string = ""
   @Ref(Items) item1: int = -1
   @Ref(Items) item2: int = -1
   @Ref(Items) item3: int = -1
-  @Text @Multiline later: string = ""         # how not to be here next time
+  @Text @Multiline later: Key = null           # how not to be here next time
 }
 
 # the game's cards; a card's mute is kept by its key, so their order is free

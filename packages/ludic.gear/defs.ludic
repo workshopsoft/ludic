@@ -7,9 +7,9 @@ export property GearKind {
   @Ref(Vendors) vendor: int = 0
   icon: string = ""
   tiers: int = 0
-  @Text @Multiline blurb: string = ""
-  @Text @Multiline howto: string = ""
-  names: []string = null
+  @Text @Multiline blurb: Key = null
+  @Text @Multiline howto: Key = null
+  @Text names: []Key = null
   cost: []int = null
   rep: []int = null
   @Ref(Items) item: int = -1

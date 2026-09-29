@@ -28,7 +28,7 @@ export const WEATHER_WANT_CLEAR: int = 3   # clear the sky and keep it clear
 
 # one kind of weather; its place in the list the game hands in is its number
 export property WeatherKind {
-  @Text name: string = ""
+  @Text name: Key = null
   clear: bool = false        # the kind a sky eases out to: nothing falls, amount goes to 0
   wet: bool = false          # rain or snow is falling (weather_wet)
   @Range(0, 1) soak: float = 0.0          # how wet the ground gets under it, 0..1

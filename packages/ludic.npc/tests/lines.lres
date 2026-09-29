@@ -1,6 +1,6 @@
 # lines.lres - the test's lines: a fisher's hush, the story's news when it has any, a greeting with
 # two choices, and the answer to the first
-hush { act: NPCA_FISH, prio: 3, text: "Shh." }
+hush { act: NPCA_FISH, prio: 3, text: k"npc.shh" }
 news { prio: 2, fill: true }
-hello { prio: 1, text: "Morning.", choices: [{ text: "Any fish?", line: "fish_no", code: 7 }, { text: "Bye.", line: "" }] }
-fish_no { prio: -1, kind: NPCK_CAMPER, text: "Not today." }
+hello { prio: 1, text: k"npc.morning", choices: [{ text: k"npc.any_fish", line: "fish_no", code: 7 }, { text: k"npc.bye", line: "" }] }
+fish_no { prio: -1, kind: NPCK_CAMPER, text: k"npc.not_today" }

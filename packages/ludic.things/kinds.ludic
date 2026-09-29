@@ -29,7 +29,7 @@ export property Thing {
 
 export property ThingKind {
   key: string = ""        # the entry's own name: what the save calls the kind
-  @Text name: string = ""       # what it is called when nothing about the one in front of you changes it
+  @Text name: Key = null        # what it is called when nothing about the one in front of you changes it
   reach: float = 2.2      # how close it is used from, when the Thing does not say
   personal: bool = false  # one belongs to whoever put it down
   saved: bool = false     # the save's section keeps a placed one (the port has the last word)

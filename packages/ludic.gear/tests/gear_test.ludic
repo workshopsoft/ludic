@@ -8,9 +8,9 @@ program GearTest {
   const IT_TORCH: int = 5
   const IT_LAMP: int = 6
 
-  def GearKinds rod { tiers: 3, names: ["Rod", "Reel", "Guide's rod"], cost: [30, 100, 300], rep: [0, 10, 40], item: IT_ROD }
-  def GearKinds camera { tiers: 2, names: ["Camera", "Zoom"], cost: [0, 150], rep: [0, 20], start: 1 }
-  def GearKinds pack { tiers: 3, names: ["Pack", "Frame", "Hauler"], cost: [20, 60, 120], rep: [0, 0, 0], mult: [1.0, 1.3, 1.7, 2.2] }
+  def GearKinds rod { tiers: 3, names: [k"gear.rod", k"gear.reel", k"gear.guide_rod"], cost: [30, 100, 300], rep: [0, 10, 40], item: IT_ROD }
+  def GearKinds camera { tiers: 2, names: [k"gear.camera", k"gear.zoom"], cost: [0, 150], rep: [0, 20], start: 1 }
+  def GearKinds pack { tiers: 3, names: [k"gear.pack", k"gear.frame", k"gear.hauler"], cost: [20, 60, 120], rep: [0, 0, 0], mult: [1.0, 1.3, 1.7, 2.2] }
   def GearValues bite { gear: GEAR_ROD, at: [1.0, 1.0, 0.75, 0.55] }
   def GearValues drain { gear: GEAR_CAMERA, at: [14.0, 14.0, 8.0] }
   def GearCharges torch { item: IT_TORCH, full: 60.0, per_hour: 60.0 }
@@ -62,7 +62,7 @@ program GearTest {
     fresh(gear_st, gear_test_st)
     expect_eq(gear_level(gear_st, GEAR_ROD), 0)
     expect_eq(gear_level(gear_st, GEAR_CAMERA), 1)
-    expect(gear_next_name(gear_st, GEAR_CAMERA) == "Zoom")
+    expect(gear_next_name(gear_st, GEAR_CAMERA) == string(k"gear.zoom"))
     expect_eq(gear_next_cost(gear_st, GEAR_ROD), 30)
   }
 

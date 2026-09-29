@@ -28,7 +28,9 @@ export function weather_cold(weather_st: WeatherState) -> float {
 
 export function weather_name(weather_st: WeatherState, k: int) -> string {
   if k < 0 or k >= weather_kind_count(weather_st) { return "" }
-  return weather_st.wx_kinds[k].name
+  if weather_st.wx_kinds[k].name == null { return "" }
+  @alloc_ok("a cast: a key's marked text, nothing is made")
+  return string(weather_st.wx_kinds[k].name)
 }
 
 # the half hour after a front goes through, when the air is glass-clear
