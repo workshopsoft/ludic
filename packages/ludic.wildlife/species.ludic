@@ -44,6 +44,7 @@ export state WildlifeState {
   wl_pz: float = 0.0
   wl_ask: WildLure = new WildLure
   wl_best: WildLure = new WildLure
+  wl_ask_rg: WildRange = new WildRange   # what WildlifeWorld.range_at fills, copied only when it answers
   wl_seed_any: bool = false
   wl_seed_t: float = 0.0
   wl_ids: int = 0

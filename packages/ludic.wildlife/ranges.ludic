@@ -25,7 +25,7 @@ function wl_range_clashes(wildlife_st: WildlifeState, sp: int, x: float, z: floa
 function wl_range_try(wildlife_st: mut WildlifeState, sp: int, x0: float, z0: float) -> bool {
   let s = wl_sp(wildlife_st, sp)
   for tries in 0 .. 80 {
-    if not wildlife_find_spot(wildlife_st, s.habitat, x0, z0, 120.0, 700.0) { continue }
+    if not wildlife_find_spot_of(wildlife_st, sp, s.habitat, x0, z0, 120.0, 700.0) { continue }
     let dx = wildlife_st.wl_px - x0
     let dz = wildlife_st.wl_pz - z0
     if Math.sqrt(dx * dx + dz * dz) < s.keep_away or wl_range_clashes(wildlife_st, sp, wildlife_st.wl_px, wildlife_st.wl_pz) { continue }
@@ -48,37 +48,14 @@ export function wildlife_ranges_setup(wildlife_st: mut WildlifeState, x0: float,
   wildlife_seed(wildlife_st, 613)
   wildlife_st.wl_ranges = new []WildRange
   for sp in 0 .. wildlife_species_count(wildlife_st) {
-    for k in 0 .. WildlifeWorld.ranges(sp) { if not wl_range_try(wildlife_st, sp, x0, z0) { break } }
+    for k in 0 .. WildlifeWorld.ranges(sp) {
+      if wl_range_painted(wildlife_st, sp, k) { continue }
+      if not wl_range_try(wildlife_st, sp, x0, z0) { break }
+    }
   }
   wl_found_apply(wildlife_st)
   let rs = wildlife_ranges(wildlife_st)
   for i in 0 .. len(rs) { WildlifeWorld.placed(rs[i], i) }
-}
-
-# downhill, toward the timber, never into the water: shelter is worth 25 m of height
-function wl_pick_winter(r: WildRange) -> void {
-  let up = WildlifeWorld.ground(r.sx, r.sz) - WildlifeWorld.water(r.sx, r.sz)
-  let reach = Math.min(60.0 + up * 6.0, 520.0)
-  r.wx = r.sx
-  r.wz = r.sz
-  var best = up
-  for k in 0 .. 24 {
-    let ang = float(k) * Math.deg_to_rad(15.0)
-    for step in 1 .. 5 {
-      let d = reach * (float(step) / 4.0)
-      let px = r.sx + Math.cos(ang) * d
-      let pz = r.sz + Math.sin(ang) * d
-      let h = WildlifeWorld.ground(px, pz) - WildlifeWorld.water(px, pz)
-      if h < 3.0 or WildlifeWorld.slope(px, pz) > 0.6 { continue }
-      var score = h
-      if WildlifeWorld.forest(px, pz) { score = score - 25.0 }
-      if score < best {
-        best = score
-        r.wx = px
-        r.wz = pz
-      }
-    }
-  }
 }
 
 # a player stood at (x, z): any range they are inside is found

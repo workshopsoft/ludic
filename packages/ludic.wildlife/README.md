@@ -39,6 +39,8 @@ export port WildlifeWorld {        # every member has a default: a flat dry mead
   taught: fn() -> bool                                # feeding is being taught: food carries 175 m, feeders mind less
   about: fn(WildAnimal) -> int                        # WILD_ABOUT, WILD_AWAY (lying up) or WILD_GONE (a legend's hours ended)
   ranges, per_range: fn(int) -> int                   # a species' ranges on this map, and how many live in each
+  habitat_in: fn(sp, x, z) -> int                     # the map's painted habitat: 1 in, 0 out, -1 none painted
+  range_at: fn(sp, k, WildRange) -> bool              # the map's k-th painted range (x, z, r; r 0 = the species')
   spot: fn(WildAnimal, bool, WildSpot) -> bool        # water (true) or forage for it, filled in
   lures: fn() -> int                                  # how many things to ask `lure` about
   lure: fn(int, WildLure) -> bool                     # the i-th, filled in, when it is food, a lure or an empty snare
@@ -58,6 +60,12 @@ target took - so binding them changes where an animal walks and never the order 
 no answer (the defaults) it walks straight and turns 75 degrees off water and a climb, as before.
 Maroon Lake binds both to its navmesh, walked by the species' habitat's taste.
 
+**A map may paint where a species lives.** Where `habitat_in` answers 0 or 1, a species' spots,
+ranges and newcomers keep inside its painted areas (never under water) instead of its kind's rule;
+where it answers -1 the rule stands. A range `range_at` answers is set out as painted, drawing no
+dice; the ones it does not answer are placed by the dice as before. The package never reads the
+map's tables: the game answers both from its Areas.
+
 ## API
 
 | | |
@@ -67,7 +75,7 @@ Maroon Lake binds both to its navmesh, walked by the species' habitat's taste.
 | `wildlife_new(sp, x, z, legend)`, `wildlife_make(sp, x, z, legend, yaw, variant, scale, nid)`, `wildlife_remove(a)`, `wildlife_clear()` | making one off the package's dice or exactly as given (a guest's copy), and taking one away |
 | `wildlife_spawn(x0, z0)`, `wildlife_morning() -> int`, `wildlife_repopulate() -> int`, `wildlife_seed(n)` | a valley filled; each morning the ranges move with the season and each range under its target gets one back, out of every player's sight |
 | `WildRange`, `wildlife_ranges()`, `wildlife_range(i)`, `wildlife_range_dist(r, x, z)`, `wildlife_range_alive(i)`, `wildlife_ranges_visit(x, z)`, `wildlife_range_found_near(sp, x, z)`, `wildlife_ranges_migrate()` | ranges, found by standing in them |
-| `wildlife_habitat_ok(hab, x, z)`, `wildlife_find_spot(hab, x0, z0, d0, d1)`, `wildlife_spot_x()`, `wildlife_spot_z()` | the right ground, and a spot of it |
+| `wildlife_habitat_ok(hab, x, z)`, `wildlife_habitat_of(sp, hab, x, z)`, `wildlife_find_spot(hab, x0, z0, d0, d1)`, `wildlife_find_spot_of(sp, hab, ...)`, `wildlife_spot_x()`, `wildlife_spot_z()` | the right ground, and a spot of it |
 | `wildlife_tick(dt, gh)`, `wildlife_tick_ground(a, dt, gh)`, `wildlife_tick_bird(a, dt)`, `wildlife_stride(a, dt)`, `wildlife_hold(on)` | the step; `pinned` on an animal leaves it where it stands |
 | `wildlife_alert_rate(a, p, d)`, `wildlife_alert_decay(a, p)`, `wildlife_downwind(a, p)`, `wildlife_can_see(a, p)` | what it makes of player p |
 | `wildlife_in_snare(uid)`, `wildlife_release(a)` | a snare's catch |
