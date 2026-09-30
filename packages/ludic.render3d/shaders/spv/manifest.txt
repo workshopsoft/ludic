@@ -1464,6 +1464,7 @@ I 9dce3246 a_pos 0 vec3
 I 9dce3246 i_pos 3 vec4
 I 9dce3246 a_nrm 1 vec3
 I 9dce3246 a_uv 2 vec2
+I 9dce3246 a_col 7 vec4
 B 9dce3246 frag 1 848
 U 9dce3246 frag u_cascade_vp 0 mat4 5 64
 U 9dce3246 frag u_cascade_split 320 float 5 16
@@ -1534,6 +1535,7 @@ I 439a2253 a_pos 0 vec3
 I 439a2253 i_pos 3 vec4
 I 439a2253 a_nrm 1 vec3
 I 439a2253 a_uv 2 vec2
+I 439a2253 a_col 7 vec4
 B 439a2253 frag 1 848
 U 439a2253 frag u_cascade_vp 0 mat4 5 64
 U 439a2253 frag u_cascade_split 320 float 5 16
@@ -1604,6 +1606,7 @@ I 86f427b0 a_pos 0 vec3
 I 86f427b0 i_pos 3 vec4
 I 86f427b0 a_nrm 1 vec3
 I 86f427b0 a_uv 2 vec2
+I 86f427b0 a_col 7 vec4
 B 86f427b0 frag 1 848
 U 86f427b0 frag u_cascade_vp 0 mat4 5 64
 U 86f427b0 frag u_cascade_split 320 float 5 16
@@ -1674,6 +1677,7 @@ I bfa15301 a_pos 0 vec3
 I bfa15301 i_pos 3 vec4
 I bfa15301 a_nrm 1 vec3
 I bfa15301 a_uv 2 vec2
+I bfa15301 a_col 7 vec4
 B bfa15301 frag 1 832
 U bfa15301 frag u_cascade_vp 0 mat4 5 64
 U bfa15301 frag u_cascade_split 320 float 5 16
@@ -1742,6 +1746,7 @@ I 266d2401 a_pos 0 vec3
 I 266d2401 i_pos 3 vec4
 I 266d2401 a_nrm 1 vec3
 I 266d2401 a_uv 2 vec2
+I 266d2401 a_col 7 vec4
 B 266d2401 frag 1 832
 U 266d2401 frag u_cascade_vp 0 mat4 5 64
 U 266d2401 frag u_cascade_split 320 float 5 16
@@ -1810,6 +1815,7 @@ I 01089da8 a_pos 0 vec3
 I 01089da8 i_pos 3 vec4
 I 01089da8 a_nrm 1 vec3
 I 01089da8 a_uv 2 vec2
+I 01089da8 a_col 7 vec4
 B 01089da8 frag 1 980
 U 01089da8 frag u_cascade_vp 0 mat4 5 64
 U 01089da8 frag u_cascade_split 320 float 5 16
@@ -1889,6 +1895,7 @@ I 254e7887 a_pos 0 vec3
 I 254e7887 i_pos 3 vec4
 I 254e7887 a_nrm 1 vec3
 I 254e7887 a_uv 2 vec2
+I 254e7887 a_col 7 vec4
 B 254e7887 frag 1 984
 U 254e7887 frag u_cascade_vp 0 mat4 5 64
 U 254e7887 frag u_cascade_split 320 float 5 16
@@ -1969,6 +1976,7 @@ I 1ce5c5d1 a_pos 0 vec3
 I 1ce5c5d1 i_pos 3 vec4
 I 1ce5c5d1 a_nrm 1 vec3
 I 1ce5c5d1 a_uv 2 vec2
+I 1ce5c5d1 a_col 7 vec4
 B 1ce5c5d1 frag 1 980
 U 1ce5c5d1 frag u_cascade_vp 0 mat4 5 64
 U 1ce5c5d1 frag u_cascade_split 320 float 5 16
@@ -2048,6 +2056,7 @@ I 5e70d731 a_pos 0 vec3
 I 5e70d731 i_pos 3 vec4
 I 5e70d731 a_nrm 1 vec3
 I 5e70d731 a_uv 2 vec2
+I 5e70d731 a_col 7 vec4
 B 5e70d731 frag 1 980
 U 5e70d731 frag u_cascade_vp 0 mat4 5 64
 U 5e70d731 frag u_cascade_split 320 float 5 16
@@ -2129,6 +2138,7 @@ I f4a2b586 a_pos 0 vec3
 I f4a2b586 i_pos 3 vec4
 I f4a2b586 a_nrm 1 vec3
 I f4a2b586 a_uv 2 vec2
+I f4a2b586 a_col 7 vec4
 B f4a2b586 frag 1 1088
 U f4a2b586 frag u_cascade_vp 0 mat4 5 64
 U f4a2b586 frag u_cascade_split 320 float 5 16
@@ -2215,6 +2225,7 @@ I b4587cd4 a_pos 0 vec3
 I b4587cd4 i_pos 3 vec4
 I b4587cd4 a_nrm 1 vec3
 I b4587cd4 a_uv 2 vec2
+I b4587cd4 a_col 7 vec4
 B b4587cd4 frag 1 984
 U b4587cd4 frag u_cascade_vp 0 mat4 5 64
 U b4587cd4 frag u_cascade_split 320 float 5 16
@@ -2295,6 +2306,7 @@ I 4dda406a a_pos 0 vec3
 I 4dda406a i_pos 3 vec4
 I 4dda406a a_nrm 1 vec3
 I 4dda406a a_uv 2 vec2
+I 4dda406a a_col 7 vec4
 B 4dda406a frag 1 980
 U 4dda406a frag u_cascade_vp 0 mat4 5 64
 U 4dda406a frag u_cascade_split 320 float 5 16
@@ -2374,6 +2386,7 @@ I b603a056 a_pos 0 vec3
 I b603a056 i_pos 3 vec4
 I b603a056 a_nrm 1 vec3
 I b603a056 a_uv 2 vec2
+I b603a056 a_col 7 vec4
 B b603a056 frag 1 980
 U b603a056 frag u_cascade_vp 0 mat4 5 64
 U b603a056 frag u_cascade_split 320 float 5 16
@@ -2453,6 +2466,7 @@ I 3b183d8f a_pos 0 vec3
 I 3b183d8f i_pos 3 vec4
 I 3b183d8f a_nrm 1 vec3
 I 3b183d8f a_uv 2 vec2
+I 3b183d8f a_col 7 vec4
 B 3b183d8f frag 1 980
 U 3b183d8f frag u_cascade_vp 0 mat4 5 64
 U 3b183d8f frag u_cascade_split 320 float 5 16
@@ -2532,6 +2546,7 @@ I 79b77ed9 a_pos 0 vec3
 I 79b77ed9 i_pos 3 vec4
 I 79b77ed9 a_nrm 1 vec3
 I 79b77ed9 a_uv 2 vec2
+I 79b77ed9 a_col 7 vec4
 B 79b77ed9 frag 1 984
 U 79b77ed9 frag u_cascade_vp 0 mat4 5 64
 U 79b77ed9 frag u_cascade_split 320 float 5 16
@@ -2612,6 +2627,7 @@ I b9fc2041 a_pos 0 vec3
 I b9fc2041 i_pos 3 vec4
 I b9fc2041 a_nrm 1 vec3
 I b9fc2041 a_uv 2 vec2
+I b9fc2041 a_col 7 vec4
 B b9fc2041 frag 1 980
 U b9fc2041 frag u_cascade_vp 0 mat4 5 64
 U b9fc2041 frag u_cascade_split 320 float 5 16
@@ -2691,6 +2707,7 @@ I f34dce08 a_pos 0 vec3
 I f34dce08 i_pos 3 vec4
 I f34dce08 a_nrm 1 vec3
 I f34dce08 a_uv 2 vec2
+I f34dce08 a_col 7 vec4
 B f34dce08 frag 0 832
 U f34dce08 frag u_cascade_vp 0 mat4 5 64
 U f34dce08 frag u_cascade_split 320 float 5 16
@@ -2759,6 +2776,7 @@ I 512004a1 a_pos 0 vec3
 I 512004a1 i_pos 3 vec4
 I 512004a1 a_nrm 1 vec3
 I 512004a1 a_uv 2 vec2
+I 512004a1 a_col 7 vec4
 B 512004a1 frag 0 832
 U 512004a1 frag u_cascade_vp 0 mat4 5 64
 U 512004a1 frag u_cascade_split 320 float 5 16
@@ -2827,6 +2845,7 @@ I b964507f a_pos 0 vec3
 I b964507f i_pos 3 vec4
 I b964507f a_nrm 1 vec3
 I b964507f a_uv 2 vec2
+I b964507f a_col 7 vec4
 B b964507f frag 0 832
 U b964507f frag u_cascade_vp 0 mat4 5 64
 U b964507f frag u_cascade_split 320 float 5 16
@@ -4107,6 +4126,7 @@ I 7a775c12 i_pos 3 vec4
 I 7a775c12 a_nrm 1 vec3
 I 7a775c12 a_uv 2 vec2
 I 7a775c12 i_tint 5 vec4
+I 7a775c12 a_col 7 vec4
 B 7a775c12 frag 1 948
 U 7a775c12 frag u_cascade_vp 0 mat4 5 64
 U 7a775c12 frag u_cascade_split 320 float 5 16
@@ -4172,6 +4192,7 @@ I 52a2400e i_pos 3 vec4
 I 52a2400e a_nrm 1 vec3
 I 52a2400e a_uv 2 vec2
 I 52a2400e i_tint 5 vec4
+I 52a2400e a_col 7 vec4
 B 52a2400e frag 1 1020
 U 52a2400e frag u_cascade_vp 0 mat4 5 64
 U 52a2400e frag u_cascade_split 320 float 5 16
@@ -4241,6 +4262,7 @@ I f9937a6d i_pos 3 vec4
 I f9937a6d a_nrm 1 vec3
 I f9937a6d a_uv 2 vec2
 I f9937a6d i_tint 5 vec4
+I f9937a6d a_col 7 vec4
 B f9937a6d frag 0 832
 U f9937a6d frag u_cascade_vp 0 mat4 5 64
 U f9937a6d frag u_cascade_split 320 float 5 16
@@ -4414,6 +4436,7 @@ I 14b79603 i_pos 3 vec4
 I 14b79603 a_nrm 1 vec3
 I 14b79603 a_uv 2 vec2
 I 14b79603 i_tint 5 vec4
+I 14b79603 a_col 7 vec4
 B 14b79603 frag 1 848
 U 14b79603 frag u_cascade_vp 0 mat4 5 64
 U 14b79603 frag u_cascade_split 320 float 5 16

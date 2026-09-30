@@ -4,6 +4,8 @@ layout(location = 1) in vec3 a_nrm;
 layout(location = 2) in vec2 a_uv;
 layout(location = 3) in vec4 i_pos;
 layout(location = 4) in vec4 i_rot;
+// COLOR_0 (glTF vertex colour), attribute 7. A mesh without it leaves the input unfed, which Vulkan reads as (0,0,0,0): that means white.
+layout(location = 7) in vec4 a_col;
 uniform mat4 u_view;
 uniform mat4 u_proj;
 uniform mat4 u_light_vp;
@@ -80,6 +82,7 @@ out vec3 v_wpos;
 invariant gl_Position;
 out vec3 v_nrm;
 out vec2 v_uv;
+out vec4 v_col;
 out float v_seed;
 out vec2 v_rot;
 // Crown hull: a tree's needle cards are lit as if they were the surface of a rounded
@@ -188,6 +191,7 @@ void main() {
   v_wpos = w;
   v_nrm = n;
   v_uv = a_uv;
+  v_col = (a_col == vec4(0.0)) ? vec4(1.0) : a_col;
   v_seed = i_rot.z;
 #ifdef SHADOW_PASS
   gl_Position = u_light_vp * vec4(w, 1.0);
