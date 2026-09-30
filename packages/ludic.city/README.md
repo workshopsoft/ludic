@@ -45,7 +45,6 @@ Game tables, declared by the game (`def ZoningRules from "zoning.lres"`, open, a
 | `ZoningRules` | `kind`, `res_pct` (share of floor area that is homes), `m2_per_person`, `m2_per_job`, `crowd` and `traffic` (ambient, per mille) |
 | `BuildingKits` | a prefab building: `model` and `node`, footprint `w` x `d`, `floors`, `floor_h`, `tags` |
 | `BuildingGenerators` | a Blender generator preset: `generator` id, `script`, `description`, `output` (block or building), `tags`, and `params`, each a `GenParam` (`name`, `type` int / float / bool / choice, `min`, `max`, `default_value`, `choices`, `label`, `unit`) for the studio to show as a slider, toggle or list |
-| `InteriorAtlases` | a window interior-mapping atlas: `image`, `cols` x `rows` of rooms, `depth` |
 
 Map tables, under `maps/<map>/city/` (`@PerMap`; `ludicc --check` reads every map against them, refs included):
 
@@ -67,7 +66,7 @@ is `(map, key)`, stable because it is data. A `Buildings` row:
 | `kit` | a `BuildingKits` key when it is an instance of a kit, else `model` + `node` (a generated block's glTF and the node in it) |
 | `x`, `y`, `z`, `yaw`, `scale` | the transform (metres, degrees, 0 faces +z) |
 | `w`, `d`, `floors`, `height` | footprint, floors, height (0: floors times the kit's `floor_h`, 3.5 m without a kit) |
-| `interior` | `none`; `fake` (an `InteriorAtlases` key in `atlas`); `enterable` (the map whose key is `interior_map` holds the inside) |
+| `interior` | `none`; `fake` (a ludic.render3d `InteriorAtlases` key in `atlas`); `enterable` (the map whose key is `interior_map` holds the inside) |
 | `lot`, `address` | the tags a property can be bought by |
 | `residents`, `jobs` | capacity; -1: worked out from the floor area and zoning |
 | `entrances` | doors: `x`, `z`, `yaw` (the way a person faces stepping in), `kind` door / garage / service |

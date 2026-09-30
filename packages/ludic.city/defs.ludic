@@ -68,17 +68,6 @@ export property BuildingGenerator {
 @AppendOnly @ByKey
 export open registry BuildingGenerators of BuildingGenerator as BG
 
-# a window interior mapped behind a building's glass (a fake interior): a grid of rooms in one image
-export property InteriorAtlas {
-  key: string = ""
-  @Asset("png") image: string = ""
-  @Range(1, 16) cols: int = 4
-  @Range(1, 16) rows: int = 4
-  @Unit("m") @Range(1, 10) depth: float = 4.0             # how far behind the glass the back wall is taken to be
-}
-
-@AppendOnly @ByKey
-export open registry InteriorAtlases of InteriorAtlas as IA
 
 # a polygon of land of one zoning. Where two overlap the first row wins
 export property District {
@@ -150,7 +139,7 @@ export property CityBuilding {
   @Range(1, 200) floors: int = 1
   @Unit("m") @Range(0, 800) height: float = 0.0           # 0: floors times the kit's floor height (3.5 m without a kit)
   @OneOf("none", "fake", "enterable") interior: string = "none"
-  atlas: string = ""                                      # fake: an InteriorAtlases key
+  atlas: string = ""                                      # fake: a ludic.render3d InteriorAtlases key (the renderer owns the atlases)
   interior_map: string = ""                               # enterable: the map (key) that holds the inside
   lot: string = ""                                        # the lot and address a property can be bought by
   address: string = ""

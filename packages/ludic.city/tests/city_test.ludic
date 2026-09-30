@@ -10,7 +10,6 @@ program CityTest {
   def ZoningRules from "zoning.lres"
   def BuildingKits from "kits.lres"
   def BuildingGenerators from "generators.lres"
-  def InteriorAtlases from "atlases.lres"
 
   function load_districts(city_st: mut CityState, districts: mut Districts) -> bool {
     if not districts_load(districts, "metro") { return false }
@@ -37,7 +36,6 @@ program CityTest {
     expect_eq(BG_COUNT, 2)
     expect_eq(len(BuildingGenerators[BG_MIDRISE_BLOCK].params), 4)
     expect_eq(BuildingGenerators[BG_MIDRISE_BLOCK].params[2].choices[1], "glass")
-    expect_eq(IA_COUNT, 2)
   }
 
   test "a point is in the first district holding it, or in none" (city_st: mut CityState, districts: mut Districts) {
