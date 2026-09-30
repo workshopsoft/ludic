@@ -83,11 +83,11 @@ static const char* LUDIC_PHASES[] = {
 };
 static const char* LUDIC_ATTRIBUTES[] = {
     "Ref","OneOf","Range","Unit","Asset","Color","Node","Clip","Material","Tint","Derived","Text",
-    "Multiline","Key","Computed","Sync","frame","max","owns","AppendOnly","ByKey","PerMap",
-    "Chunked","TextKey","export","Public","On","Queries","OnSpawn","OnDespawn","OnAttach",
+    "Multiline","Key","Computed","Sync","frame","max","owns","Target","Column","AppendOnly","ByKey",
+    "PerMap","Chunked","TextKey","export","Public","On","Queries","OnSpawn","OnDespawn","OnAttach",
     "OnDetach","OnEnable","OnDisable","OnStart","OnQuit","Owned","Server","Predicted","ToServer",
     "ToClients","System","EngineSystem","Namespace","deterministic","ClearColor","alloc_ok",
-    "creates","releases","Handles","Reads","Writes", 0
+    "creates","releases","RowVerb","Handles","Reads","Writes", 0
 };
 /* ludic-dev syntax: end */
 static const char* LUDIC_WIDGETS[] = {
