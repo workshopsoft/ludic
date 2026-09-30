@@ -1,0 +1,90 @@
+# telemetry_glue_test.ludic - the glue a game writes between ludic.crash and ludic.telemetry (the two
+# mechanics never meet in a package, the game is where they do): a pending record goes out as one raw
+# event carrying the file whole, for the studio to symbolize; without consent nothing goes.
+import "ludic.crash"
+import "ludic.telemetry"
+import "ludic.base"
+program CrashGlue {
+  numbers float
+  state GlueState {
+    consent: bool = true
+  }
+  function fake_consent(glue_st: GlueState) -> bool { return glue_st.consent }
+  bind CrashWorld { consent: fn fake_consent }
+
+  function dir() -> string { return Os.temp_dir() + "/ludic-crash-glue" }
+
+  function record_text() -> string {
+    var s = "{\"k\":\"crash\",\"v\":1,\"producer\":\"ludic\",\"app\":\"Glue\",\"version\":\"1.0.0\",\"build\":\"b-7\",\"context\":\"\",\"os\":\"macos\",\"os_version\":\"15.4\",\"arch\":\"arm64\",\"pid\":1,\"tid\":2,\"main\":true,\"time\":1790000000,\"sig\":11,\"signame\":\"SIGSEGV\",\"code\":2,\"addr\":\"0x10\",\"pc\":\"0x1\",\"sp\":\"0x2\",\"fp\":\"0x3\",\"lr\":\"0x4\"}\n"
+    for i in 0 .. 64 {
+      s = s + `{"k":"frame","i":{i},"pc":"0x10000{i}","via":"scan"}\n`
+    }
+    s = s + "{\"k\":\"image\",\"path\":\"/x/Glue\",\"base\":\"0x100000000\",\"size\":\"0x8000\",\"uuid\":\"8545D571-AC52-396B-8403-1DD2B282BA3B\",\"main\":true}\n"
+    return s + "{\"k\":\"end\",\"frames\":64,\"images\":1}\n"
+  }
+
+  function setup(crash_st: mut CrashState, telemetry_st: mut TelemetryState) -> void {
+    crash_reset(crash_st)
+    telemetry_reset(telemetry_st)
+    if Fs.is_dir(dir()) {
+      let old = Fs.list(dir())
+      for i in 0 .. len(old) { Fs.remove(Path.join(dir(), Path.base(old[i]))) }
+    }
+    Fs.mkdir(dir())
+    Fs.write_text(Path.join(dir(), "crash-1790000000-1.lcr"), record_text())
+    let c = new CrashConfig
+    c.dir = dir()
+    c.enabled = false
+    crash_config(crash_st, c)
+    crash_start(crash_st)
+    let t = new TelemetryConfig
+    t.host = "http://fake"
+    t.key = "k-1"
+    t.line_max = 32768
+    t.id_file = Os.temp_dir() + "/ludic-crash-glue-id.json"
+    telemetry_config(telemetry_st, t)
+    telemetry_start(telemetry_st)
+  }
+
+  # what a game writes: each pending record, while the player allows it, as one event
+  function send_crashes(crash_st: mut CrashState, telemetry_st: mut TelemetryState) -> int {
+    var sent = 0
+    while crash_next_send(crash_st) >= 0 {
+      let r = crash_record(crash_st, 0)
+      let p = telemetry_props(telemetry_st)
+      telemetry_str(p, "record_format", "lcr1")
+      telemetry_str(p, "signame", r.signame)
+      telemetry_str(p, "app_version", r.version)
+      telemetry_str(p, "record", r.text)
+      telemetry_event(telemetry_st, "crash_record", p)
+      crash_mark_sent(crash_st, 0)
+      sent += 1
+    }
+    return sent
+  }
+
+  test "a pending record goes out as one event carrying the file whole" (crash_st: mut CrashState, telemetry_st: mut TelemetryState, glue_st: mut GlueState) {
+    glue_st.consent = true
+    setup(crash_st, telemetry_st)
+    expect_eq(crash_pending(crash_st), 1)
+    expect_eq(send_crashes(crash_st, telemetry_st), 1)
+    expect_eq(telemetry_queued(telemetry_st), 1)
+    let line = telemetry_line(telemetry_st, 0)
+    expect(Text.contains(line, "\"event\":\"crash_record\""))
+    expect(Text.contains(line, "\"signame\":\"SIGSEGV\""))
+    # the record, escaped inside the event: its uuid and its last line
+    expect(Text.contains(line, "8545D571-AC52-396B-8403-1DD2B282BA3B"))
+    expect(Text.contains(line, "\\\"k\\\":\\\"end\\\""))
+    expect_eq(crash_pending(crash_st), 0)
+    expect(Fs.exists(Path.join(dir(), "crash-1790000000-1.lcr.sent")))
+  }
+
+  test "without consent nothing goes: the record stays a local file, pending" (crash_st: mut CrashState, telemetry_st: mut TelemetryState, glue_st: mut GlueState) {
+    glue_st.consent = false
+    setup(crash_st, telemetry_st)
+    expect_eq(send_crashes(crash_st, telemetry_st), 0)
+    expect_eq(telemetry_queued(telemetry_st), 0)
+    expect_eq(crash_pending(crash_st), 1)
+    expect(Fs.exists(Path.join(dir(), "crash-1790000000-1.lcr")))
+  }
+}

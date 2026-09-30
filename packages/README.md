@@ -21,6 +21,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.compass](ludic.compass/README.md) | bearing marks on a strip: gathered from registered providers, gated by tier, sorted by priority, bearings, distances and a radar |
 | [ludic.clock](ludic.clock/README.md) | the hour, the day, the moon and a calendar of seasons |
 | [ludic.crafting](ludic.crafting/README.md) | recipes: what goes in and out, where and how long, making, refunding, hold-to-make |
+| [ludic.crash](ludic.crash/README.md) | what a game does about last time's crash: the runtime's crash handler writes a record (signal, address, backtrace, loaded images), found at the next start, rotated, offered to show and - with the player's consent - to send through ludic.telemetry for the studio to symbolize |
 | [ludic.effects](ludic.effects/README.md) | timed modifiers that run down in game time (a meal's warmth, a drink's legs) |
 | [ludic.fire](ludic.fire/README.md) | a camp fire: fuel, the rain on it, warmth at a distance, whether it will cook |
 | [ludic.zones](ludic.zones/README.md) | where the world is simulated: a disc per player from their fog, merged into clusters |

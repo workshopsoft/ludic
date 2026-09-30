@@ -414,11 +414,14 @@ function cmd_build() -> int {
   if entry == "" { return no_entry() }
   if g_check_build { return check_app(entry) }
   let out = output_path(entry)
+  if g_mode == 1 { sym_win_prepare() }
   if not compile_app(entry, out, g_mode, g_save) { return 1 }
   if g_mode == 2 {
     print(`built {out}  (headless: reads one key per frame from stdin, writes build/out.ppm)`)
   } else {
     print(`built {out}`)
+    # the symbols of this build, by id, beside it: a crash report is read against them (symbols.ludic)
+    sym_keep(out, sym_root(out), project_name(entry), read_root_manifest().ver)
   }
   return 0
 }

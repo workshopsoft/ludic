@@ -1,0 +1,66 @@
+# record.ludic - a record file read back: JSON lines, one object each, told apart by "k"
+# ("crash" the header, "frame", "image", "end"). A line that does not parse is skipped, so a record
+# the handler did not finish (its last line cut off) still reads, with `complete` false.
+
+# the record in `text`; `ok` is false when it has no header line
+export function crash_parse(text: string) -> CrashRecord {
+  let r = new CrashRecord
+  r.text = text
+  if text == null { return r }
+  let n = len(text)
+  var start = 0
+  for i in 0 .. n + 1 {
+    if i == n or text[i] == 10 {
+      if i > start { crash__line(r, text[start..i]) }
+      start = i + 1
+    }
+  }
+  return r
+}
+
+function crash__line(r: CrashRecord, line: string) -> void {
+  let v = Json.parse(line)
+  if v == null { return }
+  if Value.kind(v) != 6 {
+    Json.free(v)
+    return
+  }
+  let k = sv_str(v, "k", "")
+  if k == "crash" {
+    r.ok = true
+    r.app = sv_str(v, "app", "")
+    r.version = sv_str(v, "version", "")
+    r.build = sv_str(v, "build", "")
+    r.context = sv_str(v, "context", "")
+    r.os = sv_str(v, "os", "")
+    r.os_version = sv_str(v, "os_version", "")
+    r.arch = sv_str(v, "arch", "")
+    r.time = sv_int(v, "time", 0)
+    r.pid = sv_int(v, "pid", 0)
+    r.tid = sv_int(v, "tid", 0)
+    r.main_thread = sv_bool(v, "main", false)
+    r.sig = sv_int(v, "sig", 0)
+    r.signame = sv_str(v, "signame", "")
+    r.code = sv_int(v, "code", 0)
+    r.addr = sv_str(v, "addr", "")
+    r.pc = sv_str(v, "pc", "")
+  } else if k == "frame" {
+    let f = new CrashFrame
+    f.index = sv_int(v, "i", 0)
+    f.pc = sv_str(v, "pc", "")
+    f.via = sv_str(v, "via", "")
+    push(r.frames, f)
+  } else if k == "image" {
+    let m = new CrashImage
+    m.path = sv_str(v, "path", "")
+    m.base = sv_str(v, "base", "")
+    m.size = sv_str(v, "size", "")
+    m.uuid = sv_str(v, "uuid", "")
+    m.age = sv_int(v, "age", 0)
+    m.main = sv_bool(v, "main", false)
+    push(r.images, m)
+  } else if k == "end" {
+    r.complete = true
+  }
+  Json.free(v)
+}

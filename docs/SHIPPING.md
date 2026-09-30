@@ -304,6 +304,74 @@ The game's own updater (`ludic.update`'s `UpdateConfig.feed` and `app_id`) is co
 no value in `package.ludic` reaches the program at build time (only `app name`, as the window title),
 so write the same feed and pack id in both places.
 
+## Crash reports and symbols
+
+A shipped game that dies should leave something behind that a developer can read. Ludic's part of that
+is two things: a **crash record** the game writes when it dies, and the **symbols** of the build it died
+in. The studio joins them (it turns the addresses in the record into function names and reports them to
+PostHog's error tracking as `$exception` events); PostHog itself cannot read a minidump or a Windows
+PDB, so the joining is ours.
+
+### The record
+
+`ludic.crash` ([its README](../packages/ludic.crash/README.md) has the record format, field by field)
+installs the runtime's handler at the start. It catches `SIGSEGV`, `SIGBUS`, `SIGILL`, `SIGFPE`,
+`SIGABRT` and `SIGTRAP` on macOS (an alternate stack, so a stack overflow is caught too) and unhandled
+exceptions on Windows, and writes `crash-<unix time>-<pid>.lcr` into the game's crash folder: JSON
+lines with the build, the version, the OS, the signal or exception, the fault address, the registers,
+the backtrace as raw return addresses, and the images loaded (path, base, size, and the `LC_UUID` or
+the CodeView GUID and age that names their symbols). Then the signal is raised again, so the OS and a
+launcher's `Process.poll` see the crash as they always did (`128 + signal`; on Windows the NTSTATUS).
+
+```ludic skip
+let c = new CrashConfig
+c.dir = Path.join(save_root, "crashes")
+c.app = "Maroon Lake"
+c.version = "0.1.0"
+crash_config(crash_st, c)
+crash_start(crash_st)            # before anything can crash; answers how many records wait from last time
+```
+
+The handler runs inside a crash, so it allocates nothing and takes no lock, and it formats the record by
+hand; the backtrace is a scan of the crashing thread's stack for return addresses, because ludicc's
+functions keep no frame-pointer chain. `crash_win.ll` is the same on Windows, written and compiled
+without a Windows machine. The next start finds the records (`crash_pending`), keeps the newest
+`keep_n`, and offers each to the game to show ("the game crashed last time") and to send through
+`ludic.telemetry` as a raw event. **Consent**: with the player's switch off (`CrashWorld.consent`)
+a record stays a local file and nothing is sent.
+
+A build that calls `ludic.crash` links the handler (`runtime/native/crash.ll`, or `crash_win.ll` on
+Windows); any other build does not contain it.
+
+### The symbols
+
+`ludic build` (windowed) and `ludic bundle` keep the symbols of what they built, **beside the output and
+never inside the bundle**, under the id the linker stamped into the binary:
+
+```
+build/symbols/<id>/meta.json        id, os, arch, kind, name, file, binary, version, size
+build/symbols/<id>/<name>.dSYM      macOS: dsymutil's bundle, keyed by the binary's LC_UUID
+build/symbols/<id>/<name>.pdb       Windows: the PDB the link wrote, keyed by GUID and age
+```
+
+The shipped binary is exactly what it was before (nothing is stripped or added; the bundle is the same
+size); its `LC_UUID` is what ties it to its dSYM. On Windows the link is asked for a PDB
+(`-Wl,/DEBUG` through `LUDIC_CC`; set `LUDIC_NO_SYMBOLS=1` to skip keeping symbols on either OS), and
+the id is the GUID (without dashes) and the age in hex, the key a symbol server uses. The IR carries no
+DWARF, so a dSYM holds the symbol table - function names, not lines.
+
+```bash
+ludic symbols              # 8545D571-AC52-...  macos/arm64  dsym  maroon-lake 0.1.0  build/symbols/8545D571-.../maroon-lake.dSYM
+ludic symbols --json       # the same, for the studio to upload and store
+```
+
+`--json` prints one object: `dir` (where it looked, `build/symbols`; `--dir DIR` names another) and
+`symbols`, a list of `{"id", "os", "arch", "kind", "name", "file", "binary", "version", "size"}` -
+`kind` is `"dsym"` or `"pdb"`, `file` is relative to `<dir>/<id>/`, `binary` is the executable they
+belong to, `size` is bytes. It is an empty list when there are none. Each build adds its own id next
+to the others, so a release's symbols outlive the next build - until `ludic clean`, which removes
+`build/` with them: upload first.
+
 ## The bundle it makes
 
 ```

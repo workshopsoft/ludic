@@ -39,6 +39,7 @@ property TelemetryConfig {
   host, key, path ("/batch/"), lib        # an empty host or key sends nothing, ever
   queue_file, id_file, id_salt, id_scratch
   flush_ms (30000), flush_at (50), batch (200), queue_max (5000), ring_bytes (1 MB), backoff_max (6), save_ms (5000)
+  line_max (2048)                         # the longest event's line, properties included; a longer one is dropped
 }
 port TelemetryWorld {
   can_send: fn() -> bool     # may this run send at all - a test, a headless run (unbound: yes)

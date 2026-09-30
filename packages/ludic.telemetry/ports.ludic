@@ -2,6 +2,13 @@
 export function telemetry_config(telemetry_st: mut TelemetryState, c: TelemetryConfig) -> void {
   telemetry_st.telemetry__cfg = c
   telemetry_st.telemetry__url = c.host + c.path
+  # the line buffers are made for the default size; a game that wants longer events has them made again, once
+  if c.line_max > 0 and c.line_max != len(telemetry_st.telemetry__line.b) {
+    @alloc_ok("the line buffers: once, when the game sets a longer event")
+    telemetry_st.telemetry__line = sb_new(c.line_max)
+    @alloc_ok("the line buffers: once, when the game sets a longer event")
+    telemetry_st.telemetry__props.sb = sb_new(c.line_max)
+  }
 }
 
 function telemetry__conf(telemetry_st: TelemetryState) -> TelemetryConfig {

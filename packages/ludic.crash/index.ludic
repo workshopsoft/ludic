@@ -1,0 +1,11 @@
+# ludic.crash - the crash handler (runtime/native/crash.ll) writes a record when the game dies; this
+# finds the records the next start, keeps the newest few, and hands them to the game
+module ludic_crash uses ludic_base
+numbers float
+import "ludic.base"
+import "native.ludic"
+import "state.ludic"
+import "record.ludic"
+import "files.ludic"
+import "exit.ludic"
+import "queries.ludic"

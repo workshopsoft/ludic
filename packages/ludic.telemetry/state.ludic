@@ -16,6 +16,7 @@ export property TelemetryConfig {
   ring_bytes: int = 1048576    # the lines' ring (ring.ludic), made once at the start
   backoff_max: int = 6         # the wait doubles at most this many times
   save_ms: int = 5000          # the queue on disk at most this far behind
+  line_max: int = 2048         # the longest line an event may be (props included); a longer one is dropped. A crash record rides in one event: 32768
 }
 
 # what telemetry asks the game (unbound: yes, on, and the wall clock)

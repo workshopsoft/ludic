@@ -43,6 +43,8 @@ program LudicDev {
   import "pkg_test.ludic"
   import "release_test.ludic"
   import "templates_test.ludic"
+  import "symbols.ludic"
+  import "symbols_test.ludic"
 
   function usage() -> void {
     print("ludic-dev — tasks for a checkout of the Ludic toolchain (run from the repository root)")
@@ -62,6 +64,7 @@ program LudicDev {
     print("  test --coverage               per-file line coverage over the test specs")
     print("  test-pkg                      the package-manager suite (hermetic git repos, offline)")
     print("  test-release                  `ludic release` and the manifest's release lines (a fake vpk, nothing real)")
+    print("  test-symbols                  `ludic symbols`: the Mach-O / PE ids, the symbols a build keeps, the listing")
     print("  test-templates                every `ludic new --template` starter is created and passes `ludic build --check`")
     print("  selfhost-test                 the self-hosting suite (correctness + bootstrap fixpoints)")
     print("  test-tools                    the editor-toolchain suite")
@@ -112,6 +115,7 @@ program LudicDev {
     if (cmd == "test-pkg") { return cmd_test_pkg() }
     if (cmd == "test-release") { return cmd_test_release() }
     if (cmd == "test-templates") { return cmd_test_templates() }
+    if (cmd == "test-symbols") { return cmd_test_symbols() }
     if (cmd == "check-docs") { return cmd_check_docs() }
     if (cmd == "check-impl") { return cmd_check_impl() }
     if (cmd == "check-vocabulary") { return cmd_check_vocab() }

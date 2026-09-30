@@ -1,0 +1,23 @@
+# exit.ludic - a launcher that started the game (Process.spawn) sees how it ended in Process.poll:
+# on POSIX 128 + the signal a signal ended it; on Windows the exception's NTSTATUS, as a negative int
+# (0xC0000005 is -1073741819). These say whether that was a crash.
+
+# the name of the crash an exit code stands for, or "" when it was not one
+export function crash_exit_name(code: int) -> string {
+  if code == 132 { return "SIGILL" }
+  if code == 133 { return "SIGTRAP" }
+  if code == 134 { return "SIGABRT" }
+  if code == 136 { return "SIGFPE" }
+  if code == 138 { return "SIGBUS" }
+  if code == 139 { return "SIGSEGV" }
+  if code == -1073741819 { return "EXCEPTION_ACCESS_VIOLATION" }
+  if code == -1073741571 { return "EXCEPTION_STACK_OVERFLOW" }
+  if code == -1073741795 { return "EXCEPTION_ILLEGAL_INSTRUCTION" }
+  if code == -1073741676 { return "EXCEPTION_INT_DIVIDE_BY_ZERO" }
+  if code == -1073740791 { return "STATUS_STACK_BUFFER_OVERRUN" }
+  # any other 0xC... status is an error a process died of
+  if code >= -1073741824 and code <= -805306369 { return "EXCEPTION" }
+  return ""
+}
+
+export function crash_exit_is_crash(code: int) -> bool { return len(crash_exit_name(code)) > 0 }

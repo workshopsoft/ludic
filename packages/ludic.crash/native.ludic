@@ -1,0 +1,11 @@
+# native.ludic - the runtime's crash layer (runtime/native/crash.ll, crash_win.ll), linked into a
+# program that calls it. Nothing here is exported.
+#   lu_crash_install(dir, app, version, build) -> 0, or -1 for an empty dir
+#   lu_crash_uninstall()         the default action for the crash signals again
+#   lu_crash_context(text)       one line of game state, kept for the next record
+#   lu_crash_trigger(kind)       0 a wild store, 1 abort, 2 a trap, 3 SIGFPE (macOS) / a stack overflow
+#                                (Windows), 4 a stack overflow (macOS): for tests and a debug button
+extern function lu_crash_install(dir: pointer, app: pointer, version: pointer, build: pointer) -> int = "lu_crash_install"
+extern function lu_crash_uninstall() -> void = "lu_crash_uninstall"
+extern function lu_crash_context(text: pointer) -> void = "lu_crash_context"
+extern function lu_crash_trigger(kind: int) -> void = "lu_crash_trigger"

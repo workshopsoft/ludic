@@ -199,4 +199,24 @@ program TelemetryTest {
     expect(Text.starts_with(telemetry_id(telemetry_st), "r-"))
     expect_eq(len(telemetry_session(telemetry_st)), 32)
   }
+
+  test "a longer line_max lets a long event through; the default drops it" (telemetry_st: mut TelemetryState, telemetry_test_st: mut TelemetryTestState) {
+    fresh(telemetry_st, telemetry_test_st)
+    let big = Text.repeat("x", 4000)
+    let p = telemetry_props(telemetry_st)
+    telemetry_str(p, "blob", big)
+    telemetry_event(telemetry_st, "big", p)
+    expect_eq(telemetry_queued(telemetry_st), 0)
+    let c = telemetry_get_config(telemetry_st)
+    c.line_max = 16384
+    telemetry_config(telemetry_st, c)
+    let p2 = telemetry_props(telemetry_st)
+    telemetry_str(p2, "blob", big)
+    telemetry_event(telemetry_st, "big", p2)
+    expect_eq(telemetry_queued(telemetry_st), 1)
+    expect(Text.contains(telemetry_line(telemetry_st, 0), big))
+    # an ordinary event still fits, and the lines of the default size are unchanged
+    telemetry_event(telemetry_st, "small", null)
+    expect_eq(telemetry_queued(telemetry_st), 2)
+  }
 }

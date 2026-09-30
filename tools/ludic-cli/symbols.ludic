@@ -1,0 +1,377 @@
+# symbols.ludic — debug symbols kept per build, and `ludic symbols`.
+#
+# A crash record (ludic.crash, runtime/native/crash.ll) names the images a crash was in by the id
+# the linker stamped into each: a Mach-O's LC_UUID, a PE's CodeView GUID and age. To turn the
+# addresses in it into function names the studio needs the symbols of THAT build, and a build is
+# overwritten by the next. So `ludic build` (windowed) and `ludic bundle` keep them, by id, next to
+# the output and never inside the shipped bundle:
+#
+#   build/symbols/<id>/meta.json          what it is: id, os, arch, kind, name, file, binary, version, size
+#   build/symbols/<id>/<name>.dSYM        macOS: dsymutil's bundle (the symbol table; the IR carries no DWARF)
+#   build/symbols/<id>/<name>.pdb         Windows: the PDB the link wrote beside the .exe, when it wrote one
+#
+# <id> is the LC_UUID ("8545D571-AC52-396B-8403-1DD2B282BA3B"), or the PE's GUID without dashes
+# followed by the age in hex - the key of a symbol server. `ludic symbols [--json]` lists them;
+# $LUDIC_NO_SYMBOLS=1 skips keeping them. `ludic clean` removes build/, symbols included: upload first.
+
+var sym_n: int = 0
+
+# the first `want` bytes of a file (sym_n says how many came), or null
+function sym_head(path: pointer, want: int) -> pointer {
+  sym_n = 0
+  let f = file_open(path, "rb")
+  if f == null { return null }
+  let buf = bytes(want + 1)
+  let got = file_read(f, buf, want)
+  file_close(f)
+  buf[got] = 0
+  sym_n = got
+  return buf
+}
+
+function sym_b(b: pointer, i: int) -> int { return b[i] & 255 }
+function sym_u16(b: pointer, o: int) -> int { return sym_b(b, o) + sym_b(b, o + 1) * 256 }
+function sym_u32(b: pointer, o: int) -> int { return sym_b(b, o) + sym_b(b, o + 1) * 256 + sym_b(b, o + 2) * 65536 + sym_b(b, o + 3) * 16777216 }
+
+function sym_hex2(v: int) -> pointer {
+  let b = bytes(3)
+  let h = (v / 16) & 15
+  let l = v & 15
+  b[0] = 48 + h
+  if h > 9 { b[0] = 55 + h }
+  b[1] = 48 + l
+  if l > 9 { b[1] = 55 + l }
+  b[2] = 0
+  return b
+}
+
+# n bytes of b at o as upper-case hex, in the order given by `order` (a list of offsets) or straight on
+function sym_hex_run(b: pointer, o: int, n: int) -> pointer {
+  var s = ""
+  var i = 0
+  while i < n { s = s + sym_hex2(sym_b(b, o + i));  i += 1 }
+  return s
+}
+
+# n bytes at o, read backwards (a little-endian field as the hex it is written as)
+function sym_hex_rev(b: pointer, o: int, n: int) -> pointer {
+  var s = ""
+  var i = n - 1
+  while i >= 0 { s = s + sym_hex2(sym_b(b, o + i));  i -= 1 }
+  return s
+}
+
+
+# `s` as a JSON string literal: quoted, with " \\ and control bytes escaped
+function sym_q(s: pointer) -> pointer {
+  var o = "\""
+  var i = 0
+  while s[i] != 0 {
+    let c = s[i]
+    if c == '"' { o = o + "\\\"" }
+    else if c == 92 { o = o + "\\\\" }
+    else if c == '\n' { o = o + "\\n" }
+    else if c >= 0 and c < ' ' { o = o + "\\u00" + sym_hex2(c) }
+    else { o = o + s[i..i + 1] }
+    i += 1
+  }
+  return o + "\""
+}
+
+# `s` for a POSIX shell: in single quotes
+function sym_sq(s: pointer) -> pointer {
+  var o = "'"
+  var i = 0
+  while i < len(s) {
+    if s[i] == 39 { o = o + "'\\''" } else { o = o + s[i..i + 1] }
+    i += 1
+  }
+  return o + "'"
+}
+
+function sym_ends(s: pointer, suf: pointer) -> bool {
+  let n = slen(s)
+  let m = slen(suf)
+  if m > n { return false }
+  return sslice(s, n - m, n) == suf
+}
+
+function sym_dashed(a: pointer, b: pointer, c: pointer, d: pointer, e: pointer) -> pointer {
+  return `{a}-{b}-{c}-{d}-{e}`
+}
+
+# ---- Mach-O ---------------------------------------------------------------------------------
+
+# the LC_UUID of a thin 64-bit Mach-O held in b[0..n): "8545D571-AC52-396B-8403-1DD2B282BA3B", or ""
+function sym_macho_id(b: pointer, n: int) -> pointer {
+  if n < 32 { return "" }
+  if not (sym_b(b, 0) == 207 and sym_b(b, 1) == 250 and sym_b(b, 2) == 237 and sym_b(b, 3) == 254) { return "" }
+  let ncmds = sym_u32(b, 16)
+  var o = 32
+  var i = 0
+  while i < ncmds and o + 8 <= n {
+    let cmd = sym_u32(b, o)
+    let sz = sym_u32(b, o + 4)
+    if cmd == 27 and o + 24 <= n {
+      return sym_dashed(sym_hex_run(b, o + 8, 4), sym_hex_run(b, o + 12, 2), sym_hex_run(b, o + 14, 2), sym_hex_run(b, o + 16, 2), sym_hex_run(b, o + 18, 6))
+    }
+    if sz < 8 { return "" }
+    o += sz
+    i += 1
+  }
+  return ""
+}
+
+function sym_macho_arch(b: pointer, n: int) -> pointer {
+  if n < 8 { return "" }
+  let t = sym_u32(b, 4)
+  if t == 16777228 { return "arm64" }
+  if t == 16777223 { return "x86_64" }
+  return ""
+}
+
+# ---- PE -------------------------------------------------------------------------------------
+
+var sym_pe_guid: pointer = ""
+var sym_pe_age: int = 0
+
+# a section's file offset for an RVA, or -1
+function sym_pe_off(b: pointer, n: int, pe: int, rva: int) -> int {
+  let nsec = sym_u16(b, pe + 6)
+  let opt = sym_u16(b, pe + 20)
+  var s = pe + 24 + opt
+  var i = 0
+  while i < nsec and s + 40 <= n {
+    let vsz = sym_u32(b, s + 8)
+    let va = sym_u32(b, s + 12)
+    let rsz = sym_u32(b, s + 16)
+    let raw = sym_u32(b, s + 20)
+    var span = vsz
+    if rsz > span { span = rsz }
+    if rva >= va and rva < va + span { return rva - va + raw }
+    s += 40
+    i += 1
+  }
+  return -1
+}
+
+# the CodeView (RSDS) record of a 64-bit PE held in b[0..n): its GUID in sym_pe_guid (dashed, upper
+# case) and its age in sym_pe_age. True when there is one.
+function sym_pe_parse(b: pointer, n: int) -> bool {
+  if n < 512 or sym_b(b, 0) != 77 or sym_b(b, 1) != 90 { return false }
+  let pe = sym_u32(b, 60)
+  if pe + 200 > n { return false }
+  if not (sym_b(b, pe) == 80 and sym_b(b, pe + 1) == 69 and sym_b(b, pe + 2) == 0 and sym_b(b, pe + 3) == 0) { return false }
+  if sym_u16(b, pe + 24) != 523 { return false }
+  let drva = sym_u32(b, pe + 24 + 112 + 48)
+  let dsz = sym_u32(b, pe + 24 + 112 + 52)
+  if drva == 0 or dsz < 28 { return false }
+  let off = sym_pe_off(b, n, pe, drva)
+  if off < 0 { return false }
+  var i = 0
+  while i < dsz / 28 and off + i * 28 + 28 <= n {
+    let e = off + i * 28
+    if sym_u32(b, e + 12) == 2 {
+      let cv = sym_u32(b, e + 24)
+      if cv + 24 <= n and sym_b(b, cv) == 82 and sym_b(b, cv + 1) == 83 and sym_b(b, cv + 2) == 68 and sym_b(b, cv + 3) == 83 {
+        sym_pe_guid = sym_dashed(sym_hex_rev(b, cv + 4, 4), sym_hex_rev(b, cv + 8, 2), sym_hex_rev(b, cv + 10, 2), sym_hex_run(b, cv + 12, 2), sym_hex_run(b, cv + 14, 6))
+        sym_pe_age = sym_u32(b, cv + 20)
+        return true
+      }
+    }
+    i += 1
+  }
+  return false
+}
+
+# the id a symbol server keys a PDB by: the GUID without dashes, then the age in upper-case hex
+function sym_pe_id() -> pointer {
+  var g = ""
+  var i = 0
+  while i < slen(sym_pe_guid) {
+    if sym_pe_guid[i] != '-' { g = g + sym_pe_guid[i..i + 1] }
+    i += 1
+  }
+  var age = ""
+  var a = sym_pe_age
+  if a == 0 { age = "0" }
+  while a > 0 {
+    let d = a & 15
+    if d > 9 { age = sym_hex2(55 + d)[0..1] + age } else { age = sym_hex2(48 + d)[0..1] + age }
+    a = a / 16
+  }
+  return g + age
+}
+
+# ---- keeping them ---------------------------------------------------------------------------
+
+function sym_root(out: pointer) -> pointer {
+  let d = dir_of_path(out)
+  if d == "" { return "symbols" }
+  return `{d}/symbols`
+}
+
+function sym_meta(id: pointer, os: pointer, arch: pointer, kind: pointer, name: pointer, file: pointer, binary: pointer, version: pointer, size: int) -> pointer {
+  var m = `{{"id": {sym_q(id)}, "os": {sym_q(os)}, "arch": {sym_q(arch)}, "kind": {sym_q(kind)}, `
+  m = m + `"name": {sym_q(name)}, "file": {sym_q(file)}, "binary": {sym_q(binary)}, "version": {sym_q(version)}, "size": {string(size)}`
+  return m + "}" + nl()
+}
+
+function sym_size(path: pointer) -> int {
+  return s_to_int(capture(`du -sk {sym_sq(path)} | cut -f1`)) * 1024
+}
+
+# keep the symbols of the executable `exe` (just built; `name` is what the game is called) under the
+# symbols directory beside it. Says what it did, or why it could not; never fails the build.
+function sym_keep(exe: pointer, root: pointer, name: pointer, version: pointer) -> bool {
+  if getenv_or("LUDIC_NO_SYMBOLS", "0") == "1" { return false }
+  if host_windows() { return sym_keep_windows(exe, root, name, version) }
+  if not is_darwin() { return false }
+  let head = sym_head(exe, 65536)
+  if head == null { return false }
+  let id = sym_macho_id(head, sym_n)
+  if id == "" {
+    err(`ludic: no LC_UUID in {exe}: its symbols were not kept\n`)
+    return false
+  }
+  let arch = sym_macho_arch(head, sym_n)
+  let dir = `{root}/{id}`
+  shell(`rm -rf {sym_sq(dir)} && mkdir -p {sym_sq(dir)}`)
+  let file = `{name}.dSYM`
+  if not shq(`dsymutil {sym_sq(exe)} -o {sym_sq(dir + "/" + file)} 2>/dev/null`) {
+    err("ludic: dsymutil failed: the symbols were not kept (install the Xcode command line tools)\n")
+    shell(`rm -rf {sym_sq(dir)}`)
+    return false
+  }
+  write_file(`{dir}/meta.json`, sym_meta(id, "macos", arch, "dsym", name, file, exe, version, sym_size(dir + "/" + file)))
+  print(`symbols {id}  ->  {dir}/{file}`)
+  return true
+}
+
+# Windows: the PDB the link wrote beside the .exe (lld-link writes one when it is given /DEBUG, e.g.
+# LUDIC_CC="clang -Wl,/DEBUG"), under the id of the CodeView record in the .exe
+function sym_keep_windows(exe: pointer, root: pointer, name: pointer, version: pointer) -> bool {
+  var e = exe
+  if not sym_ends(e, ".exe") { e = e + ".exe" }
+  let pdb = sslice(e, 0, slen(e) - 4) + ".pdb"
+  let blob = sym_head(e, Fs.size(e))
+  if blob == null { return false }
+  if not sym_pe_parse(blob, sym_n) {
+    err(`ludic: no CodeView record in {e}: its symbols were not kept (link with /DEBUG)\n`)
+    return false
+  }
+  if not file_exists(pdb) {
+    err(`ludic: no {pdb}: its symbols were not kept (link with /DEBUG: LUDIC_CC="clang -Wl,/DEBUG")\n`)
+    return false
+  }
+  let id = sym_pe_id()
+  let dir = `{root}/{id}`
+  shell(`rm -rf {sym_sq(dir)} && mkdir -p {sym_sq(dir)}`)
+  let file = `{name}.pdb`
+  if not shq(`cp {sym_sq(pdb)} {sym_sq(dir + "/" + file)}`) { return false }
+  var meta = sym_meta(id, "windows", "x86_64", "pdb", name, file, e, version, sym_size(dir + "/" + file))
+  write_file(`{dir}/meta.json`, meta)
+  print(`symbols {id}  ->  {dir}/{file}`)
+  return true
+}
+
+
+# Windows: ask the linker for a PDB. ludicc runs $LUDIC_CC as the linker driver, so the flag rides on it
+# (the clang ludicc would have found, else the LLVM installer's). Only the process that then builds.
+function sym_win_prepare() -> void {
+  if not host_windows() { return }
+  if getenv_or("LUDIC_NO_SYMBOLS", "0") == "1" { return }
+  var base = getenv_or("LUDIC_CC", "")
+  if base == "" {
+    if Fs.exists("C:/Program Files/LLVM/bin/clang.exe") { base = "\"C:/Program Files/LLVM/bin/clang.exe\"" }
+    else { base = "clang" }
+  }
+  if s_contains(base, "/DEBUG") { return }
+  Os.set_env("LUDIC_CC", base + " -Wl,/DEBUG")
+}
+
+# ---- ludic symbols --------------------------------------------------------------------------
+
+function sym_field(meta: pointer, key: pointer) -> pointer {
+  let k = `"{key}": `
+  let at = s_index(meta, k, 0)
+  if at < 0 { return "" }
+  var i = at + slen(k)
+  if meta[i] == '"' {
+    i += 1
+    var s = ""
+    while meta[i] != 0 and meta[i] != '"' {
+      if meta[i] == 92 { i += 1 }
+      s = s + meta[i..i + 1]
+      i += 1
+    }
+    return s
+  }
+  var e = i
+  while meta[e] != 0 and meta[e] != ',' and meta[e] != '}' and meta[e] != '\n' { e += 1 }
+  return sslice(meta, i, e)
+}
+
+# every meta.json under the symbols directory, by id
+function sym_metas(root: pointer) -> []pointer {
+  let out = new []pointer
+  let dirs = split_lines(capture(`ls -1 {sym_sq(root)} 2>/dev/null`))
+  for i in 0 .. len(dirs) {
+    if dirs[i] != "" {
+      let m = read_file(`{root}/{dirs[i]}/meta.json`)
+      if m != null { push(out, m) }
+    }
+  }
+  return out
+}
+
+# the listing as one JSON object: { "dir", "symbols": [ meta, ... ] }
+function sym_json(root: pointer, metas: []pointer) -> pointer {
+  var s = "{" + nl()
+  s = s + `  "dir": {sym_q(root)},` + nl()
+  s = s + `  "symbols": [`
+  for i in 0 .. len(metas) {
+    var m = metas[i]
+    while slen(m) > 0 and (m[slen(m) - 1] == '\n') { m = sslice(m, 0, slen(m) - 1) }
+    if i > 0 { s = s + "," }
+    s = s + nl() + "    " + m
+  }
+  if len(metas) > 0 { s = s + nl() + "  " }
+  return s + "]" + nl() + "}"
+}
+
+# ludic symbols [--json] [--dir DIR]
+function cmd_symbols() -> int {
+  var root = "build/symbols"
+  var json = false
+  var ai = 2
+  while ai < arg_count() {
+    let a = arg(ai)
+    if a == "--json" { json = true }
+    else if a == "--dir" {
+      ai += 1
+      if ai < arg_count() { root = arg(ai) }
+      else { err("ludic symbols: --dir needs a path\n");  return 1 }
+    }
+    else {
+      err(`ludic symbols: unknown argument {a}\n`)
+      err("  usage: ludic symbols [--json] [--dir DIR]\n")
+      return 1
+    }
+    ai += 1
+  }
+  let metas = sym_metas(root)
+  if json {
+    print(sym_json(root, metas))
+    return 0
+  }
+  if len(metas) == 0 {
+    print(`no symbols under {root}: ludic build (windowed) and ludic bundle keep them`)
+    return 0
+  }
+  for i in 0 .. len(metas) {
+    let m = metas[i]
+    print(`{sym_field(m, "id")}  {sym_field(m, "os")}/{sym_field(m, "arch")}  {sym_field(m, "kind")}  {sym_field(m, "name")} {sym_field(m, "version")}  {root}/{sym_field(m, "id")}/{sym_field(m, "file")}`)
+  }
+  return 0
+}

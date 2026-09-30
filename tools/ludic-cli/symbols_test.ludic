@@ -1,0 +1,115 @@
+# symbols_test.ludic — `ludic symbols`, and the ids the symbol files are kept under (ludic-dev test-symbols).
+#
+# The Mach-O and PE readers are checked on headers built here byte by byte; the rest drives a fresh
+# bin/ludic in a scratch project, as a game's own directory would: a windowed build keeps its symbols
+# by the LC_UUID the linker stamped in (macOS), and `ludic symbols --json` lists them.
+
+function st_put(b: pointer, o: int, v: int, n: int) -> void {
+  var i = 0
+  var x = v
+  while i < n { b[o + i] = x & 255;  x = x / 256;  i += 1 }
+}
+
+# a thin arm64 Mach-O header with one LC_UUID command: the bytes 00 11 .. ff
+function st_macho() -> pointer {
+  let b = bytes(256)
+  b[0] = 207;  b[1] = 250;  b[2] = 237;  b[3] = 254   # MH_MAGIC_64
+  st_put(b, 4, 16777228, 4)         # CPU_TYPE_ARM64
+  st_put(b, 16, 2, 4)               # two commands
+  st_put(b, 32, 25, 4)              # LC_SEGMENT_64, 72 bytes of no interest
+  st_put(b, 36, 72, 4)
+  st_put(b, 104, 27, 4)             # LC_UUID
+  st_put(b, 108, 24, 4)
+  var i = 0
+  while i < 16 { b[112 + i] = i * 17;  i += 1 }
+  return b
+}
+
+# a 64-bit PE with a CodeView debug directory in one section: GUID 11223344-5566-7788-99AA-BBCCDDEEFF10, age 3
+function st_pe() -> pointer {
+  let b = bytes(2048)
+  b[0] = 77;  b[1] = 90
+  st_put(b, 60, 128, 4)             # e_lfanew
+  b[128] = 80;  b[129] = 69         # PE\0\0
+  st_put(b, 128 + 6, 1, 2)          # one section
+  st_put(b, 128 + 20, 240, 2)       # optional header size
+  st_put(b, 128 + 24, 523, 2)       # PE32+
+  st_put(b, 128 + 24 + 112 + 48, 4096, 4)   # debug directory at RVA 0x1000 ...
+  st_put(b, 128 + 24 + 112 + 52, 28, 4)     # ... one entry
+  let sec = 128 + 24 + 240
+  st_put(b, sec + 8, 1024, 4)       # VirtualSize
+  st_put(b, sec + 12, 4096, 4)      # VirtualAddress
+  st_put(b, sec + 16, 1024, 4)      # SizeOfRawData
+  st_put(b, sec + 20, 1024, 4)      # PointerToRawData
+  let dir = 1024                    # RVA 0x1000 is file offset 1024
+  st_put(b, dir + 12, 2, 4)         # IMAGE_DEBUG_TYPE_CODEVIEW
+  st_put(b, dir + 24, 1100, 4)      # PointerToRawData: the RSDS record
+  let cv = 1100
+  b[cv] = 82;  b[cv + 1] = 83;  b[cv + 2] = 68;  b[cv + 3] = 83
+  st_put(b, cv + 4, 287454020, 4)   # Data1 0x11223344
+  st_put(b, cv + 8, 21862, 2)       # Data2 0x5566
+  st_put(b, cv + 10, 30600, 2)      # Data3 0x7788
+  var i = 0
+  while i < 8 { b[cv + 12 + i] = 153 + i * 17;  i += 1 }   # Data4 99 AA BB CC DD EE FF 10
+  st_put(b, cv + 20, 3, 4)
+  return b
+}
+
+function cmd_test_symbols() -> int {
+  PASS = 0
+  FAIL = 0
+  print("== ludic symbols: the Mach-O and PE ids, the symbols a build keeps, the listing ==")
+  let root = capture_line("pwd")
+  let work = `{tmp_dir()}/symbols_test`
+  shell(`rm -rf {work} && mkdir -p {work}/a`)
+  let ludic = `{root}/bin/ludic`
+
+  let mo = st_macho()
+  if sym_macho_id(mo, 256) == "00112233-4455-6677-8899-AABBCCDDEEFF" { ok("a Mach-O's LC_UUID reads as the dashed upper-case uuid dwarfdump prints") }
+  else { bad2("LC_UUID", sym_macho_id(mo, 256)) }
+  if sym_macho_arch(mo, 256) == "arm64" { ok("its cpu type names the arch") } else { bad("cpu type") }
+  if sym_macho_id(st_pe(), 2048) == "" { ok("a PE is not a Mach-O") } else { bad("a PE read as a Mach-O") }
+
+  let pe = st_pe()
+  if sym_pe_parse(pe, 2048) and sym_pe_guid == "11223344-5566-7788-99AA-BBCCDDEEFF10" and sym_pe_age == 3 {
+    ok("a PE's CodeView record gives its GUID (first fields little-endian) and age")
+  } else { bad2("the CodeView record", `{sym_pe_guid} age {string(sym_pe_age)}`) }
+  if sym_pe_id() == "112233445566778899AABBCCDDEEFF103" { ok("the symbol server's key is the GUID without dashes, then the age in hex") }
+  else { bad2("the pdb key", sym_pe_id()) }
+  st_put(pe, 1100, 0, 4)
+  if not sym_pe_parse(pe, 2048) { ok("a PE with no RSDS record has no id") } else { bad("a PE without RSDS parsed") }
+  if not sym_pe_parse(mo, 256) { ok("a Mach-O is not a PE") } else { bad("a Mach-O read as a PE") }
+
+  # a real build keeps its symbols by id
+  if is_darwin() {
+    pt_write(`{work}/a/hello.ludic`, "program Hello {\n  entry {\n    print(\"hi\")\n  }\n}\n")
+    let envp = `env LUDIC_HOME={root}`
+    let rc = shell(`cd {work}/a && {envp} {ludic} build hello.ludic > {work}/build.out 2>&1`)
+    let uuid = capture_line(`dwarfdump --uuid {work}/a/build/hello | head -1 | cut -d' ' -f2`)
+    if exit_code(rc) == 0 and len(uuid) == 36 and Fs.exists(`{work}/a/build/symbols/{uuid}/hello.dSYM`) and Fs.exists(`{work}/a/build/symbols/{uuid}/meta.json`) {
+      ok("ludic build keeps a .dSYM under build/symbols/<LC_UUID>, beside the binary")
+    } else { bad2("the build's symbols", `{uuid}  ` + pt_read(`{work}/build.out`)) }
+    let js = capture(`cd {work}/a && {envp} {ludic} symbols --json`)
+    if s_contains(js, `"id": "{uuid}"`) and s_contains(js, "\"kind\": \"dsym\"") and s_contains(js, "\"os\": \"macos\"") and s_contains(js, "\"name\": \"hello\"") and s_contains(js, "\"dir\": \"build/symbols\"") {
+      ok("ludic symbols --json lists id, os, arch, kind, name, file, binary, version, size")
+    } else { bad2("the listing", js) }
+    let txt = capture(`cd {work}/a && {envp} {ludic} symbols`)
+    if s_starts(txt, uuid) and s_contains(txt, "macos/arm64") { ok("ludic symbols names them in a table") } else { bad2("the table", txt) }
+    # the dSYM carries the symbol table: a function of the program resolves
+    let nm = capture(`nm {work}/a/build/symbols/{uuid}/hello.dSYM/Contents/Resources/DWARF/hello | grep -c " T "`)
+    if s_to_int(nm) > 0 { ok("the dSYM holds the program's function symbols") } else { bad2("an empty dSYM", nm) }
+    # another build: a second id next to the first, and the first is not touched
+    pt_write(`{work}/a/hello.ludic`, "program Hello {\n  entry {\n    print(\"hello again\")\n  }\n}\n")
+    shell(`cd {work}/a && {envp} {ludic} build hello.ludic > /dev/null 2>&1`)
+    let js2 = capture(`cd {work}/a && {envp} {ludic} symbols --json`)
+    if s_contains(js2, `"id": "{uuid}"`) and s_index(js2, "\"id\"", s_index(js2, "\"id\"", 0) + 1) > 0 { ok("a second build adds its own id; the first stays") }
+    else { bad2("two builds", js2) }
+    shell(`cd {work}/a && {envp} LUDIC_NO_SYMBOLS=1 {ludic} build hello.ludic -o build/quiet > /dev/null 2>&1`)
+    let n3 = capture(`ls {work}/a/build/symbols | wc -l`)
+    if s_to_int(s_trim(n3)) == 2 { ok("LUDIC_NO_SYMBOLS=1 keeps nothing") } else { bad2("symbols kept although asked not to", n3) }
+  }
+  let e = capture(`cd {work}/a && env LUDIC_HOME={root} {ludic} symbols --dir {work}/nowhere --json`)
+  if s_contains(e, "\"symbols\": []") { ok("no symbols is an empty list, not an error") } else { bad2("the empty listing", e) }
+
+  return report()
+}

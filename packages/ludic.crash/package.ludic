@@ -1,0 +1,5 @@
+# ludic.crash - what a game does about the crash it had last time: the record the runtime's crash
+# handler left, found at the next start, offered to the game to show and to send. See README.md.
+package "ludic.crash"
+version "0.1.0"
+kind source

@@ -1,0 +1,106 @@
+# queries.ludic - the verbs: start, what is pending, the record, consent, settling one
+
+# before crash_start
+export function crash_config(crash_st: mut CrashState, c: CrashConfig) -> void {
+  crash_st.crash__cfg = c
+}
+
+# once at boot, before the game can crash: read and rotate the folder, then (when enabled) install
+# the handler. Answers how many records are waiting from earlier runs.
+export function crash_start(crash_st: mut CrashState) -> int {
+  let c = crash_st.crash__cfg
+  if len(c.dir) == 0 { return 0 }
+  if not Fs.exists(c.dir) { Fs.mkdir(c.dir) }
+  let n = crash__scan(crash_st)
+  crash_set_enabled(crash_st, c.enabled)
+  if n > 0 {
+    let f = new CrashFact
+    f.what = CRASH_FOUND
+    f.count = n
+    q_push(crash_st.crash__facts, f)
+  }
+  return n
+}
+
+# the player's "crash reports" switch, at run time: off takes the handler out
+export function crash_set_enabled(crash_st: mut CrashState, on: bool) -> void {
+  crash_st.crash__cfg.enabled = on
+  let c = crash_st.crash__cfg
+  if on and len(c.dir) > 0 {
+    if not crash_st.crash__on { crash_st.crash__on = lu_crash_install(c.dir, c.app, c.version, c.build) == 0 }
+    else { lu_crash_install(c.dir, c.app, c.version, c.build) }
+  } else if crash_st.crash__on {
+    lu_crash_uninstall()
+    crash_st.crash__on = false
+  }
+}
+
+export function crash_installed(crash_st: CrashState) -> bool { return crash_st.crash__on }
+export function crash_dir(crash_st: CrashState) -> string { return crash_st.crash__cfg.dir }
+
+# one line of what the game was doing, written into the next record
+export function crash_context(crash_st: CrashState, text: string) -> void {
+  if crash_st.crash__on { lu_crash_context(text) }
+}
+
+# the records waiting, newest first (the UI's "the game crashed last time")
+export function crash_pending(crash_st: CrashState) -> int { return len(crash_st.crash__names) }
+
+export function crash_file(crash_st: CrashState, i: int) -> string {
+  if i < 0 or i >= len(crash_st.crash__names) { return "" }
+  return crash__path(crash_st, i)
+}
+
+# the parsed record (read once, then kept until the list changes); an empty one for a bad index
+export function crash_record(crash_st: mut CrashState, i: int) -> CrashRecord {
+  if i < 0 or i >= len(crash_st.crash__names) { return new CrashRecord }
+  if len(crash_st.crash__cache) != len(crash_st.crash__names) {
+    List.clear(crash_st.crash__cache)
+    for j in 0 .. len(crash_st.crash__names) { push(crash_st.crash__cache, null) }
+  }
+  if crash_st.crash__cache[i] == null {
+    let r = crash_parse(Fs.read_text(crash__path(crash_st, i)))
+    r.file = crash_st.crash__names[i]
+    crash_st.crash__cache[i] = r
+  }
+  return crash_st.crash__cache[i]
+}
+
+# the record's text whole: what goes out as a raw event, for the studio to symbolize
+export function crash_text(crash_st: mut CrashState, i: int) -> string { return crash_record(crash_st, i).text }
+
+# may a record leave this machine: the player said yes (CrashWorld.consent), and there is one.
+# Without consent a record is a local file and nothing more.
+export function crash_sendable(crash_st: CrashState) -> int {
+  if not CrashWorld.consent() { return 0 }
+  return len(crash_st.crash__names)
+}
+
+# the one to send next (always 0: settling one moves the rest up), or -1 when none may go
+export function crash_next_send(crash_st: CrashState) -> int {
+  if crash_sendable(crash_st) > 0 { return 0 }
+  return -1
+}
+
+# the game sent it (or handed it to telemetry, which keeps its own queue): it is not pending
+export function crash_mark_sent(crash_st: mut CrashState, i: int) -> bool { return crash__settle(crash_st, i, ".sent") }
+
+# the player saw it and wants nothing done: it is not pending, and is never sent
+export function crash_dismiss(crash_st: mut CrashState, i: int) -> bool { return crash__settle(crash_st, i, ".dismissed") }
+
+export function crash_facts(crash_st: CrashState) -> Queue<CrashFact> { return crash_st.crash__facts }
+
+# a crash on purpose, for a test or a debug button: 0 a wild store, 1 abort, 2 a trap, 3 SIGFPE
+# (macOS) or a stack overflow (Windows), 4 a stack overflow (macOS). Only while the handler is installed.
+export function crash_trigger(crash_st: CrashState, kind: int) -> void {
+  if crash_st.crash__on { lu_crash_trigger(kind) }
+}
+
+# back to before crash_start, config kept (tests)
+export function crash_reset(crash_st: mut CrashState) -> void {
+  if crash_st.crash__on { lu_crash_uninstall() }
+  crash_st.crash__on = false
+  List.clear(crash_st.crash__names)
+  List.clear(crash_st.crash__cache)
+  q_clear(crash_st.crash__facts)
+}

@@ -1,0 +1,47 @@
+# files.ludic - the crash folder: records are `crash-<unix time>-<pid>.lcr` (pending) and, once the
+# game has dealt with one, `.lcr.sent` or `.lcr.dismissed`. The newest keep_n of all three stay.
+
+function crash__is_record(name: string) -> bool {
+  return Text.starts_with(name, "crash-") and (Text.ends_with(name, ".lcr") or Text.ends_with(name, ".lcr.sent") or Text.ends_with(name, ".lcr.dismissed"))
+}
+
+# read the folder again: rotate, then list the pending records newest first. Answers how many pend.
+function crash__scan(crash_st: mut CrashState) -> int {
+  List.clear(crash_st.crash__names)
+  List.clear(crash_st.crash__cache)
+  let c = crash_st.crash__cfg
+  if len(c.dir) == 0 or not Fs.is_dir(c.dir) { return 0 }
+  let all = Fs.list(c.dir)
+  let mine = new []string
+  for i in 0 .. len(all) {
+    let name = Path.base(all[i])
+    if crash__is_record(name) { push(mine, name) }
+  }
+  # the names sort by time (ten digits until 2286), so the oldest are first
+  var drop = len(mine) - c.keep_n
+  if c.keep_n < 0 { drop = 0 }
+  for i in 0 .. len(mine) {
+    if i < drop { Fs.remove(Path.join(c.dir, mine[i])) }
+  }
+  var i = len(mine) - 1
+  while i >= 0 {
+    if i >= drop and Text.ends_with(mine[i], ".lcr") { push(crash_st.crash__names, mine[i]) }
+    i -= 1
+  }
+  return len(crash_st.crash__names)
+}
+
+function crash__path(crash_st: CrashState, i: int) -> string {
+  return Path.join(crash_st.crash__cfg.dir, crash_st.crash__names[i])
+}
+
+# rename a pending record to `name + suffix` (there is no rename: copy, then remove) and forget it
+function crash__settle(crash_st: mut CrashState, i: int, suffix: string) -> bool {
+  if i < 0 or i >= len(crash_st.crash__names) { return false }
+  let from = crash__path(crash_st, i)
+  if not Fs.copy(from, from + suffix) { return false }
+  Fs.remove(from)
+  List.remove_at(crash_st.crash__names, i)
+  List.clear(crash_st.crash__cache)
+  return true
+}

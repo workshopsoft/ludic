@@ -31,6 +31,7 @@ program Ludic {
   import "packignore.ludic"
   import "pack.ludic"
   import "bundle.ludic"
+  import "symbols.ludic"
   import "scripts.ludic"
   import "deps.ludic"
   import "schema.ludic"
@@ -82,6 +83,7 @@ program Ludic {
     print("  pack --list FILE              print what is in a pack")
     print("  pack --verify FILE            re-hash every entry against the table")
     print("  bundle [file]                 build a macOS .app: icon, metadata, assets, splash")
+    print("  symbols [--json] [--dir DIR]  the debug symbols build and bundle kept (build/symbols/<id>), by the id a crash report names")
     print("  release [--os osx|win|linux] [--dry-run] [--json] [--key-id ID --secret KEY]")
     print("                                pack the bundle with Velopack (vpk) and upload it, from package.ludic's `release` lines;")
     print("                                --dry-run prints the exact commands (secrets redacted) and stops; --json: the plan as JSON")
@@ -146,6 +148,7 @@ program Ludic {
     if (cmd == "assets") { return cmd_fetch_assets() }
     if (cmd == "pack") { return cmd_pack() }
     if (cmd == "bundle") { return cmd_bundle() }
+    if (cmd == "symbols") { return cmd_symbols() }
     if (cmd == "build-lib") { return cmd_pkg_build_lib() }
     if (cmd == "link-flags") { return cmd_pkg_link_flags() }
 

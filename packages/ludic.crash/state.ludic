@@ -1,0 +1,74 @@
+# state.ludic - the config, the port, the facts, the record's shape, and what is kept
+# where the records are and what goes in them. `enabled` off installs nothing: no record is made.
+export property CrashConfig {
+  dir: string = ""        # the crash folder, under the game's save root ("" installs nothing)
+  keep_n: int = 5         # records kept here, the newest (pending or handled); the rest are deleted
+  enabled: bool = true    # off: no handler, so no record; the folder is still read and rotated
+  app: string = ""        # the game's name, in every record
+  version: string = ""    # the game's version
+  build: string = ""      # a build id (Build.schema_hash() in a dev build, the release's own in a shipped one)
+}
+
+# what the crash package asks the game. Unbound: no consent, so a record stays a local file.
+export port CrashWorld {
+  consent: fn() -> bool = fn crash__no     # the player's switch: may a record leave this machine
+}
+
+export const CRASH_FOUND: int = 0     # a start found records waiting (count)
+
+export property CrashFact {
+  what: int = 0
+  count: int = 0
+}
+
+# one record parsed (crash_parse); the text is kept so a game can hand it on whole
+export property CrashFrame {
+  index: int = 0
+  pc: string = ""        # "0x..." the address
+  via: string = ""       # "pc" the faulting instruction, "lr" a guess from the link register, "scan" a return address found on the stack, "unwind" Windows' unwinder
+}
+
+export property CrashImage {
+  path: string = ""
+  base: string = ""      # "0x..." where it is loaded
+  size: string = ""      # "0x..." of its code
+  uuid: string = ""      # Mach-O LC_UUID, or the PE's CodeView GUID: what a symbol file is keyed by
+  age: int = 0           # the PE's CodeView age (0 on macOS)
+  main: bool = false     # the game's own executable
+}
+
+export property CrashRecord {
+  ok: bool = false             # it was a record: a first line that says so
+  complete: bool = false       # it ends with its "end" line (a handler cut short leaves a prefix)
+  file: string = ""
+  text: string = ""            # the file, whole: what the studio parses and symbolizes
+  app: string = ""
+  version: string = ""
+  build: string = ""
+  context: string = ""
+  os: string = ""
+  os_version: string = ""
+  arch: string = ""
+  time: int = 0                # seconds since 1970
+  pid: int = 0
+  tid: int = 0
+  main_thread: bool = false
+  sig: int = 0                 # the POSIX signal, 0 on Windows
+  signame: string = ""         # SIGSEGV, EXCEPTION_ACCESS_VIOLATION, ...
+  code: int = 0                # POSIX si_code; on Windows the exception code
+  addr: string = ""            # "0x..." the address it touched
+  pc: string = ""
+  frames: []CrashFrame = new []CrashFrame
+  images: []CrashImage = new []CrashImage
+}
+
+export state CrashState {
+  crash__cfg: CrashConfig = new CrashConfig
+  crash__on: bool = false                  # the handler is installed
+  crash__names: []string = new []string    # the pending records' file names, newest first
+  crash__cache: []CrashRecord = new []CrashRecord   # parsed on the first ask, by position
+  crash__facts: Queue<CrashFact> = crash__facts__new()
+}
+
+function crash__facts__new() -> Queue<CrashFact> { return queue_new("crash.facts") }
+function crash__no() -> bool { return false }

@@ -11,7 +11,7 @@ export function telemetry_queued(telemetry_st: TelemetryState) -> int { return t
 
 # a queued line as it will be sent, player mark and all
 export function telemetry_line(telemetry_st: TelemetryState, i: int) -> string {
-  let sb = sb_new(TELEMETRY_LINE)
+  let sb = sb_new(len(telemetry_st.telemetry__line.b))
   tr_line_to(telemetry_st, i, sb, null)
   return text_of(sb.b, sb_len(sb))
 }

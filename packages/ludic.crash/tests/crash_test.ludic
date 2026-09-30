@@ -1,0 +1,252 @@
+# crash_test.ludic - a record parsed, the folder found and rotated, consent, what a launcher's exit
+# code says, and (on this machine's own runtime) a child process that crashes on purpose and leaves
+# a record the next start finds. The child is this very test binary, started with a test's name and
+# an extra argument the harness ignores.
+import "ludic.crash"
+import "ludic.base"
+program CrashTest {
+  numbers float
+  state CrashTestState {
+    consent: bool = false
+  }
+
+  function fake_consent(crash_test_st: CrashTestState) -> bool { return crash_test_st.consent }
+  bind CrashWorld { consent: fn fake_consent }
+
+  function dir() -> string { return Os.temp_dir() + "/ludic-crash-test" }
+
+  # a record as the handler writes it (runtime/native/crash.ll)
+  function sample(t: int, sig: int) -> string {
+    var s = "{\"k\":\"crash\",\"v\":1,\"producer\":\"ludic\",\"app\":\"Maroon \\\"Lake\\\"\",\"version\":\"1.2.3\",\"build\":\"b-42\",\"context\":\"scene=forest\",\"os\":\"macos\",\"os_version\":\"15.4\",\"arch\":\"arm64\",\"pid\":4242,\"tid\":99,\"main\":true,"
+    s = s + `"time":{t},"sig":{sig},"signame":"SIGSEGV","code":2,"addr":"0x10","pc":"0x100003f60","sp":"0x16f000000","fp":"0x16f000010","lr":"0x100003f70"}\n`
+    s = s + "{\"k\":\"frame\",\"i\":0,\"pc\":\"0x100003f60\",\"via\":\"pc\"}\n"
+    s = s + "{\"k\":\"frame\",\"i\":1,\"pc\":\"0x100003f70\",\"via\":\"lr\"}\n"
+    s = s + "{\"k\":\"image\",\"path\":\"/Applications/Maroon Lake.app/Contents/MacOS/Maroon Lake\",\"base\":\"0x100000000\",\"size\":\"0x8000\",\"uuid\":\"8545D571-AC52-396B-8403-1DD2B282BA3B\",\"main\":true}\n"
+    s = s + "{\"k\":\"end\",\"frames\":2,\"images\":1}\n"
+    return s
+  }
+
+  function put(name: string, t: int) -> void {
+    Fs.write_text(Path.join(dir(), name), sample(t, 11))
+  }
+
+  function fresh(crash_st: mut CrashState, crash_test_st: mut CrashTestState, keep: int) -> void {
+    crash_reset(crash_st)
+    crash_test_st.consent = false
+    if Fs.is_dir(dir()) {
+      let old = Fs.list(dir())
+      for i in 0 .. len(old) { Fs.remove(Path.join(dir(), Path.base(old[i]))) }
+    }
+    Fs.mkdir(dir())
+    let c = new CrashConfig
+    c.dir = dir()
+    c.keep_n = keep
+    c.enabled = false
+    c.app = "Test"
+    c.version = "0.0.1"
+    crash_config(crash_st, c)
+  }
+
+  test "a record is read back: the header, the frames, the images, and that it ended" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    let r = crash_parse(sample(1790000000, 11))
+    expect(r.ok)
+    expect(r.complete)
+    expect(r.app == "Maroon \"Lake\"")
+    expect(r.version == "1.2.3")
+    expect(r.build == "b-42")
+    expect(r.context == "scene=forest")
+    expect(r.os == "macos")
+    expect(r.arch == "arm64")
+    expect_eq(r.time, 1790000000)
+    expect_eq(r.pid, 4242)
+    expect_eq(r.sig, 11)
+    expect(r.signame == "SIGSEGV")
+    expect(r.addr == "0x10")
+    expect(r.main_thread)
+    expect_eq(len(r.frames), 2)
+    expect(r.frames[1].via == "lr")
+    expect(r.frames[0].pc == "0x100003f60")
+    expect_eq(len(r.images), 1)
+    expect(r.images[0].main)
+    expect(r.images[0].uuid == "8545D571-AC52-396B-8403-1DD2B282BA3B")
+  }
+
+  test "a record the handler did not finish still reads, and says it did not end" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    let full = sample(1790000000, 11)
+    let cut = full[0..len(full) - 60]
+    let r = crash_parse(cut)
+    expect(r.ok)
+    expect(not r.complete)
+    expect_eq(len(r.frames), 2)
+    expect(not crash_parse("not json at all\n{\"k\":\"frame\"").ok)
+    expect(not crash_parse("").ok)
+  }
+
+  test "a start finds the pending records, newest first, and skips what was dealt with" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    fresh(crash_st, crash_test_st, 10)
+    put("crash-1790000100-11.lcr", 1790000100)
+    put("crash-1790000300-13.lcr", 1790000300)
+    put("crash-1790000200-12.lcr", 1790000200)
+    put("crash-1790000050-10.lcr.sent", 1790000050)
+    Fs.write_text(Path.join(dir(), "notes.txt"), "not a record")
+    expect_eq(crash_start(crash_st), 3)
+    expect_eq(crash_pending(crash_st), 3)
+    expect_eq(crash_record(crash_st, 0).time, 1790000300)
+    expect_eq(crash_record(crash_st, 2).time, 1790000100)
+    expect(crash_record(crash_st, 0).file == "crash-1790000300-13.lcr")
+    expect_eq(crash_record(crash_st, 7).time, 0)
+    let facts = q_drain(crash_facts(crash_st))
+    expect_eq(len(facts), 1)
+    expect_eq(facts[0].count, 3)
+    expect(Text.contains(crash_text(crash_st, 1), "\"k\":\"end\""))
+  }
+
+  test "only the newest keep_n stay, pending or not" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    fresh(crash_st, crash_test_st, 3)
+    put("crash-1790000100-1.lcr", 1790000100)
+    put("crash-1790000200-2.lcr.sent", 1790000200)
+    put("crash-1790000300-3.lcr", 1790000300)
+    put("crash-1790000400-4.lcr.dismissed", 1790000400)
+    put("crash-1790000500-5.lcr", 1790000500)
+    expect_eq(crash_start(crash_st), 2)
+    let left = Fs.list(dir())
+    expect_eq(len(left), 3)
+    expect(Fs.exists(Path.join(dir(), "crash-1790000500-5.lcr")))
+    expect(Fs.exists(Path.join(dir(), "crash-1790000300-3.lcr")))
+    expect(not Fs.exists(Path.join(dir(), "crash-1790000100-1.lcr")))
+    expect(not Fs.exists(Path.join(dir(), "crash-1790000200-2.lcr.sent")))
+  }
+
+  test "without consent a record is a local file: nothing may be sent" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    fresh(crash_st, crash_test_st, 5)
+    put("crash-1790000100-1.lcr", 1790000100)
+    expect_eq(crash_start(crash_st), 1)
+    expect_eq(crash_pending(crash_st), 1)
+    expect_eq(crash_sendable(crash_st), 0)
+    expect_eq(crash_next_send(crash_st), -1)
+    crash_test_st.consent = true
+    expect_eq(crash_sendable(crash_st), 1)
+    expect_eq(crash_next_send(crash_st), 0)
+  }
+
+  test "a sent record stays as .sent and is not pending; a dismissed one too" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    fresh(crash_st, crash_test_st, 5)
+    put("crash-1790000100-1.lcr", 1790000100)
+    put("crash-1790000200-2.lcr", 1790000200)
+    expect_eq(crash_start(crash_st), 2)
+    crash_test_st.consent = true
+    expect(crash_mark_sent(crash_st, crash_next_send(crash_st)))
+    expect_eq(crash_pending(crash_st), 1)
+    expect(Fs.exists(Path.join(dir(), "crash-1790000200-2.lcr.sent")))
+    expect(not Fs.exists(Path.join(dir(), "crash-1790000200-2.lcr")))
+    expect(crash_dismiss(crash_st, 0))
+    expect_eq(crash_pending(crash_st), 0)
+    expect_eq(crash_next_send(crash_st), -1)
+    expect(Fs.exists(Path.join(dir(), "crash-1790000100-1.lcr.dismissed")))
+    expect(not crash_dismiss(crash_st, 0))
+    # the next start finds nothing pending
+    crash_reset(crash_st)
+    expect_eq(crash_start(crash_st), 0)
+  }
+
+  test "enabled off installs nothing, and the folder is still read" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    fresh(crash_st, crash_test_st, 5)
+    put("crash-1790000100-1.lcr", 1790000100)
+    expect_eq(crash_start(crash_st), 1)
+    expect(not crash_installed(crash_st))
+    crash_set_enabled(crash_st, true)
+    expect(crash_installed(crash_st))
+    crash_set_enabled(crash_st, false)
+    expect(not crash_installed(crash_st))
+  }
+
+  test "a launcher tells a crash from an exit by the code" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    expect(crash_exit_is_crash(139))
+    expect(crash_exit_name(139) == "SIGSEGV")
+    expect(crash_exit_name(134) == "SIGABRT")
+    expect(crash_exit_name(-1073741819) == "EXCEPTION_ACCESS_VIOLATION")
+    expect(crash_exit_name(-1073741510) == "EXCEPTION")
+    expect(not crash_exit_is_crash(0))
+    expect(not crash_exit_is_crash(1))
+    expect(not crash_exit_is_crash(137))
+    expect(not crash_exit_is_crash(-1))
+    expect(not crash_exit_is_crash(255))
+  }
+
+  # ---- a real crash, in a child --------------------------------------------------------
+
+  # the child: only does anything when started by the test below (arg 2 is a folder, arg 3 the kind)
+  test "child: crash on purpose" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    if arg_count() < 4 { return }
+    let c = new CrashConfig
+    c.dir = arg(2)
+    c.app = "Crash Child"
+    c.version = "9.8.7"
+    c.build = "child-build"
+    crash_config(crash_st, c)
+    crash_start(crash_st)
+    crash_context(crash_st, "on purpose")
+    crash_trigger(crash_st, Text.to_int(arg(3)))
+    Os.exit(3)
+  }
+
+  function run_child(kind: int) -> int {
+    let d = dir() + "/child" + Text.from_int(kind)
+    if Fs.is_dir(d) {
+      let old = Fs.list(d)
+      for i in 0 .. len(old) { Fs.remove(Path.join(d, Path.base(old[i]))) }
+    }
+    Fs.mkdir(d)
+    let h = Process.spawn(arg(0), ["child: crash on purpose", d, Text.from_int(kind)])
+    var code = Process.poll(h)
+    while code == -1 { code = Process.poll(h) }
+    Process.free(h)
+    return code
+  }
+
+  test "a child that dies of a wild store leaves a record the next start finds" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    let code = run_child(0)
+    expect_eq(code, 139)
+    expect(crash_exit_is_crash(code))
+    fresh(crash_st, crash_test_st, 5)
+    let c = new CrashConfig
+    c.dir = dir() + "/child0"
+    crash_config(crash_st, c)
+    expect_eq(crash_start(crash_st), 1)
+    let r = crash_record(crash_st, 0)
+    expect(r.ok)
+    expect(r.complete)
+    expect(r.signame == "SIGSEGV")
+    expect(r.app == "Crash Child")
+    expect(r.version == "9.8.7")
+    expect(r.build == "child-build")
+    expect(r.context == "on purpose")
+    expect(r.os == "macos")
+    expect(r.addr == "0x10")
+    expect(r.main_thread)
+    expect(len(r.frames) >= 2)
+    expect(r.frames[0].via == "pc")
+    expect(len(r.images) >= 1)
+    expect(r.images[0].main)
+    expect(len(r.images[0].uuid) == 36)
+  }
+
+  test "abort, a trap and a stack overflow leave records too" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    let kinds = [1, 2, 4]
+    let names = ["SIGABRT", "SIGTRAP", "SIGSEGV"]
+    let codes = [134, 133, 139]
+    for k in 0 .. 3 {
+      expect_eq(run_child(kinds[k]), codes[k])
+      let c = new CrashConfig
+      c.dir = dir() + "/child" + Text.from_int(kinds[k])
+      crash_reset(crash_st)
+      crash_config(crash_st, c)
+      expect_eq(crash_start(crash_st), 1)
+      let r = crash_record(crash_st, 0)
+      expect(r.ok)
+      expect(r.complete)
+      expect(r.signame == names[k])
+      expect(len(r.frames) >= 2)
+    }
+  }
+}

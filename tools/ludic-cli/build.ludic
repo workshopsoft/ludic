@@ -49,7 +49,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
     var flags = "--windowed"
     if mode == 2 { flags = "--headless" }
     if save { flags = flags + " --save-temps" }
-    return shq(`{ludicc()} {flags}{title_flag()}{unsafe_flag()}{release_flag()} {src} -o {out}`)
+    return shq(`{ludicc()} {flags}{title_flag()}{unsafe_flag()}{release_flag()}{crash_win_flag()} {src} -o {out}`)
   }
 
   if mode == 2 {
@@ -147,7 +147,9 @@ function native_link_flags(ll: pointer) -> pointer {
     f = f + ` "{libs[i]}" -Wl,-rpath,{dir_of_path(libs[i])} -Wl,-rpath,@executable_path/../Frameworks`
     i += 1
   }
-  return f
+  # the runtime's crash layer rides with these: every link site already says them, and only a
+  # program that calls lu_crash_* (ludic.crash) gets it
+  return f + crash_link_flags(ll)
 }
 
 # A program that uses Http.* calls the @hs_* transport; link http.ll and Foundation only
@@ -173,6 +175,26 @@ function udp_link_flags(ll: pointer) -> pointer {
 function process_link_flags(ll: pointer) -> pointer {
   if not shq(`grep -q "call .*@lu_proc_" {ll}`) { return "" }
   return ` {ludic_home()}runtime/native/process.ll`
+}
+
+# A program that calls the lu_crash_* layer (ludic.crash) links crash.ll - the handlers for
+# SIGSEGV and the rest, and the record they write - only then. Windows links crash_win.ll
+# through ludicc (`--link`, see compile_app).
+function crash_link_flags(ll: pointer) -> pointer {
+  if not shq(`grep -q "call .*@lu_crash_" {ll}`) { return "" }
+  return ` {ludic_home()}runtime/native/crash.ll`
+}
+
+# Windows: does anything under the working directory import ludic.crash? ludicc links and there is no
+# IR to look in, so the sources are searched; a false positive only links a file nothing calls.
+function win_uses_crash() -> bool {
+  if not host_windows() { return false }
+  let hit = capture("findstr /s /m /c:\"ludic.crash\" *.ludic 2>nul")
+  return len(hit) > 0
+}
+function crash_win_flag() -> pointer {
+  if not win_uses_crash() { return "" }
+  return ` --link "{ludic_home()}runtime/native/crash_win.ll"`
 }
 
 # A program that uses Job.* / Promise.* / Sync.* calls the thr_* OS-thread runtime; link
