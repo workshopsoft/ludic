@@ -518,6 +518,28 @@ function gvk_layer_views_drop(render3d_st: mut Render3dState, tex: int) -> void 
   while len(texs) > w { List.pop(texs) }
 }
 
+# the per-level and per-layer views gvk_view_of made of a texture go with it: kept, each held its
+# old Metal texture alive, so every rebuild of the screen targets left the last set's memory behind
+function gvk_layer_views_drop(render3d_st: mut Render3dState, tex: int) -> void {
+  if render3d_st.gvk_layer_views == null { return }
+  let keys = render3d_st.gvk_layer_views
+  let views = render3d_st.gvk_layer_view
+  let texs = render3d_st.gvk_layer_view_tex
+  var w = 0
+  for i in 0 .. len(keys) {
+    if texs[i] == tex {
+      render3d_st.gvk_mk_x_view += 1
+      Vk.destroy_image_view(render3d_st.gvk_dev, views[i], null)
+    } else {
+      keys[w] = keys[i];  views[w] = views[i];  texs[w] = texs[i]
+      w += 1
+    }
+  }
+  while len(keys) > w { List.pop(keys) }
+  while len(views) > w { List.pop(views) }
+  while len(texs) > w { List.pop(texs) }
+}
+
 # ---- samplers -----------------------------------------------------------------------------
 # One VkSampler per distinct way of reading a texture, made the first time it is asked for.
 # The arguments are what the renderer set through gpu_tex_param (0 where it set nothing, which

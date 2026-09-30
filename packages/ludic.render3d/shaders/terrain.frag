@@ -87,6 +87,7 @@ vec3 terNormal(vec2 uv) { vec2 xz = terNormalXZ(uv);  return vec3(xz.x, sqrt(max
 uniform sampler2D u_rock_d;  uniform sampler2D u_rock_n;  uniform sampler2D u_rock_a;
 uniform sampler2D u_snow_d;  uniform sampler2D u_carpet;   // the clump cards baked straight down (alpha = coverage)
 uniform float u_carpet_on;
+uniform float u_grass_reach;   // where the GPU blades stop (0: none): the ground under them is in their shade
 uniform float u_snow_line;
 uniform float u_lake_level;      // the ground just above the water is wet and dark
 // ---- RAIN THAT LEAVES SOMETHING BEHIND -----------------------------------------------------
@@ -409,6 +410,18 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
       // the standing blades in front of it are self-shaded: the carpet is held darker to match them
       vec3 cc = cp.rgb * vec3(0.5, 0.57, 0.45) * mix(vec3(0.85, 0.92, 0.9), vec3(1.1, 1.05, 0.85), smoothstep(-0.35, 0.35, N.z)) * (0.75 + 0.35 * lush);
       gA = mix(gA, cc, max(cp.a, 0.35) * carpetW * 0.97);
+    }
+    // The blades' own patches (grass_cull.comp's bladeField): patchiness and dry patches, so where
+    // the blades thin out the ground they stand on carries the same meadow, not a lawn
+    {
+      float patchy = fbmC(cheap, p.xz * 0.045, 3) * 0.5 + 0.5;
+      float dryp = smoothstep(0.2, 0.8, gnoise(p.xz * 0.33 + 17.0) * 0.5 + 0.5);
+      vec3 pf = mix(vec3(0.7, 0.8, 0.55), vec3(1.1, 1.05, 0.85), patchy) * mix(vec3(0.92, 1.0, 0.95), vec3(1.30, 1.10, 0.62), dryp);
+      // and the tussocks' own shade, half a metre across: where blades stand a pixel wide the ground
+      // is most of what shows, and it has to carry the same light and dark as the blades on it
+      float tus = 0.55 + 0.80 * (gnoise(p.xz * 1.9 + 41.0) * 0.5 + 0.5);
+      gA *= mix(vec3(1.0), pf / vec3(0.95, 0.96, 0.72) * tus, grassW);
+      if (u_grass_reach > 0.0) gA *= mix(1.0, mix(0.50, 1.0, smoothstep(u_grass_reach * 0.25, u_grass_reach, dist)), grassW);
     }
     // Subalpine forest floor: dark duff where the stands are dense. The photograph-driven
     // term marks duff only where the survey actually shows dense conifer, and is the same
