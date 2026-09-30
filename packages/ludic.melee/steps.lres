@@ -1,0 +1,16 @@
+# steps.lres - a fighter's phase machine: a row a transition. `on` is the action that asks for it
+# (a press, a guard, a blow), "" for a transition the tick asks (an attack that has played out, a
+# stagger that has worn off, a press kept from a moment ago). The first row whose guard passes is taken.
+swing          { from: MeleePhase.Ready,   to: MeleePhase.Attack,  on: "MeleeAttackIn",  guard: fn ml_can_start,    enter: fn ml_begin_first }
+swing_guarded  { from: MeleePhase.Block,   to: MeleePhase.Attack,  on: "MeleeAttackIn",  guard: fn ml_can_start,    enter: fn ml_begin_first }
+swing_buffered { from: MeleePhase.Ready,   to: MeleePhase.Attack,                        guard: fn ml_can_start,    enter: fn ml_begin_first }
+chain          { from: MeleePhase.Attack,  to: MeleePhase.Attack,                        guard: fn ml_chain_ready,  enter: fn ml_begin_next }
+finish         { from: MeleePhase.Attack,  to: MeleePhase.Ready,                         guard: fn ml_attack_done,  enter: fn ml_finish_attack }
+cancel         { from: MeleePhase.Attack,  to: MeleePhase.Ready,   on: "MeleeCancelIn",                             enter: fn ml_finish_attack }
+raise          { from: MeleePhase.Ready,   to: MeleePhase.Block,   on: "MeleeBlockIn",                              enter: fn ml_raise_guard }
+raise_attack   { from: MeleePhase.Attack,  to: MeleePhase.Block,   on: "MeleeBlockIn",   guard: fn ml_can_guard,    enter: fn ml_raise_guard }
+lower          { from: MeleePhase.Block,   to: MeleePhase.Ready,   on: "MeleeUnblockIn",                            enter: fn ml_lower_guard }
+stagger_ready  { from: MeleePhase.Ready,   to: MeleePhase.Stagger, on: "MeleeStaggerIn",                            enter: fn ml_begin_stagger }
+stagger_attack { from: MeleePhase.Attack,  to: MeleePhase.Stagger, on: "MeleeStaggerIn",                            enter: fn ml_begin_stagger }
+stagger_block  { from: MeleePhase.Block,   to: MeleePhase.Stagger, on: "MeleeStaggerIn",                            enter: fn ml_begin_stagger }
+recover        { from: MeleePhase.Stagger, to: MeleePhase.Ready,                         guard: fn ml_stagger_done, enter: fn ml_recover }

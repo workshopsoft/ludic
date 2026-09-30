@@ -1,0 +1,134 @@
+# defs.ludic - the two tables a game fills (usually from resource files: `def MeleeAttacks from
+# "attacks.lres"`, `def MeleeSets from "melee_sets.lres"`), the records, the actions the machine
+# listens to, and the facts. Times are seconds on the attack's clip, lengths metres, angles degrees.
+# A yaw of 0 faces +z; the forward vector of a yaw is (sin yaw, cos yaw) on (x, z).
+
+export enum MeleePhase { Ready, Attack, Block, Stagger }
+
+# what a hit window reaches, relative to the attacker
+export const MELEE_SHAPE_ARC: int = 0       # a sector in front: `reach` metres, `arc` degrees wide
+export const MELEE_SHAPE_BOX: int = 1       # a rectangle: from `fwd` for `length`, `width` wide, `side` off centre
+export const MELEE_SHAPE_SPHERE: int = 2    # a ball of `radius` at (`side`, `up`, `fwd`) from the attacker
+
+# the two inputs an attack follows on
+export const MELEE_LIGHT: int = 1
+export const MELEE_HEAVY: int = 2
+
+# one window on an attack's clip: while the clip is between `start` and `stop`, anyone inside the shape
+# can be hit (once per swing, or again every `rehit` seconds)
+export property MeleeHit {
+  key: string = ""                                 # a name for a trail or a sound ("slash", "pommel")
+  @Unit("s") @Range(0, 60) start: float = 0.2
+  @Unit("s") @Range(0, 60) stop: float = 0.4
+  @OneOf(MELEE_SHAPE_) shape: int = 0
+  @Unit("m") @Range(0, 50) reach: float = 2.0      # arc: how far
+  @Unit("deg") @Range(1, 360) arc: float = 90.0    # arc: how wide
+  @Unit("m") @Range(0, 50) length: float = 2.0     # box: how long
+  @Unit("m") @Range(0, 50) width: float = 1.0      # box: how wide
+  @Unit("m") @Range(0, 50) radius: float = 1.0     # sphere
+  @Unit("m") @Range(-50, 50) fwd: float = 0.0      # box and sphere: where it starts, forward of the attacker
+  @Unit("m") @Range(-50, 50) side: float = 0.0     # ... and to the right of it
+  @Unit("m") @Range(-50, 50) up: float = 0.0       # its floor (a sphere's centre) above the attacker's feet
+  @Unit("m") @Range(0, 50) height: float = 2.0     # how tall an arc or box is
+  @Range(0, 1000000) damage: float = 10.0
+  damage_type: int = 0                             # the game's number, carried to the port
+  @Range(0, 1000000) stagger: float = 10.0         # poise taken from whoever is hit
+  @Range(0, 1000) knockback: float = 0.0
+  @Unit("s") @Range(0, 60) rehit: float = 0.0      # 0: once per swing; else a target may be hit again after this
+  blockable: bool = true
+  parryable: bool = true
+}
+
+# an attack: a clip played, hit windows on it, and where a combo goes from it
+export property MeleeAttack {
+  key: string = ""
+  @Text name: Key = null
+  clip: string = ""                                # the game's animation clip (ludic.anim)
+  @Unit("s") @Range(0, 60) length: float = 1.0     # the whole swing; 0 asks the clip's own length through the port
+  @Range(0.1, 10) speed: float = 1.0               # the clip's playing speed
+  @Range(0, 1000) cost: float = 0.0                # stamina (resource `cost_resource` of the fighter's set) to begin it
+  hits: []MeleeHit = null
+  @Ref(MeleeAttacks) light: int = -1               # where a light press inside the chain window goes
+  @Ref(MeleeAttacks) heavy: int = -1               # ... a heavy press
+  @Unit("s") @Range(0, 60) chain_start: float = 0.0  # from this time on a queued press continues the combo
+  @Unit("s") @Range(0, 60) chain_end: float = 0.0    # ... until this (0: to the end of the swing)
+  @Unit("s") @Range(-1, 60) guard_from: float = -1.0 # from this time the swing may be dropped into a block (-1: never)
+  @Range(0, 1000) armor: float = 0.0               # poise damage it shrugs off while it plays
+  @Range(0, 1) move_mult: float = 0.3              # how much of its walking speed the fighter keeps
+  @Range(0, 1) turn_mult: float = 1.0
+}
+
+@ByKey
+export open registry MeleeAttacks of MeleeAttack as MAT
+
+# a moveset and a fighter's defence: what a light and a heavy press begin, how much it takes to
+# stagger it, and how it guards. Usually one per weapon class.
+export property MeleeSet {
+  key: string = ""
+  @Text name: Key = null
+  @Ref(MeleeAttacks) light: int = -1
+  @Ref(MeleeAttacks) heavy: int = -1
+  cost_resource: int = 0                           # the game's number for stamina
+  @Range(0, 100000) poise: float = 40.0            # the most poise; a fighter at 0 is staggered
+  @Range(0, 100000) poise_regen: float = 20.0      # per second, once its wait is over
+  @Unit("s") @Range(0, 60) poise_delay: float = 2.0 # seconds after a hit before poise comes back
+  @Unit("s") @Range(0, 60) stagger_time: float = 0.8
+  @Range(0, 1) block_move: float = 0.5             # how much of its walking speed a raised guard keeps
+  @Unit("s") @Range(0, 5) buffer: float = 0.25     # how long an early press waits to be used
+  @Unit("deg") @Range(0, 360) block_arc: float = 120.0    # the guard covers this much in front
+  @Range(0, 1) block_mult: float = 0.1             # the share of a blocked hit's damage that gets through
+  @Range(0, 100) block_poise: float = 0.5          # the share of a blocked hit's stagger the guard takes as stamina
+  @Unit("s") @Range(0, 5) parry_window: float = 0.2 # the first moments of a raised guard turn a blow aside
+  @Unit("s") @Range(0, 60) parry_stagger: float = 1.2 # how long a parried attacker is staggered
+}
+
+@ByKey
+export open registry MeleeSets of MeleeSet as MSET
+
+# what the machine listens to (dispatched by the verbs; a game may dispatch them too)
+export action MeleeAttackIn { @Target who: int = -1, kind: int = 1 }
+export action MeleeBlockIn { @Target who: int = -1 }
+export action MeleeUnblockIn { @Target who: int = -1 }
+export action MeleeStaggerIn { @Target who: int = -1, time: float = 0.8 }
+export action MeleeCancelIn { @Target who: int = -1 }
+
+# the facts
+export const MELEE_SWING: int = 0        # an attack began (attack, combo: how far into a chain)
+export const MELEE_HIT: int = 1          # a window reached someone (victim, damage, result, crit)
+export const MELEE_ENDED: int = 2        # an attack played out (or was cancelled)
+export const MELEE_STAGGERED: int = 3    # a fighter lost its poise or was parried
+export const MELEE_RECOVERED: int = 4
+export const MELEE_GUARD_UP: int = 5
+export const MELEE_GUARD_DOWN: int = 6
+export const MELEE_REFUSED: int = 7      # a press was not allowed (why)
+export const MELEE_POISE_BROKEN: int = 8 # poise hit zero (the stagger follows)
+
+# a hit's result
+export const MELEE_RESULT_HIT: int = 0
+export const MELEE_RESULT_BLOCKED: int = 1
+export const MELEE_RESULT_PARRIED: int = 2
+export const MELEE_RESULT_GUARD_BROKEN: int = 3   # a block that cost more stamina than was left
+
+# why a press is refused
+export const MELEE_OK: int = 0
+export const MELEE_NO_SUCH: int = 1
+export const MELEE_NO_ATTACK: int = 2     # the set has nothing for that press
+export const MELEE_TOO_TIRED: int = 3
+export const MELEE_STAGGERED_NOW: int = 4
+export const MELEE_NO_CHAIN: int = 5      # the attack goes nowhere on that press
+
+export property MeleeFact {
+  what: int = 0
+  fighter: int = -1                        # the handle of the fighter it is about (the attacker for a hit)
+  actor: int = -1                          # the game's number for that fighter
+  victim: int = -1                         # the actor hit
+  attack: int = -1
+  hit: int = -1                            # the window's index on the attack
+  combo: int = 0
+  result: int = 0
+  why: int = 0
+  damage: float = 0.0
+  stagger: float = 0.0
+  crit: bool = false
+  time: float = 0.0
+}

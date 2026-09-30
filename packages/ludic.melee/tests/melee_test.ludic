@@ -1,0 +1,578 @@
+# melee_test.ludic - shapes against bodies; attacks that hit inside their windows once; combos by
+# input window and buffer; blocking, parrying and guard breaks; poise and stagger; rehits; crits from
+# the package's own dice; and the save
+import "ludic.melee"
+import "ludic.base"
+program MeleeTest {
+  numbers float
+  const RES_STAMINA: int = 1
+
+  def MeleeAttacks from "melee_test.lres"
+  def MeleeSets sword { light: MAT_SLASH1, heavy: MAT_SMASH, cost_resource: RES_STAMINA }
+  def MeleeSets brute { light: MAT_SPIN, poise: 200.0 }
+
+  state Arena {
+    xs: []float = null
+    zs: []float = null
+    yaws: []float = null
+    sta: []float = null
+    dmg: []float = null
+    pushes: int = 0
+    played: string = ""
+    played_speed: float = 0.0
+    crit: float = 0.0
+    allied: bool = false
+    clip_len: float = 0.0
+  }
+  function a_x(arena_st: Arena, a: int) -> float { return arena_st.xs[a] }
+  function a_z(arena_st: Arena, a: int) -> float { return arena_st.zs[a] }
+  function a_yaw(arena_st: Arena, a: int) -> float { return arena_st.yaws[a] }
+  function a_hostile(arena_st: Arena, a: int, b: int) -> bool { return a != b and not arena_st.allied }
+  function a_find(arena_st: Arena, x: float, z: float, r: float, out: []int) -> int {
+    for i in 1 .. 8 {
+      let dx = arena_st.xs[i] - x
+      let dz = arena_st.zs[i] - z
+      if dx * dx + dz * dz <= r * r { push(out, i) }
+    }
+    return len(out)
+  }
+  function a_afford(arena_st: Arena, a: int, res: int, n: float) -> bool { return arena_st.sta[a] >= n }
+  function a_spend(arena_st: mut Arena, a: int, res: int, n: float) -> bool {
+    if arena_st.sta[a] < n { return false }
+    arena_st.sta[a] -= n
+    return true
+  }
+  function a_crit(arena_st: Arena, a: int) -> float { return arena_st.crit }
+  function a_clip(arena_st: Arena, clip: string) -> float { return arena_st.clip_len }
+  function a_play(arena_st: mut Arena, a: int, clip: string, speed: float) -> void {
+    arena_st.played = clip
+    arena_st.played_speed = speed
+  }
+  function d_hurt(arena_st: mut Arena, v: int, a: int, n: float, ty: int) -> float {
+    arena_st.dmg[v] += n
+    return n
+  }
+  function d_push(arena_st: mut Arena, v: int, a: int, f: float) -> void { arena_st.pushes += 1 }
+  bind MeleeWorld { x: fn a_x, z: fn a_z, yaw: fn a_yaw, hostile: fn a_hostile, find: fn a_find, can_afford: fn a_afford, spend: fn a_spend, crit_chance: fn a_crit, clip_length: fn a_clip, play: fn a_play }
+  bind MeleeDamage { hurt: fn d_hurt, push: fn d_push }
+
+  # actor 1 at the origin facing +z; 2 a metre and a half ahead, facing it; 3 behind; 4 to the right; 5, 6 and 7 far off
+  function fresh(melee_st: mut MeleeState, arena_st: mut Arena) -> void {
+    melee_reset(melee_st)
+    melee_seed(melee_st, 3)
+    arena_st.xs = [0.0, 0.0, 0.0, 0.0, 2.5, 0.0, 40.0, 50.0]
+    arena_st.zs = [0.0, 0.0, 1.5, -1.5, 0.0, 10.0, 40.0, 50.0]
+    arena_st.yaws = [0.0, 0.0, 180.0, 0.0, 0.0, 0.0, 180.0, 0.0]
+    arena_st.sta = [0.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+    arena_st.dmg = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    arena_st.pushes = 0
+    arena_st.played = ""
+    arena_st.crit = 0.0
+    arena_st.allied = false
+    arena_st.clip_len = 0.0
+  }
+  function hero(melee_st: mut MeleeState) -> int {
+    let h = melee_add(melee_st, 1, MSET_SWORD, true)
+    q_clear(melee_facts(melee_st))
+    return h
+  }
+  function step(melee_st: mut MeleeState, m: mut MeleeStepsMachine, dt: float) -> void {
+    melee_run(melee_st, m, dt)
+    drain_actions()
+  }
+  function press(melee_st: mut MeleeState, h: int, kind: int) -> int {
+    let why = melee_attack(melee_st, h, kind)
+    drain_actions()
+    return why
+  }
+  function count_facts(melee_st: MeleeState, what: int) -> int {
+    let fs = q_drain(melee_facts(melee_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+  function shape(kind: int) -> MeleeHit {
+    let h = new MeleeHit
+    h.shape = kind
+    return h
+  }
+
+  test "an arc reaches what is ahead, in reach and in angle, and widens for a body's size" {
+    let h = shape(MELEE_SHAPE_ARC)
+    h.reach = 2.0
+    h.arc = 90.0
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.5, 0.4, 1.8))
+    expect(not melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.5, 0.4, 1.8))
+    expect(not melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.4, 1.8))
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.3, 0.4, 1.8))
+    expect(not melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.1, 0.4, 1.8))
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 1.2, 0.0, 1.2, 0.4, 1.8))
+    expect(not melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 1.9, 0.0, 0.3, 0.3, 1.8))
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.4, 1.8))
+  }
+
+  test "a yaw turns the shape with the attacker" {
+    let h = shape(MELEE_SHAPE_ARC)
+    h.reach = 2.0
+    h.arc = 60.0
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 90.0, 1.5, 0.0, 0.0, 0.4, 1.8))
+    expect(not melee_shape_hits(h, 0.0, 0.0, 0.0, 90.0, 0.0, 0.0, 1.5, 0.4, 1.8))
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 180.0, 0.0, 0.0, -1.5, 0.4, 1.8))
+  }
+
+  test "a box is ahead by its length and across by its width" {
+    let h = shape(MELEE_SHAPE_BOX)
+    h.fwd = 0.5
+    h.length = 2.0
+    h.width = 1.0
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.1, 1.8))
+    expect(not melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.1, 1.8))
+    expect(not melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 2.0, 0.1, 1.8))
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.5, 0.4, 1.8))
+    h.side = 1.0
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 2.0, 0.1, 1.8))
+  }
+
+  test "a sphere is a ball at its offset, and a body too high or too low is missed" {
+    let h = shape(MELEE_SHAPE_SPHERE)
+    h.radius = 1.0
+    h.fwd = 2.0
+    h.up = 1.0
+    expect(melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.5, 0.3, 1.8))
+    expect(not melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 1.8))
+    expect(not melee_shape_hits(h, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 2.5, 0.3, 1.8))
+    let a = shape(MELEE_SHAPE_ARC)
+    a.height = 1.0
+    expect(not melee_shape_hits(a, 0.0, 0.0, 0.0, 0.0, 0.0, 3.0, 1.0, 0.3, 1.8))
+    expect(melee_shape_hits(a, 0.0, 0.0, 0.0, 0.0, 0.0, -0.5, 1.0, 0.3, 1.8))
+  }
+
+  test "a fighter is found by its actor and its moveset is kept" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = melee_add(melee_st, 1, MSET_SWORD, true)
+    expect_eq(melee_add(melee_st, 1, MSET_BRUTE, true), h)
+    expect_eq(melee_fighter_of(melee_st, 1), h)
+    expect_eq(melee_actor(melee_st, h), 1)
+    expect_near(melee_poise(melee_st, h), 40.0, 0.001)
+    expect(melee_equip(melee_st, h, MSET_BRUTE))
+    expect_near(melee_poise(melee_st, h), 200.0, 0.001)
+    expect(melee_remove(melee_st, h))
+    expect_eq(melee_fighter_of(melee_st, 1), -1)
+    expect_eq(melee_attack(melee_st, h, MELEE_LIGHT), MELEE_NO_SUCH)
+  }
+
+  test "a press begins the attack, pays its stamina, plays its clip and says so" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    expect_eq(press(melee_st, h, MELEE_LIGHT), MELEE_OK)
+    expect(melee_attacking(melee_st, h))
+    expect_eq(melee_attack_of(melee_st, h), MAT_SLASH1)
+    expect_near(arena_st.sta[1], 90.0, 0.001)
+    expect(arena_st.played == "slash1")
+    let fs = q_drain(melee_facts(melee_st))
+    expect_eq(len(fs), 1)
+    expect_eq(fs[0].what, MELEE_SWING)
+    expect_eq(fs[0].actor, 1)
+    expect_eq(fs[0].attack, MAT_SLASH1)
+    expect_near(melee_move_mult(melee_st, h), 0.3, 0.001)
+  }
+
+  test "a window hurts what is inside it once, and nothing before it opens or behind" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.1)
+    expect_near(arena_st.dmg[2], 0.0, 0.001)
+    expect(not melee_window_open(melee_st, h))
+    step(melee_st, m, 0.15)
+    expect(melee_window_open(melee_st, h))
+    expect_near(arena_st.dmg[2], 10.0, 0.001)
+    step(melee_st, m, 0.1)
+    step(melee_st, m, 0.1)
+    expect_near(arena_st.dmg[2], 10.0, 0.001)
+    expect_near(arena_st.dmg[3], 0.0, 0.001)
+    expect_near(arena_st.dmg[4], 0.0, 0.001)
+    expect_near(arena_st.dmg[5], 0.0, 0.001)
+    expect(not melee_window_open(melee_st, h))
+    let fs = q_drain(melee_facts(melee_st))
+    var hits = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == MELEE_HIT {
+        hits += 1
+        expect_eq(fs[i].victim, 2)
+        expect_eq(fs[i].result, MELEE_RESULT_HIT)
+        expect_near(fs[i].damage, 10.0, 0.001)
+      }
+    }
+    expect_eq(hits, 1)
+  }
+
+  test "a long step that jumps a whole window still hits" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.6)
+    expect_near(arena_st.dmg[2], 10.0, 0.001)
+  }
+
+  test "an attack plays out and the fighter is ready again" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.5)
+    expect_near(melee_progress(melee_st, h), 0.5, 0.01)
+    step(melee_st, m, 0.6)
+    expect(melee_phase(melee_st, h) == MeleePhase.Ready)
+    expect_eq(melee_attack_of(melee_st, h), -1)
+    expect_near(melee_move_mult(melee_st, h), 1.0, 0.001)
+    expect_eq(count_facts(melee_st, MELEE_ENDED), 1)
+  }
+
+  test "a press in the chain window continues the combo" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.6)
+    expect(melee_chain_open(melee_st, h))
+    expect_eq(press(melee_st, h, MELEE_LIGHT), MELEE_OK)
+    step(melee_st, m, 0.01)
+    expect_eq(melee_attack_of(melee_st, h), MAT_SLASH2)
+    expect_eq(melee_combo(melee_st, h), 1)
+    expect_near(melee_time(melee_st, h), 0.0, 0.001)
+    expect(arena_st.played == "slash2")
+    expect_near(arena_st.sta[1], 80.0, 0.001)
+    step(melee_st, m, 0.3)
+    expect_near(arena_st.dmg[2], 10.0 + 12.0, 0.001)
+  }
+
+  test "an early press is kept and used the moment the window opens" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.1)
+    expect_eq(press(melee_st, h, MELEE_LIGHT), MELEE_OK)
+    expect_eq(melee_queued(melee_st, h), MELEE_LIGHT)
+    step(melee_st, m, 0.3)
+    expect_eq(melee_attack_of(melee_st, h), MAT_SLASH1)
+    expect_eq(melee_queued(melee_st, h), MELEE_LIGHT)
+    step(melee_st, m, 0.15)
+    expect_eq(melee_attack_of(melee_st, h), MAT_SLASH2)
+    expect_eq(melee_combo(melee_st, h), 1)
+    expect_eq(melee_queued(melee_st, h), 0)
+  }
+
+  test "a combo goes only where the data sends it, and a heavy branches" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_HEAVY)
+    step(melee_st, m, 0.01)
+    expect_eq(melee_attack_of(melee_st, h), MAT_SMASH)
+    expect_eq(press(melee_st, h, MELEE_LIGHT), MELEE_NO_CHAIN)
+    expect_eq(count_facts(melee_st, MELEE_REFUSED), 1)
+    fresh(melee_st, arena_st)
+    let g = hero(melee_st)
+    press(melee_st, g, MELEE_LIGHT)
+    step(melee_st, m, 0.6)
+    press(melee_st, g, MELEE_HEAVY)
+    step(melee_st, m, 0.01)
+    expect_eq(melee_attack_of(melee_st, g), MAT_SMASH)
+    expect_near(arena_st.sta[1], 65.0, 0.001)
+  }
+
+  test "a press after the window closes does not continue the combo but starts a new one once free" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.95)
+    expect(not melee_chain_open(melee_st, h))
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.1)
+    step(melee_st, m, 0.01)
+    expect_eq(melee_attack_of(melee_st, h), MAT_SLASH1)
+    expect_eq(melee_combo(melee_st, h), 0)
+    expect_near(melee_time(melee_st, h), 0.0, 0.06)
+  }
+
+  test "a fighter too tired for the attack is refused and nothing starts" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    arena_st.sta[1] = 5.0
+    expect_eq(press(melee_st, h, MELEE_LIGHT), MELEE_TOO_TIRED)
+    expect(melee_phase(melee_st, h) == MeleePhase.Ready)
+    expect_near(arena_st.sta[1], 5.0, 0.001)
+    let b = melee_add(melee_st, 2, MSET_BRUTE, false)
+    expect_eq(melee_attack(melee_st, b, MELEE_HEAVY), MELEE_NO_ATTACK)
+  }
+
+  test "an attack whose length is zero asks the clip through the port" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    expect_near(melee_length(melee_st, MAT_MYSTERY), 1.0, 0.001)
+    arena_st.clip_len = 2.5
+    expect_near(melee_length(melee_st, MAT_MYSTERY), 2.5, 0.001)
+    expect_near(melee_length(melee_st, MAT_SLASH1), 1.0, 0.001)
+  }
+
+  test "a blow breaks poise after enough of them, and the stagger wears off" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    let v = melee_add(melee_st, 2, MSET_SWORD, false)
+    for n in 0 .. 3 {
+      press(melee_st, h, MELEE_LIGHT)
+      step(melee_st, m, 0.45)
+      step(melee_st, m, 0.6)
+      step(melee_st, m, 0.01)
+    }
+    expect(melee_staggered(melee_st, v))
+    expect_near(melee_move_mult(melee_st, v), 0.0, 0.001)
+    expect_near(melee_poise(melee_st, v), 40.0, 0.001)
+    expect_near(melee_stun(melee_st, v), 0.19, 0.05)
+    expect(melee_attack(melee_st, v, MELEE_LIGHT) == MELEE_STAGGERED_NOW)
+    step(melee_st, m, 0.9)
+    expect(melee_phase(melee_st, v) == MeleePhase.Ready)
+    let fs = q_drain(melee_facts(melee_st))
+    var broke = 0
+    var down = 0
+    var up = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == MELEE_POISE_BROKEN { broke += 1 }
+      if fs[i].what == MELEE_STAGGERED { down += 1 }
+      if fs[i].what == MELEE_RECOVERED { up += 1 }
+    }
+    expect_eq(broke, 1)
+    expect_eq(down, 1)
+    expect_eq(up, 1)
+  }
+
+  test "armour shrugs off poise damage while a swing plays" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    let v = melee_add(melee_st, 2, MSET_SWORD, false)
+    press(melee_st, v, MELEE_HEAVY)
+    step(melee_st, m, 0.1)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.15)
+    step(melee_st, m, 0.1)
+    expect_near(arena_st.dmg[2], 10.0, 0.001)
+    expect_near(melee_poise(melee_st, v), 40.0, 0.001)
+    expect(melee_attacking(melee_st, v))
+  }
+
+  test "poise comes back after its wait" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let v = melee_add(melee_st, 2, MSET_SWORD, false)
+    melee_set_poise(melee_st, v, 10.0)
+    step(melee_st, m, 1.0)
+    expect_near(melee_poise(melee_st, v), 30.0, 0.01)
+    step(melee_st, m, 1.0)
+    expect_near(melee_poise(melee_st, v), 40.0, 0.01)
+  }
+
+  test "a heavy blow pushes and staggers at once" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    let v = melee_add(melee_st, 2, MSET_SWORD, false)
+    press(melee_st, h, MELEE_HEAVY)
+    step(melee_st, m, 0.7)
+    step(melee_st, m, 0.01)
+    expect_near(arena_st.dmg[2], 40.0, 0.001)
+    expect_eq(arena_st.pushes, 1)
+    expect(melee_staggered(melee_st, v))
+  }
+
+  test "a raised guard facing the blow lets a tenth through and costs stamina; from behind it is no guard" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    let v = melee_add(melee_st, 2, MSET_SWORD, false)
+    melee_guard_up(melee_st, v)
+    drain_actions()
+    expect(melee_blocking(melee_st, v))
+    step(melee_st, m, 0.3)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.25)
+    step(melee_st, m, 0.1)
+    expect_near(arena_st.dmg[2], 1.0, 0.001)
+    expect_near(arena_st.sta[2], 100.0 - 7.5, 0.001)
+    expect(melee_blocking(melee_st, v))
+    let fs = q_drain(melee_facts(melee_st))
+    var blocked = 0
+    for i in 0 .. len(fs) { if fs[i].what == MELEE_HIT and fs[i].result == MELEE_RESULT_BLOCKED { blocked += 1 } }
+    expect_eq(blocked, 1)
+    fresh(melee_st, arena_st)
+    arena_st.yaws[2] = 0.0
+    let h2 = hero(melee_st)
+    let v2 = melee_add(melee_st, 2, MSET_SWORD, false)
+    melee_guard_up(melee_st, v2)
+    drain_actions()
+    step(melee_st, m, 0.3)
+    press(melee_st, h2, MELEE_LIGHT)
+    step(melee_st, m, 0.25)
+    expect_near(arena_st.dmg[2], 10.0, 0.001)
+  }
+
+  test "a guard raised a moment ago turns the blow aside and staggers the attacker" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    let v = melee_add(melee_st, 2, MSET_SWORD, false)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.15)
+    melee_guard_up(melee_st, v)
+    drain_actions()
+    step(melee_st, m, 0.06)
+    expect_near(arena_st.dmg[2], 0.0, 0.001)
+    expect(melee_staggered(melee_st, h))
+    expect_near(melee_stun(melee_st, h), 1.2, 0.05)
+    let fs = q_drain(melee_facts(melee_st))
+    var parried = 0
+    for i in 0 .. len(fs) { if fs[i].what == MELEE_HIT and fs[i].result == MELEE_RESULT_PARRIED { parried += 1 } }
+    expect_eq(parried, 1)
+  }
+
+  test "a guard with no stamina left is broken and the guard is staggered" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    let v = melee_add(melee_st, 2, MSET_SWORD, false)
+    melee_guard_up(melee_st, v)
+    drain_actions()
+    step(melee_st, m, 0.3)
+    arena_st.sta[2] = 1.0
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.25)
+    step(melee_st, m, 0.01)
+    expect(melee_staggered(melee_st, v))
+    expect_near(arena_st.dmg[2], 1.0, 0.001)
+  }
+
+  test "a swing can be dropped into a block only late enough, and cancelled" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.3)
+    melee_guard_up(melee_st, h)
+    drain_actions()
+    expect(melee_attacking(melee_st, h))
+    step(melee_st, m, 0.45)
+    melee_guard_up(melee_st, h)
+    drain_actions()
+    expect(melee_blocking(melee_st, h))
+    expect_eq(melee_attack_of(melee_st, h), -1)
+    expect(melee_guard_down(melee_st, h))
+    drain_actions()
+    expect(melee_phase(melee_st, h) == MeleePhase.Ready)
+    press(melee_st, h, MELEE_LIGHT)
+    expect(melee_cancel(melee_st, h))
+    drain_actions()
+    expect(melee_phase(melee_st, h) == MeleePhase.Ready)
+    expect(not melee_cancel(melee_st, h))
+  }
+
+  test "an attack can begin from a raised guard" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    melee_guard_up(melee_st, h)
+    drain_actions()
+    expect_eq(press(melee_st, h, MELEE_LIGHT), MELEE_OK)
+    expect(melee_attacking(melee_st, h))
+  }
+
+  test "a window that rehits hurts again each interval and a stationary whirl reaches all round" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let b = melee_add(melee_st, 1, MSET_BRUTE, true)
+    press(melee_st, b, MELEE_LIGHT)
+    for i in 0 .. 10 { step(melee_st, m, 0.1) }
+    # the window is open from 0.1 to 0.9: hits at 0.1, 0.4, 0.7 on each of 2, 3 and 4 (5 is too far)
+    expect_near(arena_st.dmg[2], 15.0, 0.001)
+    expect_near(arena_st.dmg[3], 15.0, 0.001)
+    expect_near(arena_st.dmg[4], 15.0, 0.001)
+    expect_near(arena_st.dmg[5], 0.0, 0.001)
+  }
+
+  test "allies are not hit" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    arena_st.allied = true
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.5)
+    expect_near(arena_st.dmg[2], 0.0, 0.001)
+  }
+
+  test "a sure crit doubles the hit, from the package's own dice, the same every game" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    arena_st.crit = 1.0
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.5)
+    expect_near(arena_st.dmg[2], 20.0, 0.001)
+    let fs = q_drain(melee_facts(melee_st))
+    var crit = false
+    for i in 0 .. len(fs) { if fs[i].what == MELEE_HIT { crit = fs[i].crit } }
+    expect(crit)
+  }
+
+  test "a half chance of a crit lands about half the time and replays the same" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    arena_st.crit = 0.5
+    let h = hero(melee_st)
+    for i in 0 .. 40 {
+      arena_st.sta[1] = 100.0
+      press(melee_st, h, MELEE_LIGHT)
+      step(melee_st, m, 0.5)
+      step(melee_st, m, 0.6)
+    }
+    let first = arena_st.dmg[2]
+    expect(first > 40.0 * 10.0 + 80.0 and first < 40.0 * 20.0 - 80.0)
+    fresh(melee_st, arena_st)
+    arena_st.crit = 0.5
+    let g = hero(melee_st)
+    for i in 0 .. 40 {
+      arena_st.sta[1] = 100.0
+      press(melee_st, g, MELEE_LIGHT)
+      step(melee_st, m, 0.5)
+      step(melee_st, m, 0.6)
+    }
+    expect_near(arena_st.dmg[2], first, 0.001)
+    q_clear(melee_facts(melee_st))
+  }
+
+  test "a fighter outside the table is hit like anyone, with no poise to lose" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    step(melee_st, m, 0.5)
+    expect_near(arena_st.dmg[2], 10.0, 0.001)
+    expect_eq(melee_fighter_count(melee_st), 1)
+  }
+
+  test "a stagger from outside uses the set's time when none is given" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = hero(melee_st)
+    press(melee_st, h, MELEE_LIGHT)
+    expect(melee_stagger(melee_st, h, 0.0))
+    drain_actions()
+    expect(melee_staggered(melee_st, h))
+    expect_eq(melee_attack_of(melee_st, h), -1)
+    expect_near(melee_stun(melee_st, h), 0.8, 0.001)
+    expect(not melee_stagger(melee_st, h, 1.0))
+  }
+
+  test "a save keeps each persisting fighter's moveset by key" (melee_st: mut MeleeState, m: mut MeleeStepsMachine, arena_st: mut Arena) {
+    fresh(melee_st, arena_st)
+    let h = melee_add(melee_st, 1, MSET_BRUTE, true)
+    melee_add(melee_st, 2, MSET_SWORD, false)
+    expect_eq(melee_actor(melee_st, h), 1)
+    let text = save_encode(melee_save(melee_st))
+    melee_reset(melee_st)
+    expect_eq(melee_fighter_count(melee_st), 0)
+    melee_load(melee_st, save_decode(text), 1)
+    expect_eq(melee_fighter_count(melee_st), 1)
+    let g = melee_fighter_of(melee_st, 1)
+    expect(g >= 0)
+    expect_near(melee_poise(melee_st, g), 200.0, 0.001)
+  }
+
+  test "a system keyed melee carries the tick and the save" {
+    let s = melee_system()
+    expect(s.key == "melee")
+    expect(s.tick != null)
+    expect(s.save != null)
+  }
+}

@@ -1,0 +1,99 @@
+# queries.ludic - what the game asks of a fighter each frame: its phase, the swing's clock, how far to
+# move, whether a window is open (for a weapon trail)
+export function melee_phase(melee_st: MeleeState, h: int) -> MeleePhase {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return MeleePhase.Ready }
+  return r.phase
+}
+
+export function melee_attacking(melee_st: MeleeState, h: int) -> bool { return melee_phase(melee_st, h) == MeleePhase.Attack }
+export function melee_blocking(melee_st: MeleeState, h: int) -> bool { return melee_phase(melee_st, h) == MeleePhase.Block }
+export function melee_staggered(melee_st: MeleeState, h: int) -> bool { return melee_phase(melee_st, h) == MeleePhase.Stagger }
+
+# the attack playing, or -1
+export function melee_attack_of(melee_st: MeleeState, h: int) -> int {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return -1 }
+  return r.attack
+}
+
+# seconds into the swing, on its clip
+export function melee_time(melee_st: MeleeState, h: int) -> float {
+  let r = ml__fighter(melee_st, h)
+  if r == null or r.attack < 0 { return 0.0 }
+  return r.t
+}
+
+# 0..1 through the swing
+export function melee_progress(melee_st: MeleeState, h: int) -> float {
+  let r = ml__fighter(melee_st, h)
+  if r == null or not ml__attack_ok(r.attack) { return 0.0 }
+  return Math.clamp(r.t / ml__length(r.attack), 0.0, 1.0)
+}
+
+export function melee_combo(melee_st: MeleeState, h: int) -> int {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return 0 }
+  return r.combo
+}
+
+export function melee_poise(melee_st: MeleeState, h: int) -> float {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return 0.0 }
+  return r.poise
+}
+
+export function melee_stun(melee_st: MeleeState, h: int) -> float {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return 0.0 }
+  return r.stun
+}
+
+# a press waiting to be used (MELEE_LIGHT, MELEE_HEAVY) or 0
+export function melee_queued(melee_st: MeleeState, h: int) -> int {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return 0 }
+  return r.queued
+}
+
+# is a combo press accepted now: in the chain window of an attack that goes somewhere
+export function melee_chain_open(melee_st: MeleeState, h: int) -> bool {
+  let r = ml__fighter(melee_st, h)
+  if r == null or r.phase != MeleePhase.Attack or not ml__attack_ok(r.attack) { return false }
+  let ab = MeleeAttacks[r.attack]
+  if ab.light < 0 and ab.heavy < 0 { return false }
+  return ml__in_chain_window(r)
+}
+
+# is any hit window of the attack open now: for a weapon trail
+export function melee_window_open(melee_st: MeleeState, h: int) -> bool {
+  let r = ml__fighter(melee_st, h)
+  if r == null or r.phase != MeleePhase.Attack or not ml__attack_ok(r.attack) { return false }
+  let hits = MeleeAttacks[r.attack].hits
+  if hits == null { return false }
+  for w in 0 .. len(hits) { if r.t >= hits[w].start and r.t <= hits[w].stop { return true } }
+  return false
+}
+
+# how much of its walking speed the fighter keeps now, for the game's mover
+export function melee_move_mult(melee_st: MeleeState, h: int) -> float {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return 1.0 }
+  if r.phase == MeleePhase.Stagger { return 0.0 }
+  if r.phase == MeleePhase.Block and ml__set_ok(r.set) { return MeleeSets[r.set].block_move }
+  if r.phase == MeleePhase.Attack and ml__attack_ok(r.attack) { return MeleeAttacks[r.attack].move_mult }
+  return 1.0
+}
+
+export function melee_turn_mult(melee_st: MeleeState, h: int) -> float {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return 1.0 }
+  if r.phase == MeleePhase.Stagger { return 0.0 }
+  if r.phase == MeleePhase.Attack and ml__attack_ok(r.attack) { return MeleeAttacks[r.attack].turn_mult }
+  return 1.0
+}
+
+export function melee_length(melee_st: MeleeState, attack: int) -> float {
+  if not ml__attack_ok(attack) { return 0.0 }
+  return ml__length(attack)
+}

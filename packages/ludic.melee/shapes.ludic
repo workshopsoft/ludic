@@ -1,0 +1,49 @@
+# shapes.ludic - is a body inside a hit's shape. Pure: it reads a hit, where the attacker stands and
+# faces, and a body (a centre on the ground, a radius, a height), and answers. An editor draws the same
+# shape; a test asks it directly.
+
+# the attacker's forward and right on (x, z) for a yaw in degrees: forward (sin yaw, cos yaw)
+export function melee_shape_hits(h: MeleeHit, ax: float, ay: float, az: float, yaw: float, vx: float, vy: float, vz: float, vr: float, vh: float) -> bool {
+  let rad = Math.deg_to_rad(yaw)
+  let fx = Math.sin(rad)
+  let fz = Math.cos(rad)
+  let dx = vx - ax
+  let dz = vz - az
+  let f = dx * fx + dz * fz                  # metres ahead
+  let s = dx * fz - dz * fx                  # metres to the right
+  var lo = ay + h.up
+  var hi = ay + h.up + h.height
+  if h.shape == MELEE_SHAPE_SPHERE {
+    lo = ay + h.up - h.radius
+    hi = ay + h.up + h.radius
+  }
+  if vy > hi or vy + vh < lo { return false }
+  if h.shape == MELEE_SHAPE_BOX {
+    return f >= h.fwd - vr and f <= h.fwd + h.length + vr and Math.abs(s - h.side) <= h.width * 0.5 + vr
+  }
+  if h.shape == MELEE_SHAPE_SPHERE {
+    let ef = f - h.fwd
+    let es = s - h.side
+    let r = h.radius + vr
+    return ef * ef + es * es <= r * r
+  }
+  let d = Math.sqrt(dx * dx + dz * dz)
+  if d <= vr { return true }
+  if d - vr > h.reach { return false }
+  if h.arc >= 359.0 { return true }
+  # the angle off forward, widened by how much of it the body's radius covers
+  var slack = 0.0
+  if vr > 0.0 and d > vr { slack = Math.rad_to_deg(Math.asin(Math.min(1.0, vr / d))) }
+  let off = Math.abs(Math.rad_to_deg(Math.atan2(s, f)))
+  return off <= h.arc * 0.5 + slack
+}
+
+# how far out a hit's shape can reach from the attacker, for asking the world who is near
+export function melee_hit_bound(h: MeleeHit) -> float {
+  if h.shape == MELEE_SHAPE_BOX {
+    let far = Math.max(Math.abs(h.fwd), Math.abs(h.fwd + h.length))
+    return Math.sqrt(far * far + (Math.abs(h.side) + h.width * 0.5) * (Math.abs(h.side) + h.width * 0.5))
+  }
+  if h.shape == MELEE_SHAPE_SPHERE { return Math.sqrt(h.fwd * h.fwd + h.side * h.side) + h.radius }
+  return h.reach
+}

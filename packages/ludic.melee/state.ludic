@@ -1,0 +1,72 @@
+# state.ludic - the fighters (a row each, found by a handle), their clocks, hit memory and poise
+
+# one fighter. `phase` is the machine's (@Machine(Fighter.phase)): nothing else writes it.
+export property Fighter {
+  phase: MeleePhase = MeleePhase.Ready
+  actor: int = -1
+  persist: bool = true                          # a save keeps its set (the player's)
+  set: int = 0                                  # its MeleeSets row
+  attack: int = -1                              # the attack playing, or -1
+  t: float = 0.0                                # seconds into it, on the clip
+  prev_t: float = 0.0                           # where it was a moment ago: a window between the two is crossed
+  speed: float = 1.0
+  combo: int = 0                                # how many attacks of this chain have played
+  queued: int = 0                               # a press waiting (MELEE_LIGHT, MELEE_HEAVY), 0 none
+  queued_t: float = 0.0                         # seconds it waits yet
+  want: int = 0                                 # the press an action carried, for the machine's guard
+  stun: float = 0.0                             # seconds of stagger left
+  stun_in: float = 0.0                          # the stagger an action carried, for the machine's enter
+  guard_t: float = 0.0                          # seconds since the guard went up
+  poise: float = 0.0
+  poise_wait: float = 0.0
+  hit_n: int = 0                                # the hit memory: who this swing has hit, in which window, and when it may again
+  hit_actor: []int = null
+  hit_win: []int = null
+  hit_at: []float = null
+}
+
+export state MeleeState {
+  ml__fighters: Table<Fighter> = ml__table()
+  ml__by_actor: IntMap = imap_new()
+  ml__dice: Rng = rng_new(1)
+  ml__found: []int = new []int                  # the actors the world found in a circle, kept
+  ml__buffer: float = 0.25
+  ml__q: Queue<MeleeFact> = ml__queue()
+}
+function ml__table() -> Table<Fighter> { return table_new(0, 0) }
+function ml__queue() -> Queue<MeleeFact> { return queue_new("melee.facts") }
+export function melee_facts(melee_st: MeleeState) -> Queue<MeleeFact> { return melee_st.ml__q }
+export function melee_seed(melee_st: mut MeleeState, seed: int) -> void { rng_seed(melee_st.ml__dice, seed) }
+
+# a fact, from anywhere (the machine's functions only read the state, and a queue is not the state)
+function ml__fact(melee_st: MeleeState, what: int, r: Fighter, h: int) -> MeleeFact {
+  var f = q_rec(melee_facts(melee_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new MeleeFact
+    q_ring_add(melee_facts(melee_st), f)
+  }
+  f.what = what
+  f.fighter = h
+  f.actor = -1
+  f.attack = -1
+  f.combo = 0
+  if r != null {
+    f.actor = r.actor
+    f.attack = r.attack
+    f.combo = r.combo
+  }
+  f.victim = -1
+  f.hit = -1
+  f.result = 0
+  f.why = 0
+  f.damage = 0.0
+  f.stagger = 0.0
+  f.crit = false
+  f.time = 0.0
+  q_push(melee_facts(melee_st), f)
+  return f
+}
+
+function ml__set_ok(s: int) -> bool { return s >= 0 and s < MSET_COUNT }
+function ml__attack_ok(a: int) -> bool { return a >= 0 and a < MAT_COUNT }

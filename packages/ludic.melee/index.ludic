@@ -1,0 +1,19 @@
+# ludic.melee - a fighter's attacks as data. An attack plays a clip (the game's animation) for a time;
+# inside it, hit windows say WHEN a shape in front of the attacker can hurt someone. A fighter's phase
+# (ready, attacking, blocking, staggered) is a @Machine: a table of transitions the studio edits as a
+# graph. The world (where actors stand, who is in a circle, what a hit does) is asked through ports, and
+# everything that happens is a fact
+module ludic_melee uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "shapes.ludic"
+import "steps.ludic"
+import "fighters.ludic"
+import "hits.ludic"
+import "input.ludic"
+import "queries.ludic"
+import "run.ludic"
+import "system.ludic"

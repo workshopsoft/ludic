@@ -1,0 +1,130 @@
+# hits.ludic - a hit window crossed: who is inside the shape, whether a guard turns it, what the port
+# is told, and the poise taken. Hit memory keeps one swing from hurting the same body twice.
+function ml__remembered(r: Fighter, w: int, o: int) -> int {
+  for i in 0 .. r.hit_n { if r.hit_actor[i] == o and r.hit_win[i] == w { return i } }
+  return -1
+}
+
+@alloc_ok("the hit memory grows to the most bodies one swing has hit, then is reused")
+function ml__remember(r: Fighter, w: int, o: int, again: float) -> void {
+  if r.hit_n >= len(r.hit_actor) {
+    push(r.hit_actor, o)
+    push(r.hit_win, w)
+    push(r.hit_at, again)
+  } else {
+    r.hit_actor[r.hit_n] = o
+    r.hit_win[r.hit_n] = w
+    r.hit_at[r.hit_n] = again
+  }
+  r.hit_n += 1
+}
+
+# does the guard of a victim face the attacker: its yaw against the way to the attacker
+function ml__faces(v: Fighter, arc: float, vyaw: float, vx: float, vz: float, ax: float, az: float) -> bool {
+  let rad = Math.deg_to_rad(vyaw)
+  let dx = ax - vx
+  let dz = az - vz
+  let f = dx * Math.sin(rad) + dz * Math.cos(rad)
+  let s = dx * Math.cos(rad) - dz * Math.sin(rad)
+  return Math.abs(Math.rad_to_deg(Math.atan2(s, f))) <= arc * 0.5
+}
+
+function ml__fighter_fact(melee_st: mut MeleeState, what: int, r: Fighter, h: int, victim: int, w: int, result: int, damage: float, stagger: float, crit: bool) -> void {
+  let f = ml__fact(melee_st, what, r, h)
+  f.victim = victim
+  f.hit = w
+  f.result = result
+  f.damage = damage
+  f.stagger = stagger
+  f.crit = crit
+  f.time = r.t
+}
+
+# one body struck by one window
+function ml__strike(melee_st: mut MeleeState, r: Fighter, h: int, w: int, hit: MeleeHit, o: int) -> void {
+  var dmg = hit.damage * MeleeWorld.power(r.actor)
+  var crit = false
+  let cc = MeleeWorld.crit_chance(r.actor)
+  if cc > 0.0 and rng_float(melee_st.ml__dice) < cc {
+    crit = true
+    dmg = dmg * MeleeWorld.crit_mult(r.actor)
+  }
+  let vh = melee_fighter_of(melee_st, o)
+  let v = ml__fighter(melee_st, vh)
+  var result = MELEE_RESULT_HIT
+  if v != null and v.phase == MeleePhase.Block and ml__set_ok(v.set) {
+    let vs = MeleeSets[v.set]
+    let covered = ml__faces(v, vs.block_arc, MeleeWorld.yaw(o), MeleeWorld.x(o), MeleeWorld.z(o), MeleeWorld.x(r.actor), MeleeWorld.z(r.actor))
+    if covered and hit.parryable and v.guard_t <= vs.parry_window {
+      result = MELEE_RESULT_PARRIED
+    } else if covered and hit.blockable {
+      result = MELEE_RESULT_BLOCKED
+      let cost = hit.stagger * vs.block_poise
+      if cost > 0.0 and not MeleeWorld.spend(v.actor, vs.cost_resource, cost) { result = MELEE_RESULT_GUARD_BROKEN }
+    }
+  }
+  if result == MELEE_RESULT_PARRIED {
+    dispatch MeleeStaggerIn { who: h, time: MeleeSets[v.set].parry_stagger }
+    ml__fighter_fact(melee_st, MELEE_HIT, r, h, o, w, result, 0.0, 0.0, false)
+    return
+  }
+  var amount = dmg
+  if result == MELEE_RESULT_BLOCKED or result == MELEE_RESULT_GUARD_BROKEN { amount = dmg * MeleeSets[v.set].block_mult }
+  var dealt = 0.0
+  if amount > 0.0 { dealt = MeleeDamage.hurt(o, r.actor, amount, hit.damage_type) }
+  if hit.knockback > 0.0 and result == MELEE_RESULT_HIT { MeleeDamage.push(o, r.actor, hit.knockback) }
+  var poise_hit = 0.0
+  if v != null and ml__set_ok(v.set) {
+    if result == MELEE_RESULT_GUARD_BROKEN {
+      dispatch MeleeStaggerIn { who: vh, time: MeleeSets[v.set].stagger_time }
+    } else if result == MELEE_RESULT_HIT and v.phase != MeleePhase.Stagger {
+      var armor = 0.0
+      if v.phase == MeleePhase.Attack and ml__attack_ok(v.attack) { armor = MeleeAttacks[v.attack].armor }
+      poise_hit = Math.max(0.0, hit.stagger - armor)
+      v.poise -= poise_hit
+      v.poise_wait = MeleeSets[v.set].poise_delay
+      if v.poise <= 0.0 {
+        v.poise = MeleeSets[v.set].poise
+        ml__fact(melee_st, MELEE_POISE_BROKEN, v, vh)
+        dispatch MeleeStaggerIn { who: vh, time: MeleeSets[v.set].stagger_time }
+      }
+    }
+  }
+  ml__fighter_fact(melee_st, MELEE_HIT, r, h, o, w, result, dealt, poise_hit, crit)
+}
+
+# a window open in this slice of the clip: everyone the world finds near, tested against the shape
+function ml__window(melee_st: mut MeleeState, r: Fighter, h: int, w: int, hit: MeleeHit) -> void {
+  let ax = MeleeWorld.x(r.actor)
+  let ay = MeleeWorld.y(r.actor)
+  let az = MeleeWorld.z(r.actor)
+  let yaw = MeleeWorld.yaw(r.actor)
+  List.clear(melee_st.ml__found)
+  MeleeWorld.find(ax, az, melee_hit_bound(hit) + 2.0, melee_st.ml__found)
+  var i = 0
+  while i < len(melee_st.ml__found) {
+    let o = melee_st.ml__found[i]
+    i += 1
+    if o == r.actor or not MeleeWorld.alive(o) or not MeleeWorld.hostile(r.actor, o) { continue }
+    if not melee_shape_hits(hit, ax, ay, az, yaw, MeleeWorld.x(o), MeleeWorld.y(o), MeleeWorld.z(o), MeleeWorld.radius(o), MeleeWorld.height(o)) { continue }
+    let k = ml__remembered(r, w, o)
+    if k >= 0 {
+      if hit.rehit <= 0.0 or r.t < r.hit_at[k] { continue }
+      r.hit_at[k] = r.t + hit.rehit
+    } else {
+      ml__remember(r, w, o, r.t + hit.rehit)
+    }
+    ml__strike(melee_st, r, h, w, hit, o)
+  }
+}
+
+# every window of the fighter's attack that the last slice of its clip crossed
+function ml__sweep(melee_st: mut MeleeState, r: Fighter, h: int) -> void {
+  let ab = MeleeAttacks[r.attack]
+  if ab.hits == null { return }
+  for w in 0 .. len(ab.hits) {
+    let hit = ab.hits[w]
+    if r.prev_t > hit.stop or r.t < hit.start { continue }
+    ml__window(melee_st, r, h, w, hit)
+  }
+}

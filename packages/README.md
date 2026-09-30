@@ -17,6 +17,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.anim](ludic.anim/README.md) | glTF animation clips sampled and cross-faded onto a render3d Skin (uses `ludic_render3d`); ozz-animation underneath as a native library (phase 19) |
 | [ludic.character](ludic.character/README.md) | a third-person walking body: gait, steps and slopes, a jump, wading, swimming, sitting, a safe put-down, the orbit camera |
 | [ludic.audio](ludic.audio/README.md) | world sounds with a gain, pan and pitch from a listener port, flat interface sounds, packed clips loaded, the one door to `Audio.*` |
+| [ludic.abilities](ludic.abilities/README.md) | abilities, spells and skills as data: cost through a resource port, cast time, cooldowns, charges, targeting, effect chains through ports, channels, learnable levels, a hotbar |
 | [ludic.compass](ludic.compass/README.md) | bearing marks on a strip: gathered from registered providers, gated by tier, sorted by priority, bearings, distances and a radar |
 | [ludic.clock](ludic.clock/README.md) | the hour, the day, the moon and a calendar of seasons |
 | [ludic.crafting](ludic.crafting/README.md) | recipes: what goes in and out, where and how long, making, refunding, hold-to-make |
@@ -28,7 +29,9 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.hints](ludic.hints/README.md) | a rail of what is true now, most urgent first, each a card that teaches it and can be muted by key |
 | [ludic.i18n](ludic.i18n/README.md) | a game in any language by keys: gettext `.po` files (en.po the English), holes, plurals, a mod folder, a font per language |
 | [ludic.inventory](ludic.inventory/README.md) | a pack: a count per kind, with room the game decides |
+| [ludic.loot](ludic.loot/README.md) | weighted loot tables (nested, guaranteed, rolls), rarity tiers by level and luck, affixes, uniques dropped once, seeded rolls, drops as facts |
 | [ludic.minimap](ludic.minimap/README.md) | a map's logic: the explored fog over a grid and its land share, the player's marks, and the view (world to map and back, zoom, pan, the camp, you, focus) |
+| [ludic.melee](ludic.melee/README.md) | attacks as data on animation clips: hit windows and shapes, combos by input window, blocking and parrying, poise and stagger, a fighter's phase as a `@Machine` |
 | [ludic.needs](ludic.needs/README.md) | a body's warmth, food, water and energy, and the countdown to a collapse |
 | [ludic.npc](ludic.npc/README.md) | the other people in a place: a routine by the hour, walking round what is in the way, facing a player who comes near, lines as data, a guest's copy |
 | [ludic.physics](ludic.physics/README.md) | rigid bodies, removable still shapes, queries and buoyancy over Jolt Physics (a native library, phase 16) |
@@ -41,6 +44,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.telemetry](ludic.telemetry/README.md) | events queued, batched to a PostHog-shaped endpoint, backed off when offline |
 | [ludic.things](ludic.things/README.md) | the placed things of a world and their kinds (an open registry), queries, facts, a save |
 | [ludic.tracks](ludic.tracks/README.md) | prints and sign animals leave, their age, and reading them |
+| [ludic.travel](ludic.travel/README.md) | waypoints a player discovers and fast-travels between: unlock rules, cost in coins and hours, the load through a port, map markers as data |
 | [ludic.update](ludic.update/README.md) | a Velopack-installed game updating itself a frame at a time |
 | [ludic.vehicles](ludic.vehicles/README.md) | each player's boat and horse: called to berths and bays, owner and rider, riding, getting off onto a safe spot |
 | [ludic.wallet](ludic.wallet/README.md) | money carried: earned, spent, lost, every change a fact |

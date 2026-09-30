@@ -1,0 +1,6 @@
+# ludic.melee - attacks as data played on animation clips: hit windows and shapes, combos, blocking
+# and parrying, poise and stagger; every swing, hit and stagger a fact, damage through a port. Uses
+# ludic.base and nothing else. See README.md.
+package "ludic.melee"
+version "0.1.0"
+kind source

@@ -1,0 +1,156 @@
+# steps.ludic - a fighter's phase as a machine. The registry is the transitions, one row each in
+# steps.lres (a studio edits it as a graph); the compiler writes a reducer for each action a row names
+# and melee_steps_tick for the rows the tick asks. The functions the rows name are here.
+export property MeleeStep {
+  from: MeleePhase = MeleePhase.Ready
+  to: MeleePhase = MeleePhase.Ready
+  on: string = ""
+  guard: fn(Row<Fighter>, MeleeState) -> bool = null
+  enter: fn(Row<Fighter>, MeleeState) -> void = null
+}
+
+@Machine(Fighter.phase) export open registry MeleeSteps of MeleeStep as MSTEP from "steps.lres"
+
+# what a press does to the fighter before the machine looks: it is remembered, for as long as the set says
+reducer Fighter in MeleeState.ml__fighters on MeleeAttackIn(r: mut Row<Fighter>, s: MeleeState, a: MeleeAttackIn) {
+  r.rec.queued = a.kind
+  r.rec.queued_t = s.ml__buffer
+  if ml__set_ok(r.rec.set) { r.rec.queued_t = MeleeSets[r.rec.set].buffer }
+}
+
+reducer Fighter in MeleeState.ml__fighters on MeleeStaggerIn(r: mut Row<Fighter>, a: MeleeStaggerIn) {
+  r.rec.stun_in = a.time
+}
+
+# the seconds an attack lasts: its own, else the clip's through the port, else one
+function ml__length(attack: int) -> float {
+  let ab = MeleeAttacks[attack]
+  if ab.length > 0.0 { return ab.length }
+  let n = MeleeWorld.clip_length(ab.clip)
+  if n > 0.0 { return n }
+  return 1.0
+}
+
+# the attack a press begins from the fighter's set, or -1
+function ml__first(set: int, kind: int) -> int {
+  if not ml__set_ok(set) { return -1 }
+  if kind == MELEE_HEAVY { return MeleeSets[set].heavy }
+  if kind == MELEE_LIGHT { return MeleeSets[set].light }
+  return -1
+}
+
+# where a press inside the window of an attack goes, or -1
+function ml__follow(attack: int, kind: int) -> int {
+  if not ml__attack_ok(attack) { return -1 }
+  if kind == MELEE_HEAVY { return MeleeAttacks[attack].heavy }
+  if kind == MELEE_LIGHT { return MeleeAttacks[attack].light }
+  return -1
+}
+
+function ml__affordable(f: Fighter, attack: int) -> bool {
+  if not ml__attack_ok(attack) { return false }
+  let c = MeleeAttacks[attack].cost
+  if c <= 0.0 { return true }
+  return MeleeWorld.can_afford(f.actor, MeleeSets[f.set].cost_resource, c)
+}
+
+function ml__in_chain_window(f: Fighter) -> bool {
+  let ab = MeleeAttacks[f.attack]
+  if f.t < ab.chain_start { return false }
+  if ab.chain_end > 0.0 and f.t > ab.chain_end { return false }
+  return true
+}
+
+# the guards
+function ml_can_start(r: Row<Fighter>, s: MeleeState) -> bool {
+  if r.rec.queued == 0 { return false }
+  return ml__affordable(r.rec, ml__first(r.rec.set, r.rec.queued))
+}
+
+function ml_chain_ready(r: Row<Fighter>, s: MeleeState) -> bool {
+  if r.rec.queued == 0 or not ml__attack_ok(r.rec.attack) { return false }
+  if not ml__in_chain_window(r.rec) { return false }
+  return ml__affordable(r.rec, ml__follow(r.rec.attack, r.rec.queued))
+}
+
+function ml_attack_done(r: Row<Fighter>, s: MeleeState) -> bool {
+  if not ml__attack_ok(r.rec.attack) { return true }
+  return r.rec.t >= ml__length(r.rec.attack)
+}
+
+function ml_can_guard(r: Row<Fighter>, s: MeleeState) -> bool {
+  if not ml__attack_ok(r.rec.attack) { return true }
+  let from = MeleeAttacks[r.rec.attack].guard_from
+  return from >= 0.0 and r.rec.t >= from
+}
+
+function ml_stagger_done(r: Row<Fighter>, s: MeleeState) -> bool { return r.rec.stun <= 0.0 }
+
+# the enters
+@RowVerb function ml__begin(r: mut Row<Fighter>, s: MeleeState, attack: int) -> void {
+  let ab = MeleeAttacks[attack]
+  r.rec.attack = attack
+  r.rec.t = 0.0
+  r.rec.prev_t = 0.0
+  r.rec.hit_n = 0
+  r.rec.queued = 0
+  r.rec.queued_t = 0.0
+  r.rec.speed = ab.speed * MeleeWorld.attack_speed(r.rec.actor)
+  if ab.cost > 0.0 { MeleeWorld.spend(r.rec.actor, MeleeSets[r.rec.set].cost_resource, ab.cost) }
+  MeleeWorld.play(r.rec.actor, ab.clip, r.rec.speed)
+  ml__fact(s, MELEE_SWING, r.rec, r.h)
+}
+
+function ml_begin_first(r: mut Row<Fighter>, s: MeleeState) -> void {
+  r.rec.combo = 0
+  ml__begin(r, s, ml__first(r.rec.set, r.rec.queued))
+}
+
+function ml_begin_next(r: mut Row<Fighter>, s: MeleeState) -> void {
+  let next = ml__follow(r.rec.attack, r.rec.queued)
+  let f = ml__fact(s, MELEE_ENDED, r.rec, r.h)
+  f.time = r.rec.t
+  r.rec.combo += 1
+  ml__begin(r, s, next)
+}
+
+# an attack is over, played out or given up: the attack, the clock and the window's memory go
+@RowVerb function ml__end_attack(r: mut Row<Fighter>, s: MeleeState, why: int) -> void {
+  if ml__attack_ok(r.rec.attack) {
+    let f = ml__fact(s, MELEE_ENDED, r.rec, r.h)
+    f.time = r.rec.t
+    f.why = why
+  }
+  r.rec.attack = -1
+  r.rec.t = 0.0
+  r.rec.prev_t = 0.0
+  r.rec.hit_n = 0
+  r.rec.combo = 0
+}
+
+function ml_finish_attack(r: mut Row<Fighter>, s: MeleeState) -> void { ml__end_attack(r, s, MELEE_OK) }
+
+function ml_raise_guard(r: mut Row<Fighter>, s: MeleeState) -> void {
+  ml__end_attack(r, s, MELEE_OK)
+  r.rec.guard_t = 0.0
+  r.rec.queued = 0
+  ml__fact(s, MELEE_GUARD_UP, r.rec, r.h)
+}
+
+function ml_lower_guard(r: mut Row<Fighter>, s: MeleeState) -> void {
+  ml__fact(s, MELEE_GUARD_DOWN, r.rec, r.h)
+}
+
+function ml_begin_stagger(r: mut Row<Fighter>, s: MeleeState) -> void {
+  ml__end_attack(r, s, MELEE_STAGGERED_NOW)
+  r.rec.stun = r.rec.stun_in
+  r.rec.queued = 0
+  if ml__set_ok(r.rec.set) { r.rec.poise = MeleeSets[r.rec.set].poise }
+  let f = ml__fact(s, MELEE_STAGGERED, r.rec, r.h)
+  f.time = r.rec.stun
+}
+
+function ml_recover(r: mut Row<Fighter>, s: MeleeState) -> void {
+  r.rec.stun = 0.0
+  ml__fact(s, MELEE_RECOVERED, r.rec, r.h)
+}

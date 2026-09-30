@@ -1,0 +1,67 @@
+# input.ludic - what a player or an AI does: a press, a guard up or down, a cancel. Each is checked
+# here (so a refusal is a fact and a reason) and then dispatched as an action; the machine reduces it
+# at the end of the phase, so call these in PH_INPUT and the state is settled before PH_SIMULATE.
+function ml__refuse(melee_st: mut MeleeState, r: Fighter, h: int, why: int) -> int {
+  let f = ml__fact(melee_st, MELEE_REFUSED, r, h)
+  f.why = why
+  return why
+}
+
+# a light or heavy press. Ready or guarding, it begins the set's attack; in an attack, it is kept and
+# continues the combo once the chain window opens (or is used a moment after the swing ends)
+export function melee_attack(melee_st: mut MeleeState, h: int, kind: int) -> int {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return MELEE_NO_SUCH }
+  if r.phase == MeleePhase.Stagger { return ml__refuse(melee_st, r, h, MELEE_STAGGERED_NOW) }
+  var target = ml__first(r.set, kind)
+  if r.phase == MeleePhase.Attack {
+    target = ml__follow(r.attack, kind)
+    if target < 0 { return ml__refuse(melee_st, r, h, MELEE_NO_CHAIN) }
+  } else if target < 0 {
+    return ml__refuse(melee_st, r, h, MELEE_NO_ATTACK)
+  }
+  if not ml__affordable(r, target) { return ml__refuse(melee_st, r, h, MELEE_TOO_TIRED) }
+  dispatch MeleeAttackIn { who: h, kind: kind }
+  return MELEE_OK
+}
+
+export function melee_guard_up(melee_st: mut MeleeState, h: int) -> bool {
+  let r = ml__fighter(melee_st, h)
+  if r == null or r.phase == MeleePhase.Block or r.phase == MeleePhase.Stagger { return false }
+  dispatch MeleeBlockIn { who: h }
+  return true
+}
+
+export function melee_guard_down(melee_st: mut MeleeState, h: int) -> bool {
+  let r = ml__fighter(melee_st, h)
+  if r == null or r.phase != MeleePhase.Block { return false }
+  dispatch MeleeUnblockIn { who: h }
+  return true
+}
+
+# give up the swing in progress (a dodge, a fall)
+export function melee_cancel(melee_st: mut MeleeState, h: int) -> bool {
+  let r = ml__fighter(melee_st, h)
+  if r == null or r.phase != MeleePhase.Attack { return false }
+  dispatch MeleeCancelIn { who: h }
+  return true
+}
+
+# stagger a fighter from outside (a trap, a shove): `seconds`, or its set's own time for 0
+export function melee_stagger(melee_st: mut MeleeState, h: int, seconds: float) -> bool {
+  let r = ml__fighter(melee_st, h)
+  if r == null or r.phase == MeleePhase.Stagger { return false }
+  var t = seconds
+  if t <= 0.0 and ml__set_ok(r.set) { t = MeleeSets[r.set].stagger_time }
+  dispatch MeleeStaggerIn { who: h, time: t }
+  return true
+}
+
+# poise straight to a number (a potion, a debuff), clamped to the set's most
+export function melee_set_poise(melee_st: mut MeleeState, h: int, poise: float) -> bool {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return false }
+  r.poise = poise
+  if ml__set_ok(r.set) and r.poise > MeleeSets[r.set].poise { r.poise = MeleeSets[r.set].poise }
+  return true
+}

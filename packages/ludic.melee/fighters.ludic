@@ -1,0 +1,60 @@
+# fighters.ludic - the actors that fight: a row each, found by the game's number for the actor
+function ml__fighter(melee_st: MeleeState, h: int) -> Fighter {
+  let r = tb_row(melee_st.ml__fighters, h)
+  if r < 0 { return null }
+  return tb_rec(melee_st.ml__fighters, r)
+}
+
+export function melee_fighter_of(melee_st: MeleeState, actor: int) -> int {
+  let h = imap_get(melee_st.ml__by_actor, actor, -1)
+  if h < 0 or tb_row(melee_st.ml__fighters, h) < 0 { return -1 }
+  return h
+}
+
+export function melee_fighter_count(melee_st: MeleeState) -> int { return tb_len(melee_st.ml__fighters) }
+
+export function melee_actor(melee_st: MeleeState, h: int) -> int {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return -1 }
+  return r.actor
+}
+
+# the set's numbers a fighter starts from
+function ml__arm(r: Fighter, set: int) -> void {
+  r.set = set
+  if ml__set_ok(set) { r.poise = MeleeSets[set].poise } else { r.poise = 0.0 }
+  r.poise_wait = 0.0
+}
+
+# an actor starts to fight with a moveset (a MeleeSets row); returns its handle (the same if it already does)
+@alloc_ok("a fighter added: an event, not a frame")
+export function melee_add(melee_st: mut MeleeState, actor: int, set: int, persist: bool) -> int {
+  let have = melee_fighter_of(melee_st, actor)
+  if have >= 0 { return have }
+  let r = new Fighter
+  r.actor = actor
+  r.persist = persist
+  r.hit_actor = new []int
+  r.hit_win = new []int
+  r.hit_at = new []float
+  ml__arm(r, set)
+  let h = tb_add(melee_st.ml__fighters, r)
+  imap_put(melee_st.ml__by_actor, actor, h)
+  return h
+}
+
+export function melee_remove(melee_st: mut MeleeState, h: int) -> bool {
+  let r = ml__fighter(melee_st, h)
+  if r == null { return false }
+  imap_del(melee_st.ml__by_actor, r.actor)
+  return tb_remove(melee_st.ml__fighters, h)
+}
+
+# a new weapon: the moveset changes and poise is full; an attack already playing plays out
+export function melee_equip(melee_st: mut MeleeState, h: int, set: int) -> bool {
+  let r = ml__fighter(melee_st, h)
+  if r == null or not ml__set_ok(set) { return false }
+  ml__arm(r, set)
+  r.queued = 0
+  return true
+}

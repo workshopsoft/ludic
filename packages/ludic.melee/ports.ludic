@@ -1,0 +1,41 @@
+# ports.ludic - what melee asks and tells the game. Every member has a default: unbound, actors stand
+# at the origin facing +z with a 0.4 m body, everyone but oneself is an enemy, stamina is no object, a
+# hit does nothing (the facts still say it landed), and a clip's length is the attack's own.
+export port MeleeWorld {
+  x: fn(int) -> float = fn ml__zero                   # where an actor stands
+  y: fn(int) -> float = fn ml__zero
+  z: fn(int) -> float = fn ml__zero
+  yaw: fn(int) -> float = fn ml__zero                 # degrees; 0 faces +z
+  radius: fn(int) -> float = fn ml__body              # its body, metres
+  height: fn(int) -> float = fn ml__tall
+  alive: fn(int) -> bool = fn ml__alive
+  hostile: fn(int, int) -> bool = fn ml__enemy        # (attacker, other): may it be hit
+  find: fn(float, float, float, []int) -> int = fn ml__nobody   # (x, z, radius, out): push the actors in a circle into out; returns how many
+  can_afford: fn(int, int, float) -> bool = fn ml__afford       # (actor, resource, amount)
+  spend: fn(int, int, float) -> bool = fn ml__pay
+  power: fn(int) -> float = fn ml__one                # times its damage (strength, a buff)
+  attack_speed: fn(int) -> float = fn ml__one         # times its swing speed
+  crit_chance: fn(int) -> float = fn ml__zero
+  crit_mult: fn(int) -> float = fn ml__two
+  clip_length: fn(string) -> float = fn ml__clip     # the animation's own length, for an attack that says 0
+  play: fn(int, string, float) -> void = fn ml__play   # (actor, clip, speed): the game's animation starts
+}
+function ml__zero(a: int) -> float { return 0.0 }
+function ml__body(a: int) -> float { return 0.4 }
+function ml__tall(a: int) -> float { return 1.8 }
+function ml__alive(a: int) -> bool { return true }
+function ml__enemy(a: int, b: int) -> bool { return a != b }
+function ml__nobody(x: float, z: float, r: float, out: []int) -> int { return 0 }
+function ml__afford(a: int, res: int, n: float) -> bool { return true }
+function ml__pay(a: int, res: int, n: float) -> bool { return true }
+function ml__one(a: int) -> float { return 1.0 }
+function ml__two(a: int) -> float { return 2.0 }
+function ml__clip(clip: string) -> float { return 0.0 }
+function ml__play(a: int, clip: string, speed: float) -> void { }
+
+export port MeleeDamage {
+  hurt: fn(int, int, float, int) -> float = fn ml__dealt   # (victim, attacker, amount, damage type) -> what it took
+  push: fn(int, int, float) -> void = fn ml__pushed        # (victim, attacker, force)
+}
+function ml__dealt(v: int, a: int, n: float, ty: int) -> float { return n }
+function ml__pushed(v: int, a: int, f: float) -> void { }

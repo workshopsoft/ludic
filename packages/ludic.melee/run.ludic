@@ -1,0 +1,42 @@
+# run.ludic - time passing: the swing's clock and its hit windows, the guard's, the stagger's, poise
+# coming back; then the machine's own transitions (a swing played out, a stagger worn off)
+function ml__run_fighter(melee_st: mut MeleeState, r: Fighter, h: int, dt: float) -> void {
+  if r.phase == MeleePhase.Attack and ml__attack_ok(r.attack) {
+    r.prev_t = r.t
+    r.t += dt * r.speed
+    ml__sweep(melee_st, r, h)
+  } else if r.phase == MeleePhase.Block {
+    r.guard_t += dt
+  } else if r.phase == MeleePhase.Stagger {
+    r.stun -= dt
+    if r.stun < 0.0 { r.stun = 0.0 }
+  }
+  if r.queued != 0 {
+    var holds = false
+    if r.phase == MeleePhase.Attack and ml__attack_ok(r.attack) and r.t < MeleeAttacks[r.attack].chain_start { holds = true }
+    if not holds {
+      r.queued_t -= dt
+      if r.queued_t <= 0.0 {
+        r.queued = 0
+        r.queued_t = 0.0
+      }
+    }
+  }
+  if r.phase != MeleePhase.Stagger and ml__set_ok(r.set) {
+    if r.poise_wait > 0.0 {
+      r.poise_wait -= dt
+    } else if r.poise < MeleeSets[r.set].poise {
+      r.poise = Math.min(MeleeSets[r.set].poise, r.poise + MeleeSets[r.set].poise_regen * dt)
+    }
+  }
+}
+
+export function melee_run(melee_st: mut MeleeState, m: mut MeleeStepsMachine, dt: float) -> void {
+  let tb = melee_st.ml__fighters
+  var i = 0
+  while i < tb_len(tb) {
+    ml__run_fighter(melee_st, tb_rec(tb, i), tb_handle(tb, i), dt)
+    i += 1
+  }
+  melee_steps_tick(m, melee_st)
+}

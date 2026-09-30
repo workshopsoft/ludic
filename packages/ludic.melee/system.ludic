@@ -1,0 +1,53 @@
+# system.ludic - melee as a system: PH_SIMULATE, and its own save section: the dice, and the moveset of
+# each fighter that persists, by the game's number for the actor and the set's KEY (handles are not
+# saved: ask melee_fighter_of(actor)). A swing in progress is not saved: a load starts at rest.
+@alloc_ok("a new game or a load: the table made again")
+export function melee_reset(melee_st: mut MeleeState) -> void {
+  melee_st.ml__fighters = ml__table()
+  melee_st.ml__by_actor = imap_new()
+  rng_seed(melee_st.ml__dice, 1)
+  q_clear(melee_facts(melee_st))
+}
+
+function melee_tick(melee_st: mut MeleeState, m: mut MeleeStepsMachine, t: Tick) -> void { melee_run(melee_st, m, t.dt) }
+
+@alloc_ok("a save: a tree written from the state")
+export function melee_save(melee_st: MeleeState) -> Val {
+  let v = Value.object()
+  sv_put_int(v, "dice", melee_st.ml__dice.s)
+  let l = Value.list()
+  let tb = melee_st.ml__fighters
+  for i in 0 .. tb_len(tb) {
+    let r = tb_rec(tb, i)
+    if not r.persist { continue }
+    let o = Value.object()
+    sv_put_int(o, "actor", r.actor)
+    if ml__set_ok(r.set) { sv_put_str(o, "set", MeleeSets[r.set].key) }
+    Value.add(l, o)
+  }
+  Value.put(v, "fighters", l)
+  return v
+}
+
+@alloc_ok("a load: fighters read back")
+export function melee_load(melee_st: mut MeleeState, v: Val, version: int) -> void {
+  melee_reset(melee_st)
+  melee_st.ml__dice.s = sv_int(v, "dice", melee_st.ml__dice.s)
+  if Value.has(v, "fighters") == 0 { return }
+  let l = Value.get(v, "fighters")
+  for i in 0 .. Value.count(l) {
+    let o = Value.at(l, i)
+    var set = meleesets_find(sv_str(o, "set", ""))
+    if set < 0 { set = 0 }
+    melee_add(melee_st, sv_int(o, "actor", -1), set, true)
+  }
+}
+
+export function melee_system() -> System {
+  let s = system_new("melee", PH_SIMULATE)
+  s.reset = fn melee_reset
+  s.tick = fn melee_tick
+  s.save = fn melee_save
+  s.load = fn melee_load
+  return s
+}

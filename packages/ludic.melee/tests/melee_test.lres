@@ -1,0 +1,20 @@
+# melee_test.lres - the attacks the tests swing
+slash1 {
+  clip: "slash1", length: 1.0, cost: 10.0, light: MAT_SLASH2, heavy: MAT_SMASH
+  chain_start: 0.5, chain_end: 0.9, guard_from: 0.7, move_mult: 0.3
+  hits: [{ key: "arc", start: 0.2, stop: 0.4, shape: MELEE_SHAPE_ARC, reach: 2.0, arc: 90.0, damage: 10.0, stagger: 15.0 }]
+}
+slash2 {
+  clip: "slash2", length: 1.0, cost: 10.0, light: MAT_SMASH
+  chain_start: 0.5, chain_end: 0.9
+  hits: [{ key: "back", start: 0.2, stop: 0.4, shape: MELEE_SHAPE_ARC, reach: 2.0, arc: 90.0, damage: 12.0, stagger: 15.0 }]
+}
+smash {
+  clip: "smash", length: 1.6, cost: 25.0, armor: 30.0, move_mult: 0.1
+  hits: [{ key: "slam", start: 0.6, stop: 0.8, shape: MELEE_SHAPE_BOX, fwd: 0.5, length: 2.5, width: 1.0, damage: 40.0, stagger: 60.0, knockback: 5.0 }]
+}
+spin {
+  clip: "spin", length: 1.0
+  hits: [{ key: "whirl", start: 0.1, stop: 0.9, shape: MELEE_SHAPE_SPHERE, radius: 2.5, up: 1.0, rehit: 0.3, damage: 5.0, stagger: 1.0 }]
+}
+mystery { clip: "mystery", length: 0.0 }
