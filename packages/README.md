@@ -38,6 +38,9 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.physics](ludic.physics/README.md) | rigid bodies, removable still shapes, queries and buoyancy over Jolt Physics (a native library, phase 16) |
 | [ludic.nav](ludic.nav/README.md) | a navmesh per kind of walker and the ways across it, over Recast & Detour (a native library, phase 17) |
 | [ludic.photo](ludic.photo/README.md) | a camera's photographs: what is in the frame, a grade on size, framing, light and the moment, the roll, its worth, the best of each subject |
+| [ludic.procgen](ludic.procgen/README.md) | deterministic seeded generators as data, in integer math an editor reproduces exactly: room-and-corridor dungeons, tile maps from edge-socket rules (wave function collapse), scatter within regions; a golden file and a second implementation; the save is the seeds |
+| [ludic.respawn](ludic.respawn/README.md) | death to respawn as rules: per-map points, a rule per cause (nearest, checkpoint, home, start; cost, free deaths, wait, untouchable window), checkpoints, facts |
+| [ludic.roads](ludic.roads/README.md) | a road network as per-map data (nodes, spline roads with lanes and limits, turn rules), shortest and fastest routes, and traffic that follows lanes with spacing and takes turns at junctions and signals, through ports for the cars' bodies |
 | [ludic.save](ludic.save/README.md) | versioned save files: a migration chain the game declares, torn writes told apart, a backup, a newer file refused and read-only |
 | [ludic.settings](ludic.settings/README.md) | a game's settings as data: one store, a fact per change, ranges, a safe set |
 | [ludic.shop](ludic.shop/README.md) | vendors: prices by standing and weekly demand, stock, buying and selling |
@@ -49,6 +52,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.update](ludic.update/README.md) | a Velopack-installed game updating itself a frame at a time |
 | [ludic.vehicles](ludic.vehicles/README.md) | each player's boat and horse: called to berths and bays, owner and rider, riding, getting off onto a safe spot |
 | [ludic.wallet](ludic.wallet/README.md) | money carried: earned, spent, lost, every change a fact |
+| [ludic.wanted](ludic.wanted/README.md) | heat against a subject: crimes as weighted rows, decay out of sight, responses per level as data, the phases a `@Machine` table, facts for the game's AI |
 | [ludic.weather](ludic.weather/README.md) | spells of weather described as data: odds, wetness, wind, storms, a forecast |
 | [ludic.wildlife](ludic.wildlife/README.md) | a valley's animals: ranges, their day, senses and alert, feeding, lures, spawning |
 | [ludic.build](ludic.build/README.md) | structures on a grid: footprints and rotation, placement rules as data (tags, adjacency, spacing, limits, tech), costs through a bank port, construction by workers as a `@Machine` |
