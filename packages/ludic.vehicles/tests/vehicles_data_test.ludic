@@ -1,0 +1,74 @@
+# vehicles_data_test.ludic - a kind's numbers as rows of VehicleSpecs and its seats as rows of VehicleSeats,
+# read from .lres files: vehicle_spec answers the row of a kind with nothing handed in, a vehicle made from it
+# sits at its first seat, what a game hands in by code still wins, and an empty registry is no spec
+import "ludic.vehicles"
+import "ludic.base"
+program VehiclesDataTest {
+  numbers float
+  def VehicleSpecs from "specs.lres"
+  def VehicleSeats from "seats.lres"
+
+  import "fakes/fake_hull.ludic"
+  function fk_ground(x: float, z: float) -> float { return 0.0 }
+  bind VehicleWorld { ground: fn fk_ground }
+
+  test "the rows are the specs, by the kind each says" (vehicles_st: mut VehiclesState) {
+    expect_eq(VSPEC_COUNT, 2)
+    expect_eq(VSPEC_HORSE, 0)
+    expect_eq(VSPEC_BOAT, 1)
+    expect_eq(vehicle_spec_row(VEHICLE_BOAT), VSPEC_BOAT)
+    expect_eq(vehicle_spec_row(5), -1)
+    let h = vehicle_spec(vehicles_st, VEHICLE_HORSE)
+    expect(h != null)
+    expect(h.key == "horse" and h.walk == 4.5 and h.run == 11.0 and h.hay_min == 10.0)
+    expect(h.model == "models/horse.glb" and h.node == "horse")
+    let b = vehicle_spec(vehicles_st, VEHICLE_BOAT)
+    expect(b.row == 630.0 and b.off_depth == 1.25 and b.wind == 70.0)
+    expect(vehicle_spec(vehicles_st, 5) == null)
+  }
+
+  test "a spec row that says little has the record's zeros, and no kind" (vehicles_st: mut VehiclesState) {
+    let s = new VehicleSpec
+    expect_eq(s.kind, -1)
+    expect(s.walk == 0.0 and s.seat_h == 0.0 and s.model == "")
+  }
+
+  test "seats: a kind's first seat is where the rider sits, a kind with none keeps seat_h" (vehicles_st: mut VehiclesState) {
+    expect_eq(VSEAT_COUNT, 2)
+    expect_eq(vehicle_seat_count(VSPEC_BOAT), 2)
+    expect_eq(vehicle_seat_count(VSPEC_HORSE), 0)
+    let s = vehicle_seat(VSPEC_BOAT, 1)
+    expect(s.key == "bow" and s.z == 0.9 and s.yaw == 180.0 and s.pose == "sit")
+    expect(vehicle_seat(VSPEC_BOAT, 2) == null)
+    expect(vehicle_seat_height(vehicles_st, VEHICLE_BOAT) == 0.30)     # the seat's y, not the spec's seat_h of 0.2
+    expect(vehicle_seat_height(vehicles_st, VEHICLE_HORSE) == 1.35)
+  }
+
+  test "a vehicle is made from the rows with nothing handed in" (vehicles_st: mut VehiclesState) {
+    vehicles_reset(vehicles_st)
+    vehicles_dock_at(vehicles_st, 10.0, 0.0, 0.0)
+    vehicles_rail_at(vehicles_st, 0.0, 5.0, 0.0)
+    expect(vehicle_call_for(vehicles_st, 0, VEHICLE_HORSE, 0))
+    expect(vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0))
+    expect(vehicle_find(vehicles_st, VEHICLE_HORSE).seat_h == 1.35)
+    expect(vehicle_find(vehicles_st, VEHICLE_BOAT).seat_h == 0.30)
+  }
+
+  test "the old way still wins: a spec handed in replaces the row, null hands the kind back to it" (vehicles_st: mut VehiclesState) {
+    let mine = new VehicleSpec
+    mine.walk = 2.5
+    mine.seat_h = 1.1
+    vehicles_spec(vehicles_st, VEHICLE_HORSE, mine)
+    expect(vehicle_spec(vehicles_st, VEHICLE_HORSE) == mine)
+    expect(vehicle_seat_height(vehicles_st, VEHICLE_HORSE) == 1.1)
+    vehicles_spec(vehicles_st, VEHICLE_HORSE, null)
+    expect(vehicle_spec(vehicles_st, VEHICLE_HORSE).walk == 4.5)
+  }
+
+  test "the rows can be copied in as if handed in" (vehicles_st: mut VehiclesState) {
+    vehicles_specs_from_data(vehicles_st)
+    let b = vehicle_spec(vehicles_st, VEHICLE_BOAT)
+    expect(b.row == 630.0 and b.seat_h == 0.30 and b.node == "hull")
+    expect(vehicle_spec(vehicles_st, VEHICLE_HORSE).run == 11.0)
+  }
+}

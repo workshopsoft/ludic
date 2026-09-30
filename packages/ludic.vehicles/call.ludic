@@ -10,7 +10,7 @@ function ve_add(vehicles_st: VehiclesState, kind: int, owner: int, x: float, z: 
   v.kind = kind
   v.owner = owner
   v.yaw = yaw
-  v.seat_h = spec.seat_h
+  v.seat_h = vehicle_seat_height(vehicles_st, kind)
   if kind == VEHICLE_HORSE {
     v.fuel = 100.0
     v.food = 40.0

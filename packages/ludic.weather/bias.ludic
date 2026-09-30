@@ -6,7 +6,7 @@ function wx_front_kind() -> int {
 }
 
 function wx_want_wet(weather_st: mut WeatherState) -> void {
-  if weather_st.wx_kinds[weather_st.wx_state].wet or weather_st.wx_forced { return }
+  if weather_kind(weather_st, weather_st.wx_state).wet or weather_st.wx_forced { return }
   let front = wx_front_kind()
   weather_st.wx_next = front
   weather_st.wx_forecast = front

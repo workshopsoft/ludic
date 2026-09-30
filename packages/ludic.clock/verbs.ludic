@@ -1,5 +1,8 @@
 # verbs.ludic - the only way the clock changes
-export function clock_set_scale(clock_st: mut ClockState, s: float) -> void { clock_st.ck_scale = s }
+export function clock_set_scale(clock_st: mut ClockState, s: float) -> void {
+  clock_st.ck_scale = s
+  clock_st.ck_scale_set = true
+}
 export function clock_set_day(clock_st: mut ClockState, d: int) -> void { clock_st.ck_day = d }
 export function clock_set_moon(clock_st: mut ClockState, m: float) -> void { clock_st.ck_moon = m }
 
@@ -40,6 +43,7 @@ export function clock_advance(clock_st: mut ClockState, gh: float) -> void {
 
 # a new trip: day one at the start hour, the moon somewhere in its month
 export function clock_reset(clock_st: mut ClockState) -> void {
+  ck_from_data(clock_st)
   if clock_st.ck_dice == null {
     clock_st.ck_dice = ck_dice_new(ClockWorld.seed())
   } else { rng_seed(clock_st.ck_dice, ClockWorld.seed()) }

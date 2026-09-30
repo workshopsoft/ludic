@@ -1,0 +1,62 @@
+# colliders.ludic - still shapes as data: rows of the open registry ColliderShapes, each a primitive and its
+# measures in metres (and the model it stands for), made into a shape with phys_shape_of. A game fills it
+# (`def ColliderShapes from "colliders.lres"`); building the shapes from code (phys_box, phys_cylinder ...)
+# is unchanged, and the rows are one more way to reach the same calls.
+
+# one collider: a cylinder, box, capsule, sphere or dome standing on its origin (a mesh or a hull is the
+# model's own triangles, which only the game's loader can read: phys_shape_of answers -1 for one)
+export property ColliderShape {
+  key: string = ""
+  @Asset("gltf") model: string = ""            # the model it stands for (the game's; for the editor)
+  @Node(model) node: string = ""               # its node inside that file
+  @OneOf("cylinder", "box", "capsule", "sphere", "dome", "mesh", "none") shape: string = "cylinder"
+  @Unit("m") @Range(0, 1000) radius: float = 0.5   # a cylinder's, capsule's, sphere's and dome's
+  @Unit("m") @Range(0, 1000) height: float = 1.0   # a cylinder's and capsule's, feet to head; a dome's rise
+  @Unit("m") @Range(0, 1000) hx: float = 0.5       # a box's half extents
+  @Unit("m") @Range(0, 1000) hy: float = 0.5
+  @Unit("m") @Range(0, 1000) hz: float = 0.5
+  @Unit("m") lift: float = 0.0                     # the whole shape raised this far above standing on its origin
+  @Unit("m") x: float = 0.0                        # and moved along x and z inside its body
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0                    # and turned about y, the way a renderer turns an instance
+}
+
+# append only: a model names its collider by number
+@AppendOnly @ByKey
+export open registry ColliderShapes of ColliderShape as COLLIDER
+
+# a row made into a shape, an int (-1: a mesh, `none`, or one the world refused). It stands on its origin
+# unless the row lifts or moves it, so a body placed on the ground puts it on the ground.
+@creates(PhysShape)
+export function phys_shape_of(physics_st: mut PhysicsState, c: ColliderShape) -> int {
+  var s = -1
+  var centre = 0.0          # how far above the origin the primitive's own centre is, to stand on it
+  if c.shape == "cylinder" {
+    s = phys_cylinder(physics_st, c.height * 0.5, c.radius)
+    centre = c.height * 0.5
+  } else if c.shape == "box" {
+    s = phys_box(physics_st, c.hx, c.hy, c.hz)
+    centre = c.hy
+  } else if c.shape == "capsule" {
+    s = phys_capsule(physics_st, Math.max(c.height * 0.5 - c.radius, 0.01), c.radius)
+    centre = Math.max(c.height * 0.5, c.radius)
+  } else if c.shape == "sphere" {
+    s = phys_sphere(physics_st, c.radius)
+    centre = c.radius
+  } else if c.shape == "dome" {
+    s = phys_dome(physics_st, c.radius, c.height)
+  }
+  if s < 0 { return -1 }
+  let up = centre + c.lift
+  if up == 0.0 and c.x == 0.0 and c.z == 0.0 and c.yaw == 0.0 { return s }
+  let moved = phys_offset(physics_st, s, c.x, up, c.z, c.yaw * 0.017453292)
+  phys_shape_free(physics_st, s)
+  return moved
+}
+
+# the shape of the ColliderShapes row at an index (-1: no such row)
+@creates(PhysShape)
+export function phys_shape_row(physics_st: mut PhysicsState, row: int) -> int {
+  if row < 0 or row >= COLLIDER_COUNT { return -1 }
+  return phys_shape_of(physics_st, ColliderShapes[row])
+}

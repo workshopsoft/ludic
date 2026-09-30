@@ -1,0 +1,116 @@
+# ground_layers_test.ludic - a map's ground layers and water as rows of its own .lres: the rows load and carry
+# the numbers they say, a row that says nothing is the GroundFill's own defaults, ground_layer_fill hands
+# ground_fill what a hand-written GroundFill gave it (the same things on the same chunk), a map with no
+# file is an empty table, and water_bodies_apply gives the renderer the planes
+import "ludic.render3d/r3d.ludic"
+program GroundLayersTest {
+  numbers float
+  import "fakes/ground_golden.ludic"
+  import "fakes/ground_golden_json.ludic"
+  import "fakes/ground_golden_things.ludic"
+  import "fakes/ground_golden_check.ludic"
+  def GroundKinds from "ground_kinds.lres"
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "the meadow's rows load, in file order, with their numbers" (layers: mut GroundLayers) {
+    expect(ground_layers_load(layers, "meadow"))
+    expect_eq(len(layers.rows), 2)
+    let i = ground_layers_find(layers, "rocks")
+    expect_eq(i, 1)
+    let rocks = layers.rows[i]
+    expect(rocks.solid and not rocks.trample and rocks.step0 == 4.0 and rocks.step3 == 12.0)
+    expect(rocks.texel == 2.0 and rocks.foot == 0.8 and rocks.sink == 0.1)
+    expect_eq(rocks.kind, GK_BOULDER)
+    expect(rocks.density == "rocks.png")
+    let grass = layers.rows[ground_layers_find(layers, "grass")]
+    expect_eq(grass.kind, GK_TUFT)
+    expect(grass.band1 == 40.0 and grass.reach == 240.0)
+    expect(Fs.exists(ground_layers_path(layers, grass.density)))
+  }
+
+  test "the kinds say what grows" {
+    expect_eq(GK_COUNT, 2)
+    expect(GroundKinds[GK_TUFT].model == "models/tuft.glb" and GroundKinds[GK_TUFT].node == "tuft")
+  }
+
+  test "a row that says little has GroundFill's own numbers" {
+    let g = new GroundLayer
+    let f = new GroundFill
+    ground_layer_fill(f, g, 3)
+    let d = new GroundFill
+    expect_eq(f.layer, 3)
+    expect(f.step0 == d.step0 and f.step3 == d.step3 and f.jitter == d.jitter and f.sink == d.sink)
+    expect(f.scale_lo == d.scale_lo and f.wind_lo == d.wind_lo and f.wind_hi == d.wind_hi)
+    expect(f.trample == d.trample and f.solid == d.solid and f.scale_var == d.scale_var and f.band_grow == d.band_grow)
+    g.layer = 7
+    ground_layer_fill(f, g, 3)
+    expect_eq(f.layer, 7)
+  }
+
+  test "a layer made from a row grows exactly what the hand-written GroundFill did" (render3d_st: mut Render3dState, layers: mut GroundLayers) {
+    expect(gg_open(render3d_st, "rows"))
+    expect(ground_layers_load(layers, "meadow"))
+    let fills = ground_layers_fills(layers)
+    expect_eq(len(fills), 2)
+    expect_eq(fills[1].layer, 0)
+    # the row "grass" carries gg_cover()'s numbers
+    let a = fills[0]
+    let b = gg_cover()
+    expect(a.step0 == b.step0 and a.step1 == b.step1 and a.scale_lo == b.scale_lo and a.scale_hi == b.scale_hi)
+    expect(a.wind_lo == b.wind_lo and a.scale_var == b.scale_var and a.band_grow == b.band_grow)
+    let s1 = gg_stream(render3d_st)
+    ground_fill(render3d_st, s1, GG_CX, GG_CZ, GG_BAND, a)
+    let s2 = gg_stream(render3d_st)
+    ground_fill(render3d_st, s2, GG_CX, GG_CZ, GG_BAND, b)
+    expect(s1.cur.count > 20)
+    expect_eq(s1.cur.count, s2.cur.count)
+    # and the solid row stands still at every band, a far band's a subset of band 0's
+    var near = 0
+    for band in 0 .. 4 {
+      let s = gg_stream(render3d_st)
+      ground_fill(render3d_st, s, GG_CX, GG_CZ, band, fills[1])
+      if band == 0 {
+        near = s.cur.count
+        expect(near > 8)
+      }
+      expect(s.cur.count <= near)
+    }
+  }
+
+  test "a map with no ground_layers.lres is no layers, not a fault" (layers: mut GroundLayers) {
+    expect(ground_layers_load(layers, "meadow"))
+    expect_eq(len(layers.rows), 2)
+    expect(not ground_layers_load(layers, "bare"))
+    expect_eq(len(layers.rows), 0)
+  }
+
+  test "the water rows load" (water: mut WaterBodies) {
+    expect(water_bodies_load(water, "meadow"))
+    expect_eq(len(water.rows), 2)
+    let lake = water.rows[water_bodies_find(water, "lake")]
+    expect(lake.level == 12.5 and lake.cx == 100.0 and lake.ex == 60.0 and lake.ez == 35.0 and lake.reflect)
+    let sea = water.rows[water_bodies_find(water, "sea")]
+    expect(sea.level == 0.0 and sea.cx == 0.0 and not sea.reflect and sea.ex == 2048.0)
+    let d = new WaterBody
+    expect(d.ex == 256.0 and d.ez == 256.0 and not d.reflect)
+  }
+
+  test "the renderer takes the planes, the first reflecting one is the mirrored one, and a new map replaces them" (render3d_st: mut Render3dState, water: mut WaterBodies) {
+    # the plane's program and mesh need a GPU: stand in for them, as a window would have made them
+    render3d_st.water_prog = 1
+    render3d_st.wb_level = floats(WATER_MAX);  render3d_st.wb_cx = floats(WATER_MAX);  render3d_st.wb_cz = floats(WATER_MAX)
+    render3d_st.wb_ex = floats(WATER_MAX);  render3d_st.wb_ez = floats(WATER_MAX);  render3d_st.wb_reflect = words(WATER_MAX)
+    expect(water_bodies_load(water, "meadow"))
+    expect_eq(water_bodies_apply(render3d_st, water), 2)
+    expect_eq(water_body_count(render3d_st), 2)
+    expect_eq(render3d_st.wb_primary, 0)
+    expect(render3d_st.water_level == 12.5 and render3d_st.water_cx == 100.0 and render3d_st.water_ez == 35.0)
+    expect(render3d_st.water_on)
+    expect(render3d_st.wb_level[1] == 0.0 and render3d_st.wb_ex[1] == 2048.0 and render3d_st.wb_reflect[1] == 0)
+    water_bodies_clear(water)
+    expect_eq(water_bodies_apply(render3d_st, water), 0)
+    expect_eq(water_body_count(render3d_st), 0)
+    expect(not render3d_st.water_on)
+  }
+}

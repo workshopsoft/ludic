@@ -13,24 +13,24 @@ export function weather_flash(weather_st: WeatherState) -> float { return weathe
 # rain or snow is falling, and more than a spit of it
 export function weather_wet(weather_st: WeatherState) -> bool {
   if weather_kind_count(weather_st) == 0 { return false }
-  return weather_st.wx_kinds[weather_st.wx_state].wet and weather_st.wx_amount > 0.3
+  return weather_kind(weather_st, weather_st.wx_state).wet and weather_st.wx_amount > 0.3
 }
 
 export function weather_overcast(weather_st: WeatherState) -> float {
   if weather_kind_count(weather_st) == 0 { return 0.0 }
-  return weather_st.wx_kinds[weather_st.wx_state].overcast * weather_st.wx_amount
+  return weather_kind(weather_st, weather_st.wx_state).overcast * weather_st.wx_amount
 }
 
 export function weather_cold(weather_st: WeatherState) -> float {
   if weather_kind_count(weather_st) == 0 { return 0.0 }
-  return weather_st.wx_kinds[weather_st.wx_state].cold * weather_st.wx_amount
+  return weather_kind(weather_st, weather_st.wx_state).cold * weather_st.wx_amount
 }
 
 export function weather_name(weather_st: WeatherState, k: int) -> string {
   if k < 0 or k >= weather_kind_count(weather_st) { return "" }
-  if weather_st.wx_kinds[k].name == null { return "" }
+  if weather_kind(weather_st, k).name == null { return "" }
   @alloc_ok("a cast: a key's marked text, nothing is made")
-  return string(weather_st.wx_kinds[k].name)
+  return string(weather_kind(weather_st, k).name)
 }
 
 # the half hour after a front goes through, when the air is glass-clear

@@ -1,0 +1,81 @@
+# ground_layers.ludic — the painted ground layers as a map's data: one row a layer in the map's own
+# ground_layers.lres (assets/maps/<map>/ground_layers.lres, loaded with ground_layers_load), each naming the
+# density image painted for it, what grows and the numbers ground_fill grows it by. The editor reads and
+# paints the same rows, so its preview is the game's. A game that keeps the numbers in a table of its own and
+# builds each GroundFill by hand (the older way) still can: ground_fill takes a GroundFill either way.
+
+# what a layer grows: a model and the node in it, one row a kind of thing (a fern, a pebble, a pine)
+export property GroundKind {
+  key: string = ""
+  @Asset("gltf") model: string = ""
+  @Node(model) node: string = ""
+}
+
+# a game's kinds (`def GroundKinds from "ground_kinds.lres"`); a layer names one by its GK_ constant
+@AppendOnly @ByKey
+export open registry GroundKinds of GroundKind as GK
+
+# one painted layer of a map. The steps are the metres between candidates in each distance band (a cover
+# layer is sparser farther out); a `solid` layer (rocks, trees) keeps step0 at every band and stands still.
+export property GroundLayer {
+  key: string = ""
+  @Asset("png", map) density: string = ""          # the painted image, under the map's folder (R: the chance a cell keeps one, G: its scale)
+  @Unit("m") @Range(0, 64) texel: float = 0.0      # metres a pixel of it covers (0: the image spans the map)
+  @Ref(GroundKinds) kind: int = 0                  # what grows
+  @Unit("m") @Range(0, 64) step0: float = 1.4      # candidates' spacing in the near band ...
+  @Unit("m") @Range(0, 64) step1: float = 1.4      # ... and in each band farther out
+  @Unit("m") @Range(0, 64) step2: float = 1.4
+  @Unit("m") @Range(0, 64) step3: float = 1.4
+  @Range(0, 4) jitter: float = 1.0                 # how far a candidate wanders in its cell, in cells
+  @Range(0, 100) scale_lo: float = 1.0             # the size a kept candidate is drawn at (from the density's G)
+  @Range(0, 100) scale_hi: float = 1.0
+  @Range(0, 1) scale_var: float = 0.0              # each instance's own size: x (1 +- var), from its hash
+  @Range(0, 4) band_grow: float = 0.0              # a far band's instances larger by this a band
+  @Range(0, 1) wind_lo: float = 0.6                # how much the wind sways it, drawn in [lo, hi]
+  @Range(0, 1) wind_hi: float = 1.0
+  @Unit("m") sink: float = 0.03                    # sunk into the ground this far
+  trample: bool = true                             # thinned in the game's clearings (r3d_ground_clearing)
+  solid: bool = false                              # things to touch: one step at every band, a stable id each
+  @Unit("m") @Range(0, 64) foot: float = 0.0       # a solid thing's footprint a unit of scale, bedded on the lowest ground under it
+  @Unit("m") @Range(0, 2000) band1: float = 0.0    # the bands' outer radii from the camera (0: the stream's own)
+  @Unit("m") @Range(0, 2000) band2: float = 0.0
+  @Unit("m") @Range(0, 2000) band3: float = 0.0
+  @Unit("m") @Range(0, 4000) reach: float = 0.0    # and the last one's
+  layer: int = -1                                  # its place in the map's baked densities (-1: its place among these rows)
+}
+
+@PerMap @ByKey
+export registry GroundLayers of GroundLayer from "ground_layers.lres"
+
+# the GroundFill that ground_fill grows row `index` of a loaded map by, written into `out` (kept by the
+# caller, nothing allocated): the row's numbers, its layer the row's own `layer` or its place among the rows
+export function ground_layer_fill(out: GroundFill, g: GroundLayer, index: int) -> void {
+  out.layer = index
+  if g.layer >= 0 { out.layer = g.layer }
+  out.step0 = g.step0
+  out.step1 = g.step1
+  out.step2 = g.step2
+  out.step3 = g.step3
+  out.jitter = g.jitter
+  out.scale_lo = g.scale_lo
+  out.scale_hi = g.scale_hi
+  out.wind_lo = g.wind_lo
+  out.wind_hi = g.wind_hi
+  out.sink = g.sink
+  out.trample = g.trample
+  out.scale_var = g.scale_var
+  out.band_grow = g.band_grow
+  out.solid = g.solid
+}
+
+# every row of a loaded map as a GroundFill, made once when the map opens (a frame asks the list, not this)
+@alloc_ok("a map opening: one GroundFill a layer, kept for the map")
+export function ground_layers_fills(layers: GroundLayers) -> []GroundFill {
+  let out = new []GroundFill
+  for i in 0 .. len(layers.rows) {
+    let f = new GroundFill
+    ground_layer_fill(f, layers.rows[i], i)
+    push(out, f)
+  }
+  return out
+}

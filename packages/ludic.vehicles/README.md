@@ -17,9 +17,19 @@ through the game).
 ## The rules it keeps
 
 - **A kind's numbers are the game's data.** The package keeps the rules (a walk and a gallop on
-  stamina, a stroke and a turn, where a rider gets off) and no numbers: the game hands each kind a
-  `VehicleSpec` with `vehicles_spec(kind, spec)` - in Maroon Lake from its `VehicleKinds` table -
-  once, before any vehicle is made. A kind with no spec cannot be called; a reset keeps the specs.
+  stamina, a stroke and a turn, where a rider gets off) and no numbers: they are rows of the open
+  registry `VehicleSpecs` (`def VehicleSpecs from "vehicles.lres"`; a row's `kind` says which kind it is
+  the numbers of, `VEHICLE_HORSE` or `VEHICLE_BOAT`, and `VSPEC_<KEY>` its place). A kind with no row
+  and no spec cannot be called; a reset keeps them. Where a rider sits are rows of `VehicleSeats`, each
+  naming its kind's row (`vehicle: VSPEC_BOAT`) with a point in the model's own space; the first seat's
+  height is the rider's, else the spec's `seat_h`.
+  The older way, `vehicles_spec(kind, spec)` from the game's own table, still works before any vehicle is
+  made, and what it hands in wins over the row (`null` hands the kind back to it).
+
+  ```lres
+  horse { kind: VEHICLE_HORSE, model: "models/horse.glb", node: "horse", seat_h: 1.35, walk: 4.5, run: 11.0, hay_min: 10.0 }
+  boat  { kind: VEHICLE_BOAT, model: "models/boat.glb", node: "hull", row: 630.0, row_turn: 270.0, wind: 70.0, off_depth: 1.25 }
+  ```
 
 - **Nothing is parked for anyone.** A vehicle has an `owner` and a `rider`; `vehicle_find(kind)` is
   this player's own and nothing else may pick "the" boat. A place is taken while a boat lies in it
@@ -72,8 +82,9 @@ export port VehicleRider {
 | | |
 | --- | --- |
 | `VEHICLE_HORSE`, `VEHICLE_BOAT`, `VEHICLE_PLACES`, `VEHICLE_KINDS` | the kinds, four places each, and how many kinds may have a spec |
-| `VehicleSpec { seat_h, walk, run, acc, turn, row, row_turn, wind, hay_per_m, hay_min, run_min, tire_at, tire, rest, off_side, off_depth }` | a kind's numbers: the seat, a horse's pace, stamina and hay, a boat's oars and wind, where one gets off |
-| `vehicles_spec(kind, spec)`, `vehicle_spec(kind)` | set a kind's numbers (at boot), and ask them |
+| `VehicleSpec { key, kind, model, node, seat_h, walk, run, acc, turn, row, row_turn, wind, hay_per_m, hay_min, run_min, tire_at, tire, rest, off_side, off_depth }` | a kind's numbers: the seat, a horse's pace, stamina and hay, a boat's oars and wind, where one gets off |
+| `vehicles_spec(kind, spec)`, `vehicle_spec(kind)`, `vehicles_specs_from_data()` | set a kind's numbers (at boot, the older way), ask them (handed in, else the `VehicleSpecs` row), and copy every row in as if handed in |
+| `VehicleSpecs`, `VehicleSeats`, `vehicle_spec_row(kind)`, `vehicle_seat_count(row)`, `vehicle_seat(row, n)`, `vehicle_seat_height(kind)` | the registries and their questions |
 | `Vehicle { kind, nid, x, y, z, yaw, speed, fuel, food, seat_h, owned, owner, rider, home_x, home_z }` | a vehicle (change one through the verbs) |
 | `vehicles_dock_at(x, z, yaw)`, `vehicles_rail_at(x, z, yaw)`, `vehicles_dock_yaw()` | where the places are measured from |
 | `vehicle_berth_x/z(k)`, `vehicle_post_x/z(k)`, `vehicle_bay_x/z(k)`, `vehicle_place_x/z(kind, k)` | the places |

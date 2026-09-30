@@ -1,0 +1,20 @@
+# ground_layers.lres - the meadow's two painted layers: grass everywhere it is painted, and boulders
+grass {
+  density: "grass.png"
+  kind: GK_TUFT
+  step0: 2.0, step1: 2.5
+  scale_lo: 0.6, scale_hi: 1.4, scale_var: 0.2
+  wind_lo: 0.5
+  band_grow: 0.15
+  band1: 40.0, band2: 90.0, band3: 160.0, reach: 240.0
+}
+rocks {
+  density: "rocks.png"
+  texel: 2.0
+  kind: GK_BOULDER
+  solid: true, trample: false
+  step0: 4.0, step1: 5.0, step2: 8.0, step3: 12.0
+  foot: 0.8
+  layer: 0          # the fixture bakes one density layer: this row reads it too
+  sink: 0.1
+}

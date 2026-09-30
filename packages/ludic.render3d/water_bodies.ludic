@@ -1,0 +1,38 @@
+# water_bodies.ludic — a map's still water as data: one row a plane in the map's own water.lres
+# (assets/maps/<map>/water.lres, loaded with water_bodies_load), each at its level over its bounds. The
+# editor draws the same rows. water_bodies_apply hands them to the renderer; the older way, water_init for one
+# reflecting plane, still works and is what a game with no rows calls.
+
+# one plane: its surface at `level` over (cx, cz) +- (ex, ez); only the first row with `reflect` is mirrored
+# (every mirrored plane is another full scene pass), so a sea a player sees from afar and a pond beside them
+# are two rows and one reflection
+export property WaterBody {
+  key: string = ""
+  @Unit("m") level: float = 0.0            # the surface's height
+  @Unit("m") cx: float = 0.0               # the centre of its bounds
+  @Unit("m") cz: float = 0.0
+  @Unit("m") @Range(0, 100000) ex: float = 256.0   # and their half width along x
+  @Unit("m") @Range(0, 100000) ez: float = 256.0   # and along z
+  reflect: bool = false                    # the sky and the land mirrored in it
+}
+
+@PerMap @ByKey
+export registry WaterBodies of WaterBody from "water.lres"
+
+# replace the renderer's water with a loaded map's rows; how many planes it took (the renderer holds 8, so
+# a row past them is left out)
+export function water_bodies_apply(render3d_st: mut Render3dState, w: WaterBodies) -> int {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_WATER
+  water_planes_clear(render3d_st)
+  var n = 0
+  for i in 0 .. len(w.rows) {
+    let b = w.rows[i]
+    if water_body_add(render3d_st, b.level, b.cx, b.cz, b.ex, b.ez, b.reflect) >= 0 { n += 1 }
+  }
+  render3d_st.gvk_tag = was
+  return n
+}
+
+# the planes the renderer holds now
+export function water_body_count(render3d_st: Render3dState) -> int { return render3d_st.wb_n }

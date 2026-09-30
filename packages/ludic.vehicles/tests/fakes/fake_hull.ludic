@@ -1,0 +1,8 @@
+# fake_hull.ludic - a hull that is nowhere: the data tests make vehicles and never step them
+function fh_put(nid: int, x: float, y: float, z: float, yaw: float) -> void { }
+function fh_row(nid: int, forward: float, turn: float) -> void { }
+function fh_drift(nid: int, fx: float, fz: float) -> void { }
+function fh_read(nid: int) -> bool { return false }
+function fh_zero() -> float { return 0.0 }
+function fh_gone(nid: int) -> void { }
+bind VehicleHull { put: fn fh_put, row: fn fh_row, drift: fn fh_drift, read: fn fh_read, x: fn fh_zero, y: fn fh_zero, z: fn fh_zero, yaw: fn fh_zero, speed: fn fh_zero, gone: fn fh_gone }

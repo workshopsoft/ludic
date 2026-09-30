@@ -20,6 +20,24 @@ export property DayTurned {
   how: int = 0
 }
 
+# the world's time as data: `def ClockSettings from "clock.lres"`; the first row is used, and anything the
+# game sets in code (clock_config, clock_config_moon, clock_calendar, clock_set_scale) wins over its part
+export property ClockSetting {
+  key: string = ""
+  @Unit("min") @Range(0.5, 1440) day_minutes: float = 24.0   # real minutes a game day takes (24: a real minute is a game hour)
+  @Unit("h") @Range(0, 24) start_hours: float = 8.0          # the hour a new trip starts at
+  @Unit("h") @Range(0, 24) night_from: float = 20.0          # night runs from this hour ...
+  @Unit("h") @Range(0, 24) night_to: float = 6.0             # ... to this one, past midnight
+  @Unit("d") moon_days: float = 29.5                         # the moon's month
+  @Range(0, 1) moon_lo: float = 0.0                          # a new trip's moon falls in [lo, hi) of it
+  @Range(0, 1) moon_hi: float = 1.0
+  @Unit("d") month_days: int = 30
+  seasons: []int = null                                      # each month's season number; the list's length is the year (none: twelve months, one season)
+}
+
+@ByKey
+export open registry ClockSettings of ClockSetting as CKS
+
 export state ClockState {
   ck_hhmm_tab: []string = ck_hhmm_table()   # "00:00" .. "23:59", made with the state: asked every frame
   cal_month_days: int = 30
@@ -36,6 +54,11 @@ export state ClockState {
   ck_moon_lo: float = 0.0
   ck_moon_hi: float = 1.0
   ck_dice: Rng = null
+  ck_data_done: bool = false      # the ClockSettings row was read (once, at the first reset or load)
+  ck_timing_set: bool = false     # the hours, the moon, the calendar and the scale were set in code: the row's part is not read
+  ck_moon_set: bool = false
+  ck_cal_set: bool = false
+  ck_scale_set: bool = false
   ck_days: Queue<DayTurned> = ck_days__new()
 }
 
@@ -53,6 +76,7 @@ export function clock_config(clock_st: mut ClockState, start_hours: float, night
   clock_st.ck_start_hours = start_hours
   clock_st.ck_night_from = night_from
   clock_st.ck_night_to = night_to
+  clock_st.ck_timing_set = true
 }
 
 # a new trip's moon falls in [lo, hi) of its month; the month is `days` long
@@ -60,5 +84,32 @@ export function clock_config_moon(clock_st: mut ClockState, days: float, lo: flo
   clock_st.ck_moon_days = days
   clock_st.ck_moon_lo = lo
   clock_st.ck_moon_hi = hi
+  clock_st.ck_moon_set = true
+}
+
+# the first ClockSettings row's part of each group the game did not set in code; once
+function ck_from_data(clock_st: mut ClockState) -> void {
+  if clock_st.ck_data_done { return }
+  clock_st.ck_data_done = true
+  if CKS_COUNT == 0 { return }
+  let r = ClockSettings[0]
+  if not clock_st.ck_scale_set { clock_st.ck_scale = 86400.0 / (r.day_minutes * 60.0) }
+  if not clock_st.ck_timing_set {
+    clock_st.ck_start_hours = r.start_hours
+    clock_st.ck_night_from = r.night_from
+    clock_st.ck_night_to = r.night_to
+  }
+  if not clock_st.ck_moon_set {
+    clock_st.ck_moon_days = r.moon_days
+    clock_st.ck_moon_lo = r.moon_lo
+    clock_st.ck_moon_hi = r.moon_hi
+  }
+  if not clock_st.ck_cal_set {
+    clock_st.cal_month_days = Math.max(r.month_days, 1)
+    if r.seasons != null and len(r.seasons) > 0 {
+      clock_st.cal_year_months = len(r.seasons)
+      clock_st.cal_season = r.seasons
+    }
+  }
 }
 function ck_days__new() -> Queue<DayTurned> { return queue_new("clock.days") }

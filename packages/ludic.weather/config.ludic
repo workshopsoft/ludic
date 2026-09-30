@@ -1,14 +1,21 @@
-# config.ludic - the kinds the game hands in, the wind's daily turn, and the port's defaults
+# config.ludic - the kinds, the wind's daily turn, and the port's defaults. Both come from the game's data
+# (the WeatherKinds and WeatherSettings registries, state.ludic); the functions here hand in the same
+# numbers from code and, called, win over the data.
 
-# the kinds, in the game's order; the first `clear` one is where a new trip starts
+# the kinds, in the game's order; the first `clear` one is where a new trip starts. Handing in a list
+# replaces the WeatherKinds registry for this state (the older way, kept: a game with no data rows).
 export function weather_kinds(weather_st: mut WeatherState, kinds: []WeatherKind) -> void { weather_st.wx_kinds = kinds }
 
+# how many kinds: the list handed in, else the registry's rows
 export function weather_kind_count(weather_st: WeatherState) -> int {
-  if weather_st.wx_kinds == null { return 0 }
-  return len(weather_st.wx_kinds)
+  if weather_st.wx_kinds != null { return len(weather_st.wx_kinds) }
+  return WK_COUNT
 }
 
-export function weather_kind(weather_st: WeatherState, k: int) -> WeatherKind { return weather_st.wx_kinds[k] }
+export function weather_kind(weather_st: WeatherState, k: int) -> WeatherKind {
+  if weather_st.wx_kinds != null { return weather_st.wx_kinds[k] }
+  return WeatherKinds[k]
+}
 
 # a valley's wind: down it by night, up it from `up_from` to `up_to` while the slopes are warm
 export function weather_config_wind(weather_st: mut WeatherState, down_dir: float, up_dir: float, up_from: float, up_to: float) -> void {
@@ -16,15 +23,23 @@ export function weather_config_wind(weather_st: mut WeatherState, down_dir: floa
   weather_st.wx_up_dir = up_dir
   weather_st.wx_up_from = up_from
   weather_st.wx_up_to = up_to
+  weather_st.wx_wind_set = true
+}
+
+# the valley's wind from the first row of WeatherSettings, unless the game set it in code
+function wx_wind_from_data(weather_st: mut WeatherState) -> void {
+  if weather_st.wx_wind_set or WS_COUNT == 0 { return }
+  let r = WeatherSettings[0]
+  weather_config_wind(weather_st, r.down_dir, r.up_dir, r.up_from, r.up_to)
 }
 
 function wx_clear_kind(weather_st: WeatherState) -> int {
-  for k in 0 .. weather_kind_count(weather_st) { if weather_st.wx_kinds[k].clear { return k } }
+  for k in 0 .. weather_kind_count(weather_st) { if weather_kind(weather_st, k).clear { return k } }
   return 0
 }
 
 function wx_first_wet(weather_st: WeatherState) -> int {
-  for k in 0 .. weather_kind_count(weather_st) { if weather_st.wx_kinds[k].wet { return k } }
+  for k in 0 .. weather_kind_count(weather_st) { if weather_kind(weather_st, k).wet { return k } }
   return 0
 }
 

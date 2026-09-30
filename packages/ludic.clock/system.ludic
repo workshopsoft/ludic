@@ -11,6 +11,7 @@ export function clock_save(clock_st: ClockState) -> Val {
 }
 
 export function clock_load(clock_st: mut ClockState, v: Val, version: int) -> void {
+  ck_from_data(clock_st)
   clock_st.ck_day = sv_int(v, "day", 1)
   clock_set_hours(clock_st, sv_float(v, "hours", clock_st.ck_start_hours))
   clock_st.ck_moon = sv_float(v, "moon", 0.5)

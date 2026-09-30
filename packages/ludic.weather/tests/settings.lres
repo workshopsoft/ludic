@@ -1,0 +1,2 @@
+# settings.lres - a valley whose wind goes down it by night and up it from ten to seven
+valley { down_dir: 0.5, up_dir: 2.5, up_from: 10.0, up_to: 19.0 }

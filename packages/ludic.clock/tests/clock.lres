@@ -1,0 +1,10 @@
+# clock.lres - a world whose day takes twelve real minutes, whose year is four months of ten days
+# (one season each), and whose night runs from 21:00 to 05:00
+world {
+  day_minutes: 12.0
+  start_hours: 7.0
+  night_from: 21.0, night_to: 5.0
+  moon_days: 28.0, moon_lo: 0.25, moon_hi: 0.75
+  month_days: 10
+  seasons: [0, 1, 2, 3]
+}

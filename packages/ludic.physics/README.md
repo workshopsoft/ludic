@@ -33,6 +33,7 @@ Ludic gives no allocation back.
 | --- | --- |
 | `phys_open(st, max_bodies, threads) -> bool`, `phys_close(st)`, `phys_is_open(st)` | a world, and everything in it let go |
 | `phys_box`, `phys_sphere`, `phys_capsule`, `phys_cylinder`, `phys_dome(r, h)`, `phys_convex(points, n)`, `phys_scaled(shape, k)`, `phys_offset(shape, x, y, z, yaw)` | shapes, each an int (`-1` refused); a dome is a boulder standing on its origin; a convex hull of n points (x, y, z) is a rock's own shape, made once and scaled for every rock of that shape; a body's yaw turns it as a renderer turns an instance (x' = cos x + sin z, z' = -sin x + cos z) |
+| `ColliderShapes`, `phys_shape_of(st, row)`, `phys_shape_row(st, i)` | still shapes as rows of an open registry (`def ColliderShapes from "colliders.lres"`): a `cylinder`, `box`, `capsule`, `sphere` or `dome` standing on its origin by its measures, `lift`, `x`, `z` and `yaw` moving it; a `mesh` or `none` row is `-1` (only the game's loader can read a model's triangles). The code's own `phys_box` ... are unchanged |
 | `phys_heightfield(st, h, n, ox, oz, cell)`, `phys_mesh(st, v, nv, tri, nt)` | the ground (`PHYS_HOLE` is none) and a dock or cabin |
 | `phys_ground_add`, `phys_static_add`, `phys_kinematic_add`, `phys_body_add(..., mass)` | bodies: the ground, still things, what the game moves (the player), what falls and floats |
 | `phys_settle(st)` | after adding many still things, before the first query |

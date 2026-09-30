@@ -1,6 +1,12 @@
-# spec.ludic - a kind's numbers, handed in by the game from its own table before any vehicle of the
-# kind is made (vehicles_spec): where the rider sits, its pace, its oars, its hay, where one gets off
+# spec.ludic - a kind's numbers: where the rider sits, its pace, its oars, its hay, where one gets off.
+# They are the game's data, rows of the open registry VehicleSpecs (`def VehicleSpecs from "vehicles.lres"`);
+# a game that would rather hand them in from its own table still can (vehicles_spec), before any vehicle of
+# the kind is made, and what it hands in wins over the row of that kind.
 export property VehicleSpec {
+  key: string = ""          # the row's key (horse, boat), filled from the registry
+  @Range(-1, 7) kind: int = -1      # which kind this row is the numbers of: VEHICLE_HORSE or VEHICLE_BOAT (-1: none yet)
+  @Asset("gltf") model: string = ""  # the model it is drawn with (the game's; the package never draws)
+  @Node(model) node: string = ""     # its node inside that file
   seat_h: float = 0.0       # m: the rider sits this far above it
   walk: float = 0.0         # m/s: a horse's walk
   run: float = 0.0          # m/s: its gallop
@@ -21,6 +27,26 @@ export property VehicleSpec {
 
 export const VEHICLE_KINDS: int = 8     # kinds a game may give numbers to, 0 .. 7
 
+# the kinds' numbers as rows; the row whose `kind` is a vehicle's kind is its numbers
+@ByKey
+export open registry VehicleSpecs of VehicleSpec as VSPEC
+
+# where a rider sits on a kind: a point in the model's own space and the way it faces. A kind may have
+# several (a boat's thwarts), the first is the rider's. Rows of VehicleSeats, each naming its kind's row
+# of VehicleSpecs (`vehicle: VSPEC_BOAT`); without one the spec's seat_h is the seat.
+export property VehicleSeat {
+  key: string = ""
+  @Ref(VehicleSpecs) vehicle: int = 0      # the VehicleSpecs row it is a seat of
+  @Unit("m") x: float = 0.0                # along the model's x (right of its heading)
+  @Unit("m") y: float = 0.0                # above the model's origin: the rider sits this far above it
+  @Unit("m") z: float = 0.0                # along the model's z (forward)
+  @Unit("deg") yaw: float = 0.0            # the way the sitter faces, from the model's forward
+  pose: string = ""                        # the animation state the sitter plays (the game's graph)
+}
+
+@ByKey
+export open registry VehicleSeats of VehicleSeat as VSEAT
+
 function ve_specs_new() -> []VehicleSpec {
   let l = new []VehicleSpec
   for i in 0 .. VEHICLE_KINDS { push(l, null) }
@@ -33,8 +59,77 @@ export function vehicles_spec(vehicles_st: mut VehiclesState, kind: int, spec: V
   vehicles_st.ve_specs[kind] = spec
 }
 
-# a kind's numbers, or null when the game gave it none
+# a kind's numbers: what the game handed in, else the VehicleSpecs row of that kind, or null when it has none
 export function vehicle_spec(vehicles_st: VehiclesState, kind: int) -> VehicleSpec {
   if kind < 0 or kind >= VEHICLE_KINDS { return null }
-  return vehicles_st.ve_specs[kind]
+  let given = vehicles_st.ve_specs[kind]
+  if given != null { return given }
+  let r = vehicle_spec_row(kind)
+  if r < 0 { return null }
+  return VehicleSpecs[r]
+}
+
+# the place in VehicleSpecs of the row for a kind (the first that says it), or -1
+export function vehicle_spec_row(kind: int) -> int {
+  for i in 0 .. VSPEC_COUNT { if VehicleSpecs[i].kind == kind { return i } }
+  return -1
+}
+
+# how many seats VehicleSeats gives a VehicleSpecs row, and its nth (null past them)
+export function vehicle_seat_count(spec_row: int) -> int {
+  var n = 0
+  for i in 0 .. VSEAT_COUNT { if VehicleSeats[i].vehicle == spec_row { n += 1 } }
+  return n
+}
+export function vehicle_seat(spec_row: int, nth: int) -> VehicleSeat {
+  var n = 0
+  for i in 0 .. VSEAT_COUNT {
+    if VehicleSeats[i].vehicle != spec_row { continue }
+    if n == nth { return VehicleSeats[i] }
+    n += 1
+  }
+  return null
+}
+
+# how far above a kind the rider sits: its first seat's height when the data gives it one, else the spec's seat_h
+export function vehicle_seat_height(vehicles_st: VehiclesState, kind: int) -> float {
+  let sp = vehicle_spec(vehicles_st, kind)
+  if sp == null { return 0.0 }
+  let given = vehicles_st.ve_specs[kind]
+  if given == null {
+    let s = vehicle_seat(vehicle_spec_row(kind), 0)
+    if s != null { return s.y }
+  }
+  return sp.seat_h
+}
+
+# copy every row's numbers into the state, as if the game had handed each in (for a game that edits them)
+@alloc_ok("once, at boot")
+export function vehicles_specs_from_data(vehicles_st: mut VehiclesState) -> void {
+  for i in 0 .. VSPEC_COUNT {
+    let k = VehicleSpecs[i].kind
+    if k < 0 or k >= VEHICLE_KINDS { continue }
+    let c = new VehicleSpec
+    c.key = VehicleSpecs[i].key
+    c.kind = k
+    c.seat_h = vehicle_seat_height(vehicles_st, k)
+    c.walk = VehicleSpecs[i].walk
+    c.run = VehicleSpecs[i].run
+    c.acc = VehicleSpecs[i].acc
+    c.turn = VehicleSpecs[i].turn
+    c.row = VehicleSpecs[i].row
+    c.row_turn = VehicleSpecs[i].row_turn
+    c.wind = VehicleSpecs[i].wind
+    c.hay_per_m = VehicleSpecs[i].hay_per_m
+    c.hay_min = VehicleSpecs[i].hay_min
+    c.run_min = VehicleSpecs[i].run_min
+    c.tire_at = VehicleSpecs[i].tire_at
+    c.tire = VehicleSpecs[i].tire
+    c.rest = VehicleSpecs[i].rest
+    c.off_side = VehicleSpecs[i].off_side
+    c.off_depth = VehicleSpecs[i].off_depth
+    c.model = VehicleSpecs[i].model
+    c.node = VehicleSpecs[i].node
+    vehicles_st.ve_specs[k] = c
+  }
 }

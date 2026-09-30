@@ -12,7 +12,7 @@ function wx_turn(weather_st: mut WeatherState) -> void {
   }
   if weather_st.wx_state == was { return }
   # a front going through and leaving clear sky behind it: the light people get up for
-  if weather_st.wx_kinds[weather_st.wx_state].clear and weather_st.wx_kinds[was].wet and not wx_night() {
+  if weather_kind(weather_st, weather_st.wx_state).clear and weather_kind(weather_st, was).wet and not wx_night() {
     weather_st.wx_clear_t = 0.6
     wx_fact(weather_st, WEATHER_CLEARED, weather_st.wx_state, was)
   }
@@ -20,7 +20,7 @@ function wx_turn(weather_st: mut WeatherState) -> void {
 }
 
 function wx_wind_tick(weather_st: mut WeatherState, dt: float) -> void {
-  let kd = weather_st.wx_kinds[weather_st.wx_state]
+  let kd = weather_kind(weather_st, weather_st.wx_state)
   weather_st.wx_wind = weather_st.wx_wind + (kd.wind - weather_st.wx_wind) * Math.min(1.0, dt * 0.3)
   var want = kd.wind_dir
   if want < 0.0 {
@@ -38,8 +38,8 @@ function wx_spells(weather_st: mut WeatherState, dt: float, gh: float) -> void {
   weather_st.wx_left = weather_st.wx_left - gh
   if weather_st.wx_left < 0.0 { wx_turn(weather_st) }
   var want = 1.0
-  if weather_st.wx_kinds[weather_st.wx_state].clear { want = 0.0 }
-  if weather_st.wx_left < 0.5 and weather_st.wx_kinds[weather_st.wx_next].clear { want = 0.0 }
+  if weather_kind(weather_st, weather_st.wx_state).clear { want = 0.0 }
+  if weather_st.wx_left < 0.5 and weather_kind(weather_st, weather_st.wx_next).clear { want = 0.0 }
   weather_st.wx_amount = weather_st.wx_amount + (want - weather_st.wx_amount) * Math.min(1.0, dt * 0.5)
   wx_wind_tick(weather_st, dt)
   if weather_st.wx_clear_t > 0.0 { weather_st.wx_clear_t = weather_st.wx_clear_t - gh }
@@ -48,7 +48,7 @@ function wx_spells(weather_st: mut WeatherState, dt: float, gh: float) -> void {
 # soaking is faster than drying: a downpour wets the ground in under a minute, and it takes
 # several to give it back
 function wx_ground_tick(weather_st: mut WeatherState, dt: float) -> void {
-  let want = weather_st.wx_kinds[weather_st.wx_state].soak * weather_st.wx_amount
+  let want = weather_kind(weather_st, weather_st.wx_state).soak * weather_st.wx_amount
   var k = dt * 0.10
   if want < weather_st.wx_ground { k = dt * 0.020 }
   weather_st.wx_ground = weather_st.wx_ground + (want - weather_st.wx_ground) * Math.clamp(k, 0.0, 1.0)
@@ -56,7 +56,7 @@ function wx_ground_tick(weather_st: mut WeatherState, dt: float) -> void {
 
 function wx_storm_tick(weather_st: mut WeatherState, dt: float) -> void {
   weather_st.wx_flash = weather_st.wx_flash * Math.max(0.0, 1.0 - dt * 9.0)
-  if not weather_st.wx_kinds[weather_st.wx_state].thunder or weather_st.wx_amount < 0.5 { return }
+  if not weather_kind(weather_st, weather_st.wx_state).thunder or weather_st.wx_amount < 0.5 { return }
   weather_st.wx_thunder_t = weather_st.wx_thunder_t - dt
   if weather_st.wx_thunder_t < 0.0 {
     weather_st.wx_thunder_t = rng_span(weather_st.wx_dice, 9.0, 34.0)

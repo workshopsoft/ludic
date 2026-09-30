@@ -1,0 +1,10 @@
+# collider_rows.lres - one of each primitive, a turned box, a lifted post and a mesh the game must load itself
+post { shape: "cylinder", radius: 0.3, height: 2.0, model: "models/post.glb", node: "post" }
+crate { shape: "box", hx: 0.5, hy: 0.4, hz: 0.6 }
+pole { shape: "capsule", radius: 0.25, height: 1.8 }
+ball { shape: "sphere", radius: 0.5 }
+boulder { shape: "dome", radius: 1.0, height: 0.5 }
+beam { shape: "box", hx: 2.0, hy: 0.1, hz: 0.25, yaw: 90.0 }
+sign { shape: "cylinder", radius: 0.1, height: 0.5, lift: 1.0, x: 1.0 }
+cabin { shape: "mesh", model: "models/cabin.glb" }
+ghost { shape: "none" }

@@ -36,8 +36,8 @@ export function weather_load(weather_st: mut WeatherState, v: Val, version: int)
   weather_st.wx_wet_yesterday = sv_bool(v, "wet_yesterday", false)
   weather_st.wx_dice.s = sv_int(v, "dice", weather_st.wx_dice.s)
   if weather_kind_count(weather_st) == 0 { return }
-  if not weather_st.wx_kinds[weather_st.wx_state].clear { weather_st.wx_amount = 1.0 }
-  weather_st.wx_wind = weather_st.wx_kinds[weather_st.wx_state].wind
+  if not weather_kind(weather_st, weather_st.wx_state).clear { weather_st.wx_amount = 1.0 }
+  weather_st.wx_wind = weather_kind(weather_st, weather_st.wx_state).wind
 }
 
 export function weather_system() -> System {

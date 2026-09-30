@@ -19,7 +19,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.audio](ludic.audio/README.md) | world sounds with a gain, pan and pitch from a listener port, flat interface sounds, packed clips loaded, the one door to `Audio.*` |
 | [ludic.abilities](ludic.abilities/README.md) | abilities, spells and skills as data: cost through a resource port, cast time, cooldowns, charges, targeting, effect chains through ports, channels, learnable levels, a hotbar |
 | [ludic.compass](ludic.compass/README.md) | bearing marks on a strip: gathered from registered providers, gated by tier, sorted by priority, bearings, distances and a radar |
-| [ludic.clock](ludic.clock/README.md) | the hour, the day, the moon and a calendar of seasons |
+| [ludic.clock](ludic.clock/README.md) | the hour, the day, the moon and a calendar of seasons; the day's length, night, moon and calendar as a `ClockSettings` row |
 | [ludic.crafting](ludic.crafting/README.md) | recipes: what goes in and out, where and how long, making, refunding, hold-to-make |
 | [ludic.crash](ludic.crash/README.md) | what a game does about last time's crash: the runtime's crash handler writes a record (signal, address, backtrace, loaded images), found at the next start, rotated, offered to show and - with the player's consent - to send through ludic.telemetry for the studio to symbolize |
 | [ludic.effects](ludic.effects/README.md) | timed modifiers that run down in game time (a meal's warmth, a drink's legs) |
@@ -36,7 +36,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.melee](ludic.melee/README.md) | attacks as data on animation clips: hit windows and shapes, combos by input window, blocking and parrying, poise and stagger, a fighter's phase as a `@Machine` |
 | [ludic.needs](ludic.needs/README.md) | a body's warmth, food, water and energy, and the countdown to a collapse |
 | [ludic.npc](ludic.npc/README.md) | the other people in a place: a routine by the hour, walking round what is in the way, facing a player who comes near, lines as data, a guest's copy |
-| [ludic.physics](ludic.physics/README.md) | rigid bodies, removable still shapes, queries and buoyancy over Jolt Physics (a native library, phase 16) |
+| [ludic.physics](ludic.physics/README.md) | rigid bodies, removable still shapes (also as `ColliderShapes` rows), queries and buoyancy over Jolt Physics (a native library, phase 16) |
 | [ludic.nav](ludic.nav/README.md) | a navmesh per kind of walker and the ways across it, over Recast & Detour (a native library, phase 17) |
 | [ludic.photo](ludic.photo/README.md) | a camera's photographs: what is in the frame, a grade on size, framing, light and the moment, the roll, its worth, the best of each subject |
 | [ludic.procgen](ludic.procgen/README.md) | deterministic seeded generators as data, in integer math an editor reproduces exactly: room-and-corridor dungeons, tile maps from edge-socket rules (wave function collapse), scatter within regions; a golden file and a second implementation; the save is the seeds |
@@ -52,10 +52,10 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.tracks](ludic.tracks/README.md) | prints and sign animals leave, their age, and reading them |
 | [ludic.travel](ludic.travel/README.md) | waypoints a player discovers and fast-travels between: unlock rules, cost in coins and hours, the load through a port, map markers as data |
 | [ludic.update](ludic.update/README.md) | a Velopack-installed game updating itself a frame at a time |
-| [ludic.vehicles](ludic.vehicles/README.md) | each player's boat and horse: called to berths and bays, owner and rider, riding, getting off onto a safe spot |
+| [ludic.vehicles](ludic.vehicles/README.md) | each player's boat and horse: called to berths and bays, owner and rider, riding, getting off onto a safe spot; kinds' numbers and seats as `VehicleSpecs` and `VehicleSeats` rows |
 | [ludic.wallet](ludic.wallet/README.md) | money carried: earned, spent, lost, every change a fact |
 | [ludic.wanted](ludic.wanted/README.md) | heat against a subject: crimes as weighted rows, decay out of sight, responses per level as data, the phases a `@Machine` table, facts for the game's AI |
-| [ludic.weather](ludic.weather/README.md) | spells of weather described as data: odds, wetness, wind, storms, a forecast |
+| [ludic.weather](ludic.weather/README.md) | spells of weather described as data (`WeatherKinds` and `WeatherSettings` rows): odds, wetness, wind, storms, a forecast |
 | [ludic.wildlife](ludic.wildlife/README.md) | a valley's animals: ranges, their day, senses and alert, feeding, lures, spawning |
 | [ludic.build](ludic.build/README.md) | structures on a grid: footprints and rotation, placement rules as data (tags, adjacency, spacing, limits, tech), costs through a bank port, construction by workers as a `@Machine` |
 | [ludic.harvest](ludic.harvest/README.md) | resource nodes, gatherers that carry, drop-offs, and the gather-carry-drop loop as a `@Machine`; the stockpile and walking are ports |
@@ -66,7 +66,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 
 | | |
 | --- | --- |
-| [ludic.render3d](ludic.render3d/) | the physically based 3D renderer over Vulkan (named `ludic_render3d` under `uses`) |
+| [ludic.render3d](ludic.render3d/) | the physically based 3D renderer over Vulkan (named `ludic_render3d` under `uses`); a map's painted ground layers and still water as `GroundLayers` and `WaterBodies` rows |
 | [ludic.ui](ludic.ui/) | components: templates, stylesheets, layout, input and focus (`module ludic_ui`) |
 | [ludic.lab](ludic.lab/README.md) | the visual lab: a scene on a lit plate, fixed cameras, PNG shots and a contact sheet |
 | [ludic.core](ludic.core/) | the canonical engine-ABI components |

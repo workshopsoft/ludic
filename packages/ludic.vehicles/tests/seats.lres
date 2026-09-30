@@ -1,0 +1,3 @@
+# seats.lres - the boat has two thwarts, the first is the rider's; the horse has none (its spec's seat_h)
+stern { vehicle: VSPEC_BOAT, x: 0.0, y: 0.30, z: -0.6, yaw: 0.0, pose: "sit" }
+bow { vehicle: VSPEC_BOAT, x: 0.0, y: 0.30, z: 0.9, yaw: 180.0, pose: "sit" }

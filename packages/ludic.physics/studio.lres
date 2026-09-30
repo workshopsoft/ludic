@@ -1,0 +1,22 @@
+# studio.lres - how Ludic Studio draws this package's own data. The studio's file: the compiler never
+# reads it, and it counts only in a game that uses ludic.physics (the game has the ColliderShapes registry).
+# A game with a collider table of its own writes an entry of the same key in its studio.lres; its entry
+# replaces this one.
+
+# the colliders: each row's shape drawn as a primitive, over the model it stands for. A dome has no
+# primitive of its own in the studio yet, so it is left unbound (nothing drawn)
+colliders {
+  title: "Collider"
+  table: "ColliderShapes"
+  file: "model"
+  node: "node"
+  kind: "shape"
+  kinds: [
+    { name: "cylinder", as: "cylinder", radius: "radius", height: "height" },
+    { name: "box", as: "box", hx: "hx", hy: "hy", hz: "hz" },
+    { name: "capsule", as: "capsule", radius: "radius", height: "height" },
+    { name: "sphere", as: "sphere", radius: "radius" },
+    { name: "mesh", as: "mesh" },
+    { name: "none", as: "none" },
+  ]
+}

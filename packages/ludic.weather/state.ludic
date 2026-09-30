@@ -15,7 +15,7 @@ export port WeatherWorld {
 function wx_owns_alone() -> bool { return true }
 function wx_noon() -> float { return 12.0 }
 function wx_daylight() -> bool { return false }
-function wx_own_odds(weather_st: WeatherState, from: int) -> []float { return weather_st.wx_kinds[from].odds }
+function wx_own_odds(weather_st: WeatherState, from: int) -> []float { return weather_kind(weather_st, from).odds }
 function wx_no_bias() -> int { return WEATHER_NO_BIAS }
 function wx_no_hours() -> float { return 0.0 }
 function wx_seed_one() -> int { return 1 }
@@ -26,8 +26,9 @@ export const WEATHER_WANT_WET: int = 1     # send a front, soon
 export const WEATHER_HOLD: int = 2         # keep this spell going a while yet
 export const WEATHER_WANT_CLEAR: int = 3   # clear the sky and keep it clear
 
-# one kind of weather; its place in the list the game hands in is its number
+# one kind of weather; its place in the list the game hands in (or in the WeatherKinds registry) is its number
 export property WeatherKind {
+  key: string = ""           # the row's key, filled from the registry
   @Text name: Key = null
   clear: bool = false        # the kind a sky eases out to: nothing falls, amount goes to 0
   wet: bool = false          # rain or snow is falling (weather_wet)
@@ -41,6 +42,25 @@ export property WeatherKind {
   spell_hi: float = 8.0
   odds: []float = null       # weights for the next spell, per kind
 }
+
+# the game's kinds as data: `def WeatherKinds from "weather.lres"`, one row a kind, `WK_<KEY>` its number.
+# Append only: a save holds kinds by number. `odds` is a weight for each kind in the same order. The
+# name is the text key `weather.<row>.name` unless the row gives one.
+@AppendOnly @ByKey @TextKey("weather")
+export open registry WeatherKinds of WeatherKind as WK
+
+# the valley's wind, turning with the hours: down the valley from dusk to `up_from`, up it until `up_to`
+export property WeatherSetting {
+  key: string = ""
+  @Unit("rad") down_dir: float = 0.0     # the wind toward, overnight and into the morning
+  @Unit("rad") up_dir: float = 3.1415927 # and while the slopes are warm
+  @Unit("h") @Range(0, 24) up_from: float = 10.0
+  @Unit("h") @Range(0, 24) up_to: float = 19.0
+}
+
+# one row is enough: the first is used (`def WeatherSettings from "weather.lres"`)
+@ByKey
+export open registry WeatherSettings of WeatherSetting as WS
 
 export const WEATHER_BEGAN: int = 0     # a spell began (kind, from)
 export const WEATHER_CLEARED: int = 1   # a wet spell gave way to clear sky in daylight
@@ -58,6 +78,7 @@ export state WeatherState {
   wx_up_dir: float = 3.1415927 # the wind while the slopes are warm
   wx_up_from: float = 10.0
   wx_up_to: float = 19.0
+  wx_wind_set: bool = false    # the wind was set in code: the registry's row is not read
   wx_kinds: []WeatherKind = null
   wx_state: int = 0
   wx_next: int = 0

@@ -25,6 +25,6 @@ function wx_pick_next(weather_st: WeatherState, from: int) -> int {
 }
 
 function wx_spell_hours(weather_st: WeatherState, k: int) -> float {
-  let kd = weather_st.wx_kinds[k]
+  let kd = weather_kind(weather_st, k)
   return rng_span(weather_st.wx_dice, kd.spell_lo, kd.spell_hi)
 }

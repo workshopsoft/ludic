@@ -1,0 +1,19 @@
+# studio.lres - how Ludic Studio draws this package's own data. The studio's file: the compiler never
+# reads it, and it counts only in a game that uses ludic.vehicles (the game has the VehicleSeats registry).
+# graph_row names the animation set a rider's pose belongs to: a rig is the game's, not this package's, so
+# a game that wants the sitter posed writes its own entry of this key in its studio.lres, with that row.
+
+# where a rider sits on a boat or a horse: a point in the model's own space (the model is the seat's
+# vehicle's, VehicleSpecs), the way the sitter faces and the state it plays
+vehicle_seats {
+  title: "Vehicle seat"
+  table: "VehicleSeats"
+  model: "vehicle"
+  x: "x"
+  y: "y"
+  z: "z"
+  yaw: "yaw"
+  pose: "pose"
+  graph: "anims"
+  graph_row: ""
+}

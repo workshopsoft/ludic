@@ -1,0 +1,3 @@
+# ground_kinds.lres - what the test's layers grow
+tuft { model: "models/tuft.glb", node: "tuft" }
+boulder { model: "models/rocks.glb", node: "boulder_a" }

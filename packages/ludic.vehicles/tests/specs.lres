@@ -1,0 +1,17 @@
+# specs.lres - two kinds' numbers: a horse on stamina and hay, a boat on oars and wind
+horse {
+  kind: VEHICLE_HORSE
+  model: "models/horse.glb", node: "horse"
+  seat_h: 1.35
+  walk: 4.5, run: 11.0, acc: 4.0, turn: 1.6
+  hay_per_m: 0.02, hay_min: 10.0
+  run_min: 5.0, tire_at: 6.0, tire: 6.0, rest: 3.0
+  off_side: 1.2
+}
+boat {
+  kind: VEHICLE_BOAT
+  model: "models/boat.glb", node: "hull"
+  seat_h: 0.2
+  row: 630.0, row_turn: 270.0, wind: 70.0
+  off_depth: 1.25
+}

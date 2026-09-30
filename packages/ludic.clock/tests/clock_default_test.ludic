@@ -1,0 +1,15 @@
+# clock_default_test.ludic - with no ClockSettings row at all the clock keeps the numbers it always had
+import "ludic.clock"
+import "ludic.base"
+program ClockDefaultTest {
+  numbers float
+  test "no row: a real minute is a game hour, a trip starts at 08:00, the year is twelve thirty-day months" (clock_st: mut ClockState) {
+    expect_eq(CKS_COUNT, 0)
+    clock_reset(clock_st)
+    expect(clock_scale(clock_st) == 60.0)
+    expect(clock_hhmm(clock_st) == "08:00")
+    expect_eq(clock_month_days(clock_st), 30)
+    expect_eq(clock_year_months(clock_st), 12)
+    expect(clock_moon(clock_st) >= 0.0 and clock_moon(clock_st) < 1.0)
+  }
+}

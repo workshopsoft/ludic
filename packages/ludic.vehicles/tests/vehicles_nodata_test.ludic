@@ -1,0 +1,20 @@
+# vehicles_nodata_test.ludic - with no VehicleSpecs rows a kind has no numbers until the game hands them in
+import "ludic.vehicles"
+import "ludic.base"
+program VehiclesNoDataTest {
+  numbers float
+  import "fakes/fake_hull.ludic"
+  function fk_ground(x: float, z: float) -> float { return 0.0 }
+  bind VehicleWorld { ground: fn fk_ground }
+  test "no rows: no spec, no seat, and a spec handed in is the kind's" (vehicles_st: mut VehiclesState) {
+    expect_eq(VSPEC_COUNT, 0)
+    expect(vehicle_spec(vehicles_st, VEHICLE_HORSE) == null)
+    expect_eq(vehicle_spec_row(VEHICLE_HORSE), -1)
+    expect(vehicle_seat(0, 0) == null)
+    let s = new VehicleSpec
+    s.seat_h = 1.0
+    vehicles_spec(vehicles_st, VEHICLE_HORSE, s)
+    expect(vehicle_spec(vehicles_st, VEHICLE_HORSE) == s)
+    expect(vehicle_seat_height(vehicles_st, VEHICLE_HORSE) == 1.0)
+  }
+}

@@ -29,6 +29,20 @@ a pure function of those two - the same on every machine and in the editor's pre
   over a clearing - `floor` inside `r_in`, back to full at `r_out` on a smoothstep, the shape of the
   camp's ring and the town's yard. A layer with `trample` multiplies its chance by the game's callback
   (`r3d_on_ground_trample`, kept for now) and then by every clearing. A game should use one or the other.
+- **The layers as a map's data** (`ground_layers.ludic`): one row a layer in the map's own
+  `assets/maps/<map>/ground_layers.lres` (a `@PerMap` registry, `GroundLayers`, loaded with
+  `ground_layers_load(layers, map)`): the painted `density` image (`@Asset("png", map)`), its `texel`, what
+  grows (`kind`, a row of the open `GroundKinds`: a model and a node) and the numbers of a `GroundFill`
+  by the same names, plus `foot` and the bands' radii. `ground_layer_fill(out, row, index)` writes the
+  `GroundFill` a row means (its `layer` is the row's own or its place), `ground_layers_fills(layers)` makes
+  the list once at map open. A game that builds each `GroundFill` by hand still can; that is the older
+  way. A game's own registry named `GroundLayers` or `WaterBodies` collides with these and is dropped for
+  the package's (its record is a superset).
+- **Still water as a map's data** (`water_bodies.ludic`): one row a plane in `water.lres` (`WaterBodies`,
+  `@PerMap`): `level`, the bounds as a centre `cx`, `cz` and half extents `ex`, `ez`, and `reflect` (only
+  the first reflecting plane is mirrored). `water_bodies_apply(render3d_st, bodies)` replaces the
+  renderer's water with the rows (8 at most) and answers how many it took; `water_init` for one reflecting
+  plane is the older way.
 - **Conformance**: `tests/ground_fill_test.ludic` holds the package to `tests/ground_fill_golden.json`
   (gf_hash, lerp, yaw, one cover chunk and one solid chunk over a hand-written density), which the
   studio's own test reads. After a deliberate change, rebuild it from the repository root:

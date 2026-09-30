@@ -1,0 +1,56 @@
+# clock_data_test.ludic - the clock's numbers from a ClockSettings row in a .lres: the day's length, the start
+# hour and the night, the moon, the calendar; a game that sets any of it in code keeps what it set, and a
+# row that says nothing is the numbers the clock always had
+import "ludic.clock"
+import "ludic.base"
+program ClockDataTest {
+  numbers float
+  def ClockSettings from "clock.lres"
+
+  function fake_seed() -> int { return 42 }
+  bind ClockWorld { seed: fn fake_seed }
+
+  test "the row sets the day's length, the start hour and the night" (clock_st: mut ClockState) {
+    expect_eq(CKS_COUNT, 1)
+    clock_reset(clock_st)
+    expect(clock_scale(clock_st) == 120.0)
+    expect(clock_hours(clock_st) == 7.0)
+    expect(clock_hhmm(clock_st) == "07:00")
+    clock_set_hours(clock_st, 22.0)
+    expect(clock_is_night(clock_st))
+    clock_set_hours(clock_st, 6.0)
+    expect(not clock_is_night(clock_st))
+    expect(clock_hours_in(clock_st, 30.0) == 1.0)
+  }
+
+  test "the moon starts inside the row's range" (clock_st: mut ClockState) {
+    clock_reset(clock_st)
+    expect(clock_moon(clock_st) >= 0.25 and clock_moon(clock_st) < 0.75)
+  }
+
+  test "the calendar is the row's: ten-day months, four of them a year, a season each" (clock_st: mut ClockState) {
+    clock_reset(clock_st)
+    expect_eq(clock_month_days(clock_st), 10)
+    expect_eq(clock_year_months(clock_st), 4)
+    expect_eq(clock_season_of(clock_st, 1), 0)
+    expect_eq(clock_season_of(clock_st, 11), 1)
+    expect_eq(clock_season_of(clock_st, 31), 3)
+    expect_eq(clock_year_of(clock_st, 41), 2)
+    expect_eq(clock_days_to_change_from(clock_st, 1), 10)
+    expect_eq(clock_first_day_of(clock_st, 2), 21)
+  }
+
+  test "the old way still wins: what the game sets in code is not overwritten" (clock_st: mut ClockState) {
+    clock_config(clock_st, 8.0, 20.0, 6.0)
+    clock_set_scale(clock_st, 60.0)
+    let seasons = new []int
+    for m in 0 .. 12 { push(seasons, m / 3) }
+    clock_calendar(clock_st, 30, seasons)
+    clock_reset(clock_st)
+    expect(clock_hours(clock_st) == 8.0)
+    expect(clock_scale(clock_st) == 60.0)
+    expect_eq(clock_year_months(clock_st), 12)
+    expect_eq(clock_month_days(clock_st), 30)
+    expect(clock_moon(clock_st) >= 0.25 and clock_moon(clock_st) < 0.75)
+  }
+}

@@ -1,0 +1,3 @@
+# water.lres - the meadow's still water: a lake that reflects and a wide sea under it that does not
+lake { level: 12.5, cx: 100.0, cz: -40.0, ex: 60.0, ez: 35.0, reflect: true }
+sea { level: 0.0, ex: 2048.0, ez: 2048.0 }

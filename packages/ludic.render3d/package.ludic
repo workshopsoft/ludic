@@ -6,3 +6,4 @@ version "0.1.0"
 kind source
 provides "R3d"
 native "macos-arm64" "lib/macos-arm64/libMoltenVK.dylib"
+maps "tests/maps"   # the maps the package's own tests read (ground_layers.lres, water.lres); a game names its own

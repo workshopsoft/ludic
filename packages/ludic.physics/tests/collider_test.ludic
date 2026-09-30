@@ -1,0 +1,84 @@
+# collider_test.ludic - ColliderShapes rows read from a .lres and made into the real Jolt's shapes: each
+# primitive stands on its origin at the height its row says, a row's lift, offset and yaw move it, a mesh
+# or `none` is no shape, a row that says nothing is a half-metre cylinder, and the code's own phys_box is unchanged
+import "ludic.physics"
+import "ludic.base"
+program ColliderTest {
+  numbers float
+  def ColliderShapes from "collider_rows.lres"
+
+  function down(physics_st: mut PhysicsState, x: float, z: float) -> PhysHit {
+    let h = new PhysHit
+    phys_ray(physics_st, x, 10.0, z, 0.0, -20.0, 0.0, PHYS_M_ALL, h)
+    return h
+  }
+  # the row as a still body at the origin, and the height of the first thing a ray down at (x, z) meets, or -99
+  function top(physics_st: mut PhysicsState, row: int, x: float, z: float) -> float {
+    expect(phys_open(physics_st, 16, 1))
+    let s = phys_shape_row(physics_st, row)
+    expect(s >= 0)
+    phys_static_add(physics_st, s, 0.0, 0.0, 0.0, 0.0)
+    phys_settle(physics_st)
+    let h = down(physics_st, x, z)
+    var y = -99.0
+    if h.body >= 0 { y = h.y }
+    phys_close(physics_st)
+    return y
+  }
+
+  test "the rows are the registry, in file order" {
+    expect_eq(COLLIDER_COUNT, 9)
+    expect_eq(COLLIDER_POST, 0)
+    expect_eq(COLLIDER_CABIN, 7)
+    expect(ColliderShapes[COLLIDER_POST].model == "models/post.glb" and ColliderShapes[COLLIDER_POST].node == "post")
+    expect(ColliderShapes[COLLIDER_CRATE].shape == "box")
+  }
+
+  test "a row that says nothing is a half-metre cylinder standing on its origin" {
+    let c = new ColliderShape
+    expect(c.shape == "cylinder" and c.radius == 0.5 and c.height == 1.0 and c.lift == 0.0)
+  }
+
+  test "a cylinder stands on its origin as tall as its row says" (physics_st: mut PhysicsState) {
+    expect_near(top(physics_st, COLLIDER_POST, 0.0, 0.0), 2.0, 0.02)
+    expect_near(top(physics_st, COLLIDER_POST, 0.29, 0.0), 2.0, 0.02)
+    expect(top(physics_st, COLLIDER_POST, 0.4, 0.0) == -99.0)
+  }
+
+  test "a box, a capsule, a sphere and a dome stand on theirs" (physics_st: mut PhysicsState) {
+    expect_near(top(physics_st, COLLIDER_CRATE, 0.0, 0.0), 0.8, 0.02)
+    expect_near(top(physics_st, COLLIDER_POLE, 0.0, 0.0), 1.8, 0.02)
+    expect_near(top(physics_st, COLLIDER_BALL, 0.0, 0.0), 1.0, 0.02)
+    expect_near(top(physics_st, COLLIDER_BOULDER, 0.0, 0.0), 0.5, 0.02)
+  }
+
+  test "a lift and an offset move the shape; a yaw of 90 turns a beam to lie along z" (physics_st: mut PhysicsState) {
+    expect_near(top(physics_st, COLLIDER_SIGN, 1.0, 0.0), 1.5, 0.02)        # raised a metre, moved a metre along x
+    expect(top(physics_st, COLLIDER_SIGN, 0.0, 0.0) == -99.0)
+    expect_near(top(physics_st, COLLIDER_BEAM, 0.0, 1.5), 0.2, 0.02)        # long along z after the turn
+    expect(top(physics_st, COLLIDER_BEAM, 1.5, 0.0) == -99.0)
+  }
+
+  test "a mesh or none is no shape, an index past the rows too" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 16, 1))
+    expect_eq(phys_shape_row(physics_st, COLLIDER_CABIN), -1)
+    expect_eq(phys_shape_row(physics_st, COLLIDER_GHOST), -1)
+    expect_eq(phys_shape_row(physics_st, 99), -1)
+    expect_eq(phys_shape_row(physics_st, -1), -1)
+    phys_close(physics_st)
+  }
+
+  test "a shape made from a row is let go like any other, and the code's own shapes are unchanged" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 16, 1))
+    let n = phys_shapes(physics_st)
+    let a = phys_shape_row(physics_st, COLLIDER_SIGN)
+    let b = phys_shape_row(physics_st, COLLIDER_POST)
+    expect_eq(phys_shapes(physics_st), n + 2)       # the offset's inner primitive was let go
+    phys_shape_free(physics_st, a)
+    phys_shape_free(physics_st, b)
+    expect_eq(phys_shapes(physics_st), n)
+    let c = phys_box(physics_st, 1.0, 1.0, 1.0)
+    expect(c >= 0)
+    phys_close(physics_st)
+  }
+}

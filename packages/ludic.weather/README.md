@@ -20,6 +20,22 @@ own dice - never the world's.
 
 ## The kinds
 
+**The kinds are the game's data**: rows of the open registry `WeatherKinds`, in a `.lres` the game
+reads with `def WeatherKinds from "weather.lres"`. One row a kind, its place in the file its number
+(`WK_<KEY>`, append only: a save holds kinds by number), and `odds` a weight for each kind in that order:
+
+```lres
+clear { clear: true, wind: 0.2, odds: [0.0, 1.0, 0.0] }
+rain  { wet: true, soak: 1.0, overcast: 0.8, cold: 5.0, wind: 1.0, spell_lo: 1.0, spell_hi: 3.0, odds: [0.0, 0.0, 1.0] }
+storm { wet: true, thunder: true, soak: 1.0, wind: 1.0, odds: [1.0, 0.0, 0.0] }
+```
+
+The name is the text key `weather.<row>.name` (`@TextKey`) unless the row gives one. The valley's wind
+is one row of `WeatherSettings` (`down_dir`, `up_dir`, `up_from`, `up_to`), read at the first
+`weather_reset`. `weather_kinds(list)` and `weather_config_wind(...)` still work, are the older way, and
+win over the rows: a list handed in replaces the registry for that state, and a wind set in code is not
+overwritten by a row.
+
 ```ludic
 property WeatherKind {
   name: string           # for weather_name

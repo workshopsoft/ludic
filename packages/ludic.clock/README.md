@@ -13,6 +13,26 @@ night slept - is a `DayTurned` fact on `clock_days()`, and the game drains it in
 morning is (weather, restocking, the animals' day). Only the machine that owns the world moves
 the hour; another machine is told it (`clock_set_hours`, `clock_set_day`, `clock_set_moon`).
 
+## The numbers as data
+
+The day's length, the start hour, the night, the moon and the calendar are one row of the open registry
+`ClockSettings` (`def ClockSettings from "clock.lres"`; the first row is used, read at the first
+`clock_reset` or `clock_load`):
+
+```lres
+world {
+  day_minutes: 24.0               # real minutes a game day takes (24: a real minute is a game hour)
+  start_hours: 8.0, night_from: 20.0, night_to: 6.0
+  moon_days: 29.5, moon_lo: 0.0, moon_hi: 1.0
+  month_days: 30
+  seasons: [0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 0]   # each month's season; its length is the year
+}
+```
+
+`clock_config`, `clock_config_moon`, `clock_calendar` and `clock_set_scale` are the older way and still
+win: what a game sets in code is not overwritten by the row's part. With no row the numbers are the
+ones the clock always had.
+
 ## The port
 
 ```ludic
