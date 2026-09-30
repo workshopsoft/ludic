@@ -1,13 +1,11 @@
 # ============================================================================
 # gpu.ludic — the seam between the renderer and a graphics API.
 #
-# render3d was written straight against OpenGL, so there was nowhere to put a second
-# API. This file is where that stops: the renderer asks for what it wants here, and
-# the backend decides how to say it. OpenGL is the default and the fallback; Vulkan
-# is the second backend (docs: maroon-lake docs/plan/37-vulkan.md).
+# The renderer asks for what it wants here, and the backend decides how to say it.
+# Vulkan is the backend (docs: maroon-lake docs/plan/37-vulkan.md).
 #
-# The port is incremental. What has moved behind the seam so far:
-#   - the choice of backend (R3D_GFX=gl|vk, or gpu_request before r3d_init)
+# What sits behind the seam:
+#   - the choice of backend (gpu_request before r3d_init)
 #   - the fixed-function render state: depth test/func/write, blending, face
 #     culling, colour writes, alpha-to-coverage, depth bias, scissor
 #   - uniforms: looked up by program and name (gpu_uniform), set by the u_* setters
@@ -16,17 +14,17 @@
 #   - render targets and passes: framebuffers, attachments, blits, viewports, clears, the screen
 #
 # Render state is cached. A pipeline API bakes this state into an object picked by
-# key; OpenGL gets the same effect by only telling the driver what changed. The
-# cache is only right if NOTHING else in the renderer touches that state, so no
-# gl_enable / gl_disable / gl_depth_func / gl_depth_mask / gl_blend_func /
-# gl_cull_face / gl_color_mask / gl_scissor / gl_polygon_offset may appear outside
-# this file, and neither may any gl_uniform* call.
+# key. The cache is only right if NOTHING else in the renderer touches that state, so
+# no depth, blend, cull, colour-mask, scissor or polygon-offset call may appear outside
+# this file, and neither may any uniform call.
 # ============================================================================
+
+import "gpu_enums.ludic"
 
 const GPU_VK: int = 2
 
 
-# Vulkan is the renderer (OpenGL was retired: maroon-lake docs/plan/22). gpu_request stays so a
+# Vulkan is the renderer (maroon-lake docs/plan/22). gpu_request stays so a
 # caller that asks for a backend by name still builds; whatever it names, Vulkan is what runs.
 function gpu_request(render3d_st: mut Render3dState, name: string) -> void { render3d_st.gpu_wanted = GPU_VK }
 function gpu_name(kind: int) -> string { return "vulkan" }
@@ -54,7 +52,7 @@ function gpu_backend(render3d_st: Render3dState) -> string { return "vulkan" }
 
 function gpu_b(on: bool) -> int { if on { return 1 };  return 0 }
 
-# Forget the cache: after anything outside the renderer may have changed GL state
+# Forget the cache: after anything outside the renderer may have changed the render state
 # (a context rebuilt, a foreign library drawing into the frame).
 function gpu_state_forget(render3d_st: mut Render3dState) -> void {
   render3d_st.gpu_s_depth_test = -1;  render3d_st.gpu_s_depth_func = -1;  render3d_st.gpu_s_depth_write = -1
@@ -68,7 +66,7 @@ function gpu_depth_test(render3d_st: mut Render3dState, on: bool) -> void {
   if v == render3d_st.gpu_s_depth_test { return }
   render3d_st.gpu_s_depth_test = v
 }
-# GL_LESS, GL_LEQUAL, GL_EQUAL, GL_ALWAYS, ... (the comparison names are the same in every API)
+# GPU_LESS, GPU_LEQUAL, GPU_EQUAL, GPU_ALWAYS, ... (the comparison names are the same in every API)
 function gpu_depth_func(render3d_st: mut Render3dState, f: int) -> void {
   if f == render3d_st.gpu_s_depth_func { return }
   render3d_st.gpu_s_depth_func = f
@@ -92,7 +90,7 @@ function gpu_cull(render3d_st: mut Render3dState, on: bool) -> void {
   if v == render3d_st.gpu_s_cull { return }
   render3d_st.gpu_s_cull = v
 }
-# GL_BACK or GL_FRONT
+# GPU_BACK or GPU_FRONT
 function gpu_cull_face(render3d_st: mut Render3dState, face: int) -> void {
   if face == render3d_st.gpu_s_cull_face { return }
   render3d_st.gpu_s_cull_face = face
@@ -119,19 +117,18 @@ function gpu_depth_bias(render3d_st: mut Render3dState, factor: fixed, units: fi
 }
 
 # A scissor rectangle in top-down pixels (x, y from the top-left of the drawable), or
-# off. Every API but OpenGL counts rows from the top; the GL backend flips it.
+# off.
 function gpu_scissor(render3d_st: mut Render3dState, x: int, y_top: int, w: int, h: int) -> void {
-  render3d_st.gpu_s_scissor = 1;  gvk_scissor(render3d_st, x, gl_height() - y_top - h, w, h)
+  render3d_st.gpu_s_scissor = 1;  gvk_scissor(render3d_st, x, gfx_height() - y_top - h, w, h)
 }
 function gpu_scissor_off(render3d_st: mut Render3dState) -> void {
   render3d_st.gpu_s_scissor = 0;  gvk_scissor_off(render3d_st)
 }
 
 # ---- uniforms --------------------------------------------------------------------
-# A uniform is found by its program and its name, and set through a handle. On OpenGL
-# the handle is the location. On a pipeline API it will name a slot in the program's
-# uniform block, so the u_* setters below are the only code that knows which. Arrays
-# are looked up by their first element ("u_bones[0]"), as every GL driver accepts.
+# A uniform is found by its program and its name, and set through a handle. The handle
+# names a slot in the program's uniform block, so the u_* setters below are the only code
+# that knows which. Arrays are looked up by their first element ("u_bones[0]").
 function gpu_uniform(render3d_st: Render3dState, prog: int, name: string) -> int { return gvk_uniform(render3d_st, prog, name) }
 
 # ---- programs ----------------------------------------------------------------------
@@ -339,8 +336,7 @@ function gpu_feature_implemented(f: int) -> bool { return f == GF_VULKAN or f ==
 # ---- vertex data --------------------------------------------------------------------
 # A Mesh is built through these and records what it is made of - which buffer feeds which
 # attribute, at what stride and offset, per vertex or per instance - so a backend that bakes
-# vertex input into a pipeline (Vulkan) can read the layout back. On OpenGL each call is the
-# GL it replaces, in the same order: a vertex array object per mesh, bound while it is built.
+# vertex input into a pipeline (Vulkan) can read the layout back.
 const GPU_F32: int = 1
 const GPU_U8: int = 2
 const GPU_U16: int = 3
@@ -352,9 +348,9 @@ const GPU_ATTR_W: int = 7         # per attribute index: buffer, comps, type, st
 const GPU_MAX_VBUFS: int = 8
 
 function gpu_gl_type(t: int) -> int {
-  if t == GPU_U8 { return GL_UNSIGNED_BYTE }
-  if t == GPU_U16 { return GL_UNSIGNED_SHORT }
-  return GL_FLOAT
+  if t == GPU_U8 { return GPU_UNSIGNED_BYTE }
+  if t == GPU_U16 { return GPU_UNSIGNED_SHORT }
+  return GPU_FLOAT
 }
 function gpu_type_bytes(t: int) -> int {
   if t == GPU_U8 { return 1 }
@@ -362,9 +358,9 @@ function gpu_type_bytes(t: int) -> int {
   return 4
 }
 function gpu_gl_usage(u: int) -> int {
-  if u == GPU_DYNAMIC { return GL_DYNAMIC_DRAW }
-  if u == GPU_STREAM { return GL_STREAM_DRAW }
-  return GL_STATIC_DRAW
+  if u == GPU_DYNAMIC { return GPU_DYNAMIC_DRAW }
+  if u == GPU_STREAM { return GPU_STREAM_DRAW }
+  return GPU_STATIC_DRAW
 }
 
 # a new mesh, its vertex array bound: the vertex, attribute and index calls below describe it
@@ -404,8 +400,8 @@ function gpu_mesh_attr(render3d_st: Render3dState, m: Mesh, index: int, comps: i
 }
 # the index buffer: 4-byte or 2-byte indices
 function gpu_mesh_indices(render3d_st: mut Render3dState, m: Mesh, data: pointer, nbytes: int, index_bytes: int) -> void {
-  m.itype = GL_UNSIGNED_INT
-  if index_bytes == 2 { m.itype = GL_UNSIGNED_SHORT }
+  m.itype = GPU_UNSIGNED_INT
+  if index_bytes == 2 { m.itype = GPU_UNSIGNED_SHORT }
 
   m.ebo = gvk_buf_new(render3d_st);  gvk_buf_upload(render3d_st, m.ebo, nbytes, data)
 }
@@ -438,8 +434,7 @@ function gpu_buffer_free(render3d_st: mut Render3dState, buf: int) -> void {
 
 # ---- compute and indirect draws (Vulkan) ----------------------------------------------------
 # The GPU-driven path: a compute program writes instance lists and draw commands into buffers
-# the draws then read. OpenGL here is 4.1 (macOS) with no compute, so gpu_compute is 0 there and
-# a caller keeps its CPU path. A compute program's binding 0 is its parameter block (params,
+# the draws then read. A compute program's binding 0 is its parameter block (params,
 # copied at the dispatch); bindings 1.. are `bufs`, gpu buffers.
 function gpu_has_compute(render3d_st: Render3dState) -> bool { return true }
 # several records in one indirect draw, each with its own firstInstance
@@ -462,7 +457,7 @@ function gpu_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
 }
 # a buffer a compute pass writes (never reallocated under a draw that reads it)
 function gpu_buffer_gpu_owned(render3d_st: mut Render3dState, buf: int) -> void { gvk_buf_gpu_owned(render3d_st, buf) }
-# the host-visible contents of a buffer, for a readback after gpu_finish; null on OpenGL
+# the host-visible contents of a buffer, for a readback after gpu_finish
 function gpu_buffer_map(render3d_st: Render3dState, buf: int) -> pointer {
   if buf <= 0 { return null }
   return render3d_st.gvk_buf_map[buf]
@@ -508,9 +503,7 @@ function gpu_mesh_free(render3d_st: mut Render3dState, m: Mesh) -> void {
 }
 
 # ---- textures -----------------------------------------------------------------------------
-# A texture is a handle (on OpenGL, the texture name). Each call below is the one GL call it
-# replaces, in the renderer's own order, so OpenGL draws exactly what it drew. What those calls
-# say about a texture - its size, format, filters, wraps, comparison, mipmaps, anisotropy - is
+# A texture is a handle. What the calls below say about a texture - its size, format, filters, wraps, comparison, mipmaps, anisotropy - is
 # recorded per handle as it is set, because a backend with immutable images and separate
 # sampler objects (Vulkan) creates both from exactly that. Parameters apply to the texture last
 # bound for that kind, which is how every call site here already works.
@@ -518,7 +511,7 @@ const GPU_TEX2D: int = 1
 const GPU_TEX2D_ARRAY: int = 2
 const GPU_TX_W: int = 12          # per handle: kind, w, h, layers, ifmt, min, mag, wrap s, wrap t, compare, mips, aniso
 
-function gpu_gl_target(kind: int) -> int { if kind == GPU_TEX2D_ARRAY { return GL_TEXTURE_2D_ARRAY };  return GL_TEXTURE_2D }
+function gpu_gl_target(kind: int) -> int { if kind == GPU_TEX2D_ARRAY { return GPU_TEXTURE_2D_ARRAY };  return GPU_TEXTURE_2D }
 # the record for a handle, growing the table when a new name is larger than it
 @alloc_ok("a texture handle past the 4096 made at start-up: the table doubles to hold it (ids are reused, so it stops)")
 function gpu_tx_at(render3d_st: mut Render3dState, tex: int) -> int {
@@ -539,12 +532,12 @@ function gpu_bound(render3d_st: Render3dState, kind: int) -> int { if kind == GP
 
 @creates(GpuTexture)
 function gpu_tex_new(render3d_st: mut Render3dState) -> int { return gvk_tex_new(render3d_st) }
-# does texture `tex` have an image behind it? Always on OpenGL; on Vulkan an image whose memory could
+# does texture `tex` have an image behind it? An image whose memory could
 # not be had is never made, and a caller that can fall back (a smaller shadow map) asks here.
 function gpu_tex_ok(render3d_st: Render3dState, tex: int) -> bool {
   return tex > 0 and tex < len(render3d_st.gvk_tex_image) and render3d_st.gvk_tex_image[tex] != 0
 }
-# what GL has on each unit's 2D target, for R3D_GLCHECK: deleting a texture unbinds it everywhere
+# the texture unit later binds act on
 function gpu_tex_unit(render3d_st: mut Render3dState, unit: int) -> void { render3d_st.gpu_unit_cur = unit }
 function gpu_tex_bind(render3d_st: mut Render3dState, kind: int, tex: int) -> void {
   ds_tex_bind(render3d_st)
@@ -554,7 +547,7 @@ function gpu_tex_bind(render3d_st: mut Render3dState, kind: int, tex: int) -> vo
   }
 }
 # pixel transfer packing (alignment, byte swap) for the uploads and read-backs that follow
-function gpu_pixel_store(render3d_st: mut Render3dState, pname: int, value: int) -> void { if pname == GL_UNPACK_SWAP_BYTES { render3d_st.gvk_unpack_swap = value == 1 } }
+function gpu_pixel_store(render3d_st: mut Render3dState, pname: int, value: int) -> void { if pname == GPU_UNPACK_SWAP_BYTES { render3d_st.gvk_unpack_swap = value == 1 } }
 function gpu_tex_image2d(render3d_st: mut Render3dState, ifmt: int, w: int, h: int, fmt: int, ty: int, data: pointer) -> void {
   gvk_flush(render3d_st)
   gvk_tex_storage(render3d_st, render3d_st.gpu_bound_2d, false, ifmt, w, h, 1, data != null)
@@ -574,14 +567,14 @@ function gpu_tex_image3d(render3d_st: mut Render3dState, ifmt: int, w: int, h: i
 function gpu_tex_param(render3d_st: mut Render3dState, kind: int, pname: int, value: int) -> void {
   let o = gpu_tx_at(render3d_st, gpu_bound(render3d_st, kind))
   if o < 0 { return }
-  if pname == GL_TEXTURE_MIN_FILTER { render3d_st.gpu_tx[o + 5] = value }
-  if pname == GL_TEXTURE_MAG_FILTER { render3d_st.gpu_tx[o + 6] = value }
-  if pname == GL_TEXTURE_WRAP_S { render3d_st.gpu_tx[o + 7] = value }
-  if pname == GL_TEXTURE_WRAP_T { render3d_st.gpu_tx[o + 8] = value }
-  if pname == GL_TEXTURE_COMPARE_MODE { if value == GL_NONE { render3d_st.gpu_tx[o + 9] = 0 } }
-  if pname == GL_TEXTURE_COMPARE_FUNC { render3d_st.gpu_tx[o + 9] = value }
+  if pname == GPU_TEXTURE_MIN_FILTER { render3d_st.gpu_tx[o + 5] = value }
+  if pname == GPU_TEXTURE_MAG_FILTER { render3d_st.gpu_tx[o + 6] = value }
+  if pname == GPU_TEXTURE_WRAP_S { render3d_st.gpu_tx[o + 7] = value }
+  if pname == GPU_TEXTURE_WRAP_T { render3d_st.gpu_tx[o + 8] = value }
+  if pname == GPU_TEXTURE_COMPARE_MODE { if value == GPU_NONE { render3d_st.gpu_tx[o + 9] = 0 } }
+  if pname == GPU_TEXTURE_COMPARE_FUNC { render3d_st.gpu_tx[o + 9] = value }
 }
-# a float parameter (fixed, as Gl.* takes it): anisotropy is the one the renderer sets
+# a float parameter (fixed): anisotropy is the one the renderer sets
 function gpu_tex_paramf(render3d_st: mut Render3dState, kind: int, pname: int, value: fixed) -> void {
   let o = gpu_tx_at(render3d_st, gpu_bound(render3d_st, kind))
   if o >= 0 and pname == 0x84FE { render3d_st.gpu_tx[o + 11] = float_bits(float(value)) }
@@ -628,21 +621,18 @@ function gpu_tex_free(render3d_st: mut Render3dState, tex: int) -> void {
 # a texture on a unit for a program's sampler, by the sampler's name
 function gpu_bind_sampler(render3d_st: mut Render3dState, prog: int, name: string, unit: int, kind: int, tex: int) -> void {
   gvk_bind_texture(render3d_st, prog, name, tex)
-  # as OpenGL's did, binding a texture for a sampler makes it the one a following gpu_tex_param or
+  # binding a texture for a sampler makes it the one a following gpu_tex_param or
   # gpu_tex_mips acts on: render3d was written that way, and without it they reached whatever was
   # bound last (a BC7 kit texture, which a mip blit then drew into)
   if kind == GPU_TEX2D_ARRAY { render3d_st.gpu_bound_array = tex } else { render3d_st.gpu_bound_2d = tex }
 }
 
 # ---- render targets and passes -------------------------------------------------------------
-# A framebuffer is a handle (OpenGL's name). What is attached to it - colour textures in slots,
+# A framebuffer is a handle. What is attached to it - colour textures in slots,
 # a depth texture or one layer of an array, renderbuffers and their sample count - is recorded as
-# it is attached, which is what a backend with render passes and image views builds from. Each
-# call is the GL call it replaces, in the renderer's order.
+# it is attached, which is what a backend with render passes and image views builds from.
 #
-# gpu_check(tag) reports a pending error under a name, as gl_check did. R3D_GLCHECK=1 adds a
-# completeness check of the bound framebuffer whenever a viewport is set, naming the handle, so
-# a pass drawing into an incomplete target says which one; unset, it calls nothing.
+# gpu_check(tag) is a named checkpoint; it reports nothing on Vulkan.
 const GPU_FB_W: int = 8           # per handle: colour 0, colour 1, depth texture, depth layer + 1, colour rb, depth rb, samples, colour layer + 1
 
 @alloc_ok("a framebuffer handle past the 1024 made at start-up: the table doubles to hold it (bounded by targets)")
@@ -661,7 +651,7 @@ function gpu_fb_at(render3d_st: mut Render3dState, fb: int) -> int {
   return fb * GPU_FB_W
 }
 function gpu_check(render3d_st: Render3dState, tag: string) -> int { return 0 }
-# a named checkpoint that costs nothing unless R3D_GLCHECK is set
+# a named checkpoint that costs nothing
 function gpu_debug_check(render3d_st: mut Render3dState, tag: string) -> void { }
 
 @creates(GpuFramebuffer)
@@ -717,7 +707,7 @@ function gpu_fb_draw_buffers(render3d_st: mut Render3dState, n: int) -> void {
 function gpu_fb_no_color(render3d_st: mut Render3dState) -> void {
   gvk_fb_colors(render3d_st, render3d_st.gpu_fb_cur, 0)
 }
-function gpu_fb_status(render3d_st: Render3dState) -> int { return GL_FRAMEBUFFER_COMPLETE }
+function gpu_fb_status(render3d_st: Render3dState) -> int { return GPU_FRAMEBUFFER_COMPLETE }
 @releases(GpuFramebuffer)
 function gpu_fb_free(render3d_st: mut Render3dState, fb: int) -> void {
   gvk_fb_forget(render3d_st, fb);  let fo = gpu_fb_at(render3d_st, fb);  if fo >= 0 { for i in 0 .. GPU_FB_W { render3d_st.gpu_fb[fo + i] = 0 } }
@@ -741,7 +731,7 @@ function gpu_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> 
 function gpu_screen_fb(render3d_st: Render3dState) -> int { return 0 }
 function gpu_multisample(render3d_st: mut Render3dState, on: bool) -> void { }
 # the most samples the scene may be drawn with: the device's colour-and-depth limit on Vulkan (0 before
-# it is open), 4 on OpenGL, which has always asked for up to that
+# it is open)
 function gpu_msaa_max(render3d_st: Render3dState) -> int { return render3d_st.gvk_msaa_max }
 function gpu_wireframe(render3d_st: mut Render3dState, on: bool) -> void {
   render3d_st.gvk_wireframe = gpu_b(on)

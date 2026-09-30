@@ -77,8 +77,8 @@ function ltt2_write_heights(render3d_st: mut Render3dState, f: pointer, n: int) 
 function ltt2_normals_back(render3d_st: mut Render3dState) -> words {
   let all = words(TERRAIN_RES * TERRAIN_RES)
   gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_normal_tex)
-  gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 4)
-  gpu_tex_read(render3d_st, GPU_TEX2D, GL_RG, GL_HALF_FLOAT, data_of(all))
+  gpu_pixel_store(render3d_st, GPU_PACK_ALIGNMENT, 4)
+  gpu_tex_read(render3d_st, GPU_TEX2D, GPU_RG, GPU_HALF_FLOAT, data_of(all))
   return all
 }
 

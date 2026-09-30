@@ -36,7 +36,7 @@ function test_parallel(files: []pointer, only: pointer, verbose: bool) -> int {
     let bin = bins[i]
     let ll = `{bin}.ll`
     if test_rc(`{bin}.rc1`) == 0 {
-      let flags = `{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf}`
+      let flags = `{rt_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf}`
       write_file(`{jd}/l{string(i)}.sh`, `{cc()} -O2 {ll}{flags} -o {bin} >> {bin}.log 2>&1; echo $? > {bin}.rc2\n`)
     }
   }

@@ -125,8 +125,7 @@ function ds_per(render3d_st: Render3dState, v: long) -> string {
   return `{string(x / 10)}.{string(x % 10)}`
 }
 function ds_backend(render3d_st: Render3dState) -> pointer {
-  if render3d_st.gpu_kind == GPU_VK { return "vulkan" }
-  return "opengl"
+  return "vulkan"
 }
 
 @alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
@@ -146,7 +145,7 @@ function ds_report(render3d_st: mut Render3dState) -> void {
     pass_inst[render3d_st.ds_row_pass[r]] = pass_inst[render3d_st.ds_row_pass[r]] + render3d_st.ds_row_inst[r]
   }
   print("")
-  print(`draw calls per frame ({ds_backend(render3d_st)}, {gl_width()}x{gl_height()}, mean of {render3d_st.ds_frames} frames from {render3d_st.ds_from}): {ds_per(render3d_st, total)}`)
+  print(`draw calls per frame ({ds_backend(render3d_st)}, {gfx_width()}x{gfx_height()}, mean of {render3d_st.ds_frames} frames from {render3d_st.ds_from}): {ds_per(render3d_st, total)}`)
   var kinds = ""
   for k in 0 .. DS_KINDS { kinds = kinds + `  {ds_kind_name(k)} {ds_per(render3d_st, by_kind[k])}` }
   print(`  by kind:{kinds}`)
@@ -184,7 +183,7 @@ function ds_report(render3d_st: mut Render3dState) -> void {
   for i in 0 .. n_rows {
     let r = order[i]
     let s = render3d_st.ds_row_pass[r]
-    let line = `{ds_backend(render3d_st)},{gl_width()},{gl_height()},{render3d_st.ds_frames},"{render3d_st.ds_pass_names[s]}",{ds_kind_name(render3d_st.ds_row_kind[r])},"{gpu_program_key(render3d_st, render3d_st.ds_row_prog[r])}",{ds_per(render3d_st, render3d_st.ds_row_draws[r])},{ds_per(render3d_st, render3d_st.ds_row_inst[r])},{ds_per(render3d_st, render3d_st.ds_row_idx[r])},{ds_per(render3d_st, render3d_st.ds_pass_prog[s])},{ds_per(render3d_st, render3d_st.ds_pass_tex[s])}\n`
+    let line = `{ds_backend(render3d_st)},{gfx_width()},{gfx_height()},{render3d_st.ds_frames},"{render3d_st.ds_pass_names[s]}",{ds_kind_name(render3d_st.ds_row_kind[r])},"{gpu_program_key(render3d_st, render3d_st.ds_row_prog[r])}",{ds_per(render3d_st, render3d_st.ds_row_draws[r])},{ds_per(render3d_st, render3d_st.ds_row_inst[r])},{ds_per(render3d_st, render3d_st.ds_row_idx[r])},{ds_per(render3d_st, render3d_st.ds_pass_prog[s])},{ds_per(render3d_st, render3d_st.ds_pass_tex[s])}\n`
     file_write(f, line, len(line))
   }
   file_close(f)

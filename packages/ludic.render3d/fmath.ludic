@@ -3,9 +3,9 @@
 #
 # Ludic's own numbers are Q16.16; a renderer wants the floats the GPU eats. A
 # float lives here as its bit pattern in an `int`, arithmetic goes through the
-# f_* helpers Gl.* provides (gl.ll), and vectors / matrices are `words` buffers
-# of those bit patterns — which is exactly the memory layout glUniform* and
-# glBufferData expect, so nothing is converted at upload.
+# f_* helpers the runtime provides (rtlib.ll), and vectors / matrices are `words` buffers
+# of those bit patterns — which is exactly the memory layout the uniform and vertex
+# buffers take, so nothing is converted at upload.
 #
 #   fl(x)         a fixed literal as a float          fr(n, d)   n/d as a float
 #   v3_*          3-vectors at an index of a words buffer (x, y, z consecutive)

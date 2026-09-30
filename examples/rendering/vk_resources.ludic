@@ -2,9 +2,8 @@
 # renderer uploads them and read back, a mip chain, the samplers the renderer asks for, and a
 # buffer filled and grown. Run it under the validation layer on each machine.
 #
-# gpu_vk_res.ludic speaks OpenGL's names for formats and filters, as gpu.ludic does, and those
-# names only exist where Gl.* is named - hence the one Gl.pixel_scale() below. Nothing here
-# opens an OpenGL context or draws with one.
+# gpu_vk_res.ludic speaks the renderer's own names for formats and filters (gpu_enums.ludic),
+# as gpu.ludic does. Nothing here draws.
 #   bin/ludicc examples/rendering/vk_resources.ludic --headless -o build/vk_resources
 import "../../packages/ludic.render3d/gpu_vk.ludic"
 import "../../packages/ludic.render3d/gpu_vk_res.ludic"
@@ -22,7 +21,6 @@ program VkResources {
 
   handler Boot(render3d_st: mut Render3dState, vk_resources_st: mut VkResourcesState) phase Start {
     spawn Anchor {}
-    print(`vulkan: OpenGL names spliced (pixel scale {Gl.pixel_scale()})`)
     if not gvk_init(render3d_st) { print(`VKRES NONE: {render3d_st.gvk_why}`);  quit() }
 
     # RGBA8 up and back, byte for byte
@@ -31,11 +29,11 @@ program VkResources {
     let px = bytes(w * h * 4)
     for i in 0 .. w * h { px[i * 4] = i & 255;  px[i * 4 + 1] = (i >> 8) & 255;  px[i * 4 + 2] = (i * 7) & 255;  px[i * 4 + 3] = 200 }
     let t1 = gvk_tex_new(render3d_st)
-    check(vk_resources_st, "RGBA8 storage with mips", gvk_tex_storage(render3d_st, t1, false, GL_RGBA8, w, h, 1, true))
-    check(vk_resources_st, "RGBA8 upload", gvk_tex_upload(render3d_st, t1, GL_RGBA8, w, h, 1, GL_RGBA, GL_UNSIGNED_BYTE, px))
+    check(vk_resources_st, "RGBA8 storage with mips", gvk_tex_storage(render3d_st, t1, false, GPU_RGBA8, w, h, 1, true))
+    check(vk_resources_st, "RGBA8 upload", gvk_tex_upload(render3d_st, t1, GPU_RGBA8, w, h, 1, GPU_RGBA, GPU_UNSIGNED_BYTE, px))
     check(vk_resources_st, "RGBA8 mip chain (7 levels)", render3d_st.gvk_tex_levels[t1] == 7 and gvk_tex_mips(render3d_st, t1, w, h))
     let back = bytes(w * h * 4)
-    check(vk_resources_st, "RGBA8 read-back call", gvk_tex_read(render3d_st, t1, GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE, back))
+    check(vk_resources_st, "RGBA8 read-back call", gvk_tex_read(render3d_st, t1, GPU_RGBA8, w, h, GPU_RGBA, GPU_UNSIGNED_BYTE, back))
     var same = true
     for i in 0 .. w * h * 4 { if back[i] != px[i] { same = false } }
     check(vk_resources_st, "RGBA8 read-back matches", same)
@@ -44,10 +42,10 @@ program VkResources {
     let hf = bytes(w * h * 4)
     for i in 0 .. w * h { Vk.put_i32(hf, i * 4, 0x40000000 + i) }
     let t2 = gvk_tex_new(render3d_st)
-    check(vk_resources_st, "R32F target", gvk_tex_storage(render3d_st, t2, false, GL_R32F, w, h, 1, false))
-    check(vk_resources_st, "R32F upload", gvk_tex_upload(render3d_st, t2, GL_R32F, w, h, 1, GL_RED, GL_FLOAT, hf))
+    check(vk_resources_st, "R32F target", gvk_tex_storage(render3d_st, t2, false, GPU_R32F, w, h, 1, false))
+    check(vk_resources_st, "R32F upload", gvk_tex_upload(render3d_st, t2, GPU_R32F, w, h, 1, GPU_RED, GPU_FLOAT, hf))
     let hb = bytes(w * h * 4)
-    check(vk_resources_st, "R32F read-back call", gvk_tex_read(render3d_st, t2, GL_R32F, w, h, GL_RED, GL_FLOAT, hb))
+    check(vk_resources_st, "R32F read-back call", gvk_tex_read(render3d_st, t2, GPU_R32F, w, h, GPU_RED, GPU_FLOAT, hb))
     var hsame = true
     for i in 0 .. w * h * 4 { if hb[i] != hf[i] { hsame = false } }
     check(vk_resources_st, "R32F read-back matches", hsame)
@@ -56,11 +54,11 @@ program VkResources {
     let rgb = bytes(w * h * 3)
     for i in 0 .. w * h * 3 { rgb[i] = (i * 3) & 255 }
     let t3 = gvk_tex_new(render3d_st)
-    check(vk_resources_st, "SRGB8 expanded to RGBA", gvk_tex_storage(render3d_st, t3, false, GL_SRGB8, w, h, 1, true) and gvk_tex_upload(render3d_st, t3, GL_SRGB8, w, h, 1, GL_RGB, GL_UNSIGNED_BYTE, rgb))
+    check(vk_resources_st, "SRGB8 expanded to RGBA", gvk_tex_storage(render3d_st, t3, false, GPU_SRGB8, w, h, 1, true) and gvk_tex_upload(render3d_st, t3, GPU_SRGB8, w, h, 1, GPU_RGB, GPU_UNSIGNED_BYTE, rgb))
     let fl = bytes(w * h * 12)
     for i in 0 .. w * h * 3 { Vk.put_i32(fl, i * 4, 0x3FC00000) }
     let t4 = gvk_tex_new(render3d_st)
-    check(vk_resources_st, "RGB16F from floats (halved)", gvk_tex_storage(render3d_st, t4, false, GL_RGB16F, w, h, 1, true) and gvk_tex_upload(render3d_st, t4, GL_RGB16F, w, h, 1, GL_RGB, GL_FLOAT, fl))
+    check(vk_resources_st, "RGB16F from floats (halved)", gvk_tex_storage(render3d_st, t4, false, GPU_RGB16F, w, h, 1, true) and gvk_tex_upload(render3d_st, t4, GPU_RGB16F, w, h, 1, GPU_RGB, GPU_FLOAT, fl))
     check(vk_resources_st, "half of 1.5 is 0x3E00", gvk_half(0x3FC00000) == 0x3E00)
 
     # a 16-bit RGB PNG (a normal map): big-endian samples, swapped on upload, alpha filled opaque
@@ -68,26 +66,26 @@ program VkResources {
     for i in 0 .. w * h * 3 { n16[i * 2] = (i >> 8) & 255;  n16[i * 2 + 1] = i & 255 }
     let t7 = gvk_tex_new(render3d_st)
     render3d_st.gvk_unpack_swap = true
-    check(vk_resources_st, "RGB16 swapped upload", gvk_tex_storage(render3d_st, t7, false, GL_RGB16, w, h, 1, true) and gvk_tex_upload(render3d_st, t7, GL_RGB16, w, h, 1, GL_RGB, GL_UNSIGNED_SHORT, n16))
+    check(vk_resources_st, "RGB16 swapped upload", gvk_tex_storage(render3d_st, t7, false, GPU_RGB16, w, h, 1, true) and gvk_tex_upload(render3d_st, t7, GPU_RGB16, w, h, 1, GPU_RGB, GPU_UNSIGNED_SHORT, n16))
     render3d_st.gvk_unpack_swap = false
     let b16 = bytes(w * h * 6)
-    check(vk_resources_st, "RGB16 read-back call", gvk_tex_read(render3d_st, t7, GL_RGB16, w, h, GL_RGB, GL_UNSIGNED_SHORT, b16))
+    check(vk_resources_st, "RGB16 read-back call", gvk_tex_read(render3d_st, t7, GPU_RGB16, w, h, GPU_RGB, GPU_UNSIGNED_SHORT, b16))
     var s16 = true
     for i in 0 .. w * h * 3 { if b16[i * 2] != (i & 255) or b16[i * 2 + 1] != ((i >> 8) & 255) { s16 = false } }
     check(vk_resources_st, "RGB16 samples arrive little-endian", s16)
 
     # the shadow cascades: a depth array, and a render-sized half-float target with no pixels
     let t5 = gvk_tex_new(render3d_st)
-    check(vk_resources_st, "D32 array of 4", gvk_tex_storage(render3d_st, t5, true, GL_DEPTH_COMPONENT32F, 256, 256, 4, false))
+    check(vk_resources_st, "D32 array of 4", gvk_tex_storage(render3d_st, t5, true, GPU_DEPTH_COMPONENT32F, 256, 256, 4, false))
     let t6 = gvk_tex_new(render3d_st)
-    check(vk_resources_st, "RGBA16F target", gvk_tex_storage(render3d_st, t6, false, GL_RGBA16F, 320, 180, 1, false))
+    check(vk_resources_st, "RGBA16F target", gvk_tex_storage(render3d_st, t6, false, GPU_RGBA16F, 320, 180, 1, false))
 
     # the samplers the renderer asks for, and that asking twice returns the same one
-    let s1 = gvk_sampler(render3d_st, GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR, GL_REPEAT, GL_REPEAT, 0, 0x41800000)
-    let s2 = gvk_sampler(render3d_st, GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 0, 0)
-    let s3 = gvk_sampler(render3d_st, GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_LEQUAL, 0)
-    let s4 = gvk_sampler(render3d_st, GL_NEAREST, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 0, 0)
-    let again = gvk_sampler(render3d_st, GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR, GL_REPEAT, GL_REPEAT, 0, 0x41800000)
+    let s1 = gvk_sampler(render3d_st, GPU_LINEAR_MIPMAP_LINEAR, GPU_LINEAR, GPU_REPEAT, GPU_REPEAT, 0, 0x41800000)
+    let s2 = gvk_sampler(render3d_st, GPU_LINEAR, GPU_LINEAR, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE, 0, 0)
+    let s3 = gvk_sampler(render3d_st, GPU_LINEAR, GPU_LINEAR, GPU_CLAMP_TO_BORDER, GPU_CLAMP_TO_BORDER, GPU_LEQUAL, 0)
+    let s4 = gvk_sampler(render3d_st, GPU_NEAREST, GPU_NEAREST, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE, 0, 0)
+    let again = gvk_sampler(render3d_st, GPU_LINEAR_MIPMAP_LINEAR, GPU_LINEAR, GPU_REPEAT, GPU_REPEAT, 0, 0x41800000)
     check(vk_resources_st, "four samplers made", s1 != 0 and s2 != 0 and s3 != 0 and s4 != 0 and len(render3d_st.gvk_smp) == 4)
     check(vk_resources_st, "a sampler asked for twice is one sampler", again == s1)
 

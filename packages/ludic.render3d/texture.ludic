@@ -1,20 +1,20 @@
 # ============================================================================
 # texture.ludic — images for the GPU: PNG (8- and 16-bit, any colour type) and
-# Radiance .hdr (RGBE) decoding straight into OpenGL textures.
+# Radiance .hdr (RGBE) decoding straight into GPU textures.
 #
 # The engine's own PNG reader (image.ludic) expands to 8-bit 0xAARRGGBB for the
 # 2D framebuffer; a renderer wants the file's real sample depth — normal and
 # displacement maps ship as 16-bit — so this decoder keeps 16-bit samples and
-# uploads them as GL_UNSIGNED_SHORT (big-endian, with GL_UNPACK_SWAP_BYTES) into
+# uploads them as GPU_UNSIGNED_SHORT (big-endian, with GPU_UNPACK_SWAP_BYTES) into
 # RGB16 / R16 textures, and 8-bit ones into sRGB8 or RGB8 as the caller says.
 # ============================================================================
 
-const GL_TEXTURE_MAX_ANISOTROPY_EXT: int = 0x84FE
+const GPU_TEXTURE_MAX_ANISOTROPY_EXT: int = 0x84FE
 
 
 # The anisotropic filtering level for every mipmapped texture, loaded or not: 1 (off), 2, 4, 8
-# or 16. Textures uploaded before a change are updated in place - on OpenGL by setting the
-# parameter again, on Vulkan by rewriting the record the sampler cache reads - so a settings
+# or 16. Textures uploaded before a change are updated in place - by rewriting the
+# record the sampler cache reads - so a settings
 # screen can offer it live instead of on the next start.
 function r3d_set_anisotropy(render3d_st: mut Render3dState, level: int) -> void {
   var a: fixed = 1.0
@@ -31,7 +31,7 @@ function r3d_set_anisotropy(render3d_st: mut Render3dState, level: int) -> void 
     # a 2D texture with mipmaps that was given a level when it was uploaded
     if render3d_st.gpu_tx[o] != GPU_TEX2D or render3d_st.gpu_tx[o + 10] != 1 or render3d_st.gpu_tx[o + 11] == 0 { continue }
     gpu_tex_bind(render3d_st, GPU_TEX2D, t)
-    gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, a)
+    gpu_tex_paramf(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAX_ANISOTROPY_EXT, a)
   }
   if keep > 0 { gpu_tex_bind(render3d_st, GPU_TEX2D, keep) }
 }
@@ -186,37 +186,37 @@ function tex_dilate_rows(b: int, j: DilateJob) -> void {
 function tex_upload(render3d_st: mut Render3dState, px: pointer, srgb: bool, mips: bool) -> int {
   let id = gpu_tex_new(render3d_st)
   gpu_tex_bind(render3d_st, GPU_TEX2D, id)
-  var fmt = GL_RED
-  if render3d_st.tex_channels == 2 { fmt = GL_RG }
-  if render3d_st.tex_channels == 3 { fmt = GL_RGB }
-  if render3d_st.tex_channels == 4 { fmt = GL_RGBA }
-  var ifmt = GL_R8
-  var ty = GL_UNSIGNED_BYTE
+  var fmt = GPU_RED
+  if render3d_st.tex_channels == 2 { fmt = GPU_RG }
+  if render3d_st.tex_channels == 3 { fmt = GPU_RGB }
+  if render3d_st.tex_channels == 4 { fmt = GPU_RGBA }
+  var ifmt = GPU_R8
+  var ty = GPU_UNSIGNED_BYTE
   if render3d_st.tex_depth == 16 {
-    ty = GL_UNSIGNED_SHORT
-    ifmt = GL_R16
-    if render3d_st.tex_channels == 2 { ifmt = GL_RG16 }
-    if render3d_st.tex_channels == 3 { ifmt = GL_RGB16 }
-    if render3d_st.tex_channels == 4 { ifmt = GL_RGBA16 }
-    gpu_pixel_store(render3d_st, GL_UNPACK_SWAP_BYTES, 1)
+    ty = GPU_UNSIGNED_SHORT
+    ifmt = GPU_R16
+    if render3d_st.tex_channels == 2 { ifmt = GPU_RG16 }
+    if render3d_st.tex_channels == 3 { ifmt = GPU_RGB16 }
+    if render3d_st.tex_channels == 4 { ifmt = GPU_RGBA16 }
+    gpu_pixel_store(render3d_st, GPU_UNPACK_SWAP_BYTES, 1)
   } else {
-    if render3d_st.tex_channels == 2 { ifmt = GL_RG8 }
-    if render3d_st.tex_channels == 3 { ifmt = GL_RGB8;  if srgb { ifmt = GL_SRGB8 } }
-    if render3d_st.tex_channels == 4 { ifmt = GL_RGBA8;  if srgb { ifmt = GL_SRGB8_ALPHA8 } }
-    gpu_pixel_store(render3d_st, GL_UNPACK_SWAP_BYTES, 0)
+    if render3d_st.tex_channels == 2 { ifmt = GPU_RG8 }
+    if render3d_st.tex_channels == 3 { ifmt = GPU_RGB8;  if srgb { ifmt = GPU_SRGB8 } }
+    if render3d_st.tex_channels == 4 { ifmt = GPU_RGBA8;  if srgb { ifmt = GPU_SRGB8_ALPHA8 } }
+    gpu_pixel_store(render3d_st, GPU_UNPACK_SWAP_BYTES, 0)
   }
-  gpu_pixel_store(render3d_st, GL_UNPACK_ALIGNMENT, 1)
+  gpu_pixel_store(render3d_st, GPU_UNPACK_ALIGNMENT, 1)
   gpu_tex_image2d(render3d_st, ifmt, render3d_st.tex_w, render3d_st.tex_h, fmt, ty, px)
-  gpu_pixel_store(render3d_st, GL_UNPACK_SWAP_BYTES, 0)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+  gpu_pixel_store(render3d_st, GPU_UNPACK_SWAP_BYTES, 0)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAG_FILTER, GPU_LINEAR)
   if mips {
-    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
     gpu_tex_mips(render3d_st, GPU_TEX2D)
-    gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
+    gpu_tex_paramf(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
   } else {
-    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR)
   }
   return id
 }
@@ -398,12 +398,12 @@ function tex_load_hdr__t(render3d_st: mut Render3dState, path: pointer) -> int {
   if px == null { return 0 }
   let id = gpu_tex_new(render3d_st)
   gpu_tex_bind(render3d_st, GPU_TEX2D, id)
-  gpu_pixel_store(render3d_st, GL_UNPACK_ALIGNMENT, 4)
-  gpu_tex_image2d(render3d_st, GL_RGB16F, render3d_st.tex_w, render3d_st.tex_h, GL_RGB, GL_FLOAT, data_of(px))
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_pixel_store(render3d_st, GPU_UNPACK_ALIGNMENT, 4)
+  gpu_tex_image2d(render3d_st, GPU_RGB16F, render3d_st.tex_w, render3d_st.tex_h, GPU_RGB, GPU_FLOAT, data_of(px))
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAG_FILTER, GPU_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
   gpu_tex_mips(render3d_st, GPU_TEX2D)
   free(px)
   return id
@@ -414,10 +414,10 @@ function tex_target(render3d_st: mut Render3dState, w: int, h: int, ifmt: int, f
   let id = gpu_tex_new(render3d_st)
   gpu_tex_bind(render3d_st, GPU_TEX2D, id)
   gpu_tex_image2d(render3d_st, ifmt, w, h, fmt, ty, null)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MAG_FILTER, filter)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, filter)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAG_FILTER, filter)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, filter)
   return id
 }
 
@@ -426,8 +426,8 @@ function tex_target(render3d_st: mut Render3dState, w: int, h: int, ifmt: int, f
 function tex_max(render3d_st: mut Render3dState, tex: int, w: int, h: int, tag: pointer) -> void {
   let buf = floats(w * h * 4)
   gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
-  gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 4)
-  gpu_tex_read(render3d_st, GPU_TEX2D, GL_RGBA, GL_FLOAT, data_of(buf))
+  gpu_pixel_store(render3d_st, GPU_PACK_ALIGNMENT, 4)
+  gpu_tex_read(render3d_st, GPU_TEX2D, GPU_RGBA, GPU_FLOAT, data_of(buf))
   var best = 0.0;  var bx = 0;  var by = 0
   var i = 0
   while i < w * h {
@@ -449,8 +449,8 @@ function tex_dump(render3d_st: mut Render3dState, tex: int, w: int, h: int, path
   if f == null { return }
   let buf = bytes(w * h * 4)
   gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
-  gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 1)
-  gpu_tex_read(render3d_st, GPU_TEX2D, GL_RGBA, GL_UNSIGNED_BYTE, buf)
+  gpu_pixel_store(render3d_st, GPU_PACK_ALIGNMENT, 1)
+  gpu_tex_read(render3d_st, GPU_TEX2D, GPU_RGBA, GPU_UNSIGNED_BYTE, buf)
   let hdr = `P6\n{w} {h}\n255\n`
   file_write(f, hdr, len(hdr))
   let row = bytes(w * 3)
@@ -465,7 +465,7 @@ function tex_dump(render3d_st: mut Render3dState, tex: int, w: int, h: int, path
   free(buf);  free(row)
 }
 
-# A binary PPM (P6, what Gl.screenshot writes) as an RGB8 texture, box-filtered down by
+# A binary PPM (P6, what r3d_screenshot writes) as an RGB8 texture, box-filtered down by
 # `shrink` (a photo thumbnail); 0 when the file is missing.
 # the GPU memory it makes is counted as VKM_TEXTURE (R3D_VKMEM)
 function tex_load_ppm(render3d_st: mut Render3dState, path: pointer, shrink: int) -> int {

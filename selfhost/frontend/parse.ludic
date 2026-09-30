@@ -412,8 +412,8 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Udp" { g_uses_udp = true }
       # Process.* — any Process method splices the child-process runtime (process.ll / process_win.ll).
       if e.a.kind == E_ID and e.a.s == "Process" { g_uses_process = true }
-      # Gl.* — any Gl method splices the OpenGL runtime (and links the GL backend).
-      if e.a.kind == E_ID and e.a.s == "Gl" { g_uses_gl = true }
+      # Time.now_us / Time.sleep_us — the microsecond clock lives in the window layer (window.ludic).
+      if e.a.kind == E_ID and e.a.s == "Time" and (e.s == "now_us" or e.s == "sleep_us") { g_uses_win = true }
       # Vk.* — any Vk method splices the Vulkan runtime (and links its loader)
       if e.a.kind == E_ID and e.a.s == "Vk" { g_uses_vk = true }
       # Tween.to/chain/delay/value/stop/parallel (#48): the fluent stateful handles
@@ -887,7 +887,7 @@ var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windo
 var g_uses_http:  bool = false    # Http.* (#6) -> splice http.ludic; links http.ll + Foundation (macOS)
 var g_uses_udp:   bool = false    # Udp.* -> splice udp.ludic; links udp.ll (macOS) / udp_win.ll + ws2_32
 var g_uses_process: bool = false  # Process.* -> splice process.ludic; links process.ll (macOS) / process_win.ll
-var g_uses_gl:    bool = false    # Gl.* -> splice gl.ludic (+ generated gl_api.ludic); links gl.ll + gl_thunks.ll + OpenGL
+var g_uses_win:   bool = false    # Vk.*, Time.now_us -> splice window.ludic; links rtlib.ll (rtlib_win.ll + win32_window.ll / win_nowin.ll on Windows)
 var g_uses_vk:    bool = false    # Vk.* -> splice vk.ludic (+ generated vk_api.ludic); links vk_thunks.ll + the platform loader
 # issue #64: functions marked @System(Phase) in a prebuilt binary module — the
 # compiler registers each with the host at load (it supplies the fn address,
@@ -1601,16 +1601,12 @@ function maybe_splice_runtime() -> void {
     do_import("runtime/native/process.ludic")
     cur_dir = saved
   }
-  # Vk.* draws into the runtime's window, whose size, drawable and clock (gl_width,
-  # gl_set_drawable, gl_now_us, ...) still live in the GL runtime: splice and link it too,
-  # until the window layer stands apart from OpenGL (maroon-lake docs/plan/22, 22.15)
-  if g_uses_vk { g_uses_gl = true }
-  # Gl.*: splice the OpenGL surface (gl.ludic + the generated gl_api.ludic). The
-  # native calls are the linked GL entry points themselves; the window attach is
-  # is_windowed()-guarded, so a headless build renders into an offscreen context.
-  if g_uses_gl {
+  # Vk.* draws into the runtime's window, whose size, drawable and clock (gfx_width,
+  # gfx_set_drawable, clock_now_us, ...) live in the window layer: splice and link it too.
+  if g_uses_vk { g_uses_win = true }
+  if g_uses_win {
     cur_dir = ""
-    do_import("runtime/native/gl.ludic")
+    do_import("runtime/native/window.ludic")
     cur_dir = saved
   }
   # Vk.*: splice the Vulkan surface (vk.ludic + the generated vk_api.ludic). The
@@ -1690,7 +1686,7 @@ function parse_program() -> void {
   g_onlisten = new []Node
   g_toggled_layers = new []pointer
   g_uses_regex = false
-  g_uses_gl = false
+  g_uses_win = false
   g_uses_vk = false
   g_uses_bignum = false
   g_uses_dict = false

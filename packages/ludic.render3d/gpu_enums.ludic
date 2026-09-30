@@ -1,0 +1,83 @@
+# ============================================================================
+# gpu_enums.ludic — the renderer's vocabulary for texture formats, filters, wrap modes,
+# blend factors, depth functions and the like. gpu.ludic takes these as plain ints; what
+# each one means is the backend's to decide (gpu_vk_res.ludic maps them to Vulkan's
+# formats, filters and blend factors). The values are fixed: do not renumber them.
+# ============================================================================
+
+const GPU_ALWAYS: int = 0x0207
+const GPU_BACK: int = 0x0405
+const GPU_CLAMP_TO_BORDER: int = 0x812D
+const GPU_CLAMP_TO_EDGE: int = 0x812F
+const GPU_COLOR_BUFFER_BIT: int = 0x00004000
+const GPU_COMPARE_REF_TO_TEXTURE: int = 0x884E
+const GPU_DEPTH_BUFFER_BIT: int = 0x00000100
+const GPU_DEPTH_COMPONENT: int = 0x1902
+const GPU_DEPTH_COMPONENT24: int = 0x81A6
+const GPU_DEPTH_COMPONENT32F: int = 0x8CAC
+const GPU_DST_ALPHA: int = 0x0304
+const GPU_DYNAMIC_DRAW: int = 0x88E8
+const GPU_EQUAL: int = 0x0202
+const GPU_FLOAT: int = 0x1406
+const GPU_FRAMEBUFFER_COMPLETE: int = 0x8CD5
+const GPU_FRONT: int = 0x0404
+const GPU_GEQUAL: int = 0x0206
+const GPU_GREATER: int = 0x0204
+const GPU_HALF_FLOAT: int = 0x140B
+const GPU_LEQUAL: int = 0x0203
+const GPU_LESS: int = 0x0201
+const GPU_LINEAR: int = 0x2601
+const GPU_LINEAR_MIPMAP_LINEAR: int = 0x2703
+const GPU_LINEAR_MIPMAP_NEAREST: int = 0x2701
+const GPU_NEAREST: int = 0x2600
+const GPU_NEAREST_MIPMAP_LINEAR: int = 0x2702
+const GPU_NEAREST_MIPMAP_NEAREST: int = 0x2700
+const GPU_NEVER: int = 0x0200
+const GPU_NONE: int = 0
+const GPU_NOTEQUAL: int = 0x0205
+const GPU_ONE: int = 1
+const GPU_ONE_MINUS_DST_ALPHA: int = 0x0305
+const GPU_ONE_MINUS_SRC_ALPHA: int = 0x0303
+const GPU_ONE_MINUS_SRC_COLOR: int = 0x0301
+const GPU_PACK_ALIGNMENT: int = 0x0D05
+const GPU_R16: int = 0x822A
+const GPU_R32F: int = 0x822E
+const GPU_R8: int = 0x8229
+const GPU_RED: int = 0x1903
+const GPU_REPEAT: int = 0x2901
+const GPU_RG: int = 0x8227
+const GPU_RG16: int = 0x822C
+const GPU_RG16F: int = 0x822F
+const GPU_RG8: int = 0x822B
+const GPU_RGB: int = 0x1907
+const GPU_RGB10_A2: int = 0x8059
+const GPU_RGB16: int = 0x8054
+const GPU_RGB16F: int = 0x881B
+const GPU_RGB8: int = 0x8051
+const GPU_RGBA: int = 0x1908
+const GPU_RGBA16: int = 0x805B
+const GPU_RGBA16F: int = 0x881A
+const GPU_RGBA32F: int = 0x8814
+const GPU_RGBA8: int = 0x8058
+const GPU_SRC_ALPHA: int = 0x0302
+const GPU_SRC_COLOR: int = 0x0300
+const GPU_SRGB8: int = 0x8C41
+const GPU_SRGB8_ALPHA8: int = 0x8C43
+const GPU_STATIC_DRAW: int = 0x88E4
+const GPU_STREAM_DRAW: int = 0x88E0
+const GPU_TEXTURE_2D: int = 0x0DE1
+const GPU_TEXTURE_2D_ARRAY: int = 0x8C1A
+const GPU_TEXTURE_COMPARE_FUNC: int = 0x884D
+const GPU_TEXTURE_COMPARE_MODE: int = 0x884C
+const GPU_TEXTURE_MAG_FILTER: int = 0x2800
+const GPU_TEXTURE_MIN_FILTER: int = 0x2801
+const GPU_TEXTURE_WRAP_S: int = 0x2802
+const GPU_TEXTURE_WRAP_T: int = 0x2803
+const GPU_TIME_ELAPSED: int = 0x88BF
+const GPU_TRIANGLES: int = 0x0004
+const GPU_UNPACK_ALIGNMENT: int = 0x0CF5
+const GPU_UNPACK_SWAP_BYTES: int = 0x0CF0
+const GPU_UNSIGNED_BYTE: int = 0x1401
+const GPU_UNSIGNED_INT: int = 0x1405
+const GPU_UNSIGNED_SHORT: int = 0x1403
+const GPU_ZERO: int = 0

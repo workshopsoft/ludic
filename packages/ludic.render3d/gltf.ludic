@@ -34,8 +34,8 @@ function jint(v: Val, key: pointer, fallback: int) -> int {
   return value_as_int(value_get(v, key))
 }
 
-# Materials seen so far, by name: a LOD chain exported from the .blend (tools/glgen/
-# lod_export.py) carries the material names but no images — the blend links textures
+# Materials seen so far, by name: a LOD chain exported from the .blend (lod_export.py)
+# carries the material names but no images — the blend links textures
 # that are not downloaded with it — so its primitives take the textures the LOD0
 # download's material of the same name loaded.
 function gltf_mat_find(render3d_st: Render3dState, name: string) -> int {

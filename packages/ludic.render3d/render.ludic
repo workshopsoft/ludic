@@ -116,9 +116,9 @@ function r3d_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
   if not gpu_open(render3d_st, w, h, title) { print("r3d: the Vulkan window or device could not be made");  return false }
   if r3d_env_has(render3d_st, "R3D_NOVSYNC") { gpu_vsync(render3d_st, 0) }
   var renderer: string = gpu_renderer_name(render3d_st)
-  print(`r3d: {gl_width()}x{gl_height()} on {renderer}`)
+  print(`r3d: {gfx_width()}x{gfx_height()} on {renderer}`)
   prof_init(render3d_st)
-  cam_init(render3d_st, float(gl_width()) / float(gl_height()))
+  cam_init(render3d_st, float(gfx_width()) / float(gfx_height()))
   return len(render3d_st.r3d_fault) == 0
 }
 
@@ -154,7 +154,7 @@ function r3d_load_step_run(render3d_st: mut Render3dState, i: int) -> bool {
     terrain_init_step(render3d_st, t)
   } else if i == 1 + TERRAIN_INIT_STEPS {
     shadow_init(render3d_st)
-    post_init(render3d_st, gl_width(), gl_height())
+    post_init(render3d_st, gfx_width(), gfx_height())
   } else if i == 2 + TERRAIN_INIT_STEPS {
     scatter_init(render3d_st)
     actor_init(render3d_st)
@@ -175,7 +175,7 @@ function r3d_load_step_run(render3d_st: mut Render3dState, i: int) -> bool {
 }
 
 function r3d_draw_sky(render3d_st: mut Render3dState) -> void {
-  gpu_depth_func(render3d_st, GL_LEQUAL)
+  gpu_depth_func(render3d_st, GPU_LEQUAL)
   gpu_depth_write(render3d_st, false)
   gpu_cull(render3d_st, false)
   let p = render3d_st.r3d_sky_prog
@@ -192,11 +192,11 @@ function r3d_draw_sky(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_time"), render3d_st.r3d_time)
   mesh_draw(render3d_st, render3d_st.sky_fullscreen)
   gpu_depth_write(render3d_st, true)
-  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_depth_func(render3d_st, GPU_LESS)
 }
 
 # The end of the game's frame, whichever backend draws it: a screenshot first if one is wanted,
-# then the present. A game calls these rather than Gl.swap / Gl.screenshot.
+# then the present. A game calls these.
 function r3d_screenshot(render3d_st: mut Render3dState, path: string) -> bool { return gpu_screenshot(render3d_st, path) }
 function r3d_present(render3d_st: mut Render3dState) -> void { gpu_present(render3d_st) }
 
@@ -209,10 +209,10 @@ function r3d_resize(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_tag = was
 }
 function r3d_resize__t(render3d_st: mut Render3dState) -> void {
-  render3d_st.cam_aspect = float(gl_width()) / float(gl_height())
+  render3d_st.cam_aspect = float(gfx_width()) / float(gfx_height())
   cam_update(render3d_st)
   post_free(render3d_st)
-  post_init(render3d_st, gl_width(), gl_height())
+  post_init(render3d_st, gfx_width(), gfx_height())
   if render3d_st.water_refl != null { target_free(render3d_st, render3d_st.water_refl);  render3d_st.water_refl = null }
   r3d_say_resized()
 }
@@ -244,7 +244,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
     if step == 1 { w = 1440;  h = 810 }
     if step == 2 { w = 2560;  h = 1440 }
     if step == 3 { w = 1281;  h = 721 }
-    gl_set_drawable(w, h)
+    gfx_set_drawable(w, h)
     r3d_resize(render3d_st)
   }
   render3d_st.r3d_time = time
@@ -253,7 +253,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   # covers is exactly one frame, from this point to the same point next time
   prof_gen_frame(render3d_st)
   prof_mark_start(render3d_st)
-  cam_begin_frame(render3d_st, render3d_st.post_frame, gl_width(), gl_height())
+  cam_begin_frame(render3d_st, render3d_st.post_frame, gfx_width(), gfx_height())
   # R3D_CAM_LOG=1: the camera each frame, in millimetres and thousandths of a radian - to tell a
   # camera that moves while the hiker stands still from a picture that shakes on its own
   if render3d_st.r3d_cam_log < 0 { render3d_st.r3d_cam_log = 0;  if r3d_env_has(render3d_st, "R3D_CAM_LOG") { render3d_st.r3d_cam_log = 1 } }
@@ -263,9 +263,9 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   # the height-field shadow rebakes as the light moves in steps (daylight), or with the sky yaw when there is no clock
   if not render3d_st.r3d_plate and ((not render3d_st.day_on and render3d_st.ter_shadow_yaw != render3d_st.sky_yaw) or render3d_st.ter_shadow_gen != render3d_st.day_gen) {
     render3d_st.ter_shadow_gen = render3d_st.day_gen
-    let t_bk = gl_now_us()
+    let t_bk = clock_now_us()
     terrain_bake_shadow(render3d_st)
-    prof_bake_add(render3d_st, gl_now_us() - t_bk)
+    prof_bake_add(render3d_st, clock_now_us() - t_bk)
   }
   scatter_begin_frame(render3d_st)
   prof_cpu_mark(render3d_st, "shadow rebake")
@@ -321,7 +321,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
     post_capture_scene(render3d_st)
     target_bind(render3d_st, render3d_st.post_hdr)
     gpu_depth_test(render3d_st, true)
-    gpu_depth_func(render3d_st, GL_LESS)
+    gpu_depth_func(render3d_st, GPU_LESS)
     water_draw(render3d_st, render3d_st.post_depth_copy.depth)
     prof_end(render3d_st)
   }
@@ -350,6 +350,6 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
 
 # messages, each built in a function of its own so the path that says it holds no allocation
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
-function r3d_say_resized() -> void { print(`r3d: resized to {gl_width()}x{gl_height()}`) }
+function r3d_say_resized() -> void { print(`r3d: resized to {gfx_width()}x{gfx_height()}`) }
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
 function r3d_say_test_frame(render3d_st: Render3dState) -> void { print(`cam {render3d_st.r3d_test_frame} pos {int(render3d_st.cam_pos[0] * 1000.0)} {int(render3d_st.cam_pos[1] * 1000.0)} {int(render3d_st.cam_pos[2] * 1000.0)} yaw {int(render3d_st.cam_yaw * 1000.0)} pitch {int(render3d_st.cam_pitch * 1000.0)} jitter {int(render3d_st.gsl_jitter_x * 1000000.0)} {int(render3d_st.gsl_jitter_y * 1000000.0)} render {render3d_st.post_w}x{render3d_st.post_h} reset {render3d_st.gsl_reset} evalok {render3d_st.gsl_eval_ok} fresh {render3d_st.gsl_fresh}`) }

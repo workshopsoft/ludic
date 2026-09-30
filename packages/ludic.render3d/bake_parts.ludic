@@ -74,14 +74,14 @@ function impostor_fill(render3d_st: mut Render3dState, im: Impostor, data: []byt
   let was = render3d_st.gvk_tag
   render3d_st.gvk_tag = VKM_IMPOSTOR
   let aw = im.tiles * im.tw
-  im.albedo = tex_target(render3d_st, aw, im.th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
-  im.normal = tex_target(render3d_st, aw, im.th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  im.albedo = tex_target(render3d_st, aw, im.th, GPU_RGBA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
+  im.normal = tex_target(render3d_st, aw, im.th, GPU_RGBA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
   let ok = bake_unpack(render3d_st, data, bake_list2(im.albedo, im.normal))
   for t in 0 .. 2 {
     var tex = im.albedo
     if t == 1 { tex = im.normal }
     gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
-    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
     gpu_tex_mips(render3d_st, GPU_TEX2D)
   }
   render3d_st.gvk_tag = was
@@ -94,8 +94,8 @@ function terrain_shadow_bytes(render3d_st: mut Render3dState) -> []byte {
   return bake_pack(render3d_st, bake_list2(render3d_st.ter_shadow_tex, render3d_st.ter_shadow_aux))
 }
 function terrain_shadow_from_bytes(render3d_st: mut Render3dState, data: []byte) -> bool {
-  if render3d_st.ter_shadow_tex == 0 { render3d_st.ter_shadow_tex = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR) }
-  if render3d_st.ter_shadow_aux == 0 { render3d_st.ter_shadow_aux = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR) }
+  if render3d_st.ter_shadow_tex == 0 { render3d_st.ter_shadow_tex = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GPU_R32F, GPU_RED, GPU_FLOAT, GPU_LINEAR) }
+  if render3d_st.ter_shadow_aux == 0 { render3d_st.ter_shadow_aux = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GPU_RG16F, GPU_RG, GPU_FLOAT, GPU_LINEAR) }
   let ok = bake_unpack(render3d_st, data, bake_list2(render3d_st.ter_shadow_tex, render3d_st.ter_shadow_aux))
   if ok { render3d_st.ter_shadow_yaw = render3d_st.sky_yaw }
   return ok

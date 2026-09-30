@@ -1,7 +1,7 @@
 # ============================================================================
 # gpu_manifest.ludic — the shader variants a pipeline API draws with.
 #
-# OpenGL compiles each program's GLSL when the game starts; Vulkan cannot, so every
+# Vulkan cannot compile GLSL when the game starts, so every
 # program render3d builds is compiled ahead of time by `ludic-dev shaders` into
 # shaders/spv/<id>.vert.spv and .frag.spv, with shaders/spv/manifest.txt saying what a
 # backend needs to draw with it:

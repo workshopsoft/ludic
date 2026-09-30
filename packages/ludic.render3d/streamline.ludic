@@ -6,7 +6,7 @@
 # beside the executable (runtime/native/vk_win.ll). slInit has to run before the
 # instance is made - Streamline's own vkCreateInstance / vkCreateDevice add what its
 # plugins need - so gvk_init calls gsl_boot() before Vk.open() and gsl_init() straight
-# after. Nothing here runs on macOS, on OpenGL, or where the DLLs are missing: every
+# after. Nothing here runs on macOS or where the DLLs are missing: every
 # entry point checks gsl_on and the renderer draws exactly as it did.
 #
 # Every sl structure starts with next, a GUID and a size_t version (32 bytes); the
@@ -248,12 +248,12 @@ function gsl_fill_options(render3d_st: mut Render3dState, w: int, h: int) -> voi
 
 # the render size for the display's size and the mode, asked once per change
 function gsl_optimal(render3d_st: mut Render3dState) -> void {
-  if render3d_st.gsl_opt_mode == render3d_st.gsl_dlss_mode and render3d_st.gsl_opt_w == gl_width() and render3d_st.gsl_opt_h == gl_height() { return }
-  render3d_st.gsl_opt_mode = render3d_st.gsl_dlss_mode;  render3d_st.gsl_opt_w = gl_width();  render3d_st.gsl_opt_h = gl_height()
-  render3d_st.gsl_rw = gl_width();  render3d_st.gsl_rh = gl_height()
+  if render3d_st.gsl_opt_mode == render3d_st.gsl_dlss_mode and render3d_st.gsl_opt_w == gfx_width() and render3d_st.gsl_opt_h == gfx_height() { return }
+  render3d_st.gsl_opt_mode = render3d_st.gsl_dlss_mode;  render3d_st.gsl_opt_w = gfx_width();  render3d_st.gsl_opt_h = gfx_height()
+  render3d_st.gsl_rw = gfx_width();  render3d_st.gsl_rh = gfx_height()
   let f = gsl_fn(GSL_DLSS, "slDLSSGetOptimalSettings")
   if f == null { return }
-  gsl_fill_options(render3d_st, gl_width(), gl_height())
+  gsl_fill_options(render3d_st, gfx_width(), gfx_height())
   let os = gsl_struct(64)                           # sl::DLSSOptimalSettings
   gsl_header(os, 0xef1d, 0x0957, 0xfd58, 0x4df7, 0xb504, 0x8b69, 0xd8aa, 0x6b76, 1)
   if Vk.sl_call_pp(f, render3d_st.gsl_opts, os) == 0 {
@@ -262,8 +262,8 @@ function gsl_optimal(render3d_st: mut Render3dState) -> void {
     if w > 0 and h > 0 { render3d_st.gsl_rw = w;  render3d_st.gsl_rh = h }
   }
 }
-function r3d_dlss_render_w(render3d_st: mut Render3dState) -> int { if not r3d_dlss_live(render3d_st) { return gl_width() };  gsl_optimal(render3d_st);  return render3d_st.gsl_rw }
-function r3d_dlss_render_h(render3d_st: mut Render3dState) -> int { if not r3d_dlss_live(render3d_st) { return gl_height() };  gsl_optimal(render3d_st);  return render3d_st.gsl_rh }
+function r3d_dlss_render_w(render3d_st: mut Render3dState) -> int { if not r3d_dlss_live(render3d_st) { return gfx_width() };  gsl_optimal(render3d_st);  return render3d_st.gsl_rw }
+function r3d_dlss_render_h(render3d_st: mut Render3dState) -> int { if not r3d_dlss_live(render3d_st) { return gfx_height() };  gsl_optimal(render3d_st);  return render3d_st.gsl_rh }
 
 # a radical-inverse sample in [0, 1), float bits
 function gsl_halton(i: int, b: int) -> float {
@@ -408,18 +408,18 @@ function gsl_constants(render3d_st: mut Render3dState) -> void {
 function gsl_targets(render3d_st: mut Render3dState) -> void {
   if render3d_st.gsl_mv == null or render3d_st.gsl_mv.w != render3d_st.post_w or render3d_st.gsl_mv.h != render3d_st.post_h {
     if render3d_st.gsl_mv != null { target_free(render3d_st, render3d_st.gsl_mv) }
-    render3d_st.gsl_mv = target_new(render3d_st, render3d_st.post_w, render3d_st.post_h, GL_RG16F, GL_RG, GL_HALF_FLOAT, false, GL_NEAREST)
+    render3d_st.gsl_mv = target_new(render3d_st, render3d_st.post_w, render3d_st.post_h, GPU_RG16F, GPU_RG, GPU_HALF_FLOAT, false, GPU_NEAREST)
     render3d_st.gsl_reset = true
   }
-  if render3d_st.gsl_out == null or render3d_st.gsl_out.w != gl_width() or render3d_st.gsl_out.h != gl_height() {
+  if render3d_st.gsl_out == null or render3d_st.gsl_out.w != gfx_width() or render3d_st.gsl_out.h != gfx_height() {
     if render3d_st.gsl_out != null { target_free(render3d_st, render3d_st.gsl_out) }
-    render3d_st.gsl_out = target_new(render3d_st, gl_width(), gl_height(), GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, false, GL_LINEAR)
+    render3d_st.gsl_out = target_new(render3d_st, gfx_width(), gfx_height(), GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
     render3d_st.gsl_reset = true
   }
   # the LDR image the tonemap writes follows the upscaled size
-  if render3d_st.post_ldr.w != gl_width() or render3d_st.post_ldr.h != gl_height() {
+  if render3d_st.post_ldr.w != gfx_width() or render3d_st.post_ldr.h != gfx_height() {
     target_free(render3d_st, render3d_st.post_ldr)
-    render3d_st.post_ldr = target_new(render3d_st, gl_width(), gl_height(), post_ldr_fmt(render3d_st), GL_RGBA, GL_UNSIGNED_BYTE, false, GL_LINEAR)
+    render3d_st.post_ldr = target_new(render3d_st, gfx_width(), gfx_height(), post_ldr_fmt(render3d_st), GPU_RGBA, GPU_UNSIGNED_BYTE, false, GPU_LINEAR)
     render3d_st.post_ldr_hdr = gpu_hdr_active(render3d_st)
   }
 }
@@ -430,20 +430,20 @@ function gsl_dlss_eval(render3d_st: mut Render3dState) -> int {
   # no motion of its own: the camera's comes from depth
   target_bind(render3d_st, render3d_st.gsl_mv)
   gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
-  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
   gvk_pass_end(render3d_st)
   let cb = gvk_frame_cb(render3d_st)
-  if render3d_st.gsl_set_mode != render3d_st.gsl_dlss_mode or render3d_st.gsl_set_w != gl_width() or render3d_st.gsl_set_h != gl_height() {
+  if render3d_st.gsl_set_mode != render3d_st.gsl_dlss_mode or render3d_st.gsl_set_w != gfx_width() or render3d_st.gsl_set_h != gfx_height() {
     let f = gsl_fn(GSL_DLSS, "slDLSSSetOptions")
-    gsl_fill_options(render3d_st, gl_width(), gl_height())
-    if f != null and Vk.sl_call_pp(f, render3d_st.gsl_vp, render3d_st.gsl_opts) == 0 { render3d_st.gsl_set_mode = render3d_st.gsl_dlss_mode;  render3d_st.gsl_set_w = gl_width();  render3d_st.gsl_set_h = gl_height() }
+    gsl_fill_options(render3d_st, gfx_width(), gfx_height())
+    if f != null and Vk.sl_call_pp(f, render3d_st.gsl_vp, render3d_st.gsl_opts) == 0 { render3d_st.gsl_set_mode = render3d_st.gsl_dlss_mode;  render3d_st.gsl_set_w = gfx_width();  render3d_st.gsl_set_h = gfx_height() }
   }
   gsl_constants(render3d_st)
   Vk.sl_set_constants(render3d_st.gsl_consts, render3d_st.gsl_token, render3d_st.gsl_vp)
   gsl_resource(render3d_st, 0, render3d_st.post_hdr.depth);  gsl_tag(render3d_st, 0, 0, render3d_st.post_w, render3d_st.post_h)        # kBufferTypeDepth
   gsl_resource(render3d_st, 112, render3d_st.gsl_mv.color);  gsl_tag(render3d_st, 1, 1, render3d_st.post_w, render3d_st.post_h)       # kBufferTypeMotionVectors
   gsl_resource(render3d_st, 224, render3d_st.post_hdr.color);  gsl_tag(render3d_st, 2, 3, render3d_st.post_w, render3d_st.post_h)     # kBufferTypeScalingInputColor
-  gsl_resource(render3d_st, 336, render3d_st.gsl_out.color);  gsl_tag(render3d_st, 3, 4, gl_width(), gl_height())          # kBufferTypeScalingOutputColor
+  gsl_resource(render3d_st, 336, render3d_st.gsl_out.color);  gsl_tag(render3d_st, 3, 4, gfx_width(), gfx_height())          # kBufferTypeScalingOutputColor
   Vk.sl_set_tag_for_frame(render3d_st.gsl_token, render3d_st.gsl_vp, render3d_st.gsl_tags, 4, cb)
   Vk.put_ptr(render3d_st.gsl_inputs, 0, render3d_st.gsl_vp)
   let r = Vk.sl_evaluate_feature(GSL_DLSS, render3d_st.gsl_token, render3d_st.gsl_inputs, 1, cb)
@@ -457,7 +457,7 @@ function gsl_dlss_eval(render3d_st: mut Render3dState) -> int {
     render3d_st.post_color_w = render3d_st.post_w;  render3d_st.post_color_h = render3d_st.post_h
     return render3d_st.post_hdr.color
   }
-  render3d_st.post_color_w = gl_width();  render3d_st.post_color_h = gl_height()
+  render3d_st.post_color_w = gfx_width();  render3d_st.post_color_h = gfx_height()
   return render3d_st.gsl_out.color
 }
 

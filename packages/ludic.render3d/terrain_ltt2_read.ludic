@@ -89,8 +89,8 @@ function ltt2_gpu_coarse(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_tag = VKM_TERRAIN
   let c = TT_COARSE
   let f = render3d_st.tt_file
-  let h = tex_target(render3d_st, c, c, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR)
-  gpu_tex_fill(render3d_st, h, GL_R32F, c, c, GL_RED, GL_FLOAT, data_of(render3d_st.tt_coarse))
+  let h = tex_target(render3d_st, c, c, GPU_R32F, GPU_RED, GPU_FLOAT, GPU_LINEAR)
+  gpu_tex_fill(render3d_st, h, GPU_R32F, c, c, GPU_RED, GPU_FLOAT, data_of(render3d_st.tt_coarse))
   let raw = buffer(c * c * 3)
   file_seek(f, render3d_st.tt_cnoff, 0)
   file_read(f, data_of(raw), c * c * 2)
@@ -99,8 +99,8 @@ function ltt2_gpu_coarse(render3d_st: mut Render3dState) -> void {
     let e = raw[i * 2] | (raw[i * 2 + 1] << 8)
     xz[i * 2] = lt_oct_dec(e, false);  xz[i * 2 + 1] = lt_oct_dec(e, true)
   }
-  let nm = tex_target(render3d_st, c, c, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
-  gpu_tex_fill(render3d_st, nm, GL_RG16F, c, c, GL_RG, GL_FLOAT, data_of(xz))
+  let nm = tex_target(render3d_st, c, c, GPU_RG16F, GPU_RG, GPU_FLOAT, GPU_LINEAR)
+  gpu_tex_fill(render3d_st, nm, GPU_RG16F, c, c, GPU_RG, GPU_FLOAT, data_of(xz))
   free(xz)
   # no photograph (side 0): none on the GPU either, as a map without one has always had
   var o = 0
@@ -120,12 +120,12 @@ function ltt2_gpu_coarse_ortho(render3d_st: mut Render3dState, raw: []byte) -> i
   let c = TT_COARSE
   file_seek(render3d_st.tt_file, render3d_st.tt_cooff, 0)
   file_read(render3d_st.tt_file, data_of(raw), c * c * 3)
-  let o = tex_target(render3d_st, c, c, GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
-  gpu_tex_fill(render3d_st, o, GL_SRGB8_ALPHA8, c, c, GL_RGB, GL_UNSIGNED_BYTE, data_of(raw))
+  let o = tex_target(render3d_st, c, c, GPU_SRGB8_ALPHA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
+  gpu_tex_fill(render3d_st, o, GPU_SRGB8_ALPHA8, c, c, GPU_RGB, GPU_UNSIGNED_BYTE, data_of(raw))
   gpu_tex_bind(render3d_st, GPU_TEX2D, o)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
   gpu_tex_mips(render3d_st, GPU_TEX2D)
-  gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
+  gpu_tex_paramf(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
   return o
 }
 

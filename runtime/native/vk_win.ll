@@ -3,7 +3,7 @@
 ;
 ; vulkan-1.dll ships with every GPU driver on Windows 10 and 11, but it is not
 ; guaranteed, so it is opened AT RUN TIME and never linked: a program that asks for
-; Vulkan on a machine without it gets 0 from vk_open and falls back to OpenGL
+; Vulkan on a machine without it gets 0 from vk_open
 ; rather than failing to start.
 ;
 ;   lvk_open() -> 1 | 0      open the loader and bind every command (vk_thunks.ll)

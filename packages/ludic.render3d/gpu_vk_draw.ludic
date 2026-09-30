@@ -258,7 +258,7 @@ function gvk_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
     Vk.put_i32(writes, k * ww + VkWriteDescriptorSet_descriptorType, kind)
     Vk.put_ptr(writes, k * ww + VkWriteDescriptorSet_pBufferInfo, mem_off(infos, k * bw))
   }
-  let smp = gvk_sampler(render3d_st, GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 0, 0)
+  let smp = gvk_sampler(render3d_st, GPU_LINEAR, GPU_LINEAR, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE, 0, 0)
   for t in 0 .. nt {
     var tex = render3d_st.gvk_white
     if texs != null and t < len(texs) and texs[t] > 0 { tex = texs[t] }
@@ -316,12 +316,12 @@ function gvk_compute_probe(render3d_st: mut Render3dState) -> void {
 property GvkState {
   depth_test: int = 0,
   depth_write: int = 1,
-  depth_func: int = 0x0201,        # GL_LESS
+  depth_func: int = 0x0201,        # GPU_LESS
   blend: int = 0,
-  blend_src: int = 1,              # GL_ONE
-  blend_dst: int = 0,              # GL_ZERO
+  blend_src: int = 1,              # GPU_ONE
+  blend_dst: int = 0,              # GPU_ZERO
   cull: int = 0,
-  cull_face: int = 0x0405,         # GL_BACK
+  cull_face: int = 0x0405,         # GPU_BACK
   color_write: int = 1,
   a2c: int = 0,
   bias: int = 0,
@@ -372,23 +372,23 @@ function gvk_attr_format(comps: int, type: int, normalized: int) -> int {
   return VK_FORMAT_R32_SFLOAT
 }
 function gvk_blend_factor(f: int) -> int {
-  if f == GL_ONE { return VK_BLEND_FACTOR_ONE }
-  if f == GL_SRC_ALPHA { return VK_BLEND_FACTOR_SRC_ALPHA }
-  if f == GL_ONE_MINUS_SRC_ALPHA { return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA }
-  if f == GL_DST_ALPHA { return VK_BLEND_FACTOR_DST_ALPHA }
-  if f == GL_ONE_MINUS_DST_ALPHA { return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA }
-  if f == GL_SRC_COLOR { return VK_BLEND_FACTOR_SRC_COLOR }
-  if f == GL_ONE_MINUS_SRC_COLOR { return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR }
+  if f == GPU_ONE { return VK_BLEND_FACTOR_ONE }
+  if f == GPU_SRC_ALPHA { return VK_BLEND_FACTOR_SRC_ALPHA }
+  if f == GPU_ONE_MINUS_SRC_ALPHA { return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA }
+  if f == GPU_DST_ALPHA { return VK_BLEND_FACTOR_DST_ALPHA }
+  if f == GPU_ONE_MINUS_DST_ALPHA { return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA }
+  if f == GPU_SRC_COLOR { return VK_BLEND_FACTOR_SRC_COLOR }
+  if f == GPU_ONE_MINUS_SRC_COLOR { return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR }
   return VK_BLEND_FACTOR_ZERO
 }
 function gvk_depth_op(f: int) -> int {
-  if f == GL_LEQUAL { return VK_COMPARE_OP_LESS_OR_EQUAL }
-  if f == GL_EQUAL { return VK_COMPARE_OP_EQUAL }
-  if f == GL_ALWAYS { return VK_COMPARE_OP_ALWAYS }
-  if f == GL_GREATER { return VK_COMPARE_OP_GREATER }
-  if f == GL_GEQUAL { return VK_COMPARE_OP_GREATER_OR_EQUAL }
-  if f == GL_NEVER { return VK_COMPARE_OP_NEVER }
-  if f == GL_NOTEQUAL { return VK_COMPARE_OP_NOT_EQUAL }
+  if f == GPU_LEQUAL { return VK_COMPARE_OP_LESS_OR_EQUAL }
+  if f == GPU_EQUAL { return VK_COMPARE_OP_EQUAL }
+  if f == GPU_ALWAYS { return VK_COMPARE_OP_ALWAYS }
+  if f == GPU_GREATER { return VK_COMPARE_OP_GREATER }
+  if f == GPU_GEQUAL { return VK_COMPARE_OP_GREATER_OR_EQUAL }
+  if f == GPU_NEVER { return VK_COMPARE_OP_NEVER }
+  if f == GPU_NOTEQUAL { return VK_COMPARE_OP_NOT_EQUAL }
   return VK_COMPARE_OP_LESS
 }
 # the vertex layout a mesh recorded (gpu.ludic's attrs), as part of a pipeline key
@@ -521,7 +521,7 @@ function gvk_pipeline(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkSt
   Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_sType, VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO)
   if st.wireframe == 1 { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_polygonMode, VK_POLYGON_MODE_LINE) } else { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_polygonMode, VK_POLYGON_MODE_FILL) }
   if st.cull == 1 {
-    if st.cull_face == GL_FRONT { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_cullMode, VK_CULL_MODE_FRONT_BIT) } else { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_cullMode, VK_CULL_MODE_BACK_BIT) }
+    if st.cull_face == GPU_FRONT { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_cullMode, VK_CULL_MODE_FRONT_BIT) } else { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_cullMode, VK_CULL_MODE_BACK_BIT) }
   }
   # no y flip between the APIs' clip spaces and their framebuffers' rows, so a triangle that is
   # counter-clockwise on OpenGL's bottom-up window is clockwise in Vulkan's top-down one
@@ -785,7 +785,7 @@ function gvk_frame_init(render3d_st: mut Render3dState) -> bool {
   render3d_st.gvk_white = gvk_tex_new(render3d_st)
   let px = bytes(4)
   px[0] = 255;  px[1] = 255;  px[2] = 255;  px[3] = 255
-  return gvk_tex_storage(render3d_st, render3d_st.gvk_white, false, GL_RGBA8, 1, 1, 1, false) and gvk_tex_upload(render3d_st, render3d_st.gvk_white, GL_RGBA8, 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px)
+  return gvk_tex_storage(render3d_st, render3d_st.gvk_white, false, GPU_RGBA8, 1, 1, 1, false) and gvk_tex_upload(render3d_st, render3d_st.gvk_white, GPU_RGBA8, 1, 1, 1, GPU_RGBA, GPU_UNSIGNED_BYTE, px)
 }
 
 function gvk_frame_reset(render3d_st: mut Render3dState) -> void {
@@ -897,7 +897,7 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
     } else {
       # the sampler for a slot nothing was bound to, made once: looking it up by its string key on
       # every draw was the costly part of the key for the shadow and depth variants
-      if render3d_st.gvk_default_smp == 0 { render3d_st.gvk_default_smp = gvk_sampler(render3d_st, GL_LINEAR, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, 0, 0) }
+      if render3d_st.gvk_default_smp == 0 { render3d_st.gvk_default_smp = gvk_sampler(render3d_st, GPU_LINEAR, GPU_LINEAR, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE, 0, 0) }
       smp = render3d_st.gvk_default_smp
     }
     let tg: long = tex * 65536 + render3d_st.gvk_tex_gen[tex]
@@ -1038,7 +1038,7 @@ function r3d_hdr(render3d_st: mut Render3dState, on: bool) -> void {
   if render3d_st.gvk_swap != 0 { render3d_st.gvk_swap_stale = true }
 }
 function gpu_hdr_active(render3d_st: Render3dState) -> bool { return render3d_st.gpu_kind == GPU_VK and render3d_st.gvk_hdr_on }
-function gvk_screen_fmt(render3d_st: Render3dState) -> int { if render3d_st.gvk_hdr_on { return GL_RGB10_A2 };  return GL_RGBA8 }
+function gvk_screen_fmt(render3d_st: Render3dState) -> int { if render3d_st.gvk_hdr_on { return GPU_RGB10_A2 };  return GPU_RGBA8 }
 
 # The player's calibration of their display, in nits (float bits): the brightest it shows, where the
 # picture's and the interface's white sit, and how far the darkest shade is lifted. Displays differ by
@@ -1097,7 +1097,7 @@ function gvk_screen_make(render3d_st: mut Render3dState, w: int, h: int) -> bool
   render3d_st.gvk_vp[0] = 0;  render3d_st.gvk_vp[1] = 0;  render3d_st.gvk_vp[2] = w;  render3d_st.gvk_vp[3] = h
   if not gvk_tex_storage(render3d_st, render3d_st.gvk_screen_color, false, gvk_screen_fmt(render3d_st), w, h, 1, false) { return false }
   if render3d_st.gvk_screen_depth == 0 { return true }
-  return gvk_tex_storage(render3d_st, render3d_st.gvk_screen_depth, false, GL_DEPTH_COMPONENT32F, w, h, 1, false)
+  return gvk_tex_storage(render3d_st, render3d_st.gvk_screen_depth, false, GPU_DEPTH_COMPONENT32F, w, h, 1, false)
 }
 
 function gvk_frame_cb(render3d_st: mut Render3dState) -> pointer {
@@ -1231,7 +1231,7 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
     Vk.put_i64(catt, c * aw + VkRenderingAttachmentInfo_imageView, gvk_view_of(render3d_st, tex, layer1))
     Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_imageLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
     Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
-    if (render3d_st.gvk_clear_bits & GL_COLOR_BUFFER_BIT) != 0 {
+    if (render3d_st.gvk_clear_bits & GPU_COLOR_BUFFER_BIT) != 0 {
       Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR)
       for k in 0 .. 4 { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_clearValue + k * 4, float_bits(render3d_st.gvk_clear_rgba[k])) }
     } else { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
@@ -1248,7 +1248,7 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
     Vk.put_i64(datt, VkRenderingAttachmentInfo_imageView, gvk_view_of(render3d_st, dtex, render3d_st.gvk_pass_dep[1]))
     Vk.put_i32(datt, VkRenderingAttachmentInfo_imageLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
     Vk.put_i32(datt, VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
-    if (render3d_st.gvk_clear_bits & GL_DEPTH_BUFFER_BIT) != 0 {
+    if (render3d_st.gvk_clear_bits & GPU_DEPTH_BUFFER_BIT) != 0 {
       Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR)
       Vk.put_i32(datt, VkRenderingAttachmentInfo_clearValue, 0x3F800000)
     } else { Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
@@ -1291,7 +1291,7 @@ function gvk_clear(render3d_st: mut Render3dState, mask: int, rec: words, rec_o:
   let atts = gvk_tmp(render3d_st, caw * 4)
   Vk.zero(atts, caw * 4)
   var n = 0
-  if (mask & GL_COLOR_BUFFER_BIT) != 0 {
+  if (mask & GPU_COLOR_BUFFER_BIT) != 0 {
     for c in 0 .. render3d_st.gvk_pass_ncolor {
       Vk.put_i32(atts, n * caw + VkClearAttachment_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
       Vk.put_i32(atts, n * caw + VkClearAttachment_colorAttachment, c)
@@ -1299,7 +1299,7 @@ function gvk_clear(render3d_st: mut Render3dState, mask: int, rec: words, rec_o:
       n += 1
     }
   }
-  if (mask & GL_DEPTH_BUFFER_BIT) != 0 and render3d_st.gvk_pass_dep[0] > 0 {
+  if (mask & GPU_DEPTH_BUFFER_BIT) != 0 and render3d_st.gvk_pass_dep[0] > 0 {
     Vk.put_i32(atts, n * caw + VkClearAttachment_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT)
     Vk.put_i32(atts, n * caw + VkClearAttachment_clearValue, 0x3F800000)
     n += 1
@@ -1351,7 +1351,7 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
   render3d_st.gvk_cb_draws += 1
   let prof = gvk_prof(render3d_st)
   var t0: long = 0
-  if prof { t0 = gl_now_us() }
+  if prof { t0 = clock_now_us() }
   gvk_pass_begin(render3d_st, rec, rec_o)
   let cb = render3d_st.gvk_cb
   let samples = render3d_st.gvk_pass_samples
@@ -1366,12 +1366,12 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
     return
   }
   var t1: long = 0
-  if prof { t1 = gl_now_us();  render3d_st.gvk_us_pipe = render3d_st.gvk_us_pipe + (t1 - t0) }
+  if prof { t1 = clock_now_us();  render3d_st.gvk_us_pipe = render3d_st.gvk_us_pipe + (t1 - t0) }
   Vk.cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe)
   gvk_set_view(render3d_st, cb)
   let set = gvk_draw_set(render3d_st, p, tx, tx_w, tx_cap)
   if set == 0 { return }
-  if prof { render3d_st.gvk_us_set = render3d_st.gvk_us_set + (gl_now_us() - t1) }
+  if prof { render3d_st.gvk_us_set = render3d_st.gvk_us_set + (clock_now_us() - t1) }
   let sets = gvk_tmp(render3d_st, 8)
   Vk.put_i64(sets, 0, set)
   Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, render3d_st.gvk_prog_layout[p], 0, 1, sets, render3d_st.gvk_set_ndyn, render3d_st.gvk_set_offs)
@@ -1413,13 +1413,13 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
   if render3d_st.gvk_mesh_x > 0 {
     # a mesh-shader dispatch (gpu_draw_mesh_tasks): the device's command, through a pointer
     Vk.sl_call_piii(render3d_st.gvk_mesh_fn, cb, render3d_st.gvk_mesh_x, render3d_st.gvk_mesh_y, render3d_st.gvk_mesh_z)
-    if prof { render3d_st.gvk_n_draws += 1;  render3d_st.gvk_us_draw = render3d_st.gvk_us_draw + (gl_now_us() - t0) }
+    if prof { render3d_st.gvk_n_draws += 1;  render3d_st.gvk_us_draw = render3d_st.gvk_us_draw + (clock_now_us() - t0) }
     return
   }
   if m != null and m.ebo != 0 {
     let zero: long = 0
     var itype = VK_INDEX_TYPE_UINT32
-    if m.itype == GL_UNSIGNED_SHORT { itype = VK_INDEX_TYPE_UINT16 }
+    if m.itype == GPU_UNSIGNED_SHORT { itype = VK_INDEX_TYPE_UINT16 }
     Vk.cmd_bind_index_buffer(cb, render3d_st.gvk_buf[m.ebo], zero, itype)
     render3d_st.gvk_buf_used[m.ebo] = render3d_st.gvk_frame_no
     if render3d_st.gvk_ind_buf > 0 {
@@ -1439,7 +1439,7 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
   } else {
     Vk.cmd_draw(cb, n, instances, first, 0)
   }
-  if prof { render3d_st.gvk_n_draws += 1;  render3d_st.gvk_us_draw = render3d_st.gvk_us_draw + (gl_now_us() - t0) }
+  if prof { render3d_st.gvk_n_draws += 1;  render3d_st.gvk_us_draw = render3d_st.gvk_us_draw + (clock_now_us() - t0) }
 }
 
 # The frame so far, submitted and waited for, so work that submits on its own - an upload, a
@@ -1478,7 +1478,7 @@ function gvk_present(render3d_st: mut Render3dState) -> void {
 }
 
 # The screen as a binary PPM, top row first. The frame so far is finished first, then read back;
-# row 0 of the image is OpenGL's bottom row, so rows are written last to first, as gl_screenshot does.
+# row 0 of the image is OpenGL's bottom row, so rows are written last to first.
 @alloc_ok("asked for by the player or a tool, not by the frame")
 function gvk_screenshot(render3d_st: mut Render3dState, path: string) -> bool {
   # the screen image is PQ-encoded 10-bit while HDR is on, which an 8-bit PPM would misread
@@ -1489,7 +1489,7 @@ function gvk_screenshot(render3d_st: mut Render3dState, path: string) -> bool {
   # the read-back, the header and the row are this shot's own and go on every way out: a buffer the
   # size of the screen was once kept per shot
   let px = bytes(w * h * 4)
-  if not gvk_tex_read(render3d_st, render3d_st.gvk_screen_color, GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px) {
+  if not gvk_tex_read(render3d_st, render3d_st.gvk_screen_color, GPU_RGBA8, w, h, GPU_RGBA, GPU_UNSIGNED_BYTE, px) {
     free(px)
     return false
   }
@@ -1530,20 +1530,20 @@ function gvk_manifest(render3d_st: mut Render3dState) -> bool {
 # The screen: a colour and a depth image. Headless they are the asked-for size; with a window
 # they are its client area in pixels, and the swapchain is made on it.
 function gvk_open(render3d_st: mut Render3dState, w: int, h: int, title: string) -> bool {
-  gl_set_drawable(w, h)
+  gfx_set_drawable(w, h)
   if is_windowed() {
     win_open(w, h, 1, title)          # the window exists before main: this retitles it
-    win_gl_resize(w, h)
+    win_resize(w, h)
     # macOS: the Metal layer sets the backing scale, so it exists before the drawable is measured
     if Os.platform() == "macos" and win_metal_layer() == null { render3d_st.gvk_why = "no Metal layer on the window";  return false }
-      win_gl_drawable(render3d_st.gvk_size_buf)
-    if render3d_st.gvk_size_buf[0] > 0 and render3d_st.gvk_size_buf[1] > 0 { gl_set_drawable(render3d_st.gvk_size_buf[0], render3d_st.gvk_size_buf[1]) }
-    gl_set_pixel_scale(win_gl_scale())
+      win_drawable(render3d_st.gvk_size_buf)
+    if render3d_st.gvk_size_buf[0] > 0 and render3d_st.gvk_size_buf[1] > 0 { gfx_set_drawable(render3d_st.gvk_size_buf[0], render3d_st.gvk_size_buf[1]) }
+    gfx_set_pixel_scale(win_scale())
   }
   if not gvk_frame_init(render3d_st) { return false }
-  if not gvk_screen_make(render3d_st, gl_width(), gl_height()) { return false }
+  if not gvk_screen_make(render3d_st, gfx_width(), gfx_height()) { return false }
   if r3d_env_has(render3d_st, "R3D_VK_PROBE") { gvk_compute_probe(render3d_st) }
-  if is_windowed() { return gvk_swap_make(render3d_st, gl_width(), gl_height()) }
+  if is_windowed() { return gvk_swap_make(render3d_st, gfx_width(), gfx_height()) }
   return true
 }
 
@@ -1611,12 +1611,12 @@ function gvk_state_now(render3d_st: mut Render3dState) -> GvkState {
   let st = render3d_st.gvk_state
   st.depth_test = 0;  if render3d_st.gpu_s_depth_test == 1 { st.depth_test = 1 }
   st.depth_write = 1;  if render3d_st.gpu_s_depth_write == 0 { st.depth_write = 0 }
-  st.depth_func = GL_LESS;  if render3d_st.gpu_s_depth_func > 0 { st.depth_func = render3d_st.gpu_s_depth_func }
+  st.depth_func = GPU_LESS;  if render3d_st.gpu_s_depth_func > 0 { st.depth_func = render3d_st.gpu_s_depth_func }
   st.blend = 0;  if render3d_st.gpu_s_blend == 1 { st.blend = 1 }
-  st.blend_src = GL_ONE;  if render3d_st.gpu_s_blend_src >= 0 { st.blend_src = render3d_st.gpu_s_blend_src }
-  st.blend_dst = GL_ZERO;  if render3d_st.gpu_s_blend_dst >= 0 { st.blend_dst = render3d_st.gpu_s_blend_dst }
+  st.blend_src = GPU_ONE;  if render3d_st.gpu_s_blend_src >= 0 { st.blend_src = render3d_st.gpu_s_blend_src }
+  st.blend_dst = GPU_ZERO;  if render3d_st.gpu_s_blend_dst >= 0 { st.blend_dst = render3d_st.gpu_s_blend_dst }
   st.cull = 0;  if render3d_st.gpu_s_cull == 1 { st.cull = 1 }
-  st.cull_face = GL_BACK;  if render3d_st.gpu_s_cull_face > 0 { st.cull_face = render3d_st.gpu_s_cull_face }
+  st.cull_face = GPU_BACK;  if render3d_st.gpu_s_cull_face > 0 { st.cull_face = render3d_st.gpu_s_cull_face }
   st.color_write = 1;  if render3d_st.gpu_s_color_write == 0 { st.color_write = 0 }
   st.a2c = 0;  if render3d_st.gpu_s_a2c == 1 { st.a2c = 1 }
   st.bias = 0;  if render3d_st.gpu_s_bias == 1 { st.bias = 1 }
@@ -1713,8 +1713,8 @@ function gvk_copy(render3d_st: mut Render3dState, cb: pointer, src: int, dst: in
 function gvk_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> void {
   gvk_pass_end(render3d_st)
   let cb = gvk_frame_cb(render3d_st)
-  if (mask & GL_COLOR_BUFFER_BIT) != 0 { gvk_copy(render3d_st, cb, gvk_fb_att(render3d_st, render3d_st.gvk_fb_read, false), gvk_fb_att(render3d_st, render3d_st.gvk_fb_draw, false), false, w, h) }
-  if (mask & GL_DEPTH_BUFFER_BIT) != 0 { gvk_copy(render3d_st, cb, gvk_fb_att(render3d_st, render3d_st.gvk_fb_read, true), gvk_fb_att(render3d_st, render3d_st.gvk_fb_draw, true), true, w, h) }
+  if (mask & GPU_COLOR_BUFFER_BIT) != 0 { gvk_copy(render3d_st, cb, gvk_fb_att(render3d_st, render3d_st.gvk_fb_read, false), gvk_fb_att(render3d_st, render3d_st.gvk_fb_draw, false), false, w, h) }
+  if (mask & GPU_DEPTH_BUFFER_BIT) != 0 { gvk_copy(render3d_st, cb, gvk_fb_att(render3d_st, render3d_st.gvk_fb_read, true), gvk_fb_att(render3d_st, render3d_st.gvk_fb_draw, true), true, w, h) }
 }
 
 # the screen as RGB8, bottom row first, as glReadPixels hands it back (a photograph)
@@ -1730,7 +1730,7 @@ function gvk_read_screen(render3d_st: mut Render3dState, w: int, h: int, out: po
     render3d_st.gvk_read_cap = need
   }
   let px = render3d_st.gvk_read_px
-  if not gvk_tex_read(render3d_st, render3d_st.gvk_screen_color, GL_RGBA8, render3d_st.gvk_screen_w, render3d_st.gvk_screen_h, GL_RGBA, GL_UNSIGNED_BYTE, px) { return }
+  if not gvk_tex_read(render3d_st, render3d_st.gvk_screen_color, GPU_RGBA8, render3d_st.gvk_screen_w, render3d_st.gvk_screen_h, GPU_RGBA, GPU_UNSIGNED_BYTE, px) { return }
   let dst: pointer = out
   for y in 0 .. h {
     for x in 0 .. w {
@@ -1956,15 +1956,15 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
 # a window's client area changed: the screen images and the swapchain follow it
 function gvk_resize_check(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gvk_swap == 0 { return false }
-  win_gl_drawable(render3d_st.gvk_size_buf)
+  win_drawable(render3d_st.gvk_size_buf)
   let w = render3d_st.gvk_size_buf[0]
   let h = render3d_st.gvk_size_buf[1]
   if w <= 0 or h <= 0 { return false }
-  if w == gl_width() and h == gl_height() and not render3d_st.gvk_swap_stale { return false }
+  if w == gfx_width() and h == gfx_height() and not render3d_st.gvk_swap_stale { return false }
   # a remake is rare (a resize); said, so one on every frame shows in the log
   gvk_say_swap_remade(render3d_st, w, h)
   gvk_flush(render3d_st)
-  gl_set_drawable(w, h)
+  gfx_set_drawable(w, h)
   gvk_screen_make(render3d_st, w, h)
   gvk_swap_make(render3d_st, w, h)
   return true
@@ -2073,14 +2073,14 @@ function gvk_layout_id(render3d_st: mut Render3dState, m: Mesh) -> int {
   return m.vk_layout
 }
 function gvk_blend_index(f: int) -> int {
-  if f == GL_ZERO { return 0 }
-  if f == GL_ONE { return 1 }
-  if f == GL_SRC_ALPHA { return 2 }
-  if f == GL_ONE_MINUS_SRC_ALPHA { return 3 }
-  if f == GL_DST_ALPHA { return 4 }
-  if f == GL_ONE_MINUS_DST_ALPHA { return 5 }
-  if f == GL_SRC_COLOR { return 6 }
-  if f == GL_ONE_MINUS_SRC_COLOR { return 7 }
+  if f == GPU_ZERO { return 0 }
+  if f == GPU_ONE { return 1 }
+  if f == GPU_SRC_ALPHA { return 2 }
+  if f == GPU_ONE_MINUS_SRC_ALPHA { return 3 }
+  if f == GPU_DST_ALPHA { return 4 }
+  if f == GPU_ONE_MINUS_DST_ALPHA { return 5 }
+  if f == GPU_SRC_COLOR { return 6 }
+  if f == GPU_ONE_MINUS_SRC_COLOR { return 7 }
   return 8
 }
 function gvk_pipeline_fast(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: int, depth_fmt: int, samples: int) -> long {
@@ -2120,7 +2120,7 @@ function gvk_say_compressed(render3d_st: Render3dState, tex: int) -> void { prin
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
 function gvk_say_no_pipeline(render3d_st: Render3dState, p: int) -> void { print(`r3d: vulkan: no pipeline for {gpu_program_key(render3d_st, p)}; its draws are skipped`) }
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
-function gvk_say_swap_remade(render3d_st: Render3dState, w: int, h: int) -> void { print(`r3d: vulkan: swapchain remade {w}x{h} (was {gl_width()}x{gl_height()}, stale {render3d_st.gvk_swap_stale})`) }
+function gvk_say_swap_remade(render3d_st: Render3dState, w: int, h: int) -> void { print(`r3d: vulkan: swapchain remade {w}x{h} (was {gfx_width()}x{gfx_height()}, stale {render3d_st.gvk_swap_stale})`) }
 
 # Draws a command buffer holds before it is submitted and the frame goes on in the next. Metal pools
 # the storage a command buffer grew to and grows it only when one encodes more than any before, so

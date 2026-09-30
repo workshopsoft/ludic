@@ -10,7 +10,7 @@
 #         T <id> <name> <binding> <sampler type>    a sampler, the same binding in both stages
 #         I <id> <name> <location> <type>           a vertex input
 #
-# OpenGL compiles GLSL when the game starts; Vulkan cannot, so every program the renderer
+# Vulkan cannot compile GLSL when the game starts, so every program the renderer
 # builds (variants.list, from R3D_PROGRAMS_LOG) is compiled here. The GLSL is the renderer's
 # own, assembled exactly as programs.ludic assembles it, through glslang's relaxed Vulkan mode:
 # the loose uniforms of each stage land in one uniform block whose offsets come from the
@@ -93,7 +93,7 @@ function shd_bind_samplers(src: pointer, collect: bool) -> pointer {
   return sb_str(b)
 }
 
-# Varyings: OpenGL links a vertex output to a fragment input by NAME; SPIR-V links by location,
+# Varyings: GLSL links a vertex output to a fragment input by NAME; SPIR-V links by location,
 # and glslang's --auto-map-locations numbers each stage in its own declaration order. A fragment
 # shader that declares fewer inputs, or declares them in another order - the foliage prepass's
 # depth.frag reads v_wpos then v_uv, where model.vert writes v_wpos, v_nrm, v_uv - read the wrong
@@ -226,11 +226,11 @@ function cmd_shaders() -> int {
     if len(parts) > 2 { defs = parts[2] }
     let id = shd_id(line)
     let defines = Text.replace(defs, ";", "\n")
-    # The renderer's projections are OpenGL's: clip-space depth runs from -w to w, and Vulkan clips
+    # The renderer's projections put clip-space depth from -w to w, and Vulkan clips
     # everything below 0 - the near half of every frustum. The vertex stage is wrapped so its own
-    # main runs first and depth is then remapped to [0, w]; the GLSL the OpenGL renderer compiles
-    # is untouched. No y flip: a Vulkan target's row 0 is where OpenGL's is (NDC y = -1), so render
-    # to texture, sampling and gl_FragCoord agree; only the present and the screenshot flip.
+    # main runs first and depth is then remapped to [0, w]; the GLSL itself is untouched. No y flip:
+    # a Vulkan target's row 0 is NDC y = -1, so render to texture, sampling and gl_FragCoord
+    # agree; only the present and the screenshot flip.
     let depth_remap = "\n#undef main\nvoid main() {\n  ludic_gl_main();\n  gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n"
     # invariant: the foliage's depth prepass and its lit pass (depth EQUAL) are different variants,
     # and without it the compiler may compute their positions a hair apart and fail the test

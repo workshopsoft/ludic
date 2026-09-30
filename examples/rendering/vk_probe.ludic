@@ -30,7 +30,7 @@ program VkProbe {
 
   handler Boot phase Start {
     spawn Anchor {}
-    if Vk.open() == 0 { print("vulkan: no loader on this machine - it would run OpenGL");  quit() }
+    if Vk.open() == 0 { print("vulkan: no loader on this machine");  quit() }
     let ver = bytes(4)
     vk_put_i32(ver, 0, API_1_0)
     if vk_has("vkEnumerateInstanceVersion") == 1 { vk_enumerate_instance_version(ver) }

@@ -74,9 +74,9 @@ function impostor_bc7_part(render3d_st: mut Render3dState, im: Impostor, data: [
     return 0
   }
   # tex_load_dds_at repeats and filters anisotropically; a painted atlas (tex_target) is clamped, with neither
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, fixed(1.0))   # 1.0 is off, as a painted atlas has it
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
+  gpu_tex_paramf(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAX_ANISOTROPY_EXT, fixed(1.0))   # 1.0 is off, as a painted atlas has it
   return id
 }
 
@@ -129,7 +129,7 @@ function carpet_from_baked(render3d_st: mut Render3dState, path: string, key: st
   if b == null { return 0 }
   let was = render3d_st.gvk_tag
   render3d_st.gvk_tag = VKM_SCATTER
-  let tex = tex_target(render3d_st, res, res, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  let tex = tex_target(render3d_st, res, res, GPU_RGBA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
   let ok = bake_unpack(render3d_st, b, bake_list1(tex))
   free(b)
   if ok { carpet_finish(render3d_st, tex) } else { gpu_tex_free(render3d_st, tex) }

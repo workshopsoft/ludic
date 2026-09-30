@@ -1,40 +1,25 @@
 ; ============================================================================
-; gl_win_nowin.ll — the window half of Gl.* in a headless Windows build.
+; win_nowin.ll — the window layer in a headless Windows build.
 ;
-; gl.ludic names win_gl_* on its is_windowed() branch. A headless build compiles that
-; branch to nothing, but the names still have to resolve; a windowed build links
-; win32_gl.ll, which defines them on the real window, in place of this file.
+; window.ludic and render3d name win_resize / win_scale / win_drawable on their
+; is_windowed() branches. A headless build compiles those branches to nothing, but the
+; names still have to resolve; a windowed build links win32_window.ll, which defines
+; them on the real window, in place of this file.
 ; ============================================================================
 
-define i32 @win_gl_attach() {
-entry:
-  ret i32 0
-}
-define void @win_gl_resize(i32 %w, i32 %h) {
+define void @win_resize(i32 %w, i32 %h) {
 entry:
   ret void
 }
-define void @win_gl_swap() {
-entry:
-  ret void
-}
-define i32 @win_gl_scale() {
+define i32 @win_scale() {
 entry:
   ret i32 1
 }
-define void @win_gl_swap_interval(i32 %n) {
+define void @win_drawable(ptr %out) {
 entry:
   ret void
 }
-define void @win_gl_drawable(ptr %out) {
-entry:
-  ret void
-}
-define void @win_gl_update() {
-entry:
-  ret void
-}
-define void @win_gl_retina(i32 %on) {
+define void @win_retina(i32 %on) {
 entry:
   ret void
 }

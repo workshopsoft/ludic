@@ -1,5 +1,5 @@
 # ============================================================================
-# ludic.render3d — a physically based 3D renderer on Gl.* (OpenGL 4.1 core).
+# ludic.render3d — a physically based 3D renderer on Vulkan.
 # Import this one file, and register what a frame draws: r3d_on_draw, r3d_on_casters and, for a
 # streamed layer, r3d_on_stream_fill (hooks.ludic).
 # ============================================================================

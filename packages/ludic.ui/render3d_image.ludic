@@ -30,8 +30,8 @@ function r3u_tex_load(render3d_st: mut Render3dState, path: string) -> int {
   let t = tex_load(render3d_st, path, false)
   if t != 0 {
     gpu_tex_bind(render3d_st, GPU_TEX2D, t)
-    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
   }
   return t
 }

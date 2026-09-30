@@ -1,16 +1,19 @@
 # gpu_vk_res.ludic — the Vulkan backend's resources in the renderer's vocabulary: the formats,
 # and next the textures, buffers, samplers and pipelines gpu.ludic's handles stand for.
 #
-# gpu.ludic speaks OpenGL's names for formats, filters and blend factors, so this half of the
-# backend does too, and is only compiled inside render3d (which names Gl.*). gpu_vk.ludic - the
+# gpu.ludic speaks the renderer's own names for formats, filters and blend factors
+# (gpu_enums.ludic), so this half of the backend does too, and is only compiled inside
+# render3d. gpu_vk.ludic - the
 # device, memory and one-shot commands - is pure Vulkan and runs on its own (vk_device.ludic).
 
+import "gpu_enums.ludic"
+
 # ---- formats ------------------------------------------------------------------------------
-# The renderer names formats the way OpenGL does (they are gpu.ludic's vocabulary); these turn
+# The renderer's formats are gpu_enums.ludic's vocabulary; these turn
 # one into the Vulkan image format that holds it. Three-channel formats have no widely
 # supported Vulkan image format, so they are stored with four and expanded on upload.
-# block-compressed formats, named here (the GL header generated for render3d carries no BPTC):
-# the values are GL's, so they sit in the same vocabulary as every other internal format
+# block-compressed formats, named here: their values sit in the same vocabulary as every
+# other internal format
 const R3D_BC7: int = 0x8E8C
 const R3D_BC7_SRGB: int = 0x8E8D
 const R3D_BC5: int = 0x8DBD
@@ -21,32 +24,32 @@ function gvk_format(ifmt: int) -> int {
   if ifmt == R3D_BC7_SRGB { return VK_FORMAT_BC7_SRGB_BLOCK }
   if ifmt == R3D_BC5 { return VK_FORMAT_BC5_UNORM_BLOCK }
   if ifmt == R3D_BC4 { return VK_FORMAT_BC4_UNORM_BLOCK }
-  if ifmt == GL_RGBA8 or ifmt == GL_RGB8 { return VK_FORMAT_R8G8B8A8_UNORM }
-  if ifmt == GL_RGB10_A2 { return VK_FORMAT_A2B10G10R10_UNORM_PACK32 }   # the HDR10 screen and LDR image
-  if ifmt == GL_SRGB8_ALPHA8 or ifmt == GL_SRGB8 { return VK_FORMAT_R8G8B8A8_SRGB }
-  if ifmt == GL_R8 { return VK_FORMAT_R8_UNORM }
-  if ifmt == GL_RG8 { return VK_FORMAT_R8G8_UNORM }
-  if ifmt == GL_R16 { return VK_FORMAT_R16_UNORM }
-  if ifmt == GL_RG16 { return VK_FORMAT_R16G16_UNORM }
-  if ifmt == GL_RGBA16 or ifmt == GL_RGB16 { return VK_FORMAT_R16G16B16A16_UNORM }
-  if ifmt == GL_RG16F { return VK_FORMAT_R16G16_SFLOAT }
-  if ifmt == GL_RGBA16F or ifmt == GL_RGB16F { return VK_FORMAT_R16G16B16A16_SFLOAT }
-  if ifmt == GL_R32F { return VK_FORMAT_R32_SFLOAT }
-  if ifmt == GL_RGBA32F { return VK_FORMAT_R32G32B32A32_SFLOAT }
-  if ifmt == GL_DEPTH_COMPONENT32F or ifmt == GL_DEPTH_COMPONENT24 { return VK_FORMAT_D32_SFLOAT }
+  if ifmt == GPU_RGBA8 or ifmt == GPU_RGB8 { return VK_FORMAT_R8G8B8A8_UNORM }
+  if ifmt == GPU_RGB10_A2 { return VK_FORMAT_A2B10G10R10_UNORM_PACK32 }   # the HDR10 screen and LDR image
+  if ifmt == GPU_SRGB8_ALPHA8 or ifmt == GPU_SRGB8 { return VK_FORMAT_R8G8B8A8_SRGB }
+  if ifmt == GPU_R8 { return VK_FORMAT_R8_UNORM }
+  if ifmt == GPU_RG8 { return VK_FORMAT_R8G8_UNORM }
+  if ifmt == GPU_R16 { return VK_FORMAT_R16_UNORM }
+  if ifmt == GPU_RG16 { return VK_FORMAT_R16G16_UNORM }
+  if ifmt == GPU_RGBA16 or ifmt == GPU_RGB16 { return VK_FORMAT_R16G16B16A16_UNORM }
+  if ifmt == GPU_RG16F { return VK_FORMAT_R16G16_SFLOAT }
+  if ifmt == GPU_RGBA16F or ifmt == GPU_RGB16F { return VK_FORMAT_R16G16B16A16_SFLOAT }
+  if ifmt == GPU_R32F { return VK_FORMAT_R32_SFLOAT }
+  if ifmt == GPU_RGBA32F { return VK_FORMAT_R32G32B32A32_SFLOAT }
+  if ifmt == GPU_DEPTH_COMPONENT32F or ifmt == GPU_DEPTH_COMPONENT24 { return VK_FORMAT_D32_SFLOAT }
   return VK_FORMAT_UNDEFINED
 }
-function gvk_is_depth(ifmt: int) -> bool { return ifmt == GL_DEPTH_COMPONENT32F or ifmt == GL_DEPTH_COMPONENT24 }
+function gvk_is_depth(ifmt: int) -> bool { return ifmt == GPU_DEPTH_COMPONENT32F or ifmt == GPU_DEPTH_COMPONENT24 }
 # channels the Vulkan image stores per texel
 function gvk_channels(ifmt: int) -> int {
-  if ifmt == GL_R8 or ifmt == GL_R16 or ifmt == GL_R32F or gvk_is_depth(ifmt) { return 1 }
-  if ifmt == GL_RG8 or ifmt == GL_RG16 or ifmt == GL_RG16F { return 2 }
+  if ifmt == GPU_R8 or ifmt == GPU_R16 or ifmt == GPU_R32F or gvk_is_depth(ifmt) { return 1 }
+  if ifmt == GPU_RG8 or ifmt == GPU_RG16 or ifmt == GPU_RG16F { return 2 }
   return 4
 }
 # bytes per channel the Vulkan image stores
 function gvk_channel_bytes(ifmt: int) -> int {
-  if ifmt == GL_RGBA8 or ifmt == GL_RGB8 or ifmt == GL_SRGB8_ALPHA8 or ifmt == GL_SRGB8 or ifmt == GL_R8 or ifmt == GL_RG8 { return 1 }
-  if ifmt == GL_R32F or ifmt == GL_RGBA32F or gvk_is_depth(ifmt) { return 4 }
+  if ifmt == GPU_RGBA8 or ifmt == GPU_RGB8 or ifmt == GPU_SRGB8_ALPHA8 or ifmt == GPU_SRGB8 or ifmt == GPU_R8 or ifmt == GPU_RG8 { return 1 }
+  if ifmt == GPU_R32F or ifmt == GPU_RGBA32F or gvk_is_depth(ifmt) { return 4 }
   return 2
 }
 
@@ -279,14 +282,14 @@ function gvk_half(f: int) -> int {
   return s | (e << 10) | (m >> 13)
 }
 function gvk_gl_channels(fmt: int) -> int {
-  if fmt == GL_RED or fmt == GL_DEPTH_COMPONENT { return 1 }
-  if fmt == GL_RG { return 2 }
-  if fmt == GL_RGB { return 3 }
+  if fmt == GPU_RED or fmt == GPU_DEPTH_COMPONENT { return 1 }
+  if fmt == GPU_RG { return 2 }
+  if fmt == GPU_RGB { return 3 }
   return 4
 }
 function gvk_gl_type_bytes(ty: int) -> int {
-  if ty == GL_UNSIGNED_SHORT or ty == GL_HALF_FLOAT { return 2 }
-  if ty == GL_FLOAT or ty == GL_UNSIGNED_INT { return 4 }
+  if ty == GPU_UNSIGNED_SHORT or ty == GPU_HALF_FLOAT { return 2 }
+  if ty == GPU_FLOAT or ty == GPU_UNSIGNED_INT { return 4 }
   return 1
 }
 
@@ -314,7 +317,7 @@ function gvk_tex_upload(render3d_st: mut Render3dState, tex: int, ifmt: int, w: 
         if c >= cin {
           # the channel the source does not have: alpha, opaque
           if bout == 1 { buf[o] = 255 }
-          if bout == 2 { if ty == GL_FLOAT or ty == GL_HALF_FLOAT { buf[o] = 0;  buf[o + 1] = 0x3C } else { buf[o] = 255;  buf[o + 1] = 255 } }
+          if bout == 2 { if ty == GPU_FLOAT or ty == GPU_HALF_FLOAT { buf[o] = 0;  buf[o + 1] = 0x3C } else { buf[o] = 255;  buf[o + 1] = 255 } }
           if bout == 4 { Vk.put_i32(buf, o, 0x3F800000) }
         } else {
           let i = (t * cin + c) * bin
@@ -441,7 +444,7 @@ function gvk_tex_mips_into(render3d_st: mut Render3dState, cb: pointer, tex: int
 }
 
 # Level 0 of layer 0 back to the CPU, laid out the OpenGL way when the layouts agree (the terrain
-# reads its height field back as R32F into GL_RED / GL_FLOAT)
+# reads its height field back as R32F into GPU_RED / GPU_FLOAT)
 function gvk_tex_read(render3d_st: mut Render3dState, tex: int, ifmt: int, w: int, h: int, fmt: int, ty: int, out: pointer) -> bool {
   let cout = gvk_channels(ifmt)
   let bout = gvk_channel_bytes(ifmt)
@@ -521,21 +524,21 @@ function gvk_layer_views_drop(render3d_st: mut Render3dState, tex: int) -> void 
 # ---- samplers -----------------------------------------------------------------------------
 # One VkSampler per distinct way of reading a texture, made the first time it is asked for.
 # The arguments are what the renderer set through gpu_tex_param (0 where it set nothing, which
-# means GL's own default).
+# means the default).
 
 function gvk_filter(f: int) -> int {
-  if f == GL_NEAREST or f == GL_NEAREST_MIPMAP_NEAREST or f == GL_NEAREST_MIPMAP_LINEAR { return VK_FILTER_NEAREST }
+  if f == GPU_NEAREST or f == GPU_NEAREST_MIPMAP_NEAREST or f == GPU_NEAREST_MIPMAP_LINEAR { return VK_FILTER_NEAREST }
   return VK_FILTER_LINEAR
 }
 function gvk_address(wrap: int) -> int {
-  if wrap == GL_CLAMP_TO_EDGE { return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE }
-  if wrap == GL_CLAMP_TO_BORDER { return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER }
+  if wrap == GPU_CLAMP_TO_EDGE { return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE }
+  if wrap == GPU_CLAMP_TO_BORDER { return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER }
   return VK_SAMPLER_ADDRESS_MODE_REPEAT
 }
 function gvk_compare_op(f: int) -> int {
-  if f == GL_LESS { return VK_COMPARE_OP_LESS }
-  if f == GL_EQUAL { return VK_COMPARE_OP_EQUAL }
-  if f == GL_ALWAYS { return VK_COMPARE_OP_ALWAYS }
+  if f == GPU_LESS { return VK_COMPARE_OP_LESS }
+  if f == GPU_EQUAL { return VK_COMPARE_OP_EQUAL }
+  if f == GPU_ALWAYS { return VK_COMPARE_OP_ALWAYS }
   return VK_COMPARE_OP_LESS_OR_EQUAL
 }
 # The texture mip bias DLSS needs. DLSS draws the scene at a fraction of the output resolution, so
@@ -553,9 +556,9 @@ function gvk_mip_bias(render3d_st: mut Render3dState) -> float {
   if r3d_env_has(render3d_st, "R3D_NO_MIPBIAS") { return 0.0 }
   if not r3d_dlss_live(render3d_st) { return 0.0 }
   let rw = r3d_dlss_render_w(render3d_st)
-  if rw <= 0 or gl_width() <= 0 or rw >= gl_width() { return 0.0 }
+  if rw <= 0 or gfx_width() <= 0 or rw >= gfx_width() { return 0.0 }
   # log2 from the natural log the runtime has: log2(x) = ln(x) * 1/ln(2)
-  return Math.log(float(rw) / float(gl_width())) * 1.4426950408889634 - 1.0
+  return Math.log(float(rw) / float(gfx_width())) * 1.4426950408889634 - 1.0
 }
 # the sampler for texture tex's parameters, from the texture's own one-entry cache when they have
 # not changed since it last asked - a draw asks for every texture it binds
@@ -588,21 +591,21 @@ function gvk_sampler(render3d_st: mut Render3dState, min_f: int, mag_f: int, wra
     i += 1
   }
   var mn = min_f
-  if mn == 0 { mn = GL_NEAREST_MIPMAP_LINEAR }
+  if mn == 0 { mn = GPU_NEAREST_MIPMAP_LINEAR }
   var mg = mag_f
-  if mg == 0 { mg = GL_LINEAR }
-  let mipmapped = mn == GL_LINEAR_MIPMAP_LINEAR or mn == GL_NEAREST_MIPMAP_LINEAR or mn == GL_LINEAR_MIPMAP_NEAREST or mn == GL_NEAREST_MIPMAP_NEAREST
+  if mg == 0 { mg = GPU_LINEAR }
+  let mipmapped = mn == GPU_LINEAR_MIPMAP_LINEAR or mn == GPU_NEAREST_MIPMAP_LINEAR or mn == GPU_LINEAR_MIPMAP_NEAREST or mn == GPU_NEAREST_MIPMAP_NEAREST
   let sci = bytes(VkSamplerCreateInfo_sizeof)
   Vk.zero(sci, VkSamplerCreateInfo_sizeof)
   Vk.put_i32(sci, VkSamplerCreateInfo_sType, VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO)
   Vk.put_i32(sci, VkSamplerCreateInfo_magFilter, gvk_filter(mg))
   Vk.put_i32(sci, VkSamplerCreateInfo_minFilter, gvk_filter(mn))
-  if mn == GL_LINEAR_MIPMAP_LINEAR or mn == GL_NEAREST_MIPMAP_LINEAR { Vk.put_i32(sci, VkSamplerCreateInfo_mipmapMode, VK_SAMPLER_MIPMAP_MODE_LINEAR) }
+  if mn == GPU_LINEAR_MIPMAP_LINEAR or mn == GPU_NEAREST_MIPMAP_LINEAR { Vk.put_i32(sci, VkSamplerCreateInfo_mipmapMode, VK_SAMPLER_MIPMAP_MODE_LINEAR) }
   else { Vk.put_i32(sci, VkSamplerCreateInfo_mipmapMode, VK_SAMPLER_MIPMAP_MODE_NEAREST) }
   Vk.put_i32(sci, VkSamplerCreateInfo_addressModeU, gvk_address(wrap_s))
   Vk.put_i32(sci, VkSamplerCreateInfo_addressModeV, gvk_address(wrap_t))
   Vk.put_i32(sci, VkSamplerCreateInfo_addressModeW, gvk_address(wrap_t))
-  # without mipmaps, a max LOD of 0.25 samples level 0 only (the spec's own recipe for GL_LINEAR)
+  # without mipmaps, a max LOD of 0.25 samples level 0 only (the spec's own recipe for GPU_LINEAR)
   if mipmapped { Vk.put_i32(sci, VkSamplerCreateInfo_maxLod, 0x447A0000) } else { Vk.put_i32(sci, VkSamplerCreateInfo_maxLod, 0x3E800000) }
   if mipmapped { Vk.put_i32(sci, VkSamplerCreateInfo_mipLodBias, bias) }
   if aniso > 0x3F800000 and mipmapped {

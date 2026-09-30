@@ -66,15 +66,15 @@ function shadow_make_tex(render3d_st: mut Render3dState) -> void {
   render3d_st.sh_tex = gpu_tex_new(render3d_st)
   gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.sh_tex)
   render3d_st.sh_layers = shadow_layers_for(render3d_st)
-  gpu_tex_image3d(render3d_st, GL_DEPTH_COMPONENT32F, render3d_st.shadow_res, render3d_st.shadow_res, render3d_st.sh_layers, GL_DEPTH_COMPONENT, GL_FLOAT, null)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL)
-  let border = gl_floats(4)
-  gl_put(border, 0, 1.0);  gl_put(border, 1, 1.0);  gl_put(border, 2, 1.0);  gl_put(border, 3, 1.0)
+  gpu_tex_image3d(render3d_st, GPU_DEPTH_COMPONENT32F, render3d_st.shadow_res, render3d_st.shadow_res, render3d_st.sh_layers, GPU_DEPTH_COMPONENT, GPU_FLOAT, null)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MAG_FILTER, GPU_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_BORDER)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_BORDER)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_MODE, GPU_COMPARE_REF_TO_TEXTURE)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_FUNC, GPU_LEQUAL)
+  let border = fbuf_floats(4)
+  fbuf_put(border, 0, 1.0);  fbuf_put(border, 1, 1.0);  fbuf_put(border, 2, 1.0);  fbuf_put(border, 3, 1.0)
   gpu_tex_border(render3d_st, GPU_TEX2D_ARRAY, border)
   free(border)
 }
@@ -148,7 +148,7 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
   gpu_fb_bind(render3d_st, render3d_st.sh_fbo)
   gpu_viewport(render3d_st, 0, 0, render3d_st.shadow_res, render3d_st.shadow_res)
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_depth_func(render3d_st, GPU_LESS)
   gpu_depth_bias(render3d_st, 2.0, 4.0)
   gpu_cull(render3d_st, false)
   # a fog wall: a cascade reaches no further than it, and one that begins past it is only cleared
@@ -165,7 +165,7 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
     if c >= render3d_st.sh_layers { continue }
     gpu_fb_depth_layer(render3d_st, render3d_st.sh_tex, c)
     if render3d_st.r3d_debug and c == 0 { shadow_debug_fbo(render3d_st) }
-    gpu_clear(render3d_st, GL_DEPTH_BUFFER_BIT)
+    gpu_clear(render3d_st, GPU_DEPTH_BUFFER_BIT)
     let vp = shadow_cascade_vp(render3d_st, c)
     # shadows off (a video setting): the cascades stay cleared, so everything reads lit
     if render3d_st.sh_enabled and not past {
@@ -185,9 +185,9 @@ function shadow_dump(render3d_st: mut Render3dState) -> void {
   let n = render3d_st.shadow_res * render3d_st.shadow_res
   let buf = floats(n * render3d_st.sh_layers)
   gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.sh_tex)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE)
-  gpu_tex_read(render3d_st, GPU_TEX2D_ARRAY, GL_DEPTH_COMPONENT, GL_FLOAT, data_of(buf))
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_MODE, GPU_NONE)
+  gpu_tex_read(render3d_st, GPU_TEX2D_ARRAY, GPU_DEPTH_COMPONENT, GPU_FLOAT, data_of(buf))
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_MODE, GPU_COMPARE_REF_TO_TEXTURE)
   if render3d_st.sh_probe_x != 0.0 {
     let vp = shadow_cascade_vp(render3d_st, 2)
     let q = floats(3)

@@ -1,5 +1,5 @@
 # assets.ludic — fetch the CC0 Poly Haven assets the renderer uses
-# (ported off tools/glgen/fetch_assets.sh, the last shell script in the tree).
+# (ported off a shell script, the last one in the tree).
 #
 #   ludic assets [--force]         (a game, fetching what the renderer needs)
 #   ludic dev fetch-assets [--force]   (the same thing, from a Ludic checkout)

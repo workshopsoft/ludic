@@ -1,41 +1,19 @@
 ; ============================================================================
-; gl_win.ll — the window-independent half of the OpenGL backend on Windows.
+; rtlib_win.ll — the runtime's numeric, memory and clock helpers on Windows.
 ;
-; The Windows counterpart of gl.ll, linked with gl_thunks_win.ll and opengl32,
-; gdi32 and user32 into any Windows program that uses Gl.*. The helpers below the
-; context are gl.ll's, unchanged; what differs is how a context comes to exist and
-; how the GL entry points are reached.
+; The Windows counterpart of rtlib.ll, linked into any Windows program that uses the
+; window layer (runtime/native/window.ludic). The helpers are rtlib.ll's, unchanged,
+; apart from the clock:
 ;
-;   cgl_offscreen() -> ok    a hidden window's DC, a WGL 4.1 core context made
-;                            current on it, and the entry-point table filled
-;   gl_now_us() -> us        QueryPerformanceCounter, in microseconds
-;
-; Why a window at all: WGL makes a context from a device context with a pixel
-; format, and only a window has one. The window is never shown; everything is
-; drawn into FBOs exactly as on macOS.
-;
-; Why the table: opengl32.dll exports only OpenGL 1.1 by name. Every later entry
-; point (glCreateShader, glBindVertexArray, ...) belongs to the driver and is found
-; with wglGetProcAddress, which only answers while a context is current - so the
-; generated thunks call through @lgl_p_* pointers that @lgl_win_load fills once,
-; here, after the core context is made current.
+;   clock_now_us() -> us     QueryPerformanceCounter, in microseconds
 ; ============================================================================
 
-declare ptr @CreateWindowExA(i32, ptr, ptr, i32, i32, i32, i32, i32, ptr, ptr, ptr, ptr)
-declare ptr @GetDC(ptr)
-declare i32 @ChoosePixelFormat(ptr, ptr)
-declare i32 @SetPixelFormat(ptr, i32, ptr)
-declare ptr @wglCreateContext(ptr)
-declare i32 @wglMakeCurrent(ptr, ptr)
-declare i32 @wglDeleteContext(ptr)
-declare ptr @wglGetProcAddress(ptr)
 declare i32 @QueryPerformanceCounter(ptr)
 declare void @Sleep(i32)
 declare ptr @CreateWaitableTimerExW(ptr, ptr, i32, i32)
 declare i32 @SetWaitableTimerEx(ptr, ptr, i32, ptr, ptr, ptr, i32)
 declare i32 @WaitForSingleObject(ptr, i32)
 declare i32 @QueryPerformanceFrequency(ptr)
-declare i32 @lgl_win_load()
 declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
 declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 declare float @sinf(float)
@@ -50,95 +28,6 @@ declare float @fmodf(float, float)
 declare double @ldexp(double, i32)
 declare float @llvm.sqrt.f32(float)
 declare float @llvm.fabs.f32(float)
-
-@.wgl_class = private unnamed_addr constant [7 x i8] c"STATIC\00"
-@.wgl_title = private unnamed_addr constant [6 x i8] c"Ludic\00"
-@.wgl_arb   = private unnamed_addr constant [27 x i8] c"wglCreateContextAttribsARB\00"
-; WGL_CONTEXT_MAJOR_VERSION_ARB 4, MINOR 1, WGL_CONTEXT_PROFILE_MASK_ARB = CORE
-@.wgl_attrs = private unnamed_addr constant [7 x i32] [i32 8337, i32 4, i32 8338, i32 1, i32 37158, i32 1, i32 0]
-
-@L_wgl_hwnd = internal global ptr null
-@L_wgl_ctx  = internal global ptr null
-
-; lgl_wgl_core(hdc, alpha bits) -> context: a pixel format on the DC, a legacy context
-; (wglCreateContextAttribsARB is only reachable through one), the 4.1 core context made
-; current in its place, and the entry-point table filled. Null when any step fails.
-; Shared by cgl_offscreen (a hidden window) and win32_gl.ll (the game's window).
-define ptr @lgl_wgl_core(ptr %hdc, i32 %alpha) {
-entry:
-  ; PIXELFORMATDESCRIPTOR: nSize 40, nVersion 1, PFD_DRAW_TO_WINDOW|SUPPORT_OPENGL|DOUBLEBUFFER,
-  ; 32-bit colour, alpha at 16, 24 depth, 8 stencil
-  %pfd = alloca [40 x i8], align 4
-  call void @llvm.memset.p0.i64(ptr %pfd, i8 0, i64 40, i1 false)
-  store i16 40, ptr %pfd
-  %ver = getelementptr i8, ptr %pfd, i64 2
-  store i16 1, ptr %ver
-  %fl = getelementptr i8, ptr %pfd, i64 4
-  store i32 37, ptr %fl
-  %cb = getelementptr i8, ptr %pfd, i64 9
-  store i8 32, ptr %cb
-  %ab = getelementptr i8, ptr %pfd, i64 16
-  %a8 = trunc i32 %alpha to i8
-  store i8 %a8, ptr %ab
-  %db = getelementptr i8, ptr %pfd, i64 23
-  store i8 24, ptr %db
-  %sb = getelementptr i8, ptr %pfd, i64 24
-  store i8 8, ptr %sb
-  %idx = call i32 @ChoosePixelFormat(ptr %hdc, ptr %pfd)
-  %set = call i32 @SetPixelFormat(ptr %hdc, i32 %idx, ptr %pfd)
-  %setz = icmp eq i32 %set, 0
-  br i1 %setz, label %fail, label %legacy
-legacy:
-  %old = call ptr @wglCreateContext(ptr %hdc)
-  %oldn = icmp eq ptr %old, null
-  br i1 %oldn, label %fail, label %arb
-arb:
-  %m1 = call i32 @wglMakeCurrent(ptr %hdc, ptr %old)
-  %fp = call ptr @wglGetProcAddress(ptr @.wgl_arb)
-  %fpi = ptrtoint ptr %fp to i64
-  %nofp = icmp ult i64 %fpi, 4
-  br i1 %nofp, label %drop, label %core
-core:
-  %ctx = call ptr %fp(ptr %hdc, ptr null, ptr @.wgl_attrs)
-  %ctxn = icmp eq ptr %ctx, null
-  br i1 %ctxn, label %drop, label %use
-use:
-  %m2 = call i32 @wglMakeCurrent(ptr %hdc, ptr %ctx)
-  %d1 = call i32 @wglDeleteContext(ptr %old)
-  %n = call i32 @lgl_win_load()
-  ret ptr %ctx
-drop:
-  %m3 = call i32 @wglMakeCurrent(ptr null, ptr null)
-  %d2 = call i32 @wglDeleteContext(ptr %old)
-  br label %fail
-fail:
-  ret ptr null
-}
-
-define i32 @cgl_offscreen() {
-entry:
-  %cur = load ptr, ptr @L_wgl_ctx
-  %have = icmp ne ptr %cur, null
-  br i1 %have, label %ok, label %win
-win:
-  ; WS_POPUP, never shown
-  %w = call ptr @CreateWindowExA(i32 0, ptr @.wgl_class, ptr @.wgl_title, i32 -2147483648, i32 0, i32 0, i32 16, i32 16, ptr null, ptr null, ptr null, ptr null)
-  %wn = icmp eq ptr %w, null
-  br i1 %wn, label %fail, label %ctx
-ctx:
-  store ptr %w, ptr @L_wgl_hwnd
-  %hdc = call ptr @GetDC(ptr %w)
-  %c = call ptr @lgl_wgl_core(ptr %hdc, i32 0)
-  %cn = icmp eq ptr %c, null
-  br i1 %cn, label %fail, label %keep
-keep:
-  store ptr %c, ptr @L_wgl_ctx
-  br label %ok
-ok:
-  ret i32 1
-fail:
-  ret i32 0
-}
 
 ; ---- Q16.16 <-> IEEE float ---------------------------------------------------
 define i32 @fx_to_f32(i32 %fx) {
@@ -415,10 +304,10 @@ entry:
 }
 
 ; ---- a real monotonic microsecond clock -------------------------------------
-; gl.ll reads gettimeofday; Windows has QueryPerformanceCounter, which is
+; rtlib.ll reads gettimeofday; Windows has QueryPerformanceCounter, which is
 ; monotonic as well as fine-grained. Split into whole seconds and remainder so
 ; the multiply cannot overflow however long the machine has been up.
-; Give the CPU back for `us` microseconds (gl.ll's gl_sleep_us on Windows).
+; Give the CPU back for `us` microseconds (rtlib.ll's clock_sleep_us on Windows).
 ;
 ; Not Sleep and not timeBeginPeriod: Sleep takes whole milliseconds and the scheduler's default
 ; granularity can be 15 ms, which no 60 fps limiter survives, and timeBeginPeriod lives in winmm,
@@ -426,7 +315,7 @@ entry:
 ; well under a millisecond. Older Windows without the high-resolution flag falls back to Sleep, and
 ; the caller's spin covers the slack either way.
 @G_timer = internal global ptr null
-define void @gl_sleep_us(i64 %us) {
+define void @clock_sleep_us(i64 %us) {
 entry:
   %pos = icmp sgt i64 %us, 0
   br i1 %pos, label %get, label %out
@@ -467,7 +356,7 @@ out:
   ret void
 }
 
-define i64 @gl_now_us() {
+define i64 @clock_now_us() {
 entry:
   %c = alloca i64, align 8
   %f = alloca i64, align 8

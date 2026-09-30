@@ -1517,7 +1517,7 @@ function cmd_dev_test() -> int {
       else { bad2("http.ludic", `got [{got}]`) }
     } else { bad2("http.ludic build", capture_line(`tail -1 {tmp_dir()}/http.out`)) }
     # and through `ludic build`, which is how a project builds: compile_app used to link
-    # gl.ll when a program named @lgl_* but never http.ll for @hs_*, so this failed to link
+    # the graphics runtime when a program named its thunks but never http.ll for @hs_*, so this failed to link
     if shq(`LUDIC_HOME=. bin/ludic build examples/library/http.ludic --headless -o {tmp_dir()}/http_lb > {tmp_dir()}/http_lb.out 2>&1`) {
       let got2 = capture_line(`{tmp_dir()}/http_lb < /dev/null`)
       if (got2 == "200 1 5 hello 42 text/plain 404 0") { ok("ludic build links http.ll for a program that uses Http.*") }
@@ -1580,7 +1580,6 @@ function cmd_dev_test() -> int {
   smoke("events/events")
   smoke("networking/net_rt")
   smoke("library/cursor_capture")                    # #89 Input.cursor_mode compiles (no-op headless; windowed links cocoa.ll)
-  smoke("rendering/gl_triangle")                     # Gl.* (OpenGL 4.1 core) compiles headless; the run needs a GPU context
 
   syntax_cases()
 
@@ -1672,16 +1671,7 @@ function cmd_dev_test() -> int {
     ok("ludic-dev docs-palette regenerates emit_color.ludic + palette.json byte-identically")
   } else { bad2("ludic-dev docs-palette --check", capture_line(`tail -1 {tmp_dir()}/pal.out`)) }
 
-  # the OpenGL binding generator is the same shape: gl_api.ludic + gl_thunks.ll are
-  # tracked, and --check regenerates them from the platform gl3.h and compares. The
-  # header is macOS-only, so this guard cannot run off Darwin.
-  if is_darwin() {
-    if shq(`bin/ludic-dev glgen --check > {tmp_dir()}/glgen.out 2>&1`) {
-      ok("ludic-dev glgen regenerates gl_api.ludic + gl_thunks.ll byte-identically")
-    } else { bad2("ludic-dev glgen --check", capture_line(`tail -1 {tmp_dir()}/glgen.out`)) }
-  } else { skip("ludic-dev glgen --check (needs the macOS OpenGL headers)") }
-
-  # and the Vulkan one: vk_api.ludic + vk_thunks.ll regenerated from the registry's vk.xml,
+  # the Vulkan binding generator: vk_api.ludic + vk_thunks.ll regenerated from the registry's vk.xml,
   # which comes with the Vulkan SDK - so this guard runs wherever the SDK is installed
   if shq("ls $VULKAN_SDK/share/vulkan/registry/vk.xml $HOME/VulkanSDK/*/macOS/share/vulkan/registry/vk.xml 2>/dev/null | grep -q vk.xml") {
     if shq(`bin/ludic-dev vkgen --check > {tmp_dir()}/vkgen.out 2>&1`) {

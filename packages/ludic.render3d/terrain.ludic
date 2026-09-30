@@ -161,8 +161,8 @@ function terrain_use_ortho__t(render3d_st: mut Render3dState, path: string) -> v
   render3d_st.ter_ortho_c = render3d_st.tex_channels
   render3d_st.ter_ortho_tex = tex_upload(render3d_st, px, true, true)
   gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_ortho_tex)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
   # a photograph that comes after the height field: now both are here, they can go to tiles
   if render3d_st.cd_range != null { terrain_tiles_cut(render3d_st) }
 }
@@ -179,8 +179,8 @@ function terrain_use_dem__t(render3d_st: mut Render3dState, path: string, emin: 
   render3d_st.ter_dem_min = emin;  render3d_st.ter_dem_max = emax;  render3d_st.ter_dem_base = base
   render3d_st.ter_ox = ox;  render3d_st.ter_oz = oz
   gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_dem_tex)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
 }
 
 # the GPU memory it makes is counted as VKM_TERRAIN (R3D_VKMEM)
@@ -194,7 +194,7 @@ function terrain_generate__t(render3d_st: mut Render3dState) -> void {
   let p = r3d_program(render3d_st, "fullscreen.vert", "heightgen.frag", ter_heightgen_defs(render3d_st.ter_dem_tex != 0, render3d_st.ter_smooth))
   # a map generated over another: its 256 MB height texture goes first
   if render3d_st.ter_height_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_height_tex);  render3d_st.ter_height_tex = 0 }
-  render3d_st.ter_height_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR)
+  render3d_st.ter_height_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GPU_R32F, GPU_RED, GPU_FLOAT, GPU_LINEAR)
   let fbo = gpu_fb_new(render3d_st)
   gpu_fb_bind(render3d_st, fbo)
   gpu_fb_color(render3d_st, 0, render3d_st.ter_height_tex)
@@ -225,7 +225,7 @@ function terrain_generate__t(render3d_st: mut Render3dState) -> void {
   # RGBA32F carrying both was 256 (plan 23 of maroon-lake)
   let raw = render3d_st.ter_height_tex
   if render3d_st.ter_normal_tex != 0 { gpu_tex_free(render3d_st, render3d_st.ter_normal_tex) }
-  render3d_st.ter_normal_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
+  render3d_st.ter_normal_tex = tex_target(render3d_st, TERRAIN_RES, TERRAIN_RES, GPU_RG16F, GPU_RG, GPU_FLOAT, GPU_LINEAR)
   gpu_fb_color(render3d_st, 0, render3d_st.ter_normal_tex)
   let pn = r3d_program(render3d_st, "fullscreen.vert", "ternormal.frag", "")
   gpu_use_program(render3d_st, pn)
@@ -237,8 +237,8 @@ function terrain_generate__t(render3d_st: mut Render3dState) -> void {
   # and made anew on every build it was 64 MB lost per world swap
   if render3d_st.ter_heights == null { render3d_st.ter_heights = floats(TERRAIN_RES * TERRAIN_RES) }
   gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.ter_height_tex)
-  gpu_pixel_store(render3d_st, GL_PACK_ALIGNMENT, 4)
-  gpu_tex_read(render3d_st, GPU_TEX2D, GL_RED, GL_FLOAT, data_of(render3d_st.ter_heights))
+  gpu_pixel_store(render3d_st, GPU_PACK_ALIGNMENT, 4)
+  gpu_tex_read(render3d_st, GPU_TEX2D, GPU_RED, GPU_FLOAT, data_of(render3d_st.ter_heights))
   gpu_fb_bind(render3d_st, 0)
   gpu_fb_free(render3d_st, fbo)
   gpu_program_free(render3d_st, p)
@@ -264,8 +264,8 @@ function terrain_bake_shadow(render3d_st: mut Render3dState) -> void {
   # the lowest lit height needs 32 bits (a receiver 3000 m up compares against it to a quarter metre);
   # the occluder's distance and the cloud mask do not, and go beside it in RG16F - 32 MB where one
   # RGBA32F carrying all three (and an unused fourth) was 64
-  if render3d_st.ter_shadow_tex == 0 { render3d_st.ter_shadow_tex = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR) }
-  if render3d_st.ter_shadow_aux == 0 { render3d_st.ter_shadow_aux = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR) }
+  if render3d_st.ter_shadow_tex == 0 { render3d_st.ter_shadow_tex = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GPU_R32F, GPU_RED, GPU_FLOAT, GPU_LINEAR) }
+  if render3d_st.ter_shadow_aux == 0 { render3d_st.ter_shadow_aux = tex_target(render3d_st, TERRAIN_SHADOW_RES, TERRAIN_SHADOW_RES, GPU_RG16F, GPU_RG, GPU_FLOAT, GPU_LINEAR) }
   if render3d_st.ter_shadow_prog == 0 { render3d_st.ter_shadow_prog = r3d_program(render3d_st, "fullscreen.vert", "tershadow.frag", "#define NOISE_ONLY\n") }
   if render3d_st.ter_shadow_prog_aux == 0 { render3d_st.ter_shadow_prog_aux = r3d_program(render3d_st, "fullscreen.vert", "tershadow.frag", "#define NOISE_ONLY\n#define TS_AUX\n") }
   # two passes, one target each: a pipeline takes one colour format for all its targets, and the two
@@ -557,7 +557,7 @@ function terrain_sun_target(render3d_st: mut Render3dState, w: int, h: int) -> T
   if render3d_st.ter_reflect { t = render3d_st.ter_sun_refl }
   if t == null or t.w != w or t.h != h {
     target_free(render3d_st, t)                          # owns its colour, and nothing else
-    t = target_new(render3d_st, w, h, GL_R8, GL_RED, GL_UNSIGNED_BYTE, false, GL_NEAREST)
+    t = target_new(render3d_st, w, h, GPU_R8, GPU_RED, GPU_UNSIGNED_BYTE, false, GPU_NEAREST)
     if render3d_st.ter_reflect { render3d_st.ter_sun_refl = t } else { render3d_st.ter_sun_tgt = t }
   }
   return t
@@ -576,14 +576,14 @@ function terrain_sun_pass(render3d_st: mut Render3dState, w: int, h: int, depth:
   if not render3d_st.ter_sun_checked {
     render3d_st.ter_sun_checked = true
     let st = gpu_fb_status(render3d_st)
-    if st != GL_FRAMEBUFFER_COMPLETE { terrain_say_sun_fbo(st) }
+    if st != GPU_FRAMEBUFFER_COMPLETE { terrain_say_sun_fbo(st) }
   }
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_depth_func(render3d_st, GPU_LESS)
   gpu_depth_write(render3d_st, true)
   # the depth is the frame's own and was cleared with it; only the visibility is cleared
   gpu_clear_color(render3d_st, 1.0, 1.0, 1.0, 1.0)      # unshadowed where nothing is drawn
-  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
   let p = render3d_st.ter_sun_prog
   gpu_use_program(render3d_st, p)
   tp_bind(render3d_st, p)
@@ -636,7 +636,7 @@ function terrain_draw(render3d_st: mut Render3dState) -> void {
   gpu_depth_test(render3d_st, true)
   # the prepass already laid this geometry's depth down: only the frontmost fragment of
   # each pixel has anything to shade, and it meets that depth exactly
-  gpu_depth_func(render3d_st, GL_LEQUAL)
+  gpu_depth_func(render3d_st, GPU_LEQUAL)
   gpu_depth_write(render3d_st, true)
   terrain_bind_prog(render3d_st, render3d_st.ter_prog)
   terrain_bind_prog(render3d_st, render3d_st.ter_prog_far)
@@ -649,7 +649,7 @@ function terrain_draw(render3d_st: mut Render3dState) -> void {
   if render3d_st.ter_wire { gpu_wireframe(render3d_st, true) }
   cdlod_select(render3d_st, CD_LEVELS - 1, 0, 0)
   if render3d_st.ter_wire { gpu_wireframe(render3d_st, false) }
-  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_depth_func(render3d_st, GPU_LESS)
   if render3d_st.r3d_debug and not render3d_st.ter_printed { render3d_st.ter_printed = true;  terrain_say_patches(render3d_st) }
 }
 
@@ -661,10 +661,10 @@ function terrain_draw(render3d_st: mut Render3dState) -> void {
 function cdlod_init(render3d_st: mut Render3dState) -> void {
   let m = gpu_mesh_new(render3d_st)
   let n = CD_G + 1
-  let v = gl_floats(n * n * 2)
+  let v = fbuf_floats(n * n * 2)
   var k = 0
-  for j in 0 .. n { for i in 0 .. n { gl_put_bits(v, k, float_bits(float(i) / float(CD_G)));  gl_put_bits(v, k + 1, float_bits(float(j) / float(CD_G)));  k += 2 } }
-  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(n * n * 2), GPU_STATIC)
+  for j in 0 .. n { for i in 0 .. n { fbuf_put_bits(v, k, float_bits(float(i) / float(CD_G)));  fbuf_put_bits(v, k + 1, float_bits(float(j) / float(CD_G)));  k += 2 } }
+  gpu_mesh_vertices(render3d_st, m, v, fbuf_bytes_of(n * n * 2), GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, 0, 2, GPU_F32, 8, 0, false)
   free(v)
   let ni = CD_G * CD_G * 6

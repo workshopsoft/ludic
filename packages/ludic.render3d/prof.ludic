@@ -2,7 +2,7 @@
 # prof.ludic — per-pass GPU timing (R3D_PROF=1).
 #
 # Wall-clock timing of this renderer is useless at pass granularity: run-to-run
-# variance on a laptop GPU is ±15%, which is larger than most passes. GL_TIME_ELAPSED
+# variance on a laptop GPU is ±15%, which is larger than most passes. GPU_TIME_ELAPSED
 # queries measure what the GPU actually spent inside each pass, and averaging a few
 # hundred frames inside ONE run cancels the run-to-run noise entirely.
 #
@@ -50,7 +50,7 @@ function prof_begin(render3d_st: mut Render3dState, name: pointer) -> void {
   ds_set_pass(render3d_st, name)
   if render3d_st.gvk_labels { gvk_label_begin(render3d_st, name) }
   if not render3d_st.prof_on { return }
-  if render3d_st.prof_active >= 0 { return }        # GL_TIME_ELAPSED queries cannot nest
+  if render3d_st.prof_active >= 0 { return }        # GPU_TIME_ELAPSED queries cannot nest
   let s = prof_slot(render3d_st, name)
   if s < 0 { return }
   render3d_st.prof_active = s
@@ -126,17 +126,17 @@ function prof_gen_add(render3d_st: mut Render3dState, n: int) -> void {
 # Where a frame's time went at the coarsest useful split: work this process did, and
 # time spent waiting for the GPU to finish it. Headless drains the GPU inside swap, so
 # the two are cleanly separable there.
-function prof_before_swap(render3d_st: mut Render3dState) -> void { if render3d_st.prof_on { render3d_st.prof_pre_swap = gl_now_us() } }
+function prof_before_swap(render3d_st: mut Render3dState) -> void { if render3d_st.prof_on { render3d_st.prof_pre_swap = clock_now_us() } }
 
 # The single most expensive CPU phase of each frame, and what it was. A hitch is one
 # phase running long on one frame, so recording the worst one per frame is enough to
 # name it without keeping a timeline.
-function prof_mark_start(render3d_st: mut Render3dState) -> void { if render3d_st.prof_on { render3d_st.prof_mark_last = gl_now_us();  render3d_st.prof_mark_best = 0;  render3d_st.prof_mark_name = null } }
+function prof_mark_start(render3d_st: mut Render3dState) -> void { if render3d_st.prof_on { render3d_st.prof_mark_last = clock_now_us();  render3d_st.prof_mark_best = 0;  render3d_st.prof_mark_name = null } }
 # ... and every phase's share of the average frame, past the first eight frames (loading, first fills)
 @alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_cpu_mark(render3d_st: mut Render3dState, name: pointer) -> void {
   if not render3d_st.prof_on { return }
-  let now = gl_now_us()
+  let now = clock_now_us()
   let d = now - render3d_st.prof_mark_last
   render3d_st.prof_mark_last = now
   if d > render3d_st.prof_mark_best { render3d_st.prof_mark_best = d;  render3d_st.prof_mark_name = name }
@@ -239,7 +239,7 @@ function prof_gen_frame(render3d_st: mut Render3dState) -> void {
   }
   push(render3d_st.prof_gen, render3d_st.prof_gen_cur)
   render3d_st.prof_gen_cur = 0
-  let now = gl_now_us()
+  let now = clock_now_us()
   var dtf: long = 0
   if render3d_st.prof_last_us != 0 { push(render3d_st.prof_ft, now - render3d_st.prof_last_us);  dtf = now - render3d_st.prof_last_us }
   render3d_st.prof_last_us = now

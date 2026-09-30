@@ -43,7 +43,7 @@ function gvk_ext_in(props: bytes, n: int, want: string) -> bool {
 
 # Instance, the first discrete GPU (else the first listed), its first graphics queue, and a
 # device with the Tier 1 floor switched on. False, with gvk_why set, if any of it is missing:
-# the caller stays on OpenGL.
+# the caller stops.
 
 function gvk_surface_ext() -> string {
   if Os.platform() == "macos" { return VK_EXT_METAL_SURFACE_EXTENSION_NAME }
@@ -635,7 +635,7 @@ function gvk_once_end(render3d_st: mut Render3dState, cb: pointer) -> bool {
 # ---- one frame in flight -------------------------------------------------------------------
 # A window's frame is submitted and presented without waiting, so the game's next tick runs on the
 # CPU while the GPU draws: waiting at the present serialised the two, which cost MoltenVK a third
-# of its frame rate against OpenGL. Anything that would reuse what that frame reads - the next
+# of its frame rate. Anything that would reuse what that frame reads - the next
 # frame's command buffer and ring, a one-off submit, a descriptor pool reset, a swapchain rebuild -
 # waits for it first (gvk_frame_wait), and a buffer it reads is busy (gvk_buf_busy). The frame's
 # uniform ring and descriptor pool are double-buffered by frame_no & 1, so the next frame records

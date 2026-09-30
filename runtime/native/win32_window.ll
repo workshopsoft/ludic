@@ -1,20 +1,19 @@
 ; ============================================================================
-; win32_gl.ll — OpenGL on the Windows window (cocoa.ll's win_gl_* half).
+; win32_window.ll — the window's size, scale and full screen on Windows (cocoa.ll's
+; win_resize / win_scale / win_drawable half).
 ;
-; Linked into a windowed Windows program that uses Gl.*, beside win32.ll (the
-; window) and gl_win.ll (which makes a 4.1 core context on a DC and fills the
-; entry-point table). A headless build links gl_win_nowin.ll in its place.
+; Linked into a windowed Windows program that uses the window layer
+; (runtime/native/window.ludic), beside win32.ll (the window). A headless build links
+; win_nowin.ll in its place.
 ;
-;   win_gl_attach() -> ok      the context on the window's DC (0 = no window yet)
-;   win_gl_resize(w, h)        a client area of w x h at the display's scale, centred
-;   win_gl_swap()              SwapBuffers, paced by the swap interval
-;   win_gl_scale() -> int      pixels per window unit: 1 at 100%, 2 at 175-200%, ...
-;   win_gl_drawable(out)       the client area in pixels
+;   win_resize(w, h)           a client area of w x h at the display's scale, centred
+;   win_scale() -> int         pixels per window unit: 1 at 100%, 2 at 175-200%, ...
+;   win_drawable(out)          the client area in pixels
 ;   win_toggle_fullscreen()    borderless, over the monitor the window is on
 ;
 ; The units follow cocoa.ll's points and backing pixels: a game asks for a 960 x 540
 ; window, the display's whole-number scale (w_fit_scale, win32.ll) turns that into
-; pixels, win_gl_scale reports the factor as the Retina backing scale is reported,
+; pixels, win_scale reports the factor as the Retina backing scale is reported,
 ; and the mouse keeps arriving in the game's own units because W_scale divides by it.
 ; ============================================================================
 
@@ -25,9 +24,6 @@
 @W_scale = external global i32
 
 declare i32 @w_fit_scale(i32, i32, i32)
-declare ptr @lgl_wgl_core(ptr, i32)
-declare ptr @wglGetProcAddress(ptr)
-declare i32 @SwapBuffers(ptr)
 declare i32 @GetClientRect(ptr, ptr)
 declare i32 @AdjustWindowRectEx(ptr, i32, i32, i32)
 declare i32 @SetWindowPos(ptr, ptr, i32, i32, i32, i32, i32)
@@ -40,39 +36,12 @@ declare ptr @MonitorFromWindow(ptr, i32)
 declare i32 @GetMonitorInfoA(ptr, ptr)
 declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 
-@.wgl_swapint = private unnamed_addr constant [19 x i8] c"wglSwapIntervalEXT\00"
-
-@W_glctx    = internal global ptr null
-@W_glscale  = internal global i32 1
+@W_pixscale = internal global i32 1
 @W_fs       = internal global i32 0
 @W_fs_style = internal global i64 0
 @W_fs_rect  = internal global [4 x i32] zeroinitializer
 
-define i32 @win_gl_attach() {
-entry:
-  %have = load ptr, ptr @W_glctx
-  %again = icmp ne ptr %have, null
-  br i1 %again, label %ok, label %make
-make:
-  %hdc = load ptr, ptr @W_hdc
-  %nodc = icmp eq ptr %hdc, null
-  br i1 %nodc, label %fail, label %ctx
-ctx:
-  ; 24-bit colour with 8 of alpha, 24 depth, 8 stencil, double-buffered: cocoa.ll's format
-  %c = call ptr @lgl_wgl_core(ptr %hdc, i32 8)
-  %noc = icmp eq ptr %c, null
-  br i1 %noc, label %fail, label %keep
-keep:
-  store ptr %c, ptr @W_glctx
-  call void @win_gl_swap_interval(i32 1)
-  br label %ok
-ok:
-  ret i32 1
-fail:
-  ret i32 0
-}
-
-define void @win_gl_resize(i32 %w, i32 %h) {
+define void @win_resize(i32 %w, i32 %h) {
 entry:
   %rc = alloca [16 x i8], align 4
   %hwnd = load ptr, ptr @W_hwnd
@@ -81,7 +50,7 @@ entry:
 go:
   %dpi = call i32 @GetDpiForWindow(ptr %hwnd)
   %s = call i32 @w_fit_scale(i32 %dpi, i32 %w, i32 %h)
-  store i32 %s, ptr @W_glscale
+  store i32 %s, ptr @W_pixscale
   store i32 %w, ptr @W_fbw
   store i32 %h, ptr @W_fbh
   store i32 %s, ptr @W_scale
@@ -122,48 +91,15 @@ out:
   ret void
 }
 
-define void @win_gl_swap() {
+define i32 @win_scale() {
 entry:
-  %c = load ptr, ptr @W_glctx
-  %noc = icmp eq ptr %c, null
-  br i1 %noc, label %out, label %go
-go:
-  %hdc = load ptr, ptr @W_hdc
-  %r = call i32 @SwapBuffers(ptr %hdc)
-  br label %out
-out:
-  ret void
-}
-
-define i32 @win_gl_scale() {
-entry:
-  %s = load i32, ptr @W_glscale
+  %s = load i32, ptr @W_pixscale
   ret i32 %s
-}
-
-; 1 = vsync (set at attach), 0 = free-running; wglSwapIntervalEXT is a driver extension,
-; reachable only through the current context
-define void @win_gl_swap_interval(i32 %n) {
-entry:
-  %c = load ptr, ptr @W_glctx
-  %noc = icmp eq ptr %c, null
-  br i1 %noc, label %out, label %find
-find:
-  %fp = call ptr @wglGetProcAddress(ptr @.wgl_swapint)
-  %fpi = ptrtoint ptr %fp to i64
-  %fpa = add i64 %fpi, 1
-  %bad = icmp ult i64 %fpa, 5
-  br i1 %bad, label %out, label %call
-call:
-  %r = call i32 %fp(i32 %n)
-  br label %out
-out:
-  ret void
 }
 
 ; the client area in pixels -> out[0], out[1]; and the window size in the game's units,
 ; which the mouse mapping divides by, kept in step with a window the player resized
-define void @win_gl_drawable(ptr %out) {
+define void @win_drawable(ptr %out) {
 entry:
   %rc = alloca [16 x i8], align 4
   %hwnd = load ptr, ptr @W_hwnd
@@ -184,7 +120,7 @@ go:
   %gone = or i1 %zw, %zh
   br i1 %gone, label %done, label %track
 track:
-  %s = load i32, ptr @W_glscale
+  %s = load i32, ptr @W_pixscale
   %uw = sdiv i32 %w, %s
   %uh = sdiv i32 %h, %s
   store i32 %uw, ptr @W_fbw
@@ -200,16 +136,10 @@ none:
   ret void
 }
 
-; WGL needs no notice that its window changed size
-define void @win_gl_update() {
-entry:
-  ret void
-}
-
 ; The Retina switch. The process is DPI aware and always draws one pixel per screen
 ; pixel, which is what "on" means on macOS; there is no lower-resolution surface for
 ; "off" to fall back to, so it changes nothing here.
-define void @win_gl_retina(i32 %on) {
+define void @win_retina(i32 %on) {
 entry:
   ret void
 }

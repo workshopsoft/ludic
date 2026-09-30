@@ -24,7 +24,7 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
     # sized from the scene target, not the window: with a render scale below 1 the frame
     # this reflection is composited into is smaller than the drawable, and a reflection
     # rendered at the window's size would be paying for pixels the water never samples
-    render3d_st.water_refl = target_new(render3d_st, render3d_st.post_w / render3d_st.water_refl_div, render3d_st.post_h / render3d_st.water_refl_div, GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, true, GL_LINEAR)
+    render3d_st.water_refl = target_new(render3d_st, render3d_st.post_w / render3d_st.water_refl_div, render3d_st.post_h / render3d_st.water_refl_div, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, true, GPU_LINEAR)
   }
   # views of the saved matrices, made once: water_saved is the state's for good, and a target
   # made again (a resize, a render scale) made two more a time
@@ -56,12 +56,12 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.r3d_clip_y = render3d_st.water_level - 0.05
   target_bind(render3d_st, render3d_st.water_refl)
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_depth_func(render3d_st, GPU_LESS)
   gpu_depth_write(render3d_st, true)
   gpu_cull(render3d_st, true)
-  gpu_cull_face(render3d_st, GL_FRONT)                  # the mirror flips the winding
+  gpu_cull_face(render3d_st, GPU_FRONT)                  # the mirror flips the winding
   gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 1.0)
-  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT | GPU_DEPTH_BUFFER_BIT)
   render3d_st.sc_freeze = true
   let sb = render3d_st.sc_skip_blade
   render3d_st.sc_skip_blade = true                    # blades are invisible at this scale in a reflection
@@ -76,7 +76,7 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.ter_reflect = false
   render3d_st.sc_skip_blade = sb
   render3d_st.sc_freeze = false
-  gpu_cull_face(render3d_st, GL_BACK)
+  gpu_cull_face(render3d_st, GPU_BACK)
   if r3d_env_has(render3d_st, "R3D_DUMP_REFL") and not render3d_st.water_dumped { render3d_st.water_dumped = true;  tex_dump(render3d_st, render3d_st.water_refl.color, render3d_st.water_refl.w, render3d_st.water_refl.h, "build/dbg_refl.ppm") }
   # restore
   render3d_st.r3d_clip_y = -2147483600.0
@@ -100,7 +100,7 @@ function water_reflect_visible(render3d_st: mut Render3dState) -> bool {
   if render3d_st.wb_primary < 0 { return false }
   if render3d_st.wb_refl_always < 0 { render3d_st.wb_refl_always = 0;  if r3d_env_has(render3d_st, "R3D_REFL_ALWAYS") { render3d_st.wb_refl_always = 1 } }
   if render3d_st.wb_refl_always == 1 or not ter_present(render3d_st) { return true }
-  if render3d_st.wb_ncells < 0 { let t0 = gl_now_us();  water_cells_build(render3d_st);  render3d_st.wb_build_us = gl_now_us() - t0 }
+  if render3d_st.wb_ncells < 0 { let t0 = clock_now_us();  water_cells_build(render3d_st);  render3d_st.wb_build_us = clock_now_us() - t0 }
   if render3d_st.wb_dbg < 0 { render3d_st.wb_dbg = 0;  if r3d_env_has(render3d_st, "R3D_REFL_DBG") { render3d_st.wb_dbg = 1 } }
   if render3d_st.wb_dbg == 1 {
     # R3D_REFL_DBG: once, what the test is made of and how much of it is in view
@@ -340,7 +340,7 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
     # bind it: without this they went to whatever was bound last - a BC7 kit texture since 23.3,
     # which the mip blits then drew into (Metal: "BC7 is not color renderable")
     gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.water_refl.color)
-    gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
     gpu_tex_mips(render3d_st, GPU_TEX2D)
   }
   r3d_bind_2d(render3d_st, p, "u_depth", 0, depth_tex)
@@ -352,7 +352,7 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
   # hardware blending to do — and an alpha was what left see-through gaps in the foam
   # and a clear band at the shore wide enough to give the plane away.
   gpu_blend(render3d_st, false)
-  gpu_blend_func(render3d_st, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  gpu_blend_func(render3d_st, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA)
   # the surface writes depth: the ambient-occlusion and temporal passes read the frame's depth,
   # and the bed 9 m below the shore would otherwise darken a band along the water line
   gpu_depth_write(render3d_st, true)

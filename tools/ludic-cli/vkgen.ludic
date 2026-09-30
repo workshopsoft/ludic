@@ -1,4 +1,4 @@
-# vkgen.ludic — the Vulkan binding generator, in Ludic (glgen.ludic's sibling).
+# vkgen.ludic — the Vulkan binding generator, in Ludic.
 #
 #   ludic-dev vkgen [--xml <vk.xml>] [--check]
 #       read the Vulkan registry and emit
@@ -690,26 +690,57 @@ function vkg_ludic(ir: pointer) -> pointer {
   return "int"
 }
 
+# ---- name helpers (shared by the generator below) ---------------------------
+function vkg_upper(c: int) -> bool { return c >= 'A' and c <= 'Z' }
+
+function vkg_lower(c: int) -> bool { return c >= 'a' and c <= 'z' }
+
+function vkg_digit(c: int) -> bool { return c >= '0' and c <= '9' }
+
+function vkg_in(t: pointer, set: pointer) -> bool {
+  let n = slen(set)
+  var p = 0
+  while p <= n {
+    var q = p
+    while q < n and set[q] != 32 { q += 1 }
+    if str_sub(set, p, q) == t { return true }
+    if q >= n { break }
+    p = q + 1
+  }
+  return false
+}
+
+function vkg_reserved(n: pointer) -> bool {
+  if vkg_in(n, "program import property model enum ui namespace const var function extern handler entry") { return true }
+  if vkg_in(n, "event scene test phase query on cancellable public layer start") { return true }
+  if vkg_in(n, "let return if else while for in spawn despawn enable disable match machine state become where prefab") { return true }
+  if vkg_in(n, "and or not break continue new emit cancel try") { return true }
+  if vkg_in(n, "int long fixed countdown bool entity string pointer byte words fixeds pointers") { return true }
+  if vkg_in(n, "Vector IVec2 Rect void true false null") { return true }
+  return false
+}
+
+
 # CamelCase -> snake_case, with digits counted as the end of a word ("Win32Surface")
 function vkg_snake(n: pointer) -> pointer {
   let b = sb_new()
   let m = slen(n)
   for i in 0 .. m {
     let c = n[i]
-    if glg_upper(c) and i > 0 {
+    if vkg_upper(c) and i > 0 {
       let prev = n[i - 1]
-      var cut = glg_lower(prev) or glg_digit(prev)
-      if glg_upper(prev) and i + 1 < m and glg_lower(n[i + 1]) { cut = true }
+      var cut = vkg_lower(prev) or vkg_digit(prev)
+      if vkg_upper(prev) and i + 1 < m and vkg_lower(n[i + 1]) { cut = true }
       if cut { sb_putc(b, '_') }
     }
-    if glg_upper(c) { sb_putc(b, c + 32) } else { sb_putc(b, c) }
+    if vkg_upper(c) { sb_putc(b, c + 32) } else { sb_putc(b, c) }
   }
   return sb_str(b)
 }
 function vkg_pname(raw: pointer, i: int) -> pointer {
   if raw == null { return `a{string(i)}` }
   let n = vkg_snake(raw)
-  if glg_reserved(n) { return n + "_" }
+  if vkg_reserved(n) { return n + "_" }
   return n
 }
 

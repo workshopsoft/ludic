@@ -118,20 +118,20 @@ function model_cross_card(render3d_st: mut Render3dState) -> Model {
   model.prims = new []Prim
   let pr = new Prim
   let m = gpu_mesh_new(render3d_st)
-  let v = gl_floats(8 * 8)
+  let v = fbuf_floats(8 * 8)
   var k = 0
   for q in 0 .. 2 {
     for c in 0 .. 4 {
       var sx = -0.5;  var sy = 0.0;  var u = 0.0;  var vv = 0.0
       if c == 1 or c == 2 { sx = 0.5;  u = 1.0 }
       if c == 2 or c == 3 { sy = 1.0;  vv = 1.0 }
-      if q == 0 { gl_put_bits(v, k, float_bits(sx));  gl_put_bits(v, k + 1, float_bits(sy));  gl_put_bits(v, k + 2, float_bits(0.0));  gl_put_bits(v, k + 3, float_bits(0.0));  gl_put_bits(v, k + 4, float_bits(0.0));  gl_put_bits(v, k + 5, float_bits(-1.0)) }
-      else { gl_put_bits(v, k, float_bits(0.0));  gl_put_bits(v, k + 1, float_bits(sy));  gl_put_bits(v, k + 2, float_bits(sx));  gl_put_bits(v, k + 3, float_bits(-1.0));  gl_put_bits(v, k + 4, float_bits(0.0));  gl_put_bits(v, k + 5, float_bits(0.0)) }
-      gl_put_bits(v, k + 6, float_bits(u));  gl_put_bits(v, k + 7, float_bits(vv))
+      if q == 0 { fbuf_put_bits(v, k, float_bits(sx));  fbuf_put_bits(v, k + 1, float_bits(sy));  fbuf_put_bits(v, k + 2, float_bits(0.0));  fbuf_put_bits(v, k + 3, float_bits(0.0));  fbuf_put_bits(v, k + 4, float_bits(0.0));  fbuf_put_bits(v, k + 5, float_bits(-1.0)) }
+      else { fbuf_put_bits(v, k, float_bits(0.0));  fbuf_put_bits(v, k + 1, float_bits(sy));  fbuf_put_bits(v, k + 2, float_bits(sx));  fbuf_put_bits(v, k + 3, float_bits(-1.0));  fbuf_put_bits(v, k + 4, float_bits(0.0));  fbuf_put_bits(v, k + 5, float_bits(0.0)) }
+      fbuf_put_bits(v, k + 6, float_bits(u));  fbuf_put_bits(v, k + 7, float_bits(vv))
       k += 8
     }
   }
-  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(64), GPU_STATIC)
+  gpu_mesh_vertices(render3d_st, m, v, fbuf_bytes_of(64), GPU_STATIC)
   sc_model_layout(render3d_st, m)
   free(v)
   let idx = words(12)
@@ -170,7 +170,7 @@ function model_blade(render3d_st: mut Render3dState) -> Model {
   let pr = new Prim
   let m = gpu_mesh_new(render3d_st)
   let rows = 5
-  let v = gl_floats(rows * 2 * 8)
+  let v = fbuf_floats(rows * 2 * 8)
   var k = 0
   for r in 0 .. rows {
     let t = float(r) / float(rows - 1)
@@ -181,13 +181,13 @@ function model_blade(render3d_st: mut Render3dState) -> Model {
     for sd in 0 .. 2 {
       var x = -hw
       if sd == 1 { x = hw }
-      gl_put_bits(v, k, float_bits(x));  gl_put_bits(v, k + 1, float_bits(t));  gl_put_bits(v, k + 2, float_bits(bend))
-      gl_put_bits(v, k + 3, float_bits(0.0));  gl_put_bits(v, k + 4, float_bits(0.3));  gl_put_bits(v, k + 5, float_bits(1.0))
-      gl_put_bits(v, k + 6, float_bits(float(sd)));  gl_put_bits(v, k + 7, float_bits(t))
+      fbuf_put_bits(v, k, float_bits(x));  fbuf_put_bits(v, k + 1, float_bits(t));  fbuf_put_bits(v, k + 2, float_bits(bend))
+      fbuf_put_bits(v, k + 3, float_bits(0.0));  fbuf_put_bits(v, k + 4, float_bits(0.3));  fbuf_put_bits(v, k + 5, float_bits(1.0))
+      fbuf_put_bits(v, k + 6, float_bits(float(sd)));  fbuf_put_bits(v, k + 7, float_bits(t))
       k += 8
     }
   }
-  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(rows * 2 * 8), GPU_STATIC)
+  gpu_mesh_vertices(render3d_st, m, v, fbuf_bytes_of(rows * 2 * 8), GPU_STATIC)
   sc_model_layout(render3d_st, m)
   free(v)
   let ni = (rows - 1) * 6
@@ -245,9 +245,9 @@ function scatter_init(render3d_st: mut Render3dState) -> void {
   render3d_st.sc_bake_card_prog = r3d_program(render3d_st, "model.vert", "bake.frag", "#define CARD\n")
   render3d_st.sc_card = mesh_card(render3d_st)
   # a single identity instance, for baking
-  let one = gl_floats(INST_FLOATS)
-  for i in 0 .. INST_FLOATS { gl_put_bits(one, i, float_bits(0.0)) }
-  gl_put_bits(one, 3, float_bits(1.0));  gl_put_bits(one, 5, float_bits(1.0))
+  let one = fbuf_floats(INST_FLOATS)
+  for i in 0 .. INST_FLOATS { fbuf_put_bits(one, i, float_bits(0.0)) }
+  fbuf_put_bits(one, 3, float_bits(1.0));  fbuf_put_bits(one, 5, float_bits(1.0))
   render3d_st.sc_ident_buf = gpu_buffer_new(render3d_st)
   gpu_buffer_upload(render3d_st, render3d_st.sc_ident_buf, INST_FLOATS * 4, one, GPU_STATIC)
   free(one)
@@ -350,21 +350,21 @@ function impostor_paint(render3d_st: mut Render3dState, im: Impostor) -> void {
   let tw = im.tw
   let th = im.th
   let aw = tiles * tw
-  im.albedo = tex_target(render3d_st, aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
-  im.normal = tex_target(render3d_st, aw, th, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  im.albedo = tex_target(render3d_st, aw, th, GPU_RGBA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
+  im.normal = tex_target(render3d_st, aw, th, GPU_RGBA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
   let fbo = gpu_fb_new(render3d_st)
   gpu_fb_bind(render3d_st, fbo)
   gpu_fb_color(render3d_st, 0, im.albedo)
   gpu_fb_color(render3d_st, 1, im.normal)
   let rb = gpu_rb_new(render3d_st)
-  gpu_rb_storage(render3d_st, rb, GL_DEPTH_COMPONENT24, aw, th, 0)
+  gpu_rb_storage(render3d_st, rb, GPU_DEPTH_COMPONENT24, aw, th, 0)
   gpu_fb_depth_rb(render3d_st, rb)
   gpu_fb_draw_buffers(render3d_st, 2)
   gpu_viewport(render3d_st, 0, 0, aw, th)
   gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
-  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT | GPU_DEPTH_BUFFER_BIT)
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_depth_func(render3d_st, GPU_LESS)
   gpu_cull(render3d_st, false)
   gpu_blend(render3d_st, false)
   # the model's prims temporarily take the identity instance
@@ -402,10 +402,10 @@ function impostor_paint(render3d_st: mut Render3dState, im: Impostor) -> void {
   gpu_fb_free(render3d_st, fbo)
   gpu_rb_free(render3d_st, rb)
   gpu_tex_bind(render3d_st, GPU_TEX2D, im.albedo)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
   gpu_tex_mips(render3d_st, GPU_TEX2D)
   gpu_tex_bind(render3d_st, GPU_TEX2D, im.normal)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
   gpu_tex_mips(render3d_st, GPU_TEX2D)
   gpu_check(render3d_st, "impostor bake")
   # numbered, so every bake of a run survives to be compared (a card layer per species bakes one)
@@ -490,7 +490,7 @@ function layer_arena_ok(render3d_st: Render3dState, l: Layer) -> bool {
     for j in 0 .. n_mat {
       let pm = m.prims[j].mesh
       let p0 = l.lods[0].prims[j]
-      if m.prims[j].diff != p0.diff or m.prims[j].verts == 0 or pm.ebo == 0 or pm.itype != GL_UNSIGNED_SHORT { return false }
+      if m.prims[j].diff != p0.diff or m.prims[j].verts == 0 or pm.ebo == 0 or pm.itype != GPU_UNSIGNED_SHORT { return false }
       if gpu_buffer_map(render3d_st, pm.ebo) == null { return false }
       for a in 0 .. 3 {
         let o = a * GPU_ATTR_W
@@ -763,14 +763,14 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
   if l.view_gen == render3d_st.sc_view_gen { return }
   l.view_gen = render3d_st.sc_view_gen
   if layer_gpu_prepare(render3d_st, l) { layer_gpu_cull(render3d_st, l);  return }
-  let t_lu = gl_now_us()
+  let t_lu = clock_now_us()
   let n_lu = l.count
   # A streamed layer's instances were already gathered per visible chunk: no split, no
   # per-instance loop — one upload, and the same buffer casts its shadows.
   if l.streamed and l.imp == null and l.near == 0.0 and l.n_lods <= 1 {
     l.n_near = l.count;  l.n_far = 0;  l.n_sh = l.count
     gpu_buffer_upload(render3d_st, l.buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_DYNAMIC)
-    prof_layer_add(render3d_st, gl_now_us() - t_lu, l.count * INST_FLOATS * 4)
+    prof_layer_add(render3d_st, clock_now_us() - t_lu, l.count * INST_FLOATS * 4)
     return
   }
   if l.gcell == 0.0 and not l.streamed and l.count > 2000 { layer_grid_build(render3d_st, l, 96.0) }
@@ -786,7 +786,7 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
   let tmp = l.scratch
   if l.n_lods > 1 {
     layer_partition_lods(render3d_st, l, src, total)
-    prof_layer_add(render3d_st, gl_now_us() - t_lu, total * INST_FLOATS * 4)
+    prof_layer_add(render3d_st, clock_now_us() - t_lu, total * INST_FLOATS * 4)
     return
   }
   var i = 0
@@ -823,7 +823,7 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
   if nf > 0 {
     gpu_buffer_upload(render3d_st, l.imp_buf, nf * INST_FLOATS * 4, mem_off(tmp, (far_off - nf * INST_FLOATS) * 4), GPU_DYNAMIC)
   }
-  prof_layer_add(render3d_st, gl_now_us() - t_lu, (nn + nf + l.n_sh) * INST_FLOATS * 4)
+  prof_layer_add(render3d_st, clock_now_us() - t_lu, (nn + nf + l.n_sh) * INST_FLOATS * 4)
 }
 
 function layer_program(render3d_st: Render3dState, l: Layer, shadow: bool, card: bool) -> int {
@@ -924,7 +924,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
   gpu_use_program(render3d_st, p)
   # over the prepass: only the fragment the prepass kept, at exactly its depth (a texel
   # it cut would otherwise pass LEQUAL over the terrain behind and draw the quad solid)
-  if p == render3d_st.sc_prog_fol_eq { gpu_depth_func(render3d_st, GL_EQUAL) }
+  if p == render3d_st.sc_prog_fol_eq { gpu_depth_func(render3d_st, GPU_EQUAL) }
   var ground = 0.0
   if l.grounded { ground = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_ground"), ground)
@@ -977,7 +977,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
     else { mesh_draw_instanced(render3d_st, pr.mesh, cnt) }
   }
   gpu_alpha_to_coverage(render3d_st, false)
-  if p == render3d_st.sc_prog_fol_eq { gpu_depth_func(render3d_st, GL_LESS) }
+  if p == render3d_st.sc_prog_fol_eq { gpu_depth_func(render3d_st, GPU_LESS) }
 }
 
 function layer_draw_far(render3d_st: mut Render3dState, l: Layer, shadow: bool, light_vp: floats) -> void {
@@ -1168,25 +1168,25 @@ function carpet_bake(render3d_st: mut Render3dState, layers: []Layer, count: int
   return r
 }
 function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: int, tile: float, res: int) -> int {
-  let tex = tex_target(render3d_st, res, res, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR)
+  let tex = tex_target(render3d_st, res, res, GPU_RGBA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
   let fbo = gpu_fb_new(render3d_st)
   gpu_fb_bind(render3d_st, fbo)
   gpu_fb_color(render3d_st, 0, tex)
   let rb = gpu_rb_new(render3d_st)
-  gpu_rb_storage(render3d_st, rb, GL_DEPTH_COMPONENT24, res, res, 0)
+  gpu_rb_storage(render3d_st, rb, GPU_DEPTH_COMPONENT24, res, res, 0)
   gpu_fb_depth_rb(render3d_st, rb)
   gpu_fb_draw_buffers(render3d_st, 1)
   gpu_viewport(render3d_st, 0, 0, res, res)
   gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
-  gpu_clear(render3d_st, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT | GPU_DEPTH_BUFFER_BIT)
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GL_LESS)
+  gpu_depth_func(render3d_st, GPU_LESS)
   gpu_cull(render3d_st, false)
   gpu_blend(render3d_st, false)
   # the clumps, and eight wrapped copies so the tile's edges continue
   let half = tile * 0.5
   let n9 = count * 9
-  let inst = gl_floats(n9 * INST_FLOATS)
+  let inst = fbuf_floats(n9 * INST_FLOATS)
   render3d_st.cb_state = 977
   var k = 0
   for i in 0 .. count {
@@ -1199,14 +1199,14 @@ function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: 
       for ox in 0 .. 3 {
         let px = x + float(ox - 1) * tile
         let pz = z + float(oz - 1) * tile
-        gl_put_bits(inst, k, float_bits(px));  gl_put_bits(inst, k + 1, float_bits(0.0));  gl_put_bits(inst, k + 2, float_bits(pz));  gl_put_bits(inst, k + 3, float_bits(sc))
-        gl_put_bits(inst, k + 4, float_bits(Math.sin(yaw)));  gl_put_bits(inst, k + 5, float_bits(Math.cos(yaw)));  gl_put_bits(inst, k + 6, float_bits(sd));  gl_put_bits(inst, k + 7, float_bits(0.0))
+        fbuf_put_bits(inst, k, float_bits(px));  fbuf_put_bits(inst, k + 1, float_bits(0.0));  fbuf_put_bits(inst, k + 2, float_bits(pz));  fbuf_put_bits(inst, k + 3, float_bits(sc))
+        fbuf_put_bits(inst, k + 4, float_bits(Math.sin(yaw)));  fbuf_put_bits(inst, k + 5, float_bits(Math.cos(yaw)));  fbuf_put_bits(inst, k + 6, float_bits(sd));  fbuf_put_bits(inst, k + 7, float_bits(0.0))
         k += INST_FLOATS
       }
     }
   }
   let buf = gpu_buffer_new(render3d_st)
-  gpu_buffer_upload(render3d_st, buf, gl_bytes_of(n9 * INST_FLOATS), inst, GPU_STATIC)
+  gpu_buffer_upload(render3d_st, buf, fbuf_bytes_of(n9 * INST_FLOATS), inst, GPU_STATIC)
   free(inst)
   # straight down: the window is exactly one tile
   let view = m4_new();  let proj = m4_new()
@@ -1244,15 +1244,15 @@ function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: 
 # the carpet tile made ready to wear: repeat-wrapped and mipmapped (a bake's too, bake_load.ludic)
 function carpet_finish(render3d_st: mut Render3dState, tex: int) -> void {
   gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-  gpu_tex_paramf(render3d_st, GPU_TEX2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_paramf(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
   gpu_tex_mips(render3d_st, GPU_TEX2D)
 }
 
 # ---- another map at run time ------------------------------------------------------------
-# Every scattered layer released - its instance arrays and GL buffers, a card layer's own
+# Every scattered layer released - its instance arrays and GPU buffers, a card layer's own
 # crossed-card mesh and baked atlas - and every stream feeding them. The models a layer drew
 # belong to whoever loaded them and are kept, and so are the programs. A game rebuilding its
 # world calls this, then places the new map's layers exactly as it did at boot.

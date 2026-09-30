@@ -11,16 +11,15 @@ program Reload {
   property Marker { on: int = 1 }
   model Anchor { Marker }
 
-  # A program only links the GL runtime render3d stands on when it names Gl.* itself
-  # (the parser's g_uses_gl), so even a check that draws nothing presents its frame.
+  # even a check that draws nothing presents its frame
   # render3d calls back into the program for what stands on the terrain
   function scene_draw(render3d_st: mut Render3dState) -> void { scatter_draw(render3d_st) }
   function scene_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void { scatter_draw_casters(render3d_st, light_vp) }
   # no streamed cover here, but stream.ludic names the generator, so every program supplies one
   function stream_fill(s: Stream, cx: int, cz: int, band: int) -> void { }
 
-  handler Present phase Render {
-    Gl.swap()
+  handler Present(render3d_st: mut Render3dState) phase Render {
+    r3d_present(render3d_st)
   }
 
   function check(what: string, cond: bool) -> bool {

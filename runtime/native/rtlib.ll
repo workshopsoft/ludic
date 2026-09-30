@@ -1,21 +1,17 @@
 ; ============================================================================
-; gl.ll — the window-independent half of the OpenGL backend, in LLVM IR.
+; rtlib.ll — the runtime's numeric, memory and clock helpers, in LLVM IR.
 ;
-; Linked into any program that uses Gl.* (windowed or headless), together with
-; gl_thunks.ll (the generated per-entry-point ABI thunks) and -framework OpenGL.
-; Nothing here touches the window: the NSOpenGLContext lives in cocoa.ll.
+; Linked into any program that uses the window layer (runtime/native/window.ludic:
+; Vk.* and Time.now_us), windowed or headless. Nothing here touches a window.
 ;
-;   cgl_offscreen() -> ok          a headless 4.1 core context (render into FBOs)
 ;   fx_to_f32(fx) -> bits          Q16.16 -> IEEE float bits (an int)
 ;   f32_to_fx(bits) -> fx          IEEE float bits -> Q16.16
 ;   mem_*                          raw little-endian reads/writes on a bytes buffer
 ;   f_*                            IEEE-754 float arithmetic on float bits
+;   clock_now_us / clock_sleep_us  a microsecond clock, and a sleep
+;   win_*                          weak headless stubs for the window layer
 ; ============================================================================
 
-declare i32 @CGLChoosePixelFormat(ptr, ptr, ptr)
-declare i32 @CGLCreateContext(ptr, ptr, ptr)
-declare i32 @CGLSetCurrentContext(ptr)
-declare i32 @CGLDestroyPixelFormat(ptr)
 declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)
 declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 declare float @sinf(float)
@@ -30,49 +26,6 @@ declare float @fmodf(float, float)
 declare float @ldexpf(float, i32)
 declare float @llvm.sqrt.f32(float)
 declare float @llvm.fabs.f32(float)
-
-define i32 @cgl_offscreen() {
-entry:
-  ; kCGLPFAAccelerated=73, kCGLPFAOpenGLProfile=99 -> kCGLOGLPVersion_GL4_Core (0x4100),
-  ; kCGLPFAColorSize=8 -> 24, kCGLPFADepthSize=12 -> 24, 0
-  %attrs = alloca [8 x i32], align 4
-  %a0 = getelementptr [8 x i32], ptr %attrs, i32 0, i32 0
-  store i32 73, ptr %a0
-  %a1 = getelementptr [8 x i32], ptr %attrs, i32 0, i32 1
-  store i32 99, ptr %a1
-  %a2 = getelementptr [8 x i32], ptr %attrs, i32 0, i32 2
-  store i32 16640, ptr %a2
-  %a3 = getelementptr [8 x i32], ptr %attrs, i32 0, i32 3
-  store i32 8, ptr %a3
-  %a4 = getelementptr [8 x i32], ptr %attrs, i32 0, i32 4
-  store i32 24, ptr %a4
-  %a5 = getelementptr [8 x i32], ptr %attrs, i32 0, i32 5
-  store i32 12, ptr %a5
-  %a6 = getelementptr [8 x i32], ptr %attrs, i32 0, i32 6
-  store i32 24, ptr %a6
-  %a7 = getelementptr [8 x i32], ptr %attrs, i32 0, i32 7
-  store i32 0, ptr %a7
-  %pix = alloca ptr, align 8
-  store ptr null, ptr %pix
-  %npix = alloca i32, align 4
-  %e1 = call i32 @CGLChoosePixelFormat(ptr %attrs, ptr %pix, ptr %npix)
-  %p = load ptr, ptr %pix
-  %nop = icmp eq ptr %p, null
-  br i1 %nop, label %fail, label %mk
-mk:
-  %ctx = alloca ptr, align 8
-  store ptr null, ptr %ctx
-  %e2 = call i32 @CGLCreateContext(ptr %p, ptr null, ptr %ctx)
-  %c = load ptr, ptr %ctx
-  %e3 = call i32 @CGLDestroyPixelFormat(ptr %p)
-  %noc = icmp eq ptr %c, null
-  br i1 %noc, label %fail, label %cur
-cur:
-  %e4 = call i32 @CGLSetCurrentContext(ptr %c)
-  ret i32 1
-fail:
-  ret i32 0
-}
 
 ; ---- Q16.16 <-> IEEE float ---------------------------------------------------
 define i32 @fx_to_f32(i32 %fx) {
@@ -357,7 +310,7 @@ declare i32 @nanosleep(ptr, ptr)
 ; Give the CPU back for `us` microseconds. A frame limiter needs this: without a way to wait, a
 ; cap can only be a spin, which burns a core and cooks a laptop. The caller sleeps SHORT of its
 ; target and spins the last stretch, because no OS sleep is exact.
-define void @gl_sleep_us(i64 %us) {
+define void @clock_sleep_us(i64 %us) {
 entry:
   %pos = icmp sgt i64 %us, 0
   br i1 %pos, label %go, label %out
@@ -375,7 +328,7 @@ out:
   ret void
 }
 
-define i64 @gl_now_us() {
+define i64 @clock_now_us() {
 entry:
   %tv = alloca %struct.timeval64, align 8
   %r = call i32 @gettimeofday(ptr %tv, ptr null)
@@ -407,15 +360,15 @@ define weak i32 @win_visible() {
 entry:
   ret i32 1
 }
-; the drawable's size, for a graphics API that follows the window without a GL context (render3d's
-; Vulkan resize check); headless there is no window, so 0 x 0. cocoa.ll's real one wins when linked.
+; the drawable's size, for a graphics API that follows the window (render3d's Vulkan resize check);
+; headless there is no window, so 0 x 0. cocoa.ll's real one wins when linked.
 ; win_set_title: cocoa.ll's in a windowed build; nothing to retitle headless
 define weak void @win_set_title(ptr %title) {
 entry:
   ret void
 }
 
-define weak void @win_gl_drawable(ptr %out) {
+define weak void @win_drawable(ptr %out) {
 entry:
   store i32 0, ptr %out
   %o1 = getelementptr i32, ptr %out, i32 1

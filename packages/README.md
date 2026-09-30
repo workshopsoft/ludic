@@ -51,7 +51,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 
 | | |
 | --- | --- |
-| [ludic.render3d](ludic.render3d/) | the physically based 3D renderer over OpenGL and Vulkan (named `ludic_render3d` under `uses`) |
+| [ludic.render3d](ludic.render3d/) | the physically based 3D renderer over Vulkan (named `ludic_render3d` under `uses`) |
 | [ludic.ui](ludic.ui/) | components: templates, stylesheets, layout, input and focus (`module ludic_ui`) |
 | [ludic.lab](ludic.lab/README.md) | the visual lab: a scene on a lit plate, fixed cameras, PNG shots and a contact sheet |
 | [ludic.core](ludic.core/) | the canonical engine-ABI components |

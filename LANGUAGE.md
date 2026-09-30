@@ -303,7 +303,7 @@ itself. A package's var nothing in the given programs writes stays changing data
 `r3d_dem_path`); only a private one of a package's module becomes a `let`. A name the program uses
 that a package migrated earlier moved into its state (`cam_pos`, now `Render3dState`'s) is rewritten
 through that state, and a read of the runtime's own var from outside it through the runtime function
-that answers it (`gl_w` is `gl_width()`). A program's own module named like a package (a game's `module fishing` beside
+that answers it (`gfx_w` is `gfx_width()`). A program's own module named like a package (a game's `module fishing` beside
 `ludic.fishing`) gets a state of its own, `FishingAppState` / `fishing_app_st`, never the package's.
 It writes only under the programs and directories it is given (and `runtime/` with `--runtime`):
 when the programs need a change in a file anywhere else - an installed package, a module imported
@@ -2485,9 +2485,6 @@ literal; test any pointer/record/slice with `x == null` / `x != null` (an unset
 # control   quit()   print(x)          (a value + newline)
 # convert   str(x) -> str            (int/bool/fixed -> text)
 # length    len(x) -> int            (elements of a slice, or bytes of a string)
-# OpenGL    Gl.<snake_name>(…)        every OpenGL 4.1 core entry point (glBindBuffer -> Gl.bind_buffer,
-#           GL_* constants as-is)     float/double parameters take fixed; buffers are bytes/words
-#           Gl.open(width,height,title) Gl.swap() Gl.screenshot(path) Gl.program(vs,fs) Gl.vao() Gl.floats(n) …
 # process   arg_count()->int   arg(i)->str          (the command line; argv[0] included)
 #           exit(code)   run(cmd)   getenv(name)   read_char()->int
 #           file_stderr()->ptr  file_stdout()->ptr (handles for file_write)

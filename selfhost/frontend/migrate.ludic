@@ -375,7 +375,7 @@ function mg_knob(v: Node) -> bool {
   return v.vis == 1
 }
 function s_has_prefix(s: pointer, p: pointer) -> bool { return len(s) >= len(p) and (s[0 .. len(p)] == p) }
-# the runtime's function that only answers its var `name` (`function gl_width() -> int { return gl_w }`)
+# the runtime's function that only answers its var `name` (`function gfx_width() -> int { return gfx_w }`)
 function mg_runtime_reader(name: pointer) -> pointer {
   var i = 0
   while i < len(prog) {
@@ -410,7 +410,7 @@ function mg_read_needs() -> void {
     let g = g_mg_vars[v]
     if is_runtime_file(g.file) and not is_runtime_file(e.file) {
       # the runtime's state is the runtime's: from outside it is read through its functions - the
-      # one that answers it, when there is one (gl_w: gl_width())
+      # one that answers it, when there is one (gfx_w: gfx_width())
       let rd = mg_runtime_reader(mg_src_name(g.s))
       if rd != null and e.pos >= 0 and e.file != null {
         mg_emit(`REF {e.file} {itoa(e.pos)} {itoa(len(mg_src_name(g.s)))} {mg_esc(`{rd}()`)}`, "")

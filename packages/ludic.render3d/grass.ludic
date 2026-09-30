@@ -41,7 +41,7 @@ function grass_mesh_live(render3d_st: Render3dState) -> bool { return render3d_s
 function grass_blade_mesh(render3d_st: mut Render3dState, rows: int) -> Mesh {
   let gk = grass_kind(render3d_st)
   let m = gpu_mesh_new(render3d_st)
-  let v = gl_floats(rows * 2 * 5)
+  let v = fbuf_floats(rows * 2 * 5)
   var k = 0
   # The blade's PROFILE, and it is the whole difference between grass and a green spike.
   # It used to be `1 - t^2.5` floored at 0.12 with a bend of 0.28t^2: widest at the very
@@ -63,12 +63,12 @@ function grass_blade_mesh(render3d_st: mut Render3dState, rows: int) -> Mesh {
     for sd in 0 .. 2 {
       var x = -0.5
       if sd == 1 { x = 0.5 }
-      gl_put_bits(v, k, float_bits(x * taper));  gl_put_bits(v, k + 1, float_bits(t));  gl_put_bits(v, k + 2, float_bits(bend))
-      gl_put_bits(v, k + 3, float_bits(float(sd)));  gl_put_bits(v, k + 4, float_bits(t))
+      fbuf_put_bits(v, k, float_bits(x * taper));  fbuf_put_bits(v, k + 1, float_bits(t));  fbuf_put_bits(v, k + 2, float_bits(bend))
+      fbuf_put_bits(v, k + 3, float_bits(float(sd)));  fbuf_put_bits(v, k + 4, float_bits(t))
       k += 5
     }
   }
-  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(rows * 2 * 5), GPU_STATIC)
+  gpu_mesh_vertices(render3d_st, m, v, fbuf_bytes_of(rows * 2 * 5), GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, 20, 0, false)
   gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, 20, 12, false)
   free(v)
@@ -258,7 +258,7 @@ function grass_bind(render3d_st: mut Render3dState, p: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_d0"), render3d_st.grass_d0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), grass_reach(render3d_st))
   var ph = render3d_st.post_h
-  if ph <= 0 { ph = gl_height() }
+  if ph <= 0 { ph = gfx_height() }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_px"), 2.0 * Math.tan(render3d_st.cam_fov * 0.5) / float(ph))
   u_i(render3d_st, gpu_uniform(render3d_st, p, "u_dbg"), render3d_st.grass_dbg)
   var orthotex = render3d_st.ter_ortho_tex

@@ -52,12 +52,12 @@ function overlay_init(render3d_st: mut Render3dState, font_dir: string) -> bool 
   if render3d_st.ov_prog == 0 { print("overlay: program failed");  return false }
   render3d_st.ov_prog_sdr = render3d_st.ov_prog
   render3d_st.ov_mesh = gpu_mesh_new(render3d_st)
-  render3d_st.ov_vbo = gpu_mesh_vertices(render3d_st, render3d_st.ov_mesh, null, gl_bytes_of(OV_MAX_QUADS * 6 * OV_FLOATS), GPU_DYNAMIC)
+  render3d_st.ov_vbo = gpu_mesh_vertices(render3d_st, render3d_st.ov_mesh, null, fbuf_bytes_of(OV_MAX_QUADS * 6 * OV_FLOATS), GPU_DYNAMIC)
   gpu_mesh_attr(render3d_st, render3d_st.ov_mesh, 0, 2, GPU_F32, OV_FLOATS * 4, 0, false)
   gpu_mesh_attr(render3d_st, render3d_st.ov_mesh, 1, 2, GPU_F32, OV_FLOATS * 4, 8, false)
   gpu_mesh_attr(render3d_st, render3d_st.ov_mesh, 2, 4, GPU_F32, OV_FLOATS * 4, 16, false)
   gpu_mesh_done(render3d_st, render3d_st.ov_mesh)
-  render3d_st.ov_buf = gl_floats(OV_MAX_QUADS * 6 * OV_FLOATS)
+  render3d_st.ov_buf = fbuf_floats(OV_MAX_QUADS * 6 * OV_FLOATS)
   render3d_st.ov_ranges = words(OV_MAX_RANGES * OV_RANGE_W)
   render3d_st.ov_white = tex_solid(render3d_st, 255, 255, 255, 255)
   overlay_font(render3d_st, font_dir)
@@ -175,14 +175,14 @@ function ov_glyph(render3d_st: Render3dState, cp: int) -> int {
 function ov_begin(render3d_st: mut Render3dState) -> void {
   if not render3d_st.ov_ready { return }
   gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
-  gpu_viewport(render3d_st, 0, 0, gl_width(), gl_height())
+  gpu_viewport(render3d_st, 0, 0, gfx_width(), gfx_height())
   gpu_depth_test(render3d_st, false)
   gpu_cull(render3d_st, false)
   gpu_blend(render3d_st, true)
-  gpu_blend_func(render3d_st, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  gpu_blend_func(render3d_st, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA)
   ov_pick_prog(render3d_st)
   gpu_use_program(render3d_st, render3d_st.ov_prog)
-  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.ov_prog, "u_screen"), float(gl_width()), float(gl_height()))
+  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.ov_prog, "u_screen"), float(gfx_width()), float(gfx_height()))
   render3d_st.ov_n = 0;  render3d_st.ov_nr = 0;  render3d_st.ov_range_start = 0
   render3d_st.ov_tex = render3d_st.ov_white
   render3d_st.ov_mode = 2;  render3d_st.ov_voff = 8.0
@@ -216,11 +216,11 @@ function ov_flush(render3d_st: mut Render3dState) -> void {
   # (where the screen is an offscreen framebuffer) every overlay draw after it was an invalid
   # framebuffer operation. Saying the target at each flush is what a render pass says anyway.
   gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
-  gpu_viewport(render3d_st, 0, 0, gl_width(), gl_height())
+  gpu_viewport(render3d_st, 0, 0, gfx_width(), gfx_height())
   ov_pick_prog(render3d_st)
   gpu_use_program(render3d_st, render3d_st.ov_prog)
   gpu_mesh_bind(render3d_st, render3d_st.ov_mesh)
-  gpu_buffer_upload(render3d_st, render3d_st.ov_vbo, gl_bytes_of(render3d_st.ov_n * 6 * OV_FLOATS), render3d_st.ov_buf, GPU_STREAM)
+  gpu_buffer_upload(render3d_st, render3d_st.ov_vbo, fbuf_bytes_of(render3d_st.ov_n * 6 * OV_FLOATS), render3d_st.ov_buf, GPU_STREAM)
   var font = render3d_st.ov_font
   if font == 0 { font = render3d_st.ov_white }
   r3d_bind_2d(render3d_st, render3d_st.ov_prog, "u_font", 1, font)
@@ -264,9 +264,9 @@ function ov_use_tex(render3d_st: mut Render3dState, t: int) -> void {
 # one vertex into the batch
 function ov_vert(render3d_st: Render3dState, k: int, x: float, y: float, u: float, v: float, r: float, g: float, b: float, a: float) -> void {
   let o = k * OV_FLOATS
-  gl_put_bits(render3d_st.ov_buf, o, float_bits(x));  gl_put_bits(render3d_st.ov_buf, o + 1, float_bits(y))
-  gl_put_bits(render3d_st.ov_buf, o + 2, float_bits(u));  gl_put_bits(render3d_st.ov_buf, o + 3, float_bits(v + render3d_st.ov_voff))
-  gl_put_bits(render3d_st.ov_buf, o + 4, float_bits(r));  gl_put_bits(render3d_st.ov_buf, o + 5, float_bits(g));  gl_put_bits(render3d_st.ov_buf, o + 6, float_bits(b));  gl_put_bits(render3d_st.ov_buf, o + 7, float_bits(a))
+  fbuf_put_bits(render3d_st.ov_buf, o, float_bits(x));  fbuf_put_bits(render3d_st.ov_buf, o + 1, float_bits(y))
+  fbuf_put_bits(render3d_st.ov_buf, o + 2, float_bits(u));  fbuf_put_bits(render3d_st.ov_buf, o + 3, float_bits(v + render3d_st.ov_voff))
+  fbuf_put_bits(render3d_st.ov_buf, o + 4, float_bits(r));  fbuf_put_bits(render3d_st.ov_buf, o + 5, float_bits(g));  fbuf_put_bits(render3d_st.ov_buf, o + 6, float_bits(b));  fbuf_put_bits(render3d_st.ov_buf, o + 7, float_bits(a))
 }
 # a textured quad, float-bit pixel corners and uvs
 function ov_quad(render3d_st: mut Render3dState, x0: float, y0: float, x1: float, y1: float, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {

@@ -5,7 +5,7 @@
 ; Metal) come with the Vulkan SDK or with a game that bundles them. So the loader
 ; is looked for at run time - beside the executable, in the usual library
 ; directories, then MoltenVK on its own (a bundle's Contents/Frameworks), then under
-; $VULKAN_SDK - and a Mac without any gets 0 from vk_open and stays on OpenGL. The contract is vk_win.ll's:
+; $VULKAN_SDK - and a Mac without any gets 0 from vk_open. The contract is vk_win.ll's:
 ;
 ;   lvk_open() -> 1 | 0      lvk_sym(name) -> ptr      lvk_has(name) -> 1 | 0
 ;

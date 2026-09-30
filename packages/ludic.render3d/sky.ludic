@@ -120,19 +120,19 @@ function sky_ibl_make(render3d_st: mut Render3dState) -> void {
     gpu_tex_free(render3d_st, render3d_st.sky_brdf)
   }
   # irradiance: 128 x 64 equirect
-  render3d_st.sky_irradiance = tex_target(render3d_st, 128, 64, GL_RGB16F, GL_RGB, GL_FLOAT, GL_LINEAR)
+  render3d_st.sky_irradiance = tex_target(render3d_st, 128, 64, GPU_RGB16F, GPU_RGB, GPU_FLOAT, GPU_LINEAR)
   gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.sky_irradiance)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_REPEAT)
   # prefiltered specular: 6 roughness levels, sky_prefilter_w x half each, as a 2D array
   render3d_st.sky_prefilter = gpu_tex_new(render3d_st)
   gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.sky_prefilter)
-  gpu_tex_image3d(render3d_st, GL_RGB16F, render3d_st.sky_prefilter_w, render3d_st.sky_prefilter_w / 2, SKY_PREFILTER_LEVELS, GL_RGB, GL_FLOAT, null)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+  gpu_tex_image3d(render3d_st, GPU_RGB16F, render3d_st.sky_prefilter_w, render3d_st.sky_prefilter_w / 2, SKY_PREFILTER_LEVELS, GPU_RGB, GPU_FLOAT, null)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_S, GPU_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MAG_FILTER, GPU_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR)
   # BRDF LUT
-  render3d_st.sky_brdf = tex_target(render3d_st, 256, 256, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR)
+  render3d_st.sky_brdf = tex_target(render3d_st, 256, 256, GPU_RG16F, GPU_RG, GPU_FLOAT, GPU_LINEAR)
 }
 
 # bind the IBL set + sun for a lit program (units 12..14)

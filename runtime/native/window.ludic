@@ -1,0 +1,100 @@
+# ============================================================================
+# window.ludic — the window layer under Vk.* (and Time.now_us): the drawable's size
+# and scale, a microsecond clock, and the float-buffer helpers a renderer fills
+# vertex data with.
+#
+# The window itself is opened by the runtime before main (cocoa.ll / win32.ll) and a
+# renderer that owns its swapchain (render3d's Vulkan path) says what the drawable is
+# with gfx_set_drawable. Buffers are the raw `bytes`/`words` pointers Ludic already
+# has; the IEEE float helpers (f_*, fixed <-> float bits) let a program fill a vertex
+# buffer with real floats from its Q16.16 math. Native pieces: rtlib.ll (rtlib_win.ll
+# on Windows) and the window half in cocoa.ll / win32_window.ll.
+# ============================================================================
+
+# ---- native glue (rtlib.ll / cocoa.ll) ----------------------------------------
+extern function win_resize(w: int, h: int) = "win_resize"
+extern function win_scale() -> int = "win_scale"
+extern function win_drawable(out: pointer) = "win_drawable"
+extern function win_retina(on: int) = "win_retina"
+extern function win_toggle_fullscreen() = "win_toggle_fullscreen"
+# wall clock in microseconds — the only sub-second clock available to a Ludic program
+extern function clock_now_us() -> long = "clock_now_us"
+extern function clock_sleep_us(us: long) -> void = "clock_sleep_us"
+extern function fx_to_f32(fx: fixed) -> int = "fx_to_f32"
+extern function f32_to_fx(bits: int) -> fixed = "f32_to_fx"
+extern function mem_off(p: pointer, off: int) -> pointer = "mem_off"
+extern function mem_get_i32(p: pointer, off: int) -> int = "mem_get_i32"
+extern function mem_put_i32(p: pointer, off: int, v: int) = "mem_put_i32"
+extern function mem_get_u16(p: pointer, off: int) -> int = "mem_get_u16"
+extern function mem_put_u16(p: pointer, off: int, v: int) = "mem_put_u16"
+extern function mem_get_u8(p: pointer, off: int) -> int = "mem_get_u8"
+extern function mem_put_u8(p: pointer, off: int, v: int) = "mem_put_u8"
+extern function mem_get_f32(p: pointer, i: int) -> fixed = "mem_get_f32"
+extern function mem_put_f32(p: pointer, i: int, v: fixed) = "mem_put_f32"
+extern function mem_get_f32_bits(p: pointer, i: int) -> int = "mem_get_f32_bits"
+extern function mem_put_f32_bits(p: pointer, i: int, bits: int) = "mem_put_f32_bits"
+extern function mem_copy(dst: pointer, src: pointer, n: int) = "mem_copy"
+extern function mem_set(dst: pointer, v: int, n: int) = "mem_set"
+# IEEE-754 single precision, carried as its bit pattern in an int
+extern function f_add(a: int, b: int) -> int = "f_add"
+extern function f_sub(a: int, b: int) -> int = "f_sub"
+extern function f_mul(a: int, b: int) -> int = "f_mul"
+extern function f_div(a: int, b: int) -> int = "f_div"
+extern function f_neg(a: int) -> int = "f_neg"
+extern function f_sqrt(a: int) -> int = "f_sqrt"
+extern function f_abs(a: int) -> int = "f_abs"
+extern function f_sin(a: int) -> int = "f_sin"
+extern function f_cos(a: int) -> int = "f_cos"
+extern function f_tan(a: int) -> int = "f_tan"
+extern function f_atan2(a: int, b: int) -> int = "f_atan2"
+extern function f_pow(a: int, b: int) -> int = "f_pow"
+extern function f_exp(a: int) -> int = "f_exp"
+extern function f_log(a: int) -> int = "f_log"
+extern function f_floor(a: int) -> int = "f_floor"
+extern function f_mod(a: int, b: int) -> int = "f_mod"
+extern function f_ldexp(a: int, e: int) -> int = "f_ldexp"
+extern function f_min(a: int, b: int) -> int = "f_min"
+extern function f_max(a: int, b: int) -> int = "f_max"
+extern function f_lt(a: int, b: int) -> int = "f_lt"
+extern function f_from_int(a: int) -> int = "f_from_int"
+extern function f_to_int(a: int) -> int = "f_to_int"
+
+# ---- state --------------------------------------------------------------------
+export state RtWinState {
+  gfx_w:       int  = 0          # drawable width, in pixels
+  gfx_h:       int  = 0
+  gfx_scale:   int  = 1          # backing pixels per window point
+}
+
+function gfx_width(rt_win_st: RtWinState) -> int { return rt_win_st.gfx_w }
+function gfx_height(rt_win_st: RtWinState) -> int { return rt_win_st.gfx_h }
+function gfx_pixel_scale(rt_win_st: RtWinState) -> int { return rt_win_st.gfx_scale }
+# the game's video settings: a window of w x h points, full screen on / off, the backing-
+# resolution (Retina) drawable on / off; no-ops headless
+function gfx_set_window(w: int, h: int) -> void { if is_windowed() { win_resize(w, h) } }
+function gfx_toggle_fullscreen() -> void { if is_windowed() { win_toggle_fullscreen() } }
+function gfx_set_retina(on: bool) -> void { if is_windowed() { var v = 0;  if on { v = 1 };  win_retina(v) } }
+# a renderer that owns its swapchain (render3d's Vulkan path) says what the drawable is
+function gfx_set_drawable(rt_win_st: mut RtWinState, w: int, h: int) -> void {
+  rt_win_st.gfx_w = w
+  rt_win_st.gfx_h = h
+}
+function gfx_set_pixel_scale(rt_win_st: mut RtWinState, s: int) -> void { rt_win_st.gfx_scale = s }
+
+# ---- buffers of floats ------------------------------------------------------------
+# A float buffer is plain memory: n IEEE floats, filled from fixed (fbuf_put) or
+# from float bits (fbuf_put_bits), uploaded with fbuf_bytes_of(n) as the size.
+function fbuf_floats(n: int) -> pointer { return bytes(n * 4) }
+function fbuf_bytes_of(n: int) -> int { return n * 4 }
+function fbuf_put(buf: pointer, i: int, v: fixed) -> void { mem_put_f32(buf, i, v) }
+function fbuf_get(buf: pointer, i: int) -> fixed { return mem_get_f32(buf, i) }
+function fbuf_put_bits(buf: pointer, i: int, bits: int) -> void { mem_put_f32_bits(buf, i, bits) }
+function fbuf_get_bits(buf: pointer, i: int) -> int { return mem_get_f32_bits(buf, i) }
+function fbuf_ptr(buf: pointer, byte_offset: int) -> pointer { return mem_off(buf, byte_offset) }
+function fbuf_f32(v: fixed) -> int { return fx_to_f32(v) }
+function fbuf_fixed(bits: int) -> fixed { return f32_to_fx(bits) }
+
+# Time.now_us / Time.sleep_us (runtime/native/namespaces.ludic): the platform's clock, as an API a
+# program reaches without calling C (L7)
+function time_now_us() -> long { return clock_now_us() }
+function time_sleep_us(us: long) -> void { clock_sleep_us(us) }

@@ -54,12 +54,12 @@ function gpu_tex_write_all(render3d_st: mut Render3dState, tex: int, data: point
   let ifmt = render3d_st.gvk_tex_glfmt[tex]
   let c = gvk_channels(ifmt)
   let b = gvk_channel_bytes(ifmt)
-  var fmt = GL_RGBA
-  if c == 1 { fmt = GL_RED }
-  if c == 2 { fmt = GL_RG }
-  if c == 3 { fmt = GL_RGB }
-  var ty = GL_UNSIGNED_BYTE
-  if b == 2 { ty = GL_HALF_FLOAT }
-  if b == 4 { ty = GL_FLOAT }
+  var fmt = GPU_RGBA
+  if c == 1 { fmt = GPU_RED }
+  if c == 2 { fmt = GPU_RG }
+  if c == 3 { fmt = GPU_RGB }
+  var ty = GPU_UNSIGNED_BYTE
+  if b == 2 { ty = GPU_HALF_FLOAT }
+  if b == 4 { ty = GPU_FLOAT }
   return gvk_tex_upload(render3d_st, tex, ifmt, render3d_st.gvk_tex_dims_w[tex], render3d_st.gvk_tex_dims_h[tex], render3d_st.gvk_tex_layers[tex], fmt, ty, data)
 }

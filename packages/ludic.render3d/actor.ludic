@@ -331,7 +331,7 @@ function actor_draw_outlines(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.ac_actors) { if render3d_st.ac_actors[i].outline != 0.0 and ac_visible(render3d_st, render3d_st.ac_actors[i], false) { any = true;  break } }
   if not any { return }
   gpu_cull(render3d_st, true)
-  gpu_cull_face(render3d_st, GL_FRONT)
+  gpu_cull_face(render3d_st, GPU_FRONT)
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
     if a.outline == 0.0 or not ac_visible(render3d_st, a, false) { continue }
@@ -356,7 +356,7 @@ function actor_draw_outlines(render3d_st: mut Render3dState) -> void {
     for k in 0 .. len(q.model.prims) { mesh_draw(render3d_st, q.model.prims[k].mesh) }
   }
   render3d_st.ac_oq_closed = true
-  gpu_cull_face(render3d_st, GL_BACK)
+  gpu_cull_face(render3d_st, GPU_BACK)
 }
 function actor_draw_outline_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg) -> void {
   u_mat4(render3d_st, ap.l_model, a.mat)
@@ -433,7 +433,7 @@ function ac_caster_count(render3d_st: mut Render3dState, a: Actor) -> void {
   if a.cutout { render3d_st.ac_cc_cut += shown }
 }
 
-# every actor off the stage at once, for a world being replaced. Actors own no GL objects;
+# every actor off the stage at once, for a world being replaced. Actors own no GPU objects;
 # their models belong to whoever loaded them.
 function actor_clear_all(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_actors == null { return }
@@ -532,9 +532,9 @@ function ac_proxy_mesh(render3d_st: mut Render3dState) -> Mesh {
   render3d_st.ac_proxy_m = m4_new()
   let n = AC_PROXY_SIDES
   let nv = 2 + 2 * n
-  let pos = gl_floats(nv * 3)
-  let nrm = gl_floats(nv * 3)
-  let uv = gl_floats(nv * 2)
+  let pos = fbuf_floats(nv * 3)
+  let nrm = fbuf_floats(nv * 3)
+  let uv = fbuf_floats(nv * 2)
   ac_proxy_vert(pos, nrm, 0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0)
   ac_proxy_vert(pos, nrm, 1, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0)
   for i in 0 .. n {
@@ -544,13 +544,13 @@ function ac_proxy_mesh(render3d_st: mut Render3dState) -> Mesh {
     ac_proxy_vert(pos, nrm, 2 + i, cx, AC_PROXY_R, sz, cx, 0.0, sz)
     ac_proxy_vert(pos, nrm, 2 + n + i, cx, 1.0 - AC_PROXY_R, sz, cx, 0.0, sz)
   }
-  for i in 0 .. nv * 2 { gl_put_bits(uv, i, float_bits(0.0)) }
+  for i in 0 .. nv * 2 { fbuf_put_bits(uv, i, float_bits(0.0)) }
   let m = gpu_mesh_new(render3d_st)
-  gpu_mesh_vertices(render3d_st, m, pos, gl_bytes_of(nv * 3), GPU_STATIC)
+  gpu_mesh_vertices(render3d_st, m, pos, fbuf_bytes_of(nv * 3), GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, 0, 0, false)
-  gpu_mesh_vertices(render3d_st, m, nrm, gl_bytes_of(nv * 3), GPU_STATIC)
+  gpu_mesh_vertices(render3d_st, m, nrm, fbuf_bytes_of(nv * 3), GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, 0, 0, false)
-  gpu_mesh_vertices(render3d_st, m, uv, gl_bytes_of(nv * 2), GPU_STATIC)
+  gpu_mesh_vertices(render3d_st, m, uv, fbuf_bytes_of(nv * 2), GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, 0, 0, false)
   free(pos)
   free(nrm)
@@ -578,8 +578,8 @@ function ac_proxy_mesh(render3d_st: mut Render3dState) -> Mesh {
   return m
 }
 function ac_proxy_vert(pos: pointer, nrm: pointer, v: int, x: float, y: float, z: float, nx: float, ny: float, nz: float) -> void {
-  gl_put_bits(pos, v * 3, float_bits(x));  gl_put_bits(pos, v * 3 + 1, float_bits(y));  gl_put_bits(pos, v * 3 + 2, float_bits(z))
-  gl_put_bits(nrm, v * 3, float_bits(nx));  gl_put_bits(nrm, v * 3 + 1, float_bits(ny));  gl_put_bits(nrm, v * 3 + 2, float_bits(nz))
+  fbuf_put_bits(pos, v * 3, float_bits(x));  fbuf_put_bits(pos, v * 3 + 1, float_bits(y));  fbuf_put_bits(pos, v * 3 + 2, float_bits(z))
+  fbuf_put_bits(nrm, v * 3, float_bits(nx));  fbuf_put_bits(nrm, v * 3 + 1, float_bits(ny));  fbuf_put_bits(nrm, v * 3 + 2, float_bits(nz))
 }
 
 # One command buffer's worth of draws at start-up, through the path every draw takes (pipeline, set,

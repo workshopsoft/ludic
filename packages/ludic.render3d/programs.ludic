@@ -61,11 +61,11 @@ function target_new(render3d_st: mut Render3dState, w: int, h: int, ifmt: int, f
   t.color = tex_target(render3d_st, w, h, ifmt, fmt, ty, filter)
   gpu_fb_color(render3d_st, 0, t.color)
   if with_depth {
-    t.depth = tex_target(render3d_st, w, h, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, GL_NEAREST)
+    t.depth = tex_target(render3d_st, w, h, GPU_DEPTH_COMPONENT32F, GPU_DEPTH_COMPONENT, GPU_FLOAT, GPU_NEAREST)
     gpu_fb_depth(render3d_st, t.depth)
   }
   let st = gpu_fb_status(render3d_st)
-  if st != GL_FRAMEBUFFER_COMPLETE { print(`r3d: framebuffer incomplete {st} ({w}x{h})`) }
+  if st != GPU_FRAMEBUFFER_COMPLETE { print(`r3d: framebuffer incomplete {st} ({w}x{h})`) }
   gpu_fb_bind(render3d_st, 0)
   return t
 }

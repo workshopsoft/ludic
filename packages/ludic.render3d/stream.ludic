@@ -233,7 +233,7 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
   var missing = false
   render3d_st.stream_walks += 1
   render3d_st.stream_walk_no += 1
-  let tw = gl_now_us()
+  let tw = clock_now_us()
   # past the fog wall nothing is generated, gathered or kept wanted
   let reach = r3d_reach(render3d_st, s.reach)
   let r = int(reach / s.size) + 1
@@ -259,15 +259,15 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
             # are looking at, and a hole there is the grass vanishing as you walk into it.
             let urgent = band == 0 and ring <= 1
             var loose = false
-            if c == null and (first or urgent or gl_now_us() < render3d_st.stream_deadline) {
+            if c == null and (first or urgent or clock_now_us() < render3d_st.stream_deadline) {
               if len(s.spare) == 0 and not render3d_st.stream_no_evict { stream_evict(render3d_st, s) }
               let sp = s.spare
               if len(sp) > 0 { c = List.pop(sp) } else { c = render3d_st.stream_loose }
               c.key = key;  c.count = 0;  c.off = -1;  c.used = 0
               s.cur = c
-              let t0 = gl_now_us()
+              let t0 = clock_now_us()
               r3d_stream_fill(render3d_st, s, cx, cz, band)
-              let dt = gl_now_us() - t0
+              let dt = clock_now_us() - t0
               render3d_st.stream_us_gen = render3d_st.stream_us_gen + dt
               prof_chunk(render3d_st, s.kind, band, c.count, dt)
               if render3d_st.r3d_debug and band == 0 and render3d_st.stream_debug_n < 40 { render3d_st.stream_debug_n += 1;  stream_say_chunk(s.kind, band, cx, cz, c.count) }
@@ -296,13 +296,13 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
               if c != null { c.used = render3d_st.stream_walk_no }
             }
             if c != null and c.count > 0 and l.count + c.count <= l.cap and stream_chunk_visible(render3d_st, s, cx, cz, c) {
-              let tg = gl_now_us()
+              let tg = clock_now_us()
               layer_room(l, l.count + c.count)
               var src = data_of(render3d_st.stream_scratch)
               if c.off >= 0 { src = mem_off(data_of(s.arena), c.off * 4) }
               mem_copy(mem_off(l.inst, l.count * INST_FLOATS * 4), src, c.count * INST_FLOATS * 4)
               l.count += c.count
-              render3d_st.stream_us_gather = render3d_st.stream_us_gather + (gl_now_us() - tg)
+              render3d_st.stream_us_gather = render3d_st.stream_us_gather + (clock_now_us() - tg)
             }
             @alloc_ok("within the stream's record pool, all made with the stream (STREAM_MAX_CHUNKS)")
             if loose and c != render3d_st.stream_loose { push(s.spare, c) }
@@ -315,7 +315,7 @@ function stream_update(render3d_st: mut Render3dState, s: Stream, cam_x: float, 
     ring += 1
   }
   s.pending = missing
-  render3d_st.stream_us_walk = render3d_st.stream_us_walk + (gl_now_us() - tw)
+  render3d_st.stream_us_walk = render3d_st.stream_us_walk + (clock_now_us() - tw)
   # force the layer to re-partition its (new) instances
   l.view_gen = -1
 }
@@ -352,7 +352,7 @@ function stream_census(render3d_st: Render3dState) -> void {
 
 function stream_update_all(render3d_st: mut Render3dState) -> void {
   if render3d_st.stream_all == null { return }
-  render3d_st.stream_deadline = gl_now_us() + render3d_st.STREAM_BUDGET_US
+  render3d_st.stream_deadline = clock_now_us() + render3d_st.STREAM_BUDGET_US
   for i in 0 .. len(render3d_st.stream_all) { stream_update(render3d_st, render3d_st.stream_all[i], render3d_st.cam_pos[0], render3d_st.cam_pos[2]) }
 }
 

@@ -197,7 +197,7 @@ function info_plist(m: Manifest, exe: pointer, has_icon: bool) -> pointer {
 function min_macos(m: Manifest) -> pointer {
   let v = manifest_app(m, "min_macos")
   if v != "" { return v }
-  # the OpenGL 4.1 core profile the renderer asks for, and fmemopen, are both
+  # MoltenVK and fmemopen are both
   # far older than this; 11.0 is simply the oldest macOS still worth naming
   return "11.0"
 }

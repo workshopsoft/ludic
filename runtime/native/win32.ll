@@ -3,8 +3,8 @@
 ;
 ; The counterpart of cocoa.ll, to the same contracts, spoken to user32 and
 ; xinput through their C ABI. ludicc links it into a windowed Windows binary;
-; the GL half (win_gl_*) is win32_gl.ll, linked only when the program uses Gl.*,
-; so a software-framebuffer game never names a WGL function.
+; the window's size, scale and full screen (win_resize, ...) are win32_window.ll, linked
+; only when the program uses the window layer (window.ludic).
 ;
 ;   win_open(w, h, scale, title)  win_poll() -> key   win_present(fb, w, h)
 ;   win_running() -> bool         win_close()
@@ -108,7 +108,7 @@ declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 ; put a Turkish s-cedilla. That single fact is why a player could not type their own name.
 @.w_classw = private unnamed_addr constant [24 x i8] c"L\00u\00d\00i\00c\00W\00i\00n\00d\00o\00w\00\00\00"
 
-; shared with win32_gl.ll, which declares them external
+; shared with win32_window.ll, which declares them external
 @W_hwnd    = global ptr null
 @W_hdc     = global ptr null
 @W_fbw     = global i32 320
@@ -180,7 +180,7 @@ declare i32 @GetDpiForWindow(ptr)
 ; The display's scale as a whole number, the way macOS reports a backing scale: 96 dpi
 ; is 1, 175% (168 dpi) and 200% are 2, 300% is 3 - rounded, then brought down until a
 ; client area of w x h at that scale fits on the primary display. Shared with
-; win32_gl.ll. A window of "960 x 540" is then the same size on the desk on a 4K
+; win32_window.ll. A window of "960 x 540" is then the same size on the desk on a 4K
 ; panel as on a 1080p one, which is what a game asking for 960 x 540 means.
 define i32 @w_fit_scale(i32 %dpi, i32 %w, i32 %h) {
 entry:
@@ -316,7 +316,7 @@ out:
 }
 
 ; ---- win_set_title --------------------------------------------------------------------
-; Retitle the window opened before main (gl_open / gvk_open attach to it rather than opening
+; Retitle the window opened before main (gvk_open attaches to it rather than opening
 ; one, and would otherwise leave the program's name on it). UTF-8 in, UTF-16 to the window.
 ; A no-op without a window.
 define void @win_set_title(ptr %title) {

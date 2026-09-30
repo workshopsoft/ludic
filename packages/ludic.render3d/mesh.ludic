@@ -5,12 +5,12 @@
 # ============================================================================
 
 property Mesh {
-  vao:   int = 0,            # OpenGL's vertex array object (gpu.ludic's, on that backend)
+  vao:   int = 0,            # the mesh's vertex-input handle (gpu.ludic's)
   vbo:   int = 0,            # the first vertex buffer
   @owns(GpuBuffer) ebo:   int = 0,
   count: int = 0,            # indices (ebo != 0) or vertices
-  mode:  int = 4,            # GL_TRIANGLES
-  itype: int = 0x1405,       # GL_UNSIGNED_INT
+  mode:  int = 4,            # GPU_TRIANGLES
+  itype: int = 0x1405,       # GPU_UNSIGNED_INT
   attrs: words,              # the layout, GPU_ATTR_W words per attribute index (gpu.ludic)
   n_attrs: int = 0,
   vbufs: words,              # every vertex buffer the mesh owns, freed with it
@@ -28,17 +28,17 @@ function mesh_draw_instanced(render3d_st: mut Render3dState, m: Mesh, n: int) ->
 function mesh_grid(render3d_st: mut Render3dState, n: int, half: float) -> Mesh {
   let m = gpu_mesh_new(render3d_st)
   let nv = n * n
-  let v = gl_floats(nv * 2)
+  let v = fbuf_floats(nv * 2)
   var k = 0
   for j in 0 .. n {
     for i in 0 .. n {
       let x = float(i) / float(n - 1) * 2.0 * half - half
       let z = float(j) / float(n - 1) * 2.0 * half - half
-      gl_put_bits(v, k, float_bits(x));  gl_put_bits(v, k + 1, float_bits(z))
+      fbuf_put_bits(v, k, float_bits(x));  fbuf_put_bits(v, k + 1, float_bits(z))
       k += 2
     }
   }
-  gpu_mesh_vertices(render3d_st, m, v, gl_bytes_of(nv * 2), GPU_STATIC)
+  gpu_mesh_vertices(render3d_st, m, v, fbuf_bytes_of(nv * 2), GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, 0, 2, GPU_F32, 8, 0, false)
   free(v)
   let ni = (n - 1) * (n - 1) * 6
@@ -70,11 +70,11 @@ function mesh_fullscreen(render3d_st: Render3dState) -> Mesh {
 # A unit quad in x/y ([-0.5, 0.5] x [0, 1]) with uv, attribute 0 = xy, 1 = uv.
 function mesh_card(render3d_st: mut Render3dState) -> Mesh {
   let m = gpu_mesh_new(render3d_st)
-  let v = gl_floats(16)
-  gl_put(v, 0, -0.5);  gl_put(v, 1, 0.0);  gl_put(v, 2, 0.0);  gl_put(v, 3, 0.0)
-  gl_put(v, 4, 0.5);   gl_put(v, 5, 0.0);  gl_put(v, 6, 1.0);  gl_put(v, 7, 0.0)
-  gl_put(v, 8, 0.5);   gl_put(v, 9, 1.0);  gl_put(v, 10, 1.0); gl_put(v, 11, 1.0)
-  gl_put(v, 12, -0.5); gl_put(v, 13, 1.0); gl_put(v, 14, 0.0); gl_put(v, 15, 1.0)
+  let v = fbuf_floats(16)
+  fbuf_put(v, 0, -0.5);  fbuf_put(v, 1, 0.0);  fbuf_put(v, 2, 0.0);  fbuf_put(v, 3, 0.0)
+  fbuf_put(v, 4, 0.5);   fbuf_put(v, 5, 0.0);  fbuf_put(v, 6, 1.0);  fbuf_put(v, 7, 0.0)
+  fbuf_put(v, 8, 0.5);   fbuf_put(v, 9, 1.0);  fbuf_put(v, 10, 1.0); fbuf_put(v, 11, 1.0)
+  fbuf_put(v, 12, -0.5); fbuf_put(v, 13, 1.0); fbuf_put(v, 14, 0.0); fbuf_put(v, 15, 1.0)
   gpu_mesh_vertices(render3d_st, m, v, 64, GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, 0, 2, GPU_F32, 16, 0, false)
   gpu_mesh_attr(render3d_st, m, 1, 2, GPU_F32, 16, 8, false)

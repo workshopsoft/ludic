@@ -43,7 +43,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   if not save { ll = tmp_path(`{file_of_path(out)}.ll`) }
 
   # On Windows the compiler links too: ludicc knows the Windows runtime's files and
-  # libraries (win32.ll, xaudio2, opengl32 ...), so saying them again here would be a
+  # libraries (win32.ll, xaudio2, ...), so saying them again here would be a
   # second copy to keep in step. It writes {out}.exe.
   if host_windows() {
     var flags = "--windowed"
@@ -57,7 +57,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
     let objs = split_objs(ll, out)                 # on every core when it can (split.ludic)
     var input = ll
     if objs != "" { input = objs }
-    let linked = shq(`{cc()} -O{split_opt()} {input}{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
+    let linked = shq(`{cc()} -O{split_opt()} {input}{rt_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
     if objs != "" { shell(`rm -f {objs}`) }
     if not linked { return false }
     g_built_natives = native_libs_of(ll)
@@ -73,7 +73,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   let objs = split_objs(ll, out)
   var input = ll
   if objs != "" { input = objs }
-  let linked = shq(`{cc()} -O{split_opt()} {input} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{gl_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
+  let linked = shq(`{cc()} -O{split_opt()} {input} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{rt_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
   if objs != "" { shell(`rm -f {objs}`) }
   if not linked { return false }
   g_built_natives = native_libs_of(ll)
@@ -108,12 +108,12 @@ function title_flag() -> pointer {
   return ` --title "{name}"`
 }
 
-# A program that uses Gl.* references the @lgl_* thunks; link the OpenGL backend
-# (gl.ll + gl_thunks.ll + OpenGL.framework) only then, so other builds are untouched.
-function gl_link_flags(ll: pointer) -> pointer {
-  if not shq(`grep -q "@lgl_" {ll}`) { return "" }
+# A program that uses the window layer (Vk.*, Time.now_us) references rtlib.ll's float, memory
+# and clock helpers; link it only then, so other builds are untouched.
+function rt_link_flags(ll: pointer) -> pointer {
+  if not shq(`grep -q -E "@(clock_now_us|clock_sleep_us|win_drawable|win_scale|win_resize|fx_to_f32|mem_off|f_add)" {ll}`) { return "" }
   let home = ludic_home()
-  return ` {home}runtime/native/gl.ll {home}runtime/native/gl_thunks.ll -framework OpenGL`
+  return ` {home}runtime/native/rtlib.ll`
 }
 
 # A program that uses Vk.* references the @lvk_* thunks; link them and the loader that

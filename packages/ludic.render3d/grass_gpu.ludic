@@ -6,7 +6,7 @@
 # tile asked for and threw away. That was 3.5 ms of a MoltenVK frame. Here the CPU still walks the
 # visible tiles (as grass_tiles does), but grass_cull.comp decides each candidate once and writes
 # the survivors into three bands by distance, one indirect draw each; grass_inst.vert only bends
-# and places the vertices. OpenGL keeps the per-vertex path. R3D_GRASS_GPU=0 does too, to compare.
+# and places the vertices. R3D_GRASS_GPU=0 keeps the per-vertex path, to compare.
 # ============================================================================
 
 const GG_TILES: int = 4096
@@ -157,7 +157,7 @@ function gg_params(render3d_st: mut Render3dState) -> words {
   if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
   pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(grass_reach(render3d_st))
   var ph = render3d_st.post_h
-  if ph <= 0 { ph = gl_height() }
+  if ph <= 0 { ph = gfx_height() }
   pr[20] = float_bits(render3d_st.grass_s0);  pr[21] = float_bits(render3d_st.grass_d0);  pr[22] = float_bits(2.0 * Math.tan(render3d_st.cam_fov * 0.5) / float(ph));  pr[23] = float_bits(render3d_st.ter_snow_line)
   pr[24] = float_bits(render3d_st.ter_lake_cx);  pr[25] = float_bits(render3d_st.ter_lake_cz);  pr[26] = float_bits(render3d_st.ter_lake_ex);  pr[27] = float_bits(render3d_st.ter_lake_ez)
   var lake = -100000.0
