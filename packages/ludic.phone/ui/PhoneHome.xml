@@ -5,7 +5,6 @@
       <button class="app" autofocus="{i == 0}" on-click="open(i)">
         <div class="tile">
           <if test="{a.icon != ''}"><img class="icon" src="{a.icon}"/></if>
-          <if test="{a.icon == ''}"><strong class="initial">{a.title}</strong></if>
           <if test="{a.badge > 0}"><small class="badge">{a.badge}</small></if>
         </div>
         <small class="name">{a.title}</small>
