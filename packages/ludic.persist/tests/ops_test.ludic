@@ -1,0 +1,75 @@
+# ops_test.ludic - the operations a transaction is made of: add with a floor and a ceiling, set and compare-and-set,
+# push and remove on lists, nested paths made as they go, and every refusal leaving the data as it was
+import "ludic.persist"
+import "ludic.base"
+program OpsTest {
+  numbers float
+  friend module ops_test of ludic_persist
+
+  function op_of(text: string) -> Val { return Json.parse(text) }
+
+  # run one operation on data given as text; the code and the data after, as text
+  function apply_op(data: string, op: string) -> string {
+    let d = Json.parse(data)
+    let out = new []int
+    let why = ps__op(d, op_of(op), out)
+    return why + "|" + Json.encode(d)
+  }
+
+  test "add, with a floor and a ceiling" {
+    expect_eq(apply_op("{\"cash\": 100}", "{\"op\":\"add\",\"f\":\"cash\",\"n\":-30,\"min\":0}"), "|{\"cash\":70}")
+    expect_eq(apply_op("{\"cash\": 10}", "{\"op\":\"add\",\"f\":\"cash\",\"n\":-30,\"min\":0}"), "INSUFFICIENT|{\"cash\":10}")
+    expect_eq(apply_op("{\"cash\": 10}", "{\"op\":\"add\",\"f\":\"cash\",\"n\":95,\"max\":100}"), "INSUFFICIENT|{\"cash\":10}")
+    expect_eq(apply_op("{}", "{\"op\":\"add\",\"f\":\"cash\",\"n\":5}"), "|{\"cash\":5}")
+    expect_eq(apply_op("{\"cash\": 2147483647}", "{\"op\":\"add\",\"f\":\"cash\",\"n\":1}"), "INSUFFICIENT|{\"cash\":2147483647}")
+    expect_eq(apply_op("{\"cash\": -2147483647}", "{\"op\":\"add\",\"f\":\"cash\",\"n\":-1}"), "INSUFFICIENT|{\"cash\":-2147483647}")
+    expect_eq(apply_op("{\"cash\": \"lots\"}", "{\"op\":\"add\",\"f\":\"cash\",\"n\":1}"), "TYPE|{\"cash\":\"lots\"}")
+    expect_eq(apply_op("{}", "{\"op\":\"add\",\"f\":\"cash\"}"), "BAD|{}")
+  }
+
+  test "the value an add leaves is handed back" {
+    let d = Json.parse("{\"items\": {\"crate\": 3}}")
+    let out = new []int
+    expect_eq(ps__op(d, op_of("{\"op\":\"add\",\"f\":\"items.crate\",\"n\":-2,\"min\":0}"), out), "")
+    expect_eq(ps__op(d, op_of("{\"op\":\"add\",\"f\":\"items.barrel\",\"n\":4}"), out), "")
+    expect_eq(len(out), 2)
+    expect_eq(out[0], 1)
+    expect_eq(out[1], 4)
+  }
+
+  test "nested paths are made as they go, and only so deep" {
+    expect_eq(apply_op("{}", "{\"op\":\"add\",\"f\":\"a.b.c\",\"n\":1}"), "|{\"a\":{\"b\":{\"c\":1}}}")
+    expect_eq(apply_op("{}", "{\"op\":\"add\",\"f\":\"a.b.c.d\",\"n\":1}"), "|{\"a\":{\"b\":{\"c\":{\"d\":1}}}}")
+    expect_eq(apply_op("{}", "{\"op\":\"add\",\"f\":\"a.b.c.d.e\",\"n\":1}"), "BAD|{}")
+    expect_eq(apply_op("{\"a\": 5}", "{\"op\":\"add\",\"f\":\"a.b\",\"n\":1}"), "BAD|{\"a\":5}")
+    expect_eq(apply_op("{}", "{\"op\":\"add\",\"f\":\"a..b\",\"n\":1}"), "BAD|{}")
+    expect_eq(apply_op("{}", "{\"op\":\"add\",\"f\":\"\",\"n\":1}"), "BAD|{}")
+    expect_eq(apply_op("{}", "{\"op\":\"add\",\"f\":\"a b\",\"n\":1}"), "BAD|{}")
+  }
+
+  test "set and compare-and-set" {
+    expect_eq(apply_op("{}", "{\"op\":\"set\",\"f\":\"name\",\"v\":\"Ann\"}"), "|{\"name\":\"Ann\"}")
+    expect_eq(apply_op("{\"name\":\"Ann\"}", "{\"op\":\"set\",\"f\":\"name\",\"v\":\"Bo\",\"expect\":\"Ann\"}"), "|{\"name\":\"Bo\"}")
+    expect_eq(apply_op("{\"name\":\"Ann\"}", "{\"op\":\"set\",\"f\":\"name\",\"v\":\"Bo\",\"expect\":\"Cy\"}"), "CONFLICT|{\"name\":\"Ann\"}")
+    expect_eq(apply_op("{}", "{\"op\":\"set\",\"f\":\"name\",\"v\":\"Bo\",\"expect\":null}"), "|{\"name\":\"Bo\"}")
+    expect_eq(apply_op("{\"name\":\"Ann\"}", "{\"op\":\"set\",\"f\":\"name\",\"v\":\"Bo\",\"expect\":null}"), "CONFLICT|{\"name\":\"Ann\"}")
+    expect_eq(apply_op("{}", "{\"op\":\"set\",\"f\":\"n\",\"v\":{}}"), "BAD|{}")                 # a scalar only
+    expect_eq(apply_op("{}", "{\"op\":\"set\",\"f\":\"on\",\"v\":true}"), "|{\"on\":true}")
+  }
+
+  test "push and remove" {
+    expect_eq(apply_op("{}", "{\"op\":\"push\",\"f\":\"cars\",\"v\":\"sedan\"}"), "|{\"cars\":[\"sedan\"]}")
+    expect_eq(apply_op("{\"cars\":[\"sedan\"]}", "{\"op\":\"push\",\"f\":\"cars\",\"v\":\"sedan\",\"unique\":true}"), "CONFLICT|{\"cars\":[\"sedan\"]}")
+    expect_eq(apply_op("{\"cars\":[\"sedan\"]}", "{\"op\":\"push\",\"f\":\"cars\",\"v\":\"van\",\"max\":1}"), "INSUFFICIENT|{\"cars\":[\"sedan\"]}")
+    expect_eq(apply_op("{\"cars\":[\"a\",\"b\",\"a\"]}", "{\"op\":\"remove\",\"f\":\"cars\",\"v\":\"a\"}"), "|{\"cars\":[\"b\",\"a\"]}")
+    expect_eq(apply_op("{\"cars\":[\"a\"]}", "{\"op\":\"remove\",\"f\":\"cars\",\"v\":\"z\"}"), "NOT_FOUND|{\"cars\":[\"a\"]}")
+    expect_eq(apply_op("{}", "{\"op\":\"remove\",\"f\":\"cars\",\"v\":\"z\"}"), "NOT_FOUND|{}")
+    expect_eq(apply_op("{\"cars\":5}", "{\"op\":\"push\",\"f\":\"cars\",\"v\":\"z\"}"), "TYPE|{\"cars\":5}")
+  }
+
+  test "what is not an operation" {
+    expect_eq(apply_op("{}", "{\"op\":\"explode\",\"f\":\"a\"}"), "UNKNOWN|{}")
+    expect_eq(apply_op("{}", "{\"f\":\"a\"}"), "UNKNOWN|{}")
+    expect_eq(apply_op("{}", "{\"op\":\"add\"}"), "BAD|{}")
+  }
+}

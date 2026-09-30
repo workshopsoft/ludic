@@ -1,0 +1,111 @@
+# wire.ludic - frames. A channel that delivers bytes once, in order, in pieces of at most about a thousand
+# (ludic.net's reliable messages) carries messages of up to PW_MAX_MSG as fragments:
+#
+#   hello   [1] JSON text                                   whole, in one frame
+#   data    [2] id:u32 index:u16 count:u16 bytes            a fragment of message `id` (JSON text)
+#
+# Numbers are little-endian. Fragments of one message arrive in order (the channel is ordered), so a
+# reassembler takes index 0, 1, 2 ... and anything else is a broken peer.
+
+# a message being put together from fragments, kept and reused
+export property PwAsm {
+  active: bool = false
+  id: int = 0
+  count: int = 0
+  got: int = 0
+  len: int = 0
+  buf: []byte = null
+}
+
+@alloc_ok("a reassembler made once per connection, its buffer kept")
+function pw_asm_new() -> PwAsm {
+  let a = new PwAsm
+  a.buf = buffer(PW_MAX_MSG)
+  return a
+}
+
+function pw_asm_reset(a: PwAsm) -> void {
+  a.active = false
+  a.id = 0
+  a.count = 0
+  a.got = 0
+  a.len = 0
+}
+
+function pw_put16(b: []byte, at: int, v: int) -> void {
+  b[at] = v & 255
+  b[at + 1] = (v >> 8) & 255
+}
+
+function pw_put32(b: []byte, at: int, v: int) -> void {
+  b[at] = v & 255
+  b[at + 1] = (v >> 8) & 255
+  b[at + 2] = (v >> 16) & 255
+  b[at + 3] = (v >> 24) & 255
+}
+
+function pw_get16(b: []byte, at: int) -> int { return b[at] | (b[at + 1] << 8) }
+function pw_get32(b: []byte, at: int) -> int { return b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24) }
+
+# how many frames a message of n bytes takes (an empty one takes one)
+function pw_frames(n: int) -> int {
+  if n <= 0 { return 1 }
+  return (n + PW_FRAG - 1) / PW_FRAG
+}
+
+# frame k of message `id` (text s) written into out; the frame's length, or -1 when k is out of range
+function pw_frame(out: []byte, id: int, s: string, k: int) -> int {
+  let count = pw_frames(len(s))
+  if k < 0 or k >= count { return -1 }
+  let from = k * PW_FRAG
+  var n = len(s) - from
+  if n > PW_FRAG { n = PW_FRAG }
+  if n < 0 { n = 0 }
+  out[0] = PW_DATA
+  pw_put32(out, 1, id)
+  pw_put16(out, 5, k)
+  pw_put16(out, 7, count)
+  for i in 0 .. n { out[9 + i] = s[from + i] }
+  return 9 + n
+}
+
+# the hello frame for a JSON text: the frame's length, or -1 when it does not fit in one
+function pw_hello_frame(out: []byte, s: string) -> int {
+  if len(s) > PW_FRAG { return -1 }
+  out[0] = PW_HELLO
+  for i in 0 .. len(s) { out[1 + i] = s[i] }
+  return 1 + len(s)
+}
+
+export const PW_MORE: int = 0           # pw_feed: taken, the message is not whole yet
+export const PW_DONE: int = 1           # ... whole: a.buf holds a.len bytes
+export const PW_BAD: int = -1           # ... not a frame of a message this side will take: hang up
+
+# a data frame of n bytes taken into the reassembler
+function pw_feed(a: PwAsm, b: []byte, n: int) -> int {
+  if n < 9 or b[0] != PW_DATA { return PW_BAD }
+  let id = pw_get32(b, 1)
+  let k = pw_get16(b, 5)
+  let count = pw_get16(b, 7)
+  let body = n - 9
+  if count < 1 or count > pw_frames(PW_MAX_MSG) or body > PW_FRAG { return PW_BAD }
+  if k == 0 {
+    pw_asm_reset(a)
+    a.active = true
+    a.id = id
+    a.count = count
+  } else if not a.active or id != a.id or count != a.count or k != a.got {
+    pw_asm_reset(a)
+    return PW_BAD
+  }
+  if k != a.got or a.len + body > PW_MAX_MSG {
+    pw_asm_reset(a)
+    return PW_BAD
+  }
+  for i in 0 .. body { a.buf[a.len + i] = b[9 + i] }
+  a.len += body
+  a.got += 1
+  if a.got < a.count { return PW_MORE }
+  a.active = false
+  return PW_DONE
+}

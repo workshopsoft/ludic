@@ -1,0 +1,7 @@
+# ludic.persist - player data kept by a small authoritative service: records keyed by player and
+# namespace with versioned schemas, atomic transactions with idempotency keys, an append-only journal
+# and a snapshot on disk, an auth hook, rate limits; and the client that caches them and plays on
+# offline. The service is tools/persistd.ludic; the protocol is in README.md. See README.md.
+package "ludic.persist"
+version "0.1.0"
+kind source

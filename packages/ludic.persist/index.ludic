@@ -1,0 +1,18 @@
+# ludic.persist - a persistence service for player data and its client, over any reliable ordered
+# channel (ludic.net's, through the PersistServerLink / PersistClientLink ports). A mechanic of ludic.base,
+# which also takes ludic.save's migration chain for the versions of a record.
+module ludic_persist uses ludic_base, ludic_save
+numbers float
+import "ludic.base"
+import "ludic.save"
+import "defs.ludic"
+import "text.ludic"
+import "wire.ludic"
+import "ops.ludic"
+import "server_state.ludic"
+import "server_store.ludic"
+import "server_req.ludic"
+import "server.ludic"
+import "client_state.ludic"
+import "client.ludic"
+import "client_cache.ludic"

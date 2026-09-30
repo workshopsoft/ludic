@@ -1,0 +1,231 @@
+# server_state.ludic - what the service holds: a record per player and namespace, the transaction keys it
+# remembers, a slot per connection, the journal's and the snapshot's counters, and the facts it reports
+
+export const PSF_AUTH: int = 0            # a connection was let in (conn, player, n: 1 a service)
+export const PSF_DENY: int = 1            # turned away (conn, code)
+export const PSF_PUT: int = 2             # a record was replaced (player, ns, rev)
+export const PSF_TXN: int = 3             # a transaction was applied (player, n: its operations, text: the key)
+export const PSF_REPLAY: int = 4          # a transaction key seen again: the first answer was sent (player, text)
+export const PSF_CONFLICT: int = 5        # a put on a stale revision (player, ns, rev: the current one)
+export const PSF_RATE: int = 6            # a request held back by the rate limit (conn)
+export const PSF_SNAPSHOT: int = 7        # a snapshot was written (n: its sequence number)
+export const PSF_RECOVERED: int = 8       # opened: n journal entries replayed, rev the bytes of a torn tail cut off
+export const PSF_DELETE: int = 9          # a record was removed (player, ns)
+export const PSF_ERROR: int = 10          # a request that failed (conn, player, code)
+export const PSF_CLOSED: int = 11         # a connection was hung up (conn, code: why)
+export const PSF_IO: int = 12             # the disk refused something (text)
+
+export property PersistFact {
+  what: int = 0
+  conn: int = -1
+  player: string = ""
+  ns: string = ""
+  code: string = ""
+  rev: int = 0
+  n: int = 0
+  text: string = ""
+}
+
+# a record: one player's one namespace
+export property PsRec {
+  player: string = ""
+  ns: string = ""
+  rev: int = 0
+  ver: int = 1
+  data: Val = null
+  dead: bool = false
+}
+
+# a transaction the service has answered, kept so the same key answers the same way
+export property PsMemo {
+  key: string = ""
+  ns: []string = null        # the namespaces it changed
+  revs: []int = null         # ... and the revision each came to
+  vals: []int = null         # what each operation left
+}
+
+export property PsPlayer {
+  id: string = ""
+  memos: []PsMemo = null
+  bytes: int = 0
+}
+
+export property PsConn {
+  open: bool = false
+  authed: bool = false
+  service: bool = false
+  player: string = ""
+  tokens: float = 0.0
+  at: float = 0.0
+  out_id: int = 0
+  asm: PwAsm = null
+  hellos: int = 0
+  strikes: int = 0                     # requests turned back in a row
+}
+
+function ps__facts__new() -> Queue<PersistFact> { return queue_new("persist.server") }
+
+export state PersistServerState {
+  ps__cfg: PersistConfig = new PersistConfig
+  ps__recs: []PsRec = new []PsRec
+  ps__idx: Dict = Dict.new()                 # "player\nns" -> place in recs
+  ps__players: []PsPlayer = new []PsPlayer
+  ps__pidx: Dict = Dict.new()                # player -> place in players
+  ps__conns: []PsConn = new []PsConn
+  ps__seq: int = 0                           # the last journal entry's sequence number
+  ps__snap_seq: int = 0                      # ... the snapshot's
+  ps__pending: int = 0                       # entries written since the snapshot
+  ps__time: float = 0.0
+  ps__snap_at: float = 0.0
+  ps__open: bool = false
+  ps__out: []byte = buffer(PW_FRAG + 16)
+  ps__tmp: []byte = buffer(PW_FRAG + 16)
+  ps__facts: Queue<PersistFact> = ps__facts__new()
+}
+
+export function persist_server_facts(persist_server_st: PersistServerState) -> Queue<PersistFact> { return persist_server_st.ps__facts }
+
+function ps__fact(persist_server_st: mut PersistServerState, what: int, conn: int, player: string, ns: string, code: string) -> PersistFact {
+  var f = q_rec(persist_server_st.ps__facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new PersistFact
+    q_ring_add(persist_server_st.ps__facts, f)
+  }
+  f.what = what
+  f.conn = conn
+  f.player = intern(player)               # a fact outlives the request it came from
+  f.ns = intern(ns)
+  f.code = intern(code)
+  f.rev = 0
+  f.n = 0
+  f.text = ""
+  q_push(persist_server_st.ps__facts, f)
+  return f
+}
+
+export function persist_server_config(persist_server_st: mut PersistServerState, c: PersistConfig) -> void {
+  persist_server_st.ps__cfg = c
+}
+
+# the schema of a namespace (its place in PersistSchemas), or -1
+function ps__schema(ns: string) -> int {
+  for i in 0 .. PSCHEMA_COUNT { if PersistSchemas[i].key == ns { return i } }
+  return -1
+}
+
+function ps__rec_key(player: string, ns: string) -> string { return player + "\n" + ns }
+
+# a player's record of a namespace, or null
+function ps__find(persist_server_st: PersistServerState, player: string, ns: string) -> PsRec {
+  let at = Dict.get_or(persist_server_st.ps__idx, ps__rec_key(player, ns), -1)
+  if at < 0 { return null }
+  let r = persist_server_st.ps__recs[at]
+  if r.dead { return null }
+  return r
+}
+
+@alloc_ok("a player's first record: made once, kept")
+function ps__player(persist_server_st: mut PersistServerState, who: string) -> PsPlayer {
+  let at = Dict.get_or(persist_server_st.ps__pidx, who, -1)
+  if at >= 0 { return persist_server_st.ps__players[at] }
+  let p = new PsPlayer
+  p.id = `{who}`
+  p.memos = new []PsMemo
+  push(persist_server_st.ps__players, p)
+  Dict.set(persist_server_st.ps__pidx, p.id, len(persist_server_st.ps__players) - 1)
+  return p
+}
+
+# put a record in (a new one, or the place of the one there): what the journal's replay, the snapshot's
+# load and a commit all do. The data is kept as given: the caller made it its own
+@alloc_ok("a record made once per player and namespace")
+function ps__install(persist_server_st: mut PersistServerState, player: string, ns: string, rev: int, ver: int, data: Val) -> void {
+  let k = ps__rec_key(player, ns)
+  let at = Dict.get_or(persist_server_st.ps__idx, k, -1)
+  let pl = ps__player(persist_server_st, player)
+  if at >= 0 {
+    let r = persist_server_st.ps__recs[at]
+    if not r.dead { pl.bytes -= ps__size(r.data) }
+    r.rev = rev
+    r.ver = ver
+    r.data = data
+    r.dead = false
+    pl.bytes += ps__size(data)
+    return
+  }
+  let r = new PsRec
+  r.player = `{player}`                  # a record owns its names: the ones given may be a parsed request's
+  r.ns = `{ns}`
+  r.rev = rev
+  r.ver = ver
+  r.data = data
+  push(persist_server_st.ps__recs, r)
+  Dict.set(persist_server_st.ps__idx, k, len(persist_server_st.ps__recs) - 1)
+  pl.bytes += ps__size(data)
+}
+
+function ps__remove(persist_server_st: mut PersistServerState, player: string, ns: string) -> bool {
+  let r = ps__find(persist_server_st, player, ns)
+  if r == null { return false }
+  ps__player(persist_server_st, player).bytes -= ps__size(r.data)
+  r.dead = true
+  r.data = null
+  return true
+}
+
+function ps__memo_of(pl: PsPlayer, key: string) -> PsMemo {
+  for i in 0 .. len(pl.memos) { if pl.memos[i].key == key { return pl.memos[i] } }
+  return null
+}
+
+@alloc_ok("a transaction's memo: made once per transaction")
+function ps__memo_add(persist_server_st: mut PersistServerState, pl: PsPlayer, key: string, ns: []string, revs: []int, vals: []int) -> void {
+  let m = new PsMemo
+  m.key = `{key}`
+  m.ns = new []string
+  for i in 0 .. len(ns) { push(m.ns, `{ns[i]}`) }
+  m.revs = revs
+  m.vals = vals
+  push(pl.memos, m)
+  while len(pl.memos) > persist_server_st.ps__cfg.memos { List.remove_at(pl.memos, 0) }
+}
+
+export function persist_server_records(persist_server_st: PersistServerState) -> int {
+  var n = 0
+  for i in 0 .. len(persist_server_st.ps__recs) { if not persist_server_st.ps__recs[i].dead { n += 1 } }
+  return n
+}
+
+# a record's revision (0: there is none)
+export function persist_server_rev(persist_server_st: PersistServerState, player: string, ns: string) -> int {
+  let r = ps__find(persist_server_st, player, ns)
+  if r == null { return 0 }
+  return r.rev
+}
+
+# a record's data as JSON text ("" when there is none): for tools and tests
+export function persist_server_data(persist_server_st: PersistServerState, player: string, ns: string) -> string {
+  let r = ps__find(persist_server_st, player, ns)
+  if r == null { return "" }
+  return Json.encode(r.data)
+}
+
+export function persist_server_seq(persist_server_st: PersistServerState) -> int { return persist_server_st.ps__seq }
+export function persist_server_pending(persist_server_st: PersistServerState) -> int { return persist_server_st.ps__pending }
+
+# forget everything in memory (a restart in a test; the disk is untouched)
+export function persist_server_reset(persist_server_st: mut PersistServerState) -> void {
+  persist_server_st.ps__recs = new []PsRec
+  persist_server_st.ps__idx = Dict.new()
+  persist_server_st.ps__players = new []PsPlayer
+  persist_server_st.ps__pidx = Dict.new()
+  persist_server_st.ps__conns = new []PsConn
+  persist_server_st.ps__seq = 0
+  persist_server_st.ps__snap_seq = 0
+  persist_server_st.ps__pending = 0
+  persist_server_st.ps__time = 0.0
+  persist_server_st.ps__snap_at = 0.0
+  persist_server_st.ps__open = false
+  q_clear(persist_server_st.ps__facts)
+}

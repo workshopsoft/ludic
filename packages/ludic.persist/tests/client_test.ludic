@@ -1,0 +1,355 @@
+# client_test.ludic - the client against the service in one process, over the fixture's loopback wire: the
+# session, reads and puts, playing offline and sending what was queued, conflicts, a transaction the
+# service refuses taking its namespace back, the same key sent twice, a rate limit, and the cache on disk
+import "ludic.persist"
+import "ludic.base"
+program ClientTest {
+  import "fixture/game.ludic"
+  friend module client_test of ludic_persist
+
+  function start(ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState, name: string) -> void {
+    wire_fresh(w)
+    persist_server_reset(ps)
+    persist_client_reset(pc)
+    tk.ticket = "player:alice"
+    let c = new PersistConfig
+    c.dir = disk_fresh(name)
+    c.rate = 100000.0
+    c.burst = 100000.0
+    persist_server_config(ps, c)
+    expect_eq(persist_server_open(ps), PSO_OK)
+  }
+
+  # frames to where they are going, until the wires are quiet
+  function pump(ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState) -> void {
+    var rounds = 0
+    while (len(w.to_server) > 0 or len(w.to_client) > 0) and rounds < 200 {
+      let up = w.to_server
+      let down = w.to_client
+      w.to_server = new []Frame
+      w.to_client = new []Frame
+      for i in 0 .. len(up) { persist_server_receive(ps, up[i].conn, up[i].data, up[i].len) }
+      for i in 0 .. len(down) { persist_client_receive(pc, down[i].data, down[i].len) }
+      rounds += 1
+    }
+  }
+
+  # the session ends on both sides
+  function drop(ps: mut PersistServerState, pc: mut PersistClientState) -> void {
+    persist_server_closed(ps, 1)
+    persist_client_lost(pc)
+  }
+
+  function connect(ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState) -> bool {
+    let n = persist_client_hello(pc)
+    let ok = persist_server_hello(ps, 1, persist_client_hello_frame(pc), n)
+    pump(ps, pc, w)
+    return ok
+  }
+
+  function facts_of(pc: mut PersistClientState, what: int) -> int {
+    let fs = q_drain(persist_client_facts(pc))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  function coins(pc: PersistClientState, ns: string) -> int {
+    let d = persist_get(pc, ns)
+    if d == null { return -1 }
+    return pj_int(d, "coins", -1)
+  }
+
+  function profile(coins: int) -> Val {
+    let v = Value.object()
+    sv_put_int(v, "coins", coins)
+    return v
+  }
+
+  test "a session begins, a record is asked for and put" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_online")
+    expect_eq(persist_client_state(pc), PC_OFFLINE)
+    expect(connect(ps, pc, w))
+    expect(persist_online(pc))
+    expect_eq(persist_client_player(pc), "alice")
+    persist_fetch(pc, "profile")
+    pump(ps, pc, w)
+    expect(persist_loaded(pc, "profile"))
+    expect_eq(persist_rev(pc, "profile"), 0)
+    persist_put(pc, "profile", profile(40))
+    expect(persist_dirty(pc, "profile"))
+    expect_eq(coins(pc, "profile"), 40)              # the cache changed at once
+    pump(ps, pc, w)
+    expect(not persist_dirty(pc, "profile"))
+    expect_eq(persist_rev(pc, "profile"), 1)
+    expect_eq(persist_server_rev(ps, "alice", "profile"), 1)
+    expect_eq(persist_server_data(ps, "alice", "profile"), "{\"coins\":40}")
+    expect_eq(persist_pending(pc), 0)
+  }
+
+  test "a ticket the service will not have" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_denied")
+    tk.ticket = "player:eve"
+    expect(not connect(ps, pc, w))
+    expect_eq(persist_client_state(pc), PC_DENIED)
+    let fs = q_drain(persist_client_facts(pc))
+    expect_eq(fs[len(fs) - 1].what, PCF_DENIED)
+    expect_eq(fs[len(fs) - 1].code, "AUTH")
+  }
+
+  test "offline the cache answers and changes queue, and go out in order when a session begins" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_offline")
+    persist_put(pc, "profile", profile(10))
+    persist_put(pc, "profile", profile(20))            # the first had not gone: only the last matters
+    expect_eq(persist_pending(pc), 1)
+    persist_put(pc, "cars", profile(1))
+    expect_eq(coins(pc, "profile"), 20)
+    persist_txn_begin(pc, "buy")
+    persist_txn_add(pc, "profile", "coins", -5, 0)
+    expect(persist_txn_commit(pc))
+    expect_eq(coins(pc, "profile"), 15)
+    expect_eq(persist_pending(pc), 3)
+    expect_eq(facts_of(pc, PCF_QUEUED), 3)
+    expect_eq(len(w.to_server), 0)                      # nothing is sent with no session
+    expect(connect(ps, pc, w))
+    expect_eq(persist_pending(pc), 0)
+    expect_eq(persist_server_data(ps, "alice", "profile"), "{\"coins\":15}")
+    expect_eq(persist_server_rev(ps, "alice", "profile"), 2)       # the put, then the transaction
+    expect_eq(persist_server_data(ps, "alice", "cars"), "{\"coins\":1}")
+    expect(not persist_dirty(pc, "profile"))
+    expect_eq(persist_rev(pc, "profile"), 2)
+    expect_eq(facts_of(pc, PCF_SYNCED), 1)
+  }
+
+  test "a transaction the cache would refuse is refused before it is queued" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_local")
+    persist_put(pc, "profile", profile(3))
+    persist_txn_begin(pc, "buy")
+    persist_txn_add(pc, "profile", "coins", -5, 0)
+    expect(not persist_txn_commit(pc))
+    expect_eq(coins(pc, "profile"), 3)
+    expect_eq(persist_pending(pc), 1)                    # only the put
+    let fs = q_drain(persist_client_facts(pc))
+    var failed = ""
+    for i in 0 .. len(fs) { if fs[i].what == PCF_TXN_FAILED { failed = fs[i].code } }
+    expect_eq(failed, "INSUFFICIENT")
+    expect(not persist_txn_commit(pc))                   # nothing begun
+  }
+
+  test "the service's word is the last: a transaction it refuses takes the namespace back" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_refused")
+    connect(ps, pc, w)
+    persist_put(pc, "profile", profile(50))
+    pump(ps, pc, w)
+    drop(ps, pc)
+    # offline the player spends 40; meanwhile the service's record is spent down by another device
+    persist_txn_begin(pc, "buy")
+    persist_txn_add(pc, "profile", "coins", -40, 0)
+    expect(persist_txn_commit(pc))
+    expect_eq(coins(pc, "profile"), 10)
+    let svc = persist_server_data(ps, "alice", "profile")
+    expect_eq(svc, "{\"coins\":50}")
+    ps.ps__recs[0].data = Json.parse("{\"coins\":5}")
+    q_clear(persist_client_facts(pc))
+    connect(ps, pc, w)
+    let fs = q_drain(persist_client_facts(pc))
+    var failed = 0
+    for i in 0 .. len(fs) { if fs[i].what == PCF_TXN_FAILED { failed += 1 } }
+    expect_eq(failed, 1)
+    expect_eq(coins(pc, "profile"), 5)                   # the cache took the service's record back
+    expect_eq(persist_pending(pc), 0)
+    expect(not persist_dirty(pc, "profile"))
+  }
+
+  test "a put on a record that moved is a conflict, settled either way" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_conflict")
+    persist_put(pc, "profile", profile(100))             # made offline, from nothing
+    # another device had written the record
+    ps__install(ps, "alice", "profile", 3, 1, Json.parse("{\"coins\":7}"))
+    connect(ps, pc, w)
+    expect(persist_conflict(pc, "profile"))
+    expect_eq(coins(pc, "profile"), 7)                   # the service's copy is the cache's now
+    expect_eq(pj_int(persist_mine(pc, "profile"), "coins", -1), 100)
+    expect_eq(persist_rev(pc, "profile"), 3)
+    expect_eq(persist_server_data(ps, "alice", "profile"), "{\"coins\":7}")
+    # keep mine: a put from the revision the service is at now
+    persist_keep_mine(pc, "profile")
+    pump(ps, pc, w)
+    expect(not persist_conflict(pc, "profile"))
+    expect_eq(persist_server_data(ps, "alice", "profile"), "{\"coins\":100}")
+    expect_eq(persist_server_rev(ps, "alice", "profile"), 4)
+    expect_eq(persist_rev(pc, "profile"), 4)
+    # take theirs
+    drop(ps, pc)
+    persist_put(pc, "profile", profile(1))
+    ps__install(ps, "alice", "profile", 9, 1, Json.parse("{\"coins\":77}"))
+    connect(ps, pc, w)
+    expect(persist_conflict(pc, "profile"))
+    persist_take_server(pc, "profile")
+    expect(not persist_conflict(pc, "profile"))
+    expect_eq(coins(pc, "profile"), 77)
+  }
+
+  test "a put the service already has, resent after a lost answer, is taken as saved" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_resend_put")
+    connect(ps, pc, w)
+    persist_put(pc, "profile", profile(9))
+    # the put reaches the service; its answer never reaches the client
+    let up = w.to_server
+    w.to_server = new []Frame
+    for i in 0 .. len(up) { persist_server_receive(ps, up[i].conn, up[i].data, up[i].len) }
+    w.to_client = new []Frame
+    expect_eq(persist_server_rev(ps, "alice", "profile"), 1)
+    drop(ps, pc)
+    connect(ps, pc, w)
+    expect(not persist_conflict(pc, "profile"))
+    expect(not persist_dirty(pc, "profile"))
+    expect_eq(persist_rev(pc, "profile"), 1)
+    expect_eq(persist_server_rev(ps, "alice", "profile"), 1)
+  }
+
+  test "a transaction sent twice is done once" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_resend_txn")
+    connect(ps, pc, w)
+    persist_put(pc, "profile", profile(100))
+    pump(ps, pc, w)
+    persist_txn_begin(pc, "buy")
+    persist_txn_add(pc, "profile", "coins", -30, 0)
+    persist_txn_commit(pc)
+    let up = w.to_server
+    w.to_server = new []Frame
+    for i in 0 .. len(up) { persist_server_receive(ps, up[i].conn, up[i].data, up[i].len) }
+    w.to_client = new []Frame                            # the answer is lost
+    expect_eq(persist_server_data(ps, "alice", "profile"), "{\"coins\":70}")
+    drop(ps, pc)
+    q_clear(persist_client_facts(pc))
+    connect(ps, pc, w)                                   # the queue goes again, with the same key
+    expect_eq(persist_server_data(ps, "alice", "profile"), "{\"coins\":70}")
+    let fs = q_drain(persist_client_facts(pc))
+    var replayed = 0
+    for i in 0 .. len(fs) { if fs[i].what == PCF_TXN_OK and fs[i].n == 1 { replayed += 1 } }
+    expect_eq(replayed, 1)
+    expect_eq(coins(pc, "profile"), 70)
+    expect_eq(persist_pending(pc), 0)
+  }
+
+  test "a game server as a service pays a player by a key it already has" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_service")
+    tk.ticket = "service:game"
+    connect(ps, pc, w)
+    persist_txn_begin_as(pc, "alice", "courier:99:alice:money")
+    persist_txn_add(pc, "wallet", "cash", 250, 0)
+    expect(persist_txn_commit(pc))
+    pump(ps, pc, w)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":350}")
+    # the same payment again: the same key
+    persist_txn_begin_as(pc, "alice", "courier:99:alice:money")
+    persist_txn_add(pc, "wallet", "cash", 250, 0)
+    persist_txn_commit(pc)
+    pump(ps, pc, w)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":350}")
+    # a failed one says so with its key, and asks for nothing back
+    persist_txn_begin_as(pc, "alice", "buy:1")
+    persist_txn_add(pc, "wallet", "cash", -999, 0)
+    persist_txn_commit(pc)
+    q_clear(persist_client_facts(pc))
+    pump(ps, pc, w)
+    let fs = q_drain(persist_client_facts(pc))
+    expect_eq(fs[0].what, PCF_TXN_FAILED)
+    expect_eq(fs[0].key, "buy:1")
+    expect_eq(persist_pending(pc), 0)
+  }
+
+  test "a record of several frames goes up and comes back" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_big")
+    connect(ps, pc, w)
+    let v = Value.object()
+    let l = Value.list()
+    for i in 0 .. 45 { Value.add(l, Value.str(`car_model_{i}_with_a_long_name`)) }
+    Value.put(v, "owned", l)
+    persist_put(pc, "cars", v)
+    let sent = len(w.to_server)
+    expect(sent >= 2)
+    pump(ps, pc, w)
+    expect_eq(persist_server_rev(ps, "alice", "cars"), 1)
+    persist_server_closed(ps, 1)
+    persist_client_reset(pc)
+    persist_fetch(pc, "cars")
+    connect(ps, pc, w)
+    expect_eq(Value.count(Value.get(persist_get(pc, "cars"), "owned")), 45)
+  }
+
+  test "told to slow down, the client waits and goes on" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_rate")
+    let c = new PersistConfig
+    c.dir = ps.ps__cfg.dir
+    c.rate = 4.0
+    c.burst = 2.0
+    persist_server_config(ps, c)
+    connect(ps, pc, w)
+    for i in 0 .. 6 {
+      persist_txn_begin(pc, `n{i}`)
+      persist_txn_add(pc, "profile", "coins", 1, 0)
+      persist_txn_commit(pc)
+      persist_fetch(pc, `ns{i}`)
+    }
+    pump(ps, pc, w)
+    expect(persist_pending(pc) > 0)                      # held back
+    expect(facts_of(pc, PCF_RATE) >= 1)
+    var spins = 0
+    while persist_pending(pc) > 0 and spins < 400 {
+      persist_client_tick(pc, 0.1)
+      persist_server_tick(ps, 0.1)
+      pump(ps, pc, w)
+      spins += 1
+    }
+    expect_eq(persist_pending(pc), 0)
+    expect_eq(persist_server_data(ps, "alice", "profile"), "{\"coins\":6}")
+  }
+
+  test "the cache on disk: records, changes not yet sent, and where the keys left off" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_cache")
+    let dir = disk_fresh("c_cache_file")
+    persist_cache_path(pc, dir + "/cache.json")
+    connect(ps, pc, w)
+    persist_put(pc, "profile", profile(30))
+    pump(ps, pc, w)
+    drop(ps, pc)
+    persist_txn_begin(pc, "buy")
+    persist_txn_add(pc, "profile", "coins", -10, 0)
+    let key = persist_txn_begin(pc, "buy2")
+    persist_txn_add(pc, "profile", "coins", -5, 0)
+    expect(persist_txn_commit(pc))
+    expect(persist_cache_save(pc))
+    # the game is closed and opened again
+    persist_client_reset(pc)
+    expect(persist_get(pc, "profile") == null)
+    expect(persist_cache_load(pc))
+    expect_eq(coins(pc, "profile"), 25)
+    expect(persist_dirty(pc, "profile"))
+    expect_eq(persist_pending(pc), 1)
+    expect_eq(persist_client_player(pc), "alice")
+    # it carries on where it was: the queued transaction goes out with its own key
+    connect(ps, pc, w)
+    expect_eq(persist_pending(pc), 0)
+    expect_eq(persist_server_data(ps, "alice", "profile"), "{\"coins\":25}")
+    let next = persist_txn_begin(pc, "buy2")
+    expect(next != key)
+  }
+
+  test "a cache file from before a migration is carried forward" (ps: mut PersistServerState, pc: mut PersistClientState, w: mut WireState, tk: mut TicketState) {
+    start(ps, pc, w, tk, "c_cache_mig")
+    let dir = disk_fresh("c_cache_mig_file")
+    let text = "{\"format\":\"persist.cache\",\"version\":1,\"player\":\"alice\",\"next\":4,\"nonce\":7,\"keys\":2,\"recs\":{\"wallet\":{\"rev\":3,\"v\":1,\"dirty\":false,\"d\":{\"money\":3}}},\"reqs\":[]}"
+    Fs.write_text(dir + "/cache.json", text)
+    persist_cache_path(pc, dir + "/cache.json")
+    expect(persist_cache_load(pc))
+    expect_eq(pj_int(persist_get(pc, "wallet"), "cash", -1), 3)
+    expect(not persist_cache_load_missing(pc, dir + "/nothing.json"))
+  }
+
+  function persist_cache_load_missing(pc: mut PersistClientState, path: string) -> bool {
+    persist_cache_path(pc, path)
+    return persist_cache_load(pc)
+  }
+}

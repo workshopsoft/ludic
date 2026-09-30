@@ -1,0 +1,63 @@
+  # wire.ludic - persist over ludic.net: what the service (persistd.ludic) and a game's client share.
+  # Imported inside a program's block, beside `import "ludic.persist"` and `import "ludic.net"`.
+  #
+  # A persist frame (up to 1009 bytes) rides in a reliable ludic.net message as its length and then four bytes
+  # to an int. The session is ludic.net's: the client's hello is the net hello (net_hello_set), the service
+  # lets a stranger in with net_accept and answers with PERSIST_WELCOME (the session's token and the client's
+  # pid, which the client hands to net_joined_as); every frame after is PERSIST_KIND.
+  numbers float
+
+  const PERSIST_KIND: int = 40
+  const PERSIST_WELCOME: int = 41
+  const PERSIST_PORT: int = 27500
+
+  # a frame written into the message being made
+  function persist_net_write(net_st: mut NetState, b: []byte, n: int) -> void {
+    nw_begin(net_st)
+    nw_i(net_st, n)
+    var k = 0
+    while k < n {
+      var v = 0
+      for j in 0 .. 4 { if k + j < n { v = v | ((b[k + j] & 255) << (8 * j)) } }
+      nw_i(net_st, v)
+      k += 4
+    }
+  }
+
+  # the frame in the message being read, into out: its length, or -1 when the message is not one
+  function persist_net_read(net_st: mut NetState, out: []byte) -> int {
+    let n = nr_i(net_st)
+    if n < 0 or n > len(out) { return -1 }
+    var k = 0
+    while k < n {
+      let v = nr_i(net_st)
+      for j in 0 .. 4 { if k + j < n { out[k + j] = (v >> (8 * j)) & 255 } }
+      k += 4
+    }
+    if nr_bad(net_st) { return -1 }
+    return n
+  }
+
+  # the service's side of the link: a frame to a peer's slot, a stranger let in, a peer let go
+  function srv_send(net_st: mut NetState, conn: int, b: []byte, n: int) -> void {
+    persist_net_write(net_st, b, n)
+    np_queue(net_st, conn, PERSIST_KIND, true)
+  }
+
+  function srv_accept(net_st: mut NetState, conn: int) -> bool {
+    let pid = net_accept(net_st, conn)
+    if pid == 0 { return false }
+    nw_begin(net_st)
+    nw_i(net_st, net_token(net_st))
+    nw_i(net_st, pid)
+    np_queue(net_st, conn, PERSIST_WELCOME, true)
+    return true
+  }
+
+  function srv_drop(net_st: mut NetState, conn: int) -> void { net_close_when_sent(net_st, conn, 2.0) }
+
+  # the client's side: a frame to the service, which is the host, slot 0
+  function cli_send(net_st: mut NetState, b: []byte, n: int) -> void {
+    persist_net_write(net_st, b, n)
+    np_queue(net_st, 0, PERSIST_KIND, true)
+  }

@@ -1,0 +1,171 @@
+# net_test.ludic - the service as a real child process, over real UDP on the loopback: built here, started,
+# talked to with ludic.net and the client, killed without warning in the middle of its life and started again on
+# the same directory. A test program, not a game; it needs the `ludic` command (or LUDIC_HOME/bin/ludic).
+import "ludic.persist"
+import "ludic.net"
+import "ludic.base"
+program PersistNetTest {
+  numbers float
+  import "../tools/wire.ludic"
+
+  state Who { ticket: string = "" }
+  function client_ticket(who: Who) -> string { return who.ticket }
+  function client_seed() -> int { return 99 }
+  bind PersistClientWorld { ticket: fn client_ticket, seed: fn client_seed }
+  bind PersistClientLink { send: fn cli_send }
+
+  const SECRET: string = "a secret for the test"
+
+  function ticket_for(who: string) -> string { return who + "." + Crypto.hmac_sha256(SECRET, who) }
+
+  # one frame of the client's life: the net, what came in, the client, the net out
+  function frame(net: mut NetState, pc: mut PersistClientState, buf: []byte) -> void {
+    let dt = 0.004
+    net_begin(net, dt)
+    let got = q_drain(net_inbox(net))
+    for i in 0 .. len(got) {
+      net_read(net, got[i])
+      if got[i].kind == PERSIST_WELCOME {
+        let token = nr_i(net)
+        let pid = nr_i(net)
+        net_joined_as(net, token, pid)
+      } else if got[i].kind == PERSIST_KIND {
+        let n = persist_net_read(net, buf)
+        if n > 0 { persist_client_receive(pc, buf, n) }
+      }
+    }
+    net_update(net, dt)
+    persist_client_tick(pc, dt)
+    net_end(net)
+    let fs = q_drain(net_facts(net))
+    for i in 0 .. len(fs) { if fs[i].what == NET_DOWN or fs[i].what == NET_GONE { persist_client_lost(pc) } }
+    Time.sleep_us(4000)
+  }
+
+  function sign_in(net: mut NetState, pc: mut PersistClientState, who: mut Who, name: string, port: int) -> bool {
+    net_reset(net)
+    persist_client_lost(pc)
+    who.ticket = ticket_for(name)
+    let n = persist_client_hello(pc)
+    let f = persist_client_hello_frame(pc)
+    persist_net_write(net, f, n)
+    net_hello_set(net)
+    if not net_join(net, Udp.ip("127.0.0.1"), port) { return false }
+    let buf = buffer(PW_FRAG + 16)
+    var k = 0
+    while not persist_online(pc) and persist_client_state(pc) != PC_DENIED and k < 2500 {
+      frame(net, pc, buf)
+      k += 1
+    }
+    return persist_online(pc)
+  }
+
+  function wait_idle(net: mut NetState, pc: mut PersistClientState) -> bool {
+    let buf = buffer(PW_FRAG + 16)
+    var k = 0
+    while persist_pending(pc) > 0 and k < 2500 {
+      frame(net, pc, buf)
+      k += 1
+    }
+    return persist_pending(pc) == 0
+  }
+
+  # the ludic that is running this test: LUDIC_BIN, else the checkout's bin/ludic, else the one on the PATH
+  function ludic_command() -> string {
+    let bin = Os.env_or("LUDIC_BIN", "")
+    if bin != "" { return bin }
+    let home = Os.env_or("LUDIC_HOME", ".")
+    if Fs.exists(home + "/bin/ludic") { return home + "/bin/ludic" }
+    return "ludic"
+  }
+
+  test "a service that is killed and started again keeps what it took" (net: mut NetState, pc: mut PersistClientState, who: mut Who) {
+    let dir = Os.temp_dir() + "/ludic_persist_net_" + string(Os.pid())
+    Fs.mkdir(dir)
+    let data = dir + "/data"
+    let bin = dir + "/persistd"
+    let home = Os.env_or("LUDIC_HOME", ".")
+    let built = run(`{ludic_command()} build {home}/packages/ludic.persist/tools/persistd.ludic --headless -o {bin} > {dir}/build.log 2>&1`)
+    expect_eq(built, 0)
+    Os.set_env("PERSIST_SECRET", SECRET)
+    let port = 28000 + Os.pid() % 2000
+    var server = Process.spawn(bin, [data, string(port)])
+    expect(server >= 0)
+    # a player puts their character
+    expect(sign_in(net, pc, who, "alice", port))
+    expect_eq(persist_client_player(pc), "alice")
+    let v = Value.object()
+    sv_put_str(v, "name", "Ann")
+    sv_put_int(v, "level", 3)
+    persist_put(pc, "character", v)
+    expect(wait_idle(net, pc))
+    expect_eq(persist_rev(pc, "character"), 1)
+    # a game server pays them, by a key
+    expect(sign_in(net, pc, who, "service:game", port))
+    persist_txn_begin_as(pc, "alice", "mission-7:alice:money")
+    persist_txn_add(pc, "wallet", "cash", 500, 0)
+    expect(persist_txn_commit(pc))
+    expect(wait_idle(net, pc))
+    expect_eq(persist_txn_vals(pc)[0], 500)
+    # a stranger with a ticket the secret did not make
+    who.ticket = "alice.0000"
+    expect(not sign_in_wrong(net, pc, who, port))
+    # the service is killed, with no warning
+    Process.kill(server)
+    var code = Process.poll(server)
+    var spins = 0
+    while code < 0 and spins < 1000 {
+      Time.sleep_us(2000)
+      code = Process.poll(server)
+      spins += 1
+    }
+    Process.free(server)
+    net_reset(net)
+    # and started again on the same directory
+    server = Process.spawn(bin, [data, string(port)])
+    expect(sign_in(net, pc, who, "alice", port))
+    persist_client_reset(pc)
+    persist_fetch(pc, "character")
+    expect(sign_in(net, pc, who, "alice", port))
+    expect(wait_idle(net, pc))
+    expect_eq(persist_rev(pc, "character"), 1)
+    expect_eq(sv_int(persist_get(pc, "character"), "level", 0), 3)
+    # the payment key is remembered across the restart: paying again pays nothing
+    expect(sign_in(net, pc, who, "service:game", port))
+    persist_txn_begin_as(pc, "alice", "mission-7:alice:money")
+    persist_txn_add(pc, "wallet", "cash", 500, 0)
+    persist_txn_commit(pc)
+    expect(wait_idle(net, pc))
+    expect_eq(persist_txn_vals(pc)[0], 500)
+    let fs = q_drain(persist_client_facts(pc))
+    var replays = 0
+    for i in 0 .. len(fs) { if fs[i].what == PCF_TXN_OK and fs[i].n == 1 { replays += 1 } }
+    expect_eq(replays, 1)
+    net_reset(net)
+    Process.kill(server)
+    var c2 = Process.poll(server)
+    var s2 = 0
+    while c2 < 0 and s2 < 1000 {
+      Time.sleep_us(2000)
+      c2 = Process.poll(server)
+      s2 += 1
+    }
+    Process.free(server)
+  }
+
+  function sign_in_wrong(net: mut NetState, pc: mut PersistClientState, who: mut Who, port: int) -> bool {
+    net_reset(net)
+    persist_client_lost(pc)
+    let n = persist_client_hello(pc)
+    persist_net_write(net, persist_client_hello_frame(pc), n)
+    net_hello_set(net)
+    net_join(net, Udp.ip("127.0.0.1"), port)
+    let buf = buffer(PW_FRAG + 16)
+    var k = 0
+    while persist_client_state(pc) == PC_CONNECTING and k < 2500 {
+      frame(net, pc, buf)
+      k += 1
+    }
+    return persist_online(pc)
+  }
+}

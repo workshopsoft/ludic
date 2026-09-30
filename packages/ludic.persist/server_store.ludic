@@ -1,0 +1,313 @@
+# server_store.ludic - what is on disk. Two files carry the service between runs:
+#
+#   journal.log     append-only, one line a change: <crc32 of the json, 8 hex> <space> <json> <newline>, the
+#                   json being {"s": seq, "p": player, "r": [{"ns","rev","v","d"}...], "x": [ns...],
+#                   "k": txn key, "m": {"ns","revs","vals"}}. Each line is the AFTER image of what it
+#                   changed, so replaying one twice or in pieces cannot go wrong.
+#   snapshot.json   the whole state at a sequence number, written whole (a temp file renamed into place, read
+#                   back, the last good one kept as snapshot.json.bak) by ludic.save.
+#
+# A change is written to the journal before it is applied or answered. A snapshot is taken every so many
+# entries or seconds; the journal it covers is kept once more as journal.prev (so a damaged snapshot falls
+# back to the backup and replays from there) and a fresh journal started. Opening reads the snapshot, then
+# replays journal.prev and journal.log in sequence order, skipping what the snapshot already has, and stops at
+# the first line that does not check out (a torn last write): the valid part is kept, the rest cut off.
+
+export const PSO_OK: int = 0
+export const PSO_FUTURE: int = 1        # a snapshot from a newer build: nothing is opened, nothing written over it
+export const PSO_CORRUPT: int = 2       # a snapshot and its backup both unreadable: nothing is opened
+export const PSO_IO: int = 3            # the directory cannot be made
+
+function ps__path(persist_server_st: PersistServerState, name: string) -> string {
+  return persist_server_st.ps__cfg.dir + "/" + name
+}
+
+function ps__is_snapshot(v: Val) -> bool { return Value.has(v, "players") != 0 and Value.has(v, "seq") != 0 }
+
+function ps__format() -> SaveFormat {
+  let f = save_format("persist", 1)
+  f.is_one = fn ps__is_snapshot
+  return f
+}
+
+# a record's data brought to today's version through ludic.save's chain (the format is "persist." and the
+# namespace); the version it now has, or -1 when it is newer than this build
+function ps__migrate(ns: string, data: Val, from: int) -> int {
+  let s = ps__schema(ns)
+  if s < 0 { return from }                     # a namespace the game dropped: kept as it is
+  let to = PersistSchemas[s].version
+  if from > to { return -1 }
+  let name = "persist." + ns
+  var n = from
+  while n < to {
+    let k = save_step(name, n)
+    if k >= 0 { SaveMigrations[k].run(data) }
+    n += 1
+  }
+  return to
+}
+
+# --- the journal ---
+@alloc_ok("a journal line is written per change and given back")
+function ps__journal_write(persist_server_st: mut PersistServerState, entry: Val) -> bool {
+  let seq = persist_server_st.ps__seq + 1
+  Value.put(entry, "s", Value.int(seq))
+  let text = Json.encode(entry)
+  let line = ps__hex8(Hash.crc32(text)) + " " + text + "\n"
+  let ok = Fs.append_text(ps__path(persist_server_st, "journal.log"), line)
+  ps__give_back(text)
+  ps__give_back(line)
+  if not ok {
+    ps__fact(persist_server_st, PSF_IO, -1, "", "", PE_IO).text = "journal"
+    return false
+  }
+  persist_server_st.ps__seq = seq
+  if persist_server_st.ps__pending == 0 { persist_server_st.ps__snap_at = persist_server_st.ps__time }   # the oldest change not in a snapshot
+  persist_server_st.ps__pending += 1
+  return true
+}
+
+# a change's journal entry, before its sequence number: the player, the records it leaves (after images)
+@alloc_ok("a journal entry is made per change")
+function ps__entry(player: string) -> Val {
+  let e = Value.object()
+  Value.put(e, "p", Value.str(`{player}`))
+  return e
+}
+
+function ps__entry_record(e: Val, ns: string, rev: int, ver: int, data: Val) -> void {
+  if Value.has(e, "r") == 0 { Value.put(e, "r", Value.list()) }
+  let o = Value.object()
+  Value.put(o, "ns", Value.str(`{ns}`))
+  Value.put(o, "rev", Value.int(rev))
+  Value.put(o, "v", Value.int(ver))
+  Value.put(o, "d", data)                # the live data: encoded with the entry, not owned by it
+  Value.add(Value.get(e, "r"), o)
+}
+
+function ps__entry_memo(e: Val, key: string, ns: []string, revs: []int, vals: []int) -> void {
+  let m = Value.object()
+  let l = Value.list()
+  for i in 0 .. len(ns) { Value.add(l, Value.str(`{ns[i]}`)) }
+  Value.put(m, "ns", l)
+  sv_put_ints(m, "revs", revs)
+  sv_put_ints(m, "vals", vals)
+  Value.put(e, "k", Value.str(`{key}`))
+  Value.put(e, "m", m)
+}
+
+# an entry's data is live data the state keeps: before the entry is given back, the records' `d` are
+# taken out of it, so freeing the entry frees only what it made
+function ps__entry_free(e: Val) -> void {
+  if Value.has(e, "r") != 0 {
+    let rs = Value.get(e, "r")
+    for i in 0 .. Value.count(rs) { Value.put(Value.at(rs, i), "d", Value.null()) }
+  }
+  Json.free_all(e)
+}
+
+# an entry read from the journal, applied to memory
+@alloc_ok("replay: records read back in")
+function ps__apply_entry(persist_server_st: mut PersistServerState, e: Val) -> void {
+  let player = pj_str(e, "p", "")
+  if not ps__name_ok(player, 64) { return }
+  let rs = pj_list(e, "r")
+  if rs != null {
+    for i in 0 .. Value.count(rs) {
+      let r = Value.at(rs, i)
+      let ns = pj_str(r, "ns", "")
+      if not ps__name_ok(ns, 32) { continue }
+      let d = ps__clone(Value.get(r, "d"), 0)
+      var ver = pj_int(r, "v", 1)
+      let to = ps__migrate(ns, d, ver)
+      if to >= 0 { ver = to }
+      ps__install(persist_server_st, player, ns, pj_int(r, "rev", 1), ver, d)
+    }
+  }
+  let xs = pj_list(e, "x")
+  if xs != null {
+    for i in 0 .. Value.count(xs) { ps__remove(persist_server_st, player, Value.as_str(Value.at(xs, i))) }
+  }
+  let m = pj_obj(e, "m")
+  if m != null and pj_str(e, "k", "") != "" {
+    let ns = new []string
+    let l = pj_list(m, "ns")
+    if l != null { for i in 0 .. Value.count(l) { push(ns, `{Value.as_str(Value.at(l, i))}`) } }
+    ps__memo_add(persist_server_st, ps__player(persist_server_st, player), `{pj_str(e, "k", "")}`, ns, sv_ints(m, "revs"), sv_ints(m, "vals"))
+  }
+}
+
+# a journal file replayed: returns the entries applied; `torn` is set to the bytes of a bad tail cut off
+@alloc_ok("replay: lines read, parsed and given back")
+function ps__replay(persist_server_st: mut PersistServerState, path: string, counts: []int) -> void {
+  let text = Fs.read_text(path)
+  if text == null { return }
+  var at = 0
+  var good = 0
+  var torn = false
+  let n = len(text)
+  while at < n {
+    var end = at
+    while end < n and text[end] != 10 { end += 1 }
+    if end >= n { torn = true; break }                 # no newline: the last write did not finish
+    let line = text[at..end]
+    let ok = ps__replay_line(persist_server_st, line, counts)
+    if ok == 2 { torn = true; break }
+    at = end + 1
+    good = at
+  }
+  if torn {
+    counts[1] += n - good
+    if path == ps__path(persist_server_st, "journal.log") { Fs.write_text(path, text[0..good]) }
+  }
+  unsafe { free(text) }
+}
+
+# 0 skipped (already in the snapshot), 1 applied, 2 bad: stop here
+function ps__replay_line(persist_server_st: mut PersistServerState, line: string, counts: []int) -> int {
+  if len(line) < 10 or line[8] != 32 or not ps__hex8_ok(line) { return 2 }
+  let body = line[9..len(line)]
+  if ps__unhex8(line) != Hash.crc32(body) { return 2 }
+  let e = ps__parse(body)
+  if e == null or not pj_has(e, "s") { return 2 }
+  let s = pj_int(e, "s", 0)
+  if s <= persist_server_st.ps__snap_seq or s <= persist_server_st.ps__seq { ps__free(e); return 0 }
+  if s != persist_server_st.ps__seq + 1 { ps__free(e); return 2 }
+  ps__apply_entry(persist_server_st, e)
+  persist_server_st.ps__seq = s
+  persist_server_st.ps__pending += 1
+  counts[0] += 1
+  ps__free(e)
+  return 1
+}
+
+# --- the snapshot ---
+@alloc_ok("a snapshot: a tree of wrappers round the live data, written and given back")
+function ps__snapshot(persist_server_st: mut PersistServerState) -> bool {
+  let root = Value.object()
+  Value.put(root, "format", Value.str("persist"))
+  Value.put(root, "version", Value.int(1))
+  Value.put(root, "seq", Value.int(persist_server_st.ps__seq))
+  let players = Value.object()
+  Value.put(root, "players", players)
+  let wrappers = new []Val
+  for i in 0 .. len(persist_server_st.ps__players) {
+    let pl = persist_server_st.ps__players[i]
+    let po = Value.object()
+    let nso = Value.object()
+    Value.put(po, "ns", nso)
+    for r in 0 .. len(persist_server_st.ps__recs) {
+      let rec = persist_server_st.ps__recs[r]
+      if rec.dead or rec.player != pl.id { continue }
+      let ro = Value.object()
+      Value.put(ro, "rev", Value.int(rec.rev))
+      Value.put(ro, "v", Value.int(rec.ver))
+      Value.put(ro, "d", rec.data)
+      Value.put(nso, rec.ns, ro)
+      push(wrappers, ro)
+    }
+    let memos = Value.list()
+    for m in 0 .. len(pl.memos) {
+      let me = Value.object()
+      Value.put(me, "k", Value.str(pl.memos[m].key))
+      let l = Value.list()
+      for k in 0 .. len(pl.memos[m].ns) { Value.add(l, Value.str(pl.memos[m].ns[k])) }
+      Value.put(me, "ns", l)
+      sv_put_ints(me, "revs", pl.memos[m].revs)
+      sv_put_ints(me, "vals", pl.memos[m].vals)
+      Value.add(memos, me)
+    }
+    Value.put(po, "memo", memos)
+    Value.put(players, pl.id, po)
+  }
+  let snap = ps__path(persist_server_st, "snapshot.json")
+  let ok = save_write_tree(snap, snap + ".bak", root)
+  for i in 0 .. len(wrappers) { Value.put(wrappers[i], "d", Value.null()) }     # the live data is not the tree's to free
+  Json.free_all(root)
+  if not ok {
+    ps__fact(persist_server_st, PSF_IO, -1, "", "", PE_IO).text = "snapshot"
+    return false
+  }
+  # the journal the snapshot covers is kept once more, a new one begins
+  let jl = ps__path(persist_server_st, "journal.log")
+  if Fs.exists(jl) { Fs.copy(jl, ps__path(persist_server_st, "journal.prev")) }
+  Fs.write_text(jl, "")
+  persist_server_st.ps__snap_seq = persist_server_st.ps__seq
+  persist_server_st.ps__pending = 0
+  persist_server_st.ps__snap_at = persist_server_st.ps__time
+  ps__fact(persist_server_st, PSF_SNAPSHOT, -1, "", "", "").n = persist_server_st.ps__seq
+  return true
+}
+
+# load a snapshot's tree into memory
+@alloc_ok("open: the snapshot's records read in")
+function ps__load_snapshot(persist_server_st: mut PersistServerState, v: Val) -> void {
+  persist_server_st.ps__seq = pj_int(v, "seq", 0)
+  persist_server_st.ps__snap_seq = persist_server_st.ps__seq
+  let players = pj_obj(v, "players")
+  if players == null { return }
+  for i in 0 .. Value.count(players) {
+    let id = Value.key_at(players, i)
+    let po = Value.at(players, i)
+    if not ps__name_ok(id, 64) or Value.kind(po) != 6 { continue }
+    let pl = ps__player(persist_server_st, `{id}`)
+    let nso = pj_obj(po, "ns")
+    if nso != null {
+      for k in 0 .. Value.count(nso) {
+        let ns = Value.key_at(nso, k)
+        let ro = Value.at(nso, k)
+        if not ps__name_ok(ns, 32) or Value.kind(ro) != 6 { continue }
+        let d = ps__clone(Value.get(ro, "d"), 0)
+        var ver = pj_int(ro, "v", 1)
+        let to = ps__migrate(ns, d, ver)
+        if to >= 0 { ver = to }
+        ps__install(persist_server_st, `{id}`, `{ns}`, pj_int(ro, "rev", 1), ver, d)
+      }
+    }
+    let memos = pj_list(po, "memo")
+    if memos != null {
+      for m in 0 .. Value.count(memos) {
+        let me = Value.at(memos, m)
+        let names = new []string
+        let l = pj_list(me, "ns")
+        if l != null { for k in 0 .. Value.count(l) { push(names, `{Value.as_str(Value.at(l, k))}`) } }
+        ps__memo_add(persist_server_st, pl, `{pj_str(me, "k", "")}`, names, sv_ints(me, "revs"), sv_ints(me, "vals"))
+      }
+    }
+  }
+}
+
+# Open the service's directory: the snapshot (or its backup), then the journal. PSO_OK with whatever it
+# found, or why nothing was opened. `persist_server_config` comes first (the directory is its `dir`).
+@alloc_ok("open: once per run of the service")
+export function persist_server_open(persist_server_st: mut PersistServerState) -> int {
+  let dir = persist_server_st.ps__cfg.dir
+  if len(dir) == 0 or not Fs.mkdir(dir) { return PSO_IO }
+  let snap = ps__path(persist_server_st, "snapshot.json")
+  let r = save_open(snap, snap + ".bak", ps__format())
+  if r.status == SAVE_FUTURE { return PSO_FUTURE }
+  if r.status == SAVE_CORRUPT { return PSO_CORRUPT }
+  if r.status == SAVE_OK {
+    ps__load_snapshot(persist_server_st, r.value)
+    Json.free_all(r.value)
+  }
+  let counts = new []int
+  push(counts, 0)
+  push(counts, 0)
+  ps__replay(persist_server_st, ps__path(persist_server_st, "journal.prev"), counts)
+  ps__replay(persist_server_st, ps__path(persist_server_st, "journal.log"), counts)
+  persist_server_st.ps__open = true
+  persist_server_st.ps__snap_at = persist_server_st.ps__time
+  let f = ps__fact(persist_server_st, PSF_RECOVERED, -1, "", "", "")
+  f.n = counts[0]
+  f.rev = counts[1]
+  return PSO_OK
+}
+
+export function persist_server_is_open(persist_server_st: PersistServerState) -> bool { return persist_server_st.ps__open }
+
+# write a snapshot now (a clean stop, a test)
+export function persist_server_snapshot(persist_server_st: mut PersistServerState) -> bool {
+  if not persist_server_st.ps__open { return false }
+  return ps__snapshot(persist_server_st)
+}

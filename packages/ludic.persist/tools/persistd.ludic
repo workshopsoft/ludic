@@ -1,0 +1,109 @@
+# persistd - the persistence service: player data kept on disk, answered over ludic.net.
+#
+#   persistd <dir> [port]          PERSIST_SECRET=<secret> in the environment
+#
+# <dir> holds journal.log, journal.prev, snapshot.json and its backup (see ludic.persist's README). The
+# tickets this build accepts are the ones a login service mints with the same secret:
+#
+#     <player>.<hmac-sha256 of the player, keyed by the secret, hex>            a player's own ticket
+#     service:<name>.<hmac-sha256 of "service:<name>", keyed, hex>               a game server's
+#
+# A game that has its own way of knowing who is who (a Steam session ticket checked with Valve's web API,
+# an account server) replaces `verify` below: it is the PersistAuth port and nothing else. The schemas are
+# the game's too: a game builds its own persistd with its `def PersistSchemas` and migrations beside this
+# file (see the example below), or compiles this one with `schemas.ludic` next to it.
+#
+#     ludic build packages/ludic.persist/tools/persistd.ludic -o persistd
+import "ludic.persist"
+import "ludic.net"
+import "ludic.base"
+program PersistD {
+  numbers float
+  import "wire.ludic"
+  import "schemas.ludic"
+
+  function verify(ticket: string) -> string {
+    let secret = Os.env_or("PERSIST_SECRET", "")
+    if secret == "" { return "" }
+    var dot = -1
+    for i in 0 .. len(ticket) { if ticket[i] == 46 { dot = i } }          # the last '.'
+    if dot <= 0 or dot >= len(ticket) - 1 { return "" }
+    let who = ticket[0..dot]
+    let tag = ticket[dot + 1..len(ticket)]
+    if not Crypto.verify_hmac(secret, who, tag) { return "" }
+    return who
+  }
+  bind PersistAuth { verify: fn verify }
+  bind PersistServerLink { send: fn srv_send, accept: fn srv_accept, drop: fn srv_drop }
+
+  # one frame from a peer: a stranger's hello, or a fragment of a request
+  function take(ps: mut PersistServerState, net: mut NetState, m: NetMessage, buf: []byte) -> void {
+    if m.kind != NET_HELLO and m.kind != PERSIST_KIND { return }
+    net_read(net, m)
+    let n = persist_net_read(net, buf)
+    if n < 0 { return }
+    if m.kind == NET_HELLO {
+      if not net_peer_on(net, m.slot) or net_peer_pid(net, m.slot) >= 2 { return }
+      persist_server_hello(ps, m.slot, buf, n)
+    } else if net_peer_pid(net, m.slot) >= 2 {
+      persist_server_receive(ps, m.slot, buf, n)
+    }
+  }
+
+  # what a person running the service wants to see: the unusual, one line each
+  function log_fact(f: PersistFact) -> void {
+    if f.what == PSF_DENY { print(`deny conn {f.conn}: {f.code}`) }
+    if f.what == PSF_RATE and f.n > 0 { print(`slow down {f.player} ({f.n} ms)`) }
+    if f.what == PSF_IO { print(`disk: {f.text} could not be written`) }
+    if f.what == PSF_SNAPSHOT { print(`snapshot at {f.n}`) }
+    if f.what == PSF_CLOSED and f.code != "gone" { print(`hung up conn {f.conn}: {f.code}`) }
+  }
+
+  entry (ps: mut PersistServerState, net: mut NetState) {
+    let dir = Os.arg(1)
+    if Os.arg_count() < 2 or len(dir) == 0 {
+      print("usage: persistd <dir> [port]   (PERSIST_SECRET in the environment)")
+      Os.exit(2)
+    }
+    var port = PERSIST_PORT
+    if Os.arg_count() > 2 { port = Text.to_int(Os.arg(2)) }
+    if Os.env_or("PERSIST_SECRET", "") == "" {
+      print("persistd: PERSIST_SECRET is not set, and no ticket could be checked")
+      Os.exit(2)
+    }
+    let cfg = new PersistConfig
+    cfg.dir = dir
+    persist_server_config(ps, cfg)
+    let st = persist_server_open(ps)
+    if st != PSO_OK {
+      print(`persistd: {dir} could not be opened (status {st}): nothing was written`)
+      Os.exit(3)
+    }
+    if not net_host(net, port, Random.range(1, 2000000000)) {
+      print(`persistd: port {port} is not free`)
+      Os.exit(4)
+    }
+    print(`persistd: {dir} open, {persist_server_records(ps)} records, listening on {port}`)
+    let buf = buffer(PW_FRAG + 16)
+    var last = Time.now_us()
+    while true {
+      let now = Time.now_us()
+      var dt = float(now - last) / 1000000.0
+      if dt > 0.25 { dt = 0.25 }
+      last = now
+      net_begin(net, dt)
+      let got = q_drain(net_inbox(net))
+      for i in 0 .. len(got) { take(ps, net, got[i], buf) }
+      net_update(net, dt)
+      persist_server_tick(ps, dt)
+      net_end(net)
+      let fs = q_drain(net_facts(net))
+      for i in 0 .. len(fs) {
+        if fs[i].what == NET_GONE or fs[i].what == NET_CLOSED { persist_server_closed(ps, fs[i].slot) }
+      }
+      let sf = q_drain(persist_server_facts(ps))
+      for i in 0 .. len(sf) { log_fact(sf[i]) }
+      Time.sleep_us(2000)
+    }
+  }
+}

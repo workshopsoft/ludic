@@ -1,0 +1,149 @@
+# server.ludic - the service's door: a stranger's hello, the frames of its messages, its leaving, and the clock.
+# The game (tools/persistd.ludic) reads its channel and calls these; what goes back goes through PersistServerLink.
+
+# hang up on a connection and forget it
+function ps__close(persist_server_st: mut PersistServerState, conn: int, why: string) -> void {
+  let c = ps__conn(persist_server_st, conn)
+  if c == null or not c.open { return }
+  c.open = false
+  c.authed = false
+  c.service = false
+  c.player = ""
+  pw_asm_reset(c.asm)
+  ps__fact(persist_server_st, PSF_CLOSED, conn, "", "", why)
+  PersistServerLink.drop(conn)
+}
+
+# the game tells the service a connection is gone (the channel's own word)
+export function persist_server_closed(persist_server_st: mut PersistServerState, conn: int) -> void {
+  let c = ps__conn(persist_server_st, conn)
+  if c == null or not c.open { return }
+  c.open = false
+  c.authed = false
+  c.service = false
+  c.player = ""
+  pw_asm_reset(c.asm)
+  ps__fact(persist_server_st, PSF_CLOSED, conn, "", "", "gone")
+}
+
+# a stranger's hello frame: {"p": protocol, "t": ticket}. The ticket goes to PersistAuth; a good one is let in
+# (PersistServerLink.accept) and told who it is, a bad one is told why and hung up on. True when let in.
+@alloc_ok("a hello is parsed once per connection")
+export function persist_server_hello(persist_server_st: mut PersistServerState, conn: int, frame: []byte, n: int) -> bool {
+  let c = ps__conn(persist_server_st, conn)
+  if c == null {
+    ps__fact(persist_server_st, PSF_DENY, conn, "", "", PE_BUSY)
+    PersistServerLink.drop(conn)
+    return false
+  }
+  if not persist_server_st.ps__open or c.open or n < 2 or frame[0] != PW_HELLO or n > PW_FRAG + 1 {
+    ps__deny(persist_server_st, conn, c, PE_BAD)
+    return false
+  }
+  for i in 1 .. n { persist_server_st.ps__tmp[i - 1] = frame[i] }
+  if ps__admit(persist_server_st, c, 1.0) > 0 {
+    ps__deny(persist_server_st, conn, c, PE_RATE)
+    return false
+  }
+  let text = ps__text(persist_server_st.ps__tmp, n - 1)
+  let req = ps__parse(text)
+  ps__give_back(text)
+  if req == null or pj_int(req, "p", 0) != PW_PROTO {
+    ps__free(req)
+    ps__deny(persist_server_st, conn, c, PE_BAD)
+    return false
+  }
+  let who = PersistAuth.verify(pj_str(req, "t", ""))
+  ps__free(req)
+  var id = who
+  var service = false
+  if Text.starts_with(who, "service:") {
+    service = true
+    id = who[8..len(who)]
+  }
+  if who == "" or not ps__name_ok(id, 64) {
+    ps__deny(persist_server_st, conn, c, PE_AUTH)
+    return false
+  }
+  if not PersistServerLink.accept(conn) {
+    ps__fact(persist_server_st, PSF_DENY, conn, id, "", PE_BUSY)
+    return false
+  }
+  c.open = true
+  c.authed = true
+  c.service = service
+  c.player = `{id}`
+  c.tokens = persist_server_st.ps__cfg.burst
+  c.at = persist_server_st.ps__time
+  let f = ps__fact(persist_server_st, PSF_AUTH, conn, id, "", "")
+  if service { f.n = 1 }
+  let r = Value.object()
+  Value.put(r, "op", Value.str("welcome"))
+  Value.put(r, "p", Value.int(PW_PROTO))
+  Value.put(r, "player", Value.str(`{id}`))
+  Value.put(r, "service", Value.bool(ps__b(service)))
+  Value.put(r, "max", Value.int(PW_MAX_MSG))
+  let ss = Value.list()
+  for i in 0 .. PSCHEMA_COUNT {
+    let o = Value.object()
+    Value.put(o, "ns", Value.str(PersistSchemas[i].key))
+    Value.put(o, "v", Value.int(PersistSchemas[i].version))
+    Value.add(ss, o)
+  }
+  Value.put(r, "schemas", ss)
+  ps__reply(persist_server_st, conn, r)
+  return true
+}
+
+function ps__b(b: bool) -> int {
+  if b { return 1 }
+  return 0
+}
+
+# refused: accepted for long enough to be told why, then dropped
+function ps__deny(persist_server_st: mut PersistServerState, conn: int, c: PsConn, code: string) -> void {
+  ps__fact(persist_server_st, PSF_DENY, conn, "", "", code)
+  if PersistServerLink.accept(conn) {
+    c.open = true
+    let r = Value.object()
+    Value.put(r, "op", Value.str("deny"))
+    Value.put(r, "code", Value.str(code))
+    ps__reply(persist_server_st, conn, r)
+    c.open = false
+  }
+  PersistServerLink.drop(conn)
+}
+
+# a data frame from a connection that was let in: a fragment of a request
+@alloc_ok("a request's text is made once and given back")
+export function persist_server_receive(persist_server_st: mut PersistServerState, conn: int, frame: []byte, n: int) -> void {
+  let c = ps__conn(persist_server_st, conn)
+  if c == null or not c.open or not c.authed { return }
+  let state = pw_feed(c.asm, frame, n)
+  if state == PW_BAD {
+    ps__close(persist_server_st, conn, PE_BAD)
+    return
+  }
+  if state != PW_DONE { return }
+  let text = ps__text(c.asm.buf, c.asm.len)
+  let req = ps__parse(text)
+  ps__give_back(text)
+  if req == null {
+    let f = ps__fact(persist_server_st, PSF_ERROR, conn, c.player, "", PE_BAD)
+    f.n = 0
+    if ps__admit(persist_server_st, c, 1.0) == 0 { ps__reply(persist_server_st, conn, ps__err(0, PE_BAD, "not a request")) }
+    return
+  }
+  ps__request(persist_server_st, conn, c, req)
+  ps__free(req)
+}
+
+# the clock, and the snapshot when it is due: enough entries, or the oldest one not in a snapshot is `snapshot_secs` old
+export function persist_server_tick(persist_server_st: mut PersistServerState, dt: float) -> void {
+  persist_server_st.ps__time += dt
+  if not persist_server_st.ps__open or persist_server_st.ps__pending == 0 { return }
+  let cfg = persist_server_st.ps__cfg
+  if persist_server_st.ps__pending >= cfg.snapshot_every or persist_server_st.ps__time - persist_server_st.ps__snap_at >= cfg.snapshot_secs {
+    ps__snapshot(persist_server_st)
+  }
+}

@@ -1,0 +1,252 @@
+# store_test.ludic - what survives a restart: the journal replayed, a snapshot taken and the journal
+# folded into it, a torn last write cut off, a damaged snapshot standing in its backup, a newer build's
+# snapshot refused, an old record carried forward, and a disk that refuses a write changing nothing
+import "ludic.persist"
+import "ludic.base"
+program StoreTest {
+  import "fixture/game.ludic"
+  friend module store_test of ludic_persist
+
+  function take(w: mut WireState, conn: int) -> string {
+    let a = pw_asm_new()
+    var last = ""
+    let keep = new []Frame
+    for i in 0 .. len(w.to_client) {
+      let f = w.to_client[i]
+      if f.conn != conn { push(keep, f); continue }
+      if pw_feed(a, f.data, f.len) == PW_DONE { last = text_of(a.buf, a.len) }
+    }
+    w.to_client = keep
+    return last
+  }
+
+  function open_with(ps: mut PersistServerState, w: mut WireState, dir: string) -> int {
+    wire_fresh(w)
+    persist_server_reset(ps)
+    let c = new PersistConfig
+    c.dir = dir
+    c.rate = 100000.0
+    c.burst = 100000.0
+    c.snapshot_every = 1000
+    persist_server_config(ps, c)
+    return persist_server_open(ps)
+  }
+
+  # a connection as the game's service, and a request asked on it
+  function service(ps: mut PersistServerState, w: mut WireState) -> void {
+    let out = buffer(PW_FRAG + 16)
+    let n = pw_hello_frame(out, "{\"p\":1,\"t\":\"service:game\"}")
+    persist_server_hello(ps, 3, out, n)
+    take(w, 3)
+  }
+
+  function ask(ps: mut PersistServerState, w: mut WireState, text: string) -> string {
+    let out = buffer(PW_FRAG + 16)
+    for k in 0 .. pw_frames(len(text)) { persist_server_receive(ps, 3, out, pw_frame(out, 1, text, k)) }
+    return take(w, 3)
+  }
+
+  function ok(reply: string) -> bool { return pj_bool(Json.parse(reply), "ok", false) }
+
+  function pay(ps: mut PersistServerState, w: mut WireState, player: string, key: string, n: int) -> string {
+    return ask(ps, w, `{{"id":1,"op":"txn","key":"{key}","as":"{player}","ops":[{{"ns":"wallet","op":"add","f":"cash","n":{n}}}]}}`)
+  }
+
+  function put_profile(ps: mut PersistServerState, w: mut WireState, player: string, base: int, level: int) -> string {
+    return ask(ps, w, `{{"id":1,"op":"put","ns":"profile","as":"{player}","base":{base},"d":{{"level":{level}}}}}`)
+  }
+
+  function jline(json: string) -> string { return ps__hex8(Hash.crc32(json)) + " " + json + "\n" }
+
+  test "a restart finds everything, revisions and transaction keys too" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("reopen")
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    service(ps, w)
+    expect(ok(pay(ps, w, "alice", "m1", 500)))
+    expect(ok(put_profile(ps, w, "alice", 0, 3)))
+    expect(ok(put_profile(ps, w, "alice", 1, 4)))
+    expect(ok(pay(ps, w, "bob", "m2", 7)))
+    expect_eq(persist_server_seq(ps), 4)
+    # the memory is gone; the disk is not
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    expect_eq(persist_server_records(ps), 3)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":600}")
+    expect_eq(persist_server_rev(ps, "alice", "profile"), 2)
+    expect_eq(persist_server_data(ps, "bob", "wallet"), "{\"cash\":107}")
+    expect_eq(persist_server_seq(ps), 4)
+    let f = q_drain(persist_server_facts(ps))
+    expect_eq(f[0].what, PSF_RECOVERED)
+    expect_eq(f[0].n, 4)
+    expect_eq(f[0].rev, 0)
+    # a key from before the restart is still the same transaction
+    service(ps, w)
+    let again = pay(ps, w, "alice", "m1", 500)
+    expect(pj_bool(Json.parse(again), "replay", false))
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":600}")
+  }
+
+  test "a snapshot folds the journal in, and the next restart starts from it" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("snap")
+    open_with(ps, w, dir)
+    ps.ps__cfg.snapshot_every = 5
+    service(ps, w)
+    for i in 0 .. 7 {
+      expect(ok(pay(ps, w, "alice", `m{i}`, 10)))
+      persist_server_tick(ps, 0.1)
+    }
+    expect_eq(persist_server_seq(ps), 7)
+    expect(Fs.exists(dir + "/snapshot.json"))
+    expect(Fs.exists(dir + "/journal.prev"))
+    # the journal holds only what came after the snapshot: two entries
+    let lines = Fs.read_text(dir + "/journal.log")
+    var n = 0
+    for i in 0 .. len(lines) { if lines[i] == 10 { n += 1 } }
+    expect_eq(n, 2)
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":170}")
+    expect_eq(persist_server_seq(ps), 7)
+    let f = q_drain(persist_server_facts(ps))
+    expect_eq(f[0].n, 2)                                              # only the two after the snapshot were replayed
+    # the sequence carries on
+    service(ps, w)
+    expect(ok(pay(ps, w, "alice", "later", 1)))
+    expect_eq(persist_server_seq(ps), 8)
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":171}")
+  }
+
+  test "a snapshot is taken when the time is up too, and only when something changed" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("snaptime")
+    open_with(ps, w, dir)
+    ps.ps__cfg.snapshot_secs = 30.0
+    persist_server_tick(ps, 100.0)
+    expect(not Fs.exists(dir + "/snapshot.json"))                     # nothing to snapshot
+    service(ps, w)
+    pay(ps, w, "alice", "a", 1)
+    persist_server_tick(ps, 10.0)
+    expect(not Fs.exists(dir + "/snapshot.json"))
+    persist_server_tick(ps, 25.0)
+    expect(Fs.exists(dir + "/snapshot.json"))
+    expect_eq(persist_server_pending(ps), 0)
+  }
+
+  test "a torn last write is cut off and the rest kept" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("torn")
+    open_with(ps, w, dir)
+    service(ps, w)
+    pay(ps, w, "alice", "a", 10)
+    pay(ps, w, "alice", "b", 10)
+    # the process died in the middle of a third
+    Fs.append_text(dir + "/journal.log", "0badc0de {\"s\":3,\"p\":\"alice\",\"r\":[{\"ns\":\"wal")
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":120}")
+    let f = q_drain(persist_server_facts(ps))
+    expect_eq(f[0].n, 2)
+    expect(f[0].rev > 20)                                             # the bytes cut off
+    # what is written from here is not stuck behind the garbage
+    service(ps, w)
+    pay(ps, w, "alice", "c", 10)
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":130}")
+  }
+
+  test "a line that does not check out stops the replay there" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("crc")
+    open_with(ps, w, dir)
+    service(ps, w)
+    pay(ps, w, "alice", "a", 10)
+    pay(ps, w, "alice", "b", 10)
+    pay(ps, w, "alice", "c", 10)
+    let text = Fs.read_text(dir + "/journal.log")
+    # a bit flipped in the second line's json
+    var first_end = 0
+    while text[first_end] != 10 { first_end += 1 }
+    let bad = text[0..first_end + 40] + "X" + text[first_end + 41..len(text)]
+    Fs.write_text(dir + "/journal.log", bad)
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":110}")      # the first line only
+    expect_eq(persist_server_seq(ps), 1)
+  }
+
+  test "a damaged snapshot stands in its backup, and the journals fill the gap" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("backup")
+    open_with(ps, w, dir)
+    service(ps, w)
+    for i in 0 .. 3 { pay(ps, w, "alice", `a{i}`, 1) }
+    expect(persist_server_snapshot(ps))                                 # snapshot A at 3
+    for i in 0 .. 3 { pay(ps, w, "alice", `b{i}`, 10) }
+    expect(persist_server_snapshot(ps))                                 # snapshot B at 6: A is the backup
+    pay(ps, w, "alice", "c0", 100)
+    expect(Fs.exists(dir + "/snapshot.json.bak"))
+    Fs.write_text(dir + "/snapshot.json", "{\"seq\": 6, \"players\": {\"alice\": {\"ns\": {")   # torn
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":233}")
+    expect_eq(persist_server_seq(ps), 7)
+  }
+
+  test "a snapshot and its backup both unreadable are not opened over" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("both")
+    open_with(ps, w, dir)
+    service(ps, w)
+    pay(ps, w, "alice", "a", 1)
+    persist_server_snapshot(ps)
+    persist_server_snapshot(ps)
+    Fs.write_text(dir + "/snapshot.json", "garbage")
+    Fs.write_text(dir + "/snapshot.json.bak", "garbage")
+    expect_eq(open_with(ps, w, dir), PSO_CORRUPT)
+    expect(not persist_server_is_open(ps))
+    expect_eq(Fs.read_text(dir + "/snapshot.json"), "garbage")          # nothing was written over it
+  }
+
+  test "a newer build's snapshot is refused and left alone" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("future")
+    Fs.write_text(dir + "/snapshot.json", "{\"format\":\"persist\",\"version\":9,\"seq\":4,\"players\":{}}")
+    expect_eq(open_with(ps, w, dir), PSO_FUTURE)
+    expect(Fs.read_text(dir + "/snapshot.json") != "")
+    let unused = persist_server_snapshot(ps)
+    expect(not unused)
+  }
+
+  test "a record from before a migration is carried forward as it is replayed" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("migrate")
+    # the journal of a build whose wallet was version 1 and kept "money"
+    let e1 = "{\"p\":\"alice\",\"r\":[{\"ns\":\"wallet\",\"rev\":1,\"v\":1,\"d\":{\"money\":7}}],\"s\":1}"
+    Fs.write_text(dir + "/journal.log", jline(e1))
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"money\":7,\"cash\":7}")
+    service(ps, w)
+    let got = ask(ps, w, "{\"id\":1,\"op\":\"get\",\"ns\":\"wallet\",\"as\":\"alice\"}")
+    expect_eq(pj_int(Json.parse(got), "v", 0), 2)
+    # and from a snapshot
+    persist_server_snapshot(ps)
+    expect_eq(open_with(ps, w, dir), PSO_OK)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"money\":7,\"cash\":7}")
+  }
+
+  test "a journal that cannot be written changes nothing and says so" (ps: mut PersistServerState, w: mut WireState) {
+    let dir = disk_fresh("io")
+    open_with(ps, w, dir)
+    service(ps, w)
+    pay(ps, w, "alice", "a", 10)
+    # the journal's place is taken by a directory: nothing can be appended
+    Fs.remove(dir + "/journal.log")
+    Fs.mkdir(dir + "/journal.log")
+    let r = pay(ps, w, "alice", "b", 10)
+    expect_eq(pj_str(Json.parse(r), "code", ""), "IO")
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":110}")
+    expect_eq(persist_server_rev(ps, "alice", "wallet"), 1)
+    let p = put_profile(ps, w, "alice", 0, 1)
+    expect_eq(pj_str(Json.parse(p), "code", ""), "IO")
+    expect_eq(persist_server_rev(ps, "alice", "profile"), 0)
+    # and the key was not spent: once the disk is back the same transaction goes through
+    Fs.remove(dir + "/journal.log")
+    let again = pay(ps, w, "alice", "b", 10)
+    expect(ok(again))
+    expect(not pj_bool(Json.parse(again), "replay", false))
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":120}")
+  }
+
+  test "a directory that cannot be made is not opened" (ps: mut PersistServerState, w: mut WireState) {
+    expect_eq(open_with(ps, w, ""), PSO_IO)
+  }
+}

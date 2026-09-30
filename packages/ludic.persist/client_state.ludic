@@ -1,0 +1,163 @@
+# client_state.ludic - what the client holds: a cache of records by namespace, the requests waiting to be sent
+# (one is out at a time, answered before the next goes: the channel is ordered and the service's answers
+# name the revision, so the cache and the service never have to guess the order), and the facts it reports
+
+export const PC_OFFLINE: int = 0        # no session: the cache answers, changes queue
+export const PC_CONNECTING: int = 1     # hello sent, no answer yet
+export const PC_ONLINE: int = 2
+export const PC_DENIED: int = 3         # the service would not have this ticket
+
+export const PCF_ONLINE: int = 0        # a session began (text: the player)
+export const PCF_OFFLINE: int = 1       # it ended
+export const PCF_DENIED: int = 2        # refused (code)
+export const PCF_LOADED: int = 3        # a record arrived (ns, rev, n: 1 found, 0 none yet)
+export const PCF_SAVED: int = 4         # a put was taken (ns, rev)
+export const PCF_SAVE_FAILED: int = 5   # a put was refused for good (ns, code)
+export const PCF_CONFLICT: int = 6      # the record moved under a put (ns, rev): persist_take_server / persist_keep_mine
+export const PCF_TXN_OK: int = 7        # a transaction was taken (key, n: 1 if it had been taken before)
+export const PCF_TXN_FAILED: int = 8    # a transaction was refused (key, code, n: the operation)
+export const PCF_RATE: int = 9          # told to slow down (n: milliseconds)
+export const PCF_SYNCED: int = 10       # everything queued has been answered
+export const PCF_QUEUED: int = 11       # something waits for a session (n: how many)
+
+export property PcRec {
+  ns: string = ""
+  rev: int = 0                  # the revision the cache is at: the last the service said
+  ver: int = 1
+  data: Val = null
+  loaded: bool = false
+  dirty: bool = false           # changed here, not yet taken by the service
+  stale: bool = false           # the service may have a newer one: fetch before trusting
+  conflict: bool = false
+  mine: Val = null              # in a conflict, what this side had
+  gen: int = 0                  # moves with every change made here
+}
+
+export property PcReq {
+  id: int = 0
+  op: string = ""
+  ns: string = ""
+  key: string = ""
+  body: string = ""             # the request's JSON without its id (and base, added as it goes out)
+  sent: bool = false
+  gen: int = 0                  # a put: the record's gen when it was made
+}
+
+export property PersistClientFact {
+  what: int = 0
+  ns: string = ""
+  key: string = ""
+  code: string = ""
+  rev: int = 0
+  n: int = 0
+  text: string = ""
+}
+
+function pc__facts__new() -> Queue<PersistClientFact> { return queue_new("persist.client") }
+
+export state PersistClientState {
+  pc__state: int = 0
+  pc__player: string = ""
+  pc__recs: []PcRec = new []PcRec
+  pc__reqs: []PcReq = new []PcReq
+  pc__next: int = 1
+  pc__nonce: int = 0
+  pc__keys: int = 0
+  pc__hold: float = 0.0
+  pc__time: float = 0.0
+  pc__asm: PwAsm = pw_asm_new()
+  pc__out: []byte = buffer(PW_FRAG + 16)
+  pc__hello: []byte = buffer(PW_FRAG + 16)
+  pc__hello_len: int = 0
+  pc__path: string = ""
+  pc__tx_key: string = ""
+  pc__tx_as: string = ""
+  pc__vals: []int = new []int
+  pc__tx_ops: Val = null
+  pc__dirty_cache: bool = false
+  pc__saved_at: float = 0.0
+  pc__facts: Queue<PersistClientFact> = pc__facts__new()
+}
+
+export function persist_client_facts(persist_client_st: PersistClientState) -> Queue<PersistClientFact> { return persist_client_st.pc__facts }
+
+function pc__fact(persist_client_st: mut PersistClientState, what: int, ns: string, key: string, code: string) -> PersistClientFact {
+  var f = q_rec(persist_client_st.pc__facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new PersistClientFact
+    q_ring_add(persist_client_st.pc__facts, f)
+  }
+  f.what = what
+  f.ns = intern(ns)
+  f.key = intern(key)
+  f.code = intern(code)
+  f.rev = 0
+  f.n = 0
+  f.text = ""
+  q_push(persist_client_st.pc__facts, f)
+  return f
+}
+
+export function persist_client_state(persist_client_st: PersistClientState) -> int { return persist_client_st.pc__state }
+export function persist_client_player(persist_client_st: PersistClientState) -> string { return persist_client_st.pc__player }
+export function persist_pending(persist_client_st: PersistClientState) -> int { return len(persist_client_st.pc__reqs) }
+export function persist_online(persist_client_st: PersistClientState) -> bool { return persist_client_st.pc__state == PC_ONLINE }
+
+function pc__rec(persist_client_st: PersistClientState, ns: string) -> PcRec {
+  for i in 0 .. len(persist_client_st.pc__recs) { if persist_client_st.pc__recs[i].ns == ns { return persist_client_st.pc__recs[i] } }
+  return null
+}
+
+@alloc_ok("a namespace's cache entry: made once")
+function pc__rec_make(persist_client_st: mut PersistClientState, ns: string) -> PcRec {
+  let r = pc__rec(persist_client_st, ns)
+  if r != null { return r }
+  let n = new PcRec
+  n.ns = `{ns}`
+  n.data = Value.object()
+  let s = ps__schema(ns)
+  if s >= 0 { n.ver = PersistSchemas[s].version }
+  push(persist_client_st.pc__recs, n)
+  return n
+}
+
+# the cached data of a namespace (null until it is loaded, here or from the cache file)
+export function persist_get(persist_client_st: PersistClientState, ns: string) -> Val {
+  let r = pc__rec(persist_client_st, ns)
+  if r == null or not r.loaded { return null }
+  return r.data
+}
+
+export function persist_loaded(persist_client_st: PersistClientState, ns: string) -> bool {
+  let r = pc__rec(persist_client_st, ns)
+  return r != null and r.loaded
+}
+
+export function persist_rev(persist_client_st: PersistClientState, ns: string) -> int {
+  let r = pc__rec(persist_client_st, ns)
+  if r == null { return 0 }
+  return r.rev
+}
+
+# changed here and not yet taken by the service
+export function persist_dirty(persist_client_st: PersistClientState, ns: string) -> bool {
+  let r = pc__rec(persist_client_st, ns)
+  return r != null and r.dirty
+}
+
+export function persist_conflict(persist_client_st: PersistClientState, ns: string) -> bool {
+  let r = pc__rec(persist_client_st, ns)
+  return r != null and r.conflict
+}
+
+# this machine's copy of a record in conflict (what it had before the service's came)
+export function persist_mine(persist_client_st: PersistClientState, ns: string) -> Val {
+  let r = pc__rec(persist_client_st, ns)
+  if r == null { return null }
+  return r.mine
+}
+
+# what the operations of the last transaction the service took left: the new number of each add, in order
+# (a balance after a payment), 1 for any other operation
+export function persist_txn_vals(persist_client_st: PersistClientState) -> []int { return persist_client_st.pc__vals }

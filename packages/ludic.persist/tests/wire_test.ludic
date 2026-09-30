@@ -1,0 +1,157 @@
+# wire_test.ludic - a message cut into frames and put back together, a frame that is not one, the JSON gate
+# in front of the parser, bounded copies, and the typed reads
+import "ludic.persist"
+import "ludic.base"
+program WireTest {
+  numbers float
+  friend module wire_test of ludic_persist
+
+  function message_of(n: int) -> string {
+    var s = ""
+    for i in 0 .. n { s = s + "abcdefghij"[(i % 10)..(i % 10) + 1] }
+    return s
+  }
+
+  # every frame of a message through a reassembler, the result's text
+  function round_trip(s: string) -> string {
+    let a = pw_asm_new()
+    let out = buffer(PW_FRAG + 16)
+    let count = pw_frames(len(s))
+    var state = PW_MORE
+    for k in 0 .. count {
+      let n = pw_frame(out, 7, s, k)
+      state = pw_feed(a, out, n)
+    }
+    if state != PW_DONE { return "<not done>" }
+    return text_of(a.buf, a.len)
+  }
+
+  test "a message of any size comes back whole" {
+    let sizes = [0, 1, 999, 1000, 1001, 2500, 65536]
+    for i in 0 .. len(sizes) {
+      let s = message_of(sizes[i])
+      expect_eq(round_trip(s), s)
+    }
+    expect_eq(pw_frames(0), 1)
+    expect_eq(pw_frames(1000), 1)
+    expect_eq(pw_frames(1001), 2)
+  }
+
+  test "a frame that is not part of a message is refused" {
+    let a = pw_asm_new()
+    let out = buffer(PW_FRAG + 16)
+    let s = message_of(2500)
+    let n1 = pw_frame(out, 1, s, 1)
+    expect_eq(pw_feed(a, out, n1), PW_BAD)                     # fragment 1 with no 0 before it
+    let n0 = pw_frame(out, 1, s, 0)
+    expect_eq(pw_feed(a, out, n0), PW_MORE)
+    let n2 = pw_frame(out, 1, s, 2)
+    expect_eq(pw_feed(a, out, n2), PW_BAD)                     # a fragment skipped
+    let other = pw_frame(out, 2, s, 0)
+    pw_feed(a, out, other)
+    let wrong_id = pw_frame(out, 3, s, 1)
+    expect_eq(pw_feed(a, out, wrong_id), PW_BAD)               # another message's
+    out[0] = 9
+    expect_eq(pw_feed(a, out, 12), PW_BAD)                     # not a data frame
+    expect_eq(pw_feed(a, out, 4), PW_BAD)                      # too short
+    expect_eq(pw_frame(out, 1, s, 3), -1)
+  }
+
+  test "a message larger than the most is refused, frame by frame" {
+    let a = pw_asm_new()
+    let out = buffer(PW_FRAG + 16)
+    let big = message_of(PW_MAX_MSG + 10)
+    var state = PW_MORE
+    var k = 0
+    while state == PW_MORE and k < pw_frames(len(big)) {
+      let n = pw_frame(out, 4, big, k)
+      state = pw_feed(a, out, n)
+      k += 1
+    }
+    expect_eq(state, PW_BAD)
+  }
+
+  test "a hello is one frame" {
+    let out = buffer(PW_FRAG + 16)
+    let n = pw_hello_frame(out, "{\"p\":1}")
+    expect_eq(n, 8)
+    expect_eq(out[0], PW_HELLO)
+    expect_eq(pw_hello_frame(out, message_of(1001)), -1)
+  }
+
+  test "the JSON gate" {
+    expect(ps__json_ok("{}", 12))
+    expect(ps__json_ok("{\"a\": [1, 2, {\"b\": \"}\"}], \"c\": \"x\\\"y\"}", 12))
+    expect(not ps__json_ok("", 12))
+    expect(not ps__json_ok("[1,2]", 12))                        # an object only
+    expect(not ps__json_ok("{\"a\": 1", 12))                    # cut short
+    expect(not ps__json_ok("{\"a\": \"open}", 12))
+    expect(not ps__json_ok("{}{}", 12))                         # one value
+    expect(not ps__json_ok("{} x", 12))
+    expect(not ps__json_ok("{\"a\": 1}}", 12))
+    var deep = "{\"a\":"
+    for i in 0 .. 30 { deep = deep + "[" }
+    for i in 0 .. 30 { deep = deep + "]" }
+    deep = deep + "}"
+    expect(not ps__json_ok(deep, 12))                           # nested past the limit
+    var ctl = "{\"a\": 1"
+    ctl = ctl + text_of(buffer(2), 0) + "}"
+    expect(ps__json_ok(ctl, 12))
+    let bad = buffer(6)
+    bad[0] = 123
+    bad[1] = 34
+    bad[2] = 1
+    bad[3] = 34
+    bad[4] = 125
+    expect(not ps__json_ok(text_of(bad, 5), 12))                # a control byte inside a string
+  }
+
+  # how deep objects nest in a value
+  function nest(v: Val) -> int {
+    if Value.kind(v) != 6 and Value.kind(v) != 5 { return 0 }
+    var best = 0
+    for i in 0 .. Value.count(v) {
+      let d = nest(Value.at(v, i))
+      if d > best { best = d }
+    }
+    return best + 1
+  }
+
+  test "a copy is bounded and owns its text" {
+    let v = Json.parse("{\"a\": {\"b\": {\"c\": {\"d\": {\"e\": {\"f\": {\"g\": {\"h\": {\"i\": {\"j\": 1}}}}}}}}}, \"s\": \"text\", \"n\": 7, \"l\": [1, \"x\", true]}")
+    let c = ps__clone(v, 0)
+    Json.free_all(v)
+    expect_eq(Json.encode(Value.get(c, "s")), "\"text\"")
+    expect_eq(pj_int(c, "n", 0), 7)
+    expect_eq(Value.count(Value.get(c, "l")), 3)
+    expect(nest(c) <= PS_DEPTH + 1)               # the deeper levels were cut
+    expect(nest(c) >= PS_DEPTH - 1)
+  }
+
+  test "typed reads give the fallback for the wrong kind" {
+    let v = Json.parse("{\"n\": 5, \"s\": \"x\", \"b\": true, \"o\": {}, \"l\": []}")
+    expect_eq(pj_int(v, "n", 0), 5)
+    expect_eq(pj_int(v, "s", 9), 9)
+    expect_eq(pj_str(v, "s", "?"), "x")
+    expect_eq(pj_str(v, "n", "?"), "?")
+    expect(pj_bool(v, "b", false))
+    expect(pj_obj(v, "o") != null)
+    expect(pj_obj(v, "l") == null)
+    expect(pj_list(v, "l") != null)
+    expect_eq(pj_int(null, "n", 3), 3)
+  }
+
+  test "names, hex and the crc" {
+    expect(ps__name_ok("steam:76561", 64))
+    expect(not ps__name_ok("has space", 64))
+    expect(not ps__name_ok("", 64))
+    expect(not ps__name_ok("a\nb", 64))
+    expect_eq(ps__hex8(255), "000000ff")
+    expect_eq(ps__hex8(Hash.crc32("123456789")), "cbf43926")
+    expect_eq(ps__unhex8("cbf43926 rest"), Hash.crc32("123456789"))
+    expect(ps__hex8_ok("cbf43926 rest"))
+    expect(not ps__hex8_ok("cbf4392"))
+    expect(not ps__hex8_ok("cbf4392z"))
+    expect(ps__unhex8("d068d2aa") < 0)                       # a checksum is any 32 bits
+  }
+}

@@ -1,0 +1,364 @@
+# server_test.ludic - the service in process: who is let in, what each identity may read and write, records
+# with revisions and versions, atomic transactions and their keys, the rate limit, and requests that are garbage
+import "ludic.persist"
+import "ludic.base"
+program ServerTest {
+  import "fixture/game.ludic"
+  friend module server_test of ludic_persist
+
+  state Msgs { id: int = 100 }
+
+  function fresh(ps: mut PersistServerState, w: mut WireState, name: string) -> void {
+    wire_fresh(w)
+    persist_server_reset(ps)
+    let c = new PersistConfig
+    c.dir = disk_fresh(name)
+    persist_server_config(ps, c)
+    expect_eq(persist_server_open(ps), PSO_OK)
+  }
+
+  # the last whole message the service sent to a connection, taken off the wire ("" if none)
+  function take(w: mut WireState, conn: int) -> string {
+    let a = pw_asm_new()
+    var last = ""
+    let keep = new []Frame
+    for i in 0 .. len(w.to_client) {
+      let f = w.to_client[i]
+      if f.conn != conn { push(keep, f); continue }
+      if pw_feed(a, f.data, f.len) == PW_DONE { last = text_of(a.buf, a.len) }
+    }
+    w.to_client = keep
+    return last
+  }
+
+  function hello(ps: mut PersistServerState, w: mut WireState, conn: int, ticket: string) -> bool {
+    let out = buffer(PW_FRAG + 16)
+    let n = pw_hello_frame(out, `{{"p":1,"t":"{ticket}"}}`)
+    return persist_server_hello(ps, conn, out, n)
+  }
+
+  # open a connection as a ticket, and leave the welcome unread
+  function join(ps: mut PersistServerState, w: mut WireState, conn: int, ticket: string) -> void {
+    expect(hello(ps, w, conn, ticket))
+    take(w, conn)
+  }
+
+  function ask(ps: mut PersistServerState, w: mut WireState, conn: int, text: string) -> string {
+    let out = buffer(PW_FRAG + 16)
+    let count = pw_frames(len(text))
+    for k in 0 .. count {
+      let n = pw_frame(out, 5, text, k)
+      persist_server_receive(ps, conn, out, n)
+    }
+    return take(w, conn)
+  }
+
+  function code_of(reply: string) -> string {
+    let v = Json.parse(reply)
+    if v == null { return "<not json>" }
+    if pj_bool(v, "ok", false) { return "ok" }
+    return pj_str(v, "code", "?")
+  }
+
+  function int_of(reply: string, key: string) -> int { return pj_int(Json.parse(reply), key, -999) }
+
+  test "a good ticket is welcomed, a bad one told why and dropped" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "hello")
+    expect(hello(ps, w, 1, "player:alice"))
+    let welcome = Json.parse(take(w, 1))
+    expect_eq(pj_str(welcome, "op", ""), "welcome")
+    expect_eq(pj_str(welcome, "player", ""), "alice")
+    expect(not pj_bool(welcome, "service", true))
+    expect_eq(Value.count(pj_list(welcome, "schemas")), 5)
+    expect(not hello(ps, w, 2, "player:mallory"))
+    let deny = Json.parse(take(w, 2))
+    expect_eq(pj_str(deny, "op", ""), "deny")
+    expect_eq(pj_str(deny, "code", ""), "AUTH")
+    expect_eq(w.dropped[0], 2)
+    expect(hello(ps, w, 3, "service:game"))
+    expect(pj_bool(Json.parse(take(w, 3)), "service", false))
+  }
+
+  test "a hello twice, a hello that is not one, and no room" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "hello2")
+    join(ps, w, 1, "player:alice")
+    expect(not hello(ps, w, 1, "player:alice"))
+    let junk = buffer(8)
+    junk[0] = PW_HELLO
+    junk[1] = 123
+    expect(not persist_server_hello(ps, 4, junk, 2))
+    expect(not hello(ps, w, 500, "player:alice"))                  # past max_conns
+    let small = new PersistConfig
+    small.dir = ps.ps__cfg.dir
+    small.max_conns = 2
+    persist_server_config(ps, small)
+    expect(not hello(ps, w, 5, "player:bob"))
+    w.accept_all = false
+    expect(not hello(ps, w, 0, "player:bob"))                       # the game's channel would not have them
+  }
+
+  test "a record is read, put, and put again only from the revision the writer has" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "put")
+    join(ps, w, 1, "player:alice")
+    let r0 = ask(ps, w, 1, "{\"id\":1,\"op\":\"get\",\"ns\":\"profile\"}")
+    expect(not pj_bool(Json.parse(r0), "found", true))
+    expect_eq(int_of(r0, "rev"), 0)
+    let r1 = ask(ps, w, 1, "{\"id\":2,\"op\":\"put\",\"ns\":\"profile\",\"base\":0,\"d\":{\"name\":\"Ann\",\"level\":3}}")
+    expect_eq(code_of(r1), "ok")
+    expect_eq(int_of(r1, "rev"), 1)
+    let r2 = ask(ps, w, 1, "{\"id\":3,\"op\":\"get\",\"ns\":\"profile\"}")
+    expect_eq(int_of(r2, "rev"), 1)
+    expect_eq(pj_int(pj_obj(Json.parse(r2), "d"), "level", 0), 3)
+    expect_eq(pj_int(Json.parse(r2), "id", 0), 3)
+    # a second put against the old revision finds the record moved, and is given the current one
+    let r3 = ask(ps, w, 1, "{\"id\":4,\"op\":\"put\",\"ns\":\"profile\",\"base\":0,\"d\":{\"name\":\"Zed\"}}")
+    expect_eq(code_of(r3), "CONFLICT")
+    expect_eq(int_of(r3, "rev"), 1)
+    expect_eq(pj_str(pj_obj(Json.parse(r3), "d"), "name", ""), "Ann")
+    let r4 = ask(ps, w, 1, "{\"id\":5,\"op\":\"put\",\"ns\":\"profile\",\"base\":1,\"d\":{\"name\":\"Ann\",\"level\":4}}")
+    expect_eq(int_of(r4, "rev"), 2)
+    expect_eq(persist_server_rev(ps, "alice", "profile"), 2)
+    expect_eq(persist_server_rev(ps, "bob", "profile"), 0)
+  }
+
+  test "versions: a newer record is refused, an older one is carried forward" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "ver")
+    join(ps, w, 3, "service:game")
+    let newer = ask(ps, w, 3, "{\"id\":1,\"op\":\"put\",\"ns\":\"wallet\",\"as\":\"alice\",\"base\":0,\"v\":3,\"d\":{\"cash\":1}}")
+    expect_eq(code_of(newer), "VERSION")
+    let old = ask(ps, w, 3, "{\"id\":2,\"op\":\"put\",\"ns\":\"wallet\",\"as\":\"alice\",\"base\":0,\"v\":1,\"d\":{\"money\":250}}")
+    expect_eq(code_of(old), "ok")
+    let got = ask(ps, w, 3, "{\"id\":3,\"op\":\"get\",\"ns\":\"wallet\",\"as\":\"alice\"}")
+    expect_eq(pj_int(Json.parse(got), "v", 0), 2)
+    expect_eq(pj_int(pj_obj(Json.parse(got), "d"), "cash", -1), 250)
+  }
+
+  test "size: a record past its schema's bytes, and a player past theirs" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "size")
+    join(ps, w, 1, "player:alice")
+    var big = "{\"id\":1,\"op\":\"put\",\"ns\":\"profile\",\"base\":0,\"d\":{\"bio\":\""
+    for i in 0 .. 60 { big = big + "0123456789" }
+    big = big + "\"}}"
+    expect_eq(code_of(ask(ps, w, 1, big)), "SIZE")
+    expect_eq(persist_server_rev(ps, "alice", "profile"), 0)
+    let c = new PersistConfig
+    c.dir = ps.ps__cfg.dir
+    c.max_player_bytes = 120
+    persist_server_config(ps, c)
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":2,\"op\":\"put\",\"ns\":\"profile\",\"base\":0,\"d\":{\"a\":\"0123456789012345678901234567890123456789\"}}")), "ok")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":3,\"op\":\"put\",\"ns\":\"cars\",\"base\":0,\"d\":{\"a\":\"0123456789012345678901234567890123456789012345678901234567890123456789\"}}")), "SIZE")
+  }
+
+  test "who may do what" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "who")
+    join(ps, w, 1, "player:alice")
+    join(ps, w, 2, "player:bob")
+    join(ps, w, 3, "service:game")
+    # a wallet is the service's: a player may neither put nor spend it
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":1,\"op\":\"put\",\"ns\":\"wallet\",\"base\":0,\"d\":{\"cash\":99999}}")), "DENIED")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":2,\"op\":\"txn\",\"key\":\"k1\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":5000}]}")), "DENIED")
+    # nobody writes a sealed record outright; the service changes it through a transaction
+    expect_eq(code_of(ask(ps, w, 3, "{\"id\":3,\"op\":\"put\",\"ns\":\"sealed\",\"as\":\"alice\",\"base\":0,\"d\":{}}")), "DENIED")
+    expect_eq(code_of(ask(ps, w, 3, "{\"id\":4,\"op\":\"txn\",\"key\":\"s1\",\"as\":\"alice\",\"ops\":[{\"ns\":\"sealed\",\"op\":\"set\",\"f\":\"x\",\"v\":1}]}")), "ok")
+    # alice's unlocks are hers to replace but only the service grants them by transaction
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":5,\"op\":\"put\",\"ns\":\"unlocks\",\"base\":0,\"d\":{\"a\":1}}")), "ok")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":6,\"op\":\"txn\",\"key\":\"u1\",\"ops\":[{\"ns\":\"unlocks\",\"op\":\"set\",\"f\":\"b\",\"v\":1}]}")), "DENIED")
+    # a player cannot reach another's records, or act as them; a service can
+    expect_eq(code_of(ask(ps, w, 2, "{\"id\":7,\"op\":\"get\",\"ns\":\"unlocks\",\"as\":\"alice\"}")), "DENIED")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":8,\"op\":\"put\",\"ns\":\"profile\",\"as\":\"bob\",\"base\":0,\"d\":{}}")), "DENIED")
+    expect_eq(code_of(ask(ps, w, 3, "{\"id\":9,\"op\":\"get\",\"ns\":\"unlocks\",\"as\":\"alice\"}")), "ok")
+    expect_eq(code_of(ask(ps, w, 2, "{\"id\":10,\"op\":\"get\",\"ns\":\"nothing\"}")), "UNKNOWN")
+    expect_eq(code_of(ask(ps, w, 2, "{\"id\":11,\"op\":\"dance\"}")), "UNKNOWN")
+    # a delete is a service's
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":12,\"op\":\"del\",\"ns\":\"unlocks\"}")), "DENIED")
+    expect_eq(code_of(ask(ps, w, 3, "{\"id\":13,\"op\":\"del\",\"ns\":\"unlocks\",\"as\":\"alice\"}")), "ok")
+    expect_eq(persist_server_rev(ps, "alice", "unlocks"), 0)
+    expect_eq(code_of(ask(ps, w, 3, "{\"id\":14,\"op\":\"del\",\"ns\":\"unlocks\",\"as\":\"alice\"}")), "NOT_FOUND")
+  }
+
+  test "a transaction starts from the schema's init, and spends only what is there" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "txn")
+    join(ps, w, 3, "service:game")
+    let t1 = ask(ps, w, 3, "{\"id\":1,\"op\":\"txn\",\"key\":\"buy-1\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":-70,\"min\":0}]}")
+    expect_eq(code_of(t1), "ok")
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":30}")
+    expect_eq(persist_server_rev(ps, "alice", "wallet"), 1)
+    let t2 = ask(ps, w, 3, "{\"id\":2,\"op\":\"txn\",\"key\":\"buy-2\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":-70,\"min\":0}]}")
+    expect_eq(code_of(t2), "INSUFFICIENT")
+    expect_eq(int_of(t2, "op"), 0)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":30}")
+    expect_eq(persist_server_rev(ps, "alice", "wallet"), 1)
+  }
+
+  test "a transaction is all or nothing, across namespaces" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "atomic")
+    join(ps, w, 3, "service:game")
+    # buy a car: cash down, the car in the list; the second operation cannot be done so the first is not
+    let bad = ask(ps, w, 3, "{\"id\":1,\"op\":\"txn\",\"key\":\"car-1\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":-50,\"min\":0},{\"ns\":\"cars\",\"op\":\"remove\",\"f\":\"owned\",\"v\":\"sedan\"}]}")
+    expect_eq(code_of(bad), "NOT_FOUND")
+    expect_eq(int_of(bad, "op"), 1)
+    expect_eq(persist_server_rev(ps, "alice", "wallet"), 0)
+    expect_eq(persist_server_rev(ps, "alice", "cars"), 0)
+    let good = ask(ps, w, 3, "{\"id\":2,\"op\":\"txn\",\"key\":\"car-2\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":-50,\"min\":0},{\"ns\":\"cars\",\"op\":\"push\",\"f\":\"owned\",\"v\":\"sedan\",\"unique\":true}]}")
+    expect_eq(code_of(good), "ok")
+    expect_eq(Value.count(pj_list(Json.parse(good), "revs")), 2)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":50}")
+    expect_eq(persist_server_data(ps, "alice", "cars"), "{\"owned\":[\"sedan\"]}")
+  }
+
+  test "a transaction's key: the same key again is the first answer, not a second transaction" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "idem")
+    join(ps, w, 3, "service:game")
+    let q = "{\"id\":1,\"op\":\"txn\",\"key\":\"mission-7:alice:money\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":500}]}"
+    let first = ask(ps, w, 3, q)
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":600}")
+    expect(not pj_bool(Json.parse(first), "replay", false))
+    let again = ask(ps, w, 3, q)
+    expect_eq(code_of(again), "ok")
+    expect(pj_bool(Json.parse(again), "replay", false))
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":600}")
+    expect_eq(persist_server_rev(ps, "alice", "wallet"), 1)
+    # ... from any connection: the key is the player's
+    join(ps, w, 4, "service:game")
+    expect(pj_bool(Json.parse(ask(ps, w, 4, q)), "replay", false))
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":600}")
+    expect_eq(pj_int(Json.parse(first), "id", 0), 1)
+    let other = ask(ps, w, 3, "{\"id\":2,\"op\":\"txn\",\"key\":\"mission-8:alice:money\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":500}]}")
+    expect(not pj_bool(Json.parse(other), "replay", false))
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":1100}")
+  }
+
+  test "the keys remembered are the last few" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "memos")
+    let c = new PersistConfig
+    c.dir = ps.ps__cfg.dir
+    c.memos = 3
+    c.rate = 10000.0
+    c.burst = 10000.0
+    persist_server_config(ps, c)
+    join(ps, w, 3, "service:game")
+    for i in 0 .. 5 {
+      ask(ps, w, 3, `{{"id":{i},"op":"txn","key":"k{i}","as":"alice","ops":[{{"ns":"wallet","op":"add","f":"cash","n":1}}]}}`)
+    }
+    expect_eq(persist_server_data(ps, "alice", "wallet"), "{\"cash\":105}")
+    # k0 is forgotten: it would be done again; k4 is remembered
+    expect(pj_bool(Json.parse(ask(ps, w, 3, "{\"id\":9,\"op\":\"txn\",\"key\":\"k4\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":1}]}")), "replay", false))
+    expect(not pj_bool(Json.parse(ask(ps, w, 3, "{\"id\":9,\"op\":\"txn\",\"key\":\"k0\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":1}]}")), "replay", false))
+  }
+
+  test "a transaction needs a key, and a bounded number of operations" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "bad")
+    join(ps, w, 1, "player:alice")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":1,\"op\":\"txn\",\"ops\":[{\"ns\":\"profile\",\"op\":\"add\",\"f\":\"x\",\"n\":1}]}")), "BAD")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":2,\"op\":\"txn\",\"key\":\"a b\",\"ops\":[{\"ns\":\"profile\",\"op\":\"add\",\"f\":\"x\",\"n\":1}]}")), "BAD")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":3,\"op\":\"txn\",\"key\":\"k\",\"ops\":[]}")), "BAD")
+    var many = "{\"id\":4,\"op\":\"txn\",\"key\":\"k\",\"ops\":["
+    for i in 0 .. 20 { many = many + "{\"ns\":\"profile\",\"op\":\"add\",\"f\":\"x\",\"n\":1}," }
+    many = many + "{\"ns\":\"profile\",\"op\":\"add\",\"f\":\"x\",\"n\":1}]}"
+    expect_eq(code_of(ask(ps, w, 1, many)), "BAD")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":5,\"op\":\"txn\",\"key\":\"k\",\"ops\":[{\"ns\":\"profile\",\"op\":\"add\",\"f\":\"x\",\"n\":1}]}")), "ok")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":6,\"op\":\"list\"}")), "ok")
+    let l = Json.parse(ask(ps, w, 1, "{\"id\":7,\"op\":\"list\"}"))
+    expect_eq(Value.count(pj_list(l, "recs")), 1)
+    let ping = Json.parse(ask(ps, w, 1, "{\"id\":8,\"op\":\"ping\"}"))
+    expect_eq(pj_int(ping, "id", 0), 8)
+  }
+
+  test "the rate limit: a burst is turned back with how long to wait, the bucket refills with time" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "rate")
+    let c = new PersistConfig
+    c.dir = ps.ps__cfg.dir
+    c.rate = 10.0
+    c.burst = 5.0
+    persist_server_config(ps, c)
+    join(ps, w, 1, "player:alice")
+    var ok = 0
+    var slow = 0
+    var retry = 0
+    for i in 0 .. 12 {
+      let r = ask(ps, w, 1, `{{"id":{i},"op":"ping"}}`)
+      if code_of(r) == "ok" { ok += 1 }
+      if code_of(r) == "RATE" {
+        slow += 1
+        retry = int_of(r, "retry")
+      }
+    }
+    expect_eq(ok, 5)
+    expect_eq(slow, 7)
+    expect(retry > 0 and retry <= 101)
+    persist_server_tick(ps, 0.5)
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":20,\"op\":\"ping\"}")), "ok")
+    # a write costs two
+    persist_server_tick(ps, 10.0)
+    var puts = 0
+    for i in 0 .. 5 {
+      if code_of(ask(ps, w, 1, `{{"id":{30 + i},"op":"put","ns":"profile","base":{i},"d":{{"n":{i}}}}}`)) == "ok" { puts += 1 }
+    }
+    expect_eq(puts, 2)
+  }
+
+  test "a flood is hung up on" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "flood")
+    join(ps, w, 1, "player:alice")
+    for i in 0 .. 400 { ask(ps, w, 1, `{{"id":{i},"op":"ping"}}`) }
+    var closed = 0
+    for i in 0 .. len(w.dropped) { if w.dropped[i] == 1 { closed += 1 } }
+    expect(closed >= 1)
+    expect_eq(ask(ps, w, 1, "{\"id\":1,\"op\":\"ping\"}"), "")         # nothing more is heard from it
+  }
+
+  test "garbage does not stop the service" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "garbage")
+    join(ps, w, 1, "player:alice")
+    let c = new PersistConfig
+    c.dir = ps.ps__cfg.dir
+    c.rate = 10000.0
+    c.burst = 10000.0
+    persist_server_config(ps, c)
+    expect_eq(code_of(ask(ps, w, 1, "not json at all")), "BAD")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\": 1, \"op\": \"get\"")), "BAD")
+    expect_eq(code_of(ask(ps, w, 1, "[1,2,3]")), "BAD")
+    expect_eq(code_of(ask(ps, w, 1, "{\"a\":[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]}")), "BAD")
+    expect_eq(code_of(ask(ps, w, 1, "{}")), "UNKNOWN")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":\"x\",\"op\":7}")), "UNKNOWN")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":1,\"op\":\"put\",\"ns\":\"profile\",\"d\":5}")), "BAD")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":1,\"op\":\"put\",\"ns\":\"profile\",\"base\":\"a\",\"d\":{}}")), "ok")
+    expect_eq(code_of(ask(ps, w, 1, "{\"id\":1,\"op\":\"txn\",\"key\":\"k\",\"ops\":[5,\"x\",null]}")), "UNKNOWN")
+    # a frame that is not part of a message hangs up; a frame from a stranger is ignored
+    let junk = buffer(20)
+    junk[0] = 9
+    persist_server_receive(ps, 1, junk, 12)
+    expect_eq(w.dropped[len(w.dropped) - 1], 1)
+    persist_server_receive(ps, 7, junk, 12)
+    expect_eq(ask(ps, w, 1, "{\"id\":1,\"op\":\"ping\"}"), "")
+    join(ps, w, 2, "player:alice")
+    expect_eq(code_of(ask(ps, w, 2, "{\"id\":1,\"op\":\"ping\"}")), "ok")
+  }
+
+  test "the service reports what it did as facts" (ps: mut PersistServerState, w: mut WireState) {
+    fresh(ps, w, "facts")
+    q_clear(persist_server_facts(ps))
+    join(ps, w, 3, "service:game")
+    ask(ps, w, 3, "{\"id\":1,\"op\":\"txn\",\"key\":\"k\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":1}]}")
+    ask(ps, w, 3, "{\"id\":2,\"op\":\"txn\",\"key\":\"k\",\"as\":\"alice\",\"ops\":[{\"ns\":\"wallet\",\"op\":\"add\",\"f\":\"cash\",\"n\":1}]}")
+    ask(ps, w, 3, "{\"id\":3,\"op\":\"put\",\"ns\":\"unlocks\",\"as\":\"alice\",\"base\":4,\"d\":{}}")
+    let fs = q_drain(persist_server_facts(ps))
+    var auth = 0
+    var txn = 0
+    var replay = 0
+    var conflict = 0
+    var err = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == PSF_AUTH { auth += 1 }
+      if fs[i].what == PSF_TXN { txn += 1 }
+      if fs[i].what == PSF_REPLAY { replay += 1 }
+      if fs[i].what == PSF_CONFLICT { conflict += 1 }
+      if fs[i].what == PSF_ERROR { err += 1 }
+    }
+    expect_eq(auth, 1)
+    expect_eq(txn, 1)
+    expect_eq(replay, 1)
+    expect_eq(conflict, 1)
+    expect_eq(err, 1)
+  }
+}

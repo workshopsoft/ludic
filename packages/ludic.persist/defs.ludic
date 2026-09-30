@@ -1,0 +1,89 @@
+# defs.ludic - the schemas a game declares, the ports the service and the client are wired through, and
+# the error codes of the protocol
+
+# who may do something to a record
+export const PW_PLAYER: int = 0         # the player it belongs to (and a service acting for them)
+export const PW_SERVICE: int = 1        # a service only: the game's own server
+export const PW_NONE: int = 2           # nobody (a record only a transaction the service allows changes)
+
+# a namespace: one kind of record a player has (a character, a purse, properties, cars, unlocks). A
+# record is versioned: the game declares the steps that carry an older one forward into the open registry
+# SaveMigrations of ludic.save, as `def SaveMigrations wallet_1_2 { format: "persist.wallet", from: 1, run: fn m }`;
+# the format is "persist." and the namespace's key
+export property PersistSchema {
+  key: string = ""
+  @Range(1, 1000) version: int = 1
+  @Range(16, 1000000) max_bytes: int = 4096        # what a record encodes to, at most
+  @OneOf(PW_PLAYER, PW_SERVICE, PW_NONE) write: int = 0    # who may replace it outright (put)
+  @OneOf(PW_PLAYER, PW_SERVICE, PW_NONE) txn: int = 0      # who may change it with a transaction
+  init: string = "{}"                               # JSON of a new record's data: where a transaction starts
+}
+@AppendOnly @ByKey
+export open registry PersistSchemas of PersistSchema as PSCHEMA
+
+export const PW_PROTO: int = 1
+export const PW_FRAG: int = 1000                    # the most bytes of a message in one frame
+export const PW_MAX_MSG: int = 65536                # the largest message, reassembled
+export const PW_HELLO: int = 1                      # a frame: the hello (JSON text after the byte)
+export const PW_DATA: int = 2                       # a frame: a fragment of a message
+
+# what a request that failed says, as `code`
+export const PE_BAD: string = "BAD"                 # malformed
+export const PE_AUTH: string = "AUTH"               # no, or a wrong, ticket
+export const PE_DENIED: string = "DENIED"           # this identity may not do that
+export const PE_UNKNOWN: string = "UNKNOWN"         # no such namespace or operation
+export const PE_VERSION: string = "VERSION"         # a record from a newer build than the service's
+export const PE_SIZE: string = "SIZE"               # too big
+export const PE_CONFLICT: string = "CONFLICT"       # the record moved: its current copy comes back
+export const PE_INSUFFICIENT: string = "INSUFFICIENT"   # a transaction's number would pass its floor or ceiling
+export const PE_NOT_FOUND: string = "NOT_FOUND"
+export const PE_TYPE: string = "TYPE"               # an operation on a field of the wrong kind
+export const PE_RATE: string = "RATE"               # slow down: `retry` milliseconds
+export const PE_IO: string = "IO"                   # the journal could not be written: nothing was done
+export const PE_BUSY: string = "BUSY"               # no room for another connection
+
+# the game's wiring on the service side. Unbound: nothing is sent, every ticket is refused.
+export port PersistServerLink {
+  send: fn(int, []byte, int) -> void = fn ps__link_nothing      # (conn, frame, length) put a frame on the connection
+  accept: fn(int) -> bool = fn ps__link_yes                     # (conn) let a stranger in (net_accept): false, and they are turned away
+  drop: fn(int) -> void = fn ps__link_drop_nothing              # (conn) hang up
+}
+function ps__link_nothing(conn: int, b: []byte, n: int) -> void { }
+function ps__link_yes(conn: int) -> bool { return true }
+function ps__link_drop_nothing(conn: int) -> void { }
+
+# who a ticket belongs to: "" refuses it, "service:<name>" is a game server (which may act for any
+# player), anything else is a player's id. The game plugs in a Steam session ticket check or its own.
+export port PersistAuth {
+  verify: fn(string) -> string = fn ps__auth_none
+}
+function ps__auth_none(ticket: string) -> string { return "" }
+
+# the client's wiring
+export port PersistClientLink {
+  send: fn([]byte, int) -> void = fn pc__link_nothing           # (frame, length) to the service
+}
+function pc__link_nothing(b: []byte, n: int) -> void { }
+
+# what the client tells the service it is: a ticket (a Steam auth ticket in hex, or the game's own), and
+# the entropy its transaction keys start from
+export port PersistClientWorld {
+  ticket: fn() -> string = fn pc__no_ticket
+  seed: fn() -> int = fn pc__seed_one
+}
+function pc__no_ticket() -> string { return "" }
+function pc__seed_one() -> int { return 1 }
+
+# how the service is configured
+export property PersistConfig {
+  dir: string = ""                     # where the journal and the snapshot live
+  snapshot_every: int = 200            # journal entries before a snapshot
+  snapshot_secs: float = 300.0         # or this long with anything unsnapshotted
+  rate: float = 20.0                   # requests a second a connection may make
+  burst: float = 40.0                  # ... in a burst
+  write_cost: float = 2.0              # a put or a transaction costs this many requests
+  max_conns: int = 64
+  max_player_bytes: int = 65536        # everything one player may hold
+  memos: int = 64                      # transaction keys remembered per player
+  max_ops: int = 16                    # operations in a transaction
+}

@@ -1,0 +1,355 @@
+# server_req.ludic - what a connection may ask. A request is a JSON object {"id": n, "op": "...", ...}; every
+# answer carries the id and "ok". Operations:
+#
+#   get    ns                                   -> found, rev, v, d
+#   put    ns base v d                          replace a record: `base` is the revision the client has (0: none)
+#   txn    key ops                              atomic operations (ops.ludic) over one or more namespaces
+#   del    ns                                   remove a record (a service only)
+#   list                                        -> recs: [{ns, rev, v}]
+#   ping                                        -> t (the service's clock, milliseconds)
+#
+# A service (a game server) may add "as": <player> to act for that player. Everything else a player does
+# is their own.
+
+@alloc_ok("a reply is made per request")
+function ps__ok(id: int) -> Val {
+  let r = Value.object()
+  Value.put(r, "id", Value.int(id))
+  Value.put(r, "ok", Value.bool(1))
+  return r
+}
+
+@alloc_ok("a reply is made per request")
+function ps__err(id: int, code: string, why: string) -> Val {
+  let r = Value.object()
+  Value.put(r, "id", Value.int(id))
+  Value.put(r, "ok", Value.bool(0))
+  Value.put(r, "code", Value.str(code))
+  if why != "" { Value.put(r, "why", Value.str(why)) }
+  return r
+}
+
+# a message's text into frames on the connection
+function ps__send_text(persist_server_st: mut PersistServerState, conn: int, text: string) -> void {
+  let c = persist_server_st.ps__conns[conn]
+  let id = c.out_id
+  c.out_id += 1
+  let count = pw_frames(len(text))
+  for k in 0 .. count {
+    let n = pw_frame(persist_server_st.ps__out, id, text, k)
+    if n > 0 { PersistServerLink.send(conn, persist_server_st.ps__out, n) }
+  }
+}
+
+# a reply sent and given back
+function ps__reply(persist_server_st: mut PersistServerState, conn: int, r: Val) -> void {
+  let text = Json.encode(r)
+  ps__send_text(persist_server_st, conn, text)
+  ps__give_back(text)
+  Json.free_all(r)
+}
+
+# the slot of a connection, made on its first word; null past the most
+@alloc_ok("a connection's slot and its reassembler are made once")
+function ps__conn(persist_server_st: mut PersistServerState, conn: int) -> PsConn {
+  if conn < 0 or conn >= persist_server_st.ps__cfg.max_conns { return null }
+  while len(persist_server_st.ps__conns) <= conn {
+    let c = new PsConn
+    c.asm = pw_asm_new()
+    c.tokens = persist_server_st.ps__cfg.burst
+    c.at = persist_server_st.ps__time
+    push(persist_server_st.ps__conns, c)
+  }
+  return persist_server_st.ps__conns[conn]
+}
+
+# 0 when the connection may make a request that costs `cost`, else the milliseconds until it may
+function ps__admit(persist_server_st: mut PersistServerState, c: PsConn, cost: float) -> int {
+  let cfg = persist_server_st.ps__cfg
+  c.tokens += (persist_server_st.ps__time - c.at) * cfg.rate
+  if c.tokens > cfg.burst { c.tokens = cfg.burst }
+  c.at = persist_server_st.ps__time
+  if c.tokens >= cost {
+    c.tokens -= cost
+    c.strikes = 0
+    return 0
+  }
+  c.strikes += 1
+  let ms = int(Math.floor((cost - c.tokens) / cfg.rate * 1000.0)) + 1
+  return ms
+}
+
+# who may do something to a record (PW_*) for the player `target`
+function ps__may(c: PsConn, who: int, target: string) -> bool {
+  if who == PW_NONE { return false }
+  if c.service { return true }
+  if who == PW_SERVICE { return false }
+  return target == c.player
+}
+
+# the player a request acts on: a service's `as`, else the connection's own; "" when that is not allowed
+function ps__target(c: PsConn, req: Val) -> string {
+  let acting = pj_str(req, "as", "")
+  if acting == "" { return c.player }
+  if not c.service or not ps__name_ok(acting, 64) { return "" }
+  return acting
+}
+
+# a record as a reply's body
+function ps__body(r: Val, rec: PsRec) -> void {
+  if rec == null {
+    Value.put(r, "found", Value.bool(0))
+    Value.put(r, "rev", Value.int(0))
+    return
+  }
+  Value.put(r, "found", Value.bool(1))
+  Value.put(r, "rev", Value.int(rec.rev))
+  Value.put(r, "v", Value.int(rec.ver))
+  Value.put(r, "d", ps__clone(rec.data, 0))
+}
+
+function ps__op_get(persist_server_st: PersistServerState, c: PsConn, req: Val, id: int) -> Val {
+  let ns = pj_str(req, "ns", "")
+  let target = ps__target(c, req)
+  if target == "" { return ps__err(id, PE_DENIED, "not yours") }
+  if ps__schema(ns) < 0 { return ps__err(id, PE_UNKNOWN, `no namespace {ns}`) }
+  if not c.service and target != c.player { return ps__err(id, PE_DENIED, "not yours") }
+  let r = ps__ok(id)
+  Value.put(r, "ns", Value.str(`{ns}`))
+  ps__body(r, ps__find(persist_server_st, target, ns))
+  return r
+}
+
+function ps__op_list(persist_server_st: PersistServerState, c: PsConn, req: Val, id: int) -> Val {
+  let target = ps__target(c, req)
+  if target == "" { return ps__err(id, PE_DENIED, "not yours") }
+  let r = ps__ok(id)
+  let l = Value.list()
+  for i in 0 .. len(persist_server_st.ps__recs) {
+    let rec = persist_server_st.ps__recs[i]
+    if rec.dead or rec.player != target { continue }
+    let o = Value.object()
+    Value.put(o, "ns", Value.str(`{rec.ns}`))
+    Value.put(o, "rev", Value.int(rec.rev))
+    Value.put(o, "v", Value.int(rec.ver))
+    Value.add(l, o)
+  }
+  Value.put(r, "recs", l)
+  return r
+}
+
+function ps__op_put(persist_server_st: mut PersistServerState, conn: int, c: PsConn, req: Val, id: int) -> Val {
+  let ns = pj_str(req, "ns", "")
+  let target = ps__target(c, req)
+  let s = ps__schema(ns)
+  if target == "" { return ps__err(id, PE_DENIED, "not yours") }
+  if s < 0 { return ps__err(id, PE_UNKNOWN, `no namespace {ns}`) }
+  let sc = PersistSchemas[s]
+  if not ps__may(c, sc.write, target) { return ps__err(id, PE_DENIED, `{ns} may not be written by this identity`) }
+  let d = pj_obj(req, "d")
+  if d == null or not pj_has(req, "base") { return ps__err(id, PE_BAD, "a put needs base and d") }
+  let ver = pj_int(req, "v", sc.version)
+  if ver > sc.version or ver < 1 { return ps__err(id, PE_VERSION, `{ns} is version {sc.version} here`) }
+  let cur = ps__find(persist_server_st, target, ns)
+  var rev = 0
+  if cur != null { rev = cur.rev }
+  if pj_int(req, "base", 0) != rev {
+    ps__fact(persist_server_st, PSF_CONFLICT, conn, target, ns, PE_CONFLICT).rev = rev
+    let r = ps__err(id, PE_CONFLICT, "the record has moved")
+    ps__body(r, cur)
+    return r
+  }
+  let data = ps__clone(d, 0)
+  ps__migrate(ns, data, ver)
+  let size = ps__size(data)
+  if size > sc.max_bytes { return ps__err(id, PE_SIZE, `{ns} holds at most {sc.max_bytes} bytes`) }
+  let pl = ps__player(persist_server_st, target)
+  var old = 0
+  if cur != null { old = ps__size(cur.data) }
+  if pl.bytes - old + size > persist_server_st.ps__cfg.max_player_bytes { return ps__err(id, PE_SIZE, "this player holds as much as is allowed") }
+  let e = ps__entry(target)
+  ps__entry_record(e, ns, rev + 1, sc.version, data)
+  let wrote = ps__journal_write(persist_server_st, e)
+  ps__entry_free(e)
+  if not wrote { return ps__err(id, PE_IO, "the journal could not be written") }
+  ps__install(persist_server_st, target, ns, rev + 1, sc.version, data)
+  let f = ps__fact(persist_server_st, PSF_PUT, conn, target, ns, "")
+  f.rev = rev + 1
+  let r = ps__ok(id)
+  Value.put(r, "rev", Value.int(rev + 1))
+  return r
+}
+
+function ps__op_del(persist_server_st: mut PersistServerState, conn: int, c: PsConn, req: Val, id: int) -> Val {
+  let ns = pj_str(req, "ns", "")
+  let target = ps__target(c, req)
+  if not c.service or target == "" { return ps__err(id, PE_DENIED, "a service may delete") }
+  if ps__schema(ns) < 0 { return ps__err(id, PE_UNKNOWN, `no namespace {ns}`) }
+  if ps__find(persist_server_st, target, ns) == null { return ps__err(id, PE_NOT_FOUND, "there is no such record") }
+  let e = ps__entry(target)
+  let xs = Value.list()
+  Value.add(xs, Value.str(`{ns}`))
+  Value.put(e, "x", xs)
+  let wrote = ps__journal_write(persist_server_st, e)
+  ps__entry_free(e)
+  if not wrote { return ps__err(id, PE_IO, "the journal could not be written") }
+  ps__remove(persist_server_st, target, ns)
+  ps__fact(persist_server_st, PSF_DELETE, conn, target, ns, "")
+  return ps__ok(id)
+}
+
+# the data a namespace's record starts from when a transaction finds none
+function ps__fresh(s: int) -> Val {
+  let t = PersistSchemas[s].init
+  let v = ps__parse(t)
+  if v == null { return Value.object() }
+  let c = ps__clone(v, 0)
+  ps__free(v)
+  return c
+}
+
+function ps__op_txn(persist_server_st: mut PersistServerState, conn: int, c: PsConn, req: Val, id: int) -> Val {
+  let target = ps__target(c, req)
+  let key = pj_str(req, "key", "")
+  let ops = pj_list(req, "ops")
+  if target == "" { return ps__err(id, PE_DENIED, "not yours") }
+  if not ps__name_ok(key, 64) { return ps__err(id, PE_BAD, "a transaction needs a key: 1 to 64 printable bytes") }
+  if ops == null or Value.count(ops) == 0 or Value.count(ops) > persist_server_st.ps__cfg.max_ops { return ps__err(id, PE_BAD, `a transaction has 1 to {persist_server_st.ps__cfg.max_ops} operations`) }
+  let pl = ps__player(persist_server_st, target)
+  let memo = ps__memo_of(pl, key)
+  if memo != null {
+    # the same key again: the first answer, not a second transaction
+    let r = ps__ok(id)
+    Value.put(r, "replay", Value.bool(1))
+    let revs = Value.list()
+    for i in 0 .. len(memo.ns) {
+      let o = Value.object()
+      Value.put(o, "ns", Value.str(`{memo.ns[i]}`))
+      Value.put(o, "rev", Value.int(memo.revs[i]))
+      Value.add(revs, o)
+    }
+    Value.put(r, "revs", revs)
+    sv_put_ints(r, "vals", memo.vals)
+    ps__fact(persist_server_st, PSF_REPLAY, conn, target, "", "").text = `{key}`
+    return r
+  }
+  # the working copies, one per namespace touched, in the order first named
+  let names = new []string
+  let work = new []Val
+  let fresh = new []bool
+  let vals = new []int
+  for i in 0 .. Value.count(ops) {
+    let op = Value.at(ops, i)
+    let ns = pj_str(op, "ns", "")
+    let s = ps__schema(ns)
+    if s < 0 { return ps__err(id, PE_UNKNOWN, `operation {i}: no namespace {ns}`) }
+    if not ps__may(c, PersistSchemas[s].txn, target) { return ps__err(id, PE_DENIED, `operation {i}: {ns} may not be changed by this identity`) }
+    var w = -1
+    for k in 0 .. len(names) { if names[k] == ns { w = k } }
+    if w < 0 {
+      push(names, ns)
+      let cur = ps__find(persist_server_st, target, ns)
+      if cur == null {
+        push(work, ps__fresh(s))
+        push(fresh, true)
+      } else {
+        push(work, ps__clone(cur.data, 0))
+        push(fresh, false)
+      }
+      w = len(names) - 1
+    }
+    let why = ps__op(work[w], op, vals)
+    if why != "" {
+      let r = ps__err(id, why, `operation {i} ({pj_str(op, "op", "")} on {pj_str(op, "f", "")}) was refused`)
+      Value.put(r, "op", Value.int(i))
+      return r
+    }
+  }
+  var added = 0
+  let e = ps__entry(target)
+  let revs = new []int
+  for k in 0 .. len(names) {
+    let s = ps__schema(names[k])
+    let size = ps__size(work[k])
+    if size > PersistSchemas[s].max_bytes {
+      ps__entry_free(e)
+      return ps__err(id, PE_SIZE, `{names[k]} holds at most {PersistSchemas[s].max_bytes} bytes`)
+    }
+    let cur = ps__find(persist_server_st, target, names[k])
+    var rev = 0
+    var old = 0
+    if cur != null {
+      rev = cur.rev
+      old = ps__size(cur.data)
+    }
+    added += size - old
+    push(revs, rev + 1)
+    ps__entry_record(e, names[k], rev + 1, PersistSchemas[s].version, work[k])
+  }
+  if pl.bytes + added > persist_server_st.ps__cfg.max_player_bytes {
+    ps__entry_free(e)
+    return ps__err(id, PE_SIZE, "this player holds as much as is allowed")
+  }
+  ps__entry_memo(e, key, names, revs, vals)
+  let wrote = ps__journal_write(persist_server_st, e)
+  ps__entry_free(e)
+  if not wrote { return ps__err(id, PE_IO, "the journal could not be written") }
+  for k in 0 .. len(names) {
+    ps__install(persist_server_st, target, names[k], revs[k], PersistSchemas[ps__schema(names[k])].version, work[k])
+  }
+  ps__memo_add(persist_server_st, pl, `{key}`, names, revs, vals)
+  let f = ps__fact(persist_server_st, PSF_TXN, conn, target, names[0], "")
+  f.n = Value.count(ops)
+  f.text = `{key}`
+  let r = ps__ok(id)
+  let rl = Value.list()
+  for k in 0 .. len(names) {
+    let o = Value.object()
+    Value.put(o, "ns", Value.str(`{names[k]}`))
+    Value.put(o, "rev", Value.int(revs[k]))
+    Value.add(rl, o)
+  }
+  Value.put(r, "revs", rl)
+  sv_put_ints(r, "vals", vals)
+  return r
+}
+
+# one request, parsed and answered
+function ps__request(persist_server_st: mut PersistServerState, conn: int, c: PsConn, req: Val) -> void {
+  let id = pj_int(req, "id", 0)
+  let op = pj_str(req, "op", "")
+  var cost = 1.0
+  if op == "put" or op == "txn" or op == "del" { cost = persist_server_st.ps__cfg.write_cost }
+  let wait = ps__admit(persist_server_st, c, cost)
+  if wait > 0 {
+    let f = ps__fact(persist_server_st, PSF_RATE, conn, c.player, "", PE_RATE)
+    f.n = wait
+    let r = ps__err(id, PE_RATE, "slow down")
+    Value.put(r, "retry", Value.int(wait))
+    ps__reply(persist_server_st, conn, r)
+    if c.strikes > 200 { ps__close(persist_server_st, conn, PE_RATE) }
+    return
+  }
+  var r: Val = null
+  if op == "get" {
+    r = ps__op_get(persist_server_st, c, req, id)
+  } else if op == "put" {
+    r = ps__op_put(persist_server_st, conn, c, req, id)
+  } else if op == "txn" {
+    r = ps__op_txn(persist_server_st, conn, c, req, id)
+  } else if op == "del" {
+    r = ps__op_del(persist_server_st, conn, c, req, id)
+  } else if op == "list" {
+    r = ps__op_list(persist_server_st, c, req, id)
+  } else if op == "ping" {
+    r = ps__ok(id)
+    Value.put(r, "t", Value.int(int(persist_server_st.ps__time * 1000.0)))
+  } else {
+    r = ps__err(id, PE_UNKNOWN, `no operation {op}`)
+  }
+  if Value.has(r, "code") != 0 {
+    let f = ps__fact(persist_server_st, PSF_ERROR, conn, c.player, "", Value.as_str(Value.get(r, "code")))
+    f.n = id
+  }
+  ps__reply(persist_server_st, conn, r)
+}

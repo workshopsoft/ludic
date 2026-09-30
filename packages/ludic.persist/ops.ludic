@@ -1,0 +1,167 @@
+# ops.ludic - what a transaction does to a record's data, shared by the service (which decides) and the
+# client (which plays it on its cache while offline, so the cache and the service keep one meaning).
+# An operation is an object: { "op": "add" | "set" | "push" | "remove", "f": "a.b.c", ... } on the data of
+# one namespace (`ns`, read by the caller):
+#
+#   add     n        the int at f (0 if there is none) plus n; `min` / `max` refuse a result outside them
+#   set     v        f becomes v (an int, a string or a bool); `expect` refuses unless f holds that now
+#                    (null: unless f is not there) - a compare-and-set
+#   push    v        v joins the list at f; `unique` refuses a second, `max` a list that long already
+#   remove  v        the first v leaves the list at f, or NOT_FOUND
+#
+# `f` is a path of up to four names joined by dots into nested objects, which an add, a set or a push
+# makes as it goes. Every operation answers "" or an error code, and leaves the data as it found it when
+# it fails.
+
+export const PS_PATH: int = 64
+export const PS_SEGS: int = 4
+
+# the object that holds the path's last name, made on the way when `create`; null if a name on the way
+# is not an object (or the path is bad)
+function ps__parent(root: Val, path: string, create: bool) -> Val {
+  if len(path) == 0 or len(path) > PS_PATH { return null }
+  # the whole path is checked before anything is made: a bad one changes nothing
+  var segs = 1
+  var seg_len = 0
+  for i in 0 .. len(path) {
+    if path[i] <= 32 or path[i] >= 127 { return null }
+    if path[i] == 46 {
+      if seg_len == 0 { return null }
+      segs += 1
+      seg_len = 0
+    } else {
+      seg_len += 1
+    }
+  }
+  if seg_len == 0 or segs > PS_SEGS { return null }
+  var cur = root
+  var start = 0
+  for i in 0 .. len(path) {
+    if path[i] != 46 { continue }
+    let seg = path[start..i]
+    if Value.has(cur, seg) != 0 {
+      cur = Value.get(cur, seg)
+      if Value.kind(cur) != 6 { return null }
+    } else if create {
+      let o = Value.object()
+      Value.put(cur, `{seg}`, o)
+      cur = o
+    } else {
+      return null
+    }
+    start = i + 1
+  }
+  return cur
+}
+
+function ps__leaf(path: string) -> string {
+  var start = 0
+  for i in 0 .. len(path) { if path[i] == 46 { start = i + 1 } }
+  return `{path[start..len(path)]}`
+}
+
+# whether two scalar values are the same thing
+function ps__same(a: Val, b: Val) -> bool {
+  let ka = Value.kind(a)
+  let kb = Value.kind(b)
+  if (ka == 1 or ka == 3) and (kb == 1 or kb == 3) { return Value.as_int(a) == Value.as_int(b) }
+  if ka == 4 and kb == 4 { return Value.as_str(a) == Value.as_str(b) }
+  return false
+}
+
+function ps__scalar(v: Val) -> bool {
+  let k = Value.kind(v)
+  return k == 1 or k == 3 or k == 4
+}
+
+# a fresh copy of a scalar (what goes into stored data owns its own text)
+function ps__scalar_copy(v: Val) -> Val {
+  let k = Value.kind(v)
+  if k == 4 { return Value.str(`{Value.as_str(v)}`) }
+  if k == 3 { return Value.bool(Value.as_int(v)) }
+  return Value.int(Value.as_int(v))
+}
+
+# one operation on data; "" or a code. `out` is given the value the operation left: the new number of an
+# add, 1 for any other
+function ps__op(d: Val, op: Val, out: []int) -> string {
+  if op == null or Value.kind(op) != 6 { return PE_BAD }
+  let kind = pj_str(op, "op", "")
+  let f = pj_str(op, "f", "")
+  if f == "" { return PE_BAD }
+  let parent = ps__parent(d, f, kind != "remove")
+  let key = ps__leaf(f)
+  if kind == "add" {
+    if parent == null or not pj_has(op, "n") { return PE_BAD }
+    var cur = 0
+    if Value.has(parent, key) != 0 {
+      let x = Value.get(parent, key)
+      if Value.kind(x) != 1 { return PE_TYPE }
+      cur = Value.as_int(x)
+    }
+    let sum: long = long(cur) + long(pj_int(op, "n", 0))
+    if sum > long(2147483647) or sum < long(0 - 2147483647) { return PE_INSUFFICIENT }
+    let s = int(sum)
+    if pj_has(op, "min") and s < pj_int(op, "min", 0) { return PE_INSUFFICIENT }
+    if pj_has(op, "max") and s > pj_int(op, "max", 0) { return PE_INSUFFICIENT }
+    Value.put(parent, key, Value.int(s))
+    push(out, s)
+    return ""
+  }
+  if kind == "set" {
+    if parent == null or not pj_has(op, "v") or not ps__scalar(Value.get(op, "v")) { return PE_BAD }
+    if pj_has(op, "expect") {
+      let e = Value.get(op, "expect")
+      let here = Value.has(parent, key) != 0
+      if Value.kind(e) == 0 {
+        if here { return PE_CONFLICT }
+      } else if not here or not ps__same(Value.get(parent, key), e) {
+        return PE_CONFLICT
+      }
+    }
+    Value.put(parent, key, ps__scalar_copy(Value.get(op, "v")))
+    push(out, 1)
+    return ""
+  }
+  if kind == "push" {
+    if parent == null or not pj_has(op, "v") or not ps__scalar(Value.get(op, "v")) { return PE_BAD }
+    var list: Val = null
+    if Value.has(parent, key) != 0 {
+      list = Value.get(parent, key)
+      if Value.kind(list) != 5 { return PE_TYPE }
+    } else {
+      list = Value.list()
+      Value.put(parent, key, list)
+    }
+    let item = Value.get(op, "v")
+    if pj_bool(op, "unique", false) {
+      for i in 0 .. Value.count(list) { if ps__same(Value.at(list, i), item) { return PE_CONFLICT } }
+    }
+    if pj_has(op, "max") and Value.count(list) >= pj_int(op, "max", 0) { return PE_INSUFFICIENT }
+    if Value.count(list) >= PS_LIST { return PE_SIZE }
+    Value.add(list, ps__scalar_copy(item))
+    push(out, 1)
+    return ""
+  }
+  if kind == "remove" {
+    if parent == null or not pj_has(op, "v") or Value.has(parent, key) == 0 { return PE_NOT_FOUND }
+    let list = Value.get(parent, key)
+    if Value.kind(list) != 5 { return PE_TYPE }
+    let item = Value.get(op, "v")
+    let fresh = Value.list()
+    var found = false
+    for i in 0 .. Value.count(list) {
+      let x = Value.at(list, i)
+      if not found and ps__same(x, item) {
+        found = true
+      } else {
+        Value.add(fresh, x)
+      }
+    }
+    if not found { return PE_NOT_FOUND }
+    Value.put(parent, key, fresh)
+    push(out, 1)
+    return ""
+  }
+  return PE_UNKNOWN
+}

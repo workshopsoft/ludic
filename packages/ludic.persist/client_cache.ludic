@@ -1,0 +1,121 @@
+# client_cache.ludic - the cache on disk, so a game that starts with no service (or never reaches one) still has
+# its records, and what it changed is sent when it does. One file, written whole and backed up by ludic.save:
+#   {"format": "persist.cache", "version": 1, "player", "next", "nonce", "keys",
+#    "recs": {ns: {"rev", "v", "d", "dirty"}}, "reqs": [{"id", "op", "ns", "key", "body"}]}
+# A record read from it is taken as possibly stale (the service is asked again once a session begins, unless
+# the record has changes waiting), carried to today's version by ludic.save's chain.
+
+export function persist_cache_path(persist_client_st: mut PersistClientState, path: string) -> void { persist_client_st.pc__path = path }
+
+function pc__is_cache(v: Val) -> bool { return Value.has(v, "recs") != 0 and Value.has(v, "reqs") != 0 }
+
+@alloc_ok("a cache file is written on a change, not in a frame")
+export function persist_cache_save(persist_client_st: mut PersistClientState) -> bool {
+  if persist_client_st.pc__path == "" { return false }
+  let root = Value.object()
+  Value.put(root, "format", Value.str("persist.cache"))
+  Value.put(root, "version", Value.int(1))
+  Value.put(root, "player", Value.str(`{persist_client_st.pc__player}`))
+  Value.put(root, "next", Value.int(persist_client_st.pc__next))
+  Value.put(root, "nonce", Value.int(persist_client_st.pc__nonce))
+  Value.put(root, "keys", Value.int(persist_client_st.pc__keys))
+  let recs = Value.object()
+  Value.put(root, "recs", recs)
+  let wrappers = new []Val
+  for i in 0 .. len(persist_client_st.pc__recs) {
+    let rec = persist_client_st.pc__recs[i]
+    if not rec.loaded { continue }
+    let o = Value.object()
+    Value.put(o, "rev", Value.int(rec.rev))
+    Value.put(o, "v", Value.int(rec.ver))
+    Value.put(o, "dirty", Value.bool(ps__b(rec.dirty)))
+    Value.put(o, "d", rec.data)
+    Value.put(recs, rec.ns, o)
+    push(wrappers, o)
+  }
+  let reqs = Value.list()
+  for i in 0 .. len(persist_client_st.pc__reqs) {
+    let q = persist_client_st.pc__reqs[i]
+    let o = Value.object()
+    Value.put(o, "id", Value.int(q.id))
+    Value.put(o, "op", Value.str(q.op))
+    Value.put(o, "ns", Value.str(q.ns))
+    Value.put(o, "key", Value.str(q.key))
+    Value.put(o, "body", Value.str(q.body))
+    Value.add(reqs, o)
+  }
+  Value.put(root, "reqs", reqs)
+  let ok = save_write_tree(persist_client_st.pc__path, persist_client_st.pc__path + ".bak", root)
+  for i in 0 .. len(wrappers) { Value.put(wrappers[i], "d", Value.null()) }
+  Json.free_all(root)
+  persist_client_st.pc__saved_at = persist_client_st.pc__time
+  if ok { persist_client_st.pc__dirty_cache = false }
+  return ok
+}
+
+# read the cache file; false when there is none (or it could not be read: nothing is taken from it then)
+@alloc_ok("a cache file is read at start")
+export function persist_cache_load(persist_client_st: mut PersistClientState) -> bool {
+  if persist_client_st.pc__path == "" { return false }
+  let f = save_format("persist.cache", 1)
+  f.is_one = fn pc__is_cache
+  let r = save_open(persist_client_st.pc__path, persist_client_st.pc__path + ".bak", f)
+  if r.status != SAVE_OK { return false }
+  let v = r.value
+  persist_client_st.pc__player = `{pj_str(v, "player", "")}`
+  persist_client_st.pc__next = Math.max(pj_int(v, "next", 1), 1)
+  persist_client_st.pc__nonce = pj_int(v, "nonce", 0)
+  persist_client_st.pc__keys = pj_int(v, "keys", 0)
+  persist_client_st.pc__recs = new []PcRec
+  persist_client_st.pc__reqs = new []PcReq
+  let recs = pj_obj(v, "recs")
+  if recs != null {
+    for i in 0 .. Value.count(recs) {
+      let ns = `{Value.key_at(recs, i)}`
+      let o = Value.at(recs, i)
+      if Value.kind(o) != 6 { continue }
+      let rec = pc__rec_make(persist_client_st, ns)
+      rec.data = ps__clone(Value.get(o, "d"), 0)
+      rec.rev = pj_int(o, "rev", 0)
+      var ver = pj_int(o, "v", 1)
+      let to = ps__migrate(ns, rec.data, ver)
+      if to >= 0 { ver = to }
+      rec.ver = ver
+      rec.dirty = pj_bool(o, "dirty", false)
+      rec.stale = true
+      rec.loaded = true
+    }
+  }
+  let reqs = pj_list(v, "reqs")
+  if reqs != null {
+    for i in 0 .. Value.count(reqs) {
+      let o = Value.at(reqs, i)
+      let q = new PcReq
+      q.id = pj_int(o, "id", 0)
+      q.op = `{pj_str(o, "op", "")}`
+      q.ns = `{pj_str(o, "ns", "")}`
+      q.key = `{pj_str(o, "key", "")}`
+      q.body = `{pj_str(o, "body", "")}`
+      if q.op == "" or len(q.body) < 2 { continue }
+      let rec = pc__rec(persist_client_st, q.ns)
+      if rec != null { q.gen = rec.gen }
+      push(persist_client_st.pc__reqs, q)
+    }
+  }
+  Json.free_all(v)
+  persist_client_st.pc__dirty_cache = false
+  return true
+}
+
+# forget the cache and the queue (a player signed out)
+export function persist_client_reset(persist_client_st: mut PersistClientState) -> void {
+  persist_client_st.pc__state = PC_OFFLINE
+  persist_client_st.pc__player = ""
+  persist_client_st.pc__recs = new []PcRec
+  persist_client_st.pc__reqs = new []PcReq
+  persist_client_st.pc__hold = 0.0
+  persist_client_st.pc__tx_ops = null
+  persist_client_st.pc__tx_key = ""
+  pw_asm_reset(persist_client_st.pc__asm)
+  q_clear(persist_client_st.pc__facts)
+}

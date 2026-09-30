@@ -1,0 +1,476 @@
+# client.ludic - the client of the service. A session begins when the game's channel reaches the service and
+# the hello goes (persist_client_hello): the service answers welcome or deny. Until then, and whenever the
+# session ends, the cache answers and changes queue: a put replaces the record in the cache at once and
+# waits to be sent, a transaction is played on the cache with the same operations the service will run
+# (ops.ludic) and waits with its key. Back online, the queue goes out in order, one request at a time. The
+# service's word is the last word: a refused transaction takes its namespace back from the service, a put
+# on a record that moved is a conflict the game settles (persist_take_server or persist_keep_mine).
+
+# --- the session ---
+
+# the hello frame, in a buffer the client keeps, and its length: the game's channel sends it (net_hello_set)
+export function persist_client_hello(persist_client_st: mut PersistClientState) -> int {
+  if persist_client_st.pc__nonce == 0 { persist_client_st.pc__nonce = Math.abs(PersistClientWorld.seed()) % 1000000007 + 1 }
+  let r = Value.object()
+  Value.put(r, "p", Value.int(PW_PROTO))
+  Value.put(r, "t", Value.str(PersistClientWorld.ticket()))
+  let text = Json.encode(r)
+  Json.free_all(r)
+  persist_client_st.pc__hello_len = pw_hello_frame(persist_client_st.pc__hello, text)
+  ps__give_back(text)
+  persist_client_st.pc__state = PC_CONNECTING
+  for i in 0 .. len(persist_client_st.pc__reqs) { persist_client_st.pc__reqs[i].sent = false }
+  pw_asm_reset(persist_client_st.pc__asm)
+  return persist_client_st.pc__hello_len
+}
+
+export function persist_client_hello_frame(persist_client_st: PersistClientState) -> []byte { return persist_client_st.pc__hello }
+
+# the game's channel to the service was lost (or never came): the cache carries on
+export function persist_client_lost(persist_client_st: mut PersistClientState) -> void {
+  let was = persist_client_st.pc__state
+  persist_client_st.pc__state = PC_OFFLINE
+  for i in 0 .. len(persist_client_st.pc__reqs) { persist_client_st.pc__reqs[i].sent = false }
+  pw_asm_reset(persist_client_st.pc__asm)
+  if was == PC_ONLINE or was == PC_CONNECTING { pc__fact(persist_client_st, PCF_OFFLINE, "", "", "") }
+}
+
+function pc__send_text(persist_client_st: mut PersistClientState, id: int, text: string) -> void {
+  let count = pw_frames(len(text))
+  for k in 0 .. count {
+    let n = pw_frame(persist_client_st.pc__out, id, text, k)
+    if n > 0 { PersistClientLink.send(persist_client_st.pc__out, n) }
+  }
+}
+
+# the next request goes out when a session is up, nothing is out and the service has not asked for quiet
+function pc__pump(persist_client_st: mut PersistClientState) -> void {
+  if persist_client_st.pc__state != PC_ONLINE or len(persist_client_st.pc__reqs) == 0 { return }
+  if persist_client_st.pc__time < persist_client_st.pc__hold { return }
+  let r = persist_client_st.pc__reqs[0]
+  if r.sent { return }
+  var head = `{{"id":{r.id},`
+  if r.op == "put" { head = head + `"base":{persist_rev(persist_client_st, r.ns)},` }
+  let text = head + r.body[1..len(r.body)]
+  pc__send_text(persist_client_st, r.id, text)
+  r.sent = true
+}
+
+export function persist_client_tick(persist_client_st: mut PersistClientState, dt: float) -> void {
+  persist_client_st.pc__time += dt
+  pc__pump(persist_client_st)
+  if persist_client_st.pc__dirty_cache and persist_client_st.pc__path != "" and persist_client_st.pc__time - persist_client_st.pc__saved_at >= 2.0 {
+    persist_cache_save(persist_client_st)
+  }
+}
+
+# --- making requests ---
+
+@alloc_ok("a request is made per change")
+function pc__enqueue(persist_client_st: mut PersistClientState, op: string, ns: string, key: string, body: string, gen: int) -> void {
+  let r = new PcReq
+  r.id = persist_client_st.pc__next
+  persist_client_st.pc__next += 1
+  r.op = op
+  r.ns = `{ns}`
+  r.key = `{key}`
+  r.body = body
+  r.gen = gen
+  push(persist_client_st.pc__reqs, r)
+  persist_client_st.pc__dirty_cache = true
+  if persist_client_st.pc__state != PC_ONLINE {
+    let f = pc__fact(persist_client_st, PCF_QUEUED, ns, key, "")
+    f.n = len(persist_client_st.pc__reqs)
+  }
+  pc__pump(persist_client_st)
+}
+
+# ask for a record (once: a get already waiting for that namespace is enough)
+export function persist_fetch(persist_client_st: mut PersistClientState, ns: string) -> void {
+  for i in 0 .. len(persist_client_st.pc__reqs) {
+    if persist_client_st.pc__reqs[i].op == "get" and persist_client_st.pc__reqs[i].ns == ns and not persist_client_st.pc__reqs[i].sent { return }
+  }
+  let o = Value.object()
+  Value.put(o, "op", Value.str("get"))
+  Value.put(o, "ns", Value.str(`{ns}`))
+  let body = Json.encode(o)
+  Json.free_all(o)
+  pc__enqueue(persist_client_st, "get", ns, "", body, 0)
+}
+
+# replace a namespace's record: the cache changes now, the put waits for its turn. A put not yet sent for the
+# same namespace is replaced by this one (only the last matters)
+@alloc_ok("a put is made per change")
+export function persist_put(persist_client_st: mut PersistClientState, ns: string, data: Val) -> void {
+  let rec = pc__rec_make(persist_client_st, ns)
+  rec.data = ps__clone(data, 0)
+  rec.loaded = true
+  rec.dirty = true
+  rec.conflict = false
+  rec.gen += 1
+  let o = Value.object()
+  Value.put(o, "op", Value.str("put"))
+  Value.put(o, "ns", Value.str(`{ns}`))
+  Value.put(o, "v", Value.int(rec.ver))
+  Value.put(o, "d", rec.data)
+  let body = Json.encode(o)
+  Value.put(o, "d", Value.null())                   # the cache's data is the cache's
+  Json.free_all(o)
+  var replaced = false
+  for i in 0 .. len(persist_client_st.pc__reqs) {
+    let q = persist_client_st.pc__reqs[i]
+    if q.op == "put" and q.ns == ns and not q.sent {
+      q.body = body
+      q.gen = rec.gen
+      replaced = true
+      break
+    }
+  }
+  persist_client_st.pc__dirty_cache = true
+  if not replaced { pc__enqueue(persist_client_st, "put", ns, "", body, rec.gen) } else { pc__pump(persist_client_st) }
+}
+
+# --- transactions: begin, add operations, commit ---
+
+# begin a transaction and name it: a key no other has (the tag, this client's nonce, a count), which is what makes
+# sending it twice the same as sending it once. A transaction already begun is dropped.
+export function persist_txn_begin(persist_client_st: mut PersistClientState, tag: string) -> string {
+  if persist_client_st.pc__nonce == 0 { persist_client_st.pc__nonce = Math.abs(PersistClientWorld.seed()) % 1000000007 + 1 }
+  persist_client_st.pc__keys += 1
+  persist_client_st.pc__tx_key = `{tag}:{persist_client_st.pc__nonce}:{persist_client_st.pc__keys}`
+  persist_client_st.pc__tx_ops = Value.list()
+  persist_client_st.pc__tx_as = ""
+  return persist_client_st.pc__tx_key
+}
+
+# begin a transaction for another player, with a key the game already has (a mission's payment key): what a game
+# server connected as a service does. Nothing is cached of it - the service's answer (PCF_TXN_OK / _FAILED,
+# with the key) is the whole of it.
+export function persist_txn_begin_as(persist_client_st: mut PersistClientState, player: string, key: string) -> string {
+  persist_client_st.pc__keys += 1
+  persist_client_st.pc__tx_key = `{key}`
+  persist_client_st.pc__tx_ops = Value.list()
+  persist_client_st.pc__tx_as = `{player}`
+  return persist_client_st.pc__tx_key
+}
+
+function pc__tx_op(persist_client_st: mut PersistClientState, kind: string, ns: string, f: string) -> Val {
+  let o = Value.object()
+  Value.put(o, "op", Value.str(kind))
+  Value.put(o, "ns", Value.str(`{ns}`))
+  Value.put(o, "f", Value.str(`{f}`))
+  if persist_client_st.pc__tx_ops != null { Value.add(persist_client_st.pc__tx_ops, o) }
+  return o
+}
+
+# add n to the number at f (a negative n spends); `floor` is the lowest it may come to
+export function persist_txn_add(persist_client_st: mut PersistClientState, ns: string, f: string, n: int, floor: int) -> void {
+  let o = pc__tx_op(persist_client_st, "add", ns, f)
+  Value.put(o, "n", Value.int(n))
+  Value.put(o, "min", Value.int(floor))
+}
+
+export function persist_txn_add_capped(persist_client_st: mut PersistClientState, ns: string, f: string, n: int, floor: int, ceil: int) -> void {
+  let o = pc__tx_op(persist_client_st, "add", ns, f)
+  Value.put(o, "n", Value.int(n))
+  Value.put(o, "min", Value.int(floor))
+  Value.put(o, "max", Value.int(ceil))
+}
+
+export function persist_txn_set_int(persist_client_st: mut PersistClientState, ns: string, f: string, v: int) -> void {
+  let o = pc__tx_op(persist_client_st, "set", ns, f)
+  Value.put(o, "v", Value.int(v))
+}
+
+export function persist_txn_set_str(persist_client_st: mut PersistClientState, ns: string, f: string, v: string) -> void {
+  let o = pc__tx_op(persist_client_st, "set", ns, f)
+  Value.put(o, "v", Value.str(`{v}`))
+}
+
+# set only if the field holds `expect` now (a compare-and-set)
+export function persist_txn_swap_str(persist_client_st: mut PersistClientState, ns: string, f: string, expect: string, v: string) -> void {
+  let o = pc__tx_op(persist_client_st, "set", ns, f)
+  Value.put(o, "v", Value.str(`{v}`))
+  Value.put(o, "expect", Value.str(`{expect}`))
+}
+
+export function persist_txn_push_str(persist_client_st: mut PersistClientState, ns: string, f: string, v: string, unique: bool, most: int) -> void {
+  let o = pc__tx_op(persist_client_st, "push", ns, f)
+  Value.put(o, "v", Value.str(`{v}`))
+  Value.put(o, "unique", Value.bool(ps__b(unique)))
+  if most > 0 { Value.put(o, "max", Value.int(most)) }
+}
+
+export function persist_txn_remove_str(persist_client_st: mut PersistClientState, ns: string, f: string, v: string) -> void {
+  let o = pc__tx_op(persist_client_st, "remove", ns, f)
+  Value.put(o, "v", Value.str(`{v}`))
+}
+
+export function persist_txn_cancel(persist_client_st: mut PersistClientState) -> void {
+  persist_client_st.pc__tx_ops = null
+  persist_client_st.pc__tx_key = ""
+  persist_client_st.pc__tx_as = ""
+}
+
+# Play the transaction on the cache and queue it. False, and nothing changed, when an operation would be
+# refused (not enough of something, the wrong kind of field): the same verdict the service would give.
+@alloc_ok("a transaction is played and queued once")
+export function persist_txn_commit(persist_client_st: mut PersistClientState) -> bool {
+  let ops = persist_client_st.pc__tx_ops
+  let key = persist_client_st.pc__tx_key
+  let acting = persist_client_st.pc__tx_as
+  persist_client_st.pc__tx_ops = null
+  persist_client_st.pc__tx_key = ""
+  persist_client_st.pc__tx_as = ""
+  if ops == null or Value.count(ops) == 0 { return false }
+  if acting != "" {
+    # for another player: nothing of theirs is cached here
+    let o = Value.object()
+    Value.put(o, "op", Value.str("txn"))
+    Value.put(o, "key", Value.str(`{key}`))
+    Value.put(o, "as", Value.str(`{acting}`))
+    Value.put(o, "ops", ops)
+    let body = Json.encode(o)
+    let first = pj_str(Value.at(ops, 0), "ns", "")
+    Json.free_all(o)
+    pc__enqueue(persist_client_st, "txn", first, key, body, 0)
+    return true
+  }
+  let names = new []string
+  let work = new []Val
+  let vals = new []int
+  for i in 0 .. Value.count(ops) {
+    let op = Value.at(ops, i)
+    let ns = pj_str(op, "ns", "")
+    var w = -1
+    for k in 0 .. len(names) { if names[k] == ns { w = k } }
+    if w < 0 {
+      push(names, ns)
+      let cur = pc__rec(persist_client_st, ns)
+      if cur != null and cur.loaded {
+        push(work, ps__clone(cur.data, 0))
+      } else if ps__schema(ns) >= 0 {
+        push(work, ps__fresh(ps__schema(ns)))
+      } else {
+        push(work, Value.object())
+      }
+      w = len(names) - 1
+    }
+    let why = ps__op(work[w], op, vals)
+    if why != "" {
+      let f = pc__fact(persist_client_st, PCF_TXN_FAILED, ns, key, why)
+      f.n = i
+      return false
+    }
+  }
+  for k in 0 .. len(names) {
+    let rec = pc__rec_make(persist_client_st, names[k])
+    rec.data = work[k]
+    rec.loaded = true
+    rec.dirty = true
+    rec.gen += 1
+  }
+  let o = Value.object()
+  Value.put(o, "op", Value.str("txn"))
+  Value.put(o, "key", Value.str(`{key}`))
+  Value.put(o, "ops", ops)
+  let body = Json.encode(o)
+  Json.free_all(o)
+  pc__enqueue(persist_client_st, "txn", names[0], key, body, 0)
+  return true
+}
+
+# --- what the service answers ---
+
+function pc__done(persist_client_st: mut PersistClientState) -> void {
+  List.remove_at(persist_client_st.pc__reqs, 0)
+  persist_client_st.pc__dirty_cache = true
+  if len(persist_client_st.pc__reqs) == 0 { pc__fact(persist_client_st, PCF_SYNCED, "", "", "") }
+  pc__pump(persist_client_st)
+}
+
+# the record a reply carries (found, rev, v, d) into the cache
+function pc__take_body(persist_client_st: mut PersistClientState, ns: string, r: Val) -> PcRec {
+  let rec = pc__rec_make(persist_client_st, ns)
+  rec.rev = pj_int(r, "rev", 0)
+  if pj_bool(r, "found", false) {
+    rec.data = ps__clone(Value.get(r, "d"), 0)
+    rec.ver = pj_int(r, "v", rec.ver)
+    let to = ps__migrate(ns, rec.data, rec.ver)
+    if to >= 0 { rec.ver = to }
+  } else {
+    rec.data = Value.object()
+  }
+  rec.loaded = true
+  rec.stale = false
+  rec.dirty = false
+  rec.conflict = false
+  persist_client_st.pc__dirty_cache = true
+  return rec
+}
+
+# a namespace the service may have moved on: fetched again before it is trusted
+function pc__stale(persist_client_st: mut PersistClientState, ns: string) -> void {
+  let rec = pc__rec(persist_client_st, ns)
+  if rec != null { rec.stale = true }
+  persist_fetch(persist_client_st, ns)
+}
+
+function pc__answer(persist_client_st: mut PersistClientState, r: Val) -> void {
+  if len(persist_client_st.pc__reqs) == 0 { return }
+  let req = persist_client_st.pc__reqs[0]
+  if not req.sent or pj_int(r, "id", -1) != req.id { return }
+  let ok = pj_bool(r, "ok", false)
+  let code = pj_str(r, "code", "")
+  if code == PE_RATE {
+    let ms = pj_int(r, "retry", 250)
+    persist_client_st.pc__hold = persist_client_st.pc__time + float(ms) / 1000.0
+    req.sent = false
+    pc__fact(persist_client_st, PCF_RATE, "", "", PE_RATE).n = ms
+    return
+  }
+  if req.op == "get" {
+    if ok {
+      let rec = pc__take_body(persist_client_st, req.ns, r)
+      let f = pc__fact(persist_client_st, PCF_LOADED, req.ns, "", "")
+      f.rev = rec.rev
+      f.n = ps__b(pj_bool(r, "found", false))
+    } else {
+      pc__fact(persist_client_st, PCF_SAVE_FAILED, req.ns, "", code)
+    }
+    pc__done(persist_client_st)
+    return
+  }
+  if req.op == "put" {
+    let rec = pc__rec_make(persist_client_st, req.ns)
+    if ok {
+      rec.rev = pj_int(r, "rev", rec.rev)
+      if rec.gen == req.gen { rec.dirty = false }
+      pc__fact(persist_client_st, PCF_SAVED, req.ns, "", "").rev = rec.rev
+    } else if code == PE_CONFLICT {
+      var same = false
+      if rec.gen == req.gen and pj_bool(r, "found", false) {
+        let a = Json.encode(rec.data)
+        let b = Json.encode(pj_obj(r, "d"))
+        same = a == b
+        ps__give_back(a)
+        ps__give_back(b)
+      }
+      if same {
+        rec.rev = pj_int(r, "rev", rec.rev)
+        rec.dirty = false
+        pc__fact(persist_client_st, PCF_SAVED, req.ns, "", "").rev = rec.rev
+      } else {
+        let mine = rec.data
+        pc__take_body(persist_client_st, req.ns, r)
+        rec.mine = mine
+        rec.conflict = true
+        pc__fact(persist_client_st, PCF_CONFLICT, req.ns, "", PE_CONFLICT).rev = rec.rev
+      }
+    } else {
+      rec.dirty = false
+      pc__fact(persist_client_st, PCF_SAVE_FAILED, req.ns, "", code)
+    }
+    pc__done(persist_client_st)
+    return
+  }
+  if req.op == "txn" {
+    if ok {
+      let revs = pj_list(r, "revs")
+      if revs != null {
+        for i in 0 .. Value.count(revs) {
+          let o = Value.at(revs, i)
+          let ns = pj_str(o, "ns", "")
+          let rec = pc__rec(persist_client_st, ns)
+          if rec == null { continue }
+          let rev = pj_int(o, "rev", 0)
+          if rec.rev + 1 != rev { rec.stale = true }
+          rec.rev = rev
+          var pending = false
+          for q in 1 .. len(persist_client_st.pc__reqs) { if persist_client_st.pc__reqs[q].ns == ns and persist_client_st.pc__reqs[q].op != "get" { pending = true } }
+          if not pending { rec.dirty = false }
+          if rec.stale and not pending { persist_fetch(persist_client_st, ns) }
+        }
+      }
+      persist_client_st.pc__vals = sv_ints(r, "vals")
+      let f = pc__fact(persist_client_st, PCF_TXN_OK, req.ns, req.key, "")
+      f.n = ps__b(pj_bool(r, "replay", false))
+    } else {
+      let f = pc__fact(persist_client_st, PCF_TXN_FAILED, req.ns, req.key, code)
+      f.n = pj_int(r, "op", 0)
+      # the service's word is the last: what the cache guessed is taken back from it
+      let ops = pc__body_ops(req.body)
+      if ops != null and not pj_has(ops, "as") {
+        for i in 0 .. Value.count(pj_list(ops, "ops")) { pc__stale(persist_client_st, pj_str(Value.at(pj_list(ops, "ops"), i), "ns", "")) }
+      }
+      if ops != null { ps__free(ops) }
+    }
+    pc__done(persist_client_st)
+  }
+}
+
+# the namespaces a queued transaction's body names (its ops parsed again)
+function pc__body_ops(body: string) -> Val {
+  let v = ps__parse(body)
+  if v == null { return null }
+  let l = pj_list(v, "ops")
+  if l == null { ps__free(v); return null }
+  return v
+}
+
+# a whole message from the service
+function pc__message(persist_client_st: mut PersistClientState, text: string) -> void {
+  let r = ps__parse(text)
+  if r == null { return }
+  let op = pj_str(r, "op", "")
+  if op == "welcome" {
+    persist_client_st.pc__state = PC_ONLINE
+    persist_client_st.pc__player = `{pj_str(r, "player", "")}`
+    for i in 0 .. len(persist_client_st.pc__reqs) { persist_client_st.pc__reqs[i].sent = false }
+    pc__fact(persist_client_st, PCF_ONLINE, "", "", "").text = persist_client_st.pc__player
+    # what was read before is asked again: the service may have moved on
+    for i in 0 .. len(persist_client_st.pc__recs) {
+      let rec = persist_client_st.pc__recs[i]
+      if rec.loaded and not rec.dirty { rec.stale = true }
+    }
+    pc__pump(persist_client_st)
+  } else if op == "deny" {
+    persist_client_st.pc__state = PC_DENIED
+    pc__fact(persist_client_st, PCF_DENIED, "", "", pj_str(r, "code", PE_AUTH))
+  } else {
+    pc__answer(persist_client_st, r)
+  }
+  ps__free(r)
+}
+
+# a data frame from the service
+@alloc_ok("a message's text is made once and given back")
+export function persist_client_receive(persist_client_st: mut PersistClientState, frame: []byte, n: int) -> void {
+  let s = pw_feed(persist_client_st.pc__asm, frame, n)
+  if s == PW_BAD {
+    persist_client_lost(persist_client_st)
+    return
+  }
+  if s != PW_DONE { return }
+  let text = ps__text(persist_client_st.pc__asm.buf, persist_client_st.pc__asm.len)
+  pc__message(persist_client_st, text)
+  ps__give_back(text)
+}
+
+# settle a conflict: the service's record stays (it is in the cache already)
+export function persist_take_server(persist_client_st: mut PersistClientState, ns: string) -> void {
+  let rec = pc__rec(persist_client_st, ns)
+  if rec == null { return }
+  rec.conflict = false
+  rec.mine = null
+}
+
+# ... or this side's goes on top of it, as a put against the revision the service is at now
+export function persist_keep_mine(persist_client_st: mut PersistClientState, ns: string) -> void {
+  let rec = pc__rec(persist_client_st, ns)
+  if rec == null or rec.mine == null { return }
+  let mine = rec.mine
+  rec.mine = null
+  rec.conflict = false
+  persist_put(persist_client_st, ns, mine)
+}

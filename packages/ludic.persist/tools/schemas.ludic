@@ -1,0 +1,12 @@
+  # schemas.ludic - the namespaces this build of persistd keeps. A game replaces this file with its own
+  # (or writes its own persistd beside its game): one row per kind of record a player has, and the
+  # migrations that carry an old record forward (ludic.save's SaveMigrations, format "persist.<ns>").
+  #
+  # write / txn say who may replace a record outright, and who may change it with a transaction:
+  # PW_PLAYER (the player it belongs to, and any service for them), PW_SERVICE (a game server only),
+  # PW_NONE (nobody). Money belongs to the service; a character's looks to the player.
+  def PersistSchemas character { version: 1, max_bytes: 4096, write: PW_PLAYER, txn: PW_PLAYER }
+  def PersistSchemas wallet { version: 1, max_bytes: 256, write: PW_SERVICE, txn: PW_SERVICE, init: "{\"cash\":0,\"bank\":0}" }
+  def PersistSchemas properties { version: 1, max_bytes: 4096, write: PW_SERVICE, txn: PW_SERVICE }
+  def PersistSchemas vehicles { version: 1, max_bytes: 8192, write: PW_SERVICE, txn: PW_SERVICE }
+  def PersistSchemas unlocks { version: 1, max_bytes: 4096, write: PW_SERVICE, txn: PW_SERVICE }

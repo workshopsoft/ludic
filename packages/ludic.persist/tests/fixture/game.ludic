@@ -1,0 +1,79 @@
+# game.ludic - what the persist tests share, imported inside each test's program: a game's schemas and
+# one migration, an auth hook that knows three tickets, and a loopback wire between the service and a
+# client (frames kept in lists the test pumps)
+  numbers float
+
+  def PersistSchemas wallet { version: 2, max_bytes: 256, write: PW_SERVICE, txn: PW_SERVICE, init: "{\"cash\":100}" }
+  def PersistSchemas profile { version: 1, max_bytes: 512, write: PW_PLAYER, txn: PW_PLAYER }
+  def PersistSchemas cars { version: 1, max_bytes: 4096, write: PW_PLAYER, txn: PW_PLAYER }
+  def PersistSchemas unlocks { version: 1, max_bytes: 512, write: PW_PLAYER, txn: PW_SERVICE }
+  def PersistSchemas sealed { version: 1, max_bytes: 128, write: PW_NONE, txn: PW_SERVICE }
+
+  # wallet 1 kept "money"; 2 says "cash"
+  function wallet_1_2(v: Val) -> void {
+    if Value.has(v, "money") != 0 { Value.put(v, "cash", Value.get(v, "money")) }
+  }
+  def SaveMigrations wallet_1_2 { format: "persist.wallet", from: 1, run: fn wallet_1_2 }
+
+  function auth(ticket: string) -> string {
+    if ticket == "player:alice" { return "alice" }
+    if ticket == "player:bob" { return "bob" }
+    if ticket == "service:game" { return "service:game" }
+    return ""
+  }
+  bind PersistAuth { verify: fn auth }
+
+  property Frame { conn: int = 0, len: int = 0, data: []byte }
+  state WireState {
+    to_server: []Frame = null
+    to_client: []Frame = null
+    accepted: []int = null
+    dropped: []int = null
+    accept_all: bool = true
+  }
+
+  function wire_fresh(w: mut WireState) -> void {
+    w.to_server = new []Frame
+    w.to_client = new []Frame
+    w.accepted = new []int
+    w.dropped = new []int
+    w.accept_all = true
+  }
+
+  function frame_of(conn: int, b: []byte, n: int) -> Frame {
+    let f = new Frame
+    f.conn = conn
+    f.len = n
+    f.data = buffer(n + 1)
+    for i in 0 .. n { f.data[i] = b[i] }
+    return f
+  }
+
+  function link_send(w: mut WireState, conn: int, b: []byte, n: int) -> void { push(w.to_client, frame_of(conn, b, n)) }
+  function link_accept(w: mut WireState, conn: int) -> bool {
+    if not w.accept_all { return false }
+    push(w.accepted, conn)
+    return true
+  }
+  function link_drop(w: mut WireState, conn: int) -> void { push(w.dropped, conn) }
+  bind PersistServerLink { send: fn link_send, accept: fn link_accept, drop: fn link_drop }
+
+  function client_send(w: mut WireState, b: []byte, n: int) -> void { push(w.to_server, frame_of(1, b, n)) }
+  bind PersistClientLink { send: fn client_send }
+
+  state TicketState { ticket: string = "player:alice" }
+  function client_ticket(t: TicketState) -> string { return t.ticket }
+  function client_seed() -> int { return 4242 }
+  bind PersistClientWorld { ticket: fn client_ticket, seed: fn client_seed }
+
+  # a fresh directory for one test's disk
+  function disk_fresh(name: string) -> string {
+    let dir = Os.temp_dir() + "/ludic_persist_test_" + name
+    Fs.mkdir(dir)
+    for f in 0 .. 5 {
+      let names = ["journal.log", "journal.prev", "snapshot.json", "snapshot.json.bak", "cache.json"]
+      Fs.remove(dir + "/" + names[f])
+      Fs.remove(dir + "/" + names[f] + ".bak")
+    }
+    return dir
+  }

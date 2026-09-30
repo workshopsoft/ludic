@@ -1,0 +1,177 @@
+# text.ludic - what a service that takes text off a wire needs before it trusts any: text made from bytes
+# (and given back), a check that JSON is whole and not deeply nested before the runtime's best-effort parser
+# sees it, a bounded copy of a value (what is kept is never what was parsed), and typed reads
+
+export const PS_DEPTH: int = 8            # the deepest a stored value may nest
+export const PS_LIST: int = 256           # the most items a stored list keeps
+export const PS_KEYS: int = 128           # the most keys a stored object keeps
+export const PS_JSON_DEPTH: int = 12      # the deepest request JSON the parser is given
+
+# text from the first n bytes (the caller frees it with ps__give_back when it is done)
+@alloc_ok("a message's text: made per request and given back")
+function ps__text(b: []byte, n: int) -> string { return text_of(b, n) }
+
+function ps__give_back(s: string) -> void {
+  if s == null or len(s) == 0 { return }
+  unsafe { free(s) }
+}
+
+# JSON the parser may be given: whole (every string, brace and bracket closed), an object at the top, not
+# nested past `depth`, no control bytes outside strings. A parser that is best-effort on a hostile body
+# is a crash or a slow death; this is the gate
+function ps__json_ok(s: string, depth: int) -> bool {
+  let n = len(s)
+  if n < 2 or s[0] != 123 { return false }
+  var d = 0
+  var instr = false
+  var esc = false
+  var i = 0
+  while i < n {
+    let c = s[i]
+    if instr {
+      if esc { esc = false } else if c == 92 { esc = true } else if c == 34 { instr = false } else if c < 32 { return false }
+    } else if c == 34 {
+      instr = true
+    } else if c == 123 or c == 91 {
+      d += 1
+      if d > depth { return false }
+    } else if c == 125 or c == 93 {
+      d -= 1
+      if d < 0 { return false }
+      if d == 0 and i != n - 1 { return false }      # one value, and nothing after it
+    } else if c < 32 and c != 10 and c != 13 and c != 9 {
+      return false
+    }
+    i += 1
+  }
+  return d == 0 and not instr
+}
+
+# a player's id or a namespace's name: printable, no spaces or control bytes, 1 to `most` bytes
+function ps__name_ok(s: string, most: int) -> bool {
+  if s == null or len(s) == 0 or len(s) > most { return false }
+  for i in 0 .. len(s) { if s[i] <= 32 or s[i] >= 127 { return false } }
+  return true
+}
+
+function ps__hex8(n: int) -> string {
+  let digits = "0123456789abcdef"
+  var out = ""
+  var k = 28
+  while k >= 0 {
+    let v = (n >> k) & 15
+    out = out + digits[v..v + 1]
+    k -= 4
+  }
+  return out
+}
+
+function ps__hex_val(c: int) -> int {
+  if c >= 48 and c <= 57 { return c - 48 }
+  if c >= 97 and c <= 102 { return c - 87 }
+  return -1
+}
+
+# whether a line starts with eight hex digits
+function ps__hex8_ok(s: string) -> bool {
+  if len(s) < 8 { return false }
+  for i in 0 .. 8 { if ps__hex_val(s[i]) < 0 { return false } }
+  return true
+}
+
+# the eight hex digits at the start of a line as an int (a checksum may be negative: ps__hex8_ok says whether it is one)
+function ps__unhex8(s: string) -> int {
+  var n = 0
+  for i in 0 .. 8 { n = (n << 4) | ps__hex_val(s[i]) }
+  return n
+}
+
+# --- typed reads of a request (a missing or wrong-kind field is the fallback) ---
+function pj_has(v: Val, key: string) -> bool {
+  return v != null and Value.kind(v) == 6 and Value.has(v, key) != 0
+}
+
+function pj_int(v: Val, key: string, fallback: int) -> int {
+  if not pj_has(v, key) { return fallback }
+  let x = Value.get(v, key)
+  if Value.kind(x) != 1 and Value.kind(x) != 3 { return fallback }
+  return Value.as_int(x)
+}
+
+function pj_str(v: Val, key: string, fallback: string) -> string {
+  if not pj_has(v, key) { return fallback }
+  let x = Value.get(v, key)
+  if Value.kind(x) != 4 { return fallback }
+  return Value.as_str(x)
+}
+
+function pj_bool(v: Val, key: string, fallback: bool) -> bool {
+  if not pj_has(v, key) { return fallback }
+  let x = Value.get(v, key)
+  if Value.kind(x) != 3 and Value.kind(x) != 1 { return fallback }
+  return Value.as_int(x) != 0
+}
+
+# a kind 6 (an object) read out of a request, or null
+function pj_obj(v: Val, key: string) -> Val {
+  if not pj_has(v, key) { return null }
+  let x = Value.get(v, key)
+  if Value.kind(x) != 6 { return null }
+  return x
+}
+
+function pj_list(v: Val, key: string) -> Val {
+  if not pj_has(v, key) { return null }
+  let x = Value.get(v, key)
+  if Value.kind(x) != 5 { return null }
+  return x
+}
+
+# a bounded copy of a value that owns nothing of the original: only ints, floats, bools, strings, lists and
+# objects survive, each cut at its limit; a value deeper than PS_DEPTH becomes null
+@alloc_ok("a value stored or sent: copied so the parsed tree can be freed")
+function ps__clone(v: Val, depth: int) -> Val {
+  if v == null or depth > PS_DEPTH { return Value.null() }
+  let k = Value.kind(v)
+  if k == 1 { return Value.int(Value.as_int(v)) }
+  if k == 3 { return Value.bool(Value.as_int(v)) }
+  if k == 2 or k == 7 { return Value.float(Value.as_float(v)) }
+  if k == 4 { return Value.str(`{Value.as_str(v)}`) }
+  if k == 5 {
+    let l = Value.list()
+    for i in 0 .. Value.count(v) {
+      if i >= PS_LIST { break }
+      Value.add(l, ps__clone(Value.at(v, i), depth + 1))
+    }
+    return l
+  }
+  if k == 6 {
+    let o = Value.object()
+    for i in 0 .. Value.count(v) {
+      if i >= PS_KEYS { break }
+      Value.put(o, `{Value.key_at(v, i)}`, ps__clone(Value.at(v, i), depth + 1))
+    }
+    return o
+  }
+  return Value.null()
+}
+
+# what a value encodes to, in bytes
+function ps__size(v: Val) -> int {
+  let t = Json.encode(v)
+  let n = len(t)
+  ps__give_back(t)
+  return n
+}
+
+# a parsed request: the text is checked, parsed, and given back; the caller frees the tree with ps__free
+function ps__parse(text: string) -> Val {
+  if text == null or not ps__json_ok(text, PS_JSON_DEPTH) { return null }
+  let v = Json.parse(text)
+  if v == null or Value.kind(v) != 6 { return null }
+  return v
+}
+
+function ps__free(v: Val) -> void {
+  if v != null { Json.free_all(v) }
+}
