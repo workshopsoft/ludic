@@ -87,7 +87,7 @@ that compiler builds the rest:
 
 ```bash
 mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
-bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev
 bin/ludic-dev build     # -> bin/{ludicc,ludic,ludic-dev,ludic-fmt,ludic-lsp}
 bin/ludic-dev test      # the regression suite
 ```
