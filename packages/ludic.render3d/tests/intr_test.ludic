@@ -1,0 +1,334 @@
+# intr_test.ludic - interiors as separate maps: instances placed apart, the enter and exit transitions in order with
+# their events, one load of content however many instances, a slot per owner and eviction when full, failure,
+# unload after the keep time, and an interior's rooms and doors read from its map into a portal graph
+import "ludic.render3d/bigworld.ludic"
+program IntrTest {
+  numbers float
+  def InteriorDefs from "interiors.lres"
+
+  function mgr() -> IntrMgr { return intr_new(InteriorDefs, 1000000.0, 1000000.0, 100.0) }
+
+  # run the manager `secs` seconds in 50 ms steps, answering load requests as the game would, counting each kind of event
+  function pump(m: IntrMgr, secs: float, answer_loads: bool, counts: words) -> void {
+    var t = 0.0
+    while t < secs {
+      intr_update(m, 0.05)
+      t = t + 0.05
+      var e = intr_next_event(m)
+      while e != null {
+        counts[e.kind] += 1
+        if e.kind == IE_LOAD_DEF and answer_loads { intr_def_loaded(m, e.def) }
+        e = intr_next_event(m)
+      }
+    }
+  }
+
+  # the same, keeping the events in order as their kinds
+  function trace(m: IntrMgr, secs: float, answer_loads: bool) -> []int {
+    let out = new []int
+    var t = 0.0
+    while t < secs {
+      intr_update(m, 0.05)
+      t = t + 0.05
+      var e = intr_next_event(m)
+      while e != null {
+        push(out, e.kind)
+        if e.kind == IE_LOAD_DEF and answer_loads { intr_def_loaded(m, e.def) }
+        e = intr_next_event(m)
+      }
+    }
+    return out
+  }
+
+  test "every (def, slot) has a place of its own, apart by the spacing" {
+    let m = mgr()
+    let n = len(m.insts)
+    expect_eq(n, 5)
+    var bad = 0
+    for a in 0 .. n {
+      for b in a + 1 .. n {
+        let dx = Math.abs(intr_origin_x(m, a) - intr_origin_x(m, b))
+        let dz = Math.abs(intr_origin_z(m, a) - intr_origin_z(m, b))
+        if dx < 100.0 and dz < 100.0 { bad += 1 }
+      }
+    }
+    expect_eq(bad, 0)
+    expect(m.spacing >= 80.0)                     # the larger def's size raised the spacing
+    expect(intr_origin_x(m, 0) == 1000000.0)
+  }
+
+  test "going in: fade out, ask for the content, wait, spawn when it is there, fade in, entered" {
+    let m = mgr()
+    let ws = ws_new(128.0, 500.0, 2000.0)
+    intr_bind_stream(m, ws)
+    let flat = intr_def_find(m, "flat")
+    expect_eq(flat, 0)
+    expect_eq(intr_enter(m, flat, 77, 5000.5, 12.0, -300.25, 1.5, false, 0.0, 0.0, 0.0, 0.0), INTR_OK)
+    expect(intr_busy(m))
+    expect(intr_fade(m) == 0.0)
+    expect_eq(intr_enter(m, flat, 78, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0), INTR_BUSY)
+    # the fade rises over fade_out (0.2 s)
+    intr_update(m, 0.1)
+    expect_near(intr_fade(m), 0.5, 0.001)
+    let counts = words(10)
+    # no answer to the load request: the screen stays black and nothing spawns
+    pump(m, 1.0, false, counts)
+    expect_eq(counts[IE_LOAD_DEF], 1)              # asked once, not every frame
+    expect_eq(counts[IE_SPAWN], 0)
+    expect(intr_fade(m) == 1.0)
+    expect(not intr_is_inside(m))
+    expect(not ws.hold)
+    # the game answers
+    intr_def_loaded(m, flat)
+    let events = trace(m, 0.05, false)
+    expect(events[0] == IE_HOLD and events[1] == IE_SPAWN)
+    expect(intr_is_inside(m))
+    expect(ws.hold)
+    let rest = trace(m, 1.0, false)
+    expect_eq(rest[len(rest) - 1], IE_ENTERED)
+    expect(intr_fade(m) == 0.0)
+    expect(not intr_busy(m))
+    expect_eq(intr_active(m), intr_find(m, flat, 77))
+  }
+
+  test "the spawn event carries the world position: the instance's origin plus the def's spawn point, and its yaw" {
+    let m = mgr()
+    let flat = 0
+    intr_enter(m, flat, 1, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    intr_def_loaded(m, flat)
+    var sp: IntrEvent = null
+    for i in 0 .. 20 {
+      intr_update(m, 0.05)
+      var e = intr_next_event(m)
+      while e != null {
+        if e.kind == IE_SPAWN { sp = e }
+        e = intr_next_event(m)
+      }
+    }
+    expect(sp != null)
+    let at = intr_find(m, flat, 1)
+    expect(sp.x == intr_origin_x(m, at) + 2.0)
+    expect(sp.z == intr_origin_z(m, at) + 3.0)
+    expect(Math.abs(sp.y - 0.1) < 0.0001)
+    expect_near(sp.yaw, 90.0, 0.0001)
+    expect_eq(sp.inst, at)
+    expect_eq(sp.owner, 1)
+  }
+
+  test "a door that says where it opens overrides the def's spawn" {
+    let m = mgr()
+    intr_enter(m, 0, 1, 0.0, 0.0, 0.0, 0.0, true, 9.0, 0.0, 1.0, 180.0)
+    intr_def_loaded(m, 0)
+    var x = 0.0
+    var yaw = 0.0
+    for i in 0 .. 20 {
+      intr_update(m, 0.05)
+      var e = intr_next_event(m)
+      while e != null {
+        if e.kind == IE_SPAWN { x = float(e.x - intr_origin_x(m, intr_find(m, 0, 1)));  yaw = e.yaw }
+        e = intr_next_event(m)
+      }
+    }
+    expect_near(x, 9.0, 0.001)
+    expect_near(yaw, 180.0, 0.001)
+  }
+
+  test "going out: fade, spawn at the door outside, release the world, exited" {
+    let m = mgr()
+    let ws = ws_new(128.0, 500.0, 2000.0)
+    intr_bind_stream(m, ws)
+    expect_eq(intr_exit(m), INTR_NOT_INSIDE)
+    intr_enter(m, 0, 1, 5000.5, 12.0, -300.25, 1.5, false, 0.0, 0.0, 0.0, 0.0)
+    let counts = words(10)
+    pump(m, 2.0, true, counts)
+    expect(intr_is_inside(m) and ws.hold)
+    expect_eq(intr_exit(m), INTR_OK)
+    expect_eq(intr_enter(m, 1, 2, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0), INTR_BUSY)
+    var out_spawn: IntrEvent = null
+    var kinds = new []int
+    var t = 0.0
+    while t < 2.0 {
+      intr_update(m, 0.05)
+      t = t + 0.05
+      var e = intr_next_event(m)
+      while e != null {
+        push(kinds, e.kind)
+        if e.kind == IE_SPAWN { out_spawn = e }
+        e = intr_next_event(m)
+      }
+    }
+    expect(out_spawn != null)
+    expect(out_spawn.x == 5000.5 and out_spawn.y == 12.0 and out_spawn.z == -300.25)
+    expect_near(out_spawn.yaw, 1.5, 0.0001)
+    expect(not intr_is_inside(m))
+    expect(not ws.hold)
+    expect(kinds[0] == IE_RELEASE and kinds[1] == IE_SPAWN)
+    expect_eq(kinds[len(kinds) - 1], IE_EXITED)
+    expect_eq(intr_active(m), -1)
+  }
+
+  test "two owners get two instances of one interior, loaded once; one owner gets the same instance back" {
+    let m = mgr()
+    let counts = words(10)
+    intr_enter(m, 0, 100, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 2.0, true, counts)
+    let a = intr_active(m)
+    intr_exit(m)
+    pump(m, 2.0, true, counts)
+    intr_enter(m, 0, 200, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 2.0, true, counts)
+    let b = intr_active(m)
+    expect(a != b)
+    expect_eq(counts[IE_LOAD_DEF], 1)               # the content came in once
+    expect(intr_origin_x(m, a) != intr_origin_x(m, b) or intr_origin_z(m, a) != intr_origin_z(m, b))
+    intr_exit(m)
+    pump(m, 2.0, true, counts)
+    intr_enter(m, 0, 100, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 2.0, true, counts)
+    expect_eq(intr_active(m), a)                    # owner 100's own instance, as they left it
+    expect_eq(intr_instances(m, 0), 2)
+  }
+
+  test "a full def evicts the least recently used instance nobody is in, and is full when everybody is" {
+    let m = mgr()
+    let counts = words(10)
+    let garage = 1                                   # two slots
+    intr_enter(m, garage, 1, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 1.0, true, counts)
+    intr_exit(m)
+    pump(m, 1.0, true, counts)
+    intr_enter(m, garage, 2, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 1.0, true, counts)
+    intr_exit(m)
+    pump(m, 1.0, true, counts)
+    expect_eq(intr_instances(m, garage), 2)
+    let first = intr_find(m, garage, 1)
+    # a third owner: owner 1's slot (the older) goes
+    expect_eq(intr_enter(m, garage, 3, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0), INTR_OK)
+    pump(m, 1.0, true, counts)
+    expect_eq(counts[IE_EVICT], 1)
+    expect_eq(intr_find(m, garage, 1), -1)
+    expect_eq(intr_find(m, garage, 3), first)
+    expect(intr_find(m, garage, 2) >= 0)
+    # a friend is in owner 2's; the player is in owner 3's: a fourth owner finds nothing to take
+    intr_ref(m, intr_find(m, garage, 2), 1)
+    intr_exit(m)
+    pump(m, 1.0, true, counts)
+    intr_ref(m, intr_find(m, garage, 3), 1)
+    expect_eq(intr_enter(m, garage, 4, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0), INTR_FULL)
+    expect(not intr_release(m, garage, 2))            # someone is in it
+    intr_ref(m, intr_find(m, garage, 2), -1)
+    expect(intr_release(m, garage, 2))
+    expect_eq(intr_instances(m, garage), 1)
+    expect_eq(intr_enter(m, 99, 1, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0), INTR_UNKNOWN)
+  }
+
+  test "a def that will not load puts the player back where they were" {
+    let m = mgr()
+    let ws = ws_new(128.0, 500.0, 2000.0)
+    intr_bind_stream(m, ws)
+    intr_enter(m, 0, 1, 12.5, 3.0, -44.0, 0.25, false, 0.0, 0.0, 0.0, 0.0)
+    let kinds = new []int
+    var back: IntrEvent = null
+    var t = 0.0
+    while t < 3.0 {
+      intr_update(m, 0.05)
+      t = t + 0.05
+      var e = intr_next_event(m)
+      while e != null {
+        push(kinds, e.kind)
+        if e.kind == IE_LOAD_DEF { intr_def_failed(m, e.def) }
+        if e.kind == IE_SPAWN { back = e }
+        e = intr_next_event(m)
+      }
+    }
+    expect(not intr_is_inside(m))
+    expect(not ws.hold)
+    expect(back != null and back.x == 12.5 and back.z == -44.0)
+    var failed = 0
+    for i in 0 .. len(kinds) { if kinds[i] == IE_FAILED { failed += 1 } }
+    expect_eq(failed, 1)
+    expect(not intr_busy(m))
+    expect_eq(intr_people(m, 0), 0)
+  }
+
+  test "content nobody needs is let go after the keep time, and asked for again on the next visit" {
+    let m = mgr()
+    let counts = words(10)
+    intr_enter(m, 0, 1, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 2.0, true, counts)
+    expect(intr_is_loaded(m, 0))
+    intr_exit(m)
+    pump(m, 2.0, true, counts)
+    expect(intr_is_loaded(m, 0))                      # keep is 10 s
+    pump(m, 12.0, true, counts)
+    expect(not intr_is_loaded(m, 0))
+    expect_eq(counts[IE_UNLOAD_DEF], 1)
+    intr_enter(m, 0, 1, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 2.0, true, counts)
+    expect_eq(counts[IE_LOAD_DEF], 2)
+    expect(intr_is_inside(m))
+    # a friend inside keeps it loaded even when the player has gone
+    intr_ref(m, intr_active(m), 1)
+    intr_exit(m)
+    pump(m, 30.0, true, counts)
+    expect(intr_is_loaded(m, 0))
+  }
+
+  test "a door from one interior to another keeps the way back to the street" {
+    let m = mgr()
+    let counts = words(10)
+    intr_enter(m, 0, 1, 700.0, 5.0, 800.0, 2.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 2.0, true, counts)
+    let first = intr_active(m)
+    expect_eq(intr_enter(m, 1, 1, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0), INTR_OK)    # the flat's door to its garage
+    pump(m, 2.0, true, counts)
+    expect(intr_active(m) != first)
+    expect_eq(intr_people(m, 0), 0)                   # they left the flat
+    expect_eq(intr_people(m, 1), 1)
+    var out: IntrEvent = null
+    intr_exit(m)
+    var t = 0.0
+    while t < 2.0 {
+      intr_update(m, 0.05)
+      t = t + 0.05
+      var e = intr_next_event(m)
+      while e != null {
+        if e.kind == IE_SPAWN { out = e }
+        e = intr_next_event(m)
+      }
+    }
+    expect(out != null and out.x == 700.0 and out.y == 5.0 and out.z == 800.0)
+    expect(not intr_is_inside(m))
+    expect_eq(intr_people(m, 1), 0)
+  }
+
+  test "an interior's map gives its rooms and doors as a portal graph" {
+    let rooms = new InteriorRooms
+    let doors = new InteriorDoors
+    expect(interior_rooms_load(rooms, "flat"))
+    expect(interior_doors_load(doors, "flat"))
+    expect_eq(len(rooms.rows), 3)
+    expect_eq(len(doors.rows), 4)
+    let g = pg_new()
+    let bad = intr_graph_build(g, rooms, doors)
+    expect_eq(bad, 1)                                # the closet names a room that is not there
+    expect_eq(pg_room_count(g), 3)
+    expect_eq(len(g.portals), 3)
+    expect_eq(g.portals[0].a, -1)
+    expect_eq(g.portals[0].b, 0)
+    expect(g.portals[0].nx > 0.99)                   # the front door opens inward
+    expect_eq(pg_room_at(g, 8.0, 1.0, 3.0), 1)
+    # from the street the front door shows the hall and, in line with the doors, the living room and bedroom
+    let proj = m4_new()
+    let v = m4_new()
+    let vp = m4_new()
+    m4_perspective(proj, Math.deg_to_rad(40.0), 1.5, 0.1, 100.0)
+    m4_look_at_xyz(v, -10.0, 1.5, 2.5, 0.0, 1.5, 2.5, 0.0, 1.0, 0.0)
+    m4_mul(vp, proj, v)
+    let pl = floats(24)
+    kinst_planes(vp, pl)
+    let vis = words(3)
+    expect_eq(pg_visible(g, -10.0, 1.5, 2.5, pl, -1, 8, vis), 3)
+  }
+}

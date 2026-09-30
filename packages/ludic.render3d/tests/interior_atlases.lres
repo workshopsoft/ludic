@@ -1,0 +1,3 @@
+# interior_atlases.lres - the test's room atlases
+office { image: "interiors/office.png", cols: 4, rows: 4, rooms: 14, depth: 4.5, night_lit: 0.6 }
+flat { image: "interiors/flat.png", cols: 2, rows: 2, rooms: 4, depth: 3.5, night_lit: 0.4, curtain: 0.3 }

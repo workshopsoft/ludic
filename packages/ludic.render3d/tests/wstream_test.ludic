@@ -1,8 +1,7 @@
 # wstream_test.ludic - the cell streaming scheduler on fake costs: the window of wanted cells, nearest and
 # forward first, the per-frame time budget, the memory budget (a nearer cell evicts a farther one, never the
 # reverse), hysteresis, drops given out once, async and failed loads, hold and pin, and the map's own row
-import "ludic.render3d/wpart.ludic"
-import "ludic.render3d/wstream.ludic"
+import "ludic.render3d/bigworld.ludic"
 program WStreamTest {
   numbers float
 

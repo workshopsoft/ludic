@@ -1,0 +1,50 @@
+# hlod_bake.ludic - the HLOD bake as a task a person runs: every cell of a content directory becomes a merged
+# far proxy (cell_<cx>_<cz>.lwh) beside an index (cells.lwi) the scheduler is registered from.
+#
+#   ludic build packages/ludic.render3d/tools/hlod_bake.ludic
+#   ./build/hlod_bake <map> <cells_dir> <out_dir> [cluster_m] [height_band] [max_growth]
+#
+#   <map>         the map whose building_kits.lres the content's kit ids index (assets/maps/<map>/)
+#   <cells_dir>   the cell_<cx>_<cz>.lwc files the city generator wrote
+#   <out_dir>     where the proxies and cells.lwi go
+#   cluster_m     the ground grid buildings merge on (default 32); 0 keeps one box a building
+#   height_band   metres of height buildings must share to merge (default 12)
+#   max_growth    how much bigger than its buildings a merged box may be, by volume (default 4)
+#
+# It reads and writes files only: no window, no device, nothing of the game runs. A bake over a whole city is
+# heavy work and is a person's to start; the same code is exercised on a tiny input by tests/hlod_test.ludic.
+import "ludic.render3d/wpart.ludic"
+import "ludic.render3d/wstream.ludic"
+import "ludic.render3d/interior_atlas.ludic"
+import "ludic.render3d/cellfile.ludic"
+import "ludic.render3d/hlod.ludic"
+program HlodBake {
+  numbers float
+
+  function arg_or(i: int, fallback: float) -> float {
+    let s = Os.arg(i)
+    if s == null or s == "" { return fallback }
+    return float(Text.to_int(s))
+  }
+
+  entry {
+    let map = Os.arg(1)
+    let dir_in = Os.arg(2)
+    let dir_out = Os.arg(3)
+    if map == null or dir_in == null or dir_out == null or map == "" {
+      print("usage: hlod_bake <map> <cells_dir> <out_dir> [cluster_m] [height_band] [max_growth]")
+      exit(2)
+    }
+    let kits = new BuildingKits
+    if not building_kits_load(kits, map) {
+      print(`hlod_bake: no building_kits.lres for map {map} ({kits.err})`)
+      exit(1)
+    }
+    let ix = cell_index_load(dir_in)
+    var size = 256.0
+    if ix != null { size = ix.size }
+    let n = hlod_bake_dir(dir_in, dir_out, kits.rows, size, arg_or(4, 32.0), arg_or(5, 12.0), arg_or(6, 4.0))
+    print(`hlod_bake: {n} cells baked into {dir_out}`)
+    if n == 0 { exit(1) }
+  }
+}

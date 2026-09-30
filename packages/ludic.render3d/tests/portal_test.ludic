@@ -1,0 +1,205 @@
+# portal_test.ludic - visibility through rooms and portals: a corridor seen down its doors, a shut door, a view turned
+# away, a bend that hides what a straight line would show, the street seen through an open door, the verdict
+# driving the culler, and portal normals that point from a into b
+import "ludic.render3d/bigworld.ludic"
+program PortalTest {
+  numbers float
+
+  # four rooms in a row along x, 10 m each, 4 high, 6 deep, doors 2 wide and 3 high at z = 2 .. 4 in the planes x = 10, 20, 30
+  function corridor(g: PGraph) -> void {
+    for i in 0 .. 4 { pg_room(g, float(i) * 10.0, 0.0, 0.0, float(i + 1) * 10.0, 4.0, 6.0) }
+    for i in 0 .. 3 { pg_portal(g, i, i + 1, door_x(float(i + 1) * 10.0)) }
+  }
+
+  # a door in the plane x = `x`, z 2 .. 4, y 0 .. 3
+  function door_x(x: float) -> floats {
+    let c = floats(12)
+    c[0] = x;  c[1] = 0.0;  c[2] = 2.0
+    c[3] = x;  c[4] = 0.0;  c[5] = 4.0
+    c[6] = x;  c[7] = 3.0;  c[8] = 4.0
+    c[9] = x;  c[10] = 3.0;  c[11] = 2.0
+    return c
+  }
+
+  # the six planes of a camera at (x, y, z) looking along yaw (0: -z; 90 degrees: -x; -90 degrees: +x)
+  function planes_for(x: float, y: float, z: float, yaw_deg: float, fov: float, far: float) -> floats {
+    let proj = m4_new()
+    let v = m4_new()
+    let vp = m4_new()
+    m4_perspective(proj, Math.deg_to_rad(fov), 1.5, 0.1, far)
+    let a = Math.deg_to_rad(yaw_deg)
+    m4_look_at_xyz(v, x, y, z, x - Math.sin(a), y, z - Math.cos(a), 0.0, 1.0, 0.0)
+    m4_mul(vp, proj, v)
+    let out = floats(24)
+    kinst_planes(vp, out)
+    return out
+  }
+
+  test "a room is found by a point inside it, the smallest when they nest" {
+    let g = new PGraph
+    let g2 = pg_new()
+    corridor(g2)
+    expect_eq(pg_room_at(g2, 5.0, 1.0, 3.0), 0)
+    expect_eq(pg_room_at(g2, 25.0, 1.0, 3.0), 2)
+    expect_eq(pg_room_at(g2, 50.0, 1.0, 3.0), -1)
+    let n = pg_new()
+    pg_room(n, 0.0, 0.0, 0.0, 100.0, 10.0, 100.0)      # a hall
+    pg_room(n, 10.0, 0.0, 10.0, 20.0, 4.0, 20.0)       # a booth inside it
+    expect_eq(pg_room_at(n, 15.0, 1.0, 15.0), 1)
+    expect_eq(pg_room_at(n, 50.0, 1.0, 50.0), 0)
+  }
+
+  test "a portal's normal points from a into b" {
+    let g = pg_new()
+    corridor(g)
+    expect(g.portals[0].nx > 0.99)
+    # reversed corner order gives the same direction: it is turned toward b
+    let c = door_x(10.0)
+    let r = floats(12)
+    for k in 0 .. 4 { for j in 0 .. 3 { r[k * 3 + j] = c[(3 - k) * 3 + j] } }
+    let h = pg_portal(g, 0, 1, r)
+    expect(g.portals[h].nx > 0.99)
+    let back = pg_portal(g, 1, 0, c)
+    expect(g.portals[back].nx < -0.99)
+    # outdoors (-1) into room 0 through a door in x = 0: the normal points inward (+x)
+    let d = pg_portal(g, -1, 0, door_x(0.0))
+    expect(g.portals[d].nx > 0.99)
+  }
+
+  test "down a corridor with its doors open you see every room along it" {
+    let g = pg_new()
+    corridor(g)
+    let vis = words(4)
+    let pl = planes_for(2.0, 1.5, 3.0, -90.0, 60.0, 100.0)
+    expect_eq(pg_visible(g, 2.0, 1.5, 3.0, pl, 0, 8, vis), 4)
+    for i in 0 .. 4 { expect_eq(vis[i], 1) }
+  }
+
+  test "a shut door hides what is behind it, and opening it brings it back" {
+    let g = pg_new()
+    corridor(g)
+    let vis = words(4)
+    let pl = planes_for(2.0, 1.5, 3.0, -90.0, 60.0, 100.0)
+    pg_set_open(g, 1, false)                        # between rooms 1 and 2
+    expect_eq(pg_visible(g, 2.0, 1.5, 3.0, pl, 0, 8, vis), 2)
+    expect(vis[0] == 1 and vis[1] == 1 and vis[2] == 0 and vis[3] == 0)
+    pg_set_open(g, 1, true)
+    expect_eq(pg_visible(g, 2.0, 1.5, 3.0, pl, 0, 8, vis), 4)
+  }
+
+  test "a view turned away, or too narrow to reach the door, sees only its own room" {
+    let g = pg_new()
+    corridor(g)
+    let vis = words(4)
+    # looking the other way (toward -x)
+    var pl = planes_for(2.0, 1.5, 3.0, 90.0, 60.0, 100.0)
+    expect_eq(pg_visible(g, 2.0, 1.5, 3.0, pl, 0, 8, vis), 1)
+    # looking along +z (the door is 90 degrees off a 60 degree view)
+    pl = planes_for(2.0, 1.5, 3.0, 0.0, 60.0, 100.0)
+    expect_eq(pg_visible(g, 2.0, 1.5, 3.0, pl, 0, 8, vis), 1)
+    # the depth limit: through one portal only
+    pl = planes_for(2.0, 1.5, 3.0, -90.0, 60.0, 100.0)
+    expect_eq(pg_visible(g, 2.0, 1.5, 3.0, pl, 0, 1, vis), 2)
+    # a far plane that stops short of the second door
+    pl = planes_for(2.0, 1.5, 3.0, -90.0, 60.0, 15.0)
+    expect(pg_visible(g, 2.0, 1.5, 3.0, pl, 0, 8, vis) <= 3)
+    expect_eq(vis[3], 0)
+  }
+
+  test "a bend hides what a straight line would show, and the same view from a better place shows it" {
+    let g = pg_new()
+    pg_room(g, 0.0, 0.0, 0.0, 10.0, 4.0, 6.0)        # A
+    pg_room(g, 10.0, 0.0, 0.0, 20.0, 4.0, 6.0)       # B
+    pg_room(g, 10.0, 0.0, 6.0, 20.0, 4.0, 16.0)      # C, north of B
+    pg_portal(g, 0, 1, door_x(10.0))                 # A - B: z 2 .. 4
+    let c = floats(12)                                # B - C: a door in the plane z = 6, x 17.5 .. 19.5
+    c[0] = 17.5;  c[1] = 0.0;  c[2] = 6.0
+    c[3] = 19.5;  c[4] = 0.0;  c[5] = 6.0
+    c[6] = 19.5;  c[7] = 3.0;  c[8] = 6.0
+    c[9] = 17.5;  c[10] = 3.0;  c[11] = 6.0
+    pg_portal(g, 1, 2, c)
+    let vis = words(3)
+    # from the far side of A, looking down the room's length at the far wall: B is in the view, C's door is out of line
+    var pl = planes_for(2.0, 1.5, 3.0, -90.0, 30.0, 100.0)
+    pg_visible(g, 2.0, 1.5, 3.0, pl, 0, 8, vis)
+    expect(vis[1] == 1)
+    expect_eq(vis[2], 0)
+    # in the doorway, looking toward C's door, the portal to C is in the view
+    let cx = 9.9
+    let cz = 3.9
+    let a = Math.atan2(-(18.5 - cx), -(6.0 - cz))      # yaw that faces the point (18.5, 6)
+    pl = planes_for(cx, 1.5, cz, Math.rad_to_deg(a), 40.0, 100.0)
+    pg_visible(g, cx, 1.5, cz, pl, 0, 8, vis)
+    expect_eq(vis[2], 1)
+  }
+
+  test "from the street, an open door shows the rooms in line with it, a shut one shows nothing" {
+    let g = pg_new()
+    corridor(g)
+    let door = pg_portal(g, -1, 0, door_x(0.0))
+    let vis = words(4)
+    let pl = planes_for(-20.0, 1.5, 3.0, -90.0, 50.0, 200.0)
+    expect(pg_visible(g, -20.0, 1.5, 3.0, pl, -1, 8, vis) >= 2)
+    expect_eq(vis[0], 1)
+    expect_eq(vis[1], 1)
+    pg_set_open(g, door, false)
+    expect_eq(pg_visible(g, -20.0, 1.5, 3.0, pl, -1, 8, vis), 0)
+    pg_set_open(g, door, true)
+    # behind the building, looking away from it
+    let pl2 = planes_for(60.0, 1.5, 3.0, -90.0, 50.0, 200.0)
+    expect_eq(pg_visible(g, 60.0, 1.5, 3.0, pl2, -1, 8, vis), 0)
+    # and from the side of the door's plane that is inside the building, the door is not entered from outdoors
+    let pl3 = planes_for(2.0, 1.5, 3.0, 90.0, 50.0, 200.0)
+    expect_eq(pg_visible(g, 2.0, 1.5, 3.0, pl3, 0, 8, vis), 1)
+  }
+
+  test "a room reachable by two routes is visible if either is open" {
+    let g = pg_new()
+    pg_room(g, 0.0, 0.0, 0.0, 10.0, 4.0, 12.0)       # A: wide
+    pg_room(g, 10.0, 0.0, 0.0, 20.0, 4.0, 6.0)       # B, in front
+    pg_room(g, 10.0, 0.0, 6.0, 20.0, 4.0, 12.0)      # C, beside B
+    let ab = pg_portal(g, 0, 1, door_x(10.0))        # z 2 .. 4
+    let c = floats(12)
+    c[0] = 10.0;  c[1] = 0.0;  c[2] = 8.0
+    c[3] = 10.0;  c[4] = 0.0;  c[5] = 10.0
+    c[6] = 10.0;  c[7] = 3.0;  c[8] = 10.0
+    c[9] = 10.0;  c[10] = 3.0;  c[11] = 8.0
+    let ac = pg_portal(g, 0, 2, c)
+    let vis = words(3)
+    let pl = planes_for(2.0, 1.5, 6.0, -90.0, 60.0, 100.0)
+    pg_visible(g, 2.0, 1.5, 6.0, pl, 0, 8, vis)
+    expect(vis[1] == 1 and vis[2] == 1)
+    pg_set_open(g, ab, false)
+    pg_visible(g, 2.0, 1.5, 6.0, pl, 0, 8, vis)
+    expect(vis[1] == 0 and vis[2] == 1)
+    pg_set_open(g, ac, false)
+    pg_visible(g, 2.0, 1.5, 6.0, pl, 0, 8, vis)
+    expect(vis[1] == 0 and vis[2] == 0)
+  }
+
+  test "the verdict hides the rooms' cells in the culler" {
+    let g = pg_new()
+    corridor(g)
+    let k = kinst_new(1)
+    for r in 0 .. 4 {
+      let c = cell_content_new(r, 0, 10.0, 2)
+      cell_add(c, 0, 5.0, 0.0, 3.0, 0.0, 1.0, 0, 0, 0)
+      kinst_add_cell(k, 100 + r, c, float(r) * 10.0, 0.0, 0.0)
+    }
+    let vis = words(4)
+    let pl = planes_for(2.0, 1.5, 3.0, -90.0, 60.0, 100.0)
+    pg_set_open(g, 1, false)
+    pg_visible(g, 2.0, 1.5, 3.0, pl, 0, 8, vis)
+    expect_eq(pg_apply(g, vis, k, 100), 2)
+    let vp = m4_new()
+    let proj = m4_new()
+    let v = m4_new()
+    m4_perspective(proj, Math.deg_to_rad(60.0), 1.5, 0.1, 100.0)
+    m4_look_at_xyz(v, 2.0, 1.5, 3.0, 3.0, 1.5, 3.0, 0.0, 1.0, 0.0)
+    m4_mul(vp, proj, v)
+    kinst_begin(k, vp, 2.0, 1.5, 3.0)
+    kinst_cull(k)
+    expect_eq(k.cells_culled >= 2, true)
+    expect(k.visible <= 2)
+  }
+}

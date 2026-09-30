@@ -1,0 +1,383 @@
+# ============================================================================
+# kinst.ludic - instancing at scale, the CPU side: per-cell instance records, and the frustum + distance culling
+# and LOD binning that turn hundreds of thousands of them into a few draw lists a frame. Pure logic over records
+# and planes - no device - so the culling is tested exactly; kgpu.ludic does the same walk in a compute shader for
+# the whole set, and uploads what this produces when the GPU path is off.
+#
+# An INSTANCE is 12 floats (three vec4s), the layout the vertex stage reads and kinst_cull.comp writes:
+#     [0..3]  x y z scale            the position (the cell's frame in a cell's own records, render space in a bin)
+#     [4..7]  sin yaw, cos yaw, seed, flags      seed is the variation as 0..1; flags are the game's bits
+#     [8..11] tint r g b, variation  the variation is the facade/room variant as a whole number
+# A KIT is the model those instances share; each has a near distance (full mesh inside it), a far distance (an
+# impostor card out to it, nothing past it) and a bounding radius per unit of scale.
+#
+# One KCull holds the resident cells' records (kinst_add_cell when the scheduler loads a FULL layer,
+# kinst_remove_cell when it drops it) and, each frame, tests CELLS first - a cell is culled whole by its bounding
+# box against the six frustum planes and the far distance - then the instances of the cells that remain. What
+# survives is copied, in render space, into one list per (kit, level): level 0 the mesh, level 1 the impostor.
+# A cell's render-space offset follows the floating origin (kinst_rebase, forg.ludic): nothing is re-uploaded
+# because the origin moved, only the offsets change.
+#
+# Budgets for a stable frame time: `max_per_bin` caps a list (the excess is counted in `overflow`, not drawn);
+# `scale` (0.25 .. 1) shrinks every kit's distances, and kinst_adapt moves it toward a target count of visible
+# instances a little each frame - a city street reaching 5000 instances holds its frame time by showing 5% less
+# far, smoothly, not by popping.
+# ============================================================================
+numbers float
+
+export const KI_FLOATS: int = 12
+export const KI_MESH: int = 0         # levels
+export const KI_CARD: int = 1
+
+# one resident cell's instances
+export property KCell {
+  slot: int = 0,           # the scheduler's slot for the cell
+  cx: int = 0,
+  cz: int = 0,
+  n: int = 0,
+  rec: floats,             # KI_FLOATS a record, positions in the cell's frame
+  kit: words,
+  ox: float = 0.0,         # the cell's corner in render space: what is added to a record's position
+  oy: float = 0.0,
+  oz: float = 0.0,
+  minx: float = 0.0,       # bounds of everything in it, cell frame, radii included
+  maxx: float = 0.0,
+  miny: float = 0.0,
+  maxy: float = 0.0,
+  minz: float = 0.0,
+  maxz: float = 0.0,
+  reach: float = 0.0,      # the farthest any of its kits is ever drawn (m): past this the whole cell is skipped
+  hidden: bool = false     # skipped whole this frame (a room the portals say cannot be seen: portal.ludic)
+}
+
+export property KCull {
+  cells: []KCell,
+  n_kits: int = 0,
+  kit_near: floats,
+  kit_far: floats,
+  kit_rad: floats,         # bounding radius per unit of scale (m)
+  kit_card: words,         # 1: has an impostor card level
+  scale: float = 1.0,      # the distances' budget scale
+  planes: floats,          # six planes (a b c d, inside when dot >= 0): left right bottom top near far
+  cam: floats,             # render-space camera
+  max_per_bin: int = 65536,
+  bin_rec: [][]float,      # a list a (kit, level): bin = kit * 2 + level
+  bin_n: words,
+  overflow: int = 0,       # instances over a list's cap this frame
+  tested: int = 0,         # instances looked at this frame
+  visible: int = 0,        # instances that made a list
+  cells_tested: int = 0,
+  cells_culled: int = 0
+}
+
+@alloc_ok("a world being set up: the culler and its lists are made once")
+export function kinst_new(n_kits: int) -> KCull {
+  let k = new KCull
+  k.cells = new []KCell
+  k.n_kits = n_kits
+  k.kit_near = floats(n_kits)
+  k.kit_far = floats(n_kits)
+  k.kit_rad = floats(n_kits)
+  k.kit_card = words(n_kits)
+  for i in 0 .. n_kits {
+    k.kit_near[i] = 300.0
+    k.kit_far[i] = 2000.0
+    k.kit_rad[i] = 10.0
+    k.kit_card[i] = 1
+  }
+  k.planes = floats(24)
+  k.cam = floats(3)
+  k.bin_rec = new [][]float
+  k.bin_n = words(n_kits * 2)
+  for i in 0 .. n_kits * 2 { push(k.bin_rec, floats(KI_FLOATS * 64)) }
+  return k
+}
+
+# a kit's distances and size: from a BuildingKit row (radius: half the diagonal of its box)
+export function kinst_kit(k: KCull, id: int, near: float, far: float, radius: float, has_card: bool) -> void {
+  k.kit_near[id] = near
+  k.kit_far[id] = far
+  k.kit_rad[id] = radius
+  if has_card { k.kit_card[id] = 1 } else { k.kit_card[id] = 0 }
+}
+
+# every kit from the map's rows
+export function kinst_kits_from(k: KCull, rows: []BuildingKit) -> void {
+  for i in 0 .. min(len(rows), k.n_kits) {
+    let r = rows[i]
+    kinst_kit(k, i, r.near, r.far, 0.5 * Math.sqrt(r.w * r.w + r.d * r.d + r.h * r.h), r.impostor)
+  }
+}
+
+# ---- cells ---------------------------------------------------------------------------------
+
+# Add a resident cell from its content: records built in the cell's frame, its bounds taken, its render-space
+# corner set from the floating origin. A cell already added under `slot` is replaced.
+@alloc_ok("a cell loading: its records are made once and freed with the cell")
+export function kinst_add_cell(k: KCull, slot: int, c: CellContent, ox: float, oy: float, oz: float) -> KCell {
+  kinst_remove_cell(k, slot)
+  let kc = new KCell
+  kc.slot = slot
+  kc.cx = c.cx
+  kc.cz = c.cz
+  kc.n = c.n
+  kc.rec = floats(max(c.n, 1) * KI_FLOATS)
+  kc.kit = words(max(c.n, 1))
+  kc.ox = ox
+  kc.oy = oy
+  kc.oz = oz
+  var minx = 1000000000.0
+  var maxx = -1000000000.0
+  var miny = 1000000000.0
+  var maxy = -1000000000.0
+  var minz = 1000000000.0
+  var maxz = -1000000000.0
+  var reach = 0.0
+  for i in 0 .. c.n {
+    let o = i * KI_FLOATS
+    let x = c.xf[i * CELL_XF]
+    let y = c.xf[i * CELL_XF + 1]
+    let z = c.xf[i * CELL_XF + 2]
+    let yaw = c.xf[i * CELL_XF + 3]
+    let sc = c.xf[i * CELL_XF + 4]
+    let id = c.kit[i]
+    kc.kit[i] = id
+    kc.rec[o] = x
+    kc.rec[o + 1] = y
+    kc.rec[o + 2] = z
+    kc.rec[o + 3] = sc
+    kc.rec[o + 4] = Math.sin(yaw)
+    kc.rec[o + 5] = Math.cos(yaw)
+    kc.rec[o + 6] = float(c.vari[i] & 0xffff) / 65536.0
+    kc.rec[o + 7] = float(c.flags[i])
+    kc.rec[o + 8] = cell_rgba_r(c.tint[i])
+    kc.rec[o + 9] = cell_rgba_g(c.tint[i])
+    kc.rec[o + 10] = cell_rgba_b(c.tint[i])
+    kc.rec[o + 11] = float(c.vari[i])
+    var rad = 10.0
+    var far = 2000.0
+    if id >= 0 and id < k.n_kits {
+      rad = k.kit_rad[id] * sc
+      far = k.kit_far[id]
+    }
+    minx = Math.min(minx, x - rad);  maxx = Math.max(maxx, x + rad)
+    miny = Math.min(miny, y - rad);  maxy = Math.max(maxy, y + rad)
+    minz = Math.min(minz, z - rad);  maxz = Math.max(maxz, z + rad)
+    reach = Math.max(reach, far)
+  }
+  kc.minx = minx;  kc.maxx = maxx;  kc.miny = miny;  kc.maxy = maxy;  kc.minz = minz;  kc.maxz = maxz
+  kc.reach = reach
+  push(k.cells, kc)
+  return kc
+}
+
+# Drop a cell by its slot; true if it was there.
+export function kinst_remove_cell(k: KCull, slot: int) -> bool {
+  for i in 0 .. len(k.cells) {
+    if k.cells[i].slot == slot {
+      let last = len(k.cells) - 1
+      k.cells[i] = k.cells[last]
+      List.pop(k.cells)
+      return true
+    }
+  }
+  return false
+}
+
+export function kinst_cell_count(k: KCull) -> int { return len(k.cells) }
+
+# hide or show a resident cell by its slot (the cells of an interior's rooms follow the portals' verdict); false if absent
+export function kinst_hide(k: KCull, slot: int, hidden: bool) -> bool {
+  for i in 0 .. len(k.cells) {
+    if k.cells[i].slot == slot {
+      k.cells[i].hidden = hidden
+      return true
+    }
+  }
+  return false
+}
+
+# every instance held, in all resident cells
+export function kinst_total(k: KCull) -> int {
+  var t = 0
+  for i in 0 .. len(k.cells) { t += k.cells[i].n }
+  return t
+}
+
+# The floating origin moved by (dx, dy, dz): every cell's render-space corner follows (forg_on's callback shape).
+export function kinst_rebase(k: KCull, dx: float, dy: float, dz: float) -> void {
+  for i in 0 .. len(k.cells) {
+    let c = k.cells[i]
+    c.ox = c.ox - dx
+    c.oy = c.oy - dy
+    c.oz = c.oz - dz
+  }
+}
+
+# ---- the view ------------------------------------------------------------------------------
+
+# the six frustum planes of a view-projection matrix (column-major, clip depth -w .. w as the renderer's projections
+# have it), each normalised, inside when a x + b y + c z + d >= 0: left, right, bottom, top, near, far
+export function kinst_planes(vp: floats, out: floats) -> void {
+  for p in 0 .. 6 {
+    let row = p / 2
+    var sg = 1.0
+    if p % 2 == 1 { sg = -1.0 }
+    let a = vp[3] + sg * vp[row]
+    let b = vp[7] + sg * vp[4 + row]
+    let c = vp[11] + sg * vp[8 + row]
+    let d = vp[15] + sg * vp[12 + row]
+    let inv = 1.0 / Math.sqrt(a * a + b * b + c * c)
+    out[p * 4] = a * inv
+    out[p * 4 + 1] = b * inv
+    out[p * 4 + 2] = c * inv
+    out[p * 4 + 3] = d * inv
+  }
+}
+
+# set the frame's view: the planes from `vp` and the camera's render-space position; the lists are emptied
+export function kinst_begin(k: KCull, vp: floats, cx: float, cy: float, cz: float) -> void {
+  kinst_planes(vp, k.planes)
+  k.cam[0] = cx
+  k.cam[1] = cy
+  k.cam[2] = cz
+  for b in 0 .. k.n_kits * 2 { k.bin_n[b] = 0 }
+  k.overflow = 0
+  k.tested = 0
+  k.visible = 0
+  k.cells_tested = 0
+  k.cells_culled = 0
+}
+
+# is the sphere at (x, y, z), radius r, at least partly inside all six planes?
+export function kinst_sphere_in(planes: floats, x: float, y: float, z: float, r: float) -> bool {
+  for p in 0 .. 6 {
+    let o = p * 4
+    if planes[o] * x + planes[o + 1] * y + planes[o + 2] * z + planes[o + 3] < -r { return false }
+  }
+  return true
+}
+
+# the cell's box against the planes (its corner is at render-space offset o): false only when the whole box is outside one
+function kinst_box_in(planes: floats, c: KCell) -> bool {
+  for p in 0 .. 6 {
+    let o = p * 4
+    let a = planes[o]
+    let b = planes[o + 1]
+    let d = planes[o + 2]
+    # the box's corner farthest along the plane's normal (the positive vertex)
+    var x = c.minx
+    if a >= 0.0 { x = c.maxx }
+    var y = c.miny
+    if b >= 0.0 { y = c.maxy }
+    var z = c.minz
+    if d >= 0.0 { z = c.maxz }
+    if a * (x + c.ox) + b * (y + c.oy) + d * (z + c.oz) + planes[o + 3] < 0.0 { return false }
+  }
+  return true
+}
+
+# squared distance from the camera to the cell's box
+function kinst_box_d2(k: KCull, c: KCell) -> float {
+  var dx = 0.0
+  var dy = 0.0
+  var dz = 0.0
+  let x0 = c.minx + c.ox
+  let x1 = c.maxx + c.ox
+  let y0 = c.miny + c.oy
+  let y1 = c.maxy + c.oy
+  let z0 = c.minz + c.oz
+  let z1 = c.maxz + c.oz
+  if k.cam[0] < x0 { dx = x0 - k.cam[0] } else if k.cam[0] > x1 { dx = k.cam[0] - x1 }
+  if k.cam[1] < y0 { dy = y0 - k.cam[1] } else if k.cam[1] > y1 { dy = k.cam[1] - y1 }
+  if k.cam[2] < z0 { dz = z0 - k.cam[2] } else if k.cam[2] > z1 { dz = k.cam[2] - z1 }
+  return dx * dx + dy * dy + dz * dz
+}
+
+# make room for one more record in a list
+@alloc_ok("a list grows to what the view needs and stays that size: doubling, amortised to nothing after the first frames")
+function kinst_room(k: KCull, bin: int) -> void {
+  let need = (k.bin_n[bin] + 1) * KI_FLOATS
+  if need > len(k.bin_rec[bin]) {
+    let a = floats(len(k.bin_rec[bin]) * 2)
+    for i in 0 .. k.bin_n[bin] * KI_FLOATS { a[i] = k.bin_rec[bin][i] }
+    k.bin_rec[bin] = a
+  }
+}
+
+# Cull every resident cell and instance against the view set by kinst_begin, and sort what survives into the lists
+# (bin = kit * 2 + level). The cell tests run first, so a street of ten thousand instances behind the camera costs
+# a few dozen box tests. Returns how many instances made a list.
+export function kinst_cull(k: KCull) -> int {
+  let cam_x = k.cam[0]
+  let cam_y = k.cam[1]
+  let cam_z = k.cam[2]
+  let sc = k.scale
+  for ci in 0 .. len(k.cells) {
+    let c = k.cells[ci]
+    k.cells_tested += 1
+    if c.hidden {
+      k.cells_culled += 1
+      continue
+    }
+    let reach = c.reach * sc
+    if kinst_box_d2(k, c) > reach * reach or not kinst_box_in(k.planes, c) {
+      k.cells_culled += 1
+      continue
+    }
+    for i in 0 .. c.n {
+      let o = i * KI_FLOATS
+      let id = c.kit[i]
+      if id < 0 or id >= k.n_kits { continue }
+      k.tested += 1
+      let s = c.rec[o + 3]
+      let x = c.rec[o] + c.ox
+      let y = c.rec[o + 1] + c.oy
+      let z = c.rec[o + 2] + c.oz
+      let dx = x - cam_x
+      let dy = y - cam_y
+      let dz = z - cam_z
+      let d2 = dx * dx + dy * dy + dz * dz
+      let far = k.kit_far[id] * sc
+      if d2 > far * far { continue }
+      let r = k.kit_rad[id] * s
+      if not kinst_sphere_in(k.planes, x, y, z, r) { continue }
+      var lv = KI_MESH
+      let near = k.kit_near[id] * sc
+      if d2 > near * near {
+        if k.kit_card[id] == 0 { continue }
+        lv = KI_CARD
+      }
+      let bin = id * 2 + lv
+      if k.bin_n[bin] >= k.max_per_bin {
+        k.overflow += 1
+        continue
+      }
+      kinst_room(k, bin)
+      let out = k.bin_rec[bin]
+      let q = k.bin_n[bin] * KI_FLOATS
+      out[q] = x
+      out[q + 1] = y
+      out[q + 2] = z
+      out[q + 3] = s
+      for j in 4 .. KI_FLOATS { out[q + j] = c.rec[o + j] }
+      k.bin_n[bin] += 1
+      k.visible += 1
+    }
+  }
+  return k.visible
+}
+
+export function kinst_bin_count(k: KCull, kit: int, level: int) -> int { return k.bin_n[kit * 2 + level] }
+export function kinst_bin(k: KCull, kit: int, level: int) -> floats { return k.bin_rec[kit * 2 + level] }
+
+# Move the distance scale toward a target number of visible instances: a frame that showed more than the target
+# shortens every kit's distances a little, one that showed fewer than 80% of it lengthens them, between is left
+# alone (a dead band, so a steady scene does not hunt). Returns the new scale. `step` is the most it moves a frame.
+export function kinst_adapt(k: KCull, target: int, step: float) -> float {
+  var s = k.scale
+  if k.visible > target { s = s - step * Math.min(float(k.visible - target) / float(max(target, 1)), 1.0) }
+  else if float(k.visible) < float(target) * 0.8 { s = s + step }
+  k.scale = Math.clamp(s, 0.25, 1.0)
+  return k.scale
+}

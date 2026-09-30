@@ -22,8 +22,8 @@ export property WorldPartition {
   @Unit("m") @Range(0, 40000) hlod_radius: float = 4000.0      # cells this near have their merged proxy loaded
   @Unit("m") @Range(0, 80000) impostor_radius: float = 9000.0  # past hlod_radius, far buildings draw as impostors out to this
   @Unit("m") @Range(0, 2048) margin: float = 48.0              # a loaded layer is kept this far past its radius (hysteresis)
-  @Unit("ms") @Range(0, 50) load_ms: float = 2.0               # the loads one frame may start (estimated cost)
-  @Unit("MB") @Range(16, 16384) memory_mb: int = 768           # what the loaded cells may hold in all
+  @Range(0, 50) load_ms: float = 2.0               # the loads one frame may start (estimated cost)
+  @Range(16, 16384) memory_mb: int = 768           # what the loaded cells may hold in all
   @Range(1, 32) max_jobs: int = 4                              # loads in flight at once
   @Unit("m") @Range(0, 2048) bias: float = 0.0                 # how much nearer a cell ahead of the camera counts (0: one cell)
 }

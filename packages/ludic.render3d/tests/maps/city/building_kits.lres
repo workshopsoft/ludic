@@ -1,0 +1,21 @@
+# building_kits.lres - the fixture city's kits (ids are the order below)
+house {
+  model: "models/house.glb", node: "house"
+  w: 10.0, d: 8.0, h: 7.0
+  near: 300.0, far: 2000.0
+  proxy_r: 0.6, proxy_g: 0.45, proxy_b: 0.4
+}
+block {
+  model: "models/block.glb", node: "block"
+  w: 24.0, d: 18.0, h: 30.0
+  near: 500.0, far: 3500.0
+  interior: "office"
+  win_w: 3.0, win_h: 3.6
+}
+tower {
+  model: "models/tower.glb", node: "tower"
+  w: 30.0, d: 30.0, h: 120.0
+  near: 900.0, far: 8000.0
+  interior: "office"
+  proxy_r: 0.45, proxy_g: 0.5, proxy_b: 0.58
+}

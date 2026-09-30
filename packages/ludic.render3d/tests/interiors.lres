@@ -1,0 +1,3 @@
+# interiors.lres - the test's interior defs
+flat { map: "flat", max_instances: 3, size: 40.0, fade_out: 0.2, fade_in: 0.4, keep: 10.0, spawn_x: 2.0, spawn_y: 0.1, spawn_z: 3.0, spawn_yaw: 90.0 }
+garage { map: "garage", max_instances: 2, size: 80.0, fade_out: 0.1, fade_in: 0.1, keep: 5.0, spawn_x: 10.0, spawn_z: 4.0 }

@@ -1,0 +1,36 @@
+# ============================================================================
+# interior_atlas.ludic - the rooms a building's windows show, as data. A fake interior is not geometry:
+# behind each window of a facade the shader (imi.ludic, kit.frag INTERIOR_MAP) ray-marches a box, picks a room
+# for that window from an atlas, and paints the box's walls from it. One atlas is a grid of ROOM tiles, each
+# tile six faces in a 3 x 2 block:
+#
+#         left wall | back wall | right wall        row 0 (top of the tile)
+#         ceiling   | floor     | (spare)           row 1
+#
+# Left and right walls run far -> near across the face (u) and up (v); the back wall runs across the room (u)
+# and up (v); the ceiling and the floor run across the room (u) and far -> near (v). A tile is painted in
+# daylight, lit from outside; the shader turns the lights on at night in the rooms it picks, warm, and leaves
+# the others dark. `InteriorAtlases` is the game's (`def InteriorAtlases from "interior_atlases.lres"`); a kit
+# names its row by key (BuildingKit.interior).
+# ============================================================================
+numbers float
+
+export property InteriorAtlas {
+  key: string = ""
+  @Asset("png") image: string = ""
+  @Range(1, 64) cols: int = 4                         # room tiles across the image
+  @Range(1, 64) rows: int = 4                         # ... and down
+  @Range(1, 4096) rooms: int = 16                     # how many tiles are painted (at most cols * rows), counted row by row
+  @Unit("m") @Range(0.5, 20) depth: float = 4.0       # how deep a room is behind the glass
+  @Range(0, 1) night_lit: float = 0.5                 # the share of rooms with their lights on at full night
+  @Range(0, 16) lit_gain: float = 2.2                 # how bright a lit room is at night
+  @Range(0, 1) dark_gain: float = 0.05                # how bright an unlit room is at night (of its daylight look)
+  @Range(0, 1) lit_r: float = 1.0                     # the warm colour of a lit room's light
+  @Range(0, 1) lit_g: float = 0.78
+  @Range(0, 1) lit_b: float = 0.52
+  @Range(0, 0.45) frame: float = 0.08                 # the share of a window cell the frame and wall take on each side
+  @Range(0, 1) curtain: float = 0.0                   # the share of windows with a curtain drawn (they show a flat fabric)
+}
+
+@AppendOnly @ByKey
+export open registry InteriorAtlases of InteriorAtlas as IA

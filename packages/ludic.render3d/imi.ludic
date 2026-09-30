@@ -1,0 +1,173 @@
+# ============================================================================
+# imi.ludic - interior mapping's rules, the CPU reference of what kit.frag does behind every window of a facade
+# (#define INTERIOR_MAP): which room a window shows, whether its lights are on, where a view ray meets the room's
+# box, and where on the room's atlas tile that hit is. No device; the shader repeats this arithmetic and the
+# tests hold the reference to the properties the look depends on - the same window shows the same room every
+# frame on every machine, neighbours differ, the lights come on gradually at dusk and never flicker back.
+#
+# A facade is the wall of a building's model, measured in the MODEL's own frame (so nothing moves when the floating
+# origin does, and an instance turned or scaled carries its windows along): u along the wall (right-handed, looking
+# at it from outside), v up. The wall is cut into window cells of win_w x win_h metres; the middle of each cell,
+# inside a frame of `frame` (a share of the cell) on every side, is glass. Behind the glass is a box room,
+# win_w wide, win_h high and `depth` deep, which one of the atlas's rooms (interior_atlas.ludic) paints.
+#
+#   room    a whole number in [0, rooms), from the building's variation seed, the wall, the window's cell
+#   lit     whether that room's lights are on: `r < night * night_lit` for the room's own r in [0, 1), so rooms
+#           switch on one by one as night deepens (none at dusk's start, night_lit of them at full night) and stay on
+# ============================================================================
+numbers float
+
+# PCG hash of a 32-bit word (the shader's pcg(): a multiply-add, a data-dependent shift, a multiply, a fold)
+export function imi_pcg(v: int) -> int {
+  let s = v * 747796405 + -1403630843            # + 2891336453 as a wrapped int
+  let w = ((s >> ((s >> 28) + 4)) ^ s) * 277803737
+  return (w >> 22) ^ w
+}
+
+# the hash of one window: the building's seed, its wall, the window's cell, and a salt for what is being decided
+export function imi_hash(seed: int, wall: int, cx: int, cy: int, salt: int) -> int {
+  var h = imi_pcg(seed * 73856093 ^ wall * 19349663)
+  h = imi_pcg(h ^ (cx + 32768) * 83492791)
+  h = imi_pcg(h ^ (cy + 32768) * 668265263)
+  return imi_pcg(h ^ salt * 1597334677)
+}
+
+# 0 .. 1 from a hash (24 bits: exact in a float)
+export function imi_unit(h: int) -> float { return float((h >> 8) & 0xffffff) / 16777216.0 }
+
+# the room a window shows: [0, rooms)
+export function imi_room(rooms: int, seed: int, wall: int, cx: int, cy: int) -> int {
+  var r = int(imi_unit(imi_hash(seed, wall, cx, cy, 0)) * float(rooms))
+  if r >= rooms { r = rooms - 1 }
+  if r < 0 { r = 0 }
+  return r
+}
+
+# the window's own 0 .. 1, for its lights (salt 1)
+export function imi_light_roll(seed: int, wall: int, cx: int, cy: int) -> float { return imi_unit(imi_hash(seed, wall, cx, cy, 1)) }
+
+# how night it is, 0 (day) .. 1 (night), from the sun's height (the y of the direction toward the sun): the lights begin as it
+# touches the horizon and are all they will be by a little past twilight
+export function imi_night(sun_y: float) -> float {
+  let t = Math.clamp((0.06 - sun_y) / 0.20, 0.0, 1.0)
+  return t * t * (3.0 - 2.0 * t)
+}
+
+# are this window's lights on? `night_lit` is the atlas row's share of rooms lit at full night
+export function imi_lit(night: float, night_lit: float, seed: int, wall: int, cx: int, cy: int) -> bool {
+  return imi_light_roll(seed, wall, cx, cy) < night * night_lit
+}
+
+# which of a building's four walls a model-space normal is: 0 +x, 1 -x, 2 +z, 3 -z; -1 for a roof, a floor, or a wall not square to the axes
+export function imi_wall(nx: float, ny: float, nz: float) -> int {
+  if Math.abs(ny) > 0.35 { return -1 }
+  if nx > 0.9 { return 0 }
+  if nx < -0.9 { return 1 }
+  if nz > 0.9 { return 2 }
+  if nz < -0.9 { return 3 }
+  return -1
+}
+
+# the distance along a wall of a model-space point (x, z) on wall `wall`, looking at the wall from outside: u grows to the viewer's right
+export function imi_facade_u(wall: int, x: float, z: float) -> float {
+  if wall == 0 { return -z }
+  if wall == 1 { return z }
+  if wall == 2 { return x }
+  return -x
+}
+
+# the window cell of a facade point: out[0] = the cell's column, out[1] = its row (whole numbers), out[2], out[3] the
+# point's place in the cell in metres (across, up) from its lower left corner
+export function imi_cell(fu: float, fv: float, win_w: float, win_h: float, out: floats) -> void {
+  let cu = Math.floor(fu / win_w)
+  let cv = Math.floor(fv / win_h)
+  out[0] = cu
+  out[1] = cv
+  out[2] = fu - cu * win_w
+  out[3] = fv - cv * win_h
+}
+
+# is the point (a, b) metres into a window cell of win_w x win_h inside the glass: clear of `frame` (a share of the cell) on each side
+export function imi_glass(a: float, b: float, win_w: float, win_h: float, frame: float) -> bool {
+  return a >= frame * win_w and a <= (1.0 - frame) * win_w and b >= frame * win_h and b <= (1.0 - frame) * win_h
+}
+
+export const IMI_LEFT: int = 0      # faces of the room box
+export const IMI_RIGHT: int = 1
+export const IMI_FLOOR: int = 2
+export const IMI_CEIL: int = 3
+export const IMI_BACK: int = 4
+
+# Where a ray leaves the room's box: from (px, py, 0) on the glass (px across, py up, z into the room) heading
+# (dx, dy, dz) with dz > 0. out[0] the face, out[1] and out[2] the hit's u and v on that face's image, out[3] the distance.
+# Faces' images: back: u across (x / w), v up (y / h); left and right: u far -> near (1 - z / depth), v up; floor and ceiling:
+# u across, v far -> near.
+export function imi_hit(w: float, h: float, depth: float, px: float, py: float, dx: float, dy: float, dz: float, out: floats) -> void {
+  var t = 1000000000.0
+  var face = IMI_BACK
+  # the back wall
+  if dz > 0.000001 { t = depth / dz }
+  if dx > 0.000001 {
+    let tx = (w - px) / dx
+    if tx < t { t = tx;  face = IMI_RIGHT }
+  } else if dx < -0.000001 {
+    let tx = -px / dx
+    if tx < t { t = tx;  face = IMI_LEFT }
+  }
+  if dy > 0.000001 {
+    let ty = (h - py) / dy
+    if ty < t { t = ty;  face = IMI_CEIL }
+  } else if dy < -0.000001 {
+    let ty = -py / dy
+    if ty < t { t = ty;  face = IMI_FLOOR }
+  }
+  let x = px + dx * t
+  let y = py + dy * t
+  let z = dz * t
+  out[0] = float(face)
+  out[3] = t
+  if face == IMI_BACK {
+    out[1] = x / w
+    out[2] = y / h
+  } else if face == IMI_LEFT or face == IMI_RIGHT {
+    out[1] = 1.0 - z / depth
+    out[2] = y / h
+  } else {
+    out[1] = x / w
+    out[2] = 1.0 - z / depth
+  }
+  out[1] = Math.clamp(out[1], 0.0, 1.0)
+  out[2] = Math.clamp(out[2], 0.0, 1.0)
+}
+
+# where a face's image sits in a room tile (3 columns x 2 rows): out[0] = column, out[1] = row
+export function imi_face_cell(face: int, out: floats) -> void {
+  if face == IMI_LEFT { out[0] = 0.0;  out[1] = 0.0 }
+  else if face == IMI_BACK { out[0] = 1.0;  out[1] = 0.0 }
+  else if face == IMI_RIGHT { out[0] = 2.0;  out[1] = 0.0 }
+  else if face == IMI_CEIL { out[0] = 0.0;  out[1] = 1.0 }
+  else { out[0] = 1.0;  out[1] = 1.0 }
+}
+
+# The atlas uv of the point (u, v) of face `face` of room `room` in an atlas of cols x rows tiles (rooms counted row by
+# row): inside the face's image, pulled in `eps` (a share of the face) so a filtered read stays on it.
+export function imi_atlas_uv(cols: int, rows: int, room: int, face: int, u: float, v: float, eps: float, out: floats) -> void {
+  let fc = floats(2)
+  imi_face_cell(face, fc)
+  let tx = float(room % cols)
+  let ty = float(room / cols)
+  let uu = eps + u * (1.0 - 2.0 * eps)
+  let vv = eps + v * (1.0 - 2.0 * eps)
+  out[0] = (tx + (fc[0] + uu) / 3.0) / float(cols)
+  out[1] = (ty + (fc[1] + vv) / 2.0) / float(rows)
+}
+
+# the colour multiplier of a room: what the atlas row says, for a room that is lit or not, at `night`. Day: the room
+# shows its daylight look at its own level (1); night and unlit: `dark_gain`; night and lit: lit_gain (the warm
+# colour is the row's). The shader scales the day term by the sky's own light, so a room is dimmer in the evening
+# for that reason as well as this one.
+export function imi_room_gain(night: float, lit: bool, dark_gain: float, lit_gain: float) -> float {
+  let unlit = 1.0 + (dark_gain - 1.0) * night
+  if lit { return Math.max(unlit, lit_gain * night) }
+  return unlit
+}

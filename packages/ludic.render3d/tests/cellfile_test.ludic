@@ -1,0 +1,110 @@
+# cellfile_test.ludic - a cell's content and the index, to bytes and to files and back, the map's kit rows,
+# and that positions keep their precision far from the map's origin
+import "ludic.render3d/bigworld.ludic"
+program CellFileTest {
+  numbers float
+  def InteriorAtlases from "interior_atlases.lres"
+
+  function sample(cx: int, cz: int, n: int) -> CellContent {
+    let c = cell_content_new(cx, cz, 128.0, 2)            # starts small: it must grow
+    for i in 0 .. n {
+      cell_add(c, i % 3, float(i) * 1.25, float(i % 7), 100.0 - float(i) * 0.5, float(i) * 0.1, 1.0 + float(i % 4) * 0.25, cell_rgba(10 + i, 20, 30, 255), i * 37 % 65536, i & 3)
+    }
+    return c
+  }
+
+  test "content survives encode and decode exactly" {
+    let c = sample(312, -45, 100)
+    expect_eq(c.n, 100)
+    let b = cell_encode(c)
+    let d = cell_decode(b)
+    expect(d != null)
+    expect_eq(d.cx, 312)
+    expect_eq(d.cz, -45)
+    expect(d.size == 128.0)
+    expect_eq(d.n, 100)
+    for i in 0 .. 100 {
+      for k in 0 .. CELL_XF { expect(d.xf[i * CELL_XF + k] == c.xf[i * CELL_XF + k]) }
+      expect_eq(d.kit[i], c.kit[i])
+      expect_eq(d.tint[i], c.tint[i])
+      expect_eq(d.vari[i], c.vari[i])
+      expect_eq(d.flags[i], c.flags[i])
+    }
+    expect_eq(len(b), cell_bytes(c))
+  }
+
+  test "damaged bytes are refused, never read past their end" {
+    let c = sample(1, 2, 10)
+    let b = cell_encode(c)
+    expect(cell_decode(null) == null)
+    let cut = buffer(len(b) - 8)
+    for i in 0 .. len(cut) { cut[i] = b[i] }
+    expect(cell_decode(cut) == null)
+    let wrong = buffer(len(b))
+    for i in 0 .. len(b) { wrong[i] = b[i] }
+    wrong[0] = 0
+    expect(cell_decode(wrong) == null)
+    expect(cell_decode(buffer(4)) == null)
+  }
+
+  test "a cell saved to a directory comes back from it" {
+    let dir = Os.temp_dir() + "/r3d_cellfile_test"
+    let c = sample(-3, 9, 40)
+    expect(cell_save(dir, c))
+    let d = cell_load(dir, -3, 9)
+    expect(d != null and d.n == 40 and d.cx == -3 and d.cz == 9)
+    expect(cell_load(dir, 0, 0) == null)
+  }
+
+  test "the index round-trips and registers its cells with a scheduler" {
+    let ix = cell_index_new(128.0)
+    cell_index_set(ix, 3, 4, 10, 1000, 200)
+    cell_index_set(ix, -1, 0, 5, 500, 0)
+    cell_index_set(ix, 3, 4, -1, -1, 300)           # updates only what is given
+    expect_eq(len(ix.entries), 2)
+    let b = cell_index_encode(ix)
+    let back = cell_index_decode(b)
+    expect(back != null and back.size == 128.0)
+    expect_eq(len(back.entries), 2)
+    let k = cell_index_find(back, 3, 4)
+    expect(back.entries[k].n == 10 and back.entries[k].bytes_full == 1000 and back.entries[k].bytes_hlod == 300)
+    let s = ws_new(128.0, 500.0, 2000.0)
+    expect_eq(cell_index_register(back, s), 2)
+    expect_eq(ws_count(s), 2)
+    expect(ws_find(s, -1, 0) >= 0)
+    let dir = Os.temp_dir() + "/r3d_cellfile_index"
+    expect(cell_index_save(dir, ix))
+    let loaded = cell_index_load(dir)
+    expect(loaded != null and len(loaded.entries) == 2)
+  }
+
+  test "a thing far out keeps its position: local floats are exact, the world position is a double" {
+    let c = cell_content_new(16384, -16384, 128.0, 4)        # 2 100 km from the origin
+    cell_add(c, 0, 12.375, 3.0, 99.125, 0.0, 1.0, 0, 0, 0)
+    let x = cell_world_x(c, 0)
+    let z = cell_world_z(c, 0)
+    expect(x == double(16384) * 128.0 + 12.375)
+    expect(z == double(-16384) * 128.0 + 99.125)
+    # a float of the same number cannot hold the fraction
+    expect(double(float(x)) != x)
+  }
+
+  test "the map's kits load in file order, and a kit names its atlas" {
+    let kits = new BuildingKits
+    expect(building_kits_load(kits, "city"))
+    expect_eq(len(kits.rows), 3)
+    expect(kits.rows[1].w == 24.0 and kits.rows[1].h == 30.0)
+    expect(kits.rows[1].interior == "office")
+    expect(kits.rows[0].interior == "")
+    expect_eq(building_kits_find(kits, "tower"), 2)
+    expect(InteriorAtlases[IA_OFFICE].rooms == 14)
+    expect_eq(IA_COUNT, 2)
+  }
+
+  test "colours pack and unpack" {
+    let t = cell_rgba(255, 128, 0, 255)
+    expect_near(cell_rgba_r(t), 1.0, 0.001)
+    expect_near(cell_rgba_g(t), 128.0 / 255.0, 0.001)
+    expect_near(cell_rgba_b(t), 0.0, 0.001)
+  }
+}

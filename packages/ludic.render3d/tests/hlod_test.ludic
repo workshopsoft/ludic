@@ -1,0 +1,235 @@
+# hlod_test.ludic - the HLOD bake on tiny inputs: a box is five faces wound to face outward, yaw rotates as the
+# renderer does, buildings are merged by ground cell and height band but never into something much bigger than
+# they are, the bake is deterministic, and the files round-trip and refuse damage
+import "ludic.render3d/bigworld.ludic"
+program HlodTest {
+  numbers float
+  def InteriorAtlases from "interior_atlases.lres"
+
+  function kits() -> []BuildingKit {
+    let k = new BuildingKits
+    building_kits_load(k, "city")
+    return k.rows
+  }
+
+  # every triangle's geometric normal agrees with its vertices' normals; none face down
+  function faces_out(m: HlodMesh) -> bool {
+    var t = 0
+    while t < m.ni {
+      let a = m.idx[t] * HLOD_V
+      let b = m.idx[t + 1] * HLOD_V
+      let c = m.idx[t + 2] * HLOD_V
+      let ux = m.vtx[b] - m.vtx[a]
+      let uy = m.vtx[b + 1] - m.vtx[a + 1]
+      let uz = m.vtx[b + 2] - m.vtx[a + 2]
+      let vx = m.vtx[c] - m.vtx[a]
+      let vy = m.vtx[c + 1] - m.vtx[a + 1]
+      let vz = m.vtx[c + 2] - m.vtx[a + 2]
+      let gx = uy * vz - uz * vy
+      let gy = uz * vx - ux * vz
+      let gz = ux * vy - uy * vx
+      if gx * m.vtx[a + 3] + gy * m.vtx[a + 4] + gz * m.vtx[a + 5] <= 0.0 { return false }
+      if m.vtx[a + 4] < -0.5 { return false }
+      t += 3
+    }
+    return true
+  }
+
+  function extent(m: HlodMesh, axis: int, hi: bool) -> float {
+    var r = 1000000000.0
+    if hi { r = -1000000000.0 }
+    for i in 0 .. m.nv {
+      let v = m.vtx[i * HLOD_V + axis]
+      if hi { r = Math.max(r, v) } else { r = Math.min(r, v) }
+    }
+    return r
+  }
+
+  test "one building is one box: twenty vertices, thirty indices, every face outward" {
+    let c = cell_content_new(0, 0, 128.0, 4)
+    cell_add(c, 0, 50.0, 0.0, 60.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    let m = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, kits(), 0.0, 6.0, 3.0, m)
+    expect_eq(m.boxes, 1)
+    expect_eq(m.nv, 20)
+    expect_eq(m.ni, 30)
+    expect_eq(hlod_tris(m), 10)
+    expect(faces_out(m))
+    expect_near(extent(m, 0, false), 45.0, 0.001)      # house 10 x 8 x 7 centred at (50, 60)
+    expect_near(extent(m, 0, true), 55.0, 0.001)
+    expect_near(extent(m, 2, false), 56.0, 0.001)
+    expect_near(extent(m, 2, true), 64.0, 0.001)
+    expect_near(extent(m, 1, true), 7.0, 0.001)
+    expect_near(extent(m, 1, false), 0.0, 0.001)
+  }
+
+  test "yaw turns the box the way the renderer turns an instance, scale grows it about its middle" {
+    let c = cell_content_new(0, 0, 128.0, 4)
+    cell_add(c, 0, 50.0, 0.0, 60.0, 1.5707964, 2.0, cell_rgba(255, 255, 255, 255), 0, 0)   # a quarter turn, twice the size
+    let m = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, kits(), 0.0, 6.0, 3.0, m)
+    # 10 x 8 doubled = 20 x 16; a quarter turn swaps the extents: 16 along x, 20 along z
+    expect_near(extent(m, 0, true) - extent(m, 0, false), 16.0, 0.01)
+    expect_near(extent(m, 2, true) - extent(m, 2, false), 20.0, 0.01)
+    expect_near(extent(m, 1, true), 14.0, 0.001)
+    expect(faces_out(m))
+    # a real rotation (30 degrees): still five faces out, and wider than either side
+    let d = cell_content_new(0, 0, 128.0, 4)
+    cell_add(d, 0, 50.0, 0.0, 60.0, 0.5235988, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    let n = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(d, kits(), 0.0, 6.0, 3.0, n)
+    expect(faces_out(n))
+    expect(extent(n, 0, true) - extent(n, 0, false) > 10.0)
+  }
+
+  test "neighbours in one ground cell and height band become one box, and a far pair is not merged into a field" {
+    let c = cell_content_new(0, 0, 128.0, 8)
+    # four houses in a row inside one 16 m cluster cell
+    for i in 0 .. 4 { cell_add(c, 0, 2.0 + float(i) * 3.5, 0.0, 4.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0) }
+    let m = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, kits(), 16.0, 6.0, 3.0, m)
+    expect_eq(m.boxes, 1)
+    expect_eq(m.source, 4)
+    expect(faces_out(m))
+    let alone = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, kits(), 0.0, 6.0, 3.0, alone)
+    expect_eq(alone.boxes, 4)
+    expect_eq(alone.source, 4)
+    # two houses in the same cluster cell but 28 m apart: the merged box would be nine times their volume
+    let d = cell_content_new(0, 0, 128.0, 8)
+    cell_add(d, 0, 2.0, 0.0, 2.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    cell_add(d, 0, 30.0, 0.0, 30.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    let e = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(d, kits(), 32.0, 6.0, 3.0, e)
+    expect_eq(e.boxes, 2)
+  }
+
+  test "a tower among houses is its own box: the height band keeps them apart" {
+    let c = cell_content_new(0, 0, 128.0, 8)
+    cell_add(c, 0, 4.0, 0.0, 4.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    cell_add(c, 0, 9.0, 0.0, 14.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    cell_add(c, 2, 14.0, 0.0, 6.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    let m = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, kits(), 32.0, 6.0, 3.0, m)
+    expect_eq(m.boxes, 2)
+    expect_eq(m.source, 3)
+    expect_near(extent(m, 1, true), 120.0, 0.001)
+  }
+
+  test "a merged box contains every building it stands for" {
+    let c = cell_content_new(0, 0, 128.0, 8)
+    for i in 0 .. 5 { cell_add(c, 1, 10.0 + float(i) * 6.0, 0.0, 20.0 + float(i % 2) * 5.0, float(i) * 0.3, 1.0, cell_rgba(255, 255, 255, 255), 0, 0) }
+    let m = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, kits(), 64.0, 10.0, 6.0, m)
+    expect_eq(m.boxes, 1)
+    let px = floats(4)
+    let pz = floats(4)
+    for i in 0 .. 5 {
+      let o = i * CELL_XF
+      hlod_corners(c.xf[o], c.xf[o + 2], 12.0, 9.0, c.xf[o + 3], px, pz)
+      for q in 0 .. 4 {
+        expect(px[q] >= extent(m, 0, false) - 0.001 and px[q] <= extent(m, 0, true) + 0.001)
+        expect(pz[q] >= extent(m, 2, false) - 0.001 and pz[q] <= extent(m, 2, true) + 0.001)
+      }
+    }
+    expect(extent(m, 1, true) >= 30.0)
+  }
+
+  test "a dense block of two thousand buildings collapses to a few boxes, and the bake is deterministic" {
+    let c = cell_content_new(5, 5, 256.0, 16)
+    var seed = 12345
+    for j in 0 .. 40 {
+      for i in 0 .. 50 {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff
+        let jit = float(seed % 100) * 0.01
+        cell_add(c, seed % 2, 2.0 + float(i) * 5.0 + jit, 0.0, 2.0 + float(j) * 6.0 + jit, 0.0, 1.0, cell_rgba(200, 200, 200, 255), i, 0)
+      }
+    }
+    expect_eq(c.n, 2000)
+    let a = hlod_new(5, 5, 256.0, 1)
+    hlod_bake(c, kits(), 32.0, 12.0, 4.0, a)
+    let none = hlod_new(5, 5, 256.0, 1)
+    hlod_bake(c, kits(), 0.0, 12.0, 4.0, none)
+    expect_eq(none.boxes, 2000)
+    expect(a.boxes < 700)
+    expect(a.source == 2000)
+    expect(faces_out(a))
+    let b = hlod_new(5, 5, 256.0, 1)
+    hlod_bake(c, kits(), 32.0, 12.0, 4.0, b)
+    let ea = hlod_encode(a)
+    let eb = hlod_encode(b)
+    expect_eq(len(ea), len(eb))
+    var same = true
+    for i in 0 .. len(ea) { if ea[i] != eb[i] { same = false } }
+    expect(same)
+  }
+
+  test "unknown kit ids are skipped" {
+    let c = cell_content_new(0, 0, 128.0, 4)
+    cell_add(c, 99, 10.0, 0.0, 10.0, 0.0, 1.0, 0, 0, 0)
+    cell_add(c, -1, 20.0, 0.0, 10.0, 0.0, 1.0, 0, 0, 0)
+    cell_add(c, 0, 30.0, 0.0, 10.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    let m = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, kits(), 16.0, 6.0, 3.0, m)
+    expect_eq(m.boxes, 1)
+    expect_eq(m.source, 1)
+  }
+
+  test "the proxy's colour is the kit's times the instance's tint" {
+    let c = cell_content_new(0, 0, 128.0, 4)
+    cell_add(c, 0, 10.0, 0.0, 10.0, 0.0, 1.0, cell_rgba(128, 255, 0, 255), 0, 0)
+    let m = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, kits(), 0.0, 6.0, 3.0, m)
+    let bits = float_bits(m.vtx[6])
+    expect_near(cell_rgba_r(bits), 0.6 * 128.0 / 255.0, 0.005)     # house proxy_r 0.6
+    expect_near(cell_rgba_g(bits), 0.45, 0.005)
+    expect_near(cell_rgba_b(bits), 0.0, 0.005)
+  }
+
+  test "the proxy file round-trips and refuses damage" {
+    let c = cell_content_new(3, -2, 128.0, 4)
+    for i in 0 .. 3 { cell_add(c, i, 10.0 + float(i) * 30.0, 0.0, 10.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0) }
+    let m = hlod_new(3, -2, 128.0, 1)
+    hlod_bake(c, kits(), 0.0, 6.0, 3.0, m)
+    let b = hlod_encode(m)
+    expect_eq(len(b), hlod_bytes(m))
+    let d = hlod_decode(b)
+    expect(d != null and d.cx == 3 and d.cz == -2 and d.nv == m.nv and d.ni == m.ni and d.boxes == 3)
+    for i in 0 .. m.nv * HLOD_V { expect(d.vtx[i] == m.vtx[i] or float_bits(d.vtx[i]) == float_bits(m.vtx[i])) }
+    for i in 0 .. m.ni { expect_eq(d.idx[i], m.idx[i]) }
+    expect(hlod_decode(null) == null)
+    let cut = buffer(len(b) - 4)
+    for i in 0 .. len(cut) { cut[i] = b[i] }
+    expect(hlod_decode(cut) == null)
+    let bad = buffer(len(b))
+    for i in 0 .. len(b) { bad[i] = b[i] }
+    lw_put32(bad, len(b) - 4, 99999)                    # an index past the vertices
+    expect(hlod_decode(bad) == null)
+    let dir = Os.temp_dir() + "/r3d_hlod_test"
+    expect(hlod_save(dir, m))
+    expect(hlod_load(dir, 3, -2) != null)
+    expect(hlod_load(dir, 0, 0) == null)
+  }
+
+  test "the dev bake walks a directory of content and writes proxies and an index" {
+    let dir_in = Os.temp_dir() + "/r3d_hlod_in"
+    let dir_out = Os.temp_dir() + "/r3d_hlod_out"
+    for q in 0 .. 3 {
+      let c = cell_content_new(q, 7, 128.0, 4)
+      for i in 0 .. 6 { cell_add(c, 0, 4.0 + float(i) * 3.0, 0.0, 8.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0) }
+      expect(cell_save(dir_in, c))
+    }
+    let empty = cell_content_new(9, 9, 128.0, 1)
+    expect(cell_save(dir_in, empty))
+    let n = hlod_bake_dir(dir_in, dir_out, kits(), 128.0, 16.0, 6.0, 3.0)
+    expect_eq(n, 4)
+    let ix = cell_index_load(dir_out)
+    expect(ix != null and len(ix.entries) == 4)
+    let k = cell_index_find(ix, 1, 7)
+    expect(k >= 0 and ix.entries[k].n == 6 and ix.entries[k].bytes_hlod > 0 and ix.entries[k].bytes_full > 0)
+    let e = cell_index_find(ix, 9, 9)
+    expect(e >= 0 and ix.entries[e].bytes_hlod == 0)
+    expect(hlod_load(dir_out, 2, 7) != null)
+    expect(hlod_load(dir_out, 9, 9) == null)
+  }
+}

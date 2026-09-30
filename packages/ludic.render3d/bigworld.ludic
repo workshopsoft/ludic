@@ -1,0 +1,20 @@
+# ============================================================================
+# bigworld.ludic - the large-world half of ludic.render3d that needs no device: the floating origin, the world
+# partition and its streaming scheduler, cell files and HLOD, instancing's culling, octahedral impostor math,
+# interior mapping's room rules, portal visibility, and the interior (multi-map) manager. Pure logic over records
+# and numbers, so each piece is tested on its own (tests/*_test.ludic) and a bake tool can use it with no GPU.
+# r3d.ludic imports this; the GPU halves (kgpu, hlod_gpu, oimp_gpu, imi_gpu, intr_gpu) sit beside the renderer.
+# ============================================================================
+numbers float
+import "fmath.ludic"
+import "forg.ludic"
+import "wpart.ludic"
+import "wstream.ludic"
+import "interior_atlas.ludic"
+import "cellfile.ludic"
+import "hlod.ludic"
+import "kinst.ludic"
+import "oimp.ludic"
+import "imi.ludic"
+import "portal.ludic"
+import "intr.ludic"

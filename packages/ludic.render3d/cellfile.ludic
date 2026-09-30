@@ -1,0 +1,308 @@
+# ============================================================================
+# cellfile.ludic - what a cell holds, and the files it is kept in.
+#
+# A map with hundreds of thousands of buildings is not one list: it is one small list a cell. The city
+# generator (or an editor) writes, for each cell that has anything in it, a CONTENT file of placed things -
+# each a KIT id and a transform - and the HLOD bake (hlod.ludic) writes, per cell, a merged far proxy. An INDEX
+# file lists the cells with their sizes, which is what ws_add (wstream.ludic) is fed at map open.
+#
+#   <dir>/cells.lwi              the index: every cell and what its layers weigh
+#   <dir>/cell_<cx>_<cz>.lwc     a cell's content (kit, transform, tint, variation for each thing)
+#   <dir>/cell_<cx>_<cz>.lwh     a cell's HLOD proxy (hlod.ludic)
+#
+# Positions in a file are relative to the cell's corner, so they are exact floats however far the cell is from
+# the map's origin (forg.ludic): a thing at x = 12.5 in cell 312 is at world x = 312 * size + 12.5, added in
+# double, in render space, where it is drawn.
+#
+# A KIT is one building (or prop) kind: a row of the map's own building_kits.lres. Its id is its row's index,
+# so rows are only ever appended. The kit says what model draws it, how big it is (the HLOD and the impostor
+# atlas are built from these bounds), the distances it changes detail at, and which interior atlas (if any)
+# its windows use.
+# ============================================================================
+numbers float
+
+# one kind of building or prop. Origin at the middle of the footprint, on the ground; +y up.
+export property BuildingKit {
+  key: string = ""
+  @Asset("gltf") model: string = ""
+  @Node(model) node: string = ""
+  @Unit("m") @Range(0.1, 500) w: float = 10.0          # footprint along x (before yaw and scale)
+  @Unit("m") @Range(0.1, 500) d: float = 10.0          # along z
+  @Unit("m") @Range(0.1, 1000) h: float = 10.0         # height
+  @Unit("m") @Range(0, 20000) near: float = 350.0      # the full mesh inside this ...
+  @Unit("m") @Range(0, 20000) far: float = 2500.0      # ... an impostor card to here, nothing past it
+  impostor: bool = true                                # has an impostor atlas (oimp.ludic); else it goes straight to the proxy
+  @Range(0, 1) proxy_r: float = 0.55                   # the colour of its HLOD box (times the instance's tint)
+  @Range(0, 1) proxy_g: float = 0.53
+  @Range(0, 1) proxy_b: float = 0.50
+  @Ref(InteriorAtlases) interior: string = ""          # the InteriorAtlases row its windows show (imi.ludic); "" = plain glass
+  @Unit("m") @Range(0, 20) win_w: float = 3.0          # window cell size on the facade (interior mapping)
+  @Unit("m") @Range(0, 20) win_h: float = 3.2
+  casts_shadow: bool = true
+}
+
+@PerMap @ByKey
+export registry BuildingKits of BuildingKit from "building_kits.lres"
+
+# ---- content -----------------------------------------------------------------------------------
+
+# the things in one cell, in columns. Transform: x, y, z in the cell's frame (y is the height itself), yaw in
+# radians about +y, a uniform scale. Tint: RGBA8 packed (r in the low byte); variation picks a facade variant
+# and seeds each window's room; flags are the game's own bits (a building that can be entered, a destroyed one).
+export property CellContent {
+  cx: int = 0,
+  cz: int = 0,
+  size: float = 256.0,
+  n: int = 0,
+  xf: floats,            # 5 floats a thing: x y z yaw scale
+  kit: words,            # the kit id (a row of BuildingKits)
+  tint: words,           # RGBA8
+  vari: words,           # variation (0 .. 65535)
+  flags: words
+}
+
+export const CELL_XF: int = 5
+
+@alloc_ok("a cell's content made once when it is baked or loaded, freed with the cell")
+export function cell_content_new(cx: int, cz: int, size: float, cap: int) -> CellContent {
+  let c = new CellContent
+  c.cx = cx
+  c.cz = cz
+  c.size = size
+  c.xf = floats(max(cap, 1) * CELL_XF)
+  c.kit = words(max(cap, 1))
+  c.tint = words(max(cap, 1))
+  c.vari = words(max(cap, 1))
+  c.flags = words(max(cap, 1))
+  return c
+}
+
+export function cell_cap(c: CellContent) -> int { return len(c.kit) }
+
+@alloc_ok("a cell's content grows while it is baked or read, not in a frame")
+function cell_grow(c: CellContent) -> void {
+  let cap = max(cell_cap(c) * 2, 8)
+  let xf = floats(cap * CELL_XF)
+  let kit = words(cap)
+  let tint = words(cap)
+  let vari = words(cap)
+  let flags = words(cap)
+  for i in 0 .. c.n * CELL_XF { xf[i] = c.xf[i] }
+  for i in 0 .. c.n {
+    kit[i] = c.kit[i]
+    tint[i] = c.tint[i]
+    vari[i] = c.vari[i]
+    flags[i] = c.flags[i]
+  }
+  c.xf = xf
+  c.kit = kit
+  c.tint = tint
+  c.vari = vari
+  c.flags = flags
+}
+
+# add one thing; its index. `tint` is RGBA8 (cell_rgba), 0xffffffff for none.
+export function cell_add(c: CellContent, kit: int, x: float, y: float, z: float, yaw: float, scale: float, tint: int, vari: int, flags: int) -> int {
+  if c.n >= cell_cap(c) { cell_grow(c) }
+  let i = c.n
+  let o = i * CELL_XF
+  c.xf[o] = x
+  c.xf[o + 1] = y
+  c.xf[o + 2] = z
+  c.xf[o + 3] = yaw
+  c.xf[o + 4] = scale
+  c.kit[i] = kit
+  c.tint[i] = tint
+  c.vari[i] = vari
+  c.flags[i] = flags
+  c.n += 1
+  return i
+}
+
+# RGBA8 packed into an int, r in the low byte (the GPU's unorm order)
+export function cell_rgba(r: int, g: int, b: int, a: int) -> int {
+  return (r & 255) | ((g & 255) << 8) | ((b & 255) << 16) | ((a & 255) << 24)
+}
+export function cell_rgba_r(t: int) -> float { return float(t & 255) / 255.0 }
+export function cell_rgba_g(t: int) -> float { return float((t >> 8) & 255) / 255.0 }
+export function cell_rgba_b(t: int) -> float { return float((t >> 16) & 255) / 255.0 }
+
+# the bytes a cell's content is on disk (and, near enough, in memory): the scheduler's size for its FULL layer
+export function cell_bytes(c: CellContent) -> int { return 32 + c.n * (CELL_XF * 4 + 16) }
+
+# the world position of thing i, in double: the cell's corner plus its local position
+export function cell_world_x(c: CellContent, i: int) -> double { return double(c.cx) * double(c.size) + double(c.xf[i * CELL_XF]) }
+export function cell_world_z(c: CellContent, i: int) -> double { return double(c.cz) * double(c.size) + double(c.xf[i * CELL_XF + 2]) }
+
+# ---- little-endian words in a byte buffer -----------------------------------------------------
+
+export function lw_put32(b: []byte, at: int, v: int) -> void {
+  b[at] = v & 255
+  b[at + 1] = (v >> 8) & 255
+  b[at + 2] = (v >> 16) & 255
+  b[at + 3] = (v >> 24) & 255
+}
+export function lw_get32(b: []byte, at: int) -> int {
+  return int(b[at]) | (int(b[at + 1]) << 8) | (int(b[at + 2]) << 16) | (int(b[at + 3]) << 24)
+}
+export function lw_putf(b: []byte, at: int, v: float) -> void { lw_put32(b, at, float_bits(v)) }
+export function lw_getf(b: []byte, at: int) -> float { return float_from_bits(lw_get32(b, at)) }
+
+const LWC_MAGIC: int = 0x3143574C     # "LWC1"
+const LWC_HEAD: int = 32
+
+# a cell's content as bytes (header: magic, version, cx, cz, size, n, 0, 0)
+@alloc_ok("a bake or a save: the file's bytes are made once")
+export function cell_encode(c: CellContent) -> []byte {
+  let n = c.n
+  let b = buffer(LWC_HEAD + n * (CELL_XF * 4 + 16))
+  lw_put32(b, 0, LWC_MAGIC)
+  lw_put32(b, 4, 1)
+  lw_put32(b, 8, c.cx)
+  lw_put32(b, 12, c.cz)
+  lw_putf(b, 16, c.size)
+  lw_put32(b, 20, n)
+  var at = LWC_HEAD
+  for i in 0 .. n * CELL_XF { lw_putf(b, at, c.xf[i]);  at += 4 }
+  for i in 0 .. n { lw_put32(b, at, c.kit[i]);  at += 4 }
+  for i in 0 .. n { lw_put32(b, at, c.tint[i]);  at += 4 }
+  for i in 0 .. n { lw_put32(b, at, c.vari[i]);  at += 4 }
+  for i in 0 .. n { lw_put32(b, at, c.flags[i]);  at += 4 }
+  return b
+}
+
+# content from bytes; null when they are not a cell's content (wrong magic, cut short)
+@alloc_ok("a cell loading: its columns are made once")
+export function cell_decode(b: []byte) -> CellContent {
+  if b == null or len(b) < LWC_HEAD or lw_get32(b, 0) != LWC_MAGIC or lw_get32(b, 4) != 1 { return null }
+  let n = lw_get32(b, 20)
+  if n < 0 or len(b) < LWC_HEAD + n * (CELL_XF * 4 + 16) { return null }
+  let c = cell_content_new(lw_get32(b, 8), lw_get32(b, 12), lw_getf(b, 16), n)
+  var at = LWC_HEAD
+  for i in 0 .. n * CELL_XF { c.xf[i] = lw_getf(b, at);  at += 4 }
+  for i in 0 .. n { c.kit[i] = lw_get32(b, at);  at += 4 }
+  for i in 0 .. n { c.tint[i] = lw_get32(b, at);  at += 4 }
+  for i in 0 .. n { c.vari[i] = lw_get32(b, at);  at += 4 }
+  for i in 0 .. n { c.flags[i] = lw_get32(b, at);  at += 4 }
+  c.n = n
+  return c
+}
+
+export function cell_path(dir: string, cx: int, cz: int, ext: string) -> string { return `{dir}/cell_{cx}_{cz}.{ext}` }
+
+export function cell_save(dir: string, c: CellContent) -> bool {
+  Fs.mkdir(dir)
+  let b = cell_encode(c)
+  return Fs.write_bytes(cell_path(dir, c.cx, c.cz, "lwc"), b, len(b))
+}
+
+# a cell's content from its file, or null
+export function cell_load(dir: string, cx: int, cz: int) -> CellContent {
+  let path = cell_path(dir, cx, cz, "lwc")
+  if not Fs.exists(path) { return null }
+  return cell_decode(Fs.read_bytes(path))
+}
+
+# ---- the index ---------------------------------------------------------------------------------
+
+const LWI_MAGIC: int = 0x3149574C     # "LWI1"
+
+# what the index says of one cell: its layers' sizes and how many things it holds
+export property CellEntry {
+  cx: int = 0,
+  cz: int = 0,
+  n: int = 0,              # things in the content file
+  bytes_full: int = 0,     # the content file's size (0: no content file)
+  bytes_hlod: int = 0      # the proxy file's size (0: none baked)
+}
+
+export property CellIndex {
+  size: float = 256.0,
+  entries: []CellEntry
+}
+
+@alloc_ok("a bake or a map opening: the index is made once")
+export function cell_index_new(size: float) -> CellIndex {
+  let ix = new CellIndex
+  ix.size = size
+  ix.entries = new []CellEntry
+  return ix
+}
+
+export function cell_index_find(ix: CellIndex, cx: int, cz: int) -> int {
+  for i in 0 .. len(ix.entries) {
+    if ix.entries[i].cx == cx and ix.entries[i].cz == cz { return i }
+  }
+  return -1
+}
+
+# set what is known of a cell (added when new)
+@alloc_ok("a bake: one entry a cell")
+export function cell_index_set(ix: CellIndex, cx: int, cz: int, n: int, bytes_full: int, bytes_hlod: int) -> void {
+  var k = cell_index_find(ix, cx, cz)
+  if k < 0 {
+    let e = new CellEntry
+    e.cx = cx
+    e.cz = cz
+    push(ix.entries, e)
+    k = len(ix.entries) - 1
+  }
+  let e = ix.entries[k]
+  if n >= 0 { e.n = n }
+  if bytes_full >= 0 { e.bytes_full = bytes_full }
+  if bytes_hlod >= 0 { e.bytes_hlod = bytes_hlod }
+}
+
+@alloc_ok("a bake: the index's bytes are made once")
+export function cell_index_encode(ix: CellIndex) -> []byte {
+  let n = len(ix.entries)
+  let b = buffer(16 + n * 20)
+  lw_put32(b, 0, LWI_MAGIC)
+  lw_put32(b, 4, 1)
+  lw_putf(b, 8, ix.size)
+  lw_put32(b, 12, n)
+  for i in 0 .. n {
+    let e = ix.entries[i]
+    let o = 16 + i * 20
+    lw_put32(b, o, e.cx)
+    lw_put32(b, o + 4, e.cz)
+    lw_put32(b, o + 8, e.n)
+    lw_put32(b, o + 12, e.bytes_full)
+    lw_put32(b, o + 16, e.bytes_hlod)
+  }
+  return b
+}
+
+@alloc_ok("a map opening: one entry a cell")
+export function cell_index_decode(b: []byte) -> CellIndex {
+  if b == null or len(b) < 16 or lw_get32(b, 0) != LWI_MAGIC or lw_get32(b, 4) != 1 { return null }
+  let n = lw_get32(b, 12)
+  if n < 0 or len(b) < 16 + n * 20 { return null }
+  let ix = cell_index_new(lw_getf(b, 8))
+  for i in 0 .. n {
+    let o = 16 + i * 20
+    cell_index_set(ix, lw_get32(b, o), lw_get32(b, o + 4), lw_get32(b, o + 8), lw_get32(b, o + 12), lw_get32(b, o + 16))
+  }
+  return ix
+}
+
+export function cell_index_save(dir: string, ix: CellIndex) -> bool {
+  Fs.mkdir(dir)
+  let b = cell_index_encode(ix)
+  return Fs.write_bytes(`{dir}/cells.lwi`, b, len(b))
+}
+
+export function cell_index_load(dir: string) -> CellIndex {
+  let path = `{dir}/cells.lwi`
+  if not Fs.exists(path) { return null }
+  return cell_index_decode(Fs.read_bytes(path))
+}
+
+# register every cell of an index with a scheduler (wstream.ludic): what ws_add is fed at map open
+export function cell_index_register(ix: CellIndex, s: WStream) -> int {
+  for i in 0 .. len(ix.entries) {
+    let e = ix.entries[i]
+    ws_add(s, e.cx, e.cz, e.bytes_hlod, e.bytes_full)
+  }
+  return len(ix.entries)
+}

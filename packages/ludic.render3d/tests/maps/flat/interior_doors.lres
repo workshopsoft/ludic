@@ -1,0 +1,5 @@
+# interior_doors.lres - the front door to the street (hall's west wall, x = 0), then one door between each pair
+front { a: "outside", b: "hall", axis: 0, at: 0.0, lo: 2.0, hi: 3.0 }
+to_living { a: "hall", b: "living", axis: 0, at: 4.0, lo: 2.0, hi: 3.0 }
+to_bed { a: "living", b: "bedroom", axis: 0, at: 12.0, lo: 2.0, hi: 3.0 }
+closet { a: "bedroom", b: "attic", axis: 1, at: 6.0, lo: 1.0, hi: 2.0 }

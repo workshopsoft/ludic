@@ -1,0 +1,357 @@
+# ============================================================================
+# hlod.ludic - the hierarchical-LOD proxy of a cell: the far look of a city block as a handful of coloured
+# boxes instead of thousands of buildings. Pure logic (no device): `hlod_bake` turns a cell's content
+# (cellfile.ludic) and the map's kits into a merged, simplified mesh; `hlod_encode` / `hlod_save` write it as the
+# cell's .lwh file; the renderer (hlod_gpu.ludic) uploads one mesh a cell and draws it with the cell's offset.
+#
+# The bake is a task for a person, not a frame: `tools/hlod_bake.ludic` runs it over a map's cells (README,
+# "World partition and streaming"). The code lives here so it is tested on a tiny input.
+#
+# Simplification. Each building is a box (kit footprint x height, rotated by yaw, scaled). Buildings are then
+# clustered by a ground grid of `cluster_m` metres and a height band of `height_band` metres, and each cluster of
+# two or more is replaced by ONE axis-aligned box over all of them - provided the merged box is not more than
+# `max_growth` times the volume of the buildings it replaces, which keeps a skyscraper from swallowing the
+# houses beside it (the height band keeps them apart in the first place). The bottom face is never made: nobody
+# sees it. A box is five faces, twenty vertices, thirty indices.
+#
+# Vertices are 7 floats: position (cell frame, metres), normal, and the colour as RGBA8 in the float's bits.
+# ============================================================================
+numbers float
+
+export const HLOD_V: int = 7           # floats a vertex
+
+export property HlodMesh {
+  cx: int = 0,
+  cz: int = 0,
+  size: float = 256.0,
+  nv: int = 0,
+  ni: int = 0,
+  vtx: floats,          # HLOD_V floats a vertex
+  idx: words,
+  boxes: int = 0,       # boxes emitted
+  source: int = 0       # buildings they stand for
+}
+
+@alloc_ok("a bake or a cell loading: the mesh's arrays are made once")
+export function hlod_new(cx: int, cz: int, size: float, cap_boxes: int) -> HlodMesh {
+  let m = new HlodMesh
+  m.cx = cx
+  m.cz = cz
+  m.size = size
+  let cap = max(cap_boxes, 1)
+  m.vtx = floats(cap * 20 * HLOD_V)
+  m.idx = words(cap * 30)
+  return m
+}
+
+@alloc_ok("a bake: the arrays grow while boxes are added")
+function hlod_grow(m: HlodMesh) -> void {
+  let nv = floats(len(m.vtx) * 2)
+  let ni = words(len(m.idx) * 2)
+  for i in 0 .. m.nv * HLOD_V { nv[i] = m.vtx[i] }
+  for i in 0 .. m.ni { ni[i] = m.idx[i] }
+  m.vtx = nv
+  m.idx = ni
+}
+
+function hlod_vertex(m: HlodMesh, x: float, y: float, z: float, nx: float, ny: float, nz: float, rgba: int) -> void {
+  let o = m.nv * HLOD_V
+  m.vtx[o] = x
+  m.vtx[o + 1] = y
+  m.vtx[o + 2] = z
+  m.vtx[o + 3] = nx
+  m.vtx[o + 4] = ny
+  m.vtx[o + 5] = nz
+  m.vtx[o + 6] = float_from_bits(rgba)
+  m.nv += 1
+}
+
+# one quad a, b, c, d (as laid out round its edge) facing `n`: wound so its front is the side the normal is on
+function hlod_quad(m: HlodMesh, ax: float, ay: float, az: float, bx: float, by: float, bz: float, cx: float, cy: float, cz: float, dx: float, dy: float, dz: float, nx: float, ny: float, nz: float, rgba: int) -> void {
+  let base = m.nv
+  hlod_vertex(m, ax, ay, az, nx, ny, nz, rgba)
+  hlod_vertex(m, bx, by, bz, nx, ny, nz, rgba)
+  hlod_vertex(m, cx, cy, cz, nx, ny, nz, rgba)
+  hlod_vertex(m, dx, dy, dz, nx, ny, nz, rgba)
+  # the geometric normal of (a, b, c)
+  let ux = bx - ax
+  let uy = by - ay
+  let uz = bz - az
+  let vx = cx - ax
+  let vy = cy - ay
+  let vz = cz - az
+  let gx = uy * vz - uz * vy
+  let gy = uz * vx - ux * vz
+  let gz = ux * vy - uy * vx
+  let flip = gx * nx + gy * ny + gz * nz < 0.0
+  if flip {
+    m.idx[m.ni] = base;  m.idx[m.ni + 1] = base + 2;  m.idx[m.ni + 2] = base + 1
+    m.idx[m.ni + 3] = base;  m.idx[m.ni + 4] = base + 3;  m.idx[m.ni + 5] = base + 2
+  } else {
+    m.idx[m.ni] = base;  m.idx[m.ni + 1] = base + 1;  m.idx[m.ni + 2] = base + 2
+    m.idx[m.ni + 3] = base;  m.idx[m.ni + 4] = base + 2;  m.idx[m.ni + 5] = base + 3
+  }
+  m.ni += 6
+}
+
+# A box from a footprint of four corners (x, z pairs, in order round it) between heights y0 and y1: four walls and a
+# roof. The walls' normals point away from the footprint's middle.
+export function hlod_prism(m: HlodMesh, px: floats, pz: floats, y0: float, y1: float, rgba: int) -> void {
+  if (m.nv + 20) * HLOD_V > len(m.vtx) or m.ni + 30 > len(m.idx) { hlod_grow(m) }
+  let mx = (px[0] + px[1] + px[2] + px[3]) * 0.25
+  let mz = (pz[0] + pz[1] + pz[2] + pz[3]) * 0.25
+  for k in 0 .. 4 {
+    let j = (k + 1) % 4
+    let ex = px[j] - px[k]
+    let ez = pz[j] - pz[k]
+    var nx = ez
+    var nz = -ex
+    let l = Math.sqrt(nx * nx + nz * nz)
+    if l < 0.00001 { continue }
+    nx = nx / l
+    nz = nz / l
+    if nx * ((px[k] + px[j]) * 0.5 - mx) + nz * ((pz[k] + pz[j]) * 0.5 - mz) < 0.0 { nx = -nx;  nz = -nz }
+    hlod_quad(m, px[k], y0, pz[k], px[j], y0, pz[j], px[j], y1, pz[j], px[k], y1, pz[k], nx, 0.0, nz, rgba)
+  }
+  hlod_quad(m, px[0], y1, pz[0], px[1], y1, pz[1], px[2], y1, pz[2], px[3], y1, pz[3], 0.0, 1.0, 0.0, rgba)
+  m.boxes += 1
+}
+
+# a building's footprint corners, rotated as the renderer rotates an instance (x' = c x + s z, z' = -s x + c z)
+export function hlod_corners(x: float, z: float, hw: float, hd: float, yaw: float, px: floats, pz: floats) -> void {
+  let s = Math.sin(yaw)
+  let c = Math.cos(yaw)
+  for k in 0 .. 4 {
+    var lx = -hw
+    var lz = -hd
+    if k == 1 or k == 2 { lx = hw }
+    if k == 2 or k == 3 { lz = hd }
+    px[k] = x + c * lx + s * lz
+    pz[k] = z - s * lx + c * lz
+  }
+}
+
+function hlod_rgba(r: float, g: float, b: float) -> int {
+  return cell_rgba(int(Math.clamp(r, 0.0, 1.0) * 255.0 + 0.5), int(Math.clamp(g, 0.0, 1.0) * 255.0 + 0.5), int(Math.clamp(b, 0.0, 1.0) * 255.0 + 0.5), 255)
+}
+
+# the key buildings are grouped by: ground cell and height band, packed (gx and gz below 64, the band below 256)
+function hlod_key(c: CellContent, i: int, k: BuildingKit, cluster_m: float, band: float) -> int {
+  let o = i * CELL_XF
+  let sc = c.xf[o + 4]
+  var gx = int(Math.floor(c.xf[o] / cluster_m))
+  var gz = int(Math.floor(c.xf[o + 2] / cluster_m))
+  gx = min(max(gx, 0), 63)
+  gz = min(max(gz, 0), 63)
+  let hb = min(max(int(Math.floor(k.h * sc / band)), 0), 255)
+  return (gz * 64 + gx) * 256 + hb
+}
+
+# Bake a cell's proxy into `out` (made with hlod_new; its cx, cz and size should be the content's).
+#   kits         the map's BuildingKits rows, by kit id
+#   cluster_m    the ground grid buildings are merged on (0: no merging, one box a building)
+#   height_band  buildings are only merged with others in the same band of this many metres of height
+#   max_growth   a merged box may be at most this many times the volume of what it replaces
+# A thing whose kit id is not a row is skipped (counted in neither boxes nor source).
+@alloc_ok("a bake: its sort keys and the mesh are made once per cell")
+export function hlod_bake(c: CellContent, kits: []BuildingKit, cluster_m: float, height_band: float, max_growth: float, out: HlodMesh) -> void {
+  out.cx = c.cx
+  out.cz = c.cz
+  out.size = c.size
+  let n = c.n
+  var cl = cluster_m
+  if cl > 0.0 and cl < c.size / 64.0 { cl = c.size / 64.0 }
+  let px = floats(4)
+  let pz = floats(4)
+  if cl <= 0.0 {
+    for i in 0 .. n {
+      if c.kit[i] < 0 or c.kit[i] >= len(kits) { continue }
+      hlod_single(c, i, kits[c.kit[i]], px, pz, out)
+    }
+    return
+  }
+  # order the buildings by group
+  let order = words(n)
+  let key = words(n)
+  var m = 0
+  for i in 0 .. n {
+    if c.kit[i] < 0 or c.kit[i] >= len(kits) { continue }
+    order[m] = i
+    key[m] = hlod_key(c, i, kits[c.kit[i]], cl, height_band)
+    m += 1
+  }
+  var gap = m / 2
+  while gap > 0 {
+    for a in gap .. m {
+      let oi = order[a]
+      let ki = key[a]
+      var j = a
+      while j >= gap and (key[j - gap] > ki or (key[j - gap] == ki and order[j - gap] > oi)) {
+        order[j] = order[j - gap]
+        key[j] = key[j - gap]
+        j -= gap
+      }
+      order[j] = oi
+      key[j] = ki
+    }
+    gap = gap / 2
+  }
+  var at = 0
+  while at < m {
+    var end = at + 1
+    while end < m and key[end] == key[at] { end += 1 }
+    hlod_group(c, kits, order, at, end, max_growth, px, pz, out)
+    at = end
+  }
+}
+
+# one building as its own box
+function hlod_single(c: CellContent, i: int, k: BuildingKit, px: floats, pz: floats, out: HlodMesh) -> void {
+  let o = i * CELL_XF
+  let sc = c.xf[o + 4]
+  hlod_corners(c.xf[o], c.xf[o + 2], k.w * sc * 0.5, k.d * sc * 0.5, c.xf[o + 3], px, pz)
+  hlod_prism(out, px, pz, c.xf[o + 1], c.xf[o + 1] + k.h * sc, hlod_tinted(k, c.tint[i]))
+  out.source += 1
+}
+
+function hlod_tinted(k: BuildingKit, tint: int) -> int {
+  return hlod_rgba(k.proxy_r * cell_rgba_r(tint), k.proxy_g * cell_rgba_g(tint), k.proxy_b * cell_rgba_b(tint))
+}
+
+# the buildings order[at .. end) share a group: one merged box if it is not too much bigger than they are, else each alone
+function hlod_group(c: CellContent, kits: []BuildingKit, order: words, at: int, end: int, max_growth: float, px: floats, pz: floats, out: HlodMesh) -> void {
+  if end - at < 2 {
+    hlod_single(c, order[at], kits[c.kit[order[at]]], px, pz, out)
+    return
+  }
+  var minx = 1000000000.0
+  var maxx = -1000000000.0
+  var minz = 1000000000.0
+  var maxz = -1000000000.0
+  var y0 = 1000000000.0
+  var y1 = -1000000000.0
+  var vol = 0.0
+  var sr = 0.0
+  var sg = 0.0
+  var sb = 0.0
+  for a in at .. end {
+    let i = order[a]
+    let k = kits[c.kit[i]]
+    let o = i * CELL_XF
+    let sc = c.xf[o + 4]
+    hlod_corners(c.xf[o], c.xf[o + 2], k.w * sc * 0.5, k.d * sc * 0.5, c.xf[o + 3], px, pz)
+    for q in 0 .. 4 {
+      minx = Math.min(minx, px[q]);  maxx = Math.max(maxx, px[q])
+      minz = Math.min(minz, pz[q]);  maxz = Math.max(maxz, pz[q])
+    }
+    y0 = Math.min(y0, c.xf[o + 1])
+    y1 = Math.max(y1, c.xf[o + 1] + k.h * sc)
+    vol = vol + k.w * k.d * sc * sc * k.h * sc
+    sr = sr + k.proxy_r * cell_rgba_r(c.tint[i])
+    sg = sg + k.proxy_g * cell_rgba_g(c.tint[i])
+    sb = sb + k.proxy_b * cell_rgba_b(c.tint[i])
+  }
+  let merged = (maxx - minx) * (maxz - minz) * (y1 - y0)
+  if merged > max_growth * vol {
+    for a in at .. end { hlod_single(c, order[a], kits[c.kit[order[a]]], px, pz, out) }
+    return
+  }
+  px[0] = minx;  pz[0] = minz
+  px[1] = maxx;  pz[1] = minz
+  px[2] = maxx;  pz[2] = maxz
+  px[3] = minx;  pz[3] = maxz
+  let cnt = float(end - at)
+  hlod_prism(out, px, pz, y0, y1, hlod_rgba(sr / cnt, sg / cnt, sb / cnt))
+  out.source += end - at
+}
+
+export function hlod_tris(m: HlodMesh) -> int { return m.ni / 3 }
+
+# the bytes the mesh takes on disk, and in the scheduler's accounts (its HLOD layer)
+export function hlod_bytes(m: HlodMesh) -> int { return 32 + m.nv * HLOD_V * 4 + m.ni * 4 }
+
+# ---- files -------------------------------------------------------------------------------------
+
+const LWH_MAGIC: int = 0x3148574C     # "LWH1"
+
+@alloc_ok("a bake: the file's bytes are made once")
+export function hlod_encode(m: HlodMesh) -> []byte {
+  let b = buffer(hlod_bytes(m))
+  lw_put32(b, 0, LWH_MAGIC)
+  lw_put32(b, 4, 1)
+  lw_put32(b, 8, m.cx)
+  lw_put32(b, 12, m.cz)
+  lw_putf(b, 16, m.size)
+  lw_put32(b, 20, m.nv)
+  lw_put32(b, 24, m.ni)
+  lw_put32(b, 28, m.boxes)
+  var at = 32
+  for i in 0 .. m.nv * HLOD_V { lw_putf(b, at, m.vtx[i]);  at += 4 }
+  for i in 0 .. m.ni { lw_put32(b, at, m.idx[i]);  at += 4 }
+  return b
+}
+
+# a mesh from bytes; null when they are not a proxy, or are cut short, or name a vertex that is not there
+@alloc_ok("a cell loading: its arrays are made once")
+export function hlod_decode(b: []byte) -> HlodMesh {
+  if b == null or len(b) < 32 or lw_get32(b, 0) != LWH_MAGIC or lw_get32(b, 4) != 1 { return null }
+  let nv = lw_get32(b, 20)
+  let ni = lw_get32(b, 24)
+  if nv < 0 or ni < 0 or len(b) < 32 + nv * HLOD_V * 4 + ni * 4 { return null }
+  let m = new HlodMesh
+  m.cx = lw_get32(b, 8)
+  m.cz = lw_get32(b, 12)
+  m.size = lw_getf(b, 16)
+  m.boxes = lw_get32(b, 28)
+  m.nv = nv
+  m.ni = ni
+  m.vtx = floats(max(nv, 1) * HLOD_V)
+  m.idx = words(max(ni, 1))
+  var at = 32
+  for i in 0 .. nv * HLOD_V { m.vtx[i] = lw_getf(b, at);  at += 4 }
+  for i in 0 .. ni {
+    let v = lw_get32(b, at)
+    if v < 0 or v >= nv { return null }
+    m.idx[i] = v
+    at += 4
+  }
+  return m
+}
+
+export function hlod_save(dir: string, m: HlodMesh) -> bool {
+  Fs.mkdir(dir)
+  let b = hlod_encode(m)
+  return Fs.write_bytes(cell_path(dir, m.cx, m.cz, "lwh"), b, len(b))
+}
+
+export function hlod_load(dir: string, cx: int, cz: int) -> HlodMesh {
+  let path = cell_path(dir, cx, cz, "lwh")
+  if not Fs.exists(path) { return null }
+  return hlod_decode(Fs.read_bytes(path))
+}
+
+# Bake every cell a content directory holds into `out_dir`, and write the index beside it: what the dev tool does
+# (tools/hlod_bake.ludic). Returns how many cells it baked. `dir_in` holds cell_<cx>_<cz>.lwc files.
+@alloc_ok("a bake: one mesh a cell")
+export function hlod_bake_dir(dir_in: string, out_dir: string, kits: []BuildingKit, size: float, cluster_m: float, height_band: float, max_growth: float) -> int {
+  let names = Fs.list(dir_in)
+  if names == null { return 0 }
+  let ix = cell_index_new(size)
+  var baked = 0
+  for i in 0 .. len(names) {
+    let f = names[i]
+    if not Text.ends_with(f, ".lwc") { continue }
+    let b = Fs.read_bytes(`{dir_in}/{f}`)
+    let c = cell_decode(b)
+    if c == null { continue }
+    let m = hlod_new(c.cx, c.cz, c.size, max(c.n, 1))
+    hlod_bake(c, kits, cluster_m, height_band, max_growth, m)
+    if m.boxes > 0 { hlod_save(out_dir, m) }
+    var hb = 0
+    if m.boxes > 0 { hb = hlod_bytes(m) }
+    cell_index_set(ix, c.cx, c.cz, c.n, len(b), hb)
+    baked += 1
+  }
+  if baked > 0 { cell_index_save(out_dir, ix) }
+  return baked
+}

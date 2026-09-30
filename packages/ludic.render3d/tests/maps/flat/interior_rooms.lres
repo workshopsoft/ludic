@@ -1,0 +1,4 @@
+# interior_rooms.lres - a small flat: hall, living room, bedroom in a line along x
+hall { minx: 0.0, minz: 0.0, maxx: 4.0, maxz: 6.0, maxy: 2.8 }
+living { minx: 4.0, minz: 0.0, maxx: 12.0, maxz: 6.0, maxy: 2.8 }
+bedroom { minx: 12.0, minz: 0.0, maxx: 18.0, maxz: 6.0, maxy: 2.8 }

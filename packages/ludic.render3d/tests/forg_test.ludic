@@ -1,7 +1,7 @@
 # forg_test.ludic - the floating origin's math, with no device: a rebase leaves every render-space number
 # exactly its old value minus the shift, a camera pacing a boundary never rebases twice, render space keeps
 # millimetres at 40 km where raw floats lose centimetres, and CellPos adds across cells without loss
-import "ludic.render3d/forg.ludic"
+import "ludic.render3d/bigworld.ludic"
 program ForgTest {
   numbers float
 

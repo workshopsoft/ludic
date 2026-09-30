@@ -1,0 +1,268 @@
+# ============================================================================
+# portal.ludic - rooms and portals: visibility inside a building, with no device.
+#
+# An interior is a graph. A ROOM is a box (or an L of boxes, as several rooms joined by a portal of their own);
+# a PORTAL is a quad in the plane between two rooms - a door, an archway, a window you can see through - that can
+# be open or shut. Seen from a room, only what is seen THROUGH portals can be drawn: a flat with forty rooms
+# costs the rooms in line of sight, not forty. The exterior is room -1: a portal with `a = -1` is a door or window
+# to outdoors (what you see of an interior from the street, and of the street from inside).
+#
+# `pg_visible` walks the graph from the camera's room with a frustum that narrows at every portal it passes:
+# the portal must be in front of the camera on its entering side, must intersect the frustum so far, and the
+# frustum behind it is the old planes plus one plane through the camera and each edge of the portal. A room is
+# visible if any path reaches it. It is conservative - a room is never dropped that could be seen - and exact for
+# convex portals against the planes it keeps. All coordinates are the interior's own (an instance's offset is
+# subtracted by the caller, intr.ludic), so nothing here knows where the interior is placed.
+#
+# What the verdict drives: each room's things are a KCull cell whose slot is the room id; kinst_hide sets the
+# ones the portals cannot see (`pg_apply`), so the same culler that draws the city draws the rooms in view.
+# ============================================================================
+numbers float
+
+export const PG_MAX_PLANES: int = 40       # planes a path may carry: the view's six and four for each portal passed
+export const PG_MAX_DEPTH: int = 8         # portals a path may pass through
+
+export property PgRoom {
+  minx: float = 0.0,
+  miny: float = 0.0,
+  minz: float = 0.0,
+  maxx: float = 0.0,
+  maxy: float = 0.0,
+  maxz: float = 0.0,
+  portals: []int            # the portals on this room's boundary
+}
+
+# a quad between rooms `a` and `b` (-1: outdoors); corners are four points round it; the normal points from a into b
+export property PgPortal {
+  a: int = -1,
+  b: int = -1,
+  c: floats,                # 12 floats: four corners
+  nx: float = 0.0,
+  ny: float = 0.0,
+  nz: float = 0.0,
+  open: bool = true
+}
+
+export property PGraph {
+  rooms: []PgRoom,
+  portals: []PgPortal,
+  planes: floats,           # PG_MAX_DEPTH + 1 levels of PG_MAX_PLANES planes (scratch)
+  counts: words,            # planes at each level
+  path: words,              # rooms on the current path (scratch)
+  visited: int = 0,         # rooms marked visible by the last pg_visible
+  steps: int = 0            # portals examined by the last pg_visible
+}
+
+@alloc_ok("an interior loading: the graph and its scratch are made once")
+export function pg_new() -> PGraph {
+  let g = new PGraph
+  g.rooms = new []PgRoom
+  g.portals = new []PgPortal
+  g.planes = floats((PG_MAX_DEPTH + 2) * PG_MAX_PLANES * 4)
+  g.counts = words(PG_MAX_DEPTH + 2)
+  g.path = words(PG_MAX_DEPTH + 2)
+  return g
+}
+
+# a room; its id
+@alloc_ok("an interior loading: one record a room")
+export function pg_room(g: PGraph, minx: float, miny: float, minz: float, maxx: float, maxy: float, maxz: float) -> int {
+  let r = new PgRoom
+  r.minx = minx;  r.miny = miny;  r.minz = minz
+  r.maxx = maxx;  r.maxy = maxy;  r.maxz = maxz
+  r.portals = new []int
+  push(g.rooms, r)
+  return len(g.rooms) - 1
+}
+
+export function pg_room_count(g: PGraph) -> int { return len(g.rooms) }
+
+function pg_centre(g: PGraph, room: int, out: floats) -> void {
+  let r = g.rooms[room]
+  out[0] = (r.minx + r.maxx) * 0.5
+  out[1] = (r.miny + r.maxy) * 0.5
+  out[2] = (r.minz + r.maxz) * 0.5
+}
+
+# A portal between rooms a and b (-1 for outdoors) with corners (x0, y0, z0) .. (x3, y3, z3) in order round it; its
+# normal is made to point from a toward b. Returns its id.
+@alloc_ok("an interior loading: one record a portal")
+export function pg_portal(g: PGraph, a: int, b: int, c: floats) -> int {
+  let p = new PgPortal
+  p.a = a
+  p.b = b
+  p.c = floats(12)
+  for i in 0 .. 12 { p.c[i] = c[i] }
+  # the normal of the quad (two edges from corner 0), then turned toward b
+  let ux = c[3] - c[0]
+  let uy = c[4] - c[1]
+  let uz = c[5] - c[2]
+  let vx = c[9] - c[0]
+  let vy = c[10] - c[1]
+  let vz = c[11] - c[2]
+  var nx = uy * vz - uz * vy
+  var ny = uz * vx - ux * vz
+  var nz = ux * vy - uy * vx
+  let l = Math.sqrt(nx * nx + ny * ny + nz * nz)
+  if l > 0.000001 { nx = nx / l;  ny = ny / l;  nz = nz / l }
+  let mx = (c[0] + c[3] + c[6] + c[9]) * 0.25
+  let my = (c[1] + c[4] + c[7] + c[10]) * 0.25
+  let mz = (c[2] + c[5] + c[8] + c[11]) * 0.25
+  # which way is b: its centre, or (for a portal whose b is outdoors) away from a's
+  let ctr = floats(3)
+  var toward = 1.0
+  if b >= 0 {
+    pg_centre(g, b, ctr)
+    if nx * (ctr[0] - mx) + ny * (ctr[1] - my) + nz * (ctr[2] - mz) < 0.0 { toward = -1.0 }
+  } else if a >= 0 {
+    pg_centre(g, a, ctr)
+    if nx * (ctr[0] - mx) + ny * (ctr[1] - my) + nz * (ctr[2] - mz) > 0.0 { toward = -1.0 }
+  }
+  p.nx = nx * toward
+  p.ny = ny * toward
+  p.nz = nz * toward
+  push(g.portals, p)
+  let id = len(g.portals) - 1
+  if a >= 0 { push(g.rooms[a].portals, id) }
+  if b >= 0 { push(g.rooms[b].portals, id) }
+  return id
+}
+
+export function pg_set_open(g: PGraph, portal: int, open: bool) -> void { g.portals[portal].open = open }
+export function pg_is_open(g: PGraph, portal: int) -> bool { return g.portals[portal].open }
+
+# the room containing a point, or -1 (the smallest box when several contain it)
+export function pg_room_at(g: PGraph, x: float, y: float, z: float) -> int {
+  var best = -1
+  var best_v = 1000000000000.0
+  for i in 0 .. len(g.rooms) {
+    let r = g.rooms[i]
+    if x < r.minx or x > r.maxx or y < r.miny or y > r.maxy or z < r.minz or z > r.maxz { continue }
+    let v = (r.maxx - r.minx) * (r.maxy - r.miny) * (r.maxz - r.minz)
+    if v < best_v { best_v = v;  best = i }
+  }
+  return best
+}
+
+# ---- visibility -----------------------------------------------------------------------------
+
+# is the quad wholly outside one of n planes (at offset `at` in `pl`)? Each plane a b c d: inside when a x + b y + c z + d >= 0
+function pg_quad_outside(pl: floats, at: int, n: int, c: floats) -> bool {
+  for p in 0 .. n {
+    let o = at + p * 4
+    var out = 0
+    for k in 0 .. 4 {
+      if pl[o] * c[k * 3] + pl[o + 1] * c[k * 3 + 1] + pl[o + 2] * c[k * 3 + 2] + pl[o + 3] < 0.0 { out += 1 }
+    }
+    if out == 4 { return true }
+  }
+  return false
+}
+
+# Mark the rooms visible from the camera at (cx, cy, cz) through `view` (six planes, as kinst_planes makes them) into
+# vis[0 .. rooms); returns how many. `start` is the camera's room (pg_room_at), or -1 for a camera outdoors, which
+# enters through the portals to the exterior. `max_depth` limits the portals a view may pass (at most PG_MAX_DEPTH).
+export function pg_visible(g: PGraph, cx: float, cy: float, cz: float, view: floats, start: int, max_depth: int, vis: words) -> int {
+  for i in 0 .. len(g.rooms) { vis[i] = 0 }
+  g.visited = 0
+  g.steps = 0
+  let depth = min(max_depth, PG_MAX_DEPTH)
+  for i in 0 .. 24 { g.planes[i] = view[i] }
+  g.counts[0] = 6
+  if start >= 0 {
+    vis[start] = 1
+    g.visited = 1
+    g.path[0] = start
+    pg_walk(g, start, 0, cx, cy, cz, depth, vis)
+  } else {
+    # outdoors: every open portal to the exterior, from the side the camera is on
+    for pi in 0 .. len(g.portals) {
+      let p = g.portals[pi]
+      if p.a != -1 or p.b < 0 or not p.open { continue }
+      g.path[0] = -1
+      pg_enter(g, p, p.b, 0, cx, cy, cz, depth, vis)
+    }
+  }
+  return g.visited
+}
+
+# from room `room` at path level `level`: through each of its open portals the camera can see
+function pg_walk(g: PGraph, room: int, level: int, cx: float, cy: float, cz: float, depth: int, vis: words) -> void {
+  if level >= depth { return }
+  let r = g.rooms[room]
+  for k in 0 .. len(r.portals) {
+    let pid = r.portals[k]
+    let p = g.portals[pid]
+    if not p.open { continue }
+    var other = p.b
+    var side = 1.0                     # +1: this room is a (normal points out of it), -1: it is b
+    if p.a != room { other = p.a;  side = -1.0 }
+    if other < 0 or p.a == p.b { continue }
+    # the camera must be on this room's side of the portal's plane
+    let ex = p.c[0] - cx
+    let ey = p.c[1] - cy
+    let ez = p.c[2] - cz
+    if (p.nx * ex + p.ny * ey + p.nz * ez) * side < 0.0 { continue }
+    # not back into a room already on the path
+    var seen = false
+    for q in 0 .. level + 1 { if g.path[q] == other { seen = true } }
+    if seen { continue }
+    pg_enter(g, p, other, level, cx, cy, cz, depth, vis)
+  }
+}
+
+# through portal p into `other`: the quad must touch the frustum of this level; the next level's frustum is this one's
+# planes plus the four through the camera and the quad's edges
+function pg_enter(g: PGraph, p: PgPortal, other: int, level: int, cx: float, cy: float, cz: float, depth: int, vis: words) -> void {
+  g.steps += 1
+  let at = level * PG_MAX_PLANES * 4
+  let n = g.counts[level]
+  if pg_quad_outside(g.planes, at, n, p.c) { return }
+  if n + 4 > PG_MAX_PLANES { return }
+  let nat = (level + 1) * PG_MAX_PLANES * 4
+  for i in 0 .. n * 4 { g.planes[nat + i] = g.planes[at + i] }
+  let mx = (p.c[0] + p.c[3] + p.c[6] + p.c[9]) * 0.25 - cx
+  let my = (p.c[1] + p.c[4] + p.c[7] + p.c[10]) * 0.25 - cy
+  let mz = (p.c[2] + p.c[5] + p.c[8] + p.c[11]) * 0.25 - cz
+  var m = n
+  for k in 0 .. 4 {
+    let j = (k + 1) % 4
+    let ax = p.c[k * 3] - cx
+    let ay = p.c[k * 3 + 1] - cy
+    let az = p.c[k * 3 + 2] - cz
+    let bx = p.c[j * 3] - cx
+    let by = p.c[j * 3 + 1] - cy
+    let bz = p.c[j * 3 + 2] - cz
+    var px = ay * bz - az * by
+    var py = az * bx - ax * bz
+    var pz = ax * by - ay * bx
+    let l = Math.sqrt(px * px + py * py + pz * pz)
+    if l < 0.000001 { continue }                   # an edge in line with the camera: no plane
+    px = px / l;  py = py / l;  pz = pz / l
+    if px * mx + py * my + pz * mz < 0.0 { px = -px;  py = -py;  pz = -pz }
+    let o = nat + m * 4
+    g.planes[o] = px
+    g.planes[o + 1] = py
+    g.planes[o + 2] = pz
+    g.planes[o + 3] = -(px * cx + py * cy + pz * cz)
+    m += 1
+  }
+  g.counts[level + 1] = m
+  if vis[other] == 0 {
+    vis[other] = 1
+    g.visited += 1
+  }
+  g.path[level + 1] = other
+  pg_walk(g, other, level + 1, cx, cy, cz, depth, vis)
+}
+
+# Hide every room's cell in `k` that `vis` does not show (room ids are the cells' slots + `base`): the portals' verdict
+# becomes the culler's. Returns how many rooms stay shown.
+export function pg_apply(g: PGraph, vis: words, k: KCull, base: int) -> int {
+  var shown = 0
+  for i in 0 .. len(g.rooms) {
+    kinst_hide(k, base + i, vis[i] == 0)
+    if vis[i] != 0 { shown += 1 }
+  }
+  return shown
+}

@@ -1,0 +1,531 @@
+# ============================================================================
+# intr.ludic - interiors that are maps of their own: a door is a transition, the room behind it a separate map
+# loaded on demand, and the same interior can be open many times at once, one INSTANCE for each owner.
+#
+#   The game (ludic.property, a mission, a garage) decides WHICH interior and WHICH instance: it calls
+#   intr_enter(def, owner, ...) with the interior's key and the owner's id. This file does the rest: finds or makes
+#   that owner's instance, places it, asks the game to load the interior's content if it is not loaded, fades, tells
+#   the game to put the player at the spawn, holds the world's streaming while the player is in, and does the same
+#   backwards on intr_exit. No rendering happens here: the interior is ordinary cells (cellfile.ludic), rooms and
+#   doors (portal.ludic, read below from the interior map's own files), drawn by the same culler as the city.
+#
+# INSTANCES. An interior def (`InteriorDefs`, a row of the game's data) has `max_instances` slots. An instance is
+# one (def, owner) and has a slot; its origin is where the interior's own (0, 0, 0) sits in the WORLD - far from the
+# city, in a grid `spacing` apart, every (def, slot) a place of its own - so two instances of a flat never overlap and
+# both can be loaded at once (a co-op party in one, a visitor in another). The interior's content is loaded ONCE per
+# def however many instances exist: an instance is an origin, not a copy. When no slot is free the least recently
+# used instance nobody is in is evicted (the game hears IE_EVICT, to keep or drop that owner's furnishings).
+#
+# THE TRANSITION (intr_update(m, dt) each frame; events with intr_next_event):
+#
+#   outside --intr_enter--> FADE OUT --(def loaded? else IE_LOAD_DEF, wait)--> IE_SPAWN --> FADE IN --> IE_ENTERED, inside
+#   inside  --intr_exit --> FADE OUT --> IE_SPAWN (at the door outside) --> FADE IN --> IE_EXITED, outside
+#
+# IE_SPAWN is the moment the screen is black: the game moves the player and camera to the event's world position and
+# yaw (and calls forg_reset there, forg.ludic). `intr_fade` is 0 (clear) .. 1 (black) for the game's overlay.
+# While inside, the scheduler it was bound to (intr_bind_stream) is held (ws_hold), so the city neither loads nor
+# drops under a player who cannot see it; it is released on the way out.
+# ============================================================================
+numbers float
+
+# one interior, as a row of the game's own data (`def InteriorDefs from "interiors.lres"`)
+export property InteriorDef {
+  key: string = ""
+  map: string = ""                                        # the interior's own map directory: its cells, rooms and doors
+  @Range(1, 4096) max_instances: int = 32                 # owners that can have it open at once
+  @Unit("m") @Range(8, 2048) size: float = 64.0           # how far it extends from its origin (<= the spacing)
+  @Unit("s") @Range(0, 5) fade_out: float = 0.3
+  @Unit("s") @Range(0, 5) fade_in: float = 0.4
+  @Unit("s") @Range(0, 600) keep: float = 30.0            # how long its content stays loaded after the last person leaves
+  @Unit("m") spawn_x: float = 0.0                         # where a player appears, in the interior's own frame
+  @Unit("m") spawn_y: float = 0.0
+  @Unit("m") spawn_z: float = 0.0
+  @Unit("deg") spawn_yaw: float = 0.0
+}
+
+@AppendOnly @ByKey
+export open registry InteriorDefs of InteriorDef as INTR
+
+export const IE_LOAD_DEF: int = 1       # load this def's content, then intr_def_loaded (or intr_def_failed)
+export const IE_UNLOAD_DEF: int = 2     # nobody needs this def's content any more
+export const IE_SPAWN: int = 3          # the screen is black: move the player to (x, y, z) facing yaw
+export const IE_ENTERED: int = 4        # the fade in has finished, the player is inside `inst`
+export const IE_EXITED: int = 5         # the fade in has finished, the player is outside again
+export const IE_FAILED: int = 6         # the def could not be loaded: the player is put back where they were
+export const IE_EVICT: int = 7          # `inst` (def, owner) lost its slot to make room
+export const IE_HOLD: int = 8           # world streaming held (inside)
+export const IE_RELEASE: int = 9        # world streaming released (outside)
+
+export const INTR_OK: int = 0           # intr_enter / intr_exit results
+export const INTR_BUSY: int = 1         # a transition is running
+export const INTR_FULL: int = 2         # no slot for the owner and nobody to evict
+export const INTR_UNKNOWN: int = 3      # no such def
+export const INTR_NOT_INSIDE: int = 4   # intr_exit while outside
+
+const IT_IDLE: int = 0                  # phases
+const IT_OUT: int = 1
+const IT_LOAD: int = 2
+const IT_IN: int = 3
+
+export property IntrEvent {
+  kind: int = 0,
+  def: int = -1,
+  inst: int = -1,
+  owner: int = 0,
+  x: double = 0.0,
+  y: double = 0.0,
+  z: double = 0.0,
+  yaw: float = 0.0
+}
+
+export property IntrInst {
+  def: int = -1,
+  owner: int = 0,
+  slot: int = 0,           # the def's slot (0 .. max_instances)
+  used: bool = false,
+  refs: int = 0,           # people in it (the local player counts one)
+  last_used: int = 0,      # the frame it was last entered or left
+  ox: double = 0.0,        # where its own (0, 0, 0) is in the world
+  oy: double = 0.0,
+  oz: double = 0.0
+}
+
+property IntrDefState {
+  row: InteriorDef,
+  base: int = 0,           # its first index in the instance table and in the placement grid
+  loaded: bool = false,
+  loading: bool = false,
+  idle: float = 0.0        # seconds with nobody in it
+}
+
+export property IntrMgr {
+  defs: []IntrDefState,
+  insts: []IntrInst,
+  zone_x: double = 0.0,    # where the placement grid starts in the world (far from the city)
+  zone_z: double = 0.0,
+  zone_y: double = 0.0,
+  spacing: double = 512.0,
+  cols: int = 64,
+  inside: bool = false,
+  active: int = -1,        # the instance the local player is in (or going to)
+  phase: int = 0,
+  t: float = 0.0,
+  dur_out: float = 0.3,
+  dur_in: float = 0.4,
+  pending: int = -1,       # the instance being entered
+  going_in: bool = true,   # the running transition is an entry (else an exit)
+  ret_x: double = 0.0,     # where to put the player back (the door outside)
+  ret_y: double = 0.0,
+  ret_z: double = 0.0,
+  ret_yaw: float = 0.0,
+  spawn_dx: float = 0.0,   # where to appear inside, in the interior's frame (from the def unless the door says)
+  spawn_dy: float = 0.0,
+  spawn_dz: float = 0.0,
+  spawn_yaw: float = 0.0,
+  events: []IntrEvent,
+  head: int = 0,           # events consumed
+  stream: WStream,         # held while inside
+  frame: int = 0,
+  failed: bool = false
+}
+
+# A manager for the defs in `rows` (the game's InteriorDefs), placing instances on a grid from (zone_x, zone_z) every
+# `spacing` metres (at least the largest def's size).
+@alloc_ok("a world being set up: the manager and its instance table are made once")
+export function intr_new(rows: []InteriorDef, zone_x: double, zone_z: double, spacing: float) -> IntrMgr {
+  let m = new IntrMgr
+  m.defs = new []IntrDefState
+  m.insts = new []IntrInst
+  m.events = new []IntrEvent
+  m.zone_x = zone_x
+  m.zone_z = zone_z
+  var sp = spacing
+  var total = 0
+  for i in 0 .. len(rows) {
+    let d = new IntrDefState
+    d.row = rows[i]
+    d.base = total
+    total += rows[i].max_instances
+    if rows[i].size > sp { sp = rows[i].size }
+    push(m.defs, d)
+  }
+  m.spacing = double(sp)
+  for i in 0 .. total { push(m.insts, new IntrInst) }
+  return m
+}
+
+# the world the manager holds still while the player is inside
+export function intr_bind_stream(m: IntrMgr, s: WStream) -> void { m.stream = s }
+
+export function intr_def_find(m: IntrMgr, key: string) -> int {
+  for i in 0 .. len(m.defs) { if m.defs[i].row.key == key { return i } }
+  return -1
+}
+
+# where an instance's own origin is in the world: slot g of the grid, x and then z
+export function intr_origin_x(m: IntrMgr, g: int) -> double { return m.zone_x + double(g % m.cols) * m.spacing }
+export function intr_origin_z(m: IntrMgr, g: int) -> double { return m.zone_z + double(g / m.cols) * m.spacing }
+
+function intr_post(m: IntrMgr, kind: int, def: int, inst: int, x: double, y: double, z: double, yaw: float) -> void {
+  let e = new IntrEvent
+  e.kind = kind
+  e.def = def
+  e.inst = inst
+  if inst >= 0 { e.owner = m.insts[inst].owner }
+  e.x = x
+  e.y = y
+  e.z = z
+  e.yaw = yaw
+  push(m.events, e)
+}
+
+# the next event, or null when there are none. The game drains these every frame.
+export function intr_next_event(m: IntrMgr) -> IntrEvent {
+  if m.head >= len(m.events) {
+    if m.head > 0 {
+      m.events = new []IntrEvent
+      m.head = 0
+    }
+    return null
+  }
+  let e = m.events[m.head]
+  m.head += 1
+  return e
+}
+
+# the instance of `def` owned by `owner`, or -1
+export function intr_find(m: IntrMgr, def: int, owner: int) -> int {
+  let d = m.defs[def]
+  for s in 0 .. d.row.max_instances {
+    let i = m.insts[d.base + s]
+    if i.used and i.owner == owner { return d.base + s }
+  }
+  return -1
+}
+
+# Give `owner` an instance of `def`: theirs if they have one, else a free slot, else the least recently used slot
+# nobody is in (whose owner hears IE_EVICT). -1 when every slot is in use by someone present.
+export function intr_acquire(m: IntrMgr, def: int, owner: int) -> int {
+  let have = intr_find(m, def, owner)
+  if have >= 0 { return have }
+  let d = m.defs[def]
+  var free_at = -1
+  var lru = -1
+  var lru_frame = 2147483647
+  for s in 0 .. d.row.max_instances {
+    let i = m.insts[d.base + s]
+    if not i.used {
+      if free_at < 0 { free_at = d.base + s }
+    } else if i.refs <= 0 and d.base + s != m.active and i.last_used < lru_frame {
+      lru = d.base + s
+      lru_frame = i.last_used
+    }
+  }
+  var at = free_at
+  if at < 0 {
+    if lru < 0 { return -1 }
+    intr_post(m, IE_EVICT, def, lru, 0.0, 0.0, 0.0, 0.0)
+    at = lru
+  }
+  let i = m.insts[at]
+  i.def = def
+  i.owner = owner
+  i.slot = at - d.base
+  i.used = true
+  i.refs = 0
+  i.last_used = m.frame
+  i.ox = intr_origin_x(m, at)
+  i.oy = m.zone_y
+  i.oz = intr_origin_z(m, at)
+  return at
+}
+
+# an owner's instance is let go (their lease ended, the property was sold): false if it is in use
+export function intr_release(m: IntrMgr, def: int, owner: int) -> bool {
+  let at = intr_find(m, def, owner)
+  if at < 0 { return true }
+  if m.insts[at].refs > 0 or at == m.active { return false }
+  m.insts[at].used = false
+  return true
+}
+
+# Someone else is in an instance (a friend who joined): the def stays loaded for them. +1 / -1.
+export function intr_ref(m: IntrMgr, inst: int, delta: int) -> void {
+  let i = m.insts[inst]
+  i.refs = max(i.refs + delta, 0)
+  i.last_used = m.frame
+}
+
+# How many instances of a def are in use, and how many people are in it in all
+export function intr_instances(m: IntrMgr, def: int) -> int {
+  var n = 0
+  let d = m.defs[def]
+  for s in 0 .. d.row.max_instances { if m.insts[d.base + s].used { n += 1 } }
+  return n
+}
+export function intr_people(m: IntrMgr, def: int) -> int {
+  var n = 0
+  let d = m.defs[def]
+  for s in 0 .. d.row.max_instances { n += m.insts[d.base + s].refs }
+  return n
+}
+
+export function intr_is_loaded(m: IntrMgr, def: int) -> bool { return m.defs[def].loaded }
+export function intr_is_inside(m: IntrMgr) -> bool { return m.inside }
+export function intr_busy(m: IntrMgr) -> bool { return m.phase != IT_IDLE }
+export function intr_active(m: IntrMgr) -> int { return m.active }
+
+# how black the screen should be, 0 .. 1
+export function intr_fade(m: IntrMgr) -> float {
+  if m.phase == IT_OUT { return Math.clamp(m.t / Math.max(m.dur_out, 0.0001), 0.0, 1.0) }
+  if m.phase == IT_LOAD { return 1.0 }
+  if m.phase == IT_IN { return 1.0 - Math.clamp(m.t / Math.max(m.dur_in, 0.0001), 0.0, 1.0) }
+  return 0.0
+}
+
+# The world position of a point in the interior's own frame, for instance `inst`
+export function intr_world_x(m: IntrMgr, inst: int, lx: float) -> double { return m.insts[inst].ox + double(lx) }
+export function intr_world_y(m: IntrMgr, inst: int, ly: float) -> double { return m.insts[inst].oy + double(ly) }
+export function intr_world_z(m: IntrMgr, inst: int, lz: float) -> double { return m.insts[inst].oz + double(lz) }
+
+# Begin going into `owner`'s instance of `def`. (ret_x, ret_y, ret_z, ret_yaw) is where the player stands outside, to
+# be put back on the way out (ignored when going from one interior to another). Spawn: the def's own point, or (sx, sy,
+# sz, syaw) if `custom` (a door that opens into the back room). INTR_OK, or why not.
+export function intr_enter(m: IntrMgr, def: int, owner: int, ret_x: double, ret_y: double, ret_z: double, ret_yaw: float, custom: bool, sx: float, sy: float, sz: float, syaw: float) -> int {
+  if def < 0 or def >= len(m.defs) { return INTR_UNKNOWN }
+  if m.phase != IT_IDLE { return INTR_BUSY }
+  let at = intr_acquire(m, def, owner)
+  if at < 0 { return INTR_FULL }
+  let d = m.defs[def]
+  if not m.inside {
+    m.ret_x = ret_x
+    m.ret_y = ret_y
+    m.ret_z = ret_z
+    m.ret_yaw = ret_yaw
+  }
+  if custom {
+    m.spawn_dx = sx;  m.spawn_dy = sy;  m.spawn_dz = sz;  m.spawn_yaw = syaw
+  } else {
+    m.spawn_dx = d.row.spawn_x;  m.spawn_dy = d.row.spawn_y;  m.spawn_dz = d.row.spawn_z;  m.spawn_yaw = d.row.spawn_yaw
+  }
+  m.going_in = true
+  m.failed = false
+  m.dur_out = d.row.fade_out
+  m.dur_in = d.row.fade_in
+  m.phase = IT_OUT
+  m.t = 0.0
+  # the target is held now, so the def's content is wanted from the first frame of the fade
+  let target = m.insts[at]
+  m.pending = at
+  target.refs += 1
+  target.last_used = m.frame
+  d.idle = 0.0
+  return INTR_OK
+}
+
+# Begin leaving the interior the player is in, back to where intr_enter was called from.
+export function intr_exit(m: IntrMgr) -> int {
+  if not m.inside { return INTR_NOT_INSIDE }
+  if m.phase != IT_IDLE { return INTR_BUSY }
+  m.going_in = false
+  m.dur_out = m.defs[m.insts[m.active].def].row.fade_out
+  m.dur_in = m.defs[m.insts[m.active].def].row.fade_in
+  m.phase = IT_OUT
+  m.t = 0.0
+  m.pending = -1
+  return INTR_OK
+}
+
+# the game has loaded a def's content
+export function intr_def_loaded(m: IntrMgr, def: int) -> void {
+  m.defs[def].loaded = true
+  m.defs[def].loading = false
+}
+
+# the game could not load it: an entry in progress is abandoned
+export function intr_def_failed(m: IntrMgr, def: int) -> void {
+  m.defs[def].loading = false
+  m.defs[def].loaded = false
+  m.failed = true
+}
+
+# Advance by dt seconds: the fades, the wait for the content, the spawn, and the def's unload after its keep time.
+export function intr_update(m: IntrMgr, dt: float) -> void {
+  m.frame += 1
+  if m.phase == IT_OUT {
+    m.t += dt
+    if m.going_in and m.pending >= 0 { intr_want(m, m.insts[m.pending].def) }
+    if m.t >= m.dur_out {
+      m.phase = IT_LOAD
+      m.t = 0.0
+    }
+  }
+  if m.phase == IT_LOAD {
+    if m.going_in {
+      let at = m.pending
+      let def = m.insts[at].def
+      intr_want(m, def)
+      if m.failed {
+        m.failed = false
+        intr_abort(m, at, def)
+      } else if m.defs[def].loaded {
+        intr_arrive(m, at, def)
+      }
+    } else {
+      intr_leave(m)
+    }
+  }
+  if m.phase == IT_IN {
+    m.t += dt
+    if m.t >= m.dur_in {
+      m.phase = IT_IDLE
+      m.t = 0.0
+      if m.inside { intr_post(m, IE_ENTERED, m.insts[m.active].def, m.active, 0.0, 0.0, 0.0, 0.0) }
+      else { intr_post(m, IE_EXITED, -1, -1, m.ret_x, m.ret_y, m.ret_z, m.ret_yaw) }
+    }
+  }
+  # content nobody needs is let go after its keep time
+  for i in 0 .. len(m.defs) {
+    let d = m.defs[i]
+    if d.loaded and intr_people(m, i) == 0 and not (m.going_in and m.phase != IT_IDLE and m.pending >= 0 and m.insts[m.pending].def == i) {
+      d.idle += dt
+      if d.idle >= d.row.keep {
+        d.loaded = false
+        d.idle = 0.0
+        intr_post(m, IE_UNLOAD_DEF, i, -1, 0.0, 0.0, 0.0, 0.0)
+      }
+    } else {
+      d.idle = 0.0
+    }
+  }
+}
+
+# ask for a def's content once
+function intr_want(m: IntrMgr, def: int) -> void {
+  let d = m.defs[def]
+  if d.loaded or d.loading { return }
+  d.loading = true
+  intr_post(m, IE_LOAD_DEF, def, -1, 0.0, 0.0, 0.0, 0.0)
+}
+
+# the content is in: put the player at the spawn, hold the world, and start the fade in
+function intr_arrive(m: IntrMgr, at: int, def: int) -> void {
+  let i = m.insts[at]
+  # if another instance was the one the player was in, they have left it
+  if m.inside and m.active >= 0 and m.active != at {
+    m.insts[m.active].refs = max(m.insts[m.active].refs - 1, 0)
+    m.insts[m.active].last_used = m.frame
+  }
+  m.active = at
+  m.inside = true
+  m.pending = -1
+  i.last_used = m.frame
+  if m.stream != null { ws_hold(m.stream, true) }
+  intr_post(m, IE_HOLD, def, at, 0.0, 0.0, 0.0, 0.0)
+  intr_post(m, IE_SPAWN, def, at, i.ox + double(m.spawn_dx), i.oy + double(m.spawn_dy), i.oz + double(m.spawn_dz), m.spawn_yaw)
+  m.phase = IT_IN
+  m.t = 0.0
+}
+
+# an entry that cannot finish: the reference is given back and the player is put where they stood
+function intr_abort(m: IntrMgr, at: int, def: int) -> void {
+  m.insts[at].refs = max(m.insts[at].refs - 1, 0)
+  m.pending = -1
+  intr_post(m, IE_FAILED, def, at, m.ret_x, m.ret_y, m.ret_z, m.ret_yaw)
+  if m.inside {
+    # came from another interior: they stay in it
+    m.phase = IT_IN
+  } else {
+    intr_post(m, IE_SPAWN, -1, -1, m.ret_x, m.ret_y, m.ret_z, m.ret_yaw)
+    m.phase = IT_IN
+  }
+  m.t = 0.0
+}
+
+# out of the interior: the player goes back to the door
+function intr_leave(m: IntrMgr) -> void {
+  let at = m.active
+  m.insts[at].refs = max(m.insts[at].refs - 1, 0)
+  m.insts[at].last_used = m.frame
+  m.inside = false
+  m.active = -1
+  if m.stream != null { ws_hold(m.stream, false) }
+  intr_post(m, IE_RELEASE, m.insts[at].def, at, 0.0, 0.0, 0.0, 0.0)
+  intr_post(m, IE_SPAWN, -1, -1, m.ret_x, m.ret_y, m.ret_z, m.ret_yaw)
+  m.phase = IT_IN
+  m.t = 0.0
+}
+
+# ---- an interior's rooms and doors as its map's data -------------------------------------------
+
+# a room of an interior: a box in the interior's own frame
+export property InteriorRoom {
+  key: string = ""
+  @Unit("m") minx: float = 0.0
+  @Unit("m") miny: float = 0.0
+  @Unit("m") minz: float = 0.0
+  @Unit("m") maxx: float = 4.0
+  @Unit("m") maxy: float = 3.0
+  @Unit("m") maxz: float = 4.0
+}
+
+@PerMap @ByKey
+export registry InteriorRooms of InteriorRoom from "interior_rooms.lres"
+
+# a door (or archway, or window) between two rooms: a rectangle in the plane x = at (axis 0) or z = at (axis 1),
+# spanning lo .. hi along the other horizontal axis and y0 .. y1 up. A room named "" or "outside" is outdoors.
+export property InteriorDoor {
+  key: string = ""
+  a: string = ""
+  b: string = ""
+  axis: int = 0
+  @Unit("m") at: float = 0.0
+  @Unit("m") lo: float = 0.0
+  @Unit("m") hi: float = 1.0
+  @Unit("m") y0: float = 0.0
+  @Unit("m") y1: float = 2.2
+  open: bool = true
+}
+
+@PerMap @ByKey
+export registry InteriorDoors of InteriorDoor from "interior_doors.lres"
+
+function intr_room_id(rooms: InteriorRooms, key: string) -> int {
+  if key == "" or key == "outside" { return -1 }
+  return interior_rooms_find(rooms, key)
+}
+
+# the portal graph of a loaded interior map: a room a row of InteriorRooms, a portal a row of InteriorDoors. Returns
+# the number of doors that named a room that is not there (and were left out).
+@alloc_ok("an interior loading: the graph is made once")
+export function intr_graph_build(g: PGraph, rooms: InteriorRooms, doors: InteriorDoors) -> int {
+  for i in 0 .. len(rooms.rows) {
+    let r = rooms.rows[i]
+    pg_room(g, r.minx, r.miny, r.minz, r.maxx, r.maxy, r.maxz)
+  }
+  var bad = 0
+  let c = floats(12)
+  for i in 0 .. len(doors.rows) {
+    let d = doors.rows[i]
+    let a = intr_room_id(rooms, d.a)
+    let b = intr_room_id(rooms, d.b)
+    if (a < 0 and d.a != "" and d.a != "outside") or (b < 0 and d.b != "" and d.b != "outside") or (a < 0 and b < 0) {
+      bad += 1
+      continue
+    }
+    if d.axis == 0 {
+      c[0] = d.at;  c[1] = d.y0;  c[2] = d.lo
+      c[3] = d.at;  c[4] = d.y0;  c[5] = d.hi
+      c[6] = d.at;  c[7] = d.y1;  c[8] = d.hi
+      c[9] = d.at;  c[10] = d.y1; c[11] = d.lo
+    } else {
+      c[0] = d.lo;  c[1] = d.y0;  c[2] = d.at
+      c[3] = d.hi;  c[4] = d.y0;  c[5] = d.at
+      c[6] = d.hi;  c[7] = d.y1;  c[8] = d.at
+      c[9] = d.lo;  c[10] = d.y1; c[11] = d.at
+    }
+    let p = pg_portal(g, a, b, c)
+    pg_set_open(g, p, d.open)
+  }
+  return bad
+}

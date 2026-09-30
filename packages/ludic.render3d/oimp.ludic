@@ -1,0 +1,168 @@
+# ============================================================================
+# oimp.ludic - octahedral impostors for far buildings: the math, with no device.
+#
+# A building far enough that its mesh is a few hundred pixels is drawn as ONE card that faces the camera and shows a
+# photograph of the building taken from the direction the camera is looking from. The photographs are an N x N
+# grid of FRAMES in one atlas (oimp_gpu.ludic bakes it from the kit's model: a person's click, once per kit), laid
+# out by the hemi-octahedral map of the viewing direction, so neighbouring frames are neighbouring directions
+# and any direction has three frames around it to blend (a triangle of the grid, barycentric weights).
+#
+# The hemi-octahedron covers the upper hemisphere (a building is never seen from under the ground). A direction
+# (x, y, z), y >= 0, goes to (u, v) in [0, 1]^2 by  p = (x, z) / (|x| + |y| + |z|);  u = (p.x + p.z + 1) / 2;
+# v = (p.x - p.z + 1) / 2.  The frame grid g = (u, v) * (N - 1) puts frame (i, j)'s capture direction exactly on
+# integer g. The shader (oimp.frag) does this same arithmetic; these functions are its reference.
+#
+# Each frame is an orthographic view of the model's bounding sphere (radius R), so a card of side 2R centred on the
+# model covers it from any direction; to blend frames taken from different directions the shader re-projects the
+# card's fragment into each frame's own basis (oimp_basis / oimp_project), which is what keeps a building's edges
+# in place while the camera swings round it. The instance's yaw is taken out of the view direction first
+# (oimp_local_dir), so an impostor is baked once however its instances are turned.
+# ============================================================================
+numbers float
+
+# hemi-octahedral encode of a direction with y >= 0 (a y below 0 is clamped to the horizon): u, v into out[0], out[1]
+export function oimp_encode(x: float, y: float, z: float, out: floats) -> void {
+  let yy = Math.max(y, 0.0)
+  let l = Math.abs(x) + yy + Math.abs(z)
+  var px = 0.0
+  var pz = 0.0
+  if l > 0.000001 {
+    px = x / l
+    pz = z / l
+  }
+  out[0] = Math.clamp((px + pz + 1.0) * 0.5, 0.0, 1.0)
+  out[1] = Math.clamp((px - pz + 1.0) * 0.5, 0.0, 1.0)
+}
+
+# the unit direction of (u, v)
+export function oimp_decode(u: float, v: float, out: floats) -> void {
+  let a = u * 2.0 - 1.0
+  let b = v * 2.0 - 1.0
+  let px = (a + b) * 0.5
+  let pz = (a - b) * 0.5
+  let y = 1.0 - Math.abs(px) - Math.abs(pz)
+  let l = Math.sqrt(px * px + y * y + pz * pz)
+  out[0] = px / l
+  out[1] = y / l
+  out[2] = pz / l
+}
+
+# the direction frame (i, j) of an n x n grid was photographed from (the baker's camera sits along it)
+export function oimp_capture_dir(n: int, i: int, j: int, out: floats) -> void {
+  let d = float(max(n - 1, 1))
+  oimp_decode(float(i) / d, float(j) / d, out)
+}
+
+# Three frames to blend for direction (x, y, z) in the impostor's own frame: out[0..2] their indices (j * n + i), out[3..5] their weights
+# (summing to 1). `ij` and `w` are scratch the caller keeps: words(3) and floats(3).
+export function oimp_pick(n: int, x: float, y: float, z: float, ij: words, w: floats) -> void {
+  let uv = floats(2)
+  oimp_encode(x, y, z, uv)
+  let d = float(max(n - 1, 1))
+  let gx = uv[0] * d
+  let gy = uv[1] * d
+  var i0 = int(Math.floor(gx))
+  var j0 = int(Math.floor(gy))
+  i0 = min(max(i0, 0), max(n - 2, 0))
+  j0 = min(max(j0, 0), max(n - 2, 0))
+  let fx = gx - float(i0)
+  let fy = gy - float(j0)
+  let i1 = min(i0 + 1, n - 1)
+  let j1 = min(j0 + 1, n - 1)
+  if fx + fy <= 1.0 {
+    ij[0] = j0 * n + i0
+    ij[1] = j0 * n + i1
+    ij[2] = j1 * n + i0
+    w[0] = 1.0 - fx - fy
+    w[1] = fx
+    w[2] = fy
+  } else {
+    ij[0] = j1 * n + i1
+    ij[1] = j1 * n + i0
+    ij[2] = j0 * n + i1
+    w[0] = fx + fy - 1.0
+    w[1] = 1.0 - fx
+    w[2] = 1.0 - fy
+  }
+}
+
+# the atlas rectangle of frame `f` (j * n + i) as u0, v0, u1, v1 into out[0 .. 3]
+export function oimp_frame_rect(n: int, f: int, out: floats) -> void {
+  let i = f % n
+  let j = f / n
+  let s = 1.0 / float(n)
+  out[0] = float(i) * s
+  out[1] = float(j) * s
+  out[2] = float(i + 1) * s
+  out[3] = float(j + 1) * s
+}
+
+# the atlas uv of the point (qu, qv) in [0, 1]^2 of frame f's own image, pulled in half a texel so bilinear
+# filtering never reads the neighbouring frame (frame_px: a frame's side in texels)
+export function oimp_atlas_uv(n: int, f: int, qu: float, qv: float, frame_px: int, out: floats) -> void {
+  let s = 1.0 / float(n)
+  let half = 0.5 / float(n * frame_px)
+  let u = Math.clamp(qu, 0.0, 1.0)
+  let v = Math.clamp(qv, 0.0, 1.0)
+  out[0] = float(f % n) * s + half + u * (s - 2.0 * half)
+  out[1] = float(f / n) * s + half + v * (s - 2.0 * half)
+}
+
+# frame f's camera basis: right and up (unit, perpendicular, and to the view direction `dir` = the direction the camera sits
+# along). Up is world up except looking straight down the axis, where it is -z, so neighbouring frames stay continuous.
+export function oimp_basis(dx: float, dy: float, dz: float, right: floats, up: floats) -> void {
+  var ux = 0.0
+  var uy = 1.0
+  var uz = 0.0
+  if Math.abs(dy) > 0.999 { ux = 0.0;  uy = 0.0;  uz = -1.0 }
+  # right = normalize(cross(up, dir))
+  var rx = uy * dz - uz * dy
+  var ry = uz * dx - ux * dz
+  var rz = ux * dy - uy * dx
+  let rl = Math.sqrt(rx * rx + ry * ry + rz * rz)
+  rx = rx / rl
+  ry = ry / rl
+  rz = rz / rl
+  right[0] = rx;  right[1] = ry;  right[2] = rz
+  # up = cross(dir, right)
+  up[0] = dy * rz - dz * ry
+  up[1] = dz * rx - dx * rz
+  up[2] = dx * ry - dy * rx
+}
+
+# A point p (relative to the impostor's centre) into frame (right, up)'s image: u, v in [0, 1] for an orthographic
+# view of a sphere of radius r. Points on the sphere map inside the unit square.
+export function oimp_project(px: float, py: float, pz: float, right: floats, up: floats, r: float, out: floats) -> void {
+  out[0] = (px * right[0] + py * right[1] + pz * right[2]) / (2.0 * r) + 0.5
+  out[1] = (px * up[0] + py * up[1] + pz * up[2]) / (2.0 * r) + 0.5
+}
+
+# the direction to the camera, in the impostor's own frame: the world vector (dx, dy, dz) from the instance to the camera with
+# the instance's yaw (as sin, cos, the renderer's x' = c x + s z, z' = -s x + c z) turned out of it, normalised
+export function oimp_local_dir(dx: float, dy: float, dz: float, s: float, c: float, out: floats) -> void {
+  let lx = c * dx - s * dz
+  let lz = s * dx + c * dz
+  let l = Math.sqrt(lx * lx + dy * dy + lz * lz)
+  out[0] = lx / l
+  out[1] = dy / l
+  out[2] = lz / l
+}
+
+# the card's size and centre for a kit: a sphere about the middle of its box. Out: radius, centre height.
+export function oimp_bounds(w: float, d: float, h: float, out: floats) -> void {
+  out[0] = 0.5 * Math.sqrt(w * w + d * d + h * h)
+  out[1] = h * 0.5
+}
+
+# texels in the albedo atlas a side, for n frames of frame_px
+export function oimp_atlas_px(n: int, frame_px: int) -> int { return n * frame_px }
+
+# bytes an atlas pair (albedo and normal, RGBA8, without mips) takes
+export function oimp_bytes(n: int, frame_px: int) -> int { return 2 * n * n * frame_px * frame_px * 4 }
+
+# How faded a far card is, 0 (the mesh draws it) .. 1 (the card), over [near, near + band]: a crossfade by
+# screen-door dither in the shaders, this the reference of the ramp
+export function oimp_fade(dist: float, near: float, band: float) -> float {
+  if band <= 0.0 { if dist < near { return 0.0 } else { return 1.0 } }
+  return Math.clamp((dist - near) / band, 0.0, 1.0)
+}
