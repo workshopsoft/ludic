@@ -1,0 +1,115 @@
+# ============================================================================
+# hlod_gpu.ludic - a cell's HLOD proxy on the GPU: one mesh a cell, drawn with the cell's render-space offset as a
+# uniform (so the floating origin moving moves nothing in memory) by hlod.vert / hlod.frag. A cell whose real instances
+# are in (FULL layer resident) hides its proxy: the scheduler's "a cell shows FULL if it has it, else HLOD" (wstream.ludic).
+# ============================================================================
+
+property HlodCell {
+  mesh: Mesh,
+  cx: int = 0,
+  cz: int = 0,
+  size: float = 256.0,
+  slot: int = 0,
+  hidden: bool = false,
+  used: bool = false,
+  tris: int = 0
+}
+
+export property HlodGpu {
+  prog: int = 0,
+  cells: []HlodCell,
+  n: int = 0,              # cells drawn (not hidden) last draw
+  tris: int = 0            # triangles in them
+}
+
+@alloc_ok("a world being set up: the proxy program is made once")
+export function hlod_gpu_new(render3d_st: mut Render3dState) -> HlodGpu {
+  let h = new HlodGpu
+  h.cells = new []HlodCell
+  h.prog = r3d_program(render3d_st, "hlod.vert", "hlod.frag", "")
+  return h
+}
+
+# A cell's proxy uploaded, under the caller's `slot` for the cell (a cell already there under it is replaced).
+@alloc_ok("a cell loading: its proxy's mesh is made once and freed with the cell")
+export function hlod_gpu_add(render3d_st: mut Render3dState, h: HlodGpu, slot: int, m: HlodMesh) -> bool {
+  if m == null or m.ni == 0 { return false }
+  hlod_gpu_remove(render3d_st, h, slot)
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SCATTER
+  let mesh = gpu_mesh_new(render3d_st)
+  gpu_mesh_vertices(render3d_st, mesh, data_of(m.vtx), m.nv * HLOD_V * 4, GPU_STATIC)
+  gpu_mesh_attr(render3d_st, mesh, 0, 3, GPU_F32, HLOD_V * 4, 0, false)
+  gpu_mesh_attr(render3d_st, mesh, 1, 3, GPU_F32, HLOD_V * 4, 12, false)
+  gpu_mesh_attr(render3d_st, mesh, 2, 4, GPU_UNSIGNED_BYTE, HLOD_V * 4, 24, true)
+  gpu_mesh_indices(render3d_st, mesh, data_of(m.idx), m.ni * 4, 4)
+  mesh.count = m.ni
+  gpu_mesh_done(render3d_st, mesh)
+  render3d_st.gvk_tag = was
+  var at = -1
+  for i in 0 .. len(h.cells) { if not h.cells[i].used { at = i } }
+  if at < 0 {
+    push(h.cells, new HlodCell)
+    at = len(h.cells) - 1
+  }
+  let c = h.cells[at]
+  c.mesh = mesh
+  c.cx = m.cx
+  c.cz = m.cz
+  c.size = m.size
+  c.slot = slot
+  c.hidden = false
+  c.used = true
+  c.tris = m.ni / 3
+  return true
+}
+
+export function hlod_gpu_remove(render3d_st: mut Render3dState, h: HlodGpu, slot: int) -> bool {
+  for i in 0 .. len(h.cells) {
+    let c = h.cells[i]
+    if c.used and c.slot == slot {
+      mesh_free(render3d_st, c.mesh)
+      c.mesh = null
+      c.used = false
+      return true
+    }
+  }
+  return false
+}
+
+export function hlod_gpu_hide(h: HlodGpu, slot: int, hidden: bool) -> void {
+  for i in 0 .. len(h.cells) {
+    if h.cells[i].used and h.cells[i].slot == slot { h.cells[i].hidden = hidden }
+  }
+}
+
+# every shown proxy, lit. Call from the scene draw callback.
+export function hlod_gpu_draw(render3d_st: mut Render3dState, h: HlodGpu, o: ForgOrigin) -> void {
+  h.n = 0
+  h.tris = 0
+  if h.prog == 0 { return }
+  let p = h.prog
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  sky_bind_lighting(render3d_st, p)
+  shadow_bind(render3d_st, p)
+  fog_bind(render3d_st, p)
+  gpu_cull(render3d_st, false)
+  let loc = gpu_uniform(render3d_st, p, "u_cell_off")
+  for i in 0 .. len(h.cells) {
+    let c = h.cells[i]
+    if not c.used or c.hidden { continue }
+    let x = cell_render_x(o, c.cx, c.size)
+    let z = cell_render_z(o, c.cz, c.size)
+    let y = float(0.0 - o.oy)
+    # a proxy wholly outside the view is skipped: the cell's square, taller than anything in it
+    if not cam_sphere_visible(render3d_st, x + c.size * 0.5, y + 60.0, z + c.size * 0.5, c.size * 0.75 + 120.0) { continue }
+    u_f3(render3d_st, loc, x, y, z)
+    gpu_draw_mesh(render3d_st, c.mesh)
+    h.n += 1
+    h.tris += c.tris
+  }
+  gpu_cull(render3d_st, true)
+}

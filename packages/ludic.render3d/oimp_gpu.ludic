@@ -1,0 +1,100 @@
+# ============================================================================
+# oimp_gpu.ludic - baking a kit's octahedral impostor frames on the GPU (the math is oimp.ludic's, the drawing is
+# oimp.vert / oimp.frag's). One atlas of n x n frames of frame_px texels, albedo with coverage in one texture and the
+# model-frame normal with the model's own occlusion in the other, rendered with the same MRT bake as the tree impostors
+# (bake.frag): frame (i, j) is the model seen orthographically from the direction oimp_capture_dir(n, i, j) names,
+# filling a square of the model's bounding sphere. A person's click, once a kit: it draws the model n * n times.
+# ============================================================================
+
+export property OImp {
+  albedo: int = 0,
+  normal: int = 0,
+  n: int = 0,              # frames along a side
+  px: int = 0,             # a frame's side in texels
+  radius: float = 0.0,     # the card's half side: the model's bounding sphere
+  centre_y: float = 0.0,   # where that sphere's middle is above the model's base
+  w: float = 0.0,
+  d: float = 0.0,
+  h: float = 0.0
+}
+
+# Bake `model` (w x d x h metres, origin at the middle of its footprint on the ground) into n x n frames of frame_px
+# texels, with the program `prog` (kit.vert + bake.frag) and an identity instance in `ident` (the kit instancer's).
+@alloc_ok("a world being set up: a kit's impostor is baked once")
+export function oimp_bake(render3d_st: mut Render3dState, prog: int, ident: int, model: Model, w: float, d: float, h: float, n: int, frame_px: int) -> OImp {
+  let im = new OImp
+  im.n = n
+  im.px = frame_px
+  im.w = w
+  im.d = d
+  im.h = h
+  let b = floats(2)
+  oimp_bounds(w, d, h, b)
+  im.radius = b[0]
+  im.centre_y = b[1]
+  let side = n * frame_px
+  im.albedo = tex_target(render3d_st, side, side, GPU_RGBA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
+  im.normal = tex_target(render3d_st, side, side, GPU_RGBA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
+  let fbo = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, fbo)
+  gpu_fb_color(render3d_st, 0, im.albedo)
+  gpu_fb_color(render3d_st, 1, im.normal)
+  let rb = gpu_rb_new(render3d_st)
+  gpu_rb_storage(render3d_st, rb, GPU_DEPTH_COMPONENT24, side, side, 0)
+  gpu_fb_depth_rb(render3d_st, rb)
+  gpu_fb_draw_buffers(render3d_st, 2)
+  gpu_viewport(render3d_st, 0, 0, side, side)
+  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT | GPU_DEPTH_BUFFER_BIT)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_LESS)
+  gpu_cull(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  for i in 0 .. len(model.prims) { kgpu_attach(render3d_st, model.prims[i].mesh, ident) }
+  let view = m4_new()
+  let proj = m4_new()
+  let dir = floats(3)
+  let right = floats(3)
+  let up = floats(3)
+  let r = im.radius
+  m4_ortho(proj, -r, r, -r, r, 0.1, r * 9.0)
+  gpu_use_program(render3d_st, prog)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, prog, "u_proj"), proj)
+  for j in 0 .. n {
+    for i in 0 .. n {
+      oimp_capture_dir(n, i, j, dir)
+      oimp_basis(dir[0], dir[1], dir[2], right, up)
+      # the camera sits along `dir` from the model's middle, looking back at it: its right is oimp's right, its up oimp's up
+      m4_look_at_xyz(view, dir[0] * r * 4.0, im.centre_y + dir[1] * r * 4.0, dir[2] * r * 4.0, 0.0, im.centre_y, 0.0, up[0], up[1], up[2])
+      u_mat4(render3d_st, gpu_uniform(render3d_st, prog, "u_view"), view)
+      gpu_viewport(render3d_st, i * frame_px, j * frame_px, frame_px, frame_px)
+      for p in 0 .. len(model.prims) {
+        let pr = model.prims[p]
+        r3d_bind_2d(render3d_st, prog, "u_diff", 0, pr.diff)
+        r3d_bind_2d(render3d_st, prog, "u_arm", 2, pr.arm)
+        prim_factors(render3d_st, prog, pr)
+        mesh_draw_instanced(render3d_st, pr.mesh, 1)
+      }
+    }
+  }
+  free(view)
+  free(proj)
+  free(dir)
+  free(right)
+  free(up)
+  free(b)
+  gpu_fb_bind(render3d_st, 0)
+  gpu_fb_free(render3d_st, fbo)
+  gpu_rb_free(render3d_st, rb)
+  gpu_check(render3d_st, "oimp bake")
+  return im
+}
+
+# let the frames go (a kit leaves the world)
+export function oimp_free(render3d_st: mut Render3dState, im: OImp) -> void {
+  if im == null { return }
+  if im.albedo != 0 { gpu_tex_free(render3d_st, im.albedo) }
+  if im.normal != 0 { gpu_tex_free(render3d_st, im.normal) }
+  im.albedo = 0
+  im.normal = 0
+}

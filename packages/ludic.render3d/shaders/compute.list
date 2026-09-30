@@ -4,3 +4,6 @@ probe|probe.comp
 scatter_cull|scatter_cull.comp
 grass_reset|grass_reset.comp
 grass_cull|grass_cull.comp
+kinst_reset|kinst_reset.comp
+kinst_cull|kinst_cull.comp
+kinst_args|kinst_args.comp

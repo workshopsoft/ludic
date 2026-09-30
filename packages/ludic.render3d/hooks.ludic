@@ -12,3 +12,7 @@ function r3d_on_stream_fill(render3d_st: mut Render3dState, f: fn(Stream, int, i
 function r3d_scene_draw(render3d_st: Render3dState) -> void { if render3d_st.r3d_draw_cb != null { render3d_st.r3d_draw_cb() } }
 function r3d_scene_casters(render3d_st: Render3dState, light_vp: floats) -> void { if render3d_st.r3d_casters_cb != null { render3d_st.r3d_casters_cb(light_vp) } }
 function r3d_stream_fill(render3d_st: Render3dState, s: Stream, cx: int, cz: int, band: int) -> void { if render3d_st.r3d_fill_cb != null { render3d_st.r3d_fill_cb(s, cx, cz, band) } }
+
+# before the frame's first pass (where a compute dispatch may run without splitting one): the big world's instance cull
+function r3d_on_prepare(render3d_st: mut Render3dState, f: fn()) -> void { render3d_st.r3d_prepare_cb = f }
+function r3d_scene_prepare(render3d_st: Render3dState) -> void { if render3d_st.r3d_prepare_cb != null { render3d_st.r3d_prepare_cb() } }

@@ -1,0 +1,33 @@
+// kinst_args.comp - between the count pass and the scatter pass: the counts become first places (an exclusive scan over
+// the bins, clamped so the total fits the output buffer), and the indirect draw records learn how many instances each
+// draw has and where they start. One invocation: a scan of a thousand bins is a few microseconds.
+// A kit has 9 records: 0 .. 7 its mesh's primitives (each draws the same instances of bin kit * 2), 8 the impostor card
+// (bin kit * 2 + 1). The CPU fills indexCount, firstIndex and vertexOffset once; this writes instanceCount and firstInstance.
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 0) uniform Params {
+  uvec4 info;           // x bins (2 a kit), y kits, z output capacity (instances)
+} pr;
+layout(set = 0, binding = 1) buffer Counts { uint counts[]; };
+layout(set = 0, binding = 2) buffer Offsets { uint offs[]; };
+layout(set = 0, binding = 3) readonly buffer Kits { vec4 kits[]; };
+layout(set = 0, binding = 4) buffer Cmds { uint cmds[]; };
+void main() {
+  uint running = 0u;
+  for (uint b = 0u; b < pr.info.x; b++) {
+    uint c = min(counts[b], pr.info.z - running);
+    counts[b] = c;
+    offs[b] = running;
+    running += c;
+  }
+  for (uint k = 0u; k < pr.info.y; k++) {
+    uint prims = uint(kits[k * 2u + 1u].x + 0.5);
+    for (uint j = 0u; j < 8u; j++) {
+      uint r = (k * 9u + j) * 5u;
+      cmds[r + 1u] = (j < prims) ? counts[k * 2u] : 0u;
+      cmds[r + 4u] = offs[k * 2u];
+    }
+    uint r = (k * 9u + 8u) * 5u;
+    cmds[r + 1u] = counts[k * 2u + 1u];
+    cmds[r + 4u] = offs[k * 2u + 1u];
+  }
+}

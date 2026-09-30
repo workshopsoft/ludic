@@ -63,3 +63,9 @@ terrain.vert|terrain.frag|#define SUN_INLINE;#define NEAR_ONLY;
 terrain.vert|tersun.frag|
 water.vert|water.frag|
 grass_inst.vert|model.frag|#define FOLIAGE;#define BLADE;#define GBLADE;#define GINST;
+kit.vert|kit.frag|
+kit.vert|kit.frag|#define INTERIOR_MAP;
+kit.vert|shadow.frag|#define SHADOW_PASS;
+oimp.vert|oimp.frag|
+hlod.vert|hlod.frag|
+kit.vert|bake.frag|

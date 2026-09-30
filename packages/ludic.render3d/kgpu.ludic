@@ -1,0 +1,604 @@
+# ============================================================================
+# kgpu.ludic - instancing at scale on the GPU: every resident cell's instances in one buffer, culled and binned in
+# parallel by compute, drawn by indirect calls. No CPU work is proportional to the number of instances.
+#
+#   cells load   kgpu_add_cell writes the cell's 16-float records into a range of the SRC arena (karena.ludic)
+#   each frame   kgpu_frame:  reset counters -> kinst_cull.comp (count) -> kinst_args.comp (scan, draw records) -> kinst_cull.comp (scatter)
+#                  a thread an instance: frustum + distance test against the cell's render-space offset, LOD level by
+#                  distance, survivors packed per (kit, level) in render space into DST
+#   draws        kgpu_draw: per kit, one indirect draw a material of its mesh (lit pass, INTERIOR_MAP if the kit has
+#                  windows) and one for its impostor card; kgpu_draw_casters into a shadow cascade
+#
+# `kgpu_frame` dispatches compute and so must run before the frame's first pass: register it with r3d_on_prepare.
+# Drawing goes in the game's r3d_on_draw (and r3d_on_casters). The floating origin (forg.ludic) enters only through the cell
+# table: a rebase changes `origin.serial`, kgpu_frame rewrites the table's offsets (a few kilobytes), and no instance
+# is touched.
+#
+# A kit's Model is its own: it is given instance attributes of this file's layout (three vec4s), so it must not also be
+# a scatter Layer's model. Load it again for that.
+#
+# Compile-checked here; the culling it does is tested on the CPU twin (kinst_test.ludic), record for record.
+# ============================================================================
+
+export const KG_SRC_FLOATS: int = 16       # a source record: 4 vec4s
+export const KG_DST_FLOATS: int = 12       # an output record: 3 vec4s
+const KG_PRIMS: int = 8                    # material primitives a kit's mesh may have
+const KG_REC: int = 9                      # indirect records a kit: 8 prims + its card
+
+property KGpuKit {
+  model: Model,
+  prims: int = 0,
+  near: float = 300.0,
+  far: float = 2000.0,
+  radius: float = 10.0,
+  card: bool = false,
+  atlas: OImp,              # its impostor frames, when it has a card
+  rooms: int = 0,           # the texture of its interior atlas, 0 for plain glass
+  ia: InteriorAtlas,        # the atlas row
+  win_w: float = 3.0,
+  win_h: float = 3.2,
+  casts: bool = true
+}
+
+export property KGpu {
+  kits: []KGpuKit,
+  n_kits: int = 0,
+  src_cap: int = 0,         # instances the arena holds
+  dst_cap: int = 0,         # instances a frame may show
+  max_cells: int = 0,
+  arena: KArena,
+  c_reset: int = 0,
+  c_cull: int = 0,
+  c_args: int = 0,
+  p_mesh: int = 0,
+  p_int: int = 0,
+  p_shadow: int = 0,
+  p_card: int = 0,
+  p_bake: int = 0,
+  b_src: int = 0,
+  b_kits: int = 0,
+  b_cells: int = 0,
+  b_counts: int = 0,
+  b_offs: int = 0,
+  b_cursors: int = 0,
+  b_dst: int = 0,
+  b_cmds: int = 0,
+  b_ident: int = 0,
+  card_mesh: Mesh,
+  cell_tab: floats,         # a vec4 a resident cell: render-space offset xyz, hidden
+  cell_cx: words,
+  cell_cz: words,
+  cell_size: floats,
+  cell_first: words,        # the cell's range in the arena
+  cell_n: words,
+  cell_used: words,
+  cell_slot: words,         # the caller's slot for the cell
+  free_cells: []int,
+  n_cells: int = 0,
+  serial: int = -1,
+  tab_dirty: bool = true,
+  scale: float = 1.0,       # the distance scale (kinst_adapt's, for the GPU path)
+  prm: words,               # the cull's parameter block, reused
+  pa: words,                # the scan's
+  pr: words,                # the reset's
+  bufs: words,              # the buffer handles of a dispatch, reused
+  instances: int = 0,       # resident instances
+  ready: bool = false,
+  cpu_only: bool = false,    # the compute passes and their buffers are not made: lists from kinst.ludic are drawn (kgpu_draw_lists)
+  list_bufs: words          # the CPU path's upload buffer for each (kit, level)
+}
+
+# ---- set-up ------------------------------------------------------------------------------------------
+
+# The instancer for up to `n_kits` kits, `src_cap` resident instances, `dst_cap` visible ones a frame and `max_cells`
+# resident cells. False (and an unusable result) when a program or buffer could not be made: the caller falls back to
+# kinst.ludic's CPU path.
+@alloc_ok("start-up: the instancer's programs, buffers and tables are made once")
+export function kgpu_new(render3d_st: mut Render3dState, n_kits: int, src_cap: int, dst_cap: int, max_cells: int, cpu_only: bool) -> KGpu {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SCATTER
+  let g = kgpu_new__t(render3d_st, n_kits, src_cap, dst_cap, max_cells, cpu_only)
+  render3d_st.gvk_tag = was
+  return g
+}
+
+@alloc_ok("start-up: the instancer's programs, buffers and tables are made once")
+function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, dst_cap: int, max_cells: int, cpu_only: bool) -> KGpu {
+  let g = new KGpu
+  g.cpu_only = cpu_only
+  g.list_bufs = words(n_kits * 2)
+  g.n_kits = n_kits
+  g.src_cap = src_cap
+  g.dst_cap = dst_cap
+  g.max_cells = max_cells
+  g.kits = new []KGpuKit
+  for i in 0 .. n_kits { push(g.kits, new KGpuKit) }
+  g.arena = kar_new(src_cap, 3)
+  g.cell_tab = floats(max_cells * 4)
+  g.cell_cx = words(max_cells)
+  g.cell_cz = words(max_cells)
+  g.cell_size = floats(max_cells)
+  g.cell_first = words(max_cells)
+  g.cell_n = words(max_cells)
+  g.cell_used = words(max_cells)
+  g.cell_slot = words(max_cells)
+  g.free_cells = new []int
+  for i in 0 .. max_cells {
+    push(g.free_cells, max_cells - 1 - i)
+    g.cell_tab[i * 4 + 3] = 1.0                 # hidden until a cell takes the place
+  }
+  g.prm = words(32)
+  g.pa = words(4)
+  g.pr = words(4)
+  g.bufs = words(8)
+  if not cpu_only {
+    if not gpu_has_compute(render3d_st) { return g }
+    g.c_reset = gpu_compute(render3d_st, "kinst_reset", 2)
+    g.c_cull = gpu_compute(render3d_st, "kinst_cull", 7)
+    g.c_args = gpu_compute(render3d_st, "kinst_args", 4)
+  }
+  g.p_mesh = r3d_program(render3d_st, "kit.vert", "kit.frag", "")
+  g.p_int = r3d_program(render3d_st, "kit.vert", "kit.frag", "#define INTERIOR_MAP\n")
+  g.p_shadow = r3d_program(render3d_st, "kit.vert", "shadow.frag", "#define SHADOW_PASS\n")
+  g.p_card = r3d_program(render3d_st, "oimp.vert", "oimp.frag", "")
+  g.p_bake = r3d_program(render3d_st, "kit.vert", "bake.frag", "")
+  if (not cpu_only and (g.c_reset == 0 or g.c_cull == 0 or g.c_args == 0)) or g.p_mesh == 0 or g.p_int == 0 or g.p_shadow == 0 or g.p_card == 0 or g.p_bake == 0 { return g }
+  if cpu_only {
+    g.b_ident = gpu_buffer_new(render3d_st)
+    kgpu_ident(render3d_st, g)
+    g.card_mesh = mesh_card(render3d_st)
+    g.ready = true
+    print("r3d: big world: instances are culled on the CPU")
+    return g
+  }
+  # the buffers: the arena and the output are the big ones, and the compute passes own them
+  g.b_src = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_src, src_cap * KG_SRC_FLOATS * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_src)
+  kgpu_fill_dead(render3d_st, g, 0, src_cap)
+  g.b_dst = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_dst, dst_cap * KG_DST_FLOATS * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_dst)
+  g.b_kits = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_kits, n_kits * 32, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_kits)
+  g.b_cells = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_cells, max_cells * 16, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_cells)
+  g.b_counts = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_counts, n_kits * 2 * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_counts)
+  g.b_offs = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_offs, n_kits * 2 * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_offs)
+  g.b_cursors = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_cursors, n_kits * 2 * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_cursors)
+  # the indirect records: indexCount, instanceCount, firstIndex, vertexOffset, firstInstance - the compute passes write the
+  # second and the last; kgpu_kit fills the rest
+  let rec = words(n_kits * KG_REC * 5)
+  for i in 0 .. n_kits * KG_REC * 5 { rec[i] = 0 }
+  g.b_cmds = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_cmds, n_kits * KG_REC * 20, data_of(rec), GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_cmds)
+  g.b_ident = gpu_buffer_new(render3d_st)
+  kgpu_ident(render3d_st, g)
+  g.card_mesh = mesh_card(render3d_st)
+  kgpu_attach(render3d_st, g.card_mesh, g.b_dst)
+  g.ready = true
+  print("r3d: big world: instances are culled and binned on the GPU")
+  return g
+}
+
+# an identity instance for the impostor bake, in this file's layout
+function kgpu_ident(render3d_st: mut Render3dState, g: KGpu) -> void {
+  let one = floats(KG_DST_FLOATS)
+  one[0] = 0.0;  one[1] = 0.0;  one[2] = 0.0;  one[3] = 1.0
+  one[4] = 0.0;  one[5] = 1.0;  one[6] = 0.0;  one[7] = 0.0
+  one[8] = 1.0;  one[9] = 1.0;  one[10] = 1.0;  one[11] = 0.0
+  gpu_buffer_upload(render3d_st, g.b_ident, KG_DST_FLOATS * 4, data_of(one), GPU_STATIC)
+}
+
+# every record in [first, first + n) marked dead (kit -1): the shader skips it
+function kgpu_fill_dead(render3d_st: mut Render3dState, g: KGpu, first: int, n: int) -> void {
+  let map = gpu_buffer_map(render3d_st, g.b_src)
+  if map == null { return }
+  let dead = floats(KG_SRC_FLOATS * 256)
+  for i in 0 .. 256 { dead[i * KG_SRC_FLOATS + 12] = -1.0 }
+  var done = 0
+  while done < n {
+    let k = min(256, n - done)
+    mem_copy(mem_off(map, (first + done) * KG_SRC_FLOATS * 4), data_of(dead), k * KG_SRC_FLOATS * 4)
+    done += k
+  }
+  free(dead)
+}
+
+# feed a mesh its instances from `buf` in this file's layout: attribute 3 = position + scale, 4 = sin, cos, seed, flags, 5 = tint + variation
+export function kgpu_attach(render3d_st: Render3dState, m: Mesh, buf: int) -> void {
+  gpu_mesh_bind_instances(render3d_st, m, buf)
+  gpu_mesh_attr_inst(render3d_st, m, 3, 4, GPU_F32, KG_DST_FLOATS * 4, 0)
+  gpu_mesh_attr_inst(render3d_st, m, 4, 4, GPU_F32, KG_DST_FLOATS * 4, 16)
+  gpu_mesh_attr_inst(render3d_st, m, 5, 4, GPU_F32, KG_DST_FLOATS * 4, 32)
+  gpu_mesh_done(render3d_st, m)
+}
+
+# Declare kit `id`: its model (loaded for this kit alone), distances, bounding radius, and whether it has an impostor
+# card (call kgpu_bake_kit to make the frames) and windows (kgpu_kit_interior). The kit's draw records are written.
+export function kgpu_kit(render3d_st: mut Render3dState, g: KGpu, id: int, model: Model, near: float, far: float, radius: float, casts: bool) -> void {
+  let k = g.kits[id]
+  k.model = model
+  k.prims = min(len(model.prims), KG_PRIMS)
+  k.near = near
+  k.far = far
+  k.radius = radius
+  k.casts = casts
+  if not g.ready { return }
+  if g.cpu_only {
+    for p in 0 .. k.prims { kgpu_attach(render3d_st, model.prims[p].mesh, g.b_ident) }
+    return
+  }
+  let rec = words(KG_PRIMS * 5)
+  for p in 0 .. KG_PRIMS {
+    rec[p * 5] = 0;  rec[p * 5 + 1] = 0;  rec[p * 5 + 2] = 0;  rec[p * 5 + 3] = 0;  rec[p * 5 + 4] = 0
+    if p < k.prims { rec[p * 5] = model.prims[p].mesh.count }
+  }
+  # the records are written through the buffer's mapping, at this kit's place
+  let map = gpu_buffer_map(render3d_st, g.b_cmds)
+  if map != null { mem_copy(mem_off(map, id * KG_REC * 20), data_of(rec), KG_PRIMS * 20) }
+  if g.card_mesh != null and k.card {
+    let c = words(5)
+    c[0] = g.card_mesh.count;  c[1] = 0;  c[2] = 0;  c[3] = 0;  c[4] = 0
+    if map != null { mem_copy(mem_off(map, (id * KG_REC + KG_PRIMS) * 20), data_of(c), 20) }
+  }
+  for p in 0 .. k.prims { kgpu_attach(render3d_st, model.prims[p].mesh, g.b_dst) }
+  g.tab_dirty = true
+}
+
+# the kit's windows show rooms from `ia`'s atlas (a texture made from its image), window cells of win_w x win_h metres
+export function kgpu_kit_interior(g: KGpu, id: int, ia: InteriorAtlas, rooms_tex: int, win_w: float, win_h: float) -> void {
+  let k = g.kits[id]
+  k.ia = ia
+  k.rooms = rooms_tex
+  k.win_w = win_w
+  k.win_h = win_h
+}
+
+# Bake the kit's impostor frames (n x n of frame_px texels) from its model and give it a card. A person's click: it renders
+# n * n views of the model into one atlas.
+export function kgpu_bake_kit(render3d_st: mut Render3dState, g: KGpu, id: int, w: float, d: float, h: float, n: int, frame_px: int) -> void {
+  if not g.ready { return }
+  let k = g.kits[id]
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_IMPOSTOR
+  k.atlas = oimp_bake(render3d_st, g.p_bake, g.b_ident, k.model, w, d, h, n, frame_px)
+  render3d_st.gvk_tag = was
+  k.card = true
+  # the card record, now that there is a card
+  let c = words(5)
+  c[0] = g.card_mesh.count;  c[1] = 0;  c[2] = 0;  c[3] = 0;  c[4] = 0
+  let map = gpu_buffer_map(render3d_st, g.b_cmds)
+  if map != null { mem_copy(mem_off(map, (id * KG_REC + KG_PRIMS) * 20), data_of(c), 20) }
+  g.tab_dirty = true
+  # the model's meshes were attached to the bake's instance: back to the arena's output
+  for p in 0 .. k.prims { kgpu_attach(render3d_st, k.model.prims[p].mesh, g.b_dst) }
+}
+
+# ---- cells ------------------------------------------------------------------------------------------
+
+# Put a cell's instances in the arena and its offset in the cell table. `slot` is the caller's own number for the cell
+# (the scheduler's), used to find it again. Returns false when the arena or the table is full.
+export function kgpu_add_cell(render3d_st: mut Render3dState, g: KGpu, slot: int, c: CellContent, o: ForgOrigin) -> bool {
+  if not g.ready or g.cpu_only or len(g.free_cells) == 0 or c.n == 0 { return false }
+  let first = kar_alloc(g.arena, c.n)
+  if first < 0 { return false }
+  let ix = g.free_cells[len(g.free_cells) - 1]
+  List.pop(g.free_cells)
+  g.cell_cx[ix] = c.cx
+  g.cell_cz[ix] = c.cz
+  g.cell_size[ix] = c.size
+  g.cell_first[ix] = first
+  g.cell_n[ix] = c.n
+  g.cell_used[ix] = 1
+  g.cell_slot[ix] = slot
+  kgpu_cell_offset(g, ix, o)
+  g.cell_tab[ix * 4 + 3] = 0.0
+  g.tab_dirty = true
+  # the records: 16 floats each, straight into the buffer's mapping
+  let rec = floats(KG_SRC_FLOATS * 256)
+  let map = gpu_buffer_map(render3d_st, g.b_src)
+  var at = 0
+  while at < c.n {
+    let k = min(256, c.n - at)
+    for j in 0 .. k {
+      let i = at + j
+      let r = j * KG_SRC_FLOATS
+      rec[r] = c.xf[i * CELL_XF]
+      rec[r + 1] = c.xf[i * CELL_XF + 1]
+      rec[r + 2] = c.xf[i * CELL_XF + 2]
+      rec[r + 3] = c.xf[i * CELL_XF + 4]
+      rec[r + 4] = Math.sin(c.xf[i * CELL_XF + 3])
+      rec[r + 5] = Math.cos(c.xf[i * CELL_XF + 3])
+      rec[r + 6] = float(c.vari[i] & 0xffff) / 65536.0
+      rec[r + 7] = float(c.flags[i])
+      rec[r + 8] = cell_rgba_r(c.tint[i])
+      rec[r + 9] = cell_rgba_g(c.tint[i])
+      rec[r + 10] = cell_rgba_b(c.tint[i])
+      rec[r + 11] = float(c.vari[i])
+      rec[r + 12] = float(c.kit[i])
+      rec[r + 13] = float(ix)
+      rec[r + 14] = 0.0
+      rec[r + 15] = 0.0
+    }
+    if map != null { mem_copy(mem_off(map, (first + at) * KG_SRC_FLOATS * 4), data_of(rec), k * KG_SRC_FLOATS * 4) }
+    at += k
+  }
+  free(rec)
+  g.instances += c.n
+  g.n_cells += 1
+  return true
+}
+
+# the render-space offset of table entry ix: the cell's corner in double minus the origin, rounded once
+function kgpu_cell_offset(g: KGpu, ix: int, o: ForgOrigin) -> void {
+  g.cell_tab[ix * 4] = cell_render_x(o, g.cell_cx[ix], g.cell_size[ix])
+  g.cell_tab[ix * 4 + 1] = float(0.0 - o.oy)
+  g.cell_tab[ix * 4 + 2] = cell_render_z(o, g.cell_cz[ix], g.cell_size[ix])
+}
+
+# Take a cell out: its records are marked dead now and its range is given back (held a few frames, karena.ludic).
+export function kgpu_remove_cell(render3d_st: mut Render3dState, g: KGpu, slot: int) -> bool {
+  for ix in 0 .. g.max_cells {
+    if g.cell_used[ix] == 1 and g.cell_slot[ix] == slot {
+      kgpu_fill_dead(render3d_st, g, g.cell_first[ix], g.cell_n[ix])
+      kar_free(g.arena, g.cell_first[ix], g.cell_n[ix])
+      g.instances -= g.cell_n[ix]
+      g.cell_used[ix] = 0
+      g.cell_n[ix] = 0
+      g.cell_tab[ix * 4 + 3] = 1.0
+      push(g.free_cells, ix)
+      g.n_cells -= 1
+      g.tab_dirty = true
+      return true
+    }
+  }
+  return false
+}
+
+# hide or show a cell (a room the portals cannot see)
+export function kgpu_hide_cell(g: KGpu, slot: int, hidden: bool) -> void {
+  for ix in 0 .. g.max_cells {
+    if g.cell_used[ix] == 1 and g.cell_slot[ix] == slot {
+      var h = 0.0
+      if hidden { h = 1.0 }
+      if g.cell_tab[ix * 4 + 3] != h { g.cell_tab[ix * 4 + 3] = h;  g.tab_dirty = true }
+      return
+    }
+  }
+}
+
+# ---- the frame ----------------------------------------------------------------------------------------
+
+# The kits' numbers (two vec4s each) to their buffer; the cell table to its; both only when something changed.
+function kgpu_upload_tables(render3d_st: mut Render3dState, g: KGpu, o: ForgOrigin) -> void {
+  if o.serial != g.serial {
+    g.serial = o.serial
+    for ix in 0 .. g.max_cells { if g.cell_used[ix] == 1 { kgpu_cell_offset(g, ix, o) } }
+    g.tab_dirty = true
+  }
+  if not g.tab_dirty { return }
+  g.tab_dirty = false
+  let mc = gpu_buffer_map(render3d_st, g.b_cells)
+  if mc != null { mem_copy(mc, data_of(g.cell_tab), g.max_cells * 16) }
+  let kt = floats(g.n_kits * 8)
+  for i in 0 .. g.n_kits {
+    let k = g.kits[i]
+    kt[i * 8] = k.near
+    kt[i * 8 + 1] = k.far
+    kt[i * 8 + 2] = k.radius
+    if k.card { kt[i * 8 + 3] = 1.0 } else { kt[i * 8 + 3] = 0.0 }
+    kt[i * 8 + 4] = float(k.prims)
+    kt[i * 8 + 5] = 0.0;  kt[i * 8 + 6] = 0.0;  kt[i * 8 + 7] = 0.0
+  }
+  let mk = gpu_buffer_map(render3d_st, g.b_kits)
+  if mk != null { mem_copy(mk, data_of(kt), g.n_kits * 32) }
+  free(kt)
+}
+
+# Before the frame's first pass (r3d_on_prepare): the origin's offsets, then reset, count, scan, scatter.
+export function kgpu_frame(render3d_st: mut Render3dState, g: KGpu, o: ForgOrigin) -> void {
+  if not g.ready or g.cpu_only { return }
+  kar_tick(g.arena)
+  kgpu_upload_tables(render3d_st, g, o)
+  if g.arena.high == 0 { return }
+  let bins = g.n_kits * 2
+  # 1. counters to zero
+  g.pr[0] = bins;  g.pr[1] = 0;  g.pr[2] = 0;  g.pr[3] = 0
+  g.bufs[0] = g.b_counts;  g.bufs[1] = g.b_cursors
+  gpu_dispatch(render3d_st, g.c_reset, data_of(g.pr), 16, g.bufs, (bins + 63) / 64)
+  # 2. count the survivors of each bin
+  kgpu_cull_params(render3d_st, g, 0)
+  kgpu_bind_cull(g)
+  gpu_dispatch(render3d_st, g.c_cull, data_of(g.prm), 128, g.bufs, (g.arena.high + 63) / 64)
+  # 3. counts to places, and the draw records
+  g.pa[0] = bins;  g.pa[1] = g.n_kits;  g.pa[2] = g.dst_cap;  g.pa[3] = 0
+  g.bufs[0] = g.b_counts;  g.bufs[1] = g.b_offs;  g.bufs[2] = g.b_kits;  g.bufs[3] = g.b_cmds
+  gpu_dispatch(render3d_st, g.c_args, data_of(g.pa), 16, g.bufs, 1)
+  # 4. write the survivors where they belong
+  kgpu_cull_params(render3d_st, g, 1)
+  kgpu_bind_cull(g)
+  gpu_dispatch(render3d_st, g.c_cull, data_of(g.prm), 128, g.bufs, (g.arena.high + 63) / 64)
+}
+
+# the cull's Params (kinst_cull.comp): six planes, the camera and scale, then instances, bins, pass, capacity
+function kgpu_cull_params(render3d_st: mut Render3dState, g: KGpu, pass: int) -> void {
+  let planes = floats(24)
+  kinst_planes(render3d_st.cam_vp_clean, planes)
+  for i in 0 .. 24 { g.prm[i] = float_bits(planes[i]) }
+  free(planes)
+  g.prm[24] = float_bits(render3d_st.cam_pos[0])
+  g.prm[25] = float_bits(render3d_st.cam_pos[1])
+  g.prm[26] = float_bits(render3d_st.cam_pos[2])
+  g.prm[27] = float_bits(g.scale)
+  g.prm[28] = g.arena.high
+  g.prm[29] = g.n_kits * 2
+  g.prm[30] = pass
+  g.prm[31] = g.dst_cap
+}
+function kgpu_bind_cull(g: KGpu) -> void {
+  g.bufs[0] = g.b_src;  g.bufs[1] = g.b_kits;  g.bufs[2] = g.b_cells;  g.bufs[3] = g.b_counts
+  g.bufs[4] = g.b_offs;  g.bufs[5] = g.b_cursors;  g.bufs[6] = g.b_dst
+}
+
+# the kits' meshes, lit: one indirect draw a material, then each kit's impostor card. Call from the scene draw callback.
+export function kgpu_draw(render3d_st: mut Render3dState, g: KGpu) -> void {
+  if not g.ready or g.cpu_only or g.arena.high == 0 { return }
+  gpu_cull(render3d_st, false)
+  for id in 0 .. g.n_kits {
+    let k = g.kits[id]
+    if k.model == null { continue }
+    var p = g.p_mesh
+    if k.rooms != 0 { p = g.p_int }
+    gpu_use_program(render3d_st, p)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+    u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rough_scale"), 1.0)
+    sky_bind_lighting(render3d_st, p)
+    shadow_bind(render3d_st, p)
+    fog_bind(render3d_st, p)
+    if k.rooms != 0 { imi_bind(render3d_st, p, k.ia, k.rooms, k.win_w, k.win_h) }
+    for i in 0 .. k.prims {
+      let pr = k.model.prims[i]
+      r3d_bind_2d(render3d_st, p, "u_diff", 0, pr.diff)
+      r3d_bind_2d(render3d_st, p, "u_nrm", 1, pr.nrm)
+      r3d_bind_2d(render3d_st, p, "u_arm", 2, pr.arm)
+      prim_factors(render3d_st, p, pr)
+      gpu_draw_mesh_indirect(render3d_st, pr.mesh, g.b_cmds, (id * KG_REC + i) * 20, 1, 0, 0)
+    }
+  }
+  kgpu_draw_cards(render3d_st, g)
+  gpu_cull(render3d_st, true)
+}
+
+# the far kits as octahedral impostor cards
+function kgpu_draw_cards(render3d_st: mut Render3dState, g: KGpu) -> void {
+  let p = g.p_card
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  sky_bind_lighting(render3d_st, p)
+  shadow_bind(render3d_st, p)
+  fog_bind(render3d_st, p)
+  gpu_cull(render3d_st, false)
+  for id in 0 .. g.n_kits {
+    let k = g.kits[id]
+    if not k.card or k.atlas == null or k.atlas.albedo == 0 { continue }
+    let a = k.atlas
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), a.radius)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_centre_y"), a.centre_y)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frames"), float(a.n))
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frame_px"), float(a.px))
+    r3d_bind_2d(render3d_st, p, "u_atlas_albedo", 0, a.albedo)
+    r3d_bind_2d(render3d_st, p, "u_atlas_normal", 1, a.normal)
+    gpu_draw_mesh_indirect(render3d_st, g.card_mesh, g.b_cmds, (id * KG_REC + KG_PRIMS) * 20, 1, 0, 0)
+  }
+}
+
+# the kits' meshes into a shadow cascade (their cards cast nothing: a far building's shadow is the cascades' terrain-scale
+# business, and is left out here)
+export function kgpu_draw_casters(render3d_st: mut Render3dState, g: KGpu, light_vp: floats) -> void {
+  if not g.ready or g.cpu_only or g.arena.high == 0 { return }
+  let p = g.p_shadow
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp)
+  gpu_cull(render3d_st, false)
+  for id in 0 .. g.n_kits {
+    let k = g.kits[id]
+    if k.model == null or not k.casts { continue }
+    for i in 0 .. k.prims {
+      gpu_draw_mesh_indirect(render3d_st, k.model.prims[i].mesh, g.b_cmds, (id * KG_REC + i) * 20, 1, 0, 0)
+    }
+  }
+}
+
+# How many instances survived the last frame's cull, read back: for a benchmark or a debug overlay, never for a frame
+# (it waits for the GPU). Sum of the bins' clamped counts.
+export function kgpu_visible(render3d_st: mut Render3dState, g: KGpu) -> int {
+  if not g.ready { return 0 }
+  gpu_finish(render3d_st)
+  let m = gpu_buffer_map(render3d_st, g.b_counts)
+  if m == null { return 0 }
+  let t = words(g.n_kits * 2)
+  mem_copy(data_of(t), m, g.n_kits * 2 * 4)
+  var sum = 0
+  for i in 0 .. g.n_kits * 2 { sum += t[i] }
+  free(t)
+  return sum
+}
+
+export function kgpu_instances(g: KGpu) -> int { return g.instances }
+
+# ---- the CPU path's draw ----------------------------------------------------------------------------
+
+# The lists kinst_cull made (kinst.ludic, same 12-float records) drawn the way the GPU path draws its output: each
+# (kit, level) list uploaded to a buffer of its own, one instanced draw a material and one for the card.
+export function kgpu_draw_lists(render3d_st: mut Render3dState, g: KGpu, k: KCull) -> void {
+  if not g.ready { return }
+  gpu_cull(render3d_st, false)
+  for id in 0 .. g.n_kits {
+    let kit = g.kits[id]
+    let n = kinst_bin_count(k, id, KI_MESH)
+    if kit.model == null or n == 0 { continue }
+    if g.list_bufs[id * 2] == 0 { g.list_bufs[id * 2] = gpu_buffer_new(render3d_st) }
+    let buf = g.list_bufs[id * 2]
+    gpu_buffer_upload(render3d_st, buf, n * KG_DST_FLOATS * 4, data_of(kinst_bin(k, id, KI_MESH)), GPU_DYNAMIC)
+    var p = g.p_mesh
+    if kit.rooms != 0 { p = g.p_int }
+    gpu_use_program(render3d_st, p)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+    u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rough_scale"), 1.0)
+    sky_bind_lighting(render3d_st, p)
+    shadow_bind(render3d_st, p)
+    fog_bind(render3d_st, p)
+    if kit.rooms != 0 { imi_bind(render3d_st, p, kit.ia, kit.rooms, kit.win_w, kit.win_h) }
+    for i in 0 .. kit.prims {
+      let pr = kit.model.prims[i]
+      r3d_bind_2d(render3d_st, p, "u_diff", 0, pr.diff)
+      r3d_bind_2d(render3d_st, p, "u_nrm", 1, pr.nrm)
+      r3d_bind_2d(render3d_st, p, "u_arm", 2, pr.arm)
+      prim_factors(render3d_st, p, pr)
+      kgpu_attach(render3d_st, pr.mesh, buf)
+      mesh_draw_instanced(render3d_st, pr.mesh, n)
+    }
+  }
+  let p = g.p_card
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  sky_bind_lighting(render3d_st, p)
+  shadow_bind(render3d_st, p)
+  fog_bind(render3d_st, p)
+  for id in 0 .. g.n_kits {
+    let kit = g.kits[id]
+    let n = kinst_bin_count(k, id, KI_CARD)
+    if not kit.card or kit.atlas == null or kit.atlas.albedo == 0 or n == 0 { continue }
+    if g.list_bufs[id * 2 + 1] == 0 { g.list_bufs[id * 2 + 1] = gpu_buffer_new(render3d_st) }
+    let buf = g.list_bufs[id * 2 + 1]
+    gpu_buffer_upload(render3d_st, buf, n * KG_DST_FLOATS * 4, data_of(kinst_bin(k, id, KI_CARD)), GPU_DYNAMIC)
+    let a = kit.atlas
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), a.radius)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_centre_y"), a.centre_y)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frames"), float(a.n))
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frame_px"), float(a.px))
+    r3d_bind_2d(render3d_st, p, "u_atlas_albedo", 0, a.albedo)
+    r3d_bind_2d(render3d_st, p, "u_atlas_normal", 1, a.normal)
+    kgpu_attach(render3d_st, g.card_mesh, buf)
+    mesh_draw_instanced(render3d_st, g.card_mesh, n)
+  }
+  gpu_cull(render3d_st, true)
+}

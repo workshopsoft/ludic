@@ -1,0 +1,14 @@
+// kinst_reset.comp - the instance culler's per-bin counters to zero, before each frame's count pass.
+// Binding 0 the parameters, 1 the counts, 2 the cursors.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform Params {
+  uvec4 n;              // x bins
+} pr;
+layout(set = 0, binding = 1) buffer Counts { uint counts[]; };
+layout(set = 0, binding = 2) buffer Cursors { uint cursors[]; };
+void main() {
+  uint i = gl_GlobalInvocationID.x;
+  if (i >= pr.n.x) { return; }
+  counts[i] = 0u;
+  cursors[i] = 0u;
+}

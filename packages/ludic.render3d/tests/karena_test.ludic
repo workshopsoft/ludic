@@ -1,0 +1,93 @@
+# karena_test.ludic - the GPU instance arena's range allocator: first fit, exhaustion, neighbours merged, and a range
+# given back held for the frames in flight before anyone else may have it
+import "ludic.render3d/bigworld.ludic"
+program KArenaTest {
+  numbers float
+
+  test "ranges are handed out one after another, and never overlap" {
+    let a = kar_new(1000, 0)
+    let p = kar_alloc(a, 100)
+    let q = kar_alloc(a, 250)
+    let r = kar_alloc(a, 50)
+    expect(p == 0 and q == 100 and r == 350)
+    expect_eq(kar_used(a), 400)
+    expect_eq(a.high, 400)
+    expect_eq(kar_alloc(a, 0), -1)
+    expect_eq(kar_alloc(a, 601), -1)
+    expect_eq(kar_alloc(a, 600), 400)
+    expect_eq(kar_alloc(a, 1), -1)
+  }
+
+  test "a range given back is held, then free, and merges with its neighbours" {
+    let a = kar_new(1000, 2)
+    let p = kar_alloc(a, 100)
+    let q = kar_alloc(a, 100)
+    let r = kar_alloc(a, 100)
+    kar_free(a, p, 100)
+    kar_free(a, r, 100)
+    # held: not available yet
+    expect_eq(kar_used(a), 300)
+    let big = kar_alloc(a, 800)                     # the tail: 700 left. no.
+    expect_eq(big, -1)
+    kar_tick(a)
+    kar_tick(a)
+    expect_eq(kar_used(a), 100)
+    # p and r are free; q between them still holds
+    expect_eq(kar_fragments(a), 2)
+    expect_eq(kar_alloc(a, 100), 0)                 # first fit: p's place
+    kar_free(a, q, 100)
+    kar_tick(a)
+    kar_tick(a)
+    # q free: r's range, q's range and the tail are one
+    expect_eq(kar_fragments(a), 1)
+    expect_eq(kar_largest(a), 900)
+    expect_eq(kar_free_total(a), 900)
+  }
+
+  test "a held range cannot be handed out before its delay, so a frame in flight is never overwritten" {
+    let a = kar_new(100, 3)
+    let p = kar_alloc(a, 100)
+    kar_free(a, p, 100)
+    expect_eq(kar_alloc(a, 10), -1)
+    kar_tick(a)
+    kar_tick(a)
+    expect_eq(kar_alloc(a, 10), -1)
+    kar_tick(a)
+    expect_eq(kar_alloc(a, 10), 0)
+  }
+
+  test "a long churn keeps the books: used plus free is the whole arena, and every live range is disjoint" {
+    let a = kar_new(5000, 2)
+    let at = new []int
+    let n = new []int
+    var seed = 99
+    for step in 0 .. 3000 {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      if seed % 3 != 0 or len(at) == 0 {
+        let len_ = 10 + (seed / 7) % 90
+        let r = kar_alloc(a, len_)
+        if r >= 0 { push(at, r);  push(n, len_) }
+      } else {
+        let k = (seed / 11) % len(at)
+        kar_free(a, at[k], n[k])
+        at[k] = at[len(at) - 1]
+        n[k] = n[len(n) - 1]
+        List.pop(at)
+        List.pop(n)
+      }
+      kar_tick(a)
+    }
+    for t in 0 .. 5 { kar_tick(a) }
+    var live = 0
+    for i in 0 .. len(at) { live += n[i] }
+    expect_eq(kar_used(a), live)
+    expect_eq(kar_used(a) + kar_free_total(a), 5000)
+    var overlap = 0
+    for i in 0 .. len(at) {
+      for j in i + 1 .. len(at) {
+        if at[i] < at[j] + n[j] and at[j] < at[i] + n[i] { overlap += 1 }
+      }
+    }
+    expect_eq(overlap, 0)
+  }
+}

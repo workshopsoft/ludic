@@ -1,0 +1,134 @@
+# ============================================================================
+# karena.ludic - a range allocator for the GPU instance arena. Every resident cell's instances sit in one big
+# buffer (kgpu.ludic), each cell in a range of it; a cell loading takes a range, a cell dropping gives it back.
+# First fit over a sorted free list, neighbours merged on free. A range given back is held for `delay` frames
+# before it can be handed out again: the GPU may still be reading the frame in flight, and a range reused too
+# soon would be overwritten under its shaders. Pure logic.
+# ============================================================================
+numbers float
+
+export property KArena {
+  cap: int = 0,
+  free_at: []int,          # free ranges, sorted by start
+  free_n: []int,
+  hold_at: []int,          # ranges given back and not yet free
+  hold_n: []int,
+  hold_frame: []int,
+  delay: int = 3,
+  frame: int = 0,
+  used: int = 0,           # elements handed out and not given back (held ranges count as used)
+  high: int = 0            # one past the last element ever handed out: how far a pass over the arena has to look
+}
+
+@alloc_ok("a world being set up: the arena's lists are made once")
+export function kar_new(cap: int, delay: int) -> KArena {
+  let a = new KArena
+  a.cap = cap
+  a.delay = delay
+  a.free_at = new []int
+  a.free_n = new []int
+  a.hold_at = new []int
+  a.hold_n = new []int
+  a.hold_frame = new []int
+  push(a.free_at, 0)
+  push(a.free_n, cap)
+  return a
+}
+
+# a range of n elements: its first index, or -1 when no free range is that long
+export function kar_alloc(a: KArena, n: int) -> int {
+  if n <= 0 { return -1 }
+  for i in 0 .. len(a.free_at) {
+    if a.free_n[i] >= n {
+      let at = a.free_at[i]
+      if a.free_n[i] == n {
+        kar_remove_free(a, i)
+      } else {
+        a.free_at[i] = at + n
+        a.free_n[i] = a.free_n[i] - n
+      }
+      a.used += n
+      if at + n > a.high { a.high = at + n }
+      return at
+    }
+  }
+  return -1
+}
+
+function kar_remove_free(a: KArena, i: int) -> void {
+  let last = len(a.free_at) - 1
+  for k in i .. last {
+    a.free_at[k] = a.free_at[k + 1]
+    a.free_n[k] = a.free_n[k + 1]
+  }
+  List.pop(a.free_at)
+  List.pop(a.free_n)
+}
+
+# give a range back: it is held for `delay` frames, then becomes free again (kar_tick)
+export function kar_free(a: KArena, at: int, n: int) -> void {
+  if n <= 0 { return }
+  push(a.hold_at, at)
+  push(a.hold_n, n)
+  push(a.hold_frame, a.frame)
+}
+
+# one frame on: held ranges that have waited long enough are merged into the free list
+export function kar_tick(a: KArena) -> void {
+  a.frame += 1
+  var i = 0
+  while i < len(a.hold_at) {
+    if a.frame - a.hold_frame[i] >= a.delay {
+      kar_insert(a, a.hold_at[i], a.hold_n[i])
+      a.used -= a.hold_n[i]
+      let last = len(a.hold_at) - 1
+      a.hold_at[i] = a.hold_at[last]
+      a.hold_n[i] = a.hold_n[last]
+      a.hold_frame[i] = a.hold_frame[last]
+      List.pop(a.hold_at)
+      List.pop(a.hold_n)
+      List.pop(a.hold_frame)
+    } else {
+      i += 1
+    }
+  }
+}
+
+# a free range into the sorted list, merged with its neighbours
+function kar_insert(a: KArena, at: int, n: int) -> void {
+  var i = 0
+  while i < len(a.free_at) and a.free_at[i] < at { i += 1 }
+  push(a.free_at, 0)
+  push(a.free_n, 0)
+  var k = len(a.free_at) - 1
+  while k > i {
+    a.free_at[k] = a.free_at[k - 1]
+    a.free_n[k] = a.free_n[k - 1]
+    k -= 1
+  }
+  a.free_at[i] = at
+  a.free_n[i] = n
+  # with the one after
+  if i + 1 < len(a.free_at) and a.free_at[i] + a.free_n[i] == a.free_at[i + 1] {
+    a.free_n[i] = a.free_n[i] + a.free_n[i + 1]
+    kar_remove_free(a, i + 1)
+  }
+  # with the one before
+  if i > 0 and a.free_at[i - 1] + a.free_n[i - 1] == a.free_at[i] {
+    a.free_n[i - 1] = a.free_n[i - 1] + a.free_n[i]
+    kar_remove_free(a, i)
+  }
+}
+
+export function kar_used(a: KArena) -> int { return a.used }
+export function kar_free_total(a: KArena) -> int {
+  var t = 0
+  for i in 0 .. len(a.free_n) { t += a.free_n[i] }
+  return t
+}
+export function kar_fragments(a: KArena) -> int { return len(a.free_at) }
+export function kar_largest(a: KArena) -> int {
+  var m = 0
+  for i in 0 .. len(a.free_n) { m = max(m, a.free_n[i]) }
+  return m
+}

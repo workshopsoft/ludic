@@ -1,0 +1,204 @@
+# ============================================================================
+# bigworld_gpu.ludic - the large world as one object a game holds: the floating origin, the cell scheduler, the files it
+# reads cells from, the instancer (GPU, or the CPU culler as the fallback) and the HLOD proxies, driven by one call a
+# frame. The pieces are each usable alone (forg, wstream, cellfile, hlod, kinst, kgpu, hlod_gpu); this wires them the way a
+# driving game on a 16 km map does.
+#
+#   let bw = bw_open(st, "assets/maps/city/cells", row, kits.rows, true, "assets", 2000000)    # the map's data
+#   bw_setup_kits(st, bw, 8, 128)              # models, impostor frames, interior atlases (a person's load, once)
+#   r3d_on_prepare(st, fn prepare)             #   function prepare() { bw_prepare(st, bw) }
+#   r3d_on_draw(st, fn draw)                   #   function draw() { bw_draw(st, bw) }
+#   r3d_on_casters(st, fn casters)             #   function casters(vp: floats) { bw_draw_casters(st, bw, vp) }
+#   each frame, with the camera's WORLD position (doubles) and heading:  bw_frame(st, bw, wx, wy, wz, yaw, pitch, 2000.0)
+#
+# bw_frame moves the floating origin when the camera has drifted, sets the camera in render space, runs the scheduler and does the
+# loads it allows within the microsecond budget; the cell files are read here (synchronously: each cell is small, and the
+# budget is what keeps a frame's loading bounded). Everything a game keeps in render space (actors, other layers) follows
+# `bw.origin` (forg.ludic): after a frame in which `bw.rebased` is true, shift them by `bw.origin.shift_x/y/z`.
+# ============================================================================
+
+export property BigWorld {
+  dir: string = "",
+  assets: string = "",
+  origin: ForgOrigin,
+  sched: WStream,
+  index: CellIndex,
+  kits: []BuildingKit,
+  gpu: KGpu,                 # the kits' programs and meshes; its cull runs on the GPU unless it was made cpu_only (then cpu's lists are drawn)
+  cpu: KCull,
+  hlod: HlodGpu,
+  rebased: bool = false,     # the origin moved this frame: render-space things the game keeps must follow
+  loads_full: int = 0,       # cells loaded, all time
+  loads_hlod: int = 0,
+  drops: int = 0,
+  fails: int = 0,
+  frame_load_us: int = 0,    # what the loads of the last frame cost
+  wx: double = 0.0,
+  wy: double = 0.0,
+  wz: double = 0.0
+}
+
+# Open a large world over a directory of cells (cells.lwi and the cell files: cellfile.ludic, hlod.ludic), the map's kit rows and its
+# partition row. `use_gpu`: cull and bin on the GPU (kgpu.ludic); `max_instances` is how many instances the arena holds.
+@alloc_ok("a world being set up: the scheduler, the index and the instancer are made once per map")
+export function bw_open(render3d_st: mut Render3dState, dir: string, row: WorldPartition, kits: []BuildingKit, use_gpu: bool, assets_dir: string, max_instances: int) -> BigWorld {
+  let bw = new BigWorld
+  bw.dir = dir
+  bw.assets = assets_dir
+  bw.kits = kits
+  bw.origin = forg_new(256.0, 1024.0)
+  bw.sched = ws_from_row(row)
+  bw.index = cell_index_load(dir)
+  if bw.index != null { cell_index_register(bw.index, bw.sched) }
+  bw.cpu = kinst_new(len(kits))
+  kinst_kits_from(bw.cpu, kits)
+  bw.hlod = hlod_gpu_new(render3d_st)
+  let g = kgpu_new(render3d_st, len(kits), max_instances, max(max_instances / 2, 1024), 2048, not use_gpu)
+  if g.ready { bw.gpu = g }
+  return bw
+}
+
+# the directory part of "a/b/c.glb" and its file name
+function bw_dir_of(path: string) -> string {
+  var i = len(path) - 1
+  while i >= 0 and path[i] != '/' { i -= 1 }
+  if i < 0 { return "" }
+  return path[0 .. i]
+}
+function bw_file_of(path: string) -> string {
+  var i = len(path) - 1
+  while i >= 0 and path[i] != '/' { i -= 1 }
+  return path[i + 1 .. len(path)]
+}
+
+# Load every kit's model, bake its impostor frames (n x n of frame_px texels; 0 for none), and its interior atlas: the map's
+# heavy one-time set-up. A kit whose model will not load is skipped (and drawn by nothing).
+@alloc_ok("a world being set up: every kit's model and atlases are made once")
+export function bw_setup_kits(render3d_st: mut Render3dState, bw: BigWorld, impostor_n: int, frame_px: int) -> int {
+  var ok = 0
+  for id in 0 .. len(bw.kits) {
+    let k = bw.kits[id]
+    let m = gltf_load(render3d_st, `{bw.assets}/{bw_dir_of(k.model)}`, bw_file_of(k.model), k.node)
+    if m == null { continue }
+    let radius = 0.5 * Math.sqrt(k.w * k.w + k.d * k.d + k.h * k.h)
+    if bw.gpu != null {
+      kgpu_kit(render3d_st, bw.gpu, id, m, k.near, k.far, radius, k.casts_shadow)
+      if k.impostor and impostor_n > 0 { kgpu_bake_kit(render3d_st, bw.gpu, id, k.w, k.d, k.h, impostor_n, frame_px) }
+      if k.interior != "" {
+        let ai = interioratlases_find(k.interior)
+        if ai >= 0 {
+          let tex = imi_load(render3d_st, InteriorAtlases[ai], bw.assets)
+          if tex != 0 { kgpu_kit_interior(bw.gpu, id, InteriorAtlases[ai], tex, k.win_w, k.win_h) }
+        }
+      }
+    }
+    ok += 1
+  }
+  return ok
+}
+
+# One frame of the world, from the camera's world position (doubles) and its yaw and pitch in degrees. `load_us` is the
+# frame's loading budget in microseconds. Sets the camera (in render space), moves the origin if it must, streams.
+export function bw_frame(render3d_st: mut Render3dState, bw: BigWorld, wx: double, wy: double, wz: double, yaw_deg: float, pitch_deg: float, load_us: float) -> void {
+  bw.wx = wx
+  bw.wy = wy
+  bw.wz = wz
+  let o = bw.origin
+  bw.rebased = forg_update(o, wx, wy, wz)
+  if bw.rebased { kinst_rebase(bw.cpu, o.shift_x, o.shift_y, o.shift_z) }
+  cam_set(render3d_st, forg_rx(o, wx), forg_ry(o, wy), forg_rz(o, wz), yaw_deg, pitch_deg)
+  let yaw = Math.deg_to_rad(yaw_deg)
+  ws_begin_frame(bw.sched, load_us)
+  ws_update(bw.sched, float(wx), float(wz), -Math.sin(yaw), -Math.cos(yaw))
+  bw.frame_load_us = 0
+  var code = ws_next_job(bw.sched)
+  while code >= 0 {
+    let slot = ws_code_slot(code)
+    let layer = ws_code_layer(code)
+    let t0 = clock_now_us()
+    let ok = bw_load(render3d_st, bw, slot, layer)
+    let us = int(clock_now_us() - t0)
+    bw.frame_load_us += us
+    if ok { ws_job_done(bw.sched, slot, layer, float(us)) } else { ws_job_fail(bw.sched, slot, layer);  bw.fails += 1 }
+    code = ws_next_job(bw.sched)
+  }
+  code = ws_next_drop(bw.sched)
+  while code >= 0 {
+    bw_drop(render3d_st, bw, ws_code_slot(code), ws_code_layer(code))
+    bw.drops += 1
+    code = ws_next_drop(bw.sched)
+  }
+  # a cell shows its proxy only while its real instances are not in
+  for i in 0 .. len(bw.hlod.cells) {
+    let c = bw.hlod.cells[i]
+    if c.used { c.hidden = ws_has_full(bw.sched, c.slot) }
+  }
+}
+
+# one layer of one cell read from its file into the renderer
+function bw_load(render3d_st: mut Render3dState, bw: BigWorld, slot: int, layer: int) -> bool {
+  let cx = ws_cell_x(bw.sched, slot)
+  let cz = ws_cell_z(bw.sched, slot)
+  if layer == WS_FULL {
+    let c = cell_load(bw.dir, cx, cz)
+    if c == null { return false }
+    if bw_gpu_culls(bw) {
+      if not kgpu_add_cell(render3d_st, bw.gpu, slot, c, bw.origin) { return false }
+    } else {
+      kinst_add_cell(bw.cpu, slot, c, cell_render_x(bw.origin, cx, c.size), float(0.0 - bw.origin.oy), cell_render_z(bw.origin, cz, c.size))
+    }
+    bw.loads_full += 1
+    return true
+  }
+  let m = hlod_load(bw.dir, cx, cz)
+  if m == null { return false }
+  if not hlod_gpu_add(render3d_st, bw.hlod, slot, m) { return false }
+  bw.loads_hlod += 1
+  return true
+}
+
+function bw_drop(render3d_st: mut Render3dState, bw: BigWorld, slot: int, layer: int) -> void {
+  if layer == WS_FULL {
+    if bw_gpu_culls(bw) { kgpu_remove_cell(render3d_st, bw.gpu, slot) } else { kinst_remove_cell(bw.cpu, slot) }
+  } else {
+    hlod_gpu_remove(render3d_st, bw.hlod, slot)
+  }
+}
+
+# before the frame's first pass (r3d_on_prepare): the GPU cull
+export function bw_prepare(render3d_st: mut Render3dState, bw: BigWorld) -> void {
+  if bw_gpu_culls(bw) { kgpu_frame(render3d_st, bw.gpu, bw.origin) }
+}
+
+# the scene: proxies of the far cells, then the kits (every pass that draws the scene)
+export function bw_draw(render3d_st: mut Render3dState, bw: BigWorld) -> void {
+  hlod_gpu_draw(render3d_st, bw.hlod, bw.origin)
+  if bw.gpu == null { return }
+  if bw_gpu_culls(bw) {
+    kgpu_draw(render3d_st, bw.gpu)
+  } else {
+    kinst_begin(bw.cpu, render3d_st.cam_vp_clean, render3d_st.cam_pos[0], render3d_st.cam_pos[1], render3d_st.cam_pos[2])
+    kinst_cull(bw.cpu)
+    kgpu_draw_lists(render3d_st, bw.gpu, bw.cpu)
+  }
+}
+
+# what casts into a cascade (the GPU path's meshes; the CPU path draws its level-0 lists)
+export function bw_draw_casters(render3d_st: mut Render3dState, bw: BigWorld, light_vp: floats) -> void {
+  if bw_gpu_culls(bw) { kgpu_draw_casters(render3d_st, bw.gpu, light_vp) }
+}
+
+# does the GPU cull the instances (else the CPU culler's lists are drawn)?
+export function bw_gpu_culls(bw: BigWorld) -> bool { return bw.gpu != null and not bw.gpu.cpu_only }
+
+# statistics for an overlay: resident cells by layer, instances held and visible, proxies drawn, the last frame's load time
+export function bw_cells_full(bw: BigWorld) -> int {
+  var n = 0
+  for k in 0 .. ws_count(bw.sched) { if ws_has_full(bw.sched, k) { n += 1 } }
+  return n
+}
+export function bw_cells_hlod(bw: BigWorld) -> int {
+  var n = 0
+  for k in 0 .. ws_count(bw.sched) { if ws_has_hlod(bw.sched, k) { n += 1 } }
+  return n
+}
