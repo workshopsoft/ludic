@@ -1,7 +1,8 @@
 # net.ludic - vitals in a party. The host (or a solo game) simulates and its pools are the truth. A guest
-# holds a mirror: hurting one shows predicted feedback only, a verb that would change a pool asks the host
-# (vitals_outbox), and what the host says arrives as snapshots (state) and relayed facts (events). The
-# package sends nothing: the game puts the snapshot, the outbox and the facts on its wire (ludic.net)
+# holds a mirror: hurting one shows predicted feedback only, a verb that would change a pool dispatches the
+# @Net action VitalsAsk (the host checks it with vitals_ask_ok and reduces it with vitals_apply_request),
+# and what the host says arrives as snapshots (state) and relayed facts (events). The package sends
+# nothing: the game binds NetActions (the asks) and puts the snapshot and the facts on its wire (ludic.net)
 
 export function vitals_set_role(vitals_st: mut VitalsState, role: int) -> void { vitals_st.vt__role = role }
 export function vitals_role(vitals_st: VitalsState) -> int { return vitals_st.vt__role }
@@ -95,20 +96,58 @@ export function vitals_apply_snapshot(vitals_st: mut VitalsState, actor: int, da
   return true
 }
 
-# the host decides a guest's ask (sender: the asker's actor, from the wire's slot, never from the message).
-# Returns VITALS_OK, or why not
-export function vitals_apply_request(vitals_st: mut VitalsState, sender: int, kind: int, actor: int, pool: int, amount: float) -> int {
+# can the host do what a guest asks, and if not why not: VITALS_OK, or the reason. It changes nothing, so the
+# action's validator and the request that runs it say the same. `sender` is the asker's number from the wire's
+# slot (never the message's)
+function vt__check_request(vitals_st: VitalsState, sender: int, kind: int, actor: int, pool: int, amount: float) -> int {
   if vitals_st.vt__role == VITALS_GUEST { return VITALS_NOT_HOST }
   let h = vitals_of(vitals_st, actor)
   if h < 0 { return VITALS_NO_SUCH }
   if not VitalsWorld.allow_request(sender, kind, actor) { return VITALS_REFUSED }
+  let v = vt__vital(vitals_st, h)
   if kind == VREQ_SPEND {
     if not vt__pool_ok(pool) { return VITALS_NO_POOL }
-    if vitals_spend(vitals_st, h, pool, amount) { return VITALS_OK }
+    if vitals_can_spend(vitals_st, h, pool, amount) { return VITALS_OK }
     return VITALS_NOT_ENOUGH
   }
   if kind == VREQ_RESTORE {
     if not vt__pool_ok(pool) { return VITALS_NO_POOL }
+    return VITALS_OK
+  }
+  if kind == VREQ_HEAL { return VITALS_OK }
+  if kind == VREQ_REVIVE {
+    if v.phase == VitalPhase.Alive { return VITALS_WRONG_PHASE }
+    if v.phase == VitalPhase.Dead and not (vt__kind_ok(v.kind) and VitalClasses[v.kind].raise_dead) { return VITALS_WRONG_PHASE }
+    return VITALS_OK
+  }
+  if kind == VREQ_KILL {
+    if v.phase == VitalPhase.Dead or v.dying { return VITALS_WRONG_PHASE }
+    return VITALS_OK
+  }
+  if kind == VREQ_RESPAWN {
+    if v.phase != VitalPhase.Dead { return VITALS_WRONG_PHASE }
+    return VITALS_OK
+  }
+  return VITALS_NO_SUCH
+}
+
+# the host's check of a guest's VitalsAsk, before it is reduced (@Validate): a refusal rolls the guest's own
+# guess back
+export function vitals_ask_ok(vitals_st: VitalsState, a: VitalsAsk, sender: int) -> bool {
+  return vt__check_request(vitals_st, sender, a.kind, a.actor, a.pool, a.amount) == VITALS_OK
+}
+
+# the host decides a guest's ask (sender: the asker, from the wire's slot, never from the message; the
+# VitalsAsk action's reducer passes action_sender()). Returns VITALS_OK, or why not
+export function vitals_apply_request(vitals_st: mut VitalsState, sender: int, kind: int, actor: int, pool: int, amount: float) -> int {
+  let code = vt__check_request(vitals_st, sender, kind, actor, pool, amount)
+  if code != VITALS_OK { return code }
+  let h = vitals_of(vitals_st, actor)
+  if kind == VREQ_SPEND {
+    vitals_spend(vitals_st, h, pool, amount)
+    return VITALS_OK
+  }
+  if kind == VREQ_RESTORE {
     vitals_restore(vitals_st, h, pool, amount)
     return VITALS_OK
   }
@@ -118,14 +157,47 @@ export function vitals_apply_request(vitals_st: mut VitalsState, sender: int, ki
   }
   if kind == VREQ_REVIVE { return vitals_revive(vitals_st, h, sender, amount) }
   if kind == VREQ_KILL {
-    if vitals_kill(vitals_st, h, sender, -1) { return VITALS_OK }
-    return VITALS_WRONG_PHASE
+    vitals_kill(vitals_st, h, sender, -1)
+    return VITALS_OK
   }
-  if kind == VREQ_RESPAWN {
-    if vitals_respawn(vitals_st, h) { return VITALS_OK }
-    return VITALS_WRONG_PHASE
+  vitals_respawn(vitals_st, h)
+  return VITALS_OK
+}
+
+# what a VitalsAsk does. On the host (and solo) the ask is reduced as the game's own verbs would; on a guest
+# only its own `predict` pools are shown at once (@Predicted: kept, and put back if the host refuses it)
+reducer VitalsState on VitalsAsk(vitals_st: mut VitalsState, a: VitalsAsk) {
+  if vitals_st.vt__role != VITALS_GUEST { vitals_apply_request(vitals_st, action_sender(), a.kind, a.actor, a.pool, a.amount) }
+}
+
+@Predicted reducer Vital in VitalsState.vt__vitals on VitalsAsk(r: mut Row<Vital>, vitals_st: VitalsState, a: VitalsAsk) {
+  vt__predict(vitals_st, r.h, r.rec, a)
+}
+
+# the guest's own pool, spent or restored here before the host has said (its facts are marked predicted)
+function vt__predict(vitals_st: VitalsState, h: int, v: Vital, a: VitalsAsk) -> void {
+  if vitals_st.vt__role != VITALS_GUEST or not v.mine or not vt__pool_ok(a.pool) or not VitalPools[a.pool].predict { return }
+  if v.maxs[a.pool] < 0.0 or v.phase != VitalPhase.Alive or v.dying { return }
+  let pool = a.pool
+  if a.kind == VREQ_SPEND {
+    if v.vals[pool] < a.amount { return }
+    v.vals[pool] = v.vals[pool] - a.amount
+    if VitalPools[pool].delay_on_spend { vt__touch(v, pool) }
+    if v.vals[pool] <= 0.0 {
+      v.vals[pool] = 0.0
+      let f = vt__fact(vitals_st, VITALS_DEPLETED, v, h)
+      f.pool = pool
+    }
+  } else if a.kind == VREQ_RESTORE {
+    let given = Math.min(v.maxs[pool] - v.vals[pool], a.amount)
+    if given <= 0.0 { return }
+    v.vals[pool] = v.vals[pool] + given
+    let f = vt__fact(vitals_st, VITALS_RESTORED, v, h)
+    f.pool = pool
+    f.amount = given
+    f.value = v.vals[pool]
+    f.predicted = true
   }
-  return VITALS_NO_SUCH
 }
 
 # a guest shows a fact the host made and relayed (the record's fields are the wire's): the events of a

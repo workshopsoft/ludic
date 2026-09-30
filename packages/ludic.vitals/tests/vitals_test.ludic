@@ -23,6 +23,8 @@ program VitalsTest {
     buff: float = 1.0
     allow: bool = true
     snap: []float = null
+    wire: []int = null         # what the guest's port was given for the host: a word count, then the words, message after message
+    back: []int = null         # and what the host's port was given for the guest
   }
   function a_can(arena_st: Arena, a: int) -> bool { return arena_st.hurtable }
   function a_resist(arena_st: Arena, a: int, ty: int) -> float { return arena_st.buff }
@@ -30,12 +32,42 @@ program VitalsTest {
   function a_allow(arena_st: Arena, sender: int, kind: int, target: int) -> bool { return arena_st.allow }
   bind VitalsWorld { can_be_hurt: fn a_can, resist_mult: fn a_resist, x: fn a_x, allow_request: fn a_allow }
 
+  # the session, as the game would bind it: the role is the package's own, a message lands in a list
+  function a_role(vitals_st: VitalsState) -> int {
+    if vitals_role(vitals_st) == VITALS_GUEST { return 2 }
+    if vitals_role(vitals_st) == VITALS_HOST { return 1 }
+    return 0
+  }
+  function a_put(list: []int, w: []int, n: int) -> void {
+    push(list, n)
+    for i in 0 .. n { push(list, w[i]) }
+  }
+  function a_to_host(arena_st: mut Arena, w: []int, n: int) -> void { a_put(arena_st.wire, w, n) }
+  function a_to_peer(arena_st: mut Arena, pid: int, w: []int, n: int) -> void { a_put(arena_st.back, w, n) }
+  bind NetActions { role: fn a_role, to_host: fn a_to_host, to_peer: fn a_to_peer }
+  # every message of a list, to net_actions_receive as if it came from `from`
+  function deliver(list: []int, from: int) -> int {
+    var i = 0
+    var rc = 0
+    while i < len(list) {
+      let n = list[i]
+      let w = new []int
+      for k in 0 .. n { push(w, list[i + 1 + k]) }
+      rc = net_actions_receive(from, w, n)
+      i += 1 + n
+    }
+    return rc
+  }
+
   function fresh(vitals_st: mut VitalsState, arena_st: mut Arena) -> void {
     vitals_reset(vitals_st)
     arena_st.hurtable = true
     arena_st.buff = 1.0
     arena_st.allow = true
     arena_st.snap = new []float
+    arena_st.wire = new []int
+    arena_st.back = new []int
+    net_actions_reset()
   }
   function step(vitals_st: mut VitalsState, m: mut VitalsStepsMachine, dt: float) -> void {
     vitals_run(vitals_st, m, dt)
@@ -352,13 +384,13 @@ program VitalsTest {
     expect(near(vitals_heal(vitals_st, h, 5.0), 0.0))
     expect(not vitals_spend(vitals_st, h, VPOOL_ARMOUR, 5.0))
     expect_eq(vitals_revive(vitals_st, h, 1, 0.0), VITALS_WRONG_PHASE)
-    let out = q_drain(vitals_outbox(vitals_st))
-    expect_eq(len(out), 3)
-    expect_eq(out[0].kind, VREQ_KILL)
-    expect_eq(out[1].kind, VREQ_HEAL)
-    expect_eq(out[2].kind, VREQ_SPEND)
-    expect_eq(out[2].actor, 1)
-    expect(out[2].seq > out[0].seq)
+    drain_actions()
+    expect_eq(len(arena_st.wire), 3 * 10)          # three asks to the host: 9 words each, after their count
+    expect_eq(arena_st.wire[1 + 5], VREQ_KILL)     # the header is four words, then who, kind, actor, pool, amount
+    expect_eq(arena_st.wire[10 + 1 + 5], VREQ_HEAL)
+    expect_eq(arena_st.wire[20 + 1 + 5], VREQ_SPEND)
+    expect_eq(arena_st.wire[20 + 1 + 6], 1)
+    expect(arena_st.wire[20 + 1 + 2] > arena_st.wire[1 + 2])   # in order: the sequence number grows
     expect(not vitals_set_max(vitals_st, h, VPOOL_HEALTH, 10.0, false))
   }
 
@@ -369,8 +401,9 @@ program VitalsTest {
     vitals_snapshot(vitals_st, h, arena_st.snap)
     vitals_set_role(vitals_st, VITALS_GUEST)
     expect(vitals_spend(vitals_st, h, VPOOL_STAMINA, 30.0))
+    drain_actions()                                 # the guess is shown where the action is reduced
     expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 70.0))
-    expect_eq(len(q_drain(vitals_outbox(vitals_st))), 1)
+    expect_eq(len(arena_st.wire), 10)
     arena_st.snap[0] = 50.0
     arena_st.snap[5 + 2 * VPOOL_STAMINA] = 68.0
     expect(vitals_apply_snapshot(vitals_st, 1, arena_st.snap, len(arena_st.snap)))
@@ -412,6 +445,59 @@ program VitalsTest {
     let f = first_fact(vitals_st, VITALS_DOWNED)
     expect_eq(f.clip, "down")
     expect(not f.predicted)
+  }
+
+  test "a guest's own stamina goes back when the host refuses the ask" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_set_local(vitals_st, 1)
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    expect(vitals_spend(vitals_st, h, VPOOL_STAMINA, 30.0))
+    expect(vitals_spend(vitals_st, h, VPOOL_STAMINA, 20.0))
+    drain_actions()
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 50.0))
+    expect_eq(net_actions_pending(), 2)
+    arena_st.allow = false                          # the host's port says no to both
+    vitals_set_role(vitals_st, VITALS_HOST)
+    expect_eq(deliver(arena_st.wire, 1), 0)
+    drain_actions()
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 50.0))   # nothing of the host's changed (its world is this one)
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    deliver(arena_st.back, 1)
+    drain_actions()
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 100.0))  # both guesses put back
+    expect_eq(net_actions_pending(), 0)
+    expect_eq(net_actions_stat(4), 2)               # one rollback for each refusal
+  }
+
+  test "the host takes a guest's ask through the action: checked, reduced for the sender, confirmed" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_set_local(vitals_st, 1)
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    expect(vitals_spend(vitals_st, h, VPOOL_STAMINA, 30.0))
+    drain_actions()
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 70.0))
+    vitals_set_role(vitals_st, VITALS_HOST)
+    expect_eq(deliver(arena_st.wire, 1), 0)         # pid 1 asks for its own actor
+    drain_actions()
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 40.0))   # the host spent it too: this test's one world is both machines
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    deliver(arena_st.back, 1)
+    drain_actions()
+    expect_eq(net_actions_pending(), 0)
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 40.0))   # confirmed: the guess stands, nothing is put back
+    vitals_set_role(vitals_st, VITALS_HOST)
+    arena_st.wire = new []int
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    vitals_kill(vitals_st, h, 5, 0)                 # a guest's kill is the host's to decide, through the port
+    drain_actions()
+    vitals_set_role(vitals_st, VITALS_HOST)
+    arena_st.allow = false                          # the game's allow_request says no to a kill
+    expect_eq(deliver(arena_st.wire, 2), 0)
+    drain_actions()
+    expect(vitals_alive(vitals_st, h))
+    expect_eq(net_actions_stat(7), 1)
   }
 
   test "the host decides a guest's ask: who may revive, spend or kill, through the port" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {

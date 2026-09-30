@@ -2,27 +2,15 @@
 # restore, set_max, revive, kill (and respawn, invulnerable, set). The verbs that change the phase
 # dispatch an action the machine reduces at the end of the phase: call them in PH_SIMULATE and the state
 # is settled before PH_RESOLVE (a test calls drain_actions()). On a guest a verb that would change
-# authoritative state asks the host instead (the outbox) and, for a hit, shows predicted feedback.
+# authoritative state asks the host instead (the action VitalsAsk) and, for a hit, shows predicted feedback.
 function vt__untouchable(v: Vital) -> bool {
   if v.invuln != 0.0 { return true }
   return not VitalsWorld.can_be_hurt(v.actor)
 }
 
-# a guest asks the host: the game sends what comes out of vitals_outbox()
-function vt__ask(vitals_st: mut VitalsState, kind: int, actor: int, pool: int, amount: float) -> void {
-  var q = q_rec(vitals_st.vt__out)
-  if q == null {
-    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
-    q = new VitalsRequest
-    q_ring_add(vitals_st.vt__out, q)
-  }
-  vitals_st.vt__req_seq += 1
-  q.kind = kind
-  q.actor = actor
-  q.pool = pool
-  q.amount = amount
-  q.seq = vitals_st.vt__req_seq
-  q_push(vitals_st.vt__out, q)
+# a guest asks the host: the action goes out through NetActions, and is reduced on the host
+function vt__ask(vitals_st: mut VitalsState, kind: int, h: int, actor: int, pool: int, amount: float) -> void {
+  dispatch VitalsAsk { who: h, kind: kind, actor: actor, pool: pool, amount: amount }
 }
 
 function vt__local_pool(vitals_st: VitalsState, v: Vital, p: int) -> bool {
@@ -125,8 +113,9 @@ export function vitals_restore(vitals_st: mut VitalsState, h: int, pool: int, am
   if v == null or amount <= 0.0 or not vt__pool_ok(pool) or v.maxs[pool] < 0.0 { return 0.0 }
   if v.phase != VitalPhase.Alive or v.dying { return 0.0 }
   if vitals_st.vt__role == VITALS_GUEST {
-    vt__ask(vitals_st, VREQ_RESTORE, v.actor, pool, amount)
+    vt__ask(vitals_st, VREQ_RESTORE, h, v.actor, pool, amount)
     if not vt__local_pool(vitals_st, v, pool) { return 0.0 }
+    return Math.max(0.0, Math.min(v.maxs[pool] - v.vals[pool], amount))   # its own pool is shown at the drain (vt__predict)
   }
   let room = v.maxs[pool] - v.vals[pool]
   let given = Math.min(room, amount)
@@ -145,7 +134,7 @@ export function vitals_heal(vitals_st: mut VitalsState, h: int, amount: float) -
   if vitals_st.vt__life < 0 { return 0.0 }
   let v = vt__vital(vitals_st, h)
   if v != null and vitals_st.vt__role == VITALS_GUEST and not vt__local_pool(vitals_st, v, vitals_st.vt__life) {
-    if v.phase == VitalPhase.Alive and not v.dying { vt__ask(vitals_st, VREQ_HEAL, v.actor, vitals_st.vt__life, amount) }
+    if v.phase == VitalPhase.Alive and not v.dying { vt__ask(vitals_st, VREQ_HEAL, h, v.actor, vitals_st.vt__life, amount) }
     return 0.0
   }
   return vitals_restore(vitals_st, h, vitals_st.vt__life, amount)
@@ -164,11 +153,9 @@ export function vitals_spend(vitals_st: mut VitalsState, h: int, pool: int, amou
   if v == null or not vt__pool_ok(pool) or v.maxs[pool] < 0.0 or v.phase != VitalPhase.Alive or v.dying { return false }
   if amount <= 0.0 { return true }
   if vitals_st.vt__role == VITALS_GUEST {
-    if not vt__local_pool(vitals_st, v, pool) {
-      vt__ask(vitals_st, VREQ_SPEND, v.actor, pool, amount)
-      return false
-    }
-    vt__ask(vitals_st, VREQ_SPEND, v.actor, pool, amount)
+    vt__ask(vitals_st, VREQ_SPEND, h, v.actor, pool, amount)
+    if not vt__local_pool(vitals_st, v, pool) { return false }
+    return v.vals[pool] >= amount             # its own pool is shown at the drain (vt__predict)
   }
   if v.vals[pool] < amount { return false }
   v.vals[pool] = v.vals[pool] - amount
@@ -214,7 +201,7 @@ export function vitals_revive(vitals_st: mut VitalsState, h: int, by: int, frac:
   if v.phase == VitalPhase.Alive { return VITALS_WRONG_PHASE }
   if v.phase == VitalPhase.Dead and not (vt__kind_ok(v.kind) and VitalClasses[v.kind].raise_dead) { return VITALS_WRONG_PHASE }
   if vitals_st.vt__role == VITALS_GUEST {
-    vt__ask(vitals_st, VREQ_REVIVE, v.actor, -1, frac)
+    vt__ask(vitals_st, VREQ_REVIVE, h, v.actor, -1, frac)
     return VITALS_NOT_HOST
   }
   dispatch VitalsReviveIn { who: h, frac: frac, by: by }
@@ -226,7 +213,7 @@ export function vitals_kill(vitals_st: mut VitalsState, h: int, source: int, typ
   let v = vt__vital(vitals_st, h)
   if v == null or v.phase == VitalPhase.Dead or v.dying { return false }
   if vitals_st.vt__role == VITALS_GUEST {
-    vt__ask(vitals_st, VREQ_KILL, v.actor, -1, 0.0)
+    vt__ask(vitals_st, VREQ_KILL, h, v.actor, -1, 0.0)
     return false
   }
   v.last_source = source
@@ -242,7 +229,7 @@ export function vitals_respawn(vitals_st: mut VitalsState, h: int) -> bool {
   let v = vt__vital(vitals_st, h)
   if v == null or v.phase != VitalPhase.Dead { return false }
   if vitals_st.vt__role == VITALS_GUEST {
-    vt__ask(vitals_st, VREQ_RESPAWN, v.actor, -1, 0.0)
+    vt__ask(vitals_st, VREQ_RESPAWN, h, v.actor, -1, 0.0)
     return false
   }
   dispatch VitalsRespawnIn { who: h }

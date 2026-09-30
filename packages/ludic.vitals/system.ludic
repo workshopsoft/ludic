@@ -6,9 +6,7 @@
 export function vitals_reset(vitals_st: mut VitalsState) -> void {
   vitals_st.vt__vitals = vt__table()
   vitals_st.vt__by_actor = imap_new()
-  vitals_st.vt__req_seq = 0
   q_clear(vitals_st.vt__q)
-  q_clear(vitals_st.vt__out)
 }
 
 function vitals_tick(vitals_st: mut VitalsState, m: mut VitalsStepsMachine, t: Tick) -> void { vitals_run(vitals_st, m, t.dt) }

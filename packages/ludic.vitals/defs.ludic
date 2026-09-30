@@ -164,10 +164,9 @@ export const VREQ_REVIVE: int = 3
 export const VREQ_KILL: int = 4
 export const VREQ_RESPAWN: int = 5
 
-export property VitalsRequest {
-  kind: int = 0
-  actor: int = -1                          # the actor it is about
-  pool: int = -1
-  amount: float = 0.0
-  seq: int = 0
-}
+# what a guest asks of the host, the kinds above: a guest's verb dispatches one, it travels as one
+# reliable message (NetActions, the game's session), the host checks it (vitals_ask_ok, which asks
+# VitalsWorld.allow_request) and reduces it (vitals_apply_request), and nobody else is told: the pools
+# go back out as snapshots. `who` is the row on the asker's own machine, for its prediction (net.ludic)
+@Net @Broadcast(none) @Validate(vitals_ask_ok)
+export action VitalsAsk { @Target who: int = -1, kind: int = 0, actor: int = -1, pool: int = -1, amount: float = 0.0 }

@@ -1,5 +1,5 @@
 # state.ludic - the actors (a row each, found by a handle), their pools, and the queues of facts
-# and of a guest's requests
+# (a guest's requests are the action VitalsAsk)
 
 # one actor. `phase` is the machine's (@Machine(Vital.phase)): nothing else writes it.
 export property Vital {
@@ -35,12 +35,9 @@ export state VitalsState {
   vt__r_life: float = 0.0
   vt__r_crit: bool = false
   vt__q: Queue<VitalsFact> = vt__queue()
-  vt__out: Queue<VitalsRequest> = vt__outbox()
-  vt__req_seq: int = 0
 }
 function vt__table() -> Table<Vital> { return table_new(0, 0) }
 function vt__queue() -> Queue<VitalsFact> { return queue_new("vitals.facts") }
-function vt__outbox() -> Queue<VitalsRequest> { return queue_new("vitals.outbox") }
 
 # absorbing pools, lowest order first (ties in registry order)
 @alloc_ok("built once, with the state")
@@ -72,7 +69,6 @@ function vt__life_find() -> int {
 }
 
 export function vitals_facts(vitals_st: VitalsState) -> Queue<VitalsFact> { return vitals_st.vt__q }
-export function vitals_outbox(vitals_st: VitalsState) -> Queue<VitalsRequest> { return vitals_st.vt__out }
 
 # a fact, from anywhere (the machine's functions only read the state, and a queue is not the state)
 function vt__fact(vitals_st: VitalsState, what: int, r: Vital, h: int) -> VitalsFact {

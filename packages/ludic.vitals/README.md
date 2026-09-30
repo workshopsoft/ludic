@@ -153,15 +153,20 @@ A guest holds a mirror:
   them with `vitals_net_fact(...)`, which gives the clip from the class. Snapshots are state, facts are events; a
   machine shows each once.
 - **A guest's other verbs are asks**: `vitals_heal`, `vitals_restore`, `vitals_spend` on a pool that is not its
-  own, `vitals_revive`, `vitals_kill`, `vitals_respawn` queue a `VitalsRequest` on `vitals_outbox()`. The game
-  sends it; the host runs `vitals_apply_request(sender, kind, actor, pool, amount)`, where `sender` is the actor
-  of the wire's slot (never a field of the message), and `VitalsWorld.allow_request(sender, kind, target)`
-  decides (proximity to revive, say).
+  own, `vitals_revive`, `vitals_kill`, `vitals_respawn` dispatch the `@Net` action `VitalsAsk { who, kind, actor,
+  pool, amount }`. It travels through the `NetActions` port the game binds to its session (ludic.net's
+  `netact_*`), and the host checks it (`vitals_ask_ok`: the same answers `vitals_apply_request` gives, changing
+  nothing) and reduces it with `vitals_apply_request(sender, kind, actor, pool, amount)`, where `sender` is the
+  pid of the wire's slot (`action_sender()`, never a field of the message), and
+  `VitalsWorld.allow_request(sender, kind, target)` decides (proximity to revive, say). `VitalsAsk` is
+  `@Broadcast(none)`: pools go back out as snapshots. A refusal reaches the game through `NetActions.rejected`.
 - **Predicted pools**: a pool marked `predict` of the actor this machine owns (`vitals_set_local(actor)`) is
-  spent and restored here at once, and also asked of the host; a snapshot pulls it back only when the two differ by
-  more than the pool's `reconcile`.
+  spent and restored here at once - a `@Predicted` row reducer of `VitalsAsk`, so the guess lands where the
+  action is reduced (at the drain, as the phase verbs do) and `vitals_spend` / `vitals_restore` answer what it
+  will do. The host's confirm keeps it; its refusal puts the actor's numbers and pool lists back as they were
+  before the guess. A snapshot pulls it back only when the two differ by more than the pool's `reconcile`.
 
-The package sends nothing: the game puts the snapshot, the outbox and the facts on its wire (ludic.net).
+The package sends nothing: the game binds `NetActions` and puts the snapshot and the facts on its wire (ludic.net).
 
 ## Save
 
