@@ -1,0 +1,14 @@
+# ludic.harvest - what there is to gather (nodes of a kind, with an amount), who gathers it (a
+# class with a carry and a rate), where it is handed in (drop-offs), and the loop between them as a
+# @Machine: the game's bank and the world's walking are ports, what happened is a queue of facts
+module ludic_harvest uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "machine.ludic"
+import "sense.ludic"
+import "verbs.ludic"
+import "save.ludic"
+import "system.ludic"

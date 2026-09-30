@@ -1,0 +1,97 @@
+# save.ludic - the nodes, the drop-offs and the gatherers by number, each a row of ints in a list.
+# A node is [uid, id, kind, amount, x, z]; a gatherer [unit, owner, kind, mood, node uid, carry, res];
+# a drop-off [id, kind, owner, x, z]. Positions ride as thousandths. Kinds are registry indexes, so a
+# game that saves appends to its registries. A gatherer comes back Idle and is sent again to where
+# it was (carrying: to a drop-off), so a hand-in in progress starts over.
+@alloc_ok("on a save")
+function hv__pushes(out: []int, row: []int) -> void {
+  for k in 0 .. len(row) { push(out, row[k]) }
+}
+function hv__milli(v: float) -> int { return int(Math.round(v * 1000.0)) }
+
+@alloc_ok("on a save: the rows written out")
+function harvest__save(harvest_st: HarvestState) -> Val {
+  let v = Value.object()
+  let ns = new []int
+  for i in 0 .. tb_len(harvest_st.nodes) {
+    let n = tb_rec(harvest_st.nodes, i)
+    hv__pushes(ns, [n.uid, n.id, n.kind, n.amount, hv__milli(n.x), hv__milli(n.z)])
+  }
+  sv_put_ints(v, "nodes", ns)
+  let ds = new []int
+  for i in 0 .. tb_len(harvest_st.drops) {
+    let d = tb_rec(harvest_st.drops, i)
+    hv__pushes(ds, [d.id, d.kind, d.owner, hv__milli(d.x), hv__milli(d.z)])
+  }
+  sv_put_ints(v, "drops", ds)
+  let gs = new []int
+  for i in 0 .. tb_len(harvest_st.gatherers) {
+    let g = tb_rec(harvest_st.gatherers, i)
+    var uid = 0
+    let nr = tb_row(harvest_st.nodes, g.node)
+    if nr >= 0 { uid = tb_rec(harvest_st.nodes, nr).uid }
+    hv__pushes(gs, [g.unit, g.owner, g.kind, int(g.mood), uid, g.carry, g.res])
+  }
+  sv_put_ints(v, "gatherers", gs)
+  sv_put_int(v, "uid", harvest_st.next_uid)
+  return v
+}
+
+function harvest__clear(harvest_st: mut HarvestState) -> void {
+  harvest_st.nodes = hv__nodes_new()
+  harvest_st.gatherers = hv__gatherers_new()
+  harvest_st.drops = hv__drops_new()
+  imap_clear(harvest_st.by_unit)
+  harvest_st.next_uid = 1
+  q_clear(harvest_st.facts)
+}
+
+function harvest__load(harvest_st: mut HarvestState, v: Val, version: int) -> void {
+  harvest__clear(harvest_st)
+  harvest_st.next_uid = sv_int(v, "uid", 1)
+  let ns = sv_ints(v, "nodes")
+  var i = 0
+  while i + 5 < len(ns) {
+    let n = new HvNode
+    n.uid = ns[i]
+    n.id = ns[i + 1]
+    n.kind = ns[i + 2]
+    n.amount = ns[i + 3]
+    n.x = float(ns[i + 4]) / 1000.0
+    n.z = float(ns[i + 5]) / 1000.0
+    if n.kind >= 0 and n.kind < HVK_COUNT { tb_add(harvest_st.nodes, n) }
+    i += 6
+  }
+  let ds = sv_ints(v, "drops")
+  i = 0
+  while i + 4 < len(ds) {
+    let d = new HvDrop
+    d.id = ds[i]
+    d.kind = ds[i + 1]
+    d.owner = ds[i + 2]
+    d.x = float(ds[i + 3]) / 1000.0
+    d.z = float(ds[i + 4]) / 1000.0
+    if d.kind >= 0 and d.kind < HVD_COUNT { tb_add(harvest_st.drops, d) }
+    i += 5
+  }
+  let gs = sv_ints(v, "gatherers")
+  i = 0
+  while i + 6 < len(gs) {
+    if harvest_add_gatherer(harvest_st, gs[i], gs[i + 1], gs[i + 2]) {
+      let g = tb_rec(harvest_st.gatherers, tb_row(harvest_st.gatherers, imap_get(harvest_st.by_unit, gs[i], -1)))
+      g.carry = gs[i + 5]
+      g.res = gs[i + 6]
+      var node = -1
+      for k in 0 .. tb_len(harvest_st.nodes) { if tb_rec(harvest_st.nodes, k).uid == gs[i + 4] { node = tb_handle(harvest_st.nodes, k) } }
+      let mood = gs[i + 3]
+      if mood != 0 {
+        if node >= 0 and (mood <= 2 or g.carry == 0) {
+          harvest_assign(harvest_st, gs[i], node)
+        } else if g.carry > 0 {
+          dispatch HarvestReturn { who: imap_get(harvest_st.by_unit, gs[i], -1) }
+        }
+      }
+    }
+    i += 7
+  }
+}

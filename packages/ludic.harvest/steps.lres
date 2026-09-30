@@ -1,0 +1,35 @@
+# steps.lres - the gather-carry-drop loop. One row a way a gatherer moves from one mood to another:
+# `on` an action (HarvestAssign, HarvestStop, HarvestReturn), or "" for what the tick senses. The
+# first row from a mood whose guard passes is taken, so the order of rows from one mood is a priority.
+#
+#   Idle -> ToNode -> Gathering -> ToDrop -> Dropping -> ToNode ...
+assign_idle { from: HarvestMood.Idle, to: HarvestMood.ToNode, on: "HarvestAssign", guard: fn hv_node_ok, enter: fn hv_go_node }
+assign_walking { from: HarvestMood.ToNode, to: HarvestMood.ToNode, on: "HarvestAssign", guard: fn hv_node_ok, enter: fn hv_go_node }
+assign_gathering { from: HarvestMood.Gathering, to: HarvestMood.ToNode, on: "HarvestAssign", guard: fn hv_node_ok, enter: fn hv_go_node }
+assign_hauling { from: HarvestMood.ToDrop, to: HarvestMood.ToNode, on: "HarvestAssign", guard: fn hv_node_ok, enter: fn hv_go_node }
+assign_dropping { from: HarvestMood.Dropping, to: HarvestMood.ToNode, on: "HarvestAssign", guard: fn hv_node_ok, enter: fn hv_go_node }
+
+stop_walking { from: HarvestMood.ToNode, to: HarvestMood.Idle, on: "HarvestStop", enter: fn hv_idle_stopped }
+stop_gathering { from: HarvestMood.Gathering, to: HarvestMood.Idle, on: "HarvestStop", enter: fn hv_idle_stopped }
+stop_hauling { from: HarvestMood.ToDrop, to: HarvestMood.Idle, on: "HarvestStop", enter: fn hv_idle_stopped }
+stop_dropping { from: HarvestMood.Dropping, to: HarvestMood.Idle, on: "HarvestStop", enter: fn hv_idle_stopped }
+
+return_idle { from: HarvestMood.Idle, to: HarvestMood.ToDrop, on: "HarvestReturn", guard: fn hv_loaded, enter: fn hv_haul }
+return_walking { from: HarvestMood.ToNode, to: HarvestMood.ToDrop, on: "HarvestReturn", guard: fn hv_loaded, enter: fn hv_haul }
+return_gathering { from: HarvestMood.Gathering, to: HarvestMood.ToDrop, on: "HarvestReturn", guard: fn hv_loaded, enter: fn hv_haul }
+
+arrive { from: HarvestMood.ToNode, to: HarvestMood.Gathering, guard: fn hv_claimed, enter: fn hv_begin }
+walking_moved_on { from: HarvestMood.ToNode, to: HarvestMood.ToNode, guard: fn hv_moved, enter: fn hv_moved_on }
+walking_lost_loaded { from: HarvestMood.ToNode, to: HarvestMood.ToDrop, guard: fn hv_lost_loaded, enter: fn hv_haul }
+walking_lost { from: HarvestMood.ToNode, to: HarvestMood.Idle, guard: fn hv_lost, enter: fn hv_idle_no_node }
+
+load_full { from: HarvestMood.Gathering, to: HarvestMood.ToDrop, guard: fn hv_full, enter: fn hv_haul }
+gathering_moved_on { from: HarvestMood.Gathering, to: HarvestMood.ToNode, guard: fn hv_moved, enter: fn hv_moved_on }
+gathering_lost_loaded { from: HarvestMood.Gathering, to: HarvestMood.ToDrop, guard: fn hv_lost_loaded, enter: fn hv_haul }
+gathering_lost { from: HarvestMood.Gathering, to: HarvestMood.Idle, guard: fn hv_lost, enter: fn hv_idle_no_node }
+
+at_drop { from: HarvestMood.ToDrop, to: HarvestMood.Dropping, guard: fn hv_at_drop, enter: fn hv_arrive_drop }
+nowhere_to_drop { from: HarvestMood.ToDrop, to: HarvestMood.Idle, guard: fn hv_no_drop, enter: fn hv_idle_no_drop }
+
+handed_in { from: HarvestMood.Dropping, to: HarvestMood.ToNode, guard: fn hv_dropped_on, enter: fn hv_deposit_go }
+handed_in_done { from: HarvestMood.Dropping, to: HarvestMood.Idle, guard: fn hv_dropped_off, enter: fn hv_deposit_idle }

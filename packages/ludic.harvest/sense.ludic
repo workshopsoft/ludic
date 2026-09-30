@@ -1,0 +1,141 @@
+# sense.ludic - what the tick does each frame before the machine moves anyone: count who is at each
+# node, find the nodes that ran out and a gatherer's next, set the flags the guards read, gather,
+# hand in, regrow, and take out what is finished
+
+# the nearest node another gatherer may work, of the resource, within `r` of (x, z): a handle or -1
+function hv__seek(h: mut HarvestState, res: int, x: float, z: float, r: float) -> int {
+  var best = -1
+  var bd = 0.0
+  for i in 0 .. tb_len(h.nodes) {
+    let n = tb_rec(h.nodes, i)
+    if n.amount == 0 or HarvestKinds[n.kind].resource != res or n.busy >= HarvestKinds[n.kind].slots { continue }
+    let d = hv__dist(x, z, n.x, n.z)
+    if d > r { continue }
+    if best < 0 or d < bd {
+      best = tb_handle(h.nodes, i)
+      bd = d
+    }
+  }
+  return best
+}
+
+function hv__rate(g: HvGatherer, kind: HarvestKind) -> float {
+  let cls = HarvestGatherers[g.kind]
+  var rate = cls.rate * kind.ease * HarvestWorld.rate_mul(g.owner, g.res)
+  if cls.rate_res != null {
+    for k in 0 .. len(cls.rate_res) {
+      if cls.rate_res[k] == g.res and k < len(cls.rate_mul) { rate = rate * cls.rate_mul[k] }
+    }
+  }
+  return rate
+}
+
+function hv__sense(h: mut HarvestState, dt: float) -> void {
+  for i in 0 .. tb_len(h.nodes) { tb_rec(h.nodes, i).busy = 0 }
+  for i in 0 .. tb_len(h.gatherers) {
+    let g = tb_rec(h.gatherers, i)
+    if g.mood == HarvestMood.Gathering {
+      let nd = hv__node(h, g.node)
+      if nd != null { nd.busy += 1 }
+    }
+  }
+  List.clear(h.dead)
+  for i in 0 .. tb_len(h.gatherers) {
+    let g = tb_rec(h.gatherers, i)
+    g.claimed = false
+    g.full = false
+    g.lost = false
+    g.moved = false
+    g.at_drop = false
+    g.no_drop = false
+    if g.mood == HarvestMood.Idle { continue }
+    if not HarvestWorld.alive(g.unit) {
+      kept_push(h.dead, tb_handle(h.gatherers, i))
+      continue
+    }
+    let cls = HarvestGatherers[g.kind]
+    let ux = HarvestWorld.pos_x(g.unit)
+    let uz = HarvestWorld.pos_z(g.unit)
+    var nd = hv__node(h, g.node)
+    if g.mood != HarvestMood.ToDrop and (nd == null or nd.amount == 0) {
+      let other = hv__seek(h, g.res, g.nx, g.nz, cls.seek)
+      if other >= 0 {
+        g.node = other
+        nd = hv__node(h, other)
+        g.nx = nd.x
+        g.nz = nd.z
+        g.moved = true
+      } else {
+        g.lost = true
+      }
+    }
+    if g.mood == HarvestMood.ToNode and nd != null and not g.moved {
+      let k = HarvestKinds[nd.kind]
+      if hv__dist(ux, uz, nd.x, nd.z) <= k.radius + cls.reach and nd.busy < k.slots {
+        nd.busy += 1
+        g.claimed = true
+      }
+    } else if g.mood == HarvestMood.Gathering and nd != null and not g.moved {
+      let k = HarvestKinds[nd.kind]
+      g.frac += hv__rate(g, k) * dt
+      var whole = int(Math.floor(g.frac))
+      g.frac -= float(whole)
+      let cap = cls.capacity + HarvestWorld.carry_bonus(g.owner, g.res)
+      whole = Math.min(whole, cap - g.carry)
+      if nd.amount >= 0 { whole = Math.min(whole, nd.amount) }
+      if whole > 0 {
+        g.carry += whole
+        if nd.amount > 0 { nd.amount -= whole }
+      }
+      if g.carry >= cap {
+        g.full = true
+        g.frac = 0.0
+      }
+    } else if g.mood == HarvestMood.ToDrop {
+      var dp = hv__drop(h, g.drop)
+      if dp == null {
+        g.drop = hv__nearest_drop(h, g.owner, g.res, ux, uz)
+        dp = hv__drop(h, g.drop)
+        if dp == null { g.no_drop = true } else { HarvestWorld.move_to(g.unit, dp.x, dp.z) }
+      }
+      if dp != null and hv__dist(ux, uz, dp.x, dp.z) <= HarvestDrops[dp.kind].radius + cls.reach { g.at_drop = true }
+    } else if g.mood == HarvestMood.Dropping {
+      g.timer += dt
+      g.dropped = g.timer >= cls.drop_time
+    }
+  }
+  for i in 0 .. len(h.dead) {
+    let g = tb_rec(h.gatherers, tb_row(h.gatherers, h.dead[i]))
+    hv__say(h, HV_F_GONE, g.unit, g.node, g.owner, g.res, g.carry, 0)
+    imap_del(h.by_unit, g.unit)
+    tb_remove(h.gatherers, h.dead[i])
+  }
+}
+
+# nodes: a node that ran out says so once, one that grows back grows, one that vanishes goes
+function hv__nodes_tick(h: mut HarvestState, dt: float) -> void {
+  var i = tb_len(h.nodes) - 1
+  while i >= 0 {
+    let n = tb_rec(h.nodes, i)
+    let k = HarvestKinds[n.kind]
+    if n.amount == 0 and not n.spent {
+      n.spent = true
+      hv__say(h, HV_F_DEPLETED, -1, tb_handle(h.nodes, i), 0, k.resource, 0, 0)
+    }
+    if k.regrow > 0.0 and n.amount >= 0 {
+      var top = k.most
+      if top <= 0 { top = k.amount }
+      if n.amount < top and not (n.amount == 0 and k.vanish) {
+        n.grown += k.regrow * dt
+        let whole = int(Math.floor(n.grown))
+        if whole > 0 {
+          n.grown -= float(whole)
+          n.amount = Math.min(n.amount + whole, top)
+          if n.amount > 0 { n.spent = false }
+        }
+      }
+    }
+    if n.amount == 0 and k.vanish and n.busy == 0 { tb_remove(h.nodes, tb_handle(h.nodes, i)) }
+    i -= 1
+  }
+}

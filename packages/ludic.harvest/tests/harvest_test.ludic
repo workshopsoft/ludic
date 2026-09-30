@@ -1,0 +1,370 @@
+# harvest_test.ludic - the loop from a fake world: a gatherer walks to a tree, gathers to its
+# capacity, hauls to the nearest drop-off that takes it, hands in, goes back; a spent node is left for
+# the next one near it; a full node keeps a gatherer waiting; stop; techs through the ports; regrowth;
+# a lost unit; the save
+import "ludic.harvest"
+import "ludic.base"
+program HarvestTest {
+  numbers float
+  property Resource { key: string = "" }
+  registry Resources of Resource as RES
+  def Resources wood { }
+  def Resources gold { }
+  const WOOD: int = RES_WOOD
+  const GOLD: int = RES_GOLD
+  const UNITS: int = 8
+
+  def HarvestKinds tree { resource: WOOD, amount: 20, slots: 2, radius: 1.0 }
+  def HarvestKinds stump { resource: WOOD, amount: 3, slots: 1, radius: 1.0 }
+  def HarvestKinds mine { resource: GOLD, amount: 100, slots: 4, vanish: false }
+  def HarvestKinds farm { resource: WOOD, amount: -1, slots: 1 }
+  def HarvestKinds spring { resource: WOOD, amount: 4, most: 4, slots: 1, regrow: 2.0, vanish: false }
+  def HarvestGatherers villager { capacity: 5, rate: 2.0, seek: 10.0, reach: 0.5, drop_time: 0.5 }
+  def HarvestGatherers miner { capacity: 4, rate: 1.0, rate_res: [GOLD], rate_mul: [2.0] }
+  def HarvestDrops camp { accepts: [WOOD], radius: 2.0 }
+  def HarvestDrops bank { radius: 2.0 }
+
+  state HarvestTestState {
+    px: []float = null
+    pz: []float = null
+    tx: []float = null
+    tz: []float = null
+    alive: []bool = null
+    bag: []int = null              # the stockpile, by resource
+    deposits: int = 0
+    bonus: int = 0
+    mul: float = 1.0
+    walks: bool = true             # an instant walker: a unit is where it was sent
+    stops: int = 0
+  }
+
+  function pos_x(harvest_test_st: HarvestTestState, u: int) -> float { return harvest_test_st.px[u] }
+  function pos_z(harvest_test_st: HarvestTestState, u: int) -> float { return harvest_test_st.pz[u] }
+  function alive(harvest_test_st: HarvestTestState, u: int) -> bool { return harvest_test_st.alive[u] }
+  function move_to(harvest_test_st: mut HarvestTestState, u: int, x: float, z: float) -> bool {
+    harvest_test_st.tx[u] = x
+    harvest_test_st.tz[u] = z
+    return true
+  }
+  function stop(harvest_test_st: mut HarvestTestState, u: int) -> void { harvest_test_st.stops += 1 }
+  function carry_bonus(harvest_test_st: HarvestTestState, owner: int, res: int) -> int { return harvest_test_st.bonus }
+  function rate_mul(harvest_test_st: HarvestTestState, owner: int, res: int) -> float { return harvest_test_st.mul }
+  function deposit(harvest_test_st: mut HarvestTestState, owner: int, res: int, n: int) -> void {
+    harvest_test_st.bag[res] += n
+    harvest_test_st.deposits += 1
+  }
+  bind HarvestWorld { pos_x: fn pos_x, pos_z: fn pos_z, alive: fn alive, move_to: fn move_to, stop: fn stop, carry_bonus: fn carry_bonus, rate_mul: fn rate_mul }
+  bind HarvestBank { deposit: fn deposit }
+
+  function fresh(harvest_st: mut HarvestState, harvest_test_st: mut HarvestTestState) -> void {
+    harvest_reset(harvest_st)
+    harvest_test_st.px = new []float
+    harvest_test_st.pz = new []float
+    harvest_test_st.tx = new []float
+    harvest_test_st.tz = new []float
+    harvest_test_st.alive = new []bool
+    harvest_test_st.bag = new []int
+    for i in 0 .. UNITS {
+      push(harvest_test_st.px, 0.0)
+      push(harvest_test_st.pz, 0.0)
+      push(harvest_test_st.tx, 0.0)
+      push(harvest_test_st.tz, 0.0)
+      push(harvest_test_st.alive, true)
+    }
+    push(harvest_test_st.bag, 0)
+    push(harvest_test_st.bag, 0)
+    harvest_test_st.deposits = 0
+    harvest_test_st.bonus = 0
+    harvest_test_st.mul = 1.0
+    harvest_test_st.walks = true
+    harvest_test_st.stops = 0
+  }
+
+  # one frame: the world walks everyone where they were sent, then a tick and the actions it made
+  function step(harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState, dt: float) -> void {
+    if harvest_test_st.walks {
+      for i in 0 .. UNITS {
+        harvest_test_st.px[i] = harvest_test_st.tx[i]
+        harvest_test_st.pz[i] = harvest_test_st.tz[i]
+      }
+    }
+    harvest_tick(harvest_st, m, tick_new(dt, 0, 0.0))
+    drain_actions()
+  }
+
+  function steps(harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState, n: int, dt: float) -> void {
+    for i in 0 .. n { step(harvest_st, m, harvest_test_st, dt) }
+  }
+
+  test "the registries are the game's, in the order written" {
+    expect_eq(HVK_COUNT, 5)
+    expect_eq(HVK_MINE, 2)
+    expect_eq(HVG_MINER, 1)
+    expect_eq(HVD_BANK, 1)
+    expect_eq(HarvestKinds[HVK_FARM].amount, HV_INFINITE)
+  }
+
+  test "a gatherer walks to a tree, fills up, hands in at the camp and goes back" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    let camp = harvest_add_drop(harvest_st, 100, HVD_CAMP, 0, 0.0, 0.0)
+    let tree = harvest_add_node(harvest_st, 200, HVK_TREE, 10.0, 0.0)
+    expect(harvest_add_gatherer(harvest_st, 1, 0, HVG_VILLAGER))
+    expect(not harvest_add_gatherer(harvest_st, 1, 0, HVG_VILLAGER))
+    expect_eq(harvest_mood(harvest_st, 1), 0)
+    expect(harvest_assign(harvest_st, 1, tree))
+    drain_actions()
+    expect_eq(harvest_mood(harvest_st, 1), 1)             # ToNode
+    expect_eq(harvest_test_st.tx[1], 10.0)
+    step(harvest_st, m, harvest_test_st, 1.0)              # arrives and is given a place
+    expect_eq(harvest_mood(harvest_st, 1), 2)             # Gathering
+    expect_eq(harvest_node_busy(harvest_st, tree), 1)      # its place is taken
+    step(harvest_st, m, harvest_test_st, 1.0)              # 2 a second
+    expect_eq(harvest_carrying(harvest_st, 1), 2)
+    expect_eq(harvest_node_busy(harvest_st, tree), 1)
+    step(harvest_st, m, harvest_test_st, 1.0)
+    expect_eq(harvest_carrying(harvest_st, 1), 4)
+    step(harvest_st, m, harvest_test_st, 1.0)              # 5 is full, not 6
+    expect_eq(harvest_carrying(harvest_st, 1), 5)
+    expect_eq(harvest_mood(harvest_st, 1), 3)             # ToDrop, as it filled
+    expect_eq(harvest_test_st.tx[1], 0.0)
+    step(harvest_st, m, harvest_test_st, 0.1)              # there
+    expect_eq(harvest_mood(harvest_st, 1), 4)             # Dropping
+    step(harvest_st, m, harvest_test_st, 0.6)
+    expect_eq(harvest_mood(harvest_st, 1), 1)             # handed in, off again
+    expect_eq(harvest_test_st.bag[WOOD], 5)
+    expect_eq(harvest_carrying(harvest_st, 1), 0)
+    expect_eq(harvest_node_amount(harvest_st, tree), 15)
+    expect_eq(harvest_test_st.tx[1], 10.0)
+  }
+
+  test "the facts say it in order" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    harvest_add_drop(harvest_st, 100, HVD_CAMP, 3, 0.0, 0.0)
+    let tree = harvest_add_node(harvest_st, 200, HVK_TREE, 10.0, 0.0)
+    harvest_add_gatherer(harvest_st, 1, 3, HVG_VILLAGER)
+    harvest_assign(harvest_st, 1, tree)
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 10, 1.0)
+    let f = q_drain(harvest_facts(harvest_st))
+    expect(len(f) >= 4)
+    expect_eq(f[0].what, HV_F_ASSIGNED)
+    expect_eq(f[0].unit, 1)
+    expect_eq(f[0].owner, 3)
+    expect_eq(f[1].what, HV_F_BEGAN)
+    expect_eq(f[2].what, HV_F_FULL)
+    expect_eq(f[2].n, 5)
+    expect_eq(f[3].what, HV_F_DEPOSITED)
+    expect_eq(f[3].resource, WOOD)
+    expect_eq(f[3].n, 5)
+  }
+
+  test "the drop-off that takes the resource, the nearest of the owner's" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    let far = harvest_add_drop(harvest_st, 100, HVD_CAMP, 0, -50.0, 0.0)
+    let near_other = harvest_add_drop(harvest_st, 101, HVD_CAMP, 1, 11.0, 0.0)
+    let gold_only = harvest_add_drop(harvest_st, 102, HVD_BANK, 0, 12.0, 0.0)
+    expect_eq(harvest_nearest_drop(harvest_st, 0, WOOD, 10.0, 0.0), gold_only)   # a bank takes all
+    expect_eq(harvest_nearest_drop(harvest_st, 1, WOOD, 10.0, 0.0), near_other)
+    expect_eq(harvest_nearest_drop(harvest_st, 0, GOLD, 10.0, 0.0), gold_only)
+    expect(harvest_remove_drop(harvest_st, gold_only))
+    expect_eq(harvest_nearest_drop(harvest_st, 0, WOOD, 10.0, 0.0), far)
+    expect_eq(harvest_nearest_drop(harvest_st, 2, WOOD, 10.0, 0.0), -1)
+  }
+
+  test "a node that runs out is left for another of its kind near it" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    harvest_add_drop(harvest_st, 100, HVD_CAMP, 0, 0.0, 0.0)
+    let a = harvest_add_node(harvest_st, 200, HVK_STUMP, 10.0, 0.0)
+    let b = harvest_add_node(harvest_st, 201, HVK_STUMP, 14.0, 0.0)
+    let far = harvest_add_node(harvest_st, 202, HVK_STUMP, 90.0, 0.0)
+    harvest_add_gatherer(harvest_st, 1, 0, HVG_VILLAGER)
+    harvest_assign(harvest_st, 1, a)
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 4, 1.0)
+    expect_eq(harvest_node_amount(harvest_st, a), 0)
+    steps(harvest_st, m, harvest_test_st, 3, 1.0)
+    expect(not harvest_node_alive(harvest_st, a))            # a vanished
+    expect_eq(harvest_node_of(harvest_st, 1), b)
+    expect_eq(harvest_nodes(harvest_st), 2)
+    steps(harvest_st, m, harvest_test_st, 4, 1.0)
+    expect_eq(harvest_node_amount(harvest_st, far), 3)       # never came near it
+    var moved = 0
+    var depleted = 0
+    let f = q_drain(harvest_facts(harvest_st))
+    for i in 0 .. len(f) {
+      if f[i].what == HV_F_MOVED_ON { moved += 1 }
+      if f[i].what == HV_F_DEPLETED { depleted += 1 }
+    }
+    expect_eq(moved, 1)
+    expect(depleted >= 1)
+  }
+
+  test "with nothing left near, a loaded gatherer hands in and goes idle" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    harvest_add_drop(harvest_st, 100, HVD_CAMP, 0, 0.0, 0.0)
+    let a = harvest_add_node(harvest_st, 200, HVK_STUMP, 10.0, 0.0)
+    harvest_add_gatherer(harvest_st, 1, 0, HVG_VILLAGER)
+    harvest_assign(harvest_st, 1, a)
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 12, 1.0)
+    expect_eq(harvest_test_st.bag[WOOD], 3)
+    expect_eq(harvest_mood(harvest_st, 1), 0)
+    expect_eq(harvest_nodes(harvest_st), 0)
+    let f = q_drain(harvest_facts(harvest_st))
+    expect_eq(f[len(f) - 1].what, HV_F_IDLED)
+    expect_eq(f[len(f) - 1].reason, HV_R_NO_NODE)
+  }
+
+  test "no drop-off: it keeps its load and stands" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    let a = harvest_add_node(harvest_st, 200, HVK_TREE, 10.0, 0.0)
+    harvest_add_gatherer(harvest_st, 1, 0, HVG_VILLAGER)
+    harvest_assign(harvest_st, 1, a)
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 8, 1.0)
+    expect_eq(harvest_mood(harvest_st, 1), 0)
+    expect_eq(harvest_carrying(harvest_st, 1), 5)
+    expect_eq(harvest_test_st.bag[WOOD], 0)
+    let f = q_drain(harvest_facts(harvest_st))
+    expect_eq(f[len(f) - 1].reason, HV_R_NO_DROP)
+    harvest_add_drop(harvest_st, 100, HVD_CAMP, 0, 0.0, 0.0)
+    expect(harvest_return(harvest_st, 1))
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 4, 1.0)
+    expect_eq(harvest_test_st.bag[WOOD], 5)
+  }
+
+  test "a node has so many places: the next one waits at it" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    harvest_add_drop(harvest_st, 100, HVD_CAMP, 0, 0.0, 0.0)
+    let a = harvest_add_node(harvest_st, 200, HVK_FARM, 10.0, 0.0)     # one place
+    harvest_add_gatherer(harvest_st, 1, 0, HVG_VILLAGER)
+    harvest_add_gatherer(harvest_st, 2, 0, HVG_VILLAGER)
+    harvest_assign(harvest_st, 1, a)
+    harvest_assign(harvest_st, 2, a)
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 2, 1.0)
+    expect_eq(harvest_mood(harvest_st, 1), 2)
+    expect_eq(harvest_mood(harvest_st, 2), 1)
+    expect_eq(harvest_node_busy(harvest_st, a), 1)
+    expect_eq(harvest_node_amount(harvest_st, a), HV_INFINITE)
+    steps(harvest_st, m, harvest_test_st, 3, 1.0)                        # 1 is full and goes; 2 takes its place
+    steps(harvest_st, m, harvest_test_st, 2, 1.0)
+    expect_eq(harvest_mood(harvest_st, 2), 2)
+  }
+
+  test "stop, and a techs' bonus through the ports" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    harvest_test_st.bonus = 5
+    harvest_test_st.mul = 2.0
+    harvest_add_drop(harvest_st, 100, HVD_CAMP, 0, 0.0, 0.0)
+    let a = harvest_add_node(harvest_st, 200, HVK_TREE, 10.0, 0.0)
+    harvest_add_gatherer(harvest_st, 1, 0, HVG_VILLAGER)
+    harvest_assign(harvest_st, 1, a)
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 2, 1.0)       # walks, arrives, gathers 4 in a second
+    expect_eq(harvest_carrying(harvest_st, 1), 4)
+    steps(harvest_st, m, harvest_test_st, 2, 1.0)       # past the old capacity of 5, to 10
+    expect_eq(harvest_carrying(harvest_st, 1), 10)
+    expect(harvest_stop(harvest_st, 1))
+    drain_actions()
+    expect_eq(harvest_mood(harvest_st, 1), 0)
+    steps(harvest_st, m, harvest_test_st, 3, 1.0)
+    expect_eq(harvest_mood(harvest_st, 1), 0)
+    expect_eq(harvest_carrying(harvest_st, 1), 10)
+    expect(not harvest_stop(harvest_st, 77))
+  }
+
+  test "a class's own pace for a resource" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    harvest_add_drop(harvest_st, 100, HVD_BANK, 0, 0.0, 0.0)
+    let g = harvest_add_node(harvest_st, 200, HVK_MINE, 10.0, 0.0)
+    harvest_add_gatherer(harvest_st, 1, 0, HVG_MINER)
+    harvest_assign(harvest_st, 1, g)
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 2, 1.0)       # 1 a second, doubled for gold
+    expect_eq(harvest_carrying(harvest_st, 1), 2)
+    expect_eq(harvest_carrying_res(harvest_st, 1), GOLD)
+    steps(harvest_st, m, harvest_test_st, 12, 1.0)
+    expect(harvest_test_st.bag[GOLD] >= 4)
+    expect_eq(harvest_node_alive(harvest_st, g), true)
+  }
+
+  test "a node that grows back, and one that is taken from by the game" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    let s = harvest_add_node(harvest_st, 200, HVK_SPRING, 10.0, 0.0)
+    expect_eq(harvest_take(harvest_st, s, 3), 3)
+    expect_eq(harvest_node_amount(harvest_st, s), 1)
+    step(harvest_st, m, harvest_test_st, 1.0)
+    expect_eq(harvest_node_amount(harvest_st, s), 3)
+    step(harvest_st, m, harvest_test_st, 1.0)
+    step(harvest_st, m, harvest_test_st, 1.0)
+    expect_eq(harvest_node_amount(harvest_st, s), 4)    # no more than its most
+    expect_eq(harvest_take(harvest_st, s, 9), 4)
+    expect_eq(harvest_take(harvest_st, s, 9), 0)
+    let f = harvest_add_node(harvest_st, 201, HVK_FARM, 0.0, 0.0)
+    expect_eq(harvest_take(harvest_st, f, 9), 9)
+  }
+
+  test "a lost unit leaves, and its node's place is given back" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    harvest_add_drop(harvest_st, 100, HVD_CAMP, 0, 0.0, 0.0)
+    let a = harvest_add_node(harvest_st, 200, HVK_FARM, 10.0, 0.0)
+    harvest_add_gatherer(harvest_st, 1, 0, HVG_VILLAGER)
+    harvest_assign(harvest_st, 1, a)
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 3, 1.0)
+    expect_eq(harvest_node_busy(harvest_st, a), 1)
+    harvest_test_st.alive[1] = false
+    step(harvest_st, m, harvest_test_st, 1.0)
+    expect(not harvest_is_gatherer(harvest_st, 1))
+    expect_eq(harvest_gatherers(harvest_st), 0)
+    step(harvest_st, m, harvest_test_st, 1.0)
+    expect_eq(harvest_node_busy(harvest_st, a), 0)
+    var gone = 0
+    let f = q_drain(harvest_facts(harvest_st))
+    for i in 0 .. len(f) { if f[i].what == HV_F_GONE { gone += 1 } }
+    expect_eq(gone, 1)
+  }
+
+  test "a stale or spent node is refused" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    let a = harvest_add_node(harvest_st, 200, HVK_TREE, 10.0, 0.0)
+    harvest_add_gatherer(harvest_st, 1, 0, HVG_VILLAGER)
+    expect(harvest_remove_node(harvest_st, a))
+    expect(not harvest_assign(harvest_st, 1, a))
+    expect(not harvest_assign(harvest_st, 9, a))
+    expect_eq(harvest_add_node(harvest_st, 1, 99, 0.0, 0.0), -1)
+    expect_eq(harvest_mood(harvest_st, 9), -1)
+  }
+
+  test "the save: nodes, drop-offs and what a gatherer carries, sent again where it was" (harvest_st: mut HarvestState, m: mut HarvestStepsMachine, harvest_test_st: mut HarvestTestState) {
+    fresh(harvest_st, harvest_test_st)
+    harvest_add_drop(harvest_st, 100, HVD_CAMP, 2, 0.0, 0.0)
+    let a = harvest_add_node(harvest_st, 200, HVK_TREE, 10.0, 0.5)
+    harvest_add_gatherer(harvest_st, 1, 2, HVG_VILLAGER)
+    harvest_add_gatherer(harvest_st, 2, 2, HVG_VILLAGER)
+    harvest_assign(harvest_st, 1, a)
+    drain_actions()
+    steps(harvest_st, m, harvest_test_st, 3, 1.0)
+    expect_eq(harvest_mood(harvest_st, 1), 2)
+    let s = harvest_system()
+    let saved = s.save()
+    let text = save_encode(saved)
+    fresh(harvest_st, harvest_test_st)
+    expect_eq(harvest_nodes(harvest_st), 0)
+    s.load(save_decode(text), s.version)
+    drain_actions()
+    expect_eq(harvest_nodes(harvest_st), 1)
+    expect_eq(harvest_drops(harvest_st), 1)
+    expect_eq(harvest_gatherers(harvest_st), 2)
+    expect_eq(harvest_carrying(harvest_st, 1), 4)
+    expect_eq(harvest_mood(harvest_st, 1), 1)          # sent again
+    expect_eq(harvest_mood(harvest_st, 2), 0)
+    let n = harvest_node_of(harvest_st, 1)
+    expect_eq(harvest_node_amount(harvest_st, n), 16)
+    expect_eq(harvest_node_id(harvest_st, n), 200)
+    steps(harvest_st, m, harvest_test_st, 6, 1.0)
+    expect_eq(harvest_test_st.bag[WOOD], 5)
+  }
+}

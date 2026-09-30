@@ -1,0 +1,120 @@
+# state.ludic - the nodes, the gatherers and the drop-offs, each a Table, and the facts
+export property HvNode {
+  id: int = -1               # the game's own id for it (a tree entity)
+  uid: int = 0               # stable across a save
+  kind: int = 0
+  amount: int = 0            # what is left; HV_INFINITE never runs out
+  grown: float = 0.0         # regrowth not yet a whole unit
+  busy: int = 0              # gatherers gathering here now
+  spent: bool = false        # said to have run out
+  x: float = 0.0
+  z: float = 0.0
+}
+
+# a gatherer's row. `mood` is the machine's (HarvestSteps): only a transition in that table moves it.
+# The flags after it are what the tick sensed this frame, and what the table's guards read
+export property HvGatherer {
+  unit: int = -1
+  owner: int = 0
+  kind: int = 0
+  mood: HarvestMood = HarvestMood.Idle
+  node: int = -1             # the node's handle
+  nx: float = 0.0            # where it was, for looking round it once it is spent
+  nz: float = 0.0
+  drop: int = -1             # the drop-off's handle
+  res: int = -1              # what it carries (or last carried)
+  carry: int = 0
+  frac: float = 0.0          # gathered, not yet a whole unit
+  timer: float = 0.0         # seconds spent handing in
+  claimed: bool = false      # near its node with a place at it
+  full: bool = false
+  lost: bool = false         # its node is spent and there is no other near
+  moved: bool = false        # its node is spent and it found another
+  at_drop: bool = false
+  no_drop: bool = false
+  dropped: bool = false      # the hand-in has taken its time
+}
+
+export property HvDrop {
+  id: int = -1
+  kind: int = 0
+  owner: int = 0
+  x: float = 0.0
+  z: float = 0.0
+}
+
+export state HarvestState {
+  nodes: Table<HvNode> = hv__nodes_new()
+  gatherers: Table<HvGatherer> = hv__gatherers_new()
+  drops: Table<HvDrop> = hv__drops_new()
+  by_unit: IntMap = imap_new()             # a unit's id to its gatherer's handle
+  next_uid: int = 1
+  facts: Queue<HarvestFact> = hv__facts_new()
+  dead: []int = new []int                  # gatherer handles to remove after a pass
+}
+
+function hv__nodes_new() -> Table<HvNode> { return table_new(0, 0) }
+function hv__gatherers_new() -> Table<HvGatherer> { return table_new(0, 0) }
+function hv__drops_new() -> Table<HvDrop> { return table_new(0, 0) }
+function hv__facts_new() -> Queue<HarvestFact> { return queue_new("harvest.facts") }
+
+export function harvest_facts(harvest_st: HarvestState) -> Queue<HarvestFact> { return harvest_st.facts }
+
+function hv__say(h: HarvestState, what: int, unit: int, node: int, owner: int, res: int, n: int, reason: int) -> void {
+  var f = q_rec(h.facts)
+  if f == null {
+    @alloc_ok("past the ring: more facts in a frame than its records, then kept in it")
+    f = new HarvestFact
+    q_ring_add(h.facts, f)
+  }
+  f.what = what
+  f.unit = unit
+  f.node = node
+  f.owner = owner
+  f.resource = res
+  f.n = n
+  f.reason = reason
+  q_push(h.facts, f)
+}
+
+function hv__node(h: mut HarvestState, n: int) -> HvNode {
+  let r = tb_row(h.nodes, n)
+  if r < 0 { return null }
+  return tb_rec(h.nodes, r)
+}
+
+function hv__drop(h: mut HarvestState, d: int) -> HvDrop {
+  let r = tb_row(h.drops, d)
+  if r < 0 { return null }
+  return tb_rec(h.drops, r)
+}
+
+function hv__dist(ax: float, az: float, bx: float, bz: float) -> float {
+  let dx = ax - bx
+  let dz = az - bz
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+# does the drop-off take this resource (an empty list takes all)
+function hv__accepts(kind: int, res: int) -> bool {
+  let a = HarvestDrops[kind].accepts
+  if a == null or len(a) == 0 { return true }
+  for i in 0 .. len(a) { if a[i] == res { return true } }
+  return false
+}
+
+# the nearest drop-off of the owner that takes `res`, as a handle, or -1
+function hv__nearest_drop(h: HarvestState, owner: int, res: int, x: float, z: float) -> int {
+  var best = -1
+  var bd = 0.0
+  for i in 0 .. tb_len(h.drops) {
+    let d = tb_rec(h.drops, i)
+    if d.owner != owner or not hv__accepts(d.kind, res) { continue }
+    let dd = hv__dist(x, z, d.x, d.z)
+    if best < 0 or dd < bd {
+      best = tb_handle(h.drops, i)
+      bd = dd
+    }
+  }
+  return best
+}

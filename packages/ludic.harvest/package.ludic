@@ -1,0 +1,5 @@
+# ludic.harvest - resource nodes, gatherers that carry, drop-off buildings, and the gather-carry-drop
+# loop as a machine in a data table. Uses ludic.base and nothing else. See README.md.
+package "ludic.harvest"
+version "0.1.0"
+kind source

@@ -1,0 +1,63 @@
+# defs.ludic - the three tables a game fills: kinds of node, classes of gatherer, kinds of drop-off.
+# All three are open registries the game adds to with `def HarvestKinds from "nodes.lres"`; a save
+# holds their indexes, so a game that saves appends.
+export const HV_INFINITE: int = -1     # a node that never runs out (a farm, a fish trap)
+
+# a kind of thing that can be gathered from: a tree, a mine, a bush
+export property HarvestKind {
+  key: string = ""
+  @Ref(Resources) resource: int = 0      # what it yields (the game's kind)
+  @Range(-1, 1000000) amount: int = 100  # what a new node holds; HV_INFINITE never runs out
+  @Range(0, 1000000) most: int = 0       # what it grows back to (0: its amount)
+  @Range(0, 1000) @Unit("m") radius: float = 1.0   # how near a gatherer stands to it
+  @Range(1, 64) slots: int = 5           # gatherers at once
+  @Range(0, 1000) regrow: float = 0.0    # units a second it grows back (0: never)
+  vanish: bool = true                    # removed when it runs out (else it stays, empty)
+  @Range(0, 100) ease: float = 1.0       # how fast it gives, as a multiple of the gatherer's rate
+}
+export open registry HarvestKinds of HarvestKind as HVK
+
+# a class of gatherer: a villager, a cart. It carries one resource at a time
+export property HarvestGatherer {
+  key: string = ""
+  @Range(1, 100000) capacity: int = 10   # carried before it heads to a drop-off
+  @Range(0, 1000) rate: float = 1.0      # units a second at a node of ease 1
+  @Ref(Resources) rate_res: []int = null  # a resource it gathers at its own pace...
+  rate_mul: []float = null               # ...this multiple of its rate, side by side with rate_res
+  @Range(0, 1000) @Unit("m") reach: float = 0.5    # how near it must be, past a node's radius
+  @Range(0, 100000) @Unit("m") seek: float = 20.0  # looks this far round a spent node for another of its kind (0: stops)
+  @Range(0, 100) @Unit("s") drop_time: float = 0.5  # seconds it takes to hand in a load
+}
+export open registry HarvestGatherers of HarvestGatherer as HVG
+
+# a kind of building that takes loads in
+export property HarvestDrop {
+  key: string = ""
+  @Ref(Resources) accepts: []int = null  # the resources it takes (empty: all)
+  @Range(0, 1000) @Unit("m") radius: float = 2.0
+}
+export open registry HarvestDrops of HarvestDrop as HVD
+
+export const HV_F_ASSIGNED: int = 0      # told to gather at a node
+export const HV_F_BEGAN: int = 1         # reached it and started gathering
+export const HV_F_FULL: int = 2          # a load is ready: it heads for a drop-off
+export const HV_F_DEPOSITED: int = 3     # a load handed in (n of resource)
+export const HV_F_DEPLETED: int = 4      # a node ran out
+export const HV_F_MOVED_ON: int = 5      # its node ran out and it found another
+export const HV_F_IDLED: int = 6         # nothing left to do; `reason` says why
+export const HV_F_GONE: int = 7          # its unit was lost
+
+export const HV_R_STOPPED: int = 0       # told to stop
+export const HV_R_NO_NODE: int = 1       # the node ran out and there is none near
+export const HV_R_NO_DROP: int = 2       # a load and nowhere to hand it in
+
+# what happened, `unit` and `node` (a handle, -1 for none) as the world knows them
+export property HarvestFact {
+  what: int = 0
+  unit: int = -1
+  node: int = -1
+  owner: int = 0
+  resource: int = -1
+  n: int = 0
+  reason: int = 0
+}

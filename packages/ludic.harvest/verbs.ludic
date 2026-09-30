@@ -1,0 +1,160 @@
+# verbs.ludic - the nodes, gatherers and drop-offs the game puts in, and the orders it gives.
+# A gatherer and a node are told apart by the game's ids for the first and by handles for the rest:
+# a verb that makes a node or a drop-off hands back its handle (-1 stale)
+
+# a node of a kind, at a place; `id` is the game's own for it (-1 none). Its amount is the kind's
+export function harvest_add_node(harvest_st: mut HarvestState, id: int, kind: int, x: float, z: float) -> int {
+  if kind < 0 or kind >= HVK_COUNT { return -1 }
+  let n = new HvNode
+  n.id = id
+  n.uid = harvest_st.next_uid
+  harvest_st.next_uid += 1
+  n.kind = kind
+  n.amount = HarvestKinds[kind].amount
+  n.x = x
+  n.z = z
+  return tb_add(harvest_st.nodes, n)
+}
+
+export function harvest_remove_node(harvest_st: mut HarvestState, node: int) -> bool {
+  return tb_remove(harvest_st.nodes, node)
+}
+
+# a unit that gathers, of a class (HVG_*), for an owner. False when it already is one
+export function harvest_add_gatherer(harvest_st: mut HarvestState, unit: int, owner: int, kind: int) -> bool {
+  if kind < 0 or kind >= HVG_COUNT or imap_get(harvest_st.by_unit, unit, -1) >= 0 { return false }
+  let g = new HvGatherer
+  g.unit = unit
+  g.owner = owner
+  g.kind = kind
+  imap_put(harvest_st.by_unit, unit, tb_add(harvest_st.gatherers, g))
+  return true
+}
+
+export function harvest_remove_gatherer(harvest_st: mut HarvestState, unit: int) -> bool {
+  let h = imap_get(harvest_st.by_unit, unit, -1)
+  if h < 0 { return false }
+  imap_del(harvest_st.by_unit, unit)
+  return tb_remove(harvest_st.gatherers, h)
+}
+
+# a building that takes loads in: of a kind (HVD_*), an owner's, at a place
+export function harvest_add_drop(harvest_st: mut HarvestState, id: int, kind: int, owner: int, x: float, z: float) -> int {
+  if kind < 0 or kind >= HVD_COUNT { return -1 }
+  let d = new HvDrop
+  d.id = id
+  d.kind = kind
+  d.owner = owner
+  d.x = x
+  d.z = z
+  return tb_add(harvest_st.drops, d)
+}
+
+export function harvest_remove_drop(harvest_st: mut HarvestState, drop: int) -> bool {
+  return tb_remove(harvest_st.drops, drop)
+}
+
+# send a gatherer to a node; false (nothing happens) when either is not there, or the node is spent
+export function harvest_assign(harvest_st: HarvestState, unit: int, node: int) -> bool {
+  let g = imap_get(harvest_st.by_unit, unit, -1)
+  let r = tb_row(harvest_st.nodes, node)
+  if g < 0 or r < 0 or tb_rec(harvest_st.nodes, r).amount == 0 { return false }
+  dispatch HarvestAssign { who: g, node: node }
+  return true
+}
+
+export function harvest_stop(harvest_st: HarvestState, unit: int) -> bool {
+  let g = imap_get(harvest_st.by_unit, unit, -1)
+  if g < 0 { return false }
+  dispatch HarvestStop { who: g }
+  return true
+}
+
+# take what it carries in now, to the nearest drop-off; false when it carries nothing
+export function harvest_return(harvest_st: HarvestState, unit: int) -> bool {
+  let g = imap_get(harvest_st.by_unit, unit, -1)
+  if g < 0 or tb_rec(harvest_st.gatherers, tb_row(harvest_st.gatherers, g)).carry <= 0 { return false }
+  dispatch HarvestReturn { who: g }
+  return true
+}
+
+function hv__gatherer(harvest_st: HarvestState, unit: int) -> HvGatherer {
+  let g = imap_get(harvest_st.by_unit, unit, -1)
+  if g < 0 { return null }
+  return tb_rec(harvest_st.gatherers, tb_row(harvest_st.gatherers, g))
+}
+
+export function harvest_is_gatherer(harvest_st: HarvestState, unit: int) -> bool { return imap_get(harvest_st.by_unit, unit, -1) >= 0 }
+
+# a unit's mood as a HarvestMood's number (0 Idle, 1 ToNode, 2 Gathering, 3 ToDrop, 4 Dropping), or -1
+export function harvest_mood(harvest_st: HarvestState, unit: int) -> int {
+  let g = hv__gatherer(harvest_st, unit)
+  if g == null { return -1 }
+  return int(g.mood)
+}
+
+export function harvest_carrying(harvest_st: HarvestState, unit: int) -> int {
+  let g = hv__gatherer(harvest_st, unit)
+  if g == null { return 0 }
+  return g.carry
+}
+
+# the resource it carries or last carried, -1 none
+export function harvest_carrying_res(harvest_st: HarvestState, unit: int) -> int {
+  let g = hv__gatherer(harvest_st, unit)
+  if g == null { return -1 }
+  return g.res
+}
+
+# the node it works, as a handle, -1 none
+export function harvest_node_of(harvest_st: HarvestState, unit: int) -> int {
+  let g = hv__gatherer(harvest_st, unit)
+  if g == null { return -1 }
+  return g.node
+}
+
+export function harvest_nodes(harvest_st: HarvestState) -> int { return tb_len(harvest_st.nodes) }
+export function harvest_gatherers(harvest_st: HarvestState) -> int { return tb_len(harvest_st.gatherers) }
+export function harvest_drops(harvest_st: HarvestState) -> int { return tb_len(harvest_st.drops) }
+
+export function harvest_node_alive(harvest_st: HarvestState, node: int) -> bool { return tb_alive(harvest_st.nodes, node) }
+
+# what is left at a node (HV_INFINITE for one that never runs out), 0 for one that is gone
+export function harvest_node_amount(harvest_st: HarvestState, node: int) -> int {
+  let r = tb_row(harvest_st.nodes, node)
+  if r < 0 { return 0 }
+  return tb_rec(harvest_st.nodes, r).amount
+}
+
+export function harvest_node_busy(harvest_st: HarvestState, node: int) -> int {
+  let r = tb_row(harvest_st.nodes, node)
+  if r < 0 { return 0 }
+  return tb_rec(harvest_st.nodes, r).busy
+}
+
+export function harvest_node_id(harvest_st: HarvestState, node: int) -> int {
+  let r = tb_row(harvest_st.nodes, node)
+  if r < 0 { return -1 }
+  return tb_rec(harvest_st.nodes, r).id
+}
+
+# the game's way to take from a node itself (a lumber camp's bonus, a raid): at most `n`, what was taken
+export function harvest_take(harvest_st: mut HarvestState, node: int, n: int) -> int {
+  let r = tb_row(harvest_st.nodes, node)
+  if r < 0 { return 0 }
+  let nd = tb_rec(harvest_st.nodes, r)
+  if nd.amount < 0 { return n }
+  let t = Math.min(n, nd.amount)
+  nd.amount -= t
+  return t
+}
+
+# the nearest node of a resource to (x, z) within `r`, a handle or -1 (what an idle gatherer looks for)
+export function harvest_nearest_node(harvest_st: mut HarvestState, res: int, x: float, z: float, r: float) -> int {
+  return hv__seek(harvest_st, res, x, z, r)
+}
+
+# the nearest drop-off of an owner that takes a resource, a handle or -1
+export function harvest_nearest_drop(harvest_st: mut HarvestState, owner: int, res: int, x: float, z: float) -> int {
+  return hv__nearest_drop(harvest_st, owner, res, x, z)
+}

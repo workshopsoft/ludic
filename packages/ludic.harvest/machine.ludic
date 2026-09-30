@@ -1,0 +1,101 @@
+# machine.ludic - the gather-carry-drop loop as data. A gatherer is in one mood; the rows of
+# steps.lres (HarvestSteps) say which way it moves on which action or sensed condition, and what
+# happens as it does. The tick senses the world into flags on the row (sense.ludic); a guard only
+# reads them. Nothing else writes `mood`.
+export enum HarvestMood { Idle, ToNode, Gathering, ToDrop, Dropping }
+
+export action HarvestAssign { @Target who: int = -1, node: int = -1 }   # go and gather there
+export action HarvestStop { @Target who: int = -1 }
+export action HarvestReturn { @Target who: int = -1 }                    # take what it carries in now
+
+export property HarvestStep {
+  from: HarvestMood = HarvestMood.Idle
+  to: HarvestMood = HarvestMood.Idle
+  on: string = ""
+  guard: fn(Row<HvGatherer>, HarvestState) -> bool = null
+  enter: fn(Row<HvGatherer>, HarvestState) -> void = null
+}
+@Machine(HvGatherer.mood) registry HarvestSteps of HarvestStep as HSTEP from "steps.lres"
+
+# an assignment writes where the gatherer goes before the machine moves it
+reducer HvGatherer in HarvestState.gatherers on HarvestAssign(r: mut Row<HvGatherer>, h: HarvestState, a: HarvestAssign) {
+  let nr = tb_row(h.nodes, a.node)
+  if nr < 0 { return }
+  let n = tb_rec(h.nodes, nr)
+  let res = HarvestKinds[n.kind].resource
+  if r.rec.carry > 0 and r.rec.res != res { r.rec.carry = 0 }
+  r.rec.res = res
+  r.rec.node = a.node
+  r.rec.nx = n.x
+  r.rec.nz = n.z
+}
+
+# guards: they ask, and write nothing
+function hv_node_ok(r: Row<HvGatherer>, h: HarvestState) -> bool { return tb_row(h.nodes, r.rec.node) >= 0 }
+function hv_claimed(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.claimed }
+function hv_full(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.full }
+function hv_moved(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.moved }
+function hv_lost_loaded(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.lost and r.rec.carry > 0 }
+function hv_lost(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.lost }
+function hv_loaded(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.carry > 0 }
+function hv_at_drop(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.at_drop }
+function hv_no_drop(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.no_drop }
+function hv_dropped_on(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.dropped and not r.rec.lost }
+function hv_dropped_off(r: Row<HvGatherer>, h: HarvestState) -> bool { return r.rec.dropped and r.rec.lost }
+
+# enters: they move the unit through the world's port and say what happened
+function hv_go_node(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  r.rec.timer = 0.0
+  HarvestWorld.move_to(r.rec.unit, r.rec.nx, r.rec.nz)
+  hv__say(h, HV_F_ASSIGNED, r.rec.unit, r.rec.node, r.rec.owner, r.rec.res, 0, 0)
+}
+function hv_moved_on(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  HarvestWorld.move_to(r.rec.unit, r.rec.nx, r.rec.nz)
+  hv__say(h, HV_F_MOVED_ON, r.rec.unit, r.rec.node, r.rec.owner, r.rec.res, 0, 0)
+}
+function hv_begin(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  HarvestWorld.stop(r.rec.unit)
+  r.rec.claimed = false
+  hv__say(h, HV_F_BEGAN, r.rec.unit, r.rec.node, r.rec.owner, r.rec.res, 0, 0)
+}
+function hv_haul(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  r.rec.full = false
+  r.rec.no_drop = false
+  r.rec.drop = hv__nearest_drop(h, r.rec.owner, r.rec.res, HarvestWorld.pos_x(r.rec.unit), HarvestWorld.pos_z(r.rec.unit))
+  let dr = tb_row(h.drops, r.rec.drop)
+  if dr >= 0 { HarvestWorld.move_to(r.rec.unit, tb_rec(h.drops, dr).x, tb_rec(h.drops, dr).z) }
+  hv__say(h, HV_F_FULL, r.rec.unit, r.rec.node, r.rec.owner, r.rec.res, r.rec.carry, 0)
+}
+function hv_arrive_drop(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  HarvestWorld.stop(r.rec.unit)
+  r.rec.timer = 0.0
+  r.rec.dropped = false
+}
+@RowVerb function hv_deposit(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  let n = r.rec.carry
+  HarvestBank.deposit(r.rec.owner, r.rec.res, n)
+  hv__say(h, HV_F_DEPOSITED, r.rec.unit, r.rec.node, r.rec.owner, r.rec.res, n, 0)
+  r.rec.carry = 0
+  r.rec.dropped = false
+  r.rec.drop = -1
+}
+function hv_deposit_go(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  hv_deposit(r, h)
+  HarvestWorld.move_to(r.rec.unit, r.rec.nx, r.rec.nz)
+}
+function hv_idle_stopped(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  HarvestWorld.stop(r.rec.unit)
+  hv__say(h, HV_F_IDLED, r.rec.unit, r.rec.node, r.rec.owner, r.rec.res, r.rec.carry, HV_R_STOPPED)
+}
+function hv_idle_no_node(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  HarvestWorld.stop(r.rec.unit)
+  hv__say(h, HV_F_IDLED, r.rec.unit, r.rec.node, r.rec.owner, r.rec.res, r.rec.carry, HV_R_NO_NODE)
+}
+function hv_idle_no_drop(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  HarvestWorld.stop(r.rec.unit)
+  hv__say(h, HV_F_IDLED, r.rec.unit, r.rec.node, r.rec.owner, r.rec.res, r.rec.carry, HV_R_NO_DROP)
+}
+function hv_deposit_idle(r: mut Row<HvGatherer>, h: HarvestState) -> void {
+  hv_deposit(r, h)
+  hv_idle_no_node(r, h)
+}

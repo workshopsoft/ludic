@@ -1,0 +1,17 @@
+# system.ludic - harvest as a system: sense, step the machine, and keep the nodes in order
+export function harvest_reset(harvest_st: mut HarvestState) -> void { harvest__clear(harvest_st) }
+
+export function harvest_tick(harvest_st: mut HarvestState, m: mut HarvestStepsMachine, t: Tick) -> void {
+  hv__sense(harvest_st, t.dt)
+  harvest_steps_tick(m, harvest_st)
+  hv__nodes_tick(harvest_st, t.dt)
+}
+
+export function harvest_system() -> System {
+  let s = system_new("harvest", PH_SIMULATE)
+  s.reset = fn harvest_reset
+  s.tick = fn harvest_tick
+  s.save = fn harvest__save
+  s.load = fn harvest__load
+  return s
+}

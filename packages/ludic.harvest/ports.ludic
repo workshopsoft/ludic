@@ -1,0 +1,23 @@
+# ports.ludic - what harvest asks the world, and where a load goes. Positions are required: without
+# them nothing can be near anything. Unbound, everything else is "the unit is alive and walks
+# there at once"
+export port HarvestWorld {
+  pos_x: fn(int) -> float                               # a unit's position
+  pos_z: fn(int) -> float
+  alive: fn(int) -> bool = fn hv__yes_of
+  move_to: fn(int, float, float) -> bool = fn hv__walks   # begin walking there; false: no way
+  stop: fn(int) -> void = fn hv__nop_of
+  carry_bonus: fn(int, int) -> int = fn hv__zero_of2      # (owner, resource): more carried, from the game's techs
+  rate_mul: fn(int, int) -> float = fn hv__one_of2        # (owner, resource): faster gathering
+}
+
+function hv__yes_of(unit: int) -> bool { return true }
+function hv__walks(unit: int, x: float, z: float) -> bool { return true }
+function hv__nop_of(unit: int) -> void { }
+function hv__zero_of2(owner: int, res: int) -> int { return 0 }
+function hv__one_of2(owner: int, res: int) -> float { return 1.0 }
+
+# the stockpile: (owner, resource, n) handed in. Required
+export port HarvestBank {
+  deposit: fn(int, int, int) -> void
+}
