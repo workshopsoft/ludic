@@ -25278,6 +25278,10 @@ put:
   %dbit = select i1 %isdecl, i64 549755813888, i64 0
   %v = or i64 %v0, %dbit
   store i64 %v, ptr %ev
+  %dl = load i64, ptr @lp_dlive
+  %dadd = select i1 %isdecl, i64 %n, i64 0
+  %dl1 = add i64 %dl, %dadd
+  store i64 %dl1, ptr @lp_dlive
   %tn = load i64, ptr @lp_tabn
   %tn1 = add i64 %tn, 1
   store i64 %tn1, ptr @lp_tabn
@@ -25590,7 +25594,11 @@ read:
   %sl = load i64, ptr @lp_slive
   %pr = load i64, ptr @lp_pre
   %sp = load i64, ptr @lp_spre
-  %a = sub i64 %lv, %sl
+  %a0 = sub i64 %lv, %sl
+  %dlk = load i64, ptr @lp_dlive
+  %sdl = load i64, ptr @lp_sdlive
+  %ddk = sub i64 %dlk, %sdl
+  %a = sub i64 %a0, %ddk
   %b = sub i64 %pr, %sp
   %k = sub i64 %a, %b
   call void @lp_funlock()
@@ -26348,7 +26356,11 @@ weigh:
   %ml = load i64, ptr @lp_mlive
   %pr = load i64, ptr @lp_pre
   %mp = load i64, ptr @lp_mpre
-  %a = sub i64 %lv, %ml
+  %a0 = sub i64 %lv, %ml
+  %dln = load i64, ptr @lp_dlive
+  %dlmk = load i64, ptr @lp_mdlive
+  %dd = sub i64 %dln, %dlmk
+  %a = sub i64 %a0, %dd
   %b = sub i64 %pr, %mp
   %kept = sub i64 %a, %b
   %bad = icmp sgt i64 %kept, 0
@@ -210895,7 +210907,7 @@ ret:
   ret void
 }
 
-define void @fn_emit_fs_dir() {
+define void @fn_emit_fs_normalize() {
 entry:
   call void @fn_emith(ptr @.str13320)
   call void @fn_emith(ptr @.str13321)

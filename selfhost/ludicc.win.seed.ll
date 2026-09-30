@@ -213982,7 +213982,7 @@ ret:
   ret void
 }
 
-define void @fn_emit_fs_dir() {
+define void @fn_emit_fs_normalize() {
 entry:
   call void @fn_emith(ptr @.str13525)
   call void @fn_emith(ptr @.str13526)
