@@ -51,6 +51,10 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.wallet](ludic.wallet/README.md) | money carried: earned, spent, lost, every change a fact |
 | [ludic.weather](ludic.weather/README.md) | spells of weather described as data: odds, wetness, wind, storms, a forecast |
 | [ludic.wildlife](ludic.wildlife/README.md) | a valley's animals: ranges, their day, senses and alert, feeding, lures, spawning |
+| [ludic.build](ludic.build/README.md) | structures on a grid: footprints and rotation, placement rules as data (tags, adjacency, spacing, limits, tech), costs through a bank port, construction by workers as a `@Machine` |
+| [ludic.harvest](ludic.harvest/README.md) | resource nodes, gatherers that carry, drop-offs, and the gather-carry-drop loop as a `@Machine`; the stockpile and walking are ports |
+| [ludic.produce](ludic.produce/README.md) | production queues per building: items with time, cost, supply and tech, queue limits, rally points, refunds as data |
+| [ludic.rts](ludic.rts/README.md) | command and control: selection and control groups, an order queue per unit (move, attack, gather, build, patrol, stop, hold as data), formations, stances |
 
 ## Engine and UI
 
