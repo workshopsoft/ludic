@@ -113,11 +113,11 @@ read line by line, skip a line that does not parse, and treat a record with no `
 truncated (`complete` false). Field order below is the order written.
 
 ```
-{"k":"crash","v":1,"producer":"ludic","app":"Maroon Lake","version":"0.1.0","build":"b-42","context":"scene=forest","os":"macos","os_version":"26.3","arch":"arm64","pid":58532,"tid":33343456,"main":true,"time":1790788239,"sig":11,"signame":"SIGSEGV","code":2,"addr":"0x10","pc":"0x102c5e148","sp":"0x16c9abfe0","fp":"0x16d1a6d80","lr":"0x102c5e158"}
+{"k":"crash","v":1,"producer":"ludic","app":"Pine Woods","version":"0.1.0","build":"b-42","context":"scene=forest","os":"macos","os_version":"26.3","arch":"arm64","pid":58532,"tid":33343456,"main":true,"time":1790788239,"sig":11,"signame":"SIGSEGV","code":2,"addr":"0x10","pc":"0x102c5e148","sp":"0x16c9abfe0","fp":"0x16d1a6d80","lr":"0x102c5e158"}
 {"k":"frame","i":0,"pc":"0x102c5e148","via":"pc"}
 {"k":"frame","i":1,"pc":"0x102c5e158","via":"lr"}
 {"k":"frame","i":2,"pc":"0x183ef0850","via":"scan"}
-{"k":"image","path":"/Applications/Maroon Lake.app/Contents/MacOS/Maroon Lake","base":"0x102c58000","size":"0x8000","uuid":"8545D571-AC52-396B-8403-1DD2B282BA3B","main":true}
+{"k":"image","path":"/Applications/Pine Woods.app/Contents/MacOS/Pine Woods","base":"0x102c58000","size":"0x8000","uuid":"8545D571-AC52-396B-8403-1DD2B282BA3B","main":true}
 {"k":"image","path":"/usr/lib/system/libsystem_c.dylib","base":"0x183e77000","size":"0x82048","uuid":"EB569350-0696-3397-838E-0344948107C0"}
 {"k":"end","frames":3,"images":2}
 ```

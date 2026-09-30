@@ -17,11 +17,11 @@ program CrashTest {
 
   # a record as the handler writes it (runtime/native/crash.ll)
   function sample(t: int, sig: int) -> string {
-    var s = "{\"k\":\"crash\",\"v\":1,\"producer\":\"ludic\",\"app\":\"Maroon \\\"Lake\\\"\",\"version\":\"1.2.3\",\"build\":\"b-42\",\"context\":\"scene=forest\",\"os\":\"macos\",\"os_version\":\"15.4\",\"arch\":\"arm64\",\"pid\":4242,\"tid\":99,\"main\":true,"
+    var s = "{\"k\":\"crash\",\"v\":1,\"producer\":\"ludic\",\"app\":\"Pine \\\"Woods\\\"\",\"version\":\"1.2.3\",\"build\":\"b-42\",\"context\":\"scene=forest\",\"os\":\"macos\",\"os_version\":\"15.4\",\"arch\":\"arm64\",\"pid\":4242,\"tid\":99,\"main\":true,"
     s = s + `"time":{t},"sig":{sig},"signame":"SIGSEGV","code":2,"addr":"0x10","pc":"0x100003f60","sp":"0x16f000000","fp":"0x16f000010","lr":"0x100003f70"}\n`
     s = s + "{\"k\":\"frame\",\"i\":0,\"pc\":\"0x100003f60\",\"via\":\"pc\"}\n"
     s = s + "{\"k\":\"frame\",\"i\":1,\"pc\":\"0x100003f70\",\"via\":\"lr\"}\n"
-    s = s + "{\"k\":\"image\",\"path\":\"/Applications/Maroon Lake.app/Contents/MacOS/Maroon Lake\",\"base\":\"0x100000000\",\"size\":\"0x8000\",\"uuid\":\"8545D571-AC52-396B-8403-1DD2B282BA3B\",\"main\":true}\n"
+    s = s + "{\"k\":\"image\",\"path\":\"/Applications/Pine Woods.app/Contents/MacOS/Pine Woods\",\"base\":\"0x100000000\",\"size\":\"0x8000\",\"uuid\":\"8545D571-AC52-396B-8403-1DD2B282BA3B\",\"main\":true}\n"
     s = s + "{\"k\":\"end\",\"frames\":2,\"images\":1}\n"
     return s
   }
@@ -51,7 +51,7 @@ program CrashTest {
     let r = crash_parse(sample(1790000000, 11))
     expect(r.ok)
     expect(r.complete)
-    expect(r.app == "Maroon \"Lake\"")
+    expect(r.app == "Pine \"Woods\"")
     expect(r.version == "1.2.3")
     expect(r.build == "b-42")
     expect(r.context == "scene=forest")
