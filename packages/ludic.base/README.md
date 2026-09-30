@@ -86,6 +86,11 @@ allocates nothing per query:
 - **Parallel work reads, never writes, a state.** `Job.parallel_for(n, fn work, ctx)` over a
   table's columns runs on every core; the compiler refuses a worker that takes a state as `mut`
   (a result goes into `ctx`, a shared count through a `Sync` handle kept in the state).
+- **A row, for a row reducer.** `Row<T>` (`tb`, `row`, `h`, `rec`) is one row as the action drain
+  hands it to `reducer T in S.table on A(r: mut Row<T>, a: A)` (LANGUAGE.md, "A reducer on a row"):
+  the action's `@Target` field carries the handle, the drain resolves it and fills a Row it keeps.
+  The table's owner writes a row through its `@RowVerb`s, which take the Row first and keep the
+  columns with the record's `@Column` fields.
 - **Stable ids.** `IntMap` (`imap_new`, `imap_put`, `imap_get(m, k, none)`, `imap_del`) maps an
   id kept in a save or a message to a handle without a scan.
 

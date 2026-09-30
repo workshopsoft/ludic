@@ -1,0 +1,6 @@
+# 27.3: an action names one row: one @Target field
+import "ludic.base"
+program TargetTwice {
+  action Swap { @Target a: int = -1, @Target b: int = -1 }
+  entry { print(1) }
+}

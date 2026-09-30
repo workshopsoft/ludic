@@ -4,6 +4,9 @@
 #   modules    name, package, layer, uses (null without a `uses` line) and where, friend, files
 #   states     name, module, at                    actions   name, module, at
 #   reducers   state, action, module, at           dispatch  action, module, at
+#   row_reducers  record, table (State.path), state, action, target (its @Target field), predicted,
+#              net, module, at                     row_verbs  name, record, module, at (27.3)
+#   actions also carry their target: the @Target field, or null
 #   events     name, module, at, cancellable, net (@ToServer / @ToClients), emits (sites) and
 #              listeners (the @On handlers: handler, module, at)
 #   ports      name, module, at, bound, members (name, type, default as written, required)
@@ -67,6 +70,10 @@ function sc_code(b: Buf) -> void {
   cx_decls(b, 3)
   buf_puts(b, "\n    ],\n    \"reducers\": [")
   cx_reducers(b)
+  buf_puts(b, "\n    ],\n    \"row_reducers\": [")
+  cx_row_reducers(b)
+  buf_puts(b, "\n    ],\n    \"row_verbs\": [")
+  cx_row_verbs(b)
   buf_puts(b, "\n    ],\n    \"dispatch\": [")
   cx_dispatch(b)
   buf_puts(b, "\n    ],\n    \"events\": [")
@@ -244,6 +251,10 @@ function cx_decls(b: Buf, uns: int) -> void {
     cx_module(b, d.file)
     buf_puts(b, ", ")
     cx_at(b, d)
+    if uns == 3 {                                 # an action: the field naming its row (27.3)
+      buf_puts(b, ", \"target\": ")
+      sc_str(b, rr_target(d.s))
+    }
     buf_puts(b, "}")
     i += 1
   }
@@ -253,7 +264,7 @@ function cx_reducers(b: Buf) -> void {
   var i = 0
   while i < len(g_red_nodes) {
     let f = g_red_nodes[i]
-    if cx_written(f) { push(keys, `{g_red_state[i]}\t{g_red_action[i]}\t{cx_at_key(f)}`) } else { push(keys, null) }
+    if cx_written(f) and g_red_rec[i] == null { push(keys, `{g_red_state[i]}\t{g_red_action[i]}\t{cx_at_key(f)}`) } else { push(keys, null) }
     i += 1
   }
   let xs = cx_order(keys)
@@ -266,6 +277,64 @@ function cx_reducers(b: Buf) -> void {
     jq_put(b, g_red_state[k])
     buf_puts(b, ", \"action\": ")
     jq_put(b, g_red_action[k])
+    buf_puts(b, ", ")
+    cx_module(b, f.file)
+    buf_puts(b, ", ")
+    cx_at(b, f)
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+# 27.3: the reducers on a table's rows, and the verbs that write a row
+function cx_row_reducers(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_red_nodes) {
+    let f = g_red_nodes[i]
+    if cx_written(f) and g_red_rec[i] != null { push(keys, `{g_red_rec[i]}\t{g_red_state[i]}.{g_red_tbl[i]}\t{g_red_action[i]}\t{cx_at_key(f)}`) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let k = xs[i]
+    let f = g_red_nodes[k]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"record\": ")
+    jq_put(b, g_red_rec[k])
+    buf_puts(b, ", \"table\": ")
+    jq_put(b, `{g_red_state[k]}.{g_red_tbl[k]}`)
+    buf_puts(b, ", \"state\": ")
+    jq_put(b, g_red_state[k])
+    buf_puts(b, ", \"action\": ")
+    jq_put(b, g_red_action[k])
+    buf_puts(b, ", \"target\": ")
+    sc_str(b, g_red_tgt[k])
+    buf_puts(b, ", \"predicted\": false, \"net\": null, ")   # @Predicted and @Net come with 27.5
+    cx_module(b, f.file)
+    buf_puts(b, ", ")
+    cx_at(b, f)
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+function cx_row_verbs(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_rv_nodes) {
+    let f = g_rv_nodes[i]
+    if cx_written(f) { push(keys, sc_key(f.s, f.file, f.line)) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let f = g_rv_nodes[xs[i]]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"name\": ")
+    jq_put(b, f.s)
+    buf_puts(b, ", \"record\": ")
+    sc_str(b, rv_record(f))
     buf_puts(b, ", ")
     cx_module(b, f.file)
     buf_puts(b, ", ")

@@ -1,0 +1,9 @@
+# 27.3: a row reducer takes its row, mut, first and the action last
+import "ludic.base"
+program RowReducerParams {
+  property Deer { fear: int = 0 }
+  state Herd { deer: Table<Deer> = null }
+  action Spook { @Target who: int = -1 }
+  reducer Deer in Herd.deer on Spook(r: Row<Deer>, a: Spook) { print(r.rec.fear) }
+  entry { print(1) }
+}

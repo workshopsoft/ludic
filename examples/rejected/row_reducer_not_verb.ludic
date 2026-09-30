@@ -1,0 +1,10 @@
+# 27.3: a row is handed only to its record's @RowVerbs
+import "ludic.base"
+program RowReducerNotVerb {
+  property Deer { fear: int = 0 }
+  state Herd { deer: Table<Deer> = null }
+  action Spook { @Target who: int = -1 }
+  function scare(r: mut Row<Deer>) -> void { r.rec.fear += 1 }
+  reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, a: Spook) { scare(r) }
+  entry { print(1) }
+}

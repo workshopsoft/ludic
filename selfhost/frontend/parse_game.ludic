@@ -12,11 +12,18 @@ function parse_component() -> Node {
     var is_frame = false                             # @frame — a fn stored here runs every frame (25.2)
     var cap = 0                                      # @max(n) — this list never holds more than n (25.5a)
     var fat = -1                                     # its attributes, for the schema (attrs.ludic)
+    var is_target = false                            # @Target — an action's field naming a row (27.3)
+    var is_column = false                            # @Column — a field a table's column mirrors (27.3)
     while is_op("@") {                               # one or more, on its line or the lines above
       pi += 1
       let ann = eat_id()
       if (ann == "Computed") or (ann == "Sync") or (ann == "frame") {
         if ann == "Computed" { is_computed = true } else if ann == "Sync" { is_sync = true } else { is_frame = true }
+        if fat < 0 { fat = at_group() }
+        at_push(fat, ann, "[]", null, 0)
+      }
+      else if (ann == "Target") or (ann == "Column") {
+        if ann == "Target" { is_target = true } else { is_column = true }
         if fat < 0 { fat = at_group() }
         at_push(fat, ann, "[]", null, 0)
       }
@@ -49,6 +56,7 @@ function parse_component() -> Node {
     let f = node(N_FIELD); f.s = eat_id(); eat_op(":"); f.ty = ptype()
     f.at = fat
     if is_frame { push(g_frame_fields, `{n.s}.{f.s}`) }
+    if is_target or is_column { rr_field_attr(n.s, f, is_target, is_column) }
     if cap > 0 { push(g_cap_keys, `{n.s}.{f.s}`);  push(g_cap_vals, cap) }
     if g_own_pending != null { push(g_own_type, n.s);  push(g_own_field, f.s);  push(g_own_kind, g_own_pending);  g_own_pending = null }
     if is_op("=") {

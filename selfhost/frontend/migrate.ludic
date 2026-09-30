@@ -782,7 +782,7 @@ function mg_prune_unit(u: int, n: Node) -> void {
   let kind = g_mu_kind[u]
   if kind == 0 {
     if n.vw >= 0 { return }
-    if s_has_prefix(n.s, "ludic_reduce__") { return }   # a reducer takes its state whether it reads it or not
+    if s_has_prefix(n.s, "ludic_reduce__") or s_has_prefix(n.s, "ludic_rowred__") { return }   # a reducer takes its state whether it reads it or not
     var i = 0
     while i < len(n.kids) {
       let p = n.kids[i]

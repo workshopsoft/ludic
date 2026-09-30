@@ -46,6 +46,9 @@ function parse_reducer() -> void {
   push(g_red_nodes, f)
   push(g_red_state, st)
   push(g_red_action, act)
+  push(g_red_rec, null)                          # a state's reducer: no row (actions_rows.ludic)
+  push(g_red_tbl, null)
+  push(g_red_tgt, null)
   push(prog, f)
 }
 # dispatch ACTION { fields } - a statement: the action made and queued
@@ -99,9 +102,10 @@ function act_err(n: Node, msg: pointer) -> void {
 # after the program is read: the reducers checked, each dispatch numbered, and the queue, its push
 # and its drain written
 function actions_finish() -> void {
+  rows_finish_checks()                           # 27.3: @Target, @RowVerb (actions_rows.ludic)
   var i = 0
   while i < len(g_red_nodes) {
-    red_check(i)
+    if g_red_rec[i] != null { rr_check(i) } else { red_check(i) }
     i += 1
   }
   i = 0
@@ -148,7 +152,7 @@ function red_check(i: int) -> void {
   }
   var j = 0
   while j < i {
-    if (g_red_state[j] == st) and (g_red_action[j] == act) { act_err(f, `reducer {st} on {act} is declared twice (first at {g_red_nodes[j].file}:{itoa(g_red_nodes[j].line)})`) }
+    if (g_red_state[j] == st) and (g_red_action[j] == act) and g_red_rec[j] == null { act_err(f, `reducer {st} on {act} is declared twice (first at {g_red_nodes[j].file}:{itoa(g_red_nodes[j].line)})`) }
     j += 1
   }
 }
@@ -160,8 +164,9 @@ function act_src() -> pointer {
     src = src + `  kept{itoa(a)}: []{g_act_names[a]} = new []{g_act_names[a]}\n  used{itoa(a)}: int = 0\n`
     a += 1
   }
-  src = src + "}\n"
+  src = src + rr_fields_src() + "}\n"            # 27.3: a row reducer's kept view
   src = src + act_new_src()
+  src = src + rr_wrappers_src()
   src = src + "export function ludic_act_push(q: mut LudicActions, k: int, v: pointer) -> void {\n  push(q.kinds, k)\n  push(q.vals, v)\n}\n"
   src = src + "export function drain_actions(q: mut LudicActions) -> void {\n  if q.depth > 0 or len(q.kinds) == 0 { return }\n  q.depth = 1\n  var pass = 0\n  var round_end = len(q.kinds)\n"
   src = src + "  while q.head < len(q.kinds) {\n    if q.head == round_end {\n      pass += 1\n      round_end = len(q.kinds)\n"
@@ -174,7 +179,9 @@ function act_src() -> pointer {
       src = src + `    if k == {itoa(a)} {{\n`
       var r = 0
       while r < len(rs) {
-        src = src + `      {g_red_nodes[rs[r]].s}(v)\n`
+        var callee = g_red_nodes[rs[r]].s
+        if g_red_rec[rs[r]] != null { callee = rr_wrap_name(rs[r]) }   # the handle resolved first
+        src = src + `      {callee}(v)\n`
         r += 1
       }
       src = src + "    }\n"
@@ -210,6 +217,11 @@ function act_new_src() -> pointer {
   }
   return src
 }
+# a reducer's place among its action's: its state's name, then (a row reducer) its table's path
+function red_key(i: int) -> pointer {
+  if g_red_tbl[i] == null { return g_red_state[i] }
+  return `{g_red_state[i]}\t{g_red_tbl[i]}`
+}
 function red_sorted(act: pointer) -> []int {
   let out = new []int
   var i = 0
@@ -221,7 +233,7 @@ function red_sorted(act: pointer) -> []int {
   while a < len(out) {
     let x = out[a]
     var b = a - 1
-    while b >= 0 and reg_str_less(g_red_state[x], g_red_state[out[b]]) {
+    while b >= 0 and reg_str_less(red_key(x), red_key(out[b])) {
       out[b + 1] = out[b]
       b -= 1
     }

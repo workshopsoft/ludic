@@ -386,6 +386,63 @@ program Pack {
 - **Events stay** for what changes no state - a sound, a notice, telemetry - and `@On` listeners run
   as the event is emitted. Actions are for changes.
 
+**A reducer on a row** (27.3). Many of a kind are rows of a ludic.base `Table<T>` (Things, animals,
+vehicles), and an action may name ONE of them: its field marked `@Target` holds the row's handle,
+and a reducer written `in` the table runs for that row alone.
+
+```ludic
+import "ludic.base"
+program Herds {
+  numbers float
+  property Deer {
+    @Column x: float = 0.0            # a table column mirrors it
+    fear: int = 0
+  }
+  state Herd { deer: Table<Deer> = null }
+  state Noise { loud: int = 2 }
+  action Spook { @Target who: int = -1, by: int = 1 }
+  action Bolt { @Target who: int = -1, dx: float = 0.0 }
+
+  reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, n: Noise, a: Spook) {
+    r.rec.fear += a.by * n.loud
+    if r.rec.fear > 3 { dispatch Bolt { who: r.h, dx: 5.0 } }
+  }
+  reducer Deer in Herd.deer on Bolt(r: mut Row<Deer>, a: Bolt) { deer_move(r, r.rec.x + a.dx) }
+
+  @RowVerb function deer_move(r: mut Row<Deer>, x: float) -> void {
+    r.rec.x = x
+    tb_set_f(r.tb, 0, r.row, x)        # the column and its indexes, with the field
+  }
+  entry (h: mut Herd) {
+    let tb: Table<Deer> = table_new(1, 0)
+    h.deer = tb
+    dispatch Spook { who: tb_add(tb, new Deer), by: 2 }
+    drain_actions()
+  }
+}
+```
+
+- **`reducer Record in State.table on Action(r: mut Row<Record>, reads..., a: Action)`** - the
+  table is a field of the state (a path through its records is fine: `WildState.w.tab`), of type
+  `Table<Record>`, and only the module that owns the state declares a row reducer on it. The row
+  comes first and `mut`, the action last, and between them states it only READS, as any reducer's.
+- **`@Target`** marks the action's one field holding the handle (an `int`, what `tb_add` returned).
+  One to an action: several rows are the dispatcher's loop, one `dispatch` per handle.
+- **The drain resolves the handle** (`tb_row`) and hands the reducer a `Row<Record>` (ludic.base:
+  `tb`, `row`, `h`, `rec`) it keeps, one per row reducer and filled in place, so a targeted action
+  allocates nothing. A handle whose row is gone - the animal removed since the dispatch - runs
+  nothing, which is not an error; `LUDIC_ACTIONS_LOG=1` prints a line for it. Row reducers take
+  their place among the action's reducers by their state's name, then the table's.
+- **The row goes no further.** Inside a row reducer `r.rec` and `r.h` are all it reaches: `r.tb`
+  and `r.row` are refused, the view is not assigned, stored, copied or handed to anything but a
+  **`@RowVerb`** - a function of the record's own module that takes the row first - and a field
+  marked **`@Column`** (one a table column mirrors: a position, a kind, whether it is alive) is not
+  written through `r.rec`: `reducer Deer in Herd.deer on Push: Deer.x is mirrored by a column of the
+  table (@Column) - write it through a @RowVerb, which keeps the column and its indexes with it`.
+  What `things_verify` catches at run time is a compile error inside a row reducer.
+- **Dice** a row reducer rolls come from the row's own `Rng` or its owner's, never `Random.*`: it
+  runs in the drain, outside its owner's tick, and the world's stream is co-op's shared order.
+
 `ludic deps` reports the widest function - the most states any function or entry point of the
 program's own takes - and `--check` holds it as a ratchet like its other numbers
 (`widest_function 12` in the baseline file). A function value's states are supplied where it is called, so a
@@ -808,8 +865,12 @@ object with `"schema_version": 1`:
     without a `uses` line, `friend` null, or `{"of": null}` for a friend of every module and
     `{"of": [...]}` for `friend module lab of a, b`; `files` its source files and the resource files
     read into its registries;
-  - `states`, `actions` (`{"name", "module", "at"}`), `reducers` (`{"state", "action", "module",
-    "at"}`) and `dispatch` (every `dispatch`: `{"action", "module", "at"}`);
+  - `states` (`{"name", "module", "at"}`), `actions` (`{"name", "module", "at", "target"}`,
+    `target` its `@Target` field or null), `reducers` (`{"state", "action", "module", "at"}`, a
+    state's), `row_reducers` (`{"record", "table", "state", "action", "target", "predicted", "net",
+    "module", "at"}`: `table` the path as written, `State.field`; `predicted` false and `net` null
+    until `@Predicted` and `@Net` reach reducers), `row_verbs` (`{"name", "record", "module", "at"}`)
+    and `dispatch` (every `dispatch`: `{"action", "module", "at"}`);
   - `events` - `{"name", "module", "at", "cancellable", "net"}` (`net` `"toserver"` for
     `@ToServer`, `"toclients"` for `@ToClients`, else null), its `emits` (every `emit`'s place) and
     its `listeners` (the `@On` handlers: `{"handler", "module", "at"}`);

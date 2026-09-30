@@ -1,0 +1,9 @@
+# 27.3: a row reducer's action names its row in a field marked @Target
+import "ludic.base"
+program RowReducerNoTarget {
+  property Deer { fear: int = 0 }
+  state Herd { deer: Table<Deer> = null }
+  action Spook { who: int = -1 }
+  reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, a: Spook) { r.rec.fear += 1 }
+  entry { print(1) }
+}

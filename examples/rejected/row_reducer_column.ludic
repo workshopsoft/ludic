@@ -1,0 +1,12 @@
+# 27.3: a field a column mirrors is written only by a @RowVerb, which keeps the column with it
+import "ludic.base"
+program RowReducerColumn {
+  property Deer {
+    @Column x: int = 0
+    fear: int = 0
+  }
+  state Herd { deer: Table<Deer> = null }
+  action Push { @Target who: int = -1, dx: int = 1 }
+  reducer Deer in Herd.deer on Push(r: mut Row<Deer>, a: Push) { r.rec.x += a.dx }
+  entry { print(1) }
+}

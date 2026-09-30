@@ -1,0 +1,5 @@
+# herd/index.ludic - the herd's state and its table; its rows are its own module's to reduce
+module herd uses ludic_base
+export property Deer { fear: int = 0 }
+export state Herd { deer: Table<Deer> = null }
+export action Spook { @Target who: int = -1 }

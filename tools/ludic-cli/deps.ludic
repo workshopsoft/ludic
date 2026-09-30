@@ -262,12 +262,32 @@ function dp_pad(s: pointer, n: int) -> pointer {
 }
 # a function as its source names it: a reducer is `reducer Bag on PickUp`, not its symbol
 function dp_fn_name(n: pointer) -> pointer {
-  if not s_starts(n, "ludic_reduce__") { return n }
+  if not s_starts(n, "ludic_reduce__") and not s_starts(n, "ludic_rowred__") { return n }
   let rest = n[14 .. slen(n)]
   for i in 0 .. slen(rest) - 1 {
-    if rest[i] == '_' and rest[i + 1] == '_' { return `reducer {rest[i + 2 .. slen(rest)]} on {rest[0 .. i]}` }
+    if rest[i] == '_' and rest[i + 1] == '_' { return `reducer {dp_row_name(rest[i + 2 .. slen(rest)])} on {rest[0 .. i]}` }
   }
   return n
+}
+# 27.3: a row reducer's symbol says `Deer__in__Herd__deer` for `Deer in Herd.deer`
+function dp_row_name(s: pointer) -> pointer {
+  var out = ""
+  var seen = false
+  var i = 0
+  while i < slen(s) {
+    if not seen and i + 6 <= slen(s) and s[i .. i + 6] == "__in__" {
+      out = out + " in "
+      seen = true
+      i += 6
+    } else if seen and i + 2 <= slen(s) and s[i .. i + 2] == "__" {
+      out = out + "."
+      i += 2
+    } else {
+      out = out + s[i .. i + 1]
+      i += 1
+    }
+  }
+  return out
 }
 function dp_own(k: int) -> bool { return dp_pkg[k] == 0 }
 # an edge the numbers count: between two of the program's own modules
