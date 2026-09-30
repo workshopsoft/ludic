@@ -1345,11 +1345,8 @@ function gvk_set_view(render3d_st: mut Render3dState, cb: pointer) -> void {
 # first / count select vertices or indices; count 0 means the mesh's own count. instances >= 1.
 function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState, first: int, count: int, instances: int, tx: words, tx_w: int, tx_cap: int, rec: words, rec_o: int) -> void {
   if render3d_st.gvk_prog_var == null or p <= 0 or p >= len(render3d_st.gvk_prog_var) or render3d_st.gvk_prog_var[p] == null { return }
-  if render3d_st.gvk_cb_cap < 0 {
-    render3d_st.gvk_cb_cap = 0
-    if r3d_env_has(render3d_st, "R3D_CB_DRAWS") { render3d_st.gvk_cb_cap = Text.to_int(r3d_env(render3d_st, "R3D_CB_DRAWS")) }
-  }
-  if render3d_st.gvk_cb_cap > 0 and render3d_st.gvk_cb_draws >= render3d_st.gvk_cb_cap { gvk_flush(render3d_st) }
+  let cap = gvk_cb_cap_of(render3d_st)
+  if cap > 0 and render3d_st.gvk_cb_draws >= cap { gvk_flush(render3d_st) }
   if render3d_st.gvk_cb == null { render3d_st.gvk_cb_draws = 0 }
   render3d_st.gvk_cb_draws += 1
   let prof = gvk_prof(render3d_st)
@@ -2124,3 +2121,15 @@ function gvk_say_compressed(render3d_st: Render3dState, tex: int) -> void { prin
 function gvk_say_no_pipeline(render3d_st: Render3dState, p: int) -> void { print(`r3d: vulkan: no pipeline for {gpu_program_key(render3d_st, p)}; its draws are skipped`) }
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
 function gvk_say_swap_remade(render3d_st: Render3dState, w: int, h: int) -> void { print(`r3d: vulkan: swapchain remade {w}x{h} (was {gl_width()}x{gl_height()}, stale {render3d_st.gvk_swap_stale})`) }
+
+# Draws a command buffer holds before it is submitted and the frame goes on in the next. Metal pools
+# the storage a command buffer grew to and grows it only when one encodes more than any before, so
+# with a bound and that many drawn at start-up (r3d_warm_commands) play never grows it. 0: no bound.
+const GVK_CB_DRAWS: int = 512
+function gvk_cb_cap_of(render3d_st: mut Render3dState) -> int {
+  if render3d_st.gvk_cb_cap < 0 {
+    render3d_st.gvk_cb_cap = GVK_CB_DRAWS
+    if r3d_env_has(render3d_st, "R3D_CB_DRAWS") { render3d_st.gvk_cb_cap = Text.to_int(r3d_env(render3d_st, "R3D_CB_DRAWS")) }
+  }
+  return render3d_st.gvk_cb_cap
+}
