@@ -41,36 +41,3 @@ function plural_add(i18n_st: mut I18nState, e: PoEntry) -> void {
     if k < len(e.forms) { push(i18n_st.forms, e.forms[k]) } else { push(i18n_st.forms, e.forms[len(e.forms) - 1]) }
   }
 }
-
-# `one` or `many` by the count, in the language in use, with every {1} the count: Ln("{1} trout",
-# "{1} trout", 3). English (or a line the file lacks) is one for 1 and many otherwise
-export function Ln(i18n_st: I18nState, one: string, many: string, n: int) -> string {
-  var t = many
-  if n == 1 { t = one }
-  if i18n_st.on {
-    let k = Dict.get_or(i18n_st.plural, one, -1)
-    if k >= 0 {
-      let f = i18n_st.forms[k * 3 + i18n_plural_form(i18n_st.plural_rule, n)]
-      if not blank(f) { t = f }
-    }
-  }
-  return count_in(t, n)
-}
-
-@alloc_ok("a counted line (Ln) made when the game asks for one, outside a frame; its caller keeps it")
-function count_in(t: string, n: int) -> string {
-  let m = len(t)
-  var r = ""
-  var seg = 0
-  var i = 0
-  while i < m {
-    if hole_at(t, i) == 1 {
-      r = r + t[seg..i] + `{n}`
-      i = hole_end(t, i)
-      seg = i
-      continue
-    }
-    i += 1
-  }
-  return r + t[seg..m]
-}

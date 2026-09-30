@@ -26,7 +26,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.devlink](ludic.devlink/README.md) | an editor's live link into a running dev build: loopback UDP, one request a frame, verbs as ports |
 | [ludic.fishing](ludic.fishing/README.md) | a rod at the water: cast, bite, the reel's fight, the landing; species as an open registry |
 | [ludic.hints](ludic.hints/README.md) | a rail of what is true now, most urgent first, each a card that teaches it and can be muted by key |
-| [ludic.i18n](ludic.i18n/README.md) | a game in any language: gettext `.po` files, patterns with holes, plurals, a mod folder, a font per language |
+| [ludic.i18n](ludic.i18n/README.md) | a game in any language by keys: gettext `.po` files (en.po the English), holes, plurals, a mod folder, a font per language |
 | [ludic.inventory](ludic.inventory/README.md) | a pack: a count per kind, with room the game decides |
 | [ludic.minimap](ludic.minimap/README.md) | a map's logic: the explored fog over a grid and its land share, the player's marks, and the view (world to map and back, zoom, pan, the camp, you, focus) |
 | [ludic.needs](ludic.needs/README.md) | a body's warmth, food, water and energy, and the countdown to a collapse |

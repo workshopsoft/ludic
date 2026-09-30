@@ -1,83 +1,10 @@
-# translate.ludic - what the game draws, in the language in use: a key (keyed_render.ludic); else, the old
-# English form, exact, else a pattern, else padding taken off, else a paragraph a sentence at a time
+# translate.ludic - what the game draws, in the language in use: a key (keyed_render.ludic), a line with
+# a key glued into it (mixed.ludic) or bracketed inside it (nest.ludic); anything else is drawn as it is -
+# a player's name, a chat line, a number. English lives in en.po under keys, never looked up by its words
 export function L(i18n_st: mut I18nState, s: string) -> string {
   let mixed = kx_mixed(s)
   if i18n_is_key(s) and not mixed { return keyed(i18n_st, s) }   # a key whole: its arguments are made in it
   if kx_nested(s) { return kx_nest_line(i18n_st, s) }
   if mixed { return kx_line(i18n_st, s) }
-  if not i18n_st.on { return s }
-  let ci = Dict.get_or(i18n_st.cache, s, -1)
-  if ci >= 0 { return i18n_st.cache_out[ci] }
-  let r = whole(i18n_st, s)
-  if Dict.size(i18n_st.cache) >= CACHE_MAX {
-    Dict.clear(i18n_st.cache)
-    List.clear(i18n_st.cache_out)
-  }
-  @alloc_ok("a translation cache miss: the entry is kept, up to CACHE_MAX")
-  Dict.set(i18n_st.cache, s, len(i18n_st.cache_out))
-  @alloc_ok("a translation cache miss: as above")
-  push(i18n_st.cache_out, r)
-  return r
-}
-
-@alloc_ok("a translation cache miss (L): once per distinct text, bounded by CACHE_MAX")
-function whole(i18n_st: mut I18nState, s: string) -> string {
-  let n = len(s)
-  if n == 0 { return s }
-  let e = Dict.get_or(i18n_st.exact, s, -1)
-  if e >= 0 { return i18n_st.out[e] }
-  let r = pattern(i18n_st, s, 0)
-  if i18n_st.hit { return r }
-  # the padding a layout put round a word: "   owned"
-  var a = 0
-  var b = n
-  while a < n and s[a] == 32 { a += 1 }
-  while b > a and s[b - 1] == 32 { b -= 1 }
-  if a > 0 or b < n {
-    if b <= a { return s }
-    let core: string = s[a..b]
-    let t = whole(i18n_st, core)
-    if t == core { return s }
-    return s[0..a] + t + s[b..n]
-  }
-  return sentences(i18n_st, s)
-}
-
-# a paragraph built from sentences, one at a time; English stays where a sentence is unknown
-@alloc_ok("a translation cache miss (L): once per distinct text")
-function sentences(i18n_st: mut I18nState, s: string) -> string {
-  let n = len(s)
-  var r = ""
-  var start = 0
-  var any = false
-  var pieces = 0
-  var i = 0
-  while i < n - 1 {
-    let c = s[i]
-    if (c == 46 or c == 33 or c == 63) and s[i + 1] == 32 {
-      let t = sentence(i18n_st, s[start..i + 1])
-      if i18n_st.hit { any = true }
-      r = r + t + " "
-      start = i + 2
-      pieces += 1
-      i += 2
-      continue
-    }
-    i += 1
-  }
-  if pieces == 0 { return s }
-  let t = sentence(i18n_st, s[start..n])
-  if i18n_st.hit { any = true }
-  if not any { return s }
-  return r + t
-}
-
-function sentence(i18n_st: mut I18nState, p: string) -> string {
-  i18n_st.hit = false
-  let e = Dict.get_or(i18n_st.exact, p, -1)
-  if e >= 0 {
-    i18n_st.hit = true
-    return i18n_st.out[e]
-  }
-  return pattern(i18n_st, p, 0)
+  return s
 }

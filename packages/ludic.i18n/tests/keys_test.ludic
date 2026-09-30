@@ -1,6 +1,6 @@
 # keys_test.ludic - keys where English was: en.po as the base under every language, a key's text from the
 # language in use else English else the key ([[key]] in a developer's build), holes filled by arguments
-# that may be keys themselves, plural forms by each language's rule, and the old English form beside them
+# that may be keys themselves, plural forms by each language's rule, and plain text drawn as it is
 import "ludic.i18n"
 program I18nKeysTest {
   numbers float
@@ -68,22 +68,12 @@ program I18nKeysTest {
     expect(L(i18n_st, trn(kn"catch.count", 2, "", "", "")) == "2 trout")      # the language lacks it
   }
 
-  test "the old English form still works beside keys, so a game can move over a file at a time" (i18n_st: mut I18nState) {
+  test "a plain string is drawn as it is in every language: a player named Settings stays Settings" (i18n_st: mut I18nState) {
     start (i18n_st)
-    expect(L(i18n_st, "Settings") == "Settings")
     i18n_load_text(i18n_st, tt())
-    expect(L(i18n_st, "Settings") == "Ayarlar")
-    expect(L(i18n_st, tr(k"pause.resume")) == "Devam")
+    expect(L(i18n_st, "Settings") == "Settings" and L(i18n_st, tr(k"pause.resume")) == "Devam")
+    expect(L(i18n_st, trf(k"catch.saw", "Settings", "5:30", "", "")) == "5:30 saatinde Settings gordun.")   # a name in a hole too
     expect(not i18n_is_key("Settings") and i18n_is_key(i18n_key("x")) and i18n_is_key(i18n_key_plural("x")))
-  }
-
-  test "an English value handed into a key's hole still gets its old English line, until it is a key itself" (i18n_st: mut I18nState) {
-    start (i18n_st)
-    expect(L(i18n_st, trf(k"catch.saw", "Settings", "5:30", "", "")) == "You saw Settings at 5:30.")
-    i18n_load_text(i18n_st, tt())
-    expect(L(i18n_st, trf(k"catch.saw", "Settings", "5:30", "", "")) == "5:30 saatinde Ayarlar gordun.")   # exact
-    expect(L(i18n_st, trf(k"catch.saw", "Day 3", "5:30", "", "")) == "5:30 saatinde 3. gun gordun.")       # a pattern
-    expect(L(i18n_st, trf(k"catch.saw", "Nowhere known", "7", "", "")) == "7 saatinde Nowhere known gordun.")  # no line: as it is
   }
 
   test "a key's text glued into an English line is made where it sits, until the line is a key of its own" (i18n_st: mut I18nState) {
@@ -94,7 +84,7 @@ program I18nKeysTest {
     expect(L(i18n_st, "Not owned.  " + tr(k"pause.quit")) == "Not owned.  Quit" and L(i18n_st, elk + "Quit") == "an elkQuit")
     expect(L(i18n_st, trf(k"catch.saw", "Seen: " + elk, "5:30", "", "")) == "You saw Seen: an elk at 5:30.")
     i18n_load_text(i18n_st, tt())
-    expect(L(i18n_st, "Day " + tr(k"pause.resume")) == "Devam. gun")      # the name made, then the line's own pattern
+    expect(L(i18n_st, "Day " + tr(k"pause.resume")) == "Day Devam")       # the name made; the words round it as they are
     expect(L(i18n_st, trf(k"catch.saw", elk, "5:30", "", "")) == "5:30 saatinde bir geyik gordun.")   # a key whole is untouched
   }
 }

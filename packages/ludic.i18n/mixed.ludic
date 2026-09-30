@@ -1,5 +1,5 @@
 # mixed.ludic - a key's text glued into an English line ("A {1}, {2} cm." given a name that is a key, or a
-# name + "\n" + its blurb): each marked name made in the language in use, then the line as English. Interim,
+# name + "\n" + its blurb): each marked name made in the language in use; the words round it drawn as they are. Interim,
 # until every such line is a key of its own (26.9); a mark with arguments cannot be told from the line after it
 
 # a key's name: a-z, 0-9, _ and . (every key the compiler derives or a game writes), a full stop at its
@@ -30,8 +30,7 @@ function kx_line(i18n_st: mut I18nState, s: string) -> string {
   if i18n_st.kc == null { kc_clear(i18n_st) }
   let ci = Dict.get_or(i18n_st.kc, s, -1)
   if ci >= 0 { return i18n_st.kc_out[ci] }
-  var r = kx_unmix(i18n_st, s)
-  if i18n_st.on { r = whole(i18n_st, r) }
+  let r = kx_unmix(i18n_st, s)
   if Dict.size(i18n_st.kc) >= CACHE_MAX { kc_clear(i18n_st) }
   @alloc_ok("a line with a key glued in, made into text: kept, up to CACHE_MAX")
   Dict.set(i18n_st.kc, s, len(i18n_st.kc_out))

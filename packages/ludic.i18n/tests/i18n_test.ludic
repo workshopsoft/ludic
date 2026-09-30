@@ -1,6 +1,6 @@
-# i18n_test.ludic - languages from a shipped list and a mod folder, exact lines, patterns with their
-# holes translated, a paragraph a sentence at a time, padding, plurals, the font a language names,
-# and English untouched throughout; every file written to the temp directory
+# i18n_test.ludic - languages from a shipped list and a mod folder, a language's keys and their holes,
+# plurals, the font a language names, and plain text drawn as it is; every file written to the
+# temp directory
 import "ludic.i18n"
 program I18nTest {
   numbers float
@@ -30,11 +30,10 @@ program I18nTest {
   # a shipped "tt" with a font of its own, and a Russian-shaped plural
   function tt() -> string {
     var s = header("Test Tongue", "\"X-Font: font_tt\\n\"\n\"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : 2);\\n\"")
-    s = s + po_line("Settings", "Zettings") + po_line("Plant fiber", "Lif") + po_line("a deer", "") + po_line("deer", "geyik")
-    s = s + po_line("Day {1}", "{1}. Gun") + po_line("+{1} {2}", "{2} +{1}") + po_line("You saw {1}.", "{1} gordun.")
-    s = s + po_line("You need to eat.", "Yemek lazim.") + po_line("owned", "senin")
-    s = s + "msgid \"{1} trout\"\nmsgid_plural \"{1} trout\"\nmsgstr[0] \"{1} alabalik\"\nmsgstr[1] \"{1} alabaliga\"\nmsgstr[2] \"{1} alabaliklar\"\n\n"
-    s = s + "msgid \"Multi\"\n\"line\"\nmsgstr \"Cok\"\n\"satir\\n\"\n"
+    s = s + po_line("menu.settings", "Zettings") + po_line("items.fiber.name", "Lif") + po_line("hud.day", "{1}. Gun")
+    s = s + po_line("pack.gain", "{2} +{1}") + po_line("empty.one", "")
+    s = s + "msgid \"catch.count\"\nmsgid_plural \"catch.count\"\nmsgstr[0] \"{1} alabalik\"\nmsgstr[1] \"{1} alabaliga\"\nmsgstr[2] \"{1} alabaliklar\"\n\n"
+    s = s + "msgid \"multi.line\"\nmsgstr \"Cok\"\n\"satir\\n\"\n"
     return s
   }
 
@@ -62,39 +61,25 @@ program I18nTest {
     expect(L(i18n_st, "Settings") == "Settings")
   }
 
-  test "exact lines, patterns with translated holes, and English where unknown" (i18n_st: mut I18nState, i18n_test_st: mut I18nTestState) {
+  test "a language's keys, their holes, and plain text drawn as it is" (i18n_st: mut I18nState, i18n_test_st: mut I18nTestState) {
     fresh(i18n_st, i18n_test_st)
     i18n_use(i18n_st, "tt")
     expect(i18n_on(i18n_st))
     expect(i18n_current(i18n_st) == "tt")
-    expect(L(i18n_st, "Settings") == "Zettings")
-    expect(L(i18n_st, "Day 12") == "12. Gun")
-    expect(L(i18n_st, "+2 Plant fiber") == "Lif +2")
-    expect(L(i18n_st, "You saw a deer.") == "geyik gordun.")
-    expect(L(i18n_st, "zzqx words nobody wrote") == "zzqx words nobody wrote")
-    expect(L(i18n_st, "Multiline") == "Coksatir\n")
-    expect_eq(i18n_exact_count(i18n_st), 6)
-    expect_eq(i18n_pattern_count(i18n_st), 3)
+    expect(L(i18n_st, tr(k"menu.settings")) == "Zettings")
+    expect(L(i18n_st, trf(k"hud.day", "12", "", "", "")) == "12. Gun")
+    expect(L(i18n_st, trf(k"pack.gain", "2", tr(k"items.fiber.name"), "", "")) == "Lif +2")
+    expect(L(i18n_st, tr(k"multi.line")) == "Coksatir\n")
+    expect(L(i18n_st, "Settings") == "Settings")
+    expect_eq(i18n_exact_count(i18n_st), 5)
   }
 
-  test "a paragraph a sentence at a time, and a layout's padding kept" (i18n_st: mut I18nState, i18n_test_st: mut I18nTestState) {
+  test "plurals by the file's rule" (i18n_st: mut I18nState, i18n_test_st: mut I18nTestState) {
     fresh(i18n_st, i18n_test_st)
-    i18n_use(i18n_st, "tt")
-    expect(L(i18n_st, "You need to eat. zzqx words nobody wrote.") == "Yemek lazim. zzqx words nobody wrote.")
-    expect(L(i18n_st, "zzqx. zzqy.") == "zzqx. zzqy.")
-    expect(L(i18n_st, "   owned") == "   senin")
-    expect(L(i18n_st, "   zzqx") == "   zzqx")
-  }
-
-  test "plurals by the file's rule, and English by one and many" (i18n_st: mut I18nState, i18n_test_st: mut I18nTestState) {
-    fresh(i18n_st, i18n_test_st)
-    expect(Ln(i18n_st, "{1} trout", "{1} trouts", 1) == "1 trout")
-    expect(Ln(i18n_st, "{1} trout", "{1} trouts", 3) == "3 trouts")
     i18n_use(i18n_st, "tt")
     expect_eq(i18n_plural_rule(i18n_st), PL_SLAVIC)
-    expect(Ln(i18n_st, "{1} trout", "{1} trouts", 21) == "21 alabalik")
-    expect(Ln(i18n_st, "{1} trout", "{1} trouts", 5) == "5 alabaliklar")
-    expect(Ln(i18n_st, "{1} fish", "{1} fishes", 2) == "2 fishes")
+    expect(L(i18n_st, trn(kn"catch.count", 21, "", "", "")) == "21 alabalik")
+    expect(L(i18n_st, trn(kn"catch.count", 5, "", "", "")) == "5 alabaliklar")
     expect_eq(i18n_plural_form(PL_NOT_ONE, 0), 1)
     expect_eq(i18n_plural_form(PL_ABOVE_ONE, 0), 0)
     expect_eq(i18n_plural_form(PL_SLAVIC, 3), 1)
@@ -117,28 +102,28 @@ program I18nTest {
   test "a language switched back to is its kept tables, not its file read again; a new probe reads it" (i18n_st: mut I18nState, i18n_test_st: mut I18nTestState) {
     fresh(i18n_st, i18n_test_st)
     i18n_use(i18n_st, "tt")
-    let first = L(i18n_st, "Settings")
-    Fs.write_text(dir() + "/tt.po", header("Tongue", "") + po_line("Settings", "Changed"))
+    let first = L(i18n_st, tr(k"menu.settings"))
+    Fs.write_text(dir() + "/tt.po", header("Tongue", "") + po_line("menu.settings", "Changed"))
     i18n_use(i18n_st, "en")
     i18n_use(i18n_st, "tt")
-    expect(L(i18n_st, "Settings") == first)
+    expect(L(i18n_st, tr(k"menu.settings")) == first)
     i18n_init(i18n_st)
     i18n_use(i18n_st, "tt")
-    expect(L(i18n_st, "Settings") == "Changed")
+    expect(L(i18n_st, tr(k"menu.settings")) == "Changed")
   }
 
   test "a mod in the player's folder is found, replaces a shipped code, and goes when removed" (i18n_st: mut I18nState, i18n_test_st: mut I18nTestState) {
     fresh(i18n_st, i18n_test_st)
-    Fs.write_text(mods() + "/zz.po", header("Mod Tongue", "") + po_line("Settings", "Mettings"))
-    Fs.write_text(mods() + "/tt.po", header("Tongue Two", "") + po_line("Settings", "Z2"))
+    Fs.write_text(mods() + "/zz.po", header("Mod Tongue", "") + po_line("menu.settings", "Mettings"))
+    Fs.write_text(mods() + "/tt.po", header("Tongue Two", "") + po_line("menu.settings", "Z2"))
     i18n_init(i18n_st)
     expect_eq(i18n_count(i18n_st), 3)
     expect(i18n_name_at(i18n_st, i18n_index(i18n_st, "zz")) == "Mod Tongue")
     i18n_use(i18n_st, "zz")
-    expect(L(i18n_st, "Settings") == "Mettings")
+    expect(L(i18n_st, tr(k"menu.settings")) == "Mettings")
     expect(L(i18n_st, "Day 3") == "Day 3")
     i18n_use(i18n_st, "tt")
-    expect(L(i18n_st, "Settings") == "Z2")
+    expect(L(i18n_st, tr(k"menu.settings")) == "Z2")
     Fs.remove(mods() + "/zz.po")
     Fs.remove(mods() + "/tt.po")
     i18n_init(i18n_st)
@@ -158,9 +143,9 @@ program I18nTest {
   test "a header field, and a .po loaded from text" (i18n_st: mut I18nState) {
     expect(i18n_header(tt(), "X-Language-Name") == "Test Tongue")
     expect(i18n_header(tt(), "X-Nothing") == "")
-    i18n_load_text(i18n_st, po_line("Quit", "Cik"))
-    expect(L(i18n_st, "Quit") == "Cik")
+    i18n_load_text(i18n_st, po_line("pause.quit", "Cik"))
+    expect(L(i18n_st, tr(k"pause.quit")) == "Cik")
     i18n_off(i18n_st)
-    expect(L(i18n_st, "Quit") == "Quit")
+    expect(not (L(i18n_st, tr(k"pause.quit")) == "Cik"))      # back to English, whatever en.po is found
   }
 }

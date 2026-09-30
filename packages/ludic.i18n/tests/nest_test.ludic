@@ -28,8 +28,8 @@ program I18nNestTest {
     expect(L(i18n_st, trf(k"shop.ada", day, "", "", "")) == "Ada: Day 3")
     expect(L(i18n_st, b(trf(k"shop.ada", day, "", "", ""))) == "Ada: Day 3")
     i18n_load_text(i18n_st, tt())
-    expect(L(i18n_st, "Settings " + day) == "Settings 3. Gun")     # the rest is English, looked up as it was
-    expect(L(i18n_st, b("Settings")) == "Ayarlar")
+    expect(L(i18n_st, "Settings " + day) == "Settings 3. Gun")     # the words round it drawn as they are
+    expect(L(i18n_st, b("Settings")) == "Settings")                # a name in a bracket too
   }
 
   test "a bracket with no partner draws nothing of itself" (i18n_st: mut I18nState) {
