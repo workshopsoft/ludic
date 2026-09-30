@@ -1,0 +1,4 @@
+ab { from: "a", to: "b", speed: 15.0, lanes_back: 0 }
+bc { from: "b", to: "c", speed: 15.0, lanes_back: 0, pts: [{ x: 230.0, z: 100.0 }] }
+cd { from: "c", to: "d", speed: 15.0, lanes_back: 0 }
+da { from: "d", to: "a", speed: 15.0, lanes_back: 0 }

@@ -1,0 +1,150 @@
+# route.ludic - shortest or fastest route on the graph. The search runs over edges, not nodes, so a turn rule
+# (forbid, stop, yield) is a cost or a wall between two edges, and a U-turn is allowed only where a road ends.
+# Nothing is made: distances, parents and the heap are lists the state keeps.
+
+const RD_FAR: float = 1000000000.0
+const RD_STOP_WAIT: float = 4.0      # seconds a stop sign is worth to a fastest route
+const RD_YIELD_WAIT: float = 1.5
+const RD_SIGNAL_SHARE: float = 0.25  # of a signal's cycle
+
+function rd_heap_push(roads_st: mut RoadsState, key: float, val: int) -> void {
+  kept_push(roads_st.rd_hk, key)
+  kept_push(roads_st.rd_hv, val)
+  var i = len(roads_st.rd_hk) - 1
+  while i > 0 {
+    let p = (i - 1) / 2
+    if roads_st.rd_hk[p] <= roads_st.rd_hk[i] { break }
+    let tk = roads_st.rd_hk[p]
+    let tv = roads_st.rd_hv[p]
+    roads_st.rd_hk[p] = roads_st.rd_hk[i]
+    roads_st.rd_hv[p] = roads_st.rd_hv[i]
+    roads_st.rd_hk[i] = tk
+    roads_st.rd_hv[i] = tv
+    i = p
+  }
+}
+
+# the smallest key and its value come off; the key is left in rd_route_cost's neighbour, rd_pop_key
+function rd_heap_pop(roads_st: mut RoadsState) -> int {
+  let top = roads_st.rd_hv[0]
+  let n = len(roads_st.rd_hk) - 1
+  roads_st.rd_hk[0] = roads_st.rd_hk[n]
+  roads_st.rd_hv[0] = roads_st.rd_hv[n]
+  List.pop(roads_st.rd_hk)
+  List.pop(roads_st.rd_hv)
+  var i = 0
+  while true {
+    let l = 2 * i + 1
+    let r = l + 1
+    var m = i
+    if l < n and roads_st.rd_hk[l] < roads_st.rd_hk[m] { m = l }
+    if r < n and roads_st.rd_hk[r] < roads_st.rd_hk[m] { m = r }
+    if m == i { break }
+    let tk = roads_st.rd_hk[m]
+    let tv = roads_st.rd_hv[m]
+    roads_st.rd_hk[m] = roads_st.rd_hk[i]
+    roads_st.rd_hv[m] = roads_st.rd_hv[i]
+    roads_st.rd_hk[i] = tk
+    roads_st.rd_hv[i] = tv
+    i = m
+  }
+  return top
+}
+
+function rd_turn_cost(roads_st: RoadsState, rule: int, node: int, mode: int) -> float {
+  if mode != ROADS_FASTEST { return 0.0 }
+  var c = 0.0
+  if rule == ROAD_RULE_STOP { c += RD_STOP_WAIT }
+  if rule == ROAD_RULE_YIELD { c += RD_YIELD_WAIT }
+  if roads_st.rd_nsignal[node] != 0 { c += roads_st.rd_ncycle[node] * RD_SIGNAL_SHARE }
+  return c
+}
+
+# the edges from edge e0 to edge e1, both included, into `out` (cleared first); how many, or -1 when there is no way.
+# The cost (metres, or seconds for ROADS_FASTEST) of everything after e0 is in roads_route_cost
+export function roads_route_edges(roads_st: mut RoadsState, e0: int, e1: int, mode: int, out: []int) -> int {
+  List.clear(out)
+  roads_st.rd_route_cost = 0.0
+  if not roads_edge_ok(roads_st, e0) or not roads_edge_ok(roads_st, e1) { return -1 }
+  let ne = len(roads_st.rd_efrom)
+  for e in 0 .. ne {
+    roads_st.rd_dist[e] = RD_FAR
+    roads_st.rd_prev[e] = -1
+  }
+  if e0 == e1 {
+    kept_push(out, e0)
+    return 1
+  }
+  List.clear(roads_st.rd_hk)
+  List.clear(roads_st.rd_hv)
+  roads_st.rd_dist[e0] = 0.0
+  rd_heap_push(roads_st, 0.0, e0)
+  var found = false
+  while len(roads_st.rd_hk) > 0 {
+    let d = roads_st.rd_hk[0]
+    let e = rd_heap_pop(roads_st)
+    if d > roads_st.rd_dist[e] { continue }
+    if e == e1 {
+      found = true
+      break
+    }
+    let n = roads_st.rd_eto[e]
+    let k0 = roads_st.rd_out_start[n]
+    let k1 = roads_st.rd_out_start[n + 1]
+    for k in k0 .. k1 {
+      let f = roads_st.rd_out[k]
+      let rule = roads_turn_rule(roads_st, e, f)
+      if rule == ROAD_RULE_FORBID { continue }
+      if f == (e ^ 1) and k1 - k0 > 1 { continue }          # a U-turn only where the road ends
+      var cost = roads_st.rd_elen[f]
+      if mode == ROADS_FASTEST { cost = roads_st.rd_elen[f] / roads_st.rd_espeed[f] }
+      let nd = d + cost + rd_turn_cost(roads_st, rule, n, mode)
+      if nd < roads_st.rd_dist[f] {
+        roads_st.rd_dist[f] = nd
+        roads_st.rd_prev[f] = e
+        rd_heap_push(roads_st, nd, f)
+      }
+    }
+  }
+  if not found { return -1 }
+  roads_st.rd_route_cost = roads_st.rd_dist[e1]
+  var e = e1
+  while e >= 0 {
+    kept_push(out, e)
+    e = roads_st.rd_prev[e]
+  }
+  let n = len(out)
+  for i in 0 .. n / 2 {
+    let t = out[i]
+    out[i] = out[n - 1 - i]
+    out[n - 1 - i] = t
+  }
+  return n
+}
+
+export function roads_route_cost(roads_st: RoadsState) -> float { return roads_st.rd_route_cost }
+
+# the route from (x0, z0) to (x1, z1): each snapped to its nearest road, every direction the roads allow tried, the
+# cheapest kept. Into `out`: the edges, first to last; how many, or -1. A car drives the last edge to its end
+export function roads_route(roads_st: mut RoadsState, x0: float, z0: float, x1: float, z1: float, mode: int, out: []int) -> int {
+  List.clear(out)
+  let s0 = roads_nearest(roads_st, x0, z0)
+  let s1 = roads_nearest(roads_st, x1, z1)
+  if s0 < 0 or s1 < 0 { return -1 }
+  var best = -1
+  var best_cost = RD_FAR
+  for a in 0 .. 2 {
+    for b in 0 .. 2 {
+      let n = roads_route_edges(roads_st, 2 * s0 + a, 2 * s1 + b, mode, roads_st.rd_route_tmp)
+      if n < 0 { continue }
+      if best < 0 or roads_st.rd_route_cost < best_cost {
+        best = n
+        best_cost = roads_st.rd_route_cost
+        List.clear(out)
+        for i in 0 .. n { kept_push(out, roads_st.rd_route_tmp[i]) }
+      }
+    }
+  }
+  if best < 0 { roads_st.rd_route_cost = 0.0 } else { roads_st.rd_route_cost = best_cost }
+  return best
+}

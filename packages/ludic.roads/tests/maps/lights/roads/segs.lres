@@ -1,0 +1,4 @@
+wc { from: "w", to: "c", speed: 12.0, phase: 1, lanes_back: 0 }
+ce { from: "c", to: "e", speed: 12.0, phase: 1, lanes_back: 0 }
+nc { from: "n", to: "c", speed: 12.0, phase: 0, lanes_back: 0 }
+cs { from: "c", to: "s", speed: 12.0, phase: 0, lanes_back: 0 }

@@ -1,0 +1,7 @@
+# the arms are slow streets, the one south of the crossing slower still, north-south the main road; the arc is long and fast; the far road is one way
+wc { from: "w", to: "c", speed: 10.0, priority: 1 }
+ce { from: "c", to: "e", speed: 10.0, priority: 1 }
+nc { from: "n", to: "c", speed: 10.0, priority: 2 }
+cs { from: "c", to: "s", speed: 5.0, priority: 2 }
+arc { from: "e", to: "s", speed: 30.0, priority: 1, pts: [{ x: 160.0, z: 40.0 }, { x: 150.0, z: 150.0 }, { x: 60.0, z: 170.0 }], lanes_fwd: 2, lanes_back: 2, kind: "highway" }
+out { from: "s", to: "far", speed: 14.0, lanes_fwd: 1, lanes_back: 0 }

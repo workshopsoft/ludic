@@ -1,0 +1,76 @@
+# defs.ludic - what a map holds (maps/<map>/roads/*.lres, painted in an editor) and what a game fills.
+# Units: metres, x east and z south (a map seen from above, z down the page); the right of a heading h is
+# (-h.z, h.x). `yaw` is atan2(h.x, h.z): 0 faces +z.
+
+# a point where roads meet or end. `control` says who goes first where three or more meet: "free" (by the
+# priority of the road, then by who came first) or "signal" (the roads take turns, `cycle` seconds a phase;
+# a road's `phase` says which phase lets its traffic through)
+export property RoadNode {
+  key: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+  @OneOf("free", "signal") control: string = "free"
+  @Unit("s") @Range(2, 300) cycle: float = 12.0
+}
+
+@PerMap @ByKey
+export registry RoadNodes of RoadNode from "roads/nodes.lres"
+
+# a control point of a road's spline, between its two nodes
+export property RoadPt {
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+}
+
+# a road between two nodes: a Catmull-Rom spline through `from`, each of `pts`, `to` (the ends run
+# straight in and out). `lanes_fwd` go from `from` to `to`, `lanes_back` the other way (0: one way); `speed`
+# is the limit; `priority` decides who goes first at a free junction (higher wins); `phase` the signal
+# phase that lets it through
+export property RoadSeg {
+  key: string = ""
+  @Ref(RoadNodes) from: string = ""
+  @Ref(RoadNodes) to: string = ""
+  pts: []RoadPt = new []RoadPt
+  @Range(0, 6) lanes_fwd: int = 1
+  @Range(0, 6) lanes_back: int = 1
+  @Unit("m") @Range(1, 8) lane_width: float = 3.5
+  @Unit("m/s") @Range(1, 60) speed: float = 13.9
+  @Range(0, 9) priority: int = 1
+  @Range(0, 7) phase: int = 0
+  @OneOf("street", "highway", "track") kind: string = "street"
+}
+
+@PerMap @ByKey
+export registry RoadSegs of RoadSeg from "roads/segs.lres"
+
+# what the traffic may do at a node coming in along `from` and leaving along `to`: "free" (the node's
+# rule), "yield" (give way to any higher priority road), "stop" (come to a halt first) or "forbid" (never:
+# routes do not use it either)
+export property RoadTurn {
+  key: string = ""
+  @Ref(RoadNodes) node: string = ""
+  @Ref(RoadSegs) from: string = ""
+  @Ref(RoadSegs) to: string = ""
+  @OneOf("free", "yield", "stop", "forbid") rule: string = "yield"
+}
+
+@PerMap @ByKey
+export registry RoadTurns of RoadTurn from "roads/turns.lres"
+
+# a kind of car the traffic is made of: its size, its drive (`pace` is the share of the limit it drives at),
+# how hard it accelerates and brakes, the `headway` it keeps to the car ahead and the `gap` it stops behind one,
+# and `weight`, the odds of it among the kinds when traffic is made
+export property RoadCarKind {
+  key: string = ""
+  @Unit("m") @Range(1, 30) length: float = 4.5
+  @Unit("m/s") @Range(1, 80) max_speed: float = 40.0
+  @Unit("m/s2") @Range(0.5, 20) accel: float = 2.5
+  @Unit("m/s2") @Range(0.5, 20) brake: float = 4.0
+  @Unit("s") @Range(0.2, 5) headway: float = 1.4
+  @Unit("m") @Range(0.5, 10) gap: float = 2.0
+  @Range(0.3, 2) pace: float = 1.0
+  @Range(1, 1000) weight: int = 1
+}
+
+@AppendOnly @ByKey
+export open registry RoadCarKinds of RoadCarKind as RCK

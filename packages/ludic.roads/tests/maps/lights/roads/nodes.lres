@@ -1,0 +1,6 @@
+# the same crossroads under a signal: six seconds a phase, north-south first
+c { x: 0.0, z: 0.0, control: "signal", cycle: 6.0 }
+w { x: -120.0, z: 0.0 }
+e { x: 120.0, z: 0.0 }
+n { x: 0.0, z: -120.0 }
+s { x: 0.0, z: 120.0 }

@@ -1,0 +1,8 @@
+# ludic.roads - a road network as data a map paints (nodes, segments as splines with lanes and a speed
+# limit, turn rules), routing on it, and traffic that follows its lanes with spacing and takes turns at
+# junctions. Uses ludic.base and nothing else.
+package "ludic.roads"
+version "0.1.0"
+kind source
+# the maps the tests read; a game's own package.ludic names its maps
+maps "tests/maps"

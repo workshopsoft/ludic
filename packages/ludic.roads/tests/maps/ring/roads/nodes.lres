@@ -1,0 +1,5 @@
+# a one way ring road, 200 m a side
+a { x: 0.0, z: 0.0 }
+b { x: 200.0, z: 0.0 }
+c { x: 200.0, z: 200.0 }
+d { x: 0.0, z: 200.0 }

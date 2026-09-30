@@ -1,0 +1,4 @@
+# a map whose turn names a road that does not leave its node: it builds without the turn, and says so
+a { x: 0.0, z: 0.0 }
+b { x: 50.0, z: 0.0 }
+c { x: 100.0, z: 0.0 }

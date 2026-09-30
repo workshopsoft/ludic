@@ -1,0 +1,2 @@
+ab { from: "a", to: "b" }
+bc { from: "b", to: "c" }

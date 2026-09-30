@@ -1,0 +1,458 @@
+# roads_test.ludic - a map's tables built into a graph (splines measured, edges, turn rules, errors), poses by lane,
+# the nearest road, shortest and fastest routes round a forbidden turn, a dead end and a one way road, and traffic:
+# a car reaching the limit, following a slower one with a gap, stopping for what the game's physics says is
+# ahead, taking turns at a junction by priority, a stop, a signal, kept to a target, taken off when it jams,
+# and the save
+import "ludic.roads"
+import "ludic.base"
+program RoadsTest {
+  numbers float
+  state RoadsTestState {
+    frame: int = 0
+    placed: int = 0
+    last_id: int = 0
+    block_id: int = -1
+    block_x: float = 1000000.0
+    sealed: bool = false
+  }
+  function fake_ground(x: float, z: float) -> float { return x * 0.01 }
+  function fake_seed() -> int { return 7 }
+  function fake_spawn_ok(roads_test_st: RoadsTestState, x: float, z: float) -> bool { return not roads_test_st.sealed }
+  function fake_place(roads_test_st: mut RoadsTestState, id: int, kind: int, x: float, y: float, z: float, yaw: float, speed: float) -> void {
+    roads_test_st.placed += 1
+    roads_test_st.last_id = id
+  }
+  function fake_probe(roads_test_st: RoadsTestState, id: int, x: float, z: float, yaw: float, look: float) -> float {
+    let d = roads_test_st.block_x - x
+    if id == roads_test_st.block_id and d >= 0.0 and d <= look { return d }
+    return -1.0
+  }
+  bind RoadsWorld { ground: fn fake_ground, seed: fn fake_seed, spawn_ok: fn fake_spawn_ok }
+  bind RoadsBody { place: fn fake_place, probe: fn fake_probe }
+
+  def RoadCarKinds car { weight: 3 }
+  def RoadCarKinds truck { length: 9.0, pace: 0.8, accel: 1.5, weight: 1 }
+
+  function load_map(roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, map: string) -> bool {
+    expect(road_nodes_load(nodes, map))
+    expect(road_segs_load(segs, map))
+    expect(road_turns_load(turns, map))
+    return roads_build(roads_st, nodes, segs, turns)
+  }
+  function drive(roads_st: mut RoadsState, roads_test_st: mut RoadsTestState, secs: float, dt: float) -> void {
+    var t = 0.0
+    while t < secs - 0.0001 {
+      roads_test_st.frame += 1
+      roads_tick(roads_st, tick_new(dt, roads_test_st.frame, 12.0))
+      t += dt
+    }
+  }
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+  function count_facts(roads_st: mut RoadsState, what: int) -> int {
+    let fs = q_drain(roads_facts(roads_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "a map becomes a graph: nodes, roads, directed edges, and a one way road has one" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    expect_eq(roads_node_count(roads_st), 6)
+    expect_eq(roads_seg_count(roads_st), 6)
+    expect_eq(roads_edge_count(roads_st), 12)
+    let wc = roads_seg_find(roads_st, "wc")
+    let out = roads_seg_find(roads_st, "out")
+    expect(roads_edge_ok(roads_st, 2 * wc))
+    expect(roads_edge_ok(roads_st, 2 * wc + 1))
+    expect(roads_edge_ok(roads_st, 2 * out))
+    expect(not roads_edge_ok(roads_st, 2 * out + 1))
+    expect(near(roads_edge_length(roads_st, 2 * wc), 100.0, 0.01))
+    expect(roads_edge_length(roads_st, 2 * roads_seg_find(roads_st, "arc")) > 250.0)
+    expect_eq(roads_edge_lanes(roads_st, 2 * roads_seg_find(roads_st, "arc")), 2)
+    expect_eq(roads_node_roads(roads_st, roads_node_find(roads_st, "c")), 4)
+    expect_eq(roads_node_roads(roads_st, roads_node_find(roads_st, "w")), 1)
+    expect_eq(roads_edge_from(roads_st, 2 * wc), roads_node_find(roads_st, "w"))
+    expect_eq(roads_edge_to(roads_st, 2 * wc + 1), roads_node_find(roads_st, "w"))
+    expect(roads_edge_reverse(roads_st, 2 * wc) == 2 * wc + 1)
+    expect_eq(roads_error(roads_st), "")
+  }
+
+  test "a spline runs through its control points, and is longer than the line between its ends" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "ring"))
+    let bc = roads_seg_find(roads_st, "bc")
+    expect(roads_seg_length(roads_st, bc) > 200.0)
+    roads_pose(roads_st, 2 * bc, roads_seg_length(roads_st, bc) * 0.5, 0)
+    expect(roads_pose_x(roads_st) > 215.0)                    # bowed out past the node line x = 200 towards 230
+    roads_pose(roads_st, 2 * bc, 0.0, 0)
+    expect(near(roads_pose_x(roads_st) - 0.0, 200.0, 4.0))    # starts at b (with the lane's offset)
+  }
+
+  test "a pose is on the right of its heading, the other way on the left, the back edge faces back" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    let wc = roads_seg_find(roads_st, "wc")
+    roads_pose(roads_st, 2 * wc, 50.0, 0)
+    expect(near(roads_pose_x(roads_st), -50.0, 0.05))
+    expect(near(roads_pose_z(roads_st), 1.75, 0.05))          # heading east: right is south (+z)
+    expect(near(roads_pose_yaw(roads_st), 1.5707963, 0.001))
+    roads_pose(roads_st, 2 * wc + 1, 50.0, 0)
+    expect(near(roads_pose_x(roads_st), -50.0, 0.05))
+    expect(near(roads_pose_z(roads_st), -1.75, 0.05))
+    expect(near(Math.abs(roads_pose_yaw(roads_st)), 1.5707963, 0.001))
+    expect(roads_pose_yaw(roads_st) < 0.0)
+    roads_config_drive_left(roads_st, true)
+    roads_pose(roads_st, 2 * wc, 50.0, 0)
+    expect(near(roads_pose_z(roads_st), -1.75, 0.05))
+    roads_config_drive_left(roads_st, false)
+    let arc = roads_seg_find(roads_st, "arc")
+    roads_pose(roads_st, 2 * arc, 100.0, 1)                   # the second lane is a lane further out
+    let x1 = roads_pose_x(roads_st)
+    let z1 = roads_pose_z(roads_st)
+    roads_pose(roads_st, 2 * arc, 100.0, 0)
+    let dx = x1 - roads_pose_x(roads_st)
+    let dz = z1 - roads_pose_z(roads_st)
+    expect(near(Math.sqrt(dx * dx + dz * dz), 3.5, 0.05))
+    let one = roads_seg_find(roads_st, "out")
+    roads_pose(roads_st, 2 * one, 10.0, 0)                    # a one way road is centred on its line
+    expect(near(roads_pose_x(roads_st), 0.0, 0.05))
+  }
+
+  test "the nearest road, how far along it, how far off, and which side's edge a point is on" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    let ce = roads_seg_find(roads_st, "ce")
+    expect_eq(roads_nearest(roads_st, 40.0, 6.0), ce)
+    expect(near(roads_near_s(roads_st), 40.0, 0.5))
+    expect(near(roads_near_d(roads_st), 6.0, 0.05))
+    expect_eq(roads_edge_for(roads_st, ce, 40.0, 6.0), 2 * ce)        # south of an eastbound road: the right
+    expect_eq(roads_nearest(roads_st, 40.0, -6.0), ce)
+    expect_eq(roads_edge_for(roads_st, ce, 40.0, -6.0), 2 * ce + 1)
+    let out = roads_seg_find(roads_st, "out")
+    expect_eq(roads_edge_for(roads_st, out, -5.0, 150.0), 2 * out)    # a one way road has only the one
+  }
+
+  test "a turn rule is kept by the edges it names" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    let nc = roads_seg_find(roads_st, "nc")
+    let ce = roads_seg_find(roads_st, "ce")
+    let wc = roads_seg_find(roads_st, "wc")
+    let cs = roads_seg_find(roads_st, "cs")
+    expect_eq(roads_turn_rule(roads_st, 2 * nc, 2 * ce), ROAD_RULE_FORBID)
+    expect_eq(roads_turn_rule(roads_st, 2 * wc, 2 * cs), ROAD_RULE_STOP)
+    expect_eq(roads_turn_rule(roads_st, 2 * wc, 2 * ce), ROAD_RULE_FREE)
+  }
+
+  test "shortest and fastest are different roads when a long one is quick" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    let wc = roads_seg_find(roads_st, "wc")
+    let cs = roads_seg_find(roads_st, "cs")
+    let arc = roads_seg_find(roads_st, "arc")
+    let out = roads_seg_find(roads_st, "out")
+    let r = new []int
+    let n = roads_route_edges(roads_st, 2 * wc, 2 * out, ROADS_SHORTEST, r)
+    expect_eq(n, 3)
+    expect_eq(r[1], 2 * cs)
+    expect(near(roads_route_cost(roads_st), 100.0 + roads_seg_length(roads_st, out), 0.5) or near(roads_route_cost(roads_st), 100.0 + 120.0, 0.5))
+    let m = roads_route_edges(roads_st, 2 * wc, 2 * out, ROADS_FASTEST, r)
+    expect_eq(m, 4)
+    expect_eq(r[2], 2 * arc)
+    expect(roads_route_cost(roads_st) < 34.0 + 120.0 / 14.0)
+  }
+
+  test "a forbidden turn is gone round, a dead end is turned at, a one way road cannot be driven back" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    let nc = roads_seg_find(roads_st, "nc")
+    let ce = roads_seg_find(roads_st, "ce")
+    let wc = roads_seg_find(roads_st, "wc")
+    let out = roads_seg_find(roads_st, "out")
+    let r = new []int
+    let n = roads_route_edges(roads_st, 2 * nc, 2 * ce, ROADS_SHORTEST, r)
+    expect_eq(n, 4)                                   # nc, then out to the dead end w and back, then ce
+    expect_eq(r[1], 2 * wc + 1)
+    expect_eq(r[2], 2 * wc)
+    expect_eq(roads_route_edges(roads_st, 2 * wc, 2 * out + 1, ROADS_SHORTEST, r), -1)
+    expect_eq(roads_route_edges(roads_st, 2 * out, 2 * wc, ROADS_SHORTEST, r), -1)    # far is a dead end of a one way road
+    expect_eq(roads_route_edges(roads_st, 2 * wc, 2 * wc, ROADS_SHORTEST, r), 1)
+  }
+
+  test "a route between two places snaps to the roads and tries both ways" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    let r = new []int
+    let n = roads_route(roads_st, -90.0, 3.0, 3.0, 90.0, ROADS_SHORTEST, r)
+    expect(n >= 2)
+    expect_eq(roads_edge_seg(roads_st, r[0]), roads_seg_find(roads_st, "wc"))
+    expect_eq(roads_edge_seg(roads_st, r[n - 1]), roads_seg_find(roads_st, "cs"))
+    expect(roads_route_cost(roads_st) >= 99.0)
+  }
+
+  test "a turn that names roads that do not meet there is left out, and said" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(road_nodes_load(nodes, "broken"))
+    expect(road_segs_load(segs, "broken"))
+    expect(road_turns_load(turns, "broken"))
+    expect(not roads_build(roads_st, nodes, segs, turns))
+    expect(Text.contains(roads_error(roads_st), "bad"))
+    expect_eq(roads_seg_count(roads_st), 2)
+  }
+
+  function fleet(roads_st: mut RoadsState) -> void {
+    roads_cars_reserve(roads_st, 16)
+  }
+
+  test "a car on a road reaches its limit and no more, is placed every tick, and goes on round a ring" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "ring"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let ab = roads_seg_find(roads_st, "ab")
+    let id = roads_spawn(roads_st, 2 * ab, 5.0, 0, RCK_CAR, -1, true)
+    expect(id >= 0)
+    expect_eq(roads_car_count(roads_st), 1)
+    expect(roads_car_yaw(roads_st, id) > 1.5)
+    var top = 0.0
+    var edges = 0
+    var last = roads_car_edge(roads_st, id)
+    for k in 0 .. 1200 {
+      drive(roads_st, roads_test_st, 0.05, 0.05)
+      let v = roads_car_speed(roads_st, id)
+      if v > top { top = v }
+      let e = roads_car_edge(roads_st, id)
+      if e != last {
+        edges += 1
+        last = e
+      }
+    }
+    expect(top <= 15.01)
+    expect(top > 14.0)
+    expect(edges >= 4)
+    expect(roads_test_st.placed >= 1200)
+    expect_eq(roads_test_st.last_id, id)
+    expect_eq(roads_car_count(roads_st), 1)
+  }
+
+  test "a car follows a slower one with a gap, never closer than a car's length and its stopping gap" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "ring"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let ab = roads_seg_find(roads_st, "ab")
+    let truck = roads_spawn(roads_st, 2 * ab, 40.0, 0, RCK_TRUCK, -1, true)
+    let car = roads_spawn(roads_st, 2 * ab, 2.0, 0, RCK_CAR, -1, true)
+    expect(truck >= 0 and car >= 0)
+    var least = 1000.0
+    var behind = 0.0
+    for k in 0 .. 600 {
+      drive(roads_st, roads_test_st, 0.05, 0.05)
+      if roads_car_edge(roads_st, truck) == roads_car_edge(roads_st, car) {
+        let gap = roads_car_s(roads_st, truck) - 9.0 - roads_car_s(roads_st, car)
+        if gap < least { least = gap }
+      }
+    }
+    expect(least > 1.0)
+    expect(roads_car_speed(roads_st, car) < 12.1)              # the truck's pace: 0.8 of 15
+    expect(roads_car_speed(roads_st, car) > 10.0)
+    expect(behind == 0.0)
+  }
+
+  test "a car stops for what the game's physics has in its way, and goes on when it is gone" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "ring"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let ab = roads_seg_find(roads_st, "ab")
+    let id = roads_spawn(roads_st, 2 * ab, 5.0, 0, RCK_CAR, -1, true)
+    roads_test_st.block_id = id
+    roads_test_st.block_x = 100.0
+    drive(roads_st, roads_test_st, 25.0, 0.05)
+    expect(roads_car_speed(roads_st, id) < 0.05)
+    let stopped_at = roads_car_s(roads_st, id)
+    expect(stopped_at < 98.0 and stopped_at > 80.0)
+    roads_test_st.block_x = 1000000.0
+    drive(roads_st, roads_test_st, 10.0, 0.05)
+    expect(roads_car_speed(roads_st, id) > 5.0)
+    expect(roads_car_s(roads_st, id) > stopped_at + 5.0 or roads_car_edge(roads_st, id) != 2 * ab)
+    roads_test_st.block_id = -1
+  }
+
+  test "a car that stands too long is taken off, with a fact" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "ring"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let ab = roads_seg_find(roads_st, "ab")
+    let id = roads_spawn(roads_st, 2 * ab, 5.0, 0, RCK_CAR, -1, true)
+    q_clear(roads_facts(roads_st))
+    roads_test_st.block_id = id
+    roads_test_st.block_x = 8.0
+    drive(roads_st, roads_test_st, 95.0, 0.1)
+    expect_eq(roads_car_count(roads_st), 0)
+    let fs = q_drain(roads_facts(roads_st))
+    var jammed = 0
+    var why = -1
+    for i in 0 .. len(fs) {
+      if fs[i].what == ROADS_JAMMED { jammed += 1 }
+      if fs[i].what == ROADS_GONE { why = fs[i].why }
+    }
+    expect_eq(jammed, 1)
+    expect_eq(why, ROADS_WHY_JAM)
+    roads_test_st.block_id = -1
+  }
+
+  # a car on edge `from` (an edge number) 12 m short of the end, bound for edge `to`, standing
+  function at_the_line(roads_st: mut RoadsState, from: int, to: int) -> int {
+    return roads_spawn(roads_st, from, roads_edge_length(roads_st, from) - 12.0, 0, RCK_CAR, to, false)
+  }
+
+  test "at a free junction the higher road goes first, then the other; one at a time" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let nc = roads_seg_find(roads_st, "nc")
+    let cs = roads_seg_find(roads_st, "cs")
+    let wc = roads_seg_find(roads_st, "wc")
+    let ce = roads_seg_find(roads_st, "ce")
+    let main_car = at_the_line(roads_st, 2 * nc, 2 * cs)
+    let side_car = at_the_line(roads_st, 2 * wc, 2 * ce)
+    expect(main_car >= 0 and side_car >= 0)
+    var main_over = -1.0
+    var side_over = -1.0
+    var both = 0
+    for k in 0 .. 800 {
+      drive(roads_st, roads_test_st, 0.05, 0.05)
+      let t = float(k + 1) * 0.05
+      let m = roads_car_edge(roads_st, main_car)
+      let s = roads_car_edge(roads_st, side_car)
+      if m == 2 * cs and main_over < 0.0 { main_over = t }
+      if s == 2 * ce and side_over < 0.0 { side_over = t }
+      if m == 2 * cs and s == 2 * ce and roads_car_s(roads_st, main_car) < 4.0 and roads_car_s(roads_st, side_car) < 4.0 { both += 1 }
+    }
+    expect(main_over > 0.0)
+    expect(side_over > 0.0)
+    expect(main_over < side_over)
+    expect_eq(both, 0)
+  }
+
+  test "a stop rule means standing first, for a second" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let wc = roads_seg_find(roads_st, "wc")
+    let cs = roads_seg_find(roads_st, "cs")
+    let id = at_the_line(roads_st, 2 * wc, 2 * cs)
+    var stood = 0.0
+    var over = -1.0
+    for k in 0 .. 800 {
+      drive(roads_st, roads_test_st, 0.05, 0.05)
+      if roads_car_edge(roads_st, id) == 2 * cs and over < 0.0 { over = float(k + 1) * 0.05 }
+      if over < 0.0 and roads_car_speed(roads_st, id) < 0.3 and roads_edge_length(roads_st, 2 * wc) - roads_car_s(roads_st, id) < 4.0 { stood += 0.05 }
+    }
+    expect(over > 0.0)
+    expect(stood >= 1.0)
+    expect(roads_car_count(roads_st) <= 1)
+  }
+
+  test "a signal lets the roads of the green phase through and holds the others" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "lights"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let c = roads_node_find(roads_st, "c")
+    expect_eq(roads_signal_phase(roads_st, c), 0)
+    let wc = roads_seg_find(roads_st, "wc")
+    let ce = roads_seg_find(roads_st, "ce")
+    let nc = roads_seg_find(roads_st, "nc")
+    let cs = roads_seg_find(roads_st, "cs")
+    let side = at_the_line(roads_st, 2 * wc, 2 * ce)
+    let main_car = at_the_line(roads_st, 2 * nc, 2 * cs)
+    var side_over = -1.0
+    var main_over = -1.0
+    for k in 0 .. 400 {
+      drive(roads_st, roads_test_st, 0.05, 0.05)
+      let t = float(k + 1) * 0.05
+      if roads_car_edge(roads_st, side) == 2 * ce and side_over < 0.0 { side_over = t }
+      if roads_car_edge(roads_st, main_car) == 2 * cs and main_over < 0.0 { main_over = t }
+    }
+    expect(main_over > 0.0 and main_over < 5.0)        # green at once
+    expect(side_over >= 6.0)                           # not before its own phase begins
+    expect(side_over < 12.0)
+    expect(near(roads_st.rd_time, 20.0, 0.1))
+    expect_eq(roads_signal_phase(roads_st, c), 1)   # 20 s: the fourth phase, the second road's
+  }
+
+  test "ambient traffic is kept to its target, each car a fact, and one taken off is made again" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    roads_traffic_target(roads_st, 6)
+    drive(roads_st, roads_test_st, 12.0, 0.1)
+    expect_eq(roads_car_count(roads_st), 6)
+    let fs = q_drain(roads_facts(roads_st))
+    var spawned = 0
+    for i in 0 .. len(fs) { if fs[i].what == ROADS_SPAWNED { spawned += 1 } }
+    expect(spawned >= 6)
+    let first = roads_car_at(roads_st, 0)
+    expect(first.alive)
+    expect(roads_despawn(roads_st, first.id))
+    expect(not roads_despawn(roads_st, first.id))
+    expect_eq(roads_car_count(roads_st), 5)
+    drive(roads_st, roads_test_st, 5.0, 0.1)
+    expect_eq(roads_car_count(roads_st), 6)
+    roads_test_st.sealed = true
+    roads_traffic_target(roads_st, 8)
+    drive(roads_st, roads_test_st, 5.0, 0.1)
+    expect_eq(roads_car_count(roads_st), 6)            # the world says not here: nothing is made in sight
+    roads_test_st.sealed = false
+  }
+
+  test "a wandering car on a town of dead ends turns round and stays on the roads for a long while" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    roads_traffic_target(roads_st, 4)
+    drive(roads_st, roads_test_st, 240.0, 0.1)
+    expect_eq(roads_car_count(roads_st), 4)
+    let fs = q_drain(roads_facts(roads_st))
+    var jams = 0
+    for i in 0 .. len(fs) { if fs[i].what == ROADS_JAMMED { jams += 1 } }
+    expect_eq(jams, 0)
+  }
+
+  test "a spawn is refused for a missing edge, kind or room; a rebuild takes the cars off with a fact" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "ring"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let ab = roads_seg_find(roads_st, "ab")
+    expect_eq(roads_spawn(roads_st, 2 * ab + 1, 5.0, 0, RCK_CAR, -1, false), -1)     # a one way road has no back
+    expect_eq(roads_spawn(roads_st, 2 * ab, 5.0, 0, 9, -1, false), -1)
+    expect_eq(roads_spawn(roads_st, 2 * ab, 5.0, 3, RCK_CAR, -1, false), -1)
+    expect_eq(roads_spawn(roads_st, 2 * ab, 500.0, 0, RCK_CAR, -1, false), -1)
+    expect(roads_spawn(roads_st, 2 * ab, 5.0, 0, RCK_CAR, -1, false) >= 0)
+    expect_eq(roads_spawn(roads_st, 2 * ab, 8.0, 0, RCK_CAR, -1, false), -1)         # no room: a car's length and two metres
+    expect_eq(roads_spawn(roads_st, 2 * ab, 30.0, 0, RCK_CAR, 2 * ab + 1, false), -1) # no way to a road that is not there
+    q_clear(roads_facts(roads_st))
+    expect(load_map(roads_st, nodes, segs, turns, "ring"))
+    expect_eq(roads_car_count(roads_st), 0)
+    let fs = q_drain(roads_facts(roads_st))
+    expect_eq(len(fs), 1)
+    expect_eq(fs[0].what, ROADS_GONE)
+    expect_eq(fs[0].why, ROADS_WHY_REBUILT)
+  }
+
+  test "the save keeps the clock, the target and the dice, and not the cars" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "ring"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    roads_traffic_target(roads_st, 3)
+    drive(roads_st, roads_test_st, 4.0, 0.1)
+    let v = roads_save(roads_st)
+    let t = roads_st.rd_time
+    let id = roads_st.rd_next_id
+    roads_reset(roads_st)
+    expect(roads_st.rd_time == 0.0)
+    roads_load(roads_st, v, 1)
+    expect(near(roads_st.rd_time, t, 0.002))
+    expect_eq(roads_st.rd_target, 3)
+    expect_eq(roads_st.rd_next_id, id)
+    expect_eq(roads_car_count(roads_st), 0)
+    drive(roads_st, roads_test_st, 5.0, 0.1)
+    expect_eq(roads_car_count(roads_st), 3)
+  }
+
+  test "the system is declared with its own key" {
+    let s = roads_system()
+    expect(s.key == "roads")
+    expect_eq(s.phase, PH_SIMULATE)
+  }
+}

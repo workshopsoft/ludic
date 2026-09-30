@@ -1,0 +1,214 @@
+# cars.ludic - the cars of the roads: a pool of records made once and reused, spawned on an edge or at random,
+# taken off by id, and looked up. Nothing here allocates once the pool has been as big as it gets
+
+const ROADS_CARS_MAX: int = 1024
+
+function rd_kind_total() -> int {
+  var t = 0
+  for k in 0 .. RCK_COUNT { t += RoadCarKinds[k].weight }
+  return t
+}
+
+function rd_kind_pick(roads_st: mut RoadsState) -> int {
+  let total = rd_kind_total()
+  if total == 0 { return -1 }
+  let r = rd_below(roads_st, total)
+  var acc = 0
+  for k in 0 .. RCK_COUNT {
+    acc += RoadCarKinds[k].weight
+    if acc > r { return k }
+  }
+  return 0
+}
+
+function rd_below(roads_st: mut RoadsState, n: int) -> int {
+  if roads_st.rd_dice == null { roads_st.rd_dice = rng_new(RoadsWorld.seed()) }
+  if n <= 1 { return 0 }
+  return rng_between(roads_st.rd_dice, 0, n - 1)
+}
+
+# `n` car records made ahead, so traffic never makes one in a frame
+export function roads_cars_reserve(roads_st: mut RoadsState, n: int) -> void {
+  while len(roads_st.rd_cars) < Math.min(n, ROADS_CARS_MAX) {
+    @alloc_ok("the pool, made before play")
+    let c = new RoadCar
+    push(roads_st.rd_cars, c)
+    kept_push(roads_st.rd_link, -1)
+  }
+}
+
+function rd_car_slot(roads_st: mut RoadsState) -> int {
+  for i in 0 .. len(roads_st.rd_cars) { if not roads_st.rd_cars[i].alive { return i } }
+  if len(roads_st.rd_cars) >= ROADS_CARS_MAX { return -1 }
+  @alloc_ok("the pool grew: more cars at once than it has held")
+  let c = new RoadCar
+  push(roads_st.rd_cars, c)
+  kept_push(roads_st.rd_link, -1)
+  return len(roads_st.rd_cars) - 1
+}
+
+export function roads_car_count(roads_st: RoadsState) -> int { return roads_st.rd_ncars }
+
+# the slot of car `id`, or -1
+export function roads_car_slot(roads_st: RoadsState, id: int) -> int {
+  for i in 0 .. len(roads_st.rd_cars) { if roads_st.rd_cars[i].alive and roads_st.rd_cars[i].id == id { return i } }
+  return -1
+}
+
+export function roads_car_slots(roads_st: RoadsState) -> int { return len(roads_st.rd_cars) }
+export function roads_car_at(roads_st: RoadsState, slot: int) -> RoadCar { return roads_st.rd_cars[slot] }
+
+# is there room for a car of `kind` at `s` of `edge` in `lane`: nobody within its length and a gap either side
+function rd_room(roads_st: RoadsState, edge: int, lane: int, s: float, length: float) -> bool {
+  for i in 0 .. len(roads_st.rd_cars) {
+    let o = roads_st.rd_cars[i]
+    if not o.alive or o.edge != edge or o.lane != lane { continue }
+    let need = length + RoadCarKinds[o.kind].length + 2.0
+    if Math.abs(o.s - s) < need { return false }
+  }
+  return true
+}
+
+# a car on `edge` (a directed road), `s` metres along it, in `lane`; it drives to the end of `dest` (an edge, -1
+# for just to the end of this one) by the fastest way, and, with `wander`, picks a new place when it gets there.
+# Its id, or -1 when the edge is not a road, the kind is not there, the place is taken, the pool is full or
+# there is no way to `dest`
+export function roads_spawn(roads_st: mut RoadsState, edge: int, s: float, lane: int, kind: int, dest: int, wander: bool) -> int {
+  if not roads_edge_ok(roads_st, edge) or kind < 0 or kind >= RCK_COUNT { return -1 }
+  if lane < 0 or lane >= roads_st.rd_elanes[edge] { return -1 }
+  let length = RoadCarKinds[kind].length
+  if s < 0.0 or s > roads_st.rd_elen[edge] { return -1 }
+  if not rd_room(roads_st, edge, lane, s, length) { return -1 }
+  let slot = rd_car_slot(roads_st)
+  if slot < 0 { return -1 }
+  let c = roads_st.rd_cars[slot]
+  List.clear(c.route)
+  if dest >= 0 and dest != edge {
+    let n = roads_route_edges(roads_st, edge, dest, ROADS_FASTEST, c.route)
+    if n < 0 {
+      List.clear(c.route)
+      return -1
+    }
+  } else {
+    kept_push(c.route, edge)
+  }
+  c.alive = true
+  c.id = roads_st.rd_next_id
+  roads_st.rd_next_id += 1
+  c.kind = kind
+  c.edge = edge
+  c.lane = lane
+  c.s = s
+  c.v = 0.0
+  c.at = 0
+  c.wander = wander
+  c.stopped = 0.0
+  c.waited = -1.0
+  c.jam = 0.0
+  c.holds = false
+  roads_st.rd_ncars += 1
+  roads_pose(roads_st, edge, s, lane)
+  c.x = roads_st.rd_pose_x
+  c.z = roads_st.rd_pose_z
+  c.yaw = roads_st.rd_pose_yaw
+  c.y = RoadsWorld.ground(c.x, c.z)
+  rd_say(roads_st, ROADS_SPAWNED, c.id, kind, edge, 0, c.x, c.z)
+  RoadsBody.place(c.id, kind, c.x, c.y, c.z, c.yaw, 0.0)
+  if wander and len(c.route) <= 1 { rd_replan(roads_st, c) }
+  return c.id
+}
+
+# take a car off the roads: a fact, and the nodes it holds let go
+function rd_take(roads_st: mut RoadsState, slot: int, why: int) -> void {
+  let c = roads_st.rd_cars[slot]
+  if not c.alive { return }
+  for n in 0 .. len(roads_st.rd_node_car) {
+    if roads_st.rd_node_car[n] == slot { roads_st.rd_node_car[n] = -1 }
+  }
+  c.alive = false
+  roads_st.rd_ncars -= 1
+  rd_say(roads_st, ROADS_GONE, c.id, c.kind, c.edge, why, c.x, c.z)
+}
+
+export function roads_despawn(roads_st: mut RoadsState, id: int) -> bool {
+  let slot = roads_car_slot(roads_st, id)
+  if slot < 0 { return false }
+  rd_take(roads_st, slot, ROADS_WHY_DESPAWNED)
+  return true
+}
+
+export function roads_take_all(roads_st: mut RoadsState, why: int) -> void {
+  for i in 0 .. len(roads_st.rd_cars) { rd_take(roads_st, i, why) }
+}
+
+# how many cars ambient traffic keeps on the roads (0: none is made; cars already there are left to arrive)
+export function roads_traffic_target(roads_st: mut RoadsState, n: int) -> void { roads_st.rd_target = n }
+
+# a random edge, lane and kind, somewhere the world says is simulated and out of sight, driving to a random place
+# and on to another after it: its id, or -1 if it did not find a place in a few tries
+export function roads_spawn_random(roads_st: mut RoadsState) -> int {
+  let ne = len(roads_st.rd_efrom)
+  if ne == 0 or RCK_COUNT == 0 { return -1 }
+  for k in 0 .. 6 {
+    let e = rd_below(roads_st, ne)
+    if not roads_edge_ok(roads_st, e) { continue }
+    let lane = rd_below(roads_st, roads_st.rd_elanes[e])
+    let s = rng_span(roads_st.rd_dice, 0.0, roads_st.rd_elen[e])
+    let kind = rd_kind_pick(roads_st)
+    roads_pose(roads_st, e, s, lane)
+    if not RoadsWorld.active(roads_st.rd_pose_x, roads_st.rd_pose_z) { continue }
+    if not RoadsWorld.spawn_ok(roads_st.rd_pose_x, roads_st.rd_pose_z) { continue }
+    let id = roads_spawn(roads_st, e, s, lane, kind, -1, true)
+    if id >= 0 { return id }
+  }
+  return -1
+}
+
+# a new destination for a wandering car: a random edge that can be reached from where it is; the car stops
+# wandering (and arrives at the end of its road) when none is found
+function rd_replan(roads_st: mut RoadsState, c: RoadCar) -> void {
+  let ne = len(roads_st.rd_efrom)
+  for k in 0 .. 6 {
+    let f = rd_below(roads_st, ne)
+    if f == c.edge or not roads_edge_ok(roads_st, f) { continue }
+    let n = roads_route_edges(roads_st, c.edge, f, ROADS_FASTEST, roads_st.rd_route_tmp)
+    if n < 2 { continue }
+    List.clear(c.route)
+    for i in 0 .. n { kept_push(c.route, roads_st.rd_route_tmp[i]) }
+    c.at = 0
+    return
+  }
+  c.wander = false
+}
+
+# what is asked of a car by id
+export function roads_car_x(roads_st: RoadsState, id: int) -> float {
+  let i = roads_car_slot(roads_st, id)
+  if i < 0 { return 0.0 }
+  return roads_st.rd_cars[i].x
+}
+export function roads_car_z(roads_st: RoadsState, id: int) -> float {
+  let i = roads_car_slot(roads_st, id)
+  if i < 0 { return 0.0 }
+  return roads_st.rd_cars[i].z
+}
+export function roads_car_yaw(roads_st: RoadsState, id: int) -> float {
+  let i = roads_car_slot(roads_st, id)
+  if i < 0 { return 0.0 }
+  return roads_st.rd_cars[i].yaw
+}
+export function roads_car_speed(roads_st: RoadsState, id: int) -> float {
+  let i = roads_car_slot(roads_st, id)
+  if i < 0 { return 0.0 }
+  return roads_st.rd_cars[i].v
+}
+export function roads_car_edge(roads_st: RoadsState, id: int) -> int {
+  let i = roads_car_slot(roads_st, id)
+  if i < 0 { return -1 }
+  return roads_st.rd_cars[i].edge
+}
+export function roads_car_s(roads_st: RoadsState, id: int) -> float {
+  let i = roads_car_slot(roads_st, id)
+  if i < 0 { return 0.0 }
+  return roads_st.rd_cars[i].s
+}

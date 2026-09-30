@@ -1,0 +1,146 @@
+# state.ludic - the graph a map was built into, the cars on it, and the facts
+
+export const ROADS_SPAWNED: int = 0    # a car was made (id, kind, edge, x, z)
+export const ROADS_ARRIVED: int = 1    # a car reached the end of its route and was not to wander (id, edge)
+export const ROADS_GONE: int = 2       # a car was taken off the roads (id, reason: ROADS_WHY_*)
+export const ROADS_JAMMED: int = 3     # a car stood still too long and was taken off (id, edge)
+
+export const ROADS_WHY_ARRIVED: int = 0
+export const ROADS_WHY_DESPAWNED: int = 1
+export const ROADS_WHY_JAM: int = 2
+export const ROADS_WHY_REBUILT: int = 3   # the map changed under it
+
+export const ROADS_SHORTEST: int = 0    # routes by length
+export const ROADS_FASTEST: int = 1     # routes by time: length over the limit, and a wait at each stop, yield and signal
+
+export const ROAD_RULE_FREE: int = 0
+export const ROAD_RULE_YIELD: int = 1
+export const ROAD_RULE_STOP: int = 2
+export const ROAD_RULE_FORBID: int = 3
+
+export property RoadsFact {
+  what: int = 0
+  id: int = 0
+  kind: int = 0
+  edge: int = -1
+  why: int = 0
+  x: float = 0.0
+  z: float = 0.0
+}
+
+# one car. `edge` is a directed road (see roads_edge_*): 2 * segment for from -> to, +1 for back. `s` is metres
+# along it, `lane` counts from the inside
+export property RoadCar {
+  alive: bool = false
+  id: int = 0
+  kind: int = 0
+  edge: int = -1
+  lane: int = 0
+  s: float = 0.0
+  v: float = 0.0
+  route: []int = new []int
+  at: int = 0                   # where in the route its edge is
+  wander: bool = false          # at the end of its route it picks another instead of arriving
+  stopped: float = 0.0          # seconds at a stop line, standing
+  waited: float = 0.0           # the clock when it came to the end of its road to wait its turn (-1 not waiting)
+  jam: float = 0.0              # seconds standing for any reason
+  holds: bool = false           # it holds the node at the end of its edge
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+}
+
+export state RoadsState {
+  rd_drive_left: bool = false
+  rd_err: string = ""
+  # nodes
+  rd_nkey: []string = new []string
+  rd_nx: []float = new []float
+  rd_nz: []float = new []float
+  rd_nsignal: []int = new []int          # 1 when it is a signal
+  rd_ncycle: []float = new []float
+  rd_nphases: []int = new []int
+  rd_nroads: []int = new []int           # how many roads end here
+  # segments (one per row of the map's table, valid or not) and their splines
+  rd_skey: []string = new []string
+  rd_sfrom: []int = new []int
+  rd_sto: []int = new []int
+  rd_slf: []int = new []int
+  rd_slb: []int = new []int
+  rd_sw: []float = new []float
+  rd_sspeed: []float = new []float
+  rd_sprio: []int = new []int
+  rd_sphase: []int = new []int
+  rd_slen: []float = new []float
+  rd_sp0: []int = new []int              # its points are rd_px[sp0 .. sp1)
+  rd_sp1: []int = new []int
+  rd_px: []float = new []float
+  rd_pz: []float = new []float
+  rd_ps: []float = new []float           # metres along the segment at each point
+  rd_cx: []float = new []float           # scratch: one spline's control points
+  rd_cz: []float = new []float
+  # directed edges, 2 a segment; an edge that does not exist has no lanes
+  rd_efrom: []int = new []int
+  rd_eto: []int = new []int
+  rd_elanes: []int = new []int
+  rd_elen: []float = new []float
+  rd_espeed: []float = new []float
+  rd_eprio: []int = new []int
+  rd_ephase: []int = new []int
+  rd_out_start: []int = new []int        # the edges leaving node n: rd_out[out_start[n] .. out_start[n + 1])
+  rd_out: []int = new []int
+  rd_in_start: []int = new []int
+  rd_in: []int = new []int
+  rd_turns: IntMap = imap_new()          # in * 8192 + out -> ROAD_RULE_*
+  # routing scratch
+  rd_dist: []float = new []float
+  rd_prev: []int = new []int
+  rd_hk: []float = new []float
+  rd_hv: []int = new []int
+  rd_route_cost: float = 0.0
+  # one place asked for: nearest and pose
+  rd_near_seg: int = -1
+  rd_near_s: float = 0.0
+  rd_near_d: float = 0.0
+  rd_pose_x: float = 0.0
+  rd_pose_z: float = 0.0
+  rd_pose_yaw: float = 0.0
+  # traffic
+  rd_cars: []RoadCar = new []RoadCar
+  rd_ncars: int = 0
+  rd_next_id: int = 1
+  rd_target: int = 0
+  rd_spawn_t: float = 0.0
+  rd_time: float = 0.0
+  rd_dice: Rng = null
+  rd_head: []int = new []int             # per edge: the first car on it this tick, linked through rd_link
+  rd_link: []int = new []int
+  rd_node_car: []int = new []int         # per node: the slot of the car holding it, -1 none
+  rd_node_id: []int = new []int
+  rd_node_in: []int = new []int          # the edge it came in by
+  rd_route_tmp: []int = new []int
+  rd_gap: float = 0.0                    # scratch: the gap to what is ahead of the car being driven, and how much faster it is
+  rd_dv: float = 0.0
+  rd_facts: Queue<RoadsFact> = rd_facts__new()
+}
+function rd_facts__new() -> Queue<RoadsFact> { return queue_new("roads.facts") }
+
+export function roads_facts(roads_st: RoadsState) -> Queue<RoadsFact> { return roads_st.rd_facts }
+
+function rd_say(roads_st: mut RoadsState, what: int, id: int, kind: int, edge: int, why: int, x: float, z: float) -> void {
+  var f = q_rec(roads_st.rd_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new RoadsFact
+    q_ring_add(roads_st.rd_facts, f)
+  }
+  f.what = what
+  f.id = id
+  f.kind = kind
+  f.edge = edge
+  f.why = why
+  f.x = x
+  f.z = z
+  q_push(roads_st.rd_facts, f)
+}

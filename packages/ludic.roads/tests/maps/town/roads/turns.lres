@@ -1,0 +1,3 @@
+# no turning from the north road onto the east one, and a stop for the west arm going south
+no_ne { node: "c", from: "nc", to: "ce", rule: "forbid" }
+stop_ws { node: "c", from: "wc", to: "cs", rule: "stop" }

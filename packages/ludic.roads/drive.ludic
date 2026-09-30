@@ -1,0 +1,143 @@
+# drive.ludic - a tick of traffic: cars made to the target, the cars of an edge linked, and each car's speed
+# from the Intelligent Driver Model over what is ahead - the car in front (on this road, or the next), a
+# junction it may not enter, what the game's physics says is in the way - then its place along the road,
+# its turn onto the next edge, and its body told where it is
+
+const RD_LOOK: float = 25.0              # metres the game's physics is asked to look ahead
+const RD_STOP_MARGIN: float = 1.5        # metres short of a junction's end a car waits
+const RD_JAM_LIMIT: float = 90.0         # seconds standing before a car is taken off (a long red, a long queue, is not a jam)
+const RD_SPAWN_EVERY: float = 0.4        # seconds between cars made to reach the target
+const RD_NONE: float = 1000000.0
+
+# the car ahead of `c` on `edge` in `lane`, past `min_s` metres along it: its gap in metres (bumper to bumper, from
+# `own_s` of that edge, `base` metres further back) into rd_gap if nearer than what is there, and how much faster
+# c is into rd_dv. On c's own road min_s and own_s are where c is; on the next one, -1 and 0 with base the road left
+function rd_leader(roads_st: mut RoadsState, slot: int, c: RoadCar, edge: int, lane: int, min_s: float, own_s: float, base: float) -> void {
+  var j = roads_st.rd_head[edge]
+  while j >= 0 {
+    let o = roads_st.rd_cars[j]
+    if j != slot and o.lane == lane and o.s > min_s {
+      let g = base + o.s - RoadCarKinds[o.kind].length - own_s
+      if g < roads_st.rd_gap {
+        roads_st.rd_gap = g
+        roads_st.rd_dv = c.v - o.v
+      }
+    }
+    j = roads_st.rd_link[j]
+  }
+}
+
+function rd_step_car(roads_st: mut RoadsState, slot: int, dt: float) -> void {
+  let c = roads_st.rd_cars[slot]
+  if not RoadsWorld.active(c.x, c.z) { return }
+  let kind = RoadCarKinds[c.kind]
+  let e = c.edge
+  let len_e = roads_st.rd_elen[e]
+  let d_end = len_e - c.s
+  let next = rd_next_edge(roads_st, c)
+  let v0 = Math.min(roads_st.rd_espeed[e] * kind.pace, kind.max_speed)
+  roads_st.rd_gap = RD_NONE
+  roads_st.rd_dv = 0.0
+  # the car in front, here and on the road it goes on to
+  rd_leader(roads_st, slot, c, e, c.lane, c.s, c.s, 0.0)
+  if next >= 0 and roads_st.rd_gap > d_end {
+    var nl = c.lane
+    if nl > roads_st.rd_elanes[next] - 1 { nl = roads_st.rd_elanes[next] - 1 }
+    rd_leader(roads_st, slot, c, next, nl, -1.0, 0.0, d_end)
+  }
+  # a junction it may not enter yet: a wall at its stop line
+  if next >= 0 or roads_node_controlled(roads_st, roads_st.rd_eto[e]) {
+    if d_end < c.v * c.v / (2.0 * kind.brake) + RD_QUEUE_LOOK and next >= 0 {
+      if c.waited < 0.0 and d_end < RD_QUEUE_LOOK * 2.0 { c.waited = roads_st.rd_time }
+      if not rd_may_enter(roads_st, slot) {
+        let g = Math.max(d_end - RD_STOP_MARGIN, 0.0)
+        if g < roads_st.rd_gap {
+          roads_st.rd_gap = g
+          roads_st.rd_dv = c.v
+        }
+      }
+    }
+  }
+  # the game's own world
+  let pd = RoadsBody.probe(c.id, c.x, c.z, c.yaw, RD_LOOK)
+  if pd >= 0.0 {
+    let g = Math.max(pd - kind.length * 0.5, 0.0)
+    if g < roads_st.rd_gap {
+      roads_st.rd_gap = g
+      roads_st.rd_dv = c.v
+    }
+  }
+  # the drive
+  let r = c.v / v0
+  var a = kind.accel * (1.0 - r * r * r * r)
+  if roads_st.rd_gap < RD_NONE {
+    let want = kind.gap + Math.max(0.0, c.v * kind.headway + c.v * roads_st.rd_dv / (2.0 * Math.sqrt(kind.accel * kind.brake)))
+    let q = want / Math.max(roads_st.rd_gap, 0.1)
+    a = a - kind.accel * q * q
+  }
+  if a < -2.0 * kind.brake { a = -2.0 * kind.brake }
+  c.v = c.v + a * dt
+  if c.v < 0.0 { c.v = 0.0 }
+  if roads_st.rd_gap < RD_NONE and c.v * dt > roads_st.rd_gap { c.v = Math.max(roads_st.rd_gap, 0.0) / dt }
+  c.s = c.s + c.v * dt
+  if c.v < 0.3 and d_end < 4.0 { c.stopped += dt } else if c.v > 0.5 { c.stopped = 0.0 }
+  if c.v < 0.1 { c.jam += dt } else { c.jam = 0.0 }
+  # the end of the road: on to the next, arrive, or wait at the line
+  if c.s >= len_e {
+    if next < 0 {
+      rd_say(roads_st, ROADS_ARRIVED, c.id, c.kind, e, 0, c.x, c.z)
+      rd_take(roads_st, slot, ROADS_WHY_ARRIVED)
+      return
+    }
+    let n = roads_st.rd_eto[e]
+    if roads_node_controlled(roads_st, n) and roads_st.rd_node_car[n] != slot {
+      c.s = len_e - 0.05
+      c.v = 0.0
+    } else {
+      c.s = c.s - len_e
+      c.edge = next
+      c.at += 1
+      if c.lane > roads_st.rd_elanes[next] - 1 { c.lane = roads_st.rd_elanes[next] - 1 }
+      c.waited = -1.0
+      c.stopped = 0.0
+      if c.wander and c.at >= len(c.route) - 1 { rd_replan(roads_st, c) }
+    }
+  }
+  if c.jam > RD_JAM_LIMIT {
+    rd_say(roads_st, ROADS_JAMMED, c.id, c.kind, c.edge, 0, c.x, c.z)
+    rd_take(roads_st, slot, ROADS_WHY_JAM)
+    return
+  }
+  roads_pose(roads_st, c.edge, c.s, c.lane)
+  c.x = roads_st.rd_pose_x
+  c.z = roads_st.rd_pose_z
+  c.yaw = roads_st.rd_pose_yaw
+  c.y = RoadsWorld.ground(c.x, c.z)
+  RoadsBody.place(c.id, c.kind, c.x, c.y, c.z, c.yaw, c.v)
+}
+
+export function roads_tick(roads_st: mut RoadsState, t: Tick) -> void {
+  var dt = t.dt
+  if dt > 0.1 { dt = 0.1 }
+  if dt <= 0.0 { return }
+  roads_st.rd_time += dt
+  if roads_st.rd_dice == null { roads_st.rd_dice = rng_new(RoadsWorld.seed()) }
+  rd_release_nodes(roads_st)
+  if roads_st.rd_ncars < roads_st.rd_target {
+    roads_st.rd_spawn_t -= dt
+    if roads_st.rd_spawn_t <= 0.0 {
+      roads_spawn_random(roads_st)
+      roads_st.rd_spawn_t = RD_SPAWN_EVERY
+    }
+  }
+  for e in 0 .. len(roads_st.rd_head) { roads_st.rd_head[e] = -1 }
+  for i in 0 .. len(roads_st.rd_cars) {
+    let c = roads_st.rd_cars[i]
+    if not c.alive { continue }
+    roads_st.rd_link[i] = roads_st.rd_head[c.edge]
+    roads_st.rd_head[c.edge] = i
+  }
+  for i in 0 .. len(roads_st.rd_cars) {
+    if roads_st.rd_cars[i].alive { rd_step_car(roads_st, i, dt) }
+  }
+}

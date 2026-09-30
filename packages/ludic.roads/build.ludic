@@ -1,0 +1,285 @@
+# build.ludic - a map's three tables turned into the graph the rest reads: nodes, segments with their
+# splines sampled into a polyline and measured, the directed edges (two a segment), who leaves and enters
+# each node, and the turn rules keyed by the pair of edges
+
+const RD_SUB: int = 8                 # samples a spline span is cut into
+const RD_MAX_SEGS: int = 4000         # an edge number stays under 8192, so a turn is one int key
+
+function rd_clear_lists(roads_st: mut RoadsState) -> void {
+  List.clear(roads_st.rd_nkey)
+  List.clear(roads_st.rd_nx)
+  List.clear(roads_st.rd_nz)
+  List.clear(roads_st.rd_nsignal)
+  List.clear(roads_st.rd_ncycle)
+  List.clear(roads_st.rd_nphases)
+  List.clear(roads_st.rd_nroads)
+  List.clear(roads_st.rd_skey)
+  List.clear(roads_st.rd_sfrom)
+  List.clear(roads_st.rd_sto)
+  List.clear(roads_st.rd_slf)
+  List.clear(roads_st.rd_slb)
+  List.clear(roads_st.rd_sw)
+  List.clear(roads_st.rd_sspeed)
+  List.clear(roads_st.rd_sprio)
+  List.clear(roads_st.rd_sphase)
+  List.clear(roads_st.rd_slen)
+  List.clear(roads_st.rd_sp0)
+  List.clear(roads_st.rd_sp1)
+  List.clear(roads_st.rd_px)
+  List.clear(roads_st.rd_pz)
+  List.clear(roads_st.rd_ps)
+  List.clear(roads_st.rd_efrom)
+  List.clear(roads_st.rd_eto)
+  List.clear(roads_st.rd_elanes)
+  List.clear(roads_st.rd_elen)
+  List.clear(roads_st.rd_espeed)
+  List.clear(roads_st.rd_eprio)
+  List.clear(roads_st.rd_ephase)
+  List.clear(roads_st.rd_out_start)
+  List.clear(roads_st.rd_out)
+  List.clear(roads_st.rd_in_start)
+  List.clear(roads_st.rd_in)
+  List.clear(roads_st.rd_node_car)
+  List.clear(roads_st.rd_node_id)
+  List.clear(roads_st.rd_node_in)
+  imap_clear(roads_st.rd_turns)
+}
+
+# one span of a uniform Catmull-Rom spline between p1 and p2 (p0 before, p3 after), at t in 0..1
+function rd_cr(p0: float, p1: float, p2: float, p3: float, t: float) -> float {
+  let t2 = t * t
+  let t3 = t2 * t
+  return 0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t3)
+}
+
+# the segment's control points (its two nodes and the points between) sampled into the polyline, measured
+function rd_sample_seg(roads_st: mut RoadsState, seg: RoadSeg, a: int, b: int) -> void {
+  let n0 = len(roads_st.rd_px)
+  kept_push(roads_st.rd_sp0, n0)
+  List.clear(roads_st.rd_cx)
+  List.clear(roads_st.rd_cz)
+  kept_push(roads_st.rd_cx, roads_st.rd_nx[a])
+  kept_push(roads_st.rd_cz, roads_st.rd_nz[a])
+  for i in 0 .. len(seg.pts) {
+    kept_push(roads_st.rd_cx, seg.pts[i].x)
+    kept_push(roads_st.rd_cz, seg.pts[i].z)
+  }
+  kept_push(roads_st.rd_cx, roads_st.rd_nx[b])
+  kept_push(roads_st.rd_cz, roads_st.rd_nz[b])
+  let m = len(roads_st.rd_cx)
+  var run = 0.0
+  for i in 0 .. m - 1 {
+    var i0 = i - 1
+    if i0 < 0 { i0 = 0 }
+    var i3 = i + 2
+    if i3 > m - 1 { i3 = m - 1 }
+    var last = RD_SUB
+    if i < m - 2 { last = RD_SUB - 1 }
+    for k in 0 .. last + 1 {
+      let t = float(k) / float(RD_SUB)
+      let x = rd_cr(roads_st.rd_cx[i0], roads_st.rd_cx[i], roads_st.rd_cx[i + 1], roads_st.rd_cx[i3], t)
+      let z = rd_cr(roads_st.rd_cz[i0], roads_st.rd_cz[i], roads_st.rd_cz[i + 1], roads_st.rd_cz[i3], t)
+      let n = len(roads_st.rd_px)
+      if n > n0 {
+        let dx = x - roads_st.rd_px[n - 1]
+        let dz = z - roads_st.rd_pz[n - 1]
+        run += Math.sqrt(dx * dx + dz * dz)
+      }
+      kept_push(roads_st.rd_px, x)
+      kept_push(roads_st.rd_pz, z)
+      kept_push(roads_st.rd_ps, run)
+    }
+  }
+  kept_push(roads_st.rd_sp1, len(roads_st.rd_px))
+  kept_push(roads_st.rd_slen, run)
+}
+
+function rd_skip_seg(roads_st: mut RoadsState, seg: RoadSeg) -> void {
+  kept_push(roads_st.rd_sfrom, -1)
+  kept_push(roads_st.rd_sto, -1)
+  kept_push(roads_st.rd_slf, 0)
+  kept_push(roads_st.rd_slb, 0)
+  kept_push(roads_st.rd_sw, seg.lane_width)
+  kept_push(roads_st.rd_sspeed, seg.speed)
+  kept_push(roads_st.rd_sprio, seg.priority)
+  kept_push(roads_st.rd_sphase, seg.phase)
+  kept_push(roads_st.rd_sp0, len(roads_st.rd_px))
+  kept_push(roads_st.rd_sp1, len(roads_st.rd_px))
+  kept_push(roads_st.rd_slen, 0.0)
+}
+
+function rd_edge_row(roads_st: mut RoadsState, seg: int, back: bool) -> void {
+  var from = roads_st.rd_sfrom[seg]
+  var to = roads_st.rd_sto[seg]
+  var lanes = roads_st.rd_slf[seg]
+  if back {
+    from = roads_st.rd_sto[seg]
+    to = roads_st.rd_sfrom[seg]
+    lanes = roads_st.rd_slb[seg]
+  }
+  if roads_st.rd_slen[seg] <= 0.0 or roads_st.rd_sfrom[seg] < 0 { lanes = 0 }
+  kept_push(roads_st.rd_efrom, from)
+  kept_push(roads_st.rd_eto, to)
+  kept_push(roads_st.rd_elanes, lanes)
+  kept_push(roads_st.rd_elen, roads_st.rd_slen[seg])
+  kept_push(roads_st.rd_espeed, roads_st.rd_sspeed[seg])
+  kept_push(roads_st.rd_eprio, roads_st.rd_sprio[seg])
+  kept_push(roads_st.rd_ephase, roads_st.rd_sphase[seg])
+}
+
+# out[]: the edges leaving each node, and in[]: the edges entering it (compressed rows)
+function rd_adjacency(roads_st: mut RoadsState) -> void {
+  let nn = len(roads_st.rd_nx)
+  let ne = len(roads_st.rd_efrom)
+  for n in 0 .. nn + 1 {
+    kept_push(roads_st.rd_out_start, 0)
+    kept_push(roads_st.rd_in_start, 0)
+  }
+  for e in 0 .. ne {
+    if roads_st.rd_elanes[e] == 0 { continue }
+    roads_st.rd_out_start[roads_st.rd_efrom[e] + 1] += 1
+    roads_st.rd_in_start[roads_st.rd_eto[e] + 1] += 1
+  }
+  for n in 0 .. nn {
+    roads_st.rd_out_start[n + 1] += roads_st.rd_out_start[n]
+    roads_st.rd_in_start[n + 1] += roads_st.rd_in_start[n]
+  }
+  let total = roads_st.rd_out_start[nn]
+  for i in 0 .. total {
+    kept_push(roads_st.rd_out, -1)
+    kept_push(roads_st.rd_in, -1)
+  }
+  let fill_out = new []int
+  let fill_in = new []int
+  for n in 0 .. nn {
+    push(fill_out, roads_st.rd_out_start[n])
+    push(fill_in, roads_st.rd_in_start[n])
+  }
+  for e in 0 .. ne {
+    if roads_st.rd_elanes[e] == 0 { continue }
+    let f = roads_st.rd_efrom[e]
+    let t = roads_st.rd_eto[e]
+    roads_st.rd_out[fill_out[f]] = e
+    fill_out[f] += 1
+    roads_st.rd_in[fill_in[t]] = e
+    fill_in[t] += 1
+  }
+}
+
+function rd_rule_of(word: string) -> int {
+  if word == "yield" { return ROAD_RULE_YIELD }
+  if word == "stop" { return ROAD_RULE_STOP }
+  if word == "forbid" { return ROAD_RULE_FORBID }
+  return ROAD_RULE_FREE
+}
+
+# the edge of segment `seg` that enters node n (in = true) or leaves it, or -1
+function rd_edge_at(roads_st: RoadsState, seg: int, n: int, entering: bool) -> int {
+  for d in 0 .. 2 {
+    let e = 2 * seg + d
+    if roads_st.rd_elanes[e] == 0 { continue }
+    if entering and roads_st.rd_eto[e] == n { return e }
+    if not entering and roads_st.rd_efrom[e] == n { return e }
+  }
+  return -1
+}
+
+# the graph of a map's three tables (loaded with road_nodes_load, road_segs_load, road_turns_load). False, with
+# roads_error saying the first fault, when a road names a node that is not there or there are too many roads;
+# such a road is left out and the rest is built. Cars are taken off first (their roads are gone)
+export function roads_build(roads_st: mut RoadsState, nodes: RoadNodes, segs: RoadSegs, turns: RoadTurns) -> bool {
+  roads_take_all(roads_st, ROADS_WHY_REBUILT)
+  rd_clear_lists(roads_st)
+  roads_st.rd_err = ""
+  var ok = true
+  for i in 0 .. len(nodes.rows) {
+    let n = nodes.rows[i]
+    kept_push(roads_st.rd_nkey, n.key)
+    kept_push(roads_st.rd_nx, n.x)
+    kept_push(roads_st.rd_nz, n.z)
+    if n.control == "signal" { kept_push(roads_st.rd_nsignal, 1) } else { kept_push(roads_st.rd_nsignal, 0) }
+    kept_push(roads_st.rd_ncycle, n.cycle)
+    kept_push(roads_st.rd_nphases, 1)
+    kept_push(roads_st.rd_nroads, 0)
+    kept_push(roads_st.rd_node_car, -1)
+    kept_push(roads_st.rd_node_id, -1)
+    kept_push(roads_st.rd_node_in, -1)
+  }
+  var nsegs = len(segs.rows)
+  if nsegs > RD_MAX_SEGS {
+    roads_st.rd_err = `{nsegs} roads is more than {RD_MAX_SEGS}`
+    nsegs = RD_MAX_SEGS
+    ok = false
+  }
+  for i in 0 .. nsegs {
+    let s = segs.rows[i]
+    kept_push(roads_st.rd_skey, s.key)
+    let a = road_nodes_find(nodes, s.from)
+    let b = road_nodes_find(nodes, s.to)
+    if a < 0 or b < 0 {
+      if ok { roads_st.rd_err = `road {s.key}: there is no node {s.from} or {s.to}` }
+      ok = false
+      rd_skip_seg(roads_st, s)
+      continue
+    }
+    kept_push(roads_st.rd_sfrom, a)
+    kept_push(roads_st.rd_sto, b)
+    kept_push(roads_st.rd_slf, s.lanes_fwd)
+    kept_push(roads_st.rd_slb, s.lanes_back)
+    kept_push(roads_st.rd_sw, s.lane_width)
+    kept_push(roads_st.rd_sspeed, s.speed)
+    kept_push(roads_st.rd_sprio, s.priority)
+    kept_push(roads_st.rd_sphase, s.phase)
+    rd_sample_seg(roads_st, s, a, b)
+    roads_st.rd_nroads[a] += 1
+    roads_st.rd_nroads[b] += 1
+    if s.phase + 1 > roads_st.rd_nphases[a] { roads_st.rd_nphases[a] = s.phase + 1 }
+    if s.phase + 1 > roads_st.rd_nphases[b] { roads_st.rd_nphases[b] = s.phase + 1 }
+  }
+  for i in 0 .. nsegs {
+    rd_edge_row(roads_st, i, false)
+    rd_edge_row(roads_st, i, true)
+  }
+  rd_adjacency(roads_st)
+  for i in 0 .. len(turns.rows) {
+    let t = turns.rows[i]
+    let n = road_nodes_find(nodes, t.node)
+    let sf = road_segs_find(segs, t.from)
+    let st = road_segs_find(segs, t.to)
+    if n < 0 or sf < 0 or st < 0 or sf >= nsegs or st >= nsegs {
+      if ok { roads_st.rd_err = `turn {t.key}: it names a node or a road that is not there` }
+      ok = false
+      continue
+    }
+    let e_in = rd_edge_at(roads_st, sf, n, true)
+    let e_out = rd_edge_at(roads_st, st, n, false)
+    if e_in < 0 or e_out < 0 {
+      if ok { roads_st.rd_err = `turn {t.key}: road {t.from} does not come in to {t.node} or {t.to} does not leave it` }
+      ok = false
+      continue
+    }
+    imap_put(roads_st.rd_turns, e_in * 8192 + e_out, rd_rule_of(t.rule))
+  }
+  let ne = len(roads_st.rd_efrom)
+  List.clear(roads_st.rd_dist)
+  List.clear(roads_st.rd_prev)
+  List.clear(roads_st.rd_head)
+  for e in 0 .. ne {
+    kept_push(roads_st.rd_dist, 0.0)
+    kept_push(roads_st.rd_prev, -1)
+    kept_push(roads_st.rd_head, -1)
+  }
+  return ok
+}
+
+export function roads_error(roads_st: RoadsState) -> string { return roads_st.rd_err }
+
+# the graph emptied (the map is leaving)
+export function roads_clear(roads_st: mut RoadsState) -> void {
+  roads_take_all(roads_st, ROADS_WHY_REBUILT)
+  rd_clear_lists(roads_st)
+  roads_st.rd_err = ""
+}
+
+# which side of the road the game drives on (the lanes are mirrored)
+export function roads_config_drive_left(roads_st: mut RoadsState, left: bool) -> void { roads_st.rd_drive_left = left }

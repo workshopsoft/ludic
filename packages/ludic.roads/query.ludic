@@ -1,0 +1,153 @@
+# query.ludic - the graph as numbers: how many of each, an edge's ends and length and lanes, a place on a
+# road (its pose, lane by lane), and the road nearest a point
+
+export function roads_node_count(roads_st: RoadsState) -> int { return len(roads_st.rd_nx) }
+export function roads_seg_count(roads_st: RoadsState) -> int { return len(roads_st.rd_skey) }
+# an edge is a directed road: 2 * segment is from -> to, 2 * segment + 1 is back. One with no lanes is not there
+export function roads_edge_count(roads_st: RoadsState) -> int { return len(roads_st.rd_efrom) }
+export function roads_edge_ok(roads_st: RoadsState, e: int) -> bool { return e >= 0 and e < len(roads_st.rd_efrom) and roads_st.rd_elanes[e] > 0 }
+export function roads_edge_from(roads_st: RoadsState, e: int) -> int { return roads_st.rd_efrom[e] }
+export function roads_edge_to(roads_st: RoadsState, e: int) -> int { return roads_st.rd_eto[e] }
+export function roads_edge_lanes(roads_st: RoadsState, e: int) -> int { return roads_st.rd_elanes[e] }
+export function roads_edge_length(roads_st: RoadsState, e: int) -> float { return roads_st.rd_elen[e] }
+export function roads_edge_speed(roads_st: RoadsState, e: int) -> float { return roads_st.rd_espeed[e] }
+export function roads_edge_seg(roads_st: RoadsState, e: int) -> int { return e / 2 }
+export function roads_edge_back(roads_st: RoadsState, e: int) -> bool { return e % 2 == 1 }
+# the same road the other way (its edge number may have no lanes: ask roads_edge_ok)
+export function roads_edge_reverse(roads_st: RoadsState, e: int) -> int { return e ^ 1 }
+export function roads_node_x(roads_st: RoadsState, n: int) -> float { return roads_st.rd_nx[n] }
+export function roads_node_z(roads_st: RoadsState, n: int) -> float { return roads_st.rd_nz[n] }
+export function roads_node_roads(roads_st: RoadsState, n: int) -> int { return roads_st.rd_nroads[n] }
+export function roads_node_find(roads_st: RoadsState, key: string) -> int {
+  for i in 0 .. len(roads_st.rd_nkey) { if roads_st.rd_nkey[i] == key { return i } }
+  return -1
+}
+export function roads_seg_find(roads_st: RoadsState, key: string) -> int {
+  for i in 0 .. len(roads_st.rd_skey) { if roads_st.rd_skey[i] == key { return i } }
+  return -1
+}
+export function roads_seg_length(roads_st: RoadsState, seg: int) -> float { return roads_st.rd_slen[seg] }
+# the turn rule coming in by edge `e_in` and leaving by `e_out`: ROAD_RULE_*
+export function roads_turn_rule(roads_st: RoadsState, e_in: int, e_out: int) -> int {
+  return imap_get(roads_st.rd_turns, e_in * 8192 + e_out, ROAD_RULE_FREE)
+}
+
+# the point `s` metres along segment `seg` (from its `from` end) into rd_pose_x / z, and its heading there
+# (pointing from -> to) into rd_pose_yaw. The polyline's own spacing: a binary search, nothing made
+function rd_seg_at(roads_st: mut RoadsState, seg: int, s: float) -> void {
+  let p0 = roads_st.rd_sp0[seg]
+  let p1 = roads_st.rd_sp1[seg]
+  if p1 - p0 < 2 {
+    roads_st.rd_pose_x = 0.0
+    roads_st.rd_pose_z = 0.0
+    roads_st.rd_pose_yaw = 0.0
+    return
+  }
+  var d = s
+  if d < 0.0 { d = 0.0 }
+  if d > roads_st.rd_slen[seg] { d = roads_st.rd_slen[seg] }
+  var lo = p0
+  var hi = p1 - 1
+  while hi - lo > 1 {
+    let mid = (lo + hi) / 2
+    if roads_st.rd_ps[mid] <= d { lo = mid } else { hi = mid }
+  }
+  let span = roads_st.rd_ps[hi] - roads_st.rd_ps[lo]
+  var t = 0.0
+  if span > 0.0001 { t = (d - roads_st.rd_ps[lo]) / span }
+  let dx = roads_st.rd_px[hi] - roads_st.rd_px[lo]
+  let dz = roads_st.rd_pz[hi] - roads_st.rd_pz[lo]
+  roads_st.rd_pose_x = roads_st.rd_px[lo] + dx * t
+  roads_st.rd_pose_z = roads_st.rd_pz[lo] + dz * t
+  roads_st.rd_pose_yaw = Math.atan2(dx, dz)
+}
+
+# how far from the centre line lane `lane` of edge `e` runs, to the right of travel (a one way road
+# is centred on its line, and a game that drives on the left mirrors it)
+function rd_lane_offset(roads_st: RoadsState, e: int, lane: int) -> float {
+  let seg = e / 2
+  let w = roads_st.rd_sw[seg]
+  var other = roads_st.rd_slb[seg]
+  if e % 2 == 1 { other = roads_st.rd_slf[seg] }
+  var off = (float(lane) + 0.5) * w
+  if other == 0 { off = (float(lane) - float(roads_st.rd_elanes[e] - 1) * 0.5) * w }
+  if roads_st.rd_drive_left { off = -off }
+  return off
+}
+
+# the pose of a car `s` metres along edge `e` in `lane`, into roads_pose_x / z / yaw (yaw faces along the edge)
+export function roads_pose(roads_st: mut RoadsState, e: int, s: float, lane: int) -> void {
+  if e < 0 or e >= len(roads_st.rd_efrom) { return }
+  let seg = e / 2
+  var d = s
+  var flip = false
+  if e % 2 == 1 {
+    d = roads_st.rd_slen[seg] - s
+    flip = true
+  }
+  rd_seg_at(roads_st, seg, d)
+  var yaw = roads_st.rd_pose_yaw
+  if flip { yaw = yaw + 3.1415927 }
+  if yaw > 3.1415927 { yaw = yaw - 6.2831853 }
+  let hx = Math.sin(yaw)
+  let hz = Math.cos(yaw)
+  let off = rd_lane_offset(roads_st, e, lane)
+  roads_st.rd_pose_x = roads_st.rd_pose_x + (-hz) * off
+  roads_st.rd_pose_z = roads_st.rd_pose_z + hx * off
+  roads_st.rd_pose_yaw = yaw
+}
+export function roads_pose_x(roads_st: RoadsState) -> float { return roads_st.rd_pose_x }
+export function roads_pose_z(roads_st: RoadsState) -> float { return roads_st.rd_pose_z }
+export function roads_pose_yaw(roads_st: RoadsState) -> float { return roads_st.rd_pose_yaw }
+
+# the segment nearest (x, z): its index (-1 with no road), and in roads_near_s the metres along it, roads_near_d the
+# distance from its centre line. Every polyline step is looked at: for a game's occasional question, not a frame's
+export function roads_nearest(roads_st: mut RoadsState, x: float, z: float) -> int {
+  var best = -1
+  var bd = 0.0
+  var bs = 0.0
+  for seg in 0 .. len(roads_st.rd_skey) {
+    let p0 = roads_st.rd_sp0[seg]
+    let p1 = roads_st.rd_sp1[seg]
+    for i in p0 .. p1 - 1 {
+      let ax = roads_st.rd_px[i]
+      let az = roads_st.rd_pz[i]
+      let dx = roads_st.rd_px[i + 1] - ax
+      let dz = roads_st.rd_pz[i + 1] - az
+      let l2 = dx * dx + dz * dz
+      var t = 0.0
+      if l2 > 0.000001 { t = Math.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0.0, 1.0) }
+      let qx = ax + dx * t - x
+      let qz = az + dz * t - z
+      let d = qx * qx + qz * qz
+      if best < 0 or d < bd {
+        best = seg
+        bd = d
+        bs = roads_st.rd_ps[i] + (roads_st.rd_ps[i + 1] - roads_st.rd_ps[i]) * t
+      }
+    }
+  }
+  roads_st.rd_near_seg = best
+  roads_st.rd_near_s = bs
+  roads_st.rd_near_d = Math.sqrt(bd)
+  return best
+}
+export function roads_near_s(roads_st: RoadsState) -> float { return roads_st.rd_near_s }
+export function roads_near_d(roads_st: RoadsState) -> float { return roads_st.rd_near_d }
+
+# the edge of segment `seg` that a traveller at (x, z) on the right-hand (or left, if the game drives on the left)
+# side would be on, given the nearest road: the one whose lanes lie on that side. A one way road has the one
+export function roads_edge_for(roads_st: mut RoadsState, seg: int, x: float, z: float) -> int {
+  let f = 2 * seg
+  let b = f + 1
+  if not roads_edge_ok(roads_st, f) { return b }
+  if not roads_edge_ok(roads_st, b) { return f }
+  rd_seg_at(roads_st, seg, roads_st.rd_near_s)
+  let hx = Math.sin(roads_st.rd_pose_yaw)
+  let hz = Math.cos(roads_st.rd_pose_yaw)
+  let side = (x - roads_st.rd_pose_x) * (-hz) + (z - roads_st.rd_pose_z) * hx       # > 0: on the right of from -> to
+  var fwd = side >= 0.0
+  if roads_st.rd_drive_left { fwd = side < 0.0 }
+  if fwd { return f }
+  return b
+}

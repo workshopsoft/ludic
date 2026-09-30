@@ -1,0 +1,22 @@
+# ports.ludic - what the roads ask the world, and where a car's body goes. Unbound: flat ground, simulated
+# everywhere, spawning anywhere, a seed of 1, bodies that go nowhere, and nothing in the way.
+export port RoadsWorld {
+  ground: fn(float, float) -> float = fn rd_flat              # (x, z): the height of the road
+  active: fn(float, float) -> bool = fn rd_yes2               # simulated here (ludic.zones, through the game); outside, a car is left as it is
+  spawn_ok: fn(float, float) -> bool = fn rd_yes2             # (x, z): traffic may appear here (not in sight)
+  seed: fn() -> int = fn rd_seed_one
+}
+
+# a car's body in the game's world. `place` is told where the car is each tick it moves: the game puts its
+# vehicle there (a kinematic body, a model). `probe` asks what the game's physics has in the car's way
+# within `look` metres along its heading: the distance, or a negative number for nothing
+export port RoadsBody {
+  place: fn(int, int, float, float, float, float, float) -> void = fn rd_nowhere    # (id, kind, x, y, z, yaw, speed)
+  probe: fn(int, float, float, float, float) -> float = fn rd_nothing               # (id, x, z, yaw, look)
+}
+
+function rd_flat(x: float, z: float) -> float { return 0.0 }
+function rd_yes2(x: float, z: float) -> bool { return true }
+function rd_seed_one() -> int { return 1 }
+function rd_nowhere(id: int, kind: int, x: float, y: float, z: float, yaw: float, speed: float) -> void { }
+function rd_nothing(id: int, x: float, z: float, yaw: float, look: float) -> float { return -1.0 }

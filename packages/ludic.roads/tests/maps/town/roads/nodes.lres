@@ -1,0 +1,7 @@
+# a crossroads with a fast bypass: c in the middle, w e n s round it, far past s on a one way road
+c { x: 0.0, z: 0.0 }
+w { x: -100.0, z: 0.0 }
+e { x: 100.0, z: 0.0 }
+n { x: 0.0, z: -100.0 }
+s { x: 0.0, z: 100.0 }
+far { x: 0.0, z: 220.0 }

@@ -1,0 +1,127 @@
+# junction.ludic - who goes first where roads meet. A node where three or more roads end (or any signal) lets ONE
+# car through at a time: it holds the node from the moment it is let in until it is clear of it. Who is let in
+# when the node is free: among the cars waiting at its entries (near the end of their edge), those the rules
+# allow - a signal's green, a stop done, no higher road coming for a yield - and of those the higher priority
+# road, then whoever came first, then the lower id. A node with two roads, or one, never stops anyone.
+
+const RD_STOP_TIME: float = 1.0          # seconds a stop takes
+const RD_YIELD_LOOK: float = 30.0        # metres a higher road is watched for
+const RD_QUEUE_LOOK: float = 12.0        # metres from the end of its edge a car counts as waiting
+
+export function roads_node_controlled(roads_st: RoadsState, n: int) -> bool {
+  return roads_st.rd_nroads[n] >= 3 or roads_st.rd_nsignal[n] != 0
+}
+
+# a signal's green phase now, -1 for none (the last second of each phase is red for all)
+export function roads_signal_phase(roads_st: RoadsState, n: int) -> int {
+  if roads_st.rd_nsignal[n] == 0 { return -1 }
+  let cycle = roads_st.rd_ncycle[n]
+  let k = int(Math.floor(roads_st.rd_time / cycle))
+  let into = roads_st.rd_time - float(k) * cycle
+  if into > cycle - 1.0 { return -1 }
+  return k % roads_st.rd_nphases[n]
+}
+
+# the edge a car goes on to from its own: the next of its route, -1 at the end of it
+function rd_next_edge(roads_st: RoadsState, c: RoadCar) -> int {
+  if c.at + 1 < len(c.route) { return c.route[c.at + 1] }
+  return -1
+}
+
+# is the car first in its lane of its edge: nobody ahead of it there, so it is the one at the line
+function rd_front(roads_st: RoadsState, slot: int) -> bool {
+  let c = roads_st.rd_cars[slot]
+  var j = roads_st.rd_head[c.edge]
+  while j >= 0 {
+    let o = roads_st.rd_cars[j]
+    if j != slot and o.lane == c.lane and o.s > c.s { return false }
+    j = roads_st.rd_link[j]
+  }
+  return true
+}
+
+# rules that hold for a car of any slot, asked of a car coming to node n: the signal, the stop, the yield
+function rd_eligible(roads_st: RoadsState, slot: int, n: int) -> bool {
+  let c = roads_st.rd_cars[slot]
+  let e = c.edge
+  if roads_st.rd_nsignal[n] != 0 {
+    if roads_signal_phase(roads_st, n) != roads_st.rd_ephase[e] % roads_st.rd_nphases[n] { return false }
+  }
+  let next = rd_next_edge(roads_st, c)
+  var rule = ROAD_RULE_FREE
+  if next >= 0 { rule = roads_turn_rule(roads_st, e, next) }
+  if rule == ROAD_RULE_STOP and c.stopped < RD_STOP_TIME { return false }
+  if rule == ROAD_RULE_YIELD {
+    for j in 0 .. len(roads_st.rd_cars) {
+      let o = roads_st.rd_cars[j]
+      if j == slot or not o.alive or roads_st.rd_eto[o.edge] != n or o.edge == e { continue }
+      if roads_st.rd_eprio[o.edge] <= roads_st.rd_eprio[e] { continue }
+      if roads_st.rd_elen[o.edge] - o.s < RD_YIELD_LOOK { return false }
+    }
+  }
+  return true
+}
+
+# the holder of node n is still in it: alive, not yet a full car length into the next road, and - while it is
+# still on the road it came in by - first in its lane (a car made or put ahead of it is the one at the line now)
+function rd_holder_valid(roads_st: RoadsState, n: int) -> bool {
+  let slot = roads_st.rd_node_car[n]
+  if slot < 0 { return false }
+  let c = roads_st.rd_cars[slot]
+  if not c.alive or c.id != roads_st.rd_node_id[n] { return false }
+  if c.edge != roads_st.rd_node_in[n] and c.s > RoadCarKinds[c.kind].length + 1.0 { return false }
+  if c.edge == roads_st.rd_node_in[n] and not rd_front(roads_st, slot) { return false }
+  return true
+}
+
+# nodes let go that their holder has cleared (or that their holder left the roads)
+function rd_release_nodes(roads_st: mut RoadsState) -> void {
+  for n in 0 .. len(roads_st.rd_node_car) {
+    if roads_st.rd_node_car[n] >= 0 and not rd_holder_valid(roads_st, n) {
+      roads_st.rd_cars[roads_st.rd_node_car[n]].holds = false
+      roads_st.rd_node_car[n] = -1
+    }
+  }
+}
+
+# may the car in `slot` go on from the end of its edge: true at once where nothing is arbitrated, else when it
+# holds the node, or the node is free and the car is the one chosen. Choosing is claiming: the node is the car's
+function rd_may_enter(roads_st: mut RoadsState, slot: int) -> bool {
+  let c = roads_st.rd_cars[slot]
+  let e = c.edge
+  let n = roads_st.rd_eto[e]
+  if not roads_node_controlled(roads_st, n) { return true }
+  if roads_st.rd_node_car[n] == slot { return true }
+  if roads_st.rd_node_car[n] >= 0 { return false }
+  if not rd_front(roads_st, slot) or not rd_eligible(roads_st, slot, n) { return false }
+  var best = slot
+  for j in 0 .. len(roads_st.rd_cars) {
+    let o = roads_st.rd_cars[j]
+    if j == slot or not o.alive or roads_st.rd_eto[o.edge] != n { continue }
+    let brake = RoadCarKinds[o.kind].brake
+    if roads_st.rd_elen[o.edge] - o.s > RD_QUEUE_LOOK + o.v * o.v / (2.0 * brake) { continue }
+    if not rd_front(roads_st, j) or not rd_eligible(roads_st, j, n) { continue }
+    let b = roads_st.rd_cars[best]
+    var wins = false
+    if roads_st.rd_eprio[o.edge] != roads_st.rd_eprio[b.edge] {
+      wins = roads_st.rd_eprio[o.edge] > roads_st.rd_eprio[b.edge]
+    } else if o.waited != b.waited {
+      wins = o.waited >= 0.0 and (b.waited < 0.0 or o.waited < b.waited)
+    } else {
+      wins = o.id < b.id
+    }
+    if wins { best = j }
+  }
+  if best != slot { return false }
+  roads_st.rd_node_car[n] = slot
+  roads_st.rd_node_id[n] = c.id
+  roads_st.rd_node_in[n] = e
+  c.holds = true
+  return true
+}
+
+# who holds node n (a car id), -1 nobody
+export function roads_node_holder(roads_st: RoadsState, n: int) -> int {
+  if not rd_holder_valid(roads_st, n) { return -1 }
+  return roads_st.rd_node_id[n]
+}

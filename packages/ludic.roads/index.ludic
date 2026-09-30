@@ -1,0 +1,15 @@
+# ludic.roads - the road graph (defs.ludic: what a map's roads/*.lres hold), its splines and routes, and
+# the cars on it (ports for their bodies, junction turns, following, facts), saved as a few numbers
+module ludic_roads uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "build.ludic"
+import "query.ludic"
+import "route.ludic"
+import "cars.ludic"
+import "junction.ludic"
+import "drive.ludic"
+import "system.ludic"

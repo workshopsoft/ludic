@@ -1,0 +1,36 @@
+# system.ludic - roads as a system: PH_SIMULATE. The save is the clock, the target, the id counter and the dice;
+# ambient traffic is not saved - it is made again to the target - and the graph is the map's, built on load
+export function roads_reset(roads_st: mut RoadsState) -> void {
+  roads_take_all(roads_st, ROADS_WHY_REBUILT)
+  roads_st.rd_time = 0.0
+  roads_st.rd_spawn_t = 0.0
+  roads_st.rd_dice = rng_new(RoadsWorld.seed())
+  q_clear(roads_st.rd_facts)
+}
+
+export function roads_save(roads_st: RoadsState) -> Val {
+  let v = Value.object()
+  sv_put_float(v, "time", roads_st.rd_time)
+  sv_put_int(v, "target", roads_st.rd_target)
+  sv_put_int(v, "next_id", roads_st.rd_next_id)
+  if roads_st.rd_dice != null { sv_put_int(v, "dice", roads_st.rd_dice.s) }
+  return v
+}
+
+export function roads_load(roads_st: mut RoadsState, v: Val, version: int) -> void {
+  roads_reset(roads_st)
+  roads_st.rd_time = sv_float(v, "time", 0.0)
+  roads_st.rd_target = sv_int(v, "target", 0)
+  roads_st.rd_next_id = sv_int(v, "next_id", 1)
+  roads_st.rd_dice.s = sv_int(v, "dice", roads_st.rd_dice.s)
+}
+
+export function roads_system() -> System {
+  let s = system_new("roads", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn roads_reset
+  s.tick = fn roads_tick
+  s.save = fn roads_save
+  s.load = fn roads_load
+  return s
+}

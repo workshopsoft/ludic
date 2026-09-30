@@ -1,0 +1,1 @@
+bad { node: "a", from: "ab", to: "bc", rule: "forbid" }
