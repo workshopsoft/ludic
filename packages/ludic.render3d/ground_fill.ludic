@@ -31,7 +31,8 @@ export function gf_step(g: GroundFill, band: int) -> float {
   return g.step3
 }
 
-# a hash of the candidate and one of its draws, 0..1 (a 32-bit mix: the same on every machine)
+# a hash of the candidate and one of its draws, 0..1: a 64-bit mix (the big constants are longs, `& 0xFFFFFFFF`
+# is & -1, a no-op) - deterministic everywhere; narrowing it moves every painted thing, as the golden shows
 export function gf_hash(a: int, b: int, c: int, d: int, e: int, k: int) -> float {
   var h = (a * 73856093) ^ (b * 19349663) ^ (c * 83492791) ^ (d * 2654435761) ^ (e * 1597334677) ^ (k * 3812015801)
   h = h & 0xFFFFFFFF
