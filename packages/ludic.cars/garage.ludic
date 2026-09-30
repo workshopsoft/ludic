@@ -105,6 +105,9 @@ function cr_oe_delivered(r: mut Row<OwnedCar>, s: CarsState) -> void {
 # back in a slot (the verb chose it): the live car is taken away
 function cr_oe_store(r: mut Row<OwnedCar>, s: CarsState) -> void { r.rec.unspawn = true }
 function cr_oe_destroyed(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  # the wreck stays in the world (the game clears it when it likes) but is nobody's car any more
+  let c = car_by_nid(s, r.rec.nid)
+  if c != null { c.oid = -1 }
   r.rec.nid = -1
   r.rec.health = 0.0
 }

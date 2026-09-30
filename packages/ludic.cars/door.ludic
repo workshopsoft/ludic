@@ -403,12 +403,26 @@ function cr_door_run(cars_st: mut CarsState, c: Car, dt: float) -> void {
   if c.phase == CarPhase.Exiting { c.exit_t = c.exit_t - dt }
 }
 
+function cr_door_open_phase(p: int) -> bool {
+  return p == int(CarPhase.Entering) or p == int(CarPhase.Exiting) or p == int(CarPhase.Jacked)
+}
+
 function cr_door_phase(cars_st: mut CarsState, c: Car) -> void {
   if c.phase == c.last_phase { return }
+  let was = c.last_phase
   c.last_phase = c.phase
   var open = 0.0
-  if c.phase == CarPhase.Entering or c.phase == CarPhase.Exiting or c.phase == CarPhase.Jacked { open = 1.0 }
+  if cr_door_open_phase(int(c.phase)) { open = 1.0 }
   CarAnim.car_param(c.nid, cars_config(cars_st).param_door, open)
+  # the driver's door opens and shuts on the model's own animation, the clips named on its socket and seat
+  let seat = car_seat_row(c.model, c.drv_seat)
+  if seat != null and cr_door_open_phase(int(c.phase)) != cr_door_open_phase(was) {
+    let k = car_socket_of(c.model, CAR_SOCK_DOOR, seat.door)
+    if cr_door_open_phase(int(c.phase)) {
+      if k >= 0 and CarSockets[k].clip_open != "" { CarAnim.car_request(c.nid, CarSockets[k].clip_open) }
+      if seat.clip_door != "" { CarAnim.car_request(c.nid, seat.clip_door) }
+    } else if k >= 0 and CarSockets[k].clip_close != "" { CarAnim.car_request(c.nid, CarSockets[k].clip_close) }
+  }
   if c.phase == CarPhase.Wrecked and c.oid >= 0 {
     let h = imap_get(cars_st.cr_oids, c.oid, -1)
     if h >= 0 { dispatch CarDestroyedIn { who: h } }

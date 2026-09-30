@@ -117,7 +117,7 @@ program CarsMathTest {
 
   test "the data is what was written: classes, models, seats and sockets, wheels and axles" () {
     expect_eq(CARC_COUNT, 9)
-    expect_eq(CARM_COUNT, 5)
+    expect_eq(CARM_COUNT, 6)
     expect_eq(CarModels[CARM_BIKE].cls, CARC_MOTORCYCLE)
     expect_eq(CarClasses[CARC_MOTORCYCLE].kind, CAR_KIND_BIKE)
     expect_eq(car_wheel_count(CARM_SEDAN), 4)

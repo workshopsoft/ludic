@@ -1,0 +1,345 @@
+# cars_net_test.ludic - a car in a party under host authority: the host's car is written as a snapshot fourteen
+# ints long, read by a guest into a ring, and shown a little in the past, interpolated between the two
+# snapshots that bracket that time and carried on a quarter of a second at most past the newest. What a guest
+# may not do: speak for a car it does not own, or claim a jump no car could make. Nothing is allocated.
+import "ludic.cars"
+import "ludic.base"
+program CarsNetTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+
+  state Party {
+    me: int = 1
+    host: int = 1
+    tk: Tick = new Tick
+    seed: int = 12345
+  }
+  function pt_me(party_st: Party) -> int { return party_st.me }
+  function pt_host(party_st: Party) -> int { return party_st.host }
+  function pt_is_player(actor: int) -> bool { return actor < 100 }
+  bind CarWorld { me: fn pt_me, host: fn pt_host, is_player: fn pt_is_player }
+
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+
+  function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: Party, n: int) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(party_st.tk, 0.016666668, i, 0.0))
+    }
+  }
+
+  # the scripted path a host car drives: accelerating and weaving
+  function px(t: float) -> float { return 10.0 * t + 0.5 * t * t }
+  function pz(t: float) -> float { return 8.0 * Math.sin(0.5 * t) }
+  function pdx(t: float) -> float { return 10.0 + t }
+  function pdz(t: float) -> float { return 4.0 * Math.cos(0.5 * t) }
+
+  function put(c: Car, t: float) -> void {
+    c.x = px(t)
+    c.z = pz(t)
+    c.y = 0.1
+    c.yaw = Math.atan2(pdx(t), pdz(t))
+    c.speed = Math.sqrt(pdx(t) * pdx(t) + pdz(t) * pdz(t))
+    c.fx = Math.sin(c.yaw)
+    c.fy = 0.0
+    c.fz = Math.cos(c.yaw)
+    c.ux = 0.0
+    c.uy = 1.0
+    c.uz = 0.0
+  }
+
+  test "a snapshot is fourteen ints the same car reads back to a millimetre, its state in the flags" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 12.3456, -7.891, 0.75, -1)
+    let c = car_by_nid(cars_st, nid)
+    let w = words(40)
+    car_horn(cars_st, nid, true)
+    car_lights(cars_st, nid, CAR_LIGHT_LOW | CAR_LIGHT_SIREN)
+    car_indicator(cars_st, nid, CAR_IND_LEFT)
+    car_pop_tyre(cars_st, nid, 2)
+    c.engine_on = true
+    c.gear = 3
+    c.rpm = 4321.0
+    c.steer_angle = 0.123
+    c.health = 512.0
+    expect(car_snap_write(cars_st, nid, w, 7))
+    expect_eq(w[7], nid)
+    expect_eq(w[9], 12346)
+    expect_eq(w[11], -7891)
+    expect_eq(w[12], 7500)
+    expect_eq(w[8], 0)
+    # read as a guest of another machine's car
+    party_st.me = 2
+    frames(cars_st, doors, owns, party_st, 2)
+    expect(c.sim == CAR_SIM_REMOTE)
+    c.engine_on = false
+    c.horn = false
+    c.lights = 0
+    c.indicator = 0
+    c.wheels[2].popped = false
+    c.health = 1000.0
+    expect_eq(car_snap_read(cars_st, w, 7, 1), 0)
+    frames(cars_st, doors, owns, party_st, 30)
+    expect(c.engine_on)
+    expect(c.horn)
+    expect_eq(c.lights & 63, CAR_LIGHT_LOW | CAR_LIGHT_SIREN)
+    expect_eq(c.indicator, CAR_IND_LEFT)
+    expect(c.wheels[2].popped)
+    expect(not c.wheels[0].popped)
+    expect_eq(c.gear, 3)
+    expect(near(c.rpm, 4321.0, 1.0))
+    expect(near(c.steer_angle, 0.123, 0.0002))
+    expect(near(c.health, 512.0, 1.5))
+    expect(near(c.x, 12.3456, 0.001))
+    expect(near(c.z, -7.891, 0.001))
+    expect(near(c.yaw, 0.75, 0.0001))
+  }
+
+  test "the guest shows the car where it was a fixed delay ago, between the snapshots that bracket that time" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    # the host: six seconds of the path, a snapshot every fourth frame
+    let snaps = words(14 * 100)
+    var n = 0
+    for f in 0 .. 360 {
+      frames(cars_st, doors, owns, party_st, 1)
+      let t = float(f + 1) / 60.0
+      put(c, t)
+      if (f + 1) % 4 == 0 and car_snap_due(cars_st, nid, 0.0166667) or (f + 1) % 4 == 0 {
+        expect(car_snap_write(cars_st, nid, snaps, n * 14))
+        n += 1
+      }
+    }
+    expect(n >= 88)
+    let t0 = cars_st.cr_time
+    # the guest, fifty milliseconds behind the host: a snapshot arrives that long after it was made
+    party_st.me = 2
+    frames(cars_st, doors, owns, party_st, 2)
+    expect(c.sim == CAR_SIM_REMOTE)
+    c.net_ok = false
+    c.ring_n = 0
+    c.ring_head = 0
+    cars_st.cr_net_have = false
+    var next = 0
+    var worst = 0.0
+    var samples = 0
+    for f in 0 .. 330 {
+      let s = float(f) / 60.0
+      while next < n and float(snaps[next * 14 + 1]) / 1000.0 + 0.05 <= s {
+        expect_eq(car_snap_read(cars_st, snaps, next * 14, 1), 0)
+        next += 1
+      }
+      frames(cars_st, doors, owns, party_st, 1)
+      if s > 1.0 {
+        let shown = s + 1.0 / 60.0 - 0.05 - 0.12
+        let d = Math.sqrt((c.x - px(shown)) * (c.x - px(shown)) + (c.z - pz(shown)) * (c.z - pz(shown)))
+        if d > worst { worst = d }
+        samples += 1
+      }
+    }
+    expect(samples > 200)
+    expect(worst < 0.12)
+    expect(c.speed > 10.0)
+  }
+
+  function jitter(party_st: mut Party) -> float {
+    party_st.seed = (party_st.seed * 1103515245 + 12345) & 2147483647
+    return float(party_st.seed % 1000) / 1000.0
+  }
+
+  test "a network that delivers late and unevenly still shows a smooth car" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    let snaps = words(14 * 100)
+    let due = floats(100)
+    var n = 0
+    for f in 0 .. 360 {
+      frames(cars_st, doors, owns, party_st, 1)
+      put(c, float(f + 1) / 60.0)
+      if (f + 1) % 4 == 0 {
+        expect(car_snap_write(cars_st, nid, snaps, n * 14))
+        due[n] = float(f + 1) / 60.0 + 0.03 + 0.06 * jitter(party_st)
+        n += 1
+      }
+    }
+    party_st.me = 2
+    frames(cars_st, doors, owns, party_st, 2)
+    c.net_ok = false
+    c.ring_n = 0
+    c.ring_head = 0
+    cars_st.cr_net_have = false
+    var next = 0
+    var px0 = 0.0
+    var py0 = 0.0
+    var biggest_step = 0.0
+    var have = false
+    for f in 0 .. 330 {
+      let s = float(f) / 60.0
+      # late ones arrive after earlier ones may have: only the ones in order are kept
+      while next < n and due[next] <= s {
+        car_snap_read(cars_st, snaps, next * 14, 1)
+        next += 1
+      }
+      frames(cars_st, doors, owns, party_st, 1)
+      if s > 1.0 {
+        if have {
+          let d = Math.sqrt((c.x - px0) * (c.x - px0) + (c.z - py0) * (c.z - py0))
+          if d > biggest_step { biggest_step = d }
+        }
+        have = true
+      }
+      px0 = c.x
+      py0 = c.z
+    }
+    # a frame's step is about speed / 60 (0.2 to 0.4 m here); a jump or a stall would show
+    expect(biggest_step < 0.6)
+  }
+
+  test "with nothing arriving the car is carried on along its heading for a quarter of a second, and then stops" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    let snaps = words(14 * 4)
+    for k in 0 .. 3 {
+      frames(cars_st, doors, owns, party_st, 4)
+      put(c, 1.0 + float(k) * 0.0667)
+      expect(car_snap_write(cars_st, nid, snaps, k * 14))
+    }
+    party_st.me = 2
+    frames(cars_st, doors, owns, party_st, 2)
+    c.net_ok = false
+    c.ring_n = 0
+    c.ring_head = 0
+    cars_st.cr_net_have = false
+    for k in 0 .. 3 { expect_eq(car_snap_read(cars_st, snaps, k * 14, 1), 0) }
+    frames(cars_st, doors, owns, party_st, 120)
+    let lastx = px(1.0 + 2.0 * 0.0667)
+    let lastz = pz(1.0 + 2.0 * 0.0667)
+    let gone = Math.sqrt((c.x - lastx) * (c.x - lastx) + (c.z - lastz) * (c.z - lastz))
+    expect(gone > 0.5)
+    expect(gone < 0.26 * c.speed + 0.05)
+    let before = c.x
+    frames(cars_st, doors, owns, party_st, 60)
+    expect(near(c.x, before, 0.001))
+  }
+
+  test "a guest may not speak for another's car, send a jump no car could make, or overwrite its own" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    let w = words(56)
+    # this machine is the host: the car is its own, so it writes and does not read
+    expect(car_snap_write(cars_st, nid, w, 0))
+    expect_eq(car_snap_read(cars_st, w, 0, 2), 1)
+    expect_eq(car_snap_read(cars_st, w, 0, 1), 1)
+    party_st.me = 2
+    frames(cars_st, doors, owns, party_st, 2)
+    # a guest does not write for the host's car
+    expect(not car_snap_write(cars_st, nid, w, 14))
+    # it took from the wrong machine
+    expect_eq(car_snap_read(cars_st, w, 0, 3), CAR_SNAP_REFUSED)
+    expect_eq(car_snap_read(cars_st, w, 0, 1), 0)
+    # a second snapshot a fifteenth of a second later and a kilometre away is refused
+    put(c, 0.0)
+    c.x = 0.0
+    c.speed = 5.0
+    cars_st.cr_time = 10.0
+    c.auth = 1
+    let v = words(28)
+    expect(car_snap_write(cars_st, nid, v, 0) == false)
+    v[0] = nid
+    v[1] = 10000
+    v[2] = 0
+    v[3] = 100
+    v[4] = 0
+    v[5] = 0
+    v[6] = 0
+    v[7] = 0
+    v[8] = 0
+    v[9] = 0
+    v[10] = 900 | (3 << 16)
+    v[11] = 0
+    v[12] = 0
+    v[13] = 1000 | (1000 << 16)
+    expect_eq(car_snap_read(cars_st, v, 0, 1), 0)
+    v[1] = 10067
+    v[2] = 1000000
+    expect_eq(car_snap_read(cars_st, v, 0, 1), CAR_SNAP_REFUSED)
+    var refused = 0
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) { if fs[i].what == CAR_SNAP_REFUSED { refused += 1 } }
+    expect(refused >= 1)
+    v[1] = 10067
+    v[2] = 1500
+    expect_eq(car_snap_read(cars_st, v, 0, 1), 0)
+  }
+
+  test "snapshots go out at the settings' rate, for the cars this machine runs" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    var n = 0
+    for f in 0 .. 600 {
+      if car_snap_due(cars_st, nid, 0.016666668) { n += 1 }
+    }
+    # ten seconds at 15 a second
+    expect(n >= 148)
+    expect(n <= 152)
+    party_st.me = 2
+    frames(cars_st, doors, owns, party_st, 2)
+    expect(not car_snap_due(cars_st, nid, 1.0))
+  }
+
+  test "a driver's controls are taken only from the driver" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    car_seat_driver(cars_st, nid, 2)
+    frames(cars_st, doors, owns, party_st, 3)
+    let c = car_by_nid(cars_st, nid)
+    let w = words(12)
+    car_drive(cars_st, nid, 0.75, 0.0, -0.5, 0.25)
+    car_nitro(cars_st, nid, true)
+    expect(car_input_write(cars_st, nid, w, 3))
+    expect_eq(w[4], 750)
+    expect_eq(w[6], -500)
+    car_drive(cars_st, nid, 0.0, 0.0, 0.0, 0.0)
+    car_nitro(cars_st, nid, false)
+    expect(not car_input_read(cars_st, w, 3, 3))
+    expect(near(c.in_throttle, 0.0, 0.0001))
+    expect(car_input_read(cars_st, w, 3, 2))
+    expect(near(c.in_throttle, 0.75, 0.001))
+    expect(near(c.in_steer, -0.5, 0.001))
+    expect(near(c.in_hand, 0.25, 0.001))
+    expect(c.in_nitro)
+  }
+
+  test "reading and writing snapshots allocates nothing" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    let w = words(28)
+    party_st.me = 2
+    frames(cars_st, doors, owns, party_st, 2)
+    # a snapshot of a car somebody else runs, refreshed and read each step
+    w[0] = nid
+    w[13] = 1000 | (1000 << 16)
+    w[10] = 900 | (3 << 16)
+    var t = 1000
+    for i in 0 .. 120 {
+      w[1] = t
+      w[2] = t * 10
+      t += 67
+      car_snap_read(cars_st, w, 0, 1)
+      frames(cars_st, doors, owns, party_st, 4)
+    }
+    q_drain(cars_facts(cars_st))
+    let before = Os.heap_bytes()
+    for i in 0 .. 600 {
+      w[1] = t
+      w[2] = t * 10
+      t += 67
+      car_snap_read(cars_st, w, 0, 1)
+      frames(cars_st, doors, owns, party_st, 4)
+    }
+    let after = Os.heap_bytes()
+    if before > 0 { expect(after <= before + 4096) }
+    expect(c.sim == CAR_SIM_REMOTE)
+  }
+}

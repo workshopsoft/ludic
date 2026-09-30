@@ -298,7 +298,6 @@ export function car_set_authority(cars_st: mut CarsState, nid: int) -> bool {
   let c = car_by_nid(cars_st, nid)
   if c == null { return false }
   let a = car_authority(cars_st, c)
-  if a == c.auth { return true }
   c.auth = a
   if a != CarWorld.me() {
     if c.body {

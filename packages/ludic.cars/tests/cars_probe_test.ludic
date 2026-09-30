@@ -1,8 +1,0 @@
-import "ludic.cars"
-import "ludic.base"
-program Probe {
-  numbers float
-  test "it compiles" (cars_st: mut CarsState) {
-    expect_eq(CARM_COUNT, 0)
-  }
-}

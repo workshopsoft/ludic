@@ -17,6 +17,7 @@ program CarsDoorsTest {
     boarded: words = words(8)
     alit: words = words(8)
     asked: string = ""
+    requested: string = ""
     speed_param: float = -1.0
     door_param: float = -1.0
     tk: Tick = new Tick
@@ -41,8 +42,9 @@ program CarsDoorsTest {
     if name == "car_speed" { scene_st.speed_param = v }
     if name == "car_door" { scene_st.door_param = v }
   }
+  function sc_car_request(scene_st: mut Scene, id: int, name: string) -> void { scene_st.requested = scene_st.requested + name + "," }
   bind CarRider { reach: fn sc_reach, board: fn sc_board, alight: fn sc_alight }
-  bind CarAnim { rider_request: fn sc_rider_request, car_param: fn sc_car_param }
+  bind CarAnim { rider_request: fn sc_rider_request, car_param: fn sc_car_param, car_request: fn sc_car_request }
 
   function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: Scene, n: int) -> void {
     for i in 0 .. n {
@@ -84,6 +86,8 @@ program CarsDoorsTest {
     expect(scene_st.door_param < 0.5)
     # the graph was asked for the states the seat names, in their order
     expect(scene_st.asked == "enter_left,sit_drive,")
+    # the door opened on the model's own clip, and shut on the next
+    expect(scene_st.requested == "door_l_open,door_l_pull,door_l_close,")
     expect_eq(count(cars_st, CAR_ENTERED), 1)
   }
 

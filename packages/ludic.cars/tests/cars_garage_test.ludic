@@ -1,0 +1,320 @@
+# cars_garage_test.ludic - what a player owns: garage slots the game hands out (places it alone knows), cars
+# retrieved, called, stored, destroyed, claimed under insurance, impounded and released, every charge through
+# the game's wallet, and the save that brings the rows back in their statuses.
+import "ludic.cars"
+import "ludic.base"
+program CarsGarageTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+  def CarParts from "cars_parts.lres"
+  def CarLiveries from "cars_liveries.lres"
+
+  state Town {
+    cash: int = 10000
+    spent: int = 0
+    blocked: int = -1
+    tk: Tick = new Tick
+  }
+  function tw_can_pay(town_st: Town, pid: int, amount: int) -> bool { return town_st.cash >= amount }
+  function tw_pay(town_st: mut Town, pid: int, amount: int) -> bool {
+    if town_st.cash < amount { return false }
+    town_st.cash -= amount
+    town_st.spent += amount
+    return true
+  }
+  function tw_free(town_st: Town, place: int) -> bool { return place != town_st.blocked }
+  function tw_x(place: int) -> float { return float(place) * 10.0 }
+  function tw_z(place: int) -> float { return 5.0 }
+  function tw_yaw(place: int) -> float { return 1.5 }
+  function tw_spawn(x: float, z: float, r: float) -> bool { return true }
+  function tw_spawn_x() -> float { return 301.0 }
+  function tw_spawn_z() -> float { return 77.0 }
+  bind CarBank { can_pay: fn tw_can_pay, pay: fn tw_pay }
+  bind CarPlaces { free: fn tw_free, x: fn tw_x, z: fn tw_z, yaw: fn tw_yaw }
+  bind CarWorld { spawn_point: fn tw_spawn, spawn_x: fn tw_spawn_x, spawn_z: fn tw_spawn_z }
+
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+
+  function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: Town, n: int, dt: float) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(town_st.tk, dt, i, 0.0))
+    }
+  }
+
+  function count(cars_st: CarsState, what: int) -> int {
+    var n = 0
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  # a player with two slots and a sedan in one
+  function player(cars_st: mut CarsState, insured: bool) -> int {
+    expect(car_slot_add(cars_st, 1, 10) >= 0)
+    expect(car_slot_add(cars_st, 1, 11) >= 0)
+    let oid = car_own_add(cars_st, 1, CARM_SEDAN, insured)
+    expect(oid >= 0)
+    return oid
+  }
+
+  test "a player's slots are the game's places, and a car goes in a free one" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    expect_eq(car_own_add(cars_st, 1, CARM_SEDAN, false), -2)
+    expect(car_slot_add(cars_st, 1, 10) >= 0)
+    expect_eq(car_slot_add(cars_st, 2, 10), -1)
+    expect(car_slot_add(cars_st, 1, 11) >= 0)
+    expect_eq(car_slot_count(cars_st, 1), 2)
+    expect_eq(car_slot_count(cars_st, 2), 0)
+    let a = car_own_add(cars_st, 1, CARM_SEDAN, false)
+    expect(a >= 0)
+    expect_eq(car_slot_car(cars_st, 10), a)
+    expect_eq(car_slot_free(cars_st, 1), 11)
+    town_st.blocked = 11
+    expect_eq(car_slot_free(cars_st, 1), -1)
+    expect_eq(car_own_add(cars_st, 1, CARM_HATCH, false), -2)
+    town_st.blocked = -1
+    let b = car_own_add(cars_st, 1, CARM_HATCH, true)
+    expect(b >= 0 and b != a)
+    expect_eq(car_own_add(cars_st, 1, CARM_BIKE, false), -2)
+    expect_eq(car_own_add(cars_st, 1, 99, false), -1)
+    expect_eq(car_own_count(cars_st, 1), 2)
+    expect_eq(car_own_nth(cars_st, 1, 1), b)
+    expect_eq(car_own_nth(cars_st, 1, 2), -1)
+    expect_eq(car_own_status(cars_st, a), int(CarStatus.Garaged))
+    expect(car_slot_remove(cars_st, 11))
+    expect_eq(car_slot_count(cars_st, 1), 1)
+  }
+
+  test "retrieved, the car stands at its slot's place and the slot is free; stored, it goes back, damage and paint kept" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let oid = player(cars_st, false)
+    expect(car_own_paint(cars_st, oid, 0x112233, 0x445566, 0x778899))
+    expect(car_own_fit(cars_st, oid, CARPT_ENGINE1))
+    expect_eq(car_retrieve(cars_st, oid), 0)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Out))
+    let nid = car_own_car(cars_st, oid)
+    expect(nid >= 0)
+    let c = car_by_nid(cars_st, nid)
+    expect(near(c.x, 100.0, 0.01))
+    expect(near(c.z, 5.0, 0.01))
+    expect(near(c.yaw, 1.5, 0.01))
+    expect_eq(c.owner, 1)
+    expect_eq(c.oid, oid)
+    expect_eq(c.primary, 0x112233)
+    expect(near(c.stats.torque, 1.1, 0.0001))
+    expect_eq(car_slot_car(cars_st, 10), -1)
+    # a slot's car cannot be taken twice
+    expect(car_retrieve(cars_st, oid) != 0)
+    # hurt, repainted, and put away
+    expect(car_damage(cars_st, nid, 300.0, -1))
+    expect(car_own_paint(cars_st, oid, 0xaa0000, 0, 0))
+    expect_eq(c.primary, 0xaa0000)
+    expect_eq(car_store(cars_st, oid), 0)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Garaged))
+    expect_eq(car_count(cars_st), 0)
+    expect_eq(car_slot_car(cars_st, 10) + car_slot_car(cars_st, 11) + 1, oid)
+    expect_eq(car_own_car(cars_st, oid), -1)
+    expect(car_retrieve(cars_st, oid) == 0)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    let again = car_by_nid(cars_st, car_own_car(cars_st, oid))
+    expect(near(again.health, 700.0, 0.5))
+    expect_eq(again.primary, 0xaa0000)
+  }
+
+  test "a car with somebody in it is not put away" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let oid = player(cars_st, false)
+    car_retrieve(cars_st, oid)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    let c = car_by_nid(cars_st, car_own_car(cars_st, oid))
+    expect_eq(car_seat_driver(cars_st, c.nid, 1), 0)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect_eq(car_store(cars_st, oid), CAR_NO_BUSY)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Out))
+  }
+
+  test "a called car arrives after its class's delivery time, near where the game can put it" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let oid = player(cars_st, false)
+    expect_eq(car_call(cars_st, oid, 500.0, 500.0, 0.5), 0)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Delivering))
+    expect_eq(car_count(cars_st), 0)
+    frames(cars_st, doors, owns, town_st, 20, 1.0)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Delivering))
+    expect_eq(car_count(cars_st), 0)
+    frames(cars_st, doors, owns, town_st, 15, 1.0)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Out))
+    let c = car_by_nid(cars_st, car_own_car(cars_st, oid))
+    expect(near(c.x, 301.0, 0.01))
+    expect(near(c.z, 77.0, 0.01))
+    expect_eq(count(cars_st, CAR_DELIVERED), 1)
+    # a car already out cannot be called
+    expect(car_call(cars_st, oid, 0.0, 0.0, 0.0) != 0)
+  }
+
+  test "a wrecked car is destroyed; uninsured it stays so, insured it is claimed, paid for, and comes back whole" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let oid = player(cars_st, false)
+    expect(car_own_fit(cars_st, oid, CARPT_ENGINE2))
+    car_retrieve(cars_st, oid)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    let nid = car_own_car(cars_st, oid)
+    expect(car_damage(cars_st, nid, 50000.0, -1))
+    frames(cars_st, doors, owns, town_st, 5, 0.016666668)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Destroyed))
+    expect_eq(car_own_car(cars_st, oid), -1)
+    # the wreck is still in the world, and nobody's
+    expect_eq(car_by_nid(cars_st, nid).oid, -1)
+    expect_eq(car_claim(cars_st, oid), CAR_NO_INSURANCE)
+    expect_eq(car_insure(cars_st, oid, true), 0)
+    # a quarter of a claim: 20000 * 0.12 / 4
+    expect_eq(town_st.spent, 600)
+    town_st.cash = 1000
+    expect_eq(car_claim(cars_st, oid), CAR_NO_MONEY)
+    town_st.cash = 5000
+    expect_eq(car_claim(cars_st, oid), 0)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Claiming))
+    expect_eq(town_st.cash, 5000 - 2400)
+    # nothing happens until the class's time has passed
+    frames(cars_st, doors, owns, town_st, 50, 1.0)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Claiming))
+    frames(cars_st, doors, owns, town_st, 50, 1.0)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Garaged))
+    let row = car_own_row(cars_st, oid)
+    expect_eq(row.claims, 1)
+    expect(row.slot >= 10)
+    # new, whole, and stock: the tuning went with the wreck
+    expect_eq(row.parts[CAR_SLOT_ENGINE], -1)
+    expect_eq(count(cars_st, CAR_CLAIM_PAID), 1)
+    car_retrieve(cars_st, oid)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    let c = car_by_nid(cars_st, car_own_car(cars_st, oid))
+    expect(near(c.health, 1000.0, 0.5))
+  }
+
+  test "a claim needs a slot to come back to" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let oid = player(cars_st, true)
+    car_retrieve(cars_st, oid)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    car_damage(cars_st, car_own_car(cars_st, oid), 50000.0, -1)
+    frames(cars_st, doors, owns, town_st, 5, 0.016666668)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Destroyed))
+    expect(car_slot_remove(cars_st, 10))
+    expect(car_slot_remove(cars_st, 11))
+    expect_eq(car_claim(cars_st, oid), CAR_NO_ROOM)
+    expect(car_slot_add(cars_st, 1, 12) >= 0)
+    expect_eq(car_claim(cars_st, oid), 0)
+  }
+
+  test "an impounded car is out of the world until its fee is paid, then stands at the lot" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let oid = player(cars_st, false)
+    car_retrieve(cars_st, oid)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect_eq(car_impound(cars_st, oid), 0)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Impounded))
+    expect_eq(car_count(cars_st), 0)
+    expect_eq(count(cars_st, CAR_IMPOUNDED), 1)
+    town_st.cash = 100
+    expect_eq(car_release(cars_st, oid), CAR_NO_MONEY)
+    town_st.cash = 5000
+    expect_eq(car_release(cars_st, oid), 0)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect_eq(car_own_status(cars_st, oid), int(CarStatus.Out))
+    # a sport class pays 3% of the price: 600
+    expect_eq(town_st.cash, 4400)
+    expect(car_own_car(cars_st, oid) >= 0)
+    expect_eq(count(cars_st, CAR_RELEASED), 1)
+    # out cars are not in the impound
+    expect(car_release(cars_st, oid) != 0)
+  }
+
+  test "a policy costs a quarter of a claim, from the owner's money" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let oid = player(cars_st, false)
+    town_st.cash = 100
+    expect_eq(car_insure(cars_st, oid, true), CAR_NO_MONEY)
+    expect(not car_own_row(cars_st, oid).insured)
+    town_st.cash = 1000
+    expect_eq(car_insure(cars_st, oid, true), 0)
+    expect(car_own_row(cars_st, oid).insured)
+    expect_eq(town_st.cash, 400)
+    expect_eq(car_insure(cars_st, oid, false), 0)
+    expect_eq(car_insure(cars_st, 99, true), CAR_NO_SUCH)
+  }
+
+  test "every status change is a fact, once" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let oid = player(cars_st, false)
+    q_clear(cars_facts(cars_st))
+    car_retrieve(cars_st, oid)
+    frames(cars_st, doors, owns, town_st, 5, 0.016666668)
+    car_store(cars_st, oid)
+    frames(cars_st, doors, owns, town_st, 5, 0.016666668)
+    var seen = ""
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) {
+      if fs[i].what == CAR_OWN_STATUS { seen = `{seen}{int(fs[i].v)}` }
+    }
+    expect(seen == "20")
+  }
+
+  test "the save brings back every owned car in its status, the slots, the paint and the parts, and the ids go on" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let a = player(cars_st, true)
+    let b = car_own_add(cars_st, 1, CARM_HATCH, false)
+    expect(b >= 0)
+    expect(car_own_paint(cars_st, a, 0x010203, 0x040506, 0x070809))
+    expect(car_own_fit(cars_st, a, CARPT_TURBO1))
+    expect(car_own_fit(cars_st, a, CARPT_PLATE1))
+    car_retrieve(cars_st, a)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    let c = car_by_nid(cars_st, car_own_car(cars_st, a))
+    car_place(cars_st, c.nid, 42.0, -17.0, 0.7)
+    car_plate(cars_st, c.nid, "ABC 123")
+    car_damage(cars_st, c.nid, 250.0, -1)
+    expect_eq(car_call(cars_st, b, 0.0, 0.0, 0.0), 0)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect_eq(car_own_status(cars_st, b), int(CarStatus.Delivering))
+    frames(cars_st, doors, owns, town_st, 5, 1.0)
+    let text = save_encode(cars_save(cars_st))
+    cars_reset(cars_st)
+    expect_eq(car_own_count(cars_st, 1), 0)
+    cars_load(cars_st, save_decode(text), 1)
+    expect_eq(car_own_count(cars_st, 1), 2)
+    expect_eq(car_slot_count(cars_st, 1), 2)
+    expect_eq(car_own_status(cars_st, a), int(CarStatus.Out))
+    expect_eq(car_own_status(cars_st, b), int(CarStatus.Delivering))
+    let row = car_own_row(cars_st, a)
+    expect(row.insured)
+    expect_eq(row.primary, 0x010203)
+    expect_eq(row.parts[CAR_SLOT_TURBO], CARPT_TURBO1)
+    expect_eq(row.parts[CAR_SLOT_ARMOUR], CARPT_PLATE1)
+    expect(row.plate == "ABC 123")
+    # the delivery's timer kept, the out car made again where it stood, damaged as it was
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    let back = car_by_nid(cars_st, car_own_car(cars_st, a))
+    expect(back != null)
+    expect(near(back.x, 42.0, 0.01))
+    expect(near(back.z, -17.0, 0.01))
+    expect(near(back.yaw, 0.7, 0.001))
+    # 250 of damage with the plate's armour turning 40% of it, off 1200 of health
+    expect(near(back.health, 1200.0 - 150.0, 1.0))
+    # a hatch is a compact: twenty seconds to deliver, five of them gone
+    expect(near(car_own_row(cars_st, b).timer, 20.0 - 5.0 - 1.0 / 60.0 * 2.0, 0.5))
+    # a new car is given an id nobody used
+    let d = car_own_add(cars_st, 1, CARM_SEDAN, false)
+    expect(d != a and d != b)
+  }
+
+  test "a live car removed leaves its owner's row out with nothing standing" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, town_st: mut Town) {
+    let oid = player(cars_st, false)
+    car_retrieve(cars_st, oid)
+    frames(cars_st, doors, owns, town_st, 3, 0.016666668)
+    expect(car_remove(cars_st, car_own_car(cars_st, oid)))
+    expect(car_own_remove(cars_st, oid))
+    expect_eq(car_own_count(cars_st, 1), 0)
+    expect(not car_own_remove(cars_st, oid))
+  }
+}

@@ -1,5 +1,5 @@
 # cars_seats.lres - where a sedan's people sit and the doors they use, and the graph states each asks for
-sedan_driver { car: CARM_SEDAN, driver: true, x: -0.4, y: 0.55, z: 0.2, door: 0, state_sit: "sit_drive", state_enter: "enter_left", state_leave: "exit_left", state_jacked: "dragged_left", exit_side: 1.0 }
+sedan_driver { car: CARM_SEDAN, driver: true, x: -0.4, y: 0.55, z: 0.2, door: 0, state_sit: "sit_drive", state_enter: "enter_left", state_leave: "exit_left", state_jacked: "dragged_left", exit_side: 1.0, clip_door: "door_l_pull" }
 sedan_front  { car: CARM_SEDAN, x: 0.4, y: 0.55, z: 0.2, door: 1, state_sit: "sit_pass", state_enter: "enter_right", state_leave: "exit_right" }
 sedan_rear   { car: CARM_SEDAN, x: 0.4, y: 0.55, z: -0.7, door: 2, state_sit: "sit_pass", state_enter: "enter_right", state_leave: "exit_right" }
 bike_rider   { car: CARM_BIKE, driver: true, x: 0.0, y: 0.8, z: -0.1, exposed: true, state_sit: "sit_bike", state_enter: "mount_bike", state_leave: "dismount_bike" }

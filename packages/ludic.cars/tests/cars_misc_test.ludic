@@ -1,0 +1,211 @@
+# cars_misc_test.ludic - what a game sees and sets besides driving: damage and its facts (a dent, a tyre, smoke, a
+# wreck), armour, the small states (horn, lights, indicators, engine, manual gears), paint, liveries and parts
+# on a live car, and a model that cannot be made.
+import "ludic.cars"
+import "ludic.base"
+program CarsMiscTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+  def CarParts from "cars_parts.lres"
+  def CarLiveries from "cars_liveries.lres"
+
+  state Rig { tk: Tick = new Tick }
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+  function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, n: int) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(rig.tk, 0.016666668, i, 0.0))
+    }
+  }
+  function count(fs: []CarFact, what: int) -> int {
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "a blow under the crash speed does nothing; over it costs the square of the excess, a dent and the engine" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    expect(near(car_hit(cars_st, nid, 5.0, 0.0, 0.0, -1.0, 0.0, 0.5, 2.0), 0.0, 0.0001))
+    expect(near(c.health, 1000.0, 0.0001))
+    # 16 m/s in a model that shrugs off 6: (10)^2 * 2 = 200, struck on the nose
+    let dmg = car_hit(cars_st, nid, 16.0, 0.0, 0.0, -1.0, 0.0, 0.5, 2.2)
+    expect(near(dmg, 200.0, 0.001))
+    expect(near(c.health, 800.0, 0.001))
+    expect(c.engine_hp < 400.0 - 50.0)
+    let fs = q_drain(cars_facts(cars_st))
+    expect_eq(count(fs, CAR_DAMAGE), 1)
+    expect_eq(count(fs, CAR_DEFORM), 1)
+    for i in 0 .. len(fs) {
+      if fs[i].what == CAR_DEFORM {
+        # in the model's own space: straight ahead, a little up, dead centre; the blow came from the front, along -z
+        expect(near(fs[i].z, 2.2, 0.01))
+        expect(near(fs[i].x, 0.0, 0.01))
+        expect(fs[i].v > 0.02)
+        expect(near(Math.abs(fs[i].w), 3.14159, 0.01))
+      }
+    }
+    # a hit at the back spares the engine
+    let hp = c.engine_hp
+    car_hit(cars_st, nid, 12.0, 0.0, 0.0, 1.0, 0.0, 0.5, -2.2)
+    expect(near(c.engine_hp, hp - 36.0 * 2.0 * 0.08, 0.5))
+  }
+
+  test "armour turns a share of a blow aside" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let a = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let b = car_spawn(cars_st, CARM_SEDAN, 20.0, 0.0, 0.0, -1)
+    expect(car_fit(cars_st, b, CARPT_PLATE2))
+    let da = car_hit(cars_st, a, 16.0, 0.0, 0.0, -1.0, 0.0, 0.5, 2.0)
+    let db = car_hit(cars_st, b, 16.0, 0.0, 0.0, -1.0, 20.0, 0.5, 2.0)
+    expect(near(db, da * 0.3, 0.01))
+    expect(car_by_nid(cars_st, b).health > car_by_nid(cars_st, a).health)
+  }
+
+  test "the engine smokes as it fails, and burns at the end; a wreck is afire" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    q_clear(cars_facts(cars_st))
+    c.engine_hp = 190.0
+    frames(cars_st, doors, owns, rig, 2)
+    expect_eq(c.smoke, 1)
+    c.engine_hp = 80.0
+    frames(cars_st, doors, owns, rig, 2)
+    expect_eq(c.smoke, 2)
+    c.engine_hp = 0.0
+    frames(cars_st, doors, owns, rig, 2)
+    expect_eq(c.smoke, 3)
+    var levels = ""
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) { if fs[i].what == CAR_SMOKE { levels = `{levels}{int(fs[i].v)}` } }
+    expect(levels == "123")
+    # a car with a dead engine will not start
+    expect(not car_engine(cars_st, nid, true))
+    expect(car_repair(cars_st, nid))
+    frames(cars_st, doors, owns, rig, 2)
+    expect_eq(c.smoke, 0)
+    expect(car_engine(cars_st, nid, true))
+  }
+
+  test "a hard blow can flatten a tyre; a flat tyre grips a third as well" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    q_clear(cars_facts(cars_st))
+    expect(car_pop_tyre(cars_st, nid, 1))
+    expect(not car_pop_tyre(cars_st, nid, 1))
+    expect(not car_pop_tyre(cars_st, nid, 9))
+    expect_eq(car_tyres_popped(c), 1)
+    expect(c.wheels[1].popped)
+    expect_eq(count(q_drain(cars_facts(cars_st)), CAR_TYRE_POP), 1)
+    # a shot at a wheel
+    expect(car_damage(cars_st, nid, 20.0, 3))
+    expect(c.wheels[3].popped)
+    expect_eq(car_tyres_popped(c), 2)
+    expect(car_repair(cars_st, nid))
+    expect_eq(car_tyres_popped(c), 0)
+  }
+
+  test "the small states: engine, horn, lights, indicators, manual gears, each a fact once" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    q_clear(cars_facts(cars_st))
+    expect(car_engine(cars_st, nid, true))
+    expect(car_engine(cars_st, nid, true))
+    expect(c.engine_on)
+    car_horn(cars_st, nid, true)
+    car_horn(cars_st, nid, true)
+    car_horn(cars_st, nid, false)
+    expect(car_lights(cars_st, nid, CAR_LIGHT_LOW | CAR_LIGHT_HIGH))
+    expect(car_lights(cars_st, nid, CAR_LIGHT_LOW | CAR_LIGHT_HIGH))
+    expect(car_indicator(cars_st, nid, CAR_IND_HAZARD))
+    expect(car_indicator(cars_st, nid, CAR_IND_HAZARD))
+    let fs = q_drain(cars_facts(cars_st))
+    expect_eq(count(fs, CAR_ENGINE_ON), 1)
+    expect_eq(count(fs, CAR_HORN), 1)
+    expect_eq(count(fs, CAR_LIGHTS), 1)
+    expect_eq(count(fs, CAR_INDICATOR), 1)
+    # the brake lights are worked out, not set
+    car_seat_driver(cars_st, nid, 1)
+    frames(cars_st, doors, owns, rig, 3)
+    c.speed = 10.0
+    car_drive(cars_st, nid, 0.0, 0.8, 0.0, 0.0)
+    frames(cars_st, doors, owns, rig, 3)
+    expect(c.lights & CAR_LIGHT_BRAKE != 0)
+    expect(c.lights & CAR_LIGHT_LOW != 0)
+    car_drive(cars_st, nid, 0.0, 0.0, 0.0, 0.0)
+    frames(cars_st, doors, owns, rig, 3)
+    expect(c.lights & CAR_LIGHT_BRAKE == 0)
+  }
+
+  test "a manual gearbox is shifted by hand, one gear a time, never past the top or below reverse" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let nid = car_spawn(cars_st, CARM_MANUAL, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    car_seat_driver(cars_st, nid, 1)
+    frames(cars_st, doors, owns, rig, 3)
+    expect_eq(c.gear, 1)
+    expect(car_shift(cars_st, nid, 1))
+    expect(not car_shift(cars_st, nid, 1))
+    frames(cars_st, doors, owns, rig, 30)
+    expect_eq(c.gear, 2)
+    for i in 0 .. 6 {
+      car_shift(cars_st, nid, 1)
+      frames(cars_st, doors, owns, rig, 30)
+    }
+    expect_eq(c.gear, 5)
+    car_drive(cars_st, nid, 1.0, 0.0, 0.0, 0.0)
+    frames(cars_st, doors, owns, rig, 600)
+    # no automatic change up or down: it is still in fifth
+    expect_eq(c.gear, 5)
+    expect(not car_shift(cars_st, nid, 0))
+  }
+
+  test "paint, liveries and parts on a live car; a livery for another model is refused" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let a = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let b = car_spawn(cars_st, CARM_HATCH, 10.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, a)
+    expect(car_paint(cars_st, a, 1, 2, 3))
+    expect_eq(c.primary, 1)
+    expect(car_livery(cars_st, a, CLIV_STRIPES))
+    expect_eq(c.primary, 0xc01818)
+    expect_eq(c.pearl, 0xffd0d0)
+    expect(not car_livery(cars_st, b, CLIV_STRIPES))
+    expect(car_livery(cars_st, b, CLIV_PLAIN))
+    expect(not car_livery(cars_st, b, 99))
+    expect(car_plate(cars_st, a, "SPEED 1"))
+    expect(c.plate == "SPEED 1")
+    expect(car_fit(cars_st, a, CARPT_PLATE1))
+    expect(near(c.stats.armour, 0.4, 0.0001))
+    expect(car_unfit(cars_st, a, CAR_SLOT_ARMOUR))
+    expect(near(c.stats.armour, 0.0, 0.0001))
+    expect(not car_unfit(cars_st, a, 9))
+  }
+
+  test "a model that is not in the data, or an unknown car, is refused, not made" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    expect_eq(car_spawn(cars_st, 99, 0.0, 0.0, 0.0, -1), -1)
+    expect_eq(car_spawn(cars_st, -1, 0.0, 0.0, 0.0, -1), -1)
+    expect(not car_drive(cars_st, 12345, 1.0, 0.0, 0.0, 0.0))
+    expect(not car_remove(cars_st, 12345))
+    expect(car_by_nid(cars_st, 12345) == null)
+    expect_eq(car_nearest(cars_st, 0.0, 0.0, 50.0), -1)
+    let a = car_spawn(cars_st, CARM_SEDAN, 10.0, 0.0, 0.0, -1)
+    let b = car_spawn(cars_st, CARM_HATCH, 30.0, 0.0, 0.0, -1)
+    expect_eq(car_nearest(cars_st, 0.0, 0.0, 50.0), a)
+    expect_eq(car_nearest(cars_st, 35.0, 0.0, 50.0), b)
+    expect_eq(car_nearest(cars_st, 0.0, 0.0, 5.0), -1)
+    expect_eq(car_count(cars_st), 2)
+  }
+
+  test "a parked car is held by its handbrake and does not roll" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    c.speed = 6.0
+    frames(cars_st, doors, owns, rig, 600)
+    expect(near(c.speed, 0.0, 0.05))
+    let z = c.z
+    frames(cars_st, doors, owns, rig, 300)
+    expect(near(c.z, z, 0.01))
+  }
+}

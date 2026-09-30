@@ -73,3 +73,16 @@ bus {
   ]
   drag: 2.2, health: 3000.0, engine_health: 1000.0, arcade: 0.2
 }
+manual {
+  cls: CARC_COMPACT, price: 7000, mass: 1000.0, length: 3.8, width: 1.7, height: 1.4, ground_clear: 0.18
+  drivetrain: CAR_FWD, auto: false, idle: 850.0, redline: 6000.0, limiter: 6300.0
+  torque: [{ x: 1000.0, y: 110.0 }, { x: 3000.0, y: 150.0 }, { x: 4500.0, y: 160.0 }, { x: 6000.0, y: 130.0 }, { x: 6500.0, y: 100.0 }]
+  gears: [3.5, 2.0, 1.4, 1.05, 0.85], reverse: 3.2, final_drive: 4.2
+  brakes: 10000.0, brake_front: 0.7
+  steer_lock: 36.0, steer_rate: 5.0
+  axles: [
+    { z: 1.15, track: 0.74, y: 0.47, radius: 0.3, steer: 1.0, spring: 30000.0, damper: 2600.0, rebound: 3300.0, tyre: CART_ROAD }
+    { z: -1.15, track: 0.74, y: 0.47, radius: 0.3, handbrake: true, spring: 28000.0, damper: 2400.0, rebound: 3000.0, tyre: CART_ROAD }
+  ]
+  com_y: 0.55
+}

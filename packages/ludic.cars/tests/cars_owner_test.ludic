@@ -1,0 +1,88 @@
+# cars_owner_test.ludic - owner authority (the settings row says 1): the driver's own machine simulates the car it
+# drives and sends its state; the host and everybody else show it. The car goes back to the host when the
+# driver gets out. The settings are read from a CarSettingsRows row.
+import "ludic.cars"
+import "ludic.base"
+program CarsOwnerTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+  def CarSettingsRows owner_rules { authority: CAR_AUTH_OWNER, snap_hz: 20, interp_delay: 0.2, door_time: 0.5, param_speed: "speed_kph" }
+
+  state Party {
+    me: int = 1
+    host: int = 1
+    tk: Tick = new Tick
+    speed_name: string = ""
+  }
+  function pt_me(party_st: Party) -> int { return party_st.me }
+  function pt_host(party_st: Party) -> int { return party_st.host }
+  function pt_is_player(actor: int) -> bool { return actor < 100 }
+  function pt_car_param(party_st: mut Party, id: int, name: string, v: float) -> void { if name == "speed_kph" and v > 0.001 { party_st.speed_name = name } }
+  bind CarWorld { me: fn pt_me, host: fn pt_host, is_player: fn pt_is_player }
+  bind CarAnim { car_param: fn pt_car_param }
+
+  function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: Party, n: int) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(party_st.tk, 0.016666668, i, 0.0))
+    }
+  }
+
+  test "the settings row is read, and its names are the ones the animation graph is told" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let cfg = cars_config(cars_st)
+    expect_eq(cfg.snap_hz, 20)
+    expect_eq(cfg.authority, CAR_AUTH_OWNER)
+    expect(cfg.param_steer == "car_steer")
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    car_seat_driver(cars_st, nid, 9)
+    frames(cars_st, doors, owns, party_st, 3)
+    let c = car_by_nid(cars_st, nid)
+    car_drive(cars_st, nid, 1.0, 0.0, 0.0, 0.0)
+    frames(cars_st, doors, owns, party_st, 30)
+    expect(party_st.speed_name == "speed_kph")
+    expect(c.speed > 0.5)
+  }
+
+  test "a car belongs to the machine of whoever drives it, and to the host when nobody does" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, party_st: mut Party) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    expect_eq(c.auth, 1)
+    expect(c.sim != CAR_SIM_REMOTE)
+    # player 2 takes the wheel (here, on the host, through the door machine)
+    expect_eq(car_enter(cars_st, nid, 2, 0), 0)
+    frames(cars_st, doors, owns, party_st, 60)
+    expect_eq(car_driver(c), 2)
+    expect_eq(car_authority(cars_st, c), 2)
+    expect(car_set_authority(cars_st, nid))
+    frames(cars_st, doors, owns, party_st, 2)
+    expect_eq(c.auth, 2)
+    expect(c.sim == CAR_SIM_REMOTE)
+    # the host reads its snapshots, from the driver's machine only
+    let w = words(14)
+    w[0] = nid
+    w[1] = 1000
+    w[13] = 1000 | (1000 << 16)
+    w[10] = 900 | (3 << 16)
+    expect_eq(car_snap_read(cars_st, w, 0, 1), CAR_SNAP_REFUSED)
+    expect_eq(car_snap_read(cars_st, w, 0, 2), 0)
+    expect(not car_snap_write(cars_st, nid, w, 0))
+    # on the driver's own machine it is simulated, and written
+    party_st.me = 2
+    expect(car_set_authority(cars_st, nid))
+    expect(c.sim != CAR_SIM_REMOTE)
+    expect(car_snap_write(cars_st, nid, w, 0))
+    # the driver gets out: it goes back to the host
+    party_st.me = 1
+    car_exit(cars_st, nid, 2)
+    frames(cars_st, doors, owns, party_st, 80)
+    expect_eq(car_driver(c), -1)
+    expect_eq(car_authority(cars_st, c), 1)
+    expect(car_set_authority(cars_st, nid))
+    expect_eq(c.auth, 1)
+    expect(c.sim != CAR_SIM_REMOTE)
+  }
+}

@@ -1,0 +1,180 @@
+# cars_lane_test.ludic - a car following a lane the road port gives (a circle here): at a distance as a lane
+# follower with no forces, near as the planar model steered and pedalled by the same plan, slowing for what is
+# in the way and for a tight corner, and the same run twice to the bit.
+import "ludic.cars"
+import "ludic.base"
+program CarsLaneTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+
+  state Road {
+    radius: float = 60.0
+    limit: float = 12.0
+    gap: float = -1.0
+    focus: float = 2000.0
+    tx: float = 0.0
+    tz: float = 0.0
+    tyaw: float = 0.0
+    asked: int = 0
+    tk: Tick = new Tick
+  }
+  # the lane: a circle about the origin travelled in the direction of increasing angle; the point `look` ahead of the nearest
+  function rd_aim(road_st: mut Road, nid: int, x: float, z: float, yaw: float, look: float) -> bool {
+    let phi = Math.atan2(z, x) + look / road_st.radius
+    road_st.tx = Math.cos(phi) * road_st.radius
+    road_st.tz = Math.sin(phi) * road_st.radius
+    road_st.tyaw = Math.atan2(-Math.sin(phi), Math.cos(phi))
+    road_st.asked += 1
+    return true
+  }
+  function rd_tx(road_st: Road) -> float { return road_st.tx }
+  function rd_tz(road_st: Road) -> float { return road_st.tz }
+  function rd_tyaw(road_st: Road) -> float { return road_st.tyaw }
+  function rd_limit(road_st: Road) -> float { return road_st.limit }
+  function rd_ahead(road_st: Road, nid: int, x: float, z: float, yaw: float, look: float) -> float { return road_st.gap }
+  function rd_focus(road_st: Road, x: float, z: float) -> float { return road_st.focus }
+  function rd_is_player(actor: int) -> bool { return actor < 100 }
+  bind CarRoad { aim: fn rd_aim, tx: fn rd_tx, tz: fn rd_tz, tyaw: fn rd_tyaw, limit: fn rd_limit, ahead: fn rd_ahead }
+  bind CarWorld { focus: fn rd_focus, is_player: fn rd_is_player }
+
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+
+  function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: Road, n: int) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(road_st.tk, 0.016666668, i, 0.0))
+    }
+  }
+
+  # a traffic car: an AI driver at the wheel, following the lane, on the circle at angle 0 facing along it
+  function traffic(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: Road, model: int, pace: float) -> Car {
+    let nid = car_spawn(cars_st, model, road_st.radius, 0.0, 0.0, -1)
+    expect_eq(car_seat_driver(cars_st, nid, 500), 0)
+    expect(car_follow_lane(cars_st, nid, true, pace))
+    frames(cars_st, doors, owns, road_st, 3)
+    return car_by_nid(cars_st, nid)
+  }
+
+  # seconds along the lane, the worst distance off it, the speed at the end
+  function follow(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: Road, c: Car, seconds: float, out: floats) -> void {
+    var worst = 0.0
+    for i in 0 .. int(seconds * 60.0) {
+      frames(cars_st, doors, owns, road_st, 1)
+      let d = Math.abs(Math.sqrt(c.x * c.x + c.z * c.z) - road_st.radius)
+      if d > worst { worst = d }
+    }
+    out[0] = worst
+    out[1] = c.speed
+    out[2] = c.odometer
+  }
+
+  test "a far car follows the lane with no forces, at the limit, and stays on the line" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: mut Road) {
+    let c = traffic(cars_st, doors, owns, road_st, CARM_SEDAN, 1.0)
+    expect(c.sim == CAR_SIM_LANE)
+    expect(not c.body)
+    let r = floats(3)
+    follow(cars_st, doors, owns, road_st, c, 40.0, r)
+    expect(r[0] < 1.0)
+    expect(near(r[1], 12.0, 0.6))
+    expect(r[2] > 300.0)
+    expect(road_st.asked > 100)
+    # the wheels turn with it and the gauge reads a gear the speed fits
+    expect(c.wheels[0].spin > 20.0)
+    expect(c.gear >= 1)
+    expect(c.rpm > 900.0 and c.rpm < 6500.0)
+  }
+
+  test "it keeps a share of the limit, and slows for what is in the way and goes on when it clears" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: mut Road) {
+    let c = traffic(cars_st, doors, owns, road_st, CARM_SEDAN, 0.5)
+    let r = floats(3)
+    follow(cars_st, doors, owns, road_st, c, 20.0, r)
+    expect(near(r[1], 6.0, 0.5))
+    road_st.gap = 8.0
+    follow(cars_st, doors, owns, road_st, c, 8.0, r)
+    expect(r[1] < 3.5)
+    road_st.gap = 4.0
+    follow(cars_st, doors, owns, road_st, c, 6.0, r)
+    expect(r[1] < 0.5)
+    road_st.gap = -1.0
+    follow(cars_st, doors, owns, road_st, c, 15.0, r)
+    expect(near(r[1], 6.0, 0.6))
+  }
+
+  test "a tight bend is taken slower than the limit" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: mut Road) {
+    road_st.radius = 15.0
+    let c = traffic(cars_st, doors, owns, road_st, CARM_SEDAN, 1.0)
+    let r = floats(3)
+    follow(cars_st, doors, owns, road_st, c, 30.0, r)
+    expect(r[1] < 10.5)
+    expect(r[1] > 6.0)
+    expect(r[0] < 1.5)
+  }
+
+  test "near a viewer the planar model follows it through the stick and pedals" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: mut Road) {
+    road_st.focus = 0.0
+    let c = traffic(cars_st, doors, owns, road_st, CARM_SEDAN, 1.0)
+    let r = floats(3)
+    follow(cars_st, doors, owns, road_st, c, 40.0, r)
+    expect(c.sim == CAR_SIM_PLANAR)
+    expect(r[0] < 3.0)
+    expect(near(r[1], 12.0, 1.5))
+    expect(r[2] > 250.0)
+  }
+
+  test "the lane follower and the planar model cover about the same ground in the same time" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: mut Road) {
+    let far = traffic(cars_st, doors, owns, road_st, CARM_SEDAN, 1.0)
+    let r = floats(3)
+    follow(cars_st, doors, owns, road_st, far, 30.0, r)
+    expect(far.sim == CAR_SIM_LANE)
+    let lane_dist = r[2]
+    cars_reset(cars_st)
+    road_st.focus = 0.0
+    let near_car = traffic(cars_st, doors, owns, road_st, CARM_SEDAN, 1.0)
+    follow(cars_st, doors, owns, road_st, near_car, 30.0, r)
+    expect(near_car.sim == CAR_SIM_PLANAR)
+    expect(near(r[2], lane_dist, lane_dist * 0.2))
+  }
+
+  test "a car with nobody at the wheel holds still on the lane" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: mut Road) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 60.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    frames(cars_st, doors, owns, road_st, 300)
+    expect(near(c.x, 60.0, 0.01))
+    expect(near(c.z, 0.0, 0.01))
+    expect(near(c.speed, 0.0, 0.001))
+  }
+
+  function scenario(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: mut Road) -> float {
+    let c = traffic(cars_st, doors, owns, road_st, CARM_SEDAN, 0.9)
+    let r = floats(3)
+    follow(cars_st, doors, owns, road_st, c, 10.0, r)
+    road_st.gap = 10.0
+    follow(cars_st, doors, owns, road_st, c, 5.0, r)
+    road_st.gap = -1.0
+    follow(cars_st, doors, owns, road_st, c, 10.0, r)
+    return c.x * 1000.0 + c.z + c.yaw * 13.0 + c.speed * 31.0
+  }
+
+  test "the same run twice is the same to the bit" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: mut Road) {
+    let a = scenario(cars_st, doors, owns, road_st)
+    cars_reset(cars_st)
+    road_st.gap = -1.0
+    let b = scenario(cars_st, doors, owns, road_st)
+    expect(a == b)
+  }
+
+  test "a lane follower allocates nothing per frame" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, road_st: mut Road) {
+    let c = traffic(cars_st, doors, owns, road_st, CARM_SEDAN, 1.0)
+    frames(cars_st, doors, owns, road_st, 120)
+    q_drain(cars_facts(cars_st))
+    let before = Os.heap_bytes()
+    frames(cars_st, doors, owns, road_st, 600)
+    let after = Os.heap_bytes()
+    if before > 0 { expect(after <= before + 4096) }
+    expect(c.speed > 5.0)
+  }
+}
