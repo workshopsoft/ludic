@@ -99,7 +99,7 @@ one row is a state's key (`from: "walk"`). Clip names follow the rig's prefix: `
 | Registry | Row | What it holds |
 | --- | --- | --- |
 | `AnimSets` | `AnimSet { key, entry, params, parameters, states, transitions, layers, skeleton }` | a graph: a state machine and its layers |
-| | `AnimStateDef { key, kind, choices, blend_space, sub, loop, next, blend, rate_min, rate_max, keep_phase, speed, speed_by, sync, is_exit }` | a state: a clip (`kind: "clips"`, the first choice whose bands hold plays), a blend space (`"blend"`) or a nested graph (`"sub"`) |
+| | `AnimStateDef { key, kind, choices, blend_space, sub, loop, next, blend, rate_min, rate_max, keep_phase, speed, speed_by, duration_by, sync, is_exit }` | a state: a clip (`kind: "clips"`, the first choice whose bands hold plays), a blend space (`"blend"`) or a nested graph (`"sub"`) |
 | | `AnimTransition { from, to, blend, curve, curve_points, conditions, has_exit_time, exit_time, priority, interrupt, offset, to_self, when, via }` | an edge, from a state or `"*"` (any state) |
 | | `AnimCondition { param, op, value }` | `op`: `gt ge lt le eq ne true false trigger` |
 | | `AnimParam { key, kind, initial }` | `kind`: `float int bool trigger`; names in `params` are floats |
@@ -129,7 +129,7 @@ one row is a state's key (`from: "walk"`). Clip names follow the rig's prefix: `
   group (`sync: "loco"`) entered from one of the same group keeps its phase.
 - **Choices** (a `clips` state) are the 1D band blend the package always had: the first whose `need` bands hold and whose clip the rig carries
   plays (`rate`, or `rate_by` a parameter over the `ground` a cycle covers, held to `rate_min .. rate_max`); a change fades over the state's `blend`,
-  keeping the phase with `keep_phase`. `speed` and `speed_by` multiply any state's rate.
+  keeping the phase with `keep_phase`. `speed` and `speed_by` multiply any state's rate. **`duration_by`** names a parameter of seconds and plays the state's clip over that time (rate = the clip's length / the parameter, for a blend state the weighted cycle), held off while the parameter is 0 or less and multiplied with `speed` / `speed_by` after `rate_min .. rate_max`: a reload state with `duration_by: "reload_time"` and a `weapons.RELOAD_STARTED` row with `also: "reload_time"` ends with the magazine whatever the weapon's reload time, with no clip length in data. (A reciprocal `curve` on a binding was the other option: it needs the clip's length authored as a number too, which can go stale.)
 
 ### Blend spaces
 
@@ -175,7 +175,7 @@ layers share one table by name). The game keeps one `AnimPlayer` per actor and r
 | `anim_actor_add(anim_st, actor, pl)`, `anim_actor_remove(anim_st, actor)`, `anim_player_of(anim_st, actor)` | the actor number (an int the game names) and its player |
 | `anim_set_param(anim_st, actor, key, v)`, `anim_set_int`, `anim_set_bool` | a value; an int rounds, a bool is on above a half; false for an actor or name the graph does not know (ignored) |
 | `anim_trigger(anim_st, actor, key)`, `anim_reset_trigger` | a trigger stays on until a transition that tests it is taken |
-| `anim_request(anim_st, actor, state)` | a state by name, for graphs that stay simple; taken once however often it is asked |
+| `anim_request(anim_st, actor, state)` | a state by name, reaching sub graphs and layers too (`layer/state`, see "A request by name" below); taken once however often it is asked |
 | `anim_set_distance(anim_st, actor, metres)` | the camera's distance, for the skeleton's `lod` rows |
 | `animset_param_at(pl, i, v)`, `anim_param_index(pl, key)` | the same without a lookup: ask the index once, write it every frame |
 
@@ -230,14 +230,25 @@ one. A `trigger` or `request` row on a value source fires when the mapped value 
 | Package | Fact sources (the word, the number) | Value sources | Text |
 | --- | --- | --- | --- |
 | `ludic.melee` | `melee.SWING` (attack clip, playing speed), `ENDED`, `STAGGERED` (-, seconds), `RECOVERED`, `GUARD_UP`, `GUARD_DOWN`, `HIT_TAKEN` (-, damage; about the victim) | `melee.attacking`, `blocking`, `staggered` (0/1), `progress` | |
-| `ludic.weapons` | `weapons.FIRED`, `RELOAD_STARTED`, `RELOADED`, `EMPTY`, `EQUIPPED`, `HOLSTERED`, `CHARGING` (the fact's clip, seconds the act takes) | `weapons.reloading` (0/1), `ads`, `charge`, `recoil_pitch` | |
+| `ludic.weapons` | `weapons.FIRED`, `RELOAD_STARTED`, `RELOADED`, `EMPTY`, `EQUIPPED`, `HOLSTERED`, `CHARGING` (the fact's clip, seconds the act takes) | `weapons.reloading` (0/1), `ads`, `charge`, `recoil_pitch`, `armed` (0/1), `held_kind` (class row order + 1, 0 unarmed) | `weapons.hold` (the held class's `hold` name) |
 | `ludic.vitals` | `vitals.DAMAGED` (-, amount), `DOWNED`, `DIED`, `REVIVED`, `RESPAWNED` (the class's clip, amount) | `vitals.health` (0..1), `downed`, `dead` (0/1) | |
-| `ludic.crowd` | `crowd.ACT` (anim state key, act), `REACTED` (-, PedReact), `ATTACK` | `crowd.speed` (m/s), `turn` (rad/s), `state` (PedReact) | `crowd.act_key` |
-| `ludic.character` | `character.JUMPED`, `LANDED` (-, landing speed), `FOOTFALL`, `STARTED_SWIMMING`, `LEFT_WATER` | `character.speed`, `moving`, `run`, `airborne`, `grounded`, `sitting`, `swimming`, `diving`, `vy`, `depth`, `landing` | |
+| `ludic.crowd` | `crowd.ACT` (anim state key, act), `REACTED` (-, PedReact), `ATTACK` | `crowd.speed` (m/s), `turn` (rad/s), `state` (PedReact), `variant` (0..1, fixed per ped) | `crowd.act_key` |
+| `ludic.character` | `character.JUMPED`, `LANDED` (-, landing speed), `FOOTFALL`, `STARTED_SWIMMING`, `LEFT_WATER` | `character.speed`, `moving`, `run`, `direction` (-1..1 half turns, positive left), `crouch` (0..1), `sprint` (0..1), `gait` (0 still, 1 walk, 2 run, 3 sprint), `airborne`, `grounded`, `sitting`, `swimming`, `diving`, `vy`, `depth`, `landing` | |
+| `ludic.cars` | `cars.BOARDING`, `SEATED`, `EXITED`, `EJECTED`, `DRAGGED` (the seat's graph state, the seat) | `cars.riding`, `driver`, `passenger`, `door` (0/1), `speed` (m/s), `steer` (-1..1) | `cars.seat_state` |
 | `ludic.vehicles` | `vehicles.MOUNTED` (seat pose), `DISMOUNTED` | `vehicles.speed`, `riding` | `vehicles.seat_pose` |
 
 Actors are the game's numbers, the ones given to `anim_actor_add`: the fighter, shooter, vital or ped the mechanic's own verbs name
 (a crowd ped is its uid; a vehicle's rider is the player it names).
+
+**A request by name reaches every graph of the player, not only the base one** (`anim_request`, a `request` row, `crowd.act_key`). Where a name is looked for:
+
+| Name | Reaches |
+| --- | --- |
+| `state` | the base graph's own states first; else the first graph that has one, in this order: the sub graphs (depth first, as the base graph's states list them), then each layer's graph (declaration order) with its sub graphs |
+| `layer/state` | the layer whose `key` is `layer` (a key of the base graph's `layers`), then that graph's own state |
+| `sub/state` | the `sub` state whose key is `sub`, then a state of the graph it runs. Segments chain: `armed/aim/raise` is a layer, a sub state in it, a state there |
+
+A plain name two graphs share (`raise` in two layers) goes to the first; say `layer/state` to choose. A request to a state of a sub graph also asks every graph above it to be in the sub state that runs it (or the sub graph would not run), and the sub graph then starts at the requested state instead of its entry; a layer's graph runs all the time and needs nothing above it. Taken once however often it is asked, per graph. A name nothing has is ignored (`anim_request` answers false), and `anim_link_validate` reports `anim.link_unknown_state` for a `request` row whose `to` no graph, sub graph or layer of its set has by this rule (a qualified name must match exactly). Parameters and triggers were always shared by name across all of them.
 
 **Adding a source (a package, a car, anything).** A mechanic declares what it can tell in a file of its own, depending on `ludic.base` only,
 and this package imports no mechanic. `ludic.base`'s `SignalSources` is an open registry (`SignalSource { name, kind, about, unit, arg, count, read, get, say }`):
@@ -320,7 +331,7 @@ written before graphs (`animset_test`, `sets.lres`); state machines - conditions
 (`graph_test`); blend spaces, 1D and 2D exact, sync phase and markers (`blend_test`); layers, masks and the level of detail (`layers_test`); events firing once at the
 right tick, on a loop, windows and cancels (`events_test`); root motion accumulation and the port (`root_test`); every validation finding (`validate_test`); and the actor verbs with the
 zero-allocation check (`actors_test`). `ozz_test` runs the native library, and `ozz_parity_test` poses two skins through the same graphs with ozz and with the
-Ludic sampler. The wiring: `link_test` (a toy mechanic's declared sources, facts firing once, values through scale, curve, clamp and smoothing, requests by name, edges, the heap held still),
+Ludic sampler. The wiring: `request_test` (requests reaching sub graphs and layers, `layer/state`, the graph above a sub graph following, validation by the same rule, `duration_by`), `link_test` (a toy mechanic's declared sources, facts firing once, values through scale, curve, clamp and smoothing, requests by name, edges, the heap held still),
 `link_real_test` (the adapters of melee, weapons, vitals, crowd, character and vehicles against their real records and states) and `link_validate_test` (every `anim.link_*` finding).
 
 ## A figure placed again and again (a crowd's peds)

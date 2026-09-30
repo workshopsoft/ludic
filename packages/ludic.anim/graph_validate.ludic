@@ -109,6 +109,7 @@ function check_set(out: []AnimProblem, anim_st: AnimState, si: int, rig: string,
 function check_state(out: []AnimProblem, anim_st: AnimState, si: int, d: AnimStateDef, at: string, rig: string, sk: Skin, pn: []string, pk: []int, depth: int, seen: []int) -> void {
   if d.blend < 0.0 { prob(out, AP_ERROR, "anim.negative_blend", at, "a fade of " + sf(d.blend) + " seconds") }
   if d.speed_by != "" and not has_name(pn, d.speed_by) { prob(out, AP_ERROR, "anim.unknown_param", at, "speed_by names a parameter no graph declares: " + d.speed_by) }
+  if d.duration_by != "" and not has_name(pn, d.duration_by) { prob(out, AP_ERROR, "anim.unknown_param", at, "duration_by names a parameter no graph declares: " + d.duration_by) }
   if d.kind == "sub" {
     if d.sub < 0 or d.sub >= len(AnimSets) { prob(out, AP_ERROR, "anim.sub_missing", at, "a sub state names no graph") } else if d.sub == si or depth >= AM_DEPTH {
       prob(out, AP_ERROR, "anim.sub_cycle", at, "a graph inside itself, or nested deeper than " + si(AM_DEPTH))

@@ -127,6 +127,13 @@ export function crowd_anim_turn(crowd_st: CrowdState, uid: int) -> float {
   return crowd_st.cw_tab.rec[r].turn
 }
 export function crowd_anim_state(crowd_st: CrowdState, uid: int) -> int { return crowd_react(crowd_st, uid) }
+# 0..1, stable for the ped (its uid, look and the world's seed: the same on every machine and every frame): a graph's
+# idle choice bands, so a standing crowd does not stand alike. A ped nobody knows: 0
+export function crowd_anim_variant(crowd_st: CrowdState, uid: int) -> float {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0.0 }
+  return cw_unit(crowd_hash(crowd_st.cw_seed, uid, crowd_st.cw_tab.rec[r].look * 31 + 4177))
+}
 # the state key of the act's clip in the graph (a schedule slot's or a scenario's `anim`, or the owner's activity key)
 export function crowd_anim_key(crowd_st: CrowdState, uid: int) -> string {
   let r = cw_row_of(crowd_st, uid)

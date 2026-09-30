@@ -1,0 +1,77 @@
+# signals.ludic - what the cars say about a rider, by name, for a listener that wants no glue (ludic.anim's
+# AnimBindings, a sound bank): the seat and door states a person's graph plays, and what the car they are in is
+# doing. The actor is the game's number for the rider (the one handed to car_enter). The queue is read, never
+# drained. A fact's WORD is the graph state the seat row names for that act (`CarSeat.state_enter`, `state_sit`,
+# `state_leave`, `state_jacked`: "enter_left", "sit_drive", "exit_right", "dragged_left"), so a request by name
+# needs no row per side or per seat.
+
+function cr__sig_count(cars_st: CarsState) -> int { return len(cars_facts(cars_st).items) }
+
+function cr__sig_read(cars_st: CarsState, i: int, arg: int, out: SigFact) -> bool {
+  let items = cars_facts(cars_st).items
+  if i < 0 or i >= len(items) { return false }
+  let f = items[i]
+  if f.what != arg { return false }
+  out.actor = f.actor
+  out.value = f.v
+  out.name = f.word
+  return true
+}
+
+# the car an actor is in (any seat, from the moment they begin to get in), null for none
+function cr__sig_car(cars_st: CarsState, actor: int) -> Car {
+  if actor < 0 { return null }
+  for i in 0 .. car_count(cars_st) {
+    let c = car_at(cars_st, i)
+    if car_seat_of(c, actor) >= 0 { return c }
+  }
+  return null
+}
+
+function cr__sig_value(cars_st: CarsState, actor: int, arg: int) -> float {
+  let c = cr__sig_car(cars_st, actor)
+  if c == null { return 0.0 }
+  let seat = car_seat_of(c, actor)
+  if arg == 0 { return 1.0 }
+  if arg == 1 {
+    if seat == c.drv_seat { return 1.0 }
+    return 0.0
+  }
+  if arg == 2 {
+    if seat == c.drv_seat { return 0.0 }
+    return 1.0
+  }
+  if arg == 3 { return c.speed }
+  if arg == 4 {
+    let lock = CarModels[c.model].steer_lock * 0.017453292
+    return Math.clamp(c.steer_angle / Math.max(0.01, lock), -1.0, 1.0)
+  }
+  if cr_door_open_phase(int(c.phase)) { return 1.0 }
+  return 0.0
+}
+
+# the state the rider's graph should be in: getting in while the door works for them, being dragged out while a thief
+# has them, else sitting. "" for a person in no car
+function cr__sig_say(cars_st: CarsState, actor: int, arg: int) -> string {
+  let c = cr__sig_car(cars_st, actor)
+  if c == null { return "" }
+  let seat = car_seat_of(c, actor)
+  let entering = c.phase == CarPhase.Entering and c.want == actor
+  let dragged = c.phase == CarPhase.Jacked and seat == c.drv_seat and c.jacker >= 0 and c.jacker != actor
+  if dragged { return cr_anim_state(c, seat, 3) }
+  if entering or (c.phase == CarPhase.Jacked and c.want == actor) { return cr_anim_state(c, seat, 1) }
+  return cr_anim_state(c, seat, 0)
+}
+
+def SignalSources cars_boarding { name: "cars.BOARDING", kind: "fact", about: "an actor began to get in through the door (word: the seat's state_enter, value: the seat)", arg: CAR_BOARDING, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_seated { name: "cars.SEATED", kind: "fact", about: "an actor is in a seat (word: the seat's state_sit, value: the seat)", arg: CAR_ENTERED, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_exited { name: "cars.EXITED", kind: "fact", about: "an actor stepped out (word: the seat's state_leave, value: the seat)", arg: CAR_EXITED, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_ejected { name: "cars.EJECTED", kind: "fact", about: "an actor was thrown or dragged out (word: the seat's state_leave, value: the seat)", arg: CAR_EJECTED, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_dragged { name: "cars.DRAGGED", kind: "fact", about: "the driver is being dragged out by a thief (word: the seat's state_jacked, value: the seat)", arg: CAR_DRAGGED, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_riding { name: "cars.riding", kind: "value", about: "1 while in a seat of a car (from the start of getting in)", unit: "0/1", arg: 0, get: fn cr__sig_value }
+def SignalSources cars_driver { name: "cars.driver", kind: "value", about: "1 while in the driver's seat", unit: "0/1", arg: 1, get: fn cr__sig_value }
+def SignalSources cars_passenger { name: "cars.passenger", kind: "value", about: "1 while in a seat that is not the driver's", unit: "0/1", arg: 2, get: fn cr__sig_value }
+def SignalSources cars_speed { name: "cars.speed", kind: "value", about: "the speed of the car the actor is in, along its forward (negative backing up)", unit: "m/s", arg: 3, get: fn cr__sig_value }
+def SignalSources cars_steer { name: "cars.steer", kind: "value", about: "the steering as a share of the lock, right positive, of the car the actor is in (for a steering layer)", unit: "-1..1", arg: 4, get: fn cr__sig_value }
+def SignalSources cars_door { name: "cars.door", kind: "value", about: "1 while the door works (the car is being got into, got out of or jacked), else 0", unit: "0/1", arg: 5, get: fn cr__sig_value }
+def SignalSources cars_seat_state { name: "cars.seat_state", kind: "text", about: "the state the rider's graph belongs in: the seat's state_enter while getting in, state_jacked while dragged out, else state_sit; \"\" outside a car. Bind as a request by name", arg: 0, say: fn cr__sig_say }

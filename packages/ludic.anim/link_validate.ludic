@@ -28,7 +28,40 @@ function link_has_state(set: int, name: string) -> bool {
     for si in 0 .. len(AnimSets) { if link_has_state(si, name) { return true } }
     return false
   }
-  return as_state(AnimSets[set], name) >= 0
+  return link_reach(set, name, 0, len(name), 0, false)
+}
+
+# a request's name as animset_request reads it (set_pick.ludic), asked of a graph's rows instead of a player's
+# machines: a state of the graph, of a sub graph in it or of a layer's graph; "layer/state" and "sub/state" say where
+function link_reach(set: int, key: string, a: int, b: int, depth: int, direct: bool) -> bool {
+  if set < 0 or set >= len(AnimSets) or depth > AM_DEPTH + 1 { return false }
+  var cut = -1
+  for k in a .. b { if key[k] == 47 { cut = k } }
+  let s = AnimSets[set]
+  if cut < 0 {
+    if as_state_at(s, key, a, b) >= 0 { return true }
+    if direct { return false }
+    if s.states != null {
+      for i in 0 .. len(s.states) {
+        if s.states[i].kind == "sub" and s.states[i].sub != set and link_reach(s.states[i].sub, key, a, b, depth + 1, false) { return true }
+      }
+    }
+    if depth == 0 and s.layers != null {
+      for i in 0 .. len(s.layers) { if link_reach(s.layers[i].graph, key, a, b, depth + 1, false) { return true } }
+    }
+    return false
+  }
+  # the first segment, then the rest of the name in what it leads to
+  var e = a
+  while e < cut and key[e] != 47 { e += 1 }
+  if depth == 0 and s.layers != null {
+    for i in 0 .. len(s.layers) {
+      if as_same_at(s.layers[i].key, key, a, e) and link_reach(s.layers[i].graph, key, e + 1, b, depth + 1, true) { return true }
+    }
+  }
+  let st = as_state_at(s, key, a, e)
+  if st >= 0 and s.states[st].kind == "sub" and s.states[st].sub != set { return link_reach(s.states[st].sub, key, e + 1, b, depth + 1, true) }
+  return false
 }
 
 # the registered sources that share the mechanic's prefix with `name`, for the message
@@ -88,7 +121,7 @@ export function anim_link_validate() -> []AnimProblem {
         }
       }
       if r.also != "" and link_kind_of(r.set, r.also) < 0 { prob(out, AP_ERROR, "anim.link_unknown_param", at, "also names a parameter no graph declares: " + r.also) }
-      if r.kind == "request" and r.to != "" and not link_has_state(r.set, r.to) { prob(out, AP_ERROR, "anim.link_unknown_state", at, "no graph has a state " + r.to) }
+      if r.kind == "request" and r.to != "" and not link_has_state(r.set, r.to) { prob(out, AP_ERROR, "anim.link_unknown_state", at, "no graph, sub graph or layer has a state " + r.to + " (a layer's or sub graph's state may be named layer/state)") }
     }
     if r.kind == "param" and r.to != "" {
       for c in b + 1 .. len(AnimBindings) {

@@ -791,6 +791,32 @@ program WeaponsTest {
     expect_eq(weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), WP_OK)
   }
 
+  test "weapons.armed, weapons.held_kind and weapons.hold say what is in hand, and all go quiet when it is put away" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    let armed = SignalSources[sig_find("weapons.armed")]
+    let kind = SignalSources[sig_find("weapons.held_kind")]
+    let hold = SignalSources[sig_find("weapons.hold")]
+    expect(sig_problem(sig_find("weapons.armed")) == "" and sig_problem(sig_find("weapons.held_kind")) == "" and sig_problem(sig_find("weapons.hold")) == "")
+    expect(sig_is_value(sig_find("weapons.armed")) and sig_is_text(sig_find("weapons.hold")))
+    let h = weapons_add(weapons_st, 1, true)
+    expect_near(armed.get(1, armed.arg), 0.0, 0.001)
+    expect_near(kind.get(1, kind.arg), 0.0, 0.001)
+    expect(hold.say(1, hold.arg) == "")
+    # a shooter nobody knows is unarmed too
+    expect_near(armed.get(9, armed.arg), 0.0, 0.001)
+    weapons_give_loadout(weapons_st, h, LOADOUT_STARTER)
+    expect_near(armed.get(1, armed.arg), 1.0, 0.001)
+    expect(kind.get(1, kind.arg) > 0.5)
+    expect(weapons_switch_slot(weapons_st, h, 1))
+    expect_near(armed.get(1, armed.arg), 1.0, 0.001)
+    expect_near(kind.get(1, kind.arg), float(WCLASS_PISTOL + 1), 0.001)
+    expect(hold.say(1, hold.arg) == "pistol")
+    expect(weapons_holster(weapons_st, h))
+    expect_near(armed.get(1, armed.arg), 0.0, 0.001)
+    expect_near(kind.get(1, kind.arg), 0.0, 0.001)
+    expect(hold.say(1, hold.arg) == "")
+  }
+
   test "the wheel: a place holds its guns, a press of another place draws one, a press of the same one cycles, and cycling walks them all" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
     fresh(weapons_st, arena_st)
     let h = weapons_add(weapons_st, 1, true)

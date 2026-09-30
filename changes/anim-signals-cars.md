@@ -1,0 +1,3 @@
+bump: minor
+type: feat
+ludic.cars declares signal sources for a rider's graph, so seat and door states are `AnimBindings` rows instead of a game's `CarAnim` port: facts `cars.BOARDING`, `cars.SEATED`, `cars.EXITED`, `cars.EJECTED`, `cars.DRAGGED` whose word is the seat row's graph state (`state_enter`, `state_sit`, `state_leave`, `state_jacked`: per side and seat, so one request-by-name row serves them all), values `cars.riding`, `cars.driver`, `cars.passenger`, `cars.speed`, `cars.steer`, `cars.door`, and the text source `cars.seat_state`. New facts `CAR_BOARDING` and `CAR_DRAGGED`, and `CarFact.word`. README documents the sources.

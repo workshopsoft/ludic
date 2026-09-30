@@ -5,14 +5,30 @@ function chr_turn_to(character_st: mut CharacterState, dx: float, dz: float, rat
   return diff
 }
 
+# crouched: the game's stance port or the held crouch; sprinting: held, the body has a sprint speed, it may run and is not crouched
+function chr_crouching(character_st: CharacterState) -> bool { return character_st.chr_crouch_in or CharacterBody.sneaking() }
+function chr_sprinting(character_st: CharacterState) -> bool {
+  return character_st.chr_sprint_in and character_st.chr_sprint_speed > 0.0 and character_st.chr_can_run and not chr_crouching(character_st)
+}
+
 function chr_steer(character_st: mut CharacterState, dx: float, dz: float, mag: float, run: bool, dt: float) -> void {
   var target = 0.0
   if mag > 0.05 and not character_st.chr_air {
-    let diff = chr_turn_to(character_st, dx, dz, Math.lerp(10.0, 5.0, character_st.chr_run) * dt)
-    let lined = Math.clamp((Math.cos(diff) + 0.3) / 1.3, 0.0, 1.0)
+    var diff = 0.0
+    var lined = 1.0
+    if CharacterBody.strafe() {
+      # aiming: the body faces the camera's way whatever the stick says, and moves along the stick
+      diff = chr_turn_to(character_st, -Math.sin(character_st.chr_cam_yaw), -Math.cos(character_st.chr_cam_yaw), Math.lerp(10.0, 5.0, character_st.chr_run) * dt)
+      character_st.chr_hx = dx / mag
+      character_st.chr_hz = dz / mag
+    } else {
+      diff = chr_turn_to(character_st, dx, dz, Math.lerp(10.0, 5.0, character_st.chr_run) * dt)
+      lined = Math.clamp((Math.cos(diff) + 0.3) / 1.3, 0.0, 1.0)
+    }
     var top = character_st.chr_walk_speed * CharacterBody.pace()
     if run { top = character_st.chr_run_speed * CharacterBody.pace() }
-    if CharacterBody.sneaking() { top = 1.3 }
+    if chr_sprinting(character_st) { top = character_st.chr_sprint_speed * CharacterBody.pace() }
+    if chr_crouching(character_st) { top = character_st.chr_crouch_speed }
     target = mag * top * lined
   } else if CharacterBody.holding() and not character_st.chr_air and not character_st.chr_sit {
     # a hold turns the body to the thing being worked, so the work is seen being done
@@ -48,6 +64,20 @@ function chr_gait(character_st: mut CharacterState, dist: float, dyaw: float, dp
   if character_st.chr_speed > 0.12 { mv = 1.0 }
   character_st.chr_move = char_toward(character_st.chr_move, mv, 5.0 * dt)
   character_st.chr_run = char_toward(character_st.chr_run, Math.clamp((character_st.chr_speed - 3.6) / 2.8, 0.0, 1.0), 3.0 * dt)
+  # the stance and the gait as numbers a listener reads (0..1, eased), and the motion against the facing
+  var cr = 0.0
+  if chr_crouching(character_st) { cr = 1.0 }
+  character_st.chr_crouch = char_toward(character_st.chr_crouch, cr, 6.0 * dt)
+  var sp = 0.0
+  if chr_sprinting(character_st) and character_st.chr_speed > 0.12 { sp = 1.0 }
+  character_st.chr_sprint = char_toward(character_st.chr_sprint, sp, 3.0 * dt)
+  var dirt = 0.0
+  if CharacterBody.strafe() and character_st.chr_speed > 0.12 and not character_st.chr_air and not character_st.chr_swim {
+    dirt = char_wrap(Math.atan2(-character_st.chr_hx, -character_st.chr_hz) - character_st.chr_yaw) / chr_pi
+  }
+  # straight back is -1 and 1 at once: stay on the side the value is on, or float noise flips it each frame
+  if Math.abs(dirt) > 0.75 and character_st.chr_dir * dirt < 0.0 { dirt = -dirt }
+  character_st.chr_dir = char_toward(character_st.chr_dir, dirt, 6.0 * dt)
   chr_look(character_st, dyaw, dpitch)
   # the orbit settles slowly behind a walking body unless the player is holding the look
   if dyaw == 0.0 and character_st.chr_speed > 0.4 and not character_st.chr_lock and not CharacterInput.look_always() {

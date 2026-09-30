@@ -19,6 +19,7 @@ export property AnimMachine {
   px: []int = null          # the parameter of its blend space's x axis, or -1
   py: []int = null
   spd: []int = null         # its speed_by parameter, or -1
+  dby: []int = null         # its duration_by parameter, or -1
   # per transition
   tfrom: []int = null       # the state it leaves: -1 any, -2 none such
   tto: []int = null
@@ -53,6 +54,7 @@ export property AnimMachine {
   i_si: words = words(AM_INST * 3)
   i_sw: floats = floats(AM_INST * 3)
   want: int = 0
+  hold: int = -1            # a sub graph not running when a request named its state: the state it starts at when it is entered
   asked: string = ""
   stamp: int = -1           # the frame it last stepped
   estamp: int = -1          # and last fired events

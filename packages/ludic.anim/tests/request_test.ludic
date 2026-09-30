@@ -1,0 +1,140 @@
+# request_test.ludic - a request by name reaches the states of sub graphs and layers, not only the base graph's
+# (the addressing rule is in set_pick.ludic and the README: "state", "layer/state", "sub/state"), the graph above a
+# sub graph goes to the state that runs it, anim_link_validate reads the same rule, and a state with `duration_by`
+# plays its clip over a parameter's seconds.
+import "ludic.render3d/r3d.ludic"
+import "ludic.base"
+import "ludic.anim"
+import "support/rig.ludic"
+program RequestTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+  function toy_get(toy_st: ToyState, actor: int, arg: int) -> float { return 0.0 }
+  state ToyState { n: int = 0 }
+  def SignalSources toy_x { name: "toy.x", kind: "value", get: fn toy_get }
+  def AnimSets from "nested.lres"
+  def AnimBindings from "nested_rows.lres"
+
+  function player(anim_st: mut AnimState) -> AnimPlayer {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_a", 1.0, 0.1))
+    anim_add(anim_st, arm_clip("rig_long", 2.0, 0.1))
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, 0, "rig"))
+    return pl
+  }
+  function tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> void { expect(animset_tick(anim_st, pl, sk, dt)) }
+  # machine numbers: 0 the base, 1 the car's sub graph, 2 the armed layer, 3 the tail layer
+  function at(pl: AnimPlayer, mi: int) -> string { return animset_machine_state(pl, mi) }
+  function has(ps: []AnimProblem, key: string, code: string) -> bool {
+    for i in 0 .. len(ps) { if ps[i].where == "bindings/" + key and ps[i].code == code { return true } }
+    return false
+  }
+
+  test "the machines are the base, its sub graph, then the layers" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st)
+    tick(anim_st, pl, sk, 0.016)
+    expect_eq(animset_machines(pl), 4)
+    expect(at(pl, 2) == "lower")
+    expect(at(pl, 3) == "sway")
+  }
+
+  test "a plain name reaches a layer's state; the base graph's own state wins over a nested one" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st)
+    tick(anim_st, pl, sk, 0.016)
+    animset_request(pl, "aim")
+    tick(anim_st, pl, sk, 0.016)
+    expect(at(pl, 2) == "aim")
+    expect(at(pl, 3) == "sway")
+    expect(animset_state(pl) == "loco")
+    # raise is in two layers: the first in machine order (the armed layer) takes it
+    animset_request(pl, "raise")
+    tick(anim_st, pl, sk, 0.016)
+    expect(at(pl, 2) == "raise")
+    expect(at(pl, 3) == "sway")
+    animset_request(pl, "reload")
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "reload")
+  }
+
+  test "layer/state names the layer, so the second layer's raise can be asked for" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st)
+    tick(anim_st, pl, sk, 0.016)
+    animset_request(pl, "tail/raise")
+    tick(anim_st, pl, sk, 0.016)
+    expect(at(pl, 3) == "raise")
+    expect(at(pl, 2) == "lower")
+    # a state the layer's graph does not have, a layer nobody has: ignored
+    animset_request(pl, "tail/aim")
+    animset_request(pl, "ghost/raise")
+    tick(anim_st, pl, sk, 0.016)
+    expect(at(pl, 3) == "raise")
+    expect(at(pl, 2) == "lower")
+  }
+
+  test "a sub graph's state asks the graph above to be in the sub state that runs it" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "loco")
+    animset_request(pl, "enter_left")
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "car")
+    tick(anim_st, pl, sk, 0.016)
+    expect(at(pl, 1) == "enter_left")
+    # by the sub state's key, for a name two graphs share
+    animset_request(pl, "car/sit_drive")
+    tick(anim_st, pl, sk, 0.016)
+    expect(at(pl, 1) == "sit_drive")
+  }
+
+  test "anim_request says whether the actor's graphs have the state anywhere" (anim_st: mut AnimState) {
+    let pl = player(anim_st)
+    expect(anim_actor_add(anim_st, 5, pl))
+    expect(anim_request(anim_st, 5, "aim"))
+    expect(anim_request(anim_st, 5, "armed/raise"))
+    expect(anim_request(anim_st, 5, "car/enter_left"))
+    expect(not anim_request(anim_st, 5, "nothing"))
+    expect(not anim_request(anim_st, 5, "armed/enter_left"))
+  }
+
+  test "anim_link_validate reads requests by the same rule" () {
+    let ps = anim_link_validate()
+    expect(not has(ps, "base_state", "anim.link_unknown_state"))
+    expect(not has(ps, "sub_state", "anim.link_unknown_state"))
+    expect(not has(ps, "layer_state", "anim.link_unknown_state"))
+    expect(not has(ps, "layer_plain", "anim.link_unknown_state"))
+    expect(not has(ps, "chain", "anim.link_unknown_state"))
+    expect(has(ps, "no_layer", "anim.link_unknown_state"))
+    expect(has(ps, "no_state", "anim.link_unknown_state"))
+    expect(has(ps, "too_deep", "anim.link_unknown_state"))
+  }
+
+  test "duration_by plays the clip over the parameter's seconds, and leaves the rate alone while it is 0" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st)
+    tick(anim_st, pl, sk, 0.016)
+    animset_request(pl, "reload")
+    tick(anim_st, pl, sk, 0.0)
+    expect(animset_state(pl) == "reload")
+    let m = pl.mach[0]
+    # the clip is 2 s: with no duration it plays at 1, over 1 s at 2, over 4 s at 0.5
+    tick(anim_st, pl, sk, 0.5)
+    expect_near(animset_rate(pl), 1.0, 0.001)
+    animset_param(pl, "reload_time", 1.0)
+    tick(anim_st, pl, sk, 0.0)
+    expect_near(animset_rate(pl), 2.0, 0.001)
+    animset_param(pl, "reload_time", 4.0)
+    tick(anim_st, pl, sk, 0.0)
+    expect_near(animset_rate(pl), 0.5, 0.001)
+    # a whole pass over the seconds: 2.5 s of a 2.5 s reload is one cycle (phase back at 0 after the lap)
+    animset_param(pl, "reload_time", 2.5)
+    let before = m.i_loops[m.n_i - 1]
+    tick(anim_st, pl, sk, 2.5)
+    expect_eq(m.i_loops[m.n_i - 1], before + 1)
+  }
+}

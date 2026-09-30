@@ -49,6 +49,7 @@ anims {
   node_loop: "loop"
   node_speed: "speed"
   node_speed_by: "speed_by"      # a parameter
+  node_duration_by: "duration_by" # a parameter: play the clip over its seconds
   node_sync: "sync"              # a sync group: states of one group keep their phase across a change
   node_exit: "is_exit"           # in a sub graph: the state that says it is done (exit time counts from it)
 

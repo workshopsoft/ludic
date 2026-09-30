@@ -4,6 +4,16 @@ export function char_config(character_st: mut CharacterState, walk: float, run: 
   character_st.chr_run_speed = run
 }
 
+# the two other gaits, in m/s at a full stick: crouched, and sprinting (0 takes the sprint away)
+export function char_config_gaits(character_st: mut CharacterState, crouch: float, sprint: float) -> void {
+  character_st.chr_crouch_speed = crouch
+  character_st.chr_sprint_speed = sprint
+}
+
+# the crouch and the sprint held (char_tick reads them from CharacterInput; a game calling char_update sets them here)
+export function char_crouch(character_st: mut CharacterState, on: bool) -> void { character_st.chr_crouch_in = on }
+export function char_sprint(character_st: mut CharacterState, on: bool) -> void { character_st.chr_sprint_in = on }
+
 # put the body somewhere, standing, the camera behind it
 export function char_teleport(character_st: mut CharacterState, x: float, z: float, yaw: float) -> void {
   character_st.chr_x = x
@@ -36,6 +46,8 @@ export function char_halt(character_st: mut CharacterState) -> void {
   character_st.chr_speed = 0.0
   character_st.chr_move = 0.0
   character_st.chr_run = 0.0
+  character_st.chr_sprint = 0.0
+  character_st.chr_dir = 0.0
 }
 
 # out of strength in the water: the stroke stops and the body floats

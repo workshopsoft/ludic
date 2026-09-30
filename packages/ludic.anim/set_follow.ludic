@@ -138,6 +138,10 @@ function reset_machine(anim_st: mut AnimState, pl: AnimPlayer, mi: int) -> void 
   m.estamp = -1
   m.asked = ""
   m.want = as_entry(AnimSets[m.set])
+  if m.hold >= 0 {
+    m.want = m.hold
+    m.hold = -1
+  }
 }
 
 # a transition is taken: the target comes in over `fdur` seconds; what it tested of a trigger is spent

@@ -18,6 +18,7 @@ function cw__sig_read(crowd_st: CrowdState, i: int, arg: int, out: SigFact) -> b
 function cw__sig_value(crowd_st: CrowdState, uid: int, arg: int) -> float {
   if arg == 0 { return crowd_anim_speed(crowd_st, uid) }
   if arg == 1 { return crowd_anim_turn(crowd_st, uid) }
+  if arg == 3 { return crowd_anim_variant(crowd_st, uid) }
   return float(crowd_anim_state(crowd_st, uid))
 }
 function cw__sig_say(crowd_st: CrowdState, uid: int, arg: int) -> string { return crowd_anim_key(crowd_st, uid) }
@@ -29,3 +30,4 @@ def SignalSources crowd_speed_now { name: "crowd.speed", kind: "value", about: "
 def SignalSources crowd_turn_now { name: "crowd.turn", kind: "value", about: "yaw rate", unit: "rad/s", arg: 1, get: fn cw__sig_value }
 def SignalSources crowd_state_now { name: "crowd.state", kind: "value", about: "the reaction as PedReact's number (calm 0 .. call 6)", unit: "n", arg: 2, get: fn cw__sig_value }
 def SignalSources crowd_act_key { name: "crowd.act_key", kind: "text", about: "the anim state key of the ped's current act", arg: 0, say: fn cw__sig_say }
+def SignalSources crowd_variant_now { name: "crowd.variant", kind: "value", about: "a stable 0..1 per ped (from its uid, look and the world seed), for a graph's idle choice bands", unit: "0..1", arg: 3, get: fn cw__sig_value }

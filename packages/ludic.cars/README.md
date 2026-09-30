@@ -185,7 +185,27 @@ A car's `phase` is a `@Machine(Car.phase)` whose graph is a table, `steps.lres`:
 | `car_carjack(nid, actor)` | a driven car: `Jacked` for `jack_time`, then the driver is put out and the thief gets in; the driver escapes by flooring it (`Jacked` back to `Driven`). A locked empty car: broken into |
 | `car_lock(nid, on)`, `car_seat_driver(nid, actor)` | lock and unlock; an AI driver at the wheel with no door to open |
 
-Facts: `CAR_ENTERED`, `CAR_EXITED`, `CAR_CARJACK`, `CAR_EJECTED`, `CAR_BROKEN_INTO`, `CAR_LOCKED`, `CAR_UNLOCKED`.
+Facts: `CAR_ENTERED`, `CAR_EXITED`, `CAR_CARJACK`, `CAR_EJECTED`, `CAR_BROKEN_INTO`, `CAR_LOCKED`, `CAR_UNLOCKED`, `CAR_BOARDING` (began to get in), `CAR_DRAGGED` (the driver being dragged out); those about a seat carry the seat's graph state as `CarFact.word`.
+
+## Signals: seats and doors for a graph with no glue
+
+`signals.ludic` declares `SignalSources` (`ludic.base`) so a person's graph is fed by `AnimBindings` rows (`ludic.anim`) and a game writes no `CarAnim` port for the rider. The actor is the game's number for the rider (the one handed to `car_enter`). A fact's **word** is the graph state the seat row names for that act (`CarSeat.state_enter` / `state_sit` / `state_leave` / `state_jacked`: `enter_left`, `sit_drive`, `exit_right`, `dragged_left`), so one request-by-name row (`by_name: true`) covers every seat and side. The facts are read, never drained.
+
+| Source | Kind, range | Says |
+| --- | --- | --- |
+| `cars.BOARDING` | fact | an actor began to get in through the door (a driver's seat through the machine, a thief after a carjack): word `state_enter`, value the seat. A passenger takes the seat at once and has only `SEATED` |
+| `cars.SEATED` | fact | an actor is in a seat: word `state_sit`, value the seat |
+| `cars.EXITED` | fact | an actor stepped out: word `state_leave`, value the seat |
+| `cars.EJECTED` | fact | an actor was thrown or dragged out (a wreck, a carjack): word `state_leave` |
+| `cars.DRAGGED` | fact | the driver is being dragged out: word `state_jacked` (actor: the driver) |
+| `cars.riding` | value, 0/1 | in a seat of a car, from the start of getting in |
+| `cars.driver`, `cars.passenger` | value, 0/1 | in the driver's seat; in any other seat |
+| `cars.speed` | value, m/s | the speed of the car the actor is in (negative backing up) |
+| `cars.steer` | value, -1..1 | its steering as a share of the lock, right positive (a steering layer's blend space) |
+| `cars.door` | value, 0/1 | 1 while the door works (getting in, getting out, being jacked) |
+| `cars.seat_state` | text | the state the rider's graph belongs in now: `state_enter` while they get in, `state_jacked` while dragged, else `state_sit`; `""` outside a car. Bound as a request by name it names the seat pose with no fact needed |
+
+Wiring (rows, no code): `{ set, kind: "request", by_name: true, source: "cars.BOARDING" }` and the same for `cars.SEATED`, `cars.EXITED`, `cars.EJECTED`, `cars.DRAGGED`; `{ to: "riding", source: "cars.riding" }` and `cars.speed` / `cars.steer` into parameters.
 
 ## Damage, small states, facts
 
@@ -280,7 +300,7 @@ determinism to the bit (`cars_body_test`); a car following a lane at all levels,
 (`cars_lane_test`); ownership, insurance, delivery, the impound and the save with a fake wallet
 (`cars_garage_test`); damage, armour, smoke, tyres, the small states and a manual box (`cars_misc_test`);
 snapshots, interpolation with jitter, extrapolation, refusal and controls (`cars_net_test`); owner authority
-(`cars_owner_test`).
+(`cars_owner_test`); the signal sources for a graph (`cars_signals_test`).
 
 ## v2
 

@@ -32,6 +32,10 @@ function chr__sig_value(character_st: CharacterState, actor: int, arg: int) -> f
   if arg == 7 { return chr__b(body_diving(character_st)) }
   if arg == 8 { return body_vy(character_st) }
   if arg == 9 { return body_depth(character_st) }
+  if arg == 11 { return body_direction(character_st) }
+  if arg == 12 { return body_crouch(character_st) }
+  if arg == 13 { return body_sprint(character_st) }
+  if arg == 14 { return float(body_gait(character_st)) }
   return body_landing(character_st)
 }
 
@@ -51,3 +55,7 @@ def SignalSources character_diving { name: "character.diving", kind: "value", ab
 def SignalSources character_vy { name: "character.vy", kind: "value", about: "vertical speed", unit: "m/s", arg: 8, get: fn chr__sig_value }
 def SignalSources character_depth { name: "character.depth", kind: "value", about: "how deep in the water", unit: "m", arg: 9, get: fn chr__sig_value }
 def SignalSources character_landing { name: "character.landing", kind: "value", about: "the landing's weight, decaying", unit: "0..1", arg: 10, get: fn chr__sig_value }
+def SignalSources character_direction { name: "character.direction", kind: "value", about: "the motion's heading against the facing, in half turns, positive to the left: 0 forward, 0.5 a strafe left, -0.5 right, 1 or -1 backward (0 while the body faces where it goes: it turns to the stick unless the game's CharacterBody.strafe is on)", unit: "-1..1", arg: 11, get: fn chr__sig_value }
+def SignalSources character_crouch { name: "character.crouch", kind: "value", about: "0 standing .. 1 crouched (the held crouch or the game's CharacterBody.sneaking), eased", unit: "0..1", arg: 12, get: fn chr__sig_value }
+def SignalSources character_sprint { name: "character.sprint", kind: "value", about: "0 .. 1 sprinting (the held sprint, when the body has a sprint speed), eased", unit: "0..1", arg: 13, get: fn chr__sig_value }
+def SignalSources character_gait { name: "character.gait", kind: "value", about: "0 still, 1 walk, 2 run, 3 sprint (crouched: a walk)", unit: "0..3", arg: 14, get: fn chr__sig_value }
