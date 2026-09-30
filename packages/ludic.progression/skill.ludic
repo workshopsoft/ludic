@@ -1,0 +1,90 @@
+# skill.ludic - skills that grow with use, and the stat modifiers they export
+
+function prog__skill_level(r: ProgPlayer, s: int) -> int {
+  return r.points[s] / Skills[s].level_points
+}
+
+function prog__skill_mod_at(s: int, points: int) -> float {
+  let k = Skills[s]
+  return k.mod_min + (k.mod_max - k.mod_min) * float(points) / float(k.cap)
+}
+
+# `uses` uses of a skill (host's call): the points it gained. A level crossed is a fact, and tells the
+# world the stat's new total; what the level opens opens
+function prog__train(progression_st: mut ProgressionState, r: ProgPlayer, s: int, uses: int) -> int {
+  if not prog__skill_ok(s) or uses <= 0 { return 0 }
+  let k = Skills[s]
+  let before = r.points[s]
+  var pts = before
+  var n = 0
+  while n < uses and pts < k.cap {
+    var g = k.rate
+    if k.diminishing { g = Math.max((k.rate * (k.cap - pts)) / k.cap, 1) }
+    pts = Math.min(pts + g, k.cap)
+    n += 1
+  }
+  r.points[s] = pts
+  let from = before / k.level_points
+  let to = pts / k.level_points
+  if to != from {
+    let f = prog__fact(progression_st, PROG_SKILL_UP, r.player)
+    f.idx = s
+    f.from = from
+    f.to = to
+    prog__tell_stat(r, k.stat)
+    prog__refresh(progression_st, r)
+  }
+  return pts - before
+}
+
+export function progression_skill_use(progression_st: mut ProgressionState, player: int, skill: int, uses: int) -> int {
+  if not prog__is_host() or not prog__skill_ok(skill) { return 0 }
+  return prog__train(progression_st, prog__row(progression_st, player), skill, uses)
+}
+
+export function progression_skill_points(progression_st: ProgressionState, player: int, skill: int) -> int {
+  let r = prog__find(progression_st, player)
+  if r == null or not prog__skill_ok(skill) or skill >= len(r.points) { return 0 }
+  return r.points[skill]
+}
+
+export function progression_skill_level(progression_st: ProgressionState, player: int, skill: int) -> int {
+  if not prog__skill_ok(skill) { return 0 }
+  return progression_skill_points(progression_st, player, skill) / Skills[skill].level_points
+}
+
+# the skill's own modifier now, from its points
+export function progression_skill_mod(progression_st: ProgressionState, player: int, skill: int) -> float {
+  if not prog__skill_ok(skill) { return 0.0 }
+  return prog__skill_mod_at(skill, progression_skill_points(progression_st, player, skill))
+}
+
+# the total modifier on a stat: every skill that names it, and the role the player is in if it does
+function prog__stat_of(r: ProgPlayer, stat: string) -> float {
+  var v = 0.0
+  for s in 0 .. SKLL_COUNT {
+    if Skills[s].stat == stat { v += prog__skill_mod_at(s, r.points[s]) }
+  }
+  if prog__role_ok(r.role) and ProgressionRoles[r.role].stat == stat { v += ProgressionRoles[r.role].stat_mod }
+  return v
+}
+
+export function progression_stat(progression_st: ProgressionState, player: int, stat: string) -> float {
+  let r = prog__find(progression_st, player)
+  if r == null { return 0.0 }
+  return prog__stat_of(r, stat)
+}
+
+# tell the world a stat's new total
+function prog__tell_stat(r: ProgPlayer, stat: string) -> void {
+  if stat == "" { return }
+  ProgressionOut.stat(r.player, stat, prog__stat_of(r, stat))
+}
+
+# tell the world every stat a player has a modifier on (after a load, or a snapshot arrived)
+export function progression_tell_all(progression_st: ProgressionState, player: int) -> void {
+  let r = prog__find(progression_st, player)
+  if r == null { return }
+  for s in 0 .. SKLL_COUNT { prog__tell_stat(r, Skills[s].stat) }
+  if prog__role_ok(r.role) { prog__tell_stat(r, ProgressionRoles[r.role].stat) }
+}

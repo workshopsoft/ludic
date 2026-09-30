@@ -1,0 +1,79 @@
+# state.ludic - the ports, the facts, and what the module keeps for each player
+
+# what progression asks the world. Unbound: this machine is the host, nothing is live-boosted, and
+# money is always there (a price is free)
+export port ProgressionWorld {
+  is_host: fn() -> bool = fn prog__yes                   # only the host awards, levels and sells
+  xp_mult: fn(string) -> float = fn prog__one            # a live multiplier on an activity's XP (ludic.liveops's, through the game)
+  spend: fn(int, int) -> bool = fn prog__pays            # (player, amount): take money for an unlock or a role
+}
+function prog__yes() -> bool { return true }
+function prog__one(activity: string) -> float { return 1.0 }
+function prog__pays(player: int, n: int) -> bool { return true }
+
+# what progression tells the world a player's stats became: the total modifier on `stat` for a
+# player, whenever one of its sources (a skill's level, a role) moved. Unbound: nothing listens
+export port ProgressionOut {
+  stat: fn(int, string, float) -> void = fn prog__unheard
+}
+function prog__unheard(player: int, stat: string, value: float) -> void { }
+
+export const PROG_XP: int = 0           # XP was gained (track, amount)
+export const PROG_LEVEL_UP: int = 1     # a track's level rose (track, from, to)
+export const PROG_UNLOCKED: int = 2     # an unlock opened (idx, key = its `what`)
+export const PROG_OFFERED: int = 3      # an unlock with a price became available (idx, key)
+export const PROG_SKILL_UP: int = 4     # a skill reached a new level (idx, from, to)
+export const PROG_PRESTIGE: int = 5     # a track was prestiged (track, to = the count)
+export const PROG_ROLE_START: int = 6   # a role began (idx)
+export const PROG_ROLE_END: int = 7     # a role ended (idx)
+
+export property ProgFact {
+  what: int = 0
+  player: int = 0
+  track: int = -1
+  idx: int = -1
+  from: int = 0
+  to: int = 0
+  amount: int = 0
+  key: string = ""
+}
+
+# one player's progress: lists sized by the tables, in their order
+export property ProgPlayer {
+  player: int = 0
+  role: int = -1
+  xp: []int = null          # per track
+  level: []int = null       # per track, worked out from the XP
+  prestige: []int = null    # per track
+  points: []int = null      # per skill
+  unlock: []int = null      # per unlock: 0 locked, 1 offered, 2 had
+}
+
+export state ProgressionState {
+  prog__rows: []ProgPlayer = new []ProgPlayer
+  prog__facts: Queue<ProgFact> = prog__facts__new()
+}
+function prog__facts__new() -> Queue<ProgFact> { return queue_new("progression.facts") }
+
+export function progression_facts(progression_st: ProgressionState) -> Queue<ProgFact> {
+  return progression_st.prog__facts
+}
+
+@alloc_ok("past the ring: more facts in a frame than its records, then kept in it")
+function prog__fact(progression_st: mut ProgressionState, what: int, player: int) -> ProgFact {
+  var f = q_rec(progression_st.prog__facts)
+  if f == null {
+    f = new ProgFact
+    q_ring_add(progression_st.prog__facts, f)
+  }
+  f.what = what
+  f.player = player
+  f.track = -1
+  f.idx = -1
+  f.from = 0
+  f.to = 0
+  f.amount = 0
+  f.key = ""
+  q_push(progression_st.prog__facts, f)
+  return f
+}

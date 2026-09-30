@@ -1,0 +1,5 @@
+# progression.lres - a test game's awards, in a resource file
+delivery { track: PRGT_RANK, xp: 50, skill: SKLL_DRIVING, skill_uses: 2 }
+race_won { track: PRGT_RANK, xp: 120, mult: 1.5 }
+mentoring { track: PRGT_COURIER, xp: 40 }
+practice { track: PRGT_RANK, xp: 0, skill: SKLL_STAMINA, skill_uses: 10 }

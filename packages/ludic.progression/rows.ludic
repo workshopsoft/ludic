@@ -1,0 +1,65 @@
+# rows.ludic - a player's row: found, or made the first time anything is said about the player. Its
+# lists are as long as the tables, so a row made before a table grew is grown the next time it is read
+
+@alloc_ok("a player's first row, made once and kept")
+function prog__make(progression_st: mut ProgressionState, player: int) -> ProgPlayer {
+  let r = new ProgPlayer
+  r.player = player
+  r.xp = new []int
+  r.level = new []int
+  r.prestige = new []int
+  r.points = new []int
+  r.unlock = new []int
+  prog__fit(r)
+  push(progression_st.prog__rows, r)
+  return r
+}
+
+# lists as long as the tables (a level is never below 1)
+function prog__fit(r: ProgPlayer) -> void {
+  while len(r.xp) < PRGT_COUNT {
+    push(r.xp, 0)
+    push(r.level, 1)
+    push(r.prestige, 0)
+  }
+  while len(r.points) < SKLL_COUNT { push(r.points, 0) }
+  while len(r.unlock) < UNLK_COUNT { push(r.unlock, 0) }
+}
+
+function prog__find(progression_st: ProgressionState, player: int) -> ProgPlayer {
+  for i in 0 .. len(progression_st.prog__rows) {
+    if progression_st.prog__rows[i].player == player { return progression_st.prog__rows[i] }
+  }
+  return null
+}
+
+function prog__row(progression_st: mut ProgressionState, player: int) -> ProgPlayer {
+  var r = prog__find(progression_st, player)
+  if r == null { r = prog__make(progression_st, player) }
+  prog__fit(r)
+  return r
+}
+
+# how many players have a row, and the n-th one's number
+export function progression_players(progression_st: ProgressionState) -> int { return len(progression_st.prog__rows) }
+export function progression_player_at(progression_st: ProgressionState, i: int) -> int {
+  if i < 0 or i >= len(progression_st.prog__rows) { return -1 }
+  return progression_st.prog__rows[i].player
+}
+
+# a player gone (left the session): their row dropped
+export function progression_forget(progression_st: mut ProgressionState, player: int) -> void {
+  for i in 0 .. len(progression_st.prog__rows) {
+    if progression_st.prog__rows[i].player == player {
+      List.remove_at(progression_st.prog__rows, i)
+      return
+    }
+  }
+}
+
+function prog__is_host() -> bool { return ProgressionWorld.is_host() }
+
+function prog__track_ok(t: int) -> bool { return t >= 0 and t < PRGT_COUNT }
+function prog__skill_ok(s: int) -> bool { return s >= 0 and s < SKLL_COUNT }
+function prog__unlock_ok(u: int) -> bool { return u >= 0 and u < UNLK_COUNT }
+function prog__role_ok(ro: int) -> bool { return ro >= 0 and ro < PRGR_COUNT }

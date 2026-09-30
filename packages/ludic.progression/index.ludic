@@ -1,0 +1,17 @@
+# ludic.progression - what a player has become: XP on tracks (a general one, and one per role) turned
+# into levels by a curve, what each level unlocks (free, or bought), skills that grow by being used and
+# say so as stat modifiers, roles and prestige. The curves, awards, unlocks, skills, tracks and roles
+# are rows the game writes; the world's live multipliers, the money and the stat receiver are ports.
+module ludic_progression uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "state.ludic"
+import "rows.ludic"
+import "curve.ludic"
+import "award.ludic"
+import "unlock.ludic"
+import "skill.ludic"
+import "role.ludic"
+import "sync.ludic"
+import "system.ludic"

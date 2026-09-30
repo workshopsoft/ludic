@@ -1,0 +1,45 @@
+# sync.ludic - a player's progress as ints: what the host sends a client (and what a save holds). The
+# counts lead, so a table that has grown since reads back what it had
+
+# [version, tracks, skills, unlocks, role, xp..., prestige..., points..., unlock...]
+@alloc_ok("a snapshot is made to be sent")
+export function progression_snapshot(progression_st: ProgressionState, player: int) -> []int {
+  let out = new []int
+  let r = prog__find(progression_st, player)
+  push(out, 1)
+  push(out, PRGT_COUNT)
+  push(out, SKLL_COUNT)
+  push(out, UNLK_COUNT)
+  if r == null { push(out, -1) } else { push(out, r.role) }
+  for t in 0 .. PRGT_COUNT { if r == null { push(out, 0) } else { push(out, r.xp[t]) } }
+  for t in 0 .. PRGT_COUNT { if r == null { push(out, 0) } else { push(out, r.prestige[t]) } }
+  for s in 0 .. SKLL_COUNT { if r == null { push(out, 0) } else { push(out, r.points[s]) } }
+  for u in 0 .. UNLK_COUNT { if r == null { push(out, 0) } else { push(out, r.unlock[u]) } }
+  return out
+}
+
+# take a snapshot as the player's progress (a client taking the host's word, a load). Levels are worked
+# out from the XP and no fact is made; the world is told every stat
+export function progression_apply(progression_st: mut ProgressionState, player: int, xs: []int) -> bool {
+  if len(xs) < 5 or xs[0] != 1 { return false }
+  let nt = xs[1]
+  let ns = xs[2]
+  let nu = xs[3]
+  if len(xs) < 5 + 2 * nt + ns + nu { return false }
+  let r = prog__row(progression_st, player)
+  r.role = xs[4]
+  if not prog__role_ok(r.role) { r.role = -1 }
+  var at = 5
+  for t in 0 .. Math.min(nt, PRGT_COUNT) {
+    r.xp[t] = Math.min(xs[at + t], progression_track_cap(t))
+    r.level[t] = progression_curve_level(prog__curve_of(t), r.xp[t])
+  }
+  at += nt
+  for t in 0 .. Math.min(nt, PRGT_COUNT) { r.prestige[t] = xs[at + t] }
+  at += nt
+  for s in 0 .. Math.min(ns, SKLL_COUNT) { r.points[s] = Math.min(xs[at + s], Skills[s].cap) }
+  at += ns
+  for u in 0 .. Math.min(nu, UNLK_COUNT) { r.unlock[u] = xs[at + u] }
+  progression_tell_all(progression_st, player)
+  return true
+}

@@ -1,0 +1,47 @@
+# system.ludic - progression as a system: its own save section. Every player's row is saved by the number
+# the game gives them (so a game saves the ones whose numbers are stable), as the snapshot's ints
+
+export function progression_reset(progression_st: mut ProgressionState) -> void {
+  List.clear(progression_st.prog__rows)
+  q_clear(progression_st.prog__facts)
+}
+
+# rows: for each player, [player, length, snapshot...]
+export function progression_save(progression_st: ProgressionState) -> Val {
+  let v = Value.object()
+  let flat = new []int
+  for i in 0 .. len(progression_st.prog__rows) {
+    let p = progression_st.prog__rows[i].player
+    let snap = progression_snapshot(progression_st, p)
+    push(flat, p)
+    push(flat, len(snap))
+    for k in 0 .. len(snap) { push(flat, snap[k]) }
+  }
+  sv_put_ints(v, "rows", flat)
+  return v
+}
+
+export function progression_load(progression_st: mut ProgressionState, v: Val, version: int) -> void {
+  progression_reset(progression_st)
+  let flat = sv_ints(v, "rows")
+  var i = 0
+  while i + 1 < len(flat) {
+    let p = flat[i]
+    let n = flat[i + 1]
+    if n < 0 or i + 2 + n > len(flat) { break }
+    let snap = new []int
+    for k in 0 .. n { push(snap, flat[i + 2 + k]) }
+    progression_apply(progression_st, p, snap)
+    i += 2 + n
+  }
+  q_clear(progression_st.prog__facts)
+}
+
+export function progression_system() -> System {
+  let s = system_new("progression", PH_COMMIT)
+  s.version = 1
+  s.reset = fn progression_reset
+  s.save = fn progression_save
+  s.load = fn progression_load
+  return s
+}

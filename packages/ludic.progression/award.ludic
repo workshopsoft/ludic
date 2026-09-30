@@ -1,0 +1,79 @@
+# award.ludic - XP in: what an activity is worth, what a track holds, and what a level crossed does
+
+# the role that owns a track (-1: a general one)
+function prog__owner(track: int) -> int {
+  for ro in 0 .. PRGR_COUNT { if ProgressionRoles[ro].track == track { return ro } }
+  return -1
+}
+
+# the first track no role owns: the general one, which a role's level is asked against
+export function progression_general_track() -> int {
+  for t in 0 .. PRGT_COUNT { if prog__owner(t) < 0 { return t } }
+  return -1
+}
+
+# XP on a track, exactly `amount` (clamped at what the track holds): how much went in. A level crossed is a
+# fact each, and what it opens opens. A track no role owns, or one of the player's own role, takes it
+function prog__gain(progression_st: mut ProgressionState, r: ProgPlayer, track: int, amount: int) -> int {
+  if amount <= 0 or not prog__track_ok(track) { return 0 }
+  let owner = prog__owner(track)
+  if owner >= 0 and r.role != owner { return 0 }
+  let before = r.xp[track]
+  let after = Math.min(before + amount, progression_track_cap(track))
+  let got = after - before
+  if got <= 0 { return 0 }
+  r.xp[track] = after
+  let f = prog__fact(progression_st, PROG_XP, r.player)
+  f.track = track
+  f.amount = got
+  let c = prog__curve_of(track)
+  let from = r.level[track]
+  let to = progression_curve_level(c, after)
+  for l in from .. to {
+    let up = prog__fact(progression_st, PROG_LEVEL_UP, r.player)
+    up.track = track
+    up.from = l
+    up.to = l + 1
+  }
+  r.level[track] = to
+  if to > from { prog__refresh(progression_st, r) }
+  return got
+}
+
+# raw XP, as the game's story says (no multiplier): how much went in. Host only
+export function progression_add_xp(progression_st: mut ProgressionState, player: int, track: int, amount: int) -> int {
+  if not prog__is_host() or not prog__track_ok(track) { return 0 }
+  return prog__gain(progression_st, prog__row(progression_st, player), track, amount)
+}
+
+# what an award is worth to a player now: its XP, its own multiplier, the track's prestige share, and the
+# world's live multiplier on the activity
+export function progression_award_worth(progression_st: ProgressionState, player: int, award: int) -> int {
+  if award < 0 or award >= XPAW_COUNT { return 0 }
+  let a = XpAwards[award]
+  var v = float(a.xp) * a.mult * ProgressionWorld.xp_mult(a.key)
+  let pct = 100 + progression_prestige_count(progression_st, player, a.track) * prog__share(a.track)
+  v = v * float(pct) / 100.0
+  return int(Math.floor(v + 0.5))
+}
+
+function prog__share(track: int) -> int {
+  if not prog__track_ok(track) { return 0 }
+  return ProgressionTracks[track].prestige_xp_pct
+}
+
+# an activity happened `times` times: its XP to its track, its skill used. How much XP went in.
+# Host only (0 elsewhere)
+export function progression_award_at(progression_st: mut ProgressionState, player: int, award: int, times: int) -> int {
+  if not prog__is_host() or award < 0 or award >= XPAW_COUNT or times <= 0 { return 0 }
+  let a = XpAwards[award]
+  let r = prog__row(progression_st, player)
+  let got = prog__gain(progression_st, r, a.track, progression_award_worth(progression_st, player, award) * times)
+  if a.skill >= 0 { prog__train(progression_st, r, a.skill, a.skill_uses * times) }
+  return got
+}
+
+# the same, by the activity's word; an activity no row names is worth nothing
+export function progression_award(progression_st: mut ProgressionState, player: int, activity: string) -> int {
+  return progression_award_at(progression_st, player, xpawards_find(activity), 1)
+}

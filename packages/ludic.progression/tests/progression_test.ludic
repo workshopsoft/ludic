@@ -1,0 +1,286 @@
+# progression_test.ludic - XP through a table curve and a formula curve, awards (multipliers, the live
+# multiplier port, a role's track), unlocks (free, priced, chained, by skill and role), skills that grow
+# with use and export their stat, prestige, host-only verbs, and a save and a snapshot that read back
+import "ludic.progression"
+import "ludic.base"
+program ProgressionTest {
+  numbers float
+
+  state ProgTestState {
+    host: bool = true
+    live: float = 1.0
+    cash: int = 1000
+    told: []string = new []string
+    told_value: float = 0.0
+  }
+
+  function f_host(prog_test_st: ProgTestState) -> bool { return prog_test_st.host }
+  function f_live(prog_test_st: ProgTestState, activity: string) -> float {
+    if activity == "race_won" { return prog_test_st.live }
+    return 1.0
+  }
+  function f_spend(prog_test_st: mut ProgTestState, player: int, n: int) -> bool {
+    if n > prog_test_st.cash { return false }
+    prog_test_st.cash -= n
+    return true
+  }
+  function f_stat(prog_test_st: mut ProgTestState, player: int, stat: string, value: float) -> void {
+    push(prog_test_st.told, stat)
+    prog_test_st.told_value = value
+  }
+  bind ProgressionWorld { is_host: fn f_host, xp_mult: fn f_live, spend: fn f_spend }
+  bind ProgressionOut { stat: fn f_stat }
+
+  # a table curve: level 2 at 100, 3 at 250, 4 at 500
+  def XpCurves table { thresholds: [100, 250, 500] }
+  # a formula: 100 to level 2, then 100 + 50 more each level: 100, 250, 450, ... up to level 10
+  def XpCurves formula { base: 100, per_level: 50, max_level: 10 }
+
+  def ProgressionRoles courier { track: PRGT_COURIER, min_level: 2, price: 200, stat: "haul", stat_mod: 0.25 }
+  def ProgressionTracks rank { curve: XPCV_TABLE, prestige: true, prestige_max: 2, prestige_xp_pct: 10 }
+  def ProgressionTracks courier { curve: XPCV_FORMULA }
+
+  def Skills driving { stat: "grip", rate: 40, cap: 400, level_points: 100, mod_min: 0.0, mod_max: 0.2 }
+  def Skills stamina { stat: "stamina", rate: 10, cap: 1000, level_points: 250, diminishing: true, mod_min: 1.0, mod_max: 2.0 }
+
+  def Unlocks cap_a { what: "hat", kind: "item", track: PRGT_RANK, level: 2 }
+  def Unlocks fast_car { what: "car_fast", kind: "vehicle", track: PRGT_RANK, level: 3, price: 300 }
+  def Unlocks chain { what: "car_fast_paint", kind: "item", track: PRGT_RANK, level: 1, requires: UNLK_FAST_CAR }
+  def Unlocks sprint { what: "sprint", kind: "feature", track: PRGT_RANK, level: 1, skill: SKLL_DRIVING, skill_level: 2 }
+  def Unlocks hauler { what: "van", kind: "vehicle", track: PRGT_COURIER, level: 2, role: PRGR_COURIER }
+  def XpAwards from "progression.lres"
+
+  function facts_of(progression_st: mut ProgressionState, what: int) -> int {
+    let fs = q_drain(progression_facts(progression_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "a table curve turns XP into levels and back" (progression_st: mut ProgressionState) {
+    progression_reset(progression_st)
+    expect_eq(progression_max_level(PRGT_RANK), 4)
+    expect_eq(progression_curve_xp(XPCV_TABLE, 3), 250)
+    expect_eq(progression_curve_xp(XPCV_TABLE, 1), 0)
+    expect_eq(progression_curve_level(XPCV_TABLE, 99), 1)
+    expect_eq(progression_curve_level(XPCV_TABLE, 100), 2)
+    expect_eq(progression_curve_level(XPCV_TABLE, 100000), 4)
+    expect_eq(progression_level(progression_st, 1, PRGT_RANK), 1)      # a player nothing is known of
+    expect_eq(progression_add_xp(progression_st, 1, PRGT_RANK, 260), 260)
+    expect_eq(progression_level(progression_st, 1, PRGT_RANK), 3)
+    expect_eq(progression_xp_to_next(progression_st, 1, PRGT_RANK), 240)
+    expect(progression_fraction(progression_st, 1, PRGT_RANK) > 0.039 and progression_fraction(progression_st, 1, PRGT_RANK) < 0.041)
+    expect_eq(progression_add_xp(progression_st, 1, PRGT_RANK, 100000), 240)   # the top holds no more
+    expect(progression_at_max(progression_st, 1, PRGT_RANK))
+    expect_eq(progression_xp_to_next(progression_st, 1, PRGT_RANK), 0)
+  }
+
+  test "a formula curve grows by a step each level, to its top" (progression_st: mut ProgressionState) {
+    progression_reset(progression_st)
+    expect_eq(progression_curve_xp(XPCV_FORMULA, 2), 100)
+    expect_eq(progression_curve_xp(XPCV_FORMULA, 3), 250)
+    expect_eq(progression_curve_xp(XPCV_FORMULA, 4), 450)
+    expect_eq(progression_max_level(PRGT_COURIER), 10)
+    expect_eq(progression_curve_level(XPCV_FORMULA, 449), 3)
+    expect_eq(progression_curve_level(XPCV_FORMULA, 450), 4)
+    expect_eq(progression_curve_level(XPCV_FORMULA, 999999999), 10)
+  }
+
+  test "a level crossed is a fact each, and XP a fact too" (progression_st: mut ProgressionState) {
+    progression_reset(progression_st)
+    progression_add_xp(progression_st, 1, PRGT_RANK, 300)
+    let fs = q_drain(progression_facts(progression_st))
+    var ups = 0
+    var xp = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == PROG_LEVEL_UP { ups += 1 }
+      if fs[i].what == PROG_XP { xp += fs[i].amount }
+    }
+    expect_eq(ups, 2)
+    expect_eq(xp, 300)
+  }
+
+  test "an award is its XP times its multiplier, and the live multiplier rides on it" (progression_st: mut ProgressionState, prog_test_st: mut ProgTestState) {
+    progression_reset(progression_st)
+    expect_eq(progression_award(progression_st, 1, "delivery"), 50)
+    expect_eq(progression_award(progression_st, 1, "race_won"), 180)            # 120 * 1.5
+    prog_test_st.live = 2.0
+    expect_eq(progression_award_worth(progression_st, 1, XPAW_RACE_WON), 360)  # the live event doubles it
+    expect_eq(progression_award(progression_st, 1, "race_won"), 270)            # but the track holds 500
+    expect_eq(progression_award(progression_st, 1, "nothing_like_it"), 0)
+    expect_eq(progression_xp(progression_st, 1, PRGT_RANK), 500)
+    prog_test_st.live = 1.0
+  }
+
+  test "a role's track takes XP only while the player is in the role, and the role asks a level and a price" (progression_st: mut ProgressionState, prog_test_st: mut ProgTestState) {
+    progression_reset(progression_st)
+    prog_test_st.cash = 1000
+    expect(not progression_role_start(progression_st, 1, PRGR_COURIER))        # the general track is level 1
+    progression_add_xp(progression_st, 1, PRGT_RANK, 100)
+    expect_eq(progression_award(progression_st, 1, "mentoring"), 0)            # not in the role: nothing
+    prog_test_st.cash = 100
+    expect(not progression_role_start(progression_st, 1, PRGR_COURIER))        # too poor
+    expect_eq(progression_role(progression_st, 1), -1)
+    prog_test_st.cash = 1000
+    expect(progression_role_start(progression_st, 1, PRGR_COURIER))
+    expect_eq(prog_test_st.cash, 800)
+    expect(not progression_role_start(progression_st, 1, PRGR_COURIER))        # already in one
+    expect_eq(progression_award(progression_st, 1, "mentoring"), 40)
+    expect_eq(progression_xp(progression_st, 1, PRGT_COURIER), 40)
+    expect(progression_stat(progression_st, 1, "haul") == 0.25)
+    expect(progression_role_end(progression_st, 1))
+    expect(progression_stat(progression_st, 1, "haul") == 0.0)
+    expect_eq(progression_xp(progression_st, 1, PRGT_COURIER), 40)             # kept
+    expect_eq(progression_award(progression_st, 1, "mentoring"), 0)
+  }
+
+  test "a free unlock opens at its level; a priced one is offered, then bought once" (progression_st: mut ProgressionState, prog_test_st: mut ProgTestState) {
+    progression_reset(progression_st)
+    prog_test_st.cash = 1000
+    expect(not progression_has(progression_st, 1, UNLK_CAP_A))
+    progression_add_xp(progression_st, 1, PRGT_RANK, 100)
+    expect(progression_has(progression_st, 1, UNLK_CAP_A))
+    expect_eq(facts_of(progression_st, PROG_UNLOCKED), 1)
+    expect_eq(progression_unlock_state(progression_st, 1, UNLK_FAST_CAR), PROG_LOCKED)
+    expect(not progression_buy_unlock(progression_st, 1, UNLK_FAST_CAR))        # not on offer yet
+    progression_add_xp(progression_st, 1, PRGT_RANK, 150)
+    expect_eq(progression_unlock_state(progression_st, 1, UNLK_FAST_CAR), PROG_OFFER)
+    expect_eq(facts_of(progression_st, PROG_OFFERED), 1)
+    expect(not progression_allows(progression_st, 1, "car_fast"))
+    expect(progression_allows(progression_st, 1, "anything_nobody_gates"))
+    prog_test_st.cash = 299
+    expect(not progression_buy_unlock(progression_st, 1, UNLK_FAST_CAR))
+    prog_test_st.cash = 1000
+    expect(progression_buy_unlock(progression_st, 1, UNLK_FAST_CAR))
+    expect_eq(prog_test_st.cash, 700)
+    expect(progression_allows(progression_st, 1, "car_fast"))
+    expect(not progression_buy_unlock(progression_st, 1, UNLK_FAST_CAR))        # had
+  }
+
+  test "an unlock that requires another opens the moment that one is had" (progression_st: mut ProgressionState) {
+    progression_reset(progression_st)
+    expect_eq(progression_unlock_state(progression_st, 1, UNLK_CHAIN), PROG_LOCKED)
+    progression_add_xp(progression_st, 1, PRGT_RANK, 250)
+    expect_eq(progression_unlock_state(progression_st, 1, UNLK_CHAIN), PROG_LOCKED)
+    progression_buy_unlock(progression_st, 1, UNLK_FAST_CAR)
+    expect(progression_has(progression_st, 1, UNLK_CHAIN))
+    expect_eq(progression_unlock_of("car_fast_paint"), UNLK_CHAIN)
+  }
+
+  test "a role's unlock needs the role and its level, and a granted one needs nothing" (progression_st: mut ProgressionState) {
+    progression_reset(progression_st)
+    progression_add_xp(progression_st, 1, PRGT_RANK, 100)
+    progression_role_start(progression_st, 1, PRGR_COURIER)
+    progression_add_xp(progression_st, 1, PRGT_COURIER, 100)
+    expect(progression_has(progression_st, 1, UNLK_HAULER))
+    progression_role_end(progression_st, 1)
+    expect(progression_grant_unlock(progression_st, 1, UNLK_FAST_CAR))
+    expect(not progression_grant_unlock(progression_st, 1, UNLK_FAST_CAR))
+    expect(progression_has(progression_st, 1, UNLK_FAST_CAR))
+  }
+
+  test "a skill grows with use, says so at each level, and exports its stat" (progression_st: mut ProgressionState, prog_test_st: mut ProgTestState) {
+    progression_reset(progression_st)
+    expect_eq(progression_skill_use(progression_st, 1, SKLL_DRIVING, 2), 80)
+    expect_eq(progression_skill_level(progression_st, 1, SKLL_DRIVING), 0)
+    expect_eq(len(prog_test_st.told), 0)
+    expect_eq(progression_skill_use(progression_st, 1, SKLL_DRIVING, 1), 40)
+    expect_eq(progression_skill_level(progression_st, 1, SKLL_DRIVING), 1)
+    expect_eq(len(prog_test_st.told), 1)
+    expect(prog_test_st.told[0] == "grip")
+    expect(prog_test_st.told_value > 0.059 and prog_test_st.told_value < 0.061)   # 120 of 400, on 0 to 0.2
+    expect_eq(facts_of(progression_st, PROG_SKILL_UP), 1)
+    expect_eq(progression_skill_use(progression_st, 1, SKLL_DRIVING, 100), 280)   # the cap holds
+    expect_eq(progression_skill_points(progression_st, 1, SKLL_DRIVING), 400)
+    expect(progression_stat(progression_st, 1, "grip") == 0.2)
+    expect_eq(progression_skill_use(progression_st, 1, SKLL_DRIVING, 1), 0)
+  }
+
+  test "a diminishing skill gains less as it fills, and never stops before its cap" (progression_st: mut ProgressionState) {
+    progression_reset(progression_st)
+    let first = progression_skill_use(progression_st, 1, SKLL_STAMINA, 1)
+    expect_eq(first, 10)
+    let many = progression_skill_use(progression_st, 1, SKLL_STAMINA, 50)
+    expect(many < 500)                                        # a flat 10 each would be 500
+    expect(many > 0)
+    progression_skill_use(progression_st, 1, SKLL_STAMINA, 100000)
+    expect_eq(progression_skill_points(progression_st, 1, SKLL_STAMINA), 1000)
+  }
+
+  test "an activity trains its skill, and a skill level can open an unlock" (progression_st: mut ProgressionState) {
+    progression_reset(progression_st)
+    progression_award(progression_st, 1, "delivery")            # 2 uses: 80 points
+    progression_award(progression_st, 1, "delivery")            # 160: level 1
+    expect(not progression_has(progression_st, 1, UNLK_SPRINT))
+    progression_award(progression_st, 1, "delivery")            # 240: level 2
+    expect(progression_has(progression_st, 1, UNLK_SPRINT))
+    progression_award(progression_st, 1, "practice")            # no XP, ten uses of stamina
+    expect(progression_skill_points(progression_st, 1, SKLL_STAMINA) > 0)
+  }
+
+  test "prestige restarts the top track for a share more XP, up to its count" (progression_st: mut ProgressionState) {
+    progression_reset(progression_st)
+    expect(not progression_prestige(progression_st, 1, PRGT_RANK))             # not at the top
+    progression_add_xp(progression_st, 1, PRGT_RANK, 1000)
+    expect(progression_can_prestige(progression_st, 1, PRGT_RANK))
+    progression_add_xp(progression_st, 1, PRGT_RANK, 0)
+    q_clear(progression_facts(progression_st))
+    expect(progression_prestige(progression_st, 1, PRGT_RANK))
+    expect_eq(progression_level(progression_st, 1, PRGT_RANK), 1)
+    expect_eq(progression_xp(progression_st, 1, PRGT_RANK), 0)
+    expect_eq(progression_prestige_count(progression_st, 1, PRGT_RANK), 1)
+    expect_eq(facts_of(progression_st, PROG_PRESTIGE), 1)
+    expect(progression_has(progression_st, 1, UNLK_CAP_A))                     # what was opened stays
+    expect_eq(progression_award(progression_st, 1, "delivery"), 55)             # 50 + 10%
+    progression_add_xp(progression_st, 1, PRGT_RANK, 1000)
+    expect(progression_prestige(progression_st, 1, PRGT_RANK))
+    progression_add_xp(progression_st, 1, PRGT_RANK, 1000)
+    expect(not progression_prestige(progression_st, 1, PRGT_RANK))             # twice is the most
+    expect_eq(progression_award(progression_st, 1, "mentoring"), 0)
+  }
+
+  test "only the host awards, levels and sells; a client has the host's word" (progression_st: mut ProgressionState, prog_test_st: mut ProgTestState) {
+    progression_reset(progression_st)
+    progression_add_xp(progression_st, 1, PRGT_RANK, 300)
+    progression_skill_use(progression_st, 1, SKLL_DRIVING, 3)
+    let snap = progression_snapshot(progression_st, 1)
+    prog_test_st.host = false
+    expect_eq(progression_add_xp(progression_st, 1, PRGT_RANK, 10), 0)
+    expect_eq(progression_award(progression_st, 1, "delivery"), 0)
+    expect_eq(progression_skill_use(progression_st, 1, SKLL_DRIVING, 1), 0)
+    expect(not progression_buy_unlock(progression_st, 1, UNLK_FAST_CAR))
+    expect(not progression_prestige(progression_st, 1, PRGT_RANK))
+    progression_reset(progression_st)
+    expect(progression_apply(progression_st, 1, snap))
+    expect_eq(progression_level(progression_st, 1, PRGT_RANK), 3)               # worked out from the XP
+    expect_eq(progression_skill_points(progression_st, 1, SKLL_DRIVING), 120)
+    expect(not progression_apply(progression_st, 1, [9, 9]))
+    prog_test_st.host = true
+  }
+
+  test "a save section reads back every player's progress" (progression_st: mut ProgressionState) {
+    progression_reset(progression_st)
+    progression_add_xp(progression_st, 1, PRGT_RANK, 300)
+    progression_add_xp(progression_st, 7, PRGT_RANK, 100)
+    progression_role_start(progression_st, 1, PRGR_COURIER)
+    progression_skill_use(progression_st, 1, SKLL_DRIVING, 4)
+    progression_buy_unlock(progression_st, 1, UNLK_FAST_CAR)
+    let root = save_tree()
+    save_section(root, "progression", 1, progression_save(progression_st))
+    let text = save_encode(root)
+    progression_reset(progression_st)
+    expect_eq(progression_players(progression_st), 0)
+    let n = load_section(save_decode(text), "progression")
+    progression_load(progression_st, n.data, n.version)
+    expect_eq(progression_players(progression_st), 2)
+    expect_eq(progression_level(progression_st, 1, PRGT_RANK), 3)
+    expect_eq(progression_level(progression_st, 7, PRGT_RANK), 2)
+    expect_eq(progression_role(progression_st, 1), PRGR_COURIER)
+    expect_eq(progression_skill_points(progression_st, 1, SKLL_DRIVING), 160)
+    expect(progression_has(progression_st, 1, UNLK_FAST_CAR))
+    expect(progression_has(progression_st, 7, UNLK_CAP_A))
+    expect_eq(q_len(progression_facts(progression_st)), 0)                       # a load tells no stories
+    progression_forget(progression_st, 7)
+    expect_eq(progression_players(progression_st), 1)
+  }
+}

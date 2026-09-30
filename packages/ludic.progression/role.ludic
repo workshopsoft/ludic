@@ -1,0 +1,65 @@
+# role.ludic - roles, each a track of its own, and prestige
+
+export function progression_role(progression_st: ProgressionState, player: int) -> int {
+  let r = prog__find(progression_st, player)
+  if r == null { return -1 }
+  return r.role
+}
+
+# may the player begin a role: not in one, the general track high enough? (the price is asked at the start)
+export function progression_role_can_start(progression_st: ProgressionState, player: int, role: int) -> bool {
+  if not prog__role_ok(role) or progression_role(progression_st, player) >= 0 { return false }
+  let g = progression_general_track()
+  if g < 0 { return false }
+  return progression_level(progression_st, player, g) >= ProgressionRoles[role].min_level
+}
+
+# begin a role: its price is taken through the world's port. False when not allowed or not paid. Host only
+export function progression_role_start(progression_st: mut ProgressionState, player: int, role: int) -> bool {
+  if not prog__is_host() or not progression_role_can_start(progression_st, player, role) { return false }
+  if not ProgressionWorld.spend(player, ProgressionRoles[role].price) { return false }
+  let r = prog__row(progression_st, player)
+  r.role = role
+  let f = prog__fact(progression_st, PROG_ROLE_START, player)
+  f.idx = role
+  f.track = ProgressionRoles[role].track
+  prog__tell_stat(r, ProgressionRoles[role].stat)
+  prog__refresh(progression_st, r)
+  return true
+}
+
+# leave the role: its track and what it earned are kept for next time. Host only
+export function progression_role_end(progression_st: mut ProgressionState, player: int) -> bool {
+  if not prog__is_host() { return false }
+  let r = prog__find(progression_st, player)
+  if r == null or r.role < 0 { return false }
+  let old = r.role
+  r.role = -1
+  let f = prog__fact(progression_st, PROG_ROLE_END, player)
+  f.idx = old
+  f.track = ProgressionRoles[old].track
+  prog__tell_stat(r, ProgressionRoles[old].stat)
+  prog__refresh(progression_st, r)
+  return true
+}
+
+export function progression_can_prestige(progression_st: ProgressionState, player: int, track: int) -> bool {
+  if not prog__track_ok(track) or not ProgressionTracks[track].prestige { return false }
+  if progression_prestige_count(progression_st, player, track) >= ProgressionTracks[track].prestige_max { return false }
+  return progression_at_max(progression_st, player, track)
+}
+
+# at the top level, start the track again: XP and level back to the start, the prestige count up, what was
+# unlocked kept. Host only
+export function progression_prestige(progression_st: mut ProgressionState, player: int, track: int) -> bool {
+  if not prog__is_host() or not progression_can_prestige(progression_st, player, track) { return false }
+  let r = prog__row(progression_st, player)
+  r.xp[track] = 0
+  r.level[track] = 1
+  r.prestige[track] += 1
+  let f = prog__fact(progression_st, PROG_PRESTIGE, player)
+  f.track = track
+  f.to = r.prestige[track]
+  prog__refresh(progression_st, r)
+  return true
+}

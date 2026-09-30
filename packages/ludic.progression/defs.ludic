@@ -1,0 +1,100 @@
+# defs.ludic - the six tables a game fills: curves (how much XP each level takes), tracks (a curve,
+# prestige), roles (a track of their own), awards (what an activity is worth), unlocks (what a level
+# opens) and skills (what use grows). All rows, so the studio edits them; order is the index, so a
+# table saved by position only ever grows at its end.
+
+# how much XP each level takes. A `thresholds` list is a table: thresholds[i] is the total XP that
+# reaches level i + 2 (so the list's length plus one is the top level). With no list, a formula:
+# the total for level L is base * (L - 1) + per_level * (L - 1) * (L - 2) / 2, up to max_level
+export property XpCurve {
+  key: string = ""
+  thresholds: []int = null
+  @Range(0, 1000000) base: int = 100
+  @Range(0, 1000000) per_level: int = 0
+  @Range(1, 1000) max_level: int = 50
+}
+
+@AppendOnly @ByKey
+export open registry XpCurves of XpCurve as XPCV
+
+# a role: its own track of XP and levels, begun once a player reaches `min_level` on the general track
+# (the first track), at `price`, and ended at will. `stat` is a stat the role itself adds `stat_mod` to
+export property ProgressionRole {
+  key: string = ""
+  @Text title: Key = null
+  @Ref(ProgressionTracks) track: int = 0
+  @Range(1, 1000) min_level: int = 1
+  @Range(0, 100000000) price: int = 0
+  stat: string = ""
+  stat_mod: float = 0.0
+}
+
+# a track of XP: its curve and, at its top level, whether it can be prestiged (back to level 1 for a
+# permanent share of more XP: `prestige_xp_pct` percent more per prestige, up to `prestige_max` times)
+export property ProgressionTrack {
+  key: string = ""
+  @Text title: Key = null
+  @Ref(XpCurves) curve: int = 0
+  prestige: bool = false
+  @Range(0, 1000) prestige_max: int = 0
+  @Range(0, 1000) prestige_xp_pct: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry ProgressionTracks of ProgressionTrack as PRGT
+
+@AppendOnly @ByKey
+export open registry ProgressionRoles of ProgressionRole as PRGR
+
+# what an activity is worth: `key` is the game's word for it ("delivery", "race_won"). `xp` times `mult`
+# (and the world's live multiplier, and the track's prestige share) goes to `track`; `skill` grows by
+# `skill_uses` uses as well (-1: none)
+export property XpAward {
+  key: string = ""
+  @Ref(ProgressionTracks) track: int = 0
+  @Range(0, 100000000) xp: int = 10
+  @Range(0, 1000) mult: float = 1.0
+  @Ref(Skills) skill: int = -1
+  @Range(0, 1000) skill_uses: int = 1
+}
+
+@ByKey
+export open registry XpAwards of XpAward as XPAW
+
+# what a level opens. `what` is the game's key for the item or feature (`kind` says which sort); it
+# is reached when `track` is at `level`, the unlock `requires` is had, the player is in `role`, and
+# `skill` is at `skill_level`. A `price` of 0 opens it then; else it is offered, and bought
+export property Unlock {
+  key: string = ""
+  what: string = ""
+  kind: string = ""
+  @Text title: Key = null
+  @Ref(ProgressionTracks) track: int = 0
+  @Range(1, 1000) level: int = 1
+  @Ref(Unlocks) requires: int = -1
+  @Ref(ProgressionRoles) role: int = -1
+  @Ref(Skills) skill: int = -1
+  @Range(0, 100000) skill_level: int = 0
+  @Range(0, 100000000) price: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry Unlocks of Unlock as UNLK
+
+# a skill that grows by use: `rate` points a use (less near the cap when `diminishing`), up to `cap`; a
+# skill level is `level_points` of them. Its effect is a stat modifier that runs from `mod_min` at no
+# points to `mod_max` at the cap, added to `stat` (the game's word: "stamina", "aim_steady")
+export property Skill {
+  key: string = ""
+  @Text title: Key = null
+  stat: string = ""
+  @Range(0, 100000) rate: int = 10
+  @Range(1, 1000000) cap: int = 1000
+  diminishing: bool = false
+  @Range(1, 1000000) level_points: int = 100
+  mod_min: float = 0.0
+  mod_max: float = 0.0
+}
+
+@AppendOnly @ByKey
+export open registry Skills of Skill as SKLL

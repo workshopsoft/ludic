@@ -1,0 +1,81 @@
+# curve.ludic - XP to levels and back. A level is at least 1; the top is the curve's own
+
+# the top level of a curve
+export function progression_curve_max(c: int) -> int {
+  if c < 0 or c >= XPCV_COUNT { return 1 }
+  let cv = XpCurves[c]
+  if cv.thresholds != null and len(cv.thresholds) > 0 { return len(cv.thresholds) + 1 }
+  return Math.max(cv.max_level, 1)
+}
+
+# the total XP that reaches `level` on a curve (level 1 is 0)
+export function progression_curve_xp(c: int, level: int) -> int {
+  if c < 0 or c >= XPCV_COUNT or level <= 1 { return 0 }
+  let cv = XpCurves[c]
+  let top = progression_curve_max(c)
+  let l = Math.min(level, top)
+  if cv.thresholds != null and len(cv.thresholds) > 0 { return cv.thresholds[l - 2] }
+  return cv.base * (l - 1) + cv.per_level * ((l - 1) * (l - 2) / 2)
+}
+
+# the level a total of XP reaches on a curve
+export function progression_curve_level(c: int, xp: int) -> int {
+  let top = progression_curve_max(c)
+  var l = 1
+  while l < top and xp >= progression_curve_xp(c, l + 1) { l += 1 }
+  return l
+}
+
+function prog__curve_of(track: int) -> int {
+  if not prog__track_ok(track) { return -1 }
+  return ProgressionTracks[track].curve
+}
+
+# the most XP a track holds: what reaches its top level
+export function progression_track_cap(track: int) -> int {
+  let c = prog__curve_of(track)
+  return progression_curve_xp(c, progression_curve_max(c))
+}
+
+export function progression_level(progression_st: ProgressionState, player: int, track: int) -> int {
+  let r = prog__find(progression_st, player)
+  if r == null or not prog__track_ok(track) or track >= len(r.level) { return 1 }
+  return r.level[track]
+}
+
+export function progression_xp(progression_st: ProgressionState, player: int, track: int) -> int {
+  let r = prog__find(progression_st, player)
+  if r == null or not prog__track_ok(track) or track >= len(r.xp) { return 0 }
+  return r.xp[track]
+}
+
+export function progression_max_level(track: int) -> int { return progression_curve_max(prog__curve_of(track)) }
+
+export function progression_at_max(progression_st: ProgressionState, player: int, track: int) -> bool {
+  return progression_level(progression_st, player, track) >= progression_max_level(track)
+}
+
+# XP still to go to the next level (0 at the top)
+export function progression_xp_to_next(progression_st: ProgressionState, player: int, track: int) -> int {
+  if progression_at_max(progression_st, player, track) { return 0 }
+  let c = prog__curve_of(track)
+  let l = progression_level(progression_st, player, track)
+  return progression_curve_xp(c, l + 1) - progression_xp(progression_st, player, track)
+}
+
+# how far through the current level, 0 to 1 (1 at the top)
+export function progression_fraction(progression_st: ProgressionState, player: int, track: int) -> float {
+  if progression_at_max(progression_st, player, track) { return 1.0 }
+  let c = prog__curve_of(track)
+  let l = progression_level(progression_st, player, track)
+  let lo = progression_curve_xp(c, l)
+  let span = progression_curve_xp(c, l + 1) - lo
+  if span <= 0 { return 1.0 }
+  return float(progression_xp(progression_st, player, track) - lo) / float(span)
+}
+
+export function progression_prestige_count(progression_st: ProgressionState, player: int, track: int) -> int {
+  let r = prog__find(progression_st, player)
+  if r == null or not prog__track_ok(track) or track >= len(r.prestige) { return 0 }
+  return r.prestige[track]
+}

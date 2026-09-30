@@ -1,0 +1,6 @@
+# ludic.progression - XP and levels from curves and awards, unlocks by level, skills that grow with
+# use and export stat modifiers, roles and prestige with tracks of their own, live multipliers through
+# a port, host-authoritative, saved. Uses ludic.base and nothing else. See README.md.
+package "ludic.progression"
+version "0.1.0"
+kind source

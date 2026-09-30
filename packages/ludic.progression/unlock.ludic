@@ -1,0 +1,100 @@
+# unlock.ludic - what a level opens. 0 locked, 1 offered (reached, and it has a price), 2 had
+
+export const PROG_LOCKED: int = 0
+export const PROG_OFFER: int = 1
+export const PROG_HAD: int = 2
+
+# are an unlock's conditions met (its price aside)?
+function prog__met(r: ProgPlayer, u: int) -> bool {
+  let k = Unlocks[u]
+  if prog__track_ok(k.track) and r.level[k.track] < k.level { return false }
+  if prog__unlock_ok(k.requires) and r.unlock[k.requires] != PROG_HAD { return false }
+  if prog__role_ok(k.role) and r.role != k.role { return false }
+  if prog__skill_ok(k.skill) and prog__skill_level(r, k.skill) < k.skill_level { return false }
+  return true
+}
+
+# settle every unlock against a player's levels, role and skills, until nothing more opens (an unlock
+# may require a later one): free ones open, priced ones are offered, an offer whose conditions went away is withdrawn
+function prog__refresh(progression_st: mut ProgressionState, r: ProgPlayer) -> void {
+  var again = true
+  var pass = 0
+  while again and pass <= UNLK_COUNT {
+    again = false
+    pass += 1
+    for u in 0 .. UNLK_COUNT {
+      if r.unlock[u] == PROG_HAD { continue }
+      let met = prog__met(r, u)
+      if met and Unlocks[u].price <= 0 {
+        r.unlock[u] = PROG_HAD
+        let f = prog__fact(progression_st, PROG_UNLOCKED, r.player)
+        f.idx = u
+        f.key = Unlocks[u].what
+        again = true
+      } else if met and r.unlock[u] == PROG_LOCKED {
+        r.unlock[u] = PROG_OFFER
+        let f = prog__fact(progression_st, PROG_OFFERED, r.player)
+        f.idx = u
+        f.key = Unlocks[u].what
+      } else if not met and r.unlock[u] == PROG_OFFER {
+        r.unlock[u] = PROG_LOCKED
+      }
+    }
+  }
+}
+
+export function progression_unlock_state(progression_st: ProgressionState, player: int, u: int) -> int {
+  let r = prog__find(progression_st, player)
+  if r == null or not prog__unlock_ok(u) or u >= len(r.unlock) { return PROG_LOCKED }
+  return r.unlock[u]
+}
+
+export function progression_has(progression_st: ProgressionState, player: int, u: int) -> bool {
+  return progression_unlock_state(progression_st, player, u) == PROG_HAD
+}
+
+# the first unlock row that opens the game's key `what`, -1 if none does
+export function progression_unlock_of(what: string) -> int {
+  for u in 0 .. UNLK_COUNT { if Unlocks[u].what == what { return u } }
+  return -1
+}
+
+# may the player use the game's item or feature `what`? Nothing gates a key no unlock names
+export function progression_allows(progression_st: ProgressionState, player: int, what: string) -> bool {
+  var gated = false
+  for u in 0 .. UNLK_COUNT {
+    if Unlocks[u].what != what { continue }
+    gated = true
+    if progression_has(progression_st, player, u) { return true }
+  }
+  return not gated
+}
+
+# buy an offered unlock: the player's money goes through the world's port. False, and nothing spent,
+# when it is not on offer or the money is not there. Host only
+export function progression_buy_unlock(progression_st: mut ProgressionState, player: int, u: int) -> bool {
+  if not prog__is_host() or not prog__unlock_ok(u) { return false }
+  let r = prog__row(progression_st, player)
+  if r.unlock[u] != PROG_OFFER { return false }
+  if not ProgressionWorld.spend(player, Unlocks[u].price) { return false }
+  r.unlock[u] = PROG_HAD
+  let f = prog__fact(progression_st, PROG_UNLOCKED, player)
+  f.idx = u
+  f.key = Unlocks[u].what
+  f.amount = Unlocks[u].price
+  prog__refresh(progression_st, r)
+  return true
+}
+
+# open an unlock outright (a story reward, a gift), whatever it asks. Host only
+export function progression_grant_unlock(progression_st: mut ProgressionState, player: int, u: int) -> bool {
+  if not prog__is_host() or not prog__unlock_ok(u) { return false }
+  let r = prog__row(progression_st, player)
+  if r.unlock[u] == PROG_HAD { return false }
+  r.unlock[u] = PROG_HAD
+  let f = prog__fact(progression_st, PROG_UNLOCKED, player)
+  f.idx = u
+  f.key = Unlocks[u].what
+  prog__refresh(progression_st, r)
+  return true
+}
