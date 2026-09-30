@@ -1,0 +1,1 @@
+default { walk_speed: 1.25, max_walk: 600.0, walk_only: 900.0, transfer_radius: 120.0, min_transfer: 60, horizon: 14400 }

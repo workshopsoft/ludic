@@ -1,0 +1,29 @@
+M {
+  name: "Metro"
+  mode: "metro"
+  stops: [{ stop: "a" }, { stop: "b" }, { stop: "c", dwell: 40 }, { stop: "d" }, { stop: "e" }]
+  headways: [{ from: 5.0, to: 9.0, every: 300 }, { from: 9.0, to: 17.0, every: 600 }, { from: 17.0, to: 24.0, every: 480 }]
+  first: 5.0
+  last: 24.0
+}
+B1 {
+  name: "Bus 1"
+  mode: "bus"
+  stops: [{ stop: "n1" }, { stop: "c2" }, { stop: "s1" }]
+  segs: ["avenue_n", "avenue_s"]
+  headways: [{ from: 6.0, to: 22.0, every: 600 }]
+  first: 6.0
+  last: 22.0
+  offset: 120
+}
+T {
+  name: "Tram"
+  mode: "tram"
+  stops: [{ stop: "t1" }, { stop: "t2" }, { stop: "t3" }, { stop: "t4" }]
+  pts: [{ x: 0.0, z: 2000.0 }, { x: 800.0, z: 2000.0 }, { x: 800.0, z: 2800.0 }, { x: 0.0, z: 2800.0 }, { x: 0.0, z: 2000.0 }]
+  loop: true
+  both: false
+  headways: [{ from: 6.0, to: 23.0, every: 720 }]
+  first: 6.0
+  last: 23.0
+}

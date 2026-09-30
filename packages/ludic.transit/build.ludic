@@ -1,0 +1,540 @@
+# build.ludic - a map's loaded tables become the network: stops and their grid, lines with a polyline each,
+# routes (a line's two directions) with the seconds to every stop, the timetable, who serves each stop and
+# the walks between stops. `transit_build` returns false when a row is wrong (and says the first fault in
+# `transit_error`), building every row that is right.
+
+function tr_fdiv(a: int, b: int) -> int {
+  var q = a / b
+  if a % b != 0 and ((a < 0) != (b < 0)) { q -= 1 }
+  return q
+}
+
+function tr_dist(ax: float, az: float, bx: float, bz: float) -> float {
+  let dx = bx - ax
+  let dz = bz - az
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+# whole seconds to walk `d` metres, at least 1 for any distance, none for none
+function tr_walk_secs(tr: TransitState, d: float) -> int {
+  if d <= 0.0 { return 0 }
+  return Math.max(int(d / tr.tr_walk_speed + 0.5), 1)
+}
+
+function tr_hash_str(s: string) -> int {
+  var h = 0x811C9DC5
+  for i in 0 .. len(s) { h = (h ^ s[i]) * 16777619 }
+  return h & 0x7FFFFFFF
+}
+
+# a stop's index by its key, without a scan: -1 when there is none
+function tr_stop_index(tr: TransitState, key: string) -> int {
+  let cap = len(tr.tr_hslot)
+  if cap == 0 { return -1 }
+  var h = tr_hash_str(key) & (cap - 1)
+  for probe in 0 .. cap {
+    let s = tr.tr_hslot[h]
+    if s < 0 { return -1 }
+    if tr.tr_skey[s] == key { return s }
+    h = (h + 1) & (cap - 1)
+  }
+  return -1
+}
+
+function tr_hash_stops(tr: mut TransitState) -> void {
+  var cap = 16
+  while cap < len(tr.tr_skey) * 2 { cap = cap * 2 }
+  List.clear(tr.tr_hslot)
+  for i in 0 .. cap { push(tr.tr_hslot, -1) }
+  for s in 0 .. len(tr.tr_skey) {
+    var h = tr_hash_str(tr.tr_skey[s]) & (cap - 1)
+    while tr.tr_hslot[h] >= 0 { h = (h + 1) & (cap - 1) }
+    tr.tr_hslot[h] = s
+  }
+}
+
+function tr_fail(tr: mut TransitState, msg: string) -> void {
+  if tr.tr_err == "" { tr.tr_err = msg }
+}
+
+function tr_clear_all(tr: mut TransitState) -> void {
+  tr.tr_err = ""
+  tr.tr_built = false
+  List.clear(tr.tr_skey)
+  List.clear(tr.tr_sname)
+  List.clear(tr.tr_sx)
+  List.clear(tr.tr_sz)
+  List.clear(tr.tr_szone)
+  List.clear(tr.tr_hslot)
+  List.clear(tr.tr_bay_start)
+  List.clear(tr.tr_bay_line)
+  List.clear(tr.tr_bay_x)
+  List.clear(tr.tr_bay_z)
+  List.clear(tr.tr_sr_start)
+  List.clear(tr.tr_sr_route)
+  List.clear(tr.tr_sr_k)
+  List.clear(tr.tr_tl_start)
+  List.clear(tr.tr_tl_to)
+  List.clear(tr.tr_tl_secs)
+  List.clear(tr.tr_g_start)
+  List.clear(tr.tr_g_stop)
+  List.clear(tr.tr_lkey)
+  List.clear(tr.tr_lname)
+  List.clear(tr.tr_lmode)
+  List.clear(tr.tr_lok)
+  List.clear(tr.tr_lscale)
+  List.clear(tr.tr_llen)
+  List.clear(tr.tr_lpt_start)
+  List.clear(tr.tr_lpx)
+  List.clear(tr.tr_lpz)
+  List.clear(tr.tr_lps)
+  List.clear(tr.tr_lseg_start)
+  List.clear(tr.tr_lseg)
+  List.clear(tr.tr_rok)
+  List.clear(tr.tr_rstart)
+  List.clear(tr.tr_rn)
+  List.clear(tr.tr_rstop)
+  List.clear(tr.tr_rarr)
+  List.clear(tr.tr_rdep)
+  List.clear(tr.tr_rs)
+  List.clear(tr.tr_rtotal)
+  List.clear(tr.tr_tt_start)
+  List.clear(tr.tr_tt_n)
+  List.clear(tr.tr_tt)
+}
+
+function tr_read_settings(tr: mut TransitState) -> void {
+  tr.tr_walk_speed = 1.3
+  tr.tr_max_walk = 600.0
+  tr.tr_walk_only = 1500.0
+  tr.tr_transfer_radius = 120.0
+  tr.tr_min_transfer = 45
+  tr.tr_horizon = 14400
+  tr.tr_dflt_headway = 600
+  if TRS_COUNT == 0 { return }
+  let r = TransitSettings[0]
+  tr.tr_walk_speed = r.walk_speed
+  tr.tr_max_walk = r.max_walk
+  tr.tr_walk_only = r.walk_only
+  tr.tr_transfer_radius = Math.min(r.transfer_radius, r.max_walk)
+  tr.tr_min_transfer = r.min_transfer
+  tr.tr_horizon = r.horizon
+  tr.tr_dflt_headway = r.default_headway
+}
+
+# the gap, in seconds, to the departure after one at `secs` past midnight
+function tr_headway_at(tr: TransitState, line: TransitLine, secs: int) -> int {
+  let h = float(secs) / 3600.0
+  for i in 0 .. len(line.headways) {
+    let r = line.headways[i]
+    if h >= r.from and h < r.to { return r.every }
+  }
+  if len(line.headways) > 0 { return line.headways[len(line.headways) - 1].every }
+  return tr.tr_dflt_headway
+}
+
+# seconds to cover `d` metres at a mode's cruise from a standing start to a stop: a short hop never reaches cruise
+function tr_leg_secs(m: TransitMode, d: float) -> int {
+  var t = 0.0
+  if d < m.speed * m.speed / m.accel { t = 2.0 * Math.sqrt(d / m.accel) } else { t = d / m.speed + m.speed / m.accel }
+  return Math.max(int(t + 0.5), 1)
+}
+
+# one direction of a line as a route: the stops in order, the seconds to each, the arc length at each
+function tr_make_route(tr: mut TransitState, l: int, dir: int, seq: []int, arcs: []float, dwells: []int, line: TransitLine) -> void {
+  let m = TransitModes[tr.tr_lmode[l]]
+  let n = len(seq)
+  push(tr.tr_rstart, len(tr.tr_rstop))
+  push(tr.tr_rn, n)
+  var t = 0
+  for k in 0 .. n {
+    push(tr.tr_rstop, seq[k])
+    push(tr.tr_rs, arcs[k])
+    if k == 0 {
+      push(tr.tr_rarr, 0)
+      push(tr.tr_rdep, 0)
+    } else {
+      let d = arcs[k] - arcs[k - 1]
+      t = tr.tr_rdep[len(tr.tr_rdep) - 1] + tr_leg_secs(m, d)
+      push(tr.tr_rarr, t)
+      var dw = m.dwell
+      if dwells[k] >= 0 { dw = dwells[k] }
+      if k == n - 1 { push(tr.tr_rdep, t) } else { push(tr.tr_rdep, t + dw) }
+    }
+  }
+  push(tr.tr_rtotal, t)
+  push(tr.tr_rok, 1)
+  # the timetable: from `first` to `last`, each gap the headway at that hour
+  push(tr.tr_tt_start, len(tr.tr_tt))
+  let last = int(line.last * 3600.0 + 0.5)
+  var at = int(line.first * 3600.0 + 0.5) + line.offset
+  var count = 0
+  while at <= last + line.offset and count < 4000 {
+    push(tr.tr_tt, at)
+    count += 1
+    at += Math.max(tr_headway_at(tr, line, at), 30)
+  }
+  push(tr.tr_tt_n, count)
+}
+
+function tr_dead_route(tr: mut TransitState) -> void {
+  push(tr.tr_rstart, len(tr.tr_rstop))
+  push(tr.tr_rn, 0)
+  push(tr.tr_rtotal, 0)
+  push(tr.tr_rok, 0)
+  push(tr.tr_tt_start, len(tr.tr_tt))
+  push(tr.tr_tt_n, 0)
+}
+
+function tr_build_line(tr: mut TransitState, stops: TransitStops, l: int, line: TransitLine) -> void {
+  push(tr.tr_lkey, line.key)
+  push(tr.tr_lname, line.name)
+  let mode = transitmodes_find(line.mode)
+  push(tr.tr_lmode, Math.max(mode, 0))
+  push(tr.tr_lpt_start, len(tr.tr_lpx))
+  push(tr.tr_lseg_start, len(tr.tr_lseg))
+  for i in 0 .. len(line.segs) { push(tr.tr_lseg, line.segs[i]) }
+  push(tr.tr_lscale, 1.0)
+  push(tr.tr_llen, 0.0)
+  push(tr.tr_lok, 0)
+  var why = ""
+  if mode < 0 { why = `line {line.key}: no mode {line.mode}` }
+  if why == "" and TransitModes[mode].on_demand { why = `line {line.key}: {line.mode} runs on demand, not on a line` }
+  if why == "" and len(line.stops) < 2 { why = `line {line.key}: fewer than two stops` }
+  if why == "" and len(line.stops) > TRANSIT_MAX_STOPS { why = `line {line.key}: more than {TRANSIT_MAX_STOPS} stops` }
+  let seq = new []int
+  let dwells = new []int
+  if why == "" {
+    for i in 0 .. len(line.stops) {
+      let s = tr_stop_index(tr, line.stops[i].stop)
+      if s < 0 { why = `line {line.key}: no stop {line.stops[i].stop}` }
+      push(seq, s)
+      push(dwells, line.stops[i].dwell)
+    }
+  }
+  if why == "" and line.loop {
+    push(seq, seq[0])
+    push(dwells, -1)
+  }
+  if why != "" {
+    tr_fail(tr, why)
+    tr_dead_route(tr)
+    tr_dead_route(tr)
+    return
+  }
+  let m = TransitModes[mode]
+  let authored = len(line.pts) >= 2
+  # the polyline: drawn points, or the stops in order
+  var scale = 1.0
+  if not authored and m.road { scale = m.detour }
+  tr.tr_lscale[l] = scale
+  let p0 = len(tr.tr_lpx)
+  if authored {
+    for i in 0 .. len(line.pts) {
+      push(tr.tr_lpx, line.pts[i].x)
+      push(tr.tr_lpz, line.pts[i].z)
+    }
+  } else {
+    for i in 0 .. len(seq) {
+      push(tr.tr_lpx, stops.rows[seq[i]].x)
+      push(tr.tr_lpz, stops.rows[seq[i]].z)
+    }
+  }
+  let p1 = len(tr.tr_lpx)
+  var acc = 0.0
+  for p in p0 .. p1 {
+    if p > p0 { acc += tr_dist(tr.tr_lpx[p - 1], tr.tr_lpz[p - 1], tr.tr_lpx[p], tr.tr_lpz[p]) * scale }
+    push(tr.tr_lps, acc)
+  }
+  tr.tr_llen[l] = acc
+  # the stops' arc lengths: a vertex each, or the stop projected onto the drawn path, never going back
+  let n = len(seq)
+  let arcs = new []float
+  var prev = 0.0
+  for k in 0 .. n {
+    var s = 0.0
+    if authored {
+      s = tr_project_at(tr, p0, p1, scale, stops.rows[seq[k]].x, stops.rows[seq[k]].z, prev)
+    } else {
+      s = tr.tr_lps[p0 + k]
+    }
+    if s < prev { s = prev }
+    push(arcs, s)
+    prev = s
+  }
+  tr.tr_lok[l] = 1
+  tr_make_route(tr, l, 0, seq, arcs, dwells, line)
+  if line.both {
+    let rseq = new []int
+    let rarcs = new []float
+    let rdw = new []int
+    for k in 0 .. n {
+      push(rseq, seq[n - 1 - k])
+      push(rarcs, acc - arcs[n - 1 - k])
+      push(rdw, dwells[n - 1 - k])
+    }
+    tr_make_route(tr, l, 1, rseq, rarcs, rdw, line)
+  } else {
+    tr_dead_route(tr)
+  }
+}
+
+# tr_project over a polyline whose points are at p0 .. p1 (the line's own start is not recorded until it is done)
+function tr_project_at(tr: TransitState, p0: int, p1: int, sc: float, x: float, z: float, from: float) -> float {
+  var best = from
+  var best_d = 1000000000.0
+  for p in p0 .. p1 - 1 {
+    let ax = tr.tr_lpx[p]
+    let az = tr.tr_lpz[p]
+    let bx = tr.tr_lpx[p + 1]
+    let bz = tr.tr_lpz[p + 1]
+    let dx = bx - ax
+    let dz = bz - az
+    let len2 = dx * dx + dz * dz
+    if len2 <= 0.0 { continue }
+    var u = ((x - ax) * dx + (z - az) * dz) / len2
+    if u < 0.0 { u = 0.0 }
+    if u > 1.0 { u = 1.0 }
+    let s = tr.tr_lps[p] + u * (tr.tr_lps[p + 1] - tr.tr_lps[p])
+    if s < from { continue }
+    let d = tr_dist(x, z, ax + u * dx, az + u * dz)
+    if d < best_d {
+      best_d = d
+      best = s
+    }
+  }
+  return best
+}
+
+function tr_cell_of(tr: TransitState, x: float, z: float) -> int {
+  var cx = int(Math.floor((x - tr.tr_g_minx) / tr.tr_g_cell))
+  var cz = int(Math.floor((z - tr.tr_g_minz) / tr.tr_g_cell))
+  cx = Math.clamp(cx, 0, tr.tr_g_w - 1)
+  cz = Math.clamp(cz, 0, tr.tr_g_h - 1)
+  return cz * tr.tr_g_w + cx
+}
+
+function tr_build_grid(tr: mut TransitState) -> void {
+  let n = len(tr.tr_sx)
+  tr.tr_g_cell = Math.max(tr.tr_max_walk, 50.0)
+  var minx = 0.0
+  var minz = 0.0
+  var maxx = 0.0
+  var maxz = 0.0
+  for s in 0 .. n {
+    if s == 0 or tr.tr_sx[s] < minx { minx = tr.tr_sx[s] }
+    if s == 0 or tr.tr_sz[s] < minz { minz = tr.tr_sz[s] }
+    if s == 0 or tr.tr_sx[s] > maxx { maxx = tr.tr_sx[s] }
+    if s == 0 or tr.tr_sz[s] > maxz { maxz = tr.tr_sz[s] }
+  }
+  tr.tr_g_minx = minx
+  tr.tr_g_minz = minz
+  tr.tr_g_w = Math.clamp(int((maxx - minx) / tr.tr_g_cell) + 1, 1, 512)
+  tr.tr_g_h = Math.clamp(int((maxz - minz) / tr.tr_g_cell) + 1, 1, 512)
+  let cells = tr.tr_g_w * tr.tr_g_h
+  let count = new []int
+  for c in 0 .. cells + 1 { push(count, 0) }
+  for s in 0 .. n { count[tr_cell_of(tr, tr.tr_sx[s], tr.tr_sz[s]) + 1] += 1 }
+  for c in 0 .. cells { count[c + 1] += count[c] }
+  for c in 0 .. cells + 1 { push(tr.tr_g_start, count[c]) }
+  for s in 0 .. n { push(tr.tr_g_stop, 0) }
+  let fill = new []int
+  for c in 0 .. cells { push(fill, count[c]) }
+  for s in 0 .. n {
+    let c = tr_cell_of(tr, tr.tr_sx[s], tr.tr_sz[s])
+    tr.tr_g_stop[fill[c]] = s
+    fill[c] += 1
+  }
+}
+
+# the stops within r of (x, z) into `out` (cleared first), how many; r is at most one grid cell
+function tr_stops_within(tr: TransitState, x: float, z: float, r: float, out: []int) -> int {
+  List.clear(out)
+  if len(tr.tr_sx) == 0 { return 0 }
+  let cx = int(Math.floor((x - tr.tr_g_minx) / tr.tr_g_cell))
+  let cz = int(Math.floor((z - tr.tr_g_minz) / tr.tr_g_cell))
+  for gz in cz - 1 .. cz + 2 {
+    if gz < 0 or gz >= tr.tr_g_h { continue }
+    for gx in cx - 1 .. cx + 2 {
+      if gx < 0 or gx >= tr.tr_g_w { continue }
+      let c = gz * tr.tr_g_w + gx
+      for i in tr.tr_g_start[c] .. tr.tr_g_start[c + 1] {
+        let s = tr.tr_g_stop[i]
+        if tr_dist(x, z, tr.tr_sx[s], tr.tr_sz[s]) <= r { kept_push(out, s) }
+      }
+    }
+  }
+  return len(out)
+}
+
+function tr_build_serving(tr: mut TransitState) -> void {
+  let ns = len(tr.tr_sx)
+  let nr = len(tr.tr_rn)
+  let count = new []int
+  for s in 0 .. ns + 1 { push(count, 0) }
+  for r in 0 .. nr {
+    for k in 0 .. tr.tr_rn[r] { count[tr.tr_rstop[tr.tr_rstart[r] + k] + 1] += 1 }
+  }
+  for s in 0 .. ns { count[s + 1] += count[s] }
+  for s in 0 .. ns + 1 { push(tr.tr_sr_start, count[s]) }
+  for i in 0 .. count[ns] {
+    push(tr.tr_sr_route, 0)
+    push(tr.tr_sr_k, 0)
+  }
+  let fill = new []int
+  for s in 0 .. ns { push(fill, count[s]) }
+  for r in 0 .. nr {
+    for k in 0 .. tr.tr_rn[r] {
+      let s = tr.tr_rstop[tr.tr_rstart[r] + k]
+      tr.tr_sr_route[fill[s]] = r
+      tr.tr_sr_k[fill[s]] = k
+      fill[s] += 1
+    }
+  }
+}
+
+function tr_build_links(tr: mut TransitState, stops: TransitStops) -> void {
+  let ns = len(tr.tr_sx)
+  let near = new []int
+  let seen = new []int
+  for s in 0 .. ns {
+    push(tr.tr_tl_start, len(tr.tr_tl_to))
+    List.clear(seen)
+    let row = stops.rows[s]
+    for i in 0 .. len(row.links) {
+      let u = tr_stop_index(tr, row.links[i].to)
+      if u < 0 or u == s { continue }
+      var secs = row.links[i].secs
+      if secs <= 0 { secs = tr_walk_secs(tr, tr_dist(tr.tr_sx[s], tr.tr_sz[s], tr.tr_sx[u], tr.tr_sz[u])) }
+      push(tr.tr_tl_to, u)
+      push(tr.tr_tl_secs, secs)
+      push(seen, u)
+    }
+    tr_stops_within(tr, tr.tr_sx[s], tr.tr_sz[s], tr.tr_transfer_radius, near)
+    for i in 0 .. len(near) {
+      let u = near[i]
+      if u == s { continue }
+      var dup = false
+      for j in 0 .. len(seen) { if seen[j] == u { dup = true } }
+      if dup { continue }
+      push(tr.tr_tl_to, u)
+      push(tr.tr_tl_secs, tr_walk_secs(tr, tr_dist(tr.tr_sx[s], tr.tr_sz[s], tr.tr_sx[u], tr.tr_sz[u])))
+    }
+  }
+  push(tr.tr_tl_start, len(tr.tr_tl_to))
+}
+
+export function transit_build(tr: mut TransitState, stops: TransitStops, lines: TransitLines) -> bool {
+  tr_clear_all(tr)
+  tr_read_settings(tr)
+  let ns = len(stops.rows)
+  for s in 0 .. ns {
+    let r = stops.rows[s]
+    push(tr.tr_skey, r.key)
+    push(tr.tr_sname, r.name)
+    push(tr.tr_sx, r.x)
+    push(tr.tr_sz, r.z)
+    push(tr.tr_szone, r.zone)
+  }
+  tr_hash_stops(tr)
+  tr_build_grid(tr)
+  let nl = len(lines.rows)
+  for l in 0 .. nl { tr_build_line(tr, stops, l, lines.rows[l]) }
+  push(tr.tr_lpt_start, len(tr.tr_lpx))
+  push(tr.tr_lseg_start, len(tr.tr_lseg))
+  # bays: per stop, the line they belong to
+  for s in 0 .. ns {
+    push(tr.tr_bay_start, len(tr.tr_bay_x))
+    let row = stops.rows[s]
+    for i in 0 .. len(row.bays) {
+      var l = -1
+      for q in 0 .. len(tr.tr_lkey) { if tr.tr_lkey[q] == row.bays[i].line { l = q } }
+      if l < 0 {
+        tr_fail(tr, `stop {row.key}: a bay for line {row.bays[i].line}, which does not exist`)
+        continue
+      }
+      push(tr.tr_bay_line, l)
+      push(tr.tr_bay_x, row.bays[i].x)
+      push(tr.tr_bay_z, row.bays[i].z)
+    }
+  }
+  push(tr.tr_bay_start, len(tr.tr_bay_x))
+  tr_build_serving(tr)
+  tr_build_links(tr, stops)
+  # the planner's scratch
+  for s in 0 .. ns {
+    push(tr.tr_stamp, 0)
+    push(tr.tr_arr, TR_INF)
+    push(tr.tr_pkind, 0)
+    push(tr.tr_pstop, -1)
+    push(tr.tr_proute, -1)
+    push(tr.tr_prun, 0)
+    push(tr.tr_pk0, 0)
+    push(tr.tr_pk1, 0)
+  }
+  for r in 0 .. len(tr.tr_rn) {
+    push(tr.tr_rt_stamp, 0)
+    push(tr.tr_rt_run, 0)
+    push(tr.tr_rt_k, 0)
+  }
+  tr.tr_gen = 0
+  tr_riders_reset(tr)
+  tr.tr_built = true
+  return tr.tr_err == ""
+}
+
+export function transit_stop_count(tr: TransitState) -> int { return len(tr.tr_sx) }
+export function transit_line_count(tr: TransitState) -> int { return len(tr.tr_lkey) }
+export function transit_route_count(tr: TransitState) -> int { return len(tr.tr_rn) }
+export function transit_stop_x(tr: TransitState, s: int) -> float { return tr.tr_sx[s] }
+export function transit_stop_z(tr: TransitState, s: int) -> float { return tr.tr_sz[s] }
+export function transit_stop_key(tr: TransitState, s: int) -> string { return tr.tr_skey[s] }
+export function transit_stop_name(tr: TransitState, s: int) -> string { return tr.tr_sname[s] }
+export function transit_stop_zone(tr: TransitState, s: int) -> int { return tr.tr_szone[s] }
+export function transit_line_key(tr: TransitState, l: int) -> string { return tr.tr_lkey[l] }
+export function transit_line_name(tr: TransitState, l: int) -> string { return tr.tr_lname[l] }
+export function transit_line_mode(tr: TransitState, l: int) -> int { return tr.tr_lmode[l] }
+export function transit_line_ok(tr: TransitState, l: int) -> bool { return tr.tr_lok[l] != 0 }
+export function transit_line_length(tr: TransitState, l: int) -> float { return tr.tr_llen[l] }
+
+export function transit_stop_find(tr: TransitState, key: string) -> int { return tr_stop_index(tr, key) }
+
+export function transit_line_find(tr: TransitState, key: string) -> int {
+  for l in 0 .. len(tr.tr_lkey) { if tr.tr_lkey[l] == key { return l } }
+  return -1
+}
+
+# the road segments a line names for the game's traffic to drive (names only)
+export function transit_line_seg_count(tr: TransitState, l: int) -> int { return tr.tr_lseg_start[l + 1] - tr.tr_lseg_start[l] }
+export function transit_line_seg(tr: TransitState, l: int, i: int) -> string { return tr.tr_lseg[tr.tr_lseg_start[l] + i] }
+
+# routes: line * 2 is the stops in order, line * 2 + 1 the way back
+export function transit_route_line(r: int) -> int { return r / 2 }
+export function transit_route_dir(r: int) -> int { return r % 2 }
+export function transit_route_ok(tr: TransitState, r: int) -> bool { return tr.tr_rok[r] != 0 }
+export function transit_route_stops(tr: TransitState, r: int) -> int { return tr.tr_rn[r] }
+export function transit_route_stop(tr: TransitState, r: int, k: int) -> int { return tr.tr_rstop[tr.tr_rstart[r] + k] }
+export function transit_route_arrive(tr: TransitState, r: int, k: int) -> int { return tr.tr_rarr[tr.tr_rstart[r] + k] }
+export function transit_route_leave(tr: TransitState, r: int, k: int) -> int { return tr.tr_rdep[tr.tr_rstart[r] + k] }
+export function transit_route_duration(tr: TransitState, r: int) -> int { return tr.tr_rtotal[r] }
+
+# the stops' lines: the routes that serve stop s, into out
+export function transit_stop_routes(tr: TransitState, s: int, out: []int) -> int {
+  List.clear(out)
+  for i in tr.tr_sr_start[s] .. tr.tr_sr_start[s + 1] { kept_push(out, tr.tr_sr_route[i]) }
+  return len(out)
+}
+
+# where riders of line l wait at stop s: its bay, else the stop's own point (into transit_bay_x / _z)
+export function transit_bay(tr: mut TransitState, s: int, l: int) -> bool {
+  tr.tr_pose_x = tr.tr_sx[s]
+  tr.tr_pose_z = tr.tr_sz[s]
+  for i in tr.tr_bay_start[s] .. tr.tr_bay_start[s + 1] {
+    if tr.tr_bay_line[i] == l {
+      tr.tr_pose_x = tr.tr_bay_x[i]
+      tr.tr_pose_z = tr.tr_bay_z[i]
+      return true
+    }
+  }
+  return false
+}

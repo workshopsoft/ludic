@@ -1,0 +1,16 @@
+# ludic.transit - data (defs.ludic), the network built from a map's tables (build.ludic), the timetable and
+# where a vehicle is at any time (timetable.ludic), fares, the journey planner (plan.ludic), boarding and
+# capacity (riders.ludic), the vehicles handed to the game's traffic (bodies.ludic), saved as a few numbers
+module ludic_transit uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "build.ludic"
+import "timetable.ludic"
+import "fares.ludic"
+import "plan.ludic"
+import "riders.ludic"
+import "bodies.ludic"
+import "system.ludic"

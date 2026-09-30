@@ -1,0 +1,5 @@
+ok { mode: "bus", stops: [{ stop: "p" }, { stop: "q" }], first: 6.0, last: 7.0 }
+nomode { mode: "hovercraft", stops: [{ stop: "p" }, { stop: "q" }] }
+nostop { mode: "bus", stops: [{ stop: "p" }, { stop: "zz" }] }
+one { mode: "bus", stops: [{ stop: "p" }] }
+taxi { mode: "taxi", stops: [{ stop: "p" }, { stop: "q" }] }

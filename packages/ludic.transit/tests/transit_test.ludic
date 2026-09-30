@@ -1,0 +1,542 @@
+# transit_test.ludic - the network built from a map (stops, a grid, lines with polylines, routes and their
+# offsets, the timetable), where a vehicle is at any time, fares, the planner (a ride, a transfer, walking legs,
+# no way), boarding with capacity and fares, vehicles handed to the game's traffic, the save
+import "ludic.transit"
+import "ludic.base"
+program TransitTest {
+  numbers float
+  def TransitModes metro { capacity: 4, speed: 20.0, accel: 1.0, dwell: 25, road: false, fare_kind: "zone", fare_base: 2, fare_per_zone: 1, transfer_free: 600 }
+  def TransitModes bus { capacity: 3, speed: 10.0, accel: 1.0, dwell: 20, detour: 1.3, fare_kind: "flat", fare_base: 2, transfer_free: 600 }
+  def TransitModes tram { capacity: 50, speed: 8.0, accel: 0.8, dwell: 15, road: false, fare_kind: "distance", fare_base: 1, fare_per_km: 1 }
+  def TransitModes taxi { capacity: 4, speed: 12.0, on_demand: true, wait: 200, detour: 1.4, fare_kind: "distance", fare_base: 3, fare_per_km: 2 }
+  def TransitSettings from "transit.lres"
+
+  state TransitTestState {
+    money: int = 100
+    charged: int = 0
+    refunded: int = 0
+    blocked_day: int = -1
+    near_x: float = 1200.0
+    embodied: int = 0
+    released: int = 0
+    placed: int = 0
+    last_x: float = 0.0
+    take: bool = true
+  }
+
+  function fake_charge(tt: mut TransitTestState, rider: int, amount: int) -> bool {
+    if tt.money < amount { return false }
+    tt.money -= amount
+    tt.charged += amount
+    return true
+  }
+  function fake_refund(tt: mut TransitTestState, rider: int, amount: int) -> void {
+    tt.money += amount
+    tt.refunded += amount
+  }
+  function fake_day_ok(tt: TransitTestState, day: int) -> bool { return day != tt.blocked_day }
+  function fake_near(tt: TransitTestState, x: float, z: float) -> bool { return x < tt.near_x and Math.abs(z) < 100.0 }
+  function fake_embody(tt: mut TransitTestState, slot: int, line: int, mode: int, x: float, z: float, hx: float, hz: float, speed: float) -> bool {
+    if not tt.take { return false }
+    tt.embodied += 1
+    return true
+  }
+  function fake_place(tt: mut TransitTestState, slot: int, x: float, z: float, hx: float, hz: float, speed: float, stopped_at: int) -> void {
+    tt.placed += 1
+    tt.last_x = x
+  }
+  function fake_release(tt: mut TransitTestState, slot: int) -> void { tt.released += 1 }
+
+  bind TransitPay { charge: fn fake_charge, refund: fn fake_refund }
+  bind TransitWorld { weekday_ok: fn fake_day_ok }
+  bind TransitBody { near: fn fake_near, embody: fn fake_embody, place: fn fake_place, release: fn fake_release }
+
+  function load_map(tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, map: string) -> bool {
+    expect(transit_stops_load(stops, map))
+    expect(transit_lines_load(lines, map))
+    return transit_build(tr, stops, lines)
+  }
+  function fresh(tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) -> void {
+    expect(load_map(tr, stops, lines, "metro"))
+    tt.money = 100
+    tt.charged = 0
+    tt.refunded = 0
+    tt.blocked_day = -1
+    tt.embodied = 0
+    tt.released = 0
+    tt.placed = 0
+    tt.take = true
+    transit_reset(tr)
+  }
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+  function facts_of(tr: mut TransitState, what: int) -> int {
+    let fs = q_drain(transit_facts(tr))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+  const H7: int = 25200        # 07:00 on day 1
+
+  test "a map becomes a network: stops, lines, two routes a line, a polyline each" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    expect_eq(transit_stop_count(tr), 13)
+    expect_eq(transit_line_count(tr), 3)
+    expect_eq(transit_route_count(tr), 6)
+    expect_eq(transit_stop_find(tr, "c"), 2)
+    expect_eq(transit_line_find(tr, "B1"), 1)
+    expect(transit_route_ok(tr, 0))
+    expect(transit_route_ok(tr, 1))
+    expect(transit_route_ok(tr, 4))
+    expect(not transit_route_ok(tr, 5))            # the tram loop runs one way
+    expect_eq(transit_route_stops(tr, 4), 5)       # a loop comes back to its first stop
+    expect(near(transit_line_length(tr, 0), 4000.0, 0.01))
+    expect(near(transit_line_length(tr, 1), (1480.84 + 1520.82) * 1.3, 0.1))    # a road line with no path drawn: lengthened by the mode's detour
+    expect(near(transit_line_length(tr, 2), 3200.0, 0.01))
+    expect_eq(transit_line_seg_count(tr, 1), 2)
+    expect(transit_line_seg(tr, 1, 1) == "avenue_s")
+    expect(transit_line_name(tr, 0) == "Metro")
+  }
+
+  test "a stop's bay is where its line waits, and the stop's own point for any other" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    expect(transit_bay(tr, 2, 0))
+    expect(near(transit_pose_z(tr), 6.0, 0.001))
+    expect(not transit_bay(tr, 2, 1))
+    expect(near(transit_pose_z(tr), 0.0, 0.001))
+  }
+
+  test "routes carry the seconds to every stop: cruise, a stop's own dwell, a short hop that never reaches speed" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    # metro: 1000 m at 20 m/s and 1 m/s2 is 50 + 20 s; a dwell of 25, and Cedar's own 40
+    expect_eq(transit_route_arrive(tr, 0, 1), 70)
+    expect_eq(transit_route_leave(tr, 0, 1), 95)
+    expect_eq(transit_route_arrive(tr, 0, 2), 165)
+    expect_eq(transit_route_leave(tr, 0, 2), 205)
+    expect_eq(transit_route_arrive(tr, 0, 4), 370)
+    expect_eq(transit_route_duration(tr, 0), 370)
+    # the way back mirrors it, Cedar's dwell too
+    expect_eq(transit_route_stop(tr, 1, 0), 4)
+    expect_eq(transit_route_leave(tr, 1, 2), 205)
+    expect_eq(transit_route_duration(tr, 1), 370)
+  }
+
+  test "the timetable comes from the headways of the hour, deterministically" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    expect_eq(transit_runs_per_day(tr, 0), 149)
+    expect_eq(transit_departure(tr, 0, 0), 18000)
+    expect_eq(transit_departure(tr, 0, 1), 18300)
+    expect_eq(transit_departure(tr, 0, 47), 32100)
+    expect_eq(transit_departure(tr, 0, 48), 32400)     # nine o'clock: every ten minutes
+    expect_eq(transit_departure(tr, 0, 49), 33000)
+    expect_eq(transit_departure(tr, 0, 148), 86160)
+    # the bus is staggered by its offset and runs 6 to 22
+    expect_eq(transit_departure(tr, 2, 0), 21600 + 120)
+    expect_eq(transit_runs_per_day(tr, 2), 97)
+    # the same on another machine: a second build is identical
+    let c = transit_runs_per_day(tr, 4)
+    expect(load_map(tr, stops, lines, "metro"))
+    expect_eq(transit_runs_per_day(tr, 4), c)
+    expect_eq(transit_departure(tr, 4, 10), 21600 + 10 * 720)
+  }
+
+  test "the next run that leaves a stop, today, tomorrow, and never on a day the game stops the line" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    # Cedar: metro leaves it 205 s after the run leaves Alder
+    expect_eq(transit_next_run(tr, 0, 2, 18000 + 206), 18300)
+    expect_eq(transit_next_run(tr, 0, 2, 18000 + 205), 18000)
+    expect_eq(transit_next_run(tr, 0, 2, 3000), 18000)                                   # before the service
+    expect_eq(transit_next_run(tr, 0, 0, 86160 + 1), 86400 + 18000)                    # after the last: the morning
+    expect_eq(transit_run_leaves(tr, 0, 18300, 2), 18300 + 205)
+    expect_eq(transit_run_arrives(tr, 0, 18300, 2), 18300 + 165)
+    tt.blocked_day = 2                                                                     # day 2 is day index 1: 86400 .. 172799
+    expect_eq(transit_next_run(tr, 0, 0, 86160 + 1), 2 * 86400 + 18000)
+  }
+
+  test "runs on the road at a time: the ones that left and have not arrived" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    let out = new []int
+    expect_eq(transit_runs_at(tr, 0, 18000 + 100, out), 1)
+    expect_eq(out[0], 18000)
+    expect_eq(transit_runs_at(tr, 0, 18000 + 100, out), 1)
+    expect_eq(transit_runs_at(tr, 0, 18300 + 10, out), 2)        # 18000's run is still 370 s long
+    expect_eq(transit_runs_at(tr, 0, 18000 - 1, out), 0)
+    expect_eq(transit_runs_at(tr, 0, 18000 + 371, out), 1)
+    expect_eq(out[0], 18300)
+  }
+
+  test "a vehicle is where the schedule says, at any time, without being simulated" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    expect(transit_pose(tr, 0, 18000, 18000 + 35))               # halfway between Alder and Birch
+    expect(near(transit_pose_x(tr), 500.0, 0.01))
+    expect(near(transit_pose_hx(tr), 1.0, 0.001))
+    expect_eq(transit_pose_stop(tr), -1)
+    expect_eq(transit_pose_next(tr), 1)
+    expect(near(transit_pose_speed(tr), 1000.0 / 70.0, 0.01))
+    expect(transit_pose(tr, 0, 18000, 18000 + 80))               # standing at Birch
+    expect(near(transit_pose_x(tr), 1000.0, 0.01))
+    expect_eq(transit_pose_stop(tr), 1)
+    expect(near(transit_pose_speed(tr), 0.0, 0.0001))
+    expect(transit_pose(tr, 0, 18000, 18000 + 370))              # at Elm
+    expect(near(transit_pose_x(tr), 4000.0, 0.01))
+    expect(not transit_pose(tr, 0, 18000, 18000 - 1))
+    expect(not transit_pose(tr, 0, 18000, 18000 + 371))
+    # the way back faces the other way
+    expect(transit_pose(tr, 1, 18000, 18000 + 35))
+    expect(near(transit_pose_x(tr), 3500.0, 0.01))
+    expect(near(transit_pose_hx(tr), -1.0, 0.001))
+    # any time, any order: asking for a later moment first changes nothing
+    expect(transit_pose(tr, 0, 18000, 18000 + 300))
+    let late_x = transit_pose_x(tr)
+    expect(transit_pose(tr, 0, 18000, 18000 + 35))
+    expect(transit_pose(tr, 0, 18000, 18000 + 300))
+    expect(transit_pose_x(tr) == late_x)
+    # a run of tomorrow and one the night before midnight
+    expect(transit_pose(tr, 0, 86400 + 18000, 86400 + 18000 + 35))
+    expect(near(transit_pose_x(tr), 500.0, 0.01))
+    expect(transit_pose(tr, 0, 86160, 86400 + 100))                # 340 s into it: Dogwood has left, Elm not reached
+    expect(near(transit_pose_x(tr), 3000.0 + 1000.0 * 40.0 / 70.0, 0.01))
+  }
+
+  test "a drawn path is followed: the tram's stops are projected onto it, and its loop comes back" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    # square 800 x 800 from Tram 1: stops at 0, 800, 1600, 2400 of arc length, back at Tram 1 at 3200
+    expect(transit_pose(tr, 4, 21600, 21600 + transit_route_arrive(tr, 4, 2)))
+    expect(near(transit_pose_x(tr), 800.0, 0.01))
+    expect(near(transit_pose_z(tr), 2800.0, 0.01))
+    expect(transit_pose(tr, 4, 21600, 21600 + transit_route_duration(tr, 4)))
+    expect(near(transit_pose_x(tr), 0.0, 0.01))
+    expect(near(transit_pose_z(tr), 2000.0, 0.01))
+    # between Tram 2 and Tram 3 it heads south (+z)
+    let mid = (transit_route_leave(tr, 4, 1) + transit_route_arrive(tr, 4, 2)) / 2
+    expect(transit_pose(tr, 4, 21600, 21600 + mid))
+    expect(near(transit_pose_hz(tr), 1.0, 0.001))
+    expect(near(transit_pose_x(tr), 800.0, 0.01))
+  }
+
+  test "fares: a flat fare, by zone, by kilometre, and a taxi's" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    expect_eq(transit_fare(tr, TM_BUS, 5, 7), 2)
+    expect_eq(transit_fare(tr, TM_METRO, 0, 4), 4)            # 2 and two zones
+    expect_eq(transit_fare(tr, TM_METRO, 1, 2), 2)            # the same zone
+    expect_eq(transit_fare(tr, TM_TRAM, 8, 10), 1 + 1 * 2)    # 1.6 km: two started kilometres
+    expect_eq(transit_taxi_mode(), TM_TAXI)
+    # 1000 m on the map is 1400 m by road: 200 s to come, 116 s to drive, 3 + 2 * 2
+    expect_eq(transit_taxi_secs(TM_TAXI, 0.0, 0.0, 1000.0, 0.0), 200 + 116 + 1)
+    expect_eq(transit_taxi_fare(TM_TAXI, 0.0, 0.0, 1000.0, 0.0), 3 + 2 * 2)
+  }
+
+  test "a journey on one line: walk to the stop, wait for the next run, ride, walk on" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    let n = transit_plan(tr, 10.0, 0.0, 3990.0, 0.0, H7)
+    expect_eq(n, 4)
+    expect_eq(transit_plan_kind(tr, 0), TRANSIT_LEG_WALK)
+    expect_eq(transit_plan_kind(tr, 1), TRANSIT_LEG_WAIT)
+    expect_eq(transit_plan_kind(tr, 2), TRANSIT_LEG_RIDE)
+    expect_eq(transit_plan_kind(tr, 3), TRANSIT_LEG_WALK)
+    expect_eq(transit_plan_to(tr, 0), H7 + 8)                  # 10 m at 1.25 m/s
+    expect_eq(transit_plan_from(tr, 2), H7 + 300)               # the next run after 07:00:08
+    expect_eq(transit_plan_to(tr, 2), H7 + 300 + 370)
+    expect_eq(transit_plan_run(tr, 2), H7 + 300)
+    expect_eq(transit_plan_line(tr, 2), 0)
+    expect_eq(transit_plan_route(tr, 2), 0)
+    expect_eq(transit_plan_stop0(tr, 2), 0)
+    expect_eq(transit_plan_stop1(tr, 2), 4)
+    expect_eq(transit_plan_arrival(tr, ), H7 + 300 + 370 + 8)
+    expect_eq(transit_plan_fare(tr), 4)
+    expect_eq(transit_plan_rides(tr), 1)
+    expect(near(transit_plan_x1(tr, 3), 3990.0, 0.001))
+    expect_eq(transit_eta(tr, 10.0, 0.0, 3990.0, 0.0, H7), 300 + 370 + 8)
+  }
+
+  test "a journey with a transfer: bus to the hub, a walk between the stops, then the metro" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    let n = transit_plan(tr, 2000.0, -1490.0, 3010.0, 0.0, H7)
+    expect(n > 0)
+    expect_eq(transit_plan_rides(tr), 2)
+    var rides = 0
+    var prev_end = H7
+    for i in 0 .. n {
+      expect(transit_plan_from(tr, i) >= prev_end or transit_plan_kind(tr, i) == TRANSIT_LEG_WAIT)
+      expect(transit_plan_to(tr, i) >= transit_plan_from(tr, i))
+      prev_end = transit_plan_to(tr, i)
+      if transit_plan_kind(tr, i) == TRANSIT_LEG_RIDE { rides += 1 }
+    }
+    expect_eq(rides, 2)
+    expect_eq(transit_plan_arrival(tr), prev_end)
+    expect_eq(transit_plan_fare(tr), 2 + 3)                    # bus flat, metro from Cedar (zone 1) to Dogwood (2)
+    # the change between vehicles is on foot, between the two stops
+    var walked = false
+    for i in 0 .. n {
+      if transit_plan_kind(tr, i) == TRANSIT_LEG_WALK and transit_plan_stop0(tr, i) == 6 and transit_plan_stop1(tr, i) == 2 { walked = true }
+    }
+    expect(walked)
+  }
+
+  test "a short trip is a walk, and so is one no line helps" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    expect_eq(transit_plan(tr, 100.0, 100.0, 400.0, 500.0, H7), 1)
+    expect_eq(transit_plan_kind(tr, 0), TRANSIT_LEG_WALK)
+    expect_eq(transit_plan_arrival(tr), H7 + 400)                # 500 m at 1.25 m/s
+    expect_eq(transit_plan_fare(tr), 0)
+    expect_eq(transit_plan_rides(tr), 0)
+  }
+
+  test "no way is -1: a destination no stop is near and too far to walk" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    expect_eq(transit_plan(tr, 0.0, 0.0, 9000.0, 9000.0, H7), -1)          # the last stop is served by no line
+    expect_eq(transit_plan_count(tr), 0)
+    expect_eq(transit_eta(tr, 0.0, 0.0, 9000.0, 9000.0, H7), -1)
+  }
+
+  test "a journey is deterministic: the same plan twice, and another ask in between changes nothing" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    let n1 = transit_plan(tr, 2000.0, -1490.0, 3010.0, 0.0, H7)
+    let a1 = transit_plan_arrival(tr)
+    expect(transit_plan(tr, 0.0, 2010.0, 790.0, 2790.0, H7 + 500) > 0)
+    let n2 = transit_plan(tr, 2000.0, -1490.0, 3010.0, 0.0, H7)
+    expect_eq(n1, n2)
+    expect_eq(transit_plan_arrival(tr), a1)
+  }
+
+  test "at night the last run has gone and the morning's first is taken" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    # the last departure from Alder is 23:56; at 00:06 the next is over the planner's four hours away
+    expect_eq(transit_plan(tr, 10.0, 0.0, 3990.0, 0.0, 86400 + 400), -1)
+    expect_eq(transit_plan(tr, 10.0, 0.0, 3990.0, 0.0, 86400 + 18000 - 600), 4)
+    # a late one still catches the last run
+    expect_eq(transit_plan(tr, 10.0, 0.0, 3990.0, 0.0, 86150), 4)
+    expect_eq(transit_plan_from(tr, 2), 86160)
+  }
+
+  test "a tram ride: the loop's stop, the next run, the fare by the started kilometre" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    expect_eq(transit_plan(tr, 0.0, 2010.0, 790.0, 2790.0, H7), 4)
+    expect_eq(transit_plan_from(tr, 2), 21600 + 5 * 720 + 720)     # the run at 07:00:00 has gone by the 8 s walk
+    expect_eq(transit_plan_to(tr, 2), 21600 + 6 * 720 + 235)
+    expect_eq(transit_plan_arrival(tr), 21600 + 6 * 720 + 235 + 11)
+    expect_eq(transit_plan_fare(tr), 3)                            # 1.13 km: two started kilometres
+  }
+
+  test "boarding takes a seat, pays the fare, and a full vehicle is refused" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    # bus route 2: North -> Cedar Street -> South, three seats
+    let t0 = transit_board(tr, 1, 2, 0, 2, 21720 - 10, true)
+    let t1 = transit_board(tr, 2, 2, 0, 1, 21720 - 10, true)
+    let t2 = transit_board(tr, 3, 2, 1, 2, 21720 - 10, true)
+    expect(t0 >= 0 and t1 >= 0 and t2 >= 0)
+    expect_eq(tt.charged, 6)
+    expect_eq(transit_load(tr, 2, 21720, 0), 2)
+    expect_eq(transit_load(tr, 2, 21720, 1), 2)
+    expect_eq(transit_riding(tr), 3)
+    # one more fits the legs that have two aboard; then it is full from North to Cedar Street
+    expect(transit_board(tr, 4, 2, 0, 2, 21720 - 10, true) >= 0)
+    expect_eq(transit_load(tr, 2, 21720, 0), 3)
+    expect_eq(transit_board(tr, 5, 2, 0, 1, 21720 - 10, true), -1)
+    expect_eq(facts_of(tr, TRANSIT_F_FULL), 1)
+    expect_eq(tt.charged, 8)
+    # the next run has room
+    expect(transit_board(tr, 5, 2, 0, 1, 21720 + 1, true) >= 0)
+    expect_eq(transit_load(tr, 2, 21720 + 600, 0), 1)
+  }
+
+  test "a rider who cannot pay is not let on, and no seat is kept for them" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    tt.money = 1
+    expect_eq(transit_board(tr, 9, 2, 0, 2, 21720 - 10, true), -1)
+    expect_eq(transit_load(tr, 2, 21720, 0), 0)
+    expect_eq(facts_of(tr, TRANSIT_F_UNPAID), 1)
+    expect(transit_board(tr, 9, 2, 0, 2, 21720 - 10, false) >= 0)       # a pass, or a fare a plan covered: no charge
+    expect_eq(tt.charged, 0)
+  }
+
+  test "a ticket ends on schedule at the rider's stop, and leaving early gives the seat back" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    let a = transit_board(tr, 1, 2, 0, 2, 21720 - 10, true)
+    let b = transit_board(tr, 2, 2, 0, 2, 21720 - 10, true)
+    expect_eq(transit_load(tr, 2, 21720, 1), 2)
+    transit_leave(tr, b, 1)                                   # off at Cedar Street
+    expect(not transit_ticket_live(tr, b))
+    expect_eq(transit_load(tr, 2, 21720, 0), 2)
+    expect_eq(transit_load(tr, 2, 21720, 1), 1)
+    expect(transit_ticket_live(tr, a))
+    q_clear(transit_facts(tr))
+    transit_set_time(tr, 21720)
+    let arrive = 21720 + transit_route_arrive(tr, 2, 2)
+    var t = 21720
+    while t < arrive + 5 {
+      transit_tick(tr, tick_new(0.5, 1, 0.0))
+      transit_set_time(tr, t)
+      t += 40
+    }
+    transit_set_time(tr, arrive)
+    transit_tick(tr, tick_new(1.0, 1, 0.0))
+    expect(not transit_ticket_live(tr, a))
+    expect(facts_of(tr, TRANSIT_F_ALIGHTED) >= 1)
+    expect_eq(transit_riding(tr), 0)
+  }
+
+  test "a crowd counted in bulk fills a run the same way" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    expect_eq(transit_load_add(tr, 2, 21720, 0, 2, 2), 2)
+    expect_eq(transit_load_add(tr, 2, 21720, 1, 2, 2), 0)          # one more group would be over the three seats
+    expect_eq(transit_load_add(tr, 2, 21720, 1, 2, 1), 1)
+    expect_eq(transit_capacity(tr, 2), 3)
+    expect_eq(transit_board(tr, 1, 2, 0, 2, 21720 - 10, false), -1)
+  }
+
+  test "a vehicle near a player is handed to the game's traffic, placed on the schedule each tick, and given back" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    transit_set_time(tr, 18000 + 30)
+    transit_tick(tr, tick_new(0.3, 1, 0.0))
+    expect_eq(tt.embodied, 1)
+    expect_eq(transit_bodies(tr), 1)
+    expect_eq(transit_body_route(tr, 0), 0)
+    expect_eq(transit_body_run(tr, 0), 18000)
+    expect_eq(facts_of(tr, TRANSIT_F_EMBODIED), 1)
+    expect(tt.placed >= 1)
+    expect(near(tt.last_x, 20.0 * 30.0 / 70.0 * 0.0 + 1000.0 * 30.0 / 70.0, 0.5))
+    transit_set_time(tr, 18000 + 35)
+    transit_tick(tr, tick_new(0.3, 2, 0.0))
+    expect(near(tt.last_x, 500.0, 0.5))
+    expect_eq(tt.embodied, 1)                 # not handed over twice
+    # the vehicle drives past the player's range: given back after a second
+    tt.near_x = 600.0
+    var t = 18000 + 40
+    while t < 18000 + 120 {
+      transit_set_time(tr, t)
+      transit_tick(tr, tick_new(0.3, 3, 0.0))
+      t += 5
+    }
+    expect_eq(tt.released, 1)
+    expect_eq(transit_bodies(tr), 0)
+    expect_eq(facts_of(tr, TRANSIT_F_RELEASED), 1)
+    tt.near_x = 1200.0
+  }
+
+  test "a game that cannot take a vehicle leaves it a formula" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    tt.take = false
+    transit_set_time(tr, 18000 + 30)
+    transit_tick(tr, tick_new(0.3, 1, 0.0))
+    expect_eq(transit_bodies(tr), 0)
+    tt.take = true
+  }
+
+  test "vehicles near a point, worked out for any time" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    let ra = new []int
+    let rb = new []int
+    expect_eq(transit_vehicles_near(tr, 500.0, 0.0, 50.0, 18000 + 35, ra, rb), 1)
+    expect_eq(ra[0], 0)
+    expect_eq(rb[0], 18000)
+    expect_eq(transit_vehicles_near(tr, 500.0, 0.0, 50.0, 18000 + 500, ra, rb), 0)
+  }
+
+  test "the save keeps the clock and who is riding; the network is the map's" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    transit_set_time(tr, 21000)
+    let a = transit_board(tr, 7, 2, 0, 2, 21720 - 10, true)
+    expect(a >= 0)
+    let v = transit_save(tr)
+    transit_reset(tr)
+    expect_eq(transit_riding(tr), 0)
+    expect_eq(transit_load(tr, 2, 21720, 0), 0)
+    transit_load_save(tr, v, 1)
+    expect_eq(transit_now(tr), 21000)
+    expect_eq(transit_riding(tr), 1)
+    expect_eq(transit_load(tr, 2, 21720, 1), 1)
+  }
+
+  test "a wrong row is said, the right ones are built" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    expect(transit_stops_load(stops, "broken"))
+    expect(transit_lines_load(lines, "broken"))
+    expect(not transit_build(tr, stops, lines))
+    expect(transit_error(tr) != "")
+    expect(transit_route_ok(tr, 0))
+    expect(not transit_route_ok(tr, 2))
+    expect(not transit_line_ok(tr, 1))
+    expect(not transit_line_ok(tr, 4))
+  }
+
+  function plan_bench(tr: mut TransitState, label: string, n: int) -> void {
+    let ns = transit_stop_count(tr)
+    let t0 = Time.now_us()
+    var ok = 0
+    var legs = 0
+    for i in 0 .. n {
+      let a = (i * 7919) % ns
+      let b = (i * 104729 + 3) % ns
+      let got = transit_plan(tr, transit_stop_x(tr, a) + 20.0, transit_stop_z(tr, a) + 10.0, transit_stop_x(tr, b) - 15.0, transit_stop_z(tr, b) + 5.0, H7 + (i * 53) % 40000)
+      if got > 0 {
+        ok += 1
+        legs += got
+      }
+    }
+    let us = Time.now_us() - t0
+    print(`transit planner, {label}: {n} plans ({ok} found, {legs} legs) in {us / 1000} ms, {us * 1000 / n} ns each`)
+    expect(ok > n / 4)
+  }
+
+  test "the planner is fast: plans a second between the test map's stops" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    plan_bench(tr, "13 stops, 3 lines", 20000)
+  }
+
+  # a 24 x 24 grid city: a bus along every row and column, a stop at every crossing
+  function grid_city(tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, size: int) -> void {
+    transit_stops_clear(stops)
+    transit_lines_clear(lines)
+    for r in 0 .. size {
+      for c in 0 .. size {
+        let s = new TransitStop
+        s.key = `s{r}_{c}`
+        s.x = float(c) * 400.0
+        s.z = float(r) * 400.0
+        push(stops.rows, s)
+      }
+    }
+    for k in 0 .. size {
+      let row = new TransitLine
+      row.key = `r{k}`
+      row.mode = "bus"
+      row.first = 5.0
+      row.last = 23.0
+      row.offset = (k * 37) % 300
+      let col = new TransitLine
+      col.key = `c{k}`
+      col.mode = "bus"
+      col.first = 5.0
+      col.last = 23.0
+      col.offset = (k * 53) % 300
+      for i in 0 .. size {
+        let a = new TransitCall
+        a.stop = `s{k}_{i}`
+        push(row.stops, a)
+        let b = new TransitCall
+        b.stop = `s{i}_{k}`
+        push(col.stops, b)
+      }
+      let h = new TransitHeadway
+      h.every = 420
+      push(row.headways, h)
+      push(col.headways, h)
+      push(lines.rows, row)
+      push(lines.rows, col)
+    }
+    let built = transit_build(tr, stops, lines)
+    if not built { print(transit_error(tr)) }
+    expect(built)
+  }
+
+  test "the planner on a city-sized network: 576 stops, 48 lines, transfers at every crossing" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
+    fresh(tr, stops, lines, tt)
+    grid_city(tr, stops, lines, 24)
+    expect_eq(transit_stop_count(tr), 576)
+    expect_eq(transit_route_count(tr), 96)
+    # one row's bus to one column's, changing at their crossing
+    expect(transit_plan(tr, 100.0, 0.0, 7000.0, 7000.0, H7) > 0)
+    expect_eq(transit_plan_rides(tr), 2)
+    expect_eq(transit_plan_fare(tr), 2)                 # the second bus within ten minutes of the first is free
+    plan_bench(tr, "576 stops, 48 lines", 3000)
+  }
+}

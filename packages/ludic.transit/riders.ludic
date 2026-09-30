@@ -1,0 +1,199 @@
+# riders.ludic - boarding and capacity. A run that has riders gets a block of counts (riders aboard on each
+# leg between stops) in a table keyed by route and run; a ticket is a rider's seat from one stop to another.
+# Nobody rides a vehicle that is full; the fare goes through the wallet port and a rider who cannot pay is not
+# let on. Riding is on schedule: the ticket ends by itself when the run reaches the rider's stop.
+
+const TR_BLOCK: int = 64
+
+function tr_riders_reset(tr: mut TransitState) -> void {
+  List.clear(tr.tr_ld_route)
+  List.clear(tr.tr_ld_origin)
+  List.clear(tr.tr_ld_block)
+  for i in 0 .. TR_LD_SLOTS {
+    push(tr.tr_ld_route, -1)
+    push(tr.tr_ld_origin, 0)
+    push(tr.tr_ld_block, 0)
+  }
+  tr.tr_ld_count = 0
+  List.clear(tr.tr_ld_pool)
+  List.clear(tr.tr_ld_free)
+  List.clear(tr.tr_tk_rider)
+  List.clear(tr.tr_tk_route)
+  List.clear(tr.tr_tk_run)
+  List.clear(tr.tr_tk_k0)
+  List.clear(tr.tr_tk_k1)
+  List.clear(tr.tr_tk_live)
+  List.clear(tr.tr_tk_free)
+  tr.tr_tk_count = 0
+  List.clear(tr.tr_eb_route)
+  List.clear(tr.tr_eb_run)
+  List.clear(tr.tr_eb_live)
+  for i in 0 .. tr.tr_eb_max {
+    push(tr.tr_eb_route, -1)
+    push(tr.tr_eb_run, 0)
+    push(tr.tr_eb_live, 0)
+  }
+}
+
+function tr_ld_hash(route: int, origin: int) -> int {
+  return (route * 40503 + origin * 7919 + (origin >> 9) * 31) & (TR_LD_SLOTS - 1)
+}
+
+# the slot of a run's block in the table, or -1; with `make`, one is made (and -1 when the table is full)
+function tr_ld_slot(tr: mut TransitState, route: int, origin: int, make: bool) -> int {
+  var h = tr_ld_hash(route, origin)
+  var free_at = -1
+  for probe in 0 .. TR_LD_SLOTS {
+    let r = tr.tr_ld_route[h]
+    if r == route and tr.tr_ld_origin[h] == origin { return h }
+    if r == -1 { break }
+    if r == -2 and free_at < 0 { free_at = h }
+    h = (h + 1) & (TR_LD_SLOTS - 1)
+  }
+  if not make { return -1 }
+  var at = free_at
+  if at < 0 and tr.tr_ld_route[h] == -1 { at = h }
+  if at < 0 or tr.tr_ld_count >= TR_LD_SLOTS - TR_LD_SLOTS / 8 { return -1 }
+  var block = 0
+  if len(tr.tr_ld_free) > 0 {
+    block = tr.tr_ld_free[len(tr.tr_ld_free) - 1]
+    List.pop(tr.tr_ld_free)
+  } else {
+    block = len(tr.tr_ld_pool) / TR_BLOCK
+    for i in 0 .. TR_BLOCK { kept_push(tr.tr_ld_pool, 0) }
+  }
+  for i in 0 .. TR_BLOCK { tr.tr_ld_pool[block * TR_BLOCK + i] = 0 }
+  tr.tr_ld_route[at] = route
+  tr.tr_ld_origin[at] = origin
+  tr.tr_ld_block[at] = block
+  tr.tr_ld_count += 1
+  return at
+}
+
+function tr_ld_drop(tr: mut TransitState, slot: int) -> void {
+  kept_push(tr.tr_ld_free, tr.tr_ld_block[slot])
+  tr.tr_ld_route[slot] = -2
+  tr.tr_ld_count -= 1
+}
+
+# riders aboard run `run` of route r as it leaves stop index k (0 when nobody is registered)
+export function transit_load(tr: mut TransitState, r: int, run: int, k: int) -> int {
+  let slot = tr_ld_slot(tr, r, run, false)
+  if slot < 0 { return 0 }
+  return tr.tr_ld_pool[tr.tr_ld_block[slot] * TR_BLOCK + k]
+}
+
+export function transit_capacity(tr: TransitState, r: int) -> int { return TransitModes[tr.tr_lmode[r / 2]].capacity }
+
+# add n riders to the legs from stop index k0 to k1 of a run, as many as fit (whole groups: all or none); how many
+# were added. The bulk way for a game that counts a crowd it does not simulate rider by rider
+export function transit_load_add(tr: mut TransitState, r: int, run: int, k0: int, k1: int, n: int) -> int {
+  if k0 < 0 or k1 >= tr.tr_rn[r] or k0 >= k1 or n <= 0 { return 0 }
+  let cap = TransitModes[tr.tr_lmode[r / 2]].capacity
+  let slot = tr_ld_slot(tr, r, run, true)
+  if slot < 0 { return 0 }
+  let b = tr.tr_ld_block[slot] * TR_BLOCK
+  for k in k0 .. k1 { if tr.tr_ld_pool[b + k] + n > cap { return 0 } }
+  for k in k0 .. k1 { tr.tr_ld_pool[b + k] += n }
+  return n
+}
+
+function tr_ticket_new(tr: mut TransitState) -> int {
+  if len(tr.tr_tk_free) > 0 {
+    let t = tr.tr_tk_free[len(tr.tr_tk_free) - 1]
+    List.pop(tr.tr_tk_free)
+    return t
+  }
+  if len(tr.tr_tk_rider) >= TR_TICKETS_MAX { return -1 }
+  kept_push(tr.tr_tk_rider, 0)
+  kept_push(tr.tr_tk_route, 0)
+  kept_push(tr.tr_tk_run, 0)
+  kept_push(tr.tr_tk_k0, 0)
+  kept_push(tr.tr_tk_k1, 0)
+  kept_push(tr.tr_tk_live, 0)
+  return len(tr.tr_tk_rider) - 1
+}
+
+# `rider` takes a seat on the next run of route r that leaves stop index k0 at or after game second `at`, to stop
+# index k1. A ticket (>= 0), or -1: nothing runs, no room on a leg (TRANSIT_F_FULL), or the fare was not paid
+# (TRANSIT_F_UNPAID). `pay` false boards without charging (a fare the plan already covered, a pass)
+export function transit_board(tr: mut TransitState, rider: int, r: int, k0: int, k1: int, at: int, pay: bool) -> int {
+  if r < 0 or r >= len(tr.tr_rn) or tr.tr_rok[r] == 0 { return -1 }
+  if k0 < 0 or k1 >= tr.tr_rn[r] or k0 >= k1 { return -1 }
+  let run = transit_next_run(tr, r, k0, at)
+  if run < 0 { return -1 }
+  let line = r / 2
+  let stop0 = tr.tr_rstop[tr.tr_rstart[r] + k0]
+  let slot = tr_ld_slot(tr, r, run, true)
+  if slot < 0 { return -1 }
+  let b = tr.tr_ld_block[slot] * TR_BLOCK
+  let cap = TransitModes[tr.tr_lmode[line]].capacity
+  for k in k0 .. k1 {
+    if tr.tr_ld_pool[b + k] >= cap {
+      tr_say(tr, TRANSIT_F_FULL, rider, line, stop0, run, -1, 0)
+      return -1
+    }
+  }
+  var fare = 0
+  if pay {
+    fare = transit_fare(tr, tr.tr_lmode[line], stop0, tr.tr_rstop[tr.tr_rstart[r] + k1])
+    if fare > 0 and not TransitPay.charge(rider, fare) {
+      tr_say(tr, TRANSIT_F_UNPAID, rider, line, stop0, run, -1, fare)
+      return -1
+    }
+  }
+  let tk = tr_ticket_new(tr)
+  if tk < 0 {
+    if fare > 0 { TransitPay.refund(rider, fare) }
+    return -1
+  }
+  for k in k0 .. k1 { tr.tr_ld_pool[b + k] += 1 }
+  tr.tr_tk_rider[tk] = rider
+  tr.tr_tk_route[tk] = r
+  tr.tr_tk_run[tk] = run
+  tr.tr_tk_k0[tk] = k0
+  tr.tr_tk_k1[tk] = k1
+  tr.tr_tk_live[tk] = 1
+  tr.tr_tk_count += 1
+  tr_say(tr, TRANSIT_F_BOARDED, rider, line, stop0, run, -1, fare)
+  return tk
+}
+
+# the rider is off at stop index k of their ticket's route (their own stop, or a stop before it: the seat
+# goes back to the legs they no longer ride); TRANSIT_F_ALIGHTED
+export function transit_leave(tr: mut TransitState, tk: int, k: int) -> void {
+  if tk < 0 or tk >= len(tr.tr_tk_live) or tr.tr_tk_live[tk] == 0 { return }
+  let r = tr.tr_tk_route[tk]
+  let run = tr.tr_tk_run[tk]
+  let slot = tr_ld_slot(tr, r, run, false)
+  var at = Math.clamp(k, tr.tr_tk_k0[tk], tr.tr_tk_k1[tk])
+  if slot >= 0 {
+    let b = tr.tr_ld_block[slot] * TR_BLOCK
+    for j in at .. tr.tr_tk_k1[tk] { tr.tr_ld_pool[b + j] = Math.max(tr.tr_ld_pool[b + j] - 1, 0) }
+  }
+  tr.tr_tk_live[tk] = 0
+  kept_push(tr.tr_tk_free, tk)
+  tr.tr_tk_count -= 1
+  tr_say(tr, TRANSIT_F_ALIGHTED, tr.tr_tk_rider[tk], r / 2, tr.tr_rstop[tr.tr_rstart[r] + at], run, -1, 0)
+}
+
+export function transit_ticket_live(tr: TransitState, tk: int) -> bool {
+  return tk >= 0 and tk < len(tr.tr_tk_live) and tr.tr_tk_live[tk] != 0
+}
+export function transit_ticket_rider(tr: TransitState, tk: int) -> int { return tr.tr_tk_rider[tk] }
+export function transit_ticket_route(tr: TransitState, tk: int) -> int { return tr.tr_tk_route[tk] }
+export function transit_ticket_run(tr: TransitState, tk: int) -> int { return tr.tr_tk_run[tk] }
+export function transit_riding(tr: TransitState) -> int { return tr.tr_tk_count }
+
+# tickets whose run reached the rider's stop end; runs long gone free their counts
+function tr_riders_expire(tr: mut TransitState, now: int) -> void {
+  for tk in 0 .. len(tr.tr_tk_live) {
+    if tr.tr_tk_live[tk] == 0 { continue }
+    let r = tr.tr_tk_route[tk]
+    if now >= tr.tr_tk_run[tk] + tr.tr_rarr[tr.tr_rstart[r] + tr.tr_tk_k1[tk]] { transit_leave(tr, tk, tr.tr_tk_k1[tk]) }
+  }
+  for s in 0 .. TR_LD_SLOTS {
+    let r = tr.tr_ld_route[s]
+    if r >= 0 and now > tr.tr_ld_origin[s] + tr.tr_rtotal[r] + 60 { tr_ld_drop(tr, s) }
+  }
+}

@@ -1,0 +1,91 @@
+# bodies.ludic - the vehicles near a player, handed to the game's traffic. Far from every player a vehicle is
+# nothing but a formula. Within the game's `near`, it is offered to the port (`embody`): the game puts a real
+# vehicle there (ludic.cars, ludic.roads, a kinematic model) and, each tick, is told where the schedule has it
+# (`place`). The schedule stays the truth - the body follows it or is put on it - so a player who follows a bus
+# sees the bus every other machine computes, and stops are on time. A vehicle out of range for a second, or
+# whose run ended, is released.
+
+const TR_SCAN: float = 0.25
+const TR_KEEP: int = 4          # scans a vehicle is kept after it was last near
+
+function tr_eb_find(tr: TransitState, route: int, run: int) -> int {
+  for i in 0 .. len(tr.tr_eb_route) {
+    if tr.tr_eb_live[i] > 0 and tr.tr_eb_route[i] == route and tr.tr_eb_run[i] == run { return i }
+  }
+  return -1
+}
+
+function tr_eb_release(tr: mut TransitState, slot: int) -> void {
+  TransitBody.release(slot)
+  tr_say(tr, TRANSIT_F_RELEASED, -1, tr.tr_eb_route[slot] / 2, -1, tr.tr_eb_run[slot], slot, 0)
+  tr.tr_eb_live[slot] = 0
+  tr.tr_eb_route[slot] = -1
+}
+
+# look for runs newly near a player, and for embodied ones that are not any more
+function tr_scan(tr: mut TransitState, now: int) -> void {
+  for i in 0 .. len(tr.tr_eb_route) {
+    if tr.tr_eb_live[i] <= 0 { continue }
+    if not transit_pose(tr, tr.tr_eb_route[i], tr.tr_eb_run[i], now) {
+      tr_eb_release(tr, i)
+      continue
+    }
+    if TransitBody.near(tr.tr_pose_x, tr.tr_pose_z) {
+      tr.tr_eb_live[i] = TR_KEEP
+    } else {
+      tr.tr_eb_live[i] -= 1
+      if tr.tr_eb_live[i] <= 0 { tr_eb_release(tr, i) }
+    }
+  }
+  let runs = tr.tr_tmp
+  for r in 0 .. len(tr.tr_rn) {
+    if tr.tr_rok[r] == 0 { continue }
+    transit_runs_at(tr, r, now, runs)
+    for j in 0 .. len(runs) {
+      if not transit_pose(tr, r, runs[j], now) { continue }
+      if not TransitBody.near(tr.tr_pose_x, tr.tr_pose_z) { continue }
+      if tr_eb_find(tr, r, runs[j]) >= 0 { continue }
+      var slot = -1
+      for i in 0 .. Math.min(len(tr.tr_eb_live), tr.tr_eb_max) { if slot < 0 and tr.tr_eb_live[i] <= 0 { slot = i } }
+      if slot < 0 { return }
+      let line = r / 2
+      if TransitBody.embody(slot, line, tr.tr_lmode[line], tr.tr_pose_x, tr.tr_pose_z, tr.tr_pose_hx, tr.tr_pose_hz, tr.tr_pose_speed) {
+        tr.tr_eb_route[slot] = r
+        tr.tr_eb_run[slot] = runs[j]
+        tr.tr_eb_live[slot] = TR_KEEP
+        tr_say(tr, TRANSIT_F_EMBODIED, -1, line, -1, runs[j], slot, 0)
+      }
+    }
+  }
+}
+
+# the vehicles the game holds: each told where the schedule has it
+function tr_place_bodies(tr: mut TransitState, now: int) -> void {
+  for i in 0 .. len(tr.tr_eb_route) {
+    if tr.tr_eb_live[i] <= 0 { continue }
+    if transit_pose(tr, tr.tr_eb_route[i], tr.tr_eb_run[i], now) {
+      TransitBody.place(i, tr.tr_pose_x, tr.tr_pose_z, tr.tr_pose_hx, tr.tr_pose_hz, tr.tr_pose_speed, tr.tr_pose_stop)
+    }
+  }
+}
+
+# the route and run of a slot's vehicle, for the game's traffic to know what it was handed
+export function transit_body_route(tr: TransitState, slot: int) -> int { return tr.tr_eb_route[slot] }
+export function transit_body_run(tr: TransitState, slot: int) -> int { return tr.tr_eb_run[slot] }
+export function transit_bodies(tr: TransitState) -> int {
+  var n = 0
+  for i in 0 .. len(tr.tr_eb_live) { if tr.tr_eb_live[i] > 0 { n += 1 } }
+  return n
+}
+
+# at most this many vehicles are handed over at once (default 64; call before the first tick)
+export function transit_config_bodies(tr: mut TransitState, most: int) -> void {
+  tr.tr_eb_max = Math.clamp(most, 0, 4096)
+}
+
+# the game gave a vehicle back without waiting for range (its body was destroyed, it despawned): the slot is free
+export function transit_body_lost(tr: mut TransitState, slot: int) -> void {
+  if slot < 0 or slot >= len(tr.tr_eb_live) or tr.tr_eb_live[slot] <= 0 { return }
+  tr.tr_eb_live[slot] = 0
+  tr.tr_eb_route[slot] = -1
+}

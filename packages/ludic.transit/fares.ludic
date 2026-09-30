@@ -1,0 +1,43 @@
+# fares.ludic - what a ride costs, from the mode's fare model, and what a taxi costs and how long it takes
+
+function tr_fare_kind(m: TransitMode) -> int {
+  if m.fare_kind == "distance" { return TRANSIT_FARE_DISTANCE }
+  if m.fare_kind == "zone" { return TRANSIT_FARE_ZONE }
+  if m.fare_kind == "free" { return TRANSIT_FARE_FREE }
+  return TRANSIT_FARE_FLAT
+}
+
+# the fare of riding mode `mode` from stop a to stop b: flat, by started kilometres of the straight line
+# between the stops, by zones crossed, or free
+export function transit_fare(tr: TransitState, mode: int, a: int, b: int) -> int {
+  let m = TransitModes[mode]
+  let kind = tr_fare_kind(m)
+  if kind == TRANSIT_FARE_FREE { return 0 }
+  if kind == TRANSIT_FARE_DISTANCE {
+    let d = tr_dist(tr.tr_sx[a], tr.tr_sz[a], tr.tr_sx[b], tr.tr_sz[b])
+    return m.fare_base + m.fare_per_km * (int(d / 1000.0) + 1)
+  }
+  if kind == TRANSIT_FARE_ZONE { return m.fare_base + m.fare_per_zone * Math.abs(tr.tr_szone[b] - tr.tr_szone[a]) }
+  return m.fare_base
+}
+
+# the first mode that runs on demand (a taxi), or -1
+export function transit_taxi_mode() -> int {
+  for m in 0 .. TM_COUNT { if TransitModes[m].on_demand { return m } }
+  return -1
+}
+
+# a taxi between two points: the wait for it and the road there, in seconds; its fare in money
+export function transit_taxi_secs(mode: int, x0: float, z0: float, x1: float, z1: float) -> int {
+  let m = TransitModes[mode]
+  let d = tr_dist(x0, z0, x1, z1) * m.detour
+  return m.wait + int(d / m.speed) + 1
+}
+
+export function transit_taxi_fare(mode: int, x0: float, z0: float, x1: float, z1: float) -> int {
+  let m = TransitModes[mode]
+  let kind = tr_fare_kind(m)
+  if kind == TRANSIT_FARE_FREE { return 0 }
+  let d = tr_dist(x0, z0, x1, z1) * m.detour
+  return m.fare_base + m.fare_per_km * (int(d / 1000.0) + 1)
+}

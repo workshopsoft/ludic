@@ -1,0 +1,99 @@
+# system.ludic - transit as a system: PH_SIMULATE. The clock is the world's (TransitWorld.now) or this
+# package's own, run on what ticks give it. The save is the clock and the tickets; the network is the map's,
+# built on load; the timetable needs saving nothing.
+
+function tr_now(tr: mut TransitState, t: Tick) -> int {
+  let w = TransitWorld.now()
+  if w >= 0 {
+    tr.tr_clock = w
+    return w
+  }
+  tr.tr_clock_frac += t.hours * 3600.0
+  let whole = int(Math.floor(tr.tr_clock_frac))
+  tr.tr_clock += whole
+  tr.tr_clock_frac -= float(whole)
+  return tr.tr_clock
+}
+
+# the world's game second when the system's own clock runs (transit_set_time starts it)
+export function transit_now(tr: TransitState) -> int { return tr.tr_clock }
+export function transit_set_time(tr: mut TransitState, t: int) -> void {
+  tr.tr_clock = t
+  tr.tr_clock_frac = 0.0
+}
+
+export function transit_tick(tr: mut TransitState, t: Tick) -> void {
+  if not tr.tr_built { return }
+  let now = tr_now(tr, t)
+  tr.tr_scan_t += t.dt
+  if tr.tr_scan_t >= TR_SCAN {
+    tr.tr_scan_t = 0.0
+    tr_scan(tr, now)
+    tr_riders_expire(tr, now)
+  }
+  tr_place_bodies(tr, now)
+}
+
+export function transit_reset(tr: mut TransitState) -> void {
+  for i in 0 .. len(tr.tr_eb_live) {
+    if tr.tr_eb_live[i] > 0 { tr_eb_release(tr, i) }
+  }
+  if tr.tr_built { tr_riders_reset(tr) }
+  tr.tr_clock = 0
+  tr.tr_clock_frac = 0.0
+  tr.tr_scan_t = 0.0
+  q_clear(tr.tr_facts)
+}
+
+export function transit_save(tr: TransitState) -> Val {
+  let v = Value.object()
+  sv_put_int(v, "clock", tr.tr_clock)
+  let tks = new []int
+  for tk in 0 .. len(tr.tr_tk_live) {
+    if tr.tr_tk_live[tk] == 0 { continue }
+    push(tks, tr.tr_tk_rider[tk])
+    push(tks, tr.tr_tk_route[tk])
+    push(tks, tr.tr_tk_run[tk])
+    push(tks, tr.tr_tk_k0[tk])
+    push(tks, tr.tr_tk_k1[tk])
+  }
+  sv_put_ints(v, "tickets", tks)
+  return v
+}
+
+export function transit_load_save(tr: mut TransitState, v: Val, version: int) -> void {
+  transit_reset(tr)
+  tr.tr_clock = sv_int(v, "clock", 0)
+  if not tr.tr_built { return }
+  let tks = sv_ints(v, "tickets")
+  var i = 0
+  while i + 4 < len(tks) {
+    let r = tks[i + 1]
+    if r >= 0 and r < len(tr.tr_rn) and tr.tr_rok[r] != 0 and tks[i + 4] < tr.tr_rn[r] {
+      let slot = tr_ld_slot(tr, r, tks[i + 2], true)
+      let tk = tr_ticket_new(tr)
+      if slot >= 0 and tk >= 0 {
+        let b = tr.tr_ld_block[slot] * TR_BLOCK
+        for k in tks[i + 3] .. tks[i + 4] { tr.tr_ld_pool[b + k] += 1 }
+        tr.tr_tk_rider[tk] = tks[i]
+        tr.tr_tk_route[tk] = r
+        tr.tr_tk_run[tk] = tks[i + 2]
+        tr.tr_tk_k0[tk] = tks[i + 3]
+        tr.tr_tk_k1[tk] = tks[i + 4]
+        tr.tr_tk_live[tk] = 1
+        tr.tr_tk_count += 1
+      }
+    }
+    i += 5
+  }
+}
+
+export function transit_system() -> System {
+  let s = system_new("transit", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn transit_reset
+  s.tick = fn transit_tick
+  s.save = fn transit_save
+  s.load = fn transit_load_save
+  return s
+}

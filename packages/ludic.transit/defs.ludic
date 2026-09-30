@@ -1,0 +1,138 @@
+# defs.ludic - what a game fills (modes, settings) and what a map holds (maps/<map>/transit/*.lres, painted
+# in an editor). Units: metres, seconds, hours of the day; x east and z south (a map from above, z down).
+
+# a kind of public transport: how many it carries, how fast it runs, how long it stands at a stop, what the
+# fare is. A taxi (`on_demand`) runs no line: it comes when called, `wait` seconds after
+export property TransitMode {
+  key: string = ""
+  @Range(1, 2000) capacity: int = 40                 # riders a vehicle carries
+  @Unit("m/s") @Range(1, 100) speed: float = 12.0    # cruise
+  @Unit("m/s2") @Range(0.2, 10) accel: float = 1.0   # getting up to speed and stopping; a short hop never reaches cruise
+  @Unit("s") @Range(0, 600) dwell: int = 20          # standing at a stop
+  road: bool = true                                  # runs on roads (traffic drives it near a player), else its own track
+  on_demand: bool = false                            # a taxi: no line, no timetable
+  @Unit("s") wait: int = 240                         # a taxi's wait for pickup
+  @Range(1, 3) detour: float = 1.3                   # road distance over straight distance (a taxi's, and a road line with no path drawn)
+  @OneOf("flat", "distance", "zone", "free") fare_kind: string = "flat"
+  fare_base: int = 2                                 # money: the flat fare, or what a ride starts at
+  fare_per_km: int = 0                               # distance fares: per started kilometre (straight line between stops)
+  fare_per_zone: int = 0                             # zone fares: per zone crossed
+  @Unit("s") transfer_free: int = 0                  # a next ride of the same mode boarded within this long of getting off is free
+}
+
+@AppendOnly @ByKey
+export open registry TransitModes of TransitMode as TM
+
+# the numbers a planner and a timetable share, one row of the open registry `TransitSettings`
+# (`def TransitSettings from "transit.lres"`); the first row is used
+export property TransitSetting {
+  key: string = ""
+  @Unit("m/s") @Range(0.3, 4) walk_speed: float = 1.3
+  @Unit("m") @Range(50, 3000) max_walk: float = 600.0         # to a stop, from a stop
+  @Unit("m") @Range(0, 3000) walk_only: float = 1500.0        # a walk the whole way is offered up to this
+  @Unit("m") @Range(0, 600) transfer_radius: float = 120.0    # stops this close are a walk apart without a link
+  @Unit("s") @Range(0, 600) min_transfer: int = 45            # time to change vehicle
+  @Unit("s") @Range(600, 86400) horizon: int = 14400          # the planner gives up on a ride leaving later than this
+  @Unit("s") @Range(30, 7200) default_headway: int = 600      # a line with no headways
+}
+
+@ByKey
+export open registry TransitSettings of TransitSetting as TRS
+
+export property TransitPt {
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+}
+
+# how often a line runs between two hours of the day (from <= hour < to); the first row that holds a
+# departure's hour gives the gap to the next one
+export property TransitHeadway {
+  @Unit("h") @Range(0, 30) from: float = 0.0
+  @Unit("h") @Range(0, 30) to: float = 24.0
+  @Unit("s") @Range(30, 7200) every: int = 600
+}
+
+# a stand point: where riders of one line wait at a stop (a bay, a platform), when it is not the stop's own point
+export property TransitBay {
+  line: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+}
+
+# a walk from this stop to another that the planner may use to change vehicle; secs 0 is worked out from
+# the distance
+export property TransitLink {
+  @Ref(TransitStops) to: string = ""
+  @Unit("s") secs: int = 0
+}
+
+export property TransitStop {
+  key: string = ""
+  name: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Range(0, 20) zone: int = 0                 # for zone fares
+  bays: []TransitBay = new []TransitBay
+  links: []TransitLink = new []TransitLink
+}
+
+@PerMap @ByKey
+export registry TransitStops of TransitStop from "transit/stops.lres"
+
+# a call of a line: the stop, and how long vehicles stand there when it is not the mode's dwell (-1)
+export property TransitCall {
+  @Ref(TransitStops) stop: string = ""
+  @Unit("s") dwell: int = -1
+}
+
+# a line: the stops it serves in order, the path between them (`pts`, a polyline the vehicles follow, stops
+# projected onto it; none: a straight run from stop to stop, lengthened by the mode's detour on a road),
+# the road segments a traffic package should drive (`segs`, names only: this package never reads roads),
+# and when it runs. `both` also runs it the other way; `loop` closes it back to the first stop
+export property TransitLine {
+  key: string = ""
+  name: string = ""
+  @Ref(TransitModes) mode: string = ""
+  stops: []TransitCall = new []TransitCall
+  pts: []TransitPt = new []TransitPt
+  segs: []string = new []string
+  loop: bool = false
+  both: bool = true
+  headways: []TransitHeadway = new []TransitHeadway
+  @Unit("h") @Range(0, 30) first: float = 5.0        # the first departure from the first stop
+  @Unit("h") @Range(0, 30) last: float = 24.0        # no departure after this (past 24: the night service of the next morning)
+  @Unit("s") offset: int = 0                          # staggers lines that would leave together
+}
+
+@PerMap @ByKey
+export registry TransitLines of TransitLine from "transit/lines.lres"
+
+export const TRANSIT_FARE_FLAT: int = 0
+export const TRANSIT_FARE_DISTANCE: int = 1
+export const TRANSIT_FARE_ZONE: int = 2
+export const TRANSIT_FARE_FREE: int = 3
+
+export const TRANSIT_LEG_WALK: int = 0
+export const TRANSIT_LEG_WAIT: int = 1
+export const TRANSIT_LEG_RIDE: int = 2
+export const TRANSIT_LEG_TAXI: int = 3
+
+export const TRANSIT_MAX_STOPS: int = 64     # stops on one line
+export const TRANSIT_DAY: int = 86400
+
+export const TRANSIT_F_BOARDED: int = 0      # a rider got on (rider, line, stop, run)
+export const TRANSIT_F_ALIGHTED: int = 1     # a rider got off at their stop, on schedule
+export const TRANSIT_F_FULL: int = 2         # refused: no room on the run
+export const TRANSIT_F_UNPAID: int = 3       # refused: the fare was not paid
+export const TRANSIT_F_EMBODIED: int = 4     # a vehicle near a player was handed to the game's traffic (slot, line)
+export const TRANSIT_F_RELEASED: int = 5     # ... and given back
+
+export property TransitFact {
+  what: int = 0
+  rider: int = -1
+  line: int = -1
+  stop: int = -1
+  run: int = 0          # the run's departure from the first stop, game seconds
+  slot: int = -1
+  fare: int = 0
+}

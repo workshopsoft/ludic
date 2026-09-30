@@ -1,0 +1,167 @@
+# timetable.ludic - the timetable is a pure function of the clock: a route's departures are a list of seconds
+# past midnight (from its headways), a run is named by when it leaves the first stop, and where a run is at
+# any moment is worked out from its offsets and its line's polyline. No vehicle is simulated; asked of any
+# machine at any time, the answer is the same.
+
+# the first index in a route's departure list holding a time >= v (the list's length when none does)
+function tr_lower(tr: TransitState, start: int, n: int, v: int) -> int {
+  var lo = 0
+  var hi = n
+  while lo < hi {
+    let mid = (lo + hi) / 2
+    if tr.tr_tt[start + mid] < v { lo = mid + 1 } else { hi = mid }
+  }
+  return lo
+}
+
+# the run of route r that leaves stop index k at or after game second t: the time it leaves the route's first
+# stop (its name), or -1 when the route never runs
+export function transit_next_run(tr: TransitState, r: int, k: int, t: int) -> int {
+  if tr.tr_rok[r] == 0 or tr.tr_tt_n[r] == 0 { return -1 }
+  let start = tr.tr_tt_start[r]
+  let n = tr.tr_tt_n[r]
+  let target = t - tr.tr_rdep[tr.tr_rstart[r] + k]
+  let day0 = tr_fdiv(target, TRANSIT_DAY)
+  for d in day0 - 1 .. day0 + 5 {
+    if not TransitWorld.weekday_ok(d + 1) { continue }
+    let j = tr_lower(tr, start, n, target - d * TRANSIT_DAY)
+    if j < n { return d * TRANSIT_DAY + tr.tr_tt[start + j] }
+  }
+  return -1
+}
+
+# when a run is at stop index k: arriving, and leaving
+export function transit_run_arrives(tr: TransitState, r: int, run: int, k: int) -> int { return run + tr.tr_rarr[tr.tr_rstart[r] + k] }
+export function transit_run_leaves(tr: TransitState, r: int, run: int, k: int) -> int { return run + tr.tr_rdep[tr.tr_rstart[r] + k] }
+
+# the runs of route r on the road at game second t (left the first stop, not yet at the last), their names into
+# `out` (cleared first), how many
+export function transit_runs_at(tr: TransitState, r: int, t: int, out: []int) -> int {
+  List.clear(out)
+  if tr.tr_rok[r] == 0 or tr.tr_tt_n[r] == 0 { return 0 }
+  let start = tr.tr_tt_start[r]
+  let n = tr.tr_tt_n[r]
+  let total = tr.tr_rtotal[r]
+  let d0 = tr_fdiv(t - total, TRANSIT_DAY) - 2
+  let d1 = tr_fdiv(t, TRANSIT_DAY)
+  for d in d0 .. d1 + 1 {
+    if not TransitWorld.weekday_ok(d + 1) { continue }
+    var j = tr_lower(tr, start, n, t - total - d * TRANSIT_DAY)
+    while j < n and d * TRANSIT_DAY + tr.tr_tt[start + j] <= t {
+      kept_push(out, d * TRANSIT_DAY + tr.tr_tt[start + j])
+      j += 1
+    }
+  }
+  return len(out)
+}
+
+# how many runs route r makes in a day (a day of full service)
+export function transit_runs_per_day(tr: TransitState, r: int) -> int { return tr.tr_tt_n[r] }
+
+# the j-th departure of route r from its first stop, seconds past midnight
+export function transit_departure(tr: TransitState, r: int, j: int) -> int { return tr.tr_tt[tr.tr_tt_start[r] + j] }
+
+# a point on line l's polyline at arc length sf into tr_pose_x / _z / _hx / _hz (the direction of the path, forward)
+function tr_sample(tr: mut TransitState, l: int, sf: float) -> void {
+  let p0 = tr.tr_lpt_start[l]
+  let p1 = tr.tr_lpt_start[l + 1]
+  var s = sf
+  if s < 0.0 { s = 0.0 }
+  var lo = p0
+  var hi = p1 - 2
+  if hi < lo { hi = lo }
+  # the last segment whose start is at or before s
+  while lo < hi {
+    let mid = (lo + hi + 1) / 2
+    if tr.tr_lps[mid] <= s { lo = mid } else { hi = mid - 1 }
+  }
+  let ax = tr.tr_lpx[lo]
+  let az = tr.tr_lpz[lo]
+  let bx = tr.tr_lpx[lo + 1]
+  let bz = tr.tr_lpz[lo + 1]
+  let span = tr.tr_lps[lo + 1] - tr.tr_lps[lo]
+  var u = 0.0
+  if span > 0.0 { u = (s - tr.tr_lps[lo]) / span }
+  if u > 1.0 { u = 1.0 }
+  tr.tr_pose_x = ax + (bx - ax) * u
+  tr.tr_pose_z = az + (bz - az) * u
+  let dx = bx - ax
+  let dz = bz - az
+  let len = Math.sqrt(dx * dx + dz * dz)
+  if len > 0.0 {
+    tr.tr_pose_hx = dx / len
+    tr.tr_pose_hz = dz / len
+  }
+}
+
+# where run `run` of route r is at game second t: false when it is not on the road then. On true, transit_pose_x/_z
+# (metres), _hx/_hz (the way it faces), _speed (m/s, 0 standing at a stop), _stop (the stop index on the route it
+# stands at, or -1 between stops) and _next (the stop it is heading for, or -1 standing)
+export function transit_pose(tr: mut TransitState, r: int, run: int, t: int) -> bool {
+  if tr.tr_rok[r] == 0 { return false }
+  let tau = t - run
+  if tau < 0 or tau > tr.tr_rtotal[r] { return false }
+  let base = tr.tr_rstart[r]
+  let n = tr.tr_rn[r]
+  var lo = 0
+  var hi = n - 1
+  while lo < hi {
+    let mid = (lo + hi + 1) / 2
+    if tr.tr_rdep[base + mid] <= tau { lo = mid } else { hi = mid - 1 }
+  }
+  let k = lo
+  var s = tr.tr_rs[base + k]
+  tr.tr_pose_speed = 0.0
+  tr.tr_pose_stop = k
+  tr.tr_pose_next = -1
+  if k < n - 1 {
+    if tau >= tr.tr_rarr[base + k + 1] {
+      s = tr.tr_rs[base + k + 1]
+      tr.tr_pose_stop = k + 1
+    } else {
+      let span = float(tr.tr_rarr[base + k + 1] - tr.tr_rdep[base + k])
+      let f = float(tau - tr.tr_rdep[base + k]) / span
+      s = tr.tr_rs[base + k] + f * (tr.tr_rs[base + k + 1] - tr.tr_rs[base + k])
+      tr.tr_pose_speed = (tr.tr_rs[base + k + 1] - tr.tr_rs[base + k]) / span
+      tr.tr_pose_stop = -1
+      tr.tr_pose_next = k + 1
+    }
+  }
+  let l = r / 2
+  if r % 2 == 0 {
+    tr_sample(tr, l, s)
+  } else {
+    tr_sample(tr, l, tr.tr_llen[l] - s)
+    tr.tr_pose_hx = -tr.tr_pose_hx
+    tr.tr_pose_hz = -tr.tr_pose_hz
+  }
+  return true
+}
+
+export function transit_pose_x(tr: TransitState) -> float { return tr.tr_pose_x }
+export function transit_pose_z(tr: TransitState) -> float { return tr.tr_pose_z }
+export function transit_pose_hx(tr: TransitState) -> float { return tr.tr_pose_hx }
+export function transit_pose_hz(tr: TransitState) -> float { return tr.tr_pose_hz }
+export function transit_pose_speed(tr: TransitState) -> float { return tr.tr_pose_speed }
+export function transit_pose_stop(tr: TransitState) -> int { return tr.tr_pose_stop }
+export function transit_pose_next(tr: TransitState) -> int { return tr.tr_pose_next }
+
+# every run on the road within r of (x, z) at game second t: its route and its name into outa / outb (cleared
+# first), how many; nothing is simulated, each is worked out
+export function transit_vehicles_near(tr: mut TransitState, x: float, z: float, r: float, t: int, outa: []int, outb: []int) -> int {
+  List.clear(outa)
+  List.clear(outb)
+  let runs = tr.tr_tmp
+  for rt in 0 .. len(tr.tr_rn) {
+    if tr.tr_rok[rt] == 0 { continue }
+    transit_runs_at(tr, rt, t, runs)
+    for i in 0 .. len(runs) {
+      if not transit_pose(tr, rt, runs[i], t) { continue }
+      if tr_dist(x, z, tr.tr_pose_x, tr.tr_pose_z) <= r {
+        kept_push(outa, rt)
+        kept_push(outb, runs[i])
+      }
+    }
+  }
+  return len(outa)
+}

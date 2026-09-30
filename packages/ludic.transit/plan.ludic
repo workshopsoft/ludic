@@ -1,0 +1,296 @@
+# plan.ludic - the journey planner: the earliest arrival from a point to a point at a departure time, with
+# transfers and walking legs. A time-dependent Dijkstra over stops: the walk from the origin reaches the stops
+# near it; each stop taken off the heap boards the next run of every route that serves it (the timetable
+# decides when) and reaches every stop downstream at that run's own time; a walk links a stop to its
+# neighbours; the walk to the destination is tried from every stop taken. Labels are stamped, so a query
+# clears nothing and allocates nothing. The answer is legs (walk, wait, ride), read back with transit_plan_*.
+
+function tr_hpush(tr: mut TransitState, key: int, val: int) -> void {
+  kept_push(tr.tr_hk, key)
+  kept_push(tr.tr_hv, val)
+  var i = len(tr.tr_hk) - 1
+  while i > 0 {
+    let p = (i - 1) / 2
+    if tr.tr_hk[p] <= tr.tr_hk[i] { break }
+    let tk = tr.tr_hk[p]
+    let tv = tr.tr_hv[p]
+    tr.tr_hk[p] = tr.tr_hk[i]
+    tr.tr_hv[p] = tr.tr_hv[i]
+    tr.tr_hk[i] = tk
+    tr.tr_hv[i] = tv
+    i = p
+  }
+}
+
+function tr_hpop(tr: mut TransitState) -> int {
+  let top = tr.tr_hv[0]
+  let n = len(tr.tr_hk) - 1
+  tr.tr_hk[0] = tr.tr_hk[n]
+  tr.tr_hv[0] = tr.tr_hv[n]
+  List.pop(tr.tr_hk)
+  List.pop(tr.tr_hv)
+  var i = 0
+  while true {
+    let l = 2 * i + 1
+    let r = l + 1
+    var m = i
+    if l < n and tr.tr_hk[l] < tr.tr_hk[m] { m = l }
+    if r < n and tr.tr_hk[r] < tr.tr_hk[m] { m = r }
+    if m == i { break }
+    let tk = tr.tr_hk[m]
+    let tv = tr.tr_hv[m]
+    tr.tr_hk[m] = tr.tr_hk[i]
+    tr.tr_hv[m] = tr.tr_hv[i]
+    tr.tr_hk[i] = tk
+    tr.tr_hv[i] = tv
+    i = m
+  }
+  return top
+}
+
+function tr_arrival_at(tr: TransitState, s: int) -> int {
+  if tr.tr_stamp[s] != tr.tr_gen { return TR_INF }
+  return tr.tr_arr[s]
+}
+
+function tr_label(tr: mut TransitState, s: int, a: int, kind: int, from: int, route: int, run: int, k0: int, k1: int) -> void {
+  tr.tr_stamp[s] = tr.tr_gen
+  tr.tr_arr[s] = a
+  tr.tr_pkind[s] = kind
+  tr.tr_pstop[s] = from
+  tr.tr_proute[s] = route
+  tr.tr_prun[s] = run
+  tr.tr_pk0[s] = k0
+  tr.tr_pk1[s] = k1
+  tr_hpush(tr, a, s)
+}
+
+function tr_add_leg(tr: mut TransitState, kind: int, t0: int, t1: int, x0: float, z0: float, x1: float, z1: float, line: int, run: int, stop0: int, stop1: int) -> void {
+  kept_push(tr.tr_pl_kind, kind)
+  kept_push(tr.tr_pl_t0, t0)
+  kept_push(tr.tr_pl_t1, t1)
+  kept_push(tr.tr_pl_x0, x0)
+  kept_push(tr.tr_pl_z0, z0)
+  kept_push(tr.tr_pl_x1, x1)
+  kept_push(tr.tr_pl_z1, z1)
+  kept_push(tr.tr_pl_line, line)
+  kept_push(tr.tr_pl_run, run)
+  kept_push(tr.tr_pl_stop0, stop0)
+  kept_push(tr.tr_pl_stop1, stop1)
+  kept_push(tr.tr_pl_fare, 0)
+}
+
+function tr_clear_plan(tr: mut TransitState) -> void {
+  tr.tr_pl_n = 0
+  tr.tr_pl_arrival = 0
+  tr.tr_pl_fare_total = 0
+  tr.tr_pl_rides = 0
+  List.clear(tr.tr_pl_kind)
+  List.clear(tr.tr_pl_t0)
+  List.clear(tr.tr_pl_t1)
+  List.clear(tr.tr_pl_x0)
+  List.clear(tr.tr_pl_z0)
+  List.clear(tr.tr_pl_x1)
+  List.clear(tr.tr_pl_z1)
+  List.clear(tr.tr_pl_line)
+  List.clear(tr.tr_pl_run)
+  List.clear(tr.tr_pl_stop0)
+  List.clear(tr.tr_pl_stop1)
+  List.clear(tr.tr_pl_fare)
+}
+
+# reverse the plan's lists in place (legs were found last to first)
+function tr_reverse_plan(tr: mut TransitState) -> void {
+  let n = len(tr.tr_pl_kind)
+  for i in 0 .. n / 2 {
+    let j = n - 1 - i
+    let a = tr.tr_pl_kind[i]
+    tr.tr_pl_kind[i] = tr.tr_pl_kind[j]
+    tr.tr_pl_kind[j] = a
+    let b = tr.tr_pl_t0[i]
+    tr.tr_pl_t0[i] = tr.tr_pl_t0[j]
+    tr.tr_pl_t0[j] = b
+    let c = tr.tr_pl_t1[i]
+    tr.tr_pl_t1[i] = tr.tr_pl_t1[j]
+    tr.tr_pl_t1[j] = c
+    let d = tr.tr_pl_line[i]
+    tr.tr_pl_line[i] = tr.tr_pl_line[j]
+    tr.tr_pl_line[j] = d
+    let e = tr.tr_pl_run[i]
+    tr.tr_pl_run[i] = tr.tr_pl_run[j]
+    tr.tr_pl_run[j] = e
+    let f = tr.tr_pl_stop0[i]
+    tr.tr_pl_stop0[i] = tr.tr_pl_stop0[j]
+    tr.tr_pl_stop0[j] = f
+    let g = tr.tr_pl_stop1[i]
+    tr.tr_pl_stop1[i] = tr.tr_pl_stop1[j]
+    tr.tr_pl_stop1[j] = g
+    let fx = tr.tr_pl_x0[i]
+    tr.tr_pl_x0[i] = tr.tr_pl_x0[j]
+    tr.tr_pl_x0[j] = fx
+    let fz = tr.tr_pl_z0[i]
+    tr.tr_pl_z0[i] = tr.tr_pl_z0[j]
+    tr.tr_pl_z0[j] = fz
+    let gx = tr.tr_pl_x1[i]
+    tr.tr_pl_x1[i] = tr.tr_pl_x1[j]
+    tr.tr_pl_x1[j] = gx
+    let gz = tr.tr_pl_z1[i]
+    tr.tr_pl_z1[i] = tr.tr_pl_z1[j]
+    tr.tr_pl_z1[j] = gz
+  }
+}
+
+# fares along the legs: each ride by its mode's model, a next ride of the same mode inside its free-transfer
+# window costing nothing
+function tr_price_plan(tr: mut TransitState) -> void {
+  var prev_mode = -1
+  var prev_end = 0
+  var total = 0
+  var rides = 0
+  for i in 0 .. len(tr.tr_pl_kind) {
+    if tr.tr_pl_kind[i] != TRANSIT_LEG_RIDE { continue }
+    rides += 1
+    let mode = tr.tr_lmode[tr.tr_pl_line[i] / 2]
+    var f = transit_fare(tr, mode, tr.tr_pl_stop0[i], tr.tr_pl_stop1[i])
+    let win = TransitModes[mode].transfer_free
+    if mode == prev_mode and win > 0 and tr.tr_pl_t0[i] - prev_end <= win { f = 0 }
+    tr.tr_pl_fare[i] = f
+    total += f
+    prev_mode = mode
+    prev_end = tr.tr_pl_t1[i]
+  }
+  tr.tr_pl_fare_total = total
+  tr.tr_pl_rides = rides
+}
+
+# the earliest way from (x0, z0) to (x1, z1), leaving at game second `depart`: how many legs (read them with
+# transit_plan_*), or -1 when there is no way (the destination too far from every stop and too far to walk)
+export function transit_plan(tr: mut TransitState, x0: float, z0: float, x1: float, z1: float, depart: int) -> int {
+  tr_clear_plan(tr)
+  if not tr.tr_built { return -1 }
+  tr.tr_gen += 1
+  List.clear(tr.tr_hk)
+  List.clear(tr.tr_hv)
+  var best = TR_INF
+  var best_stop = -1
+  let d0 = tr_dist(x0, z0, x1, z1)
+  if d0 <= tr.tr_walk_only {
+    best = depart + tr_walk_secs(tr, d0)
+    best_stop = -2
+  }
+  let near = tr.tr_near
+  tr_stops_within(tr, x0, z0, tr.tr_max_walk, near)
+  for i in 0 .. len(near) {
+    let s = near[i]
+    let a = depart + tr_walk_secs(tr, tr_dist(x0, z0, tr.tr_sx[s], tr.tr_sz[s]))
+    if a < tr_arrival_at(tr, s) { tr_label(tr, s, a, TR_PK_ORIGIN, -1, -1, 0, 0, 0) }
+  }
+  while len(tr.tr_hk) > 0 {
+    let t = tr.tr_hk[0]
+    let s = tr_hpop(tr)
+    if tr.tr_stamp[s] != tr.tr_gen or t > tr.tr_arr[s] { continue }
+    if t >= best { break }
+    let dd = tr_dist(tr.tr_sx[s], tr.tr_sz[s], x1, z1)
+    if dd <= tr.tr_max_walk {
+      let c = t + tr_walk_secs(tr, dd)
+      if c < best {
+        best = c
+        best_stop = s
+      }
+    }
+    let kind = tr.tr_pkind[s]
+    if kind == TR_PK_RIDE {
+      for i in tr.tr_tl_start[s] .. tr.tr_tl_start[s + 1] {
+        let u = tr.tr_tl_to[i]
+        let a = t + tr.tr_tl_secs[i]
+        if a < tr_arrival_at(tr, u) and a - depart <= tr.tr_horizon { tr_label(tr, u, a, TR_PK_WALK, s, -1, 0, 0, 0) }
+      }
+    }
+    var ready = t
+    if kind != TR_PK_ORIGIN { ready = t + tr.tr_min_transfer }
+    for i in tr.tr_sr_start[s] .. tr.tr_sr_start[s + 1] {
+      let route = tr.tr_sr_route[i]
+      let k = tr.tr_sr_k[i]
+      let n = tr.tr_rn[route]
+      if k >= n - 1 { continue }
+      let run = transit_next_run(tr, route, k, ready)
+      if run < 0 { continue }
+      let base = tr.tr_rstart[route]
+      if run + tr.tr_rdep[base + k] - depart > tr.tr_horizon { continue }
+      if tr.tr_rt_stamp[route] == tr.tr_gen and tr.tr_rt_run[route] == run and tr.tr_rt_k[route] <= k { continue }
+      tr.tr_rt_stamp[route] = tr.tr_gen
+      tr.tr_rt_run[route] = run
+      tr.tr_rt_k[route] = k
+      for j in k + 1 .. n {
+        let a = run + tr.tr_rarr[base + j]
+        let u = tr.tr_rstop[base + j]
+        if a < tr_arrival_at(tr, u) { tr_label(tr, u, a, TR_PK_RIDE, s, route, run, k, j) }
+      }
+    }
+  }
+  if best >= TR_INF { return -1 }
+  tr.tr_pl_arrival = best
+  if best_stop == -2 {
+    tr_add_leg(tr, TRANSIT_LEG_WALK, depart, best, x0, z0, x1, z1, -1, 0, -1, -1)
+  } else {
+    let dd = tr_dist(tr.tr_sx[best_stop], tr.tr_sz[best_stop], x1, z1)
+    if dd > 0.0 { tr_add_leg(tr, TRANSIT_LEG_WALK, tr.tr_arr[best_stop], best, tr.tr_sx[best_stop], tr.tr_sz[best_stop], x1, z1, -1, 0, best_stop, -1) }
+    var s = best_stop
+    var guard = 0
+    while guard < 1000 {
+      guard += 1
+      let kind = tr.tr_pkind[s]
+      let a = tr.tr_arr[s]
+      if kind == TR_PK_ORIGIN {
+        tr_add_leg(tr, TRANSIT_LEG_WALK, depart, a, x0, z0, tr.tr_sx[s], tr.tr_sz[s], -1, 0, -1, s)
+        break
+      }
+      let p = tr.tr_pstop[s]
+      if kind == TR_PK_WALK {
+        tr_add_leg(tr, TRANSIT_LEG_WALK, tr.tr_arr[p], a, tr.tr_sx[p], tr.tr_sz[p], tr.tr_sx[s], tr.tr_sz[s], -1, 0, p, s)
+        s = p
+        continue
+      }
+      let route = tr.tr_proute[s]
+      let run = tr.tr_prun[s]
+      let dep = run + tr.tr_rdep[tr.tr_rstart[route] + tr.tr_pk0[s]]
+      tr_add_leg(tr, TRANSIT_LEG_RIDE, dep, a, tr.tr_sx[p], tr.tr_sz[p], tr.tr_sx[s], tr.tr_sz[s], route, run, p, s)
+      if dep > tr.tr_arr[p] { tr_add_leg(tr, TRANSIT_LEG_WAIT, tr.tr_arr[p], dep, tr.tr_sx[p], tr.tr_sz[p], tr.tr_sx[p], tr.tr_sz[p], route, run, p, p) }
+      s = p
+    }
+  }
+  tr_reverse_plan(tr)
+  tr.tr_pl_n = len(tr.tr_pl_kind)
+  tr_price_plan(tr)
+  return tr.tr_pl_n
+}
+
+# the seconds from `depart` to arriving, by the plan transit_plan just made (or -1); the fare is transit_plan_fare
+export function transit_eta(tr: mut TransitState, x0: float, z0: float, x1: float, z1: float, depart: int) -> int {
+  let n = transit_plan(tr, x0, z0, x1, z1, depart)
+  if n < 0 { return -1 }
+  return tr.tr_pl_arrival - depart
+}
+
+export function transit_plan_count(tr: TransitState) -> int { return tr.tr_pl_n }
+export function transit_plan_arrival(tr: TransitState) -> int { return tr.tr_pl_arrival }
+export function transit_plan_fare(tr: TransitState) -> int { return tr.tr_pl_fare_total }
+export function transit_plan_rides(tr: TransitState) -> int { return tr.tr_pl_rides }
+export function transit_plan_kind(tr: TransitState, i: int) -> int { return tr.tr_pl_kind[i] }
+export function transit_plan_from(tr: TransitState, i: int) -> int { return tr.tr_pl_t0[i] }
+export function transit_plan_to(tr: TransitState, i: int) -> int { return tr.tr_pl_t1[i] }
+# a ride leg's route (line * 2 + direction: transit_route_line) and its run; a walk or wait leg of a stop has the
+# route it waits for, a walk none (-1)
+export function transit_plan_route(tr: TransitState, i: int) -> int { return tr.tr_pl_line[i] }
+export function transit_plan_line(tr: TransitState, i: int) -> int {
+  if tr.tr_pl_line[i] < 0 { return -1 }
+  return tr.tr_pl_line[i] / 2
+}
+export function transit_plan_run(tr: TransitState, i: int) -> int { return tr.tr_pl_run[i] }
+export function transit_plan_stop0(tr: TransitState, i: int) -> int { return tr.tr_pl_stop0[i] }
+export function transit_plan_stop1(tr: TransitState, i: int) -> int { return tr.tr_pl_stop1[i] }
+export function transit_plan_leg_fare(tr: TransitState, i: int) -> int { return tr.tr_pl_fare[i] }
+export function transit_plan_x0(tr: TransitState, i: int) -> float { return tr.tr_pl_x0[i] }
+export function transit_plan_z0(tr: TransitState, i: int) -> float { return tr.tr_pl_z0[i] }
+export function transit_plan_x1(tr: TransitState, i: int) -> float { return tr.tr_pl_x1[i] }
+export function transit_plan_z1(tr: TransitState, i: int) -> float { return tr.tr_pl_z1[i] }

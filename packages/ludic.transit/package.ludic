@@ -1,0 +1,10 @@
+# ludic.transit - public transport as data a map paints (modes, lines with stops, headways and operating
+# hours, stops with stand points and transfer links): a timetable that is a pure function of the clock,
+# vehicles whose exact place is computable at any time, boarding with capacity and fares through a wallet
+# port, a journey planner with transfers and walking legs, and a hand-off of the vehicles near a player to
+# the game's traffic through a port. Uses ludic.base and nothing else. See README.md.
+package "ludic.transit"
+version "0.1.0"
+kind source
+# the maps the tests read; a game's own package.ludic names its maps
+maps "tests/maps"

@@ -1,0 +1,35 @@
+# ports.ludic - what transit asks the world, and where its vehicles and fares go. Unbound: the clock is this
+# package's own (it runs on what ticks give it), nobody is near enough for a vehicle to be handed over, every
+# fare is paid.
+
+export port TransitWorld {
+  now: fn() -> int = fn tr_no_clock              # game seconds since day 1, 00:00; -1: run on Tick.hours
+  weekday_ok: fn(int) -> bool = fn tr_every_day  # does the timetable run on this day (a holiday, a strike)
+}
+
+# a rider's money: charge the fare (false: the rider cannot pay, and is not let on), refund a fare
+export port TransitPay {
+  charge: fn(int, int) -> bool = fn tr_pay_yes       # (rider, amount)
+  refund: fn(int, int) -> void = fn tr_pay_none
+}
+
+# the vehicles near a player. `near` says a point has a player close enough for a vehicle to be real there;
+# `embody` hands a vehicle to the game's traffic (true: it took it - a body the game moves; false: not now);
+# while handed over, `place` is told where the schedule has the vehicle (the exact place: a body follows it or
+# is put on it) every tick; `release` says the vehicle went out of range. The schedule is always the truth:
+# the body chases it, so a player following a bus sees the bus that every far machine computes
+export port TransitBody {
+  near: fn(float, float) -> bool = fn tr_nobody_near
+  embody: fn(int, int, int, float, float, float, float, float) -> bool = fn tr_refuse    # (slot, line, mode, x, z, hx, hz, speed)
+  place: fn(int, float, float, float, float, float, int) -> void = fn tr_no_place        # (slot, x, z, hx, hz, speed, stopped_at: the stop it stands at, or -1)
+  release: fn(int) -> void = fn tr_no_release
+}
+
+function tr_no_clock() -> int { return -1 }
+function tr_every_day(d: int) -> bool { return true }
+function tr_pay_yes(rider: int, amount: int) -> bool { return true }
+function tr_pay_none(rider: int, amount: int) -> void { }
+function tr_nobody_near(x: float, z: float) -> bool { return false }
+function tr_refuse(slot: int, line: int, mode: int, x: float, z: float, hx: float, hz: float, speed: float) -> bool { return false }
+function tr_no_place(slot: int, x: float, z: float, hx: float, hz: float, speed: float, stopped_at: int) -> void { }
+function tr_no_release(slot: int) -> void { }
