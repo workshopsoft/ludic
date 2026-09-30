@@ -87,6 +87,7 @@ function cz_clear_data(cz: mut CitizensState) -> void {
   List.clear(cz.cr_shfrom)
   List.clear(cz.cr_shlen)
   List.clear(cz.cr_shw)
+  List.clear(cz.cr_shjit)
   List.clear(cz.cr_shdays)
   List.clear(cz.pt_from)
   List.clear(cz.pt_to)
@@ -191,6 +192,7 @@ function cz_init_data(cz: mut CitizensState) -> void {
       push(cz.cr_shfrom, int(r.shifts[i].from * 3600.0 + 0.5))
       push(cz.cr_shlen, int(r.shifts[i].hours * 3600.0 + 0.5))
       push(cz.cr_shw, r.shifts[i].weight)
+      push(cz.cr_shjit, r.shifts[i].jitter * 60)
       push(cz.cr_shdays, r.shifts[i].days)
     }
   }

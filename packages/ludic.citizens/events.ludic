@@ -95,6 +95,7 @@ export function citizens_move(cz: mut CitizensState, i: int, home: int) -> bool 
   if not cz_ok(cz, i) or home < 0 or home >= cz.cz_np or cz.pl_room[home] <= 0 or cz.cz_home[i] == home { return false }
   cz_advance_one(cz, i, cz.cz_clock)
   cz_move_home(cz, i, home, cz.cz_clock)
+  cz_log(cz, cz.cz_clock, CZ_EV_MOVE, i, home, 0)
   return true
 }
 

@@ -1,0 +1,68 @@
+office_worker {
+  weight: 6
+  work_tags: ["office"]
+  employment: 95
+  wage_lo: 15
+  wage_hi: 25
+  shifts: [{ from: 9.0, hours: 8.0, weight: 1, days: 31, jitter: 20 }]
+  money_lo: 300
+  money_hi: 1500
+  comfort: 600
+  upkeep: 40
+  need_weights: [{ need: "social", weight: 1.2 }]
+  routine: 60
+  social: 50
+  thrift: 50
+  car_chance: 40
+  pref_transit: 1.0
+  pref_car: 1.0
+  value_of_time: 12.0
+  look: "adult_office"
+}
+shop_clerk {
+  weight: 3
+  work_tags: ["shop", "restaurant"]
+  employment: 90
+  wage_lo: 10
+  wage_hi: 14
+  shifts: [{ from: 8.0, hours: 8.0, weight: 1, days: 31, jitter: 15 }, { from: 13.0, hours: 8.0, weight: 1, days: 62, jitter: 15 }]
+  money_lo: 100
+  money_hi: 600
+  comfort: 400
+  upkeep: 30
+  routine: 70
+  thrift: 70
+  car_chance: 10
+  value_of_time: 6.0
+  look: "adult_casual"
+}
+factory_worker {
+  weight: 1
+  work_tags: ["factory"]
+  employment: 95
+  wage_lo: 14
+  wage_hi: 18
+  shifts: [{ from: 22.0, hours: 8.0, weight: 1, days: 127, jitter: 10 }]
+  money_lo: 200
+  money_hi: 900
+  comfort: 500
+  upkeep: 35
+  routine: 80
+  car_chance: 30
+  look: "adult_work"
+}
+retired {
+  weight: 2
+  employment: 0
+  money_lo: 500
+  money_hi: 3000
+  comfort: 800
+  upkeep: 30
+  routine: 85
+  social: 70
+  thrift: 60
+  car_chance: 15
+  pref_car: 0.7
+  walk_max: 800.0
+  look: "elder"
+}

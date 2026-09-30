@@ -80,6 +80,7 @@ export state CitizensState {
   cr_shfrom: []int = new []int               # seconds after midnight
   cr_shlen: []int = new []int
   cr_shw: []int = new []int
+  cr_shjit: []int = new []int
   cr_shdays: []int = new []int
   pt_from: []float = new []float
   pt_to: []float = new []float

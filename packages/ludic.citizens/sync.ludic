@@ -31,8 +31,8 @@ export function citizens_log_lost(cz: CitizensState, seq: int) -> bool { return 
 function cz_apply_event(cz: mut CitizensState, t: int, kind: int, id: int, a: int, b: int, c: int) -> void {
   if id < 0 or id >= cz.cz_n { return }
   cz.lg_applying = true
-  cz_advance_one(cz, id, Math.min(t, cz.cz_clock))
-  let now = cz.cz_clock
+  let now = Math.min(t, cz.cz_clock)
+  cz_advance_one(cz, id, now)
   if kind == CZ_EV_HIRE {
     if a >= 0 and a < cz.cz_np {
       if cz.cz_work[id] >= 0 { cz_leave_job(cz, id) }

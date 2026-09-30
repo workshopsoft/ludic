@@ -12,7 +12,7 @@ const CZ_MISS: int = 3                # scans a citizen may be out of range befo
 
 function cz_mid_init(cz: mut CitizensState) -> void {
   let n = cz.cz_max_mid
-  if len(cz.md_id) == n { return }
+  if len(cz.md_id) == n + 1 { return }
   List.clear(cz.md_id)
   List.clear(cz.md_ep)
   List.clear(cz.md_miss)
@@ -232,6 +232,7 @@ function cz_want(cz: mut CitizensState, i: int, lod: int, now: int) -> void {
     cz.md_lod[s] = lod
     cz.cz_lod[i] = lod
   }
+  if lod == CZ_LOD_NEAR and cz.md_body[s] < 0 { cz.md_bep[s] = -1 }     # a body the game refused is asked for again
 }
 
 # how far a traveller is from their start, on the far state's own terms: a straight line over the trip's time
@@ -344,7 +345,7 @@ function cz_body_tick(cz: mut CitizensState, i: int, s: int, now: int) -> void {
   let what = cz_body_kind(cz, i, s, now)
   var key = cz.cz_ep[i] * 32
   if cz.cz_phase[i] == CZ_TRAVELLING { key += cz_leg_index(cz, cz.cz_slot[i], now) + 1 }
-  if cz.md_bep[s] == key and cz.md_body[s] == what { return }
+  if cz.md_bep[s] == key { return }
   cz.md_bep[s] = key
   var act = -1
   var left = 0
@@ -364,6 +365,8 @@ function cz_body_tick(cz: mut CitizensState, i: int, s: int, now: int) -> void {
   }
   if cz.md_body[s] >= 0 { cz_take_back(cz, i, s, now) }
   cz_pose(cz, i, now)
+  cz.cz_px[i] = cz.pose_x
+  cz.cz_pz[i] = cz.pose_z
   if CitizensBody.embody(i, what, cz.cz_arch[i], act, cz.cz_px[i], cz.cz_pz[i], cz.pose_gx, cz.pose_gz, left) {
     cz.md_body[s] = what
     cz.cz_body[i] = what

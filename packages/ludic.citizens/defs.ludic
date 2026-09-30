@@ -75,6 +75,7 @@ export property CitizenShift {
   @Unit("h") @Range(1, 16) hours: float = 8.0
   @Range(1, 100) weight: int = 1
   days: int = 31
+  @Unit("min") @Range(0, 120) jitter: int = 0      # each citizen clocks in and out within this many minutes of the hour, a different amount each day
 }
 
 export property ArchNeedWeight {

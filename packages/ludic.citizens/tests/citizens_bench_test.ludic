@@ -1,0 +1,169 @@
+# citizens_bench_test.ludic - what the simulation costs: 200 000 citizens over a simulated day at far LOD (total,
+# per one-minute tick, per episode), a second day to show a warm population costs the same, and 500 citizens on
+# real paths at 60 ticks a second. The numbers are printed (ludic test -v); the asserts are the bounds a game can
+# count on, loose enough for any machine. The ports are fakes: a planner that is a formula, so this is the cost of
+# the citizens' own logic (decisions, trips, the economy, the wheel), not of any planner
+import "ludic.citizens"
+import "ludic.base"
+program CitizensBench {
+  numbers float
+  def NeedDefs from "data/needs.lres"
+  def PlaceTags from "data/tags.lres"
+  def Activities from "data/activities.lres"
+  def CitizenArchetypes from "data/bench_archetypes.lres"
+  def CitizenNames from "data/names.lres"
+  def CitizenSettings from "data/bench_settings.lres"
+
+  state BenchState {
+    nb: int = 0
+    bx: []float = new []float
+    bz: []float = new []float
+    btag: []int = new []int
+    bhome: []int = new []int
+    bjob: []int = new []int
+    nview: int = 0
+    vx: float = 0.0
+    vz: float = 0.0
+    embodied: int = 0
+  }
+
+  function b_count(b: BenchState) -> int { return b.nb }
+  function b_x(b: BenchState, p: int) -> float { return b.bx[p] }
+  function b_z(b: BenchState, p: int) -> float { return b.bz[p] }
+  function b_tags(b: BenchState, p: int) -> int { return b.btag[p] }
+  function b_homes(b: BenchState, p: int) -> int { return b.bhome[p] }
+  function b_jobs(b: BenchState, p: int) -> int { return b.bjob[p] }
+  function b_viewers(b: BenchState) -> int { return b.nview }
+  function b_vx(b: BenchState, k: int) -> float { return b.vx }
+  function b_vz(b: BenchState, k: int) -> float { return b.vz }
+  function dd(x0: float, z0: float, x1: float, z1: float) -> float {
+    let dx = x1 - x0
+    let dz = z1 - z0
+    return Math.sqrt(dx * dx + dz * dz)
+  }
+  function b_eta(x0: float, z0: float, x1: float, z1: float, depart: int) -> int { return 180 + int(dd(x0, z0, x1, z1) / 9.0) }
+  function b_fare() -> int { return 2 }
+  function b_plan(b: BenchState, x0: float, z0: float, x1: float, z1: float, depart: int) -> int { return -1 }
+  function b_taxi_eta(x0: float, z0: float, x1: float, z1: float, depart: int) -> int { return 240 + int(dd(x0, z0, x1, z1) / 11.0) }
+  function b_taxi_fare(x0: float, z0: float, x1: float, z1: float) -> int { return 6 + int(dd(x0, z0, x1, z1) / 500.0) }
+  function b_car_eta(x0: float, z0: float, x1: float, z1: float, depart: int) -> int { return 60 + int(dd(x0, z0, x1, z1) * 1.3 / 11.0) }
+  function b_embody(b: mut BenchState, id: int, what: int, arch: int, act: int, x: float, z: float, gx: float, gz: float, left: int) -> bool {
+    b.embodied += 1
+    return true
+  }
+  function b_release(id: int) -> bool { return true }
+
+  bind CitizensCity { count: fn b_count, x: fn b_x, z: fn b_z, tags: fn b_tags, homes: fn b_homes, jobs: fn b_jobs }
+  bind CitizensWorld { viewers: fn b_viewers, viewer_x: fn b_vx, viewer_z: fn b_vz }
+  bind CitizensTransit { eta: fn b_eta, fare: fn b_fare, plan: fn b_plan, taxi_eta: fn b_taxi_eta, taxi_fare: fn b_taxi_fare }
+  bind CitizensCars { eta: fn b_car_eta }
+  bind CitizensBody { embody: fn b_embody, release: fn b_release }
+
+  function add(b: mut BenchState, h: int, size: float, tag: int, homes: int, jobs: int) -> int {
+    let h1 = h * 1103515245 + 12345
+    let h2 = h1 * 1103515245 + 12345
+    push(b.bx, float((h1 >> 8) % 1000) / 1000.0 * size)
+    push(b.bz, float((h2 >> 8) % 1000) / 1000.0 * size)
+    push(b.btag, tag)
+    push(b.bhome, homes)
+    push(b.bjob, jobs)
+    b.nb += 1
+    return h2
+  }
+
+  # a city of `blocks` apartment blocks of 100 homes (80 people each) and the work and leisure to go with them
+  function make_city(b: mut BenchState, blocks: int, size: float) -> void {
+    b.nb = 0
+    List.clear(b.bx)
+    List.clear(b.bz)
+    List.clear(b.btag)
+    List.clear(b.bhome)
+    List.clear(b.bjob)
+    var h = 4242
+    for i in 0 .. blocks { h = add(b, h, size, 0, 100, 0) }
+    for i in 0 .. blocks * 2 / 5 { h = add(b, h, size, 1, 0, 200) }
+    for i in 0 .. blocks / 5 { h = add(b, h, size, 2, 0, 20) }
+    for i in 0 .. blocks * 3 / 25 { h = add(b, h, size, 4, 0, 14) }
+    for i in 0 .. blocks / 12 { h = add(b, h, size, 8, 0, 0) }
+    for i in 0 .. blocks / 8 { h = add(b, h, size, 16, 0, 0) }
+    for i in 0 .. blocks / 25 { h = add(b, h, size, 32, 0, 150) }
+  }
+
+  test "a simulated day of 200 000 citizens at far LOD" (cz: mut CitizensState, b: mut BenchState) {
+    make_city(b, 2500, 12000.0)
+    citizens_build(cz)
+    let g0 = Time.now_us()
+    let n = citizens_generate(cz, 0)
+    let gen_us = Time.now_us() - g0
+    print(`bench: {n} citizens, {citizens_employed(cz)} employed, {citizens_places(cz)} places, made in {gen_us / 1000} ms`)
+    expect(n >= 190000 and n <= 210000)
+    # day one, in one-minute ticks
+    var worst = 0
+    var worst_at = 0
+    let t0 = Time.now_us()
+    for minute in 1 .. 1441 {
+      let m0 = Time.now_us()
+      citizens_advance(cz, minute * 60)
+      let m = Time.now_us() - m0
+      if m > worst {
+        worst = m
+        worst_at = minute
+      }
+    }
+    let day_us = Time.now_us() - t0
+    let steps = citizens_stat_steps(cz)
+    print(`bench day 1: {steps} episodes in {day_us / 1000} ms: {day_us * 1000 / Math.max(steps, 1)} ns an episode, {day_us / 1440} us a one-minute tick (worst {worst} us at minute {worst_at}), {day_us / n} us a citizen a day`)
+    # day two: the same population, warm
+    let t1 = Time.now_us()
+    let s1 = citizens_stat_steps(cz)
+    for minute in 1441 .. 2881 { citizens_advance(cz, minute * 60) }
+    let day2_us = Time.now_us() - t1
+    let steps2 = citizens_stat_steps(cz) - s1
+    print(`bench day 2: {steps2} episodes in {day2_us / 1000} ms: {day2_us * 1000 / Math.max(steps2, 1)} ns an episode, {day2_us / 1440} us a one-minute tick`)
+    # the same day in one-second ticks: a tick with nothing due costs what an empty wheel bucket costs
+    let t2 = Time.now_us()
+    let s2 = citizens_stat_steps(cz)
+    var f = 0
+    for sec in 0 .. 3600 {
+      f += 1
+      citizens_tick(cz, tick_new(0.016, f, 1.0 / 3600.0))
+    }
+    let hr_us = Time.now_us() - t2
+    print(`bench one hour in one-second ticks: {citizens_stat_steps(cz) - s2} episodes in {hr_us / 1000} ms: {hr_us / 3600} us a tick`)
+    print(`bench money: {citizens_money_total(cz)} wages {citizens_stat_wages(cz)} spent {citizens_stat_spent(cz)} upkeep {citizens_stat_upkeep(cz)} leak {citizens_stat_leak(cz)} plans {citizens_stat_plans(cz)}`)
+    for a in 0 .. ACT_COUNT { print(`bench {Activities[a].key}: {citizens_stat_activity(cz, a)}`) }
+    expect(steps > n * 8)
+    expect(day_us < 30000000)
+  }
+
+  test "500 citizens on real paths at sixty ticks a second" (cz: mut CitizensState, b: mut BenchState) {
+    make_city(b, 8, 3000.0)
+    citizens_build(cz)
+    let n = citizens_generate(cz, 0)
+    citizens_advance(cz, 8 * 3600 + 1000)
+    b.nview = 1
+    b.vx = 1500.0
+    b.vz = 1500.0
+    let mut_t0 = Time.now_us()
+    var f = 0
+    citizens_tick(cz, tick_new(0.6, 1, 0.0))
+    print(`bench mid: {n} citizens, {citizens_mid_count(cz)} on real paths, {b.embodied} handed to bodies`)
+    expect(citizens_mid_count(cz) >= n / 2)
+    let t0 = Time.now_us()
+    var worst = 0
+    var worst_at = 0
+    for k in 0 .. 3600 {
+      f += 1
+      let k0 = Time.now_us()
+      citizens_tick(cz, tick_new(0.0167, f, 1.0 / 3600.0))
+      let d = Time.now_us() - k0
+      if d > worst {
+        worst = d
+        worst_at = k
+      }
+    }
+    let us = Time.now_us() - t0
+    print(`bench mid: 3600 ticks (a game hour at one second a tick) in {us / 1000} ms: {us / 3600} us a tick for {citizens_mid_count(cz)} citizens (worst tick {worst} us at {worst_at}, {us * 1000 / 3600 / Math.max(citizens_mid_count(cz), 1)} ns a citizen a tick)`)
+    expect(us / 3600 < 16000)
+  }
+}

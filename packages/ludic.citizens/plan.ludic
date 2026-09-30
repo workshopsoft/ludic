@@ -46,7 +46,10 @@ function cz_shift_window(cz: mut CitizensState, i: int, T: int) -> bool {
   let day0 = cz_fdiv(T, CZ_DAY) - 1
   for d in day0 .. day0 + 6 {
     if ((cz.cr_shdays[s] >> cz_weekday_of(cz, d)) & 1) != 0 {
-      let s0 = d * CZ_DAY + cz.cr_shfrom[s]
+      var off = 0
+      let jit = cz.cr_shjit[s]
+      if jit > 0 { off = cz_pick(cz_mix3(cz.cz_seed[i], 55, d), jit * 2 / 60 + 1) * 60 - jit }
+      let s0 = d * CZ_DAY + cz.cr_shfrom[s] + off
       let s1 = s0 + cz.cr_shlen[s]
       if s1 > T {
         cz.sw0 = s0
@@ -70,7 +73,6 @@ function cz_new_plan(cz: mut CitizensState, i: int, day: int, T: int) -> void {
         cz_take_job(cz, i, p)
         cz.st_hired += 1
         cz_say(cz, CZ_F_HIRED, i, p, 0, 0, T)
-        cz_log(cz, T, CZ_EV_HIRE, i, p, 0)
       }
     }
   }
@@ -89,7 +91,6 @@ function cz_move_home(cz: mut CitizensState, i: int, h: int, T: int) -> void {
   if cz.cz_car_at[i] == old { cz.cz_car_at[i] = h }
   cz.st_moved += 1
   cz_say(cz, CZ_F_MOVED, i, h, old, 0, T)
-  cz_log(cz, T, CZ_EV_MOVE, i, h, 0)
   # the new commute changes nothing of today's shift's place, only how long it takes
 }
 

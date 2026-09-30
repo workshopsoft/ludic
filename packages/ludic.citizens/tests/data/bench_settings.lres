@@ -1,0 +1,11 @@
+default {
+  world_seed: 11
+  occupancy: 0.8
+  commute_margin: 600
+  transit_bucket: 120
+  r_near: 40.0
+  r_mid: 100000.0
+  max_mid: 1024
+  job_search: 20
+  move_per_10k: 6
+}
