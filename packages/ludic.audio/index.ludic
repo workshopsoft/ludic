@@ -1,5 +1,5 @@
-# ludic.audio - Audio.play is the INTERFACE; everything that happens in the world goes through
-# aud_emit with a gain and a pan from where it is. Nothing outside this module names Audio.*.
+# ludic.audio - aud_ui is the INTERFACE (flat, on its channel); everything that happens in the world goes
+# through aud_emit with a gain and a pan from where it is. Nothing outside this module names Audio.*.
 module ludic_audio uses
 numbers float
 import "ports.ludic"
