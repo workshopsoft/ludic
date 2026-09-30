@@ -45,6 +45,7 @@ program LudicDev {
   import "templates_test.ludic"
   import "symbols.ludic"
   import "symbols_test.ludic"
+  import "packages_check.ludic"
 
   function usage() -> void {
     print("ludic-dev — tasks for a checkout of the Ludic toolchain (run from the repository root)")
@@ -73,6 +74,7 @@ program LudicDev {
     print("")
     print("doc / lint checks (Ludic, no Python):")
     print("  check-docs                    every ```ludic doc fence parses (or is marked skip/expect-error)")
+    print("  check-packages                every first-party package imported into one program, nothing bound: a name or prefix two of them share fails, naming the pair")
     print("  check-impl                    every implemented feature has a docs/language page")
     print("  check-vocabulary              the vocabulary is in sync across grammar / lexer / header / parser")
     print("  syntax [--check]              write every grammar's keyword, type and phase lists from ludicc --emit-syntax")
@@ -117,6 +119,7 @@ program LudicDev {
     if (cmd == "test-templates") { return cmd_test_templates() }
     if (cmd == "test-symbols") { return cmd_test_symbols() }
     if (cmd == "check-docs") { return cmd_check_docs() }
+    if (cmd == "check-packages") { return cmd_check_packages() }
     if (cmd == "check-impl") { return cmd_check_impl() }
     if (cmd == "check-vocabulary") { return cmd_check_vocab() }
     if (cmd == "syntax") { return cmd_syntax_gen() }

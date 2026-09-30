@@ -75,6 +75,12 @@ jobs:
         # windowing are portable.
         run: bin/ludic-dev test-tools
 
+      - name: Packages meet in one program (ludic-dev check-packages)
+        # every first-party package imported together, nothing bound: registry
+        # prefixes and exported names are global, so a clash between two
+        # packages fails here, naming the pair, not in the first game that has both.
+        run: bin/ludic-dev check-packages
+
       - name: Docs cover the implementation
         run: |
           set -eu

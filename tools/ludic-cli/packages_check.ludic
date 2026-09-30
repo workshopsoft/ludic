@@ -1,0 +1,131 @@
+# packages_check.ludic — `ludic-dev check-packages`: the first-party packages, all at once.
+#
+# A package's registry prefixes and exported names are one global namespace, so two packages that
+# are fine alone can refuse each other inside a game ('X' is defined twice, an @Unit the compiler
+# lacks, a @Ref that names a property). Each package's own tests import it with only what it uses,
+# so the clash shows up in the first game that imports both. This task generates one program that
+# imports every first-party package that can be imported from a checkout, binds nothing, and runs
+# `ludicc --check` over it: any declaration error fails, and the packages the message names are
+# printed, so the pair is the first thing the reader sees.
+#
+# Expected, and matched precisely (never loosely): `port X is used here but never bound` - the
+# program binds nothing, which is the point - and the warnings `@Ref(X): this program has no X -
+# left unresolved`, since a game supplies those registries. The compiler stops at its first error,
+# so the ports come after every declaration check; what this covers is what a game would hit
+# before it binds anything.
+#
+# Two programs: the packages with an index.ludic (the modern ones, together), and the older
+# single-file library packages (ludic.core, ludic.gameplay, ludic.rpg, ...), which define unprefixed
+# names such as `Stats` and are not meant to meet the modern ones in one game.
+
+# the first `ludic.NAME` after `packages/` at or after `from`: its end, or -1; the name in CP_NAME
+var CP_NAME: pointer = ""
+function cp_next_pkg(line: pointer, from: int) -> int {
+  let at = s_index(line, "packages/ludic.", from)
+  if at < 0 { return -1 }
+  let start = at + 9
+  var e = start
+  let n = slen(line)
+  while e < n and line[e] != '/' { e += 1 }
+  CP_NAME = sslice(line, start, e)
+  return e
+}
+
+# every package a diagnostic's paths name, each once, as "a, b"
+function cp_packages_of(line: pointer) -> string {
+  let seen = new []pointer
+  var at = 0
+  while at >= 0 and at < slen(line) {
+    let e = cp_next_pkg(line, at)
+    if e < 0 { break }
+    if not set_has(seen, CP_NAME) { push(seen, CP_NAME) }
+    at = e
+  }
+  var r = ""
+  var i = 0
+  while i < len(seen) {
+    if i > 0 { r = r + ", " }
+    r = r + seen[i]
+    i += 1
+  }
+  return r
+}
+
+# is this diagnostic line one the program is expected to have?
+function cp_expected(line: pointer) -> bool {
+  if s_contains(line, ": error: port ") and s_contains(line, " is used here but never bound: ") { return true }
+  if s_contains(line, ": warning: ") and s_contains(line, ": @Ref(") and s_contains(line, "this program has no ") and s_contains(line, " - left unresolved") { return true }
+  return false
+}
+# is it one that fails the check: any error, and an @Unit the compiler lacks
+function cp_failure(line: pointer) -> bool {
+  if s_contains(line, ": error: ") { return true }
+  if s_contains(line, ": warning: @Unit(") and s_contains(line, " is not a known unit") { return true }
+  return false
+}
+
+function cp_check_program(label: pointer, src: pointer, work: pointer, root: pointer) -> void {
+  let file = `{work}/{label}.ludic`
+  write_file(file, src)
+  shell(`cd {work} && env LUDIC_HOME={root} {root}/bin/ludicc {file} --check > {work}/{label}.out 2>&1`)
+  let lines = split_lines(pt_read(`{work}/{label}.out`))
+  var failed = 0
+  var i = 0
+  while i < len(lines) {
+    let l = lines[i]
+    if cp_failure(l) and not cp_expected(l) {
+      failed += 1
+      let who = cp_packages_of(l)
+      var hint = ""
+      if s_contains(l, "is defined twice") { hint = "  (registry prefixes and exported names are global: rename one side, see docs/PACKAGES.md)" }
+      bad2(`{label}: {l}`, `packages involved: {who}{hint}`)
+    }
+    i += 1
+  }
+  if failed == 0 { ok(`{label}: every package declares cleanly beside every other`) }
+}
+
+function cmd_check_packages() -> int {
+  PASS = 0
+  FAIL = 0
+  print("== packages: one program that imports every first-party package, binding nothing ==")
+  let root = capture_line("pwd")
+  let work = `{tmp_dir()}/check_packages`
+  shell(`rm -rf {work} && mkdir -p {work}`)
+  let names = split_lines(capture(`ls -1 {root}/packages 2>/dev/null | LC_ALL=C sort`))
+  var modern = "program AllPackages {\n  import \"ludic.base\"\n  import \"ludic.render3d/r3d.ludic\"\n"
+  var legacy = "program AllLegacyPackages {\n"
+  var nmodern = 2
+  var nlegacy = 0
+  var i = 0
+  while i < len(names) {
+    let n = names[i]
+    let dir = `{root}/packages/{n}`
+    i += 1
+    if not s_starts(n, "ludic.") or not file_exists(`{dir}/package.ludic`) { continue }
+    if n == "ludic.base" or n == "ludic.render3d" { continue }        # first, and the render3d entry is r3d.ludic
+    if file_exists(`{dir}/index.ludic`) {
+      # generated from a vendor SDK, and not in a checkout until a tool writes it: not importable here
+      if shq(`grep -q 'import "gen/' {dir}/index.ludic`) and not file_exists(`{dir}/gen`) {
+        skip(`{n}: its index imports gen/, which a checkout does not have`)
+        continue
+      }
+      modern = modern + `  import "{n}"\n`
+      nmodern += 1
+    } else {
+      let files = split_lines(capture(`ls -1 {dir} | grep '[.]ludic$' | grep -v '^package[.]ludic$' | LC_ALL=C sort`))
+      var j = 0
+      while j < len(files) {
+        legacy = legacy + `  import "{n}/{files[j]}"\n`
+        j += 1
+      }
+      nlegacy += 1
+    }
+  }
+  modern = modern + "}\n"
+  legacy = legacy + "}\n"
+  print(`  {string(nmodern)} packages with an index, {string(nlegacy)} single-file library packages`)
+  cp_check_program("modern", modern, work, root)
+  if nlegacy > 0 { cp_check_program("legacy", legacy, work, root) }
+  return report()
+}

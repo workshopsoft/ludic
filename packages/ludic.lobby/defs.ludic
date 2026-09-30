@@ -28,7 +28,7 @@ export const LBO_COUNT: int = 6
 export property LobbyRegion {
   key: string = ""
   @Range(0, 64) group: int = 0          # regions of one group are near enough to play together
-  @Range(0, 2000) ping_max: int = 150   # milliseconds
+  @Unit("ms") @Range(0, 2000) ping_max: int = 150
 }
 @AppendOnly @ByKey
 export open registry LobbyRegions of LobbyRegion as REGION
@@ -82,7 +82,7 @@ export property SessionKind {
   vote_kick: bool = true
   segregate: bool = true                # bad-sport players are matched with each other
   region_lock: bool = false             # only the region's group
-  @Range(0, 2000) ping_max: int = 0             # milliseconds; 0: the region's
+  @Unit("ms") @Range(0, 2000) ping_max: int = 0             # 0: the region's
   @Range(0, 100000) skill_band: int = 0 # 0: any skill
   quick: bool = true                    # quick join may take it
   rules: string = ""                    # an AntiGriefRules key ("": no rules)

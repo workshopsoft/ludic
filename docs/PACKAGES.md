@@ -158,6 +158,37 @@ Each project gets a lightweight view — `ludic_modules/<import-path>` is a syml
 into the store — so many projects share one copy and nothing is duplicated
 per-project. Override the store location with `$LUDIC_STORE`.
 
+## Names two packages must not share
+
+Everything a package **exports** is one namespace with every other package's and the game's: a type,
+a property, a registry, a constant, an `export function`. So is a registry's **prefix**
+(`registry Regions of Region as REGION` makes `REGION_*` constants), and so are an action's and a
+`@Net` action's names. Two packages that compile alone can therefore refuse each other inside a
+game (`'X' is defined twice`, a `@Ref` that names a property instead of a registry) and the first
+sign is in the game that imports both.
+
+The rule: **a package's prefixes and exported names start with a stem that is its own.**
+
+- A registry prefix is the package's stem, then the thing: `lobby` -> `LBO_`, `missions` ->
+  `MISSTEP` (not `MSTEP`, which `ludic.melee` has). Take the first letters of the package name, and
+  when the stem is short or another package's, lengthen it. A prefix that is an English word
+  (`REGION`, `STEP`, `ZONE`) is not a stem: it will be another package's word too.
+- A type, registry or function name a package exports carries its own word (`Lobby*`,
+  `Vitals*`, `Crew*`) or, for a generic noun (`Step`, `Node`, `Zone`), is not exported: declare it
+  without `export` inside a module of the package, where only the package sees it.
+- A `@Unit` is one of the compiler's list (`LANGUAGE.md`); a package cannot add one.
+- A `@Ref(X)` to a registry the **game** supplies (`Items`, `Resources`, `Stats`) stays a
+  warning in a program that has no `X`; it is the game's to declare, never the package's.
+
+`ludic-dev check-packages` holds the line: it generates one program that imports every first-party
+package that can be imported from a checkout, binds nothing, and runs `ludicc --check`. A
+declaration error fails it and names the packages in the message (`packages involved:
+ludic.lobby, ludic.crews`). What it expects and ignores, matched exactly: `port X is used here but
+never bound` and the `@Ref(X): this program has no X` warnings. The older single-file library
+packages (`ludic.core`, `ludic.gameplay`, `ludic.rpg`, ...) are checked together in a second
+program, since they define unprefixed names (`Stats`) that the modern ones leave to the game. Run
+it after adding a package, a registry or an export; CI runs it on every push.
+
 ## Consuming a package — namespace registration
 
 A **source package** ships plain Ludic. The consumer imports the package files by
