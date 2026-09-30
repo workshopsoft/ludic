@@ -1,7 +1,7 @@
 # property_test.ludic - buying, renting (a day's rent, grace, taking back), selling, trading and upgrading through a
 # fake purse; access by mode and invitation; interiors an instance each through a fake load port, floor to floor;
 # storage and the garage through a fake stash; a raid and its cooldown; passive income; the business loop as a
-# machine with its timers; facts; the save and a host's snapshot on a guest
+# machine with its timers; facts; a guest's every verb asked of the host over a fake wire; the save and a host's snapshot on a guest
 import "ludic.property"
 import "ludic.base"
 program PropertyTest {
@@ -32,6 +32,7 @@ program PropertyTest {
     car_spawn_x: float = 0.0
     car_spawn_yaw: float = 0.0
     frame: int = 0
+    wire: []int = new []int    # what a guest's port was given for the host: a word count, then the words, message after message
   }
   function fake_authority(property_test_st: PropertyTestState) -> bool { return property_test_st.host }
   function fake_crew(property_test_st: PropertyTestState, a: int, b: int) -> bool { return a == property_test_st.crew_a and b == property_test_st.crew_b }
@@ -73,7 +74,18 @@ program PropertyTest {
     property_test_st.car_spawn_yaw = yaw
     return true
   }
-  bind RealtyWorld { authority: fn fake_authority, same_crew: fn fake_crew, friends: fn fake_friends }
+  # a player's machine is the pid 10 + its id
+  function fake_allow(property_test_st: PropertyTestState, sender: int, who: int) -> bool { return sender == 10 + who }
+  function fake_role(property_test_st: PropertyTestState) -> int {
+    if property_test_st.host { return 1 }
+    return 2
+  }
+  function fake_to_host(property_test_st: mut PropertyTestState, w: []int, n: int) -> void {
+    push(property_test_st.wire, n)
+    for i in 0 .. n { push(property_test_st.wire, w[i]) }
+  }
+  bind NetActions { role: fn fake_role, to_host: fn fake_to_host }
+  bind RealtyWorld { allow_ask: fn fake_allow, authority: fn fake_authority, same_crew: fn fake_crew, friends: fn fake_friends }
   bind RealtyPurse { spend: fn fake_spend, earn: fn fake_earn }
   bind RealtyLoad { load: fn fake_load, unload: fn fake_unload, enter: fn fake_enter, leave: fn fake_leave }
   bind RealtyStash { stack_limit: fn fake_limit, take: fn fake_take, give: fn fake_give, park: fn fake_park, unpark: fn fake_unpark }
@@ -94,6 +106,26 @@ program PropertyTest {
     property_test_st.crew_a = 1
     property_test_st.crew_b = 1
     property_test_st.frame = 0
+    property_test_st.wire = new []int
+    net_actions_reset()
+  }
+  # the host takes what the guests' port was given, each message from the machine `pid`, and reduces it; the
+  # machine is a guest again after
+  function via(property_test_st: mut PropertyTestState, pid: int) -> int {
+    property_test_st.host = true
+    var i = 0
+    var rc = 0
+    while i < len(property_test_st.wire) {
+      let n = property_test_st.wire[i]
+      let w = new []int
+      for k in 0 .. n { push(w, property_test_st.wire[i + 1 + k]) }
+      rc = net_actions_receive(pid, w, n)
+      i += 1 + n
+    }
+    drain_actions()
+    property_test_st.wire = new []int
+    property_test_st.host = false
+    return rc
   }
   function pass(realty_st: mut RealtyState, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState, secs: float, hours: float) -> void {
     var t = 0.0
@@ -140,19 +172,113 @@ program PropertyTest {
     expect_eq(realty_nth_of(realty_st, 1, 0), 0)
   }
 
-  test "ownership changes only where the world is owned: a guest is told to ask the host" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+  test "ownership changes only where the world is owned: a guest's verb changes nothing there, and is in the air" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
     fresh(realty_st, sites, property_test_st)
     property_test_st.host = false
     expect(not realty_buy(realty_st, sites, 1, "flat_1"))
-    expect_eq(realty_why(realty_st), REALTY_NOT_HOST)
     expect_eq(property_test_st.purse[1], 1000000)
     expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 0)
+    expect_eq(count_of(realty_st, REALTY_REFUSED), 0)   # nothing was refused: the ask is on its way
     property_test_st.host = true
     expect(realty_buy(realty_st, sites, 1, "flat_1"))
     property_test_st.host = false
     expect(not realty_sell(realty_st, 1, "harbor", "flat_1"))
     expect(not realty_set_access(realty_st, 1, "harbor", "flat_1", REALTY_PUBLIC))
     expect(not realty_trade(realty_st, 1, 2, "harbor", "flat_1", 5))
+    drain_actions()
+    expect_eq(net_actions_stat(0), 4)
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 1)
+    expect_eq(realty_access(realty_st, "harbor", "flat_1"), REALTY_OWNER)
+  }
+
+  test "a guest buys and rents through the host: the site is named by hashes, the host's own verb and purse answer" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    property_test_st.host = false
+    expect(not realty_buy(realty_st, sites, 1, "flat_1"))
+    expect(not realty_rent(realty_st, sites, 2, "flat_2"))
+    drain_actions()
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 0)
+    expect_eq(via(property_test_st, 11), 0)              # the first ask is player 1's, the second is not from its machine
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 1)
+    expect_eq(property_test_st.purse[1], 1000000 - 10000)
+    expect_eq(net_actions_stat(7), 1)                    # flat_2's was player 2's ask sent from pid 11: refused
+    expect_eq(realty_owner(realty_st, "harbor", "flat_2"), 0)
+    expect_eq(count_of(realty_st, REALTY_BOUGHT), 1)
+    property_test_st.host = false
+    expect(not realty_rent(realty_st, sites, 2, "flat_2"))
+    expect(not realty_buy(realty_st, sites, 3, "flat_1"))   # someone else's: the host's rule says why
+    expect(not realty_buy(realty_st, sites, 3, "nowhere"))  # a site the host has not got
+    drain_actions()
+    via(property_test_st, 12)
+    expect(realty_rented(realty_st, "harbor", "flat_2"))
+    expect_eq(realty_owner(realty_st, "harbor", "flat_2"), 2)
+    expect_eq(property_test_st.purse[2], 1000000 - 120)
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 1)
+  }
+
+  test "a guest's every verb goes through the host: deeds, access, storage, the garage, raids and the business" (realty_st: mut RealtyState, sites: mut Properties, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    property_test_st.host = false
+    realty_buy(realty_st, sites, 1, "house_1")
+    realty_buy(realty_st, sites, 1, "shop_1")
+    realty_buy(realty_st, sites, 1, "flat_1")
+    drain_actions()
+    via(property_test_st, 11)
+    expect_eq(realty_count_of(realty_st, 1), 3)
+    property_test_st.host = false
+    realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_EXTRA_GARAGE)
+    realty_set_access(realty_st, 1, "harbor", "house_1", REALTY_PUBLIC)
+    realty_invite(realty_st, 1, "harbor", "house_1", 5)
+    realty_invite(realty_st, 1, "harbor", "house_1", 6)
+    realty_uninvite(realty_st, 1, "harbor", "house_1", 6)
+    realty_store(realty_st, 1, "harbor", "house_1", 2, 5)
+    realty_store(realty_st, 1, "harbor", "house_1", 3, 4)
+    realty_fetch(realty_st, 1, "harbor", "house_1", 3, 4)
+    realty_park(realty_st, 1, "harbor", "house_1", 11)
+    realty_park(realty_st, 1, "harbor", "house_1", 12)
+    realty_retrieve(realty_st, sites, 1, "house_1", 11)
+    drain_actions()
+    expect_eq(realty_item_count(realty_st, "harbor", "house_1", 2), 0)
+    via(property_test_st, 11)
+    expect(realty_has_upgrade(realty_st, "harbor", "house_1", PRU_EXTRA_GARAGE))
+    expect_eq(realty_access(realty_st, "harbor", "house_1"), REALTY_PUBLIC)
+    expect_eq(realty_guest_count(realty_st, "harbor", "house_1"), 1)
+    expect_eq(realty_item_count(realty_st, "harbor", "house_1", 2), 5)
+    expect_eq(realty_item_count(realty_st, "harbor", "house_1", 3), 0)
+    expect_eq(realty_vehicle_count(realty_st, "harbor", "house_1"), 1)
+    expect_eq(realty_vehicle_at(realty_st, "harbor", "house_1", 0), 12)
+    expect_eq(property_test_st.cars_out[0], 11)
+    # the business, and what a flat earns
+    property_test_st.host = false
+    realty_buy_supply(realty_st, 1, "harbor", "shop_1", 1)
+    drain_actions()
+    via(property_test_st, 11)
+    expect_eq(realty_supply(realty_st, "harbor", "shop_1"), 5)
+    property_test_st.host = true
+    pass(realty_st, m, property_test_st, 4.0, 6.0)
+    let before = property_test_st.purse[1]
+    property_test_st.host = false
+    realty_collect(realty_st, 1, "harbor", "flat_1")
+    realty_raid(realty_st, 2, "harbor", "shop_1", 100)
+    drain_actions()
+    via(property_test_st, 11)                            # the raid is player 2's, from 11: refused
+    expect_eq(property_test_st.purse[1], before + 60)
+    expect_eq(net_actions_stat(7), 1)
+    property_test_st.host = true
+    pass(realty_st, m, property_test_st, 20.0, 0.0)
+    property_test_st.host = false
+    realty_sell_stock(realty_st, 1, "harbor", "shop_1")
+    realty_raid(realty_st, 2, "harbor", "shop_1", 100)
+    drain_actions()
+    via(property_test_st, 12)                            # both from player 2's machine: its raid stands, player 1's sale is refused
+    # the deeds change hands and end
+    property_test_st.host = false
+    realty_trade(realty_st, 1, 2, "harbor", "flat_1", 15000)
+    realty_sell(realty_st, 1, "harbor", "shop_1")
+    drain_actions()
+    via(property_test_st, 11)
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 2)
+    expect_eq(realty_owner(realty_st, "harbor", "shop_1"), 0)
   }
 
   test "selling gives back a share of what was paid and upgrades, and needs an empty property" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {

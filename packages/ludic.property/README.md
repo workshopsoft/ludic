@@ -143,18 +143,25 @@ trade), each self-contained so a host can put it on the wire as it is.
 
 ## Multiplayer: the host owns the deeds
 
-Ownership is **host-authoritative**. Every verb that changes who owns what, what is stored or what a business
-holds checks `RealtyWorld.authority()` first; a guest machine (bound to `false`) gets `REALTY_NOT_HOST` and a
-`REFUSED` fact, which the game turns into a request to the host. The host applies it, and sends what happened:
-the facts (each one complete) for a change, and `realty_snapshot()` - the same text as the save section - when a
-player joins; a guest calls `realty_apply_snapshot(text)`. The tick runs only where the world is owned, so rent,
+Ownership is **host-authoritative**. A verb that changes who owns what, what is stored or what a business holds, called
+where the world is not owned (`RealtyWorld.authority()` false: a guest), changes nothing there and is **asked of the
+host**: it dispatches the `@Net` action `RealtyAsk { who, kind, hm, hk, a, b }` (`RASK_*` says which verb). A site is
+named on the wire by the hashes of its map and of its key (a string does not go on the wire, and a site is data on every
+machine); the host finds it among the holdings and in the loaded map's `Properties`. The asks travel through the
+`NetActions` port the game binds to its session (ludic.net's `netact_*`). The host checks one (`realty_ask_ok`: it owns
+the world, the kind exists, and `RealtyWorld.allow_ask(sender, who)` says the machine that sent it plays that player) and
+reduces it by calling the very verb the guest called, so every rule and every reason is the host's; on the guest the verb
+returns `false` (`-1`) and makes no fact. `realty_apply_ask` is the same thing for a game that carries asks some other
+way. Nothing is predicted (a deed is no guess a guest can take back): the host sends what happened, the facts (each one
+complete) for a change, and `realty_snapshot()` - the same text as the save section - when a player joins; a guest calls
+`realty_apply_snapshot(text)`. The tick runs only where the world is owned, so rent,
 income and production never run twice. A player's id is the game's persistent account id. A site's ownership is
 keyed by `(map, key)`, both data, so it is the same on every machine; the save is by key, so a kind or upgrade
 moved in its registry is found again. Instances are not saved: after a load nobody is inside.
 
 ## Tests
 
-`ludic test packages/ludic.property`: sites and kinds, buying (taken, not for sale, broke), a guest refused,
+`ludic test packages/ludic.property`: sites and kinds, buying (taken, not for sale, broke), a guest's every verb asked of the host over a fake wire (the site named by hashes, another player's ask refused),
 selling and its share, rent by the day with grace and eviction, trading, upgrades (kind, requires, slots,
 variant interior), access by mode and invitation, instances (new id, joined, closed, refused load, shared),
 floor to floor, ejection on sale, storage limits, the garage and its spawn, raids and cooldown, passive income,

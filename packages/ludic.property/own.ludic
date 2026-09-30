@@ -19,7 +19,7 @@ function rlt_owned(realty_st: mut RealtyState, who: int, map: string, key: strin
 
 # buy the site `key` of the loaded map at its price. Someone renting it may buy it; someone else's is taken
 export function realty_buy(realty_st: mut RealtyState, sites: Properties, who: int, key: string) -> bool {
-  if not rlt_authority(realty_st, who, sites.map, key) { return false }
+  if rlt_remote(realty_st, who, RASK_BUY, sites.map, key, 0, 0) { return false }
   let s = properties_find(sites, key)
   if s < 0 { return rlt_no(realty_st, who, sites.map, key, REALTY_NO_SITE) }
   let site = sites.rows[s]
@@ -44,7 +44,7 @@ export function realty_buy(realty_st: mut RealtyState, sites: Properties, who: i
 
 # rent it: a game day's rent now and each day after; `grace_days` behind and it is taken back
 export function realty_rent(realty_st: mut RealtyState, sites: Properties, who: int, key: string) -> bool {
-  if not rlt_authority(realty_st, who, sites.map, key) { return false }
+  if rlt_remote(realty_st, who, RASK_RENT, sites.map, key, 0, 0) { return false }
   let s = properties_find(sites, key)
   if s < 0 { return rlt_no(realty_st, who, sites.map, key, REALTY_NO_SITE) }
   let site = sites.rows[s]
@@ -64,7 +64,7 @@ export function realty_rent(realty_st: mut RealtyState, sites: Properties, who: 
 
 # stop renting: it must hold nothing; whoever is inside is sent out
 export function realty_end_rent(realty_st: mut RealtyState, who: int, map: string, key: string) -> bool {
-  if not rlt_authority(realty_st, who, map, key) { return false }
+  if rlt_remote(realty_st, who, RASK_END_RENT, map, key, 0, 0) { return false }
   let h = rlt_owned(realty_st, who, map, key)
   if h == null { return false }
   if not h.rented { return rlt_no(realty_st, who, map, key, REALTY_NOT_FOR_SALE) }
@@ -77,7 +77,7 @@ export function realty_end_rent(realty_st: mut RealtyState, who: int, map: strin
 
 # sell what you own: a share of what was paid (and on upgrades) comes back; it must hold nothing
 export function realty_sell(realty_st: mut RealtyState, who: int, map: string, key: string) -> bool {
-  if not rlt_authority(realty_st, who, map, key) { return false }
+  if rlt_remote(realty_st, who, RASK_SELL, map, key, 0, 0) { return false }
   let h = rlt_owned(realty_st, who, map, key)
   if h == null { return false }
   if h.rented { return rlt_no(realty_st, who, map, key, REALTY_NOT_FOR_SALE) }
@@ -93,7 +93,7 @@ export function realty_sell(realty_st: mut RealtyState, who: int, map: string, k
 
 # sell it to another player for `price`, paid by them to you; guests are cleared and whoever is inside goes out
 export function realty_trade(realty_st: mut RealtyState, from: int, to: int, map: string, key: string, price: int) -> bool {
-  if not rlt_authority(realty_st, from, map, key) { return false }
+  if rlt_remote(realty_st, from, RASK_TRADE, map, key, to, price) { return false }
   let h = rlt_owned(realty_st, from, map, key)
   if h == null { return false }
   if h.rented or to == from or to == 0 { return rlt_no(realty_st, from, map, key, REALTY_NOT_FOR_SALE) }
@@ -110,7 +110,7 @@ export function realty_trade(realty_st: mut RealtyState, from: int, to: int, map
 
 # buy an upgrade for what you own: its kind, its requirements, a free slot, the price
 export function realty_upgrade(realty_st: mut RealtyState, who: int, map: string, key: string, upgrade: int) -> bool {
-  if not rlt_authority(realty_st, who, map, key) { return false }
+  if rlt_remote(realty_st, who, RASK_UPGRADE, map, key, upgrade, 0) { return false }
   let h = rlt_owned(realty_st, who, map, key)
   if h == null { return false }
   if upgrade < 0 or upgrade >= PRU_COUNT { return rlt_no(realty_st, who, map, key, REALTY_BAD_UPGRADE) }

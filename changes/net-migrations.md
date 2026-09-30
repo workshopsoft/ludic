@@ -1,0 +1,8 @@
+bump: minor
+type: feat
+**`ludic.weapons`, `ludic.crews` and `ludic.property` move onto `@Net` actions**, as `ludic.vitals` did: the requests a game used to build by hand are actions the host checks (`@Validate`, with a port member that says the sending machine plays that actor or player) and reduces with the same verbs.
+
+- **`ludic.weapons`**: a guest's shot is the action `WeaponsFire` (`@Broadcast(all)`). `weapons_fire_ok` is its validator (holding the gun, loaded, rate, origin, and `WeaponsWorld.allow_shot(sender, actor)`), `weapons_host_take` the host's resolution (lag compensation, its own seed), a `@Predicted` row reducer counts the owner's shots in the air so a refusal takes one back, and every other guest receives the action and shows the shot. Gone: `ShotRequest`, `ShotConfirm`, `weapons_outbox`, `weapons_confirms`, `weapons_net_confirm`, `weapons_host_fire`. The magazine is not in an undo record, so the owner's inventory snapshot still sets it right.
+- **`ludic.crews`**: a guest's verbs dispatch `CrewAsk { who, kind, a, b, c }` (`CASK_*`), and `crew_create` the action `CrewFound`, which carries the name and tag as bytes. The host checks (`crew_ask_ok`, `CrewWorld.allow_ask`) and calls the very verb. A guest's verb no longer says `CREW_NOT_HOST` or makes a `REFUSED` fact.
+- **`ludic.property`**: a guest's verbs dispatch `RealtyAsk { who, kind, hm, hk, a, b }` (`RASK_*`), a site named by the hashes of its map and key. The host checks (`realty_ask_ok`, `RealtyWorld.allow_ask`) and calls the very verb. A guest's verb no longer says `REALTY_NOT_HOST`.
+- Each has a test of two peers over a fake transport.
