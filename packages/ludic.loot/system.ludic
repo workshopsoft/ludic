@@ -1,0 +1,42 @@
+# system.ludic - loot as a system: no tick (a roll is asked for, never run), its own save section
+# (the dice, the uniques already dropped, the counts)
+@alloc_ok("a new game: the lists made again")
+export function loot_reset(loot_st: mut LootState) -> void {
+  rng_seed(loot_st.lo__dice, 1)
+  loot_st.lo__once = new []string
+  loot_st.lo__rolls = 0
+  loot_st.lo__drops = 0
+  q_clear(loot_facts(loot_st))
+}
+
+@alloc_ok("a save: a tree written from the state")
+export function loot_save(loot_st: LootState) -> Val {
+  let v = Value.object()
+  sv_put_int(v, "dice", loot_st.lo__dice.s)
+  sv_put_int(v, "rolls", loot_st.lo__rolls)
+  sv_put_int(v, "drops", loot_st.lo__drops)
+  let l = Value.list()
+  for i in 0 .. len(loot_st.lo__once) { Value.add(l, Value.str(loot_st.lo__once[i])) }
+  Value.put(v, "once", l)
+  return v
+}
+
+@alloc_ok("a load: the uniques read back")
+export function loot_load(loot_st: mut LootState, v: Val, version: int) -> void {
+  loot_reset(loot_st)
+  loot_st.lo__dice.s = sv_int(v, "dice", loot_st.lo__dice.s)
+  loot_st.lo__rolls = sv_int(v, "rolls", 0)
+  loot_st.lo__drops = sv_int(v, "drops", 0)
+  if Value.has(v, "once") != 0 {
+    let l = Value.get(v, "once")
+    for i in 0 .. Value.count(l) { push(loot_st.lo__once, intern(Value.as_str(Value.at(l, i)))) }
+  }
+}
+
+export function loot_system() -> System {
+  let s = system_new("loot", PH_COMMIT)
+  s.reset = fn loot_reset
+  s.save = fn loot_save
+  s.load = fn loot_load
+  return s
+}

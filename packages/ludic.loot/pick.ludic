@@ -1,0 +1,97 @@
+# pick.ludic - which lines may drop at a level, and the weighted choices: an entry of a table, a
+# rarity, an affix. Every draw is from the roll's own stream.
+function lo__in_level(min_level: int, max_level: int, level: int) -> bool {
+  if level < min_level { return false }
+  if max_level > 0 and level > max_level { return false }
+  return true
+}
+
+# may this line drop now: its level range, the world's say on its item, and a unique not yet dropped
+function lo__eligible(loot_st: LootState, e: LootEntry, level: int) -> bool {
+  if not lo__in_level(e.min_level, e.max_level, level) { return false }
+  if e.once != "" and loot_once_taken(loot_st, e.once) { return false }
+  if e.item >= 0 and not LootWorld.allowed(e.item, level) { return false }
+  return true
+}
+
+# the weighted pick from a table's entries, or -1 for "nothing" (its own weight, or no line may drop)
+function lo__pick_entry(loot_st: mut LootState, tb: LootTable, level: int) -> int {
+  let es = tb.entries
+  if es == null { return -1 }
+  var total = tb.nothing
+  for i in 0 .. len(es) { if lo__eligible(loot_st, es[i], level) { total += es[i].weight } }
+  if total <= 0 { return -1 }
+  var at = rng_between(loot_st.lo__use, 0, total - 1)
+  for i in 0 .. len(es) {
+    if not lo__eligible(loot_st, es[i], level) { continue }
+    if at < es[i].weight { return i }
+    at -= es[i].weight
+  }
+  return -1
+}
+
+function lo__rarity_weight(loot_st: LootState, r: int) -> float {
+  let w = LootRarities[r].weight * (1.0 + loot_st.lo__luck * LootRarities[r].luck_scale)
+  if w < 0.0 { return 0.0 }
+  return w
+}
+
+# the tier an entry drops at: the one it names, else drawn by weight among the rolled tiers a level
+# allows, never plainer than its min_rarity
+function lo__pick_rarity(loot_st: mut LootState, e: LootEntry, level: int) -> int {
+  if e.rarity >= 0 and e.rarity < LRT_COUNT { return e.rarity }
+  var total = 0.0
+  for r in 0 .. LRT_COUNT {
+    if r < e.min_rarity or not LootRarities[r].roll or LootRarities[r].min_level > level { continue }
+    total += lo__rarity_weight(loot_st, r)
+  }
+  if total <= 0.0 { return e.min_rarity }
+  var at = rng_float(loot_st.lo__use) * total
+  var last = e.min_rarity
+  for r in 0 .. LRT_COUNT {
+    if r < e.min_rarity or not LootRarities[r].roll or LootRarities[r].min_level > level { continue }
+    let w = lo__rarity_weight(loot_st, r)
+    if w <= 0.0 { continue }
+    last = r
+    if at < w { return r }
+    at -= w
+  }
+  return last
+}
+
+function lo__tags_meet(have: []string, want: []string) -> bool {
+  if want == null or len(want) == 0 { return true }
+  if have == null { return false }
+  for i in 0 .. len(want) {
+    for j in 0 .. len(have) { if have[j] == want[i] { return true } }
+  }
+  return false
+}
+
+function lo__group_used(loot_st: LootState, g: string) -> bool {
+  if g == "" { return false }
+  for i in 0 .. len(loot_st.lo__used) { if loot_st.lo__used[i] == g { return true } }
+  return false
+}
+
+# one affix for an item of this level, tier and tags, in a group it does not carry yet; -1 when none fits
+function lo__pick_affix(loot_st: mut LootState, e: LootEntry, rarity: int, level: int) -> int {
+  var total = 0
+  List.clear(loot_st.lo__cand)
+  for a in 0 .. LAF_COUNT {
+    let af = LootAffixes[a]
+    if not lo__in_level(af.min_level, af.max_level, level) or rarity < af.min_rarity or af.weight <= 0 { continue }
+    if not lo__tags_meet(e.tags, af.tags) or lo__group_used(loot_st, af.group) { continue }
+    @alloc_ok("the candidate list, kept: grows only to the most affixes that fit at once")
+    push(loot_st.lo__cand, a)
+    total += af.weight
+  }
+  if total <= 0 { return -1 }
+  var at = rng_between(loot_st.lo__use, 0, total - 1)
+  for i in 0 .. len(loot_st.lo__cand) {
+    let w = LootAffixes[loot_st.lo__cand[i]].weight
+    if at < w { return loot_st.lo__cand[i] }
+    at -= w
+  }
+  return -1
+}

@@ -1,0 +1,129 @@
+# roll.ludic - a table rolled: the guaranteed lines, then its weighted picks, each line an item (with
+# a tier and affixes) or another table rolled again. A fact per drop.
+function lo__fact_rec(loot_st: mut LootState) -> LootFact {
+  var f = q_rec(loot_facts(loot_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new LootFact
+    f.affix = new []int
+    f.value = new []float
+    q_ring_add(loot_facts(loot_st), f)
+  }
+  List.clear(f.affix)
+  List.clear(f.value)
+  f.n_affix = 0
+  return f
+}
+
+# an item's affixes: a number in its tier's range, each from a group not yet carried
+function lo__affix_into(loot_st: mut LootState, e: LootEntry, f: LootFact) -> void {
+  if not e.affixes { return }
+  let r = LootRarities[f.rarity]
+  if r.affix_max <= 0 { return }
+  let want = rng_between(loot_st.lo__use, r.affix_min, r.affix_max)
+  List.clear(loot_st.lo__used)
+  for n in 0 .. want {
+    let a = lo__pick_affix(loot_st, e, f.rarity, f.level)
+    if a < 0 { break }
+    let af = LootAffixes[a]
+    if af.group != "" {
+      @alloc_ok("the groups an item carries, kept")
+      push(loot_st.lo__used, af.group)
+    }
+    let v = af.lo + (af.hi - af.lo) * rng_float(loot_st.lo__use) + af.per_level * float(f.level)
+    @alloc_ok("into the fact's own lists, which a reused record keeps")
+    push(f.affix, a)
+    @alloc_ok("into the fact's own lists, which a reused record keeps")
+    push(f.value, v)
+    f.n_affix += 1
+  }
+}
+
+function lo__drop_item(loot_st: mut LootState, e: LootEntry, level: int) -> void {
+  let f = lo__fact_rec(loot_st)
+  f.what = LOOT_DROPPED
+  f.table = loot_st.lo__table
+  f.source = loot_st.lo__source
+  f.item = e.item
+  f.count = rng_between(loot_st.lo__use, e.min_count, e.max_count)
+  f.level = level
+  f.rarity = lo__pick_rarity(loot_st, e, level)
+  lo__affix_into(loot_st, e, f)
+  if e.once != "" { lo__take_once(loot_st, e.once) }
+  loot_st.lo__drops += 1
+  q_push(loot_facts(loot_st), f)
+}
+
+function lo__table_ok(t: int) -> bool { return t >= 0 and t < LOOT_COUNT }
+
+function lo__emit(loot_st: mut LootState, e: LootEntry, level: int, depth: int) -> void {
+  if e.table >= 0 {
+    let n = rng_between(loot_st.lo__use, e.min_count, e.max_count)
+    for i in 0 .. n { lo__roll_table(loot_st, e.table, level + e.level_bonus, depth + 1) }
+    return
+  }
+  if e.item >= 0 { lo__drop_item(loot_st, e, level) }
+}
+
+function lo__roll_table(loot_st: mut LootState, t: int, level: int, depth: int) -> void {
+  if depth > LOOT_DEPTH_MAX or not lo__table_ok(t) { return }
+  let tb = LootTables[t]
+  let gs = tb.guaranteed
+  if gs != null {
+    for i in 0 .. len(gs) {
+      if not lo__eligible(loot_st, gs[i], level) { continue }
+      if gs[i].chance < 1.0 and rng_float(loot_st.lo__use) >= gs[i].chance { continue }
+      lo__emit(loot_st, gs[i], level, depth)
+    }
+  }
+  let rolls = rng_between(loot_st.lo__use, tb.rolls_min, tb.rolls_max)
+  for r in 0 .. rolls {
+    let at = lo__pick_entry(loot_st, tb, level)
+    if at >= 0 { lo__emit(loot_st, tb.entries[at], level, depth) }
+  }
+}
+
+function lo__begin(loot_st: mut LootState, t: int, level: int, source: int) -> int {
+  loot_st.lo__table = t
+  loot_st.lo__source = source
+  loot_st.lo__luck = LootWorld.luck()
+  loot_st.lo__rolls += 1
+  let before = loot_st.lo__drops
+  lo__roll_table(loot_st, t, level, 0)
+  let n = loot_st.lo__drops - before
+  if n == 0 {
+    let f = lo__fact_rec(loot_st)
+    f.what = LOOT_EMPTY
+    f.table = t
+    f.source = source
+    f.item = -1
+    f.count = 0
+    f.rarity = 0
+    f.level = level
+    q_push(loot_facts(loot_st), f)
+  }
+  return n
+}
+
+# roll a table at a level from the package's stream; `source` is the game's own number for where the
+# drop comes from. Returns how many things dropped (each a LOOT_DROPPED fact; none is one LOOT_EMPTY).
+export function loot_roll(loot_st: mut LootState, t: int, level: int, source: int) -> int {
+  if not lo__table_ok(t) { return 0 }
+  loot_st.lo__use = loot_st.lo__dice
+  return lo__begin(loot_st, t, level, source)
+}
+
+export function loot_roll_key(loot_st: mut LootState, key: string, level: int, source: int) -> int {
+  return loot_roll(loot_st, loot_find(loot_st, key), level, source)
+}
+
+# the same, from a stream of this seed and not the package's: a chest's contents fixed by its number
+# whenever it is opened, and the main stream not moved
+export function loot_roll_seeded(loot_st: mut LootState, t: int, level: int, source: int, seed: int) -> int {
+  if not lo__table_ok(t) { return 0 }
+  rng_seed(loot_st.lo__temp, seed)
+  loot_st.lo__use = loot_st.lo__temp
+  return lo__begin(loot_st, t, level, source)
+}
+
+export function loot_find(loot_st: LootState, key: string) -> int { return loottables_find(key) }

@@ -1,0 +1,104 @@
+# defs.ludic - the tables a game fills (usually from resource files: `def LootTables from
+# "loot.lres"`): rarity tiers, affixes, and the loot tables. A table is saved by key; a rarity's
+# number is its tier (0 the plainest), so a rarity is only ever appended.
+
+# a tier an item can drop at. `weight` is its share among the tiers a level allows; `luck_scale`
+# is how much the world's luck (magic find) multiplies that weight: weight * (1 + luck * luck_scale)
+export property LootRarity {
+  key: string = ""
+  @Text name: Key = null
+  @Color color: int = 0
+  @Range(0, 100000) weight: float = 100.0
+  @Range(0, 100) luck_scale: float = 0.0
+  @Range(0, 1000) min_level: int = 0               # the least level it can drop at
+  roll: bool = true                                # false: only an entry that names it gives it (a unique)
+  @Range(0, 12) affix_min: int = 0
+  @Range(0, 12) affix_max: int = 0
+  @Range(0, 100) value_mult: float = 1.0           # for the game's pricing
+}
+
+@AppendOnly @ByKey
+export open registry LootRarities of LootRarity as LRT
+
+# the plain tier the package starts with, so a game that has no tiers still drops things
+def LootRarities common { weight: 100.0 }
+
+# a modifier an item can roll. `stat` is the game's number for what it changes; its value is drawn
+# in `lo .. hi` and grows `per_level` for each level of the drop
+export property LootAffix {
+  key: string = ""
+  @Text name: Key = null                           # the word it adds to a name ("of the Bear")
+  @OneOf("prefix", "suffix") slot: string = "prefix"
+  @Ref(Stats) stat: int = 0
+  lo: float = 1.0
+  hi: float = 1.0
+  per_level: float = 0.0
+  @Range(0, 100000) weight: int = 10
+  @Range(0, 1000) min_level: int = 0
+  @Range(0, 1000) max_level: int = 0               # 0: no ceiling
+  @Ref(LootRarities) min_rarity: int = 0           # the plainest tier that may carry it
+  group: string = ""                               # only one affix of a group on an item ("life")
+  tags: []string = null                            # the item tags it may go on; empty: any
+}
+
+@ByKey
+export open registry LootAffixes of LootAffix as LAF
+
+# one line of a table: an item, another table, or (both -1) nothing
+export property LootEntry {
+  @Ref(Items) item: int = -1
+  @Ref(LootTables) table: int = -1                 # a table rolled `min_count .. max_count` times instead of an item
+  @Range(0, 100000) weight: int = 10               # its share of the table's picks
+  @Range(0, 100000) min_count: int = 1
+  @Range(0, 100000) max_count: int = 1
+  @Range(0, 1000) min_level: int = 0               # drops only at or above this level
+  @Range(0, 1000) max_level: int = 0               # ... and at or below this (0: no ceiling)
+  @Range(0, 1) chance: float = 1.0                 # a guaranteed entry's own chance of dropping at all
+  @Ref(LootRarities) rarity: int = -1              # the tier it always drops at; -1: drawn from the tiers
+  @Ref(LootRarities) min_rarity: int = 0           # when drawn, never plainer than this
+  affixes: bool = true                             # may roll affixes when its tier carries any
+  tags: []string = null                            # what an affix's own tags are matched against ("weapon", "sword")
+  once: string = ""                                # drops once per game under this name (a unique)
+  @Range(0, 1000) level_bonus: int = 0             # a nested table is rolled at this much more level
+}
+
+# what a table gives when rolled: the guaranteed lines, then `rolls_min .. rolls_max` weighted picks
+# from `entries` (and `nothing` more weight for a pick that gives nothing)
+export property LootTable {
+  key: string = ""
+  @Range(0, 1000) rolls_min: int = 1
+  @Range(0, 1000) rolls_max: int = 1
+  @Range(0, 100000) nothing: int = 0
+  guaranteed: []LootEntry = null
+  entries: []LootEntry = null
+}
+
+@ByKey
+export open registry LootTables of LootTable as LOOT
+
+# the deepest a table may hold another: a cycle in the data ends here rather than never
+export const LOOT_DEPTH_MAX: int = 8
+
+# the facts
+export const LOOT_DROPPED: int = 0      # an item dropped
+export const LOOT_EMPTY: int = 1        # a roll gave nothing at all
+
+# a drop. `affix` and `value` are parallel: an affix (LootAffixes index) and the number it rolled
+export property LootFact {
+  what: int = 0
+  table: int = -1                        # the table rolled (the one asked for, not a nested one)
+  source: int = 0                        # the game's number for where it came from (a chest, a monster)
+  item: int = -1
+  count: int = 0
+  rarity: int = 0
+  level: int = 0
+  n_affix: int = 0
+  affix: []int = null
+  value: []float = null
+}
+
+# what a table is expected to give: `expected` of an item per roll of it, for tuning and tests
+export property LootOdds {
+  item: int = -1
+  expected: float = 0.0
+}

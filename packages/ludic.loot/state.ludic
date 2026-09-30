@@ -1,0 +1,45 @@
+# state.ludic - the dice, the uniques already dropped, the scratch a roll uses, and the facts
+export state LootState {
+  lo__dice: Rng = rng_new(1)
+  lo__temp: Rng = rng_new(1)
+  lo__use: Rng = null
+  lo__once: []string = new []string
+  lo__rolls: int = 0
+  lo__drops: int = 0
+  lo__table: int = -1            # the table a roll was asked for, what its facts say
+  lo__source: int = 0
+  lo__luck: float = 0.0
+  lo__cand: []int = new []int    # affix candidates while one is drawn, kept
+  lo__used: []string = new []string   # the groups an item already carries, kept
+  lo__q: Queue<LootFact> = lo__queue()
+}
+function lo__queue() -> Queue<LootFact> { return queue_new("loot.facts") }
+export function loot_facts(loot_st: LootState) -> Queue<LootFact> { return loot_st.lo__q }
+
+# the stream every unseeded roll draws from
+export function loot_seed(loot_st: mut LootState, seed: int) -> void { rng_seed(loot_st.lo__dice, seed) }
+
+export function loot_rolls(loot_st: LootState) -> int { return loot_st.lo__rolls }
+export function loot_drops(loot_st: LootState) -> int { return loot_st.lo__drops }
+
+# has a unique of this name dropped already
+export function loot_once_taken(loot_st: LootState, name: string) -> bool {
+  for i in 0 .. len(loot_st.lo__once) { if loot_st.lo__once[i] == name { return true } }
+  return false
+}
+
+# give a unique back (the player lost it for good and the game wants it to drop again)
+export function loot_once_release(loot_st: mut LootState, name: string) -> bool {
+  for i in 0 .. len(loot_st.lo__once) {
+    if loot_st.lo__once[i] == name {
+      List.remove_at(loot_st.lo__once, i)
+      return true
+    }
+  }
+  return false
+}
+
+@alloc_ok("a unique dropped: an event, once per name")
+function lo__take_once(loot_st: mut LootState, name: string) -> void {
+  if not loot_once_taken(loot_st, name) { push(loot_st.lo__once, name) }
+}

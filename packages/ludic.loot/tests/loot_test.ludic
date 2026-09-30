@@ -1,0 +1,322 @@
+# loot_test.ludic - tables rolled from the package's own dice: weights and counts, guaranteed
+# lines, nested tables and a cycle, level ranges, tiers and luck, affixes by tag and group, a unique
+# dropped once, a seed that fixes a chest, odds worked out, and the save
+import "ludic.loot"
+import "ludic.base"
+program LootTest {
+  numbers float
+  const IT_COIN: int = 1
+  const IT_POTION: int = 2
+  const IT_SWORD: int = 3
+  const IT_BONES: int = 4
+  const IT_TOOTH: int = 5
+  const IT_RUBY: int = 6
+  const IT_PEARL: int = 7
+  const IT_CROWN: int = 8
+  const IT_MAIL: int = 9
+  const IT_FORBIDDEN: int = 10
+
+  def LootRarities magic { weight: 30.0, luck_scale: 2.0, min_level: 5, affix_min: 1, affix_max: 2 }
+  def LootRarities rare { weight: 5.0, luck_scale: 5.0, min_level: 10, affix_min: 2, affix_max: 3 }
+  def LootRarities unique { roll: false }
+  def LootAffixes of_life { slot: "suffix", stat: 1, lo: 10.0, hi: 20.0, per_level: 1.0, group: "life", tags: ["armor"] }
+  def LootAffixes sturdy { stat: 2, lo: 5.0, hi: 5.0, weight: 5, group: "life", tags: ["armor"] }
+  def LootAffixes sharp { stat: 3, lo: 2.0, hi: 4.0, group: "damage", tags: ["weapon"] }
+  def LootAffixes keen { stat: 4, lo: 1.0, hi: 1.0, group: "damage", tags: ["weapon"] }
+  def LootAffixes lucky { stat: 5, lo: 1.0, hi: 1.0, min_level: 20, tags: [] }
+  def LootTables from "loot_test.lres"
+
+  state LootWorldState {
+    luck: float = 0.0
+    banned: int = -1
+  }
+  function w_luck(loot_world_st: LootWorldState) -> float { return loot_world_st.luck }
+  function w_allowed(loot_world_st: LootWorldState, item: int, level: int) -> bool { return item != loot_world_st.banned }
+  bind LootWorld { luck: fn w_luck, allowed: fn w_allowed }
+
+  function fresh(loot_st: mut LootState, loot_world_st: mut LootWorldState) -> void {
+    loot_reset(loot_st)
+    loot_seed(loot_st, 42)
+    loot_world_st.luck = 0.0
+    loot_world_st.banned = -1
+  }
+  function drops(loot_st: LootState) -> []LootFact { return q_drain(loot_facts(loot_st)) }
+  function count_of(fs: []LootFact, item: int) -> int {
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == LOOT_DROPPED and fs[i].item == item { n += fs[i].count } }
+    return n
+  }
+
+  test "a guaranteed line always drops, and one with no chance never does" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    for i in 0 .. 50 {
+      loot_roll(loot_st, LOOT_GOBLIN, 1, 7)
+      let fs = drops(loot_st)
+      expect(count_of(fs, IT_BONES) == 1)
+      expect_eq(count_of(fs, IT_TOOTH), 0)
+    }
+  }
+
+  test "a thousand rolls land near the weights" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    var coins = 0
+    var potions = 0
+    var swords = 0
+    var gems = 0
+    for i in 0 .. 1000 {
+      loot_roll(loot_st, LOOT_GOBLIN, 1, 0)
+      let fs = drops(loot_st)
+      coins += count_of(fs, IT_COIN)
+      potions += count_of(fs, IT_POTION)
+      swords += count_of(fs, IT_SWORD)
+      gems += count_of(fs, IT_RUBY) + count_of(fs, IT_PEARL)
+    }
+    # 1.5 picks of 115 weight: coins 50/115 * 1.5 * 3 per pick = 1.96 a roll; potions 0.39; swords 0.13; gems 0.065
+    expect(coins > 1700 and coins < 2250)
+    expect(potions > 300 and potions < 480)
+    expect(swords > 70 and swords < 210)
+    expect(gems > 30 and gems < 120)
+    expect_eq(loot_rolls(loot_st), 1000)
+  }
+
+  test "counts stay inside their range" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    for i in 0 .. 200 {
+      loot_roll(loot_st, LOOT_GOBLIN, 1, 0)
+      let fs = drops(loot_st)
+      for j in 0 .. len(fs) {
+        if fs[j].item == IT_COIN { expect(fs[j].count >= 1 and fs[j].count <= 5) }
+      }
+    }
+  }
+
+  test "a fact says where it came from, the table asked for and the level" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    loot_roll(loot_st, LOOT_GEMS, 12, 99)
+    let fs = drops(loot_st)
+    expect_eq(len(fs), 1)
+    expect_eq(fs[0].what, LOOT_DROPPED)
+    expect_eq(fs[0].table, LOOT_GEMS)
+    expect_eq(fs[0].source, 99)
+    expect_eq(fs[0].level, 12)
+  }
+
+  test "a nested table is rolled as many times as its count, and deeper still when the data loops" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    expect_eq(loot_roll(loot_st, LOOT_PAIR, 1, 0), 2)
+    let fs = drops(loot_st)
+    expect_eq(len(fs), 2)
+    for i in 0 .. 50 { loot_roll(loot_st, LOOT_LOOP_A, 1, 0) }
+    expect(loot_rolls(loot_st) == 51)
+    drops(loot_st)
+  }
+
+  test "a level range gates a line" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    for i in 0 .. 40 { loot_roll(loot_st, LOOT_DEEP, 2, 0) }
+    var fs = drops(loot_st)
+    expect_eq(count_of(fs, IT_POTION), 0)
+    expect(count_of(fs, IT_COIN) == 40)
+    for i in 0 .. 40 { loot_roll(loot_st, LOOT_DEEP, 8, 0) }
+    fs = drops(loot_st)
+    expect_eq(count_of(fs, IT_COIN), 0)
+    expect(count_of(fs, IT_POTION) == 40)
+  }
+
+  test "a table with nothing it may drop says so" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    loot_world_st.banned = IT_FORBIDDEN
+    for i in 0 .. 20 { loot_roll(loot_st, LOOT_FORBIDDEN, 1, 0) }
+    let fs = drops(loot_st)
+    expect_eq(len(fs), 20)
+    for i in 0 .. len(fs) { expect_eq(fs[i].item, IT_COIN) }
+    var e = 0
+    loot_world_st.banned = IT_COIN
+    loot_world_st.luck = 0.0
+    for i in 0 .. 5 { loot_roll(loot_st, LOOT_FORBIDDEN, 1, 0) }
+    let gs = drops(loot_st)
+    for i in 0 .. len(gs) { expect_eq(gs[i].item, IT_FORBIDDEN) }
+    expect_eq(e, 0)
+  }
+
+  test "a missing table drops nothing and draws nothing" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    expect_eq(loot_roll(loot_st, -1, 1, 0), 0)
+    expect_eq(loot_roll(loot_st, 99, 1, 0), 0)
+    expect_eq(loot_roll_key(loot_st, "nowhere", 1, 0), 0)
+    expect_eq(q_len(loot_facts(loot_st)), 0)
+    expect_eq(loot_find(loot_st, "gems"), LOOT_GEMS)
+  }
+
+  test "a level under a tier does not draw it (the entry's own floor holds), a high one draws the rarer" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    for i in 0 .. 100 { loot_roll(loot_st, LOOT_GEAR, 1, 0) }
+    var fs = drops(loot_st)
+    for i in 0 .. len(fs) { expect_eq(fs[i].rarity, LRT_MAGIC) }
+    var magic = 0
+    var rare = 0
+    for i in 0 .. 300 { loot_roll(loot_st, LOOT_GEAR, 15, 0) }
+    fs = drops(loot_st)
+    for i in 0 .. len(fs) {
+      expect(fs[i].rarity != LRT_UNIQUE and fs[i].rarity != LRT_COMMON)
+      if fs[i].rarity == LRT_MAGIC { magic += 1 } else { rare += 1 }
+    }
+    expect(magic > rare * 3)
+    expect(rare > 20)
+  }
+
+  test "luck shifts the tiers toward the rarer ones" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    let plain = new []float
+    let lucky = new []float
+    loot_rarity_chances_into(loot_st, 15, 0.0, plain)
+    loot_rarity_chances_into(loot_st, 15, 1.0, lucky)
+    expect_eq(len(plain), LRT_COUNT)
+    expect(lucky[LRT_RARE] > plain[LRT_RARE] * 2.0)
+    expect(lucky[LRT_COMMON] < plain[LRT_COMMON])
+    expect_near(plain[LRT_UNIQUE], 0.0, 0.0001)
+    var total = 0.0
+    for i in 0 .. LRT_COUNT { total += lucky[i] }
+    expect_near(total, 1.0, 0.001)
+    var rare = 0
+    loot_world_st.luck = 1.0
+    for i in 0 .. 400 { loot_roll(loot_st, LOOT_GEAR, 15, 0) }
+    let fs = drops(loot_st)
+    for i in 0 .. len(fs) { if fs[i].rarity == LRT_RARE { rare += 1 } }
+    expect(rare > 100)
+  }
+
+  test "affixes come by tag and group, in their tier's number, scaled by level" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    for i in 0 .. 200 { loot_roll(loot_st, LOOT_BOSS, 15, 0) }
+    let fs = drops(loot_st)
+    var checked = 0
+    for i in 0 .. len(fs) {
+      if fs[i].item == IT_CROWN { continue }
+      if fs[i].rarity == LRT_COMMON { expect_eq(fs[i].n_affix, 0) } else { expect(fs[i].n_affix >= 1 and fs[i].n_affix <= 3) }
+      expect_eq(len(fs[i].affix), fs[i].n_affix)
+      expect_eq(len(fs[i].value), fs[i].n_affix)
+      var groups = 0
+      for j in 0 .. fs[i].n_affix {
+        let a = fs[i].affix[j]
+        if fs[i].item == IT_SWORD { expect(a == LAF_SHARP or a == LAF_KEEN or a == LAF_LUCKY) }
+        if fs[i].item == IT_MAIL { expect(a == LAF_OF_LIFE or a == LAF_STURDY or a == LAF_LUCKY) }
+        if a == LAF_OF_LIFE { expect(fs[i].value[j] >= 10.0 + 15.0 and fs[i].value[j] <= 20.0 + 15.0 + 0.001) }
+        if a == LAF_SHARP or a == LAF_KEEN { groups += 1 }
+        if a == LAF_LUCKY { expect(false) }
+        checked += 1
+      }
+      expect(groups <= 1)
+    }
+    expect(checked > 100)
+  }
+
+  test "a unique drops once, until it is released" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    loot_roll(loot_st, LOOT_BOSS, 1, 0)
+    var fs = drops(loot_st)
+    expect_eq(count_of(fs, IT_CROWN), 1)
+    var crown = -1
+    for i in 0 .. len(fs) { if fs[i].item == IT_CROWN { crown = fs[i].rarity } }
+    expect_eq(crown, LRT_UNIQUE)
+    expect(loot_once_taken(loot_st, "crown"))
+    loot_roll(loot_st, LOOT_BOSS, 1, 0)
+    fs = drops(loot_st)
+    expect_eq(count_of(fs, IT_CROWN), 0)
+    expect(loot_once_release(loot_st, "crown"))
+    expect(not loot_once_release(loot_st, "crown"))
+    loot_roll(loot_st, LOOT_BOSS, 1, 0)
+    fs = drops(loot_st)
+    expect_eq(count_of(fs, IT_CROWN), 1)
+  }
+
+  test "a seeded roll gives the same drops every time and leaves the stream where it was" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    loot_roll_seeded(loot_st, LOOT_GOBLIN, 3, 5, 1234)
+    let a = drops(loot_st)
+    var sig = 0
+    for i in 0 .. len(a) { sig = sig * 31 + a[i].item * 7 + a[i].count }
+    let n = len(a)
+    loot_roll_seeded(loot_st, LOOT_GOBLIN, 3, 5, 1234)
+    let b = drops(loot_st)
+    var sig2 = 0
+    for i in 0 .. len(b) { sig2 = sig2 * 31 + b[i].item * 7 + b[i].count }
+    expect_eq(len(b), n)
+    expect_eq(sig, sig2)
+    let c = loot_save(loot_st)
+    expect_eq(sv_int(c, "dice", 0), sv_int(loot_save(loot_st), "dice", -1))
+    loot_reset(loot_st)
+    loot_seed(loot_st, 42)
+    let s0 = sv_int(loot_save(loot_st), "dice", 0)
+    loot_roll_seeded(loot_st, LOOT_GOBLIN, 3, 5, 9)
+    expect_eq(sv_int(loot_save(loot_st), "dice", 0), s0)
+  }
+
+  test "two games with the same seed drop the same things" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    var sig = 0
+    for i in 0 .. 30 {
+      loot_roll(loot_st, LOOT_GOBLIN, 6, 0)
+      let fs = drops(loot_st)
+      for j in 0 .. len(fs) { sig = (sig * 31 + fs[j].item * 7 + fs[j].count + fs[j].rarity) & 0x7FFFFFF }
+    }
+    fresh(loot_st, loot_world_st)
+    var sig2 = 0
+    for i in 0 .. 30 {
+      loot_roll(loot_st, LOOT_GOBLIN, 6, 0)
+      let fs = drops(loot_st)
+      for j in 0 .. len(fs) { sig2 = (sig2 * 31 + fs[j].item * 7 + fs[j].count + fs[j].rarity) & 0x7FFFFFF }
+    }
+    expect_eq(sig, sig2)
+  }
+
+  test "the odds are the weights worked out, through a nested table" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    let out = new []LootOdds
+    let n = loot_odds_into(loot_st, LOOT_GOBLIN, 1, out)
+    expect_eq(n, 7)
+    var coin = 0.0
+    var bones = 0.0
+    var pearl = 0.0
+    var tooth = 0.0
+    for i in 0 .. n {
+      if out[i].item == IT_COIN { coin = out[i].expected }
+      if out[i].item == IT_BONES { bones = out[i].expected }
+      if out[i].item == IT_PEARL { pearl = out[i].expected }
+      if out[i].item == IT_TOOTH { tooth = out[i].expected }
+    }
+    expect_near(bones, 1.0, 0.0001)
+    expect_near(tooth, 0.0, 0.0001)
+    expect_near(coin, 1.5 * 50.0 / 115.0 * 3.0, 0.001)
+    expect_near(pearl, 1.5 * 5.0 / 115.0 * 0.75, 0.001)
+    expect_eq(loot_odds_into(loot_st, 99, 1, out), 0)
+  }
+
+  test "a save keeps the dice and the uniques, and a missing section is a reset" (loot_st: mut LootState, loot_world_st: mut LootWorldState) {
+    fresh(loot_st, loot_world_st)
+    loot_roll(loot_st, LOOT_BOSS, 1, 0)
+    drops(loot_st)
+    let text = save_encode(loot_save(loot_st))
+    loot_roll(loot_st, LOOT_GOBLIN, 1, 0)
+    let first = drops(loot_st)
+    let na = len(first)
+    let a = new []int
+    for i in 0 .. na { push(a, first[i].item) }
+    loot_reset(loot_st)
+    expect(not loot_once_taken(loot_st, "crown"))
+    loot_load(loot_st, save_decode(text), 1)
+    expect(loot_once_taken(loot_st, "crown"))
+    expect_eq(loot_rolls(loot_st), 1)
+    loot_roll(loot_st, LOOT_GOBLIN, 1, 0)
+    let b = drops(loot_st)
+    expect_eq(len(b), na)
+    for i in 0 .. na { expect_eq(b[i].item, a[i]) }
+  }
+
+  test "a system keyed loot carries the save" {
+    let s = loot_system()
+    expect(s.key == "loot")
+    expect(s.save != null)
+    expect(s.load != null)
+  }
+}

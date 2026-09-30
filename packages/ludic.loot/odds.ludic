@@ -1,0 +1,73 @@
+# odds.ludic - what a table is expected to give per roll, by item: the same eligibility the roll uses,
+# worked out rather than drawn. For an editor's tuning panel and for tests; it draws nothing.
+function lo__add_odds(out: []LootOdds, n: int, item: int, expected: float) -> int {
+  for i in 0 .. n {
+    if out[i].item == item {
+      out[i].expected += expected
+      return n
+    }
+  }
+  if n >= len(out) {
+    @alloc_ok("the caller's own records, made the first time and kept")
+    push(out, new LootOdds)
+  }
+  out[n].item = item
+  out[n].expected = expected
+  return n + 1
+}
+
+function lo__odds_entry(loot_st: LootState, e: LootEntry, level: int, chance: float, n: int, depth: int, out: []LootOdds) -> int {
+  let count = float(e.min_count + e.max_count) / 2.0
+  if e.table >= 0 {
+    if depth >= LOOT_DEPTH_MAX or not lo__table_ok(e.table) { return n }
+    return lo__odds_table(loot_st, e.table, level + e.level_bonus, chance * count, n, depth + 1, out)
+  }
+  if e.item < 0 { return n }
+  return lo__add_odds(out, n, e.item, chance * count)
+}
+
+function lo__odds_table(loot_st: LootState, t: int, level: int, mult: float, n0: int, depth: int, out: []LootOdds) -> int {
+  var n = n0
+  let tb = LootTables[t]
+  let gs = tb.guaranteed
+  if gs != null {
+    for i in 0 .. len(gs) {
+      if lo__eligible(loot_st, gs[i], level) { n = lo__odds_entry(loot_st, gs[i], level, mult * gs[i].chance, n, depth, out) }
+    }
+  }
+  let es = tb.entries
+  if es == null { return n }
+  var total = tb.nothing
+  for i in 0 .. len(es) { if lo__eligible(loot_st, es[i], level) { total += es[i].weight } }
+  if total <= 0 { return n }
+  let rolls = float(tb.rolls_min + tb.rolls_max) / 2.0
+  for i in 0 .. len(es) {
+    if lo__eligible(loot_st, es[i], level) {
+      n = lo__odds_entry(loot_st, es[i], level, mult * rolls * float(es[i].weight) / float(total), n, depth, out)
+    }
+  }
+  return n
+}
+
+# what a roll of the table at a level is expected to give, per item, into the caller's own list of
+# records (kept between calls: it grows only to the most items a table can give); returns how many
+export function loot_odds_into(loot_st: LootState, t: int, level: int, out: []LootOdds) -> int {
+  if not lo__table_ok(t) { return 0 }
+  return lo__odds_table(loot_st, t, level, 1.0, 0, 0, out)
+}
+
+# the chance each rolled tier is drawn at a level, for a given luck, into the caller's floats (one per
+# tier, growing it once); a tier that cannot roll, or not at this level, is 0
+@alloc_ok("into the caller's kept list, one slot a tier")
+export function loot_rarity_chances_into(loot_st: LootState, level: int, luck: float, out: []float) -> void {
+  List.clear(out)
+  var total = 0.0
+  for r in 0 .. LRT_COUNT {
+    var w = 0.0
+    if LootRarities[r].roll and LootRarities[r].min_level <= level { w = LootRarities[r].weight * (1.0 + luck * LootRarities[r].luck_scale) }
+    if w < 0.0 { w = 0.0 }
+    push(out, w)
+    total += w
+  }
+  if total > 0.0 { for r in 0 .. LRT_COUNT { out[r] = out[r] / total } }
+}

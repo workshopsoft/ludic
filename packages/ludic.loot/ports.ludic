@@ -1,0 +1,7 @@
+# ports.ludic - what loot asks the game. Unbound: no luck, and every item may drop.
+export port LootWorld {
+  luck: fn() -> float = fn lo__no_luck                   # magic find: 0 plain, 1 doubles a tier's luck-scaled weight
+  allowed: fn(int, int) -> bool = fn lo__any             # (item, level): may this drop (a class's gear, an owned unique)
+}
+function lo__no_luck() -> float { return 0.0 }
+function lo__any(item: int, level: int) -> bool { return true }

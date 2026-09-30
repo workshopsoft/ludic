@@ -1,0 +1,6 @@
+# ludic.loot - weighted loot tables (nested, guaranteed, rolls, rarity tiers, level ranges,
+# affixes) drawn from the package's own dice, and what drops reported as facts. Uses ludic.base and
+# nothing else. See README.md.
+package "ludic.loot"
+version "0.1.0"
+kind source

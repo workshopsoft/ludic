@@ -1,0 +1,41 @@
+# loot_test.lres - the tables the loot tests roll
+goblin {
+  rolls_min: 1
+  rolls_max: 2
+  nothing: 20
+  guaranteed: [{ item: IT_BONES }, { item: IT_TOOTH, chance: 0.0 }]
+  entries: [
+    { item: IT_COIN, weight: 50, min_count: 1, max_count: 5 }
+    { item: IT_POTION, weight: 30 }
+    { item: IT_SWORD, weight: 10, tags: ["weapon"] }
+    { table: LOOT_GEMS, weight: 5 }
+  ]
+}
+gems {
+  entries: [{ item: IT_RUBY, weight: 1 }, { item: IT_PEARL, weight: 3 }]
+}
+boss {
+  guaranteed: [{ item: IT_CROWN, rarity: LRT_UNIQUE, once: "crown" }]
+  rolls_min: 3
+  rolls_max: 3
+  entries: [{ item: IT_SWORD, weight: 1, tags: ["weapon"] }, { item: IT_MAIL, weight: 1, tags: ["armor"] }]
+}
+deep {
+  entries: [
+    { item: IT_COIN, weight: 1, min_level: 1, max_level: 4 }
+    { item: IT_POTION, weight: 1, min_level: 5 }
+  ]
+}
+loop_a { entries: [{ table: LOOT_LOOP_B, weight: 1 }, { item: IT_COIN, weight: 1 }] }
+loop_b { entries: [{ table: LOOT_LOOP_A, weight: 1 }] }
+pair {
+  rolls_min: 1
+  rolls_max: 1
+  entries: [{ table: LOOT_GEMS, weight: 1, min_count: 2, max_count: 2 }]
+}
+forbidden { entries: [{ item: IT_FORBIDDEN, weight: 1 }, { item: IT_COIN, weight: 1 }] }
+gear {
+  rolls_min: 4
+  rolls_max: 4
+  entries: [{ item: IT_SWORD, weight: 1, tags: ["weapon"], min_rarity: LRT_MAGIC }]
+}

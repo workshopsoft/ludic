@@ -1,0 +1,14 @@
+# ludic.loot - what drops: tables of weighted entries (an item, another table, or nothing), rolls and
+# guaranteed entries, rarity tiers drawn by level and luck, affixes rolled for an item. Everything
+# drawn comes from the package's own dice, so a chest's contents can be fixed by a seed; every drop
+# is a fact the game turns into a thing on the ground or in a pack
+module ludic_loot uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "pick.ludic"
+import "roll.ludic"
+import "odds.ludic"
+import "system.ludic"
