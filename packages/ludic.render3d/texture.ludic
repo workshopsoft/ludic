@@ -117,77 +117,14 @@ function png_unfilter(raw: pointer, cur: int, prev: int, stride: int, fbpp: int,
 function png_decode(render3d_st: mut Render3dState, path: pointer) -> pointer {
   let bk = baked_png(render3d_st, path)               # a build that baked it (baked_tex.ludic)
   if bk != null { return bk }
-  let d = r3d_read_file(render3d_st, path)
-  if d == null { print(`png: cannot read {path}`);  return null }
-  let size = render3d_st.tex_file_len
-  if size < 8 or d[0] != 137 or d[1] != 80 { free(d);  print(`png: not a png: {path}`);  return null }
-  var w = 0;  var h = 0;  var bd = 0;  var ct = 0
-  let plte = bytes(768)
-  let idat = bytes(size)
-  var idlen = 0
-  var i = 8
-  var done = false
-  while not done {
-    if i + 8 > size { done = true;  continue }
-    let ln = be32(d, i)
-    let typ = i + 4
-    let body = i + 8
-    if ln < 0 or body + ln > size { done = true;  continue }
-    if tag4(d, typ, 73, 72, 68, 82) { w = be32(d, body);  h = be32(d, body + 4);  bd = d[body + 8];  ct = d[body + 9] }
-    if tag4(d, typ, 80, 76, 84, 69) { let m = min(ln, 768);  for k in 0 .. m { plte[k] = d[body + k] } }
-    if tag4(d, typ, 73, 68, 65, 84) { mem_copy(mem_off(idat, idlen), mem_off(d, body), ln);  idlen += ln }
-    if tag4(d, typ, 73, 69, 78, 68) { done = true }
-    i = i + 12 + ln
-  }
-  if w <= 0 or h <= 0 { free(d);  free(idat);  free(plte);  return null }
-  var channels = 1
-  if ct == 2 { channels = 3 }
-  if ct == 4 { channels = 2 }
-  if ct == 6 { channels = 4 }
-  let bppbits = bd * channels
-  var fbpp = (bppbits + 7) / 8
-  if fbpp < 1 { fbpp = 1 }
-  let stride = (w * bppbits + 7) / 8
-  let rawlen = h * (stride + 1)
-  # one zeroed scanline in front of the data, so row 0's "row above" is real
-  let raw = bytes(stride + rawlen + 8)
-  for z in 0 .. stride { raw[z] = 0 }
-  if z_uncompress(idat, idlen, mem_off(raw, stride), rawlen) < 0 { free(d);  free(idat);  free(raw);  free(plte);  print(`png: inflate failed: {path}`);  return null }
-  free(d);  free(idat)
-  # reverse the per-scanline filters in place, then pack rows without the filter byte
-  var y = 0
-  while y < h {
-    let line = stride + y * (stride + 1)
-    png_unfilter(raw, line + 1, line + 1 - (stride + 1), stride, fbpp, raw[line])
-    y += 1
-  }
-  var out: pointer = null
-  if (ct == 3) or (bd < 8) {
-    # expand palette / sub-byte grey to 8-bit RGB (palette) or 8-bit grey
-    let maxv = (1 << bd) - 1
-    var oc = 1
-    if ct == 3 { oc = 3 }
-    out = bytes(w * h * oc)
-    for yy in 0 .. h {
-      let row = stride + yy * (stride + 1) + 1
-      for x in 0 .. w {
-        let bp = x * bd
-        let idx = ((raw[row + bp / 8] >> (8 - bd - bp % 8)) & maxv)
-        if ct == 3 { out[(yy * w + x) * 3] = plte[idx * 3];  out[(yy * w + x) * 3 + 1] = plte[idx * 3 + 1];  out[(yy * w + x) * 3 + 2] = plte[idx * 3 + 2] }
-        else { out[yy * w + x] = idx * 255 / maxv }
-      }
-    }
-    channels = oc
-    bd = 8
-    free(raw)
-  } else {
-    out = bytes(h * stride + 8)
-    for yy in 0 .. h { mem_copy(mem_off(out, yy * stride), mem_off(raw, stride + yy * (stride + 1) + 1), stride) }
-    free(raw)
-  }
-  free(plte)
-  render3d_st.tex_w = w;  render3d_st.tex_h = h;  render3d_st.tex_channels = channels;  render3d_st.tex_depth = bd
-  return out
+  let pre = tex_pf_take(render3d_st, path)
+  if pre != null { return png_take(render3d_st, pre) }
+  let j = png_parse(render3d_st, path)
+  if j == null { return null }
+  j.path = path
+  j.z = tex_z(render3d_st, 0)
+  png_work(j)
+  return png_take(render3d_st, j)
 }
 
 # Edge padding for cut-out atlases: pixels darker than `thresh` (the unused
