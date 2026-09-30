@@ -1,0 +1,58 @@
+# verbs.ludic - what an editor's link into a running dev build can ask of the citizens: who a citizen is and what they
+# are doing, the population's counts, a mission's forced activity. Nothing runs unless the link is up.
+
+function citizens_who_verb(cz: mut CitizensState, c: DevCall) -> int {
+  let i = dv_int(c, 0)
+  if i < 0 or i >= cz.cz_n {
+    c.why = `no citizen {i}: there are {cz.cz_n}`
+    return DV_BAD
+  }
+  cz_advance_one(cz, i, cz.cz_clock)
+  dv_reply_str(c, citizens_name(cz, i))
+  dv_reply_str(c, CitizenArchetypes[cz.cz_arch[i]].key)
+  var what = "travelling"
+  if cz.cz_phase[i] == CZ_DOING {
+    what = "none"
+    if cz.cz_act[i] >= 0 { what = Activities[cz.cz_act[i]].key }
+  } else if cz.cz_act[i] >= 0 {
+    what = "travelling:" + Activities[cz.cz_act[i]].key
+  }
+  dv_reply_str(c, what)
+  dv_reply_int(c, cz.pl_id[cz.cz_at[i]])
+  dv_reply_int(c, cz.cz_ep_end[i])
+  dv_reply_int(c, cz.cz_money[i])
+  dv_reply_int(c, cz.cz_lod[i])
+  return DV_OK
+}
+def DevVerbs citizens_who { args: "id:int", run: fn citizens_who_verb }
+
+function citizens_stats_verb(cz: mut CitizensState, c: DevCall) -> int {
+  dv_reply_int(c, cz.cz_n)
+  dv_reply_int(c, citizens_employed(cz))
+  dv_reply_int(c, cz.cz_clock)
+  dv_reply_int(c, cz.st_steps)
+  dv_reply_int(c, cz.md_n)
+  dv_reply_int(c, citizens_money_total(cz))
+  return DV_OK
+}
+def DevVerbs citizens_stats { args: "", run: fn citizens_stats_verb }
+
+function citizens_force_verb(cz: mut CitizensState, c: DevCall) -> int {
+  let i = dv_int(c, 0)
+  let a = activities_find(dv_str(c, 1))
+  if i < 0 or i >= cz.cz_n {
+    c.why = `no citizen {i}`
+    return DV_BAD
+  }
+  if a < 0 {
+    c.why = "no activity " + dv_str(c, 1)
+    return DV_BAD
+  }
+  var place = -1
+  if dv_has(c, 2) { place = imap_get(cz.pl_idmap, dv_int(c, 2), -1) }
+  var dur = 1800
+  if dv_has(c, 3) { dur = dv_int(c, 3) }
+  dv_reply_bool(c, citizens_force(cz, i, a, place, dur))
+  return DV_OK
+}
+def DevVerbs citizens_force { args: "id:int activity:string building:int? seconds:int?", run: fn citizens_force_verb }

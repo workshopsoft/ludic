@@ -72,7 +72,7 @@ program CitizensBench {
   }
 
   # a city of `blocks` apartment blocks of 100 homes (80 people each) and the work and leisure to go with them
-  function make_city(b: mut BenchState, blocks: int, size: float) -> void {
+  function make_city(b: mut BenchState, blocks: int, size: float, homes: int) -> void {
     b.nb = 0
     List.clear(b.bx)
     List.clear(b.bz)
@@ -80,7 +80,7 @@ program CitizensBench {
     List.clear(b.bhome)
     List.clear(b.bjob)
     var h = 4242
-    for i in 0 .. blocks { h = add(b, h, size, 0, 100, 0) }
+    for i in 0 .. blocks { h = add(b, h, size, 0, homes, 0) }
     for i in 0 .. blocks * 2 / 5 { h = add(b, h, size, 1, 0, 200) }
     for i in 0 .. blocks / 5 { h = add(b, h, size, 2, 0, 20) }
     for i in 0 .. blocks * 3 / 25 { h = add(b, h, size, 4, 0, 14) }
@@ -90,7 +90,7 @@ program CitizensBench {
   }
 
   test "a simulated day of 200 000 citizens at far LOD" (cz: mut CitizensState, b: mut BenchState) {
-    make_city(b, 2500, 12000.0)
+    make_city(b, 2500, 12000.0, 100)
     citizens_build(cz)
     let g0 = Time.now_us()
     let n = citizens_generate(cz, 0)
@@ -136,19 +136,21 @@ program CitizensBench {
     expect(day_us < 30000000)
   }
 
-  test "500 citizens on real paths at sixty ticks a second" (cz: mut CitizensState, b: mut BenchState) {
-    make_city(b, 8, 3000.0)
+  test "about 500 citizens on real paths at sixty ticks a second, some handed to bodies" (cz: mut CitizensState, b: mut BenchState) {
+    make_city(b, 7, 3000.0, 90)
     citizens_build(cz)
     let n = citizens_generate(cz, 0)
     citizens_advance(cz, 8 * 3600 + 1000)
     b.nview = 1
-    b.vx = 1500.0
-    b.vz = 1500.0
+    b.vx = b.bx[0]                    # the player stands at an apartment block: those at home are NEAR, the rest MID
+    b.vz = b.bz[0]
     let mut_t0 = Time.now_us()
     var f = 0
     citizens_tick(cz, tick_new(0.6, 1, 0.0))
     print(`bench mid: {n} citizens, {citizens_mid_count(cz)} on real paths, {b.embodied} handed to bodies`)
+    expect(n >= 500 and n < 520)
     expect(citizens_mid_count(cz) >= n / 2)
+    expect(b.embodied > 0)
     let t0 = Time.now_us()
     var worst = 0
     var worst_at = 0

@@ -1,0 +1,29 @@
+# verbs.ludic - what an editor's link into a running dev build can ask of transit: a journey planned, the network's size.
+# Nothing runs unless the link is up.
+
+function transit_plan_verb(tr: mut TransitState, c: DevCall) -> int {
+  var depart = tr.tr_clock
+  if dv_has(c, 4) { depart = dv_int(c, 4) }
+  let n = transit_plan(tr, dv_float(c, 0), dv_float(c, 1), dv_float(c, 2), dv_float(c, 3), depart)
+  dv_reply_int(c, n)
+  if n < 0 { return DV_OK }
+  dv_reply_int(c, tr.tr_pl_arrival)
+  dv_reply_int(c, tr.tr_pl_fare_total)
+  for k in 0 .. Math.min(n, 8) {
+    dv_reply_int(c, tr.tr_pl_kind[k])
+    dv_reply_int(c, tr.tr_pl_t0[k])
+    dv_reply_int(c, tr.tr_pl_t1[k])
+  }
+  return DV_OK
+}
+def DevVerbs transit_plan { args: "x0:float z0:float x1:float z1:float depart:int?", run: fn transit_plan_verb }
+
+function transit_stats_verb(tr: mut TransitState, c: DevCall) -> int {
+  dv_reply_int(c, len(tr.tr_sx))
+  dv_reply_int(c, len(tr.tr_lkey))
+  dv_reply_int(c, tr.tr_clock)
+  dv_reply_int(c, tr.tr_tk_count)
+  dv_reply_int(c, transit_bodies(tr))
+  return DV_OK
+}
+def DevVerbs transit_stats { args: "", run: fn transit_stats_verb }

@@ -1313,4 +1313,51 @@ program CitizensTest {
     print(`citizens: a game day near a player and far, heap grew {grew} bytes`)
     expect(grew == long(0))
   }
+
+  test "the editor's link can ask who a citizen is, and what the city holds" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 12, 0)
+    citizens_advance(cz, 11 * H)
+    let c = devcall_new()
+    c.n = 1
+    c.has[0] = 1
+    c.i[0] = 5
+    expect_eq(DevVerbs[DVB_CITIZENS_WHO].run(c), DV_OK)
+    expect(c.out_n > 20)
+    c.i[0] = 99999
+    expect_eq(DevVerbs[DVB_CITIZENS_WHO].run(c), DV_BAD)
+    devcall_clear(c)
+    expect_eq(DevVerbs[DVB_CITIZENS_STATS].run(c), DV_OK)
+    expect(c.out_n > 10)
+  }
+
+  test "a player can meet the same person: the same worker at the same desk on each workday, at the same house" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    var c = -1
+    for i in 0 .. citizens_count(cz) { if c < 0 and citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 { c = i } }
+    let work = citizens_work(cz, c)
+    let home = citizens_home(cz, c)
+    let name = citizens_name(cz, c)
+    var worked = 0
+    for day in 0 .. 5 {
+      citizens_advance(cz, day * DAY + 12 * H)
+      citizens_sync(cz, c, day * DAY + 12 * H)
+      if citizens_doing(cz, c) and citizens_place(cz, c) == work { worked += 1 }
+    }
+    expect_eq(worked, 5)
+    expect_eq(citizens_work(cz, c), work)
+    expect_eq(citizens_home(cz, c), home)
+    expect(citizens_name(cz, c) == name)
+  }
+
+  test "slow churn: over a few weeks some move house and the jobless find work" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    let jobless = citizens_unemployed(cz)
+    expect(jobless > 10)
+    citizens_advance(cz, 30 * DAY)
+    expect(citizens_stat_moved(cz) > 5)
+    expect(citizens_stat_moved(cz) < 200)
+    expect(citizens_stat_hired(cz) > 0)
+    expect(citizens_unemployed(cz) < jobless)
+    for p in 0 .. citizens_places(cz) { expect(citizens_place_room(cz, p) >= 0) }
+  }
 }

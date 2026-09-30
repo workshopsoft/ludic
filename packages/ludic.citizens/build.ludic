@@ -124,6 +124,9 @@ export function citizens_build(cz: mut CitizensState) -> void {
   cz_index_places(cz)
   cz_cache_init(cz)
   cz_mid_init(cz)
+  if len(cz.lg_buf) == 0 {
+    for k in 0 .. cz.lg_cap * CZ_LOG_INTS { push(cz.lg_buf, 0) }
+  }
   cz.cz_ready = true
 }
 
@@ -383,6 +386,7 @@ function cz_assign_friends(cz: mut CitizensState, i: int) -> void {
 # follow from the seed and the citizen's number. The clock is set to `start` (game seconds)
 export function citizens_generate(cz: mut CitizensState, start: int) -> int {
   if not cz.cz_ready { citizens_build(cz) }
+  for s in 0 .. len(cz.md_id) { if cz.md_id[s] >= 0 { cz_demote(cz, s, cz.cz_clock) } }
   cz_clear_pop(cz)
   cz.cz_clock = start
   cz.cz_clock_frac = 0.0
