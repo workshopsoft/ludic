@@ -1,0 +1,69 @@
+# ports.ludic - what weapons asks and tells the game. Every member has a default: unbound, a shooter
+# aims along +z from the origin, nothing is ever hit, every body is an enemy, nothing costs penetration
+# power, a blast finds nobody, and damage and effects do nothing (the facts still say the round landed)
+
+# the world: where a shooter aims, what a ray or a sweep reaches, who is near a blast. A cast fills the
+# hit_* readers, which the package asks straight after and never keeps across a call
+export port WeaponsWorld {
+  aim_x: fn(int) -> float = fn wp__zero                    # the aim ray of an actor, from the camera (ludic.aim's): a point
+  aim_y: fn(int) -> float = fn wp__zero
+  aim_z: fn(int) -> float = fn wp__zero
+  aim_dx: fn(int) -> float = fn wp__zero                   # ... and a direction (need not be unit)
+  aim_dy: fn(int) -> float = fn wp__zero
+  aim_dz: fn(int) -> float = fn wp__one
+  muzzle_x: fn(int) -> float = fn wp__zero                 # where a projectile leaves (the muzzle node's world position)
+  muzzle_y: fn(int) -> float = fn wp__zero
+  muzzle_z: fn(int) -> float = fn wp__zero
+  can_fire: fn(int) -> bool = fn wp__yes                   # false while driving, in a menu, in a cutscene
+  cast: fn(float, float, float, float, float, float, float, int) -> float = fn wp__nothing   # (ox, oy, oz, dx, dy, dz, max, ignore actor): the distance to the first hit, or -1
+  sweep: fn(float, float, float, float, float, float, float, int) -> float = fn wp__nothing  # (ax, ay, az, bx, by, bz, radius, ignore actor): the fraction of a->b reached, or -1
+  hit_actor: fn() -> int = fn wp__no_actor                 # what the last cast or sweep reached: a body (or -1: the world),
+  hit_zone: fn() -> int = fn wp__no_actor                  # the zone of it (the game's hit volume number),
+  hit_material: fn() -> int = fn wp__no_actor              # the surface's number (an impact decal, a penetration cost),
+  hit_nx: fn() -> float = fn wp__zero0                     # and its normal
+  hit_ny: fn() -> float = fn wp__one0
+  hit_nz: fn() -> float = fn wp__zero0
+  pierce_cost: fn(int, int) -> float = fn wp__cost         # (actor or -1, material): penetration power to go through it; negative stops the round
+  hostile: fn(int, int) -> bool = fn wp__enemy             # (shooter, other): may it be hurt (friendly fire is the game's rule)
+  find: fn(float, float, float, float, []int) -> int = fn wp__nobody   # (x, y, z, radius, out): push the bodies in a sphere into out; returns how many
+  body_x: fn(int) -> float = fn wp__zero                   # where a body is, for a blast's distance
+  body_y: fn(int) -> float = fn wp__zero
+  body_z: fn(int) -> float = fn wp__zero
+  blocked: fn(float, float, float, float, float, float) -> bool = fn wp__open   # cover between a blast and a body
+  origin_ok: fn(int, float, float, float) -> bool = fn wp__yes4                 # the host: may this actor shoot from there (near its own position)
+  rewind: fn(float) -> void = fn wp__rewind                # the host: put the bodies where they were at this time (lag compensation)
+  restore: fn() -> void = fn wp__restore                   # ... and back
+}
+function wp__zero(a: int) -> float { return 0.0 }
+function wp__one(a: int) -> float { return 1.0 }
+function wp__zero0() -> float { return 0.0 }
+function wp__one0() -> float { return 1.0 }
+function wp__yes(a: int) -> bool { return true }
+function wp__yes4(a: int, x: float, y: float, z: float) -> bool { return true }
+function wp__nothing(a: float, b: float, c: float, d: float, e: float, f: float, g: float, h: int) -> float { return -1.0 }
+function wp__no_actor() -> int { return -1 }
+function wp__cost(actor: int, material: int) -> float {
+  if actor >= 0 { return 1.0 }
+  return -1.0
+}
+function wp__enemy(a: int, b: int) -> bool { return a != b }
+function wp__nobody(x: float, y: float, z: float, r: float, out: []int) -> int { return 0 }
+function wp__open(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool { return false }
+function wp__rewind(t: float) -> void { }
+function wp__restore() -> void { }
+
+# damage goes out here: ludic.vitals' `vitals_weapon_hurt` and `vitals_actor_standing` answer it in a line.
+# `hurt` returns what the victim actually took; `alive` says whether it is still in the fight, asked
+# before and after to tell a kill
+export port WeaponsDamage {
+  hurt: fn(int, int, float, int, int) -> float = fn wp__dealt     # (victim, attacker, amount, damage type, zone)
+  alive: fn(int) -> bool = fn wp__standing
+}
+function wp__dealt(v: int, a: int, n: float, ty: int, zone: int) -> float { return n }
+function wp__standing(a: int) -> bool { return true }
+
+# what an ammo type leaves on a target: the same shape as ludic.abilities' apply, so one function binds both
+export port WeaponsEffects {
+  apply: fn(int, int, int, float, float, bool, string) -> void = fn wp__applied   # (target, source, kind, magnitude, seconds, bonus, label): ludic.effects_add
+}
+function wp__applied(t: int, s: int, kind: int, mag: float, secs: float, bonus: bool, label: string) -> void { }

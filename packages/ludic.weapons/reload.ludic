@@ -1,0 +1,113 @@
+# reload.ludic - a magazine reload (tactical when rounds are left, longer when empty) or, for a weapon that
+# loads shell by shell, the way in, each shell and the way out. Times are the weapon's, scaled by the
+# reload stat; the clips are named on the facts. Rounds move from the reserve when the time is up
+
+function wp__reload_clip(w: Weapon, empty: bool) -> string {
+  if empty and w.clip_reload_empty != "" { return w.clip_reload_empty }
+  return w.clip_reload
+}
+
+function wp__start_reload(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, g: Gun) -> int {
+  if s.busy != WBUSY_NONE { return WP_BUSY }
+  let w = Weapons[g.weapon]
+  if g.mag >= wp__cap(g) { return WP_FULL }
+  if not wp__ammo_ok(g.ammo_type) or s.reserve[g.ammo_type] <= 0 { return WP_NO_AMMO }
+  let mult = wp__stat(g, WSTAT_RELOAD)
+  s.busy = WBUSY_RELOAD
+  s.charging = false
+  s.charge = 0.0
+  let f = wp__fact(weapons_st, WP_RELOAD_STARTED, s, h, gun)
+  if w.reload_each {
+    s.busy_t = w.reload_start * mult
+    f.clip = w.clip_reload_start
+    if f.clip == "" { f.clip = w.clip_reload }
+  } else {
+    let empty = g.mag <= 0
+    if empty { s.busy_t = w.reload_empty * mult } else { s.busy_t = w.reload_tactical * mult }
+    f.clip = wp__reload_clip(w, empty)
+  }
+  f.time = s.busy_t
+  return WP_OK
+}
+
+# a time in `busy` ran out: what comes next
+function wp__busy_done(weapons_st: mut WeaponsState, s: Shooter, h: int) -> void {
+  let g = wp__gun(s, s.cur)
+  if g == null or s.busy == WBUSY_EQUIP or s.busy == WBUSY_RELOAD_END {
+    s.busy = WBUSY_NONE
+    s.busy_t = 0.0
+    return
+  }
+  let w = Weapons[g.weapon]
+  let mult = wp__stat(g, WSTAT_RELOAD)
+  if s.busy == WBUSY_RELOAD and not w.reload_each {
+    let need = wp__cap(g) - g.mag
+    let take = Math.max(Math.min(need, s.reserve[g.ammo_type]), 0)
+    g.mag += take
+    s.reserve[g.ammo_type] -= take
+    s.busy = WBUSY_NONE
+    s.busy_t = 0.0
+    let f = wp__fact(weapons_st, WP_RELOADED, s, h, s.cur)
+    f.amount = float(take)
+    return
+  }
+  if s.busy == WBUSY_RELOAD {
+    s.busy = WBUSY_SHELL
+    s.busy_t = w.reload_tactical * mult
+    let f = wp__fact(weapons_st, WP_RELOAD_STARTED, s, h, s.cur)
+    f.clip = w.clip_reload_shell
+    f.time = s.busy_t
+    return
+  }
+  # one shell in
+  if s.reserve[g.ammo_type] > 0 and g.mag < wp__mag_size(g) {
+    g.mag += 1
+    s.reserve[g.ammo_type] -= 1
+    let f = wp__fact(weapons_st, WP_RELOADED, s, h, s.cur)
+    f.amount = 1.0
+  }
+  if g.mag < wp__mag_size(g) and s.reserve[g.ammo_type] > 0 {
+    s.busy_t = w.reload_tactical * mult
+    let f = wp__fact(weapons_st, WP_RELOAD_STARTED, s, h, s.cur)
+    f.clip = w.clip_reload_shell
+    f.time = s.busy_t
+  } else {
+    s.busy = WBUSY_RELOAD_END
+    s.busy_t = w.reload_end * mult
+    let f = wp__fact(weapons_st, WP_RELOAD_STARTED, s, h, s.cur)
+    f.clip = w.clip_reload_end
+    f.time = s.busy_t
+  }
+}
+
+# starts reloading the gun in hand: WP_OK, or why not (busy, full, no rounds in reserve)
+export function weapons_reload(weapons_st: mut WeaponsState, h: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return WP_NO_SHOOTER }
+  let g = wp__gun(s, s.cur)
+  if g == null { return WP_NO_GUN }
+  let why = wp__start_reload(weapons_st, s, h, s.cur, g)
+  if why != WP_OK {
+    let f = wp__fact(weapons_st, WP_REFUSED, s, h, s.cur)
+    f.zone = why
+  }
+  return why
+}
+
+# gives up a reload: a magazine reload puts nothing in; a shell-by-shell one closes with its way out
+export function weapons_cancel_reload(weapons_st: mut WeaponsState, h: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  if s.busy == WBUSY_RELOAD or s.busy == WBUSY_SHELL {
+    let g = wp__gun(s, s.cur)
+    if g != null and Weapons[g.weapon].reload_each and s.busy == WBUSY_SHELL {
+      s.busy = WBUSY_RELOAD_END
+      s.busy_t = Weapons[g.weapon].reload_end * wp__stat(g, WSTAT_RELOAD)
+      return true
+    }
+    s.busy = WBUSY_NONE
+    s.busy_t = 0.0
+    return true
+  }
+  return false
+}

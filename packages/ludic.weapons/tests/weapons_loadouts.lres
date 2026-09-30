@@ -1,0 +1,9 @@
+# weapons_loadouts.lres - a set of weapons a shooter begins with
+starter {
+  items: [
+    { weapon: WPN_SIDEARM, reserve: 30, attachments: [ATT_RED_DOT], skin: WSKIN_CAMO }
+    { weapon: WPN_CARBINE, attachments: [ATT_GRIP, ATT_EXT_MAG] }
+    { weapon: WPN_FRAG, reserve: 2 }
+  ]
+  equip: 1
+}

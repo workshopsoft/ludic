@@ -1,0 +1,570 @@
+# shooters.ludic - the actors that shoot and what they carry: inventory, reserve ammo, the weapon in
+# hand and the wheel, attachments, skins, fire modes and loadouts
+function wp__shooter(weapons_st: WeaponsState, h: int) -> Shooter {
+  let r = tb_row(weapons_st.wp__shooters, h)
+  if r < 0 { return null }
+  return tb_rec(weapons_st.wp__shooters, r)
+}
+
+export function weapons_of(weapons_st: WeaponsState, actor: int) -> int {
+  let h = imap_get(weapons_st.wp__by_actor, actor, -1)
+  if h < 0 or tb_row(weapons_st.wp__shooters, h) < 0 { return -1 }
+  return h
+}
+
+export function weapons_count(weapons_st: WeaponsState) -> int { return tb_len(weapons_st.wp__shooters) }
+
+export function weapons_actor(weapons_st: WeaponsState, h: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return -1 }
+  return s.actor
+}
+
+# the gun at an index, or null (a free place, out of range)
+function wp__gun(s: Shooter, g: int) -> Gun {
+  if g < 0 or g >= len(s.guns) { return null }
+  if s.guns[g].weapon < 0 { return null }
+  return s.guns[g]
+}
+
+@alloc_ok("a shooter added: an event, not a frame")
+export function weapons_add(weapons_st: mut WeaponsState, actor: int, persist: bool) -> int {
+  let have = weapons_of(weapons_st, actor)
+  if have >= 0 { return have }
+  let s = new Shooter
+  s.actor = actor
+  s.persist = persist
+  s.guns = new []Gun
+  s.reserve = new []int
+  s.wheel_pick = new []int
+  for a in 0 .. AMMO_COUNT { push(s.reserve, 0) }
+  for k in 0 .. WEAPONS_WHEEL { push(s.wheel_pick, -1) }
+  s.mine = actor == weapons_st.wp__local
+  let h = tb_add(weapons_st.wp__shooters, s)
+  imap_put(weapons_st.wp__by_actor, actor, h)
+  return h
+}
+
+export function weapons_remove(weapons_st: mut WeaponsState, h: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  imap_del(weapons_st.wp__by_actor, s.actor)
+  return tb_remove(weapons_st.wp__shooters, h)
+}
+
+# ---- fire modes
+
+# the modes a gun offers, into the state's kept list: the weapon's own, then what attachments grant
+function wp__mode_list(weapons_st: mut WeaponsState, g: Gun) -> int {
+  let l = weapons_st.wp__modes
+  List.clear(l)
+  let w = Weapons[g.weapon]
+  if w.modes == null or len(w.modes) == 0 {
+    push(l, WMODE_SEMI)
+  } else {
+    for i in 0 .. len(w.modes) { push(l, w.modes[i]) }
+  }
+  for slot in 0 .. WSLOT_COUNT {
+    let a = g.attach[slot]
+    if not wp__att_ok(a) or Attachments[a].grant_mode < 0 { continue }
+    var has = false
+    for i in 0 .. len(l) { if l[i] == Attachments[a].grant_mode { has = true } }
+    if not has { push(l, Attachments[a].grant_mode) }
+  }
+  return len(l)
+}
+
+function wp__mode_has(weapons_st: mut WeaponsState, g: Gun, mode: int) -> bool {
+  wp__mode_list(weapons_st, g)
+  for i in 0 .. len(weapons_st.wp__modes) { if weapons_st.wp__modes[i] == mode { return true } }
+  return false
+}
+
+# after the fitted parts changed: a mode that is no longer offered gives way to the first
+function wp__mode_check(weapons_st: mut WeaponsState, g: Gun) -> void {
+  if not wp__mode_has(weapons_st, g, g.mode) { g.mode = weapons_st.wp__modes[0] }
+}
+
+# the next mode of the gun (wrapping); returns it
+export function weapons_cycle_mode(weapons_st: mut WeaponsState, h: int, gun: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return -1 }
+  let g = wp__gun(s, gun)
+  if g == null { return -1 }
+  let n = wp__mode_list(weapons_st, g)
+  var at = -1
+  for i in 0 .. n { if weapons_st.wp__modes[i] == g.mode { at = i } }
+  g.mode = weapons_st.wp__modes[(at + 1) % n]
+  s.charge = 0.0
+  s.charging = false
+  s.burst_left = 0
+  let f = wp__fact(weapons_st, WP_MODE, s, h, gun)
+  f.zone = g.mode
+  return g.mode
+}
+
+export function weapons_set_mode(weapons_st: mut WeaponsState, h: int, gun: int, mode: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  let g = wp__gun(s, gun)
+  if g == null or not wp__mode_has(weapons_st, g, mode) { return false }
+  g.mode = mode
+  let f = wp__fact(weapons_st, WP_MODE, s, h, gun)
+  f.zone = mode
+  return true
+}
+
+# ---- ammo
+
+export function weapons_ammo(weapons_st: WeaponsState, h: int, ammo: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null or not wp__ammo_ok(ammo) { return 0 }
+  return s.reserve[ammo]
+}
+
+# rounds into the reserve up to the type's most a shooter carries; returns how many went in
+export function weapons_ammo_add(weapons_st: mut WeaponsState, h: int, ammo: int, n: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null or not wp__ammo_ok(ammo) or n <= 0 { return 0 }
+  let room = Math.max(AmmoTypes[ammo].max_carry - s.reserve[ammo], 0)
+  let took = Math.min(room, n)
+  if took <= 0 { return 0 }
+  s.reserve[ammo] += took
+  let f = wp__fact(weapons_st, WP_AMMO, s, h, -1)
+  f.ammo = ammo
+  f.amount = float(s.reserve[ammo])
+  return took
+}
+
+export function weapons_ammo_set(weapons_st: mut WeaponsState, h: int, ammo: int, n: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null or not wp__ammo_ok(ammo) { return false }
+  s.reserve[ammo] = Math.max(0, Math.min(n, AmmoTypes[ammo].max_carry))
+  return true
+}
+
+# loads another round type (from the weapon's own and its alternatives): the magazine goes back to the reserve
+export function weapons_set_ammo_type(weapons_st: mut WeaponsState, h: int, gun: int, ammo: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return WP_NO_SHOOTER }
+  let g = wp__gun(s, gun)
+  if g == null { return WP_NO_GUN }
+  if not wp__ammo_ok(ammo) { return WP_NO_AMMO }
+  let w = Weapons[g.weapon]
+  var ok = w.ammo == ammo
+  if w.ammo_alt != null { for i in 0 .. len(w.ammo_alt) { if w.ammo_alt[i] == ammo { ok = true } } }
+  if not ok { return WP_NOT_COMPATIBLE }
+  if g.ammo_type == ammo { return WP_OK }
+  if wp__busy_reloading(s) { return WP_BUSY }
+  s.reserve[g.ammo_type] += g.mag
+  g.mag = 0
+  g.ammo_type = ammo
+  if s.reserve[ammo] > AmmoTypes[ammo].max_carry { s.reserve[ammo] = AmmoTypes[ammo].max_carry }
+  return WP_OK
+}
+
+function wp__busy_reloading(s: Shooter) -> bool {
+  return s.busy == WBUSY_RELOAD or s.busy == WBUSY_SHELL or s.busy == WBUSY_RELOAD_END
+}
+
+# ---- attachments
+
+# does the part fit the weapon: named by weapon or class, or (naming neither) any weapon with the slot
+function wp__fits(weapon: int, att: int) -> bool {
+  let a = Attachments[att]
+  let none = (a.weapons == null or len(a.weapons) == 0) and (a.classes == null or len(a.classes) == 0)
+  if none { return true }
+  if a.weapons != null { for i in 0 .. len(a.weapons) { if a.weapons[i] == weapon { return true } } }
+  if a.classes != null { for i in 0 .. len(a.classes) { if a.classes[i] == Weapons[weapon].class { return true } } }
+  return false
+}
+
+# does the weapon offer the slot: in its own list or its class's
+function wp__has_slot(weapon: int, slot: int) -> bool {
+  let w = Weapons[weapon]
+  if w.slots != null { for i in 0 .. len(w.slots) { if w.slots[i] == slot { return true } } }
+  if wp__class_ok(w.class) and WeaponClasses[w.class].slots != null {
+    let l = WeaponClasses[w.class].slots
+    for i in 0 .. len(l) { if l[i] == slot { return true } }
+  }
+  return false
+}
+
+# the magazine a changed part may have made too big: the rest goes back to the reserve
+function wp__fit_mag(s: Shooter, g: Gun) -> void {
+  let cap = wp__mag_size(g)
+  if g.mag > cap {
+    if wp__ammo_ok(g.ammo_type) { s.reserve[g.ammo_type] += g.mag - cap }
+    g.mag = cap
+  }
+}
+
+function wp__detach_slot(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, g: Gun, slot: int) -> void {
+  let old = g.attach[slot]
+  if old < 0 { return }
+  g.attach[slot] = -1
+  wp__fit_mag(s, g)
+  let f = wp__fact(weapons_st, WP_DETACHED, s, h, gun)
+  f.zone = slot
+  f.ammo = old
+}
+
+# fits a part: one to a slot, so what was there is replaced (and so is a part of the same group in another
+# slot). WP_OK, or why not: no such gun, not compatible, or the weapon has no such slot
+export function weapons_attach(weapons_st: mut WeaponsState, h: int, gun: int, att: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return WP_NO_SHOOTER }
+  let g = wp__gun(s, gun)
+  if g == null or not wp__att_ok(att) { return WP_NO_GUN }
+  let a = Attachments[att]
+  if a.slot < 0 or a.slot >= WSLOT_COUNT or not wp__has_slot(g.weapon, a.slot) { return WP_NO_SLOT }
+  if not wp__fits(g.weapon, att) { return WP_NOT_COMPATIBLE }
+  if a.group != 0 {
+    for slot in 0 .. WSLOT_COUNT {
+      let other = g.attach[slot]
+      if slot != a.slot and wp__att_ok(other) and Attachments[other].group == a.group { wp__detach_slot(weapons_st, s, h, gun, g, slot) }
+    }
+  }
+  wp__detach_slot(weapons_st, s, h, gun, g, a.slot)
+  g.attach[a.slot] = att
+  if a.ammo >= 0 and wp__ammo_ok(a.ammo) and g.ammo_type != a.ammo {
+    s.reserve[g.ammo_type] += g.mag
+    g.mag = 0
+    g.ammo_type = a.ammo
+  }
+  wp__fit_mag(s, g)
+  wp__mode_check(weapons_st, g)
+  let f = wp__fact(weapons_st, WP_ATTACHED, s, h, gun)
+  f.zone = a.slot
+  f.ammo = att
+  return WP_OK
+}
+
+export function weapons_detach(weapons_st: mut WeaponsState, h: int, gun: int, slot: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null or slot < 0 or slot >= WSLOT_COUNT { return false }
+  let g = wp__gun(s, gun)
+  if g == null or g.attach[slot] < 0 { return false }
+  wp__detach_slot(weapons_st, s, h, gun, g, slot)
+  wp__mode_check(weapons_st, g)
+  return true
+}
+
+# the part in a slot of a gun (-1: none)
+export function weapons_attached(weapons_st: WeaponsState, h: int, gun: int, slot: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null or slot < 0 or slot >= WSLOT_COUNT { return -1 }
+  let g = wp__gun(s, gun)
+  if g == null { return -1 }
+  return g.attach[slot]
+}
+
+# a livery: one the weapon (or its class) takes; -1 takes it off
+export function weapons_set_skin(weapons_st: mut WeaponsState, h: int, gun: int, skin: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  let g = wp__gun(s, gun)
+  if g == null { return false }
+  if skin >= 0 {
+    if not wp__skin_ok(skin) { return false }
+    let k = WeaponSkins[skin]
+    let none = (k.weapons == null or len(k.weapons) == 0) and (k.classes == null or len(k.classes) == 0)
+    var ok = none
+    if k.weapons != null { for i in 0 .. len(k.weapons) { if k.weapons[i] == g.weapon { ok = true } } }
+    if k.classes != null { for i in 0 .. len(k.classes) { if k.classes[i] == Weapons[g.weapon].class { ok = true } } }
+    if not ok { return false }
+  }
+  g.skin = skin
+  let f = wp__fact(weapons_st, WP_SKIN, s, h, gun)
+  f.zone = skin
+  return true
+}
+
+# ---- the inventory
+
+# a weapon into the inventory, full of its own ammo with its default parts fitted; the index of its gun
+# (the one it already had, for a weapon already carried), or -1
+@alloc_ok("a weapon given: an event, not a frame")
+export function weapons_give(weapons_st: mut WeaponsState, h: int, weapon: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null or not wp__weapon_ok(weapon) { return -1 }
+  for i in 0 .. len(s.guns) { if s.guns[i].weapon == weapon { return i } }
+  let w = Weapons[weapon]
+  var at = -1
+  for i in 0 .. len(s.guns) { if s.guns[i].weapon < 0 and at < 0 { at = i } }
+  if at < 0 {
+    push(s.guns, new Gun)
+    at = len(s.guns) - 1
+  }
+  let g = s.guns[at]
+  g.weapon = weapon
+  g.ammo_type = w.ammo
+  g.skin = -1
+  g.attach = new []int
+  for k in 0 .. WSLOT_COUNT { push(g.attach, -1) }
+  wp__mode_list(weapons_st, g)
+  g.mode = weapons_st.wp__modes[0]
+  g.mag = w.mag_size
+  let f = wp__fact(weapons_st, WP_GIVEN, s, h, at)
+  f.weapon = weapon
+  if w.attach != null { for i in 0 .. len(w.attach) { weapons_attach(weapons_st, h, at, w.attach[i]) } }
+  if wp__skin_ok(w.skin) { weapons_set_skin(weapons_st, h, at, w.skin) }
+  g.mag = wp__mag_size(g)
+  return at
+}
+
+# takes a weapon out (sold, dropped): what was in its magazine goes back to the reserve
+export function weapons_take(weapons_st: mut WeaponsState, h: int, gun: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  let g = wp__gun(s, gun)
+  if g == null { return false }
+  if wp__ammo_ok(g.ammo_type) { s.reserve[g.ammo_type] = Math.min(s.reserve[g.ammo_type] + g.mag, AmmoTypes[g.ammo_type].max_carry) }
+  let f = wp__fact(weapons_st, WP_TAKEN, s, h, gun)
+  f.weapon = g.weapon
+  if s.cur == gun {
+    s.cur = -1
+    s.busy = WBUSY_NONE
+    s.busy_t = 0.0
+    s.trigger = false
+    s.charging = false
+    s.charge = 0.0
+    s.burst_left = 0
+  }
+  for k in 0 .. WEAPONS_WHEEL { if s.wheel_pick[k] == gun { s.wheel_pick[k] = -1 } }
+  g.weapon = -1
+  return true
+}
+
+export function weapons_gun_count(weapons_st: WeaponsState, h: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0 }
+  var n = 0
+  for i in 0 .. len(s.guns) { if s.guns[i].weapon >= 0 { n += 1 } }
+  return n
+}
+
+# the index of a gun of the weapon, or -1
+export function weapons_gun_of(weapons_st: WeaponsState, h: int, weapon: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return -1 }
+  for i in 0 .. len(s.guns) { if s.guns[i].weapon == weapon { return i } }
+  return -1
+}
+
+# the most places the inventory has had: walk 0 .. weapons_gun_slots and skip a weapon of -1
+export function weapons_gun_slots(weapons_st: WeaponsState, h: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0 }
+  return len(s.guns)
+}
+
+# ---- in hand
+
+function wp__reset_trigger(s: Shooter) -> void {
+  s.trigger = false
+  s.trig_prev = false
+  s.charging = false
+  s.charge = 0.0
+  s.burst_left = 0
+  s.cool = 0.0
+  s.ads = false
+  s.empty_said = false
+}
+
+# draws a gun: the one in hand is put away first, and nothing fires until both times are up.
+# WP_OK, or why not
+export function weapons_equip(weapons_st: mut WeaponsState, h: int, gun: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return WP_NO_SHOOTER }
+  let g = wp__gun(s, gun)
+  if g == null { return WP_NO_GUN }
+  if s.cur == gun { return WP_OK }
+  var t = 0.0
+  let old = wp__gun(s, s.cur)
+  if old != null {
+    t = wp__holster_time(old)
+    let f = wp__fact(weapons_st, WP_HOLSTERED, s, h, s.cur)
+    f.clip = Weapons[old.weapon].clip_holster
+    f.time = t
+  }
+  s.cur = gun
+  wp__reset_trigger(s)
+  s.busy = WBUSY_EQUIP
+  let eq = wp__equip_time(g)
+  s.busy_t = t + eq
+  let w = Weapons[g.weapon]
+  if wp__class_ok(w.class) { s.wheel_pick[Math.clamp(WeaponClasses[w.class].wheel, 0, WEAPONS_WHEEL - 1)] = gun }
+  let f = wp__fact(weapons_st, WP_EQUIPPED, s, h, gun)
+  f.clip = w.clip_equip
+  f.time = eq
+  return WP_OK
+}
+
+# puts the weapon in hand away
+export function weapons_holster(weapons_st: mut WeaponsState, h: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  let old = wp__gun(s, s.cur)
+  if old == null { return false }
+  let f = wp__fact(weapons_st, WP_HOLSTERED, s, h, s.cur)
+  f.clip = Weapons[old.weapon].clip_holster
+  f.time = wp__holster_time(old)
+  s.cur = -1
+  s.busy = WBUSY_NONE
+  s.busy_t = 0.0
+  wp__reset_trigger(s)
+  return true
+}
+
+function wp__wheel_of(g: Gun) -> int {
+  let w = Weapons[g.weapon]
+  if wp__class_ok(w.class) { return Math.clamp(WeaponClasses[w.class].wheel, 0, WEAPONS_WHEEL - 1) }
+  return 0
+}
+
+export function weapons_wheel_count(weapons_st: WeaponsState, h: int, slot: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0 }
+  var n = 0
+  for i in 0 .. len(s.guns) { if s.guns[i].weapon >= 0 and wp__wheel_of(s.guns[i]) == slot { n += 1 } }
+  return n
+}
+
+# the i-th gun of a wheel place (in inventory order), or -1
+export function weapons_wheel_gun(weapons_st: WeaponsState, h: int, slot: int, i: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return -1 }
+  var n = 0
+  for k in 0 .. len(s.guns) {
+    if s.guns[k].weapon >= 0 and wp__wheel_of(s.guns[k]) == slot {
+      if n == i { return k }
+      n += 1
+    }
+  }
+  return -1
+}
+
+# the wheel place of the gun in hand (-1: none)
+export function weapons_wheel_slot(weapons_st: WeaponsState, h: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return -1 }
+  let g = wp__gun(s, s.cur)
+  if g == null { return -1 }
+  return wp__wheel_of(g)
+}
+
+# a press of a wheel place: from another place, the gun last drawn there (else the first); on the place of
+# the gun in hand, the next one there. False when the place is empty
+export function weapons_switch_slot(weapons_st: mut WeaponsState, h: int, slot: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null or slot < 0 or slot >= WEAPONS_WHEEL { return false }
+  let n = weapons_wheel_count(weapons_st, h, slot)
+  if n == 0 { return false }
+  var pick = s.wheel_pick[slot]
+  if wp__gun(s, pick) == null or wp__wheel_of(s.guns[pick]) != slot { pick = weapons_wheel_gun(weapons_st, h, slot, 0) }
+  if weapons_wheel_slot(weapons_st, h) == slot and n > 1 {
+    var at = 0
+    for i in 0 .. n { if weapons_wheel_gun(weapons_st, h, slot, i) == s.cur { at = i } }
+    pick = weapons_wheel_gun(weapons_st, h, slot, (at + 1) % n)
+  }
+  return weapons_equip(weapons_st, h, pick) == WP_OK
+}
+
+# the next (dir > 0) or previous gun over the whole wheel, by place then inventory order
+export function weapons_cycle(weapons_st: mut WeaponsState, h: int, dir: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  var best = -1
+  var best_key = 0
+  var first = -1
+  var first_key = 0
+  var cur_key = -1
+  let cg = wp__gun(s, s.cur)
+  if cg != null { cur_key = wp__wheel_of(cg) * 100000 + s.cur }
+  for i in 0 .. len(s.guns) {
+    if s.guns[i].weapon < 0 { continue }
+    let k = wp__wheel_of(s.guns[i]) * 100000 + i
+    if dir > 0 {
+      if k > cur_key and (best < 0 or k < best_key) {
+        best = i
+        best_key = k
+      }
+      if first < 0 or k < first_key {
+        first = i
+        first_key = k
+      }
+    } else {
+      if cur_key >= 0 and k < cur_key and (best < 0 or k > best_key) {
+        best = i
+        best_key = k
+      }
+      if first < 0 or k > first_key {
+        first = i
+        first_key = k
+      }
+    }
+  }
+  if best < 0 { best = first }
+  if best < 0 or best == s.cur { return false }
+  return weapons_equip(weapons_st, h, best) == WP_OK
+}
+
+# a loadout: every item given (its parts fitted, its skin put on, its ammo reserved) and the named one drawn.
+# Returns how many weapons it gave
+export function weapons_give_loadout(weapons_st: mut WeaponsState, h: int, loadout: int) -> int {
+  if loadout < 0 or loadout >= LOADOUT_COUNT or weapons_st.wp__shooters == null { return 0 }
+  let lo = Loadouts[loadout]
+  if lo.items == null { return 0 }
+  var n = 0
+  var drawn = -1
+  for i in 0 .. len(lo.items) {
+    let it = lo.items[i]
+    let gun = weapons_give(weapons_st, h, it.weapon)
+    if gun < 0 { continue }
+    n += 1
+    if it.attachments != null { for k in 0 .. len(it.attachments) { weapons_attach(weapons_st, h, gun, it.attachments[k]) } }
+    if it.skin >= 0 { weapons_set_skin(weapons_st, h, gun, it.skin) }
+    let s = wp__shooter(weapons_st, h)
+    let g = wp__gun(s, gun)
+    g.mag = wp__mag_size(g)
+    var reserve = it.reserve
+    if reserve < 0 { reserve = 2 * wp__mag_size(g) }
+    weapons_ammo_add(weapons_st, h, g.ammo_type, reserve)
+    if i == lo.equip { drawn = gun }
+  }
+  if drawn >= 0 { weapons_equip(weapons_st, h, drawn) }
+  return n
+}
+
+# ---- what the game tells each frame
+
+export function weapons_set_stance(weapons_st: mut WeaponsState, h: int, stance: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  s.stance = stance
+  return true
+}
+
+# how fast the shooter moves, 0 standing to 1 at a run
+export function weapons_set_motion(weapons_st: mut WeaponsState, h: int, speed01: float) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  s.speed01 = Math.clamp(speed01, 0.0, 1.0)
+  return true
+}
+
+export function weapons_set_ads(weapons_st: mut WeaponsState, h: int, on: bool) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  s.ads = on and wp__gun(s, s.cur) != null
+  return true
+}
+
+# this machine owns the shooter (a guest's own player)
+export function weapons_set_mine(weapons_st: mut WeaponsState, h: int, mine: bool) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  s.mine = mine
+  return true
+}

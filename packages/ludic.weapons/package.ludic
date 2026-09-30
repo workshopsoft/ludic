@@ -1,0 +1,8 @@
+# ludic.weapons - firearms and throwables as data: weapons and their classes, fire modes, rate, damage
+# with a range falloff, spread that blooms and recovers, a recoil pattern, hitscan or projectile with
+# penetration and blast, magazines and reloads, ammo types, attachments that stack, skins, loadouts and a
+# weapon wheel; deterministic spread and recoil from a seed per shot; host-validated hits with a lag
+# compensation hook. Uses ludic.base and nothing else. See README.md.
+package "ludic.weapons"
+version "0.1.0"
+kind source

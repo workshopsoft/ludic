@@ -1,0 +1,12 @@
+# weapons_extra.lres - parts, skins and loadouts the tests fit
+red_dot { slot: WSLOT_SIGHT, classes: [WCLASS_PISTOL, WCLASS_RIFLE], mods: [{ stat: WSTAT_ZOOM, mode: WMOD_ADD, value: 0.5 }, { stat: WSTAT_ADS_TIME, mode: WMOD_MUL, value: 0.8 }] }
+scope { slot: WSLOT_SIGHT, weapons: [WPN_CARBINE], mods: [{ stat: WSTAT_ZOOM, mode: WMOD_ADD, value: 3.0 }, { stat: WSTAT_ADS_TIME, mode: WMOD_MUL, value: 1.5 }] }
+suppressor { slot: WSLOT_MUZZLE, mods: [{ stat: WSTAT_NOISE, mode: WMOD_MUL, value: 0.2 }, { stat: WSTAT_DAMAGE, mode: WMOD_MUL, value: 0.9 }, { stat: WSTAT_RANGE, mode: WMOD_ADD, value: 20.0 }], silenced: true }
+comp { slot: WSLOT_MUZZLE, mods: [{ stat: WSTAT_DAMAGE, mode: WMOD_MUL, value: 0.9 }, { stat: WSTAT_RECOIL, mode: WMOD_MUL, value: 0.5 }] }
+ext_mag { slot: WSLOT_MAG, mods: [{ stat: WSTAT_MAG_SIZE, mode: WMOD_ADD, value: 5.0 }, { stat: WSTAT_RELOAD, mode: WMOD_MUL, value: 1.2 }] }
+big_mag { slot: WSLOT_MAG, mods: [{ stat: WSTAT_MAG_SIZE, mode: WMOD_MUL, value: 10.0 }] }
+hot_mag { slot: WSLOT_MAG, ammo: AMMO_HOT, mods: [{ stat: WSTAT_MAG_SIZE, mode: WMOD_ADD, value: -2.0 }] }
+grip { slot: WSLOT_GRIP, classes: [WCLASS_RIFLE], mods: [{ stat: WSTAT_RECOIL, mode: WMOD_MUL, value: 0.8 }, { stat: WSTAT_SPREAD, mode: WMOD_ADD, value: -0.2 }] }
+sear { slot: WSLOT_MUZZLE, group: 0, weapons: [WPN_SIDEARM], grant_mode: WMODE_AUTO, mods: [] }
+laser { slot: WSLOT_LASER, group: 5, light: true, mods: [{ stat: WSTAT_SPREAD, mode: WMOD_MUL, value: 0.9 }] }
+torch { slot: WSLOT_SIGHT, group: 5, classes: [WCLASS_RIFLE], light: true, mods: [] }

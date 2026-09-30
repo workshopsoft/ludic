@@ -1,0 +1,365 @@
+# fire.ludic - a round leaves: the shot's number and seed, its dice, the spread cone, the recoil kick, a
+# ray with penetration or a body in flight. The pure part (wp__fire_round) is what the host runs again for
+# a guest's shot, so both machines draw the same spread from the same seed.
+export const WEAPONS_MAX_PER_TICK: int = 4
+export const WEAPONS_BUFFER: float = 0.12       # how long a semi press waits for the rate
+const WP_TWO_PI: float = 6.2831853
+const WP_EPS: float = 0.0001                     # a rate's time within this of up is up (float sums of dt)
+
+function wp__unit(weapons_st: mut WeaponsState, x: float, y: float, z: float) -> void {
+  let n = Math.sqrt(x * x + y * y + z * z)
+  if n < 0.000001 {
+    weapons_st.wp__sx = 0.0
+    weapons_st.wp__sy = 0.0
+    weapons_st.wp__sz = 1.0
+    return
+  }
+  weapons_st.wp__sx = x / n
+  weapons_st.wp__sy = y / n
+  weapons_st.wp__sz = z / n
+}
+
+# a unit direction inside a cone of half-angle `half` degrees round the unit direction (dx, dy, dz), by
+# the dice: a uniform disc, so the middle is no likelier than the edge. Two draws, whatever the angle
+function wp__cone(weapons_st: mut WeaponsState, dx: float, dy: float, dz: float, half: float) -> void {
+  let u = rng_float(weapons_st.wp__dice)
+  let v = rng_float(weapons_st.wp__dice)
+  var ux = 0.0
+  var uy = 1.0
+  var uz = 0.0
+  if Math.abs(dy) > 0.999 {
+    ux = 1.0
+    uy = 0.0
+  }
+  var rx = dy * uz - dz * uy
+  var ry = dz * ux - dx * uz
+  var rz = dx * uy - dy * ux
+  let rn = Math.sqrt(rx * rx + ry * ry + rz * rz)
+  rx = rx / rn
+  ry = ry / rn
+  rz = rz / rn
+  let tx = ry * dz - rz * dy
+  let ty = rz * dx - rx * dz
+  let tz = rx * dy - ry * dx
+  let ang = Math.tan(Math.deg_to_rad(half) * Math.sqrt(v))
+  let phi = WP_TWO_PI * u
+  let a = Math.cos(phi) * ang
+  let b = Math.sin(phi) * ang
+  wp__unit(weapons_st, dx + rx * a + tx * b, dy + ry * a + ty * b, dz + rz * a + tz * b)
+}
+
+# ---- recoil and bloom
+
+# the kick of the shot at the pattern's row, with the seeded jitter, added to what the aim carries
+function wp__kick(weapons_st: mut WeaponsState, s: Shooter, g: Gun, f: WeaponFact) -> void {
+  let w = Weapons[g.weapon]
+  var kp = 0.0
+  var ky = 0.0
+  var n = 0
+  if w.recoil != null { n = len(w.recoil) }
+  if n > 0 {
+    var at = s.row
+    if at >= n {
+      let from = Math.min(w.recoil_loop, n - 1)
+      at = from + (s.row - from) % (n - from)
+    }
+    kp = w.recoil[at].pitch
+    ky = w.recoil[at].yaw
+  }
+  let jp = (rng_float(weapons_st.wp__dice) * 2.0 - 1.0) * w.recoil_jitter
+  let jy = (rng_float(weapons_st.wp__dice) * 2.0 - 1.0) * w.recoil_jitter
+  var scale = wp__stat(g, WSTAT_RECOIL) * wp__stance_recoil(w, s.stance)
+  if s.ads { scale = scale * w.ads_recoil }
+  kp = kp * scale + jp
+  ky = ky * scale + jy
+  s.row += 1
+  s.recoil_p += kp
+  s.recoil_y += ky
+  s.recoil_wait = w.recoil_delay
+  s.idle = 0.0
+  f.kick_pitch = kp
+  f.kick_yaw = ky
+}
+
+function wp__bloom_up(s: Shooter, g: Gun) -> void {
+  let w = Weapons[g.weapon]
+  s.bloom = Math.min(s.bloom + wp__stat(g, WSTAT_BLOOM), w.bloom_max)
+  s.bloom_wait = w.spread_delay
+}
+
+# ---- a ray
+
+# a ray with penetration: each body or surface takes some power; what is left carries on with less damage
+function wp__trace(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, w: Weapon, ammo: int, owner: int, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, range: float, dmg: float, pen: float, stretch: float, type: int, mode: int, shot_no: int) -> void {
+  var px = ox
+  var py = oy
+  var pz = oz
+  var ignore = owner
+  var traveled = 0.0
+  var power = pen
+  var carry = 1.0
+  var pierced = 0
+  var guard = 0
+  while guard < 24 {
+    guard += 1
+    let d = WeaponsWorld.cast(px, py, pz, dx, dy, dz, range - traveled, ignore)
+    if d < 0.0 { return }
+    let hx = px + dx * d
+    let hy = py + dy * d
+    let hz = pz + dz * d
+    let victim = WeaponsWorld.hit_actor()
+    let zone = WeaponsWorld.hit_zone()
+    let mat = WeaponsWorld.hit_material()
+    let nx = WeaponsWorld.hit_nx()
+    let ny = WeaponsWorld.hit_ny()
+    let nz = WeaponsWorld.hit_nz()
+    let total = traveled + d
+    if victim >= 0 and victim != owner and not WeaponsWorld.hostile(owner, victim) {
+      ignore = victim
+      traveled = total + 0.01
+      px = hx + dx * 0.01
+      py = hy + dy * 0.01
+      pz = hz + dz * 0.01
+      continue
+    }
+    wp__land(weapons_st, s, h, gun, owner, wp__weapon_of(s, gun), ammo, type, victim, zone, mat, dmg * wp__falloff(w, total, stretch) * carry, total, hx, hy, hz, nx, ny, nz, mode, shot_no)
+    let cost = WeaponsWorld.pierce_cost(victim, mat)
+    if cost < 0.0 or power < cost or pierced >= w.max_pierce { return }
+    power -= cost
+    carry = carry * (1.0 - w.pen_loss)
+    pierced += 1
+    traveled = total + 0.01
+    px = hx + dx * 0.01
+    py = hy + dy * 0.01
+    pz = hz + dz * 0.01
+    if victim >= 0 { ignore = victim }
+  }
+}
+
+function wp__weapon_of(s: Shooter, gun: int) -> int {
+  if s != null and gun >= 0 and gun < len(s.guns) { return s.guns[gun].weapon }
+  return -1
+}
+
+# ---- one round
+
+# a round leaves `actor`'s gun along the aim ray (ox, oy, oz) + t (dx, dy, dz), by the shot's own dice. Draws in
+# this order, so every machine gets the same shot: the recoil jitter (2), then per pellet the cone (2).
+# Makes the FIRED fact, the recoil kick, and the ray or the body. Does not spend the round or start the rate
+function wp__fire_round(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, g: Gun, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, seed: int, shot_no: int, spread: float, charge: float, mode: int) -> void {
+  let w = Weapons[g.weapon]
+  rng_seed(weapons_st.wp__dice, seed)
+  wp__unit(weapons_st, dx, dy, dz)
+  let ax = weapons_st.wp__sx
+  let ay = weapons_st.wp__sy
+  let az = weapons_st.wp__sz
+  let f = wp__fact(weapons_st, WP_FIRED, s, h, gun)
+  wp__kick(weapons_st, s, g, f)
+  f.shot_no = shot_no
+  f.seed = seed
+  f.spread = spread
+  f.noise = wp__stat(g, WSTAT_NOISE)
+  f.predicted = mode == WP_MODE_GUESS
+  f.remote = mode == WP_MODE_REMOTE
+  f.x = ox
+  f.y = oy
+  f.z = oz
+  f.dx = ax
+  f.dy = ay
+  f.dz = az
+  f.time = charge
+  f.clip = w.clip_fire
+  if s.ads and w.clip_fire_ads != "" { f.clip = w.clip_fire_ads }
+  var scale = 1.0
+  if g.mode == WMODE_CHARGE { scale = w.charge_min + (1.0 - w.charge_min) * Math.clamp(charge, 0.0, 1.0) }
+  let dmg = wp__fired(g, WSTAT_DAMAGE) * scale
+  let range = wp__fired(g, WSTAT_RANGE)
+  let pen = wp__fired(g, WSTAT_PEN)
+  let stretch = range / Math.max(w.range, 0.001)
+  let type = wp__type_of(w, g.ammo_type)
+  let actor = s.actor
+  for p in 0 .. w.pellets {
+    wp__cone(weapons_st, ax, ay, az, spread)
+    let sx = weapons_st.wp__sx
+    let sy = weapons_st.wp__sy
+    let sz = weapons_st.wp__sz
+    if w.kind == WKIND_HITSCAN {
+      wp__trace(weapons_st, s, h, gun, w, g.ammo_type, actor, ox, oy, oz, sx, sy, sz, range, dmg, pen, stretch, type, mode, shot_no)
+    } else {
+      wp__launch(weapons_st, s, h, gun, g, w, ox, oy, oz, sx, sy, sz, dmg, pen, type, charge, scale, seed, shot_no, mode)
+    }
+  }
+}
+
+# after the round: the magazine, the rate, the bloom
+function wp__spent(weapons_st: mut WeaponsState, s: Shooter, g: Gun, h: int, gun: int) -> void {
+  let w = Weapons[g.weapon]
+  g.mag = Math.max(g.mag - w.ammo_per_shot, 0)
+  s.shots += 1
+  wp__bloom_up(s, g)
+}
+
+# may the gun in hand fire a round now (the trigger's rules, without the trigger)
+function wp__ready(weapons_st: WeaponsState, s: Shooter, g: Gun) -> bool {
+  let w = Weapons[g.weapon]
+  if g.mag < w.ammo_per_shot { return false }
+  if not WeaponsWorld.can_fire(s.actor) { return false }
+  if s.busy == WBUSY_NONE { return true }
+  return w.reload_each and (s.busy == WBUSY_RELOAD or s.busy == WBUSY_SHELL)
+}
+
+# a pull: the round, the request if this is a guest, the magazine, the bloom, the rate
+function wp__pull(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, g: Gun, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, charge: float) -> void {
+  let shot_no = s.shots + 1
+  let seed = weapons_shot_seed(weapons_st.wp__seed, s.actor, shot_no)
+  let spread = wp__spread_now(s, g)
+  var mode = WP_MODE_AUTH
+  if weapons_st.wp__role == WEAPONS_GUEST { mode = WP_MODE_GUESS }
+  if s.busy == WBUSY_RELOAD or s.busy == WBUSY_SHELL or s.busy == WBUSY_RELOAD_END {
+    s.busy = WBUSY_NONE
+    s.busy_t = 0.0
+  }
+  wp__fire_round(weapons_st, s, h, gun, g, ox, oy, oz, dx, dy, dz, seed, shot_no, spread, charge, mode)
+  s.streak = true
+  weapons_st.wp__spread_used = spread
+  if mode == WP_MODE_GUESS {
+    var q = q_rec(weapons_st.wp__out)
+    if q == null {
+      @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+      q = new ShotRequest
+      q_ring_add(weapons_st.wp__out, q)
+    }
+    q.actor = s.actor
+    q.gun = gun
+    q.weapon = g.weapon
+    q.shot_no = shot_no
+    q.seed = seed
+    q.stamp = weapons_st.wp__time
+    q.ox = ox
+    q.oy = oy
+    q.oz = oz
+    q.dx = dx
+    q.dy = dy
+    q.dz = dz
+    q.spread = spread
+    q.charge = charge
+    q_push(weapons_st.wp__out, q)
+    s.pending += 1
+  } else {
+    s.next_ok = Math.max(s.next_ok, weapons_st.wp__time) + wp__interval(g)
+  }
+  wp__spent(weapons_st, s, g, h, gun)
+}
+
+# the aim ray the game gives for an actor
+function wp__aim_fire(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, g: Gun, charge: float) -> void {
+  let a = s.actor
+  wp__pull(weapons_st, s, h, gun, g, WeaponsWorld.aim_x(a), WeaponsWorld.aim_y(a), WeaponsWorld.aim_z(a), WeaponsWorld.aim_dx(a), WeaponsWorld.aim_dy(a), WeaponsWorld.aim_dz(a), charge)
+}
+
+# the empty click and, for a class that does it, the reload that follows
+function wp__empty(weapons_st: mut WeaponsState, s: Shooter, h: int, g: Gun) -> void {
+  if s.empty_said { return }
+  s.empty_said = true
+  let f = wp__fact(weapons_st, WP_EMPTY, s, h, s.cur)
+  f.clip = Weapons[g.weapon].clip_empty
+  let w = Weapons[g.weapon]
+  if wp__class_ok(w.class) and WeaponClasses[w.class].auto_reload { wp__start_reload(weapons_st, s, h, s.cur, g) }
+}
+
+# the trigger, held or not: which rounds leave this tick
+function wp__trigger_step(weapons_st: mut WeaponsState, s: Shooter, h: int, dt: float) -> void {
+  let g = wp__gun(s, s.cur)
+  if g == null { return }
+  let w = Weapons[g.weapon]
+  let edge = s.trigger and not s.trig_prev
+  let release = s.trig_prev and not s.trigger
+  s.trig_prev = s.trigger
+  if edge { s.empty_said = false }
+  let mode = g.mode
+  if s.queued > 0.0 { s.queued -= dt }
+  if mode == WMODE_CHARGE {
+    if s.trigger and wp__ready(weapons_st, s, g) and s.cool <= WP_EPS {
+      if not s.charging {
+        s.charging = true
+        s.charge = 0.0
+        let f = wp__fact(weapons_st, WP_CHARGING, s, h, s.cur)
+        f.clip = w.clip_charge
+        f.time = w.charge_time
+      }
+      s.charge = Math.min(1.0, s.charge + dt / Math.max(w.charge_time, 0.05))
+    }
+    if release and s.charging {
+      let c = s.charge
+      s.charging = false
+      s.charge = 0.0
+      if wp__ready(weapons_st, s, g) {
+        wp__aim_fire(weapons_st, s, h, s.cur, g, c)
+        s.cool = wp__interval(g)
+      }
+    }
+    if s.trigger and g.mag < w.ammo_per_shot and edge { wp__empty(weapons_st, s, h, g) }
+    return
+  }
+  var want = false
+  if mode == WMODE_AUTO { want = s.trigger }
+  if mode == WMODE_SEMI {
+    if edge { s.queued = WEAPONS_BUFFER }
+    want = s.queued > 0.0
+  }
+  if mode == WMODE_BURST {
+    if edge and s.burst_left <= 0 { s.burst_left = w.burst_count }
+    want = s.burst_left > 0
+  }
+  var n = 0
+  while want and n < WEAPONS_MAX_PER_TICK {
+    if s.cool > WP_EPS { break }
+    if g.mag < w.ammo_per_shot {
+      if s.trigger or s.queued > 0.0 or s.burst_left > 0 { wp__empty(weapons_st, s, h, g) }
+      s.burst_left = 0
+      s.queued = 0.0
+      break
+    }
+    if not wp__ready(weapons_st, s, g) { break }
+    wp__aim_fire(weapons_st, s, h, s.cur, g, 1.0)
+    n += 1
+    var gap = wp__interval(g)
+    if mode == WMODE_BURST {
+      s.burst_left -= 1
+      if s.burst_left > 0 and w.burst_gap > 0.0 { gap = w.burst_gap }
+      want = s.burst_left > 0
+    } else if mode == WMODE_SEMI {
+      s.queued = 0.0
+      want = false
+    }
+    s.cool += gap
+  }
+  if n > 0 and g.mag <= 0 and wp__class_ok(w.class) and WeaponClasses[w.class].auto_reload { wp__start_reload(weapons_st, s, h, s.cur, g) }
+}
+
+# ---- verbs
+
+# the trigger: down or up. The tick turns it into rounds by the fire mode (semi on the press, auto while
+# held, a burst a press, a charge on the release)
+export function weapons_trigger(weapons_st: mut WeaponsState, h: int, down: bool) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  s.trigger = down
+  return true
+}
+
+# one round now along the ray the caller gives (an AI's aim, a script): WP_OK or why not. It follows the rate,
+# the magazine and what the world allows, not the fire mode
+export function weapons_fire_at(weapons_st: mut WeaponsState, h: int, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return WP_NO_SHOOTER }
+  let g = wp__gun(s, s.cur)
+  if g == null { return WP_NO_GUN }
+  if s.busy == WBUSY_EQUIP { return WP_BUSY }
+  if g.mag < Weapons[g.weapon].ammo_per_shot { return WP_NO_AMMO }
+  if s.cool > WP_EPS { return WP_BUSY }
+  if not wp__ready(weapons_st, s, g) { return WP_CANT }
+  wp__pull(weapons_st, s, h, s.cur, g, ox, oy, oz, dx, dy, dz, 1.0)
+  s.cool = wp__interval(g)
+  return WP_OK
+}

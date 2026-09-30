@@ -1,0 +1,163 @@
+# queries.ludic - what the game asks of a shooter each frame: the gun in hand, its magazine, the recoil
+# the aim carries, how far into the sights, how much of its walking speed it keeps
+export function weapons_current(weapons_st: WeaponsState, h: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null or wp__gun(s, s.cur) == null { return -1 }
+  return s.cur
+}
+
+# the Weapons row of a gun (-1: no such gun)
+export function weapons_weapon_of(weapons_st: WeaponsState, h: int, gun: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return -1 }
+  let g = wp__gun(s, gun)
+  if g == null { return -1 }
+  return g.weapon
+}
+
+export function weapons_mag(weapons_st: WeaponsState, h: int, gun: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0 }
+  let g = wp__gun(s, gun)
+  if g == null { return 0 }
+  return g.mag
+}
+
+export function weapons_ammo_type(weapons_st: WeaponsState, h: int, gun: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return -1 }
+  let g = wp__gun(s, gun)
+  if g == null { return -1 }
+  return g.ammo_type
+}
+
+export function weapons_mode(weapons_st: WeaponsState, h: int, gun: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return -1 }
+  let g = wp__gun(s, gun)
+  if g == null { return -1 }
+  return g.mode
+}
+
+export function weapons_skin(weapons_st: WeaponsState, h: int, gun: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return -1 }
+  let g = wp__gun(s, gun)
+  if g == null { return -1 }
+  return g.skin
+}
+
+# a gun's stat with its attachments (and, for the fired ones, its ammo): what a stats screen shows
+export function weapons_stat(weapons_st: WeaponsState, h: int, gun: int, stat: int) -> float {
+  let s = wp__shooter(weapons_st, h)
+  if s == null or stat < 0 or stat >= WSTAT_COUNT { return 0.0 }
+  let g = wp__gun(s, gun)
+  if g == null { return 0.0 }
+  return wp__fired(g, stat)
+}
+
+# the magazine's size with attachments (a gun with one up the spout holds one more, see weapons_capacity)
+export function weapons_mag_size(weapons_st: WeaponsState, h: int, gun: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0 }
+  let g = wp__gun(s, gun)
+  if g == null { return 0 }
+  return wp__mag_size(g)
+}
+
+export function weapons_capacity(weapons_st: WeaponsState, h: int, gun: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0 }
+  let g = wp__gun(s, gun)
+  if g == null { return 0 }
+  return wp__cap(g)
+}
+
+# the damage of a round at a distance, before the target's armour: base x attachments x ammo x falloff
+export function weapons_damage_at(weapons_st: WeaponsState, h: int, gun: int, dist: float) -> float {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0.0 }
+  let g = wp__gun(s, gun)
+  if g == null { return 0.0 }
+  let w = Weapons[g.weapon]
+  let range = wp__fired(g, WSTAT_RANGE)
+  if dist > range { return 0.0 }
+  return wp__fired(g, WSTAT_DAMAGE) * wp__falloff(w, dist, range / Math.max(w.range, 0.001))
+}
+
+# the half-angle of the cone the next round would leave by now
+export function weapons_spread(weapons_st: WeaponsState, h: int) -> float {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0.0 }
+  let g = wp__gun(s, s.cur)
+  if g == null { return 0.0 }
+  return wp__spread_now(s, g)
+}
+
+# the recoil the aim carries: add it to the view (degrees), pitch up and yaw to the right
+export function weapons_recoil_pitch(weapons_st: WeaponsState, h: int) -> float {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0.0 }
+  return s.recoil_p
+}
+export function weapons_recoil_yaw(weapons_st: WeaponsState, h: int) -> float {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0.0 }
+  return s.recoil_y
+}
+
+export function weapons_busy(weapons_st: WeaponsState, h: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return WBUSY_NONE }
+  return s.busy
+}
+
+export function weapons_reloading(weapons_st: WeaponsState, h: int) -> bool {
+  let b = weapons_busy(weapons_st, h)
+  return b == WBUSY_RELOAD or b == WBUSY_SHELL or b == WBUSY_RELOAD_END
+}
+
+export function weapons_equipping(weapons_st: WeaponsState, h: int) -> bool { return weapons_busy(weapons_st, h) == WBUSY_EQUIP }
+
+# 0..1 through what `busy` is doing is not kept: the facts carry the clip and its time
+export function weapons_ads(weapons_st: WeaponsState, h: int) -> float {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0.0 }
+  return s.ads_t
+}
+
+# the view's zoom: 1 outside the sights, the gun's zoom stat inside them
+export function weapons_zoom(weapons_st: WeaponsState, h: int) -> float {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 1.0 }
+  let g = wp__gun(s, s.cur)
+  if g == null { return 1.0 }
+  return 1.0 + (wp__stat(g, WSTAT_ZOOM) - 1.0) * s.ads_t
+}
+
+# how much of its walking speed the shooter keeps: the gun's (and its parts'), slower in the sights
+export function weapons_move_mult(weapons_st: WeaponsState, h: int) -> float {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 1.0 }
+  let g = wp__gun(s, s.cur)
+  if g == null { return 1.0 }
+  var m = wp__move_of(g) * wp__stance_move(Weapons[g.weapon], s.stance)
+  m = m * (1.0 + (wp__ads_move_of(g) - 1.0) * s.ads_t)
+  return m
+}
+
+export function weapons_charge(weapons_st: WeaponsState, h: int) -> float {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0.0 }
+  return s.charge
+}
+
+# rounds fired: the next shot is this + 1
+export function weapons_shots(weapons_st: WeaponsState, h: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0 }
+  return s.shots
+}
+
+# seconds the tick has run: the clock a guest's shot is stamped with and the host rewinds by
+export function weapons_time(weapons_st: WeaponsState) -> float { return weapons_st.wp__time }

@@ -1,0 +1,199 @@
+# projectiles.ludic - bodies in flight: a rocket, an arrow, a grenade. A pooled record each (a place with
+# `live` false is free); a step moves one by gravity and drag, sweeps it through the world, and lets it
+# hit, bounce, burst at its fuse or expire. A guest's are pictures: they hurt nobody, the facts still fly.
+
+@alloc_ok("the pool grows to the most bodies in flight at once, then a free place is reused")
+function wp__slot(weapons_st: mut WeaponsState) -> Projectile {
+  for i in 0 .. len(weapons_st.wp__projs) { if not weapons_st.wp__projs[i].live { return weapons_st.wp__projs[i] } }
+  let p = new Projectile
+  push(weapons_st.wp__projs, p)
+  return p
+}
+
+# a body leaves the weapon: from the muzzle, at the point the aim ray reaches (so it lands where the crosshair
+# was), at the weapon's speed times the charge's share
+function wp__launch(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, g: Gun, w: Weapon, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, dmg: float, pen: float, type: int, charge: float, scale: float, seed: int, shot_no: int, mode: int) -> void {
+  let actor = s.actor
+  var mx = WeaponsWorld.muzzle_x(actor)
+  var my = WeaponsWorld.muzzle_y(actor)
+  var mz = WeaponsWorld.muzzle_z(actor)
+  let reach = Math.min(wp__fired(g, WSTAT_RANGE), 300.0)
+  var t = WeaponsWorld.cast(ox, oy, oz, dx, dy, dz, reach, actor)
+  if t < 0.0 { t = Math.min(reach, 100.0) }
+  var vx = ox + dx * t - mx
+  var vy = oy + dy * t - my
+  var vz = oz + dz * t - mz
+  let n = Math.sqrt(vx * vx + vy * vy + vz * vz)
+  if n < 0.001 {
+    mx = ox
+    my = oy
+    mz = oz
+    vx = dx
+    vy = dy
+    vz = dz
+  } else {
+    vx = vx / n
+    vy = vy / n
+    vz = vz / n
+  }
+  let speed = wp__fired(g, WSTAT_SPEED) * scale
+  let p = wp__slot(weapons_st)
+  weapons_st.wp__proj_id += 1
+  p.live = true
+  p.id = weapons_st.wp__proj_id
+  p.owner = actor
+  p.weapon = g.weapon
+  p.ammo = g.ammo_type
+  p.gun = gun
+  p.type = type
+  p.x = mx
+  p.y = my
+  p.z = mz
+  p.x0 = mx
+  p.y0 = my
+  p.z0 = mz
+  p.vx = vx * speed
+  p.vy = vy * speed
+  p.vz = vz * speed
+  p.age = 0.0
+  p.left = 0.0
+  if w.fuse > 0.0 {
+    p.left = w.fuse
+    if w.cook { p.left = Math.max(w.fuse - charge * w.charge_time, 0.05) }
+  }
+  p.damage = dmg
+  p.pen = pen
+  var blast = w.blast_damage
+  if blast <= 0.0 { blast = w.damage }
+  p.blast = blast * wp__ammo_mult(g, WSTAT_DAMAGE) * scale
+  p.blast_r = w.blast_radius
+  if wp__ammo_ok(g.ammo_type) { p.blast_r += AmmoTypes[g.ammo_type].blast_add }
+  p.cosmetic = mode != WP_MODE_AUTH
+  p.predicted = mode == WP_MODE_GUESS
+  p.remote = mode == WP_MODE_REMOTE
+  p.shot_no = shot_no
+  p.seed = seed
+  let f = wp__fact(weapons_st, WP_PROJECTILE, s, h, gun)
+  f.shot_no = p.id
+  f.x = mx
+  f.y = my
+  f.z = mz
+  f.dx = p.vx
+  f.dy = p.vy
+  f.dz = p.vz
+  f.amount = speed
+  f.predicted = p.predicted
+  f.remote = p.remote
+}
+
+function wp__proj_mode(p: Projectile) -> int {
+  if not p.cosmetic { return WP_MODE_AUTH }
+  if p.remote { return WP_MODE_REMOTE }
+  return WP_MODE_GUESS
+}
+
+# a body's end: its blast, then the fact
+function wp__end(weapons_st: mut WeaponsState, p: Projectile, why: int) -> void {
+  let w = Weapons[p.weapon]
+  let ho = weapons_of(weapons_st, p.owner)
+  let s = wp__shooter(weapons_st, ho)
+  let mode = wp__proj_mode(p)
+  rng_seed(weapons_st.wp__dice, p.seed + 1)
+  if p.blast_r > 0.0 {
+    wp__blast(weapons_st, s, ho, p.gun, p.owner, p.weapon, p.ammo, p.type, p.x, p.y, p.z, p.blast, p.blast_r, w.blast_inner, w.blast_pow, w.blast_zone, mode, p.shot_no)
+  }
+  let f = wp__fact(weapons_st, WP_PROJECTILE_END, s, ho, p.gun)
+  f.actor = p.owner
+  f.weapon = p.weapon
+  f.ammo = p.ammo
+  f.shot_no = p.id
+  f.zone = why
+  f.x = p.x
+  f.y = p.y
+  f.z = p.z
+  f.predicted = p.predicted
+  f.remote = p.remote
+  p.live = false
+}
+
+function wp__step_projectile(weapons_st: mut WeaponsState, p: Projectile, dt: float) -> void {
+  let w = Weapons[p.weapon]
+  p.age += dt
+  if p.left > 0.0 {
+    p.left -= dt
+    if p.left <= 0.0 {
+      wp__end(weapons_st, p, WP_END_FUSE)
+      return
+    }
+  }
+  p.vy = p.vy - WEAPONS_GRAVITY * w.gravity * dt
+  if w.drag > 0.0 {
+    let k = Math.max(1.0 - w.drag * dt, 0.0)
+    p.vx = p.vx * k
+    p.vy = p.vy * k
+    p.vz = p.vz * k
+  }
+  let nx = p.x + p.vx * dt
+  let ny = p.y + p.vy * dt
+  let nz = p.z + p.vz * dt
+  let f = WeaponsWorld.sweep(p.x, p.y, p.z, nx, ny, nz, w.radius, p.owner)
+  if f < 0.0 {
+    p.x = nx
+    p.y = ny
+    p.z = nz
+    if p.age >= w.life { wp__end(weapons_st, p, WP_END_EXPIRED) }
+    return
+  }
+  let hx = p.x + (nx - p.x) * f
+  let hy = p.y + (ny - p.y) * f
+  let hz = p.z + (nz - p.z) * f
+  let victim = WeaponsWorld.hit_actor()
+  let zone = WeaponsWorld.hit_zone()
+  let mat = WeaponsWorld.hit_material()
+  let qx = WeaponsWorld.hit_nx()
+  let qy = WeaponsWorld.hit_ny()
+  let qz = WeaponsWorld.hit_nz()
+  if victim >= 0 and victim != p.owner and not WeaponsWorld.hostile(p.owner, victim) {
+    p.x = nx
+    p.y = ny
+    p.z = nz
+    return
+  }
+  p.x = hx
+  p.y = hy
+  p.z = hz
+  let ho = weapons_of(weapons_st, p.owner)
+  let s = wp__shooter(weapons_st, ho)
+  let contact = w.impact or victim >= 0
+  if contact or w.kind == WKIND_PROJECTILE {
+    wp__land(weapons_st, s, ho, p.gun, p.owner, p.weapon, p.ammo, p.type, victim, zone, mat, p.damage, Math.sqrt((hx - p.x0) * (hx - p.x0) + (hy - p.y0) * (hy - p.y0) + (hz - p.z0) * (hz - p.z0)), hx, hy, hz, qx, qy, qz, wp__proj_mode(p), p.shot_no)
+    wp__end(weapons_st, p, WP_END_HIT)
+    return
+  }
+  # a thrown body that goes off by its fuse: it bounces
+  let vn = p.vx * qx + p.vy * qy + p.vz * qz
+  let k = (1.0 + w.bounce) * vn
+  p.vx = p.vx - k * qx
+  p.vy = p.vy - k * qy
+  p.vz = p.vz - k * qz
+  let rest = dt * (1.0 - f)
+  p.x = hx + qx * 0.02 + p.vx * rest
+  p.y = hy + qy * 0.02 + p.vy * rest
+  p.z = hz + qz * 0.02 + p.vz * rest
+  if p.age >= w.life { wp__end(weapons_st, p, WP_END_EXPIRED) }
+}
+
+function wp__projectiles_step(weapons_st: mut WeaponsState, dt: float) -> void {
+  var i = 0
+  while i < len(weapons_st.wp__projs) {
+    let p = weapons_st.wp__projs[i]
+    i += 1
+    if p.live { wp__step_projectile(weapons_st, p, dt) }
+  }
+}
+
+export function weapons_projectile_count(weapons_st: WeaponsState) -> int {
+  var n = 0
+  for i in 0 .. len(weapons_st.wp__projs) { if weapons_st.wp__projs[i].live { n += 1 } }
+  return n
+}

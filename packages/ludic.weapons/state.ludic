@@ -1,0 +1,207 @@
+# state.ludic - the shooters (a row each, found by a handle), their guns and reserves, the projectiles
+# in flight, and the queues of facts, of a guest's shots and of the host's answers
+
+export const WBUSY_NONE: int = 0
+export const WBUSY_EQUIP: int = 1
+export const WBUSY_RELOAD: int = 2        # a magazine reload, or the way in of a shell-by-shell one
+export const WBUSY_SHELL: int = 3         # one shell going in
+export const WBUSY_RELOAD_END: int = 4    # the way out of a shell-by-shell reload
+
+export const WEAPONS_SOLO: int = 0
+export const WEAPONS_HOST: int = 1
+export const WEAPONS_GUEST: int = 2
+
+# one weapon in a shooter's inventory, with what is fitted to it and how it is loaded
+export property Gun {
+  weapon: int = -1                        # the Weapons row; -1 is a free place
+  mag: int = 0
+  ammo_type: int = 0                      # what is loaded
+  mode: int = 0                           # the WMODE_* in force
+  skin: int = -1
+  attach: []int = null                    # per slot: an Attachments row, -1 nothing
+}
+
+export property Shooter {
+  actor: int = -1
+  persist: bool = true                    # a save keeps its inventory (the player's, not a guard's)
+  guns: []Gun = null
+  cur: int = -1                           # the gun in hand, an index of guns
+  reserve: []int = null                   # per AmmoTypes row: rounds carried
+  wheel_pick: []int = null                # per wheel place: the gun last drawn there
+  busy: int = 0                           # WBUSY_*
+  busy_t: float = 0.0                     # seconds left of it
+  trigger: bool = false
+  trig_prev: bool = false
+  empty_said: bool = false                # the empty click was made for this press
+  queued: float = 0.0                     # a semi press waiting for the rate: seconds it is kept
+  pending: int = 0                        # a guest: shots fired that the host has not yet answered
+  cool: float = 0.0                       # seconds until the next round may leave (may run negative while shooting on, to keep the rate exact)
+  streak: bool = false                    # a round left this tick: the rate's carry is kept into the next
+  burst_left: int = 0
+  charge: float = 0.0                     # 0..1 of a charge
+  charging: bool = false
+  bloom: float = 0.0                      # degrees added to the spread by the shots just fired
+  bloom_wait: float = 0.0
+  recoil_p: float = 0.0                   # the kick the aim carries now, degrees
+  recoil_y: float = 0.0
+  recoil_wait: float = 0.0
+  row: int = 0                            # the next place in the recoil pattern
+  idle: float = 0.0                       # seconds since its last shot
+  stance: int = 0
+  speed01: float = 0.0                    # 0 standing .. 1 at a run
+  ads: bool = false
+  ads_t: float = 0.0                      # 0..1 into the sights
+  shots: int = 0                          # rounds fired: the next shot's number is this + 1, and with the seed it is the shot's dice
+  mine: bool = false                      # this machine owns it (a guest's own player)
+  seq: int = 0                            # the last inventory snapshot sent or taken
+  last_no: int = 0                        # the host: the last shot number it accepted from this shooter
+  next_ok: float = 0.0                    # the host: the time before which it takes no more shots from it
+}
+
+# a body in flight. A pooled record: `live` false is a free place
+export property Projectile {
+  live: bool = false
+  id: int = 0
+  owner: int = -1                         # the actor
+  weapon: int = -1
+  ammo: int = 0
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  x0: float = 0.0                         # where it left
+  y0: float = 0.0
+  z0: float = 0.0
+  vx: float = 0.0
+  vy: float = 0.0
+  vz: float = 0.0
+  age: float = 0.0
+  left: float = 0.0                       # fuse seconds left (0: none)
+  damage: float = 0.0
+  pen: float = 0.0
+  gun: int = -1                           # the index in its owner's guns
+  type: int = 0                           # the damage type it carries
+  blast: float = 0.0                      # the damage at the centre of its blast
+  blast_r: float = 0.0
+  cosmetic: bool = false                  # a guest's picture of a round: it hurts nobody
+  predicted: bool = false
+  remote: bool = false
+  shot_no: int = 0
+  seed: int = 0
+}
+
+# what a guest says it fired: the host resolves it. `stamp` is when, on the host's clock (the guest
+# estimates it); `spread` the half-angle it used, which the host holds to what the weapon can do
+export property ShotRequest {
+  actor: int = -1
+  gun: int = -1
+  weapon: int = -1
+  shot_no: int = 0
+  seed: int = 0
+  stamp: float = 0.0
+  ox: float = 0.0
+  oy: float = 0.0
+  oz: float = 0.0
+  dx: float = 0.0
+  dy: float = 0.0
+  dz: float = 1.0
+  spread: float = 0.0
+  charge: float = 1.0
+}
+
+# the host's answer to an owner: whether the shot stood, and the magazine it leaves
+export property ShotConfirm {
+  actor: int = -1
+  shot_no: int = 0
+  accepted: bool = false
+  why: int = 0
+  mag: int = 0
+  reserve: int = 0
+}
+
+export state WeaponsState {
+  wp__shooters: Table<Shooter> = wp__table()
+  wp__by_actor: IntMap = imap_new()
+  wp__dice: Rng = rng_new(1)
+  wp__seed: int = 1
+  wp__role: int = 0
+  wp__local: int = -1                     # the actor this machine plays
+  wp__time: float = 0.0                   # seconds the tick has run
+  wp__found: []int = new []int            # the bodies a blast found, kept
+  wp__modes: []int = new []int            # the fire modes of a gun, worked out into a kept list
+  wp__projs: []Projectile = new []Projectile
+  wp__proj_id: int = 0
+  wp__max_rewind: float = 0.25            # the host rewinds at most this far for a guest's shot
+  wp__slack: float = 0.05                 # how far ahead of its rate the host lets a guest's shots run
+  wp__q: Queue<WeaponFact> = wp__queue()
+  wp__out: Queue<ShotRequest> = wp__outbox()
+  wp__conf: Queue<ShotConfirm> = wp__confirms()
+  wp__sx: float = 0.0                     # a direction worked out, read back (no record is made)
+  wp__sy: float = 0.0
+  wp__sz: float = 0.0
+  wp__spread_used: float = 0.0
+  wp__dmg_total: float = 0.0
+  wp__kills: int = 0
+}
+function wp__table() -> Table<Shooter> { return table_new(0, 0) }
+function wp__queue() -> Queue<WeaponFact> { return queue_new("weapons.facts") }
+function wp__outbox() -> Queue<ShotRequest> { return queue_new("weapons.outbox") }
+function wp__confirms() -> Queue<ShotConfirm> { return queue_new("weapons.confirms") }
+
+export function weapons_facts(weapons_st: WeaponsState) -> Queue<WeaponFact> { return weapons_st.wp__q }
+export function weapons_outbox(weapons_st: WeaponsState) -> Queue<ShotRequest> { return weapons_st.wp__out }
+export function weapons_confirms(weapons_st: WeaponsState) -> Queue<ShotConfirm> { return weapons_st.wp__conf }
+
+# a fact, from anywhere; every field is set here so a record used again carries nothing over
+function wp__fact(weapons_st: WeaponsState, what: int, s: Shooter, h: int, gun: int) -> WeaponFact {
+  var f = q_rec(weapons_st.wp__q)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new WeaponFact
+    q_ring_add(weapons_st.wp__q, f)
+  }
+  f.what = what
+  f.shooter = h
+  f.actor = -1
+  f.gun = gun
+  f.weapon = -1
+  f.ammo = -1
+  if s != null {
+    f.actor = s.actor
+    if gun >= 0 and gun < len(s.guns) and s.guns[gun].weapon >= 0 {
+      f.weapon = s.guns[gun].weapon
+      f.ammo = s.guns[gun].ammo_type
+    }
+  }
+  f.target = -1
+  f.zone = -1
+  f.shot_no = 0
+  f.seed = 0
+  f.damage = 0.0
+  f.dist = 0.0
+  f.spread = 0.0
+  f.kick_pitch = 0.0
+  f.kick_yaw = 0.0
+  f.noise = 0.0
+  f.amount = 0.0
+  f.time = 0.0
+  f.material = -1
+  f.crit = false
+  f.killed = false
+  f.predicted = false
+  f.remote = false
+  f.x = 0.0
+  f.y = 0.0
+  f.z = 0.0
+  f.dx = 0.0
+  f.dy = 0.0
+  f.dz = 0.0
+  f.clip = ""
+  q_push(weapons_st.wp__q, f)
+  return f
+}
+
+function wp__weapon_ok(w: int) -> bool { return w >= 0 and w < WPN_COUNT }
+function wp__ammo_ok(a: int) -> bool { return a >= 0 and a < AMMO_COUNT }
+function wp__att_ok(a: int) -> bool { return a >= 0 and a < ATT_COUNT }
+function wp__skin_ok(a: int) -> bool { return a >= 0 and a < WSKIN_COUNT }
+function wp__class_ok(c: int) -> bool { return c >= 0 and c < WCLASS_COUNT }

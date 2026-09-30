@@ -1,0 +1,8 @@
+# weapons_ammo.lres - the rounds the tests load
+std { damage_mult: 1.0, max_carry: 200 }
+hot {
+  damage_mult: 1.5, pen_mult: 2.0, spread_mult: 0.5, max_carry: 100, damage_type: 3
+  effects: [{ kind: 7, magnitude: 2.0, seconds: 4.0, chance: 1.0, label: "burn" }, { kind: 8, chance: 0.0 }]
+}
+shells { max_carry: 50 }
+rocket { max_carry: 10 }

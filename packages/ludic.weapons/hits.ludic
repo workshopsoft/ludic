@@ -1,0 +1,113 @@
+# hits.ludic - what a round does where it lands: the damage port, a kill, what the ammo leaves on a target,
+# and a blast. `mode` says whose round it is: WP_MODE_AUTH (this machine decides: solo or host), WP_MODE_GUESS
+# (a guest's own shot: a prediction, nothing is hurt) or WP_MODE_REMOTE (another machine's, shown here)
+export const WP_MODE_AUTH: int = 0
+export const WP_MODE_GUESS: int = 1
+export const WP_MODE_REMOTE: int = 2
+
+# the damage type a round carries: the ammo's own when it names one
+function wp__type_of(w: Weapon, ammo: int) -> int {
+  if wp__ammo_ok(ammo) and AmmoTypes[ammo].damage_type >= 0 { return AmmoTypes[ammo].damage_type }
+  return w.damage_type
+}
+
+# what the ammo leaves on a target that was hurt: each effect by its chance, from the shot's own dice
+function wp__effects(weapons_st: mut WeaponsState, owner: int, victim: int, ammo: int) -> void {
+  if not wp__ammo_ok(ammo) or AmmoTypes[ammo].effects == null { return }
+  let l = AmmoTypes[ammo].effects
+  for i in 0 .. len(l) {
+    if l[i].chance < 1.0 and rng_float(weapons_st.wp__dice) >= l[i].chance { continue }
+    WeaponsEffects.apply(victim, owner, l[i].kind, l[i].magnitude, l[i].seconds, l[i].bonus, l[i].label)
+  }
+}
+
+# one body (victim >= 0) or one surface (victim -1) reached by a round. `amount` is the damage it carries
+# there. The facts say a hit (and a kill); the port, in WP_MODE_AUTH only, does the hurting. Returns what
+# the victim took
+function wp__land(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, owner: int, weapon: int, ammo: int, type: int, victim: int, zone: int, material: int, amount: float, dist: float, x: float, y: float, z: float, nx: float, ny: float, nz: float, mode: int, shot_no: int) -> float {
+  var dealt = 0.0
+  var killed = false
+  if victim >= 0 and mode == WP_MODE_AUTH and amount > 0.0 {
+    let was = WeaponsDamage.alive(victim)
+    dealt = WeaponsDamage.hurt(victim, owner, amount, type, zone)
+    killed = was and not WeaponsDamage.alive(victim)
+    if dealt > 0.0 { wp__effects(weapons_st, owner, victim, ammo) }
+  }
+  let f = wp__fact(weapons_st, WP_HIT, s, h, gun)
+  f.actor = owner
+  f.weapon = weapon
+  f.ammo = ammo
+  f.target = victim
+  f.zone = zone
+  f.material = material
+  f.damage = amount
+  if mode == WP_MODE_AUTH and victim >= 0 { f.damage = dealt }
+  f.dist = dist
+  f.x = x
+  f.y = y
+  f.z = z
+  f.dx = nx
+  f.dy = ny
+  f.dz = nz
+  f.shot_no = shot_no
+  f.killed = killed
+  f.predicted = mode == WP_MODE_GUESS
+  f.remote = mode == WP_MODE_REMOTE
+  if killed {
+    weapons_st.wp__kills += 1
+    let k = wp__fact(weapons_st, WP_KILLED, s, h, gun)
+    k.actor = owner
+    k.weapon = weapon
+    k.ammo = ammo
+    k.target = victim
+    k.zone = zone
+    k.damage = dealt
+    k.dist = dist
+    k.shot_no = shot_no
+    k.x = x
+    k.y = y
+    k.z = z
+    k.killed = true
+  }
+  return dealt
+}
+
+# a blast at a point: every body within `radius` that is not behind cover, hurt by `dmg` times a falloff
+# that is 1 inside `inner` and falls to 0 at the edge by `pow` (1: a straight line). The thrower is hurt too
+function wp__blast(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, owner: int, weapon: int, ammo: int, type: int, x: float, y: float, z: float, dmg: float, radius: float, inner: float, pow: float, zone: int, mode: int, shot_no: int) -> int {
+  let ef = wp__fact(weapons_st, WP_EXPLODED, s, h, gun)
+  ef.actor = owner
+  ef.weapon = weapon
+  ef.ammo = ammo
+  ef.amount = radius
+  ef.x = x
+  ef.y = y
+  ef.z = z
+  ef.shot_no = shot_no
+  ef.predicted = mode == WP_MODE_GUESS
+  ef.remote = mode == WP_MODE_REMOTE
+  if radius <= 0.0 { return 0 }
+  if mode != WP_MODE_AUTH { return 0 }
+  List.clear(weapons_st.wp__found)
+  WeaponsWorld.find(x, y, z, radius, weapons_st.wp__found)
+  var reached = 0
+  var i = 0
+  while i < len(weapons_st.wp__found) {
+    let b = weapons_st.wp__found[i]
+    i += 1
+    if b != owner and not WeaponsWorld.hostile(owner, b) { continue }
+    let bx = WeaponsWorld.body_x(b)
+    let by = WeaponsWorld.body_y(b)
+    let bz = WeaponsWorld.body_z(b)
+    let d = Math.sqrt((bx - x) * (bx - x) + (by - y) * (by - y) + (bz - z) * (bz - z))
+    if d > radius { continue }
+    if WeaponsWorld.blocked(x, y, z, bx, by, bz) { continue }
+    var mult = 1.0
+    if d > inner and radius > inner { mult = Math.pow(Math.max(1.0 - (d - inner) / (radius - inner), 0.0), pow) }
+    let inv = 1.0 / Math.max(d, 0.001)
+    wp__land(weapons_st, s, h, gun, owner, weapon, ammo, type, b, zone, -1, dmg * mult, d, bx, by, bz, (bx - x) * inv, (by - y) * inv, (bz - z) * inv, mode, shot_no)
+    reached += 1
+  }
+  ef.target = reached
+  return reached
+}

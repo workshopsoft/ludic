@@ -1,0 +1,188 @@
+# stats.ludic - the numbers a gun has: a weapon's base, then what its fitted attachments do, then its
+# ammo. The rules (README "Attachments stack"):
+#   stat = (base + every add) x (every mul), one attachment a slot, held to WEAPON_MOD_MIN .. MAX of a base above 0;
+#   the ammo type's multiplier then applies to the damage, range, speed, penetration and spread it names.
+# Pure arithmetic: no state, no allocation, the same on every machine.
+
+function wp__base(w: Weapon, stat: int) -> float {
+  if stat == WSTAT_DAMAGE { return w.damage }
+  if stat == WSTAT_RATE { return w.rate }
+  if stat == WSTAT_RANGE { return w.range }
+  if stat == WSTAT_SPREAD { return w.spread }
+  if stat == WSTAT_BLOOM { return w.bloom }
+  if stat == WSTAT_RECOIL { return w.recoil_scale }
+  if stat == WSTAT_SPREAD_RECOVERY { return w.spread_recovery }
+  if stat == WSTAT_RECOIL_RECOVERY { return w.recoil_recovery }
+  if stat == WSTAT_MAG_SIZE { return float(w.mag_size) }
+  if stat == WSTAT_RELOAD { return 1.0 }
+  if stat == WSTAT_EQUIP { return 1.0 }
+  if stat == WSTAT_ZOOM { return w.zoom }
+  if stat == WSTAT_ADS_TIME { return w.ads_time }
+  if stat == WSTAT_MOVE { return 1.0 }
+  if stat == WSTAT_SPEED { return w.speed }
+  if stat == WSTAT_NOISE { return w.noise }
+  if stat == WSTAT_PEN { return w.pen }
+  return 0.0
+}
+
+# a gun's stat with its attachments
+function wp__stat(g: Gun, stat: int) -> float {
+  let w = Weapons[g.weapon]
+  let base = wp__base(w, stat)
+  var add = 0.0
+  var mul = 1.0
+  for slot in 0 .. WSLOT_COUNT {
+    let a = g.attach[slot]
+    if a < 0 or a >= ATT_COUNT { continue }
+    let mods = Attachments[a].mods
+    if mods == null { continue }
+    for i in 0 .. len(mods) {
+      if mods[i].stat != stat { continue }
+      if mods[i].mode == WMOD_ADD { add += mods[i].value } else { mul = mul * mods[i].value }
+    }
+  }
+  var v = (base + add) * mul
+  if base > 0.0 { v = Math.clamp(v, base * WEAPON_MOD_MIN, base * WEAPON_MOD_MAX) }
+  if v < 0.0 { v = 0.0 }
+  return v
+}
+
+# the stat as a fired round has it: the ammo type's multiplier on top
+function wp__ammo_mult(g: Gun, stat: int) -> float {
+  if not wp__ammo_ok(g.ammo_type) { return 1.0 }
+  let a = AmmoTypes[g.ammo_type]
+  if stat == WSTAT_DAMAGE { return a.damage_mult }
+  if stat == WSTAT_RANGE { return a.range_mult }
+  if stat == WSTAT_SPEED { return a.speed_mult }
+  if stat == WSTAT_PEN { return a.pen_mult }
+  if stat == WSTAT_SPREAD { return a.spread_mult }
+  return 1.0
+}
+
+function wp__fired(g: Gun, stat: int) -> float { return wp__stat(g, stat) * wp__ammo_mult(g, stat) }
+
+# the damage of a round at `dist` metres: the falloff's multiplier at the distance as the range stat
+# stretches it (an attachment that adds range moves the whole curve out)
+function wp__falloff(w: Weapon, dist: float, stretch: float) -> float {
+  let pts = w.falloff
+  if pts == null or len(pts) == 0 { return 1.0 }
+  var d = dist
+  if stretch > 0.0 { d = dist / stretch }
+  if d <= pts[0].range { return pts[0].mult }
+  let n = len(pts)
+  for i in 1 .. n {
+    if d <= pts[i].range {
+      let a = pts[i - 1]
+      let b = pts[i]
+      let span = b.range - a.range
+      if span <= 0.0 { return b.mult }
+      return a.mult + (b.mult - a.mult) * (d - a.range) / span
+    }
+  }
+  return pts[n - 1].mult
+}
+
+# seconds between rounds
+function wp__interval(g: Gun) -> float {
+  return 60.0 / Math.max(wp__stat(g, WSTAT_RATE), 1.0)
+}
+
+function wp__mag_size(g: Gun) -> int {
+  let n = int(Math.round(wp__stat(g, WSTAT_MAG_SIZE)))
+  if n < 1 { return 1 }
+  return n
+}
+
+# what the magazine holds: a tactical reload leaves one up the spout on a weapon that keeps one
+function wp__cap(g: Gun) -> int {
+  var n = wp__mag_size(g)
+  if Weapons[g.weapon].chamber and g.mag > 0 and Weapons[g.weapon].kind == WKIND_HITSCAN { n += 1 }
+  return n
+}
+
+function wp__class_of(w: Weapon) -> WeaponClass {
+  if wp__class_ok(w.class) { return WeaponClasses[w.class] }
+  return null
+}
+
+function wp__equip_time(g: Gun) -> float {
+  let w = Weapons[g.weapon]
+  var t = w.equip_time
+  if t < 0.0 {
+    t = 0.6
+    if wp__class_ok(w.class) { t = WeaponClasses[w.class].equip_time }
+  }
+  return t * wp__stat(g, WSTAT_EQUIP)
+}
+
+function wp__holster_time(g: Gun) -> float {
+  let w = Weapons[g.weapon]
+  if w.holster_time >= 0.0 { return w.holster_time }
+  if wp__class_ok(w.class) { return WeaponClasses[w.class].holster_time }
+  return 0.3
+}
+
+function wp__move_of(g: Gun) -> float {
+  let w = Weapons[g.weapon]
+  var m = w.move_mult
+  if m < 0.0 {
+    m = 1.0
+    if wp__class_ok(w.class) { m = WeaponClasses[w.class].move_mult }
+  }
+  return m * wp__stat(g, WSTAT_MOVE)
+}
+
+function wp__ads_move_of(g: Gun) -> float {
+  let w = Weapons[g.weapon]
+  if w.ads_move >= 0.0 { return w.ads_move }
+  if wp__class_ok(w.class) { return WeaponClasses[w.class].ads_move }
+  return 0.6
+}
+
+# the stance row's multiplier (1 when the weapon names none)
+function wp__stance_spread(w: Weapon, stance: int) -> float {
+  if w.stances == null { return 1.0 }
+  for i in 0 .. len(w.stances) { if w.stances[i].stance == stance { return w.stances[i].spread } }
+  return 1.0
+}
+
+function wp__stance_recoil(w: Weapon, stance: int) -> float {
+  if w.stances == null { return 1.0 }
+  for i in 0 .. len(w.stances) { if w.stances[i].stance == stance { return w.stances[i].recoil } }
+  return 1.0
+}
+
+function wp__stance_move(w: Weapon, stance: int) -> float {
+  if w.stances == null { return 1.0 }
+  for i in 0 .. len(w.stances) { if w.stances[i].stance == stance { return w.stances[i].move } }
+  return 1.0
+}
+
+# the half-angle of the cone the next round leaves by: (base + bloom) x stance x motion x sights x ammo
+function wp__spread_now(s: Shooter, g: Gun) -> float {
+  let w = Weapons[g.weapon]
+  var sp = wp__stat(g, WSTAT_SPREAD) + s.bloom
+  sp = sp * wp__stance_spread(w, s.stance)
+  sp = sp * (1.0 + (w.move_spread - 1.0) * Math.clamp(s.speed01, 0.0, 1.0))
+  if s.ads { sp = sp * w.ads_spread }
+  return sp * wp__ammo_mult(g, WSTAT_SPREAD)
+}
+
+# the most spread this gun can have, in any stance and at any speed: the bound the host holds a guest's claim to
+function wp__spread_cap(g: Gun) -> float {
+  let w = Weapons[g.weapon]
+  var worst = 1.0
+  if w.stances != null { for i in 0 .. len(w.stances) { worst = Math.max(worst, w.stances[i].spread) } }
+  return (wp__stat(g, WSTAT_SPREAD) + w.bloom_max) * worst * Math.max(1.0, w.move_spread) * wp__ammo_mult(g, WSTAT_SPREAD)
+}
+
+# a number from (seed of the match, the shooter's actor, the shot's number): the dice of one shot. The
+# same three make the same number on every machine, so a guest and the host draw the same spread
+export function weapons_shot_seed(world_seed: int, actor: int, shot_no: int) -> int {
+  var x = world_seed * 374761393 + actor * 668265263 + shot_no * 1597334677
+  x = (x ^ ((x >> 13) & 0x7FFFF)) * 1274126177
+  x = x ^ ((x >> 16) & 0xFFFF)
+  x = x * 668265263
+  x = x ^ ((x >> 15) & 0x1FFFF)
+  return x & 0x7FFFFFFF
+}

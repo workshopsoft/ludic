@@ -1,0 +1,403 @@
+# defs.ludic - the tables a game fills (usually from resource files: `def Weapons from "weapons.lres"`),
+# the records, the constants the rows name, and the facts. Lengths are metres, angles degrees, times
+# seconds, rates rounds a minute. A yaw of 0 faces +z. Damage is in the game's own units and its type is
+# the game's number (ludic.vitals' DamageTypes row, when it is the one that answers the damage port).
+# Nothing here moves a bone: every `clip_*` and `hold` is a name the animation layer plays (ludic.anim:
+# a clip from the weapon's glTF, or a state of the game's animation graph)
+
+# how a trigger behaves
+export const WMODE_SEMI: int = 0        # one round a press
+export const WMODE_BURST: int = 1       # `burst_count` rounds a press, `burst_gap` apart
+export const WMODE_AUTO: int = 2        # rounds at the rate for as long as the trigger is held
+export const WMODE_CHARGE: int = 3      # hold to charge, release to fire; damage and speed scale with the charge
+
+# what a round is
+export const WKIND_HITSCAN: int = 0     # a ray, at once
+export const WKIND_PROJECTILE: int = 1  # a body in flight: speed, gravity, drop, contact or fuse
+export const WKIND_THROWN: int = 2      # a projectile thrown: the same, and its stock is the ammo reserve
+
+# where an attachment goes
+export const WSLOT_MUZZLE: int = 0
+export const WSLOT_BARREL: int = 1
+export const WSLOT_SIGHT: int = 2
+export const WSLOT_GRIP: int = 3
+export const WSLOT_MAG: int = 4
+export const WSLOT_STOCK: int = 5
+export const WSLOT_LASER: int = 6
+export const WSLOT_SKIN: int = 7        # a cosmetic (a charm, a camo kit)
+export const WSLOT_COUNT: int = 8
+
+# what an attachment may change. A stat is (base + every add) x (every mul), held to WEAPON_MOD_MIN..MAX of its base
+export const WSTAT_DAMAGE: int = 0
+export const WSTAT_RATE: int = 1
+export const WSTAT_RANGE: int = 2
+export const WSTAT_SPREAD: int = 3
+export const WSTAT_BLOOM: int = 4
+export const WSTAT_RECOIL: int = 5
+export const WSTAT_SPREAD_RECOVERY: int = 6
+export const WSTAT_RECOIL_RECOVERY: int = 7
+export const WSTAT_MAG_SIZE: int = 8
+export const WSTAT_RELOAD: int = 9      # a multiplier on the reload times: 0.8 is a fifth quicker
+export const WSTAT_EQUIP: int = 10      # ... on the equip time
+export const WSTAT_ZOOM: int = 11
+export const WSTAT_ADS_TIME: int = 12
+export const WSTAT_MOVE: int = 13       # ... on the walking speed with the weapon held
+export const WSTAT_SPEED: int = 14      # a projectile's speed
+export const WSTAT_NOISE: int = 15      # how far a shot is heard (a suppressor)
+export const WSTAT_PEN: int = 16
+export const WSTAT_COUNT: int = 17
+
+export const WMOD_ADD: int = 0
+export const WMOD_MUL: int = 1
+
+# the shooter's stance, for the modifiers of a weapon's spread and recoil
+export const WSTANCE_STAND: int = 0
+export const WSTANCE_CROUCH: int = 1
+export const WSTANCE_PRONE: int = 2
+export const WSTANCE_AIR: int = 3
+export const WSTANCE_SWIM: int = 4
+export const WSTANCE_COUNT: int = 5
+
+# the weapon wheel's places
+export const WEAPONS_WHEEL: int = 8
+# the bounds an attachment stack is held to, as a share of a stat's base
+export const WEAPON_MOD_MIN: float = 0.1
+export const WEAPON_MOD_MAX: float = 4.0
+# what pulls a projectile down (m/s2), times the weapon's `gravity`
+export const WEAPONS_GRAVITY: float = 9.81
+
+# a point of a falloff curve: from `range` metres on the damage is `mult` of its base (linear between points)
+export property FalloffPoint {
+  @Unit("m") @Range(0, 10000) range: float = 0.0
+  @Range(0, 10) mult: float = 1.0
+}
+
+# the kick of one shot, degrees: pitch up and yaw to the right
+export property RecoilPoint {
+  @Unit("deg") @Range(-30, 30) pitch: float = 0.0
+  @Unit("deg") @Range(-30, 30) yaw: float = 0.0
+}
+
+# what a stance does to a weapon (times): 0.5 is half the spread
+export property StanceMod {
+  @OneOf(WSTANCE_) stance: int = 0
+  @Range(0, 10) spread: float = 1.0
+  @Range(0, 10) recoil: float = 1.0
+  @Range(0, 10) move: float = 1.0
+}
+
+export property AmmoEffect {
+  kind: int = 0                                          # the game's effect kind (ludic.effects)
+  magnitude: float = 1.0
+  @Unit("s") @Range(0, 3600) seconds: float = 3.0
+  @Range(0, 1) chance: float = 1.0
+  bonus: bool = false
+  label: string = ""
+}
+
+# a kind of round: what it does to the numbers of any weapon that fires it, and what it leaves on a target
+export property AmmoType {
+  key: string = ""
+  @Text name: Key = null
+  @Asset("png") icon: string = ""
+  @Range(0, 100) damage_mult: float = 1.0
+  @Range(0, 100) pen_mult: float = 1.0
+  @Range(0, 100) speed_mult: float = 1.0
+  @Range(0, 100) spread_mult: float = 1.0
+  @Range(0, 100) range_mult: float = 1.0
+  @Unit("m") @Range(0, 100) blast_add: float = 0.0
+  @Ref(DamageTypes) damage_type: int = -1                # -1: the weapon's own
+  tracer: bool = false
+  @Range(1, 100000) max_carry: int = 120                 # the most a shooter holds in reserve
+  @Range(1, 10000) pickup: int = 30                      # a box's worth
+  effects: []AmmoEffect = null
+}
+
+@ByKey
+export open registry AmmoTypes of AmmoType as AMMO
+
+# a family of weapons (pistol, rifle, launcher, grenade): the wheel place, the stance the body takes, how
+# a holder moves, and the attachment slots it offers
+export property WeaponClass {
+  key: string = ""
+  @Text name: Key = null
+  @Range(0, 7) wheel: int = 0                            # its place on the weapon wheel
+  hold: string = ""                                      # the animation graph's name for how it is held
+  @Range(0, 2) move_mult: float = 1.0
+  @Range(0, 2) ads_move: float = 0.6
+  @Unit("s") @Range(0, 10) equip_time: float = 0.6
+  @Unit("s") @Range(0, 10) holster_time: float = 0.3
+  @OneOf(WSLOT_) slots: []int = null
+  auto_reload: bool = true                               # an emptied magazine is reloaded at once
+  melee: bool = false
+}
+
+@ByKey
+export open registry WeaponClasses of WeaponClass as WCLASS
+
+# a firearm or a throwable
+export property Weapon {
+  key: string = ""
+  @Text name: Key = null
+  @Asset("png") icon: string = ""
+  @Ref(WeaponClasses) class: int = 0
+  @Ref(AmmoTypes) ammo: int = 0
+  @Ref(AmmoTypes) ammo_alt: []int = null                 # other rounds it may load
+  @OneOf(WKIND_) kind: int = 0
+
+  # the model, and the nodes on it the game and the attachments mount to
+  @Asset("gltf") model: string = ""
+  @Node(model) muzzle: string = ""                       # where rounds and the flash start
+  @Node(model) eject: string = ""
+  @Node(model) mount_muzzle: string = ""
+  @Node(model) mount_barrel: string = ""
+  @Node(model) mount_sight: string = ""
+  @Node(model) mount_grip: string = ""
+  @Node(model) mount_mag: string = ""
+  @Node(model) mount_stock: string = ""
+  @Node(model) mount_laser: string = ""
+  @Node(model) mount_skin: string = ""
+
+  # the clips the animation layer plays (named on the facts): none of it is moved here
+  @Clip(model) clip_idle: string = ""
+  @Clip(model) clip_fire: string = ""
+  @Clip(model) clip_fire_ads: string = ""
+  @Clip(model) clip_charge: string = ""
+  @Clip(model) clip_reload: string = ""
+  @Clip(model) clip_reload_empty: string = ""
+  @Clip(model) clip_reload_start: string = ""            # a shell-by-shell reload: the way in,
+  @Clip(model) clip_reload_shell: string = ""            # each shell,
+  @Clip(model) clip_reload_end: string = ""              # and the way out
+  @Clip(model) clip_empty: string = ""
+  @Clip(model) clip_equip: string = ""
+  @Clip(model) clip_holster: string = ""
+  @Clip(model) clip_inspect: string = ""
+
+  # the trigger
+  @OneOf(WMODE_) modes: []int = null                     # in the order a mode change cycles through; the first is the start
+  @Range(1, 20) burst_count: int = 3
+  @Unit("s") @Range(0, 2) burst_gap: float = 0.0         # 0: the rate's own interval
+  @Range(1, 20000) rate: float = 600.0                   # rounds a minute
+  @Unit("s") @Range(0.05, 30) charge_time: float = 1.0
+  @Range(0, 1) charge_min: float = 0.25                  # the share of damage and speed a barely charged shot has
+  @Range(0, 100) ammo_per_shot: int = 1
+
+  # damage
+  @Range(0, 1000000) damage: float = 20.0
+  @Ref(DamageTypes) damage_type: int = 0
+  @Range(1, 100) pellets: int = 1                        # a shotgun's: each with a spread of its own
+  @Unit("m") @Range(1, 10000) range: float = 100.0       # no damage past it
+  falloff: []FalloffPoint = null
+  @Range(0, 1000) pen: float = 0.0                       # penetration power: each body or surface costs some
+  @Range(0, 1) pen_loss: float = 0.3                     # the share of damage each one costs
+  @Range(0, 10) max_pierce: int = 0
+
+  # spread: a cone half-angle that grows with each shot and comes back
+  @Unit("deg") @Range(0, 45) spread: float = 1.0
+  @Unit("deg") @Range(0, 45) bloom: float = 0.3          # added per shot,
+  @Unit("deg") @Range(0, 45) bloom_max: float = 4.0      # up to this,
+  @Unit("deg") @Range(0, 1000) spread_recovery: float = 6.0 # and taken off a second after
+  @Unit("s") @Range(0, 10) spread_delay: float = 0.15    # this long without a shot
+  stances: []StanceMod = null
+  @Range(0, 10) move_spread: float = 1.6                 # times, at full speed
+  @Range(0, 10) ads_spread: float = 0.6
+
+  # recoil: a pattern of kicks by shot number, looping from `recoil_loop`
+  recoil: []RecoilPoint = null
+  @Range(0, 1000) recoil_loop: int = 0
+  @Range(0, 10) recoil_scale: float = 1.0
+  @Unit("deg") @Range(0, 10) recoil_jitter: float = 0.1  # seeded, per shot
+  @Unit("deg") @Range(0, 1000) recoil_recovery: float = 8.0
+  @Unit("s") @Range(0, 10) recoil_delay: float = 0.1
+  @Unit("s") @Range(0, 10) recoil_reset: float = 0.4     # idle this long and the pattern starts again
+  @Range(0, 10) ads_recoil: float = 0.7
+
+  # a body in flight
+  @Unit("m/s") @Range(0, 10000) speed: float = 60.0
+  @Range(0, 10) gravity: float = 1.0
+  @Range(0, 10) drag: float = 0.0
+  @Unit("s") @Range(0, 600) life: float = 6.0
+  @Unit("m") @Range(0, 10) radius: float = 0.05
+  @Unit("s") @Range(0, 600) fuse: float = 0.0            # 0: none. Else it goes off this long after it leaves the hand
+  impact: bool = true                                    # goes off on contact (false: bounces until its fuse)
+  @Range(0, 1) bounce: float = 0.3
+  cook: bool = false                                     # holding a charged throw burns its fuse
+  @Unit("m") @Range(0, 1000) blast_radius: float = 0.0
+  @Range(0, 1000000) blast_damage: float = 0.0           # 0: the weapon's damage
+  @Unit("m") @Range(0, 1000) blast_inner: float = 0.0    # full damage inside this
+  @Range(0.1, 10) blast_pow: float = 1.0                 # 1 falls off linearly to the edge, 2 faster
+  blast_zone: int = -1
+
+  # the magazine
+  @Range(1, 10000) mag_size: int = 12
+  chamber: bool = true                                   # a tactical reload leaves a round up the spout: one more
+  @Unit("s") @Range(0, 60) reload_tactical: float = 1.8  # (each shell's time when it loads shell by shell)
+  @Unit("s") @Range(0, 60) reload_empty: float = 2.3
+  reload_each: bool = false
+  @Unit("s") @Range(0, 60) reload_start: float = 0.4
+  @Unit("s") @Range(0, 60) reload_end: float = 0.4
+
+  # in the hands
+  @Unit("s") @Range(-1, 10) equip_time: float = -1.0     # -1: the class's
+  @Unit("s") @Range(-1, 10) holster_time: float = -1.0
+  @Range(-1, 2) move_mult: float = -1.0
+  @Range(1, 50) zoom: float = 1.0
+  @Unit("s") @Range(0, 5) ads_time: float = 0.2
+  @Range(0, 2) ads_move: float = -1.0
+  @Unit("m") @Range(0, 10000) noise: float = 60.0        # how far a shot is heard
+  @OneOf(WSLOT_) slots: []int = null                     # slots beyond the class's
+  @Ref(Attachments) attach: []int = null                 # fitted to every new one
+  @Ref(WeaponSkins) skin: int = -1
+}
+
+@ByKey
+export open registry Weapons of Weapon as WPN
+
+export property AttachmentMod {
+  @OneOf(WSTAT_) stat: int = 0
+  @OneOf(WMOD_) mode: int = 1
+  value: float = 1.0
+}
+
+# a part that fits a slot and changes stats: fitting one to an occupied slot replaces what was there, and
+# so does one of the same non-zero `group` (a laser and a flashlight are one group)
+export property Attachment {
+  key: string = ""
+  @Text name: Key = null
+  @Asset("png") icon: string = ""
+  @OneOf(WSLOT_) slot: int = 0
+  @Ref(Weapons) weapons: []int = null                    # fits these weapons; with no weapons and no classes, any with the slot
+  @Ref(WeaponClasses) classes: []int = null              # ... or any of these families
+  @Asset("gltf") model: string = ""
+  @Node(model) mount: string = ""                        # the part's own node that meets the weapon's `mount_*`
+  mods: []AttachmentMod = null
+  @Range(0, 100) group: int = 0
+  @Ref(AmmoTypes) ammo: int = -1                         # loads this round (an incendiary magazine)
+  @OneOf(WMODE_) grant_mode: int = -1                    # adds this fire mode (an auto sear)
+  silenced: bool = false                                 # a shot makes no flash and its noise is WSTAT_NOISE's
+  light: bool = false                                    # the game draws a beam (laser, flashlight)
+  @Range(0, 10000000) price: int = 0
+}
+
+@ByKey
+export open registry Attachments of Attachment as ATT
+
+export property SkinTint {
+  part: string = ""                                      # the material or node the colour is for
+  @Color color: int = 0
+}
+
+# a livery: colours and textures for a weapon, applied by the game's renderer
+export property WeaponSkin {
+  key: string = ""
+  @Text name: Key = null
+  @Ref(Weapons) weapons: []int = null                    # empty with no classes: any weapon
+  @Ref(WeaponClasses) classes: []int = null
+  @Color tint: int = 0xFFFFFF
+  tints: []SkinTint = null
+  @Asset("png") albedo: string = ""
+  @Asset("png") normal: string = ""
+  @Asset("png") mask: string = ""
+  material: string = ""
+  @Range(0, 10) rarity: int = 0
+  @Range(0, 10000000) price: int = 0
+}
+
+@ByKey
+export open registry WeaponSkins of WeaponSkin as WSKIN
+
+export property LoadoutItem {
+  @Ref(Weapons) weapon: int = 0
+  @Range(-1, 100000) reserve: int = -1                   # rounds in reserve for its ammo type (-1: two magazines)
+  @Ref(Attachments) attachments: []int = null
+  @Ref(WeaponSkins) skin: int = -1
+}
+
+# a set of weapons a shooter begins with, or buys as one; `equip` is the item drawn first
+export property Loadout {
+  key: string = ""
+  @Text name: Key = null
+  items: []LoadoutItem = null
+  equip: int = 0
+}
+
+@ByKey
+export open registry Loadouts of Loadout as LOADOUT
+
+# the facts
+export const WP_FIRED: int = 0            # a round left (predicted on a guest; spread, seed, shot_no, noise, clip, kick)
+export const WP_HIT: int = 1              # a round reached something (target -1: the world; zone, damage, dist, material, x y z, d = the normal)
+export const WP_KILLED: int = 2           # a hit took its target out of the fight (target, zone)
+export const WP_RELOAD_STARTED: int = 3   # (clip, time)
+export const WP_RELOADED: int = 4         # rounds went in (amount)
+export const WP_EMPTY: int = 5            # the trigger on an empty magazine (clip)
+export const WP_EQUIPPED: int = 6         # a weapon is in hand (clip, time)
+export const WP_HOLSTERED: int = 7        # a weapon put away (clip)
+export const WP_ATTACHED: int = 8         # (slot in `zone`, attachment in `ammo`)
+export const WP_DETACHED: int = 9
+export const WP_PROJECTILE: int = 10      # a body left the weapon: its id in `shot_no`, x y z, d = its velocity
+export const WP_PROJECTILE_END: int = 11  # it stopped (why in `zone`: WP_END_*)
+export const WP_EXPLODED: int = 12        # a blast (x y z, amount: the radius, target: how many were reached)
+export const WP_MODE: int = 13            # the fire mode changed (zone: the new mode)
+export const WP_REFUSED: int = 14         # a verb was not allowed (zone: why)
+export const WP_CHARGING: int = 15        # a charge began (clip, time: to full)
+export const WP_CONFIRMED: int = 16       # the host accepted a predicted shot (shot_no)
+export const WP_CORRECTED: int = 17       # the host refused it, or counted differently (shot_no, amount: the host's magazine)
+export const WP_SKIN: int = 18
+export const WP_GIVEN: int = 19           # a weapon joined the inventory
+export const WP_TAKEN: int = 20
+export const WP_AMMO: int = 21            # the reserve changed (ammo, amount: the new count)
+
+# why a projectile ended
+export const WP_END_HIT: int = 0
+export const WP_END_EXPIRED: int = 1
+export const WP_END_FUSE: int = 2
+
+# why a verb did nothing
+export const WP_OK: int = 0
+export const WP_NO_SHOOTER: int = 1
+export const WP_NO_GUN: int = 2
+export const WP_BUSY: int = 3
+export const WP_FULL: int = 4             # the magazine is full (or the pack cannot hold more)
+export const WP_NO_AMMO: int = 5
+export const WP_NOT_COMPATIBLE: int = 6
+export const WP_NO_SLOT: int = 7
+export const WP_CANT: int = 8             # the world said no
+export const WP_NOT_HOST: int = 9
+export const WP_NOT_HELD: int = 10        # the gun is not the one in hand
+export const WP_STALE: int = 11           # the host: a shot number it has already taken
+export const WP_TOO_FAST: int = 12        # the host: more rounds than the weapon's rate allows
+export const WP_BAD_ORIGIN: int = 13      # the host: the shot starts where the shooter is not
+
+export property WeaponFact {
+  what: int = 0
+  shooter: int = -1                        # the handle
+  actor: int = -1
+  gun: int = -1                            # the index in the shooter's guns
+  weapon: int = -1
+  ammo: int = -1
+  target: int = -1                         # the actor a hit reached
+  zone: int = -1
+  shot_no: int = 0
+  seed: int = 0
+  damage: float = 0.0
+  dist: float = 0.0
+  spread: float = 0.0                      # the half-angle of the cone the shot left by
+  kick_pitch: float = 0.0                  # what the shot added to the aim's recoil
+  kick_yaw: float = 0.0
+  noise: float = 0.0
+  amount: float = 0.0
+  time: float = 0.0                        # for a clip: how long the act takes
+  material: int = -1
+  crit: bool = false
+  killed: bool = false
+  predicted: bool = false                  # a guest's own guess, before the host spoke
+  remote: bool = false                     # another machine's shot, shown here (no ammo, no damage)
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  dx: float = 0.0
+  dy: float = 0.0
+  dz: float = 0.0
+  clip: string = ""
+}

@@ -1,0 +1,56 @@
+# run.ludic - time passing: the rate, bloom and recoil coming back, the sights, a reload or equip running
+# out, the trigger's rounds, and the bodies in flight
+function wp__run_shooter(weapons_st: mut WeaponsState, s: Shooter, h: int, dt: float) -> void {
+  s.cool -= dt
+  if not s.streak and s.cool < 0.0 { s.cool = 0.0 }
+  if s.cool < -dt { s.cool = -dt }
+  s.streak = false
+  s.idle += dt
+  let g = wp__gun(s, s.cur)
+  if g == null {
+    s.trig_prev = s.trigger
+    return
+  }
+  let w = Weapons[g.weapon]
+  if s.bloom_wait > WP_EPS {
+    s.bloom_wait -= dt
+  } else if s.bloom > 0.0 {
+    s.bloom = Math.max(0.0, s.bloom - wp__stat(g, WSTAT_SPREAD_RECOVERY) * dt)
+  }
+  if s.recoil_wait > WP_EPS {
+    s.recoil_wait -= dt
+  } else if s.recoil_p != 0.0 or s.recoil_y != 0.0 {
+    let mag = Math.sqrt(s.recoil_p * s.recoil_p + s.recoil_y * s.recoil_y)
+    let back = Math.min(mag, wp__stat(g, WSTAT_RECOIL_RECOVERY) * dt)
+    let k = (mag - back) / mag
+    s.recoil_p = s.recoil_p * k
+    s.recoil_y = s.recoil_y * k
+  }
+  if s.idle > w.recoil_reset { s.row = 0 }
+  let to = wp__stat(g, WSTAT_ADS_TIME)
+  var goal = 0.0
+  if s.ads and s.busy != WBUSY_EQUIP and s.busy != WBUSY_RELOAD { goal = 1.0 }
+  if to <= 0.0 {
+    s.ads_t = goal
+  } else if s.ads_t < goal {
+    s.ads_t = Math.min(goal, s.ads_t + dt / to)
+  } else if s.ads_t > goal {
+    s.ads_t = Math.max(goal, s.ads_t - dt / to)
+  }
+  if s.busy != WBUSY_NONE {
+    s.busy_t -= dt
+    if s.busy_t <= WP_EPS { wp__busy_done(weapons_st, s, h) }
+  }
+  wp__trigger_step(weapons_st, s, h, dt)
+}
+
+export function weapons_run(weapons_st: mut WeaponsState, dt: float) -> void {
+  weapons_st.wp__time += dt
+  let tb = weapons_st.wp__shooters
+  var i = 0
+  while i < tb_len(tb) {
+    wp__run_shooter(weapons_st, tb_rec(tb, i), tb_handle(tb, i), dt)
+    i += 1
+  }
+  wp__projectiles_step(weapons_st, dt)
+}

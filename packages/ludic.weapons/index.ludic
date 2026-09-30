@@ -1,0 +1,22 @@
+# ludic.weapons - what a shooter holds and what a trigger does. Weapons, classes, ammo types,
+# attachments, skins and loadouts are rows; a shooter's guns, magazines and reserve are its state; the
+# verbs are fire, reload, switch, attach and detach; the world (the aim ray, a raycast, a sweep, who is
+# near a blast) is asked through ports, damage goes out through a port (ludic.vitals binds it in a line),
+# and every shot, hit, kill and reload is a fact. Nothing here moves a bone: the clips an animation layer
+# plays are named in the rows and on the facts. In a party the host validates a shot the client made
+module ludic_weapons uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "stats.ludic"
+import "shooters.ludic"
+import "hits.ludic"
+import "fire.ludic"
+import "projectiles.ludic"
+import "reload.ludic"
+import "queries.ludic"
+import "run.ludic"
+import "net.ludic"
+import "system.ludic"

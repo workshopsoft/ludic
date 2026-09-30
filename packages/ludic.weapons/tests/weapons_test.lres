@@ -1,0 +1,47 @@
+# weapons_test.lres - the weapons the tests fire (neutral data: a sidearm, a carbine, a scattergun, a launcher,
+# a thrown charge, a charged bow) and what goes on them
+sidearm {
+  class: WCLASS_PISTOL, ammo: AMMO_STD, ammo_alt: [AMMO_HOT], kind: WKIND_HITSCAN
+  modes: [WMODE_SEMI], rate: 300.0, damage: 20.0, damage_type: 1, range: 100.0
+  falloff: [{ range: 10.0, mult: 1.0 }, { range: 50.0, mult: 0.5 }, { range: 100.0, mult: 0.25 }]
+  spread: 1.0, bloom: 0.5, bloom_max: 3.0, spread_recovery: 4.0, spread_delay: 0.2
+  stances: [{ stance: WSTANCE_CROUCH, spread: 0.5, recoil: 0.5 }, { stance: WSTANCE_AIR, spread: 3.0 }]
+  move_spread: 2.0, ads_spread: 0.5
+  recoil: [{ pitch: 1.0, yaw: 0.0 }, { pitch: 2.0, yaw: 0.5 }, { pitch: 3.0, yaw: -0.5 }, { pitch: 4.0, yaw: 0.0 }]
+  recoil_loop: 2, recoil_jitter: 0.0, recoil_recovery: 10.0, recoil_delay: 0.1, recoil_reset: 0.5, ads_recoil: 0.5
+  mag_size: 10, chamber: true, reload_tactical: 1.5, reload_empty: 2.0
+  equip_time: 0.4, holster_time: 0.2, zoom: 1.5, ads_time: 0.2, ads_move: 0.5, noise: 50.0
+  clip_fire: "pistol_fire", clip_fire_ads: "pistol_fire_ads", clip_reload: "pistol_reload", clip_reload_empty: "pistol_reload_empty"
+  clip_equip: "pistol_equip", clip_holster: "pistol_holster", clip_empty: "pistol_click"
+  pen: 2.0, pen_loss: 0.5, max_pierce: 2
+}
+carbine {
+  class: WCLASS_RIFLE, ammo: AMMO_STD, kind: WKIND_HITSCAN
+  modes: [WMODE_AUTO, WMODE_BURST, WMODE_SEMI], burst_count: 3, burst_gap: 0.05, rate: 600.0, damage: 10.0, damage_type: 1, range: 200.0
+  spread: 0.0, bloom: 0.0, bloom_max: 0.0, recoil_jitter: 0.0
+  mag_size: 30, chamber: false, reload_tactical: 2.0, reload_empty: 2.5
+  pen: 0.0, zoom: 1.0
+}
+scattergun {
+  class: WCLASS_SHOTGUN, ammo: AMMO_SHELLS, kind: WKIND_HITSCAN
+  modes: [WMODE_SEMI], rate: 60.0, damage: 6.0, damage_type: 1, pellets: 8, range: 40.0
+  spread: 4.0, bloom: 0.0, recoil_jitter: 0.0
+  mag_size: 4, chamber: false, reload_each: true, reload_start: 0.5, reload_tactical: 0.5, reload_end: 0.25
+  clip_reload_start: "sg_start", clip_reload_shell: "sg_shell", clip_reload_end: "sg_end"
+}
+launcher {
+  class: WCLASS_LAUNCHER, ammo: AMMO_ROCKET, kind: WKIND_PROJECTILE
+  modes: [WMODE_SEMI], rate: 30.0, damage: 50.0, damage_type: 2, range: 300.0
+  speed: 40.0, gravity: 0.5, life: 5.0, radius: 0.1, impact: true
+  blast_radius: 6.0, blast_damage: 100.0, blast_inner: 1.0, blast_pow: 1.0, blast_zone: 0
+  spread: 0.0, recoil_jitter: 0.0
+  mag_size: 1, chamber: false, reload_tactical: 2.0, reload_empty: 2.0
+}
+frag {
+  class: WCLASS_GRENADE, ammo: AMMO_ROCKET, kind: WKIND_THROWN
+  modes: [WMODE_CHARGE], rate: 30.0, damage: 0.0, damage_type: 2, charge_time: 1.0, charge_min: 0.5
+  speed: 20.0, gravity: 1.0, life: 10.0, radius: 0.1, fuse: 2.0, impact: false, bounce: 0.5, cook: true
+  blast_radius: 5.0, blast_damage: 80.0, blast_inner: 0.0, blast_pow: 2.0, blast_zone: 0
+  spread: 0.0, recoil_jitter: 0.0
+  mag_size: 1, chamber: false, reload_tactical: 0.5, reload_empty: 0.5
+}

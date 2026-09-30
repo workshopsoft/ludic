@@ -1,0 +1,230 @@
+# net.ludic - weapons in a party. THE MODEL (README has it whole): the host decides. A guest fires its own gun
+# at once (the magazine, the recoil, the spread, the flash and a picture of the hit are all predicted, from a
+# seed the shot number makes), and says so in a ShotRequest (actor, gun, shot number, when, the aim ray, the
+# spread it used). The game sends it; the host runs `weapons_host_fire`, which checks the shooter could have
+# fired (holding it, loaded, within its rate, from where it stands), derives the seed ITSELF from the shot
+# number (a guest cannot pick a lucky one), puts the bodies back where the guest saw them (the lag
+# compensation port) and resolves the round for real through the damage port. The answer is a ShotConfirm
+# for the owner, and the host's facts (FIRED with the seed and spread) for the other guests to show. The
+# package sends nothing: the game puts the outbox, the confirms and the facts on its wire
+
+export function weapons_set_role(weapons_st: mut WeaponsState, role: int) -> void { weapons_st.wp__role = role }
+export function weapons_role(weapons_st: WeaponsState) -> int { return weapons_st.wp__role }
+
+# the seed of the match, the same on every machine (the host chooses it and sends it with the join)
+export function weapons_seed(weapons_st: mut WeaponsState, seed: int) -> void { weapons_st.wp__seed = seed }
+
+# how far back the host will rewind the bodies for a guest's shot, and how far ahead of a weapon's rate it
+# lets a guest's rounds run before refusing them (jitter)
+export function weapons_config(weapons_st: mut WeaponsState, max_rewind: float, slack: float) -> void {
+  weapons_st.wp__max_rewind = max_rewind
+  weapons_st.wp__slack = slack
+}
+
+export function weapons_set_local(weapons_st: mut WeaponsState, actor: int) -> void {
+  let old = weapons_of(weapons_st, weapons_st.wp__local)
+  if old >= 0 { weapons_set_mine(weapons_st, old, false) }
+  weapons_st.wp__local = actor
+  let h = weapons_of(weapons_st, actor)
+  if h >= 0 { weapons_set_mine(weapons_st, h, true) }
+}
+
+function wp__answer(weapons_st: mut WeaponsState, s: Shooter, actor: int, shot_no: int, accepted: bool, why: int) -> void {
+  var c = q_rec(weapons_st.wp__conf)
+  if c == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    c = new ShotConfirm
+    q_ring_add(weapons_st.wp__conf, c)
+  }
+  c.actor = actor
+  c.shot_no = shot_no
+  c.accepted = accepted
+  c.why = why
+  c.mag = 0
+  c.reserve = 0
+  if s != null {
+    let g = wp__gun(s, s.cur)
+    if g != null {
+      c.mag = g.mag
+      if wp__ammo_ok(g.ammo_type) { c.reserve = s.reserve[g.ammo_type] }
+    }
+  }
+  q_push(weapons_st.wp__conf, c)
+}
+
+# the host takes a guest's shot. Returns WP_OK, or why it was refused (and a refusal is an answer too: the
+# owner's confirm says so and sets its magazine right). The aim ray and the spread are the guest's, held to
+# what the weapon can do; the seed is the host's own
+export function weapons_host_fire(weapons_st: mut WeaponsState, r: ShotRequest) -> int {
+  if weapons_st.wp__role == WEAPONS_GUEST { return WP_NOT_HOST }
+  let h = weapons_of(weapons_st, r.actor)
+  let s = wp__shooter(weapons_st, h)
+  if s == null {
+    wp__answer(weapons_st, null, r.actor, r.shot_no, false, WP_NO_SHOOTER)
+    return WP_NO_SHOOTER
+  }
+  let g = wp__gun(s, s.cur)
+  var why = WP_OK
+  if g == null or r.gun != s.cur or g.weapon != r.weapon {
+    why = WP_NOT_HELD
+  } else if r.shot_no <= s.last_no {
+    why = WP_STALE
+  } else if not WeaponsWorld.can_fire(r.actor) {
+    why = WP_CANT
+  } else if s.busy == WBUSY_EQUIP or s.busy == WBUSY_RELOAD_END or (s.busy != WBUSY_NONE and not Weapons[g.weapon].reload_each) {
+    why = WP_BUSY
+  } else if g.mag < Weapons[g.weapon].ammo_per_shot {
+    why = WP_NO_AMMO
+  } else if weapons_st.wp__time + weapons_st.wp__slack < s.next_ok {
+    why = WP_TOO_FAST
+  } else if not WeaponsWorld.origin_ok(r.actor, r.ox, r.oy, r.oz) {
+    why = WP_BAD_ORIGIN
+  }
+  if why != WP_OK {
+    if r.shot_no > s.last_no { s.last_no = r.shot_no }
+    let f = wp__fact(weapons_st, WP_REFUSED, s, h, r.gun)
+    f.zone = why
+    f.shot_no = r.shot_no
+    wp__answer(weapons_st, s, r.actor, r.shot_no, false, why)
+    return why
+  }
+  if s.busy != WBUSY_NONE {
+    s.busy = WBUSY_NONE
+    s.busy_t = 0.0
+  }
+  let stamp = Math.clamp(r.stamp, weapons_st.wp__time - weapons_st.wp__max_rewind, weapons_st.wp__time)
+  let seed = weapons_shot_seed(weapons_st.wp__seed, r.actor, r.shot_no)
+  let spread = Math.clamp(r.spread, 0.0, wp__spread_cap(g))
+  WeaponsWorld.rewind(stamp)
+  wp__fire_round(weapons_st, s, h, r.gun, g, r.ox, r.oy, r.oz, r.dx, r.dy, r.dz, seed, r.shot_no, spread, r.charge, WP_MODE_AUTH)
+  WeaponsWorld.restore()
+  s.next_ok = Math.max(s.next_ok, weapons_st.wp__time) + wp__interval(g)
+  wp__spent(weapons_st, s, g, h, r.gun)
+  s.shots = r.shot_no
+  s.last_no = r.shot_no
+  wp__answer(weapons_st, s, r.actor, r.shot_no, true, WP_OK)
+  return WP_OK
+}
+
+# the owner takes the host's answer to a shot: a refusal or a different magazine is corrected, and the
+# fact says which. While shots are still unanswered the magazine is the prediction's, less what they hold
+export function weapons_net_confirm(weapons_st: mut WeaponsState, actor: int, shot_no: int, accepted: bool, mag: int, reserve: int) -> bool {
+  let h = weapons_of(weapons_st, actor)
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  if s.pending > 0 { s.pending -= 1 }
+  let g = wp__gun(s, s.cur)
+  var corrected = not accepted
+  if g != null {
+    let aps = Weapons[g.weapon].ammo_per_shot
+    var want = mag - s.pending * aps
+    if want < 0 { want = 0 }
+    if g.mag != want and (not accepted or s.pending == 0) {
+      g.mag = want
+      corrected = true
+    }
+    if s.pending == 0 and wp__ammo_ok(g.ammo_type) { s.reserve[g.ammo_type] = reserve }
+  }
+  let f = wp__fact(weapons_st, WP_CONFIRMED, s, h, s.cur)
+  f.shot_no = shot_no
+  if corrected {
+    f.what = WP_CORRECTED
+    if g != null { f.amount = float(g.mag) }
+  }
+  return true
+}
+
+# another machine's shot, shown here: the host's FIRED fact, relayed (the owner's own shot is shown already:
+# the game skips its own actor). The shooter is made as a mirror holding the weapon. It spends nothing and
+# hurts nobody: the flash, the tracer, the impacts and a flying body's picture
+@alloc_ok("a mirror shooter made the first time another machine's shot is shown")
+export function weapons_net_fired(weapons_st: mut WeaponsState, actor: int, weapon: int, ammo: int, shot_no: int, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, spread: float, charge: float) -> bool {
+  if not wp__weapon_ok(weapon) { return false }
+  var h = weapons_of(weapons_st, actor)
+  if h < 0 { h = weapons_add(weapons_st, actor, false) }
+  var gun = weapons_gun_of(weapons_st, h, weapon)
+  if gun < 0 { gun = weapons_give(weapons_st, h, weapon) }
+  let s = wp__shooter(weapons_st, h)
+  let g = wp__gun(s, gun)
+  if g == null { return false }
+  s.cur = gun
+  if wp__ammo_ok(ammo) { g.ammo_type = ammo }
+  let seed = weapons_shot_seed(weapons_st.wp__seed, actor, shot_no)
+  wp__fire_round(weapons_st, s, h, gun, g, ox, oy, oz, dx, dy, dz, seed, shot_no, spread, charge, WP_MODE_REMOTE)
+  s.shots = shot_no
+  return true
+}
+
+# ---- inventory snapshots
+
+# the layout: seq, the gun in hand, how many places, then per place (weapon or -1, magazine, ammo type, mode,
+# skin, and a part per slot), then the reserve per ammo type
+export function weapons_snapshot_size(places: int) -> int { return 3 + places * (5 + WSLOT_COUNT) + AMMO_COUNT }
+
+export function weapons_snapshot(weapons_st: mut WeaponsState, h: int, out: []float) -> int {
+  let s = wp__shooter(weapons_st, h)
+  List.clear(out)
+  if s == null { return 0 }
+  s.seq += 1
+  push(out, float(s.seq))
+  push(out, float(s.cur))
+  push(out, float(len(s.guns)))
+  for i in 0 .. len(s.guns) {
+    let g = s.guns[i]
+    push(out, float(g.weapon))
+    push(out, float(g.mag))
+    push(out, float(g.ammo_type))
+    push(out, float(g.mode))
+    push(out, float(g.skin))
+    for k in 0 .. WSLOT_COUNT {
+      if g.weapon >= 0 { push(out, float(g.attach[k])) } else { push(out, -1.0) }
+    }
+  }
+  for a in 0 .. AMMO_COUNT { push(out, float(s.reserve[a])) }
+  return len(out)
+}
+
+# a guest takes the host's inventory of an actor (made a mirror if it was not known): what a player carries,
+# and what another player has in their hands. A stale one (older seq) is dropped; while this machine's own
+# shots are unanswered the magazine and reserve of its own gun stay the prediction's
+@alloc_ok("an inventory read back: places made the first time a snapshot has more than the mirror")
+export function weapons_apply_snapshot(weapons_st: mut WeaponsState, actor: int, data: []float, n: int) -> bool {
+  if n < 3 or len(data) < n { return false }
+  let places = int(data[2])
+  if places < 0 or n < weapons_snapshot_size(places) { return false }
+  var h = weapons_of(weapons_st, actor)
+  if h < 0 { h = weapons_add(weapons_st, actor, false) }
+  let s = wp__shooter(weapons_st, h)
+  let seq = int(data[0])
+  if s.seq != 0 and seq <= s.seq and seq > s.seq - 1000000 { return false }
+  s.seq = seq
+  let keep = s.mine and s.pending > 0
+  let cur_was = s.cur
+  while len(s.guns) < places {
+    let g = new Gun
+    g.attach = new []int
+    for k in 0 .. WSLOT_COUNT { push(g.attach, -1) }
+    push(s.guns, g)
+  }
+  var at = 3
+  for i in 0 .. places {
+    let g = s.guns[i]
+    g.weapon = int(data[at])
+    let mag = int(data[at + 1])
+    if not (keep and i == cur_was) or g.weapon < 0 { g.mag = mag }
+    g.ammo_type = int(data[at + 2])
+    g.mode = int(data[at + 3])
+    g.skin = int(data[at + 4])
+    for k in 0 .. WSLOT_COUNT { g.attach[k] = int(data[at + 5 + k]) }
+    if g.weapon >= 0 and (not wp__weapon_ok(g.weapon) or not wp__ammo_ok(g.ammo_type)) { g.weapon = -1 }
+    at += 5 + WSLOT_COUNT
+  }
+  for i in places .. len(s.guns) { s.guns[i].weapon = -1 }
+  s.cur = int(data[1])
+  if wp__gun(s, s.cur) == null { s.cur = -1 }
+  for a in 0 .. AMMO_COUNT {
+    if not (keep and wp__gun(s, s.cur) != null and s.guns[s.cur].ammo_type == a) { s.reserve[a] = int(data[at]) }
+    at += 1
+  }
+  return true
+}

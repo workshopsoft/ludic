@@ -1,0 +1,109 @@
+# system.ludic - weapons as a system: PH_SIMULATE, and its own save section (version 1): each persisting
+# shooter by the game's number, with its guns (weapon, loaded round, mode, skin and every fitted part, all
+# by KEY, and the magazine), the gun in hand and the reserve by ammo key. Handles are not saved: ask
+# weapons_of(actor). A key the game no longer has is skipped. What is in flight, a reload in progress, the
+# recoil and the bloom are not saved: a load starts at rest with the gun in hand
+@alloc_ok("a new game or a load: the table made again")
+export function weapons_reset(weapons_st: mut WeaponsState) -> void {
+  weapons_st.wp__shooters = wp__table()
+  weapons_st.wp__by_actor = imap_new()
+  weapons_st.wp__time = 0.0
+  for i in 0 .. len(weapons_st.wp__projs) { weapons_st.wp__projs[i].live = false }
+  q_clear(weapons_st.wp__q)
+  q_clear(weapons_st.wp__out)
+  q_clear(weapons_st.wp__conf)
+}
+
+function weapons_tick(weapons_st: mut WeaponsState, t: Tick) -> void { weapons_run(weapons_st, t.dt) }
+
+@alloc_ok("a save: a tree written from the state")
+export function weapons_save(weapons_st: WeaponsState) -> Val {
+  let v = Value.object()
+  let l = Value.list()
+  let tb = weapons_st.wp__shooters
+  for i in 0 .. tb_len(tb) {
+    let s = tb_rec(tb, i)
+    if not s.persist { continue }
+    let o = Value.object()
+    sv_put_int(o, "actor", s.actor)
+    sv_put_int(o, "cur", s.cur)
+    sv_put_int(o, "shots", s.shots)
+    let gl = Value.list()
+    for k in 0 .. len(s.guns) {
+      let g = s.guns[k]
+      let go = Value.object()
+      if g.weapon >= 0 {
+        sv_put_str(go, "weapon", Weapons[g.weapon].key)
+        sv_put_int(go, "mag", g.mag)
+        if wp__ammo_ok(g.ammo_type) { sv_put_str(go, "ammo", AmmoTypes[g.ammo_type].key) }
+        sv_put_int(go, "mode", g.mode)
+        if wp__skin_ok(g.skin) { sv_put_str(go, "skin", WeaponSkins[g.skin].key) }
+        let al = Value.list()
+        for a in 0 .. WSLOT_COUNT {
+          if wp__att_ok(g.attach[a]) { Value.add(al, Value.str(Attachments[g.attach[a]].key)) } else { Value.add(al, Value.str("")) }
+        }
+        Value.put(go, "attach", al)
+      }
+      Value.add(gl, go)
+    }
+    Value.put(o, "guns", gl)
+    let rl = Value.object()
+    for a in 0 .. AMMO_COUNT { if s.reserve[a] > 0 { sv_put_int(rl, AmmoTypes[a].key, s.reserve[a]) } }
+    Value.put(o, "reserve", rl)
+    Value.add(l, o)
+  }
+  Value.put(v, "shooters", l)
+  return v
+}
+
+@alloc_ok("a load: shooters read back")
+export function weapons_load(weapons_st: mut WeaponsState, v: Val, version: int) -> void {
+  weapons_reset(weapons_st)
+  if Value.has(v, "shooters") == 0 { return }
+  let l = Value.get(v, "shooters")
+  for i in 0 .. Value.count(l) {
+    let o = Value.at(l, i)
+    let h = weapons_add(weapons_st, sv_int(o, "actor", -1), true)
+    let s = wp__shooter(weapons_st, h)
+    s.shots = sv_int(o, "shots", 0)
+    if Value.has(o, "guns") != 0 {
+      let gl = Value.get(o, "guns")
+      for k in 0 .. Value.count(gl) {
+        let go = Value.at(gl, k)
+        let g = new Gun
+        g.attach = new []int
+        for a in 0 .. WSLOT_COUNT { push(g.attach, -1) }
+        push(s.guns, g)
+        let w = weapons_find(sv_str(go, "weapon", ""))
+        if w < 0 { continue }
+        g.weapon = w
+        g.mag = sv_int(go, "mag", 0)
+        let am = ammotypes_find(sv_str(go, "ammo", ""))
+        g.ammo_type = Weapons[w].ammo
+        if am >= 0 { g.ammo_type = am }
+        g.mode = sv_int(go, "mode", WMODE_SEMI)
+        g.skin = weaponskins_find(sv_str(go, "skin", ""))
+        if Value.has(go, "attach") != 0 {
+          let al = Value.get(go, "attach")
+          for a in 0 .. Math.min(Value.count(al), WSLOT_COUNT) { g.attach[a] = attachments_find(Value.as_str(Value.at(al, a))) }
+        }
+        wp__fit_mag(s, g)
+      }
+    }
+    s.cur = sv_int(o, "cur", -1)
+    if wp__gun(s, s.cur) == null { s.cur = -1 }
+    if Value.has(o, "reserve") != 0 {
+      let rl = Value.get(o, "reserve")
+      for a in 0 .. AMMO_COUNT { s.reserve[a] = sv_int(rl, AmmoTypes[a].key, 0) }
+    }
+  }
+}
+
+export function weapons_system() -> System {
+  let s = system_new("weapons", PH_SIMULATE)
+  s.reset = fn weapons_reset
+  s.tick = fn weapons_tick
+  s.save = fn weapons_save
+  s.load = fn weapons_load
+  return s
+}
