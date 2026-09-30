@@ -1,0 +1,58 @@
+# ludic deps: states numbered past a word's 32 bits are still counted apart. S00 and S32 once shared
+# a bit (an int is 32 bits and `1 << 32` wrapped), so `pair` reached 1 and `all4` reached 2
+program ReachWide {
+  state S00 { n: int = 0 }
+  state S01 { n: int = 0 }
+  state S02 { n: int = 0 }
+  state S03 { n: int = 0 }
+  state S04 { n: int = 0 }
+  state S05 { n: int = 0 }
+  state S06 { n: int = 0 }
+  state S07 { n: int = 0 }
+  state S08 { n: int = 0 }
+  state S09 { n: int = 0 }
+  state S10 { n: int = 0 }
+  state S11 { n: int = 0 }
+  state S12 { n: int = 0 }
+  state S13 { n: int = 0 }
+  state S14 { n: int = 0 }
+  state S15 { n: int = 0 }
+  state S16 { n: int = 0 }
+  state S17 { n: int = 0 }
+  state S18 { n: int = 0 }
+  state S19 { n: int = 0 }
+  state S20 { n: int = 0 }
+  state S21 { n: int = 0 }
+  state S22 { n: int = 0 }
+  state S23 { n: int = 0 }
+  state S24 { n: int = 0 }
+  state S25 { n: int = 0 }
+  state S26 { n: int = 0 }
+  state S27 { n: int = 0 }
+  state S28 { n: int = 0 }
+  state S29 { n: int = 0 }
+  state S30 { n: int = 0 }
+  state S31 { n: int = 0 }
+  state S32 { n: int = 0 }
+  state S33 { n: int = 0 }
+  state S34 { n: int = 0 }
+  state S35 { n: int = 0 }
+  state S36 { n: int = 0 }
+  state S37 { n: int = 0 }
+  state S38 { n: int = 0 }
+  state S39 { n: int = 0 }
+  function low(a: mut S00) -> void { a.n += 1 }
+  function high(b: mut S32) -> void { b.n += 1 }
+  function pair(a: mut S00, b: mut S32) -> void {
+    low(a)
+    high(b)
+  }
+  function reads(c: S01, d: S33) -> int { return c.n + d.n }
+  function all4(a: mut S00, b: mut S32, c: S01, d: S33) -> int {
+    pair(a, b)
+    return reads(c, d)
+  }
+  entry (a: mut S00, b: mut S32, c: S01, d: S33) {
+    print(`{all4(a, b, c, d)}`)
+  }
+}

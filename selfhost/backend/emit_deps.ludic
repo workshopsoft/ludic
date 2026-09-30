@@ -274,7 +274,7 @@ function deps_alias_write(t: Node) -> void {
 var g_dr_name: []pointer = new []pointer        # the declarations a name can reach: functions, globals
 var g_dr_node: []Node = new []Node
 var g_dr_refs: [][]int = new [][]int            # what each one names
-var g_dr_bits: [][]int = new [][]int            # the states it reaches, 60 to a word
+var g_dr_bits: [][]int = new [][]int            # the states it reaches, DR_BITS to a word
 var g_dr_wbits: [][]int = new [][]int           # ... and of them the ones it takes `mut` somewhere down
 var g_dr_find_k: []pointer = new []pointer
 var g_dr_rl_name: []pointer = new []pointer     # a local holding one entry of a registry ...
@@ -294,8 +294,11 @@ function dr_state_ix(t: pointer) -> int {
   }
   return -1
 }
-function dr_set(bits: []int, s: int) -> void { bits[s / 60] = bits[s / 60] | (1 << (s % 60)) }
-function dr_words() -> int { return len(g_state_names) / 60 + 1 }
+# an int is 32 bits: `1 << 45` is not bit 45, it came back as bit 13, so states 32 apart shared a bit
+# and a function that took both counted one - the counts rose and fell with how the states were numbered
+const DR_BITS: int = 30
+function dr_set(bits: []int, s: int) -> void { bits[s / DR_BITS] = bits[s / DR_BITS] | (1 << (s % DR_BITS)) }
+function dr_words() -> int { return len(g_state_names) / DR_BITS + 1 }
 function dr_index(name: pointer) -> int {
   let n = ck_tab_get(g_dr_find_k, g_dr_find_v, name)
   if n == null { return -1 }
