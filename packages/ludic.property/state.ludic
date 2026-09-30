@@ -1,0 +1,222 @@
+# state.ludic - the ports, the facts and reasons, and what is held for each property
+
+# who runs the world, and who is whose friend. Unbound: this machine runs the world (solo or host), nobody is
+# anybody's crew or friend
+export port RealtyWorld {
+  authority: fn() -> bool = fn rlt_yes                # this machine owns the world: only it changes ownership
+  same_crew: fn(int, int) -> bool = fn rlt_nobody         # (a, b): in one crew
+  friends: fn(int, int) -> bool = fn rlt_nobody           # (a, b): friends
+}
+function rlt_yes() -> bool { return true }
+function rlt_nobody(a: int, b: int) -> bool { return false }
+
+# money. Unbound: money is no object, earning is nobody's
+export port RealtyPurse {
+  spend: fn(int, int) -> bool = fn rlt_spend_any      # (who, n): take it; false and nothing taken when it is not there
+  earn: fn(int, int) -> void = fn rlt_earn_none       # (who, n)
+}
+function rlt_spend_any(who: int, n: int) -> bool { return true }
+function rlt_earn_none(who: int, n: int) -> void { }
+
+# interiors, instanced. The package says which interior map an instance shows and who goes in or out; the
+# game loads the map (a second copy per instance id where the game keeps them apart), places the player and
+# unloads when told. Unbound: loading always works and nothing is placed
+export port RealtyLoad {
+  load: fn(int, string, int) -> bool = fn rlt_load_ok                          # (instance, map, floor): false refuses the visit
+  unload: fn(int) -> void = fn rlt_unload_none                                 # (instance): nobody is in it any more
+  enter: fn(int, int, int, float, float, float, float) -> void = fn rlt_enter_none   # (who, instance, floor, x, y, z, yaw): inside
+  leave: fn(int, int, float, float, float, float) -> void = fn rlt_leave_none        # (who, instance, x, y, z, yaw): back at the door
+}
+function rlt_load_ok(instance: int, map: string, floor: int) -> bool { return true }
+function rlt_unload_none(instance: int) -> void { }
+function rlt_enter_none(who: int, instance: int, floor: int, x: float, y: float, z: float, yaw: float) -> void { }
+function rlt_leave_none(who: int, instance: int, x: float, y: float, z: float, yaw: float) -> void { }
+
+# storage. Items and vehicles are the game's: an item is a kind number, a vehicle an id the game can put back.
+# Unbound: a stack holds 9999, the carry has everything and takes everything, a vehicle parks and returns
+export port RealtyStash {
+  stack_limit: fn(int) -> int = fn rlt_limit_any                              # (item): how many fit in one slot
+  take: fn(int, int, int) -> bool = fn rlt_take_any                           # (who, item, n): out of the player's carry
+  give: fn(int, int, int) -> int = fn rlt_give_all                            # (who, item, n): into the carry; how many went in
+  park: fn(int, int) -> bool = fn rlt_park_ok                                 # (who, vehicle): the game takes it out of the world
+  unpark: fn(int, int, float, float, float) -> bool = fn rlt_unpark_ok        # (who, vehicle, x, z, yaw): the game puts it back there
+}
+function rlt_limit_any(item: int) -> int { return 9999 }
+function rlt_take_any(who: int, item: int, n: int) -> bool { return true }
+function rlt_give_all(who: int, item: int, n: int) -> int { return n }
+function rlt_park_ok(who: int, vehicle: int) -> bool { return true }
+function rlt_unpark_ok(who: int, vehicle: int, x: float, z: float, yaw: float) -> bool { return true }
+
+# who may come in
+export const REALTY_OWNER: int = 0      # the owner and those invited by name
+export const REALTY_CREW: int = 1       # and the owner's crew
+export const REALTY_FRIENDS: int = 2    # and the owner's friends
+export const REALTY_PUBLIC: int = 3     # anyone
+
+# why a verb said no (`realty_why`, and a REFUSED fact's `reason`)
+export const REALTY_OK: int = 0
+export const REALTY_NO_SITE: int = 1        # the map holds no site by that key
+export const REALTY_NO_HOLDING: int = 2     # nobody owns it
+export const REALTY_NOT_FOR_SALE: int = 3   # its kind is not sold (or not rented)
+export const REALTY_TAKEN: int = 4          # someone else has it
+export const REALTY_NOT_OWNER: int = 5
+export const REALTY_BROKE: int = 6          # the purse would not pay
+export const REALTY_NOT_HOST: int = 7       # this machine does not own the world: ask the host
+export const REALTY_NO_ACCESS: int = 8
+export const REALTY_INSIDE: int = 9         # already inside
+export const REALTY_NOT_INSIDE: int = 10
+export const REALTY_LOAD_FAILED: int = 11
+export const REALTY_FULL: int = 12          # no slot left
+export const REALTY_NOT_EMPTY: int = 13     # it still holds items or vehicles
+export const REALTY_BAD_UPGRADE: int = 14   # no such upgrade, or not for this kind
+export const REALTY_NEEDS: int = 15         # an upgrade it requires is missing
+export const REALTY_COOLDOWN: int = 16
+export const REALTY_NOT_RAIDABLE: int = 17
+export const REALTY_NO_BUSINESS: int = 18
+export const REALTY_NOTHING: int = 19       # nothing to do (no stock, no supplies, no income)
+export const REALTY_BAD_FLOOR: int = 20
+export const REALTY_OWNED: int = 21         # you already have it
+
+export const REALTY_BOUGHT: int = 0
+export const REALTY_SOLD: int = 1
+export const REALTY_RENTED: int = 2
+export const REALTY_RENT_PAID: int = 3
+export const REALTY_RENT_DUE: int = 4       # a day's rent could not be paid (amount = days behind)
+export const REALTY_EVICTED: int = 5        # taken back for rent (amount = what it held)
+export const REALTY_TRADED: int = 6         # who sold to other (amount = price)
+export const REALTY_UPGRADED: int = 7       # index = the upgrade
+export const REALTY_ENTERED: int = 8        # who went in: instance, floor
+export const REALTY_LEFT: int = 9
+export const REALTY_INSTANCE_OPENED: int = 10
+export const REALTY_INSTANCE_CLOSED: int = 11
+export const REALTY_FLOOR: int = 12         # who went to another map of the interior
+export const REALTY_ACCESS: int = 13        # the mode changed (amount = mode)
+export const REALTY_INVITED: int = 14       # other was invited
+export const REALTY_UNINVITED: int = 15
+export const REALTY_STORED: int = 16        # index = item, amount
+export const REALTY_FETCHED: int = 17
+export const REALTY_PARKED: int = 18        # index = vehicle
+export const REALTY_RETRIEVED: int = 19
+export const REALTY_RAIDED: int = 20        # who raided other's property (amount = what was taken)
+export const REALTY_INCOME: int = 21        # passive income collected (amount)
+export const REALTY_SUPPLIED: int = 22      # supplies bought (amount = how many)
+export const REALTY_PRODUCED: int = 23      # a unit of stock made (amount = stock now)
+export const REALTY_STOCK_FULL: int = 24
+export const REALTY_STARVED: int = 25       # production stopped for want of supplies
+export const REALTY_SELL_STARTED: int = 26  # a sale run began (amount = units)
+export const REALTY_SOLD_STOCK: int = 27    # the run paid (amount = money)
+export const REALTY_REFUSED: int = 28       # reason
+export const REALTY_RENT_ENDED: int = 29
+export const REALTY_UPKEEP: int = 30        # a day's upkeep paid or missed (amount; index 1 paid, 0 missed)
+
+export property RealtyFact {
+  what: int = 0
+  who: int = 0
+  other: int = 0
+  map: string = ""
+  key: string = ""
+  index: int = 0
+  amount: int = 0
+  instance: int = 0
+  floor: int = 0
+  reason: int = 0
+}
+
+export enum BizPhase { Idle, Producing, Full, Selling }
+
+# a property somebody has. `phase` is the machine's (steps.lres): nothing else writes it
+export property Holding {
+  map: string = ""
+  key: string = ""
+  kind: int = 0                   # PropertyKinds index
+  owner: int = 0
+  rented: bool = false
+  paid: int = 0                   # what buying it cost (a sale gives a share back)
+  upgrades_paid: int = 0
+  rent: int = 0
+  rent_left: float = 0.0          # game hours to the next day's rent
+  overdue: int = 0
+  access: int = 0
+  guests: []int = null
+  upgrades: []int = null          # PropertyUpgrades indexes
+  items: []int = null             # item, count, item, count ...
+  vehicles: []int = null
+  income: int = 0                 # passive income waiting to be collected
+  income_acc: float = 0.0
+  upkeep_left: float = 0.0
+  raided_until: float = 0.0       # game hours (the world clock)
+  phase: BizPhase = BizPhase.Idle
+  supply: int = 0
+  stock: int = 0
+  progress: float = 0.0           # seconds toward the next unit
+  sell_left: float = 0.0
+  sell_units: int = 0
+}
+
+# a live interior: who is in it, which maps of it are loaded, and the door they came from
+export property RealtyInstance {
+  id: int = 0
+  map: string = ""
+  key: string = ""
+  owner: int = 0
+  floors: []int = null            # floors loaded
+  who: []int = null               # inside
+  ox: float = 0.0
+  oy: float = 0.0
+  oz: float = 0.0
+  oyaw: float = 0.0
+  kind: int = 0
+}
+
+action HoldingSell { @Target holding: int = -1 }     # a sale run of the stock: stock in hand, a timer, then money
+
+export state RealtyState {
+  rl_tab: Table<Holding> = rl_tab__new()
+  rl_inst: []RealtyInstance = new []RealtyInstance
+  rl_next_inst: int = 1
+  rl_hours: float = 0.0           # the world's game-hour clock, from the ticks
+  rl_why: int = 0
+  rl_facts: Queue<RealtyFact> = rl_facts__new()
+}
+function rl_tab__new() -> Table<Holding> {
+  let t: Table<Holding> = table_new(0, 0)
+  return t
+}
+function rl_facts__new() -> Queue<RealtyFact> { return queue_new("realty.facts") }
+
+export function realty_facts(realty_st: RealtyState) -> Queue<RealtyFact> { return realty_st.rl_facts }
+export function realty_why(realty_st: RealtyState) -> int { return realty_st.rl_why }
+
+function rlt_fact(realty_st: RealtyState, what: int, who: int, other: int, map: string, key: string) -> RealtyFact {
+  var f = q_rec(realty_st.rl_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new RealtyFact
+    q_ring_add(realty_st.rl_facts, f)
+  }
+  f.what = what
+  f.who = who
+  f.other = other
+  f.map = map
+  f.key = key
+  f.index = 0
+  f.amount = 0
+  f.instance = 0
+  f.floor = 0
+  f.reason = 0
+  q_push(realty_st.rl_facts, f)
+  return f
+}
+
+function rlt_no(realty_st: mut RealtyState, who: int, map: string, key: string, reason: int) -> bool {
+  realty_st.rl_why = reason
+  let f = rlt_fact(realty_st, REALTY_REFUSED, who, 0, map, key)
+  f.reason = reason
+  return false
+}
+
+# a fact about a holding, told by the owner
+function rlt_say_holding(realty_st: RealtyState, what: int, h: Holding, amount: int) -> void {
+  let f = rlt_fact(realty_st, what, h.owner, h.owner, h.map, h.key)
+  f.amount = amount
+}

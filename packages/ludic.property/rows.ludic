@@ -1,0 +1,106 @@
+# rows.ludic - a holding found by where it is, and what a holding's kind, upgrades and loop come to
+
+function rlt_ints(n: int, v: int) -> []int {
+  let xs = new []int
+  for i in 0 .. n { push(xs, v) }
+  return xs
+}
+
+function rlt_has(xs: []int, v: int) -> bool {
+  if xs == null { return false }
+  for i in 0 .. len(xs) { if xs[i] == v { return true } }
+  return false
+}
+
+# the row of the holding at (map, key), or -1
+function rlt_row(realty_st: RealtyState, map: string, key: string) -> int {
+  for i in 0 .. tb_len(realty_st.rl_tab) {
+    let h = tb_rec(realty_st.rl_tab, i)
+    if h.key == key and h.map == map { return i }
+  }
+  return -1
+}
+
+function rlt_find(realty_st: RealtyState, map: string, key: string) -> Holding {
+  let i = rlt_row(realty_st, map, key)
+  if i < 0 { return null }
+  return tb_rec(realty_st.rl_tab, i)
+}
+
+function rlt_handle(realty_st: RealtyState, map: string, key: string) -> int {
+  let i = rlt_row(realty_st, map, key)
+  if i < 0 { return -1 }
+  return tb_handle(realty_st.rl_tab, i)
+}
+
+@alloc_ok("a property's first holding, made once and kept")
+function rlt_make(realty_st: mut RealtyState, map: string, key: string, kind: int, owner: int) -> Holding {
+  let h = new Holding
+  h.map = map
+  h.key = key
+  h.kind = kind
+  h.owner = owner
+  h.guests = new []int
+  h.upgrades = new []int
+  h.items = new []int
+  h.vehicles = new []int
+  tb_add(realty_st.rl_tab, h)
+  return h
+}
+
+function rlt_drop(realty_st: mut RealtyState, map: string, key: string) -> void {
+  let i = rlt_row(realty_st, map, key)
+  if i >= 0 { tb_remove(realty_st.rl_tab, tb_handle(realty_st.rl_tab, i)) }
+}
+
+# the slots a holding has: its kind's and what its upgrades add
+function rlt_garage_cap(h: Holding) -> int {
+  var n = PropertyKinds[h.kind].garage_slots
+  for i in 0 .. len(h.upgrades) { n += PropertyUpgrades[h.upgrades[i]].garage }
+  return n
+}
+function rlt_storage_cap(h: Holding) -> int {
+  var n = PropertyKinds[h.kind].storage_slots
+  for i in 0 .. len(h.upgrades) { n += PropertyUpgrades[h.upgrades[i]].storage }
+  return n
+}
+function rlt_upgrade_slots_used(h: Holding) -> int {
+  var n = 0
+  for i in 0 .. len(h.upgrades) { n += PropertyUpgrades[h.upgrades[i]].slots }
+  return n
+}
+function rlt_income_pct(h: Holding) -> int {
+  var n = 100
+  for i in 0 .. len(h.upgrades) { n += PropertyUpgrades[h.upgrades[i]].income_pct }
+  return n
+}
+function rlt_produce_pct(h: Holding) -> int {
+  var n = 100
+  for i in 0 .. len(h.upgrades) { n += PropertyUpgrades[h.upgrades[i]].produce_pct }
+  return n
+}
+
+# the interior map it shows: an upgrade's variant when it has one, else its kind's
+function rlt_interior(h: Holding) -> string {
+  var m = PropertyKinds[h.kind].interior
+  for i in 0 .. len(h.upgrades) {
+    if PropertyUpgrades[h.upgrades[i]].interior != "" { m = PropertyUpgrades[h.upgrades[i]].interior }
+  }
+  return m
+}
+
+# the business loop a holding runs, or -1
+function rlt_loop(h: Holding) -> int { return PropertyKinds[h.kind].business }
+
+# stacks in use: distinct items held
+function rlt_stacks(h: Holding) -> int { return len(h.items) / 2 }
+
+function rlt_items_total(h: Holding) -> int {
+  var n = 0
+  var i = 0
+  while i + 1 < len(h.items) {
+    n += h.items[i + 1]
+    i += 2
+  }
+  return n
+}

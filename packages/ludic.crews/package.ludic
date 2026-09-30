@@ -1,0 +1,9 @@
+# ludic.crews - gangs and crews as data: ranks with permissions, a bank, an emblem, relations between crews
+# (ally, neutral, rival, at war) as rules, territories per map with influence earned from facts (kills, presence,
+# jobs), decay and capture thresholds, turf wars as a @Machine (peace, contested, war, cooldown), bounties and
+# rivalries. Host-authoritative. Uses ludic.base and nothing else.
+package "ludic.crews"
+version "0.1.0"
+kind source
+# the maps the tests read; a game's own package.ludic names its maps
+maps "tests/maps"

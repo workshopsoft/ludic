@@ -1,0 +1,217 @@
+# state.ludic - the ports, the facts and reasons, and what is kept: crews, members, invites, how pairs of crews
+# stand, bounties, and a turf per territory
+
+# who runs the world, and where the players are. Unbound: this machine runs the world, nobody is anywhere
+export port CrewWorld {
+  authority: fn() -> bool = fn crw_yes                # this machine owns the world: only it changes crews
+  players: fn() -> int = fn crw_none                  # how many players there are to ask about
+  player: fn(int) -> int = fn crw_zero_of             # the i-th player's id
+  x: fn(int) -> float = fn crw_zero_f                 # (who): where they stand
+  z: fn(int) -> float = fn crw_zero_f
+}
+function crw_yes() -> bool { return true }
+function crw_none() -> int { return 0 }
+function crw_zero_of(i: int) -> int { return 0 }
+function crw_zero_f(who: int) -> float { return 0.0 }
+
+# money, for a crew's founding, its bank and bounties. Unbound: money is no object
+export port CrewWallet {
+  spend: fn(int, int) -> bool = fn crw_spend_any      # (who, n): take it; false and nothing taken when it is not there
+  earn: fn(int, int) -> void = fn crw_earn_none       # (who, n)
+}
+function crw_spend_any(who: int, n: int) -> bool { return true }
+function crw_earn_none(who: int, n: int) -> void { }
+
+# what a rank may do (`crew_can`)
+export const CREW_PERM_INVITE: int = 0
+export const CREW_PERM_KICK: int = 1
+export const CREW_PERM_PROMOTE: int = 2
+export const CREW_PERM_WITHDRAW: int = 3
+export const CREW_PERM_DECLARE: int = 4
+export const CREW_PERM_EDIT: int = 5
+export const CREW_PERM_DISBAND: int = 6
+export const CREW_PERM_WAR: int = 7
+
+# why a verb said no (`crew_why`, and a REFUSED fact's `reason`)
+export const CREW_OK: int = 0
+export const CREW_NO_CREW: int = 1          # the player is in none
+export const CREW_IN_CREW: int = 2          # the player is already in one
+export const CREW_NAME_BAD: int = 3         # too short or too long
+export const CREW_NAME_TAKEN: int = 4
+export const CREW_BROKE: int = 5
+export const CREW_NOT_HOST: int = 6         # this machine does not own the world: ask the host
+export const CREW_NO_PERMISSION: int = 7
+export const CREW_FULL: int = 8             # the crew has its most members
+export const CREW_NOT_INVITED: int = 9
+export const CREW_NOT_MEMBER: int = 10
+export const CREW_OUTRANKED: int = 11
+export const CREW_IS_LEADER: int = 12
+export const CREW_BAD_RANK: int = 13
+export const CREW_NO_SUCH_CREW: int = 14
+export const CREW_SELF: int = 15
+export const CREW_COOLDOWN: int = 16        # a relation that may not change yet
+export const CREW_NO_PENDING: int = 17
+export const CREW_LIMIT: int = 18           # the bank does not hold it, or the rank's daily limit
+export const CREW_BAD_ID: int = 19
+export const CREW_NO_TURF: int = 20
+export const CREW_BAD_AMOUNT: int = 21
+export const CREW_NOT_CONTESTED: int = 22   # a war can be declared only on a contested territory, by the one contesting it
+export const CREW_NO_WAR: int = 23          # the relation between the two crews does not allow a war
+
+export const CREW_CREATED: int = 0          # crew = the new crew, who = founder
+export const CREW_DISBANDED: int = 1        # amount = the bank paid out
+export const CREW_INVITED: int = 2          # who invited other
+export const CREW_JOINED: int = 3
+export const CREW_LEFT: int = 4
+export const CREW_KICKED: int = 5           # who kicked other
+export const CREW_PROMOTED: int = 6         # other now has rank `index` (amount = the rank before)
+export const CREW_BANK: int = 7             # amount: + a deposit, - a withdrawal; index 1 deposit, 2 withdraw, 3 income
+export const CREW_LOOK: int = 8
+export const CREW_RELATION: int = 9         # crew and other_crew now stand at `index` (amount 1: it moved on its own)
+export const CREW_PROPOSED: int = 10        # crew proposed `index` to other_crew
+export const CREW_LEAD: int = 11            # a different crew leads the influence of `key` (crew = the leader)
+export const CREW_TURF_PHASE: int = 12      # a territory moved to phase `index` (crew = owner, other_crew = challenger)
+export const CREW_CAPTURED: int = 13        # crew took `key` from other_crew (0: from nobody)
+export const CREW_DEFENDED: int = 14        # crew held `key` against other_crew
+export const CREW_BOUNTY_PLACED: int = 15   # who put amount on other
+export const CREW_BOUNTY_CLAIMED: int = 16  # who collected amount for killing other
+export const CREW_KILL: int = 17            # who killed other (crew, other_crew; key = the territory, if any)
+export const CREW_FRIENDLY_FIRE: int = 18
+export const CREW_REFUSED: int = 19         # reason
+export const CREW_DECLARED: int = 20        # crew declared war on other_crew over `key`
+
+export property CrewFact {
+  what: int = 0
+  who: int = 0
+  other: int = 0
+  crew: int = 0
+  other_crew: int = 0
+  map: string = ""
+  key: string = ""
+  index: int = 0
+  amount: int = 0
+  reason: int = 0
+}
+
+export enum TurfPhase { Peace, Contested, War, Cooldown }
+
+export property Crew {
+  id: int = 0
+  name: string = ""
+  tag: string = ""
+  emblem: int = -1
+  color_a: int = 0
+  color_b: int = 0
+  founder: int = 0
+  bank: int = 0
+  open: bool = false
+  created: float = 0.0
+}
+
+export property CrewMember {
+  who: int = 0
+  crew: int = 0
+  rank: int = 0
+  joined: float = 0.0
+  withdrawn: int = 0              # taken from the bank today
+}
+
+export property CrewInvite {
+  crew: int = 0
+  who: int = 0
+  by: int = 0
+  left: float = 0.0
+}
+
+# how two crews stand: `a` is the lower id. `rel` a CrewRelations index (-1: no table, so the defaults)
+export property CrewPair {
+  a: int = 0
+  b: int = 0
+  rel: int = -1
+  since: float = -1000000.0
+  pending: int = -1
+  pending_by: int = 0
+  kills_a: int = 0                # a's kills of b since the relation last changed
+  kills_b: int = 0
+}
+
+export property CrewBounty {
+  target: int = 0
+  amount: int = 0
+}
+
+# a territory's state of play. `phase` is the machine's (steps.lres): nothing else writes it
+export property Turf {
+  map: string = ""
+  key: string = ""
+  phase: TurfPhase = TurfPhase.Peace
+  owner: int = 0
+  challenger: int = 0
+  inf_crew: []int = null          # influence, sparse: a crew id ...
+  inf_val: []float = null         # ... and what it has here
+  lead: int = 0
+  declared: int = 0               # the crew that has declared a war here (0 none)
+  war_left: float = 0.0
+  score_att: int = 0
+  score_def: int = 0
+  cool_left: float = 0.0
+  income_left: float = 0.0
+  value: int = 0
+  income: int = 0
+  capture_at: float = 0.0
+}
+
+action TurfDeclare { @Target turf: int = -1 }     # the crew contesting a territory declares the war now
+
+export state CrewState {
+  cr_crews: []Crew = new []Crew
+  cr_members: []CrewMember = new []CrewMember
+  cr_invites: []CrewInvite = new []CrewInvite
+  cr_pairs: []CrewPair = new []CrewPair
+  cr_bounties: []CrewBounty = new []CrewBounty
+  cr_turfs: Table<Turf> = cr_turfs__new()
+  cr_next: int = 1
+  cr_hours: float = 0.0           # the world's game-hour clock
+  cr_day_left: float = 24.0       # game hours to the next day's reset of withdrawn money
+  cr_synced: string = ""          # the map whose territories have rows
+  cr_why: int = 0
+  cr_cfg0: CrewSetting = new CrewSetting
+  cr_rel0: CrewRelation = new CrewRelation
+  cr_facts: Queue<CrewFact> = cr_facts__new()
+}
+function cr_turfs__new() -> Table<Turf> {
+  let t: Table<Turf> = table_new(0, 0)
+  return t
+}
+function cr_facts__new() -> Queue<CrewFact> { return queue_new("crews.facts") }
+
+export function crew_facts(crew_st: CrewState) -> Queue<CrewFact> { return crew_st.cr_facts }
+export function crew_why(crew_st: CrewState) -> int { return crew_st.cr_why }
+
+function crw_fact(crew_st: CrewState, what: int, who: int, other: int, crew: int, other_crew: int) -> CrewFact {
+  var f = q_rec(crew_st.cr_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new CrewFact
+    q_ring_add(crew_st.cr_facts, f)
+  }
+  f.what = what
+  f.who = who
+  f.other = other
+  f.crew = crew
+  f.other_crew = other_crew
+  f.map = ""
+  f.key = ""
+  f.index = 0
+  f.amount = 0
+  f.reason = 0
+  q_push(crew_st.cr_facts, f)
+  return f
+}
+
+function crw_no(crew_st: mut CrewState, who: int, reason: int) -> bool {
+  crew_st.cr_why = reason
+  let f = crw_fact(crew_st, CREW_REFUSED, who, 0, 0, 0)
+  f.reason = reason
+  return false
+}

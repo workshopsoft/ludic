@@ -1,0 +1,18 @@
+# steps.lres - how a territory moves. One row a way from one phase to another: `on` an action (TurfDeclare), or ""
+# for what the tick senses. The first row from a phase whose guard passes is taken, so the rows from one phase are in
+# priority order. The tick runs the timers and the influence; these rows only decide
+#
+#   Peace -> Contested -> War -> Cooldown -> Peace
+#   Contested -> Cooldown when nobody holds it and the challenger has enough to take it
+#   War -> Cooldown whether the attacker wins (captured) or the owner holds (defended)
+stir { from: TurfPhase.Peace, to: TurfPhase.Contested, guard: fn crw_g_stir, enter: fn crw_e_stir }
+
+claim { from: TurfPhase.Contested, to: TurfPhase.Cooldown, guard: fn crw_g_claim, enter: fn crw_e_claimed }
+declared { from: TurfPhase.Contested, to: TurfPhase.War, on: "TurfDeclare", guard: fn crw_g_declared, enter: fn crw_e_war }
+escalates { from: TurfPhase.Contested, to: TurfPhase.War, guard: fn crw_g_war_auto, enter: fn crw_e_war }
+calms { from: TurfPhase.Contested, to: TurfPhase.Peace, guard: fn crw_g_calm, enter: fn crw_e_calm }
+
+captured { from: TurfPhase.War, to: TurfPhase.Cooldown, guard: fn crw_g_war_won, enter: fn crw_e_captured }
+held { from: TurfPhase.War, to: TurfPhase.Cooldown, guard: fn crw_g_war_over, enter: fn crw_e_held }
+
+settled { from: TurfPhase.Cooldown, to: TurfPhase.Peace, guard: fn crw_g_quiet, enter: fn crw_e_settled }

@@ -1,0 +1,67 @@
+# tick.ludic - the clock (game hours from the ticks), the day's reset of what members took from the bank, invites
+# running out, players' presence earning influence, influence decaying, the war and cooldown timers, territory
+# income into the bank, and then the machine that decides the phases. Only where the world is owned
+
+function crw_decay(crew_st: CrewState, t: Turf, dt: float) -> void {
+  let shed = crw_cfg(crew_st).decay_min * dt / 60.0
+  if shed <= 0.0 { return }
+  var i = len(t.inf_crew) - 1
+  while i >= 0 {
+    let v = t.inf_val[i] - shed
+    if v <= 0.0 {
+      List.remove_at(t.inf_crew, i)
+      List.remove_at(t.inf_val, i)
+    } else {
+      t.inf_val[i] = v
+    }
+    i -= 1
+  }
+}
+
+function crw_turf_time(crew_st: mut CrewState, t: Turf, dt: float) -> void {
+  crw_decay(crew_st, t, dt)
+  if t.phase == TurfPhase.War { t.war_left = Math.max(t.war_left - dt, 0.0) }
+  if t.phase == TurfPhase.Cooldown { t.cool_left = Math.max(t.cool_left - dt, 0.0) }
+  let lead = crw_lead(t)
+  if lead != t.lead { t.lead = lead }
+  if t.owner != 0 and t.income > 0 {
+    t.income_left -= dt
+    while t.income_left <= 0.0 {
+      t.income_left += crw_cfg(crew_st).income_secs
+      let c = crw_crew(crew_st, t.owner)
+      if c != null {
+        c.bank += t.income
+        let f = crw_fact(crew_st, CREW_BANK, 0, 0, c.id, 0)
+        f.amount = t.income
+        f.index = 3
+        f.key = t.key
+      }
+    }
+  }
+}
+
+export function crew_tick(crew_st: mut CrewState, terr: Territories, m: mut TurfStepsMachine, t: Tick) -> void {
+  if not CrewWorld.authority() { return }
+  crew_st.cr_hours += t.hours
+  crew_st.cr_day_left -= t.hours
+  if crew_st.cr_day_left <= 0.0 {
+    crew_st.cr_day_left += 24.0
+    for i in 0 .. len(crew_st.cr_members) { crew_st.cr_members[i].withdrawn = 0 }
+  }
+  var i = 0
+  while i < len(crew_st.cr_invites) {
+    crew_st.cr_invites[i].left -= t.dt
+    if crew_st.cr_invites[i].left <= 0.0 { List.remove_at(crew_st.cr_invites, i) } else { i += 1 }
+  }
+  if terr.map != "" and terr.map != crew_st.cr_synced { crew_turf_sync(crew_st, terr) }
+  let cfg = crw_cfg(crew_st)
+  for p in 0 .. CrewWorld.players() {
+    let who = CrewWorld.player(p)
+    let crew = crw_crew_of(crew_st, who)
+    if crew == 0 { continue }
+    let at = crw_turf_at_row(crew_st, terr, CrewWorld.x(who), CrewWorld.z(who))
+    if at >= 0 { crw_bump(crew_st, tb_rec(crew_st.cr_turfs, at), crew, cfg.presence_min * t.dt / 60.0) }
+  }
+  for k in 0 .. tb_len(crew_st.cr_turfs) { crw_turf_time(crew_st, tb_rec(crew_st.cr_turfs, k), t.dt) }
+  turf_steps_tick(m, crew_st)
+}

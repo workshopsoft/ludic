@@ -1,0 +1,210 @@
+# influence.ludic - what players do becomes influence in a crew's name, where it happens: kills, time spent there,
+# jobs the game reports. Influence decays, and the thresholds of the settings turn it into a contest, a war or a
+# capture (the machine). The territories are a map's rows (`Territories`); each has a turf here
+
+@alloc_ok("a territory's first turf, made once and kept")
+function crw_turf_make(crew_st: mut CrewState, map: string, key: string) -> Turf {
+  let t = new Turf
+  t.map = map
+  t.key = key
+  t.inf_crew = new []int
+  t.inf_val = new []float
+  t.income_left = crw_cfg(crew_st).income_secs
+  tb_add(crew_st.cr_turfs, t)
+  return t
+}
+
+# a turf for every territory of the loaded map (and its worth, income and capture threshold refreshed from the rows).
+# The tick does it when the map changes; it is cheap to call again
+export function crew_turf_sync(crew_st: mut CrewState, terr: Territories) -> void {
+  for i in 0 .. len(terr.rows) {
+    let row = terr.rows[i]
+    var at = crw_turf_row(crew_st, terr.map, row.key)
+    var t: Turf = null
+    if at < 0 { t = crw_turf_make(crew_st, terr.map, row.key) } else { t = tb_rec(crew_st.cr_turfs, at) }
+    t.value = row.value
+    t.income = row.income
+    t.capture_at = row.capture_at
+  }
+  crew_st.cr_synced = terr.map
+}
+
+# add (or, negative, take) influence for a crew on a turf, held to 0 .. `influence_max`; says so when the lead changes
+function crw_bump(crew_st: mut CrewState, t: Turf, crew: int, amount: float) -> void {
+  if crew == 0 { return }
+  let cfg = crw_cfg(crew_st)
+  var v = crw_inf(t, crew) + amount
+  if v > cfg.influence_max { v = cfg.influence_max }
+  if v < 0.0 { v = 0.0 }
+  crw_inf_set(t, crew, v)
+  let lead = crw_lead(t)
+  if lead != t.lead {
+    t.lead = lead
+    if lead != 0 { crw_say_result(crew_st, CREW_LEAD, t, lead, t.owner) }
+  }
+}
+
+function crw_turf(crew_st: CrewState, map: string, key: string) -> Turf {
+  let i = crw_turf_row(crew_st, map, key)
+  if i < 0 { return null }
+  return tb_rec(crew_st.cr_turfs, i)
+}
+
+# influence by hand (a story beat, a cheat, a reward): `amount` for a crew on a territory of the loaded map. The new
+# total, -1 when there is no such territory or this machine does not own the world
+export function crew_add_influence(crew_st: mut CrewState, terr: Territories, crew: int, key: string, amount: float) -> float {
+  if not CrewWorld.authority() { return -1.0 }
+  if crw_crew(crew_st, crew) == null { return -1.0 }
+  if territories_find(terr, key) < 0 { return -1.0 }
+  var t = crw_turf(crew_st, terr.map, key)
+  if t == null { t = crw_turf_make(crew_st, terr.map, key) }
+  crw_bump(crew_st, t, crew, amount)
+  return crw_inf(t, crew)
+}
+
+# a player did `units` of a thing (a CrewSources row) at (x, z): their crew gains its `amount` a unit where they
+# are, the crew holding the place loses its `loss`. Nothing when they are in no crew or outside every territory
+export function crew_report(crew_st: mut CrewState, terr: Territories, who: int, source: int, x: float, z: float, units: float) -> bool {
+  if not CrewWorld.authority() { return false }
+  if source < 0 or source >= CRI_COUNT { return false }
+  let crew = crw_crew_of(crew_st, who)
+  if crew == 0 { return false }
+  let at = crw_turf_at_row(crew_st, terr, x, z)
+  if at < 0 { return false }
+  let t = tb_rec(crew_st.cr_turfs, at)
+  let s = CrewSources[source]
+  crw_bump(crew_st, t, crew, s.amount * units)
+  if s.loss > 0.0 and t.owner != 0 and t.owner != crew { crw_bump(crew_st, t, t.owner, -s.loss * units) }
+  return true
+}
+
+# `killer` killed `victim` at (x, z). Not a kill: the same crew, or a relation with `friendly_fire` (allies) - a
+# fact says so. Otherwise: the killer's crew gains the settings' `kill_influence` (by the relation's `kill_pct`)
+# where it happened and the victim's crew loses `victim_loss`; in a war there, the score moves; the pair's kills
+# count (a rivalry may harden); a bounty on the victim is paid to the killer (by `bounty_pct`). Returns the bounty
+# paid (0 for none), -1 when it was not counted
+export function crew_killed(crew_st: mut CrewState, terr: Territories, killer: int, victim: int, x: float, z: float) -> int {
+  if not CrewWorld.authority() { return -1 }
+  let kc = crw_crew_of(crew_st, killer)
+  let vc = crw_crew_of(crew_st, victim)
+  let rel = crw_rel_between(crew_st, kc, vc)
+  if kc != 0 and (kc == vc or rel.friendly_fire) {
+    crw_fact(crew_st, CREW_FRIENDLY_FIRE, killer, victim, kc, vc)
+    return -1
+  }
+  let cfg = crw_cfg(crew_st)
+  var pct = 100
+  var bounty_pct = 100
+  if kc != 0 and vc != 0 {
+    pct = rel.kill_pct
+    bounty_pct = rel.bounty_pct
+  }
+  let at = crw_turf_at_row(crew_st, terr, x, z)
+  var key = ""
+  if at >= 0 {
+    let t = tb_rec(crew_st.cr_turfs, at)
+    key = t.key
+    if kc != 0 { crw_bump(crew_st, t, kc, cfg.kill_influence * float(pct) / 100.0) }
+    if vc != 0 { crw_bump(crew_st, t, vc, -cfg.victim_loss) }
+    if t.phase == TurfPhase.War {
+      if kc == t.challenger and vc == t.owner { t.score_att += 1 }
+      if kc == t.owner and vc == t.challenger { t.score_def += 1 }
+    }
+  }
+  crw_count_kill(crew_st, kc, vc)
+  var paid = 0
+  let bounty = crw_bounty_take(crew_st, victim)
+  if bounty > 0 {
+    paid = bounty * bounty_pct / 100
+    CrewWallet.earn(killer, paid)
+    let f = crw_fact(crew_st, CREW_BOUNTY_CLAIMED, killer, victim, kc, vc)
+    f.amount = paid
+  }
+  let k = crw_fact(crew_st, CREW_KILL, killer, victim, kc, vc)
+  k.key = key
+  if at >= 0 { k.map = tb_rec(crew_st.cr_turfs, at).map }
+  return paid
+}
+
+# the crew contesting a territory declares the war now instead of waiting for its influence to reach `war_at`: it
+# must have the `war` permission, be the challenger of a Contested territory, and the relation between the two
+# crews must allow a war. The action is reduced at the end of the phase
+export function crew_declare_war(crew_st: mut CrewState, who: int, map: string, key: string) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_WAR) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  let i = crw_turf_row(crew_st, map, key)
+  if i < 0 { return crw_no(crew_st, who, CREW_NO_TURF) }
+  let t = tb_rec(crew_st.cr_turfs, i)
+  if t.phase != TurfPhase.Contested or t.challenger != m.crew or t.owner == 0 { return crw_no(crew_st, who, CREW_NOT_CONTESTED) }
+  if not crw_rel_between(crew_st, t.owner, m.crew).war { return crw_no(crew_st, who, CREW_NO_WAR) }
+  t.declared = m.crew
+  dispatch TurfDeclare { turf: tb_handle(crew_st.cr_turfs, i) }
+  return true
+}
+
+# -- asking
+
+export function crew_turf_count(crew_st: CrewState) -> int { return tb_len(crew_st.cr_turfs) }
+export function crew_turf_key_at(crew_st: CrewState, i: int) -> string { return tb_rec(crew_st.cr_turfs, i).key }
+export function crew_turf_owner(crew_st: CrewState, map: string, key: string) -> int {
+  let t = crw_turf(crew_st, map, key)
+  if t == null { return 0 }
+  return t.owner
+}
+export function crew_turf_phase(crew_st: CrewState, map: string, key: string) -> TurfPhase {
+  let t = crw_turf(crew_st, map, key)
+  if t == null { return TurfPhase.Peace }
+  return t.phase
+}
+export function crew_turf_challenger(crew_st: CrewState, map: string, key: string) -> int {
+  let t = crw_turf(crew_st, map, key)
+  if t == null { return 0 }
+  return t.challenger
+}
+export function crew_turf_lead(crew_st: CrewState, map: string, key: string) -> int {
+  let t = crw_turf(crew_st, map, key)
+  if t == null { return 0 }
+  return t.lead
+}
+export function crew_influence(crew_st: CrewState, map: string, key: string, crew: int) -> float {
+  let t = crw_turf(crew_st, map, key)
+  if t == null { return 0.0 }
+  return crw_inf(t, crew)
+}
+export function crew_war_left(crew_st: CrewState, map: string, key: string) -> float {
+  let t = crw_turf(crew_st, map, key)
+  if t == null { return 0.0 }
+  return t.war_left
+}
+export function crew_war_score(crew_st: CrewState, map: string, key: string, attacker: bool) -> int {
+  let t = crw_turf(crew_st, map, key)
+  if t == null { return 0 }
+  if attacker { return t.score_att }
+  return t.score_def
+}
+# how many territories a crew holds, and what they are worth
+export function crew_owned_count(crew_st: CrewState, crew: int) -> int {
+  var n = 0
+  for i in 0 .. tb_len(crew_st.cr_turfs) { if tb_rec(crew_st.cr_turfs, i).owner == crew { n += 1 } }
+  return n
+}
+export function crew_owned_value(crew_st: CrewState, crew: int) -> int {
+  var n = 0
+  for i in 0 .. tb_len(crew_st.cr_turfs) {
+    let t = tb_rec(crew_st.cr_turfs, i)
+    if t.owner == crew { n += t.value }
+  }
+  return n
+}
+# the territory (a row of the loaded map) a point is in, -1 outside; and who holds it
+export function crew_territory_at(terr: Territories, x: float, z: float) -> int {
+  for i in 0 .. len(terr.rows) { if crw_in(terr.rows[i], x, z) { return i } }
+  return -1
+}
+export function crew_owner_at(crew_st: CrewState, terr: Territories, x: float, z: float) -> int {
+  let i = crw_turf_at_row(crew_st, terr, x, z)
+  if i < 0 { return 0 }
+  return tb_rec(crew_st.cr_turfs, i).owner
+}

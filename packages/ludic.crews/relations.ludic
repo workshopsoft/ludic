@@ -1,0 +1,148 @@
+# relations.ludic - how crews stand to one another (rules in `CrewRelations`), proposals that need the other crew's
+# word, rivalries that harden by themselves with kills, and bounties on players
+
+# move a pair to a relation now
+function crw_set_rel(crew_st: mut CrewState, p: CrewPair, rel: int, auto: bool) -> void {
+  p.rel = rel
+  p.since = crew_st.cr_hours
+  p.pending = -1
+  p.pending_by = 0
+  p.kills_a = 0
+  p.kills_b = 0
+  let f = crw_fact(crew_st, CREW_RELATION, 0, 0, p.a, p.b)
+  f.index = rel
+  if auto { f.amount = 1 }
+}
+
+# propose that your crew and `other_crew` stand as relation `rel` (a CrewRelations index). A relation that is not
+# `mutual` takes hold at once; a mutual one waits for `crew_accept`. A relation may not change again until its
+# `hold_hours` have passed
+export function crew_propose(crew_st: mut CrewState, who: int, other_crew: int, rel: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_DECLARE) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  if crw_crew(crew_st, other_crew) == null { return crw_no(crew_st, who, CREW_NO_SUCH_CREW) }
+  if other_crew == m.crew { return crw_no(crew_st, who, CREW_SELF) }
+  if rel < 0 or rel >= CRL_COUNT { return crw_no(crew_st, who, CREW_BAD_ID) }
+  let p = crw_pair_of(crew_st, m.crew, other_crew)
+  if p.rel == rel { return true }
+  if crw_rel(crew_st, p.rel).hold_hours > 0.0 and crew_st.cr_hours - p.since < crw_rel(crew_st, p.rel).hold_hours {
+    return crw_no(crew_st, who, CREW_COOLDOWN)
+  }
+  if CrewRelations[rel].mutual {
+    p.pending = rel
+    p.pending_by = m.crew
+    let f = crw_fact(crew_st, CREW_PROPOSED, who, 0, m.crew, other_crew)
+    f.index = rel
+    return true
+  }
+  crw_set_rel(crew_st, p, rel, false)
+  return true
+}
+
+# the other crew's word: take up what they proposed
+export function crew_accept(crew_st: mut CrewState, who: int, other_crew: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_DECLARE) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  let p = crw_pair(crew_st, m.crew, other_crew)
+  if p == null or p.pending < 0 or p.pending_by != other_crew { return crw_no(crew_st, who, CREW_NO_PENDING) }
+  crw_set_rel(crew_st, p, p.pending, false)
+  return true
+}
+
+export function crew_reject(crew_st: mut CrewState, who: int, other_crew: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  let p = crw_pair(crew_st, m.crew, other_crew)
+  if p == null or p.pending < 0 { return crw_no(crew_st, who, CREW_NO_PENDING) }
+  p.pending = -1
+  p.pending_by = 0
+  return true
+}
+
+# how two crews stand: the CrewRelations index (the start relation when they never dealt; -1 with no table)
+export function crew_relation(crew_st: CrewState, a: int, b: int) -> int { return crw_rel_index(crew_st, a, b) }
+export function crew_relation_key(crew_st: CrewState, a: int, b: int) -> string {
+  let i = crw_rel_index(crew_st, a, b)
+  if i < 0 or i >= CRL_COUNT { return "" }
+  return CrewRelations[i].key
+}
+# what is proposed between them and by whom (-1 nothing)
+export function crew_pending(crew_st: CrewState, a: int, b: int) -> int {
+  let p = crw_pair(crew_st, a, b)
+  if p == null { return -1 }
+  return p.pending
+}
+export function crew_pending_by(crew_st: CrewState, a: int, b: int) -> int {
+  let p = crw_pair(crew_st, a, b)
+  if p == null { return 0 }
+  return p.pending_by
+}
+# kills one has made of the other since the relation last changed
+export function crew_kills_of(crew_st: CrewState, killer_crew: int, victim_crew: int) -> int {
+  let p = crw_pair(crew_st, killer_crew, victim_crew)
+  if p == null { return 0 }
+  if p.a == killer_crew { return p.kills_a }
+  return p.kills_b
+}
+
+# a kill between two crews: counted on the pair, and a rivalry that has reached its relation's `escalate_kills`
+# moves on to `escalate_to` by itself
+function crw_count_kill(crew_st: mut CrewState, killer_crew: int, victim_crew: int) -> void {
+  if killer_crew == 0 or victim_crew == 0 or killer_crew == victim_crew { return }
+  let p = crw_pair_of(crew_st, killer_crew, victim_crew)
+  if p.a == killer_crew { p.kills_a += 1 } else { p.kills_b += 1 }
+  let r = crw_rel(crew_st, p.rel)
+  if r.escalate_kills > 0 and p.kills_a + p.kills_b >= r.escalate_kills and r.escalate_to != "" {
+    let to = crewrelations_find(r.escalate_to)
+    if to >= 0 and to != p.rel { crw_set_rel(crew_st, p, to, true) }
+  }
+}
+
+# -- bounties
+
+# put money on a player's head; it is paid to whoever kills them (`crew_killed`). Bounties add up
+export function crew_bounty_place(crew_st: mut CrewState, who: int, target: int, amount: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let cfg = crw_cfg(crew_st)
+  if target == who { return crw_no(crew_st, who, CREW_SELF) }
+  if amount < cfg.bounty_min or amount > cfg.bounty_max { return crw_no(crew_st, who, CREW_BAD_AMOUNT) }
+  if not CrewWallet.spend(who, amount) { return crw_no(crew_st, who, CREW_BROKE) }
+  var done = false
+  for i in 0 .. len(crew_st.cr_bounties) {
+    if crew_st.cr_bounties[i].target == target {
+      crew_st.cr_bounties[i].amount += amount
+      done = true
+    }
+  }
+  if not done {
+    let b = new CrewBounty
+    b.target = target
+    b.amount = amount
+    push(crew_st.cr_bounties, b)
+  }
+  let f = crw_fact(crew_st, CREW_BOUNTY_PLACED, who, target, crw_crew_of(crew_st, who), crw_crew_of(crew_st, target))
+  f.amount = amount
+  return true
+}
+
+export function crew_bounty_on(crew_st: CrewState, target: int) -> int {
+  for i in 0 .. len(crew_st.cr_bounties) { if crew_st.cr_bounties[i].target == target { return crew_st.cr_bounties[i].amount } }
+  return 0
+}
+
+# take what is on a player's head off the table and return it
+function crw_bounty_take(crew_st: mut CrewState, target: int) -> int {
+  for i in 0 .. len(crew_st.cr_bounties) {
+    if crew_st.cr_bounties[i].target == target {
+      let n = crew_st.cr_bounties[i].amount
+      List.remove_at(crew_st.cr_bounties, i)
+      return n
+    }
+  }
+  return 0
+}

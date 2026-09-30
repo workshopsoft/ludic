@@ -1,0 +1,449 @@
+# avatar_test.ludic - a body, morphs within their ranges, heritage blended, parts by slot (body fit, unlock by
+# level and flag and price, conflicts coming off, hiding), colours, decals in zones, premade and saved
+# outfits, randomize from its own dice, the wire text by stable ids (whole, torn, checked), the view port
+# called in order with a clip for a pose, and the save
+import "ludic.avatar"
+import "ludic.base"
+program AvatarTest {
+  numbers float
+
+  def AvatarBodies adult_a { id: 11, model: "bodies/a.gltf", root: "root", head: "head" }
+  def AvatarBodies adult_b { id: 12, model: "bodies/b.gltf", root: "root", head: "head" }
+
+  def AvatarMorphs nose { id: 101, group: "face", target: "nose_size", lo: -500, hi: 800 }
+  def AvatarMorphs jaw { id: 102, group: "face", target: "jaw_width", start: 100 }
+  def AvatarMorphs brow { id: 103, group: "face", target: "brow", bodies: [AVB_ADULT_A] }
+  def AvatarMorphs height { id: 104, group: "body", kind: "bone_scale", target: "spine", axis: 1, lo: -200, hi: 200 }
+
+  def AvatarHeritage north { id: 201, name: "North", morphs: [AVM_NOSE, AVM_JAW], values: [400, -200] }
+  def AvatarHeritage south { id: 202, name: "South", morphs: [AVM_NOSE], values: [-400] }
+  def AvatarHeritage only_b { id: 203, body: AVB_ADULT_B, morphs: [AVM_JAW], values: [900] }
+
+  def AvatarPalettes hair_colors { id: 301, colors: [0x221100, 0x886622, 0xdddddd] }
+  def AvatarPalettes cloth_colors { id: 302, colors: [0xff0000, 0x00ff00] }
+
+  def AvatarSlots under { id: 401, layer: 5, required: true, start: AVP_PLAIN_SHIRT, palette: AVC_CLOTH_COLORS }
+  def AvatarSlots hair { id: 402, layer: 10, palette: AVC_HAIR_COLORS }
+  def AvatarSlots top { id: 403, layer: 20, palette: AVC_CLOTH_COLORS }
+  def AvatarSlots hat { id: 404, layer: 30 }
+  def AvatarSlots mask { id: 405, layer: 40 }
+  def AvatarSlots legs { id: 406, layer: 6, required: true }
+
+  def AvatarParts plain_shirt { id: 501, slot: AVS_UNDER, mesh: "kit/shirt.gltf", node: "torso" }
+  def AvatarParts jeans { id: 502, slot: AVS_LEGS, mesh: "kit/jeans.gltf", node: "legs" }
+  def AvatarParts short_hair { id: 503, slot: AVS_HAIR, mesh: "kit/hair1.gltf", node: "head" }
+  def AvatarParts long_hair { id: 504, slot: AVS_HAIR, mesh: "kit/hair2.gltf", node: "head", bodies: [AVB_ADULT_A] }
+  def AvatarParts jacket { id: 505, slot: AVS_TOP, mesh: "kit/jacket.gltf", node: "torso", layer: 3, price: 500, conflicts: [AVP_COAT] }
+  def AvatarParts coat { id: 506, slot: AVS_TOP, mesh: "kit/coat.gltf", node: "torso", level: 5 }
+  def AvatarParts cap { id: 507, slot: AVS_HAT, mesh: "kit/cap.gltf", node: "head" }
+  def AvatarParts hood { id: 508, slot: AVS_HAT, mesh: "kit/hood.gltf", node: "head", hides: [AVS_HAIR], palette: AVC_CLOTH_COLORS }
+  def AvatarParts visor { id: 509, slot: AVS_MASK, mesh: "kit/visor.gltf", node: "head", flag: "unlocked_visor" }
+  def AvatarParts scarf { id: 510, slot: AVS_TOP, mesh: "kit/scarf.gltf", node: "neck" }
+
+  # a mask and a hat cannot be worn together; a hood hides the hair
+  def AvatarRules mask_no_hat { kind: "conflicts", slot: AVS_MASK, other: AVS_HAT }
+
+  def AvatarZones arm { id: 601, node: "arm", max: 2 }
+  def AvatarZones back { id: 602, node: "back", max: 1 }
+  def AvatarDecals wing { id: 701, zone: AVZ_BACK, texture: "decals/wing.png", size: 600 }
+  def AvatarDecals star { id: 702, zone: AVZ_ARM, texture: "decals/star.png", u: 300, v: 700, size: 200, rot: 45 }
+  def AvatarDecals rose { id: 703, zone: AVZ_ARM, texture: "decals/rose.png", price: 300 }
+  def AvatarDecals dragon { id: 704, zone: AVZ_BACK, texture: "decals/dragon.png", bodies: [AVB_ADULT_B] }
+
+  def AvatarOutfits casual { id: 801, parts: [AVP_SHORT_HAIR, AVP_COAT, AVP_CAP], colors: [1, 0, -1], level: 5 }
+  def AvatarOutfits gala { id: 802, parts: [AVP_JACKET, AVP_LONG_HAIR], price: 900 }
+
+  def AvatarPoses stand { id: 901, kind: "idle", model: "bodies/a.gltf", clip: "idle_stand", loop: true }
+  def AvatarPoses wave { id: 902, kind: "emote", model: "bodies/a.gltf", clip: "wave", bodies: [AVB_ADULT_A] }
+
+  state AvatarTestState {
+    level: int = 1
+    money: int = 1000
+    flag_on: bool = false
+    calls: []string = new []string
+    seed: int = 7
+  }
+  function fake_level(avatar_test_st: AvatarTestState, who: int) -> int { return avatar_test_st.level }
+  function fake_flag(avatar_test_st: AvatarTestState, who: int, flag: string) -> bool { return avatar_test_st.flag_on }
+  function fake_spend(avatar_test_st: mut AvatarTestState, who: int, price: int) -> bool {
+    if avatar_test_st.money < price { return false }
+    avatar_test_st.money -= price
+    return true
+  }
+  function fake_seed(avatar_test_st: AvatarTestState) -> int { return avatar_test_st.seed }
+  bind AvatarWorld { level: fn fake_level, flag: fn fake_flag, spend: fn fake_spend, seed: fn fake_seed }
+
+  function v_begin(avatar_test_st: mut AvatarTestState, who: int) -> void { push(avatar_test_st.calls, "begin") }
+  function v_body(avatar_test_st: mut AvatarTestState, who: int, model: string, root: string) -> void { push(avatar_test_st.calls, "body " + model) }
+  function v_part(avatar_test_st: mut AvatarTestState, who: int, slot: int, mesh: string, node: string, order: int) -> void {
+    push(avatar_test_st.calls, "part " + mesh + " " + node + " " + Text.from_int(order))
+  }
+  function v_color(avatar_test_st: mut AvatarTestState, who: int, slot: int, material: string, rgb: int) -> void { push(avatar_test_st.calls, "color " + Text.from_int(slot) + " " + Text.from_int(rgb)) }
+  function v_morph(avatar_test_st: mut AvatarTestState, who: int, kind: int, target: string, axis: int, value: float) -> void {
+    if value != 0.0 { push(avatar_test_st.calls, "morph " + Text.from_int(kind) + " " + target + " " + Text.from_int(axis) + " " + Text.from_int(int(value * 1000.0))) }
+  }
+  function v_decal(avatar_test_st: mut AvatarTestState, who: int, node: string, texture: string, u: float, v: float, size: float, rot: float) -> void {
+    push(avatar_test_st.calls, "decal " + node + " " + texture)
+  }
+  function v_pose(avatar_test_st: mut AvatarTestState, who: int, model: string, clip: string, loop: bool) -> void { push(avatar_test_st.calls, "pose " + clip) }
+  function v_end(avatar_test_st: mut AvatarTestState, who: int) -> void { push(avatar_test_st.calls, "end") }
+  bind AvatarView { begin: fn v_begin, body: fn v_body, part: fn v_part, color: fn v_color, morph: fn v_morph, decal: fn v_decal, pose: fn v_pose, end: fn v_end }
+
+  function fresh(avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) -> void {
+    avatar_reset(avatar_st)
+    avatar_test_st.level = 1
+    avatar_test_st.money = 1000
+    avatar_test_st.flag_on = false
+    avatar_test_st.calls = new []string
+    avatar_test_st.seed = 7
+  }
+  function count_of(avatar_st: mut AvatarState, what: int) -> int {
+    let fs = q_drain(avatar_facts(avatar_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "the rows are the game's, each with a stable id apart from its place" {
+    expect_eq(AVS_COUNT, 6)
+    expect_eq(AVP_COUNT, 10)
+    expect_eq(AvatarParts[AVP_COAT].id, 506)
+    expect_eq(avatarparts_find("visor"), AVP_VISOR)
+  }
+
+  test "a new avatar wears what each slot starts with and fills the required slots" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    expect(avatar_new(avatar_st, 1, AVB_ADULT_A))
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_UNDER), AVP_PLAIN_SHIRT)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_LEGS), AVP_JEANS)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_HAIR), -1)
+    expect(not avatar_new(avatar_st, 2, 9))
+    expect(not avatar_has(avatar_st, 2))
+    expect_eq(avatar_why(avatar_st), AVATAR_BAD_ID)
+  }
+
+  test "a morph is held to its range, and what it comes to is kept as a delta on heritage" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    expect(avatar_set_morph(avatar_st, 1, AVM_NOSE, 2000))
+    expect_eq(avatar_morph(avatar_st, 1, AVM_NOSE), 800)
+    expect(avatar_set_morph(avatar_st, 1, AVM_NOSE, -900))
+    expect_eq(avatar_morph(avatar_st, 1, AVM_NOSE), -500)
+    expect_eq(avatar_morph(avatar_st, 1, AVM_JAW), 100)
+    expect(not avatar_set_morph(avatar_st, 1, 40, 0))
+    avatar_new(avatar_st, 2, AVB_ADULT_B)
+    expect(not avatar_set_morph(avatar_st, 2, AVM_BROW, 10))
+    expect_eq(avatar_why(avatar_st), AVATAR_WRONG_BODY)
+  }
+
+  test "two parents are blended by the mix and the player's own delta stays on top" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    expect(avatar_set_heritage(avatar_st, 1, AVH_NORTH, AVH_SOUTH, 500))
+    expect_eq(avatar_morph(avatar_st, 1, AVM_NOSE), 0)
+    expect_eq(avatar_morph(avatar_st, 1, AVM_JAW), -50)
+    avatar_set_heritage(avatar_st, 1, AVH_NORTH, AVH_SOUTH, 0)
+    expect_eq(avatar_morph(avatar_st, 1, AVM_NOSE), 400)
+    avatar_set_morph(avatar_st, 1, AVM_NOSE, 500)
+    avatar_set_heritage(avatar_st, 1, AVH_NORTH, AVH_SOUTH, 1000)
+    expect_eq(avatar_morph(avatar_st, 1, AVM_NOSE), -300)
+    expect(not avatar_set_heritage(avatar_st, 1, AVH_ONLY_B, -1, 0))
+    expect_eq(avatar_why(avatar_st), AVATAR_WRONG_BODY)
+  }
+
+  test "a part is worn by slot, checked for the body, the level, the flag and the price" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_B)
+    expect(not avatar_set_part(avatar_st, 1, AVP_LONG_HAIR))
+    expect_eq(avatar_why(avatar_st), AVATAR_WRONG_BODY)
+    expect(avatar_set_part(avatar_st, 1, AVP_SHORT_HAIR))
+    expect(not avatar_set_part(avatar_st, 1, AVP_COAT))
+    expect_eq(avatar_why(avatar_st), AVATAR_LOCKED)
+    avatar_test_st.level = 5
+    expect(avatar_set_part(avatar_st, 1, AVP_COAT))
+    expect(not avatar_set_part(avatar_st, 1, AVP_VISOR))
+    avatar_test_st.flag_on = true
+    expect(avatar_set_part(avatar_st, 1, AVP_VISOR))
+    expect(not avatar_set_part(avatar_st, 1, AVP_JACKET))
+    expect_eq(avatar_why(avatar_st), AVATAR_NOT_OWNED)
+    expect(not avatar_unlocked(avatar_st, 1, AVK_PART, AVP_JACKET))
+  }
+
+  test "buying pays through the port, once, and then the part is owned" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_test_st.money = 400
+    expect(not avatar_buy(avatar_st, 1, AVK_PART, AVP_JACKET))
+    expect_eq(avatar_why(avatar_st), AVATAR_BROKE)
+    avatar_test_st.money = 1000
+    expect(avatar_buy(avatar_st, 1, AVK_PART, AVP_JACKET))
+    expect_eq(avatar_test_st.money, 500)
+    expect(avatar_buy(avatar_st, 1, AVK_PART, AVP_JACKET))
+    expect_eq(avatar_test_st.money, 500)
+    expect(avatar_owns(avatar_st, 1, AVK_PART, AVP_JACKET))
+    expect(avatar_set_part(avatar_st, 1, AVP_JACKET))
+    expect(avatar_grant(avatar_st, 1, AVK_DECAL, AVD_ROSE))
+    expect(avatar_unlocked(avatar_st, 1, AVK_DECAL, AVD_ROSE))
+    expect_eq(count_of(avatar_st, AVATAR_BOUGHT), 1)
+  }
+
+  test "what cannot be worn together comes off: by the part's list and by a slot rule" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_test_st.level = 5
+    avatar_grant(avatar_st, 1, AVK_PART, AVP_JACKET)
+    avatar_set_part(avatar_st, 1, AVP_COAT)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_TOP), AVP_COAT)
+    avatar_set_part(avatar_st, 1, AVP_JACKET)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_TOP), AVP_JACKET)
+    avatar_set_part(avatar_st, 1, AVP_CAP)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_HAT), AVP_CAP)
+    avatar_test_st.flag_on = true
+    avatar_set_part(avatar_st, 1, AVP_VISOR)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_MASK), AVP_VISOR)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_HAT), -1)
+    avatar_set_part(avatar_st, 1, AVP_CAP)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_MASK), -1)
+  }
+
+  test "a required slot is never left empty, and a slot cleared says so" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    expect(not avatar_clear_slot(avatar_st, 1, AVS_UNDER))
+    expect_eq(avatar_why(avatar_st), AVATAR_REQUIRED)
+    avatar_set_part(avatar_st, 1, AVP_SHORT_HAIR)
+    expect(avatar_clear_slot(avatar_st, 1, AVS_HAIR))
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_HAIR), -1)
+  }
+
+  test "a body change takes off what does not fit and keeps the rest" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_set_part(avatar_st, 1, AVP_LONG_HAIR)
+    avatar_set_part(avatar_st, 1, AVP_CAP)
+    avatar_set_morph(avatar_st, 1, AVM_BROW, 300)
+    expect(avatar_set_body(avatar_st, 1, AVB_ADULT_B))
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_HAIR), -1)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_HAT), AVP_CAP)
+    expect_eq(avatar_morph(avatar_st, 1, AVM_BROW), 0)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_UNDER), AVP_PLAIN_SHIRT)
+  }
+
+  test "a colour is one of the slot's palette, or the part's own" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_set_part(avatar_st, 1, AVP_SHORT_HAIR)
+    expect(avatar_set_color(avatar_st, 1, AVS_HAIR, 2))
+    expect_eq(avatar_color_rgb(avatar_st, 1, AVS_HAIR), 0xdddddd)
+    expect(not avatar_set_color(avatar_st, 1, AVS_HAIR, 3))
+    expect(not avatar_set_color(avatar_st, 1, AVS_HAT, 0))
+    avatar_set_part(avatar_st, 1, AVP_HOOD)
+    expect(avatar_set_color(avatar_st, 1, AVS_HAT, 1))
+    expect_eq(avatar_color_rgb(avatar_st, 1, AVS_HAT), 0x00ff00)
+    expect(avatar_set_color(avatar_st, 1, AVS_HAT, -1))
+  }
+
+  test "a decal goes in a zone that has room, placed and held to sane numbers" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    expect_eq(avatar_add_decal(avatar_st, 1, AVD_WING, 500, 2000, 50000, 999), 0)
+    expect_eq(avatar_decal_v(avatar_st, 1, 0), 1000)
+    expect_eq(avatar_decal_size(avatar_st, 1, 0), 1000)
+    expect_eq(avatar_decal_rot(avatar_st, 1, 0), 180)
+    expect_eq(avatar_add_decal_default(avatar_st, 1, AVD_WING), -1)
+    expect_eq(avatar_why(avatar_st), AVATAR_FULL)
+    expect_eq(avatar_add_decal_default(avatar_st, 1, AVD_STAR), 1)
+    expect_eq(avatar_decal_u(avatar_st, 1, 1), 300)
+    expect_eq(avatar_add_decal_default(avatar_st, 1, AVD_DRAGON), -1)
+    expect_eq(avatar_why(avatar_st), AVATAR_WRONG_BODY)
+    expect_eq(avatar_add_decal_default(avatar_st, 1, AVD_ROSE), -1)
+    expect_eq(avatar_why(avatar_st), AVATAR_NOT_OWNED)
+    expect(avatar_remove_decal(avatar_st, 1, 0))
+    expect_eq(avatar_decal_count(avatar_st, 1), 1)
+    expect_eq(avatar_decal_at(avatar_st, 1, 0), AVD_STAR)
+  }
+
+  test "a premade outfit is worn whole under its own unlock rule; a saved one is worn again" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    expect_eq(avatar_apply_outfit(avatar_st, 1, AVO_CASUAL), -1)
+    expect_eq(avatar_why(avatar_st), AVATAR_LOCKED)
+    avatar_test_st.level = 5
+    expect_eq(avatar_apply_outfit(avatar_st, 1, AVO_CASUAL), 3)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_TOP), AVP_COAT)
+    expect_eq(avatar_color_in(avatar_st, 1, AVS_HAIR), 1)
+    expect_eq(avatar_color_in(avatar_st, 1, AVS_TOP), 0)
+    expect_eq(avatar_apply_outfit(avatar_st, 1, AVO_GALA), -1)
+    expect_eq(avatar_why(avatar_st), AVATAR_NOT_OWNED)
+    expect(avatar_save_outfit(avatar_st, 1, 2, "Day out"))
+    expect(avatar_saved_used(avatar_st, 1, 2))
+    expect_eq(avatar_saved_name(avatar_st, 1, 2), "Day out")
+    avatar_clear_slot(avatar_st, 1, AVS_HAT)
+    avatar_set_part(avatar_st, 1, AVP_LONG_HAIR)
+    expect_eq(avatar_wear_saved(avatar_st, 1, 2), 5)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_HAT), AVP_CAP)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_HAIR), AVP_SHORT_HAIR)
+    expect_eq(avatar_wear_saved(avatar_st, 1, 3), -1)
+    expect(avatar_delete_saved(avatar_st, 1, 2))
+    expect(not avatar_saved_used(avatar_st, 1, 2))
+  }
+
+  test "randomize draws from its own dice: the same seed the same avatar, and it is valid" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_new(avatar_st, 2, AVB_ADULT_A)
+    expect(avatar_randomize(avatar_st, 1, AVATAR_RAND_ALL))
+    let a = avatar_encode(avatar_st, 1)
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_randomize(avatar_st, 1, AVATAR_RAND_ALL)
+    expect(avatar_encode(avatar_st, 1) == a)
+    expect_eq(avatar_validate(avatar_st, 1, true), 0)
+    expect(avatar_part_in(avatar_st, 1, AVS_UNDER) >= 0)
+    expect(avatar_part_in(avatar_st, 1, AVS_LEGS) >= 0)
+    for s in 0 .. AVS_COUNT {
+      let p = avatar_part_in(avatar_st, 1, s)
+      if p >= 0 { expect(avatar_unlocked(avatar_st, 1, AVK_PART, p)) }
+    }
+    avatar_randomize(avatar_st, 1, AVATAR_RAND_FACE)
+    expect(avatar_encode(avatar_st, 1) != a)
+  }
+
+  test "the wire text is whole, by ids, and reads back the same avatar" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_test_st.level = 5
+    avatar_test_st.flag_on = true
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_set_heritage(avatar_st, 1, AVH_NORTH, AVH_SOUTH, 300)
+    avatar_set_morph(avatar_st, 1, AVM_NOSE, -300)
+    avatar_set_morph(avatar_st, 1, AVM_HEIGHT, 150)
+    avatar_set_part(avatar_st, 1, AVP_LONG_HAIR)
+    avatar_set_color(avatar_st, 1, AVS_HAIR, 1)
+    avatar_set_part(avatar_st, 1, AVP_COAT)
+    avatar_add_decal_default(avatar_st, 1, AVD_STAR)
+    let text = avatar_encode(avatar_st, 1)
+    expect(Text.length(text) > 10)
+    expect(Text.length(text) < 120)
+    expect_eq(avatar_decode(avatar_st, 2, text, false), 0)
+    expect(avatar_encode(avatar_st, 2) == text)
+    expect_eq(avatar_morph(avatar_st, 2, AVM_NOSE), -300)
+    expect_eq(avatar_part_in(avatar_st, 2, AVS_HAIR), AVP_LONG_HAIR)
+    expect_eq(avatar_color_in(avatar_st, 2, AVS_HAIR), 1)
+    expect_eq(avatar_decal_count(avatar_st, 2), 1)
+  }
+
+  test "a torn text changes nothing, and a checked one drops what the player may not wear" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_test_st.level = 5
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_set_part(avatar_st, 1, AVP_COAT)
+    avatar_add_decal_default(avatar_st, 1, AVD_STAR)
+    let text = avatar_encode(avatar_st, 1)
+    avatar_new(avatar_st, 2, AVB_ADULT_B)
+    let before = avatar_encode(avatar_st, 2)
+    expect_eq(avatar_decode(avatar_st, 2, Text.slice(text, 0, Text.length(text) - 3), false), -1)
+    expect_eq(avatar_decode(avatar_st, 2, "", false), -1)
+    expect_eq(avatar_decode(avatar_st, 2, "!!!!", false), -1)
+    var flipped = Text.concat(Text.slice(text, 0, 4), Text.concat("Z", Text.slice(text, 5, Text.length(text))))
+    if Text.slice(text, 4, 5) == "Z" { flipped = Text.concat(Text.slice(text, 0, 4), Text.concat("Y", Text.slice(text, 5, Text.length(text)))) }
+    expect_eq(avatar_decode(avatar_st, 2, flipped, false), -1)
+    expect(avatar_encode(avatar_st, 2) == before)
+    expect_eq(avatar_why(avatar_st), AVATAR_BAD_TEXT)
+    avatar_test_st.level = 1
+    expect_eq(avatar_decode(avatar_st, 2, text, true), 1)
+    expect_eq(avatar_part_in(avatar_st, 2, AVS_TOP), -1)
+    expect_eq(avatar_decode(avatar_st, 2, text, false), 0)
+    expect_eq(avatar_part_in(avatar_st, 2, AVS_TOP), AVP_COAT)
+  }
+
+  test "validate holds a stored avatar to today's rules" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_test_st.level = 5
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_set_part(avatar_st, 1, AVP_COAT)
+    expect_eq(avatar_validate(avatar_st, 1, true), 0)
+    avatar_test_st.level = 1
+    expect_eq(avatar_validate(avatar_st, 1, false), 0)
+    expect_eq(avatar_validate(avatar_st, 1, true), 1)
+    expect_eq(avatar_part_in(avatar_st, 1, AVS_TOP), -1)
+    expect_eq(avatar_validate(avatar_st, 99, true), -1)
+  }
+
+  test "the view port gets body, parts lowest layer first, colours, morphs, decals, the clip, and hidden parts are left out" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    avatar_set_part(avatar_st, 1, AVP_SHORT_HAIR)
+    avatar_set_part(avatar_st, 1, AVP_HOOD)
+    avatar_set_color(avatar_st, 1, AVS_HAT, 0)
+    avatar_set_morph(avatar_st, 1, AVM_HEIGHT, 100)
+    avatar_add_decal_default(avatar_st, 1, AVD_STAR)
+    expect(avatar_dirty(avatar_st, 1))
+    expect(not avatar_visible(avatar_st, 1, AVS_HAIR))
+    expect(avatar_visible(avatar_st, 1, AVS_HAT))
+    expect(avatar_set_pose(avatar_st, 1, AVA_WAVE))
+    avatar_tick(avatar_st, tick_new(0.1, 1, 0.0))
+    expect(not avatar_dirty(avatar_st, 1))
+    let c = avatar_test_st.calls
+    expect(c[0] == "begin")
+    expect(c[1] == "body bodies/a.gltf")
+    expect(c[2] == "part kit/shirt.gltf torso 5")
+    expect(c[3] == "part kit/jeans.gltf legs 6")
+    expect(c[4] == "part kit/hood.gltf head 30")
+    expect(c[5] == "color 3 16711680")
+    expect(c[6] == "morph 0 jaw_width 0 100")
+    expect(c[7] == "morph 1 spine 1 100")
+    expect(c[8] == "decal arm decals/star.png")
+    expect(c[9] == "pose wave")
+    expect(c[10] == "end")
+    expect_eq(len(c), 11)
+    expect(not avatar_set_pose(avatar_st, 1, 5))
+    avatar_new(avatar_st, 2, AVB_ADULT_B)
+    expect(not avatar_set_pose(avatar_st, 2, AVA_WAVE))
+    expect(avatar_set_pose(avatar_st, 2, AVA_STAND))
+    expect_eq(avatar_pose(avatar_st, 2), AVA_STAND)
+  }
+
+  test "facts say what changed and why a verb said no" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    q_drain(avatar_facts(avatar_st))
+    avatar_set_part(avatar_st, 1, AVP_SHORT_HAIR)
+    avatar_set_part(avatar_st, 1, AVP_COAT)
+    let fs = q_drain(avatar_facts(avatar_st))
+    expect_eq(len(fs), 2)
+    expect_eq(fs[0].what, AVATAR_CHANGED)
+    expect_eq(fs[0].kind, AVK_PART)
+    expect_eq(fs[0].index, AVP_SHORT_HAIR)
+    expect_eq(fs[1].what, AVATAR_REFUSED)
+    expect_eq(fs[1].reason, AVATAR_LOCKED)
+  }
+
+  test "the save keeps the avatar, what is owned and the saved outfits, by id" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_test_st.level = 5
+    avatar_new(avatar_st, 7, AVB_ADULT_B)
+    avatar_set_part(avatar_st, 7, AVP_COAT)
+    avatar_set_morph(avatar_st, 7, AVM_NOSE, 222)
+    avatar_buy(avatar_st, 7, AVK_PART, AVP_JACKET)
+    avatar_grant(avatar_st, 7, AVK_DECAL, AVD_ROSE)
+    avatar_save_outfit(avatar_st, 7, 1, "Kept")
+    let text = avatar_encode(avatar_st, 7)
+    let root = save_tree()
+    save_section(root, "avatar", 1, avatar_save(avatar_st))
+    let saved = save_encode(root)
+    avatar_reset(avatar_st)
+    expect(not avatar_has(avatar_st, 7))
+    let n = load_section(save_decode(saved), "avatar")
+    expect(n.found)
+    avatar_load(avatar_st, n.data, n.version)
+    expect(avatar_encode(avatar_st, 7) == text)
+    expect(avatar_owns(avatar_st, 7, AVK_PART, AVP_JACKET))
+    expect(avatar_owns(avatar_st, 7, AVK_DECAL, AVD_ROSE))
+    expect(avatar_saved_used(avatar_st, 7, 1))
+    expect_eq(avatar_saved_name(avatar_st, 7, 1), "Kept")
+    expect_eq(avatar_part_in(avatar_st, 7, AVS_TOP), AVP_COAT)
+    expect_eq(avatar_count(avatar_st), 1)
+    expect(avatar_remove(avatar_st, 7))
+    expect_eq(avatar_count(avatar_st), 0)
+  }
+}

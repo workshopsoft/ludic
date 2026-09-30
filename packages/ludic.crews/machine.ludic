@@ -1,0 +1,120 @@
+# machine.ludic - a turf war as a machine. A territory is at Peace, Contested (a crew has enough influence to
+# challenge the owner), at War (a timed fight: kills in the territory score) or in Cooldown (the result, then
+# quiet). The rows of steps.lres say how it moves; `on` is an action (TurfDeclare) or "" for what the tick senses.
+# Only a transition writes `phase`. The timers and the influence are the tick's; the rows only decide
+
+export property TurfStep {
+  from: TurfPhase = TurfPhase.Peace
+  to: TurfPhase = TurfPhase.Peace
+  on: string = ""
+  guard: fn(Row<Turf>, CrewState) -> bool = null
+  enter: fn(Row<Turf>, CrewState) -> void = null
+}
+
+@Machine(Turf.phase)
+export registry TurfSteps of TurfStep as TFS from "steps.lres"
+
+function crw_say_phase(crew_st: CrewState, t: Turf) -> void {
+  let f = crw_fact(crew_st, CREW_TURF_PHASE, 0, 0, t.owner, t.challenger)
+  f.map = t.map
+  f.key = t.key
+  f.index = int(t.phase)
+}
+
+function crw_say_result(crew_st: CrewState, what: int, t: Turf, crew: int, other_crew: int) -> void {
+  let f = crw_fact(crew_st, what, 0, 0, crew, other_crew)
+  f.map = t.map
+  f.key = t.key
+}
+
+# guards
+function crw_g_stir(r: Row<Turf>, crew_st: CrewState) -> bool {
+  let c = crw_top(crew_st, r.rec)
+  if c == 0 { return false }
+  return crw_inf(r.rec, c) >= crw_cfg(crew_st).contest_at
+}
+function crw_g_claim(r: Row<Turf>, crew_st: CrewState) -> bool {
+  return r.rec.owner == 0 and r.rec.challenger != 0 and crw_inf(r.rec, r.rec.challenger) >= crw_capture_at(crew_st, r.rec)
+}
+function crw_g_war_auto(r: Row<Turf>, crew_st: CrewState) -> bool {
+  if r.rec.owner == 0 or r.rec.challenger == 0 { return false }
+  if not crw_rel_between(crew_st, r.rec.owner, r.rec.challenger).war { return false }
+  return crw_inf(r.rec, r.rec.challenger) >= crw_cfg(crew_st).war_at
+}
+function crw_g_declared(r: Row<Turf>, crew_st: CrewState) -> bool {
+  return r.rec.declared != 0 and r.rec.declared == r.rec.challenger and r.rec.owner != 0
+}
+function crw_g_calm(r: Row<Turf>, crew_st: CrewState) -> bool {
+  if r.rec.challenger == 0 { return true }
+  if r.rec.owner != 0 and not crw_rel_between(crew_st, r.rec.owner, r.rec.challenger).contest { return true }
+  return crw_inf(r.rec, r.rec.challenger) < crw_cfg(crew_st).contest_at * 0.5
+}
+function crw_attacker_wins(crew_st: CrewState, t: Turf) -> bool {
+  if t.score_att != t.score_def { return t.score_att > t.score_def }
+  let defence = crw_inf(t, t.owner) * float(100 + crw_cfg(crew_st).defender_pct) / 100.0
+  return crw_inf(t, t.challenger) > defence
+}
+function crw_g_war_won(r: Row<Turf>, crew_st: CrewState) -> bool {
+  return r.rec.war_left <= 0.0 and crw_attacker_wins(crew_st, r.rec)
+}
+function crw_g_war_over(r: Row<Turf>, crew_st: CrewState) -> bool { return r.rec.war_left <= 0.0 }
+function crw_g_quiet(r: Row<Turf>, crew_st: CrewState) -> bool { return r.rec.cool_left <= 0.0 }
+
+# enters
+function crw_e_stir(r: mut Row<Turf>, crew_st: CrewState) -> void {
+  r.rec.challenger = crw_top(crew_st, r.rec)
+  crw_say_phase(crew_st, r.rec)
+}
+function crw_e_calm(r: mut Row<Turf>, crew_st: CrewState) -> void {
+  r.rec.challenger = 0
+  r.rec.declared = 0
+  crw_say_phase(crew_st, r.rec)
+}
+function crw_e_claimed(r: mut Row<Turf>, crew_st: CrewState) -> void {
+  let winner = r.rec.challenger
+  r.rec.owner = winner
+  r.rec.challenger = 0
+  r.rec.declared = 0
+  r.rec.cool_left = crw_cfg(crew_st).cooldown_secs
+  r.rec.income_left = crw_cfg(crew_st).income_secs
+  crw_say_result(crew_st, CREW_CAPTURED, r.rec, winner, 0)
+  crw_say_phase(crew_st, r.rec)
+}
+function crw_e_war(r: mut Row<Turf>, crew_st: CrewState) -> void {
+  r.rec.war_left = crw_cfg(crew_st).war_secs
+  r.rec.score_att = 0
+  r.rec.score_def = 0
+  let f = crw_fact(crew_st, CREW_DECLARED, 0, 0, r.rec.challenger, r.rec.owner)
+  f.map = r.rec.map
+  f.key = r.rec.key
+  crw_say_phase(crew_st, r.rec)
+}
+function crw_e_captured(r: mut Row<Turf>, crew_st: CrewState) -> void {
+  let old = r.rec.owner
+  let winner = r.rec.challenger
+  crw_inf_set(r.rec, old, crw_inf(r.rec, old) * 0.5)
+  r.rec.owner = winner
+  r.rec.challenger = 0
+  r.rec.declared = 0
+  r.rec.war_left = 0.0
+  r.rec.cool_left = crw_cfg(crew_st).cooldown_secs
+  r.rec.income_left = crw_cfg(crew_st).income_secs
+  crw_say_result(crew_st, CREW_CAPTURED, r.rec, winner, old)
+  crw_say_phase(crew_st, r.rec)
+}
+function crw_e_held(r: mut Row<Turf>, crew_st: CrewState) -> void {
+  let attacker = r.rec.challenger
+  crw_inf_set(r.rec, attacker, 0.0)
+  r.rec.challenger = 0
+  r.rec.declared = 0
+  r.rec.war_left = 0.0
+  r.rec.cool_left = crw_cfg(crew_st).cooldown_secs
+  crw_say_result(crew_st, CREW_DEFENDED, r.rec, r.rec.owner, attacker)
+  crw_say_phase(crew_st, r.rec)
+}
+function crw_e_settled(r: mut Row<Turf>, crew_st: CrewState) -> void {
+  r.rec.challenger = 0
+  r.rec.score_att = 0
+  r.rec.score_def = 0
+  crw_say_phase(crew_st, r.rec)
+}

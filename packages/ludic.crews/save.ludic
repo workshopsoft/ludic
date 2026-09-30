@@ -1,0 +1,218 @@
+# save.ludic - crews as a save section (`crews`, version 1), the same text as a snapshot for a guest, and the system.
+# By key: ranks, relations and emblems are named by their keys, so the registries' order is free. Not saved: invites,
+# and a territory's phase - a war in flight is over after a load (influence stays, so a contest comes back by itself)
+
+function crw_milli(v: float) -> int { return int(Math.round(v * 1000.0)) }
+
+function crw_rank_key(rank: int) -> string {
+  if rank < 0 or rank >= CRR_COUNT { return "" }
+  return CrewRanks[rank].key
+}
+function crw_rel_key(rel: int) -> string {
+  if rel < 0 or rel >= CRL_COUNT { return "" }
+  return CrewRelations[rel].key
+}
+function crw_emblem_key(e: int) -> string {
+  if e < 0 or e >= CRE_COUNT { return "" }
+  return CrewEmblems[e].key
+}
+
+@alloc_ok("on a save: the rows written out")
+export function crew_save(crew_st: CrewState) -> Val {
+  let v = Value.object()
+  sv_put_int(v, "next", crew_st.cr_next)
+  sv_put_float(v, "hours", crew_st.cr_hours)
+  sv_put_float(v, "day_left", crew_st.cr_day_left)
+  let crews = Value.list()
+  for i in 0 .. len(crew_st.cr_crews) {
+    let c = crew_st.cr_crews[i]
+    let o = Value.object()
+    sv_put_int(o, "id", c.id)
+    sv_put_str(o, "name", c.name)
+    sv_put_str(o, "tag", c.tag)
+    sv_put_str(o, "emblem", crw_emblem_key(c.emblem))
+    sv_put_int(o, "color_a", c.color_a)
+    sv_put_int(o, "color_b", c.color_b)
+    sv_put_int(o, "founder", c.founder)
+    sv_put_int(o, "bank", c.bank)
+    sv_put_bool(o, "open", c.open)
+    sv_put_float(o, "created", c.created)
+    Value.add(crews, o)
+  }
+  Value.put(v, "crews", crews)
+  let members = Value.list()
+  for i in 0 .. len(crew_st.cr_members) {
+    let m = crew_st.cr_members[i]
+    let o = Value.object()
+    sv_put_int(o, "who", m.who)
+    sv_put_int(o, "crew", m.crew)
+    sv_put_str(o, "rank", crw_rank_key(m.rank))
+    sv_put_float(o, "joined", m.joined)
+    sv_put_int(o, "withdrawn", m.withdrawn)
+    Value.add(members, o)
+  }
+  Value.put(v, "members", members)
+  let pairs = Value.list()
+  for i in 0 .. len(crew_st.cr_pairs) {
+    let p = crew_st.cr_pairs[i]
+    let o = Value.object()
+    sv_put_int(o, "a", p.a)
+    sv_put_int(o, "b", p.b)
+    sv_put_str(o, "rel", crw_rel_key(p.rel))
+    sv_put_float(o, "since", p.since)
+    sv_put_str(o, "pending", crw_rel_key(p.pending))
+    sv_put_int(o, "pending_by", p.pending_by)
+    sv_put_int(o, "kills_a", p.kills_a)
+    sv_put_int(o, "kills_b", p.kills_b)
+    Value.add(pairs, o)
+  }
+  Value.put(v, "pairs", pairs)
+  let bounties = new []int
+  for i in 0 .. len(crew_st.cr_bounties) {
+    push(bounties, crew_st.cr_bounties[i].target)
+    push(bounties, crew_st.cr_bounties[i].amount)
+  }
+  sv_put_ints(v, "bounties", bounties)
+  let turfs = Value.list()
+  for i in 0 .. tb_len(crew_st.cr_turfs) {
+    let t = tb_rec(crew_st.cr_turfs, i)
+    let o = Value.object()
+    sv_put_str(o, "map", t.map)
+    sv_put_str(o, "key", t.key)
+    sv_put_int(o, "owner", t.owner)
+    let inf = new []int
+    for k in 0 .. len(t.inf_crew) {
+      push(inf, t.inf_crew[k])
+      push(inf, crw_milli(t.inf_val[k]))
+    }
+    sv_put_ints(o, "influence", inf)
+    Value.add(turfs, o)
+  }
+  Value.put(v, "turfs", turfs)
+  return v
+}
+
+export function crew_reset(crew_st: mut CrewState) -> void {
+  crew_st.cr_crews = new []Crew
+  crew_st.cr_members = new []CrewMember
+  crew_st.cr_invites = new []CrewInvite
+  crew_st.cr_pairs = new []CrewPair
+  crew_st.cr_bounties = new []CrewBounty
+  crew_st.cr_turfs = cr_turfs__new()
+  crew_st.cr_next = 1
+  crew_st.cr_hours = 0.0
+  crew_st.cr_day_left = 24.0
+  crew_st.cr_synced = ""
+  crew_st.cr_why = 0
+  q_clear(crew_st.cr_facts)
+}
+
+function crw_list(v: Val, key: string) -> Val {
+  if Value.has(v, key) == 0 { return null }
+  return Value.get(v, key)
+}
+
+@alloc_ok("on load: the rows read back")
+export function crew_load(crew_st: mut CrewState, v: Val, version: int) -> void {
+  crew_reset(crew_st)
+  crew_st.cr_next = sv_int(v, "next", 1)
+  crew_st.cr_hours = sv_float(v, "hours", 0.0)
+  crew_st.cr_day_left = sv_float(v, "day_left", 24.0)
+  let crews = crw_list(v, "crews")
+  if crews != null {
+    for i in 0 .. Value.count(crews) {
+      let o = Value.at(crews, i)
+      let c = new Crew
+      c.id = sv_int(o, "id", 0)
+      c.name = sv_str(o, "name", "")
+      c.tag = sv_str(o, "tag", "")
+      c.emblem = crewemblems_find(sv_str(o, "emblem", ""))
+      c.color_a = sv_int(o, "color_a", 0)
+      c.color_b = sv_int(o, "color_b", 0)
+      c.founder = sv_int(o, "founder", 0)
+      c.bank = sv_int(o, "bank", 0)
+      c.open = sv_bool(o, "open", false)
+      c.created = sv_float(o, "created", 0.0)
+      push(crew_st.cr_crews, c)
+    }
+  }
+  let members = crw_list(v, "members")
+  if members != null {
+    for i in 0 .. Value.count(members) {
+      let o = Value.at(members, i)
+      let m = new CrewMember
+      m.who = sv_int(o, "who", 0)
+      m.crew = sv_int(o, "crew", 0)
+      m.rank = Math.max(crewranks_find(sv_str(o, "rank", "")), 0)
+      m.joined = sv_float(o, "joined", 0.0)
+      m.withdrawn = sv_int(o, "withdrawn", 0)
+      push(crew_st.cr_members, m)
+    }
+  }
+  let pairs = crw_list(v, "pairs")
+  if pairs != null {
+    for i in 0 .. Value.count(pairs) {
+      let o = Value.at(pairs, i)
+      let p = new CrewPair
+      p.a = sv_int(o, "a", 0)
+      p.b = sv_int(o, "b", 0)
+      p.rel = crewrelations_find(sv_str(o, "rel", ""))
+      p.since = sv_float(o, "since", 0.0)
+      p.pending = crewrelations_find(sv_str(o, "pending", ""))
+      p.pending_by = sv_int(o, "pending_by", 0)
+      p.kills_a = sv_int(o, "kills_a", 0)
+      p.kills_b = sv_int(o, "kills_b", 0)
+      push(crew_st.cr_pairs, p)
+    }
+  }
+  let bounties = sv_ints(v, "bounties")
+  var b = 0
+  while b + 1 < len(bounties) {
+    let o = new CrewBounty
+    o.target = bounties[b]
+    o.amount = bounties[b + 1]
+    push(crew_st.cr_bounties, o)
+    b += 2
+  }
+  let turfs = crw_list(v, "turfs")
+  if turfs != null {
+    for i in 0 .. Value.count(turfs) {
+      let o = Value.at(turfs, i)
+      let t = crw_turf_make(crew_st, sv_str(o, "map", ""), sv_str(o, "key", ""))
+      t.owner = sv_int(o, "owner", 0)
+      let inf = sv_ints(o, "influence")
+      var k = 0
+      while k + 1 < len(inf) {
+        crw_inf_set(t, inf[k], float(inf[k + 1]) / 1000.0)
+        k += 2
+      }
+      t.lead = crw_lead(t)
+    }
+  }
+  q_clear(crew_st.cr_facts)
+}
+
+# everything as one text for a guest's machine: sent when a player joins, or after a change every machine must see
+export function crew_snapshot(crew_st: CrewState) -> string {
+  let root = save_tree()
+  save_section(root, "crews", 1, crew_save(crew_st))
+  return save_encode(root)
+}
+
+# a guest's machine takes the host's view; false when the text is not a snapshot
+export function crew_apply_snapshot(crew_st: mut CrewState, text: string) -> bool {
+  let n = load_section(save_decode(text), "crews")
+  if not n.found { return false }
+  crew_load(crew_st, n.data, n.version)
+  return true
+}
+
+export function crew_system() -> System {
+  let s = system_new("crews", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn crew_reset
+  s.tick = fn crew_tick
+  s.save = fn crew_save
+  s.load = fn crew_load
+  return s
+}

@@ -1,0 +1,78 @@
+# rows.ludic - a player's row: found, or made the first time an avatar is asked for, and the small
+# list helpers every rule uses
+
+function avt_ints(n: int, v: int) -> []int {
+  let xs = new []int
+  for i in 0 .. n { push(xs, v) }
+  return xs
+}
+
+function avt_list_has(xs: []int, v: int) -> bool {
+  if xs == null { return false }
+  for i in 0 .. len(xs) { if xs[i] == v { return true } }
+  return false
+}
+
+function avt_add_once(xs: []int, v: int) -> void {
+  if not avt_list_has(xs, v) { push(xs, v) }
+}
+
+function avt_clamp(v: int, lo: int, hi: int) -> int {
+  if v < lo { return lo }
+  if v > hi { return hi }
+  return v
+}
+
+# does a row that lists the rigs it fits (none listed: all) fit this body
+function avt_fits(bodies: []int, body: int) -> bool {
+  if bodies == null or len(bodies) == 0 { return true }
+  return avt_list_has(bodies, body)
+}
+
+function avt_find(avatar_st: AvatarState, who: int) -> AvatarRow {
+  for i in 0 .. len(avatar_st.av_rows) {
+    if avatar_st.av_rows[i].who == who { return avatar_st.av_rows[i] }
+  }
+  return null
+}
+
+@alloc_ok("a player's first avatar, made once and kept")
+function avt_make(avatar_st: mut AvatarState, who: int) -> AvatarRow {
+  let r = new AvatarRow
+  r.who = who
+  r.morphs = avt_ints(AVM_COUNT, 0)
+  r.parts = avt_ints(AVS_COUNT, -1)
+  r.colors = avt_ints(AVS_COUNT, -1)
+  r.decals = new []int
+  r.owned = new []int
+  r.owned_decals = new []int
+  r.owned_outfits = new []int
+  r.outfits = new []AvatarSaved
+  for i in 0 .. AVATAR_OUTFIT_SLOTS {
+    let s = new AvatarSaved
+    s.parts = avt_ints(AVS_COUNT, -1)
+    s.colors = avt_ints(AVS_COUNT, -1)
+    push(r.outfits, s)
+  }
+  push(avatar_st.av_rows, r)
+  return r
+}
+
+# every choice back to what a new avatar is: no heritage, no morphs, nothing worn but what the slots start with
+function avt_defaults(avatar_st: mut AvatarState, r: AvatarRow) -> void {
+  r.mother = -1
+  r.father = -1
+  r.mix = 500
+  for i in 0 .. len(r.morphs) { r.morphs[i] = 0 }
+  for s in 0 .. AVS_COUNT {
+    r.parts[s] = -1
+    r.colors[s] = -1
+  }
+  r.decals = new []int
+  for s in 0 .. AVS_COUNT {
+    let st = AvatarSlots[s].start
+    if st >= 0 and st < AVP_COUNT and AvatarParts[st].slot == s { avt_wear(avatar_st, r, st) }
+  }
+  avt_fill(avatar_st, r)
+  r.dirty = true
+}

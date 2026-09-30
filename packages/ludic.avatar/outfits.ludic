@@ -1,0 +1,102 @@
+# outfits.ludic - premade outfits from the registry, and the sets a player saved
+
+# wear a premade outfit whole: its unlock rule covers its parts. Parts that do not fit the body are left
+# out. Returns how many parts went on, -1 when it is refused
+export function avatar_apply_outfit(avatar_st: mut AvatarState, who: int, outfit: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null {
+    avt_no(avatar_st, who, AVK_OUTFIT, outfit, AVATAR_NO_AVATAR)
+    return -1
+  }
+  let open = avt_open(r, AVK_OUTFIT, outfit, true)
+  if open != AVATAR_OK {
+    avt_no(avatar_st, who, AVK_OUTFIT, outfit, open)
+    return -1
+  }
+  let o = AvatarOutfits[outfit]
+  if not avt_fits(o.bodies, r.body) {
+    avt_no(avatar_st, who, AVK_OUTFIT, outfit, AVATAR_WRONG_BODY)
+    return -1
+  }
+  var worn = 0
+  if o.parts != null {
+    for i in 0 .. len(o.parts) {
+      if avt_wear(avatar_st, r, o.parts[i]) != AVATAR_OK { continue }
+      worn += 1
+      let slot = AvatarParts[o.parts[i]].slot
+      if o.colors != null and i < len(o.colors) and o.colors[i] < avt_palette_len(avt_palette_of(slot, o.parts[i])) { r.colors[slot] = o.colors[i] }
+    }
+  }
+  avt_changed(avatar_st, r, AVK_OUTFIT, outfit, worn)
+  return worn
+}
+
+# keep what is worn as saved outfit `slot` (0 .. AVATAR_OUTFIT_SLOTS - 1), with a name
+export function avatar_save_outfit(avatar_st: mut AvatarState, who: int, slot: int, name: string) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, AVK_OUTFIT, slot, AVATAR_NO_AVATAR) }
+  if slot < 0 or slot >= AVATAR_OUTFIT_SLOTS { return avt_no(avatar_st, who, AVK_OUTFIT, slot, AVATAR_BAD_ID) }
+  let s = r.outfits[slot]
+  s.used = true
+  s.name = name
+  for k in 0 .. AVS_COUNT {
+    s.parts[k] = r.parts[k]
+    s.colors[k] = r.colors[k]
+  }
+  avt_fact(avatar_st, AVATAR_OUTFIT_SAVED, who, AVK_OUTFIT, slot, 0, 0)
+  return true
+}
+
+# wear saved outfit `slot` again: a slot it left empty is emptied (not a required one); a part the player
+# may no longer use (locked since) is left as it is. Returns how many parts went on, -1 when nothing is saved there
+export function avatar_wear_saved(avatar_st: mut AvatarState, who: int, slot: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null {
+    avt_no(avatar_st, who, AVK_OUTFIT, slot, AVATAR_NO_AVATAR)
+    return -1
+  }
+  if slot < 0 or slot >= AVATAR_OUTFIT_SLOTS or not r.outfits[slot].used {
+    avt_no(avatar_st, who, AVK_OUTFIT, slot, AVATAR_BAD_ID)
+    return -1
+  }
+  let s = r.outfits[slot]
+  var worn = 0
+  for k in 0 .. AVS_COUNT {
+    let part = s.parts[k]
+    if part < 0 {
+      if not AvatarSlots[k].required and r.parts[k] >= 0 {
+        r.parts[k] = -1
+        r.colors[k] = -1
+      }
+      continue
+    }
+    if avt_open(r, AVK_PART, part, true) != AVATAR_OK { continue }
+    if avt_wear(avatar_st, r, part) != AVATAR_OK { continue }
+    worn += 1
+    if s.colors[k] < avt_palette_len(avt_palette_of(k, part)) { r.colors[k] = s.colors[k] }
+  }
+  avt_fill(avatar_st, r)
+  avt_fact(avatar_st, AVATAR_OUTFIT_WORN, who, AVK_OUTFIT, slot, worn, 0)
+  avt_changed(avatar_st, r, AVK_OUTFIT, -1 - slot, worn)
+  return worn
+}
+
+export function avatar_saved_used(avatar_st: AvatarState, who: int, slot: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null or slot < 0 or slot >= AVATAR_OUTFIT_SLOTS { return false }
+  return r.outfits[slot].used
+}
+
+export function avatar_saved_name(avatar_st: AvatarState, who: int, slot: int) -> string {
+  let r = avt_find(avatar_st, who)
+  if r == null or slot < 0 or slot >= AVATAR_OUTFIT_SLOTS { return "" }
+  return r.outfits[slot].name
+}
+
+export function avatar_delete_saved(avatar_st: mut AvatarState, who: int, slot: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null or slot < 0 or slot >= AVATAR_OUTFIT_SLOTS or not r.outfits[slot].used { return false }
+  r.outfits[slot].used = false
+  r.outfits[slot].name = ""
+  return true
+}

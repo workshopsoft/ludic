@@ -1,0 +1,95 @@
+# defs.ludic - the tables a game fills. Things are named by KEY (the save is by key, so the order is
+# free); the sites a map holds are per-map rows the editor places
+
+# a business loop a kind of property may run: supplies bought, turned into stock one unit at a time, stock sold.
+# Nothing here says what is made
+export property BusinessLoop {
+  key: string = ""
+  @Text name: string = ""
+  @Range(1, 100000) supply_max: int = 10                # supplies held at most
+  @Range(0, 100000000) supply_price: int = 100          # what one supply costs
+  @Range(1, 1000) supply_batch: int = 5                 # supplies one purchase brings
+  @Range(1, 1000) supply_per_unit: int = 1              # supplies one unit of stock uses
+  @Unit("s") @Range(0.1, 86400) make_secs: float = 60.0 # to make one unit
+  @Range(1, 100000) stock_max: int = 20                 # units held at most
+  @Range(0, 100000000) unit_value: int = 50             # what one unit sells for
+  @Unit("s") @Range(0, 86400) sell_secs: float = 30.0   # a sale run takes
+  @Range(0, 100000000) upkeep_day: int = 0              # taken from the owner each in-game day
+}
+
+@AppendOnly @ByKey
+export open registry BusinessLoops of BusinessLoop as BIZ
+
+# a kind of property (apartment, house, garage, office, business, hideout...). `interior` is the key of the map
+# the inside lives on (a directory under the maps root), `interiors` the further maps of a multi-map interior
+# (floor 1, 2, ...). The player appears at (spawn_x, spawn_y, spawn_z) facing spawn_yaw inside. `instanced`: each
+# visit gets an instance id of its own, closed when the last one leaves (off: the shared world, instance 0).
+# `sell_pct` is the share of what was paid given back on a sale, in permille
+export property PropertyKind {
+  key: string = ""
+  @Text name: string = ""
+  interior: string = ""
+  interiors: []string = null
+  instanced: bool = true
+  @Unit("m") spawn_x: float = 0.0
+  @Unit("m") spawn_y: float = 0.0
+  @Unit("m") spawn_z: float = 0.0
+  @Unit("deg") spawn_yaw: float = 0.0
+  @Range(0, 64) garage_slots: int = 0
+  @Range(0, 256) storage_slots: int = 0
+  @Range(0, 64) upgrade_slots: int = 0
+  @Range(1, 64) guests_max: int = 8
+  @Range(0, 1000) sell_pct: int = 700
+  buyable: bool = true
+  rentable: bool = false
+  @Range(0, 365) grace_days: int = 3                    # days behind on rent before it is taken back
+  raidable: bool = false
+  @Unit("h") @Range(0, 720) raid_cooldown: float = 24.0 # game hours between raids
+  @Range(0, 100000000) income_day: int = 0              # passive income a game day while owned
+  @Ref(BusinessLoops) business: int = -1                # the loop it runs (-1 none)
+}
+
+@AppendOnly @ByKey
+export open registry PropertyKinds of PropertyKind as PRK
+
+# something bought for a property. `kinds` lists those it fits (empty: all); `slots` of the kind's upgrade slots
+# it uses; `requires` upgrades needed first; it adds `garage` and `storage` slots, `income_pct` to passive
+# income, `produce_pct` to production speed, and may put a different `interior` (a variant map) in place
+export property PropertyUpgrade {
+  key: string = ""
+  @Text name: string = ""
+  @Ref(PropertyKinds) kinds: []int = null
+  @Range(0, 100000000) price: int = 0
+  @Range(0, 16) slots: int = 1
+  @Ref(PropertyUpgrades) requires: []int = null
+  @Range(0, 64) garage: int = 0
+  @Range(0, 256) storage: int = 0
+  @Range(0, 1000) income_pct: int = 0
+  @Range(0, 1000) produce_pct: int = 0
+  interior: string = ""
+}
+
+@AppendOnly @ByKey
+export open registry PropertyUpgrades of PropertyUpgrade as PRU
+
+# a site a map holds (maps/<map>/properties.lres): the entrance outside at (x, y, z) facing `yaw`, what it is
+# (`kind`), what it costs to buy and to rent a game day, the district it is in, and where a retrieved vehicle
+# appears (the entrance when left 0)
+export property PropertySite {
+  key: string = ""
+  @Text name: string = ""
+  @Ref(PropertyKinds) kind: int = 0
+  @Unit("m") x: float = 0.0
+  @Unit("m") y: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0
+  @Range(0, 1000000000) price: int = 0
+  @Range(0, 1000000000) rent: int = 0
+  @Text district: string = ""
+  @Unit("m") garage_x: float = 0.0
+  @Unit("m") garage_z: float = 0.0
+  @Unit("deg") garage_yaw: float = 0.0
+}
+
+@PerMap @ByKey
+export registry Properties of PropertySite from "properties.lres"

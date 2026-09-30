@@ -1,0 +1,168 @@
+# enter.ludic - interiors, an instance each. Coming in gives the owner's property an instance id (a new one when
+# nobody is in it, the live one when someone is); the game loads the interior map for that id through the load
+# port and places the player. A multi-map interior goes floor to floor inside one instance. The last one out
+# closes it. An interior of a kind that is not `instanced` is the shared world: instance 0
+
+function rlt_inst_of(realty_st: RealtyState, map: string, key: string) -> RealtyInstance {
+  for i in 0 .. len(realty_st.rl_inst) {
+    let n = realty_st.rl_inst[i]
+    if n.key == key and n.map == map { return n }
+  }
+  return null
+}
+
+function rlt_inst_index_with(realty_st: RealtyState, who: int) -> int {
+  for i in 0 .. len(realty_st.rl_inst) {
+    if rlt_has(realty_st.rl_inst[i].who, who) { return i }
+  }
+  return -1
+}
+
+# take `who` out of the instance at `i`: placed at the door, a fact, and the instance closed when it is empty
+function rlt_leave_at(realty_st: mut RealtyState, i: int, who: int) -> void {
+  let n = realty_st.rl_inst[i]
+  List.remove(n.who, who)
+  RealtyLoad.leave(who, n.id, n.ox, n.oy, n.oz, n.oyaw)
+  let f = rlt_fact(realty_st, REALTY_LEFT, who, n.owner, n.map, n.key)
+  f.instance = n.id
+  if len(n.who) == 0 {
+    if PropertyKinds[n.kind].instanced { RealtyLoad.unload(n.id) }
+    let c = rlt_fact(realty_st, REALTY_INSTANCE_CLOSED, n.owner, n.owner, n.map, n.key)
+    c.instance = n.id
+    List.remove_at(realty_st.rl_inst, i)
+  }
+}
+
+# send one player out of whatever they are inside, if it is this holding's
+function rlt_eject_one(realty_st: mut RealtyState, who: int, h: Holding) -> void {
+  let i = rlt_inst_index_with(realty_st, who)
+  if i < 0 { return }
+  if realty_st.rl_inst[i].key == h.key and realty_st.rl_inst[i].map == h.map { rlt_leave_at(realty_st, i, who) }
+}
+
+# send everyone out of a holding's interior (it was sold, traded or taken back)
+function rlt_eject_holding(realty_st: mut RealtyState, map: string, key: string) -> void {
+  var i = 0
+  while i < len(realty_st.rl_inst) {
+    let n = realty_st.rl_inst[i]
+    if n.key == key and n.map == map {
+      while len(realty_st.rl_inst[i].who) > 1 { rlt_leave_at(realty_st, i, realty_st.rl_inst[i].who[0]) }
+      rlt_leave_at(realty_st, i, realty_st.rl_inst[i].who[0])
+    } else {
+      i += 1
+    }
+  }
+}
+
+# go in through the door of `key` on the loaded map. Returns the instance id (0: the shared world), -1 when it is
+# refused (no holding, not allowed, already inside, the load refused)
+export function realty_enter(realty_st: mut RealtyState, sites: Properties, who: int, key: string) -> int {
+  let map = sites.map
+  let s = properties_find(sites, key)
+  if s < 0 {
+    rlt_no(realty_st, who, map, key, REALTY_NO_SITE)
+    return -1
+  }
+  let h = rlt_find(realty_st, map, key)
+  if h == null {
+    rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING)
+    return -1
+  }
+  if rlt_inst_index_with(realty_st, who) >= 0 {
+    rlt_no(realty_st, who, map, key, REALTY_INSIDE)
+    return -1
+  }
+  if not rlt_can_enter(h, who) {
+    rlt_no(realty_st, who, map, key, REALTY_NO_ACCESS)
+    return -1
+  }
+  let k = PropertyKinds[h.kind]
+  var n = rlt_inst_of(realty_st, map, key)
+  if n == null {
+    var id = 0
+    if k.instanced {
+      id = realty_st.rl_next_inst
+      realty_st.rl_next_inst += 1
+    }
+    if not RealtyLoad.load(id, rlt_interior(h), 0) {
+      rlt_no(realty_st, who, map, key, REALTY_LOAD_FAILED)
+      return -1
+    }
+    @alloc_ok("an instance opened: one record, kept while anyone is inside")
+    n = new RealtyInstance
+    n.id = id
+    n.map = map
+    n.key = key
+    n.owner = h.owner
+    n.kind = h.kind
+    n.floors = new []int
+    n.who = new []int
+    push(n.floors, 0)
+    n.ox = sites.rows[s].x
+    n.oy = sites.rows[s].y
+    n.oz = sites.rows[s].z
+    n.oyaw = sites.rows[s].yaw
+    push(realty_st.rl_inst, n)
+    let o = rlt_fact(realty_st, REALTY_INSTANCE_OPENED, h.owner, h.owner, map, key)
+    o.instance = id
+  }
+  push(n.who, who)
+  RealtyLoad.enter(who, n.id, 0, k.spawn_x, k.spawn_y, k.spawn_z, k.spawn_yaw)
+  let f = rlt_fact(realty_st, REALTY_ENTERED, who, h.owner, map, key)
+  f.instance = n.id
+  return n.id
+}
+
+# come out at the door
+export function realty_leave(realty_st: mut RealtyState, who: int) -> bool {
+  let i = rlt_inst_index_with(realty_st, who)
+  if i < 0 { return rlt_no(realty_st, who, "", "", REALTY_NOT_INSIDE) }
+  rlt_leave_at(realty_st, i, who)
+  return true
+}
+
+# to another map of the same interior: floor 0 is the kind's `interior`, floor 1.. its `interiors`. The instance
+# stays the one id; the map is loaded the first time anyone goes
+export function realty_go_floor(realty_st: mut RealtyState, who: int, floor: int) -> bool {
+  let i = rlt_inst_index_with(realty_st, who)
+  if i < 0 { return rlt_no(realty_st, who, "", "", REALTY_NOT_INSIDE) }
+  let n = realty_st.rl_inst[i]
+  let k = PropertyKinds[n.kind]
+  var extra = 0
+  if k.interiors != null { extra = len(k.interiors) }
+  if floor < 0 or floor > extra { return rlt_no(realty_st, who, n.map, n.key, REALTY_BAD_FLOOR) }
+  if not rlt_has(n.floors, floor) {
+    var map = ""
+    if floor == 0 {
+      let h = rlt_find(realty_st, n.map, n.key)
+      if h != null { map = rlt_interior(h) } else { map = k.interior }
+    } else {
+      map = k.interiors[floor - 1]
+    }
+    if not RealtyLoad.load(n.id, map, floor) { return rlt_no(realty_st, who, n.map, n.key, REALTY_LOAD_FAILED) }
+    push(n.floors, floor)
+  }
+  RealtyLoad.enter(who, n.id, floor, k.spawn_x, k.spawn_y, k.spawn_z, k.spawn_yaw)
+  let f = rlt_fact(realty_st, REALTY_FLOOR, who, n.owner, n.map, n.key)
+  f.instance = n.id
+  f.floor = floor
+  return true
+}
+
+# where a player is: the instance id they are in, -1 when outside
+export function realty_inside(realty_st: RealtyState, who: int) -> int {
+  let i = rlt_inst_index_with(realty_st, who)
+  if i < 0 { return -1 }
+  return realty_st.rl_inst[i].id
+}
+export function realty_inside_key(realty_st: RealtyState, who: int) -> string {
+  let i = rlt_inst_index_with(realty_st, who)
+  if i < 0 { return "" }
+  return realty_st.rl_inst[i].key
+}
+export function realty_instances(realty_st: RealtyState) -> int { return len(realty_st.rl_inst) }
+export function realty_occupants(realty_st: RealtyState, map: string, key: string) -> int {
+  let n = rlt_inst_of(realty_st, map, key)
+  if n == null { return 0 }
+  return len(n.who)
+}

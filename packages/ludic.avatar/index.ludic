@@ -1,0 +1,16 @@
+# ludic.avatar - what a person looks like, as rows the game fills and a state per player: a body, morph
+# values, two heritage parents blended, a part per slot with a colour, tattoos, saved outfits; what may
+# be worn is decided by data (body, unlock, conflicts, hiding); the view port applies the result
+module ludic_avatar uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "state.ludic"
+import "rows.ludic"
+import "rules.ludic"
+import "verbs.ludic"
+import "outfits.ludic"
+import "random.ludic"
+import "view.ludic"
+import "wire.ludic"
+import "system.ludic"

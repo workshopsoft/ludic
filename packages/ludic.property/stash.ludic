@@ -1,0 +1,208 @@
+# stash.ludic - what a property holds: items in slots (a slot is one kind, up to the game's stack limit) and
+# vehicles in garage slots, both through ports, plus the raid that takes a share of it
+
+# put `n` of an item in: as many as fit the slot left and its stack limit, taken from the player's carry.
+# Returns how many went in, -1 when refused
+export function realty_store(realty_st: mut RealtyState, who: int, map: string, key: string, item: int, n: int) -> int {
+  if not rlt_authority(realty_st, who, map, key) { return -1 }
+  let h = rlt_find(realty_st, map, key)
+  if h == null {
+    rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING)
+    return -1
+  }
+  if not rlt_can_use(h, who) {
+    rlt_no(realty_st, who, map, key, REALTY_NO_ACCESS)
+    return -1
+  }
+  var at = -1
+  var i = 0
+  while i + 1 < len(h.items) {
+    if h.items[i] == item { at = i }
+    i += 2
+  }
+  if at < 0 and rlt_stacks(h) >= rlt_storage_cap(h) {
+    rlt_no(realty_st, who, map, key, REALTY_FULL)
+    return -1
+  }
+  var have = 0
+  if at >= 0 { have = h.items[at + 1] }
+  let put = Math.min(n, RealtyStash.stack_limit(item) - have)
+  if put <= 0 {
+    rlt_no(realty_st, who, map, key, REALTY_FULL)
+    return -1
+  }
+  if not RealtyStash.take(who, item, put) {
+    rlt_no(realty_st, who, map, key, REALTY_NOTHING)
+    return -1
+  }
+  if at >= 0 {
+    h.items[at + 1] = have + put
+  } else {
+    push(h.items, item)
+    push(h.items, put)
+  }
+  let f = rlt_fact(realty_st, REALTY_STORED, who, h.owner, map, key)
+  f.index = item
+  f.amount = put
+  return put
+}
+
+# take `n` of an item out into the carry: as many as are there and the carry will hold. Returns how many, -1 when refused
+export function realty_fetch(realty_st: mut RealtyState, who: int, map: string, key: string, item: int, n: int) -> int {
+  if not rlt_authority(realty_st, who, map, key) { return -1 }
+  let h = rlt_find(realty_st, map, key)
+  if h == null {
+    rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING)
+    return -1
+  }
+  if not rlt_can_use(h, who) {
+    rlt_no(realty_st, who, map, key, REALTY_NO_ACCESS)
+    return -1
+  }
+  var at = -1
+  var i = 0
+  while i + 1 < len(h.items) {
+    if h.items[i] == item { at = i }
+    i += 2
+  }
+  if at < 0 {
+    rlt_no(realty_st, who, map, key, REALTY_NOTHING)
+    return -1
+  }
+  let got = RealtyStash.give(who, item, Math.min(n, h.items[at + 1]))
+  if got <= 0 {
+    rlt_no(realty_st, who, map, key, REALTY_FULL)
+    return -1
+  }
+  h.items[at + 1] = h.items[at + 1] - got
+  if h.items[at + 1] <= 0 {
+    List.remove_at(h.items, at + 1)
+    List.remove_at(h.items, at)
+  }
+  let f = rlt_fact(realty_st, REALTY_FETCHED, who, h.owner, map, key)
+  f.index = item
+  f.amount = got
+  return got
+}
+
+# how many of an item a property holds
+export function realty_item_count(realty_st: RealtyState, map: string, key: string, item: int) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  var i = 0
+  while i + 1 < len(h.items) {
+    if h.items[i] == item { return h.items[i + 1] }
+    i += 2
+  }
+  return 0
+}
+export function realty_stacks_used(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return rlt_stacks(h)
+}
+
+# put a vehicle in the garage: the game takes it out of the world through the port
+export function realty_park(realty_st: mut RealtyState, who: int, map: string, key: string, vehicle: int) -> bool {
+  if not rlt_authority(realty_st, who, map, key) { return false }
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING) }
+  if not rlt_can_use(h, who) { return rlt_no(realty_st, who, map, key, REALTY_NO_ACCESS) }
+  if rlt_has(h.vehicles, vehicle) { return true }
+  if len(h.vehicles) >= rlt_garage_cap(h) { return rlt_no(realty_st, who, map, key, REALTY_FULL) }
+  if not RealtyStash.park(who, vehicle) { return rlt_no(realty_st, who, map, key, REALTY_NOTHING) }
+  push(h.vehicles, vehicle)
+  let f = rlt_fact(realty_st, REALTY_PARKED, who, h.owner, map, key)
+  f.index = vehicle
+  return true
+}
+
+# bring a vehicle out: the game puts it back at the garage spawn of the site (its entrance when it has none)
+export function realty_retrieve(realty_st: mut RealtyState, sites: Properties, who: int, key: string, vehicle: int) -> bool {
+  if not rlt_authority(realty_st, who, sites.map, key) { return false }
+  let s = properties_find(sites, key)
+  if s < 0 { return rlt_no(realty_st, who, sites.map, key, REALTY_NO_SITE) }
+  let h = rlt_find(realty_st, sites.map, key)
+  if h == null { return rlt_no(realty_st, who, sites.map, key, REALTY_NO_HOLDING) }
+  if not rlt_can_use(h, who) { return rlt_no(realty_st, who, sites.map, key, REALTY_NO_ACCESS) }
+  if not rlt_has(h.vehicles, vehicle) { return rlt_no(realty_st, who, sites.map, key, REALTY_NOTHING) }
+  let site = sites.rows[s]
+  var x = site.garage_x
+  var z = site.garage_z
+  var yaw = site.garage_yaw
+  if x == 0.0 and z == 0.0 {
+    x = site.x
+    z = site.z
+    yaw = site.yaw
+  }
+  if not RealtyStash.unpark(who, vehicle, x, z, yaw) { return rlt_no(realty_st, who, sites.map, key, REALTY_NOTHING) }
+  List.remove(h.vehicles, vehicle)
+  let f = rlt_fact(realty_st, REALTY_RETRIEVED, who, h.owner, sites.map, key)
+  f.index = vehicle
+  return true
+}
+
+export function realty_vehicle_count(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return len(h.vehicles)
+}
+export function realty_vehicle_at(realty_st: RealtyState, map: string, key: string, i: int) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null or i < 0 or i >= len(h.vehicles) { return -1 }
+  return h.vehicles[i]
+}
+
+# somebody else raids it: `pct` percent of every stack, of the income waiting, of the stock and of the supplies
+# is taken (the game hands it to the raider); the property is safe for the kind's `raid_cooldown` game hours after.
+# Returns the total taken, -1 when refused
+export function realty_raid(realty_st: mut RealtyState, raider: int, map: string, key: string, pct: int) -> int {
+  if not rlt_authority(realty_st, raider, map, key) { return -1 }
+  let h = rlt_find(realty_st, map, key)
+  if h == null {
+    rlt_no(realty_st, raider, map, key, REALTY_NO_HOLDING)
+    return -1
+  }
+  if h.owner == raider {
+    rlt_no(realty_st, raider, map, key, REALTY_NOT_OWNER)
+    return -1
+  }
+  if not PropertyKinds[h.kind].raidable {
+    rlt_no(realty_st, raider, map, key, REALTY_NOT_RAIDABLE)
+    return -1
+  }
+  if h.raided_until > realty_st.rl_hours {
+    rlt_no(realty_st, raider, map, key, REALTY_COOLDOWN)
+    return -1
+  }
+  let p = Math.min(Math.max(pct, 0), 100)
+  var total = 0
+  var i = 0
+  while i + 1 < len(h.items) {
+    let t = h.items[i + 1] * p / 100
+    h.items[i + 1] = h.items[i + 1] - t
+    total += t
+    i += 2
+  }
+  var keep = new []int
+  i = 0
+  while i + 1 < len(h.items) {
+    if h.items[i + 1] > 0 {
+      push(keep, h.items[i])
+      push(keep, h.items[i + 1])
+    }
+    i += 2
+  }
+  h.items = keep
+  let inc = h.income * p / 100
+  h.income -= inc
+  let st = h.stock * p / 100
+  h.stock -= st
+  let su = h.supply * p / 100
+  h.supply -= su
+  total += inc + st + su
+  h.raided_until = realty_st.rl_hours + PropertyKinds[h.kind].raid_cooldown
+  let f = rlt_fact(realty_st, REALTY_RAIDED, raider, h.owner, map, key)
+  f.amount = total
+  return total
+}

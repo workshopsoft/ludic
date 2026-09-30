@@ -1,0 +1,288 @@
+# wire.ludic - an avatar as a short text for the network and the save, by STABLE IDS (the rows' `id`
+# fields), never by index: a registry may be reordered or grow and a stored avatar still reads. Every
+# number is a zigzag varint of 5-bit groups, each a character of a 64-letter alphabet, and the last
+# character is a check sum. A decode is checked twice: the text must be whole, and each id must still name
+# a row that fits (what does not is dropped and counted, never guessed at)
+#
+#   version, body id, mother id (0 none), father id (0 none), mix,
+#   count, (morph id, delta) ...,  count, (slot id, part id, colour + 1) ...,
+#   count, (decal id, u, v, size, rot) ...
+
+const AVT_ALPHA: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+const AVT_WIRE_VERSION: int = 1
+
+function avt_put(out: []string, v: int) -> void {
+  var z = 0
+  if v >= 0 { z = v * 2 } else { z = -v * 2 - 1 }
+  var more = true
+  while more {
+    var c = z % 32
+    z = z / 32
+    if z > 0 { c += 32 } else { more = false }
+    push(out, Text.slice(AVT_ALPHA, c, c + 1))
+  }
+}
+
+function avt_id_of_body(i: int) -> int { return AvatarBodies[i].id }
+
+# ids, not indexes: what a row is called on the wire
+function avt_morph_entries(r: AvatarRow) -> int {
+  var n = 0
+  for m in 0 .. AVM_COUNT { if r.morphs[m] != 0 { n += 1 } }
+  return n
+}
+
+@alloc_ok("a wire text is made when it is sent")
+function avt_wire_ints(r: AvatarRow) -> []int {
+  let xs = new []int
+  push(xs, AVT_WIRE_VERSION)
+  push(xs, AvatarBodies[r.body].id)
+  var mo = 0
+  var fa = 0
+  if r.mother >= 0 { mo = AvatarHeritage[r.mother].id }
+  if r.father >= 0 { fa = AvatarHeritage[r.father].id }
+  push(xs, mo)
+  push(xs, fa)
+  push(xs, r.mix)
+  push(xs, avt_morph_entries(r))
+  for m in 0 .. AVM_COUNT {
+    if r.morphs[m] != 0 {
+      push(xs, AvatarMorphs[m].id)
+      push(xs, r.morphs[m])
+    }
+  }
+  var np = 0
+  for s in 0 .. AVS_COUNT { if r.parts[s] >= 0 { np += 1 } }
+  push(xs, np)
+  for s in 0 .. AVS_COUNT {
+    if r.parts[s] >= 0 {
+      push(xs, AvatarSlots[s].id)
+      push(xs, AvatarParts[r.parts[s]].id)
+      push(xs, r.colors[s] + 1)
+    }
+  }
+  push(xs, len(r.decals) / 5)
+  var i = 0
+  while i + 4 < len(r.decals) {
+    push(xs, AvatarDecals[r.decals[i]].id)
+    for k in 1 .. 5 { push(xs, r.decals[i + k]) }
+    i += 5
+  }
+  return xs
+}
+
+@alloc_ok("a wire text is made when it is sent")
+function avt_text_of(xs: []int) -> string {
+  let out = new []string
+  for i in 0 .. len(xs) { avt_put(out, xs[i]) }
+  var sum = 0
+  for i in 0 .. len(out) { sum += Text.index_of(AVT_ALPHA, out[i]) }
+  push(out, Text.slice(AVT_ALPHA, sum % 64, sum % 64 + 1))
+  return Text.join(out, "")
+}
+
+# a player's avatar as text; "" when there is none
+export function avatar_encode(avatar_st: AvatarState, who: int) -> string {
+  let r = avt_find(avatar_st, who)
+  if r == null { return "" }
+  return avt_text_of(avt_wire_ints(r))
+}
+
+# the numbers a text holds: empty when it is torn (a stray character, a cut, a wrong check sum)
+@alloc_ok("a wire text is read when it arrives")
+function avt_ints_from(text: string) -> []int {
+  let xs = new []int
+  let n = Text.length(text)
+  if n < 2 { return xs }
+  var sum = 0
+  var acc = 0
+  var mul = 1
+  for i in 0 .. n - 1 {
+    let c = Text.index_of(AVT_ALPHA, Text.slice(text, i, i + 1))
+    if c < 0 { return new []int }
+    sum += c
+    acc += (c % 32) * mul
+    mul = mul * 32
+    if c < 32 {
+      if acc % 2 == 0 { push(xs, acc / 2) } else { push(xs, -((acc + 1) / 2)) }
+      acc = 0
+      mul = 1
+    }
+  }
+  if mul != 1 { return new []int }
+  let want = Text.index_of(AVT_ALPHA, Text.slice(text, n - 1, n))
+  if want != sum % 64 { return new []int }
+  return xs
+}
+
+# does a number list have the shape of a wire text (its counts add up to its length exactly)
+function avt_whole(xs: []int) -> bool {
+  if len(xs) < 7 or xs[0] != AVT_WIRE_VERSION { return false }
+  var at = 5
+  let nm = xs[at]
+  if nm < 0 { return false }
+  at += 1 + nm * 2
+  if at >= len(xs) { return false }
+  let np = xs[at]
+  if np < 0 { return false }
+  at += 1 + np * 3
+  if at >= len(xs) { return false }
+  let nd = xs[at]
+  if nd < 0 { return false }
+  at += 1 + nd * 5
+  return at == len(xs)
+}
+
+function avt_body_by_id(id: int) -> int {
+  for i in 0 .. AVB_COUNT { if AvatarBodies[i].id == id { return i } }
+  return -1
+}
+function avt_morph_by_id(id: int) -> int {
+  for i in 0 .. AVM_COUNT { if AvatarMorphs[i].id == id { return i } }
+  return -1
+}
+function avt_parent_by_id(id: int) -> int {
+  for i in 0 .. AVH_COUNT { if AvatarHeritage[i].id == id { return i } }
+  return -1
+}
+function avt_slot_by_id(id: int) -> int {
+  for i in 0 .. AVS_COUNT { if AvatarSlots[i].id == id { return i } }
+  return -1
+}
+function avt_part_by_id(id: int) -> int {
+  for i in 0 .. AVP_COUNT { if AvatarParts[i].id == id { return i } }
+  return -1
+}
+function avt_decal_by_id(id: int) -> int {
+  for i in 0 .. AVD_COUNT { if AvatarDecals[i].id == id { return i } }
+  return -1
+}
+
+# the row with nothing chosen and nothing worn (a wire text says everything it means)
+function avt_blank(r: AvatarRow) -> void {
+  r.mother = -1
+  r.father = -1
+  r.mix = 500
+  for i in 0 .. len(r.morphs) { r.morphs[i] = 0 }
+  for s in 0 .. AVS_COUNT {
+    r.parts[s] = -1
+    r.colors[s] = -1
+  }
+  r.decals = new []int
+}
+
+# put a whole number list onto a row. `checked`: the player's unlock rules apply to what it wears (a host
+# reading a client's claim); not checked is for an avatar another machine already validated. Returns how many
+# things were dropped
+function avt_apply_ints(avatar_st: mut AvatarState, r: AvatarRow, xs: []int, checked: bool) -> int {
+  var bad = 0
+  let body = avt_body_by_id(xs[1])
+  if body < 0 {
+    bad += 1
+    r.body = Math.min(r.body, Math.max(AVB_COUNT - 1, 0))
+  } else {
+    r.body = body
+  }
+  avt_blank(r)
+  if xs[2] != 0 {
+    let h = avt_parent_by_id(xs[2])
+    if h >= 0 and (AvatarHeritage[h].body < 0 or AvatarHeritage[h].body == r.body) { r.mother = h } else { bad += 1 }
+  }
+  if xs[3] != 0 {
+    let h = avt_parent_by_id(xs[3])
+    if h >= 0 and (AvatarHeritage[h].body < 0 or AvatarHeritage[h].body == r.body) { r.father = h } else { bad += 1 }
+  }
+  r.mix = avt_clamp(xs[4], 0, 1000)
+  var at = 5
+  let nm = xs[at]
+  at += 1
+  for i in 0 .. nm {
+    let m = avt_morph_by_id(xs[at])
+    if m < 0 or not avt_fits(AvatarMorphs[m].bodies, r.body) {
+      bad += 1
+    } else {
+      let want = avt_clamp(avt_base(r, m) + xs[at + 1], AvatarMorphs[m].lo, AvatarMorphs[m].hi)
+      if want != avt_base(r, m) + xs[at + 1] { bad += 1 }
+      r.morphs[m] = want - avt_base(r, m)
+    }
+    at += 2
+  }
+  let np = xs[at]
+  at += 1
+  for i in 0 .. np {
+    let s = avt_slot_by_id(xs[at])
+    let p = avt_part_by_id(xs[at + 1])
+    let color = xs[at + 2] - 1
+    at += 3
+    if s < 0 or p < 0 or AvatarParts[p].slot != s { bad += 1
+      continue
+    }
+    if checked and avt_open(r, AVK_PART, p, true) != AVATAR_OK { bad += 1
+      continue
+    }
+    if avt_wear(avatar_st, r, p) != AVATAR_OK { bad += 1
+      continue
+    }
+    if color >= 0 and color < avt_palette_len(avt_palette_of(s, p)) { r.colors[s] = color } else if color >= 0 { bad += 1 }
+  }
+  let nd = xs[at]
+  at += 1
+  for i in 0 .. nd {
+    let d = avt_decal_by_id(xs[at])
+    var ok = d >= 0 and len(r.decals) < AVATAR_DECAL_MAX * 5
+    if ok { ok = avt_fits(AvatarDecals[d].bodies, r.body) }
+    if ok and checked { ok = avt_open(r, AVK_DECAL, d, true) == AVATAR_OK }
+    if ok {
+      var here = 0
+      var k = 0
+      while k + 4 < len(r.decals) {
+        if AvatarDecals[r.decals[k]].zone == AvatarDecals[d].zone { here += 1 }
+        k += 5
+      }
+      ok = here < AvatarZones[AvatarDecals[d].zone].max
+    }
+    if ok {
+      push(r.decals, d)
+      push(r.decals, avt_clamp(xs[at + 1], 0, 1000))
+      push(r.decals, avt_clamp(xs[at + 2], 0, 1000))
+      push(r.decals, avt_clamp(xs[at + 3], 1, 1000))
+      push(r.decals, avt_clamp(xs[at + 4], -180, 180))
+    } else {
+      bad += 1
+    }
+    at += 5
+  }
+  avt_fill(avatar_st, r)
+  return bad
+}
+
+# read a text into a player's avatar (made if they have none), replacing what they chose; what they own is
+# kept. `checked` holds what it wears to the player's unlock rules. Returns how many things in it were
+# dropped (an id no longer known, a part that does not fit, a locked one, a full zone), or -1 when the text
+# is torn, in which case nothing changed
+export function avatar_decode(avatar_st: mut AvatarState, who: int, text: string, checked: bool) -> int {
+  let xs = avt_ints_from(text)
+  if not avt_whole(xs) {
+    avt_no(avatar_st, who, AVK_ALL, -1, AVATAR_BAD_TEXT)
+    return -1
+  }
+  var r = avt_find(avatar_st, who)
+  if r == null { r = avt_make(avatar_st, who) }
+  let bad = avt_apply_ints(avatar_st, r, xs, checked)
+  r.dirty = true
+  avt_fact(avatar_st, AVATAR_CHANGED, who, AVK_ALL, r.body, bad, 0)
+  if bad > 0 { avt_fact(avatar_st, AVATAR_FIXED, who, AVK_ALL, -1, bad, 0) }
+  return bad
+}
+
+# hold what a player has chosen to the rules again (a body that changed, a registry that lost a part, a
+# client's claim with `checked`): the same as decoding its own text. Returns how many things were dropped
+export function avatar_validate(avatar_st: mut AvatarState, who: int, checked: bool) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null { return -1 }
+  let xs = avt_wire_ints(r)
+  let bad = avt_apply_ints(avatar_st, r, xs, checked)
+  r.dirty = true
+  if bad > 0 { avt_fact(avatar_st, AVATAR_FIXED, who, AVK_ALL, -1, bad, 0) }
+  return bad
+}

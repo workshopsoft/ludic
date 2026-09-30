@@ -1,0 +1,303 @@
+# verbs.ludic - the only ways a player's avatar changes: a body, heritage, a morph, a part, a colour, a
+# decal, buying. Each says no by a reason (`avatar_why`) and a REFUSED fact, or yes by a CHANGED fact
+
+# a player's avatar, new: the first body unless told, nothing chosen, what each slot starts with worn.
+# Makes the player's row, or starts theirs over (what they own is kept). False with no bodies or a bad one
+export function avatar_new(avatar_st: mut AvatarState, who: int, body: int) -> bool {
+  if body < 0 or body >= AVB_COUNT { return avt_no(avatar_st, who, AVK_BODY, body, AVATAR_BAD_ID) }
+  var r = avt_find(avatar_st, who)
+  if r == null { r = avt_make(avatar_st, who) }
+  r.body = body
+  avt_defaults(avatar_st, r)
+  avt_fact(avatar_st, AVATAR_CHANGED, who, AVK_ALL, body, 0, 0)
+  return true
+}
+
+export function avatar_has(avatar_st: AvatarState, who: int) -> bool { return avt_find(avatar_st, who) != null }
+export function avatar_count(avatar_st: AvatarState) -> int { return len(avatar_st.av_rows) }
+export function avatar_who_at(avatar_st: AvatarState, i: int) -> int { return avatar_st.av_rows[i].who }
+
+# a player leaves: their row goes, owned things with it
+export function avatar_remove(avatar_st: mut AvatarState, who: int) -> bool {
+  for i in 0 .. len(avatar_st.av_rows) {
+    if avatar_st.av_rows[i].who == who {
+      List.remove_at(avatar_st.av_rows, i)
+      return true
+    }
+  }
+  return false
+}
+
+export function avatar_body(avatar_st: AvatarState, who: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null { return -1 }
+  return r.body
+}
+
+# change the rig: what does not fit it comes off (a fact each), a required slot is filled again, a morph
+# the new rig does not have goes back to heritage
+export function avatar_set_body(avatar_st: mut AvatarState, who: int, body: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, AVK_BODY, body, AVATAR_NO_AVATAR) }
+  if body < 0 or body >= AVB_COUNT { return avt_no(avatar_st, who, AVK_BODY, body, AVATAR_BAD_ID) }
+  r.body = body
+  for s in 0 .. AVS_COUNT {
+    let part = r.parts[s]
+    if part >= 0 and not avt_fits(AvatarParts[part].bodies, body) {
+      r.parts[s] = -1
+      r.colors[s] = -1
+      avt_changed(avatar_st, r, AVK_PART, -1, s)
+    }
+  }
+  for m in 0 .. AVM_COUNT {
+    if not avt_fits(AvatarMorphs[m].bodies, body) { r.morphs[m] = 0 }
+  }
+  let kept = new []int
+  var i = 0
+  while i + 4 < len(r.decals) {
+    if avt_fits(AvatarDecals[r.decals[i]].bodies, body) {
+      for k in 0 .. 5 { push(kept, r.decals[i + k]) }
+    }
+    i += 5
+  }
+  r.decals = kept
+  avt_fill(avatar_st, r)
+  avt_changed(avatar_st, r, AVK_BODY, body, 0)
+  return true
+}
+
+# two parents and how much of the second: the morphs they set move, the player's own deltas stay on top
+export function avatar_set_heritage(avatar_st: mut AvatarState, who: int, mother: int, father: int, mix: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, AVK_HERITAGE, mother, AVATAR_NO_AVATAR) }
+  if mother >= AVH_COUNT or father >= AVH_COUNT or mother < -1 or father < -1 { return avt_no(avatar_st, who, AVK_HERITAGE, mother, AVATAR_BAD_ID) }
+  if mother >= 0 and AvatarHeritage[mother].body >= 0 and AvatarHeritage[mother].body != r.body { return avt_no(avatar_st, who, AVK_HERITAGE, mother, AVATAR_WRONG_BODY) }
+  if father >= 0 and AvatarHeritage[father].body >= 0 and AvatarHeritage[father].body != r.body { return avt_no(avatar_st, who, AVK_HERITAGE, father, AVATAR_WRONG_BODY) }
+  r.mother = mother
+  r.father = father
+  r.mix = avt_clamp(mix, 0, 1000)
+  avt_changed(avatar_st, r, AVK_HERITAGE, mother, father)
+  return true
+}
+
+# a morph to `value` (what it should come to, held to its range); the delta on heritage is what is kept
+export function avatar_set_morph(avatar_st: mut AvatarState, who: int, morph: int, value: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, AVK_MORPH, morph, AVATAR_NO_AVATAR) }
+  if morph < 0 or morph >= AVM_COUNT { return avt_no(avatar_st, who, AVK_MORPH, morph, AVATAR_BAD_ID) }
+  let mo = AvatarMorphs[morph]
+  if not avt_fits(mo.bodies, r.body) { return avt_no(avatar_st, who, AVK_MORPH, morph, AVATAR_WRONG_BODY) }
+  let v = avt_clamp(value, mo.lo, mo.hi)
+  r.morphs[morph] = v - avt_base(r, morph)
+  avt_changed(avatar_st, r, AVK_MORPH, morph, v)
+  return true
+}
+
+# the value a morph has for a player (heritage and delta, in range); 0 for no avatar or no such morph
+export function avatar_morph(avatar_st: AvatarState, who: int, morph: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null or morph < 0 or morph >= AVM_COUNT { return 0 }
+  return avt_morph_value(r, morph)
+}
+
+# wear a part. Its unlock rule is checked, its body and conflicts too: what it cannot be worn with comes off
+export function avatar_set_part(avatar_st: mut AvatarState, who: int, part: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, AVK_PART, part, AVATAR_NO_AVATAR) }
+  let open = avt_open(r, AVK_PART, part, true)
+  if open != AVATAR_OK { return avt_no(avatar_st, who, AVK_PART, part, open) }
+  let why = avt_wear(avatar_st, r, part)
+  if why != AVATAR_OK { return avt_no(avatar_st, who, AVK_PART, part, why) }
+  avt_changed(avatar_st, r, AVK_PART, part, AvatarParts[part].slot)
+  return true
+}
+
+# take what is in a slot off (not a required slot)
+export function avatar_clear_slot(avatar_st: mut AvatarState, who: int, slot: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, AVK_PART, -1, AVATAR_NO_AVATAR) }
+  if slot < 0 or slot >= AVS_COUNT { return avt_no(avatar_st, who, AVK_PART, -1, AVATAR_BAD_ID) }
+  if AvatarSlots[slot].required { return avt_no(avatar_st, who, AVK_PART, -1, AVATAR_REQUIRED) }
+  if r.parts[slot] < 0 { return true }
+  r.parts[slot] = -1
+  r.colors[slot] = -1
+  avt_changed(avatar_st, r, AVK_PART, -1, slot)
+  return true
+}
+
+export function avatar_part_in(avatar_st: AvatarState, who: int, slot: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null or slot < 0 or slot >= AVS_COUNT { return -1 }
+  return r.parts[slot]
+}
+
+# is it drawn: worn, and not hidden by something else that is worn
+export function avatar_visible(avatar_st: AvatarState, who: int, slot: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null or slot < 0 or slot >= AVS_COUNT or r.parts[slot] < 0 { return false }
+  return not avt_hidden(r, slot)
+}
+
+# a colour of the slot's palette (the part's own when it names one); -1 is the model's own
+export function avatar_set_color(avatar_st: mut AvatarState, who: int, slot: int, color: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, AVK_COLOR, color, AVATAR_NO_AVATAR) }
+  if slot < 0 or slot >= AVS_COUNT { return avt_no(avatar_st, who, AVK_COLOR, color, AVATAR_WRONG_SLOT) }
+  if color < -1 or color >= avt_palette_len(avt_palette_of(slot, r.parts[slot])) { return avt_no(avatar_st, who, AVK_COLOR, color, AVATAR_BAD_ID) }
+  r.colors[slot] = color
+  avt_changed(avatar_st, r, AVK_COLOR, color, slot)
+  return true
+}
+
+# the colour (a palette index) a slot wears, -1 for the model's own
+export function avatar_color_in(avatar_st: AvatarState, who: int, slot: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null or slot < 0 or slot >= AVS_COUNT { return -1 }
+  return r.colors[slot]
+}
+
+# the rgb of it, or -1
+export function avatar_color_rgb(avatar_st: AvatarState, who: int, slot: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null or slot < 0 or slot >= AVS_COUNT or r.colors[slot] < 0 { return -1 }
+  return AvatarPalettes[avt_palette_of(slot, r.parts[slot])].colors[r.colors[slot]]
+}
+
+# a decal in its zone: its place in permille of the zone, its size and turn held to sane ranges. Its unlock,
+# its body and the zone's room are checked. The index of the new decal on the avatar, or -1
+export function avatar_add_decal(avatar_st: mut AvatarState, who: int, decal: int, u: int, v: int, size: int, rot: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null { avt_no(avatar_st, who, AVK_DECAL, decal, AVATAR_NO_AVATAR)
+    return -1
+  }
+  let open = avt_open(r, AVK_DECAL, decal, true)
+  if open != AVATAR_OK {
+    avt_no(avatar_st, who, AVK_DECAL, decal, open)
+    return -1
+  }
+  let d = AvatarDecals[decal]
+  if not avt_fits(d.bodies, r.body) {
+    avt_no(avatar_st, who, AVK_DECAL, decal, AVATAR_WRONG_BODY)
+    return -1
+  }
+  var in_zone = 0
+  var i = 0
+  while i + 4 < len(r.decals) {
+    if AvatarDecals[r.decals[i]].zone == d.zone { in_zone += 1 }
+    i += 5
+  }
+  if in_zone >= AvatarZones[d.zone].max or len(r.decals) >= AVATAR_DECAL_MAX * 5 {
+    avt_no(avatar_st, who, AVK_DECAL, decal, AVATAR_FULL)
+    return -1
+  }
+  push(r.decals, decal)
+  push(r.decals, avt_clamp(u, 0, 1000))
+  push(r.decals, avt_clamp(v, 0, 1000))
+  push(r.decals, avt_clamp(size, 1, 1000))
+  push(r.decals, avt_clamp(rot, -180, 180))
+  avt_changed(avatar_st, r, AVK_DECAL, decal, len(r.decals) / 5 - 1)
+  return len(r.decals) / 5 - 1
+}
+
+# a decal added with the row's own placement
+export function avatar_add_decal_default(avatar_st: mut AvatarState, who: int, decal: int) -> int {
+  if decal < 0 or decal >= AVD_COUNT { avt_no(avatar_st, who, AVK_DECAL, decal, AVATAR_BAD_ID)
+    return -1
+  }
+  let d = AvatarDecals[decal]
+  return avatar_add_decal(avatar_st, who, decal, d.u, d.v, d.size, d.rot)
+}
+
+export function avatar_remove_decal(avatar_st: mut AvatarState, who: int, index: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null or index < 0 or index * 5 >= len(r.decals) { return false }
+  for k in 0 .. 5 { List.remove_at(r.decals, index * 5) }
+  avt_changed(avatar_st, r, AVK_DECAL, -1, index)
+  return true
+}
+
+export function avatar_decal_count(avatar_st: AvatarState, who: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null { return 0 }
+  return len(r.decals) / 5
+}
+
+# the decal row of the i-th decal on an avatar, and its placement
+export function avatar_decal_at(avatar_st: AvatarState, who: int, i: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null or i < 0 or i * 5 >= len(r.decals) { return -1 }
+  return r.decals[i * 5]
+}
+export function avatar_decal_u(avatar_st: AvatarState, who: int, i: int) -> int { return avt_decal_field(avatar_st, who, i, 1) }
+export function avatar_decal_v(avatar_st: AvatarState, who: int, i: int) -> int { return avt_decal_field(avatar_st, who, i, 2) }
+export function avatar_decal_size(avatar_st: AvatarState, who: int, i: int) -> int { return avt_decal_field(avatar_st, who, i, 3) }
+export function avatar_decal_rot(avatar_st: AvatarState, who: int, i: int) -> int { return avt_decal_field(avatar_st, who, i, 4) }
+function avt_decal_field(avatar_st: AvatarState, who: int, i: int, k: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null or i < 0 or i * 5 >= len(r.decals) { return 0 }
+  return r.decals[i * 5 + k]
+}
+
+# -- unlocks: what a player may use
+
+# may this player use it now (level, flag, and owned when it has a price); kind is AVK_PART, AVK_DECAL or AVK_OUTFIT
+export function avatar_unlocked(avatar_st: AvatarState, who: int, kind: int, index: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return false }
+  return avt_open(r, kind, index, true) == AVATAR_OK
+}
+
+export function avatar_owns(avatar_st: AvatarState, who: int, kind: int, index: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null or kind < AVK_PART or kind == AVK_COLOR or kind > AVK_OUTFIT { return false }
+  return avt_list_has(avt_owned_of(r, kind), index)
+}
+
+# given for free (a reward): owned whatever its price. False for a bad index
+export function avatar_grant(avatar_st: mut AvatarState, who: int, kind: int, index: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, kind, index, AVATAR_NO_AVATAR) }
+  if index < 0 or index >= avt_count_of(kind) { return avt_no(avatar_st, who, kind, index, AVATAR_BAD_ID) }
+  avt_add_once(avt_owned_of(r, kind), index)
+  return true
+}
+
+# bought through the world's purse. Its level and flag must already allow it; a thing already owned costs nothing
+export function avatar_buy(avatar_st: mut AvatarState, who: int, kind: int, index: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, kind, index, AVATAR_NO_AVATAR) }
+  let open = avt_open(r, kind, index, false)
+  if open != AVATAR_OK { return avt_no(avatar_st, who, kind, index, open) }
+  let owned = avt_owned_of(r, kind)
+  if avt_list_has(owned, index) { return true }
+  let price = avt_price_of(kind, index)
+  if price > 0 and not AvatarWorld.spend(who, price) { return avt_no(avatar_st, who, kind, index, AVATAR_BROKE) }
+  push(owned, index)
+  avt_fact(avatar_st, AVATAR_BOUGHT, who, kind, index, price, 0)
+  return true
+}
+
+# -- poses: body motion is a clip, played through the animation graph
+
+# choose the pose the view plays now (-1: none). Its level and flag and its body are checked. The clip is the
+# data's: nothing here moves a bone
+export function avatar_set_pose(avatar_st: mut AvatarState, who: int, pose: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, AVK_POSE, pose, AVATAR_NO_AVATAR) }
+  if pose < -1 or pose >= AVA_COUNT { return avt_no(avatar_st, who, AVK_POSE, pose, AVATAR_BAD_ID) }
+  if pose >= 0 {
+    let p = AvatarPoses[pose]
+    if not avt_fits(p.bodies, r.body) { return avt_no(avatar_st, who, AVK_POSE, pose, AVATAR_WRONG_BODY) }
+    if not avt_gate(who, p.level, p.flag) { return avt_no(avatar_st, who, AVK_POSE, pose, AVATAR_LOCKED) }
+  }
+  r.pose = pose
+  r.dirty = true
+  avt_fact(avatar_st, AVATAR_POSED, who, AVK_POSE, pose, 0, 0)
+  return true
+}
+
+export function avatar_pose(avatar_st: AvatarState, who: int) -> int {
+  let r = avt_find(avatar_st, who)
+  if r == null { return -1 }
+  return r.pose
+}

@@ -1,0 +1,13 @@
+# steps.lres - how a business moves. One row a way from one phase to another: `on` an action (HoldingSell), or ""
+# for what the tick senses. The first row from a phase whose guard passes is taken, so the rows from one phase
+# are in priority order. The tick runs the timers (production, a sale run); these rows only decide
+#
+#   Idle -> Producing -> Full ; any of them -> Selling (sell, with stock in hand) -> Idle
+make { from: BizPhase.Idle, to: BizPhase.Producing, guard: fn rlt_g_can_make }
+fills { from: BizPhase.Producing, to: BizPhase.Full, guard: fn rlt_g_full, enter: fn rlt_e_full }
+runs_dry { from: BizPhase.Producing, to: BizPhase.Idle, guard: fn rlt_g_starved, enter: fn rlt_e_starved }
+
+sell_idle { from: BizPhase.Idle, to: BizPhase.Selling, on: "HoldingSell", guard: fn rlt_g_has_stock, enter: fn rlt_e_sell }
+sell_producing { from: BizPhase.Producing, to: BizPhase.Selling, on: "HoldingSell", guard: fn rlt_g_has_stock, enter: fn rlt_e_sell }
+sell_full { from: BizPhase.Full, to: BizPhase.Selling, on: "HoldingSell", guard: fn rlt_g_has_stock, enter: fn rlt_e_sell }
+paid { from: BizPhase.Selling, to: BizPhase.Idle, guard: fn rlt_g_sold, enter: fn rlt_e_paid }

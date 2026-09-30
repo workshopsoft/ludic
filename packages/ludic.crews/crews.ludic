@@ -1,0 +1,393 @@
+# crews.ludic - founding a crew, its people and their ranks, its bank and its look. Every verb changes what is
+# true for everyone, so it runs only where the world is owned (`CrewWorld.authority`); a guest gets NOT_HOST
+
+function crw_authority(crew_st: mut CrewState, who: int) -> bool {
+  if CrewWorld.authority() { return true }
+  return crw_no(crew_st, who, CREW_NOT_HOST)
+}
+
+function crw_remove_member(crew_st: mut CrewState, who: int) -> void {
+  for i in 0 .. len(crew_st.cr_members) {
+    if crew_st.cr_members[i].who == who {
+      List.remove_at(crew_st.cr_members, i)
+      return
+    }
+  }
+}
+
+function crw_drop_invites(crew_st: mut CrewState, who: int, crew: int) -> void {
+  var i = 0
+  while i < len(crew_st.cr_invites) {
+    let v = crew_st.cr_invites[i]
+    if (who != 0 and v.who == who) or (crew != 0 and v.crew == crew) {
+      List.remove_at(crew_st.cr_invites, i)
+    } else {
+      i += 1
+    }
+  }
+}
+
+function crw_name_taken(crew_st: CrewState, name: string) -> bool {
+  let low = Text.lower(name)
+  for i in 0 .. len(crew_st.cr_crews) {
+    if Text.lower(crew_st.cr_crews[i].name) == low { return true }
+  }
+  return false
+}
+
+@alloc_ok("a crew founded, made once and kept")
+function crw_add_member(crew_st: mut CrewState, who: int, crew: int, rank: int) -> void {
+  let m = new CrewMember
+  m.who = who
+  m.crew = crew
+  m.rank = rank
+  m.joined = crew_st.cr_hours
+  push(crew_st.cr_members, m)
+}
+
+# found a crew: the name's length and uniqueness, the founding cost through the wallet; the founder holds the
+# leader rank. Returns the crew's id (they are never reused), -1 when refused
+@alloc_ok("a crew founded, made once and kept")
+export function crew_create(crew_st: mut CrewState, who: int, name: string, tag: string, emblem: int, color_a: int, color_b: int) -> int {
+  if not crw_authority(crew_st, who) { return -1 }
+  if crw_member(crew_st, who) != null {
+    crw_no(crew_st, who, CREW_IN_CREW)
+    return -1
+  }
+  let cfg = crw_cfg(crew_st)
+  let n = Text.length(name)
+  if n < cfg.name_min or n > cfg.name_max {
+    crw_no(crew_st, who, CREW_NAME_BAD)
+    return -1
+  }
+  if crw_name_taken(crew_st, name) {
+    crw_no(crew_st, who, CREW_NAME_TAKEN)
+    return -1
+  }
+  if emblem >= CRE_COUNT or emblem < -1 {
+    crw_no(crew_st, who, CREW_BAD_ID)
+    return -1
+  }
+  if cfg.create_cost > 0 and not CrewWallet.spend(who, cfg.create_cost) {
+    crw_no(crew_st, who, CREW_BROKE)
+    return -1
+  }
+  let c = new Crew
+  c.id = crew_st.cr_next
+  crew_st.cr_next += 1
+  c.name = name
+  c.tag = tag
+  c.emblem = emblem
+  c.color_a = color_a
+  c.color_b = color_b
+  c.founder = who
+  c.created = crew_st.cr_hours
+  push(crew_st.cr_crews, c)
+  crw_add_member(crew_st, who, c.id, crw_leader_rank())
+  crw_drop_invites(crew_st, who, 0)
+  crw_fact(crew_st, CREW_CREATED, who, 0, c.id, 0)
+  return c.id
+}
+
+# forget a crew: its members, invites, relations, influence and territories; the bank is paid to `to`
+function crw_erase(crew_st: mut CrewState, crew: int, to: int) -> int {
+  let c = crw_crew(crew_st, crew)
+  let bank = c.bank
+  if bank > 0 and to != 0 { CrewWallet.earn(to, bank) }
+  var i = 0
+  while i < len(crew_st.cr_members) {
+    if crew_st.cr_members[i].crew == crew { List.remove_at(crew_st.cr_members, i) } else { i += 1 }
+  }
+  crw_drop_invites(crew_st, 0, crew)
+  i = 0
+  while i < len(crew_st.cr_pairs) {
+    if crew_st.cr_pairs[i].a == crew or crew_st.cr_pairs[i].b == crew { List.remove_at(crew_st.cr_pairs, i) } else { i += 1 }
+  }
+  for k in 0 .. tb_len(crew_st.cr_turfs) {
+    let t = tb_rec(crew_st.cr_turfs, k)
+    crw_inf_set(t, crew, 0.0)
+    if t.owner == crew { t.owner = 0 }
+    if t.challenger == crew { t.challenger = 0 }
+    if t.declared == crew { t.declared = 0 }
+  }
+  for k in 0 .. len(crew_st.cr_crews) {
+    if crew_st.cr_crews[k].id == crew {
+      List.remove_at(crew_st.cr_crews, k)
+      break
+    }
+  }
+  return bank
+}
+
+# the leader (or a rank that may) closes the crew: the bank is paid to whoever does it
+export function crew_disband(crew_st: mut CrewState, who: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_DISBAND) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  let crew = m.crew
+  let bank = crw_erase(crew_st, crew, who)
+  let f = crw_fact(crew_st, CREW_DISBANDED, who, 0, crew, 0)
+  f.amount = bank
+  return true
+}
+
+# ask a player in: the rank must be allowed to invite, the crew not full, the player in none. The invite lasts
+# `invite_secs`
+export function crew_invite(crew_st: mut CrewState, who: int, target: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_INVITE) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  if target == who { return crw_no(crew_st, who, CREW_SELF) }
+  if crw_member(crew_st, target) != null { return crw_no(crew_st, who, CREW_IN_CREW) }
+  if crw_members_of(crew_st, m.crew) >= crw_cfg(crew_st).max_members { return crw_no(crew_st, who, CREW_FULL) }
+  for i in 0 .. len(crew_st.cr_invites) {
+    if crew_st.cr_invites[i].who == target and crew_st.cr_invites[i].crew == m.crew {
+      crew_st.cr_invites[i].left = crw_cfg(crew_st).invite_secs
+      return true
+    }
+  }
+  let v = new CrewInvite
+  v.crew = m.crew
+  v.who = target
+  v.by = who
+  v.left = crw_cfg(crew_st).invite_secs
+  push(crew_st.cr_invites, v)
+  crw_fact(crew_st, CREW_INVITED, who, target, m.crew, 0)
+  return true
+}
+
+export function crew_invited(crew_st: CrewState, who: int, crew: int) -> bool {
+  for i in 0 .. len(crew_st.cr_invites) {
+    if crew_st.cr_invites[i].who == who and crew_st.cr_invites[i].crew == crew { return true }
+  }
+  return false
+}
+
+# take up an invitation (or walk into an open crew): the start rank
+export function crew_join(crew_st: mut CrewState, who: int, crew: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let c = crw_crew(crew_st, crew)
+  if c == null { return crw_no(crew_st, who, CREW_NO_SUCH_CREW) }
+  if crw_member(crew_st, who) != null { return crw_no(crew_st, who, CREW_IN_CREW) }
+  if not c.open and not crew_invited(crew_st, who, crew) { return crw_no(crew_st, who, CREW_NOT_INVITED) }
+  if crw_members_of(crew_st, crew) >= crw_cfg(crew_st).max_members { return crw_no(crew_st, who, CREW_FULL) }
+  crw_add_member(crew_st, who, crew, crw_start_rank())
+  crw_drop_invites(crew_st, who, 0)
+  crw_fact(crew_st, CREW_JOINED, who, 0, crew, 0)
+  return true
+}
+
+export function crew_decline(crew_st: mut CrewState, who: int, crew: int) -> bool {
+  if not crew_invited(crew_st, who, crew) { return false }
+  var i = 0
+  while i < len(crew_st.cr_invites) {
+    if crew_st.cr_invites[i].who == who and crew_st.cr_invites[i].crew == crew { List.remove_at(crew_st.cr_invites, i) } else { i += 1 }
+  }
+  return true
+}
+
+# walk out. A leader who is not alone must hand the crew on first; a leader who is alone closes it
+export function crew_leave(crew_st: mut CrewState, who: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  let crew = m.crew
+  if CRR_COUNT > 0 and CrewRanks[m.rank].leader {
+    if crw_members_of(crew_st, crew) > 1 { return crw_no(crew_st, who, CREW_IS_LEADER) }
+    let bank = crw_erase(crew_st, crew, who)
+    let f = crw_fact(crew_st, CREW_DISBANDED, who, 0, crew, 0)
+    f.amount = bank
+    return true
+  }
+  crw_remove_member(crew_st, who)
+  crw_fact(crew_st, CREW_LEFT, who, 0, crew, 0)
+  return true
+}
+
+# put a member out: the actor's rank must kick and outrank them
+export function crew_kick(crew_st: mut CrewState, who: int, target: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_KICK) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  let t = crw_member(crew_st, target)
+  if t == null or t.crew != m.crew { return crw_no(crew_st, who, CREW_NOT_MEMBER) }
+  if target == who { return crw_no(crew_st, who, CREW_SELF) }
+  if crw_rank_power(t.rank) >= crw_rank_power(m.rank) { return crw_no(crew_st, who, CREW_OUTRANKED) }
+  crw_remove_member(crew_st, target)
+  crw_fact(crew_st, CREW_KICKED, who, target, m.crew, 0)
+  return true
+}
+
+# move a member to `rank` (up or down): the actor must promote, outrank them now, and stay above the rank given;
+# the leader's rank is handed on only by `crew_transfer`
+export function crew_set_rank(crew_st: mut CrewState, who: int, target: int, rank: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_PROMOTE) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  let t = crw_member(crew_st, target)
+  if t == null or t.crew != m.crew { return crw_no(crew_st, who, CREW_NOT_MEMBER) }
+  if rank < 0 or rank >= CRR_COUNT or CrewRanks[rank].leader { return crw_no(crew_st, who, CREW_BAD_RANK) }
+  if target == who { return crw_no(crew_st, who, CREW_SELF) }
+  if crw_rank_power(t.rank) >= crw_rank_power(m.rank) or crw_rank_power(rank) >= crw_rank_power(m.rank) { return crw_no(crew_st, who, CREW_OUTRANKED) }
+  let was = t.rank
+  t.rank = rank
+  let f = crw_fact(crew_st, CREW_PROMOTED, who, target, m.crew, 0)
+  f.index = rank
+  f.amount = was
+  return true
+}
+
+# hand the crew to a member: they take the leader rank, the leader steps down to the highest other rank
+export function crew_transfer(crew_st: mut CrewState, who: int, target: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if CRR_COUNT == 0 or not CrewRanks[m.rank].leader { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  let t = crw_member(crew_st, target)
+  if t == null or t.crew != m.crew { return crw_no(crew_st, who, CREW_NOT_MEMBER) }
+  if target == who { return crw_no(crew_st, who, CREW_SELF) }
+  let was = t.rank
+  t.rank = m.rank
+  m.rank = crw_second_rank()
+  let f = crw_fact(crew_st, CREW_PROMOTED, who, target, m.crew, 0)
+  f.index = t.rank
+  f.amount = was
+  return true
+}
+
+# anyone may walk into an open crew
+export function crew_set_open(crew_st: mut CrewState, who: int, open: bool) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_EDIT) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  crw_crew(crew_st, m.crew).open = open
+  return true
+}
+
+# the emblem and colours of the crew
+export function crew_set_look(crew_st: mut CrewState, who: int, emblem: int, color_a: int, color_b: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_EDIT) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  if emblem >= CRE_COUNT or emblem < -1 { return crw_no(crew_st, who, CREW_BAD_ID) }
+  let c = crw_crew(crew_st, m.crew)
+  c.emblem = emblem
+  c.color_a = color_a
+  c.color_b = color_b
+  crw_fact(crew_st, CREW_LOOK, who, 0, m.crew, 0)
+  return true
+}
+
+# put money in the crew's bank, from the wallet
+export function crew_deposit(crew_st: mut CrewState, who: int, n: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if n <= 0 { return crw_no(crew_st, who, CREW_BAD_AMOUNT) }
+  if not CrewWallet.spend(who, n) { return crw_no(crew_st, who, CREW_BROKE) }
+  crw_crew(crew_st, m.crew).bank += n
+  let f = crw_fact(crew_st, CREW_BANK, who, 0, m.crew, 0)
+  f.amount = n
+  f.index = 1
+  return true
+}
+
+# take money out: the rank must withdraw, the bank must hold it, and the rank's daily limit holds
+export function crew_withdraw(crew_st: mut CrewState, who: int, n: int) -> bool {
+  if not crw_authority(crew_st, who) { return false }
+  let m = crw_member(crew_st, who)
+  if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
+  if not crw_can(crew_st, who, CREW_PERM_WITHDRAW) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
+  if n <= 0 { return crw_no(crew_st, who, CREW_BAD_AMOUNT) }
+  let c = crw_crew(crew_st, m.crew)
+  if c.bank < n { return crw_no(crew_st, who, CREW_LIMIT) }
+  let limit = CrewRanks[m.rank].withdraw_limit
+  if limit > 0 and m.withdrawn + n > limit and not CrewRanks[m.rank].leader { return crw_no(crew_st, who, CREW_LIMIT) }
+  c.bank -= n
+  m.withdrawn += n
+  CrewWallet.earn(who, n)
+  let f = crw_fact(crew_st, CREW_BANK, who, 0, m.crew, 0)
+  f.amount = -n
+  f.index = 2
+  return true
+}
+
+# -- asking
+
+export function crew_of(crew_st: CrewState, who: int) -> int { return crw_crew_of(crew_st, who) }
+export function crew_rank_of(crew_st: CrewState, who: int) -> int {
+  let m = crw_member(crew_st, who)
+  if m == null { return -1 }
+  return m.rank
+}
+export function crew_can(crew_st: CrewState, who: int, perm: int) -> bool { return crw_can(crew_st, who, perm) }
+export function crew_same(crew_st: CrewState, a: int, b: int) -> bool {
+  let x = crw_crew_of(crew_st, a)
+  return x != 0 and x == crw_crew_of(crew_st, b)
+}
+export function crew_count(crew_st: CrewState) -> int { return len(crew_st.cr_crews) }
+export function crew_id_at(crew_st: CrewState, i: int) -> int { return crew_st.cr_crews[i].id }
+export function crew_exists(crew_st: CrewState, crew: int) -> bool { return crw_crew(crew_st, crew) != null }
+export function crew_find(crew_st: CrewState, name: string) -> int {
+  let low = Text.lower(name)
+  for i in 0 .. len(crew_st.cr_crews) { if Text.lower(crew_st.cr_crews[i].name) == low { return crew_st.cr_crews[i].id } }
+  return 0
+}
+export function crew_name(crew_st: CrewState, crew: int) -> string {
+  let c = crw_crew(crew_st, crew)
+  if c == null { return "" }
+  return c.name
+}
+export function crew_tag(crew_st: CrewState, crew: int) -> string {
+  let c = crw_crew(crew_st, crew)
+  if c == null { return "" }
+  return c.tag
+}
+export function crew_bank(crew_st: CrewState, crew: int) -> int {
+  let c = crw_crew(crew_st, crew)
+  if c == null { return 0 }
+  return c.bank
+}
+export function crew_emblem(crew_st: CrewState, crew: int) -> int {
+  let c = crw_crew(crew_st, crew)
+  if c == null { return -1 }
+  return c.emblem
+}
+export function crew_color_a(crew_st: CrewState, crew: int) -> int {
+  let c = crw_crew(crew_st, crew)
+  if c == null { return 0 }
+  return c.color_a
+}
+export function crew_color_b(crew_st: CrewState, crew: int) -> int {
+  let c = crw_crew(crew_st, crew)
+  if c == null { return 0 }
+  return c.color_b
+}
+export function crew_is_open(crew_st: CrewState, crew: int) -> bool {
+  let c = crw_crew(crew_st, crew)
+  if c == null { return false }
+  return c.open
+}
+export function crew_founder(crew_st: CrewState, crew: int) -> int {
+  let c = crw_crew(crew_st, crew)
+  if c == null { return 0 }
+  return c.founder
+}
+export function crew_member_count(crew_st: CrewState, crew: int) -> int { return crw_members_of(crew_st, crew) }
+# the n-th member of a crew: the player id, 0 past the end
+export function crew_member_at(crew_st: CrewState, crew: int, n: int) -> int {
+  var k = 0
+  for i in 0 .. len(crew_st.cr_members) {
+    if crew_st.cr_members[i].crew == crew {
+      if k == n { return crew_st.cr_members[i].who }
+      k += 1
+    }
+  }
+  return 0
+}

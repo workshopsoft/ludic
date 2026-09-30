@@ -1,0 +1,109 @@
+# system.ludic - avatar as a system (PH_PRESENT: the view applies what changed) and its save section.
+# Section `avatar`, version 1: by id, never by index. Per player `p<who>` (the wire text), `o<who>`,
+# `d<who>`, `u<who>` (the ids of the parts, decals and outfits owned), `s<who>_<i>` (a saved outfit as
+# slot id, part id, colour + 1 triples) and `n<who>_<i>` (its name)
+
+export function avatar_reset(avatar_st: mut AvatarState) -> void {
+  avatar_st.av_rows = new []AvatarRow
+  avatar_st.av_dice = rng_new(AvatarWorld.seed())
+  avatar_st.av_why = 0
+  q_clear(avatar_st.av_facts)
+}
+
+function avt_ids_of(list: []int, kind: int) -> []int {
+  let out = new []int
+  for i in 0 .. len(list) {
+    if kind == AVK_PART { push(out, AvatarParts[list[i]].id) }
+    if kind == AVK_DECAL { push(out, AvatarDecals[list[i]].id) }
+    if kind == AVK_OUTFIT { push(out, AvatarOutfits[list[i]].id) }
+  }
+  return out
+}
+
+@alloc_ok("on load: the owned lists read back")
+function avt_owned_from(r: AvatarRow, ids: []int, kind: int) -> void {
+  for i in 0 .. len(ids) {
+    var at = -1
+    if kind == AVK_PART { at = avt_part_by_id(ids[i]) }
+    if kind == AVK_DECAL { at = avt_decal_by_id(ids[i]) }
+    if kind == AVK_OUTFIT {
+      for o in 0 .. AVO_COUNT { if AvatarOutfits[o].id == ids[i] { at = o } }
+    }
+    if at >= 0 { avt_add_once(avt_owned_of(r, kind), at) }
+  }
+}
+
+@alloc_ok("on a save: the rows written out")
+export function avatar_save(avatar_st: AvatarState) -> Val {
+  let v = Value.object()
+  let players = new []int
+  for i in 0 .. len(avatar_st.av_rows) {
+    let r = avatar_st.av_rows[i]
+    push(players, r.who)
+    let w = Text.from_int(r.who)
+    sv_put_str(v, "p" + w, avt_text_of(avt_wire_ints(r)))
+    sv_put_ints(v, "o" + w, avt_ids_of(r.owned, AVK_PART))
+    sv_put_ints(v, "d" + w, avt_ids_of(r.owned_decals, AVK_DECAL))
+    sv_put_ints(v, "u" + w, avt_ids_of(r.owned_outfits, AVK_OUTFIT))
+    for k in 0 .. AVATAR_OUTFIT_SLOTS {
+      let s = r.outfits[k]
+      if not s.used { continue }
+      let trip = new []int
+      for sl in 0 .. AVS_COUNT {
+        if s.parts[sl] >= 0 {
+          push(trip, AvatarSlots[sl].id)
+          push(trip, AvatarParts[s.parts[sl]].id)
+          push(trip, s.colors[sl] + 1)
+        }
+      }
+      sv_put_ints(v, "s" + w + "_" + Text.from_int(k), trip)
+      sv_put_str(v, "n" + w + "_" + Text.from_int(k), s.name)
+    }
+  }
+  sv_put_ints(v, "players", players)
+  return v
+}
+
+export function avatar_load(avatar_st: mut AvatarState, v: Val, version: int) -> void {
+  avatar_reset(avatar_st)
+  let players = sv_ints(v, "players")
+  for i in 0 .. len(players) {
+    let who = players[i]
+    let w = Text.from_int(who)
+    let r = avt_make(avatar_st, who)
+    let xs = avt_ints_from(sv_str(v, "p" + w, ""))
+    if avt_whole(xs) { avt_apply_ints(avatar_st, r, xs, false) } else { avt_defaults(avatar_st, r) }
+    avt_owned_from(r, sv_ints(v, "o" + w), AVK_PART)
+    avt_owned_from(r, sv_ints(v, "d" + w), AVK_DECAL)
+    avt_owned_from(r, sv_ints(v, "u" + w), AVK_OUTFIT)
+    for k in 0 .. AVATAR_OUTFIT_SLOTS {
+      let trip = sv_ints(v, "s" + w + "_" + Text.from_int(k))
+      if len(trip) == 0 { continue }
+      let s = r.outfits[k]
+      s.used = true
+      s.name = sv_str(v, "n" + w + "_" + Text.from_int(k), "")
+      var j = 0
+      while j + 2 < len(trip) {
+        let sl = avt_slot_by_id(trip[j])
+        let p = avt_part_by_id(trip[j + 1])
+        if sl >= 0 and p >= 0 and AvatarParts[p].slot == sl {
+          s.parts[sl] = p
+          s.colors[sl] = trip[j + 2] - 1
+        }
+        j += 3
+      }
+    }
+    r.dirty = true
+  }
+  q_clear(avatar_st.av_facts)
+}
+
+export function avatar_system() -> System {
+  let s = system_new("avatar", PH_PRESENT)
+  s.version = 1
+  s.reset = fn avatar_reset
+  s.tick = fn avatar_tick
+  s.save = fn avatar_save
+  s.load = fn avatar_load
+  return s
+}

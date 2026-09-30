@@ -1,0 +1,5 @@
+# the test city: a harbor disc, an old-town polygon, a market of grid cells, and a far hill
+harbor { name: "Harbor", district: "Docks", shape: "disc", x: 0.0, z: 0.0, radius: 50.0, value: 10, income: 100 }
+old_town { name: "Old Town", shape: "polygon", poly: [100.0, 0.0, 200.0, 0.0, 200.0, 100.0, 100.0, 100.0], value: 20, income: 50, capture_at: 200.0 }
+market { name: "Market", shape: "cells", cell: 10.0, cells: [30, 30, 31, 30, 30, 31], value: 5 }
+hill { shape: "disc", x: 1000.0, z: 1000.0, radius: 20.0, value: 1 }

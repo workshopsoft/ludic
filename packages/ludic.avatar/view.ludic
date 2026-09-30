@@ -1,0 +1,60 @@
+# view.ludic - an avatar handed to the renderer and the animation layer through `AvatarView`. The package
+# holds no mesh and moves no bone: it says which body, which part on which node in which order, which colour,
+# which morph at what value, which decal where, and which clip to play. Body motion is always a clip
+
+# apply one player's avatar now. Parts hidden by another are not sent; the rest go lowest layer first
+export function avatar_apply(avatar_st: mut AvatarState, who: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return false }
+  let body = AvatarBodies[r.body]
+  AvatarView.begin(who)
+  AvatarView.body(who, body.model, body.root)
+  let order = new []int
+  for s in 0 .. AVS_COUNT {
+    if r.parts[s] < 0 or avt_hidden(r, s) { continue }
+    let key = AvatarSlots[s].layer + AvatarParts[r.parts[s]].layer
+    var at = len(order)
+    while at > 0 and AvatarSlots[order[at - 1]].layer + AvatarParts[r.parts[order[at - 1]]].layer > key { at -= 1 }
+    List.insert(order, at, s)
+  }
+  for i in 0 .. len(order) {
+    let s = order[i]
+    let p = AvatarParts[r.parts[s]]
+    AvatarView.part(who, s, p.mesh, p.node, AvatarSlots[s].layer + p.layer)
+    if r.colors[s] >= 0 {
+      AvatarView.color(who, s, p.tint, AvatarPalettes[avt_palette_of(s, r.parts[s])].colors[r.colors[s]])
+    }
+  }
+  for m in 0 .. AVM_COUNT {
+    let mo = AvatarMorphs[m]
+    if not avt_fits(mo.bodies, r.body) { continue }
+    var kind = 0
+    if mo.kind == "bone_scale" { kind = 1 }
+    if mo.kind == "bone_offset" { kind = 2 }
+    AvatarView.morph(who, kind, mo.target, mo.axis, float(avt_morph_value(r, m)) / 1000.0)
+  }
+  var i = 0
+  while i + 4 < len(r.decals) {
+    let d = AvatarDecals[r.decals[i]]
+    AvatarView.decal(who, AvatarZones[d.zone].node, d.texture, float(r.decals[i + 1]) / 1000.0, float(r.decals[i + 2]) / 1000.0, float(r.decals[i + 3]) / 1000.0, float(r.decals[i + 4]))
+    i += 5
+  }
+  if r.pose >= 0 { AvatarView.pose(who, AvatarPoses[r.pose].model, AvatarPoses[r.pose].clip, AvatarPoses[r.pose].loop) }
+  AvatarView.end(who)
+  r.dirty = false
+  return true
+}
+
+# is the avatar changed since it was last applied
+export function avatar_dirty(avatar_st: AvatarState, who: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return false }
+  return r.dirty
+}
+
+# apply every avatar that changed
+export function avatar_tick(avatar_st: mut AvatarState, t: Tick) -> void {
+  for i in 0 .. len(avatar_st.av_rows) {
+    if avatar_st.av_rows[i].dirty { avatar_apply(avatar_st, avatar_st.av_rows[i].who) }
+  }
+}

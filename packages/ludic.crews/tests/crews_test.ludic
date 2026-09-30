@@ -1,0 +1,570 @@
+# crews_test.ludic - founding (name, cost, leader), invites and joining, ranks and who outranks whom, the bank and its
+# daily limit, disbanding, a guest refused, relations (mutual proposals, hold time, a rivalry that hardens), influence from
+# reports, kills and presence with decay and the cap, a territory taken from nobody, a turf war through every phase
+# (contested, declared or escalated, scored, captured or held, cooldown), bounties, income, friendly fire, the save
+import "ludic.crews"
+import "ludic.base"
+program CrewsTest {
+  numbers float
+
+  def CrewRanks recruit { name: "Recruit", power: 1, start: true }
+  def CrewRanks member { name: "Member", power: 2, withdraw: true, withdraw_limit: 500 }
+  def CrewRanks officer { name: "Officer", power: 5, invite: true, kick: true, promote: true, withdraw: true, declare: true, edit: true, war: true, withdraw_limit: 1000 }
+  def CrewRanks boss { name: "Boss", power: 10, leader: true, invite: true, kick: true, promote: true, withdraw: true, declare: true, edit: true, disband: true, war: true }
+
+  def CrewRelations neutral { start: true }
+  def CrewRelations ally { mutual: true, friendly_fire: true, contest: false, kill_pct: 0, bounty_pct: 0, hold_hours: 12.0 }
+  def CrewRelations rival { kill_pct: 150, escalate_kills: 3, escalate_to: "war" }
+  def CrewRelations war { war: true, kill_pct: 200, bounty_pct: 200 }
+
+  def CrewSettings standard { max_members: 3, name_min: 3, name_max: 10, create_cost: 500, invite_secs: 30.0, influence_max: 1000.0, decay_min: 6.0, kill_influence: 20.0, victim_loss: 10.0, presence_min: 60.0, contest_at: 100.0, capture_at: 300.0, war_at: 200.0, war_secs: 60.0, defender_pct: 50, cooldown_secs: 30.0, income_secs: 60.0, bounty_min: 100, bounty_max: 5000 }
+
+  def CrewSources job { amount: 40.0, loss: 10.0 }
+  def CrewSources tag { amount: 5.0 }
+
+  def CrewEmblems skull { texture: "emblems/skull.png" }
+  def CrewEmblems crown { texture: "emblems/crown.png", price: 10 }
+
+  state CrewsTestState {
+    purse: []int = new []int
+    host: bool = true
+    px: []float = new []float
+    pz: []float = new []float
+    there: int = 0
+    frame: int = 0
+  }
+  function fake_authority(crews_test_st: CrewsTestState) -> bool { return crews_test_st.host }
+  function fake_players(crews_test_st: CrewsTestState) -> int { return crews_test_st.there }
+  function fake_player(crews_test_st: CrewsTestState, i: int) -> int { return i + 1 }
+  function fake_x(crews_test_st: CrewsTestState, who: int) -> float { return crews_test_st.px[who] }
+  function fake_z(crews_test_st: CrewsTestState, who: int) -> float { return crews_test_st.pz[who] }
+  function fake_spend(crews_test_st: mut CrewsTestState, who: int, n: int) -> bool {
+    if crews_test_st.purse[who] < n { return false }
+    crews_test_st.purse[who] -= n
+    return true
+  }
+  function fake_earn(crews_test_st: mut CrewsTestState, who: int, n: int) -> void { crews_test_st.purse[who] += n }
+  bind CrewWorld { authority: fn fake_authority, players: fn fake_players, player: fn fake_player, x: fn fake_x, z: fn fake_z }
+  bind CrewWallet { spend: fn fake_spend, earn: fn fake_earn }
+
+  function fresh(crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) -> void {
+    crew_reset(crew_st)
+    territories_load(terr, "metro")
+    crews_test_st.purse = new []int
+    crews_test_st.px = new []float
+    crews_test_st.pz = new []float
+    for i in 0 .. 12 {
+      push(crews_test_st.purse, 100000)
+      push(crews_test_st.px, 5000.0)
+      push(crews_test_st.pz, 5000.0)
+    }
+    crews_test_st.host = true
+    crews_test_st.there = 0
+    crews_test_st.frame = 0
+  }
+  function pass(crew_st: mut CrewState, terr: Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState, secs: float, hours: float) -> void {
+    var t = 0.0
+    while t < secs - 0.001 {
+      crews_test_st.frame += 1
+      crew_tick(crew_st, terr, m, tick_new(1.0, crews_test_st.frame, hours / secs))
+      drain_actions()
+      t += 1.0
+    }
+  }
+  # crew 1 (founder 1, officer 2, member 3), crew 2 (founder 4, recruit 5)
+  function two_crews(crew_st: mut CrewState) -> void {
+    crew_create(crew_st, 1, "Alphas", "ALP", 0, 0xff0000, 0x000000)
+    crew_invite(crew_st, 1, 2)
+    crew_join(crew_st, 2, 1)
+    crew_set_rank(crew_st, 1, 2, CRR_OFFICER)
+    crew_invite(crew_st, 1, 3)
+    crew_join(crew_st, 3, 1)
+    crew_set_rank(crew_st, 1, 3, CRR_MEMBER)
+    crew_create(crew_st, 4, "Bravos", "BRV", 1, 0x0000ff, 0xffffff)
+    crew_invite(crew_st, 4, 5)
+    crew_join(crew_st, 5, 2)
+  }
+  function count_of(crew_st: mut CrewState, what: int) -> int {
+    let fs = q_drain(crew_facts(crew_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "territories are a disc, a polygon or cells, and a point is in the one it lies in" (terr: mut Territories) {
+    expect(territories_load(terr, "metro"))
+    expect_eq(len(terr.rows), 4)
+    expect_eq(crew_territory_at(terr, 10.0, 10.0), territories_find(terr, "harbor"))
+    expect_eq(crew_territory_at(terr, 60.0, 0.0), -1)
+    expect_eq(crew_territory_at(terr, 150.0, 50.0), territories_find(terr, "old_town"))
+    expect_eq(crew_territory_at(terr, 250.0, 50.0), -1)
+    expect_eq(crew_territory_at(terr, 310.0, 305.0), territories_find(terr, "market"))
+    expect_eq(crew_territory_at(terr, 305.0, 315.0), territories_find(terr, "market"))
+    expect_eq(crew_territory_at(terr, 315.0, 315.0), -1)
+    expect_eq(crew_territory_at(terr, 1010.0, 1000.0), territories_find(terr, "hill"))
+  }
+
+  test "a crew is founded with a fair, unused name and its cost, and the founder leads it" (crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    expect_eq(crew_create(crew_st, 1, "ab", "X", 0, 0, 0), -1)
+    expect_eq(crew_why(crew_st), CREW_NAME_BAD)
+    expect_eq(crew_create(crew_st, 1, "a name that is far too long", "X", 0, 0, 0), -1)
+    crews_test_st.purse[1] = 100
+    expect_eq(crew_create(crew_st, 1, "Alphas", "ALP", 0, 0, 0), -1)
+    expect_eq(crew_why(crew_st), CREW_BROKE)
+    crews_test_st.purse[1] = 100000
+    let id = crew_create(crew_st, 1, "Alphas", "ALP", 0, 0xff0000, 0x00ff00)
+    expect_eq(id, 1)
+    expect_eq(crews_test_st.purse[1], 99500)
+    expect_eq(crew_of(crew_st, 1), 1)
+    expect_eq(crew_rank_of(crew_st, 1), CRR_BOSS)
+    expect(crew_name(crew_st, 1) == "Alphas")
+    expect_eq(crew_color_a(crew_st, 1), 0xff0000)
+    expect_eq(crew_emblem(crew_st, 1), 0)
+    expect_eq(crew_create(crew_st, 1, "Other", "O", 0, 0, 0), -1)
+    expect_eq(crew_why(crew_st), CREW_IN_CREW)
+    expect_eq(crew_create(crew_st, 2, "ALPHAS", "O", 0, 0, 0), -1)
+    expect_eq(crew_why(crew_st), CREW_NAME_TAKEN)
+    expect_eq(crew_find(crew_st, "alphas"), 1)
+    expect_eq(crew_create(crew_st, 2, "Bravos", "BRV", 5, 0, 0), -1)
+    expect_eq(crew_why(crew_st), CREW_BAD_ID)
+    expect_eq(crew_create(crew_st, 2, "Bravos", "BRV", 1, 0, 0), 2)
+  }
+
+  test "a player is invited by a rank that may, and joins as a recruit; the crew has a most" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    crew_create(crew_st, 1, "Alphas", "ALP", 0, 0, 0)
+    expect(not crew_join(crew_st, 2, 1))
+    expect_eq(crew_why(crew_st), CREW_NOT_INVITED)
+    expect(crew_invite(crew_st, 1, 2))
+    expect(crew_invited(crew_st, 2, 1))
+    expect(crew_join(crew_st, 2, 1))
+    expect_eq(crew_rank_of(crew_st, 2), CRR_RECRUIT)
+    expect(not crew_invite(crew_st, 2, 3))
+    expect_eq(crew_why(crew_st), CREW_NO_PERMISSION)
+    expect(not crew_invite(crew_st, 1, 2))
+    expect_eq(crew_why(crew_st), CREW_IN_CREW)
+    expect(not crew_invite(crew_st, 1, 1))
+    expect(not crew_invite(crew_st, 7, 3))
+    expect_eq(crew_why(crew_st), CREW_NO_CREW)
+    crew_invite(crew_st, 1, 3)
+    crew_join(crew_st, 3, 1)
+    expect_eq(crew_member_count(crew_st, 1), 3)
+    expect(not crew_invite(crew_st, 1, 4))
+    expect_eq(crew_why(crew_st), CREW_FULL)
+    expect_eq(crew_member_at(crew_st, 1, 1), 2)
+    expect(crew_same(crew_st, 2, 3))
+    expect(not crew_same(crew_st, 2, 9))
+  }
+
+  test "an invite runs out, can be declined, and an open crew needs none" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    crew_create(crew_st, 1, "Alphas", "ALP", 0, 0, 0)
+    crew_invite(crew_st, 1, 2)
+    pass(crew_st, terr, m, crews_test_st, 31.0, 0.0)
+    expect(not crew_invited(crew_st, 2, 1))
+    expect(not crew_join(crew_st, 2, 1))
+    crew_invite(crew_st, 1, 2)
+    expect(crew_decline(crew_st, 2, 1))
+    expect(not crew_join(crew_st, 2, 1))
+    expect(crew_set_open(crew_st, 1, true))
+    expect(crew_is_open(crew_st, 1))
+    expect(crew_join(crew_st, 2, 1))
+  }
+
+  test "ranks: who may kick and promote whom, and the leader hands the crew on" (crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    expect_eq(crew_rank_of(crew_st, 2), CRR_OFFICER)
+    expect(not crew_kick(crew_st, 3, 2))
+    expect_eq(crew_why(crew_st), CREW_NO_PERMISSION)
+    expect(not crew_kick(crew_st, 2, 1))
+    expect_eq(crew_why(crew_st), CREW_OUTRANKED)
+    expect(not crew_set_rank(crew_st, 2, 3, CRR_OFFICER))
+    expect_eq(crew_why(crew_st), CREW_OUTRANKED)
+    expect(not crew_set_rank(crew_st, 2, 3, CRR_BOSS))
+    expect_eq(crew_why(crew_st), CREW_BAD_RANK)
+    expect(crew_set_rank(crew_st, 2, 3, CRR_RECRUIT))
+    expect(crew_kick(crew_st, 2, 3))
+    expect_eq(crew_of(crew_st, 3), 0)
+    expect(not crew_kick(crew_st, 1, 5))
+    expect_eq(crew_why(crew_st), CREW_NOT_MEMBER)
+    expect(not crew_leave(crew_st, 1))
+    expect_eq(crew_why(crew_st), CREW_IS_LEADER)
+    expect(crew_transfer(crew_st, 1, 2))
+    expect_eq(crew_rank_of(crew_st, 2), CRR_BOSS)
+    expect_eq(crew_rank_of(crew_st, 1), CRR_OFFICER)
+    expect(crew_leave(crew_st, 1))
+    expect_eq(crew_of(crew_st, 1), 0)
+    expect(crew_leave(crew_st, 2))
+    expect(not crew_exists(crew_st, 1))
+  }
+
+  test "the bank takes deposits and pays out by rank, with a limit a game day, reset by the clock" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    expect(crew_deposit(crew_st, 3, 2000))
+    expect_eq(crew_bank(crew_st, 1), 2000)
+    expect(not crew_deposit(crew_st, 3, 0))
+    expect(not crew_withdraw(crew_st, 5, 10))
+    expect_eq(crew_why(crew_st), CREW_NO_PERMISSION)
+    expect(crew_withdraw(crew_st, 3, 400))
+    expect(not crew_withdraw(crew_st, 3, 200))
+    expect_eq(crew_why(crew_st), CREW_LIMIT)
+    expect(crew_withdraw(crew_st, 3, 100))
+    pass(crew_st, terr, m, crews_test_st, 24.0, 24.0)
+    expect(crew_withdraw(crew_st, 3, 500))
+    expect(crew_withdraw(crew_st, 1, 900))
+    expect_eq(crew_bank(crew_st, 1), 2000 - 400 - 100 - 500 - 900)
+    expect(not crew_withdraw(crew_st, 1, 500))
+    expect_eq(crew_why(crew_st), CREW_LIMIT)
+    crews_test_st.purse[6] = 0
+    expect(not crew_deposit(crew_st, 6, 10))
+  }
+
+  test "disbanding pays the bank to the leader and leaves no member, relation, invite or turf behind" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_deposit(crew_st, 1, 1000)
+    crew_propose(crew_st, 1, 2, CRL_RIVAL)
+    crew_add_influence(crew_st, terr, 1, "harbor", 50.0)
+    crew_invite(crew_st, 1, 9)
+    let before = crews_test_st.purse[1]
+    expect(not crew_disband(crew_st, 2))
+    expect_eq(crew_why(crew_st), CREW_NO_PERMISSION)
+    expect(crew_disband(crew_st, 1))
+    expect_eq(crews_test_st.purse[1], before + 1000)
+    expect_eq(crew_of(crew_st, 2), 0)
+    expect_eq(crew_member_count(crew_st, 1), 0)
+    expect_eq(crew_relation(crew_st, 1, 2), CRL_NEUTRAL)
+    expect(not crew_invited(crew_st, 9, 1))
+    expect(crew_influence(crew_st, "metro", "harbor", 1) == 0.0)
+    expect_eq(crew_count(crew_st), 1)
+  }
+
+  test "the world's owner alone changes crews: a guest is refused and told to ask" (crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    crews_test_st.host = false
+    expect_eq(crew_create(crew_st, 1, "Alphas", "ALP", 0, 0, 0), -1)
+    expect_eq(crew_why(crew_st), CREW_NOT_HOST)
+    crews_test_st.host = true
+    crew_create(crew_st, 1, "Alphas", "ALP", 0, 0, 0)
+    crews_test_st.host = false
+    expect(not crew_invite(crew_st, 1, 2))
+    expect(not crew_deposit(crew_st, 1, 10))
+    expect(not crew_bounty_place(crew_st, 1, 2, 500))
+    expect(crew_add_influence(crew_st, terr, 1, "harbor", 10.0) < 0.0)
+    expect_eq(crew_why(crew_st), CREW_NOT_HOST)
+  }
+
+  test "relations: the start one, a mutual proposal, a refusal, and a hold before it changes again" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    expect_eq(crew_relation(crew_st, 1, 2), CRL_NEUTRAL)
+    expect(crew_relation_key(crew_st, 1, 2) == "neutral")
+    expect(crew_propose(crew_st, 1, 2, CRL_ALLY))
+    expect_eq(crew_relation(crew_st, 1, 2), CRL_NEUTRAL)
+    expect_eq(crew_pending(crew_st, 1, 2), CRL_ALLY)
+    expect_eq(crew_pending_by(crew_st, 2, 1), 1)
+    expect(crew_accept(crew_st, 4, 1))
+    expect_eq(crew_relation(crew_st, 2, 1), CRL_ALLY)
+    expect(not crew_propose(crew_st, 5, 1, CRL_RIVAL))
+    expect_eq(crew_why(crew_st), CREW_NO_PERMISSION)
+    expect(not crew_propose(crew_st, 4, 1, CRL_RIVAL))
+    expect_eq(crew_why(crew_st), CREW_COOLDOWN)
+    pass(crew_st, terr, m, crews_test_st, 12.0, 12.0)
+    expect(crew_propose(crew_st, 4, 1, CRL_RIVAL))
+    expect_eq(crew_relation(crew_st, 1, 2), CRL_RIVAL)
+    expect(not crew_propose(crew_st, 4, 4, CRL_RIVAL))
+    expect(not crew_propose(crew_st, 4, 7, CRL_RIVAL))
+    expect_eq(crew_why(crew_st), CREW_NO_SUCH_CREW)
+    expect(crew_propose(crew_st, 1, 2, CRL_ALLY))
+    expect(crew_reject(crew_st, 4, 1))
+    expect_eq(crew_pending(crew_st, 1, 2), -1)
+    expect(not crew_accept(crew_st, 4, 1))
+    expect_eq(crew_why(crew_st), CREW_NO_PENDING)
+  }
+
+  test "a rivalry hardens by itself: enough kills between the crews move it to war" (crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_propose(crew_st, 1, 2, CRL_RIVAL)
+    expect_eq(crew_killed(crew_st, terr, 1, 4, 5000.0, 5000.0), 0)
+    expect_eq(crew_killed(crew_st, terr, 4, 2, 5000.0, 5000.0), 0)
+    expect_eq(crew_kills_of(crew_st, 1, 2), 1)
+    expect_eq(crew_kills_of(crew_st, 2, 1), 1)
+    expect_eq(crew_relation(crew_st, 1, 2), CRL_RIVAL)
+    crew_killed(crew_st, terr, 1, 5, 5000.0, 5000.0)
+    expect_eq(crew_relation(crew_st, 1, 2), CRL_WAR)
+    expect_eq(crew_kills_of(crew_st, 1, 2), 0)
+    let fs = q_drain(crew_facts(crew_st))
+    var auto = 0
+    for i in 0 .. len(fs) { if fs[i].what == CREW_RELATION and fs[i].amount == 1 { auto += 1 } }
+    expect_eq(auto, 1)
+  }
+
+  test "influence comes from reported jobs, kills and time spent there, is held under the cap, and fades" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_turf_sync(crew_st, terr)
+    expect_eq(crew_turf_count(crew_st), 4)
+    expect(crew_report(crew_st, terr, 1, CRI_JOB, 10.0, 10.0, 2.0))
+    expect(crew_influence(crew_st, "metro", "harbor", 1) == 80.0)
+    expect(not crew_report(crew_st, terr, 1, CRI_JOB, 900.0, 900.0, 1.0))
+    expect(not crew_report(crew_st, terr, 9, CRI_JOB, 10.0, 10.0, 1.0))
+    expect(not crew_report(crew_st, terr, 1, 5, 10.0, 10.0, 1.0))
+    expect(crew_turf_lead(crew_st, "metro", "harbor") == 1)
+    crew_killed(crew_st, terr, 1, 9, 10.0, 10.0)
+    expect(crew_influence(crew_st, "metro", "harbor", 1) == 100.0)
+    crew_killed(crew_st, terr, 4, 1, 10.0, 10.0)
+    expect(crew_influence(crew_st, "metro", "harbor", 1) == 90.0)
+    expect(crew_influence(crew_st, "metro", "harbor", 2) == 20.0)
+    crews_test_st.there = 1
+    crews_test_st.px[1] = 20.0
+    crews_test_st.pz[1] = 0.0
+    pass(crew_st, terr, m, crews_test_st, 10.0, 0.0)
+    expect(crew_influence(crew_st, "metro", "harbor", 1) > 90.0 + 9.0 - 1.1)
+    crews_test_st.there = 0
+    let hi = crew_influence(crew_st, "metro", "harbor", 1)
+    pass(crew_st, terr, m, crews_test_st, 10.0, 0.0)
+    expect(crew_influence(crew_st, "metro", "harbor", 1) < hi - 0.9)
+    crew_add_influence(crew_st, terr, 1, "harbor", 50000.0)
+    expect(crew_influence(crew_st, "metro", "harbor", 1) == 1000.0)
+    expect(crew_add_influence(crew_st, terr, 1, "nowhere", 5.0) < 0.0)
+  }
+
+  test "a territory nobody holds is taken once the influence reaches its capture threshold, and is quiet after" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_add_influence(crew_st, terr, 1, "harbor", 150.0)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.Contested)
+    expect_eq(crew_turf_challenger(crew_st, "metro", "harbor"), 1)
+    crew_add_influence(crew_st, terr, 1, "harbor", 200.0)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    expect_eq(crew_turf_owner(crew_st, "metro", "harbor"), 1)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.Cooldown)
+    expect_eq(crew_owner_at(crew_st, terr, 5.0, 5.0), 1)
+    expect_eq(crew_owned_count(crew_st, 1), 1)
+    expect_eq(crew_owned_value(crew_st, 1), 10)
+    expect(count_of(crew_st, CREW_CAPTURED) == 1)
+    pass(crew_st, terr, m, crews_test_st, 31.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.Peace)
+    crew_add_influence(crew_st, terr, 2, "old_town", 120.0)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "old_town") == TurfPhase.Contested)
+    expect_eq(crew_turf_owner(crew_st, "metro", "old_town"), 0)
+    crew_add_influence(crew_st, terr, 2, "old_town", 100.0)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    expect_eq(crew_turf_owner(crew_st, "metro", "old_town"), 2)
+  }
+
+  test "a contest that fades returns to peace, and allies may not contest one another's turf" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_add_influence(crew_st, terr, 1, "harbor", 400.0)
+    pass(crew_st, terr, m, crews_test_st, 2.0, 0.0)
+    expect_eq(crew_turf_owner(crew_st, "metro", "harbor"), 1)
+    pass(crew_st, terr, m, crews_test_st, 40.0, 0.0)
+    crew_add_influence(crew_st, terr, 2, "harbor", 120.0)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.Contested)
+    pass(crew_st, terr, m, crews_test_st, 800.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.Peace)
+    expect_eq(crew_turf_owner(crew_st, "metro", "harbor"), 1)
+    crew_propose(crew_st, 1, 2, CRL_ALLY)
+    crew_accept(crew_st, 4, 1)
+    crew_add_influence(crew_st, terr, 2, "harbor", 200.0)
+    pass(crew_st, terr, m, crews_test_st, 2.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.Peace)
+  }
+
+  test "a turf war: contested, declared, scored by kills, and the attacker takes it" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_add_influence(crew_st, terr, 1, "harbor", 400.0)
+    pass(crew_st, terr, m, crews_test_st, 2.0, 0.0)
+    pass(crew_st, terr, m, crews_test_st, 40.0, 0.0)
+    crew_add_influence(crew_st, terr, 2, "harbor", 150.0)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.Contested)
+    expect(not crew_declare_war(crew_st, 4, "metro", "harbor"))
+    expect_eq(crew_why(crew_st), CREW_NO_WAR)
+    crew_propose(crew_st, 4, 1, CRL_WAR)
+    expect(not crew_declare_war(crew_st, 5, "metro", "harbor"))
+    expect_eq(crew_why(crew_st), CREW_NO_PERMISSION)
+    expect(not crew_declare_war(crew_st, 1, "metro", "harbor"))
+    expect_eq(crew_why(crew_st), CREW_NOT_CONTESTED)
+    expect(crew_declare_war(crew_st, 4, "metro", "harbor"))
+    drain_actions()
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.War)
+    expect(crew_war_left(crew_st, "metro", "harbor") > 59.0)
+    crew_killed(crew_st, terr, 4, 2, 10.0, 10.0)
+    crew_killed(crew_st, terr, 5, 3, 10.0, 10.0)
+    crew_killed(crew_st, terr, 1, 5, 10.0, 10.0)
+    expect_eq(crew_war_score(crew_st, "metro", "harbor", true), 2)
+    expect_eq(crew_war_score(crew_st, "metro", "harbor", false), 1)
+    crew_killed(crew_st, terr, 4, 9, 10.0, 10.0)
+    expect_eq(crew_war_score(crew_st, "metro", "harbor", true), 2)
+    pass(crew_st, terr, m, crews_test_st, 30.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.War)
+    pass(crew_st, terr, m, crews_test_st, 31.0, 0.0)
+    expect_eq(crew_turf_owner(crew_st, "metro", "harbor"), 2)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.Cooldown)
+    expect(count_of(crew_st, CREW_CAPTURED) >= 1)
+    pass(crew_st, terr, m, crews_test_st, 31.0, 0.0)
+    let fs = q_drain(crew_facts(crew_st))
+    var peace = 0
+    for i in 0 .. len(fs) { if fs[i].what == CREW_TURF_PHASE and fs[i].index == 0 { peace += 1 } }
+    expect(peace >= 1)
+    expect(crew_turf_challenger(crew_st, "metro", "harbor") != 2)
+  }
+
+  test "a war goes to the owner when it holds: defended, the challenger's influence gone" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_propose(crew_st, 4, 1, CRL_WAR)
+    crew_add_influence(crew_st, terr, 1, "harbor", 400.0)
+    pass(crew_st, terr, m, crews_test_st, 2.0, 0.0)
+    pass(crew_st, terr, m, crews_test_st, 40.0, 0.0)
+    crew_add_influence(crew_st, terr, 2, "harbor", 210.0)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.War)
+    crew_killed(crew_st, terr, 1, 5, 10.0, 10.0)
+    pass(crew_st, terr, m, crews_test_st, 61.0, 0.0)
+    expect_eq(crew_turf_owner(crew_st, "metro", "harbor"), 1)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.Cooldown)
+    expect(crew_influence(crew_st, "metro", "harbor", 2) == 0.0)
+    expect(count_of(crew_st, CREW_DEFENDED) == 1)
+  }
+
+  test "a tied war goes by influence, the defender owed a margin" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_propose(crew_st, 4, 1, CRL_WAR)
+    crew_add_influence(crew_st, terr, 1, "market", 400.0)
+    pass(crew_st, terr, m, crews_test_st, 2.0, 0.0)
+    pass(crew_st, terr, m, crews_test_st, 40.0, 0.0)
+    crew_add_influence(crew_st, terr, 2, "market", 240.0)
+    pass(crew_st, terr, m, crews_test_st, 2.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "market") == TurfPhase.War)
+    crew_add_influence(crew_st, terr, 2, "market", 400.0)
+    crew_add_influence(crew_st, terr, 1, "market", 400.0)
+    pass(crew_st, terr, m, crews_test_st, 61.0, 0.0)
+    expect_eq(crew_turf_owner(crew_st, "metro", "market"), 1)
+  }
+
+  test "kills between allies and within a crew are not kills" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    expect_eq(crew_killed(crew_st, terr, 1, 2, 10.0, 10.0), -1)
+    crew_propose(crew_st, 1, 2, CRL_ALLY)
+    crew_accept(crew_st, 4, 1)
+    expect_eq(crew_killed(crew_st, terr, 1, 4, 10.0, 10.0), -1)
+    expect_eq(count_of(crew_st, CREW_FRIENDLY_FIRE), 2)
+    expect_eq(crew_kills_of(crew_st, 1, 2), 0)
+    crew_turf_sync(crew_st, terr)
+    expect(crew_influence(crew_st, "metro", "harbor", 1) == 0.0)
+  }
+
+  test "a bounty is paid to whoever kills the target, by the relation's share, and is gone after" (crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    expect(not crew_bounty_place(crew_st, 1, 4, 50))
+    expect_eq(crew_why(crew_st), CREW_BAD_AMOUNT)
+    expect(not crew_bounty_place(crew_st, 1, 1, 500))
+    expect(crew_bounty_place(crew_st, 1, 4, 500))
+    expect(crew_bounty_place(crew_st, 9, 4, 300))
+    expect_eq(crew_bounty_on(crew_st, 4), 800)
+    expect_eq(crews_test_st.purse[1], 100000 - 500 - 500)
+    let before = crews_test_st.purse[6]
+    expect_eq(crew_killed(crew_st, terr, 6, 4, 5000.0, 5000.0), 800)
+    expect_eq(crews_test_st.purse[6], before + 800)
+    expect_eq(crew_bounty_on(crew_st, 4), 0)
+    crew_bounty_place(crew_st, 1, 4, 1000)
+    crew_propose(crew_st, 1, 2, CRL_WAR)
+    let b2 = crews_test_st.purse[1]
+    expect_eq(crew_killed(crew_st, terr, 2, 4, 5000.0, 5000.0), 2000)
+    expect_eq(crews_test_st.purse[2], 100000 + 2000)
+    crew_bounty_place(crew_st, 6, 5, 1000)
+    expect_eq(crew_killed(crew_st, terr, 1, 5, 5000.0, 5000.0), 2000)
+    expect_eq(crews_test_st.purse[1], b2 + 2000)
+  }
+
+  test "an owned territory pays its income into the crew's bank every period" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_add_influence(crew_st, terr, 1, "harbor", 400.0)
+    pass(crew_st, terr, m, crews_test_st, 2.0, 0.0)
+    expect_eq(crew_turf_owner(crew_st, "metro", "harbor"), 1)
+    expect_eq(crew_bank(crew_st, 1), 0)
+    pass(crew_st, terr, m, crews_test_st, 60.0, 0.0)
+    expect_eq(crew_bank(crew_st, 1), 100)
+    pass(crew_st, terr, m, crews_test_st, 120.0, 0.0)
+    expect_eq(crew_bank(crew_st, 1), 300)
+    expect_eq(crew_bank(crew_st, 2), 0)
+  }
+
+  test "facts say who founded, joined, kicked, captured" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    crew_create(crew_st, 1, "Alphas", "ALP", 0, 0, 0)
+    crew_invite(crew_st, 1, 2)
+    crew_join(crew_st, 2, 1)
+    crew_kick(crew_st, 1, 2)
+    crew_join(crew_st, 2, 1)
+    let fs = q_drain(crew_facts(crew_st))
+    expect_eq(fs[0].what, CREW_CREATED)
+    expect_eq(fs[0].crew, 1)
+    expect_eq(fs[1].what, CREW_INVITED)
+    expect_eq(fs[2].what, CREW_JOINED)
+    expect_eq(fs[3].what, CREW_KICKED)
+    expect_eq(fs[3].other, 2)
+    expect_eq(fs[4].what, CREW_REFUSED)
+    expect_eq(fs[4].reason, CREW_NOT_INVITED)
+  }
+
+  test "the save keeps crews, members, relations, bounties and who holds what; a guest takes the host's snapshot" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    two_crews(crew_st)
+    crew_deposit(crew_st, 1, 700)
+    crew_set_open(crew_st, 1, true)
+    crew_propose(crew_st, 4, 1, CRL_RIVAL)
+    crew_killed(crew_st, terr, 1, 4, 5000.0, 5000.0)
+    crew_bounty_place(crew_st, 1, 5, 400)
+    crew_add_influence(crew_st, terr, 1, "harbor", 400.0)
+    pass(crew_st, terr, m, crews_test_st, 2.0, 0.0)
+    crew_add_influence(crew_st, terr, 2, "old_town", 55.5)
+    let root = save_tree()
+    save_section(root, "crews", 1, crew_save(crew_st))
+    let saved = save_encode(root)
+    let snap = crew_snapshot(crew_st)
+    crew_reset(crew_st)
+    expect_eq(crew_count(crew_st), 0)
+    let n = load_section(save_decode(saved), "crews")
+    expect(n.found)
+    crew_load(crew_st, n.data, n.version)
+    expect_eq(crew_count(crew_st), 2)
+    expect(crew_name(crew_st, 2) == "Bravos")
+    expect_eq(crew_bank(crew_st, 1), 700)
+    expect(crew_is_open(crew_st, 1))
+    expect_eq(crew_rank_of(crew_st, 2), CRR_OFFICER)
+    expect_eq(crew_emblem(crew_st, 2), 1)
+    expect_eq(crew_relation(crew_st, 1, 2), CRL_RIVAL)
+    expect_eq(crew_kills_of(crew_st, 1, 2), 1)
+    expect_eq(crew_bounty_on(crew_st, 5), 400)
+    expect_eq(crew_turf_owner(crew_st, "metro", "harbor"), 1)
+    expect(crew_influence(crew_st, "metro", "old_town", 2) == 55.5)
+    crew_turf_sync(crew_st, terr)
+    expect_eq(crew_owned_value(crew_st, 1), 10)
+    crews_test_st.host = false
+    crew_reset(crew_st)
+    expect(crew_apply_snapshot(crew_st, snap))
+    expect_eq(crew_count(crew_st), 2)
+    expect_eq(crew_of(crew_st, 5), 2)
+    expect(not crew_apply_snapshot(crew_st, "nonsense"))
+    let bank = crew_bank(crew_st, 1)
+    crew_tick(crew_st, terr, m, tick_new(1.0, 1, 24.0))
+    expect_eq(crew_bank(crew_st, 1), bank)
+  }
+}

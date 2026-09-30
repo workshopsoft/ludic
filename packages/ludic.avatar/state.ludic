@@ -1,0 +1,153 @@
+# state.ludic - the ports, the facts, the reasons, and what is kept for each player
+
+# what a choice asks the world. Unbound: no gate holds anything back (level 1000, every flag true), every
+# purchase is paid, and the dice start from 1
+export port AvatarWorld {
+  level: fn(int) -> int = fn avt_any_level                 # (who): the player's level, for a row's `level`
+  flag: fn(int, string) -> bool = fn avt_any_flag          # (who, flag): a story flag, for a row's `flag`
+  spend: fn(int, int) -> bool = fn avt_any_spend           # (who, price): take the money; false and nothing taken when it is not there
+  seed: fn() -> int = fn avt_seed_one
+}
+function avt_any_level(who: int) -> int { return 1000 }
+function avt_any_flag(who: int, flag: string) -> bool { return true }
+function avt_any_spend(who: int, price: int) -> bool { return true }
+function avt_seed_one() -> int { return 1 }
+
+# what the renderer and the animation layer bind, to put an avatar on screen. `avatar_apply` calls them in
+# this order for one player: begin, body, then part and colour per visible slot (lowest layer first),
+# morph for every morph, decal per decal, pose when one is chosen, end. Every member is optional
+export port AvatarView {
+  begin: fn(int) -> void = fn avt_nop_who                              # (who): a rebuild starts; drop what was bound
+  body: fn(int, string, string) -> void = fn avt_nop_body              # (who, model, root node)
+  part: fn(int, int, string, string, int) -> void = fn avt_nop_part    # (who, slot, mesh, attach node, draw order)
+  color: fn(int, int, string, int) -> void = fn avt_nop_color          # (who, slot, material, colour)
+  morph: fn(int, int, string, int, float) -> void = fn avt_nop_morph   # (who, kind, target, axis, value -1..1)
+  decal: fn(int, string, string, float, float, float, float) -> void = fn avt_nop_decal  # (who, zone node, texture, u, v, size, rot) u v size 0..1, rot degrees
+  pose: fn(int, string, string, bool) -> void = fn avt_nop_pose        # (who, model, clip, loop): play this clip through the animation graph (no pose chosen: not called)
+  end: fn(int) -> void = fn avt_nop_who                                # (who): all bound
+}
+function avt_nop_pose(who: int, model: string, clip: string, loop: bool) -> void { }
+function avt_nop_who(who: int) -> void { }
+function avt_nop_body(who: int, model: string, root: string) -> void { }
+function avt_nop_part(who: int, slot: int, mesh: string, node: string, order: int) -> void { }
+function avt_nop_color(who: int, slot: int, material: string, rgb: int) -> void { }
+function avt_nop_morph(who: int, kind: int, target: string, axis: int, value: float) -> void { }
+function avt_nop_decal(who: int, node: string, texture: string, u: float, v: float, size: float, rot: float) -> void { }
+
+# why a verb said no (`avatar_why`, and the `reason` of a REFUSED fact)
+export const AVATAR_OK: int = 0
+export const AVATAR_NO_AVATAR: int = 1      # the player has none
+export const AVATAR_BAD_ID: int = 2         # nothing by that index or id
+export const AVATAR_WRONG_SLOT: int = 3
+export const AVATAR_WRONG_BODY: int = 4     # it does not fit this rig
+export const AVATAR_LOCKED: int = 5         # the level or flag does not allow it
+export const AVATAR_NOT_OWNED: int = 6      # it has a price and was never bought or granted
+export const AVATAR_FULL: int = 7           # no room in that zone
+export const AVATAR_BROKE: int = 8          # the purchase was not paid
+export const AVATAR_REQUIRED: int = 9       # a slot that may not be left empty
+export const AVATAR_BAD_TEXT: int = 10      # a wire text that does not read
+
+# what a fact's `kind` names
+export const AVK_BODY: int = 0
+export const AVK_HERITAGE: int = 1
+export const AVK_MORPH: int = 2
+export const AVK_PART: int = 3
+export const AVK_COLOR: int = 4
+export const AVK_DECAL: int = 5
+export const AVK_OUTFIT: int = 6
+export const AVK_POSE: int = 8
+export const AVK_ALL: int = 7               # a whole avatar replaced (created, randomized, decoded, repaired)
+
+export const AVATAR_CHANGED: int = 0        # something the player chose moved (who, kind, index, value)
+export const AVATAR_BOUGHT: int = 1         # a part, decal or outfit was bought (who, kind, index, value = price)
+export const AVATAR_REFUSED: int = 2        # a verb said no (who, kind, index, reason)
+export const AVATAR_FIXED: int = 3          # a repair changed things (who, value = how many)
+export const AVATAR_OUTFIT_SAVED: int = 4   # a saved outfit was written (who, index = its place)
+export const AVATAR_OUTFIT_WORN: int = 5    # a saved outfit was worn (who, index = its place, value = parts that went on)
+export const AVATAR_POSED: int = 6          # a pose was chosen (who, index = the pose row, -1 none)
+
+# what `avatar_randomize` may touch
+export const AVATAR_RAND_FACE: int = 1
+export const AVATAR_RAND_BODY: int = 2
+export const AVATAR_RAND_HERITAGE: int = 4
+export const AVATAR_RAND_PARTS: int = 8
+export const AVATAR_RAND_COLORS: int = 16
+export const AVATAR_RAND_ALL: int = 31
+
+export const AVATAR_OUTFIT_SLOTS: int = 8   # outfits a player may save
+export const AVATAR_DECAL_MAX: int = 32     # decals on one avatar
+
+export property AvatarFact {
+  what: int = 0
+  who: int = 0
+  kind: int = 0
+  index: int = 0
+  value: int = 0
+  reason: int = 0
+}
+
+# an outfit a player saved: a part and a colour per slot (-1 none)
+export property AvatarSaved {
+  used: bool = false
+  name: string = ""
+  parts: []int = null
+  colors: []int = null
+}
+
+# one player's avatar. Morph values are a delta on what heritage gives; parts and colours are per slot
+export property AvatarRow {
+  who: int = 0
+  body: int = 0
+  mother: int = -1
+  father: int = -1
+  mix: int = 500
+  morphs: []int = null
+  parts: []int = null
+  colors: []int = null
+  decals: []int = null            # five ints a decal: decal, u, v, size, rot
+  owned: []int = null             # parts bought or granted
+  owned_decals: []int = null
+  owned_outfits: []int = null
+  outfits: []AvatarSaved = null
+  pose: int = -1                  # the AvatarPoses row played now (the creator's idle or an emote), -1 none
+  dirty: bool = true              # changed since the view last applied it
+}
+
+export state AvatarState {
+  av_rows: []AvatarRow = new []AvatarRow
+  av_dice: Rng = null
+  av_why: int = 0
+  av_facts: Queue<AvatarFact> = av_facts__new()
+}
+function av_facts__new() -> Queue<AvatarFact> { return queue_new("avatar.facts") }
+
+export function avatar_facts(avatar_st: AvatarState) -> Queue<AvatarFact> { return avatar_st.av_facts }
+export function avatar_why(avatar_st: AvatarState) -> int { return avatar_st.av_why }
+
+function avt_fact(avatar_st: mut AvatarState, what: int, who: int, kind: int, index: int, value: int, reason: int) -> void {
+  var f = q_rec(avatar_st.av_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new AvatarFact
+    q_ring_add(avatar_st.av_facts, f)
+  }
+  f.what = what
+  f.who = who
+  f.kind = kind
+  f.index = index
+  f.value = value
+  f.reason = reason
+  q_push(avatar_st.av_facts, f)
+}
+
+# a refusal: remembered and told
+function avt_no(avatar_st: mut AvatarState, who: int, kind: int, index: int, reason: int) -> bool {
+  avatar_st.av_why = reason
+  avt_fact(avatar_st, AVATAR_REFUSED, who, kind, index, 0, reason)
+  return false
+}
+
+function avt_changed(avatar_st: mut AvatarState, r: AvatarRow, kind: int, index: int, value: int) -> void {
+  r.dirty = true
+  avt_fact(avatar_st, AVATAR_CHANGED, r.who, kind, index, value, 0)
+}

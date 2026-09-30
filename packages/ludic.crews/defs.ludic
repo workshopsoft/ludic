@@ -1,0 +1,126 @@
+# defs.ludic - the tables a game fills. Everything is named by KEY (the save is by key, so the order is free)
+
+# a rank in a crew: `power` orders them (a higher one outranks a lower), the flags are what it may do. `leader`
+# marks the rank a founder holds; `start` the rank a new member gets. `withdraw_limit` is the most a member of
+# this rank may take from the bank a game day (0: no limit, when it may withdraw at all)
+export property CrewRank {
+  key: string = ""
+  @Text name: string = ""
+  @Range(0, 1000) power: int = 0
+  leader: bool = false
+  start: bool = false
+  invite: bool = false
+  kick: bool = false
+  promote: bool = false
+  withdraw: bool = false
+  declare: bool = false
+  edit: bool = false
+  disband: bool = false
+  war: bool = false
+  @Range(0, 100000000) withdraw_limit: int = 0
+  @Color color: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry CrewRanks of CrewRank as CRR
+
+# how two crews stand. A pair of crews starts at the row marked `start` (else the first). `contest`: they may
+# contest each other's turf; `war`: a turf war may be fought between them; `friendly_fire`: a kill between their
+# members is not a kill (allies); `mutual`: a move to this needs the other crew to accept; `kill_pct` and `bounty_pct`
+# are what a kill between them is worth in influence and in a bounty paid (percent); `hold_hours` the game hours
+# before the relation may change again; after `escalate_kills` kills between them since the last change it
+# moves on its own to `escalate_to` (a key of this table; 0 kills: never)
+export property CrewRelation {
+  key: string = ""
+  @Text name: string = ""
+  start: bool = false
+  contest: bool = true
+  war: bool = false
+  friendly_fire: bool = false
+  mutual: bool = false
+  @Range(0, 1000) kill_pct: int = 100
+  @Range(0, 1000) bounty_pct: int = 100
+  @Unit("h") @Range(0, 720) hold_hours: float = 0.0
+  @Range(0, 10000) escalate_kills: int = 0
+  escalate_to: string = ""
+  @Color color: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry CrewRelations of CrewRelation as CRL
+
+# the numbers of the crew game. The first row is used; with none, a row's own defaults. Influence is a float
+# per crew per territory, from 0 up to `influence_max`; `decay_min` a minute is shed; a territory is taken
+# (`capture_at`) or contested (`contest_at`), or goes to war on its own (`war_at`); a war lasts `war_secs`, and the
+# one that holds it is owed `defender_pct` more influence when the war is a tie on kills; `cooldown_secs` of
+# peace follow; an owned territory pays its `income` into the crew's bank every `income_secs`
+export property CrewSetting {
+  key: string = ""
+  @Range(1, 1000) max_members: int = 16
+  @Range(1, 64) name_min: int = 3
+  @Range(1, 64) name_max: int = 24
+  @Range(0, 100000000) create_cost: int = 0
+  @Unit("s") @Range(1, 86400) invite_secs: float = 300.0
+  @Range(1, 1000000) influence_max: float = 1000.0
+  @Range(0, 1000) decay_min: float = 1.0
+  @Range(0, 1000) kill_influence: float = 10.0
+  @Range(0, 1000) victim_loss: float = 5.0
+  @Range(0, 1000) presence_min: float = 2.0
+  @Range(1, 1000000) contest_at: float = 100.0
+  @Range(1, 1000000) capture_at: float = 400.0
+  @Range(1, 1000000) war_at: float = 250.0
+  @Unit("s") @Range(1, 86400) war_secs: float = 600.0
+  @Range(0, 1000) defender_pct: int = 20
+  @Unit("s") @Range(0, 86400) cooldown_secs: float = 1800.0
+  @Unit("s") @Range(1, 86400) income_secs: float = 3600.0
+  @Range(0, 100000000) bounty_min: int = 100
+  @Range(0, 1000000000) bounty_max: int = 1000000
+}
+
+@AppendOnly @ByKey
+export open registry CrewSettings of CrewSetting as CRG
+
+# a thing a player can do that earns a crew influence where it happens: `amount` for the crew it is done for,
+# `loss` taken from the crew that holds the place. The game reports it with `crew_report(..., units)`
+export property CrewSource {
+  key: string = ""
+  @Text name: string = ""
+  @Range(0, 100000) amount: float = 5.0
+  @Range(0, 100000) loss: float = 0.0
+}
+
+@AppendOnly @ByKey
+export open registry CrewSources of CrewSource as CRI
+
+# an emblem a crew may wear
+export property CrewEmblem {
+  key: string = ""
+  @Text name: string = ""
+  @Asset("png") texture: string = ""
+  @Range(0, 100000000) price: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry CrewEmblems of CrewEmblem as CRE
+
+# a territory a map holds (maps/<map>/territories.lres): a `disc` (x, z, radius), a `polygon` (`poly`: x, z pairs)
+# or `cells` (`cell` metres square, `cells`: cx, cz pairs). `value` is its worth to the game, `income` what it pays
+# its owner each income period, `capture_at` (0: the settings') what it takes to capture it
+export property Territory {
+  key: string = ""
+  @Text name: string = ""
+  @Text district: string = ""
+  @OneOf("disc", "polygon", "cells") shape: string = "disc"
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("m") radius: float = 50.0
+  poly: []float = null
+  @Unit("m") cell: float = 16.0
+  cells: []int = null
+  @Range(0, 100000000) value: int = 0
+  @Range(0, 100000000) income: int = 0
+  @Range(0, 1000000) capture_at: float = 0.0
+}
+
+@PerMap @ByKey
+export registry Territories of Territory from "territories.lres"

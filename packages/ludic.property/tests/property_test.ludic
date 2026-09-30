@@ -1,0 +1,575 @@
+# property_test.ludic - buying, renting (a day's rent, grace, taking back), selling, trading and upgrading through a
+# fake purse; access by mode and invitation; interiors an instance each through a fake load port, floor to floor;
+# storage and the garage through a fake stash; a raid and its cooldown; passive income; the business loop as a
+# machine with its timers; facts; the save and a host's snapshot on a guest
+import "ludic.property"
+import "ludic.base"
+program PropertyTest {
+  numbers float
+
+  def BusinessLoops brew { supply_max: 10, supply_price: 20, supply_batch: 5, supply_per_unit: 2, make_secs: 10.0, stock_max: 3, unit_value: 100, sell_secs: 20.0, upkeep_day: 10 }
+
+  def PropertyKinds flat { interior: "int_flat", spawn_x: 1.0, spawn_y: 0.0, spawn_z: 2.0, spawn_yaw: 90.0, storage_slots: 2, upgrade_slots: 2, guests_max: 2, rentable: true, grace_days: 2, income_day: 240 }
+  def PropertyKinds house { interior: "int_house", interiors: ["int_house_up", "int_house_cellar"], garage_slots: 1, storage_slots: 3, upgrade_slots: 2, sell_pct: 500 }
+  def PropertyKinds shop { interior: "int_shop", business: BIZ_BREW, raidable: true, storage_slots: 1, upgrade_slots: 1, raid_cooldown: 10.0 }
+  def PropertyKinds hideout { interior: "int_hide", instanced: false, raidable: true, storage_slots: 4 }
+  def PropertyKinds civic { interior: "int_civic", buyable: false }
+
+  def PropertyUpgrades extra_garage { kinds: [PRK_HOUSE], price: 1000, garage: 2 }
+  def PropertyUpgrades vault { price: 500, storage: 2 }
+  def PropertyUpgrades loft { kinds: [PRK_HOUSE], price: 300, requires: [PRU_VAULT], interior: "int_house_loft" }
+  def PropertyUpgrades fast_line { kinds: [PRK_SHOP], price: 200, produce_pct: 100 }
+
+  state PropertyTestState {
+    purse: []int = new []int
+    host: bool = true
+    crew_a: int = 1
+    crew_b: int = 1
+    loads: []string = new []string
+    refuse_load: bool = false
+    carry: []int = new []int
+    cars_out: []int = new []int
+    car_spawn_x: float = 0.0
+    car_spawn_yaw: float = 0.0
+    frame: int = 0
+  }
+  function fake_authority(property_test_st: PropertyTestState) -> bool { return property_test_st.host }
+  function fake_crew(property_test_st: PropertyTestState, a: int, b: int) -> bool { return a == property_test_st.crew_a and b == property_test_st.crew_b }
+  function fake_friends(property_test_st: PropertyTestState, a: int, b: int) -> bool { return a == 1 and b == 4 }
+  function fake_spend(property_test_st: mut PropertyTestState, who: int, n: int) -> bool {
+    if property_test_st.purse[who] < n { return false }
+    property_test_st.purse[who] -= n
+    return true
+  }
+  function fake_earn(property_test_st: mut PropertyTestState, who: int, n: int) -> void { property_test_st.purse[who] += n }
+  function fake_load(property_test_st: mut PropertyTestState, instance: int, map: string, floor: int) -> bool {
+    if property_test_st.refuse_load { return false }
+    push(property_test_st.loads, "load " + Text.from_int(instance) + " " + map + " " + Text.from_int(floor))
+    return true
+  }
+  function fake_unload(property_test_st: mut PropertyTestState, instance: int) -> void { push(property_test_st.loads, "unload " + Text.from_int(instance)) }
+  function fake_enter(property_test_st: mut PropertyTestState, who: int, instance: int, floor: int, x: float, y: float, z: float, yaw: float) -> void {
+    push(property_test_st.loads, "enter " + Text.from_int(who) + " " + Text.from_int(instance) + " " + Text.from_int(floor) + " " + Text.from_int(int(yaw)))
+  }
+  function fake_leave(property_test_st: mut PropertyTestState, who: int, instance: int, x: float, y: float, z: float, yaw: float) -> void {
+    push(property_test_st.loads, "leave " + Text.from_int(who) + " " + Text.from_int(instance) + " " + Text.from_int(int(x)))
+  }
+  function fake_limit(item: int) -> int { return 50 }
+  function fake_take(property_test_st: mut PropertyTestState, who: int, item: int, n: int) -> bool {
+    if property_test_st.carry[item] < n { return false }
+    property_test_st.carry[item] -= n
+    return true
+  }
+  function fake_give(property_test_st: mut PropertyTestState, who: int, item: int, n: int) -> int {
+    let room = 30 - property_test_st.carry[item]
+    let got = Math.min(n, room)
+    property_test_st.carry[item] += got
+    return got
+  }
+  function fake_park(property_test_st: mut PropertyTestState, who: int, vehicle: int) -> bool { return vehicle != 99 }
+  function fake_unpark(property_test_st: mut PropertyTestState, who: int, vehicle: int, x: float, z: float, yaw: float) -> bool {
+    push(property_test_st.cars_out, vehicle)
+    property_test_st.car_spawn_x = x
+    property_test_st.car_spawn_yaw = yaw
+    return true
+  }
+  bind RealtyWorld { authority: fn fake_authority, same_crew: fn fake_crew, friends: fn fake_friends }
+  bind RealtyPurse { spend: fn fake_spend, earn: fn fake_earn }
+  bind RealtyLoad { load: fn fake_load, unload: fn fake_unload, enter: fn fake_enter, leave: fn fake_leave }
+  bind RealtyStash { stack_limit: fn fake_limit, take: fn fake_take, give: fn fake_give, park: fn fake_park, unpark: fn fake_unpark }
+
+  function fresh(realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) -> void {
+    realty_reset(realty_st)
+    properties_load(sites, "harbor")
+    property_test_st.purse = new []int
+    property_test_st.carry = new []int
+    for i in 0 .. 10 {
+      push(property_test_st.purse, 1000000)
+      push(property_test_st.carry, 20)
+    }
+    property_test_st.host = true
+    property_test_st.loads = new []string
+    property_test_st.cars_out = new []int
+    property_test_st.refuse_load = false
+    property_test_st.crew_a = 1
+    property_test_st.crew_b = 1
+    property_test_st.frame = 0
+  }
+  function pass(realty_st: mut RealtyState, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState, secs: float, hours: float) -> void {
+    var t = 0.0
+    while t < secs - 0.001 {
+      property_test_st.frame += 1
+      realty_tick(realty_st, m, tick_new(1.0, property_test_st.frame, hours / secs))
+      drain_actions()
+      t += 1.0
+    }
+  }
+  function count_of(realty_st: mut RealtyState, what: int) -> int {
+    let fs = q_drain(realty_facts(realty_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "the map holds its sites and the registries the game's kinds" (sites: mut Properties) {
+    expect(properties_load(sites, "harbor"))
+    expect_eq(len(sites.rows), 6)
+    expect_eq(sites.rows[properties_find(sites, "house_1")].kind, PRK_HOUSE)
+    expect_eq(sites.rows[properties_find(sites, "flat_1")].price, 10000)
+    expect_eq(PRK_COUNT, 5)
+  }
+
+  test "buying takes the price, makes the owner, and someone else's is refused" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    expect(realty_buy(realty_st, sites, 1, "flat_1"))
+    expect_eq(property_test_st.purse[1], 990000)
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 1)
+    expect(not realty_buy(realty_st, sites, 2, "flat_1"))
+    expect_eq(realty_why(realty_st), REALTY_TAKEN)
+    expect(not realty_buy(realty_st, sites, 1, "flat_1"))
+    expect_eq(realty_why(realty_st), REALTY_OWNED)
+    expect(not realty_buy(realty_st, sites, 1, "civic_1"))
+    expect_eq(realty_why(realty_st), REALTY_NOT_FOR_SALE)
+    expect(not realty_buy(realty_st, sites, 1, "nowhere"))
+    expect_eq(realty_why(realty_st), REALTY_NO_SITE)
+    property_test_st.purse[3] = 100
+    expect(not realty_buy(realty_st, sites, 3, "flat_2"))
+    expect_eq(realty_why(realty_st), REALTY_BROKE)
+    expect_eq(property_test_st.purse[3], 100)
+    expect_eq(realty_count_of(realty_st, 1), 1)
+    expect_eq(realty_nth_of(realty_st, 1, 0), 0)
+  }
+
+  test "ownership changes only where the world is owned: a guest is told to ask the host" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    property_test_st.host = false
+    expect(not realty_buy(realty_st, sites, 1, "flat_1"))
+    expect_eq(realty_why(realty_st), REALTY_NOT_HOST)
+    expect_eq(property_test_st.purse[1], 1000000)
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 0)
+    property_test_st.host = true
+    expect(realty_buy(realty_st, sites, 1, "flat_1"))
+    property_test_st.host = false
+    expect(not realty_sell(realty_st, 1, "harbor", "flat_1"))
+    expect(not realty_set_access(realty_st, 1, "harbor", "flat_1", REALTY_PUBLIC))
+    expect(not realty_trade(realty_st, 1, 2, "harbor", "flat_1", 5))
+  }
+
+  test "selling gives back a share of what was paid and upgrades, and needs an empty property" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "house_1")
+    expect(realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_EXTRA_GARAGE))
+    expect_eq(property_test_st.purse[1], 1000000 - 80000 - 1000)
+    expect(realty_store(realty_st, 1, "harbor", "house_1", 2, 5) == 5)
+    expect(not realty_sell(realty_st, 1, "harbor", "house_1"))
+    expect_eq(realty_why(realty_st), REALTY_NOT_EMPTY)
+    realty_fetch(realty_st, 1, "harbor", "house_1", 2, 5)
+    expect(not realty_sell(realty_st, 2, "harbor", "house_1"))
+    expect_eq(realty_why(realty_st), REALTY_NOT_OWNER)
+    expect(realty_sell(realty_st, 1, "harbor", "house_1"))
+    expect_eq(property_test_st.purse[1], 1000000 - 81000 + 40500)
+    expect_eq(realty_owner(realty_st, "harbor", "house_1"), 0)
+    expect(realty_buy(realty_st, sites, 2, "house_1"))
+  }
+
+  test "renting charges a day's rent each game day, and grace ends in being taken back" (realty_st: mut RealtyState, sites: mut Properties, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    expect(not realty_rent(realty_st, sites, 1, "house_1"))
+    expect_eq(realty_why(realty_st), REALTY_NOT_FOR_SALE)
+    expect(realty_rent(realty_st, sites, 1, "flat_1"))
+    expect_eq(property_test_st.purse[1], 999900)
+    expect(realty_rented(realty_st, "harbor", "flat_1"))
+    expect(not realty_rent(realty_st, sites, 2, "flat_1"))
+    pass(realty_st, m, property_test_st, 24.0, 24.0)
+    expect_eq(property_test_st.purse[1], 999800)
+    count_of(realty_st, REALTY_RENT_PAID)
+    property_test_st.purse[1] = 10
+    realty_store(realty_st, 1, "harbor", "flat_1", 3, 4)
+    pass(realty_st, m, property_test_st, 24.0, 24.0)
+    expect_eq(realty_overdue(realty_st, "harbor", "flat_1"), 1)
+    pass(realty_st, m, property_test_st, 24.0, 24.0)
+    expect_eq(realty_overdue(realty_st, "harbor", "flat_1"), 2)
+    pass(realty_st, m, property_test_st, 24.0, 24.0)
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 0)
+    let fs = q_drain(realty_facts(realty_st))
+    var evicted = 0
+    var due = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == REALTY_EVICTED { evicted = fs[i].amount }
+      if fs[i].what == REALTY_RENT_DUE { due += 1 }
+    }
+    expect_eq(due, 3)
+    expect_eq(evicted, 4)
+  }
+
+  test "paying rent again clears the debt, and buying what you rent converts it" (realty_st: mut RealtyState, sites: mut Properties, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_rent(realty_st, sites, 1, "flat_1")
+    property_test_st.purse[1] = 0
+    pass(realty_st, m, property_test_st, 24.0, 24.0)
+    expect_eq(realty_overdue(realty_st, "harbor", "flat_1"), 1)
+    property_test_st.purse[1] = 500
+    pass(realty_st, m, property_test_st, 24.0, 24.0)
+    expect_eq(realty_overdue(realty_st, "harbor", "flat_1"), 0)
+    property_test_st.purse[1] = 20000
+    expect(realty_buy(realty_st, sites, 1, "flat_1"))
+    expect(not realty_rented(realty_st, "harbor", "flat_1"))
+    pass(realty_st, m, property_test_st, 48.0, 48.0)
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 1)
+    expect_eq(property_test_st.purse[1], 10000)
+  }
+
+  test "a trade moves the deed, pays the seller, clears the guests" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "flat_1")
+    realty_invite(realty_st, 1, "harbor", "flat_1", 5)
+    let before1 = property_test_st.purse[1]
+    expect(realty_trade(realty_st, 1, 2, "harbor", "flat_1", 15000))
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 2)
+    expect_eq(property_test_st.purse[1], before1 + 15000)
+    expect_eq(property_test_st.purse[2], 1000000 - 15000)
+    expect_eq(realty_guest_count(realty_st, "harbor", "flat_1"), 0)
+    expect(not realty_trade(realty_st, 1, 3, "harbor", "flat_1", 1))
+    expect_eq(realty_why(realty_st), REALTY_NOT_OWNER)
+    property_test_st.purse[3] = 10
+    expect(not realty_trade(realty_st, 2, 3, "harbor", "flat_1", 100))
+    expect_eq(realty_why(realty_st), REALTY_BROKE)
+    expect_eq(realty_owner(realty_st, "harbor", "flat_1"), 2)
+  }
+
+  test "an upgrade needs its kind, what it requires, a free slot and the money; a variant changes the interior" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "house_1")
+    expect(not realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_FAST_LINE))
+    expect_eq(realty_why(realty_st), REALTY_BAD_UPGRADE)
+    expect(not realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_LOFT))
+    expect_eq(realty_why(realty_st), REALTY_NEEDS)
+    expect(realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_VAULT))
+    expect_eq(realty_storage_slots(realty_st, "harbor", "house_1"), 5)
+    expect(realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_LOFT))
+    expect(realty_has_upgrade(realty_st, "harbor", "house_1", PRU_LOFT))
+    expect(not realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_LOFT))
+    expect(not realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_EXTRA_GARAGE))
+    expect_eq(realty_why(realty_st), REALTY_FULL)
+    expect_eq(realty_enter(realty_st, sites, 1, "house_1"), 1)
+    expect(property_test_st.loads[0] == "load 1 int_house_loft 0")
+    realty_buy(realty_st, sites, 2, "flat_1")
+    property_test_st.purse[2] = 100
+    expect(not realty_upgrade(realty_st, 2, "harbor", "flat_1", PRU_VAULT))
+    expect_eq(realty_why(realty_st), REALTY_BROKE)
+  }
+
+  test "who may come in: the owner and the invited, then by mode crew, friends or anyone" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "flat_1")
+    expect(realty_can_enter(realty_st, 1, "harbor", "flat_1"))
+    expect(not realty_can_enter(realty_st, 2, "harbor", "flat_1"))
+    expect(not realty_can_enter(realty_st, 2, "harbor", "flat_2"))
+    expect(realty_invite(realty_st, 1, "harbor", "flat_1", 2))
+    expect(realty_can_enter(realty_st, 2, "harbor", "flat_1"))
+    expect(realty_invite(realty_st, 1, "harbor", "flat_1", 3))
+    expect(not realty_invite(realty_st, 1, "harbor", "flat_1", 6))
+    expect_eq(realty_why(realty_st), REALTY_FULL)
+    expect(not realty_invite(realty_st, 2, "harbor", "flat_1", 6))
+    expect_eq(realty_why(realty_st), REALTY_NOT_OWNER)
+    expect(realty_uninvite(realty_st, 1, "harbor", "flat_1", 3))
+    expect(not realty_can_enter(realty_st, 3, "harbor", "flat_1"))
+    realty_set_access(realty_st, 1, "harbor", "flat_1", REALTY_CREW)
+    property_test_st.crew_b = 9
+    expect(not realty_can_enter(realty_st, 5, "harbor", "flat_1"))
+    property_test_st.crew_a = 1
+    property_test_st.crew_b = 6
+    expect(realty_can_enter(realty_st, 6, "harbor", "flat_1"))
+    realty_set_access(realty_st, 1, "harbor", "flat_1", REALTY_FRIENDS)
+    expect(realty_can_enter(realty_st, 4, "harbor", "flat_1"))
+    expect(not realty_can_enter(realty_st, 6, "harbor", "flat_1"))
+    realty_set_access(realty_st, 1, "harbor", "flat_1", REALTY_PUBLIC)
+    expect(realty_can_enter(realty_st, 9, "harbor", "flat_1"))
+    expect(not realty_can_use(realty_st, 9, "harbor", "flat_1"))
+    expect(not realty_can_enter(realty_st, 9, "harbor", "flat_2"))
+  }
+
+  test "an interior is an instance: a new id for a visit, the live one joined, closed by the last out" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "flat_1")
+    realty_buy(realty_st, sites, 2, "flat_2")
+    realty_invite(realty_st, 1, "harbor", "flat_1", 3)
+    expect_eq(realty_enter(realty_st, sites, 1, "flat_1"), 1)
+    expect(property_test_st.loads[0] == "load 1 int_flat 0")
+    expect(property_test_st.loads[1] == "enter 1 1 0 90")
+    expect_eq(realty_inside(realty_st, 1), 1)
+    expect(realty_inside_key(realty_st, 1) == "flat_1")
+    expect_eq(realty_enter(realty_st, sites, 3, "flat_1"), 1)
+    expect_eq(realty_occupants(realty_st, "harbor", "flat_1"), 2)
+    expect_eq(realty_enter(realty_st, sites, 2, "flat_2"), 2)
+    expect_eq(realty_enter(realty_st, sites, 1, "flat_2"), -1)
+    expect_eq(realty_why(realty_st), REALTY_INSIDE)
+    expect_eq(realty_enter(realty_st, sites, 4, "flat_1"), -1)
+    expect_eq(realty_why(realty_st), REALTY_NO_ACCESS)
+    expect_eq(realty_instances(realty_st), 2)
+    expect(realty_leave(realty_st, 1))
+    expect_eq(realty_instances(realty_st), 2)
+    expect(realty_leave(realty_st, 3))
+    expect_eq(realty_instances(realty_st), 1)
+    expect(not realty_leave(realty_st, 3))
+    expect_eq(realty_why(realty_st), REALTY_NOT_INSIDE)
+    expect_eq(realty_enter(realty_st, sites, 1, "flat_1"), 3)
+    let fs = q_drain(realty_facts(realty_st))
+    var opened = 0
+    var closed = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == REALTY_INSTANCE_OPENED { opened += 1 }
+      if fs[i].what == REALTY_INSTANCE_CLOSED { closed += 1 }
+    }
+    expect_eq(opened, 3)
+    expect_eq(closed, 1)
+  }
+
+  test "a load the game refuses is a refused visit, and a shared interior is instance 0" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "flat_1")
+    realty_buy(realty_st, sites, 1, "hideout_1")
+    property_test_st.refuse_load = true
+    expect_eq(realty_enter(realty_st, sites, 1, "flat_1"), -1)
+    expect_eq(realty_why(realty_st), REALTY_LOAD_FAILED)
+    expect_eq(realty_inside(realty_st, 1), -1)
+    property_test_st.refuse_load = false
+    expect_eq(realty_enter(realty_st, sites, 1, "hideout_1"), 0)
+    expect_eq(realty_inside(realty_st, 1), 0)
+    realty_leave(realty_st, 1)
+    expect_eq(realty_instances(realty_st), 0)
+  }
+
+  test "a multi-map interior goes floor to floor inside one instance, loading a map once" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "house_1")
+    expect_eq(realty_enter(realty_st, sites, 1, "house_1"), 1)
+    expect(realty_go_floor(realty_st, 1, 2))
+    expect(property_test_st.loads[2] == "load 1 int_house_cellar 2")
+    expect(realty_go_floor(realty_st, 1, 0))
+    expect(realty_go_floor(realty_st, 1, 2))
+    var loads = 0
+    for i in 0 .. len(property_test_st.loads) { if Text.starts_with(property_test_st.loads[i], "load") { loads += 1 } }
+    expect_eq(loads, 2)
+    expect(not realty_go_floor(realty_st, 1, 3))
+    expect_eq(realty_why(realty_st), REALTY_BAD_FLOOR)
+    expect(not realty_go_floor(realty_st, 5, 1))
+    expect_eq(realty_why(realty_st), REALTY_NOT_INSIDE)
+  }
+
+  test "selling or trading sends whoever is inside out to the door" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "flat_1")
+    realty_invite(realty_st, 1, "harbor", "flat_1", 2)
+    realty_enter(realty_st, sites, 1, "flat_1")
+    realty_enter(realty_st, sites, 2, "flat_1")
+    expect(realty_sell(realty_st, 1, "harbor", "flat_1"))
+    expect_eq(realty_inside(realty_st, 1), -1)
+    expect_eq(realty_inside(realty_st, 2), -1)
+    expect_eq(realty_instances(realty_st), 0)
+    var left = 0
+    for i in 0 .. len(property_test_st.loads) { if Text.starts_with(property_test_st.loads[i], "leave") { left += 1 } }
+    expect_eq(left, 2)
+  }
+
+  test "storage holds items in slots under the stack limit, through the carry" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "flat_1")
+    expect_eq(realty_store(realty_st, 1, "harbor", "flat_1", 0, 20), 20)
+    expect_eq(property_test_st.carry[0], 0)
+    expect_eq(realty_store(realty_st, 1, "harbor", "flat_1", 0, 20), -1)
+    expect_eq(realty_why(realty_st), REALTY_NOTHING)
+    property_test_st.carry[0] = 40
+    expect_eq(realty_store(realty_st, 1, "harbor", "flat_1", 0, 40), 30)
+    expect_eq(realty_item_count(realty_st, "harbor", "flat_1", 0), 50)
+    expect_eq(realty_store(realty_st, 1, "harbor", "flat_1", 0, 5), -1)
+    expect_eq(realty_why(realty_st), REALTY_FULL)
+    expect_eq(realty_store(realty_st, 1, "harbor", "flat_1", 1, 5), 5)
+    expect_eq(realty_store(realty_st, 1, "harbor", "flat_1", 2, 5), -1)
+    expect_eq(realty_why(realty_st), REALTY_FULL)
+    expect_eq(realty_stacks_used(realty_st, "harbor", "flat_1"), 2)
+    expect_eq(realty_store(realty_st, 2, "harbor", "flat_1", 3, 5), -1)
+    expect_eq(realty_why(realty_st), REALTY_NO_ACCESS)
+    property_test_st.carry[1] = 28
+    expect_eq(realty_fetch(realty_st, 1, "harbor", "flat_1", 1, 5), 2)
+    expect_eq(realty_item_count(realty_st, "harbor", "flat_1", 1), 3)
+    property_test_st.carry[1] = 0
+    expect_eq(realty_fetch(realty_st, 1, "harbor", "flat_1", 1, 50), 3)
+    expect_eq(realty_stacks_used(realty_st, "harbor", "flat_1"), 1)
+    expect_eq(realty_fetch(realty_st, 1, "harbor", "flat_1", 4, 1), -1)
+  }
+
+  test "the garage parks vehicles in its slots and brings one out at the garage spawn" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "house_1")
+    expect(realty_park(realty_st, 1, "harbor", "house_1", 11))
+    expect(not realty_park(realty_st, 1, "harbor", "house_1", 12))
+    expect_eq(realty_why(realty_st), REALTY_FULL)
+    realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_EXTRA_GARAGE)
+    expect(not realty_park(realty_st, 1, "harbor", "house_1", 99))
+    expect_eq(realty_why(realty_st), REALTY_NOTHING)
+    expect(realty_park(realty_st, 1, "harbor", "house_1", 12))
+    expect_eq(realty_vehicle_count(realty_st, "harbor", "house_1"), 2)
+    expect(not realty_park(realty_st, 2, "harbor", "house_1", 13))
+    expect(realty_retrieve(realty_st, sites, 1, "house_1", 11))
+    expect(property_test_st.car_spawn_x == 104.0)
+    expect(property_test_st.car_spawn_yaw == 45.0)
+    expect_eq(realty_vehicle_at(realty_st, "harbor", "house_1", 0), 12)
+    expect(not realty_retrieve(realty_st, sites, 1, "house_1", 11))
+    realty_buy(realty_st, sites, 1, "flat_1")
+    realty_park(realty_st, 1, "harbor", "flat_1", 50)
+    expect_eq(realty_vehicle_count(realty_st, "harbor", "flat_1"), 0)
+  }
+
+  test "a raid takes a share and is followed by a cooldown in game hours" (realty_st: mut RealtyState, sites: mut Properties, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "shop_1")
+    realty_store(realty_st, 1, "harbor", "shop_1", 1, 20)
+    realty_buy_supply(realty_st, 1, "harbor", "shop_1", 1)
+    expect_eq(realty_raid(realty_st, 2, "harbor", "flat_1", 50), -1)
+    expect_eq(realty_why(realty_st), REALTY_NO_HOLDING)
+    expect_eq(realty_raid(realty_st, 1, "harbor", "shop_1", 50), -1)
+    expect_eq(realty_why(realty_st), REALTY_NOT_OWNER)
+    expect_eq(realty_raid(realty_st, 2, "harbor", "shop_1", 50), 12)
+    expect_eq(realty_item_count(realty_st, "harbor", "shop_1", 1), 10)
+    expect_eq(realty_supply(realty_st, "harbor", "shop_1"), 3)
+    expect_eq(realty_raid(realty_st, 2, "harbor", "shop_1", 50), -1)
+    expect_eq(realty_why(realty_st), REALTY_COOLDOWN)
+    pass(realty_st, m, property_test_st, 10.0, 11.0)
+    expect(realty_raid(realty_st, 2, "harbor", "shop_1", 100) > 0)
+    expect_eq(realty_item_count(realty_st, "harbor", "shop_1", 1), 0)
+    expect_eq(realty_stacks_used(realty_st, "harbor", "shop_1"), 0)
+    realty_buy(realty_st, sites, 1, "flat_1")
+    expect_eq(realty_raid(realty_st, 2, "harbor", "flat_1", 50), -1)
+    expect_eq(realty_why(realty_st), REALTY_NOT_RAIDABLE)
+  }
+
+  test "passive income builds with game hours and is collected" (realty_st: mut RealtyState, sites: mut Properties, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "flat_1")
+    let before = property_test_st.purse[1]
+    pass(realty_st, m, property_test_st, 4.0, 6.0)
+    expect_eq(realty_income_waiting(realty_st, "harbor", "flat_1"), 60)
+    expect_eq(realty_collect(realty_st, 1, "harbor", "flat_1"), 60)
+    expect_eq(property_test_st.purse[1], before + 60)
+    expect_eq(realty_collect(realty_st, 1, "harbor", "flat_1"), -1)
+    expect_eq(realty_why(realty_st), REALTY_NOTHING)
+    expect_eq(realty_collect(realty_st, 2, "harbor", "flat_1"), -1)
+    expect_eq(realty_why(realty_st), REALTY_NOT_OWNER)
+  }
+
+  test "a business loop: supplies become stock on a timer, a full shelf waits, a sale run pays" (realty_st: mut RealtyState, sites: mut Properties, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "shop_1")
+    expect_eq(realty_buy_supply(realty_st, 2, "harbor", "shop_1", 1), -1)
+    expect_eq(realty_buy_supply(realty_st, 1, "harbor", "shop_1", 1), 5)
+    expect_eq(property_test_st.purse[1], 1000000 - 50000 - 100)
+    expect_eq(realty_buy_supply(realty_st, 1, "harbor", "shop_1", 3), 5)
+    expect_eq(realty_buy_supply(realty_st, 1, "harbor", "shop_1", 1), -1)
+    expect_eq(realty_why(realty_st), REALTY_FULL)
+    expect(realty_biz_phase(realty_st, "harbor", "shop_1") == BizPhase.Idle)
+    pass(realty_st, m, property_test_st, 1.0, 0.0)
+    expect(realty_biz_phase(realty_st, "harbor", "shop_1") == BizPhase.Producing)
+    pass(realty_st, m, property_test_st, 10.0, 0.0)
+    expect_eq(realty_stock(realty_st, "harbor", "shop_1"), 1)
+    expect_eq(realty_supply(realty_st, "harbor", "shop_1"), 8)
+    pass(realty_st, m, property_test_st, 30.0, 0.0)
+    expect_eq(realty_stock(realty_st, "harbor", "shop_1"), 3)
+    expect(realty_biz_phase(realty_st, "harbor", "shop_1") == BizPhase.Full)
+    expect_eq(realty_supply(realty_st, "harbor", "shop_1"), 4)
+    let money = property_test_st.purse[1]
+    expect(realty_sell_stock(realty_st, 1, "harbor", "shop_1"))
+    drain_actions()
+    expect(realty_biz_phase(realty_st, "harbor", "shop_1") == BizPhase.Selling)
+    expect_eq(realty_stock(realty_st, "harbor", "shop_1"), 0)
+    expect(not realty_sell_stock(realty_st, 1, "harbor", "shop_1"))
+    pass(realty_st, m, property_test_st, 10.0, 0.0)
+    expect_eq(property_test_st.purse[1], money)
+    pass(realty_st, m, property_test_st, 12.0, 0.0)
+    expect_eq(property_test_st.purse[1], money + 300)
+    expect(realty_biz_phase(realty_st, "harbor", "shop_1") != BizPhase.Selling)
+    pass(realty_st, m, property_test_st, 25.0, 0.0)
+    expect_eq(realty_stock(realty_st, "harbor", "shop_1"), 2)
+    expect_eq(realty_supply(realty_st, "harbor", "shop_1"), 0)
+    pass(realty_st, m, property_test_st, 2.0, 0.0)
+    expect(realty_biz_phase(realty_st, "harbor", "shop_1") == BizPhase.Idle)
+    expect(count_of(realty_st, REALTY_STARVED) > 0)
+  }
+
+  test "a production upgrade makes stock faster, and upkeep is taken each game day" (realty_st: mut RealtyState, sites: mut Properties, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "shop_1")
+    realty_upgrade(realty_st, 1, "harbor", "shop_1", PRU_FAST_LINE)
+    realty_buy_supply(realty_st, 1, "harbor", "shop_1", 2)
+    pass(realty_st, m, property_test_st, 1.0, 0.0)
+    pass(realty_st, m, property_test_st, 10.0, 0.0)
+    expect_eq(realty_stock(realty_st, "harbor", "shop_1"), 2)
+    let money = property_test_st.purse[1]
+    pass(realty_st, m, property_test_st, 24.0, 24.0)
+    expect_eq(property_test_st.purse[1], money - 10)
+    expect(count_of(realty_st, REALTY_UPKEEP) >= 1)
+  }
+
+  test "facts say what was bought, entered, sold and refused" (realty_st: mut RealtyState, sites: mut Properties, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "flat_1")
+    realty_enter(realty_st, sites, 1, "flat_1")
+    realty_leave(realty_st, 1)
+    realty_buy(realty_st, sites, 2, "flat_1")
+    realty_sell(realty_st, 1, "harbor", "flat_1")
+    let fs = q_drain(realty_facts(realty_st))
+    expect_eq(fs[0].what, REALTY_BOUGHT)
+    expect_eq(fs[0].amount, 10000)
+    expect(fs[0].key == "flat_1")
+    expect(fs[0].map == "harbor")
+    expect_eq(fs[1].what, REALTY_INSTANCE_OPENED)
+    expect_eq(fs[2].what, REALTY_ENTERED)
+    expect_eq(fs[2].instance, 1)
+    expect_eq(fs[3].what, REALTY_LEFT)
+    expect_eq(fs[4].what, REALTY_INSTANCE_CLOSED)
+    expect_eq(fs[5].what, REALTY_REFUSED)
+    expect_eq(fs[5].reason, REALTY_TAKEN)
+    expect_eq(fs[6].what, REALTY_SOLD)
+  }
+
+  test "the save keeps the holdings by key, and a snapshot brings a guest up to the host's view" (realty_st: mut RealtyState, sites: mut Properties, m: mut HoldingStepsMachine, property_test_st: mut PropertyTestState) {
+    fresh(realty_st, sites, property_test_st)
+    realty_buy(realty_st, sites, 1, "house_1")
+    realty_upgrade(realty_st, 1, "harbor", "house_1", PRU_VAULT)
+    realty_invite(realty_st, 1, "harbor", "house_1", 7)
+    realty_set_access(realty_st, 1, "harbor", "house_1", REALTY_FRIENDS)
+    realty_store(realty_st, 1, "harbor", "house_1", 2, 9)
+    realty_park(realty_st, 1, "harbor", "house_1", 31)
+    realty_rent(realty_st, sites, 2, "flat_2")
+    realty_buy(realty_st, sites, 3, "shop_1")
+    realty_buy_supply(realty_st, 3, "harbor", "shop_1", 1)
+    pass(realty_st, m, property_test_st, 12.0, 12.0)
+    let root = save_tree()
+    save_section(root, "realty", 1, realty_save(realty_st))
+    let saved = save_encode(root)
+    let snap = realty_snapshot(realty_st)
+    realty_reset(realty_st)
+    expect_eq(realty_count(realty_st), 0)
+    let n = load_section(save_decode(saved), "realty")
+    expect(n.found)
+    realty_load(realty_st, n.data, n.version)
+    expect_eq(realty_count(realty_st), 3)
+    expect_eq(realty_owner(realty_st, "harbor", "house_1"), 1)
+    expect(realty_has_upgrade(realty_st, "harbor", "house_1", PRU_VAULT))
+    expect_eq(realty_access(realty_st, "harbor", "house_1"), REALTY_FRIENDS)
+    expect_eq(realty_guest_count(realty_st, "harbor", "house_1"), 1)
+    expect_eq(realty_item_count(realty_st, "harbor", "house_1", 2), 9)
+    expect_eq(realty_vehicle_at(realty_st, "harbor", "house_1", 0), 31)
+    expect(realty_rented(realty_st, "harbor", "flat_2"))
+    expect_eq(realty_supply(realty_st, "harbor", "shop_1"), 3)
+    expect_eq(realty_stock(realty_st, "harbor", "shop_1"), 1)
+    property_test_st.host = false
+    realty_reset(realty_st)
+    expect(realty_apply_snapshot(realty_st, snap))
+    expect_eq(realty_count(realty_st), 3)
+    expect_eq(realty_owner(realty_st, "harbor", "shop_1"), 3)
+    expect(not realty_apply_snapshot(realty_st, "nonsense"))
+    realty_tick(realty_st, m, tick_new(1.0, 1, 24.0))
+    expect_eq(realty_income_waiting(realty_st, "harbor", "flat_2"), 120)
+  }
+}

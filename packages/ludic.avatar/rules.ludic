@@ -1,0 +1,152 @@
+# rules.ludic - what may be worn: the body it fits, the unlock rule, what it conflicts with and what it
+# hides; and what a morph comes to once heritage and the player's own delta are in
+
+function avt_gate(who: int, level: int, flag: string) -> bool {
+  if AvatarWorld.level(who) < level { return false }
+  if flag != "" and not AvatarWorld.flag(who, flag) { return false }
+  return true
+}
+
+function avt_count_of(kind: int) -> int {
+  if kind == AVK_PART { return AVP_COUNT }
+  if kind == AVK_DECAL { return AVD_COUNT }
+  if kind == AVK_OUTFIT { return AVO_COUNT }
+  return 0
+}
+
+function avt_owned_of(r: AvatarRow, kind: int) -> []int {
+  if kind == AVK_DECAL { return r.owned_decals }
+  if kind == AVK_OUTFIT { return r.owned_outfits }
+  return r.owned
+}
+
+function avt_price_of(kind: int, idx: int) -> int {
+  if kind == AVK_PART { return AvatarParts[idx].price }
+  if kind == AVK_DECAL { return AvatarDecals[idx].price }
+  return AvatarOutfits[idx].price
+}
+
+# the unlock rule of a part, a decal or an outfit: the world's level and flag, and - for a price - having
+# bought or been given it. AVATAR_OK when it may be used
+function avt_open(r: AvatarRow, kind: int, idx: int, need_owned: bool) -> int {
+  if idx < 0 or idx >= avt_count_of(kind) { return AVATAR_BAD_ID }
+  var level = 0
+  var flag = ""
+  if kind == AVK_PART {
+    level = AvatarParts[idx].level
+    flag = AvatarParts[idx].flag
+  } else if kind == AVK_DECAL {
+    level = AvatarDecals[idx].level
+    flag = AvatarDecals[idx].flag
+  } else {
+    level = AvatarOutfits[idx].level
+    flag = AvatarOutfits[idx].flag
+  }
+  if not avt_gate(r.who, level, flag) { return AVATAR_LOCKED }
+  if need_owned and avt_price_of(kind, idx) > 0 and not avt_list_has(avt_owned_of(r, kind), idx) { return AVATAR_NOT_OWNED }
+  return AVATAR_OK
+}
+
+function avt_palette_of(slot: int, part: int) -> int {
+  if part >= 0 and AvatarParts[part].palette >= 0 { return AvatarParts[part].palette }
+  return AvatarSlots[slot].palette
+}
+
+function avt_palette_len(pal: int) -> int {
+  if pal < 0 or pal >= AVC_COUNT { return 0 }
+  let cs = AvatarPalettes[pal].colors
+  if cs == null { return 0 }
+  return len(cs)
+}
+
+# can `part` be worn with `worn` (in slot `worn_slot`)? Not if either lists the other, or a slot rule says so
+function avt_conflict(part: int, worn: int, worn_slot: int) -> bool {
+  let p = AvatarParts[part]
+  let w = AvatarParts[worn]
+  if avt_list_has(p.conflicts, worn) or avt_list_has(w.conflicts, part) { return true }
+  for i in 0 .. AVR_COUNT {
+    let ru = AvatarRules[i]
+    if ru.kind != "conflicts" { continue }
+    if ru.slot == p.slot and (ru.part < 0 or ru.part == part) and ru.other == worn_slot { return true }
+    if ru.slot == worn_slot and (ru.part < 0 or ru.part == worn) and ru.other == p.slot { return true }
+  }
+  return false
+}
+
+# is this slot's part left undrawn by something worn
+function avt_hidden(r: AvatarRow, slot: int) -> bool {
+  for s in 0 .. AVS_COUNT {
+    let part = r.parts[s]
+    if part >= 0 and avt_list_has(AvatarParts[part].hides, slot) { return true }
+  }
+  for i in 0 .. AVR_COUNT {
+    let ru = AvatarRules[i]
+    if ru.kind != "hides" or ru.other != slot { continue }
+    let worn = r.parts[ru.slot]
+    if worn >= 0 and (ru.part < 0 or ru.part == worn) { return true }
+  }
+  return false
+}
+
+# put `part` on, its slot and the body's fit checked but not its unlock. What it conflicts with comes off
+# (a fact each); a colour that is not in the new palette goes back to the first. AVATAR_OK or why not
+function avt_wear(avatar_st: mut AvatarState, r: AvatarRow, part: int) -> int {
+  if part < 0 or part >= AVP_COUNT { return AVATAR_BAD_ID }
+  let p = AvatarParts[part]
+  if p.slot < 0 or p.slot >= AVS_COUNT { return AVATAR_WRONG_SLOT }
+  if not avt_fits(p.bodies, r.body) { return AVATAR_WRONG_BODY }
+  for s in 0 .. AVS_COUNT {
+    if s == p.slot or r.parts[s] < 0 { continue }
+    if avt_conflict(part, r.parts[s], s) {
+      r.parts[s] = -1
+      r.colors[s] = -1
+      avt_changed(avatar_st, r, AVK_PART, -1, s)
+    }
+  }
+  r.parts[p.slot] = part
+  if r.colors[p.slot] >= avt_palette_len(avt_palette_of(p.slot, part)) { r.colors[p.slot] = -1 }
+  return AVATAR_OK
+}
+
+# every required slot worn: the slot's start part, else the first free part that fits the body
+function avt_fill(avatar_st: mut AvatarState, r: AvatarRow) -> void {
+  for s in 0 .. AVS_COUNT {
+    if not AvatarSlots[s].required or r.parts[s] >= 0 { continue }
+    let st = AvatarSlots[s].start
+    if st >= 0 and st < AVP_COUNT and AvatarParts[st].slot == s and avt_wear(avatar_st, r, st) == AVATAR_OK { continue }
+    for p in 0 .. AVP_COUNT {
+      let pr = AvatarParts[p]
+      if pr.slot == s and pr.price == 0 and pr.level == 0 and avt_fits(pr.bodies, r.body) {
+        avt_wear(avatar_st, r, p)
+        break
+      }
+    }
+  }
+}
+
+# what one parent contributes to a morph; a parent that names none of it is the morph's start
+function avt_parent_value(h: int, m: int, fallback: int) -> int {
+  if h < 0 or h >= AVH_COUNT { return fallback }
+  let ms = AvatarHeritage[h].morphs
+  let vs = AvatarHeritage[h].values
+  if ms == null or vs == null { return fallback }
+  for i in 0 .. len(ms) {
+    if ms[i] == m and i < len(vs) { return vs[i] }
+  }
+  return fallback
+}
+
+# what heritage gives a morph: the two parents blended by the mix
+function avt_base(r: AvatarRow, m: int) -> int {
+  let s = AvatarMorphs[m].start
+  if r.mother < 0 and r.father < 0 { return s }
+  let a = avt_parent_value(r.mother, m, s)
+  let b = avt_parent_value(r.father, m, s)
+  return a + (b - a) * r.mix / 1000
+}
+
+# the value a morph has: heritage plus the player's delta, held to the row's range
+function avt_morph_value(r: AvatarRow, m: int) -> int {
+  let mo = AvatarMorphs[m]
+  return avt_clamp(avt_base(r, m) + r.morphs[m], mo.lo, mo.hi)
+}

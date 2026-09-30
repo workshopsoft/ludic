@@ -1,0 +1,188 @@
+# defs.ludic - the tables a game fills. Every row carries a stable `id` (never reused, never changed):
+# the wire and the save name things by it, so a registry may be reordered or grow without breaking a
+# stored avatar. The other rows are the game's look, in data.
+
+# a base rig: the model every part is skinned to, and the nodes others attach to
+export property AvatarBody {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  @Asset("gltf") model: string = ""
+  @Node(model) root: string = ""
+  @Node(model) head: string = ""
+}
+
+@AppendOnly @ByKey
+export open registry AvatarBodies of AvatarBody as AVB
+
+# a named morph: a blend shape (`kind` blend_shape, `target` its name) or a bone scaled or moved
+# (`target` the bone, `axis` 0 x / 1 y / 2 z). Values are whole permille, -1000..1000: `lo`..`hi` are
+# what a player may reach, `start` the value with no heritage. A bone kind moves `scale` permille of the
+# rig's unit at a full value
+export property AvatarMorph {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  @OneOf("face", "body") group: string = "face"
+  @OneOf("blend_shape", "bone_scale", "bone_offset") kind: string = "blend_shape"
+  target: string = ""
+  @Range(0, 2) axis: int = 0
+  @Range(-1000, 1000) lo: int = -1000
+  @Range(-1000, 1000) hi: int = 1000
+  @Range(-1000, 1000) start: int = 0
+  @Range(0, 1000) scale: int = 1000
+  @Ref(AvatarBodies) bodies: []int = null
+}
+
+@AppendOnly @ByKey
+export open registry AvatarMorphs of AvatarMorph as AVM
+
+# a parent preset: the morph values a parent contributes. An avatar picks two and a mix (0 all the
+# first, 1000 all the second); `morphs` and `values` run side by side
+export property AvatarParent {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  @Ref(AvatarBodies) body: int = -1
+  @Ref(AvatarMorphs) morphs: []int = null
+  values: []int = null
+  @Asset("png") portrait: string = ""
+}
+
+@AppendOnly @ByKey
+export open registry AvatarHeritage of AvatarParent as AVH
+
+# a palette of colours a slot (or one part) offers
+export property AvatarPalette {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  @Color colors: []int = null
+}
+
+@AppendOnly @ByKey
+export open registry AvatarPalettes of AvatarPalette as AVC
+
+# a place on the body something is worn (hair, hats, shoes...). `layer` orders slots in the stack
+# (lowest first, so a jacket draws over an undershirt); `required` slots are never left empty; `start`
+# the part a new avatar wears there (-1 none); `palette` the colours it offers
+export property AvatarSlot {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  @Range(0, 1000) layer: int = 0
+  required: bool = false
+  @Ref(AvatarParts) start: int = -1
+  @Ref(AvatarPalettes) palette: int = -1
+}
+
+@AppendOnly @ByKey
+export open registry AvatarSlots of AvatarSlot as AVS
+
+# something worn. `bodies` lists the rigs it fits (empty: all). `layer` is added to its slot's.
+# `hides` are slots that are not drawn while it is worn (they stay chosen); `conflicts` are parts it
+# cannot be worn with. `level`, `flag` and `price` are the unlock rule: the world's level and flag must
+# allow it, and a part with a price must also have been bought or granted
+export property AvatarPart {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  @Ref(AvatarSlots) slot: int = 0
+  @Asset("gltf") mesh: string = ""
+  @Node(mesh) node: string = ""
+  @Material(mesh) tint: string = ""
+  @Ref(AvatarBodies) bodies: []int = null
+  @Range(-1000, 1000) layer: int = 0
+  @Ref(AvatarSlots) hides: []int = null
+  @Ref(AvatarParts) conflicts: []int = null
+  @Ref(AvatarPalettes) palette: int = -1
+  @Range(0, 1000) level: int = 0
+  @Range(0, 100000000) price: int = 0
+  flag: string = ""
+}
+
+@AppendOnly @ByKey
+export open registry AvatarParts of AvatarPart as AVP
+
+# a slot-level rule: while something is worn in `slot` (only `part` when it is not -1), the `other` slot
+# is hidden (`hides`) or cannot be worn (`conflicts`: the later choice wins, the earlier comes off)
+export property AvatarRule {
+  key: string = ""
+  @OneOf("hides", "conflicts") kind: string = "hides"
+  @Ref(AvatarSlots) slot: int = 0
+  @Ref(AvatarParts) part: int = -1
+  @Ref(AvatarSlots) other: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry AvatarRules of AvatarRule as AVR
+
+# where a decal can go on the body: `node` is what the renderer projects onto, `max` how many fit
+export property AvatarZone {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  node: string = ""
+  @Range(1, 64) max: int = 4
+}
+
+@AppendOnly @ByKey
+export open registry AvatarZones of AvatarZone as AVZ
+
+# a decal (a tattoo, a scar, a paint): its texture and where it goes by default, in permille of the
+# zone (u, v its middle, size its width, rot degrees). Unlock as a part's
+export property AvatarDecal {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  @Ref(AvatarZones) zone: int = 0
+  @Asset("png") texture: string = ""
+  @Range(0, 1000) u: int = 500
+  @Range(0, 1000) v: int = 500
+  @Range(1, 1000) size: int = 300
+  @Range(-180, 180) rot: int = 0
+  @Ref(AvatarBodies) bodies: []int = null
+  @Range(0, 1000) level: int = 0
+  @Range(0, 100000000) price: int = 0
+  flag: string = ""
+}
+
+@AppendOnly @ByKey
+export open registry AvatarDecals of AvatarDecal as AVD
+
+# a premade outfit: parts and, beside them, the colour each wears (-1 the slot's first). Worn whole by
+# `avatar_apply_outfit`; its unlock rule covers every part in it
+export property AvatarOutfit {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  @Ref(AvatarParts) parts: []int = null
+  colors: []int = null
+  @Ref(AvatarBodies) bodies: []int = null
+  @Range(0, 1000) level: int = 0
+  @Range(0, 100000000) price: int = 0
+  flag: string = ""
+}
+
+@AppendOnly @ByKey
+export open registry AvatarOutfits of AvatarOutfit as AVO
+
+# a body animation the avatar plays: a clip keyed in a model (from Blender, Mixamo or any DCC), played
+# through the animation graph. The package never moves a bone itself: a pose, an idle or an emote is
+# always a clip named here, never procedural. `kind` says what it is for (the creator's idle stand, an
+# emote the player triggers, a held pose); `bodies` lists the rigs whose skeleton it is keyed for
+export property AvatarPose {
+  key: string = ""
+  @Range(1, 1000000) id: int = 0
+  @Text name: string = ""
+  @OneOf("idle", "emote", "pose") kind: string = "emote"
+  @Asset("gltf") model: string = ""
+  @Clip(model) clip: string = ""
+  loop: bool = false
+  @Ref(AvatarBodies) bodies: []int = null
+  @Range(0, 1000) level: int = 0
+  flag: string = ""
+}
+
+@AppendOnly @ByKey
+export open registry AvatarPoses of AvatarPose as AVA

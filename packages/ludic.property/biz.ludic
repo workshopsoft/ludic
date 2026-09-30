@@ -1,0 +1,84 @@
+# biz.ludic - the business loop's verbs: buy supplies, sell the stock, collect the passive income; and what
+# the loop's state is. The timers and the phase are the tick's and the machine's
+
+# buy `batches` of supplies (each the loop's `supply_batch`), as many as fit under `supply_max`, paid through
+# the purse. Returns the supplies that came, -1 when refused
+export function realty_buy_supply(realty_st: mut RealtyState, who: int, map: string, key: string, batches: int) -> int {
+  if not rlt_authority(realty_st, who, map, key) { return -1 }
+  let h = rlt_owned(realty_st, who, map, key)
+  if h == null { return -1 }
+  let l = rlt_loop(h)
+  if l < 0 {
+    rlt_no(realty_st, who, map, key, REALTY_NO_BUSINESS)
+    return -1
+  }
+  let loop = BusinessLoops[l]
+  let n = Math.min(batches * loop.supply_batch, loop.supply_max - h.supply)
+  if n <= 0 {
+    rlt_no(realty_st, who, map, key, REALTY_FULL)
+    return -1
+  }
+  if not RealtyPurse.spend(who, n * loop.supply_price) {
+    rlt_no(realty_st, who, map, key, REALTY_BROKE)
+    return -1
+  }
+  h.supply += n
+  let f = rlt_fact(realty_st, REALTY_SUPPLIED, who, who, map, key)
+  f.amount = n
+  return n
+}
+
+# start a sale run of everything in stock: it takes the loop's `sell_secs`, then the money is paid to the owner.
+# The action is reduced at the end of the phase
+export function realty_sell_stock(realty_st: mut RealtyState, who: int, map: string, key: string) -> bool {
+  if not rlt_authority(realty_st, who, map, key) { return false }
+  let h = rlt_owned(realty_st, who, map, key)
+  if h == null { return false }
+  if rlt_loop(h) < 0 { return rlt_no(realty_st, who, map, key, REALTY_NO_BUSINESS) }
+  if h.stock <= 0 or h.phase == BizPhase.Selling { return rlt_no(realty_st, who, map, key, REALTY_NOTHING) }
+  dispatch HoldingSell { holding: rlt_handle(realty_st, map, key) }
+  return true
+}
+
+# take the passive income that has built up
+export function realty_collect(realty_st: mut RealtyState, who: int, map: string, key: string) -> int {
+  if not rlt_authority(realty_st, who, map, key) { return -1 }
+  let h = rlt_owned(realty_st, who, map, key)
+  if h == null { return -1 }
+  if h.income <= 0 {
+    rlt_no(realty_st, who, map, key, REALTY_NOTHING)
+    return -1
+  }
+  let n = h.income
+  h.income = 0
+  RealtyPurse.earn(who, n)
+  let f = rlt_fact(realty_st, REALTY_INCOME, who, who, map, key)
+  f.amount = n
+  return n
+}
+
+export function realty_income_waiting(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return h.income
+}
+export function realty_supply(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return h.supply
+}
+export function realty_stock(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return h.stock
+}
+export function realty_biz_phase(realty_st: RealtyState, map: string, key: string) -> BizPhase {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return BizPhase.Idle }
+  return h.phase
+}
+export function realty_sell_left(realty_st: RealtyState, map: string, key: string) -> float {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0.0 }
+  return h.sell_left
+}

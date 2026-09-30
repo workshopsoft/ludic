@@ -1,0 +1,63 @@
+# machine.ludic - a business as a machine. A holding is Idle, Producing (supplies become stock a unit at a
+# time, on a timer the tick runs), Full (stock at its most) or Selling (a sale run on its own timer). The rows of
+# steps.lres say how it moves; `on` is an action (HoldingSell) or "" for what the tick senses. Only a transition
+# writes `phase`
+
+export property HoldingStep {
+  from: BizPhase = BizPhase.Idle
+  to: BizPhase = BizPhase.Idle
+  on: string = ""
+  guard: fn(Row<Holding>, RealtyState) -> bool = null
+  enter: fn(Row<Holding>, RealtyState) -> void = null
+}
+
+@Machine(Holding.phase)
+export registry HoldingSteps of HoldingStep as HLS from "steps.lres"
+
+function rlt_unit_need(h: Holding) -> int {
+  let l = rlt_loop(h)
+  if l < 0 { return 1 }
+  return BusinessLoops[l].supply_per_unit
+}
+
+# guards
+function rlt_g_can_make(r: Row<Holding>, realty_st: RealtyState) -> bool {
+  let l = rlt_loop(r.rec)
+  if l < 0 or r.rec.owner == 0 { return false }
+  return r.rec.supply >= BusinessLoops[l].supply_per_unit and r.rec.stock < BusinessLoops[l].stock_max
+}
+function rlt_g_starved(r: Row<Holding>, realty_st: RealtyState) -> bool {
+  let l = rlt_loop(r.rec)
+  if l < 0 { return true }
+  return r.rec.supply < BusinessLoops[l].supply_per_unit and r.rec.stock < BusinessLoops[l].stock_max
+}
+function rlt_g_full(r: Row<Holding>, realty_st: RealtyState) -> bool {
+  let l = rlt_loop(r.rec)
+  if l < 0 { return false }
+  return r.rec.stock >= BusinessLoops[l].stock_max
+}
+function rlt_g_has_stock(r: Row<Holding>, realty_st: RealtyState) -> bool { return r.rec.stock > 0 and r.rec.owner != 0 }
+function rlt_g_sold(r: Row<Holding>, realty_st: RealtyState) -> bool { return r.rec.sell_left <= 0.0 }
+
+# enters
+function rlt_e_full(r: mut Row<Holding>, realty_st: RealtyState) -> void {
+  rlt_say_holding(realty_st, REALTY_STOCK_FULL, r.rec, r.rec.stock)
+}
+function rlt_e_starved(r: mut Row<Holding>, realty_st: RealtyState) -> void {
+  rlt_say_holding(realty_st, REALTY_STARVED, r.rec, r.rec.supply)
+}
+function rlt_e_sell(r: mut Row<Holding>, realty_st: RealtyState) -> void {
+  r.rec.sell_units = r.rec.stock
+  r.rec.stock = 0
+  r.rec.progress = 0.0
+  r.rec.sell_left = BusinessLoops[rlt_loop(r.rec)].sell_secs
+  rlt_say_holding(realty_st, REALTY_SELL_STARTED, r.rec, r.rec.sell_units)
+}
+function rlt_e_paid(r: mut Row<Holding>, realty_st: RealtyState) -> void {
+  let l = BusinessLoops[rlt_loop(r.rec)]
+  let money = r.rec.sell_units * l.unit_value * rlt_income_pct(r.rec) / 100
+  RealtyPurse.earn(r.rec.owner, money)
+  rlt_say_holding(realty_st, REALTY_SOLD_STOCK, r.rec, money)
+  r.rec.sell_units = 0
+  r.rec.sell_left = 0.0
+}

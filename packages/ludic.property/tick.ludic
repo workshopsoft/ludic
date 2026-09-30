@@ -1,0 +1,78 @@
+# tick.ludic - the clock of the world (game hours from the ticks), then what time does to each holding: passive
+# income building up, a business's upkeep, the rent a game day at a time, production, a sale run's timer, and the
+# machine that decides the phases. Only where the world is owned; a replica is told by the host
+
+function rlt_evict(realty_st: mut RealtyState, h: Holding) -> void {
+  let f = rlt_fact(realty_st, REALTY_EVICTED, h.owner, h.owner, h.map, h.key)
+  f.amount = rlt_items_total(h) + len(h.vehicles)
+  rlt_eject_holding(realty_st, h.map, h.key)
+  rlt_drop(realty_st, h.map, h.key)
+}
+
+function rlt_row_time(realty_st: mut RealtyState, h: Holding, dt: float, hours: float) -> bool {
+  let k = PropertyKinds[h.kind]
+  if k.income_day > 0 {
+    h.income_acc += float(k.income_day) * hours / 24.0 * float(rlt_income_pct(h)) / 100.0
+    let whole = int(Math.floor(h.income_acc))
+    if whole > 0 {
+      h.income += whole
+      h.income_acc -= float(whole)
+    }
+  }
+  let l = rlt_loop(h)
+  if l >= 0 and BusinessLoops[l].upkeep_day > 0 {
+    h.upkeep_left -= hours
+    while h.upkeep_left <= 0.0 {
+      h.upkeep_left += 24.0
+      let paid = RealtyPurse.spend(h.owner, BusinessLoops[l].upkeep_day)
+      let f = rlt_fact(realty_st, REALTY_UPKEEP, h.owner, h.owner, h.map, h.key)
+      f.amount = BusinessLoops[l].upkeep_day
+      if paid { f.index = 1 }
+    }
+  }
+  if h.rented {
+    h.rent_left -= hours
+    while h.rent_left <= 0.0 {
+      h.rent_left += 24.0
+      if RealtyPurse.spend(h.owner, h.rent) {
+        h.overdue = 0
+        let f = rlt_fact(realty_st, REALTY_RENT_PAID, h.owner, h.owner, h.map, h.key)
+        f.amount = h.rent
+      } else {
+        h.overdue += 1
+        let f = rlt_fact(realty_st, REALTY_RENT_DUE, h.owner, h.owner, h.map, h.key)
+        f.amount = h.overdue
+        if h.overdue > k.grace_days { return true }
+      }
+    }
+  }
+  if l >= 0 and h.phase == BizPhase.Producing {
+    let loop = BusinessLoops[l]
+    h.progress += dt * float(rlt_produce_pct(h)) / 100.0
+    while h.progress >= loop.make_secs and h.supply >= loop.supply_per_unit and h.stock < loop.stock_max {
+      h.progress -= loop.make_secs
+      h.supply -= loop.supply_per_unit
+      h.stock += 1
+      let f = rlt_fact(realty_st, REALTY_PRODUCED, h.owner, h.owner, h.map, h.key)
+      f.amount = h.stock
+    }
+  }
+  if h.phase == BizPhase.Selling and h.sell_left > 0.0 { h.sell_left = Math.max(h.sell_left - dt, 0.0) }
+  return false
+}
+
+export function realty_tick(realty_st: mut RealtyState, m: mut HoldingStepsMachine, t: Tick) -> void {
+  if not RealtyWorld.authority() { return }
+  realty_st.rl_hours += t.hours
+  let evict = new []int
+  for i in 0 .. tb_len(realty_st.rl_tab) {
+    let h = tb_rec(realty_st.rl_tab, i)
+    if h.owner == 0 { continue }
+    if rlt_row_time(realty_st, h, t.dt, t.hours) { push(evict, tb_handle(realty_st.rl_tab, i)) }
+  }
+  for i in 0 .. len(evict) {
+    let r = tb_row(realty_st.rl_tab, evict[i])
+    if r >= 0 { rlt_evict(realty_st, tb_rec(realty_st.rl_tab, r)) }
+  }
+  holding_steps_tick(m, realty_st)
+}

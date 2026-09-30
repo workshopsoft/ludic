@@ -1,0 +1,242 @@
+# rows.ludic - crews, members and pairs found; the settings and relation rows (or their defaults); ranks; and
+# the shapes of territories
+
+function crw_cfg(crew_st: CrewState) -> CrewSetting {
+  if CRG_COUNT > 0 { return CrewSettings[0] }
+  return crew_st.cr_cfg0
+}
+
+# the relation row of a CrewRelations index, or the defaults when there is no table
+function crw_rel(crew_st: CrewState, rel: int) -> CrewRelation {
+  if rel < 0 or rel >= CRL_COUNT { return crew_st.cr_rel0 }
+  return CrewRelations[rel]
+}
+
+function crw_start_rel() -> int {
+  for i in 0 .. CRL_COUNT { if CrewRelations[i].start { return i } }
+  if CRL_COUNT > 0 { return 0 }
+  return -1
+}
+
+function crw_has(xs: []int, v: int) -> bool {
+  if xs == null { return false }
+  for i in 0 .. len(xs) { if xs[i] == v { return true } }
+  return false
+}
+
+function crw_crew(crew_st: CrewState, id: int) -> Crew {
+  for i in 0 .. len(crew_st.cr_crews) { if crew_st.cr_crews[i].id == id { return crew_st.cr_crews[i] } }
+  return null
+}
+
+function crw_member(crew_st: CrewState, who: int) -> CrewMember {
+  for i in 0 .. len(crew_st.cr_members) { if crew_st.cr_members[i].who == who { return crew_st.cr_members[i] } }
+  return null
+}
+
+# the crew id a player is in, 0 for none
+function crw_crew_of(crew_st: CrewState, who: int) -> int {
+  let m = crw_member(crew_st, who)
+  if m == null { return 0 }
+  return m.crew
+}
+
+function crw_members_of(crew_st: CrewState, crew: int) -> int {
+  var n = 0
+  for i in 0 .. len(crew_st.cr_members) { if crew_st.cr_members[i].crew == crew { n += 1 } }
+  return n
+}
+
+function crw_rank_power(rank: int) -> int {
+  if rank < 0 or rank >= CRR_COUNT { return 0 }
+  return CrewRanks[rank].power
+}
+
+function crw_leader_rank() -> int {
+  for i in 0 .. CRR_COUNT { if CrewRanks[i].leader { return i } }
+  return CRR_COUNT - 1
+}
+function crw_start_rank() -> int {
+  for i in 0 .. CRR_COUNT { if CrewRanks[i].start { return i } }
+  return 0
+}
+# the highest rank that is not the leader's: what a leader steps down to
+function crw_second_rank() -> int {
+  var best = -1
+  for i in 0 .. CRR_COUNT {
+    if CrewRanks[i].leader { continue }
+    if best < 0 or CrewRanks[i].power > CrewRanks[best].power { best = i }
+  }
+  if best < 0 { return crw_leader_rank() }
+  return best
+}
+
+function crw_perm_of(rank: int, perm: int) -> bool {
+  if rank < 0 or rank >= CRR_COUNT { return false }
+  let r = CrewRanks[rank]
+  if perm == CREW_PERM_INVITE { return r.invite }
+  if perm == CREW_PERM_KICK { return r.kick }
+  if perm == CREW_PERM_PROMOTE { return r.promote }
+  if perm == CREW_PERM_WITHDRAW { return r.withdraw }
+  if perm == CREW_PERM_DECLARE { return r.declare }
+  if perm == CREW_PERM_EDIT { return r.edit }
+  if perm == CREW_PERM_DISBAND { return r.disband }
+  if perm == CREW_PERM_WAR { return r.war }
+  return false
+}
+
+# does the player's rank have this permission; the leader always may
+function crw_can(crew_st: CrewState, who: int, perm: int) -> bool {
+  let m = crw_member(crew_st, who)
+  if m == null { return false }
+  if CRR_COUNT > 0 and CrewRanks[m.rank].leader { return true }
+  return crw_perm_of(m.rank, perm)
+}
+
+# -- pairs
+
+function crw_pair(crew_st: CrewState, x: int, y: int) -> CrewPair {
+  var a = x
+  var b = y
+  if a > b {
+    a = y
+    b = x
+  }
+  for i in 0 .. len(crew_st.cr_pairs) {
+    if crew_st.cr_pairs[i].a == a and crew_st.cr_pairs[i].b == b { return crew_st.cr_pairs[i] }
+  }
+  return null
+}
+
+@alloc_ok("a pair of crews' first dealing, made once and kept")
+function crw_pair_of(crew_st: mut CrewState, x: int, y: int) -> CrewPair {
+  let p = crw_pair(crew_st, x, y)
+  if p != null { return p }
+  let n = new CrewPair
+  n.a = Math.min(x, y)
+  n.b = Math.max(x, y)
+  n.rel = crw_start_rel()
+  push(crew_st.cr_pairs, n)
+  return n
+}
+
+# the relation index between two crews (the start one when they have never dealt), -1 without a table
+function crw_rel_index(crew_st: CrewState, x: int, y: int) -> int {
+  if x == 0 or y == 0 or x == y { return crw_start_rel() }
+  let p = crw_pair(crew_st, x, y)
+  if p == null { return crw_start_rel() }
+  return p.rel
+}
+
+function crw_rel_between(crew_st: CrewState, x: int, y: int) -> CrewRelation {
+  return crw_rel(crew_st, crw_rel_index(crew_st, x, y))
+}
+
+# -- territories
+
+# does the point lie in it
+function crw_in(t: Territory, x: float, z: float) -> bool {
+  if t.shape == "polygon" {
+    if t.poly == null or len(t.poly) < 6 { return false }
+    var inside = false
+    let n = len(t.poly) / 2
+    var j = n - 1
+    for i in 0 .. n {
+      let xi = t.poly[i * 2]
+      let zi = t.poly[i * 2 + 1]
+      let xj = t.poly[j * 2]
+      let zj = t.poly[j * 2 + 1]
+      if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi { inside = not inside }
+      j = i
+    }
+    return inside
+  }
+  if t.shape == "cells" {
+    if t.cells == null or t.cell <= 0.0 { return false }
+    let cx = int(Math.floor(x / t.cell))
+    let cz = int(Math.floor(z / t.cell))
+    var i = 0
+    while i + 1 < len(t.cells) {
+      if t.cells[i] == cx and t.cells[i + 1] == cz { return true }
+      i += 2
+    }
+    return false
+  }
+  let dx = x - t.x
+  let dz = z - t.z
+  return dx * dx + dz * dz <= t.radius * t.radius
+}
+
+function crw_turf_row(crew_st: CrewState, map: string, key: string) -> int {
+  for i in 0 .. tb_len(crew_st.cr_turfs) {
+    let t = tb_rec(crew_st.cr_turfs, i)
+    if t.key == key and t.map == map { return i }
+  }
+  return -1
+}
+
+function crw_turf_at_row(crew_st: CrewState, terr: Territories, x: float, z: float) -> int {
+  for i in 0 .. len(terr.rows) {
+    if crw_in(terr.rows[i], x, z) { return crw_turf_row(crew_st, terr.map, terr.rows[i].key) }
+  }
+  return -1
+}
+
+# -- influence
+
+function crw_inf(t: Turf, crew: int) -> float {
+  for i in 0 .. len(t.inf_crew) { if t.inf_crew[i] == crew { return t.inf_val[i] } }
+  return 0.0
+}
+
+function crw_inf_set(t: Turf, crew: int, v: float) -> void {
+  for i in 0 .. len(t.inf_crew) {
+    if t.inf_crew[i] == crew {
+      if v <= 0.0 {
+        List.remove_at(t.inf_crew, i)
+        List.remove_at(t.inf_val, i)
+      } else {
+        t.inf_val[i] = v
+      }
+      return
+    }
+  }
+  if v > 0.0 {
+    push(t.inf_crew, crew)
+    push(t.inf_val, v)
+  }
+}
+
+# the crew with the most influence here other than `except` and those who may not contest the owner; 0 none
+function crw_top(crew_st: CrewState, t: Turf) -> int {
+  var best = 0
+  var bv = 0.0
+  for i in 0 .. len(t.inf_crew) {
+    let c = t.inf_crew[i]
+    if c == t.owner { continue }
+    if t.owner != 0 and not crw_rel_between(crew_st, t.owner, c).contest { continue }
+    if t.inf_val[i] > bv {
+      best = c
+      bv = t.inf_val[i]
+    }
+  }
+  return best
+}
+
+# the crew leading the influence here, owner or not
+function crw_lead(t: Turf) -> int {
+  var best = 0
+  var bv = 0.0
+  for i in 0 .. len(t.inf_crew) {
+    if t.inf_val[i] > bv {
+      best = t.inf_crew[i]
+      bv = t.inf_val[i]
+    }
+  }
+  return best
+}
+
+function crw_capture_at(crew_st: CrewState, t: Turf) -> float {
+  if t.capture_at > 0.0 { return t.capture_at }
+  return crw_cfg(crew_st).capture_at
+}

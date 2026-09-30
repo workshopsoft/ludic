@@ -1,0 +1,14 @@
+# ludic.crews - who is in which crew and what rank they hold, what the crew has, how crews stand to one another,
+# and who holds which piece of the map: influence earned from what players do, and the turf war as a machine
+module ludic_crews uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "state.ludic"
+import "rows.ludic"
+import "machine.ludic"
+import "crews.ludic"
+import "relations.ludic"
+import "influence.ludic"
+import "tick.ludic"
+import "save.ludic"

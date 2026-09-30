@@ -1,0 +1,7 @@
+# ludic.avatar - character customisation as data: bodies, named morphs with ranges, heritage presets,
+# parts by slot (layered, hiding and conflicting by rule), palettes, decals, outfits, unlock rules, a
+# per-player avatar state with validation, randomize and a compact id-based wire encoding, and one port
+# the renderer and animation layer bind to apply it. Uses ludic.base and nothing else.
+package "ludic.avatar"
+version "0.1.0"
+kind source

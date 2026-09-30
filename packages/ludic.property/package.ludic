@@ -1,0 +1,10 @@
+# ludic.property - housing and businesses as data: kinds of property (interior map, garage, storage and
+# upgrade slots), the sites a map holds (@PerMap entrances), upgrades, ownership per player (buy, sell,
+# rent, trade through a purse port), access lists, instanced interiors through a load port, storage of
+# items and vehicles through ports, and passive income and business loops (supply, produce, sell) as a
+# @Machine with timers. Host-authoritative. Uses ludic.base and nothing else.
+package "ludic.property"
+version "0.1.0"
+kind source
+# the maps the tests read; a game's own package.ludic names its maps
+maps "tests/maps"

@@ -1,0 +1,75 @@
+# random.ludic - a random avatar from the package's own dice (`AvatarWorld.seed`), so nobody else's rolls move
+
+function avt_flag(what: int, bit: int) -> bool { return (what / bit) % 2 == 1 }
+
+function avt_dice(avatar_st: mut AvatarState) -> Rng {
+  if avatar_st.av_dice == null { avatar_st.av_dice = rng_new(AvatarWorld.seed()) }
+  return avatar_st.av_dice
+}
+
+# a part for `slot` the player may wear on this body: -1 when none, else the `pick`-th of them
+function avt_candidates(r: AvatarRow, slot: int, pick: int) -> int {
+  var n = 0
+  for p in 0 .. AVP_COUNT {
+    if AvatarParts[p].slot != slot or not avt_fits(AvatarParts[p].bodies, r.body) { continue }
+    if avt_open(r, AVK_PART, p, true) != AVATAR_OK { continue }
+    if pick >= 0 and n == pick { return p }
+    n += 1
+  }
+  if pick < 0 { return n }
+  return -1
+}
+
+# randomize what `what` names (AVATAR_RAND_*): the face and body morphs within their ranges (two draws
+# averaged, so most faces are ordinary), heritage and its mix, a part per slot among those the player may
+# wear (or none, where a slot may be empty), a colour per worn part. The body, decals and what is owned are
+# left alone. False with no avatar
+export function avatar_randomize(avatar_st: mut AvatarState, who: int, what: int) -> bool {
+  let r = avt_find(avatar_st, who)
+  if r == null { return avt_no(avatar_st, who, AVK_ALL, -1, AVATAR_NO_AVATAR) }
+  let d = avt_dice(avatar_st)
+  if avt_flag(what, AVATAR_RAND_HERITAGE) and AVH_COUNT > 0 {
+    var picks = new []int
+    for h in 0 .. AVH_COUNT {
+      if AvatarHeritage[h].body < 0 or AvatarHeritage[h].body == r.body { push(picks, h) }
+    }
+    if len(picks) > 0 {
+      r.mother = picks[rng_between(d, 0, len(picks) - 1)]
+      r.father = picks[rng_between(d, 0, len(picks) - 1)]
+      r.mix = rng_between(d, 0, 1000)
+    }
+  }
+  for m in 0 .. AVM_COUNT {
+    let mo = AvatarMorphs[m]
+    if not avt_fits(mo.bodies, r.body) { continue }
+    var on = avt_flag(what, AVATAR_RAND_FACE)
+    if mo.group == "body" { on = avt_flag(what, AVATAR_RAND_BODY) }
+    if not on { continue }
+    let v = (rng_between(d, mo.lo, mo.hi) + rng_between(d, mo.lo, mo.hi)) / 2
+    r.morphs[m] = v - avt_base(r, m)
+  }
+  if avt_flag(what, AVATAR_RAND_PARTS) {
+    for s in 0 .. AVS_COUNT {
+      r.parts[s] = -1
+      r.colors[s] = -1
+    }
+    for s in 0 .. AVS_COUNT {
+      let n = avt_candidates(r, s, -1)
+      if n == 0 { continue }
+      var top = n
+      if AvatarSlots[s].required { top = n - 1 }
+      let k = rng_between(d, 0, top)
+      if k >= n { continue }
+      avt_wear(avatar_st, r, avt_candidates(r, s, k))
+    }
+    avt_fill(avatar_st, r)
+  }
+  if avt_flag(what, AVATAR_RAND_COLORS) {
+    for s in 0 .. AVS_COUNT {
+      let n = avt_palette_len(avt_palette_of(s, r.parts[s]))
+      if r.parts[s] >= 0 and n > 0 { r.colors[s] = rng_between(d, 0, n - 1) }
+    }
+  }
+  avt_changed(avatar_st, r, AVK_ALL, -1, what)
+  return true
+}

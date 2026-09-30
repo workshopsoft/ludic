@@ -1,0 +1,131 @@
+# save.ludic - the holdings as a save section (`realty`, version 1), the same text for a snapshot the host sends
+# a guest, and the system. By key, not by index: a kind, an upgrade or a site moved in its registry is found again.
+# Instances are not saved (nobody is inside after a load); a sale run in flight is stock again and starts over
+#
+# a holding: map, key, kind, owner, rented, paid, upgrades_paid, rent, rent_left (milli), overdue, access, guests,
+# upgrades (keys joined by ","), items, vehicles, income, raided_until (milli), supply, stock (with a run's units),
+# progress (milli), sell_units
+
+function rlt_milli(v: float) -> int { return int(Math.round(v * 1000.0)) }
+
+function rlt_upgrade_keys(h: Holding) -> string {
+  let ks = new []string
+  for i in 0 .. len(h.upgrades) { push(ks, PropertyUpgrades[h.upgrades[i]].key) }
+  return Text.join(ks, ",")
+}
+
+@alloc_ok("on a save: the rows written out")
+export function realty_save(realty_st: RealtyState) -> Val {
+  let v = Value.object()
+  sv_put_float(v, "hours", realty_st.rl_hours)
+  sv_put_int(v, "next", realty_st.rl_next_inst)
+  let rows = Value.list()
+  for i in 0 .. tb_len(realty_st.rl_tab) {
+    let h = tb_rec(realty_st.rl_tab, i)
+    let o = Value.object()
+    sv_put_str(o, "map", h.map)
+    sv_put_str(o, "key", h.key)
+    sv_put_str(o, "kind", PropertyKinds[h.kind].key)
+    sv_put_int(o, "owner", h.owner)
+    sv_put_bool(o, "rented", h.rented)
+    sv_put_int(o, "paid", h.paid)
+    sv_put_int(o, "upg_paid", h.upgrades_paid)
+    sv_put_int(o, "rent", h.rent)
+    sv_put_float(o, "rent_left", h.rent_left)
+    sv_put_int(o, "overdue", h.overdue)
+    sv_put_int(o, "access", h.access)
+    sv_put_ints(o, "guests", h.guests)
+    sv_put_str(o, "upgrades", rlt_upgrade_keys(h))
+    sv_put_ints(o, "items", h.items)
+    sv_put_ints(o, "vehicles", h.vehicles)
+    sv_put_int(o, "income", h.income)
+    sv_put_float(o, "income_acc", h.income_acc)
+    sv_put_float(o, "upkeep_left", h.upkeep_left)
+    sv_put_float(o, "raided_until", h.raided_until)
+    sv_put_int(o, "supply", h.supply)
+    sv_put_int(o, "stock", h.stock + h.sell_units)
+    sv_put_float(o, "progress", h.progress)
+    Value.add(rows, o)
+  }
+  Value.put(v, "rows", rows)
+  return v
+}
+
+export function realty_reset(realty_st: mut RealtyState) -> void {
+  realty_st.rl_tab = rl_tab__new()
+  realty_st.rl_inst = new []RealtyInstance
+  realty_st.rl_next_inst = 1
+  realty_st.rl_hours = 0.0
+  realty_st.rl_why = 0
+  q_clear(realty_st.rl_facts)
+}
+
+@alloc_ok("on load: the holdings read back")
+export function realty_load(realty_st: mut RealtyState, v: Val, version: int) -> void {
+  realty_reset(realty_st)
+  realty_st.rl_hours = sv_float(v, "hours", 0.0)
+  realty_st.rl_next_inst = sv_int(v, "next", 1)
+  if Value.has(v, "rows") == 0 { return }
+  let rows = Value.get(v, "rows")
+  for i in 0 .. Value.count(rows) {
+    let o = Value.at(rows, i)
+    let kind = propertykinds_find(sv_str(o, "kind", ""))
+    if kind < 0 { continue }
+    let h = rlt_make(realty_st, sv_str(o, "map", ""), sv_str(o, "key", ""), kind, sv_int(o, "owner", 0))
+    h.rented = sv_bool(o, "rented", false)
+    h.paid = sv_int(o, "paid", 0)
+    h.upgrades_paid = sv_int(o, "upg_paid", 0)
+    h.rent = sv_int(o, "rent", 0)
+    h.rent_left = sv_float(o, "rent_left", 24.0)
+    h.overdue = sv_int(o, "overdue", 0)
+    h.access = sv_int(o, "access", 0)
+    h.guests = sv_ints(o, "guests")
+    let ks = sv_str(o, "upgrades", "")
+    if ks != "" {
+      let names = Text.split(ks, ",")
+      for n in 0 .. len(names) {
+        let u = propertyupgrades_find(names[n])
+        if u >= 0 { push(h.upgrades, u) }
+      }
+    }
+    h.items = sv_ints(o, "items")
+    h.vehicles = sv_ints(o, "vehicles")
+    h.income = sv_int(o, "income", 0)
+    h.income_acc = sv_float(o, "income_acc", 0.0)
+    h.upkeep_left = sv_float(o, "upkeep_left", 24.0)
+    h.raided_until = sv_float(o, "raided_until", 0.0)
+    h.supply = sv_int(o, "supply", 0)
+    h.stock = sv_int(o, "stock", 0)
+    h.progress = sv_float(o, "progress", 0.0)
+  }
+  q_clear(realty_st.rl_facts)
+}
+
+# the holdings as one text for a guest's machine: the host sends it when a player joins and after a change it
+# wants every machine to see (or sends the facts and lets `realty_apply_snapshot` catch up)
+export function realty_snapshot(realty_st: RealtyState) -> string {
+  let root = save_tree()
+  save_section(root, "realty", 1, realty_save(realty_st))
+  return save_encode(root)
+}
+
+# a guest replaces its holdings with the host's; false when the text is not a snapshot. Nobody inside is sent out:
+# the host says so with its own LEFT facts
+export function realty_apply_snapshot(realty_st: mut RealtyState, text: string) -> bool {
+  let n = load_section(save_decode(text), "realty")
+  if not n.found { return false }
+  let inst = realty_st.rl_inst
+  realty_load(realty_st, n.data, n.version)
+  realty_st.rl_inst = inst
+  return true
+}
+
+export function realty_system() -> System {
+  let s = system_new("realty", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn realty_reset
+  s.tick = fn realty_tick
+  s.save = fn realty_save
+  s.load = fn realty_load
+  return s
+}

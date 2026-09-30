@@ -1,0 +1,7 @@
+# the test harbor: two flats, a house with a garage, a shop that runs a business, a hideout, a place not for sale
+flat_1 { name: "Flat one", kind: PRK_FLAT, x: 10.0, y: 0.0, z: 20.0, yaw: 90.0, price: 10000, rent: 100, district: "Old Town" }
+flat_2 { kind: PRK_FLAT, x: 14.0, z: 20.0, price: 12000, rent: 120, district: "Old Town" }
+house_1 { kind: PRK_HOUSE, x: 100.0, z: 50.0, yaw: 180.0, price: 80000, district: "Hills", garage_x: 104.0, garage_z: 52.0, garage_yaw: 45.0 }
+shop_1 { kind: PRK_SHOP, x: -30.0, z: 5.0, price: 50000, district: "Docks" }
+hideout_1 { kind: PRK_HIDEOUT, x: 300.0, z: 300.0, price: 5000, district: "Outskirts" }
+civic_1 { kind: PRK_CIVIC, x: 0.0, z: 0.0, price: 1 }

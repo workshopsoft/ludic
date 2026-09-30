@@ -1,0 +1,93 @@
+# access.ludic - who may come in and who may use what is stored: the owner, those invited by name, and by the
+# mode the owner set - their crew, their friends, or anyone. The authority check lives here too: ownership
+# changes only on the machine that owns the world
+
+# this machine owns the world, or the verb is refused (NOT_HOST) and the game asks the host
+function rlt_authority(realty_st: mut RealtyState, who: int, map: string, key: string) -> bool {
+  if RealtyWorld.authority() { return true }
+  return rlt_no(realty_st, who, map, key, REALTY_NOT_HOST)
+}
+
+function rlt_is_guest(h: Holding, who: int) -> bool { return rlt_has(h.guests, who) }
+
+# the owner, an invited guest, or - by the mode - crew or friends: may use what is stored and parked
+function rlt_can_use(h: Holding, who: int) -> bool {
+  if h.owner == 0 { return false }
+  if who == h.owner or rlt_is_guest(h, who) { return true }
+  if h.access == REALTY_CREW { return RealtyWorld.same_crew(h.owner, who) }
+  if h.access == REALTY_FRIENDS { return RealtyWorld.friends(h.owner, who) }
+  return false
+}
+
+# may come in: what may use it, and anyone when it is public
+function rlt_can_enter(h: Holding, who: int) -> bool {
+  if h.access == REALTY_PUBLIC and h.owner != 0 { return true }
+  return rlt_can_use(h, who)
+}
+
+export function realty_can_enter(realty_st: RealtyState, who: int, map: string, key: string) -> bool {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return false }
+  return rlt_can_enter(h, who)
+}
+
+export function realty_can_use(realty_st: RealtyState, who: int, map: string, key: string) -> bool {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return false }
+  return rlt_can_use(h, who)
+}
+
+# the owner says who may come in (REALTY_OWNER, _CREW, _FRIENDS, _PUBLIC)
+export function realty_set_access(realty_st: mut RealtyState, who: int, map: string, key: string, mode: int) -> bool {
+  if not rlt_authority(realty_st, who, map, key) { return false }
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING) }
+  if h.owner != who { return rlt_no(realty_st, who, map, key, REALTY_NOT_OWNER) }
+  h.access = rlt_mode(mode)
+  let f = rlt_fact(realty_st, REALTY_ACCESS, who, who, map, key)
+  f.amount = h.access
+  return true
+}
+function rlt_mode(mode: int) -> int {
+  if mode < REALTY_OWNER { return REALTY_OWNER }
+  if mode > REALTY_PUBLIC { return REALTY_PUBLIC }
+  return mode
+}
+
+# invite a player by name: they may come in and use the storage whatever the mode
+export function realty_invite(realty_st: mut RealtyState, who: int, map: string, key: string, guest: int) -> bool {
+  if not rlt_authority(realty_st, who, map, key) { return false }
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING) }
+  if h.owner != who { return rlt_no(realty_st, who, map, key, REALTY_NOT_OWNER) }
+  if rlt_is_guest(h, guest) { return true }
+  if len(h.guests) >= PropertyKinds[h.kind].guests_max { return rlt_no(realty_st, who, map, key, REALTY_FULL) }
+  push(h.guests, guest)
+  let f = rlt_fact(realty_st, REALTY_INVITED, who, guest, map, key)
+  f.amount = len(h.guests)
+  return true
+}
+
+export function realty_uninvite(realty_st: mut RealtyState, who: int, map: string, key: string, guest: int) -> bool {
+  if not rlt_authority(realty_st, who, map, key) { return false }
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING) }
+  if h.owner != who { return rlt_no(realty_st, who, map, key, REALTY_NOT_OWNER) }
+  if not rlt_is_guest(h, guest) { return true }
+  List.remove(h.guests, guest)
+  rlt_fact(realty_st, REALTY_UNINVITED, who, guest, map, key)
+  rlt_eject_one(realty_st, guest, h)
+  return true
+}
+
+export function realty_access(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return REALTY_OWNER }
+  return h.access
+}
+
+export function realty_guest_count(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return len(h.guests)
+}

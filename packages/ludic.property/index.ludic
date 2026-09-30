@@ -1,0 +1,16 @@
+# ludic.property - what a player may own on a map and what it does for them: kinds, sites, upgrades,
+# ownership and access, interiors an instance each, storage, and the business loop as a machine
+module ludic_property uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "state.ludic"
+import "rows.ludic"
+import "machine.ludic"
+import "access.ludic"
+import "own.ludic"
+import "enter.ludic"
+import "stash.ludic"
+import "biz.ludic"
+import "tick.ludic"
+import "save.ludic"

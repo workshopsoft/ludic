@@ -1,0 +1,189 @@
+# own.ludic - buying, renting, selling, trading and upgrading. All of them change ownership, so all of them
+# run only where the world is owned (`RealtyWorld.authority`); money moves through the purse port
+
+function rlt_site_of(sites: Properties, key: string) -> int { return properties_find(sites, key) }
+
+# the holding of (map, key) when `who` owns it, else null and the reason told
+function rlt_owned(realty_st: mut RealtyState, who: int, map: string, key: string) -> Holding {
+  let h = rlt_find(realty_st, map, key)
+  if h == null {
+    rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING)
+    return null
+  }
+  if h.owner != who {
+    rlt_no(realty_st, who, map, key, REALTY_NOT_OWNER)
+    return null
+  }
+  return h
+}
+
+# buy the site `key` of the loaded map at its price. Someone renting it may buy it; someone else's is taken
+export function realty_buy(realty_st: mut RealtyState, sites: Properties, who: int, key: string) -> bool {
+  if not rlt_authority(realty_st, who, sites.map, key) { return false }
+  let s = properties_find(sites, key)
+  if s < 0 { return rlt_no(realty_st, who, sites.map, key, REALTY_NO_SITE) }
+  let site = sites.rows[s]
+  if not PropertyKinds[site.kind].buyable { return rlt_no(realty_st, who, sites.map, key, REALTY_NOT_FOR_SALE) }
+  var h = rlt_find(realty_st, sites.map, key)
+  if h != null and (h.owner != who or not h.rented) {
+    if h.owner == who { return rlt_no(realty_st, who, sites.map, key, REALTY_OWNED) }
+    return rlt_no(realty_st, who, sites.map, key, REALTY_TAKEN)
+  }
+  if not RealtyPurse.spend(who, site.price) { return rlt_no(realty_st, who, sites.map, key, REALTY_BROKE) }
+  if h == null { h = rlt_make(realty_st, sites.map, key, site.kind, who) }
+  h.rented = false
+  h.rent = 0
+  h.overdue = 0
+  h.paid = site.price
+  h.upkeep_left = 24.0
+  let f = rlt_fact(realty_st, REALTY_BOUGHT, who, who, sites.map, key)
+  f.amount = site.price
+  f.index = site.kind
+  return true
+}
+
+# rent it: a game day's rent now and each day after; `grace_days` behind and it is taken back
+export function realty_rent(realty_st: mut RealtyState, sites: Properties, who: int, key: string) -> bool {
+  if not rlt_authority(realty_st, who, sites.map, key) { return false }
+  let s = properties_find(sites, key)
+  if s < 0 { return rlt_no(realty_st, who, sites.map, key, REALTY_NO_SITE) }
+  let site = sites.rows[s]
+  if not PropertyKinds[site.kind].rentable or site.rent <= 0 { return rlt_no(realty_st, who, sites.map, key, REALTY_NOT_FOR_SALE) }
+  let h = rlt_find(realty_st, sites.map, key)
+  if h != null { return rlt_no(realty_st, who, sites.map, key, REALTY_TAKEN) }
+  if not RealtyPurse.spend(who, site.rent) { return rlt_no(realty_st, who, sites.map, key, REALTY_BROKE) }
+  let nh = rlt_make(realty_st, sites.map, key, site.kind, who)
+  nh.rented = true
+  nh.rent = site.rent
+  nh.rent_left = 24.0
+  nh.upkeep_left = 24.0
+  let f = rlt_fact(realty_st, REALTY_RENTED, who, who, sites.map, key)
+  f.amount = site.rent
+  return true
+}
+
+# stop renting: it must hold nothing; whoever is inside is sent out
+export function realty_end_rent(realty_st: mut RealtyState, who: int, map: string, key: string) -> bool {
+  if not rlt_authority(realty_st, who, map, key) { return false }
+  let h = rlt_owned(realty_st, who, map, key)
+  if h == null { return false }
+  if not h.rented { return rlt_no(realty_st, who, map, key, REALTY_NOT_FOR_SALE) }
+  if rlt_stacks(h) > 0 or len(h.vehicles) > 0 { return rlt_no(realty_st, who, map, key, REALTY_NOT_EMPTY) }
+  rlt_eject_holding(realty_st, map, key)
+  rlt_fact(realty_st, REALTY_RENT_ENDED, who, who, map, key)
+  rlt_drop(realty_st, map, key)
+  return true
+}
+
+# sell what you own: a share of what was paid (and on upgrades) comes back; it must hold nothing
+export function realty_sell(realty_st: mut RealtyState, who: int, map: string, key: string) -> bool {
+  if not rlt_authority(realty_st, who, map, key) { return false }
+  let h = rlt_owned(realty_st, who, map, key)
+  if h == null { return false }
+  if h.rented { return rlt_no(realty_st, who, map, key, REALTY_NOT_FOR_SALE) }
+  if rlt_stacks(h) > 0 or len(h.vehicles) > 0 { return rlt_no(realty_st, who, map, key, REALTY_NOT_EMPTY) }
+  let back = (h.paid + h.upgrades_paid) * PropertyKinds[h.kind].sell_pct / 1000 + h.income
+  rlt_eject_holding(realty_st, map, key)
+  RealtyPurse.earn(who, back)
+  let f = rlt_fact(realty_st, REALTY_SOLD, who, who, map, key)
+  f.amount = back
+  rlt_drop(realty_st, map, key)
+  return true
+}
+
+# sell it to another player for `price`, paid by them to you; guests are cleared and whoever is inside goes out
+export function realty_trade(realty_st: mut RealtyState, from: int, to: int, map: string, key: string, price: int) -> bool {
+  if not rlt_authority(realty_st, from, map, key) { return false }
+  let h = rlt_owned(realty_st, from, map, key)
+  if h == null { return false }
+  if h.rented or to == from or to == 0 { return rlt_no(realty_st, from, map, key, REALTY_NOT_FOR_SALE) }
+  if not RealtyPurse.spend(to, price) { return rlt_no(realty_st, to, map, key, REALTY_BROKE) }
+  RealtyPurse.earn(from, price)
+  rlt_eject_holding(realty_st, map, key)
+  h.owner = to
+  h.guests = new []int
+  h.access = REALTY_OWNER
+  let f = rlt_fact(realty_st, REALTY_TRADED, from, to, map, key)
+  f.amount = price
+  return true
+}
+
+# buy an upgrade for what you own: its kind, its requirements, a free slot, the price
+export function realty_upgrade(realty_st: mut RealtyState, who: int, map: string, key: string, upgrade: int) -> bool {
+  if not rlt_authority(realty_st, who, map, key) { return false }
+  let h = rlt_owned(realty_st, who, map, key)
+  if h == null { return false }
+  if upgrade < 0 or upgrade >= PRU_COUNT { return rlt_no(realty_st, who, map, key, REALTY_BAD_UPGRADE) }
+  let u = PropertyUpgrades[upgrade]
+  if u.kinds != null and len(u.kinds) > 0 and not rlt_has(u.kinds, h.kind) { return rlt_no(realty_st, who, map, key, REALTY_BAD_UPGRADE) }
+  if rlt_has(h.upgrades, upgrade) { return rlt_no(realty_st, who, map, key, REALTY_OWNED) }
+  if u.requires != null {
+    for i in 0 .. len(u.requires) {
+      if not rlt_has(h.upgrades, u.requires[i]) { return rlt_no(realty_st, who, map, key, REALTY_NEEDS) }
+    }
+  }
+  if rlt_upgrade_slots_used(h) + u.slots > PropertyKinds[h.kind].upgrade_slots { return rlt_no(realty_st, who, map, key, REALTY_FULL) }
+  if not RealtyPurse.spend(who, u.price) { return rlt_no(realty_st, who, map, key, REALTY_BROKE) }
+  push(h.upgrades, upgrade)
+  h.upgrades_paid += u.price
+  let f = rlt_fact(realty_st, REALTY_UPGRADED, who, who, map, key)
+  f.index = upgrade
+  f.amount = u.price
+  return true
+}
+
+# -- what is owned
+
+export function realty_owner(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return h.owner
+}
+export function realty_rented(realty_st: RealtyState, map: string, key: string) -> bool {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return false }
+  return h.rented
+}
+export function realty_has_upgrade(realty_st: RealtyState, map: string, key: string, upgrade: int) -> bool {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return false }
+  return rlt_has(h.upgrades, upgrade)
+}
+export function realty_overdue(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return h.overdue
+}
+export function realty_garage_slots(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return rlt_garage_cap(h)
+}
+export function realty_storage_slots(realty_st: RealtyState, map: string, key: string) -> int {
+  let h = rlt_find(realty_st, map, key)
+  if h == null { return 0 }
+  return rlt_storage_cap(h)
+}
+
+# every holding: its row, in the order they were made
+export function realty_count(realty_st: RealtyState) -> int { return tb_len(realty_st.rl_tab) }
+export function realty_map_at(realty_st: RealtyState, i: int) -> string { return tb_rec(realty_st.rl_tab, i).map }
+export function realty_key_at(realty_st: RealtyState, i: int) -> string { return tb_rec(realty_st.rl_tab, i).key }
+export function realty_owner_at(realty_st: RealtyState, i: int) -> int { return tb_rec(realty_st.rl_tab, i).owner }
+
+# how many a player has, and the row of the n-th of them (-1 past the end)
+export function realty_count_of(realty_st: RealtyState, who: int) -> int {
+  var n = 0
+  for i in 0 .. tb_len(realty_st.rl_tab) { if tb_rec(realty_st.rl_tab, i).owner == who { n += 1 } }
+  return n
+}
+export function realty_nth_of(realty_st: RealtyState, who: int, n: int) -> int {
+  var k = 0
+  for i in 0 .. tb_len(realty_st.rl_tab) {
+    if tb_rec(realty_st.rl_tab, i).owner == who {
+      if k == n { return i }
+      k += 1
+    }
+  }
+  return -1
+}
