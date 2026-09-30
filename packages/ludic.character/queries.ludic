@@ -6,6 +6,18 @@ export function body_yaw(character_st: CharacterState) -> float { return charact
 export function body_speed(character_st: CharacterState) -> float { return character_st.chr_speed }
 export function body_moving(character_st: CharacterState) -> float { return character_st.chr_move }
 export function body_run(character_st: CharacterState) -> float { return character_st.chr_run }
+export function body_crouch(character_st: CharacterState) -> float { return character_st.chr_crouch }
+export function body_sprint(character_st: CharacterState) -> float { return character_st.chr_sprint }
+export function body_direction(character_st: CharacterState) -> float { return character_st.chr_dir }
+export function body_crouch_speed(character_st: CharacterState) -> float { return character_st.chr_crouch_speed }
+export function body_sprint_speed(character_st: CharacterState) -> float { return character_st.chr_sprint_speed }
+# 0 still, 1 walk, 2 run, 3 sprint (crouched, it is a walk)
+export function body_gait(character_st: CharacterState) -> int {
+  if character_st.chr_speed <= 0.12 { return 0 }
+  if character_st.chr_sprint > 0.5 { return 3 }
+  if character_st.chr_run > 0.5 and character_st.chr_crouch < 0.5 { return 2 }
+  return 1
+}
 export function body_phase(character_st: CharacterState) -> float { return character_st.chr_phase }
 export function body_time(character_st: CharacterState) -> float { return character_st.chr_time }
 export function body_water(character_st: CharacterState) -> float { return character_st.chr_water }

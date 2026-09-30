@@ -1,0 +1,9 @@
+# bindings the nested graph's rules judge: states below the base graph are reachable by name
+base_state { set: 0, kind: "request", to: "reload", source: "toy.x" }
+sub_state { set: 0, kind: "request", to: "enter_left", source: "toy.x" }
+layer_state { set: 0, kind: "request", to: "armed/raise", source: "toy.x" }
+layer_plain { set: 0, kind: "request", to: "aim", source: "toy.x" }
+chain { set: 0, kind: "request", to: "car/sit_drive", source: "toy.x" }
+no_layer { set: 0, kind: "request", to: "ghost/raise", source: "toy.x" }
+no_state { set: 0, kind: "request", to: "armed/nothing", source: "toy.x" }
+too_deep { set: 0, kind: "request", to: "armed/lower/x", source: "toy.x" }

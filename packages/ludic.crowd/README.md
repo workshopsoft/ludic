@@ -293,4 +293,15 @@ the plane.
 
 ## Signals
 
-The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`): crowd.ACT, crowd.speed, crowd.turn, and more. A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it.
+The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`). A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it. The actor is the ped's uid.
+
+| Source | Kind, range | Says |
+| --- | --- | --- |
+| `crowd.ACT` | fact | a near ped began an act (word: the act's anim state key, value: the act's number): bind it as a request by name |
+| `crowd.REACTED` | fact | a ped's reaction changed (value: the new `PedReact`) |
+| `crowd.ATTACK` | fact | a ped that fights landed a blow |
+| `crowd.speed` | value, m/s | ground speed |
+| `crowd.turn` | value, rad/s | yaw rate |
+| `crowd.state` | value, n | the reaction as `PedReact`'s number (calm 0 to call 6) |
+| `crowd.variant` | value, 0..1 | a value fixed per ped, from its uid, look seed and the world seed (`crowd_anim_variant`): the same every frame and on every machine, spread evenly over the crowd. Feed it to a parameter and give a graph's standing idles `need` bands over it (`0..0.33`, `0.33..0.66`, `0.66..1`) so a crowd standing still does not stand alike |
+| `crowd.act_key` | text | the anim state key of the ped's current act: bind it as a request by name |

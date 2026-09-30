@@ -35,6 +35,7 @@ program CharacterTest {
     riding: bool = false
     rides: int = 0
     sneaking: bool = false
+    strafe: bool = false
     pace: float = 1.0
     mz: float = 0.0
     boots: float = 1.05
@@ -70,6 +71,7 @@ program CharacterTest {
   function fk_riding(character_test_st: CharacterTestState) -> bool { return character_test_st.riding }
   function fk_ride(character_test_st: mut CharacterTestState, ix: float, iz: float, run: bool, dt: float) -> void { character_test_st.rides += 1 }
   function fk_sneak(character_test_st: CharacterTestState) -> bool { return character_test_st.sneaking }
+  function fk_strafe(character_test_st: CharacterTestState) -> bool { return character_test_st.strafe }
   function fk_pace(character_test_st: CharacterTestState) -> float { return character_test_st.pace }
   function fk_eyes() -> bool { return eyes }
 
@@ -104,7 +106,7 @@ program CharacterTest {
   function fk_boots(character_test_st: CharacterTestState) -> float { return character_test_st.boots }
 
   bind CharacterGround { height: fn fk_height, water: fn fk_water, push: fn fk_push, pushed_x: fn fk_px, pushed_z: fn fk_pz, top_at: fn fk_top, walk: fn fk_walk, walked_x: fn fk_wx, walked_y: fn fk_wy, walked_z: fn fk_wz, slope_limit: fn fk_boots }
-  bind CharacterBody { riding: fn fk_riding, ride: fn fk_ride, sneaking: fn fk_sneak, pace: fn fk_pace, eyes_ok: fn fk_eyes }
+  bind CharacterBody { riding: fn fk_riding, ride: fn fk_ride, sneaking: fn fk_sneak, strafe: fn fk_strafe, pace: fn fk_pace, eyes_ok: fn fk_eyes }
   bind CharacterInput { move_z: fn fk_move_z }
 
   function fresh(character_st: mut CharacterState, x: float, z: float, yaw: float) -> void {
@@ -184,6 +186,92 @@ program CharacterTest {
     fresh(character_st, 0.0, 0.0, SOUTH)
     walk(character_st, 2.0, 60.0, true)
     expect_near(body_speed(character_st), 1.3, 0.05)
+  }
+
+  # the stick (ix across, iz ahead) for `secs` at 60 Hz
+  function move(character_st: mut CharacterState, ix: float, iz: float, secs: float, run: bool) -> void {
+    for i in 0 .. int(secs * 60.0) { char_update(character_st, ix, iz, run, false, 0.0, 0.0, 1.0 / 60.0) }
+  }
+  function sig(character_st: CharacterState, name: string) -> float {
+    let i = sig_find(name)
+    expect(i >= 0)
+    expect(sig_problem(i) == "")
+    return SignalSources[i].get(0, SignalSources[i].arg)
+  }
+
+  test "a held crouch is its own gait and speed, and character.crouch says it" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    expect_near(sig(character_st, "character.crouch"), 0.0, 0.001)
+    char_crouch(character_st, true)
+    move(character_st, 0.0, 1.0, 2.0, true)
+    expect_near(body_speed(character_st), 1.3, 0.05)
+    expect(sig(character_st, "character.crouch") > 0.95)
+    expect_eq(body_gait(character_st), 1)
+    char_config_gaits(character_st, 2.0, 0.0)
+    move(character_st, 0.0, 1.0, 2.0, true)
+    expect_near(body_speed(character_st), 2.0, 0.05)
+    char_crouch(character_st, false)
+    move(character_st, 0.0, 1.0, 2.0, false)
+    expect(sig(character_st, "character.crouch") < 0.05)
+    expect_near(body_speed(character_st), 3.2, 0.05)
+  }
+
+  test "the game's sneaking port is the same stance" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
+    character_test_st.sneaking = true
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    move(character_st, 0.0, 1.0, 1.0, false)
+    expect(sig(character_st, "character.crouch") > 0.9)
+  }
+
+  test "a sprint tier has its own speed and gait, and does nothing until the body is given one" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    char_sprint(character_st, true)
+    move(character_st, 0.0, 1.0, 2.0, true)
+    expect_near(body_speed(character_st), 6.8, 0.05)
+    expect_near(sig(character_st, "character.sprint"), 0.0, 0.001)
+    expect_eq(body_gait(character_st), 2)
+    expect_near(sig(character_st, "character.gait"), 2.0, 0.001)
+    char_config_gaits(character_st, 1.3, 9.0)
+    move(character_st, 0.0, 1.0, 3.0, true)
+    expect_near(body_speed(character_st), 9.0, 0.05)
+    expect(sig(character_st, "character.sprint") > 0.95)
+    expect_near(sig(character_st, "character.gait"), 3.0, 0.001)
+    # sprint alone is enough (no run held); letting go drops back to the walk
+    char_sprint(character_st, false)
+    move(character_st, 0.0, 1.0, 4.0, false)
+    expect_near(body_speed(character_st), 3.2, 0.05)
+    expect(sig(character_st, "character.sprint") < 0.05)
+    expect_near(sig(character_st, "character.gait"), 1.0, 0.001)
+    expect_near(sig(character_st, "character.gait") - float(body_gait(character_st)), 0.0, 0.001)
+  }
+
+  test "character.direction is the motion against the facing: nothing while the body turns to its way, real when it strafes" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    move(character_st, 1.0, 0.0, 2.0, false)
+    expect_near(sig(character_st, "character.direction"), 0.0, 0.001)
+    character_test_st.strafe = true
+    # facing the camera's way: ahead 0, right -0.5, left +0.5, back 1 (or -1)
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    move(character_st, 0.0, 1.0, 1.5, false)
+    expect_near(sig(character_st, "character.direction"), 0.0, 0.02)
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    move(character_st, 1.0, 0.0, 1.5, false)
+    expect_near(sig(character_st, "character.direction"), -0.5, 0.02)
+    expect(body_speed(character_st) > 3.0)
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    move(character_st, -1.0, 0.0, 1.5, false)
+    expect_near(sig(character_st, "character.direction"), 0.5, 0.02)
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    move(character_st, 0.0, -1.0, 1.5, false)
+    expect_near(Math.abs(sig(character_st, "character.direction")), 1.0, 0.02)
+    # the body really moved sideways: facing held, position off the facing line
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    move(character_st, 1.0, 0.0, 1.0, false)
+    expect_near(body_yaw(character_st), SOUTH, 0.01)
+    expect(Math.abs(body_x(character_st)) > 1.5)
+    # standing again eases it back to nothing
+    move(character_st, 0.0, 0.0, 2.0, false)
+    expect_near(sig(character_st, "character.direction"), 0.0, 0.02)
   }
 
   test "a knee-high boulder is a step onto its top, and a post is a wall" (character_st: mut CharacterState) {

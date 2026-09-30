@@ -101,6 +101,15 @@ function cr_anim_state(c: Car, seat: int, which: int) -> string {
   return s.state_jacked
 }
 
+# a fact about an actor and the seat, with the graph state the act asks of them
+function cr_say(s: CarsState, c: Car, what: int, actor: int, seat: int, which: int) -> CarFact {
+  let f = cr_fact(s, what, c)
+  f.actor = actor
+  f.v = float(seat)
+  f.word = cr_anim_state(c, seat, which)
+  return f
+}
+
 function cr_ask(actor: int, state: string) -> void {
   if state != "" { CarAnim.rider_request(actor, state) }
 }
@@ -110,9 +119,7 @@ function cr_seat_in(s: CarsState, c: Car, seat: int, actor: int) -> void {
   c.occupant[seat] = actor
   CarRider.board(actor, c.nid, seat, cr_wx(c, cr_seat_x(c, seat), cr_seat_y(c, seat), cr_seat_z(c, seat)), cr_wy(c, cr_seat_x(c, seat), cr_seat_y(c, seat), cr_seat_z(c, seat)), cr_wz(c, cr_seat_x(c, seat), cr_seat_y(c, seat), cr_seat_z(c, seat)), c.yaw)
   cr_ask(actor, cr_anim_state(c, seat, 0))
-  let f = cr_fact(s, CAR_ENTERED, c)
-  f.actor = actor
-  f.v = float(seat)
+  cr_say(s, c, CAR_ENTERED, actor, seat, 0)
 }
 
 # out beside the door: the rider's own safe spot near the place one step out from it, else that place
@@ -135,12 +142,10 @@ function cr_step_out(s: CarsState, c: Car, seat: int, actor: int, what: int, why
   c.occupant[seat] = -1
   CarRider.alight(actor, ox, oy, oz, c.yaw)
   cr_ask(actor, cr_anim_state(c, seat, 2))
-  let f = cr_fact(s, what, c)
-  f.actor = actor
+  let f = cr_say(s, c, what, actor, seat, 2)
   f.x = ox
   f.y = oy
   f.z = oz
-  f.v = float(seat)
   f.w = float(why)
 }
 
@@ -208,6 +213,7 @@ function cr_e_board(r: mut Row<Car>, s: CarsState) -> void {
   if not r.rec.instant { r.rec.door_t = cars_config(s).door_time }
   r.rec.instant = false
   cr_ask(r.rec.want, cr_anim_state(r.rec, r.rec.want_seat, 1))
+  cr_say(s, r.rec, CAR_BOARDING, r.rec.want, r.rec.want_seat, 1)
   r.rec.jacker = -1
 }
 
@@ -219,6 +225,7 @@ function cr_e_break_in(r: mut Row<Car>, s: CarsState) -> void {
   let f = cr_fact(s, CAR_BROKEN_INTO, r.rec)
   f.actor = r.rec.want
   cr_ask(r.rec.want, cr_anim_state(r.rec, r.rec.drv_seat, 1))
+  cr_say(s, r.rec, CAR_BOARDING, r.rec.want, r.rec.drv_seat, 1)
   r.rec.jacker = -1
 }
 
@@ -244,6 +251,8 @@ function cr_e_jack(r: mut Row<Car>, s: CarsState) -> void {
   f.w = float(d)
   cr_ask(d, cr_anim_state(r.rec, r.rec.drv_seat, 3))
   cr_ask(r.rec.jacker, cr_anim_state(r.rec, r.rec.drv_seat, 1))
+  cr_say(s, r.rec, CAR_DRAGGED, d, r.rec.drv_seat, 3)
+  cr_say(s, r.rec, CAR_BOARDING, r.rec.jacker, r.rec.drv_seat, 1)
 }
 
 # the driver is out, the thief gets in

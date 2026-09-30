@@ -24,7 +24,8 @@ export port CharacterGround {
 
 export port CharacterBody {
   pace: fn() -> float = fn chr__one                        # the walk and run, times (gear, a tired body)
-  sneaking: fn() -> bool = fn chr__no
+  sneaking: fn() -> bool = fn chr__no                      # crouched by the game (a stance it owns): the same as the crouch input
+  strafe: fn() -> bool = fn chr__no                        # the body faces the camera and moves any way the stick says (aiming): `character.direction` is then the motion against the facing
   breath: fn() -> float = fn chr__one                      # the lungs, times
   riding: fn() -> bool = fn chr__no                        # something else carries the body
   ride: fn(float, float, bool, float) -> void = fn chr__not_carried   # (ix, iz, run, dt) while riding
@@ -39,6 +40,8 @@ export port CharacterInput {
   move_x: fn() -> float = fn chr__zero
   move_z: fn() -> float = fn chr__zero
   run: fn() -> bool = fn chr__no
+  crouch: fn() -> bool = fn chr__no                        # held: the crouch gait (CharacterBody.sneaking does the same from the game)
+  sprint: fn() -> bool = fn chr__no                        # held: the sprint gait, when char_config_gaits gave one a speed
   jump: fn() -> bool = fn chr__no
   look_yaw: fn() -> float = fn chr__zero
   look_pitch: fn() -> float = fn chr__zero
@@ -63,6 +66,15 @@ export state CharacterState {
   chr_water: float = -10000.0       # the water line under the body, every update
   chr_walk_speed: float = 3.2
   chr_run_speed: float = 6.8
+  chr_crouch_speed: float = 1.3     # m/s at a full stick, crouched
+  chr_sprint_speed: float = 0.0     # m/s at a full stick, sprinting; 0: the body has no sprint gait
+  chr_crouch_in: bool = false       # the crouch is held (char_crouch, or CharacterInput.crouch in char_tick)
+  chr_sprint_in: bool = false
+  chr_crouch: float = 0.0           # 0 standing .. 1 crouched, eased
+  chr_sprint: float = 0.0           # 0 .. 1 sprinting, eased
+  chr_dir: float = 0.0              # the motion's heading against the facing, -1 .. 1 half turns (0 while the body faces where it goes)
+  chr_hx: float = 0.0               # the last heading a strafe moved along
+  chr_hz: float = 0.0
   chr_vy: float = 0.0
   chr_air: bool = false
   chr_air_vx: float = 0.0

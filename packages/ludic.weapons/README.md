@@ -223,4 +223,16 @@ that makes nothing new.
 
 ## Signals
 
-The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`): weapons.RELOAD_STARTED, weapons.FIRED, weapons.ads, and more. A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it.
+The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`). A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it. The actor is the game's number for the shooter.
+
+Facts (word: the weapon's `clip_*` for that act; value: the seconds it takes): `weapons.FIRED`, `weapons.RELOAD_STARTED` (value: the reload's seconds, 1.5 to 2.6 by weapon and magazine: bind it with `also` into a parameter and give the reload state `duration_by` in `ludic.anim`), `weapons.RELOADED`, `weapons.EMPTY`, `weapons.EQUIPPED`, `weapons.HOLSTERED`, `weapons.CHARGING`.
+
+| Source | Kind, range | Says |
+| --- | --- | --- |
+| `weapons.reloading` | value, 0/1 | 1 while a reload runs |
+| `weapons.ads` | value, 0..1 | how far into the sights |
+| `weapons.charge` | value, 0..1 | how far a charge weapon is charged |
+| `weapons.recoil_pitch` | value, degrees | the recoil the aim carries (for an additive layer) |
+| `weapons.armed` | value, 0/1 | 1 while a weapon is in hand, 0 when none is: weight an upper-body layer by it (`weight_by`) and it is off when holstered, with no row of its own for `HOLSTERED` |
+| `weapons.held_kind` | value, n | the held weapon's class as its `WeaponClasses` row order plus one (0 unarmed, or a weapon with no class), for bands of a parameter |
+| `weapons.hold` | text | the held weapon's class `hold` name (`"rifle"`, `"pistol"`; `""` unarmed). Bind it as a request by name and name the layer's states after the holds (`layer/state` reaches a layer's state, see `ludic.anim`) |

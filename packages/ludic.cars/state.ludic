@@ -68,6 +68,8 @@ export const CAR_CLAIM_PAID: int = 30      # insurance replaced a destroyed car
 export const CAR_IMPOUNDED: int = 31
 export const CAR_RELEASED: int = 32        # out of the impound
 export const CAR_SNAP_REFUSED: int = 33    # a snapshot that could not be true
+export const CAR_BOARDING: int = 34        # an actor began to get in through the door (actor, v: the seat, word: its state_enter)
+export const CAR_DRAGGED: int = 35         # the driver is being dragged out by a thief (actor: the driver, v: the seat, word: its state_jacked)
 
 # why an action was refused
 export const CAR_NO_SUCH: int = 1
@@ -95,6 +97,7 @@ export property CarFact {
   z: float = 0.0
   v: float = 0.0
   w: float = 0.0
+  word: string = ""    # the graph state the act asks of the actor: state_enter, state_sit, state_leave or state_jacked of its seat (CAR_BOARDING, _ENTERED, _EXITED, _EJECTED, _DRAGGED)
 }
 
 # one wheel, read by a game that draws it (spin, steer, how far its suspension is out) or hears it (slip)
@@ -353,6 +356,7 @@ function cr_fact(cars_st: CarsState, what: int, c: Car) -> CarFact {
   f.z = 0.0
   f.v = 0.0
   f.w = 0.0
+  f.word = ""
   if c != null {
     f.nid = c.nid
     f.oid = c.oid

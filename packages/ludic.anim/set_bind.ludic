@@ -40,6 +40,7 @@ function collect_params(pl: AnimPlayer, si: int, depth: int) -> void {
         param_add(pl, AnimBlendSpaces[d.blend_space].y_param, 0, 0.0)
       }
       param_add(pl, d.speed_by, 0, 1.0)
+      param_add(pl, d.duration_by, 0, 0.0)
     }
   }
   if s.transitions != null {
@@ -88,6 +89,7 @@ function build_machine(pl: AnimPlayer, si: int, depth: int) -> int {
   m.px = new []int
   m.py = new []int
   m.spd = new []int
+  m.dby = new []int
   m.tfrom = new []int
   m.tto = new []int
   m.cbase = new []int
@@ -120,6 +122,7 @@ function build_machine(pl: AnimPlayer, si: int, depth: int) -> int {
     push(m.px, px)
     push(m.py, py)
     push(m.spd, as_param_idx(pl, d.speed_by))
+    push(m.dby, as_param_idx(pl, d.duration_by))
     var n = 0
     if d.kind == "clips" and d.choices != null {
       n = len(d.choices)

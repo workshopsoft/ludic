@@ -12,7 +12,7 @@ export function char_update(character_st: mut CharacterState, ix0: float, iz0: f
     chr_ride_update(character_st, ix, iz, run, dyaw, dpitch, dt)
     return
   }
-  if CharacterBody.sneaking() { run = false }
+  if chr_crouching(character_st) { run = false } else if chr_sprinting(character_st) { run = true }
   # sitting: any step stands up, and nothing else moves
   if character_st.chr_sit and (Math.abs(ix) > 0.3 or Math.abs(iz) > 0.3 or jump) { character_st.chr_sit = false }
   if character_st.chr_sit {
@@ -32,10 +32,17 @@ export function char_update(character_st: mut CharacterState, ix0: float, iz0: f
     mag = 1.0
   }
   chr_steer(character_st, dx, dz, mag, run, dt)
+  # the way the body moves: its facing, or (aiming) the stick's last heading
+  var fx = -Math.sin(character_st.chr_yaw)
+  var fz = -Math.cos(character_st.chr_yaw)
+  if CharacterBody.strafe() and not character_st.chr_swim and (character_st.chr_hx != 0.0 or character_st.chr_hz != 0.0) {
+    fx = character_st.chr_hx
+    fz = character_st.chr_hz
+  }
   # seated, the seat holds the body (chr_sit_tick): handed to the walker too, it was pushed off a
   # log or a bench and pulled back each frame, and shook
   var dist = 0.0
-  if not character_st.chr_sit or character_st.chr_swim { dist = chr_travel(character_st, dx, dz, -Math.sin(character_st.chr_yaw), -Math.cos(character_st.chr_yaw), jump, dt) }
+  if not character_st.chr_sit or character_st.chr_swim { dist = chr_travel(character_st, dx, dz, fx, fz, jump, dt) }
   chr_gait(character_st, dist, dyaw, dpitch, dt)
   char_camera(character_st, dt)
 }
@@ -44,6 +51,9 @@ export function char_update(character_st: mut CharacterState, ix0: float, iz0: f
 # drifts behind whatever it is on
 function chr_ride_update(character_st: mut CharacterState, ix: float, iz: float, run: bool, dyaw: float, dpitch: float, dt: float) -> void {
   CharacterBody.ride(ix, iz, run, dt)
+  character_st.chr_crouch = char_toward(character_st.chr_crouch, 0.0, 6.0 * dt)
+  character_st.chr_sprint = char_toward(character_st.chr_sprint, 0.0, 3.0 * dt)
+  character_st.chr_dir = char_toward(character_st.chr_dir, 0.0, 6.0 * dt)
   chr_look(character_st, dyaw, dpitch)
   if dyaw == 0.0 and not CharacterInput.look_always() { character_st.chr_cam_yaw = character_st.chr_cam_yaw + char_wrap(character_st.chr_yaw - character_st.chr_cam_yaw) * Math.min(1.0, 1.5 * dt) }
   char_camera(character_st, dt)
@@ -61,6 +71,8 @@ export function char_tick(character_st: mut CharacterState, dt: float) -> void {
     ix = CharacterInput.move_x()
     iz = CharacterInput.move_z()
     run = CharacterInput.run()
+    character_st.chr_crouch_in = CharacterInput.crouch()
+    character_st.chr_sprint_in = CharacterInput.sprint()
     jump = CharacterInput.jump()
     dyaw = CharacterInput.look_yaw()
     dpitch = CharacterInput.look_pitch()

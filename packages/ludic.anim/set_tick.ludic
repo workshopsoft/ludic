@@ -120,11 +120,11 @@ function advance_inst(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, k:
     if m.i_pick[k] < 0 { return }
     let slot = m.base[st] + m.i_pick[k]
     dur = m.clips[slot].dur
-    rate = as_rate(pl, m, st, slot, d.choices[m.i_pick[k]])
+    rate = as_rate(pl, m, st, slot, d.choices[m.i_pick[k]]) * as_fit(pl, m, st, dur)
   } else {
     anim_space_ready(anim_st, m.space[st])
     dur = blend_weights(anim_st, pl, m, k, st)
-    rate = as_speed(pl, m, st)
+    rate = as_speed(pl, m, st) * as_fit(pl, m, st, dur)
   }
   m.i_rate[k] = rate
   m.i_dur[k] = dur

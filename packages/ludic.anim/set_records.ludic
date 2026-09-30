@@ -60,6 +60,7 @@ export property AnimStateDef {
   @Ref(AnimSets) sub: int = -1
   speed: float = 1.0          # times the state's playing rate
   speed_by: string = ""       # and times this parameter's value as well (a play rate), when named
+  duration_by: string = ""    # play the state's clip over this parameter's seconds (rate = clip length / seconds); 0 or less leaves the rate alone
   sync: string = ""           # a sync group: a state entered from one of the same group takes its phase
   is_exit: bool = false       # in a sub graph: the state that says the graph is done (see exit_time)
 }

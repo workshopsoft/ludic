@@ -28,17 +28,118 @@ export function animset_get(pl: AnimPlayer, name: string) -> float {
   return pl.vals[i]
 }
 
-# a state by name, taken once: the code may ask every frame, and a transition that moved the player on
-# since is not undone by the same request again
+# A state by name, taken once: the code may ask every frame, and a transition that moved the player on
+# since is not undone by the same request again. WHERE the name is looked for (the addressing rule):
+#   "state"            the base graph's own states first, then the first graph that has it, in machine order:
+#                      the sub graphs (depth first, as they appear in the base graph), then each layer's graph
+#                      (declaration order) with its own sub graphs
+#   "layer/state"      a layer by its `key` (a layer's key is the AnimLayer row's), then a state of its graph
+#   "sub/state"        a `sub` state by its key, then a state of the graph it runs; segments chain
+#                      ("armed/aim/raise": a layer, a sub state in it, a state there)
+# A request to a sub graph's state also asks the graph above it to be in the sub state that holds it (up to the
+# base), or the sub graph would never run; a layer's graph runs all the time, so it needs nothing above it.
+# A name nothing answers to is ignored, as it always was.
 export function animset_request(pl: AnimPlayer, key: string) -> void {
-  if pl.set < 0 or pl.mach == null or key == pl.mach[0].asked { return }
-  let m = pl.mach[0]
-  let i = as_state(AnimSets[pl.set], key)
+  if pl.set < 0 or pl.mach == null or len(pl.mach) == 0 { return }
+  let mi = as_resolve(pl, key)
+  if mi < 0 { return }
+  let m = pl.mach[mi]
+  if key == m.asked { return }
+  let leaf = as_last_slash(key) + 1
+  let i = as_state_at(AnimSets[m.set], key, leaf, len(key))
   if i < 0 { return }
-  let v = as_via(pl, m, key)
   m.asked = key
   m.want = i
-  if v >= 0 { m.want = v }
+  if mi == 0 {
+    let v = as_via(pl, m, key)
+    if v >= 0 { m.want = v }
+  } else {
+    m.hold = -1
+    if m.n_i == 0 { m.hold = i }
+    as_raise(pl, mi, 0)
+  }
+}
+
+# the place of the last `/` in a key, -1 for none
+function as_last_slash(key: string) -> int {
+  var at = -1
+  for k in 0 .. len(key) { if key[k] == 47 { at = k } }
+  return at
+}
+
+# a state of the graph by the bytes key[a..b], without making a string
+function as_state_at(s: AnimSet, key: string, a: int, b: int) -> int {
+  if s.states == null or b <= a { return -1 }
+  for i in 0 .. len(s.states) {
+    let k = s.states[i].key
+    if len(k) != b - a { continue }
+    var same = true
+    for j in 0 .. len(k) { if k[j] != key[a + j] { same = false } }
+    if same { return i }
+  }
+  return -1
+}
+
+function as_same_at(name: string, key: string, a: int, b: int) -> bool {
+  if len(name) != b - a or b <= a { return false }
+  for j in 0 .. len(name) { if name[j] != key[a + j] { return false } }
+  return true
+}
+
+# one step of a qualified name from machine mi: a layer of the base graph by its key, else a sub state of this
+# machine's graph by its key; the machine it leads to, or -1
+function as_enter(pl: AnimPlayer, mi: int, key: string, a: int, b: int) -> int {
+  let m = pl.mach[mi]
+  let s = AnimSets[m.set]
+  if mi == 0 and s.layers != null {
+    var n = 1
+    for i in 0 .. len(s.layers) {
+      let l = s.layers[i]
+      if n >= len(pl.lm) or l.graph < 0 or l.graph >= len(AnimSets) { continue }
+      if as_same_at(l.key, key, a, b) { return pl.lm[n] }
+      n += 1
+    }
+  }
+  let st = as_state_at(s, key, a, b)
+  if st >= 0 and s.states[st].kind == "sub" { return m.sub[st] }
+  return -1
+}
+
+# the machine a request's name addresses (see animset_request), -1 when no graph of the player has that state
+function as_resolve(pl: AnimPlayer, key: string) -> int {
+  let cut = as_last_slash(key)
+  if cut < 0 {
+    for mi in 0 .. len(pl.mach) {
+      if as_state_at(AnimSets[pl.mach[mi].set], key, 0, len(key)) >= 0 { return mi }
+    }
+    return -1
+  }
+  var mi = 0
+  var p = 0
+  while p < cut {
+    var e = p
+    while e < cut and key[e] != 47 { e += 1 }
+    mi = as_enter(pl, mi, key, p, e)
+    if mi < 0 { return -1 }
+    p = e + 1
+  }
+  if as_state_at(AnimSets[pl.mach[mi].set], key, cut + 1, len(key)) < 0 { return -1 }
+  return mi
+}
+
+# a request reached a sub graph's machine: every graph above it goes to the sub state that runs it
+function as_raise(pl: AnimPlayer, mi: int, depth: int) -> void {
+  if depth > AM_DEPTH { return }
+  for pi in 0 .. len(pl.mach) {
+    let pm = pl.mach[pi]
+    for st in 0 .. pm.ns {
+      if pm.sub[st] == mi {
+        pm.want = st
+        if pi != 0 { as_raise(pl, pi, depth + 1) }
+        return
+      }
+    }
+  }
 }
 
 # the one-shot a request goes by: a `via` edge from where the code last asked (or "*") to this state,
@@ -95,6 +196,15 @@ function as_rate(pl: AnimPlayer, m: AnimMachine, st: int, slot: int, c: AnimChoi
   if m.rby[slot] >= 0 and c.ground > 0.0 { r = pl.vals[m.rby[slot]] / c.ground }
   r = Math.clamp(r, d.rate_min, d.rate_max)
   return r * as_speed(pl, m, st)
+}
+
+# `duration_by`: the state's clip (a blend's weighted cycle) played over that parameter's seconds, so a reload
+# clip ends with the magazine whatever the weapon's reload time. Nothing while the parameter is 0 or less.
+function as_fit(pl: AnimPlayer, m: AnimMachine, st: int, dur: float) -> float {
+  if m.dby[st] < 0 { return 1.0 }
+  let t = pl.vals[m.dby[st]]
+  if t > 0.01 and dur > 0.0 { return dur / t }
+  return 1.0
 }
 
 function as_speed(pl: AnimPlayer, m: AnimMachine, st: int) -> float {

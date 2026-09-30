@@ -1,0 +1,38 @@
+# nested.lres - a graph with a sub graph (a car's doors) and two layers (an armed pose, a tail), for requests
+# that address states below the base graph, and a state played over a parameter's seconds
+base {
+  entry: "loco"
+  params: ["reload_time"]
+  states: [
+    { key: "loco", choices: [{ clip: "a" }] },
+    { key: "car", kind: "sub", sub: 1 },
+    { key: "reload", duration_by: "reload_time", choices: [{ clip: "long" }] }
+  ]
+  layers: [
+    { key: "armed", graph: 2 },
+    { key: "tail", graph: 3 }
+  ]
+}
+cardoor {
+  entry: "idle_c"
+  states: [
+    { key: "idle_c", choices: [{ clip: "a" }] },
+    { key: "enter_left", choices: [{ clip: "a" }] },
+    { key: "sit_drive", choices: [{ clip: "a" }] }
+  ]
+}
+armed_g {
+  entry: "lower"
+  states: [
+    { key: "lower", choices: [{ clip: "a" }] },
+    { key: "raise", choices: [{ clip: "a" }] },
+    { key: "aim", choices: [{ clip: "a" }] }
+  ]
+}
+tail_g {
+  entry: "sway"
+  states: [
+    { key: "sway", choices: [{ clip: "a" }] },
+    { key: "raise", choices: [{ clip: "a" }] }
+  ]
+}

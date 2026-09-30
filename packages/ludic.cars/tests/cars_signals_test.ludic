@@ -1,0 +1,171 @@
+# cars_signals_test.ludic - what the cars say to a listener that wants no glue (ludic.anim's AnimBindings): the seat and
+# door facts with the graph state the seat row names as their word, and the rider's values and seat state, read through
+# the registered SignalSources on the door test's fake rider port.
+import "ludic.cars"
+import "ludic.base"
+program CarsSignalsTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+
+  state Scene {
+    px: floats = floats(8)
+    pz: floats = floats(8)
+    boarded: words = words(8)
+    alit: words = words(8)
+    asked: string = ""
+    requested: string = ""
+    speed_param: float = -1.0
+    door_param: float = -1.0
+    tk: Tick = new Tick
+  }
+  function sc_reach(scene_st: Scene, actor: int, x: float, y: float, z: float, r: float) -> bool {
+    let dx = scene_st.px[actor] - x
+    let dz = scene_st.pz[actor] - z
+    return dx * dx + dz * dz <= r * r
+  }
+  function sc_board(scene_st: mut Scene, actor: int, nid: int, seat: int, x: float, y: float, z: float, yaw: float) -> void {
+    scene_st.boarded[actor] = seat + 1
+    scene_st.alit[actor] = 0
+  }
+  function sc_alight(scene_st: mut Scene, actor: int, x: float, y: float, z: float, yaw: float) -> void {
+    scene_st.alit[actor] += 1
+    scene_st.boarded[actor] = 0
+    scene_st.px[actor] = x
+    scene_st.pz[actor] = z
+  }
+  function sc_rider_request(scene_st: mut Scene, id: int, name: string) -> void { scene_st.asked = scene_st.asked + name + "," }
+  function sc_car_param(scene_st: mut Scene, id: int, name: string, v: float) -> void {
+    if name == "car_speed" { scene_st.speed_param = v }
+    if name == "car_door" { scene_st.door_param = v }
+  }
+  function sc_car_request(scene_st: mut Scene, id: int, name: string) -> void { scene_st.requested = scene_st.requested + name + "," }
+  bind CarRider { reach: fn sc_reach, board: fn sc_board, alight: fn sc_alight }
+  bind CarAnim { rider_request: fn sc_rider_request, car_param: fn sc_car_param, car_request: fn sc_car_request }
+
+  function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: Scene, n: int) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(scene_st.tk, 0.016666668, i, 0.0))
+    }
+  }
+
+  function count(cars_st: CarsState, what: int) -> int {
+    var n = 0
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  function make(cars_st: mut CarsState, scene_st: mut Scene, owner: int) -> Car {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, owner)
+    for a in 1 .. 5 {
+      scene_st.px[a] = 2.0
+      scene_st.pz[a] = 0.25
+    }
+    scene_st.px[7] = 50.0
+    return car_by_nid(cars_st, nid)
+  }
+
+  # the facts of one source waiting in the queue (read, not drained), as "actor:word," in order
+  function said(cars_st: CarsState, name: string) -> string {
+    let i = sig_find(name)
+    expect(i >= 0)
+    expect(sig_problem(i) == "")
+    let s = SignalSources[i]
+    let out = sig_fact_new()
+    var r = ""
+    for k in 0 .. s.count() {
+      if s.read(k, s.arg, out) { r = r + `{out.actor}:{out.name},` }
+    }
+    return r
+  }
+  function value(cars_st: CarsState, name: string, actor: int) -> float {
+    let i = sig_find(name)
+    expect(i >= 0 and sig_is_value(i))
+    expect(sig_problem(i) == "")
+    return SignalSources[i].get(actor, SignalSources[i].arg)
+  }
+  function word(cars_st: CarsState, actor: int) -> string {
+    let i = sig_find("cars.seat_state")
+    expect(i >= 0 and sig_is_text(i))
+    return SignalSources[i].say(actor, SignalSources[i].arg)
+  }
+
+  test "every source is declared whole, by the name the README gives" () {
+    let facts = ["cars.BOARDING", "cars.SEATED", "cars.EXITED", "cars.EJECTED", "cars.DRAGGED"]
+    for k in 0 .. len(facts) { expect(sig_is_fact(sig_find(facts[k])) and sig_problem(sig_find(facts[k])) == "") }
+    let values = ["cars.riding", "cars.driver", "cars.passenger", "cars.speed", "cars.steer", "cars.door"]
+    for k in 0 .. len(values) { expect(sig_is_value(sig_find(values[k])) and sig_problem(sig_find(values[k])) == "") }
+    expect(sig_is_text(sig_find("cars.seat_state")) and sig_problem(sig_find("cars.seat_state")) == "")
+  }
+
+  test "a driver's way in and out is four facts whose words are the seat's states, and the rider's values follow" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    q_clear(cars_facts(cars_st))
+    expect_near(value(cars_st, "cars.riding", 1), 0.0, 0.001)
+    expect(word(cars_st, 1) == "")
+    expect_eq(car_enter(cars_st, c.nid, 1, 0), 0)
+    frames(cars_st, doors, owns, scene_st, 2)
+    expect(said(cars_st, "cars.BOARDING") == "1:enter_left,")
+    expect_near(value(cars_st, "cars.riding", 1), 1.0, 0.001)
+    expect_near(value(cars_st, "cars.driver", 1), 1.0, 0.001)
+    expect_near(value(cars_st, "cars.passenger", 1), 0.0, 0.001)
+    expect_near(value(cars_st, "cars.door", 1), 1.0, 0.001)
+    expect(word(cars_st, 1) == "enter_left")
+    frames(cars_st, doors, owns, scene_st, 70)
+    expect(said(cars_st, "cars.SEATED") == "1:sit_drive,")
+    expect(word(cars_st, 1) == "sit_drive")
+    expect_near(value(cars_st, "cars.door", 1), 0.0, 0.001)
+    c.speed = 7.5
+    c.steer_angle = 0.0
+    expect_near(value(cars_st, "cars.speed", 1), 7.5, 0.001)
+    expect_near(value(cars_st, "cars.steer", 1), 0.0, 0.001)
+    c.steer_angle = CarModels[c.model].steer_lock * 0.017453292 * 0.5
+    expect_near(value(cars_st, "cars.steer", 1), 0.5, 0.01)
+    # a person in no car, and somebody else's car, say nothing
+    expect_near(value(cars_st, "cars.riding", 2), 0.0, 0.001)
+    expect_near(value(cars_st, "cars.speed", 2), 0.0, 0.001)
+    c.speed = 1.0
+    expect_eq(car_exit(cars_st, c.nid, 1), 0)
+    frames(cars_st, doors, owns, scene_st, 2)
+    expect(said(cars_st, "cars.EXITED") == "1:exit_left,")
+    expect_near(value(cars_st, "cars.riding", 1), 0.0, 0.001)
+    expect(word(cars_st, 1) == "")
+  }
+
+  test "a passenger is told the passenger seat's states, on its own side" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    q_clear(cars_facts(cars_st))
+    expect_eq(car_enter(cars_st, c.nid, 2, 1), 0)
+    expect(said(cars_st, "cars.SEATED") == "2:sit_pass,")
+    expect_near(value(cars_st, "cars.riding", 2), 1.0, 0.001)
+    expect_near(value(cars_st, "cars.driver", 2), 0.0, 0.001)
+    expect_near(value(cars_st, "cars.passenger", 2), 1.0, 0.001)
+    expect(word(cars_st, 2) == "sit_pass")
+    expect_eq(car_exit(cars_st, c.nid, 2), 0)
+    expect(said(cars_st, "cars.EXITED") == "2:exit_right,")
+  }
+
+  test "a carjack says who is dragged (the seat's state_jacked) and who gets in, and the victim's seat state is the drag" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    car_enter(cars_st, c.nid, 1, 0)
+    frames(cars_st, doors, owns, scene_st, 70)
+    q_clear(cars_facts(cars_st))
+    scene_st.px[3] = 2.0
+    scene_st.pz[3] = 0.25
+    expect_eq(car_carjack(cars_st, c.nid, 3), 0)
+    frames(cars_st, doors, owns, scene_st, 3)
+    expect(c.phase == CarPhase.Jacked)
+    expect(said(cars_st, "cars.DRAGGED") == "1:dragged_left,")
+    expect(said(cars_st, "cars.BOARDING") == "3:enter_left,")
+    expect(word(cars_st, 1) == "dragged_left")
+    frames(cars_st, doors, owns, scene_st, 200)
+    expect(said(cars_st, "cars.EJECTED") == "1:exit_left,")
+    expect_near(value(cars_st, "cars.driver", 3), 1.0, 0.001)
+    expect(word(cars_st, 1) == "")
+  }
+}

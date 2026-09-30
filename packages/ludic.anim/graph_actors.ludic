@@ -109,7 +109,7 @@ export function anim_reset_trigger(anim_st: AnimState, actor: int, key: string) 
 }
 export function anim_request(anim_st: AnimState, actor: int, state: string) -> bool {
   let pl = anim_player_of(anim_st, actor)
-  if pl == null or pl.set < 0 or as_state(AnimSets[pl.set], state) < 0 { return false }
+  if pl == null or pl.set < 0 or pl.mach == null or as_resolve(pl, state) < 0 { return false }
   animset_request(pl, state)
   return true
 }
