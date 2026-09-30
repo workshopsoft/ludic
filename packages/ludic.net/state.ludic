@@ -97,6 +97,7 @@ export state NetState {
   net__out: []byte = buffer(NET_MTU + 64)
   net__wb: []byte = buffer(NET_MTU)          # the message being written
   net__wl: int = 0
+  net__aw: []int = new []int                 # an action message's words (actions.ludic)
   net__rb: []byte = buffer(NET_MTU)          # the message being read
   net__rl: int = 0
   net__rp: int = 0

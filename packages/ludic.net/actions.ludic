@@ -1,0 +1,55 @@
+# actions.ludic - a @Net action's road over a session. The compiler writes the encoding and the port
+# `NetActions` (role, to_host, to_peer, to_all); these are the answers a game binds it to, so an
+# action a guest dispatches reaches the host as one reliable, ordered message of NETACT_KIND and what
+# the host says comes back the same way:
+#
+#   bind NetActions { role: fn netact_role, to_host: fn netact_to_host, to_peer: fn netact_to_peer, to_all: fn netact_to_all }
+#   ... in the frame's dispatch of net_inbox(): if m.kind == NETACT_KIND { netact_take(m) }
+#
+# A word is 32 bits, written as nw_i writes one, so an action costs four words and a word a field.
+export const NETACT_KIND: int = 200        # the message kind an action travels as: the game keeps it free
+
+# 0 no party (an action is reduced where it is dispatched), 1 the host, 2 a guest
+export function netact_role(net_st: NetState) -> int {
+  if net_st.net__state == NET_HOSTING { return 1 }
+  if net_st.net__state == NET_JOINED { return 2 }
+  return 0
+}
+
+function netact__write(net_st: mut NetState, w: []int, n: int) -> void {
+  nw_begin(net_st)
+  for i in 0 .. n { nw_i(net_st, w[i]) }
+}
+
+# a guest: to the host
+export function netact_to_host(net_st: mut NetState, w: []int, n: int) -> void {
+  netact__write(net_st, w, n)
+  np_queue(net_st, 0, NETACT_KIND, true)
+}
+
+# the host: to one guest, by the pid the host gave it
+export function netact_to_peer(net_st: mut NetState, pid: int, w: []int, n: int) -> void {
+  let slot = np_of_pid(net_st, pid)
+  if slot < 0 { return }
+  netact__write(net_st, w, n)
+  np_queue(net_st, slot, NETACT_KIND, true)
+}
+
+# the host: to every guest but `except` (0: none is left out)
+export function netact_to_all(net_st: mut NetState, except: int, w: []int, n: int) -> void {
+  netact__write(net_st, w, n)
+  for i in 0 .. NET_PEERS {
+    if net_peer_on(net_st, i) and (except == 0 or net_st.net__peers[i].pid != except) { np_queue(net_st, i, NETACT_KIND, true) }
+  }
+}
+
+# an inbox message of NETACT_KIND: its words handed to the actions, from the pid of its slot (a
+# guest's own header is not trusted). Returns what net_actions_receive says: 0 taken, else why not
+export function netact_take(net_st: mut NetState, m: NetMessage) -> int {
+  let n = m.len / 4
+  List.clear(net_st.net__aw)
+  for i in 0 .. n { push(net_st.net__aw, nb_get32(m.data, i * 4)) }
+  var from = 1
+  if net_st.net__state == NET_HOSTING { from = net_peer_pid(net_st, m.slot) }
+  return net_actions_receive(from, net_st.net__aw, n)
+}

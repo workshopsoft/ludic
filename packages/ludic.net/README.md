@@ -90,13 +90,36 @@ q_drain(net_facts())
 The words for a reason are the game's: `NET_WHY_*` is a code, and `NET_WHY_GAME` means the game
 said why itself before `net_lose`.
 
+## Actions over a session
+
+A compiler-written layer sends an `@Net` action (a guest's dispatch) to the host and back; the transport is
+the port `NetActions`, and `actions.ludic` answers it from a session:
+
+```ludic
+bind NetActions { role: fn netact_role, to_host: fn netact_to_host, to_peer: fn netact_to_peer, to_all: fn netact_to_all }
+# in the frame's dispatch of the inbox: if m.kind == NETACT_KIND { netact_take(m) }
+```
+
+| | |
+| --- | --- |
+| `NETACT_KIND` | the message kind actions travel as (200): the game keeps it free |
+| `netact_role() -> int` | 0 no party, 1 hosting, 2 joined |
+| `netact_to_host(words, n)` | a guest: one reliable message to the host |
+| `netact_to_peer(pid, words, n)`, `netact_to_all(except, words, n)` | the host: one guest, or every guest but `except` |
+| `netact_take(m) -> int` | an inbox message of `NETACT_KIND` to the actions, from the pid of its slot (0: taken) |
+
+What an action is, who checks it and what a guest guesses is the language's (`@Net`, `@Predicted`,
+`@Broadcast`, `@Validate`, LANGUAGE.md). Call `net_actions_forget(pid)` when a guest leaves and
+`net_actions_reset()` when a session ends or begins.
+
 ## Tests
+
 
 ```bash
 ludic test packages/ludic.net
 ```
 
-A fake socket: the codec, the codes, a host taking a stranger only with a hello, delivery in order,
+`netact_test.ludic` is the `@Net` layer over a fake transport (two peers in one program: prediction, refusal and rollback, broadcast, row reducers, ordering, a flat heap) and `netact_glue_test.ludic` the glue over a fake socket. The rest: a fake socket: the codec, the codes, a host taking a stranger only with a hello, delivery in order,
 resending until taken, a stale unreliable message dropped, the hello's timeout, a silent guest, a
 slot let go once it took its last message, and no matchmaker. The matchmaker, STUN and the relay
 are covered by the game's `tests/net.sh` (`NET_ROOM=1`, `NET_RELAY=1`) against

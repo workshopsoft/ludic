@@ -1,0 +1,495 @@
+# netact_test.ludic - @Net actions, over a fake transport. One program is both machines: a peer is the
+# role the NetActions port answers with (1 the host, 2 a guest) and a state of its own (HostW, GuestW,
+# HostHerd, GuestHerd), and the wire is a list of messages (to, from, words) the test delivers to whoever
+# it names, so the order of things is the test's. Covers: a guest's action reduced at once (predicted)
+# and on the host, the host's check and its refusal, rolling back and replaying what followed, a
+# non-predicted action reduced only when the host says so, broadcast to all / the owner / none, a row
+# reducer, sequence order (a repeat and an old one are dropped), a build that differs, and a heap that
+# stays flat over thousands of frames.
+import "ludic.base"
+program NetActTest {
+  numbers float
+  enum Kind { A, B, C }
+  property Deer {
+    @Column x: float = 0.0          # a table column mirrors it: an undo record leaves it alone
+    fear: int = 0
+    slots: []int = null
+  }
+  state Wire {
+    log: []int = new []int
+    tmp: []int = new []int
+    w: []int = new []int
+    role: int = 0
+    allow_ok: bool = true
+    owner: int = -1
+    last_rc: int = 0
+    rej_n: int = 0
+    rej_kind: int = -1
+    rej_seq: int = 0
+    rej_why: int = 0
+  }
+  state HostW {
+    coins: int = 100
+    count: int = 0
+    last_tag: float = 0.0
+    last_flag: bool = false
+    last_kind: Kind = Kind.A
+    last_sender: int = -1
+    gifts: int = 0
+    pings: int = 0
+    rest: int = 0
+    mixed: int = 0
+  }
+  state GuestW {
+    coins: int = 100
+    gifts: int = 0
+    slots: []int = null
+    mood: Kind = Kind.A
+    seen_sender: int = -1
+    mixed: int = 0
+  }
+  state HostHerd { deer: Table<Deer> = null }
+  state GuestHerd { deer: Table<Deer> = null }
+
+  @Net @Validate(buy_ok) action Buy { n: int = 1, tag: float = 0.5, flag: bool = false, kind: Kind = Kind.A }
+  @Net @Broadcast(all) action Gift { n: int = 1 }
+  @Net @Broadcast(none) action Ping { }
+  @Net @Broadcast(none) action Mix { }
+  @Net @Predicted @Broadcast(owner) @Validate(scare_ok) action Scare { @Target who: int = -1, by: int = 1 }
+
+  export function buy_ok(h: HostW, a: Buy, sender: int) -> bool { return a.n <= h.coins and a.n <= 5 and sender == 2 }
+  export function scare_ok(a: Scare, sender: int) -> bool { return a.by <= 3 }
+
+  reducer HostW on Buy(h: mut HostW, a: Buy) {
+    if NetActions.role() == 1 {
+      h.coins -= a.n
+      h.count += 1
+      h.last_tag = a.tag
+      h.last_flag = a.flag
+      h.last_kind = a.kind
+      h.last_sender = action_sender()
+    }
+  }
+  @Predicted reducer GuestW on Buy(g: mut GuestW, a: Buy) {
+    if NetActions.role() == 2 {
+      g.coins -= a.n
+      g.slots[a.n % 4] += 1
+      g.mood = a.kind
+    }
+  }
+  reducer HostW on Gift(h: mut HostW, a: Gift) { if NetActions.role() == 1 { h.gifts += a.n } }
+  reducer GuestW on Gift(g: mut GuestW, a: Gift) {
+    if NetActions.role() == 2 {
+      g.gifts += a.n
+      g.seen_sender = action_sender()
+    }
+  }
+  reducer HostW on Ping(h: mut HostW, a: Ping) { if NetActions.role() == 1 { h.pings += 1 } }
+  reducer HostW on Mix(h: mut HostW, a: Mix) {
+    if NetActions.role() == 1 { h.mixed += 1 }
+    if NetActions.role() == 2 { h.rest += 1 }     # the part a guest does not guess: it runs when the host confirms
+  }
+  @Predicted reducer GuestW on Mix(g: mut GuestW, a: Mix) { if NetActions.role() == 2 { g.mixed += 1 } }
+  reducer Deer in HostHerd.deer on Scare(r: mut Row<Deer>, a: Scare) { if NetActions.role() == 1 { r.rec.fear += a.by } }
+  reducer Deer in GuestHerd.deer on Scare(r: mut Row<Deer>, a: Scare) {
+    if NetActions.role() == 2 {
+      r.rec.fear += a.by
+      r.rec.slots[0] += 1
+    }
+  }
+
+  # the transport the game would bind to its session
+  function w_role(wire: Wire) -> int { return wire.role }
+  function w_put(wire: mut Wire, to: int, from: int, w: []int, n: int) -> void {
+    push(wire.log, to)
+    push(wire.log, from)
+    push(wire.log, n)
+    for i in 0 .. n { push(wire.log, w[i]) }
+  }
+  function w_to_host(wire: mut Wire, w: []int, n: int) -> void { w_put(wire, 0, 2, w, n) }
+  function w_to_peer(wire: mut Wire, pid: int, w: []int, n: int) -> void { w_put(wire, pid, 1, w, n) }
+  function w_to_all(wire: mut Wire, except: int, w: []int, n: int) -> void {
+    for pid in 2 .. 4 { if pid != except { w_put(wire, pid, 1, w, n) } }
+  }
+  function w_allow(wire: Wire, sender: int, kind: int) -> bool { return wire.allow_ok }
+  function w_owner(wire: Wire, kind: int, target: int) -> int { return wire.owner }
+  function w_rejected(wire: mut Wire, kind: int, seq: int, why: int) -> void {
+    wire.rej_n += 1
+    wire.rej_kind = kind
+    wire.rej_seq = seq
+    wire.rej_why = why
+  }
+  bind NetActions { role: fn w_role, to_host: fn w_to_host, to_peer: fn w_to_peer, to_all: fn w_to_all, allow: fn w_allow, owner_of: fn w_owner, rejected: fn w_rejected }
+
+  # deliver every message addressed to `to` (0 the host, else a guest's pid), each in the role its reader plays
+  function pump(wire: mut Wire, to: int) -> int {
+    let saved = wire.role
+    if to == 0 { wire.role = 1 } else { wire.role = 2 }
+    var i = 0
+    var got = 0
+    List.clear(wire.tmp)
+    while i < len(wire.log) {
+      let n = wire.log[i + 2]
+      if wire.log[i] == to {
+        List.clear(wire.w)
+        for k in 0 .. n { push(wire.w, wire.log[i + 3 + k]) }
+        wire.last_rc = net_actions_receive(wire.log[i + 1], wire.w, n)
+        got += 1
+      } else {
+        for k in 0 .. n + 3 { push(wire.tmp, wire.log[i + k]) }
+      }
+      i += 3 + n
+    }
+    let t = wire.log
+    wire.log = wire.tmp
+    wire.tmp = t
+    List.clear(wire.tmp)
+    wire.role = saved
+    return got
+  }
+  function as_host(wire: mut Wire) -> void { wire.role = 1 }
+  function as_guest(wire: mut Wire) -> void { wire.role = 2 }
+  function fresh(wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) -> void {
+    net_actions_reset()
+    drain_actions()
+    wire.log = new []int
+    wire.tmp = new []int
+    wire.role = 0
+    wire.allow_ok = true
+    wire.owner = -1
+    wire.last_rc = 0
+    wire.rej_n = 0
+    h.coins = 100
+    h.count = 0
+    h.gifts = 0
+    h.pings = 0
+    h.last_sender = -1
+    g.coins = 100
+    g.gifts = 0
+    g.slots = [0, 0, 0, 0]
+    g.mood = Kind.A
+    g.seen_sender = -1
+    hh.deer = table_new(1, 0)
+    gh.deer = table_new(1, 0)
+    let d1 = new Deer
+    d1.slots = [0, 0]
+    let d2 = new Deer
+    d2.slots = [0, 0]
+    tb_add(hh.deer, d1)
+    tb_add(gh.deer, d2)
+  }
+
+  test "with no session an action is reduced where it is dispatched" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    dispatch Gift { n: 2 }
+    drain_actions()
+    expect_eq(len(wire.log), 0)
+    expect_eq(net_actions_pending(), 0)
+    expect_eq(net_actions_receive(2, wire.w, 0), 1)
+  }
+
+  test "a guest's predicted action is reduced at once, sent, and confirmed by the host" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    dispatch Buy { n: 3, tag: 2.5, flag: true, kind: Kind.C }
+    drain_actions()
+    expect_eq(g.coins, 97)                       # speculative: it did not wait
+    expect_eq(g.slots[3], 1)
+    expect(g.mood == Kind.C)
+    expect_eq(h.coins, 100)                      # the host has not heard
+    expect_eq(net_actions_pending(), 1)
+    expect_eq(len(wire.log), 3 + 4 + 4)          # to, from, n, then a 4-word header and four fields
+    as_host(wire)
+    expect_eq(pump(wire, 0), 1)
+    expect_eq(wire.last_rc, 0)
+    drain_actions()
+    expect_eq(h.coins, 97)
+    expect_eq(h.count, 1)
+    expect_eq(h.last_sender, 2)                  # from the wire's slot, never from the message
+    expect(Math.abs(h.last_tag - 2.5) < 0.0001)
+    expect(h.last_flag)
+    expect(h.last_kind == Kind.C)
+    as_guest(wire)
+    expect(pump(wire, 2) >= 1)                   # the confirm (Buy is @Broadcast's default: all, sender excepted)
+    drain_actions()
+    expect_eq(g.coins, 97)                       # confirmed, not reduced twice
+    expect_eq(net_actions_pending(), 0)
+    expect_eq(net_actions_stat(2), 1)
+  }
+
+  test "the host refuses what its validator refuses, and the guest rolls its guess back" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    dispatch Buy { n: 9 }
+    drain_actions()
+    expect_eq(g.coins, 91)
+    expect_eq(g.slots[1], 1)
+    pump(wire, 0)
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.coins, 100)
+    expect_eq(h.count, 0)
+    expect_eq(net_actions_stat(7), 1)
+    as_guest(wire)
+    pump(wire, 2)
+    drain_actions()
+    expect_eq(g.coins, 100)                      # back
+    expect_eq(g.slots[1], 0)
+    expect_eq(net_actions_pending(), 0)
+    expect_eq(wire.rej_n, 1)
+    expect_eq(wire.rej_seq, 1)
+    expect_eq(wire.rej_why, 1)
+    expect_eq(net_actions_stat(4), 1)
+  }
+
+  test "rolling back replays what the guest did after the refused action" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    dispatch Buy { n: 9 }                        # the host will refuse this
+    dispatch Buy { n: 2 }                        # and take this
+    drain_actions()
+    expect_eq(g.coins, 89)
+    expect_eq(net_actions_pending(), 2)
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.coins, 98)
+    as_guest(wire)
+    pump(wire, 2)                                # the refusal, then the confirm of the second
+    drain_actions()
+    expect_eq(g.coins, 98)                       # 100, less only what the host took
+    expect_eq(g.slots[1], 0)
+    expect_eq(g.slots[2], 1)
+    expect_eq(net_actions_pending(), 0)
+    expect_eq(wire.rej_n, 1)
+    expect_eq(net_actions_stat(2), 1)
+  }
+
+  test "a refusal by the port's gate is a refusal too" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    dispatch Buy { n: 1 }
+    drain_actions()
+    wire.allow_ok = false
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.coins, 100)
+    as_guest(wire)
+    pump(wire, 2)
+    drain_actions()
+    expect_eq(g.coins, 100)
+    expect_eq(wire.rej_n, 1)
+  }
+
+  test "an action that is not predicted is reduced only when the host says so" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    dispatch Gift { n: 4 }
+    drain_actions()
+    expect_eq(g.gifts, 0)
+    expect_eq(net_actions_pending(), 0)
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.gifts, 4)
+    expect_eq(len(wire.log), 2 * (3 + 4 + 1))    # to every guest, the sender too: it guessed nothing
+    as_guest(wire)
+    pump(wire, 2)
+    drain_actions()
+    expect_eq(g.gifts, 4)
+    expect_eq(g.seen_sender, 2)                  # who asked rides along
+    expect_eq(len(wire.log), 3 + 4 + 1)          # what is left is the other guest's
+  }
+
+  test "the host's own action goes to every guest, and @Broadcast(none) to none" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_host(wire)
+    dispatch Gift { n: 1 }
+    drain_actions()
+    expect_eq(h.gifts, 1)
+    expect_eq(len(wire.log), 2 * (3 + 4 + 1))
+    wire.log = new []int
+    dispatch Ping {}
+    drain_actions()
+    expect_eq(h.pings, 1)
+    expect_eq(len(wire.log), 0)
+    as_guest(wire)
+    dispatch Ping {}
+    drain_actions()
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.pings, 2)
+    expect_eq(len(wire.log), 0)                  # nothing back: it was not predicted, and nobody is told
+  }
+
+  test "the reducers a guest does not guess wait for the host's confirm" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    h.rest = 0
+    h.mixed = 0
+    g.mixed = 0
+    as_guest(wire)
+    dispatch Mix {}
+    drain_actions()
+    expect_eq(g.mixed, 1)                        # the predicted reducer, at once
+    expect_eq(h.rest, 0)                         # the other waits
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.mixed, 1)
+    as_guest(wire)
+    pump(wire, 2)
+    drain_actions()
+    expect_eq(h.rest, 1)                         # the confirm ran it
+    expect_eq(g.mixed, 1)                        # and the guess was not run twice
+    expect_eq(net_actions_pending(), 0)
+  }
+
+  test "a row reducer runs for its row on the guest at once, on the host, and tells the target's owner" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    wire.owner = 3
+    as_guest(wire)
+    dispatch Scare { who: 0, by: 2 }
+    drain_actions()
+    let gd = tb_rec(gh.deer, tb_row(gh.deer, 0))
+    expect_eq(gd.fear, 2)
+    expect_eq(gd.slots[0], 1)
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    let hd = tb_rec(hh.deer, tb_row(hh.deer, 0))
+    expect_eq(hd.fear, 2)
+    expect_eq(wire.log[0], 2)                    # the sender's confirm
+    expect_eq(wire.log[3 + 4], 3)                # and, because it is the owner's, the action for pid 3
+    expect_eq(len(wire.log), (3 + 4) + (3 + 4 + 2))
+    as_guest(wire)
+    pump(wire, 2)
+    drain_actions()
+    expect_eq(gd.fear, 2)
+    expect_eq(net_actions_pending(), 0)
+  }
+
+  test "a row reducer's undo record keeps the record's numbers and lists, not its columns" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    let gd = tb_rec(gh.deer, tb_row(gh.deer, 0))
+    gd.x = 5.0
+    dispatch Scare { who: 0, by: 9 }             # refused by scare_ok
+    drain_actions()
+    expect_eq(gd.fear, 9)
+    gd.x = 7.0                                   # a verb moved it meanwhile
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    as_guest(wire)
+    pump(wire, 2)
+    drain_actions()
+    expect_eq(gd.fear, 0)
+    expect_eq(gd.slots[0], 0)
+    expect(Math.abs(gd.x - 7.0) < 0.0001)        # a column is the verb's
+  }
+
+  test "a repeat and an old sequence number are dropped, never reduced twice" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    dispatch Buy { n: 1 }
+    dispatch Buy { n: 1 }
+    drain_actions()
+    let copy = new []int
+    for i in 0 .. len(wire.log) { push(copy, wire.log[i]) }
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.coins, 98)
+    wire.log = copy                              # the same two again, in order
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.coins, 98)
+    expect_eq(net_actions_stat(5), 2)
+    expect_eq(wire.last_rc, 5)
+  }
+
+  test "a message from a build that differs is dropped" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    dispatch Buy { n: 1 }
+    drain_actions()
+    wire.log[3] = wire.log[3] + 1                # its schema hash
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(wire.last_rc, 2)
+    expect_eq(h.coins, 100)
+    expect_eq(net_actions_stat(6), 1)
+    let short = [1, 2]
+    expect_eq(net_actions_receive(2, short, 2), 1)
+  }
+
+  test "a guest that joins again starts its sequence over once the host forgets the old one" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    dispatch Buy { n: 1 }
+    drain_actions()
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    net_actions_forget(2)
+    as_guest(wire)
+    net_actions_reset()
+    g.coins = 100
+    dispatch Buy { n: 1 }
+    drain_actions()
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.coins, 98)
+  }
+
+  test "a full pending buffer sends the action without guessing it" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    as_guest(wire)
+    for i in 0 .. 40 { dispatch Buy { n: 1 } }
+    drain_actions()
+    expect_eq(net_actions_pending(), 32)         # what a guest may have in flight
+    expect_eq(g.coins, 68)                       # 32 guessed, eight only sent
+    as_host(wire)
+    pump(wire, 0)
+    drain_actions()
+    expect_eq(h.coins, 60)
+    as_guest(wire)
+    pump(wire, 2)
+    drain_actions()
+    expect_eq(net_actions_pending(), 0)
+    expect_eq(g.coins, 60)                       # the eight unguessed ones arrived as the host's word
+  }
+
+  test "a host and a guest trade thousands of actions and the heap stays flat" (wire: mut Wire, h: mut HostW, g: mut GuestW, hh: mut HostHerd, gh: mut GuestHerd) {
+    fresh(wire, h, g, hh, gh)
+    var before = 0
+    for frame in 0 .. 4000 {
+      as_guest(wire)
+      dispatch Buy { n: 1 }
+      if frame % 7 == 0 { dispatch Buy { n: 8 } }       # one the host refuses: a rollback and a replay
+      dispatch Gift { n: 1 }
+      dispatch Scare { who: 0, by: 1 }
+      drain_actions()
+      as_host(wire)
+      pump(wire, 0)
+      drain_actions()
+      as_guest(wire)
+      pump(wire, 2)
+      pump(wire, 3)
+      drain_actions()
+      g.coins = 100
+      h.coins = 100
+      if frame == 1500 { before = Os.heap_bytes() }
+    }
+    let after = Os.heap_bytes()
+    if after > 0 { expect(after <= before) }
+    expect_eq(net_actions_pending(), 0)
+    expect(h.count > 3000)
+    expect_eq(h.gifts, 4000)
+  }
+}

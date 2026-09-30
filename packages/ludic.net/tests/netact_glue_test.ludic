@@ -1,0 +1,171 @@
+# netact_glue_test.ludic - a @Net action's road over a real ludic.net session (a fake socket): the
+# actions' words leave as reliable messages of NETACT_KIND, and what comes in is handed to the actions
+# from the pid of the slot it came from. The guest's side is played by capturing what its port sends.
+import "ludic.net"
+import "ludic.base"
+program NetActGlueTest {
+  numbers float
+  property Pkt { ip: int = 0, port: int = 0, len: int = 0, data: []byte }
+  state NetTestState {
+    sent: []Pkt = null
+    inbound: []Pkt = null
+    from_ip: int = 0
+    from_port: int = 0
+    quiet: bool = false          # sends only counted, not kept: a test of what the package holds
+    sends: int = 0
+    role: int = 0
+    caught: []int = new []int
+    caught_n: int = 0
+  }
+  state Purse { coins: int = 100 }
+  @Net @Predicted action Spend { n: int = 1 }
+  reducer Purse on Spend(p: mut Purse, a: Spend) { p.coins -= a.n }
+  function t_role(net_test_st: NetTestState) -> int { return net_test_st.role }
+  function t_catch(net_test_st: mut NetTestState, w: []int, n: int) -> void {
+    List.clear(net_test_st.caught)
+    for i in 0 .. n { push(net_test_st.caught, w[i]) }
+    net_test_st.caught_n = n
+  }
+  bind NetActions { role: fn t_role, to_host: fn t_catch, to_peer: fn netact_to_peer, to_all: fn netact_to_all }
+
+  function fake_open(port: int) -> int { return 5 }
+  function fake_close(h: int) -> void { }
+  function fake_port(h: int) -> int { return 40000 }
+  function fake_local() -> int { return Udp.ip("10.0.0.5") }
+  function fake_from_ip(net_test_st: NetTestState, h: int) -> int { return net_test_st.from_ip }
+  function fake_from_port(net_test_st: NetTestState, h: int) -> int { return net_test_st.from_port }
+  function fake_send(net_test_st: mut NetTestState, h: int, ip: int, port: int, b: []byte, n: int) -> int {
+    net_test_st.sends += 1
+    if net_test_st.quiet { return n }
+    let p = new Pkt
+    p.ip = ip
+    p.port = port
+    p.len = n
+    p.data = buffer(n)
+    nb_copy(p.data, 0, b, 0, n)
+    push(net_test_st.sent, p)
+    return n
+  }
+  function fake_recv(net_test_st: mut NetTestState, h: int, b: []byte, cap: int) -> int {
+    if len(net_test_st.inbound) == 0 { return 0 }
+    let p = net_test_st.inbound[0]
+    let rest = new []Pkt
+    for i in 1 .. len(net_test_st.inbound) { push(rest, net_test_st.inbound[i]) }
+    net_test_st.inbound = rest
+    nb_copy(b, 0, p.data, 0, p.len)
+    net_test_st.from_ip = p.ip
+    net_test_st.from_port = p.port
+    return p.len
+  }
+  bind NetSocket { open: fn fake_open, close: fn fake_close, send: fn fake_send, recv: fn fake_recv, from_ip: fn fake_from_ip, from_port: fn fake_from_port, port: fn fake_port, local_ip: fn fake_local }
+
+  function fresh(net_st: mut NetState, net_test_st: mut NetTestState) -> void {
+    net_test_st.sent = new []Pkt
+    net_test_st.inbound = new []Pkt
+    net_reset(net_st)
+    q_clear(net_inbox(net_st))
+    q_clear(net_facts(net_st))
+  }
+
+
+  # a packet from a guest: token, pid, ack, then one reliable message of `kind` with these words
+  function arrive_words(net_test_st: mut NetTestState, ip: int, port: int, token: int, pid: int, kind: int, id: int, w: []int, n: int) -> void {
+    let b = buffer(60 + 4 * n)
+    nb_put8(b, 0, 'M')
+    nb_put8(b, 1, 'L')
+    nb_put8(b, 2, 1)
+    nb_put8(b, 3, 1)
+    nb_put32(b, 4, token)
+    nb_put32(b, 8, pid)
+    nb_put32(b, 12, 0)
+    nb_put32(b, 16, 1)
+    nb_put8(b, 20, kind)
+    nb_put8(b, 21, 1)
+    nb_put32(b, 22, id)
+    nb_put8(b, 26, (4 * n) & 255)
+    nb_put8(b, 27, (4 * n) >> 8)
+    for i in 0 .. n { nb_put32(b, 28 + 4 * i, w[i]) }
+    let p = new Pkt
+    p.ip = ip
+    p.port = port
+    p.len = 28 + 4 * n
+    p.data = b
+    push(net_test_st.inbound, p)
+  }
+  function frame(net_st: mut NetState, dt: float) -> void {
+    net_begin(net_st, dt)
+    net_update(net_st, dt)
+    net_end(net_st)
+  }
+
+  test "the role follows the session" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    fresh(net_st, net_test_st)
+    expect_eq(netact_role(net_st), 0)
+    expect(net_host(net_st, 27415, 77))
+    expect_eq(netact_role(net_st), 1)
+  }
+
+  test "a guest's action reaches the host as one reliable message and is reduced there" (net_st: mut NetState, net_test_st: mut NetTestState, purse: mut Purse) {
+    fresh(net_st, net_test_st)
+    expect(net_host(net_st, 27415, 77))
+    arrive_words(net_test_st, Udp.ip("10.0.0.9"), 5000, 0, 0, NET_HELLO, 1, [42], 1)
+    net_begin(net_st, 0.01)
+    let hello = q_drain(net_inbox(net_st))
+    let slot = hello[0].slot
+    expect_eq(net_accept(net_st, slot), 2)
+    purse.coins = 100
+    net_test_st.role = 2                         # the guest's half: what its port is given is what would go to the host
+    dispatch Spend { n: 6 }
+    drain_actions()
+    expect_eq(purse.coins, 94)
+    expect_eq(net_test_st.caught_n, 5)           # a 4-word header and the one field
+    arrive_words(net_test_st, Udp.ip("10.0.0.9"), 5000, 77, 2, NETACT_KIND, 2, net_test_st.caught, net_test_st.caught_n)
+    net_begin(net_st, 0.01)
+    let got = q_drain(net_inbox(net_st))
+    expect_eq(len(got), 1)
+    expect_eq(got[0].kind, NETACT_KIND)
+    net_test_st.role = 1
+    purse.coins = 100                            # the host's own purse
+    net_end(net_st)
+    net_test_st.sent = new []Pkt
+    expect_eq(netact_take(net_st, got[0]), 0)
+    drain_actions()
+    expect_eq(purse.coins, 94)                   # reduced, for the sender the slot says
+    frame(net_st, 0.01)
+    expect_eq(len(net_test_st.sent), 1)          # the confirm, to the guest's address
+    expect_eq(net_test_st.sent[0].ip, Udp.ip("10.0.0.9"))
+    expect_eq(net_test_st.sent[0].data[20], NETACT_KIND)
+  }
+
+  function actions_sent(net_test_st: NetTestState) -> int {
+    var n = 0
+    for i in 0 .. len(net_test_st.sent) { if net_test_st.sent[i].len > 20 and net_test_st.sent[i].data[20] == NETACT_KIND { n += 1 } }
+    return n
+  }
+
+  test "netact_to_all leaves out the guest it is told to" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    fresh(net_st, net_test_st)
+    expect(net_host(net_st, 27415, 77))
+    arrive_words(net_test_st, Udp.ip("10.0.0.9"), 5000, 0, 0, NET_HELLO, 1, [42], 1)
+    net_begin(net_st, 0.01)
+    net_accept(net_st, q_drain(net_inbox(net_st))[0].slot)
+    net_end(net_st)
+    let w = [1, 2, 3, 4]
+    net_test_st.sent = new []Pkt
+    netact_to_all(net_st, 2, w, 4)
+    frame(net_st, 0.01)
+    expect_eq(actions_sent(net_test_st), 0)
+    netact_to_all(net_st, 0, w, 4)
+    frame(net_st, 0.3)
+    expect_eq(actions_sent(net_test_st), 1)
+    net_test_st.sent = new []Pkt
+    net_end(net_st)
+    netact_to_peer(net_st, 9, w, 4)              # nobody has pid 9
+    frame(net_st, 0.01)
+    expect_eq(actions_sent(net_test_st), 0)
+    net_test_st.sent = new []Pkt
+    netact_to_peer(net_st, 2, w, 4)
+    frame(net_st, 0.01)
+    expect_eq(actions_sent(net_test_st), 1)
+  }
+}
