@@ -1,0 +1,10 @@
+# buttons.lres - the test's menu, as a game writes it: rows with verbs, in `order`
+quit { order: 90, label: k"lt.quit", verb: "quit" }
+settings { order: 40, label: k"lt.settings", verb: "settings" }
+play { order: 20, label: k"lt.play", verb: "play", when: "no_save", primary: true }
+continue { order: 10, label: k"lt.continue", verb: "continue", when: "save", primary: true }
+news { order: 50, label: k"lt.news", verb: "news" }
+language { order: 60, label: k"lt.language", verb: "language" }
+update { order: 5, label: k"lt.update", verb: "update", when: "update" }
+site { order: 70, label: k"lt.site", verb: "link", arg: "https://example.test/", launcher: "main" }
+modes { order: 80, label: k"lt.modes", verb: "custom", arg: "mode-picker", launcher: "other" }

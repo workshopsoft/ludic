@@ -1,0 +1,6 @@
+# LauncherLinks.ludic - the small links along the bottom (a site, a forum, a chat), as items
+# [{label, icon}]; a press leaves LF_LINK
+component LauncherLinks (launcher_st: mut LauncherState) {
+  prop items: Val = null
+  on open(i: int) { launcher_link_open(launcher_st, i) }
+}

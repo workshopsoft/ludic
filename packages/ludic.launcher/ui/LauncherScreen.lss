@@ -1,0 +1,16 @@
+/* LauncherScreen.lss - the page; the parts style themselves */
+@import "theme.lss";
+.launcher { width: fill; height: fill; background: var(--lc-ink); color: var(--lc-text) }
+.bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover }
+.veil { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to right, rgba(0,0,0,0.7), rgba(0,0,0,0) 80%) }
+.page { width: fill; height: fill; padding: 48px; gap: var(--lc-gap) }
+.cols { flex-grow: 1; gap: 48px }
+.left { width: 420px; gap: 24px; justify-content: center }
+.right { flex-grow: 1; gap: var(--lc-gap); justify-content: flex-end; align-items: end }
+.art { max-height: 50%; object-fit: contain }
+.overlay { width: 640px; max-height: 80%; padding: 24px; background: var(--lc-panel); border: 2px solid var(--lc-line) }
+@media (max-width: 1000px) {
+  .page { padding: 24px }
+  .cols { flex-direction: column; gap: 24px }
+  .left { width: fill }
+}

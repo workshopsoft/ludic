@@ -1,0 +1,24 @@
+# LauncherMenu.stories.lres - the studio's stories for LauncherMenu (the buttons the data rows offer); the game never reads this file
+
+default {
+  viewport: "1280x720"
+  props: { items: [{ label: "Continue", icon: "", primary: true }, { label: "New game", icon: "", primary: false }, { label: "Settings", icon: "", primary: false }, { label: "Quit", icon: "", primary: false }] }
+}
+
+# the focused button
+focused {
+  base: "default"
+  force: ["button:focus-visible"]
+}
+
+# a first run: Play is the big one
+first_run {
+  base: "default"
+  props: { items: [{ label: "Play", icon: "", primary: true }, { label: "Settings", icon: "", primary: false }, { label: "Quit", icon: "", primary: false }] }
+}
+
+# long words in another language
+long_labels {
+  base: "default"
+  props: { items: [{ label: "Kaldigin yerden devam et", icon: "", primary: true }, { label: "Yeni oyun baslat", icon: "", primary: false }, { label: "Ayarlar ve denetimler", icon: "", primary: false }, { label: "Cikis", icon: "", primary: false }] }
+}

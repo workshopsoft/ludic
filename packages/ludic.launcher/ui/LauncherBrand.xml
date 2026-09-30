@@ -1,0 +1,5 @@
+<div class="brand">
+  <if test="{logo != ''}"><img class="logo" src="{logo}"/></if>
+  <if test="{logo == '' and title != ''}"><h1 class="title">{title}</h1></if>
+  <if test="{tagline != ''}"><p class="tagline">{tagline}</p></if>
+</div>

@@ -1,0 +1,7 @@
+# LauncherMenu.ludic - the buttons the data rows offer now, in order, handed in as items
+# [{label, icon, primary}]; a press is the launcher's (launcher_press): a panel opens, or a fact
+# is left for the game
+component LauncherMenu (launcher_st: mut LauncherState) {
+  prop items: Val = null
+  on press(i: int) { launcher_press(launcher_st, i) }
+}

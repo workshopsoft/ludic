@@ -1,0 +1,13 @@
+# LauncherNews.ludic - news: the game's rows and the feed's items, as items
+# [{title, body, date, tag, image, link}]. On the home screen the first few (limit, the row's
+# news_max); full="{true}" is the whole list in a panel.
+component LauncherNews (launcher_st: mut LauncherState) {
+  prop items: Val = null
+  prop limit: int = 4
+  prop full: bool = false
+  prop loading: bool = false     # the feed has been asked and has not answered
+  state open: int = -1
+  on toggle(i: int) { if open == i { open = -1 } else { open = i } }
+  on read(i: int) { launcher_news_open(launcher_st, i) }
+  on back() { launcher_back(launcher_st) }
+}

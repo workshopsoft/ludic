@@ -1,0 +1,11 @@
+<if test="{shown}">
+  <div class="crash">
+    <h3>{t('launcher.crash.title')}</h3>
+    <p>{t('launcher.crash.body')}</p>
+    <if test="{summary != ''}"><p class="summary">{summary}</p></if>
+    <row class="acts">
+      <if test="{can_report}"><button class="report" on-click="report()">{t('launcher.crash.report')}</button></if>
+      <button on-click="dismiss()">{t('launcher.crash.dismiss')}</button>
+    </row>
+  </div>
+</if>

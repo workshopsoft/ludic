@@ -30,6 +30,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.i18n](ludic.i18n/README.md) | a game in any language by keys: gettext `.po` files (en.po the English), holes, plurals, a mod folder, a font per language |
 | [ludic.inventory](ludic.inventory/README.md) | a pack: a count per kind, with room the game decides |
 | [ludic.loot](ludic.loot/README.md) | weighted loot tables (nested, guaranteed, rolls), rarity tiers by level and luck, affixes, uniques dropped once, seeded rolls, drops as facts |
+| [ludic.launcher](ludic.launcher/README.md) | a game's first screen as data and ludic.ui components: play or continue, news, the update's progress, a crashed-last-time slot, language, links, quit; ports for what it asks, facts for what the player did |
 | [ludic.minimap](ludic.minimap/README.md) | a map's logic: the explored fog over a grid and its land share, the player's marks, and the view (world to map and back, zoom, pan, the camp, you, focus) |
 | [ludic.melee](ludic.melee/README.md) | attacks as data on animation clips: hit windows and shapes, combos by input window, blocking and parrying, poise and stagger, a fighter's phase as a `@Machine` |
 | [ludic.needs](ludic.needs/README.md) | a body's warmth, food, water and energy, and the countdown to a collapse |

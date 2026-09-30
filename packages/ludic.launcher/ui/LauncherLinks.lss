@@ -1,0 +1,6 @@
+/* LauncherLinks.lss */
+.links { gap: 16px; align-items: center; flex-wrap: wrap }
+.link { height: 32px; padding: 0 4px; gap: 6px; align-items: center; font-size: 15px; color: var(--lc-muted, #98a3b3) }
+.link:hover { color: var(--lc-text, #e9edf2) }
+.link:focus-visible { outline: 2px solid var(--lc-accent, #e8b04a) }
+.icon { width: 18px; height: 18px }

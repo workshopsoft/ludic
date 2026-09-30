@@ -1,0 +1,24 @@
+/* LauncherNews.lss */
+.news { width: 460px; gap: 8px; padding: 16px; background: var(--lc-panel, #161c25); border: 2px solid var(--lc-line, #2b3441) }
+.news.full { width: fill; height: fill }
+.head { align-items: center; gap: 12px }
+.head h2 { font-size: 20px }
+.grow { flex-grow: 1 }
+.empty { color: var(--lc-muted, #98a3b3) }
+.list { gap: 6px; max-height: 360px }
+.news.full .list { max-height: none; flex-grow: 1 }
+.story { gap: 6px }
+.line { height: 40px; padding: 0 12px; gap: 10px; align-items: center; background: var(--lc-ink, #0c0f14); color: var(--lc-text, #e9edf2) }
+.line:hover { background: var(--lc-line, #2b3441) }
+.line:focus-visible { outline: 3px solid var(--lc-accent, #e8b04a) }
+.story.open .line { border-left: 4px solid var(--lc-accent, #e8b04a) }
+.name { text-overflow: ellipsis; white-space: nowrap }
+.date { color: var(--lc-muted, #98a3b3); font-size: 13px }
+.chip { padding: 2px 8px; font-size: 12px; background: var(--lc-accent, #e8b04a); color: var(--lc-ink, #0c0f14) }
+.more { gap: 8px; padding: 8px 12px }
+.pic { width: 100%; max-height: 180px; object-fit: cover }
+.body { color: var(--lc-text, #e9edf2); font-size: 15px }
+.read { align-self: end; height: 34px; padding: 0 14px; background: var(--lc-line, #2b3441); color: var(--lc-text, #e9edf2) }
+.read:focus-visible, .close:focus-visible { outline: 3px solid var(--lc-accent, #e8b04a) }
+.close { height: 34px; padding: 0 14px; background: var(--lc-line, #2b3441); color: var(--lc-text, #e9edf2) }
+@media (max-width: 1000px) { .news { width: fill } }

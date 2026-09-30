@@ -1,0 +1,18 @@
+# LauncherFooter.stories.lres - the studio's stories for LauncherFooter (links, the language button and the version); the game never reads this file
+
+default {
+  viewport: "1280x720"
+  props: { links: [{ label: "Website", icon: "" }, { label: "Forum", icon: "" }, { label: "Chat", icon: "" }], languages: true, build: "1.4.2" }
+}
+
+# one language: no button
+one_language {
+  base: "default"
+  props: { languages: false }
+}
+
+# no version shown
+no_version {
+  base: "default"
+  props: { build: "" }
+}

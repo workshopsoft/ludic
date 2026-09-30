@@ -1,0 +1,98 @@
+# wiring_test.ludic - how a game joins the launcher to ludic.update and ludic.i18n: the ports bound to
+# their answers and the facts routed back. The launcher itself reaches neither; this file is the
+# game's side, the same glue the README shows.
+import "ludic.launcher"
+import "ludic.update"
+import "ludic.i18n"
+import "ludic.base"
+program LauncherWiring {
+  numbers float
+
+  state WiringState {
+    net_text: string = ""
+    net_answer: int = -1
+  }
+
+  def Launchers main { title: k"w.title", news_max: 2 }
+  def LauncherButtons play { order: 1, label: k"w.play", verb: "play", primary: true }
+
+  # ludic.update's two halves as the launcher's one state
+  function w_update_state(update_st: UpdateState) -> int {
+    let s = update_state(update_st)
+    if s == UPDATE_FAILED { return LU_FAILED }
+    if s == UPDATE_FETCH { return LU_DOWNLOADING }
+    if s == UPDATE_FEED or s == UPDATE_CHECK or s == UPDATE_PATCH { return LU_WORKING }
+    if s == UPDATE_APPLY { return LU_APPLYING }
+    let a = update_ask_state(update_st)
+    if a == UPDATE_ASKING { return LU_CHECKING }
+    if a == UPDATE_NEWER { return LU_AVAILABLE }
+    if a == UPDATE_CURRENT { return LU_CURRENT }
+    return LU_NONE
+  }
+  function w_update_version(update_st: UpdateState) -> string { return update_latest(update_st) }
+  function w_update_progress(update_st: UpdateState) -> int { return update_progress(update_st) }
+  function w_update_eta(update_st: UpdateState) -> int { return update_eta_seconds(update_st) }
+  function w_update_error(update_st: UpdateState) -> int {
+    let e = update_error(update_st)
+    if e == UPDATE_ERR_NONE { return LE_NONE }
+    if e == UPDATE_ERR_UNREACHABLE or e == UPDATE_ERR_DOWNLOAD { return LE_OFFLINE }
+    if e == UPDATE_ERR_CORRUPT { return LE_CORRUPT }
+    if e == UPDATE_ERR_NOT_INSTALLED { return LE_NOT_INSTALLED }
+    return LE_OTHER
+  }
+  function w_language(i18n_st: I18nState) -> string { return i18n_current(i18n_st) }
+  function w_language_count(i18n_st: I18nState) -> int { return i18n_count(i18n_st) }
+  function w_language_code(i18n_st: I18nState, i: int) -> string { return i18n_code_at(i18n_st, i) }
+  function w_language_name(i18n_st: I18nState, i: int) -> string { return i18n_name_at(i18n_st, i) }
+
+  bind LauncherWorld {
+    update_state: fn w_update_state, update_version: fn w_update_version, update_progress: fn w_update_progress,
+    update_eta: fn w_update_eta, update_error: fn w_update_error,
+    language: fn w_language, language_count: fn w_language_count, language_code: fn w_language_code, language_name: fn w_language_name
+  }
+
+  function f_get(wiring_st: WiringState, url: string) -> int { return 0 }
+  function f_poll(wiring_st: WiringState, h: int) -> int { return wiring_st.net_answer }
+  function f_text(wiring_st: WiringState, h: int) -> string { return wiring_st.net_text }
+  function f_free(h: int) -> void { }
+  function f_recv(h: int) -> int { return 0 }
+  function f_dl(url: string, path: string) -> int { return 0 }
+  bind UpdateNet { get: fn f_get, download: fn f_dl, poll: fn f_poll, text: fn f_text, received: fn f_recv, free: fn f_free }
+
+  function dir() -> string { return Os.temp_dir() + "/ludic-launcher-wiring" }
+
+  test "a newer version from ludic.update reaches the launcher, and the languages from ludic.i18n" (launcher_st: mut LauncherState, update_st: mut UpdateState, i18n_st: mut I18nState, wiring_st: mut WiringState) {
+    System.run("rm -rf '" + dir() + "'")
+    Fs.mkdir(dir())
+    Fs.write_text(dir() + "/languages.txt", "en\ntr\n")
+    Fs.write_text(dir() + "/en.po", "msgid \"\"\nmsgstr \"\"\n\"X-Language-Name: English\\n\"\n")
+    Fs.write_text(dir() + "/tr.po", "msgid \"\"\nmsgstr \"\"\n\"X-Language-Name: Turkce\\n\"\n")
+    i18n_config(i18n_st, dir(), "font_default")
+    i18n_init(i18n_st)
+    let c = new UpdateConfig
+    c.feed = "http://feed"
+    c.version = "1.0.0"
+    update_config(update_st, c)
+    update_reset(update_st)
+    launcher_reset(launcher_st)
+    launcher_tick(launcher_st)
+    expect_eq(launcher_update_mode(launcher_st), LU_NONE)
+    expect_eq(launcher_language_count(launcher_st), 2)
+    expect(launcher_language_name(launcher_st, 1) == "Turkce")
+    update_check_tick(update_st, false)                               # the game's own tick asks
+    launcher_tick(launcher_st)
+    expect_eq(launcher_update_mode(launcher_st), LU_CHECKING)
+    wiring_st.net_text = "{\"version\":\"1.2.0\",\"notes\":{\"en\":[\"Fish.\"]}}"
+    wiring_st.net_answer = 1
+    update_check_tick(update_st, false)
+    launcher_tick(launcher_st)
+    expect_eq(launcher_update_mode(launcher_st), LU_AVAILABLE)
+    expect(launcher_update_version(launcher_st) == "1.2.0")
+    expect(launcher_language_pick(launcher_st, 1))                     # the game routes LF_LANGUAGE to i18n_use
+    let fs = q_drain(launcher_facts(launcher_st))
+    expect(fs[0].what == LF_LANGUAGE and fs[0].arg == "tr")
+    i18n_use(i18n_st, fs[0].arg)
+    launcher_tick(launcher_st)
+    expect(launcher_language_current(launcher_st, 1))
+  }
+}

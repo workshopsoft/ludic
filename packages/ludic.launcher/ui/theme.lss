@@ -1,0 +1,15 @@
+/* theme.lss - the launcher's look as variables. A game themes it by setting any of them on the
+   screen's own element (<LauncherScreen class="mine"/> and `.mine { --lc-accent: #6cf }` in its own
+   sheet) or by @importing this file after its own :root. The components read them with a fallback,
+   so a story of one component looks right with nothing set. */
+:root {
+  --lc-accent: #e8b04a;
+  --lc-ink: #0c0f14;
+  --lc-panel: #161c25;
+  --lc-line: #2b3441;
+  --lc-text: #e9edf2;
+  --lc-muted: #98a3b3;
+  --lc-good: #6fcf97;
+  --lc-bad: #eb5757;
+  --lc-gap: 16px;
+}

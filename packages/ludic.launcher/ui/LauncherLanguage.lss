@@ -1,0 +1,9 @@
+/* LauncherLanguage.lss */
+.language { gap: 12px }
+.language h2 { font-size: 20px }
+.list { gap: 6px; max-height: 360px }
+.lang { height: 44px; padding: 0 16px; font-size: 18px; background: var(--lc-ink, #0c0f14); color: var(--lc-text, #e9edf2); border: 2px solid var(--lc-line, #2b3441) }
+.lang.on { border-color: var(--lc-accent, #e8b04a) }
+.lang:hover { background: var(--lc-line, #2b3441) }
+.lang:focus-visible, .close:focus-visible { outline: 3px solid var(--lc-accent, #e8b04a) }
+.close { height: 38px; padding: 0 16px; align-self: end; background: var(--lc-line, #2b3441); color: var(--lc-text, #e9edf2) }

@@ -1,0 +1,54 @@
+# LauncherUpdate.stories.lres - the studio's stories for LauncherUpdate (every state of the update); the game never reads this file
+
+# nothing to say: nothing is drawn
+idle {
+  viewport: "1280x720"
+  props: { mode: 0 }
+}
+
+checking {
+  base: "idle"
+  props: { mode: 1 }
+}
+
+available {
+  base: "idle"
+  props: { mode: 2, newer: "1.5.0" }
+}
+
+downloading {
+  base: "idle"
+  props: { mode: 3, progress: 420, eta: 95 }
+}
+
+# no fraction: the bar sweeps
+working {
+  base: "idle"
+  props: { mode: 4 }
+}
+
+applying {
+  base: "idle"
+  props: { mode: 5 }
+}
+
+failed_offline {
+  base: "idle"
+  props: { mode: 6, err: 1 }
+}
+
+failed_corrupt {
+  base: "failed_offline"
+  props: { err: 2 }
+}
+
+# a copy the updater did not install: nothing to retry
+not_installed {
+  base: "failed_offline"
+  props: { err: 3 }
+}
+
+current {
+  base: "idle"
+  props: { mode: 7, newer: "1.4.2" }
+}

@@ -1,0 +1,31 @@
+# LauncherScreen.ludic - the whole first screen: background, brand and menu on the left, art and
+# news on the right, the footer under them, and a panel (all the news, the languages) over it.
+# It reads the launcher's state and hands each part what it shows, so the stories of the screen
+# set the same names the state would.
+component LauncherScreen (launcher_st: mut LauncherState) {
+  background: string = launcher_background(launcher_st)
+  art: string = launcher_art(launcher_st)
+  accent: string = launcher_accent(launcher_st)
+  shade: string = launcher_shade(launcher_st)
+  panel: int = launcher_panel(launcher_st)
+  logo: string = launcher_logo(launcher_st)
+  title: string = launcher_title(launcher_st)
+  tagline: string = launcher_tagline(launcher_st)
+  menu: Val = launcher_menu(launcher_st)
+  news: Val = launcher_news_items(launcher_st)
+  news_limit: int = launcher_news_limit(launcher_st)
+  news_loading: bool = launcher_news_loading(launcher_st)
+  links: Val = launcher_links(launcher_st)
+  languages: Val = launcher_languages(launcher_st)
+  languages_shown: bool = launcher_languages_shown(launcher_st)
+  build: string = launcher_version(launcher_st)
+  update_mode: int = launcher_update_mode(launcher_st)
+  update_newer: string = launcher_update_version(launcher_st)
+  update_progress: int = launcher_update_progress(launcher_st)
+  update_eta: int = launcher_update_eta(launcher_st)
+  update_err: int = launcher_update_error(launcher_st)
+  crash_shown: bool = launcher_crash_shown(launcher_st)
+  crash_summary: string = launcher_crash_summary(launcher_st)
+  crash_report: bool = launcher_crash_can_report(launcher_st)
+  on back() { launcher_back(launcher_st) }
+}

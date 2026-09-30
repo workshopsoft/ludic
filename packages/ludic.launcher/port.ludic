@@ -1,0 +1,64 @@
+# port.ludic - what the launcher asks the game. Every member has an answer for a game that binds
+# nothing (no save, no update, one language, no crash), so the launcher always shows.
+
+# the update's state as the launcher draws it; the game maps ludic.update's onto these
+export const LU_NONE: int = 0          # nothing to say: up to date, offline, not asked
+export const LU_CHECKING: int = 1
+export const LU_AVAILABLE: int = 2     # a newer version: update_version says which, the button starts it
+export const LU_DOWNLOADING: int = 3   # the bar has a fraction (update_progress)
+export const LU_WORKING: int = 4       # a check or a patch: no fraction, the bar sweeps
+export const LU_APPLYING: int = 5      # the game is about to exit and restart
+export const LU_FAILED: int = 6        # update_error says why
+export const LU_CURRENT: int = 7       # "you are up to date", for a game that wants it said
+
+export const LE_NONE: int = 0
+export const LE_OFFLINE: int = 1
+export const LE_CORRUPT: int = 2
+export const LE_NOT_INSTALLED: int = 3
+export const LE_OTHER: int = 4
+
+export port LauncherWorld {
+  has_save: fn() -> bool = fn lw_false            # Continue is offered while there is one
+  version: fn() -> string = fn lw_text            # this build's version, for the footer
+  update_state: fn() -> int = fn lw_none          # LU_*
+  update_version: fn() -> string = fn lw_text     # the newer version's name
+  update_progress: fn() -> int = fn lw_none       # 0..1000 over every byte
+  update_eta: fn() -> int = fn lw_unknown         # seconds left, -1 until known
+  update_error: fn() -> int = fn lw_none          # LE_*
+  language: fn() -> string = fn lw_en             # the code in use
+  language_count: fn() -> int = fn lw_none        # how many to choose from
+  language_code: fn(int) -> string = fn lw_code
+  language_name: fn(int) -> string = fn lw_code   # each in its own words ("Turkce")
+  crashed: fn() -> bool = fn lw_false             # the last run ended in a crash (ludic.crash, or the game)
+  crash_summary: fn() -> string = fn lw_text      # one line for the slot
+  crash_can_report: fn() -> bool = fn lw_false    # a report can be sent (a consent, a network)
+  can_quit: fn() -> bool = fn lw_true             # a build that cannot close itself says no
+}
+
+# the feed: a request is an int, poll is -1 pending, 0 failed, 1 ok (ludic.update's UpdateNet shape)
+export port LauncherNet {
+  get: fn(string) -> int = fn ln_get
+  poll: fn(int) -> int = fn ln_poll
+  text: fn(int) -> string = fn ln_text
+  free: fn(int) -> void = fn ln_free
+  now_s: fn() -> int = fn ln_now
+}
+
+function lw_false() -> bool { return false }
+function lw_true() -> bool { return true }
+function lw_text() -> string { return "" }
+function lw_en() -> string { return "en" }
+function lw_none() -> int { return 0 }
+function lw_unknown() -> int { return -1 }
+function lw_code(i: int) -> string { return "" }
+
+function ln_get(url: string) -> int { return Http.get(url) }
+function ln_poll(h: int) -> int {
+  let st = Http.poll(h)
+  if st < 0 { return -1 }
+  if st > 0 and Http.ok(h) { return 1 }
+  return 0
+}
+function ln_text(h: int) -> string { return Http.text(h) }
+function ln_free(h: int) -> void { Http.free(h) }
+function ln_now() -> int { return Time.now() }

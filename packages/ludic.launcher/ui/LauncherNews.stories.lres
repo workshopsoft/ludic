@@ -1,0 +1,36 @@
+# LauncherNews.stories.lres - the studio's stories for LauncherNews (news on the home screen and in its panel); the game never reads this file
+
+default {
+  viewport: "1280x720"
+  props: { items: [{ title: "Lake season opens", body: "The ice is gone and the trout are in.", date: "2026-09-20", tag: "event", image: "", link: true }, { title: "Patch 1.4", body: "Boats steer better, and the camp fire keeps its coals.", date: "2026-09-01", tag: "patch", image: "", link: false }, { title: "A winter market", body: "Stalls by the pier from the first frost.", date: "2026-08-12", tag: "", image: "", link: true }], limit: 3 }
+}
+
+# one item opened out
+opened {
+  base: "default"
+  model: { open: 0 }
+}
+
+# waiting on the feed
+loading {
+  base: "default"
+  props: { items: [], loading: true }
+}
+
+empty {
+  base: "default"
+  props: { items: [] }
+}
+
+# the home screen shows only the first two
+limited {
+  base: "default"
+  props: { limit: 2 }
+}
+
+# the whole list, in its panel
+full {
+  base: "opened"
+  props: { full: true }
+  viewport: "1920x1080"
+}

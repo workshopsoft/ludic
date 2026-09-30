@@ -1,0 +1,180 @@
+# news.ludic - the game's own rows first, then the feed's items. A feed is JSON: a list of items, or
+# {"items": [...]}, each {"title", "body", "date", "tag", "url", "image"}; a title or body may be
+# an object by language ({"en": "...", "tr": "..."}), read in the language in use, else English.
+
+function launcher__news_rows(launcher_st: mut LauncherState) -> void {
+  let news = launcher_st.launcher__news
+  List.clear(news)
+  var order = new []int
+  for i in 0 .. LN_COUNT {
+    let r = LauncherNews[i]
+    if not launcher__mine(launcher_st, r.launcher) { continue }
+    var at = len(order)
+    while at > 0 and LauncherNews[order[at - 1]].order > r.order { at -= 1 }
+    List.insert(order, at, i)
+  }
+  for k in 0 .. len(order) {
+    let r = LauncherNews[order[k]]
+    let it = new LauncherNewsItem
+    it.key = r.key
+    if r.title != null { it.title = string(r.title) }
+    if r.body != null { it.body = string(r.body) }
+    it.date = r.date
+    it.tag = r.tag
+    it.url = r.url
+    it.image = r.image
+    push(news, it)
+  }
+  launcher_st.launcher__rows_n = len(news)
+  launcher__news_mirror(launcher_st)
+}
+
+# the items as values for LauncherNews's prop
+function launcher__news_mirror(launcher_st: mut LauncherState) -> void {
+  let v = Value.list()
+  let news = launcher_st.launcher__news
+  for i in 0 .. len(news) {
+    let o = Value.object()
+    Value.put(o, "title", Value.str(news[i].title))
+    Value.put(o, "body", Value.str(news[i].body))
+    Value.put(o, "date", Value.str(news[i].date))
+    Value.put(o, "tag", Value.str(news[i].tag))
+    Value.put(o, "image", Value.str(news[i].image))
+    Value.put(o, "link", launcher__flag(news[i].url != ""))
+    Value.add(v, o)
+  }
+  launcher_st.launcher__news_v = v
+}
+
+function launcher__feed_tick(launcher_st: mut LauncherState) -> void {
+  let url = Launchers[launcher_st.launcher__row].news_url
+  if url == "" { return }
+  let now = LauncherNet.now_s()
+  if launcher_st.launcher__feed_state == LF_FEED_IDLE {
+    launcher_st.launcher__feed_h = LauncherNet.get(url)
+    launcher_st.launcher__feed_t = now
+    launcher_st.launcher__feed_state = LF_FEED_ASKING
+    if launcher_st.launcher__feed_h < 0 { launcher_st.launcher__feed_state = LF_FEED_FAILED }
+    return
+  }
+  if launcher_st.launcher__feed_state == LF_FEED_ASKING {
+    let st = LauncherNet.poll(launcher_st.launcher__feed_h)
+    if st < 0 { return }
+    launcher_st.launcher__feed_state = LF_FEED_FAILED
+    if st > 0 {
+      let v = Json.parse(LauncherNet.text(launcher_st.launcher__feed_h))
+      if launcher__feed_items(v) != null {
+        launcher_st.launcher__feed = v
+        launcher_st.launcher__feed_state = LF_FEED_OK
+        launcher_st.launcher__feed_lang = ""
+      }
+    }
+    LauncherNet.free(launcher_st.launcher__feed_h)
+    launcher_st.launcher__feed_h = -1
+    launcher_st.launcher__feed_t = now
+  }
+  if launcher_st.launcher__feed_state == LF_FEED_OK and launcher_st.launcher__feed_lang != launcher_st.launcher__lang {
+    launcher__feed_read(launcher_st)
+  }
+  let every = Launchers[launcher_st.launcher__row].news_refresh
+  if every > 0 and launcher_st.launcher__feed_state != LF_FEED_ASKING and now - launcher_st.launcher__feed_t >= every {
+    launcher_st.launcher__feed_state = LF_FEED_IDLE
+  }
+}
+
+# the list of items in a feed, or null when it is not one
+function launcher__feed_items(v: Val) -> Val {
+  if v == null { return null }
+  if Value.kind(v) == 5 { return v }
+  if Value.kind(v) == 6 and Value.has(v, "items") != 0 and Value.kind(Value.get(v, "items")) == 5 { return Value.get(v, "items") }
+  return null
+}
+
+function launcher__said(v: Val, field: string, lang: string) -> string {
+  if Value.has(v, field) == 0 { return "" }
+  let x = Value.get(v, field)
+  if Value.kind(x) == 4 { return Value.as_str(x) }
+  if Value.kind(x) != 6 { return "" }
+  if Value.has(x, lang) != 0 { return Value.as_str(Value.get(x, lang)) }
+  if Value.has(x, "en") != 0 { return Value.as_str(Value.get(x, "en")) }
+  return ""
+}
+
+# the feed's items, read for the language in use, after the game's rows
+function launcher__feed_read(launcher_st: mut LauncherState) -> void {
+  let lang = launcher_st.launcher__lang
+  launcher_st.launcher__feed_lang = lang
+  let news = launcher_st.launcher__news
+  while len(news) > launcher_st.launcher__rows_n { List.pop(news) }
+  let items = launcher__feed_items(launcher_st.launcher__feed)
+  if items == null { return }
+  for i in 0 .. Value.count(items) {
+    let v = Value.at(items, i)
+    if Value.kind(v) != 6 { continue }
+    let it = new LauncherNewsItem
+    it.key = "feed." + string(i)
+    it.title = launcher__said(v, "title", lang)
+    it.body = launcher__said(v, "body", lang)
+    it.date = launcher__said(v, "date", lang)
+    it.tag = launcher__said(v, "tag", lang)
+    it.url = launcher__said(v, "url", lang)
+    it.image = launcher__said(v, "image", lang)
+    if it.title == "" { continue }
+    push(news, it)
+  }
+  launcher__news_mirror(launcher_st)
+}
+
+# whether the feed has answered (for a "loading" line) and how many items there are
+export function launcher_news_loading(launcher_st: LauncherState) -> bool { return launcher_st.launcher__feed_state == LF_FEED_ASKING }
+export function launcher_news_count(launcher_st: LauncherState) -> int { return len(launcher_st.launcher__news) }
+
+# how many the home screen shows (the row's news_max), and all of them for the panel
+export function launcher_news_home(launcher_st: LauncherState) -> int {
+  if launcher_st.launcher__row < 0 { return 0 }
+  return min(len(launcher_st.launcher__news), Launchers[launcher_st.launcher__row].news_max)
+}
+
+export function launcher_news_title(launcher_st: LauncherState, i: int) -> string {
+  if i < 0 or i >= len(launcher_st.launcher__news) { return "" }
+  return launcher_st.launcher__news[i].title
+}
+export function launcher_news_body(launcher_st: LauncherState, i: int) -> string {
+  if i < 0 or i >= len(launcher_st.launcher__news) { return "" }
+  return launcher_st.launcher__news[i].body
+}
+export function launcher_news_date(launcher_st: LauncherState, i: int) -> string {
+  if i < 0 or i >= len(launcher_st.launcher__news) { return "" }
+  return launcher_st.launcher__news[i].date
+}
+export function launcher_news_tag(launcher_st: LauncherState, i: int) -> string {
+  if i < 0 or i >= len(launcher_st.launcher__news) { return "" }
+  return launcher_st.launcher__news[i].tag
+}
+export function launcher_news_image(launcher_st: LauncherState, i: int) -> string {
+  if i < 0 or i >= len(launcher_st.launcher__news) { return "" }
+  return launcher_st.launcher__news[i].image
+}
+export function launcher_news_has_url(launcher_st: LauncherState, i: int) -> bool {
+  if i < 0 or i >= len(launcher_st.launcher__news) { return false }
+  return launcher_st.launcher__news[i].url != ""
+}
+export function launcher_news_open(launcher_st: mut LauncherState, i: int) -> bool {
+  if i < 0 or i >= len(launcher_st.launcher__news) or launcher_st.launcher__news[i].url == "" { return false }
+  launcher__fact(launcher_st, LF_LINK, launcher_st.launcher__news[i].url, "")
+  return true
+}
+
+# how many the component lists: all of them (the panel) or the home screen's few
+export function launcher_news_shown(launcher_st: LauncherState, full: bool) -> int {
+  if full { return len(launcher_st.launcher__news) }
+  return launcher_news_home(launcher_st)
+}
+
+export function launcher_news_items(launcher_st: LauncherState) -> Val { return launcher_st.launcher__news_v }
+
+# how many the home screen lists (the row's news_max); 0 leaves the news off it
+export function launcher_news_limit(launcher_st: LauncherState) -> int {
+  if launcher_st.launcher__row < 0 { return 0 }
+  return Launchers[launcher_st.launcher__row].news_max
+}

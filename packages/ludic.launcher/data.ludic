@@ -1,0 +1,79 @@
+# data.ludic - the launcher as the game writes it: one row that says how it looks, the buttons as
+# rows with verbs, the links, and news that ships with the game. All of it is data, so the studio
+# edits it with its attribute editors; nothing here names a game.
+
+# what a button does when it is pressed. A verb the launcher answers itself (news, language) opens
+# its panel; every other one is a fact the game drains (LauncherFact) and acts on.
+export const LV_PLAY: int = 0
+export const LV_CONTINUE: int = 1
+export const LV_NEW_GAME: int = 2
+export const LV_SETTINGS: int = 3
+export const LV_NEWS: int = 4          # the launcher's own: opens the news panel
+export const LV_LANGUAGE: int = 5      # the launcher's own: opens the language list
+export const LV_UPDATE: int = 6        # start the update (a fact)
+export const LV_CRASH_REPORT: int = 7
+export const LV_CRASH_DISMISS: int = 8
+export const LV_LINK: int = 9          # open `arg` in the browser (a fact)
+export const LV_QUIT: int = 10
+export const LV_CUSTOM: int = 11       # the game's own: `arg` says which (a fact)
+
+export property LauncherDef {
+  key: string = ""
+  @Text title: Key = null
+  @Text tagline: Key = null
+  @Asset("png") logo: string = ""          # over the title; empty: the title's words
+  @Asset("png") art: string = ""           # the picture beside the menu
+  @Asset("png") background: string = ""    # behind everything, cover-fitted
+  @Color accent: int = 0xE8B04A            # the primary button, the progress bar, the focus ring
+  @Color shade: int = 0x10141A             # the panels' colour over the background
+  news_url: string = ""                    # a JSON feed, asked once (and again every news_refresh seconds)
+  @Range(0, 20) news_max: int = 4          # how many items the home screen shows
+  @Range(0, 86400) @Unit("s") news_refresh: int = 0   # 0: once per launch
+  show_version: bool = true
+  show_language: bool = true               # the language button and list (when the port knows two or more)
+}
+
+# the menu, in `order`. A row with `when` shows only while that holds.
+export property LauncherButton {
+  key: string = ""
+  launcher: string = ""                    # the LauncherDef row it belongs to; empty: every launcher
+  order: int = 0
+  @Text label: Key = null
+  @OneOf("play", "continue", "new_game", "settings", "news", "language", "update", "crash_report", "crash_dismiss", "link", "quit", "custom") verb: string = "custom"
+  arg: string = ""                         # link: the address; custom: what the game's router reads
+  @Asset("png") icon: string = ""
+  primary: bool = false                    # the big one, focused first (the first shown primary wins)
+  @OneOf("always", "save", "no_save", "update", "crash") when: string = "always"
+}
+
+# the small links along the bottom: a site, a forum, a chat
+export property LauncherLink {
+  key: string = ""
+  launcher: string = ""
+  order: int = 0
+  @Text label: Key = null
+  url: string = ""
+  @Asset("png") icon: string = ""
+}
+
+# news that ships with the game: shown until the feed answers, and kept when it never does
+export property LauncherNewsRow {
+  key: string = ""
+  launcher: string = ""
+  order: int = 0
+  @Text title: Key = null
+  @Text @Multiline body: Key = null
+  date: string = ""                        # as written: "2026-09-30"
+  tag: string = ""                         # a chip: "patch", "event"
+  url: string = ""                         # the "read more" address; empty: the row just opens out
+  @Asset("png") image: string = ""
+}
+
+@ByKey
+export open registry Launchers of LauncherDef as LC
+@ByKey
+export open registry LauncherButtons of LauncherButton as LB
+@ByKey
+export open registry LauncherLinks of LauncherLink as LL
+@ByKey
+export open registry LauncherNews of LauncherNewsRow as LN

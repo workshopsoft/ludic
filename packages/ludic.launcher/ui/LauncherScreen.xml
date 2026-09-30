@@ -1,0 +1,21 @@
+<div class="launcher" style="--lc-accent: {accent}; --lc-panel: {shade}">
+  <if test="{background != ''}"><img class="bg" src="{background}"/></if>
+  <div class="veil"/>
+  <div class="page">
+    <row class="cols">
+      <div class="left">
+        <LauncherBrand logo="{logo}" title="{title}" tagline="{tagline}"/>
+        <LauncherMenu items="{menu}"/>
+        <LauncherUpdate mode="{update_mode}" newer="{update_newer}" progress="{update_progress}" eta="{update_eta}" err="{update_err}"/>
+        <LauncherCrash shown="{crash_shown}" summary="{crash_summary}" can_report="{crash_report}"/>
+      </div>
+      <div class="right">
+        <if test="{art != ''}"><img class="art" src="{art}"/></if>
+        <if test="{news_limit > 0}"><LauncherNews items="{news}" limit="{news_limit}" loading="{news_loading}"/></if>
+      </div>
+    </row>
+    <LauncherFooter links="{links}" languages="{languages_shown}" build="{build}"/>
+  </div>
+  <if test="{panel == 1}"><div class="overlay" popover on-close="back()"><LauncherNews items="{news}" full="{true}" loading="{news_loading}"/></div></if>
+  <if test="{panel == 2}"><div class="overlay" popover on-close="back()"><LauncherLanguage items="{languages}"/></div></if>
+</div>

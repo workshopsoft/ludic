@@ -1,0 +1,8 @@
+<nav class="menu">
+  <each in="{items}" as="it" index="i">
+    <button class="entry {it.primary ? 'primary' : ''}" autofocus="{it.primary}" on-click="press(i)">
+      <if test="{it.icon != ''}"><img class="icon" src="{it.icon}"/></if>
+      <span>{it.label}</span>
+    </button>
+  </each>
+</nav>

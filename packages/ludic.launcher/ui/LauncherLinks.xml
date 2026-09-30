@@ -1,0 +1,8 @@
+<row class="links">
+  <each in="{items}" as="it" index="i">
+    <button class="link" on-click="open(i)">
+      <if test="{it.icon != ''}"><img class="icon" src="{it.icon}"/></if>
+      <span>{it.label}</span>
+    </button>
+  </each>
+</row>

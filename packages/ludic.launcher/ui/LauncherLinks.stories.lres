@@ -1,0 +1,13 @@
+# LauncherLinks.stories.lres - the studio's stories for LauncherLinks (the small links along the bottom); the game never reads this file
+
+default {
+  viewport: "1280x720"
+  props: { items: [{ label: "Website", icon: "" }, { label: "Forum", icon: "" }, { label: "Chat", icon: "" }] }
+}
+
+# more than fit: they wrap
+many {
+  base: "default"
+  viewport: "640x360"
+  props: { items: [{ label: "Website", icon: "" }, { label: "Forum", icon: "" }, { label: "Chat", icon: "" }, { label: "Wiki", icon: "" }, { label: "Bug reports", icon: "" }, { label: "Press kit", icon: "" }, { label: "Privacy", icon: "" }, { label: "Terms", icon: "" }] }
+}

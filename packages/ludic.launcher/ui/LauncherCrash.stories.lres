@@ -1,0 +1,23 @@
+# LauncherCrash.stories.lres - the studio's stories for LauncherCrash (the crashed-last-time slot); the game never reads this file
+
+# nothing crashed: nothing is drawn
+empty {
+  viewport: "1280x720"
+  props: { shown: false }
+}
+
+crashed {
+  base: "empty"
+  props: { shown: true, summary: "access violation in the renderer (frame 18204)", can_report: false }
+}
+
+with_report {
+  base: "crashed"
+  props: { can_report: true }
+}
+
+# no summary line
+no_summary {
+  base: "with_report"
+  props: { summary: "" }
+}

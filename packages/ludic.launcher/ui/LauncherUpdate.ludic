@@ -1,0 +1,13 @@
+# LauncherUpdate.ludic - the update, as the game reports it (ports): a newer version and its button,
+# the bar while it downloads (a fraction) or works (a sweep), why it failed, "you are up to date".
+# mode is a LU_* code: 0 nothing, 1 checking, 2 available, 3 downloading, 4 working, 5 applying,
+# 6 failed, 7 current; err is a LE_* code: 1 offline, 2 corrupt, 3 not installed, 4 other.
+component LauncherUpdate (launcher_st: mut LauncherState) {
+  prop mode: int = 0
+  prop newer: string = ""        # the newer version's name (or the current one's, in mode 7)
+  prop progress: int = 0         # 0..1000 over every byte
+  prop eta: int = -1             # seconds left; -1 until known
+  prop err: int = 0
+  percent: int = progress / 10
+  on start() { launcher_update_start(launcher_st) }
+}

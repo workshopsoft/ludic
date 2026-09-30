@@ -1,0 +1,70 @@
+# LauncherScreen.stories.lres - the studio's stories for LauncherScreen (the whole first screen); the game never reads this file
+
+# the home screen: the menu, the news, the links, nothing to report
+default {
+  viewport: "1920x1080"
+  model: {
+    background: "", art: "", accent: "#e8b04a", shade: "#161c25", panel: 0
+    logo: "", title: "Pinewood", tagline: "A quiet valley, a long season"
+    menu: [{ label: "Continue", icon: "", primary: true }, { label: "New game", icon: "", primary: false }, { label: "Settings", icon: "", primary: false }, { label: "Quit", icon: "", primary: false }]
+    news: [{ title: "Lake season opens", body: "The ice is gone and the trout are in.", date: "2026-09-20", tag: "event", image: "", link: true }, { title: "Patch 1.4", body: "Boats steer better, and the camp fire keeps its coals.", date: "2026-09-01", tag: "patch", image: "", link: false }, { title: "A winter market", body: "Stalls by the pier from the first frost.", date: "2026-08-12", tag: "", image: "", link: true }], news_limit: 3, news_loading: false
+    links: [{ label: "Website", icon: "" }, { label: "Forum", icon: "" }, { label: "Chat", icon: "" }], languages: [{ name: "English", on: true }, { name: "Turkce", on: false }, { name: "Deutsch", on: false }, { name: "Francais", on: false }], languages_shown: true, build: "1.4.2"
+    update_mode: 0, update_newer: "", update_progress: 0, update_eta: -1, update_err: 0
+    crash_shown: false, crash_summary: "", crash_report: false
+  }
+}
+
+# a newer version is out
+update_available {
+  base: "default"
+  model: { update_mode: 2, update_newer: "1.5.0" }
+}
+
+# mid-download, with a time left
+update_downloading {
+  base: "default"
+  model: { update_mode: 3, update_progress: 420, update_eta: 95 }
+}
+
+# the update failed: offline
+update_failed {
+  base: "default"
+  model: { update_mode: 6, update_err: 1 }
+}
+
+# the game crashed last time, and a report can be sent
+crashed {
+  base: "default"
+  model: { crash_shown: true, crash_summary: "access violation in the renderer (frame 18204)", crash_report: true }
+}
+
+# a first visit: nothing saved yet, no news, no links
+first_run {
+  base: "default"
+  model: { menu: [{ label: "Play", icon: "", primary: true }, { label: "Settings", icon: "", primary: false }, { label: "Quit", icon: "", primary: false }], news: [], links: [] }
+}
+
+# art and a background behind it all
+with_art {
+  base: "default"
+  model: { art: "assets/launcher/art.png", background: "assets/launcher/background.png" }
+}
+
+# all the news, over the page
+news_panel {
+  base: "default"
+  model: { panel: 1 }
+}
+
+# the language list, over the page
+language_panel {
+  base: "default"
+  model: { panel: 2 }
+}
+
+# the small window, with the focus ring on the primary button
+small {
+  base: "update_available"
+  viewport: "1280x720"
+  force: ["button:focus-visible"]
+}

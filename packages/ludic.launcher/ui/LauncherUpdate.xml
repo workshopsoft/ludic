@@ -1,0 +1,28 @@
+<div class="update">
+  <if test="{mode == 1}"><p class="note">{t('launcher.update.checking')}</p></if>
+  <if test="{mode == 2}">
+    <row class="avail">
+      <p class="grow">{t('launcher.update.available', newer)}</p>
+      <button class="go" on-click="start()">{t('launcher.update.button')}</button>
+    </row>
+  </if>
+  <if test="{mode == 3}">
+    <p>{t('launcher.update.downloading', percent)}</p>
+    <progress class="bar" value="{progress}" max="1000"/>
+    <if test="{eta >= 0}"><small class="note">{t('launcher.update.eta', eta)}</small></if>
+  </if>
+  <if test="{mode == 4}">
+    <p>{t('launcher.update.working')}</p>
+    <progress class="bar sweep" value="0" max="1000"/>
+  </if>
+  <if test="{mode == 5}"><p>{t('launcher.update.applying')}</p></if>
+  <if test="{mode == 6}">
+    <p class="bad">{t('launcher.update.failed')}</p>
+    <if test="{err == 1}"><small class="note">{t('launcher.update.error.offline')}</small></if>
+    <if test="{err == 2}"><small class="note">{t('launcher.update.error.corrupt')}</small></if>
+    <if test="{err == 3}"><small class="note">{t('launcher.update.error.not_installed')}</small></if>
+    <if test="{err == 4}"><small class="note">{t('launcher.update.error.other')}</small></if>
+    <if test="{err != 3}"><button class="go" on-click="start()">{t('launcher.update.retry')}</button></if>
+  </if>
+  <if test="{mode == 7}"><p class="good">{t('launcher.update.current', newer)}</p></if>
+</div>

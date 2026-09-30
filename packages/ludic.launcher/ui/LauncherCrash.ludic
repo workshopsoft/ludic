@@ -1,0 +1,9 @@
+# LauncherCrash.ludic - "the game crashed last time": a slot the game (or ludic.crash, through the
+# `crashed`, `crash_summary` and `crash_can_report` ports) fills; nothing at all while it is empty
+component LauncherCrash (launcher_st: mut LauncherState) {
+  prop shown: bool = false
+  prop summary: string = ""
+  prop can_report: bool = false
+  on report() { launcher_crash_report(launcher_st) }
+  on dismiss() { launcher_crash_dismiss(launcher_st) }
+}

@@ -1,0 +1,18 @@
+# LauncherBrand.stories.lres - the studio's stories for LauncherBrand (the logo or the title, and the tagline); the game never reads this file
+
+default {
+  viewport: "1280x720"
+  props: { logo: "", title: "Pinewood", tagline: "A quiet valley, a long season" }
+}
+
+# a long title shrinks rather than breaking the column
+long_title {
+  base: "default"
+  props: { title: "The Long And Winding Valley Of Pinewood" }
+}
+
+# no tagline
+bare {
+  base: "default"
+  props: { tagline: "" }
+}

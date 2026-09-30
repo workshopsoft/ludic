@@ -1,0 +1,115 @@
+# launcher.en.po - the English of ludic.launcher's own words: copy these entries into the game's source .po
+# (the compiler holds every t('...') a component uses to it). The game's own words - the title, the
+# buttons, the news rows - are keys too, derived from its rows (launchers.<row>.title, launcher_buttons.<row>.label).
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. The news panel's heading.
+msgid "launcher.news.title"
+msgstr "What's new"
+
+#. News panel with no items.
+msgid "launcher.news.empty"
+msgstr "Nothing new right now."
+
+#. News panel while the feed has not answered.
+msgid "launcher.news.loading"
+msgstr "Fetching the news..."
+
+#. Opens a news item's address.
+msgid "launcher.news.read"
+msgstr "Read more"
+
+#. Closes the full news panel.
+msgid "launcher.news.back"
+msgstr "Back"
+
+#. Update slot while the newest version is asked for.
+msgid "launcher.update.checking"
+msgstr "Checking for updates..."
+
+#. Update slot. {1} = the newer version.
+msgid "launcher.update.available"
+msgstr "Version {1} is available"
+
+#. Starts the update.
+msgid "launcher.update.button"
+msgstr "Update"
+
+#. Update slot with a bar. {1} = percent done.
+msgid "launcher.update.downloading"
+msgstr "Downloading the update, {1}%"
+
+#. Under the bar. {1} = seconds.
+msgid "launcher.update.eta"
+msgstr "About {1} s left"
+
+#. Update slot while it checks or patches (a sweeping bar).
+msgid "launcher.update.working"
+msgstr "Preparing the update..."
+
+#. The game is about to exit and start the new version.
+msgid "launcher.update.applying"
+msgstr "Restarting to finish the update..."
+
+#. Update slot after a failure.
+msgid "launcher.update.failed"
+msgstr "The update did not finish"
+
+#. Starts the update again after a failure.
+msgid "launcher.update.retry"
+msgstr "Try again"
+
+#. Why an update failed.
+msgid "launcher.update.error.offline"
+msgstr "The update server could not be reached."
+
+#. Why an update failed.
+msgid "launcher.update.error.corrupt"
+msgstr "A downloaded file was damaged and was thrown away."
+
+#. Why an update cannot run.
+msgid "launcher.update.error.not_installed"
+msgstr "This copy was not installed by the launcher, so it cannot update itself."
+
+#. Why an update failed, when nothing more specific is known.
+msgid "launcher.update.error.other"
+msgstr "Something went wrong while updating."
+
+#. Update slot for a game that says so. {1} = this version.
+msgid "launcher.update.current"
+msgstr "You are up to date (version {1})"
+
+#. Heading of the crash note.
+msgid "launcher.crash.title"
+msgstr "The game crashed last time"
+
+#. Body of the crash note.
+msgid "launcher.crash.body"
+msgstr "Sorry about that. A report helps us find the cause."
+
+#. Sends the crash report.
+msgid "launcher.crash.report"
+msgstr "Send a report"
+
+#. Puts the crash note away.
+msgid "launcher.crash.dismiss"
+msgstr "Dismiss"
+
+#. The footer button that opens the language list.
+msgid "launcher.language.button"
+msgstr "Language"
+
+#. Heading of the language list.
+msgid "launcher.language.title"
+msgstr "Language"
+
+#. Closes the language list.
+msgid "launcher.language.back"
+msgstr "Back"
+
+#. The footer's version. {1} = the build's version.
+msgid "launcher.version"
+msgstr "Version {1}"

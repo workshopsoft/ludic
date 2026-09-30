@@ -1,0 +1,7 @@
+# LauncherFooter.ludic - the links, the language button (when the game has two or more) and the version
+component LauncherFooter (launcher_st: mut LauncherState) {
+  prop links: Val = null         # LauncherLinks's items
+  prop languages: bool = false
+  prop build: string = ""
+  on language() { launcher_open(launcher_st, LP_LANGUAGE) }
+}

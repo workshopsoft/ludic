@@ -1,0 +1,557 @@
+# launcher_test.ludic - the launcher against a fake game: the rows it reads (a .lres for the
+# buttons), what is offered while the game's answers change, what a press means, the feed, and the
+# screen's components driven through ludic.ui (a press leaves a fact; nothing is started here)
+import "ludic.launcher"
+import "ludic.base"
+import "ludic.ui"
+program LauncherTest {
+  numbers float
+
+  state LauncherTestState {
+    save: bool = false
+    upd: int = 0
+    upd_ver: string = ""
+    upd_progress: int = 0
+    upd_eta: int = -1
+    upd_err: int = 0
+    lang: string = "en"
+    langs: []string = null
+    crashed: bool = false
+    summary: string = ""
+    can_report: bool = false
+    can_quit: bool = true
+    net_answer: int = -1
+    net_text: string = ""
+    net_urls: []string = null
+    now: int = 100
+  }
+
+  def Launchers main { title: k"lt.title", tagline: k"lt.tagline", art: "art.png", background: "bg.png", news_max: 2, news_url: "http://feed/news.json", news_refresh: 60 }
+  def Launchers other { title: k"lt.other", news_max: 3, show_version: false }
+  def LauncherButtons from "buttons.lres"
+  def LauncherLinks forum { order: 2, label: k"lt.forum", url: "https://example.test/forum" }
+  def LauncherLinks chat { order: 1, label: k"lt.chat", url: "https://example.test/chat", launcher: "main" }
+  def LauncherNews patch { order: 2, title: k"lt.news_patch", body: k"lt.news_patch_body", date: "2026-09-01", tag: "patch", url: "https://example.test/patch" }
+  def LauncherNews hello { order: 1, title: k"lt.news_hello", date: "2026-08-01" }
+  def LauncherNews hidden { order: 3, title: k"lt.news_other", launcher: "other" }
+
+  function f_save(launcher_test_st: LauncherTestState) -> bool { return launcher_test_st.save }
+  function f_version() -> string { return "1.4.2" }
+  function f_upd(launcher_test_st: LauncherTestState) -> int { return launcher_test_st.upd }
+  function f_upd_ver(launcher_test_st: LauncherTestState) -> string { return launcher_test_st.upd_ver }
+  function f_upd_progress(launcher_test_st: LauncherTestState) -> int { return launcher_test_st.upd_progress }
+  function f_upd_eta(launcher_test_st: LauncherTestState) -> int { return launcher_test_st.upd_eta }
+  function f_upd_err(launcher_test_st: LauncherTestState) -> int { return launcher_test_st.upd_err }
+  function f_lang(launcher_test_st: LauncherTestState) -> string { return launcher_test_st.lang }
+  function f_lang_count(launcher_test_st: LauncherTestState) -> int { return len(launcher_test_st.langs) }
+  function f_lang_code(launcher_test_st: LauncherTestState, i: int) -> string { return launcher_test_st.langs[i] }
+  function f_lang_name(launcher_test_st: LauncherTestState, i: int) -> string { return "name-" + launcher_test_st.langs[i] }
+  function f_crashed(launcher_test_st: LauncherTestState) -> bool { return launcher_test_st.crashed }
+  function f_summary(launcher_test_st: LauncherTestState) -> string { return launcher_test_st.summary }
+  function f_can_report(launcher_test_st: LauncherTestState) -> bool { return launcher_test_st.can_report }
+  function f_can_quit(launcher_test_st: LauncherTestState) -> bool { return launcher_test_st.can_quit }
+  function n_get(launcher_test_st: mut LauncherTestState, url: string) -> int {
+    push(launcher_test_st.net_urls, url)
+    return len(launcher_test_st.net_urls) - 1
+  }
+  function n_poll(launcher_test_st: LauncherTestState, h: int) -> int { return launcher_test_st.net_answer }
+  function n_text(launcher_test_st: LauncherTestState, h: int) -> string { return launcher_test_st.net_text }
+  function n_free(h: int) -> void { }
+  function n_now(launcher_test_st: LauncherTestState) -> int { return launcher_test_st.now }
+
+  bind LauncherWorld {
+    has_save: fn f_save, version: fn f_version, update_state: fn f_upd, update_version: fn f_upd_ver,
+    update_progress: fn f_upd_progress, update_eta: fn f_upd_eta, update_error: fn f_upd_err,
+    language: fn f_lang, language_count: fn f_lang_count, language_code: fn f_lang_code, language_name: fn f_lang_name,
+    crashed: fn f_crashed, crash_summary: fn f_summary, crash_can_report: fn f_can_report, can_quit: fn f_can_quit
+  }
+  bind LauncherNet { get: fn n_get, poll: fn n_poll, text: fn n_text, free: fn n_free, now_s: fn n_now }
+
+  function fresh(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) -> void {
+    launcher_test_st.save = false
+    launcher_test_st.upd = 0
+    launcher_test_st.upd_ver = ""
+    launcher_test_st.upd_progress = 0
+    launcher_test_st.upd_eta = -1
+    launcher_test_st.upd_err = 0
+    launcher_test_st.lang = "en"
+    launcher_test_st.langs = new []string
+    launcher_test_st.crashed = false
+    launcher_test_st.summary = ""
+    launcher_test_st.can_report = false
+    launcher_test_st.can_quit = true
+    launcher_test_st.net_answer = -1
+    launcher_test_st.net_text = ""
+    launcher_test_st.net_urls = new []string
+    launcher_test_st.now = 100
+    launcher_reset(launcher_st)
+  }
+
+  # the shown buttons' labels, in order, without the marker and the prefix: "continue|settings"
+  function menu(launcher_st: LauncherState) -> string {
+    var out = ""
+    for i in 0 .. launcher_button_count(launcher_st) {
+      if i > 0 { out = out + "|" }
+      out = out + key_of(launcher_button_label(launcher_st, i))
+    }
+    return out
+  }
+  # a marked key's name ("\x01lt.play" is "play")
+  function key_of(s: string) -> string { return Text.slice(s, 4, len(s)) }
+
+  function facts(launcher_st: LauncherState) -> []LauncherFact { return q_drain(launcher_facts(launcher_st)) }
+
+  function all_text(n: UiNode) -> string {
+    var out = n.text
+    for i in 0 .. len(n.children) { out = out + all_text(n.children[i]) + " " }
+    return out
+  }
+  function buttons(n: UiNode, out: []UiNode) -> void {
+    if n.tag == "button" { push(out, n) }
+    for i in 0 .. len(n.children) { buttons(n.children[i], out) }
+  }
+  function with_class(n: UiNode, cls: string, out: []UiNode) -> void {
+    for i in 0 .. len(n.classes) { if n.classes[i] == cls { push(out, n) } }
+    for i in 0 .. len(n.children) { with_class(n.children[i], cls, out) }
+  }
+  function button_with(root: UiNode, word: string) -> UiNode {
+    let bs = new []UiNode
+    buttons(root, bs)
+    for i in 0 .. len(bs) { if Text.contains(all_text(bs[i]), word) { return bs[i] } }
+    return null
+  }
+  function with_tag(n: UiNode, tag: string, out: []UiNode) -> void {
+    if n.tag == tag { push(out, n) }
+    for i in 0 .. len(n.children) { with_tag(n.children[i], tag, out) }
+  }
+  function tagged(root: UiNode, tag: string) -> int {
+    let out = new []UiNode
+    with_tag(root, tag, out)
+    return len(out)
+  }
+  function classed(root: UiNode, cls: string) -> int {
+    let out = new []UiNode
+    with_class(root, cls, out)
+    return len(out)
+  }
+  # the game's answers are read at the tick: a screen is looked at after one
+  function look(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState, name: string) -> UiNode {
+    launcher_tick(launcher_st)
+    return show(ui_st, name)
+  }
+  function show(ui_st: mut UiState, name: string) -> UiNode {
+    let root: UiNode = ui_nodes(ui_st, name, null)
+    ui_place(ui_st, root, 0.0, 0.0, 1280.0, 720.0)
+    return root
+  }
+
+  # the screen shows the menu's buttons and a press leaves the fact
+  function ui_the_screen_shows_the_menu_s_buttons_and(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) -> void {
+    fresh(launcher_st, launcher_test_st)
+    launcher_test_st.save = true
+    launcher_tick(launcher_st)
+    var root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    let txt = all_text(root)
+    expect(Text.contains(txt, "lt.title"))
+    expect(Text.contains(txt, "lt.tagline"))
+    expect(Text.contains(txt, "launcher.news.title"))
+    expect(Text.contains(txt, "launcher.version"))
+    let b = button_with(root, "lt.continue")
+    expect(b != null)
+    expect(button_with(root, "lt.play") == null)                      # no save needed: hidden
+    ui_press(ui_st, b)
+    let fs = facts(launcher_st)
+    expect_eq(len(fs), 1)
+    expect_eq(fs[0].what, LF_CONTINUE)
+  }
+
+  # the screen carries the row's colours as custom properties on its root
+  function ui_the_screen_carries_the_row_s_colours_as(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) -> void {
+    fresh(launcher_st, launcher_test_st)
+    let root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    let top = root.children[0]
+    var found = false
+    for i in 0 .. len(top.var_names) {
+      if top.var_names[i] == "--lc-accent" { found = true }
+    }
+    expect(found)
+  }
+
+  # the update slot draws each state of the game's update
+  function ui_the_update_slot_draws_each_state_of_the(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) -> void {
+    fresh(launcher_st, launcher_test_st)
+    expect(not Text.contains(all_text(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")), "launcher.update."))   # nothing to say
+    launcher_test_st.upd = LU_CHECKING
+    expect(Text.contains(all_text(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")), "launcher.update.checking"))
+    launcher_test_st.upd = LU_AVAILABLE
+    launcher_test_st.upd_ver = "1.5.0"
+    var root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect(Text.contains(all_text(root), "launcher.update.available"))
+    expect(Text.contains(all_text(root), "1.5.0"))
+    ui_press(ui_st, button_with(root, "launcher.update.button"))
+    expect_eq(facts(launcher_st)[0].what, LF_UPDATE)
+    launcher_test_st.upd = LU_DOWNLOADING
+    launcher_test_st.upd_progress = 420
+    launcher_test_st.upd_eta = 30
+    root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect(Text.contains(all_text(root), "launcher.update.downloading"))
+    expect(Text.contains(all_text(root), "42"))                          # percent
+    expect(Text.contains(all_text(root), "launcher.update.eta"))
+    launcher_test_st.upd_eta = -1
+    expect(not Text.contains(all_text(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")), "launcher.update.eta"))
+    launcher_test_st.upd = LU_WORKING
+    expect(Text.contains(all_text(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")), "launcher.update.working"))
+    launcher_test_st.upd = LU_APPLYING
+    expect(Text.contains(all_text(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")), "launcher.update.applying"))
+    launcher_test_st.upd = LU_FAILED
+    launcher_test_st.upd_err = LE_CORRUPT
+    root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect(Text.contains(all_text(root), "launcher.update.failed"))
+    expect(Text.contains(all_text(root), "launcher.update.error.corrupt"))
+    expect(button_with(root, "launcher.update.retry") != null)
+    launcher_test_st.upd_err = LE_NOT_INSTALLED
+    root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect(Text.contains(all_text(root), "launcher.update.error.not_installed"))
+    expect(button_with(root, "launcher.update.retry") == null)           # nothing to retry
+    launcher_test_st.upd = LU_CURRENT
+    launcher_test_st.upd_ver = "1.4.2"
+    expect(Text.contains(all_text(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")), "launcher.update.current"))
+  }
+
+  # the crash slot is empty until the game fills it
+  function ui_the_crash_slot_is_empty_until_the_game_f(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) -> void {
+    fresh(launcher_st, launcher_test_st)
+    expect(not Text.contains(all_text(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")), "launcher.crash."))
+    launcher_test_st.crashed = true
+    launcher_test_st.summary = "access violation"
+    var root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect(Text.contains(all_text(root), "launcher.crash.title"))
+    expect(Text.contains(all_text(root), "access violation"))
+    expect(button_with(root, "launcher.crash.report") == null)            # no consent, no button
+    launcher_test_st.can_report = true
+    root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    ui_press(ui_st, button_with(root, "launcher.crash.report"))
+    ui_press(ui_st, button_with(root, "launcher.crash.dismiss"))
+    let fs = facts(launcher_st)
+    expect(fs[0].what == LF_CRASH_REPORT and fs[1].what == LF_CRASH_DISMISS)
+    expect(not Text.contains(all_text(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")), "launcher.crash."))
+  }
+
+  # the news lists the row's few, opens an item out, and the panel lists them all
+  function ui_the_news_lists_the_row_s_few_opens_an_it(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) -> void {
+    fresh(launcher_st, launcher_test_st)
+    launcher_tick(launcher_st)
+    launcher_test_st.net_text = "[{\"title\":\"Third\"},{\"title\":\"Fourth\"}]"
+    launcher_test_st.net_answer = 1
+    launcher_tick(launcher_st)
+    var root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect_eq(tagged(root, "article"), 2)                                  # news_max
+    expect(not Text.contains(all_text(root), "Third"))
+    let first = button_with(root, "lt.news_hello")
+    expect(first != null)
+    let patch = button_with(root, "lt.news_patch")
+    ui_press(ui_st, patch)
+    root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect(Text.contains(all_text(root), "lt.news_patch_body"))            # opened out
+    expect(button_with(root, "launcher.news.read") != null)
+    ui_press(ui_st, button_with(root, "launcher.news.read"))
+    expect(facts(launcher_st)[0].arg == "https://example.test/patch")
+    launcher_open(launcher_st, LP_NEWS)                                      # the panel lists them all
+    root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect(Text.contains(all_text(root), "Third"))
+    expect(Text.contains(all_text(root), "Fourth"))
+  }
+
+  # the language list names each language and a press picks it
+  function ui_the_language_list_names_each_language_an(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) -> void {
+    fresh(launcher_st, launcher_test_st)
+    launcher_test_st.langs = ["en", "tr"]
+    launcher_open(launcher_st, LP_LANGUAGE)
+    var root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect(Text.contains(all_text(root), "name-en"))
+    expect(Text.contains(all_text(root), "name-tr"))
+    ui_press(ui_st, button_with(root, "name-tr"))
+    let fs = facts(launcher_st)
+    expect(fs[0].what == LF_LANGUAGE and fs[0].arg == "tr")
+    expect_eq(launcher_panel(launcher_st), LP_HOME)
+  }
+
+  # the footer offers the language button only with two languages, and the links open
+  function ui_the_footer_offers_the_language_button_on(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) -> void {
+    fresh(launcher_st, launcher_test_st)
+    var root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect(button_with(root, "launcher.language.button") == null)
+    expect(Text.contains(all_text(root), "launcher.version"))
+    launcher_test_st.langs = ["en", "tr"]
+    root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    ui_press(ui_st, button_with(root, "launcher.language.button"))
+    expect_eq(launcher_panel(launcher_st), LP_LANGUAGE)
+    ui_press(ui_st, button_with(root, "lt.chat"))
+    expect(facts(launcher_st)[0].arg == "https://example.test/chat")
+  }
+
+  # the screen puts a panel over the page while one is open
+  function ui_the_screen_puts_a_panel_over_the_page_wh(launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) -> void {
+    fresh(launcher_st, launcher_test_st)
+    expect_eq(classed(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen"), "overlay"), 0)
+    launcher_open(launcher_st, LP_NEWS)
+    expect_eq(classed(look(launcher_st, launcher_test_st, ui_st, "LauncherScreen"), "overlay"), 1)
+    launcher_test_st.langs = ["en", "tr"]
+    launcher_open(launcher_st, LP_LANGUAGE)
+    let root = look(launcher_st, launcher_test_st, ui_st, "LauncherScreen")
+    expect_eq(classed(root, "overlay"), 1)
+    expect(Text.contains(all_text(root), "launcher.language.title"))
+  }
+
+
+  # Components are registered with the first test's states only (a test of its own gets fresh ones),
+  # so every check of the screen is one test, declared first, walking these in turn.
+  test "the screen and its parts, driven through ludic.ui" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
+    ui_the_screen_shows_the_menu_s_buttons_and(launcher_st, launcher_test_st, ui_st)
+    ui_the_screen_carries_the_row_s_colours_as(launcher_st, launcher_test_st, ui_st)
+    ui_the_update_slot_draws_each_state_of_the(launcher_st, launcher_test_st, ui_st)
+    ui_the_crash_slot_is_empty_until_the_game_f(launcher_st, launcher_test_st, ui_st)
+    ui_the_news_lists_the_row_s_few_opens_an_it(launcher_st, launcher_test_st, ui_st)
+    ui_the_language_list_names_each_language_an(launcher_st, launcher_test_st, ui_st)
+    ui_the_footer_offers_the_language_button_on(launcher_st, launcher_test_st, ui_st)
+    ui_the_screen_puts_a_panel_over_the_page_wh(launcher_st, launcher_test_st, ui_st)
+  }
+
+  test "the first row is used, its words and colours come through" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    expect(launcher_ready(launcher_st))
+    expect(key_of(launcher_title(launcher_st)) == "title")
+    expect(key_of(launcher_tagline(launcher_st)) == "tagline")
+    expect(launcher_art(launcher_st) == "art.png")
+    expect(launcher_background(launcher_st) == "bg.png")
+    expect(launcher_logo(launcher_st) == "")
+    expect(launcher_accent(launcher_st) == "#e8b04a")
+    expect(launcher_shade(launcher_st) == "#10141a")
+    expect(launcher_version(launcher_st) == "1.4.2")
+    expect(launcher_use(launcher_st, "other"))
+    expect(key_of(launcher_title(launcher_st)) == "other")
+    expect(launcher_version(launcher_st) == "")                 # its row turns the version off
+    expect(not launcher_use(launcher_st, "nowhere"))
+    expect(key_of(launcher_title(launcher_st)) == "other")  # unchanged
+  }
+
+  test "the menu is the rows in order, each shown only while its condition holds" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    expect(menu(launcher_st) == "play|settings|news|site|quit")      # no save; no update; one language; site is main's
+    launcher_test_st.save = true
+    launcher_tick(launcher_st)
+    expect(menu(launcher_st) == "continue|settings|news|site|quit")
+    launcher_test_st.upd = LU_AVAILABLE
+    launcher_tick(launcher_st)
+    expect(menu(launcher_st) == "update|continue|settings|news|site|quit")
+    launcher_test_st.langs = ["en", "tr"]
+    launcher_tick(launcher_st)
+    expect(menu(launcher_st) == "update|continue|settings|news|language|site|quit")
+    launcher_test_st.can_quit = false
+    launcher_tick(launcher_st)
+    expect(menu(launcher_st) == "update|continue|settings|news|language|site")
+    expect(launcher_use(launcher_st, "other"))
+    expect(menu(launcher_st) == "update|continue|settings|news|language|modes")   # the other launcher's own button
+  }
+
+  test "the primary button is the first shown one marked so, else the first" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    expect_eq(launcher_primary(launcher_st), 0)                 # play
+    expect(launcher_button_primary(launcher_st, 0))
+    expect(not launcher_button_primary(launcher_st, 1))
+    launcher_test_st.save = true
+    launcher_test_st.upd = LU_AVAILABLE
+    launcher_tick(launcher_st)
+    expect_eq(launcher_primary(launcher_st), 1)                 # update comes first, continue is the primary one
+  }
+
+  test "a press leaves a fact for the game, or opens a panel" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    launcher_test_st.langs = ["en", "tr"]
+    launcher_tick(launcher_st)
+    expect(menu(launcher_st) == "play|settings|news|language|site|quit")
+    expect(launcher_press(launcher_st, 0))
+    expect(launcher_press(launcher_st, 1))
+    expect(launcher_press(launcher_st, 4))
+    expect(launcher_press(launcher_st, 5))
+    let fs = facts(launcher_st)
+    expect_eq(len(fs), 4)
+    expect_eq(fs[0].what, LF_PLAY)
+    expect_eq(fs[1].what, LF_SETTINGS)
+    expect(fs[2].what == LF_LINK and fs[2].arg == "https://example.test/")
+    expect_eq(fs[3].what, LF_QUIT)
+    expect(fs[0].button == "play")
+    expect(launcher_press(launcher_st, 2))                      # news: a panel, no fact
+    expect_eq(launcher_panel(launcher_st), LP_NEWS)
+    launcher_back(launcher_st)
+    expect(launcher_press(launcher_st, 3))                      # language
+    expect_eq(launcher_panel(launcher_st), LP_LANGUAGE)
+    expect_eq(len(facts(launcher_st)), 0)
+    expect(not launcher_press(launcher_st, 99))
+  }
+
+  test "a custom button carries the game's own word" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    expect(launcher_use(launcher_st, "other"))
+    let last = launcher_button_count(launcher_st) - 2         # quit is the last
+    expect_eq(launcher_button_verb(launcher_st, last), LV_CUSTOM)
+    expect(launcher_press(launcher_st, last))
+    let fs = facts(launcher_st)
+    expect(fs[0].what == LF_CUSTOM and fs[0].arg == "mode-picker")
+  }
+
+  test "a language is picked by its code, and the panel closes" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    expect_eq(launcher_language_count(launcher_st), 0)           # one language: no list
+    launcher_test_st.langs = ["en", "tr", "de"]
+    launcher_tick(launcher_st)
+    expect_eq(launcher_language_count(launcher_st), 3)
+    expect(launcher_language_current(launcher_st, 0))
+    expect(not launcher_language_current(launcher_st, 1))
+    launcher_open(launcher_st, LP_LANGUAGE)
+    expect(launcher_language_pick(launcher_st, 2))
+    expect_eq(launcher_panel(launcher_st), LP_HOME)
+    let fs = facts(launcher_st)
+    expect(fs[0].what == LF_LANGUAGE and fs[0].arg == "de")
+    expect(not launcher_language_pick(launcher_st, 7))
+  }
+
+  test "the links follow their order and their launcher" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    expect_eq(launcher_link_count(launcher_st), 2)
+    expect(key_of(launcher_link_label(launcher_st, 0)) == "chat")
+    expect(key_of(launcher_link_label(launcher_st, 1)) == "forum")
+    expect(launcher_link_open(launcher_st, 1))
+    expect(facts(launcher_st)[0].arg == "https://example.test/forum")
+    expect(launcher_use(launcher_st, "other"))
+    expect_eq(launcher_link_count(launcher_st), 1)               # chat is main's
+  }
+
+  test "the update slot reads the game's answers; starting is a fact, only when there is something to start" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    launcher_update_start(launcher_st)
+    expect_eq(len(facts(launcher_st)), 0)
+    launcher_test_st.upd = LU_AVAILABLE
+    launcher_test_st.upd_ver = "1.5.0"
+    launcher_tick(launcher_st)
+    expect(launcher_update_version(launcher_st) == "1.5.0")
+    launcher_update_start(launcher_st)
+    launcher_test_st.upd = LU_DOWNLOADING
+    launcher_test_st.upd_progress = 5000                          # past the end: clamped
+    launcher_tick(launcher_st)
+    expect_eq(launcher_update_progress(launcher_st), 1000)
+    launcher_update_start(launcher_st)                             # already running: nothing
+    launcher_test_st.upd = LU_FAILED
+    launcher_tick(launcher_st)
+    launcher_update_start(launcher_st)                             # a retry
+    let fs = facts(launcher_st)
+    expect_eq(len(fs), 2)
+    expect(fs[0].what == LF_UPDATE and fs[1].what == LF_UPDATE)
+  }
+
+  test "the crash note shows while the game says it crashed, until put away" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    expect(not launcher_crash_shown(launcher_st))
+    launcher_test_st.crashed = true
+    launcher_test_st.summary = "access violation in render"
+    launcher_tick(launcher_st)
+    expect(launcher_crash_shown(launcher_st))
+    expect(launcher_crash_summary(launcher_st) == "access violation in render")
+    launcher_crash_report(launcher_st)                             # no consent: nothing
+    expect_eq(len(facts(launcher_st)), 0)
+    launcher_test_st.can_report = true
+    launcher_tick(launcher_st)
+    launcher_crash_report(launcher_st)
+    launcher_crash_dismiss(launcher_st)
+    expect(not launcher_crash_shown(launcher_st))
+    let fs = facts(launcher_st)
+    expect(fs[0].what == LF_CRASH_REPORT and fs[1].what == LF_CRASH_DISMISS)
+    launcher_reset(launcher_st)                                    # a new launch: the note is back
+    expect(launcher_crash_shown(launcher_st))
+  }
+
+  test "the news starts as the game's rows, then the feed's items follow" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    expect_eq(launcher_news_count(launcher_st), 2)
+    expect(key_of(launcher_news_title(launcher_st, 0)) == "news_hello")      # order 1
+    expect(key_of(launcher_news_title(launcher_st, 1)) == "news_patch")
+    expect(launcher_news_date(launcher_st, 1) == "2026-09-01")
+    expect(launcher_news_tag(launcher_st, 1) == "patch")
+    expect(launcher_news_has_url(launcher_st, 1))
+    expect(not launcher_news_has_url(launcher_st, 0))
+    expect_eq(launcher_news_home(launcher_st), 2)
+    launcher_tick(launcher_st)                                     # asks the feed
+    expect(launcher_test_st.net_urls[0] == "http://feed/news.json")
+    expect(launcher_news_loading(launcher_st))
+    launcher_test_st.net_text = "{\"items\":[{\"title\":{\"en\":\"A new lake\",\"tr\":\"Yeni gol\"},\"body\":\"Fish.\",\"date\":\"2026-09-20\",\"url\":\"https://example.test/lake\"},{\"body\":\"no title: skipped\"},{\"title\":\"Second\"}]}"
+    launcher_test_st.net_answer = 1
+    launcher_tick(launcher_st)
+    expect(not launcher_news_loading(launcher_st))
+    expect_eq(launcher_news_count(launcher_st), 4)
+    expect(launcher_news_title(launcher_st, 2) == "A new lake")
+    expect(launcher_news_body(launcher_st, 2) == "Fish.")
+    expect(launcher_news_title(launcher_st, 3) == "Second")
+    expect_eq(launcher_news_home(launcher_st), 2)                   # the row's news_max
+    expect_eq(launcher_news_shown(launcher_st, true), 4)
+    expect(launcher_news_open(launcher_st, 2))
+    expect(facts(launcher_st)[0].arg == "https://example.test/lake")
+    expect(not launcher_news_open(launcher_st, 0))
+  }
+
+  test "a feed is read in the language in use, English otherwise, and again when it changes" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    launcher_tick(launcher_st)
+    launcher_test_st.net_text = "[{\"title\":{\"en\":\"Lake\",\"tr\":\"Gol\"}},{\"title\":{\"en\":\"Only English\"}}]"
+    launcher_test_st.net_answer = 1
+    launcher_test_st.lang = "tr"
+    launcher_tick(launcher_st)
+    expect(launcher_news_title(launcher_st, 2) == "Gol")
+    expect(launcher_news_title(launcher_st, 3) == "Only English")
+    launcher_test_st.lang = "en"
+    launcher_tick(launcher_st)
+    expect(launcher_news_title(launcher_st, 2) == "Lake")
+    expect_eq(launcher_news_count(launcher_st), 4)                  # not doubled
+  }
+
+  test "a feed that fails or is not a feed leaves the rows; a refresh asks again" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    launcher_tick(launcher_st)
+    launcher_test_st.net_answer = 0
+    launcher_tick(launcher_st)
+    expect_eq(launcher_news_count(launcher_st), 2)
+    expect(not launcher_news_loading(launcher_st))
+    launcher_test_st.now = 130
+    launcher_tick(launcher_st)
+    expect_eq(len(launcher_test_st.net_urls), 1)                    # not yet: 60 s
+    launcher_test_st.now = 170
+    launcher_tick(launcher_st)
+    expect_eq(len(launcher_test_st.net_urls), 1)                    # idle this tick, asks on the next
+    launcher_test_st.net_answer = 1
+    launcher_test_st.net_text = "{\"nothing\": 1}"
+    launcher_tick(launcher_st)
+    expect_eq(len(launcher_test_st.net_urls), 2)
+    launcher_tick(launcher_st)
+    expect_eq(launcher_news_count(launcher_st), 2)                   # not a feed: the rows stay
+  }
+
+  test "a launcher with no feed address never asks" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    expect(launcher_use(launcher_st, "other"))
+    launcher_tick(launcher_st)
+    launcher_tick(launcher_st)
+    expect_eq(len(launcher_test_st.net_urls), 0)
+    expect_eq(launcher_news_count(launcher_st), 3)                   # both unowned rows and its own
+    expect_eq(launcher_news_home(launcher_st), 3)
+  }
+
+  test "the system ticks the launcher in the present phase" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState) {
+    fresh(launcher_st, launcher_test_st)
+    let s = launcher_system()
+    expect(s.key == "launcher")
+    expect_eq(s.phase, PH_PRESENT)
+    launcher_test_st.save = true
+    s.tick(tick_new(0.016, 1, 0.0))
+    expect(menu(launcher_st) == "continue|settings|news|site|quit")
+  }
+
+}

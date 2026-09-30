@@ -1,0 +1,5 @@
+# ludic.launcher - a game's first screen: play or continue, the news, settings, the update, a crash
+# note, the language, quit; all of it the game's data. See README.md.
+package "ludic.launcher"
+version "0.1.0"
+kind source

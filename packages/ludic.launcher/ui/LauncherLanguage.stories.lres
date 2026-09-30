@@ -1,0 +1,11 @@
+# LauncherLanguage.stories.lres - the studio's stories for LauncherLanguage (the language list); the game never reads this file
+
+default {
+  viewport: "1280x720"
+  props: { items: [{ name: "English", on: true }, { name: "Turkce", on: false }, { name: "Deutsch", on: false }, { name: "Francais", on: false }] }
+}
+
+focused {
+  base: "default"
+  force: ["button:focus-visible"]
+}

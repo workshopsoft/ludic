@@ -1,0 +1,9 @@
+<section class="language">
+  <h2>{t('launcher.language.title')}</h2>
+  <scroll class="list">
+    <each in="{items}" as="it" index="i">
+      <button class="lang {it.on ? 'on' : ''}" autofocus="{it.on}" translate="no" on-click="pick(i)">{it.name}</button>
+    </each>
+  </scroll>
+  <button class="close" on-click="back()">{t('launcher.language.back')}</button>
+</section>

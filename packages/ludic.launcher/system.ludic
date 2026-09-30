@@ -1,0 +1,11 @@
+# system.ludic - the launcher as a system, for a game that runs its systems in order: once a frame
+# in the present phase, saving nothing (what it shows is the game's; the language is its setting)
+function launcher__sys_reset(launcher_st: mut LauncherState) -> void { launcher_reset(launcher_st) }
+function launcher__sys_tick(launcher_st: mut LauncherState, t: Tick) -> void { launcher_tick(launcher_st) }
+
+export function launcher_system() -> System {
+  let s = system_new("launcher", PH_PRESENT)
+  s.reset = fn launcher__sys_reset
+  s.tick = fn launcher__sys_tick
+  return s
+}

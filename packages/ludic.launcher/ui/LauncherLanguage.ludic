@@ -1,0 +1,8 @@
+# LauncherLanguage.ludic - the languages the game offers (ports), each in its own words, as items
+# [{name, on}]; choosing one leaves LF_LANGUAGE with its code for the game to switch ludic.i18n
+# and keep the setting
+component LauncherLanguage (launcher_st: mut LauncherState) {
+  prop items: Val = null
+  on pick(i: int) { launcher_language_pick(launcher_st, i) }
+  on back() { launcher_back(launcher_st) }
+}

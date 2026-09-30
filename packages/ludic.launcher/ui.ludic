@@ -1,0 +1,11 @@
+# ui.ludic - the launcher's components, compiled into the module (each is Name.ludic + .xml + .lss
+# in ui/, and Name.stories.lres for the studio). A game shows LauncherScreen: ui_show("LauncherScreen", ...)
+import "ui/LauncherBrand.ludic"
+import "ui/LauncherMenu.ludic"
+import "ui/LauncherUpdate.ludic"
+import "ui/LauncherCrash.ludic"
+import "ui/LauncherNews.ludic"
+import "ui/LauncherLanguage.ludic"
+import "ui/LauncherLinks.ludic"
+import "ui/LauncherFooter.ludic"
+import "ui/LauncherScreen.ludic"

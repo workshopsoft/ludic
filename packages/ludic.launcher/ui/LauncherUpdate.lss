@@ -1,0 +1,13 @@
+/* LauncherUpdate.lss */
+.update { gap: 8px }
+.avail { gap: 12px; align-items: center; padding: 12px 16px; background: var(--lc-panel, #161c25); border: 2px solid var(--lc-accent, #e8b04a) }
+.grow { flex-grow: 1 }
+.go { height: 40px; padding: 0 16px; background: var(--lc-accent, #e8b04a); color: var(--lc-ink, #0c0f14) }
+.go:focus-visible { outline: 3px solid var(--lc-text, #e9edf2) }
+.note { color: var(--lc-muted, #98a3b3); font-size: 14px }
+.bad { color: var(--lc-bad, #eb5757) }
+.good { color: var(--lc-good, #6fcf97) }
+.bar { height: 12px; background: var(--lc-line, #2b3441) }
+.bar .ui-fill { background: var(--lc-accent, #e8b04a) }
+.sweep .ui-fill { animation: lc-sweep 1.2s infinite alternate }
+@keyframes lc-sweep { from { opacity: 0.3 } to { opacity: 1 } }

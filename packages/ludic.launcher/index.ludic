@@ -1,0 +1,15 @@
+# ludic.launcher - a game's first screen, generic: play or continue, news, settings, the update's
+# progress, a note that the game crashed last time, the language, quit. The screen is ludic.ui
+# components (ui/); what it says and offers is rows the game fills in a .lres; what it asks of the game
+# is two ports, and what the player did comes out as facts.
+module ludic_launcher uses ludic_base, ludic_ui
+numbers float
+import "ludic.base"
+import "ludic.ui"
+import "data.ludic"
+import "port.ludic"
+import "state.ludic"
+import "model.ludic"
+import "news.ludic"
+import "system.ludic"
+import "ui.ludic"

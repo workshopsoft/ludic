@@ -1,0 +1,6 @@
+# LauncherBrand.ludic - the logo (or the title in words) and the tagline under it
+component LauncherBrand {
+  prop logo: string = ""         # a picture; empty: the title's words
+  prop title: string = ""
+  prop tagline: string = ""
+}

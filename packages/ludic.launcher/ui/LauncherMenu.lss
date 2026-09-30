@@ -1,0 +1,8 @@
+/* LauncherMenu.lss - a stack of wide buttons, the primary one in the accent */
+.menu { gap: 10px }
+.entry { height: 52px; padding: 0 20px; gap: 12px; align-items: center; font-size: 22px; background: var(--lc-panel, #161c25); color: var(--lc-text, #e9edf2); border: 2px solid var(--lc-line, #2b3441) }
+.entry:hover { border-color: var(--lc-accent, #e8b04a) }
+.entry:focus-visible { outline: 3px solid var(--lc-accent, #e8b04a) }
+.entry:disabled { opacity: 0.4 }
+.entry.primary { height: 64px; font-size: 28px; background: var(--lc-accent, #e8b04a); color: var(--lc-ink, #0c0f14); border-color: var(--lc-accent, #e8b04a) }
+.icon { width: 24px; height: 24px }

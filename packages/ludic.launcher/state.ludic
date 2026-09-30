@@ -1,0 +1,103 @@
+# state.ludic - what the launcher keeps: which row of data it shows, the panel that is open, the
+# news it has (the game's rows, then the feed's), and the facts the game drains
+
+export const LP_HOME: int = 0
+export const LP_NEWS: int = 1
+export const LP_LANGUAGE: int = 2
+
+# what the player did that only the game can answer (the launcher never starts a game or quits)
+export const LF_PLAY: int = 0
+export const LF_CONTINUE: int = 1
+export const LF_NEW_GAME: int = 2
+export const LF_SETTINGS: int = 3
+export const LF_UPDATE: int = 4
+export const LF_LANGUAGE: int = 5      # arg: the code picked
+export const LF_CRASH_REPORT: int = 6
+export const LF_CRASH_DISMISS: int = 7
+export const LF_LINK: int = 8          # arg: the address
+export const LF_QUIT: int = 9
+export const LF_CUSTOM: int = 10       # arg: the button's own
+
+export property LauncherFact {
+  what: int = 0
+  arg: string = ""
+  button: string = ""                  # the key of the button row that said it ("" when not from one)
+}
+
+# news as shown: a row of the game's or an item of the feed. Text is as it reads (or a marked key,
+# which the translator makes where it is drawn).
+export property LauncherNewsItem {
+  key: string = ""
+  title: string = ""
+  body: string = ""
+  date: string = ""
+  tag: string = ""
+  url: string = ""
+  image: string = ""
+}
+
+export const LF_FEED_IDLE: int = 0
+export const LF_FEED_ASKING: int = 1
+export const LF_FEED_OK: int = 2
+export const LF_FEED_FAILED: int = 3
+
+export state LauncherState {
+  launcher__row: int = -1                   # the LauncherDef row in use (-1: none)
+  launcher__panel: int = 0                  # LP_*
+  launcher__shown: []int = new []int        # button rows shown, in order
+  launcher__links: []int = new []int        # link rows shown, in order
+  launcher__sig: int = -1                   # what the shown buttons depended on, last rebuilt
+  launcher__news: []LauncherNewsItem = new []LauncherNewsItem   # rows first, then the feed's
+  launcher__rows_n: int = 0                 # how many of those are the game's rows
+  launcher__feed: Val = null
+  launcher__feed_h: int = -1
+  launcher__feed_state: int = 0             # LF_FEED_*
+  launcher__feed_t: int = 0                 # when it was last asked, seconds
+  launcher__feed_lang: string = ""          # the language the items were read for
+  launcher__crash_hidden: bool = false      # the player put the crash note away
+  launcher__accent: string = ""             # "#rrggbb" from the row's colours, once per use
+  launcher__shade: string = ""
+  # what the game answered at the last tick (ports are asked once a frame, here; the components and
+  # their events read only this, so they need nothing of the game in reach)
+  launcher__has_save: bool = false
+  launcher__version_text: string = ""
+  launcher__upd: int = 0                    # LU_*
+  launcher__upd_version: string = ""
+  launcher__upd_progress: int = 0
+  launcher__upd_eta: int = -1
+  launcher__upd_err: int = 0                # LE_*
+  launcher__lang: string = "en"
+  launcher__lang_n: int = -1                # -1: the list is not read yet
+  launcher__lang_codes: []string = new []string
+  launcher__lang_names: []string = new []string
+  launcher__crashed: bool = false
+  launcher__crash_text: string = ""
+  launcher__can_report: bool = false
+  launcher__can_quit: bool = true
+  # the lists the screen is handed as props, as values (a prop is a number, text, flag or value): rebuilt
+  # only when what they show changes
+  launcher__menu_v: Val = Value.list()      # [{label, icon, primary}]
+  launcher__links_v: Val = Value.list()     # [{label, icon}]
+  launcher__news_v: Val = Value.list()      # [{title, body, date, tag, image, link}]
+  launcher__langs_v: Val = Value.list()     # [{name, on}]
+  launcher__facts: Queue<LauncherFact> = launcher__facts__new()
+}
+
+function launcher__facts__new() -> Queue<LauncherFact> { return queue_new("launcher.facts") }
+
+export function launcher_facts(launcher_st: LauncherState) -> Queue<LauncherFact> {
+  return launcher_st.launcher__facts
+}
+
+function launcher__fact(launcher_st: mut LauncherState, what: int, arg: string, button: string) -> void {
+  var f = q_rec(launcher_facts(launcher_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new LauncherFact
+    q_ring_add(launcher_facts(launcher_st), f)
+  }
+  f.what = what
+  f.arg = arg
+  f.button = button
+  q_push(launcher_facts(launcher_st), f)
+}

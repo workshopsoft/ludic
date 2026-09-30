@@ -1,0 +1,357 @@
+# model.ludic - which row is shown, the buttons it offers now, what a press means, and the panels
+
+const LAUNCHER__HEX: string = "0123456789abcdef"
+
+# the launcher whose row has this key (`launcher_use(st, "main")`); the first row is used until
+# one is chosen. False, and nothing changes, when there is no such row.
+export function launcher_use(launcher_st: mut LauncherState, key: string) -> bool {
+  let i = launchers_find(key)
+  if i < 0 { return false }
+  launcher__select(launcher_st, i)
+  return true
+}
+
+function launcher__select(launcher_st: mut LauncherState, i: int) -> void {
+  launcher_st.launcher__row = i
+  launcher_st.launcher__panel = LP_HOME
+  launcher_st.launcher__accent = launcher__css(Launchers[i].accent)
+  launcher_st.launcher__shade = launcher__css(Launchers[i].shade)
+  launcher_st.launcher__sig = -1
+  launcher_st.launcher__feed_state = LF_FEED_IDLE
+  launcher_st.launcher__lang_n = -1
+  launcher__sense(launcher_st)
+  launcher__links_rebuild(launcher_st)
+  launcher__news_rows(launcher_st)
+  launcher__buttons_rebuild(launcher_st)
+}
+
+# before anything else, and again when the data changes under it (a reload)
+export function launcher_reset(launcher_st: mut LauncherState) -> void {
+  if launcher_st.launcher__feed_h >= 0 { LauncherNet.free(launcher_st.launcher__feed_h) }
+  launcher_st.launcher__feed_h = -1
+  launcher_st.launcher__feed = null
+  launcher_st.launcher__crash_hidden = false
+  q_clear(launcher_facts(launcher_st))
+  launcher_st.launcher__row = -1
+  if LC_COUNT > 0 { launcher__select(launcher_st, 0) }
+  else {
+    launcher_st.launcher__panel = LP_HOME
+    List.clear(launcher_st.launcher__shown)
+    List.clear(launcher_st.launcher__links)
+    List.clear(launcher_st.launcher__news)
+    launcher_st.launcher__rows_n = 0
+    launcher_st.launcher__menu_v = Value.list()
+    launcher_st.launcher__links_v = Value.list()
+    launcher_st.launcher__news_v = Value.list()
+  }
+}
+
+# ask the game once: every answer the screen shows is kept here
+function launcher__sense(launcher_st: mut LauncherState) -> void {
+  launcher_st.launcher__has_save = LauncherWorld.has_save()
+  launcher_st.launcher__version_text = LauncherWorld.version()
+  launcher_st.launcher__upd = LauncherWorld.update_state()
+  launcher_st.launcher__upd_version = LauncherWorld.update_version()
+  launcher_st.launcher__upd_progress = LauncherWorld.update_progress()
+  launcher_st.launcher__upd_eta = LauncherWorld.update_eta()
+  launcher_st.launcher__upd_err = LauncherWorld.update_error()
+  launcher_st.launcher__crashed = LauncherWorld.crashed()
+  launcher_st.launcher__crash_text = LauncherWorld.crash_summary()
+  launcher_st.launcher__can_report = LauncherWorld.crash_can_report()
+  launcher_st.launcher__can_quit = LauncherWorld.can_quit()
+  let lang = LauncherWorld.language()
+  let n = LauncherWorld.language_count()
+  if n != launcher_st.launcher__lang_n or lang != launcher_st.launcher__lang {
+    launcher_st.launcher__lang = lang
+    launcher_st.launcher__lang_n = n
+    List.clear(launcher_st.launcher__lang_codes)
+    List.clear(launcher_st.launcher__lang_names)
+    for i in 0 .. n {
+      push(launcher_st.launcher__lang_codes, LauncherWorld.language_code(i))
+      push(launcher_st.launcher__lang_names, LauncherWorld.language_name(i))
+    }
+    let v = Value.list()
+    for i in 0 .. n {
+      let o = Value.object()
+      Value.put(o, "name", Value.str(launcher_st.launcher__lang_names[i]))
+      Value.put(o, "on", launcher__flag(launcher_st.launcher__lang_codes[i] == lang))
+      Value.add(v, o)
+    }
+    launcher_st.launcher__langs_v = v
+  }
+}
+
+function launcher__css(c: int) -> string {
+  let r = (c >> 16) & 255
+  let g = (c >> 8) & 255
+  let b = c & 255
+  return "#" + launcher__h2(r) + launcher__h2(g) + launcher__h2(b)
+}
+
+function launcher__h2(n: int) -> string {
+  return Text.slice(LAUNCHER__HEX, n >> 4, (n >> 4) + 1) + Text.slice(LAUNCHER__HEX, n & 15, (n & 15) + 1)
+}
+
+export function launcher_ready(launcher_st: LauncherState) -> bool { return launcher_st.launcher__row >= 0 }
+
+function launcher__key(launcher_st: LauncherState) -> string {
+  if launcher_st.launcher__row < 0 { return "" }
+  return Launchers[launcher_st.launcher__row].key
+}
+
+function launcher__mine(launcher_st: LauncherState, owner: string) -> bool {
+  return owner == "" or owner == launcher__key(launcher_st)
+}
+
+# ----- the row's own words and pictures -----
+
+export function launcher_title(launcher_st: LauncherState) -> string {
+  if launcher_st.launcher__row < 0 or Launchers[launcher_st.launcher__row].title == null { return "" }
+  return string(Launchers[launcher_st.launcher__row].title)
+}
+export function launcher_tagline(launcher_st: LauncherState) -> string {
+  if launcher_st.launcher__row < 0 or Launchers[launcher_st.launcher__row].tagline == null { return "" }
+  return string(Launchers[launcher_st.launcher__row].tagline)
+}
+export function launcher_logo(launcher_st: LauncherState) -> string {
+  if launcher_st.launcher__row < 0 { return "" }
+  return Launchers[launcher_st.launcher__row].logo
+}
+export function launcher_art(launcher_st: LauncherState) -> string {
+  if launcher_st.launcher__row < 0 { return "" }
+  return Launchers[launcher_st.launcher__row].art
+}
+export function launcher_background(launcher_st: LauncherState) -> string {
+  if launcher_st.launcher__row < 0 { return "" }
+  return Launchers[launcher_st.launcher__row].background
+}
+export function launcher_accent(launcher_st: LauncherState) -> string { return launcher_st.launcher__accent }
+export function launcher_shade(launcher_st: LauncherState) -> string { return launcher_st.launcher__shade }
+export function launcher_version(launcher_st: LauncherState) -> string {
+  if launcher_st.launcher__row >= 0 and not Launchers[launcher_st.launcher__row].show_version { return "" }
+  return launcher_st.launcher__version_text
+}
+
+# ----- the menu -----
+
+function launcher__verb_of(word: string) -> int {
+  if word == "play" { return LV_PLAY }
+  if word == "continue" { return LV_CONTINUE }
+  if word == "new_game" { return LV_NEW_GAME }
+  if word == "settings" { return LV_SETTINGS }
+  if word == "news" { return LV_NEWS }
+  if word == "language" { return LV_LANGUAGE }
+  if word == "update" { return LV_UPDATE }
+  if word == "crash_report" { return LV_CRASH_REPORT }
+  if word == "crash_dismiss" { return LV_CRASH_DISMISS }
+  if word == "link" { return LV_LINK }
+  if word == "quit" { return LV_QUIT }
+  return LV_CUSTOM
+}
+
+export function launcher_crash_shown(launcher_st: LauncherState) -> bool {
+  return launcher_st.launcher__crashed and not launcher_st.launcher__crash_hidden
+}
+
+function launcher__languages(launcher_st: LauncherState) -> bool {
+  return launcher_st.launcher__row >= 0 and Launchers[launcher_st.launcher__row].show_language and launcher_st.launcher__lang_n >= 2
+}
+
+# whether a button is offered now: its `when`, and the verbs that need something of the game
+function launcher__offered(launcher_st: LauncherState, b: LauncherButton) -> bool {
+  if not launcher__mine(launcher_st, b.launcher) { return false }
+  if b.when == "save" and not launcher_st.launcher__has_save { return false }
+  if b.when == "no_save" and launcher_st.launcher__has_save { return false }
+  if b.when == "update" and launcher_st.launcher__upd != LU_AVAILABLE { return false }
+  if b.when == "crash" and not launcher_crash_shown(launcher_st) { return false }
+  if b.verb == "language" and not launcher__languages(launcher_st) { return false }
+  if b.verb == "quit" and not launcher_st.launcher__can_quit { return false }
+  return true
+}
+
+# what the shown buttons depend on, so they are rebuilt only when it changes
+function launcher__signature(launcher_st: LauncherState) -> int {
+  var s = 0
+  if launcher_st.launcher__has_save { s += 1 }
+  if launcher_st.launcher__upd == LU_AVAILABLE { s += 2 }
+  if launcher_crash_shown(launcher_st) { s += 4 }
+  if launcher_st.launcher__can_quit { s += 8 }
+  if launcher__languages(launcher_st) { s += 16 }
+  return s
+}
+
+function launcher__buttons_rebuild(launcher_st: mut LauncherState) -> void {
+  launcher_st.launcher__sig = launcher__signature(launcher_st)
+  let shown = launcher_st.launcher__shown
+  List.clear(shown)
+  for i in 0 .. LB_COUNT {
+    if not launcher__offered(launcher_st, LauncherButtons[i]) { continue }
+    var at = len(shown)
+    while at > 0 and LauncherButtons[shown[at - 1]].order > LauncherButtons[i].order { at -= 1 }
+    List.insert(shown, at, i)
+  }
+  let v = Value.list()
+  for k in 0 .. len(shown) {
+    let o = Value.object()
+    Value.put(o, "label", Value.str(launcher_button_label(launcher_st, k)))
+    Value.put(o, "icon", Value.str(launcher_button_icon(launcher_st, k)))
+    Value.put(o, "primary", launcher__flag(launcher_button_primary(launcher_st, k)))
+    Value.add(v, o)
+  }
+  launcher_st.launcher__menu_v = v
+}
+
+function launcher__links_rebuild(launcher_st: mut LauncherState) -> void {
+  let links = launcher_st.launcher__links
+  List.clear(links)
+  for i in 0 .. LL_COUNT {
+    if not launcher__mine(launcher_st, LauncherLinks[i].launcher) { continue }
+    var at = len(links)
+    while at > 0 and LauncherLinks[links[at - 1]].order > LauncherLinks[i].order { at -= 1 }
+    List.insert(links, at, i)
+  }
+  let v = Value.list()
+  for k in 0 .. len(links) {
+    let o = Value.object()
+    Value.put(o, "label", Value.str(launcher_link_label(launcher_st, k)))
+    Value.put(o, "icon", Value.str(launcher_link_icon(launcher_st, k)))
+    Value.add(v, o)
+  }
+  launcher_st.launcher__links_v = v
+}
+
+export function launcher_button_count(launcher_st: LauncherState) -> int { return len(launcher_st.launcher__shown) }
+
+export function launcher_button_label(launcher_st: LauncherState, i: int) -> string {
+  if i < 0 or i >= len(launcher_st.launcher__shown) { return "" }
+  let b = LauncherButtons[launcher_st.launcher__shown[i]]
+  if b.label == null { return "" }
+  return string(b.label)
+}
+export function launcher_button_icon(launcher_st: LauncherState, i: int) -> string {
+  if i < 0 or i >= len(launcher_st.launcher__shown) { return "" }
+  return LauncherButtons[launcher_st.launcher__shown[i]].icon
+}
+export function launcher_button_primary(launcher_st: LauncherState, i: int) -> bool {
+  if i < 0 or i >= len(launcher_st.launcher__shown) { return false }
+  return i == launcher_primary(launcher_st)
+}
+export function launcher_button_verb(launcher_st: LauncherState, i: int) -> int {
+  if i < 0 or i >= len(launcher_st.launcher__shown) { return -1 }
+  return launcher__verb_of(LauncherButtons[launcher_st.launcher__shown[i]].verb)
+}
+# the first shown button marked primary, else the first: where focus starts
+export function launcher_primary(launcher_st: LauncherState) -> int {
+  let shown = launcher_st.launcher__shown
+  for i in 0 .. len(shown) { if LauncherButtons[shown[i]].primary { return i } }
+  if len(shown) > 0 { return 0 }
+  return -1
+}
+
+# a press on the i-th shown button. The panel verbs act here; everything else is a fact for the game.
+export function launcher_press(launcher_st: mut LauncherState, i: int) -> bool {
+  if i < 0 or i >= len(launcher_st.launcher__shown) { return false }
+  let b = LauncherButtons[launcher_st.launcher__shown[i]]
+  let v = launcher__verb_of(b.verb)
+  if v == LV_NEWS { launcher_st.launcher__panel = LP_NEWS; return true }
+  if v == LV_LANGUAGE { launcher_st.launcher__panel = LP_LANGUAGE; return true }
+  if v == LV_CRASH_DISMISS { launcher_st.launcher__crash_hidden = true }
+  var what = LF_CUSTOM
+  var arg = b.arg
+  if v == LV_PLAY { what = LF_PLAY }
+  else if v == LV_CONTINUE { what = LF_CONTINUE }
+  else if v == LV_NEW_GAME { what = LF_NEW_GAME }
+  else if v == LV_SETTINGS { what = LF_SETTINGS }
+  else if v == LV_UPDATE { what = LF_UPDATE }
+  else if v == LV_CRASH_REPORT { what = LF_CRASH_REPORT }
+  else if v == LV_CRASH_DISMISS { what = LF_CRASH_DISMISS }
+  else if v == LV_LINK { what = LF_LINK }
+  else if v == LV_QUIT { what = LF_QUIT }
+  launcher__fact(launcher_st, what, arg, b.key)
+  return true
+}
+
+# ----- the slots: update, crash, language, links -----
+
+# the update slot reads the game's answers; starting is a fact (again after a failure)
+export function launcher_update_start(launcher_st: mut LauncherState) -> void {
+  let s = launcher_st.launcher__upd
+  if s == LU_AVAILABLE or s == LU_FAILED { launcher__fact(launcher_st, LF_UPDATE, "", "") }
+}
+export function launcher_update_mode(launcher_st: LauncherState) -> int { return launcher_st.launcher__upd }
+export function launcher_update_version(launcher_st: LauncherState) -> string { return launcher_st.launcher__upd_version }
+export function launcher_update_progress(launcher_st: LauncherState) -> int { return clamp(launcher_st.launcher__upd_progress, 0, 1000) }
+export function launcher_update_eta(launcher_st: LauncherState) -> int { return launcher_st.launcher__upd_eta }
+export function launcher_update_error(launcher_st: LauncherState) -> int { return launcher_st.launcher__upd_err }
+
+export function launcher_crash_summary(launcher_st: LauncherState) -> string { return launcher_st.launcher__crash_text }
+export function launcher_crash_can_report(launcher_st: LauncherState) -> bool { return launcher_st.launcher__can_report }
+
+export function launcher_crash_report(launcher_st: mut LauncherState) -> void {
+  if launcher_st.launcher__can_report { launcher__fact(launcher_st, LF_CRASH_REPORT, "", "") }
+}
+
+# put the note away for this launch; the game is told so it can clear its marker
+export function launcher_crash_dismiss(launcher_st: mut LauncherState) -> void {
+  launcher_st.launcher__crash_hidden = true
+  launcher_st.launcher__sig = -1
+  launcher__fact(launcher_st, LF_CRASH_DISMISS, "", "")
+}
+
+export function launcher_language_count(launcher_st: LauncherState) -> int {
+  if not launcher__languages(launcher_st) { return 0 }
+  return launcher_st.launcher__lang_n
+}
+export function launcher_language_name(launcher_st: LauncherState, i: int) -> string { return launcher_st.launcher__lang_names[i] }
+export function launcher_language_current(launcher_st: LauncherState, i: int) -> bool {
+  return launcher_st.launcher__lang_codes[i] == launcher_st.launcher__lang
+}
+export function launcher_language_pick(launcher_st: mut LauncherState, i: int) -> bool {
+  if i < 0 or i >= launcher_language_count(launcher_st) { return false }
+  launcher__fact(launcher_st, LF_LANGUAGE, launcher_st.launcher__lang_codes[i], "")
+  launcher_st.launcher__panel = LP_HOME
+  return true
+}
+
+export function launcher_link_count(launcher_st: LauncherState) -> int { return len(launcher_st.launcher__links) }
+export function launcher_link_label(launcher_st: LauncherState, i: int) -> string {
+  if i < 0 or i >= len(launcher_st.launcher__links) { return "" }
+  let l = LauncherLinks[launcher_st.launcher__links[i]]
+  if l.label == null { return "" }
+  return string(l.label)
+}
+export function launcher_link_icon(launcher_st: LauncherState, i: int) -> string {
+  if i < 0 or i >= len(launcher_st.launcher__links) { return "" }
+  return LauncherLinks[launcher_st.launcher__links[i]].icon
+}
+export function launcher_link_open(launcher_st: mut LauncherState, i: int) -> bool {
+  if i < 0 or i >= len(launcher_st.launcher__links) { return false }
+  launcher__fact(launcher_st, LF_LINK, LauncherLinks[launcher_st.launcher__links[i]].url, "")
+  return true
+}
+
+# ----- the panels -----
+
+export function launcher_panel(launcher_st: LauncherState) -> int { return launcher_st.launcher__panel }
+export function launcher_open(launcher_st: mut LauncherState, panel: int) -> void { launcher_st.launcher__panel = panel }
+export function launcher_back(launcher_st: mut LauncherState) -> void { launcher_st.launcher__panel = LP_HOME }
+
+# once a frame: the buttons follow the game's answers, the feed is asked and read
+export function launcher_tick(launcher_st: mut LauncherState) -> void {
+  launcher__sense(launcher_st)
+  if launcher_st.launcher__row < 0 { return }
+  if launcher__signature(launcher_st) != launcher_st.launcher__sig { launcher__buttons_rebuild(launcher_st) }
+  launcher__feed_tick(launcher_st)
+}
+
+# ----- what the screen hands its parts (values, as props are) -----
+
+export function launcher_menu(launcher_st: LauncherState) -> Val { return launcher_st.launcher__menu_v }
+export function launcher_links(launcher_st: LauncherState) -> Val { return launcher_st.launcher__links_v }
+export function launcher_languages(launcher_st: LauncherState) -> Val { return launcher_st.launcher__langs_v }
+export function launcher_languages_shown(launcher_st: LauncherState) -> bool { return launcher_language_count(launcher_st) >= 2 }
+
+function launcher__flag(b: bool) -> Val {
+  if b { return Value.bool(1) }
+  return Value.bool(0)
+}

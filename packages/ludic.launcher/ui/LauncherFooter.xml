@@ -1,0 +1,5 @@
+<footer class="footer">
+  <LauncherLinks class="grow" items="{links}"/>
+  <if test="{languages}"><button class="lang" on-click="language()">{t('launcher.language.button')}</button></if>
+  <if test="{build != ''}"><small class="version">{t('launcher.version', build)}</small></if>
+</footer>
