@@ -1,0 +1,74 @@
+# seed_pins_test.ludic - phase 27.2a: seed set out, as it stands (the world is scanned for any once a
+# second, in wildlife_tick). A bird aloft with seed within 120 m and nobody within 0.7 of its flee
+# comes down 1 + 2 r0 m off it at the angle r1; perched at it, it rolls r < 0.12 dt to be FED
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program SeedPins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  test "FLY, seed within 120 m: LAND (30 s) at 1 + 2 r0 m from the seed, angle r1: two rolls" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_lure(wildlife_tests_fake_st, 77, WILD_FEED, WILD_SEED, 0.0, 0.0)
+    pn_player(wildlife_tests_fake_st, 500.0, 0.0)
+    let a = pn_at(wildlife_st, 3, 0.0, 0.0, WILD_FLY, 5.0)
+    wildlife_seed(wildlife_st, 18)
+    wildlife_tick(wildlife_st, 0.05, 0.0)
+    expect_eq(a.state, WILD_LAND)
+    expect_near(a.timer, 30.0, 0.0001)
+    let off = 1.0 + 2.0 * pn_roll(18, 0)
+    let oa = pn_roll(18, 1) * 6.2831853
+    expect_near(a.tx, Math.sin(oa) * off, 0.001)
+    expect_near(a.tz, Math.cos(oa) * off, 0.001)
+    expect_eq(pn_drew(wildlife_st, 18), 2)
+  }
+
+  test "FLY, seed down but somebody within 0.7 of its flee: no coming down, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_lure(wildlife_tests_fake_st, 77, WILD_FEED, WILD_SEED, 0.0, 0.0)
+    pn_player(wildlife_tests_fake_st, 3.0, 0.0)
+    let a = pn_at(wildlife_st, 3, 0.0, 0.0, WILD_FLY, 5.0)
+    wildlife_seed(wildlife_st, 18)
+    wildlife_tick(wildlife_st, 0.05, 0.0)
+    expect_eq(a.state, WILD_FLY)
+    expect_eq(pn_drew(wildlife_st, 18), 0)
+  }
+
+  test "PERCH within 3 m of seed: one roll a tick, under 0.12 dt it is FED (calm 180); it stays" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_lure(wildlife_tests_fake_st, 77, WILD_FEED, WILD_SEED, 1.0, 0.0)
+    pn_player(wildlife_tests_fake_st, 500.0, 0.0)
+    let seeds = [25, 11]
+    for i in 0 .. 2 {
+      let a = pn_at(wildlife_st, 3, 0.0, 0.0, WILD_PERCH, 5.0)
+      a.hunger = 50.0
+      wildlife_seed(wildlife_st, seeds[i])
+      wildlife_tick(wildlife_st, 0.05, 0.0)
+      expect_eq(a.state, WILD_PERCH)
+      expect_near(a.hunger, 50.0 - 30.0 * 0.05, 0.0001)
+      var fed = 0
+      if pn_roll(seeds[i], 0) < 0.12 * 0.05 { fed = 1 }
+      let fs = pn_drain(wildlife_st)
+      expect_eq(pn_count(fs, WILD_FED), fed)
+      if fed == 1 { expect_near(a.calm, 180.0, 0.0001) }
+      expect_eq(pn_drew(wildlife_st, seeds[i]), 1)
+      wildlife_remove(a)
+    }
+  }
+}

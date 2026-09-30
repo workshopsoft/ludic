@@ -1,0 +1,94 @@
+# eat_pins_test.ludic - phase 27.2a: EAT and TRAPPED as they stand. Eating done, food still there is
+# credited (FED, calm 180 game minutes) and it wanders 4 s toward (r0, r1); a snare holds it through
+# anything the tick asks, and only a release lets it go - FLEE 4 s, holding nothing against anyone
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program EatPins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  function eating(wildlife_st: mut WildlifeState, kind: int, timer: float) -> WildAnimal {
+    let a = pn_at(wildlife_st, 2, 0.0, 0.0, WILD_EAT, timer)
+    a.lure = 50
+    a.lure_kind = kind
+    a.lure_owner = 3
+    wildlife_seed(wildlife_st, 14)
+    pn_step(wildlife_st, a)
+    return a
+  }
+
+  test "EAT at food, its time up: FED with the food and its owner, calm 180, WANDER 4 s, two rolls" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = eating(wildlife_st, WILD_FEED, 0.01)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 4.0, 0.0001)
+    expect_near(a.calm, 180.0, 0.0001)
+    expect_eq(a.fed, 1)
+    expect_eq(a.lure, 0)
+    expect_near(a.tx, pn_tx(a, 14, 0, 60.0), 0.001)
+    let fs = pn_drain(wildlife_st)
+    expect_eq(pn_count(fs, WILD_FED), 1)
+    expect_eq(fs[0].lure, 50)
+    expect_eq(fs[0].owner, 3)
+    expect_eq(fs[0].diet, WILD_PLANTS)
+    expect_eq(pn_drew(wildlife_st, 14), 2)
+  }
+
+  test "EAT done at a lure, or the food gone: WANDER 4 s, nothing credited" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = eating(wildlife_st, WILD_LURE, 0.01)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.calm, 0.0, 0.0001)
+    wildlife_tests_fake_st.fk_gone = 50
+    let b = eating(wildlife_st, WILD_FEED, 0.01)
+    expect_eq(b.state, WILD_WANDER)
+    expect_eq(b.fed, 0)
+    expect_eq(pn_count(pn_drain(wildlife_st), WILD_FED), 0)
+    expect_eq(pn_drew(wildlife_st, 14), 2)
+  }
+
+  test "EAT before its time: stands eating, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = eating(wildlife_st, WILD_FEED, 5.0)
+    expect_eq(a.state, WILD_EAT)
+    expect_near(a.timer, 4.95, 0.0001)
+    expect_eq(pn_drew(wildlife_st, 14), 0)
+  }
+
+  test "TRAPPED holds through an alert over 95 and a thirst over 60; a release: FLEE 4 s, calm 0, lure 0" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 0.0, 0.0, WILD_TRAPPED, 0.01)
+    a.lure = 60
+    a.alert = 97.0
+    a.thirst = 90.0
+    a.calm = 10.0
+    a.speed = 2.0
+    wildlife_seed(wildlife_st, 14)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_TRAPPED)
+    expect_near(a.speed, 0.0, 0.00001)
+    expect(wildlife_in_snare(wildlife_st, 60) == a)
+    expect_eq(pn_drew(wildlife_st, 14), 0)
+    wildlife_release(a)
+    expect_eq(a.state, WILD_FLEE)
+    expect_near(a.timer, 4.0, 0.0001)
+    expect_near(a.calm, 0.0, 0.0001)
+    expect_eq(a.lure, 0)
+  }
+}

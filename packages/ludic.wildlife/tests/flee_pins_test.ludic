@@ -1,0 +1,85 @@
+# flee_pins_test.ludic - phase 27.2a: FLEE as it stands. Over 95 it bolts (3 + 3 r0 s, spooked for
+# 120 + 180 r1 game minutes, the alert dropped to 70, a FLED fact); fleeing it is not re-entered; its
+# time up it takes home where it stands and wanders 5 s; a fresh rise over 25 looks up mid-flight
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program FleePins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  test "IDLE, alert over 95: FLEE, then the spook; two rolls in that order" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 10.0, 0.0, WILD_IDLE, 5.0)
+    a.alert = 97.0
+    wildlife_seed(wildlife_st, 5)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_FLEE)
+    expect_near(a.timer, 3.0 + 3.0 * pn_roll(5, 0), 0.0001)
+    expect_near(a.spook, 120.0 + 180.0 * pn_roll(5, 1), 0.001)
+    expect_near(a.alert, 70.0, 0.0001)
+    let fs = pn_drain(wildlife_st)
+    expect_eq(pn_count(fs, WILD_FLED), 1)
+    expect_eq(fs[0].player, 0)
+    expect_eq(pn_drew(wildlife_st, 5), 2)
+  }
+
+  test "FLEE, alert still over 95: no second flight, no fact, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 10.0, 0.0, WILD_FLEE, 5.0)
+    a.alert = 97.0
+    wildlife_seed(wildlife_st, 5)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_FLEE)
+    expect_near(a.timer, 4.95, 0.0001)
+    expect(a.alert > 95.0)
+    expect_eq(pn_count(pn_drain(wildlife_st), WILD_FLED), 0)
+    expect_eq(pn_drew(wildlife_st, 5), 0)
+  }
+
+  test "FLEE, its time up: home where it stands, WANDER 5 s toward (r0, r1) about it" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 10.0, 0.0, WILD_FLEE, 0.01)
+    wildlife_seed(wildlife_st, 5)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 5.0, 0.0001)
+    expect_near(a.home_x, a.x, 0.0001)
+    expect_near(a.home_z, a.z, 0.0001)
+    expect_near(a.tx, pn_tx(a, 5, 0, 60.0), 0.001)
+    expect_near(a.tz, pn_tz(a, 5, 0, 60.0), 0.001)
+    expect_eq(pn_drew(wildlife_st, 5), 2)
+  }
+
+  test "FLEE, a fresh alert between 25 and 60: ALERT mid-flight, one roll (WARY never interrupts it)" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 10.0, 0.0, WILD_FLEE, 5.0)
+    a.alert = 40.0
+    wildlife_seed(wildlife_st, 5)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_ALERT)
+    expect_near(a.timer, 1.5 + 2.5 * pn_roll(5, 0), 0.0001)
+    expect_eq(pn_drew(wildlife_st, 5), 1)
+    let b = pn_at(wildlife_st, 2, 10.0, 0.0, WILD_FLEE, 5.0)
+    b.alert = 70.0
+    wildlife_seed(wildlife_st, 5)
+    pn_step(wildlife_st, b)
+    expect_eq(b.state, WILD_FLEE)
+    expect_eq(pn_drew(wildlife_st, 5), 0)
+  }
+}

@@ -1,0 +1,71 @@
+# react_pins_test.ludic - phase 27.2a: the ends of ALERT and WARY as they stand. Either one, its time
+# up, wanders for 3 + 4 r0 s toward (r1, r2) about the home it had: three rolls, the time first
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program ReactPins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  test "ALERT, its time up: WANDER 3 + 4 r0 s toward (r1, r2) about home, three rolls" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 10.0, 0.0, WILD_ALERT, 0.01)
+    wildlife_seed(wildlife_st, 9)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 3.0 + 4.0 * pn_roll(9, 0), 0.0001)
+    expect_near(a.home_x, 10.0, 0.0001)
+    expect_near(a.tx, pn_tx(a, 9, 1, 60.0), 0.001)
+    expect_near(a.tz, pn_tz(a, 9, 1, 60.0), 0.001)
+    expect_eq(pn_drew(wildlife_st, 9), 3)
+  }
+
+  test "ALERT before its time: stands still, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 10.0, 0.0, WILD_ALERT, 5.0)
+    a.speed = 3.0
+    wildlife_seed(wildlife_st, 9)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_ALERT)
+    expect_near(a.speed, 0.0, 0.00001)
+    expect_eq(pn_drew(wildlife_st, 9), 0)
+  }
+
+  test "WARY, its time up: the step away first, then WANDER 3 + 4 r0 s about the old home, three rolls" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 10.0, 0.0, WILD_WARY, 0.01)
+    wildlife_seed(wildlife_st, 9)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 3.0 + 4.0 * pn_roll(9, 0), 0.0001)
+    expect_near(a.home_x, 10.0, 0.0001)
+    expect(Math.abs(a.x - 10.0) + Math.abs(a.z) > 0.001)
+    expect_near(a.tx, pn_tx(a, 9, 1, 60.0), 0.001)
+    expect_eq(pn_drew(wildlife_st, 9), 3)
+  }
+
+  test "WARY before its time: backs off at 0.8 of its walk, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 10.0, 0.0, WILD_WARY, 5.0)
+    wildlife_seed(wildlife_st, 9)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_WARY)
+    expect_near(a.speed, 0.8, 0.0001)
+    expect_eq(pn_drew(wildlife_st, 9), 0)
+  }
+}

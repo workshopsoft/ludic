@@ -1,0 +1,81 @@
+# lure_pins_test.ludic - phase 27.2a: IDLE and WANDER drawn to what is set out, as they stand. The
+# nearest within 70 m (food at 0.4 of its distance while feeding is taught) of its diet, or a snare
+# it fits, which rolls r > 0.5 each tick it is looked at: APPROACH, whatever its timer
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program LurePins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  function drawn(wildlife_st: mut WildlifeState, sp: int, state: int) -> WildAnimal {
+    let a = pn_at(wildlife_st, sp, 0.0, 0.0, state, 5.0)
+    wildlife_seed(wildlife_st, 12)
+    pn_step(wildlife_st, a)
+    return a
+  }
+
+  test "IDLE and WANDER, food of its diet within 70 m: APPROACH it, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_lure(wildlife_tests_fake_st, 50, WILD_FEED, WILD_PLANTS, 20.0, 0.0)
+    let a = drawn(wildlife_st, 2, WILD_IDLE)
+    expect_eq(a.state, WILD_APPROACH)
+    expect_eq(a.lure, 50)
+    expect_eq(a.lure_kind, WILD_FEED)
+    expect_eq(a.lure_owner, 3)
+    expect_near(a.lure_x, 20.0, 0.0001)
+    let b = drawn(wildlife_st, 2, WILD_WANDER)
+    expect_eq(b.state, WILD_APPROACH)
+    expect_eq(pn_drew(wildlife_st, 12), 0)
+  }
+
+  test "food of another diet, or 80 m off, is left alone; taught, 80 m is near enough" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState, wild_pin_st: mut WildPinState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_lure(wildlife_tests_fake_st, 51, WILD_FEED, WILD_FISH, 20.0, 0.0)
+    pn_lure(wildlife_tests_fake_st, 50, WILD_FEED, WILD_PLANTS, 80.0, 0.0)
+    let a = drawn(wildlife_st, 2, WILD_IDLE)
+    expect_eq(a.state, WILD_IDLE)
+    expect_eq(a.lure, 0)
+    expect_eq(pn_drew(wildlife_st, 12), 0)
+    wild_pin_st.pn_taught = true
+    let b = drawn(wildlife_st, 2, WILD_IDLE)
+    expect_eq(b.state, WILD_APPROACH)
+    expect_eq(b.lure, 50)
+  }
+
+  test "a snare it fits: one roll, over 0.5 and it APPROACHes the snare" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_lure(wildlife_tests_fake_st, 60, WILD_SNARE, 0, 10.0, 0.0)
+    for seed in 1 .. 17 {
+      let a = pn_at(wildlife_st, 2, 0.0, 0.0, WILD_IDLE, 5.0)
+      wildlife_seed(wildlife_st, seed)
+      pn_step(wildlife_st, a)
+      if pn_roll(seed, 0) > 0.5 { expect_eq(a.state, WILD_APPROACH) } else { expect_eq(a.state, WILD_IDLE) }
+      if pn_roll(seed, 0) > 0.5 { expect_eq(a.lure_kind, WILD_SNARE) }
+      expect_eq(pn_drew(wildlife_st, seed), 1)
+    }
+  }
+
+  test "a snare too small for it (a deer, size 1): no roll, left alone" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_lure(wildlife_tests_fake_st, 60, WILD_SNARE, 0, 10.0, 0.0)
+    let a = drawn(wildlife_st, 0, WILD_IDLE)
+    expect_eq(a.state, WILD_IDLE)
+    expect_eq(pn_drew(wildlife_st, 12), 0)
+  }
+}

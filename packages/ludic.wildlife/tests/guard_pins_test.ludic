@@ -1,0 +1,80 @@
+# guard_pins_test.ludic - phase 27.2a: which states the alert reaches as it stands. EATING and a
+# tame kind ignore it; going to water, drinking and walking to food do not - they bolt with the spot
+# or the lure still held
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program GuardPins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  function spooked(wildlife_st: mut WildlifeState, sp: int, state: int, alert: float) -> WildAnimal {
+    let a = pn_at(wildlife_st, sp, 10.0, 0.0, state, 5.0)
+    a.alert = alert
+    a.spot = 900
+    a.spot_x = 40.0
+    a.spot_water = true
+    a.lure = 50
+    a.lure_kind = WILD_FEED
+    a.lure_x = 30.0
+    a.thirst = 50.0
+    a.hunger = 50.0
+    wildlife_seed(wildlife_st, 2)
+    pn_step(wildlife_st, a)
+    return a
+  }
+
+  test "EAT, alert over 95: still eating, no fact, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = spooked(wildlife_st, 2, WILD_EAT, 97.0)
+    expect_eq(a.state, WILD_EAT)
+    expect_near(a.timer, 4.95, 0.0001)
+    expect_eq(pn_count(pn_drain(wildlife_st), WILD_FLED), 0)
+    expect_eq(pn_drew(wildlife_st, 2), 0)
+  }
+
+  test "a tame kind, alert over 95: IDLE still, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = spooked(wildlife_st, 4, WILD_IDLE, 97.0)
+    expect_eq(a.state, WILD_IDLE)
+    expect_eq(pn_drew(wildlife_st, 2), 0)
+  }
+
+  test "DRINK, APPROACH, GO_DRINK and GO_FEED, alert over 95: FLEE, two rolls, the spot and the lure kept" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let states = [WILD_DRINK, WILD_APPROACH, WILD_GO_DRINK, WILD_GO_FEED]
+    for i in 0 .. 4 {
+      let a = spooked(wildlife_st, 2, states[i], 97.0)
+      expect_eq(a.state, WILD_FLEE)
+      expect_near(a.timer, 3.0 + 3.0 * pn_roll(2, 0), 0.0001)
+      expect_eq(a.spot, 900)
+      expect_eq(a.lure, 50)
+      expect_eq(pn_drew(wildlife_st, 2), 2)
+    }
+  }
+
+  test "GO_DRINK and DRINK, a fresh alert over 25: ALERT, one roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = spooked(wildlife_st, 2, WILD_GO_DRINK, 40.0)
+    expect_eq(a.state, WILD_ALERT)
+    expect_eq(pn_drew(wildlife_st, 2), 1)
+    let b = spooked(wildlife_st, 2, WILD_DRINK, 40.0)
+    expect_eq(b.state, WILD_ALERT)
+    expect_eq(pn_drew(wildlife_st, 2), 1)
+  }
+}
