@@ -186,6 +186,17 @@ program CrashTest {
     crash_config(crash_st, c)
     crash_start(crash_st)
     crash_context(crash_st, "on purpose")
+    if Text.to_int(arg(3)) == 100 {
+      # a frame that keeps a record: the allocation fence ends the run (exit 86), and leaves a record first
+      var held = new []int
+      Mem.play()
+      Mem.settled()
+      for f in 0 .. 100 {
+        if f == 50 { push(held, f) }
+        Mem.frame()
+      }
+      Os.exit(3)
+    }
     crash_trigger(crash_st, Text.to_int(arg(3)))
     Os.exit(3)
   }
@@ -229,6 +240,29 @@ program CrashTest {
     expect(len(r.images) >= 1)
     expect(r.images[0].main)
     expect(len(r.images[0].uuid) == 36)
+  }
+
+  test "the allocation fence failing a run leaves a record of its own" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    Os.set_env("R3D_ALLOC_FENCE", "fail")
+    let code = run_child(100)
+    expect_eq(code, 86)
+    expect(crash_exit_is_crash(code))
+    expect(crash_exit_name(code) == "ALLOC_FENCE")
+    fresh(crash_st, crash_test_st, 5)
+    let c = new CrashConfig
+    c.dir = dir() + "/child100"
+    crash_config(crash_st, c)
+    expect_eq(crash_start(crash_st), 1)
+    let r = crash_record(crash_st, 0)
+    expect(r.ok)
+    expect(r.complete)
+    expect(r.signame == "ALLOC_FENCE")
+    expect_eq(r.code, 86)
+    expect(r.app == "Crash Child")
+    expect(Text.contains(r.context, "alloc-fence: frame 50 kept"))
+    expect(Text.contains(r.context, "crash_test.ludic"))
+    expect(Text.contains(r.context, "| on purpose"))
+    expect(len(r.frames) >= 1)
   }
 
   test "abort, a trap and a stack overflow leave records too" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {

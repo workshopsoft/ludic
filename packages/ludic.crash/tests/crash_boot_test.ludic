@@ -1,0 +1,40 @@
+# crash_boot_test.ludic - the crash wiring from data: the app's name and version from package.ludic (Build.app_name,
+# Build.app_version), the folder, keep_n and the starting context from a CrashSettings row, in one call; and the
+# dev verbs that list what is pending
+import "ludic.crash"
+import "ludic.base"
+program CrashUpTest {
+  numbers float
+  def CrashSettings standard { dir: "/tmp/ludic-crash-up-test", keep_n: 3, context: "scene=up" }
+
+  test "crash_boot reads the folder, keep_n and context from the row, and the name and version from package.ludic" (crash_st: mut CrashState) {
+    Fs.mkdir("/tmp/ludic-crash-up-test")
+    let n = crash_boot(crash_st, "b-1")
+    expect_eq(n, 0)
+    expect(crash_installed(crash_st))
+    expect(crash_dir(crash_st) == "/tmp/ludic-crash-up-test")
+    expect(Build.app_name() == "ludic.crash")
+    expect(Build.app_version() == "0.1.0")
+    expect(Build.app_id() == "")
+    crash_reset(crash_st)
+  }
+
+  test "the pending verbs answer the count and a record's context" (crash_st: mut CrashState) {
+    let d = Path.join("/tmp/ludic-crash-up-test", "crash-1790788239-4242.lcr")
+    Fs.write_text(d, "{\"k\":\"crash\",\"v\":1,\"producer\":\"ludic\",\"app\":\"A\",\"version\":\"1.0\",\"build\":\"b\",\"context\":\"alloc-fence: frame 9 | scene=up\",\"os\":\"macos\",\"os_version\":\"15\",\"arch\":\"arm64\",\"pid\":1,\"tid\":1,\"main\":true,\"time\":1790788239,\"sig\":0,\"signame\":\"ALLOC_FENCE\",\"code\":86,\"addr\":\"0x0\",\"pc\":\"0x0\",\"sp\":\"0x0\",\"fp\":\"0x0\",\"lr\":\"0x0\"}\n{\"k\":\"end\",\"frames\":0,\"images\":0}\n")
+    expect_eq(crash_boot(crash_st, "b-1"), 1)
+    let call = devcall_new()
+    let pending = DevVerbs[DVB_CRASH_PENDING]
+    expect_eq(pending.run(call), DV_OK)
+    expect(call.out_n > 0)
+    let call2 = devcall_new()
+    call2.n = 1
+    call2.i[0] = 5
+    let ctx = DevVerbs[DVB_CRASH_CONTEXT]
+    expect_eq(ctx.run(call2), DV_BAD)
+    call2.i[0] = 0
+    expect_eq(ctx.run(call2), DV_OK)
+    crash_reset(crash_st)
+    Fs.remove(d)
+  }
+}

@@ -9,6 +9,17 @@ export property CrashConfig {
   build: string = ""      # a build id (Build.schema_hash() in a dev build, the release's own in a shipped one)
 }
 
+# the crash wiring as data: the first row of CrashSettings is what crash_boot (queries.ludic) reads, so a game
+# declares `def CrashSettings standard { keep_n: 10 }` or a rows file and wires nothing else. The app's name
+# and version are package.ludic's (Build.app_name(), Build.app_version()): crash_boot takes them from there.
+export property CrashSetting {
+  dir: string = "crashes"   # the crash folder's name under the game's save folder (Os.save_dir of the app's name), or an absolute path
+  keep_n: int = 5           # records kept: the newest, pending or handled
+  enabled: bool = true      # off: no handler, so no record
+  context: string = ""      # one line every record carries from the start (crash_context replaces it as the game runs)
+}
+export open registry CrashSettings of CrashSetting as CRSET
+
 # what the crash package asks the game. Unbound: no consent, so a record stays a local file.
 export port CrashWorld {
   consent: fn() -> bool = fn crash__no     # the player's switch: may a record leave this machine

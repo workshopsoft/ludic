@@ -36,8 +36,61 @@ function schema_hash_compute() -> void {
   g_sh_done = true
 }
 
-function is_build_ns(meth: pointer) -> bool { return meth == "schema_hash" }
+# Build.app_name() / app_version() / app_id(): what package.ludic says of the app (`app name "..."`,
+# `app version "..."`, `app id "..."`), so a game never types its own name twice (Os.save_dir, the crash
+# folder, the window title). The name falls back to the package's, the version to the package's `version`
+# line and then "0.1.0" (what `ludic bundle` ships under); the id is "" without an `app id`. The manifest
+# is the nearest package.ludic up to four directories above the program, as `lang` and `maps` find it.
+var g_app_name: pointer = ""
+var g_app_version: pointer = "0.1.0"
+var g_app_id: pointer = ""
+function app_manifest(entry: pointer) -> void {
+  var dir = dir_of(entry)
+  var up = 0
+  while up < 5 {
+    var root = dir
+    if len(root) > 0 and not is_sep(root[len(root) - 1]) { root = root + "/" }
+    let txt = read_file(root + "package.ludic")
+    if txt != null {
+      app_manifest_read(txt)
+      return
+    }
+    if len(dir) == 0 { dir = ".." } else { dir = dir + "/.." }
+    up += 1
+  }
+}
+function app_manifest_read(txt: pointer) -> void {
+  var pkg = ""
+  var ver = ""
+  var aname = ""
+  var aver = ""
+  var i = 0
+  let tn = len(txt)
+  while i < tn {
+    var e = i
+    while (e < tn) and (txt[e] != '\n') { e += 1 }
+    var le = e
+    if (le > i) and (txt[le - 1] == 13) { le -= 1 }
+    let ws = native_words(txt[i..le])
+    if len(ws) == 2 and ws[0] == "package" { pkg = ws[1] }
+    if len(ws) == 2 and ws[0] == "version" { ver = ws[1] }
+    if len(ws) == 3 and ws[0] == "app" and ws[1] == "name" { aname = ws[2] }
+    if len(ws) == 3 and ws[0] == "app" and ws[1] == "version" { aver = ws[2] }
+    if len(ws) == 3 and ws[0] == "app" and ws[1] == "id" { g_app_id = ws[2] }
+    i = e + 1
+  }
+  g_app_name = pkg
+  if aname != "" { g_app_name = aname }
+  if ver != "" { g_app_version = ver }
+  if aver != "" { g_app_version = aver }
+}
+
+function is_build_ns(meth: pointer) -> bool { return meth == "schema_hash" or meth == "app_name" or meth == "app_version" or meth == "app_id" }
 function emit_build_ns(meth: pointer, e: Node) -> Val {
+  if len(e.kids) != 0 { perr(`Build.{meth} takes no arguments`) }
+  if meth == "app_name" { return val(emit_str_const(g_app_name), "string") }
+  if meth == "app_version" { return val(emit_str_const(g_app_version), "string") }
+  if meth == "app_id" { return val(emit_str_const(g_app_id), "string") }
   if not g_sh_done { return val("0", "long") }
   let lo = emit_bind(`zext i32 {itoa(g_sh_lo)} to i64`)
   let hi = emit_bind(`zext i32 {itoa(g_sh_hi)} to i64`)

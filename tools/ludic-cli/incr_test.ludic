@@ -1,0 +1,65 @@
+# incr_test.ludic - `ludic build` that does only the work a change needs (ludic-dev test-incr).
+#
+# Drives a fresh bin/ludic in a scratch project, as a game's own directory would: the second build of
+# the same inputs builds nothing, a touched file costs the compiler but keeps the binary, an edit
+# compiles only the IR parts it changed, and an edit undone links what an earlier build compiled.
+
+var g_it_root: pointer = ""
+function it_build(ludic: pointer, work: pointer, extra: pointer) -> pointer {
+  let rc = shell(`cd {work}/a && env LUDIC_HOME={g_it_root} {extra} {ludic} build hello.ludic > {work}/build.out 2>&1`)
+  if exit_code(rc) != 0 { return `FAILED: {pt_read(`{work}/build.out`)}` }
+  return pt_read(`{work}/build.out`)
+}
+
+function cmd_test_incr() -> int {
+  PASS = 0
+  FAIL = 0
+  print("== ludic build: incremental builds ==")
+  if not is_darwin() { skip("incremental builds are macOS-only for now");  return report() }
+  let root = capture_line("pwd")
+  let work = `{tmp_dir()}/incr_test`
+  shell(`rm -rf {work} && mkdir -p {work}/a`)
+  g_it_root = root
+  let ludic = `{root}/bin/ludic`
+  let src = `{work}/a/hello.ludic`
+  let body = "program Hello {\n  function shout(n: int) -> int { return n * 3 }\n  entry {\n    print(string(shout(2)))\n  }\n}\n"
+  pt_write(src, body)
+
+  var o = it_build(ludic, work, "")
+  if s_contains(o, "build: compiling hello.ludic") and s_contains(o, "parts to compile") and s_contains(o, "0 cached") and Fs.exists(`{work}/a/build/hello`) {
+    ok("the first build compiles every part and says each phase on its own line")
+  } else { bad2("the first build", o) }
+  let stamp = capture_line(`stat -f %m {work}/a/build/hello`)
+  let inode = capture_line(`stat -f '%i %z' {work}/a/build/hello`)
+
+  o = it_build(ludic, work, "")
+  if s_contains(o, "is up to date: nothing changed") and not s_contains(o, "compiling") and capture_line(`stat -f '%i %z' {work}/a/build/hello`) == inode {
+    ok("a build with nothing changed compiles and links nothing")
+  } else { bad2("the no-change build", o) }
+
+  shell(`sleep 1; touch {src}`)
+  o = it_build(ludic, work, "")
+  if s_contains(o, "compiling hello.ludic") and s_contains(o, "generated code is the same") and capture_line(`stat -f %m {work}/a/build/hello`) == stamp {
+    ok("a touched file runs the compiler, finds the same code, and keeps the binary")
+  } else { bad2("the touch", o) }
+
+  pt_write(src, "program Hello {\n  function shout(n: int) -> int { return n * 4 }\n  entry {\n    print(string(shout(2)))\n  }\n}\n")
+  o = it_build(ludic, work, "")
+  if s_contains(o, "parts to compile") and not s_contains(o, " 0 of ") and s_contains(o, "linked build/hello") {
+    ok("an edit compiles the parts it changed and links")
+  } else { bad2("the edit", o) }
+  let run = capture_line(`{work}/a/build/hello`)
+  if run == "8" { ok("the linked program is the edited one") } else { bad2("the program printed", run) }
+
+  pt_write(src, body)
+  o = it_build(ludic, work, "")
+  if s_contains(o, "0 of ") and s_contains(o, "parts to compile") and capture_line(`{work}/a/build/hello`) == "6" {
+    ok("an edit undone links the objects an earlier build compiled")
+  } else { bad2("the undo", o) }
+
+  o = it_build(ludic, work, "LUDIC_NO_INCREMENTAL=1")
+  if not s_contains(o, "build: ") and s_contains(o, "built build/hello") { ok("LUDIC_NO_INCREMENTAL=1 builds the old way, with no progress lines") }
+  else { bad2("the plain build", o) }
+
+  return report()
+}

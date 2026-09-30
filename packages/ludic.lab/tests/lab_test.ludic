@@ -8,6 +8,12 @@ program LabTest {
   def LabScenes one { setup: fn nothing }
   def LabScenes two { setup: fn nothing }
 
+  state StepLog { order: []int = null, n: int = 0 }
+  function step_a(step_log: mut StepLog) -> void { if step_log.order == null { step_log.order = new []int };  push(step_log.order, 1) }
+  function step_b(step_log: mut StepLog) -> void { push(step_log.order, 2) }
+  def LabSteps first { label: "Making the first thing", run: fn step_a }
+  def LabSteps second { label: "Making the second thing", run: fn step_b }
+
   function ppm(path: string) -> void {
     let hdr = "P6\n2 2\n255\n"
     let b = buffer(len(hdr) + 12)
@@ -86,5 +92,21 @@ program LabTest {
     expect_eq(LAB_COUNT, 2)
     expect(lab_scene_names() == "one, two")
     expect_eq(labscenes_find("two"), LAB_TWO)
+  }
+
+  test "the named setup steps run in order and the progress reaches 1" (lab_st: mut LabState, render3d_st: mut Render3dState, step_log: mut StepLog) {
+    expect_eq(LSTEP_COUNT, 2)
+    lab_steps_run(lab_st, render3d_st)
+    expect_eq(len(step_log.order), 2)
+    expect_eq(step_log.order[0], 1)
+    expect_eq(step_log.order[1], 2)
+    expect(lab_progress(lab_st) == 1.0)
+    expect(lab_progress_label(lab_st) == "")
+  }
+
+  test "the bar says the next step's label between steps" (lab_st: mut LabState, render3d_st: mut Render3dState) {
+    lab_loading_frame(lab_st, render3d_st, 0.5, "Halfway")
+    expect(lab_progress(lab_st) == 0.5)
+    expect(lab_progress_label(lab_st) == "Halfway")
   }
 }

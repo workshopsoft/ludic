@@ -1,0 +1,14 @@
+# dev_test.ludic - dev_mode() is the R3D_DEV switch: unset or 0 is off, anything else is on
+import "ludic.base"
+program DevTest {
+  test "dev_mode follows R3D_DEV" {
+    Os.set_env("R3D_DEV", "0")
+    expect(not dev_mode())
+    Os.set_env("R3D_DEV", "1")
+    expect(dev_mode())
+    Os.set_env("R3D_DEV", "yes")
+    expect(dev_mode())
+    Os.set_env("R3D_DEV", "0")
+    expect(not dev_mode())
+  }
+}

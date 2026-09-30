@@ -210,7 +210,10 @@ developer tools, so a player cannot trip them by accident:
 R3D_DEV=1 R3D_WIRE=1 ./MyGame.app/Contents/MacOS/MyGame
 ```
 
-A game that has its own switches should gate them the same way. Inside render3d,
+A game that has its own switches should gate them the same way: `dev_mode()` from
+`ludic.base` is true exactly when `R3D_DEV` is set to anything but `0`, and it is what
+`ludic.devlink` opens its editor link on by default (`DevlinkWorld.enabled`), so a
+game binds nothing to get the link in a dev run and never in a player's. Inside render3d,
 read a new switch with `r3d_env_has("R3D_FOO")` / `r3d_env("R3D_FOO")`, never
 `Os.has_env` / `Os.env`.
 
@@ -300,9 +303,13 @@ What it does not do: build the bundle, write a changelog, tag, build a website, 
 reach another machine. Those are your release process around it. A project's own `script "release"`
 keeps running as `ludic release`, so existing ones are unaffected.
 
-The game's own updater (`ludic.update`'s `UpdateConfig.feed` and `app_id`) is configured in game code:
-no value in `package.ludic` reaches the program at build time (only `app name`, as the window title),
-so write the same feed and pack id in both places.
+The app's name, version and id reach the program as `Build.app_name()`, `Build.app_version()` and
+`Build.app_id()`: constants the compiler reads from the nearest `package.ludic` (`app name`, `app version`,
+`app id`; the name falls back to the package's, the version to its `version` line, then `0.1.0`; the id is
+`""` when none is written). Use them wherever the game needs its name - `Os.save_dir(Build.app_name())`,
+the crash folder (`crash_boot` does it), a title - so it is written once. The game's own updater
+(`ludic.update`'s `UpdateConfig.feed`) is still configured in game code: no other value in `package.ludic`
+reaches the program at build time, so write the same feed and pack id in both places.
 
 ## Crash reports and symbols
 

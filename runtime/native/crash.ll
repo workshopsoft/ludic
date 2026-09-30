@@ -701,6 +701,7 @@ entry:
 define internal ptr @cr_signame(i32 %sig) {
 entry:
   switch i32 %sig, label %other [
+    i32 0, label %fence
     i32 4, label %ill
     i32 5, label %trap
     i32 6, label %abrt
@@ -708,6 +709,8 @@ entry:
     i32 10, label %bus
     i32 11, label %segv
   ]
+fence:
+  ret ptr @kfence
 ill:
   ret ptr @k9
 trap:
@@ -1129,6 +1132,69 @@ so:
 }
 declare void @llvm.trap()
 
+; lu_crash_fence(text): the allocation fence failing the run (exit 86: a frame kept memory, 87: a
+; declared cap was passed) writes a record of its own before it exits. Not a signal: the handler is
+; run by hand on a made-up context whose stack pointer is this frame's (so the stack scan names the
+; frames under the fence), with signal number 0 - which names itself ALLOC_FENCE, raises nothing and
+; says code 86 - and `text`, the fence's report (the frame, what was kept, the sites that grew),
+; written first into the record's context, ahead of whatever the game said. A program that never
+; called lu_crash_install has no folder, and this does nothing.
+define void @lu_crash_fence(ptr %text) {
+entry:
+  %on = load i32, ptr @C_on
+  %off = icmp eq i32 %on, 0
+  br i1 %off, label %out, label %go
+go:
+  %old = alloca [256 x i8], align 8
+  %info = alloca [32 x i8], align 8
+  %uc = alloca [64 x i8], align 8
+  %mc = alloca [512 x i8], align 16
+  %o = call i32 @cr_copy(ptr %old, ptr @C_ctx, i32 256)
+  %n1 = call i32 @cr_copy(ptr @C_ctx, ptr %text, i32 256)
+  %room = icmp slt i32 %n1, 240
+  br i1 %room, label %tail, label %fill
+tail:
+  %t1 = getelementptr i8, ptr @C_ctx, i32 %n1
+  store i8 32, ptr %t1
+  %t2 = getelementptr i8, ptr %t1, i32 1
+  store i8 124, ptr %t2
+  %t3 = getelementptr i8, ptr %t1, i32 2
+  store i8 32, ptr %t3
+  %n2 = add i32 %n1, 3
+  %d2 = getelementptr i8, ptr @C_ctx, i32 %n2
+  %cap2 = sub i32 256, %n2
+  %n3 = call i32 @cr_copy(ptr %d2, ptr %old, i32 %cap2)
+  br label %fill
+fill:
+  call void @llvm.memset.p0.i64(ptr %info, i8 0, i64 32, i1 false)
+  call void @llvm.memset.p0.i64(ptr %uc, i8 0, i64 64, i1 false)
+  call void @llvm.memset.p0.i64(ptr %mc, i8 0, i64 512, i1 false)
+  %codep = getelementptr i8, ptr %info, i64 8
+  store i32 86, ptr %codep
+  %mcp = getelementptr i8, ptr %uc, i64 48
+  store ptr %mc, ptr %mcp
+  %sp = ptrtoint ptr %mc to i64
+  %pc = ptrtoint ptr @lu_crash_fence to i64
+  ; both architectures' register slots: arm64 fp 248, lr 256, sp 264, pc 272; x86_64 fp 64, sp 72, pc 144
+  %a1 = getelementptr i8, ptr %mc, i64 248
+  store i64 %sp, ptr %a1
+  %a2 = getelementptr i8, ptr %mc, i64 264
+  store i64 %sp, ptr %a2
+  %a3 = getelementptr i8, ptr %mc, i64 272
+  store i64 %pc, ptr %a3
+  %a4 = getelementptr i8, ptr %mc, i64 64
+  store i64 %sp, ptr %a4
+  %a5 = getelementptr i8, ptr %mc, i64 72
+  store i64 %sp, ptr %a5
+  %a6 = getelementptr i8, ptr %mc, i64 144
+  store i64 %pc, ptr %a6
+  call void @lu_crash_handler(i32 0, ptr %info, ptr %uc)
+  br label %out
+out:
+  ret void
+}
+declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
+
 ; ---- constants ----
 @k0 = private unnamed_addr constant [10 x i8] c"/usr/lib/\00"
 @k1 = private unnamed_addr constant [9 x i8] c"/System/\00"
@@ -1146,6 +1212,7 @@ declare void @llvm.trap()
 @k13 = private unnamed_addr constant [7 x i8] c"SIGBUS\00"
 @k14 = private unnamed_addr constant [8 x i8] c"SIGSEGV\00"
 @k15 = private unnamed_addr constant [5 x i8] c"SIG?\00"
+@kfence = private unnamed_addr constant [12 x i8] c"ALLOC_FENCE\00"
 @k16 = private unnamed_addr constant [45 x i8] c"{\22k\22:\22crash\22,\22v\22:1,\22producer\22:\22ludic\22,\22app\22:\00"
 @k17 = private unnamed_addr constant [12 x i8] c",\22version\22:\00"
 @k18 = private unnamed_addr constant [10 x i8] c",\22build\22:\00"

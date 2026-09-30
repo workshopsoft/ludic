@@ -49,6 +49,7 @@ import "ludic.base"
 | `core_add(s)`, `core_clear()`, `core_count()` | the game's system list (a key may appear once) |
 | `def Systems key { ... }`, `SYS_<KEY>`, `SYS_COUNT` | a system declared from any module; the list starts from these |
 | `def DevVerbs key { args, run, late }`, `DevCall`, `dv_int` / `dv_float` / `dv_bool` / `dv_str` / `dv_has`, `dv_reply_*`, `DV_OK` / `DV_LATER` / `DV_FAILED` / `DV_UNBOUND` / `DV_BAD` | a verb a dev build's editor link (ludic.devlink) may call, declared from any module with its argument shape; nothing here runs without the link |
+| `dev_mode() -> bool` | the one switch for developer tools: `R3D_DEV` set to anything but `0` (docs/SHIPPING.md). `ludic.devlink` opens its editor link on it by default; a game gates its own dev tools on it |
 | `core_init_all()`, `core_reset_all()`, `core_tick_all(t)`, `core_save_all() -> Val`, `core_load_all(v)` | the runner: in the order added, tick phase by phase |
 
 ## Entities: `Table<T>` and its indexes

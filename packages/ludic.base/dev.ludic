@@ -1,0 +1,8 @@
+# ludic.base/dev.ludic - the one switch for developer tools. A dev build is a run with R3D_DEV set to
+# anything but 0 (docs/SHIPPING.md): ludic.render3d's debug views and alloc fence read the same variable,
+# and ludic.devlink opens its editor link on it unless a game binds `DevlinkWorld.enabled` to its own rule.
+# A game gates its own dev tools the same way: `if dev_mode() { ... }`. Nothing is kept per call.
+export function dev_mode() -> bool {
+  if not Os.has_env("R3D_DEV") { return false }
+  return Os.env("R3D_DEV") != "0"
+}

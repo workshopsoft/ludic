@@ -20,7 +20,7 @@ export port DevlinkNet {
 }
 
 export port DevlinkWorld {
-  enabled: fn() -> bool = fn dlw_no                   # a dev build (dev_tools); a release never opens
+  enabled: fn() -> bool = fn dlw_dev                  # dev_mode() (ludic.base: R3D_DEV set, not 0) unless the game binds its own rule
   port: fn() -> int = fn dlw_port
   game: fn() -> string = fn dlw_game
   build: fn() -> string = fn dlw_zero
@@ -44,6 +44,7 @@ function dln_none3(a: int, b: []byte, c: int) -> int { return 0 }
 function dln_none5(a: int, b: int, c: int, d: []byte, e: int) -> int { return -1 }
 function dln_no1(a: int) -> bool { return false }
 function dlw_no() -> bool { return false }
+function dlw_dev() -> bool { return dev_mode() }
 function dlw_port() -> int { return 47200 }
 function dlw_game() -> string { return "ludic" }  # not drawn
 function dlw_zero() -> string { return "0" }

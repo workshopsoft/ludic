@@ -5,8 +5,9 @@ An editor's live link into a running dev build: the wire protocol v1 frozen in
 
 - **Transport** is the `DevlinkNet` port (a game binds `Udp.*`, a test a fake). One request a frame, read
   from one fixed 8 KB buffer and answered into another; nothing is made per frame. Only a loopback sender
-  is answered (`DevlinkNet.loopback`); the socket opens only when `DevlinkWorld.enabled()` says so (a
-  game binds `dev_tools`), so a release build never opens it.
+  is answered (`DevlinkNet.loopback`); the socket opens only when `DevlinkWorld.enabled()` says so. Its default is `dev_mode()` from `ludic.base`
+  (the `R3D_DEV` environment variable set to anything but `0`, see docs/SHIPPING.md), so a game binds nothing
+  and a player's run never opens it; bind `enabled` only for a rule of the game's own.
 - **Core verbs** are `DevlinkWorld` members, every default "not offered" (`err unbound`): `ping`, `hello`,
   `cam_get` / `cam_set` / `cam_release`, `shot`, `pause` / `resume`, `step`. `shot` and `step` answer later
   by id (5 s at most, one at a time). While `coop()` says a session is connected, everything but `ping` and

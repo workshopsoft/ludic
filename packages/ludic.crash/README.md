@@ -47,10 +47,37 @@ leave: with it off (or unbound) a record is a local file and nothing more - `cra
 `crash_next_send` is -1, and the game can still show the "crashed last time" panel from
 `crash_pending`. A player who turns capture off at run time calls `crash_set_enabled(false)`.
 
+### Wiring from data: `crash_boot`
+
+```ludic skip
+def CrashSettings standard { dir: "crashes", keep_n: 5, enabled: true, context: "" }   # or a rows file
+function boot(crash_st: mut CrashState) -> void {
+  crash_boot(crash_st, "")    # the argument is the game's own build id, "" when it has none
+}
+```
+
+`crash_boot(build)` is the whole wiring in one call: the app's name and version are `package.ludic`'s
+(`Build.app_name()`, `Build.app_version()`), the folder is the first `CrashSettings` row's `dir` under
+`Os.save_dir(app name)` (an absolute path is taken as it is), `keep_n`, `enabled` and `context` come from
+the row too (the defaults above when a game declares none), and it ends with `crash_start`. Two dev verbs
+(ludic.devlink) let an agent or the studio see what is pending: `crash_pending` answers the count and up
+to six records (file, signame, time, version), and `crash_context i:int` a record's context line.
+
+### The allocation fence
+
+A dev run under `R3D_ALLOC_FENCE=fail` that the fence ends (exit 86: a frame kept memory, or a declared
+"bounded" site kept rising; exit 87: a list or table passed its declared cap) writes a record before it
+exits, when the handler is installed: `signame` `ALLOC_FENCE`, `code` 86 (87 for a cap), and a `context`
+that starts with the fence's report - the frame, the bytes kept, and the three sites that hold the most
+(`+96 B grid_within_cell ecs_grid_within.ludic:34 grow`) - followed by ` | ` and whatever the game set with
+`crash_context`. The frames are the stack where the run was ended, not where the memory was allocated:
+the allocation sites are in the context. `crash_exit_name` names 86 and 87. macOS only for now.
+
 ## API
 
 | | |
 | --- | --- |
+| `crash_boot(build) -> int` | the whole wiring from `package.ludic` and the `CrashSettings` row (above), ending in `crash_start` |
 | `crash_config(c)` | before the start |
 | `crash_start() -> int` | once at boot, before the game can crash: read and rotate the folder, then (when `enabled`) install the handler. Answers how many records wait from earlier runs |
 | `crash_set_enabled(on)`, `crash_installed()`, `crash_dir()` | the switch at run time, and what is on |

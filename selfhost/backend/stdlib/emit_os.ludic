@@ -48,7 +48,26 @@ function is_os_ns(meth: pointer) -> bool {
   return false
 }
 
+# how many arguments each Os function takes: a call with another count is an error of the program's,
+# said here, not an index the emitter runs off the end of
+function os_arity(meth: pointer) -> int {
+  if (meth == "arg") or (meth == "env") or (meth == "has_env") or (meth == "unset_env") or (meth == "exit") { return 1 }
+  if (meth == "stdout_write") or (meth == "stderr_write") { return 1 }
+  if (meth == "save_dir") or (meth == "config_dir") or (meth == "cache_dir") { return 1 }
+  if (meth == "env_or") or (meth == "set_env") { return 2 }
+  return 0
+}
+
 function emit_os_ns(meth: pointer, e: Node) -> Val {
+  let want = os_arity(meth)
+  if len(e.kids) != want {
+    var what = `{itoa(want)} arguments`
+    if want == 0 { what = "no arguments" }
+    if want == 1 { what = "one argument" }
+    var hint = ""
+    if meth == "save_dir" or meth == "config_dir" or meth == "cache_dir" { hint = ": the app's name (Build.app_name() is the one package.ludic gives)" }
+    perr(`Os.{meth} takes {what}, this call has {itoa(len(e.kids))}{hint}`)
+  }
   # arg_count / arg / exit / pid stay light — they mirror the bare intrinsics and
   # need no Os runtime prelude, so a program using only these emits no extra IR.
   if (meth == "arg_count") { return val(emit_bind("load i32, ptr @L_argc"), "int") }

@@ -21,6 +21,7 @@ program LudicDev {
   import "prelude.ludic"
   import "build.ludic"
   import "split.ludic"
+  import "incr.ludic"
   import "toolchain.ludic"
   import "selfhost.ludic"
   import "tools.ludic"
@@ -46,6 +47,7 @@ program LudicDev {
   import "font_test.ludic"
   import "symbols.ludic"
   import "symbols_test.ludic"
+  import "incr_test.ludic"
   import "packages_check.ludic"
 
   function usage() -> void {
@@ -67,6 +69,7 @@ program LudicDev {
     print("  test-pkg                      the package-manager suite (hermetic git repos, offline)")
     print("  test-release                  `ludic release` and the manifest's release lines (a fake vpk, nothing real)")
     print("  test-symbols                  `ludic symbols`: the Mach-O / PE ids, the symbols a build keeps, the listing")
+    print("  test-incr                     `ludic build` is incremental: nothing changed builds nothing, an edit compiles only its parts")
     print("  test-fonts                    `ludic font bake` (metrics, the committed default font's bytes) and ui-preview's default font")
     print("  test-templates                every `ludic new --template` starter is created and passes `ludic build --check`")
     print("  selfhost-test                 the self-hosting suite (correctness + bootstrap fixpoints)")
@@ -121,6 +124,7 @@ program LudicDev {
     if (cmd == "test-templates") { return cmd_test_templates() }
     if (cmd == "test-fonts") { return cmd_test_fonts() }
     if (cmd == "test-symbols") { return cmd_test_symbols() }
+    if (cmd == "test-incr") { return cmd_test_incr() }
     if (cmd == "check-docs") { return cmd_check_docs() }
     if (cmd == "check-packages") { return cmd_check_packages() }
     if (cmd == "check-impl") { return cmd_check_impl() }
