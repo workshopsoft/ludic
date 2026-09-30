@@ -1,0 +1,32 @@
+# nav_repeat_test - a held direction moves the focus once on the press, then repeats after a delay at
+# a steady rate; it never fires every frame, even when the platform reports the key as pressed
+# on every frame (its own key repeat)
+import "ludic.ui"
+program NavRepeatTest {
+  numbers float
+
+  function moves(ui_st: mut UiState, edge_every_frame: bool) -> int {
+    var n = 0
+    for f in 0 .. 60 {
+      if rp_fire(ui_st, 3, true, edge_every_frame or f == 0, float(f) / 60.0) { n += 1 }
+    }
+    return n
+  }
+
+  test "holding Right for a second moves once, then the repeats" (ui_st: mut UiState) {
+    expect_eq(moves(ui_st, false), 6)
+  }
+  test "a platform that reports a press every frame does not move every frame" (ui_st: mut UiState) {
+    expect_eq(moves(ui_st, true), 6)
+  }
+  test "a tap too short to be seen held still moves once, and a release resets" (ui_st: mut UiState) {
+    expect(rp_fire(ui_st, 3, false, true, 0.0))
+    expect(not rp_fire(ui_st, 3, false, false, 0.016))
+    expect(rp_fire(ui_st, 3, true, false, 1.0))
+    expect(not rp_fire(ui_st, 3, true, false, 1.1))
+  }
+  test "the delay and the rate are data" (ui_st: mut UiState) {
+    expect_eq(ui_st.rp_first, 0.4)
+    expect_eq(ui_st.rp_every, 0.125)
+  }
+}

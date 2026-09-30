@@ -1,8 +1,7 @@
 # input_pad.ludic - the first gamepad, and a held direction: the d-pad and the left stick move the
 # focus as the arrows do, A is Enter and B is Escape; any direction held presses once, then again
-# after 0.42 s and every 0.11 s after that, on the ui clock
-const RP_FIRST: float = 0.42
-const RP_EVERY: float = 0.11
+# after rp_first (0.4 s) and every rp_every (0.125 s) after that, on the ui clock
+# the delay and the rate are data: UiState.rp_first and rp_every (defaults 0.4 s and 8 a second)
 const PAD_STICK: float = 0.5
 # what is held this frame: the arrow keys, the d-pad (SDL's order: 11 up, 12 down, 13 left, 14
 # right) and the stick past half way along its larger axis
@@ -26,10 +25,10 @@ function in_held(i: UiInput) -> void {
 # the held directions and buttons as this frame's presses
 function in_repeat(ui_st: mut UiState, i: UiInput) -> void {
   let now = an_now(ui_st)
-  if rp_fire(ui_st, 0, i.held_up, now) { i.up = true }
-  if rp_fire(ui_st, 1, i.held_down, now) { i.down_key = true }
-  if rp_fire(ui_st, 2, i.held_left, now) { i.left = true }
-  if rp_fire(ui_st, 3, i.held_right, now) { i.right = true }
+  i.up = rp_fire(ui_st, 0, i.held_up, i.up, now)
+  i.down_key = rp_fire(ui_st, 1, i.held_down, i.down_key, now)
+  i.left = rp_fire(ui_st, 2, i.held_left, i.left, now)
+  i.right = rp_fire(ui_st, 3, i.held_right, i.right, now)
   if i.pad_a and not ui_st.rp_a { i.enter = true }
   if i.pad_b and not ui_st.rp_b { i.escape = true }
   ui_st.rp_a = i.pad_a
@@ -39,17 +38,19 @@ function in_repeat(ui_st: mut UiState, i: UiInput) -> void {
   ui_st.in_act_up = ui_st.rp_act and not act
   ui_st.rp_act = act
 }
-function rp_fire(ui_st: mut UiState, k: int, held: bool, now: float) -> bool {
+# a key held fires on the press only (the platform's own key repeat is ignored: it is the edge that
+# counts), then again after rp_first and every rp_every; a tap too short to be seen held still fires once
+export function rp_fire(ui_st: mut UiState, k: int, held: bool, edge: bool, now: float) -> bool {
   if not held {
     ui_st.rp_next[k] = -1.0
-    return false
+    return edge
   }
   if ui_st.rp_next[k] < 0.0 {
-    ui_st.rp_next[k] = now + RP_FIRST
+    ui_st.rp_next[k] = now + ui_st.rp_first
     return true
   }
   if now + 0.000001 < ui_st.rp_next[k] { return false }
-  ui_st.rp_next[k] = ui_st.rp_next[k] + RP_EVERY
-  if ui_st.rp_next[k] <= now { ui_st.rp_next[k] = now + RP_EVERY }
+  ui_st.rp_next[k] = ui_st.rp_next[k] + ui_st.rp_every
+  if ui_st.rp_next[k] <= now { ui_st.rp_next[k] = now + ui_st.rp_every }
   return true
 }

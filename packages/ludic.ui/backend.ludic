@@ -138,6 +138,8 @@ export state UiState {
   in_rec_b: UiInput = new UiInput
   in_given: bool = false
   rp_next: []float = [-1.0, -1.0, -1.0, -1.0]
+  rp_first: float = 0.4     # a held direction: the delay before it repeats, seconds
+  rp_every: float = 0.125   # then the gap between repeats (8 a second)
   rp_a: bool = false
   rp_b: bool = false
   rp_act: bool = false
