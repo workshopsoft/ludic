@@ -39,6 +39,7 @@ function res_read_into(reg: pointer, from: pointer, who: pointer) -> void {
   g_res_mode = true
   lex_at(src, 1)
   pi = 0
+  let before = len(g_df_key)
   while true {
     skipnl()
     if toks[pi].kind == TK_EOF { break }
@@ -49,6 +50,11 @@ function res_read_into(reg: pointer, from: pointer, who: pointer) -> void {
     df_push(reg, key, rec, kt.line, kt.col, path, via)
   }
   g_res_mode = false
+  if len(g_df_key) == before {                  # no entry: the schema still names the file
+    push(g_rs_empty_reg, reg)
+    push(g_rs_empty_src, path)
+    push(g_rs_empty_via, via)
+  }
   toks = saved_toks
   pi = saved_pi
   g_parse_file = saved_file

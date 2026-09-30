@@ -403,7 +403,7 @@ function sc_registry(b: Buf, r: int, first: bool) -> void {
   buf_puts(b, ",\n     \"count\": ")
   buf_puti(b, len(order))
   buf_puts(b, ",\n     \"contributors\": [")
-  sc_contributors(b, order)
+  sc_contributors(b, order, g_rg_name[r])
   buf_puts(b, "],\n     \"entries\": [")
   var o = 0
   while o < len(order) {
@@ -419,7 +419,7 @@ function sc_contrib_id(d: int) -> pointer {
   return g_df_src[d] + "\n" + g_df_via[d]
 }
 # which file brought which entries in, in the order they first appear in the registry
-function sc_contributors(b: Buf, order: []int) -> void {
+function sc_contributors(b: Buf, order: []int, reg: pointer) -> void {
   let seen = new []pointer
   var o = 0
   while o < len(order) {
@@ -463,6 +463,21 @@ function sc_contributors(b: Buf, order: []int) -> void {
       buf_puts(b, "]}")
     }
     o += 1
+  }
+  var e = 0                                       # resource files that held no entry, after the rest
+  while e < len(g_rs_empty_reg) {
+    if g_rs_empty_reg[e] == reg {
+      if len(seen) > 0 { buf_puts(b, ",") }
+      push(seen, g_rs_empty_src[e])
+      buf_puts(b, "\n       {\"kind\": \"resource\", \"file\": ")
+      sc_str(b, g_rs_empty_src[e])
+      buf_puts(b, ", \"via\": ")
+      jq_put(b, g_rs_empty_via[e])
+      buf_puts(b, ", \"module\": ")
+      sc_str(b, sc_mod(g_rs_empty_src[e]))
+      buf_puts(b, ", \"keys\": []}")
+    }
+    e += 1
   }
   if len(seen) > 0 { buf_puts(b, "\n     ") }
 }

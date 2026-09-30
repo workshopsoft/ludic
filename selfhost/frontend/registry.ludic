@@ -25,6 +25,10 @@ var g_df_kline: []int = new []int             # where its key is written (the sc
 var g_df_kcol: []int = new []int
 var g_df_src: []pointer = new []pointer       # the resource file it came from, or "" for a `def`
 var g_df_via: []pointer = new []pointer       # the declaration that brought it in: file:line
+# a resource file that brought no entry in (registry name, path, via): the schema still lists it
+var g_rs_empty_reg: []pointer = new []pointer
+var g_rs_empty_src: []pointer = new []pointer
+var g_rs_empty_via: []pointer = new []pointer
 # one def, and where it came from
 function df_push(reg: pointer, key: pointer, rec: Node, kline: int, kcol: int, src: pointer, via: pointer) -> void {
   push(g_df_reg, reg)

@@ -1383,6 +1383,8 @@ function cmd_dev_test() -> int {
   reject_case("rejected/registry_closed", "registry Tools is not open to other modules", "a def from another module into a registry that is not open is refused")
   reject_case("rejected/registry_hidden", "Tools is private to module kit", "a def goes through visibility: the registry must be exported")
   feat_case("modules/registry_extend", "", "3 Rope Pine tea Splint 20", "registry_extend.ludic (L8+L9: `def Recipes from \"recipes.lres\"` fills a package's open registry from the game's file)")
+  schema_case("modules/registry_extend", "{\"kind\": \"resource\", \"file\": \"examples/modules/recipes.lres\", \"via\": \"examples/modules/registry_extend.ludic:8\", \"module\": null, \"keys\": [\"tea\", \"splint\"]}", "--emit-schema: a def resource file with entries is a contributor listing its keys")
+  schema_case("modules/registry_empty_def", "{\"kind\": \"resource\", \"file\": \"examples/modules/empty.lres\", \"via\": \"examples/modules/registry_empty_def.ludic:8\", \"module\": null, \"keys\": []}", "--emit-schema: a def resource file with no entries is still a contributor, with keys []")
   reject_case("rejected/registry_extend_field", "bad_recipes.lres:3: error: field minutes of Recipe wants an int", "a resource file extending a registry is checked at its own line")
   feat_case("lang/resources", "", "2 Axe 2 Split 10 0 1", "resources.ludic (L9: a registry read from a resource file at compile time, nested records typed by the schema)")
   reject_case("rejected/resource_field", "bad_tools.lres:3: error: field weight of Tool wants a float", "a resource file's entry is checked at its own line")

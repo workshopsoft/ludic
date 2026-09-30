@@ -986,7 +986,7 @@ object with `"schema_version": 1`:
   whether it is open, its `"scope"` (`"map"` for `@PerMap`, else `"game"`), its `"chunk"` size (or
   null) and, for a map-scoped one, the `"maps"` root; its own attributes, and its entries in their final index order (`{"key": "axe", "constant": "TL_AXE",
   "index": 0, "file": ..., "line": ..., "col": ..., "fields": [{"name", "value", "file", "line",
-  "col"}]}`), with `contributors`: which resource file or file of `def`s brought which keys in;
+  "col"}]}`), with `contributors`: which resource file or file of `def`s brought which keys in (a `def X from "f.lres"` file that holds no entry yet is listed too, with `"keys": []`);
 - `consts` - every const: its type, its value as written, its module and doc;
 - `functions` - every function a `fn` value can name, exported or not: its module, return type,
   `params` (the arguments a caller passes), `states` (what the runtime supplies), `signature`, and
