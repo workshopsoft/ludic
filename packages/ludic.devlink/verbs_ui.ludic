@@ -74,3 +74,19 @@ function dl_ui_override(st: mut DevlinkState, id: int) -> void {
   let r = DevlinkUi.override(path, dl_text(st, nf))
   if r < 0 and r != DL_UNBOUND { dl_err(st, id, "failed", "not overridden") } else { dl_answer(st, id, r) }
 }
+
+# a click for an agent with no mouse: x y in the layout units the game shows its screens in (1080 high
+# in Meridian), or the id of an element; it plays over the next frames (move, press, release)
+function dl_ui_click(st: mut DevlinkState, id: int) -> void {
+  let x = dl_int(st)
+  let y = dl_int(st)
+  if dl_bad_args(st, id) { return }
+  let r = DevlinkUi.click(x, y)
+  if r < 0 and r != DL_UNBOUND { dl_err(st, id, "failed", "no screen is shown") } else { dl_answer(st, id, r) }
+}
+function dl_ui_click_id(st: mut DevlinkState, id: int) -> void {
+  let n = dl_quoted(st)
+  if dl_bad_args(st, id) { return }
+  let r = DevlinkUi.click_id(dl_text(st, n))
+  if r < 0 and r != DL_UNBOUND { dl_err(st, id, "failed", "no such element on a screen shown") } else { dl_answer(st, id, r) }
+}

@@ -10,8 +10,11 @@ export port DevlinkUi {
   screen: fn(DevlinkUiScreen) -> int = fn dlu_screen
   model: fn(string, string) -> int = fn dlu_s2        # class, out path -> 0 written, -1 no such instance
   tree: fn(string) -> int = fn dlu_s1                 # out path -> 0 written, -1 failed
+  click: fn(int, int) -> int = fn dlu_ii              # x y in layout units -> 0 played, -1 nothing shown
+  click_id: fn(string) -> int = fn dlu_s1             # an element's id -> 0 played, -1 no such element
   override: fn(string, string) -> int = fn dlu_s2     # path, file ("" clears it; "" "" clears all) -> 0, -1
 }
 function dlu_screen(s: DevlinkUiScreen) -> int { return DL_UNBOUND }
 function dlu_s1(a: string) -> int { return DL_UNBOUND }
 function dlu_s2(a: string, b: string) -> int { return DL_UNBOUND }
+function dlu_ii(a: int, b: int) -> int { return DL_UNBOUND }

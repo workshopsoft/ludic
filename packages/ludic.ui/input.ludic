@@ -33,6 +33,11 @@ function in_read(ui_st: mut UiState) -> void {
     ui_st.in_given = false
     return
   }
+  # a screen shown twice in one frame (the launcher, then a menu over it) reads the frame's input
+  # once: a second read would see the press as already held and every later screen lose its click
+  let fr = Input.commits()
+  if fr > 0 and fr == ui_st.in_frame and ui_st.ui_be != null and ui_st.ui_be.input { return }
+  ui_st.in_frame = fr
   ui_st.in_was_down = ui_st.in_now.down
   var i = ui_st.in_rec_a                       # the package's own two records, in turn (never a host's)
   if ui_st.in_now == ui_st.in_rec_a { i = ui_st.in_rec_b }
@@ -60,8 +65,34 @@ function in_read(ui_st: mut UiState) -> void {
     i.key = in_any_key()
     in_held(i)
   }
+  in_click_play(ui_st, i)
   in_repeat(ui_st, i)
   ui_st.in_now = i
+}
+# a click injected by ui_click plays over the real pointer, one state a frame: over it, pressed, let go
+function in_click_play(ui_st: mut UiState, i: UiInput) -> void {
+  if ui_st.in_click_n <= 0 { return }
+  i.x = ui_st.in_click_x
+  i.y = ui_st.in_click_y
+  i.down = ui_st.in_click_n == 2
+  ui_st.in_click_n -= 1
+}
+# press and release at (x, y) in layout units (what ui_show was given, 1080 high in Meridian), or
+# on the element with that id if x is negative: for an agent or a test with no mouse. Returns false
+# when the id is not on a screen shown. It plays over the next three frames.
+export function ui_click(ui_st: mut UiState, x: float, y: float) -> void {
+  let s = ui_px(ui_st, 1.0)
+  ui_st.in_click_x = x * s
+  ui_st.in_click_y = y * s
+  ui_st.in_click_n = 3
+}
+export function ui_click_id(ui_st: mut UiState, id: string) -> bool {
+  let b = ui_box(ui_st, id)
+  if b == null { return false }
+  ui_st.in_click_x = b.x + b.w / 2.0
+  ui_st.in_click_y = b.y + b.h / 2.0
+  ui_st.in_click_n = 3
+  return true
 }
 # the platform reports the pointer in window points and a renderer draws in pixels: on Retina the
 # layout is twice the pointer's numbers, and every hit landed up and to the left of the cursor

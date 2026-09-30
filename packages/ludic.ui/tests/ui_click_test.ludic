@@ -1,0 +1,40 @@
+# ui_click_test - a pointer click reaches a button the way a game shows it: a 16:9 layout space 1080
+# high, drawn through a backend that scales it (as render3d does at 1920x1080), then pressed and
+# released on the following frames. ui_click plays the same click for an agent with no mouse.
+import "ludic.ui"
+program UiClickTest {
+  numbers float
+
+  component Clicker {
+    state n: int = 0
+    on hit() { n += 1 }
+  }
+
+  function frame(ui_st: mut UiState) -> void {
+    ui_show(ui_st, "Clicker", null, 0.0, 0.0, 1920.0, 1080.0)
+  }
+  function text(ui_st: mut UiState) -> string { return ui_dump(ui_nodes(ui_st, "Clicker", null), 0) }
+
+  test "ui_click on an element's id presses it once" (ui_st: mut UiState) {
+    let be = new UiBackend
+    be.input = false
+    ui_backend(ui_st, be)
+    frame(ui_st)
+    expect(ui_click_id(ui_st, "go"))
+    for i in 0 .. 4 { frame(ui_st) }
+    expect(Text.contains(text(ui_st), "Go 1"))
+  }
+  test "ui_click at layout coordinates hits the button and a miss does not" (ui_st: mut UiState) {
+    let be = new UiBackend
+    be.input = false
+    ui_backend(ui_st, be)
+    frame(ui_st)
+    let b = ui_box(ui_st, "go")
+    ui_click(ui_st, b.x + 2.0, b.y + 2.0)
+    for i in 0 .. 4 { frame(ui_st) }
+    expect(Text.contains(text(ui_st), "Go 1"))
+    ui_click(ui_st, 1900.0, 1070.0)
+    for i in 0 .. 4 { frame(ui_st) }
+    expect(Text.contains(text(ui_st), "Go 1"))
+  }
+}

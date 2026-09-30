@@ -1,0 +1,1 @@
+<div class="clicker"><button id="go" on-click="hit()"><span>Go {n}</span></button></div>

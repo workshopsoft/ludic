@@ -40,6 +40,8 @@ function dl_verb(st: mut DevlinkState, id: int) -> void {
   else if dl_word(st, "ui_screen") { dl_ui_screen(st, id) }
   else if dl_word(st, "ui_model") { dl_ui_model(st, id) }
   else if dl_word(st, "ui_tree") { dl_ui_tree(st, id) }
+  else if dl_word(st, "ui_click_id") { dl_ui_click_id(st, id) }
+  else if dl_word(st, "ui_click") { dl_ui_click(st, id) }
   else if dl_word(st, "ui_override") { dl_ui_override(st, id) }
   else { dl_declared(st, id) }
 }
