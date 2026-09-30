@@ -1,10 +1,10 @@
 /* PhoneScreen.lss - the frame, bottom right; the parts style themselves */
 @import "theme.lss";
 .phone-root { width: fill; height: fill; pointer-events: none; color: var(--ph-text) }
-.phone { position: absolute; right: 24px; width: 340px; height: 620px; background: var(--ph-panel); border: 3px solid var(--ph-line); pointer-events: auto }
-.body { flex-grow: 1; background: var(--ph-panel); overflow: hidden }
-.nav { height: 44px; gap: 2px; background: var(--ph-ink) }
-.key { flex-grow: 1; height: 44px; font-size: 13px; background: var(--ph-ink); color: var(--ph-muted) }
+.phone { position: absolute; right: 24px; width: 340px; height: 620px; background: linear-gradient(to bottom, var(--ph-wall-top, #1b2440), var(--ph-wall-bot, #0a0d16)); border: 3px solid var(--ph-line); border-radius: var(--ph-radius, 28px); overflow: hidden; pointer-events: auto }
+.body { flex-grow: 1; background: transparent; overflow: hidden }
+.nav { height: 32px; gap: 2px; margin: 0 40px 8px 40px; border-radius: 16px; background: rgba(0,0,0,0.45) }
+.key { flex-grow: 1; height: 32px; font-size: 12px; background: transparent; color: var(--ph-muted) }
 .key:disabled { opacity: 0.3 }
 .key:focus-visible { outline: 3px solid var(--ph-accent) }
 @media (max-height: 700px) { .phone { height: 90% } }

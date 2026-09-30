@@ -3,8 +3,9 @@
   <row class="grid">
     <each in="{apps}" as="a" index="i">
       <button class="app" autofocus="{i == 0}" on-click="open(i)">
-        <div class="tile">
+        <div class="tile t{i % 8}">
           <if test="{a.icon != ''}"><img class="icon" src="{a.icon}"/></if>
+          <if test="{a.icon == ''}"><p class="glyph">{a.title[0..1]}</p></if>
           <if test="{a.badge > 0}"><small class="badge">{a.badge}</small></if>
         </div>
         <small class="name">{a.title}</small>
