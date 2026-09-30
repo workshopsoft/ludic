@@ -137,6 +137,10 @@ export state UiState {
   in_rec_a: UiInput = new UiInput
   in_rec_b: UiInput = new UiInput
   in_given: bool = false
+  in_frame: int = 0               # Input.commits() at the last live read: a second ui_show in one frame reuses it
+  in_click_n: int = 0             # a click injected by ui_click: frames still to play (move, press, release)
+  in_click_x: float = 0.0         # where, in screen pixels
+  in_click_y: float = 0.0
   rp_next: []float = [-1.0, -1.0, -1.0, -1.0]
   rp_a: bool = false
   rp_b: bool = false

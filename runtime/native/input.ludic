@@ -38,6 +38,7 @@ export state RtInputState {
   in_label_chr: words = null    # input_key_label: the character each key's kept name was made for
   in_label_str: []string = null
   in_have_frame_driver: bool = false
+  in_commits: int = 0          # frames committed so far: a reader that runs more than once a frame can tell
   in_ready: bool  = false
   in_sim:   words = null         # simulated held set (Input.press / release) — persists
   in_dev:   words = null         # platform / polled held set — refreshed each poll
@@ -292,6 +293,7 @@ function in_set_or(dst: words, a: words, b: words) -> void { var i = 0;  while i
 # rebuild it from the tape on replay), then recombine into the committed set.
 function input_device_commit(rt_input_st: mut RtInputState, k: int, replaying: int) -> void {
   in_init(rt_input_st)
+  rt_input_st.in_commits += 1
   in_set_copy(rt_input_st.in_prev, rt_input_st.in_held)                      # last frame's committed set
   # #83: snapshot last frame's pad-button masks for the just_pressed/released edges.
   # Taken before the platform refresh (win_pad, below, runs after this), so it holds
@@ -597,6 +599,7 @@ function input_cursor_mode(rt_input_st: mut RtInputState, mode: int) -> void {
 }
 
 # ---- mouse -----------------------------------------------------------------
+function input_commits(rt_input_st: mut RtInputState) -> int { return rt_input_st.in_commits }
 function input_mouse_x(rt_input_st: mut RtInputState)  -> int { in_init(rt_input_st);  return rt_input_st.in_mx }
 function input_mouse_y(rt_input_st: mut RtInputState)  -> int { in_init(rt_input_st);  return rt_input_st.in_my }
 function input_mouse_dx(rt_input_st: mut RtInputState) -> int { in_init(rt_input_st);  return rt_input_st.in_mdx }

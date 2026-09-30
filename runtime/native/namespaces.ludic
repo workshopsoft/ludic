@@ -149,6 +149,7 @@ namespace Input {
   alias vector(left, right, up, down) = input_vector
   alias strength(action) = input_strength
   alias mouse_x() = input_mouse_x
+  alias commits() = input_commits   # frames committed so far (0 headless without a loop)
   alias mouse_y() = input_mouse_y
   alias mouse_dx() = input_mouse_dx
   alias mouse_dy() = input_mouse_dy
