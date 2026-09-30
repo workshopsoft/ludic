@@ -2,11 +2,8 @@
 # reads it, and it counts only in a game that uses ludic.anim (the game has the AnimSets registry).
 # The rig of a graph is this package's own: a set's (and a layer's) `skeleton` is a @Ref to a row of
 # AnimSkeletons, whose `model` is the glTF, `root` the root bone and `prefix` the clip prefix (a clip `walk`
-# is `<prefix>_walk` in the file). The studio's rig_table binding reads the other direction (a rig row that
-# names its graph), so it cannot follow that reference yet and this entry binds no rig (gaps.md 52 in the
-# game-editor proposals): until it can, a game that wants clips played from its skeleton writes an entry of
-# the same key in its studio.lres with rig_table: "AnimSkeletons", rig_file: "model" and
-# clip_pattern: "{prefix}_{clip}" (right for a game with one skeleton); its entry replaces this one.
+# is `<prefix>_walk` in the file). The studio follows that reference (rig_ref: the graph row's own field
+# naming its row of rig_table), so each graph plays on only its own skeleton.
 #
 # The keys down to `node_blend` are the graph view every studio understands. The rest name what a graph
 # editor needs to draw a whole animation graph - state kinds, conditions, fades, parameters, layers and the
@@ -37,6 +34,13 @@ anims {
   choice_rate_by: "rate_by"
   choice_ground: "ground"
   node_blend: "blend"
+
+  # the rig a graph plays on: the row of AnimSkeletons its `skeleton` names; a clip is `<prefix>_<clip>` in the model
+  rig_table: "AnimSkeletons"
+  rig_ref: "skeleton"
+  rig_file: "model"
+  rig_node: "root"
+  clip_pattern: "{prefix}_{clip}"
 
   # a state: its kind (clips, blend or sub), what it plays, how fast, and what it syncs with
   node_kind: "kind"
