@@ -1,0 +1,5 @@
+# adapters_test.lres - what the mechanics that bind to vitals are given to do
+slash {
+  clip: "slash", length: 1.0, cost: 10.0
+  hits: [{ key: "arc", start: 0.2, stop: 0.4, shape: MELEE_SHAPE_ARC, reach: 3.0, arc: 120.0, damage: 40.0, damage_type: DTYPE_BULLET, stagger: 5.0 }]
+}

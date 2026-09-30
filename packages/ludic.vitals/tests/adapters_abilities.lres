@@ -1,0 +1,9 @@
+# adapters_abilities.lres - an ability that costs a pool, hurts a target by a damage type and heals its caster
+strike {
+  target: AB_TARGET_TARGET, range: 50.0, cooldown: 1.0
+  cost: [{ resource: VPOOL_MANA, amount: 10.0 }]
+  effects: [
+    { kind: AB_FX_DAMAGE, to: AB_TO_TARGET, stat: DTYPE_FIRE, magnitude: 30.0 }
+    { kind: AB_FX_HEAL, to: AB_TO_SELF, magnitude: 5.0 }
+  ]
+}

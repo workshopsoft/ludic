@@ -460,6 +460,28 @@ program VitalsTest {
     expect(near(vitals_health(vitals_st, r), 50.0))
   }
 
+  test "a long game of hits, heals, downs, revivals and respawns makes nothing new" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    let g = vitals_add(vitals_st, 2, VCLASS_GHOUL, false)
+    var before = 0
+    for frame in 0 .. 4000 {
+      vitals_hurt(vitals_st, h, 2, 13.0, DTYPE_BULLET, frame % 3, frame)
+      vitals_hurt(vitals_st, g, 1, 7.0, DTYPE_FIRE, HZONE_BODY, 0)
+      vitals_spend(vitals_st, h, VPOOL_STAMINA, 3.0)
+      if frame % 5 == 0 { vitals_heal(vitals_st, h, 4.0) }
+      step(vitals_st, m, 0.05)
+      if vitals_downed(vitals_st, h) and frame % 4 == 0 { vitals_revive(vitals_st, h, 2, 0.5) }
+      if vitals_dead(vitals_st, h) { vitals_respawn(vitals_st, h) }
+      if vitals_dead(vitals_st, g) { vitals_respawn(vitals_st, g) }
+      q_drain(vitals_facts(vitals_st))
+      if frame == 2000 { before = Os.heap_bytes() }
+    }
+    let after = Os.heap_bytes()
+    if after > 0 { expect(after <= before) }
+    expect(vitals_count(vitals_st) == 2)
+  }
+
   test "the system runs as one and keeps its own section" (vitals_st: mut VitalsState) {
     let s = vitals_system()
     expect_eq(s.key, "vitals")

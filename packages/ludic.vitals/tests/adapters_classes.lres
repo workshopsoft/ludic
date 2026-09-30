@@ -1,0 +1,7 @@
+# adapters_classes.lres - the two kinds of actor the adapter tests hurt
+hero { }
+ghoul {
+  pools: [{ pool: VPOOL_HEALTH, max: 60.0 }]
+  resists: [{ type: DTYPE_BULLET, mult: 0.5 }]
+  zones: [{ zone: HZONE_HEAD, mult: 0.5 }]
+}

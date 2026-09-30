@@ -1,0 +1,192 @@
+# adapters_test.ludic - ludic.melee, ludic.abilities, ludic.weapons and ludic.respawn bound to vitals with the
+# one line each the README gives: a swing costs stamina and hurts through the pipeline, an ability spends a
+# pool and heals, a shot's zone and its kill reach vitals and come back, and a death is told to respawn and
+# the respawn brings the actor back with its window in place
+import "ludic.vitals"
+import "ludic.melee"
+import "ludic.abilities"
+import "ludic.weapons"
+import "ludic.respawn"
+import "ludic.base"
+program AdaptersTest {
+  numbers float
+
+  def VitalPools health { life: true, max: 100.0 }
+  def VitalPools armour { absorb_order: 1, absorb: 0.5, max: 50.0 }
+  def VitalPools stamina { max: 100.0, regen: 10.0, regen_delay: 1.0 }
+  def VitalPools mana { max: 100.0 }
+  def DamageTypes bullet { }
+  def DamageTypes fire { }
+  def HitZones body { }
+  def HitZones head { mult: 2.0, crit: true }
+  def VitalClasses from "adapters_classes.lres"
+
+  def MeleeAttacks from "adapters_test.lres"
+  def MeleeSets sword { light: MAT_SLASH, cost_resource: VPOOL_STAMINA }
+  def Abilities from "adapters_abilities.lres"
+  def AmmoTypes std { }
+  def WeaponClasses rifle { }
+  def Weapons rifle { class: WCLASS_RIFLE, ammo: AMMO_STD, damage: 25.0, damage_type: DTYPE_BULLET, modes: [WMODE_SEMI], rate: 600.0, mag_size: 10, spread: 0.0, bloom: 0.0, recoil_jitter: 0.0 }
+  def RespawnRules bullet { mode: "start", delay: 1.0, invuln: 3.0 }
+
+  # a fake world: actors at (x, z), a ray that always finds actor 2 by the head
+  state Hub {
+    xs: []float = null
+    zs: []float = null
+    frame: int = 0
+  }
+  function h_x(hub_st: Hub, a: int) -> float { return hub_st.xs[a] }
+  function h_z(hub_st: Hub, a: int) -> float { return hub_st.zs[a] }
+  function h_find(hub_st: Hub, x: float, z: float, r: float, out: []int) -> int {
+    for i in 1 .. 4 { push(out, i) }
+    return len(out)
+  }
+  function h_cast(hub_st: Hub, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, dist: float, ignore: int) -> float { return 10.0 }
+  function h_hit_actor(hub_st: Hub) -> int { return 2 }
+  function h_hit_zone(hub_st: Hub) -> int { return HZONE_HEAD }
+  bind MeleeWorld { x: fn h_x, z: fn h_z, find: fn h_find, alive: fn vitals_actor_alive, can_afford: fn vitals_actor_can_spend, spend: fn vitals_actor_spend }
+  bind MeleeDamage { hurt: fn vitals_melee_hurt }
+  bind AbilityResources { have: fn vitals_actor_have, spend: fn vitals_actor_spend, give: fn vitals_actor_give }
+  bind AbilityEffects { damage: fn vitals_ability_damage, heal: fn vitals_ability_heal }
+  bind WeaponsWorld { cast: fn h_cast, hit_actor: fn h_hit_actor, hit_zone: fn h_hit_zone }
+  bind WeaponsDamage { hurt: fn vitals_weapon_hurt, alive: fn vitals_actor_standing }
+  bind VitalsWorld { can_be_hurt: fn respawn_can_be_hurt }
+
+  function fresh(vitals_st: mut VitalsState, melee_st: mut MeleeState, abilities_st: mut AbilitiesState, weapons_st: mut WeaponsState, respawn_st: mut RespawnState, hub_st: mut Hub) -> void {
+    vitals_reset(vitals_st)
+    melee_reset(melee_st)
+    abilities_reset(abilities_st)
+    weapons_reset(weapons_st)
+    respawn_reset(respawn_st)
+    hub_st.xs = [0.0, 0.0, 0.0, 30.0]
+    hub_st.zs = [0.0, 0.0, 1.5, 30.0]
+    hub_st.frame = 0
+    vitals_add(vitals_st, 1, VCLASS_HERO, true)
+    vitals_add(vitals_st, 2, VCLASS_GHOUL, false)
+    q_clear(vitals_facts(vitals_st))
+  }
+  function near(a: float, b: float) -> bool { return Math.abs(a - b) < 0.001 }
+
+  test "melee: a swing costs stamina through the pool port and hurts through the pipeline; a dead target is not a target" (vitals_st: mut VitalsState, melee_st: mut MeleeState, m: mut MeleeStepsMachine, abilities_st: mut AbilitiesState, weapons_st: mut WeaponsState, respawn_st: mut RespawnState, hub_st: mut Hub) {
+    fresh(vitals_st, melee_st, abilities_st, weapons_st, respawn_st, hub_st)
+    let mh = melee_add(melee_st, 1, MSET_SWORD, true)
+    expect_eq(melee_attack(melee_st, mh, MELEE_LIGHT), MELEE_OK)
+    drain_actions()
+    let v1 = vitals_of(vitals_st, 1)
+    let v2 = vitals_of(vitals_st, 2)
+    expect(near(vitals_value(vitals_st, v1, VPOOL_STAMINA), 90.0))
+    for i in 0 .. 12 {
+      melee_run(melee_st, m, 0.05)
+      drain_actions()
+    }
+    expect(near(vitals_health(vitals_st, v2), 40.0))
+    vitals_kill(vitals_st, v2, 1, DTYPE_BULLET)
+    drain_actions()
+    expect(vitals_dead(vitals_st, v2))
+    for i in 0 .. 30 {
+      melee_run(melee_st, m, 0.05)
+      drain_actions()
+    }
+    expect_eq(melee_attack(melee_st, mh, MELEE_LIGHT), MELEE_OK)
+    drain_actions()
+    q_clear(melee_facts(melee_st))
+    for i in 0 .. 12 {
+      melee_run(melee_st, m, 0.05)
+      drain_actions()
+    }
+    let fs = q_drain(melee_facts(melee_st))
+    var hits = 0
+    for i in 0 .. len(fs) { if fs[i].what == MELEE_HIT { hits += 1 } }
+    expect_eq(hits, 0)
+    for i in 0 .. 30 {
+      melee_run(melee_st, m, 0.05)
+      drain_actions()
+    }
+    vitals_set(vitals_st, v1, VPOOL_STAMINA, 4.0)
+    expect(melee_attack(melee_st, mh, MELEE_LIGHT) == MELEE_TOO_TIRED)
+  }
+
+  test "abilities: an ability's cost comes from a pool, its damage carries the type, its heal goes to the caster" (vitals_st: mut VitalsState, melee_st: mut MeleeState, abilities_st: mut AbilitiesState, weapons_st: mut WeaponsState, respawn_st: mut RespawnState, hub_st: mut Hub) {
+    fresh(vitals_st, melee_st, abilities_st, weapons_st, respawn_st, hub_st)
+    let v1 = vitals_of(vitals_st, 1)
+    let v2 = vitals_of(vitals_st, 2)
+    vitals_hurt(vitals_st, v1, -1, 20.0, DTYPE_FIRE, -1, 0)
+    let ch = abilities_add_caster(abilities_st, 1, true)
+    abilities_grant(abilities_st, ch, ABL_STRIKE, 1)
+    expect_eq(abilities_cast(abilities_st, ch, ABL_STRIKE, 0.0, 0.0, 2), AB_OK)
+    abilities_run(abilities_st, 0.1)
+    expect(near(vitals_value(vitals_st, v1, VPOOL_MANA), 90.0))
+    expect(near(vitals_health(vitals_st, v2), 30.0))
+    expect(near(vitals_health(vitals_st, v1), 95.0))
+    let fs = q_drain(vitals_facts(vitals_st))
+    var fire = 0
+    for i in 0 .. len(fs) { if fs[i].what == VITALS_DAMAGED and fs[i].type == DTYPE_FIRE and fs[i].actor == 2 { fire += 1 } }
+    expect_eq(fire, 1)
+  }
+
+  test "weapons: a shot's zone and type reach the pipeline, and the round that kills is told so" (vitals_st: mut VitalsState, melee_st: mut MeleeState, abilities_st: mut AbilitiesState, weapons_st: mut WeaponsState, respawn_st: mut RespawnState, hub_st: mut Hub) {
+    fresh(vitals_st, melee_st, abilities_st, weapons_st, respawn_st, hub_st)
+    let v2 = vitals_of(vitals_st, 2)
+    let wh = weapons_add(weapons_st, 1, true)
+    let g = weapons_give(weapons_st, wh, WPN_RIFLE)
+    weapons_equip(weapons_st, wh, g)
+    for i in 0 .. 40 { weapons_run(weapons_st, 0.05) }
+    q_clear(weapons_facts(weapons_st))
+    expect_eq(weapons_fire_at(weapons_st, wh, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), WP_OK)
+    drain_actions()
+    expect(near(vitals_health(vitals_st, v2), 60.0 - 25.0 * 2.0 * 0.5 * 0.5))
+    let fs = q_drain(weapons_facts(weapons_st))
+    expect_eq(fs[1].what, WP_HIT)
+    expect(near(fs[1].damage, 12.5))
+    var kills = 0
+    for round in 0 .. 5 {
+      for t in 0 .. 4 { weapons_run(weapons_st, 0.05) }
+      weapons_fire_at(weapons_st, wh, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+      drain_actions()
+      let k = q_drain(weapons_facts(weapons_st))
+      for i in 0 .. len(k) { if k[i].what == WP_KILLED { kills += 1 } }
+    }
+    expect_eq(kills, 1)
+    expect(vitals_dead(vitals_st, v2))
+  }
+
+  test "respawn: a death is told to respawn, and the respawn puts the actor back with its untouchable window" (vitals_st: mut VitalsState, melee_st: mut MeleeState, abilities_st: mut AbilitiesState, weapons_st: mut WeaponsState, respawn_st: mut RespawnState, points: mut RespawnPoints, hub_st: mut Hub) {
+    fresh(vitals_st, melee_st, abilities_st, weapons_st, respawn_st, hub_st)
+    let v1 = vitals_of(vitals_st, 1)
+    vitals_hurt(vitals_st, v1, 2, 500.0, DTYPE_BULLET, HZONE_BODY, 0)
+    drain_actions()
+    expect(vitals_dead(vitals_st, v1))
+    let fs = q_drain(vitals_facts(vitals_st))
+    var told = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == VITALS_DIED {
+        expect_eq(vitals_death_cause(fs[i]), "bullet")
+        expect(respawn_died(respawn_st, fs[i].actor, vitals_death_cause(fs[i]), fs[i].x, fs[i].y, fs[i].z))
+        told += 1
+      }
+    }
+    expect_eq(told, 1)
+    var back = 0
+    for step in 0 .. 4 {
+      hub_st.frame += 1
+      respawn_tick(respawn_st, points, tick_new(0.5, hub_st.frame, 0.0))
+      let rf = q_drain(respawn_facts(respawn_st))
+      for i in 0 .. len(rf) {
+        if rf[i].what == RESPAWN_RESPAWNED {
+          expect(vitals_actor_respawn(vitals_st, rf[i].who))
+          back += 1
+        }
+      }
+      drain_actions()
+    }
+    expect_eq(back, 1)
+    expect(vitals_alive(vitals_st, v1))
+    expect(near(vitals_health(vitals_st, v1), 100.0))
+    expect(near(vitals_hurt(vitals_st, v1, 2, 10.0, DTYPE_BULLET, HZONE_BODY, 0), 0.0))
+    for step in 0 .. 6 {
+      hub_st.frame += 1
+      respawn_tick(respawn_st, points, tick_new(0.5, hub_st.frame, 0.0))
+    }
+    expect(vitals_hurt(vitals_st, v1, 2, 10.0, DTYPE_BULLET, HZONE_BODY, 0) > 0.0)
+  }
+}

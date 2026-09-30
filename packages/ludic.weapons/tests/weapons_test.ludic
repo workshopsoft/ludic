@@ -57,6 +57,7 @@ program WeaponsTest {
     res_x: float = 0.0
     res_y: float = 0.0
     res_z: float = 0.0
+    log_rays: bool = true
   }
   function a_aim_y(arena_st: Arena, a: int) -> float { return 1.0 }
   function a_muzzle_y(arena_st: Arena, a: int) -> float { return 1.0 }
@@ -91,9 +92,11 @@ program WeaponsTest {
   # the first thing a ray meets within `dist`: a ball, the wall (material 5), the floor (material 6)
   function trace(arena_st: mut Arena, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, dist: float, r: float, ignore: int) -> float {
     arena_st.casts += 1
-    push(arena_st.rays_dx, dx)
-    push(arena_st.rays_dy, dy)
-    push(arena_st.rays_dz, dz)
+    if arena_st.log_rays {
+      push(arena_st.rays_dx, dx)
+      push(arena_st.rays_dy, dy)
+      push(arena_st.rays_dz, dz)
+    }
     var best = dist
     var who = -2
     var zone = -1
@@ -210,6 +213,7 @@ program WeaponsTest {
     arena_st.friendly = false
     arena_st.cover = false
     arena_st.cost_wall = 2.0
+    arena_st.log_rays = true
   }
   function pass_time(weapons_st: mut WeaponsState, secs: float) -> void {
     var t = 0.0
@@ -1017,5 +1021,277 @@ program WeaponsTest {
     expect(bz > 21.5 and bz < 23.5)
     expect(arena_st.dealt[7] > 5.0 and arena_st.dealt[7] < 60.0)
     expect_eq(weapons_ammo(weapons_st, h, AMMO_ROCKET), 2)
+  }
+
+  # ---- a party
+
+  function request(actor: int, gun: int, weapon: int, shot_no: int, stamp: float) -> ShotRequest {
+    let r = new ShotRequest
+    r.actor = actor
+    r.gun = gun
+    r.weapon = weapon
+    r.shot_no = shot_no
+    r.stamp = stamp
+    r.ox = 0.0
+    r.oy = 1.0
+    r.oz = 0.0
+    r.dx = 0.0
+    r.dy = 0.0
+    r.dz = 1.0
+    r.spread = 1.0
+    r.charge = 1.0
+    return r
+  }
+  # the host's view of the shooter a guest fired as: a fresh gun, drawn and ready, the clock well on
+  function host_copy(weapons_st: mut WeaponsState, h: int) -> void {
+    weapons_take(weapons_st, h, 0)
+    let g = weapons_give(weapons_st, h, WPN_SIDEARM)
+    weapons_ammo_set(weapons_st, h, AMMO_STD, 10)
+    weapons_equip(weapons_st, h, g)
+    weapons_set_role(weapons_st, WEAPONS_HOST)
+    pass_time(weapons_st, 2.0)
+  }
+
+  test "a guest's shot is shown at once and asked of the host, which takes the same shot from its own seed" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    weapons_set_local(weapons_st, 1)
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    let h = armed(weapons_st, WPN_SIDEARM, 10)
+    arena_st.rays_dx = new []float
+    expect_eq(weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), WP_OK)
+    let gx = arena_st.rays_dx[0]
+    expect_eq(arena_st.hurts, 0)
+    expect_eq(weapons_mag(weapons_st, h, 0), 9)
+    let fs = q_drain(weapons_facts(weapons_st))
+    expect_eq(fs[0].what, WP_FIRED)
+    expect(fs[0].predicted)
+    expect_eq(fs[1].what, WP_HIT)
+    expect(fs[1].predicted)
+    expect_eq(fs[1].target, 2)
+    expect(near(fs[1].damage, 20.0))
+    let out = q_drain(weapons_outbox(weapons_st))
+    expect_eq(len(out), 1)
+    expect_eq(out[0].shot_no, 1)
+    expect_eq(out[0].seed, weapons_shot_seed(5, 1, 1))
+    expect(near(out[0].spread, 1.0))
+    expect_eq(out[0].gun, 0)
+    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 2, 0.0)), WP_NOT_HOST)
+    host_copy(weapons_st, h)
+    let r = request(1, 0, WPN_SIDEARM, 1, weapons_time(weapons_st) - 0.1)
+    r.seed = 999
+    arena_st.rays_dx = new []float
+    q_clear(weapons_facts(weapons_st))
+    expect_eq(weapons_host_fire(weapons_st, r), WP_OK)
+    expect(arena_st.rays_dx[0] == gx)
+    expect(near(arena_st.rewound, weapons_time(weapons_st) - 0.1))
+    expect_eq(arena_st.restored, 1)
+    expect(near(arena_st.dealt[2], 20.0))
+    expect_eq(weapons_mag(weapons_st, h, 0), 9)
+    let hf = q_drain(weapons_facts(weapons_st))
+    expect_eq(hf[0].what, WP_FIRED)
+    expect(not hf[0].predicted)
+    expect_eq(hf[0].seed, weapons_shot_seed(5, 1, 1))
+    let cf = q_drain(weapons_confirms(weapons_st))
+    expect_eq(len(cf), 1)
+    expect(cf[0].accepted)
+    expect_eq(cf[0].mag, 9)
+    expect_eq(cf[0].shot_no, 1)
+  }
+
+  test "the host refuses a shot it could not have seen: stale, too fast, not held, from nowhere, while it could not fire, or busy" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    weapons_set_local(weapons_st, 9)
+    let h = armed(weapons_st, WPN_SIDEARM, 30)
+    weapons_set_role(weapons_st, WEAPONS_HOST)
+    let t = weapons_time(weapons_st)
+    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 1, t)), WP_OK)
+    q_clear(weapons_confirms(weapons_st))
+    q_clear(weapons_facts(weapons_st))
+    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 1, t)), WP_STALE)
+    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 2, t)), WP_TOO_FAST)
+    let c0 = q_drain(weapons_confirms(weapons_st))
+    expect_eq(len(c0), 2)
+    expect(not c0[0].accepted)
+    expect_eq(c0[0].why, WP_STALE)
+    expect_eq(c0[1].why, WP_TOO_FAST)
+    let f0 = q_drain(weapons_facts(weapons_st))
+    expect_eq(f0[0].what, WP_REFUSED)
+    expect_eq(f0[0].zone, WP_STALE)
+    pass_time(weapons_st, 0.5)
+    expect_eq(weapons_host_fire(weapons_st, request(1, 3, WPN_SIDEARM, 3, t)), WP_NOT_HELD)
+    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_CARBINE, 3, t)), WP_NOT_HELD)
+    expect_eq(weapons_host_fire(weapons_st, request(77, 0, WPN_SIDEARM, 3, t)), WP_NO_SHOOTER)
+    arena_st.origin_ok = false
+    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 4, t)), WP_BAD_ORIGIN)
+    arena_st.origin_ok = true
+    arena_st.can_fire = false
+    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 5, t)), WP_CANT)
+    arena_st.can_fire = true
+    weapons_reload(weapons_st, h)
+    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 6, t)), WP_BUSY)
+    pass_time(weapons_st, 3.0)
+    let far = request(1, 0, WPN_SIDEARM, 7, weapons_time(weapons_st) - 5.0)
+    far.spread = 50.0
+    q_clear(weapons_facts(weapons_st))
+    expect_eq(weapons_host_fire(weapons_st, far), WP_OK)
+    expect(near(arena_st.rewound, weapons_time(weapons_st) - 0.25))
+    let ff = q_drain(weapons_facts(weapons_st))
+    expect_eq(ff[0].what, WP_FIRED)
+    expect(near(ff[0].spread, 24.0))
+  }
+
+  test "the owner's confirm sets the magazine right, and leaves alone what shots still in the air account for" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    weapons_set_local(weapons_st, 1)
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    let h = armed(weapons_st, WPN_SIDEARM, 30)
+    weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+    pass_time(weapons_st, 0.3)
+    weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+    expect_eq(weapons_mag(weapons_st, h, 0), 8)
+    q_clear(weapons_facts(weapons_st))
+    expect(weapons_net_confirm(weapons_st, 1, 1, true, 9, 30))
+    expect_eq(weapons_mag(weapons_st, h, 0), 8)
+    var fs = q_drain(weapons_facts(weapons_st))
+    expect_eq(fs[0].what, WP_CONFIRMED)
+    expect(weapons_net_confirm(weapons_st, 1, 2, true, 8, 30))
+    fs = q_drain(weapons_facts(weapons_st))
+    expect_eq(fs[0].what, WP_CONFIRMED)
+    pass_time(weapons_st, 0.3)
+    weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+    pass_time(weapons_st, 0.3)
+    expect_eq(weapons_mag(weapons_st, h, 0), 7)
+    q_clear(weapons_facts(weapons_st))
+    expect(weapons_net_confirm(weapons_st, 1, 3, false, 8, 30))
+    fs = q_drain(weapons_facts(weapons_st))
+    expect_eq(fs[0].what, WP_CORRECTED)
+    expect_eq(weapons_mag(weapons_st, h, 0), 8)
+    expect(not weapons_net_confirm(weapons_st, 55, 1, true, 1, 1))
+  }
+
+  test "another machine's shot is shown here: the flash and the impact, from a mirror, with nothing spent or hurt" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    expect(not weapons_net_fired(weapons_st, 9, 99, 0, 1, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0))
+    expect(weapons_net_fired(weapons_st, 9, WPN_SIDEARM, AMMO_STD, 4, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0))
+    let fs = q_drain(weapons_facts(weapons_st))
+    var fired = 0
+    var hits = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == WP_FIRED {
+        fired += 1
+        expect(fs[i].remote)
+        expect_eq(fs[i].actor, 9)
+        expect_eq(fs[i].shot_no, 4)
+      }
+      if fs[i].what == WP_HIT {
+        hits += 1
+        expect(fs[i].remote)
+      }
+    }
+    expect_eq(fired, 1)
+    expect(hits >= 1)
+    expect_eq(arena_st.hurts, 0)
+    let m = weapons_of(weapons_st, 9)
+    expect(m >= 0)
+    expect_eq(weapons_mag(weapons_st, m, 0), 10)
+    expect_eq(weapons_shots(weapons_st, m), 4)
+    expect_eq(len(q_drain(weapons_outbox(weapons_st))), 0)
+  }
+
+  test "an inventory snapshot rebuilds the guns, parts, skin, hand and reserve on a mirror, in order" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    let h = weapons_add(weapons_st, 1, true)
+    weapons_give_loadout(weapons_st, h, LOADOUT_STARTER)
+    let snap = new []float
+    let n = weapons_snapshot(weapons_st, h, snap)
+    expect_eq(n, weapons_snapshot_size(3))
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    expect(not weapons_apply_snapshot(weapons_st, 9, snap, 2))
+    expect(weapons_apply_snapshot(weapons_st, 9, snap, n))
+    let m = weapons_of(weapons_st, 9)
+    let c = weapons_gun_of(weapons_st, m, WPN_CARBINE)
+    let p = weapons_gun_of(weapons_st, m, WPN_SIDEARM)
+    expect(c >= 0 and p >= 0)
+    expect_eq(weapons_current(weapons_st, m), c)
+    expect_eq(weapons_attached(weapons_st, m, c, WSLOT_GRIP), ATT_GRIP)
+    expect_eq(weapons_attached(weapons_st, m, p, WSLOT_SIGHT), ATT_RED_DOT)
+    expect_eq(weapons_skin(weapons_st, m, p), WSKIN_CAMO)
+    expect_eq(weapons_mag(weapons_st, m, c), 35)
+    expect_eq(weapons_ammo(weapons_st, m, AMMO_STD), 100)
+    expect(not weapons_apply_snapshot(weapons_st, 9, snap, n))
+    weapons_set_role(weapons_st, WEAPONS_HOST)
+    weapons_take(weapons_st, h, p)
+    let n2 = weapons_snapshot(weapons_st, h, snap)
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    expect(weapons_apply_snapshot(weapons_st, 9, snap, n2))
+    expect_eq(weapons_gun_of(weapons_st, m, WPN_SIDEARM), -1)
+  }
+
+  # ---- the save
+
+  test "the save keeps each persisting shooter's guns, parts, skin, magazine, hand and reserve, by key; not a mirror" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    let h = weapons_add(weapons_st, 1, true)
+    weapons_give_loadout(weapons_st, h, LOADOUT_STARTER)
+    weapons_add(weapons_st, 9, false)
+    pass_time(weapons_st, 1.0)
+    for i in 0 .. 3 {
+      expect_eq(weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), WP_OK)
+      pass_time(weapons_st, 0.15)
+    }
+    let saved = weapons_save(weapons_st)
+    weapons_load(weapons_st, saved, 1)
+    expect_eq(weapons_count(weapons_st), 1)
+    expect_eq(weapons_of(weapons_st, 9), -1)
+    let r = weapons_of(weapons_st, 1)
+    let c = weapons_gun_of(weapons_st, r, WPN_CARBINE)
+    let p = weapons_gun_of(weapons_st, r, WPN_SIDEARM)
+    expect_eq(weapons_current(weapons_st, r), c)
+    expect_eq(weapons_mag(weapons_st, r, c), 32)
+    expect_eq(weapons_attached(weapons_st, r, c, WSLOT_MAG), ATT_EXT_MAG)
+    expect_eq(weapons_attached(weapons_st, r, p, WSLOT_SIGHT), ATT_RED_DOT)
+    expect_eq(weapons_skin(weapons_st, r, p), WSKIN_CAMO)
+    expect_eq(weapons_ammo(weapons_st, r, AMMO_STD), 100)
+    expect_eq(weapons_ammo(weapons_st, r, AMMO_ROCKET), 2)
+    expect_eq(weapons_shots(weapons_st, r), 3)
+    expect_eq(weapons_mode(weapons_st, r, c), WMODE_AUTO)
+  }
+
+  test "the system runs as one and keeps its own section" (weapons_st: mut WeaponsState) {
+    let s = weapons_system()
+    expect_eq(s.key, "weapons")
+    expect_eq(s.phase, PH_SIMULATE)
+    expect(s.save != null)
+    expect(s.load != null)
+  }
+
+  # ---- nothing is made per frame
+
+  test "a long firefight makes nothing new: rounds, hits, reloads, facts and bodies in flight reuse what they made" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    let h = armed(weapons_st, WPN_CARBINE, 200)
+    let l = weapons_add(weapons_st, 2, false)
+    let lg = weapons_give(weapons_st, l, WPN_LAUNCHER)
+    weapons_ammo_add(weapons_st, l, AMMO_ROCKET, 10)
+    weapons_equip(weapons_st, l, lg)
+    arena_st.wall_z = 40.0
+    arena_st.log_rays = false
+    arena_st.hp = [100000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0]
+    weapons_trigger(weapons_st, h, true)
+    var before = 0
+    for frame in 0 .. 4400 {
+      if frame % 80 == 0 { weapons_trigger(weapons_st, l, true) } else { weapons_trigger(weapons_st, l, false) }
+      if frame % 80 == 10 { weapons_reload(weapons_st, l) }
+      weapons_run(weapons_st, 0.05)
+      q_drain(weapons_facts(weapons_st))
+      if frame % 120 == 0 { weapons_ammo_add(weapons_st, h, AMMO_STD, 100) }
+      if frame % 200 == 0 { weapons_ammo_add(weapons_st, l, AMMO_ROCKET, 10) }
+      if frame == 2400 { before = Os.heap_bytes() }
+    }
+    let after = Os.heap_bytes()
+    expect(weapons_shots(weapons_st, h) > 300)
+    expect(weapons_shots(weapons_st, l) > 10)
+    if after > 0 { expect(after <= before) }
   }
 }

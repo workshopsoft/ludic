@@ -11,10 +11,12 @@ export function vitals_actor_alive(vitals_st: VitalsState, actor: int) -> bool {
   return h >= 0 and not vitals_dead(vitals_st, h)
 }
 
-# on its feet: what "is it still fighting" asks
+# on its feet: what "is it still fighting" asks. A blow that emptied life counts at once, before the phase
+# machine runs at the end of the phase, so the round that kills is the one that is told so
 export function vitals_actor_standing(vitals_st: VitalsState, actor: int) -> bool {
   let h = vitals_of(vitals_st, actor)
-  return h >= 0 and vitals_alive(vitals_st, h)
+  let v = vt__vital(vitals_st, h)
+  return v != null and v.phase == VitalPhase.Alive and not v.dying
 }
 
 # ludic.melee: `bind MeleeDamage { hurt: fn vitals_melee_hurt }` and `bind MeleeWorld { alive: fn vitals_actor_alive,
