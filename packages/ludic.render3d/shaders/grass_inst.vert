@@ -21,6 +21,9 @@ out float v_seed;
 out vec2 v_rot;
 out float v_hull;
 out float v_quake;
+out vec4 v_col;     // vertex colour: none here, so white (model.frag multiplies it in)
+out float v_near;   // model.frag declares it; 1 = no near fade
+out float v_lh;     // model.frag declares it; 1 = no low-plant occlusion
 out vec3 v_tint;
 
 void main() {
@@ -65,6 +68,9 @@ void main() {
   v_seed = seed;
   v_rot = vec2(s, c_);
   v_quake = 0.0;
+  v_col = vec4(1.0);
+  v_near = 1.0;
+  v_lh = 1.0;
   v_tint = i_tint.rgb;
   v_hull = (dist > 2.0 || (u_dbg & 2) != 0) ? -1.0 : 1.0;
   gl_Position = u_proj * u_view * vec4(w, 1.0);

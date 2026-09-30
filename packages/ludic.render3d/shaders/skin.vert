@@ -22,6 +22,9 @@ out float v_seed;
 out vec2 v_rot;
 out float v_hull;
 out float v_quake;   // only aspens quake; written so model.frag can read it
+out vec4 v_col;          // vertex colour: none here, so white (model.frag multiplies it in)
+out float v_near;         // model.frag declares it; 1 = no near fade
+out float v_lh;           // model.frag declares it; 1 = no low-plant occlusion
 void main() {
   mat4 m = u_model;
   if (u_skinned > 0.5) {
@@ -45,6 +48,9 @@ void main() {
   v_rot = vec2(0.0, 1.0);
   v_hull = 1.0;
   v_quake = 0.0;
+  v_col = vec4(1.0);
+  v_near = 1.0;
+  v_lh = 1.0;
 #ifdef SHADOW_PASS
   gl_Position = u_light_vp * w;
 #else

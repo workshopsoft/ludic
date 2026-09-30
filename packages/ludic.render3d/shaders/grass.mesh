@@ -124,6 +124,9 @@ out float v_seed[];
 out vec2 v_rot[];
 out float v_hull[];
 out float v_quake[];   // grass does not quake; written so model.frag can read it
+out vec4 v_col[];
+out float v_near[];         // model.frag declares it; 1 = no near fade
+out float v_lh[];           // model.frag declares it; 1 = no low-plant occlusion
 
 // The kind's cell, as the CPU's tiles count it. Nothing else of the kind reaches this path yet: its
 // shape, sizes and density test are an older copy of grass.vert's, kept as they draw today.
@@ -229,6 +232,9 @@ void main() {
         v_rot[o] = vec2(s, c_);
         v_hull[o] = hull;
         v_quake[o] = 0.0;
+        v_col[o] = vec4(1.0);
+        v_near[o] = 1.0;
+        v_lh[o] = 1.0;
       }
     }
     for (int q = 0; q < ROWS - 1; q++) {

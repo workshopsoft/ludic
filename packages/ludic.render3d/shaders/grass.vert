@@ -132,6 +132,9 @@ out float v_seed;
 out vec2 v_rot;
 out float v_hull;
 out float v_quake;   // only aspens quake; written so model.frag can read it
+out vec4 v_col;          // vertex colour: none here, so white (model.frag multiplies it in)
+out float v_near;         // model.frag declares it; 1 = no near fade
+out float v_lh;           // model.frag declares it; 1 = no low-plant occlusion
 out vec3 v_tint;     // the blade's colour field at its root (model.frag's regionTint and patchiness, once a blade)
 
 #define CELL u_gk_ortho.w   // the kind's cell (4 m by default, so a near tile asks for what its blades need)
@@ -144,7 +147,7 @@ float bladeHash(ivec2 cell, int j, int k) {
   uint h = pcg(uint(cell.x + 32768) * 73856093u ^ uint(cell.y + 32768) * 19349663u ^ uint(j) * 83492791u ^ uint(k) * 2654435761u);
   return float(h) * (1.0 / 4294967295.0);
 }
-void cull() { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); v_wpos = vec3(0.0); v_nrm = vec3(0.0, 1.0, 0.0); v_uv = vec2(0.0); v_seed = 0.0; v_rot = vec2(0.0, 1.0); v_hull = 1.0; v_quake = 0.0; v_tint = vec3(1.0); }
+void cull() { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); v_wpos = vec3(0.0); v_nrm = vec3(0.0, 1.0, 0.0); v_uv = vec2(0.0); v_seed = 0.0; v_rot = vec2(0.0, 1.0); v_hull = 1.0; v_quake = 0.0; v_col = vec4(1.0); v_near = 1.0; v_lh = 1.0; v_tint = vec3(1.0); }
 // lighting.glsl's regionTint(wpos, 0.35) times model.frag's patchiness, at the root: three fbm
 // fields a blade pixel used to pay for, when the whole blade stands on one spot
 vec3 bladeField(vec2 xz, float y) {
@@ -315,6 +318,9 @@ void main() {
   v_seed = seed;
   v_rot = vec2(s, c_);
   v_quake = 0.0;
+  v_col = vec4(1.0);
+  v_near = 1.0;
+  v_lh = 1.0;
   v_tint = bladeField(xz, h);
   v_hull = (dist > 2.0 || far || (u_dbg & 2) != 0) ? -1.0 : 1.0;   // no back-face flip, no rounding past arm's reach
   gl_Position = u_proj * u_view * vec4(w, 1.0);

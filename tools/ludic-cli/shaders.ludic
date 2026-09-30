@@ -196,6 +196,32 @@ function shd_reflect_stage(mf: Sb, id: pointer, stage: pointer, spv: pointer, tm
   return true
 }
 
+# Every fragment input must be written by the vertex stage it is paired with: MoltenVK (and the spec)
+# refuse the pipeline otherwise ("Fragment input(s) user(locnN) mismatching vertex shader output").
+# Compared by location, off the two stages' reflection (glslang drops inputs a variant never reads).
+function shd_varyings_covered(id: pointer, parts: pointer, defs: pointer, tmp: pointer) -> bool {
+  let vd = json_parse(read_file(`{tmp}/{id}.vert.json`))
+  let fd = json_parse(read_file(`{tmp}/{id}.frag.json`))
+  let outs = j_get(vd, "outputs")
+  let ins = j_get(fd, "inputs")
+  var i = 0
+  while ins.t == JV_ARR and i < len(ins.kids) {
+    let loc = j_get(ins.kids[i], "location").num
+    var found = false
+    var k = 0
+    while outs.t == JV_ARR and k < len(outs.kids) {
+      if j_get(outs.kids[k], "location").num == loc { found = true }
+      k += 1
+    }
+    if not found {
+      err(`shaders: {parts[0]} + {parts[1]} [{defs}]: fragment input {j_get(ins.kids[i], "name").s} (location {string(loc)}) is not written by the vertex stage\n`)
+      return false
+    }
+    i += 1
+  }
+  return true
+}
+
 function cmd_shaders() -> int {
   var check = false
   var ai = 2
@@ -285,6 +311,7 @@ function cmd_shaders() -> int {
       if not shd_reflect_stage(mf, id, stage, spv, tmp) { return 1 }
       si += 1
     }
+    if not shd_varyings_covered(id, parts, defs, tmp) { return 1 }
     var t = 0
     while t < len(shd_names) {
       sb_puts(mf, `T {id} {shd_names[t]} {string(t + 2)}\n`)

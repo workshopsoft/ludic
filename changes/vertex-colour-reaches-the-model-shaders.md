@@ -11,3 +11,9 @@ leaves the input unfed; Vulkan reads that as all zero, which the vertex shaders 
 so nothing allocates per frame and every other mesh draws as before. The scatter arena copies
 the colour buffer across LODs. SPIR-V rebuilt with `ludic-dev shaders`. Not yet covered: the
 foliage and card paths of model.frag, and the bake passes (bake.frag).
+
+Every vertex shader paired with model.frag now writes every varying it declares (v_col as white,
+and v_near and v_lh as neutral values): skin.vert, grass.vert, grass.mesh and grass_inst.vert.
+The first attempt wrote v_col only in model.vert and kit.vert, and MoltenVK refused every
+pipeline that paired another vertex shader with model.frag. `ludic-dev shaders` (and so
+`--check`) now fails when a fragment input has no vertex output at its location.
