@@ -1,0 +1,21 @@
+# fakes/ground_golden_check.ludic - what ground_fill_test compares drawn instances by
+
+# how far drawn instance k is from candidate c: 0 when every number is the same bits
+function gft_off(render3d_st: Render3dState, k: int, c: GroundCand) -> int {
+  let o = k * INST_FLOATS
+  let st = render3d_st.stream_scratch
+  if st[o] != c.x or st[o + 2] != c.z or st[o + 3] != c.scale or st[o + 6] != c.seed or st[o + 7] != c.wind { return 1 }
+  if st[o + 4] != Math.sin(c.yaw) or st[o + 5] != Math.cos(c.yaw) { return 1 }
+  return 0
+}
+
+# drawn instances not at a listed thing's place
+function gft_subset(render3d_st: Render3dState, n: int, l: GroundSolids) -> int {
+  var bad = 0
+  for k in 0 .. n {
+    var hit = false
+    for q in 0 .. l.n { hit = hit or (render3d_st.stream_scratch[k * INST_FLOATS] == l.xs[q] and render3d_st.stream_scratch[k * INST_FLOATS + 2] == l.zs[q]) }
+    if not hit { bad += 1 }
+  }
+  return bad
+}

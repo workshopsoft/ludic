@@ -1,0 +1,21 @@
+# gen/ground_fill_golden.ludic - writes tests/ground_fill_golden.json from what ground_fill grows today. Run it
+# from the repository root after a deliberate change to the fill, and commit the file with the change.
+import "ludic.render3d/r3d.ludic"
+program GroundFillGolden {
+  numbers float
+  import "../fakes/ground_golden.ludic"
+  import "../fakes/ground_golden_json.ludic"
+  import "../fakes/ground_golden_things.ludic"
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  entry (render3d_st: mut Render3dState) {
+    if not gg_open(render3d_st, "write") {
+      print("ground_fill_golden: the density could not be written")
+      return
+    }
+    let path = "packages/ludic.render3d/tests/ground_fill_golden.json"
+    let text = gg_json(render3d_st)
+    if Fs.write_text(path, text) { print(`ground_fill_golden: wrote {path}`) } else { print(`ground_fill_golden: could not write {path}`) }
+  }
+}

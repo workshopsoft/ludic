@@ -1,0 +1,93 @@
+# ground_fill_test.ludic - ground_fill against its golden (ground_fill_golden.json, which the studio's own test
+# reads too): the hash, Math.lerp's order, the yaw, one chunk of a cover layer and of a solid layer over a
+# hand-written density - and ground_fill drawing exactly the candidates, a solid layer's far band a subset
+import "ludic.render3d/r3d.ludic"
+program GroundFillTest {
+  numbers float
+  import "fakes/ground_golden.ludic"
+  import "fakes/ground_golden_json.ludic"
+  import "fakes/ground_golden_things.ludic"
+  import "fakes/ground_golden_check.ludic"
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "the golden is what the generator writes today, number for number" (render3d_st: mut Render3dState) {
+    expect(gg_open(render3d_st, "golden"))
+    let want = Fs.read_text("packages/ludic.render3d/tests/ground_fill_golden.json")
+    expect(want != null)
+    if want == null { return }
+    let got = Text.split(gg_json(render3d_st), "\n")
+    let had = Text.split(want, "\n")
+    expect_eq(len(got), len(had))
+    for k in 0 .. min(len(got), len(had)) {
+      if got[k] != had[k] { print(`line {k + 1}: got {got[k]}`) }
+      expect(got[k] == had[k])
+    }
+  }
+
+  test "Math.lerp is a + (b - a) * t" {
+    let a = [1.0, 2.0, 6.04, -2.19]
+    let b = [1.7, 7.0, 1.72, 3.62]
+    let t = [0.9, 0.71, 0.639, 0.868]
+    for k in 0 .. 4 { expect_eq(float_bits(Math.lerp(a[k], b[k], t[k])), float_bits(a[k] + (b[k] - a[k]) * t[k])) }
+  }
+
+  test "ground_fill draws exactly the cover layer's candidates, in cell order" (render3d_st: mut Render3dState) {
+    expect(gg_open(render3d_st, "cover"))
+    let g = gg_cover()
+    let s = gg_stream(render3d_st)
+    ground_fill(render3d_st, s, GG_CX, GG_CZ, GG_BAND, g)
+    let cells = int(Math.ceil(32.0 / gf_step(g, GG_BAND)))
+    let c = new GroundCand
+    var n = 0
+    var off = 0
+    for j in 0 .. cells {
+      for i in 0 .. cells {
+        if not ground_candidate(render3d_st, g, GG_CX, GG_CZ, GG_BAND, i, j, 96.0, -64.0, 32.0, c) { continue }
+        off += gft_off(render3d_st, n, c)
+        n += 1
+      }
+    }
+    expect(n > 20)
+    expect_eq(s.cur.count, n)
+    expect_eq(off, 0)
+  }
+
+  test "a solid layer stands still: every band draws a subset of band 0, listed and answered by id" (render3d_st: mut Render3dState) {
+    expect(gg_open(render3d_st, "solid"))
+    let g = gg_solid()
+    let l = ground_solids_new(256)
+    let n = ground_solid_list(render3d_st, g, 0.0, 0.0, 32.0, GG_CX, GG_CZ, l)
+    expect(n > 8)
+    expect_eq(l.n, n)
+    let c = new GroundCand
+    var off = 0
+    var far = 0
+    for k in 0 .. l.n {
+      expect(ground_solid_at(render3d_st, g, 0.0, 0.0, 32.0, l.ids[k], c))
+      if c.x != l.xs[k] or c.z != l.zs[k] or c.scale != l.scales[k] or c.yaw != l.yaws[k] { off += 1 }
+      if gf_hash(g.layer, GG_CX, GG_CZ, 0, c.cell, 7) < gs_thin(g, 2) { far += 1 }
+    }
+    expect_eq(off, 0)
+    for band in 0 .. 4 {
+      let s = gg_stream(render3d_st)
+      ground_fill(render3d_st, s, GG_CX, GG_CZ, band, g)
+      expect_eq(gft_subset(render3d_st, s.cur.count, l), 0)
+      if band == 0 { expect_eq(s.cur.count, n) }
+      if band == 2 { expect_eq(s.cur.count, far) }
+    }
+    expect(far < n)
+    expect(not ground_solid_at(render3d_st, g, 0.0, 0.0, 32.0, ground_solid_id(g.layer + 1, GG_CX, GG_CZ, 0, 0, 8), c))
+  }
+
+  test "a solid id holds its layer and chunk, and refuses what it cannot hold" {
+    let id = ground_solid_id(63, -128, 127, 21, 21, 22)
+    expect(id > 0)
+    expect_eq(ground_solid_layer(id), 63)
+    expect_eq(ground_solid_cx(id), -128)
+    expect_eq(ground_solid_cz(id), 127)
+    expect_eq(ground_solid_id(0, 128, 0, 0, 0, 8), -1)
+    expect_eq(ground_solid_id(0, 0, 0, 0, 0, 23), -1)
+    expect_eq(ground_solid_id(64, 0, 0, 0, 0, 8), -1)
+  }
+}

@@ -1,0 +1,66 @@
+# fakes/ground_golden_json.ludic - the golden's first half: every float is its IEEE single bits as an int, so
+# the file round-trips exactly; Math.lerp's order, the yaw the model shader turns by, gf_hash and the density.
+
+function gg_b(x: float) -> string { return `{float_bits(x)}` }
+
+# Math.lerp is a + (b - a) * t; each case here is one a * (1 - t) + b * t would round differently
+function gg_lerps() -> string {
+  let a = [1.0, 2.0, 6.04, -2.19]
+  let b = [1.7, 7.0, 1.72, 3.62]
+  let t = [0.9, 0.71, 0.639, 0.868]
+  var s = "  \"lerp_order\": \"a + (b - a) * t\",\n  \"lerp\": [\n"
+  for k in 0 .. 4 {
+    let other = a[k] * (1.0 - t[k]) + b[k] * t[k]
+    s = s + `    [{gg_b(a[k])}, {gg_b(b[k])}, {gg_b(t[k])}, {gg_b(Math.lerp(a[k], b[k], t[k]))}, {gg_b(other)}]`
+    if k < 3 { s = s + "," }
+    s = s + "\n"
+  }
+  return s + "  ],\n"
+}
+
+# model.vert: p' = (c x + s z, y, -s x + c z) with (s, c) = (sin yaw, cos yaw) as stream_emit stores them
+function gg_yaw() -> string {
+  let y = 0.5
+  let sn = Math.sin(y)
+  let cs = Math.cos(y)
+  var s = `  "yaw": {{"yaw": {gg_b(y)}, "sin": {gg_b(sn)}, "cos": {gg_b(cs)}, "rule": "p' = (c*x + s*z, y, -s*x + c*z)",\n`
+  s = s + `    "x_axis": {gg_turn(sn, cs, 1.0, 0.0)}, "z_axis": {gg_turn(sn, cs, 0.0, 1.0)}}},\n`
+  return s
+}
+
+# where local (x, 0, z) lands, as the shader turns it
+function gg_turn(sn: float, cs: float, x: float, z: float) -> string { return `[{gg_b(cs * x + sn * z)}, {gg_b(0.0)}, {gg_b(-sn * x + cs * z)}]` }
+
+function gg_hashes() -> string {
+  let v = [0, 0, 0, 0, 0, 0,  1, 2, 3, 4, 5, 6,  0, 3, -2, 1, 7 * 65536 + 9, 2,  13, -128, 127, 3, 32767, 5,
+           63, -1, -1, 0, 21 * 65536 + 21, 7,  -5, 100000, -100000, 2, 123456789, 1,  2147483647, -2147483647, 65536, 3, -1, 4]
+  var s = "  \"hash\": [\n"
+  let n = len(v) / 6
+  for r in 0 .. n {
+    let o = r * 6
+    s = s + `    [{v[o]}, {v[o + 1]}, {v[o + 2]}, {v[o + 3]}, {v[o + 4]}, {v[o + 5]}, {gg_b(gf_hash(v[o], v[o + 1], v[o + 2], v[o + 3], v[o + 4], v[o + 5]))}]`
+    if r < n - 1 { s = s + "," }
+    s = s + "\n"
+  }
+  return s + "  ],\n"
+}
+
+# the texels the chunk's bilinear reads (and a border), R and G row by row from (tx0, tz0); none outside is read
+function gg_density() -> string {
+  let tx0 = 2094
+  let tz0 = 2014
+  let w = 20
+  var r = ""
+  var g = ""
+  for k in 0 .. w * w {
+    if k > 0 {
+      r = r + ","
+      g = g + ","
+    }
+    r = r + `{gg_r(tx0 + k % w, tz0 + k / w)}`
+    g = g + `{gg_g(tx0 + k % w, tz0 + k / w)}`
+  }
+  var s = `  "density": {{"layer": 0, "half": 4096, "ter_ox": 0, "ter_oz": 0, "texel_m": 2, "rule": "fx = (x - ter_ox + half) / texel - 0.5, bilinear, / 255",\n`
+  s = s + `    "tx0": {tx0}, "tz0": {tz0}, "w": {w},\n    "r": [{r}],\n    "g": [{g}]}},\n`
+  return s
+}
