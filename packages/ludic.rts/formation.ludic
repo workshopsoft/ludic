@@ -1,0 +1,104 @@
+# formation.ludic - where each unit of a group goes when the group is sent to one place: the slots a
+# formation makes round the point, turned to the way the group moves, and each unit given the nearest
+# slot still free. The slots are kept in the state, nothing is made per order
+
+# fills slot_x / slot_z with n world positions round (cx, cz) for a group heading (hx, hz), at most RTS_SEL_MAX
+function rts__slots(r: mut RtsState, form: int, n: int, cx: float, cz: float, hx0: float, hz0: float, maxr: float) -> void {
+  var hx = hx0
+  var hz = hz0
+  let hl = Math.sqrt(hx * hx + hz * hz)
+  if hl < 0.0001 {
+    hx = 0.0
+    hz = 1.0
+  } else {
+    hx = hx / hl
+    hz = hz / hl
+  }
+  if form < 0 or form >= RTSF_COUNT or not RtsFormations[form].spread {
+    for i in 0 .. n {
+      r.slot_x[i] = cx
+      r.slot_z[i] = cz
+    }
+    return
+  }
+  let f = RtsFormations[form]
+  if not f.facing {
+    hx = 0.0
+    hz = 1.0
+  }
+  let rx = hz
+  let rz = 0.0 - hx
+  let sp = f.gap + 2.0 * maxr
+  var cols = f.cols
+  if cols <= 0 { cols = int(Math.ceil(Math.sqrt(float(n)))) }
+  cols = Math.max(Math.min(cols, n), 1)
+  let rows = (n + cols - 1) / cols
+  for i in 0 .. n {
+    var lr = 0.0
+    var lf = 0.0
+    if f.offx != null and len(f.offx) > 0 {
+      let m = len(f.offx)
+      lr = f.offx[i % m]
+      lf = f.offz[i % m] - float(i / m) * sp
+    } else if f.shape == RTS_S_WEDGE {
+      let row = int(Math.floor(Math.sqrt(float(i))))
+      lr = float(i - row * row - row) * sp
+      lf = 0.0 - float(row) * sp
+    } else if f.shape == RTS_S_RING {
+      var ring = 0
+      var j = i
+      var cap = 1
+      while j >= cap {
+        j -= cap
+        ring += 1
+        cap = 6 * ring
+      }
+      if ring > 0 {
+        let a = 6.2831853 * float(j) / float(cap)
+        lr = Math.cos(a) * float(ring) * sp
+        lf = Math.sin(a) * float(ring) * sp
+      }
+    } else {
+      let row = i / cols
+      let col = i % cols
+      let inrow = Math.min(cols, n - row * cols)
+      lr = (float(col) - float(inrow - 1) * 0.5) * sp
+      if row % 2 == 1 { lr += sp * f.stagger }
+      lf = (float(rows - 1) * 0.5 - float(row)) * sp
+    }
+    r.slot_x[i] = cx + rx * lr + hx * lf
+    r.slot_z[i] = cz + rz * lr + hz * lf
+  }
+}
+
+# each picked unit takes the nearest slot not taken: its place in out_x / out_z
+function rts__assign(r: mut RtsState, n: int) -> void {
+  for i in 0 .. n { r.slot_used[i] = 0 }
+  for i in 0 .. n {
+    let id = r.pick[i]
+    let ux = RtsWorld.pos_x(id)
+    let uz = RtsWorld.pos_z(id)
+    var best = -1
+    var bd = 0.0
+    for k in 0 .. n {
+      if r.slot_used[k] != 0 { continue }
+      let d = rts__dist(ux, uz, r.slot_x[k], r.slot_z[k])
+      if best < 0 or d < bd {
+        best = k
+        bd = d
+      }
+    }
+    r.slot_used[best] = 1
+    r.out_x[i] = r.slot_x[best]
+    r.out_z[i] = r.slot_z[best]
+  }
+}
+
+export function rts_set_formation(rts_st: mut RtsState, player: int, form: int) -> void {
+  if rts__pl(player) { rts_st.form[player] = form }
+}
+
+export function rts_formation_of(rts_st: RtsState, player: int) -> int {
+  if not rts__pl(player) { return -1 }
+  return rts_st.form[player]
+}

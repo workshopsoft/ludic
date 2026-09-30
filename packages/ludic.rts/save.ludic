@@ -1,0 +1,102 @@
+# save.ludic - each unit as a row of ints: [id, kind, owner, stance, n, anchor x, anchor z, anchored,
+# then RTS_QUEUE_MAX * 7: order, target, x, z, from x, from z, auto] (positions in thousandths, the
+# queue's unused places -1); each player's formation; each control group as [player, group, count,
+# ids...]. Orders, stances, kinds and formations are registry indexes, so a game that saves appends.
+# The selection is not saved. A unit that was in reach comes back to ask the world for a path again.
+export const RTS_UNIT_ROW: int = 8 + RTS_QUEUE_MAX * 7
+
+function rts__milli(v: float) -> int { return int(Math.round(v * 1000.0)) }
+
+@alloc_ok("on a save: the rows written out")
+function rts__save(rts_st: RtsState) -> Val {
+  let v = Value.object()
+  let rows = new []int
+  for i in 0 .. tb_len(rts_st.units) {
+    let u = tb_rec(rts_st.units, i)
+    push(rows, u.id)
+    push(rows, u.kind)
+    push(rows, u.owner)
+    push(rows, u.stance)
+    push(rows, u.on)
+    push(rows, rts__milli(u.ax))
+    push(rows, rts__milli(u.az))
+    if u.anchored { push(rows, 1) } else { push(rows, 0) }
+    for k in 0 .. RTS_QUEUE_MAX {
+      push(rows, u.oo[k])
+      push(rows, u.ot[k])
+      push(rows, rts__milli(u.ox[k]))
+      push(rows, rts__milli(u.oz[k]))
+      push(rows, rts__milli(u.o2x[k]))
+      push(rows, rts__milli(u.o2z[k]))
+      push(rows, u.oa[k])
+    }
+  }
+  sv_put_ints(v, "units", rows)
+  sv_put_ints(v, "formations", rts_st.form)
+  let gs = new []int
+  for p in 0 .. RTS_PLAYERS {
+    for g in 0 .. RTS_GROUPS {
+      let n = rts_st.grp_n[p * RTS_GROUPS + g]
+      if n == 0 { continue }
+      push(gs, p)
+      push(gs, g)
+      push(gs, n)
+      for k in 0 .. n { push(gs, rts_st.grp[(p * RTS_GROUPS + g) * RTS_SEL_MAX + k]) }
+    }
+  }
+  sv_put_ints(v, "groups", gs)
+  return v
+}
+
+function rts__clear(rts_st: mut RtsState) -> void {
+  rts_st.units = rts__units_new()
+  imap_clear(rts_st.by_id)
+  for i in 0 .. len(rts_st.sel) { rts_st.sel[i] = -1 }
+  for i in 0 .. len(rts_st.grp) { rts_st.grp[i] = -1 }
+  for i in 0 .. RTS_PLAYERS {
+    rts_st.sel_n[i] = 0
+    rts_st.form[i] = 0
+  }
+  for i in 0 .. len(rts_st.grp_n) { rts_st.grp_n[i] = 0 }
+  q_clear(rts_st.facts)
+}
+
+function rts__load(rts_st: mut RtsState, v: Val, version: int) -> void {
+  rts__clear(rts_st)
+  let rows = sv_ints(v, "units")
+  var i = 0
+  while i + RTS_UNIT_ROW - 1 < len(rows) {
+    if rts_add_unit(rts_st, rows[i], rows[i + 1], rows[i + 2]) {
+      let u = rts__get(rts_st, rows[i])
+      if rows[i + 3] >= 0 and rows[i + 3] < RTSS_COUNT { u.stance = rows[i + 3] }
+      u.ax = float(rows[i + 5]) / 1000.0
+      u.az = float(rows[i + 6]) / 1000.0
+      u.anchored = rows[i + 7] != 0
+      for k in 0 .. Math.min(rows[i + 4], RTS_QUEUE_MAX) {
+        let q = i + 8 + k * 7
+        if rows[q] >= 0 and rows[q] < RTSO_COUNT {
+          rts__push(u, rows[q], rows[q + 1], float(rows[q + 2]) / 1000.0, float(rows[q + 3]) / 1000.0, rows[q + 6], float(rows[q + 4]) / 1000.0, float(rows[q + 5]) / 1000.0)
+        }
+      }
+    }
+    i += RTS_UNIT_ROW
+  }
+  let f = sv_ints(v, "formations")
+  for p in 0 .. Math.min(len(f), RTS_PLAYERS) { rts_st.form[p] = f[p] }
+  let gs = sv_ints(v, "groups")
+  i = 0
+  while i + 2 < len(gs) {
+    let p = gs[i]
+    let g = gs[i + 1]
+    let n = gs[i + 2]
+    if rts__pl(p) and g >= 0 and g < RTS_GROUPS and i + 3 + n <= len(gs) {
+      for k in 0 .. Math.min(n, RTS_SEL_MAX) {
+        if rts_is_unit(rts_st, gs[i + 3 + k]) {
+          rts_st.grp[(p * RTS_GROUPS + g) * RTS_SEL_MAX + rts_st.grp_n[p * RTS_GROUPS + g]] = gs[i + 3 + k]
+          rts_st.grp_n[p * RTS_GROUPS + g] += 1
+        }
+      }
+    }
+    i += 3 + n
+  }
+}

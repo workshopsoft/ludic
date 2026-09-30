@@ -1,0 +1,166 @@
+# run.ludic - the tick: every unit carries out the head of its queue, asking the world through the
+# port and saying what happened. An idle unit looks for an enemy as its stance says; a unit that goes
+# to a place "engaging" does the same on its way
+
+export const RTS_SCAN: float = 0.5         # seconds between an idle unit's looks for an enemy
+
+# how far a unit looks: its stance's, or as far as it can reach
+function rts__look(u: RtsUnit) -> float {
+  let s = RtsStances[u.stance]
+  if s.use_range { return RtsKinds[u.kind].reach }
+  return s.acquire
+}
+
+function rts__reach(u: RtsUnit, o: RtsOrder) -> float {
+  if o.range > 0.0 { return o.range }
+  return RtsKinds[u.kind].reach
+}
+
+# the stance's answer to `t`: its order goes to the front of the queue, to be followed as far as the
+# stance lets it (not at all: only if it is in reach now)
+function rts__auto(r: mut RtsState, u: RtsUnit, t: int, hold: bool) -> bool {
+  let s = RtsStances[u.stance]
+  if not rts__takes(u, s.answer) { return false }
+  var leash = s.chase
+  if hold { leash = 0.0 }
+  let reach = rts__reach(u, RtsOrders[s.answer])
+  if leash <= 0.0 and not RtsWorld.in_reach(u.id, t, reach) { return false }
+  let tx = RtsWorld.pos_x(t)
+  let tz = RtsWorld.pos_z(t)
+  rts__push_front(u, s.answer, t, tx, tz, 1, 0.0, 0.0)
+  u.leash = leash
+  rts__say(r, RTS_F_AUTO, u, s.answer, t, tx, tz, 0, 0, true)
+  return true
+}
+
+# a look round, once per RTS_SCAN: true when it found something and went for it
+function rts__scan(r: mut RtsState, u: RtsUnit, dt: float, radius: float, hold: bool) -> bool {
+  if radius <= 0.0 { return false }
+  u.scan -= dt
+  if u.scan > 0.0 { return false }
+  u.scan = RTS_SCAN
+  let t = RtsWorld.find_enemy(u.id, radius)
+  if t < 0 or t == u.id or not RtsWorld.alive(t) { return false }
+  return rts__auto(r, u, t, hold)
+}
+
+# the head order is over. A stance's own that ends an idle unit's chase sends it home
+function rts__done(r: mut RtsState, u: RtsUnit) -> void {
+  let auto = u.oa[0] != 0
+  rts__pop(u)
+  if auto {
+    if u.on == 0 {
+      let s = RtsStances[u.stance]
+      if s.home and u.anchored and rts__takes(u, s.back) and rts__dist(RtsWorld.pos_x(u.id), RtsWorld.pos_z(u.id), u.ax, u.az) > 1.5 {
+        rts__push(u, s.back, -1, u.ax, u.az, 1, u.ax, u.az)
+      }
+    }
+  } else {
+    u.anchored = false
+    if u.on == 0 { rts__say(r, RTS_F_IDLED, u, -1, -1, 0.0, 0.0, 0, 0, false) }
+  }
+}
+
+function rts__idle(r: mut RtsState, u: RtsUnit, dt: float) -> void {
+  if not u.anchored {
+    u.ax = RtsWorld.pos_x(u.id)
+    u.az = RtsWorld.pos_z(u.id)
+    u.anchored = true
+  }
+  rts__scan(r, u, dt, rts__look(u), false)
+}
+
+function rts__run(r: mut RtsState, u: RtsUnit, dt: float) -> void {
+  let order = u.oo[0]
+  let o = RtsOrders[order]
+  let auto = u.oa[0] != 0
+  let x = u.ox[0]
+  let z = u.oz[0]
+  if o.mode == RTS_M_HOLD {
+    rts__scan(r, u, dt, RtsKinds[u.kind].reach, true)
+    return
+  }
+  if o.mode == RTS_M_POINT or o.mode == RTS_M_PATROL {
+    if o.engage and rts__scan(r, u, dt, rts__look(u), false) { return }
+    var dx = x
+    var dz = z
+    if o.mode == RTS_M_PATROL and u.leg == 1 {
+      dx = u.o2x[0]
+      dz = u.o2z[0]
+    }
+    if u.phase == 0 {
+      if not RtsWorld.move_to(u.id, dx, dz) {
+        rts__say(r, RTS_F_BLOCKED, u, order, -1, dx, dz, 0, 0, auto)
+        rts__done(r, u)
+        return
+      }
+      u.phase = 1
+      return
+    }
+    if RtsWorld.arrived(u.id) {
+      rts__say(r, RTS_F_ARRIVED, u, order, -1, dx, dz, 0, 0, auto)
+      if o.mode == RTS_M_PATROL {
+        u.leg = 1 - u.leg
+        u.phase = 0
+      } else {
+        rts__done(r, u)
+      }
+    }
+    return
+  }
+  # a target: chase it into reach, then engage or work it
+  let t = u.ot[0]
+  if not RtsWorld.alive(t) {
+    if u.phase == 2 { rts__say(r, RTS_F_DISENGAGED, u, order, t, x, z, RTS_R_TARGET_GONE, 0, auto) }
+    rts__say(r, RTS_F_LOST_TARGET, u, order, t, x, z, 0, 0, auto)
+    rts__done(r, u)
+    return
+  }
+  if auto and u.leash > 0.0 and rts__dist(RtsWorld.pos_x(u.id), RtsWorld.pos_z(u.id), u.ax, u.az) > u.leash {
+    if u.phase == 2 { rts__say(r, RTS_F_DISENGAGED, u, order, t, x, z, RTS_R_LEASH, 0, true) }
+    RtsWorld.stop(u.id)
+    rts__done(r, u)
+    return
+  }
+  let near = RtsWorld.in_reach(u.id, t, rts__reach(u, o))
+  if near {
+    if u.phase != 2 {
+      RtsWorld.stop(u.id)
+      u.phase = 2
+      rts__say(r, RTS_F_ENGAGED, u, order, t, RtsWorld.pos_x(t), RtsWorld.pos_z(t), 0, 0, auto)
+    }
+    return
+  }
+  if auto and u.leash <= 0.0 {
+    if u.phase == 2 { rts__say(r, RTS_F_DISENGAGED, u, order, t, x, z, RTS_R_OUT_OF_REACH, 0, true) }
+    rts__done(r, u)
+    return
+  }
+  if u.phase == 2 {
+    rts__say(r, RTS_F_DISENGAGED, u, order, t, x, z, RTS_R_OUT_OF_REACH, 0, auto)
+    u.phase = 0
+  }
+  u.timer += dt
+  if u.phase == 0 or u.timer >= o.repath {
+    u.timer = 0.0
+    if not RtsWorld.move_to(u.id, RtsWorld.pos_x(t), RtsWorld.pos_z(t)) {
+      rts__say(r, RTS_F_BLOCKED, u, order, t, x, z, 0, 0, auto)
+      rts__done(r, u)
+      return
+    }
+    u.phase = 1
+  }
+}
+
+function rts__tick(r: mut RtsState, dt: float) -> void {
+  List.clear(r.dead)
+  for i in 0 .. tb_len(r.units) {
+    let u = tb_rec(r.units, i)
+    if not RtsWorld.alive(u.id) {
+      kept_push(r.dead, u.id)
+      continue
+    }
+    if u.on == 0 { rts__idle(r, u, dt) } else { rts__run(r, u, dt) }
+  }
+  for i in 0 .. len(r.dead) { rts__remove(r, r.dead[i], true) }
+}

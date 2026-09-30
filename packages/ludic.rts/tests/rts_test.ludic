@@ -1,0 +1,728 @@
+# rts_test.ludic - selecting and control groups, orders and their queue, formations, stances and the
+# facts, from a fake world that walks units at 4 m/s, says who is an enemy and what is alive
+import "ludic.rts"
+import "ludic.base"
+program RtsTest {
+  numbers float
+  const UNITS: int = 24
+  def RtsKinds soldier { reach: 2.0, radius: 0.5 }
+  def RtsKinds worker { reach: 1.0, radius: 0.4, stance: RTSS_PASSIVE, orders: [RTSO_MOVE, RTSO_GATHER, RTSO_BUILD] }
+  def RtsKinds archer { reach: 10.0, radius: 0.5, stance: RTSS_STAND_GROUND }
+
+  state RtsTestState {
+    px: []float = null
+    pz: []float = null
+    dx: []float = null
+    dz: []float = null
+    moving: []bool = null
+    alive: []bool = null
+    team: []int = null
+    stops: int = 0
+    moves: int = 0
+  }
+
+  function pos_x(rts_test_st: RtsTestState, u: int) -> float { return rts_test_st.px[u] }
+  function pos_z(rts_test_st: RtsTestState, u: int) -> float { return rts_test_st.pz[u] }
+  function alive(rts_test_st: RtsTestState, u: int) -> bool { return rts_test_st.alive[u] }
+  function radius(u: int) -> float {
+    if u == 19 { return 1.5 }
+    return 0.0
+  }
+  function move_to(rts_test_st: mut RtsTestState, u: int, x: float, z: float) -> bool {
+    if x > 100.0 { return false }
+    rts_test_st.dx[u] = x
+    rts_test_st.dz[u] = z
+    rts_test_st.moving[u] = true
+    rts_test_st.moves += 1
+    return true
+  }
+  function stop(rts_test_st: mut RtsTestState, u: int) -> void {
+    rts_test_st.moving[u] = false
+    rts_test_st.stops += 1
+  }
+  function arrived(rts_test_st: RtsTestState, u: int) -> bool { return not rts_test_st.moving[u] }
+  function find_enemy(rts_test_st: RtsTestState, u: int, r: float) -> int {
+    var best = -1
+    var bd = 0.0
+    for k in 0 .. UNITS {
+      if k == u or not rts_test_st.alive[k] or rts_test_st.team[k] < 0 or rts_test_st.team[k] == rts_test_st.team[u] { continue }
+      let ddx = rts_test_st.px[k] - rts_test_st.px[u]
+      let ddz = rts_test_st.pz[k] - rts_test_st.pz[u]
+      let d = Math.sqrt(ddx * ddx + ddz * ddz)
+      if d <= r and (best < 0 or d < bd) {
+        best = k
+        bd = d
+      }
+    }
+    return best
+  }
+  bind RtsWorld { pos_x: fn pos_x, pos_z: fn pos_z, alive: fn alive, radius: fn radius, move_to: fn move_to, stop: fn stop, arrived: fn arrived, find_enemy: fn find_enemy }
+
+  # units 0..9 are player 0's, 10..19 player 1's, all far from each other; 0..9 are registered passive soldiers by `fresh`
+  function fresh(rts_st: mut RtsState, rts_test_st: mut RtsTestState) -> void {
+    rts_reset(rts_st)
+    rts_test_st.px = new []float
+    rts_test_st.pz = new []float
+    rts_test_st.dx = new []float
+    rts_test_st.dz = new []float
+    rts_test_st.moving = new []bool
+    rts_test_st.alive = new []bool
+    rts_test_st.team = new []int
+    for i in 0 .. UNITS {
+      push(rts_test_st.px, float(i) * 1.0)
+      if i < 10 { push(rts_test_st.pz, 0.0) } else { push(rts_test_st.pz, 500.0) }
+      push(rts_test_st.dx, 0.0)
+      push(rts_test_st.dz, 0.0)
+      push(rts_test_st.moving, false)
+      push(rts_test_st.alive, true)
+      if i < 10 { push(rts_test_st.team, 0) } else if i < 20 { push(rts_test_st.team, 1) } else { push(rts_test_st.team, -1) }
+    }
+    rts_test_st.stops = 0
+    rts_test_st.moves = 0
+    for i in 0 .. 10 {
+      rts_add_unit(rts_st, i, RTSK_SOLDIER, 0)
+      rts_set_stance(rts_st, i, RTSS_PASSIVE)       # a test that wants a stance says so
+    }
+  }
+
+  function put(rts_test_st: mut RtsTestState, u: int, x: float, z: float) -> void {
+    rts_test_st.px[u] = x
+    rts_test_st.pz[u] = z
+    rts_test_st.moving[u] = false
+  }
+
+  # the world walks at 4 m/s, then the tick
+  function step(rts_st: mut RtsState, rts_test_st: mut RtsTestState, dt: float) -> void {
+    for u in 0 .. UNITS {
+      if not rts_test_st.moving[u] { continue }
+      let ddx = rts_test_st.dx[u] - rts_test_st.px[u]
+      let ddz = rts_test_st.dz[u] - rts_test_st.pz[u]
+      let d = Math.sqrt(ddx * ddx + ddz * ddz)
+      let s = 4.0 * dt
+      if d <= s {
+        rts_test_st.px[u] = rts_test_st.dx[u]
+        rts_test_st.pz[u] = rts_test_st.dz[u]
+        rts_test_st.moving[u] = false
+      } else {
+        rts_test_st.px[u] += ddx / d * s
+        rts_test_st.pz[u] += ddz / d * s
+      }
+    }
+    rts_tick(rts_st, tick_new(dt, 0, 0.0))
+  }
+
+  function steps(rts_st: mut RtsState, rts_test_st: mut RtsTestState, n: int, dt: float) -> void {
+    for i in 0 .. n { step(rts_st, rts_test_st, dt) }
+  }
+
+  function count(rts_st: RtsState, what: int) -> int {
+    var n = 0
+    let f = q_drain(rts_facts(rts_st))
+    for i in 0 .. len(f) { if f[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "the package's own orders, stances and formations come first, the modes are the logic's" {
+    expect_eq(RTSO_MOVE, 0)
+    expect_eq(RTSO_ATTACK_MOVE, 1)
+    expect_eq(RTSO_ATTACK, 2)
+    expect_eq(RTSO_HOLD, 7)
+    expect_eq(RtsOrders[RTSO_GATHER].mode, RTS_M_WORK)
+    expect(RtsOrders[RTSO_ATTACK_MOVE].engage)
+    expect(not RtsOrders[RTSO_STOP].queueable)
+    expect_eq(RTSS_AGGRESSIVE, 0)
+    expect_eq(RTSS_PASSIVE, 3)
+    expect_eq(RTSF_BOX, 0)
+    expect_eq(RTSF_FREE, 6)
+    expect_eq(RTSK_ARCHER, 2)
+    expect_eq(rts_order_of_mode(RTS_M_STOP), RTSO_STOP)
+    expect_eq(RtsStances[RTSS_AGGRESSIVE].answer, RTSO_ATTACK)
+  }
+
+  test "a selection: add, toggle, deselect, clear, and what a unit knows of it" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    expect(rts_select(rts_st, 0, 3, false))
+    expect(rts_select(rts_st, 0, 4, true))
+    expect(rts_select(rts_st, 0, 4, true))                   # again: still once
+    expect_eq(rts_selected_count(rts_st, 0), 2)
+    expect_eq(rts_selected(rts_st, 0, 1), 4)
+    expect(rts_is_selected(rts_st, 0, 3))
+    expect(not rts_is_selected(rts_st, 1, 3))                # another player's selection is its own
+    expect(rts_select(rts_st, 1, 3, false))
+    expect(rts_is_selected(rts_st, 1, 3))
+    expect(rts_toggle(rts_st, 0, 3))
+    expect(not rts_is_selected(rts_st, 0, 3))
+    expect_eq(rts_selected(rts_st, 0, 0), 4)
+    expect(rts_toggle(rts_st, 0, 5))
+    expect(rts_deselect(rts_st, 0, 4))
+    expect(not rts_deselect(rts_st, 0, 4))
+    expect_eq(rts_selected_count(rts_st, 0), 1)
+    expect(rts_select(rts_st, 0, 7, false))                  # not adding: replaces
+    expect_eq(rts_selected_count(rts_st, 0), 1)
+    expect(not rts_is_selected(rts_st, 0, 5))
+    rts_select_clear(rts_st, 0)
+    expect_eq(rts_selected_count(rts_st, 0), 0)
+    expect(rts_is_selected(rts_st, 1, 3))
+    expect(not rts_select(rts_st, 0, 99, false))             # not a unit
+    expect(not rts_select(rts_st, 9, 3, false))              # not a player
+    expect_eq(rts_selected(rts_st, 0, 0), -1)
+  }
+
+  test "a box over a player's own units, either corner first; a click; one kind" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_add_unit(rts_st, 10, RTSK_SOLDIER, 1)
+    rts_add_unit(rts_st, 11, RTSK_WORKER, 0)
+    put(rts_test_st, 11, 2.5, 0.0)
+    expect_eq(rts_select_box(rts_st, 0, 5.5, 1.0, 1.5, -1.0, false, -1), 5)   # 2, 3, 4, 5 and the worker at 2.5
+    expect(not rts_is_selected(rts_st, 0, 10))
+    expect_eq(rts_select_box(rts_st, 0, 7.5, 1.0, 6.5, -1.0, true, -1), 6)    # adding: 7
+    expect_eq(rts_select_box(rts_st, 0, -1.0, -1.0, 20.0, 1.0, false, RTSK_WORKER), 1)
+    expect_eq(rts_selected(rts_st, 0, 0), 11)
+    expect_eq(rts_select_box(rts_st, 0, 50.0, 50.0, 60.0, 60.0, false, -1), 0)
+    put(rts_test_st, 10, 3.0, 0.2)                                              # an enemy next to soldier 3
+    expect_eq(rts_select_at(rts_st, 0, 3.0, 0.1, 1.0, false), 3)               # the player's own first
+    expect_eq(rts_selected_count(rts_st, 0), 1)
+    expect_eq(rts_select_at(rts_st, 0, 3.0, 0.1, 1.0, true), 3)
+    expect_eq(rts_select_at(rts_st, 0, 40.0, 0.0, 1.0, false), -1)
+    put(rts_test_st, 10, 30.0, 0.0)
+    expect_eq(rts_select_at(rts_st, 0, 30.0, 0.0, 1.0, false), 10)             # someone else's alone, to look at
+    expect_eq(rts_selected_count(rts_st, 0), 1)
+    expect(not rts_is_selected(rts_st, 0, 3))
+  }
+
+  test "control groups: set, add, recall, and a unit that is gone leaves them" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_select(rts_st, 0, 1, false)
+    rts_select(rts_st, 0, 2, true)
+    expect_eq(rts_group_set(rts_st, 0, 1), 2)
+    rts_select(rts_st, 0, 3, false)
+    expect_eq(rts_group_add(rts_st, 0, 1), 3)
+    rts_select(rts_st, 0, 3, false)
+    expect_eq(rts_group_add(rts_st, 0, 1), 3)              # once
+    expect_eq(rts_group_count(rts_st, 0, 1), 3)
+    expect_eq(rts_group_unit(rts_st, 0, 1, 2), 3)
+    expect_eq(rts_group_count(rts_st, 1, 1), 0)            # another player's
+    rts_select(rts_st, 0, 9, false)
+    expect_eq(rts_group_recall(rts_st, 0, 1, false), 3)
+    expect(not rts_is_selected(rts_st, 0, 9))
+    expect_eq(rts_group_recall(rts_st, 0, 1, true), 3)
+    rts_select(rts_st, 0, 9, false)
+    expect_eq(rts_group_recall(rts_st, 0, 1, true), 4)
+    expect(rts_remove_unit(rts_st, 2))
+    expect_eq(rts_group_count(rts_st, 0, 1), 2)
+    expect_eq(rts_selected_count(rts_st, 0), 3)
+    expect_eq(rts_group_recall(rts_st, 0, 1, false), 2)
+    rts_group_clear(rts_st, 0, 1)
+    expect_eq(rts_group_count(rts_st, 0, 1), 0)
+    expect_eq(rts_group_recall(rts_st, 0, 10, false), 0)
+  }
+
+  test "a move: ordered, walked, arrived, idle; said in that order" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    put(rts_test_st, 0, 0.0, 0.0)
+    expect(rts_order_unit(rts_st, 0, RTSO_MOVE, 10.0, 0.0, -1, false))
+    expect_eq(rts_orders_count(rts_st, 0), 1)
+    expect(not rts_idle(rts_st, 0))
+    expect_eq(rts_head_order(rts_st, 0), RTSO_MOVE)
+    expect_eq(rts_x_at(rts_st, 0, 0), 10.0)
+    steps(rts_st, rts_test_st, 4, 0.5)
+    expect_eq(rts_test_st.px[0], 6.0)                       # the first tick asks for the path
+    steps(rts_st, rts_test_st, 3, 0.5)
+    expect(rts_idle(rts_st, 0))
+    expect_eq(rts_test_st.px[0], 10.0)
+    let f = q_drain(rts_facts(rts_st))
+    expect_eq(len(f), 3)
+    expect_eq(f[0].what, RTS_F_ORDERED)
+    expect_eq(f[0].order, RTSO_MOVE)
+    expect_eq(f[0].unit, 0)
+    expect_eq(f[1].what, RTS_F_ARRIVED)
+    expect_eq(f[1].x, 10.0)
+    expect_eq(f[2].what, RTS_F_IDLED)
+    expect(not rts_order_unit(rts_st, 77, RTSO_MOVE, 1.0, 1.0, -1, false))
+  }
+
+  test "shift-queue: behind the rest; an order that is not queueable replaces them" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    put(rts_test_st, 0, 0.0, 0.0)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 4.0, 0.0, -1, false)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 4.0, 8.0, -1, true)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 0.0, 8.0, -1, true)
+    expect_eq(rts_orders_count(rts_st, 0), 3)
+    expect_eq(rts_z_at(rts_st, 0, 1), 8.0)
+    steps(rts_st, rts_test_st, 4, 0.5)
+    expect_eq(rts_orders_count(rts_st, 0), 2)              # the first is done: 4 m at 4 m/s, then its arrival
+    expect_eq(rts_x_at(rts_st, 0, 0), 4.0)
+    steps(rts_st, rts_test_st, 14, 0.5)
+    expect(rts_idle(rts_st, 0))
+    expect_eq(rts_test_st.pz[0], 8.0)
+    expect_eq(rts_test_st.px[0], 0.0)
+    q_drain(rts_facts(rts_st))
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 4.0, 0.0, -1, false)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 4.0, 4.0, -1, true)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 50.0, 50.0, -1, false)      # not queued: it is the only order now
+    expect_eq(rts_orders_count(rts_st, 0), 1)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 4.0, 4.0, -1, true)
+    rts_order_unit(rts_st, 0, RTSO_HOLD, 0.0, 0.0, -1, true)           # hold is not queueable: replaces
+    expect_eq(rts_orders_count(rts_st, 0), 1)
+    expect_eq(rts_head_order(rts_st, 0), RTSO_HOLD)
+  }
+
+  test "a full queue refuses, and says so" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 4.0, 0.0, -1, false)
+    for i in 1 .. RTS_QUEUE_MAX { expect(rts_order_unit(rts_st, 0, RTSO_MOVE, 4.0, float(i), -1, true)) }
+    expect_eq(rts_orders_count(rts_st, 0), RTS_QUEUE_MAX)
+    q_drain(rts_facts(rts_st))
+    expect(not rts_order_unit(rts_st, 0, RTSO_MOVE, 4.0, 40.0, -1, true))
+    let f = q_drain(rts_facts(rts_st))
+    expect_eq(len(f), 1)
+    expect_eq(f[0].what, RTS_F_REFUSED)
+    expect_eq(f[0].reason, 1)
+  }
+
+  test "stop clears the queue and the walk; a worker does not take an attack, and always takes a stop" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_add_unit(rts_st, 12, RTSK_WORKER, 0)
+    put(rts_test_st, 0, 0.0, 0.0)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 20.0, 0.0, -1, false)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 20.0, 20.0, -1, true)
+    steps(rts_st, rts_test_st, 2, 0.5)
+    q_drain(rts_facts(rts_st))
+    let stops = rts_test_st.stops
+    expect(rts_order_unit(rts_st, 0, RTSO_STOP, 0.0, 0.0, -1, false))
+    expect(rts_idle(rts_st, 0))
+    expect(rts_test_st.stops > stops)
+    expect(not rts_test_st.moving[0])
+    expect_eq(count(rts_st, RTS_F_STOPPED), 1)
+    expect(not rts_order_unit(rts_st, 12, RTSO_ATTACK, 0.0, 0.0, 15, false))
+    expect(not rts_order_unit(rts_st, 12, 99, 0.0, 0.0, -1, false))
+    expect_eq(count(rts_st, RTS_F_REFUSED), 2)
+    expect(rts_order_unit(rts_st, 12, RTSO_GATHER, 0.0, 0.0, 15, false))
+    expect(rts_order_unit(rts_st, 12, RTSO_STOP, 0.0, 0.0, -1, false))
+  }
+
+  test "a group is sent by the selection, to its own units that take the order" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_add_unit(rts_st, 10, RTSK_SOLDIER, 1)
+    rts_add_unit(rts_st, 12, RTSK_WORKER, 0)
+    rts_select(rts_st, 0, 1, false)
+    rts_select(rts_st, 0, 2, true)
+    rts_select(rts_st, 0, 12, true)
+    rts_select(rts_st, 0, 10, true)                                 # the enemy's: looked at, not ordered
+    expect_eq(rts_order(rts_st, 0, RTSO_ATTACK, 0.0, 0.0, 15, false), 2)    # the worker does not attack
+    expect_eq(rts_head_order(rts_st, 1), RTSO_ATTACK)
+    expect_eq(rts_head_order(rts_st, 12), -1)
+    expect_eq(rts_head_order(rts_st, 10), -1)
+    expect_eq(rts_order(rts_st, 0, RTSO_STOP, 0.0, 0.0, -1, false), 3)
+    expect_eq(rts_order(rts_st, 5, RTSO_MOVE, 0.0, 0.0, -1, false), 0)      # nobody selected
+    expect_eq(rts_order(rts_st, 0, 99, 0.0, 0.0, -1, false), 0)
+  }
+
+  test "a formation spreads a group round the point, turned the way it goes" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    for i in 0 .. 9 {
+      put(rts_test_st, i, -20.0 + float(i % 3), float(i / 3))
+      rts_select(rts_st, 0, i, true)
+    }
+    rts_set_formation(rts_st, 0, RTSF_BOX)
+    expect_eq(rts_formation_of(rts_st, 0), RTSF_BOX)
+    expect_eq(rts_order(rts_st, 0, RTSO_MOVE, 30.0, 10.0, -1, false), 9)
+    var sx = 0.0
+    var sz = 0.0
+    var near_min = 99.0
+    var front = 0
+    for i in 0 .. 9 {
+      sx += rts_x_at(rts_st, i, 0)
+      sz += rts_z_at(rts_st, i, 0)
+      if rts_x_at(rts_st, i, 0) > 30.5 { front += 1 }
+      for k in 0 .. 9 {
+        if k == i { continue }
+        let ddx = rts_x_at(rts_st, i, 0) - rts_x_at(rts_st, k, 0)
+        let ddz = rts_z_at(rts_st, i, 0) - rts_z_at(rts_st, k, 0)
+        near_min = Math.min(near_min, Math.sqrt(ddx * ddx + ddz * ddz))
+      }
+    }
+    expect(Math.abs(sx / 9.0 - 30.0) < 0.001)              # centred on the point
+    expect(Math.abs(sz / 9.0 - 10.0) < 0.001)
+    expect(near_min >= 1.59)                               # a gap of 0.6 and two radii of 0.5
+    expect_eq(front, 3)                                    # the front row is ahead of it: the group goes +x
+    # the same units sent once more: a slot each, none twice
+    var same = 0
+    for i in 0 .. 9 {
+      for k in i + 1 .. 9 {
+        if rts_x_at(rts_st, i, 0) == rts_x_at(rts_st, k, 0) and rts_z_at(rts_st, i, 0) == rts_z_at(rts_st, k, 0) { same += 1 }
+      }
+    }
+    expect_eq(same, 0)
+  }
+
+  test "a line is one row across the way it goes, a column is narrow, a ring surrounds, free is the point" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    for i in 0 .. 6 {
+      put(rts_test_st, i, 0.0, -10.0)
+      rts_select(rts_st, 0, i, true)
+    }
+    rts_set_formation(rts_st, 0, RTSF_LINE)
+    rts_order(rts_st, 0, RTSO_MOVE, 0.0, 10.0, -1, false)           # heading +z: a row across is along x
+    for i in 0 .. 6 { expect(Math.abs(rts_z_at(rts_st, i, 0) - 10.0) < 0.001) }
+    var minx = 99.0
+    var maxx = -99.0
+    for i in 0 .. 6 {
+      minx = Math.min(minx, rts_x_at(rts_st, i, 0))
+      maxx = Math.max(maxx, rts_x_at(rts_st, i, 0))
+    }
+    expect(Math.abs(maxx - minx - 5.0 * 1.6) < 0.001)
+    rts_set_formation(rts_st, 0, RTSF_COLUMN)
+    rts_order(rts_st, 0, RTSO_MOVE, 0.0, 10.0, -1, false)
+    var minz = 99.0
+    var maxz = -99.0
+    for i in 0 .. 6 {
+      minz = Math.min(minz, rts_z_at(rts_st, i, 0))
+      maxz = Math.max(maxz, rts_z_at(rts_st, i, 0))
+    }
+    expect(Math.abs(maxz - minz - 2.0 * 1.6) < 0.001)              # three rows of two
+    rts_set_formation(rts_st, 0, RTSF_RING)
+    rts_order(rts_st, 0, RTSO_MOVE, 0.0, 10.0, -1, false)
+    var centre = 0
+    var ringed = 0
+    for i in 0 .. 6 {
+      let ddx = rts_x_at(rts_st, i, 0)
+      let ddz = rts_z_at(rts_st, i, 0) - 10.0
+      let d = Math.sqrt(ddx * ddx + ddz * ddz)
+      if d < 0.001 { centre += 1 }
+      if Math.abs(d - 1.6) < 0.001 { ringed += 1 }
+    }
+    expect_eq(centre, 1)
+    expect_eq(ringed, 5)
+    rts_set_formation(rts_st, 0, RTSF_WEDGE)
+    rts_order(rts_st, 0, RTSO_MOVE, 0.0, 10.0, -1, false)
+    var tip = 0
+    for i in 0 .. 6 { if Math.abs(rts_x_at(rts_st, i, 0)) < 0.001 and rts_z_at(rts_st, i, 0) > 9.999 { tip += 1 } }
+    expect_eq(tip, 1)
+    rts_set_formation(rts_st, 0, RTSF_FREE)
+    rts_order(rts_st, 0, RTSO_MOVE, 3.0, 4.0, -1, false)
+    for i in 0 .. 6 { expect(rts_x_at(rts_st, i, 0) == 3.0 and rts_z_at(rts_st, i, 0) == 4.0) }
+    rts_set_formation(rts_st, 0, -1)
+    rts_order(rts_st, 0, RTSO_MOVE, 5.0, 6.0, -1, false)
+    for i in 0 .. 6 { expect(rts_x_at(rts_st, i, 0) == 5.0) }
+    rts_set_formation(rts_st, 0, RTSF_BOX)
+    rts_order(rts_st, 0, RTSO_ATTACK, 0.0, 0.0, 15, false)          # an attack is on a target: not spread
+    for i in 0 .. 6 { expect_eq(rts_target_at(rts_st, i, 0), 15) }
+  }
+
+  test "an attack: chase into reach, engage once, follow it off, and stop when it is gone" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    put(rts_test_st, 0, 0.0, 0.0)
+    put(rts_test_st, 15, 12.0, 0.0)
+    rts_order_unit(rts_st, 0, RTSO_ATTACK, 12.0, 0.0, 15, false)
+    steps(rts_st, rts_test_st, 5, 0.5)
+    expect_eq(count(rts_st, RTS_F_ENGAGED), 0)
+    steps(rts_st, rts_test_st, 6, 0.5)
+    expect(rts_working(rts_st, 0))
+    expect(rts_test_st.px[0] >= 9.9)                            # stopped at its reach of 2
+    steps(rts_st, rts_test_st, 4, 0.5)
+    expect_eq(rts_orders_count(rts_st, 0), 1)                   # an attack goes on until the target is gone
+    put(rts_test_st, 15, 30.0, 0.0)                             # it runs
+    step(rts_st, rts_test_st, 0.5)
+    expect(not rts_working(rts_st, 0))
+    steps(rts_st, rts_test_st, 12, 0.5)
+    expect(rts_working(rts_st, 0))
+    expect(rts_test_st.px[0] >= 27.9)
+    let f = q_drain(rts_facts(rts_st))
+    var engaged = 0
+    var off = 0
+    for i in 0 .. len(f) {
+      if f[i].what == RTS_F_ENGAGED { engaged += 1 }
+      if f[i].what == RTS_F_DISENGAGED and f[i].reason == RTS_R_OUT_OF_REACH { off += 1 }
+    }
+    expect_eq(engaged, 2)
+    expect_eq(off, 1)
+    rts_test_st.alive[15] = false
+    step(rts_st, rts_test_st, 0.5)
+    expect(rts_idle(rts_st, 0))
+    let g = q_drain(rts_facts(rts_st))
+    expect_eq(g[0].what, RTS_F_DISENGAGED)
+    expect_eq(g[0].reason, RTS_R_TARGET_GONE)
+    expect_eq(g[1].what, RTS_F_LOST_TARGET)
+    expect_eq(g[2].what, RTS_F_IDLED)
+  }
+
+  test "a target that is big is in reach of its edge" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    put(rts_test_st, 0, 0.0, 0.0)
+    put(rts_test_st, 19, 20.0, 0.0)                             # a building of radius 1.5
+    rts_order_unit(rts_st, 0, RTSO_ATTACK, 0.0, 0.0, 19, false)
+    steps(rts_st, rts_test_st, 12, 0.5)
+    expect(rts_working(rts_st, 0))
+    expect(rts_test_st.px[0] >= 16.4 and rts_test_st.px[0] <= 18.5)     # 20 less 1.5 less 2, and a step
+  }
+
+  test "gather and build are work: reach, engage, and the game says when it is done" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_add_unit(rts_st, 12, RTSK_WORKER, 0)
+    put(rts_test_st, 12, 0.0, 0.0)
+    put(rts_test_st, 21, 6.0, 0.0)
+    put(rts_test_st, 22, -6.0, 0.0)
+    rts_order_unit(rts_st, 12, RTSO_GATHER, 6.0, 0.0, 21, false)
+    rts_order_unit(rts_st, 12, RTSO_BUILD, -6.0, 0.0, 22, true)
+    expect(not rts_finish(rts_st, 12))                          # not working yet
+    steps(rts_st, rts_test_st, 6, 0.5)
+    expect(rts_working(rts_st, 12))
+    expect_eq(rts_head_order(rts_st, 12), RTSO_GATHER)
+    steps(rts_st, rts_test_st, 20, 0.5)
+    expect_eq(rts_head_order(rts_st, 12), RTSO_GATHER)          # it does not end by itself
+    let f = q_drain(rts_facts(rts_st))
+    var engaged = 0
+    for i in 0 .. len(f) { if f[i].what == RTS_F_ENGAGED { engaged += 1 } }
+    expect_eq(engaged, 1)
+    expect(rts_finish(rts_st, 12))
+    expect_eq(rts_head_order(rts_st, 12), RTSO_BUILD)
+    expect(not rts_working(rts_st, 12))
+    let g = q_drain(rts_facts(rts_st))
+    expect_eq(g[0].what, RTS_F_DISENGAGED)
+    expect_eq(g[0].reason, RTS_R_FINISHED)
+    steps(rts_st, rts_test_st, 30, 0.5)
+    expect(rts_working(rts_st, 12))
+    expect(rts_test_st.px[12] < -4.9)
+    expect(rts_finish(rts_st, 12))
+    expect(rts_idle(rts_st, 12))
+    rts_order_unit(rts_st, 12, RTSO_GATHER, 0.0, 0.0, 21, false)
+    rts_test_st.alive[21] = false                               # the tree is cut by someone else
+    steps(rts_st, rts_test_st, 2, 0.5)
+    expect(rts_idle(rts_st, 12))
+  }
+
+  test "a patrol goes between two places for good, until told otherwise" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_select(rts_st, 0, 0, false)
+    put(rts_test_st, 0, 0.0, 0.0)
+    rts_order(rts_st, 0, RTSO_PATROL, 8.0, 0.0, -1, false)
+    steps(rts_st, rts_test_st, 14, 0.5)
+    expect(rts_test_st.px[0] < 0.1 or rts_test_st.px[0] > 7.9 or rts_test_st.moving[0])
+    steps(rts_st, rts_test_st, 40, 0.5)
+    expect_eq(rts_orders_count(rts_st, 0), 1)
+    expect(count(rts_st, RTS_F_ARRIVED) >= 4)
+    var minx = 99.0
+    var maxx = -99.0
+    for i in 0 .. 30 {
+      step(rts_st, rts_test_st, 0.5)
+      minx = Math.min(minx, rts_test_st.px[0])
+      maxx = Math.max(maxx, rts_test_st.px[0])
+    }
+    expect(minx <= 0.001 and maxx >= 7.999)
+    rts_order(rts_st, 0, RTSO_STOP, 0.0, 0.0, -1, false)
+    expect(rts_idle(rts_st, 0))
+  }
+
+  test "a place the world finds no way to: blocked, and on to the next" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    put(rts_test_st, 0, 0.0, 0.0)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 500.0, 0.0, -1, false)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 4.0, 0.0, -1, true)
+    steps(rts_st, rts_test_st, 4, 0.5)
+    expect(rts_idle(rts_st, 0))
+    expect_eq(rts_test_st.px[0], 4.0)
+    let f = q_drain(rts_facts(rts_st))
+    var blocked = 0
+    for i in 0 .. len(f) { if f[i].what == RTS_F_BLOCKED { blocked += 1 } }
+    expect_eq(blocked, 1)
+  }
+
+  test "an aggressive unit that is idle looks round, goes for an enemy, and goes home after" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_add_unit(rts_st, 23, RTSK_SOLDIER, 0)
+    expect_eq(rts_stance(rts_st, 23), RTSS_AGGRESSIVE)          # a kind's own stance
+    rts_remove_unit(rts_st, 23)
+    rts_set_stance(rts_st, 0, RTSS_AGGRESSIVE)
+    put(rts_test_st, 0, 0.0, 0.0)
+    put(rts_test_st, 15, 40.0, 0.0)
+    steps(rts_st, rts_test_st, 4, 0.5)                            # an anchor is taken; nobody near
+    expect(rts_idle(rts_st, 0))
+    put(rts_test_st, 15, 10.0, 0.0)                             # in sight: 14 m
+    steps(rts_st, rts_test_st, 4, 0.5)
+    expect(rts_head_auto(rts_st, 0))
+    expect_eq(rts_head_order(rts_st, 0), RTSO_ATTACK)
+    steps(rts_st, rts_test_st, 8, 0.5)
+    expect(rts_working(rts_st, 0))
+    expect(rts_test_st.px[0] > 7.0)
+    rts_test_st.alive[15] = false
+    steps(rts_st, rts_test_st, 2, 0.5)
+    expect_eq(rts_head_order(rts_st, 0), RTSO_MOVE)             # the way home
+    expect(rts_head_auto(rts_st, 0))
+    steps(rts_st, rts_test_st, 10, 0.5)
+    expect(rts_idle(rts_st, 0))
+    expect(Math.abs(rts_test_st.px[0]) < 0.001)
+    let f = q_drain(rts_facts(rts_st))
+    var auto = 0
+    for i in 0 .. len(f) { if f[i].what == RTS_F_AUTO { auto += 1 } }
+    expect_eq(auto, 1)
+  }
+
+  test "a stance's chase ends at its leash: the defender lets the enemy lead it only so far" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_set_stance(rts_st, 0, RTSS_DEFENSIVE)                   # looks 9 m, follows 12
+    put(rts_test_st, 0, 0.0, 0.0)
+    put(rts_test_st, 15, 8.0, 0.0)
+    steps(rts_st, rts_test_st, 4, 0.5)
+    expect(rts_head_auto(rts_st, 0))
+    var far = 0.0
+    for i in 0 .. 10 {                                          # the enemy backs off faster than it is followed, in steps
+      rts_test_st.px[15] += 3.0
+      step(rts_st, rts_test_st, 0.5)
+      far = Math.max(far, rts_test_st.px[0])
+    }
+    expect(far > 6.0 and far <= 14.1)                           # it followed, and not past 12 m and a step
+    let f = q_drain(rts_facts(rts_st))
+    var leash = 0
+    for i in 0 .. len(f) { if f[i].what == RTS_F_DISENGAGED and f[i].reason == RTS_R_LEASH { leash += 1 } }
+    expect_eq(leash, 0)                                         # not engaged when it ran out: no engaged fact to undo
+    steps(rts_st, rts_test_st, 20, 0.5)
+    expect(rts_idle(rts_st, 0))
+    expect(Math.abs(rts_test_st.px[0]) < 0.001)                 # home again
+  }
+
+  test "stand ground looks only as far as it can reach; passive never looks" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_set_stance(rts_st, 0, RTSS_STAND_GROUND)
+    rts_set_stance(rts_st, 1, RTSS_PASSIVE)
+    put(rts_test_st, 0, 0.0, 0.0)
+    put(rts_test_st, 1, 0.0, 50.0)
+    put(rts_test_st, 15, 5.0, 0.0)
+    put(rts_test_st, 16, 5.0, 50.0)
+    steps(rts_st, rts_test_st, 6, 0.5)
+    expect(rts_idle(rts_st, 0))                                 # 5 m is past its 2 m
+    expect(rts_idle(rts_st, 1))
+    put(rts_test_st, 15, 1.5, 0.0)
+    put(rts_test_st, 16, 1.5, 50.0)
+    steps(rts_st, rts_test_st, 2, 0.5)
+    expect(rts_working(rts_st, 0))                              # in reach: engaged, not moved
+    expect_eq(rts_test_st.px[0], 0.0)
+    expect(rts_idle(rts_st, 1))
+    put(rts_test_st, 15, 6.0, 0.0)                              # steps out of reach: dropped, and it stays
+    steps(rts_st, rts_test_st, 2, 0.5)
+    expect(rts_idle(rts_st, 0))
+    expect_eq(rts_test_st.px[0], 0.0)
+  }
+
+  test "retaliation: a stance that answers the one that hurt it, unless it is busy" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_add_unit(rts_st, 12, RTSK_WORKER, 0)
+    rts_set_stance(rts_st, 0, RTSS_AGGRESSIVE)
+    rts_set_stance(rts_st, 1, RTSS_AGGRESSIVE)
+    rts_set_stance(rts_st, 2, RTSS_AGGRESSIVE)
+    put(rts_test_st, 0, 0.0, 0.0)
+    put(rts_test_st, 15, 30.0, 0.0)                             # far past its sight
+    expect(rts_attacked(rts_st, 0, 15))
+    expect(rts_head_auto(rts_st, 0))
+    expect_eq(rts_target_at(rts_st, 0, 0), 15)
+    expect(not rts_attacked(rts_st, 0, 15))                     # busy
+    expect(not rts_attacked(rts_st, 12, 15))                    # a passive worker does not
+    rts_order_unit(rts_st, 1, RTSO_MOVE, 5.0, 5.0, -1, false)
+    expect(not rts_attacked(rts_st, 1, 15))                     # under orders
+    rts_test_st.alive[16] = false
+    expect(not rts_attacked(rts_st, 2, 16))                     # by something already gone
+    expect(not rts_attacked(rts_st, 77, 15))
+  }
+
+  test "hold: stands where it is, engages what comes into reach, never moves" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    put(rts_test_st, 0, 0.0, 0.0)
+    put(rts_test_st, 15, 6.0, 0.0)
+    rts_order_unit(rts_st, 0, RTSO_HOLD, 0.0, 0.0, -1, false)
+    steps(rts_st, rts_test_st, 4, 0.5)
+    expect_eq(rts_head_order(rts_st, 0), RTSO_HOLD)
+    expect_eq(rts_test_st.px[0], 0.0)
+    put(rts_test_st, 15, 1.8, 0.0)
+    steps(rts_st, rts_test_st, 2, 0.5)
+    expect(rts_working(rts_st, 0))
+    expect_eq(rts_orders_count(rts_st, 0), 2)
+    put(rts_test_st, 15, 9.0, 0.0)
+    steps(rts_st, rts_test_st, 2, 0.5)
+    expect_eq(rts_head_order(rts_st, 0), RTSO_HOLD)             # left alone again, where it was
+    expect_eq(rts_test_st.px[0], 0.0)
+  }
+
+  test "attack-move: on its way it answers an enemy, then goes on" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_set_stance(rts_st, 0, RTSS_AGGRESSIVE)
+    put(rts_test_st, 0, 0.0, 0.0)
+    put(rts_test_st, 15, 12.0, 6.0)
+    rts_order_unit(rts_st, 0, RTSO_ATTACK_MOVE, 30.0, 0.0, -1, false)
+    steps(rts_st, rts_test_st, 3, 0.5)
+    expect(rts_head_auto(rts_st, 0) or rts_working(rts_st, 0) or rts_test_st.px[0] > 5.0)
+    steps(rts_st, rts_test_st, 10, 0.5)
+    expect(rts_working(rts_st, 0))
+    expect_eq(rts_orders_count(rts_st, 0), 2)                   # the move waits behind the fight
+    rts_test_st.alive[15] = false
+    steps(rts_st, rts_test_st, 2, 0.5)
+    expect_eq(rts_head_order(rts_st, 0), RTSO_ATTACK_MOVE)
+    expect(not rts_head_auto(rts_st, 0))
+    steps(rts_st, rts_test_st, 20, 0.5)
+    expect(rts_idle(rts_st, 0))
+    expect_eq(rts_test_st.px[0], 30.0)
+  }
+
+  test "a player's order takes the stance's own off the queue, and the shift-queue keeps the player's" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_set_stance(rts_st, 0, RTSS_AGGRESSIVE)
+    put(rts_test_st, 0, 0.0, 0.0)
+    put(rts_test_st, 15, 10.0, 0.0)
+    steps(rts_st, rts_test_st, 4, 0.5)
+    expect(rts_head_auto(rts_st, 0))
+    rts_order_unit(rts_st, 0, RTSO_MOVE, -8.0, 0.0, -1, true)   # shift: behind the player's, and the stance's goes
+    expect_eq(rts_orders_count(rts_st, 0), 1)
+    expect(not rts_head_auto(rts_st, 0))
+    expect_eq(rts_head_order(rts_st, 0), RTSO_MOVE)
+  }
+
+  test "a unit that is not alive is taken out, said, and leaves its selection" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    rts_select(rts_st, 0, 3, false)
+    rts_select(rts_st, 0, 4, true)
+    rts_test_st.alive[3] = false
+    step(rts_st, rts_test_st, 0.1)
+    expect(not rts_is_unit(rts_st, 3))
+    expect_eq(rts_selected_count(rts_st, 0), 1)
+    expect_eq(rts_units(rts_st), 9)
+    let f = q_drain(rts_facts(rts_st))
+    expect_eq(f[0].what, RTS_F_GONE)
+    expect_eq(f[0].unit, 3)
+    expect(not rts_add_unit(rts_st, 4, RTSK_SOLDIER, 0))        # already one
+    expect(not rts_add_unit(rts_st, 50, 9, 0))
+    expect(not rts_add_unit(rts_st, 50, RTSK_SOLDIER, 12))
+  }
+
+  test "the save: queues, stances, groups and formations; the selection is not kept" (rts_st: mut RtsState, rts_test_st: mut RtsTestState) {
+    fresh(rts_st, rts_test_st)
+    put(rts_test_st, 0, 0.0, 0.0)
+    rts_order_unit(rts_st, 0, RTSO_MOVE, 20.0, 5.0, -1, false)
+    rts_order_unit(rts_st, 0, RTSO_ATTACK, 0.0, 0.0, 15, true)
+    rts_set_stance(rts_st, 1, RTSS_DEFENSIVE)
+    rts_select(rts_st, 0, 1, false)
+    rts_select(rts_st, 0, 2, true)
+    rts_group_set(rts_st, 0, 4)
+    rts_set_formation(rts_st, 0, RTSF_WEDGE)
+    rts_set_formation(rts_st, 1, RTSF_LINE)
+    let s = rts_system()
+    let text = save_encode(s.save())
+    fresh(rts_st, rts_test_st)
+    rts_remove_unit(rts_st, 5)
+    s.load(save_decode(text), s.version)
+    expect_eq(rts_units(rts_st), 10)
+    expect_eq(rts_orders_count(rts_st, 0), 2)
+    expect_eq(rts_order_at(rts_st, 0, 1), RTSO_ATTACK)
+    expect_eq(rts_target_at(rts_st, 0, 1), 15)
+    expect_eq(rts_x_at(rts_st, 0, 0), 20.0)
+    expect_eq(rts_z_at(rts_st, 0, 0), 5.0)
+    expect_eq(rts_stance(rts_st, 1), RTSS_DEFENSIVE)
+    expect_eq(rts_stance(rts_st, 2), RTSS_PASSIVE)
+    expect_eq(rts_group_count(rts_st, 0, 4), 2)
+    expect_eq(rts_group_unit(rts_st, 0, 4, 1), 2)
+    expect_eq(rts_selected_count(rts_st, 0), 0)
+    expect_eq(rts_formation_of(rts_st, 0), RTSF_WEDGE)
+    expect_eq(rts_formation_of(rts_st, 1), RTSF_LINE)
+    expect_eq(count(rts_st, RTS_F_ORDERED), 0)                   # loading says nothing
+    steps(rts_st, rts_test_st, 14, 0.5)                            # it walks again, from wherever the world has it
+    expect(rts_test_st.px[0] >= 19.9)
+  }
+}

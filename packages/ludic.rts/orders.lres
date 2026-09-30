@@ -1,0 +1,10 @@
+# orders.lres - the package's own orders, first in RtsOrders (RTSO_MOVE is 0). A game's are
+# appended after them. `mode` is what the logic does; the rest is what the game's UI and rules read
+move { mode: RTS_M_POINT, formed: true }
+attack_move { mode: RTS_M_POINT, formed: true, engage: true }
+attack { mode: RTS_M_CHASE, repath: 0.6 }
+gather { mode: RTS_M_WORK, repath: 1.5 }
+build { mode: RTS_M_WORK, repath: 1.5 }
+patrol { mode: RTS_M_PATROL, formed: true, engage: true }
+stop { mode: RTS_M_STOP, queueable: false }
+hold { mode: RTS_M_HOLD, queueable: false }

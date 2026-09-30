@@ -1,0 +1,23 @@
+# ludic.rts - command and control of many units, as a game with a mouse wants it: a selection per
+# player and ten control groups, an order queue per unit (shift-queue), formations that spread a move,
+# stances that decide what an idle unit does when an enemy is near. The kinds of order, the stances and
+# the formations are rows of data; walking, distance, who is an enemy and who is alive are the game's,
+# asked through a port; what happened is a queue of facts
+module ludic_rts uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "queue.ludic"
+import "select.ludic"
+import "formation.ludic"
+import "orders.ludic"
+import "run.ludic"
+import "verbs.ludic"
+import "save.ludic"
+import "system.ludic"
+
+def RtsOrders from "orders.lres"
+def RtsStances from "stances.lres"
+def RtsFormations from "formations.lres"

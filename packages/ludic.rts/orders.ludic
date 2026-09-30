@@ -1,0 +1,109 @@
+# orders.ludic - giving orders: to one unit, or to a player's selection (spread in the player's
+# formation when the order says so). A player's order takes the stance's own off the queue first
+
+# the unit stands: an order in reach ends, the queue is cleared, the world is told to stop
+function rts__halt(r: mut RtsState, u: RtsUnit, order: int) -> void {
+  if u.on > 0 and u.phase == 2 { rts__say(r, RTS_F_DISENGAGED, u, u.oo[0], u.ot[0], u.ox[0], u.oz[0], RTS_R_REPLACED, 0, u.oa[0] != 0) }
+  u.on = 0
+  u.phase = 0
+  u.anchored = false
+  RtsWorld.stop(u.id)
+  rts__say(r, RTS_F_STOPPED, u, order, -1, 0.0, 0.0, 0, 0, false)
+}
+
+# give one unit an order: `x`, `z` where and `target` at what (-1 none); `queue` puts it behind the
+# rest (only for an order that is queueable). False when the unit does not take it or its queue is full
+export function rts_order_unit(rts_st: mut RtsState, unit: int, order: int, x: float, z: float, target: int, queue: bool) -> bool {
+  let u = rts__get(rts_st, unit)
+  if u == null { return false }
+  if not rts__takes(u, order) {
+    rts__say(rts_st, RTS_F_REFUSED, u, order, target, x, z, 0, 0, false)
+    return false
+  }
+  let o = RtsOrders[order]
+  if o.mode == RTS_M_STOP {
+    rts__halt(rts_st, u, order)
+    return true
+  }
+  rts__drop_autos(u)
+  let fx = RtsWorld.pos_x(u.id)
+  let fz = RtsWorld.pos_z(u.id)
+  u.anchored = false
+  if queue and o.queueable and u.on > 0 {
+    if not rts__push(u, order, target, x, z, 0, fx, fz) {
+      rts__say(rts_st, RTS_F_REFUSED, u, order, target, x, z, 1, 0, false)
+      return false
+    }
+    rts__say(rts_st, RTS_F_ORDERED, u, order, target, x, z, 0, 1, false)
+    return true
+  }
+  if u.on > 0 and u.phase == 2 { rts__say(rts_st, RTS_F_DISENGAGED, u, u.oo[0], u.ot[0], u.ox[0], u.oz[0], RTS_R_REPLACED, 0, false) }
+  u.on = 0
+  u.phase = 0
+  u.leg = 0
+  rts__push(u, order, target, x, z, 0, fx, fz)
+  rts__say(rts_st, RTS_F_ORDERED, u, order, target, x, z, 0, 0, false)
+  return true
+}
+
+# give the player's selection an order, into the units it reaches (their own, and which take it):
+# how many it went to. A group with an order that is `formed` is spread in the player's formation
+# round the point and turned the way it is going
+export function rts_order(rts_st: mut RtsState, player: int, order: int, x: float, z: float, target: int, queue: bool) -> int {
+  if not rts__pl(player) or order < 0 or order >= RTSO_COUNT { return 0 }
+  var n = 0
+  var sx = 0.0
+  var sz = 0.0
+  var maxr = 0.0
+  for i in 0 .. rts_st.sel_n[player] {
+    let id = rts_st.sel[player * RTS_SEL_MAX + i]
+    let u = rts__get(rts_st, id)
+    if u == null or u.owner != player or not rts__takes(u, order) { continue }
+    rts_st.pick[n] = id
+    n += 1
+    sx += RtsWorld.pos_x(id)
+    sz += RtsWorld.pos_z(id)
+    maxr = Math.max(maxr, RtsKinds[u.kind].radius)
+  }
+  if n == 0 { return 0 }
+  let o = RtsOrders[order]
+  var spread = false
+  if n > 1 and o.formed and target < 0 and rts_st.form[player] >= 0 {
+    spread = true
+    sx = sx / float(n)
+    sz = sz / float(n)
+    rts__slots(rts_st, rts_st.form[player], n, x, z, x - sx, z - sz, maxr)
+    rts__assign(rts_st, n)
+  }
+  for i in 0 .. n {
+    if spread { rts_order_unit(rts_st, rts_st.pick[i], order, rts_st.out_x[i], rts_st.out_z[i], target, queue) }
+    else { rts_order_unit(rts_st, rts_st.pick[i], order, x, z, target, queue) }
+  }
+  return n
+}
+
+# the first order row of a mode (RTS_M_*), for a game that wants "stop" or "move" without knowing the
+# row's name: -1 when there is none
+export function rts_order_of_mode(mode: int) -> int { return rts__order_of_mode(mode) }
+
+# the game says the head order's work is done (the load is full, the building is up, the target died
+# in its own rules): the order ends and the next begins. False when it is not working
+export function rts_finish(rts_st: mut RtsState, unit: int) -> bool {
+  let u = rts__get(rts_st, unit)
+  if u == null or u.on == 0 or u.phase != 2 { return false }
+  rts__say(rts_st, RTS_F_DISENGAGED, u, u.oo[0], u.ot[0], u.ox[0], u.oz[0], RTS_R_FINISHED, 0, u.oa[0] != 0)
+  rts__done(rts_st, u)
+  return true
+}
+
+# `by` hurt the unit: a stance that retaliates answers it, if the unit is not busy with orders
+export function rts_attacked(rts_st: mut RtsState, unit: int, by: int) -> bool {
+  let u = rts__get(rts_st, unit)
+  if u == null or not RtsStances[u.stance].retaliate or u.on > 0 or not RtsWorld.alive(by) { return false }
+  if not u.anchored {
+    u.ax = RtsWorld.pos_x(u.id)
+    u.az = RtsWorld.pos_z(u.id)
+    u.anchored = true
+  }
+  return rts__auto(rts_st, u, by, false)
+}

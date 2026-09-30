@@ -1,0 +1,180 @@
+# select.ludic - a selection per player, and ten control groups each. A selection is a list of the
+# game's unit ids, kept in the order they were added; a unit also carries a bit per player that has
+# it selected, so "is it selected" is one test
+
+function rts__bit(player: int) -> int { return 1 << player }
+
+function rts__pl(player: int) -> bool { return player >= 0 and player < RTS_PLAYERS }
+
+export function rts_selected_count(rts_st: RtsState, player: int) -> int {
+  if not rts__pl(player) { return 0 }
+  return rts_st.sel_n[player]
+}
+
+# the i-th selected unit's id, -1 none
+export function rts_selected(rts_st: RtsState, player: int, i: int) -> int {
+  if not rts__pl(player) or i < 0 or i >= rts_st.sel_n[player] { return -1 }
+  return rts_st.sel[player * RTS_SEL_MAX + i]
+}
+
+export function rts_is_selected(rts_st: RtsState, player: int, unit: int) -> bool {
+  let u = rts__get(rts_st, unit)
+  if u == null or not rts__pl(player) { return false }
+  return (u.sel & rts__bit(player)) != 0
+}
+
+export function rts_select_clear(rts_st: mut RtsState, player: int) -> void {
+  if not rts__pl(player) { return }
+  for i in 0 .. rts_st.sel_n[player] {
+    let u = rts__get(rts_st, rts_st.sel[player * RTS_SEL_MAX + i])
+    if u != null and (u.sel & rts__bit(player)) != 0 { u.sel -= rts__bit(player) }
+  }
+  rts_st.sel_n[player] = 0
+}
+
+# add a unit to the selection (`add` false: it becomes the whole of it). False when the unit is not
+# there or the selection is full
+export function rts_select(rts_st: mut RtsState, player: int, unit: int, add: bool) -> bool {
+  let u = rts__get(rts_st, unit)
+  if u == null or not rts__pl(player) { return false }
+  if not add { rts_select_clear(rts_st, player) }
+  if (u.sel & rts__bit(player)) != 0 { return true }
+  if rts_st.sel_n[player] >= RTS_SEL_MAX { return false }
+  rts_st.sel[player * RTS_SEL_MAX + rts_st.sel_n[player]] = unit
+  rts_st.sel_n[player] += 1
+  u.sel = u.sel | rts__bit(player)
+  return true
+}
+
+export function rts_deselect(rts_st: mut RtsState, player: int, unit: int) -> bool {
+  let u = rts__get(rts_st, unit)
+  if u == null or not rts__pl(player) or (u.sel & rts__bit(player)) == 0 { return false }
+  u.sel -= rts__bit(player)
+  let base = player * RTS_SEL_MAX
+  var k = 0
+  while k < rts_st.sel_n[player] {
+    if rts_st.sel[base + k] == unit {
+      rts_st.sel_n[player] -= 1
+      rts_st.sel[base + k] = rts_st.sel[base + rts_st.sel_n[player]]
+      rts_st.sel[base + rts_st.sel_n[player]] = -1
+    } else {
+      k += 1
+    }
+  }
+  return true
+}
+
+# shift-click: out if in, in if out
+export function rts_toggle(rts_st: mut RtsState, player: int, unit: int) -> bool {
+  if rts_is_selected(rts_st, player, unit) { return rts_deselect(rts_st, player, unit) }
+  return rts_select(rts_st, player, unit, true)
+}
+
+# a drag box, corners in either order, over the player's own units by the world's positions:
+# how many are selected after. `kind` >= 0 takes only that kind (a double click: all of a kind on screen)
+export function rts_select_box(rts_st: mut RtsState, player: int, x0: float, z0: float, x1: float, z1: float, add: bool, kind: int) -> int {
+  if not rts__pl(player) { return 0 }
+  if not add { rts_select_clear(rts_st, player) }
+  let lx = Math.min(x0, x1)
+  let hx = Math.max(x0, x1)
+  let lz = Math.min(z0, z1)
+  let hz = Math.max(z0, z1)
+  for i in 0 .. tb_len(rts_st.units) {
+    let u = tb_rec(rts_st.units, i)
+    if u.owner != player or (kind >= 0 and u.kind != kind) { continue }
+    let x = RtsWorld.pos_x(u.id)
+    let z = RtsWorld.pos_z(u.id)
+    if x >= lx and x <= hx and z >= lz and z <= hz { rts_select(rts_st, player, u.id, true) }
+  }
+  return rts_st.sel_n[player]
+}
+
+# a click: the nearest unit within `r` of the point, the player's own before anyone else's (whose
+# is selected alone, to look at); its id, or -1
+export function rts_select_at(rts_st: mut RtsState, player: int, x: float, z: float, r: float, add: bool) -> int {
+  var best = -1
+  var bd = 0.0
+  var mine = false
+  for i in 0 .. tb_len(rts_st.units) {
+    let u = tb_rec(rts_st.units, i)
+    let d = rts__dist(x, z, RtsWorld.pos_x(u.id), RtsWorld.pos_z(u.id))
+    if d > r + RtsKinds[u.kind].radius { continue }
+    let own = u.owner == player
+    if best < 0 or (own and not mine) or (own == mine and d < bd) {
+      best = u.id
+      bd = d
+      mine = own
+    }
+  }
+  if best < 0 { return -1 }
+  if mine { rts_select(rts_st, player, best, add) } else { rts_select(rts_st, player, best, false) }
+  return best
+}
+
+export function rts_group_count(rts_st: RtsState, player: int, g: int) -> int {
+  if not rts__pl(player) or g < 0 or g >= RTS_GROUPS { return 0 }
+  return rts_st.grp_n[player * RTS_GROUPS + g]
+}
+
+export function rts_group_unit(rts_st: RtsState, player: int, g: int, i: int) -> int {
+  if i < 0 or i >= rts_group_count(rts_st, player, g) { return -1 }
+  return rts_st.grp[(player * RTS_GROUPS + g) * RTS_SEL_MAX + i]
+}
+
+# control group `g` becomes the selection
+export function rts_group_set(rts_st: mut RtsState, player: int, g: int) -> int {
+  if not rts__pl(player) or g < 0 or g >= RTS_GROUPS { return 0 }
+  let gi = player * RTS_GROUPS + g
+  rts_st.grp_n[gi] = 0
+  for i in 0 .. rts_st.sel_n[player] {
+    rts_st.grp[gi * RTS_SEL_MAX + i] = rts_st.sel[player * RTS_SEL_MAX + i]
+    rts_st.grp_n[gi] += 1
+  }
+  return rts_st.grp_n[gi]
+}
+
+# the selection joins group `g` (a unit that is in it already is not added twice)
+export function rts_group_add(rts_st: mut RtsState, player: int, g: int) -> int {
+  if not rts__pl(player) or g < 0 or g >= RTS_GROUPS { return 0 }
+  let gi = player * RTS_GROUPS + g
+  for i in 0 .. rts_st.sel_n[player] {
+    let id = rts_st.sel[player * RTS_SEL_MAX + i]
+    var have = false
+    for k in 0 .. rts_st.grp_n[gi] { if rts_st.grp[gi * RTS_SEL_MAX + k] == id { have = true } }
+    if not have and rts_st.grp_n[gi] < RTS_SEL_MAX {
+      rts_st.grp[gi * RTS_SEL_MAX + rts_st.grp_n[gi]] = id
+      rts_st.grp_n[gi] += 1
+    }
+  }
+  return rts_st.grp_n[gi]
+}
+
+# the group is selected (`add`: on top of what is). How many are selected after
+export function rts_group_recall(rts_st: mut RtsState, player: int, g: int, add: bool) -> int {
+  if not rts__pl(player) or g < 0 or g >= RTS_GROUPS { return 0 }
+  if not add { rts_select_clear(rts_st, player) }
+  let gi = player * RTS_GROUPS + g
+  for i in 0 .. rts_st.grp_n[gi] { rts_select(rts_st, player, rts_st.grp[gi * RTS_SEL_MAX + i], true) }
+  return rts_st.sel_n[player]
+}
+
+export function rts_group_clear(rts_st: mut RtsState, player: int, g: int) -> void {
+  if not rts__pl(player) or g < 0 or g >= RTS_GROUPS { return }
+  rts_st.grp_n[player * RTS_GROUPS + g] = 0
+}
+
+# a unit leaves every selection and group
+function rts__forget(rts_st: mut RtsState, unit: int) -> void {
+  for p in 0 .. RTS_PLAYERS { rts_deselect(rts_st, p, unit) }
+  for gi in 0 .. RTS_PLAYERS * RTS_GROUPS {
+    var k = 0
+    while k < rts_st.grp_n[gi] {
+      if rts_st.grp[gi * RTS_SEL_MAX + k] == unit {
+        rts_st.grp_n[gi] -= 1
+        for j in k .. rts_st.grp_n[gi] { rts_st.grp[gi * RTS_SEL_MAX + j] = rts_st.grp[gi * RTS_SEL_MAX + j + 1] }
+      } else {
+        k += 1
+      }
+    }
+  }
+}

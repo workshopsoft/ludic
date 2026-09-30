@@ -1,0 +1,96 @@
+# state.ludic - the units under command, each with an order queue; the selection and control groups
+# of every player; the facts. Orders are four lists side by side in a unit, made once with it
+export property RtsUnit {
+  id: int = -1                 # the game's own id for it
+  kind: int = 0
+  owner: int = 0
+  stance: int = 0
+  sel: int = 0                 # a bit for each player that has it selected
+  on: int = 0                  # orders in the queue, the head first
+  oo: []int = null             # each one's order (a row of RtsOrders)
+  ot: []int = null             # its target
+  ox: []float = null           # where
+  oz: []float = null
+  oa: []int = null             # 1 when its stance gave it, not the player
+  o2x: []float = null          # where the unit was when the order was given: a patrol's other end
+  o2z: []float = null
+  phase: int = 0               # the head's: 0 to begin, 1 on its way, 2 in reach
+  timer: float = 0.0           # seconds since it last asked for a path to a moving target
+  scan: float = 0.0            # seconds until an idle unit looks for an enemy again
+  ax: float = 0.0              # where it stood when it was last idle
+  az: float = 0.0
+  anchored: bool = false
+  leg: int = 0                 # a patrol's: 0 to its point, 1 back
+  leash: float = 0.0           # how far from its anchor a stance's order may follow
+}
+
+export state RtsState {
+  units: Table<RtsUnit> = rts__units_new()
+  by_id: IntMap = imap_new()                        # the game's id to the unit's handle
+  sel: []int = rts__ints(RTS_PLAYERS * RTS_SEL_MAX, -1)        # each player's selection, unit ids
+  sel_n: []int = rts__ints(RTS_PLAYERS, 0)
+  grp: []int = rts__ints(RTS_PLAYERS * RTS_GROUPS * RTS_SEL_MAX, -1)   # control groups, unit ids
+  grp_n: []int = rts__ints(RTS_PLAYERS * RTS_GROUPS, 0)
+  form: []int = rts__ints(RTS_PLAYERS, 0)                      # each player's formation (a row of RtsFormations, -1 none)
+  slot_x: []float = rts__floats(RTS_SEL_MAX)                   # the slots a formation made
+  slot_z: []float = rts__floats(RTS_SEL_MAX)
+  slot_used: []int = rts__ints(RTS_SEL_MAX, 0)
+  out_x: []float = rts__floats(RTS_SEL_MAX)                    # where each picked unit goes
+  out_z: []float = rts__floats(RTS_SEL_MAX)
+  pick: []int = rts__ints(RTS_SEL_MAX, -1)                     # the units an order goes to
+  dead: []int = new []int
+  facts: Queue<RtsFact> = rts__facts_new()
+}
+
+function rts__units_new() -> Table<RtsUnit> { return table_new(0, 0) }
+function rts__facts_new() -> Queue<RtsFact> { return queue_new("rts.facts") }
+
+@alloc_ok("made with the state: its lists")
+function rts__ints(n: int, v: int) -> []int {
+  let out = new []int
+  for i in 0 .. n { push(out, v) }
+  return out
+}
+@alloc_ok("made with the state: its lists")
+function rts__floats(n: int) -> []float {
+  let out = new []float
+  for i in 0 .. n { push(out, 0.0) }
+  return out
+}
+
+export function rts_facts(rts_st: RtsState) -> Queue<RtsFact> { return rts_st.facts }
+
+function rts__say(r: RtsState, what: int, u: RtsUnit, order: int, target: int, x: float, z: float, reason: int, n: int, auto: bool) -> void {
+  var f = q_rec(r.facts)
+  if f == null {
+    @alloc_ok("past the ring: more facts in a frame than its records, then kept in it")
+    f = new RtsFact
+    q_ring_add(r.facts, f)
+  }
+  f.what = what
+  f.unit = u.id
+  f.order = order
+  f.mode = -1
+  if order >= 0 and order < RTSO_COUNT { f.mode = RtsOrders[order].mode }
+  f.target = target
+  f.x = x
+  f.z = z
+  f.reason = reason
+  f.n = n
+  f.auto = auto
+  q_push(r.facts, f)
+}
+
+function rts__get(r: RtsState, id: int) -> RtsUnit {
+  let h = imap_get(r.by_id, id, -1)
+  if h < 0 { return null }
+  let row = tb_row(r.units, h)
+  if row < 0 { return null }
+  return tb_rec(r.units, row)
+}
+
+function rts__dist(ax: float, az: float, bx: float, bz: float) -> float {
+  let dx = ax - bx
+  let dz = az - bz
+  return Math.sqrt(dx * dx + dz * dz)
+}

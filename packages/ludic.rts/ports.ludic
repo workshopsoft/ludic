@@ -1,0 +1,29 @@
+# ports.ludic - what rts asks the world. Positions are required; nothing can be near anything
+# without them. Unbound, every unit is alive and walks there at once, there is no enemy, and
+# "in reach" is a distance from the positions
+export port RtsWorld {
+  pos_x: fn(int) -> float                                   # a unit's, a target's place
+  pos_z: fn(int) -> float
+  alive: fn(int) -> bool = fn rts__alive_of                 # a unit or target that is still there
+  radius: fn(int) -> float = fn rts__no_radius              # a target's size: a building, a mine
+  move_to: fn(int, float, float) -> bool = fn rts__walks    # begin a path; false: there is none
+  stop: fn(int) -> void = fn rts__nop_of                    # stop walking
+  arrived: fn(int) -> bool = fn rts__there                  # has it finished the path it was given
+  in_reach: fn(int, int, float) -> bool = fn rts__near_by   # (unit, target, reach): near enough to act on it
+  find_enemy: fn(int, float) -> int = fn rts__nobody        # (unit, radius): the target it would pick, -1 none
+}
+
+function rts__alive_of(unit: int) -> bool { return true }
+function rts__no_radius(unit: int) -> float { return 0.0 }
+function rts__walks(unit: int, x: float, z: float) -> bool { return true }
+function rts__nop_of(unit: int) -> void { }
+function rts__there(unit: int) -> bool { return true }
+function rts__nobody(unit: int, r: float) -> int { return -1 }
+
+# the edges are in reach when the distance between centres, less the target's size, is
+function rts__near_by(unit: int, target: int, reach: float) -> bool {
+  let dx = RtsWorld.pos_x(unit) - RtsWorld.pos_x(target)
+  let dz = RtsWorld.pos_z(unit) - RtsWorld.pos_z(target)
+  let r = reach + RtsWorld.radius(target)
+  return dx * dx + dz * dz <= r * r
+}

@@ -1,0 +1,6 @@
+# stances.lres - the package's own stances, first in RtsStances. `answer` and `back` name orders of
+# orders.lres
+aggressive { acquire: 14.0, chase: 24.0, retaliate: true, home: true, answer: RTSO_ATTACK, back: RTSO_MOVE }
+defensive { acquire: 9.0, chase: 12.0, retaliate: true, home: true, answer: RTSO_ATTACK, back: RTSO_MOVE }
+stand_ground { use_range: true, chase: 0.0, retaliate: true, answer: RTSO_ATTACK, back: RTSO_MOVE }
+passive { answer: RTSO_ATTACK, back: RTSO_MOVE }

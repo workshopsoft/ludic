@@ -1,0 +1,6 @@
+# ludic.rts - selecting units, control groups, orders as a queue per unit (move, attack, gather,
+# build, patrol, stop, hold as data), formations, stances. Orders are carried out by asking the world
+# through ports and saying what happened as facts. Uses ludic.base and nothing else. See README.md.
+package "ludic.rts"
+version "0.1.0"
+kind source

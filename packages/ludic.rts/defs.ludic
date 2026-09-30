@@ -1,0 +1,101 @@
+# defs.ludic - the tables a game fills (kinds of unit, and more orders, stances and formations than
+# the package's own), the modes an order runs in, and the facts. All are open registries saved by
+# index: a game that saves appends.
+export const RTS_PLAYERS: int = 8          # players with a selection and control groups
+export const RTS_GROUPS: int = 10          # control groups a player has
+export const RTS_SEL_MAX: int = 256        # units in a selection or a group
+export const RTS_QUEUE_MAX: int = 16       # orders a unit keeps
+
+# what an order does, which is all the logic knows about it
+export const RTS_M_POINT: int = 0          # go to a place; done on arriving
+export const RTS_M_CHASE: int = 1          # follow a target into reach, engage it; done when it is gone
+export const RTS_M_WORK: int = 2           # go to a target's reach, work it until the game says it is finished
+export const RTS_M_PATROL: int = 3         # go between here and a place, for good
+export const RTS_M_STOP: int = 4           # clear the queue and stand
+export const RTS_M_HOLD: int = 5           # stand where it is, and engage only what comes in reach
+
+# a kind of order. The package has move, attack-move, attack, gather, build, patrol, stop and hold;
+# a game adds (repair, garrison, convert)
+export property RtsOrder {
+  key: string = ""
+  @OneOf(RTS_M_POINT, RTS_M_CHASE, RTS_M_WORK, RTS_M_PATROL, RTS_M_STOP, RTS_M_HOLD) mode: int = 0
+  engage: bool = false                    # on its way it answers an enemy as its stance says (attack-move, patrol)
+  formed: bool = false                    # a group given it goes in the player's formation
+  queueable: bool = true                  # shift adds it to the queue; false always replaces it
+  @Range(0, 1000) @Unit("m") range: float = 0.0    # how near a target it must be (0: the unit's own reach)
+  @Range(0, 100) @Unit("s") repath: float = 1.0    # asks the world for a new path to a moving target this often
+}
+export open registry RtsOrders of RtsOrder as RTSO
+
+# what an idle unit does when an enemy is near
+export property RtsStance {
+  key: string = ""
+  @Range(0, 1000) @Unit("m") acquire: float = 0.0  # looks this far for an enemy (0: does not look)
+  use_range: bool = false                          # looks only as far as it can reach
+  @Range(0, 1000) @Unit("m") chase: float = 0.0    # follows one this far from where it stood (0: not at all)
+  retaliate: bool = false                          # answers the one that hurt it
+  home: bool = false                               # goes back to where it stood afterwards
+  @Ref(RtsOrders) answer: int = 0                  # the order it answers with
+  @Ref(RtsOrders) back: int = 0                    # the order it goes home with
+}
+export open registry RtsStances of RtsStance as RTSS
+
+export const RTS_S_GRID: int = 0           # rows of `cols`, the front row first
+export const RTS_S_WEDGE: int = 1          # a point in front, a row wider each row back
+export const RTS_S_RING: int = 2           # rings round the point
+
+# how a group spreads over a place. `gap` is the space between units on top of their sizes
+export property RtsFormation {
+  key: string = ""
+  @OneOf(RTS_S_GRID, RTS_S_WEDGE, RTS_S_RING) shape: int = 0
+  @Range(0, 256) cols: int = 0             # a grid's width in units (0: as square as it comes)
+  @Range(0, 100) @Unit("m") gap: float = 0.5
+  @Range(0, 1) stagger: float = 0.0        # every other row sits this far of a spacing to the side
+  facing: bool = true                      # turned to face the way it moves
+  spread: bool = true                      # false: everyone goes to the point itself and the world sorts them out
+  offx: []float = null                     # explicit slots, right of centre ...
+  offz: []float = null                     # ... and in front of it, side by side; the rest follow behind
+}
+export open registry RtsFormations of RtsFormation as RTSF
+
+# a kind of unit
+export property RtsKind {
+  key: string = ""
+  @Range(0, 1000) @Unit("m") reach: float = 1.5     # how near a target it must be to engage or work it
+  @Range(0, 100) @Unit("m") radius: float = 0.5     # its size, for spacing in a formation
+  @Ref(RtsStances) stance: int = 0                   # the stance it is made with
+  @Ref(RtsOrders) orders: []int = null              # the orders it takes (empty: all); stop is always taken
+}
+export open registry RtsKinds of RtsKind as RTSK
+
+export const RTS_F_ORDERED: int = 0        # an order was given (`n`: 1 when queued behind others)
+export const RTS_F_AUTO: int = 1           # its stance gave it one
+export const RTS_F_ARRIVED: int = 2        # a move or a leg got there
+export const RTS_F_ENGAGED: int = 3        # in reach of its target: attack it, gather from it, build it
+export const RTS_F_DISENGAGED: int = 4     # no longer in reach, or the order ended (`reason`)
+export const RTS_F_LOST_TARGET: int = 5    # the target is gone
+export const RTS_F_BLOCKED: int = 6        # the world found no way
+export const RTS_F_STOPPED: int = 7
+export const RTS_F_IDLED: int = 8          # the queue ran out
+export const RTS_F_GONE: int = 9           # the unit was lost
+export const RTS_F_REFUSED: int = 10       # the unit does not take the order, or its queue is full
+
+export const RTS_R_TARGET_GONE: int = 0
+export const RTS_R_OUT_OF_REACH: int = 1   # the target moved away
+export const RTS_R_FINISHED: int = 2       # the game said the work is done
+export const RTS_R_REPLACED: int = 3       # another order took its place
+export const RTS_R_LEASH: int = 4          # it followed an enemy as far as its stance allows
+
+# `order` is a row of RtsOrders; `x`, `z` and `target` are what it was given
+export property RtsFact {
+  what: int = 0
+  unit: int = -1
+  order: int = -1
+  mode: int = 0
+  target: int = -1
+  x: float = 0.0
+  z: float = 0.0
+  reason: int = 0
+  n: int = 0
+  auto: bool = false        # the stance's own, not the player's
+}

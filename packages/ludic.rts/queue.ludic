@@ -1,0 +1,93 @@
+# queue.ludic - a unit's order queue: adding to the back or the front, taking the head off, clearing,
+# and whether a unit takes an order at all
+
+function rts__takes(u: RtsUnit, order: int) -> bool {
+  if order < 0 or order >= RTSO_COUNT { return false }
+  if RtsOrders[order].mode == RTS_M_STOP { return true }
+  let ok = RtsKinds[u.kind].orders
+  if ok == null or len(ok) == 0 { return true }
+  for i in 0 .. len(ok) { if ok[i] == order { return true } }
+  return false
+}
+
+# the first order whose mode is this, or -1
+function rts__order_of_mode(mode: int) -> int {
+  for i in 0 .. RTSO_COUNT { if RtsOrders[i].mode == mode { return i } }
+  return -1
+}
+
+function rts__push(u: RtsUnit, order: int, target: int, x: float, z: float, auto: int, fx: float, fz: float) -> bool {
+  if u.on >= RTS_QUEUE_MAX { return false }
+  u.oo[u.on] = order
+  u.ot[u.on] = target
+  u.ox[u.on] = x
+  u.oz[u.on] = z
+  u.oa[u.on] = auto
+  u.o2x[u.on] = fx
+  u.o2z[u.on] = fz
+  u.on += 1
+  return true
+}
+
+# in front of the rest, which move back (the last one falls off a full queue)
+function rts__push_front(u: RtsUnit, order: int, target: int, x: float, z: float, auto: int, fx: float, fz: float) -> void {
+  var k = Math.min(u.on, RTS_QUEUE_MAX - 1)
+  while k > 0 {
+    u.oo[k] = u.oo[k - 1]
+    u.ot[k] = u.ot[k - 1]
+    u.ox[k] = u.ox[k - 1]
+    u.oz[k] = u.oz[k - 1]
+    u.oa[k] = u.oa[k - 1]
+    k -= 1
+  }
+  u.oo[0] = order
+  u.ot[0] = target
+  u.ox[0] = x
+  u.oz[0] = z
+  u.oa[0] = auto
+  u.o2x[0] = fx
+  u.o2z[0] = fz
+  u.on = Math.min(u.on + 1, RTS_QUEUE_MAX)
+  u.phase = 0
+}
+
+# the head is done: the rest move up and the next one begins
+function rts__pop(u: RtsUnit) -> void {
+  if u.on == 0 { return }
+  for k in 1 .. u.on {
+    u.oo[k - 1] = u.oo[k]
+    u.ot[k - 1] = u.ot[k]
+    u.ox[k - 1] = u.ox[k]
+    u.oz[k - 1] = u.oz[k]
+    u.oa[k - 1] = u.oa[k]
+    u.o2x[k - 1] = u.o2x[k]
+    u.o2z[k - 1] = u.o2z[k]
+  }
+  u.on -= 1
+  u.phase = 0
+  u.leg = 0
+  u.timer = 0.0
+}
+
+# every order the stance gave comes off the queue, the player's stay
+function rts__drop_autos(u: RtsUnit) -> void {
+  var k = 0
+  var w = 0
+  while k < u.on {
+    if u.oa[k] == 0 {
+      if w != k {
+        u.oo[w] = u.oo[k]
+        u.ot[w] = u.ot[k]
+        u.ox[w] = u.ox[k]
+        u.oz[w] = u.oz[k]
+        u.oa[w] = 0
+        u.o2x[w] = u.o2x[k]
+        u.o2z[w] = u.o2z[k]
+      }
+      w += 1
+    }
+    k += 1
+  }
+  if w != u.on { u.phase = 0 }
+  u.on = w
+}

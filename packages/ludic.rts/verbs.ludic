@@ -1,0 +1,125 @@
+# verbs.ludic - the units under command: putting them in and taking them out, their stance, and
+# what they are doing. A unit is the game's own id
+
+# a unit to command, of a kind (RTSK_*), a player's. False when it already is one or the owner is not a player
+export function rts_add_unit(rts_st: mut RtsState, unit: int, kind: int, owner: int) -> bool {
+  if kind < 0 or kind >= RTSK_COUNT or not rts__pl(owner) or imap_get(rts_st.by_id, unit, -1) >= 0 { return false }
+  let u = new RtsUnit
+  u.id = unit
+  u.kind = kind
+  u.owner = owner
+  u.stance = RtsKinds[kind].stance
+  u.oo = rts__ints(RTS_QUEUE_MAX, -1)
+  u.ot = rts__ints(RTS_QUEUE_MAX, -1)
+  u.ox = rts__floats(RTS_QUEUE_MAX)
+  u.oz = rts__floats(RTS_QUEUE_MAX)
+  u.oa = rts__ints(RTS_QUEUE_MAX, 0)
+  u.o2x = rts__floats(RTS_QUEUE_MAX)
+  u.o2z = rts__floats(RTS_QUEUE_MAX)
+  u.scan = float(unit % 5) * 0.1
+  imap_put(rts_st.by_id, unit, tb_add(rts_st.units, u))
+  return true
+}
+
+function rts__remove(r: mut RtsState, unit: int, lost: bool) -> bool {
+  let u = rts__get(r, unit)
+  if u == null { return false }
+  if lost { rts__say(r, RTS_F_GONE, u, -1, -1, 0.0, 0.0, 0, 0, false) }
+  rts__forget(r, unit)
+  let h = imap_get(r.by_id, unit, -1)
+  imap_del(r.by_id, unit)
+  return tb_remove(r.units, h)
+}
+
+# a unit leaves command (the game despawned it); a unit that is not alive is taken out by the tick
+export function rts_remove_unit(rts_st: mut RtsState, unit: int) -> bool { return rts__remove(rts_st, unit, false) }
+
+export function rts_is_unit(rts_st: RtsState, unit: int) -> bool { return imap_get(rts_st.by_id, unit, -1) >= 0 }
+
+export function rts_set_stance(rts_st: mut RtsState, unit: int, stance: int) -> bool {
+  let u = rts__get(rts_st, unit)
+  if u == null or stance < 0 or stance >= RTSS_COUNT { return false }
+  u.stance = stance
+  return true
+}
+
+export function rts_stance(rts_st: RtsState, unit: int) -> int {
+  let u = rts__get(rts_st, unit)
+  if u == null { return -1 }
+  return u.stance
+}
+
+# the stance of the player's whole selection
+export function rts_set_stance_all(rts_st: mut RtsState, player: int, stance: int) -> int {
+  var n = 0
+  for i in 0 .. rts_selected_count(rts_st, player) {
+    let id = rts_selected(rts_st, player, i)
+    let u = rts__get(rts_st, id)
+    if u != null and u.owner == player and rts_set_stance(rts_st, id, stance) { n += 1 }
+  }
+  return n
+}
+
+export function rts_kind_of(rts_st: RtsState, unit: int) -> int {
+  let u = rts__get(rts_st, unit)
+  if u == null { return -1 }
+  return u.kind
+}
+
+export function rts_owner_of(rts_st: RtsState, unit: int) -> int {
+  let u = rts__get(rts_st, unit)
+  if u == null { return -1 }
+  return u.owner
+}
+
+export function rts_units(rts_st: RtsState) -> int { return tb_len(rts_st.units) }
+
+# the id of the i-th unit, for a sweep
+export function rts_unit_at(rts_st: RtsState, i: int) -> int {
+  if i < 0 or i >= tb_len(rts_st.units) { return -1 }
+  return tb_rec(rts_st.units, i).id
+}
+
+# orders in the queue, the one under way first
+export function rts_orders_count(rts_st: RtsState, unit: int) -> int {
+  let u = rts__get(rts_st, unit)
+  if u == null { return 0 }
+  return u.on
+}
+
+export function rts_idle(rts_st: RtsState, unit: int) -> bool { return rts_orders_count(rts_st, unit) == 0 }
+
+# the row of RtsOrders of the i-th order, its target, its place; -1 / 0 when there is none
+export function rts_order_at(rts_st: RtsState, unit: int, i: int) -> int {
+  let u = rts__get(rts_st, unit)
+  if u == null or i < 0 or i >= u.on { return -1 }
+  return u.oo[i]
+}
+export function rts_target_at(rts_st: RtsState, unit: int, i: int) -> int {
+  let u = rts__get(rts_st, unit)
+  if u == null or i < 0 or i >= u.on { return -1 }
+  return u.ot[i]
+}
+export function rts_x_at(rts_st: RtsState, unit: int, i: int) -> float {
+  let u = rts__get(rts_st, unit)
+  if u == null or i < 0 or i >= u.on { return 0.0 }
+  return u.ox[i]
+}
+export function rts_z_at(rts_st: RtsState, unit: int, i: int) -> float {
+  let u = rts__get(rts_st, unit)
+  if u == null or i < 0 or i >= u.on { return 0.0 }
+  return u.oz[i]
+}
+
+# in reach of its target and working it now
+export function rts_working(rts_st: RtsState, unit: int) -> bool {
+  let u = rts__get(rts_st, unit)
+  return u != null and u.on > 0 and u.phase == 2
+}
+
+# the row of the head order, -1 none; and whether the stance, not the player, gave it
+export function rts_head_order(rts_st: RtsState, unit: int) -> int { return rts_order_at(rts_st, unit, 0) }
+export function rts_head_auto(rts_st: RtsState, unit: int) -> bool {
+  let u = rts__get(rts_st, unit)
+  return u != null and u.on > 0 and u.oa[0] != 0
+}

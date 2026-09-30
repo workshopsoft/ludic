@@ -1,0 +1,13 @@
+# system.ludic - rts as a system: every unit carries out its orders
+export function rts_reset(rts_st: mut RtsState) -> void { rts__clear(rts_st) }
+
+export function rts_tick(rts_st: mut RtsState, t: Tick) -> void { rts__tick(rts_st, t.dt) }
+
+export function rts_system() -> System {
+  let s = system_new("rts", PH_SIMULATE)
+  s.reset = fn rts_reset
+  s.tick = fn rts_tick
+  s.save = fn rts__save
+  s.load = fn rts__load
+  return s
+}

@@ -1,0 +1,9 @@
+# formations.lres - the package's own, first in RtsFormations. A game adds its own (a phalanx, a
+# skirmish line)
+box { shape: RTS_S_GRID, cols: 0, gap: 0.6 }
+line { shape: RTS_S_GRID, cols: 24, gap: 0.6 }
+column { shape: RTS_S_GRID, cols: 2, gap: 0.6 }
+staggered { shape: RTS_S_GRID, cols: 0, gap: 0.6, stagger: 0.5 }
+wedge { shape: RTS_S_WEDGE, gap: 0.6 }
+ring { shape: RTS_S_RING, gap: 0.6 }
+free { spread: false, facing: false }
