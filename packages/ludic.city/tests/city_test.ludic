@@ -32,8 +32,8 @@ program CityTest {
     expect_eq(ZR_DOWNTOWN, 0)
     expect_eq(ZR_PARK, 4)
     expect_eq(ZoningRules[ZR_INDUSTRIAL].m2_per_job, 60)
-    expect_eq(BK_COUNT, 3)
-    expect_eq(BuildingKits[BK_SHOP].floors, 3)
+    expect_eq(CKIT_COUNT, 3)
+    expect_eq(BuildingKits[CKIT_SHOP].floors, 3)
     expect_eq(BG_COUNT, 2)
     expect_eq(len(BuildingGenerators[BG_MIDRISE_BLOCK].params), 4)
     expect_eq(BuildingGenerators[BG_MIDRISE_BLOCK].params[2].choices[1], "glass")
@@ -150,7 +150,7 @@ program CityTest {
     expect_eq(city_cell_in(city_st, bl, "metro", 0, 0), 12)
     let c = city_cell_of(city_st, 0, 0)
     let tower = city_building(city_st, bl, c, 0)
-    expect_eq(city_kit_of(tower), BK_TOWER)
+    expect_eq(city_kit_of(tower), CKIT_TOWER)
     expect(near(city_height(tower), 42.0))                   # twelve floors of 3.5 m
     expect_eq(city_interior_class(tower), 2)
     expect_eq(tower.interior_map, "tower_interior")
@@ -242,7 +242,7 @@ program CityTest {
     expect_eq(city_instances(city_st, bl, city_cell_of(city_st, 0, 0), out), 12)
     expect_eq(len(out.id), 12)
     expect_eq(out.id[0], "b0_0_00")
-    expect_eq(out.kit[0], BK_TOWER)
+    expect_eq(out.kit[0], CKIT_TOWER)
     expect_eq(out.model [0], "models/tower.glb")       # the kit's model stands in
     expect_eq(out.node[0], "Tower")
     expect(near(out.x[0], 30.0))

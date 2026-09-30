@@ -448,7 +448,7 @@ export function city_interior_class(b: CityBuilding) -> int {
 # the BuildingKits index a building is an instance of, -1 when it is not one
 export function city_kit_of(b: CityBuilding) -> int {
   if b.kit == "" { return -1 }
-  for k in 0 .. BK_COUNT { if BuildingKits[k].key == b.kit { return k } }
+  for k in 0 .. CKIT_COUNT { if BuildingKits[k].key == b.kit { return k } }
   return -1
 }
 
