@@ -1,0 +1,44 @@
+# ground_clear.ludic — the trample as data: clearings the game hands over (a camp's ring, a town's yard), each a
+# disc trodden to `floor` inside r_in and back to full at r_out on a smoothstep. A layer with `trample` multiplies
+# its chance by every clearing's; the editor draws the same discs, where it cannot see a callback.
+
+const GD_CLEAR_MAX: int = 32
+
+# no clearings (a map being opened, before the game hands its own)
+export function r3d_ground_clearings_reset(render3d_st: mut Render3dState) -> void { render3d_st.gd_clear_n = 0 }
+
+# a clearing at (x, z): false when GD_CLEAR_MAX are already held, or the disc is not r_in < r_out
+export function r3d_ground_clearing(render3d_st: mut Render3dState, x: float, z: float, r_in: float, r_out: float, floor: float) -> bool {
+  if render3d_st.gd_clear_n >= GD_CLEAR_MAX or not (r_in < r_out) { return false }
+  let o = render3d_st.gd_clear_n * 5
+  render3d_st.gd_clear[o] = x
+  render3d_st.gd_clear[o + 1] = z
+  render3d_st.gd_clear[o + 2] = r_in
+  render3d_st.gd_clear[o + 3] = r_out
+  render3d_st.gd_clear[o + 4] = Math.clamp(floor, 0.0, 1.0)
+  render3d_st.gd_clear_n += 1
+  return true
+}
+
+# one clearing's share at (x, z), 0..1: `floor` inside r_in, 1 past r_out
+export function gf_clear_one(cx: float, cz: float, r_in: float, r_out: float, floor: float, x: float, z: float) -> float {
+  let dx = x - cx
+  let dz = z - cz
+  let d2 = dx * dx + dz * dz
+  if d2 > r_out * r_out { return 1.0 }
+  let d = Math.sqrt(d2)
+  var t = Math.clamp((d - r_in) / (r_out - r_in), 0.0, 1.0)
+  t = t * t * (3.0 - 2.0 * t)
+  return floor + (1.0 - floor) * t
+}
+
+# every clearing's share at (x, z), multiplied in the order they were handed over
+export function ground_clear_at(render3d_st: Render3dState, x: float, z: float) -> float {
+  var k = 1.0
+  for c in 0 .. render3d_st.gd_clear_n {
+    let o = c * 5
+    let cl = render3d_st.gd_clear
+    k = k * gf_clear_one(cl[o], cl[o + 1], cl[o + 2], cl[o + 3], cl[o + 4], x, z)
+  }
+  return k
+}

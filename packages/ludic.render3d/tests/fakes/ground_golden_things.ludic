@@ -1,0 +1,65 @@
+# fakes/ground_golden_things.ludic - the golden's second half: the clearing, the layers' numbers and what each
+# grows in the chunk (a cover layer at GG_BAND, a solid layer at band 0 with what band 2 still draws)
+
+function gg_fill(g: GroundFill) -> string {
+  var s = `{{"layer": {g.layer}, "steps": [{gg_b(g.step0)}, {gg_b(g.step1)}, {gg_b(g.step2)}, {gg_b(g.step3)}], "jitter": {gg_b(g.jitter)}, `
+  s = s + `"scale_lo": {gg_b(g.scale_lo)}, "scale_hi": {gg_b(g.scale_hi)}, "wind_lo": {gg_b(g.wind_lo)}, "wind_hi": {gg_b(g.wind_hi)}, `
+  s = s + `"scale_var": {gg_b(g.scale_var)}, "band_grow": {gg_b(g.band_grow)}, "sink": {gg_b(g.sink)}, "trample": {g.trample}, "solid": {g.solid}}}`
+  return s
+}
+
+function gg_clearings(render3d_st: Render3dState) -> string {
+  var s = "  \"clearings_rule\": \"floor + (1 - floor) * smoothstep((d - r_in) / (r_out - r_in)), 1 past r_out\",\n  \"clearings\": ["
+  for c in 0 .. render3d_st.gd_clear_n {
+    let o = c * 5
+    let cl = render3d_st.gd_clear
+    if c > 0 { s = s + ", " }
+    s = s + `[{gg_b(cl[o])}, {gg_b(cl[o + 1])}, {gg_b(cl[o + 2])}, {gg_b(cl[o + 3])}, {gg_b(cl[o + 4])}]`
+  }
+  return s + "],\n"
+}
+
+function gg_thing(c: GroundCand) -> string { return `{gg_b(c.x)}, {gg_b(c.z)}, {gg_b(c.scale)}, {gg_b(c.yaw)}, {gg_b(c.seed)}, {gg_b(c.wind)}` }
+
+# the cover layer's things in cell order: [cell, x, z, scale, yaw, seed, wind]
+function gg_cover_json(render3d_st: mut Render3dState) -> string {
+  let g = gg_cover()
+  let size = 32.0
+  let cells = int(Math.ceil(size / gf_step(g, GG_BAND)))
+  let c = new GroundCand
+  var s = `  "cover": {{"fill": {gg_fill(g)}, "ox": 0, "oz": 0, "size": {gg_b(size)}, "cx": {GG_CX}, "cz": {GG_CZ}, "band": {GG_BAND}, "things": [\n`
+  var first = true
+  for j in 0 .. cells {
+    for i in 0 .. cells {
+      if not ground_candidate(render3d_st, g, GG_CX, GG_CZ, GG_BAND, i, j, float(GG_CX) * size, float(GG_CZ) * size, size, c) { continue }
+      if not first { s = s + ",\n" }
+      first = false
+      s = s + `    [{c.cell}, {gg_thing(c)}]`
+    }
+  }
+  return s + "\n  ]}},\n"
+}
+
+# the solid layer's things: [id, cell, x, z, scale, yaw, seed, wind, drawn at band 2]
+function gg_solid_json(render3d_st: mut Render3dState) -> string {
+  let g = gg_solid()
+  let l = ground_solids_new(256)
+  ground_solid_list(render3d_st, g, 0.0, 0.0, 32.0, GG_CX, GG_CZ, l)
+  let c = new GroundCand
+  var s = `  "solid": {{"fill": {gg_fill(g)}, "ox": 0, "oz": 0, "size": {gg_b(32.0)}, "cx": {GG_CX}, "cz": {GG_CZ}, "far_band": 2, "things": [\n`
+  for k in 0 .. l.n {
+    ground_solid_at(render3d_st, g, 0.0, 0.0, 32.0, l.ids[k], c)
+    let far = gf_hash(g.layer, GG_CX, GG_CZ, 0, c.cell, 7) < gs_thin(g, 2)
+    if k > 0 { s = s + ",\n" }
+    s = s + `    [{c.id}, {c.cell}, {gg_thing(c)}, {far}]`
+  }
+  return s + "\n  ]}}\n"
+}
+
+# the whole golden, as ground_fill_golden.json holds it
+function gg_json(render3d_st: mut Render3dState) -> string {
+  var s = "{\n  \"about\": \"ludic.render3d ground_fill conformance (tests/ground_fill_test.ludic; regenerate with tests/gen/ground_fill_golden.ludic)\",\n"
+  s = s + "  \"numbers\": \"every float is its IEEE-754 single-precision bits as a signed 32-bit int\",\n"
+  s = s + gg_lerps() + gg_yaw() + gg_hashes() + gg_density() + gg_clearings(render3d_st)
+  return s + gg_cover_json(render3d_st) + gg_solid_json(render3d_st) + "}\n"
+}

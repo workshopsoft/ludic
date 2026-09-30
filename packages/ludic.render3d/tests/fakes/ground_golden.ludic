@@ -1,0 +1,96 @@
+# fakes/ground_golden.ludic - ground_fill's conformance fixture: one density layer written by hand (R and G, a
+# block of raw tiles round the chunk, every other tile empty), a cover layer with a clearing and a solid layer
+# grown over it, and chunk (3, -2) of a 32 m grid from world zero - across four tiles, at negative z.
+const GG_CX: int = 3
+const GG_CZ: int = -2
+const GG_BAND: int = 1          # the cover layer's band: a step that does not divide the chunk, and band_grow
+const GG_T0: int = 64           # the raw tiles: x 64..67, z 61..64 (the chunk reads x 65..66, z 62..63)
+const GG_Z0: int = 61
+const GG_TN: int = 4
+
+# the density's texels as written, 0..255: R ramps through empty and full, G is a weave
+function gg_r(tx: int, tz: int) -> int { return min(max((tx * 53 + tz * 97) % 320 - 32, 0), 255) }
+function gg_g(tx: int, tz: int) -> int { return (tx * 29 + tz * 13) & 255 }
+
+function gg_put(b: []byte, at: int, v: int) -> void {
+  for k in 0 .. 4 { b[at + k] = (v >> (k * 8)) & 255 }
+}
+
+# an LGD2 payload: one layer of two channels, the raw tiles after the index
+function gg_payload() -> []byte {
+  let n = TERRAIN_RES / TT_TEX
+  let tb = GD_SIDE * GD_SIDE * 2
+  let at0 = GD_HEADW * 4 + n * n * 8
+  let size = at0 + GG_TN * GG_TN * tb
+  let b = buffer(size)
+  for k in 0 .. size { b[k] = 0 }
+  gg_put(b, 0, GD_MAGIC)
+  gg_put(b, 4, GD_VERSION)
+  gg_put(b, 8, n)
+  gg_put(b, 12, GD_SIDE)
+  gg_put(b, 16, 1)
+  gg_put(b, 32, 2)
+  gg_put(b, 36, GD_HEADW * 4)
+  for q in 0 .. GG_TN * GG_TN {
+    let tx = GG_T0 + q % GG_TN
+    let tz = GG_Z0 + q / GG_TN
+    let at = at0 + q * tb
+    gg_put(b, GD_HEADW * 4 + (tz * n + tx) * 8, at)
+    gg_put(b, GD_HEADW * 4 + (tz * n + tx) * 8 + 4, tb)
+    for p in 0 .. GD_SIDE * GD_SIDE {
+      let x = tx * GD_SIDE + p % GD_SIDE
+      let z = tz * GD_SIDE + p / GD_SIDE
+      b[at + p * 2] = gg_r(x, z)
+      b[at + p * 2 + 1] = gg_g(x, z)
+    }
+  }
+  return b
+}
+
+# an 8 km map at world zero with no terrain (heights 0), the densities above, and the one clearing
+function gg_open(render3d_st: mut Render3dState, tag: string) -> bool {
+  render3d_st.TERRAIN_HALF = 4096
+  render3d_st.ter_ox = 0.0
+  render3d_st.ter_oz = 0.0
+  render3d_st.gd_trample_cb = null
+  r3d_ground_clearings_reset(render3d_st)
+  r3d_ground_clearing(render3d_st, 112.0, -48.0, 3.0, 7.5, 0.25)
+  let path = Os.temp_dir() + "/r3d_ground_golden_" + tag + ".lgd2"
+  let b = gg_payload()
+  return Fs.write_bytes(path, b, len(b)) and gd_open_at(render3d_st, path, 0)
+}
+
+function gg_cover() -> GroundFill {
+  let g = new GroundFill
+  g.step0 = 2.0
+  g.step1 = 2.5
+  g.scale_lo = 0.6
+  g.scale_hi = 1.4
+  g.wind_lo = 0.5
+  g.scale_var = 0.2
+  g.band_grow = 0.15
+  return g
+}
+
+function gg_solid() -> GroundFill {
+  let g = gg_cover()
+  g.step0 = 4.0
+  g.step1 = 5.0
+  g.step2 = 8.0
+  g.step3 = 12.0
+  g.jitter = 0.8
+  g.scale_lo = 0.8
+  g.scale_hi = 1.6
+  g.band_grow = 0.3
+  g.trample = false
+  g.solid = true
+  return g
+}
+
+function gg_stream(render3d_st: mut Render3dState) -> Stream {
+  if render3d_st.stream_scratch == null { render3d_st.stream_scratch = floats(4096 * INST_FLOATS) }
+  let s = new Stream
+  s.size = 32.0
+  s.cur = new Chunk
+  return s
+}

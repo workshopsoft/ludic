@@ -1,0 +1,65 @@
+# ground_solid.ludic — a solid layer (rocks, trees): its candidates at step0 and band 0 whatever the camera, so
+# a thing stands in one place for physics, the nav bake, a save and the draw alike. Its id is (layer, chunk,
+# cell), stable while the painting under it is; a far band draws a subset of the same things, never others.
+
+const GS_SPAN: int = 256    # chunks a side an id holds: -128 .. 127 about the stream's corner
+const GS_CELLS: int = 512   # cells a chunk an id holds: a solid layer's step is at least the chunk's side / 22
+
+# the id of cell (i, j) of chunk (cx, cz) in `layer`, where a chunk is cells x cells; -1 past what an id holds
+export function ground_solid_id(layer: int, cx: int, cz: int, i: int, j: int, cells: int) -> int {
+  if layer < 0 or layer >= GD_LAYERS or cells * cells > GS_CELLS { return -1 }
+  if cx < -128 or cx > 127 or cz < -128 or cz > 127 { return -1 }
+  return ((layer * GS_SPAN + (cz + 128)) * GS_SPAN + (cx + 128)) * GS_CELLS + i * cells + j
+}
+
+export function ground_solid_layer(id: int) -> int { return id / (GS_CELLS * GS_SPAN * GS_SPAN) }
+export function ground_solid_cx(id: int) -> int { return (id / GS_CELLS) % GS_SPAN - 128 }
+export function ground_solid_cz(id: int) -> int { return (id / (GS_CELLS * GS_SPAN)) % GS_SPAN - 128 }
+
+# a solid layer's cells a chunk side
+export function gs_cells(g: GroundFill, size: float) -> int { return int(Math.ceil(size / g.step0)) }
+
+# the share of a solid layer drawn at `band`: as much fewer as a cover layer's wider step would make it
+export function gs_thin(g: GroundFill, band: int) -> float {
+  if band <= 0 { return 1.0 }
+  let r = g.step0 / gf_step(g, band)
+  return Math.min(r * r, 1.0)
+}
+
+# cell (i, j) of chunk (cx, cz) of solid layer g into `out`, its id with it: true when one stands there
+export function ground_solid_candidate(render3d_st: mut Render3dState, g: GroundFill, ox: float, oz: float, size: float, cx: int, cz: int, i: int, j: int, out: GroundCand) -> bool {
+  if g.step0 <= 0.0 { return false }
+  let id = ground_solid_id(g.layer, cx, cz, i, j, gs_cells(g, size))
+  if id < 0 { return false }
+  let x0 = ox + float(cx) * size
+  let z0 = oz + float(cz) * size
+  if not ground_candidate(render3d_st, g, cx, cz, 0, i, j, x0, z0, size, out) { return false }
+  out.id = id
+  return true
+}
+
+# the draw: every candidate at band 0, a stable subset of them farther out (draw 7 under gs_thin)
+function ground_fill_solid(render3d_st: mut Render3dState, s: Stream, cx: int, cz: int, band: int, g: GroundFill) -> void {
+  if g.step0 <= 0.0 or render3d_st.gd_file == null { return }
+  let cells = gs_cells(g, s.size)
+  let thin = gs_thin(g, band)
+  let c = render3d_st.gd_cand
+  for j in 0 .. cells {
+    for i in 0 .. cells {
+      if not ground_solid_candidate(render3d_st, g, s.ox, s.oz, s.size, cx, cz, i, j, c) { continue }
+      if band > 0 and not (gf_hash(g.layer, cx, cz, 0, c.cell, 7) < thin) { continue }
+      let h = terrain_height(render3d_st, c.x, c.z) - g.sink
+      stream_emit(render3d_st, s, c.x, h, c.z, c.scale, c.yaw, c.seed, c.wind)
+    }
+  }
+}
+
+# the candidate `id` names in solid layer g (the stream's corner and chunk side): false when the painting
+# under it keeps nothing there now, or the id is not this layer's
+export function ground_solid_at(render3d_st: mut Render3dState, g: GroundFill, ox: float, oz: float, size: float, id: int, out: GroundCand) -> bool {
+  if id < 0 or g.step0 <= 0.0 or ground_solid_layer(id) != g.layer { return false }
+  let cells = gs_cells(g, size)
+  let cell = id % GS_CELLS
+  if cells <= 0 or cell >= cells * cells { return false }
+  return ground_solid_candidate(render3d_st, g, ox, oz, size, ground_solid_cx(id), ground_solid_cz(id), cell / cells, cell % cells, out)
+}

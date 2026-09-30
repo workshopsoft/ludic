@@ -1,0 +1,60 @@
+# ground_solid_list.ludic — a solid layer's things in one chunk, into a list the caller made once: what physics,
+# the nav bake and a save ask, the same candidates the draw grows at band 0 (ground_solid.ludic).
+
+export property GroundSolids {
+  cap: int = 0,
+  n: int = 0,          # how many were written, never over cap
+  found: int = 0,      # how many stand in the chunk: over cap, the list was too short for it
+  ids: words = null,
+  xs: floats = null,
+  zs: floats = null,
+  scales: floats = null,
+  yaws: floats = null,
+  seeds: floats = null,
+  winds: floats = null,
+  cand: GroundCand = null
+}
+
+@alloc_ok("a caller's list of solid things, made once and reused")
+export function ground_solids_new(cap: int) -> GroundSolids {
+  let l = new GroundSolids
+  l.cap = max(cap, 1)
+  l.ids = words(l.cap)
+  l.xs = floats(l.cap)
+  l.zs = floats(l.cap)
+  l.scales = floats(l.cap)
+  l.yaws = floats(l.cap)
+  l.seeds = floats(l.cap)
+  l.winds = floats(l.cap)
+  l.cand = new GroundCand
+  return l
+}
+
+function gs_put(l: GroundSolids, c: GroundCand) -> void {
+  l.found += 1
+  if l.n >= l.cap { return }
+  let k = l.n
+  l.ids[k] = c.id
+  l.xs[k] = c.x
+  l.zs[k] = c.z
+  l.scales[k] = c.scale
+  l.yaws[k] = c.yaw
+  l.seeds[k] = c.seed
+  l.winds[k] = c.wind
+  l.n += 1
+}
+
+# chunk (cx, cz) of solid layer g - the stream's corner (ox, oz) and chunk side `size` - into `out`, emptied
+# first, in cell order (j, then i); answers how many stand there
+export function ground_solid_list(render3d_st: mut Render3dState, g: GroundFill, ox: float, oz: float, size: float, cx: int, cz: int, out: GroundSolids) -> int {
+  out.n = 0
+  out.found = 0
+  if g.step0 <= 0.0 or render3d_st.gd_file == null { return 0 }
+  let cells = gs_cells(g, size)
+  for j in 0 .. cells {
+    for i in 0 .. cells {
+      if ground_solid_candidate(render3d_st, g, ox, oz, size, cx, cz, i, j, out.cand) { gs_put(out, out.cand) }
+    }
+  }
+  return out.found
+}

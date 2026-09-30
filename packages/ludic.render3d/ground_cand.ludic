@@ -1,0 +1,68 @@
+# ground_cand.ludic — one candidate of a ground layer: (layer, chunk, band, cell) to where it stands and what it
+# draws with. The gf_* steps are pure (numbers in, a number out); ground_candidate reads the densities between
+# them, and nothing but the densities' tile cache changes. The studio's groundFill.ts is these steps.
+
+# a candidate, filled by the caller's own record (made once, reused)
+export property GroundCand {
+  x: float = 0.0,
+  z: float = 0.0,
+  scale: float = 1.0,
+  yaw: float = 0.0,
+  seed: float = 0.0,
+  wind: float = 0.0,
+  cell: int = 0,     # i * 65536 + j: the hashes' fifth input
+  id: int = -1       # a solid layer's stable id (ground_solid.ludic); -1 for cover
+}
+
+export function gf_cell(i: int, j: int) -> int { return i * 65536 + j }
+
+# a cell's corner o, moved by the jitter's draw h (k 0 for x, 1 for z)
+export function gf_along(o: float, i: int, h: float, jitter: float, step: float) -> float { return o + (float(i) + 0.5 + (h - 0.5) * jitter) * step }
+
+# kept when draw 2 falls under the chance (the density, times the trample)
+export function gf_keeps(g: GroundFill, cx: int, cz: int, band: int, e: int, keep: float) -> bool { return not (gf_hash(g.layer, cx, cz, band, e, 2) >= keep) }
+
+# its size from the density's G at its place, and its own draw 6
+export function gf_scale(g: GroundFill, cx: int, cz: int, band: int, e: int, gs: float) -> float {
+  var sc = Math.lerp(g.scale_lo, g.scale_hi, gs)
+  sc = sc * (1.0 + (gf_hash(g.layer, cx, cz, band, e, 6) * 2.0 - 1.0) * g.scale_var) * (1.0 + g.band_grow * float(band))
+  return sc
+}
+
+export function gf_yaw(g: GroundFill, cx: int, cz: int, band: int, e: int) -> float { return gf_hash(g.layer, cx, cz, band, e, 3) * 2.0 * PI }
+
+export function gf_seed(g: GroundFill, cx: int, cz: int, band: int, e: int) -> float { return gf_hash(g.layer, cx, cz, band, e, 4) }
+
+export function gf_wind(g: GroundFill, cx: int, cz: int, band: int, e: int) -> float { return Math.lerp(g.wind_lo, g.wind_hi, gf_hash(g.layer, cx, cz, band, e, 5)) }
+
+# the chance at (x, z) after the trample: the game's callback, then the clearings it handed over as data
+function gf_trampled(render3d_st: mut Render3dState, keep: float, x: float, z: float) -> float {
+  var k = keep
+  if render3d_st.gd_trample_cb != null { k = k * render3d_st.gd_trample_cb(x, z) }
+  if render3d_st.gd_clear_n > 0 { k = k * ground_clear_at(render3d_st, x, z) }
+  return k
+}
+
+# cell (i, j) of chunk (cx, cz) at `band` - the chunk's corner (x0, z0), its side `size` - into `out`: true when
+# one stands there
+export function ground_candidate(render3d_st: mut Render3dState, g: GroundFill, cx: int, cz: int, band: int, i: int, j: int, x0: float, z0: float, size: float, out: GroundCand) -> bool {
+  let step = gf_step(g, band)
+  if step <= 0.0 { return false }
+  let e = gf_cell(i, j)
+  let px = gf_along(x0, i, gf_hash(g.layer, cx, cz, band, e, 0), g.jitter, step)
+  let pz = gf_along(z0, j, gf_hash(g.layer, cx, cz, band, e, 1), g.jitter, step)
+  if px < x0 or px >= x0 + size or pz < z0 or pz >= z0 + size { return false }
+  var keep = ground_density_at(render3d_st, g.layer, px, pz, 0)
+  if keep <= 0.0 { return false }
+  if g.trample { keep = gf_trampled(render3d_st, keep, px, pz) }
+  if not gf_keeps(g, cx, cz, band, e, keep) { return false }
+  out.x = px
+  out.z = pz
+  out.cell = e
+  out.id = -1
+  out.scale = gf_scale(g, cx, cz, band, e, ground_density_at(render3d_st, g.layer, px, pz, 1))
+  out.yaw = gf_yaw(g, cx, cz, band, e)
+  out.seed = gf_seed(g, cx, cz, band, e)
+  out.wind = gf_wind(g, cx, cz, band, e)
+  return true
+}
