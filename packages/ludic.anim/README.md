@@ -322,3 +322,27 @@ right tick, on a loop, windows and cancels (`events_test`); root motion accumula
 zero-allocation check (`actors_test`). `ozz_test` runs the native library, and `ozz_parity_test` poses two skins through the same graphs with ozz and with the
 Ludic sampler. The wiring: `link_test` (a toy mechanic's declared sources, facts firing once, values through scale, curve, clamp and smoothing, requests by name, edges, the heap held still),
 `link_real_test` (the adapters of melee, weapons, vitals, crowd, character and vehicles against their real records and states) and `link_validate_test` (every `anim.link_*` finding).
+
+## A figure placed again and again (a crowd's peds)
+
+`gltf_load` reads the file, parses the document and builds the skin, and prints two lines: once per model, never once per figure.
+`anim_model_load` loads a node once (its clips read the first time) and answers a repeat ask with a lookup. The per-figure parts
+(an `Actor`, a skin of its own, an `AnimPlayer`) come from a pool made before play, so a spawn reads, parses, prints and allocates nothing.
+
+| | |
+| --- | --- |
+| `anim_model_load(anim_st, render3d_st, dir, file, node) -> Model` | the model of a node, once per (dir, file, node); the first ask also reads its clips |
+| `anim_actor_pool(anim_st, model, set, skel, n)` | before play: `n` figures made and waiting, and the actor table sized for them |
+| `anim_actor_spawn(anim_st, render3d_st, model, set, skel, who) -> Actor` | a pooled figure at rest, filed under `who`; past the pool it makes one more and counts it |
+| `anim_actor_despawn(anim_st, render3d_st, actor, who)` | its actor, player and skin go back |
+| `anim_pool_misses(anim_st)`, `anim_pool_size(anim_st)` | spawns the pool could not serve; figures made |
+| `anim_actor_reserve(anim_st, n)` | the actor table sized for `n` at once (the pool does it); adding and removing actors then allocates nothing |
+| `animset_restart(anim_st, pl)` | a player back at its graph's start |
+
+```ludic
+let m = anim_model_load(anim_st, render3d_st, "assets/people", "person.glb", "person")   # at load
+anim_actor_pool(anim_st, m, SET_PED, SKEL_PED, 600)                                       # the most peds alive
+let a = anim_actor_spawn(anim_st, render3d_st, m, SET_PED, SKEL_PED, uid)                 # in play: no file, no alloc
+a.scale = 1.0
+anim_actor_despawn(anim_st, render3d_st, a, uid)                                          # when the ped is gone
+```

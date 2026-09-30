@@ -63,6 +63,9 @@ export function crowd_budget(crowd_st: mut CrowdState, max_peds: int, max_full: 
   crowd_st.cw_cfg.max_peds = max_peds
   crowd_st.cw_cfg.max_full = max_full
   crowd_st.cw_cfg.max_mid = max_mid
+  # a larger max_peds is sized for now (a settings change, not a frame's work); a smaller one keeps what it has
+  @alloc_ok("a quality setting changed: the pool and lists are made for the new budget once")
+  crowd_reserve(crowd_st, max_peds)
 }
 
 # the tier radii (a quality setting): full within `full_r`, mid within `mid_r`, far beyond
@@ -75,9 +78,10 @@ export function crowd_lod_radii(crowd_st: mut CrowdState, full_r: float, mid_r: 
 
 export function crowd_config(crowd_st: CrowdState) -> CrowdSetting { return crowd_st.cw_cfg }
 
-# make the pools for `n` peds before play: no record is made in a frame until more than n are alive
+# make the pools for `n` peds before play (crowd_build and crowd_budget do it for max_peds): no record is made in a frame until more than n are alive
 @alloc_ok("before play: the pool, the maps and the lists the crowd keeps")
 export function crowd_reserve(crowd_st: mut CrowdState, n: int) -> void {
+  if crowd_st.cw_grid == null { return }
   while len(crowd_st.cw_pool) + tb_len(crowd_st.cw_tab) < n { push(crowd_st.cw_pool, new CrowdPed) }
   imap_reserve(crowd_st.cw_live, n * 2)
   imap_reserve(crowd_st.cw_units, n * 2)

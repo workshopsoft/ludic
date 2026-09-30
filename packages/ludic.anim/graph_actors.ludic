@@ -22,19 +22,57 @@ function actor_slot(anim_st: AnimState, actor: int) -> int {
   return -1
 }
 
-@alloc_ok("the table grows when it fills, never in a frame the actors do not change")
+# The table is rebuilt when it fills. Actors that came and went leave dead marks that count as taken, so a
+# rebuild sizes the table for the actors alive (four slots each, at least 64), not for every one that ever
+# was: a crowd spawning and culling for hours rebuilds into the same two tables, swapped, and allocates
+# nothing once anim_actor_reserve has sized them for the most it will hold.
+@alloc_ok("the table is rebuilt when it fills: into the spare tables when they are the size it needs (a crowd's churn), else new ones")
 function actor_grow(anim_st: mut AnimState) -> void {
-  var cap = 64
-  if anim_st.actor_ids != null { cap = len(anim_st.actor_ids) * 2 }
   let ids = anim_st.actor_ids
   let pls = anim_st.actor_pl
-  anim_st.actor_ids = words(cap)
-  anim_st.actor_pl = new []AnimPlayer
-  for i in 0 .. cap { push(anim_st.actor_pl, null) }
+  var live = 0
+  if ids != null {
+    for i in 0 .. len(ids) { if ids[i] > 0 and pls[i] != null { live += 1 } }
+  }
+  var cap = 64
+  while cap < (live + 1) * 4 { cap = cap * 2 }
+  if anim_st.actor_reserved > cap { cap = anim_st.actor_reserved }
+  var nids = anim_st.actor_ids_b
+  var npl = anim_st.actor_pl_b
+  if nids == null or len(nids) != cap {
+    nids = words(cap)
+    npl = new []AnimPlayer
+    for i in 0 .. cap { push(npl, null) }
+  } else {
+    for i in 0 .. cap {
+      nids[i] = 0
+      npl[i] = null
+    }
+  }
+  anim_st.actor_ids_b = ids
+  anim_st.actor_pl_b = pls
+  anim_st.actor_ids = nids
+  anim_st.actor_pl = npl
   anim_st.n_actors = 0
   if ids != null {
     for i in 0 .. len(ids) { if ids[i] > 0 and pls[i] != null { actor_put(anim_st, ids[i] - 1, pls[i]) } }
   }
+}
+
+# Room for `n` actors at once, before play: both tables are made (and the spare they swap with), so adding and
+# removing actors in a frame - a crowd's peds born and gone - never allocates. A game that does not call it
+# still works: the tables grow to what it holds, in whatever frame that happens.
+@alloc_ok("before play: the actor tables, sized for the most actors at once")
+export function anim_actor_reserve(anim_st: mut AnimState, n: int) -> void {
+  var cap = 64
+  while cap < (n + 1) * 4 { cap = cap * 2 }
+  if anim_st.actor_reserved >= cap and anim_st.actor_ids != null and len(anim_st.actor_ids) >= cap { return }
+  anim_st.actor_reserved = cap
+  actor_grow(anim_st)
+  # the spare, the size the next rebuild wants
+  anim_st.actor_ids_b = words(cap)
+  anim_st.actor_pl_b = new []AnimPlayer
+  for i in 0 .. cap { push(anim_st.actor_pl_b, null) }
 }
 
 function actor_put(anim_st: mut AnimState, actor: int, pl: AnimPlayer) -> void {

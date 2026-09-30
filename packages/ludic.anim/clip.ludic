@@ -40,6 +40,17 @@ export state AnimState {
   actor_ids: words = null
   actor_pl: []AnimPlayer = null
   n_actors: int = 0
+  actor_ids_b: words = null   # the spare actor tables a rebuild swaps with (graph_actors.ludic)
+  actor_pl_b: []AnimPlayer = null
+  actor_reserved: int = 0
+  pool_pl: []AnimPlayer = null   # the pooled players and their skins (actor_pool.ludic)
+  pool_sk: []Skin = null
+  pool_model: []Model = null
+  pool_set: words = null
+  pool_skel: words = null
+  pool_busy: words = null
+  pool_n: int = 0
+  pool_misses: int = 0
   lrot: floats = null
   lpos: floats = null
   lhit: words = null

@@ -1,6 +1,8 @@
 # ludic.base/ecs_grid_within.ludic - every filed row within r of (x, z) matching (mc, mv), into
 # `out` (cleared first), in no order; the count is returned. A radius wider than the rows are many
-# is answered by one scan of them instead of by cells.
+# is answered by one scan of them instead of by cells. `out` is the caller's list, kept and reused: it grows to
+# the most an answer has held (a kept list, never a fresh one per call), so a caller that sizes it before play
+# (as ludic.crowd does, from max_peds) sees no growth at all.
 export function tb_within<T>(tb: Table<T>, g: Grid, x: float, z: float, r: float, mc: int, mv: int, out: words) -> int {
   List.clear(out)
   if g.count == 0 { return 0 }
@@ -31,7 +33,7 @@ function grid_within_cell(g: Grid, xs: floats, zs: floats, mcol: words, mv: int,
     if g.key[row] == k and (mcol == null or mcol[row] == mv) {
       let dx = xs[row] - x
       let dz = zs[row] - z
-      if dx * dx + dz * dz <= r2 { push(out, row) }
+      if dx * dx + dz * dz <= r2 { kept_push(out, row) }
     }
     r = g.next[row]
   }
@@ -42,7 +44,7 @@ function grid_within_scan(g: Grid, xs: floats, zs: floats, mcol: words, mv: int,
     if g.key[row] >= 0 and (mcol == null or mcol[row] == mv) {
       let dx = xs[row] - x
       let dz = zs[row] - z
-      if dx * dx + dz * dz <= r2 { push(out, row) }
+      if dx * dx + dz * dz <= r2 { kept_push(out, row) }
     }
   }
 }

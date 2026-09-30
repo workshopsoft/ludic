@@ -849,4 +849,33 @@ program CrowdTest {
     print(`crowd: 60 s of a walking player, heap grew {grew} bytes`)
     expect(grew == long(0))
   }
+
+  test "peds crowding into one cell for thousands of frames never grow a query list (a game that never calls crowd_reserve)" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    # no crowd_reserve here: crowd_build itself sizes the pool and the lists from max_peds, so a frame never grows one
+    fresh(crowd_st, zones, scen)
+    s.px = 0.0
+    s.pz = 0.0
+    crowd_prime(crowd_st)
+    # warm on the ordinary crowd first: the ring's own turnover reaches its high water
+    for k in 0 .. 600 { sim(crowd_st, m, s, 0.1, 0.1) }
+    let n = crowd_count(crowd_st)
+    expect(n > 100)
+    # a small crowd onto one spot first, and time to settle: the facts and other kept lists reach their high water
+    for i in 0 .. 40 { crowd_place(crowd_st, crowd_ped_at(crowd_st, i), 1.0 + float(i % 7) * 0.05, 1.0) }
+    for k in 0 .. 300 { sim(crowd_st, m, s, 0.1, 0.1) }
+    # then everybody onto one spot: a within query's answer is now every ped, far more than any answer so far
+    Mem.play()
+    Mem.settled()
+    for i in 0 .. crowd_count(crowd_st) { crowd_place(crowd_st, crowd_ped_at(crowd_st, i), 1.0 + float(i % 7) * 0.05, 1.0) }
+    for k in 0 .. 3000 {
+      sim(crowd_st, m, s, 0.1, 0.1)
+      Mem.frame()
+      if k % 100 == 0 {
+        for i in 0 .. crowd_count(crowd_st) { crowd_place(crowd_st, crowd_ped_at(crowd_st, i), 1.0 + float(i % 7) * 0.05, 1.0) }
+      }
+      expect(crowd_count_within(crowd_st, 1.0, 1.0, 50.0) <= crowd_count(crowd_st))
+    }
+    print(`crowd: {n} peds in one cell for 3000 frames, {Mem.bad_frames()} frames kept memory`)
+    expect(Mem.bad_frames() == 0)
+  }
 }

@@ -40,7 +40,7 @@ export function tb_within_of<T>(tb: Table<T>, g: Grid, ix: IntIndex, x: float, z
     if g.gate >= 0 and tb.i[g.gate][row] == 0 { continue }
     let dx = xs[row] - x
     let dz = zs[row] - z
-    if dx * dx + dz * dz <= r * r { push(out, row) }
+    if dx * dx + dz * dz <= r * r { kept_push(out, row) }
   }
   return len(out)
 }

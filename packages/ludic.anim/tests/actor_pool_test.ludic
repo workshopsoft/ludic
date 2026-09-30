@@ -1,0 +1,118 @@
+# actor_pool_test.ludic - a figure placed again and again from a model read once: a spawn takes a pooled
+# actor, skin and player and a despawn gives them back, so thousands of spawns and despawns allocate nothing
+# (the alloc fence judges each frame) and read no file. A pool too small is counted, not hidden.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program ActorPoolTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimSkeletons from "rigs.lres"
+  def AnimMasks from "masks.lres"
+  def AnimBlendSpaces from "spaces.lres"
+  def AnimClips from "event_clips.lres"
+  def AnimSets from "busy.lres"
+
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+    anim_add(anim_st, arm_clip("rig_walk", 1.0, 0.4))
+    anim_add(anim_st, arm_clip("rig_run", 0.5, 0.8))
+    anim_add(anim_st, arm_clip("rig_swing", 1.0, 0.9))
+    anim_add(anim_st, arm_clip("rig_foot", 0.75, 0.2))
+    anim_add(anim_st, arm_clip("rig_stepa", 1.0, 0.1))
+    anim_add(anim_st, arm_clip("rig_stepb", 1.0, 0.2))
+    let b = clip_new("rig_base", 1.0, 3)
+    clip_rot(b, 0, 1, 0.2, 0.2)
+    clip_rot(b, 1, 2, 0.4, 0.4)
+    clip_rot(b, 2, 3, 0.4, 0.4)
+    anim_add(anim_st, b)
+    let s = clip_new("rig_shoot", 1.0, 3)
+    clip_rot(s, 0, 1, 1.0, 1.0)
+    clip_rot(s, 1, 2, 1.0, 1.0)
+    clip_rot(s, 2, 3, 1.0, 1.0)
+    anim_add(anim_st, s)
+  }
+  function stage(render3d_st: mut Render3dState) -> Model {
+    render3d_st.ac_actors = new []Actor
+    render3d_st.ac_spare = new []Actor
+    for i in 0 .. 40 {
+      push(render3d_st.ac_actors, null)
+      push(render3d_st.ac_spare, null)
+    }
+    while len(render3d_st.ac_actors) > 0 { List.pop(render3d_st.ac_actors) }
+    while len(render3d_st.ac_spare) > 0 { List.pop(render3d_st.ac_spare) }
+    for i in 0 .. 40 {
+      let a = new Actor
+      a.tint = v3_new(1.0, 1.0, 1.0)
+      a.mat = m4_new()
+      push(render3d_st.ac_spare, a)
+    }
+    let m = new Model
+    m.prims = new []Prim
+    m.skin = rig_skin(render3d_st)
+    return m
+  }
+
+  test "a spawn takes a pooled figure and a despawn gives it back; a pool too small is counted" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    let m = stage(render3d_st)
+    anim_actor_pool(anim_st, m, ASET_BUSY, ASK_RIG, 3)
+    expect_eq(anim_pool_size(anim_st), 3)
+    let a = anim_actor_spawn(anim_st, render3d_st, m, ASET_BUSY, ASK_RIG, 7)
+    let b = anim_actor_spawn(anim_st, render3d_st, m, ASET_BUSY, ASK_RIG, 8)
+    expect(a != null and b != null and a != b)
+    expect(a.skin != null and a.skin != b.skin and a.skin != m.skin)
+    expect(not a.skin_owned)
+    let pa = anim_player_of(anim_st, 7)
+    expect(pa != null and pa.ready and pa != anim_player_of(anim_st, 8))
+    expect(anim_set_param(anim_st, 7, "speed", 3.0))
+    anim_actor_despawn(anim_st, render3d_st, a, 7)
+    expect(anim_player_of(anim_st, 7) == null)
+    # the next spawn takes the freed figure back, posed at its start: nothing of the last life is left
+    let c = anim_actor_spawn(anim_st, render3d_st, m, ASET_BUSY, ASK_RIG, 9)
+    expect(anim_player_of(anim_st, 9) == pa)
+    expect_near(animset_get(pa, "speed"), 0.0, 0.0001)
+    expect_eq(anim_pool_misses(anim_st), 0)
+    let d = anim_actor_spawn(anim_st, render3d_st, m, ASET_BUSY, ASK_RIG, 10)
+    expect_eq(anim_pool_misses(anim_st), 0)
+    let e = anim_actor_spawn(anim_st, render3d_st, m, ASET_BUSY, ASK_RIG, 12)
+    expect(e != null)
+    expect_eq(anim_pool_misses(anim_st), 1)
+    expect_eq(anim_pool_size(anim_st), 4)
+    expect(d != null and c != null)
+    expect(anim_actor_spawn(anim_st, render3d_st, null, ASET_BUSY, ASK_RIG, 11) == null)
+  }
+
+  test "thousands of spawns and despawns under the alloc fence allocate nothing" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    let m = stage(render3d_st)
+    anim_actor_pool(anim_st, m, ASET_BUSY, ASK_RIG, 30)
+    let live = new []Actor
+    for i in 0 .. 30 { push(live, null) }
+    # warm: every slot filled and emptied once, so the lists and tables are at their sizes
+    var uid = 1
+    for round in 0 .. 3 {
+      for i in 0 .. 30 {
+        live[i] = anim_actor_spawn(anim_st, render3d_st, m, ASET_BUSY, ASK_RIG, uid + i)
+      }
+      for i in 0 .. 30 { anim_actor_despawn(anim_st, render3d_st, live[i], uid + i) }
+      uid += 30
+    }
+    Mem.play()
+    Mem.settled()
+    for frame in 0 .. 4000 {
+      let slot = frame % 30
+      if live[slot] != null { anim_actor_despawn(anim_st, render3d_st, live[slot], uid - 30 + slot) }
+      live[slot] = anim_actor_spawn(anim_st, render3d_st, m, ASET_BUSY, ASK_RIG, uid + slot)
+      anim_set_param(anim_st, uid + slot, "speed", float(frame % 5))
+      if slot == 29 { uid += 30 }
+      Mem.frame()
+    }
+    print(`spawned 4000 figures, {Mem.bad_frames()} frames kept memory, {anim_pool_misses(anim_st)} pool misses`)
+    expect(Mem.bad_frames() == 0)
+    expect_eq(anim_pool_misses(anim_st), 0)
+  }
+}

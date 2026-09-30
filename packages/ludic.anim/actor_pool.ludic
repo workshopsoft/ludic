@@ -1,0 +1,128 @@
+# actor_pool.ludic - an animated figure placed again and again (a crowd's peds, born and gone all game) from a
+# model read ONCE. A figure's parts are a model (its meshes and skeleton, shared by every figure), a skin it
+# poses on, an AnimPlayer with the graph's state, and an Actor on the stage. Only the model is read from a
+# file; the other three come from a pool, made before play, so a spawn reads no file, parses no document,
+# prints nothing and allocates nothing.
+#
+#   let m = anim_model_load(anim_st, render3d_st, dir, file, node)     # once, at load (a repeat ask is a lookup)
+#   anim_actor_pool(anim_st, m, set, skel, 600)                          # before play: one pooled figure per ped
+#   let a = anim_actor_spawn(anim_st, render3d_st, m, set, skel, who)    # in play: a pooled figure, posed at rest
+#   anim_actor_despawn(anim_st, render3d_st, a, who)                     # its actor, player and skin go back
+#
+# A spawn past the pool's size still works, by making one more figure: that allocates, and is counted
+# (anim_pool_misses) so a game can see its pool was too small. Size it for the most figures alive.
+
+# The model of a node, loaded once per (dir, file, node) and, the first time, its clips read into the clip table.
+# Asked again it is a lookup that reads nothing and prints nothing: use it instead of gltf_load + anim_read_doc
+# for a figure that is placed more than once.
+export function anim_model_load(anim_st: mut AnimState, render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
+  let n0 = gltf_cached_count(render3d_st)
+  let m = gltf_cached(render3d_st, dir, file, node_name)
+  if m != null and gltf_cached_count(render3d_st) > n0 { anim_read_doc(anim_st, render3d_st, dir) }
+  return m
+}
+
+# a player back to where a new one starts: every machine at its entry, its parameters at their initial values
+export function animset_restart(anim_st: mut AnimState, pl: AnimPlayer) -> void {
+  if pl == null or pl.mach == null { return }
+  for mi in 0 .. len(pl.mach) { reset_machine(anim_st, pl, mi) }
+  if pl.vals != null { for i in 0 .. len(pl.vals) { pl.vals[i] = pl.pinit[i] } }
+  pl.n_ow = 0
+  pl.n_it = 0
+  pl.posed = false
+  pl.acc = 0.0
+  pl.frame = 0
+  pl.ticks = 0
+  pl.dist = 0.0
+  for i in 0 .. 4 {
+    pl.rm[i] = 0.0
+    pl.rm_t[i] = 0.0
+    pl.rm_u[i] = 0.0
+  }
+}
+
+# one more pooled figure for (model, set, skel): its player bound to the graph and its skin cloned. Free.
+@alloc_ok("a pooled figure, made before play (anim_actor_pool) or, past the pool, once and counted")
+function pool_make(anim_st: mut AnimState, model: Model, set: int, skel: int) -> int {
+  if anim_st.pool_pl == null {
+    anim_st.pool_pl = new []AnimPlayer
+    anim_st.pool_sk = new []Skin
+    anim_st.pool_model = new []Model
+    anim_st.pool_set = new words
+    anim_st.pool_skel = new words
+    anim_st.pool_busy = new words
+  }
+  let pl = new AnimPlayer
+  if skel >= 0 { animset_bind_skel(anim_st, pl, set, skel) } else { animset_bind(anim_st, pl, set, "") }
+  push(anim_st.pool_pl, pl)
+  push(anim_st.pool_sk, skin_clone(model.skin))
+  push(anim_st.pool_model, model)
+  push(anim_st.pool_set, set)
+  push(anim_st.pool_skel, skel)
+  push(anim_st.pool_busy, 0)
+  anim_st.pool_n += 1
+  return anim_st.pool_n - 1
+}
+
+# Before play: `n` figures of this model and graph made and waiting, and the actor table sized for them. A
+# model with no skeleton has nothing to pool (its actors come from render3d's own spares).
+@alloc_ok("before play: the pooled figures")
+export function anim_actor_pool(anim_st: mut AnimState, model: Model, set: int, skel: int, n: int) -> void {
+  if model == null or model.skin == null { return }
+  var have = 0
+  for i in 0 .. anim_st.pool_n { if anim_st.pool_model[i] == model and anim_st.pool_set[i] == set and anim_st.pool_skel[i] == skel { have += 1 } }
+  while have < n {
+    pool_make(anim_st, model, set, skel)
+    have += 1
+  }
+  anim_actor_reserve(anim_st, anim_st.pool_n)
+}
+
+# A figure: an actor of the model on a pooled skin, a pooled player (bound, restarted) filed under `who`. The
+# actor's skin is lent, so actor_release leaves it to the pool. Null for a null model.
+export function anim_actor_spawn(anim_st: mut AnimState, render3d_st: mut Render3dState, model: Model, set: int, skel: int, who: int) -> Actor {
+  if model == null { return null }
+  let a = actor_new(render3d_st, model)
+  if model.skin == null { return a }
+  var e = -1
+  for i in 0 .. anim_st.pool_n {
+    if anim_st.pool_busy[i] == 0 and anim_st.pool_model[i] == model and anim_st.pool_set[i] == set and anim_st.pool_skel[i] == skel {
+      e = i
+      break
+    }
+  }
+  if e < 0 {
+    anim_st.pool_misses += 1
+    e = pool_make(anim_st, model, set, skel)
+  }
+  anim_st.pool_busy[e] = 1
+  let pl = anim_st.pool_pl[e]
+  let sk = anim_st.pool_sk[e]
+  animset_restart(anim_st, pl)
+  skin_reset(sk)
+  skin_pose(sk)
+  a.skin = sk
+  a.skin_owned = false
+  anim_actor_add(anim_st, who, pl)
+  return a
+}
+
+# a figure gone: off the stage, its actor record kept by render3d, its player and skin back in the pool
+export function anim_actor_despawn(anim_st: mut AnimState, render3d_st: mut Render3dState, a: Actor, who: int) -> void {
+  if a == null { return }
+  let pl = anim_player_of(anim_st, who)
+  if pl != null {
+    anim_actor_remove(anim_st, who)
+    for i in 0 .. anim_st.pool_n {
+      if anim_st.pool_pl[i] == pl {
+        anim_st.pool_busy[i] = 0
+        break
+      }
+    }
+  }
+  actor_release(render3d_st, a)
+}
+
+# figures that had to be made in play because the pool was empty (size it bigger)
+export function anim_pool_misses(anim_st: AnimState) -> int { return anim_st.pool_misses }
+export function anim_pool_size(anim_st: AnimState) -> int { return anim_st.pool_n }

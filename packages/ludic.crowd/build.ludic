@@ -227,6 +227,9 @@ export function crowd_build(crowd_st: mut CrowdState, zones: PopulationZones, sc
     imap_put(crowd_st.cw_si_head, k, i + 1)
   }
   crowd_st.cw_sn = len(scenarios.rows)
+  # the pool and every list a query fills are made here, before play, for the most peds the budget allows:
+  # a game needs no crowd_reserve call, and no frame grows a buffer
+  crowd_reserve(crowd_st, crowd_st.cw_cfg.max_peds)
   return ok
 }
 
