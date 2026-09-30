@@ -1035,6 +1035,10 @@ function parse_one_decl_in() -> void {
   var ns_name: pointer = null               # @Namespace(Name) — a package-provided Foo.* namespace (#62)
   var is_det = false                    # @deterministic — no floating point inside (emit_float.ludic)
   var is_rowverb = false                # @RowVerb — a verb of a table's row (27.3, actions_rows.ludic)
+  var is_net = false                    # @Net action — sent to the host, reduced there (27.5, actions_net.ludic)
+  var is_pred = false                   # @Predicted — an action's (or a reducer's) speculative run on the client
+  var bcast: pointer = null             # @Broadcast(all | owner | none) — who hears an accepted @Net action
+  var validate_fn: pointer = null       # @Validate(fn) — the host's check of a guest's @Net action
   # attributes and `export` in any order: `@ToClients export event E` keeps its @ToClients
   while is_op("@") or (is_id("export") and (toks[pi + 1].kind == TK_ID or toks[pi + 1].text == "@")) {
     if is_id("export") {
@@ -1063,7 +1067,10 @@ function parse_one_decl_in() -> void {
     else if a == "Sync" { is_sync_prop = true }                             # @Sync property (N2)
     else if a == "Owned" { is_owned = true }                                # @Owned model (N3)
     else if a == "Server" { role = "server" }                              # @Server handler (N5)
-    else if a == "Predicted" { role = "predicted" }                        # @Predicted handler (N5)
+    else if a == "Predicted" { role = "predicted";  is_pred = true }       # @Predicted handler (N5), action or reducer (27.5)
+    else if a == "Net" { is_net = true }                                   # @Net action (27.5)
+    else if a == "Broadcast" { eat_op("(");  bcast = eat_id();  eat_op(")") }
+    else if a == "Validate" { eat_op("(");  validate_fn = eat_id();  eat_op(")") }
     else if a == "ToServer" { remote_dir = "toserver" }                    # @ToServer event (N4)
     else if a == "ToClients" { remote_dir = "toclients" }                  # @ToClients event (N4)
     else if a == "System" { sys_phase = "Update"; if is_op("(") { pi += 1; sys_phase = eat_id(); eat_op(")") } }   # @System(Phase) binary-module system (#64)
@@ -1193,9 +1200,9 @@ function parse_one_decl_in() -> void {
   if is_id("view") and (toks[pi + 1].kind == TK_ID) and ((toks[pi + 2].text == "{") or (toks[pi + 2].text == "(")) { parse_view(); return }            # L11
   if is_id("component") and (toks[pi + 1].kind == TK_ID) and ((toks[pi + 2].text == "{") or (toks[pi + 2].text == "(")) { parse_ui_component(); return }  # L11
   if is_id("state") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_state(); return }   # 0.S
-  if is_id("action") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_action(); return }   # 0.R
-  if is_id("reducer") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "on") { parse_reducer(); return }
-  if is_id("reducer") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "in") { parse_row_reducer(); return }   # 27.3
+  if is_id("action") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_action(is_net, is_pred, bcast, validate_fn); return }   # 0.R
+  if is_id("reducer") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "on") { net_reducer_attrs(is_net, bcast, validate_fn);  parse_reducer(is_pred); return }
+  if is_id("reducer") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "in") { net_reducer_attrs(is_net, bcast, validate_fn);  parse_row_reducer(is_pred); return }   # 27.3
   if is_id("var") {
     if not g_allow_globals {
       perr(`a module-level var is refused: a module's changing data is its state (state Name {{ ... }}), passed to the functions that use it - or, if it never changes, a let`)

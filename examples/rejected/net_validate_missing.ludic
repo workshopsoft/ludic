@@ -1,0 +1,7 @@
+# 27.5: @Validate names a function
+program NetValidateMissing {
+  state Chat { lines: int = 0 }
+  @Net @Validate(may_say) action Say { n: int }
+  reducer Chat on Say(c: mut Chat, a: Say) { c.lines += 1 }
+  entry { dispatch Say { n: 1 } }
+}

@@ -25,7 +25,7 @@ var g_col_field: []pointer = new []pointer
 var g_rv_nodes: []Node = new []Node            # every @RowVerb function
 
 # reducer REC in STATE.path on ACTION(r: mut Row<REC>, reads..., a: ACTION) { ... }
-function parse_row_reducer() -> void {
+function parse_row_reducer(is_pred: bool) -> void {
   let rec = toks[pi + 1].text
   let st = toks[pi + 3].text
   if toks[pi + 3].kind != TK_ID or not (toks[pi + 4].text == ".") { rr_shape() }
@@ -52,6 +52,7 @@ function parse_row_reducer() -> void {
   push(g_red_tbl, path)
   push(g_red_tgt, null)
   push(g_red_mc, g_mc_gen_reg)
+  push(g_red_pred, is_pred)
   push(prog, f)
 }
 # a machine's reducer beside the program's own on the same row and action: Deer__in__Herd__deer__machine__DeerSteps

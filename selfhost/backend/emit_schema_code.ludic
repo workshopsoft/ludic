@@ -258,6 +258,8 @@ function cx_decls(b: Buf, uns: int) -> void {
     if uns == 3 {                                 # an action: the field naming its row (27.3)
       buf_puts(b, ", \"target\": ")
       sc_str(b, rr_target(d.s))
+      buf_puts(b, ", \"net\": ")
+      cx_action_net(b, act_index(d.s))
     }
     buf_puts(b, "}")
     i += 1
@@ -285,9 +287,41 @@ function cx_reducers(b: Buf) -> void {
     cx_module(b, f.file)
     buf_puts(b, ", ")
     cx_at(b, f)
+    buf_puts(b, ", \"predicted\": ")
+    buf_puts(b, cx_bool(na_red_pred(k)))
+    buf_puts(b, ", \"net\": ")
+    sc_str(b, cx_net_word(g_red_action[k]))
     buf_puts(b, "}")
     i += 1
   }
+}
+# 27.5: an action's net switches: null, or whether it is predicted, who hears it, its validator and its fields
+function cx_action_net(b: Buf, a: int) -> void {
+  if a < 0 or not g_an_net[a] {
+    buf_puts(b, "null")
+    return
+  }
+  buf_puts(b, "{\"predicted\": ")
+  buf_puts(b, cx_bool(na_pm(a) > 0))
+  buf_puts(b, ", \"broadcast\": ")
+  jq_put(b, cx_net_word(g_act_names[a]))
+  buf_puts(b, ", \"validate\": ")
+  sc_str(b, g_an_val[a])
+  buf_puts(b, ", \"fields\": ")
+  buf_puts(b, itoa(len(net_fields(a))))
+  buf_puts(b, "}")
+}
+function cx_bool(v: bool) -> pointer {
+  if v { return "true" }
+  return "false"
+}
+# who hears a @Net action once the host accepts it ("all", "owner", "none"), or null for any other action
+function cx_net_word(act: pointer) -> pointer {
+  let a = act_index(act)
+  if a < 0 or not g_an_net[a] { return null }
+  if g_an_bc[a] == 1 { return "owner" }
+  if g_an_bc[a] == 2 { return "none" }
+  return "all"
 }
 # 27.3: the reducers on a table's rows, and the verbs that write a row
 function cx_row_reducers(b: Buf) -> void {
@@ -314,7 +348,11 @@ function cx_row_reducers(b: Buf) -> void {
     jq_put(b, g_red_action[k])
     buf_puts(b, ", \"target\": ")
     sc_str(b, g_red_tgt[k])
-    buf_puts(b, ", \"predicted\": false, \"net\": null, ")   # @Predicted and @Net come with 27.5
+    buf_puts(b, ", \"predicted\": ")
+    buf_puts(b, cx_bool(na_red_pred(k)))
+    buf_puts(b, ", \"net\": ")
+    sc_str(b, cx_net_word(g_red_action[k]))
+    buf_puts(b, ", ")
     cx_module(b, f.file)
     buf_puts(b, ", ")
     cx_at(b, f)

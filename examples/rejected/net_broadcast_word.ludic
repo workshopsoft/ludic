@@ -1,0 +1,7 @@
+# 27.5: who hears an accepted action is all, owner or none
+program NetBroadcastWord {
+  state Chat { lines: int = 0 }
+  @Net @Broadcast(some) action Say { n: int }
+  reducer Chat on Say(c: mut Chat, a: Say) { c.lines += 1 }
+  entry { dispatch Say { n: 1 } }
+}

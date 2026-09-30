@@ -1,0 +1,7 @@
+# 27.5: what goes on the wire is a whole number, a bool, a float or an enum
+program NetStringField {
+  state Chat { lines: int = 0 }
+  @Net action Say { text: string }
+  reducer Chat on Say(c: mut Chat, a: Say) { c.lines += 1 }
+  entry { dispatch Say { text: "hi" } }
+}

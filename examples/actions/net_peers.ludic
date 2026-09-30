@@ -1,0 +1,68 @@
+# net_peers.ludic - 27.5: a guest and a host, one program, a wire between them (a list the example
+# delivers itself). The guest spends at once (@Predicted) and tells the host; the host's @Validate
+# takes the first spend and refuses the second, and the refusal puts the guest's coins back.
+program NetPeers {
+  numbers float
+  state Host { coins: int = 100 }
+  state Guest { coins: int = 100 }
+  state Wire {
+    log: []int = new []int
+    role: int = 0
+    why: int = 0
+  }
+  @Net @Predicted @Validate(may_spend) action Spend { n: int = 1 }
+  export function may_spend(h: Host, a: Spend, sender: int) -> bool { return a.n <= 10 and sender == 2 }
+  reducer Host on Spend(h: mut Host, a: Spend) { if NetActions.role() == 1 { h.coins -= a.n } }
+  @Predicted reducer Guest on Spend(g: mut Guest, a: Spend) { if NetActions.role() == 2 { g.coins -= a.n } }
+
+  function role(w: Wire) -> int { return w.role }
+  function send(w: mut Wire, to: int, from: int, words: []int, n: int) -> void {
+    push(w.log, to)
+    push(w.log, from)
+    push(w.log, n)
+    for i in 0 .. n { push(w.log, words[i]) }
+  }
+  function to_host(w: mut Wire, words: []int, n: int) -> void { send(w, 0, 2, words, n) }
+  function to_peer(w: mut Wire, pid: int, words: []int, n: int) -> void { send(w, pid, 1, words, n) }
+  function told_no(w: mut Wire, kind: int, seq: int, why: int) -> void { w.why = why }
+  bind NetActions { role: fn role, to_host: fn to_host, to_peer: fn to_peer, rejected: fn told_no }
+
+  # hand the reader (0 the host, else a guest) what is addressed to it
+  function deliver(w: mut Wire, to: int) -> void {
+    let mine = new []int
+    let rest = new []int
+    var i = 0
+    while i < len(w.log) {
+      let n = w.log[i + 2]
+      var into = rest
+      if w.log[i] == to { into = mine }
+      for k in 0 .. n + 3 { push(into, w.log[i + k]) }
+      i += 3 + n
+    }
+    w.log = rest
+    i = 0
+    while i < len(mine) {
+      let n = mine[i + 2]
+      let words = new []int
+      for k in 0 .. n { push(words, mine[i + 3 + k]) }
+      net_actions_receive(mine[i + 1], words, n)
+      i += 3 + n
+    }
+  }
+  entry (w: mut Wire, h: Host, g: Guest) {
+    w.role = 2
+    dispatch Spend { n: 3 }
+    dispatch Spend { n: 50 }
+    drain_actions()
+    let guess = g.coins                                          # 47: both guessed, the host has not heard
+    let before = h.coins                                         # 100
+    w.role = 1
+    deliver(w, 0)
+    drain_actions()
+    let took = h.coins                                           # 97: the 50 was refused
+    w.role = 2
+    deliver(w, 2)
+    drain_actions()
+    print(`{guess} {before} {took} {g.coins} {w.why}`)           # 47 100 97 97 1: back to what the host took
+  }
+}

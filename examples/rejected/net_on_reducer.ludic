@@ -1,0 +1,7 @@
+# 27.5: @Net marks an action, not a reducer
+program NetOnReducer {
+  state Chat { lines: int = 0 }
+  action Say { n: int }
+  @Net reducer Chat on Say(c: mut Chat, a: Say) { c.lines += 1 }
+  entry { dispatch Say { n: 1 } }
+}

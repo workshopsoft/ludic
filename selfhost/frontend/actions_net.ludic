@@ -1,0 +1,596 @@
+# actions_net.ludic — 27.5: an action on the wire. The host owns the world; a guest that dispatches a
+# @Net action sends it to the host (reliable, in order) instead of reducing it, and the host checks it
+# (@Validate), reduces it and tells the others (@Broadcast):
+#
+#   @Net @Predicted @Broadcast(all) @Validate(may_fire) action Fire { @Target who: int = -1, at: float }
+#   reducer Gun in Guns.tab on Fire(r: mut Row<Gun>, a: Fire) { ... }     # the host's; a guest's too, at once
+#
+# @Predicted on the action, or on one reducer, makes the guest reduce it at once (speculatively) and keep
+# an undo record: the host's confirm drops it, its refusal rolls back and replays what followed. What is
+# written here is Ludic source, parsed into the program's own file next to the drain (actions.ludic), and
+# the transport is a port the game binds: `NetActions` (role, to_host, to_peer, to_all, allow, owner_of,
+# rejected), so the compiler names no socket. A program with no @Net action gets none of it.
+var g_an_net: []bool = new []bool               # per action: @Net
+var g_an_pred: []bool = new []bool              # ... @Predicted
+var g_an_bc: []int = new []int                  # ... @Broadcast: 0 all, 1 owner, 2 none
+var g_an_val: []pointer = new []pointer         # ... @Validate(fn), or null
+var g_red_pred: []bool = new []bool             # per reducer: @Predicted on it
+var g_na_port: bool = false                     # the NetActions port is written
+const NA_CAP: int = 32                          # a guest's pending (predicted, unconfirmed) actions
+const NA_PEERS: int = 32                        # the guests a host keeps a sequence for
+const NA_LIST: int = 16                         # the elements of a list field an undo record keeps
+
+# @Net / @Predicted / @Broadcast / @Validate, read before `action`
+function net_action_attrs(c: Node, is_net: bool, is_pred: bool, bcast: pointer, validate_fn: pointer) -> void {
+  if not is_net and (is_pred or bcast != null or validate_fn != null) {
+    perr(`action {c.s}: @Predicted, @Broadcast and @Validate belong to a @Net action - mark it @Net, which sends it to the host`)
+  }
+  var bc = 0
+  if bcast != null {
+    if bcast == "all" { bc = 0 } else if bcast == "owner" { bc = 1 } else if bcast == "none" { bc = 2 } else {
+      perr(`action {c.s}: @Broadcast({bcast}) - who hears an accepted action is all, owner or none`)
+    }
+  }
+  push(g_an_net, is_net)
+  push(g_an_pred, is_pred)
+  push(g_an_bc, bc)
+  push(g_an_val, validate_fn)
+  if is_net and not g_na_port {
+    g_na_port = true                             # the port the game binds must exist when `bind` is read
+    var file = g_parse_file
+    if g_act_main != null { file = g_act_main }
+    vw_parse(na_port_src(), file, 1, 1)
+  }
+}
+function net_reducer_attrs(is_net: bool, bcast: pointer, validate_fn: pointer) -> void {
+  if is_net or bcast != null or validate_fn != null {
+    perr("@Net, @Broadcast and @Validate mark an action, not a reducer - a reducer takes @Predicted")
+  }
+}
+function an_any() -> bool {
+  var i = 0
+  while i < len(g_an_net) {
+    if g_an_net[i] { return true }
+    i += 1
+  }
+  return false
+}
+function an_is(a: int) -> bool { return g_an_net[a] }
+
+# ---- the port and the stubs -----------------------------------------------------------------------
+# a port with no binding answers as a program alone: the actions are reduced where they are dispatched
+function na_port_src() -> pointer {
+  var s = "export port NetActions {\n"
+  s = s + "  role: fn() -> int = fn ludic_netact_d_role\n"
+  s = s + "  to_host: fn([]int, int) -> void = fn ludic_netact_d_send\n"
+  s = s + "  to_peer: fn(int, []int, int) -> void = fn ludic_netact_d_peer\n"
+  s = s + "  to_all: fn(int, []int, int) -> void = fn ludic_netact_d_peer\n"
+  s = s + "  allow: fn(int, int) -> bool = fn ludic_netact_d_allow\n"
+  s = s + "  owner_of: fn(int, int) -> int = fn ludic_netact_d_owner\n"
+  s = s + "  rejected: fn(int, int, int) -> void = fn ludic_netact_d_rejected\n"
+  s = s + "}\n"
+  s = s + "function ludic_netact_d_role() -> int { return 0 }\n"
+  s = s + "function ludic_netact_d_send(w: []int, n: int) -> void { }\n"
+  s = s + "function ludic_netact_d_peer(pid: int, w: []int, n: int) -> void { }\n"
+  s = s + "function ludic_netact_d_allow(sender: int, kind: int) -> bool { return true }\n"
+  s = s + "function ludic_netact_d_owner(kind: int, target: int) -> int { return -1 }\n"
+  s = s + "function ludic_netact_d_rejected(kind: int, seq: int, why: int) -> void { }\n"
+  return s
+}
+# what a program with no @Net action answers to the calls a game's transport makes
+function net_stub_src() -> pointer {
+  var s = "export function action_sender() -> int { return 0 }\n"
+  s = s + "export function net_actions_receive(from: int, w: []int, n: int) -> int { return -1 }\n"
+  s = s + "export function net_actions_reset() -> void { }\n"
+  s = s + "export function net_actions_forget(pid: int) -> void { }\n"
+  s = s + "export function net_actions_stat(what: int) -> int { return 0 }\n"
+  s = s + "export function net_actions_pending() -> int { return 0 }\n"
+  return s
+}
+function is_net_builtin(name: pointer) -> bool {
+  return (name == "action_sender") or (name == "net_actions_receive") or (name == "net_actions_reset") or (name == "net_actions_forget") or (name == "net_actions_stat") or (name == "net_actions_pending")
+}
+
+# ---- the checks -----------------------------------------------------------------------------------
+# a field's place on the wire: "i" a whole number, "b" a bool, "f" a float, null - not sendable
+function an_fkind(ty: pointer) -> pointer {
+  if (ty == "int") or (ty == "entity") { return "i" }
+  if ty == "bool" { return "b" }
+  if ty == "float" { return "f" }
+  let e = rr_enum(ty)
+  if e != null and not enum_is_tagged(e) { return "i" }
+  return null
+}
+function rr_enum(name: pointer) -> Node {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_ENUM and (d.s == name) { return d }
+    i += 1
+  }
+  return null
+}
+# a field a snapshot keeps: a whole number, bool, float or enum; or a list of whole numbers or floats.
+# "i" "b" "f" as on the wire, "I" a list of whole numbers, "F" a list of floats, null - not kept
+function an_skind(ty: pointer) -> pointer {
+  let k = an_fkind(ty)
+  if k != null { return k }
+  if ty == "[]int" { return "I" }
+  if ty == "[]float" { return "F" }
+  return null
+}
+function net_fields(a: int) -> []Node {
+  let out = new []Node
+  let d = g_act_nodes[a]
+  var i = 0
+  while i < len(d.kids) {
+    if d.kids[i].kind == N_FIELD { push(out, d.kids[i]) }
+    i += 1
+  }
+  return out
+}
+function net_finish_checks() -> void {
+  var a = 0
+  while a < len(g_act_names) {
+    if g_an_net[a] {
+      let d = g_act_nodes[a]
+      let fs = net_fields(a)
+      if len(fs) > 200 { act_err(d, `@Net action {g_act_names[a]} has {itoa(len(fs))} fields: one message holds at most 200`) }
+      var f = 0
+      while f < len(fs) {
+        if an_fkind(fs[f].ty) == null {
+          act_err(fs[f], `@Net action {g_act_names[a]}: field {fs[f].s} is a {rr_ty_text(fs[f].ty)}, and only a whole number, a bool, a float or an enum goes on the wire - send a handle or an id, and let the host look the rest up`)
+        }
+        f += 1
+      }
+      if g_an_bc[a] == 1 and rr_target(g_act_names[a]) == null {
+        act_err(d, `@Broadcast(owner) on {g_act_names[a]}: the owner of what? - mark the field that holds the handle @Target, which NetActions.owner_of is asked about`)
+      }
+      let vf = g_an_val[a]
+      if vf != null {
+        var found: Node = null
+        var i = 0
+        while i < len(prog) {
+          if prog[i].kind == N_FN and (prog[i].s == vf) and prog[i].pos >= 0 { found = prog[i] }
+          i += 1
+        }
+        if found == null { act_err(d, `@Validate({vf}) on {g_act_names[a]}: there is no function {vf} - ({"a"}: {g_act_names[a]}, sender: int) -> bool, after any states it reads`) }
+        na_check_validator(found, g_act_names[a])
+      }
+    }
+    a += 1
+  }
+  var i = 0
+  while i < len(g_red_nodes) {
+    let act = g_red_action[i]
+    let ai = act_index(act)
+    if g_red_pred[i] and ai >= 0 and not g_an_net[ai] {
+      act_err(g_red_nodes[i], `@Predicted reducer on {act}: {act} is not a @Net action - nothing is sent to the host, so there is nothing to predict`)
+    }
+    i += 1
+  }
+}
+# (states it reads..., a: Action, sender: int) -> bool
+function na_check_validator(f: Node, act: pointer) -> void {
+  var ps = new []Node
+  var k = 0
+  while k < len(f.kids) {
+    if f.kids[k].kind == N_PARAM { push(ps, f.kids[k]) }
+    k += 1
+  }
+  let n = len(ps)
+  var ok = n >= 2 and (ps[n - 2].ty == act) and (ps[n - 1].ty == "int") and (f.ty == "bool")
+  k = 0
+  while ok and k < n - 2 {
+    if not is_state_ty(ps[k].ty) or ps[k].uns == 1 { ok = false }
+    k += 1
+  }
+  if not ok { act_err(f, `@Validate({f.s}) on {act}: a validator is (states it reads..., a: {act}, sender: int) -> bool, and writes nothing`) }
+}
+
+# ---- what a reducer does on the wire --------------------------------------------------------------
+# is this reducer speculative on a guest: its own @Predicted, or its action's
+function na_red_pred(i: int) -> bool {
+  let a = act_index(g_red_action[i])
+  if a < 0 { return false }
+  return g_an_net[a] and (g_red_pred[i] or g_an_pred[a])
+}
+# 0 nothing is predicted, 1 some reducers are, 2 all of them are
+function na_pm(a: int) -> int {
+  if not g_an_net[a] { return 0 }
+  let rs = red_sorted(g_act_names[a])
+  var n = 0
+  var k = 0
+  while k < len(rs) {
+    if na_red_pred(rs[k]) { n += 1 }
+    k += 1
+  }
+  if g_an_pred[a] { return 2 }
+  if n == 0 { return 0 }
+  if n == len(rs) { return 2 }
+  return 1
+}
+
+# the schema hash: a build that differs in what goes on the wire does not talk to this one
+function na_hash() -> int {
+  var h = 0 - 2128831035                          # FNV-1a, 32 bits
+  var a = 0
+  while a < len(g_act_names) {
+    if g_an_net[a] {
+      var sig = `{itoa(a)}:{g_act_names[a]}(`
+      let fs = net_fields(a)
+      var f = 0
+      while f < len(fs) {
+        sig = sig + `{fs[f].s}:{an_fkind(fs[f].ty)},`
+        f += 1
+      }
+      sig = sig + `)1;`
+      var i = 0
+      while i < len(sig) {
+        h = (h ^ sig[i]) * 16777619
+        i += 1
+      }
+    }
+    a += 1
+  }
+  return h
+}
+
+# ---- the drain's queue: kept lists and the state ---------------------------------------------------
+function na_maxf() -> int {
+  var m = 1
+  var a = 0
+  while a < len(g_act_names) {
+    if g_an_net[a] and len(net_fields(a)) > m { m = len(net_fields(a)) }
+    a += 1
+  }
+  return m
+}
+# a snapshot's words for a record's (or a state's) fields: how many whole numbers and floats it keeps
+function na_snap_ni(ty: pointer, row: bool, rec: pointer) -> int {
+  let d = rr_decl(ty)
+  var n = 0
+  if d == null { return 0 }
+  var i = 0
+  while i < len(d.kids) {
+    let f = d.kids[i]
+    if f.kind == N_FIELD and na_keeps(f, rec, row) {
+      let k = an_skind(f.ty)
+      if k == "i" or k == "b" { n += 1 }
+      if k == "I" { n += 1 + NA_LIST }
+    }
+    i += 1
+  }
+  return n
+}
+function na_snap_nf(ty: pointer, row: bool, rec: pointer) -> int {
+  let d = rr_decl(ty)
+  var n = 0
+  if d == null { return 0 }
+  var i = 0
+  while i < len(d.kids) {
+    let f = d.kids[i]
+    if f.kind == N_FIELD and na_keeps(f, rec, row) {
+      let k = an_skind(f.ty)
+      if k == "f" { n += 1 }
+      if k == "F" { n += NA_LIST }
+    }
+    i += 1
+  }
+  return n
+}
+# a field an undo record keeps: one of the kinds above, and never a column a row verb keeps with its table
+# or the field a @Machine drives (it changes only by a transition of its table)
+function na_keeps(f: Node, rec: pointer, row: bool) -> bool {
+  if an_skind(f.ty) == null { return false }
+  if row and rr_is_column(rec, f.s) { return false }
+  if row and mc_of_field(rec, f.s) >= 0 { return false }
+  return true
+}
+# the reducers of a @Net action a guest runs at once
+function na_pred_reds() -> []int {
+  let out = new []int
+  var i = 0
+  while i < len(g_red_nodes) {
+    if na_red_pred(i) { push(out, i) }
+    i += 1
+  }
+  return out
+}
+function net_fields_src() -> pointer {
+  if not an_any() { return "" }
+  let cap = itoa(NA_CAP)
+  let mf = itoa(na_maxf())
+  var s = "  na_seq: int = 0\n  na_who: int = 0\n  na_cur_seq: int = 0\n"
+  s = s + "  na_wire: []int = new []int\n  na_orig: []int = new []int\n  na_seqs: []int = new []int\n  na_mode: []int = new []int\n  na_slot: []int = new []int\n  na_flag: []int = new []int\n"
+  s = s + `  na_pd_head: int = 0\n  na_pd_n: int = 0\n  na_pd_seq: []int = ludic_netact_zeros({cap})\n  na_pd_kind: []int = ludic_netact_zeros({cap})\n  na_pd_state: []int = ludic_netact_zeros({cap})\n`
+  s = s + `  na_pd_w: []int = ludic_netact_zeros({itoa(NA_CAP * na_maxf())})\n`
+  s = s + `  na_pr_n: int = 0\n  na_pr_pid: []int = ludic_netact_zeros({itoa(NA_PEERS)})\n  na_pr_seq: []int = ludic_netact_zeros({itoa(NA_PEERS)})\n`
+  s = s + "  na_st: []int = ludic_netact_zeros(8)\n"
+  let ps = na_pred_reds()
+  var k = 0
+  while k < len(ps) {
+    let j = ps[k]
+    let row = g_red_rec[j] != null
+    var ty = g_red_state[j]
+    if row { ty = g_red_rec[j] }
+    let ni = na_snap_ni(ty, row, g_red_rec[j])
+    let nf = na_snap_nf(ty, row, g_red_rec[j])
+    if ni > 0 { s = s + `  ns{itoa(j)}_i: []int = ludic_netact_zeros({itoa(NA_CAP * ni)})\n` }
+    if nf > 0 { s = s + `  ns{itoa(j)}_f: []float = ludic_netact_zerosf({itoa(NA_CAP * nf)})\n` }
+    if row { s = s + `  ns{itoa(j)}_h: []int = ludic_netact_zeros({cap})\n` }
+    k += 1
+  }
+  return s
+}
+
+# ---- the wire: what one action encodes and decodes to ----------------------------------------------
+function na_enc_src(a: int) -> pointer {
+  let n = g_act_names[a]
+  var s = `function ludic_netact_enc__{n}(q: mut LudicActions, a: {n}) -> void {{\n`
+  let fs = net_fields(a)
+  var f = 0
+  while f < len(fs) {
+    let k = an_fkind(fs[f].ty)
+    let x = `a.{fs[f].s}`
+    if k == "i" { s = s + `  push(q.na_wire, {x})\n` }
+    if k == "b" { s = s + `  if {x} {{ push(q.na_wire, 1) }} else {{ push(q.na_wire, 0) }}\n` }
+    if k == "f" { s = s + `  push(q.na_wire, float_bits({x}))\n` }
+    f += 1
+  }
+  s = s + "}\n"
+  s = s + `function ludic_netact_dec__{n}(q: mut LudicActions, w: []int, o: int) -> {n} {{\n  let a = ludic_act_new__{n}(q)\n`
+  f = 0
+  while f < len(fs) {
+    let k = an_fkind(fs[f].ty)
+    let w = `w[o + {itoa(f)}]`
+    let x = `a.{fs[f].s}`
+    if k == "i" { s = s + `  {x} = {w}\n` }
+    if k == "b" { s = s + `  {x} = {w} != 0\n` }
+    if k == "f" { s = s + `  {x} = float_from_bits({w})\n` }
+    f += 1
+  }
+  s = s + "  return a\n}\n"
+  let t = rr_target(n)
+  if t != null { s = s + `function ludic_netact_tgt__{n}(a: {n}) -> int {{ return a.{t} }}\n` }
+  return s
+}
+# a switch over the @Net actions: `body(n, a)` is what each case runs
+function na_cases(head: pointer, before: pointer, tail: pointer, which: int) -> pointer {
+  var s = head
+  var a = 0
+  while a < len(g_act_names) {
+    if g_an_net[a] {
+      let n = g_act_names[a]
+      let k = itoa(a)
+      if which == 0 { s = s + `  if k == {k} {{ ludic_netact_enc__{n}(q, v) }}\n` }
+      if which == 1 { s = s + `  if k == {k} {{ return {itoa(len(net_fields(a)))} }}\n` }
+      if which == 2 { s = s + `  if k == {k} {{ return ludic_netact_dec__{n}(q, w, o) }}\n` }
+      if which == 3 { s = s + `  if k == {k} {{ return {itoa(na_pm(a))} }}\n` }
+      if which == 4 { s = s + `  if k == {k} {{ return {itoa(g_an_bc[a])} }}\n` }
+      if which == 5 {
+        let t = rr_target(n)
+        if t != null { s = s + `  if k == {k} {{ return ludic_netact_tgt__{n}(v) }}\n` }
+      }
+      if which == 6 { s = s + `  if k == {k} {{ return true }}\n` }
+      if which == 7 { s = s + `  if k == {k} {{ ludic_netsnap_a__{n}(v, slot) }}\n` }
+      if which == 8 { s = s + `  if k == {k} {{ ludic_netundo_a__{n}(slot) }}\n` }
+      if which == 9 and na_pm(a) == 1 { s = s + `  if k == {k} {{ return true }}\n` }
+    }
+    a += 1
+  }
+  return s + tail
+}
+# the reducers a guest runs at once, for one action: each snapshots what it will write
+function na_snap_src(a: int) -> pointer {
+  let n = g_act_names[a]
+  var snap = `function ludic_netsnap_a__{n}(a: {n}, slot: int) -> void {{\n`
+  var undo = `function ludic_netundo_a__{n}(slot: int) -> void {{\n`
+  let rs = red_sorted(n)
+  var k = 0
+  while k < len(rs) {
+    let j = rs[k]
+    if na_red_pred(j) {
+      if g_red_rec[j] != null {
+        snap = snap + `  ludic_netsnap__{itoa(j)}(a.{g_red_tgt[j]}, slot)\n`
+      } else {
+        snap = snap + `  ludic_netsnap__{itoa(j)}(slot)\n`
+      }
+      undo = undo + `  ludic_netundo__{itoa(j)}(slot)\n`
+    }
+    k += 1
+  }
+  return snap + "}\n" + undo + "}\n"
+}
+# one reducer's undo record: its state's (or its row's) fields in, and back
+function na_undo_src(j: int) -> pointer {
+  let row = g_red_rec[j] != null
+  var ty = g_red_state[j]
+  if row { ty = g_red_rec[j] }
+  let d = rr_decl(ty)
+  let nj = itoa(j)
+  let ni = na_snap_ni(ty, row, g_red_rec[j])
+  let nf = na_snap_nf(ty, row, g_red_rec[j])
+  var head = `function ludic_netsnap__{nj}(q: mut LudicActions, s: {g_red_state[j]}, slot: int) -> void {{\n`
+  var back = `function ludic_netundo__{nj}(q: mut LudicActions, s: mut {g_red_state[j]}, slot: int) -> void {{\n`
+  var obj = "s"
+  if row {
+    head = `function ludic_netsnap__{nj}(q: mut LudicActions, s: {g_red_state[j]}, h: int, slot: int) -> void {{\n`
+    let pre = `  let tb = s.{g_red_tbl[j]}\n  q.ns{nj}_h[slot] = -1\n  if tb == null {{ return }}\n  let row = tb_row(tb, h)\n  if row < 0 {{ return }}\n  q.ns{nj}_h[slot] = h\n  let r: {g_red_rec[j]} = tb_rec(tb, row)\n`
+    head = head + pre
+    back = back + `  let tb = s.{g_red_tbl[j]}\n  let h = q.ns{nj}_h[slot]\n  if tb == null or h < 0 {{ return }}\n  let row = tb_row(tb, h)\n  if row < 0 {{ return }}\n  let r: {g_red_rec[j]} = tb_rec(tb, row)\n`
+    obj = "r"
+  }
+  var bi = "  let bi = slot * " + itoa(ni) + "\n"
+  var bf = "  let bf = slot * " + itoa(nf) + "\n"
+  if ni > 0 { head = head + bi;  back = back + bi }
+  if nf > 0 { head = head + bf;  back = back + bf }
+  var pi_ = 0
+  var pf = 0
+  var i = 0
+  while d != null and i < len(d.kids) {
+    let f = d.kids[i]
+    if f.kind == N_FIELD and na_keeps(f, g_red_rec[j], row) {
+      let k = an_skind(f.ty)
+      let x = `{obj}.{f.s}`
+      let ai = `q.ns{nj}_i`
+      let af = `q.ns{nj}_f`
+      if k == "i" {
+        head = head + `  {ai}[bi + {itoa(pi_)}] = {x}\n`
+        back = back + `  {x} = {ai}[bi + {itoa(pi_)}]\n`
+        pi_ += 1
+      }
+      if k == "b" {
+        head = head + `  if {x} {{ {ai}[bi + {itoa(pi_)}] = 1 }} else {{ {ai}[bi + {itoa(pi_)}] = 0 }}\n`
+        back = back + `  {x} = {ai}[bi + {itoa(pi_)}] != 0\n`
+        pi_ += 1
+      }
+      if k == "f" {
+        head = head + `  {af}[bf + {itoa(pf)}] = {x}\n`
+        back = back + `  {x} = {af}[bf + {itoa(pf)}]\n`
+        pf += 1
+      }
+      if k == "I" {
+        head = head + `  var n{itoa(i)} = 0\n  if {x} != null {{ n{itoa(i)} = len({x}) }}\n  {ai}[bi + {itoa(pi_)}] = n{itoa(i)}\n  var e{itoa(i)} = 0\n  while e{itoa(i)} < n{itoa(i)} and e{itoa(i)} < {itoa(NA_LIST)} {{\n    {ai}[bi + {itoa(pi_ + 1)} + e{itoa(i)}] = {x}[e{itoa(i)}]\n    e{itoa(i)} += 1\n  }}\n`
+        back = back + `  if {x} != null {{\n    var e{itoa(i)} = 0\n    while e{itoa(i)} < {ai}[bi + {itoa(pi_)}] and e{itoa(i)} < len({x}) and e{itoa(i)} < {itoa(NA_LIST)} {{\n      {x}[e{itoa(i)}] = {ai}[bi + {itoa(pi_ + 1)} + e{itoa(i)}]\n      e{itoa(i)} += 1\n    }}\n  }}\n`
+        pi_ += 1 + NA_LIST
+      }
+      if k == "F" {
+        head = head + `  var n{itoa(i)} = 0\n  if {x} != null {{ n{itoa(i)} = len({x}) }}\n  var e{itoa(i)} = 0\n  while e{itoa(i)} < n{itoa(i)} and e{itoa(i)} < {itoa(NA_LIST)} {{\n    {af}[bf + {itoa(pf)} + e{itoa(i)}] = {x}[e{itoa(i)}]\n    e{itoa(i)} += 1\n  }}\n`
+        back = back + `  if {x} != null {{\n    var e{itoa(i)} = 0\n    while e{itoa(i)} < len({x}) and e{itoa(i)} < {itoa(NA_LIST)} {{\n      {x}[e{itoa(i)}] = {af}[bf + {itoa(pf)} + e{itoa(i)}]\n      e{itoa(i)} += 1\n    }}\n  }}\n`
+        pf += NA_LIST
+      }
+    }
+    i += 1
+  }
+  return head + "}\n" + back + "}\n"
+}
+
+# ---- every function the net layer adds to the drain's file -----------------------------------------
+function net_funcs_src() -> pointer {
+  let h = itoa(na_hash())
+  let hl = "(" + h + ")"
+  let mf = itoa(na_maxf())
+  let cap = itoa(NA_CAP)
+  var s = "@alloc_ok(\"built once, with the state\")\nfunction ludic_netact_zeros(n: int) -> []int {\n  let out = new []int\n  var i = 0\n  while i < n {\n    push(out, 0)\n    i += 1\n  }\n  return out\n}\n"
+  s = s + "@alloc_ok(\"built once, with the state\")\nfunction ludic_netact_zerosf(n: int) -> []float {\n  let out = new []float\n  var i = 0\n  while i < n {\n    push(out, float(0))\n    i += 1\n  }\n  return out\n}\n"
+  var a = 0
+  while a < len(g_act_names) {
+    if g_an_net[a] { s = s + na_enc_src(a) + na_snap_src(a) }
+    a += 1
+  }
+  let ps = na_pred_reds()
+  var k = 0
+  while k < len(ps) {
+    s = s + na_undo_src(ps[k])
+    k += 1
+  }
+  s = s + na_cases("function ludic_netact_encode(q: mut LudicActions, k: int, v: pointer) -> int {\n", "", "  return len(q.na_wire)\n}\n", 0)
+  s = s + na_cases("function ludic_netact_nf(k: int) -> int {\n", "", "  return -1\n}\n", 1)
+  s = s + na_cases("function ludic_netact_dec(q: mut LudicActions, k: int, w: []int, o: int) -> pointer {\n", "", "  return null\n}\n", 2)
+  s = s + na_cases("function ludic_netact_pm(k: int) -> int {\n", "", "  return 0\n}\n", 3)
+  s = s + na_cases("function ludic_netact_scope(k: int) -> int {\n", "", "  return 0\n}\n", 4)
+  s = s + na_cases("function ludic_netact_target(k: int, v: pointer) -> int {\n", "", "  return -1\n}\n", 5)
+  s = s + na_cases("function ludic_netact_is(k: int) -> bool {\n", "", "  return false\n}\n", 6)
+  s = s + na_cases("function ludic_netact_snap(k: int, v: pointer, slot: int) -> void {\n", "", "}\n", 7)
+  s = s + na_cases("function ludic_netact_undo(k: int, slot: int) -> void {\n", "", "}\n", 8)
+  s = s + na_cases("function ludic_netact_rest(k: int) -> bool {\n", "", "  return false\n}\n", 9)
+  s = s + "function ludic_netact_enq(q: mut LudicActions, k: int, v: pointer, who: int, sq: int, mode: int, slot: int, fl: int) -> void {\n"
+  s = s + "  push(q.kinds, k)\n  push(q.vals, v)\n  push(q.na_orig, who)\n  push(q.na_seqs, sq)\n  push(q.na_mode, mode)\n  push(q.na_slot, slot)\n  push(q.na_flag, fl)\n}\n"
+  s = s + "function ludic_netact_head(q: mut LudicActions, tk: int, sq: int, aux: int) -> void {\n  List.clear(q.na_wire)\n"
+  s = s + `  push(q.na_wire, {hl})\n  push(q.na_wire, tk)\n  push(q.na_wire, sq)\n  push(q.na_wire, aux)\n}}\n`
+  s = s + "function ludic_netact_mode(k: int) -> int {\n  if ludic_netact_pm(k) == 1 { return 1 }\n  return 0\n}\n"
+  # a guest's dispatch: to the host, and at once when predicted
+  s = s + "function ludic_netact_take(q: mut LudicActions, k: int, sq: int) -> int {\n"
+  s = s + `  if q.na_pd_n >= {cap} {{ return -1 }}\n  let s = (q.na_pd_head + q.na_pd_n) % {cap}\n`
+  s = s + "  q.na_pd_seq[s] = sq\n  q.na_pd_kind[s] = k\n  q.na_pd_state[s] = 1\n  q.na_pd_n += 1\n  return s\n}\n"
+  s = s + "function ludic_netact_keep(q: mut LudicActions, s: int) -> void {\n  var i = 4\n  while i < len(q.na_wire) {\n"
+  s = s + `    q.na_pd_w[s * {mf} + i - 4] = q.na_wire[i]\n    i += 1\n  }}\n}}\n`
+  s = s + "function ludic_netact_dispatch(q: mut LudicActions, k: int, v: pointer) -> void {\n"
+  s = s + "  if NetActions.role() != 2 {\n    ludic_netact_enq(q, k, v, 0, 0, 0, -1, 0)\n    return\n  }\n"
+  s = s + "  q.na_seq += 1\n  let sq = q.na_seq\n  let pm = ludic_netact_pm(k)\n  var slot = -1\n  var fl = 0\n"
+  s = s + "  if pm > 0 { slot = ludic_netact_take(q, k, sq) }\n  if slot >= 0 { fl = 1 }\n"
+  s = s + "  ludic_netact_head(q, 1 + fl * 16 + k * 256, sq, 0)\n  let n = ludic_netact_encode(q, k, v)\n"
+  s = s + "  if slot >= 0 { ludic_netact_keep(q, slot) }\n  NetActions.to_host(q.na_wire, n)\n  q.na_st[0] += 1\n"
+  s = s + "  if slot >= 0 { ludic_netact_enq(q, k, v, -1, sq, ludic_netact_mode(k), slot, 0) }\n}\n"
+  # the host, having reduced an action: confirm to a predicting sender, tell the rest
+  s = s + "function ludic_netact_accepted(q: mut LudicActions, k: int, v: pointer, who: int, sq: int, fl: int) -> void {\n"
+  s = s + "  if NetActions.role() != 1 { return }\n  let scope = ludic_netact_scope(k)\n  let pred = who > 0 and (fl & 1) == 1\n"
+  s = s + "  if pred {\n    ludic_netact_head(q, 3 + k * 256, sq, 0)\n    NetActions.to_peer(who, q.na_wire, 4)\n  }\n"
+  s = s + "  if scope == 2 { return }\n  ludic_netact_head(q, 2 + k * 256, sq, who)\n  let n = ludic_netact_encode(q, k, v)\n"
+  s = s + "  if scope == 1 {\n    let pid = NetActions.owner_of(k, ludic_netact_target(k, v))\n"
+  s = s + "    if pid > 0 and not (pred and pid == who) { NetActions.to_peer(pid, q.na_wire, n) }\n    return\n  }\n"
+  s = s + "  if pred { NetActions.to_all(who, q.na_wire, n) } else { NetActions.to_all(0, q.na_wire, n) }\n}\n"
+  s = s + "function ludic_netact_refuse(q: mut LudicActions, who: int, sq: int, k: int, why: int) -> void {\n"
+  s = s + "  q.na_st[7] += 1\n  ludic_netact_head(q, 4 + k * 256, sq, why)\n  NetActions.to_peer(who, q.na_wire, 4)\n}\n"
+  s = s + "function ludic_netact_allowed(who: int, k: int) -> bool { return NetActions.allow(who, k) }\n"
+  # a guest hears the host
+  s = s + "function ludic_netact_slot_at(q: LudicActions, off: int) -> int { return (q.na_pd_head + off) % " + cap + " }\n"
+  s = s + "function ludic_netact_trim(q: mut LudicActions) -> void {\n"
+  s = s + "  while q.na_pd_n > 0 and q.na_pd_state[q.na_pd_head] == 3 {\n    q.na_pd_state[q.na_pd_head] = 0\n"
+  s = s + `    q.na_pd_head = (q.na_pd_head + 1) % {cap}\n    q.na_pd_n -= 1\n  }}\n`
+  s = s + "  while q.na_pd_n > 0 and q.na_pd_state[ludic_netact_slot_at(q, q.na_pd_n - 1)] == 3 {\n    q.na_pd_state[ludic_netact_slot_at(q, q.na_pd_n - 1)] = 0\n    q.na_pd_n -= 1\n  }\n}\n"
+  s = s + "function ludic_netact_confirm(q: mut LudicActions, sq: int) -> void {\n"
+  s = s + "  while q.na_pd_n > 0 and q.na_pd_seq[q.na_pd_head] <= sq {\n    let s = q.na_pd_head\n    let k = q.na_pd_kind[s]\n"
+  s = s + "    if q.na_pd_state[s] != 3 and ludic_netact_rest(k) {\n"
+  s = s + `      let v = ludic_netact_dec(q, k, q.na_pd_w, s * {mf})\n      ludic_netact_enq(q, k, v, -1, q.na_pd_seq[s], 2, -1, 0)\n    }}\n`
+  s = s + `    q.na_pd_state[s] = 0\n    q.na_pd_head = (s + 1) % {cap}\n    q.na_pd_n -= 1\n    q.na_st[2] += 1\n  }}\n}}\n`
+  s = s + "function ludic_netact_rolled(q: mut LudicActions, k: int, sq: int, why: int) -> void {\n"
+  s = s + "  var e = -1\n  var off = 0\n  while off < q.na_pd_n {\n    if q.na_pd_seq[ludic_netact_slot_at(q, off)] == sq { e = off }\n    off += 1\n  }\n"
+  s = s + "  if e >= 0 {\n    off = q.na_pd_n - 1\n    while off >= e {\n      let s = ludic_netact_slot_at(q, off)\n"
+  s = s + "      if q.na_pd_state[s] == 2 {\n        ludic_netact_undo(q.na_pd_kind[s], s)\n        q.na_pd_state[s] = 1\n      }\n      off -= 1\n    }\n"
+  s = s + "    q.na_pd_state[ludic_netact_slot_at(q, e)] = 3\n    off = e + 1\n    while off < q.na_pd_n {\n      let s = ludic_netact_slot_at(q, off)\n      if q.na_pd_state[s] != 3 {\n"
+  s = s + "        let k2 = q.na_pd_kind[s]\n"
+  s = s + `        let v = ludic_netact_dec(q, k2, q.na_pd_w, s * {mf})\n        ludic_netact_enq(q, k2, v, -1, q.na_pd_seq[s], ludic_netact_mode(k2), s, 0)\n      }}\n      off += 1\n    }}\n`
+  s = s + "    ludic_netact_trim(q)\n    q.na_st[4] += 1\n  }\n  q.na_st[3] += 1\n  NetActions.rejected(k, sq, why)\n}\n"
+  s = s + "function ludic_netact_peer(q: mut LudicActions, pid: int) -> int {\n  var i = 0\n  while i < q.na_pr_n {\n    if q.na_pr_pid[i] == pid { return i }\n    i += 1\n  }\n"
+  s = s + `  if q.na_pr_n >= {itoa(NA_PEERS)} {{ return -1 }}\n  q.na_pr_pid[q.na_pr_n] = pid\n  q.na_pr_seq[q.na_pr_n] = 0\n  q.na_pr_n += 1\n  return q.na_pr_n - 1\n}}\n`
+  s = s + "export function net_actions_receive(q: mut LudicActions, from: int, w: []int, n: int) -> int {\n"
+  s = s + "  if n < 4 or len(w) < n {\n    q.na_st[6] += 1\n    return 1\n  }\n"
+  s = s + `  if w[0] != {hl} {{\n    q.na_st[6] += 1\n    return 2\n  }}\n`
+  s = s + "  let t = w[1] & 15\n  let fl = (w[1] >> 4) & 15\n  let k = (w[1] >> 8) & 65535\n  let sq = w[2]\n  let role = NetActions.role()\n  let nf = ludic_netact_nf(k)\n"
+  s = s + "  if t == 1 or t == 2 {\n    if (t == 1 and role != 1) or (t == 2 and role != 2) { return 3 }\n    if nf < 0 or n != 4 + nf {\n      q.na_st[6] += 1\n      return 4\n    }\n"
+  s = s + "    if t == 1 {\n      let pi = ludic_netact_peer(q, from)\n      if pi < 0 { return 7 }\n      if sq <= q.na_pr_seq[pi] {\n        q.na_st[5] += 1\n        return 5\n      }\n      q.na_pr_seq[pi] = sq\n"
+  s = s + "      let v = ludic_netact_dec(q, k, w, 4)\n      ludic_netact_enq(q, k, v, from, sq, 0, -1, fl & 1)\n    } else {\n"
+  s = s + "      let v = ludic_netact_dec(q, k, w, 4)\n      ludic_netact_enq(q, k, v, w[3], 0, 0, -1, 2)\n    }\n    q.na_st[1] += 1\n    return 0\n  }\n"
+  s = s + "  if (t == 3 or t == 4) and role == 2 {\n    drain_actions()\n    if t == 3 { ludic_netact_confirm(q, sq) } else { ludic_netact_rolled(q, k, sq, w[3]) }\n    return 0\n  }\n"
+  s = s + "  if t == 3 or t == 4 { return 3 }\n  return 6\n}\n"
+  s = s + "export function action_sender(q: LudicActions) -> int {\n  if q.na_who < 0 { return 0 }\n  return q.na_who\n}\n"
+  s = s + "export function net_actions_pending(q: LudicActions) -> int { return q.na_pd_n }\n"
+  s = s + "export function net_actions_stat(q: LudicActions, what: int) -> int {\n  if what < 0 or what > 7 { return 0 }\n  return q.na_st[what]\n}\n"
+  s = s + "export function net_actions_forget(q: mut LudicActions, pid: int) -> void {\n  var i = 0\n  while i < q.na_pr_n {\n    if q.na_pr_pid[i] == pid { q.na_pr_seq[i] = 0 }\n    i += 1\n  }\n}\n"
+  s = s + "export function net_actions_reset(q: mut LudicActions) -> void {\n  q.na_seq = 0\n  q.na_pr_n = 0\n  var i = 0\n  while i < 8 {\n    q.na_st[i] = 0\n    i += 1\n  }\n"
+  s = s + `  i = 0\n  while i < {cap} {{\n    q.na_pd_state[i] = 0\n    i += 1\n  }}\n  q.na_pd_head = 0\n  q.na_pd_n = 0\n}}\n`
+  return s
+}
+# `ludic_act_push`: a @Net action takes the wire's road, the rest are queued as they were
+function net_push_src() -> pointer {
+  var s = "export function ludic_act_push(q: mut LudicActions, k: int, v: pointer) -> void {\n"
+  s = s + "  if ludic_netact_is(k) {\n    ludic_netact_dispatch(q, k, v)\n    return\n  }\n  ludic_netact_enq(q, k, v, 0, 0, 0, -1, 0)\n}\n"
+  return s
+}
+# one @Net action's case in the drain: a guest's action checked first, its speculation kept, what the
+# host did told after
+function net_block_src(a: int, rs: []int) -> pointer {
+  let n = g_act_names[a]
+  var s = `    if k == {itoa(a)} {{\n      var ok = true\n      if who > 0 and (fl & 2) == 0 {{\n        ok = ludic_netact_allowed(who, k)\n`
+  if g_an_val[a] != null { s = s + `        if ok {{ ok = {g_an_val[a]}(v, who) }}\n` }
+  s = s + "        if not ok { ludic_netact_refuse(q, who, sq, k, 1) }\n      }\n      if ok {\n"
+  s = s + "        if ps >= 0 and mode != 2 {\n          ludic_netact_snap(k, v, ps)\n          q.na_pd_state[ps] = 2\n        }\n"
+  let pm = na_pm(a)
+  var r = 0
+  while r < len(rs) {
+    var callee = g_red_nodes[rs[r]].s
+    if g_red_rec[rs[r]] != null { callee = rr_wrap_name(rs[r]) }
+    if pm == 1 {
+      var gate = "mode != 1"
+      if na_red_pred(rs[r]) { gate = "mode != 2" }
+      s = s + `        if {gate} {{ {callee}(v) }}\n`
+    } else {
+      s = s + `        {callee}(v)\n`
+    }
+    r += 1
+  }
+  s = s + "        if who >= 0 { ludic_netact_accepted(q, k, v, who, sq, fl) }\n      }\n    }\n"
+  return s
+}

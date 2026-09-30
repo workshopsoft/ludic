@@ -1,0 +1,13 @@
+# net.ludic - 27.5: @Net on an action. With no session bound (the port NetActions answers as a program
+# alone) a @Net action is reduced where it is dispatched, exactly as a plain one is.
+program NetAlone {
+  state Wallet { coins: int = 10 }
+  @Net @Predicted @Validate(may_spend) action Spend { n: int = 1 }
+  export function may_spend(w: Wallet, a: Spend, sender: int) -> bool { return a.n <= w.coins }
+  reducer Wallet on Spend(w: mut Wallet, a: Spend) { w.coins -= a.n }
+  entry (w: Wallet) {
+    dispatch Spend { n: 3 }
+    drain_actions()
+    print(`{w.coins} {net_actions_pending()}`)      # 7 0: nothing to wait for, nobody to ask
+  }
+}

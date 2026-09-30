@@ -1,0 +1,7 @@
+# 27.5: @Predicted on an action that is not @Net has nothing to predict
+program NetPredictedPlain {
+  state Chat { lines: int = 0 }
+  @Predicted action Say { n: int }
+  reducer Chat on Say(c: mut Chat, a: Say) { c.lines += 1 }
+  entry { dispatch Say { n: 1 } }
+}

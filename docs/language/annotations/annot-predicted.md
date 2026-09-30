@@ -4,8 +4,8 @@ name: @Predicted
 category: annotations
 kind: annotation
 tokens: @Predicted
-sig: @Predicted handler Name { … }
-tip: Run a control handler on the owning client speculatively and on the server authoritatively.
+sig: "@Predicted handler Name { … } / @Net @Predicted action Name { … }"
+tip: Run a control handler on the owning client speculatively and on the server authoritatively; or a @Net action's reducers on the guest at once.
 order: 50
 ---
 
@@ -28,3 +28,5 @@ program PredictedMovement {
   }
 }
 ```
+
+On a <code>@Net</code> action, <code>@Predicted</code> (on the action, or on single reducers) makes a guest reduce the action at once, speculatively, as well as send it to the host. Before each such reducer runs the guest keeps an undo record (the scalar fields, and the first 16 elements of a list of numbers, of the reducer's state or row; a <code>@Column</code> is the verb's, not kept). The host's confirm drops the record; its refusal restores the records of the action and of every later one, newest first, and replays what followed. The record is taken per reducer, so cost is the fields it keeps, in a ring of 32 pending actions; past that an action is sent without a guess. See <code>@Net</code>.

@@ -1,0 +1,7 @@
+# 27.5: a @Predicted reducer of an action that is not @Net
+program NetPredictedReducer {
+  state Chat { lines: int = 0 }
+  action Say { n: int }
+  @Predicted reducer Chat on Say(c: mut Chat, a: Say) { c.lines += 1 }
+  entry { dispatch Say { n: 1 } }
+}

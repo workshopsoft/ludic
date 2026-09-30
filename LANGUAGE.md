@@ -443,6 +443,83 @@ program Herds {
 - **Dice** a row reducer rolls come from the row's own `Rng` or its owner's, never `Random.*`: it
   runs in the drain, outside its owner's tick, and the world's stream is co-op's shared order.
 
+**An action on the wire** (27.5). The host owns the world. `@Net` marks an action a guest sends to the
+host instead of reducing; the host checks it, reduces it with the same reducers, and says who else hears:
+
+```ludic
+program Shop {
+  state Wallet { coins: int = 10 }
+  @Net @Predicted @Broadcast(none) @Validate(may_spend) action Spend { n: int = 1 }
+  export function may_spend(w: Wallet, a: Spend, sender: int) -> bool { return a.n <= w.coins }
+  reducer Wallet on Spend(w: mut Wallet, a: Spend) { w.coins -= a.n }
+  entry (w: Wallet) {
+    dispatch Spend { n: 3 }
+    drain_actions()
+    print(w.coins)                      # 7: with no session bound it is reduced where it is dispatched
+  }
+}
+```
+
+- **`@Net action`** - on a guest `dispatch` encodes the record and gives it to the port's `to_host`; it
+  is not reduced there. On the host, and with no session (the port unbound answers as a program alone),
+  it is reduced where it is dispatched, so a package's code is the same in solo, host and guest. Fields
+  are whole numbers, bools, floats and enums (a handle or an id, never a string: the host looks the
+  rest up); `@Target` names the row as in 27.3. Inside a reducer `action_sender()` is the guest that sent
+  the action (0: this machine).
+- **`@Validate(fn)`** - `fn(states it reads..., a: Action, sender: int) -> bool`, run on the host at the
+  action's place in the drain, before its reducers; false refuses it (reducers do not run, nothing is
+  broadcast, the guest is told). `sender` is the wire's slot, never the message's. The port's `allow(sender,
+  kind)` is asked first, for the gate a game has on everything. An action the host dispatches is not checked.
+- **`@Broadcast(all | owner | none)`** - who hears an accepted action: every guest (the default), only the
+  owner of its `@Target` row (`owner_of(kind, target)` answers with a pid), or nobody. A guest that predicted
+  it is told only that it was accepted, and never gets its own action back.
+- **`@Predicted`** - on the action, or on single reducers of it: the guest also reduces it at once. Before
+  each such reducer runs the guest keeps an **undo record**: the reducer's state's (or row's) whole
+  numbers, bools, floats and enums, and the first 16 elements of a list of numbers - not a `@Column` and not
+  the field a `@Machine` drives (a verb's and a transition's, not the record's). The host's confirm drops
+  the record (and runs the reducers that were not predicted); a refusal restores the records of the
+  refused action and of every later one, newest first, then replays what followed on top. The cost is the
+  fields it keeps per predicted action, in a ring of 32 actions in flight (past that an action is sent
+  without a guess). What a refusal cannot undo is what an undo record does not hold - a list that grew, a
+  table, a string, another machine's state - and any write to a kept field between the guess and the
+  refusal that was not the action's (a snapshot the host sent meanwhile, a regeneration): it is put back
+  to what it was before the guess, and the host's next state corrects it. A reducer that cannot live with
+  that is not `@Predicted`.
+- **What the compiler writes** - in the program's own file beside the drain: per action an encoder and a
+  decoder over a kept `[]int` (a word per field after a four-word header: the schema hash, the message
+  kind and the action's number, a sequence number, and what the kind needs - the asker for a broadcast,
+  the reason for a refusal), a pending ring and the undo rings (all sized once, with the state: a frame
+  allocates nothing), the drain's check and its after-step, and the port:
+
+  ```
+  port NetActions {
+    role: fn() -> int                       # 0 no party, 1 the host, 2 a guest
+    to_host: fn([]int, int) -> void         # a guest: the words, their count
+    to_peer: fn(int, []int, int) -> void    # the host: one guest by pid
+    to_all: fn(int, []int, int) -> void     # the host: every guest but this pid (0: none left out)
+    allow: fn(int, int) -> bool             # (sender, action kind): the host's gate; true
+    owner_of: fn(int, int) -> int           # (action kind, target): a pid, or -1
+    rejected: fn(int, int, int) -> void     # (kind, seq, why): a guest's ask was refused
+  }
+  ```
+
+  Every member has a default, so nothing is bound until a session exists. `ludic.net` answers the
+  transport members (`netact_role`, `netact_to_host`, `netact_to_peer`, `netact_to_all`, and
+  `netact_take(message)` for what comes in); a game or a test binds its own.
+- **The wire** - a guest's request is `[hash, 1 | flags << 4 | kind << 8, seq, 0, fields...]`; the host's
+  broadcast `2 | kind << 8` with the asker's pid; a confirm `3` and a refusal `4` (reason 1) carry the
+  sequence number. Sequence numbers grow per guest and the host drops a request that is not above the last
+  it took (`net_actions_stat(5)`); a message of another build (a different hash) is dropped
+  (`net_actions_stat(6)`). Transport order is `ludic.net`'s: reliable, in order per sender.
+- **The calls a transport makes** (supplied like `drain_actions()`; in a program with no `@Net` action they
+  do nothing): `net_actions_receive(from, words, n) -> int` (0 taken; else why not), `action_sender()`,
+  `net_actions_pending()`, `net_actions_forget(pid)` (a guest left: its sequence starts over if it comes
+  back), `net_actions_reset()` (a new session) and `net_actions_stat(n)` (0 sent, 1 taken, 2 confirmed, 3
+  refused, 4 rolled back, 5 repeats dropped, 6 bad messages, 7 refused by the host).
+- A `@Validate` function in a module is `export`ed. Attributes on a reducer take only `@Predicted`;
+  `@Net`, `@Broadcast` and `@Validate` on anything but an action are refused, as is `@Predicted` on an
+  action or reducer of one that is not `@Net`.
+
 **A machine as data** (27.1). A row's state - an animal idling, fleeing, drinking - is an enum field
 of its record, and the machine that moves it is a registry marked `@Machine(Record.field)`: one row
 a transition, which the compiler turns into the reducers and the tick. The table is the whole
@@ -937,11 +1014,11 @@ object with `"schema_version": 1`:
     without a `uses` line, `friend` null, or `{"of": null}` for a friend of every module and
     `{"of": [...]}` for `friend module lab of a, b`; `files` its source files and the resource files
     read into its registries;
-  - `states` (`{"name", "module", "at"}`), `actions` (`{"name", "module", "at", "target"}`,
-    `target` its `@Target` field or null), `reducers` (`{"state", "action", "module", "at"}`, a
-    state's), `row_reducers` (`{"record", "table", "state", "action", "target", "predicted", "net",
-    "module", "at"}`: `table` the path as written, `State.field`; `predicted` false and `net` null
-    until `@Predicted` and `@Net` reach reducers), `row_verbs` (`{"name", "record", "module", "at"}`)
+  - `states` (`{"name", "module", "at"}`), `actions` (`{"name", "module", "at", "target", "net"}`,
+    `target` its `@Target` field or null, `net` null or `{"predicted", "broadcast", "validate", "fields"}`),
+    `reducers` (`{"state", "action", "module", "at", "predicted", "net"}`, a state's), `row_reducers` (`{"record", "table", "state", "action", "target", "predicted", "net",
+    "module", "at"}`: `table` the path as written, `State.field`; `predicted` whether the guest runs it at once, `net`
+    the action's `@Broadcast` word or null), `row_verbs` (`{"name", "record", "module", "at"}`)
     and `dispatch` (every `dispatch`: `{"action", "module", "at"}`);
   - `events` - `{"name", "module", "at", "cancellable", "net"}` (`net` `"toserver"` for
     `@ToServer`, `"toclients"` for `@ToClients`, else null), its `emits` (every `emit`'s place) and

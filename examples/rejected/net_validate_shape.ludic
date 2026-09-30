@@ -1,0 +1,8 @@
+# 27.5: a validator takes the action and the sender, and answers a bool
+program NetValidateShape {
+  state Chat { lines: int = 0 }
+  @Net @Validate(may_say) action Say { n: int }
+  function may_say(a: Say) -> bool { return true }
+  reducer Chat on Say(c: mut Chat, a: Say) { c.lines += 1 }
+  entry { dispatch Say { n: 1 } }
+}
