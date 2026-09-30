@@ -21,19 +21,19 @@
 #
 # The manifest (every line optional except `release id`; values are quoted strings):
 #
-#   release id "MaroonLake"                  Velopack's pack id: letters and digits
-#   release title "Maroon Lake"              the installer's title (default: `app name`)
-#   release authors "Workshopsoft"           (default: vpk's, the pack id)
+#   release id "PineWood"                  Velopack's pack id: letters and digits
+#   release title "Pine Wood"              the installer's title (default: `app name`)
+#   release authors "ExampleGames"           (default: vpk's, the pack id)
 #   release channel osx "osx"                the channel per OS (default: the OS name)
-#   release feed "https://dl.example.com"    where the game's updater looks; not used by vpk, shown in the plan
+#   release feed "https://dl.example.test"    where the game's updater looks; not used by vpk, shown in the plan
 #   release keep 12                          releases (entries + deltas) the feed keeps: --keepMaxReleases
 #   release notes "build/release-notes.md"   --releaseNotes
 #   release entitlements "tools/release/app.entitlements"   macOS: --signEntitlements
 #   release sign "Developer ID Application: …"   macOS: --signAppIdentity; "" finds the keychain's Developer ID
 #   release notary_profile "my-profile"      macOS: --notaryProfile (a `xcrun notarytool store-credentials` profile)
 #   release upload s3 "bucket" "https://<account>.r2.cloudflarestorage.com"   the bucket and endpoint (R2, S3, …)
-#   release dir "build/Maroon Lake.app"      the folder to pack (default: `app out` or build/<name>.app on macOS, build/<name>)
-#   release exe "Maroon Lake"                the main executable in it (default: the app name, +.exe on Windows)
+#   release dir "build/Pine Wood.app"      the folder to pack (default: `app out` or build/<name>.app on macOS, build/<name>)
+#   release exe "Pine Wood"                the main executable in it (default: the app name, +.exe on Windows)
 #   release icon "assets/app/icon.ico"       --icon (default: Windows `app icon` when it is an .ico)
 #
 # Credentials are never in the manifest: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from the

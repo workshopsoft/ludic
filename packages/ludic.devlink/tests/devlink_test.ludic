@@ -39,8 +39,8 @@ program DevlinkTest {
   bind DevlinkNet { open: fn fk_open, recv: fn fk_recv, from_ip: fn fk_ip, from_port: fn fk_port, send: fn fk_send, loopback: fn fk_loop }
 
   function fw_on(fake_link_st: FakeLinkState) -> bool { return fake_link_st.on }
-  function fw_game() -> string { return "maroon-lake" }
-  function fw_map() -> string { return "maroon" }
+  function fw_game() -> string { return "pinewood" }
+  function fw_map() -> string { return "forest" }
   function fw_schema() -> long {
     let h: long = 81985529216486895
     return h
@@ -60,7 +60,7 @@ program DevlinkTest {
     fake_link_st.cyaw = yaw
     return 0
   }
-  # the verbs a game declares: goto, map_load, time, weather, as maroon-lake does, plus one of each argument type
+  # the verbs a game declares: goto, map_load, time, weather, as pinewood does, plus one of each argument type
   function v_goto(c: DevCall) -> int {
     dv_reply_float(c, dv_float(c, 0))
     dv_reply_float(c, 2919.5)
@@ -150,7 +150,7 @@ program DevlinkTest {
 
   test "ping and hello, and the answers to the camera, byte for byte" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
     expect(ask(devlink_st, fake_link_st, "1 ping", 0.016) == "1 ok")
-    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"maroon-lake\" \"0\" \"0123456789abcdef\" \"maroon\" \"cam_get,cam_set,shot,step,goto,map_load,time,weather,steam_state,kinds,off,fail,bad_later\" \"goto x:float z:float yaw:float?;map_load key:string;time hour:float day:int?;weather key:string;steam_state;kinds n:int f:float s:string b:bool o:int?;off;fail;bad_later\"")
+    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"pinewood\" \"0\" \"0123456789abcdef\" \"forest\" \"cam_get,cam_set,shot,step,goto,map_load,time,weather,steam_state,kinds,off,fail,bad_later\" \"goto x:float z:float yaw:float?;map_load key:string;time hour:float day:int?;weather key:string;steam_state;kinds n:int f:float s:string b:bool o:int?;off;fail;bad_later\"")
     expect(ask(devlink_st, fake_link_st, "3 cam_get", 0.016) == "3 ok 1038.500 -38.000 -405.250 124.000 -10.000")
     expect(ask(devlink_st, fake_link_st, "4 cam_set 12.5 3 -7 90.25 -5", 0.016) == "4 ok")
     expect(fake_link_st.cx == 12.5 and fake_link_st.cyaw == 90.25)

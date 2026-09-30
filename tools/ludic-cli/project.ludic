@@ -24,9 +24,9 @@ function manifest_name() -> pointer {
 # segment, so ludic.snake builds `snake`), else the entry file's base name.
 # The built binary's name, from the manifest's module path when there is one.
 #
-# A module path is a URL — `git.host/user/maroon-lake` — so the last path segment comes
+# A module path is a URL — `git.host/user/pinewood` — so the last path segment comes
 # first: taking the last DOT of that would have cut inside the host and produced
-# `io/user/maroon-lake`, which git-hosted names all share and which `build/{name}` then
+# `io/user/pinewood`, which git-hosted names all share and which `build/{name}` then
 # turned into directories. Within the segment a dot still separates a namespace from the
 # package (`ludic.render3d` builds as `render3d`).
 function project_name(entry: pointer) -> pointer {

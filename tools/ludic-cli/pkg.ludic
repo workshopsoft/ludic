@@ -4,7 +4,7 @@
 # It realises the v1 direction decided in the RFC:
 #
 #   * URL-as-identity, no registry — the import path IS the git location
-#     (git.workshopsoft.io/user/pkg). A `git tag` is publishing.
+#     (git.example.com/user/pkg). A `git tag` is publishing.
 #   * Minimum Version Selection (MVS, Go-style) — a require is a *minimum*; the
 #     resolver picks, per module, the greatest of the required minimums, then
 #     the reachable closure at those versions. Deterministic, no SAT solver.
@@ -182,7 +182,7 @@ function parse_manifest(text: pointer) -> Manifest {
       # `pack "assets/kit"` — an asset root that `ludic pack` walks into the
       # .lpak. Repeatable, and the order is the order they are walked.
       else if head == "pack" { var k = 1;  while k < len(ts) { push(m.packs, ts[k]);  k += 1 } }
-      # `app name "Maroon Lake"` — the metadata a macOS bundle is built from.
+      # `app name "Pine Wood"` — the metadata a macOS bundle is built from.
       # Held as a flat key/value list rather than a property per key, so a new
       # Info.plist field is a line in the bundler and nothing here.
       else if head == "script" {
@@ -194,7 +194,7 @@ function parse_manifest(text: pointer) -> Manifest {
       else if head == "app" {
         if len(ts) > 2 { push(m.app, ts[1]);  push(m.app, ts[2]) }
       }
-      # `release id "MaroonLake"`, `release channel osx "osx"`, `release upload s3 "bucket" "endpoint"` —
+      # `release id "PineWood"`, `release channel osx "osx"`, `release upload s3 "bucket" "endpoint"` —
       # what `ludic release` packs and uploads with (see game_release.ludic). Held as fours so a new
       # line with up to three values is a line in the releaser and nothing here. A line with only its
       # key (`release sign`) is kept too, with every value "": that is how "auto-detect" is written.

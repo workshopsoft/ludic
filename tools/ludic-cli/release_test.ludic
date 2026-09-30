@@ -5,24 +5,24 @@
 # Every check drives a fresh bin/ludic process, as a game's own directory would.
 
 function rt_manifest(extra: pointer) -> pointer {
-  var b = "package \"git.example.com/me/maroon-lake\"" + nl() + "version \"0.5.0\"" + nl() + "kind source" + nl()
-  b = b + "app name \"Maroon Lake\"" + nl()
+  var b = "package \"git.example.com/me/pine-wood\"" + nl() + "version \"0.5.0\"" + nl() + "kind source" + nl()
+  b = b + "app name \"Pine Wood\"" + nl()
   return b + extra
 }
 
 function rt_full() -> pointer {
-  var b = "release id \"MaroonLake\"" + nl()
-  b = b + "release title \"Maroon Lake\"" + nl()
-  b = b + "release authors \"Workshopsoft\"" + nl()
+  var b = "release id \"PineWood\"" + nl()
+  b = b + "release title \"Pine Wood\"" + nl()
+  b = b + "release authors \"ExampleGames\"" + nl()
   b = b + "release channel osx \"osx\"" + nl()
   b = b + "release channel win \"stable\"" + nl()
-  b = b + "release feed \"https://dl.example.com\"" + nl()
+  b = b + "release feed \"https://dl.example.test\"" + nl()
   b = b + "release keep 12" + nl()
   b = b + "release notes \"build/release-notes.md\"" + nl()
   b = b + "release entitlements \"tools/app.entitlements\"" + nl()
   b = b + "release sign \"Dev ID: Me (ABC123)\"" + nl()
-  b = b + "release notary_profile \"maroon-lake\"" + nl()
-  b = b + "release upload s3 \"maroon-lake\" \"https://acct.r2.cloudflarestorage.com\"" + nl()
+  b = b + "release notary_profile \"pine-wood\"" + nl()
+  b = b + "release upload s3 \"pine-wood\" \"https://acct.r2.cloudflarestorage.com\"" + nl()
   return b
 }
 
@@ -38,16 +38,16 @@ function cmd_test_release() -> int {
 
   # ---- the manifest parses ---------------------------------------------------------------------
   let m = parse_manifest(rt_manifest(rt_full() + "release sign" + nl()))
-  if manifest_release(m, "id", 0) == "MaroonLake" and manifest_release(m, "keep", 0) == "12" and manifest_release(m, "feed", 0) == "https://dl.example.com" {
+  if manifest_release(m, "id", 0) == "PineWood" and manifest_release(m, "keep", 0) == "12" and manifest_release(m, "feed", 0) == "https://dl.example.test" {
     ok("release id / keep / feed parse")
   } else { bad("release id / keep / feed did not parse") }
-  if manifest_release(m, "upload", 0) == "s3" and manifest_release(m, "upload", 1) == "maroon-lake" and manifest_release(m, "upload", 2) == "https://acct.r2.cloudflarestorage.com" {
+  if manifest_release(m, "upload", 0) == "s3" and manifest_release(m, "upload", 1) == "pine-wood" and manifest_release(m, "upload", 2) == "https://acct.r2.cloudflarestorage.com" {
     ok("release upload s3 <bucket> <endpoint> parses to three values")
   } else { bad("release upload did not parse") }
   if manifest_release_channel(m, "osx") == "osx" and manifest_release_channel(m, "win") == "stable" and manifest_release_channel(m, "linux") == "" {
     ok("release channel is per OS, and an OS without one has none")
   } else { bad("release channel did not parse per OS") }
-  if manifest_has_release(m, "sign") and manifest_release(m, "sign", 0) == "Dev ID: Me (ABC123)" and manifest_release(m, "entitlements", 0) == "tools/app.entitlements" and manifest_release(m, "notary_profile", 0) == "maroon-lake" {
+  if manifest_has_release(m, "sign") and manifest_release(m, "sign", 0) == "Dev ID: Me (ABC123)" and manifest_release(m, "entitlements", 0) == "tools/app.entitlements" and manifest_release(m, "notary_profile", 0) == "pine-wood" {
     ok("release sign / entitlements / notary_profile parse (the first sign line wins)")
   } else { bad("release sign / entitlements / notary_profile did not parse") }
   let bare = parse_manifest("release sign" + nl() + "release sign \"\"" + nl())
@@ -62,9 +62,9 @@ function cmd_test_release() -> int {
   pt_write(`{work}/a/package.ludic`, rt_manifest(rt_full()))
   shell(`cd {work}/a && {envp} AWS_ACCESS_KEY_ID=AKIAFAKEKEY AWS_SECRET_ACCESS_KEY=fakesecret123 {ludic} release --os osx --dry-run > {work}/dry.out 2>&1`)
   let dry = pt_read(`{work}/dry.out`)
-  let want_pack = "vpk pack --packId MaroonLake --packVersion 0.5.0 --packTitle 'Maroon Lake' --packAuthors Workshopsoft --packDir 'build/Maroon Lake.app' --mainExe 'Maroon Lake' --releaseNotes build/release-notes.md --channel osx --outputDir build/releases-osx --noInst --yes --signAppIdentity 'Dev ID: Me (ABC123)' --signEntitlements tools/app.entitlements --notaryProfile maroon-lake"
-  let want_dl = "vpk download s3 --endpoint https://acct.r2.cloudflarestorage.com --bucket maroon-lake --keyId <redacted> --secret <redacted> --channel osx --outputDir build/releases-osx"
-  let want_up = "vpk upload s3 --endpoint https://acct.r2.cloudflarestorage.com --bucket maroon-lake --keyId <redacted> --secret <redacted> --channel osx --outputDir build/releases-osx --keepMaxReleases 12"
+  let want_pack = "vpk pack --packId PineWood --packVersion 0.5.0 --packTitle 'Pine Wood' --packAuthors ExampleGames --packDir 'build/Pine Wood.app' --mainExe 'Pine Wood' --releaseNotes build/release-notes.md --channel osx --outputDir build/releases-osx --noInst --yes --signAppIdentity 'Dev ID: Me (ABC123)' --signEntitlements tools/app.entitlements --notaryProfile pine-wood"
+  let want_dl = "vpk download s3 --endpoint https://acct.r2.cloudflarestorage.com --bucket pine-wood --keyId <redacted> --secret <redacted> --channel osx --outputDir build/releases-osx"
+  let want_up = "vpk upload s3 --endpoint https://acct.r2.cloudflarestorage.com --bucket pine-wood --keyId <redacted> --secret <redacted> --channel osx --outputDir build/releases-osx --keepMaxReleases 12"
   if s_contains(dry, want_pack) { ok("dry run: the macOS vpk pack line, golden") } else { bad2("dry run: vpk pack line", dry) }
   if s_contains(dry, want_dl) { ok("dry run: the vpk download line, golden, secrets redacted") } else { bad2("dry run: vpk download line", dry) }
   if s_contains(dry, want_up) { ok("dry run: the vpk upload line, golden, secrets redacted") } else { bad2("dry run: vpk upload line", dry) }
@@ -81,7 +81,7 @@ function cmd_test_release() -> int {
   if shq(`python3 -m json.tool {work}/plan.json > /dev/null`) {
     ok("release --json --dry-run is one valid JSON object")
   } else { bad2("release --json is not valid JSON", pj) }
-  if s_contains(pj, "\"os\": \"win\"") and s_contains(pj, "\"channel\": \"stable\"") and s_contains(pj, "\"mainExe\"") == false and s_contains(pj, "--mainExe 'Maroon Lake.exe'") and s_contains(pj, "\"credentials\": \"missing\"") and s_contains(pj, "\"id\": \"upload\"") {
+  if s_contains(pj, "\"os\": \"win\"") and s_contains(pj, "\"channel\": \"stable\"") and s_contains(pj, "\"mainExe\"") == false and s_contains(pj, "--mainExe 'Pine Wood.exe'") and s_contains(pj, "\"credentials\": \"missing\"") and s_contains(pj, "\"id\": \"upload\"") {
     ok("the JSON plan: os, per-OS channel, the .exe, credentials state and the steps")
   } else { bad2("the JSON plan's fields", pj) }
   if not shq(`cd {work}/a && {envp} {ludic} release --json > /dev/null 2>&1`) { ok("--json without --dry-run is refused") } else { bad("--json without --dry-run ran") }
@@ -102,12 +102,12 @@ function cmd_test_release() -> int {
   let fake = `{work}/bin/vpk`
   pt_write(fake, "#!/bin/sh\nprintf '%s|' \"$@\" >> \"$VPK_LOG\"; printf '\\n' >> \"$VPK_LOG\"\n[ \"$1\" = \"$VPK_FAIL\" ] && exit 1\nexit 0\n")
   shell(`chmod +x {fake}`)
-  shell(`mkdir -p "{work}/a/build/Maroon Lake.app"`)
+  shell(`mkdir -p "{work}/a/build/Pine Wood.app"`)
   let runenv = `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY LUDIC_HOME={root} PATH={work}/bin:/usr/bin:/bin:/usr/sbin:/sbin`
   shell(`rm -f {work}/vpk.log`)
   let rc1 = shell(`cd {work}/a && {runenv} VPK_LOG={work}/vpk.log VPK_FAIL=download {ludic} release --os osx --key-id KID1 --secret SEC1 > {work}/run1.out 2>&1`)
   let log = pt_read(`{work}/vpk.log`)
-  if exit_code(rc1) == 0 and s_contains(log, "download|s3|") and s_contains(log, "pack|--packId|MaroonLake|") and s_contains(log, "upload|s3|") {
+  if exit_code(rc1) == 0 and s_contains(log, "download|s3|") and s_contains(log, "pack|--packId|PineWood|") and s_contains(log, "upload|s3|") {
     ok("a run calls vpk download, pack, upload; a failed download (a first release) does not stop it")
   } else { bad2("a run against a fake vpk", log + pt_read(`{work}/run1.out`)) }
   if s_contains(log, "--keyId|KID1|--secret|SEC1|") and not s_contains(pt_read(`{work}/run1.out`), "SEC1") {

@@ -5,11 +5,11 @@
 # executable icon, it reports its name as whatever the file is called, and it
 # carries none of its assets. This makes the thing you actually give someone.
 #
-#   Maroon Lake.app/
+#   Pine Wood.app/
 #     Contents/
 #       Info.plist                 the metadata Finder, the Dock and Launch Services read
 #       PkgInfo                    the eight bytes that predate Info.plist and are still read
-#       MacOS/Maroon Lake          the binary `ludic build` produced
+#       MacOS/Pine Wood          the binary `ludic build` produced
 #       Resources/
 #         AppIcon.icns             every size macOS asks for, from one source PNG
 #         game.lpak                every asset the game opens
@@ -18,13 +18,13 @@
 # Everything it needs comes from package.ludic, so the same command works in any
 # project without arguments:
 #
-#   app name       "Maroon Lake"
-#   app id         "io.workshopsoft.maroon-lake"
+#   app name       "Pine Wood"
+#   app id         "com.example.pinewood"
 #   app icon       "assets/app/icon.png"
 #   app splash     "assets/app/splash.png"
 #   app splash_bg  "#0d1b2a"
 #   app category   "public.app-category.adventure-games"
-#   app copyright  "(c) 2026 Workshopsoft"
+#   app copyright  "(c) 2026 Example Games"
 #   app min_macos  "12.0"
 #   app env        "MallocLargeCache=0"   (repeatable: LSEnvironment, what Launch Services starts it with)
 #
@@ -45,7 +45,7 @@ function app_name(m: Manifest) -> pointer {
 # Dock, saved window state, the sandbox container, TCC permissions - and two
 # apps sharing one identifier is a class of bug that looks like haunting. When
 # the manifest does not set it, the package path makes a defensible one:
-# `git.workshopsoft.io/workshopsoft/maroon-lake` -> `io.workshopsoft.maroon-lake`.
+# `git.example.com/me/pinewood` -> `com.example.pinewood`.
 function app_id(m: Manifest) -> pointer {
   let id = manifest_app(m, "id")
   if id != "" { return id }
@@ -59,7 +59,7 @@ function app_id_host(module: pointer) -> pointer {
   let slash = s_index(module, "/", 0)
   if slash <= 0 { return "" }
   let host = sslice(module, 0, slash)
-  # reverse the dotted segments: git.workshopsoft.io -> io.workshopsoft.git
+  # reverse the dotted segments: git.example.com -> com.example.git
   var parts = new []pointer
   var start = 0
   var i = 0
@@ -439,7 +439,7 @@ function cmd_bundle() -> int {
 
   # 1. the binary, built windowed - a bundled game never wants the headless path.
   #    It is compiled to a scratch path and copied in, because a display name is
-  #    allowed spaces ("Maroon Lake.app") and compile_app builds shell commands
+  #    allowed spaces ("Pine Wood.app") and compile_app builds shell commands
   #    out of the path it is given.
   let exe = `{contents}/MacOS/{name}`
   let staged = `{tmp_dir()}/bundle_exe`
