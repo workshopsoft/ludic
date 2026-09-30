@@ -21,5 +21,11 @@ city_world {
   ]
   checks: [
     { key: "buildings_in_districts", title: "Buildings inside a district", rule: "inside", table: "buildings", within: "districts", severity: "info" },
+    # footprints: a building is its w by d turned by its yaw, a block and a district are their outlines. A tolerance
+    # of 0.1 m lets two walls that share a line be; 0.5 m is a block's edge drawn a little loose
+    { key: "buildings_apart", title: "Buildings overlap", rule: "no_overlap", table: "buildings", width: "w", depth: "d", tolerance: 0.1 },
+    { key: "buildings_in_blocks", title: "Buildings inside their block", rule: "inside", table: "buildings", within: "blocks", parent: "block", width: "w", depth: "d", tolerance: 0.5 },
+    { key: "blocks_apart", title: "Blocks overlap", rule: "no_overlap", table: "blocks", tolerance: 0.5 },
+    { key: "blocks_in_districts", title: "Blocks inside their district", rule: "inside", table: "blocks", within: "districts", parent: "district", tolerance: 0.5 },
   ]
 }
