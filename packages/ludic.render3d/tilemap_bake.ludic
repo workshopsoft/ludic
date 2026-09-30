@@ -1,0 +1,87 @@
+# ============================================================================
+# tilemap_bake.ludic - the ground's levels of detail, made once, offline: every tile of a map cut into patches and
+# every patch into its levels (tilemap.ludic), each level a grid of heights and normals sampled from the tiles' own
+# PNGs, written as one LWT1 file a tile (tilemap_lwt.ludic). The game never makes any of it: it streams these files.
+#
+# A person runs it, or a game's `hook before build` does (tools/terrain_bake.ludic, README "Terrain from tiles"); the
+# same code is exercised on the fixture map by tests/tilemap_test.ludic. A heavy job over a whole map (hundreds of
+# tiles, each read with its neighbours so a normal or a height at a tile's edge agrees on both sides).
+# ============================================================================
+numbers float
+
+# height `h` as the file's 16 bits: 0 at height_offset + height_min, 65535 at height_offset + height_max
+function tmb_q(tm: TileMap, h: float) -> int { return min(max(int(Math.floor((h - tm.base) / tm.step + 0.5)), 0), 65535) }
+# a normal component -1 .. 1 as a byte
+function tmb_n8(v: float) -> int { return min(max(int(Math.floor((v * 0.5 + 0.5) * 255.0 + 0.5)), 0), 255) }
+
+# Tile (tx, tz)'s file as bytes, sampled from the tiles in the cache (the tile and its neighbours must be loaded: tmap_ensure);
+# every patch, every level: heights where tmap_height reads the ground (so what is drawn is what a body stands on), normals from
+# central differences one cell apart. null when the tile has no file of its own.
+@alloc_ok("a bake: the file's bytes are made once a tile")
+export function tmb_tile(tm: TileMap, tx: int, tz: int) -> []byte {
+  if tm.slot_of[tz * tm.cols + tx] < 0 { return null }
+  let levels = tm.lod_max + 1
+  let entries = tm.patches * tm.patches * levels
+  var size = LWT_HEAD + entries * LWT_ENTRY * 4
+  for l in 0 .. levels { let c = tm.patch_texels >> l;  size += tm.patches * tm.patches * (c + 1) * (c + 1) * 4 }
+  let b = buffer(size)
+  for i in 0 .. size { b[i] = 0 }
+  lwt_head_put(b, tm, tx, tz)
+  var at = LWT_HEAD + entries * LWT_ENTRY * 4
+  let ps = tmap_patch_size(tm)
+  for pz in 0 .. tm.patches {
+    for px in 0 .. tm.patches {
+      let x0 = tmap_patch_cx(tm, tx, px) - ps * 0.5
+      let z0 = tmap_patch_cz(tm, tz, pz) - ps * 0.5
+      for lod in 0 .. levels {
+        let c = tm.patch_texels >> lod
+        let cell = ps / float(c)
+        let e = LWT_HEAD + lwt_entry(tm, px, pz, lod) * LWT_ENTRY * 4
+        lw_put32(b, e, at)
+        var y0 = 1000000000.0
+        var y1 = -1000000000.0
+        for j in 0 .. c + 1 {
+          for i in 0 .. c + 1 {
+            let x = x0 + float(i) * cell
+            let z = z0 + float(j) * cell
+            let h = tmap_height(tm, x, z)
+            let gx = (tmap_height(tm, x + cell, z) - tmap_height(tm, x - cell, z)) / (2.0 * cell)
+            let gz = (tmap_height(tm, x, z + cell) - tmap_height(tm, x, z - cell)) / (2.0 * cell)
+            let l = Math.sqrt(gx * gx + 1.0 + gz * gz)
+            let q = tmb_q(tm, h)
+            let hq = tm.base + float(q) * tm.step
+            y0 = Math.min(y0, hq);  y1 = Math.max(y1, hq)
+            b[at] = q & 255;  b[at + 1] = q >> 8
+            b[at + 2] = tmb_n8(-gx / l);  b[at + 3] = tmb_n8(-gz / l)
+            at += 4
+          }
+        }
+        lw_putf(b, e + 4, y0);  lw_putf(b, e + 8, y1)
+      }
+    }
+  }
+  return b
+}
+
+# Every tile of the map that has a PNG baked into `pattern` ("{tx}" and "{tz}": tm.mesh_pattern is the default); how many files
+# were written. Each tile's neighbours are read first (the pool is made a tile and its eight for this), and the files' folder made.
+@alloc_ok("a bake: the pool, the tiles and the files")
+export function tmb_map(render3d_st: mut Render3dState, tm: TileMap, pattern: string) -> int {
+  tmap_pool(tm, 12)
+  let was = tm.mesh_pattern
+  tm.mesh_pattern = pattern
+  var written = 0
+  for tz in 0 .. tm.rows {
+    for tx in 0 .. tm.cols {
+      tm.clock += 1
+      tmap_ensure(render3d_st, tm, tmap_patch_cx(tm, tx, 0) - tmap_patch_size(tm) * 0.5 + tm.tile_size * 0.5, tmap_patch_cz(tm, tz, 0) - tmap_patch_size(tm) * 0.5 + tm.tile_size * 0.5, tm.tile_size * 0.75)
+      let b = tmb_tile(tm, tx, tz)
+      if b == null { continue }
+      let path = tmap_mesh_path(tm, tx, tz)
+      Fs.mkdir(Path.dir(path))
+      if Fs.write_bytes(path, b, len(b)) { written += 1 } else { print(`tilemap: cannot write {path}`) }
+    }
+  }
+  tm.mesh_pattern = was
+  return written
+}

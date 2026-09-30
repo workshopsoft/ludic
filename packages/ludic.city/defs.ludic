@@ -139,6 +139,7 @@ export property CityBuilding {
   @Unit("m") @Range(1, 500) d: float = 10.0
   @Range(1, 200) floors: int = 1
   @Unit("m") @Range(0, 800) height: float = 0.0           # 0: floors times the kit's floor height (3.5 m without a kit)
+  footprint: []CityPt = new []CityPt                      # its real plan, for colliders: a simple polygon (3 points or more, either way round) in the model's own frame (origin at the middle of the footprint, x along `w`, z along `d`, before yaw and scale); empty: the rectangle w x d
   @OneOf("none", "fake", "enterable") interior: string = "none"
   atlas: string = ""                                      # fake: a ludic.render3d InteriorAtlases key (the renderer owns the atlases)
   interior_map: string = ""                               # enterable: the map (key) that holds the inside

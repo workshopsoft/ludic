@@ -10,12 +10,8 @@ export function anim_read_doc(anim_st: mut AnimState, render3d_st: mut Render3dS
   if value_has(render3d_st.gltf_doc, "animations") == 0 { return 0 }
   # REOPEN THE .bin. `gltf_load` closes it before it returns, and an accessor read through a closed
   # handle returns a buffer of the right size full of zeros: right names, right counts, no motion.
-  let buffers = value_get(render3d_st.gltf_doc, "buffers")
-  if value_count(buffers) == 0 { return 0 }
-  let bin_uri = value_as_str(value_get(value_at(buffers, 0), "uri"))
-  render3d_st.gltf_bin = file_open(dir + "/" + bin_uri, "rb")
-  if render3d_st.gltf_bin == null {
-    print(`anim: cannot reopen {dir}/{bin_uri}`)
+  if not gltf_bin_reopen(render3d_st, dir) {
+    print(`anim: cannot reopen the binary of {dir}`)
     return 0
   }
   let arr = value_get(render3d_st.gltf_doc, "animations")

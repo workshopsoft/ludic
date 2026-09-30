@@ -1,0 +1,46 @@
+# cells_bake_city.ludic - the city's buildings baked into what ludic.render3d's large world streams: each Buildings row that
+# names a model (its own, or its kit's) becomes a placement of ONE kit per (model, node, interior atlas), so every building of a kit is one
+# mesh drawn instanced by the cell; the kits become RenderKits rows and the placements the cell files (kitbake.ludic holds
+# the files' side). A bake, not a frame's work: the game loads the output (bigworld_gpu.ludic's bw_open, bw_setup_kits).
+#
+# Declarations only: a program imports ludic.city, ludic.render3d/bigworld.ludic and this file, declares the game's own
+# `def BuildingKits`, `def ZoningRules`, `def BuildingGenerators` and `def InteriorAtlases` (the open registries the rows name),
+# and calls city_cells_bake. tests/cells_bake_test.ludic is that program on the fixture city; the game's is one more like it,
+# run by a person or a package.ludic `hook before build`. Then the far layers: `hlod_bake` over the cell files, and a kit's
+# impostor atlas (`kgpu_bake_kit`, a person's click).
+#
+# What a building's model must be: the node's origin at the middle of its footprint, on the ground, +y up, the footprint and
+# height in the row's `w`, `d` and `height` (floors * floor_h) in metres: the kit's HLOD box, impostor frame and far distances come
+# from those. `yaw` (degrees, 0 facing +z in the row) is written in radians, turned as the renderer turns an instance.
+#
+# A cell's flags are the row's interior class: 0 none, 1 fake (its windows show the row's `atlas`: the kit carries it, so a kit of
+# two atlases is two kits), 2 enterable. The variation is a hash of the building's key, so the same building keeps its facade and its
+# rooms whatever else changes.
+
+# Every building of the map's chunk files placed into `kb` (its cells are the renderer's, `kb.size`, whatever the city's chunks are):
+# the count placed. A row with no model, its own or its kit's, has nothing to draw and is left out. One chunk in memory at a time.
+function city_cells_bake(city_st: mut CityState, bl: mut Buildings, map: string, maps_root: string, kb: KitBake) -> int {
+  let cells = new []int
+  let ncells = city_chunk_cells(maps_root, map, cells)
+  let inst = new CityInstances
+  var placed = 0
+  for c in 0 .. ncells {
+    let cx = cells[c * 2]
+    let cz = cells[c * 2 + 1]
+    if city_cell_in(city_st, bl, map, cx, cz) <= 0 { continue }
+    let i = city_cell_of(city_st, cx, cz)
+    cityinstances_clear(inst)
+    let n = city_instances(city_st, bl, i, inst)
+    for r in 0 .. n {
+      if inst.model[r] == "" { continue }
+      let b = city_building(city_st, bl, i, r)
+      var atlas = ""
+      if city_interior_class(b) == 1 { atlas = b.atlas }
+      let kit = kitbake_kit(kb, inst.model[r], inst.node[r], inst.w[r], inst.d[r], inst.h[r], atlas)
+      kitbake_place(kb, kit, inst.x[r], inst.y[r], inst.z[r], Math.deg_to_rad(inst.yaw[r]), inst.scale[r], 0xffffffff, city_key_hash(inst.id[r]), city_interior_class(b))
+      placed += 1
+    }
+    city_cell_out(city_st, bl, cx, cz)
+  }
+  return placed
+}

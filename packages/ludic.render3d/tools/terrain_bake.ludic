@@ -1,0 +1,53 @@
+# terrain_bake.ludic - the ground's levels of detail, made once, offline: every tile of a map's 16-bit height PNGs
+# (the studio's `world_create`) cut into patches and levels and written as one mesh file a tile (tilemap_lwt.ludic), which
+# the game streams (tilemap_draw.ludic). The game makes none of it.
+#
+#   ludic build packages/ludic.render3d/tools/terrain_bake.ludic
+#   ./build/terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels]
+#
+#   <tiles>          the row's `tiles` pattern, with {tx} and {tz} ("assets/maps/meridian/terrain/{tx}_{tz}.png")
+#   tile_size ... height_max   the row's fields of those names (tile_cols and tile_rows for <cols> and <rows>)
+#   height_offset    the row's offset, default 0
+#   out              where the files go, with {tx} and {tz}: default <tiles> with .lwt for .png (the game's default, or the row's `tile_mesh`)
+#   patch_texels     the patch size in texels, default 128 (the game's tmap_patches must say the same: the file records its cut)
+#
+# It reads the PNGs and writes files only: no window, no device, nothing of the game runs. A bake over a whole map is heavy
+# work (every tile is read with its neighbours) and is a person's to start, or a package.ludic `hook before build`:
+#
+#   hook before build "ludic run packages/ludic.render3d/tools/terrain_bake.ludic -- assets/maps/meridian/terrain/{tx}_{tz}.png 1024 512 16 16 -8192 -8192 -40 600"
+#
+# The same code is exercised on a small map by tests/tilemap_test.ludic.
+import "ludic.render3d/r3d.ludic"
+program TerrainBake {
+  numbers float
+
+  function num(i: int, fallback: float) -> float {
+    let s = Os.arg(i)
+    if s == null or s == "" { return fallback }
+    return Text.to_float(s)
+  }
+
+  handler Boot(render3d_st: mut Render3dState) phase Start {
+    let tiles = Os.arg(1)
+    if tiles == null or Os.arg(9) == null {
+      print("usage: terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels]")
+      exit(2)
+      return
+    }
+    let res = int(num(3, 512.0))
+    let problem = tmap_problem(tiles, num(2, 0.0), res, int(num(4, 0.0)), int(num(5, 0.0)), num(8, 0.0), num(9, 0.0))
+    if problem != "" {
+      print(`terrain_bake: {problem}`)
+      exit(2)
+      return
+    }
+    let tm = tmap_new(tiles, num(2, 0.0), res, int(num(4, 0.0)), int(num(5, 0.0)), num(6, 0.0), num(7, 0.0), num(8, 0.0), num(9, 0.0), num(10, 0.0), 0.0)
+    tmap_patches(tm, int(num(12, 128.0)))
+    var out = Os.arg(11)
+    if out == null or out == "" { out = tm.mesh_pattern }
+    let n = tmb_map(render3d_st, tm, out)
+    print(`terrain_bake: {n} tiles baked ({tm.patches} x {tm.patches} patches of {tm.patch_texels} texels, {tm.lod_max + 1} levels) into {out}; {tm.no_file} tiles have no usable PNG`)
+    if n == 0 { exit(1) }
+    quit()
+  }
+}

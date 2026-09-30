@@ -1,0 +1,155 @@
+# colliders_test.ludic - what a building stops a body with, baked from its row and loaded in play: the footprint polygon (an L, a hexagon)
+# or the rectangle w x d, stood up to the building's height, cut into convex pieces, one file a chunk, handed to the game's physics
+# through the CityPhysics port one piece at a time and taken out again by chunk. The fixture city's b0_0_01 (hexagon, yaw 0) and
+# b0_0_02 (an L, yaw 270) carry footprints; every other row is its rectangle.
+import "ludic.city"
+import "ludic.base"
+program CollidersTest {
+  numbers float
+  def ZoningRules from "zoning.lres"
+  def BuildingKits from "kits.lres"
+  def BuildingGenerators from "generators.lres"
+
+  # what the fake physics was handed
+  state Fake {
+    added: int = 0
+    removed: int = 0
+    area: []float = new []float             # each piece's area
+    hash: []int = new []int
+    y0: []float = new []float
+    y1: []float = new []float
+    cx: []float = new []float               # each piece's centroid
+    cz: []float = new []float
+    npts: []int = new []int
+  }
+  function fake_add(f: mut Fake, p: CityPiece) -> int {
+    var a = 0.0
+    var sx = 0.0
+    var sz = 0.0
+    for i in 0 .. p.n {
+      let j = (i + 1) % p.n
+      a += p.pts[i * 2] * p.pts[j * 2 + 1] - p.pts[j * 2] * p.pts[i * 2 + 1]
+      sx += p.pts[i * 2];  sz += p.pts[i * 2 + 1]
+    }
+    kept_push(f.area, a * 0.5)
+    kept_push(f.hash, p.building)
+    kept_push(f.y0, p.y0);  kept_push(f.y1, p.y1)
+    kept_push(f.cx, sx / float(p.n));  kept_push(f.cz, sz / float(p.n))
+    kept_push(f.npts, p.n)
+    f.added += 1
+    return f.added
+  }
+  function fake_remove(f: mut Fake, id: int) -> void { f.removed += 1 }
+  bind CityPhysics {
+    add: fn fake_add
+    remove: fn fake_remove
+  }
+
+  function bake(city_st: mut CityState, bl: mut Buildings, tag: string) -> string {
+    let dir = Os.temp_dir() + "/city_colliders_" + tag
+    let n = city_colliders_bake(city_st, bl, "metro", "packages/ludic.city/tests/maps", dir)
+    expect(n > 0)
+    return dir
+  }
+
+  function pt(x: float, z: float) -> CityPt {
+    let p = new CityPt
+    p.x = x;  p.z = z
+    return p
+  }
+
+  test "a footprint is a simple polygon, or the problem is said" {
+    let ok = new []CityPt
+    push(ok, pt(0.0, 0.0));  push(ok, pt(4.0, 0.0));  push(ok, pt(4.0, 3.0))
+    expect_eq(city_footprint_problem(ok), "")
+    expect_eq(city_footprint_problem(new []CityPt), "")                       # none: the rectangle
+    let two = new []CityPt
+    push(two, pt(0.0, 0.0));  push(two, pt(1.0, 1.0))
+    expect(Text.contains(city_footprint_problem(two), "3 points"))
+    let bow = new []CityPt                                                   # a bow tie: two edges cross
+    push(bow, pt(0.0, 0.0));  push(bow, pt(4.0, 4.0));  push(bow, pt(4.0, 0.0));  push(bow, pt(0.0, 4.0))
+    expect(Text.contains(city_footprint_problem(bow), "cross"))
+    let flat = new []CityPt
+    push(flat, pt(0.0, 0.0));  push(flat, pt(2.0, 0.0));  push(flat, pt(4.0, 0.0))
+    expect(Text.contains(city_footprint_problem(flat), "no area"))
+    let twice = new []CityPt
+    push(twice, pt(0.0, 0.0));  push(twice, pt(4.0, 0.0));  push(twice, pt(4.0, 4.0));  push(twice, pt(0.0, 0.0))
+    expect(Text.contains(city_footprint_problem(twice), "same place"))
+  }
+
+  test "one file a chunk is baked, and a chunk with buildings loads as their pieces" (city_st: mut CityState, bl: mut Buildings, f: mut Fake, cs: mut CityColliders) {
+    let dir = bake(city_st, bl, "files")
+    expect(Fs.exists(city_colliders_path(dir, 0, 0)))
+    expect(Fs.exists(city_colliders_path(dir, -1, 0)))
+    let got = city_colliders_in(cs, dir, 0, 0)
+    # chunk (0, 0) holds 12 buildings: rectangles are a piece, the hexagon one, the L is cut into four triangles
+    expect_eq(got, 11 + 1 + 4 - 1)
+    expect_eq(f.added, got)
+    expect_eq(city_colliders_count(cs), got)
+    expect_eq(city_colliders_in(cs, dir, 0, 0), 0)                            # in already
+  }
+
+  test "a rectangle's piece is w x d turned by yaw about the building, between its ground and its height" (city_st: mut CityState, bl: mut Buildings, f: mut Fake, cs: mut CityColliders) {
+    let dir = bake(city_st, bl, "box")
+    city_colliders_in(cs, dir, 0, 0)
+    # b0_0_00: a tower at (30, 30), w = d = 24, yaw 90, 12 floors of 3.5 m, no footprint: a 24 m square
+    let h = city_key_hash("b0_0_00")
+    var seen = 0
+    for i in 0 .. f.added {
+      if f.hash[i] != h { continue }
+      seen += 1
+      expect_near(f.area[i], 576.0, 0.01)
+      expect_eq(f.npts[i], 4)
+      expect_near(f.cx[i], 30.0, 0.01)
+      expect_near(f.cz[i], 30.0, 0.01)
+      expect_near(f.y0[i], 0.0, 0.0001)
+      expect_near(f.y1[i], 42.0, 0.0001)
+    }
+    expect_eq(seen, 1)
+  }
+
+  test "a convex footprint is one piece of its own area, an L is cut into pieces that add up to it" (city_st: mut CityState, bl: mut Buildings, f: mut Fake, cs: mut CityColliders) {
+    let dir = bake(city_st, bl, "plans")
+    city_colliders_in(cs, dir, 0, 0)
+    let hex = city_key_hash("b0_0_01")
+    let ell = city_key_hash("b0_0_02")
+    var pieces_hex = 0
+    var area_hex = 0.0
+    var pieces_l = 0
+    var area_l = 0.0
+    for i in 0 .. f.added {
+      expect(f.area[i] > 0.0)                                                  # every piece counter-clockwise
+      if f.hash[i] == hex { pieces_hex += 1;  area_hex += f.area[i] }
+      if f.hash[i] == ell { pieces_l += 1;  area_l += f.area[i]; expect_eq(f.npts[i], 3) }
+    }
+    expect_eq(pieces_hex, 1)
+    expect_near(area_hex, 160.0, 0.01)
+    expect_eq(pieces_l, 4)
+    expect_near(area_l, 18.0 * 16.0 - 9.0 * 8.0, 0.01)
+    # the L is 19 m high, its ground 0
+    for i in 0 .. f.added { if f.hash[i] == ell { expect_near(f.y1[i] - f.y0[i], 19.0, 0.0001) } }
+  }
+
+  test "a chunk's bodies go out through the port, and the chunks after it keep theirs" (city_st: mut CityState, bl: mut Buildings, f: mut Fake, cs: mut CityColliders) {
+    let dir = bake(city_st, bl, "out")
+    let a = city_colliders_in(cs, dir, 0, 0)
+    let b = city_colliders_in(cs, dir, 1, 0)
+    expect(a > 0 and b > 0)
+    expect_eq(city_colliders_count(cs), a + b)
+    expect(city_colliders_out(cs, 0, 0))
+    expect_eq(f.removed, a)
+    expect_eq(city_colliders_count(cs), b)
+    expect(not city_colliders_out(cs, 0, 0))
+    expect(city_colliders_out(cs, 1, 0))
+    expect_eq(f.removed, a + b)
+    expect_eq(city_colliders_count(cs), 0)
+  }
+
+  test "a chunk with no baked file is counted and adds nothing" (city_st: mut CityState, bl: mut Buildings, f: mut Fake, cs: mut CityColliders) {
+    let dir = bake(city_st, bl, "missing")
+    expect_eq(city_colliders_in(cs, dir, 40, 40), -1)
+    expect_eq(cs.missing, 1)
+    expect_eq(f.added, 0)
+    expect_eq(city_colliders_count(cs), 0)
+  }
+}

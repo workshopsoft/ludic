@@ -21,6 +21,23 @@ export function phys_convex(physics_st: mut PhysicsState, v: []float, n: int) ->
   if n < 4 or len(v) < n * 3 { return -1 }
   return ph_keep(physics_st, jph_shape_convex(v, n, 0.02))
 }
+# a building's piece: the convex polygon of n points (x, z pairs, in world metres), stood up from y0 to y1 about the world's origin
+# (put the body at 0, 0, 0). The points go through a scratch the state keeps (grown only for a polygon larger than it has held), so a
+# chunk of buildings loading makes no record a piece. ludic.city's colliders hand pieces in this form (CityPiece).
+@creates(PhysShape)
+export function phys_prism(physics_st: mut PhysicsState, pts: []float, n: int, y0: float, y1: float) -> int {
+  if n < 3 or len(pts) < n * 2 or not (y1 > y0) { return -1 }
+  if len(physics_st.ph_prism) < n * 6 {
+    @alloc_ok("a polygon larger than any before: the scratch grows once")
+    physics_st.ph_prism = floats(n * 6)
+  }
+  let v = physics_st.ph_prism
+  for i in 0 .. n {
+    v[i * 3] = pts[i * 2];  v[i * 3 + 1] = y0;  v[i * 3 + 2] = pts[i * 2 + 1]
+    v[(n + i) * 3] = pts[i * 2];  v[(n + i) * 3 + 1] = y1;  v[(n + i) * 3 + 2] = pts[i * 2 + 1]
+  }
+  return ph_keep(physics_st, jph_shape_convex(v, n * 2, 0.02))
+}
 # another shape k times its size, so one hull serves every boulder of its shape
 @creates(PhysShape)
 export function phys_scaled(physics_st: mut PhysicsState, shape: int, k: float) -> int {

@@ -70,6 +70,7 @@ is `(map, key)`, stable because it is data. A `Buildings` row:
 | `lot`, `address` | the tags a property can be bought by |
 | `residents`, `jobs` | capacity; -1: worked out from the floor area and zoning |
 | `entrances` | doors: `x`, `z`, `yaw` (the way a person faces stepping in), `kind` door / garage / service |
+| `footprint` | its real plan for colliders: a simple polygon of 3 points or more (`x`, `z`; either way round) in the model's own frame (origin at the middle of the footprint, before `yaw` and `scale`); empty: the rectangle `w` x `d`. The studio writes it when a generated block is accepted: the generator knows the plan |
 
 ## Running it
 
@@ -124,6 +125,30 @@ residents = A * res_pct / 100 / m2_per_person         jobs = A * (100 - res_pct)
 when the row names none), and with the `CITY_LOADED` / `CITY_UNLOADED` facts that is a batch per cell. `city_interior_class(b)`
 is 0 none, 1 fake, 2 enterable; `city_entrances(b, out)` the doors (for `ludic.property`: a lot is bought by its `lot` / `address`,
 entered by these); `city_kit_of(b)`, `city_height(b)`.
+
+**For physics: colliders, baked** (`colliders.ludic`). What a building stops a body with is its `footprint` polygon (an L, a U, a warehouse with
+a lean-to), else the rectangle `w` x `d`, stood up from the row's `y` to its height. It is worked out once, offline: `city_colliders_bake(city_st, bl,
+map, maps_root, dir)` cuts every plan into convex pieces (a convex plan is one, a rectangle is one, a concave one is triangulated by ear clipping;
+`city_footprint_problem(points)` says what is wrong with a plan that is not a simple polygon, and the bake uses its bounding rectangle with a line
+saying so) and writes one file a chunk, `collider_<cx>_<cz>.lwk` (little-endian: magic `LWK1`, version, cx, cz, chunk size, piece count; each
+piece: a hash of the building's key, y0, y1, n, then n x, z pairs in metres from the chunk's corner, counter-clockwise). The game only loads
+them: `city_colliders_in(cs, dir, cx, cz)` reads a chunk's file and hands each piece to the `CityPhysics` port (`add(CityPiece) -> int`, `remove(int)`),
+`city_colliders_out(cs, cx, cz)` takes the chunk's bodies out again; both go in step with `CITY_LOADED` / `CITY_UNLOADED`. The bake is a program of the game's
+(it `def`s the registries the rows name; `tests/colliders_test.ludic` is one, on the fixture) run by a person or a `hook before build`.
+The binding to ludic.physics is two lines (`phys_prism` makes the convex shape of a piece):
+
+```ludic
+# doc-check: skip - a game's glue
+function city_add_piece(physics_st: mut PhysicsState, p: CityPiece) -> int {
+  return phys_static_add(physics_st, phys_prism(physics_st, p.pts, p.n, p.y0, p.y1), 0.0, 0.0, 0.0, 0.0)
+}
+function city_drop_piece(physics_st: mut PhysicsState, id: int) -> void { phys_remove(physics_st, id) }
+bind CityPhysics { add: fn city_add_piece, remove: fn city_drop_piece }
+```
+
+**For the renderer, baked.** The instanced kits and the cell files the large world streams come from the rows by `tools/cells_bake_city.ludic`
+(`city_cells_bake`): one kit a (model, node, atlas) so every building of a model shares one mesh, drawn instanced per cell; see ludic.render3d's README,
+"Kits and cells from placed things". `tests/cells_bake_test.ludic` runs it on the fixture city.
 
 ### The block hash
 

@@ -1,0 +1,98 @@
+# glb_test.ludic - a binary glTF opened through the same path as a .gltf with its .bin: the two forms of one
+# triangle (tests/models) answer the same accessors, the BIN chunk is found by the header and not by the name, a
+# reader that comes after the load (ludic.anim's clips) reopens the right bytes, and a damaged file is refused
+# with nothing left open. No device: the loader's document and accessor path only.
+import "ludic.render3d/r3d.ludic"
+program GlbTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function models(render3d_st: Render3dState) -> string { return render3d_st.r3d_root + "/tests/models" }
+
+  function tri_ok(render3d_st: mut Render3dState) -> bool {
+    let p = gltf_accessor_floats(render3d_st, 0)
+    let n = gltf_accessor_floats(render3d_st, 1)
+    if len(p) != 9 or len(n) != 9 { return false }
+    if p[0] != 0.0 or p[3] != 2.0 or p[7] != 3.0 or p[8] != 1.0 or p[1] != 0.0 or p[4] != 0.0 { return false }
+    for i in 0 .. 9 {
+      var w = 0.0
+      if i % 3 == 2 { w = 1.0 }
+      if n[i] != w { return false }
+    }
+    return gltf_accessor_count(render3d_st, 2) == 3
+  }
+
+  test "a .gltf and its .glb answer the same accessors" (render3d_st: mut Render3dState) {
+    let dir = models(render3d_st)
+    expect(gltf_open(render3d_st, dir, "tri.gltf"))
+    expect_eq(render3d_st.gltf_bin_base, 0)
+    expect(tri_ok(render3d_st))
+    file_close(render3d_st.gltf_bin)
+    expect(gltf_open(render3d_st, dir, "tri.glb"))
+    expect(render3d_st.gltf_bin_base > 20)
+    expect(tri_ok(render3d_st))
+    file_close(render3d_st.gltf_bin)
+  }
+
+  test "a glb is told by its first bytes, not its name" (render3d_st: mut Render3dState) {
+    let at = Os.temp_dir() + "/r3d_glb_name"
+    Fs.mkdir(at)
+    expect(Fs.copy(models(render3d_st) + "/tri.glb", at + "/whatever.gltf"))
+    expect(gltf_open(render3d_st, at, "whatever.gltf"))
+    expect(tri_ok(render3d_st))
+    file_close(render3d_st.gltf_bin)
+  }
+
+  test "the binary reopens after a load closed it, for a .glb and a .gltf" (render3d_st: mut Render3dState) {
+    let dir = models(render3d_st)
+    reopens(render3d_st, dir, "tri.glb")
+    reopens(render3d_st, dir, "tri.gltf")
+  }
+  function reopens(render3d_st: mut Render3dState, dir: string, name: string) -> void {
+    expect(gltf_open(render3d_st, dir, name))
+    file_close(render3d_st.gltf_bin)
+    render3d_st.gltf_bin = null
+    expect(gltf_bin_reopen(render3d_st, dir))
+    expect(tri_ok(render3d_st))
+    file_close(render3d_st.gltf_bin)
+    render3d_st.gltf_bin = null
+  }
+
+  test "the header is read: chunk places and lengths" {
+    let f = file_open("packages/ludic.render3d/tests/models/tri.glb", "rb")
+    expect(f != null)
+    let out = words(4)
+    expect(glb_scan(f, 696, out))
+    expect_eq(out[0], 20)
+    expect_eq(out[2], 696 - 80)
+    expect_eq(out[3], 80)
+    expect_eq(out[0] + out[1] + 8, out[2])
+    expect(not glb_scan(f, 600, out))                       # a file shorter than its header says
+    file_close(f)
+  }
+
+  test "a damaged or foreign file is refused" (render3d_st: mut Render3dState) {
+    let dir = Os.temp_dir() + "/r3d_glb_bad"
+    Fs.mkdir(dir)
+    let good = Fs.read_bytes(models(render3d_st) + "/tri.glb")
+    expect(good != null)
+    let n = len(good)
+    # cut short: the BIN chunk overruns the file
+    expect(Fs.write_bytes(dir + "/cut.glb", good, n - 10))
+    expect(not gltf_open(render3d_st, dir, "cut.glb"))
+    # the version is 3
+    good[4] = 3
+    expect(Fs.write_bytes(dir + "/v3.glb", good, n))
+    expect(not gltf_open(render3d_st, dir, "v3.glb"))
+    good[4] = 2
+    # a JSON chunk longer than the file
+    good[12] = 255;  good[13] = 255
+    expect(Fs.write_bytes(dir + "/long.glb", good, n))
+    expect(not gltf_open(render3d_st, dir, "long.glb"))
+    expect(not gltf_open(render3d_st, dir, "missing.glb"))
+    # still fine afterwards
+    expect(gltf_open(render3d_st, models(render3d_st), "tri.glb"))
+    expect(tri_ok(render3d_st))
+    file_close(render3d_st.gltf_bin)
+  }
+}

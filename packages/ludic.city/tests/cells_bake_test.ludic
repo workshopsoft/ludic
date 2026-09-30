@@ -1,0 +1,152 @@
+# cells_bake_test.ludic - the authored city baked into what the large world streams, on the fixture city (tests/maps/metro: 72
+# buildings in six chunks, three kits and three nodes of one generated block): one kit a (model, node, atlas) so every building of a
+# kit shares one mesh, the cells' files and index, positions exact relative to a cell's corner, the kit rows as the studio's table
+# reads them, and the culler drawing the baked cells as instances: a kit's buildings in one list, not one actor each. The bake
+# is a program the game runs; its output is all the game loads.
+import "ludic.city"
+import "ludic.base"
+import "ludic.render3d/bigworld.ludic"
+program CellsBakeTest {
+  numbers float
+  def ZoningRules from "zoning.lres"
+  def BuildingKits from "kits.lres"
+  def BuildingGenerators from "generators.lres"
+  def InteriorAtlases from "../../ludic.render3d/tests/interior_atlases.lres"
+  import "../tools/cells_bake_city.ludic"
+
+  function bake(city_st: mut CityState, bl: mut Buildings, cell: float) -> KitBake {
+    let kb = kitbake_new(cell)
+    let n = city_cells_bake(city_st, bl, "metro", "packages/ludic.city/tests/maps", kb)
+    expect_eq(n, 72)
+    return kb
+  }
+
+  test "every building that names a model is placed, one kit a model and node" (city_st: mut CityState, bl: mut Buildings) {
+    let kb = bake(city_st, bl, 256.0)
+    expect_eq(kb.placed, 72)
+    # kits tower, shop and house (12 tower floors, etc.) and the three nodes of the generated block; the atlas splits a kit
+    # (the fake-interior shops name one, the rest none)
+    expect(kitbake_kit_count(kb) >= 6 and kitbake_kit_count(kb) <= 9)
+    var shared = 0
+    for i in 0 .. kitbake_cell_count(kb) { shared += kb.cells[i].n }
+    expect_eq(shared, 72)
+    var most = 0
+    for i in 0 .. kitbake_cell_count(kb) { for j in 0 .. kb.cells[i].n { most = max(most, kb.cells[i].kit[j]) } }
+    expect(most < kitbake_kit_count(kb))
+    expect_eq(kitbake_cell_count(kb), 6)
+  }
+
+  test "a cell's things are where the rows put them, relative to the cell's corner, turned in radians, with the row's interior class" (city_st: mut CityState, bl: mut Buildings) {
+    let kb = bake(city_st, bl, 256.0)
+    # the first row of chunk (0, 0): a tower at (30, 30), yaw 90, enterable
+    var found = false
+    for i in 0 .. kitbake_cell_count(kb) {
+      let c = kb.cells[i]
+      if c.cx != 0 or c.cz != 0 { continue }
+      for j in 0 .. c.n {
+        if Math.abs(c.xf[j * CELL_XF] - 30.0) < 0.001 and Math.abs(c.xf[j * CELL_XF + 2] - 30.0) < 0.001 {
+          found = true
+          expect_near(c.xf[j * CELL_XF + 3], Math.deg_to_rad(90.0), 0.0001)
+          expect_eq(c.flags[j], 2)
+          expect(kb.kits[c.kit[j]].model == "models/tower.glb")
+          expect_near(kb.kits[c.kit[j]].h, 12.0 * 3.5, 0.001)
+        }
+      }
+    }
+    expect(found)
+    # another cell size re-cuts the same placements: every thing keeps its world place
+    let kb2 = bake(city_st, bl, 128.0)
+    var total = 0
+    for i in 0 .. kitbake_cell_count(kb2) { total += kb2.cells[i].n;  expect(kb2.cells[i].size == 128.0) }
+    expect_eq(total, 72)
+    expect(kitbake_cell_count(kb2) >= 6)
+    expect_eq(kitbake_kit_count(kb2), kitbake_kit_count(kb))
+  }
+
+  test "the files written are the ones the scheduler reads, and the kit rows are what the studio's table reads" (city_st: mut CityState, bl: mut Buildings) {
+    let kb = bake(city_st, bl, 256.0)
+    let dir = Os.temp_dir() + "/city_cells_bake"
+    expect_eq(kitbake_write(kb, dir), 6)
+    let ix = cell_index_load(dir)
+    expect(ix != null)
+    expect(ix.size == 256.0)
+    var things = 0
+    for i in 0 .. kitbake_cell_count(kb) {
+      let c = kb.cells[i]
+      let back = cell_load(dir, c.cx, c.cz)
+      expect(back != null)
+      expect_eq(back.n, c.n)
+      for j in 0 .. c.n { expect_eq(back.kit[j], c.kit[j]);  expect(back.xf[j * CELL_XF] == c.xf[j * CELL_XF]);  expect_eq(back.vari[j], c.vari[j]) }
+      things += back.n
+    }
+    expect_eq(things, 72)
+    let rows = kitbake_rows(kb, 0)
+    expect(Text.contains(rows, "model: \"models/tower.glb\", node: \"Tower\""))
+    expect(Text.contains(rows, "w: 24.0, d: 24.0, h: 42.0"))
+    expect(Text.contains(rows, "interior: \"windows_a\""))
+    # the rows are a file the game reads back: same kits, same order
+    expect(Fs.write_text(dir + "/render_kits.lres", rows))
+  }
+
+  test "kits already written keep their ids, and only new ones are appended" (city_st: mut CityState, bl: mut Buildings) {
+    let first = bake(city_st, bl, 256.0)
+    let second = kitbake_new(256.0)
+    kitbake_seed(second, first.kits)
+    let n = city_cells_bake(city_st, bl, "metro", "packages/ludic.city/tests/maps", second)
+    expect_eq(n, 72)
+    expect_eq(kitbake_kit_count(second), kitbake_kit_count(first))
+    expect_eq(kitbake_rows(second, second.seeded), "")
+    for i in 0 .. kitbake_cell_count(first) {
+      var same = false
+      for k in 0 .. kitbake_cell_count(second) {
+        if second.cells[k].cx == first.cells[i].cx and second.cells[k].cz == first.cells[i].cz {
+          same = true
+          for j in 0 .. first.cells[i].n { expect_eq(second.cells[k].kit[j], first.cells[i].kit[j]) }
+        }
+      }
+      expect(same)
+    }
+    let extra = kitbake_kit(second, "models/lamp.glb", "Lamp", 1.0, 1.0, 5.0, "")
+    expect_eq(extra, kitbake_kit_count(first))
+    expect(Text.contains(kitbake_rows(second, second.seeded), "Lamp"))
+  }
+
+  test "the baked cells draw as instances: a kit's buildings are one list of the culler, not an actor each" (city_st: mut CityState, bl: mut Buildings) {
+    let kb = bake(city_st, bl, 256.0)
+    let k = kinst_new(kitbake_kit_count(kb))
+    kinst_kits_from(k, kb.kits)
+    for i in 0 .. kitbake_cell_count(kb) {
+      let c = kb.cells[i]
+      kinst_add_cell(k, i, c, float(c.cx) * 256.0, 0.0, float(c.cz) * 256.0)
+    }
+    expect_eq(kinst_total(k), 72)
+    let vp = m4_new()
+    let proj = m4_new()
+    let v = m4_new()
+    m4_perspective(proj, Math.deg_to_rad(90.0), 1.5, 0.3, 20000.0)
+    m4_look_at_xyz(v, 300.0, 600.0, 300.0, 300.0, 0.0, 301.0, 0.0, 1.0, 0.0)      # from above the city looking down
+    m4_mul(vp, proj, v)
+    kinst_begin(k, vp, 300.0, 600.0, 300.0)
+    let vis = kinst_cull(k)
+    expect(vis > 0)
+    var lists = 0
+    var inst = 0
+    for kit in 0 .. kitbake_kit_count(kb) {
+      let m = kinst_bin_count(k, kit, KI_MESH) + kinst_bin_count(k, kit, KI_CARD)
+      inst += m
+      if m > 0 { lists += 1 }
+    }
+    expect_eq(inst, vis)
+    expect(lists <= kitbake_kit_count(kb))          # one list a kit however many buildings it draws
+    expect(vis > lists)                              # ... so more buildings than lists: instanced
+  }
+
+  test "the far layer is baked over the same files: hlod_bake_dir writes a proxy a cell" (city_st: mut CityState, bl: mut Buildings) {
+    let kb = bake(city_st, bl, 256.0)
+    let dir = Os.temp_dir() + "/city_cells_bake_hlod"
+    expect_eq(kitbake_write(kb, dir), 6)
+    let n = hlod_bake_dir(dir, dir, kb.kits, 256.0, 32.0, 12.0, 4.0)
+    expect_eq(n, 6)
+    expect(Fs.exists(cell_path(dir, 0, 0, "lwh")))
+  }
+}

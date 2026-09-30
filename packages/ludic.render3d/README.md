@@ -48,6 +48,18 @@ a pure function of those two - the same on every machine and in the editor's pre
   studio's own test reads. After a deliberate change, rebuild it from the repository root:
   `bin/ludic run packages/ludic.render3d/tests/gen/ground_fill_golden.ludic --headless`, and commit it.
 
+## Models: glTF and GLB
+
+`gltf_load(st, dir, file, node)` (and `gltf_cached`) reads one named node's mesh from a **`.gltf` with its one external `.bin`, or from a
+binary `.glb`** - the studio's Blender generators export `.glb`, and a row's `@Asset("gltf")` names either. The two are told apart by the
+file's first bytes (the magic `glTF`), not its name. A `.glb` is the 12-byte header, the JSON chunk and the BIN chunk (`glb.ludic`:
+`glb_scan` finds the two without reading them); the JSON is the document and the accessors read only the byte ranges they need from
+the BIN chunk, exactly as from a `.bin`. A header of another version, a chunk that overruns the file or a file with no BIN chunk is
+refused with a line saying so. Textures stay files beside the model (`images[].uri`); an image inside the BIN chunk is not read.
+`gltf_open(st, dir, file)` (the document and its binary, for a reader that wants the accessors: `tests/glb_test.ludic` holds a triangle as
+`tri.gltf` + `tri.bin` and as `tri.glb` to the same answers) and `gltf_bin_reopen(st, dir)` (`ludic.anim` reads its clips through it, so a
+`.glb` animates too).
+
 ## Large worlds: a city of hundreds of thousands of buildings on a 16 km map
 
 Everything here is game-agnostic: it knows cells, kits and transforms, not what a game puts in them. The logic that needs no
@@ -61,6 +73,8 @@ coordinate from integers (`double(40000123) / 1000.0`) or from a computation, ne
 | floating origin, `CellPos` | `forg.ludic` | `tests/forg_test.ludic` |
 | world partition row, cell streaming scheduler | `wpart.ludic`, `wstream.ludic` | `tests/wstream_test.ludic` |
 | cell files, index, building kits | `cellfile.ludic` | `tests/cellfile_test.ludic` |
+| kits and cells baked from placed things (a city's buildings) | `kitbake.ludic`, `packages/ludic.city/tools/cells_bake_city.ludic` | `tests/kitbake_test.ludic`, `packages/ludic.city/tests/cells_bake_test.ludic` |
+| the ground from the studio's height tiles: data, bake, stream, draw | `tilemap.ludic`, `tilemap_bake.ludic`, `tilemap_lwt.ludic`, `tilemap_draw.ludic`, `tools/terrain_bake.ludic` | `tests/tilemap_test.ludic` |
 | HLOD bake (+ tool) | `hlod.ludic`, `tools/hlod_bake.ludic`, `hlod_gpu.ludic` | `tests/hlod_test.ludic` |
 | instancing: culling, binning, budgets | `kinst.ludic` (CPU), `kgpu.ludic` + `kinst_*.comp` (GPU), `karena.ludic` | `tests/kinst_test.ludic`, `tests/karena_test.ludic`, `tests/bigworld_gpu_test.ludic` |
 | stress benchmarks | `bench/kinst_stress.ludic`, `bench/kgpu_stress.ludic` | (run by a person) |
@@ -91,8 +105,8 @@ swim. Nothing the GPU sees may be a large number.
   to add across cells, precision that does not degrade with distance. Cell content is stored that way (below).
 - **What follows the origin.** The big world's own data does (cell tables, kits, HLOD, interior instances: one offset each, no
   records rewritten). What a game keeps in render space itself (actors, scatter layers, stream corners `Stream.ox/oz`,
-  `ter_ox/ter_oz`) must be shifted by `o.shift_*` in the frame `bw.rebased` (or `forg_update`) says so. The terrain is still one
-  8 km tile (`TERRAIN_HALF`): a map larger than that needs terrain paging beyond this package (v2).
+  `ter_ox/ter_oz`) must be shifted by `o.shift_*` in the frame `bw.rebased` (or `forg_update`) says so. The baked terrain is still one
+  8 km tile (`TERRAIN_HALF`); a map larger than that draws its ground from tiles ("Terrain from the studio's tiles" below).
 
 ### World partition and streaming (`wpart.ludic`, `wstream.ludic`, `cellfile.ludic`, `hlod.ludic`)
 
@@ -238,8 +252,89 @@ supplies its rooms and doors as data (`interior_rooms.lres`, `interior_doors.lre
 load), then each frame `bw_frame(st, bw, wx, wy, wz, yaw, pitch, load_us)` with the camera's **world** position; `bw_prepare` in `r3d_on_prepare`, `bw_draw` in `r3d_on_draw`,
 `bw_draw_casters` in `r3d_on_casters`. It owns the origin, scheduler, cell files, instancer and proxies and does the loads within the budget.
 
+### Kits and cells from placed things (`kitbake.ludic`)
+
+Everything the large world draws is **baked**, not made in play: the game loads files and rows. `kitbake.ludic` is the bake of the first
+two: from a list of placements it writes the map's `RenderKits` rows (**one kit for each model, node and interior atlas**, so every
+building that names the same model shares one mesh, drawn instanced by its cell) and the cell files and index `bw_open` reads.
+
+```text
+let kb = kitbake_new(256.0)                       # the map's WorldPartition.cell_size
+kitbake_seed(kb, kits.rows)                       # rows already written keep their ids: kits are only ever appended
+let id = kitbake_kit(kb, "city/block_3.glb", "tower_a", 30.0, 30.0, 120.0, "")     # model, node, footprint w, d, height, atlas
+kitbake_place(kb, id, x, y, z, yaw_radians, 1.0, cell_rgba(255, 255, 255, 255), variation, flags)
+kitbake_write(kb, "assets/maps/meridian/cells")   # cells.lwi and cell_<cx>_<cz>.lwc
+Fs.write_text("assets/maps/meridian/render_kits.lres", kitbake_rows(kb, 0))        # or kitbake_rows(kb, kb.seeded) to append
+```
+
+It knows nothing of what placed the things. ludic.city's rows go through `packages/ludic.city/tools/cells_bake_city.ludic`
+(`city_cells_bake`: every `Buildings` row that has a model, its own or its kit's; interior class in the cell's flags, the row's `atlas`
+on the kit, a hash of the key for the variation), a program of the game's own that `def`s the registries the rows name; its
+example and test is `packages/ludic.city/tests/cells_bake_test.ludic` on the fixture city: 72 buildings in 6 kits, the culler drawing them
+as one list a kit. A kit's `near`, `far`, `w`, `d`, `h` and the window cell are the row's to edit afterwards (the studio's RenderKits
+table): a re-bake keeps the rows and appends only new kits. A model's node must have its origin at the middle of its footprint, on the
+ground. The far layers are baked after it: `tools/hlod_bake.ludic` (the merged proxy of every cell) and, a person's click, a kit's
+impostor atlas (`kgpu_bake_kit`).
+
+The order is: rows change, then `city_cells_bake`, then `hlod_bake`; the game's `package.ludic` can run them as `hook before build`.
+
+### Terrain from the studio's tiles (`tilemap.ludic`, `tilemap_draw.ludic`)
+
+The studio writes a map's ground as 16-bit greyscale PNG tiles (`world_create`, `terrain_sculpt`); the map's row says how. One
+`TileMap` is that row's numbers, passed as the row's fields (the names are the studio's `world_create` scaffold and the game's
+studio.lres binding: `tiles`, `tile_size`, `tile_res`, `tile_cols`, `tile_rows`, `origin_x`, `origin_z`, `height_min`, `height_max`, and
+the `height_offset` a binding may have):
+
+```text
+let tm = tmap_new(m.tiles, m.tile_size, m.tile_res, m.tile_cols, m.tile_rows, m.origin_x, m.origin_z, m.height_min, m.height_max, 0.0, 300.0)
+```
+
+The layout: tile (tx, tz) is the file `tiles` with `{tx}` and `{tz}` filled in; it covers x in `origin_x + tx * tile_size` for `tile_size`
+metres (z likewise), `tile_res` samples a side and none shared with a neighbour; sample (i, j) is along +x and +z, **image row 0 is the low
+z**, its centre at `origin + (tile * res + i + 0.5) * texel`; `height = offset + height_min + raw / 65535 * (height_max - height_min)`.
+Between texel centres the ground is bilinear, across a tile's edge as well; past the map it holds the edge texel; a tile with no file (or
+not a `res` x `res` 16-bit grey PNG) is flat at `offset + height_min`, known once, never asked for again. No size is fixed in code.
+
+**The ground as data** (no device): `tmap_stream(st, tm, x, z, radius, budget)` once a frame loads the tiles within `radius` nearest first
+(`budget` a frame; a tile is 2 bytes a texel, in a pool sized for `radius`, the least recently wanted let go) and `tmap_ensure` loads them
+all now (a spawn, a teleport). Then `tmap_height(tm, x, z)` is the port everything asks - allocation free, pure, what is not loaded is flat
+and `tmap_ready` says so; `tmap_height_sync` loads what it needs first; `tmap_normal`, `tmap_slope`. **Physics**: `tmap_field(tm, h, n, ox, oz,
+cell, PHYS_HOLE)` fills the `n x n` array `phys_heightfield` takes, with a hole where a tile is not loaded:
+
+```text
+function ground_h(x: float, z: float) -> float { return tmap_height(game_tm, x, z) }        # bind CharacterGround.height to it
+let holes = tmap_field(game_tm, h, 33, ox, oz, 2.0, PHYS_HOLE)                            # a 64 m chunk of ground
+if holes == 0 { phys_ground_add(physics_st, phys_heightfield(physics_st, h, 33, ox, oz, 2.0)) }
+```
+
+**The ground drawn is baked** (levels of detail are a bake, never made in play). `tools/terrain_bake.ludic` cuts every tile into
+patches (`patch_texels` texels, 128 by default) and every patch into levels (each halves the cells, down to 4), samples heights where
+`tmap_height` reads the ground and normals one cell apart, and writes one `.lwt` file a tile beside the PNG (`tiles` with `.lwt`, or the
+row's own `tile_mesh` pattern): quantized heights (16 bits over the row's range) and normals, the format of `tilemap_lwt.ludic`, its
+header holding the row's numbers so a file baked for other numbers is refused, never drawn wrong. Run it by hand or as a
+`package.ludic` `hook before build` (the arguments are the row's fields):
+
+```text
+ludic build packages/ludic.render3d/tools/terrain_bake.ludic
+./build/terrain_bake "assets/maps/meridian/terrain/{tx}_{tz}.png" 1024 512 16 16 -8192 -8192 -40 600
+```
+
+Then `tilemap_draw.ludic`: `tmd_new(st, tm, radius)` and, each frame, `tmd_frame(st, td, cam_x, cam_z, origin_x, origin_z, radius)`: tile tables
+are read a frame within budget, the patches inside `radius` are read and uploaded nearest first (`build_budget` a frame) at the level their
+distance asks (`tm.lod_dist` doubling each level, with hysteresis), each an `Actor` so the renderer's own model pass lights, shadows and fogs
+it (set `td.color`, `td.rough`; `r3d_plate_mode(st, true)` for the sky and sun without the old 8 km terrain), a skirt under every edge hides
+the cracks between levels, the actors follow the floating origin. A frame allocates nothing but the mesh and model a patch's new level
+needs. It is tested with no device (`tests/tilemap_test.ludic`: layout, bilinear across edges, streaming, pool, heights for physics, the
+bake, the file's checks, the levels agreeing on shared vertices) and looked at on a lab plate.
+
+### What is still made at load, and is a gap
+
+The impostor atlas of a kit is rendered on the device by `bw_setup_kits` (`kgpu_bake_kit`) unless a bake file is named
+(`impostor_from_baked`, `bake_load.ludic`); the window atlases of `imi_load` and the shadow and IBL textures are likewise made at
+start by the older paths. Those are the renderer's own bakes, not content, and stay until they are moved to a build step of their own.
+
 ### Not yet (v2)
 
-Terrain paging past one 8 km tile and ground streams that follow a rebasing origin; impostor atlases with mips and cards that cast shadows; a depth-corrected impostor (parallax);
+Ground streams that follow a rebasing origin; impostor atlases with mips and cards that cast shadows; a depth-corrected impostor (parallax);
 mesh LOD chains per kit (`layer_set_lods` has them for vegetation; kits go mesh to card); occlusion culling of the city by the depth buffer (only portals inside buildings);
 multi-player instance visibility beyond `intr_ref`; HLOD with merged textures and a window/roof texture instead of banding.

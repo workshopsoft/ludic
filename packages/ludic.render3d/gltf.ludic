@@ -89,6 +89,7 @@ function gltf_mat_uri(render3d_st: Render3dState, mat: Val, slot: pointer) -> st
   let tex = value_at(value_get(render3d_st.gltf_doc, "textures"), ti)
   let src = value_as_int(value_get(tex, "source"))
   let img = value_at(value_get(render3d_st.gltf_doc, "images"), src)
+  if value_has(img, "uri") == 0 { return null }        # an image inside a .glb's BIN chunk: not read (textures are files beside the model)
   return value_as_str(value_get(img, "uri"))
 }
 
@@ -112,7 +113,7 @@ function gltf_accessor(render3d_st: mut Render3dState, idx: int) -> pointer {
   if render3d_st.gltf_ctype == 5121 or render3d_st.gltf_ctype == 5120 { csz = 1 }
   let n = render3d_st.gltf_count * render3d_st.gltf_comps * csz
   let buf = bytes(n + 8)
-  file_seek(render3d_st.gltf_bin, off, 0)
+  file_seek(render3d_st.gltf_bin, render3d_st.gltf_bin_base + off, 0)
   file_read(render3d_st.gltf_bin, buf, n)
   return buf
 }
@@ -215,6 +216,72 @@ function prim_factors(render3d_st: mut Render3dState, p: int, pr: Prim) -> void 
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_fac_emis"), f[6], f[7], f[8])
 }
 
+# Open the document `dir/file` and the binary its accessors read: a .gltf with its one external .bin (buffers[0].uri),
+# or a binary glTF (.glb: the JSON chunk is the document, the BIN chunk the binary; glb.ludic), told apart by the
+# file's own first bytes, not its name. On true gltf_doc is the parsed document and gltf_bin an open file positioned by
+# gltf_bin_base; the caller closes gltf_bin. The last document's tree goes first.
+@alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
+function gltf_open(render3d_st: mut Render3dState, dir: string, file: string) -> bool {
+  render3d_st.gltf_dir = dir
+  let at = dir + "/" + file
+  if render3d_st.gltf_doc != null { Json.free_all(render3d_st.gltf_doc);  render3d_st.gltf_doc = null }
+  if render3d_st.gltf_bin_path != null { free(render3d_st.gltf_bin_path);  render3d_st.gltf_bin_path = null }
+  render3d_st.gltf_bin_base = 0
+  let size = Fs.size(at)
+  let f = file_open(at, "rb")
+  if f == null or size < 0 { print(`gltf: cannot read {dir}/{file}`);  free(at);  return false }
+  let lay = words(4)
+  if glb_scan(f, size, lay) {
+    free(at)
+    let buf = bytes(lay[1] + 1)
+    file_seek(f, lay[0], 0)
+    file_read(f, buf, lay[1])
+    buf[lay[1]] = 0
+    let text: string = buf
+    render3d_st.gltf_doc = Json.parse(text)
+    free(buf)
+    let base = lay[2]
+    free(lay)
+    if base < 0 { print(`gltf: {file} has no binary chunk`);  file_close(f);  return false }
+    render3d_st.gltf_bin = f
+    render3d_st.gltf_bin_base = base
+    render3d_st.gltf_bin_path = dir + "/" + file
+    return true
+  }
+  free(lay)
+  file_close(f)
+  let text = Fs.read_text(at)
+  free(at)
+  if text == null { print(`gltf: cannot read {dir}/{file}`);  return false }
+  # the text once parsed - nothing gives memory back on its own (plan 23 of maroon-lake)
+  render3d_st.gltf_doc = Json.parse(text)
+  free(text)
+  let buffers = value_get(render3d_st.gltf_doc, "buffers")
+  if value_count(buffers) == 0 or value_has(value_at(buffers, 0), "uri") == 0 { print(`gltf: {file} names no .bin`);  return false }
+  let bin_uri = value_as_str(value_get(value_at(buffers, 0), "uri"))
+  let bin_at = dir + "/" + bin_uri
+  render3d_st.gltf_bin = file_open(bin_at, "rb")
+  if render3d_st.gltf_bin == null { print(`gltf: cannot open {bin_uri}`);  free(bin_at);  return false }
+  render3d_st.gltf_bin_path = bin_at
+  return true
+}
+
+# Open the binary of the document gltf_load last read again (gltf_load closes it before it returns), for a reader of
+# the document that follows a load (ludic.anim's clips): a .gltf's .bin or a .glb's BIN chunk alike. A document set
+# by hand (a test's) has no path kept: its buffers[0].uri under `dir` is opened.
+function gltf_bin_reopen(render3d_st: mut Render3dState, dir: string) -> bool {
+  render3d_st.gltf_bin = null
+  if render3d_st.gltf_bin_path != null {
+    render3d_st.gltf_bin = file_open(render3d_st.gltf_bin_path, "rb")
+    return render3d_st.gltf_bin != null
+  }
+  let buffers = value_get(render3d_st.gltf_doc, "buffers")
+  if value_count(buffers) == 0 or value_has(value_at(buffers, 0), "uri") == 0 { return false }
+  render3d_st.gltf_bin_base = 0
+  render3d_st.gltf_bin = file_open(dir + "/" + value_as_str(value_get(value_at(buffers, 0), "uri")), "rb")
+  return render3d_st.gltf_bin != null
+}
+
 # Load the mesh of the node called `node_name` from dir/file.
 # the GPU memory it makes is counted as VKM_MODEL (R3D_VKMEM)
 function gltf_load(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
@@ -227,22 +294,7 @@ function gltf_load(render3d_st: mut Render3dState, dir: string, file: string, no
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 @creates(Model)
 function gltf_load__t(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
-  render3d_st.gltf_dir = dir
-  let at = dir + "/" + file
-  let text = Fs.read_text(at)
-  free(at)
-  if text == null { print(`gltf: cannot read {dir}/{file}`);  return null }
-  # the last file's tree goes first (it is read only until the next load: ludic.anim's read.ludic),
-  # and the text once parsed - nothing gives memory back on its own (plan 23 of maroon-lake)
-  if render3d_st.gltf_doc != null { Json.free_all(render3d_st.gltf_doc) }
-  render3d_st.gltf_doc = Json.parse(text)
-  free(text)
-  let buffers = value_get(render3d_st.gltf_doc, "buffers")
-  let bin_uri = value_as_str(value_get(value_at(buffers, 0), "uri"))
-  let bin_at = dir + "/" + bin_uri
-  render3d_st.gltf_bin = file_open(bin_at, "rb")
-  free(bin_at)
-  if render3d_st.gltf_bin == null { print(`gltf: cannot open {bin_uri}`);  return null }
+  if not gltf_open(render3d_st, dir, file) { return null }
   let nodes = value_get(render3d_st.gltf_doc, "nodes")
   var mesh_idx = -1
   var skin_idx = -1
