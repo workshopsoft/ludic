@@ -1,0 +1,144 @@
+# sync.ludic - a client's copy of the population. The host runs the crowd; a client runs only puppets: the people
+# the host said, moved smoothly between what it said. The host sends, per client, the peds within `sync_r` of that
+# client's player that changed since that client's last message, four words each; and the uids that went.
+#
+#   word 0  uid (cell, slot and member packed: the client can work out the look from it)
+#   word 1  x in 1/16 m      word 2  z in 1/16 m
+#   word 3  yaw (8 bits) | reaction (3) << 8 | act (4) << 11 | tier (2) << 15 | type (13) << 17
+#
+# 16 bytes a ped a message. A ped is written when a setter wrote it: a FULL one every tick, a MID one four times a
+# second, a FAR one once a second, so a message every 100 ms to one client costs a few hundred peds near it about
+# 6 KB/s before compression, and the far crowd nearly nothing. Send on a timer, not a frame.
+
+const CW_SYNC_WORDS: int = 4
+
+# the tick the next message's "since" is: call it once a message round, after every client's message is written
+export function crowd_sync_mark(crowd_st: mut CrowdState) -> int {
+  let t = tb_tick(crowd_st.cw_tab)
+  tb_advance(crowd_st.cw_tab)
+  return t
+}
+
+function cw_gone_log(crowd_st: mut CrowdState, uid: int) -> void {
+  if crowd_st.cw_role != CROWD_HOST { return }
+  if len(crowd_st.cw_gone_uid) >= 4096 {
+    # the oldest half is forgotten: a client that far behind is resent everything
+    let half = len(crowd_st.cw_gone_uid) / 2
+    for i in 0 .. half {
+      crowd_st.cw_gone_uid[i] = crowd_st.cw_gone_uid[i + half]
+      crowd_st.cw_gone_tick[i] = crowd_st.cw_gone_tick[i + half]
+    }
+    for i in 0 .. half {
+      List.pop(crowd_st.cw_gone_uid)
+      List.pop(crowd_st.cw_gone_tick)
+    }
+  }
+  kept_push(crowd_st.cw_gone_uid, uid)
+  kept_push(crowd_st.cw_gone_tick, tb_tick(crowd_st.cw_tab))
+}
+
+function cw_q16(v: float) -> int { return int(Math.floor(v * 16.0 + 0.5)) }
+
+function cw_meta(p: CrowdPed) -> int {
+  let yaw = int(Math.floor(p.yaw * 40.743665)) & 255
+  return yaw | ((int(p.react) & 7) << 8) | ((p.act & 15) << 11) | ((p.lod & 3) << 15) | ((p.type & 8191) << 17)
+}
+
+# the peds within sync_r of (x, z) written after `since`, four words each into `out` (cleared first); the number of
+# peds
+export function crowd_sync_out(crowd_st: mut CrowdState, since: int, x: float, z: float, out: words) -> int {
+  List.clear(out)
+  let n = tb_changed_since(crowd_st.cw_tab, since, crowd_st.cw_sync_rows)
+  let r2 = crowd_st.cw_cfg.sync_r * crowd_st.cw_cfg.sync_r
+  var peds = 0
+  for k in 0 .. n {
+    let p = crowd_st.cw_tab.rec[crowd_st.cw_sync_rows[k]]
+    if p.lod == CROWD_PUPPET { continue }
+    let dx = p.x - x
+    let dz = p.z - z
+    if dx * dx + dz * dz > r2 { continue }
+    kept_push(out, p.uid)
+    kept_push(out, cw_q16(p.x))
+    kept_push(out, cw_q16(p.z))
+    kept_push(out, cw_meta(p))
+    peds += 1
+  }
+  return peds
+}
+
+# the uids that went after `since` (into out, cleared first)
+export function crowd_sync_gone(crowd_st: CrowdState, since: int, out: words) -> int {
+  List.clear(out)
+  for i in 0 .. len(crowd_st.cw_gone_uid) {
+    if crowd_st.cw_gone_tick[i] > since { kept_push(out, crowd_st.cw_gone_uid[i]) }
+  }
+  return len(out)
+}
+
+# a client takes a message: `n` peds of four words in `buf`
+export function crowd_sync_in(crowd_st: mut CrowdState, buf: words, n: int) -> void {
+  for k in 0 .. n {
+    let uid = buf[k * CW_SYNC_WORDS]
+    let x = float(buf[k * CW_SYNC_WORDS + 1]) / 16.0
+    let z = float(buf[k * CW_SYNC_WORDS + 2]) / 16.0
+    let meta = buf[k * CW_SYNC_WORDS + 3]
+    let yaw = float(meta & 255) / 40.743665
+    var row = cw_row_of(crowd_st, uid)
+    if row < 0 {
+      let type = (meta >> 17) & 8191
+      if type >= PEDT_COUNT { continue }
+      let p = cw_add(crowd_st, uid, type, x, z, yaw, 0, 0, uid & 7)
+      p.lod = CROWD_PUPPET
+      p.from_x = x
+      p.from_z = z
+      p.to_x = x
+      p.to_z = z
+      let f = cw_fact(crowd_st, CROWD_SPAWNED, uid)
+      f.type = type
+      f.x = x
+      f.z = z
+      CrowdBody.born(uid, type, p.look, x, z)
+      row = cw_row_of(crowd_st, uid)
+    }
+    let p = crowd_st.cw_tab.rec[row]
+    p.from_x = p.x
+    p.from_z = p.z
+    p.to_x = x
+    p.to_z = z
+    p.lerp = 0.0
+    p.yaw = yaw
+    p.net = (meta >> 8) & 7
+    p.act = (meta >> 11) & 15
+    p.seen = crowd_st.cw_time
+  }
+}
+
+# a client takes the uids that went: `n` of them in `buf`
+export function crowd_sync_in_gone(crowd_st: mut CrowdState, buf: words, n: int) -> void {
+  for k in 0 .. n {
+    let hd = imap_get(crowd_st.cw_live, buf[k], -1)
+    if tb_row(crowd_st.cw_tab, hd) >= 0 { cw_remove(crowd_st, hd, CROWD_WHY_SYNC) }
+  }
+}
+
+# a client's frame: every puppet moves on toward where the host last said, and one the host stopped mentioning
+# (out of its player's range) is let go after a few seconds
+function cw_puppet_tick(crowd_st: mut CrowdState, dt: float) -> void {
+  var i = 0
+  while i < tb_len(crowd_st.cw_tab) {
+    let p = crowd_st.cw_tab.rec[i]
+    if crowd_st.cw_time - p.seen > crowd_st.cw_puppet_ttl {
+      cw_remove(crowd_st, tb_handle(crowd_st.cw_tab, i), CROWD_WHY_SYNC)
+      continue
+    }
+    p.lerp = Math.min(1.0, p.lerp + dt / 0.12)
+    let nx = p.from_x + (p.to_x - p.from_x) * p.lerp
+    let nz = p.from_z + (p.to_z - p.from_z) * p.lerp
+    let dx = nx - p.x
+    let dz = nz - p.z
+    p.speed = Math.sqrt(dx * dx + dz * dz) / Math.max(0.001, dt)
+    cw_set_pos(crowd_st, p, i, nx, nz)
+    CrowdBody.place(p.uid, nx, CrowdWorld.ground(nx, nz), nz, p.yaw, p.speed, p.act, CROWD_PUPPET)
+    i += 1
+  }
+}

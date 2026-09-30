@@ -1,0 +1,13 @@
+# the office worker's day: commute mornings and evenings, sit on a bench or use the cash machine at lunch, stroll otherwise
+office {
+  slots: [
+    { from: 6.0, to: 9.0, act: "commute", weight: 1.0 },
+    { from: 11.0, to: 14.0, act: "sit", anchor: "bench", weight: 2.0, min_s: 30.0, max_s: 60.0 },
+    { from: 11.0, to: 14.0, act: "shop", anchor: "atm", weight: 1.0 },
+    { from: 0.0, to: 24.0, act: "walk", weight: 1.0 },
+    { from: 22.0, to: 6.0, act: "stand", weight: 1.0, min_s: 5.0, max_s: 10.0 }
+  ]
+}
+stroller {
+  slots: [{ from: 0.0, to: 24.0, act: "walk" }]
+}

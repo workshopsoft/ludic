@@ -1,0 +1,80 @@
+# hash.ludic - the integer hash every deterministic choice comes from, and the small maths the crowd shares.
+# Ludic's int is 32 bits and its right shift is arithmetic, so each shift is masked.
+
+# a hash of three ints, in [0, 2^31): the same inputs, the same number, on every machine
+export function crowd_hash(a: int, b: int, c: int) -> int {
+  var h = a * 0x27D4EB2D + 0x165667B1
+  h = h ^ ((h >> 15) & 0x1FFFF)
+  h = h * 0x85EBCA6B + b * 0x2C1B3C6D
+  h = h ^ ((h >> 13) & 0x7FFFF)
+  h = h * 0xC2B2AE35 + c * 0x297A2D39
+  h = h ^ ((h >> 16) & 0xFFFF)
+  h = h * 0x27D4EB2D
+  h = h ^ ((h >> 15) & 0x1FFFF)
+  return h & 0x7FFFFFFF
+}
+
+# a float in [0, 1) from a hash, in steps of 1/65536
+function cw_unit(h: int) -> float { return float((h >> 8) & 0xFFFF) / 65536.0 }
+
+# a curve's value at an hour: linear between its points, round midnight; none: 0
+function cw_curve(hs: []float, vs: []float, o: int, n: int, hour: float) -> float {
+  if n <= 0 { return 0.0 }
+  if n == 1 { return vs[o] }
+  var h = hour
+  while h < 0.0 { h += 24.0 }
+  while h >= 24.0 { h -= 24.0 }
+  # the last point at or before h (wrapping to the last of the day when h is before the first)
+  var a = o + n - 1
+  var b = o
+  for i in 0 .. n {
+    if hs[o + i] <= h {
+      a = o + i
+      b = o + i + 1
+      if i + 1 >= n { b = o }
+    }
+  }
+  var h0 = hs[a]
+  var h1 = hs[b]
+  if h0 > h { h0 -= 24.0 }
+  if h1 <= h0 { h1 += 24.0 }
+  var hh = h
+  if hh < h0 { hh += 24.0 }
+  let t = (hh - h0) / (h1 - h0)
+  return vs[a] + (vs[b] - vs[a]) * t
+}
+
+# is an hour inside [from, to), which runs over midnight when to < from
+function cw_in_hours(hour: float, from: float, to: float) -> bool {
+  if from <= to { return hour >= from and hour < to }
+  return hour >= from or hour < to
+}
+
+# a point inside a polygon of points `o .. o + n` of the xs and zs (even-odd)
+function cw_in_poly(xs: []float, zs: []float, o: int, n: int, x: float, z: float) -> bool {
+  var inside = false
+  var j = o + n - 1
+  for i in o .. o + n {
+    let zi = zs[i]
+    let zj = zs[j]
+    if (zi > z) != (zj > z) {
+      let xc = xs[i] + (z - zi) * (xs[j] - xs[i]) / (zj - zi)
+      if x < xc { inside = not inside }
+    }
+    j = i
+  }
+  return inside
+}
+
+function cw_cellkey(cx: int, cz: int) -> int { return ((cx & 32767) << 15) | (cz & 32767) }
+
+# the angle of (dx, dz) as the crowd faces: 0 faces +z
+function cw_yaw_of(dx: float, dz: float) -> float { return Math.atan2(dx, dz) }
+
+# a turn from a to b, the short way, in (-pi, pi]
+function cw_turn(a: float, b: float) -> float {
+  var d = b - a
+  while d > 3.14159265 { d -= 6.2831853 }
+  while d < -3.14159265 { d += 6.2831853 }
+  return d
+}

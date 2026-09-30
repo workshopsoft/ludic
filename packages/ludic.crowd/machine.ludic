@@ -1,0 +1,64 @@
+# machine.ludic - a ped's reaction as a table (steps.lres): Calm until fear reaches what its type notices, Alert
+# (stops and looks), then what its type does about it - Flee, Panic, Cower, Fight - or Call, the police. A
+# ped is brought back to Calm by the Recycle action when its record goes back to the pool: the machine is the
+# only thing that writes a reaction.
+export property CrowdStep {
+  from: PedReact = PedReact.Calm
+  to: PedReact = PedReact.Calm
+  on: string = ""
+  guard: fn(Row<CrowdPed>, CrowdState) -> bool = null
+  enter: fn(Row<CrowdPed>, CrowdState) -> void = null
+}
+
+@Machine(CrowdPed.react)
+export registry CrowdSteps of CrowdStep as CRS from "steps.lres"
+
+export action CrowdRecycle { @Target who: int = -1 }
+
+function cw_g_alarmed(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return r.rec.fear >= PedTypes[r.rec.type].alert_at and r.rec.fear > 0.0
+}
+function cw_g_settled(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return r.rec.fear <= 0.03 and r.rec.react_t > 1.0
+}
+# a crime it saw, and it is the kind to ring the police (before it runs), before anyone else has used up the event's calls
+function cw_g_reports(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  if r.rec.called or r.rec.thr < 0 { return false }
+  if crowd_st.cw_th_id[r.rec.thr] != r.rec.thr_id { return false }
+  let k = crowd_st.cw_th_kind[r.rec.thr]
+  if k < 0 or k >= CTHR_COUNT { return false }
+  let th = CrowdThreats[k]
+  if th.crime < 0 or crowd_st.cw_th_reports[r.rec.thr] >= th.max_reports { return false }
+  return cw_unit(crowd_hash(r.rec.uid, r.rec.thr_id, 11)) < PedTypes[r.rec.type].civic
+}
+function cw_g_panics(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return r.rec.fear >= 0.85 and crowd_st.cw_ty_panic[r.rec.type] != 3
+}
+function cw_g_fights(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return crowd_st.cw_ty_panic[r.rec.type] == 2 and r.rec.fear >= PedTypes[r.rec.type].flee_at and PedTypes[r.rec.type].bravery >= 0.35
+}
+function cw_g_cowers(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return crowd_st.cw_ty_panic[r.rec.type] == 1 and r.rec.fear >= PedTypes[r.rec.type].flee_at
+}
+# a fighter too timid to fight runs like the rest
+function cw_g_flees(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  let s = crowd_st.cw_ty_panic[r.rec.type]
+  return (s == 0 or s == 2) and r.rec.fear >= PedTypes[r.rec.type].flee_at
+}
+function cw_g_call_done(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return r.rec.react_t >= PedTypes[r.rec.type].call_s
+}
+function cw_g_winded(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return r.rec.fear < 0.6 and r.rec.react_t > 2.0
+}
+function cw_g_rested(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return r.rec.fear < 0.25 and r.rec.react_t > 3.0
+}
+function cw_g_startled(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool { return r.rec.fear >= 0.95 }
+function cw_g_steady(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return r.rec.fear < 0.3 and r.rec.react_t > 4.0
+}
+# a fighter fights for its type's fight_s, whatever its fear does
+function cw_g_spent(r: Row<CrowdPed>, crowd_st: CrowdState) -> bool {
+  return r.rec.react_t > PedTypes[r.rec.type].fight_s
+}

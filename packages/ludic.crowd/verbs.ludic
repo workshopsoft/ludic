@@ -1,0 +1,177 @@
+# verbs.ludic - what the game asks of the crowd and tells it
+
+function cw_row_of(crowd_st: CrowdState, uid: int) -> int {
+  return tb_row(crowd_st.cw_tab, imap_get(crowd_st.cw_live, uid, -1))
+}
+
+export function crowd_count(crowd_st: CrowdState) -> int { return tb_len(crowd_st.cw_tab) }
+export function crowd_time(crowd_st: CrowdState) -> float { return crowd_st.cw_time }
+# the uid of the i-th ped, in no promised order
+export function crowd_ped_at(crowd_st: CrowdState, i: int) -> int {
+  if i < 0 or i >= tb_len(crowd_st.cw_tab) { return -1 }
+  return crowd_st.cw_tab.rec[i].uid
+}
+export function crowd_alive(crowd_st: CrowdState, uid: int) -> bool { return cw_row_of(crowd_st, uid) >= 0 }
+export function crowd_x(crowd_st: CrowdState, uid: int) -> float {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0.0 }
+  return crowd_st.cw_tab.rec[r].x
+}
+export function crowd_z(crowd_st: CrowdState, uid: int) -> float {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0.0 }
+  return crowd_st.cw_tab.rec[r].z
+}
+export function crowd_yaw(crowd_st: CrowdState, uid: int) -> float {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0.0 }
+  return crowd_st.cw_tab.rec[r].yaw
+}
+export function crowd_speed(crowd_st: CrowdState, uid: int) -> float {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0.0 }
+  return crowd_st.cw_tab.rec[r].speed
+}
+export function crowd_type(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return -1 }
+  return crowd_st.cw_tab.rec[r].type
+}
+# the look seed, in [0, the look set's variants)
+export function crowd_look(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return -1 }
+  return crowd_st.cw_tab.rec[r].look
+}
+export function crowd_act(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return -1 }
+  return crowd_st.cw_tab.rec[r].act
+}
+export function crowd_lod(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return -1 }
+  return crowd_st.cw_tab.rec[r].lod
+}
+export function crowd_fear(crowd_st: CrowdState, uid: int) -> float {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0.0 }
+  return crowd_st.cw_tab.rec[r].fear
+}
+# the reaction as a number (PedReact's order); a client's copy says what the host said
+export function crowd_react(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return -1 }
+  let p = crowd_st.cw_tab.rec[r]
+  if p.lod == CROWD_PUPPET { return p.net }
+  return int(p.react)
+}
+export function crowd_group_size(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0 }
+  let unit = crowd_st.cw_tab.rec[r].unit
+  return imap_get(crowd_st.cw_units, unit, 0)
+}
+# how many are in each tier
+export function crowd_lod_count(crowd_st: CrowdState, lod: int) -> int {
+  if lod < 0 or lod > 2 { return 0 }
+  return crowd_st.cw_lod_n[lod]
+}
+export function crowd_lod_radius(crowd_st: CrowdState, lod: int) -> float {
+  if lod == CROWD_FULL { return crowd_st.cw_lod_full }
+  if lod == CROWD_MID { return crowd_st.cw_lod_mid }
+  return crowd_st.cw_cfg.despawn
+}
+
+# what a ped carries, from its uid alone (so the same on every machine): how many of the type's i-th item
+export function crowd_carry_count(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0 }
+  return len(PedTypes[crowd_st.cw_tab.rec[r].type].carry)
+}
+export function crowd_carry_item(crowd_st: CrowdState, uid: int, i: int) -> string {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return "" }
+  let c = PedTypes[crowd_st.cw_tab.rec[r].type].carry
+  if i < 0 or i >= len(c) { return "" }
+  return c[i].item
+}
+export function crowd_carries(crowd_st: CrowdState, uid: int, i: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0 }
+  let c = PedTypes[crowd_st.cw_tab.rec[r].type].carry
+  if i < 0 or i >= len(c) { return 0 }
+  if cw_unit(crowd_hash(uid, i, 81)) >= c[i].chance { return 0 }
+  return c[i].min + crowd_hash(uid, i, 82) % (c[i].max - c[i].min + 1)
+}
+
+# take a ped away without a trace (the game took its body), or kill it: the same, and its place stays empty
+# for `respawn_s`. A leader's friends stay and follow themselves
+export function crowd_remove(crowd_st: mut CrowdState, uid: int) -> bool {
+  let hd = imap_get(crowd_st.cw_live, uid, -1)
+  if tb_row(crowd_st.cw_tab, hd) < 0 { return false }
+  cw_remove(crowd_st, hd, CROWD_WHY_REMOVED)
+  return true
+}
+export function crowd_kill(crowd_st: mut CrowdState, uid: int) -> bool {
+  let hd = imap_get(crowd_st.cw_live, uid, -1)
+  if tb_row(crowd_st.cw_tab, hd) < 0 { return false }
+  cw_remove(crowd_st, hd, CROWD_WHY_KILLED)
+  return true
+}
+
+# the nearest ped to a point, within r, as a uid (-1 none): a pickpocket's, a bump's
+export function crowd_nearest(crowd_st: mut CrowdState, x: float, z: float, r: float) -> int {
+  let n = tb_within(crowd_st.cw_tab, crowd_st.cw_grid, x, z, r, -1, 0, crowd_st.cw_rows)
+  var best = -1
+  var bd = r * r
+  for k in 0 .. n {
+    let p = crowd_st.cw_tab.rec[crowd_st.cw_rows[k]]
+    let dx = p.x - x
+    let dz = p.z - z
+    let d = dx * dx + dz * dz
+    if d <= bd {
+      bd = d
+      best = p.uid
+    }
+  }
+  return best
+}
+
+# how many peds are within r of a point
+export function crowd_count_within(crowd_st: mut CrowdState, x: float, z: float, r: float) -> int {
+  return tb_within(crowd_st.cw_tab, crowd_st.cw_grid, x, z, r, -1, 0, crowd_st.cw_rows)
+}
+
+export function crowd_role(crowd_st: mut CrowdState, role: int) -> void { crowd_st.cw_role = role }
+
+# put a ped somewhere (a mission's, a teleport): it stands there and chooses again
+export function crowd_place(crowd_st: mut CrowdState, uid: int, x: float, z: float) -> bool {
+  let row = cw_row_of(crowd_st, uid)
+  if row < 0 { return false }
+  let p = crowd_st.cw_tab.rec[row]
+  cw_set_pos(crowd_st, p, row, x, z)
+  cw_leave_scenario(crowd_st, p)
+  p.has_dest = false
+  p.repath = 0.0
+  p.lead = -1
+  cw_next_act(crowd_st, p)
+  return true
+}
+
+# send a calm ped walking to a point (a scripted errand, a call for a cop): it walks there, then goes on with its day
+export function crowd_goto(crowd_st: mut CrowdState, uid: int, x: float, z: float) -> bool {
+  let row = cw_row_of(crowd_st, uid)
+  if row < 0 { return false }
+  let p = crowd_st.cw_tab.rec[row]
+  if p.react != PedReact.Calm or p.lod == CROWD_PUPPET { return false }
+  cw_leave_scenario(crowd_st, p)
+  p.lead = -1
+  p.act = CROWD_WALK
+  p.dest_x = x
+  p.dest_z = z
+  p.has_dest = true
+  p.repath = 0.0
+  p.blocked = 0.0
+  return true
+}

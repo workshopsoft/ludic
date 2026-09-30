@@ -1,0 +1,520 @@
+# spawn.ludic - who exists. The world is cut into square cells; each cell, for its seed and the hour, holds a
+# number of spawn UNITS (a person, or a group of friends), each a pure function of (seed, cell, slot): where it
+# stands, what type, what look. The crowd makes the units of the cells round each player, in a ring (not too
+# near, not in view), up to the budgets, and takes away those left behind. Nothing random is kept: the same
+# seed and the same hour make the same people on every machine, however the players came to be there.
+
+function cw_cfg_load(crowd_st: mut CrowdState) -> void {
+  let c = crowd_st.cw_cfg
+  var s = new CrowdSetting
+  if CSET_COUNT > 0 { s = CrowdSettings[0] }
+  c.cell = s.cell
+  c.spawn_min = s.spawn_min
+  c.spawn_max = s.spawn_max
+  c.despawn = Math.max(s.despawn, s.spawn_max + s.cell)
+  c.full_r = s.full_r
+  c.mid_r = Math.max(s.mid_r, s.full_r + 1.0)
+  c.max_peds = s.max_peds
+  c.max_full = s.max_full
+  c.max_mid = s.max_mid
+  c.spawn_per_pass = s.spawn_per_pass
+  c.cells_per_pass = s.cells_per_pass
+  c.spawn_dt = s.spawn_dt
+  c.react_dt = s.react_dt
+  c.mid_dt = s.mid_dt
+  c.far_dt = s.far_dt
+  c.respawn_s = s.respawn_s
+  c.fear_decay = s.fear_decay
+  c.sync_r = s.sync_r
+  c.witness_r = s.witness_r
+  c.witness_need = s.witness_need
+  crowd_st.cw_lod_full = c.full_r
+  crowd_st.cw_lod_mid = c.mid_r
+  cw_ring_build(crowd_st)
+}
+
+# the cell offsets round a player's cell that can hold a spawn (the ring of spawn_min .. spawn_max, a cell wider
+# each way, since the player is not at the middle of theirs)
+@alloc_ok("built when the settings change, not in a frame")
+function cw_ring_build(crowd_st: mut CrowdState) -> void {
+  let c = crowd_st.cw_cfg
+  List.clear(crowd_st.cw_ring_dx)
+  List.clear(crowd_st.cw_ring_dz)
+  let r = int(Math.floor(c.spawn_max / c.cell)) + 1
+  let lo = Math.max(0.0, c.spawn_min - c.cell * 1.5)
+  let hi = c.spawn_max + c.cell * 0.75
+  for dx in -r .. r + 1 {
+    for dz in -r .. r + 1 {
+      let d = Math.sqrt(float(dx * dx + dz * dz)) * c.cell
+      if d >= lo and d <= hi {
+        push(crowd_st.cw_ring_dx, dx)
+        push(crowd_st.cw_ring_dz, dz)
+      }
+    }
+  }
+  crowd_st.cw_ring_cell = c.cell
+  crowd_st.cw_ring_min = c.spawn_min
+  crowd_st.cw_ring_max = c.spawn_max
+  crowd_st.cw_sp_cursor = 0
+}
+
+# the settings a game may change while it runs (a quality setting): the budgets. Takes effect at once
+export function crowd_budget(crowd_st: mut CrowdState, max_peds: int, max_full: int, max_mid: int) -> void {
+  crowd_st.cw_cfg.max_peds = max_peds
+  crowd_st.cw_cfg.max_full = max_full
+  crowd_st.cw_cfg.max_mid = max_mid
+}
+
+# the tier radii (a quality setting): full within `full_r`, mid within `mid_r`, far beyond
+export function crowd_lod_radii(crowd_st: mut CrowdState, full_r: float, mid_r: float) -> void {
+  crowd_st.cw_cfg.full_r = full_r
+  crowd_st.cw_cfg.mid_r = Math.max(mid_r, full_r + 1.0)
+  crowd_st.cw_lod_full = crowd_st.cw_cfg.full_r
+  crowd_st.cw_lod_mid = crowd_st.cw_cfg.mid_r
+}
+
+export function crowd_config(crowd_st: CrowdState) -> CrowdSetting { return crowd_st.cw_cfg }
+
+# make the pools for `n` peds before play: no record is made in a frame until more than n are alive
+@alloc_ok("before play: the pool, the maps and the lists the crowd keeps")
+export function crowd_reserve(crowd_st: mut CrowdState, n: int) -> void {
+  while len(crowd_st.cw_pool) + tb_len(crowd_st.cw_tab) < n { push(crowd_st.cw_pool, new CrowdPed) }
+  imap_reserve(crowd_st.cw_live, n * 2)
+  imap_reserve(crowd_st.cw_units, n * 2)
+  grid_reserve(crowd_st.cw_grid, n)
+  # the lists a query or a message fills: as long as they can get, so none grows in play
+  for i in 0 .. n {
+    kept_push(crowd_st.cw_near, 0)
+    kept_push(crowd_st.cw_rows, 0)
+    kept_push(crowd_st.cw_sync_rows, 0)
+  }
+  List.clear(crowd_st.cw_near)
+  List.clear(crowd_st.cw_rows)
+  List.clear(crowd_st.cw_sync_rows)
+  for i in 0 .. 4096 {
+    kept_push(crowd_st.cw_gone_uid, 0)
+    kept_push(crowd_st.cw_gone_tick, 0)
+  }
+  List.clear(crowd_st.cw_gone_uid)
+  List.clear(crowd_st.cw_gone_tick)
+}
+
+function cw_ped_clear(p: CrowdPed) -> void {
+  p.uid = 0
+  p.unit = 0
+  p.type = 0
+  p.look = 0
+  p.last_react = 0
+  p.lod = CROWD_FAR
+  p.act = CROWD_WALK
+  p.cx = 0
+  p.cz = 0
+  p.seq = 0
+  p.x = 0.0
+  p.z = 0.0
+  p.yaw = 0.0
+  p.speed = 0.0
+  p.pace = 1.0
+  p.acc = 0.0
+  p.near = 0.0
+  p.goal_x = 0.0
+  p.goal_z = 0.0
+  p.dest_x = 0.0
+  p.dest_z = 0.0
+  p.has_dest = false
+  p.repath = 0.0
+  p.act_t = 0.0
+  p.wait_t = 0.0
+  p.blocked = 0.0
+  p.scn = -1
+  p.scn_used = false
+  p.lead = -1
+  p.member = 0
+  p.fear = 0.0
+  p.react_t = 0.0
+  p.threat_x = 0.0
+  p.threat_z = 0.0
+  p.thr = -1
+  p.thr_id = -1
+  p.called = false
+  p.hit_t = 0.0
+  p.from_x = 0.0
+  p.from_z = 0.0
+  p.to_x = 0.0
+  p.to_z = 0.0
+  p.lerp = 1.0
+  p.seen = 0.0
+  p.net = 0
+  p.act_sent = -1
+}
+
+# a unit's id: its cell (11 bits each way, so 65 km at 32 m), its slot in the cell (6 bits) - 28 bits; a ped's
+# uid is its unit and its member in the group (3 bits)
+export function crowd_unit_id(cx: int, cz: int, k: int) -> int {
+  return (((cx + 1024) & 2047) << 17) | (((cz + 1024) & 2047) << 6) | (k & 63)
+}
+export function crowd_uid(unit: int, member: int) -> int { return (unit << 3) | (member & 7) }
+
+export function crowd_cell_seed(crowd_st: CrowdState, cx: int, cz: int) -> int {
+  return crowd_hash(crowd_st.cw_seed, cx, cz)
+}
+
+# the spawn units a cell holds at an hour: its zones' density over its area (a hectare is 10 000 m2), sampled at the
+# cell's four quarters, over the people a unit makes on average; the remainder decided by the cell's seed
+export function crowd_cell_units(crowd_st: CrowdState, cx: int, cz: int, hour: float) -> int {
+  if crowd_st.cw_zn == 0 { return 0 }
+  let c = crowd_st.cw_cfg.cell
+  var lam = 0.0
+  let ha = c * c * 0.25 / 10000.0
+  for q in 0 .. 4 {
+    let x = (float(cx) + 0.25 + 0.5 * float(q & 1)) * c
+    let z = (float(cz) + 0.25 + 0.5 * float(q >> 1)) * c
+    let zn = crowd_zone_at(crowd_st, x, z)
+    if zn >= 0 {
+      lam += crowd_zone_density(crowd_st, zn, hour) * ha / Math.max(0.5, crowd_st.cw_zn_gavg[zn])
+    }
+  }
+  var n = int(Math.floor(lam))
+  let frac = lam - float(n)
+  if cw_unit(crowd_hash(crowd_cell_seed(crowd_st, cx, cz), 999, 1)) < frac { n += 1 }
+  if n > 63 { n = 63 }
+  return n
+}
+
+# a unit's leader, worked out from nothing but the seed: where it stands and what it is. False when nothing is
+# there (no zone at the spot)
+export property CrowdUnit {
+  x: float = 0.0
+  z: float = 0.0
+  type: int = -1
+  size: int = 1
+  zone: int = -1
+}
+
+function cw_unit_make(crowd_st: CrowdState, cx: int, cz: int, k: int, u: CrowdUnit) -> bool {
+  let seed = crowd_cell_seed(crowd_st, cx, cz)
+  let c = crowd_st.cw_cfg.cell
+  u.x = (float(cx) + cw_unit(crowd_hash(seed, k, 2))) * c
+  u.z = (float(cz) + cw_unit(crowd_hash(seed, k, 3))) * c
+  u.zone = crowd_zone_at(crowd_st, u.x, u.z)
+  u.type = cw_pick_type(crowd_st, u.zone, cw_unit(crowd_hash(seed, k, 4)))
+  if u.type < 0 { return false }
+  u.size = 1
+  let ty = PedTypes[u.type]
+  if cw_unit(crowd_hash(seed, k, 5)) < ty.group_chance {
+    u.size = 2 + crowd_hash(seed, k, 6) % Math.max(1, ty.group_max - 1)
+    if u.size > ty.group_max { u.size = ty.group_max }
+    if u.size > 8 { u.size = 8 }
+  }
+  return true
+}
+
+function cw_nearest_player2(crowd_st: CrowdState, x: float, z: float) -> float {
+  var best = 1000000000.0
+  for p in 0 .. crowd_st.cw_pl_n {
+    let dx = crowd_st.cw_pl_x[p] - x
+    let dz = crowd_st.cw_pl_z[p] - z
+    let d = dx * dx + dz * dz
+    if d < best { best = d }
+  }
+  return best
+}
+
+@alloc_ok("a ped made past the pool's high water: once, then kept")
+function cw_new_ped(crowd_st: mut CrowdState) -> CrowdPed {
+  if len(crowd_st.cw_pool) > 0 { return List.pop(crowd_st.cw_pool) }
+  return new CrowdPed
+}
+
+# a ped into the table at (x, z)
+function cw_add(crowd_st: mut CrowdState, uid: int, type: int, x: float, z: float, yaw: float, cx: int, cz: int, member: int) -> CrowdPed {
+  let p = cw_new_ped(crowd_st)
+  cw_ped_clear(p)
+  p.uid = uid
+  p.unit = uid >> 3
+  p.type = type
+  p.cx = cx
+  p.cz = cz
+  p.member = member
+  p.x = x
+  p.z = z
+  p.yaw = yaw
+  let h = crowd_hash(uid, 1, 41)
+  p.pace = 0.85 + 0.3 * cw_unit(h)
+  let ty = PedTypes[type]
+  var variants = 1
+  if ty.look >= 0 and ty.look < PEDL_COUNT { variants = PedLooks[ty.look].variants }
+  p.look = crowd_hash(uid, 2, 42) % Math.max(1, variants)
+  p.acc = cw_unit(crowd_hash(uid, 3, 43)) * crowd_st.cw_cfg.mid_dt
+  let hd = tb_add(crowd_st.cw_tab, p)
+  let row = tb_row(crowd_st.cw_tab, hd)
+  tb_set_xz(crowd_st.cw_tab, 0, 1, row, x, z)
+  tb_set_i(crowd_st.cw_tab, 0, row, 1)
+  imap_put(crowd_st.cw_live, uid, hd)
+  imap_put(crowd_st.cw_units, p.unit, imap_get(crowd_st.cw_units, p.unit, 0) + 1)
+  return p
+}
+
+# take a ped away: its scenario freed, its unit counted down, the body told, a fact, the record kept for reuse
+function cw_remove(crowd_st: mut CrowdState, hd: int, why: int) -> void {
+  let row = tb_row(crowd_st.cw_tab, hd)
+  if row < 0 { return }
+  let p = crowd_st.cw_tab.rec[row]
+  cw_leave_scenario(crowd_st, p)
+  if p.react != PedReact.Calm {
+    # the record goes back to the pool, and the machine is the only thing that writes its reaction
+    dispatch CrowdRecycle { who: hd }
+    drain_actions()
+  }
+  let f = cw_fact(crowd_st, CROWD_GONE, p.uid)
+  f.why = why
+  f.type = p.type
+  f.x = p.x
+  f.z = p.z
+  CrowdBody.gone(p.uid)
+  imap_del(crowd_st.cw_live, p.uid)
+  let left = imap_get(crowd_st.cw_units, p.unit, 1) - 1
+  if left <= 0 {
+    imap_del(crowd_st.cw_units, p.unit)
+    if why == CROWD_WHY_KILLED { cw_cool_add(crowd_st, p.unit) }
+  } else {
+    imap_put(crowd_st.cw_units, p.unit, left)
+  }
+  cw_gone_log(crowd_st, p.uid)
+  tb_remove(crowd_st.cw_tab, hd)
+  kept_push(crowd_st.cw_pool, p)
+}
+
+function cw_remove_all(crowd_st: mut CrowdState, why: int) -> void {
+  while tb_len(crowd_st.cw_tab) > 0 { cw_remove(crowd_st, tb_handle(crowd_st.cw_tab, tb_len(crowd_st.cw_tab) - 1), why) }
+}
+
+# a place stays empty for a while after its person is killed (a queue, oldest first: it is one delay long)
+function cw_cool_add(crowd_st: mut CrowdState, unit: int) -> void {
+  if crowd_st.cw_cfg.respawn_s <= 0.0 { return }
+  kept_push(crowd_st.cw_cool_unit, unit)
+  kept_push(crowd_st.cw_cool_until, crowd_st.cw_time + crowd_st.cw_cfg.respawn_s)
+  imap_put(crowd_st.cw_cool, unit, 1)
+}
+
+function cw_cool_sweep(crowd_st: mut CrowdState) -> void {
+  var h = crowd_st.cw_cool_head
+  let n = len(crowd_st.cw_cool_unit)
+  while h < n and crowd_st.cw_cool_until[h] <= crowd_st.cw_time {
+    imap_del(crowd_st.cw_cool, crowd_st.cw_cool_unit[h])
+    h += 1
+  }
+  crowd_st.cw_cool_head = h
+  if h > 0 and h == n {
+    List.clear(crowd_st.cw_cool_unit)
+    List.clear(crowd_st.cw_cool_until)
+    crowd_st.cw_cool_head = 0
+  }
+}
+
+# the units of one cell at the hour, made where they are not yet: returns how many peds it made
+function cw_fill_cell(crowd_st: mut CrowdState, cx: int, cz: int, hour: float, room: int) -> int {
+  let n = crowd_cell_units(crowd_st, cx, cz, hour)
+  var made = 0
+  let u = crowd_st.cw_unit
+  for k in 0 .. n {
+    if made >= room or tb_len(crowd_st.cw_tab) >= crowd_st.cw_cfg.max_peds { break }
+    let unit = crowd_unit_id(cx, cz, k)
+    if imap_get(crowd_st.cw_units, unit, 0) > 0 { continue }
+    if imap_get(crowd_st.cw_cool, unit, 0) > 0 { continue }
+    if not cw_unit_make(crowd_st, cx, cz, k, u) { continue }
+    let d2 = cw_nearest_player2(crowd_st, u.x, u.z)
+    let lo = crowd_st.cw_cfg.spawn_min
+    let hi = crowd_st.cw_cfg.spawn_max + crowd_st.cw_cfg.cell
+    if d2 < lo * lo or d2 > hi * hi { continue }
+    if not CrowdWorld.active(u.x, u.z) or not CrowdWorld.spawn_ok(u.x, u.z) { continue }
+    var x = u.x
+    var z = u.z
+    if not CrowdNav.walkable(x, z) {
+      if not CrowdNav.snap(x, z, crowd_st.cw_buf) { continue }
+      x = crowd_st.cw_buf[0]
+      z = crowd_st.cw_buf[1]
+    }
+    made += cw_spawn_unit(crowd_st, cx, cz, k, unit, x, z, u.type, u.size)
+  }
+  return made
+}
+
+# the members of a unit: the leader at (x, z), the friends beside and behind it
+function cw_spawn_unit(crowd_st: mut CrowdState, cx: int, cz: int, k: int, unit: int, x: float, z: float, type: int, size: int) -> int {
+  let seed = crowd_cell_seed(crowd_st, cx, cz)
+  let yaw = cw_unit(crowd_hash(seed, k, 9)) * 6.2831853
+  var lead_h = -1
+  var made = 0
+  for m in 0 .. size {
+    var mx = x
+    var mz = z
+    if m > 0 {
+      # side by side across the heading, then a row behind
+      let side = float(((m + 1) >> 1)) * 0.9
+      var sgn = 1.0
+      if (m & 1) == 0 { sgn = -1.0 }
+      mx = x + Math.cos(yaw) * side * sgn - Math.sin(yaw) * 0.3 * float(m >> 1)
+      mz = z - Math.sin(yaw) * side * sgn - Math.cos(yaw) * 0.3 * float(m >> 1)
+      if not CrowdNav.walkable(mx, mz) {
+        mx = x
+        mz = z
+      }
+    }
+    let p = cw_add(crowd_st, crowd_uid(unit, m), type, mx, mz, yaw, cx, cz, m)
+    if m == 0 { lead_h = imap_get(crowd_st.cw_live, p.uid, -1) } else { p.lead = lead_h }
+    p.lod = cw_lod_for(crowd_st, cw_nearest_player2(crowd_st, mx, mz))
+    p.near = Math.sqrt(cw_nearest_player2(crowd_st, mx, mz))
+    cw_begin_life(crowd_st, p)
+    let f = cw_fact(crowd_st, CROWD_SPAWNED, p.uid)
+    f.type = type
+    f.x = mx
+    f.z = mz
+    CrowdBody.born(p.uid, type, p.look, mx, mz)
+    made += 1
+  }
+  return made
+}
+
+function cw_lod_for(crowd_st: CrowdState, d2: float) -> int {
+  if d2 < crowd_st.cw_lod_full * crowd_st.cw_lod_full { return CROWD_FULL }
+  if d2 < crowd_st.cw_lod_mid * crowd_st.cw_lod_mid { return CROWD_MID }
+  return CROWD_FAR
+}
+
+# sweep the cells of the ring round the players: `cells_per_pass` of them, resuming where the last pass stopped
+function cw_spawn_pass(crowd_st: mut CrowdState) -> void {
+  let c = crowd_st.cw_cfg
+  if c.cell != crowd_st.cw_ring_cell or c.spawn_min != crowd_st.cw_ring_min or c.spawn_max != crowd_st.cw_ring_max { cw_ring_build(crowd_st) }
+  cw_cool_sweep(crowd_st)
+  if crowd_st.cw_pl_n == 0 or len(crowd_st.cw_ring_dx) == 0 { return }
+  var room = c.spawn_per_pass
+  let hour = crowd_st.cw_hour
+  var done = 0
+  let total = len(crowd_st.cw_ring_dx)
+  var p = crowd_st.cw_sp_player
+  if p >= crowd_st.cw_pl_n { p = 0 }
+  var pcx = int(Math.floor(crowd_st.cw_pl_x[p] / c.cell))
+  var pcz = int(Math.floor(crowd_st.cw_pl_z[p] / c.cell))
+  var i = crowd_st.cw_sp_cursor
+  if i >= total { i = 0 }
+  while done < c.cells_per_pass and done < total and room > 0 {
+    room -= cw_fill_cell(crowd_st, pcx + crowd_st.cw_ring_dx[i], pcz + crowd_st.cw_ring_dz[i], hour, room)
+    i += 1
+    done += 1
+    if i >= total {
+      # this player's ring is done: the next player's
+      i = 0
+      p += 1
+      if p >= crowd_st.cw_pl_n { p = 0 }
+      pcx = int(Math.floor(crowd_st.cw_pl_x[p] / c.cell))
+      pcz = int(Math.floor(crowd_st.cw_pl_z[p] / c.cell))
+    }
+  }
+  crowd_st.cw_sp_cursor = i
+  crowd_st.cw_sp_player = p
+}
+
+# people to take away: those left behind by every player, those over the budget, and those the hour
+# no longer wants in their cell. Some rows a pass, resuming; never in sight unless far beyond reach
+function cw_cull_pass(crowd_st: mut CrowdState) -> void {
+  let n = tb_len(crowd_st.cw_tab)
+  if n == 0 { return }
+  var look = n / 6 + 4
+  if look > n { look = n }
+  let c = crowd_st.cw_cfg
+  var i = crowd_st.cw_cull_cursor
+  var over = n - c.max_peds
+  while look > 0 {
+    look -= 1
+    if i >= tb_len(crowd_st.cw_tab) { i = 0 }
+    if tb_len(crowd_st.cw_tab) == 0 { break }
+    let p = crowd_st.cw_tab.rec[i]
+    let d = Math.sqrt(cw_nearest_player2(crowd_st, p.x, p.z))
+    var gone = false
+    var why = CROWD_WHY_FAR
+    if d > c.despawn {
+      gone = not CrowdWorld.visible(p.x, p.z) or d > c.despawn * 1.5
+    } else if over > 0 and d > c.spawn_max {
+      gone = not CrowdWorld.visible(p.x, p.z)
+      why = CROWD_WHY_CULLED
+    } else if p.member == 0 and d > c.spawn_min and p.react == PedReact.Calm {
+      # the hour thinned the cell: slots at or over its count go, out of sight
+      let slots = crowd_cell_units(crowd_st, p.cx, p.cz, crowd_st.cw_hour)
+      if (p.unit & 63) >= slots and not CrowdWorld.visible(p.x, p.z) {
+        gone = true
+        why = CROWD_WHY_CULLED
+      }
+    }
+    if gone {
+      over -= 1
+      cw_remove_unit_of(crowd_st, p, why)
+      continue
+    }
+    i += 1
+  }
+  crowd_st.cw_cull_cursor = i
+}
+
+# a leader goes, its friends go with it (when the whole unit is left behind); a follower alone goes alone
+function cw_remove_unit_of(crowd_st: mut CrowdState, p: CrowdPed, why: int) -> void {
+  let unit = p.unit
+  let hd = imap_get(crowd_st.cw_live, p.uid, -1)
+  if p.member != 0 {
+    cw_remove(crowd_st, hd, why)
+    return
+  }
+  for m in 1 .. 8 {
+    let mh = imap_get(crowd_st.cw_live, crowd_uid(unit, m), -1)
+    if mh >= 0 { cw_remove(crowd_st, mh, why) }
+  }
+  cw_remove(crowd_st, hd, why)
+}
+
+# the ambient vehicles the zones round the players ask for: each player's disc of spawn_max, each cell once
+function cw_traffic_pass(crowd_st: mut CrowdState) -> void {
+  imap_clear(crowd_st.cw_seen)
+  let c = crowd_st.cw_cfg
+  var sum = 0.0
+  let r = int(Math.floor(c.spawn_max / c.cell)) + 1
+  let area = c.cell * c.cell / 1000000.0
+  for p in 0 .. crowd_st.cw_pl_n {
+    let pcx = int(Math.floor(crowd_st.cw_pl_x[p] / c.cell))
+    let pcz = int(Math.floor(crowd_st.cw_pl_z[p] / c.cell))
+    for dx in -r .. r + 1 {
+      for dz in -r .. r + 1 {
+        let ddx = (float(pcx + dx) + 0.5) * c.cell - crowd_st.cw_pl_x[p]
+        let ddz = (float(pcz + dz) + 0.5) * c.cell - crowd_st.cw_pl_z[p]
+        if ddx * ddx + ddz * ddz > c.spawn_max * c.spawn_max { continue }
+        let k = cw_cellkey(pcx + dx, pcz + dz)
+        if imap_get(crowd_st.cw_seen, k, 0) > 0 { continue }
+        imap_put(crowd_st.cw_seen, k, 1)
+        sum += crowd_traffic_at(crowd_st, (float(pcx + dx) + 0.5) * c.cell, (float(pcz + dz) + 0.5) * c.cell, crowd_st.cw_hour) * area
+      }
+    }
+  }
+  crowd_st.cw_traffic = sum
+}
+
+# how many ambient vehicles the zones round the players want now (for roads_traffic_target)
+export function crowd_traffic_target(crowd_st: CrowdState) -> int { return int(Math.floor(crowd_st.cw_traffic + 0.5)) }
+
+# fill the ring at once, as at a load or a teleport: passes until a pass makes nobody, or the budget is full
+export function crowd_prime(crowd_st: mut CrowdState) -> int {
+  cw_sense(crowd_st)
+  let before = tb_len(crowd_st.cw_tab)
+  var idle = 0
+  var guard = 0
+  let c = crowd_st.cw_cfg
+  let per = Math.max(1, len(crowd_st.cw_ring_dx) / Math.max(1, c.cells_per_pass) + 1)
+  while idle < per * Math.max(1, crowd_st.cw_pl_n) + 2 and guard < 100000 {
+    guard += 1
+    let n0 = tb_len(crowd_st.cw_tab)
+    cw_spawn_pass(crowd_st)
+    if tb_len(crowd_st.cw_tab) == n0 { idle += 1 } else { idle = 0 }
+    if tb_len(crowd_st.cw_tab) >= c.max_peds { break }
+  }
+  cw_slow_pass(crowd_st, 0.0)
+  cw_traffic_pass(crowd_st)
+  return tb_len(crowd_st.cw_tab) - before
+}

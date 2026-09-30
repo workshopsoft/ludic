@@ -1,0 +1,90 @@
+# system.ludic - crowd as a system: PH_SIMULATE, and its own save section. The people are not saved: they are the
+# seed's, made again round the players. What is saved is the clock and the places still empty after a kill.
+
+@alloc_ok("a reset builds the crowd's lists once")
+export function crowd_reset(crowd_st: mut CrowdState) -> void {
+  cw_remove_all(crowd_st, CROWD_WHY_RESET)
+  if crowd_st.cw_grid == null { crowd_st.cw_grid = tb_grid(crowd_st.cw_tab, 0, 1, 0, 8.0) }
+  imap_clear(crowd_st.cw_live)
+  imap_clear(crowd_st.cw_units)
+  imap_clear(crowd_st.cw_cool)
+  List.clear(crowd_st.cw_cool_unit)
+  List.clear(crowd_st.cw_cool_until)
+  crowd_st.cw_cool_head = 0
+  crowd_st.cw_time = 0.0
+  crowd_st.cw_frame = 0
+  crowd_st.cw_spawn_t = 0.0
+  crowd_st.cw_react_t = 0.0
+  crowd_st.cw_traffic_t = 0.0
+  crowd_st.cw_traffic = 0.0
+  crowd_st.cw_seed = CrowdWorld.seed()
+  crowd_st.cw_dice = rng_new(crowd_st.cw_seed)
+  crowd_st.cw_hour = CrowdWorld.hour()
+  List.clear(crowd_st.cw_buf)
+  push(crowd_st.cw_buf, 0.0)
+  push(crowd_st.cw_buf, 0.0)
+  List.clear(crowd_st.cw_lod_n)
+  for i in 0 .. 3 { push(crowd_st.cw_lod_n, 0) }
+  List.clear(crowd_st.cw_th_id)
+  List.clear(crowd_st.cw_th_kind)
+  List.clear(crowd_st.cw_th_reports)
+  List.clear(crowd_st.cw_th_src)
+  List.clear(crowd_st.cw_th_x)
+  List.clear(crowd_st.cw_th_z)
+  for i in 0 .. 32 {
+    push(crowd_st.cw_th_id, -1)
+    push(crowd_st.cw_th_kind, -1)
+    push(crowd_st.cw_th_reports, 0)
+    push(crowd_st.cw_th_src, 0)
+    push(crowd_st.cw_th_x, 0.0)
+    push(crowd_st.cw_th_z, 0.0)
+  }
+  crowd_st.cw_th_next = 0
+  crowd_st.cw_near = words(0)
+  crowd_st.cw_rows = words(0)
+  crowd_st.cw_sync_rows = words(0)
+  List.clear(crowd_st.cw_gone_uid)
+  List.clear(crowd_st.cw_gone_tick)
+  cw_prepare_static(crowd_st)
+  cw_cfg_load(crowd_st)
+  q_clear(crowd_st.cw_facts)
+}
+
+export function crowd_save(crowd_st: CrowdState) -> Val {
+  let v = Value.object()
+  sv_put_float(v, "time", crowd_st.cw_time)
+  let keys = new []int
+  for i in crowd_st.cw_cool_head .. len(crowd_st.cw_cool_unit) {
+    push(keys, crowd_st.cw_cool_unit[i])
+    push(keys, int(Math.floor((crowd_st.cw_cool_until[i] - crowd_st.cw_time) * 1000.0 + 0.5)))
+  }
+  sv_put_ints(v, "cool", keys)
+  return v
+}
+
+export function crowd_load(crowd_st: mut CrowdState, v: Val, version: int) -> void {
+  crowd_reset(crowd_st)
+  crowd_st.cw_time = sv_float(v, "time", 0.0)
+  let keys = sv_ints(v, "cool")
+  var i = 0
+  while i + 1 < len(keys) {
+    kept_push(crowd_st.cw_cool_unit, keys[i])
+    kept_push(crowd_st.cw_cool_until, crowd_st.cw_time + float(keys[i + 1]) / 1000.0)
+    imap_put(crowd_st.cw_cool, keys[i], 1)
+    i += 2
+  }
+}
+
+export function crowd_system() -> System {
+  let s = system_new("crowd", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn crowd_reset
+  s.tick = fn crowd_tick
+  s.save = fn crowd_save
+  s.load = fn crowd_load
+  return s
+}
+
+# a crowd of its own, for a tool or a test that runs a second one (a client's copy beside the host's); the game's
+# is the state the runner hands to its system
+export function crowd_new() -> CrowdState { return new CrowdState }

@@ -1,0 +1,320 @@
+# state.ludic - the ports, the enums, the facts, a ped's row, and what the crowd holds
+
+# what the crowd asks the world. Unbound: one player at the origin, noon, seed 1, everywhere simulated,
+# spawning allowed anywhere and nothing in sight, flat ground, a clear line between any two points
+export port CrowdWorld {
+  players: fn() -> int = fn cw_one
+  player_on: fn(int) -> bool = fn cw_first
+  player_x: fn(int) -> float = fn cw_zero1
+  player_z: fn(int) -> float = fn cw_zero1
+  hour: fn() -> float = fn cw_noon
+  seed: fn() -> int = fn cw_seed_one
+  active: fn(float, float) -> bool = fn cw_yes2            # simulated here (ludic.zones, through the game)
+  spawn_ok: fn(float, float) -> bool = fn cw_yes2          # a person may appear here: not in any player's view
+  visible: fn(float, float) -> bool = fn cw_no2            # a player can see here: nobody is taken away in sight
+  ground: fn(float, float) -> float = fn cw_zero2
+  clear: fn(float, float, float, float) -> bool = fn cw_clear   # nothing between two points (a witness's line)
+}
+
+# where people may walk. Every answer is a number or a bool; a point goes into `out` (a list the crowd keeps,
+# two floats: x then z). Unbound: a flat field where every point is walkable and a person walks straight.
+# Bind it to ludic.roads' sidewalks, or to ludic.nav with a walker kind.
+export port CrowdNav {
+  walkable: fn(float, float) -> bool = fn cn_yes2
+  # (x, z, out): the nearest walkable point (a sidewalk) into out; false when there is none near
+  snap: fn(float, float, []float) -> bool = fn cn_snap
+  # (x, z, rmin, rmax, salt, out): a walkable point between rmin and rmax from (x, z) into out, chosen by salt
+  # (the same salt, the same point); false when none. Default: straight out at an angle the salt picks
+  pick: fn(float, float, float, float, int, []float) -> bool = fn cn_pick
+  # (ped, x, z, gx, gz, out): the next corner of the way from (x, z) to (gx, gz) into out; false, straight
+  way: fn(int, float, float, float, float, []float) -> bool = fn cn_no_way
+  # 0 nothing special, 1 a crosswalk (wait for the light), 2 a road (only a jaywalker enters it)
+  crossing: fn(float, float) -> int = fn cn_none
+  # the lights or the traffic allow a walk across at (x, z) now
+  may_cross: fn(float, float) -> bool = fn cn_yes2
+}
+
+# where a ped's body is in the game: it is born, placed each time it moves (how often by its tier), and gone
+export port CrowdBody {
+  born: fn(int, int, int, float, float) -> void = fn cb_born          # (uid, type, look seed, x, z)
+  place: fn(int, float, float, float, float, float, int, int) -> void = fn cb_place   # (uid, x, y, z, yaw, speed, act, lod)
+  gone: fn(int) -> void = fn cb_gone
+}
+
+function cw_one() -> int { return 1 }
+function cw_first(i: int) -> bool { return true }
+function cw_zero1(i: int) -> float { return 0.0 }
+function cw_zero2(x: float, z: float) -> float { return 0.0 }
+function cw_noon() -> float { return 12.0 }
+function cw_seed_one() -> int { return 1 }
+function cw_yes2(x: float, z: float) -> bool { return true }
+function cw_no2(x: float, z: float) -> bool { return false }
+function cw_clear(x0: float, z0: float, x1: float, z1: float) -> bool { return true }
+function cn_yes2(x: float, z: float) -> bool { return true }
+function cn_snap(x: float, z: float, out: []float) -> bool {
+  out[0] = x
+  out[1] = z
+  return true
+}
+function cn_pick(x: float, z: float, rmin: float, rmax: float, salt: int, out: []float) -> bool {
+  let a = float(crowd_hash(salt, 1, 77) & 0xFFFF) / 65536.0 * 6.2831853
+  let d = rmin + (rmax - rmin) * (float(crowd_hash(salt, 2, 78) & 0xFFFF) / 65536.0)
+  out[0] = x + Math.sin(a) * d
+  out[1] = z + Math.cos(a) * d
+  return true
+}
+function cn_no_way(id: int, x: float, z: float, gx: float, gz: float, out: []float) -> bool { return false }
+function cn_none(x: float, z: float) -> int { return 0 }
+function cb_born(uid: int, type: int, look: int, x: float, z: float) -> void { }
+function cb_place(uid: int, x: float, y: float, z: float, yaw: float, speed: float, act: int, lod: int) -> void { }
+function cb_gone(uid: int) -> void { }
+
+# a ped's reaction: the machine of steps.lres moves it and nothing else does
+export enum PedReact { Calm, Alert, Flee, Panic, Cower, Fight, Call }
+
+# the LOD tiers: FULL steers every tick with avoidance and the crossing rules; MID steers a few times a
+# second without avoidance; FAR is crowd flow, a step a second along the way, drawn (if at all) as an impostor
+export const CROWD_FULL: int = 0
+export const CROWD_MID: int = 1
+export const CROWD_FAR: int = 2
+export const CROWD_PUPPET: int = 3       # a client's copy: no AI, only what the host said
+
+# what a ped is doing (the schedule's acts, then what the crowd adds)
+export const CROWD_WALK: int = 0
+export const CROWD_STAND: int = 1
+export const CROWD_SIT: int = 2
+export const CROWD_SHOP: int = 3
+export const CROWD_WORK: int = 4
+export const CROWD_COMMUTE: int = 5
+export const CROWD_USE: int = 6          # at a scenario
+export const CROWD_WAIT: int = 7         # at a crossing, for the light
+export const CROWD_PHONE: int = 8        # on the phone to the police
+
+export const CROWD_HOST: int = 0         # authoritative: runs the population
+export const CROWD_CLIENT: int = 1       # a copy of the host's, from crowd_sync_in
+
+export const CROWD_SPAWNED: int = 0      # a ped was made (uid, type, x, z)
+export const CROWD_GONE: int = 1         # a ped went (uid, why: CROWD_WHY_*)
+export const CROWD_REACTED: int = 2      # its reaction changed (uid, from, to, x, z)
+export const CROWD_REPORT: int = 3       # a ped calls the police about a crime (uid, crime, x, z, weight)
+export const CROWD_USING: int = 4        # a ped took a scenario (uid, scenario row, x, z); count 0 when it left
+export const CROWD_ATTACK: int = 5       # a ped that fights lands a blow on its target (uid, x, z of the target)
+export const CROWD_THREAT: int = 6       # a threat was raised and reached `count` peds (crime, x, z)
+
+export const CROWD_WHY_FAR: int = 0      # left behind by every player
+export const CROWD_WHY_CULLED: int = 1   # over the budget, or the hour thinned the zone
+export const CROWD_WHY_REMOVED: int = 2  # crowd_remove
+export const CROWD_WHY_KILLED: int = 3   # crowd_kill: its place stays empty a while
+export const CROWD_WHY_RESET: int = 4    # the map was rebuilt
+export const CROWD_WHY_SYNC: int = 5     # a client's copy the host no longer sends
+
+export property CrowdFact {
+  what: int = 0
+  uid: int = 0
+  type: int = 0
+  from: int = 0
+  to: int = 0
+  why: int = 0
+  crime: int = -1
+  count: int = 0
+  weight: float = 0.0
+  x: float = 0.0
+  z: float = 0.0
+}
+
+# one person. x and z are also columns of the table (the grid's); `react` is the machine's
+export property CrowdPed {
+  uid: int = 0                   # cell, slot and member packed: the same on every machine
+  unit: int = 0                  # uid >> 3: the spawn unit (a person, or a group)
+  type: int = 0
+  look: int = 0                  # the look seed: a number in [0, the look set's variants)
+  react: PedReact = PedReact.Calm
+  last_react: int = 0
+  lod: int = 2
+  act: int = 0
+  cx: int = 0                    # the spawn cell it was made in
+  cz: int = 0
+  seq: int = 0                   # how many choices it has made: each is a hash of (uid, seq)
+  x: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  speed: float = 0.0
+  pace: float = 1.0              # its own share of the type's walk speed
+  acc: float = 0.0               # seconds since it last steered
+  near: float = 0.0              # distance to the nearest player, as of the last LOD pass
+  goal_x: float = 0.0            # the next corner
+  goal_z: float = 0.0
+  dest_x: float = 0.0            # where this walk ends
+  dest_z: float = 0.0
+  has_dest: bool = false
+  repath: float = 0.0            # seconds until the corner is asked for again
+  act_t: float = 0.0             # seconds left in the act
+  wait_t: float = 0.0            # seconds waited for a light
+  blocked: float = 0.0           # seconds it could not move
+  scn: int = -1                  # the scenario it is going to or using
+  scn_used: bool = false         # it has arrived and is using it
+  lead: int = -1                 # handle of its group's leader, -1 the leader or alone
+  member: int = 0
+  fear: float = 0.0
+  react_t: float = 0.0           # seconds in this reaction
+  threat_x: float = 0.0
+  threat_z: float = 0.0
+  thr: int = -1                  # the threat slot it heard, and that threat's id
+  thr_id: int = -1
+  called: bool = false
+  hit_t: float = 0.0             # seconds since a blow (fight)
+  from_x: float = 0.0            # a puppet's interpolation: where it was, and how far along
+  from_z: float = 0.0
+  to_x: float = 0.0
+  to_z: float = 0.0
+  lerp: float = 1.0
+  seen: float = 0.0              # a puppet: the clock when the host last said it
+  net: int = 0                   # a puppet: the reaction the host said
+  act_sent: int = -1             # the act the last message could have carried
+}
+
+export state CrowdState {
+  cw_tab: Table<CrowdPed> = cw_tab__new()
+  cw_grid: Grid = null
+  cw_pool: []CrowdPed = new []CrowdPed
+  cw_live: IntMap = imap_new()               # uid -> handle
+  cw_units: IntMap = imap_new()              # unit -> how many of it are alive
+  cw_cool_unit: []int = new []int            # units whose place is empty until (a queue, oldest first)
+  cw_cool_until: []float = new []float
+  cw_cool_head: int = 0
+  cw_cool: IntMap = imap_new()
+  cw_cfg: CrowdSetting = new CrowdSetting
+  cw_time: float = 0.0
+  cw_frame: int = 0
+  cw_role: int = 0
+  cw_seed: int = 1
+  cw_hour: float = 12.0
+  cw_dice: Rng = null
+  cw_facts: Queue<CrowdFact> = cw_facts__new()
+  cw_err: string = ""
+  # players
+  cw_pl_n: int = 0
+  cw_pl_x: []float = new []float
+  cw_pl_z: []float = new []float
+  # passes
+  cw_spawn_t: float = 0.0
+  cw_react_t: float = 0.0
+  cw_sp_player: int = 0
+  cw_sp_cursor: int = 0
+  cw_ring_dx: []int = new []int
+  cw_ring_dz: []int = new []int
+  cw_ring_cell: float = 0.0
+  cw_ring_min: float = 0.0
+  cw_ring_max: float = 0.0
+  cw_lod_full: float = 0.0                   # the radii in force: the budgets shrink them
+  cw_lod_mid: float = 0.0
+  cw_lod_n: []int = new []int                # how many in each tier
+  cw_cull_cursor: int = 0
+  cw_traffic: float = 0.0                    # the ambient vehicles the zones around the players ask for
+  cw_traffic_t: float = 0.0
+  cw_seen: IntMap = imap_new()               # cells counted in one traffic estimate
+  # zones, flattened (crowd_build)
+  cw_zn: int = 0
+  cw_zn_key: []string = new []string
+  cw_zn_prio: []int = new []int
+  cw_zn_p0: []int = new []int                # its points, from .. +n in cw_zp_*
+  cw_zn_pn: []int = new []int
+  cw_zn_minx: []float = new []float
+  cw_zn_minz: []float = new []float
+  cw_zn_maxx: []float = new []float
+  cw_zn_maxz: []float = new []float
+  cw_zn_d0: []int = new []int                # its density curve in cw_zc_*
+  cw_zn_dn: []int = new []int
+  cw_zn_t0: []int = new []int                # its traffic curve
+  cw_zn_tn: []int = new []int
+  cw_zn_m0: []int = new []int                # its mix in cw_zm_*
+  cw_zn_mn: []int = new []int
+  cw_zn_mtot: []float = new []float
+  cw_zn_gavg: []float = new []float            # peds one spawn unit makes, on average, from its mix
+  cw_zp_x: []float = new []float
+  cw_zp_z: []float = new []float
+  cw_zc_h: []float = new []float
+  cw_zc_v: []float = new []float
+  cw_zm_ped: []int = new []int
+  cw_zm_w: []float = new []float
+  cw_zi_head: IntMap = imap_new()            # zone cell -> first entry + 1
+  cw_ze_next: []int = new []int
+  cw_ze_zone: []int = new []int
+  # scenarios, flattened
+  cw_sn: int = 0
+  cw_sn_key: []string = new []string
+  cw_sn_x: []float = new []float
+  cw_sn_z: []float = new []float
+  cw_sn_r: []float = new []float
+  cw_sn_yaw: []float = new []float
+  cw_sn_tag: []int = new []int
+  cw_sn_act: []int = new []int
+  cw_sn_cap: []int = new []int
+  cw_sn_use: []int = new []int               # how many are at it or on their way
+  cw_sn_from: []float = new []float
+  cw_sn_to: []float = new []float
+  cw_sn_min: []float = new []float
+  cw_sn_max: []float = new []float
+  cw_si_head: IntMap = imap_new()            # scenario cell -> first + 1
+  cw_si_next: []int = new []int
+  cw_tags: []string = new []string           # the scenario tags, interned: a tag is its place here
+  # schedules, flattened
+  cw_sl_from: []float = new []float
+  cw_sl_to: []float = new []float
+  cw_sl_act: []int = new []int
+  cw_sl_tag: []int = new []int
+  cw_sl_w: []float = new []float
+  cw_sl_min: []float = new []float
+  cw_sl_max: []float = new []float
+  cw_sch0: []int = new []int                 # a schedule's slots from .. +n
+  cw_schn: []int = new []int
+  cw_ty_panic: []int = new []int             # a type's on_panic: 0 flee, 1 cower, 2 fight, 3 ignore
+  # threats raised lately (a ring: what a reporter is checked against)
+  cw_th_next: int = 0
+  cw_th_id: []int = new []int
+  cw_th_kind: []int = new []int
+  cw_th_reports: []int = new []int
+  cw_th_src: []int = new []int
+  cw_thr_seq: int = 0
+  cw_th_x: []float = new []float
+  cw_th_z: []float = new []float
+  # scratch, kept: nothing is made per frame
+  cw_buf: []float = new []float
+  cw_unit: CrowdUnit = new CrowdUnit
+  cw_near: words = null
+  cw_rows: words = null
+  # sync
+  cw_gone_uid: []int = new []int
+  cw_gone_tick: []int = new []int
+  cw_sync_rows: words = null
+  cw_puppet_ttl: float = 4.0
+}
+function cw_tab__new() -> Table<CrowdPed> {
+  let t: Table<CrowdPed> = table_new(2, 1)
+  return t
+}
+function cw_facts__new() -> Queue<CrowdFact> { return queue_new("crowd.facts") }
+
+export function crowd_facts(crowd_st: CrowdState) -> Queue<CrowdFact> { return crowd_st.cw_facts }
+
+function cw_fact(crowd_st: mut CrowdState, what: int, uid: int) -> CrowdFact {
+  var f = q_rec(crowd_st.cw_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new CrowdFact
+    q_ring_add(crowd_st.cw_facts, f)
+  }
+  f.what = what
+  f.uid = uid
+  f.type = 0
+  f.from = 0
+  f.to = 0
+  f.why = 0
+  f.crime = -1
+  f.count = 0
+  f.weight = 0.0
+  f.x = 0.0
+  f.z = 0.0
+  q_push(crowd_st.cw_facts, f)
+  return f
+}

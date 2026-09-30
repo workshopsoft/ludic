@@ -1,0 +1,168 @@
+# defs.ludic - what a game fills (looks, types, schedules, threats, the budgets) and what a map holds
+# (maps/<map>/crowd/*.lres, painted in an editor: population zones and scenarios).
+# Units: metres, seconds, hours of the day in [0, 24); x east, z south.
+
+# ---- game-wide tables -------------------------------------------------------------------------
+
+# a set of appearances: the game's own words for the parts a person is put together from (ludic.avatar
+# later). A ped's look is drawn from its seed, so the same ped looks the same on every machine
+export property PedLook {
+  key: string = ""
+  @Range(1, 4096) variants: int = 1          # how many distinct looks the set makes
+  parts: []string = new []string             # the game's part keys; the crowd only hands them on
+}
+
+@AppendOnly @ByKey
+export open registry PedLooks of PedLook as PEDL
+
+# one kind of person
+export property PedCarry {
+  item: string = ""                          # the game's item key
+  @Range(0, 1) chance: float = 0.5
+  @Range(1, 999) min: int = 1
+  @Range(1, 999) max: int = 1
+}
+
+export property PedType {
+  key: string = ""
+  @Ref(PedLooks) look: int = 0
+  @Unit("m/s") @Range(0.2, 4) walk_speed: float = 1.4
+  @Unit("m/s") @Range(0.5, 12) run_speed: float = 4.6
+  @Unit("m") @Range(0.1, 1) radius: float = 0.3
+  @Ref(PedSchedules) schedule: int = 0
+  @Unit("m") @Range(2, 500) wander_min: float = 15.0      # how far the next walk goes
+  @Unit("m") @Range(2, 2000) wander_max: float = 60.0
+  @Range(0, 2) fear: float = 1.0             # how much of a threat's fear it takes
+  @Range(0, 1) bravery: float = 0.2          # takes that much less fear; decides whether a fighter fights
+  @Range(0, 1) alert_at: float = 0.12        # fear that turns calm into alert
+  @Range(0, 1) flee_at: float = 0.4          # fear that makes it act: run, cower or fight
+  @OneOf("flee", "cower", "fight", "ignore") on_panic: string = "flee"
+  @Range(0, 1) civic: float = 0.3            # the chance it calls the police on a crime it saw
+  @Unit("s") @Range(0, 120) call_s: float = 6.0
+  @Unit("s") @Range(1, 120) fight_s: float = 8.0
+  @Range(0, 8) witness: float = 1.0          # how much its word counts as a witness (a dog: 0.2)
+  @Range(0, 1) jaywalk: float = 0.05         # the chance it crosses where it should not
+  @Range(0, 1) group_chance: float = 0.15    # the chance it comes with friends
+  @Range(2, 6) group_max: int = 3
+  carry: []PedCarry = new []PedCarry
+  tags: []string = new []string              # the game's own words (a behaviour the crowd does not know)
+}
+
+@AppendOnly @ByKey
+export open registry PedTypes of PedType as PEDT
+
+# a part of the day: what a person does, and where (an anchor is a scenario's tag)
+export property PedSlot {
+  @Unit("h") @Range(0, 24) from: float = 0.0
+  @Unit("h") @Range(0, 24) to: float = 24.0  # to < from runs over midnight
+  @OneOf("walk", "stand", "sit", "shop", "work", "commute") act: string = "walk"
+  anchor: string = ""                        # a scenario tag to go to: "bench", "atm", "" for anywhere
+  @Range(0, 100) weight: float = 1.0
+  @Unit("s") @Range(1, 7200) min_s: float = 20.0
+  @Unit("s") @Range(1, 7200) max_s: float = 90.0
+}
+
+export property PedSchedule {
+  key: string = ""
+  slots: []PedSlot = new []PedSlot
+}
+
+@AppendOnly @ByKey
+export open registry PedSchedules of PedSchedule as PEDS
+
+# something that happens: a shot, a blast, a crime, a car mounting the pavement
+export property CrowdThreat {
+  key: string = ""
+  @Unit("m") @Range(1, 1000) radius: float = 30.0
+  @Range(0, 2) fear: float = 0.6             # added to a ped at the centre (before its own fear and bravery)
+  @OneOf("flat", "linear") falloff: string = "linear"
+  needs_sight: bool = false                  # only those with a clear line (through CrowdWorld.clear)
+  crime: int = -1                            # the game's crime (a ludic.wanted row): peds may report it; -1 none
+  @Range(0, 16) max_reports: int = 1         # how many calls one such event can bring
+}
+
+@AppendOnly @ByKey
+export open registry CrowdThreats of CrowdThreat as CTHR
+
+# the budgets and the radii. The first row is used (none: these defaults)
+export property CrowdSetting {
+  key: string = ""
+  @Unit("m") @Range(8, 256) cell: float = 32.0          # the spawn cell's side
+  @Unit("m") @Range(10, 500) spawn_min: float = 45.0    # nobody is made nearer than this to a player
+  @Unit("m") @Range(20, 1000) spawn_max: float = 120.0  # ... or farther
+  @Unit("m") @Range(30, 1500) despawn: float = 150.0    # beyond this from every player a ped goes
+  @Unit("m") @Range(5, 200) full_r: float = 35.0        # full tier within this
+  @Unit("m") @Range(10, 500) mid_r: float = 85.0        # mid tier within this, far beyond
+  @Range(1, 20000) max_peds: int = 400
+  @Range(0, 20000) max_full: int = 100
+  @Range(0, 20000) max_mid: int = 250
+  @Range(1, 500) spawn_per_pass: int = 8                # people made in one pass
+  @Range(1, 500) cells_per_pass: int = 24               # cells looked at in one pass
+  @Unit("s") @Range(0.01, 5) spawn_dt: float = 0.1
+  @Unit("s") @Range(0.01, 1) react_dt: float = 0.1
+  @Unit("s") @Range(0.01, 1) mid_dt: float = 0.25       # mid tier steers this often
+  @Unit("s") @Range(0.1, 10) far_dt: float = 1.0        # far tier this often
+  @Unit("s") @Range(0, 3600) respawn_s: float = 120.0   # a killed person's place stays empty this long
+  @Range(0, 2) fear_decay: float = 0.12                 # fear shed a second
+  @Unit("m") @Range(0, 500) sync_r: float = 140.0      # what a client is sent, around its player
+  @Unit("m") @Range(1, 200) witness_r: float = 25.0    # how far a ped sees a crime
+  @Range(0, 100) witness_need: float = 1.0              # the weight of witnesses that makes it seen
+}
+
+@AppendOnly @ByKey
+export open registry CrowdSettings of CrowdSetting as CSET
+
+# ---- map-scoped tables ------------------------------------------------------------------------
+
+export property CrowdPt {
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+}
+
+# a value at an hour, for a curve (linear between points, round midnight)
+export property CrowdPoint {
+  @Unit("h") @Range(0, 24) hour: float = 0.0
+  @Range(0, 100000) value: float = 0.0
+}
+
+export property CrowdMix {
+  @Ref(PedTypes) ped: int = 0
+  @Range(0, 1000) weight: float = 1.0
+}
+
+# a polygon of the city and who is in it: peds a hectare by the hour, the mix of people, and the
+# ambient vehicles a square kilometre by the hour (ludic.roads reads it through crowd_traffic_target).
+# Where zones overlap the higher priority wins; nowhere in a zone: nobody.
+export property PopulationZone {
+  key: string = ""
+  pts: []CrowdPt = new []CrowdPt
+  density: []CrowdPoint = new []CrowdPoint
+  traffic: []CrowdPoint = new []CrowdPoint
+  mix: []CrowdMix = new []CrowdMix
+  @Range(0, 99) priority: int = 0
+}
+
+@PerMap @ByKey
+export registry PopulationZones of PopulationZone from "crowd/zones.lres"
+
+# a place where people do something: a bench, a smoking spot, a cash machine, a stall. A walker whose
+# slot names its `tag` goes to it while there is room. `act` is what they do there (the game's animation
+# reads it); `anim` is the game's own word for it
+export property PedScenario {
+  key: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("m") @Range(0, 50) radius: float = 0.0           # an area: users stand anywhere in it
+  @Unit("deg") yaw: float = 0.0                          # facing of a user (a bench, a counter)
+  tag: string = ""
+  @OneOf("sit", "stand", "use", "wait", "talk") act: string = "stand"
+  @Range(1, 64) capacity: int = 1
+  @Unit("h") @Range(0, 24) from: float = 0.0
+  @Unit("h") @Range(0, 24) to: float = 24.0
+  @Unit("s") @Range(1, 7200) min_s: float = 20.0
+  @Unit("s") @Range(1, 7200) max_s: float = 90.0
+  anim: string = ""
+}
+
+@PerMap @ByKey
+export registry PedScenarios of PedScenario from "crowd/scenarios.lres"

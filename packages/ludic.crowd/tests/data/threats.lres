@@ -1,0 +1,4 @@
+gunshot { radius: 60.0, fear: 0.7, falloff: "linear", crime: 1, max_reports: 2 }
+blast { radius: 100.0, fear: 1.0, falloff: "flat" }
+jostle { radius: 6.0, fear: 0.3, falloff: "flat" }
+shove { radius: 20.0, fear: 0.7, falloff: "flat" }

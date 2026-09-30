@@ -1,0 +1,19 @@
+# ludic.crowd - the ambient population of a living city: pedestrians spawned round the players by the hour
+# and the district, in budgets, deterministic per cell; simplified by distance (full, mid, far); walking where
+# the nav port says, using scenarios, in groups of friends; reacting as a @Machine and reporting crimes as facts;
+# and kept on clients by a cheap delta. Uses ludic.base and nothing else.
+module ludic_crowd uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "hash.ludic"
+import "state.ludic"
+import "machine.ludic"
+import "build.ludic"
+import "spawn.ludic"
+import "move.ludic"
+import "react.ludic"
+import "verbs.ludic"
+import "sync.ludic"
+import "tick.ludic"
+import "system.ludic"

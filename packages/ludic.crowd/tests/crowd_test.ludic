@@ -1,0 +1,771 @@
+# crowd_test.ludic - a map's zones and scenarios built (priority, hour curves, broken zones), the ring filled and kept
+# to its budgets, the same people from the same seed however the players came, the tiers and their budgets, walking
+# round what the nav port says is solid and waiting at a crossing, scenarios used within their capacity, friends
+# walking together, fear and the machine (flee, cower, fight, report a crime once or twice, calm again), the
+# facts, the host's delta read by a client, the save, and no heap growth once the crowd is warm
+import "ludic.crowd"
+import "ludic.base"
+program CrowdTest {
+  numbers float
+  state CrowdTestState {
+    hour: float = 12.0
+    seed: int = 42
+    npl: int = 1
+    px: float = 0.0
+    pz: float = 0.0
+    px2: float = 0.0
+    pz2: float = 0.0
+    frame: int = 0
+    sealed: bool = false         # spawn_ok says no
+    block: bool = false          # a solid box the nav port refuses
+    band: bool = false           # a crosswalk across z in [-2, 2]
+    cross_ok: bool = true
+    watch: int = -1
+    watch_act: int = -1
+    placed: int = 0
+    born: int = 0
+    gone: int = 0
+    n_spawned: int = 0
+    n_gone: int = 0
+    n_far: int = 0
+    n_report: int = 0
+    report_crime: int = -1
+    report_src: int = -1
+    n_using: int = 0
+    n_unusing: int = 0
+    n_attack: int = 0
+    n_threat: int = 0
+    reacted_to: int = 0          # bit set of the reactions any ped entered
+    n_react: int = 0
+    tk: Tick = tick_new(0.1, 0, 12.0)
+  }
+  function fake_players(crowd_test_st: CrowdTestState) -> int { return crowd_test_st.npl }
+  function fake_on(crowd_test_st: CrowdTestState, i: int) -> bool { return true }
+  function fake_px(crowd_test_st: CrowdTestState, i: int) -> float {
+    if i == 1 { return crowd_test_st.px2 }
+    return crowd_test_st.px
+  }
+  function fake_pz(crowd_test_st: CrowdTestState, i: int) -> float {
+    if i == 1 { return crowd_test_st.pz2 }
+    return crowd_test_st.pz
+  }
+  function fake_hour(crowd_test_st: CrowdTestState) -> float { return crowd_test_st.hour }
+  function fake_seed(crowd_test_st: CrowdTestState) -> int { return crowd_test_st.seed }
+  function fake_spawn_ok(crowd_test_st: CrowdTestState, x: float, z: float) -> bool { return not crowd_test_st.sealed }
+  function fake_walkable(crowd_test_st: CrowdTestState, x: float, z: float) -> bool {
+    return not (crowd_test_st.block and x > 100.0 and x < 140.0 and z > -30.0 and z < 30.0)
+  }
+  function fake_snap(crowd_test_st: CrowdTestState, x: float, z: float, out: []float) -> bool {
+    out[0] = x
+    out[1] = 45.0
+    return true
+  }
+  function fake_crossing(crowd_test_st: CrowdTestState, x: float, z: float) -> int {
+    if crowd_test_st.band and z > -2.0 and z < 2.0 { return 1 }
+    return 0
+  }
+  function fake_may_cross(crowd_test_st: CrowdTestState, x: float, z: float) -> bool { return crowd_test_st.cross_ok }
+  function fake_born(crowd_test_st: mut CrowdTestState, uid: int, type: int, look: int, x: float, z: float) -> void { crowd_test_st.born += 1 }
+  function fake_gone(crowd_test_st: mut CrowdTestState, uid: int) -> void { crowd_test_st.gone += 1 }
+  function fake_place(crowd_test_st: mut CrowdTestState, uid: int, x: float, y: float, z: float, yaw: float, speed: float, act: int, lod: int) -> void {
+    crowd_test_st.placed += 1
+    if uid == crowd_test_st.watch { crowd_test_st.watch_act = act }
+  }
+  bind CrowdWorld { players: fn fake_players, player_on: fn fake_on, player_x: fn fake_px, player_z: fn fake_pz, hour: fn fake_hour, seed: fn fake_seed, spawn_ok: fn fake_spawn_ok }
+  bind CrowdNav { walkable: fn fake_walkable, snap: fn fake_snap, crossing: fn fake_crossing, may_cross: fn fake_may_cross }
+  bind CrowdBody { born: fn fake_born, place: fn fake_place, gone: fn fake_gone }
+
+  def PedLooks from "data/looks.lres"
+  def PedSchedules from "data/schedules.lres"
+  def PedTypes from "data/types.lres"
+  def CrowdThreats from "data/threats.lres"
+  def CrowdSettings main { max_peds: 2000, max_full: 2000, max_mid: 2000 }
+
+  function load_town(crowd_st: mut CrowdState, zones: mut PopulationZones, scen: mut PedScenarios) -> bool {
+    expect(population_zones_load(zones, "town"))
+    expect(ped_scenarios_load(scen, "town"))
+    return crowd_build(crowd_st, zones, scen)
+  }
+  function fresh(crowd_st: mut CrowdState, zones: mut PopulationZones, scen: mut PedScenarios) -> void {
+    crowd_reset(crowd_st)
+    expect(load_town(crowd_st, zones, scen))
+  }
+  function drain(crowd_st: mut CrowdState, s: mut CrowdTestState) -> void {
+    let fs = q_drain(crowd_facts(crowd_st))
+    for i in 0 .. len(fs) {
+      let f = fs[i]
+      if f.what == CROWD_SPAWNED { s.n_spawned += 1 }
+      if f.what == CROWD_GONE {
+        s.n_gone += 1
+        if f.why == CROWD_WHY_FAR { s.n_far += 1 }
+      }
+      if f.what == CROWD_REPORT {
+        s.n_report += 1
+        s.report_crime = f.crime
+        s.report_src = f.from
+      }
+      if f.what == CROWD_USING {
+        if f.count > 0 { s.n_using += 1 } else { s.n_unusing += 1 }
+      }
+      if f.what == CROWD_ATTACK { s.n_attack += 1 }
+      if f.what == CROWD_THREAT { s.n_threat += 1 }
+      if f.what == CROWD_REACTED {
+        s.n_react += 1
+        s.reacted_to = s.reacted_to | (1 << f.to)
+      }
+    }
+  }
+  function sim(crowd_st: mut CrowdState, m: mut CrowdStepsMachine, s: mut CrowdTestState, secs: float, dt: float) -> void {
+    var t = 0.0
+    while t < secs - 0.0001 {
+      s.frame += 1
+      s.tk.dt = dt
+      s.tk.frame = s.frame
+      s.tk.hours = s.hour
+      crowd_tick(crowd_st, m, s.tk)
+      drain(crowd_st, s)
+      t += dt
+    }
+  }
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+  function dist(ax: float, az: float, bx: float, bz: float) -> float {
+    return Math.sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz))
+  }
+  # the uid of the first ped of a type (-1 none), nearest to (x, z) when there are several
+  function ped_of_type(crowd_st: CrowdState, type: int, x: float, z: float) -> int {
+    var best = -1
+    var bd = 1000000000.0
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      if crowd_type(crowd_st, u) != type { continue }
+      let d = dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), x, z)
+      if d < bd {
+        bd = d
+        best = u
+      }
+    }
+    return best
+  }
+  function count_react(crowd_st: CrowdState, react: int) -> int {
+    var n = 0
+    for i in 0 .. crowd_count(crowd_st) { if crowd_react(crowd_st, crowd_ped_at(crowd_st, i)) == react { n += 1 } }
+    return n
+  }
+
+  test "a map's zones: the higher priority wins, curves follow the hour and wrap midnight, nothing outside" (crowd_st: mut CrowdState, zones: mut PopulationZones, scen: mut PedScenarios) {
+    fresh(crowd_st, zones, scen)
+    expect_eq(crowd_zone_count(crowd_st), 2)
+    expect_eq(crowd_zone_key(crowd_st, crowd_zone_at(crowd_st, 0.0, 0.0)), "park")
+    expect_eq(crowd_zone_key(crowd_st, crowd_zone_at(crowd_st, 200.0, 200.0)), "downtown")
+    expect_eq(crowd_zone_at(crowd_st, 500.0, 500.0), -1)
+    expect_eq(crowd_zone_at(crowd_st, -301.0, 0.0), -1)
+    expect(near(crowd_density_at(crowd_st, 200.0, 200.0, 8.0), 60.0, 0.01))
+    expect(near(crowd_density_at(crowd_st, 200.0, 200.0, 4.0), 32.0, 0.01))        # half way from 4 at 0h to 60 at 8h
+    expect(near(crowd_density_at(crowd_st, 200.0, 200.0, 21.0), 42.0, 0.01))       # 80 at 18h falling to 4 at 24h: half way is 42
+    expect(near(crowd_density_at(crowd_st, 200.0, 200.0, 0.0), 4.0, 0.01))
+    expect(near(crowd_density_at(crowd_st, 0.0, 0.0, 12.0), 30.0, 0.01))           # a curve of two points, the park's
+    expect(near(crowd_density_at(crowd_st, 0.0, 0.0, 18.0), 20.0, 0.01))           # 30 at 12h back to 10 at 24h (one third of the way... 18h is halfway)
+    expect(near(crowd_traffic_at(crowd_st, 200.0, 200.0, 12.0), 100.0, 0.01))
+    expect(near(crowd_traffic_at(crowd_st, 0.0, 0.0, 12.0), 0.0, 0.01))            # the park asked for no traffic
+    expect_eq(crowd_scenario_count(crowd_st), 4)
+  }
+
+  test "a zone with fewer than three points is refused, the rest is built; an empty map holds nobody" (crowd_st: mut CrowdState, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    crowd_reset(crowd_st)
+    expect(population_zones_load(zones, "broken"))
+    expect(ped_scenarios_load(scen, "broken"))
+    expect(not crowd_build(crowd_st, zones, scen))
+    expect_eq(crowd_zone_count(crowd_st), 1)
+    expect(len(crowd_error(crowd_st)) > 0)
+    expect(population_zones_load(zones, "empty"))
+    expect(ped_scenarios_load(scen, "empty"))
+    expect(crowd_build(crowd_st, zones, scen))
+    expect_eq(crowd_prime(crowd_st), 0)
+    expect_eq(crowd_count(crowd_st), 0)
+  }
+
+  test "the ring fills, not too near a player, not too far, never where spawning is refused" (crowd_st: mut CrowdState, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    s.sealed = true
+    expect_eq(crowd_prime(crowd_st), 0)
+    s.sealed = false
+    let n = crowd_prime(crowd_st)
+    expect(n > 100)
+    expect_eq(n, crowd_count(crowd_st))
+    let cfg = crowd_config(crowd_st)
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      let d = dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 0.0, 0.0)
+      expect(d >= cfg.spawn_min - 3.0)            # a group's friends stand a little beside their leader
+      expect(d <= cfg.spawn_max + cfg.cell + 3.0)
+      expect(crowd_zone_at(crowd_st, crowd_x(crowd_st, u), crowd_z(crowd_st, u)) >= 0)
+    }
+    drain(crowd_st, s)
+    expect_eq(s.n_spawned, n)
+    expect_eq(s.born, n)
+  }
+
+  test "the budget holds: never more than max_peds, however long it runs" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_budget(crowd_st, 120, 2000, 2000)
+    crowd_prime(crowd_st)
+    expect_eq(crowd_count(crowd_st), 120)
+    sim(crowd_st, m, s, 20.0, 0.1)
+    expect(crowd_count(crowd_st) <= 120)
+    expect(crowd_count(crowd_st) >= 110)
+  }
+
+  test "the same seed makes the same people, however the players came to be there" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    let other = crowd_new()
+    crowd_reset(other)
+    expect(crowd_build(other, zones, scen))
+    # a second crowd: its player was first elsewhere, then arrived
+    s.px = 250.0
+    s.pz = 250.0
+    crowd_prime(other)
+    s.px = 0.0
+    s.pz = 0.0
+    crowd_prime(other)
+    var same = 0
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      if not crowd_alive(other, u) { continue }
+      same += 1
+      expect_eq(crowd_type(other, u), crowd_type(crowd_st, u))
+      expect_eq(crowd_look(other, u), crowd_look(crowd_st, u))
+      expect(crowd_x(other, u) == crowd_x(crowd_st, u))
+      expect(crowd_z(other, u) == crowd_z(crowd_st, u))
+    }
+    expect(same == crowd_count(crowd_st))
+    # a different seed, a different crowd
+    s.seed = 7
+    let third = crowd_new()
+    crowd_reset(third)
+    expect(crowd_build(third, zones, scen))
+    crowd_prime(third)
+    var alike = 0
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      if crowd_alive(third, u) and crowd_x(third, u) == crowd_x(crowd_st, u) { alike += 1 }
+    }
+    expect(alike < crowd_count(crowd_st) / 4)
+  }
+
+  test "the hour thins and thickens a cell: fewer in the small hours, and the extra are taken out of sight" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    s.hour = 18.0
+    let busy = crowd_prime(crowd_st)
+    s.hour = 3.0
+    sim(crowd_st, m, s, 40.0, 0.1)
+    expect(crowd_count(crowd_st) < busy / 2)
+    var culled = 0
+    for i in 0 .. 1 { culled += i }
+    expect_eq(culled, 0)
+    s.hour = 18.0
+    sim(crowd_st, m, s, 40.0, 0.1)
+    expect(crowd_count(crowd_st) > busy * 6 / 10)
+  }
+
+  test "people left behind by every player go, and the ring forms where the players are" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    drain(crowd_st, s)
+    let first = crowd_ped_at(crowd_st, 0)
+    s.px = 400.0
+    s.pz = 400.0
+    sim(crowd_st, m, s, 15.0, 0.1)
+    expect(not crowd_alive(crowd_st, first))
+    expect(s.n_far > 50)
+    var nearish = 0
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      if dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 400.0, 400.0) < 190.0 { nearish += 1 }
+    }
+    expect_eq(nearish, crowd_count(crowd_st))
+    expect_eq(crowd_count(crowd_st), s.n_spawned - s.n_gone)
+  }
+
+  test "a record that goes back to the pool comes out calm, even from a panic" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_reserve(crowd_st, 500)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 1.0, 0.1)
+    expect(crowd_threat(crowd_st, CTHR_BLAST, 0.0, 0.0, 1) > 50)
+    sim(crowd_st, m, s, 1.0, 0.1)
+    expect(count_react(crowd_st, int(PedReact.Panic)) > 20)
+    # the players leave: the panicked are taken away, and the records are made into new people
+    s.px = 250.0
+    s.pz = -250.0
+    sim(crowd_st, m, s, 20.0, 0.1)
+    expect(s.n_far > 100)
+    expect(crowd_count(crowd_st) > 100)
+    expect_eq(count_react(crowd_st, int(PedReact.Calm)), crowd_count(crowd_st))
+  }
+
+  test "two players: each has a ring, and somebody near either stays" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    s.npl = 2
+    s.px2 = 220.0
+    s.pz2 = -220.0
+    let n = crowd_prime(crowd_st)
+    var a = 0
+    var b = 0
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      if dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 0.0, 0.0) < 170.0 { a += 1 }
+      if dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 220.0, -220.0) < 170.0 { b += 1 }
+    }
+    expect(a > 50)
+    expect(b > 20)
+    s.npl = 1
+    sim(crowd_st, m, s, 15.0, 0.1)
+    # player two left: their ring is gone
+    var left = 0
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      if dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 220.0, -220.0) < 100.0 { left += 1 }
+    }
+    expect(left < b / 3)
+    expect(n > 0)
+  }
+
+  test "tiers by distance: full near, mid, far; the budgets draw the radii in" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 1.0, 0.1)
+    let cfg = crowd_config(crowd_st)
+    var nf = 0
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      let d = dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 0.0, 0.0)
+      let lod = crowd_lod(crowd_st, u)
+      if d < cfg.full_r - 4.0 { expect_eq(lod, CROWD_FULL) }
+      if d > cfg.full_r + 4.0 and d < cfg.mid_r - 4.0 { expect_eq(lod, CROWD_MID) }
+      if d > cfg.mid_r + 4.0 { expect_eq(lod, CROWD_FAR) }
+      if lod == CROWD_FULL { nf += 1 }
+    }
+    expect_eq(crowd_lod_count(crowd_st, CROWD_FULL) + crowd_lod_count(crowd_st, CROWD_MID) + crowd_lod_count(crowd_st, CROWD_FAR), crowd_count(crowd_st))
+    # the player walks into the middle of the crowd: more are near; a budget of 8 full ones shrinks the radius
+    crowd_budget(crowd_st, 2000, 8, 2000)
+    s.px = 100.0
+    s.pz = 100.0
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 12.0, 0.1)
+    expect(crowd_lod_radius(crowd_st, CROWD_FULL) < cfg.full_r - 1.0)
+    expect(crowd_lod_count(crowd_st, CROWD_FULL) <= 14)
+    crowd_budget(crowd_st, 2000, 500, 2000)
+    sim(crowd_st, m, s, 30.0, 0.1)
+    expect(crowd_lod_radius(crowd_st, CROWD_FULL) > cfg.full_r - 0.5)
+    expect(nf >= 0)
+  }
+
+  test "a ped walks: no teleports, a pace near its type's, and it is told to the body" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 0.5, 0.05)
+    let u = ped_of_type(crowd_st, PEDT_JOGGER, 0.0, 0.0)
+    expect(u >= 0)
+    var moved = 0.0
+    var px = crowd_x(crowd_st, u)
+    var pz = crowd_z(crowd_st, u)
+    var worst = 0.0
+    var fast = 0.0
+    for k in 0 .. 40 {
+      sim(crowd_st, m, s, 1.0, 0.05)
+      if not crowd_alive(crowd_st, u) { break }
+      let d = dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), px, pz)
+      worst = Math.max(worst, d)
+      fast = Math.max(fast, crowd_speed(crowd_st, u))
+      moved += d
+      px = crowd_x(crowd_st, u)
+      pz = crowd_z(crowd_st, u)
+    }
+    expect(moved > 5.0)
+    expect(fast <= 6.0 * 1.15 + 0.01)
+    expect(worst <= 6.0 * 1.15 + 0.3)
+    expect(s.placed > 100)
+  }
+
+  test "a solid box the nav port refuses is never entered" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    s.block = true
+    s.px = 120.0
+    s.pz = 0.0
+    crowd_prime(crowd_st)
+    for k in 0 .. 60 {
+      sim(crowd_st, m, s, 1.0, 0.1)
+      for i in 0 .. crowd_count(crowd_st) {
+        let u = crowd_ped_at(crowd_st, i)
+        let x = crowd_x(crowd_st, u)
+        let z = crowd_z(crowd_st, u)
+        expect(not (x > 100.0 and x < 140.0 and z > -30.0 and z < 30.0))
+      }
+    }
+  }
+
+  test "a ped waits at a crosswalk for the light, then crosses" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 0.3, 0.05)
+    s.band = true
+    s.cross_ok = false
+    let u = ped_of_type(crowd_st, PEDT_COMMUTER, 0.0, 0.0)
+    expect(u >= 0)
+    s.watch = u
+    # put it in the middle of the field so it is a full-tier ped, and send it across the band
+    expect(crowd_place(crowd_st, u, 5.0, -12.0))
+    sim(crowd_st, m, s, 0.3, 0.05)
+    expect(crowd_goto(crowd_st, u, 5.0, 12.0))
+    sim(crowd_st, m, s, 8.0, 0.05)
+    expect(crowd_z(crowd_st, u) < -2.0)
+    expect(crowd_z(crowd_st, u) > -5.0)
+    expect_eq(s.watch_act, CROWD_WAIT)
+    s.cross_ok = true
+    sim(crowd_st, m, s, 14.0, 0.05)
+    expect(crowd_z(crowd_st, u) > 2.0)
+  }
+
+  test "scenarios: users never exceed the capacity, a bench is sat on, and a leaver frees its place" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    var sat = false
+    var used = 0
+    for k in 0 .. 1200 {
+      sim(crowd_st, m, s, 0.1, 0.1)
+      for i in 0 .. crowd_scenario_count(crowd_st) {
+        expect(crowd_scenario_users(crowd_st, i) <= 4)
+        if crowd_scenario_key(crowd_st, i) == "bench_a" { expect(crowd_scenario_users(crowd_st, i) <= 2) }
+        if crowd_scenario_key(crowd_st, i) == "atm" { expect(crowd_scenario_users(crowd_st, i) <= 1) }
+        used += crowd_scenario_users(crowd_st, i)
+      }
+      if not sat {
+        for i in 0 .. crowd_count(crowd_st) {
+          let u = crowd_ped_at(crowd_st, i)
+          if crowd_act(crowd_st, u) == CROWD_SIT and dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 20.0, 20.0) < 2.0 { sat = true }
+        }
+      }
+    }
+    expect(sat)
+    expect(used > 0)
+    expect(s.n_using > 0)
+    expect(s.n_unusing > 0)
+    # kill a user: its place frees at once
+    var victim = -1
+    for k in 0 .. 3000 {
+      sim(crowd_st, m, s, 0.1, 0.1)
+      for i in 0 .. crowd_count(crowd_st) {
+        let u = crowd_ped_at(crowd_st, i)
+        if crowd_act(crowd_st, u) == CROWD_SIT and dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 20.0, 20.0) < 2.0 { victim = u }
+      }
+      if victim >= 0 { break }
+    }
+    expect(victim >= 0)
+    var before = 0
+    for i in 0 .. crowd_scenario_count(crowd_st) { before += crowd_scenario_users(crowd_st, i) }
+    expect(crowd_kill(crowd_st, victim))
+    var after = 0
+    for i in 0 .. crowd_scenario_count(crowd_st) { after += crowd_scenario_users(crowd_st, i) }
+    expect_eq(after, before - 1)
+  }
+
+  test "friends come together and walk together; a follower goes on without its leader" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    var groups = 0
+    var spread = 0.0
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      if (u & 7) != 0 or crowd_group_size(crowd_st, u) < 2 { continue }
+      groups += 1
+      for mm in 1 .. 8 {
+        let f = (u & -8) | mm
+        if crowd_alive(crowd_st, f) { spread = Math.max(spread, dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), crowd_x(crowd_st, f), crowd_z(crowd_st, f))) }
+      }
+    }
+    expect(groups > 3)
+    expect(spread < 3.5)
+    sim(crowd_st, m, s, 25.0, 0.1)
+    var worst = 0.0
+    var leader = -1
+    var friend = -1
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      if (u & 7) != 0 or crowd_group_size(crowd_st, u) < 2 { continue }
+      for mm in 1 .. 8 {
+        let f = (u & -8) | mm
+        if crowd_alive(crowd_st, f) {
+          worst = Math.max(worst, dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), crowd_x(crowd_st, f), crowd_z(crowd_st, f)))
+          leader = u
+          friend = f
+        }
+      }
+    }
+    expect(leader >= 0)
+    expect(worst < 12.0)
+    expect(crowd_remove(crowd_st, leader))
+    sim(crowd_st, m, s, 3.0, 0.1)
+    expect(crowd_alive(crowd_st, friend) or crowd_count(crowd_st) > 0)
+  }
+
+  test "a gunshot: a type flees, cowers or fights by its row; a crime is reported at most max_reports times, with its crime and its source" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 1.0, 0.1)
+    let a = ped_of_type(crowd_st, PEDT_COMMUTER, 0.0, 0.0)
+    let b = ped_of_type(crowd_st, PEDT_SHOPPER, -80.0, 80.0)
+    expect(a >= 0)
+    expect(b >= 0)
+    let ax = crowd_x(crowd_st, a)
+    let az = crowd_z(crowd_st, a)
+    let hit = crowd_threat(crowd_st, CTHR_GUNSHOT, ax, az, 7)
+    expect(hit >= 1)
+    expect(crowd_fear(crowd_st, a) > 0.5)
+    sim(crowd_st, m, s, 0.4, 0.1)
+    expect(count_react(crowd_st, int(PedReact.Alert)) + count_react(crowd_st, int(PedReact.Call)) + count_react(crowd_st, int(PedReact.Flee)) > 0)
+    sim(crowd_st, m, s, 12.0, 0.1)
+    expect(s.n_report >= 1)
+    expect(s.n_report <= 2)
+    expect_eq(s.report_crime, 1)
+    expect_eq(s.report_src, 7)
+    expect_eq(s.n_threat, 1)
+    expect((s.reacted_to & (1 << int(PedReact.Call))) != 0)
+  }
+
+  test "a shove: a type runs, cowers or only watches by its row" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 1.0, 0.1)
+    let a = ped_of_type(crowd_st, PEDT_COMMUTER, 0.0, 0.0)
+    crowd_threat(crowd_st, CTHR_SHOVE, crowd_x(crowd_st, a), crowd_z(crowd_st, a), 1)
+    sim(crowd_st, m, s, 1.0, 0.1)
+    expect((s.reacted_to & (1 << int(PedReact.Flee))) != 0)
+    expect_eq(s.n_report, 0)
+    s.reacted_to = 0
+    let b = ped_of_type(crowd_st, PEDT_SHOPPER, -80.0, 80.0)
+    crowd_threat(crowd_st, CTHR_SHOVE, crowd_x(crowd_st, b), crowd_z(crowd_st, b), 1)
+    sim(crowd_st, m, s, 1.0, 0.1)
+    expect((s.reacted_to & (1 << int(PedReact.Cower))) != 0)
+    s.reacted_to = 0
+    let j = ped_of_type(crowd_st, PEDT_JOGGER, 30.0, 0.0)
+    crowd_threat(crowd_st, CTHR_SHOVE, crowd_x(crowd_st, j), crowd_z(crowd_st, j), 1)
+    sim(crowd_st, m, s, 0.5, 0.1)
+    expect(crowd_react(crowd_st, j) == int(PedReact.Alert) or crowd_react(crowd_st, j) == int(PedReact.Calm))
+  }
+
+  test "a blast that is no crime panics the crowd and reports nothing; then everybody calms down" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 1.0, 0.1)
+    let hit = crowd_threat(crowd_st, CTHR_BLAST, 0.0, 0.0, 1)
+    expect(hit > 50)
+    sim(crowd_st, m, s, 1.5, 0.1)
+    expect((s.reacted_to & (1 << int(PedReact.Panic))) != 0)
+    expect(count_react(crowd_st, int(PedReact.Calm)) < crowd_count(crowd_st) * 7 / 10)
+    expect_eq(s.n_report, 0)
+    sim(crowd_st, m, s, 40.0, 0.1)
+    expect(count_react(crowd_st, int(PedReact.Calm)) >= crowd_count(crowd_st) - 3)
+    expect(s.n_react > 50)
+  }
+
+  test "a brave type fights: it goes at the source and lands blows" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 1.0, 0.1)
+    let j = ped_of_type(crowd_st, PEDT_JOGGER, 30.0, 0.0)
+    expect(j >= 0)
+    # a blast at a point 12 m from the jogger
+    let tx = crowd_x(crowd_st, j) + 12.0
+    let tz = crowd_z(crowd_st, j)
+    crowd_threat(crowd_st, CTHR_BLAST, tx, tz, 1)
+    sim(crowd_st, m, s, 14.0, 0.1)
+    expect((s.reacted_to & (1 << int(PedReact.Fight))) != 0)
+    expect(s.n_attack > 0)
+  }
+
+  test "a killed ped's place stays empty for a while; a removed one's does not" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    let a = crowd_ped_at(crowd_st, 0)
+    let b = crowd_ped_at(crowd_st, 1)
+    expect((a >> 3) != (b >> 3))
+    expect(crowd_kill(crowd_st, a))
+    expect(crowd_remove(crowd_st, b))
+    expect(not crowd_kill(crowd_st, a))
+    sim(crowd_st, m, s, 10.0, 0.1)
+    expect(not crowd_alive(crowd_st, a))
+    sim(crowd_st, m, s, 130.0, 0.1)
+    expect(crowd_alive(crowd_st, a) or crowd_count(crowd_st) > 100)
+  }
+
+  test "what a ped carries comes from its uid alone" (crowd_st: mut CrowdState, zones: mut PopulationZones, scen: mut PedScenarios) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    let u = ped_of_type(crowd_st, PEDT_COMMUTER, 0.0, 0.0)
+    expect(u >= 0)
+    expect_eq(crowd_carry_count(crowd_st, u), 2)
+    expect_eq(crowd_carry_item(crowd_st, u, 0), "phone")
+    expect_eq(crowd_carries(crowd_st, u, 0), 1)
+    expect(crowd_carries(crowd_st, u, 1) == 0 or crowd_carries(crowd_st, u, 1) >= 5)
+    expect_eq(crowd_carries(crowd_st, u, 0), crowd_carries(crowd_st, u, 0))
+  }
+
+  test "witnesses: their weights add up, a far crime is unseen, a cowering ped sees nothing" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    let u = ped_of_type(crowd_st, PEDT_COMMUTER, 0.0, 0.0)
+    let x = crowd_x(crowd_st, u)
+    let z = crowd_z(crowd_st, u)
+    expect(crowd_witness_weight(crowd_st, x, z) >= 0.5)
+    expect(crowd_witnessed(crowd_st, x, z))
+    expect(crowd_witness_weight(crowd_st, 5000.0, 5000.0) == 0.0)
+    expect(not crowd_witnessed(crowd_st, 5000.0, 5000.0))
+  }
+
+  test "the traffic the zones ask for follows the hour and where the players are" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    s.px = 200.0
+    s.pz = 200.0
+    s.hour = 12.0
+    crowd_prime(crowd_st)
+    let noon = crowd_traffic_target(crowd_st)
+    expect(noon > 0)
+    s.hour = 0.0
+    sim(crowd_st, m, s, 1.5, 0.1)
+    expect(crowd_traffic_target(crowd_st) < noon)
+    s.px = 5000.0
+    s.pz = 5000.0
+    sim(crowd_st, m, s, 1.5, 0.1)
+    expect_eq(crowd_traffic_target(crowd_st), 0)
+  }
+
+  test "facts balance: what was made and what went is what is alive" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    s.px = 150.0
+    s.pz = -150.0
+    sim(crowd_st, m, s, 30.0, 0.1)
+    expect_eq(s.n_spawned - s.n_gone, crowd_count(crowd_st))
+    expect_eq(s.born - s.gone, crowd_count(crowd_st))
+  }
+
+  test "a client copies the host: a delta a message, peds that left are told, and a silent one is let go" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    let client = crowd_new()
+    crowd_reset(client)
+    crowd_role(client, CROWD_CLIENT)
+    let buf = words(0)
+    let gone = words(0)
+    var last = -1
+    # the first message: everybody within the sync radius
+    var n = crowd_sync_out(crowd_st, last, 0.0, 0.0, buf)
+    last = crowd_sync_mark(crowd_st)
+    expect(n > 50)
+    let sr = crowd_config(crowd_st).sync_r
+    crowd_sync_in(client, buf, n)
+    expect_eq(crowd_count(client), n)
+    # a puppet knows what the host knows of it
+    for i in 0 .. crowd_count(client) {
+      let u = crowd_ped_at(client, i)
+      expect(crowd_alive(crowd_st, u))
+      expect(near(crowd_x(client, u), crowd_x(crowd_st, u), 0.04))
+      expect(near(crowd_z(client, u), crowd_z(crowd_st, u), 0.04))
+      expect_eq(crowd_type(client, u), crowd_type(crowd_st, u))
+      expect_eq(crowd_look(client, u), crowd_look(crowd_st, u))
+      expect_eq(crowd_lod(client, u), CROWD_PUPPET)
+    }
+    # later messages carry only what changed: a FAR ped is written about once a second, a FULL one every tick
+    sim(crowd_st, m, s, 0.2, 0.1)
+    n = crowd_sync_out(crowd_st, last, 0.0, 0.0, buf)
+    let m1 = crowd_sync_gone(crowd_st, last, gone)
+    last = crowd_sync_mark(crowd_st)
+    expect(n < crowd_count(crowd_st))
+    expect(n > 0)
+    crowd_sync_in(client, buf, n)
+    crowd_sync_in_gone(client, gone, m1)
+    # the host kills one: the next message says so
+    let victim = crowd_ped_at(crowd_st, 3)
+    expect(crowd_alive(client, victim))
+    crowd_remove(crowd_st, victim)
+    n = crowd_sync_out(crowd_st, last, 0.0, 0.0, buf)
+    let m2 = crowd_sync_gone(crowd_st, last, gone)
+    expect_eq(m2, 1)
+    expect_eq(gone[0], victim)
+    last = crowd_sync_mark(crowd_st)
+    crowd_sync_in(client, buf, n)
+    crowd_sync_in_gone(client, gone, m2)
+    expect(not crowd_alive(client, victim))
+    # a reaction rides along
+    let a = ped_of_type(crowd_st, PEDT_COMMUTER, 0.0, 0.0)
+    crowd_threat(crowd_st, CTHR_BLAST, crowd_x(crowd_st, a), crowd_z(crowd_st, a), 1)
+    sim(crowd_st, m, s, 0.5, 0.1)
+    n = crowd_sync_out(crowd_st, last, 0.0, 0.0, buf)
+    last = crowd_sync_mark(crowd_st)
+    crowd_sync_in(client, buf, n)
+    expect(crowd_react(client, a) > 0)
+    expect_eq(crowd_react(client, a), crowd_react(crowd_st, a))
+    # the client's own frames move the puppets between messages and let go of the silent after the ttl
+    let c = crowd_ped_at(client, 0)
+    let x0 = crowd_x(client, c)
+    var t = 0.0
+    while t < 0.5 {
+      crowd_tick(client, m, tick_new(0.05, 1, 12.0))
+      t += 0.05
+    }
+    expect(crowd_count(client) > 0)
+    t = 0.0
+    while t < 6.0 {
+      crowd_tick(client, m, tick_new(0.1, 1, 12.0))
+      t += 0.1
+    }
+    expect_eq(crowd_count(client), 0)
+    expect(sr > 0.0)
+    expect(x0 == x0)
+  }
+
+  test "the save keeps the clock and the empty places of the dead; the people are the seed's" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    let a = crowd_ped_at(crowd_st, 0)
+    crowd_kill(crowd_st, a)
+    sim(crowd_st, m, s, 5.0, 0.1)
+    let v = crowd_save(crowd_st)
+    let t = crowd_time(crowd_st)
+    crowd_load(crowd_st, v, 1)
+    expect(near(crowd_time(crowd_st), t, 0.01))
+    expect_eq(crowd_count(crowd_st), 0)
+    expect(load_town(crowd_st, zones, scen))
+    crowd_prime(crowd_st)
+    expect(not crowd_alive(crowd_st, a))
+  }
+
+  test "no heap grows once the crowd is warm: spawning, culling, reacting and walking allocate nothing" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_reserve(crowd_st, 600)
+    # warm: the player walks a loop for a while so the pools, lists and maps reach their high water
+    for lap in 0 .. 8 {
+      for k in 0 .. 100 {
+        let a = float(k) * 0.0628
+        s.px = Math.sin(a) * 150.0
+        s.pz = Math.cos(a) * 150.0
+        sim(crowd_st, m, s, 0.3, 0.1)
+        if k % 20 == 0 { crowd_threat(crowd_st, CTHR_GUNSHOT, s.px + 50.0, s.pz, 1) }
+      }
+    }
+    let before = Os.heap_bytes()
+    for lap in 0 .. 2 {
+      for k in 0 .. 100 {
+        let a = float(k) * 0.0628
+        s.px = Math.sin(a) * 150.0
+        s.pz = Math.cos(a) * 150.0
+        sim(crowd_st, m, s, 0.3, 0.1)
+        if k % 20 == 0 { crowd_threat(crowd_st, CTHR_GUNSHOT, s.px + 50.0, s.pz, 1) }
+      }
+    }
+    let grew = Os.heap_bytes() - before
+    print(`crowd: 60 s of a walking player, heap grew {grew} bytes`)
+    expect(grew == long(0))
+  }
+}

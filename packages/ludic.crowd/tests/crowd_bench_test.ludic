@@ -1,0 +1,129 @@
+# crowd_bench_test.ludic - 1000+ managed peds in a pure-logic setting (no renderer, no physics: the ports are
+# counters): what a tick costs on average and at its worst while four players walk through a dense city, that the
+# budgets hold, that a FAR ped costs a small share of a FULL one, what a delta message to a client costs, and that
+# the warm crowd allocates nothing. The numbers are printed; the limits are loose enough for a busy machine
+import "ludic.crowd"
+import "ludic.base"
+program CrowdBench {
+  numbers float
+  state CrowdBenchState {
+    t: float = 0.0
+    frame: int = 0
+    placed: int = 0
+    tk: Tick = tick_new(0.0166667, 0, 12.0)
+  }
+  function b_players() -> int { return 4 }
+  function b_on(i: int) -> bool { return true }
+  function b_px(crowd_bench_st: CrowdBenchState, i: int) -> float {
+    let a = crowd_bench_st.t * 0.004 + float(i) * 1.5708
+    return Math.sin(a) * 900.0 + Math.cos(float(i) * 2.3) * 200.0
+  }
+  function b_pz(crowd_bench_st: CrowdBenchState, i: int) -> float {
+    let a = crowd_bench_st.t * 0.004 + float(i) * 1.5708
+    return Math.cos(a) * 900.0 + Math.sin(float(i) * 2.3) * 200.0
+  }
+  function b_place(crowd_bench_st: mut CrowdBenchState, uid: int, x: float, y: float, z: float, yaw: float, speed: float, act: int, lod: int) -> void {
+    crowd_bench_st.placed += 1
+  }
+  bind CrowdWorld { players: fn b_players, player_on: fn b_on, player_x: fn b_px, player_z: fn b_pz }
+  bind CrowdBody { place: fn b_place }
+
+  def PedLooks from "data/looks.lres"
+  def PedSchedules from "data/schedules.lres"
+  def PedTypes from "data/types.lres"
+  def CrowdThreats from "data/threats.lres"
+  def CrowdSettings bench { max_peds: 2400, max_full: 200, max_mid: 700, spawn_per_pass: 40, cells_per_pass: 60 }
+
+  function frames(crowd_st: mut CrowdState, m: mut CrowdStepsMachine, s: mut CrowdBenchState, n: int) -> void {
+    for k in 0 .. n {
+      s.t += 0.0166667
+      s.frame += 1
+      s.tk.frame = s.frame
+      crowd_tick(crowd_st, m, s.tk)
+      q_clear(crowd_facts(crowd_st))
+    }
+  }
+
+  test "a thousand and more peds: the tick's cost, the budgets, and no heap growth" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdBenchState) {
+    crowd_reset(crowd_st)
+    expect(population_zones_load(zones, "metro"))
+    expect(ped_scenarios_load(scen, "metro"))
+    expect(crowd_build(crowd_st, zones, scen))
+    crowd_reserve(crowd_st, 2400)
+    let t0 = Time.now_us()
+    let made = crowd_prime(crowd_st)
+    let prime_us = Time.now_us() - t0
+    print(`bench: primed {made} peds in {prime_us} us`)
+    expect(made >= 1500)
+    # warm: walk the players on so the pools, lists and maps reach their high water
+    frames(crowd_st, m, s, 900)
+    let n = crowd_count(crowd_st)
+    expect(n >= 1000)
+    expect(n <= 2400)
+    let cfg = crowd_config(crowd_st)
+    # what a full tick costs, averaged, and the worst of them
+    let heap0 = Os.heap_bytes()
+    var worst = long(0)
+    var total = long(0)
+    let rounds = 600
+    for k in 0 .. rounds {
+      let a = Time.now_us()
+      frames(crowd_st, m, s, 1)
+      let d = Time.now_us() - a
+      total += d
+      if d > worst { worst = d }
+    }
+    let grew = Os.heap_bytes() - heap0
+    let avg = total / long(rounds)
+    print(`bench: {crowd_count(crowd_st)} peds (full {crowd_lod_count(crowd_st, CROWD_FULL)}, mid {crowd_lod_count(crowd_st, CROWD_MID)}, far {crowd_lod_count(crowd_st, CROWD_FAR)}): tick avg {avg} us, worst {worst} us, heap grew {grew} bytes`)
+    expect(crowd_lod_count(crowd_st, CROWD_FULL) <= cfg.max_full * 13 / 10)
+    expect(crowd_lod_count(crowd_st, CROWD_MID) <= cfg.max_mid * 13 / 10)
+    expect(crowd_count(crowd_st) >= 1000)
+    expect(avg < long(6000))
+    expect(grew == long(0))
+    # the delta a client is sent: what it costs to write, and how big it is
+    let buf = words(0)
+    let since = crowd_sync_mark(crowd_st)
+    frames(crowd_st, m, s, 6)
+    let b0 = Time.now_us()
+    let peds = crowd_sync_out(crowd_st, since, b_px(s, 0), b_pz(s, 0), buf)
+    let b_us = Time.now_us() - b0
+    print(`bench: a 100 ms delta for one client: {peds} peds, {peds * 16} bytes, {b_us} us to write`)
+    expect(peds * 16 < 20000)
+  }
+
+  function per_tick(crowd_st: mut CrowdState, m: mut CrowdStepsMachine, s: mut CrowdBenchState, rounds: int) -> long {
+    let a0 = Time.now_us()
+    frames(crowd_st, m, s, rounds)
+    return (Time.now_us() - a0) / long(rounds)
+  }
+
+  test "a far ped costs a small share of a full one, and the tiers are what the radii say" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdBenchState) {
+    crowd_reset(crowd_st)
+    expect(population_zones_load(zones, "metro"))
+    expect(ped_scenarios_load(scen, "metro"))
+    expect(crowd_build(crowd_st, zones, scen))
+    crowd_reserve(crowd_st, 2400)
+    crowd_budget(crowd_st, 1500, 5000, 5000)
+    crowd_prime(crowd_st)
+    # every ped FULL
+    crowd_lod_radii(crowd_st, 5000.0, 5001.0)
+    frames(crowd_st, m, s, 120)
+    expect_eq(crowd_lod_count(crowd_st, CROWD_FULL), crowd_count(crowd_st))
+    let full = per_tick(crowd_st, m, s, 240)
+    # every ped MID
+    crowd_lod_radii(crowd_st, 1.0, 5000.0)
+    frames(crowd_st, m, s, 120)
+    expect(crowd_lod_count(crowd_st, CROWD_MID) > crowd_count(crowd_st) - 5)
+    let mid = per_tick(crowd_st, m, s, 240)
+    # every ped FAR
+    crowd_lod_radii(crowd_st, 1.0, 2.0)
+    frames(crowd_st, m, s, 120)
+    expect(crowd_lod_count(crowd_st, CROWD_FAR) > crowd_count(crowd_st) - 5)
+    let far = per_tick(crowd_st, m, s, 240)
+    print(`bench: {crowd_count(crowd_st)} peds all FULL {full} us a tick, all MID {mid} us, all FAR {far} us`)
+    expect(far * long(4) < full)
+    expect(mid < full)
+    expect(full < long(6000))
+  }
+}

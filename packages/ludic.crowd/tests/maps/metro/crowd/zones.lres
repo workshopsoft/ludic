@@ -1,0 +1,7 @@
+# a dense square kilometre and a half of city: the benchmark's
+metro {
+  pts: [{ x: -2000.0, z: -2000.0 }, { x: 2000.0, z: -2000.0 }, { x: 2000.0, z: 2000.0 }, { x: -2000.0, z: 2000.0 }]
+  density: [{ hour: 0.0, value: 120.0 }]
+  traffic: [{ hour: 0.0, value: 60.0 }]
+  mix: [{ ped: PEDT_COMMUTER, weight: 3.0 }, { ped: PEDT_SHOPPER, weight: 2.0 }, { ped: PEDT_JOGGER, weight: 1.0 }]
+}

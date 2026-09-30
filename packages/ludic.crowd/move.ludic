@@ -1,0 +1,465 @@
+# move.ludic - what a ped does between reactions: its schedule's acts, walking where the nav port says,
+# the scenarios it goes to and uses, the friends it walks with. The tier decides how often and how well:
+# FULL steers every tick (avoiding the people near it, waiting at crossings), MID a few times a second
+# along the way, FAR a step a second
+
+# read the players and the hour from the world, into lists the crowd keeps
+function cw_sense(crowd_st: mut CrowdState) -> void {
+  var n = CrowdWorld.players()
+  if n > 64 { n = 64 }
+  var k = 0
+  for i in 0 .. n {
+    if not CrowdWorld.player_on(i) { continue }
+    if k < len(crowd_st.cw_pl_x) {
+      crowd_st.cw_pl_x[k] = CrowdWorld.player_x(i)
+      crowd_st.cw_pl_z[k] = CrowdWorld.player_z(i)
+    } else {
+      kept_push(crowd_st.cw_pl_x, CrowdWorld.player_x(i))
+      kept_push(crowd_st.cw_pl_z, CrowdWorld.player_z(i))
+    }
+    k += 1
+  }
+  crowd_st.cw_pl_n = k
+  crowd_st.cw_hour = CrowdWorld.hour()
+}
+
+function cw_roll(p: CrowdPed, salt: int) -> float {
+  p.seq += 1
+  return cw_unit(crowd_hash(p.uid, p.seq, salt))
+}
+
+function cw_set_pos(crowd_st: mut CrowdState, p: CrowdPed, row: int, x: float, z: float) -> void {
+  p.x = x
+  p.z = z
+  tb_set_xz(crowd_st.cw_tab, 0, 1, row, x, z)
+}
+
+# ---- scenarios --------------------------------------------------------------------------------
+
+function cw_leave_scenario(crowd_st: mut CrowdState, p: CrowdPed) -> void {
+  if p.scn < 0 { return }
+  if p.scn < crowd_st.cw_sn {
+    crowd_st.cw_sn_use[p.scn] = Math.max(0, crowd_st.cw_sn_use[p.scn] - 1)
+    if p.scn_used {
+      let f = cw_fact(crowd_st, CROWD_USING, p.uid)
+      f.crime = p.scn
+      f.count = 0
+      f.x = p.x
+      f.z = p.z
+    }
+  }
+  p.scn = -1
+  p.scn_used = false
+}
+
+# where a user of scenario i stands: an area's hashed point, else along the facing's right by its place
+function cw_spot(crowd_st: CrowdState, p: CrowdPed, i: int, place: int) -> void {
+  let r = crowd_st.cw_sn_r[i]
+  var x = crowd_st.cw_sn_x[i]
+  var z = crowd_st.cw_sn_z[i]
+  if r > 0.0 {
+    let a = cw_unit(crowd_hash(p.uid, place, 61)) * 6.2831853
+    let d = r * Math.sqrt(cw_unit(crowd_hash(p.uid, place, 62)))
+    x += Math.sin(a) * d
+    z += Math.cos(a) * d
+  } else {
+    let y = crowd_st.cw_sn_yaw[i]
+    let off = (float(place) - float(crowd_st.cw_sn_cap[i] - 1) * 0.5) * 0.7
+    x += Math.cos(y) * off
+    z -= Math.sin(y) * off
+  }
+  p.dest_x = x
+  p.dest_z = z
+}
+
+# ---- the schedule -----------------------------------------------------------------------------
+
+# what to do next: a slot of the ped's schedule that covers the hour, by weight; then where
+function cw_next_act(crowd_st: mut CrowdState, p: CrowdPed) -> void {
+  cw_leave_scenario(crowd_st, p)
+  p.has_dest = false
+  p.repath = 0.0
+  let ty = PedTypes[p.type]
+  var sch = ty.schedule
+  if sch < 0 or sch >= PEDS_COUNT { sch = -1 }
+  p.act = CROWD_WALK
+  if sch < 0 { return }
+  let o = crowd_st.cw_sch0[sch]
+  let n = crowd_st.cw_schn[sch]
+  var tot = 0.0
+  let hour = crowd_st.cw_hour
+  for i in 0 .. n {
+    if cw_in_hours(hour, crowd_st.cw_sl_from[o + i], crowd_st.cw_sl_to[o + i]) { tot += crowd_st.cw_sl_w[o + i] }
+  }
+  if tot <= 0.0 { return }
+  var target = cw_roll(p, 21) * tot
+  var s = -1
+  for i in 0 .. n {
+    if not cw_in_hours(hour, crowd_st.cw_sl_from[o + i], crowd_st.cw_sl_to[o + i]) { continue }
+    s = o + i
+    target -= crowd_st.cw_sl_w[o + i]
+    if target < 0.0 { break }
+  }
+  if s < 0 { return }
+  var act = crowd_st.cw_sl_act[s]
+  let dur = crowd_st.cw_sl_min[s] + (crowd_st.cw_sl_max[s] - crowd_st.cw_sl_min[s]) * cw_roll(p, 22)
+  let tag = crowd_st.cw_sl_tag[s]
+  if tag >= 0 {
+    let i = cw_scenario_near(crowd_st, p.x, p.z, 80.0, tag, hour)
+    if i >= 0 {
+      crowd_st.cw_sn_use[i] += 1
+      p.scn = i
+      p.scn_used = false
+      cw_spot(crowd_st, p, i, crowd_st.cw_sn_use[i] - 1)
+      p.has_dest = true
+      p.act = CROWD_WALK
+      return
+    }
+    # nothing to go to: the act without its place
+    if act == CROWD_SIT { act = CROWD_STAND }
+    if act == CROWD_SHOP { act = CROWD_WALK }
+    if act == CROWD_WORK { act = CROWD_STAND }
+  }
+  p.act = act
+  if act == CROWD_STAND or act == CROWD_SIT or act == CROWD_WORK {
+    p.act_t = dur
+  }
+  if act == CROWD_SHOP { p.act = CROWD_WALK }
+}
+
+function cw_begin_life(crowd_st: mut CrowdState, p: CrowdPed) -> void {
+  cw_next_act(crowd_st, p)
+  # a walker starts going, heading where it was made to face
+  p.speed = 0.0
+}
+
+# the next place to walk to: between the type's wander distances (three times that for a commute)
+function cw_pick_dest(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
+  var lo = ty.wander_min
+  var hi = ty.wander_max
+  if p.act == CROWD_COMMUTE {
+    lo = lo * 3.0
+    hi = hi * 3.0
+  }
+  let salt = crowd_hash(p.uid, p.seq + 1, 63)
+  p.seq += 1
+  if CrowdNav.pick(p.x, p.z, lo, hi, salt, crowd_st.cw_buf) {
+    p.dest_x = crowd_st.cw_buf[0]
+    p.dest_z = crowd_st.cw_buf[1]
+    p.has_dest = true
+    p.repath = 0.0
+    p.blocked = 0.0
+  } else {
+    p.act = CROWD_STAND
+    p.act_t = 2.0 + cw_roll(p, 23) * 4.0
+  }
+}
+
+# ---- moving -----------------------------------------------------------------------------------
+
+# one step toward (tx, tz) at `speed`. True when it is there. FULL asks for a corner often and goes round the
+# people near; all tiers obey a crossing's light
+function cw_move(crowd_st: mut CrowdState, p: CrowdPed, row: int, tx: float, tz: float, speed: float, dt: float) -> bool {
+  let x = p.x
+  let z = p.z
+  let dx = tx - x
+  let dz = tz - z
+  if dx * dx + dz * dz < 0.64 {
+    p.speed = 0.0
+    return true
+  }
+  p.repath -= dt
+  var gd = 0.0
+  gd = (p.goal_x - x) * (p.goal_x - x) + (p.goal_z - z) * (p.goal_z - z)
+  if p.repath <= 0.0 or gd < 0.5 {
+    if CrowdNav.way(p.uid, x, z, tx, tz, crowd_st.cw_buf) {
+      p.goal_x = crowd_st.cw_buf[0]
+      p.goal_z = crowd_st.cw_buf[1]
+    } else {
+      p.goal_x = tx
+      p.goal_z = tz
+    }
+    p.repath = 0.5
+    if p.lod == CROWD_MID { p.repath = 1.0 }
+    if p.lod == CROWD_FAR { p.repath = 0.0 }
+  }
+  var ux = p.goal_x - x
+  var uz = p.goal_z - z
+  var ul = Math.sqrt(ux * ux + uz * uz)
+  if ul < 0.001 {
+    p.speed = 0.0
+    return true
+  }
+  ux = ux / ul
+  uz = uz / ul
+  var sp = speed
+  if p.lod != CROWD_FAR {
+    let lx = x + ux * 1.2
+    let lz = z + uz * 1.2
+    let cr = CrowdNav.crossing(lx, lz)
+    if cr != 0 and CrowdNav.crossing(x, z) == 0 {
+      let ok = CrowdNav.may_cross(lx, lz)
+      if cr == 2 {
+        let jay = cw_unit(crowd_hash(p.uid, 77, 78)) < PedTypes[p.type].jaywalk
+        if not (jay and ok) {
+          p.speed = 0.0
+          p.has_dest = false
+          p.repath = 0.0
+          return false
+        }
+      } else if not ok and p.wait_t < 25.0 {
+        p.wait_t += dt
+        p.speed = 0.0
+        return false
+      }
+    } else {
+      p.wait_t = 0.0
+    }
+  }
+  if p.lod == CROWD_FULL {
+    let n = tb_within(crowd_st.cw_tab, crowd_st.cw_grid, x, z, 1.6, -1, 0, crowd_st.cw_near)
+    var sx = 0.0
+    var sz = 0.0
+    var seen = 0
+    for k in 0 .. n {
+      let r2 = crowd_st.cw_near[k]
+      if r2 == row { continue }
+      let o = crowd_st.cw_tab.rec[r2]
+      let ox = x - o.x
+      let oz = z - o.z
+      let d2 = ox * ox + oz * oz
+      if d2 < 0.0004 {
+        sx += 0.5
+        seen += 1
+        continue
+      }
+      let d = Math.sqrt(d2)
+      let w = (1.6 - d) / 1.6
+      sx += ox / d * w
+      sz += oz / d * w
+      seen += 1
+      if seen >= 5 { break }
+    }
+    ux += sx * 1.3
+    uz += sz * 1.3
+    ul = Math.sqrt(ux * ux + uz * uz)
+    if ul > 0.001 {
+      ux = ux / ul
+      uz = uz / ul
+    }
+  }
+  let want = cw_yaw_of(ux, uz)
+  if p.lod == CROWD_FULL {
+    let turn = cw_turn(p.yaw, want)
+    let lim = 7.0 * dt
+    p.yaw += Math.clamp(turn, -lim, lim)
+    let acc = 3.0 * dt
+    if p.speed < sp { p.speed = Math.min(sp, p.speed + acc) } else { p.speed = Math.max(sp, p.speed - acc * 2.0) }
+  } else {
+    p.yaw = want
+    p.speed = sp
+  }
+  let step = p.speed * dt
+  let nx = x + Math.sin(p.yaw) * step
+  let nz = z + Math.cos(p.yaw) * step
+  if not CrowdNav.walkable(nx, nz) {
+    p.blocked += dt
+    p.speed = 0.0
+    if p.blocked > 1.0 {
+      p.has_dest = false
+      p.repath = 0.0
+      p.blocked = 0.0
+    }
+    return false
+  }
+  p.blocked = 0.0
+  cw_set_pos(crowd_st, p, row, nx, nz)
+  return false
+}
+
+function cw_halt(p: CrowdPed, dt: float) -> void {
+  p.speed = Math.max(0.0, p.speed - 6.0 * dt)
+}
+
+function cw_face(p: CrowdPed, x: float, z: float, dt: float) -> void {
+  let want = cw_yaw_of(x - p.x, z - p.z)
+  let turn = cw_turn(p.yaw, want)
+  let lim = 6.0 * dt
+  p.yaw += Math.clamp(turn, -lim, lim)
+}
+
+# a friend of a group: its place beside the leader, a step behind
+function cw_follow(crowd_st: mut CrowdState, p: CrowdPed, row: int, lrow: int, ty: PedType, dt: float) -> void {
+  let l = crowd_st.cw_tab.rec[lrow]
+  let m = p.member
+  let side = float((m + 1) >> 1) * 0.9
+  var sgn = 1.0
+  if (m & 1) == 0 { sgn = -1.0 }
+  let behind = 0.5 + 0.3 * float(m >> 1)
+  let tx = l.x + Math.cos(l.yaw) * side * sgn - Math.sin(l.yaw) * behind
+  let tz = l.z - Math.sin(l.yaw) * side * sgn - Math.cos(l.yaw) * behind
+  let dx = tx - p.x
+  let dz = tz - p.z
+  let d = Math.sqrt(dx * dx + dz * dz)
+  if d > 30.0 {
+    p.lead = -1
+    return
+  }
+  p.act = l.act
+  if p.act == CROWD_USE or p.act == CROWD_TALK { p.act = CROWD_STAND }
+  var sp = l.speed + Math.clamp((d - 0.7) * 1.5, 0.0, 2.0)
+  if d < 0.5 and l.speed < 0.1 { sp = 0.0 }
+  sp = Math.min(sp, ty.run_speed * 0.7)
+  if sp <= 0.01 {
+    cw_halt(p, dt)
+    cw_face(p, l.x + Math.sin(l.yaw) * 2.0, l.z + Math.cos(l.yaw) * 2.0, dt)
+    return
+  }
+  p.has_dest = true
+  p.dest_x = tx
+  p.dest_z = tz
+  cw_move(crowd_st, p, row, tx, tz, sp, dt)
+}
+
+# ---- one ped's step ---------------------------------------------------------------------------
+
+function cw_arrive(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
+  if p.scn >= 0 and not p.scn_used {
+    p.scn_used = true
+    p.act = crowd_st.cw_sn_act[p.scn]
+    p.yaw = crowd_st.cw_sn_yaw[p.scn]
+    p.speed = 0.0
+    p.act_t = crowd_st.cw_sn_min[p.scn] + (crowd_st.cw_sn_max[p.scn] - crowd_st.cw_sn_min[p.scn]) * cw_roll(p, 24)
+    let f = cw_fact(crowd_st, CROWD_USING, p.uid)
+    f.crime = p.scn
+    f.count = 1
+    f.x = p.x
+    f.z = p.z
+    return
+  }
+  cw_next_act(crowd_st, p)
+}
+
+function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, dt: float) -> void {
+  if p.lead >= 0 {
+    let lrow = tb_row(crowd_st.cw_tab, p.lead)
+    if lrow < 0 { p.lead = -1 } else {
+      cw_follow(crowd_st, p, row, lrow, ty, dt)
+      return
+    }
+  }
+  let going = p.act == CROWD_WALK or p.act == CROWD_COMMUTE or (p.scn >= 0 and not p.scn_used)
+  if going {
+    if not p.has_dest { cw_pick_dest(crowd_st, p, ty) }
+    if not p.has_dest { return }
+    var sp = ty.walk_speed * p.pace
+    if p.act == CROWD_COMMUTE { sp = sp * 1.2 }
+    if cw_move(crowd_st, p, row, p.dest_x, p.dest_z, sp, dt) { cw_arrive(crowd_st, p, ty) }
+    return
+  }
+  cw_halt(p, dt)
+  p.act_t -= dt
+  if p.act_t <= 0.0 { cw_next_act(crowd_st, p) }
+}
+
+function cw_flee_dest(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
+  var best = -1.0
+  var bx = p.x
+  var bz = p.z
+  for k in 0 .. 3 {
+    let salt = crowd_hash(p.uid, p.seq + k + 1, 64)
+    if CrowdNav.pick(p.x, p.z, 25.0, 60.0, salt, crowd_st.cw_buf) {
+      let dx = crowd_st.cw_buf[0] - p.threat_x
+      let dz = crowd_st.cw_buf[1] - p.threat_z
+      let d = dx * dx + dz * dz
+      if d > best {
+        best = d
+        bx = crowd_st.cw_buf[0]
+        bz = crowd_st.cw_buf[1]
+      }
+    }
+  }
+  p.seq += 3
+  p.dest_x = bx
+  p.dest_z = bz
+  p.has_dest = best >= 0.0
+  p.repath = 0.0
+}
+
+function cw_panic_dest(crowd_st: mut CrowdState, p: CrowdPed) -> void {
+  let salt = crowd_hash(p.uid, p.seq + 1, 65)
+  p.seq += 1
+  if CrowdNav.pick(p.x, p.z, 6.0, 18.0, salt, crowd_st.cw_buf) {
+    p.dest_x = crowd_st.cw_buf[0]
+    p.dest_z = crowd_st.cw_buf[1]
+    p.has_dest = true
+    p.repath = 0.0
+  }
+  p.act_t = 0.8 + cw_roll(p, 25) * 1.0
+}
+
+function cw_step(crowd_st: mut CrowdState, p: CrowdPed, row: int, dt: float) -> void {
+  let ty = PedTypes[p.type]
+  if p.react == PedReact.Calm {
+    cw_calm(crowd_st, p, row, ty, dt)
+  } else if p.react == PedReact.Flee {
+    if not p.has_dest { cw_flee_dest(crowd_st, p, ty) }
+    if p.has_dest and cw_move(crowd_st, p, row, p.dest_x, p.dest_z, ty.run_speed * p.pace, dt) { p.has_dest = false }
+  } else if p.react == PedReact.Panic {
+    p.act_t -= dt
+    if not p.has_dest or p.act_t <= 0.0 { cw_panic_dest(crowd_st, p) }
+    if p.has_dest and cw_move(crowd_st, p, row, p.dest_x, p.dest_z, ty.run_speed * p.pace * 1.15, dt) { p.has_dest = false }
+  } else if p.react == PedReact.Fight {
+    let dx = p.threat_x - p.x
+    let dz = p.threat_z - p.z
+    if dx * dx + dz * dz > 1.7 * 1.7 {
+      p.dest_x = p.threat_x
+      p.dest_z = p.threat_z
+      p.has_dest = true
+      cw_move(crowd_st, p, row, p.dest_x, p.dest_z, ty.run_speed * p.pace * 0.8, dt)
+    } else {
+      cw_halt(p, dt)
+      cw_face(p, p.threat_x, p.threat_z, dt)
+      p.hit_t += dt
+      if p.hit_t >= 1.0 {
+        p.hit_t = 0.0
+        let f = cw_fact(crowd_st, CROWD_ATTACK, p.uid)
+        f.x = p.threat_x
+        f.z = p.threat_z
+        f.from = p.thr_id
+      }
+    }
+  } else {
+    # alert, cower, call: standing, the alert watching the threat
+    cw_halt(p, dt)
+    if p.react == PedReact.Alert { cw_face(p, p.threat_x, p.threat_z, dt) }
+  }
+  var act = p.act
+  if p.react == PedReact.Call { act = CROWD_PHONE }
+  if p.wait_t > 0.0 and p.speed == 0.0 { act = CROWD_WAIT }
+  if act != p.act_sent {
+    # a change of act with no move still goes in the next delta
+    p.act_sent = act
+    tb_mark(crowd_st.cw_tab, row)
+  }
+  CrowdBody.place(p.uid, p.x, CrowdWorld.ground(p.x, p.z), p.z, p.yaw, p.speed, act, p.lod)
+}
+
+# every ped that is due: a FULL one each tick, a MID one every mid_dt, a FAR one every far_dt
+function cw_move_all(crowd_st: mut CrowdState, dt: float) -> void {
+  let n = tb_len(crowd_st.cw_tab)
+  let mid = crowd_st.cw_cfg.mid_dt
+  let far = crowd_st.cw_cfg.far_dt
+  for i in 0 .. n {
+    let p = crowd_st.cw_tab.rec[i]
+    if p.lod == CROWD_PUPPET { continue }
+    p.acc += dt
+    var period = 0.0
+    if p.lod == CROWD_MID { period = mid }
+    if p.lod == CROWD_FAR { period = far }
+    if p.acc < period { continue }
+    let step = p.acc
+    p.acc = 0.0
+    cw_step(crowd_st, p, i, step)
+  }
+}

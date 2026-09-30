@@ -1,0 +1,9 @@
+# ludic.crowd - the ambient population of a living city: pedestrians spawned around the players in
+# budgets, by the hour and the district, deterministic per cell; simplified by distance (full, mid,
+# far); walking where the nav port says, using scenarios, in groups; reacting as a @Machine and
+# reporting crimes as facts. Uses ludic.base and nothing else.
+package "ludic.crowd"
+version "0.1.0"
+kind source
+# the maps the tests read; a game's own package.ludic names its maps
+maps "tests/maps"

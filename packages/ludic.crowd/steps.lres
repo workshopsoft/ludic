@@ -1,0 +1,22 @@
+# steps.lres - the reaction machine of ludic.crowd; edit it as a graph. A step with no `on` is asked by its
+# guard every reaction pass, the first match in this order, one move a ped a pass. `Recycle` brings a record
+# back to Calm when it returns to the pool.
+alarm { from: PedReact.Calm, to: PedReact.Alert, guard: fn cw_g_alarmed }
+settle { from: PedReact.Alert, to: PedReact.Calm, guard: fn cw_g_settled }
+report { from: PedReact.Alert, to: PedReact.Call, guard: fn cw_g_reports }
+panic { from: PedReact.Alert, to: PedReact.Panic, guard: fn cw_g_panics }
+fight { from: PedReact.Alert, to: PedReact.Fight, guard: fn cw_g_fights }
+cower { from: PedReact.Alert, to: PedReact.Cower, guard: fn cw_g_cowers }
+flee { from: PedReact.Alert, to: PedReact.Flee, guard: fn cw_g_flees }
+called { from: PedReact.Call, to: PedReact.Alert, guard: fn cw_g_call_done }
+winded { from: PedReact.Panic, to: PedReact.Flee, guard: fn cw_g_winded }
+startled { from: PedReact.Flee, to: PedReact.Panic, guard: fn cw_g_startled }
+rested { from: PedReact.Flee, to: PedReact.Alert, guard: fn cw_g_rested }
+steady { from: PedReact.Cower, to: PedReact.Alert, guard: fn cw_g_steady }
+spent { from: PedReact.Fight, to: PedReact.Alert, guard: fn cw_g_spent }
+recycle_alert { from: PedReact.Alert, to: PedReact.Calm, on: "CrowdRecycle" }
+recycle_flee { from: PedReact.Flee, to: PedReact.Calm, on: "CrowdRecycle" }
+recycle_panic { from: PedReact.Panic, to: PedReact.Calm, on: "CrowdRecycle" }
+recycle_cower { from: PedReact.Cower, to: PedReact.Calm, on: "CrowdRecycle" }
+recycle_fight { from: PedReact.Fight, to: PedReact.Calm, on: "CrowdRecycle" }
+recycle_call { from: PedReact.Call, to: PedReact.Calm, on: "CrowdRecycle" }

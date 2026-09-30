@@ -1,0 +1,184 @@
+# react.ludic - fear in, reactions out. A threat raises fear in the peds it reaches; a slow pass sheds fear,
+# lets friends catch it from one another, and tiers everybody by distance within the budgets; the machine
+# moves the reactions; and the reactions' entries do what a ped does when it changes its mind
+
+# something happened at (x, z) (a shot, a blast, a crime): every ped within its radius takes fear by its falloff,
+# its type's fear and its bravery, remembers where it was and what (so it can report a crime), and the
+# number reached is returned. `source` is the game's own subject (the player who did it) and rides along in a
+# report. A kind: a row of CrowdThreats.
+export function crowd_threat(crowd_st: mut CrowdState, kind: int, x: float, z: float, source: int) -> int {
+  if kind < 0 or kind >= CTHR_COUNT { return 0 }
+  let th = CrowdThreats[kind]
+  let slot = crowd_st.cw_th_next
+  crowd_st.cw_th_next = (slot + 1) & 31
+  crowd_st.cw_thr_seq += 1
+  let tid = crowd_st.cw_thr_seq
+  crowd_st.cw_th_id[slot] = tid
+  crowd_st.cw_th_kind[slot] = kind
+  crowd_st.cw_th_reports[slot] = 0
+  crowd_st.cw_th_src[slot] = source
+  crowd_st.cw_th_x[slot] = x
+  crowd_st.cw_th_z[slot] = z
+  let n = tb_within(crowd_st.cw_tab, crowd_st.cw_grid, x, z, th.radius, -1, 0, crowd_st.cw_rows)
+  var hit = 0
+  for k in 0 .. n {
+    let p = crowd_st.cw_tab.rec[crowd_st.cw_rows[k]]
+    if p.lod == CROWD_PUPPET { continue }
+    let dx = p.x - x
+    let dz = p.z - z
+    let d = Math.sqrt(dx * dx + dz * dz)
+    if th.needs_sight and not CrowdWorld.clear(p.x, p.z, x, z) { continue }
+    var amount = th.fear
+    if th.falloff == "linear" { amount = amount * (1.0 - d / th.radius) }
+    let ty = PedTypes[p.type]
+    amount = amount * ty.fear * (1.0 - 0.6 * ty.bravery)
+    if amount <= 0.001 { continue }
+    p.fear = Math.min(1.0, p.fear + amount)
+    p.threat_x = x
+    p.threat_z = z
+    p.thr = slot
+    p.thr_id = tid
+    hit += 1
+  }
+  let f = cw_fact(crowd_st, CROWD_THREAT, source)
+  f.crime = th.crime
+  f.count = hit
+  f.x = x
+  f.z = z
+  return hit
+}
+
+# one ped scared directly (a bump, a shove), by `amount` from (x, z)
+export function crowd_scare(crowd_st: mut CrowdState, uid: int, amount: float, x: float, z: float) -> bool {
+  let hd = imap_get(crowd_st.cw_live, uid, -1)
+  let row = tb_row(crowd_st.cw_tab, hd)
+  if row < 0 { return false }
+  let p = crowd_st.cw_tab.rec[row]
+  if p.lod == CROWD_PUPPET { return false }
+  p.fear = Math.min(1.0, p.fear + amount)
+  p.threat_x = x
+  p.threat_z = z
+  return true
+}
+
+# how much a crime at (x, z) is seen: the weights of the peds near enough with a clear line, up to 12 of them,
+# the nearest first in no promise. A cowering ped has its eyes shut
+export function crowd_witness_weight(crowd_st: mut CrowdState, x: float, z: float) -> float {
+  let n = tb_within(crowd_st.cw_tab, crowd_st.cw_grid, x, z, crowd_st.cw_cfg.witness_r, -1, 0, crowd_st.cw_rows)
+  var w = 0.0
+  var asked = 0
+  for k in 0 .. n {
+    let p = crowd_st.cw_tab.rec[crowd_st.cw_rows[k]]
+    if p.react == PedReact.Cower or p.lod == CROWD_FAR { continue }
+    if asked >= 12 { break }
+    asked += 1
+    if CrowdWorld.clear(p.x, p.z, x, z) { w += PedTypes[p.type].witness }
+  }
+  return w
+}
+
+# the answer a ludic.wanted port wants: did somebody see
+export function crowd_witnessed(crowd_st: mut CrowdState, x: float, z: float) -> bool {
+  return crowd_witness_weight(crowd_st, x, z) >= crowd_st.cw_cfg.witness_need
+}
+
+# the slow pass: tiers (inside the budgets), fear shed, friends' fear shared, the clock of each reaction.
+# `dt` seconds since the last
+function cw_slow_pass(crowd_st: mut CrowdState, dt: float) -> void {
+  let c = crowd_st.cw_cfg
+  var nf = 0
+  var nm = 0
+  var nfar = 0
+  let n = tb_len(crowd_st.cw_tab)
+  let full = crowd_st.cw_lod_full * crowd_st.cw_lod_full
+  let mid = crowd_st.cw_lod_mid * crowd_st.cw_lod_mid
+  let decay = c.fear_decay * dt
+  for i in 0 .. n {
+    let p = crowd_st.cw_tab.rec[i]
+    if p.lod == CROWD_PUPPET { continue }
+    let d2 = cw_nearest_player2(crowd_st, p.x, p.z)
+    p.near = Math.sqrt(d2)
+    var lod = CROWD_FAR
+    if d2 < full { lod = CROWD_FULL } else if d2 < mid { lod = CROWD_MID }
+    if lod != p.lod {
+      p.lod = lod
+      p.repath = 0.0
+    }
+    if lod == CROWD_FULL { nf += 1 } else if lod == CROWD_MID { nm += 1 } else { nfar += 1 }
+    p.react_t += dt
+    if p.fear > 0.0 { p.fear = Math.max(0.0, p.fear - decay) }
+    if p.lead >= 0 {
+      let lrow = tb_row(crowd_st.cw_tab, p.lead)
+      if lrow >= 0 {
+        let l = crowd_st.cw_tab.rec[lrow]
+        let dx = l.x - p.x
+        let dz = l.z - p.z
+        if dx * dx + dz * dz < 144.0 and l.fear * 0.85 > p.fear {
+          p.fear = l.fear * 0.85
+          p.threat_x = l.threat_x
+          p.threat_z = l.threat_z
+          p.thr = l.thr
+          p.thr_id = l.thr_id
+        }
+      }
+    }
+  }
+  crowd_st.cw_lod_n[CROWD_FULL] = nf
+  crowd_st.cw_lod_n[CROWD_MID] = nm
+  crowd_st.cw_lod_n[CROWD_FAR] = nfar
+  # the budgets: a tier over its limit draws its radius in, under it lets it out again, a little each pass
+  if nf > c.max_full { crowd_st.cw_lod_full = Math.max(4.0, crowd_st.cw_lod_full * 0.95) } else if crowd_st.cw_lod_full < c.full_r {
+    crowd_st.cw_lod_full = Math.min(c.full_r, crowd_st.cw_lod_full * 1.03 + 0.1)
+  }
+  if nm > c.max_mid { crowd_st.cw_lod_mid = Math.max(crowd_st.cw_lod_full + 1.0, crowd_st.cw_lod_mid * 0.95) } else if crowd_st.cw_lod_mid < c.mid_r {
+    crowd_st.cw_lod_mid = Math.min(c.mid_r, crowd_st.cw_lod_mid * 1.03 + 0.1)
+  }
+  if crowd_st.cw_lod_mid < crowd_st.cw_lod_full + 1.0 { crowd_st.cw_lod_mid = crowd_st.cw_lod_full + 1.0 }
+}
+
+# what a ped does on changing its mind: a fact; a runner lets go of its scenario and sets off; a caller's call
+function cw_react_entries(crowd_st: mut CrowdState) -> void {
+  let n = tb_len(crowd_st.cw_tab)
+  for i in 0 .. n {
+    let p = crowd_st.cw_tab.rec[i]
+    if p.lod == CROWD_PUPPET { continue }
+    let now = int(p.react)
+    if now == p.last_react { continue }
+    let f = cw_fact(crowd_st, CROWD_REACTED, p.uid)
+    f.type = p.type
+    f.from = p.last_react
+    f.to = now
+    f.x = p.x
+    f.z = p.z
+    p.last_react = now
+    p.react_t = 0.0
+    tb_mark(crowd_st.cw_tab, i)
+    if p.react == PedReact.Flee or p.react == PedReact.Panic or p.react == PedReact.Fight or p.react == PedReact.Cower {
+      cw_leave_scenario(crowd_st, p)
+      p.act = CROWD_WALK
+      p.has_dest = false
+      p.wait_t = 0.0
+      p.repath = 0.0
+      p.act_t = 0.0
+      p.hit_t = 0.0
+    }
+    if p.react == PedReact.Call {
+      p.called = true
+      if p.thr >= 0 and crowd_st.cw_th_id[p.thr] == p.thr_id {
+        # the event's calls are counted as they are made: a ped that phoned when the event had its calls already (many
+        # decided in one pass) phones for nothing, and no fact is made
+        let k = crowd_st.cw_th_kind[p.thr]
+        if k >= 0 and k < CTHR_COUNT and crowd_st.cw_th_reports[p.thr] < CrowdThreats[k].max_reports {
+          crowd_st.cw_th_reports[p.thr] += 1
+          let r = cw_fact(crowd_st, CROWD_REPORT, p.uid)
+          r.crime = CrowdThreats[k].crime
+          r.from = crowd_st.cw_th_src[p.thr]
+          r.weight = PedTypes[p.type].witness
+          r.x = crowd_st.cw_th_x[p.thr]
+          r.z = crowd_st.cw_th_z[p.thr]
+          r.type = p.type
+        }
+      }
+    }
+  }
+}

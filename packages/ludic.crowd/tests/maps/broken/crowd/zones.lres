@@ -1,0 +1,2 @@
+thin { pts: [{ x: 0.0, z: 0.0 }, { x: 10.0, z: 0.0 }], density: [{ hour: 0.0, value: 10.0 }], mix: [{ ped: PEDT_COMMUTER, weight: 1.0 }] }
+ok { pts: [{ x: 0.0, z: 0.0 }, { x: 100.0, z: 0.0 }, { x: 100.0, z: 100.0 }], density: [{ hour: 0.0, value: 10.0 }], mix: [{ ped: PEDT_COMMUTER, weight: 1.0 }] }

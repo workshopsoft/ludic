@@ -1,0 +1,3 @@
+commuter { look: PEDL_BODY, schedule: PEDS_OFFICE, civic: 0.9, witness: 1.0, on_panic: "flee", carry: [{ item: "phone", chance: 1.0 }, { item: "cash", chance: 0.5, min: 5, max: 50 }] }
+shopper { look: PEDL_BODY, schedule: PEDS_STROLLER, group_chance: 0.5, group_max: 3, on_panic: "cower", civic: 0.0 }
+jogger { look: PEDL_RUNNER, schedule: PEDS_STROLLER, walk_speed: 2.6, run_speed: 6.0, bravery: 0.8, on_panic: "fight", civic: 0.0, witness: 0.5, fight_s: 25.0 }

@@ -1,0 +1,32 @@
+# tick.ludic - a tick: the players, the passes at their own rates (spawn and cull, reactions, the traffic
+# estimate), the machine, and every ped that is due to step
+
+export function crowd_tick(crowd_st: mut CrowdState, crowd_steps_m: mut CrowdStepsMachine, t: Tick) -> void {
+  crowd_st.cw_time += t.dt
+  crowd_st.cw_frame += 1
+  if crowd_st.cw_role == CROWD_CLIENT {
+    cw_puppet_tick(crowd_st, t.dt)
+    return
+  }
+  cw_sense(crowd_st)
+  crowd_st.cw_spawn_t += t.dt
+  if crowd_st.cw_spawn_t >= crowd_st.cw_cfg.spawn_dt {
+    crowd_st.cw_spawn_t = 0.0
+    cw_spawn_pass(crowd_st)
+    cw_cull_pass(crowd_st)
+  }
+  crowd_st.cw_react_t += t.dt
+  if crowd_st.cw_react_t >= crowd_st.cw_cfg.react_dt {
+    let dt = crowd_st.cw_react_t
+    crowd_st.cw_react_t = 0.0
+    cw_slow_pass(crowd_st, dt)
+    crowd_steps_tick(crowd_steps_m, crowd_st)
+    cw_react_entries(crowd_st)
+  }
+  crowd_st.cw_traffic_t += t.dt
+  if crowd_st.cw_traffic_t >= 1.0 {
+    crowd_st.cw_traffic_t = 0.0
+    cw_traffic_pass(crowd_st)
+  }
+  cw_move_all(crowd_st, t.dt)
+}

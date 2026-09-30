@@ -1,0 +1,14 @@
+# a downtown square with a park cut into it: the park's priority wins where they overlap, and its people are joggers
+downtown {
+  pts: [{ x: -300.0, z: -300.0 }, { x: 300.0, z: -300.0 }, { x: 300.0, z: 300.0 }, { x: -300.0, z: 300.0 }]
+  density: [{ hour: 0.0, value: 4.0 }, { hour: 8.0, value: 60.0 }, { hour: 18.0, value: 80.0 }]
+  traffic: [{ hour: 0.0, value: 20.0 }, { hour: 12.0, value: 100.0 }]
+  mix: [{ ped: PEDT_COMMUTER, weight: 3.0 }, { ped: PEDT_SHOPPER, weight: 2.0 }]
+  priority: 1
+}
+park {
+  pts: [{ x: -60.0, z: -60.0 }, { x: 60.0, z: -60.0 }, { x: 60.0, z: 60.0 }, { x: -60.0, z: 60.0 }]
+  density: [{ hour: 0.0, value: 10.0 }, { hour: 12.0, value: 30.0 }]
+  mix: [{ ped: PEDT_JOGGER, weight: 1.0 }]
+  priority: 2
+}

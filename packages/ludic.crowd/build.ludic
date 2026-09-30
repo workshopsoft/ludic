@@ -1,0 +1,336 @@
+# build.ludic - the tables a game fills, flattened into lists the tick reads without looking at a record:
+# schedules and types once, and a map's zones and scenarios into the indexes that answer "which zone is here"
+# and "which scenario is near" in a few list reads
+
+export const CROWD_TALK: int = 9         # at a scenario, talking
+
+const CW_ZCELL: float = 64.0             # the zone index's cell
+
+function cw_act_code(s: string) -> int {
+  if s == "stand" { return CROWD_STAND }
+  if s == "sit" { return CROWD_SIT }
+  if s == "shop" { return CROWD_SHOP }
+  if s == "work" { return CROWD_WORK }
+  if s == "commute" { return CROWD_COMMUTE }
+  if s == "use" { return CROWD_USE }
+  if s == "wait" { return CROWD_WAIT }
+  if s == "talk" { return CROWD_TALK }
+  return CROWD_WALK
+}
+
+# a tag's place in the interned list; it is added when `make`, else -1 for one nothing has
+function cw_tag(crowd_st: mut CrowdState, tag: string, make: bool) -> int {
+  if tag == "" { return -1 }
+  for i in 0 .. len(crowd_st.cw_tags) { if crowd_st.cw_tags[i] == tag { return i } }
+  if not make { return -1 }
+  push(crowd_st.cw_tags, tag)
+  return len(crowd_st.cw_tags) - 1
+}
+
+# the game's schedules and types, read once (at reset)
+function cw_prepare_static(crowd_st: mut CrowdState) -> void {
+  List.clear(crowd_st.cw_sl_from)
+  List.clear(crowd_st.cw_sl_to)
+  List.clear(crowd_st.cw_sl_act)
+  List.clear(crowd_st.cw_sl_tag)
+  List.clear(crowd_st.cw_sl_w)
+  List.clear(crowd_st.cw_sl_min)
+  List.clear(crowd_st.cw_sl_max)
+  List.clear(crowd_st.cw_sch0)
+  List.clear(crowd_st.cw_schn)
+  List.clear(crowd_st.cw_tags)
+  for s in 0 .. PEDS_COUNT {
+    push(crowd_st.cw_sch0, len(crowd_st.cw_sl_from))
+    let sl = PedSchedules[s].slots
+    push(crowd_st.cw_schn, len(sl))
+    for i in 0 .. len(sl) {
+      push(crowd_st.cw_sl_from, sl[i].from)
+      push(crowd_st.cw_sl_to, sl[i].to)
+      push(crowd_st.cw_sl_act, cw_act_code(sl[i].act))
+      push(crowd_st.cw_sl_tag, cw_tag(crowd_st, sl[i].anchor, true))
+      push(crowd_st.cw_sl_w, sl[i].weight)
+      push(crowd_st.cw_sl_min, sl[i].min_s)
+      push(crowd_st.cw_sl_max, sl[i].max_s)
+    }
+  }
+  List.clear(crowd_st.cw_ty_panic)
+  for t in 0 .. PEDT_COUNT {
+    let p = PedTypes[t].on_panic
+    var c = 0
+    if p == "cower" { c = 1 }
+    if p == "fight" { c = 2 }
+    if p == "ignore" { c = 3 }
+    push(crowd_st.cw_ty_panic, c)
+  }
+}
+
+function cw_clear_map(crowd_st: mut CrowdState) -> void {
+  crowd_st.cw_zn = 0
+  List.clear(crowd_st.cw_zn_key)
+  List.clear(crowd_st.cw_zn_prio)
+  List.clear(crowd_st.cw_zn_p0)
+  List.clear(crowd_st.cw_zn_pn)
+  List.clear(crowd_st.cw_zn_minx)
+  List.clear(crowd_st.cw_zn_minz)
+  List.clear(crowd_st.cw_zn_maxx)
+  List.clear(crowd_st.cw_zn_maxz)
+  List.clear(crowd_st.cw_zn_d0)
+  List.clear(crowd_st.cw_zn_dn)
+  List.clear(crowd_st.cw_zn_t0)
+  List.clear(crowd_st.cw_zn_tn)
+  List.clear(crowd_st.cw_zn_m0)
+  List.clear(crowd_st.cw_zn_mn)
+  List.clear(crowd_st.cw_zn_mtot)
+  List.clear(crowd_st.cw_zn_gavg)
+  List.clear(crowd_st.cw_zp_x)
+  List.clear(crowd_st.cw_zp_z)
+  List.clear(crowd_st.cw_zc_h)
+  List.clear(crowd_st.cw_zc_v)
+  List.clear(crowd_st.cw_zm_ped)
+  List.clear(crowd_st.cw_zm_w)
+  imap_clear(crowd_st.cw_zi_head)
+  List.clear(crowd_st.cw_ze_next)
+  List.clear(crowd_st.cw_ze_zone)
+  crowd_st.cw_sn = 0
+  List.clear(crowd_st.cw_sn_key)
+  List.clear(crowd_st.cw_sn_x)
+  List.clear(crowd_st.cw_sn_z)
+  List.clear(crowd_st.cw_sn_r)
+  List.clear(crowd_st.cw_sn_yaw)
+  List.clear(crowd_st.cw_sn_tag)
+  List.clear(crowd_st.cw_sn_act)
+  List.clear(crowd_st.cw_sn_cap)
+  List.clear(crowd_st.cw_sn_use)
+  List.clear(crowd_st.cw_sn_from)
+  List.clear(crowd_st.cw_sn_to)
+  List.clear(crowd_st.cw_sn_min)
+  List.clear(crowd_st.cw_sn_max)
+  imap_clear(crowd_st.cw_si_head)
+  List.clear(crowd_st.cw_si_next)
+}
+
+function cw_zone_index(crowd_st: mut CrowdState, z: int) -> void {
+  let x0 = int(Math.floor(crowd_st.cw_zn_minx[z] / CW_ZCELL))
+  let x1 = int(Math.floor(crowd_st.cw_zn_maxx[z] / CW_ZCELL))
+  let z0 = int(Math.floor(crowd_st.cw_zn_minz[z] / CW_ZCELL))
+  let z1 = int(Math.floor(crowd_st.cw_zn_maxz[z] / CW_ZCELL))
+  for cx in x0 .. x1 + 1 {
+    for cz in z0 .. z1 + 1 {
+      let k = cw_cellkey(cx, cz)
+      let e = len(crowd_st.cw_ze_zone)
+      push(crowd_st.cw_ze_zone, z)
+      push(crowd_st.cw_ze_next, imap_get(crowd_st.cw_zi_head, k, 0))
+      imap_put(crowd_st.cw_zi_head, k, e + 1)
+    }
+  }
+}
+
+# a map's zones and scenarios. False, with crowd_error(), for a zone that cannot be used (fewer than three
+# points, a mix of nothing known); the rest is built anyway. Everybody alive is taken off first: the world
+# under them changed
+export function crowd_build(crowd_st: mut CrowdState, zones: PopulationZones, scenarios: PedScenarios) -> bool {
+  cw_remove_all(crowd_st, CROWD_WHY_RESET)
+  cw_clear_map(crowd_st)
+  crowd_st.cw_err = ""
+  var ok = true
+  for i in 0 .. len(zones.rows) {
+    let zr = zones.rows[i]
+    if len(zr.pts) < 3 {
+      if ok { crowd_st.cw_err = "zone " + zr.key + " has fewer than three points" }
+      ok = false
+      continue
+    }
+    let z = crowd_st.cw_zn
+    crowd_st.cw_zn += 1
+    push(crowd_st.cw_zn_key, zr.key)
+    push(crowd_st.cw_zn_prio, zr.priority)
+    push(crowd_st.cw_zn_p0, len(crowd_st.cw_zp_x))
+    push(crowd_st.cw_zn_pn, len(zr.pts))
+    var minx = zr.pts[0].x
+    var maxx = minx
+    var minz = zr.pts[0].z
+    var maxz = minz
+    for p in 0 .. len(zr.pts) {
+      push(crowd_st.cw_zp_x, zr.pts[p].x)
+      push(crowd_st.cw_zp_z, zr.pts[p].z)
+      minx = Math.min(minx, zr.pts[p].x)
+      maxx = Math.max(maxx, zr.pts[p].x)
+      minz = Math.min(minz, zr.pts[p].z)
+      maxz = Math.max(maxz, zr.pts[p].z)
+    }
+    push(crowd_st.cw_zn_minx, minx)
+    push(crowd_st.cw_zn_maxx, maxx)
+    push(crowd_st.cw_zn_minz, minz)
+    push(crowd_st.cw_zn_maxz, maxz)
+    push(crowd_st.cw_zn_d0, len(crowd_st.cw_zc_h))
+    push(crowd_st.cw_zn_dn, len(zr.density))
+    for p in 0 .. len(zr.density) {
+      push(crowd_st.cw_zc_h, zr.density[p].hour)
+      push(crowd_st.cw_zc_v, zr.density[p].value)
+    }
+    push(crowd_st.cw_zn_t0, len(crowd_st.cw_zc_h))
+    push(crowd_st.cw_zn_tn, len(zr.traffic))
+    for p in 0 .. len(zr.traffic) {
+      push(crowd_st.cw_zc_h, zr.traffic[p].hour)
+      push(crowd_st.cw_zc_v, zr.traffic[p].value)
+    }
+    push(crowd_st.cw_zn_m0, len(crowd_st.cw_zm_ped))
+    var tot = 0.0
+    var nm = 0
+    for p in 0 .. len(zr.mix) {
+      let t = zr.mix[p].ped
+      if t < 0 or t >= PEDT_COUNT {
+        if ok { crowd_st.cw_err = "zone " + zr.key + " names a ped type that does not exist" }
+        ok = false
+        continue
+      }
+      push(crowd_st.cw_zm_ped, t)
+      push(crowd_st.cw_zm_w, zr.mix[p].weight)
+      tot += zr.mix[p].weight
+      nm += 1
+    }
+    push(crowd_st.cw_zn_mn, nm)
+    push(crowd_st.cw_zn_mtot, tot)
+    var gavg = 1.0
+    if tot > 0.0 {
+      gavg = 0.0
+      for p in 0 .. nm {
+        let ty = PedTypes[crowd_st.cw_zm_ped[crowd_st.cw_zn_m0[z] + p]]
+        gavg += crowd_st.cw_zm_w[crowd_st.cw_zn_m0[z] + p] * (1.0 + ty.group_chance * float(ty.group_max) * 0.5)
+      }
+      gavg = gavg / tot
+    }
+    push(crowd_st.cw_zn_gavg, gavg)
+    cw_zone_index(crowd_st, z)
+  }
+  for i in 0 .. len(scenarios.rows) {
+    let s = scenarios.rows[i]
+    push(crowd_st.cw_sn_key, s.key)
+    push(crowd_st.cw_sn_x, s.x)
+    push(crowd_st.cw_sn_z, s.z)
+    push(crowd_st.cw_sn_r, s.radius)
+    push(crowd_st.cw_sn_yaw, s.yaw * 0.017453292)
+    push(crowd_st.cw_sn_tag, cw_tag(crowd_st, s.tag, true))
+    push(crowd_st.cw_sn_act, cw_act_code(s.act))
+    push(crowd_st.cw_sn_cap, s.capacity)
+    push(crowd_st.cw_sn_use, 0)
+    push(crowd_st.cw_sn_from, s.from)
+    push(crowd_st.cw_sn_to, s.to)
+    push(crowd_st.cw_sn_min, s.min_s)
+    push(crowd_st.cw_sn_max, s.max_s)
+    let k = cw_cellkey(int(Math.floor(s.x / crowd_st.cw_cfg.cell)), int(Math.floor(s.z / crowd_st.cw_cfg.cell)))
+    push(crowd_st.cw_si_next, imap_get(crowd_st.cw_si_head, k, 0))
+    imap_put(crowd_st.cw_si_head, k, i + 1)
+  }
+  crowd_st.cw_sn = len(scenarios.rows)
+  return ok
+}
+
+export function crowd_error(crowd_st: CrowdState) -> string { return crowd_st.cw_err }
+
+# ---- queries ----------------------------------------------------------------------------------
+
+# the zone (its index in the map's list, in file order among the usable ones) at a point, the highest
+# priority winning, or -1
+export function crowd_zone_at(crowd_st: CrowdState, x: float, z: float) -> int {
+  let k = cw_cellkey(int(Math.floor(x / CW_ZCELL)), int(Math.floor(z / CW_ZCELL)))
+  var e = imap_get(crowd_st.cw_zi_head, k, 0)
+  var best = -1
+  var bp = -1
+  while e > 0 {
+    let zi = crowd_st.cw_ze_zone[e - 1]
+    if crowd_st.cw_zn_prio[zi] >= bp and x >= crowd_st.cw_zn_minx[zi] and x <= crowd_st.cw_zn_maxx[zi] and z >= crowd_st.cw_zn_minz[zi] and z <= crowd_st.cw_zn_maxz[zi] {
+      if cw_in_poly(crowd_st.cw_zp_x, crowd_st.cw_zp_z, crowd_st.cw_zn_p0[zi], crowd_st.cw_zn_pn[zi], x, z) {
+        best = zi
+        bp = crowd_st.cw_zn_prio[zi]
+      }
+    }
+    e = crowd_st.cw_ze_next[e - 1]
+  }
+  return best
+}
+
+export function crowd_zone_count(crowd_st: CrowdState) -> int { return crowd_st.cw_zn }
+export function crowd_zone_key(crowd_st: CrowdState, zone: int) -> string {
+  if zone < 0 or zone >= crowd_st.cw_zn { return "" }
+  return crowd_st.cw_zn_key[zone]
+}
+
+# the density (peds a hectare) of a zone at an hour
+export function crowd_zone_density(crowd_st: CrowdState, zone: int, hour: float) -> float {
+  if zone < 0 or zone >= crowd_st.cw_zn { return 0.0 }
+  return cw_curve(crowd_st.cw_zc_h, crowd_st.cw_zc_v, crowd_st.cw_zn_d0[zone], crowd_st.cw_zn_dn[zone], hour)
+}
+
+# the ambient vehicles a square kilometre of a zone asks for at an hour
+export function crowd_zone_traffic(crowd_st: CrowdState, zone: int, hour: float) -> float {
+  if zone < 0 or zone >= crowd_st.cw_zn { return 0.0 }
+  return cw_curve(crowd_st.cw_zc_h, crowd_st.cw_zc_v, crowd_st.cw_zn_t0[zone], crowd_st.cw_zn_tn[zone], hour)
+}
+
+export function crowd_density_at(crowd_st: CrowdState, x: float, z: float, hour: float) -> float {
+  return crowd_zone_density(crowd_st, crowd_zone_at(crowd_st, x, z), hour)
+}
+
+export function crowd_traffic_at(crowd_st: CrowdState, x: float, z: float, hour: float) -> float {
+  return crowd_zone_traffic(crowd_st, crowd_zone_at(crowd_st, x, z), hour)
+}
+
+# a type from a zone's mix by a number in [0, 1), or -1
+function cw_pick_type(crowd_st: CrowdState, zone: int, u: float) -> int {
+  if zone < 0 { return -1 }
+  let n = crowd_st.cw_zn_mn[zone]
+  let tot = crowd_st.cw_zn_mtot[zone]
+  if n == 0 or tot <= 0.0 { return -1 }
+  let o = crowd_st.cw_zn_m0[zone]
+  var acc = 0.0
+  let target = u * tot
+  for i in 0 .. n {
+    acc += crowd_st.cw_zm_w[o + i]
+    if target < acc { return crowd_st.cw_zm_ped[o + i] }
+  }
+  return crowd_st.cw_zm_ped[o + n - 1]
+}
+
+export function crowd_scenario_count(crowd_st: CrowdState) -> int { return crowd_st.cw_sn }
+export function crowd_scenario_key(crowd_st: CrowdState, i: int) -> string {
+  if i < 0 or i >= crowd_st.cw_sn { return "" }
+  return crowd_st.cw_sn_key[i]
+}
+# how many are at scenario i or on their way to it
+export function crowd_scenario_users(crowd_st: CrowdState, i: int) -> int {
+  if i < 0 or i >= crowd_st.cw_sn { return 0 }
+  return crowd_st.cw_sn_use[i]
+}
+
+# the nearest scenario with `tag` within `r` of a point that has room and is open at the hour; -1 none.
+# Looks at the cells round the point and allocates nothing
+function cw_scenario_near(crowd_st: CrowdState, x: float, z: float, r: float, tag: int, hour: float) -> int {
+  if crowd_st.cw_sn == 0 or tag < 0 { return -1 }
+  let cell = crowd_st.cw_cfg.cell
+  let cx0 = int(Math.floor((x - r) / cell))
+  let cx1 = int(Math.floor((x + r) / cell))
+  let cz0 = int(Math.floor((z - r) / cell))
+  let cz1 = int(Math.floor((z + r) / cell))
+  var best = -1
+  var bd = r * r
+  for cx in cx0 .. cx1 + 1 {
+    for cz in cz0 .. cz1 + 1 {
+      var e = imap_get(crowd_st.cw_si_head, cw_cellkey(cx, cz), 0)
+      while e > 0 {
+        let i = e - 1
+        if crowd_st.cw_sn_tag[i] == tag and crowd_st.cw_sn_use[i] < crowd_st.cw_sn_cap[i] and cw_in_hours(hour, crowd_st.cw_sn_from[i], crowd_st.cw_sn_to[i]) {
+          let dx = crowd_st.cw_sn_x[i] - x
+          let dz = crowd_st.cw_sn_z[i] - z
+          let d = dx * dx + dz * dz
+          if d <= bd {
+            bd = d
+            best = i
+          }
+        }
+        e = crowd_st.cw_si_next[i]
+      }
+    }
+  }
+  return best
+}
