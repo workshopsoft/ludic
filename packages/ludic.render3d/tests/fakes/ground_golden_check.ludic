@@ -19,3 +19,47 @@ function gft_subset(render3d_st: Render3dState, n: int, l: GroundSolids) -> int 
   }
   return bad
 }
+
+# whether s is one JSON value with only whitespace after it: every bracket closed by its own kind, strings
+# skipped (Json.parse reads the first value and ignores the rest, which is how a stray brace went unseen)
+function gft_json_whole(s: string) -> bool {
+  let want = new []int
+  var in_str = false
+  var done = false
+  var k = 0
+  while k < Text.length(s) {
+    let c = Text.char_at(s, k)
+    k += 1
+    if in_str {
+      if c == 92 { k += 1 } else if c == 34 { in_str = false }
+      continue
+    }
+    if c == 32 or c == 9 or c == 10 or c == 13 { continue }
+    if done { return false }
+    if c == 34 { in_str = true }
+    else if c == 123 { push(want, 125) }
+    else if c == 91 { push(want, 93) }
+    else if c == 125 or c == 93 {
+      if len(want) == 0 or List.pop(want) != c { return false }
+      done = len(want) == 0
+    }
+  }
+  return done and not in_str
+}
+
+# what is wrong with the golden's text as JSON, "" when nothing: whole, an object, its sections in order
+function gft_golden_fault(text: string) -> string {
+  if text == null { return "the golden could not be read" }
+  if not gft_json_whole(text) { return "not one JSON value with nothing after it" }
+  let v = Json.parse(text)
+  if v == null or Value.kind(v) != 6 { return "not a JSON object" }
+  let keys = ["about", "numbers", "lerp_order", "lerp", "yaw", "hash", "density", "clearings_rule", "clearings", "cover", "solid"]
+  var fault = ""
+  if Value.count(v) != len(keys) { fault = `{Value.count(v)} sections, not {len(keys)}` }
+  for k in 0 .. min(Value.count(v), len(keys)) {
+    if fault == "" and Value.key_at(v, k) != keys[k] { fault = `section {k} is {Value.key_at(v, k)}, not {keys[k]}` }
+  }
+  if fault == "" and Value.count(Value.get(Value.get(v, "solid"), "things")) < 8 { fault = "the solid layer lost its things" }
+  Json.free_all(v)
+  return fault
+}
