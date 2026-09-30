@@ -1,0 +1,91 @@
+# queue.ludic - the queue's own moves: what a building may make, whether an item can go on, taking one
+# off, and working the head down
+
+function prod__makes(kind: int, item: int) -> bool {
+  let its = ProduceBuildings[kind].items
+  if its == null { return false }
+  for i in 0 .. len(its) { if its[i] == item { return true } }
+  return false
+}
+
+# how many of an item are waiting (or being made) for an owner, in every building
+export function produce_queued(produce_st: ProduceState, owner: int, item: int) -> int {
+  var c = 0
+  for i in 0 .. tb_len(produce_st.buildings) {
+    let b = tb_rec(produce_st.buildings, i)
+    if b.owner != owner { continue }
+    for k in 0 .. b.n { if b.q[k] == item { c += 1 } }
+  }
+  return c
+}
+
+export function produce_done(produce_st: ProduceState, owner: int, item: int) -> bool {
+  if owner < 0 or owner >= PRODUCE_OWNERS or item < 0 or item >= PRD_COUNT { return false }
+  return produce_st.done[owner * PRD_COUNT + item] != 0
+}
+
+# 0 when `item` may go on `building`'s queue, else why not (PRODUCE_E_*)
+export function produce_can(produce_st: ProduceState, building: int, item: int) -> int {
+  let b = prod__get(produce_st, building)
+  if b == null { return PRODUCE_E_BUILDING }
+  if item < 0 or item >= PRD_COUNT or not prod__makes(b.kind, item) { return PRODUCE_E_ITEM }
+  if b.n >= Math.min(ProduceBuildings[b.kind].slots, PRODUCE_QUEUE_MAX) { return PRODUCE_E_FULL }
+  let it = ProduceItems[item]
+  if it.needs != null {
+    for i in 0 .. len(it.needs) { if not ProduceWorld.has_tech(b.owner, it.needs[i]) { return PRODUCE_E_TECH } }
+  }
+  if it.unique and (produce_done(produce_st, b.owner, item) or produce_queued(produce_st, b.owner, item) > 0) { return PRODUCE_E_ONCE }
+  if not ProduceBuildings[b.kind].pay_at_start and it.cost_res != null {
+    for i in 0 .. len(it.cost_res) { if ProduceBank.have(b.owner, it.cost_res[i]) < it.cost_n[i] { return PRODUCE_E_COST } }
+  }
+  return PRODUCE_OK
+}
+
+# the head item leaves and the rest move up
+function prod__pop(b: ProdBuilding) -> void {
+  for k in 1 .. b.n { b.q[k - 1] = b.q[k] }
+  b.n -= 1
+  b.progress = 0.0
+  b.started = false
+  b.told = false
+}
+
+function prod__tick(p: mut ProduceState, dt: float) -> void {
+  for i in 0 .. tb_len(p.buildings) {
+    let b = tb_rec(p.buildings, i)
+    let h = tb_handle(p.buildings, i)
+    if b.n == 0 or b.paused { continue }
+    let item = b.q[0]
+    let it = ProduceItems[item]
+    let bk = ProduceBuildings[b.kind]
+    if not b.started {
+      if bk.pay_at_start and not prod__pay(item, b.owner) {
+        if not b.told {
+          b.told = true
+          prod__say(p, PRODUCE_F_BLOCKED, b, h, item, 0, PRODUCE_R_COST, 0)
+        }
+        continue
+      }
+      b.started = true
+      b.told = false
+      prod__say(p, PRODUCE_F_STARTED, b, h, item, 0, 0, 0)
+    }
+    if b.progress < it.time {
+      b.progress += dt * bk.speed * b.speed * ProduceWorld.speed(b.owner, item)
+    }
+    if b.progress < it.time { continue }
+    var why = -1
+    if not ProduceWorld.room(b.owner, it.pop) { why = PRODUCE_R_SUPPLY }
+    else if not ProduceWorld.can_finish(b.id, item) { why = PRODUCE_R_SPACE }
+    if why >= 0 {
+      if not b.told {
+        b.told = true
+        prod__say(p, PRODUCE_F_BLOCKED, b, h, item, 0, why, 0)
+      }
+      continue
+    }
+    if it.unique and b.owner >= 0 and b.owner < PRODUCE_OWNERS { p.done[b.owner * PRD_COUNT + item] = 1 }
+    prod__say(p, PRODUCE_F_COMPLETED, b, h, item, 0, 0, 0)
+    prod__pop(b)
+  }
+}

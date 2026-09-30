@@ -1,0 +1,13 @@
+# system.ludic - production as a system: every queue works its head item down
+export function produce_reset(produce_st: mut ProduceState) -> void { produce__clear(produce_st) }
+
+export function produce_tick(produce_st: mut ProduceState, t: Tick) -> void { prod__tick(produce_st, t.dt) }
+
+export function produce_system() -> System {
+  let s = system_new("produce", PH_SIMULATE)
+  s.reset = fn produce_reset
+  s.tick = fn produce_tick
+  s.save = fn produce__save
+  s.load = fn produce__load
+  return s
+}

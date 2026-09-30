@@ -1,0 +1,86 @@
+# state.ludic - the buildings that make things, each with its queue; what each owner has finished;
+# the facts
+export property ProdBuilding {
+  id: int = -1                # the game's id for the building
+  kind: int = 0
+  owner: int = 0
+  q: []int = null             # the queue's items, `n` of them first: the head is being made
+  n: int = 0
+  progress: float = 0.0       # seconds into the head item
+  started: bool = false       # the head has been paid for (at its start) and is being worked
+  told: bool = false          # a block already said
+  paused: bool = false
+  speed: float = 1.0          # a multiple on top of the kind's
+  rally: int = 0              # PRODUCE_RALLY_*
+  rx: float = 0.0
+  rz: float = 0.0
+  target: int = -1
+}
+
+export state ProduceState {
+  buildings: Table<ProdBuilding> = prod__buildings_new()
+  by_id: IntMap = imap_new()                        # the game's id to the building's handle
+  done: []int = prod__ints(PRODUCE_OWNERS * PRD_COUNT)   # 1 where an owner has finished an item
+  facts: Queue<ProduceFact> = prod__facts_new()
+}
+
+function prod__buildings_new() -> Table<ProdBuilding> { return table_new(0, 0) }
+function prod__facts_new() -> Queue<ProduceFact> { return queue_new("produce.facts") }
+function prod__ints(n: int) -> []int {
+  let out = new []int
+  for i in 0 .. n { push(out, 0) }
+  return out
+}
+
+export function produce_facts(produce_st: ProduceState) -> Queue<ProduceFact> { return produce_st.facts }
+
+function prod__say(p: ProduceState, what: int, b: ProdBuilding, h: int, item: int, slot: int, reason: int, pct: int) -> void {
+  var f = q_rec(p.facts)
+  if f == null {
+    @alloc_ok("past the ring: more facts in a frame than its records, then kept in it")
+    f = new ProduceFact
+    q_ring_add(p.facts, f)
+  }
+  f.what = what
+  f.building = h
+  f.id = b.id
+  f.owner = b.owner
+  f.item = item
+  f.makes = -1
+  f.n = 0
+  if item >= 0 and item < PRD_COUNT {
+    f.makes = ProduceItems[item].makes
+    f.n = ProduceItems[item].n
+  }
+  f.slot = slot
+  f.reason = reason
+  f.pct = pct
+  f.rally = b.rally
+  f.x = b.rx
+  f.z = b.rz
+  f.target = b.target
+  q_push(p.facts, f)
+}
+
+function prod__get(p: ProduceState, h: int) -> ProdBuilding {
+  let r = tb_row(p.buildings, h)
+  if r < 0 { return null }
+  return tb_rec(p.buildings, r)
+}
+
+# the cost of an item as a percentage of each line, handed back; the percentage
+function prod__refund(item: int, owner: int, pct: int) -> int {
+  let it = ProduceItems[item]
+  if it.cost_res == null or pct <= 0 { return 0 }
+  for i in 0 .. len(it.cost_res) { ProduceBank.refund(owner, it.cost_res[i], it.cost_n[i] * pct / 100) }
+  return pct
+}
+
+# the cost out of the bank, all or nothing
+function prod__pay(item: int, owner: int) -> bool {
+  let it = ProduceItems[item]
+  if it.cost_res == null { return true }
+  for i in 0 .. len(it.cost_res) { if ProduceBank.have(owner, it.cost_res[i]) < it.cost_n[i] { return false } }
+  for i in 0 .. len(it.cost_res) { ProduceBank.spend(owner, it.cost_res[i], it.cost_n[i]) }
+  return true
+}

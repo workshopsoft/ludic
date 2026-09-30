@@ -1,0 +1,349 @@
+# produce_test.ludic - queues from a fake bank, tech, supply and room: what a building may make, the
+# queue's limit, costs paid at the queue or at the start, time and speed, supply and space holding a
+# finished item, cancelling and its refunds, upgrades that happen once, rally points, and the save
+import "ludic.produce"
+import "ludic.base"
+program ProduceTest {
+  numbers float
+  property Resource { key: string = "" }
+  registry Resources of Resource as RES
+  def Resources food { }
+  def Resources gold { }
+
+  const TECH_BOWS: int = 3
+
+  def ProduceItems villager { makes: 10, cost_res: [RES_FOOD], cost_n: [50], time: 10.0, pop: 1 }
+  def ProduceItems archer { makes: 11, cost_res: [RES_FOOD, RES_GOLD], cost_n: [25, 45], time: 6.0, pop: 1, needs: [TECH_BOWS], refund_active: 50 }
+  def ProduceItems wheel { makes: 100, class: 1, cost_res: [RES_GOLD], cost_n: [100], time: 20.0, unique: true }
+  def ProduceBuildings hall { items: [PRD_VILLAGER, PRD_WHEEL], slots: 3 }
+  def ProduceBuildings range { items: [PRD_ARCHER], slots: 2, speed: 2.0 }
+  def ProduceBuildings forge { items: [PRD_WHEEL, PRD_VILLAGER], slots: 2, pay_at_start: true }
+
+  state ProduceTestState {
+    food: int = 500
+    gold: int = 500
+    techs: int = 0               # a mask
+    room: bool = true
+    space: bool = true
+    mult: float = 1.0
+  }
+
+  function have(produce_test_st: ProduceTestState, owner: int, res: int) -> int {
+    if res == RES_FOOD { return produce_test_st.food }
+    return produce_test_st.gold
+  }
+  function spend(produce_test_st: mut ProduceTestState, owner: int, res: int, n: int) -> bool {
+    if res == RES_FOOD { produce_test_st.food -= n } else { produce_test_st.gold -= n }
+    return true
+  }
+  function refund(produce_test_st: mut ProduceTestState, owner: int, res: int, n: int) -> void {
+    if res == RES_FOOD { produce_test_st.food += n } else { produce_test_st.gold += n }
+  }
+  function has_tech(produce_test_st: ProduceTestState, owner: int, tech: int) -> bool { return (produce_test_st.techs & (1 << tech)) != 0 }
+  function room(produce_test_st: ProduceTestState, owner: int, pop: int) -> bool { return produce_test_st.room or pop == 0 }
+  function can_finish(produce_test_st: ProduceTestState, id: int, item: int) -> bool { return produce_test_st.space }
+  function speed(produce_test_st: ProduceTestState, owner: int, item: int) -> float { return produce_test_st.mult }
+  bind ProduceBank { have: fn have, spend: fn spend, refund: fn refund }
+  bind ProduceWorld { has_tech: fn has_tech, room: fn room, can_finish: fn can_finish, speed: fn speed }
+
+  function fresh(produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) -> void {
+    produce_reset(produce_st)
+    produce_test_st.food = 500
+    produce_test_st.gold = 500
+    produce_test_st.techs = 0
+    produce_test_st.room = true
+    produce_test_st.space = true
+    produce_test_st.mult = 1.0
+  }
+
+  function tick(produce_st: mut ProduceState, dt: float) -> void { produce_tick(produce_st, tick_new(dt, 0, 0.0)) }
+
+  function facts_of(produce_st: ProduceState, what: int) -> int {
+    var n = 0
+    let f = q_drain(produce_facts(produce_st))
+    for i in 0 .. len(f) { if f[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "the registries are the game's, in the order written" {
+    expect_eq(PRD_COUNT, 3)
+    expect_eq(PRB_FORGE, 2)
+    expect(ProduceItems[PRD_WHEEL].unique)
+  }
+
+  test "what a building makes, what it costs, and how many wait" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let hall = produce_add(produce_st, 100, PRB_HALL, 0)
+    expect(hall >= 0)
+    expect_eq(produce_add(produce_st, 100, PRB_HALL, 0), -1)          # the game's id is one building
+    expect_eq(produce_add(produce_st, 101, PRB_HALL, 99), -1)
+    expect_eq(produce_handle_of(produce_st, 100), hall)
+    expect_eq(produce_queue(produce_st, hall, PRD_VILLAGER), PRODUCE_OK)
+    expect_eq(produce_test_st.food, 450)                               # paid as queued
+    expect_eq(produce_queue(produce_st, hall, PRD_ARCHER), PRODUCE_E_ITEM)   # a hall does not make archers
+    expect_eq(produce_queue(produce_st, hall, PRD_VILLAGER), PRODUCE_OK)
+    expect_eq(produce_queue(produce_st, hall, PRD_VILLAGER), PRODUCE_OK)
+    expect_eq(produce_len(produce_st, hall), 3)
+    expect_eq(produce_queue(produce_st, hall, PRD_VILLAGER), PRODUCE_E_FULL)
+    expect_eq(produce_test_st.food, 350)
+    expect_eq(produce_can(produce_st, 99, PRD_VILLAGER), PRODUCE_E_BUILDING)
+    expect_eq(produce_item_at(produce_st, hall, 2), PRD_VILLAGER)
+    expect_eq(produce_item_at(produce_st, hall, 3), -1)
+  }
+
+  test "not enough in the bank: refused, nothing taken, and said" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let hall = produce_add(produce_st, 100, PRB_HALL, 0)
+    produce_test_st.food = 49
+    expect_eq(produce_queue(produce_st, hall, PRD_VILLAGER), PRODUCE_E_COST)
+    expect_eq(produce_test_st.food, 49)
+    let f = q_drain(produce_facts(produce_st))
+    expect_eq(len(f), 1)
+    expect_eq(f[0].what, PRODUCE_F_REJECTED)
+    expect_eq(f[0].reason, PRODUCE_E_COST)
+    expect_eq(f[0].item, PRD_VILLAGER)
+  }
+
+  test "a tech is the game's to say; an upgrade is made once" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let range = produce_add(produce_st, 100, PRB_RANGE, 0)
+    expect_eq(produce_queue(produce_st, range, PRD_ARCHER), PRODUCE_E_TECH)
+    produce_test_st.techs = 8
+    expect_eq(produce_queue(produce_st, range, PRD_ARCHER), PRODUCE_OK)
+    expect_eq(produce_test_st.food, 475)
+    expect_eq(produce_test_st.gold, 455)
+    let hall = produce_add(produce_st, 101, PRB_HALL, 0)
+    let hall2 = produce_add(produce_st, 102, PRB_HALL, 0)
+    let other = produce_add(produce_st, 103, PRB_HALL, 1)
+    expect_eq(produce_queue(produce_st, hall, PRD_WHEEL), PRODUCE_OK)
+    expect_eq(produce_queue(produce_st, hall2, PRD_WHEEL), PRODUCE_E_ONCE)      # already waiting, in another building
+    expect_eq(produce_queue(produce_st, other, PRD_WHEEL), PRODUCE_OK)          # another owner's own
+    expect_eq(produce_queued(produce_st, 0, PRD_WHEEL), 1)
+    tick(produce_st, 21.0)
+    expect(produce_done(produce_st, 0, PRD_WHEEL))
+    expect(not produce_done(produce_st, 2, PRD_WHEEL))
+    expect_eq(produce_queue(produce_st, hall2, PRD_WHEEL), PRODUCE_E_ONCE)      # and once done
+    produce_mark_done(produce_st, 0, PRD_WHEEL, false)
+    expect_eq(produce_queue(produce_st, hall2, PRD_WHEEL), PRODUCE_OK)
+  }
+
+  test "the head item works down in game time; one at a time, in order, each said" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let hall = produce_add(produce_st, 100, PRB_HALL, 3)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    produce_queue(produce_st, hall, PRD_WHEEL)
+    tick(produce_st, 4.0)
+    expect_eq(produce_progress(produce_st, hall), 0.4)
+    expect_eq(produce_remaining(produce_st, hall), 6.0)
+    tick(produce_st, 6.0)
+    expect_eq(produce_len(produce_st, hall), 1)
+    expect_eq(produce_item_at(produce_st, hall, 0), PRD_WHEEL)
+    expect_eq(produce_progress(produce_st, hall), 0.0)
+    let f = q_drain(produce_facts(produce_st))
+    expect_eq(f[0].what, PRODUCE_F_QUEUED)
+    expect_eq(f[0].slot, 0)
+    expect_eq(f[1].what, PRODUCE_F_QUEUED)
+    expect_eq(f[1].slot, 1)
+    expect_eq(f[2].what, PRODUCE_F_STARTED)
+    expect_eq(f[3].what, PRODUCE_F_COMPLETED)
+    expect_eq(f[3].makes, 10)
+    expect_eq(f[3].n, 1)
+    expect_eq(f[3].owner, 3)
+    expect_eq(f[3].id, 100)
+    expect_eq(f[3].building, hall)
+    tick(produce_st, 0.1)
+    let g = q_drain(produce_facts(produce_st))
+    expect_eq(g[0].what, PRODUCE_F_STARTED)
+    expect_eq(g[0].item, PRD_WHEEL)
+  }
+
+  test "speed: the kind's, the building's, and the owner's techs" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    produce_test_st.techs = 8
+    let range = produce_add(produce_st, 100, PRB_RANGE, 0)      # speed 2
+    produce_queue(produce_st, range, PRD_ARCHER)                # 6 seconds
+    tick(produce_st, 1.0)
+    expect_eq(produce_progress(produce_st, range), 2.0 / 6.0)
+    produce_test_st.mult = 1.5
+    expect(produce_set_speed(produce_st, range, 2.0))
+    tick(produce_st, 0.5)                                       # 2 * 2 * 1.5 = 6 a second
+    expect_eq(produce_progress(produce_st, range), 5.0 / 6.0)
+    expect_eq(produce_remaining(produce_st, range), 1.0 / 6.0)
+    expect(produce_pause(produce_st, range, true))
+    tick(produce_st, 5.0)
+    expect_eq(produce_len(produce_st, range), 1)
+    expect(produce_pause(produce_st, range, false))
+    tick(produce_st, 0.5)
+    expect_eq(produce_len(produce_st, range), 0)
+  }
+
+  test "no room in the supply: finished and held until there is, said once" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let hall = produce_add(produce_st, 100, PRB_HALL, 0)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    produce_test_st.room = false
+    tick(produce_st, 11.0)
+    tick(produce_st, 1.0)
+    tick(produce_st, 1.0)
+    expect_eq(produce_len(produce_st, hall), 1)
+    expect_eq(produce_progress(produce_st, hall), 1.0)
+    let f = q_drain(produce_facts(produce_st))
+    var blocked = 0
+    for i in 0 .. len(f) {
+      if f[i].what == PRODUCE_F_BLOCKED {
+        blocked += 1
+        expect_eq(f[i].reason, PRODUCE_R_SUPPLY)
+      }
+    }
+    expect_eq(blocked, 1)
+    produce_test_st.room = true
+    tick(produce_st, 0.1)
+    expect_eq(produce_len(produce_st, hall), 0)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    produce_test_st.space = false
+    tick(produce_st, 12.0)
+    expect_eq(produce_len(produce_st, hall), 1)
+    let g = q_drain(produce_facts(produce_st))
+    expect_eq(g[len(g) - 1].what, PRODUCE_F_BLOCKED)
+    expect_eq(g[len(g) - 1].reason, PRODUCE_R_SPACE)
+  }
+
+  test "cancelling gives back the percentages: waiting, being made, the last one in" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    produce_test_st.techs = 8
+    let range = produce_add(produce_st, 100, PRB_RANGE, 0)
+    produce_queue(produce_st, range, PRD_ARCHER)
+    produce_queue(produce_st, range, PRD_ARCHER)
+    expect_eq(produce_test_st.gold, 410)
+    tick(produce_st, 0.1)
+    q_drain(produce_facts(produce_st))
+    expect(produce_cancel(produce_st, range, 1))                 # waiting: all of it
+    expect_eq(produce_test_st.gold, 455)
+    expect_eq(produce_test_st.food, 475)
+    let f = q_drain(produce_facts(produce_st))
+    expect_eq(f[0].what, PRODUCE_F_CANCELLED)
+    expect_eq(f[0].pct, 100)
+    expect(produce_cancel(produce_st, range, 0))                 # being made: half
+    expect_eq(produce_test_st.gold, 477)                          # 45 * 50 / 100 = 22
+    expect_eq(produce_test_st.food, 487)
+    let g = q_drain(produce_facts(produce_st))
+    expect_eq(g[0].pct, 50)
+    expect_eq(produce_len(produce_st, range), 0)
+    expect(not produce_cancel(produce_st, range, 0))
+    expect(not produce_cancel_last(produce_st, range))
+    expect_eq(produce_progress(produce_st, range), 0.0)
+  }
+
+  test "cancelling in the middle closes the queue up; clearing empties it" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let hall = produce_add(produce_st, 100, PRB_HALL, 0)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    produce_queue(produce_st, hall, PRD_WHEEL)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    expect(produce_cancel(produce_st, hall, 1))
+    expect_eq(produce_len(produce_st, hall), 2)
+    expect_eq(produce_item_at(produce_st, hall, 1), PRD_VILLAGER)
+    expect_eq(produce_test_st.gold, 500)
+    expect(produce_cancel_last(produce_st, hall))
+    expect_eq(produce_len(produce_st, hall), 1)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    produce_clear(produce_st, hall)
+    expect_eq(produce_len(produce_st, hall), 0)
+    expect_eq(produce_test_st.food, 500)
+  }
+
+  test "a building that pays at the start: nothing taken queueing, taken at the front, held until it can" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let forge = produce_add(produce_st, 100, PRB_FORGE, 0)
+    produce_test_st.gold = 50
+    expect_eq(produce_queue(produce_st, forge, PRD_WHEEL), PRODUCE_OK)      # not charged yet: 100 gold is not there
+    expect_eq(produce_test_st.gold, 50)
+    expect_eq(produce_queue(produce_st, forge, PRD_VILLAGER), PRODUCE_OK)
+    tick(produce_st, 30.0)
+    expect_eq(produce_len(produce_st, forge), 2)
+    expect_eq(produce_progress(produce_st, forge), 0.0)
+    let f = q_drain(produce_facts(produce_st))
+    var blocked = 0
+    for i in 0 .. len(f) { if f[i].what == PRODUCE_F_BLOCKED and f[i].reason == PRODUCE_R_COST { blocked += 1 } }
+    expect_eq(blocked, 1)
+    produce_test_st.gold = 120
+    tick(produce_st, 1.0)
+    expect_eq(produce_test_st.gold, 20)
+    expect_eq(produce_progress(produce_st, forge), 0.05)
+    expect(produce_cancel(produce_st, forge, 1))                              # never paid: nothing back
+    expect_eq(produce_test_st.food, 500)
+    expect(produce_cancel(produce_st, forge, 0))                              # begun and paid: back
+    expect_eq(produce_test_st.gold, 120)
+  }
+
+  test "rally: a point, an entity, none; what is made carries it" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let hall = produce_add(produce_st, 100, PRB_HALL, 0)
+    expect_eq(produce_rally_kind(produce_st, hall), PRODUCE_RALLY_NONE)
+    expect(produce_set_rally(produce_st, hall, 12.5, -3.0))
+    expect_eq(produce_rally_kind(produce_st, hall), PRODUCE_RALLY_POINT)
+    expect_eq(produce_rally_x(produce_st, hall), 12.5)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    tick(produce_st, 10.0)
+    let f = q_drain(produce_facts(produce_st))
+    expect_eq(f[len(f) - 1].what, PRODUCE_F_COMPLETED)
+    expect_eq(f[len(f) - 1].rally, PRODUCE_RALLY_POINT)
+    expect_eq(f[len(f) - 1].z, -3.0)
+    expect(produce_set_rally_target(produce_st, hall, 77, 20.0, 20.0))
+    expect_eq(produce_rally_target(produce_st, hall), 77)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    tick(produce_st, 10.0)
+    let g = q_drain(produce_facts(produce_st))
+    expect_eq(g[len(g) - 1].rally, PRODUCE_RALLY_TARGET)
+    expect_eq(g[len(g) - 1].target, 77)
+    expect(produce_clear_rally(produce_st, hall))
+    expect_eq(produce_rally_kind(produce_st, hall), PRODUCE_RALLY_NONE)
+    expect_eq(produce_rally_target(produce_st, hall), -1)
+    expect(not produce_set_rally(produce_st, 99, 0.0, 0.0))
+  }
+
+  test "a building that goes, and what waits in it" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let hall = produce_add(produce_st, 100, PRB_HALL, 0)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    expect(produce_remove(produce_st, hall, true))
+    expect_eq(produce_test_st.food, 500)
+    expect(not produce_alive(produce_st, hall))
+    expect_eq(produce_handle_of(produce_st, 100), -1)
+    expect(not produce_remove(produce_st, hall, true))
+    let hall2 = produce_add(produce_st, 100, PRB_HALL, 0)                      # the id may come again
+    produce_queue(produce_st, hall2, PRD_VILLAGER)
+    expect(produce_remove(produce_st, hall2, false))
+    expect_eq(produce_test_st.food, 450)
+  }
+
+  test "the save: queues, progress, rally, what is done" (produce_st: mut ProduceState, produce_test_st: mut ProduceTestState) {
+    fresh(produce_st, produce_test_st)
+    let hall = produce_add(produce_st, 100, PRB_HALL, 2)
+    produce_queue(produce_st, hall, PRD_WHEEL)
+    produce_queue(produce_st, hall, PRD_VILLAGER)
+    produce_set_rally(produce_st, hall, 4.0, 5.0)
+    produce_set_speed(produce_st, hall, 1.5)
+    tick(produce_st, 4.0)
+    produce_mark_done(produce_st, 2, PRD_ARCHER, true)
+    let s = produce_system()
+    let text = save_encode(s.save())
+    fresh(produce_st, produce_test_st)
+    expect_eq(produce_buildings(produce_st), 0)
+    s.load(save_decode(text), s.version)
+    let h = produce_handle_of(produce_st, 100)
+    expect(h >= 0)
+    expect_eq(produce_owner_of(produce_st, h), 2)
+    expect_eq(produce_len(produce_st, h), 2)
+    expect_eq(produce_item_at(produce_st, h, 0), PRD_WHEEL)
+    expect_eq(produce_item_at(produce_st, h, 1), PRD_VILLAGER)
+    expect_eq(produce_rally_x(produce_st, h), 4.0)
+    expect(produce_done(produce_st, 2, PRD_ARCHER))
+    expect(not produce_done(produce_st, 0, PRD_ARCHER))
+    expect_eq(produce_progress(produce_st, h), 6.0 / 20.0)
+    expect_eq(facts_of(produce_st, PRODUCE_F_STARTED), 0)            # loading said nothing
+    tick(produce_st, 14.0 / 1.5)
+    expect_eq(produce_item_at(produce_st, h, 0), PRD_VILLAGER)       # the wheel finished right on time
+  }
+}

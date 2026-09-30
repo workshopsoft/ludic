@@ -1,0 +1,18 @@
+# ports.ludic - what production asks the game. Unbound, the owner has every tech, supply for
+# anything, room to spawn, and works at the speed the data says; the bank is required
+export port ProduceWorld {
+  has_tech: fn(int, int) -> bool = fn prod__yes2          # (owner, tech)
+  room: fn(int, int) -> bool = fn prod__yes2              # (owner, pop): supply for it
+  can_finish: fn(int, int) -> bool = fn prod__yes2        # (building id, item): somewhere to put it
+  speed: fn(int, int) -> float = fn prod__one2            # (owner, item): the owner's techs' multiple
+}
+
+function prod__yes2(a: int, b: int) -> bool { return true }
+function prod__one2(a: int, b: int) -> float { return 1.0 }
+
+# the stockpile: (owner, resource) held, and taking and giving back. Required
+export port ProduceBank {
+  have: fn(int, int) -> int
+  spend: fn(int, int, int) -> bool
+  refund: fn(int, int, int) -> void
+}

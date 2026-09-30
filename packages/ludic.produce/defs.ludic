@@ -1,0 +1,72 @@
+# defs.ludic - what can be made and what makes it: a row an item, a row a kind of building. Both are
+# open registries the game fills; a save holds their indexes, so a game that saves appends.
+export const PRODUCE_QUEUE_MAX: int = 16       # the most any building's queue can hold
+export const PRODUCE_OWNERS: int = 16          # owners whose finished upgrades are kept
+
+# something a building can make: a unit, a worker, a research
+export property ProduceItem {
+  key: string = ""
+  @Ref(Units) makes: int = -1                       # what comes out, the game's (a unit kind, an upgrade)
+  class: int = 0                                    # the game's grouping (a tab, units against research)
+  @Range(1, 1000) n: int = 1                        # how many at once
+  @Ref(Resources) cost_res: []int = null            # its cost, side by side with cost_n
+  cost_n: []int = null
+  @Range(0, 100000) @Unit("s") time: float = 10.0   # game seconds at speed 1
+  @Range(0, 1000) pop: int = 0                      # the supply it takes when it comes out
+  @Ref(Techs) needs: []int = null                   # tech the owner must have (the game's ids)
+  unique: bool = false                              # once per owner, an upgrade: refused when done or already waiting
+  @Range(0, 100) @Unit("%") refund_queued: int = 100    # of the cost, back when cancelled while waiting
+  @Range(0, 100) @Unit("%") refund_active: int = 100    # ... when cancelled while being made
+}
+export open registry ProduceItems of ProduceItem as PRD
+
+# a kind of building that makes things
+export property ProduceBuilding {
+  key: string = ""
+  @Ref(ProduceItems) items: []int = null            # what it may make
+  @Range(1, 16) slots: int = 5                      # the queue's length, the one being made included
+  @Range(0, 100) speed: float = 1.0                 # how fast it works, as a multiple
+  pay_at_start: bool = false                        # false: the cost is taken as an item is queued; true: as it reaches the front
+}
+export open registry ProduceBuildings of ProduceBuilding as PRB
+
+# why a queueing is refused (0 is fine)
+export const PRODUCE_OK: int = 0
+export const PRODUCE_E_BUILDING: int = 1    # no such building
+export const PRODUCE_E_ITEM: int = 2        # no such item, or this building does not make it
+export const PRODUCE_E_FULL: int = 3        # the queue is full
+export const PRODUCE_E_TECH: int = 4        # the owner lacks a tech it needs
+export const PRODUCE_E_ONCE: int = 5        # a unique item that is done or already waiting
+export const PRODUCE_E_COST: int = 6        # the bank cannot pay
+
+export const PRODUCE_F_QUEUED: int = 0
+export const PRODUCE_F_STARTED: int = 1     # it reached the front and work began
+export const PRODUCE_F_COMPLETED: int = 2   # make it: `makes` x `n`, at the building, to its rally
+export const PRODUCE_F_CANCELLED: int = 3   # `pct` percent of the cost went back
+export const PRODUCE_F_BLOCKED: int = 4     # finished and held: `reason`
+export const PRODUCE_F_REJECTED: int = 5    # a queueing was refused: `reason`
+
+export const PRODUCE_R_SUPPLY: int = 0      # no room in the owner's supply
+export const PRODUCE_R_SPACE: int = 1       # nowhere to put it
+export const PRODUCE_R_COST: int = 2        # the cost at the start could not be paid
+
+export const PRODUCE_RALLY_NONE: int = 0
+export const PRODUCE_RALLY_POINT: int = 1
+export const PRODUCE_RALLY_TARGET: int = 2   # an entity (a resource, a building): the game sends the new unit to work it
+
+export property ProduceFact {
+  what: int = 0
+  building: int = -1        # the building's handle
+  id: int = -1              # the building's id, the game's
+  owner: int = 0
+  item: int = -1
+  makes: int = -1
+  n: int = 0
+  slot: int = 0
+  reason: int = 0
+  pct: int = 0
+  rally: int = 0            # PRODUCE_RALLY_*
+  x: float = 0.0
+  z: float = 0.0
+  target: int = -1
+}

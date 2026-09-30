@@ -1,0 +1,6 @@
+# ludic.produce - production queues per building: items from data rows with a time, a cost, a supply,
+# a tech; queue limits, rally points, cancelling and refunds as data. Uses ludic.base and nothing
+# else. See README.md.
+package "ludic.produce"
+version "0.1.0"
+kind source

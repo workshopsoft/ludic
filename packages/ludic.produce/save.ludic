@@ -1,0 +1,78 @@
+# save.ludic - each building as a row of ints: [id, kind, owner, n, progress in thousandths, started,
+# paused, rally, rally x, rally z (thousandths), target, speed in thousandths], then its queue,
+# PRODUCE_QUEUE_MAX items (-1 past n); and the list of what each owner has finished as owner * count
+# + item. Kinds and items are registry indexes, so a game that saves appends.
+export const PRODUCE_ROW: int = 12 + PRODUCE_QUEUE_MAX
+
+function prod__milli(v: float) -> int { return int(Math.round(v * 1000.0)) }
+
+@alloc_ok("on a save: the rows written out")
+function produce__save(produce_st: ProduceState) -> Val {
+  let v = Value.object()
+  let rows = new []int
+  for i in 0 .. tb_len(produce_st.buildings) {
+    let b = tb_rec(produce_st.buildings, i)
+    push(rows, b.id)
+    push(rows, b.kind)
+    push(rows, b.owner)
+    push(rows, b.n)
+    push(rows, prod__milli(b.progress))
+    push(rows, prod__flag(b.started))
+    push(rows, prod__flag(b.paused))
+    push(rows, b.rally)
+    push(rows, prod__milli(b.rx))
+    push(rows, prod__milli(b.rz))
+    push(rows, b.target)
+    push(rows, prod__milli(b.speed))
+    for k in 0 .. PRODUCE_QUEUE_MAX { push(rows, b.q[k]) }
+  }
+  sv_put_ints(v, "buildings", rows)
+  let d = new []int
+  for i in 0 .. len(produce_st.done) { if produce_st.done[i] != 0 { push(d, i) } }
+  sv_put_ints(v, "done", d)
+  return v
+}
+
+function prod__flag(b: bool) -> int {
+  if b { return 1 }
+  return 0
+}
+
+function produce__clear(produce_st: mut ProduceState) -> void {
+  produce_st.buildings = prod__buildings_new()
+  imap_clear(produce_st.by_id)
+  for i in 0 .. len(produce_st.done) { produce_st.done[i] = 0 }
+  q_clear(produce_st.facts)
+}
+
+function produce__load(produce_st: mut ProduceState, v: Val, version: int) -> void {
+  produce__clear(produce_st)
+  let rows = sv_ints(v, "buildings")
+  var i = 0
+  while i + PRODUCE_ROW - 1 < len(rows) {
+    let h = produce_add(produce_st, rows[i], rows[i + 1], rows[i + 2])
+    if h >= 0 {
+      let b = tb_rec(produce_st.buildings, tb_row(produce_st.buildings, h))
+      let n = Math.min(rows[i + 3], PRODUCE_QUEUE_MAX)
+      for k in 0 .. n {
+        let item = rows[i + 12 + k]
+        if item >= 0 and item < PRD_COUNT and prod__makes(b.kind, item) {
+          b.q[b.n] = item
+          b.n += 1
+        }
+      }
+      b.progress = float(rows[i + 4]) / 1000.0
+      b.started = rows[i + 5] != 0
+      b.paused = rows[i + 6] != 0
+      b.rally = rows[i + 7]
+      b.rx = float(rows[i + 8]) / 1000.0
+      b.rz = float(rows[i + 9]) / 1000.0
+      b.target = rows[i + 10]
+      b.speed = float(rows[i + 11]) / 1000.0
+      if b.n < rows[i + 3] { b.progress = 0.0 }
+    }
+    i += PRODUCE_ROW
+  }
+  let d = sv_ints(v, "done")
+  for k in 0 .. len(d) { if d[k] >= 0 and d[k] < len(produce_st.done) { produce_st.done[d[k]] = 1 } }
+}

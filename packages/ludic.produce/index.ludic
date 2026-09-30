@@ -1,0 +1,13 @@
+# ludic.produce - what a building can make (ProduceItems, ProduceBuildings), a queue per building that
+# works its head item down in game time, and what it says when one is made. The bank, supply, tech
+# and room to spawn are the game's, asked through ports; making the unit is the game's, told by a fact
+module ludic_produce uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "queue.ludic"
+import "verbs.ludic"
+import "save.ludic"
+import "system.ludic"

@@ -1,0 +1,199 @@
+# verbs.ludic - the buildings the game registers, what it queues and takes off, and the rally. A
+# building is a handle the verb that makes it hands back (-1 stale), or the game's own id
+
+# a building that makes things, of a kind (PRB_*), an owner's; `id` is the game's own for it
+export function produce_add(produce_st: mut ProduceState, id: int, kind: int, owner: int) -> int {
+  if kind < 0 or kind >= PRB_COUNT or owner < 0 or owner >= PRODUCE_OWNERS or imap_get(produce_st.by_id, id, -1) >= 0 { return -1 }
+  let b = new ProdBuilding
+  b.id = id
+  b.kind = kind
+  b.owner = owner
+  b.q = new []int
+  for i in 0 .. PRODUCE_QUEUE_MAX { push(b.q, -1) }
+  let h = tb_add(produce_st.buildings, b)
+  imap_put(produce_st.by_id, id, h)
+  return h
+}
+
+# the building goes: what waits in its queue is given back at each item's own percentage when `refund`
+export function produce_remove(produce_st: mut ProduceState, building: int, refund: bool) -> bool {
+  let b = prod__get(produce_st, building)
+  if b == null { return false }
+  if refund {
+    for k in 0 .. b.n { prod__refund_slot(produce_st, b, building, k) }
+  }
+  imap_del(produce_st.by_id, b.id)
+  return tb_remove(produce_st.buildings, building)
+}
+
+export function produce_handle_of(produce_st: ProduceState, id: int) -> int { return imap_get(produce_st.by_id, id, -1) }
+
+# put an item on a queue. 0, or why not (PRODUCE_E_*, with a REJECTED fact). Pays at once unless its
+# building pays at the start
+export function produce_queue(produce_st: mut ProduceState, building: int, item: int) -> int {
+  let why = produce_can(produce_st, building, item)
+  let b = prod__get(produce_st, building)
+  if why != PRODUCE_OK {
+    if b != null { prod__say(produce_st, PRODUCE_F_REJECTED, b, building, item, 0, why, 0) }
+    return why
+  }
+  if not ProduceBuildings[b.kind].pay_at_start { prod__pay(item, b.owner) }
+  b.q[b.n] = item
+  b.n += 1
+  prod__say(produce_st, PRODUCE_F_QUEUED, b, building, item, b.n - 1, 0, 0)
+  return PRODUCE_OK
+}
+
+# what an item in slot k gets back if it goes: the head's active percentage if it has begun (and, at
+# the start, been paid for), a waiting one's queued percentage, nothing for one not yet paid
+function prod__refund_slot(p: mut ProduceState, b: ProdBuilding, h: int, k: int) -> int {
+  let item = b.q[k]
+  let it = ProduceItems[item]
+  var pct = 0
+  if ProduceBuildings[b.kind].pay_at_start {
+    if k == 0 and b.started { pct = it.refund_active }
+  } else if k == 0 and b.started {
+    pct = it.refund_active
+  } else {
+    pct = it.refund_queued
+  }
+  return prod__refund(item, b.owner, pct)
+}
+
+# take the item in slot `slot` (0 the one being made) off: false when there is none
+export function produce_cancel(produce_st: mut ProduceState, building: int, slot: int) -> bool {
+  let b = prod__get(produce_st, building)
+  if b == null or slot < 0 or slot >= b.n { return false }
+  let item = b.q[slot]
+  let pct = prod__refund_slot(produce_st, b, building, slot)
+  prod__say(produce_st, PRODUCE_F_CANCELLED, b, building, item, slot, 0, pct)
+  if slot == 0 {
+    prod__pop(b)
+  } else {
+    for k in slot + 1 .. b.n { b.q[k - 1] = b.q[k] }
+    b.n -= 1
+  }
+  return true
+}
+
+# the last one in: what a player's right click takes off
+export function produce_cancel_last(produce_st: mut ProduceState, building: int) -> bool {
+  let b = prod__get(produce_st, building)
+  if b == null or b.n == 0 { return false }
+  return produce_cancel(produce_st, building, b.n - 1)
+}
+
+export function produce_clear(produce_st: mut ProduceState, building: int) -> void {
+  while produce_cancel_last(produce_st, building) { }
+}
+
+export function produce_set_rally(produce_st: mut ProduceState, building: int, x: float, z: float) -> bool {
+  let b = prod__get(produce_st, building)
+  if b == null { return false }
+  b.rally = PRODUCE_RALLY_POINT
+  b.rx = x
+  b.rz = z
+  b.target = -1
+  return true
+}
+
+# rally on an entity: the fact carries it, and the game sends what is made to work it
+export function produce_set_rally_target(produce_st: mut ProduceState, building: int, target: int, x: float, z: float) -> bool {
+  let b = prod__get(produce_st, building)
+  if b == null { return false }
+  b.rally = PRODUCE_RALLY_TARGET
+  b.rx = x
+  b.rz = z
+  b.target = target
+  return true
+}
+
+export function produce_clear_rally(produce_st: mut ProduceState, building: int) -> bool {
+  let b = prod__get(produce_st, building)
+  if b == null { return false }
+  b.rally = PRODUCE_RALLY_NONE
+  b.target = -1
+  return true
+}
+
+# a multiple on this building's speed (an aura, a boost); 1.0 is as the data says
+export function produce_set_speed(produce_st: mut ProduceState, building: int, mult: float) -> bool {
+  let b = prod__get(produce_st, building)
+  if b == null { return false }
+  b.speed = Math.max(mult, 0.0)
+  return true
+}
+
+export function produce_pause(produce_st: mut ProduceState, building: int, paused: bool) -> bool {
+  let b = prod__get(produce_st, building)
+  if b == null { return false }
+  b.paused = paused
+  return true
+}
+
+# an upgrade the owner already has (a starting one, a cheat): a unique item is then refused
+export function produce_mark_done(produce_st: mut ProduceState, owner: int, item: int, yes: bool) -> void {
+  if owner < 0 or owner >= PRODUCE_OWNERS or item < 0 or item >= PRD_COUNT { return }
+  if yes { produce_st.done[owner * PRD_COUNT + item] = 1 } else { produce_st.done[owner * PRD_COUNT + item] = 0 }
+}
+
+export function produce_buildings(produce_st: ProduceState) -> int { return tb_len(produce_st.buildings) }
+export function produce_alive(produce_st: ProduceState, building: int) -> bool { return tb_alive(produce_st.buildings, building) }
+
+export function produce_len(produce_st: ProduceState, building: int) -> int {
+  let b = prod__get(produce_st, building)
+  if b == null { return 0 }
+  return b.n
+}
+
+# the item in slot i, -1 none
+export function produce_item_at(produce_st: ProduceState, building: int, i: int) -> int {
+  let b = prod__get(produce_st, building)
+  if b == null or i < 0 or i >= b.n { return -1 }
+  return b.q[i]
+}
+
+# how far through the head item, 0 to 1
+export function produce_progress(produce_st: ProduceState, building: int) -> float {
+  let b = prod__get(produce_st, building)
+  if b == null or b.n == 0 { return 0.0 }
+  let t = ProduceItems[b.q[0]].time
+  if t <= 0.0 { return 1.0 }
+  return Math.clamp(b.progress / t, 0.0, 1.0)
+}
+
+# seconds left on the head item at the speed now, -1 when nothing is being made
+export function produce_remaining(produce_st: ProduceState, building: int) -> float {
+  let b = prod__get(produce_st, building)
+  if b == null or b.n == 0 { return -1.0 }
+  let rate = ProduceBuildings[b.kind].speed * b.speed * ProduceWorld.speed(b.owner, b.q[0])
+  if rate <= 0.0 { return -1.0 }
+  return Math.max(ProduceItems[b.q[0]].time - b.progress, 0.0) / rate
+}
+
+export function produce_rally_kind(produce_st: ProduceState, building: int) -> int {
+  let b = prod__get(produce_st, building)
+  if b == null { return 0 }
+  return b.rally
+}
+export function produce_rally_x(produce_st: ProduceState, building: int) -> float {
+  let b = prod__get(produce_st, building)
+  if b == null { return 0.0 }
+  return b.rx
+}
+export function produce_rally_z(produce_st: ProduceState, building: int) -> float {
+  let b = prod__get(produce_st, building)
+  if b == null { return 0.0 }
+  return b.rz
+}
+export function produce_rally_target(produce_st: ProduceState, building: int) -> int {
+  let b = prod__get(produce_st, building)
+  if b == null { return -1 }
+  return b.target
+}
+
+export function produce_owner_of(produce_st: ProduceState, building: int) -> int {
+  let b = prod__get(produce_st, building)
+  if b == null { return -1 }
+  return b.owner
+}
