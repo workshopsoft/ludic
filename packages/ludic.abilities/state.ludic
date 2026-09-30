@@ -1,0 +1,80 @@
+# state.ludic - the casters (a row each, by a handle the game keeps), what is pending, the dice, the facts
+export const AB_SLOTS: int = 12              # hotbar slots a caster has
+export const AB_IDLE: int = 0
+export const AB_CASTING: int = 1             # winding up
+export const AB_CHANNELLING: int = 2
+
+# an actor that holds abilities. Every list is one place per ability (AB_COUNT), kept by the ability's
+# number while the game runs and by its key in a save
+export property Caster {
+  actor: int = -1
+  persist: bool = true                       # saved (the player's); false for a monster's
+  known: []int = null                        # the level of each (0 not known)
+  cd: []float = null                         # seconds until each may be cast
+  charges: []int = null
+  charge_t: []float = null                   # seconds to the next charge
+  hotbar: []int = null                       # AB_SLOTS abilities, -1 empty
+  gcd: float = 0.0                           # the shared pause
+  phase: int = 0
+  ab: int = -1                               # the ability being cast or channelled
+  lvl: int = 0
+  t: float = 0.0                             # seconds into the wind-up, or left of the channel
+  pulse: float = 0.0                         # seconds to the next channel tick
+  speed: float = 1.0                         # the cast speed it began at
+  tx: float = 0.0
+  tz: float = 0.0
+  target: int = -1
+  paid: bool = false                         # the cost of this cast is paid (refunded if interrupted)
+}
+
+# an effect waiting out its delay
+export property AbilityPending {
+  actor: int = 0
+  ability: int = 0
+  fx: int = 0
+  level: int = 0
+  at: float = 0.0
+  tx: float = 0.0
+  tz: float = 0.0
+  target: int = -1
+}
+
+export state AbilitiesState {
+  ab__tb: Table<Caster> = ab__table()
+  ab__by_actor: IntMap = imap_new()
+  ab__dice: Rng = rng_new(1)
+  ab__pend: []AbilityPending = new []AbilityPending
+  ab__np: int = 0
+  ab__found: []int = new []int               # the actors the world found in a circle, kept
+  ab__q: Queue<AbilityFact> = ab__queue()
+}
+function ab__table() -> Table<Caster> { return table_new(0, 0) }
+function ab__queue() -> Queue<AbilityFact> { return queue_new("abilities.facts") }
+export function abilities_facts(abilities_st: AbilitiesState) -> Queue<AbilityFact> { return abilities_st.ab__q }
+export function abilities_seed(abilities_st: mut AbilitiesState, seed: int) -> void { rng_seed(abilities_st.ab__dice, seed) }
+
+function ab__ok(a: int) -> bool { return a >= 0 and a < ABL_COUNT }
+
+function ab__fact(abilities_st: mut AbilitiesState, what: int, c: Caster, h: int, a: int, why: int) -> AbilityFact {
+  var f = q_rec(abilities_facts(abilities_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new AbilityFact
+    q_ring_add(abilities_facts(abilities_st), f)
+  }
+  f.what = what
+  f.caster = h
+  f.actor = -1
+  if c != null { f.actor = c.actor }
+  f.ability = a
+  f.level = 0
+  if c != null and ab__ok(a) { f.level = c.known[a] }
+  f.target = -1
+  f.why = why
+  f.x = 0.0
+  f.z = 0.0
+  f.kind = 0
+  f.amount = 0.0
+  q_push(abilities_facts(abilities_st), f)
+  return f
+}

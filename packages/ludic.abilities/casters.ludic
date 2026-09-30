@@ -1,0 +1,95 @@
+# casters.ludic - the actors that hold abilities: a row each, found by the game's number for the actor
+function ab__caster(abilities_st: AbilitiesState, h: int) -> Caster {
+  let r = tb_row(abilities_st.ab__tb, h)
+  if r < 0 { return null }
+  return tb_rec(abilities_st.ab__tb, r)
+}
+
+# the handle of an actor's row, or -1
+export function abilities_caster_of(abilities_st: AbilitiesState, actor: int) -> int {
+  let h = imap_get(abilities_st.ab__by_actor, actor, -1)
+  if h < 0 or tb_row(abilities_st.ab__tb, h) < 0 { return -1 }
+  return h
+}
+
+export function abilities_caster_count(abilities_st: AbilitiesState) -> int { return tb_len(abilities_st.ab__tb) }
+
+export function abilities_actor(abilities_st: AbilitiesState, h: int) -> int {
+  let c = ab__caster(abilities_st, h)
+  if c == null { return -1 }
+  return c.actor
+}
+
+# an actor starts to hold abilities: returns its handle (the same one if it already does). `persist`
+# says whether a save keeps it (the player's, not a monster's)
+@alloc_ok("a caster added: an event, not a frame")
+export function abilities_add_caster(abilities_st: mut AbilitiesState, actor: int, persist: bool) -> int {
+  let have = abilities_caster_of(abilities_st, actor)
+  if have >= 0 { return have }
+  let c = new Caster
+  c.actor = actor
+  c.persist = persist
+  c.known = new []int
+  c.cd = new []float
+  c.charges = new []int
+  c.charge_t = new []float
+  c.hotbar = new []int
+  for a in 0 .. ABL_COUNT {
+    push(c.known, 0)
+    push(c.cd, 0.0)
+    push(c.charges, 0)
+    push(c.charge_t, 0.0)
+  }
+  for s in 0 .. AB_SLOTS { push(c.hotbar, -1) }
+  let h = tb_add(abilities_st.ab__tb, c)
+  imap_put(abilities_st.ab__by_actor, actor, h)
+  return h
+}
+
+export function abilities_remove_caster(abilities_st: mut AbilitiesState, h: int) -> bool {
+  let c = ab__caster(abilities_st, h)
+  if c == null { return false }
+  imap_del(abilities_st.ab__by_actor, c.actor)
+  return tb_remove(abilities_st.ab__tb, h)
+}
+
+# queries on a caster
+export function abilities_phase(abilities_st: AbilitiesState, h: int) -> int {
+  let c = ab__caster(abilities_st, h)
+  if c == null { return AB_IDLE }
+  return c.phase
+}
+
+# the ability being cast or channelled, or -1
+export function abilities_active(abilities_st: AbilitiesState, h: int) -> int {
+  let c = ab__caster(abilities_st, h)
+  if c == null or c.phase == AB_IDLE { return -1 }
+  return c.ab
+}
+
+# how far through the wind-up, 0..1 (1 when not casting): a cast bar
+export function abilities_progress(abilities_st: AbilitiesState, h: int) -> float {
+  let c = ab__caster(abilities_st, h)
+  if c == null or c.phase != AB_CASTING { return 1.0 }
+  let total = Abilities[c.ab].cast_time
+  if total <= 0.0 { return 1.0 }
+  return Math.clamp(c.t / total, 0.0, 1.0)
+}
+
+export function abilities_cooldown(abilities_st: AbilitiesState, h: int, a: int) -> float {
+  let c = ab__caster(abilities_st, h)
+  if c == null or not ab__ok(a) { return 0.0 }
+  return c.cd[a]
+}
+
+export function abilities_charges(abilities_st: AbilitiesState, h: int, a: int) -> int {
+  let c = ab__caster(abilities_st, h)
+  if c == null or not ab__ok(a) { return 0 }
+  return c.charges[a]
+}
+
+export function abilities_gcd(abilities_st: AbilitiesState, h: int) -> float {
+  let c = ab__caster(abilities_st, h)
+  if c == null { return 0.0 }
+  return c.gcd
+}

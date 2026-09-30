@@ -1,0 +1,124 @@
+# learn.ludic - what a caster knows and at what level, learning it with points, and the hotbar
+export function abilities_level(abilities_st: AbilitiesState, h: int, a: int) -> int {
+  let c = ab__caster(abilities_st, h)
+  if c == null or not ab__ok(a) { return 0 }
+  return c.known[a]
+}
+
+export function abilities_knows(abilities_st: AbilitiesState, h: int, a: int) -> bool {
+  return abilities_level(abilities_st, h, a) > 0
+}
+
+# the caster's own level a next level of an ability asks for
+export function abilities_req_level(abilities_st: AbilitiesState, h: int, a: int) -> int {
+  if not ab__ok(a) { return 0 }
+  let c = ab__caster(abilities_st, h)
+  var have = 0
+  if c != null { have = c.known[a] }
+  return Abilities[a].req_level + Abilities[a].level_step * have
+}
+
+# why the next level of an ability cannot be learned now (AB_OK when it can); nothing is spent
+export function abilities_can_learn(abilities_st: AbilitiesState, h: int, a: int) -> int {
+  if not ab__ok(a) { return AB_NO_SUCH }
+  let c = ab__caster(abilities_st, h)
+  if c == null { return AB_NO_CASTER }
+  if c.known[a] >= Abilities[a].levels { return AB_MAX_LEVEL }
+  if AbilityWorld.level(c.actor) < abilities_req_level(abilities_st, h, a) { return AB_LEVEL_TOO_LOW }
+  let req = Abilities[a].requires
+  if req != null {
+    for i in 0 .. len(req) {
+      if not ab__ok(req[i]) or c.known[req[i]] < Abilities[a].requires_level { return AB_NEEDS_SKILL }
+    }
+  }
+  if AbilityWorld.points(c.actor) < Abilities[a].learn_cost { return AB_NO_POINTS }
+  return AB_OK
+}
+
+function ab__set_level(abilities_st: mut AbilitiesState, c: Caster, h: int, a: int, level: int) -> void {
+  let before = c.known[a]
+  c.known[a] = level
+  if level > before and Abilities[a].charges > 0 and before == 0 { c.charges[a] = Abilities[a].charges }
+  if level == before { return }
+  if level > 0 {
+    ab__fact(abilities_st, AB_LEARNED, c, h, a, AB_OK)
+  } else {
+    ab__fact(abilities_st, AB_FORGOTTEN, c, h, a, AB_OK)
+    for s in 0 .. AB_SLOTS { if c.hotbar[s] == a { c.hotbar[s] = -1 } }
+  }
+}
+
+# spend the points and raise an ability one level; AB_OK, or why not (and a fact says so)
+export function abilities_learn(abilities_st: mut AbilitiesState, h: int, a: int) -> int {
+  let why = abilities_can_learn(abilities_st, h, a)
+  let c = ab__caster(abilities_st, h)
+  if why != AB_OK {
+    if c != null { ab__fact(abilities_st, AB_REFUSED, c, h, a, why) }
+    return why
+  }
+  if Abilities[a].learn_cost > 0 and not AbilityWorld.spend_points(c.actor, Abilities[a].learn_cost) {
+    ab__fact(abilities_st, AB_REFUSED, c, h, a, AB_NO_POINTS)
+    return AB_NO_POINTS
+  }
+  ab__set_level(abilities_st, c, h, a, c.known[a] + 1)
+  return AB_OK
+}
+
+# set a level outright, free of points and requirements: a quest's reward, a class's start, a monster's kit
+export function abilities_grant(abilities_st: mut AbilitiesState, h: int, a: int, level: int) -> bool {
+  let c = ab__caster(abilities_st, h)
+  if c == null or not ab__ok(a) { return false }
+  var lv = level
+  if lv > Abilities[a].levels { lv = Abilities[a].levels }
+  if lv < 0 { lv = 0 }
+  ab__set_level(abilities_st, c, h, a, lv)
+  return true
+}
+
+export function abilities_forget(abilities_st: mut AbilitiesState, h: int, a: int) -> bool {
+  let c = ab__caster(abilities_st, h)
+  if c == null or not ab__ok(a) or c.known[a] == 0 { return false }
+  ab__set_level(abilities_st, c, h, a, 0)
+  return true
+}
+
+# forget everything and give the points back; returns how many
+export function abilities_respec(abilities_st: mut AbilitiesState, h: int) -> int {
+  let c = ab__caster(abilities_st, h)
+  if c == null { return 0 }
+  var back = 0
+  for a in 0 .. ABL_COUNT {
+    if c.known[a] > 0 {
+      back += Abilities[a].learn_cost * c.known[a]
+      ab__set_level(abilities_st, c, h, a, 0)
+    }
+  }
+  if back > 0 { AbilityWorld.give_points(c.actor, back) }
+  return back
+}
+
+# the hotbar: a known ability in one of AB_SLOTS places
+export function abilities_bind(abilities_st: mut AbilitiesState, h: int, slot: int, a: int) -> int {
+  let c = ab__caster(abilities_st, h)
+  if c == null { return AB_NO_CASTER }
+  if slot < 0 or slot >= AB_SLOTS { return AB_NO_SLOT }
+  if not ab__ok(a) { return AB_NO_SUCH }
+  if c.known[a] == 0 { return AB_NOT_KNOWN }
+  for s in 0 .. AB_SLOTS { if c.hotbar[s] == a { c.hotbar[s] = -1 } }
+  c.hotbar[slot] = a
+  return AB_OK
+}
+
+export function abilities_unbind(abilities_st: mut AbilitiesState, h: int, slot: int) -> bool {
+  let c = ab__caster(abilities_st, h)
+  if c == null or slot < 0 or slot >= AB_SLOTS { return false }
+  c.hotbar[slot] = -1
+  return true
+}
+
+# the ability in a slot, or -1
+export function abilities_slot(abilities_st: AbilitiesState, h: int, slot: int) -> int {
+  let c = ab__caster(abilities_st, h)
+  if c == null or slot < 0 or slot >= AB_SLOTS { return -1 }
+  return c.hotbar[slot]
+}

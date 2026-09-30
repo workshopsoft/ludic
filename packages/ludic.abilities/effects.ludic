@@ -1,0 +1,151 @@
+# effects.ludic - an effect chain landing: who it reaches, the number worked out, what the ports are told
+function ab__fx_count(a: int) -> int {
+  if Abilities[a].effects == null { return 0 }
+  return len(Abilities[a].effects)
+}
+
+# the number an effect deals or gives at a level: base, per level, a share of the caster's stat,
+# varied by the dice, doubled by a crit
+function ab__amount(abilities_st: mut AbilitiesState, actor: int, e: AbilityEffect, level: int) -> float {
+  var v = e.magnitude + e.per_level * float(level - 1)
+  if e.scale_stat >= 0 { v += e.scale * AbilityWorld.stat(actor, e.scale_stat) }
+  if e.variance > 0.0 { v = v * (1.0 + e.variance * (rng_float(abilities_st.ab__dice) * 2.0 - 1.0)) }
+  if e.crit and (e.kind == AB_FX_DAMAGE or e.kind == AB_FX_HEAL) {
+    if rng_float(abilities_st.ab__dice) < AbilityWorld.crit_chance(actor) { v = v * AbilityWorld.crit_mult(actor) }
+  }
+  return v
+}
+
+# the actors an effect reaches, into the state's kept list; returns how many
+@alloc_ok("into the state's kept list: grows to the most actors in one circle")
+function ab__targets(abilities_st: mut AbilitiesState, actor: int, ab: Ability, e: AbilityEffect, tx: float, tz: float, target: int) -> int {
+  let found = abilities_st.ab__found
+  List.clear(found)
+  if e.to == AB_TO_SELF {
+    push(found, actor)
+    return 1
+  }
+  if e.to == AB_TO_TARGET or ab.radius <= 0.0 {
+    if target >= 0 { push(found, target) }
+    return len(found)
+  }
+  var cx = tx
+  var cz = tz
+  if ab.at_caster or ab.target == AB_TARGET_SELF {
+    cx = AbilityWorld.x(actor)
+    cz = AbilityWorld.z(actor)
+  }
+  AbilityWorld.find(cx, cz, ab.radius, found)
+  var i = 0
+  while i < len(found) {
+    let o = found[i]
+    let ally = o == actor or AbilityWorld.allied(actor, o)
+    var keep = true
+    if e.to == AB_TO_ENEMIES and ally { keep = false }
+    if e.to == AB_TO_ALLIES and not ally { keep = false }
+    if keep { i += 1 } else { List.remove_at(found, i) }
+  }
+  return len(found)
+}
+
+function ab__land(abilities_st: mut AbilitiesState, c: Caster, h: int, actor: int, a: int, e: AbilityEffect, level: int, t: int, amount: float, tx: float, tz: float) -> void {
+  if e.kind == AB_FX_DAMAGE {
+    AbilityEffects.damage(t, actor, amount, e.stat)
+  } else if e.kind == AB_FX_HEAL {
+    AbilityEffects.heal(t, actor, amount)
+  } else if e.kind == AB_FX_APPLY {
+    AbilityEffects.apply(t, actor, e.stat, amount, e.duration, e.bonus, e.label)
+  } else if e.kind == AB_FX_RESTORE {
+    AbilityResources.give(t, e.stat, amount)
+  } else if e.kind == AB_FX_DISPEL {
+    AbilityEffects.dispel(t, e.stat)
+  } else if e.kind == AB_FX_PUSH {
+    AbilityEffects.push(t, actor, amount)
+  }
+  let f = ab__fact(abilities_st, AB_EFFECT, c, h, a, AB_OK)
+  f.actor = actor
+  f.level = level
+  f.target = t
+  f.kind = e.kind
+  f.amount = amount
+  f.x = tx
+  f.z = tz
+}
+
+# one link of a chain landing now, for an actor (the caster may have gone since a delayed one was set)
+function ab__apply_fx(abilities_st: mut AbilitiesState, actor: int, a: int, fx: int, level: int, tx: float, tz: float, target: int) -> void {
+  let ab = Abilities[a]
+  let e = ab.effects[fx]
+  if e.chance < 1.0 and rng_float(abilities_st.ab__dice) >= e.chance { return }
+  let h = abilities_caster_of(abilities_st, actor)
+  let c = ab__caster(abilities_st, h)
+  if e.kind == AB_FX_SPAWN {
+    let f = ab__fact(abilities_st, AB_SPAWN, c, h, a, AB_OK)
+    f.actor = actor
+    f.level = level
+    f.target = target
+    f.kind = e.stat
+    f.amount = ab__amount(abilities_st, actor, e, level)
+    f.x = tx
+    f.z = tz
+    return
+  }
+  let n = ab__targets(abilities_st, actor, ab, e, tx, tz, target)
+  for i in 0 .. n {
+    let t = abilities_st.ab__found[i]
+    ab__land(abilities_st, c, h, actor, a, e, level, t, ab__amount(abilities_st, actor, e, level), tx, tz)
+  }
+}
+
+@alloc_ok("a delayed effect queued: the pool grows to the most waiting at once, then is reused")
+function ab__pend_add(abilities_st: mut AbilitiesState, actor: int, a: int, fx: int, level: int, tx: float, tz: float, target: int) -> void {
+  if abilities_st.ab__np >= len(abilities_st.ab__pend) { push(abilities_st.ab__pend, new AbilityPending) }
+  let p = abilities_st.ab__pend[abilities_st.ab__np]
+  abilities_st.ab__np += 1
+  p.actor = actor
+  p.ability = a
+  p.fx = fx
+  p.level = level
+  p.at = Abilities[a].effects[fx].delay
+  p.tx = tx
+  p.tz = tz
+  p.target = target
+}
+
+# the whole chain of an ability: each link now, or queued behind its delay
+function ab__apply_chain(abilities_st: mut AbilitiesState, actor: int, a: int, level: int, tx: float, tz: float, target: int) -> void {
+  for i in 0 .. ab__fx_count(a) {
+    if Abilities[a].effects[i].delay > 0.0 {
+      ab__pend_add(abilities_st, actor, a, i, level, tx, tz, target)
+    } else {
+      ab__apply_fx(abilities_st, actor, a, i, level, tx, tz, target)
+    }
+  }
+}
+
+# delayed links: count them down, land the ones that are due (a link of a chain that lands another
+# cast's effect is never waiting behind this loop: it is swapped out before it lands)
+function ab__run_pending(abilities_st: mut AbilitiesState, dt: float) -> void {
+  var i = 0
+  while i < abilities_st.ab__np {
+    let p = abilities_st.ab__pend[i]
+    p.at -= dt
+    if p.at > 0.0 {
+      i += 1
+      continue
+    }
+    let last = abilities_st.ab__np - 1
+    let actor = p.actor
+    let ab = p.ability
+    let fx = p.fx
+    let lv = p.level
+    let tx = p.tx
+    let tz = p.tz
+    let tg = p.target
+    List.swap(abilities_st.ab__pend, i, last)
+    abilities_st.ab__np = last
+    ab__apply_fx(abilities_st, actor, ab, fx, lv, tx, tz, tg)
+  }
+}
+
+export function abilities_pending_count(abilities_st: AbilitiesState) -> int { return abilities_st.ab__np }

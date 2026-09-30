@@ -1,0 +1,16 @@
+# ludic.abilities - what an actor can cast and how: the abilities are the game's data, the actors
+# that hold them are rows here, and everything the world must answer (a resource, a position, who is
+# in a circle, what a hit does) is a port. A cast is a verb, what happened is a fact
+module ludic_abilities uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "casters.ludic"
+import "learn.ludic"
+import "check.ludic"
+import "effects.ludic"
+import "cast.ludic"
+import "run.ludic"
+import "system.ludic"

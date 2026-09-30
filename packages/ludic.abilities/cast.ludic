@@ -1,0 +1,188 @@
+# cast.ludic - a cast: checked, paid, wound up, resolved, or lost; a channel pulsing until it ends
+function ab__start_cooldowns(abilities_st: mut AbilitiesState, c: Caster, a: int) -> void {
+  let ab = Abilities[a]
+  let mult = AbilityWorld.cooldown_mult(c.actor)
+  if ab.cooldown > 0.0 {
+    let cd = ab.cooldown * mult
+    c.cd[a] = cd
+    if ab.group != "" {
+      for o in 0 .. ABL_COUNT { if Abilities[o].group == ab.group and o != a { c.cd[o] = cd } }
+    }
+  }
+  if ab.gcd > 0.0 { c.gcd = ab.gcd }
+  if ab.charges > 0 {
+    c.charges[a] -= 1
+    if c.charge_t[a] <= 0.0 { c.charge_t[a] = ab.recharge * mult }
+  }
+}
+
+function ab__idle(c: Caster) -> void {
+  c.phase = AB_IDLE
+  c.ab = -1
+  c.paid = false
+  c.t = 0.0
+}
+
+# the wind-up is over (or there was none): the cost at the end, the cooldowns, the chain - or a channel begins
+function ab__resolve(abilities_st: mut AbilitiesState, c: Caster, h: int) -> void {
+  let a = c.ab
+  let ab = Abilities[a]
+  if ab.cost_at == AB_COST_END and ab.channel <= 0.0 and not ab__pay(c.actor, a, c.lvl) {
+    let f = ab__fact(abilities_st, AB_INTERRUPTED, c, h, a, AB_NO_RESOURCE)
+    f.level = c.lvl
+    ab__idle(c)
+    return
+  }
+  ab__start_cooldowns(abilities_st, c, a)
+  let f = ab__fact(abilities_st, AB_CAST_DONE, c, h, a, AB_OK)
+  f.level = c.lvl
+  f.target = c.target
+  f.x = c.tx
+  f.z = c.tz
+  if ab.channel > 0.0 {
+    c.phase = AB_CHANNELLING
+    c.t = ab.channel
+    c.pulse = ab.channel_tick
+    return
+  }
+  let actor = c.actor
+  let lv = c.lvl
+  let tx = c.tx
+  let tz = c.tz
+  let tg = c.target
+  ab__idle(c)
+  ab__apply_chain(abilities_st, actor, a, lv, tx, tz, tg)
+}
+
+# begin a cast: for a point, (tx, tz) is the place; for a direction the heading; for a target the
+# actor is `target`. AB_OK, or why not - which is also an AB_REFUSED fact
+export function abilities_cast(abilities_st: mut AbilitiesState, h: int, a: int, tx: float, tz: float, target: int) -> int {
+  let why = abilities_why_not(abilities_st, h, a, tx, tz, target)
+  let c = ab__caster(abilities_st, h)
+  if why != AB_OK {
+    let f = ab__fact(abilities_st, AB_REFUSED, c, h, a, why)
+    f.target = target
+    f.x = tx
+    f.z = tz
+    return why
+  }
+  let ab = Abilities[a]
+  let lv = c.known[a]
+  c.paid = false
+  if ab.cost_at == AB_COST_START and ab.channel <= 0.0 {
+    if not ab__pay(c.actor, a, lv) {
+      ab__fact(abilities_st, AB_REFUSED, c, h, a, AB_NO_RESOURCE)
+      return AB_NO_RESOURCE
+    }
+    c.paid = true
+  }
+  c.ab = a
+  c.lvl = lv
+  c.tx = tx
+  c.tz = tz
+  c.target = target
+  c.t = 0.0
+  c.speed = AbilityWorld.cast_speed(c.actor)
+  if c.speed < 0.05 { c.speed = 0.05 }
+  if ab.cast_time > 0.0 {
+    c.phase = AB_CASTING
+    let f = ab__fact(abilities_st, AB_CAST_STARTED, c, h, a, AB_OK)
+    f.target = target
+    f.x = tx
+    f.z = tz
+    return AB_OK
+  }
+  ab__resolve(abilities_st, c, h)
+  return AB_OK
+}
+
+# lose a cast or a channel for a reason (AB_MOVED, AB_HURT, AB_STOPPED...): the cost comes back for a
+# cast that paid it and whose ability refunds; a channel already running keeps its cooldown
+function ab__lose(abilities_st: mut AbilitiesState, c: Caster, h: int, why: int) -> bool {
+  if c.phase == AB_IDLE { return false }
+  let a = c.ab
+  if c.phase == AB_CASTING {
+    if c.paid and Abilities[a].refund { ab__refund(c.actor, a, c.lvl) }
+    let f = ab__fact(abilities_st, AB_INTERRUPTED, c, h, a, why)
+    f.level = c.lvl
+  } else {
+    let f = ab__fact(abilities_st, AB_CHANNEL_END, c, h, a, why)
+    f.level = c.lvl
+  }
+  ab__idle(c)
+  return true
+}
+
+export function abilities_interrupt(abilities_st: mut AbilitiesState, h: int, why: int) -> bool {
+  let c = ab__caster(abilities_st, h)
+  if c == null { return false }
+  return ab__lose(abilities_st, c, h, why)
+}
+
+# the caster stopped on purpose (let go of the button)
+export function abilities_stop(abilities_st: mut AbilitiesState, h: int) -> bool {
+  return abilities_interrupt(abilities_st, h, AB_STOPPED)
+}
+
+# the caster was hurt: a cast or channel that can be interrupted is lost
+export function abilities_hurt(abilities_st: mut AbilitiesState, h: int) -> bool {
+  let c = ab__caster(abilities_st, h)
+  if c == null or c.phase == AB_IDLE or not Abilities[c.ab].interruptible { return false }
+  return ab__lose(abilities_st, c, h, AB_HURT)
+}
+
+# the caster moved: a cast or channel that walking cancels is lost
+export function abilities_moved(abilities_st: mut AbilitiesState, h: int) -> bool {
+  let c = ab__caster(abilities_st, h)
+  if c == null or c.phase == AB_IDLE or not Abilities[c.ab].move_cancels { return false }
+  return ab__lose(abilities_st, c, h, AB_MOVED)
+}
+
+# a hotbar slot pressed: cast what is in it
+export function abilities_use_slot(abilities_st: mut AbilitiesState, h: int, slot: int, tx: float, tz: float, target: int) -> int {
+  let a = abilities_slot(abilities_st, h, slot)
+  if a < 0 { return AB_NO_SLOT }
+  return abilities_cast(abilities_st, h, a, tx, tz, target)
+}
+
+# one pulse of a channel: its cost, then its chain; false when it cannot be paid and the channel ends
+function ab__pulse(abilities_st: mut AbilitiesState, c: Caster, h: int) -> bool {
+  let a = c.ab
+  if not ab__pay(c.actor, a, c.lvl) {
+    let f = ab__fact(abilities_st, AB_CHANNEL_END, c, h, a, AB_NO_RESOURCE)
+    f.level = c.lvl
+    ab__idle(c)
+    return false
+  }
+  let f = ab__fact(abilities_st, AB_CHANNEL_TICK, c, h, a, AB_OK)
+  f.level = c.lvl
+  f.target = c.target
+  f.x = c.tx
+  f.z = c.tz
+  ab__apply_chain(abilities_st, c.actor, a, c.lvl, c.tx, c.tz, c.target)
+  return true
+}
+
+function ab__run_cast(abilities_st: mut AbilitiesState, c: Caster, h: int, dt: float) -> void {
+  if c.phase == AB_CASTING {
+    c.t += dt * c.speed
+    if c.t >= Abilities[c.ab].cast_time { ab__resolve(abilities_st, c, h) }
+    return
+  }
+  if c.phase == AB_CHANNELLING {
+    let step = Abilities[c.ab].channel_tick
+    c.t -= dt
+    c.pulse -= dt
+    var guard = 0
+    while c.phase == AB_CHANNELLING and c.pulse <= 0.0 and guard < 16 {
+      guard += 1
+      c.pulse += step
+      if not ab__pulse(abilities_st, c, h) { return }
+    }
+    if c.phase == AB_CHANNELLING and c.t <= 0.0 {
+      let f = ab__fact(abilities_st, AB_CHANNEL_END, c, h, c.ab, AB_OK)
+      f.level = c.lvl
+      ab__idle(c)
+    }
+  }
+}

@@ -1,0 +1,100 @@
+# system.ludic - abilities as a system: PH_SIMULATE, and its own save section: each caster that
+# persists, by the game's number for the actor, with levels, hotbar, cooldowns and charges by KEY
+# (a key this build no longer has is dropped). Handles are not saved: ask abilities_caster_of(actor)
+@alloc_ok("a new game or a load: the table made again")
+export function abilities_reset(abilities_st: mut AbilitiesState) -> void {
+  abilities_st.ab__tb = ab__table()
+  abilities_st.ab__by_actor = imap_new()
+  abilities_st.ab__np = 0
+  rng_seed(abilities_st.ab__dice, 1)
+  q_clear(abilities_facts(abilities_st))
+}
+
+function abilities_tick(abilities_st: mut AbilitiesState, t: Tick) -> void { abilities_run(abilities_st, t.dt) }
+
+@alloc_ok("a save: a tree written from the state")
+export function abilities_save(abilities_st: AbilitiesState) -> Val {
+  let v = Value.object()
+  sv_put_int(v, "dice", abilities_st.ab__dice.s)
+  let l = Value.list()
+  let tb = abilities_st.ab__tb
+  for r in 0 .. tb_len(tb) {
+    let c = tb_rec(tb, r)
+    if not c.persist { continue }
+    let o = Value.object()
+    sv_put_int(o, "actor", c.actor)
+    let known = Value.object()
+    let cds = Value.object()
+    let chs = Value.object()
+    for a in 0 .. ABL_COUNT {
+      if c.known[a] > 0 { sv_put_int(known, Abilities[a].key, c.known[a]) }
+      if c.cd[a] > 0.0 { sv_put_float(cds, Abilities[a].key, c.cd[a]) }
+      if Abilities[a].charges > 0 and c.known[a] > 0 { sv_put_int(chs, Abilities[a].key, c.charges[a]) }
+    }
+    Value.put(o, "known", known)
+    Value.put(o, "cd", cds)
+    Value.put(o, "charges", chs)
+    let bar = Value.list()
+    for s in 0 .. AB_SLOTS {
+      if c.hotbar[s] >= 0 { Value.add(bar, Value.str(Abilities[c.hotbar[s]].key)) } else { Value.add(bar, Value.str("")) }
+    }
+    Value.put(o, "bar", bar)
+    Value.add(l, o)
+  }
+  Value.put(v, "casters", l)
+  return v
+}
+
+@alloc_ok("a load: casters read back")
+export function abilities_load(abilities_st: mut AbilitiesState, v: Val, version: int) -> void {
+  abilities_reset(abilities_st)
+  abilities_st.ab__dice.s = sv_int(v, "dice", abilities_st.ab__dice.s)
+  if Value.has(v, "casters") == 0 { return }
+  let l = Value.get(v, "casters")
+  for i in 0 .. Value.count(l) {
+    let o = Value.at(l, i)
+    let h = abilities_add_caster(abilities_st, sv_int(o, "actor", -1), true)
+    let c = ab__caster(abilities_st, h)
+    if Value.has(o, "known") != 0 {
+      let known = Value.get(o, "known")
+      for k in 0 .. Value.count(known) {
+        let a = abilities_find(Value.key_at(known, k))
+        if a >= 0 {
+          c.known[a] = Value.as_int(Value.at(known, k))
+          if Abilities[a].charges > 0 { c.charges[a] = Abilities[a].charges }
+        }
+      }
+    }
+    if Value.has(o, "cd") != 0 {
+      let cds = Value.get(o, "cd")
+      for k in 0 .. Value.count(cds) {
+        let a = abilities_find(Value.key_at(cds, k))
+        if a >= 0 { c.cd[a] = sv_float(cds, Value.key_at(cds, k), 0.0) }
+      }
+    }
+    if Value.has(o, "charges") != 0 {
+      let chs = Value.get(o, "charges")
+      for k in 0 .. Value.count(chs) {
+        let a = abilities_find(Value.key_at(chs, k))
+        if a >= 0 { c.charges[a] = sv_int(chs, Value.key_at(chs, k), 0) }
+      }
+    }
+    if Value.has(o, "bar") != 0 {
+      let bar = Value.get(o, "bar")
+      for s in 0 .. AB_SLOTS {
+        if s >= Value.count(bar) { break }
+        let a = abilities_find(Value.as_str(Value.at(bar, s)))
+        if a >= 0 and c.known[a] > 0 { c.hotbar[s] = a }
+      }
+    }
+  }
+}
+
+export function abilities_system() -> System {
+  let s = system_new("abilities", PH_SIMULATE)
+  s.reset = fn abilities_reset
+  s.tick = fn abilities_tick
+  s.save = fn abilities_save
+  s.load = fn abilities_load
+  return s
+}

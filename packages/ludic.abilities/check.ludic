@@ -1,0 +1,72 @@
+# check.ludic - may it be cast now, and what does it cost
+export function abilities_cost_amount(a: int, i: int, level: int) -> float {
+  let c = Abilities[a].cost[i]
+  return c.amount + c.per_level * float(level - 1)
+}
+
+function ab__costs(a: int) -> int {
+  if Abilities[a].cost == null { return 0 }
+  return len(Abilities[a].cost)
+}
+
+# can the actor pay every cost of an ability at a level (once)
+function ab__affordable(actor: int, a: int, level: int) -> bool {
+  for i in 0 .. ab__costs(a) {
+    if AbilityResources.have(actor, Abilities[a].cost[i].resource) < abilities_cost_amount(a, i, level) { return false }
+  }
+  return true
+}
+
+# pay every cost: all of it or none
+function ab__pay(actor: int, a: int, level: int) -> bool {
+  if not ab__affordable(actor, a, level) { return false }
+  var done = 0
+  for i in 0 .. ab__costs(a) {
+    if AbilityResources.spend(actor, Abilities[a].cost[i].resource, abilities_cost_amount(a, i, level)) {
+      done += 1
+    } else {
+      for k in 0 .. done { AbilityResources.give(actor, Abilities[a].cost[k].resource, abilities_cost_amount(a, k, level)) }
+      return false
+    }
+  }
+  return true
+}
+
+function ab__refund(actor: int, a: int, level: int) -> void {
+  for i in 0 .. ab__costs(a) { AbilityResources.give(actor, Abilities[a].cost[i].resource, abilities_cost_amount(a, i, level)) }
+}
+
+function ab__dist2(x0: float, z0: float, x1: float, z1: float) -> float {
+  let dx = x1 - x0
+  let dz = z1 - z0
+  return dx * dx + dz * dz
+}
+
+# why an ability cannot be cast now at (tx, tz) or at a target (AB_OK when it can). For a direction,
+# (tx, tz) is the heading; nothing is spent or started.
+export function abilities_why_not(abilities_st: AbilitiesState, h: int, a: int, tx: float, tz: float, target: int) -> int {
+  if not ab__ok(a) { return AB_NO_SUCH }
+  let c = ab__caster(abilities_st, h)
+  if c == null { return AB_NO_CASTER }
+  let ab = Abilities[a]
+  if c.known[a] == 0 { return AB_NOT_KNOWN }
+  if ab.kind == AB_KIND_PASSIVE { return AB_PASSIVE }
+  if c.phase != AB_IDLE { return AB_BUSY }
+  if c.cd[a] > 0.0 { return AB_COOLING }
+  if ab.charges > 0 and c.charges[a] <= 0 { return AB_NO_CHARGES }
+  if ab.on_gcd and c.gcd > 0.0 { return AB_GCD }
+  if not AbilityWorld.can_cast(c.actor, a) { return AB_CANT }
+  if ab.target == AB_TARGET_TARGET {
+    if target < 0 { return AB_NEEDS_TARGET }
+    if not AbilityWorld.valid_target(c.actor, target, a) { return AB_BAD_TARGET }
+    if ab.range > 0.0 and ab__dist2(AbilityWorld.x(c.actor), AbilityWorld.z(c.actor), AbilityWorld.x(target), AbilityWorld.z(target)) > ab.range * ab.range { return AB_OUT_OF_RANGE }
+  } else if ab.target == AB_TARGET_POINT or (ab.target == AB_TARGET_AREA and not ab.at_caster) {
+    if ab.range > 0.0 and ab__dist2(AbilityWorld.x(c.actor), AbilityWorld.z(c.actor), tx, tz) > ab.range * ab.range { return AB_OUT_OF_RANGE }
+  }
+  if not ab__affordable(c.actor, a, c.known[a]) { return AB_NO_RESOURCE }
+  return AB_OK
+}
+
+export function abilities_can_cast(abilities_st: AbilitiesState, h: int, a: int, tx: float, tz: float, target: int) -> bool {
+  return abilities_why_not(abilities_st, h, a, tx, tz, target) == AB_OK
+}

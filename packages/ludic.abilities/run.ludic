@@ -1,0 +1,39 @@
+# run.ludic - time passing: cooldowns, charges coming back, the shared pause, casts winding up,
+# channels pulsing, delayed effects landing
+function ab__run_caster(abilities_st: mut AbilitiesState, c: Caster, h: int, dt: float) -> void {
+  if c.gcd > 0.0 {
+    c.gcd -= dt
+    if c.gcd < 0.0 { c.gcd = 0.0 }
+  }
+  for a in 0 .. ABL_COUNT {
+    if c.cd[a] > 0.0 {
+      c.cd[a] -= dt
+      if c.cd[a] <= 0.0 {
+        c.cd[a] = 0.0
+        ab__fact(abilities_st, AB_READY, c, h, a, AB_OK)
+      }
+    }
+    let most = Abilities[a].charges
+    if most > 0 and c.charges[a] < most and c.known[a] > 0 {
+      c.charge_t[a] -= dt
+      while c.charge_t[a] <= 0.0 and c.charges[a] < most {
+        c.charges[a] += 1
+        let f = ab__fact(abilities_st, AB_CHARGE, c, h, a, AB_OK)
+        f.amount = float(c.charges[a])
+        if c.charges[a] < most { c.charge_t[a] += Abilities[a].recharge * AbilityWorld.cooldown_mult(c.actor) } else { c.charge_t[a] = 0.0 }
+      }
+    }
+  }
+  ab__run_cast(abilities_st, c, h, dt)
+}
+
+export function abilities_run(abilities_st: mut AbilitiesState, dt: float) -> void {
+  ab__run_pending(abilities_st, dt)
+  let tb = abilities_st.ab__tb
+  var r = 0
+  while r < tb_len(tb) {
+    let c = tb_rec(tb, r)
+    ab__run_caster(abilities_st, c, tb_handle(tb, r), dt)
+    r += 1
+  }
+}

@@ -1,0 +1,52 @@
+# abilities_test.lres - the abilities the tests cast
+fireball {
+  target: AB_TARGET_POINT, range: 30.0, radius: 4.0, cast_time: 1.0, cooldown: 6.0, levels: 3
+  req_level: 2, level_step: 3
+  cost: [{ resource: RES_MANA, amount: 20.0, per_level: 5.0 }]
+  effects: [
+    { kind: AB_FX_DAMAGE, to: AB_TO_ENEMIES, stat: DMG_FIRE, magnitude: 30.0, per_level: 10.0, scale_stat: STAT_INT, scale: 0.5 }
+    { kind: AB_FX_APPLY, to: AB_TO_ENEMIES, stat: EF_BURN, magnitude: 3.0, duration: 4.0, delay: 0.5, label: "burn" }
+  ]
+}
+heal {
+  target: AB_TARGET_SELF, cooldown: 4.0, gcd: 1.0, on_gcd: true
+  cost: [{ resource: RES_MANA, amount: 10.0 }]
+  effects: [{ kind: AB_FX_HEAL, to: AB_TO_SELF, magnitude: 25.0 }]
+}
+bolt {
+  target: AB_TARGET_DIRECTION, cooldown: 0.5, charges: 3, recharge: 5.0
+  effects: [{ kind: AB_FX_SPAWN, stat: PROJ_BOLT, magnitude: 12.0 }]
+}
+smite {
+  target: AB_TARGET_TARGET, range: 10.0, cooldown: 2.0, group: "strikes"
+  cost: [{ resource: RES_STAMINA, amount: 5.0 }]
+  effects: [{ kind: AB_FX_DAMAGE, to: AB_TO_TARGET, magnitude: 10.0 }]
+}
+slam {
+  target: AB_TARGET_SELF, cast_time: 0.5, cooldown: 3.0, group: "strikes", cost_at: AB_COST_END, move_cancels: true
+  cost: [{ resource: RES_STAMINA, amount: 8.0 }]
+  effects: [{ kind: AB_FX_PUSH, to: AB_TO_ENEMIES, magnitude: 4.0 }]
+  radius: 3.0, at_caster: true
+}
+drain_beam {
+  target: AB_TARGET_TARGET, range: 15.0, channel: 3.0, channel_tick: 1.0
+  cost: [{ resource: RES_MANA, amount: 4.0 }]
+  effects: [
+    { kind: AB_FX_DAMAGE, to: AB_TO_TARGET, magnitude: 5.0 }
+    { kind: AB_FX_HEAL, to: AB_TO_SELF, magnitude: 2.0 }
+  ]
+}
+toughness { kind: AB_KIND_PASSIVE, levels: 5 }
+inferno {
+  target: AB_TARGET_AREA, at_caster: true, radius: 6.0, req_level: 5, learn_cost: 3
+  requires: [ABL_FIREBALL], requires_level: 2
+  effects: [{ kind: AB_FX_DAMAGE, to: AB_TO_ALL, magnitude: 50.0 }]
+}
+volatile {
+  target: AB_TARGET_TARGET
+  effects: [{ kind: AB_FX_DAMAGE, to: AB_TO_TARGET, magnitude: 100.0, variance: 0.2, crit: true }]
+}
+coin_flip {
+  target: AB_TARGET_SELF
+  effects: [{ kind: AB_FX_HEAL, to: AB_TO_SELF, magnitude: 1.0, chance: 0.5 }]
+}

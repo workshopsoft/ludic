@@ -1,0 +1,539 @@
+# abilities_test.ludic - learning by points, level and prerequisite; costs through the resource port;
+# cast time, haste, interrupts and refunds; cooldowns, groups, the shared pause and charges;
+# channels; an effect chain reaching a target, a circle of enemies or allies, with delays, scaling and
+# crits; the hotbar; and the save by key
+import "ludic.abilities"
+import "ludic.base"
+program AbilitiesTest {
+  numbers float
+  const RES_MANA: int = 0
+  const RES_STAMINA: int = 1
+  const DMG_FIRE: int = 3
+  const STAT_INT: int = 2
+  const EF_BURN: int = 7
+  const PROJ_BOLT: int = 9
+
+  def Abilities from "abilities_test.lres"
+
+  state GameWorld {
+    mana: float = 100.0
+    stamina: float = 50.0
+    char_level: int = 10
+    points: int = 10
+    intel: float = 0.0
+    silenced: bool = false
+    crit: float = 0.0
+    haste: float = 1.0
+    cdr: float = 1.0
+    hurt: float = 0.0
+    hurt_to: int = -1
+    healed: float = 0.0
+    burned: int = 0
+    burn_mag: float = 0.0
+    burn_secs: float = 0.0
+    pushed: int = 0
+    near: []int = null
+    allies: bool = false
+    bad_target: int = -1
+    last_type: int = -1
+  }
+  function w_have(game_world_st: GameWorld, actor: int, res: int) -> float {
+    if res == RES_MANA { return game_world_st.mana }
+    return game_world_st.stamina
+  }
+  function w_spend(game_world_st: mut GameWorld, actor: int, res: int, n: float) -> bool {
+    if res == RES_MANA {
+      if n > game_world_st.mana { return false }
+      game_world_st.mana -= n
+    } else {
+      if n > game_world_st.stamina { return false }
+      game_world_st.stamina -= n
+    }
+    return true
+  }
+  function w_give(game_world_st: mut GameWorld, actor: int, res: int, n: float) -> void {
+    if res == RES_MANA { game_world_st.mana += n } else { game_world_st.stamina += n }
+  }
+  function e_damage(game_world_st: mut GameWorld, t: int, s: int, n: float, ty: int) -> void {
+    game_world_st.hurt += n
+    game_world_st.hurt_to = t
+    game_world_st.last_type = ty
+  }
+  function e_heal(game_world_st: mut GameWorld, t: int, s: int, n: float) -> void { game_world_st.healed += n }
+  function e_apply(game_world_st: mut GameWorld, t: int, s: int, kind: int, mag: float, secs: float, bonus: bool, label: string) -> void {
+    game_world_st.burned += 1
+    game_world_st.burn_mag = mag
+    game_world_st.burn_secs = secs
+  }
+  function e_push(game_world_st: mut GameWorld, t: int, s: int, f: float) -> void { game_world_st.pushed += 1 }
+  function a_level(game_world_st: GameWorld, actor: int) -> int { return game_world_st.char_level }
+  function a_stat(game_world_st: GameWorld, actor: int, stat: int) -> float { return game_world_st.intel }
+  function a_can(game_world_st: GameWorld, actor: int, ab: int) -> bool { return not game_world_st.silenced }
+  function a_valid(game_world_st: GameWorld, actor: int, t: int, ab: int) -> bool { return t != game_world_st.bad_target }
+  function a_allied(game_world_st: GameWorld, actor: int, o: int) -> bool { return game_world_st.allies and o >= 20 and o < 30 }
+  function a_find(game_world_st: GameWorld, x: float, z: float, r: float, out: []int) -> int {
+    for i in 0 .. len(game_world_st.near) { push(out, game_world_st.near[i]) }
+    return len(game_world_st.near)
+  }
+  function a_x(game_world_st: GameWorld, actor: int) -> float { return float(actor) * 10.0 }
+  function a_crit(game_world_st: GameWorld, actor: int) -> float { return game_world_st.crit }
+  function a_haste(game_world_st: GameWorld, actor: int) -> float { return game_world_st.haste }
+  function a_cdr(game_world_st: GameWorld, actor: int) -> float { return game_world_st.cdr }
+  function a_points(game_world_st: GameWorld, actor: int) -> int { return game_world_st.points }
+  function a_spend_points(game_world_st: mut GameWorld, actor: int, n: int) -> bool {
+    if n > game_world_st.points { return false }
+    game_world_st.points -= n
+    return true
+  }
+  function a_give_points(game_world_st: mut GameWorld, actor: int, n: int) -> void { game_world_st.points += n }
+  bind AbilityResources { have: fn w_have, spend: fn w_spend, give: fn w_give }
+  bind AbilityEffects { damage: fn e_damage, heal: fn e_heal, apply: fn e_apply, push: fn e_push }
+  bind AbilityWorld { x: fn a_x, level: fn a_level, stat: fn a_stat, can_cast: fn a_can, valid_target: fn a_valid, allied: fn a_allied, find: fn a_find, crit_chance: fn a_crit, cast_speed: fn a_haste, cooldown_mult: fn a_cdr, points: fn a_points, spend_points: fn a_spend_points, give_points: fn a_give_points }
+
+  function fresh(abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) -> void {
+    abilities_reset(abilities_st)
+    abilities_seed(abilities_st, 5)
+    game_world_st.mana = 100.0
+    game_world_st.stamina = 50.0
+    game_world_st.char_level = 10
+    game_world_st.points = 10
+    game_world_st.intel = 0.0
+    game_world_st.silenced = false
+    game_world_st.crit = 0.0
+    game_world_st.haste = 1.0
+    game_world_st.cdr = 1.0
+    game_world_st.hurt = 0.0
+    game_world_st.hurt_to = -1
+    game_world_st.healed = 0.0
+    game_world_st.burned = 0
+    game_world_st.pushed = 0
+    game_world_st.near = new []int
+    game_world_st.allies = false
+    game_world_st.bad_target = -1
+  }
+  # a caster, actor 1, who knows everything at level 1 (or what is asked)
+  function hero(abilities_st: mut AbilitiesState) -> int {
+    let h = abilities_add_caster(abilities_st, 1, true)
+    for a in 0 .. ABL_COUNT { abilities_grant(abilities_st, h, a, 1) }
+    q_clear(abilities_facts(abilities_st))
+    return h
+  }
+  function step(abilities_st: mut AbilitiesState, seconds: float) -> void {
+    abilities_run(abilities_st, seconds)
+  }
+  function count_facts(abilities_st: AbilitiesState, what: int) -> int {
+    let fs = q_drain(abilities_facts(abilities_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "a caster is found by its actor, once, and removed" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = abilities_add_caster(abilities_st, 7, true)
+    expect_eq(abilities_add_caster(abilities_st, 7, true), h)
+    expect_eq(abilities_caster_of(abilities_st, 7), h)
+    expect_eq(abilities_actor(abilities_st, h), 7)
+    expect_eq(abilities_caster_count(abilities_st), 1)
+    expect(abilities_remove_caster(abilities_st, h))
+    expect_eq(abilities_caster_of(abilities_st, 7), -1)
+    expect(not abilities_remove_caster(abilities_st, h))
+    expect_eq(abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1), AB_NO_CASTER)
+  }
+
+  test "learning spends points and asks the level, the prerequisite and the points" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = abilities_add_caster(abilities_st, 1, true)
+    expect_eq(abilities_can_learn(abilities_st, h, ABL_INFERNO), AB_NEEDS_SKILL)
+    game_world_st.char_level = 1
+    expect_eq(abilities_learn(abilities_st, h, ABL_FIREBALL), AB_LEVEL_TOO_LOW)
+    game_world_st.char_level = 2
+    expect_eq(abilities_learn(abilities_st, h, ABL_FIREBALL), AB_OK)
+    expect_eq(abilities_level(abilities_st, h, ABL_FIREBALL), 1)
+    expect_eq(game_world_st.points, 9)
+    expect_eq(abilities_req_level(abilities_st, h, ABL_FIREBALL), 5)
+    expect_eq(abilities_learn(abilities_st, h, ABL_FIREBALL), AB_LEVEL_TOO_LOW)
+    game_world_st.char_level = 5
+    expect_eq(abilities_learn(abilities_st, h, ABL_FIREBALL), AB_OK)
+    expect_eq(abilities_learn(abilities_st, h, ABL_INFERNO), AB_OK)
+    expect_eq(game_world_st.points, 5)
+    game_world_st.char_level = 20
+    expect_eq(abilities_learn(abilities_st, h, ABL_FIREBALL), AB_OK)
+    expect_eq(abilities_learn(abilities_st, h, ABL_FIREBALL), AB_MAX_LEVEL)
+    game_world_st.points = 0
+    expect_eq(abilities_learn(abilities_st, h, ABL_TOUGHNESS), AB_NO_POINTS)
+    expect_eq(abilities_learn(abilities_st, h, 99), AB_NO_SUCH)
+    expect_eq(count_facts(abilities_st, AB_LEARNED), 4)
+  }
+
+  test "a respec gives every point back" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = abilities_add_caster(abilities_st, 1, true)
+    abilities_learn(abilities_st, h, ABL_TOUGHNESS)
+    abilities_learn(abilities_st, h, ABL_TOUGHNESS)
+    abilities_learn(abilities_st, h, ABL_HEAL)
+    expect_eq(game_world_st.points, 7)
+    expect_eq(abilities_respec(abilities_st, h), 3)
+    expect_eq(game_world_st.points, 10)
+    expect(not abilities_knows(abilities_st, h, ABL_HEAL))
+  }
+
+  test "an instant cast pays, applies its chain, starts its cooldown and says so" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    expect_eq(abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1), AB_OK)
+    expect_near(game_world_st.mana, 90.0, 0.001)
+    expect_near(game_world_st.healed, 25.0, 0.001)
+    expect_near(abilities_cooldown(abilities_st, h, ABL_HEAL), 4.0, 0.001)
+    expect_eq(abilities_phase(abilities_st, h), AB_IDLE)
+    let fs = q_drain(abilities_facts(abilities_st))
+    expect_eq(fs[0].what, AB_CAST_DONE)
+    expect_eq(fs[0].actor, 1)
+    expect_eq(fs[1].what, AB_EFFECT)
+    expect_near(fs[1].amount, 25.0, 0.001)
+    expect_eq(abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1), AB_COOLING)
+    expect_eq(count_facts(abilities_st, AB_REFUSED), 1)
+  }
+
+  test "a cooldown runs down and says when it is ready; a faster one is shorter" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    game_world_st.cdr = 0.5
+    let h = hero(abilities_st)
+    abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1)
+    expect_near(abilities_cooldown(abilities_st, h, ABL_HEAL), 2.0, 0.001)
+    q_clear(abilities_facts(abilities_st))
+    step(abilities_st, 1.5)
+    expect(abilities_cooldown(abilities_st, h, ABL_HEAL) > 0.4)
+    step(abilities_st, 1.0)
+    expect_near(abilities_cooldown(abilities_st, h, ABL_HEAL), 0.0, 0.001)
+    expect_eq(count_facts(abilities_st, AB_READY), 1)
+    expect_eq(abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1), AB_OK)
+  }
+
+  test "a cost that is not there refuses the cast and spends nothing" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    game_world_st.mana = 5.0
+    expect_eq(abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1), AB_NO_RESOURCE)
+    expect_near(game_world_st.mana, 5.0, 0.001)
+    expect_near(game_world_st.healed, 0.0, 0.001)
+  }
+
+  test "a cast takes its time, and haste shortens it" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    expect_eq(abilities_cast(abilities_st, h, ABL_FIREBALL, 5.0, 0.0, -1), AB_OK)
+    expect_eq(abilities_phase(abilities_st, h), AB_CASTING)
+    expect_eq(abilities_active(abilities_st, h), ABL_FIREBALL)
+    expect_near(game_world_st.mana, 80.0, 0.001)
+    expect_eq(abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1), AB_BUSY)
+    step(abilities_st, 0.5)
+    expect_near(abilities_progress(abilities_st, h), 0.5, 0.01)
+    expect_near(game_world_st.hurt, 0.0, 0.001)
+    step(abilities_st, 0.6)
+    expect_eq(abilities_phase(abilities_st, h), AB_IDLE)
+    expect(abilities_cooldown(abilities_st, h, ABL_FIREBALL) > 5.0)
+
+    fresh(abilities_st, game_world_st)
+    game_world_st.haste = 2.0
+    let g = hero(abilities_st)
+    abilities_cast(abilities_st, g, ABL_FIREBALL, 5.0, 0.0, -1)
+    step(abilities_st, 0.55)
+    expect_eq(abilities_phase(abilities_st, g), AB_IDLE)
+  }
+
+  test "a hit on a circle lands on the enemies, scaled by level and the caster's stat" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    abilities_grant(abilities_st, h, ABL_FIREBALL, 2)
+    game_world_st.intel = 10.0
+    game_world_st.near = [1, 20, 21, 30, 31]
+    game_world_st.allies = true
+    abilities_cast(abilities_st, h, ABL_FIREBALL, 5.0, 0.0, -1)
+    expect_near(game_world_st.mana, 75.0, 0.001)
+    step(abilities_st, 1.1)
+    # enemies: 30 and 31 (1 is the caster, 20 and 21 are allied): 30 + 10 + 5 = 45 each
+    expect_near(game_world_st.hurt, 90.0, 0.001)
+    expect_eq(game_world_st.last_type, DMG_FIRE)
+    expect_eq(game_world_st.burned, 0)
+    expect_eq(abilities_pending_count(abilities_st), 1)
+    step(abilities_st, 0.5)
+    expect_eq(game_world_st.burned, 2)
+    expect_near(game_world_st.burn_mag, 3.0, 0.001)
+    expect_near(game_world_st.burn_secs, 4.0, 0.001)
+    expect_eq(abilities_pending_count(abilities_st), 0)
+  }
+
+  test "an area round the caster reaches everyone, allies too" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    game_world_st.near = [1, 20, 30]
+    game_world_st.allies = true
+    abilities_cast(abilities_st, h, ABL_INFERNO, 0.0, 0.0, -1)
+    expect_near(game_world_st.hurt, 150.0, 0.001)
+  }
+
+  test "a push reaches the enemies round the caster only" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    game_world_st.near = [1, 20, 30]
+    game_world_st.allies = true
+    abilities_cast(abilities_st, h, ABL_SLAM, 0.0, 0.0, -1)
+    step(abilities_st, 0.6)
+    expect_eq(game_world_st.pushed, 1)
+    expect_near(game_world_st.stamina, 42.0, 0.001)
+  }
+
+  test "a cast interrupted gives its cost back and starts no cooldown" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    abilities_cast(abilities_st, h, ABL_FIREBALL, 5.0, 0.0, -1)
+    step(abilities_st, 0.3)
+    expect(abilities_hurt(abilities_st, h))
+    expect_near(game_world_st.mana, 100.0, 0.001)
+    expect_near(abilities_cooldown(abilities_st, h, ABL_FIREBALL), 0.0, 0.001)
+    expect_eq(abilities_phase(abilities_st, h), AB_IDLE)
+    let fs = q_drain(abilities_facts(abilities_st))
+    expect_eq(fs[len(fs) - 1].what, AB_INTERRUPTED)
+    expect_eq(fs[len(fs) - 1].why, AB_HURT)
+    expect(not abilities_hurt(abilities_st, h))
+    step(abilities_st, 1.0)
+    expect_near(game_world_st.hurt, 0.0, 0.001)
+  }
+
+  test "walking cancels only what says so" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    abilities_cast(abilities_st, h, ABL_FIREBALL, 5.0, 0.0, -1)
+    expect(not abilities_moved(abilities_st, h))
+    expect_eq(abilities_phase(abilities_st, h), AB_CASTING)
+    expect(abilities_stop(abilities_st, h))
+    abilities_cast(abilities_st, h, ABL_SLAM, 0.0, 0.0, -1)
+    expect(abilities_moved(abilities_st, h))
+    expect_near(game_world_st.stamina, 50.0, 0.001)
+  }
+
+  test "a cost paid at the end is taken then, and a cast that cannot pay it is lost" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    abilities_cast(abilities_st, h, ABL_SLAM, 0.0, 0.0, -1)
+    expect_near(game_world_st.stamina, 50.0, 0.001)
+    game_world_st.stamina = 3.0
+    step(abilities_st, 0.6)
+    expect_eq(abilities_phase(abilities_st, h), AB_IDLE)
+    expect_near(abilities_cooldown(abilities_st, h, ABL_SLAM), 0.0, 0.001)
+    let fs = q_drain(abilities_facts(abilities_st))
+    expect_eq(fs[len(fs) - 1].why, AB_NO_RESOURCE)
+  }
+
+  test "abilities of a group share their cooldown" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    expect_eq(abilities_cast(abilities_st, h, ABL_SMITE, 0.0, 0.0, 2), AB_OK)
+    expect_eq(abilities_cast(abilities_st, h, ABL_SLAM, 0.0, 0.0, -1), AB_COOLING)
+    expect_near(abilities_cooldown(abilities_st, h, ABL_SLAM), 2.0, 0.001)
+  }
+
+  test "the shared pause holds the abilities that wait for it" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1)
+    expect_near(abilities_gcd(abilities_st, h), 1.0, 0.001)
+    step(abilities_st, 1.1)
+    expect_near(abilities_gcd(abilities_st, h), 0.0, 0.001)
+  }
+
+  test "a target is asked for, checked, and kept in range" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    expect_eq(abilities_cast(abilities_st, h, ABL_SMITE, 0.0, 0.0, -1), AB_NEEDS_TARGET)
+    game_world_st.bad_target = 2
+    expect_eq(abilities_cast(abilities_st, h, ABL_SMITE, 0.0, 0.0, 2), AB_BAD_TARGET)
+    expect_eq(abilities_cast(abilities_st, h, ABL_SMITE, 0.0, 0.0, 9), AB_OUT_OF_RANGE)
+    expect_eq(abilities_cast(abilities_st, h, ABL_FIREBALL, 500.0, 0.0, -1), AB_OUT_OF_RANGE)
+    expect_eq(abilities_cast(abilities_st, h, ABL_SMITE, 0.0, 0.0, 1), AB_OK)
+    expect_near(game_world_st.hurt, 10.0, 0.001)
+    expect_eq(game_world_st.hurt_to, 1)
+  }
+
+  test "a silenced caster, a passive and an unknown ability cannot cast" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    game_world_st.silenced = true
+    expect_eq(abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1), AB_CANT)
+    game_world_st.silenced = false
+    expect_eq(abilities_cast(abilities_st, h, ABL_TOUGHNESS, 0.0, 0.0, -1), AB_PASSIVE)
+    abilities_forget(abilities_st, h, ABL_HEAL)
+    expect_eq(abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1), AB_NOT_KNOWN)
+  }
+
+  test "charges are spent one by one and come back one by one" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    expect_eq(abilities_charges(abilities_st, h, ABL_BOLT), 3)
+    for i in 0 .. 3 {
+      expect_eq(abilities_cast(abilities_st, h, ABL_BOLT, 1.0, 0.0, -1), AB_OK)
+      step(abilities_st, 0.6)
+    }
+    expect_eq(abilities_charges(abilities_st, h, ABL_BOLT), 0)
+    expect_eq(abilities_cast(abilities_st, h, ABL_BOLT, 1.0, 0.0, -1), AB_NO_CHARGES)
+    q_clear(abilities_facts(abilities_st))
+    step(abilities_st, 5.0)
+    expect_eq(abilities_charges(abilities_st, h, ABL_BOLT), 1)
+    step(abilities_st, 10.0)
+    expect_eq(abilities_charges(abilities_st, h, ABL_BOLT), 3)
+    step(abilities_st, 10.0)
+    expect_eq(abilities_charges(abilities_st, h, ABL_BOLT), 3)
+    expect_eq(count_facts(abilities_st, AB_CHARGE), 3)
+  }
+
+  test "a spawn is only a fact, at the aimed place, with its number" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    abilities_cast(abilities_st, h, ABL_BOLT, 3.0, -4.0, -1)
+    let fs = q_drain(abilities_facts(abilities_st))
+    var seen = false
+    for i in 0 .. len(fs) {
+      if fs[i].what == AB_SPAWN {
+        seen = true
+        expect_eq(fs[i].kind, PROJ_BOLT)
+        expect_near(fs[i].x, 3.0, 0.001)
+        expect_near(fs[i].z, -4.0, 0.001)
+        expect_near(fs[i].amount, 12.0, 0.001)
+      }
+    }
+    expect(seen)
+  }
+
+  test "a channel pulses, pays each pulse, and ends on its length" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    expect_eq(abilities_cast(abilities_st, h, ABL_DRAIN_BEAM, 0.0, 0.0, 2), AB_OK)
+    expect_eq(abilities_phase(abilities_st, h), AB_CHANNELLING)
+    expect_near(game_world_st.mana, 100.0, 0.001)
+    for i in 0 .. 6 { step(abilities_st, 0.5) }
+    expect_eq(abilities_phase(abilities_st, h), AB_IDLE)
+    expect_near(game_world_st.mana, 88.0, 0.001)
+    expect_near(game_world_st.hurt, 15.0, 0.001)
+    expect_near(game_world_st.healed, 6.0, 0.001)
+    let fs = q_drain(abilities_facts(abilities_st))
+    var ticks = 0
+    var ends = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == AB_CHANNEL_TICK { ticks += 1 }
+      if fs[i].what == AB_CHANNEL_END { ends += 1 }
+    }
+    expect_eq(ticks, 3)
+    expect_eq(ends, 1)
+  }
+
+  test "a channel that cannot pay ends, and one that is stopped ends at once" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    game_world_st.mana = 9.0
+    abilities_cast(abilities_st, h, ABL_DRAIN_BEAM, 0.0, 0.0, 2)
+    for i in 0 .. 6 { step(abilities_st, 0.5) }
+    expect_eq(abilities_phase(abilities_st, h), AB_IDLE)
+    expect_near(game_world_st.hurt, 10.0, 0.001)
+    fresh(abilities_st, game_world_st)
+    let g = hero(abilities_st)
+    abilities_cast(abilities_st, g, ABL_DRAIN_BEAM, 0.0, 0.0, 2)
+    step(abilities_st, 1.2)
+    expect(abilities_stop(abilities_st, g))
+    expect_near(game_world_st.hurt, 5.0, 0.001)
+    expect_eq(abilities_phase(abilities_st, g), AB_IDLE)
+  }
+
+  test "variance stays in its band and a sure crit doubles" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    var lo = 1000.0
+    var hi = 0.0
+    for i in 0 .. 60 {
+      game_world_st.hurt = 0.0
+      abilities_cast(abilities_st, h, ABL_VOLATILE, 0.0, 0.0, 2)
+      lo = Math.min(lo, game_world_st.hurt)
+      hi = Math.max(hi, game_world_st.hurt)
+    }
+    expect(lo >= 80.0 and hi <= 120.0)
+    expect(hi - lo > 10.0)
+    game_world_st.crit = 1.0
+    for i in 0 .. 20 {
+      game_world_st.hurt = 0.0
+      abilities_cast(abilities_st, h, ABL_VOLATILE, 0.0, 0.0, 2)
+      expect(game_world_st.hurt >= 160.0 and game_world_st.hurt <= 240.0)
+    }
+  }
+
+  test "an effect with a chance lands about that often, the same each game" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    for i in 0 .. 400 { abilities_cast(abilities_st, h, ABL_COIN_FLIP, 0.0, 0.0, -1) }
+    let first = game_world_st.healed
+    expect(first > 150.0 and first < 250.0)
+    fresh(abilities_st, game_world_st)
+    let g = hero(abilities_st)
+    for i in 0 .. 400 { abilities_cast(abilities_st, g, ABL_COIN_FLIP, 0.0, 0.0, -1) }
+    expect_near(game_world_st.healed, first, 0.001)
+    q_clear(abilities_facts(abilities_st))
+  }
+
+  test "the hotbar holds known abilities, casts them, and loses what is forgotten" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    expect_eq(abilities_bind(abilities_st, h, 0, ABL_HEAL), AB_OK)
+    expect_eq(abilities_bind(abilities_st, h, 12, ABL_HEAL), AB_NO_SLOT)
+    expect_eq(abilities_bind(abilities_st, h, 1, 99), AB_NO_SUCH)
+    expect_eq(abilities_slot(abilities_st, h, 0), ABL_HEAL)
+    expect_eq(abilities_bind(abilities_st, h, 3, ABL_HEAL), AB_OK)
+    expect_eq(abilities_slot(abilities_st, h, 0), -1)
+    expect_eq(abilities_use_slot(abilities_st, h, 3, 0.0, 0.0, -1), AB_OK)
+    expect_near(game_world_st.healed, 25.0, 0.001)
+    expect_eq(abilities_use_slot(abilities_st, h, 4, 0.0, 0.0, -1), AB_NO_SLOT)
+    abilities_forget(abilities_st, h, ABL_HEAL)
+    expect_eq(abilities_slot(abilities_st, h, 3), -1)
+    expect_eq(abilities_bind(abilities_st, h, 3, ABL_HEAL), AB_NOT_KNOWN)
+  }
+
+  test "casters are independent rows" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let a = abilities_add_caster(abilities_st, 1, true)
+    let b = abilities_add_caster(abilities_st, 2, false)
+    abilities_grant(abilities_st, a, ABL_HEAL, 1)
+    abilities_grant(abilities_st, b, ABL_HEAL, 1)
+    abilities_cast(abilities_st, a, ABL_HEAL, 0.0, 0.0, -1)
+    expect(abilities_cooldown(abilities_st, a, ABL_HEAL) > 3.0)
+    expect_near(abilities_cooldown(abilities_st, b, ABL_HEAL), 0.0, 0.001)
+    expect_eq(abilities_cast(abilities_st, b, ABL_HEAL, 0.0, 0.0, -1), AB_OK)
+  }
+
+  test "a save keeps levels, bar, cooldowns and charges by key; a monster is not saved" (abilities_st: mut AbilitiesState, game_world_st: mut GameWorld) {
+    fresh(abilities_st, game_world_st)
+    let h = hero(abilities_st)
+    let m = abilities_add_caster(abilities_st, 50, false)
+    abilities_grant(abilities_st, m, ABL_SMITE, 1)
+    abilities_grant(abilities_st, h, ABL_FIREBALL, 3)
+    abilities_bind(abilities_st, h, 2, ABL_FIREBALL)
+    abilities_cast(abilities_st, h, ABL_HEAL, 0.0, 0.0, -1)
+    abilities_cast(abilities_st, h, ABL_BOLT, 1.0, 0.0, -1)
+    let text = save_encode(abilities_save(abilities_st))
+    abilities_reset(abilities_st)
+    expect_eq(abilities_caster_count(abilities_st), 0)
+    abilities_load(abilities_st, save_decode(text), 1)
+    expect_eq(abilities_caster_count(abilities_st), 1)
+    let g = abilities_caster_of(abilities_st, 1)
+    expect(g >= 0)
+    expect_eq(abilities_level(abilities_st, g, ABL_FIREBALL), 3)
+    expect_eq(abilities_slot(abilities_st, g, 2), ABL_FIREBALL)
+    expect(abilities_cooldown(abilities_st, g, ABL_HEAL) > 3.0)
+    expect_eq(abilities_charges(abilities_st, g, ABL_BOLT), 2)
+    expect_eq(abilities_caster_of(abilities_st, 50), -1)
+  }
+
+  test "a system keyed abilities carries the save and the tick" {
+    let s = abilities_system()
+    expect(s.key == "abilities")
+    expect(s.save != null)
+    expect(s.tick != null)
+  }
+}

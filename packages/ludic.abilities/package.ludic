@@ -1,0 +1,6 @@
+# ludic.abilities - abilities, spells and skills as data: cost through a resource port, cast time,
+# cooldown and charges, targeting, an effect chain applied through ports, channelled abilities,
+# learnable levels and hotbar slots. Uses ludic.base and nothing else. See README.md.
+package "ludic.abilities"
+version "0.1.0"
+kind source

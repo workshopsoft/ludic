@@ -1,0 +1,55 @@
+# ports.ludic - what abilities ask and tell the game. Every member has a default: unbound, everything
+# costs nothing, every actor is at the origin on level 1 with no stats, anyone may cast at anyone,
+# nobody is allied or in any circle, and a hit does nothing (the facts still say it landed).
+export port AbilityResources {
+  have: fn(int, int) -> float = fn ab__plenty          # (actor, resource): how much it has
+  spend: fn(int, int, float) -> bool = fn ab__pays     # (actor, resource, amount): all of it or none
+  give: fn(int, int, float) -> void = fn ab__gave      # (actor, resource, amount)
+}
+function ab__plenty(actor: int, res: int) -> float { return 1000000000.0 }
+function ab__pays(actor: int, res: int, n: float) -> bool { return true }
+function ab__gave(actor: int, res: int, n: float) -> void { }
+
+export port AbilityEffects {
+  damage: fn(int, int, float, int) -> void = fn ab__dealt   # (target, source, amount, damage type)
+  heal: fn(int, int, float) -> void = fn ab__healed         # (target, source, amount)
+  apply: fn(int, int, int, float, float, bool, string) -> void = fn ab__applied   # (target, source, kind, magnitude, seconds, bonus, label): ludic.effects_add
+  dispel: fn(int, int) -> void = fn ab__dispelled           # (target, kind)
+  push: fn(int, int, float) -> void = fn ab__pushed         # (target, source, force)
+}
+function ab__dealt(t: int, s: int, n: float, ty: int) -> void { }
+function ab__healed(t: int, s: int, n: float) -> void { }
+function ab__applied(t: int, s: int, kind: int, mag: float, secs: float, bonus: bool, label: string) -> void { }
+function ab__dispelled(t: int, kind: int) -> void { }
+function ab__pushed(t: int, s: int, force: float) -> void { }
+
+export port AbilityWorld {
+  x: fn(int) -> float = fn ab__origin                       # where an actor is
+  z: fn(int) -> float = fn ab__origin
+  level: fn(int) -> int = fn ab__level_one                  # its own level, for what it may learn
+  stat: fn(int, int) -> float = fn ab__no_stat              # (actor, stat): a number the effects scale with
+  can_cast: fn(int, int) -> bool = fn ab__may               # (actor, ability): false while silenced or stunned
+  valid_target: fn(int, int, int) -> bool = fn ab__valid    # (actor, target, ability): alive, in sight, the right side
+  allied: fn(int, int) -> bool = fn ab__nobody              # (actor, other)
+  find: fn(float, float, float, []int) -> int = fn ab__none # (x, z, radius, out): push the actors in the circle into out; returns how many
+  crit_chance: fn(int) -> float = fn ab__no_crit
+  crit_mult: fn(int) -> float = fn ab__double
+  cast_speed: fn(int) -> float = fn ab__normal              # times a cast's speed: haste
+  cooldown_mult: fn(int) -> float = fn ab__normal           # times a cooldown: 0.8 is 20% shorter
+  points: fn(int) -> int = fn ab__no_points                 # skill points the actor holds
+  spend_points: fn(int, int) -> bool = fn ab__pays_points
+  give_points: fn(int, int) -> void = fn ab__gave_points
+}
+function ab__origin(a: int) -> float { return 0.0 }
+function ab__level_one(a: int) -> int { return 1 }
+function ab__no_stat(a: int, s: int) -> float { return 0.0 }
+function ab__may(a: int, ab: int) -> bool { return true }
+function ab__valid(a: int, t: int, ab: int) -> bool { return true }
+function ab__nobody(a: int, b: int) -> bool { return false }
+function ab__none(x: float, z: float, r: float, out: []int) -> int { return 0 }
+function ab__no_crit(a: int) -> float { return 0.0 }
+function ab__double(a: int) -> float { return 2.0 }
+function ab__normal(a: int) -> float { return 1.0 }
+function ab__no_points(a: int) -> int { return 1000000 }
+function ab__pays_points(a: int, n: int) -> bool { return true }
+function ab__gave_points(a: int, n: int) -> void { }

@@ -1,0 +1,149 @@
+# defs.ludic - the table a game fills (usually from a resource file: `def Abilities from
+# "abilities.lres"`), the records in it, and the facts. A number a game uses for a resource, a stat,
+# a damage type or an effect kind is the game's own: the package carries it from the row to a port.
+
+# who or what an ability is aimed at
+export const AB_TARGET_SELF: int = 0        # the caster
+export const AB_TARGET_POINT: int = 1       # a place on the ground (tx, tz)
+export const AB_TARGET_DIRECTION: int = 2   # a heading (tx, tz as a vector): a bolt, a cone
+export const AB_TARGET_TARGET: int = 3      # one actor, chosen by the game
+export const AB_TARGET_AREA: int = 4        # a circle of `radius` round the point (or the caster, `at_caster`)
+
+export const AB_KIND_SPELL: int = 0
+export const AB_KIND_SKILL: int = 1         # a physical or learned skill: the same machinery
+export const AB_KIND_PASSIVE: int = 2       # known and levelled, never cast: the game reads abilities_level
+
+# what an effect of a chain does
+export const AB_FX_DAMAGE: int = 0          # stat = the game's damage type
+export const AB_FX_HEAL: int = 1
+export const AB_FX_APPLY: int = 2           # a timed effect (ludic.effects, through a port): stat = the game's effect kind
+export const AB_FX_RESTORE: int = 3         # give a resource: stat = the game's resource
+export const AB_FX_DISPEL: int = 4          # take away an effect kind: stat = the game's effect kind
+export const AB_FX_PUSH: int = 5            # knock back: magnitude = force
+export const AB_FX_SPAWN: int = 6           # the game makes something (a bolt, a minion): stat = its number; only a fact
+
+# who an effect lands on
+export const AB_TO_SELF: int = 0
+export const AB_TO_TARGET: int = 1
+export const AB_TO_ENEMIES: int = 2         # everyone in the area who is not allied to the caster
+export const AB_TO_ALLIES: int = 3          # the caster and whoever is allied, in the area
+export const AB_TO_ALL: int = 4
+
+# when a cost is paid
+export const AB_COST_START: int = 0
+export const AB_COST_END: int = 1
+
+# a resource an ability costs: the game's number for mana, stamina, health, a rage bar
+export property AbilityCost {
+  @Ref(Resources) resource: int = 0
+  @Range(0, 1000000) amount: float = 0.0          # paid once (per tick for a channelled one)
+  @Range(0, 1000000) per_level: float = 0.0       # more for each level above the first
+}
+
+# one link of an effect chain. The number dealt is magnitude + per_level * (level - 1) + scale * the
+# caster's stat, varied by `variance`, and doubled (the world's crit_mult) by a crit
+export property AbilityEffect {
+  @OneOf(AB_FX_) kind: int = 0
+  @OneOf(AB_TO_) to: int = 1
+  stat: int = 0                                   # the game's damage type, effect kind or resource (by `kind`)
+  @Range(-1000000, 1000000) magnitude: float = 0.0
+  @Range(-1000000, 1000000) per_level: float = 0.0
+  @Ref(Stats) scale_stat: int = -1                # a stat of the caster the number grows with (-1 none)
+  scale: float = 0.0                              # ... by this much for each point of it
+  @Unit("s") @Range(0, 86400) duration: float = 0.0   # an applied effect's length
+  @Unit("s") @Range(0, 600) delay: float = 0.0    # after the cast resolves (a bolt's flight, a second blast)
+  @Range(0, 1) chance: float = 1.0
+  @Range(0, 1) variance: float = 0.0              # +- this share of the number, drawn
+  crit: bool = false                              # may crit on the caster's crit_chance
+  bonus: bool = false                             # an applied effect that counts as a bonus (ludic.effects)
+  label: string = ""                              # an applied effect's label
+}
+
+export property Ability {
+  key: string = ""
+  @Text name: Key = null
+  @Text @Multiline blurb: Key = null
+  @Asset("png") icon: string = ""
+  @OneOf(AB_KIND_) kind: int = 0
+  @OneOf(AB_TARGET_) target: int = 0
+  @Unit("m") @Range(0, 1000) range: float = 0.0   # how far from the caster it may be aimed (0: anywhere)
+  @Unit("m") @Range(0, 1000) radius: float = 0.0  # an area's size
+  at_caster: bool = false                         # an area round the caster, not the aimed point
+  @Unit("s") @Range(0, 60) cast_time: float = 0.0 # 0 is instant
+  @Unit("s") @Range(0, 3600) cooldown: float = 0.0
+  @Unit("s") @Range(0, 60) gcd: float = 0.0       # the caster's shared pause after it (0: none)
+  on_gcd: bool = false                            # it waits for that pause
+  group: string = ""                              # abilities of a group share a cooldown ("potions")
+  @Range(0, 20) charges: int = 0                  # stored uses (0: none, the cooldown alone)
+  @Unit("s") @Range(0, 3600) recharge: float = 0.0 # seconds for a charge to come back
+  @Unit("s") @Range(0, 600) channel: float = 0.0  # 0: not channelled; else it runs this long after the cast time
+  @Unit("s") @Range(0.05, 60) channel_tick: float = 1.0
+  @OneOf(AB_COST_) cost_at: int = 0
+  cost: []AbilityCost = null
+  refund: bool = true                             # an interrupted cast gives its cost back
+  interruptible: bool = true                      # a hurt caster loses it (abilities_hurt)
+  move_cancels: bool = false                      # walking loses it (abilities_moved)
+  clip: string = ""                    # a hint for the game's animation
+  effects: []AbilityEffect = null                 # the chain: each is applied when the cast resolves (each tick of a channel)
+  @Range(1, 50) levels: int = 1                   # the most it can be raised to
+  @Range(0, 1000) learn_cost: int = 1             # points for each level
+  @Range(0, 1000) req_level: int = 0              # the caster's own level needed to learn it
+  @Range(0, 1000) level_step: int = 0             # and this much more for each level of it
+  @Ref(Abilities) requires: []int = null          # abilities that must be known first
+  @Range(0, 1000) requires_level: int = 1         # ... at least this high
+}
+
+@ByKey
+export open registry Abilities of Ability as ABL
+
+# the facts
+export const AB_CAST_STARTED: int = 0      # a cast with a cast time began (the game plays its wind-up)
+export const AB_CAST_DONE: int = 1         # a cast resolved (instant, or its time ran out): the effects have been applied
+export const AB_INTERRUPTED: int = 2       # a cast or channel was lost (why)
+export const AB_REFUSED: int = 3           # a cast was not allowed (why)
+export const AB_CHANNEL_TICK: int = 4      # a channelled ability pulsed
+export const AB_CHANNEL_END: int = 5       # a channel ran its length or was stopped
+export const AB_EFFECT: int = 6            # one effect landed (target, kind, amount): numbers to float over a head
+export const AB_SPAWN: int = 7             # an AB_FX_SPAWN link: the game makes it (stat in `kind`, at x, z)
+export const AB_READY: int = 8             # a cooldown ran out (ability)
+export const AB_CHARGE: int = 9            # a charge came back (amount: how many now)
+export const AB_LEARNED: int = 10          # an ability gained a level (level)
+export const AB_FORGOTTEN: int = 11
+
+# why
+export const AB_OK: int = 0
+export const AB_NO_SUCH: int = 1           # no such ability
+export const AB_NO_CASTER: int = 2
+export const AB_NOT_KNOWN: int = 3
+export const AB_PASSIVE: int = 4
+export const AB_BUSY: int = 5              # already casting
+export const AB_COOLING: int = 6
+export const AB_GCD: int = 7
+export const AB_NO_CHARGES: int = 8
+export const AB_CANT: int = 9              # the world says the caster may not now (silenced, stunned)
+export const AB_NEEDS_TARGET: int = 10
+export const AB_BAD_TARGET: int = 11
+export const AB_OUT_OF_RANGE: int = 12
+export const AB_NO_RESOURCE: int = 13
+export const AB_MOVED: int = 14            # interrupted by moving
+export const AB_HURT: int = 15             # interrupted by a blow
+export const AB_STOPPED: int = 16          # stopped by the caster
+export const AB_MAX_LEVEL: int = 17
+export const AB_LEVEL_TOO_LOW: int = 18
+export const AB_NEEDS_SKILL: int = 19
+export const AB_NO_POINTS: int = 20
+export const AB_NO_SLOT: int = 21
+
+export property AbilityFact {
+  what: int = 0
+  caster: int = -1                          # the caster's handle
+  actor: int = -1                           # the game's number for the caster
+  ability: int = -1
+  level: int = 0
+  target: int = -1                          # an actor, or -1
+  why: int = 0
+  x: float = 0.0
+  z: float = 0.0
+  kind: int = 0                             # an AB_EFFECT's effect kind (AB_FX_*), or an AB_SPAWN's stat
+  amount: float = 0.0
+}
