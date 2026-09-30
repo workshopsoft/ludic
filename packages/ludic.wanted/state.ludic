@@ -1,0 +1,85 @@
+# state.ludic - the port, the phases, the facts, and what the world holds against each subject
+
+# what heat asks the world. Unbound: a crime is always seen, and the dice start from 1
+export port WantedWorld {
+  witnessed: fn(int, float, float) -> bool = fn wn_always_seen     # (subject, x, z): did anybody see it
+  seed: fn() -> int = fn wn_seed_one
+}
+function wn_always_seen(subject: int, x: float, z: float) -> bool { return true }
+function wn_seed_one() -> int { return 1 }
+
+export enum WantedPhase { Clear, Wanted, Searching }
+
+export const WANTED_CRIME: int = 0      # a crime was counted (subject, crime, heat added, level)
+export const WANTED_LEVEL: int = 1      # the level moved (subject, from, level)
+export const WANTED_RESPOND: int = 2    # send this (subject, response, count, level)
+export const WANTED_PHASE: int = 3      # the phase changed (subject, phase, level)
+export const WANTED_CLEARED: int = 4    # back to clear (subject)
+export const WANTED_UNSEEN: int = 5     # a crime nobody saw, counted for nothing (subject, crime)
+
+export property WantedFact {
+  what: int = 0
+  subject: int = 0
+  crime: int = -1
+  response: int = -1
+  level: int = 0
+  from: int = 0
+  phase: int = 0
+  count: int = 0
+  heat: float = 0.0
+  x: float = 0.0
+  z: float = 0.0
+}
+
+# one subject's heat. `phase` is the machine's: nothing else writes it
+export property WantedRow {
+  subject: int = 0
+  phase: WantedPhase = WantedPhase.Clear
+  heat: float = 0.0
+  level: int = 0
+  last_phase: int = 0
+  seen_t: float = -1000.0         # the clock when somebody last sighted it
+  unseen: float = 0.0             # seconds since
+  lasted: float = 0.0             # seconds at this level
+  last_x: float = 0.0             # where it was last sighted
+  last_z: float = 0.0
+  crime_t: []float = null         # when each crime was last counted, -1000 never
+  resp_at: []float = null         # when each response is next sent, -1 while it is not due
+}
+
+export state WantedState {
+  wn_tab: Table<WantedRow> = wn_tab__new()
+  wn_ids: IntMap = imap_new()
+  wn_time: float = 0.0
+  wn_dice: Rng = null
+  wn_facts: Queue<WantedFact> = wn_facts__new()
+}
+function wn_tab__new() -> Table<WantedRow> {
+  let t: Table<WantedRow> = table_new(0, 0)
+  return t
+}
+function wn_facts__new() -> Queue<WantedFact> { return queue_new("wanted.facts") }
+
+export function wanted_facts(wanted_st: WantedState) -> Queue<WantedFact> { return wanted_st.wn_facts }
+
+function wn_fact(wanted_st: mut WantedState, what: int, subject: int) -> WantedFact {
+  var f = q_rec(wanted_st.wn_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new WantedFact
+    q_ring_add(wanted_st.wn_facts, f)
+  }
+  f.what = what
+  f.subject = subject
+  f.crime = -1
+  f.response = -1
+  f.level = 0
+  f.from = 0
+  f.phase = 0
+  f.count = 0
+  f.heat = 0.0
+  f.x = 0.0
+  f.z = 0.0
+  q_push(wanted_st.wn_facts, f)
+  return f
+}

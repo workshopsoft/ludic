@@ -1,0 +1,50 @@
+# defs.ludic - the three tables a game fills: levels (what heat each takes and how fast it fades),
+# crimes (what each adds) and responses (what the game's AI is told to send at a level)
+
+# a level: its place in WantedLevels + 1 is the number the game asks for (0 is clear). `heat` is what
+# reaches it; out of sight for `lose` seconds the search begins, and a search sheds `decay` heat a second
+export property WantedLevel {
+  key: string = ""
+  @Range(0, 10000) heat: float = 10.0
+  @Unit("s") @Range(0, 3600) lose: float = 10.0
+  @Range(0, 1000) decay: float = 1.0
+}
+
+@AppendOnly @ByKey
+export open registry WantedLevels of WantedLevel as WANTL
+
+# a crime: what it adds to the heat. `witness`: it counts only when the world says somebody saw it.
+# The same crime by the same subject again within `repeat_gap` adds only `repeat` of its heat (a
+# string of smashed windows is not a string of murders). `cap` (a level, 1 is the first; 0 none): this
+# crime alone never takes the heat past that level
+export property WantedCrime {
+  key: string = ""
+  @Range(0, 10000) heat: float = 10.0
+  witness: bool = true
+  @Unit("s") @Range(0, 3600) repeat_gap: float = 0.0
+  @Range(0, 1) repeat: float = 1.0
+  @Range(0, 16) cap: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry WantedCrimes of WantedCrime as WANTC
+
+# what the game's AI is asked to send: `what` is the game's own word ("patrol", "roadblock"), `count` of
+# them, `delay` seconds after the level is reached (while it lasts), again every `every` seconds (0: once),
+# about `radius` metres from the subject. `sticky`: it goes on at the levels above its own. `searching`:
+# it is also sent during the search, not only while the subject is in sight
+export property WantedResponse {
+  key: string = ""
+  @Ref(WantedLevels) level: int = 0
+  what: string = ""
+  @Range(1, 64) count: int = 1
+  @Unit("s") delay: float = 0.0
+  @Unit("s") every: float = 0.0
+  @Unit("m") radius: float = 60.0
+  param: float = 0.0
+  sticky: bool = false
+  searching: bool = false
+}
+
+@AppendOnly @ByKey
+export open registry WantedResponses of WantedResponse as WANTR

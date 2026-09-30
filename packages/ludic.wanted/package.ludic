@@ -1,0 +1,6 @@
+# ludic.wanted - a heat level a world builds up against a subject (a player, a faction): crimes as data
+# rows with weights, decay out of sight, responses per level as data, the phases as a @Machine, and
+# facts for the game's AI. Uses ludic.base and nothing else.
+package "ludic.wanted"
+version "0.1.0"
+kind source

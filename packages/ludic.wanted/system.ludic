@@ -1,0 +1,50 @@
+# system.ludic - wanted as a system: PH_SIMULATE, and its own save section. The heat, the last
+# sighting and the clock are saved; the phase is worked out again from them on the first ticks.
+export function wanted_save(wanted_st: WantedState) -> Val {
+  let v = Value.object()
+  sv_put_float(v, "time", wanted_st.wn_time)
+  sv_put_int(v, "dice", wanted_st.wn_dice.s)
+  let n = tb_len(wanted_st.wn_tab)
+  let keys = new []int
+  for i in 0 .. n {
+    let r = wanted_st.wn_tab.rec[i]
+    if r.heat <= 0.0 { continue }
+    push(keys, r.subject)
+    push(keys, int(Math.floor(r.heat * 1000.0 + 0.5)))
+    push(keys, int(Math.floor((wanted_st.wn_time - r.unseen) * 1000.0 + 0.5)))
+    push(keys, int(Math.floor(r.last_x * 1000.0 + 0.5)))
+    push(keys, int(Math.floor(r.last_z * 1000.0 + 0.5)))
+  }
+  sv_put_ints(v, "rows", keys)
+  return v
+}
+
+export function wanted_load(wanted_st: mut WantedState, v: Val, version: int) -> void {
+  wanted_reset(wanted_st)
+  wanted_st.wn_time = sv_float(v, "time", 0.0)
+  wanted_st.wn_dice.s = sv_int(v, "dice", wanted_st.wn_dice.s)
+  let rows = sv_ints(v, "rows")
+  var i = 0
+  while i + 4 < len(rows) {
+    let r = wn_row(wanted_st, rows[i])
+    r.heat = float(rows[i + 1]) / 1000.0
+    r.last_x = float(rows[i + 3]) / 1000.0
+    r.last_z = float(rows[i + 4]) / 1000.0
+    wn_settle(wanted_st, r)
+    r.seen_t = float(rows[i + 2]) / 1000.0
+    r.unseen = wanted_st.wn_time - r.seen_t
+    r.lasted = 0.0
+    i += 5
+  }
+  q_clear(wanted_st.wn_facts)
+}
+
+export function wanted_system() -> System {
+  let s = system_new("wanted", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn wanted_reset
+  s.tick = fn wanted_tick
+  s.save = fn wanted_save
+  s.load = fn wanted_load
+  return s
+}

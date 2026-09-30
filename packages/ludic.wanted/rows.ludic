@@ -1,0 +1,57 @@
+# rows.ludic - a subject's row: found, or made the first time anything is said about it
+
+function wn_fill(xs: []float, n: int, v: float) -> void {
+  for i in 0 .. n { push(xs, v) }
+}
+
+@alloc_ok("a subject's first row, made once and kept")
+function wn_make(wanted_st: mut WantedState, subject: int) -> WantedRow {
+  let r = new WantedRow
+  r.subject = subject
+  r.crime_t = new []float
+  wn_fill(r.crime_t, WANTC_COUNT, -1000.0)
+  r.resp_at = new []float
+  wn_fill(r.resp_at, WANTR_COUNT, -1.0)
+  let h = tb_add(wanted_st.wn_tab, r)
+  imap_put(wanted_st.wn_ids, subject, h)
+  return r
+}
+
+# the row a subject has, or null
+function wn_find(wanted_st: WantedState, subject: int) -> WantedRow {
+  let row = tb_row(wanted_st.wn_tab, imap_get(wanted_st.wn_ids, subject, -1))
+  if row < 0 { return null }
+  return wanted_st.wn_tab.rec[row]
+}
+
+function wn_row(wanted_st: mut WantedState, subject: int) -> WantedRow {
+  let r = wn_find(wanted_st, subject)
+  if r != null { return r }
+  return wn_make(wanted_st, subject)
+}
+
+# the level (0 is clear) a heat comes to
+function wn_level_of(heat: float) -> int {
+  var l = 0
+  for i in 0 .. WANTL_COUNT { if heat >= WantedLevels[i].heat { l = i + 1 } }
+  return l
+}
+
+# a row's heat was written: its level, and a fact if the level moved
+function wn_settle(wanted_st: mut WantedState, r: WantedRow) -> void {
+  if r.heat < 0.0 { r.heat = 0.0 }
+  let l = wn_level_of(r.heat)
+  if l == r.level { return }
+  if r.level == 0 {
+    r.seen_t = wanted_st.wn_time     # heat from nothing starts with a sighting's grace
+    r.unseen = 0.0
+  }
+  let f = wn_fact(wanted_st, WANTED_LEVEL, r.subject)
+  f.from = r.level
+  f.level = l
+  f.heat = r.heat
+  f.x = r.last_x
+  f.z = r.last_z
+  r.level = l
+  r.lasted = 0.0
+}

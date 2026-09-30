@@ -1,0 +1,22 @@
+# machine.ludic - the phases a subject moves through, as a table (steps.lres): Clear until the heat
+# makes a level, Wanted while it can be seen, Searching once it has been out of sight longer than its
+# level allows (heat then fades), Clear again when the heat is gone. A sighting in the search is Wanted again.
+export property WantedStep {
+  from: WantedPhase = WantedPhase.Clear
+  to: WantedPhase = WantedPhase.Clear
+  on: string = ""
+  guard: fn(Row<WantedRow>, WantedState) -> bool = null
+  enter: fn(Row<WantedRow>, WantedState) -> void = null
+}
+
+@Machine(WantedRow.phase)
+export registry WantedSteps of WantedStep as WANTS from "steps.lres"
+
+function wn_g_heat(r: Row<WantedRow>, wanted_st: WantedState) -> bool { return r.rec.level >= 1 }
+function wn_g_lost(r: Row<WantedRow>, wanted_st: WantedState) -> bool {
+  return r.rec.level >= 1 and r.rec.unseen > WantedLevels[r.rec.level - 1].lose
+}
+function wn_g_sighted(r: Row<WantedRow>, wanted_st: WantedState) -> bool {
+  return r.rec.level >= 1 and r.rec.unseen <= WantedLevels[r.rec.level - 1].lose
+}
+function wn_g_gone(r: Row<WantedRow>, wanted_st: WantedState) -> bool { return r.rec.level == 0 }

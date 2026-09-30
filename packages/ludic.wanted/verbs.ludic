@@ -1,0 +1,139 @@
+# verbs.ludic - the only ways heat changes from outside: a crime, a sighting, a pardon, a number
+
+# raise a row's heat by `add`, but not past what `cap` (a level, 0 none) lets one crime reach
+function wn_raise(wanted_st: mut WantedState, r: WantedRow, add: float, cap: int) -> void {
+  let was = r.heat
+  var now = was + add
+  if cap > 0 and cap < WANTL_COUNT {
+    let limit = WantedLevels[cap].heat - 0.001
+    if now > limit { now = Math.max(was, limit) }
+  }
+  r.heat = now
+  wn_settle(wanted_st, r)
+}
+
+# a crime by a subject at (x, z): its heat, counted only if somebody saw it when the crime needs a
+# witness. Returns the heat added (0 for a crime nobody saw). A counted crime that needed a witness is
+# a sighting too: the subject is where it was seen.
+export function wanted_crime(wanted_st: mut WantedState, subject: int, crime: int, x: float, z: float) -> float {
+  if crime < 0 or crime >= WANTC_COUNT { return 0.0 }
+  let c = WantedCrimes[crime]
+  if c.witness and not WantedWorld.witnessed(subject, x, z) {
+    let u = wn_fact(wanted_st, WANTED_UNSEEN, subject)
+    u.crime = crime
+    u.x = x
+    u.z = z
+    return 0.0
+  }
+  let r = wn_row(wanted_st, subject)
+  var add = c.heat
+  if c.repeat_gap > 0.0 and wanted_st.wn_time - r.crime_t[crime] < c.repeat_gap { add = add * c.repeat }
+  r.crime_t[crime] = wanted_st.wn_time
+  if c.witness {
+    r.seen_t = wanted_st.wn_time
+    r.unseen = 0.0
+    r.last_x = x
+    r.last_z = z
+  }
+  let before = r.heat
+  wn_raise(wanted_st, r, add, c.cap)
+  let f = wn_fact(wanted_st, WANTED_CRIME, subject)
+  f.crime = crime
+  f.heat = r.heat - before
+  f.level = r.level
+  f.x = x
+  f.z = z
+  return r.heat - before
+}
+
+# heat with no crime behind it (a story beat); negative takes some off
+export function wanted_add_heat(wanted_st: mut WantedState, subject: int, amount: float) -> void {
+  let r = wn_row(wanted_st, subject)
+  r.heat = r.heat + amount
+  wn_settle(wanted_st, r)
+}
+
+export function wanted_set_heat(wanted_st: mut WantedState, subject: int, heat: float) -> void {
+  let r = wn_row(wanted_st, subject)
+  r.heat = heat
+  wn_settle(wanted_st, r)
+}
+
+# the level outright: the heat that level begins at (0: none at all)
+export function wanted_set_level(wanted_st: mut WantedState, subject: int, level: int) -> void {
+  if level <= 0 {
+    wanted_set_heat(wanted_st, subject, 0.0)
+    return
+  }
+  let l = Math.min(level, WANTL_COUNT)
+  if l < 1 { return }
+  wanted_set_heat(wanted_st, subject, WantedLevels[l - 1].heat)
+}
+
+# the game's eyes (police, a camera) have the subject at (x, z) now
+export function wanted_sighted(wanted_st: mut WantedState, subject: int, x: float, z: float) -> void {
+  let r = wn_row(wanted_st, subject)
+  r.seen_t = wanted_st.wn_time
+  r.unseen = 0.0
+  r.last_x = x
+  r.last_z = z
+}
+
+# all heat gone: a pardon, a bribe, a bust. The next tick clears the phase
+export function wanted_pardon(wanted_st: mut WantedState, subject: int) -> void {
+  let r = wn_find(wanted_st, subject)
+  if r == null { return }
+  r.heat = 0.0
+  wn_settle(wanted_st, r)
+}
+
+# the subject forgotten (it left the game)
+export function wanted_forget(wanted_st: mut WantedState, subject: int) -> void {
+  let h = imap_get(wanted_st.wn_ids, subject, -1)
+  if h < 0 { return }
+  imap_del(wanted_st.wn_ids, subject)
+  tb_remove(wanted_st.wn_tab, h)
+}
+
+export function wanted_reset(wanted_st: mut WantedState) -> void {
+  tb_clear(wanted_st.wn_tab)
+  imap_clear(wanted_st.wn_ids)
+  wanted_st.wn_time = 0.0
+  wanted_st.wn_dice = rng_new(WantedWorld.seed())
+  q_clear(wanted_st.wn_facts)
+}
+
+# what is asked of a subject: its level (0 clear), its heat, its phase, how long unseen, where last seen
+export function wanted_level(wanted_st: WantedState, subject: int) -> int {
+  let r = wn_find(wanted_st, subject)
+  if r == null { return 0 }
+  return r.level
+}
+export function wanted_heat(wanted_st: WantedState, subject: int) -> float {
+  let r = wn_find(wanted_st, subject)
+  if r == null { return 0.0 }
+  return r.heat
+}
+export function wanted_phase(wanted_st: WantedState, subject: int) -> int {
+  let r = wn_find(wanted_st, subject)
+  if r == null { return WantedPhase.Clear }
+  return r.phase
+}
+export function wanted_unseen(wanted_st: WantedState, subject: int) -> float {
+  let r = wn_find(wanted_st, subject)
+  if r == null { return 0.0 }
+  return r.unseen
+}
+export function wanted_last_x(wanted_st: WantedState, subject: int) -> float {
+  let r = wn_find(wanted_st, subject)
+  if r == null { return 0.0 }
+  return r.last_x
+}
+export function wanted_last_z(wanted_st: WantedState, subject: int) -> float {
+  let r = wn_find(wanted_st, subject)
+  if r == null { return 0.0 }
+  return r.last_z
+}
+export function wanted_count(wanted_st: WantedState) -> int { return tb_len(wanted_st.wn_tab) }
+# the subject in row `i`, 0 .. wanted_count: a sweep over everyone with heat
+export function wanted_subject_at(wanted_st: WantedState, i: int) -> int { return wanted_st.wn_tab.rec[i].subject }

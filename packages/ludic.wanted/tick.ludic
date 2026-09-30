@@ -1,0 +1,72 @@
+# tick.ludic - a tick: the clock, what sight and time do to each row's heat, the responses now due,
+# the machine, and a fact for every phase that changed
+
+# the decay a row sheds a second while it is not in sight: its level's, else the first level's
+function wn_decay(r: WantedRow) -> float {
+  if WANTL_COUNT == 0 { return 0.0 }
+  var l = r.level - 1
+  if l < 0 { l = 0 }
+  return WantedLevels[l].decay
+}
+
+function wn_responses(wanted_st: mut WantedState, r: WantedRow) -> void {
+  for i in 0 .. WANTR_COUNT {
+    let rs = WantedResponses[i]
+    let here = rs.level + 1
+    var due = false
+    if r.phase == WantedPhase.Wanted or (r.phase == WantedPhase.Searching and rs.searching) {
+      due = r.level == here or (rs.sticky and r.level > here)
+    }
+    if not due {
+      r.resp_at[i] = -1.0
+      continue
+    }
+    if r.resp_at[i] < 0.0 { r.resp_at[i] = wanted_st.wn_time + rs.delay }
+    if wanted_st.wn_time < r.resp_at[i] { continue }
+    let f = wn_fact(wanted_st, WANTED_RESPOND, r.subject)
+    f.response = i
+    f.count = rs.count
+    f.level = r.level
+    f.x = r.last_x
+    f.z = r.last_z
+    if rs.every > 0.0 {
+      r.resp_at[i] = r.resp_at[i] + rs.every
+      if r.resp_at[i] <= wanted_st.wn_time { r.resp_at[i] = wanted_st.wn_time + rs.every }
+    } else {
+      r.resp_at[i] = 1000000000.0
+    }
+  }
+}
+
+function wn_step_row(wanted_st: mut WantedState, r: WantedRow, dt: float) -> void {
+  r.lasted += dt
+  if r.phase != WantedPhase.Wanted and r.heat > 0.0 {
+    r.heat = r.heat - wn_decay(r) * dt
+    wn_settle(wanted_st, r)
+  }
+  wn_responses(wanted_st, r)
+}
+
+function wn_phase_facts(wanted_st: mut WantedState, r: WantedRow) -> void {
+  if r.phase == r.last_phase { return }
+  r.last_phase = r.phase
+  r.lasted = 0.0
+  let f = wn_fact(wanted_st, WANTED_PHASE, r.subject)
+  f.phase = r.phase
+  f.level = r.level
+  f.x = r.last_x
+  f.z = r.last_z
+  if r.phase == WantedPhase.Clear { wn_fact(wanted_st, WANTED_CLEARED, r.subject) }
+}
+
+export function wanted_tick(wanted_st: mut WantedState, wanted_steps_m: mut WantedStepsMachine, t: Tick) -> void {
+  wanted_st.wn_time += t.dt
+  let n = tb_len(wanted_st.wn_tab)
+  for i in 0 .. n {
+    let r = wanted_st.wn_tab.rec[i]
+    r.unseen = wanted_st.wn_time - r.seen_t
+  }
+  wanted_steps_tick(wanted_steps_m, wanted_st)                       # the phase from what is true now
+  for i in 0 .. n { wn_step_row(wanted_st, wanted_st.wn_tab.rec[i], t.dt) }
+  for i in 0 .. n { wn_phase_facts(wanted_st, wanted_st.wn_tab.rec[i]) }
+}

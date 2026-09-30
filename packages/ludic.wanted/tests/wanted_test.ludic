@@ -1,0 +1,196 @@
+# wanted_test.ludic - crimes add their weights (a repeat less, a cap held, an unseen one nothing), the level
+# follows the heat, the machine goes Clear -> Wanted -> Searching -> Clear with heat fading only out of
+# sight, responses are sent once or again and stop with the level, and the save reads back
+import "ludic.wanted"
+import "ludic.base"
+program WantedTest {
+  numbers float
+  state WantedTestState {
+    watched: bool = true
+    frame: int = 0
+  }
+  function fake_witnessed(wanted_test_st: WantedTestState, subject: int, x: float, z: float) -> bool { return wanted_test_st.watched }
+  function fake_seed() -> int { return 9 }
+  bind WantedWorld { witnessed: fn fake_witnessed, seed: fn fake_seed }
+
+  def WantedLevels one { heat: 10.0, lose: 5.0, decay: 2.0 }
+  def WantedLevels two { heat: 30.0, lose: 8.0, decay: 3.0 }
+  def WantedLevels three { heat: 60.0, lose: 10.0, decay: 5.0 }
+  def WantedCrimes jaywalk { heat: 4.0 }
+  def WantedCrimes assault { heat: 12.0, repeat_gap: 10.0, repeat: 0.5 }
+  def WantedCrimes murder { heat: 40.0 }
+  def WantedCrimes graffiti { heat: 50.0, cap: 1 }
+  def WantedCrimes hidden { heat: 20.0, witness: false }
+  def WantedResponses patrol { level: WANTL_ONE, what: "patrol", count: 2 }
+  def WantedResponses searchers { level: WANTL_ONE, what: "searchers", count: 3, searching: true, every: 4.0, delay: 1.0 }
+  def WantedResponses heli { level: WANTL_TWO, what: "heli", count: 1, delay: 2.0, every: 5.0, sticky: true }
+
+  function pass_time(wanted_st: mut WantedState, m: mut WantedStepsMachine, wanted_test_st: mut WantedTestState, secs: float) -> void {
+    var t = 0.0
+    while t < secs - 0.001 {
+      wanted_test_st.frame += 1
+      wanted_tick(wanted_st, m, tick_new(0.5, wanted_test_st.frame, 12.0))
+      t += 0.5
+    }
+  }
+  function count_of(wanted_st: mut WantedState, what: int) -> int {
+    let fs = q_drain(wanted_facts(wanted_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "a crime adds its heat and the level follows" (wanted_st: mut WantedState) {
+    wanted_reset(wanted_st)
+    expect_eq(wanted_level(wanted_st, 1), 0)
+    expect(wanted_crime(wanted_st, 1, WANTC_JAYWALK, 3.0, 4.0) == 4.0)
+    expect_eq(wanted_level(wanted_st, 1), 0)
+    wanted_crime(wanted_st, 1, WANTC_MURDER, 3.0, 4.0)
+    expect_eq(wanted_level(wanted_st, 1), 2)
+    expect(wanted_heat(wanted_st, 1) == 44.0)
+    expect(wanted_last_x(wanted_st, 1) == 3.0)
+    expect_eq(wanted_level(wanted_st, 2), 0)
+  }
+
+  test "a repeat is worth less, a cap holds, and what nobody saw counts for nothing" (wanted_st: mut WantedState, wanted_test_st: mut WantedTestState) {
+    wanted_reset(wanted_st)
+    wanted_crime(wanted_st, 1, WANTC_ASSAULT, 0.0, 0.0)
+    wanted_crime(wanted_st, 1, WANTC_ASSAULT, 0.0, 0.0)
+    expect(wanted_heat(wanted_st, 1) == 18.0)
+    wanted_crime(wanted_st, 2, WANTC_GRAFFITI, 0.0, 0.0)
+    expect_eq(wanted_level(wanted_st, 2), 1)
+    expect(wanted_heat(wanted_st, 2) < 30.0)
+    wanted_test_st.watched = false
+    expect(wanted_crime(wanted_st, 3, WANTC_MURDER, 0.0, 0.0) == 0.0)
+    expect_eq(wanted_level(wanted_st, 3), 0)
+    expect(wanted_crime(wanted_st, 3, WANTC_HIDDEN, 0.0, 0.0) == 20.0)
+    expect_eq(wanted_level(wanted_st, 3), 1)
+    wanted_test_st.watched = true
+  }
+
+  test "in sight the heat stays; out of sight the search begins and the heat fades to clear" (wanted_st: mut WantedState, m: mut WantedStepsMachine, wanted_test_st: mut WantedTestState) {
+    wanted_reset(wanted_st)
+    wanted_crime(wanted_st, 1, WANTC_MURDER, 10.0, 20.0)
+    expect_eq(wanted_phase(wanted_st, 1), WantedPhase.Clear)
+    pass_time(wanted_st, m, wanted_test_st, 1.0)
+    expect_eq(wanted_phase(wanted_st, 1), WantedPhase.Wanted)
+    pass_time(wanted_st, m, wanted_test_st, 6.0)
+    expect_eq(wanted_phase(wanted_st, 1), WantedPhase.Wanted)
+    expect(wanted_heat(wanted_st, 1) == 40.0)
+    pass_time(wanted_st, m, wanted_test_st, 3.0)
+    expect_eq(wanted_phase(wanted_st, 1), WantedPhase.Searching)
+    pass_time(wanted_st, m, wanted_test_st, 1.0)
+    expect(wanted_heat(wanted_st, 1) < 40.0)
+    expect_eq(wanted_level(wanted_st, 1), 2)
+    pass_time(wanted_st, m, wanted_test_st, 20.0)
+    expect_eq(wanted_phase(wanted_st, 1), WantedPhase.Clear)
+    expect(wanted_heat(wanted_st, 1) == 0.0)
+    expect_eq(wanted_level(wanted_st, 1), 0)
+  }
+
+  test "a sighting in the search is wanted again and the clock starts over" (wanted_st: mut WantedState, m: mut WantedStepsMachine, wanted_test_st: mut WantedTestState) {
+    wanted_reset(wanted_st)
+    wanted_set_level(wanted_st, 7, 2)
+    pass_time(wanted_st, m, wanted_test_st, 9.0)
+    expect_eq(wanted_phase(wanted_st, 7), WantedPhase.Searching)
+    wanted_sighted(wanted_st, 7, 50.0, 60.0)
+    pass_time(wanted_st, m, wanted_test_st, 0.5)
+    expect_eq(wanted_phase(wanted_st, 7), WantedPhase.Wanted)
+    expect(wanted_last_z(wanted_st, 7) == 60.0)
+    expect(wanted_unseen(wanted_st, 7) < 1.0)
+  }
+
+  test "a pardon clears the phase" (wanted_st: mut WantedState, m: mut WantedStepsMachine, wanted_test_st: mut WantedTestState) {
+    wanted_reset(wanted_st)
+    wanted_set_level(wanted_st, 4, 3)
+    pass_time(wanted_st, m, wanted_test_st, 1.0)
+    expect_eq(wanted_phase(wanted_st, 4), WantedPhase.Wanted)
+    wanted_pardon(wanted_st, 4)
+    pass_time(wanted_st, m, wanted_test_st, 1.0)
+    expect_eq(wanted_phase(wanted_st, 4), WantedPhase.Clear)
+    expect_eq(wanted_level(wanted_st, 4), 0)
+  }
+
+  test "the facts: a crime, the level, the phase, and the responses each level calls for" (wanted_st: mut WantedState, m: mut WantedStepsMachine, wanted_test_st: mut WantedTestState) {
+    wanted_reset(wanted_st)
+    wanted_crime(wanted_st, 1, WANTC_ASSAULT, 0.0, 0.0)
+    var fs = q_drain(wanted_facts(wanted_st))
+    expect_eq(len(fs), 2)
+    expect_eq(fs[0].what, WANTED_LEVEL)
+    expect_eq(fs[0].level, 1)
+    expect_eq(fs[1].what, WANTED_CRIME)
+    expect(fs[1].heat == 12.0)
+    pass_time(wanted_st, m, wanted_test_st, 0.5)
+    fs = q_drain(wanted_facts(wanted_st))
+    var patrols = 0
+    var phases = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == WANTED_RESPOND and fs[i].response == WANTR_PATROL {
+        patrols += 1
+        expect_eq(fs[i].count, 2)
+      }
+      if fs[i].what == WANTED_PHASE { phases += 1 }
+    }
+    expect_eq(patrols, 1)
+    expect_eq(phases, 1)
+    pass_time(wanted_st, m, wanted_test_st, 3.0)
+    fs = q_drain(wanted_facts(wanted_st))
+    for i in 0 .. len(fs) { expect(not (fs[i].what == WANTED_RESPOND and fs[i].response == WANTR_PATROL)) }   # once
+  }
+
+  test "a response with a delay and an every repeats while its level lasts and stops with it" (wanted_st: mut WantedState, m: mut WantedStepsMachine, wanted_test_st: mut WantedTestState) {
+    wanted_reset(wanted_st)
+    wanted_set_level(wanted_st, 1, 2)
+    q_clear(wanted_facts(wanted_st))
+    var helis = 0
+    for k in 0 .. 13 {
+      pass_time(wanted_st, m, wanted_test_st, 1.0)
+      let fs = q_drain(wanted_facts(wanted_st))
+      for i in 0 .. len(fs) { if fs[i].what == WANTED_RESPOND and fs[i].response == WANTR_HELI { helis += 1 } }
+      wanted_sighted(wanted_st, 1, 0.0, 0.0)
+    }
+    expect_eq(helis, 3)
+    wanted_set_level(wanted_st, 1, 3)
+    pass_time(wanted_st, m, wanted_test_st, 6.0)
+    expect(count_of(wanted_st, WANTED_RESPOND) >= 1)
+    wanted_pardon(wanted_st, 1)
+    pass_time(wanted_st, m, wanted_test_st, 10.0)
+    expect_eq(count_of(wanted_st, WANTED_RESPOND), 0)
+  }
+
+  test "searchers are sent in sight and in the search, and again every few seconds" (wanted_st: mut WantedState, m: mut WantedStepsMachine, wanted_test_st: mut WantedTestState) {
+    wanted_reset(wanted_st)
+    wanted_set_heat(wanted_st, 1, 18.0)
+    q_clear(wanted_facts(wanted_st))
+    var n = 0
+    for k in 0 .. 10 {
+      pass_time(wanted_st, m, wanted_test_st, 1.0)
+      let fs = q_drain(wanted_facts(wanted_st))
+      for i in 0 .. len(fs) { if fs[i].what == WANTED_RESPOND and fs[i].response == WANTR_SEARCHERS { n += 1 } }
+      if k < 4 { wanted_sighted(wanted_st, 1, 0.0, 0.0) }
+    }
+    expect_eq(n, 3)      # 1 s after the level, then every 4
+    expect_eq(wanted_phase(wanted_st, 1), WantedPhase.Searching)
+  }
+
+  test "the save reads back the heat and the last sighting" (wanted_st: mut WantedState, m: mut WantedStepsMachine, wanted_test_st: mut WantedTestState) {
+    wanted_reset(wanted_st)
+    wanted_crime(wanted_st, 5, WANTC_MURDER, 11.0, 22.0)
+    pass_time(wanted_st, m, wanted_test_st, 2.0)
+    let v = wanted_save(wanted_st)
+    wanted_reset(wanted_st)
+    expect_eq(wanted_level(wanted_st, 5), 0)
+    wanted_load(wanted_st, v, 1)
+    expect_eq(wanted_level(wanted_st, 5), 2)
+    expect(wanted_heat(wanted_st, 5) == 40.0)
+    expect(wanted_last_x(wanted_st, 5) == 11.0)
+    pass_time(wanted_st, m, wanted_test_st, 1.0)
+    expect_eq(wanted_phase(wanted_st, 5), WantedPhase.Wanted)
+  }
+
+  test "the system is declared with its own key" {
+    let s = wanted_system()
+    expect(s.key == "wanted")
+    expect_eq(s.phase, PH_SIMULATE)
+  }
+}

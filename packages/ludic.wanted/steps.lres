@@ -1,0 +1,7 @@
+# steps.lres - the phase machine of ludic.wanted; edit it as a graph. A step with no `on` is asked
+# every tick by its guard, first match in this order.
+notice { from: WantedPhase.Clear, to: WantedPhase.Wanted, guard: fn wn_g_heat }
+lose_them { from: WantedPhase.Wanted, to: WantedPhase.Searching, guard: fn wn_g_lost }
+pardoned { from: WantedPhase.Wanted, to: WantedPhase.Clear, guard: fn wn_g_gone }
+spotted { from: WantedPhase.Searching, to: WantedPhase.Wanted, guard: fn wn_g_sighted }
+cooled { from: WantedPhase.Searching, to: WantedPhase.Clear, guard: fn wn_g_gone }

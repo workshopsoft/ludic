@@ -1,0 +1,13 @@
+# ludic.wanted - heat against a subject: crimes (weights) raise it, time out of sight sheds it, its
+# levels and the responses each level calls for are data, and the phase a subject is in
+# (Clear, Wanted, Searching) is a machine whose graph is a table (steps.lres)
+module ludic_wanted uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "state.ludic"
+import "rows.ludic"
+import "machine.ludic"
+import "verbs.ludic"
+import "tick.ludic"
+import "system.ludic"
