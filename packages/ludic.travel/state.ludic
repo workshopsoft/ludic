@@ -1,0 +1,69 @@
+# state.ludic - what the player knows, where a trip stands, the markers of the game's own, the facts
+export const TRAVEL_IDLE: int = 0
+export const TRAVEL_LOADING: int = 1        # paid, and waiting for the world to load the point
+
+# one marker of the game's own (a quest, a pin the player dropped, a found thing)
+export property Marker {
+  id: int = 0
+  kind: int = 0
+  x: float = 0.0
+  z: float = 0.0
+  tag: int = 0                 # the game's own number for what it stands for
+  label: string = ""           # the game's own text (a player's note): the same in every language
+  on: bool = true
+}
+
+# one marker as a map reads it: a point or a marker of the game's, in the caller's own record
+export property MarkerView {
+  kind: int = 0
+  x: float = 0.0
+  z: float = 0.0
+  point: int = -1              # the point it is, or -1
+  id: int = -1                 # the game's marker's id, or -1
+  tag: int = 0
+  known: bool = true
+}
+
+export state TravelState {
+  tr__found: []bool = tr__falses()
+  tr__visits: []int = tr__zeros()
+  tr__here: int = -1           # the point last arrived at (or set by the game)
+  tr__phase: int = 0
+  tr__dest: int = -1
+  tr__paid: int = 0
+  tr__wait: float = 0.0        # seconds since the trip began
+  tr__cool: float = 0.0        # seconds before another trip
+  tr__scan: float = 0.0        # seconds to the next look for a point the player has walked near
+  tr__markers: []Marker = new []Marker
+  tr__next_id: int = 1
+  tr__q: Queue<TravelFact> = tr__queue()
+  tr__views: []MarkerView = new []MarkerView
+}
+function tr__falses() -> []bool {
+  let xs = new []bool
+  for i in 0 .. TRP_COUNT { push(xs, TravelPoints[i].unlock == TRAVEL_UNLOCK_START) }
+  return xs
+}
+function tr__zeros() -> []int {
+  let xs = new []int
+  for i in 0 .. TRP_COUNT { push(xs, 0) }
+  return xs
+}
+function tr__queue() -> Queue<TravelFact> { return queue_new("travel.facts") }
+
+export function travel_facts(travel_st: TravelState) -> Queue<TravelFact> { return travel_st.tr__q }
+
+function tr__fact(travel_st: mut TravelState, what: int, point: int, cost: int, why: int, marker: int) -> void {
+  var f = q_rec(travel_facts(travel_st))
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new TravelFact
+    q_ring_add(travel_facts(travel_st), f)
+  }
+  f.what = what
+  f.point = point
+  f.cost = cost
+  f.why = why
+  f.marker = marker
+  q_push(travel_facts(travel_st), f)
+}

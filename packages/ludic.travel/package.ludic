@@ -1,0 +1,6 @@
+# ludic.travel - waypoints a player discovers and fast-travels between: unlock rules, what a trip
+# costs in money and game time, the load asked through a port, and the markers a map draws. Uses
+# ludic.base and nothing else. See README.md.
+package "ludic.travel"
+version "0.1.0"
+kind source

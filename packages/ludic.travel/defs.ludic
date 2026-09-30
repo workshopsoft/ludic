@@ -1,0 +1,114 @@
+# defs.ludic - the three tables a game fills: the points, the rules a trip to one is priced by, and
+# the kinds of marker a map draws. Usually from resource files: `def TravelPoints from "points.lres"`.
+# Every table is saved by key, so its order is free; an index in a `.lres` is written by constant.
+
+# how a point comes to be known
+export const TRAVEL_UNLOCK_START: int = 0    # known from a new game
+export const TRAVEL_UNLOCK_NEAR: int = 1     # known once the player has walked within `radius`
+export const TRAVEL_UNLOCK_USE: int = 2      # known when the player uses it (a shrine): travel_use
+export const TRAVEL_UNLOCK_FLAG: int = 3     # known once the world says its `flag` is true
+export const TRAVEL_UNLOCK_STORY: int = 4    # known only when the game calls travel_discover
+
+# what sort of place it is, for a menu's icon and grouping
+export const TRAVEL_KIND_WAYPOINT: int = 0
+export const TRAVEL_KIND_SHRINE: int = 1
+export const TRAVEL_KIND_TOWN: int = 2
+export const TRAVEL_KIND_CAMP: int = 3
+export const TRAVEL_KIND_CAVE: int = 4
+export const TRAVEL_KIND_PORTAL: int = 5
+
+# what a trip to a point costs, and what may stop it
+export property TravelRule {
+  key: string = ""
+  @Range(0, 1000000) base: int = 0                       # coins for any trip
+  @Range(0, 100000) per_km: float = 0.0                  # coins more for each 1000 m from where the player stands
+  @Range(0, 1000000) cross_map: int = 0                  # coins more when the point is on another map
+  @Unit("m") @Range(0, 100000) free_within: float = 0.0  # no charge at all when the player is this near
+  @Range(0, 1000000) max_cost: int = 0                   # the most a trip costs; 0 is no ceiling
+  @Unit("h") @Range(0, 240) hours_per_km: float = 0.0    # game hours that pass for each 1000 m
+  @Unit("h") @Range(0, 240) hours_cross_map: float = 0.0 # game hours more when it is on another map
+  @Unit("s") @Range(0, 60) delay: float = 0.0            # the least the loading takes: a fade out and in
+  @Unit("s") @Range(1, 600) timeout: float = 30.0        # how long to wait for the world before the trip fails
+  @Unit("s") @Range(0, 3600) cooldown: float = 0.0       # seconds after arriving before the next trip
+  allow: string = ""                                     # a condition the world must say is true to set off ("" none), e.g. "no_combat"
+}
+
+# a kind of marker on the map: how it is drawn and which sits on top
+export property MarkerKind {
+  key: string = ""
+  @Text name: Key = null
+  @Asset("png") icon: string = ""
+  @Color color: int = 0
+  @Range(0, 100) priority: int = 10                      # the higher is drawn last, on top
+  @Range(0, 100) @Unit("px") size: float = 16.0
+  @Range(0, 100) min_zoom: float = 0.0                   # hidden while the map is zoomed out past this
+  layer: string = ""                                     # a group the map can switch off as one ("quests", "towns")
+}
+
+@ByKey
+export open registry MarkerKinds of MarkerKind as MRK
+
+@ByKey
+export open registry TravelRules of TravelRule as TRR
+
+# a place a player can come to know and travel to
+export property TravelPoint {
+  key: string = ""
+  @Text name: Key = null
+  @Text @Multiline blurb: Key = null
+  region: string = ""                                    # a group for the menu ("Pinewood")
+  @OneOf(TRAVEL_KIND_) kind: int = 0
+  map: string = ""                                       # the game's key for the map it is on; the package only compares them
+  @Unit("m") x: float = 0.0
+  @Unit("m") y: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0                          # the way the player faces on arriving
+  @OneOf(TRAVEL_UNLOCK_) unlock: int = 1
+  @Unit("m") @Range(1, 1000) radius: float = 30.0        # how near counts as having found it (near)
+  flag: string = ""                                      # the condition that unlocks it (flag)
+  @Range(0, 1000000) unlock_cost: int = 0                # coins to use it (use)
+  @Ref(TravelPoints) needs: []int = null                 # points that must be known first
+  @Ref(TravelRules) rule: int = 0                        # how a trip to it is priced
+  @Ref(MarkerKinds) marker: int = 0                      # how the map draws it
+  fast: bool = true                                      # false: it is discovered but no one travels to it
+  hidden: bool = true                                    # not on the map until it is known
+}
+
+@ByKey
+export open registry TravelPoints of TravelPoint as TRP
+
+# the package's own rule and marker, first so index 0 means something for a row that names none
+def TravelRules free { }
+def MarkerKinds point { }
+
+# the facts
+export const TRAVEL_DISCOVERED: int = 0     # a point became known (point)
+export const TRAVEL_STARTED: int = 1        # a trip began, its cost paid (point, cost)
+export const TRAVEL_ARRIVED: int = 2        # the trip ended at the point
+export const TRAVEL_REFUSED: int = 3        # a trip or a use was refused (point, why)
+export const TRAVEL_FAILED: int = 4         # the world did not finish loading; the cost was given back (point, why)
+export const TRAVEL_MARKER_ADDED: int = 5   # a marker of the game's own (marker id)
+export const TRAVEL_MARKER_REMOVED: int = 6
+
+# why: what stopped it
+export const TRAVEL_OK: int = 0
+export const TRAVEL_NO_SUCH: int = 1        # no such point
+export const TRAVEL_NOT_KNOWN: int = 2      # the player has not discovered it
+export const TRAVEL_HERE: int = 3           # the player is already there
+export const TRAVEL_TOO_POOR: int = 4
+export const TRAVEL_BLOCKED: int = 5        # the world's condition for setting off is false
+export const TRAVEL_BUSY: int = 6           # a trip is already under way
+export const TRAVEL_COOLING: int = 7        # too soon after the last one
+export const TRAVEL_NOT_FAST: int = 8       # a point no one travels to
+export const TRAVEL_LOAD_REFUSED: int = 9   # the world would not begin loading
+export const TRAVEL_TIMED_OUT: int = 10     # it never finished loading
+export const TRAVEL_NEEDS: int = 11         # a point it needs is not known, or its flag is false
+export const TRAVEL_WRONG_MODE: int = 12    # used a point that is not unlocked by use
+
+export property TravelFact {
+  what: int = 0
+  point: int = -1
+  cost: int = 0
+  why: int = 0
+  marker: int = -1
+}

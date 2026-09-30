@@ -1,0 +1,113 @@
+# queries.ludic - what the game and a menu ask: what is known, what a trip costs, what is on offer
+export function travel_count(travel_st: TravelState) -> int { return TRP_COUNT }
+
+function tr__ok(p: int) -> bool { return p >= 0 and p < TRP_COUNT }
+
+export function travel_known(travel_st: TravelState, p: int) -> bool {
+  if not tr__ok(p) { return false }
+  return travel_st.tr__found[p]
+}
+
+export function travel_known_count(travel_st: TravelState) -> int {
+  var n = 0
+  for i in 0 .. TRP_COUNT { if travel_st.tr__found[i] { n += 1 } }
+  return n
+}
+
+export function travel_visits(travel_st: TravelState, p: int) -> int {
+  if not tr__ok(p) { return 0 }
+  return travel_st.tr__visits[p]
+}
+
+export function travel_here(travel_st: TravelState) -> int { return travel_st.tr__here }
+export function travel_busy(travel_st: TravelState) -> bool { return travel_st.tr__phase != TRAVEL_IDLE }
+export function travel_dest(travel_st: TravelState) -> int { return travel_st.tr__dest }
+export function travel_cooldown(travel_st: TravelState) -> float { return travel_st.tr__cool }
+export function travel_wait(travel_st: TravelState) -> float { return travel_st.tr__wait }
+
+# a point's number by its key, or -1 (the registry's own lookup, here for a caller that holds only a name)
+export function travel_find(travel_st: TravelState, key: string) -> int { return travelpoints_find(key) }
+
+# metres from where the player stands to a point, flat (the ground is what a walker crosses)
+export function travel_distance(travel_st: TravelState, p: int) -> float {
+  if not tr__ok(p) { return 0.0 }
+  let dx = TravelPoints[p].x - TravelWorld.px()
+  let dz = TravelPoints[p].z - TravelWorld.pz()
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+function tr__other_map(p: int) -> bool {
+  let here = TravelWorld.map()
+  if here == "" or TravelPoints[p].map == "" { return false }
+  return here != TravelPoints[p].map
+}
+
+# what a trip to a point costs the player where they stand now, in coins
+export function travel_cost(travel_st: TravelState, p: int) -> int {
+  if not tr__ok(p) { return 0 }
+  let r = TravelRules[TravelPoints[p].rule]
+  let d = travel_distance(travel_st, p)
+  if d < r.free_within and not tr__other_map(p) { return 0 }
+  var c = float(r.base) + r.per_km * d / 1000.0
+  if tr__other_map(p) { c = c + float(r.cross_map) }
+  var n = int(Math.floor(c + 0.5))
+  if r.max_cost > 0 and n > r.max_cost { n = r.max_cost }
+  if n < 0 { n = 0 }
+  return n
+}
+
+# the game hours a trip to it takes
+export function travel_hours(travel_st: TravelState, p: int) -> float {
+  if not tr__ok(p) { return 0.0 }
+  let r = TravelRules[TravelPoints[p].rule]
+  var h = r.hours_per_km * travel_distance(travel_st, p) / 1000.0
+  if tr__other_map(p) { h = h + r.hours_cross_map }
+  return h
+}
+
+# are a point's own conditions met: what it needs known, and its flag
+export function travel_needs_met(travel_st: TravelState, p: int) -> bool {
+  if not tr__ok(p) { return false }
+  let need = TravelPoints[p].needs
+  if need != null {
+    for i in 0 .. len(need) { if not travel_known(travel_st, need[i]) { return false } }
+  }
+  if TravelPoints[p].unlock == TRAVEL_UNLOCK_FLAG and not TravelWorld.condition(TravelPoints[p].flag) { return false }
+  return true
+}
+
+# why a trip to a point could not start now (TRAVEL_OK when it can)
+export function travel_why_not(travel_st: TravelState, p: int) -> int {
+  if not tr__ok(p) { return TRAVEL_NO_SUCH }
+  if travel_st.tr__phase != TRAVEL_IDLE { return TRAVEL_BUSY }
+  if not travel_st.tr__found[p] { return TRAVEL_NOT_KNOWN }
+  if not TravelPoints[p].fast { return TRAVEL_NOT_FAST }
+  if travel_st.tr__here == p { return TRAVEL_HERE }
+  if travel_st.tr__cool > 0.0 { return TRAVEL_COOLING }
+  let r = TravelRules[TravelPoints[p].rule]
+  if r.allow != "" and not TravelWorld.condition(r.allow) { return TRAVEL_BLOCKED }
+  if travel_cost(travel_st, p) > TravelPurse.money() { return TRAVEL_TOO_POOR }
+  return TRAVEL_OK
+}
+
+export function travel_can_go(travel_st: TravelState, p: int) -> bool { return travel_why_not(travel_st, p) == TRAVEL_OK }
+
+# the points on offer, nearest first, into the caller's own list (cleared first): the ones known and
+# travelled to, and not where the player is. `region` "" is all of them. Returns how many.
+@alloc_ok("into the caller's kept list, at most the points")
+export function travel_menu_into(travel_st: TravelState, region: string, out: []int) -> int {
+  List.clear(out)
+  for p in 0 .. TRP_COUNT {
+    if not travel_st.tr__found[p] or not TravelPoints[p].fast or travel_st.tr__here == p { continue }
+    if region != "" and TravelPoints[p].region != region { continue }
+    let d = travel_distance(travel_st, p)
+    var at = len(out)
+    push(out, p)
+    while at > 0 and travel_distance(travel_st, out[at - 1]) > d {
+      out[at] = out[at - 1]
+      at -= 1
+      out[at] = p
+    }
+  }
+  return len(out)
+}

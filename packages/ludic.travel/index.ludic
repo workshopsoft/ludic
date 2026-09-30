@@ -1,0 +1,14 @@
+# ludic.travel - discoverable points, fast travel between them, and map markers as data. The points,
+# the rules and the marker kinds are the game's; money, the player's place and the loading of the
+# destination are asked through ports; every change is a fact
+module ludic_travel uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "queries.ludic"
+import "markers.ludic"
+import "discover.ludic"
+import "go.ludic"
+import "system.ludic"

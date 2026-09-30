@@ -1,0 +1,89 @@
+# go.ludic - a trip: checked, paid, the load begun through the port, waited for, the player put down
+export function travel_go(travel_st: mut TravelState, p: int) -> bool {
+  let why = travel_why_not(travel_st, p)
+  if why != TRAVEL_OK {
+    tr__fact(travel_st, TRAVEL_REFUSED, p, 0, why, -1)
+    return false
+  }
+  let cost = travel_cost(travel_st, p)
+  if cost > 0 and not TravelPurse.spend(cost) {
+    tr__fact(travel_st, TRAVEL_REFUSED, p, cost, TRAVEL_TOO_POOR, -1)
+    return false
+  }
+  if not TravelWorld.load(p) {
+    if cost > 0 { TravelPurse.refund(cost) }
+    tr__fact(travel_st, TRAVEL_REFUSED, p, 0, TRAVEL_LOAD_REFUSED, -1)
+    return false
+  }
+  travel_st.tr__phase = TRAVEL_LOADING
+  travel_st.tr__dest = p
+  travel_st.tr__paid = cost
+  travel_st.tr__wait = 0.0
+  tr__fact(travel_st, TRAVEL_STARTED, p, cost, TRAVEL_OK, -1)
+  return true
+}
+
+export function travel_go_key(travel_st: mut TravelState, key: string) -> bool {
+  return travel_go(travel_st, travelpoints_find(key))
+}
+
+# give a trip up while the world loads: the coins come back
+export function travel_cancel(travel_st: mut TravelState) -> bool {
+  if travel_st.tr__phase != TRAVEL_LOADING { return false }
+  tr__fail(travel_st, TRAVEL_TIMED_OUT, false)
+  return true
+}
+
+function tr__fail(travel_st: mut TravelState, why: int, say: bool) -> void {
+  let p = travel_st.tr__dest
+  if travel_st.tr__paid > 0 { TravelPurse.refund(travel_st.tr__paid) }
+  TravelWorld.abort(p)
+  tr__fact(travel_st, TRAVEL_FAILED, p, travel_st.tr__paid, why, -1)
+  travel_st.tr__phase = TRAVEL_IDLE
+  travel_st.tr__dest = -1
+  travel_st.tr__paid = 0
+  travel_st.tr__wait = 0.0
+}
+
+function tr__land(travel_st: mut TravelState) -> void {
+  let p = travel_st.tr__dest
+  TravelWorld.pass_time(travel_hours(travel_st, p))
+  TravelWorld.arrive(p)
+  travel_st.tr__here = p
+  travel_st.tr__visits[p] += 1
+  travel_st.tr__cool = TravelRules[TravelPoints[p].rule].cooldown
+  travel_st.tr__phase = TRAVEL_IDLE
+  travel_st.tr__dest = -1
+  tr__fact(travel_st, TRAVEL_ARRIVED, p, travel_st.tr__paid, TRAVEL_OK, -1)
+  travel_st.tr__paid = 0
+  travel_st.tr__wait = 0.0
+}
+
+# the game says where the player is (a rest, a respawn, a new map) without a trip
+export function travel_set_here(travel_st: mut TravelState, p: int) -> void {
+  if p < 0 or p >= TRP_COUNT { travel_st.tr__here = -1 } else { travel_st.tr__here = p }
+}
+
+# a trip's waiting: the load is done and the least delay has passed, or it has run out of time
+function tr__run_trip(travel_st: mut TravelState, dt: float) -> void {
+  travel_st.tr__wait += dt
+  let r = TravelRules[TravelPoints[travel_st.tr__dest].rule]
+  if travel_st.tr__wait >= r.delay and TravelWorld.ready() {
+    tr__land(travel_st)
+  } else if travel_st.tr__wait >= r.timeout {
+    tr__fail(travel_st, TRAVEL_TIMED_OUT, true)
+  }
+}
+
+export function travel_run(travel_st: mut TravelState, dt: float) -> void {
+  if travel_st.tr__cool > 0.0 {
+    travel_st.tr__cool -= dt
+    if travel_st.tr__cool < 0.0 { travel_st.tr__cool = 0.0 }
+  }
+  if travel_st.tr__phase == TRAVEL_LOADING { tr__run_trip(travel_st, dt) }
+  travel_st.tr__scan -= dt
+  if travel_st.tr__scan <= 0.0 {
+    travel_st.tr__scan = 0.25
+    travel_look(travel_st)
+  }
+}

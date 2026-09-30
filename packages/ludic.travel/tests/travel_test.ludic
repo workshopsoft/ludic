@@ -1,0 +1,323 @@
+# travel_test.ludic - points known by a start, a walk, a use, a flag or the story; trips priced by
+# rule and paid through a fake purse; a load the world finishes or does not; the map's markers; and
+# the save by key
+import "ludic.travel"
+import "ludic.base"
+program TravelTest {
+  numbers float
+
+  def TravelRules carriage { base: 10, per_km: 20.0, cross_map: 100, free_within: 50.0, max_cost: 400, delay: 1.0, timeout: 5.0, cooldown: 10.0, hours_per_km: 0.5, allow: "calm" }
+  def MarkerKinds quest { priority: 50, layer: "quests" }
+  def MarkerKinds pin { priority: 5, min_zoom: 2.0 }
+  def TravelPoints camp { unlock: TRAVEL_UNLOCK_START, map: "pine", x: 0.0, z: 0.0, rule: TRR_CARRIAGE, marker: MRK_POINT, hidden: false }
+  def TravelPoints ridge { unlock: TRAVEL_UNLOCK_NEAR, map: "pine", x: 2000.0, z: 0.0, radius: 20.0, rule: TRR_CARRIAGE, marker: MRK_QUEST }
+  def TravelPoints shrine { unlock: TRAVEL_UNLOCK_USE, map: "pine", x: 500.0, z: 500.0, unlock_cost: 50, needs: [TRP_CAMP], rule: TRR_CARRIAGE }
+  def TravelPoints vault { unlock: TRAVEL_UNLOCK_FLAG, flag: "quest.vault", map: "pine", x: -500.0, z: 0.0, needs: [TRP_CAMP] }
+  def TravelPoints old_town { unlock: TRAVEL_UNLOCK_STORY, map: "ash", x: 0.0, z: 100.0, rule: TRR_CARRIAGE }
+  def TravelPoints road { unlock: TRAVEL_UNLOCK_START, fast: false, x: 10.0, z: 10.0 }
+
+  state TravelWorldState {
+    x: float = 0.0
+    z: float = 0.0
+    map: string = "pine"
+    vault_done: bool = false
+    calm: bool = true
+    money: int = 0
+    loaded: bool = true
+    load_ok: bool = true
+    arrived: int = -1
+    aborted: int = -1
+    hours: float = 0.0
+    loads: int = 0
+  }
+  function w_x(travel_world_st: TravelWorldState) -> float { return travel_world_st.x }
+  function w_z(travel_world_st: TravelWorldState) -> float { return travel_world_st.z }
+  function w_map(travel_world_st: TravelWorldState) -> string { return travel_world_st.map }
+  function w_cond(travel_world_st: TravelWorldState, f: string) -> bool {
+    if f == "quest.vault" { return travel_world_st.vault_done }
+    if f == "calm" { return travel_world_st.calm }
+    return true
+  }
+  function w_load(travel_world_st: mut TravelWorldState, p: int) -> bool {
+    travel_world_st.loads += 1
+    return travel_world_st.load_ok
+  }
+  function w_ready(travel_world_st: TravelWorldState) -> bool { return travel_world_st.loaded }
+  function w_arrive(travel_world_st: mut TravelWorldState, p: int) -> void { travel_world_st.arrived = p }
+  function w_abort(travel_world_st: mut TravelWorldState, p: int) -> void { travel_world_st.aborted = p }
+  function w_pass(travel_world_st: mut TravelWorldState, h: float) -> void { travel_world_st.hours += h }
+  function p_money(travel_world_st: TravelWorldState) -> int { return travel_world_st.money }
+  function p_spend(travel_world_st: mut TravelWorldState, n: int) -> bool {
+    if n > travel_world_st.money { return false }
+    travel_world_st.money -= n
+    return true
+  }
+  function p_refund(travel_world_st: mut TravelWorldState, n: int) -> void { travel_world_st.money += n }
+  bind TravelWorld { px: fn w_x, pz: fn w_z, map: fn w_map, condition: fn w_cond, load: fn w_load, ready: fn w_ready, arrive: fn w_arrive, abort: fn w_abort, pass_time: fn w_pass }
+  bind TravelPurse { money: fn p_money, spend: fn p_spend, refund: fn p_refund }
+
+  function fresh(travel_st: mut TravelState, travel_world_st: mut TravelWorldState) -> void {
+    travel_reset(travel_st)
+    travel_world_st.x = 0.0
+    travel_world_st.z = 0.0
+    travel_world_st.map = "pine"
+    travel_world_st.vault_done = false
+    travel_world_st.calm = true
+    travel_world_st.money = 0
+    travel_world_st.loaded = true
+    travel_world_st.load_ok = true
+    travel_world_st.arrived = -1
+    travel_world_st.aborted = -1
+    travel_world_st.hours = 0.0
+    travel_world_st.loads = 0
+  }
+  function facts_of(travel_st: TravelState, what: int) -> int {
+    let fs = q_drain(travel_facts(travel_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+  function step(seconds: float) -> void {
+    let s = travel_system()
+    s.tick(tick_new(seconds, 0, 0.0))
+  }
+
+  test "a start point is known and the rest are not" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    expect(travel_known(travel_st, TRP_CAMP))
+    expect(travel_known(travel_st, TRP_ROAD))
+    expect(not travel_known(travel_st, TRP_RIDGE))
+    expect_eq(travel_known_count(travel_st), 2)
+    expect_eq(travel_find(travel_st, "vault"), TRP_VAULT)
+    expect_eq(travel_find(travel_st, "nowhere"), -1)
+  }
+
+  test "walking within the radius discovers a point, once, and says so" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_world_st.x = 1900.0
+    travel_look(travel_st)
+    expect(not travel_known(travel_st, TRP_RIDGE))
+    travel_world_st.x = 1985.0
+    travel_look(travel_st)
+    expect(travel_known(travel_st, TRP_RIDGE))
+    travel_look(travel_st)
+    expect_eq(facts_of(travel_st, TRAVEL_DISCOVERED), 1)
+  }
+
+  test "a use pays its coins and needs what it needs" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    expect_eq(travel_use(travel_st, TRP_RIDGE), TRAVEL_WRONG_MODE)
+    expect_eq(travel_use(travel_st, TRP_SHRINE), TRAVEL_TOO_POOR)
+    travel_world_st.money = 80
+    expect_eq(travel_use(travel_st, TRP_SHRINE), TRAVEL_OK)
+    expect_eq(travel_world_st.money, 30)
+    expect(travel_known(travel_st, TRP_SHRINE))
+    expect_eq(travel_use(travel_st, TRP_SHRINE), TRAVEL_OK)
+    expect_eq(travel_world_st.money, 30)
+    travel_forget(travel_st, TRP_CAMP)
+    travel_forget(travel_st, TRP_SHRINE)
+    expect_eq(travel_use(travel_st, TRP_SHRINE), TRAVEL_NEEDS)
+  }
+
+  test "a flag unlocks a point once the world says it is true" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_look(travel_st)
+    expect(not travel_known(travel_st, TRP_VAULT))
+    travel_world_st.vault_done = true
+    travel_look(travel_st)
+    expect(travel_known(travel_st, TRP_VAULT))
+  }
+
+  test "the story discovers a point by key, and a stale key is nothing" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    expect(travel_discover_key(travel_st, "old_town"))
+    expect(not travel_discover_key(travel_st, "old_town"))
+    expect(not travel_discover_key(travel_st, "nowhere"))
+    expect(not travel_discover(travel_st, 99))
+  }
+
+  test "a trip costs by distance, is free near, and is capped" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_discover_all(travel_st)
+    expect_eq(travel_cost(travel_st, TRP_CAMP), 0)
+    travel_world_st.x = 2000.0
+    expect_eq(travel_cost(travel_st, TRP_CAMP), 50)
+    expect(travel_distance(travel_st, TRP_CAMP) > 1999.0)
+    expect_near(travel_hours(travel_st, TRP_CAMP), 1.0, 0.001)
+    expect_eq(travel_cost(travel_st, TRP_OLD_TOWN), 10 + 40 + 100)
+    travel_world_st.x = 100000.0
+    expect_eq(travel_cost(travel_st, TRP_CAMP), 400)
+  }
+
+  test "a trip is refused for each reason it can be" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_world_st.x = 2000.0
+    expect_eq(travel_why_not(travel_st, TRP_RIDGE), TRAVEL_NOT_KNOWN)
+    expect_eq(travel_why_not(travel_st, 99), TRAVEL_NO_SUCH)
+    expect_eq(travel_why_not(travel_st, TRP_ROAD), TRAVEL_NOT_FAST)
+    travel_set_here(travel_st, TRP_CAMP)
+    expect_eq(travel_why_not(travel_st, TRP_CAMP), TRAVEL_HERE)
+    travel_set_here(travel_st, -1)
+    expect_eq(travel_why_not(travel_st, TRP_CAMP), TRAVEL_TOO_POOR)
+    travel_world_st.money = 500
+    travel_world_st.calm = false
+    expect_eq(travel_why_not(travel_st, TRP_CAMP), TRAVEL_BLOCKED)
+    travel_world_st.calm = true
+    expect(travel_can_go(travel_st, TRP_CAMP))
+    expect(not travel_go(travel_st, TRP_RIDGE))
+    expect_eq(facts_of(travel_st, TRAVEL_REFUSED), 1)
+  }
+
+  test "a trip pays, waits for the load and the delay, then puts the player down" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_world_st.x = 2000.0
+    travel_world_st.money = 500
+    travel_world_st.loaded = false
+    expect(travel_go_key(travel_st, "camp"))
+    expect_eq(travel_world_st.money, 450)
+    expect(travel_busy(travel_st))
+    expect_eq(travel_dest(travel_st), TRP_CAMP)
+    expect_eq(travel_why_not(travel_st, TRP_CAMP), TRAVEL_BUSY)
+    step(2.0)
+    expect(travel_busy(travel_st))
+    travel_world_st.loaded = true
+    step(0.1)
+    expect(not travel_busy(travel_st))
+    expect_eq(travel_world_st.arrived, TRP_CAMP)
+    expect_eq(travel_here(travel_st), TRP_CAMP)
+    expect_eq(travel_visits(travel_st, TRP_CAMP), 1)
+    expect_near(travel_world_st.hours, 1.0, 0.001)
+    expect(travel_cooldown(travel_st) > 9.0)
+    let fs = q_drain(travel_facts(travel_st))
+    expect_eq(fs[0].what, TRAVEL_STARTED)
+    expect_eq(fs[0].cost, 50)
+    expect_eq(fs[len(fs) - 1].what, TRAVEL_ARRIVED)
+  }
+
+  test "the delay holds a load that is already done" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_discover(travel_st, TRP_OLD_TOWN)
+    travel_world_st.money = 500
+    expect(travel_go(travel_st, TRP_OLD_TOWN))
+    step(0.5)
+    expect(travel_busy(travel_st))
+    step(0.6)
+    expect(not travel_busy(travel_st))
+  }
+
+  test "a cooldown holds the next trip off" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_discover(travel_st, TRP_OLD_TOWN)
+    travel_world_st.money = 1000
+    travel_go(travel_st, TRP_OLD_TOWN)
+    step(1.5)
+    travel_world_st.x = 2000.0
+    expect_eq(travel_why_not(travel_st, TRP_CAMP), TRAVEL_COOLING)
+    step(10.0)
+    expect_eq(travel_why_not(travel_st, TRP_CAMP), TRAVEL_OK)
+  }
+
+  test "a load that never finishes fails the trip and gives the coins back" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_world_st.x = 2000.0
+    travel_world_st.money = 500
+    travel_world_st.loaded = false
+    travel_go(travel_st, TRP_CAMP)
+    step(6.0)
+    expect(not travel_busy(travel_st))
+    expect_eq(travel_world_st.money, 500)
+    expect_eq(travel_world_st.aborted, TRP_CAMP)
+    expect_eq(travel_world_st.arrived, -1)
+    expect_eq(facts_of(travel_st, TRAVEL_FAILED), 1)
+  }
+
+  test "a world that will not load refuses the trip and keeps the coins" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_world_st.x = 2000.0
+    travel_world_st.money = 500
+    travel_world_st.load_ok = false
+    expect(not travel_go(travel_st, TRP_CAMP))
+    expect_eq(travel_world_st.money, 500)
+    expect(not travel_busy(travel_st))
+  }
+
+  test "a trip cancelled while loading is given back" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_world_st.x = 2000.0
+    travel_world_st.money = 500
+    travel_world_st.loaded = false
+    travel_go(travel_st, TRP_CAMP)
+    expect(travel_cancel(travel_st))
+    expect_eq(travel_world_st.money, 500)
+    expect(not travel_cancel(travel_st))
+  }
+
+  test "the menu lists what is known and far, nearest first" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_discover_all(travel_st)
+    travel_world_st.x = 400.0
+    travel_world_st.z = 400.0
+    let out = new []int
+    expect_eq(travel_menu_into(travel_st, "", out), 5)
+    expect_eq(out[0], TRP_SHRINE)
+    expect_eq(out[1], TRP_OLD_TOWN)
+    expect_eq(out[2], TRP_CAMP)
+    travel_set_here(travel_st, TRP_SHRINE)
+    expect_eq(travel_menu_into(travel_st, "", out), 4)
+    expect_eq(travel_menu_into(travel_st, "nowhere", out), 0)
+  }
+
+  test "a map shows known points, unknown hidden ones not, and its own markers by priority" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    let out = new []MarkerView
+    let big = 1000000.0
+    expect_eq(travel_markers_into(travel_st, -big, -big, big, big, 1.0, "", out), 2)
+    travel_discover(travel_st, TRP_RIDGE)
+    let q = travel_marker_add(travel_st, MRK_QUEST, 5.0, 5.0, 7, "")
+    let pin = travel_marker_add(travel_st, MRK_PIN, 6.0, 6.0, 0, "my note")
+    expect_eq(travel_markers_into(travel_st, -big, -big, big, big, 1.0, "", out), 4)
+    expect_eq(travel_markers_into(travel_st, -big, -big, big, big, 3.0, "", out), 5)
+    expect_eq(out[0].kind, MRK_PIN)
+    expect_eq(out[4].kind, MRK_QUEST)
+    expect_eq(travel_markers_into(travel_st, -big, -big, big, big, 3.0, "quests", out), 2)
+    expect_eq(travel_markers_into(travel_st, -10.0, -10.0, 10.0, 10.0, 3.0, "", out), 4)
+    expect(travel_marker_label(travel_st, pin) == "my note")
+    expect(travel_marker_show(travel_st, pin, false))
+    expect_eq(travel_markers_into(travel_st, -big, -big, big, big, 3.0, "", out), 4)
+    expect(travel_marker_move(travel_st, q, 900.0, 900.0))
+    expect_eq(travel_markers_into(travel_st, -10.0, -10.0, 10.0, 10.0, 3.0, "", out), 2)
+    expect(travel_marker_remove(travel_st, pin))
+    expect(not travel_marker_remove(travel_st, pin))
+    expect_eq(travel_marker_remove_tag(travel_st, 7), 1)
+    expect_eq(travel_marker_count(travel_st), 0)
+    expect_eq(facts_of(travel_st, TRAVEL_MARKER_REMOVED), 2)
+  }
+
+  test "what is known, where the player was and the markers save by key and load back" (travel_st: mut TravelState, travel_world_st: mut TravelWorldState) {
+    fresh(travel_st, travel_world_st)
+    travel_discover(travel_st, TRP_VAULT)
+    travel_set_here(travel_st, TRP_VAULT)
+    travel_marker_add(travel_st, MRK_PIN, 1.5, 2.5, 3, "note")
+    let v = travel_save(travel_st)
+    let text = save_encode(v)
+    expect(text != "")
+    travel_reset(travel_st)
+    expect(not travel_known(travel_st, TRP_VAULT))
+    travel_load(travel_st, save_decode(text), 1)
+    expect(travel_known(travel_st, TRP_VAULT))
+    expect(travel_known(travel_st, TRP_CAMP))
+    expect_eq(travel_here(travel_st), TRP_VAULT)
+    expect_eq(travel_marker_count(travel_st), 1)
+    let out = new []MarkerView
+    expect_eq(travel_markers_into(travel_st, 0.0, 0.0, 5.0, 5.0, 3.0, "", out), 2)
+    let again = travel_marker_add(travel_st, MRK_PIN, 0.0, 0.0, 0, "")
+    expect(again > 1)
+  }
+
+  test "a system keyed travel carries the verbs" {
+    let s = travel_system()
+    expect(s.key == "travel")
+    expect(s.save != null)
+    expect(s.load != null)
+  }
+}

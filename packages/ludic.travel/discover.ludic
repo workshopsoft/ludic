@@ -1,0 +1,65 @@
+# discover.ludic - how a point comes to be known: by a start, a walk near it, a use, a flag, the story
+function tr__learn(travel_st: mut TravelState, p: int) -> bool {
+  if travel_st.tr__found[p] { return false }
+  travel_st.tr__found[p] = true
+  tr__fact(travel_st, TRAVEL_DISCOVERED, p, 0, 0, -1)
+  return true
+}
+
+# the story (or a test) says the player knows it, whatever its unlock; true when it was new
+export function travel_discover(travel_st: mut TravelState, p: int) -> bool {
+  if not tr__ok(p) { return false }
+  return tr__learn(travel_st, p)
+}
+
+export function travel_discover_key(travel_st: mut TravelState, key: string) -> bool {
+  return travel_discover(travel_st, travelpoints_find(key))
+}
+
+export function travel_discover_all(travel_st: mut TravelState) -> int {
+  var n = 0
+  for p in 0 .. TRP_COUNT { if tr__learn(travel_st, p) { n += 1 } }
+  return n
+}
+
+# forget a point (a story that takes a place away)
+export function travel_forget(travel_st: mut TravelState, p: int) -> bool {
+  if not tr__ok(p) or not travel_st.tr__found[p] { return false }
+  travel_st.tr__found[p] = false
+  return true
+}
+
+# the player uses a point (a shrine's touch): it unlocks if it is of that kind, what it needs is
+# known, and its coins are paid. Returns TRAVEL_OK, or why not (and says so as a fact).
+export function travel_use(travel_st: mut TravelState, p: int) -> int {
+  if not tr__ok(p) { return TRAVEL_NO_SUCH }
+  var why = TRAVEL_OK
+  if TravelPoints[p].unlock != TRAVEL_UNLOCK_USE { why = TRAVEL_WRONG_MODE }
+  else if travel_st.tr__found[p] { why = TRAVEL_OK }
+  else if not travel_needs_met(travel_st, p) { why = TRAVEL_NEEDS }
+  else if TravelPoints[p].unlock_cost > 0 and not TravelPurse.spend(TravelPoints[p].unlock_cost) { why = TRAVEL_TOO_POOR }
+  if why != TRAVEL_OK {
+    tr__fact(travel_st, TRAVEL_REFUSED, p, 0, why, -1)
+    return why
+  }
+  tr__learn(travel_st, p)
+  return TRAVEL_OK
+}
+
+# one look at the player's place and the world's conditions: a point walked near (its needs known) or
+# whose flag has become true is discovered. The system's tick does this a few times a second.
+export function travel_look(travel_st: mut TravelState) -> void {
+  let x = TravelWorld.px()
+  let z = TravelWorld.pz()
+  for p in 0 .. TRP_COUNT {
+    if travel_st.tr__found[p] { continue }
+    let tp = TravelPoints[p]
+    if tp.unlock == TRAVEL_UNLOCK_NEAR {
+      let dx = tp.x - x
+      let dz = tp.z - z
+      if dx * dx + dz * dz <= tp.radius * tp.radius and travel_needs_met(travel_st, p) { tr__learn(travel_st, p) }
+    } else if tp.unlock == TRAVEL_UNLOCK_FLAG {
+      if travel_needs_met(travel_st, p) { tr__learn(travel_st, p) }
+    }
+  }
+}

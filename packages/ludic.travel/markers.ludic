@@ -1,0 +1,132 @@
+# markers.ludic - what a map draws: the known points, and the markers the game puts down. A map asks
+# for a view and is handed records it keeps, so a frame makes nothing.
+export function travel_marker_count(travel_st: TravelState) -> int { return len(travel_st.tr__markers) }
+
+function tr__marker_at(travel_st: TravelState, id: int) -> int {
+  for i in 0 .. len(travel_st.tr__markers) { if travel_st.tr__markers[i].id == id { return i } }
+  return -1
+}
+
+# put a marker of the game's own on the map; returns its id (kept in the save). `tag` is the game's
+# number for what it stands for, `label` its text when that is not a key (a player's own note).
+@alloc_ok("a marker put down: an event, not a frame")
+export function travel_marker_add(travel_st: mut TravelState, kind: int, x: float, z: float, tag: int, label: string) -> int {
+  let m = new Marker
+  m.id = travel_st.tr__next_id
+  travel_st.tr__next_id += 1
+  m.kind = kind
+  m.x = x
+  m.z = z
+  m.tag = tag
+  m.label = label
+  push(travel_st.tr__markers, m)
+  tr__fact(travel_st, TRAVEL_MARKER_ADDED, -1, 0, 0, m.id)
+  return m.id
+}
+
+export function travel_marker_remove(travel_st: mut TravelState, id: int) -> bool {
+  let i = tr__marker_at(travel_st, id)
+  if i < 0 { return false }
+  List.remove_at(travel_st.tr__markers, i)
+  tr__fact(travel_st, TRAVEL_MARKER_REMOVED, -1, 0, 0, id)
+  return true
+}
+
+# take away every marker of the game with this tag (a quest that ended); returns how many
+export function travel_marker_remove_tag(travel_st: mut TravelState, tag: int) -> int {
+  var n = 0
+  var i = 0
+  while i < len(travel_st.tr__markers) {
+    if travel_st.tr__markers[i].tag == tag {
+      let id = travel_st.tr__markers[i].id
+      List.remove_at(travel_st.tr__markers, i)
+      tr__fact(travel_st, TRAVEL_MARKER_REMOVED, -1, 0, 0, id)
+      n += 1
+    } else { i += 1 }
+  }
+  return n
+}
+
+export function travel_marker_move(travel_st: mut TravelState, id: int, x: float, z: float) -> bool {
+  let i = tr__marker_at(travel_st, id)
+  if i < 0 { return false }
+  travel_st.tr__markers[i].x = x
+  travel_st.tr__markers[i].z = z
+  return true
+}
+
+# hide or show a marker without losing it
+export function travel_marker_show(travel_st: mut TravelState, id: int, on: bool) -> bool {
+  let i = tr__marker_at(travel_st, id)
+  if i < 0 { return false }
+  travel_st.tr__markers[i].on = on
+  return true
+}
+
+export function travel_marker_label(travel_st: TravelState, id: int) -> string {
+  let i = tr__marker_at(travel_st, id)
+  if i < 0 { return "" }
+  return travel_st.tr__markers[i].label
+}
+
+function tr__draw(kind: int, zoom: float, layer: string) -> bool {
+  if kind < 0 or kind >= MRK_COUNT { return false }
+  if zoom < MarkerKinds[kind].min_zoom { return false }
+  if layer != "" and MarkerKinds[kind].layer != layer { return false }
+  return true
+}
+
+function tr__slot(out: []MarkerView, n: int) -> MarkerView {
+  if n >= len(out) {
+    @alloc_ok("the view's record, made the first time a frame shows this many markers, then kept")
+    push(out, new MarkerView)
+  }
+  return out[n]
+}
+
+# the markers inside a rectangle of the world, lowest priority first (so the last drawn is on top),
+# written into the caller's own list of records - kept between frames, grown only to the most markers
+# ever in view - and counted. `zoom` hides a kind below its min_zoom, `layer` ("" all) keeps one group.
+export function travel_markers_into(travel_st: TravelState, x0: float, z0: float, x1: float, z1: float, zoom: float, layer: string, out: []MarkerView) -> int {
+  var n = 0
+  for p in 0 .. TRP_COUNT {
+    let known = travel_st.tr__found[p]
+    if not known and TravelPoints[p].hidden { continue }
+    let tp = TravelPoints[p]
+    if tp.x < x0 or tp.x > x1 or tp.z < z0 or tp.z > z1 { continue }
+    if not tr__draw(tp.marker, zoom, layer) { continue }
+    let v = tr__slot(out, n)
+    v.kind = tp.marker
+    v.x = tp.x
+    v.z = tp.z
+    v.point = p
+    v.id = -1
+    v.tag = 0
+    v.known = known
+    n += 1
+  }
+  for i in 0 .. len(travel_st.tr__markers) {
+    let m = travel_st.tr__markers[i]
+    if not m.on { continue }
+    if m.x < x0 or m.x > x1 or m.z < z0 or m.z > z1 { continue }
+    if not tr__draw(m.kind, zoom, layer) { continue }
+    let v = tr__slot(out, n)
+    v.kind = m.kind
+    v.x = m.x
+    v.z = m.z
+    v.point = -1
+    v.id = m.id
+    v.tag = m.tag
+    v.known = true
+    n += 1
+  }
+  # lowest priority first, stable, by insertion into what is already placed
+  for i in 1 .. n {
+    var j = i
+    while j > 0 and MarkerKinds[out[j - 1].kind].priority > MarkerKinds[out[j].kind].priority {
+      List.swap(out, j - 1, j)
+      j -= 1
+    }
+  }
+  return n
+}

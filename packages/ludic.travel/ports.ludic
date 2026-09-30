@@ -1,0 +1,31 @@
+# ports.ludic - what travel asks the game. Every member has a default: unbound, the player stands at
+# the origin, every condition is true, money is no object, the world loads at once, and time does
+# not pass.
+export port TravelWorld {
+  px: fn() -> float = fn tr__zero              # where the player stands
+  py: fn() -> float = fn tr__zero
+  pz: fn() -> float = fn tr__zero
+  map: fn() -> string = fn tr__no_map          # the map the player is on
+  condition: fn(string) -> bool = fn tr__cond_ok  # is this named condition true now ("quest.done", "no_combat")
+  load: fn(int) -> bool = fn tr__load_ok          # begin loading a point (its index); false refuses the trip
+  ready: fn() -> bool = fn tr__ready            # has that load finished
+  arrive: fn(int) -> void = fn tr__nothing     # put the player at the point: the game moves them
+  abort: fn(int) -> void = fn tr__nothing      # a trip failed while the world was loading
+  pass_time: fn(float) -> void = fn tr__pass   # game hours the trip took
+}
+function tr__zero() -> float { return 0.0 }
+function tr__no_map() -> string { return "" }
+function tr__cond_ok(flag: string) -> bool { return true }
+function tr__load_ok(p: int) -> bool { return true }
+function tr__ready() -> bool { return true }
+function tr__nothing(p: int) -> void { }
+function tr__pass(hours: float) -> void { }
+
+export port TravelPurse {
+  money: fn() -> int = fn tr__rich
+  spend: fn(int) -> bool = fn tr__pays
+  refund: fn(int) -> void = fn tr__refunded
+}
+function tr__rich() -> int { return 2147483647 }
+function tr__pays(n: int) -> bool { return true }
+function tr__refunded(n: int) -> void { }

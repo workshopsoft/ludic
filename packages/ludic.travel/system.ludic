@@ -1,0 +1,98 @@
+# system.ludic - travel as a system: PH_SIMULATE, and its own save section (what is known, where the
+# player last was, the markers of the game's). A trip under way is not saved: a load is a fresh start.
+@alloc_ok("a new game or a load: the lists rebuilt")
+export function travel_reset(travel_st: mut TravelState) -> void {
+  travel_st.tr__found = tr__falses()
+  travel_st.tr__visits = tr__zeros()
+  travel_st.tr__here = -1
+  travel_st.tr__phase = TRAVEL_IDLE
+  travel_st.tr__dest = -1
+  travel_st.tr__paid = 0
+  travel_st.tr__wait = 0.0
+  travel_st.tr__cool = 0.0
+  travel_st.tr__scan = 0.0
+  travel_st.tr__markers = new []Marker
+  travel_st.tr__next_id = 1
+  q_clear(travel_facts(travel_st))
+}
+
+function travel_tick(travel_st: mut TravelState, t: Tick) -> void { travel_run(travel_st, t.dt) }
+
+@alloc_ok("a save: a tree written from the state")
+export function travel_save(travel_st: TravelState) -> Val {
+  let v = Value.object()
+  let known = Value.list()
+  let visits = Value.object()
+  for p in 0 .. TRP_COUNT {
+    if travel_st.tr__found[p] { Value.add(known, Value.str(TravelPoints[p].key)) }
+    if travel_st.tr__visits[p] > 0 { sv_put_int(visits, TravelPoints[p].key, travel_st.tr__visits[p]) }
+  }
+  Value.put(v, "known", known)
+  Value.put(v, "visits", visits)
+  if travel_st.tr__here >= 0 { sv_put_str(v, "here", TravelPoints[travel_st.tr__here].key) }
+  sv_put_int(v, "next_id", travel_st.tr__next_id)
+  let ms = Value.list()
+  for i in 0 .. len(travel_st.tr__markers) {
+    let m = travel_st.tr__markers[i]
+    let o = Value.object()
+    sv_put_int(o, "id", m.id)
+    sv_put_str(o, "kind", MarkerKinds[m.kind].key)
+    sv_put_float(o, "x", m.x)
+    sv_put_float(o, "z", m.z)
+    sv_put_int(o, "tag", m.tag)
+    sv_put_str(o, "label", m.label)
+    sv_put_bool(o, "on", m.on)
+    Value.add(ms, o)
+  }
+  Value.put(v, "markers", ms)
+  return v
+}
+
+# a key this build no longer has is dropped
+@alloc_ok("a load: markers read back")
+export function travel_load(travel_st: mut TravelState, v: Val, version: int) -> void {
+  travel_reset(travel_st)
+  if Value.has(v, "known") != 0 {
+    let known = Value.get(v, "known")
+    for i in 0 .. Value.count(known) {
+      let p = travelpoints_find(Value.as_str(Value.at(known, i)))
+      if p >= 0 { travel_st.tr__found[p] = true }
+    }
+  }
+  if Value.has(v, "visits") != 0 {
+    let visits = Value.get(v, "visits")
+    for i in 0 .. Value.count(visits) {
+      let p = travelpoints_find(Value.key_at(visits, i))
+      if p >= 0 { travel_st.tr__visits[p] = Value.as_int(Value.at(visits, i)) }
+    }
+  }
+  travel_st.tr__here = travelpoints_find(sv_str(v, "here", ""))
+  travel_st.tr__next_id = sv_int(v, "next_id", 1)
+  if Value.has(v, "markers") != 0 {
+    let ms = Value.get(v, "markers")
+    for i in 0 .. Value.count(ms) {
+      let o = Value.at(ms, i)
+      let k = markerkinds_find(sv_str(o, "kind", ""))
+      if k < 0 { continue }
+      let m = new Marker
+      m.id = sv_int(o, "id", 0)
+      m.kind = k
+      m.x = sv_float(o, "x", 0.0)
+      m.z = sv_float(o, "z", 0.0)
+      m.tag = sv_int(o, "tag", 0)
+      m.label = sv_str(o, "label", "")
+      m.on = sv_bool(o, "on", true)
+      if m.id >= travel_st.tr__next_id { travel_st.tr__next_id = m.id + 1 }
+      push(travel_st.tr__markers, m)
+    }
+  }
+}
+
+export function travel_system() -> System {
+  let s = system_new("travel", PH_SIMULATE)
+  s.reset = fn travel_reset
+  s.tick = fn travel_tick
+  s.save = fn travel_save
+  s.load = fn travel_load
+  return s
+}
