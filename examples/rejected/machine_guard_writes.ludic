@@ -1,0 +1,25 @@
+# 27.1: a guard asks and changes nothing
+import "ludic.base"
+program MachineGuardWrites {
+  enum Mood { Calm, Wary }
+  property Deer { mood: Mood = Mood.Calm, fear: int = 0 }
+  state Herd { deer: Table<Deer> = null }
+  action Spook { @Target who: int = -1 }
+  action Shout { loud: int = 1 }
+  property DeerStep {
+    from: Mood = Mood.Calm
+    to: Mood = Mood.Calm
+    on: string = ""
+    guard: fn(Row<Deer>, Herd) -> bool = null
+    enter: fn(Row<Deer>, Herd) -> void = null
+  }
+  @Machine(Deer.mood) registry DeerSteps of DeerStep
+  function deer_afraid(r: Row<Deer>, h: Herd) -> bool { return r.rec.fear > 1 }
+  def DeerSteps startled { from: Mood.Calm, to: Mood.Wary, on: "Spook", guard: fn deer_nervous }
+  def DeerSteps settles { from: Mood.Wary, to: Mood.Calm, guard: fn deer_afraid }
+  function deer_nervous(r: Row<Deer>, h: Herd) -> bool {
+    r.rec.fear += 1
+    return true
+  }
+  entry { print(1) }
+}

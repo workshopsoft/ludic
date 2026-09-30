@@ -1,0 +1,22 @@
+# 27.1: a transition from a state to itself has a guard
+import "ludic.base"
+program MachineSelfNoGuard {
+  enum Mood { Calm, Wary }
+  property Deer { mood: Mood = Mood.Calm, fear: int = 0 }
+  state Herd { deer: Table<Deer> = null }
+  action Spook { @Target who: int = -1 }
+  action Shout { loud: int = 1 }
+  property DeerStep {
+    from: Mood = Mood.Calm
+    to: Mood = Mood.Calm
+    on: string = ""
+    guard: fn(Row<Deer>, Herd) -> bool = null
+    enter: fn(Row<Deer>, Herd) -> void = null
+  }
+  @Machine(Deer.mood) registry DeerSteps of DeerStep
+  function deer_afraid(r: Row<Deer>, h: Herd) -> bool { return r.rec.fear > 1 }
+  def DeerSteps startled { from: Mood.Calm, to: Mood.Wary, on: "Spook" }
+  def DeerSteps settles { from: Mood.Wary, to: Mood.Calm, guard: fn deer_afraid }
+  def DeerSteps again { from: Mood.Wary, to: Mood.Wary, on: "Spook" }
+  entry { print(1) }
+}

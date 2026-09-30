@@ -1,0 +1,53 @@
+# machine.ludic - 27.1: a state machine as data. Deer.mood is the state, and the registry marked
+# @Machine(Deer.mood) is its transitions, one row each in deer_steps.lres: from, to, the action it
+# is `on` ("" for one the tick asks), a guard and an enter. The compiler writes a row reducer for
+# each action a row names and deer_steps_tick for the rest; nothing else writes Deer.mood.
+#
+# Running it prints:  0 0 1 1
+import "ludic.base"
+program Machines {
+  numbers float
+  enum Mood { Calm, Wary, Fled }
+  property Deer {
+    mood: Mood = Mood.Calm           # the start
+    fear: int = 0
+    x: float = 0.0
+  }
+  state Herd {
+    deer: Table<Deer> = null
+    far: float = 10.0
+  }
+  action Spook { @Target who: int = -1 }
+  property DeerStep {
+    from: Mood = Mood.Calm
+    to: Mood = Mood.Calm
+    on: string = ""
+    guard: fn(Row<Deer>, Herd) -> bool = null
+    enter: fn(Row<Deer>, Herd) -> void = null
+  }
+  @Machine(Deer.mood) registry DeerSteps of DeerStep as DS from "deer_steps.lres"
+
+  function deer_afraid(r: Row<Deer>, h: Herd) -> bool { return r.rec.fear >= 2 }
+  function deer_calm_enough(r: Row<Deer>, h: Herd) -> bool { return r.rec.fear < 2 }
+  function deer_settled(r: Row<Deer>, h: Herd) -> bool { return r.rec.fear == 0 }
+  function deer_away(r: Row<Deer>, h: Herd) -> bool { return r.rec.x > h.far }
+  function deer_startle(r: mut Row<Deer>, h: Herd) -> void { r.rec.fear += 1 }
+  function deer_bolt(r: mut Row<Deer>, h: Herd) -> void { r.rec.x += 20.0 }
+  function deer_rest(r: mut Row<Deer>, h: Herd) -> void { r.rec.fear = 0 }
+
+  entry (h: mut Herd, m: mut DeerStepsMachine) {
+    let tb: Table<Deer> = table_new(0, 0)
+    h.deer = tb
+    let a = tb_add(tb, new Deer)
+    let b = tb_add(tb, new Deer)
+    dispatch Spook { who: a }        # Calm -> Wary, fear 1
+    dispatch Spook { who: a }        # Wary, not afraid yet: stays, fear 2
+    dispatch Spook { who: a }        # afraid: Wary -> Fled, 20 m off
+    dispatch Spook { who: b }        # Calm -> Wary, fear 1
+    drain_actions()
+    deer_steps_tick(m, h)            # a is far enough: Fled -> Calm, fear 0; b is still uneasy
+    let ra = tb_rec(tb, tb_row(tb, a))
+    let rb = tb_rec(tb, tb_row(tb, b))
+    print(`{int(ra.mood)} {ra.fear} {int(rb.mood)} {rb.fear}`)
+  }
+}

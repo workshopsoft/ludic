@@ -47,6 +47,7 @@ function parse_reducer() -> void {
   push(g_red_state, st)
   push(g_red_action, act)
   push(g_red_rec, null)                          # a state's reducer: no row (actions_rows.ludic)
+  push(g_red_mc, null)                           # ... and no machine wrote it (machines.ludic)
   push(g_red_tbl, null)
   push(g_red_tgt, null)
   push(prog, f)
@@ -102,6 +103,7 @@ function act_err(n: Node, msg: pointer) -> void {
 # after the program is read: the reducers checked, each dispatch numbered, and the queue, its push
 # and its drain written
 function actions_finish() -> void {
+  machines_finish()                              # 27.1: each @Machine checked and its reducers written
   rows_finish_checks()                           # 27.3: @Target, @RowVerb (actions_rows.ludic)
   var i = 0
   while i < len(g_red_nodes) {

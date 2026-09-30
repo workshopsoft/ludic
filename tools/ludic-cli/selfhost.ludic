@@ -30,6 +30,8 @@ function selfhost_frags() -> []pointer {
   push(f, "selfhost/frontend/state.ludic")
   push(f, "selfhost/frontend/actions.ludic")
   push(f, "selfhost/frontend/actions_rows.ludic")
+  push(f, "selfhost/frontend/machines.ludic")
+  push(f, "selfhost/frontend/machines_write.ludic")
   push(f, "selfhost/frontend/migrate.ludic")
   push(f, "selfhost/frontend/registry.ludic")
   push(f, "selfhost/frontend/registry_finish.ludic")

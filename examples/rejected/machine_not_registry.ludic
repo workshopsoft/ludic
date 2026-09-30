@@ -1,0 +1,8 @@
+# 27.1: @Machine marks a registry of transitions
+import "ludic.base"
+program MachineNotRegistry {
+  enum Mood { Calm, Wary }
+  property Deer { mood: Mood = Mood.Calm }
+  @Machine(Deer.mood) property DeerStep { from: Mood = Mood.Calm }
+  entry { print(1) }
+}

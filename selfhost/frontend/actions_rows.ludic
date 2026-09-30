@@ -16,6 +16,7 @@
 var g_red_rec: []pointer = new []pointer       # per reducer: the row's record, or null (a state's reducer)
 var g_red_tbl: []pointer = new []pointer       # ... the table's path in its state ("deer", "w.tab")
 var g_red_tgt: []pointer = new []pointer       # ... the action's @Target field, once checked
+var g_red_mc: []pointer = new []pointer        # ... the @Machine registry that wrote it, or null (27.1)
 var g_tgt_comp: []pointer = new []pointer      # every @Target field: its record, name, type, node
 var g_tgt_field: []pointer = new []pointer
 var g_tgt_node: []Node = new []Node
@@ -42,7 +43,7 @@ function parse_row_reducer() -> void {
   pi = k + 1
   toks[pi].text = "function"                     # read the rest as a function named for the action
   let f = parse_fn()
-  f.s = `ludic_rowred__{act}__{rr_suffix(rec, st, path)}`
+  f.s = `ludic_rowred__{act}__{rr_suffix(rec, st, path)}{rr_mc_suffix(g_mc_gen_reg)}`
   f.vis = 1
   push(g_red_nodes, f)
   push(g_red_state, st)
@@ -50,7 +51,18 @@ function parse_row_reducer() -> void {
   push(g_red_rec, rec)
   push(g_red_tbl, path)
   push(g_red_tgt, null)
+  push(g_red_mc, g_mc_gen_reg)
   push(prog, f)
+}
+# a machine's reducer beside the program's own on the same row and action: Deer__in__Herd__deer__machine__DeerSteps
+function rr_mc_suffix(reg: pointer) -> pointer {
+  if reg == null { return "" }
+  return `__machine__{reg}`
+}
+# two names, either of which may be none
+function rr_same(a: pointer, b: pointer) -> bool {
+  if a == null or b == null { return a == null and b == null }
+  return (a == b)
 }
 function rr_shape() -> void {
   perr("a row reducer is `reducer Record in State.table on Action(r: mut Row<Record>, a: Action) { ... }`")
@@ -67,7 +79,7 @@ function rr_suffix(rec: pointer, st: pointer, path: pointer) -> pointer {
   return `{rec}__in__{st}__{p}`
 }
 function rr_wrap_name(i: int) -> pointer {
-  return `ludic_reduce__{g_red_action[i]}__{rr_suffix(g_red_rec[i], g_red_state[i], g_red_tbl[i])}`
+  return `ludic_reduce__{g_red_action[i]}__{rr_suffix(g_red_rec[i], g_red_state[i], g_red_tbl[i])}{rr_mc_suffix(g_red_mc[i])}`
 }
 # a field's @Target / @Column, read by parse_component
 function rr_field_attr(comp: pointer, f: Node, is_target: bool, is_column: bool) -> void {
@@ -154,7 +166,7 @@ function rows_finish_checks() -> void {
   i = 0
   while i < len(prog) {
     let d = prog[i]
-    if d.kind == N_FN and d.pos >= 0 and d.tps == null and not rr_is_verb(d.s) and not str_starts(d.s, "ludic_rowred__") { rr_no_row_param(d) }
+    if d.kind == N_FN and d.pos >= 0 and d.tps == null and not rr_is_verb(d.s) and not mc_is_fn(d.s) and not str_starts(d.s, "ludic_rowred__") { rr_no_row_param(d) }
     i += 1
   }
 }
@@ -215,7 +227,7 @@ function rr_check(i: int) -> void {
   rr_params(i, f, who)
   var j = 0
   while j < i {
-    if g_red_rec[j] != null and (g_red_state[j] == st) and (g_red_action[j] == act) and (g_red_rec[j] == rec) and (g_red_tbl[j] == path) { act_err(f, `{who} is declared twice (first at {g_red_nodes[j].file}:{itoa(g_red_nodes[j].line)})`) }
+    if g_red_rec[j] != null and (g_red_state[j] == st) and (g_red_action[j] == act) and (g_red_rec[j] == rec) and (g_red_tbl[j] == path) and rr_same(g_red_mc[j], g_red_mc[i]) { act_err(f, `{who} is declared twice (first at {g_red_nodes[j].file}:{itoa(g_red_nodes[j].line)})`) }
     j += 1
   }
 }
@@ -327,7 +339,7 @@ function rr_walk(n: Node, i: int, r: pointer) -> void {
   }
 }
 function rr_call_verb(i: int, n: Node, r: pointer) -> void {
-  if n.a != null and n.a.kind == E_ID and rr_is_verb(n.a.s) { return }
+  if n.a != null and n.a.kind == E_ID and (rr_is_verb(n.a.s) or mc_is_fn(n.a.s)) { return }   # a verb, or a machine's guard or enter
   var name: pointer = "a method"
   if n.a != null and n.a.kind == E_ID { name = n.a.s }
   rr_err(i, n, `{name} is handed the row, and is not a @RowVerb: only the verbs of {g_red_rec[i]}'s own module take a row`)

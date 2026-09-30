@@ -46,6 +46,7 @@ function ck_assign(s: Node) -> void {
   # a local rebound is not a write through it
   if not (s.a.kind == E_ID and ck_local(s.a.s) >= 0) { ck_write_check(s.a, "this assignment") }
   let lt = ck_target(s.a)
+  ck_machine_write(s.a, "this assignment")
   if (s.s == "=") { ck_expect = lt }
   let rt = ck_expr(s.b)
   var what: pointer = "this assignment"
@@ -58,6 +59,13 @@ function ck_assign(s: Node) -> void {
   let op = s.s[0..1]
   let res = ck_binop(s, op, lt, rt, s.a, s.b)
   ck_give(lt, res, s.b, what)
+}
+# 27.1: a @Machine's field is its table's to change - a transition writes it, and nothing else does
+function ck_machine_write(t: Node, what: pointer) -> void {
+  if t == null or t.kind != E_MEMBER or not (ck_mem_node == t) or ck_unknown(ck_mem_base) { return }
+  let m = mc_of_field(ck_mem_base, t.s)
+  if m < 0 or mc_is_gen(ck_fn_node) { return }
+  ck_err("machine", t, `{what}: {g_mc_rec[m]}.{t.s} is the machine {g_mc_reg[m]}'s (@Machine({g_mc_rec[m]}.{t.s})) - it changes only by a transition in its table; add a row to {g_mc_reg[m]}, or dispatch the action one names`)
 }
 function ck_match(s: Node) -> void {
   ck_expr(s.a)
@@ -129,6 +137,10 @@ function ck_stmt(s: Node) -> void {
   # a machine's store: its states' `become` writes it
   if k == S_MACHINE {
     if s.a != null and not (s.a.kind == E_INT) { ck_write_check(s.a, "a machine's become") }
+    if s.a != null and s.a.kind == E_MEMBER {
+      ck_expr(s.a)
+      ck_machine_write(s.a, "a machine block's become")
+    }
     ck_walk(s)
     return
   }
@@ -178,6 +190,7 @@ function ck_fn_body(d: Node) -> void {
   }
   ck_ret = d.ty
   if ck_ret == null { ck_ret = "void" }
+  ck_fn_node = d
   if d.uns == 1 {
     ck_unsafe_here(d)
     ck_unsafe += 1
@@ -185,6 +198,7 @@ function ck_fn_body(d: Node) -> void {
   ck_block(d.a)
   if d.uns == 1 { ck_unsafe -= 1 }
   ck_ret = "void"
+  ck_fn_node = null
   ck_pop(m)
   mg_leave()
 }

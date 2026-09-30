@@ -269,8 +269,20 @@ function dp_fn_name(n: pointer) -> pointer {
   }
   return n
 }
-# 27.3: a row reducer's symbol says `Deer__in__Herd__deer` for `Deer in Herd.deer`
-function dp_row_name(s: pointer) -> pointer {
+# 27.3: a row reducer's symbol says `Deer__in__Herd__deer` for `Deer in Herd.deer`; one a @Machine
+# wrote ends `__machine__DeerSteps` (27.1)
+function dp_row_name(s0: pointer) -> pointer {
+  var s = s0
+  var tail = ""
+  var k = 0
+  while k + 11 <= slen(s0) {
+    if s0[k .. k + 11] == "__machine__" {
+      s = s0[0 .. k]
+      tail = ` (machine {s0[k + 11 .. slen(s0)]})`
+      break
+    }
+    k += 1
+  }
   var out = ""
   var seen = false
   var i = 0
@@ -287,7 +299,7 @@ function dp_row_name(s: pointer) -> pointer {
       i += 1
     }
   }
-  return out
+  return out + tail
 }
 function dp_own(k: int) -> bool { return dp_pkg[k] == 0 }
 # an edge the numbers count: between two of the program's own modules

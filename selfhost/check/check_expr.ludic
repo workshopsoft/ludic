@@ -157,6 +157,8 @@ function ck_member(e: Node) -> pointer {
     return "?"
   }
   let bt = ck_expr(b)
+  ck_mem_node = e                              # 27.1: what a write to it writes into (ck_machine_write)
+  ck_mem_base = bt
   if ck_unknown(bt) { return "?" }
   let r = ck_record(bt)
   if r != null {

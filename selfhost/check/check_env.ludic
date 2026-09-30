@@ -3,6 +3,9 @@
 var ck_names: []pointer = new []pointer
 var ck_tys: []pointer = new []pointer
 var ck_ret: pointer = "void"            # the result type of the function being checked
+var ck_fn_node: Node = null             # the function being checked (27.1: a machine's own may set its field)
+var ck_mem_node: Node = null            # the member expression ck_member typed last, and its base's type
+var ck_mem_base: pointer = null
 var ck_errors: int = 0
 var ck_report: int = -1                 # LUDIC_CHECK_REPORT=1: list every mix-up by category, fail nothing
 

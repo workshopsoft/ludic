@@ -94,7 +94,7 @@ function vocab_keywords() -> void {
   vc_kw("statement", "in", "Separates a for's variables from what they range over; module m in layer L; reducer T in S.table on A.")
   vc_kw("statement", "where", "A query's filter: for (p) in query [Pos] where p.x > 0.")
   vc_kw("statement", "match", "Picks the arm whose values match.")
-  vc_kw("statement", "machine", "A state machine over a value, one block per state.")
+  vc_kw("statement", "machine", "A state machine over a value, one block per state (a machine that is data is a @Machine registry).")
   vc_kw("statement", "become", "Moves a machine (or the program) to another state or scene.")
   vc_kw("statement", "return", "Returns from a function.")
   vc_kw("statement", "break", "Leaves the innermost loop.")
@@ -220,6 +220,7 @@ function vocab_attributes() -> void {
   vc_at("ByKey", "checked", "registry", "", "Entries are saved by key, so their order is free.")
   vc_at("PerMap", "checked", "registry", "", "Its rows are read per map, from that map's directory, when the map loads.")
   vc_at("Chunked", "checked", "registry", "(n)", "A @PerMap table read a chunk of n by n metres at a time.")
+  vc_at("Machine", "checked", "registry", "(Record.field)", "The registry is a state machine's transitions (from, to, on, guard, enter) over that enum field of a table's rows: the compiler writes its reducers and tick, and nothing else writes the field.")
   vc_at("TextKey", "checked", "registry", "(\"prefix\")", "The prefix of its @Text fields' derived keys, in place of the registry's name in snake case.")
   # a declaration's
   vc_at("export", "checked", "declaration", "", "The declaration is exported (the same as the export keyword).")
