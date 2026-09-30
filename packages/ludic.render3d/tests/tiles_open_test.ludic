@@ -1,0 +1,49 @@
+# tiles_open_test.ludic - terrain_tiles_open_file: a map's baked tiles opened with no device and no renderer
+# booted answer the heights and the photograph written, at the map's own origin; another bake's key or
+# version, or a whole copy already kept, is refused and changes nothing
+import "ludic.render3d/r3d.ludic"
+program TilesOpenTest {
+  numbers float
+  import "fakes/tiles_file.ludic"
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function baked(tag: string) -> string {
+    let path = Os.temp_dir() + "/r3d_tiles_open_" + tag + ".tiles"
+    expect(hf_bake(path, "terrain", 1))
+    return path
+  }
+
+  test "a bake opened with no device answers its heights and photograph at the map's origin" (render3d_st: mut Render3dState) {
+    expect(terrain_tiles_open_file(render3d_st, baked("answers"), "terrain", 1, 4096, 300.0, -120.0))
+    var off = 0
+    for j in 0 .. 90 {
+      for i in 0 .. 90 {
+        let x = 300.0 - 4000.0 + float(i) * 89.3
+        let z = -120.0 - 4000.0 + float(j) * 88.9
+        if terrain_height(render3d_st, x, z) != hf_expect_at(x, z, 300.0, -120.0) { off += 1 }
+        if terrain_height_file(render3d_st, x, z) != hf_expect_at(x, z, 300.0, -120.0) { off += 1 }
+        let px = min(max(int(Math.floor((x - 300.0 + 4096.0) * 256.0 / 8192.0)), 0), 255)
+        let pz = min(max(int(Math.floor((z + 120.0 + 4096.0) * 256.0 / 8192.0)), 0), 255)
+        if terrain_ortho(render3d_st, x, z) != hf_rgb(px, pz) { off += 1 }
+      }
+    }
+    expect_eq(off, 0)
+    expect(terrain_height_smooth(render3d_st, 300.0, -120.0) != 0.0)
+    expect_eq(render3d_st.gvk_frame_no, 0)                 # nothing drew, nothing was made on a device
+  }
+
+  test "another bake's key or version, a missing file, or a whole copy kept is refused and changes nothing" (render3d_st: mut Render3dState) {
+    let path = baked("refused")
+    expect(not terrain_tiles_open_file(render3d_st, path, "ground", 1, 4096, 0.0, 0.0))
+    expect(not terrain_tiles_open_file(render3d_st, path, "terrain", 2, 4096, 0.0, 0.0))
+    expect(not terrain_tiles_open_file(render3d_st, Os.temp_dir() + "/r3d_tiles_open_none.tiles", "terrain", 1, 4096, 0.0, 0.0))
+    expect(render3d_st.tt_file == null)
+    render3d_st.ter_heights = floats(16)
+    expect(not terrain_tiles_open_file(render3d_st, path, "terrain", 1, 4096, 0.0, 0.0))
+    expect(render3d_st.tt_file == null)
+    render3d_st.ter_heights = null
+    expect(terrain_tiles_open_file(render3d_st, path, "terrain", 1, 4096, 0.0, 0.0))
+    expect_eq(terrain_height(render3d_st, 10.0, 10.0), hf_expect(10.0, 10.0))
+  }
+}
