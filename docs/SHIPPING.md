@@ -307,7 +307,7 @@ The app's name, version and id reach the program as `Build.app_name()`, `Build.a
 `Build.app_id()`: constants the compiler reads from the nearest `package.ludic` (`app name`, `app version`,
 `app id`; the name falls back to the package's, the version to its `version` line, then `0.1.0`; the id is
 `""` when none is written). Use them wherever the game needs its name - `Os.save_dir(Build.app_name())`,
-the crash folder (`crash_up` does it), a title - so it is written once. The game's own updater
+the crash folder (`crash_boot` does it), a title - so it is written once. The game's own updater
 (`ludic.update`'s `UpdateConfig.feed`) is still configured in game code: no other value in `package.ludic`
 reaches the program at build time, so write the same feed and pack id in both places.
 

@@ -1,0 +1,61 @@
+# loading.ludic - a window that shows something before the heavy setup, and a bar while it runs. A game
+# opts in by data: it splits its scene's setup into named steps, one row each,
+#
+#   def LabSteps world  { label: "Building the city",  run: fn load_world }
+#   def LabSteps crowd  { label: "Placing the people", run: fn load_crowd }
+#
+# and lab_boot (a window) draws a first frame at once - the title, an empty bar and the first label -
+# then runs the steps in order, drawing the bar and the next label after each, before the scene's own
+# setup. A game that declares no rows boots as before. Each step is one line on stdout ("lab: step world
+# (1 of 2)"), so a launcher or the studio can show the same progress from the game's output. The bar
+# needs the overlay font (lab_font); without it the steps still run, with the lines only.
+export property LabStep {
+  key: string = ""
+  label: string = ""          # what the bar says while the step runs
+  run: fn() -> void = null    # one piece of setup (a function of no arguments, as a scene's setup is)
+}
+export open registry LabSteps of LabStep as LSTEP
+
+# how far the named steps have got, 0..1, and what is being done; both stay at the end (1, "") once done
+export function lab_progress(lab_st: LabState) -> float { return lab_st.lb_progress }
+export function lab_progress_label(lab_st: LabState) -> string { return lab_st.lb_label }
+
+# one frame of the loading screen: the plain backdrop, the title, the bar and its label
+export function lab_loading_frame(lab_st: mut LabState, render3d_st: mut Render3dState, progress: float, label: string) -> void {
+  lab_st.lb_progress = progress
+  lab_st.lb_label = label
+  if not lab_st.lb_windowed { return }
+  Input.poll()
+  r3d_frame(render3d_st, 0.0)
+  if lab_st.lb_font != "" {
+    let w = lab_st.lb_w
+    let h = lab_st.lb_h
+    let bw = w / 2
+    let bx = (w - bw) / 2
+    let by = h * 3 / 5
+    ov_begin(render3d_st)
+    ov_rect(render3d_st, 0, 0, w, h, 0.04, 0.05, 0.07, 1.0)
+    ov_text_center(render3d_st, w / 2, by - 64, 36, lab_st.lb_title, 1.0, 1.0, 1.0, 1.0)
+    ov_rect(render3d_st, bx - 2, by - 2, bw + 4, 16, 0.35, 0.37, 0.42, 1.0)
+    ov_rect(render3d_st, bx, by, bw, 12, 0.10, 0.11, 0.14, 1.0)
+    ov_rect(render3d_st, bx, by, int(float(bw) * Math.clamp(progress, 0.0, 1.0)), 12, 0.35, 0.65, 0.95, 1.0)
+    ov_text_center(render3d_st, w / 2, by + 26, 20, label, 0.8, 0.82, 0.86, 1.0)
+    ov_end(render3d_st)
+  }
+  r3d_present(render3d_st)
+}
+
+# every step in order, the bar moving between them; before lab_boot's scene setup
+@alloc_ok("boot: a line per step")
+function lab_steps_run(lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
+  let n = LSTEP_COUNT
+  if n == 0 { return }
+  lab_loading_frame(lab_st, render3d_st, 0.0, LabSteps[0].label)
+  for i in 0 .. n {
+    print(`lab: step {LabSteps[i].key} ({i + 1} of {n})`)
+    if LabSteps[i].run != null { LabSteps[i].run() }
+    var next = ""
+    if i + 1 < n { next = LabSteps[i + 1].label }
+    lab_loading_frame(lab_st, render3d_st, float(i + 1) / float(n), next)
+  }
+}

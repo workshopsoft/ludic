@@ -1,4 +1,4 @@
-# crash_up_test.ludic - the crash wiring from data: the app's name and version from package.ludic (Build.app_name,
+# crash_boot_test.ludic - the crash wiring from data: the app's name and version from package.ludic (Build.app_name,
 # Build.app_version), the folder, keep_n and the starting context from a CrashSettings row, in one call; and the
 # dev verbs that list what is pending
 import "ludic.crash"
@@ -7,9 +7,9 @@ program CrashUpTest {
   numbers float
   def CrashSettings standard { dir: "/tmp/ludic-crash-up-test", keep_n: 3, context: "scene=up" }
 
-  test "crash_up reads the folder, keep_n and context from the row, and the name and version from package.ludic" (crash_st: mut CrashState) {
+  test "crash_boot reads the folder, keep_n and context from the row, and the name and version from package.ludic" (crash_st: mut CrashState) {
     Fs.mkdir("/tmp/ludic-crash-up-test")
-    let n = crash_up(crash_st, "b-1")
+    let n = crash_boot(crash_st, "b-1")
     expect_eq(n, 0)
     expect(crash_installed(crash_st))
     expect(crash_dir(crash_st) == "/tmp/ludic-crash-up-test")
@@ -22,7 +22,7 @@ program CrashUpTest {
   test "the pending verbs answer the count and a record's context" (crash_st: mut CrashState) {
     let d = Path.join("/tmp/ludic-crash-up-test", "crash-1790788239-4242.lcr")
     Fs.write_text(d, "{\"k\":\"crash\",\"v\":1,\"producer\":\"ludic\",\"app\":\"A\",\"version\":\"1.0\",\"build\":\"b\",\"context\":\"alloc-fence: frame 9 | scene=up\",\"os\":\"macos\",\"os_version\":\"15\",\"arch\":\"arm64\",\"pid\":1,\"tid\":1,\"main\":true,\"time\":1790788239,\"sig\":0,\"signame\":\"ALLOC_FENCE\",\"code\":86,\"addr\":\"0x0\",\"pc\":\"0x0\",\"sp\":\"0x0\",\"fp\":\"0x0\",\"lr\":\"0x0\"}\n{\"k\":\"end\",\"frames\":0,\"images\":0}\n")
-    expect_eq(crash_up(crash_st, "b-1"), 1)
+    expect_eq(crash_boot(crash_st, "b-1"), 1)
     let call = devcall_new()
     let pending = DevVerbs[DVB_CRASH_PENDING]
     expect_eq(pending.run(call), DV_OK)

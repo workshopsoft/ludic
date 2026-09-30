@@ -47,16 +47,16 @@ leave: with it off (or unbound) a record is a local file and nothing more - `cra
 `crash_next_send` is -1, and the game can still show the "crashed last time" panel from
 `crash_pending`. A player who turns capture off at run time calls `crash_set_enabled(false)`.
 
-### Wiring from data: `crash_up`
+### Wiring from data: `crash_boot`
 
 ```ludic skip
 def CrashSettings standard { dir: "crashes", keep_n: 5, enabled: true, context: "" }   # or a rows file
 function boot(crash_st: mut CrashState) -> void {
-  crash_up(crash_st, "")    # the argument is the game's own build id, "" when it has none
+  crash_boot(crash_st, "")    # the argument is the game's own build id, "" when it has none
 }
 ```
 
-`crash_up(build)` is the whole wiring in one call: the app's name and version are `package.ludic`'s
+`crash_boot(build)` is the whole wiring in one call: the app's name and version are `package.ludic`'s
 (`Build.app_name()`, `Build.app_version()`), the folder is the first `CrashSettings` row's `dir` under
 `Os.save_dir(app name)` (an absolute path is taken as it is), `keep_n`, `enabled` and `context` come from
 the row too (the defaults above when a game declares none), and it ends with `crash_start`. Two dev verbs
@@ -77,7 +77,7 @@ the allocation sites are in the context. `crash_exit_name` names 86 and 87. macO
 
 | | |
 | --- | --- |
-| `crash_up(build) -> int` | the whole wiring from `package.ludic` and the `CrashSettings` row (above), ending in `crash_start` |
+| `crash_boot(build) -> int` | the whole wiring from `package.ludic` and the `CrashSettings` row (above), ending in `crash_start` |
 | `crash_config(c)` | before the start |
 | `crash_start() -> int` | once at boot, before the game can crash: read and rotate the folder, then (when `enabled`) install the handler. Answers how many records wait from earlier runs |
 | `crash_set_enabled(on)`, `crash_installed()`, `crash_dir()` | the switch at run time, and what is on |

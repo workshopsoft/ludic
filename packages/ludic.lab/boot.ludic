@@ -30,6 +30,8 @@ export function lab_boot(lab_st: mut LabState, render3d_st: mut Render3dState) -
     ww = 960
     wh = 540
   }
+  lab_st.lb_w = ww
+  lab_st.lb_h = wh
   r3d_plate_mode(render3d_st, true)
   render3d_st.r3d_sky_path = `{lab_plate_dir(lab_st)}/sky.hdr`
   if not r3d_init(render3d_st, ww, wh, lab_st.lb_title) {
@@ -42,6 +44,7 @@ export function lab_boot(lab_st: mut LabState, render3d_st: mut Render3dState) -
   lab_plate_load(lab_st, render3d_st)
   lab_shots_reset(lab_st)
   lab_st.lb_out = `build/lab/{lab_st.lb_scene}`
+  lab_steps_run(lab_st, render3d_st)             # LabSteps rows: a first frame and a bar (loading.ludic); none: nothing
   let sc = LabScenes[k]
   lab_st.lb_draw = sc.draw
   if sc.setup != null { sc.setup() }

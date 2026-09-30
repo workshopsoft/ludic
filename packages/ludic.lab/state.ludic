@@ -19,6 +19,10 @@ export state LabState {
   lb_title: string = "Ludic Lab"
   lb_draw: fn() = null            # the scene's own drawing, beside the actors
   lb_shots_taken: int = 0
+  lb_w: int = 0                   # the window's size as it was asked for (the loading screen lays out in it)
+  lb_h: int = 0
+  lb_progress: float = 0.0        # the named setup steps (LabSteps): how far, 0..1
+  lb_label: string = ""            # ... and what is being done
 }
 
 # frames a shot settles before it is taken (streaming, auto-exposure); 45 by default

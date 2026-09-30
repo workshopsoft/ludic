@@ -27,7 +27,7 @@ export function crash_start(crash_st: mut CrashState) -> int {
 # defaults when a game declares none), then crash_start. `build` is the game's own id (Build.schema_hash()
 # in a dev build, the release's in a shipped one). Answers how many records wait from earlier runs.
 @alloc_ok("once, at boot: the config")
-export function crash_up(crash_st: mut CrashState, build: string) -> int {
+export function crash_boot(crash_st: mut CrashState, build: string) -> int {
   let c = new CrashConfig
   c.app = Build.app_name()
   c.version = Build.app_version()
