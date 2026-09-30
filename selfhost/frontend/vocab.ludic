@@ -38,7 +38,7 @@ function vocab_keywords() -> void {
   vc_kw("declaration", "state", "A module's changing data: one instance, reached only as a parameter. Inside a machine, one of its states.")
   vc_kw("declaration", "event", "Something that happened, fired with emit and heard by @On listeners.")
   vc_kw("declaration", "action", "What a player asked for, dispatched and applied by each state's reducer.")
-  vc_kw("declaration", "reducer", "Applies an action to one state: reducer HikerState on Move(h: mut HikerState, a: Move).")
+  vc_kw("declaration", "reducer", "Applies an action to one state, or to the one row it names: reducer HikerState on Move(h: mut HikerState, a: Move); reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, a: Spook).")
   vc_kw("declaration", "enum", "A set of named integer variants.")
   vc_kw("declaration", "model", "An entity kind: the components an entity of it carries.")
   vc_kw("declaration", "prefab", "A model with preset component values.")
@@ -91,7 +91,7 @@ function vocab_keywords() -> void {
   vc_kw("statement", "else", "The branch taken when the if's condition does not hold.")
   vc_kw("statement", "while", "Loops while a condition holds.")
   vc_kw("statement", "for", "for i in a..b, or for (vars) in query [...].")
-  vc_kw("statement", "in", "Separates a for's variables from what they range over; module m in layer L.")
+  vc_kw("statement", "in", "Separates a for's variables from what they range over; module m in layer L; reducer T in S.table on A.")
   vc_kw("statement", "where", "A query's filter: for (p) in query [Pos] where p.x > 0.")
   vc_kw("statement", "match", "Picks the arm whose values match.")
   vc_kw("statement", "machine", "A state machine over a value, one block per state.")
@@ -131,7 +131,7 @@ function vocab_declarations() -> void {
   vc_decl("state", "state Name { field: Type = default, ... }", "A module's changing data, one instance, passed as a parameter.")
   vc_decl("event", "event [cancellable] Name { field: Type, ... }", "Something that happened.")
   vc_decl("action", "action Name { field: Type, ... }", "What a player asked for.")
-  vc_decl("reducer", "reducer State on Action(st: mut State, reads..., a: Action) { ... }", "Applies an action to one state.")
+  vc_decl("reducer", "reducer State on Action(st: mut State, reads..., a: Action) { ... }  |  reducer Record in State.table on Action(r: mut Row<Record>, reads..., a: Action) { ... }", "Applies an action to one state, or to the one row of a table its @Target names.")
   vc_decl("enum", "enum Name { A, B, C }", "Named integer variants.")
   vc_decl("model", "model Name { Component, ... }", "An entity kind.")
   vc_decl("prefab", "prefab Name of Model { Component { field: v } }", "A model with preset values.")
@@ -213,6 +213,8 @@ function vocab_attributes() -> void {
   vc_at("frame", "checked", "field", "", "A fn stored here runs every frame: a root of the frame-allocation count.")
   vc_at("max", "checked", "field", "(n)", "The most the list may hold; growing past it fails the run.")
   vc_at("owns", "checked", "field", "(Kind)", "The field holds a handle of that kind its record owns: releasing a sibling and losing it is counted.")
+  vc_at("Target", "checked", "field", "", "An action's field holding the handle of the one table row it names: its row reducers run for that row alone.")
+  vc_at("Column", "checked", "field", "", "A record's field a column of its table mirrors: a row reducer writes it only through a @RowVerb.")
   # a registry's
   vc_at("AppendOnly", "checked", "registry", "", "Entries are only ever appended: an entry's index is saved.")
   vc_at("ByKey", "checked", "registry", "", "Entries are saved by key, so their order is free.")
@@ -245,6 +247,7 @@ function vocab_attributes() -> void {
   vc_at("alloc_ok", "checked", "function handler statement", "(\"why\")", "Allocates in a frame on purpose; the reason is required.")
   vc_at("creates", "checked", "function", "(Kind)", "Returns a handle of that kind the caller must release.")
   vc_at("releases", "checked", "function", "(Kind)", "Releases a handle of that kind.")
+  vc_at("RowVerb", "checked", "function", "", "A verb of a table's row, taking Row<T> first: the only function a row reducer hands its row to.")
   # read past and kept as a label
   vc_at("Handles", "recorded", "handler program", "(Name)", "Names what a handler (or a program) is responsible for; no effect.")
   vc_at("Reads", "recorded", "handler", "(Component, ...)", "Documents the components a handler reads; no effect.")
@@ -327,7 +330,7 @@ function vocab_check() -> void {
   }
 }
 function vc_field_attr(a: pointer) -> bool {
-  return at_field_known(a) or (a == "Computed") or (a == "Sync") or (a == "frame") or (a == "max") or (a == "owns")
+  return at_field_known(a) or (a == "Computed") or (a == "Sync") or (a == "frame") or (a == "max") or (a == "owns") or (a == "Target") or (a == "Column")
 }
 
 function vc_list(b: Buf, kind: pointer, key: pointer) -> void {

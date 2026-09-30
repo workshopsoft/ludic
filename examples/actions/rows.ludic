@@ -1,0 +1,44 @@
+# rows.ludic - 27.3: a reducer on a row. An action that names one row of a Table by its handle
+# (@Target) is reduced for that row alone: the drain resolves the handle and hands the reducer a
+# Row it keeps, so nothing is allocated. A field a column mirrors (@Column) is written only by the
+# record's @RowVerbs, which keep the column with it; a handle whose row is gone runs nothing.
+import "ludic.base"
+program RowActions {
+  numbers float
+  property Deer {
+    @Column x: float = 0.0          # mirrored by column 0 of the herd's table
+    fear: int = 0
+  }
+  state Herd { deer: Table<Deer> = null }
+  state Noise { loud: int = 2 }
+  action Spook { @Target who: int = -1, by: int = 1 }
+  action Bolt { @Target who: int = -1, dx: float = 0.0 }
+
+  reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, n: Noise, a: Spook) {
+    r.rec.fear += a.by * n.loud
+    if r.rec.fear > 3 { dispatch Bolt { who: r.h, dx: 5.0 } }   # a follow-on, for the same row
+  }
+  reducer Deer in Herd.deer on Bolt(r: mut Row<Deer>, a: Bolt) { deer_move(r, r.rec.x + a.dx) }
+  reducer Noise on Spook(n: mut Noise, a: Spook) { n.loud += 1 }   # a state's reducer on the same action
+
+  @RowVerb function deer_move(r: mut Row<Deer>, x: float) -> void {
+    r.rec.x = x
+    tb_set_f(r.tb, 0, r.row, x)
+  }
+
+  entry (h: mut Herd) {
+    let tb: Table<Deer> = table_new(1, 0)
+    h.deer = tb
+    let a = tb_add(tb, new Deer)
+    let b = tb_add(tb, new Deer { x: 10.0 })
+    let c = tb_add(tb, new Deer)
+    tb_remove(tb, c)
+    dispatch Spook { who: a, by: 1 }   # Noise's reducer runs after Deer's: 2, then 3 for b
+    dispatch Spook { who: b, by: 2 }   # 6 > 3: b bolts
+    dispatch Spook { who: c, by: 9 }   # c is gone: its row reducers run nothing
+    drain_actions()
+    let ra = tb_row(tb, a)
+    let rb = tb_row(tb, b)
+    print(`{tb_rec(tb, ra).fear} {tb_rec(tb, rb).fear} {int(tb_rec(tb, rb).x)} {int(tb_f(tb, 0, rb))}`)
+  }
+}

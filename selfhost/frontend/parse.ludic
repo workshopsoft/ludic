@@ -1034,6 +1034,7 @@ function parse_one_decl_in() -> void {
   var esys_phase: pointer = null
   var ns_name: pointer = null               # @Namespace(Name) — a package-provided Foo.* namespace (#62)
   var is_det = false                    # @deterministic — no floating point inside (emit_float.ludic)
+  var is_rowverb = false                # @RowVerb — a verb of a table's row (27.3, actions_rows.ludic)
   # attributes and `export` in any order: `@ToClients export event E` keeps its @ToClients
   while is_op("@") or (is_id("export") and (toks[pi + 1].kind == TK_ID or toks[pi + 1].text == "@")) {
     if is_id("export") {
@@ -1069,6 +1070,7 @@ function parse_one_decl_in() -> void {
     else if a == "EngineSystem" { eat_op("("); esys_comp = eat_id(); eat_op(","); esys_phase = eat_id(); eat_op(")") }   # @EngineSystem(Comp, Phase) package engine system (#62)
     else if a == "Namespace" { eat_op("("); ns_name = eat_id(); eat_op(")") }   # @Namespace(Name) package Foo.* namespace (#62)
     else if a == "deterministic" { is_det = true }
+    else if a == "RowVerb" { is_rowverb = true }
     else if (a == "AppendOnly") or (a == "ByKey") { at_decl(a) }   # a registry's, for editors (attrs.ludic)
     else if a == "PerMap" {                        # a map-scoped registry (permap.ludic)
       at_decl(a)
@@ -1191,6 +1193,7 @@ function parse_one_decl_in() -> void {
   if is_id("state") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_state(); return }   # 0.S
   if is_id("action") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "{") { parse_action(); return }   # 0.R
   if is_id("reducer") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "on") { parse_reducer(); return }
+  if is_id("reducer") and (toks[pi + 1].kind == TK_ID) and (toks[pi + 2].text == "in") { parse_row_reducer(); return }   # 27.3
   if is_id("var") {
     if not g_allow_globals {
       perr(`a module-level var is refused: a module's changing data is its state (state Name {{ ... }}), passed to the functions that use it - or, if it never changes, a let`)
@@ -1215,6 +1218,7 @@ function parse_one_decl_in() -> void {
     let f = parse_fn()
     if is_unsafe { f.uns = 1 }
     if is_det { push(g_det_names, f.s) }
+    if is_rowverb { push(g_rv_nodes, f) }
     if g_aok_pending { push(g_alloc_ok_names, f.s);  g_aok_pending = false }
     if g_res_pending_make != null { push(g_res_make_fn, f.s);  push(g_res_make_kind, g_res_pending_make);  g_res_pending_make = null }
     if g_res_pending_free != null { push(g_res_free_fn, f.s);  push(g_res_free_kind, g_res_pending_free);  g_res_pending_free = null }

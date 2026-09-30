@@ -108,11 +108,12 @@ function ck_write_check(t: Node, what: pointer) -> void {
     ck_err("state", t, `{what}: {name} is module-level and immutable all the way down; changing data belongs in a state, passed as a mut parameter`)
   }
 }
-# a function's parameters: `mut` is for a state, and a state without it is read-only
+# a function's parameters: `mut` is for a state (or a table's row, 27.3), and a state without it is
+# read-only
 function ck_bind_param(p: Node) -> void {
   ck_bind(p.s, p.ty)
-  if p.uns == 1 and not is_state_ty(p.ty) {
-    ck_err("state", p, `{p.s}: mut {p.ty} - mut is for a state parameter, and {p.ty} is not a state`)
+  if p.uns == 1 and not is_state_ty(p.ty) and not rr_is_row_ty(p.ty) {
+    ck_err("state", p, `{p.s}: mut {p.ty} - mut is for a state parameter (or a row, mut Row<T>), and {p.ty} is not a state`)
   }
   ck_set_ro(is_state_ty(p.ty) and p.uns == 0)
 }

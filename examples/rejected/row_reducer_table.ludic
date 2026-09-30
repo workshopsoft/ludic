@@ -1,0 +1,9 @@
+# 27.3: a row reducer names a Table of its record in its state
+import "ludic.base"
+program RowReducerTable {
+  property Deer { fear: int = 0 }
+  state Herd { count: int = 0 }
+  action Spook { @Target who: int = -1 }
+  reducer Deer in Herd.count on Spook(r: mut Row<Deer>, a: Spook) { r.rec.fear += 1 }
+  entry { print(1) }
+}

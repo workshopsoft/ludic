@@ -1,0 +1,10 @@
+# ludic.base/ecs_row.ludic - a Row<T>: one row of a Table<T>, as the action drain hands it to a row
+# reducer (`reducer T in S.table on A(r: mut Row<T>, a: A)`). The drain keeps one per reducer and
+# fills it in place, so a targeted action allocates nothing. A row reducer reads `r.rec` and `r.h`;
+# `r.tb` and `r.row` are for the @RowVerbs of T's own module, which keep the columns and indexes.
+export property Row<T> {
+  tb: Table<T>
+  row: int = -1       # the row the handle named when the drain resolved it
+  h: int = -1         # the handle the action carried
+  rec: T
+}

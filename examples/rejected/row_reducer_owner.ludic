@@ -1,0 +1,7 @@
+# 27.3: a table's rows are reduced only by the module that owns its state
+import "ludic.base"
+import "row_reducer_owner/herd"
+program RowReducerOwner {
+  reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, a: Spook) { r.rec.fear += 1 }
+  entry { print(1) }
+}

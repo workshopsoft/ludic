@@ -1,0 +1,390 @@
+# actions_rows.ludic — 27.3: a reducer on a row. An action may name one row of a ludic.base
+# Table<T> by its handle, in a field marked @Target, and a row reducer runs once, for that row alone:
+#
+#   property Deer { @Column x: float = 0.0, fear: int = 0 }    # @Column: a column mirrors it
+#   state Herd { deer: Table<Deer> = null }
+#   action Spook { @Target who: int = -1, by: int = 1 }
+#   reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, n: Noise, a: Spook) { r.rec.fear += a.by }
+#   @RowVerb function deer_move(r: mut Row<Deer>, x: float) -> void { ... tb_set_f(r.tb, ...) }
+#
+# The drain resolves the handle (tb_row) and hands the reducer a Row<T> it keeps, one per row
+# reducer, so nothing is allocated; a stale handle runs nothing (LUDIC_ACTIONS_LOG=1 says so). Inside
+# a row reducer the row reaches its record and its handle and no further: the table is written only
+# by the record's module's @RowVerbs, a field a column mirrors (@Column) only by them, and the row
+# is handed to nothing else. Between the row and the action a row reducer READS states, as any
+# reducer does; only the module that owns the table's state declares one.
+var g_red_rec: []pointer = new []pointer       # per reducer: the row's record, or null (a state's reducer)
+var g_red_tbl: []pointer = new []pointer       # ... the table's path in its state ("deer", "w.tab")
+var g_red_tgt: []pointer = new []pointer       # ... the action's @Target field, once checked
+var g_tgt_comp: []pointer = new []pointer      # every @Target field: its record, name, type, node
+var g_tgt_field: []pointer = new []pointer
+var g_tgt_node: []Node = new []Node
+var g_col_comp: []pointer = new []pointer      # every @Column field: its record and name
+var g_col_field: []pointer = new []pointer
+var g_rv_nodes: []Node = new []Node            # every @RowVerb function
+
+# reducer REC in STATE.path on ACTION(r: mut Row<REC>, reads..., a: ACTION) { ... }
+function parse_row_reducer() -> void {
+  let rec = toks[pi + 1].text
+  let st = toks[pi + 3].text
+  if toks[pi + 3].kind != TK_ID or not (toks[pi + 4].text == ".") { rr_shape() }
+  var k = pi + 5
+  var path: pointer = ""
+  while true {
+    if toks[k].kind != TK_ID { rr_shape() }
+    if len(path) > 0 { path = path + "." }
+    path = path + toks[k].text
+    if not (toks[k + 1].text == ".") { break }
+    k += 2
+  }
+  if not (toks[k + 1].text == "on") or toks[k + 2].kind != TK_ID { rr_shape() }
+  let act = toks[k + 2].text
+  pi = k + 1
+  toks[pi].text = "function"                     # read the rest as a function named for the action
+  let f = parse_fn()
+  f.s = `ludic_rowred__{act}__{rr_suffix(rec, st, path)}`
+  f.vis = 1
+  push(g_red_nodes, f)
+  push(g_red_state, st)
+  push(g_red_action, act)
+  push(g_red_rec, rec)
+  push(g_red_tbl, path)
+  push(g_red_tgt, null)
+  push(prog, f)
+}
+function rr_shape() -> void {
+  perr("a row reducer is `reducer Record in State.table on Action(r: mut Row<Record>, a: Action) { ... }`")
+}
+# Deer__in__Herd__deer: a name the drain's own source can spell, read back by `ludic deps` as
+# `Deer in Herd.deer`
+function rr_suffix(rec: pointer, st: pointer, path: pointer) -> pointer {
+  var p: pointer = ""
+  var i = 0
+  while i < len(path) {
+    if path[i] == '.' { p = p + "__" } else { p = p + path[i .. i + 1] }
+    i += 1
+  }
+  return `{rec}__in__{st}__{p}`
+}
+function rr_wrap_name(i: int) -> pointer {
+  return `ludic_reduce__{g_red_action[i]}__{rr_suffix(g_red_rec[i], g_red_state[i], g_red_tbl[i])}`
+}
+# a field's @Target / @Column, read by parse_component
+function rr_field_attr(comp: pointer, f: Node, is_target: bool, is_column: bool) -> void {
+  if is_target {
+    push(g_tgt_comp, comp)
+    push(g_tgt_field, f.s)
+    push(g_tgt_node, f)
+  }
+  if is_column {
+    push(g_col_comp, comp)
+    push(g_col_field, f.s)
+  }
+}
+function rr_is_column(comp: pointer, field: pointer) -> bool {
+  var i = 0
+  while i < len(g_col_comp) {
+    if (g_col_comp[i] == comp) and (g_col_field[i] == field) { return true }
+    i += 1
+  }
+  return false
+}
+# a record, a state or an action declared in prog, by name
+function rr_decl(name: pointer) -> Node {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_COMP and (d.s == name) { return d }
+    i += 1
+  }
+  return null
+}
+function rr_field_ty(ty: pointer, name: pointer) -> pointer {
+  let d = rr_decl(ty)
+  if d == null { return null }
+  var i = 0
+  while i < len(d.kids) {
+    if d.kids[i].kind == N_FIELD and (d.kids[i].s == name) { return d.kids[i].ty }
+    i += 1
+  }
+  return null
+}
+function rr_is_verb(name: pointer) -> bool {
+  var i = 0
+  while i < len(g_rv_nodes) {
+    if (g_rv_nodes[i].s == name) { return true }
+    i += 1
+  }
+  return false
+}
+function rr_is_row_ty(t: pointer) -> bool { return t != null and len(t) > 4 and (t[0 .. 4] == "Row$") }
+function rr_mod(file: pointer) -> pointer {
+  let m = module_of(file)
+  if m == null { return "" }
+  return m
+}
+function rr_mod_name(file: pointer) -> pointer {
+  let m = rr_mod(file)
+  if len(m) == 0 { return "the program" }
+  return `module {m}`
+}
+
+# ---- the checks -----------------------------------------------------------------------------------
+# every @Target on an action, one to an action, an int; every @RowVerb takes a row first and is its
+# record's module's; a function handed a row is a @RowVerb
+function rows_finish_checks() -> void {
+  var i = 0
+  while i < len(g_tgt_comp) {
+    let f = g_tgt_node[i]
+    let c = g_tgt_comp[i]
+    if act_index(c) < 0 { act_err(f, `@Target {c}.{f.s}: @Target marks the field of an action that holds the handle of the row it names, and {c} is not an action`) }
+    if not (f.ty == "int") { act_err(f, `@Target {c}.{f.s}: a row's handle is an int (@Target {f.s}: int = -1), not a {f.ty}`) }
+    var j = 0
+    while j < i {
+      if (g_tgt_comp[j] == c) { act_err(f, `{c} has two @Target fields, {g_tgt_field[j]} and {f.s}: an action names one row - dispatch it once per row`) }
+      j += 1
+    }
+    i += 1
+  }
+  i = 0
+  while i < len(g_rv_nodes) {
+    rv_check(g_rv_nodes[i])
+    i += 1
+  }
+  i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_FN and d.pos >= 0 and d.tps == null and not rr_is_verb(d.s) and not str_starts(d.s, "ludic_rowred__") { rr_no_row_param(d) }
+    i += 1
+  }
+}
+function rv_check(f: Node) -> void {
+  var first: Node = null
+  var k = 0
+  while k < len(f.kids) {
+    if f.kids[k].kind == N_PARAM and first == null { first = f.kids[k] }
+    k += 1
+  }
+  if first == null or not rr_is_row_ty(first.ty) { act_err(f, `@RowVerb {f.s}: a row verb takes the row first - ({"r"}: mut Row<Record>, ...)`) }
+  let rec = first.ty[4 .. len(first.ty)]
+  let d = rr_decl(rec)
+  if d != null and not (rr_mod(d.file) == rr_mod(f.file)) {
+    act_err(f, `@RowVerb {f.s} is declared in {rr_mod_name(f.file)}, and {rec} is {rr_mod_name(d.file)}'s: a row changes only through its record's own module's verbs`)
+  }
+  k = 0
+  var n = 0
+  while k < len(f.kids) {
+    let p = f.kids[k]
+    if p.kind == N_PARAM {
+      if n > 0 and rr_is_row_ty(p.ty) { act_err(f, `@RowVerb {f.s}: a row verb takes one row, first, and {p.s} is a second`) }
+      n += 1
+    }
+    k += 1
+  }
+}
+function rr_no_row_param(f: Node) -> void {
+  var k = 0
+  while k < len(f.kids) {
+    let p = f.kids[k]
+    if p.kind == N_PARAM and rr_is_row_ty(p.ty) {
+      let rec = p.ty[4 .. len(p.ty)]
+      act_err(f, `{f.s} is handed a row ({p.s}: Row<{rec}>), and is not a @RowVerb: only the verbs of {rec}'s own module take a row - mark it @RowVerb there`)
+    }
+    k += 1
+  }
+}
+# a row reducer: its table, its action's target, its parameters, and a body that stays in its row
+function rr_check(i: int) -> void {
+  let f = g_red_nodes[i]
+  let st = g_red_state[i]
+  let act = g_red_action[i]
+  let rec = g_red_rec[i]
+  let path = g_red_tbl[i]
+  let who = `reducer {rec} in {st}.{path} on {act}`
+  if act_index(act) < 0 { act_err(f, `{who}: {act} is not an action - declare it with action {act} {{ ... }}`) }
+  if not is_state_ty(st) { act_err(f, `{who}: {st} is not a state`) }
+  let sd = rr_decl(st)
+  if sd != null and not (rr_mod(sd.file) == rr_mod(f.file)) {
+    act_err(f, `{who}: {st} is {rr_mod_name(sd.file)}'s, and this reducer is in {rr_mod_name(f.file)} - a table's rows are reduced only by the module that owns its state`)
+  }
+  let ty = rr_path_ty(f, who, st, path)
+  if not (ty == `Table${rec}`) { act_err(f, `{who}: {st}.{path} is {rr_ty_text(ty)}, not Table<{rec}>`) }
+  let t = rr_target(act)
+  if t == null { act_err(f, `{who}: {act} names no row - mark the field that holds the row's handle @Target ({"@Target who: int = -1"})`) }
+  g_red_tgt[i] = t
+  rr_params(i, f, who)
+  var j = 0
+  while j < i {
+    if g_red_rec[j] != null and (g_red_state[j] == st) and (g_red_action[j] == act) and (g_red_rec[j] == rec) and (g_red_tbl[j] == path) { act_err(f, `{who} is declared twice (first at {g_red_nodes[j].file}:{itoa(g_red_nodes[j].line)})`) }
+    j += 1
+  }
+}
+# Table$Deer -> Table<Deer>, for a message
+function rr_ty_text(ty: pointer) -> pointer {
+  if ty == null { return "?" }
+  var i = 0
+  while i < len(ty) {
+    if ty[i] == '$' { return `{ty[0 .. i]}<{ty[i + 1 .. len(ty)]}>` }
+    i += 1
+  }
+  return ty
+}
+# the type at the end of the path through the state's fields
+function rr_path_ty(f: Node, who: pointer, st: pointer, path: pointer) -> pointer {
+  var ty = st
+  var a = 0
+  var i = 0
+  while i <= len(path) {
+    if i == len(path) or path[i] == '.' {
+      let name = path[a .. i]
+      let next = rr_field_ty(ty, name)
+      if next == null { act_err(f, `{who}: {ty} has no field {name}`) }
+      ty = next
+      a = i + 1
+    }
+    i += 1
+  }
+  return ty
+}
+function rr_target(act: pointer) -> pointer {
+  var i = 0
+  while i < len(g_tgt_comp) {
+    if (g_tgt_comp[i] == act) { return g_tgt_field[i] }
+    i += 1
+  }
+  return null
+}
+# (r: mut Row<REC>, reads..., a: ACTION); read in that order, kept as (reads..., r, a) so the drain
+# supplies the reads as it supplies any reducer's states
+function rr_params(i: int, f: Node, who: pointer) -> void {
+  let rec = g_red_rec[i]
+  let act = g_red_action[i]
+  var ps = new []Node
+  var k = 0
+  while k < len(f.kids) {
+    if f.kids[k].kind == N_PARAM { push(ps, f.kids[k]) }
+    k += 1
+  }
+  if len(ps) < 2 or not (ps[0].ty == `Row${rec}`) or ps[0].uns != 1 or not (ps[len(ps) - 1].ty == act) {
+    act_err(f, `{who}: its parameters are its row, any states it reads, and the action - (r: mut Row<{rec}>, a: {act})`)
+  }
+  k = 1
+  while k < len(ps) - 1 {
+    let p = ps[k]
+    if not is_state_ty(p.ty) { act_err(f, `{who}: {p.s} is a {rr_ty_text(p.ty)} - between its row and the action a row reducer takes only states it reads; what it needs to know rides in the action`) }
+    if p.uns == 1 { act_err(f, `{who}: a row reducer writes its row alone, and {p.s} is a mut {p.ty} - read it ({p.s}: {p.ty}), or dispatch an action {p.ty}'s own reducer takes`) }
+    k += 1
+  }
+  rr_walk(f.a, i, ps[0].s)
+  let kids = new []Node
+  k = 1
+  while k < len(ps) - 1 {
+    push(kids, ps[k])
+    k += 1
+  }
+  push(kids, ps[0])
+  push(kids, ps[len(ps) - 1])
+  f.kids = kids
+}
+function rr_err(i: int, n: Node, msg: pointer) -> void {
+  var at = n
+  if at.file == null or at.line == 0 { at = g_red_nodes[i] }
+  act_err(at, `reducer {g_red_rec[i]} in {g_red_state[i]}.{g_red_tbl[i]} on {g_red_action[i]}: {msg}`)
+}
+# the body: `r.rec` and `r.h` only, no field a column mirrors written, the row handed only to a verb
+function rr_walk(n: Node, i: int, r: pointer) -> void {
+  if n == null { return }
+  if n.kind == E_MEMBER and n.a != null and n.a.kind == E_ID and (n.a.s == r) {
+    if not ((n.s == "rec") or (n.s == "h")) { rr_err(i, n, `{r}.{n.s}: a row reducer reaches its row's record and handle ({r}.rec, {r}.h) and no further - its table is written by {g_red_rec[i]}'s @RowVerbs and read through its state`) }
+    return
+  }
+  if n.kind == S_ASSIGN and n.a != null and n.a.kind == E_MEMBER and n.a.a != null {
+    let t = n.a
+    if t.a.kind == E_ID and (t.a.s == r) { rr_err(i, n, `{r}.{t.s} is the drain's view of the row, not the reducer's to set - change {r}.rec's fields, or call a @RowVerb`) }
+    if t.a.kind == E_MEMBER and (t.a.s == "rec") and t.a.a != null and t.a.a.kind == E_ID and (t.a.a.s == r) and rr_is_column(g_red_rec[i], t.s) {
+      rr_err(i, n, `{g_red_rec[i]}.{t.s} is mirrored by a column of the table (@Column) - write it through a @RowVerb, which keeps the column and its indexes with it`)
+    }
+  }
+  if n.kind == E_CALL {
+    rr_walk(n.a, i, r)
+    var k = 0
+    while k < len(n.kids) {
+      var x = n.kids[k]
+      if x != null and x.kind == E_FINIT { x = x.a }
+      if x != null and x.kind == E_ID and (x.s == r) { rr_call_verb(i, n, r) } else { rr_walk(n.kids[k], i, r) }
+      k += 1
+    }
+    return
+  }
+  if n.kind == E_ID and (n.s == r) { rr_err(i, n, `{r} goes no further than its record, its handle and {g_red_rec[i]}'s @RowVerbs: the drain keeps it, so it is not stored, copied or handed on`) }
+  rr_walk(n.a, i, r)
+  rr_walk(n.b, i, r)
+  rr_walk(n.c, i, r)
+  var j = 0
+  while j < len(n.kids) {
+    rr_walk(n.kids[j], i, r)
+    j += 1
+  }
+}
+function rr_call_verb(i: int, n: Node, r: pointer) -> void {
+  if n.a != null and n.a.kind == E_ID and rr_is_verb(n.a.s) { return }
+  var name: pointer = "a method"
+  if n.a != null and n.a.kind == E_ID { name = n.a.s }
+  rr_err(i, n, `{name} is handed the row, and is not a @RowVerb: only the verbs of {g_red_rec[i]}'s own module take a row`)
+}
+
+# ---- the drain's side ------------------------------------------------------------------------------
+# the kept views, one per row reducer, and the switch for a stale handle's line
+function rr_fields_src() -> pointer {
+  var src: pointer = ""
+  var any = false
+  var i = 0
+  while i < len(g_red_nodes) {
+    if g_red_rec[i] != null {
+      src = src + `  row{itoa(i)}: Row<{g_red_rec[i]}> = new Row<{g_red_rec[i]}>\n`
+      any = true
+    }
+    i += 1
+  }
+  if any { src = src + "  row_log: int = -1\n" }
+  return src
+}
+# per row reducer: the handle resolved, the kept view filled, the reducer called; a stale handle
+# runs nothing
+function rr_wrappers_src() -> pointer {
+  var src: pointer = ""
+  var any = false
+  var i = 0
+  while i < len(g_red_nodes) {
+    if g_red_rec[i] != null {
+      any = true
+      let n = itoa(i)
+      let act = g_red_action[i]
+      src = src + `export function {rr_wrap_name(i)}(q: mut LudicActions, s: mut {g_red_state[i]}, a: {act}) -> void {{\n`
+      src = src + `  let h = a.{g_red_tgt[i]}\n  let tb = s.{g_red_tbl[i]}\n  var row = -1\n  if tb != null {{ row = tb_row(tb, h) }}\n`
+      src = src + `  if row < 0 {{\n    ludic_act_stale(q, "{act}", "{g_red_rec[i]}", h)\n    return\n  }}\n`
+      src = src + `  let r = q.row{n}\n  r.tb = tb\n  r.row = row\n  r.h = h\n  r.rec = tb_rec(tb, row)\n  {g_red_nodes[i].s}(r, a)\n}}\n`
+    }
+    i += 1
+  }
+  if any {
+    src = src + "@alloc_ok(\"a stale handle's line, printed only under LUDIC_ACTIONS_LOG\")\n"
+    src = src + "export function ludic_act_stale(q: mut LudicActions, act: string, rec: string, h: int) -> void {\n"
+    src = src + "  if q.row_log < 0 {\n    q.row_log = 0\n    if Os.has_env(\"LUDIC_ACTIONS_LOG\") { q.row_log = 1 }\n  }\n"
+    src = src + "  if q.row_log == 1 { print(`actions: {act} names a {rec} that is gone (handle {h}) - its row reducers run nothing`) }\n}\n"
+  }
+  return src
+}
+# a @RowVerb's record, from the row it takes first (null when it takes none: refused in the build)
+function rv_record(f: Node) -> pointer {
+  var k = 0
+  while k < len(f.kids) {
+    let p = f.kids[k]
+    if p.kind == N_PARAM {
+      if rr_is_row_ty(p.ty) { return p.ty[4 .. len(p.ty)] }
+      return null
+    }
+    k += 1
+  }
+  return null
+}

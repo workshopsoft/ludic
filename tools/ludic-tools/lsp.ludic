@@ -883,6 +883,17 @@ program LudicLsp {
       let sidx = sym_add(LS_REDUCER, nt, parent)
       pD.syms[sidx].decl = "reducer"
       pD.syms[sidx].doc = collect_doc(pD, decl_tok)
+      if pis("in") {                         # 27.3: reducer Record in State.table on Action - "Record in State.table on Action"
+        padv()
+        let st = pname()
+        if st >= 0 { pD.syms[sidx].name = pD.syms[sidx].name + " in " + ttext(pD, st) }
+        while st >= 0 and pis(".") {
+          padv()
+          let ft = pname()
+          if ft < 0 { break }
+          pD.syms[sidx].name = pD.syms[sidx].name + "." + ttext(pD, ft)
+        }
+      }
       if pis("on") { padv();  let at = pname();  if at >= 0 { pD.syms[sidx].name = pD.syms[sidx].name + " on " + ttext(pD, at) } }
       pD.syms[sidx].detail = "reducer " + pD.syms[sidx].name
       if pis("(") { lp_params(sidx, LS_PARAM, buf_new()) }

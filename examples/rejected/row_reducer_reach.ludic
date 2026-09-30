@@ -1,0 +1,11 @@
+# 27.3: a row reducer reaches its row's record and handle, not its table
+import "ludic.base"
+program RowReducerReach {
+  property Deer { fear: int = 0 }
+  state Herd { deer: Table<Deer> = null }
+  action Spook { @Target who: int = -1 }
+  reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, a: Spook) {
+    tb_remove(r.tb, r.h)
+  }
+  entry { print(1) }
+}

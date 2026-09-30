@@ -1,0 +1,10 @@
+# 27.3: a row reducer writes its row alone; the states it declares are read
+import "ludic.base"
+program RowReducerWritesState {
+  property Deer { fear: int = 0 }
+  state Herd { deer: Table<Deer> = null }
+  state Noise { loud: int = 0 }
+  action Spook { @Target who: int = -1 }
+  reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, n: mut Noise, a: Spook) { n.loud += 1 }
+  entry { print(1) }
+}

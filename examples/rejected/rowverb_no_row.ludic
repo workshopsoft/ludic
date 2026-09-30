@@ -1,0 +1,7 @@
+# 27.3: a @RowVerb takes its row first
+import "ludic.base"
+program RowVerbNoRow {
+  property Deer { fear: int = 0 }
+  @RowVerb function scare(n: int) -> void { print(n) }
+  entry { print(1) }
+}
