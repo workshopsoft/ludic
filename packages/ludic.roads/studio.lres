@@ -7,6 +7,13 @@
 # of ludic.city (its studio.lres) that the studio's block maker writes and the district brush paints; a game
 # without ludic.city has roads and no blocks.
 #
+# Organic streets: `handles` (with `handle_ix` .. `handle_smooth`, the fields of a RoadHandle row) are the Bezier
+# handles of a road's anchors, `taper` the width multiplier at its `to` end, `profile` a RoadProfiles row (the
+# cross-section, `profiles`), `street_name` the name on its signs; `node_kind` and `node_radius` say a node is a
+# junction, a roundabout, a plaza or a dead end and how big. `furniture_rules` is the RoadFurnitureRules registry,
+# whose result the studio writes into the `props` world table (RoadProps, a point table), and `bakes` the RoadBakes
+# registry that holds the glTF of the baked road surfaces (ludic.roads draws nothing, the studio bakes them offline).
+#
 # Junction rules: `rules` is the values of RoadTurn.rule, the first being what a junction does when no turn row
 # says otherwise. A turn with no row runs by its node's control (free: priority, then first come). A row that
 # names no rule is RoadTurn's own default, yield: the safer reading of an unfinished row.
@@ -16,12 +23,23 @@ roads_world {
   networks: [
     { key: "roads", title: "Roads", nodes: "RoadNodes", edges: "RoadSegs", points: "pts", node_control: "control",
       lanes_fwd: "lanes_fwd", lanes_back: "lanes_back", lane_width: "lane_width", speed: "speed", priority: "priority", phase: "phase", kind: "kind",
+      handles: "handles", handle_ix: "ix", handle_iz: "iz", handle_ox: "ox", handle_oz: "oz", handle_smooth: "smooth",
+      taper: "taper", profile: "profile", street_name: "name", node_kind: "kind", node_radius: "radius",
+      profiles: "RoadProfiles", furniture_rules: "RoadFurnitureRules", props: "props", bakes: "RoadBakes",
       turns: "RoadTurns", rules: "free yield stop forbid", blocks: "blocks", block_source: "source", districts: "districts", sidewalk: 2.0, snap: 4.0,
       presets: [
-        { key: "street", title: "Street", set: "lanes_fwd=1 lanes_back=1 lane_width=3.5 speed=13.9 kind=street" },
-        { key: "avenue", title: "Avenue", set: "lanes_fwd=2 lanes_back=2 lane_width=3.5 speed=16.7 priority=2 kind=street" },
-        { key: "highway", title: "Highway", set: "lanes_fwd=3 lanes_back=3 lane_width=3.75 speed=27.8 priority=3 kind=highway" },
+        { key: "boulevard", title: "Boulevard", set: "lanes_fwd=3 lanes_back=3 lane_width=3.25 speed=16.7 priority=3 kind=street profile=boulevard" },
+        { key: "avenue", title: "Avenue", set: "lanes_fwd=2 lanes_back=2 lane_width=3.25 speed=13.9 priority=2 kind=street profile=avenue" },
+        { key: "street", title: "Street", set: "lanes_fwd=1 lanes_back=1 lane_width=3.0 speed=11.1 priority=1 kind=street profile=street" },
+        { key: "lane", title: "Lane", set: "lanes_fwd=1 lanes_back=1 lane_width=2.6 speed=8.3 priority=1 kind=lane profile=lane" },
+        { key: "alley", title: "Alley", set: "lanes_fwd=1 lanes_back=1 lane_width=2.2 speed=5.5 priority=0 kind=alley profile=alley" },
+        { key: "pedestrian", title: "Pedestrian street", set: "lanes_fwd=0 lanes_back=0 lane_width=3.0 speed=2.0 priority=0 kind=pedestrian profile=pedestrian" },
+        { key: "stairs", title: "Stairs", set: "lanes_fwd=0 lanes_back=0 lane_width=3.0 speed=2.0 priority=0 kind=stairs profile=stairs" },
+        { key: "highway", title: "Highway", set: "lanes_fwd=3 lanes_back=3 lane_width=3.75 speed=27.8 priority=3 kind=highway profile=highway" },
       ],
       color: 0x9AA5B1 },
+  ]
+  tables: [
+    { key: "props", title: "Street props", table: "RoadProps", kind: "point", model: "model", x: "x", z: "z", yaw: "yaw", scale: "scale", group: "kind", label: "key", color: 0xC9B458 },
   ]
 }

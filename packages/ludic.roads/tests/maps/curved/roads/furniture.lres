@@ -1,0 +1,16 @@
+# furniture_rules.lres - a starter for a map's roads/furniture.lres: where the studio puts street furniture (it writes
+# the result into roads/props/, once; nothing is made at run time). `model` is a kit asset key of the game; `zone` and
+# `offset` place it in the street's cross-section, `at` says along the street or at a place (see the package README).
+street_lamp { kind: "street_lamp", model: "kit_street_lamp", profiles: "*", side: "alternate", zone: "plant", spacing: 28.0, offset: 0.5, start: 6.0, stop: 6.0, junction_gap: 8.0, yaw: "to_road", min_length: 20.0 }
+bench { kind: "bench", model: "kit_bench", profiles: "boulevard avenue street", side: "alternate", zone: "walk", spacing: 60.0, offset: 0.4, start: 15.0, stop: 15.0, junction_gap: 12.0, yaw: "to_road", min_length: 40.0 }
+bin { kind: "bin", model: "kit_bin", profiles: "boulevard avenue street", side: "alternate", zone: "walk", spacing: 45.0, offset: 0.3, start: 10.0, stop: 10.0, junction_gap: 6.0, yaw: "to_road", min_length: 30.0 }
+bollard { kind: "bollard", model: "kit_bollard", profiles: "pedestrian", side: "both", zone: "road", spacing: 3.5, offset: 0.2, start: 1.0, stop: 1.0, yaw: "along" }
+tree { kind: "tree", model: "kit_tree", profiles: "boulevard avenue street", side: "both", zone: "plant", spacing: 9.0, offset: 0.75, start: 5.0, stop: 5.0, junction_gap: 9.0, yaw: "along", min_length: 25.0 }
+bus_stop { kind: "bus_stop", model: "kit_bus_stop", profiles: "boulevard avenue", side: "right", zone: "walk", spacing: 400.0, offset: 0.3, start: 60.0, stop: 60.0, junction_gap: 25.0, yaw: "to_road", min_length: 150.0 }
+kiosk { kind: "kiosk", model: "kit_kiosk", profiles: "boulevard", side: "right", zone: "walk", spacing: 0.0, offset: 1.0, at: "junction", yaw: "to_road" }
+traffic_light { kind: "traffic_light", model: "kit_traffic_light", profiles: "*", side: "right", zone: "curb", spacing: 0.0, offset: 0.1, at: "signal", yaw: "to_road" }
+stop_line_signal { kind: "stop_line", model: "kit_stop_line", profiles: "*", side: "right", zone: "road", spacing: 0.0, at: "signal", yaw: "along" }
+stop_line_stop { kind: "stop_line", model: "kit_stop_line", profiles: "*", side: "right", zone: "road", spacing: 0.0, at: "stop", yaw: "along" }
+sign_stop { kind: "sign_stop", model: "kit_sign_stop", profiles: "*", side: "right", zone: "curb", spacing: 0.0, offset: 0.1, at: "stop", yaw: "to_road" }
+sign_yield { kind: "sign_yield", model: "kit_sign_yield", profiles: "*", side: "right", zone: "curb", spacing: 0.0, offset: 0.1, at: "yield", yaw: "to_road" }
+sign_name { kind: "sign_name", model: "kit_sign_name", profiles: "*", side: "right", zone: "curb", spacing: 0.0, offset: 0.1, at: "named", yaw: "to_road" }

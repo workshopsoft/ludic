@@ -450,6 +450,125 @@ program RoadsTest {
     expect_eq(roads_car_count(roads_st), 3)
   }
 
+  test "a road with no handles is the Catmull-Rom spline, and with every handle automatic it is the same curve" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "curved"))
+    expect_eq(roads_error(roads_st), "")
+    let plain = roads_seg_find(roads_st, "plain")
+    let auto = roads_seg_find(roads_st, "auto")
+    expect(roads_seg_length(roads_st, plain) > 205.0)
+    expect(near(roads_seg_length(roads_st, plain), roads_seg_length(roads_st, auto), 0.15))    # the same curve, sampled more finely
+    let half = roads_seg_length(roads_st, plain) * 0.5
+    roads_pose(roads_st, 2 * plain, half, 0)
+    let px = roads_pose_x(roads_st)
+    let pz = roads_pose_z(roads_st)
+    roads_pose(roads_st, 2 * auto, half, 0)
+    expect(near(roads_pose_x(roads_st), px, 0.05))
+    expect(near(roads_pose_z(roads_st), pz, 0.05))
+    # the old road of another map is untouched by all this: the ring's bowed road is the length it always was
+    let pa = roads_seg_find(roads_st, "pa")
+    expect(near(roads_seg_length(roads_st, pa), 100.0, 0.01))
+  }
+
+  test "a handle curve is a cubic Bezier: longer than its chord, on the curve, ending on its nodes" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "curved"))
+    let arch = roads_seg_find(roads_st, "arch")
+    let len = roads_seg_length(roads_st, arch)
+    expect(len > 200.0)
+    expect(near(len, 228.89, 0.05))                          # controls (0, 50) and (200, 50), 64 steps
+    roads_pose(roads_st, 2 * arch, len * 0.5, 0)             # a one way road is centred: t = 0.5 by symmetry
+    expect(near(roads_pose_x(roads_st), 100.0, 0.3))
+    expect(near(roads_pose_z(roads_st), 37.5, 0.3))
+    roads_pose(roads_st, 2 * arch, 0.0, 0)
+    expect(near(roads_pose_x(roads_st), 0.0, 0.01))
+    expect(near(roads_pose_z(roads_st), 0.0, 0.01))
+    roads_pose(roads_st, 2 * arch, len, 0)
+    expect(near(roads_pose_x(roads_st), 200.0, 0.01))
+    expect(near(roads_pose_z(roads_st), 0.0, 0.01))
+    # the nearest road to the crown of the arch is the arch
+    expect_eq(roads_nearest(roads_st, 100.0, 37.5), arch)
+    expect(roads_near_d(roads_st) < 0.5)
+    # two anchors' handles on a bent road: two spans of about 92 m each
+    let bent = roads_seg_find(roads_st, "bent")
+    expect(near(roads_seg_length(roads_st, bent), 183.84, 0.05))
+  }
+
+  test "handles: a dead end, a zero length road and a ring that closes, none of it a fault" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "curved"))
+    let dead = roads_node_find(roads_st, "dead")
+    expect_eq(roads_node_roads(roads_st, dead), 1)
+    let bent = roads_seg_find(roads_st, "bent")
+    roads_pose(roads_st, 2 * bent, roads_seg_length(roads_st, bent), 0)
+    expect(near(roads_pose_x(roads_st), 200.0 - 1.75, 0.05) or near(roads_pose_z(roads_st), 120.0, 2.0))
+    let zero = roads_seg_find(roads_st, "zero")
+    expect(roads_seg_length(roads_st, zero) == 0.0)
+    expect(not roads_edge_ok(roads_st, 2 * zero))
+    roads_pose(roads_st, 2 * zero, 3.0, 0)                   # a pose on a road with no length is the place, not a crash
+    # the ring: four one way arcs, each a quarter of a 20 m circle, about 31.4 m
+    let r1 = roads_seg_find(roads_st, "ring1")
+    expect(near(roads_seg_length(roads_st, r1), 31.4, 0.4))
+    let ring4 = roads_seg_find(roads_st, "ring4")
+    expect_eq(roads_edge_to(roads_st, 2 * ring4), roads_edge_from(roads_st, 2 * r1))
+    expect(roads_edge_ok(roads_st, 2 * r1))
+    expect(not roads_edge_ok(roads_st, 2 * r1 + 1))
+    # a car can be put on the ring and driven round it
+    expect(roads_route_edges(roads_st, 2 * r1, 2 * ring4, ROADS_SHORTEST, roads_st.rd_route_tmp) >= 0)
+  }
+
+  test "profiles and furniture rules load with their defaults" (profiles: mut RoadProfiles, rules: mut RoadFurnitureRules) {
+    expect(road_profiles_load(profiles, "curved"))
+    expect(road_furniture_rules_load(rules, "curved"))
+    expect_eq(len(profiles.rows), 9)
+    let boulevard = profiles.rows[road_profiles_find(profiles, "boulevard")]
+    expect_eq(boulevard.lanes_fwd, 3)
+    expect(near(boulevard.lane_width, 3.25, 0.0001))
+    expect(near(boulevard.walk_l, 4.5, 0.0001))
+    expect(near(boulevard.plant_r, 2.5, 0.0001))
+    expect(near(boulevard.park_l, 2.3, 0.0001))
+    expect(not boulevard.tram)
+    expect(near(boulevard.gutter, 0.3, 0.0001))                 # a default the row does not name
+    expect_eq(boulevard.mat_road, "road")
+    let avenue = profiles.rows[road_profiles_find(profiles, "avenue")]
+    expect(near(avenue.park_l, 0.0, 0.0001))
+    expect(near(avenue.park_r, 2.3, 0.0001))
+    let tram = profiles.rows[road_profiles_find(profiles, "tram_avenue")]
+    expect(tram.tram)
+    expect(near(tram.tram_w, 2.8, 0.0001))
+    let ped = profiles.rows[road_profiles_find(profiles, "pedestrian")]
+    expect_eq(ped.lanes_fwd, 0)
+    expect(near(ped.carriage, 6.0, 0.0001))
+    expect_eq(ped.mat_road, "cobble")
+    let stairs = profiles.rows[road_profiles_find(profiles, "stairs")]
+    expect(near(stairs.steps, 0.17, 0.0001))
+    let alley = profiles.rows[road_profiles_find(profiles, "alley")]
+    expect(near(alley.curb_h, 0.08, 0.0001))
+    expect(near(alley.lane_width, 2.2, 0.0001))
+    let lamp = rules.rows[road_furniture_rules_find(rules, "street_lamp")]
+    expect(near(lamp.spacing, 28.0, 0.0001))
+    expect_eq(lamp.side, "alternate")
+    expect_eq(lamp.at, "street")
+    let light = rules.rows[road_furniture_rules_find(rules, "traffic_light")]
+    expect_eq(light.at, "signal")
+    expect_eq(rules.rows[road_furniture_rules_find(rules, "bollard")].profiles, "pedestrian")
+  }
+
+  test "a node says what it is, and a road its profile, taper and name" (nodes: mut RoadNodes, segs: mut RoadSegs) {
+    expect(road_nodes_load(nodes, "curved"))
+    expect(road_segs_load(segs, "curved"))
+    expect_eq(nodes.rows[road_nodes_find(nodes, "p")].kind, "plaza")
+    expect(near(nodes.rows[road_nodes_find(nodes, "p")].radius, 25.0, 0.0001))
+    expect_eq(nodes.rows[road_nodes_find(nodes, "a")].kind, "junction")
+    expect(near(nodes.rows[road_nodes_find(nodes, "a")].radius, 0.0, 0.0001))
+    let arch = segs.rows[road_segs_find(segs, "arch")]
+    expect_eq(arch.profile, "boulevard")
+    expect(near(arch.taper, 1.5, 0.0001))
+    expect_eq(len(arch.handles), 2)
+    expect(arch.handles[0].smooth)
+    expect(near(arch.handles[0].oz, 50.0, 0.0001))
+    expect_eq(segs.rows[road_segs_find(segs, "pa")].name, "Plaza Street")
+    expect_eq(segs.rows[road_segs_find(segs, "plain")].name, "")
+    expect(near(segs.rows[road_segs_find(segs, "plain")].taper, 1.0, 0.0001))
+  }
+
   test "the system is declared with its own key" {
     let s = roads_system()
     expect(s.key == "roads")

@@ -11,6 +11,11 @@ export property RoadNode {
   @Unit("m") z: float = 0.0
   @OneOf("free", "signal") control: string = "free"
   @Unit("s") @Range(2, 300) cycle: float = 12.0
+  # what the place is. Driving treats a plaza like a free junction and a roundabout like any node (the studio
+  # models a roundabout as a real one way ring of roads, so the graph needs nothing special); the studio draws
+  # and bakes the kind. `radius` is the plaza disc or the roundabout ring, 0 for the kind's own default
+  @OneOf("junction", "roundabout", "plaza", "deadend") kind: string = "junction"
+  @Unit("m") @Range(0, 200) radius: float = 0.0
 }
 
 @PerMap @ByKey
@@ -22,22 +27,78 @@ export property RoadPt {
   @Unit("m") z: float = 0.0
 }
 
-# a road between two nodes: a Catmull-Rom spline through `from`, each of `pts`, `to` (the ends run
-# straight in and out). `lanes_fwd` go from `from` to `to`, `lanes_back` the other way (0: one way); `speed`
+# a Bezier handle of an anchor (the node or a point of a road), as offsets in metres from the anchor: `in` is the
+# control point before the anchor, `out` the one after. A side that is exactly (0, 0) is automatic. `smooth` is
+# the studio's: it keeps the two sides in line while it edits (the curve reads the four numbers only)
+export property RoadHandle {
+  @Unit("m") ix: float = 0.0
+  @Unit("m") iz: float = 0.0
+  @Unit("m") ox: float = 0.0
+  @Unit("m") oz: float = 0.0
+  smooth: bool = true
+}
+
+# a street's cross-section as data, in metres, seen along the heading from -> to (left and right as a driver
+# facing along it sees them). `title` .. `kind` are what a studio applies to a road when it picks the profile;
+# the rest is the section the studio bakes (ludic.roads draws nothing): carriageway, curb, gutter, then on each side
+# parking, planting strip and sidewalk, and optionally a tram bed down the middle. `mat_*` are material slot names:
+# the game maps a slot to a material (the baked glTF names its materials after them)
+export property RoadProfile {
+  key: string = ""
+  title: string = ""
+  @Range(0, 6) lanes_fwd: int = 1
+  @Range(0, 6) lanes_back: int = 1
+  @Unit("m") @Range(1, 8) lane_width: float = 3.5
+  @Unit("m/s") @Range(1, 60) speed: float = 13.9
+  @Range(0, 9) priority: int = 1
+  @OneOf("street", "highway", "track", "lane", "alley", "pedestrian", "stairs") kind: string = "street"
+  @Unit("m") @Range(0, 40) carriage: float = 0.0         # carriageway width; 0: lanes times lane width
+  @Unit("m") @Range(0, 1) curb_h: float = 0.15
+  @Unit("m") @Range(0, 1) curb_w: float = 0.15
+  @Unit("m") @Range(0, 2) gutter: float = 0.3
+  @Unit("m") @Range(0, 20) walk_l: float = 0.0
+  @Unit("m") @Range(0, 20) walk_r: float = 0.0
+  @Unit("m") @Range(0, 10) plant_l: float = 0.0           # planting strip between curb and sidewalk
+  @Unit("m") @Range(0, 10) plant_r: float = 0.0
+  @Unit("m") @Range(0, 6) park_l: float = 0.0             # parking lane beside the carriageway
+  @Unit("m") @Range(0, 6) park_r: float = 0.0
+  tram: bool = false
+  @Unit("m") @Range(0, 8) tram_w: float = 2.8             # the track bed, centred
+  @Unit("m") @Range(0, 0.5) steps: float = 0.0            # riser height; 0: not stairs. Stairs climb between the two ends
+  mat_road: string = "road"
+  mat_curb: string = "curb"
+  mat_walk: string = "walk"
+  mat_plant: string = "plant"
+  mat_park: string = "park"
+  mat_tram: string = "tram"
+}
+
+@PerMap @ByKey
+export registry RoadProfiles of RoadProfile from "roads/profiles.lres"
+
+# a road between two nodes. Its shape runs through the anchors `from`, each of `pts`, `to`: with no `handles`
+# a Catmull-Rom spline (the ends run straight in and out), else a chain of cubic Beziers (see `handles`). `lanes_fwd` go from `from` to `to`, `lanes_back` the other way (0: one way); `speed`
 # is the limit; `priority` decides who goes first at a free junction (higher wins); `phase` the signal
-# phase that lets it through
+# phase that lets it through. `handles`: row k is the handle of anchor k (0 the `from` node, 1.. the `pts`, last
+# the `to` node; rows past the list's end are all zero). `profile`: a RoadProfiles key, "" for none. `taper`:
+# the width multiplier at the `to` end (1 at `from`), the studio's surface widens or narrows linearly by distance
+# along the road; driving ignores it. `name`: the street's name, for signs
 export property RoadSeg {
   key: string = ""
   @Ref(RoadNodes) from: string = ""
   @Ref(RoadNodes) to: string = ""
   pts: []RoadPt = new []RoadPt
+  handles: []RoadHandle = new []RoadHandle
+  @Ref(RoadProfiles) profile: string = ""
+  @Range(0.2, 4) taper: float = 1.0
+  name: string = ""
   @Range(0, 6) lanes_fwd: int = 1
   @Range(0, 6) lanes_back: int = 1
   @Unit("m") @Range(1, 8) lane_width: float = 3.5
   @Unit("m/s") @Range(1, 60) speed: float = 13.9
   @Range(0, 9) priority: int = 1
   @Range(0, 7) phase: int = 0
-  @OneOf("street", "highway", "track") kind: string = "street"
+  @OneOf("street", "highway", "track", "lane", "alley", "pedestrian", "stairs") kind: string = "street"
 }
 
 @PerMap @ByKey
@@ -76,3 +137,63 @@ export property RoadCarKind {
 
 @AppendOnly @ByKey
 export open registry RoadCarKinds of RoadCarKind as RCK
+
+# a rule that puts street furniture along streets (lamps, benches, trees, signs ...), or at a place. The studio
+# runs the rules once and writes the result into RoadProps; nothing is made at run time. `profiles` is the
+# space separated profile keys it applies to, or "*". `zone` is the strip of the section it stands in, `offset`
+# metres from that zone's curb side towards the far side (0: next to the curb). `spacing` is along the street
+# (0: one at the place); `start` and `stop` keep clear of the road's ends, `junction_gap` of any junction. `yaw`
+# faces it to the road, from it, or along it. `at` says where: along "street", or at a "junction", "signal" node,
+# "stop" or "yield" turn, a "deadend", or a junction of a "named" street
+export property RoadFurnitureRule {
+  key: string = ""
+  kind: string = ""                                        # street_lamp, bench, bin, bollard, tree, bus_stop, kiosk, traffic_light, stop_line, sign_stop, sign_yield, sign_name ...
+  model: string = ""                                       # a kit asset key
+  profiles: string = "*"
+  @OneOf("both", "left", "right", "alternate") side: string = "both"
+  @OneOf("walk", "plant", "park", "curb", "road") zone: string = "walk"
+  @Unit("m") @Range(0, 2000) spacing: float = 0.0
+  @Unit("m") @Range(0, 50) offset: float = 0.0
+  @Unit("m") @Range(0, 500) start: float = 0.0
+  @Unit("m") @Range(0, 500) stop: float = 0.0
+  @Unit("m") @Range(0, 100) junction_gap: float = 0.0
+  @OneOf("to_road", "from_road", "along") yaw: string = "to_road"
+  @Range(0.1, 10) scale: float = 1.0
+  @Unit("m") @Range(0, 2000) min_length: float = 0.0
+  @OneOf("street", "junction", "signal", "stop", "yield", "deadend", "named") at: string = "street"
+}
+
+@PerMap @ByKey
+export registry RoadFurnitureRules of RoadFurnitureRule from "roads/furniture.lres"
+
+# a piece of street furniture as placed (what the rules made, or the designer put by hand): where it stands, and
+# the road place it belongs to. `yaw` is in degrees, 0 faces +z, like a Building. (x, z) names its chunk
+export property RoadProp {
+  key: string = ""
+  kind: string = ""
+  model: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0
+  @Range(0.1, 10) scale: float = 1.0
+  @Ref(RoadSegs) edge: string = ""                         # the road it stands along, "" for one on its own
+  @Unit("m") s: float = 0.0                                # metres along that road
+  @Ref(RoadNodes) node: string = ""                        # the node it stands at
+  text: string = ""                                        # a street name sign's text
+  rule: string = ""                                        # the RoadFurnitureRules key it came from
+}
+
+@PerMap @Chunked(256)
+export registry RoadProps of RoadProp from "roads/props/{cx}_{cz}.lres"
+
+# the glTF the studio baked a map's road surfaces into (roads/roads.glb, a mesh node a material slot), and what it
+# was built from: `hash` is the studio's hash of that data, so a bake older than the roads is known
+export property RoadBake {
+  key: string = ""
+  @Asset("gltf") asset: string = ""
+  hash: string = ""
+  tris: int = 0
+}
+
+@PerMap @ByKey
+export registry RoadBakes of RoadBake from "roads/bake.lres"

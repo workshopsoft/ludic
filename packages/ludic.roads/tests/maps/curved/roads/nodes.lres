@@ -1,0 +1,12 @@
+# organic streets: a plaza, a street with Bezier handles, a dead end, a one way roundabout ring, a zero length road
+p { x: -100.0, z: 0.0, kind: "plaza", radius: 25.0 }
+a { x: 0.0, z: 0.0 }
+b { x: 200.0, z: 0.0 }
+dead { x: 200.0, z: 120.0, kind: "deadend" }
+hub { x: 400.0, z: 0.0, kind: "roundabout", radius: 20.0 }
+r1 { x: 420.0, z: 0.0 }
+r2 { x: 400.0, z: 20.0 }
+r3 { x: 380.0, z: 0.0 }
+r4 { x: 400.0, z: -20.0 }
+t1 { x: 500.0, z: 300.0 }
+t2 { x: 500.0, z: 300.0 }
