@@ -1,0 +1,42 @@
+# save.ludic - what outlasts a session: each player's bad sport (and the day it was faded to), so leaving and coming
+# back does not wash it away. Sessions are a run's and are not saved.
+export function lobby_reset(lobby_st: mut LobbyState) -> void {
+  lobby_st.lb__tab = lb__tab__new()
+  lobby_st.lb__players = new []LbPlayer
+  lobby_st.lb__listings = new []LobbyListing
+  lobby_st.lb__time = 0.0
+  lobby_st.lb__day = 0
+  lobby_st.lb__why = 0
+  lobby_st.lb__dice = null
+  lobby_st.lb__local = -1
+  lobby_st.lb__serial = 0
+  q_clear(lobby_st.lb__facts)
+}
+
+@alloc_ok("on a save: the record written out")
+export function lobby_save(lobby_st: LobbyState) -> Val {
+  let v = Value.object()
+  sv_put_int(v, "day", lobby_st.lb__day)
+  let rows = new []int
+  for i in 0 .. len(lobby_st.lb__players) {
+    let p = lobby_st.lb__players[i]
+    if p.bad <= 0 { continue }
+    push(rows, p.who)
+    push(rows, p.bad)
+  }
+  sv_put_ints(v, "bad", rows)
+  return v
+}
+
+export function lobby_load(lobby_st: mut LobbyState, v: Val, version: int) -> void {
+  lobby_reset(lobby_st)
+  lobby_st.lb__day = sv_int(v, "day", 0)
+  let rows = sv_ints(v, "bad")
+  var i = 0
+  while i + 1 < len(rows) {
+    let p = lb__player(lobby_st, rows[i])
+    p.bad = rows[i + 1]
+    p.pool = lb__pool_for(p.bad)
+    i += 2
+  }
+}

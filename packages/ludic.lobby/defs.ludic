@@ -1,0 +1,97 @@
+# defs.ludic - what a game writes: the kinds of session, the regions, the anti-grief rules and the offences
+# they score, and the tiers of bad sport. All open, append-only and keyed.
+
+# who may join a session of a kind
+export const LBJ_PUBLIC: int = 0        # anyone
+export const LBJ_INVITE: int = 1        # those the host invited, or who bring its code
+export const LBJ_FRIENDS: int = 2       # the host's friends (LobbyWorld.is_friend), or the code
+export const LBJ_CREW: int = 3          # the host's crew, or the code
+export const LBJ_SOLO: int = 4          # the host alone
+export const LBJ_CLOSED: int = 5        # nobody (a job that has begun)
+
+# flags a member carries
+export const LBM_PASSIVE: int = 1       # takes no part in fighting: cannot hurt or be hurt
+export const LBM_SPECTATOR: int = 2
+export const LBM_AFK: int = 4
+export const LBM_BUSY: int = 8          # in something that should not be interrupted with an invite
+
+# what a rule scores (LobbyOffence.what)
+export const LBO_KILL_PASSIVE: int = 0  # killed a player in passive mode
+export const LBO_KILL_PROTECTED: int = 1   # killed a player under spawn protection
+export const LBO_KILL_FRIEND: int = 2   # killed one of their own crew or team
+export const LBO_QUIT_JOB: int = 3      # left a job that had begun
+export const LBO_VOTE_KICKED: int = 4   # was voted out by the session
+export const LBO_DISRUPT: int = 5       # the game's own word for a nuisance (blocking a start, exploiting)
+export const LBO_COUNT: int = 6
+
+# a region and how far its pings may go
+export property LobbyRegion {
+  key: string = ""
+  @Range(0, 64) group: int = 0          # regions of one group are near enough to play together
+  @Unit("ms") @Range(0, 2000) ping_max: int = 150
+}
+@AppendOnly @ByKey
+export open registry LobbyRegions of LobbyRegion as REGION
+
+# how a rule set treats harm inside a session
+export property AntiGriefRule {
+  key: string = ""
+  @Unit("%") @Range(0, 100) friendly_fire: int = 100        # the damage crew and team mates do each other
+  passive_immune: bool = true           # a player in passive mode takes no damage
+  @Unit("s") @Range(0, 600) spawn_protect: float = 5.0      # after spawning
+  @Unit("s") @Range(0, 3600) passive_cooldown: float = 30.0 # leaving passive mode: how soon after going in
+  @Unit("s") @Range(0, 3600) offence_gap: float = 10.0      # the same offence again within this counts once
+}
+@AppendOnly @ByKey
+export open registry AntiGriefRules of AntiGriefRule as AGR
+
+# an offence under a rule set: its bad-sport points, and how long the offender is ghosted (other players pass
+# through them, and they do no harm) as a consequence
+export property LobbyOffence {
+  key: string = ""
+  rule: string = ""                     # an AntiGriefRules key
+  @OneOf(LBO_) what: int = 0
+  @Range(0, 1000) points: int = 10
+  @Unit("s") @Range(0, 3600) ghost_secs: float = 0.0
+}
+@AppendOnly @ByKey
+export open registry LobbyOffences of LobbyOffence as GOFF
+
+# a tier of bad sport: the pool a player with at least this many points is matched into, and how fast it fades
+export property BadSportTier {
+  key: string = ""
+  @Range(0, 100000) points: int = 0
+  @Range(0, 4) pool: int = 0            # 0 the ordinary pool; above it, players are matched with each other
+  @Range(0, 1000) decay_per_day: int = 5
+}
+@AppendOnly @ByKey
+export open registry BadSportTiers of BadSportTier as BSPORT
+
+# a kind of session
+export property SessionKind {
+  key: string = ""
+  @Text title: Key = null
+  @OneOf(LBJ_PUBLIC, LBJ_INVITE, LBJ_FRIENDS, LBJ_CREW, LBJ_SOLO, LBJ_CLOSED) join: int = 0
+  listed: bool = true                   # found by matchmaking and published outside
+  @Range(1, 64) capacity: int = 16
+  world: bool = true                    # a freemode session: it lasts while anyone is in it
+  job: bool = false                     # a job's instance: players are moved into it and back out
+  migrate: bool = true                  # the host leaving hands the session to another (else it closes)
+  jip: bool = true                      # join in progress
+  passive: bool = true                  # passive mode may be used
+  vote_kick: bool = true
+  segregate: bool = true                # bad-sport players are matched with each other
+  region_lock: bool = false             # only the region's group
+  @Unit("ms") @Range(0, 2000) ping_max: int = 0             # 0: the region's
+  @Range(0, 100000) skill_band: int = 0 # 0: any skill
+  quick: bool = true                    # quick join may take it
+  rules: string = ""                    # an AntiGriefRules key ("": no rules)
+  @Range(1, 64) min_open: int = 1       # members before it opens (a job's instance: the first is its host)
+  @Unit("s") @Range(0, 600) ready_secs: float = 30.0        # a job's instance waits this long for everyone to be ready
+  @Unit("s") @Range(0, 600) idle_secs: float = 10.0         # an empty session closes after this
+  @Unit("s") @Range(0, 3600) reserve_secs: float = 90.0     # a seat kept for a player who is away on a job
+  @Unit("s") @Range(1, 600) checkpoint_secs: float = 10.0   # the host's state is handed to the others this often
+  @Unit("s") @Range(0, 86400) ban_secs: float = 600.0       # how long a kick keeps a player out
+}
+@AppendOnly @ByKey
+export open registry SessionKinds of SessionKind as SESK

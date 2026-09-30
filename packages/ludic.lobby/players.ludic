@@ -1,0 +1,111 @@
+# players.ludic - what the lobby knows of a player: their crew, skill and region (the game tells it), and their
+# bad sport, which fades by the day and puts them in a pool of their own
+
+@alloc_ok("a player's first record: made once, kept")
+function lb__player(lobby_st: mut LobbyState, who: int) -> LbPlayer {
+  for i in 0 .. len(lobby_st.lb__players) { if lobby_st.lb__players[i].who == who { return lobby_st.lb__players[i] } }
+  let p = new LbPlayer
+  p.who = who
+  p.last_offence = new []float
+  for k in 0 .. LBO_COUNT { push(p.last_offence, -1000.0) }
+  push(lobby_st.lb__players, p)
+  return p
+}
+
+function lb__player_find(lobby_st: LobbyState, who: int) -> LbPlayer {
+  for i in 0 .. len(lobby_st.lb__players) { if lobby_st.lb__players[i].who == who { return lobby_st.lb__players[i] } }
+  return null
+}
+
+# the game tells the lobby who a player is: their crew (0: none), skill, and region (a LobbyRegions place)
+export function lobby_player(lobby_st: mut LobbyState, who: int, crew: int, skill: int, region: int) -> void {
+  let p = lb__player(lobby_st, who)
+  p.crew = crew
+  p.skill = skill
+  p.region = region
+}
+
+export function lobby_crew_of(lobby_st: LobbyState, who: int) -> int {
+  let p = lb__player_find(lobby_st, who)
+  if p == null { return 0 }
+  return p.crew
+}
+
+export function lobby_skill_of(lobby_st: LobbyState, who: int) -> int {
+  let p = lb__player_find(lobby_st, who)
+  if p == null { return 0 }
+  return p.skill
+}
+
+# this machine's own player: the host the others agree on is a match against it, and a hand-off is taken here
+export function lobby_set_local(lobby_st: mut LobbyState, who: int) -> void { lobby_st.lb__local = who }
+
+export function lobby_bad_sport(lobby_st: LobbyState, who: int) -> int {
+  let p = lb__player_find(lobby_st, who)
+  if p == null { return 0 }
+  return p.bad
+}
+
+# the pool a player with this many bad-sport points is matched in
+function lb__pool_for(points: int) -> int {
+  var pool = 0
+  var best = -1
+  for i in 0 .. BSPORT_COUNT {
+    if BadSportTiers[i].points <= points and BadSportTiers[i].points > best {
+      best = BadSportTiers[i].points
+      pool = BadSportTiers[i].pool
+    }
+  }
+  return pool
+}
+
+function lb__decay_for(points: int) -> int {
+  var d = 0
+  var best = -1
+  for i in 0 .. BSPORT_COUNT {
+    if BadSportTiers[i].points <= points and BadSportTiers[i].points > best {
+      best = BadSportTiers[i].points
+      d = BadSportTiers[i].decay_per_day
+    }
+  }
+  return d
+}
+
+export function lobby_pool(lobby_st: LobbyState, who: int) -> int {
+  let p = lb__player_find(lobby_st, who)
+  if p == null { return 0 }
+  return p.pool
+}
+
+# a player's points changed: their pool, and a fact when the pool moved
+function lb__settle_bad(lobby_st: mut LobbyState, p: LbPlayer) -> void {
+  if p.bad < 0 { p.bad = 0 }
+  let pool = lb__pool_for(p.bad)
+  if pool == p.pool { return }
+  p.pool = pool
+  let f = lb__fact(lobby_st, LBF_BAD_SPORT, -1)
+  f.who = p.who
+  f.n = pool
+}
+
+# the game's day has moved: bad sport fades by the tier's rate for each day
+function lb__fade(lobby_st: mut LobbyState) -> void {
+  let today = LobbyWorld.day()
+  if lobby_st.lb__day == 0 { lobby_st.lb__day = today }
+  if today <= lobby_st.lb__day { return }
+  let days = today - lobby_st.lb__day
+  lobby_st.lb__day = today
+  for i in 0 .. len(lobby_st.lb__players) {
+    let p = lobby_st.lb__players[i]
+    if p.bad <= 0 { continue }
+    p.bad -= lb__decay_for(p.bad) * days
+    lb__settle_bad(lobby_st, p)
+  }
+}
+
+# bad-sport points the game gives a player itself (a rage quit it saw, a report upheld), or takes away (negative)
+export function lobby_add_bad_sport(lobby_st: mut LobbyState, who: int, points: int) -> void {
+  let p = lb__player(lobby_st, who)
+  p.bad += points
+  lb__settle_bad(lobby_st, p)
+}

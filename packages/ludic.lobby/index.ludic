@@ -1,0 +1,22 @@
+# ludic.lobby - sessions above a transport: the roster a game's ludic.session and ludic.net carry is a
+# lobby's members, and what the lobby decides (who may join, who hosts, where a player goes next) comes
+# out as facts for the game to do with its transport and, optionally, a Steam lobby
+module ludic_lobby uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "facts.ludic"
+import "state.ludic"
+import "machine.ludic"
+import "players.ludic"
+import "sessions.ludic"
+import "admit.ludic"
+import "match.ludic"
+import "transfer.ludic"
+import "migrate.ludic"
+import "kick.ludic"
+import "rules.ludic"
+import "tick.ludic"
+import "save.ludic"
+import "system.ludic"

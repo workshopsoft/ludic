@@ -1,0 +1,58 @@
+# machine.ludic - the phases a session goes through, as a table (steps.lres) a studio edits as a graph. A
+# freemode session is Forming until it has its first members, then Open until it empties and closes. A job's
+# instance is Forming until everyone is ready (or the wait is out), Running until its job ends, Returning while
+# its players go back where they came from, and Closed. Every step is a guard asked each tick, first match in
+# table order; what a phase's entry means (who is moved where) is done by the lobby when it says PHASE.
+export property LobbyStep {
+  from: LobbyPhase = LobbyPhase.Forming
+  to: LobbyPhase = LobbyPhase.Forming
+  on: string = ""
+  guard: fn(Row<LobbySession>, LobbyState) -> bool = null
+  enter: fn(Row<LobbySession>, LobbyState) -> void = null
+}
+
+@Machine(LobbySession.phase)
+export registry LobbySteps of LobbyStep as LBS from "steps.lres"
+
+# seats kept for players away on a job and not yet given up
+function lb__kept(s: LobbySession, now: float) -> int {
+  var n = 0
+  for i in 0 .. len(s.reserved) { if s.reserved_until[i] > now { n += 1 } }
+  return n
+}
+
+function lb__count(s: LobbySession) -> int {
+  var n = 0
+  for i in 0 .. len(s.members) { if s.members[i].present { n += 1 } }
+  return n
+}
+
+function lb__ready_count(s: LobbySession) -> int {
+  var n = 0
+  for i in 0 .. len(s.members) { if s.members[i].present and s.members[i].ready { n += 1 } }
+  return n
+}
+
+# a freemode session with enough of its first members
+function lb_g_open(r: Row<LobbySession>, lobby_st: LobbyState) -> bool {
+  return not SessionKinds[r.rec.kind].job and lb__count(r.rec) >= SessionKinds[r.rec.kind].min_open
+}
+
+# a job's instance that has its host: it waits for the rest
+function lb_g_start(r: Row<LobbySession>, lobby_st: LobbyState) -> bool {
+  return SessionKinds[r.rec.kind].job and lb__count(r.rec) > 0 and (lb__ready_count(r.rec) >= lb__count(r.rec) or r.rec.ready_for >= SessionKinds[r.rec.kind].ready_secs)
+}
+
+# a session nobody has been in for a while, and nobody is expected back to
+function lb_g_idle(r: Row<LobbySession>, lobby_st: LobbyState) -> bool {
+  return lb__count(r.rec) == 0 and lb__kept(r.rec, lobby_st.lb__time) == 0 and r.rec.empty_for >= SessionKinds[r.rec.kind].idle_secs
+}
+
+# a job's instance whose job is over
+function lb_g_over(r: Row<LobbySession>, lobby_st: LobbyState) -> bool { return r.rec.ended }
+
+# a job's instance with no one left in it
+function lb_g_emptied(r: Row<LobbySession>, lobby_st: LobbyState) -> bool { return lb__count(r.rec) == 0 }
+
+# a closed session its host asked back while it was still kept (lobby_reopen)
+function lb_g_reopen(r: Row<LobbySession>, lobby_st: LobbyState) -> bool { return r.rec.reopen }

@@ -1,0 +1,25 @@
+# ports.ludic - what the lobby asks the game, and what it tells the world outside (a Steam lobby, a
+# matchmaking server). Unbound, nobody is anyone's friend, there is nothing to hand off, and nothing is published.
+export port LobbyWorld {
+  is_friend: fn(int, int) -> bool = fn lb__no_friend         # (a, b) the game's (Steam's) friends
+  day: fn() -> int = fn lb__day_one                          # bad sport fades by the day
+  export: fn(int) -> Val = fn lb__no_state                   # (session) the host's state, to be handed on (null: none)
+  import: fn(int, Val, int) -> void = fn lb__no_import       # (session, state, revision) this machine is host now: take it
+  seed: fn() -> int = fn lb__seed_one                        # the dice of join codes
+}
+function lb__no_friend(a: int, b: int) -> bool { return false }
+function lb__day_one() -> int { return 1 }
+function lb__no_state(session: int) -> Val { return null }
+function lb__no_import(session: int, v: Val, rev: int) -> void { }
+function lb__seed_one() -> int { return 1 }
+
+# outside the game: a listed session is published where others can find it, taken down, and searched for
+# (what a search finds comes back through lobby_learn)
+export port LobbyOutside {
+  publish: fn(int, int, int, int) -> void = fn lb__publish_nothing    # (session, kind, capacity, members) make or update the listing
+  withdraw: fn(int) -> void = fn lb__withdraw_nothing                 # (session)
+  search: fn(int, int) -> void = fn lb__search_nothing                # (kind, region) ask for listings
+}
+function lb__publish_nothing(session: int, kind: int, cap: int, members: int) -> void { }
+function lb__withdraw_nothing(session: int) -> void { }
+function lb__search_nothing(kind: int, region: int) -> void { }

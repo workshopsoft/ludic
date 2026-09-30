@@ -1,0 +1,153 @@
+# session_test.ludic - making a session, who may join a session of each kind, and what a refusal says
+import "ludic.lobby"
+import "ludic.base"
+program SessionTest {
+  import "fixture/game.ludic"
+
+  test "a session is made, hosted and listed" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    expect_eq(SESK_COUNT, 11)
+    let s = lobby_create(l, SESK_PUBLIC, 1, 0)
+    expect(s >= 0)
+    expect(lobby_exists(l, s))
+    expect_eq(lobby_host(l, s), 1)
+    expect_eq(lobby_count(l, s), 1)
+    expect_eq(lobby_capacity(l, s), 4)
+    expect_eq(lobby_session_of(l, 1), s)
+    expect_eq(len(lobby_code(l, s)), 6)
+    expect_eq(len(w.published), 1)
+    expect_eq(lobby_phase(l, s), LobbyPhase.Forming)
+    pass(l, m, 1.0)
+    expect_eq(lobby_phase(l, s), LobbyPhase.Open)
+    expect_eq(lobby_create(l, 99, 2, 0), -1)
+    expect_eq(lobby_why(l), LBR_UNKNOWN)
+  }
+
+  test "a public session takes anyone until it is full" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = lobby_create(l, SESK_PUBLIC, 1, 0)
+    pass(l, m, 1.0)
+    for who in 2 .. 5 { expect(lobby_join(l, s, who, 40)) }
+    expect_eq(lobby_count(l, s), 4)
+    expect(not lobby_join(l, s, 5, 40))
+    expect_eq(lobby_why(l), LBR_FULL)
+    expect(lobby_join(l, s, 3, 40))                          # already in
+    expect_eq(lobby_can_join(l, s, 6, 40), LBR_FULL)
+    expect_eq(len(lobby_members(l, s)), 4)
+    expect(count_of(l, LBF_REFUSED) >= 1)
+  }
+
+  test "invite-only takes the invited, and a code from the host" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = lobby_create(l, SESK_INVITE, 1, 0)
+    pass(l, m, 1.0)
+    expect_eq(lobby_can_join(l, s, 2, 10), LBR_INVITE)
+    expect(lobby_invite(l, s, 1, 2))
+    expect(not lobby_invite(l, s, 2, 3))                     # not the host
+    expect(lobby_join(l, s, 2, 10))
+    expect(not lobby_join(l, s, 3, 10))
+    let id = lobby_join_code(l, lobby_code(l, s), 3, 10)
+    expect_eq(id, s)
+    expect_eq(lobby_count(l, s), 3)
+    expect_eq(lobby_join_code(l, "ZZZZZZ", 4, 10), -1)
+  }
+
+  test "friends-only takes the host's friends" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    befriend(w, 1, 2)
+    let s = lobby_create(l, SESK_FRIENDS, 1, 0)
+    pass(l, m, 1.0)
+    expect(lobby_join(l, s, 2, 10))
+    expect(not lobby_join(l, s, 3, 10))
+    expect_eq(lobby_why(l), LBR_FRIENDS)
+  }
+
+  test "a crew session takes the host's crew" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    lobby_player(l, 1, 7, 0, 0)
+    lobby_player(l, 2, 7, 0, 0)
+    lobby_player(l, 3, 8, 0, 0)
+    lobby_player(l, 4, 0, 0, 0)
+    let s = lobby_create(l, SESK_CREW, 1, 0)
+    pass(l, m, 1.0)
+    expect(lobby_join(l, s, 2, 10))
+    expect(not lobby_join(l, s, 3, 10))
+    expect_eq(lobby_why(l), LBR_CREW)
+    expect(not lobby_join(l, s, 4, 10))                      # no crew is not a crew
+    expect_eq(lobby_join_code(l, lobby_code(l, s), 3, 10), s)
+  }
+
+  test "solo is the host alone" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = lobby_create(l, SESK_SOLO, 1, 0)
+    expect_eq(len(w.published), 0)                           # not listed
+    expect(not lobby_join(l, s, 2, 10))
+    expect_eq(lobby_why(l), LBR_FULL)
+    expect_eq(lobby_join_code(l, lobby_code(l, s), 2, 10), -1)
+  }
+
+  test "a locked door is shut to everyone, code or not" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = lobby_create(l, SESK_PUBLIC, 1, 0)
+    pass(l, m, 1.0)
+    expect(not lobby_lock(l, s, 2, true))
+    expect_eq(lobby_why(l), LBR_NOT_HOST)
+    expect(lobby_lock(l, s, 1, true))
+    expect_eq(lobby_can_join(l, s, 2, 10), LBR_CLOSED)
+    expect_eq(lobby_join_code(l, lobby_code(l, s), 2, 10), -1)
+    expect_eq(w.withdrawn, 1)
+    lobby_lock(l, s, 1, false)
+    expect(lobby_join(l, s, 2, 10))
+  }
+
+  test "region lock, ping and skill" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    lobby_player(l, 1, 0, 50, REGION_EU)
+    lobby_player(l, 2, 0, 50, REGION_EU_WEST)                # the same group
+    lobby_player(l, 3, 0, 50, REGION_NA)
+    let s = lobby_create(l, SESK_REGIONAL, 1, REGION_EU)
+    pass(l, m, 1.0)
+    expect(lobby_join(l, s, 2, 50))
+    expect(not lobby_join(l, s, 3, 50))
+    expect_eq(lobby_why(l), LBR_REGION)
+    expect(not lobby_join(l, s, 4, 500))                     # past the region's ping
+    expect_eq(lobby_why(l), LBR_PING)
+    let t = lobby_create(l, SESK_TINY, 10, 0)
+    expect_eq(lobby_can_join(l, t, 11, 60), LBR_PING)        # the kind's own limit, 50
+    expect_eq(lobby_can_join(l, t, 11, 40), LBR_OK)
+    lobby_player(l, 20, 0, 50, 0)
+    lobby_player(l, 21, 0, 70, 0)
+    lobby_player(l, 22, 0, 58, 0)
+    let k = lobby_create(l, SESK_SKILLED, 20, 0)
+    pass(l, m, 1.0)
+    expect(not lobby_join(l, k, 21, 10))
+    expect_eq(lobby_why(l), LBR_SKILL)
+    expect(lobby_join(l, k, 22, 10))
+  }
+
+  test "a session nobody is in closes, and is forgotten after a while" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = lobby_create(l, SESK_PUBLIC, 1, 0)
+    pass(l, m, 1.0)
+    expect(lobby_leave(l, s, 1))
+    expect_eq(lobby_host(l, s), -1)
+    pass(l, m, 5.0)
+    expect_eq(lobby_phase(l, s), LobbyPhase.Open)
+    pass(l, m, 6.0)
+    expect_eq(lobby_phase(l, s), LobbyPhase.Closed)
+    expect(w.withdrawn >= 1)
+    pass(l, m, 6.0)
+    expect(not lobby_exists(l, s))
+  }
+
+  test "a player is in one session at a time" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let a = lobby_create(l, SESK_PUBLIC, 1, 0)
+    let b = lobby_create(l, SESK_PUBLIC, 2, 0)
+    pass(l, m, 1.0)
+    expect(lobby_join(l, b, 1, 10))
+    expect_eq(lobby_session_of(l, 1), b)
+    expect_eq(lobby_count(l, a), 0)
+    expect_eq(lobby_count(l, b), 2)
+  }
+}

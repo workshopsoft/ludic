@@ -1,0 +1,293 @@
+# sessions.ludic - making a session and asking about one. A session's id is its row's handle in the lobby's
+# table: stable while it lives, and a stale one answers nothing. `uid` is the number every machine that
+# knows of the session agrees on (a snapshot carries it), since handles are each table's own.
+
+function lb__find(lobby_st: LobbyState, session: int) -> LobbySession {
+  let row = tb_row(lobby_st.lb__tab, session)
+  if row < 0 { return null }
+  return lobby_st.lb__tab.rec[row]
+}
+
+function lb__member(s: LobbySession, who: int) -> int {
+  for i in 0 .. len(s.members) { if s.members[i].present and s.members[i].who == who { return i } }
+  return -1
+}
+
+# seats taken: members and the seats kept for players who are away on a job
+function lb__seats(lobby_st: LobbyState, s: LobbySession) -> int { return lb__count(s) + lb__kept(s, lobby_st.lb__time) }
+
+function lb__kind_ok(kind: int) -> bool { return kind >= 0 and kind < SESK_COUNT }
+
+function lb__dice(lobby_st: mut LobbyState) -> Rng {
+  if lobby_st.lb__dice == null { lobby_st.lb__dice = rng_new(LobbyWorld.seed()) }
+  return lobby_st.lb__dice
+}
+
+# six letters a player can say: a session's join code
+function lb__code(lobby_st: mut LobbyState) -> string {
+  let letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+  var out = ""
+  let d = lb__dice(lobby_st)
+  for i in 0 .. 6 {
+    let k = rng_between(d, 0, 23)
+    out = out + letters[k..k + 1]
+  }
+  return out
+}
+
+@alloc_ok("a session's row: made once per session")
+function lb__new_session(lobby_st: mut LobbyState, kind: int, region: int) -> LobbySession {
+  let s = new LobbySession
+  s.kind = kind
+  s.region = region
+  s.members = new []LbMember
+  s.reserved = new []int
+  s.reserved_until = new []float
+  s.invited = new []int
+  s.bans = new []LbBan
+  s.vote = new LbVote
+  s.uid = rng_between(lb__dice(lobby_st), 1, 2000000000)
+  s.code = lb__code(lobby_st)
+  lobby_st.lb__serial += 1
+  s.serial = lobby_st.lb__serial
+  s.checkpoint_in = SessionKinds[kind].checkpoint_secs
+  return s
+}
+
+# a player enters a session's roster (no checks: what lets them in is admit.ludic)
+@alloc_ok("a member's record: made once per joining")
+function lb__seat(lobby_st: mut LobbyState, s: LobbySession, id: int, who: int, ping: int, origin: int, origin_kind: int) -> void {
+  var at = -1
+  for i in 0 .. len(s.members) { if not s.members[i].present and at < 0 { at = i } }
+  var m: LbMember = null
+  if at >= 0 {
+    m = s.members[at]
+  } else {
+    m = new LbMember
+    push(s.members, m)
+  }
+  m.who = who
+  m.present = true
+  m.joined = lobby_st.lb__time
+  m.origin = origin
+  m.origin_kind = origin_kind
+  m.crew = lobby_crew_of(lobby_st, who)
+  m.ping = ping
+  m.flags = 0
+  m.ghost_until = 0.0
+  m.protect_until = lobby_st.lb__time + lb__spawn_protect(s)
+  m.passive_at = -1000.0
+  m.ready = false
+  m.can_host = true
+  m.team = 0
+  s.empty_for = 0.0
+  # a seat kept for this player is theirs now
+  for i in 0 .. len(s.reserved) { if s.reserved[i] == who { s.reserved_until[i] = 0.0 } }
+  let f = lb__fact(lobby_st, LBF_JOINED, id)
+  f.who = who
+  f.kind = s.kind
+  if s.host < 0 { s.host = who }
+}
+
+# a session of a kind, hosted by `host`, in a region. The host leaves any session they are in. -1 when the kind
+# is not one
+export function lobby_create(lobby_st: mut LobbyState, kind: int, host: int, region: int) -> int {
+  lobby_st.lb__why = LBR_OK
+  if not lb__kind_ok(kind) {
+    lobby_st.lb__why = LBR_UNKNOWN
+    return -1
+  }
+  var origin = -1
+  var origin_kind = 0
+  let cur = lobby_session_of(lobby_st, host)
+  if cur >= 0 {
+    origin = cur
+    origin_kind = lb__find(lobby_st, cur).kind
+    lb__leave(lobby_st, cur, host, LBL_MOVED)
+  }
+  let s = lb__new_session(lobby_st, kind, region)
+  s.pool = lobby_pool(lobby_st, host)
+  let id = tb_add(lobby_st.lb__tab, s)
+  let created = lb__fact(lobby_st, LBF_CREATED, id)
+  created.kind = kind
+  created.who = host
+  lb__seat(lobby_st, s, id, host, 0, origin, origin_kind)
+  s.host = host
+  lb__publish(lobby_st, s, id)
+  return id
+}
+
+# what is told outside: a listed session that is open is published, and again as it fills
+function lb__publish(lobby_st: mut LobbyState, s: LobbySession, id: int) -> void {
+  let k = SessionKinds[s.kind]
+  if not k.listed or s.phase == LobbyPhase.Closed { return }
+  s.published = true
+  LobbyOutside.publish(id, s.kind, k.capacity, lb__count(s))
+  let f = lb__fact(lobby_st, LBF_PUBLISH, id)
+  f.kind = s.kind
+  f.n = lb__count(s)
+}
+
+function lb__withdraw(lobby_st: mut LobbyState, s: LobbySession, id: int) -> void {
+  if not s.published { return }
+  s.published = false
+  LobbyOutside.withdraw(id)
+  lb__fact(lobby_st, LBF_WITHDRAW, id)
+}
+
+export function lobby_exists(lobby_st: LobbyState, session: int) -> bool { return lb__find(lobby_st, session) != null }
+
+export function lobby_sessions(lobby_st: LobbyState) -> int { return tb_len(lobby_st.lb__tab) }
+
+# the id of the i'th session
+export function lobby_session_at(lobby_st: LobbyState, i: int) -> int {
+  if i < 0 or i >= tb_len(lobby_st.lb__tab) { return -1 }
+  return tb_handle(lobby_st.lb__tab, i)
+}
+
+export function lobby_phase(lobby_st: LobbyState, session: int) -> LobbyPhase {
+  let s = lb__find(lobby_st, session)
+  if s == null { return LobbyPhase.Closed }
+  return s.phase
+}
+
+export function lobby_kind_of(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return -1 }
+  return s.kind
+}
+
+export function lobby_host(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return -1 }
+  return s.host
+}
+
+export function lobby_is_host(lobby_st: LobbyState, session: int, who: int) -> bool {
+  let s = lb__find(lobby_st, session)
+  return s != null and s.host == who
+}
+
+export function lobby_count(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return 0 }
+  return lb__count(s)
+}
+
+export function lobby_capacity(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return 0 }
+  return SessionKinds[s.kind].capacity
+}
+
+export function lobby_code(lobby_st: LobbyState, session: int) -> string {
+  let s = lb__find(lobby_st, session)
+  if s == null { return "" }
+  return s.code
+}
+
+export function lobby_uid(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return 0 }
+  return s.uid
+}
+
+export function lobby_parent(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return -1 }
+  return s.parent
+}
+
+export function lobby_job(lobby_st: LobbyState, session: int) -> string {
+  let s = lb__find(lobby_st, session)
+  if s == null { return "" }
+  return s.job
+}
+
+export function lobby_region(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return 0 }
+  return s.region
+}
+
+# the players in a session, into a list the lobby keeps (good until the next call that returns one)
+export function lobby_members(lobby_st: mut LobbyState, session: int) -> []int {
+  let out = lobby_st.lb__list
+  List.clear(out)
+  let s = lb__find(lobby_st, session)
+  if s == null { return out }
+  for i in 0 .. len(s.members) { if s.members[i].present { kept_push(out, s.members[i].who) } }
+  return out
+}
+
+# the session a player is in, or -1
+export function lobby_session_of(lobby_st: LobbyState, who: int) -> int {
+  for i in 0 .. tb_len(lobby_st.lb__tab) {
+    let s = lobby_st.lb__tab.rec[i]
+    if s.phase != LobbyPhase.Closed and lb__member(s, who) >= 0 { return tb_handle(lobby_st.lb__tab, i) }
+  }
+  return -1
+}
+
+export function lobby_why(lobby_st: LobbyState) -> int { return lobby_st.lb__why }
+
+# the session that has this uid (what every machine calls it), or -1
+export function lobby_by_uid(lobby_st: LobbyState, uid: int) -> int {
+  for i in 0 .. tb_len(lobby_st.lb__tab) { if lobby_st.lb__tab.rec[i].uid == uid { return tb_handle(lobby_st.lb__tab, i) } }
+  return -1
+}
+
+export function lobby_by_code(lobby_st: LobbyState, code: string) -> int {
+  for i in 0 .. tb_len(lobby_st.lb__tab) {
+    let s = lobby_st.lb__tab.rec[i]
+    if s.code == code and s.phase != LobbyPhase.Closed { return tb_handle(lobby_st.lb__tab, i) }
+  }
+  return -1
+}
+
+# a member's record, for the verbs that read or set a flag
+function lb__mem(lobby_st: LobbyState, session: int, who: int) -> LbMember {
+  let s = lb__find(lobby_st, session)
+  if s == null { return null }
+  let i = lb__member(s, who)
+  if i < 0 { return null }
+  return s.members[i]
+}
+
+export function lobby_flags(lobby_st: LobbyState, session: int, who: int) -> int {
+  let m = lb__mem(lobby_st, session, who)
+  if m == null { return 0 }
+  return m.flags
+}
+
+export function lobby_ping_of(lobby_st: LobbyState, session: int, who: int) -> int {
+  let m = lb__mem(lobby_st, session, who)
+  if m == null { return 0 }
+  return m.ping
+}
+
+export function lobby_ping(lobby_st: mut LobbyState, session: int, who: int, ms: int) -> void {
+  let m = lb__mem(lobby_st, session, who)
+  if m != null { m.ping = ms }
+}
+
+export function lobby_set_can_host(lobby_st: mut LobbyState, session: int, who: int, yes: bool) -> void {
+  let m = lb__mem(lobby_st, session, who)
+  if m != null { m.can_host = yes }
+}
+
+export function lobby_set_team(lobby_st: mut LobbyState, session: int, who: int, team: int) -> void {
+  let m = lb__mem(lobby_st, session, who)
+  if m != null { m.team = team }
+}
+
+export function lobby_set_busy(lobby_st: mut LobbyState, session: int, who: int, yes: bool) -> void {
+  let m = lb__mem(lobby_st, session, who)
+  if m == null { return }
+  if yes { m.flags = m.flags | LBM_BUSY } else { m.flags = m.flags & ~LBM_BUSY }
+}
+
+export function lobby_ready(lobby_st: mut LobbyState, session: int, who: int) -> void {
+  let m = lb__mem(lobby_st, session, who)
+  if m != null { m.ready = true }
+}

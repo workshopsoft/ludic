@@ -1,0 +1,206 @@
+# admit.ludic - who may join, and joining, leaving and inviting. Every refusal has a reason (lobby_why and an
+# LBF_REFUSED fact), and a code from the host gets past what the kind asks of a stranger - never a full session,
+# a ban, or a door that is shut.
+
+function lb__rules_of(s: LobbySession) -> int {
+  let key = SessionKinds[s.kind].rules
+  if key == "" { return -1 }
+  for i in 0 .. AGR_COUNT { if AntiGriefRules[i].key == key { return i } }
+  return -1
+}
+
+function lb__spawn_protect(s: LobbySession) -> float {
+  let r = lb__rules_of(s)
+  if r < 0 { return 0.0 }
+  return AntiGriefRules[r].spawn_protect
+}
+
+function lb__region_group(region: int) -> int {
+  if region >= 0 and region < REGION_COUNT { return LobbyRegions[region].group }
+  return region
+}
+
+function lb__banned(lobby_st: LobbyState, s: LobbySession, who: int) -> bool {
+  for i in 0 .. len(s.bans) { if s.bans[i].who == who and s.bans[i].until > lobby_st.lb__time { return true } }
+  return false
+}
+
+function lb__invited(s: LobbySession, who: int) -> bool {
+  for i in 0 .. len(s.invited) { if s.invited[i] == who { return true } }
+  return false
+}
+
+# the average skill of a session's members
+function lb__avg_skill(lobby_st: LobbyState, s: LobbySession) -> int {
+  var n = 0
+  var total = 0
+  for i in 0 .. len(s.members) {
+    if not s.members[i].present { continue }
+    n += 1
+    total += lobby_skill_of(lobby_st, s.members[i].who)
+  }
+  if n == 0 { return 0 }
+  return total / n
+}
+
+# whether a player may join a session now (LBR_OK, or what stops them). `via_code`: they have the host's code
+function lb__check(lobby_st: LobbyState, s: LobbySession, who: int, via_code: bool, ping: int) -> int {
+  let k = SessionKinds[s.kind]
+  if s.phase == LobbyPhase.Closed or s.phase == LobbyPhase.Returning or k.join == LBJ_CLOSED or s.locked { return LBR_CLOSED }
+  if s.ended { return LBR_CLOSED }
+  if k.job and s.phase == LobbyPhase.Running and not k.jip { return LBR_JIP }
+  if lb__banned(lobby_st, s, who) { return LBR_BANNED }
+  var seats = lb__seats(lobby_st, s)
+  for i in 0 .. len(s.reserved) { if s.reserved[i] == who and s.reserved_until[i] > lobby_st.lb__time { seats -= 1 } }
+  if seats >= k.capacity { return LBR_FULL }
+  if k.join == LBJ_SOLO { return LBR_SOLO }
+  if not via_code {
+    if k.join == LBJ_INVITE and not lb__invited(s, who) { return LBR_INVITE }
+    if k.join == LBJ_FRIENDS and not LobbyWorld.is_friend(s.host, who) and not lb__invited(s, who) { return LBR_FRIENDS }
+    if k.join == LBJ_CREW {
+      let crew = lobby_crew_of(lobby_st, who)
+      if crew == 0 or crew != lobby_crew_of(lobby_st, s.host) { return LBR_CREW }
+    }
+  }
+  if k.region_lock and lb__region_group(lobby_st_region_of(lobby_st, who)) != lb__region_group(s.region) { return LBR_REGION }
+  var limit = k.ping_max
+  if limit == 0 and s.region >= 0 and s.region < REGION_COUNT { limit = LobbyRegions[s.region].ping_max }
+  if limit > 0 and ping > limit { return LBR_PING }
+  if k.skill_band > 0 and lb__count(s) > 0 {
+    var d = lobby_skill_of(lobby_st, who) - lb__avg_skill(lobby_st, s)
+    if d < 0 { d = 0 - d }
+    if d > k.skill_band { return LBR_SKILL }
+  }
+  if k.segregate and lobby_pool(lobby_st, who) != s.pool { return LBR_POOL }
+  return LBR_OK
+}
+
+function lobby_st_region_of(lobby_st: LobbyState, who: int) -> int {
+  let p = lb__player_find(lobby_st, who)
+  if p == null { return 0 }
+  return p.region
+}
+
+# whether `who` could join now, with this ping to the host (a read: nothing changes)
+export function lobby_can_join(lobby_st: LobbyState, session: int, who: int, ping: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return LBR_UNKNOWN }
+  return lb__check(lobby_st, s, who, false, ping)
+}
+
+function lb__refuse(lobby_st: mut LobbyState, session: int, who: int, why: int) -> bool {
+  lobby_st.lb__why = why
+  let f = lb__fact(lobby_st, LBF_REFUSED, session)
+  f.who = who
+  f.reason = why
+  return false
+}
+
+# a player leaves the roster: a fact, and the host handed on if it was theirs
+function lb__leave(lobby_st: mut LobbyState, session: int, who: int, why: int) -> bool {
+  let s = lb__find(lobby_st, session)
+  if s == null { return false }
+  let i = lb__member(s, who)
+  if i < 0 { return false }
+  s.members[i].present = false
+  let f = lb__fact(lobby_st, LBF_LEFT, session)
+  f.who = who
+  f.n = why
+  if lb__count(s) == 0 { s.empty_for = 0.0 }
+  if s.vote.open and (s.vote.target == who or s.vote.by == who) { lb__vote_end(lobby_st, s, session, false) }
+  if s.host == who {
+    s.host = -1
+    lb__elect(lobby_st, s, session, who)
+  }
+  if s.published { lb__publish(lobby_st, s, session) }
+  return true
+}
+
+# join a session. A player already in another leaves it first (the session they left is where a job sends them back)
+export function lobby_join(lobby_st: mut LobbyState, session: int, who: int, ping: int) -> bool {
+  lobby_st.lb__why = LBR_OK
+  let s = lb__find(lobby_st, session)
+  if s == null { return lb__refuse(lobby_st, session, who, LBR_UNKNOWN) }
+  if lb__member(s, who) >= 0 { return true }
+  let why = lb__check(lobby_st, s, who, false, ping)
+  if why != LBR_OK { return lb__refuse(lobby_st, session, who, why) }
+  lb__enter(lobby_st, s, session, who, ping)
+  return true
+}
+
+# the join, past the checks: out of where they are, into here, remembering where from
+function lb__enter(lobby_st: mut LobbyState, s: LobbySession, session: int, who: int, ping: int) -> void {
+  var origin = -1
+  var origin_kind = 0
+  let cur = lobby_session_of(lobby_st, who)
+  if cur >= 0 {
+    origin = cur
+    origin_kind = lb__find(lobby_st, cur).kind
+    lb__leave(lobby_st, cur, who, LBL_MOVED)
+  }
+  lb__seat(lobby_st, s, session, who, ping, origin, origin_kind)
+  if s.published { lb__publish(lobby_st, s, session) }
+}
+
+# join by a host's code: what a kind asks of strangers (an invitation, a friendship, a crew) is waived
+export function lobby_join_code(lobby_st: mut LobbyState, code: string, who: int, ping: int) -> int {
+  lobby_st.lb__why = LBR_OK
+  let id = lobby_by_code(lobby_st, code)
+  if id < 0 {
+    lb__refuse(lobby_st, -1, who, LBR_UNKNOWN)
+    return -1
+  }
+  let s = lb__find(lobby_st, id)
+  if lb__member(s, who) >= 0 { return id }
+  let why = lb__check(lobby_st, s, who, true, ping)
+  if why != LBR_OK {
+    lb__refuse(lobby_st, id, who, why)
+    return -1
+  }
+  lb__enter(lobby_st, s, id, who, ping)
+  return id
+}
+
+export function lobby_leave(lobby_st: mut LobbyState, session: int, who: int) -> bool {
+  return lb__leave(lobby_st, session, who, LBL_LEFT)
+}
+
+# the transport lost a player: out of every session they are in
+export function lobby_gone(lobby_st: mut LobbyState, who: int) -> void {
+  for i in 0 .. tb_len(lobby_st.lb__tab) {
+    let s = lobby_st.lb__tab.rec[i]
+    let id = tb_handle(lobby_st.lb__tab, i)
+    if lb__member(s, who) >= 0 {
+      if SessionKinds[s.kind].job and s.phase == LobbyPhase.Running and not s.ended { lb__offence(lobby_st, s, id, who, LBO_QUIT_JOB) }
+      lb__leave(lobby_st, id, who, LBL_GONE)
+    }
+  }
+}
+
+# the host invites a player (an invite-only or friends session lets them in)
+export function lobby_invite(lobby_st: mut LobbyState, session: int, by: int, who: int) -> bool {
+  let s = lb__find(lobby_st, session)
+  if s == null or lb__member(s, by) < 0 { return false }
+  if s.host != by {
+    lobby_st.lb__why = LBR_NOT_HOST
+    return false
+  }
+  if not lb__invited(s, who) { push(s.invited, who) }
+  let f = lb__fact(lobby_st, LBF_INVITED, session)
+  f.who = who
+  f.by = by
+  return true
+}
+
+# the host shuts the door (or opens it again)
+export function lobby_lock(lobby_st: mut LobbyState, session: int, by: int, locked: bool) -> bool {
+  let s = lb__find(lobby_st, session)
+  if s == null { return false }
+  if s.host != by {
+    lobby_st.lb__why = LBR_NOT_HOST
+    return false
+  }
+  s.locked = locked
+  if locked { lb__withdraw(lobby_st, s, session) } else { lb__publish(lobby_st, s, session) }
+  return true
+}

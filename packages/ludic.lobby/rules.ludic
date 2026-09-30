@@ -1,0 +1,156 @@
+# rules.ludic - anti-grief as data. A kind names an AntiGriefRules row; what harm is worth is a row of
+# LobbyOffences. The lobby does not see the fight: the game asks `lobby_may_hurt` before damage and reports a
+# kill (`lobby_report_kill`), and the lobby scores what the rules say - bad-sport points, and a ghosting
+# that keeps the offender from doing more harm for a while.
+
+function lb__offence_row(s: LobbySession, what: int) -> int {
+  let key = SessionKinds[s.kind].rules
+  for i in 0 .. GOFF_COUNT { if LobbyOffences[i].rule == key and LobbyOffences[i].what == what { return i } }
+  return -1
+}
+
+# score an offence: points, a ghosting, and a fact. The same offence again within the rule's gap counts once
+function lb__offence(lobby_st: mut LobbyState, s: LobbySession, session: int, who: int, what: int) -> void {
+  let row = lb__offence_row(s, what)
+  if row < 0 or what < 0 or what >= LBO_COUNT { return }
+  let o = LobbyOffences[row]
+  let p = lb__player(lobby_st, who)
+  var gap = 0.0
+  let r = lb__rules_of(s)
+  if r >= 0 { gap = AntiGriefRules[r].offence_gap }
+  if lobby_st.lb__time - p.last_offence[what] < gap { return }
+  p.last_offence[what] = lobby_st.lb__time
+  p.bad += o.points
+  let f = lb__fact(lobby_st, LBF_OFFENCE, session)
+  f.who = who
+  f.n = o.points
+  f.reason = what
+  lb__settle_bad(lobby_st, p)
+  let i = lb__member(s, who)
+  if o.ghost_secs > 0.0 and i >= 0 {
+    s.members[i].ghost_until = lobby_st.lb__time + o.ghost_secs
+    let g = lb__fact(lobby_st, LBF_GHOST, session)
+    g.who = who
+    g.x = o.ghost_secs
+  }
+}
+
+# the game scores an offence of its own kind (LBO_DISRUPT, a quit it noticed first)
+export function lobby_offence(lobby_st: mut LobbyState, session: int, who: int, what: int) -> void {
+  let s = lb__find(lobby_st, session)
+  if s == null { return }
+  lb__offence(lobby_st, s, session, who, what)
+}
+
+function lb__friendly(a: LbMember, b: LbMember) -> bool {
+  if a.crew != 0 and a.crew == b.crew { return true }
+  return a.team > 0 and a.team == b.team
+}
+
+# how much of its damage an attack does, 0 to 100: nothing to a player in passive mode (when the rules say so),
+# nothing while protected after spawning, nothing from or to a ghost, nothing from a player in passive mode,
+# and the rules' share between crew and team mates
+export function lobby_may_hurt(lobby_st: LobbyState, session: int, attacker: int, victim: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return 100 }
+  let ai = lb__member(s, attacker)
+  let vi = lb__member(s, victim)
+  if ai < 0 or vi < 0 { return 100 }
+  let a = s.members[ai]
+  let v = s.members[vi]
+  let r = lb__rules_of(s)
+  if (a.flags & LBM_PASSIVE) != 0 { return 0 }
+  if a.ghost_until > lobby_st.lb__time or v.ghost_until > lobby_st.lb__time { return 0 }
+  if (v.flags & LBM_PASSIVE) != 0 and (r < 0 or AntiGriefRules[r].passive_immune) { return 0 }
+  if v.protect_until > lobby_st.lb__time { return 0 }
+  if lb__friendly(a, v) and r >= 0 { return AntiGriefRules[r].friendly_fire }
+  return 100
+}
+
+# a kill the game saw: the rules score it if it was a passive player, one under protection, or one of their own
+export function lobby_report_kill(lobby_st: mut LobbyState, session: int, attacker: int, victim: int) -> void {
+  let s = lb__find(lobby_st, session)
+  if s == null { return }
+  let ai = lb__member(s, attacker)
+  let vi = lb__member(s, victim)
+  if ai < 0 or vi < 0 { return }
+  let v = s.members[vi]
+  if (v.flags & LBM_PASSIVE) != 0 {
+    lb__offence(lobby_st, s, session, attacker, LBO_KILL_PASSIVE)
+  } else if v.protect_until > lobby_st.lb__time {
+    lb__offence(lobby_st, s, session, attacker, LBO_KILL_PROTECTED)
+  } else if lb__friendly(s.members[ai], v) {
+    lb__offence(lobby_st, s, session, attacker, LBO_KILL_FRIEND)
+  }
+}
+
+# a player spawned: protection for the rules' seconds
+export function lobby_spawned(lobby_st: mut LobbyState, session: int, who: int) -> void {
+  let s = lb__find(lobby_st, session)
+  if s == null { return }
+  let i = lb__member(s, who)
+  if i >= 0 { s.members[i].protect_until = lobby_st.lb__time + lb__spawn_protect(s) }
+}
+
+export function lobby_protected(lobby_st: LobbyState, session: int, who: int) -> bool {
+  let m = lb__mem(lobby_st, session, who)
+  return m != null and m.protect_until > lobby_st.lb__time
+}
+
+export function lobby_ghosted(lobby_st: LobbyState, session: int, who: int) -> bool {
+  let m = lb__mem(lobby_st, session, who)
+  return m != null and m.ghost_until > lobby_st.lb__time
+}
+
+export function lobby_passive(lobby_st: LobbyState, session: int, who: int) -> bool {
+  let m = lb__mem(lobby_st, session, who)
+  return m != null and (m.flags & LBM_PASSIVE) != 0
+}
+
+# passive mode on or off: only where the kind allows it, and it cannot be left before the rules' cooldown
+export function lobby_set_passive(lobby_st: mut LobbyState, session: int, who: int, on: bool) -> bool {
+  lobby_st.lb__why = LBR_OK
+  let s = lb__find(lobby_st, session)
+  if s == null {
+    lobby_st.lb__why = LBR_UNKNOWN
+    return false
+  }
+  let i = lb__member(s, who)
+  if i < 0 {
+    lobby_st.lb__why = LBR_UNKNOWN
+    return false
+  }
+  if not SessionKinds[s.kind].passive and on {
+    lobby_st.lb__why = LBR_RULES
+    return false
+  }
+  let m = s.members[i]
+  let was = (m.flags & LBM_PASSIVE) != 0
+  if was == on { return true }
+  if not on {
+    let r = lb__rules_of(s)
+    var cool = 0.0
+    if r >= 0 { cool = AntiGriefRules[r].passive_cooldown }
+    if lobby_st.lb__time - m.passive_at < cool {
+      lobby_st.lb__why = LBR_COOLDOWN
+      return false
+    }
+    m.flags = m.flags & ~LBM_PASSIVE
+  } else {
+    m.flags = m.flags | LBM_PASSIVE
+    m.passive_at = lobby_st.lb__time
+  }
+  let f = lb__fact(lobby_st, LBF_FLAG, session)
+  f.who = who
+  f.n = m.flags
+  return true
+}
+
+export function lobby_set_flag(lobby_st: mut LobbyState, session: int, who: int, flag: int, on: bool) -> void {
+  let m = lb__mem(lobby_st, session, who)
+  if m == null { return }
+  if on { m.flags = m.flags | flag } else { m.flags = m.flags & ~flag }
+  let f = lb__fact(lobby_st, LBF_FLAG, session)
+  f.who = who
+  f.n = m.flags
+}

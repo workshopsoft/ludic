@@ -1,0 +1,140 @@
+# state.ludic - the sessions, the players the lobby knows, the listings it has learned of, the votes, and the
+# facts. A session is a row of a Table whose handle is the session's id; its phase is a machine (machine.ludic).
+
+# why a join is refused (lobby_why)
+export const LBR_OK: int = 0
+export const LBR_UNKNOWN: int = 1       # no such session or kind
+export const LBR_FULL: int = 2          # no room (seats kept for players away on a job count)
+export const LBR_CLOSED: int = 3        # not accepting: closed, or closing, or locked by its host
+export const LBR_INVITE: int = 4
+export const LBR_FRIENDS: int = 5
+export const LBR_CREW: int = 6
+export const LBR_BANNED: int = 7        # kicked, and the ban has not run out
+export const LBR_PING: int = 8
+export const LBR_REGION: int = 9
+export const LBR_SKILL: int = 10
+export const LBR_POOL: int = 11         # bad sport is matched with bad sport
+export const LBR_JIP: int = 12          # a job has begun and does not take players in progress
+export const LBR_SOLO: int = 13
+export const LBR_NOT_HOST: int = 14     # a verb only the host may use
+export const LBR_COOLDOWN: int = 15     # too soon (a vote, passive mode)
+export const LBR_RULES: int = 16        # the kind does not allow it (passive mode, a vote)
+export const LBR_BUSY: int = 17         # a vote is already open
+
+export enum LobbyPhase { Forming, Open, Running, Returning, Closed }
+
+export property LbMember {
+  who: int = 0
+  present: bool = true
+  joined: float = 0.0             # the lobby's clock when they joined: the order hosts are chosen in
+  origin: int = -1                # the session they came from (where they go back to)
+  origin_kind: int = 0            # ... and its kind, for when it is gone
+  crew: int = 0
+  ping: int = 0
+  flags: int = 0
+  ghost_until: float = 0.0
+  protect_until: float = 0.0      # spawn protection
+  passive_at: float = -1000.0     # when passive mode last began
+  ready: bool = false
+  can_host: bool = true           # a machine that can take the session over (an open NAT, a good link)
+  team: int = 0
+}
+
+export property LbBan {
+  who: int = 0
+  until: float = 0.0
+}
+
+export property LbVote {
+  open: bool = false
+  target: int = 0
+  by: int = 0
+  yes: int = 0                    # votes for, as a bit of the voters' places
+  no: int = 0
+  left: float = 0.0
+  reason: int = 0
+}
+
+export property LobbySession {
+  uid: int = 0                    # the same on every machine that knows the session (ids are a table's own)
+  kind: int = 0
+  phase: LobbyPhase = LobbyPhase.Forming       # the machine's: nothing else writes it
+  last_phase: int = 0
+  host: int = -1                  # who, -1 when there is none
+  members: []LbMember = null
+  reserved: []int = null          # seats kept: who is away on a job, and ...
+  reserved_until: []float = null  # ... until when
+  invited: []int = null
+  bans: []LbBan = null
+  region: int = 0
+  pool: int = 0                   # the bad-sport pool it was made in
+  locked: bool = false            # the host has closed the door
+  ended: bool = false             # a job instance: the job is over
+  reopen: bool = false            # a closed session asked back (lobby_reopen)
+  job: string = ""                # a job instance: the job
+  parent: int = -1                # a job instance: the session its players go back to
+  code: string = ""               # the join code
+  age: float = 0.0
+  empty_for: float = 0.0
+  ready_for: float = 0.0
+  closed_for: float = 0.0
+  checkpoint_in: float = 0.0
+  cp_rev: int = 0
+  cp: Val = null                  # the host's state, as last handed on
+  vote: LbVote = null
+  vote_cool: float = 0.0          # the next vote may open at this age
+  published: bool = false
+  closed_reason: int = 0
+  serial: int = 0
+}
+
+# a session somewhere else, as this machine has learned of it (a Steam lobby search, a matchmaker's list)
+export property LobbyListing {
+  key: string = ""                # the outside world's name for it (a Steam lobby id as text, an address)
+  kind: int = 0
+  region: int = 0
+  members: int = 0
+  capacity: int = 0
+  skill: int = 0                  # the average skill of the session
+  host: int = 0                   # who hosts it, for friends and crew
+  crew: int = 0                   # the host's crew
+  pool: int = 0
+  ping: int = 0
+  locked: bool = false
+  seen: float = 0.0
+}
+
+# what the lobby knows of a player
+export property LbPlayer {
+  who: int = 0
+  crew: int = 0
+  skill: int = 0
+  region: int = 0
+  bad: int = 0                    # bad-sport points
+  bad_day: int = 0                # the day they were last faded to
+  pool: int = 0
+  last_offence: []float = null    # per LBO_ kind, when it was last scored
+  vote_at: float = -1000.0        # when they last opened a vote
+}
+
+function lb__tab__new() -> Table<LobbySession> {
+  let t: Table<LobbySession> = table_new(0, 0)
+  return t
+}
+
+export state LobbyState {
+  lb__tab: Table<LobbySession> = lb__tab__new()
+  lb__players: []LbPlayer = new []LbPlayer
+  lb__listings: []LobbyListing = new []LobbyListing
+  lb__time: float = 0.0
+  lb__local: int = -1             # who this machine's player is (-1: none)
+  lb__day: int = 0
+  lb__m_sess: []int = new []int   # lobby_find's answer
+  lb__m_list: []int = new []int
+  lb__m_score: []int = new []int
+  lb__why: int = 0
+  lb__dice: Rng = null
+  lb__serial: int = 0
+  lb__list: []int = new []int
+  lb__facts: Queue<LobbyFact> = lb__facts__new()
+}

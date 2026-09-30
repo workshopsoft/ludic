@@ -1,0 +1,152 @@
+# transfer.ludic - moving between a freemode session and a job's instance, and back. The players who go keep a
+# seat in the session they leave (for the kind's `reserve_secs`), and when the job ends they return to the session
+# they came from: the very one if it is still there, else the session that started the job, else a new one of the
+# same kind, which those who belonged to the same lost session share. A move is the game's to carry out; the lobby
+# says who goes where (LBF_TRANSFER) and the roster follows.
+
+# a player leaves `from` for an instance, keeping a seat there
+function lb__reserve(lobby_st: mut LobbyState, from: LobbySession, who: int) -> void {
+  push(from.reserved, who)
+  push(from.reserved_until, lobby_st.lb__time + SessionKinds[from.kind].reserve_secs)
+}
+
+# the players in `who` that are in session `from`, and `by` among them: a job is started by a member of the session
+# it leaves. Returns the instance, -1 (lobby_why) when the kind is not a job's, the players are not there, or the
+# instance could not hold them
+export function lobby_start_job(lobby_st: mut LobbyState, from: int, by: int, job: string, instance_kind: int, who: []int) -> int {
+  lobby_st.lb__why = LBR_OK
+  let f = lb__find(lobby_st, from)
+  if f == null or not lb__kind_ok(instance_kind) or lb__member(f, by) < 0 {
+    lobby_st.lb__why = LBR_UNKNOWN
+    return -1
+  }
+  if not SessionKinds[instance_kind].job {
+    lobby_st.lb__why = LBR_RULES
+    return -1
+  }
+  let going = new []int
+  push(going, by)
+  for i in 0 .. len(who) {
+    if who[i] != by and lb__member(f, who[i]) >= 0 { push(going, who[i]) }
+  }
+  if len(going) > SessionKinds[instance_kind].capacity {
+    lobby_st.lb__why = LBR_FULL
+    return -1
+  }
+  let inst = lb__new_session(lobby_st, instance_kind, f.region)
+  inst.job = `{job}`
+  inst.parent = from
+  inst.pool = f.pool
+  let id = tb_add(lobby_st.lb__tab, inst)
+  let fk = lb__fact(lobby_st, LBF_CREATED, id)
+  fk.kind = instance_kind
+  fk.who = by
+  for i in 0 .. len(going) {
+    let who_i = going[i]
+    let mi = lb__member(f, who_i)
+    let ping = f.members[mi].ping
+    lb__reserve(lobby_st, f, who_i)
+    lb__leave(lobby_st, from, who_i, LBL_MOVED)
+    lb__seat(lobby_st, inst, id, who_i, ping, from, f.kind)
+    let t = lb__fact(lobby_st, LBF_TRANSFER, from)
+    t.who = who_i
+    t.to = id
+    t.n = LBT_TO_JOB
+  }
+  inst.host = by
+  return id
+}
+
+# a player in the instance says they are loaded and ready (lobby_ready); the job's end is the game's word
+export function lobby_job_ended(lobby_st: mut LobbyState, session: int) -> bool {
+  let s = lb__find(lobby_st, session)
+  if s == null or not SessionKinds[s.kind].job { return false }
+  s.ended = true
+  return true
+}
+
+# can `who` go back into session `o`: it is there, open, not full (counting the seat they hold), and they are not banned
+function lb__can_return(lobby_st: LobbyState, o: LobbySession, who: int) -> bool {
+  if o == null or o.phase == LobbyPhase.Closed or o.phase == LobbyPhase.Returning or o.ended { return false }
+  if lb__banned(lobby_st, o, who) { return false }
+  var seats = lb__seats(lobby_st, o)
+  for i in 0 .. len(o.reserved) { if o.reserved[i] == who and o.reserved_until[i] > lobby_st.lb__time { seats -= 1 } }
+  return seats < SessionKinds[o.kind].capacity
+}
+
+# one member of an instance goes back: where they came from, else where the job was started, else somewhere new
+function lb__return_one(lobby_st: mut LobbyState, inst: LobbySession, session: int, who: int, lost: []int, lost_to: []int) -> void {
+  let i = lb__member(inst, who)
+  if i < 0 { return }
+  let m = inst.members[i]
+  var target = -1
+  var how = LBT_FROM_JOB
+  let o = lb__find(lobby_st, m.origin)
+  if lb__can_return(lobby_st, o, who) {
+    target = m.origin
+  } else {
+    let p = lb__find(lobby_st, inst.parent)
+    if lb__can_return(lobby_st, p, who) { target = inst.parent }
+  }
+  var kind = m.origin_kind
+  if target < 0 {
+    how = LBT_ELSEWHERE
+    # those who shared a lost origin share the new session
+    for k in 0 .. len(lost) { if lost[k] == m.origin and lb__can_return(lobby_st, lb__find(lobby_st, lost_to[k]), who) { target = lost_to[k] } }
+  }
+  let ping = m.ping
+  let crossed = m.origin
+  if target >= 0 {
+    let t = lb__find(lobby_st, target)
+    lb__leave(lobby_st, session, who, LBL_MOVED)
+    lb__seat(lobby_st, t, target, who, ping, -1, 0)
+    if t.published { lb__publish(lobby_st, t, target) }
+  } else {
+    target = lobby_create(lobby_st, kind, who, inst.region)
+    if target >= 0 {
+      push(lost, crossed)
+      push(lost_to, target)
+    }
+  }
+  let f = lb__fact(lobby_st, LBF_TRANSFER, session)
+  f.who = who
+  f.to = target
+  f.n = how
+}
+
+# the instance's job is over: everyone back
+function lb__return_all(lobby_st: mut LobbyState, inst: LobbySession, session: int) -> void {
+  let lost = new []int
+  let lost_to = new []int
+  let who = new []int
+  for i in 0 .. len(inst.members) { if inst.members[i].present { push(who, inst.members[i].who) } }
+  inst.host = -1                        # the job is over: no one inherits it as its players leave
+  for i in 0 .. len(who) { lb__return_one(lobby_st, inst, session, who[i], lost, lost_to) }
+}
+
+# a job's instance has begun: whoever was not ready is sent back without the job
+function lb__drop_unready(lobby_st: mut LobbyState, inst: LobbySession, session: int) -> void {
+  let lost = new []int
+  let lost_to = new []int
+  let who = new []int
+  for i in 0 .. len(inst.members) { if inst.members[i].present and not inst.members[i].ready { push(who, inst.members[i].who) } }
+  for i in 0 .. len(who) {
+    let left = lb__fact(lobby_st, LBF_LEFT, session)
+    left.who = who[i]
+    left.n = LBL_NOT_READY
+    lb__return_one(lobby_st, inst, session, who[i], lost, lost_to)
+  }
+}
+
+# a player goes to another session of their own accord (an invitation taken, a friend joined): checked as a
+# join, and a fact for the game to carry out
+export function lobby_move(lobby_st: mut LobbyState, who: int, to: int, ping: int) -> bool {
+  let cur = lobby_session_of(lobby_st, who)
+  if cur == to { return true }
+  if not lobby_join(lobby_st, to, who, ping) { return false }
+  let f = lb__fact(lobby_st, LBF_TRANSFER, cur)
+  f.who = who
+  f.to = to
+  f.n = LBT_TO_SESSION
+  return true
+}

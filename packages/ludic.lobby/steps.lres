@@ -1,0 +1,11 @@
+# steps.lres - the phase machine of ludic.lobby; edit it as a graph. A step with no `on` is asked every
+# tick by its guard, first match in this order.
+open { from: LobbyPhase.Forming, to: LobbyPhase.Open, guard: fn lb_g_open }
+aborted { from: LobbyPhase.Forming, to: LobbyPhase.Returning, guard: fn lb_g_over }
+start { from: LobbyPhase.Forming, to: LobbyPhase.Running, guard: fn lb_g_start }
+forming_gone { from: LobbyPhase.Forming, to: LobbyPhase.Closed, guard: fn lb_g_idle }
+idle { from: LobbyPhase.Open, to: LobbyPhase.Closed, guard: fn lb_g_idle }
+job_over { from: LobbyPhase.Running, to: LobbyPhase.Returning, guard: fn lb_g_over }
+job_left { from: LobbyPhase.Running, to: LobbyPhase.Closed, guard: fn lb_g_idle }
+back { from: LobbyPhase.Returning, to: LobbyPhase.Closed, guard: fn lb_g_emptied }
+reopened { from: LobbyPhase.Closed, to: LobbyPhase.Forming, guard: fn lb_g_reopen }

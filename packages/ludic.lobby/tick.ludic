@@ -1,0 +1,87 @@
+# tick.ludic - time. A tick moves the lobby's clock, runs every session's timers (a vote, a wait for a job's
+# players, a seat kept for one who is away, the host's state to hand on), asks the phase machine, and acts on
+# the phases that changed: a job's instance that has begun sends back whoever was not ready, one that is over
+# sends everyone home, a closed session is taken down and, a little later, forgotten.
+
+const LB_KEEP_CLOSED: float = 5.0         # a closed session stays readable this long
+const LB_LISTING_LIFE: float = 120.0      # a listing not seen again in this long is forgotten
+
+function lb__session_timers(lobby_st: mut LobbyState, s: LobbySession, session: int, dt: float) -> void {
+  s.age += dt
+  let k = SessionKinds[s.kind]
+  if lb__count(s) == 0 { s.empty_for += dt } else { s.empty_for = 0.0 }
+  if k.job and s.phase == LobbyPhase.Forming { s.ready_for += dt }
+  if s.phase == LobbyPhase.Closed { s.closed_for += dt }
+  lb__vote_tick(lobby_st, s, session, dt)
+  for i in 0 .. len(s.reserved) {
+    if s.reserved_until[i] > 0.0 and s.reserved_until[i] <= lobby_st.lb__time {
+      s.reserved_until[i] = 0.0
+      lb__fact(lobby_st, LBF_RESERVE_LAPSED, session).who = s.reserved[i]
+    }
+  }
+  # the host's machine hands its state on
+  if s.host >= 0 and s.host == lobby_st.lb__local and lb__count(s) > 1 and s.phase != LobbyPhase.Closed {
+    s.checkpoint_in -= dt
+    if s.checkpoint_in <= 0.0 {
+      s.checkpoint_in = k.checkpoint_secs
+      lb__fact(lobby_st, LBF_CHECKPOINT_DUE, session)
+      let state = LobbyWorld.export(session)
+      if state != null { lobby_checkpoint_set(lobby_st, session, state) }
+    }
+  }
+}
+
+# what a phase's beginning means
+function lb__phase_changed(lobby_st: mut LobbyState, s: LobbySession, session: int) -> void {
+  let now = int(s.phase)
+  s.last_phase = now
+  let f = lb__fact(lobby_st, LBF_PHASE, session)
+  f.n = now
+  if s.phase == LobbyPhase.Running and SessionKinds[s.kind].job { lb__drop_unready(lobby_st, s, session) }
+  if s.phase == LobbyPhase.Returning { lb__return_all(lobby_st, s, session) }
+  if s.phase == LobbyPhase.Forming { s.reopen = false }
+  if s.phase == LobbyPhase.Open { lb__publish(lobby_st, s, session) }
+  if s.phase == LobbyPhase.Closed {
+    s.closed_for = 0.0
+    if lb__count(s) == 0 and s.closed_reason == 0 and s.host < 0 { lb__fact(lobby_st, LBF_CLOSED, session).reason = LBL_LEFT }
+    lb__withdraw(lobby_st, s, session)
+  }
+}
+
+export function lobby_tick(lobby_st: mut LobbyState, lobby_steps_m: mut LobbyStepsMachine, dt: float) -> void {
+  lobby_st.lb__time += dt
+  lb__fade(lobby_st)
+  let n = tb_len(lobby_st.lb__tab)
+  for i in 0 .. n {
+    if i >= tb_len(lobby_st.lb__tab) { break }
+    lb__session_timers(lobby_st, lobby_st.lb__tab.rec[i], tb_handle(lobby_st.lb__tab, i), dt)
+  }
+  lobby_steps_tick(lobby_steps_m, lobby_st)                          # the phases from what is true now
+  var changed = true
+  var rounds = 0
+  while changed and rounds < 4 {                                      # a phase's entry may move others on
+    changed = false
+    for i in 0 .. tb_len(lobby_st.lb__tab) {
+      let s = lobby_st.lb__tab.rec[i]
+      if int(s.phase) != s.last_phase {
+        lb__phase_changed(lobby_st, s, tb_handle(lobby_st.lb__tab, i))
+        changed = true
+      }
+    }
+    if changed { lobby_steps_tick(lobby_steps_m, lobby_st) }
+    rounds += 1
+  }
+  # the closed are forgotten once they have been read
+  let gone = new []int
+  for i in 0 .. tb_len(lobby_st.lb__tab) {
+    let s = lobby_st.lb__tab.rec[i]
+    if s.phase == LobbyPhase.Closed and s.closed_for >= LB_KEEP_CLOSED and not s.reopen { push(gone, tb_handle(lobby_st.lb__tab, i)) }
+  }
+  for i in 0 .. len(gone) { tb_remove(lobby_st.lb__tab, gone[i]) }
+  # listings not heard of again
+  let keep = new []LobbyListing
+  for i in 0 .. len(lobby_st.lb__listings) {
+    if lobby_st.lb__time - lobby_st.lb__listings[i].seen < LB_LISTING_LIFE { push(keep, lobby_st.lb__listings[i]) }
+  }
+  if len(keep) != len(lobby_st.lb__listings) { lobby_st.lb__listings = keep }
+}

@@ -1,0 +1,107 @@
+# game.ludic - what every lobby test shares: a few regions, rules, offences and kinds as a game would write
+# them, and a fake world for the ports (friends, the day, the state handed on, what was published outside)
+  numbers float
+
+  def LobbyRegions eu { group: 1, ping_max: 120 }
+  def LobbyRegions na { group: 2, ping_max: 120 }
+  def LobbyRegions eu_west { group: 1, ping_max: 120 }
+
+  def AntiGriefRules casual { friendly_fire: 25, passive_immune: true, spawn_protect: 5.0, passive_cooldown: 30.0, offence_gap: 10.0 }
+  def AntiGriefRules hardcore { friendly_fire: 100, passive_immune: false, spawn_protect: 0.0, passive_cooldown: 0.0, offence_gap: 10.0 }
+  def LobbyOffences kill_passive { rule: "casual", what: LBO_KILL_PASSIVE, points: 20, ghost_secs: 30.0 }
+  def LobbyOffences kill_protected { rule: "casual", what: LBO_KILL_PROTECTED, points: 10, ghost_secs: 10.0 }
+  def LobbyOffences kill_friend { rule: "casual", what: LBO_KILL_FRIEND, points: 15 }
+  def LobbyOffences quit_job { rule: "casual", what: LBO_QUIT_JOB, points: 25 }
+  def LobbyOffences vote_kicked { rule: "casual", what: LBO_VOTE_KICKED, points: 15 }
+  def BadSportTiers clean { points: 0, pool: 0, decay_per_day: 5 }
+  def BadSportTiers grumpy { points: 50, pool: 1, decay_per_day: 10 }
+
+  def SessionKinds public { join: LBJ_PUBLIC, capacity: 4, rules: "casual", idle_secs: 10.0, checkpoint_secs: 10.0, ban_secs: 600.0 }
+  def SessionKinds big { join: LBJ_PUBLIC, capacity: 8, rules: "casual" }
+  def SessionKinds invite { join: LBJ_INVITE, capacity: 4, rules: "casual" }
+  def SessionKinds friends { join: LBJ_FRIENDS, capacity: 4, rules: "casual" }
+  def SessionKinds crew { join: LBJ_CREW, capacity: 4, rules: "casual" }
+  def SessionKinds solo { join: LBJ_SOLO, capacity: 1, listed: false, rules: "casual" }
+  def SessionKinds job { join: LBJ_PUBLIC, capacity: 4, world: false, job: true, migrate: false, jip: false, passive: false, listed: false, rules: "casual", ready_secs: 20.0, idle_secs: 5.0 }
+  def SessionKinds job_open { join: LBJ_PUBLIC, capacity: 4, world: false, job: true, migrate: true, jip: true, passive: false, listed: false, rules: "casual", ready_secs: 20.0, idle_secs: 5.0 }
+  def SessionKinds regional { join: LBJ_PUBLIC, capacity: 4, region_lock: true, rules: "casual" }
+  def SessionKinds skilled { join: LBJ_PUBLIC, capacity: 4, skill_band: 10, rules: "casual" }
+  def SessionKinds tiny { join: LBJ_PUBLIC, capacity: 2, rules: "casual", segregate: false, vote_kick: false, ping_max: 50 }
+
+  state LobbyWorldState {
+    friends: []int = null         # pairs
+    day: int = 1
+    exports: int = 0
+    imported: int = 0
+    imported_rev: int = -1
+    published: []int = null       # session ids
+    withdrawn: int = 0
+    searches: int = 0
+    state_value: int = 0
+  }
+
+  function world_fresh(w: mut LobbyWorldState) -> void {
+    w.friends = new []int
+    w.day = 1
+    w.exports = 0
+    w.imported = 0
+    w.imported_rev = -1
+    w.published = new []int
+    w.withdrawn = 0
+    w.searches = 0
+    w.state_value = 0
+  }
+
+  function befriend(w: mut LobbyWorldState, a: int, b: int) -> void {
+    push(w.friends, a)
+    push(w.friends, b)
+  }
+
+  function w_friend(w: LobbyWorldState, a: int, b: int) -> bool {
+    var i = 0
+    while i + 1 < len(w.friends) {
+      if (w.friends[i] == a and w.friends[i + 1] == b) or (w.friends[i] == b and w.friends[i + 1] == a) { return true }
+      i += 2
+    }
+    return false
+  }
+  function w_day(w: LobbyWorldState) -> int { return w.day }
+  function w_export(w: mut LobbyWorldState, session: int) -> Val {
+    w.exports += 1
+    let v = Value.object()
+    sv_put_int(v, "score", w.state_value)
+    return v
+  }
+  function w_import(w: mut LobbyWorldState, session: int, v: Val, rev: int) -> void {
+    w.imported += 1
+    w.imported_rev = rev
+    w.state_value = sv_int(v, "score", -1)
+  }
+  function w_seed() -> int { return 12345 }
+  bind LobbyWorld { is_friend: fn w_friend, day: fn w_day, export: fn w_export, import: fn w_import, seed: fn w_seed }
+
+  function o_publish(w: mut LobbyWorldState, session: int, kind: int, cap: int, members: int) -> void { push(w.published, session) }
+  function o_withdraw(w: mut LobbyWorldState, session: int) -> void { w.withdrawn += 1 }
+  function o_search(w: mut LobbyWorldState, kind: int, region: int) -> void { w.searches += 1 }
+  bind LobbyOutside { publish: fn o_publish, withdraw: fn o_withdraw, search: fn o_search }
+
+  function fresh(l: mut LobbyState, w: mut LobbyWorldState) -> void {
+    world_fresh(w)
+    lobby_reset(l)
+  }
+
+  # run the lobby for some seconds
+  function pass(l: mut LobbyState, m: mut LobbyStepsMachine, secs: float) -> void {
+    var t = 0.0
+    while t < secs - 0.001 {
+      lobby_tick(l, m, 0.5)
+      t += 0.5
+    }
+  }
+
+  function count_of(l: mut LobbyState, what: int) -> int {
+    let fs = q_drain(lobby_facts(l))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }

@@ -1,0 +1,130 @@
+# match_test.ludic - finding a session: who is offered what, best first, sessions this lobby keeps beside listings
+# it learned of, quick join's three outcomes, and bad sport matched with bad sport
+import "ludic.lobby"
+import "ludic.base"
+program MatchTest {
+  import "fixture/game.ludic"
+
+  # a public session with `n` players, hosted by `host`
+  function room(l: mut LobbyState, m: mut LobbyStepsMachine, host: int, n: int) -> int {
+    let s = lobby_create(l, SESK_PUBLIC, host, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    for i in 1 .. n { lobby_join(l, s, host + i, 30) }
+    return s
+  }
+
+  test "the fuller session comes first, a friend or a crew mate before that" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let a = room(l, m, 10, 1)
+    let b = room(l, m, 20, 3)
+    lobby_tick(l, m, 0.1)
+    expect_eq(lobby_find(l, 99, SESK_PUBLIC, REGION_EU, 30), 2)
+    expect_eq(lobby_match_session(l, 0), b)
+    expect_eq(lobby_match_session(l, 1), a)
+    expect(lobby_match_score(l, 0) > lobby_match_score(l, 1))
+    # a friend of the host in the emptier one moves it first
+    befriend(w, 99, 10)
+    lobby_find(l, 99, SESK_PUBLIC, REGION_EU, 30)
+    expect_eq(lobby_match_session(l, 0), a)
+    # so does a crew mate
+    lobby_player(l, 99, 5, 0, REGION_EU)
+    lobby_player(l, 21, 5, 0, REGION_EU)
+    lobby_find(l, 99, SESK_PUBLIC, REGION_EU, 30)
+    expect_eq(lobby_match_session(l, 0), a)                  # the friend still counts for more than a mate
+    w.friends = new []int
+    lobby_find(l, 99, SESK_PUBLIC, REGION_EU, 30)
+    expect_eq(lobby_match_session(l, 0), b)
+  }
+
+  test "only what the player could join is offered" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let open = room(l, m, 10, 2)
+    let full = room(l, m, 20, 4)
+    let inv = lobby_create(l, SESK_INVITE, 30, 0)
+    let solo = lobby_create(l, SESK_SOLO, 40, 0)
+    lobby_tick(l, m, 1.0)
+    expect_eq(lobby_find(l, 99, -1, REGION_EU, 30), 1)
+    expect_eq(lobby_match_session(l, 0), open)
+    expect_eq(lobby_find(l, 99, SESK_INVITE, REGION_EU, 30), 0)
+    lobby_invite(l, inv, 30, 99)
+    expect_eq(lobby_find(l, 99, SESK_INVITE, REGION_EU, 30), 1)
+    # never the one they are in
+    lobby_join(l, open, 99, 30)
+    expect_eq(lobby_find(l, 99, SESK_PUBLIC, REGION_EU, 30), 0)
+    expect(full >= 0 and solo >= 0)
+  }
+
+  test "listings learned of are offered beside the sessions kept here" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let a = room(l, m, 10, 1)
+    let i0 = lobby_learn(l, "steam:1001", SESK_PUBLIC, REGION_EU, 3, 4, 0, 500, 0, 0, 40)
+    let i1 = lobby_learn(l, "steam:1002", SESK_PUBLIC, REGION_EU, 4, 4, 0, 501, 0, 0, 40)      # full
+    let i2 = lobby_learn(l, "steam:1003", SESK_PUBLIC, REGION_EU, 1, 4, 0, 502, 0, 0, 900)     # too far
+    let i3 = lobby_learn(l, "steam:1004", SESK_INVITE, REGION_EU, 1, 4, 0, 503, 0, 0, 40)      # invite-only
+    expect_eq(lobby_listings(l), 4)
+    expect_eq(lobby_learn(l, "steam:1001", SESK_PUBLIC, REGION_EU, 2, 4, 0, 500, 0, 0, 40), i0)   # the same key: updated
+    expect_eq(lobby_listings(l), 4)
+    expect_eq(lobby_find(l, 99, SESK_PUBLIC, REGION_EU, 30), 2)
+    expect_eq(lobby_match_listing(l, 0), i0)                   # the listing with two in it comes first ...
+    expect_eq(lobby_match_session(l, 0), -1)
+    expect_eq(lobby_match_session(l, 1), a)                    # ... then the session here, with one
+    expect(i1 >= 0 and i2 >= 0 and i3 >= 0)
+    lobby_forget(l, "steam:1001")
+    expect_eq(lobby_listings(l), 3)
+  }
+
+  test "quick join: a session here, a listing to connect to, a new session, or nothing" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let a = room(l, m, 10, 2)
+    expect_eq(lobby_quick_join(l, 99, SESK_PUBLIC, REGION_EU, 30, false), a)
+    expect_eq(lobby_session_of(l, 99), a)
+    # with no session here, a listing
+    fresh(l, w)
+    lobby_learn(l, "steam:2001", SESK_PUBLIC, REGION_EU, 2, 4, 0, 500, 0, 0, 40)
+    expect_eq(lobby_quick_join(l, 98, SESK_PUBLIC, REGION_EU, 30, true), -2)
+    let fs = q_drain(lobby_facts(l))
+    var found = 0
+    var key = ""
+    for i in 0 .. len(fs) { if fs[i].what == LBF_CONNECT { found += 1; key = fs[i].text } }
+    expect_eq(found, 1)
+    expect_eq(key, "steam:2001")
+    expect_eq(lobby_session_of(l, 98), -1)
+    # with nothing, a new one, or -1
+    fresh(l, w)
+    expect_eq(lobby_quick_join(l, 97, SESK_PUBLIC, REGION_EU, 30, false), -1)
+    expect_eq(w.searches, 1)
+    let made = lobby_quick_join(l, 97, SESK_PUBLIC, REGION_EU, 30, true)
+    expect(made >= 0)
+    expect_eq(lobby_host(l, made), 97)
+    expect_eq(w.searches, 2)
+  }
+
+  test "quick join goes on to the next when the best would not have them" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let a = room(l, m, 10, 3)
+    let b = room(l, m, 20, 1)
+    lobby_tick(l, m, 0.1)
+    lobby_lock(l, a, 10, true)
+    expect_eq(lobby_quick_join(l, 99, SESK_PUBLIC, REGION_EU, 30, false), b)
+  }
+
+  test "bad sport is matched with bad sport" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let good = room(l, m, 10, 2)
+    lobby_player(l, 50, 0, 0, REGION_EU)
+    lobby_add_bad_sport(l, 50, 60)
+    expect_eq(lobby_pool(l, 50), 1)
+    expect_eq(lobby_can_join(l, good, 50, 30), LBR_POOL)
+    expect_eq(lobby_find(l, 50, SESK_PUBLIC, REGION_EU, 30), 0)
+    # a session made by a bad sport is of their pool, and the clean do not find it
+    let bad = lobby_create(l, SESK_PUBLIC, 50, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    expect_eq(lobby_can_join(l, bad, 10, 30), LBR_POOL)
+    lobby_player(l, 51, 0, 0, REGION_EU)
+    lobby_add_bad_sport(l, 51, 70)
+    expect_eq(lobby_can_join(l, bad, 51, 30), LBR_OK)
+    # the kind that does not segregate takes both
+    let tiny = lobby_create(l, SESK_TINY, 11, 0)
+    expect_eq(lobby_can_join(l, tiny, 50, 10), LBR_OK)
+  }
+}

@@ -1,0 +1,14 @@
+# system.ludic - the lobby as a system: it ticks in PH_SIMULATE and saves each player's bad sport.
+export function lobby_system() -> System {
+  let s = system_new("lobby", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn lobby_reset
+  s.tick = fn lobby__tick
+  s.save = fn lobby_save
+  s.load = fn lobby_load
+  return s
+}
+
+function lobby__tick(lobby_st: mut LobbyState, lobby_steps_m: mut LobbyStepsMachine, t: Tick) -> void {
+  lobby_tick(lobby_st, lobby_steps_m, t.dt)
+}

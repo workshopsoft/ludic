@@ -1,0 +1,7 @@
+# ludic.lobby - who plays with whom: sessions of a kind (public, invite-only, friends, crew, solo, a job's
+# instance), admission and matchmaking by kind, region, ping, skill and crew, the moves between a freemode
+# session and a job instance and back, host migration with a handed-off state, join in progress, kicks and
+# vote-kicks, passive mode, and anti-grief rules as data. Uses ludic.base and nothing else. See README.md.
+package "ludic.lobby"
+version "0.1.0"
+kind source

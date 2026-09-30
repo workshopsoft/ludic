@@ -1,0 +1,167 @@
+# match.ludic - finding a session to play in. The sessions this lobby keeps and the listings it has learned of
+# (a Steam lobby search, a matchmaker's list: lobby_learn) are scored against what a player is looking for, and the
+# best go first: a friend in it, a crew mate, the same region, near in skill, fuller (a session with people in it
+# beats an empty one). Only what the player could join is offered; a listing is judged on what it says of itself.
+
+# a listing, as the game's outside world describes it, made or updated by its key
+@alloc_ok("a listing is made once, when it is first learned of")
+export function lobby_learn(lobby_st: mut LobbyState, key: string, kind: int, region: int, members: int, capacity: int, skill: int, host: int, crew: int, pool: int, ping: int) -> int {
+  var at = -1
+  for i in 0 .. len(lobby_st.lb__listings) { if lobby_st.lb__listings[i].key == key { at = i } }
+  if at < 0 {
+    let l = new LobbyListing
+    l.key = `{key}`
+    push(lobby_st.lb__listings, l)
+    at = len(lobby_st.lb__listings) - 1
+  }
+  let l = lobby_st.lb__listings[at]
+  l.kind = kind
+  l.region = region
+  l.members = members
+  l.capacity = capacity
+  l.skill = skill
+  l.host = host
+  l.crew = crew
+  l.pool = pool
+  l.ping = ping
+  l.locked = false
+  l.seen = lobby_st.lb__time
+  return at
+}
+
+export function lobby_forget(lobby_st: mut LobbyState, key: string) -> void {
+  let keep = new []LobbyListing
+  for i in 0 .. len(lobby_st.lb__listings) { if lobby_st.lb__listings[i].key != key { push(keep, lobby_st.lb__listings[i]) } }
+  lobby_st.lb__listings = keep
+}
+
+export function lobby_listings(lobby_st: LobbyState) -> int { return len(lobby_st.lb__listings) }
+
+export function lobby_listing_key(lobby_st: LobbyState, i: int) -> string {
+  if i < 0 or i >= len(lobby_st.lb__listings) { return "" }
+  return lobby_st.lb__listings[i].key
+}
+
+# how well a session suits a player who wants `kind` (-1: any that quick join may take) in `region`: higher is better,
+# below zero not at all
+function lb__score(lobby_st: LobbyState, who: int, members: int, capacity: int, skill: int, region: int, want_region: int, crew_mates: int, friends: int) -> int {
+  var score = 100 + 200 * members / Math.max(capacity, 1)
+  score += 500 * Math.min(friends, 1)
+  score += 400 * Math.min(crew_mates, 1)
+  if region == want_region { score += 60 }
+  var d = lobby_skill_of(lobby_st, who) - skill
+  if d < 0 { d = 0 - d }
+  score -= Math.min(d, 100) / 2
+  return score
+}
+
+# the sessions and listings a player could join, best first: the answer is read with lobby_match_session /
+# _listing / _score. `kind` -1 takes any kind that allows quick join. A player's own session is never offered.
+export function lobby_find(lobby_st: mut LobbyState, who: int, kind: int, region: int, ping: int) -> int {
+  List.clear(lobby_st.lb__m_sess)
+  List.clear(lobby_st.lb__m_list)
+  List.clear(lobby_st.lb__m_score)
+  let own = lobby_session_of(lobby_st, who)
+  let crew = lobby_crew_of(lobby_st, who)
+  for i in 0 .. tb_len(lobby_st.lb__tab) {
+    let s = lobby_st.lb__tab.rec[i]
+    let id = tb_handle(lobby_st.lb__tab, i)
+    let k = SessionKinds[s.kind]
+    if id == own or not k.listed or k.job { continue }
+    if kind >= 0 and s.kind != kind { continue }
+    if kind < 0 and not k.quick { continue }
+    if s.phase != LobbyPhase.Open { continue }
+    if lb__check(lobby_st, s, who, false, ping) != LBR_OK { continue }
+    var friends = 0
+    var mates = 0
+    for m in 0 .. len(s.members) {
+      if not s.members[m].present { continue }
+      if LobbyWorld.is_friend(who, s.members[m].who) { friends += 1 }
+      if crew != 0 and s.members[m].crew == crew { mates += 1 }
+    }
+    lb__match_add(lobby_st, id, -1, lb__score(lobby_st, who, lb__count(s), k.capacity, lb__avg_skill(lobby_st, s), s.region, region, mates, friends))
+  }
+  for i in 0 .. len(lobby_st.lb__listings) {
+    let l = lobby_st.lb__listings[i]
+    if lb__kind_ok(l.kind) == false or l.locked or l.members >= l.capacity { continue }
+    let k = SessionKinds[l.kind]
+    if not k.listed or k.job { continue }
+    if kind >= 0 and l.kind != kind { continue }
+    if kind < 0 and not k.quick { continue }
+    if k.segregate and l.pool != lobby_pool(lobby_st, who) { continue }
+    if k.region_lock and lb__region_group(region) != lb__region_group(l.region) { continue }
+    var limit = k.ping_max
+    if limit == 0 and l.region >= 0 and l.region < REGION_COUNT { limit = LobbyRegions[l.region].ping_max }
+    if limit > 0 and l.ping > limit { continue }
+    var d = lobby_skill_of(lobby_st, who) - l.skill
+    if d < 0 { d = 0 - d }
+    if k.skill_band > 0 and d > k.skill_band { continue }
+    if k.join == LBJ_INVITE or k.join == LBJ_SOLO or k.join == LBJ_CLOSED { continue }
+    if k.join == LBJ_CREW and (crew == 0 or crew != l.crew) { continue }
+    var friends = 0
+    if LobbyWorld.is_friend(who, l.host) { friends = 1 }
+    if k.join == LBJ_FRIENDS and friends == 0 { continue }
+    var mates = 0
+    if crew != 0 and l.crew == crew { mates = 1 }
+    lb__match_add(lobby_st, -1, i, lb__score(lobby_st, who, l.members, l.capacity, l.skill, l.region, region, mates, friends))
+  }
+  return len(lobby_st.lb__m_score)
+}
+
+# into the answer, kept sorted by score (highest first)
+function lb__match_add(lobby_st: mut LobbyState, session: int, listing: int, score: int) -> void {
+  var at = len(lobby_st.lb__m_score)
+  while at > 0 and lobby_st.lb__m_score[at - 1] < score { at -= 1 }
+  List.insert(lobby_st.lb__m_score, at, score)
+  List.insert(lobby_st.lb__m_sess, at, session)
+  List.insert(lobby_st.lb__m_list, at, listing)
+}
+
+export function lobby_match_session(lobby_st: LobbyState, i: int) -> int {
+  if i < 0 or i >= len(lobby_st.lb__m_sess) { return -1 }
+  return lobby_st.lb__m_sess[i]
+}
+
+export function lobby_match_listing(lobby_st: LobbyState, i: int) -> int {
+  if i < 0 or i >= len(lobby_st.lb__m_list) { return -1 }
+  return lobby_st.lb__m_list[i]
+}
+
+export function lobby_match_score(lobby_st: LobbyState, i: int) -> int {
+  if i < 0 or i >= len(lobby_st.lb__m_score) { return 0 }
+  return lobby_st.lb__m_score[i]
+}
+
+# Quick join: the best match. A session this lobby keeps is joined (its id); a listing is a fact to connect to
+# (LBF_CONNECT, who, the listing's place, its key) and -2; with nothing to join, a new session of `kind` when
+# `create` (its id), else -1. Nothing found also asks the outside world to search (LobbyOutside.search).
+export function lobby_quick_join(lobby_st: mut LobbyState, who: int, kind: int, region: int, ping: int, create: bool) -> int {
+  lobby_st.lb__why = LBR_OK
+  var n = lobby_find(lobby_st, who, kind, region, ping)
+  if n == 0 {
+    LobbyOutside.search(kind, region)
+    if not create or kind < 0 { return -1 }
+    return lobby_create(lobby_st, kind, who, region)
+  }
+  for i in 0 .. n {
+    let s = lobby_match_session(lobby_st, i)
+    if s >= 0 {
+      if lobby_join(lobby_st, s, who, ping) {
+        let f = lb__fact(lobby_st, LBF_TRANSFER, -1)
+        f.who = who
+        f.to = s
+        f.n = LBT_TO_SESSION
+        return s
+      }
+      continue
+    }
+    let l = lobby_match_listing(lobby_st, i)
+    let f = lb__fact(lobby_st, LBF_CONNECT, -1)
+    f.who = who
+    f.n = l
+    f.text = lobby_st.lb__listings[l].key
+    return -2
+  }
+  if not create or kind < 0 { return -1 }
+  return lobby_create(lobby_st, kind, who, region)
+}

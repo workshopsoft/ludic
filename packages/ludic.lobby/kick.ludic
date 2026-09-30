@@ -1,0 +1,137 @@
+# kick.ludic - putting a player out: the host's kick, and a vote of the session. A kick bans for the kind's
+# `ban_secs` (the player may not rejoin that session while it runs). A vote needs at least three in the session,
+# one at a time, and a pause between a player's votes; the target cannot vote, and a majority of everyone else
+# decides - as soon as it is there, or when the vote's thirty seconds are up.
+
+const LB_VOTE_SECS: float = 30.0
+const LB_VOTE_PAUSE: float = 60.0          # a player's next vote, and the session's
+const LB_VOTE_MIN: int = 3
+
+function lb__kick(lobby_st: mut LobbyState, s: LobbySession, session: int, target: int, by: int, secs: float) -> void {
+  let b = new LbBan
+  b.who = target
+  b.until = lobby_st.lb__time + secs
+  push(s.bans, b)
+  let k = lb__fact(lobby_st, LBF_KICKED, session)
+  k.who = target
+  k.by = by
+  k.n = int(secs)
+  let d = lb__fact(lobby_st, LBF_DROP, session)
+  d.who = target
+  lb__leave(lobby_st, session, target, LBL_KICKED)
+}
+
+# the host puts a player out; `secs` < 0 is the kind's ban
+export function lobby_kick(lobby_st: mut LobbyState, session: int, by: int, target: int, secs: float) -> bool {
+  lobby_st.lb__why = LBR_OK
+  let s = lb__find(lobby_st, session)
+  if s == null or lb__member(s, target) < 0 or target == by { return false }
+  if s.host != by {
+    lobby_st.lb__why = LBR_NOT_HOST
+    return false
+  }
+  var ban = secs
+  if ban < 0.0 { ban = SessionKinds[s.kind].ban_secs }
+  lb__kick(lobby_st, s, session, target, by, ban)
+  return true
+}
+
+function lb__voters(s: LobbySession) -> int { return lb__count(s) - 1 }        # everyone but the target
+
+# open a vote to put `target` out
+export function lobby_votekick(lobby_st: mut LobbyState, session: int, by: int, target: int) -> bool {
+  lobby_st.lb__why = LBR_OK
+  let s = lb__find(lobby_st, session)
+  if s == null { return false }
+  let bi = lb__member(s, by)
+  let ti = lb__member(s, target)
+  if bi < 0 or ti < 0 or by == target { return false }
+  if not SessionKinds[s.kind].vote_kick {
+    lobby_st.lb__why = LBR_RULES
+    return false
+  }
+  if s.vote.open {
+    lobby_st.lb__why = LBR_BUSY
+    return false
+  }
+  let p = lb__player(lobby_st, by)
+  if lb__count(s) < LB_VOTE_MIN or lobby_st.lb__time - p.vote_at < LB_VOTE_PAUSE or s.age < s.vote_cool {
+    lobby_st.lb__why = LBR_COOLDOWN
+    return false
+  }
+  p.vote_at = lobby_st.lb__time
+  let v = s.vote
+  v.open = true
+  v.target = target
+  v.by = by
+  v.yes = 1 << bi
+  v.no = 0
+  v.left = LB_VOTE_SECS
+  let f = lb__fact(lobby_st, LBF_VOTE_OPENED, session)
+  f.who = target
+  f.by = by
+  lb__vote_count(lobby_st, s, session)
+  return true
+}
+
+function lb__bits(n: int) -> int {
+  var c = 0
+  for i in 0 .. 31 { if (n & (1 << i)) != 0 { c += 1 } }
+  return c
+}
+
+# a vote: the target does not vote; once a majority of the others is for or against, it is over
+export function lobby_vote(lobby_st: mut LobbyState, session: int, who: int, yes: bool) -> bool {
+  let s = lb__find(lobby_st, session)
+  if s == null or not s.vote.open or who == s.vote.target { return false }
+  let i = lb__member(s, who)
+  if i < 0 or i >= 30 { return false }
+  let v = s.vote
+  v.yes = v.yes & ~(1 << i)
+  v.no = v.no & ~(1 << i)
+  if yes { v.yes = v.yes | (1 << i) } else { v.no = v.no | (1 << i) }
+  lb__vote_count(lobby_st, s, session)
+  return true
+}
+
+function lb__vote_count(lobby_st: mut LobbyState, s: LobbySession, session: int) -> void {
+  let e = lb__voters(s)
+  let y = lb__bits(s.vote.yes)
+  let n = lb__bits(s.vote.no)
+  if y * 2 > e { lb__vote_end(lobby_st, s, session, true) } else if n * 2 >= e { lb__vote_end(lobby_st, s, session, false) }
+}
+
+function lb__vote_end(lobby_st: mut LobbyState, s: LobbySession, session: int, passed: bool) -> void {
+  if not s.vote.open { return }
+  s.vote.open = false
+  s.vote_cool = s.age + LB_VOTE_PAUSE
+  let target = s.vote.target
+  let f = lb__fact(lobby_st, LBF_VOTE_RESOLVED, session)
+  f.who = target
+  f.by = s.vote.by
+  if passed { f.n = 1 }
+  if passed and lb__member(s, target) >= 0 {
+    lb__offence(lobby_st, s, session, target, LBO_VOTE_KICKED)
+    lb__kick(lobby_st, s, session, target, s.vote.by, SessionKinds[s.kind].ban_secs)
+  }
+}
+
+export function lobby_vote_open(lobby_st: LobbyState, session: int) -> bool {
+  let s = lb__find(lobby_st, session)
+  return s != null and s.vote.open
+}
+
+export function lobby_vote_target(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null or not s.vote.open { return -1 }
+  return s.vote.target
+}
+
+# the vote's clock: time up, the majority of those who voted decides, a tie fails
+function lb__vote_tick(lobby_st: mut LobbyState, s: LobbySession, session: int, dt: float) -> void {
+  if not s.vote.open { return }
+  s.vote.left -= dt
+  if s.vote.left > 0.0 { return }
+  let passed = lb__bits(s.vote.yes) * 2 > lb__voters(s)
+  lb__vote_end(lobby_st, s, session, passed)
+}

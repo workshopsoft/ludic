@@ -1,0 +1,75 @@
+# facts.ludic - what happened, for the game to do with its transport: let in, let go, hand over, move
+export const LBF_CREATED: int = 0         # a session was made (session, kind, who: its host)
+export const LBF_CLOSED: int = 1          # it ended (session, reason)
+export const LBF_JOINED: int = 2          # a member joined (session, who)
+export const LBF_LEFT: int = 3            # one left (session, who, reason in `n`: LBL_*)
+export const LBF_REFUSED: int = 4         # a join was refused (session, who, reason: LBR_*)
+export const LBF_KICKED: int = 5          # (session, who, by, n: seconds banned)
+export const LBF_VOTE_OPENED: int = 6     # a vote to kick (session, who: the target, by)
+export const LBF_VOTE_RESOLVED: int = 7   # (session, who, n: 1 passed, 0 not)
+export const LBF_HOST_MIGRATE: int = 8    # the host changed (session, who: the new host, by: the old)
+export const LBF_HOST_STATE: int = 9      # the new host has a state to take (session, n: revision)
+export const LBF_TRANSFER: int = 10       # a player moves between sessions (who, session: from, to, n: LBT_*)
+export const LBF_PHASE: int = 11          # a session's phase changed (session, n: the phase)
+export const LBF_FLAG: int = 12           # a member's flags changed (session, who, n: the flags)
+export const LBF_OFFENCE: int = 13        # (session, who, n: points, what)
+export const LBF_GHOST: int = 14          # a member is ghosted for a while (session, who, secs in x)
+export const LBF_PUBLISH: int = 15        # list a session outside (session, kind, n: members)
+export const LBF_WITHDRAW: int = 16       # take it down
+export const LBF_CHECKPOINT_DUE: int = 17 # the host is to call lobby_checkpoint_set (session)
+export const LBF_CHECKPOINT_SENT: int = 18   # send the state to the members (session, n: revision)
+export const LBF_CONNECT: int = 19        # quick join found a listing: connect to it (who, n: the listing's place)
+export const LBF_BAD_SPORT: int = 20      # a player's pool changed (who, n: the pool)
+export const LBF_INVITED: int = 21        # (session, who, by)
+export const LBF_RESERVE_LAPSED: int = 22 # a seat kept for a player away on a job was given up (session, who)
+export const LBF_DROP: int = 23           # a member is to be disconnected (session, who): a kick, a close
+
+export const LBL_LEFT: int = 0            # asked to leave
+export const LBL_GONE: int = 1            # the transport lost them
+export const LBL_KICKED: int = 2
+export const LBL_MOVED: int = 3           # went to another session
+export const LBL_CLOSED: int = 4          # the session ended
+export const LBL_NOT_READY: int = 5       # a job's instance began without them
+
+export const LBT_TO_JOB: int = 0
+export const LBT_FROM_JOB: int = 1
+export const LBT_TO_SESSION: int = 2      # a quick join or a move the game asked for
+export const LBT_ELSEWHERE: int = 3       # the place they came from was gone: somewhere new
+
+export property LobbyFact {
+  what: int = 0
+  session: int = -1
+  to: int = -1
+  who: int = -1
+  by: int = -1
+  kind: int = -1
+  n: int = 0
+  reason: int = 0
+  x: float = 0.0
+  text: string = ""
+}
+
+function lb__facts__new() -> Queue<LobbyFact> { return queue_new("lobby.facts") }
+
+export function lobby_facts(lobby_st: LobbyState) -> Queue<LobbyFact> { return lobby_st.lb__facts }
+
+function lb__fact(lobby_st: mut LobbyState, what: int, session: int) -> LobbyFact {
+  var f = q_rec(lobby_st.lb__facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new LobbyFact
+    q_ring_add(lobby_st.lb__facts, f)
+  }
+  f.what = what
+  f.session = session
+  f.to = -1
+  f.who = -1
+  f.by = -1
+  f.kind = -1
+  f.n = 0
+  f.reason = 0
+  f.x = 0.0
+  f.text = ""
+  q_push(lobby_st.lb__facts, f)
+  return f
+}

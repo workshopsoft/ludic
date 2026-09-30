@@ -1,0 +1,154 @@
+# kick_test.ludic - putting a player out: the host's kick and its ban, and a vote of the session - who may open
+# one, who votes, what a majority is, what happens when time runs out
+import "ludic.lobby"
+import "ludic.base"
+program KickTest {
+  import "fixture/game.ludic"
+
+  function room(l: mut LobbyState, m: mut LobbyStepsMachine, n: int) -> int {
+    let s = lobby_create(l, SESK_PUBLIC, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    for i in 2 .. n + 1 { lobby_join(l, s, i, 30) }
+    return s
+  }
+
+  test "the host puts a player out, who cannot come back until the ban runs out" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 3)
+    expect(not lobby_kick(l, s, 2, 3, -1.0))
+    expect_eq(lobby_why(l), LBR_NOT_HOST)
+    q_clear(lobby_facts(l))
+    expect(lobby_kick(l, s, 1, 3, -1.0))
+    expect_eq(lobby_count(l, s), 2)
+    expect_eq(lobby_session_of(l, 3), -1)
+    let fs = q_drain(lobby_facts(l))
+    var kicked = 0
+    var drop = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == LBF_KICKED and fs[i].who == 3 and fs[i].by == 1 and fs[i].n == 600 { kicked += 1 }
+      if fs[i].what == LBF_DROP and fs[i].who == 3 { drop += 1 }
+    }
+    expect_eq(kicked, 1)
+    expect_eq(drop, 1)
+    expect_eq(lobby_can_join(l, s, 3, 30), LBR_BANNED)
+    expect_eq(lobby_join_code(l, lobby_code(l, s), 3, 30), -1)     # not even with the code
+    lobby_tick(l, m, 700.0)
+    expect(lobby_join(l, s, 3, 30))
+  }
+
+  test "the host cannot kick themselves, nor a player who is not there" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 2)
+    expect(not lobby_kick(l, s, 1, 1, -1.0))
+    expect(not lobby_kick(l, s, 1, 9, -1.0))
+    expect(lobby_kick(l, s, 1, 2, 30.0))
+    lobby_tick(l, m, 31.0)
+    expect(lobby_join(l, s, 2, 30))
+  }
+
+  test "a vote: a majority of the others puts the target out, with a ban and a mark against them" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 4)
+    q_clear(lobby_facts(l))
+    expect(lobby_votekick(l, s, 2, 4))
+    expect(lobby_vote_open(l, s))
+    expect_eq(lobby_vote_target(l, s), 4)
+    expect(not lobby_vote(l, s, 4, false))                          # the target does not vote
+    expect(lobby_vote(l, s, 1, true))                                # 2 of the 3 others are for: a majority
+    expect(not lobby_vote_open(l, s))
+    expect_eq(lobby_session_of(l, 4), -1)
+    expect_eq(lobby_can_join(l, s, 4, 30), LBR_BANNED)
+    expect_eq(lobby_bad_sport(l, 4), 15)
+    let fs = q_drain(lobby_facts(l))
+    var opened = 0
+    var passed = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == LBF_VOTE_OPENED { opened += 1 }
+      if fs[i].what == LBF_VOTE_RESOLVED and fs[i].n == 1 and fs[i].who == 4 { passed += 1 }
+    }
+    expect_eq(opened, 1)
+    expect_eq(passed, 1)
+  }
+
+  test "a vote that goes against ends at once, and the next has to wait" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 4)
+    expect(lobby_votekick(l, s, 2, 4))
+    expect(lobby_vote(l, s, 1, false))
+    expect(lobby_vote(l, s, 3, false))                               # two of three against
+    expect(not lobby_vote_open(l, s))
+    expect_eq(lobby_session_of(l, 4), s)
+    expect_eq(lobby_bad_sport(l, 4), 0)
+    expect(not lobby_votekick(l, s, 2, 4))                            # the same player again, at once
+    expect_eq(lobby_why(l), LBR_COOLDOWN)
+    expect(not lobby_votekick(l, s, 3, 4))                            # the session's pause too
+    expect_eq(lobby_why(l), LBR_COOLDOWN)
+    lobby_tick(l, m, 61.0)
+    expect(lobby_votekick(l, s, 3, 4))
+  }
+
+  test "a vote left to run out is decided by those who voted" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = lobby_create(l, SESK_BIG, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    for i in 2 .. 6 { lobby_join(l, s, i, 30) }
+    expect(lobby_votekick(l, s, 2, 5))                                # 1 yes of 4 others
+    expect(lobby_vote(l, s, 3, true))                                 # 2 of 4: not a majority
+    expect(lobby_vote_open(l, s))
+    pass(l, m, 31.0)
+    expect(not lobby_vote_open(l, s))
+    expect_eq(lobby_session_of(l, 5), s)                              # a tie fails
+    lobby_tick(l, m, 61.0)
+    expect(lobby_votekick(l, s, 2, 5))
+    expect(lobby_vote(l, s, 3, true))
+    expect(lobby_vote(l, s, 1, true))                                 # 3 of 4: passes before time
+    expect_eq(lobby_session_of(l, 5), -1)
+  }
+
+  test "who may open a vote" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let few = room(l, m, 2)
+    expect(not lobby_votekick(l, few, 1, 2))                           # three in a session at least
+    expect_eq(lobby_why(l), LBR_COOLDOWN)
+    let t = lobby_create(l, SESK_TINY, 20, 0)
+    lobby_join(l, t, 21, 10)
+    expect(not lobby_votekick(l, t, 20, 21))
+    expect_eq(lobby_why(l), LBR_RULES)                                 # the kind has no votes
+    let s = room2(l, m)
+    expect(not lobby_votekick(l, s, 30, 30))
+    expect(not lobby_votekick(l, s, 99, 31))                           # not in it
+    expect(lobby_votekick(l, s, 30, 31))
+    expect(not lobby_votekick(l, s, 32, 31))                           # one at a time
+    expect_eq(lobby_why(l), LBR_BUSY)
+  }
+
+  function room2(l: mut LobbyState, m: mut LobbyStepsMachine) -> int {
+    let s = lobby_create(l, SESK_PUBLIC, 30, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    lobby_join(l, s, 31, 30)
+    lobby_join(l, s, 32, 30)
+    return s
+  }
+
+  test "a vote about a player who leaves, or by one who does, is over" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 4)
+    expect(lobby_votekick(l, s, 2, 4))
+    lobby_leave(l, s, 4)
+    expect(not lobby_vote_open(l, s))
+    expect_eq(lobby_bad_sport(l, 4), 0)                                # they went of their own accord
+    lobby_tick(l, m, 61.0)
+    expect(lobby_votekick(l, s, 2, 3))
+    lobby_leave(l, s, 2)
+    expect(not lobby_vote_open(l, s))
+  }
+
+  test "a vote to put out the host hands the session on" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 4)
+    expect(lobby_votekick(l, s, 2, 1))
+    lobby_vote(l, s, 3, true)
+    expect_eq(lobby_session_of(l, 1), -1)
+    expect_eq(lobby_host(l, s), 2)
+  }
+}

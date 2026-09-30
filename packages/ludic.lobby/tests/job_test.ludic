@@ -1,0 +1,208 @@
+# job_test.ludic - a job's instance: players move into it from freemode keeping a seat, it begins when they are
+# ready or the wait is up, joins in progress where the kind allows, and everyone goes home when the job ends - to
+# the session they came from, or else to one they share
+import "ludic.lobby"
+import "ludic.base"
+program JobTest {
+  import "fixture/game.ludic"
+
+  # a freemode session with `n` players from 1
+  function freemode(l: mut LobbyState, m: mut LobbyStepsMachine, n: int) -> int {
+    let s = lobby_create(l, SESK_PUBLIC, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    for i in 2 .. n + 1 { lobby_join(l, s, i, 30) }
+    return s
+  }
+
+  function transfers(l: mut LobbyState, how: int) -> int {
+    let fs = q_drain(lobby_facts(l))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == LBF_TRANSFER and fs[i].n == how { n += 1 } }
+    return n
+  }
+
+  test "players move into an instance, leaving a seat behind" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let f = freemode(l, m, 3)
+    q_clear(lobby_facts(l))
+    let inst = lobby_start_job(l, f, 1, "heist_a", SESK_JOB, [2, 3])
+    expect(inst >= 0)
+    expect_eq(lobby_job(l, inst), "heist_a")
+    expect_eq(lobby_parent(l, inst), f)
+    expect_eq(lobby_host(l, inst), 1)
+    expect_eq(lobby_count(l, inst), 3)
+    expect_eq(lobby_count(l, f), 0)
+    expect_eq(lobby_session_of(l, 2), inst)
+    expect_eq(transfers(l, LBT_TO_JOB), 3)
+    # their seats are kept: a capacity of four, three of them held
+    expect(lobby_join(l, f, 10, 30))
+    expect(not lobby_join(l, f, 11, 30))
+    expect_eq(lobby_why(l), LBR_FULL)
+    # a player who is not in the session cannot be taken
+    let inst2 = lobby_start_job(l, f, 10, "other", SESK_JOB, [99])
+    expect(inst2 >= 0)
+    expect_eq(lobby_count(l, inst2), 1)
+    # only a job's kind is an instance
+    let g = lobby_create(l, SESK_PUBLIC, 70, REGION_EU)
+    expect_eq(lobby_start_job(l, g, 70, "x", SESK_PUBLIC, new []int), -1)
+    expect_eq(lobby_why(l), LBR_RULES)
+  }
+
+  test "an instance begins when everyone is ready, or when the wait is up and the rest are sent back" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let f = freemode(l, m, 3)
+    let a = lobby_start_job(l, f, 1, "job", SESK_JOB, [2, 3])
+    lobby_tick(l, m, 1.0)
+    expect_eq(lobby_phase(l, a), LobbyPhase.Forming)
+    lobby_ready(l, a, 1)
+    lobby_ready(l, a, 2)
+    lobby_ready(l, a, 3)
+    lobby_tick(l, m, 0.5)
+    expect_eq(lobby_phase(l, a), LobbyPhase.Running)
+    expect_eq(lobby_count(l, a), 3)
+    # a second job: only one ready when the wait ends
+    let f2 = freemode2(l, m)
+    let b = lobby_start_job(l, f2, 11, "job", SESK_JOB, [12, 13])
+    lobby_ready(l, b, 11)
+    pass(l, m, 19.0)
+    expect_eq(lobby_phase(l, b), LobbyPhase.Forming)
+    q_clear(lobby_facts(l))
+    pass(l, m, 2.0)
+    expect_eq(lobby_phase(l, b), LobbyPhase.Running)
+    expect_eq(lobby_count(l, b), 1)
+    expect_eq(lobby_session_of(l, 12), f2)                  # back where they came from, without the job
+    expect_eq(lobby_session_of(l, 13), f2)
+    expect_eq(transfers(l, LBT_FROM_JOB), 2)
+  }
+
+  function freemode2(l: mut LobbyState, m: mut LobbyStepsMachine) -> int {
+    let s = lobby_create(l, SESK_PUBLIC, 11, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    lobby_join(l, s, 12, 30)
+    lobby_join(l, s, 13, 30)
+    return s
+  }
+
+  test "the job ends and everyone goes home" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let f = freemode(l, m, 3)
+    let inst = lobby_start_job(l, f, 1, "job", SESK_JOB, [2, 3])
+    for who in 1 .. 4 { lobby_ready(l, inst, who) }
+    pass(l, m, 1.0)
+    expect_eq(lobby_phase(l, inst), LobbyPhase.Running)
+    q_clear(lobby_facts(l))
+    expect(lobby_job_ended(l, inst))
+    lobby_tick(l, m, 0.5)
+    expect_eq(lobby_phase(l, inst), LobbyPhase.Closed)        # Returning, and then nobody left in it
+    expect_eq(lobby_count(l, f), 3)
+    expect_eq(lobby_session_of(l, 1), f)
+    expect_eq(lobby_session_of(l, 3), f)
+    expect_eq(transfers(l, LBT_FROM_JOB), 3)
+    pass(l, m, 6.0)
+    expect(not lobby_exists(l, inst))
+    expect(lobby_is_host(l, f, 1))
+  }
+
+  test "a session that was lost while they were away is replaced, one new session for those who shared it" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let f = freemode(l, m, 3)
+    let inst = lobby_start_job(l, f, 1, "job", SESK_JOB, [2, 3])
+    for who in 1 .. 4 { lobby_ready(l, inst, who) }
+    pass(l, m, 1.0)
+    lobby_close(l, f)
+    pass(l, m, 1.0)
+    expect_eq(lobby_phase(l, f), LobbyPhase.Closed)
+    q_clear(lobby_facts(l))
+    lobby_job_ended(l, inst)
+    lobby_tick(l, m, 0.5)
+    let home = lobby_session_of(l, 1)
+    expect(home >= 0 and home != f)
+    expect_eq(lobby_session_of(l, 2), home)
+    expect_eq(lobby_session_of(l, 3), home)
+    expect_eq(lobby_kind_of(l, home), SESK_PUBLIC)
+    expect_eq(transfers(l, LBT_ELSEWHERE), 3)
+  }
+
+  test "a player who joined a job from another session goes back there, or to where the job began if it is gone" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let a = freemode(l, m, 2)
+    let b = lobby_create(l, SESK_PUBLIC, 20, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    lobby_join(l, b, 21, 30)
+    let inst = lobby_start_job(l, a, 1, "job", SESK_JOB_OPEN, [2])
+    for who in 1 .. 3 { lobby_ready(l, inst, who) }
+    pass(l, m, 1.0)
+    # two players of b join the job in progress: one of them will find b gone
+    expect(lobby_join(l, inst, 20, 30))
+    expect(lobby_join(l, inst, 21, 30))
+    expect_eq(lobby_count(l, b), 0)
+    lobby_ready(l, inst, 20)
+    lobby_ready(l, inst, 21)
+    expect(lobby_join(l, inst, 20, 30))
+    lobby_close(l, b)
+    pass(l, m, 1.0)
+    lobby_job_ended(l, inst)
+    lobby_tick(l, m, 0.5)
+    expect_eq(lobby_session_of(l, 1), a)
+    expect_eq(lobby_session_of(l, 2), a)
+    expect_eq(lobby_session_of(l, 20), a)                   # b was closed: the session the job began in takes them
+    expect_eq(lobby_session_of(l, 21), a)
+  }
+
+  test "a job that allows it takes players in progress, one that does not refuses them" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let f = freemode(l, m, 2)
+    let closed = lobby_start_job(l, f, 1, "job", SESK_JOB, [2])
+    for who in 1 .. 3 { lobby_ready(l, closed, who) }
+    pass(l, m, 1.0)
+    expect_eq(lobby_phase(l, closed), LobbyPhase.Running)
+    expect_eq(lobby_can_join(l, closed, 9, 30), LBR_JIP)
+    let g = lobby_create(l, SESK_PUBLIC, 30, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    lobby_join(l, g, 31, 30)
+    let open = lobby_start_job(l, g, 30, "job", SESK_JOB_OPEN, [31])
+    for who in 30 .. 32 { lobby_ready(l, open, who) }
+    pass(l, m, 1.0)
+    expect_eq(lobby_phase(l, open), LobbyPhase.Running)
+    expect_eq(lobby_can_join(l, open, 40, 30), LBR_OK)
+    expect(lobby_join(l, open, 40, 30))
+    expect_eq(lobby_count(l, open), 3)
+    lobby_ready(l, open, 40)
+    lobby_job_ended(l, open)
+    expect_eq(lobby_can_join(l, open, 41, 30), LBR_CLOSED)
+  }
+
+  test "a player who leaves a job that has begun is scored for it" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let f = freemode(l, m, 2)
+    let inst = lobby_start_job(l, f, 1, "job", SESK_JOB_OPEN, [2])
+    for who in 1 .. 3 { lobby_ready(l, inst, who) }
+    pass(l, m, 1.0)
+    lobby_gone(l, 2)
+    expect_eq(lobby_bad_sport(l, 2), 25)
+    expect_eq(lobby_count(l, inst), 1)
+    # before it began, walking out costs nothing
+    let g = lobby_create(l, SESK_PUBLIC, 10, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    lobby_join(l, g, 11, 30)
+    let early = lobby_start_job(l, g, 10, "job", SESK_JOB_OPEN, [11])
+    lobby_gone(l, 11)
+    expect_eq(lobby_bad_sport(l, 11), 0)
+    expect(early >= 0)
+  }
+
+  test "a move of a player's own: an invitation taken" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let a = freemode(l, m, 2)
+    let b = lobby_create(l, SESK_PUBLIC, 20, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    q_clear(lobby_facts(l))
+    expect(lobby_move(l, 2, b, 30))
+    expect_eq(lobby_session_of(l, 2), b)
+    expect_eq(lobby_count(l, a), 1)
+    expect_eq(transfers(l, LBT_TO_SESSION), 1)
+    lobby_lock(l, b, 20, true)
+    expect(not lobby_move(l, 1, b, 30))
+    expect_eq(lobby_session_of(l, 1), a)
+  }
+}

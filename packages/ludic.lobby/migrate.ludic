@@ -1,0 +1,272 @@
+# migrate.ludic - when the host goes. The heir is a pure function of the roster - the members who can host, the
+# one who has been there longest (ties to the lower id) - so every machine that knows the roster picks the same
+# one without a word between them. The state the game's host keeps (the world's, a job's) is handed on while the
+# host is alive: every `checkpoint_secs` the lobby asks the game to export it (LobbyWorld.export) and says to send
+# it (LBF_CHECKPOINT_SENT); a member keeps the latest (lobby_checkpoint_keep). The machine that becomes host is
+# handed the last one it has (LobbyWorld.import).
+
+# the member who takes over a session whose host `old` has gone: -1 when nobody is left
+function lb__heir(s: LobbySession, old: int) -> int {
+  var best = -1
+  for i in 0 .. len(s.members) {
+    let m = s.members[i]
+    if not m.present or m.who == old { continue }
+    if best < 0 {
+      best = i
+      continue
+    }
+    let b = s.members[best]
+    if m.can_host and not b.can_host {
+      best = i
+    } else if m.can_host == b.can_host and (m.joined < b.joined or (m.joined == b.joined and m.who < b.who)) {
+      best = i
+    }
+  }
+  if best < 0 { return -1 }
+  return s.members[best].who
+}
+
+# who would host next, were the host to go now (the game shows it; a test checks it)
+export function lobby_heir(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return -1 }
+  return lb__heir(s, s.host)
+}
+
+function lb__elect(lobby_st: mut LobbyState, s: LobbySession, session: int, old: int) -> void {
+  let next = lb__heir(s, old)
+  if next < 0 { return }
+  if not SessionKinds[s.kind].migrate {
+    lb__close_now(lobby_st, s, session, LBL_CLOSED)
+    return
+  }
+  s.host = next
+  s.checkpoint_in = SessionKinds[s.kind].checkpoint_secs
+  let f = lb__fact(lobby_st, LBF_HOST_MIGRATE, session)
+  f.who = next
+  f.by = old
+  if next == lobby_st.lb__local and s.cp != null {
+    LobbyWorld.import(session, s.cp, s.cp_rev)
+    lb__fact(lobby_st, LBF_HOST_STATE, session).n = s.cp_rev
+  }
+}
+
+# a session that cannot go on: everyone out, and the row waits to be closed by its machine
+function lb__close_now(lobby_st: mut LobbyState, s: LobbySession, session: int, why: int) -> void {
+  for i in 0 .. len(s.members) {
+    if not s.members[i].present { continue }
+    s.members[i].present = false
+    let f = lb__fact(lobby_st, LBF_LEFT, session)
+    f.who = s.members[i].who
+    f.n = why
+    lb__fact(lobby_st, LBF_DROP, session).who = s.members[i].who
+  }
+  for i in 0 .. len(s.reserved) { s.reserved_until[i] = 0.0 }
+  s.host = -1
+  s.vote.open = false
+  s.empty_for = SessionKinds[s.kind].idle_secs
+  s.closed_reason = why
+  lb__withdraw(lobby_st, s, session)
+  let f = lb__fact(lobby_st, LBF_CLOSED, session)
+  f.reason = why
+}
+
+# the game ends a session (a server shutting down, a job abandoned)
+export function lobby_close(lobby_st: mut LobbyState, session: int) -> void {
+  let s = lb__find(lobby_st, session)
+  if s == null { return }
+  lb__close_now(lobby_st, s, session, LBL_CLOSED)
+}
+
+# a closed session asked back while it is still kept: Forming again, with its host the one who asks
+export function lobby_reopen(lobby_st: mut LobbyState, session: int, who: int) -> bool {
+  let s = lb__find(lobby_st, session)
+  if s == null or s.phase != LobbyPhase.Closed { return false }
+  s.reopen = true
+  s.closed_for = 0.0
+  lb__seat(lobby_st, s, session, who, 0, -1, 0)
+  s.host = who
+  return true
+}
+
+# --- the handed-on state ---
+
+# the host has a state to hand on (or `LobbyWorld.export` gave one on the clock): kept, with a revision, and the game
+# is told to send it to the members
+export function lobby_checkpoint_set(lobby_st: mut LobbyState, session: int, state: Val) -> void {
+  let s = lb__find(lobby_st, session)
+  if s == null or state == null { return }
+  s.cp = state
+  s.cp_rev += 1
+  lb__fact(lobby_st, LBF_CHECKPOINT_SENT, session).n = s.cp_rev
+}
+
+# a member keeps what the host sent, unless it already has that or a later one
+export function lobby_checkpoint_keep(lobby_st: mut LobbyState, session: int, rev: int, state: Val) -> bool {
+  let s = lb__find(lobby_st, session)
+  if s == null or state == null or rev <= s.cp_rev { return false }
+  s.cp = state
+  s.cp_rev = rev
+  return true
+}
+
+export function lobby_checkpoint(lobby_st: LobbyState, session: int) -> Val {
+  let s = lb__find(lobby_st, session)
+  if s == null { return null }
+  return s.cp
+}
+
+export function lobby_checkpoint_rev(lobby_st: LobbyState, session: int) -> int {
+  let s = lb__find(lobby_st, session)
+  if s == null { return 0 }
+  return s.cp_rev
+}
+
+# --- the session as a value: what a member keeps of the host's roster, and an heir starts from ---
+
+function lb__ms(f: float) -> int { return int(Math.floor(f * 1000.0 + 0.5)) }
+
+function lb__bint(b: bool) -> int {
+  if b { return 1 }
+  return 0
+}
+
+@alloc_ok("a snapshot is made when a session changes, to be sent")
+export function lobby_snapshot(lobby_st: LobbyState, session: int) -> Val {
+  let s = lb__find(lobby_st, session)
+  if s == null { return null }
+  let v = Value.object()
+  sv_put_int(v, "uid", s.uid)
+  sv_put_str(v, "kind", SessionKinds[s.kind].key)
+  sv_put_int(v, "host", s.host)
+  sv_put_int(v, "region", s.region)
+  sv_put_int(v, "pool", s.pool)
+  sv_put_bool(v, "locked", s.locked)
+  sv_put_bool(v, "ended", s.ended)
+  sv_put_str(v, "job", s.job)
+  sv_put_str(v, "code", s.code)
+  sv_put_int(v, "phase", int(s.phase))
+  sv_put_int(v, "age", lb__ms(s.age))
+  sv_put_int(v, "cp_rev", s.cp_rev)
+  sv_put_int(v, "ready_for", lb__ms(s.ready_for))
+  sv_put_int(v, "empty_for", lb__ms(s.empty_for))
+  sv_put_int(v, "closed_for", lb__ms(s.closed_for))
+  var parent_uid = 0
+  let p = lb__find(lobby_st, s.parent)
+  if p != null { parent_uid = p.uid }
+  sv_put_int(v, "parent", parent_uid)
+  let ms = new []int
+  for i in 0 .. len(s.members) {
+    let m = s.members[i]
+    if not m.present { continue }
+    var origin_uid = 0
+    let o = lb__find(lobby_st, m.origin)
+    if o != null { origin_uid = o.uid }
+    push(ms, m.who)
+    push(ms, lb__ms(m.joined))
+    push(ms, origin_uid)
+    push(ms, m.origin_kind)
+    push(ms, m.crew)
+    push(ms, m.ping)
+    push(ms, m.flags)
+    push(ms, lb__bint(m.can_host))
+    push(ms, lb__bint(m.ready))
+    push(ms, m.team)
+  }
+  sv_put_ints(v, "members", ms)
+  sv_put_ints(v, "invited", s.invited)
+  let bans = new []int
+  for i in 0 .. len(s.bans) {
+    if s.bans[i].until > lobby_st.lb__time {
+      push(bans, s.bans[i].who)
+      push(bans, lb__ms(s.bans[i].until - lobby_st.lb__time))
+    }
+  }
+  sv_put_ints(v, "bans", bans)
+  let rs = new []int
+  for i in 0 .. len(s.reserved) {
+    if s.reserved_until[i] > lobby_st.lb__time {
+      push(rs, s.reserved[i])
+      push(rs, lb__ms(s.reserved_until[i] - lobby_st.lb__time))
+    }
+  }
+  sv_put_ints(v, "reserved", rs)
+  return v
+}
+
+# a session as another machine knows it: made here if this machine has not heard of it, else brought up to date.
+# Returns its id here (the uid is the same everywhere; ids are each table's own), or -1 for a kind this build lacks.
+# The phase is this machine's own machine's: it follows from the roster the snapshot brings.
+@alloc_ok("a mirror is made once per session a machine learns of")
+export function lobby_adopt(lobby_st: mut LobbyState, v: Val) -> int {
+  if v == null or Value.kind(v) != 6 { return -1 }
+  var kind = -1
+  let key = sv_str(v, "kind", "")
+  for i in 0 .. SESK_COUNT { if SessionKinds[i].key == key { kind = i } }
+  if kind < 0 { return -1 }
+  let uid = sv_int(v, "uid", 0)
+  if uid == 0 { return -1 }
+  var id = lobby_by_uid(lobby_st, uid)
+  var s = lb__find(lobby_st, id)
+  if s == null {
+    s = lb__new_session(lobby_st, kind, sv_int(v, "region", 0))
+    s.uid = uid
+    id = tb_add(lobby_st.lb__tab, s)
+  }
+  s.region = sv_int(v, "region", 0)
+  s.pool = sv_int(v, "pool", 0)
+  s.locked = sv_bool(v, "locked", false)
+  s.ended = sv_bool(v, "ended", false)
+  s.job = sv_str(v, "job", "")
+  s.code = sv_str(v, "code", s.code)
+  s.host = sv_int(v, "host", -1)
+  s.age = float(sv_int(v, "age", 0)) / 1000.0
+  s.ready_for = float(sv_int(v, "ready_for", 0)) / 1000.0
+  s.empty_for = float(sv_int(v, "empty_for", 0)) / 1000.0
+  s.closed_for = float(sv_int(v, "closed_for", 0)) / 1000.0
+  s.parent = lobby_by_uid(lobby_st, sv_int(v, "parent", 0))
+  let rev = sv_int(v, "cp_rev", 0)
+  if rev < s.cp_rev { s.cp_rev = rev }
+  let ms = sv_ints(v, "members")
+  for i in 0 .. len(s.members) { s.members[i].present = false }
+  var at = 0
+  var k = 0
+  while k + 9 < len(ms) {
+    if at >= len(s.members) { push(s.members, new LbMember) }
+    let m = s.members[at]
+    m.who = ms[k]
+    m.present = true
+    m.joined = float(ms[k + 1]) / 1000.0
+    m.origin = lobby_by_uid(lobby_st, ms[k + 2])
+    m.origin_kind = ms[k + 3]
+    m.crew = ms[k + 4]
+    m.ping = ms[k + 5]
+    m.flags = ms[k + 6]
+    m.can_host = ms[k + 7] != 0
+    m.ready = ms[k + 8] != 0
+    m.team = ms[k + 9]
+    at += 1
+    k += 10
+  }
+  s.invited = sv_ints(v, "invited")
+  s.bans = new []LbBan
+  let bs = sv_ints(v, "bans")
+  k = 0
+  while k + 1 < len(bs) {
+    let b = new LbBan
+    b.who = bs[k]
+    b.until = lobby_st.lb__time + float(bs[k + 1]) / 1000.0
+    push(s.bans, b)
+    k += 2
+  }
+  s.reserved = new []int
+  s.reserved_until = new []float
+  let rs = sv_ints(v, "reserved")
+  k = 0
+  while k + 1 < len(rs) {
+    push(s.reserved, rs[k])
+    push(s.reserved_until, lobby_st.lb__time + float(rs[k + 1]) / 1000.0)
+    k += 2
+  }
+  return id
+}

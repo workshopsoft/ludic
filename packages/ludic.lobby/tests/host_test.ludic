@@ -1,0 +1,202 @@
+# host_test.ludic - when the host goes: the heir every machine agrees on, the state handed on while the host lives
+# and taken by the machine that becomes host, a session that cannot migrate, a session asked back, and the session
+# as a value another machine adopts
+import "ludic.lobby"
+import "ludic.base"
+program HostTest {
+  import "fixture/game.ludic"
+
+  function room(l: mut LobbyState, m: mut LobbyStepsMachine, n: int) -> int {
+    let s = lobby_create(l, SESK_PUBLIC, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    for i in 2 .. n + 1 {
+      lobby_join(l, s, i, 30)
+      lobby_tick(l, m, 1.0)                                 # one after another: the order they came in
+    }
+    return s
+  }
+
+  test "the heir is the member who can host and has been there longest" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 4)
+    expect_eq(lobby_heir(l, s), 2)
+    lobby_set_can_host(l, s, 2, false)
+    expect_eq(lobby_heir(l, s), 3)
+    q_clear(lobby_facts(l))
+    expect(lobby_leave(l, s, 1))
+    expect_eq(lobby_host(l, s), 3)
+    let fs = q_drain(lobby_facts(l))
+    var migrated = 0
+    for i in 0 .. len(fs) { if fs[i].what == LBF_HOST_MIGRATE and fs[i].who == 3 and fs[i].by == 1 { migrated += 1 } }
+    expect_eq(migrated, 1)
+    # when no one can host, the longest there still takes it
+    lobby_set_can_host(l, s, 3, false)
+    lobby_set_can_host(l, s, 4, false)
+    expect_eq(lobby_heir(l, s), 2)
+  }
+
+  test "a host that is gone (the transport lost them) is handed on the same way" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 3)
+    lobby_gone(l, 1)
+    expect_eq(lobby_host(l, s), 2)
+    lobby_gone(l, 2)
+    expect_eq(lobby_host(l, s), 3)
+    lobby_gone(l, 3)
+    expect_eq(lobby_host(l, s), -1)
+  }
+
+  test "the host's state is handed on while they live, and taken by the heir" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 3)
+    lobby_set_local(l, 1)                                    # this machine is the host's
+    w.state_value = 41
+    q_clear(lobby_facts(l))
+    pass(l, m, 9.0)
+    expect_eq(w.exports, 0)
+    pass(l, m, 2.0)
+    expect_eq(w.exports, 1)                                  # every ten seconds
+    expect_eq(lobby_checkpoint_rev(l, s), 1)
+    expect_eq(sv_int(lobby_checkpoint(l, s), "score", -1), 41)
+    let fs = q_drain(lobby_facts(l))
+    var due = 0
+    var sent = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == LBF_CHECKPOINT_DUE { due += 1 }
+      if fs[i].what == LBF_CHECKPOINT_SENT { sent += 1 }
+    }
+    expect_eq(due, 1)
+    expect_eq(sent, 1)
+    w.state_value = 99
+    pass(l, m, 10.0)
+    expect_eq(lobby_checkpoint_rev(l, s), 2)
+    # the heir's machine: it kept what was sent, is told the host is gone, and imports it
+    let kept = Value.object()
+    sv_put_int(kept, "score", 99)
+    lobby_set_local(l, 2)
+    expect(lobby_checkpoint_keep(l, s, 3, kept))
+    expect(not lobby_checkpoint_keep(l, s, 3, kept))         # not newer
+    expect(not lobby_checkpoint_keep(l, s, 1, kept))
+    w.state_value = 0
+    q_clear(lobby_facts(l))
+    lobby_gone(l, 1)
+    expect_eq(lobby_host(l, s), 2)
+    expect_eq(w.imported, 1)
+    expect_eq(w.imported_rev, 3)
+    expect_eq(w.state_value, 99)
+    expect_eq(count_of(l, LBF_HOST_STATE), 1)
+  }
+
+  test "a machine that is not the heir is handed nothing" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 3)
+    let kept = Value.object()
+    sv_put_int(kept, "score", 5)
+    lobby_checkpoint_keep(l, s, 1, kept)
+    lobby_set_local(l, 3)
+    lobby_gone(l, 1)
+    expect_eq(lobby_host(l, s), 2)
+    expect_eq(w.imported, 0)
+  }
+
+  test "a session that cannot migrate closes with its host, and everyone is told to go" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let f = lobby_create(l, SESK_PUBLIC, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    let inst = lobby_start_job(l, f, 1, "job", SESK_JOB, new []int)
+    lobby_join(l, inst, 5, 30)
+    lobby_join(l, inst, 6, 30)
+    q_clear(lobby_facts(l))
+    lobby_leave(l, inst, 1)
+    let fs = q_drain(lobby_facts(l))
+    var drops = 0
+    var closed = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == LBF_DROP { drops += 1 }
+      if fs[i].what == LBF_CLOSED { closed += 1 }
+    }
+    expect_eq(drops, 2)
+    expect_eq(closed, 1)
+    expect_eq(lobby_count(l, inst), 0)
+    pass(l, m, 6.0)
+    expect_eq(lobby_phase(l, inst), LobbyPhase.Closed)
+  }
+
+  test "a closed session asked back while it is kept starts over" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = lobby_create(l, SESK_PUBLIC, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    lobby_close(l, s)
+    pass(l, m, 2.0)
+    expect_eq(lobby_phase(l, s), LobbyPhase.Closed)
+    expect(lobby_reopen(l, s, 7))
+    pass(l, m, 1.0)
+    expect_eq(lobby_phase(l, s), LobbyPhase.Open)
+    expect_eq(lobby_host(l, s), 7)
+    expect(not lobby_reopen(l, s, 8))                        # not closed now
+    pass(l, m, 20.0)
+    expect(lobby_exists(l, s))
+  }
+
+  test "a session as a value is adopted by another machine, and again in place" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = lobby_create(l, SESK_INVITE, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    lobby_invite(l, s, 1, 2)
+    lobby_join(l, s, 2, 30)
+    lobby_player(l, 2, 9, 0, 0)
+    lobby_set_flag(l, s, 2, LBM_AFK, true)
+    lobby_set_team(l, s, 2, 3)
+    lobby_set_can_host(l, s, 2, false)
+    lobby_kick(l, s, 1, 2, 120.0)
+    lobby_join_code(l, lobby_code(l, s), 3, 30)
+    let uid = lobby_uid(l, s)
+    let code = lobby_code(l, s)
+    let text = Json.encode(lobby_snapshot(l, s))
+    # another machine: it has never heard of the session
+    lobby_reset(l)
+    expect_eq(lobby_sessions(l), 0)
+    let id = lobby_adopt(l, Json.parse(text))
+    expect(id >= 0)
+    expect_eq(lobby_uid(l, id), uid)
+    expect_eq(lobby_code(l, id), code)
+    expect_eq(lobby_host(l, id), 1)
+    expect_eq(lobby_count(l, id), 2)                         # 1 and 3: 2 was kicked
+    expect_eq(lobby_kind_of(l, id), SESK_INVITE)
+    expect_eq(lobby_can_join(l, id, 2, 30), LBR_BANNED)       # the ban came with it
+    expect_eq(lobby_heir(l, id), 3)
+    # the same snapshot again updates in place
+    expect_eq(lobby_adopt(l, Json.parse(text)), id)
+    expect_eq(lobby_sessions(l), 1)
+    expect_eq(lobby_by_uid(l, uid), id)
+    # a kind this build lacks is not adopted
+    let v = Json.parse(text)
+    sv_put_str(v, "kind", "no_such_kind")
+    expect_eq(lobby_adopt(l, v), -1)
+    expect_eq(lobby_adopt(l, Value.object()), -1)
+  }
+
+  test "an adopted roster carries its flags and where members came from" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let f = lobby_create(l, SESK_PUBLIC, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    lobby_join(l, f, 2, 30)
+    let inst = lobby_start_job(l, f, 1, "job", SESK_JOB_OPEN, [2])
+    lobby_ready(l, inst, 1)
+    lobby_set_flag(l, inst, 2, LBM_BUSY, true)
+    let ftext = Json.encode(lobby_snapshot(l, f))
+    let itext = Json.encode(lobby_snapshot(l, inst))
+    lobby_reset(l)
+    let f2 = lobby_adopt(l, Json.parse(ftext))
+    let i2 = lobby_adopt(l, Json.parse(itext))
+    expect_eq(lobby_parent(l, i2), f2)
+    expect_eq(lobby_job(l, i2), "job")
+    expect_eq(lobby_flags(l, i2, 2), LBM_BUSY)
+    expect_eq(lobby_count(l, f2), 0)
+    # the players go home to the session the snapshot named
+    lobby_job_ended(l, i2)
+    lobby_tick(l, m, 0.5)
+    expect_eq(lobby_session_of(l, 1), f2)
+    expect_eq(lobby_session_of(l, 2), f2)
+  }
+}

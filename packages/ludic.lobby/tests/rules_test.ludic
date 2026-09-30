@@ -1,0 +1,170 @@
+# rules_test.ludic - anti-grief as data: passive mode and its cooldown, spawn protection, friendly fire, what a
+# kill is scored as, the ghosting that follows, bad sport and its pools fading by the day, and what is saved
+import "ludic.lobby"
+import "ludic.base"
+program RulesTest {
+  import "fixture/game.ludic"
+
+  function room(l: mut LobbyState, m: mut LobbyStepsMachine, n: int) -> int {
+    let s = lobby_create(l, SESK_PUBLIC, 1, REGION_EU)
+    lobby_tick(l, m, 10.0)
+    for i in 2 .. n + 1 { lobby_join(l, s, i, 30) }
+    lobby_tick(l, m, 10.0)                                    # the spawn protection of arriving has run out
+    return s
+  }
+
+  test "passive mode: nothing hurts them and they hurt nothing, and leaving it waits" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 3)
+    expect_eq(lobby_may_hurt(l, s, 1, 2), 100)
+    expect(lobby_set_passive(l, s, 2, true))
+    expect(lobby_passive(l, s, 2))
+    expect_eq(lobby_may_hurt(l, s, 1, 2), 0)                   # they take no damage
+    expect_eq(lobby_may_hurt(l, s, 2, 1), 0)                   # and do none
+    expect_eq(lobby_flags(l, s, 2) & LBM_PASSIVE, LBM_PASSIVE)
+    expect(not lobby_set_passive(l, s, 2, false))              # too soon
+    expect_eq(lobby_why(l), LBR_COOLDOWN)
+    lobby_tick(l, m, 31.0)
+    expect(lobby_set_passive(l, s, 2, false))
+    expect_eq(lobby_may_hurt(l, s, 1, 2), 100)
+    expect(lobby_set_passive(l, s, 2, false))                  # already so
+  }
+
+  test "a kind without passive mode refuses it" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let f = lobby_create(l, SESK_PUBLIC, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    let inst = lobby_start_job(l, f, 1, "job", SESK_JOB, new []int)
+    expect(not lobby_set_passive(l, inst, 1, true))
+    expect_eq(lobby_why(l), LBR_RULES)
+  }
+
+  test "spawn protection runs out" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = lobby_create(l, SESK_PUBLIC, 1, REGION_EU)
+    lobby_tick(l, m, 1.0)
+    lobby_join(l, s, 2, 30)
+    expect(lobby_protected(l, s, 2))
+    expect_eq(lobby_may_hurt(l, s, 1, 2), 0)
+    lobby_tick(l, m, 6.0)
+    expect(not lobby_protected(l, s, 2))
+    expect_eq(lobby_may_hurt(l, s, 1, 2), 100)
+    lobby_spawned(l, s, 2)
+    expect_eq(lobby_may_hurt(l, s, 1, 2), 0)
+  }
+
+  test "crew and team mates do each other the rules' share of harm" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    lobby_player(l, 1, 5, 0, 0)
+    lobby_player(l, 2, 5, 0, 0)
+    lobby_player(l, 3, 6, 0, 0)
+    lobby_player(l, 4, 7, 0, 0)
+    let s = room(l, m, 4)
+    expect_eq(lobby_may_hurt(l, s, 1, 2), 25)                  # the same crew
+    expect_eq(lobby_may_hurt(l, s, 1, 3), 100)
+    lobby_set_team(l, s, 3, 2)
+    lobby_set_team(l, s, 4, 2)
+    expect_eq(lobby_may_hurt(l, s, 3, 4), 25)                  # the same team
+    expect_eq(lobby_may_hurt(l, s, 4, 1), 100)
+  }
+
+  test "a kill the rules call griefing is scored, and the killer is ghosted for a while" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 3)
+    lobby_set_passive(l, s, 2, true)
+    q_clear(lobby_facts(l))
+    lobby_report_kill(l, s, 1, 2)
+    expect_eq(lobby_bad_sport(l, 1), 20)
+    expect(lobby_ghosted(l, s, 1))
+    expect_eq(lobby_may_hurt(l, s, 1, 3), 0)                    # a ghost does no harm
+    expect_eq(lobby_may_hurt(l, s, 3, 1), 0)                    # and is passed through
+    let fs = q_drain(lobby_facts(l))
+    var scored = 0
+    var ghosted = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == LBF_OFFENCE and fs[i].who == 1 and fs[i].n == 20 and fs[i].reason == LBO_KILL_PASSIVE { scored += 1 }
+      if fs[i].what == LBF_GHOST and fs[i].who == 1 { ghosted += 1 }
+    }
+    expect_eq(scored, 1)
+    expect_eq(ghosted, 1)
+    lobby_tick(l, m, 31.0)
+    expect(not lobby_ghosted(l, s, 1))
+    expect_eq(lobby_may_hurt(l, s, 1, 3), 100)
+  }
+
+  test "the same offence again within the gap counts once; other kills are scored as what they are" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    lobby_player(l, 1, 5, 0, 0)
+    lobby_player(l, 3, 5, 0, 0)
+    let s = room(l, m, 4)
+    lobby_set_passive(l, s, 2, true)
+    lobby_report_kill(l, s, 1, 2)
+    lobby_report_kill(l, s, 1, 2)
+    expect_eq(lobby_bad_sport(l, 1), 20)
+    lobby_tick(l, m, 11.0)
+    lobby_report_kill(l, s, 1, 2)
+    expect_eq(lobby_bad_sport(l, 1), 40)
+    # a player under protection, then one of their own crew
+    lobby_spawned(l, s, 4)
+    lobby_report_kill(l, s, 2, 4)
+    expect_eq(lobby_bad_sport(l, 2), 10)
+    lobby_report_kill(l, s, 1, 3)
+    expect_eq(lobby_bad_sport(l, 1), 55)
+    # a kill that is fair is nothing
+    lobby_tick(l, m, 20.0)
+    lobby_report_kill(l, s, 4, 3)
+    expect_eq(lobby_bad_sport(l, 4), 0)
+  }
+
+  test "bad sport puts a player in a pool of their own, and fades by the day" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    lobby_add_bad_sport(l, 1, 40)
+    expect_eq(lobby_pool(l, 1), 0)
+    q_clear(lobby_facts(l))
+    lobby_add_bad_sport(l, 1, 20)
+    expect_eq(lobby_pool(l, 1), 1)
+    let fs = q_drain(lobby_facts(l))
+    expect_eq(fs[0].what, LBF_BAD_SPORT)
+    expect_eq(fs[0].who, 1)
+    expect_eq(fs[0].n, 1)
+    lobby_tick(l, m, 1.0)
+    w.day = 4                                                   # three days: 10 a day at this tier
+    lobby_tick(l, m, 1.0)
+    expect_eq(lobby_bad_sport(l, 1), 30)
+    expect_eq(lobby_pool(l, 1), 0)
+    w.day = 10                                                  # 5 a day below it
+    lobby_tick(l, m, 1.0)
+    expect_eq(lobby_bad_sport(l, 1), 0)
+    lobby_add_bad_sport(l, 1, -50)
+    expect_eq(lobby_bad_sport(l, 1), 0)
+  }
+
+  test "bad sport is saved, and its pool with it" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine, b: mut BaseState) {
+    fresh(l, w)
+    core_clear(b)
+    core_add(b, lobby_system())
+    lobby_add_bad_sport(l, 3, 70)
+    lobby_add_bad_sport(l, 4, 20)
+    let text = save_encode(core_save_all(b))
+    lobby_reset(l)
+    expect_eq(lobby_bad_sport(l, 3), 0)
+    core_load_all(b, save_decode(text))
+    expect_eq(lobby_bad_sport(l, 3), 70)
+    expect_eq(lobby_pool(l, 3), 1)
+    expect_eq(lobby_bad_sport(l, 4), 20)
+    expect_eq(lobby_pool(l, 4), 0)
+  }
+
+  test "a flag a game sets, and busy" (l: mut LobbyState, w: mut LobbyWorldState, m: mut LobbyStepsMachine) {
+    fresh(l, w)
+    let s = room(l, m, 2)
+    lobby_set_busy(l, s, 2, true)
+    expect_eq(lobby_flags(l, s, 2), LBM_BUSY)
+    lobby_set_flag(l, s, 2, LBM_SPECTATOR, true)
+    expect_eq(lobby_flags(l, s, 2), LBM_BUSY | LBM_SPECTATOR)
+    lobby_set_busy(l, s, 2, false)
+    expect_eq(lobby_flags(l, s, 2), LBM_SPECTATOR)
+    lobby_ping(l, s, 2, 88)
+    expect_eq(lobby_ping_of(l, s, 2), 88)
+  }
+}
