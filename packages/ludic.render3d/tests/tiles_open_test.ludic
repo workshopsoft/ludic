@@ -30,7 +30,7 @@ program TilesOpenTest {
     }
     expect_eq(off, 0)
     expect(terrain_height_smooth(render3d_st, 300.0, -120.0) != 0.0)
-    expect_eq(render3d_st.gvk_frame_no, 0)                 # nothing drew, nothing was made on a device
+    expect(render3d_st.ter_height_tex == 0 and render3d_st.ter_normal_tex == 0 and not render3d_st.tp_on)   # nothing on a device
   }
 
   test "another bake's key or version, a missing file, or a whole copy kept is refused and changes nothing" (render3d_st: mut Render3dState) {
