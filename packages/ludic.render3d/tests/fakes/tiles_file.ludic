@@ -1,0 +1,136 @@
+# fakes/tiles_file.ludic - a map's tiles written by hand for render3d's tests: an LTT2 payload of heights and
+# a photograph from formulas (hf_q, hf_rgb), raw or inside a bake's header, what terrain_height must answer
+# over it, and the page cache's state to hold a question to having changed nothing
+const HF_SIDE: int = 2        # photograph texels a tile a side
+
+# the u16 written at texel i of tile t, and what texel (tx, tz) decodes to
+function hf_q(t: int, i: int) -> int { return (i * 37 + (i >> 5) * 11 + t * 5) & 65535 }
+function hf_texel(tx: int, tz: int) -> float {
+  let n = TERRAIN_RES / TT_TEX
+  let t = (tz >> 5) * n + (tx >> 5)
+  let q = hf_q(t, (tz & 31) * TT_TEX + (tx & 31))
+  return (float(t % 50) * 3.5 - 40.0) + float(q) * (0.01 + float(t % 7) * 0.001)
+}
+# the photograph texel (px, pz) as written
+function hf_rgb(px: int, pz: int) -> int {
+  let n = TERRAIN_RES / TT_TEX
+  let t = (pz / HF_SIDE) * n + px / HF_SIDE
+  let i = (pz % HF_SIDE) * HF_SIDE + px % HF_SIDE
+  return (((t * 3 + i) & 255) << 16) | (((t >> 3) & 255) << 8) | (i * 60)
+}
+
+# an LTT2 payload of heights and a photograph (the normals and the coarse level read short, unused here)
+function hf_payload() -> []byte {
+  let n = TERRAIN_RES / TT_TEX
+  let n2 = TT_TEX * TT_TEX
+  let o2 = HF_SIDE * HF_SIDE
+  let hat = LT_HEAD + n * n * 8
+  let oat = hat + n * n * n2 * 2
+  let size = oat + n * n * o2 * 3
+  let b = buffer(size)
+  for k in 0 .. LT_HEAD { b[k] = 0 }
+  hf_put(b, 0, LT_MAGIC)
+  hf_put(b, 4, LT_VERSION)
+  hf_put(b, 8, TT_TEX)
+  hf_put(b, 12, n)
+  hf_put(b, 16, HF_SIDE)
+  hf_put(b, 20, TERRAIN_RES)
+  hf_put(b, 24, n * HF_SIDE)
+  hf_put(b, 28, TT_COARSE)
+  hf_put(b, 32, LT_HEAD)
+  hf_put(b, 40, size)
+  hf_put(b, 44, oat)
+  for k in 12 .. 15 { hf_put(b, k * 4, size) }
+  for t in 0 .. n * n {
+    hf_put(b, LT_HEAD + t * 8, float_bits(float(t % 50) * 3.5 - 40.0))
+    hf_put(b, LT_HEAD + t * 8 + 4, float_bits(0.01 + float(t % 7) * 0.001))
+    for i in 0 .. n2 {
+      b[hat + (t * n2 + i) * 2] = hf_q(t, i) & 255
+      b[hat + (t * n2 + i) * 2 + 1] = hf_q(t, i) >> 8
+    }
+    for i in 0 .. o2 {
+      let c = hf_rgb((t % n) * HF_SIDE + i % HF_SIDE, (t / n) * HF_SIDE + i / HF_SIDE)
+      b[oat + (t * o2 + i) * 3] = c >> 16
+      b[oat + (t * o2 + i) * 3 + 1] = (c >> 8) & 255
+      b[oat + (t * o2 + i) * 3 + 2] = c & 255
+    }
+  }
+  return b
+}
+function hf_write(path: string) -> bool {
+  let b = hf_payload()
+  return Fs.write_bytes(path, b, len(b))
+}
+# the payload inside a bake's header (ludic.base's LBAK: format 1, the version, the payload's offset after
+# the key and its zero padded to 8, the inputs' hash, the length), as terrain_tiles_bake writes it
+function hf_bake(path: string, key: string, version: int) -> bool {
+  let p = hf_payload()
+  let base = 32 + (len(key) + 1 + 7) / 8 * 8
+  let b = buffer(base + len(p))
+  for k in 0 .. base { b[k] = 0 }
+  hf_put(b, 0, BAKE_MAGIC)
+  hf_put(b, 4, 1)
+  hf_put(b, 8, version)
+  hf_put(b, 12, base)
+  hf_put(b, 24, len(p))
+  for k in 0 .. len(key) { b[32 + k] = key[k] }
+  for k in 0 .. len(p) { b[base + k] = p[k] }
+  return Fs.write_bytes(path, b, base + len(p))
+}
+function hf_put(b: []byte, at: int, v: int) -> void {
+  for k in 0 .. 4 { b[at + k] = (v >> (k * 8)) & 255 }
+}
+
+# terrain_height's bilinear, over the texels as written
+function hf_expect(x: float, z: float) -> float { return hf_expect_at(x, z, 0.0, 0.0) }
+function hf_expect_at(x: float, z: float, ox: float, oz: float) -> float {
+  let fx = (x - ox + 4096.0) * float(TERRAIN_RES) / 8192.0
+  let fz = (z - oz + 4096.0) * float(TERRAIN_RES) / 8192.0
+  let ix = min(max(int(Math.floor(fx)), 0), TERRAIN_RES - 2)
+  let iz = min(max(int(Math.floor(fz)), 0), TERRAIN_RES - 2)
+  let tx = Math.clamp(fx - float(ix), 0.0, 1.0)
+  let tz = Math.clamp(fz - float(iz), 0.0, 1.0)
+  let a = Math.lerp(hf_texel(ix, iz), hf_texel(ix + 1, iz), tx)
+  return Math.lerp(a, Math.lerp(hf_texel(ix, iz + 1), hf_texel(ix + 1, iz + 1), tx), tz)
+}
+
+# the page cache as it stands: which tile each slot holds, the clock, the heights, the read counts
+property HfSnap {
+  slot_of: words = null,
+  tile_in: words = null,
+  refs: words = null,
+  h: floats = null,
+  o: words = null,
+  hand: int = 0,
+  reads: int = 0,
+  frame_reads: int = 0
+}
+function hf_snap(render3d_st: Render3dState) -> HfSnap {
+  let a = new HfSnap
+  a.slot_of = words(len(render3d_st.tt_slot_of))
+  for t in 0 .. len(a.slot_of) { a.slot_of[t] = render3d_st.tt_slot_of[t] }
+  a.tile_in = words(len(render3d_st.tt_tile_in))
+  a.refs = words(len(render3d_st.tt_tile_in))
+  for s in 0 .. len(a.tile_in) {
+    a.tile_in[s] = render3d_st.tt_tile_in[s]
+    a.refs[s] = render3d_st.tt_ref[s]
+  }
+  a.h = floats(len(render3d_st.tt_h))
+  for i in 0 .. len(a.h) { a.h[i] = render3d_st.tt_h[i] }
+  a.o = words(len(render3d_st.tt_o))
+  for i in 0 .. len(a.o) { a.o[i] = render3d_st.tt_o[i] }
+  a.hand = render3d_st.tt_hand
+  a.reads = render3d_st.tt_reads
+  a.frame_reads = render3d_st.tt_frame_reads
+  return a
+}
+# how many of those differ now
+function hf_moved(render3d_st: Render3dState, a: HfSnap) -> int {
+  var moved = 0
+  for t in 0 .. len(a.slot_of) { if render3d_st.tt_slot_of[t] != a.slot_of[t] { moved += 1 } }
+  for s in 0 .. len(a.tile_in) { if render3d_st.tt_tile_in[s] != a.tile_in[s] or render3d_st.tt_ref[s] != a.refs[s] { moved += 1 } }
+  for i in 0 .. len(a.h) { if render3d_st.tt_h[i] != a.h[i] { moved += 1 } }
+  for i in 0 .. len(a.o) { if render3d_st.tt_o[i] != a.o[i] { moved += 1 } }
+  if render3d_st.tt_hand != a.hand or render3d_st.tt_reads != a.reads or render3d_st.tt_frame_reads != a.frame_reads { moved += 1 }
+  return moved
+}

@@ -1,0 +1,19 @@
+# terrain_tiles_open.ludic — a map's baked tiles opened for the CPU questions alone (terrain_height,
+# terrain_height_file, _smooth, terrain_ortho), with no device and no renderer booted: for a bake, a
+# migration or a test that asks the ground of a map it will never draw.
+
+# the bake at `path` (its key and version as terrain_from_baked takes them) opened for reading, the map
+# `half` metres each way from (ox, oz); false (nothing changed) when it is not this bake, or when the
+# whole copy is kept - that one answers first, so opening tiles under it would be read by nothing
+@alloc_ok("a map's tiles opened once, for a bake or a test")
+export function terrain_tiles_open_file(render3d_st: mut Render3dState, path: string, key: string, version: int, half: int, ox: float, oz: float) -> bool {
+  if render3d_st.ter_heights != null { return false }
+  let base = ltt2_bake_base(path, key, version)
+  if base < 0 { return false }
+  render3d_st.TERRAIN_HALF = half
+  render3d_st.ter_ox = ox
+  render3d_st.ter_oz = oz
+  render3d_st.ter_h_scale = 0.0
+  render3d_st.ter_o_scale = 0.0
+  return tt_open_ltt2(render3d_st, path, base)
+}
