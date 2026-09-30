@@ -1,0 +1,158 @@
+# wfc.ludic - a tile map from edge sockets (README: "Tile maps"): every cell starts as the set of all tiles
+# (the border's cells as that tile), what cannot be spreads, then the cell with the fewest left (ties drawn) is collapsed to one tile by weight, and what that rules out
+# spreads to its neighbours until nothing changes; a cell left with nothing is a contradiction and the
+# attempt is thrown away for the next seed.
+
+const PW_MAX_TILES: int = 32
+
+function pw_bit(m: int, t: int) -> bool { return ((m >> t) & 1) != 0 }
+
+function pw_popcount(m: int, nt: int) -> int {
+  var n = 0
+  for t in 0 .. nt { if pw_bit(m, t) { n += 1 } }
+  return n
+}
+
+# which tiles may lie next to tile t in direction d (0 east, 1 south, 2 west, 3 north), as a mask
+function pw_compat(tiles: []ProcTile, nt: int, d: int, t: int) -> int {
+  var m = 0
+  for u in 0 .. nt {
+    var ok = false
+    if d == 0 { ok = tiles[t].e == tiles[u].w }
+    if d == 1 { ok = tiles[t].s == tiles[u].n }
+    if d == 2 { ok = tiles[t].w == tiles[u].e }
+    if d == 3 { ok = tiles[t].n == tiles[u].s }
+    if ok { m = m | (1 << u) }
+  }
+  return m
+}
+
+function pw_dx(d: int) -> int {
+  if d == 0 { return 1 }
+  if d == 2 { return -1 }
+  return 0
+}
+function pw_dy(d: int) -> int {
+  if d == 1 { return 1 }
+  if d == 3 { return -1 }
+  return 0
+}
+
+# spread from the cells on the stack; false on a contradiction. `compat` is 4 * nt words, direction major
+function pw_propagate(g: ProcGrid, tiles: []ProcTile, nt: int, compat: words) -> bool {
+  while len(g.stack) > 0 {
+    let ci = List.pop(g.stack)
+    let cx = ci % g.w
+    let cy = ci / g.w
+    for d in 0 .. 4 {
+      let nx = cx + pw_dx(d)
+      let ny = cy + pw_dy(d)
+      if nx < 0 or ny < 0 or nx >= g.w or ny >= g.h { continue }
+      var allowed = 0
+      let m = g.mask[ci]
+      for t in 0 .. nt { if pw_bit(m, t) { allowed = allowed | compat[d * nt + t] } }
+      let ni = ny * g.w + nx
+      let now = g.mask[ni] & allowed
+      if now == 0 { return false }
+      if now != g.mask[ni] {
+        g.mask[ni] = now
+        kept_push(g.stack, ni)
+      }
+    }
+  }
+  return true
+}
+
+# one attempt from `seed`: true when every cell came to one tile
+function pw_attempt(g: ProcGrid, tiles: []ProcTile, nt: int, border: int, full: int, compat: words, seed: int) -> bool {
+  pg_seed(g.rng, seed)
+  let n = g.w * g.h
+  List.clear(g.stack)
+  for i in 0 .. n { g.mask[i] = full }
+  if border >= 0 {
+    for y in 0 .. g.h {
+      for x in 0 .. g.w {
+        if x == 0 or y == 0 or x == g.w - 1 or y == g.h - 1 {
+          let i = y * g.w + x
+          g.mask[i] = g.mask[i] & (1 << border)
+          if g.mask[i] == 0 { return false }
+          kept_push(g.stack, i)
+        }
+      }
+    }
+  }
+  for i in 0 .. n { kept_push(g.stack, i) }                          # every cell once, so a set that cannot lie
+  if not pw_propagate(g, tiles, nt, compat) { return false }          # together fails here, not never
+  while true {
+    var fewest = 0
+    var ties = 0
+    for i in 0 .. n {
+      let k = pw_popcount(g.mask[i], nt)
+      if k <= 1 { continue }
+      if fewest == 0 or k < fewest {
+        fewest = k
+        ties = 1
+      } else if k == fewest {
+        ties += 1
+      }
+    }
+    if ties == 0 { return true }
+    var nth = pg_below(g.rng, ties)
+    var cell = -1
+    for i in 0 .. n {
+      let k = pw_popcount(g.mask[i], nt)
+      if k != fewest { continue }
+      if nth == 0 {
+        cell = i
+        break
+      }
+      nth -= 1
+    }
+    var total = 0
+    for t in 0 .. nt { if pw_bit(g.mask[cell], t) { total += tiles[t].weight } }
+    let r = pg_below(g.rng, total)
+    var pick = -1
+    var acc = 0
+    for t in 0 .. nt {
+      if not pw_bit(g.mask[cell], t) { continue }
+      acc += tiles[t].weight
+      if acc > r {
+        pick = t
+        break
+      }
+    }
+    g.mask[cell] = 1 << pick
+    kept_push(g.stack, cell)
+    if not pw_propagate(g, tiles, nt, compat) { return false }
+  }
+  return true
+}
+
+# a width x height map of the first `nt` tiles (at most 32), tile `border` (-1 none) all round its edge,
+# up to `tries` attempts (attempt k draws from pg_hash2(seed, k)). Into `out`: a tile index a cell.
+# Returns the attempt that worked, or -1 (every cell -1), or -2 when the tiles or the size are out of range
+export function pg_wfc(tiles: []ProcTile, nt: int, width: int, height: int, border: int, tries: int, seed: int, out: ProcGrid) -> int {
+  if nt < 1 or nt > PW_MAX_TILES or width < 1 or height < 1 or width > 64 or height > 64 or border >= nt {
+    procgrid_size(out, 1, 1)
+    out.cells[0] = -1
+    return -2
+  }
+  procgrid_size(out, width, height)
+  var full = -1
+  if nt < PW_MAX_TILES { full = (1 << nt) - 1 }
+  let compat = out.compat
+  for d in 0 .. 4 {
+    for t in 0 .. nt { compat[d * nt + t] = pw_compat(tiles, nt, d, t) }
+  }
+  for a in 0 .. tries {
+    if not pw_attempt(out, tiles, nt, border, full, compat, pg_hash2(seed, a)) { continue }
+    for i in 0 .. width * height {
+      var t = 0
+      while not pw_bit(out.mask[i], t) { t += 1 }
+      out.cells[i] = t
+    }
+    return a
+  }
+  procgrid_fill(out, -1)
+  return -1
+}

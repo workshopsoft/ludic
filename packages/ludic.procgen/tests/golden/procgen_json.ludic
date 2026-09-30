@@ -1,0 +1,308 @@
+# golden/procgen_json.ludic - the conformance file's text: every case's input and what ludic.procgen makes of
+# it, one JSON object. tests/procgen_test.ludic compares it with tests/procgen_golden.json line for line;
+# tests/gen/procgen_golden.ludic writes that file after a DELIBERATE change to an algorithm. Another
+# implementation (tests/reference/procgen.py, a studio's preview) reads the same file and must agree.
+# Every number is a signed 32-bit integer.
+
+function pgg_ints(xs: []int) -> string {
+  var s = "["
+  for i in 0 .. len(xs) {
+    if i > 0 { s = s + "," }
+    s = s + `{xs[i]}`
+  }
+  return s + "]"
+}
+
+function pgg_row(g: ProcGrid, y: int) -> []int {
+  let r = new []int
+  for x in 0 .. g.w { push(r, g.cells[y * g.w + x]) }
+  return r
+}
+
+function pgg_tile(w: int, n: int, e: int, s: int, west: int) -> ProcTile {
+  let t = new ProcTile
+  t.weight = w
+  t.n = n
+  t.e = e
+  t.s = s
+  t.w = west
+  return t
+}
+
+function pgg_region(shape: string, x: int, y: int, w: int, h: int, count: int) -> ProcRegion {
+  let r = new ProcRegion
+  r.shape = shape
+  r.x = x
+  r.y = y
+  r.w = w
+  r.h = h
+  r.count = count
+  return r
+}
+
+function pgg_kind(weight: int, lo: int, hi: int) -> ProcKind {
+  let k = new ProcKind
+  k.weight = weight
+  k.scale_lo = lo
+  k.scale_hi = hi
+  return k
+}
+
+function pgg_rng() -> string {
+  var out = "  \"rng\": [\n"
+  let seeds = [0, 1, 42, -1, 2147483647, -2147483647 - 1, 123456789]
+  let ns = [1, 2, 3, 10, 100, 1000, 65536, 2147483647]
+  for k in 0 .. len(seeds) {
+    let r = pg_rng_new(seeds[k])
+    let nx = new []int
+    for i in 0 .. 8 { push(nx, pg_next(r)) }
+    let r2 = pg_rng_new(seeds[k])
+    let bl = new []int
+    for i in 0 .. len(ns) { push(bl, pg_below(r2, ns[i])) }
+    var sep = ","
+    if k == len(seeds) - 1 { sep = "" }
+    out = out + `    \{"seed": {seeds[k]}, "next": {pgg_ints(nx)}, "below_n": {pgg_ints(ns)}, "below": {pgg_ints(bl)}}{sep}\n`
+  }
+  return out + "  ],\n"
+}
+
+function pgg_derive() -> string {
+  var out = "  \"derive\": [\n"
+  let a = [0, 1, 1, 42, -5, 2147483647]
+  let b = [0, 0, 1, 7, 1000, -1]
+  for k in 0 .. len(a) {
+    var sep = ","
+    if k == len(a) - 1 { sep = "" }
+    out = out + `    [{a[k]}, {b[k]}, {pg_hash2(a[k], b[k])}]{sep}\n`
+  }
+  return out + "  ],\n"
+}
+
+function pgg_dungeon_case(name: string, p: ProcDungeon, seed: int, last: bool) -> string {
+  let out = procdungeon_new()
+  let n = pg_dungeon(p, seed, out)
+  var s = `    \{"name": "{name}", "seed": {seed},\n`
+  s = s + `     "input": \{"width": {p.width}, "height": {p.height}, "rooms": {p.rooms}, "room_min": {p.room_min}, "room_max": {p.room_max}, "pad": {p.pad}, "attempts": {p.attempts}, "loops": {p.loops}},\n`
+  s = s + "     \"output\": {\"rooms\": ["
+  for i in 0 .. n {
+    if i > 0 { s = s + "," }
+    s = s + `[{out.rx[i]},{out.ry[i]},{out.rw[i]},{out.rh[i]}]`
+  }
+  s = s + `], "start": {out.start}, "exit": {out.exit}, "grid": [\n`
+  for y in 0 .. out.grid.h {
+    var line = ""
+    for x in 0 .. out.grid.w { line = line + `{out.grid.cells[y * out.grid.w + x]}` }
+    var sep = ","
+    if y == out.grid.h - 1 { sep = "" }
+    s = s + `      "{line}"{sep}\n`
+  }
+  s = s + "     ]}}"
+  if not last { s = s + "," }
+  return s + "\n"
+}
+
+function pgg_dungeons() -> string {
+  var out = "  \"dungeon\": [\n"
+  let a = new ProcDungeon
+  out = out + pgg_dungeon_case("default", a, 1, false)
+  out = out + pgg_dungeon_case("default, another seed", a, 2024, false)
+  let b = new ProcDungeon
+  b.width = 24
+  b.height = 16
+  b.rooms = 4
+  b.room_min = 3
+  b.room_max = 5
+  b.pad = 0
+  b.loops = 0
+  out = out + pgg_dungeon_case("small, no loops, no pad", b, 7, false)
+  let c = new ProcDungeon
+  c.width = 64
+  c.height = 40
+  c.rooms = 14
+  c.room_min = 5
+  c.room_max = 12
+  c.pad = 2
+  c.loops = 4
+  c.attempts = 400
+  out = out + pgg_dungeon_case("large, padded, loops, a negative seed", c, -99, false)
+  let d = new ProcDungeon
+  d.width = 8
+  d.height = 8
+  d.rooms = 3
+  d.room_min = 3
+  d.room_max = 3
+  d.attempts = 30
+  out = out + pgg_dungeon_case("crowded: fewer rooms than asked", d, 5, true)
+  return out + "  ],\n"
+}
+
+function pgg_wfc_case(name: string, tiles: []ProcTile, width: int, height: int, border: int, tries: int, seed: int, last: bool) -> string {
+  let g = procgrid_new(1, 1)
+  let attempt = pg_wfc(tiles, len(tiles), width, height, border, tries, seed, g)
+  var s = `    \{"name": "{name}", "seed": {seed},\n`
+  s = s + "     \"input\": {\"tiles\": ["
+  for i in 0 .. len(tiles) {
+    if i > 0 { s = s + "," }
+    s = s + `\{"weight": {tiles[i].weight}, "n": {tiles[i].n}, "e": {tiles[i].e}, "s": {tiles[i].s}, "w": {tiles[i].w}}`
+  }
+  s = s + `], "width": {width}, "height": {height}, "border": {border}, "tries": {tries}},\n`
+  s = s + `     "output": \{"attempt": {attempt}, "grid": [\n`
+  for y in 0 .. g.h {
+    var sep = ","
+    if y == g.h - 1 { sep = "" }
+    s = s + `      {pgg_ints(pgg_row(g, y))}{sep}\n`
+  }
+  s = s + "     ]}}"
+  if not last { s = s + "," }
+  return s + "\n"
+}
+
+# the 16 tiles a square's four edges can make from two sockets: bit 0 is n, 1 e, 2 s, 3 w. Heavier the more
+# edges are 1, so sockets of 1 (land) are the more common
+function pgg_wang() -> []ProcTile {
+  let t = new []ProcTile
+  for i in 0 .. 16 {
+    var bits = 0
+    for b in 0 .. 4 { bits += (i >> b) & 1 }
+    push(t, pgg_tile(1 + bits, i & 1, (i >> 1) & 1, (i >> 2) & 1, (i >> 3) & 1))
+  }
+  return t
+}
+
+# two sets of 7 and 5 tiles that cannot always be completed: an attempt may contradict itself, and the next seed is tried
+function pgg_rough_a() -> []ProcTile {
+  let t = new []ProcTile
+  push(t, pgg_tile(5, 0, 2, 2, 2))
+  push(t, pgg_tile(3, 0, 1, 1, 1))
+  push(t, pgg_tile(4, 2, 1, 0, 1))
+  push(t, pgg_tile(4, 2, 0, 0, 1))
+  push(t, pgg_tile(1, 2, 1, 1, 0))
+  push(t, pgg_tile(5, 1, 1, 1, 2))
+  push(t, pgg_tile(1, 1, 0, 2, 0))
+  return t
+}
+
+function pgg_rough_b() -> []ProcTile {
+  let t = new []ProcTile
+  push(t, pgg_tile(1, 0, 0, 0, 0))
+  push(t, pgg_tile(2, 1, 1, 0, 2))
+  push(t, pgg_tile(2, 0, 2, 0, 1))
+  push(t, pgg_tile(3, 0, 1, 1, 0))
+  push(t, pgg_tile(2, 1, 0, 1, 1))
+  return t
+}
+
+function pgg_pipes() -> []ProcTile {
+  let t = new []ProcTile
+  push(t, pgg_tile(5, 0, 0, 0, 0))     # empty
+  push(t, pgg_tile(2, 0, 1, 0, 1))     # across
+  push(t, pgg_tile(2, 1, 0, 1, 0))     # along
+  push(t, pgg_tile(1, 1, 1, 1, 1))     # a crossing
+  return t
+}
+
+function pgg_impossible() -> []ProcTile {
+  let t = new []ProcTile
+  push(t, pgg_tile(1, 0, 1, 0, 2))     # nothing has a west side of 1: no two can be neighbours
+  push(t, pgg_tile(1, 0, 1, 0, 2))
+  return t
+}
+
+function pgg_wfcs() -> string {
+  var out = "  \"wfc\": [\n"
+  out = out + pgg_wfc_case("wang tiles", pgg_wang(), 12, 8, -1, 20, 3, false)
+  out = out + pgg_wfc_case("wang tiles, another seed", pgg_wang(), 12, 8, -1, 20, 77, false)
+  out = out + pgg_wfc_case("wang tiles, a border of the all-land tile", pgg_wang(), 14, 10, 15, 30, 5, false)
+  out = out + pgg_wfc_case("pipes", pgg_pipes(), 16, 12, -1, 20, 2024, false)
+  out = out + pgg_wfc_case("pipes, a border of nothing", pgg_pipes(), 16, 12, 0, 20, 7, false)
+  out = out + pgg_wfc_case("pipes, one row", pgg_pipes(), 9, 1, -1, 10, -3, false)
+  out = out + pgg_wfc_case("a rough set: the second attempt is the first to work", pgg_rough_a(), 8, 6, -1, 20, 2, false)
+  out = out + pgg_wfc_case("a rough set: the third attempt", pgg_rough_b(), 8, 6, -1, 20, 2, false)
+  out = out + pgg_wfc_case("impossible: every try fails", pgg_impossible(), 4, 3, -1, 3, 9, true)
+  return out + "  ],\n"
+}
+
+function pgg_scatter_case(name: string, row: ProcScatter, seed: int, last: bool) -> string {
+  let pts = procpoints_new()
+  let n = pg_scatter(row, seed, pts)
+  var s = `    \{"name": "{name}", "seed": {seed},\n`
+  s = s + `     "input": \{"min_dist": {row.min_dist}, "attempts": {row.attempts}, "regions": [`
+  for i in 0 .. len(row.regions) {
+    let r = row.regions[i]
+    if i > 0 { s = s + "," }
+    s = s + `\{"shape": "{r.shape}", "x": {r.x}, "y": {r.y}, "w": {r.w}, "h": {r.h}, "count": {r.count}}`
+  }
+  s = s + `], "avoid": [`
+  for i in 0 .. len(row.avoid) {
+    let r = row.avoid[i]
+    if i > 0 { s = s + "," }
+    s = s + `\{"shape": "{r.shape}", "x": {r.x}, "y": {r.y}, "w": {r.w}, "h": {r.h}, "count": {r.count}}`
+  }
+  s = s + `], "kinds": [`
+  for i in 0 .. len(row.kinds) {
+    if i > 0 { s = s + "," }
+    s = s + `\{"weight": {row.kinds[i].weight}, "scale_lo": {row.kinds[i].scale_lo}, "scale_hi": {row.kinds[i].scale_hi}}`
+  }
+  s = s + "]},\n     \"output\": {\"points\": [\n"
+  for i in 0 .. n {
+    var sep = ","
+    if i == n - 1 { sep = "" }
+    s = s + `      [{pts.x[i]},{pts.y[i]},{pts.kind[i]},{pts.angle[i]},{pts.scale[i]},{pts.region[i]}]{sep}\n`
+  }
+  s = s + "     ]}}"
+  if not last { s = s + "," }
+  return s + "\n"
+}
+
+function pgg_row_new(min_dist: int, attempts: int) -> ProcScatter {
+  let r = new ProcScatter
+  r.min_dist = min_dist
+  r.attempts = attempts
+  r.regions = new []ProcRegion
+  r.avoid = new []ProcRegion
+  r.kinds = new []ProcKind
+  return r
+}
+
+function pgg_scatters() -> string {
+  var out = "  \"scatter\": [\n"
+  let a = pgg_row_new(12, 30)
+  push(a.regions, pgg_region("rect", 0, 0, 200, 120, 40))
+  push(a.kinds, pgg_kind(5, 800, 1200))
+  push(a.kinds, pgg_kind(3, 1000, 1000))
+  push(a.kinds, pgg_kind(1, 500, 2000))
+  out = out + pgg_scatter_case("a rectangle, three kinds, spaced", a, 3, false)
+  let b = pgg_row_new(10, 30)
+  push(b.regions, pgg_region("disc", 100, -50, 60, 0, 60))
+  push(b.avoid, pgg_region("rect", 90, -60, 30, 30, 0))
+  push(b.kinds, pgg_kind(1, 1000, 1000))
+  out = out + pgg_scatter_case("a disc with a hole in it", b, 11, false)
+  let c = pgg_row_new(0, 5)
+  push(c.regions, pgg_region("rect", -300, -200, 100, 100, 12))
+  push(c.regions, pgg_region("disc", 500, 500, 40, 0, 12))
+  out = out + pgg_scatter_case("two regions, no kinds, no spacing, negative seed", c, -7, false)
+  let d = pgg_row_new(9, 10)
+  push(d.regions, pgg_region("rect", 0, 0, 20, 20, 50))
+  push(d.kinds, pgg_kind(2, 900, 1100))
+  push(d.kinds, pgg_kind(2, 1, 1))
+  out = out + pgg_scatter_case("crowded: fewer points than asked", d, 12345, false)
+  let e = pgg_row_new(30, 40)
+  push(e.regions, pgg_region("rect", -16000, -16000, 32000, 32000, 25))
+  push(e.kinds, pgg_kind(1, 1000, 1000))
+  out = out + pgg_scatter_case("the far corners of the range", e, 8, true)
+  return out + "  ],\n"
+}
+
+# the whole file: the last section carries no comma, so it ends in a closing brace
+export function pgg_json() -> string {
+  var s = "{\n"
+  s = s + "  \"about\": \"ludic.procgen conformance: every case's input, and the output the algorithm in the README must make of it; regenerate with tests/gen/procgen_golden.ludic after a deliberate change\",\n"
+  s = s + "  \"numbers\": \"every number is a signed 32-bit integer; there is no floating point\",\n"
+  s = s + pgg_rng()
+  s = s + pgg_derive()
+  s = s + pgg_dungeons()
+  s = s + pgg_wfcs()
+  s = s + pgg_scatters()
+  s = s + "  \"end\": true\n}\n"
+  return s
+}

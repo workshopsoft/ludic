@@ -1,0 +1,326 @@
+# procgen_test.ludic - the stream, each generator against the golden file (line for line), the properties
+# every output keeps, the recipes as data run through the state, its facts, and a save that is only seeds
+import "ludic.procgen"
+import "ludic.base"
+program ProcgenTest {
+  numbers float
+  import "golden/procgen_json.ludic"
+
+  def ProcDungeons caves { width: 40, height: 24, rooms: 6, room_min: 4, room_max: 7, pad: 1, attempts: 100, loops: 1 }
+  def ProcDungeons bad { width: 3, height: 3 }
+  def ProcTiles from "tiles.lres"
+  def ProcMaps coast { set: "sea", width: 10, height: 6, border: "water", tries: 30 }
+  def ProcMaps plumbing { set: "pipes", width: 8, height: 8, tries: 10 }
+  def ProcMaps nowhere { set: "sea", width: 4, height: 4, border: "no such tile" }
+  def ProcMaps noset { set: "nothing", width: 4, height: 4 }
+  def ProcScatters from "scatters.lres"
+
+  test "the golden is what the generators make today, line for line" {
+    let want = Fs.read_text("packages/ludic.procgen/tests/procgen_golden.json")
+    expect(want != null)
+    if want == null { return }
+    let got = Text.split(pgg_json(), "\n")
+    let had = Text.split(want, "\n")
+    expect_eq(len(got), len(had))
+    for k in 0 .. min(len(got), len(had)) {
+      if got[k] != had[k] { print(`line {k + 1}: got {got[k]}`) }
+      expect(got[k] == had[k])
+    }
+  }
+
+  test "the golden file is one JSON object with every section and every case in it" {
+    let want = Fs.read_text("packages/ludic.procgen/tests/procgen_golden.json")
+    expect(want != null)
+    expect(Text.contains(want, "\"rng\": ["))
+    expect(Text.contains(want, "\"derive\": ["))
+    expect(Text.contains(want, "\"dungeon\": ["))
+    expect(Text.contains(want, "\"wfc\": ["))
+    expect(Text.contains(want, "\"scatter\": ["))
+    expect(Text.contains(want, "\"end\": true\n}"))
+  }
+
+  test "the stream: a seed is a stream, below(1) draws nothing, between is inclusive, hash2 tells indexes apart" {
+    let a = pg_rng_new(99)
+    let b = pg_rng_new(99)
+    for i in 0 .. 50 { expect_eq(pg_next(a), pg_next(b)) }
+    let c = pg_rng_new(5)
+    let d = pg_rng_new(5)
+    expect_eq(pg_below(c, 1), 0)
+    expect_eq(pg_below(c, 0), 0)
+    expect_eq(pg_between(c, 7, 7), 7)
+    expect_eq(pg_next(c), pg_next(d))       # nothing was drawn
+    var lo = 100
+    var hi = -100
+    for i in 0 .. 500 {
+      let v = pg_between(c, -3, 4)
+      if v < lo { lo = v }
+      if v > hi { hi = v }
+    }
+    expect_eq(lo, -3)
+    expect_eq(hi, 4)
+    expect(pg_hash2(1, 0) != pg_hash2(1, 1))
+    expect(pg_hash2(1, 1) != pg_hash2(2, 1))
+    expect(pg_next(pg_rng_new(-7)) >= 0)
+  }
+
+  # every floor cell of a dungeon reachable from room 0's centre through floor cells
+  function reach_all(d: ProcDungeonOut) -> bool {
+    let g = d.grid
+    let seen = new []int
+    for i in 0 .. g.w * g.h { push(seen, 0) }
+    let queue = new []int
+    push(queue, (d.ry[0] + d.rh[0] / 2) * g.w + d.rx[0] + d.rw[0] / 2)
+    seen[queue[0]] = 1
+    var head = 0
+    while head < len(queue) {
+      let c = queue[head]
+      head += 1
+      let x = c % g.w
+      let y = c / g.w
+      for k in 0 .. 4 {
+        var nx = x
+        var ny = y
+        if k == 0 { nx += 1 }
+        if k == 1 { nx -= 1 }
+        if k == 2 { ny += 1 }
+        if k == 3 { ny -= 1 }
+        if nx < 0 or ny < 0 or nx >= g.w or ny >= g.h { continue }
+        let ni = ny * g.w + nx
+        if g.cells[ni] == 0 or seen[ni] == 1 { continue }
+        seen[ni] = 1
+        push(queue, ni)
+      }
+    }
+    for i in 0 .. g.w * g.h { if g.cells[i] != 0 and seen[i] == 0 { return false } }
+    return true
+  }
+
+  test "a dungeon: rooms apart, walls round the edge, every floor cell joined, the exit the farthest room" {
+    let out = procdungeon_new()
+    let p = new ProcDungeon
+    p.rooms = 10
+    for seed in 1 .. 25 {
+      let n = pg_dungeon(p, seed, out)
+      expect(n >= 2)
+      expect_eq(procdungeon_rooms(out), n)
+      expect(reach_all(out))
+      for x in 0 .. out.grid.w {
+        expect_eq(procgrid_at(out.grid, x, 0), 0)
+        expect_eq(procgrid_at(out.grid, x, out.grid.h - 1), 0)
+      }
+      for y in 0 .. out.grid.h {
+        expect_eq(procgrid_at(out.grid, 0, y), 0)
+        expect_eq(procgrid_at(out.grid, out.grid.w - 1, y), 0)
+      }
+      for i in 0 .. n {
+        for j in i + 1 .. n {
+          let apart = out.rx[i] + out.rw[i] + p.pad <= out.rx[j] or out.rx[j] + out.rw[j] + p.pad <= out.rx[i] or out.ry[i] + out.rh[i] + p.pad <= out.ry[j] or out.ry[j] + out.rh[j] + p.pad <= out.ry[i]
+          expect(apart)
+        }
+        expect_eq(procgrid_at(out.grid, out.rx[i], out.ry[i]), 1)
+        expect_eq(procgrid_at(out.grid, out.rx[i] + out.rw[i] - 1, out.ry[i] + out.rh[i] - 1), 1)
+      }
+      var far = 0
+      for i in 0 .. n {
+        let di = Math.abs(out.rx[i] + out.rw[i] / 2 - out.rx[0] - out.rw[0] / 2) + Math.abs(out.ry[i] + out.rh[i] / 2 - out.ry[0] - out.rh[0] / 2)
+        if di > far { far = di }
+      }
+      let e = out.exit
+      let de = Math.abs(out.rx[e] + out.rw[e] / 2 - out.rx[0] - out.rw[0] / 2) + Math.abs(out.ry[e] + out.rh[e] / 2 - out.ry[0] - out.rh[0] / 2)
+      expect_eq(de, far)
+    }
+  }
+
+  test "a dungeon is the same from the same seed, differs with another, and out-of-range recipes are refused" {
+    let a = procdungeon_new()
+    let b = procdungeon_new()
+    let p = new ProcDungeon
+    pg_dungeon(p, 31, a)
+    pg_dungeon(p, 31, b)
+    var same = true
+    for i in 0 .. a.grid.w * a.grid.h { if a.grid.cells[i] != b.grid.cells[i] { same = false } }
+    expect(same)
+    pg_dungeon(p, 32, b)
+    var differs = false
+    for i in 0 .. a.grid.w * a.grid.h { if a.grid.cells[i] != b.grid.cells[i] { differs = true } }
+    expect(differs)
+    let q = new ProcDungeon
+    q.width = 3
+    expect_eq(pg_dungeon(q, 1, a), 0)
+    expect_eq(a.grid.w, 1)
+    q.width = 300
+    expect_eq(pg_dungeon(q, 1, a), 0)
+    expect_eq(pg_dungeon(p, 31, a), pg_dungeon(p, 31, b))      # and back to a working one, in the same memory
+  }
+
+  function fits(tiles: []ProcTile, g: ProcGrid) -> bool {
+    for y in 0 .. g.h {
+      for x in 0 .. g.w {
+        let t = g.cells[y * g.w + x]
+        if t < 0 { return false }
+        if x + 1 < g.w and tiles[t].e != tiles[g.cells[y * g.w + x + 1]].w { return false }
+        if y + 1 < g.h and tiles[t].s != tiles[g.cells[(y + 1) * g.w + x]].n { return false }
+      }
+    }
+    return true
+  }
+
+  test "a tile map: every neighbour fits at its edges, the border tile all round, same seed same map" {
+    let tiles = new []ProcTile
+    for i in 0 .. PGT_COUNT { if ProcTiles[i].set == "sea" { push(tiles, ProcTiles[i]) } }
+    expect_eq(len(tiles), 4)
+    let g = procgrid_new(1, 1)
+    let h = procgrid_new(1, 1)
+    for seed in 1 .. 20 {
+      let a = pg_wfc(tiles, 4, 12, 9, 0, 30, seed, g)
+      expect(a >= 0)
+      expect(fits(tiles, g))
+      for x in 0 .. 12 {
+        expect_eq(procgrid_at(g, x, 0), 0)
+        expect_eq(procgrid_at(g, x, 8), 0)
+      }
+      for y in 0 .. 9 {
+        expect_eq(procgrid_at(g, 0, y), 0)
+        expect_eq(procgrid_at(g, 11, y), 0)
+      }
+      expect_eq(pg_wfc(tiles, 4, 12, 9, 0, 30, seed, h), a)
+      for i in 0 .. 12 * 9 { expect_eq(g.cells[i], h.cells[i]) }
+    }
+  }
+
+  test "a tile map with no way to fit fails every try, and a bad size or border is refused" {
+    let tiles = new []ProcTile
+    let a = new ProcTile
+    a.e = 1
+    a.w = 2
+    push(tiles, a)
+    push(tiles, a)
+    let g = procgrid_new(1, 1)
+    expect_eq(pg_wfc(tiles, 2, 5, 5, -1, 4, 1, g), -1)
+    expect_eq(g.cells[0], -1)
+    expect_eq(pg_wfc(tiles, 2, 0, 5, -1, 4, 1, g), -2)
+    expect_eq(pg_wfc(tiles, 2, 65, 5, -1, 4, 1, g), -2)
+    expect_eq(pg_wfc(tiles, 2, 5, 5, 2, 4, 1, g), -2)
+    expect_eq(pg_wfc(tiles, 0, 5, 5, -1, 4, 1, g), -2)
+    expect_eq(pg_wfc(tiles, 33, 5, 5, -1, 4, 1, g), -2)
+  }
+
+  test "thirty-two tiles fill a map (the top bit of a mask is a tile)" {
+    let tiles = new []ProcTile
+    for i in 0 .. 32 {
+      let t = new ProcTile
+      t.weight = 1 + i % 3
+      push(tiles, t)
+    }
+    let g = procgrid_new(1, 1)
+    expect_eq(pg_wfc(tiles, 32, 10, 10, -1, 3, 4, g), 0)
+    var high = 0
+    for i in 0 .. 100 { if g.cells[i] >= 16 { high += 1 } }
+    expect(high > 10)
+    expect_eq(pg_wfc(tiles, 32, 10, 10, 31, 3, 4, g), 0)
+    expect_eq(g.cells[0], 31)
+    expect_eq(g.cells[99], 31)
+  }
+
+  function in_region(r: ProcRegion, x: int, y: int) -> bool {
+    if r.shape == "disc" { return (x - r.x) * (x - r.x) + (y - r.y) * (y - r.y) <= r.w * r.w }
+    return x >= r.x and x < r.x + r.w and y >= r.y and y < r.y + r.h
+  }
+
+  test "a scatter: inside its regions, out of the hole, apart, in the count, and the same from the same seed" {
+    let row = ProcScatters[PGS_MEADOW]
+    let a = procpoints_new()
+    let b = procpoints_new()
+    for seed in 1 .. 12 {
+      let n = pg_scatter(row, seed, a)
+      expect_eq(procpoints_count(a), n)
+      expect(n <= 40)
+      expect(n >= 30)
+      for i in 0 .. n {
+        expect(in_region(row.regions[a.region[i]], a.x[i], a.y[i]))
+        expect(not in_region(row.avoid[0], a.x[i], a.y[i]))
+        expect(a.angle[i] >= 0 and a.angle[i] < 360)
+        let k = a.kind[i]
+        expect(a.scale[i] >= row.kinds[k].scale_lo and a.scale[i] <= row.kinds[k].scale_hi)
+        for j in i + 1 .. n {
+          let dx = a.x[i] - a.x[j]
+          let dy = a.y[i] - a.y[j]
+          expect(dx * dx + dy * dy >= 36)
+        }
+      }
+      expect_eq(pg_scatter(row, seed, b), n)
+      for i in 0 .. n { expect(a.x[i] == b.x[i] and a.y[i] == b.y[i] and a.kind[i] == b.kind[i]) }
+    }
+  }
+
+  test "the recipes are rows: a dungeon, a map, a scatter run through the state, each a fact" (procgen_st: mut ProcgenState) {
+    procgen_reset(procgen_st)
+    expect_eq(PGD_COUNT, 2)
+    expect(procgen_dungeon(procgen_st, PGD_CAVES, 5) >= 2)
+    expect_eq(procgen_dungeon_out(procgen_st).grid.w, 40)
+    expect_eq(procgen_dungeon(procgen_st, PGD_BAD, 5), 0)
+    expect_eq(procgen_dungeon(procgen_st, 9, 5), -1)
+    expect(procgen_map(procgen_st, PGM_COAST, 3) >= 0)
+    expect_eq(procgen_map_out(procgen_st).w, 10)
+    expect_eq(procgen_map_out(procgen_st).cells[0], 0)
+    expect(procgen_map(procgen_st, PGM_PLUMBING, 3) >= 0)
+    expect_eq(procgen_map(procgen_st, PGM_NOWHERE, 3), -2)
+    expect_eq(procgen_map(procgen_st, PGM_NOSET, 3), -2)
+    expect_eq(procgen_map(procgen_st, 7, 3), -3)
+    expect(procgen_scatter(procgen_st, PGS_MEADOW, 8) > 20)
+    expect_eq(procgen_scatter(procgen_st, 3, 8), -1)
+    let fs = q_drain(procgen_facts(procgen_st))
+    expect_eq(len(fs), 7)          # a recipe that is not there is no run, so no fact
+    expect_eq(fs[0].kind, PG_DUNGEON)
+    expect_eq(fs[0].seed, 5)
+    expect_eq(fs[2].kind, PG_MAP)
+    expect_eq(fs[2].recipe, PGM_COAST)
+    expect(procgen_ran(procgen_st, PG_MAP, PGM_COAST))
+    expect_eq(procgen_seed_of(procgen_st, PG_SCATTER, PGS_MEADOW), 8)
+    expect(not procgen_ran(procgen_st, PG_SCATTER, 2))
+  }
+
+  test "the save is the seeds: a load makes the same levels again, and a recipe it does not know is left out" (procgen_st: mut ProcgenState) {
+    procgen_reset(procgen_st)
+    procgen_dungeon(procgen_st, PGD_CAVES, 77)
+    procgen_dungeon(procgen_st, PGD_CAVES, 78)
+    procgen_map(procgen_st, PGM_COAST, 12)
+    procgen_scatter(procgen_st, PGS_MEADOW, 4)
+    let want_cells = new []int
+    let d = procgen_dungeon_out(procgen_st)
+    for i in 0 .. d.grid.w * d.grid.h { push(want_cells, d.grid.cells[i]) }
+    let want_n = procpoints_count(procgen_points_out(procgen_st))
+    let v = procgen_save(procgen_st)
+    procgen_reset(procgen_st)
+    procgen_dungeon(procgen_st, PGD_CAVES, 1)
+    procgen_load(procgen_st, v, 1)
+    expect_eq(procgen_seed_of(procgen_st, PG_DUNGEON, PGD_CAVES), 78)
+    expect_eq(procgen_seed_of(procgen_st, PG_MAP, PGM_COAST), 12)
+    let e = procgen_dungeon_out(procgen_st)
+    for i in 0 .. len(want_cells) { expect_eq(e.grid.cells[i], want_cells[i]) }
+    expect_eq(procpoints_count(procgen_points_out(procgen_st)), want_n)
+    expect_eq(len(q_drain(procgen_facts(procgen_st))), 0)
+    let old = Value.object()
+    let runs = Value.list()
+    let o = Value.object()
+    sv_put_int(o, "kind", PG_DUNGEON)
+    sv_put_str(o, "recipe", "a recipe that was taken out")
+    sv_put_int(o, "seed", 3)
+    Value.add(runs, o)
+    Value.put(old, "runs", runs)
+    procgen_load(procgen_st, old, 1)
+    expect(not procgen_ran(procgen_st, PG_DUNGEON, PGD_CAVES))
+  }
+
+  test "a seed for a name is the world's seed and the name, nothing else" {
+    expect_eq(procgen_seed_for(5, "harbour"), procgen_seed_for(5, "harbour"))
+    expect(procgen_seed_for(5, "harbour") != procgen_seed_for(5, "harbor"))
+    expect(procgen_seed_for(5, "harbour") != procgen_seed_for(6, "harbour"))
+  }
+
+  test "the system is declared with its own key and no tick" {
+    let s = procgen_system()
+    expect(s.key == "procgen")
+    expect(s.tick == null)
+  }
+}

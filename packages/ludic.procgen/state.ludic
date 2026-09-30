@@ -1,0 +1,56 @@
+# state.ludic - what a game runs a recipe through: the latest output of each generator, the seeds that
+# made them (the whole of the save), and a fact for every run
+
+export const PG_DUNGEON: int = 0     # the kinds of run
+export const PG_MAP: int = 1
+export const PG_SCATTER: int = 2
+
+export const PROCGEN_DONE: int = 0   # a run finished (kind, recipe, seed, result, count)
+
+export property ProcgenFact {
+  what: int = 0
+  kind: int = 0
+  recipe: int = 0
+  seed: int = 0
+  result: int = 0        # dungeon: rooms placed; map: the attempt that worked, -1 none, -2 bad recipe; scatter: points placed
+  count: int = 0
+}
+
+export state ProcgenState {
+  pg_dun: ProcDungeonOut = procdungeon_new()
+  pg_map: ProcGrid = procgrid_new(8, 8)
+  pg_pts: ProcPoints = procpoints_new()
+  pg_set: []ProcTile = new []ProcTile          # the tile set the last map run gathered
+  pg_runs: []int = new []int                   # the latest run of each recipe, as (kind, recipe, seed) triples
+  pg_facts: Queue<ProcgenFact> = pg_facts__new()
+}
+function pg_facts__new() -> Queue<ProcgenFact> { return queue_new("procgen.facts") }
+
+export function procgen_facts(procgen_st: ProcgenState) -> Queue<ProcgenFact> { return procgen_st.pg_facts }
+
+function pg_say(procgen_st: mut ProcgenState, kind: int, recipe: int, seed: int, result: int, count: int) -> void {
+  var f = q_rec(procgen_st.pg_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new ProcgenFact
+    q_ring_add(procgen_st.pg_facts, f)
+  }
+  f.what = PROCGEN_DONE
+  f.kind = kind
+  f.recipe = recipe
+  f.seed = seed
+  f.result = result
+  f.count = count
+  q_push(procgen_st.pg_facts, f)
+  var i = 0
+  while i < len(procgen_st.pg_runs) {
+    if procgen_st.pg_runs[i] == kind and procgen_st.pg_runs[i + 1] == recipe {
+      procgen_st.pg_runs[i + 2] = seed
+      return
+    }
+    i += 3
+  }
+  kept_push(procgen_st.pg_runs, kind)
+  kept_push(procgen_st.pg_runs, recipe)
+  kept_push(procgen_st.pg_runs, seed)
+}

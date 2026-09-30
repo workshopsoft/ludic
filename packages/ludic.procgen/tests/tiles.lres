@@ -1,0 +1,9 @@
+# tiles.lres - two tile sets for the tests: "sea" (water, grass and the shore between) and "pipes"
+water { set: "sea", weight: 4, n: 0, e: 0, s: 0, w: 0 }
+grass { set: "sea", weight: 6, n: 1, e: 1, s: 1, w: 1 }
+shore_n { set: "sea", weight: 2, n: 0, e: 2, s: 1, w: 2 }
+shore_s { set: "sea", weight: 2, n: 1, e: 3, s: 0, w: 3 }
+none { set: "pipes", weight: 5, n: 0, e: 0, s: 0, w: 0 }
+across { set: "pipes", weight: 2, n: 0, e: 1, s: 0, w: 1 }
+along { set: "pipes", weight: 2, n: 1, e: 0, s: 1, w: 0 }
+cross { set: "pipes", weight: 1, n: 1, e: 1, s: 1, w: 1 }

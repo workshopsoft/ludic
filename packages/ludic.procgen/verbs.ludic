@@ -1,0 +1,76 @@
+# verbs.ludic - run a recipe of the game's tables with a seed; the output is the state's own, read it
+# through procgen_dungeon_out / procgen_map_out / procgen_points_out and copy what the game keeps
+
+export function procgen_dungeon_out(procgen_st: ProcgenState) -> ProcDungeonOut { return procgen_st.pg_dun }
+export function procgen_map_out(procgen_st: ProcgenState) -> ProcGrid { return procgen_st.pg_map }
+export function procgen_points_out(procgen_st: ProcgenState) -> ProcPoints { return procgen_st.pg_pts }
+
+# the dungeon of recipe `recipe` (an index into ProcDungeons) from `seed`: the rooms placed, -1 for no such recipe
+export function procgen_dungeon(procgen_st: mut ProcgenState, recipe: int, seed: int) -> int {
+  if recipe < 0 or recipe >= PGD_COUNT { return -1 }
+  let n = pg_dungeon(ProcDungeons[recipe], seed, procgen_st.pg_dun)
+  pg_say(procgen_st, PG_DUNGEON, recipe, seed, n, n)
+  return n
+}
+
+# the tiles of a set, in declaration order, into the state's kept list
+function pg_gather(procgen_st: mut ProcgenState, set: string) -> int {
+  List.clear(procgen_st.pg_set)
+  for i in 0 .. PGT_COUNT { if ProcTiles[i].set == set { kept_push(procgen_st.pg_set, ProcTiles[i]) } }
+  return len(procgen_st.pg_set)
+}
+
+# the map of recipe `recipe` (an index into ProcMaps) from `seed`: the attempt that worked, -1 when every try
+# contradicted itself, -2 when the recipe, its tile set or its border tile is wrong (no such recipe: -3)
+export function procgen_map(procgen_st: mut ProcgenState, recipe: int, seed: int) -> int {
+  if recipe < 0 or recipe >= PGM_COUNT { return -3 }
+  let m = ProcMaps[recipe]
+  let nt = pg_gather(procgen_st, m.set)
+  var border = -1
+  if m.border != "" {
+    border = -2
+    for t in 0 .. nt { if procgen_st.pg_set[t].key == m.border { border = t } }
+  }
+  var r = -2
+  if border != -2 { r = pg_wfc(procgen_st.pg_set, nt, m.width, m.height, border, m.tries, seed, procgen_st.pg_map) }
+  pg_say(procgen_st, PG_MAP, recipe, seed, r, m.width * m.height)
+  return r
+}
+
+# the scatter of recipe `recipe` (an index into ProcScatters) from `seed`: the points placed, -1 for no such recipe
+export function procgen_scatter(procgen_st: mut ProcgenState, recipe: int, seed: int) -> int {
+  if recipe < 0 or recipe >= PGS_COUNT { return -1 }
+  let n = pg_scatter(ProcScatters[recipe], seed, procgen_st.pg_pts)
+  pg_say(procgen_st, PG_SCATTER, recipe, seed, n, n)
+  return n
+}
+
+# the seed a recipe last ran with, and whether it has run
+export function procgen_ran(procgen_st: ProcgenState, kind: int, recipe: int) -> bool {
+  var i = 0
+  while i < len(procgen_st.pg_runs) {
+    if procgen_st.pg_runs[i] == kind and procgen_st.pg_runs[i + 1] == recipe { return true }
+    i += 3
+  }
+  return false
+}
+export function procgen_seed_of(procgen_st: ProcgenState, kind: int, recipe: int) -> int {
+  var i = 0
+  while i < len(procgen_st.pg_runs) {
+    if procgen_st.pg_runs[i] == kind and procgen_st.pg_runs[i + 1] == recipe { return procgen_st.pg_runs[i + 2] }
+    i += 3
+  }
+  return 0
+}
+
+# a seed for a named thing from the world's: the same world seed and name, the same level on every machine
+export function procgen_seed_for(world_seed: int, name: string) -> int {
+  var h = world_seed
+  for i in 0 .. len(name) { h = pg_hash2(h, int(name[i])) }
+  return h
+}
+
+export function procgen_reset(procgen_st: mut ProcgenState) -> void {
+  List.clear(procgen_st.pg_runs)
+  q_clear(procgen_st.pg_facts)
+}

@@ -1,0 +1,63 @@
+# system.ludic - procgen as a system: no tick (nothing runs by itself), and a save that is only the
+# seeds: each recipe's key and the seed it last ran with. A load runs them again, and the same seed makes
+# the same level, so the save does not carry a level
+function pg_recipe_key(kind: int, recipe: int) -> string {
+  if kind == PG_DUNGEON { return ProcDungeons[recipe].key }
+  if kind == PG_MAP { return ProcMaps[recipe].key }
+  return ProcScatters[recipe].key
+}
+
+function pg_recipe_find(kind: int, key: string) -> int {
+  if kind == PG_DUNGEON {
+    for i in 0 .. PGD_COUNT { if ProcDungeons[i].key == key { return i } }
+  }
+  if kind == PG_MAP {
+    for i in 0 .. PGM_COUNT { if ProcMaps[i].key == key { return i } }
+  }
+  if kind == PG_SCATTER {
+    for i in 0 .. PGS_COUNT { if ProcScatters[i].key == key { return i } }
+  }
+  return -1
+}
+
+export function procgen_save(procgen_st: ProcgenState) -> Val {
+  let v = Value.object()
+  let l = Value.list()
+  var i = 0
+  while i < len(procgen_st.pg_runs) {
+    let o = Value.object()
+    sv_put_int(o, "kind", procgen_st.pg_runs[i])
+    sv_put_str(o, "recipe", pg_recipe_key(procgen_st.pg_runs[i], procgen_st.pg_runs[i + 1]))
+    sv_put_int(o, "seed", procgen_st.pg_runs[i + 2])
+    Value.add(l, o)
+    i += 3
+  }
+  Value.put(v, "runs", l)
+  return v
+}
+
+export function procgen_load(procgen_st: mut ProcgenState, v: Val, version: int) -> void {
+  procgen_reset(procgen_st)
+  if v == null or Value.kind(v) != 6 or Value.has(v, "runs") == 0 { return }
+  let l = Value.get(v, "runs")
+  for i in 0 .. Value.count(l) {
+    let o = Value.at(l, i)
+    let kind = sv_int(o, "kind", 0)
+    let recipe = pg_recipe_find(kind, sv_str(o, "recipe", ""))     # a recipe this build does not know is left out
+    if recipe < 0 { continue }
+    let seed = sv_int(o, "seed", 0)
+    if kind == PG_DUNGEON { procgen_dungeon(procgen_st, recipe, seed) }
+    if kind == PG_MAP { procgen_map(procgen_st, recipe, seed) }
+    if kind == PG_SCATTER { procgen_scatter(procgen_st, recipe, seed) }
+  }
+  q_clear(procgen_st.pg_facts)
+}
+
+export function procgen_system() -> System {
+  let s = system_new("procgen", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn procgen_reset
+  s.save = fn procgen_save
+  s.load = fn procgen_load
+  return s
+}

@@ -1,0 +1,13 @@
+# gen/procgen_golden.ludic - writes tests/procgen_golden.json from what the generators make today. Run it from the
+# repository root after a DELIBERATE change to an algorithm, and commit the file with the change:
+#   bin/ludic run packages/ludic.procgen/tests/gen/procgen_golden.ludic --headless
+import "ludic.procgen"
+import "ludic.base"
+program ProcgenGolden {
+  numbers float
+  import "../golden/procgen_json.ludic"
+  entry {
+    let path = "packages/ludic.procgen/tests/procgen_golden.json"
+    if Fs.write_text(path, pgg_json()) { print(`procgen_golden: wrote {path}`) } else { print(`procgen_golden: could not write {path}`) }
+  }
+}

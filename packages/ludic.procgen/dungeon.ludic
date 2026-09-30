@@ -1,0 +1,135 @@
+# dungeon.ludic - rooms, then corridors (README: "Dungeon"). Draw order is part of the contract:
+# per attempt w, h, x, y; per corridor one coin; per loop a, b.
+
+function pd_overlaps(d: ProcDungeonOut, x: int, y: int, w: int, h: int, pad: int) -> bool {
+  for i in 0 .. len(d.rx) {
+    if x < d.rx[i] + d.rw[i] + pad and d.rx[i] < x + w + pad and y < d.ry[i] + d.rh[i] + pad and d.ry[i] < y + h + pad { return true }
+  }
+  return false
+}
+
+function pd_corridor_cell(g: ProcGrid, x: int, y: int) -> void {
+  if g.cells[y * g.w + x] == 0 { g.cells[y * g.w + x] = 2 }
+}
+
+function pd_hline(g: ProcGrid, y: int, x0: int, x1: int) -> void {
+  var step = 1
+  if x1 < x0 { step = -1 }
+  var x = x0
+  while true {
+    pd_corridor_cell(g, x, y)
+    if x == x1 { break }
+    x += step
+  }
+}
+
+function pd_vline(g: ProcGrid, x: int, y0: int, y1: int) -> void {
+  var step = 1
+  if y1 < y0 { step = -1 }
+  var y = y0
+  while true {
+    pd_corridor_cell(g, x, y)
+    if y == y1 { break }
+    y += step
+  }
+}
+
+function pd_cx(d: ProcDungeonOut, i: int) -> int { return d.rx[i] + d.rw[i] / 2 }
+function pd_cy(d: ProcDungeonOut, i: int) -> int { return d.ry[i] + d.rh[i] / 2 }
+
+# room i to room j between their centres, one bend: a coin says across first (1) or along first (0)
+function pd_join(d: ProcDungeonOut, i: int, j: int) -> void {
+  let g = d.grid
+  let ax = pd_cx(d, i)
+  let ay = pd_cy(d, i)
+  let bx = pd_cx(d, j)
+  let by = pd_cy(d, j)
+  if pg_below(g.rng, 2) == 1 {
+    pd_hline(g, ay, ax, bx)
+    pd_vline(g, bx, ay, by)
+  } else {
+    pd_vline(g, ax, ay, by)
+    pd_hline(g, by, ax, bx)
+  }
+}
+
+function pd_dist(d: ProcDungeonOut, i: int, j: int) -> int {
+  return Math.abs(pd_cx(d, i) - pd_cx(d, j)) + Math.abs(pd_cy(d, i) - pd_cy(d, j))
+}
+
+# the dungeon of a recipe row from a seed, into `out`: the number of rooms placed (0 when the row is out of
+# range: then the grid is 1 x 1 walls)
+export function pg_dungeon(p: ProcDungeon, seed: int, out: ProcDungeonOut) -> int {
+  List.clear(out.rx)
+  List.clear(out.ry)
+  List.clear(out.rw)
+  List.clear(out.rh)
+  List.clear(out.tree)
+  out.start = 0
+  out.exit = 0
+  if p.width < 8 or p.height < 8 or p.width > 256 or p.height > 256 or p.room_min < 1 or p.room_max < p.room_min {
+    procgrid_size(out.grid, 1, 1)
+    return 0
+  }
+  let g = out.grid
+  procgrid_size(g, p.width, p.height)
+  pg_seed(g.rng, seed)
+  for a in 0 .. p.attempts {
+    if len(out.rx) >= p.rooms { break }
+    let w = pg_between(g.rng, p.room_min, p.room_max)
+    let h = pg_between(g.rng, p.room_min, p.room_max)
+    let x = pg_between(g.rng, 1, p.width - w - 1)
+    let y = pg_between(g.rng, 1, p.height - h - 1)
+    if x + w > p.width - 1 or y + h > p.height - 1 { continue }
+    if pd_overlaps(out, x, y, w, h, p.pad) { continue }
+    kept_push(out.rx, x)
+    kept_push(out.ry, y)
+    kept_push(out.rw, w)
+    kept_push(out.rh, h)
+  }
+  let n = len(out.rx)
+  for r in 0 .. n {
+    for j in out.ry[r] .. out.ry[r] + out.rh[r] {
+      for i in out.rx[r] .. out.rx[r] + out.rw[r] { g.cells[j * g.w + i] = 1 }
+    }
+  }
+  if n >= 2 {
+    for i in 0 .. n { kept_push(out.tree, 0) }
+    out.tree[0] = 1
+    for step in 1 .. n {
+      var bi = -1
+      var bj = -1
+      var bd = 0
+      for i in 0 .. n {
+        if out.tree[i] == 0 { continue }
+        for j in 0 .. n {
+          if out.tree[j] != 0 { continue }
+          let d = pd_dist(out, i, j)
+          if bi < 0 or d < bd {
+            bi = i
+            bj = j
+            bd = d
+          }
+        }
+      }
+      pd_join(out, bi, bj)
+      out.tree[bj] = 1
+    }
+    for k in 0 .. p.loops {
+      let a = pg_below(g.rng, n)
+      let b = pg_below(g.rng, n)
+      if a != b { pd_join(out, a, b) }
+    }
+  }
+  if n >= 1 {
+    var best = -1
+    for i in 0 .. n {
+      let d = pd_dist(out, 0, i)
+      if d > best {
+        best = d
+        out.exit = i
+      }
+    }
+  }
+  return n
+}

@@ -1,0 +1,86 @@
+# grid.ludic - what a generator fills: a grid of ints, the rooms of a dungeon, the points of a scatter.
+# Each is made once and filled again by every run (Ludic frees nothing), its lists kept and cleared.
+
+export property ProcGrid {
+  w: int = 0
+  h: int = 0
+  cap: int = 0
+  cells: words = words(0)      # row by row: cell (x, y) is cells[y * w + x]
+  mask: words = words(0)       # a wave function's scratch: the tiles each cell may still be
+  stack: []int = new []int
+  compat: words = words(128)   # 4 directions x 32 tiles: which tiles may lie beside each
+  rng: ProcRng = new ProcRng
+}
+
+export function procgrid_new(w: int, h: int) -> ProcGrid {
+  let g = new ProcGrid
+  procgrid_size(g, w, h)
+  return g
+}
+
+# make it w x h, cleared to 0; memory is made again only when the grid has never been this big
+export function procgrid_size(g: ProcGrid, w: int, h: int) -> void {
+  if w * h > g.cap {
+    g.cells = words(w * h)
+    g.mask = words(w * h)
+    g.cap = w * h
+  }
+  g.w = w
+  g.h = h
+  procgrid_fill(g, 0)
+}
+
+export function procgrid_fill(g: ProcGrid, v: int) -> void {
+  for i in 0 .. g.w * g.h { g.cells[i] = v }
+}
+
+export function procgrid_at(g: ProcGrid, x: int, y: int) -> int {
+  if x < 0 or y < 0 or x >= g.w or y >= g.h { return -1 }
+  return g.cells[y * g.w + x]
+}
+
+# a dungeon: the grid holds 0 wall, 1 room floor, 2 corridor floor; the rooms are in the order they were
+# placed; `start` is room 0 and `exit` the room whose centre is farthest (Manhattan) from its centre
+export property ProcDungeonOut {
+  grid: ProcGrid = null
+  rx: []int = new []int
+  ry: []int = new []int
+  rw: []int = new []int
+  rh: []int = new []int
+  start: int = 0
+  exit: int = 0
+  tree: []int = new []int
+}
+
+export function procdungeon_new() -> ProcDungeonOut {
+  let d = new ProcDungeonOut
+  d.grid = procgrid_new(8, 8)
+  return d
+}
+
+export function procdungeon_rooms(d: ProcDungeonOut) -> int { return len(d.rx) }
+
+# scattered points: position, the kind drawn (index into the recipe's kinds), an angle in degrees
+# 0 .. 359, a scale in per mille, and the region it was placed in
+export property ProcPoints {
+  x: []int = new []int
+  y: []int = new []int
+  kind: []int = new []int
+  angle: []int = new []int
+  scale: []int = new []int
+  region: []int = new []int
+  rng: ProcRng = new ProcRng
+}
+
+export function procpoints_new() -> ProcPoints { return new ProcPoints }
+
+export function procpoints_count(p: ProcPoints) -> int { return len(p.x) }
+
+function pp_clear(p: ProcPoints) -> void {
+  List.clear(p.x)
+  List.clear(p.y)
+  List.clear(p.kind)
+  List.clear(p.angle)
+  List.clear(p.scale)
+  List.clear(p.region)
+}

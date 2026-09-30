@@ -1,0 +1,8 @@
+# scatters.lres - a scatter as data: regions, an avoided region, and what is scattered
+meadow {
+  min_dist: 6
+  attempts: 40
+  regions: [{ shape: "rect", x: 0, y: 0, w: 100, h: 80, count: 30 }, { shape: "disc", x: 300, y: 300, w: 25, count: 10 }]
+  avoid: [{ shape: "disc", x: 50, y: 40, w: 15 }]
+  kinds: [{ key: "fern", weight: 3, scale_lo: 800, scale_hi: 1200 }, { key: "rock", weight: 1, scale_lo: 500, scale_hi: 500 }]
+}

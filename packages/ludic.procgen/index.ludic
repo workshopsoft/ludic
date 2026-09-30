@@ -1,0 +1,15 @@
+# ludic.procgen - generators that are pure functions of (recipe, seed): the stream (rng.ludic), the
+# recipes as data (defs.ludic), the outputs they fill (grid.ludic), the three algorithms (dungeon.ludic,
+# wfc.ludic, scatter.ludic), and the state that runs a recipe, says so, and saves only its seeds
+module ludic_procgen uses ludic_base
+numbers float
+import "ludic.base"
+import "rng.ludic"
+import "defs.ludic"
+import "grid.ludic"
+import "dungeon.ludic"
+import "wfc.ludic"
+import "scatter.ludic"
+import "state.ludic"
+import "verbs.ludic"
+import "system.ludic"

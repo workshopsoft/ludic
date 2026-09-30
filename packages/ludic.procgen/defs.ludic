@@ -1,0 +1,82 @@
+# defs.ludic - the recipes a game fills: what a generator is asked for, as rows an editor edits
+
+# a room-and-corridor dungeon on a `width` x `height` grid (cells, at most 256 a side): up to `rooms`
+# rooms of `room_min` .. `room_max` cells a side, at least `pad` cells between two, tried `attempts`
+# times; rooms joined by a spanning tree of L-shaped corridors, then `loops` extra ones
+export property ProcDungeon {
+  key: string = ""
+  @Range(8, 256) width: int = 48
+  @Range(8, 256) height: int = 32
+  @Range(1, 200) rooms: int = 8
+  @Range(2, 64) room_min: int = 4
+  @Range(2, 64) room_max: int = 9
+  @Range(0, 16) pad: int = 1
+  @Range(1, 10000) attempts: int = 200
+  @Range(0, 64) loops: int = 2
+}
+
+@AppendOnly @ByKey
+export open registry ProcDungeons of ProcDungeon as PGD
+
+# a tile of a tile set: `weight` of the draw, and what lies on each edge. Tile B may lie east of A when
+# A's `e` equals B's `w`; south of A when A's `s` equals B's `n` (and so west, north). A set has at most
+# 32 tiles, numbered in the order they are declared (the first is 0)
+export property ProcTile {
+  key: string = ""
+  set: string = ""
+  @Range(1, 1000) weight: int = 1
+  n: int = 0
+  e: int = 0
+  s: int = 0
+  w: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry ProcTiles of ProcTile as PGT
+
+# a map of a tile set: `width` x `height` cells (at most 64 a side), the `border` tile (a key of the
+# set, "" none) all round it, `tries` seeds before it gives up
+export property ProcMap {
+  key: string = ""
+  set: string = ""
+  @Range(1, 64) width: int = 16
+  @Range(1, 64) height: int = 16
+  border: string = ""
+  @Range(1, 100) tries: int = 20
+}
+
+@AppendOnly @ByKey
+export open registry ProcMaps of ProcMap as PGM
+
+# a place things are scattered in: a `rect` from (x, y) `w` by `h`, or a `disc` round (x, y) of radius
+# `w`, asking for `count` of them. Units are the game's (whole numbers; at most 16383 either way of zero)
+export property ProcRegion {
+  @OneOf("rect", "disc") shape: string = "rect"
+  x: int = 0
+  y: int = 0
+  w: int = 1
+  h: int = 1
+  @Range(0, 100000) count: int = 1
+}
+
+# what is scattered: a kind is drawn by `weight`, and its size by `scale_lo` .. `scale_hi` (per mille)
+export property ProcKind {
+  key: string = ""
+  @Range(1, 1000) weight: int = 1
+  @Range(1, 100000) scale_lo: int = 1000
+  @Range(1, 100000) scale_hi: int = 1000
+}
+
+# a scatter: every point of every region keeps `min_dist` from each one placed before it (0: none),
+# stays out of the `avoid` regions, and is tried `attempts` times before it is given up
+export property ProcScatter {
+  key: string = ""
+  @Range(0, 16000) min_dist: int = 0
+  @Range(1, 1000) attempts: int = 30
+  regions: []ProcRegion = null
+  avoid: []ProcRegion = null
+  kinds: []ProcKind = null
+}
+
+@AppendOnly @ByKey
+export open registry ProcScatters of ProcScatter as PGS

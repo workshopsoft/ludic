@@ -1,0 +1,7 @@
+# ludic.procgen - deterministic, seeded level generators as data: room-and-corridor dungeons, tile maps
+# from adjacency rules (wave function collapse over edge sockets), and scattered placement within
+# regions. Integer math only, so an editor reproduces every output exactly. Uses ludic.base and nothing
+# else.
+package "ludic.procgen"
+version "0.1.0"
+kind source

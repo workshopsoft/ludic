@@ -1,0 +1,54 @@
+# rng.ludic - the stream every generator draws from. It is NOT ludic.base's Rng (that is xorshift32, made
+# for a mechanic's dice): this one is a counter and a finaliser, three lines an editor writes in any
+# language, and a stream can be started anywhere from (seed, index) without drawing the ones before it.
+#
+#   next:    s = s + 0x9E3779B9;  z = mix(s);  result z & 0x7FFFFFFF         (31 bits, never negative)
+#   mix(z):  z ^= z >>> 16;  z *= 0x85EBCA6B;  z ^= z >>> 13;  z *= 0xC2B2AE35;  z ^= z >>> 16
+#   hash2(a, b) = mix(a * 16777619 + mix(b + 0x9E3779B9))                    (a new seed from a seed and an index)
+#
+# every operation is on a signed 32-bit int and wraps; `>>>` is a logical shift (here `>>` then a mask, as
+# Ludic's `>>` is arithmetic). The three constants are written as the signed numbers they wrap to.
+export property ProcRng {
+  s: int = 0
+}
+
+const PG_GOLDEN: int = -1640531527      # 0x9E3779B9
+const PG_C1: int = -2048144789          # 0x85EBCA6B
+const PG_C2: int = -1028477387          # 0xC2B2AE35
+const PG_FNV: int = 16777619
+
+export function pg_mix(v: int) -> int {
+  var z = v
+  z = z ^ ((z >> 16) & 0xFFFF)
+  z = z * PG_C1
+  z = z ^ ((z >> 13) & 0x7FFFF)
+  z = z * PG_C2
+  z = z ^ ((z >> 16) & 0xFFFF)
+  return z
+}
+
+# a seed made from a seed and an index: the attempt k of a generator that may have to try again
+export function pg_hash2(a: int, b: int) -> int { return pg_mix(a * PG_FNV + pg_mix(b + PG_GOLDEN)) }
+
+export function pg_rng_new(seed: int) -> ProcRng {
+  let r = new ProcRng
+  r.s = seed
+  return r
+}
+
+export function pg_seed(r: ProcRng, seed: int) -> void { r.s = seed }
+
+# [0, 2^31)
+export function pg_next(r: ProcRng) -> int {
+  r.s = r.s + PG_GOLDEN
+  return pg_mix(r.s) & 0x7FFFFFFF
+}
+
+# [0, n); n <= 1 is 0 and draws NOTHING, so the stream's position depends only on real choices
+export function pg_below(r: ProcRng, n: int) -> int {
+  if n <= 1 { return 0 }
+  return pg_next(r) % n
+}
+
+# [lo, hi] inclusive; hi <= lo is lo and draws nothing
+export function pg_between(r: ProcRng, lo: int, hi: int) -> int { return lo + pg_below(r, hi - lo + 1) }

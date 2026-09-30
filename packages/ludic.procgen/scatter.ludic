@@ -1,0 +1,83 @@
+# scatter.ludic - points within regions by dart throwing (README: "Scatter"). Draw order: per attempt the
+# region's two coordinates; per accepted point its kind, its angle, its scale.
+
+function ps_inside(r: ProcRegion, x: int, y: int) -> bool {
+  if r.shape == "disc" {
+    let dx = x - r.x
+    let dy = y - r.y
+    return dx * dx + dy * dy <= r.w * r.w
+  }
+  return x >= r.x and x < r.x + r.w and y >= r.y and y < r.y + r.h
+}
+
+function ps_avoided(row: ProcScatter, x: int, y: int) -> bool {
+  if row.avoid == null { return false }
+  for i in 0 .. len(row.avoid) { if ps_inside(row.avoid[i], x, y) { return true } }
+  return false
+}
+
+function ps_crowded(out: ProcPoints, x: int, y: int, d2: int) -> bool {
+  if d2 <= 0 { return false }
+  for i in 0 .. len(out.x) {
+    let dx = out.x[i] - x
+    let dy = out.y[i] - y
+    if dx * dx + dy * dy < d2 { return true }
+  }
+  return false
+}
+
+# the points of a scatter row from a seed, into `out`; how many were placed. A point that finds no place in
+# `attempts` tries is given up, so a crowded region holds fewer than its count
+export function pg_scatter(row: ProcScatter, seed: int, out: ProcPoints) -> int {
+  pp_clear(out)
+  if row.regions == null { return 0 }
+  pg_seed(out.rng, seed)
+  var total = 0
+  if row.kinds != null { for k in 0 .. len(row.kinds) { total += row.kinds[k].weight } }
+  let d2 = row.min_dist * row.min_dist
+  for ri in 0 .. len(row.regions) {
+    let reg = row.regions[ri]
+    for c in 0 .. reg.count {
+      for a in 0 .. row.attempts {
+        var x = 0
+        var y = 0
+        if reg.shape == "disc" {
+          x = reg.x - reg.w + pg_below(out.rng, 2 * reg.w + 1)
+          y = reg.y - reg.w + pg_below(out.rng, 2 * reg.w + 1)
+        } else {
+          x = reg.x + pg_below(out.rng, reg.w)
+          y = reg.y + pg_below(out.rng, reg.h)
+        }
+        if not ps_inside(reg, x, y) or ps_avoided(row, x, y) or ps_crowded(out, x, y, d2) { continue }
+        var kind = 0
+        if total > 0 {
+          let r = pg_below(out.rng, total)
+          var acc = 0
+          for k in 0 .. len(row.kinds) {
+            acc += row.kinds[k].weight
+            if acc > r {
+              kind = k
+              break
+            }
+          }
+        }
+        let angle = pg_below(out.rng, 360)
+        var lo = 1000
+        var hi = 1000
+        if total > 0 {
+          lo = row.kinds[kind].scale_lo
+          hi = row.kinds[kind].scale_hi
+        }
+        let scale = pg_between(out.rng, lo, hi)
+        kept_push(out.x, x)
+        kept_push(out.y, y)
+        kept_push(out.kind, kind)
+        kept_push(out.angle, angle)
+        kept_push(out.scale, scale)
+        kept_push(out.region, ri)
+        break
+      }
+    }
+  }
+  return len(out.x)
+}
