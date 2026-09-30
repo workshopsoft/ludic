@@ -1,0 +1,254 @@
+# cars_doors_test.ludic - getting in and out, locking, breaking in, carjacking and escaping one, a wreck
+# putting everybody out: the door machine, with a fake rider port that knows where people stand and records
+# where they were put and which graph states were asked for. Nothing is animated by the package.
+import "ludic.cars"
+import "ludic.base"
+program CarsDoorsTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+
+  state Scene {
+    px: floats = floats(8)
+    pz: floats = floats(8)
+    boarded: words = words(8)
+    alit: words = words(8)
+    asked: string = ""
+    speed_param: float = -1.0
+    door_param: float = -1.0
+    tk: Tick = new Tick
+  }
+  function sc_reach(scene_st: Scene, actor: int, x: float, y: float, z: float, r: float) -> bool {
+    let dx = scene_st.px[actor] - x
+    let dz = scene_st.pz[actor] - z
+    return dx * dx + dz * dz <= r * r
+  }
+  function sc_board(scene_st: mut Scene, actor: int, nid: int, seat: int, x: float, y: float, z: float, yaw: float) -> void {
+    scene_st.boarded[actor] = seat + 1
+    scene_st.alit[actor] = 0
+  }
+  function sc_alight(scene_st: mut Scene, actor: int, x: float, y: float, z: float, yaw: float) -> void {
+    scene_st.alit[actor] += 1
+    scene_st.boarded[actor] = 0
+    scene_st.px[actor] = x
+    scene_st.pz[actor] = z
+  }
+  function sc_rider_request(scene_st: mut Scene, id: int, name: string) -> void { scene_st.asked = scene_st.asked + name + "," }
+  function sc_car_param(scene_st: mut Scene, id: int, name: string, v: float) -> void {
+    if name == "car_speed" { scene_st.speed_param = v }
+    if name == "car_door" { scene_st.door_param = v }
+  }
+  bind CarRider { reach: fn sc_reach, board: fn sc_board, alight: fn sc_alight }
+  bind CarAnim { rider_request: fn sc_rider_request, car_param: fn sc_car_param }
+
+  function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: Scene, n: int) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(scene_st.tk, 0.016666668, i, 0.0))
+    }
+  }
+
+  function count(cars_st: CarsState, what: int) -> int {
+    var n = 0
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  function make(cars_st: mut CarsState, scene_st: mut Scene, owner: int) -> Car {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, owner)
+    for a in 1 .. 5 {
+      scene_st.px[a] = 2.0
+      scene_st.pz[a] = 0.25
+    }
+    scene_st.px[7] = 50.0
+    return car_by_nid(cars_st, nid)
+  }
+
+  test "a driver gets in through the door machine: the seat is theirs at once, the engine runs once the door has closed" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    expect_eq(car_enter(cars_st, c.nid, 1, 0), 0)
+    frames(cars_st, doors, owns, scene_st, 2)
+    expect(c.phase == CarPhase.Entering)
+    expect_eq(c.occupant[0], 1)
+    expect(not c.engine_on)
+    expect(scene_st.door_param > 0.5)
+    frames(cars_st, doors, owns, scene_st, 70)
+    expect(c.phase == CarPhase.Driven)
+    expect(c.engine_on)
+    expect_eq(scene_st.boarded[1], 1)
+    expect_eq(car_driver(c), 1)
+    expect(scene_st.door_param < 0.5)
+    # the graph was asked for the states the seat names, in their order
+    expect(scene_st.asked == "enter_left,sit_drive,")
+    expect_eq(count(cars_st, CAR_ENTERED), 1)
+  }
+
+  test "far from the door, into a taken seat, or into a wreck, is refused with a reason" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    expect_eq(car_enter(cars_st, c.nid, 7, 0), CAR_NO_FAR)
+    expect_eq(car_enter(cars_st, c.nid, 1, 5), CAR_NO_SEAT)
+    expect_eq(car_enter(cars_st, c.nid, 1, 0), 0)
+    frames(cars_st, doors, owns, scene_st, 70)
+    expect_eq(car_enter(cars_st, c.nid, 2, 0), CAR_NO_SEAT)
+    expect_eq(car_enter(cars_st, 9999, 2, 0), CAR_NO_SUCH)
+    var why = 0
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) { if fs[i].what == CAR_REFUSED and fs[i].actor == 7 { why = int(fs[i].v) } }
+    expect_eq(why, CAR_NO_FAR)
+  }
+
+  test "a passenger takes a seat at once, and steps out again" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    expect_eq(car_enter(cars_st, c.nid, 2, 1), 0)
+    expect_eq(c.occupant[1], 2)
+    expect_eq(scene_st.boarded[2], 2)
+    expect(c.phase == CarPhase.Free)
+    expect_eq(car_occupants(c), 1)
+    expect_eq(car_exit(cars_st, c.nid, 2), 0)
+    expect_eq(c.occupant[1], -1)
+    expect_eq(scene_st.alit[2], 1)
+    # out on the passenger's side: the car's left at yaw 0 is east... a right seat steps out to its right, west
+    expect(scene_st.px[2] < 0.0)
+  }
+
+  test "a driver cannot get out at speed; slowed, they get out, the engine goes off and the door closes" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    car_enter(cars_st, c.nid, 1, 0)
+    frames(cars_st, doors, owns, scene_st, 70)
+    c.speed = 12.0
+    expect_eq(car_exit(cars_st, c.nid, 1), CAR_NO_FAST)
+    c.speed = 1.0
+    expect_eq(car_exit(cars_st, c.nid, 1), 0)
+    frames(cars_st, doors, owns, scene_st, 2)
+    expect(c.phase == CarPhase.Exiting)
+    expect_eq(car_driver(c), -1)
+    expect(not c.engine_on)
+    expect_eq(scene_st.alit[1], 1)
+    frames(cars_st, doors, owns, scene_st, 70)
+    expect(c.phase == CarPhase.Free)
+    expect(scene_st.asked == "enter_left,sit_drive,exit_left,")
+    expect_eq(count(cars_st, CAR_EXITED), 1)
+  }
+
+  test "a locked car keeps everyone but its owner out" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, 1)
+    expect(car_lock(cars_st, c.nid, true))
+    frames(cars_st, doors, owns, scene_st, 2)
+    expect(c.phase == CarPhase.Locked)
+    expect_eq(car_enter(cars_st, c.nid, 2, 0), CAR_NO_LOCKED)
+    expect_eq(car_enter(cars_st, c.nid, 1, 0), 0)
+    frames(cars_st, doors, owns, scene_st, 70)
+    expect(c.phase == CarPhase.Driven)
+    expect_eq(car_driver(c), 1)
+    # a driven car cannot be locked: somebody is in it
+    expect(car_lock(cars_st, c.nid, true))
+    frames(cars_st, doors, owns, scene_st, 2)
+    expect(c.phase == CarPhase.Driven)
+  }
+
+  test "a thief drags the driver out; the driver is put out beside the door and the thief drives off" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    car_enter(cars_st, c.nid, 1, 0)
+    frames(cars_st, doors, owns, scene_st, 70)
+    q_clear(cars_facts(cars_st))
+    expect_eq(car_carjack(cars_st, c.nid, 3), 0)
+    frames(cars_st, doors, owns, scene_st, 3)
+    expect(c.phase == CarPhase.Jacked)
+    expect_eq(car_driver(c), 1)
+    # the victim and the thief are told their graph states
+    expect(scene_st.asked == "enter_left,sit_drive,dragged_left,enter_left,")
+    frames(cars_st, doors, owns, scene_st, 140)
+    expect(c.phase == CarPhase.Entering or c.phase == CarPhase.Driven)
+    expect_eq(scene_st.alit[1], 1)
+    frames(cars_st, doors, owns, scene_st, 60)
+    expect(c.phase == CarPhase.Driven)
+    expect_eq(car_driver(c), 3)
+    expect(c.engine_on)
+    var jacks = 0
+    var ejected = 0
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) {
+      if fs[i].what == CAR_CARJACK and fs[i].actor == 3 and int(fs[i].w) == 1 { jacks += 1 }
+      if fs[i].what == CAR_EJECTED and fs[i].actor == 1 { ejected += 1 }
+    }
+    expect_eq(jacks, 1)
+    expect_eq(ejected, 1)
+  }
+
+  test "a driver who floors it shakes the thief off" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    car_enter(cars_st, c.nid, 1, 0)
+    frames(cars_st, doors, owns, scene_st, 70)
+    car_carjack(cars_st, c.nid, 3)
+    frames(cars_st, doors, owns, scene_st, 20)
+    expect(c.phase == CarPhase.Jacked)
+    car_drive(cars_st, c.nid, 1.0, 0.0, 0.0, 0.0)
+    frames(cars_st, doors, owns, scene_st, 2)
+    expect(c.phase == CarPhase.Driven)
+    expect_eq(car_driver(c), 1)
+    frames(cars_st, doors, owns, scene_st, 200)
+    expect_eq(car_driver(c), 1)
+    expect_eq(scene_st.alit[1], 0)
+  }
+
+  test "a locked empty car can be broken into" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, 1)
+    car_lock(cars_st, c.nid, true)
+    frames(cars_st, doors, owns, scene_st, 2)
+    q_clear(cars_facts(cars_st))
+    expect_eq(car_carjack(cars_st, c.nid, 3), 0)
+    frames(cars_st, doors, owns, scene_st, 2)
+    expect(c.phase == CarPhase.Entering)
+    expect_eq(c.occupant[0], 3)
+    frames(cars_st, doors, owns, scene_st, 160)
+    expect(c.phase == CarPhase.Driven)
+    expect_eq(car_driver(c), 3)
+    expect_eq(count(cars_st, CAR_BROKEN_INTO), 1)
+  }
+
+  test "a wreck puts everybody out, stops the engine and goes no further until it is repaired" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    car_enter(cars_st, c.nid, 1, 0)
+    frames(cars_st, doors, owns, scene_st, 70)
+    car_enter(cars_st, c.nid, 2, 1)
+    expect_eq(car_occupants(c), 2)
+    expect(car_damage(cars_st, c.nid, 5000.0, -1))
+    frames(cars_st, doors, owns, scene_st, 3)
+    expect(c.phase == CarPhase.Wrecked)
+    expect_eq(car_occupants(c), 0)
+    expect(not c.engine_on)
+    expect_eq(scene_st.alit[1], 1)
+    expect_eq(scene_st.alit[2], 1)
+    expect_eq(car_enter(cars_st, c.nid, 3, 0), CAR_NO_WRECK)
+    expect(c.smoke == 3)
+    expect(car_repair(cars_st, c.nid))
+    frames(cars_st, doors, owns, scene_st, 3)
+    expect(c.phase == CarPhase.Free)
+    expect(c.health > 900.0)
+    expect(car_engine(cars_st, c.nid, true))
+  }
+
+  test "an AI driver is seated with no door to open" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    expect_eq(car_seat_driver(cars_st, c.nid, 5), 0)
+    frames(cars_st, doors, owns, scene_st, 3)
+    expect(c.phase == CarPhase.Driven)
+    expect_eq(car_driver(c), 5)
+    expect(c.engine_on)
+    expect_eq(car_seat_driver(cars_st, c.nid, 6), CAR_NO_BUSY)
+  }
+
+  test "a removed car puts its people out first" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, scene_st: mut Scene) {
+    let c = make(cars_st, scene_st, -1)
+    car_enter(cars_st, c.nid, 2, 1)
+    let nid = c.nid
+    expect(car_remove(cars_st, nid))
+    expect_eq(scene_st.alit[2], 1)
+    expect(car_by_nid(cars_st, nid) == null)
+    expect_eq(car_count(cars_st), 0)
+  }
+}

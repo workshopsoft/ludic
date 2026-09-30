@@ -6,7 +6,8 @@ sedan {
   torque: [{ x: 1000.0, y: 180.0 }, { x: 2500.0, y: 260.0 }, { x: 4000.0, y: 300.0 }, { x: 5500.0, y: 280.0 }, { x: 6500.0, y: 240.0 }, { x: 7000.0, y: 200.0 }]
   gears: [3.6, 2.3, 1.6, 1.2, 0.95, 0.78], reverse: 3.3, final_drive: 4.1, shift_time: 0.2
   brakes: 14000.0, brake_front: 0.62, handbrake: 16000.0
-  steer_lock: 34.0, steer_curve: [{ x: 0.0, y: 1.0 }, { x: 20.0, y: 0.55 }, { x: 60.0, y: 0.25 }], steer_rate: 5.0
+  steer_lock: 34.0, steer_curve: [{ x: 0.0, y: 1.0 }, { x: 10.0, y: 0.45 }, { x: 20.0, y: 0.22 }, { x: 40.0, y: 0.1 }, { x: 60.0, y: 0.06 }], steer_rate: 5.0
+  com_y: 0.5
   axles: [
     { z: 1.3, track: 0.78, y: 0.48, radius: 0.33, steer: 1.0, spring: 35000.0, damper: 3000.0, rebound: 3800.0, bar: 6000.0, tyre: CART_ROAD }
     { z: -1.3, track: 0.78, y: 0.48, radius: 0.33, handbrake: true, spring: 35000.0, damper: 3000.0, rebound: 3800.0, bar: 4000.0, tyre: CART_ROAD }
@@ -20,7 +21,8 @@ hatch {
   torque: [{ x: 1000.0, y: 110.0 }, { x: 3000.0, y: 150.0 }, { x: 4500.0, y: 160.0 }, { x: 6000.0, y: 130.0 }, { x: 6500.0, y: 100.0 }]
   gears: [3.5, 2.0, 1.4, 1.05, 0.85], reverse: 3.2, final_drive: 4.2
   brakes: 10000.0, brake_front: 0.7
-  steer_lock: 36.0, steer_rate: 5.0
+  steer_lock: 36.0, steer_rate: 5.0, steer_curve: [{ x: 0.0, y: 1.0 }, { x: 10.0, y: 0.45 }, { x: 20.0, y: 0.22 }, { x: 40.0, y: 0.1 }]
+  com_y: 0.55
   axles: [
     { z: 1.15, track: 0.74, y: 0.47, radius: 0.3, steer: 1.0, spring: 30000.0, damper: 2600.0, rebound: 3300.0, tyre: CART_ROAD }
     { z: -1.15, track: 0.74, y: 0.47, radius: 0.3, handbrake: true, spring: 28000.0, damper: 2400.0, rebound: 3000.0, tyre: CART_ROAD }
@@ -33,7 +35,8 @@ super {
   torque: [{ x: 1000.0, y: 300.0 }, { x: 3000.0, y: 500.0 }, { x: 5500.0, y: 620.0 }, { x: 7500.0, y: 560.0 }, { x: 8300.0, y: 420.0 }]
   gears: [3.2, 2.2, 1.6, 1.25, 1.0, 0.82, 0.7], final_drive: 3.9
   brakes: 26000.0, brake_front: 0.6
-  steer_lock: 30.0, steer_rate: 6.0
+  steer_lock: 30.0, steer_rate: 6.0, steer_curve: [{ x: 0.0, y: 1.0 }, { x: 15.0, y: 0.4 }, { x: 40.0, y: 0.12 }, { x: 80.0, y: 0.06 }]
+  com_y: 0.4
   axles: [
     { z: 1.4, track: 0.85, y: 0.44, radius: 0.34, steer: 1.0, spring: 55000.0, damper: 4500.0, rebound: 5500.0, bar: 9000.0, tyre: CART_SLICK }
     { z: -1.4, track: 0.85, y: 0.44, radius: 0.36, handbrake: true, spring: 55000.0, damper: 4500.0, rebound: 5500.0, bar: 9000.0, tyre: CART_SLICK }
@@ -47,7 +50,8 @@ bike {
   torque: [{ x: 2000.0, y: 70.0 }, { x: 6000.0, y: 95.0 }, { x: 9000.0, y: 85.0 }, { x: 10500.0, y: 60.0 }]
   gears: [2.8, 1.9, 1.5, 1.25, 1.05, 0.92], final_drive: 3.4
   brakes: 4500.0, brake_front: 0.6
-  steer_lock: 28.0, steer_rate: 6.0
+  steer_lock: 28.0, steer_rate: 6.0, steer_curve: [{ x: 0.0, y: 1.0 }, { x: 8.0, y: 0.35 }, { x: 15.0, y: 0.1 }, { x: 25.0, y: 0.03 }, { x: 40.0, y: 0.015 }]
+  com_y: 0.55
   axles: [
     { z: 0.65, track: 0.0, y: 0.5, radius: 0.3, steer: 1.0, travel: 0.2, spring: 22000.0, damper: 1500.0, rebound: 2000.0, tyre: CART_ROAD, wheel_inertia: 0.6 }
     { z: -0.65, track: 0.0, y: 0.5, radius: 0.31, handbrake: true, travel: 0.2, spring: 22000.0, damper: 1500.0, rebound: 2000.0, tyre: CART_ROAD, wheel_inertia: 0.6 }
@@ -60,7 +64,8 @@ bus {
   torque: [{ x: 700.0, y: 900.0 }, { x: 1400.0, y: 1500.0 }, { x: 2000.0, y: 1400.0 }, { x: 2600.0, y: 900.0 }]
   gears: [6.0, 3.6, 2.3, 1.5, 1.0, 0.75], final_drive: 4.5
   brakes: 90000.0, brake_front: 0.4
-  steer_lock: 40.0, steer_rate: 3.0
+  steer_lock: 40.0, steer_rate: 3.0, steer_curve: [{ x: 0.0, y: 1.0 }, { x: 8.0, y: 0.4 }, { x: 20.0, y: 0.15 }]
+  com_y: 1.2
   axles: [
     { z: 3.5, track: 1.0, y: 0.75, radius: 0.5, steer: 1.0, travel: 0.3, spring: 250000.0, damper: 20000.0, rebound: 26000.0, tyre: CART_ROAD, wheel_inertia: 6.0 }
     { z: -2.4, track: 1.0, y: 0.75, radius: 0.5, travel: 0.3, spring: 250000.0, damper: 20000.0, rebound: 26000.0, tyre: CART_ROAD, wheel_inertia: 6.0 }

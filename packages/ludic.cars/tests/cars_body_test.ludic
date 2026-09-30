@@ -1,0 +1,300 @@
+# cars_body_test.ludic - the raycast-wheel model on a real Jolt body (ludic.physics): at rest on its springs,
+# accelerating, braking, turning, on gravel, a heavy bus, a bike held upright, a fall and a landing, the levels
+# of detail handing a car between body and planar model, and the same run twice to the bit.
+import "ludic.cars"
+import "ludic.base"
+import "ludic.physics"
+program CarsBodyTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+  import "fakes/jolt_body.ludic"
+
+  state Rig { tk: Tick = new Tick }
+
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+
+  # a flat world 510 m across, the ground at y = 0
+  function world(physics_st: mut PhysicsState) -> void {
+    expect(phys_open(physics_st, 256, 1))
+    let h = floats(256 * 256)
+    phys_ground_add(physics_st, phys_heightfield(physics_st, h, 256, -100.0, -100.0, 2.0))
+  }
+
+  function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, n: int) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(rig.tk, 0.016666668, i, 0.0))
+    }
+  }
+
+  function driver(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, model: int, x: float, z: float, yaw: float) -> Car {
+    let nid = car_spawn(cars_st, model, x, z, yaw, -1)
+    expect(nid >= 0)
+    expect_eq(car_seat_driver(cars_st, nid, 1), 0)
+    frames(cars_st, doors, owns, rig, 3)
+    let c = car_by_nid(cars_st, nid)
+    expect(c.phase == CarPhase.Driven)
+    return c
+  }
+
+  function go(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, c: Car, seconds: float, throttle: float, brake: float, steer: float, hand: float) -> void {
+    for i in 0 .. int(seconds * 60.0) {
+      car_drive(cars_st, c.nid, throttle, brake, steer, hand)
+      frames(cars_st, doors, owns, rig, 1)
+    }
+  }
+
+  function loaded(c: Car) -> float {
+    var sum = 0.0
+    for i in 0 .. c.nwheels { sum += c.wheels[i].load }
+    return sum
+  }
+
+  test "a car is a body in the physics once it is near a viewer, and rests on its springs" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    frames(cars_st, doors, owns, rig, 180)
+    let c = car_by_nid(cars_st, nid)
+    expect(c.sim == CAR_SIM_BODY)
+    expect(c.body)
+    expect(near(c.y, 0.0, 0.06))
+    expect(Math.abs(c.speed) < 0.1)
+    expect(c.uy > 0.995)
+    for i in 0 .. 4 { expect(c.wheels[i].contact) }
+    # the springs carry the car's weight, and the front and rear of a car weighted in the middle carry about half each
+    expect(near(loaded(c), 1400.0 * 9.81, 1400.0 * 9.81 * 0.1))
+    expect(near(c.wheels[0].load + c.wheels[1].load, c.wheels[2].load + c.wheels[3].load, 1400.0 * 9.81 * 0.15))
+    expect(not c.airborne)
+  }
+
+  test "a driven sedan accelerates straight, changes gear, and leaves the ground level" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, CARM_SEDAN, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 6.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.sim == CAR_SIM_BODY)
+    expect(c.speed > 18.0)
+    expect(c.gear >= 2)
+    expect(Math.abs(c.x) < 1.0)
+    expect(c.z > 40.0)
+    expect(Math.abs(c.yaw) < 0.05)
+    expect(c.uy > 0.99)
+    # the nose lifts a little under power and no more
+    expect(c.fy > -0.02 and c.fy < 0.08)
+    expect(c.rpm <= 6900.0)
+  }
+
+  test "it brakes to a stop in a sane distance, the nose dipping under it" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, CARM_SEDAN, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 5.0, 1.0, 0.0, 0.0, 0.0)
+    let v0 = c.speed
+    let z0 = c.z
+    expect(v0 > 15.0)
+    go(cars_st, doors, owns, rig, c, 0.5, 0.0, 1.0, 0.0, 0.0)
+    expect(c.fy < 0.0)
+    go(cars_st, doors, owns, rig, c, 3.0, 0.0, 1.0, 0.0, 0.0)
+    expect(c.speed < 1.0)
+    let dist = c.z - z0
+    # from v0 at about 1 g: v0 squared over 2 g, with slack for the pedal and the engine
+    expect(dist > v0 * v0 / (2.0 * 12.0))
+    expect(dist < v0 * v0 / (2.0 * 4.0) + 10.0)
+    expect(Math.abs(c.x) < 1.5)
+  }
+
+  test "steering right at speed turns the car right, pulling a fair share of a g, and it stays on its wheels" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, CARM_SEDAN, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 4.0, 1.0, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 1.5, 0.35, 0.0, 0.5, 0.0)
+    expect(c.yaw_rate < -0.05)
+    let lat = Math.abs(c.speed * c.yaw_rate)
+    expect(lat > 2.0)
+    expect(lat < 14.0)
+    expect(c.uy > 0.97)
+    # rolled to the outside of the turn: the body leans left when turning right (lean is positive to the right)
+    expect(c.lean < 0.05)
+    # mirrored
+    let d = driver(cars_st, doors, owns, rig, CARM_SEDAN, 30.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, d, 4.0, 1.0, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, d, 1.5, 0.35, 0.0, -0.5, 0.0)
+    expect(d.yaw_rate > 0.05)
+    expect(near(d.yaw_rate, -c.yaw_rate, 0.12))
+  }
+
+  # from a standing start at z, four seconds of throttle, then the brake to a stop: the distance over the speed squared
+  function stopping(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, x: float, z: float) -> float {
+    let c = driver(cars_st, doors, owns, rig, CARM_SEDAN, x, z, 0.0)
+    frames(cars_st, doors, owns, rig, 60)
+    go(cars_st, doors, owns, rig, c, 4.0, 1.0, 0.0, 0.0, 0.0)
+    let v = c.speed
+    let z0 = c.z
+    expect(v > 8.0)
+    go(cars_st, doors, owns, rig, c, 6.0, 0.0, 1.0, 0.0, 0.0)
+    expect(c.speed < 1.0)
+    return (c.z - z0) / (v * v)
+  }
+
+  test "loose ground gives less grip: the same stop is longer on gravel" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState, bodies_st: mut Bodies) {
+    world(physics_st)
+    bodies_st.gravel_from_z = 160.0
+    let tarmac = stopping(cars_st, doors, owns, rig, 0.0, 0.0)
+    let gravel = stopping(cars_st, doors, owns, rig, 30.0, 175.0)
+    expect(gravel > tarmac * 1.25)
+  }
+
+  test "a heavy bus rests, pulls away slowly and turns slowly, and stays upright" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let b = driver(cars_st, doors, owns, rig, CARM_BUS, 0.0, 0.0, 0.0)
+    frames(cars_st, doors, owns, rig, 120)
+    expect(near(b.y, 0.0, 0.12))
+    expect(near(loaded(b), 11000.0 * 9.81, 11000.0 * 9.81 * 0.12))
+    go(cars_st, doors, owns, rig, b, 10.0, 1.0, 0.0, 0.0, 0.0)
+    expect(b.speed > 4.0)
+    expect(b.speed < 25.0)
+    expect(b.uy > 0.99)
+    go(cars_st, doors, owns, rig, b, 3.0, 0.4, 0.0, 0.6, 0.0)
+    expect(b.yaw_rate < -0.02)
+    expect(b.uy > 0.97)
+    let s = driver(cars_st, doors, owns, rig, CARM_SEDAN, 40.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, s, 10.0, 1.0, 0.0, 0.0, 0.0)
+    expect(s.speed > b.speed + 5.0)
+  }
+
+  test "a bike balances on its two wheels, and leans into a turn" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, CARM_BIKE, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 3.0, 0.0, 0.0, 0.0, 0.0)
+    expect(Math.abs(c.lean) < 0.1)
+    expect(c.uy > 0.98)
+    go(cars_st, doors, owns, rig, c, 3.0, 0.6, 0.0, 0.0, 0.0)
+    expect(c.speed > 8.0)
+    expect(Math.abs(c.lean) < 0.15)
+    go(cars_st, doors, owns, rig, c, 1.5, 0.3, 0.0, 0.6, 0.0)
+    expect(c.yaw_rate < -0.03)
+    expect(c.lean > 0.03)
+    expect(c.uy > 0.8)
+  }
+
+  test "dropped from a height, it is airborne, lands, and comes to rest" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState, bodies_st: mut Bodies) {
+    world(physics_st)
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    frames(cars_st, doors, owns, rig, 60)
+    let c = car_by_nid(cars_st, nid)
+    phys_place(physics_st, jb_body(bodies_st, nid), 0.0, 2.5, 0.0, 0.0)
+    q_clear(cars_facts(cars_st))
+    frames(cars_st, doors, owns, rig, 10)
+    expect(c.airborne)
+    frames(cars_st, doors, owns, rig, 50)
+    frames(cars_st, doors, owns, rig, 150)
+    expect(not c.airborne)
+    expect(near(c.y, 0.0, 0.1))
+    expect(Math.abs(c.vy) < 0.2)
+    var landed = 0
+    var fast = 0.0
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) {
+      if fs[i].what == CAR_LANDED {
+        landed += 1
+        fast = fs[i].v
+      }
+    }
+    expect(landed >= 1)
+    expect(fast > 4.0)
+  }
+
+  test "a person's car is a body whatever the distance" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState, bodies_st: mut Bodies) {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, CARM_SEDAN, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 3.0, 1.0, 0.0, 0.0, 0.0)
+    bodies_st.focus = 900.0
+    frames(cars_st, doors, owns, rig, 5)
+    expect(c.sim == CAR_SIM_BODY)
+    expect(c.body)
+  }
+
+  test "an AI car moves between body, planar model and lane follower as the viewer goes, keeping its speed" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState, bodies_st: mut Bodies) {
+    world(physics_st)
+    bodies_st.ai_from = 100
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    expect_eq(car_seat_driver(cars_st, nid, 500), 0)
+    frames(cars_st, doors, owns, rig, 3)
+    let c = car_by_nid(cars_st, nid)
+    expect(c.sim == CAR_SIM_BODY)
+    go(cars_st, doors, owns, rig, c, 4.0, 1.0, 0.0, 0.0, 0.0)
+    let v = c.speed
+    expect(v > 10.0)
+    expect_eq(bodies_st.made, 1)
+    # out past the body distance and its margin: planar, the body let go
+    let with_body = phys_count(physics_st)
+    bodies_st.focus = 300.0
+    go(cars_st, doors, owns, rig, c, 0.1, 1.0, 0.0, 0.0, 0.0)
+    expect(c.sim == CAR_SIM_PLANAR)
+    expect(not c.body)
+    expect_eq(phys_count(physics_st), with_body - 1)
+    expect(near(c.speed, v, 2.5))
+    go(cars_st, doors, owns, rig, c, 2.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.speed > v)
+    # back in range: a new body is made at the pose and speed the planar model left
+    let vp = c.speed
+    let zp = c.z
+    bodies_st.focus = 10.0
+    frames(cars_st, doors, owns, rig, 2)
+    expect(c.sim == CAR_SIM_BODY)
+    expect(c.body)
+    expect_eq(bodies_st.made, 2)
+    expect(near(c.speed, vp, 2.0))
+    expect(near(c.z, zp, 2.0))
+    go(cars_st, doors, owns, rig, c, 1.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.speed > vp - 1.0)
+    expect(c.uy > 0.98)
+    # a long way off: the lane follower (there is no road bound here, so it only holds)
+    bodies_st.focus = 2000.0
+    frames(cars_st, doors, owns, rig, 2)
+    expect(c.sim == CAR_SIM_LANE)
+    expect(not c.body)
+    var modes = ""
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) {
+      if fs[i].what == CAR_LOD { modes = `{modes}{int(fs[i].v)}` }
+    }
+    expect(modes == "0102")
+  }
+
+  function scenario(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) -> float {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, CARM_SEDAN, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 3.0, 1.0, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 2.0, 0.6, 0.0, 0.6, 0.0)
+    go(cars_st, doors, owns, rig, c, 2.0, 0.0, 0.9, -0.3, 0.0)
+    return c.x * 1000.0 + c.z + c.yaw * 7.0 + c.speed * 13.0 + c.y * 100.0
+  }
+
+  test "the same run twice is the same to the bit" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    let a = scenario(cars_st, doors, owns, rig, physics_st)
+    cars_reset(cars_st)
+    phys_close(physics_st)
+    let b = scenario(cars_st, doors, owns, rig, physics_st)
+    expect(a == b)
+  }
+
+  test "nothing is allocated per frame with bodies in the world" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, CARM_SEDAN, 0.0, 0.0, 0.0)
+    let d = driver(cars_st, doors, owns, rig, CARM_SUPER, 20.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 2.0, 1.0, 0.0, 0.3, 0.0)
+    q_drain(cars_facts(cars_st))
+    let before = Os.heap_bytes()
+    for i in 0 .. 300 {
+      car_drive(cars_st, c.nid, 1.0, 0.0, 0.3, 0.0)
+      car_drive(cars_st, d.nid, 0.8, 0.0, -0.3, 0.0)
+      frames(cars_st, doors, owns, rig, 1)
+      q_drain(cars_facts(cars_st))
+    }
+    let after = Os.heap_bytes()
+    if before > 0 { expect(after <= before + 8192) }
+  }
+}

@@ -338,7 +338,7 @@ function cr_assist_torques(cars_st: mut CarsState, c: Car, dt: float) -> void {
     let ax = car_steer_axle(c.model)
     var st = 0.0
     if ax >= 0 { st = c.steer_angle * m.axles[ax].steer }
-    let target = Math.atan2(c.speed * c.speed * Math.tan(st) / (Math.max(l, 0.5) * 9.81), 1.0)
+    let target = Math.clamp(Math.atan2(c.speed * c.speed * Math.tan(st) / (Math.max(l, 0.5) * 9.81), 1.0), -0.7, 0.7)
     let roll_rate = c.wx * c.fx + c.wy * c.fy + c.wz * c.fz
     let cy = car_body_centre(c.model)
     let iroll = s.mass * (cy * cy + 0.15)
