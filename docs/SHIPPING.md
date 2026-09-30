@@ -19,16 +19,16 @@ Everything the bundler needs lives in `package.ludic`, so the command takes no
 arguments:
 
 ```ludic skip
-package "git.workshopsoft.io/workshopsoft/maroon-lake"
+package "example.com/studio/pine-woods"
 version "0.1.0"
 
-app  name       "Maroon Lake"
-app  id         "io.workshopsoft.maroon-lake"
+app  name       "Pine Woods"
+app  id         "com.example.pine-woods"
 app  icon       "assets/app/icon.png"
 app  splash     "assets/app/splash.png"
 app  splash_bg  "#0d1b2a"
 app  category   "public.app-category.adventure-games"
-app  copyright  "(c) 2026 Workshopsoft"
+app  copyright  "(c) 2026 Example Studio"
 app  min_macos  "11.0"
 
 pack "assets"
@@ -52,8 +52,8 @@ pack "assets"
 | `lang` | the languages' directory and the source language (`lang "assets/lang" en`): the compiler checks every text key against `<dir>/<source>.po` (LANGUAGE.md, Text keys) | none: no key is checked |
 
 Only `app name` is worth setting deliberately. The identifier is derived from the
-package path when you omit it - `git.workshopsoft.io/workshopsoft/maroon-lake`
-becomes `io.workshopsoft.maroon-lake` - but it is worth pinning, because Launch
+package path when you omit it - `example.com/studio/pine-woods`
+becomes `com.example.pine-woods` - but it is worth pinning, because Launch
 Services keys the Dock, saved window state and permissions off it, and two apps
 sharing one identifier is a class of bug that looks like haunting.
 
@@ -71,7 +71,7 @@ let model = gltf_load("assets/kit/hiker", "hiker.gltf", "hiker")
 ```
 
 reads a file during development and a run of bytes inside
-`Maroon Lake.app/Contents/Resources/game.lpak` once shipped, and cannot tell
+`Pine Woods.app/Contents/Resources/game.lpak` once shipped, and cannot tell
 which. That works because the pack is spliced in at `file_open`, the one place
 every asset in a Ludic program comes through - `gltf_load`, `tex_load`,
 `Audio.load`, `Fs.read_text` and the renderer's own shader loads all bottom out
@@ -82,8 +82,8 @@ The pack is `mmap`'d rather than read, so 165 MB of terrain costs one syscall at
 startup and pages in only what the game touches.
 
 ```bash
-ludic pack --list build/maroon-lake.lpak     # what is in it
-ludic pack --verify build/maroon-lake.lpak   # re-hash every entry
+ludic pack --list build/pine-woods.lpak     # what is in it
+ludic pack --verify build/pine-woods.lpak   # re-hash every entry
 ```
 
 ### Keeping things out: `.packignore`
@@ -159,10 +159,10 @@ A `.app` launched from Finder starts with its working directory at `/`, where
 nothing is writable, so `packs.index` also carries:
 
 ```
-home Maroon Lake
+home Pine Woods
 ```
 
-and the runtime moves the process to `~/Library/Application Support/Maroon Lake`
+and the runtime moves the process to `~/Library/Application Support/Pine Woods`
 before `main`. Reads come out of the pack; writes land somewhere real and
 per-user. A game's save code needs no change and no platform knowledge.
 
@@ -231,8 +231,8 @@ app sign "Developer ID Application: Your Name (TEAMID)"
 
 ```bash
 ludic bundle
-xcrun notarytool submit "build/Maroon Lake.app" --keychain-profile NOTARY --wait
-xcrun stapler staple "build/Maroon Lake.app"
+xcrun notarytool submit "build/Pine Woods.app" --keychain-profile NOTARY --wait
+xcrun stapler staple "build/Pine Woods.app"
 ```
 
 ## Releasing: `ludic release`
@@ -243,9 +243,9 @@ reads `release` lines from `package.ludic`, packs the bundle into Velopack's pac
 or portable zip, the full package, a delta against the last release) and uploads them with the feed.
 
 ```ludic skip
-release id             "MaroonLake"
-release title          "Maroon Lake"
-release authors        "Workshopsoft"
+release id             "PineWoods"
+release title          "Pine Woods"
+release authors        "Example Studio"
 release channel        osx "osx"
 release channel        win "stable"
 release feed           "https://dl.example.com"
@@ -326,7 +326,7 @@ launcher's `Process.poll` see the crash as they always did (`128 + signal`; on W
 ```ludic skip
 let c = new CrashConfig
 c.dir = Path.join(save_root, "crashes")
-c.app = "Maroon Lake"
+c.app = "Pine Woods"
 c.version = "0.1.0"
 crash_config(crash_st, c)
 crash_start(crash_st)            # before anything can crash; answers how many records wait from last time
@@ -361,7 +361,7 @@ the id is the GUID (without dashes) and the age in hex, the key a symbol server 
 DWARF, so a dSYM holds the symbol table - function names, not lines.
 
 ```bash
-ludic symbols              # 8545D571-AC52-...  macos/arm64  dsym  maroon-lake 0.1.0  build/symbols/8545D571-.../maroon-lake.dSYM
+ludic symbols              # 8545D571-AC52-...  macos/arm64  dsym  pine-woods 0.1.0  build/symbols/8545D571-.../pine-woods.dSYM
 ludic symbols --json       # the same, for the studio to upload and store
 ```
 
@@ -375,11 +375,11 @@ to the others, so a release's symbols outlive the next build - until `ludic clea
 ## The bundle it makes
 
 ```
-Maroon Lake.app/
+Pine Woods.app/
   Contents/
     Info.plist                 the metadata Finder, the Dock and Launch Services read
     PkgInfo                    the eight bytes that predate Info.plist and are still read
-    MacOS/Maroon Lake          the game
+    MacOS/Pine Woods          the game
     Resources/
       AppIcon.icns             every size macOS asks for, from one source PNG
       game.lpak                every asset the game opens

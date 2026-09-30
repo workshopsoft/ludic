@@ -155,8 +155,8 @@ a content-addressed global store (`~/.ludic/store`), and linked per project unde
 `ludic_modules/`.
 
 ```
-x add git.workshopsoft.io/you/pkg          # add a dependency (latest tag)
-x add git.workshopsoft.io/you/pkg@1.2.0    # a specific version
+x add example.com/you/pkg          # add a dependency (latest tag)
+x add example.com/you/pkg@1.2.0    # a specific version
 x get                                       # resolve + fetch + link everything
 x update [module]                           # bump to the latest published version
 x verify                                    # rehash the store against the lock
