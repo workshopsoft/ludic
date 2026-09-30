@@ -4,12 +4,14 @@
 # who runs the world, and where the players are. Unbound: this machine runs the world, nobody is anywhere
 export port CrewWorld {
   authority: fn() -> bool = fn crw_yes                # this machine owns the world: only it changes crews
+  allow_ask: fn(int, int) -> bool = fn crw_yes2        # the host: (sender, player) does the machine that sent an ask play that player
   players: fn() -> int = fn crw_none                  # how many players there are to ask about
   player: fn(int) -> int = fn crw_zero_of             # the i-th player's id
   x: fn(int) -> float = fn crw_zero_f                 # (who): where they stand
   z: fn(int) -> float = fn crw_zero_f
 }
 function crw_yes() -> bool { return true }
+function crw_yes2(sender: int, who: int) -> bool { return true }
 function crw_none() -> int { return 0 }
 function crw_zero_of(i: int) -> int { return 0 }
 function crw_zero_f(who: int) -> float { return 0.0 }
@@ -39,7 +41,7 @@ export const CREW_IN_CREW: int = 2          # the player is already in one
 export const CREW_NAME_BAD: int = 3         # too short or too long
 export const CREW_NAME_TAKEN: int = 4
 export const CREW_BROKE: int = 5
-export const CREW_NOT_HOST: int = 6         # this machine does not own the world: ask the host
+export const CREW_NOT_HOST: int = 6         # (kept for its number: a guest's verb is asked of the host now, and says nothing here)
 export const CREW_NO_PERMISSION: int = 7
 export const CREW_FULL: int = 8             # the crew has its most members
 export const CREW_NOT_INVITED: int = 9

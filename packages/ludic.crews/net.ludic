@@ -1,0 +1,169 @@
+# net.ludic - crews in a party. The host owns the crews. A verb called on a guest does not change anything
+# there: it dispatches the @Net action CrewAsk (or CrewFound, which carries the crew's name and tag), which
+# travels through the NetActions port the game binds to its session. The host checks it (`crew_ask_ok`:
+# this machine owns the world and the sender plays that player), reduces it by calling the very verb the
+# guest called, and the verb's answer is the host's own facts (CREW_CREATED, REFUSED with its reason...),
+# which the game puts on its wire as before. Nothing of a crew is predicted: what a guest shows is what the
+# host's facts and `crew_snapshot()` say.
+
+# what a CrewAsk asks (CASK_*): `who` is the player asking, a, b and c what the verb takes
+export const CASK_DISBAND: int = 0
+export const CASK_INVITE: int = 1        # a: the player invited
+export const CASK_JOIN: int = 2          # a: the crew (its id)
+export const CASK_LEAVE: int = 3
+export const CASK_KICK: int = 4          # a: the player
+export const CASK_SET_RANK: int = 5      # a: the player, b: the rank (a CrewRanks row)
+export const CASK_TRANSFER: int = 6      # a: the new leader
+export const CASK_SET_OPEN: int = 7      # a: 1 open, 0 by invitation
+export const CASK_SET_LOOK: int = 8      # a: emblem, b and c: the colours
+export const CASK_DEPOSIT: int = 9       # a: how much
+export const CASK_WITHDRAW: int = 10     # a: how much
+export const CASK_PROPOSE: int = 11      # a: the other crew, b: the relation (a CrewRelations row)
+export const CASK_ACCEPT: int = 12       # a: the other crew
+export const CASK_REJECT: int = 13       # a: the other crew
+export const CASK_BOUNTY: int = 14       # a: the target player, b: the amount
+export const CASK_WAR: int = 15          # a and b: the territory, as the hashes of its map and of its key
+export const CASK_COUNT: int = 16
+
+# what a guest asks of the host: a crew verb, as numbers. Nothing a guest shows depends on its answer
+# except through the host's facts
+@Net @Broadcast(none) @Validate(crew_ask_ok)
+export action CrewAsk {
+  who: int = 0
+  kind: int = 0
+  a: int = 0
+  b: int = 0
+  c: int = 0
+}
+
+# founding a crew: the name and the tag go on the wire as bytes, four to a whole number (a whole number is 32
+# bits), CREW_WIRE_NAME and CREW_WIRE_TAG at most; a longer one is not sent, and the asker is told CREW_NAME_BAD
+export const CREW_WIRE_NAME: int = 24
+export const CREW_WIRE_TAG: int = 8
+@Net @Broadcast(none) @Validate(crew_found_ok)
+export action CrewFound {
+  who: int = 0
+  emblem: int = -1
+  color_a: int = 0
+  color_b: int = 0
+  name_len: int = 0
+  tag_len: int = 0
+  n0: int = 0
+  n1: int = 0
+  n2: int = 0
+  n3: int = 0
+  n4: int = 0
+  n5: int = 0
+  t0: int = 0
+  t1: int = 0
+}
+
+# a string's bytes, four to a number, from `from` (the first byte the lowest)
+function crw_pack(s: string, from: int) -> int {
+  let sp: string = s
+  var v = 0
+  for i in 0 .. 4 {
+    if from + i < len(sp) { v = v | (sp[from + i] << (8 * i)) }
+  }
+  return v
+}
+
+# byte `i` of a list of numbers laid out four to a number
+function crw_byte(w: []int, i: int) -> int { return (w[i / 4] >> (8 * (i % 4))) & 255 }
+
+# `n` bytes from numbers, four to each, as a string
+@alloc_ok("a crew founded by a guest: its name, made once and kept")
+function crw_unpack(w: []int, n: int) -> string {
+  let b = buffer(32)
+  for i in 0 .. n { b[i] = crw_byte(w, i) }
+  return text_of(b, n)
+}
+
+# a stable number for a text, for naming a territory on the wire (FNV-1a over its bytes)
+function crw_hash(s: string) -> int {
+  let sp: string = s
+  var h = -2128831035
+  for i in 0 .. len(sp) { h = (h ^ sp[i]) * 16777619 }
+  return h
+}
+
+# a verb called on a guest: the ask goes to the host and the verb is done here (true); on the host or alone
+# (false) it carries on and does its own work
+function crw_remote(crew_st: mut CrewState, who: int, kind: int, a: int, b: int, c: int) -> bool {
+  if CrewWorld.authority() { return false }
+  dispatch CrewAsk { who: who, kind: kind, a: a, b: b, c: c }
+  return true
+}
+
+function crw_remote_found(crew_st: mut CrewState, who: int, name: string, tag: string, emblem: int, color_a: int, color_b: int) -> bool {
+  if CrewWorld.authority() { return false }
+  let nl = Text.length(name)
+  let tl = Text.length(tag)
+  if nl > CREW_WIRE_NAME or tl > CREW_WIRE_TAG {
+    crw_no(crew_st, who, CREW_NAME_BAD)
+    return true
+  }
+  dispatch CrewFound { who: who, emblem: emblem, color_a: color_a, color_b: color_b, name_len: nl, tag_len: tl, n0: crw_pack(name, 0), n1: crw_pack(name, 4), n2: crw_pack(name, 8), n3: crw_pack(name, 12), n4: crw_pack(name, 16), n5: crw_pack(name, 20), t0: crw_pack(tag, 0), t1: crw_pack(tag, 4) }
+  return true
+}
+
+# the host's check of a guest's ask, before it is reduced (@Validate): this machine owns the crews, the
+# sender plays that player (CrewWorld.allow_ask) and the kind is one there is
+export function crew_ask_ok(crew_st: CrewState, a: CrewAsk, sender: int) -> bool {
+  if not CrewWorld.authority() { return false }
+  if a.kind < 0 or a.kind >= CASK_COUNT { return false }
+  return CrewWorld.allow_ask(sender, a.who)
+}
+
+export function crew_found_ok(crew_st: CrewState, a: CrewFound, sender: int) -> bool {
+  if not CrewWorld.authority() { return false }
+  if a.name_len < 0 or a.name_len > CREW_WIRE_NAME or a.tag_len < 0 or a.tag_len > CREW_WIRE_TAG { return false }
+  return CrewWorld.allow_ask(sender, a.who)
+}
+
+# the territory named by the hashes of its map and of its key, or -1
+function crw_turf_by_hash(crew_st: CrewState, hm: int, hk: int) -> int {
+  for i in 0 .. tb_len(crew_st.cr_turfs) {
+    let t = tb_rec(crew_st.cr_turfs, i)
+    if crw_hash(t.key) == hk and crw_hash(t.map) == hm { return i }
+  }
+  return -1
+}
+
+# what the host does with an ask: the verb the guest called, for the player who asked. Returns its answer
+export function crew_apply_ask(crew_st: mut CrewState, kind: int, who: int, a: int, b: int, c: int) -> bool {
+  if kind == CASK_DISBAND { return crew_disband(crew_st, who) }
+  if kind == CASK_INVITE { return crew_invite(crew_st, who, a) }
+  if kind == CASK_JOIN { return crew_join(crew_st, who, a) }
+  if kind == CASK_LEAVE { return crew_leave(crew_st, who) }
+  if kind == CASK_KICK { return crew_kick(crew_st, who, a) }
+  if kind == CASK_SET_RANK { return crew_set_rank(crew_st, who, a, b) }
+  if kind == CASK_TRANSFER { return crew_transfer(crew_st, who, a) }
+  if kind == CASK_SET_OPEN { return crew_set_open(crew_st, who, a != 0) }
+  if kind == CASK_SET_LOOK { return crew_set_look(crew_st, who, a, b, c) }
+  if kind == CASK_DEPOSIT { return crew_deposit(crew_st, who, a) }
+  if kind == CASK_WITHDRAW { return crew_withdraw(crew_st, who, a) }
+  if kind == CASK_PROPOSE { return crew_propose(crew_st, who, a, b) }
+  if kind == CASK_ACCEPT { return crew_accept(crew_st, who, a) }
+  if kind == CASK_REJECT { return crew_reject(crew_st, who, a) }
+  if kind == CASK_BOUNTY { return crew_bounty_place(crew_st, who, a, b) }
+  if kind == CASK_WAR {
+    let i = crw_turf_by_hash(crew_st, a, b)
+    if i < 0 { return crw_no(crew_st, who, CREW_NO_TURF) }
+    let t = tb_rec(crew_st.cr_turfs, i)
+    return crew_declare_war(crew_st, who, t.map, t.key)
+  }
+  return false
+}
+
+reducer CrewState on CrewAsk(crew_st: mut CrewState, a: CrewAsk) {
+  if CrewWorld.authority() { crew_apply_ask(crew_st, a.kind, a.who, a.a, a.b, a.c) }
+}
+
+reducer CrewState on CrewFound(crew_st: mut CrewState, a: CrewFound) {
+  if CrewWorld.authority() {
+    let nm = [a.n0, a.n1, a.n2, a.n3, a.n4, a.n5]
+    let tg = [a.t0, a.t1]
+    crew_create(crew_st, a.who, crw_unpack(nm, a.name_len), crw_unpack(tg, a.tag_len), a.emblem, a.color_a, a.color_b)
+  }
+}

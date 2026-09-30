@@ -130,7 +130,7 @@ export function crew_killed(crew_st: mut CrewState, terr: Territories, killer: i
 # must have the `war` permission, be the challenger of a Contested territory, and the relation between the two
 # crews must allow a war. The action is reduced at the end of the phase
 export function crew_declare_war(crew_st: mut CrewState, who: int, map: string, key: string) -> bool {
-  if not crw_authority(crew_st, who) { return false }
+  if crw_remote(crew_st, who, CASK_WAR, crw_hash(map), crw_hash(key), 0) { return false }
   let m = crw_member(crew_st, who)
   if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
   if not crw_can(crew_st, who, CREW_PERM_WAR) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }

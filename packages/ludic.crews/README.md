@@ -129,11 +129,18 @@ leaves `crew_why()` = `CREW_NO_CREW`, `_IN_CREW`, `_NAME_BAD`, `_NAME_TAKEN`, `_
 ## Multiplayer: the host owns the crews
 
 Everything that changes who is in which crew, what a bank holds, how crews stand and who holds a territory is
-**host-authoritative**. Crew verbs check `CrewWorld.authority()` and a guest gets `CREW_NOT_HOST` and a `REFUSED` fact,
-which the game turns into a request to the host; influence reports (`crew_report`, `crew_killed`,
-`crew_add_influence`) and the tick do nothing on a guest. The host applies, and broadcasts what happened: the facts (each
-complete: crews, players, the territory's map and key) for a change, and `crew_snapshot()` - the same text as the save
-section - when a player joins; a guest calls `crew_apply_snapshot`. A player's id is the game's persistent account
+**host-authoritative**. A crew verb called where the world is not owned (`CrewWorld.authority()` false: a guest) changes
+nothing there and is **asked of the host**: it dispatches the `@Net` action `CrewAsk { who, kind, a, b, c }` (`CASK_*`
+says which verb), or `CrewFound` for `crew_create`, which carries the name (24 bytes at most) and the tag (8) as bytes,
+four to a whole number; a longer one is refused at once with `CREW_NAME_BAD`. The asks travel through the `NetActions`
+port the game binds to its session (ludic.net's `netact_*`). The host checks one (`crew_ask_ok`: it owns the world, the kind
+exists, and `CrewWorld.allow_ask(sender, who)` says the machine that sent it plays that player) and reduces it by calling the
+very verb the guest called, so every rule and every reason is the host's; on the guest the verb returns `false` (`-1`)
+and makes no fact. `crew_apply_ask` is the same thing for a game that carries asks some other way. A territory is named on
+the wire by the hashes of its map and its key. Influence reports (`crew_report`, `crew_killed`, `crew_add_influence`) and the
+tick do nothing on a guest. Nothing is predicted (a crew is no guess a guest can take back): the host broadcasts what
+happened, the facts (each complete: crews, players, the territory's map and key) for a change, and `crew_snapshot()` - the same
+text as the save section - when a player joins; a guest calls `crew_apply_snapshot`. A player's id is the game's persistent account
 id; crew ids are the host's and never reused, and every other name in the data (ranks, relations, emblems,
 territories) is a key. The save keeps crews, members, pair standings, bounties and each territory's owner and
 influence; invites and a war in flight are not saved (influence stays, so a contest comes back by itself).
@@ -141,6 +148,6 @@ influence; invites and a war in flight are not saved (influence stays, so a cont
 ## Tests
 
 `ludic test packages/ludic.crews`: geometry of the three shapes, founding, invites and joining, ranks and outranking,
-the bank and its daily limit, disbanding, a guest refused, relations (mutual, hold, rivalry), influence from reports,
+the bank and its daily limit, disbanding, a guest's every verb asked of the host over a fake wire (the ask checked, the name carried as bytes, another player's ask refused), relations (mutual, hold, rivalry), influence from reports,
 kills and presence with decay and the cap, a territory taken from nobody, a turf war through every phase (declared,
 scored, captured, held, tied), friendly fire, bounties, income, facts, and the save and a guest's snapshot.
