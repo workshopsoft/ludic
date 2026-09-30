@@ -1,8 +1,12 @@
 # studio.lres - how Ludic Studio draws this package's own data. The studio's file: the compiler never
 # reads it, and it counts only in a game that uses ludic.anim (the game has the AnimSets registry).
-# A game that wants clips played from its own rig table writes an entry of the same key in its
-# studio.lres (rig_table, rig_graph, rig_file, rig_node and clip_pattern name the game's fields: a rig
-# is the game's, not this package's); its entry replaces this one.
+# The rig of a graph is this package's own: a set's (and a layer's) `skeleton` is a @Ref to a row of
+# AnimSkeletons, whose `model` is the glTF, `root` the root bone and `prefix` the clip prefix (a clip `walk`
+# is `<prefix>_walk` in the file). The studio's rig_table binding reads the other direction (a rig row that
+# names its graph), so it cannot follow that reference yet and this entry binds no rig (gaps.md 52 in the
+# game-editor proposals): until it can, a game that wants clips played from its skeleton writes an entry of
+# the same key in its studio.lres with rig_table: "AnimSkeletons", rig_file: "model" and
+# clip_pattern: "{prefix}_{clip}" (right for a game with one skeleton); its entry replaces this one.
 #
 # The keys down to `node_blend` are the graph view every studio understands. The rest name what a graph
 # editor needs to draw a whole animation graph - state kinds, conditions, fades, parameters, layers and the

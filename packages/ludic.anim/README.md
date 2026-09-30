@@ -307,8 +307,7 @@ far actor updates (`every`: one tick in that many, by the time the skipped ones 
 `studio.lres` beside `package.ludic` tells Ludic Studio how to draw `AnimSets` (key `anims`: states as nodes, transitions as edges, choices with their need bands and rates), and names
 what a whole graph editor needs (state kinds, conditions, fades, parameters, layers, blend spaces, masks, skeletons, clip events and root motion). It counts only in a game that uses
 this package; the compiler never reads it. `anim_bindings` (table `AnimBindings`) is the wiring table: one row per binding, its `source` a pick from the registered
-`SignalSources` (`source_table`, `source_name`, `source_kind`, `source_about`), its `to` a parameter of the row's graph (`param_table: "AnimSets"`, `set_field: "set"`) or, for a request, one of its states. A rig is the game's (its own table of files, nodes and clip prefix), so a game that wants its clips played in the graph writes an
-`anims` entry of its own with `rig_table`, `rig_file` and `rig_node`, which replaces this one.
+`SignalSources` (`source_table`, `source_name`, `source_kind`, `source_about`), its `to` a parameter of the row's graph (`param_table: "AnimSets"`, `set_field: "set"`) or, for a request, one of its states. The rig is the package's own (a set's `skeleton` row in `AnimSkeletons`: `model`, `root`, `prefix`; clips are `<prefix>_<clip>`), but the studio's rig binding cannot yet follow a reference from a graph to its skeleton, so a game that wants its clips played in the graph writes an `anims` entry of its own with `rig_table: "AnimSkeletons"`, `rig_file: "model"` and `clip_pattern: "{prefix}_{clip}"` (right for one skeleton), which replaces this one.
 
 ## Tests
 
