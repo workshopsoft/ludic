@@ -1,0 +1,7 @@
+# PhoneContacts.ludic - the book: each contact with a Call button and, when they can be texted, a Text one. A call
+# says so (PHONE_CALL: the game's own word for what it does, with its arg); Text opens their thread
+component PhoneContacts (phone_st: mut PhoneState) {
+  prop items: Val = null       # [{name, portrait, text}]
+  on call(i: int) { phone_call(phone_st, i) }
+  on text(i: int) { phone_text(phone_st, i) }
+}

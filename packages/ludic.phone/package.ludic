@@ -1,0 +1,6 @@
+# ludic.phone - an in-world phone as a framework on ludic.ui: apps as data rows, contacts, messages,
+# jobs, a map pin, a shop, settings, a camera, toasts; a phone state machine (away, raised, in an app),
+# input and gamepad friendly, facts for the game, saved. See README.md.
+package "ludic.phone"
+version "0.1.0"
+kind source

@@ -1,0 +1,13 @@
+/* PhoneContacts.lss */
+.contacts { padding: 12px; gap: 8px; width: fill; height: fill; color: var(--ph-text, #eef2f7) }
+.contacts h2 { font-size: 18px }
+.empty { color: var(--ph-muted, #93a0b2) }
+.list { gap: 6px; flex-grow: 1 }
+.person { height: 48px; padding: 0 8px; gap: 8px; align-items: center; background: var(--ph-card, #1e2530) }
+.face { width: 32px; height: 32px; object-fit: cover }
+.face.blank { background: var(--ph-line, #2c3542) }
+.name { text-overflow: ellipsis; white-space: nowrap }
+.grow { flex-grow: 1 }
+.act { height: 32px; padding: 0 10px; font-size: 13px; background: var(--ph-line, #2c3542); color: var(--ph-text, #eef2f7) }
+.act.call { background: var(--ph-good, #57c785); color: var(--ph-ink, #0b0e13) }
+.act:focus-visible { outline: 3px solid var(--ph-accent, #4ea1ff) }

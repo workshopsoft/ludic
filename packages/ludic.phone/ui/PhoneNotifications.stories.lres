@@ -1,0 +1,11 @@
+# PhoneNotifications.stories.lres - the studio's stories for PhoneNotifications (what toasts said); the game never reads this file
+
+default {
+  viewport: "360x560"
+  props: { items: [{ title: "Ann", body: "Got a job for you", time: "13:40", unread: true }, { title: "Job complete", body: "Night delivery paid 1,200", time: "12:15", unread: false }] }
+}
+
+empty {
+  base: "default"
+  props: { items: [] }
+}

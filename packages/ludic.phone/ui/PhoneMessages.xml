@@ -1,0 +1,34 @@
+<section class="messages">
+  <if test="{open < 0}">
+    <h2>{t('phone.messages.title')}</h2>
+    <if test="{len(threads) == 0}"><p class="empty">{t('phone.messages.empty')}</p></if>
+    <scroll class="list">
+      <each in="{threads}" as="th" index="i">
+        <button class="thread {th.unread > 0 ? 'new' : ''}" autofocus="{i == 0}" on-click="show(i)">
+          <div class="who grow">
+            <span class="name">{th.name}</span>
+            <small class="last">{th.last}</small>
+          </div>
+          <small class="time">{th.time}</small>
+          <if test="{th.unread > 0}"><small class="badge">{th.unread}</small></if>
+        </button>
+      </each>
+    </scroll>
+  </if>
+  <if test="{open >= 0}">
+    <row class="head">
+      <button class="close" on-click="back()">{t('phone.messages.back')}</button>
+      <h2 class="grow">{name}</h2>
+    </row>
+    <scroll class="talk">
+      <each in="{thread}" as="m" index="n">
+        <div class="line {m.mine ? 'mine' : 'theirs'}">
+          <p class="bubble">{m.text}</p>
+          <small class="stamp">{m.time}</small>
+          <if test="{m.action}"><button class="act" on-click="press(n)">{m.label}</button></if>
+        </div>
+      </each>
+    </scroll>
+    <input class="compose" type="text" label="{t('phone.messages.send')}" clear-on-submit on-submit="send(event.value)"/>
+  </if>
+</section>

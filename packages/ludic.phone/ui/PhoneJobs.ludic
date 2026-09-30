@@ -1,0 +1,6 @@
+# PhoneJobs.ludic - the game's jobs, read from its job system through a port: offered, taken, ready to hand in.
+# Pressing one is the game's (take it, track it): a PHONE_JOB fact
+component PhoneJobs (phone_st: mut PhoneState) {
+  prop items: Val = null       # [{title, info, state}] (state 0 offered, 1 taken, 2 ready)
+  on press(i: int) { phone_job_press(phone_st, i) }
+}

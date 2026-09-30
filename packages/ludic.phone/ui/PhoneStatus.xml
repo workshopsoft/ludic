@@ -1,0 +1,11 @@
+<row class="status">
+  <small class="clock">{clock}</small>
+  <if test="{unread > 0}"><small class="unread">{unread}</small></if>
+  <spacer class="grow"/>
+  <row class="bars">
+    <each in="{range(4)}" as="b">
+      <div class="bar b{b} {b < signal ? 'on' : ''}"/>
+    </each>
+  </row>
+  <small class="battery {battery < 20 ? 'low' : ''}">{battery}%</small>
+</row>

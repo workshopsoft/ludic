@@ -1,0 +1,17 @@
+<section class="map">
+  <h2>{t('phone.map.title')}</h2>
+  <if test="{active and distance >= 0}"><p class="route">{t('phone.map.distance', distance)}</p></if>
+  <if test="{not active}"><p class="empty">{t('phone.map.none')}</p></if>
+  <row class="tools">
+    <button class="tool" autofocus on-click="here()">{t('phone.map.here')}</button>
+    <button class="tool" enabled="{active}" on-click="clear()">{t('phone.map.clear')}</button>
+  </row>
+  <scroll class="list">
+    <each in="{places}" as="p" index="i">
+      <button class="place {p.on ? 'on' : ''}" on-click="pick(i)">
+        <span class="name grow">{p.name}</span>
+        <if test="{p.on}"><small class="pin">{t('phone.map.set')}</small></if>
+      </button>
+    </each>
+  </scroll>
+</section>

@@ -1,0 +1,69 @@
+# notify.ludic - toasts: a line that comes up for a few seconds, even with the phone away, and stays in the list of
+# notifications until read. At most PHONE_MAX_TOASTS show at once (a newer one pushes the oldest off)
+
+@alloc_ok("a toast and its note kept: once each, when something is said")
+export function phone_notify(phone_st: mut PhoneState, title: string, body: string, icon: string, kind: int) -> void {
+  let t = new PhoneToast
+  t.title = title
+  t.body = body
+  t.icon = icon
+  t.kind = kind
+  t.left = PHONE_TOAST_SECONDS
+  push(phone_st.phone__toasts, t)
+  if len(phone_st.phone__toasts) > PHONE_MAX_TOASTS { List.remove_at(phone_st.phone__toasts, 0) }
+  let n = new PhoneNote
+  n.title = title
+  n.body = body
+  n.icon = icon
+  n.kind = kind
+  n.time = PhoneWorld.minutes()
+  push(phone_st.phone__notes, n)
+  if len(phone_st.phone__notes) > PHONE_MAX_NOTES { List.remove_at(phone_st.phone__notes, 0) }
+  phone__dirty(phone_st, PH_D_TOASTS | PH_D_NOTES)
+  phone__fact(phone_st, PHONE_NOTIFIED, kind, title)
+}
+
+export function phone_toast_count(phone_st: PhoneState) -> int { return len(phone_st.phone__toasts) }
+
+export function phone_toast_title(phone_st: PhoneState, i: int) -> string {
+  if i < 0 or i >= len(phone_st.phone__toasts) { return "" }
+  return phone_st.phone__toasts[i].title
+}
+
+# a toast put away by hand
+export function phone_toast_dismiss(phone_st: mut PhoneState, i: int) -> bool {
+  if i < 0 or i >= len(phone_st.phone__toasts) { return false }
+  List.remove_at(phone_st.phone__toasts, i)
+  phone__dirty(phone_st, PH_D_TOASTS)
+  return true
+}
+
+# the clock runs toasts down
+function phone__toasts_tick(phone_st: mut PhoneState, dt: float) -> void {
+  var i = 0
+  while i < len(phone_st.phone__toasts) {
+    phone_st.phone__toasts[i].left -= dt
+    if phone_st.phone__toasts[i].left <= 0.0 {
+      List.remove_at(phone_st.phone__toasts, i)
+      phone__dirty(phone_st, PH_D_TOASTS)
+    } else { i += 1 }
+  }
+}
+
+export function phone_notes_count(phone_st: PhoneState) -> int { return len(phone_st.phone__notes) }
+
+export function phone_notes_unread(phone_st: PhoneState) -> int {
+  var n = 0
+  for i in 0 .. len(phone_st.phone__notes) { if not phone_st.phone__notes[i].read { n += 1 } }
+  return n
+}
+
+export function phone_notes_read_all(phone_st: mut PhoneState) -> void {
+  for i in 0 .. len(phone_st.phone__notes) { phone_st.phone__notes[i].read = true }
+  phone__dirty(phone_st, PH_D_NOTES)
+}
+
+export function phone_notes_clear(phone_st: mut PhoneState) -> void {
+  List.clear(phone_st.phone__notes)
+  phone__dirty(phone_st, PH_D_NOTES)
+}

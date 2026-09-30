@@ -1,0 +1,656 @@
+# phone_test.ludic - the phone's machine (away, raised, in an app; the world's leave; input edges; the slide), the home
+# screen and its badges, the book and calls, threads and messages, toasts and notifications, the apps that read the game's
+# ports (jobs, the map pin, the shop), options, and the save; then PhoneScreen and its apps driven through ludic.ui
+import "ludic.phone"
+import "ludic.base"
+import "ludic.ui"
+program PhoneTest {
+  numbers float
+
+  state PhoneTestState {
+    minute: int = 840
+    can_raise: bool = true
+    off: []string = new []string
+    busy: []string = new []string
+    money: int = 500
+    in_toggle: bool = false
+    in_back: bool = false
+    in_home: bool = false
+    job_titles: []string = new []string
+    job_states: []int = new []int
+    jobs_pressed: int = -1
+    places: []string = new []string
+    place_on: int = -1
+    place_here: int = 0
+    place_clear: int = 0
+    rows: []string = new []string
+    prices: []int = new []int
+    gone: int = -1
+    bought: int = -1
+    frame: int = 0
+  }
+
+  def PhoneApps contacts { component: "PhoneContacts", order: 20, title: k"ph.contacts" }
+  def PhoneApps messages { component: "PhoneMessages", order: 10, title: k"ph.messages", badge: "messages" }
+  def PhoneApps jobs { component: "PhoneJobs", order: 30, title: k"ph.jobs", badge: "jobs" }
+  def PhoneApps map { component: "PhoneMap", order: 40, title: k"ph.map" }
+  def PhoneApps shop { component: "PhoneShop", order: 50, title: k"ph.shop" }
+  def PhoneApps settings { component: "PhoneSettings", order: 60, title: k"ph.settings" }
+  def PhoneApps camera { component: "PhoneCamera", order: 70, title: k"ph.camera" }
+  def PhoneApps notes { component: "PhoneNotifications", order: 80, title: k"ph.notes", badge: "notifications" }
+  def PhoneApps garage { component: "GarageApp", order: 90, title: k"ph.garage" }
+  def PhoneBook ann { name: k"ph.ann", call: "job.offer", arg: "ann", order: 2 }
+  def PhoneBook dispatch { name: k"ph.dispatch", call: "dispatch.call", order: 1, text: false }
+  def PhoneBook secret { name: k"ph.secret", call: "secret.call", known: false, order: 3 }
+  def PhoneOptions ring { label: k"ph.ring", kind: "toggle", initial: 1 }
+  def PhoneOptions size { label: k"ph.size", kind: "choice", choices: 3, options: [k"ph.small", k"ph.medium", k"ph.large"] }
+
+  function w_clock() -> string { return "14:05" }
+  function w_minutes(phone_test_st: PhoneTestState) -> int { return phone_test_st.minute }
+  function w_enabled(phone_test_st: PhoneTestState, key: string) -> bool {
+    for i in 0 .. len(phone_test_st.off) { if phone_test_st.off[i] == key { return false } }
+    return true
+  }
+  function w_can_raise(phone_test_st: PhoneTestState) -> bool { return phone_test_st.can_raise }
+  function w_can_call(phone_test_st: PhoneTestState, key: string) -> bool {
+    for i in 0 .. len(phone_test_st.busy) { if phone_test_st.busy[i] == key { return false } }
+    return true
+  }
+  function w_money(phone_test_st: PhoneTestState) -> int { return phone_test_st.money }
+  bind PhoneWorld { clock: fn w_clock, minutes: fn w_minutes, app_enabled: fn w_enabled, can_raise: fn w_can_raise, can_call: fn w_can_call, money: fn w_money }
+
+  function j_count(phone_test_st: PhoneTestState) -> int { return len(phone_test_st.job_titles) }
+  function j_title(phone_test_st: PhoneTestState, i: int) -> string { return phone_test_st.job_titles[i] }
+  function j_info(i: int) -> string { return "info" }
+  function j_state(phone_test_st: PhoneTestState, i: int) -> int { return phone_test_st.job_states[i] }
+  function j_press(phone_test_st: mut PhoneTestState, i: int) -> void { phone_test_st.jobs_pressed = i }
+  bind PhoneJobs { count: fn j_count, title: fn j_title, info: fn j_info, state: fn j_state, press: fn j_press }
+
+  function m_count(phone_test_st: PhoneTestState) -> int { return len(phone_test_st.places) }
+  function m_name(phone_test_st: PhoneTestState, i: int) -> string { return phone_test_st.places[i] }
+  function m_active(phone_test_st: PhoneTestState) -> int { return phone_test_st.place_on }
+  function m_set(phone_test_st: mut PhoneTestState, i: int) -> void { phone_test_st.place_on = i }
+  function m_here(phone_test_st: mut PhoneTestState) -> void { phone_test_st.place_here += 1 }
+  function m_clear(phone_test_st: mut PhoneTestState) -> void {
+    phone_test_st.place_clear += 1
+    phone_test_st.place_on = -1
+  }
+  function m_distance(phone_test_st: PhoneTestState) -> float {
+    if phone_test_st.place_on < 0 { return -1.0 }
+    return 1240.0
+  }
+  bind PhoneMap { count: fn m_count, name: fn m_name, active: fn m_active, set: fn m_set, set_here: fn m_here, clear: fn m_clear, distance: fn m_distance }
+
+  function s_count(phone_test_st: PhoneTestState) -> int { return len(phone_test_st.rows) }
+  function s_name(phone_test_st: PhoneTestState, i: int) -> string { return phone_test_st.rows[i] }
+  function s_price(phone_test_st: PhoneTestState, i: int) -> int { return phone_test_st.prices[i] }
+  function s_available(phone_test_st: PhoneTestState, i: int) -> bool { return i != phone_test_st.gone }
+  function s_buy(phone_test_st: mut PhoneTestState, i: int) -> bool {
+    if phone_test_st.prices[i] > phone_test_st.money { return false }
+    phone_test_st.money -= phone_test_st.prices[i]
+    phone_test_st.bought = i
+    return true
+  }
+  bind PhoneShop { count: fn s_count, name: fn s_name, price: fn s_price, available: fn s_available, buy: fn s_buy }
+
+  function i_toggle(phone_test_st: PhoneTestState) -> bool { return phone_test_st.in_toggle }
+  function i_back(phone_test_st: PhoneTestState) -> bool { return phone_test_st.in_back }
+  function i_home(phone_test_st: PhoneTestState) -> bool { return phone_test_st.in_home }
+  bind PhoneInput { toggle: fn i_toggle, back: fn i_back, home: fn i_home }
+
+  function fresh(phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) -> void {
+    phone_test_st.minute = 840
+    phone_test_st.can_raise = true
+    phone_test_st.off = new []string
+    phone_test_st.busy = new []string
+    phone_test_st.money = 500
+    phone_test_st.in_toggle = false
+    phone_test_st.in_back = false
+    phone_test_st.in_home = false
+    phone_test_st.job_titles = new []string
+    phone_test_st.job_states = new []int
+    phone_test_st.jobs_pressed = -1
+    phone_test_st.places = new []string
+    phone_test_st.place_on = -1
+    phone_test_st.rows = new []string
+    phone_test_st.prices = new []int
+    phone_test_st.gone = -1
+    phone_test_st.bought = -1
+    phone_reset(phone_st)
+  }
+
+  function tick(phone_st: mut PhoneState, phone_test_st: mut PhoneTestState, secs: float) -> void {
+    phone_test_st.frame += 1
+    phone_tick(phone_st, tick_new(secs, phone_test_st.frame, 12.0))
+  }
+
+  function facts(phone_st: mut PhoneState) -> []PhoneFact { return q_drain(phone_facts(phone_st)) }
+
+  function count_of(phone_st: mut PhoneState, what: int) -> int {
+    let fs = facts(phone_st)
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "the phone comes up, goes into an app and out again, and goes away" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    expect(phone_is_away(phone_st))
+    expect(not phone_captures_input(phone_st))
+    expect(not phone_home(phone_st))
+    expect(not phone_back(phone_st))
+    expect(phone_raise(phone_st))
+    expect(phone_is_raised(phone_st))
+    expect(phone_captures_input(phone_st))
+    expect(not phone_raise(phone_st))
+    expect(phone_open_key(phone_st, "contacts"))
+    expect(phone_in_app(phone_st))
+    expect(phone_app_key(phone_st) == "contacts")
+    expect(phone_app_component(phone_st) == "PhoneContacts")
+    expect(phone_home(phone_st))
+    expect(phone_is_raised(phone_st))
+    expect_eq(phone_app(phone_st), -1)
+    expect(phone_back(phone_st))                                   # back from the home screen puts it away
+    expect(phone_is_away(phone_st))
+    let fs = facts(phone_st)
+    expect_eq(len(fs), 4)                                          # raised, opened, closed, lowered
+    expect_eq(fs[0].what, PHONE_RAISED)
+    expect_eq(fs[1].what, PHONE_APP_OPENED)
+    expect_eq(fs[2].what, PHONE_APP_CLOSED)
+    expect(fs[1].key == "contacts")
+  }
+
+  test "an app opens from away, the phone coming up into it; back leaves the app, then the phone" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    expect(phone_open_key(phone_st, "jobs"))
+    expect(phone_in_app(phone_st))
+    expect_eq(count_of(phone_st, PHONE_RAISED), 1)
+    expect(phone_back(phone_st))
+    expect(phone_is_raised(phone_st))
+    expect(phone_toggle(phone_st))
+    expect(phone_is_away(phone_st))
+    expect(phone_toggle(phone_st))
+    expect(phone_is_raised(phone_st))
+    expect(not phone_open_key(phone_st, "no_such_app"))
+    expect(phone_open_key(phone_st, "map"))
+    expect(phone_open_key(phone_st, "shop"))                       # from one app to another
+    expect(phone_app_key(phone_st) == "shop")
+  }
+
+  test "the world's leave: no phone while it may not be up, and a phone that is up goes away" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    phone_test_st.can_raise = false
+    expect(not phone_raise(phone_st))
+    expect(not phone_open_key(phone_st, "contacts"))
+    expect(phone_is_away(phone_st))
+    phone_test_st.can_raise = true
+    phone_open_key(phone_st, "contacts")
+    q_clear(phone_facts(phone_st))
+    phone_test_st.can_raise = false
+    tick(phone_st, phone_test_st, 0.016)
+    expect(phone_is_away(phone_st))
+    expect_eq(count_of(phone_st, PHONE_LOWERED), 1)
+  }
+
+  test "the phone slides up over a quarter of a second and down again" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    tick(phone_st, phone_test_st, 0.1)
+    expect(phone_slide(phone_st) == 0.0)
+    phone_raise(phone_st)
+    tick(phone_st, phone_test_st, 0.125)
+    expect(phone_slide(phone_st) > 0.49 and phone_slide(phone_st) < 0.51)
+    tick(phone_st, phone_test_st, 0.5)
+    expect(phone_slide(phone_st) == 1.0)
+    phone_lower(phone_st)
+    tick(phone_st, phone_test_st, 0.125)
+    expect(phone_slide(phone_st) > 0.49 and phone_slide(phone_st) < 0.51)
+    tick(phone_st, phone_test_st, 0.5)
+    expect(phone_slide(phone_st) == 0.0)
+  }
+
+  test "the keys work the phone by edges: one press, one step, however long it is held" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    phone_test_st.in_toggle = true
+    tick(phone_st, phone_test_st, 0.016)
+    tick(phone_st, phone_test_st, 0.016)
+    tick(phone_st, phone_test_st, 0.016)
+    expect(phone_is_raised(phone_st))                               # held for three frames: up once
+    phone_test_st.in_toggle = false
+    tick(phone_st, phone_test_st, 0.016)
+    phone_open_key(phone_st, "messages")
+    phone_receive(phone_st, "ann", "", "hello", "", "", "")
+    phone_thread_open(phone_st, 0)
+    expect_eq(phone_open_thread(phone_st), 0)
+    phone_test_st.in_back = true
+    tick(phone_st, phone_test_st, 0.016)
+    expect_eq(phone_open_thread(phone_st), -1)                      # back leaves the conversation first
+    expect(phone_in_app(phone_st))
+    phone_test_st.in_back = false
+    tick(phone_st, phone_test_st, 0.016)
+    phone_test_st.in_home = true
+    tick(phone_st, phone_test_st, 0.016)
+    expect(phone_is_raised(phone_st))                               # the home key leaves the app
+  }
+
+  test "the home screen lists the apps the world has on, in order, and follows the world" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    expect_eq(phone_app_count(phone_st), 9)
+    expect_eq(phone_app_at(phone_st, 0), PAPP_MESSAGES)              # order 10 before contacts' 20
+    expect_eq(phone_app_at(phone_st, 1), PAPP_CONTACTS)
+    expect_eq(phone_app_at(phone_st, 99), -1)
+    expect_eq(Value.count(phone_apps_view(phone_st)), 9)
+    push(phone_test_st.off, "jobs")
+    tick(phone_st, phone_test_st, 0.016)
+    expect_eq(phone_app_count(phone_st), 8)
+    expect_eq(Value.count(phone_apps_view(phone_st)), 8)
+    expect(not phone_open_key(phone_st, "jobs"))
+    push(phone_test_st.off, "map")
+    phone_test_st.off = ["jobs"]
+    phone_open_key(phone_st, "shop")
+    phone_test_st.off = ["jobs", "shop"]
+    tick(phone_st, phone_test_st, 0.016)
+    expect(phone_is_raised(phone_st))                               # the app that was open went off the phone: home
+  }
+
+  test "an icon's count is what waits: unread messages, jobs to hand in, unread notifications" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    expect_eq(phone_badge(phone_st, PAPP_MESSAGES), 0)
+    phone_receive(phone_st, "ann", "", "one", "", "", "")
+    phone_receive(phone_st, "ann", "", "two", "", "", "")
+    phone_receive(phone_st, "dispatch", "", "three", "", "", "")
+    expect_eq(phone_badge(phone_st, PAPP_MESSAGES), 3)
+    phone_test_st.job_titles = ["a", "b", "c"]
+    phone_test_st.job_states = [2, 1, 2]
+    expect_eq(phone_badge(phone_st, PAPP_JOBS), 2)
+    expect_eq(phone_badge(phone_st, PAPP_NOTES), 3)          # a toast for each message
+    expect_eq(phone_badge(phone_st, PAPP_MAP), 0)
+    tick(phone_st, phone_test_st, 0.016)
+    expect_eq(Value.as_int(Value.get(Value.at(phone_apps_view(phone_st), 0), "badge")), 3)
+  }
+
+  test "the book holds what the game marked known, in order, and what it adds; a call is a fact in the game's own words" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    expect_eq(phone_contact_count(phone_st), 2)
+    expect_eq(phone_contact_at(phone_st, 0), PBOK_DISPATCH)           # order 1
+    expect_eq(phone_contact_at(phone_st, 1), PBOK_ANN)
+    expect(Text.contains(phone_contact_name(phone_st, PBOK_ANN), "ph.ann"))
+    expect(not phone_contact_add(phone_st, "ann"))                    # already there
+    expect(not phone_contact_add(phone_st, "nobody"))
+    expect(phone_contact_add(phone_st, "secret"))
+    expect_eq(phone_contact_count(phone_st), 3)
+    expect(phone_contact_add_dyn(phone_st, "friend_7", "Sam", "chat.open", "7"))
+    expect(not phone_contact_add_dyn(phone_st, "friend_7", "Sam", "chat.open", "7"))
+    expect(not phone_contact_add_dyn(phone_st, "ann", "Ann again", "", ""))
+    expect_eq(phone_contact_count(phone_st), 4)
+    expect_eq(phone_contact_at(phone_st, 3), PBOK_COUNT)
+    expect(phone_contact_name(phone_st, PBOK_COUNT) == "Sam")
+    expect(phone_call(phone_st, 1))
+    expect(phone_call(phone_st, 3))
+    let fs = facts(phone_st)
+    expect_eq(fs[0].what, PHONE_CALL)
+    expect(fs[0].key == "ann" and fs[0].verb == "job.offer" and fs[0].arg == "ann")
+    expect(fs[1].key == "friend_7" and fs[1].verb == "chat.open" and fs[1].arg == "7")
+    push(phone_test_st.busy, "ann")
+    expect(not phone_call(phone_st, 1))                               # the line is busy
+    expect(not phone_call(phone_st, 9))
+    expect(phone_contact_remove(phone_st, "secret"))
+    expect(phone_contact_remove(phone_st, "friend_7"))
+    expect(not phone_contact_remove(phone_st, "friend_7"))
+    expect_eq(phone_contact_count(phone_st), 2)
+  }
+
+  test "a message starts a thread at the front, unread, with a toast; reading it clears the count" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    phone_receive(phone_st, "ann", "", "Got a job for you", "job.accept", "j1", "Accept")
+    phone_receive(phone_st, "dispatch", "", "Stand by", "", "", "")
+    expect_eq(phone_thread_count(phone_st), 2)
+    expect(phone_thread_key(phone_st, 0) == "dispatch")             # the newest thread first
+    expect_eq(phone_unread(phone_st), 2)
+    expect_eq(phone_toast_count(phone_st), 2)
+    expect_eq(count_of(phone_st, PHONE_MESSAGE_IN), 2)
+    phone_receive(phone_st, "ann", "", "Are you there?", "", "", "")
+    expect(phone_thread_key(phone_st, 0) == "ann")                  # it moved to the front
+    expect_eq(phone_thread_unread(phone_st, 0), 2)
+    expect_eq(phone_message_count(phone_st, 0), 2)
+    expect(phone_thread_open(phone_st, 0))
+    expect_eq(phone_thread_unread(phone_st, 0), 0)
+    expect_eq(phone_unread(phone_st), 1)
+    phone_receive(phone_st, "stranger", "Unknown number", "wrong number", "", "", "")
+    expect(phone_thread_key(phone_st, 0) == "stranger")
+    expect_eq(phone_open_thread(phone_st), 1)                       # the open thread moved down one with it
+  }
+
+  test "a message to the thread the player is looking at is read at once and makes no toast" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    phone_receive(phone_st, "ann", "", "hi", "", "", "")
+    phone_open_key(phone_st, "messages")
+    phone_thread_open(phone_st, 0)
+    phone_toast_dismiss(phone_st, 0)
+    phone_receive(phone_st, "ann", "", "are you coming", "", "", "")
+    expect_eq(phone_unread(phone_st), 0)
+    expect_eq(phone_toast_count(phone_st), 0)
+  }
+
+  test "a message the player sends is kept and said; a button on a message says its word" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    phone_receive(phone_st, "ann", "", "Got a job for you", "job.accept", "j1", "Accept")
+    phone_open_key(phone_st, "messages")
+    phone_thread_open(phone_st, 0)
+    q_clear(phone_facts(phone_st))
+    expect(not phone_send(phone_st, "ann", ""))
+    expect(phone_send_open(phone_st, "On my way"))
+    expect_eq(phone_message_count(phone_st, 0), 2)
+    let fs = facts(phone_st)
+    expect_eq(fs[0].what, PHONE_MESSAGE_OUT)
+    expect(fs[0].key == "ann" and fs[0].arg == "On my way")
+    expect(phone_message_press(phone_st, 0))
+    expect(not phone_message_press(phone_st, 1))                    # no button on mine
+    let b = facts(phone_st)
+    expect(b[0].what == PHONE_ACTION and b[0].verb == "job.accept" and b[0].arg == "j1")
+    phone_back(phone_st)
+    expect(not phone_send_open(phone_st, "nowhere"))
+  }
+
+  test "only the newest messages are kept" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    for i in 0 .. 230 { phone_send(phone_st, "ann", "m" + string(i)) }
+    expect_eq(phone_message_count(phone_st, 0), PHONE_MAX_MESSAGES)
+  }
+
+  test "toasts run down in four seconds, five make room by dropping the oldest, and the list of notifications stays until read" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    phone_notify(phone_st, "One", "first", "", PHONE_TOAST_INFO)
+    tick(phone_st, phone_test_st, 3.0)
+    phone_notify(phone_st, "Two", "second", "", PHONE_TOAST_GOOD)
+    expect_eq(phone_toast_count(phone_st), 2)
+    tick(phone_st, phone_test_st, 1.5)
+    expect_eq(phone_toast_count(phone_st), 1)
+    expect(phone_toast_title(phone_st, 0) == "Two")
+    for i in 0 .. 6 { phone_notify(phone_st, "n" + string(i), "", "", PHONE_TOAST_INFO) }
+    expect_eq(phone_toast_count(phone_st), PHONE_MAX_TOASTS)
+    expect(phone_toast_title(phone_st, 0) == "n2")
+    expect(phone_toast_dismiss(phone_st, 0))
+    expect(not phone_toast_dismiss(phone_st, 9))
+    expect_eq(phone_notes_count(phone_st), 8)
+    expect_eq(phone_notes_unread(phone_st), 8)
+    phone_notes_read_all(phone_st)
+    expect_eq(phone_notes_unread(phone_st), 0)
+    phone_notes_clear(phone_st)
+    expect_eq(phone_notes_count(phone_st), 0)
+  }
+
+  test "jobs, the map pin and the shop are the game's, read through ports and answered with facts" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    phone_test_st.job_titles = ["Courier run", "Night delivery"]
+    phone_test_st.job_states = [0, 2]
+    expect(phone_job_press(phone_st, 1))
+    expect_eq(phone_test_st.jobs_pressed, 1)
+    expect(not phone_job_press(phone_st, 5))
+    phone_test_st.places = ["Harbour", "Garage"]
+    expect(phone_place_press(phone_st, 0))
+    expect_eq(phone_test_st.place_on, 0)
+    expect(phone_waypoint_active())
+    expect(phone_waypoint_distance() == 1240.0)
+    phone_place_here(phone_st)
+    expect_eq(phone_test_st.place_here, 1)
+    phone_place_clear(phone_st)
+    expect(not phone_waypoint_active())
+    phone_test_st.rows = ["Runabout", "Coupe", "Garage door"]
+    phone_test_st.prices = [300, 9000, 100]
+    phone_test_st.gone = 2
+    expect(phone_shop_buy(phone_st, 0))
+    expect_eq(phone_test_st.money, 200)
+    expect(not phone_shop_buy(phone_st, 1))                         # too dear: the game says no
+    expect(not phone_shop_buy(phone_st, 2))                         # not for sale: not even asked
+    expect_eq(phone_test_st.bought, 0)
+    phone_camera_open(phone_st)
+    phone_photo(phone_st, true)
+    phone_photo(phone_st, false)
+    let fs = facts(phone_st)
+    var got = ""
+    for i in 0 .. len(fs) { got = got + string(fs[i].what) + "," }
+    expect(got == "11,10,10,10,12,12,8,9,9,")
+    expect(fs[5].arg == "no" and fs[4].arg == "ok" and fs[4].key == "Runabout")
+    expect(fs[7].arg == "selfie" and fs[8].arg == "")
+  }
+
+  test "options are kept: a switch flips, a choice goes round, and a change is a fact" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    expect_eq(phone_option_count(), 2)
+    expect(phone_option_on(phone_st, POPT_RING))                     # initial: on
+    expect(phone_option_press(phone_st, POPT_RING))
+    expect(not phone_option_on(phone_st, POPT_RING))
+    expect(phone_option_press(phone_st, POPT_SIZE))
+    expect_eq(phone_option_value(phone_st, POPT_SIZE), 1)
+    phone_option_press(phone_st, POPT_SIZE)
+    phone_option_press(phone_st, POPT_SIZE)
+    expect_eq(phone_option_value(phone_st, POPT_SIZE), 0)            # round to the first
+    expect(phone_option_set(phone_st, POPT_SIZE, 9))                 # kept in range
+    expect_eq(phone_option_value(phone_st, POPT_SIZE), 2)
+    expect(not phone_option_set(phone_st, POPT_SIZE, 2))             # no change, no fact
+    expect_eq(phone_option_find("size"), POPT_SIZE)
+    expect_eq(count_of(phone_st, PHONE_SETTING), 5)
+  }
+
+  test "a save keeps the book, the threads and the options" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState) {
+    fresh(phone_st, phone_test_st)
+    phone_contact_add(phone_st, "secret")
+    phone_contact_add_dyn(phone_st, "friend_7", "Sam", "chat.open", "7")
+    phone_receive(phone_st, "ann", "", "Got a job for you", "job.accept", "j1", "Accept")
+    phone_send(phone_st, "ann", "On my way")
+    phone_receive(phone_st, "dispatch", "", "Stand by", "", "", "")
+    phone_option_press(phone_st, POPT_RING)
+    phone_option_press(phone_st, POPT_SIZE)
+    let root = save_tree()
+    save_section(root, "phone", 1, phone_save(phone_st))
+    let text = save_encode(root)
+    phone_reset(phone_st)
+    expect_eq(phone_thread_count(phone_st), 0)
+    expect_eq(phone_contact_count(phone_st), 2)
+    let n = load_section(save_decode(text), "phone")
+    phone_load(phone_st, n.data, n.version)
+    expect_eq(phone_contact_count(phone_st), 4)
+    expect(phone_contact_name(phone_st, PBOK_COUNT) == "Sam")
+    expect_eq(phone_thread_count(phone_st), 2)
+    expect(phone_thread_key(phone_st, 0) == "dispatch")
+    expect_eq(phone_unread(phone_st), 2)
+    expect_eq(phone_message_count(phone_st, 1), 2)
+    expect(not phone_option_on(phone_st, POPT_RING))
+    expect_eq(phone_option_value(phone_st, POPT_SIZE), 1)
+    phone_thread_open(phone_st, 1)
+    expect(phone_message_press(phone_st, 0))                        # the button on the message survived
+    expect_eq(phone_toast_count(phone_st), 0)                        # toasts are not saved
+    expect(phone_is_away(phone_st))
+  }
+
+  # ----- the screen, through ludic.ui -----
+
+  function all_text(n: UiNode) -> string {
+    var out = n.text
+    for i in 0 .. len(n.children) { out = out + all_text(n.children[i]) + " " }
+    return out
+  }
+  function buttons(n: UiNode, out: []UiNode) -> void {
+    if n.tag == "button" { push(out, n) }
+    for i in 0 .. len(n.children) { buttons(n.children[i], out) }
+  }
+  function button_with(root: UiNode, word: string) -> UiNode {
+    let bs = new []UiNode
+    buttons(root, bs)
+    for i in 0 .. len(bs) { if Text.contains(all_text(bs[i]), word) { return bs[i] } }
+    return null
+  }
+  function with_class(n: UiNode, cls: string, out: []UiNode) -> void {
+    for i in 0 .. len(n.classes) { if n.classes[i] == cls { push(out, n) } }
+    for i in 0 .. len(n.children) { with_class(n.children[i], cls, out) }
+  }
+  function classed(root: UiNode, cls: string) -> int {
+    let out = new []UiNode
+    with_class(root, cls, out)
+    return len(out)
+  }
+  # the toasts a message made would answer a search for its words: put them away
+  function quiet(phone_st: mut PhoneState) -> void {
+    while phone_toast_count(phone_st) > 0 { phone_toast_dismiss(phone_st, 0) }
+  }
+  # the phone is ticked a good while (so the slide is done), then looked at
+  function look(phone_st: mut PhoneState, phone_test_st: mut PhoneTestState, ui_st: mut UiState) -> UiNode {
+    tick(phone_st, phone_test_st, 0.5)
+    let root: UiNode = ui_nodes(ui_st, "PhoneScreen", null)
+    ui_place(ui_st, root, 0.0, 0.0, 1280.0, 720.0)
+    return root
+  }
+
+  test "away, the screen shows toasts and no phone; a toast can be put away by pressing it" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState, ui_st: mut UiState) {
+    fresh(phone_st, phone_test_st)
+    var root = look(phone_st, phone_test_st, ui_st)
+    expect_eq(classed(root, "phone"), 0)
+    expect_eq(classed(root, "toast"), 0)
+    phone_notify(phone_st, "Low battery", "9 percent", "", PHONE_TOAST_BAD)
+    root = look(phone_st, phone_test_st, ui_st)
+    expect_eq(classed(root, "toast"), 1)
+    expect(Text.contains(all_text(root), "Low battery"))
+    expect_eq(classed(root, "phone"), 0)
+    ui_press(ui_st, button_with(root, "Low battery"))
+    root = look(phone_st, phone_test_st, ui_st)
+    expect_eq(classed(root, "toast"), 0)
+  }
+
+  test "raised, the screen shows the status bar and each app with its count; pressing one opens it" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState, ui_st: mut UiState) {
+    fresh(phone_st, phone_test_st)
+    phone_receive(phone_st, "ann", "", "hi", "", "", "")
+    phone_raise(phone_st)
+    var root = look(phone_st, phone_test_st, ui_st)
+    expect_eq(classed(root, "phone"), 1)
+    let txt = all_text(root)
+    expect(Text.contains(txt, "14:05"))
+    expect(Text.contains(txt, "ph.messages"))
+    expect(Text.contains(txt, "ph.garage"))
+    expect(Text.contains(txt, "phone.nav.back"))
+    expect_eq(classed(root, "badge"), 2)             # messages, and the notification the message made
+    ui_press(ui_st, button_with(root, "ph.contacts"))
+    expect(phone_in_app(phone_st))
+    root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "phone.contacts.title"))
+    ui_press(ui_st, button_with(root, "phone.nav.home"))
+    expect(phone_is_raised(phone_st))
+    root = look(phone_st, phone_test_st, ui_st)
+    ui_press(ui_st, button_with(root, "phone.nav.away"))
+    expect(phone_is_away(phone_st))
+  }
+
+  test "the book's screen: each contact with a call, and a text where they can be texted" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState, ui_st: mut UiState) {
+    fresh(phone_st, phone_test_st)
+    phone_open_key(phone_st, "contacts")
+    var root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "ph.ann"))
+    expect(Text.contains(all_text(root), "ph.dispatch"))
+    expect(not Text.contains(all_text(root), "ph.secret"))
+    let bs = new []UiNode
+    buttons(root, bs)
+    var calls = 0
+    var texts = 0
+    for i in 0 .. len(bs) {
+      if Text.contains(all_text(bs[i]), "phone.contacts.call") { calls += 1 }
+      if Text.contains(all_text(bs[i]), "phone.contacts.text") { texts += 1 }
+    }
+    expect_eq(calls, 2)
+    expect_eq(texts, 1)                                               # dispatch cannot be texted
+    q_clear(phone_facts(phone_st))
+    ui_press(ui_st, button_with(root, "phone.contacts.call"))
+    let fs = facts(phone_st)
+    expect_eq(fs[0].what, PHONE_CALL)
+    expect(fs[0].key == "dispatch")                                   # the first in the book's order
+    ui_press(ui_st, button_with(root, "phone.contacts.text"))
+    expect(phone_app_key(phone_st) == "messages")
+    expect_eq(phone_open_thread(phone_st), 0)
+  }
+
+  test "the messages screen: threads, a conversation, a button on a message, the way back" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState, ui_st: mut UiState) {
+    fresh(phone_st, phone_test_st)
+    phone_receive(phone_st, "ann", "Ann", "Got a job for you", "job.accept", "j1", "Take it")
+    phone_receive(phone_st, "dispatch", "Dispatch", "Stand by", "", "", "")
+    quiet(phone_st)
+    phone_open_key(phone_st, "messages")
+    var root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "Stand by"))
+    expect(Text.contains(all_text(root), "Got a job for you"))
+    ui_press(ui_st, button_with(root, "Got a job for you"))
+    expect_eq(phone_open_thread(phone_st), 1)
+    expect_eq(phone_unread(phone_st), 1)                       # dispatch is still unread
+    root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "Take it"))
+    q_clear(phone_facts(phone_st))
+    ui_press(ui_st, button_with(root, "Take it"))
+    expect(facts(phone_st)[0].verb == "job.accept")
+    ui_press(ui_st, button_with(root, "phone.messages.back"))
+    expect_eq(phone_open_thread(phone_st), -1)
+    root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "phone.messages.title"))
+  }
+
+  test "the jobs, map and shop screens show what the game's ports say and press through them" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState, ui_st: mut UiState) {
+    fresh(phone_st, phone_test_st)
+    phone_test_st.job_titles = ["Courier run", "Night delivery"]
+    phone_test_st.job_states = [0, 2]
+    phone_open_key(phone_st, "jobs")
+    var root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "Courier run"))
+    expect(Text.contains(all_text(root), "phone.jobs.ready"))
+    ui_press(ui_st, button_with(root, "Night delivery"))
+    expect_eq(phone_test_st.jobs_pressed, 1)
+    phone_test_st.places = ["Harbour", "Garage"]
+    phone_open_key(phone_st, "map")
+    root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "phone.map.none"))
+    ui_press(ui_st, button_with(root, "Garage"))
+    expect_eq(phone_test_st.place_on, 1)
+    root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "phone.map.distance"))
+    ui_press(ui_st, button_with(root, "phone.map.clear"))
+    expect_eq(phone_test_st.place_on, -1)
+    phone_test_st.rows = ["Runabout", "Coupe"]
+    phone_test_st.prices = [300, 9000]
+    phone_open_key(phone_st, "shop")
+    root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "Runabout"))
+    expect(Text.contains(all_text(root), "phone.shop.balance"))
+    let bs = new []UiNode
+    buttons(root, bs)
+    var buys = new []UiNode
+    for i in 0 .. len(bs) { if Text.contains(all_text(bs[i]), "phone.shop.buy") { push(buys, bs[i]) } }
+    expect_eq(len(buys), 2)
+    ui_press(ui_st, buys[0])
+    expect_eq(phone_test_st.bought, 0)
+  }
+
+  test "settings, the camera, notifications and a game's own app" (phone_st: mut PhoneState, phone_test_st: mut PhoneTestState, ui_st: mut UiState) {
+    fresh(phone_st, phone_test_st)
+    phone_open_key(phone_st, "settings")
+    var root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "ph.ring"))
+    expect(Text.contains(all_text(root), "phone.settings.on"))
+    ui_press(ui_st, button_with(root, "ph.ring"))
+    expect(not phone_option_on(phone_st, POPT_RING))
+    root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "phone.settings.off"))
+    phone_open_key(phone_st, "camera")
+    root = look(phone_st, phone_test_st, ui_st)
+    q_clear(phone_facts(phone_st))
+    ui_press(ui_st, button_with(root, "phone.camera.open"))
+    ui_press(ui_st, button_with(root, "phone.camera.selfie"))
+    let fs = facts(phone_st)
+    expect(fs[0].what == PHONE_CAMERA and fs[1].what == PHONE_PHOTO and fs[1].arg == "selfie")
+    phone_notify(phone_st, "Job complete", "Paid 1,200", "", PHONE_TOAST_GOOD)
+    phone_open_key(phone_st, "notes")
+    root = look(phone_st, phone_test_st, ui_st)
+    expect(Text.contains(all_text(root), "Paid 1,200"))
+    expect_eq(phone_notes_unread(phone_st), 1)                       # still new while it is looked at
+    phone_home(phone_st)
+    expect_eq(phone_notes_unread(phone_st), 0)                       # leaving it read them
+    phone_open_key(phone_st, "garage")
+    root = look(phone_st, phone_test_st, ui_st)
+    expect(not phone_app_builtin(phone_st))
+    expect(not Text.contains(all_text(root), "phone.contacts.title"))
+  }
+}

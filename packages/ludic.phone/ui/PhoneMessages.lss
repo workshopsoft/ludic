@@ -1,0 +1,24 @@
+/* PhoneMessages.lss */
+.messages { padding: 12px; gap: 8px; width: fill; height: fill; color: var(--ph-text, #eef2f7) }
+.messages h2 { font-size: 18px }
+.empty { color: var(--ph-muted, #93a0b2) }
+.grow { flex-grow: 1 }
+.list, .talk { gap: 6px; flex-grow: 1 }
+.thread { height: 52px; padding: 0 10px; gap: 8px; align-items: center; background: var(--ph-card, #1e2530); color: var(--ph-text, #eef2f7) }
+.thread.new { border-left: 4px solid var(--ph-accent, #4ea1ff) }
+.thread:focus-visible, .close:focus-visible, .act:focus-visible { outline: 3px solid var(--ph-accent, #4ea1ff) }
+.who { gap: 2px }
+.name { font-size: 15px; text-overflow: ellipsis; white-space: nowrap }
+.last { color: var(--ph-muted, #93a0b2); text-overflow: ellipsis; white-space: nowrap }
+.time { color: var(--ph-muted, #93a0b2); font-size: 11px }
+.badge { padding: 0 6px; font-size: 11px; background: var(--ph-accent, #4ea1ff); color: var(--ph-ink, #0b0e13) }
+.head { gap: 8px; align-items: center }
+.close { height: 30px; padding: 0 10px; font-size: 13px; background: var(--ph-line, #2c3542); color: var(--ph-text, #eef2f7) }
+.line { gap: 2px; width: fill }
+.line.mine { align-items: end }
+.line.theirs { align-items: start }
+.bubble { max-width: 80%; padding: 6px 10px; font-size: 14px; background: var(--ph-card, #1e2530) }
+.line.mine .bubble { background: var(--ph-accent, #4ea1ff); color: var(--ph-ink, #0b0e13) }
+.stamp { font-size: 10px; color: var(--ph-muted, #93a0b2) }
+.act { height: 30px; padding: 0 10px; font-size: 13px; background: var(--ph-good, #57c785); color: var(--ph-ink, #0b0e13) }
+.compose { width: fill }

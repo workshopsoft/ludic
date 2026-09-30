@@ -1,0 +1,11 @@
+# PhoneToasts.stories.lres - the studio's stories for PhoneToasts (the lines that come up); the game never reads this file
+
+default {
+  viewport: "640x360"
+  props: { items: [{ title: "Ann", body: "Got a job for you", icon: "", kind: 1 }, { title: "Job complete", body: "Paid 1,200", icon: "", kind: 2 }, { title: "Could not buy", body: "Not enough money", icon: "", kind: 3 }] }
+}
+
+one {
+  base: "default"
+  props: { items: [{ title: "Low battery", body: "9 percent left", icon: "", kind: 0 }] }
+}

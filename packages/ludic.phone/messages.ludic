@@ -1,0 +1,163 @@
+# messages.ludic - threads of messages, one per contact (or whoever the game names: another player, a number), newest
+# thread first. A message arrives from the game (a mission giver, a player's chat) or is sent by the player - which is a
+# fact, since delivering it is the game's. A message may carry a button the player can press (a PHONE_ACTION)
+
+# the thread with this key, made at the front when there is none; a name it had none of is filled in
+@alloc_ok("a thread made: once, the first time anything is said in it")
+function phone__thread_for(phone_st: mut PhoneState, key: string, name: string) -> int {
+  for i in 0 .. len(phone_st.phone__threads) {
+    if phone_st.phone__threads[i].key == key {
+      if phone_st.phone__threads[i].name == "" { phone_st.phone__threads[i].name = name }
+      return i
+    }
+  }
+  let t = new PhoneThread
+  t.key = key
+  t.name = name
+  List.insert(phone_st.phone__threads, 0, t)
+  if phone_st.phone__open >= 0 { phone_st.phone__open += 1 }
+  phone__dirty(phone_st, PH_D_THREADS | PH_D_THREAD)
+  return 0
+}
+
+# a thread moved to the front (the one that was open stays open)
+function phone__front(phone_st: mut PhoneState, t: int) -> int {
+  if t == 0 { return 0 }
+  let th = phone_st.phone__threads[t]
+  List.remove_at(phone_st.phone__threads, t)
+  List.insert(phone_st.phone__threads, 0, th)
+  if phone_st.phone__open == t { phone_st.phone__open = 0 }
+  else if phone_st.phone__open >= 0 and phone_st.phone__open < t { phone_st.phone__open += 1 }
+  return 0
+}
+
+function phone__read_thread(phone_st: mut PhoneState, t: int) -> void {
+  if t < 0 or t >= len(phone_st.phone__threads) { return }
+  let key = phone_st.phone__threads[t].key
+  for i in 0 .. len(phone_st.phone__msgs) {
+    if phone_st.phone__msgs[i].thread == key { phone_st.phone__msgs[i].read = true }
+  }
+  phone_st.phone__threads[t].unread = 0
+  phone__dirty(phone_st, PH_D_THREADS)
+}
+
+@alloc_ok("a message kept: once, when it arrives or is sent")
+function phone__add(phone_st: mut PhoneState, thread: string, name: string, mine: bool, text: string, action: string, arg: string, label: string) -> int {
+  var t = phone__thread_for(phone_st, thread, name)
+  let m = new PhoneMessage
+  m.thread = thread
+  m.mine = mine
+  m.text = text
+  m.time = PhoneWorld.minutes()
+  m.action = action
+  m.arg = arg
+  m.label = label
+  m.read = mine
+  push(phone_st.phone__msgs, m)
+  if len(phone_st.phone__msgs) > PHONE_MAX_MESSAGES { List.remove_at(phone_st.phone__msgs, 0) }
+  t = phone__front(phone_st, t)
+  phone_st.phone__threads[0].last = text
+  phone_st.phone__threads[0].time = m.time
+  phone__dirty(phone_st, PH_D_THREADS | PH_D_THREAD)
+  return 0
+}
+
+# is this thread what the player is looking at (the phone up, in the messages app, this thread open)
+function phone__looking_at(phone_st: PhoneState, key: string) -> bool {
+  if phone_st.phone__mode != PhoneMode.App or phone_st.phone__open < 0 { return false }
+  return phone_st.phone__threads[phone_st.phone__open].key == key
+}
+
+# a message arrives in a thread from the game or another player: `name` is who it is from when the thread is new (a
+# contact's own name is used when the thread is a contact's key). `action` and `label` make a button on it: pressing
+# says PHONE_ACTION with `action` and `arg`. Unread unless the player is looking at the thread, and a toast
+export function phone_receive(phone_st: mut PhoneState, thread: string, name: string, text: string, action: string, arg: string, label: string) -> void {
+  var who = name
+  let c = phonebook_find(thread)
+  if c >= 0 and who == "" { who = phone_contact_name(phone_st, c) }
+  if who == "" { who = thread }
+  phone__add(phone_st, thread, who, false, text, action, arg, label)
+  phone__fact(phone_st, PHONE_MESSAGE_IN, -1, thread)
+  if phone__looking_at(phone_st, thread) { phone__read_thread(phone_st, 0) }
+  else {
+    phone_st.phone__threads[0].unread += 1
+    phone_notify(phone_st, phone_st.phone__threads[0].name, text, "", PHONE_TOAST_MESSAGE)
+  }
+}
+
+# the player says something in a thread: kept, and a PHONE_MESSAGE_OUT for the game to deliver
+export function phone_send(phone_st: mut PhoneState, thread: string, text: string) -> bool {
+  if text == "" or thread == "" { return false }
+  var who = thread
+  let c = phonebook_find(thread)
+  if c >= 0 { who = phone_contact_name(phone_st, c) }
+  phone__add(phone_st, thread, who, true, text, "", "", "")
+  let f = phone__fact(phone_st, PHONE_MESSAGE_OUT, -1, thread)
+  f.arg = text
+  return true
+}
+
+# the same, into the thread open in the messages app
+export function phone_send_open(phone_st: mut PhoneState, text: string) -> bool {
+  if phone_st.phone__open < 0 { return false }
+  return phone_send(phone_st, phone_st.phone__threads[phone_st.phone__open].key, text)
+}
+
+export function phone_thread_count(phone_st: PhoneState) -> int { return len(phone_st.phone__threads) }
+
+export function phone_thread_key(phone_st: PhoneState, t: int) -> string {
+  if t < 0 or t >= len(phone_st.phone__threads) { return "" }
+  return phone_st.phone__threads[t].key
+}
+
+export function phone_thread_unread(phone_st: PhoneState, t: int) -> int {
+  if t < 0 or t >= len(phone_st.phone__threads) { return 0 }
+  return phone_st.phone__threads[t].unread
+}
+
+# unread messages in all
+export function phone_unread(phone_st: PhoneState) -> int {
+  var n = 0
+  for t in 0 .. len(phone_st.phone__threads) { n += phone_st.phone__threads[t].unread }
+  return n
+}
+
+# the thread open in the messages app (-1 none)
+export function phone_open_thread(phone_st: PhoneState) -> int { return phone_st.phone__open }
+
+# open the t-th thread: its messages are read
+export function phone_thread_open(phone_st: mut PhoneState, t: int) -> bool {
+  if t < 0 or t >= len(phone_st.phone__threads) { return false }
+  phone_st.phone__open = t
+  phone__read_thread(phone_st, t)
+  phone__dirty(phone_st, PH_D_THREAD)
+  return true
+}
+
+# how many messages the t-th thread holds
+export function phone_message_count(phone_st: PhoneState, t: int) -> int {
+  if t < 0 or t >= len(phone_st.phone__threads) { return 0 }
+  var n = 0
+  for i in 0 .. len(phone_st.phone__msgs) { if phone_st.phone__msgs[i].thread == phone_st.phone__threads[t].key { n += 1 } }
+  return n
+}
+
+# the button of the n-th message of the open thread pressed: PHONE_ACTION, with its word and arg. False when that
+# message has no button
+export function phone_message_press(phone_st: mut PhoneState, n: int) -> bool {
+  if phone_st.phone__open < 0 { return false }
+  let key = phone_st.phone__threads[phone_st.phone__open].key
+  var seen = 0
+  for i in 0 .. len(phone_st.phone__msgs) {
+    if phone_st.phone__msgs[i].thread != key { continue }
+    if seen == n {
+      if phone_st.phone__msgs[i].action == "" { return false }
+      let f = phone__fact(phone_st, PHONE_ACTION, -1, key)
+      f.verb = phone_st.phone__msgs[i].action
+      f.arg = phone_st.phone__msgs[i].arg
+      return true
+    }
+    seen += 1
+  }
+  return false
+}

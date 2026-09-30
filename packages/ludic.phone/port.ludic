@@ -1,0 +1,70 @@
+# port.ludic - what the phone asks the game. Every member has an answer for a game that binds nothing, so the
+# phone always shows (an empty jobs list, no shop, no waypoints)
+
+# the world around the phone: the clock and the status bar, whether an app is there, whether the phone may come
+# up now (not while the player is in a fight), whether a contact can be called, and the player's money for the shop
+export port PhoneWorld {
+  clock: fn() -> string = fn ph_text               # "14:05", for the status bar
+  minutes: fn() -> int = fn ph_zero                # the game's minute, stamped on each message
+  signal: fn() -> int = fn ph_bars                 # 0 to 4 bars
+  battery: fn() -> int = fn ph_full                # 0 to 100
+  app_enabled: fn(string) -> bool = fn ph_yes      # is this app on the phone now?
+  can_raise: fn() -> bool = fn ph_true             # may the phone come up?
+  can_call: fn(string) -> bool = fn ph_yes         # may this contact be called now? (a line that is busy)
+  money: fn() -> int = fn ph_zero                  # shown in the shop
+}
+
+# the jobs app: a list the game reads from its job system; `state` 0 offered, 1 taken, 2 ready to hand in; `press`
+# is the player choosing one (take it, track it)
+export port PhoneJobs {
+  count: fn() -> int = fn ph_zero
+  title: fn(int) -> string = fn ph_text_at
+  info: fn(int) -> string = fn ph_text_at
+  state: fn(int) -> int = fn ph_zero_at
+  press: fn(int) -> void = fn ph_nothing_at
+}
+
+# the map app: places the player can set a waypoint at, the one set now, a pin dropped where the player stands
+export port PhoneMap {
+  count: fn() -> int = fn ph_zero
+  name: fn(int) -> string = fn ph_text_at
+  active: fn() -> int = fn ph_none                  # the waypoint set now, -1 none (a pin dropped by hand is 'count')
+  set: fn(int) -> void = fn ph_nothing_at
+  set_here: fn() -> void = fn ph_nothing
+  clear: fn() -> void = fn ph_nothing
+  distance: fn() -> float = fn ph_unknown           # metres to the waypoint, -1 when there is none
+}
+
+# the internet app: rows of a shop the game keeps, bought by `buy`
+export port PhoneShop {
+  count: fn() -> int = fn ph_zero
+  name: fn(int) -> string = fn ph_text_at
+  category: fn(int) -> string = fn ph_text_at
+  price: fn(int) -> int = fn ph_zero_at
+  available: fn(int) -> bool = fn ph_yes_at
+  buy: fn(int) -> bool = fn ph_no_at
+}
+
+# what the player presses to work the phone without the screen: bring it up or put it away, back, home. The game
+# binds them to a key and a pad button (polled once a frame; a press is one step)
+export port PhoneInput {
+  toggle: fn() -> bool = fn ph_false
+  back: fn() -> bool = fn ph_false
+  home: fn() -> bool = fn ph_false
+}
+
+function ph_text() -> string { return "" }
+function ph_zero() -> int { return 0 }
+function ph_bars() -> int { return 4 }
+function ph_full() -> int { return 100 }
+function ph_none() -> int { return -1 }
+function ph_unknown() -> float { return -1.0 }
+function ph_true() -> bool { return true }
+function ph_false() -> bool { return false }
+function ph_yes(s: string) -> bool { return true }
+function ph_text_at(i: int) -> string { return "" }
+function ph_zero_at(i: int) -> int { return 0 }
+function ph_yes_at(i: int) -> bool { return true }
+function ph_no_at(i: int) -> bool { return false }
+function ph_nothing_at(i: int) -> void { }
+function ph_nothing() -> void { }

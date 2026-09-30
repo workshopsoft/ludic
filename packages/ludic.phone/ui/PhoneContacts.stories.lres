@@ -1,0 +1,24 @@
+# PhoneContacts.stories.lres - the studio's stories for PhoneContacts (the book); the game never reads this file
+
+default {
+  viewport: "360x560"
+  props: { items: [{ name: "Ann", portrait: "", text: true }, { name: "Dispatch", portrait: "", text: false }, { name: "Marcus", portrait: "", text: true }] }
+}
+
+# the call button is focused first
+focused {
+  base: "default"
+  force: ["button:focus-visible"]
+}
+
+# nobody in the book yet
+empty {
+  base: "default"
+  props: { items: [] }
+}
+
+# names too long for the row
+long_names {
+  base: "default"
+  props: { items: [{ name: "Bartholomew the Third of Somewhere Far", portrait: "", text: true }] }
+}

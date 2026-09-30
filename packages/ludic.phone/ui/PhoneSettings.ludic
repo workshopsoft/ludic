@@ -1,0 +1,6 @@
+# PhoneSettings.ludic - the options the game lists (PhoneOptions): switches and choices. A press flips a switch or goes to
+# the next choice; the phone keeps and saves the value and says so (PHONE_SETTING)
+component PhoneSettings (phone_st: mut PhoneState) {
+  prop items: Val = null       # [{label, kind, value, on, shown}]
+  on press(i: int) { phone_option_press(phone_st, i) }
+}

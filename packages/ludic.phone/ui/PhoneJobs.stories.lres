@@ -1,0 +1,16 @@
+# PhoneJobs.stories.lres - the studio's stories for PhoneJobs (the game's jobs); the game never reads this file
+
+default {
+  viewport: "360x560"
+  props: { items: [{ title: "Night delivery", info: "Pick up at the harbour", state: 1 }, { title: "Courier run", info: "3 packages across town", state: 0 }, { title: "Vehicle list", info: "Hand in the last car", state: 2 }] }
+}
+
+focused {
+  base: "default"
+  force: ["button:focus-visible"]
+}
+
+empty {
+  base: "default"
+  props: { items: [] }
+}

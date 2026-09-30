@@ -1,0 +1,7 @@
+/* PhoneCamera.lss */
+.camera { padding: 12px; gap: 12px; width: fill; height: fill; color: var(--ph-text, #eef2f7) }
+.camera h2 { font-size: 18px }
+.big { height: 64px; font-size: 18px; background: var(--ph-accent, #4ea1ff); color: var(--ph-ink, #0b0e13) }
+.shots { gap: 8px }
+.shot { height: 44px; flex-grow: 1; font-size: 14px; background: var(--ph-card, #1e2530); color: var(--ph-text, #eef2f7) }
+.big:focus-visible, .shot:focus-visible { outline: 3px solid var(--ph-text, #eef2f7) }

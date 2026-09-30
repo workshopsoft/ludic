@@ -1,0 +1,27 @@
+<div class="phone-root">
+  <PhoneToasts items="{toasts}"/>
+  <if test="{slide > 0}">
+    <div class="phone" style="bottom: {slide * 20 - 640 * (1 - slide)}px">
+      <PhoneStatus clock="{clock}" signal="{signal}" battery="{battery}" unread="{unread}"/>
+      <div class="body">
+        <if test="{mode == 1}"><PhoneHome apps="{apps}"/></if>
+        <if test="{mode == 2}">
+          <if test="{app == 'PhoneContacts'}"><PhoneContacts items="{contacts}"/></if>
+          <if test="{app == 'PhoneMessages'}"><PhoneMessages threads="{threads}" thread="{thread}" open="{open}" name="{thread_name}"/></if>
+          <if test="{app == 'PhoneJobs'}"><PhoneJobs items="{jobs}"/></if>
+          <if test="{app == 'PhoneMap'}"><PhoneMap places="{places}" active="{route}" distance="{distance}"/></if>
+          <if test="{app == 'PhoneShop'}"><PhoneShop items="{shop}" money="{money}"/></if>
+          <if test="{app == 'PhoneSettings'}"><PhoneSettings items="{options}"/></if>
+          <if test="{app == 'PhoneCamera'}"><PhoneCamera/></if>
+          <if test="{app == 'PhoneNotifications'}"><PhoneNotifications items="{notes}"/></if>
+          <if test="{not builtin}"><slot name="app"/></if>
+        </if>
+      </div>
+      <row class="nav">
+        <button class="key" on-click="back()">{t('phone.nav.back')}</button>
+        <button class="key" enabled="{mode == 2}" on-click="home()">{t('phone.nav.home')}</button>
+        <button class="key" on-click="away()">{t('phone.nav.away')}</button>
+      </row>
+    </div>
+  </if>
+</div>

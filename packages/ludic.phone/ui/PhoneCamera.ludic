@@ -1,0 +1,7 @@
+# PhoneCamera.ludic - the camera app: a fact, nothing more. Opening the game's viewfinder (PHONE_CAMERA), the shutter and the
+# front camera (PHONE_PHOTO) are the game's to do - it will likely put the phone away first
+component PhoneCamera (phone_st: mut PhoneState) {
+  on open() { phone_camera_open(phone_st) }
+  on shoot() { phone_photo(phone_st, false) }
+  on selfie() { phone_photo(phone_st, true) }
+}

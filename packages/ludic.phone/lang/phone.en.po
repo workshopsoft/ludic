@@ -1,0 +1,155 @@
+# phone.en.po - the English of ludic.phone's own words: copy these entries into the game's source .po (the compiler
+# holds every t('...') a component uses to it). The game's own words - the apps' titles, the contacts' names, the
+# option labels - are keys too, derived from its rows (phone_apps.<row>.title, phone_book.<row>.name, phone_options.<row>.label).
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. The home screen's line when no app is on the phone.
+msgid "phone.home.empty"
+msgstr "No apps on this phone."
+
+#. The phone's back button.
+msgid "phone.nav.back"
+msgstr "Back"
+
+#. The phone's home button: out of an app.
+msgid "phone.nav.home"
+msgstr "Home"
+
+#. The phone's button that puts it away.
+msgid "phone.nav.away"
+msgstr "Put away"
+
+#. The contacts app's heading.
+msgid "phone.contacts.title"
+msgstr "Contacts"
+
+#. The contacts app with nobody in the book.
+msgid "phone.contacts.empty"
+msgstr "No one in your contacts yet."
+
+#. Calls a contact.
+msgid "phone.contacts.call"
+msgstr "Call"
+
+#. Opens a message thread with a contact.
+msgid "phone.contacts.text"
+msgstr "Text"
+
+#. The messages app's heading.
+msgid "phone.messages.title"
+msgstr "Messages"
+
+#. The messages app with no threads.
+msgid "phone.messages.empty"
+msgstr "No messages."
+
+#. Leaves an open conversation for the list of threads.
+msgid "phone.messages.back"
+msgstr "Back"
+
+#. The label of the field a message is typed in.
+msgid "phone.messages.send"
+msgstr "Message"
+
+#. The jobs app's heading.
+msgid "phone.jobs.title"
+msgstr "Jobs"
+
+#. The jobs app with nothing listed.
+msgid "phone.jobs.empty"
+msgstr "No jobs right now."
+
+#. A chip on a job that can be taken.
+msgid "phone.jobs.offered"
+msgstr "Offered"
+
+#. A chip on a job that was taken.
+msgid "phone.jobs.taken"
+msgstr "Taken"
+
+#. A chip on a job that can be handed in.
+msgid "phone.jobs.ready"
+msgstr "Ready"
+
+#. The map app's heading.
+msgid "phone.map.title"
+msgstr "Map"
+
+#. The map app with no waypoint.
+msgid "phone.map.none"
+msgstr "No waypoint set."
+
+#. The map app's line for the waypoint set ({1} is the distance in metres).
+msgid "phone.map.distance"
+msgstr "Waypoint: {1} m"
+
+#. Drops a pin where the player stands.
+msgid "phone.map.here"
+msgstr "Mark my position"
+
+#. Clears the waypoint.
+msgid "phone.map.clear"
+msgstr "Clear waypoint"
+
+#. A chip on the place the waypoint is at.
+msgid "phone.map.set"
+msgstr "Set"
+
+#. The shop app's heading.
+msgid "phone.shop.title"
+msgstr "Internet"
+
+#. The money the player has in the shop app ({1} is the amount).
+msgid "phone.shop.balance"
+msgstr "Cash: {1}"
+
+#. The shop app with no rows.
+msgid "phone.shop.empty"
+msgstr "Nothing for sale."
+
+#. Buys a shop row.
+msgid "phone.shop.buy"
+msgstr "Buy"
+
+#. The settings app's heading.
+msgid "phone.settings.title"
+msgstr "Settings"
+
+#. A switch that is on.
+msgid "phone.settings.on"
+msgstr "On"
+
+#. A switch that is off.
+msgid "phone.settings.off"
+msgstr "Off"
+
+#. The camera app's heading.
+msgid "phone.camera.title"
+msgstr "Camera"
+
+#. Opens the game's camera.
+msgid "phone.camera.open"
+msgstr "Open camera"
+
+#. Takes a photo.
+msgid "phone.camera.photo"
+msgstr "Take photo"
+
+#. Takes a photo with the front camera.
+msgid "phone.camera.selfie"
+msgstr "Selfie"
+
+#. The notifications app's heading.
+msgid "phone.notes.title"
+msgstr "Notifications"
+
+#. The notifications app with no notifications.
+msgid "phone.notes.empty"
+msgstr "Nothing new."
+
+#. Clears all notifications.
+msgid "phone.notes.clear"
+msgstr "Clear"

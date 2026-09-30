@@ -1,0 +1,15 @@
+/* PhoneJobs.lss */
+.jobs { padding: 12px; gap: 8px; width: fill; height: fill; color: var(--ph-text, #eef2f7) }
+.jobs h2 { font-size: 18px }
+.empty { color: var(--ph-muted, #93a0b2) }
+.list { gap: 6px; flex-grow: 1 }
+.job { padding: 8px 10px; gap: 8px; align-items: center; background: var(--ph-card, #1e2530); color: var(--ph-text, #eef2f7) }
+.job.s1 { border-left: 4px solid var(--ph-accent, #4ea1ff) }
+.job.s2 { border-left: 4px solid var(--ph-good, #57c785) }
+.job:focus-visible { outline: 3px solid var(--ph-accent, #4ea1ff) }
+.text { gap: 2px }
+.grow { flex-grow: 1 }
+.title { font-size: 15px }
+.info { color: var(--ph-muted, #93a0b2) }
+.chip { padding: 2px 8px; font-size: 11px; background: var(--ph-line, #2c3542) }
+.chip.ready { background: var(--ph-good, #57c785); color: var(--ph-ink, #0b0e13) }

@@ -1,0 +1,6 @@
+# PhoneHome.ludic - the home screen: the apps the world has on, in order, each an icon and its name, with the
+# count on it (unread messages, jobs to hand in). A press opens the app; the first one takes the focus
+component PhoneHome (phone_st: mut PhoneState) {
+  prop apps: Val = null        # [{key, title, icon, badge}]
+  on open(i: int) { phone_open_shown(phone_st, i) }
+}

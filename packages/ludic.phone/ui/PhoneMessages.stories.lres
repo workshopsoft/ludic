@@ -1,0 +1,24 @@
+# PhoneMessages.stories.lres - the studio's stories for PhoneMessages (the threads, and one opened out); the game never reads this file
+
+default {
+  viewport: "360x560"
+  props: { threads: [{ name: "Ann", last: "Got a job for you", time: "13:40", unread: 2 }, { name: "Marcus", last: "See you there", time: "11:02", unread: 0 }], open: -1 }
+}
+
+# nothing yet
+empty {
+  base: "default"
+  props: { threads: [] }
+}
+
+# a conversation, with a button on the last message
+conversation {
+  base: "default"
+  props: { open: 0, name: "Ann", thread: [{ mine: false, text: "Got a job for you", time: "13:38", action: false, label: "" }, { mine: true, text: "Where?", time: "13:39", action: false, label: "" }, { mine: false, text: "The docks. Pays well.", time: "13:40", action: true, label: "Accept" }] }
+}
+
+# the same, a button focused
+conversation_focused {
+  base: "conversation"
+  force: ["button:focus-visible"]
+}

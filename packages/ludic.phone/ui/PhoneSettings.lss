@@ -1,0 +1,9 @@
+/* PhoneSettings.lss */
+.settings { padding: 12px; gap: 8px; width: fill; height: fill; color: var(--ph-text, #eef2f7) }
+.settings h2 { font-size: 18px }
+.list { gap: 6px; flex-grow: 1 }
+.option { height: 44px; padding: 0 12px; gap: 8px; align-items: center; background: var(--ph-card, #1e2530); color: var(--ph-text, #eef2f7) }
+.option:focus-visible { outline: 3px solid var(--ph-accent, #4ea1ff) }
+.grow { flex-grow: 1 }
+.state { padding: 2px 10px; font-size: 12px; background: var(--ph-line, #2c3542) }
+.state.on { background: var(--ph-accent, #4ea1ff); color: var(--ph-ink, #0b0e13) }

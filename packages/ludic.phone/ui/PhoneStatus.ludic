@@ -1,0 +1,7 @@
+# PhoneStatus.ludic - the bar across the top: the clock, the signal, the battery, and how many messages wait
+component PhoneStatus (phone_st: mut PhoneState) {
+  prop clock: string = ""
+  prop signal: int = 4
+  prop battery: int = 100
+  prop unread: int = 0
+}

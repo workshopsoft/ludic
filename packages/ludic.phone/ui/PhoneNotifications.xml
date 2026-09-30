@@ -1,0 +1,15 @@
+<section class="notes">
+  <row class="head">
+    <h2 class="grow">{t('phone.notes.title')}</h2>
+    <button class="clear" autofocus on-click="clear()">{t('phone.notes.clear')}</button>
+  </row>
+  <if test="{len(items) == 0}"><p class="empty">{t('phone.notes.empty')}</p></if>
+  <scroll class="list">
+    <each in="{items}" as="n">
+      <div class="note {n.unread ? 'new' : ''}">
+        <row class="top"><span class="title grow">{n.title}</span><small class="time">{n.time}</small></row>
+        <small class="body">{n.body}</small>
+      </div>
+    </each>
+  </scroll>
+</section>

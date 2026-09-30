@@ -1,0 +1,176 @@
+# state.ludic - the phone's machine, what it keeps, and its facts
+
+export enum PhoneMode { Away, Raised, App }
+
+# what asked the machine to move (one step of it, made at once by the verb and again each tick)
+export const PHONE_REQ_NONE: int = 0
+export const PHONE_REQ_RAISE: int = 1
+export const PHONE_REQ_LOWER: int = 2
+export const PHONE_REQ_APP: int = 3      # `phone__req_app` is the app's row
+export const PHONE_REQ_HOME: int = 4
+
+export const PHONE_RAISED: int = 0       # the phone came up
+export const PHONE_LOWERED: int = 1      # it was put away
+export const PHONE_APP_OPENED: int = 2   # (idx, key)
+export const PHONE_APP_CLOSED: int = 3   # (idx, key)
+export const PHONE_CALL: int = 4         # the player called a contact (key, verb = the row's `call`, arg)
+export const PHONE_MESSAGE_OUT: int = 5  # the player sent a message (key = the thread, arg = the text): the game delivers it
+export const PHONE_MESSAGE_IN: int = 6   # a message arrived (key = the thread)
+export const PHONE_ACTION: int = 7       # the player pressed a button on a message (key = the thread, verb, arg)
+export const PHONE_CAMERA: int = 8       # the camera app asked for the game's camera
+export const PHONE_PHOTO: int = 9        # take the photo now (arg "selfie" or "")
+export const PHONE_WAYPOINT: int = 10    # a waypoint was set (idx) or cleared (idx -1)
+export const PHONE_JOB: int = 11         # a job was pressed (idx)
+export const PHONE_BUY: int = 12         # a shop row was bought (idx, key = its name, arg "ok" or "no")
+export const PHONE_SETTING: int = 13     # an option changed (idx, key, to = the value)
+export const PHONE_NOTIFIED: int = 14    # a toast came up (key = its kind's word)
+
+export property PhoneFact {
+  what: int = 0
+  idx: int = -1
+  key: string = ""
+  verb: string = ""
+  arg: string = ""
+  to: int = 0
+}
+
+# a message in a thread (`thread` is a contact's key, or whoever the game names: a player, a number)
+export property PhoneMessage {
+  thread: string = ""
+  mine: bool = false
+  text: string = ""
+  time: int = 0
+  read: bool = true
+  action: string = ""        # a button on the message: the game's word, said as a PHONE_ACTION
+  arg: string = ""
+  label: string = ""         # its words
+}
+
+export property PhoneThread {
+  key: string = ""
+  name: string = ""
+  last: string = ""
+  time: int = 0
+  unread: int = 0
+}
+
+# a contact the game added while playing (a friend, a number a mission gave)
+export property PhoneDyn {
+  key: string = ""
+  name: string = ""
+  call: string = ""
+  arg: string = ""
+}
+
+export const PHONE_TOAST_INFO: int = 0
+export const PHONE_TOAST_MESSAGE: int = 1
+export const PHONE_TOAST_GOOD: int = 2
+export const PHONE_TOAST_BAD: int = 3
+
+export property PhoneToast {
+  title: string = ""
+  body: string = ""
+  icon: string = ""
+  kind: int = 0
+  left: float = 0.0
+}
+
+export property PhoneNote {
+  title: string = ""
+  body: string = ""
+  icon: string = ""
+  kind: int = 0
+  time: int = 0
+  read: bool = false
+}
+
+export const PHONE_MAX_MESSAGES: int = 200
+export const PHONE_MAX_NOTES: int = 30
+export const PHONE_MAX_TOASTS: int = 4
+export const PHONE_TOAST_SECONDS: float = 4.0
+export const PHONE_SLIDE_SECONDS: float = 0.25
+
+export state PhoneState {
+  phone__mode: PhoneMode = PhoneMode.Away
+  phone__req: int = 0
+  phone__req_app: int = -1
+  phone__app: int = -1                     # the app open (a row of PhoneApps), -1 none
+  phone__shown: []int = new []int          # the rows of PhoneApps the world has on, in `order`
+  phone__apps_sig: int = -1
+  phone__badge_sig: int = -1
+  phone__slide: float = 0.0                # 0 away, 1 fully up: for the screen to ease by
+  phone__known: []int = new []int          # per PhoneBook row: 1 in the book
+  phone__book: []int = new []int           # the rows in the book, in `order`
+  phone__dyn: []PhoneDyn = new []PhoneDyn
+  phone__msgs: []PhoneMessage = new []PhoneMessage
+  phone__threads: []PhoneThread = new []PhoneThread
+  phone__open: int = -1                    # the thread open in the messages app
+  phone__values: []int = new []int         # per PhoneOptions row
+  phone__toasts: []PhoneToast = new []PhoneToast
+  phone__notes: []PhoneNote = new []PhoneNote
+  phone__now: int = 0                      # the game's minute, as last asked
+  phone__clock: string = ""
+  phone__signal: int = 4
+  phone__battery: int = 100
+  phone__money: int = 0
+  phone__in_toggle: bool = false           # the inputs as last read: a press is an edge
+  phone__in_back: bool = false
+  phone__in_home: bool = false
+  phone__jobs_sig: int = -1
+  phone__map_sig: int = -1
+  phone__shop_sig: int = -1
+  phone__dirty: int = 0                    # which mirrors must be rebuilt
+  phone__apps_v: Val = Value.list()        # [{key, title, icon, badge}]
+  phone__contacts_v: Val = Value.list()    # [{name, portrait, text}]
+  phone__threads_v: Val = Value.list()     # [{name, last, time, unread}]
+  phone__thread_v: Val = Value.list()      # [{mine, text, time, action, label}] of the open thread
+  phone__options_v: Val = Value.list()     # [{label, kind, value, shown}]
+  phone__toasts_v: Val = Value.list()      # [{title, body, icon, kind}]
+  phone__notes_v: Val = Value.list()       # [{title, body, time, unread}]
+  phone__jobs_v: Val = Value.list()        # [{title, info, state}]
+  phone__places_v: Val = Value.list()      # [{name, on}]
+  phone__shop_v: Val = Value.list()        # [{name, category, price, available}]
+  phone__facts: Queue<PhoneFact> = phone__facts__new()
+}
+function phone__facts__new() -> Queue<PhoneFact> { return queue_new("phone.facts") }
+
+export function phone_facts(phone_st: PhoneState) -> Queue<PhoneFact> { return phone_st.phone__facts }
+
+@alloc_ok("past the ring: more facts in a frame than its records, then kept in it")
+function phone__fact(phone_st: mut PhoneState, what: int, idx: int, key: string) -> PhoneFact {
+  var f = q_rec(phone_st.phone__facts)
+  if f == null {
+    f = new PhoneFact
+    q_ring_add(phone_st.phone__facts, f)
+  }
+  f.what = what
+  f.idx = idx
+  f.key = key
+  f.verb = ""
+  f.arg = ""
+  f.to = 0
+  q_push(phone_st.phone__facts, f)
+  return f
+}
+
+export const PH_D_APPS: int = 1
+export const PH_D_CONTACTS: int = 2
+export const PH_D_THREADS: int = 4
+export const PH_D_THREAD: int = 8
+export const PH_D_OPTIONS: int = 16
+export const PH_D_TOASTS: int = 32
+export const PH_D_NOTES: int = 64
+export const PH_D_ALL: int = 127
+
+function phone__dirty(phone_st: mut PhoneState, bits: int) -> void { phone_st.phone__dirty = phone_st.phone__dirty | bits }
+
+function phone__flag(b: bool) -> Val {
+  if b { return Value.bool(1) }
+  return Value.bool(0)
+}
+
+# "14:05" from a game minute
+function phone__hhmm(minute: int) -> string {
+  let m = minute % 1440
+  return Text.pad_left(string(m / 60), 2, "0") + ":" + Text.pad_left(string(m % 60), 2, "0")
+}

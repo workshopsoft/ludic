@@ -1,0 +1,17 @@
+<section class="jobs">
+  <h2>{t('phone.jobs.title')}</h2>
+  <if test="{len(items) == 0}"><p class="empty">{t('phone.jobs.empty')}</p></if>
+  <scroll class="list">
+    <each in="{items}" as="j" index="i">
+      <button class="job s{j.state}" autofocus="{i == 0}" on-click="press(i)">
+        <div class="text grow">
+          <span class="title">{j.title}</span>
+          <small class="info">{j.info}</small>
+        </div>
+        <if test="{j.state == 0}"><small class="chip">{t('phone.jobs.offered')}</small></if>
+        <if test="{j.state == 1}"><small class="chip">{t('phone.jobs.taken')}</small></if>
+        <if test="{j.state == 2}"><small class="chip ready">{t('phone.jobs.ready')}</small></if>
+      </button>
+    </each>
+  </scroll>
+</section>

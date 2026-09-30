@@ -1,0 +1,7 @@
+# PhoneShop.ludic - the internet: rows of a shop the game keeps, asked through a port. Buying is the game's (PHONE_BUY
+# says whether it went); a row the player cannot afford or that is not for sale shows so
+component PhoneShop (phone_st: mut PhoneState) {
+  prop items: Val = null       # [{name, category, price, available, affordable}]
+  prop money: int = 0
+  on buy(i: int) { phone_shop_buy(phone_st, i) }
+}

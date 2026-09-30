@@ -1,0 +1,57 @@
+# apps.ludic - the home screen: the apps the world has on, in `order`, and the count on each icon
+
+# which apps are on, as a number: the shown list is made again when it moves
+function phone__apps_signature() -> int {
+  var s = 1
+  for a in 0 .. PAPP_COUNT {
+    s = s * 3
+    if PhoneWorld.app_enabled(PhoneApps[a].key) { s += 1 }
+    s = s & 0x3FFFFFFF
+  }
+  return s
+}
+
+function phone__apps_rebuild(phone_st: mut PhoneState) -> void {
+  List.clear(phone_st.phone__shown)
+  for a in 0 .. PAPP_COUNT {
+    if not PhoneWorld.app_enabled(PhoneApps[a].key) { continue }
+    var at = len(phone_st.phone__shown)
+    while at > 0 and PhoneApps[phone_st.phone__shown[at - 1]].order > PhoneApps[a].order { at -= 1 }
+    List.insert(phone_st.phone__shown, at, a)
+  }
+  phone__dirty(phone_st, PH_D_APPS)
+}
+
+# the apps on the home screen, in order: how many, and the i-th one's row of PhoneApps
+export function phone_app_count(phone_st: PhoneState) -> int { return len(phone_st.phone__shown) }
+
+export function phone_app_at(phone_st: PhoneState, i: int) -> int {
+  if i < 0 or i >= len(phone_st.phone__shown) { return -1 }
+  return phone_st.phone__shown[i]
+}
+
+export function phone_app_find(key: string) -> int { return phoneapps_find(key) }
+
+# the home screen's i-th icon pressed
+export function phone_open_shown(phone_st: mut PhoneState, i: int) -> bool {
+  let a = phone_app_at(phone_st, i)
+  if a < 0 { return false }
+  return phone_open_app(phone_st, a)
+}
+
+# open an app by its key
+export function phone_open_key(phone_st: mut PhoneState, key: string) -> bool { return phone_open_app(phone_st, phoneapps_find(key)) }
+
+# the count on an app's icon: unread messages, jobs ready to hand in, unread notifications, or nothing
+export function phone_badge(phone_st: PhoneState, app: int) -> int {
+  if app < 0 or app >= PAPP_COUNT { return 0 }
+  let b = PhoneApps[app].badge
+  if b == "messages" { return phone_unread(phone_st) }
+  if b == "notifications" { return phone_notes_unread(phone_st) }
+  if b == "jobs" {
+    var n = 0
+    for i in 0 .. PhoneJobs.count() { if PhoneJobs.state(i) == 2 { n += 1 } }
+    return n
+  }
+  return 0
+}

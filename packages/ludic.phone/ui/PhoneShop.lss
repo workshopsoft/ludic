@@ -1,0 +1,18 @@
+/* PhoneShop.lss */
+.shop { padding: 12px; gap: 8px; width: fill; height: fill; color: var(--ph-text, #eef2f7) }
+.shop h2 { font-size: 18px }
+.head { align-items: center; gap: 8px }
+.grow { flex-grow: 1 }
+.money { color: var(--ph-good, #57c785) }
+.empty { color: var(--ph-muted, #93a0b2) }
+.list { gap: 6px; flex-grow: 1 }
+.item { padding: 8px 10px; gap: 8px; align-items: center; background: var(--ph-card, #1e2530) }
+.item.gone { opacity: 0.5 }
+.text { gap: 2px }
+.name { font-size: 15px; text-overflow: ellipsis; white-space: nowrap }
+.cat { color: var(--ph-muted, #93a0b2) }
+.price { font-size: 14px }
+.price.short { color: var(--ph-bad, #ea5d5d) }
+.buy { height: 32px; padding: 0 12px; font-size: 13px; background: var(--ph-accent, #4ea1ff); color: var(--ph-ink, #0b0e13) }
+.buy:disabled { opacity: 0.35 }
+.buy:focus-visible { outline: 3px solid var(--ph-text, #eef2f7) }

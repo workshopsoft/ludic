@@ -1,0 +1,5 @@
+# PhoneNotifications.ludic - what toasts said, newest first, until read; leaving the app reads them all
+component PhoneNotifications (phone_st: mut PhoneState) {
+  prop items: Val = null       # [{title, body, time, unread}]
+  on clear() { phone_notes_clear(phone_st) }
+}

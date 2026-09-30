@@ -1,0 +1,8 @@
+<section class="camera">
+  <h2>{t('phone.camera.title')}</h2>
+  <button class="big" autofocus on-click="open()">{t('phone.camera.open')}</button>
+  <row class="shots">
+    <button class="shot" on-click="shoot()">{t('phone.camera.photo')}</button>
+    <button class="shot" on-click="selfie()">{t('phone.camera.selfie')}</button>
+  </row>
+</section>

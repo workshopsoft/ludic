@@ -1,0 +1,167 @@
+# machine.ludic - the phone is away, raised (the home screen) or in an app. A verb asks, and the machine moves
+# when it may: one step at once, and again each tick. While it is not away the phone has the player's input
+# (`phone_captures_input`), and it goes away by itself when the world says it may not be up
+
+# one step: what the request asks, if the state allows it
+function phone__step(phone_st: mut PhoneState) -> void {
+  let req = phone_st.phone__req
+  phone_st.phone__req = PHONE_REQ_NONE
+  machine phone_st.phone__mode {
+    state Away {
+      if req == PHONE_REQ_RAISE and PhoneWorld.can_raise() {
+        phone__fact(phone_st, PHONE_RAISED, -1, "")
+        become Raised
+      } else if req == PHONE_REQ_APP and PhoneWorld.can_raise() and phone__can_open(phone_st.phone__req_app) {
+        phone__fact(phone_st, PHONE_RAISED, -1, "")
+        phone__enter(phone_st, phone_st.phone__req_app)
+        become App
+      }
+    }
+    state Raised {
+      if req == PHONE_REQ_LOWER {
+        phone__fact(phone_st, PHONE_LOWERED, -1, "")
+        become Away
+      } else if req == PHONE_REQ_APP and phone__can_open(phone_st.phone__req_app) {
+        phone__enter(phone_st, phone_st.phone__req_app)
+        become App
+      }
+    }
+    state App {
+      if req == PHONE_REQ_HOME {
+        phone__leave(phone_st)
+        become Raised
+      } else if req == PHONE_REQ_LOWER {
+        phone__leave(phone_st)
+        phone__fact(phone_st, PHONE_LOWERED, -1, "")
+        become Away
+      } else if req == PHONE_REQ_APP and phone__can_open(phone_st.phone__req_app) and phone_st.phone__req_app != phone_st.phone__app {
+        phone__leave(phone_st)
+        phone__enter(phone_st, phone_st.phone__req_app)
+      }
+    }
+  }
+}
+
+function phone__enter(phone_st: mut PhoneState, app: int) -> void {
+  phone_st.phone__app = app
+  phone_st.phone__open = -1
+  phone__dirty(phone_st, PH_D_THREAD | PH_D_THREADS)
+  phone__fact(phone_st, PHONE_APP_OPENED, app, PhoneApps[app].key)
+  phone_st.phone__jobs_sig = -1
+  phone_st.phone__map_sig = -1
+  phone_st.phone__shop_sig = -1
+}
+
+function phone__leave(phone_st: mut PhoneState) -> void {
+  let app = phone_st.phone__app
+  phone_st.phone__app = -1
+  phone_st.phone__open = -1
+  if app >= 0 {
+    phone__fact(phone_st, PHONE_APP_CLOSED, app, PhoneApps[app].key)
+    if PhoneApps[app].component == "PhoneNotifications" { phone_notes_read_all(phone_st) }
+  }
+}
+
+function phone__ask(phone_st: mut PhoneState, req: int) -> void {
+  phone_st.phone__req = req
+  phone__step(phone_st)
+}
+
+export function phone_mode(phone_st: PhoneState) -> PhoneMode { return phone_st.phone__mode }
+export function phone_is_away(phone_st: PhoneState) -> bool { return phone_st.phone__mode == PhoneMode.Away }
+export function phone_is_raised(phone_st: PhoneState) -> bool { return phone_st.phone__mode == PhoneMode.Raised }
+export function phone_in_app(phone_st: PhoneState) -> bool { return phone_st.phone__mode == PhoneMode.App }
+
+# the phone has the player's input while it is up: the game does not walk, aim or fire meanwhile
+export function phone_captures_input(phone_st: PhoneState) -> bool { return phone_st.phone__mode != PhoneMode.Away }
+
+# how far up it is, 0 to 1, easing over a quarter of a second: what the screen slides by
+export function phone_slide(phone_st: PhoneState) -> float { return phone_st.phone__slide }
+
+# bring it up (false when it is, or the world says it may not be)
+export function phone_raise(phone_st: mut PhoneState) -> bool {
+  if phone_st.phone__mode != PhoneMode.Away { return false }
+  phone__ask(phone_st, PHONE_REQ_RAISE)
+  return phone_st.phone__mode != PhoneMode.Away
+}
+
+# put it away, from wherever it is
+export function phone_lower(phone_st: mut PhoneState) -> bool {
+  if phone_st.phone__mode == PhoneMode.Away { return false }
+  phone__ask(phone_st, PHONE_REQ_LOWER)
+  return true
+}
+
+# the phone key: up when away, away when up
+export function phone_toggle(phone_st: mut PhoneState) -> bool {
+  if phone_st.phone__mode == PhoneMode.Away { return phone_raise(phone_st) }
+  return phone_lower(phone_st)
+}
+
+# the home button: out of an app to the home screen
+export function phone_home(phone_st: mut PhoneState) -> bool {
+  if phone_st.phone__mode != PhoneMode.App { return false }
+  phone__ask(phone_st, PHONE_REQ_HOME)
+  return true
+}
+
+# the back button: out of an open thread, then out of the app, then away
+export function phone_back(phone_st: mut PhoneState) -> bool {
+  if phone_st.phone__mode == PhoneMode.Away { return false }
+  if phone_st.phone__mode == PhoneMode.App and phone_st.phone__open >= 0 {
+    phone_st.phone__open = -1
+    phone__dirty(phone_st, PH_D_THREAD | PH_D_THREADS)
+    return true
+  }
+  if phone_st.phone__mode == PhoneMode.App { return phone_home(phone_st) }
+  return phone_lower(phone_st)
+}
+
+# a row of PhoneApps the phone can open: it exists and the world has it on
+function phone__can_open(app: int) -> bool {
+  return app >= 0 and app < PAPP_COUNT and PhoneWorld.app_enabled(PhoneApps[app].key)
+}
+
+# open an app (a row of PhoneApps), from away as well: the phone comes up into it. False when it is not there
+export function phone_open_app(phone_st: mut PhoneState, app: int) -> bool {
+  if not phone__can_open(app) { return false }
+  phone_st.phone__req_app = app
+  phone__ask(phone_st, PHONE_REQ_APP)
+  return phone_st.phone__mode == PhoneMode.App and phone_st.phone__app == app
+}
+
+# the app open now (a row of PhoneApps, -1 none), and the component that shows it
+export function phone_app(phone_st: PhoneState) -> int { return phone_st.phone__app }
+
+export function phone_app_component(phone_st: PhoneState) -> string {
+  if phone_st.phone__app < 0 { return "" }
+  return PhoneApps[phone_st.phone__app].component
+}
+
+export function phone_app_key(phone_st: PhoneState) -> string {
+  if phone_st.phone__app < 0 { return "" }
+  return PhoneApps[phone_st.phone__app].key
+}
+
+export const PHONE_AWAY: int = 0
+export const PHONE_UP: int = 1
+export const PHONE_IN_APP: int = 2
+
+# the mode as a number, for a component that reads it (an enum is not a thing a template compares)
+export function phone_mode_int(phone_st: PhoneState) -> int {
+  if phone_st.phone__mode == PhoneMode.Raised { return PHONE_UP }
+  if phone_st.phone__mode == PhoneMode.App { return PHONE_IN_APP }
+  return PHONE_AWAY
+}
+
+# is the open app one of the phone's own (PhoneScreen draws it), else the game's (it fills the screen's slot)
+export function phone_app_builtin(phone_st: PhoneState) -> bool {
+  let c = phone_app_component(phone_st)
+  return c == "PhoneContacts" or c == "PhoneMessages" or c == "PhoneJobs" or c == "PhoneMap" or c == "PhoneShop" or c == "PhoneSettings" or c == "PhoneCamera" or c == "PhoneNotifications"
+}
+
+# the open app's title for the screen's header
+export function phone_app_title(phone_st: PhoneState) -> string {
+  if phone_st.phone__app < 0 { return "" }
+  return phone__title_of(phone_st.phone__app)
+}

@@ -1,0 +1,14 @@
+# ui.ludic - the phone's components, compiled into the module (each is Name.ludic + .xml + .lss in ui/, and
+# Name.stories.lres for the studio). A game shows PhoneScreen: ui_show("PhoneScreen", ...)
+import "ui/PhoneStatus.ludic"
+import "ui/PhoneHome.ludic"
+import "ui/PhoneContacts.ludic"
+import "ui/PhoneMessages.ludic"
+import "ui/PhoneJobs.ludic"
+import "ui/PhoneMap.ludic"
+import "ui/PhoneShop.ludic"
+import "ui/PhoneSettings.ludic"
+import "ui/PhoneCamera.ludic"
+import "ui/PhoneNotifications.ludic"
+import "ui/PhoneToasts.ludic"
+import "ui/PhoneScreen.ludic"

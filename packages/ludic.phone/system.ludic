@@ -1,0 +1,202 @@
+# system.ludic - reset, the tick, and the save. The phone ticks in the present phase, once a frame; its save section
+# holds what the player would miss: the messages and threads, the contacts (which rows are in the book, and the ones
+# the game added) and the option values. Toasts, notifications and what is open are not saved
+
+export function phone_reset(phone_st: mut PhoneState) -> void {
+  phone_st.phone__mode = PhoneMode.Away
+  phone_st.phone__req = PHONE_REQ_NONE
+  phone_st.phone__app = -1
+  phone_st.phone__open = -1
+  phone_st.phone__slide = 0.0
+  List.clear(phone_st.phone__known)
+  List.clear(phone_st.phone__dyn)
+  List.clear(phone_st.phone__msgs)
+  List.clear(phone_st.phone__threads)
+  List.clear(phone_st.phone__values)
+  List.clear(phone_st.phone__toasts)
+  List.clear(phone_st.phone__notes)
+  phone_st.phone__in_toggle = false
+  phone_st.phone__in_back = false
+  phone_st.phone__in_home = false
+  q_clear(phone_st.phone__facts)
+  phone__refresh(phone_st)
+}
+
+# everything the phone derives from its data and the world, made again (after a reset, a load, a hot reload)
+function phone__refresh(phone_st: mut PhoneState) -> void {
+  phone__values_fit(phone_st)
+  phone__book_rebuild(phone_st)
+  phone_st.phone__apps_sig = phone__apps_signature()
+  phone__apps_rebuild(phone_st)
+  phone_st.phone__jobs_sig = -1
+  phone_st.phone__map_sig = -1
+  phone_st.phone__shop_sig = -1
+  phone_st.phone__dirty = PH_D_ALL
+  phone__sense(phone_st)
+  phone__mirror(phone_st)
+}
+
+# the counts on the icons as one number: the apps' list is handed on again when one moves
+function phone__badges(phone_st: mut PhoneState) -> void {
+  var s = 0
+  for a in 0 .. PAPP_COUNT { s = (s * 31 + phone_badge(phone_st, a)) & 0x3FFFFFFF }
+  if s == phone_st.phone__badge_sig { return }
+  phone_st.phone__badge_sig = s
+  phone__dirty(phone_st, PH_D_APPS)
+}
+
+# ask the world once: what the status bar shows
+function phone__sense(phone_st: mut PhoneState) -> void {
+  phone_st.phone__clock = PhoneWorld.clock()
+  phone_st.phone__signal = Math.max(Math.min(PhoneWorld.signal(), 4), 0)
+  phone_st.phone__battery = Math.max(Math.min(PhoneWorld.battery(), 100), 0)
+  phone_st.phone__money = PhoneWorld.money()
+  phone_st.phone__now = PhoneWorld.minutes()
+}
+
+# once a frame: the status bar, the apps the world has on, the input edges, the world's leave to be up, the slide,
+# the toasts running down, the lists rebuilt where they moved
+export function phone_tick(phone_st: mut PhoneState, t: Tick) -> void {
+  phone__sense(phone_st)
+  let sig = phone__apps_signature()
+  if sig != phone_st.phone__apps_sig {
+    phone_st.phone__apps_sig = sig
+    phone__apps_rebuild(phone_st)
+    if phone_st.phone__app >= 0 and not PhoneWorld.app_enabled(PhoneApps[phone_st.phone__app].key) { phone__ask(phone_st, PHONE_REQ_HOME) }
+  }
+  phone__badges(phone_st)
+  let tg = PhoneInput.toggle()
+  let bk = PhoneInput.back()
+  let hm = PhoneInput.home()
+  if tg and not phone_st.phone__in_toggle { phone_toggle(phone_st) }
+  if bk and not phone_st.phone__in_back { phone_back(phone_st) }
+  if hm and not phone_st.phone__in_home { phone_home(phone_st) }
+  phone_st.phone__in_toggle = tg
+  phone_st.phone__in_back = bk
+  phone_st.phone__in_home = hm
+  if phone_st.phone__mode != PhoneMode.Away and not PhoneWorld.can_raise() { phone__ask(phone_st, PHONE_REQ_LOWER) }
+  phone__step(phone_st)
+  var to = 0.0
+  if phone_st.phone__mode != PhoneMode.Away { to = 1.0 }
+  let k = t.dt / PHONE_SLIDE_SECONDS
+  if phone_st.phone__slide < to { phone_st.phone__slide = Math.min(phone_st.phone__slide + k, to) }
+  else if phone_st.phone__slide > to { phone_st.phone__slide = Math.max(phone_st.phone__slide - k, to) }
+  phone__toasts_tick(phone_st, t.dt)
+  phone__mirror(phone_st)
+}
+
+export function phone_save(phone_st: PhoneState) -> Val {
+  let v = Value.object()
+  sv_put_ints(v, "known", phone_st.phone__known)
+  sv_put_ints(v, "values", phone_st.phone__values)
+  let dyn = Value.list()
+  for i in 0 .. len(phone_st.phone__dyn) {
+    let o = Value.object()
+    sv_put_str(o, "key", phone_st.phone__dyn[i].key)
+    sv_put_str(o, "name", phone_st.phone__dyn[i].name)
+    sv_put_str(o, "call", phone_st.phone__dyn[i].call)
+    sv_put_str(o, "arg", phone_st.phone__dyn[i].arg)
+    Value.add(dyn, o)
+  }
+  Value.put(v, "contacts", dyn)
+  let threads = Value.list()
+  for i in 0 .. len(phone_st.phone__threads) {
+    let t = phone_st.phone__threads[i]
+    let o = Value.object()
+    sv_put_str(o, "key", t.key)
+    sv_put_str(o, "name", t.name)
+    sv_put_str(o, "last", t.last)
+    sv_put_int(o, "time", t.time)
+    sv_put_int(o, "unread", t.unread)
+    Value.add(threads, o)
+  }
+  Value.put(v, "threads", threads)
+  let msgs = Value.list()
+  for i in 0 .. len(phone_st.phone__msgs) {
+    let m = phone_st.phone__msgs[i]
+    let o = Value.object()
+    sv_put_str(o, "thread", m.thread)
+    sv_put_bool(o, "mine", m.mine)
+    sv_put_str(o, "text", m.text)
+    sv_put_int(o, "time", m.time)
+    sv_put_bool(o, "read", m.read)
+    sv_put_str(o, "action", m.action)
+    sv_put_str(o, "arg", m.arg)
+    sv_put_str(o, "label", m.label)
+    Value.add(msgs, o)
+  }
+  Value.put(v, "messages", msgs)
+  return v
+}
+
+function phone__list_of(v: Val, key: string) -> Val {
+  if v == null or Value.kind(v) != 6 or Value.has(v, key) == 0 { return null }
+  let l = Value.get(v, key)
+  if Value.kind(l) != 5 { return null }
+  return l
+}
+
+@alloc_ok("on load: the book, the threads and the messages of a save read back")
+export function phone_load(phone_st: mut PhoneState, v: Val, version: int) -> void {
+  phone_reset(phone_st)
+  let known = sv_ints(v, "known")
+  phone__book_rebuild(phone_st)
+  for i in 0 .. Math.min(len(known), PBOK_COUNT) { phone_st.phone__known[i] = known[i] }
+  let values = sv_ints(v, "values")
+  for i in 0 .. Math.min(len(values), POPT_COUNT) { phone_st.phone__values[i] = Math.max(Math.min(values[i], phone__option_top(i)), 0) }
+  let dyn = phone__list_of(v, "contacts")
+  if dyn != null {
+    for i in 0 .. Value.count(dyn) {
+      let o = Value.at(dyn, i)
+      let d = new PhoneDyn
+      d.key = sv_str(o, "key", "")
+      d.name = sv_str(o, "name", "")
+      d.call = sv_str(o, "call", "")
+      d.arg = sv_str(o, "arg", "")
+      if d.key != "" { push(phone_st.phone__dyn, d) }
+    }
+  }
+  let threads = phone__list_of(v, "threads")
+  if threads != null {
+    for i in 0 .. Value.count(threads) {
+      let o = Value.at(threads, i)
+      let t = new PhoneThread
+      t.key = sv_str(o, "key", "")
+      t.name = sv_str(o, "name", "")
+      t.last = sv_str(o, "last", "")
+      t.time = sv_int(o, "time", 0)
+      t.unread = sv_int(o, "unread", 0)
+      if t.key != "" { push(phone_st.phone__threads, t) }
+    }
+  }
+  let msgs = phone__list_of(v, "messages")
+  if msgs != null {
+    for i in 0 .. Value.count(msgs) {
+      let o = Value.at(msgs, i)
+      let m = new PhoneMessage
+      m.thread = sv_str(o, "thread", "")
+      m.mine = sv_bool(o, "mine", false)
+      m.text = sv_str(o, "text", "")
+      m.time = sv_int(o, "time", 0)
+      m.read = sv_bool(o, "read", true)
+      m.action = sv_str(o, "action", "")
+      m.arg = sv_str(o, "arg", "")
+      m.label = sv_str(o, "label", "")
+      if m.thread != "" { push(phone_st.phone__msgs, m) }
+    }
+  }
+  phone__refresh(phone_st)
+}
+
+function phone__sys_reset(phone_st: mut PhoneState) -> void { phone_reset(phone_st) }
+function phone__sys_tick(phone_st: mut PhoneState, t: Tick) -> void { phone_tick(phone_st, t) }
+
+export function phone_system() -> System {
+  let s = system_new("phone", PH_PRESENT)
+  s.version = 1
+  s.reset = fn phone__sys_reset
+  s.tick = fn phone__sys_tick
+  s.save = fn phone_save
+  s.load = fn phone_load
+  return s
+}

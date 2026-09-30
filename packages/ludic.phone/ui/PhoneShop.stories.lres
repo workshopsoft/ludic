@@ -1,0 +1,16 @@
+# PhoneShop.stories.lres - the studio's stories for PhoneShop (the internet app); the game never reads this file
+
+default {
+  viewport: "360x560"
+  props: { money: 4200, items: [{ name: "Runabout", category: "vehicles", price: 1800, available: true, affordable: true }, { name: "Coupe", category: "vehicles", price: 9500, available: true, affordable: false }, { name: "Garage door", category: "property", price: 300, available: false, affordable: true }] }
+}
+
+focused {
+  base: "default"
+  force: ["button:focus-visible"]
+}
+
+empty {
+  base: "default"
+  props: { items: [] }
+}

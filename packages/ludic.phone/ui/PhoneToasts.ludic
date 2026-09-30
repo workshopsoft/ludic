@@ -1,0 +1,6 @@
+# PhoneToasts.ludic - the lines that come up for a few seconds even with the phone away: a message came, a job paid,
+# something went wrong. The phone runs them down; pressing one puts it away
+component PhoneToasts (phone_st: mut PhoneState) {
+  prop items: Val = null       # [{title, body, icon, kind}]
+  on dismiss(i: int) { phone_toast_dismiss(phone_st, i) }
+}

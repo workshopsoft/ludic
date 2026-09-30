@@ -1,0 +1,11 @@
+<div class="toasts">
+  <each in="{items}" as="t" index="i">
+    <button class="toast k{t.kind}" on-click="dismiss(i)">
+      <if test="{t.icon != ''}"><img class="icon" src="{t.icon}"/></if>
+      <div class="text grow">
+        <strong class="title">{t.title}</strong>
+        <small class="body">{t.body}</small>
+      </div>
+    </button>
+  </each>
+</div>

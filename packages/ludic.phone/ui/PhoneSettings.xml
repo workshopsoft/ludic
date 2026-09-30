@@ -1,0 +1,14 @@
+<section class="settings">
+  <h2>{t('phone.settings.title')}</h2>
+  <scroll class="list">
+    <each in="{items}" as="o" index="i">
+      <button class="option" autofocus="{i == 0}" on-click="press(i)">
+        <span class="label grow">{o.label}</span>
+        <if test="{o.kind == 'toggle'}">
+          <small class="state {o.on ? 'on' : ''}">{o.on ? t('phone.settings.on') : t('phone.settings.off')}</small>
+        </if>
+        <if test="{o.kind != 'toggle'}"><small class="state on">{o.shown}</small></if>
+      </button>
+    </each>
+  </scroll>
+</section>

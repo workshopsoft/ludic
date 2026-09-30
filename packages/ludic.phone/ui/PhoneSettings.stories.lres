@@ -1,0 +1,11 @@
+# PhoneSettings.stories.lres - the studio's stories for PhoneSettings (the options app); the game never reads this file
+
+default {
+  viewport: "360x560"
+  props: { items: [{ label: "Ringer", kind: "toggle", value: 1, on: true, shown: "" }, { label: "Vibration", kind: "toggle", value: 0, on: false, shown: "" }, { label: "Text size", kind: "choice", value: 1, on: true, shown: "Large" }] }
+}
+
+focused {
+  base: "default"
+  force: ["button:focus-visible"]
+}

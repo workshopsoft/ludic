@@ -1,0 +1,48 @@
+# defs.ludic - the phone as the game writes it: the apps on the home screen, the contacts in the book, the
+# options the settings app lists. All rows, so the studio edits them with its attribute editors; nothing names a game
+
+# an app on the home screen, in `order`. `component` is the ludic.ui component that opens: one of the phone's own
+# ("PhoneContacts", "PhoneMessages", "PhoneJobs", "PhoneMap", "PhoneShop", "PhoneSettings", "PhoneCamera"), or a
+# game's own, which the game shows where PhoneScreen leaves its slot. `badge` is the count on the icon
+export property PhoneApp {
+  key: string = ""
+  @Asset("png") icon: string = ""
+  @Text title: Key = null
+  component: string = ""
+  order: int = 0
+  @OneOf("none", "messages", "jobs", "notifications") badge: string = "none"
+}
+
+@ByKey
+export open registry PhoneApps of PhoneApp as PAPP
+
+# someone in the book. `call` is the game's own word for what a call does - a verb a mission system, a dispatcher
+# or a chat handles ("mission.offer") - with `arg` beside it; the phone only says it (a PHONE_CALL fact). A contact
+# that is not `known` is not in the book until the game adds it
+export property PhoneContact {
+  key: string = ""
+  @Text name: Key = null
+  @Asset("png") portrait: string = ""
+  call: string = ""
+  arg: string = ""
+  order: int = 0
+  known: bool = true
+  text: bool = true
+}
+
+@ByKey
+export open registry PhoneBook of PhoneContact as PBOK
+
+# an option the settings app lists: a switch, or a choice among `choices` (`options` are their names, when they have
+# any). The phone keeps the value, saves it and says so when it changes; what it means is the game's
+export property PhoneOption {
+  key: string = ""
+  @Text label: Key = null
+  @OneOf("toggle", "choice") kind: string = "toggle"
+  @Range(2, 16) choices: int = 2
+  @Text options: []Key = null
+  @Range(0, 15) initial: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry PhoneOptions of PhoneOption as POPT

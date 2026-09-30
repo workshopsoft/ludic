@@ -1,0 +1,21 @@
+# ludic.phone - a phone in the world, generic: a home screen of apps the game lists as rows, and the built-in
+# apps (contacts, messages, jobs, map, shop, settings, camera) as ludic.ui components with stories. What the
+# phone shows of the game - jobs, waypoints, shop rows, the clock - it asks through ports; what the player
+# did - called someone, pressed a message's button, bought, took a photo - comes out as facts the game routes
+# (a call to whatever handles missions, a purchase to the shop). The phone itself is a machine: away, raised, in an app.
+module ludic_phone uses ludic_base, ludic_ui
+numbers float
+import "ludic.base"
+import "ludic.ui"
+import "defs.ludic"
+import "port.ludic"
+import "state.ludic"
+import "machine.ludic"
+import "apps.ludic"
+import "contacts.ludic"
+import "messages.ludic"
+import "notify.ludic"
+import "world_apps.ludic"
+import "mirror.ludic"
+import "system.ludic"
+import "ui.ludic"

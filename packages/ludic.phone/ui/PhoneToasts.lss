@@ -1,0 +1,12 @@
+/* PhoneToasts.lss - a column of cards, top right, that do not take the pointer except on the card itself */
+.toasts { position: absolute; top: 16px; right: 16px; width: 300px; gap: 8px; pointer-events: none }
+.toast { padding: 8px 12px; gap: 10px; align-items: center; background: var(--ph-panel, #151a22); color: var(--ph-text, #eef2f7); border-left: 4px solid var(--ph-accent, #4ea1ff); pointer-events: auto }
+.toast.k1 { border-left: 4px solid var(--ph-accent, #4ea1ff) }
+.toast.k2 { border-left: 4px solid var(--ph-good, #57c785) }
+.toast.k3 { border-left: 4px solid var(--ph-bad, #ea5d5d) }
+.toast:focus-visible { outline: 3px solid var(--ph-accent, #4ea1ff) }
+.icon { width: 28px; height: 28px }
+.text { gap: 2px }
+.grow { flex-grow: 1 }
+.title { font-size: 14px; text-overflow: ellipsis; white-space: nowrap }
+.body { color: var(--ph-muted, #93a0b2); text-overflow: ellipsis; white-space: nowrap }

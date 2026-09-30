@@ -1,0 +1,15 @@
+/* theme.lss - the phone's look as variables. A game themes it by setting any of them on the screen's own element
+   (<PhoneScreen class="mine"/> and `.mine { --ph-accent: #6cf }` in its own sheet). The components read them with a
+   fallback, so a story of one component looks right with nothing set. */
+:root {
+  --ph-accent: #4ea1ff;
+  --ph-ink: #0b0e13;
+  --ph-panel: #151a22;
+  --ph-card: #1e2530;
+  --ph-line: #2c3542;
+  --ph-text: #eef2f7;
+  --ph-muted: #93a0b2;
+  --ph-good: #57c785;
+  --ph-bad: #ea5d5d;
+  --ph-gap: 10px;
+}

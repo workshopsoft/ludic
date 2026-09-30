@@ -1,0 +1,12 @@
+# PhoneMessages.ludic - threads, newest first; a thread opens into its conversation, with a field to answer in. A
+# message may carry a button (PHONE_ACTION). Sending is a fact: delivering it is the game's
+component PhoneMessages (phone_st: mut PhoneState) {
+  prop threads: Val = null     # [{name, last, time, unread}]
+  prop thread: Val = null      # [{mine, text, time, action, label}] of the open thread
+  prop open: int = -1          # the open thread, -1 none
+  prop name: string = ""       # its name
+  on show(i: int) { phone_thread_open(phone_st, i) }
+  on back() { phone_back(phone_st) }
+  on press(n: int) { phone_message_press(phone_st, n) }
+  on send(text: string) { phone_send_open(phone_st, text) }
+}

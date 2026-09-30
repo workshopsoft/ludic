@@ -1,0 +1,15 @@
+<section class="contacts">
+  <h2>{t('phone.contacts.title')}</h2>
+  <if test="{len(items) == 0}"><p class="empty">{t('phone.contacts.empty')}</p></if>
+  <scroll class="list">
+    <each in="{items}" as="c" index="i">
+      <row class="person">
+        <if test="{c.portrait != ''}"><img class="face" src="{c.portrait}"/></if>
+        <if test="{c.portrait == ''}"><div class="face blank"/></if>
+        <span class="name grow">{c.name}</span>
+        <button class="act call" autofocus="{i == 0}" on-click="call(i)">{t('phone.contacts.call')}</button>
+        <if test="{c.text}"><button class="act text" on-click="text(i)">{t('phone.contacts.text')}</button></if>
+      </row>
+    </each>
+  </scroll>
+</section>

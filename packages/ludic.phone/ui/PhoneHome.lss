@@ -1,0 +1,12 @@
+/* PhoneHome.lss - a wrapping grid of apps */
+.home { padding: 16px; gap: 12px; width: fill }
+.empty { color: var(--ph-muted, #93a0b2) }
+.grid { flex-wrap: wrap; gap: 14px; justify-content: start }
+.app { width: 72px; gap: 4px; align-items: center; background: transparent; color: var(--ph-text, #eef2f7) }
+.app:focus-visible .tile { outline: 3px solid var(--ph-accent, #4ea1ff) }
+.app:hover .tile { border-color: var(--ph-accent, #4ea1ff) }
+.tile { width: 60px; height: 60px; align-items: center; justify-content: center; background: var(--ph-card, #1e2530); border: 2px solid var(--ph-line, #2c3542) }
+.icon { width: 36px; height: 36px }
+.initial { font-size: 11px; text-overflow: ellipsis; white-space: nowrap }
+.badge { position: absolute; top: -6px; right: -6px; padding: 0 6px; font-size: 11px; background: var(--ph-bad, #ea5d5d); color: #fff }
+.name { font-size: 12px; text-align: center; text-overflow: ellipsis; white-space: nowrap }

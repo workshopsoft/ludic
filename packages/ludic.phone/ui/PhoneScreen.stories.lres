@@ -1,0 +1,54 @@
+# PhoneScreen.stories.lres - the studio's stories for PhoneScreen (the whole phone); the game never reads this file
+
+# the home screen, nothing new
+default {
+  viewport: "1280x720"
+  model: {
+    mode: 1, slide: 1.0, app: "", builtin: false, title: ""
+    apps: [{ key: "contacts", title: "Contacts", icon: "", badge: 0 }, { key: "messages", title: "Messages", icon: "", badge: 2 }, { key: "jobs", title: "Jobs", icon: "", badge: 0 }, { key: "map", title: "Map", icon: "", badge: 0 }, { key: "shop", title: "Internet", icon: "", badge: 0 }, { key: "camera", title: "Camera", icon: "", badge: 0 }, { key: "settings", title: "Settings", icon: "", badge: 0 }]
+    contacts: [{ name: "Ann", portrait: "", text: true }, { name: "Dispatch", portrait: "", text: false }]
+    threads: [{ name: "Ann", last: "Got a job for you", time: "13:40", unread: 2 }], thread: [], open: -1, thread_name: ""
+    jobs: [{ title: "Night delivery", info: "Pick up at the harbour", state: 1 }], places: [{ name: "Harbour", on: false }, { name: "Garage", on: false }], route: false, distance: -1.0
+    shop: [{ name: "Runabout", category: "vehicles", price: 1800, available: true, affordable: true }], money: 4200
+    options: [{ label: "Ringer", kind: "toggle", value: 1, on: true, shown: "" }]
+    notes: [{ title: "Ann", body: "Got a job for you", time: "13:40", unread: true }]
+    toasts: [], clock: "14:05", signal: 4, battery: 82, unread: 2
+  }
+}
+
+# the phone is away: only a toast shows
+away {
+  base: "default"
+  model: { mode: 0, slide: 0.0, toasts: [{ title: "Ann", body: "Got a job for you", icon: "", kind: 1 }] }
+}
+
+# in the book
+contacts {
+  base: "default"
+  model: { mode: 2, app: "PhoneContacts", builtin: true, title: "Contacts" }
+}
+
+# in a conversation
+conversation {
+  base: "default"
+  model: { mode: 2, app: "PhoneMessages", builtin: true, title: "Messages", open: 0, thread_name: "Ann", thread: [{ mine: false, text: "Got a job for you", time: "13:38", action: false, label: "" }, { mine: true, text: "Where?", time: "13:39", action: false, label: "" }, { mine: false, text: "The docks. Pays well.", time: "13:40", action: true, label: "Accept" }] }
+}
+
+# the GPS with a waypoint set
+map {
+  base: "default"
+  model: { mode: 2, app: "PhoneMap", builtin: true, title: "Map", route: true, distance: 1240.0, places: [{ name: "Harbour", on: true }, { name: "Garage", on: false }] }
+}
+
+# the phone half way up
+rising {
+  base: "default"
+  model: { slide: 0.5 }
+}
+
+# the small window, a button focused
+small {
+  base: "contacts"
+  viewport: "800x520"
+  force: ["button:focus-visible"]
+}

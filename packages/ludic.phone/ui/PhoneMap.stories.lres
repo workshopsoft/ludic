@@ -1,0 +1,18 @@
+# PhoneMap.stories.lres - the studio's stories for PhoneMap (the GPS app); the game never reads this file
+
+# no waypoint
+default {
+  viewport: "360x560"
+  props: { places: [{ name: "Harbour", on: false }, { name: "Garage", on: false }, { name: "Safehouse", on: false }], active: false, distance: -1.0 }
+}
+
+# a waypoint is set
+routed {
+  base: "default"
+  props: { places: [{ name: "Harbour", on: true }, { name: "Garage", on: false }], active: true, distance: 1240.0 }
+}
+
+focused {
+  base: "routed"
+  force: ["button:focus-visible"]
+}

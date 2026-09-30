@@ -1,0 +1,15 @@
+/* PhoneMap.lss */
+.map { padding: 12px; gap: 8px; width: fill; height: fill; color: var(--ph-text, #eef2f7) }
+.map h2 { font-size: 18px }
+.route { color: var(--ph-accent, #4ea1ff) }
+.empty { color: var(--ph-muted, #93a0b2) }
+.tools { gap: 8px }
+.tool { height: 34px; padding: 0 12px; font-size: 13px; background: var(--ph-line, #2c3542); color: var(--ph-text, #eef2f7) }
+.tool:disabled { opacity: 0.4 }
+.list { gap: 6px; flex-grow: 1 }
+.place { height: 44px; padding: 0 10px; gap: 8px; align-items: center; background: var(--ph-card, #1e2530); color: var(--ph-text, #eef2f7) }
+.place.on { border-left: 4px solid var(--ph-accent, #4ea1ff) }
+.tool:focus-visible, .place:focus-visible { outline: 3px solid var(--ph-accent, #4ea1ff) }
+.grow { flex-grow: 1 }
+.name { text-overflow: ellipsis; white-space: nowrap }
+.pin { padding: 2px 8px; font-size: 11px; background: var(--ph-accent, #4ea1ff); color: var(--ph-ink, #0b0e13) }

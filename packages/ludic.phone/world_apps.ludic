@@ -1,0 +1,113 @@
+# world_apps.ludic - the apps that show the game's own things: jobs, the map pin, the shop, the camera, and the
+# options the settings app lists. They ask the game's ports and leave facts; the phone decides nothing for the game
+
+# ----- jobs -----
+
+export function phone_job_count() -> int { return PhoneJobs.count() }
+
+# job `i` chosen: the game's (take it, track it); a PHONE_JOB fact
+export function phone_job_press(phone_st: mut PhoneState, i: int) -> bool {
+  if i < 0 or i >= PhoneJobs.count() { return false }
+  PhoneJobs.press(i)
+  phone__fact(phone_st, PHONE_JOB, i, "")
+  phone_st.phone__jobs_sig = -1
+  return true
+}
+
+# ----- the map -----
+
+export function phone_place_count() -> int { return PhoneMap.count() }
+
+# a waypoint set at place `i`: a PHONE_WAYPOINT fact (idx the place)
+export function phone_place_press(phone_st: mut PhoneState, i: int) -> bool {
+  if i < 0 or i >= PhoneMap.count() { return false }
+  PhoneMap.set(i)
+  phone__fact(phone_st, PHONE_WAYPOINT, i, "")
+  phone_st.phone__map_sig = -1
+  return true
+}
+
+# a pin dropped where the player stands: PHONE_WAYPOINT with idx -2
+export function phone_place_here(phone_st: mut PhoneState) -> void {
+  PhoneMap.set_here()
+  phone__fact(phone_st, PHONE_WAYPOINT, -2, "")
+  phone_st.phone__map_sig = -1
+}
+
+# the waypoint cleared: PHONE_WAYPOINT with idx -1
+export function phone_place_clear(phone_st: mut PhoneState) -> void {
+  PhoneMap.clear()
+  phone__fact(phone_st, PHONE_WAYPOINT, -1, "")
+  phone_st.phone__map_sig = -1
+}
+
+# ----- the shop -----
+
+export function phone_shop_count() -> int { return PhoneShop.count() }
+
+# row `i` bought, when it is there to buy: the game's port says whether it went; a PHONE_BUY fact either way
+# (`arg` "ok" or "no")
+export function phone_shop_buy(phone_st: mut PhoneState, i: int) -> bool {
+  if i < 0 or i >= PhoneShop.count() or not PhoneShop.available(i) { return false }
+  let ok = PhoneShop.buy(i)
+  let f = phone__fact(phone_st, PHONE_BUY, i, PhoneShop.name(i))
+  if ok { f.arg = "ok" } else { f.arg = "no" }
+  phone_st.phone__shop_sig = -1
+  return ok
+}
+
+# ----- the camera -----
+
+# the camera app opened: the game shows its own viewfinder (and will likely put the phone away)
+export function phone_camera_open(phone_st: mut PhoneState) -> void { phone__fact(phone_st, PHONE_CAMERA, -1, "") }
+
+# the shutter: a PHONE_PHOTO fact, `arg` "selfie" for the front camera
+export function phone_photo(phone_st: mut PhoneState, selfie: bool) -> void {
+  let f = phone__fact(phone_st, PHONE_PHOTO, -1, "")
+  if selfie { f.arg = "selfie" }
+}
+
+# ----- options -----
+
+function phone__values_fit(phone_st: mut PhoneState) -> void {
+  while len(phone_st.phone__values) < POPT_COUNT { push(phone_st.phone__values, PhoneOptions[len(phone_st.phone__values)].initial) }
+}
+
+function phone__option_top(i: int) -> int {
+  if PhoneOptions[i].kind == "toggle" { return 1 }
+  return PhoneOptions[i].choices - 1
+}
+
+export function phone_option_count() -> int { return POPT_COUNT }
+
+export function phone_option_value(phone_st: PhoneState, i: int) -> int {
+  if i < 0 or i >= POPT_COUNT { return 0 }
+  if i < len(phone_st.phone__values) { return phone_st.phone__values[i] }
+  return PhoneOptions[i].initial
+}
+
+export function phone_option_on(phone_st: PhoneState, i: int) -> bool { return phone_option_value(phone_st, i) != 0 }
+
+# an option set to a value (kept inside its range): a PHONE_SETTING fact when it moved
+export function phone_option_set(phone_st: mut PhoneState, i: int, v: int) -> bool {
+  if i < 0 or i >= POPT_COUNT { return false }
+  phone__values_fit(phone_st)
+  let n = Math.max(Math.min(v, phone__option_top(i)), 0)
+  if n == phone_st.phone__values[i] { return false }
+  phone_st.phone__values[i] = n
+  let f = phone__fact(phone_st, PHONE_SETTING, i, PhoneOptions[i].key)
+  f.to = n
+  phone__dirty(phone_st, PH_D_OPTIONS)
+  return true
+}
+
+# a press on an option: a switch flips, a choice goes to the next and round to the first
+export function phone_option_press(phone_st: mut PhoneState, i: int) -> bool {
+  if i < 0 or i >= POPT_COUNT { return false }
+  let top = phone__option_top(i)
+  let v = phone_option_value(phone_st, i)
+  if v >= top { return phone_option_set(phone_st, i, 0) }
+  return phone_option_set(phone_st, i, v + 1)
+}
+
+export function phone_option_find(key: string) -> int { return phoneoptions_find(key) }

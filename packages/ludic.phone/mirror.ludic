@@ -1,0 +1,217 @@
+# mirror.ludic - the lists the components are handed as props, as values (a prop is a number, text, flag or value),
+# rebuilt only when what they show changes. A list the game owns (jobs, places, shop rows) is asked once a tick
+# while its app is open and rebuilt when its numbers move
+
+function phone__put_str(o: Val, key: string, s: string) -> void { Value.put(o, key, Value.str(s)) }
+function phone__put_int(o: Val, key: string, n: int) -> void { Value.put(o, key, Value.int(n)) }
+function phone__put_flag(o: Val, key: string, b: bool) -> void { Value.put(o, key, phone__flag(b)) }
+
+function phone__title_of(app: int) -> string {
+  if PhoneApps[app].title == null { return PhoneApps[app].key }
+  return string(PhoneApps[app].title)
+}
+
+function phone__mirror_apps(phone_st: mut PhoneState) -> void {
+  let v = Value.list()
+  for i in 0 .. len(phone_st.phone__shown) {
+    let a = phone_st.phone__shown[i]
+    let o = Value.object()
+    phone__put_str(o, "key", PhoneApps[a].key)
+    phone__put_str(o, "title", phone__title_of(a))
+    phone__put_str(o, "icon", PhoneApps[a].icon)
+    phone__put_int(o, "badge", phone_badge(phone_st, a))
+    Value.add(v, o)
+  }
+  phone_st.phone__apps_v = v
+}
+
+function phone__mirror_contacts(phone_st: mut PhoneState) -> void {
+  let v = Value.list()
+  for i in 0 .. phone_contact_count(phone_st) {
+    let c = phone_contact_at(phone_st, i)
+    let o = Value.object()
+    phone__put_str(o, "name", phone_contact_name(phone_st, c))
+    phone__put_str(o, "portrait", phone_contact_portrait(c))
+    phone__put_flag(o, "text", phone_contact_can_text(c))
+    Value.add(v, o)
+  }
+  phone_st.phone__contacts_v = v
+}
+
+function phone__mirror_threads(phone_st: mut PhoneState) -> void {
+  let v = Value.list()
+  for i in 0 .. len(phone_st.phone__threads) {
+    let t = phone_st.phone__threads[i]
+    let o = Value.object()
+    phone__put_str(o, "name", t.name)
+    phone__put_str(o, "last", t.last)
+    phone__put_str(o, "time", phone__hhmm(t.time))
+    phone__put_int(o, "unread", t.unread)
+    Value.add(v, o)
+  }
+  phone_st.phone__threads_v = v
+}
+
+function phone__mirror_thread(phone_st: mut PhoneState) -> void {
+  let v = Value.list()
+  if phone_st.phone__open >= 0 and phone_st.phone__open < len(phone_st.phone__threads) {
+    let key = phone_st.phone__threads[phone_st.phone__open].key
+    for i in 0 .. len(phone_st.phone__msgs) {
+      let m = phone_st.phone__msgs[i]
+      if m.thread != key { continue }
+      let o = Value.object()
+      phone__put_flag(o, "mine", m.mine)
+      phone__put_str(o, "text", m.text)
+      phone__put_str(o, "time", phone__hhmm(m.time))
+      phone__put_flag(o, "action", m.action != "")
+      phone__put_str(o, "label", m.label)
+      Value.add(v, o)
+    }
+  }
+  phone_st.phone__thread_v = v
+}
+
+# a choice shows the name of its value when it has names, else the number
+function phone__option_shown(i: int, value: int) -> string {
+  if PhoneOptions[i].kind == "toggle" { return "" }
+  if PhoneOptions[i].options != null and value < len(PhoneOptions[i].options) { return string(PhoneOptions[i].options[value]) }
+  return string(value + 1)
+}
+
+function phone__mirror_options(phone_st: mut PhoneState) -> void {
+  phone__values_fit(phone_st)
+  let v = Value.list()
+  for i in 0 .. POPT_COUNT {
+    let o = Value.object()
+    if PhoneOptions[i].label == null { phone__put_str(o, "label", PhoneOptions[i].key) } else { phone__put_str(o, "label", string(PhoneOptions[i].label)) }
+    phone__put_str(o, "kind", PhoneOptions[i].kind)
+    phone__put_int(o, "value", phone_st.phone__values[i])
+    phone__put_flag(o, "on", phone_st.phone__values[i] != 0)
+    phone__put_str(o, "shown", phone__option_shown(i, phone_st.phone__values[i]))
+    Value.add(v, o)
+  }
+  phone_st.phone__options_v = v
+}
+
+function phone__mirror_toasts(phone_st: mut PhoneState) -> void {
+  let v = Value.list()
+  for i in 0 .. len(phone_st.phone__toasts) {
+    let t = phone_st.phone__toasts[i]
+    let o = Value.object()
+    phone__put_str(o, "title", t.title)
+    phone__put_str(o, "body", t.body)
+    phone__put_str(o, "icon", t.icon)
+    phone__put_int(o, "kind", t.kind)
+    Value.add(v, o)
+  }
+  phone_st.phone__toasts_v = v
+}
+
+function phone__mirror_notes(phone_st: mut PhoneState) -> void {
+  let v = Value.list()
+  var i = len(phone_st.phone__notes) - 1
+  while i >= 0 {
+    let n = phone_st.phone__notes[i]
+    let o = Value.object()
+    phone__put_str(o, "title", n.title)
+    phone__put_str(o, "body", n.body)
+    phone__put_str(o, "time", phone__hhmm(n.time))
+    phone__put_flag(o, "unread", not n.read)
+    Value.add(v, o)
+    i -= 1
+  }
+  phone_st.phone__notes_v = v
+}
+
+# the lists the apps own are asked while the app is open: a number standing for what they show, and a rebuild when it moves
+function phone__mirror_world(phone_st: mut PhoneState) -> void {
+  if phone_st.phone__mode != PhoneMode.App { return }
+  let comp = phone_app_component(phone_st)
+  if comp == "PhoneJobs" {
+    var sig = PhoneJobs.count() + 1
+    for i in 0 .. PhoneJobs.count() { sig = (sig * 7 + PhoneJobs.state(i) + 1) & 0x3FFFFFFF }
+    if sig == phone_st.phone__jobs_sig { return }
+    phone_st.phone__jobs_sig = sig
+    let v = Value.list()
+    for i in 0 .. PhoneJobs.count() {
+      let o = Value.object()
+      phone__put_str(o, "title", PhoneJobs.title(i))
+      phone__put_str(o, "info", PhoneJobs.info(i))
+      phone__put_int(o, "state", PhoneJobs.state(i))
+      Value.add(v, o)
+    }
+    phone_st.phone__jobs_v = v
+  } else if comp == "PhoneMap" {
+    var sig = PhoneMap.count() * 31 + PhoneMap.active() + 2
+    sig = (sig * 1009 + int(PhoneMap.distance() / 5.0)) & 0x3FFFFFFF
+    if sig == phone_st.phone__map_sig { return }
+    phone_st.phone__map_sig = sig
+    let v = Value.list()
+    for i in 0 .. PhoneMap.count() {
+      let o = Value.object()
+      phone__put_str(o, "name", PhoneMap.name(i))
+      phone__put_flag(o, "on", PhoneMap.active() == i)
+      Value.add(v, o)
+    }
+    phone_st.phone__places_v = v
+  } else if comp == "PhoneShop" {
+    var sig = PhoneShop.count() + 1 + PhoneWorld.money() * 13
+    for i in 0 .. PhoneShop.count() { sig = (sig * 7 + PhoneShop.price(i) + (phone__avail_bit(i))) & 0x3FFFFFFF }
+    if sig == phone_st.phone__shop_sig { return }
+    phone_st.phone__shop_sig = sig
+    let v = Value.list()
+    for i in 0 .. PhoneShop.count() {
+      let o = Value.object()
+      phone__put_str(o, "name", PhoneShop.name(i))
+      phone__put_str(o, "category", PhoneShop.category(i))
+      phone__put_int(o, "price", PhoneShop.price(i))
+      phone__put_flag(o, "available", PhoneShop.available(i))
+      phone__put_flag(o, "affordable", PhoneShop.price(i) <= PhoneWorld.money())
+      Value.add(v, o)
+    }
+    phone_st.phone__shop_v = v
+  }
+}
+
+function phone__avail_bit(i: int) -> int {
+  if PhoneShop.available(i) { return 1 }
+  return 0
+}
+
+function phone__mirror(phone_st: mut PhoneState) -> void {
+  let d = phone_st.phone__dirty
+  phone_st.phone__dirty = 0
+  if (d & PH_D_APPS) != 0 { phone__mirror_apps(phone_st) }
+  if (d & PH_D_CONTACTS) != 0 { phone__mirror_contacts(phone_st) }
+  if (d & PH_D_THREADS) != 0 { phone__mirror_threads(phone_st) }
+  if (d & PH_D_THREAD) != 0 { phone__mirror_thread(phone_st) }
+  if (d & PH_D_OPTIONS) != 0 { phone__mirror_options(phone_st) }
+  if (d & PH_D_TOASTS) != 0 { phone__mirror_toasts(phone_st) }
+  if (d & PH_D_NOTES) != 0 { phone__mirror_notes(phone_st) }
+  phone__mirror_world(phone_st)
+}
+
+# what a component is handed
+export function phone_apps_view(phone_st: PhoneState) -> Val { return phone_st.phone__apps_v }
+export function phone_contacts_view(phone_st: PhoneState) -> Val { return phone_st.phone__contacts_v }
+export function phone_threads_view(phone_st: PhoneState) -> Val { return phone_st.phone__threads_v }
+export function phone_thread_view(phone_st: PhoneState) -> Val { return phone_st.phone__thread_v }
+export function phone_options_view(phone_st: PhoneState) -> Val { return phone_st.phone__options_v }
+export function phone_toasts_view(phone_st: PhoneState) -> Val { return phone_st.phone__toasts_v }
+export function phone_notes_view(phone_st: PhoneState) -> Val { return phone_st.phone__notes_v }
+export function phone_jobs_view(phone_st: PhoneState) -> Val { return phone_st.phone__jobs_v }
+export function phone_places_view(phone_st: PhoneState) -> Val { return phone_st.phone__places_v }
+export function phone_shop_view(phone_st: PhoneState) -> Val { return phone_st.phone__shop_v }
+
+# the open thread's name, for the conversation's header
+export function phone_thread_name(phone_st: PhoneState) -> string {
+  if phone_st.phone__open < 0 or phone_st.phone__open >= len(phone_st.phone__threads) { return "" }
+  return phone_st.phone__threads[phone_st.phone__open].name
+}
+
+export function phone_clock(phone_st: PhoneState) -> string { return phone_st.phone__clock }
+export function phone_signal(phone_st: PhoneState) -> int { return phone_st.phone__signal }
+export function phone_battery(phone_st: PhoneState) -> int { return phone_st.phone__battery }
+export function phone_money(phone_st: PhoneState) -> int { return phone_st.phone__money }
+export function phone_waypoint_active() -> bool { return PhoneMap.active() >= 0 }
+export function phone_waypoint_distance() -> float { return PhoneMap.distance() }

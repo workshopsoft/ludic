@@ -1,0 +1,24 @@
+# PhoneHome.stories.lres - the studio's stories for PhoneHome (the apps on the home screen); the game never reads this file
+
+default {
+  viewport: "360x560"
+  props: { apps: [{ key: "contacts", title: "Contacts", icon: "", badge: 0 }, { key: "messages", title: "Messages", icon: "", badge: 3 }, { key: "jobs", title: "Jobs", icon: "", badge: 1 }, { key: "map", title: "Map", icon: "", badge: 0 }, { key: "shop", title: "Internet", icon: "", badge: 0 }, { key: "camera", title: "Camera", icon: "", badge: 0 }, { key: "settings", title: "Settings", icon: "", badge: 0 }] }
+}
+
+# the first app has the focus
+focused {
+  base: "default"
+  force: ["button:focus-visible"]
+}
+
+# a phone with nothing on it
+empty {
+  base: "default"
+  props: { apps: [] }
+}
+
+# a long name in another language
+long_names {
+  base: "default"
+  props: { apps: [{ key: "contacts", title: "Kisiler ve rehber", icon: "", badge: 0 }, { key: "messages", title: "Mesajlar", icon: "", badge: 12 }] }
+}

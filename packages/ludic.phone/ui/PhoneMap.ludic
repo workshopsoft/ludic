@@ -1,0 +1,10 @@
+# PhoneMap.ludic - the GPS: the places the game offers, the one set now and how far it is, a pin dropped where the
+# player stands, and a way to clear it. The game draws the world; this only sets and clears the waypoint (PHONE_WAYPOINT)
+component PhoneMap (phone_st: mut PhoneState) {
+  prop places: Val = null      # [{name, on}]
+  prop active: bool = false    # a waypoint is set
+  prop distance: float = -1.0  # metres to it, -1 when there is none
+  on pick(i: int) { phone_place_press(phone_st, i) }
+  on here() { phone_place_here(phone_st) }
+  on clear() { phone_place_clear(phone_st) }
+}

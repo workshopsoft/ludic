@@ -1,0 +1,33 @@
+# PhoneScreen.ludic - the phone: toasts always, and while it is up a frame with the status bar, the home screen or the open
+# app, and the back and home buttons. It reads the phone's state and hands each part its share, so the stories of the screen
+# set the same names the state would. An app of the game's own fills `<slot name="app"/>`: wrap PhoneScreen in a component of
+# yours and give the slot the template that shows it
+component PhoneScreen (phone_st: mut PhoneState) {
+  mode: int = phone_mode_int(phone_st)
+  slide: float = phone_slide(phone_st)
+  app: string = phone_app_component(phone_st)
+  builtin: bool = phone_app_builtin(phone_st)
+  title: string = phone_app_title(phone_st)
+  apps: Val = phone_apps_view(phone_st)
+  contacts: Val = phone_contacts_view(phone_st)
+  threads: Val = phone_threads_view(phone_st)
+  thread: Val = phone_thread_view(phone_st)
+  open: int = phone_open_thread(phone_st)
+  thread_name: string = phone_thread_name(phone_st)
+  jobs: Val = phone_jobs_view(phone_st)
+  places: Val = phone_places_view(phone_st)
+  route: bool = phone_waypoint_active()
+  distance: float = phone_waypoint_distance()
+  shop: Val = phone_shop_view(phone_st)
+  money: int = phone_money(phone_st)
+  options: Val = phone_options_view(phone_st)
+  notes: Val = phone_notes_view(phone_st)
+  toasts: Val = phone_toasts_view(phone_st)
+  clock: string = phone_clock(phone_st)
+  signal: int = phone_signal(phone_st)
+  battery: int = phone_battery(phone_st)
+  unread: int = phone_unread(phone_st)
+  on back() { phone_back(phone_st) }
+  on home() { phone_home(phone_st) }
+  on away() { phone_lower(phone_st) }
+}

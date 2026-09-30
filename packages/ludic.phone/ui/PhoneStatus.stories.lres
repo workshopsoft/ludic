@@ -1,0 +1,18 @@
+# PhoneStatus.stories.lres - the studio's stories for PhoneStatus (the bar across the top of the phone); the game never reads this file
+
+default {
+  viewport: "360x120"
+  props: { clock: "14:05", signal: 4, battery: 82, unread: 0 }
+}
+
+# a message waiting, weak signal
+message_waiting {
+  base: "default"
+  props: { unread: 3, signal: 1 }
+}
+
+# the battery is nearly gone
+low_battery {
+  base: "default"
+  props: { battery: 9, signal: 0 }
+}

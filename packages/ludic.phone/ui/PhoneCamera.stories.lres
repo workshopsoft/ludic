@@ -1,0 +1,10 @@
+# PhoneCamera.stories.lres - the studio's stories for PhoneCamera (the camera app); the game never reads this file
+
+default {
+  viewport: "360x560"
+}
+
+focused {
+  base: "default"
+  force: ["button:focus-visible"]
+}

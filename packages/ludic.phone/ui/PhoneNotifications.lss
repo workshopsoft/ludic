@@ -1,0 +1,15 @@
+/* PhoneNotifications.lss */
+.notes { padding: 12px; gap: 8px; width: fill; height: fill; color: var(--ph-text, #eef2f7) }
+.notes h2 { font-size: 18px }
+.head { align-items: center; gap: 8px }
+.grow { flex-grow: 1 }
+.clear { height: 30px; padding: 0 10px; font-size: 13px; background: var(--ph-line, #2c3542); color: var(--ph-text, #eef2f7) }
+.clear:focus-visible { outline: 3px solid var(--ph-accent, #4ea1ff) }
+.empty { color: var(--ph-muted, #93a0b2) }
+.list { gap: 6px; flex-grow: 1 }
+.note { padding: 8px 10px; gap: 2px; background: var(--ph-card, #1e2530) }
+.note.new { border-left: 4px solid var(--ph-accent, #4ea1ff) }
+.top { gap: 8px }
+.title { font-size: 14px }
+.time { color: var(--ph-muted, #93a0b2); font-size: 11px }
+.body { color: var(--ph-muted, #93a0b2) }

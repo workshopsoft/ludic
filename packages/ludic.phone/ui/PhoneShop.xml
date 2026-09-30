@@ -1,0 +1,19 @@
+<section class="shop">
+  <row class="head">
+    <h2 class="grow">{t('phone.shop.title')}</h2>
+    <small class="money">{t('phone.shop.balance', money)}</small>
+  </row>
+  <if test="{len(items) == 0}"><p class="empty">{t('phone.shop.empty')}</p></if>
+  <scroll class="list">
+    <each in="{items}" as="it" index="i">
+      <row class="item {it.available ? '' : 'gone'}">
+        <div class="text grow">
+          <span class="name">{it.name}</span>
+          <small class="cat">{it.category}</small>
+        </div>
+        <span class="price {it.affordable ? '' : 'short'}">{it.price}</span>
+        <button class="buy" autofocus="{i == 0}" enabled="{it.available and it.affordable}" on-click="buy(i)">{t('phone.shop.buy')}</button>
+      </row>
+    </each>
+  </scroll>
+</section>

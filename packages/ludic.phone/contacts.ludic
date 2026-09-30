@@ -1,0 +1,133 @@
+# contacts.ludic - the book: the rows the game marked known, and the contacts it added while playing. Calling one
+# only says so (PHONE_CALL, with the row's own `call` word and `arg`): what a call does is the game's - it routes
+# the fact to whatever handles missions, a dispatcher, a chat
+
+function phone__book_rebuild(phone_st: mut PhoneState) -> void {
+  while len(phone_st.phone__known) < PBOK_COUNT {
+    if PhoneBook[len(phone_st.phone__known)].known { push(phone_st.phone__known, 1) } else { push(phone_st.phone__known, 0) }
+  }
+  List.clear(phone_st.phone__book)
+  for c in 0 .. PBOK_COUNT {
+    if phone_st.phone__known[c] == 0 { continue }
+    var at = len(phone_st.phone__book)
+    while at > 0 and PhoneBook[phone_st.phone__book[at - 1]].order > PhoneBook[c].order { at -= 1 }
+    List.insert(phone_st.phone__book, at, c)
+  }
+  phone__dirty(phone_st, PH_D_CONTACTS)
+}
+
+# who is in the book, in order (the rows by `order`, then the contacts added): how many, and the i-th one, which is
+# a row of PhoneBook, or PBOK_COUNT + n for the n-th added one (-1 past the end)
+export function phone_contact_count(phone_st: PhoneState) -> int { return len(phone_st.phone__book) + len(phone_st.phone__dyn) }
+
+export function phone_contact_at(phone_st: PhoneState, i: int) -> int {
+  if i < 0 { return -1 }
+  if i < len(phone_st.phone__book) { return phone_st.phone__book[i] }
+  if i - len(phone_st.phone__book) < len(phone_st.phone__dyn) { return PBOK_COUNT + i - len(phone_st.phone__book) }
+  return -1
+}
+
+export function phone_contact_key(phone_st: PhoneState, c: int) -> string {
+  if c >= 0 and c < PBOK_COUNT { return PhoneBook[c].key }
+  if c >= PBOK_COUNT and c - PBOK_COUNT < len(phone_st.phone__dyn) { return phone_st.phone__dyn[c - PBOK_COUNT].key }
+  return ""
+}
+
+# the name as the screen shows it: a row's is a marked key the translator makes where it is drawn, an added one's is its words
+export function phone_contact_name(phone_st: PhoneState, c: int) -> string {
+  if c >= 0 and c < PBOK_COUNT {
+    if PhoneBook[c].name == null { return PhoneBook[c].key }
+    return string(PhoneBook[c].name)
+  }
+  if c >= PBOK_COUNT and c - PBOK_COUNT < len(phone_st.phone__dyn) { return phone_st.phone__dyn[c - PBOK_COUNT].name }
+  return ""
+}
+
+export function phone_contact_portrait(c: int) -> string {
+  if c >= 0 and c < PBOK_COUNT { return PhoneBook[c].portrait }
+  return ""
+}
+
+export function phone_contact_can_text(c: int) -> bool {
+  if c >= 0 and c < PBOK_COUNT { return PhoneBook[c].text }
+  return true
+}
+
+# put a row of the book in it (a contact the game introduces); false when it is there already or there is no such row
+export function phone_contact_add(phone_st: mut PhoneState, key: string) -> bool {
+  let c = phonebook_find(key)
+  if c < 0 { return false }
+  phone__book_rebuild(phone_st)
+  if phone_st.phone__known[c] != 0 { return false }
+  phone_st.phone__known[c] = 1
+  phone__book_rebuild(phone_st)
+  return true
+}
+
+# add a contact the game makes up as it goes (a friend, a number a mission gave): its key, name, and the word and arg
+# a call says. False when the key is taken
+@alloc_ok("a contact added: once, when the game says so")
+export function phone_contact_add_dyn(phone_st: mut PhoneState, key: string, name: string, call: string, arg: string) -> bool {
+  if key == "" or phonebook_find(key) >= 0 { return false }
+  for i in 0 .. len(phone_st.phone__dyn) { if phone_st.phone__dyn[i].key == key { return false } }
+  let d = new PhoneDyn
+  d.key = key
+  d.name = name
+  d.call = call
+  d.arg = arg
+  push(phone_st.phone__dyn, d)
+  phone__dirty(phone_st, PH_D_CONTACTS)
+  return true
+}
+
+# take one out of the book (a row goes back to unknown; an added one is forgotten)
+export function phone_contact_remove(phone_st: mut PhoneState, key: string) -> bool {
+  let c = phonebook_find(key)
+  if c >= 0 {
+    phone__book_rebuild(phone_st)
+    if phone_st.phone__known[c] == 0 { return false }
+    phone_st.phone__known[c] = 0
+    phone__book_rebuild(phone_st)
+    return true
+  }
+  for i in 0 .. len(phone_st.phone__dyn) {
+    if phone_st.phone__dyn[i].key == key {
+      List.remove_at(phone_st.phone__dyn, i)
+      phone__dirty(phone_st, PH_D_CONTACTS)
+      return true
+    }
+  }
+  return false
+}
+
+# the i-th one in the book called: PHONE_CALL, with the contact's `call` word and `arg`. False when the world says the
+# line is not free (a call that is already going), or there is no such contact
+export function phone_call(phone_st: mut PhoneState, i: int) -> bool {
+  let c = phone_contact_at(phone_st, i)
+  if c < 0 { return false }
+  let key = phone_contact_key(phone_st, c)
+  if not PhoneWorld.can_call(key) { return false }
+  let f = phone__fact(phone_st, PHONE_CALL, c, key)
+  if c < PBOK_COUNT {
+    f.verb = PhoneBook[c].call
+    f.arg = PhoneBook[c].arg
+  } else {
+    f.verb = phone_st.phone__dyn[c - PBOK_COUNT].call
+    f.arg = phone_st.phone__dyn[c - PBOK_COUNT].arg
+  }
+  return true
+}
+
+# the i-th one in the book texted: the messages app, open on their thread (made if there is none yet)
+export function phone_text(phone_st: mut PhoneState, i: int) -> bool {
+  let c = phone_contact_at(phone_st, i)
+  if c < 0 or not phone_contact_can_text(c) { return false }
+  var app = -1
+  for a in 0 .. PAPP_COUNT { if app < 0 and PhoneApps[a].component == "PhoneMessages" { app = a } }
+  if app < 0 or not phone_open_app(phone_st, app) { return false }
+  let t = phone__thread_for(phone_st, phone_contact_key(phone_st, c), phone_contact_name(phone_st, c))
+  phone_st.phone__open = t
+  phone__read_thread(phone_st, t)
+  phone__dirty(phone_st, PH_D_THREAD | PH_D_THREADS)
+  return true
+}
