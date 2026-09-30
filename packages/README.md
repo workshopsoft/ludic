@@ -45,6 +45,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.save](ludic.save/README.md) | versioned save files: a migration chain the game declares, torn writes told apart, a backup, a newer file refused and read-only |
 | [ludic.settings](ludic.settings/README.md) | a game's settings as data: one store, a fact per change, ranges, a safe set |
 | [ludic.shop](ludic.shop/README.md) | vendors: prices by standing and weekly demand, stock, buying and selling |
+| [ludic.steam](ludic.steam/README.md) | the Steamworks runtime as a mechanic: a start-up state machine, the user, friends and rich presence, lobbies, achievements, stats and leaderboards from data rows, Steam Cloud beside `ludic.save`, Steam Input by action, DLC, the timeline, Steam's relay as a `ludic.net` socket option, dev verbs, and a fake Steam for tests |
 | [ludic.steps](ludic.steps/README.md) | chapters of steps (kind, param, need), progress, and a party's shares pooled |
 | [ludic.telemetry](ludic.telemetry/README.md) | events queued, batched to a PostHog-shaped endpoint, backed off when offline |
 | [ludic.things](ludic.things/README.md) | the placed things of a world and their kinds (an open registry), queries, facts, a save |
@@ -71,6 +72,7 @@ section. The rules are in [ludic.base](ludic.base/README.md).
 | [ludic.core](ludic.core/) | the canonical engine-ABI components |
 | [ludic.prefs](ludic.prefs/) | a small `key=value` store for preferences and records |
 | [ludic.nativeecho](ludic.nativeecho/README.md) | the worked example of a package carrying a native library: a C sum over a slice, callbacks drained as facts |
+| [ludic.steamworks](ludic.steamworks/README.md) | the real backend of `ludic.steam`: the SDK's flat API through bindings generated from the developer's own `steam_api.json` and a small shim; nothing of Valve's SDK is in the repository (a native library built from an SDK you may not redistribute) |
 
 ## Native libraries
 
@@ -103,6 +105,14 @@ shim keeps the same shape so the Ludic side stays safe.
 `native/build.sh` builds `lib/<target>/` from the pinned upstream source and the shim through
 [tools/native/lib.sh](../tools/native/lib.sh); run it on the Mac and, in Git Bash, on the PC.
 The package's tests run the real library - there is no fake for it.
+
+**A library you may not redistribute.** The Steamworks SDK is Valve's, under an agreement that keeps it out
+of an open toolchain, so [ludic.steamworks](ludic.steamworks/README.md) carries none of it: `native/build.sh`
+reads the developer's own copy (`STEAMWORKS_SDK`), a checked-in generator writes the bindings from its
+`steam_api.json` into a git-ignored `gen/`, the shim is compiled against its headers into a git-ignored
+`lib/<target>/`, and the SDK's runtime library is copied beside it. The shim keeps the rules above; the
+mechanic that uses it, [ludic.steam](ludic.steam/README.md), is tested on a fake and needs no SDK, so the
+suite runs without one. See [docs/PACKAGES.md](../docs/PACKAGES.md#a-native-library-you-may-not-redistribute).
 
 ## The builtin controllers
 

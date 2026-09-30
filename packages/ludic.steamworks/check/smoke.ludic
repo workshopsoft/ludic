@@ -1,0 +1,84 @@
+# smoke.ludic - the real SDK, linked, with no Steam to talk to. Not a test of the suite (it needs the SDK, which
+# the repository does not hold): `sh check/run.sh` builds lib/ and gen/ from STEAMWORKS_SDK if they are missing,
+# then runs this. It passes on a machine where the Steam client is not running - start-up fails cleanly and every
+# call is a safe no-op - and on one where it is, where Steam answers (as Spacewar, app 480).
+import "ludic.steamworks"
+import "ludic.steam"
+import "ludic.base"
+program SteamworksSmoke {
+  numbers float
+
+  bind SteamBackend { driver: fn steamworks_driver }
+
+  def SteamAchievements smoke_test { api_name: "ACH_NOT_REAL" }
+  def SteamStats smoke_stat { api_name: "NumNotReal" }
+
+  entry (steam_st: mut SteamState) {
+    let c = new SteamConfig
+    c.app_id = 480
+    c.dev = true
+    steam_config(steam_st, c)
+    let code = steam_start(steam_st)
+    print(`steam_start -> {code} ({steam_error(steam_st)})`)
+    var bad = 0
+    if code == STEAM_OK {
+      # a Steam client is running: the session is real
+      if not steam_ready(steam_st) { bad += 1 }
+      if steam_id(steam_st) == long(0) { bad += 1 }
+      steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+      print(`persona: {steam_persona(steam_st)}, friends: {steam_friend_count(steam_st)}, app: {steam_app_id(steam_st)}`)
+      steam_stop(steam_st)
+    } else {
+      # no client: unavailable, cleanly, with a reason
+      if steam_status(steam_st) != STEAM_UNAVAILABLE { bad += 1 }
+      if code != STEAM_ERR_NO_CLIENT and code != STEAM_ERR_FAILED and code != STEAM_ERR_OUTDATED { bad += 1 }
+      if len(steam_error(steam_st)) == 0 { bad += 1 }
+    }
+    # either way, every call is safe
+    steam_tick(steam_st, tick_new(0.016, 1, 0.0))
+    let facts = q_drain(steam_facts(steam_st))
+    if len(facts) == 0 { bad += 1 }
+    if code != STEAM_OK {
+      if steam_friend_count(steam_st) != 0 { bad += 1 }
+      if steam_lobby_create(steam_st, LOBBY_PUBLIC, 2) { bad += 1 }
+      if steam_stat_set_int(steam_st, SSTAT_SMOKE_STAT, 1) { bad += 1 }
+      if steam_cloud_put(steam_st, "x", "y") { bad += 1 }
+      if steam_net_open(steam_st, 0) != 0 { bad += 1 }
+    }
+    if code != STEAM_OK {
+      # the driver itself, every shape of call, while the SDK is not up: all answer "nothing"
+      let d = steamworks_driver()
+      let b = buffer(64)
+      let xy = floats(2)
+      if d.me() != long(0) or d.logged_on() or d.app_id() != 0 or len(d.persona()) != 0 { bad += 1 }
+      if d.friend_count() != 0 or d.friend_at(0) != long(0) or len(d.friend_name(long(7))) != 0 { bad += 1 }
+      if d.avatar_request(long(7), 1) != -1 or d.avatar_size(3) != 0 or d.avatar_rgba(3, b, 64) { bad += 1 }
+      if d.presence_set("a", "b") or d.lobby_create(LOBBY_PUBLIC, 4) or d.lobby_join(long(9)) or d.lobby_search() { bad += 1 }
+      if d.lobby_members(long(9)) != 0 or len(d.lobby_data(long(9), "k")) != 0 or d.lobby_chat(long(9), "hi") { bad += 1 }
+      if d.stat_set_int("a", 1) or d.stat_int("a") != 0 or d.stat_float("a") != 0.0 or d.ach_get("a") != -1 or d.ach_set("a") { bad += 1 }
+      if d.stats_store() or d.lb_find("a", true, 0, 0) or d.lb_upload(long(1), 2, 0) or d.lb_download(long(1), 0, 1, 2) { bad += 1 }
+      if d.rs_write("a", b, 4) or d.rs_read("a", b, 4) != 0 or d.rs_exists("a") or d.rs_count() != 0 { bad += 1 }
+      if d.input_start() or d.input_count() != 0 or d.input_digital(long(1), "a") != 0 or d.input_analog(long(1), "a", xy) { bad += 1 }
+      if d.dlc_count() != 0 or d.dlc_owned(480) or len(d.beta()) != 0 or d.gamepad_text(0, 0, "x", 4, "") { bad += 1 }
+      if d.net_send(long(1), b, 4, false) or d.net_recv(b, 64) != -1 or d.auth_ticket(b, 64) != 0 { bad += 1 }
+      d.tl_marker("", "x", "", 1, 0.0)
+      d.tl_phase("x")
+      d.overlay("friends")
+      d.net_allow(long(1))
+      d.pump()
+      if d.poll() != 0 { bad += 1 }
+    }
+    Fs.remove("steam_appid.txt")
+    if arg_count() > 0 {
+      let exe = arg(0)
+      var slash = -1
+      for i in 0 .. len(exe) { if exe[i] == 47 { slash = i } }
+      if slash > 0 { Fs.remove(Text.slice(exe, 0, slash) + "/steam_appid.txt") }
+    }
+    if bad > 0 {
+      print(`FAIL - {bad} check(s) of the real SDK failed`)
+      exit(1)
+    }
+    print("ok   - the real SDK links, starts or fails cleanly, and every call after is safe")
+  }
+}

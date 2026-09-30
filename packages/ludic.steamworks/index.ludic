@@ -1,0 +1,11 @@
+# ludic.steamworks - the real backend of ludic.steam: a SteamDriver over the Steamworks SDK's flat API, through
+# bindings generated from the developer's own steam_api.json (gen/) and a hand-written shim (native/shim).
+# Bind it once:  bind SteamBackend { driver: fn steamworks_driver }
+module ludic_steamworks uses ludic_base, ludic_steam
+numbers float
+import "ludic.base"
+import "ludic.steam"
+import "gen/steam_raw.ludic"
+import "gen/steam_enums.ludic"
+import "native.ludic"
+import "driver.ludic"

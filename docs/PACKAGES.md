@@ -325,6 +325,36 @@ Bash on Windows with the LLVM installer's clang. The shim's rules (what may cros
 callback comes back) are in [packages/README.md](../packages/README.md#native-libraries);
 `ludic.nativeecho` is the worked example.
 
+### A native library you may not redistribute
+
+Some libraries cannot be committed, downloaded by a script or shipped with the toolchain: the Steamworks SDK
+(Valve's SDK Access Agreement) is the case. The package still declares them with `native` lines, but the files
+those lines name do not exist in the repository; they are made on the developer's machine from their own copy:
+
+```text
+packages/ludic.steamworks/
+  package.ludic        native "macos-arm64" "lib/macos-arm64/libludicsteam.dylib"
+                       native "macos-arm64" "lib/macos-arm64/libsteam_api.dylib"    (Valve's, copied in)
+                       native "windows-x64" "lib/windows-x64/ludicsteam.dll"  ... steam_api64.dll
+  native/build.sh      STEAMWORKS_SDK=<sdk> sh native/build.sh  -> gen/ and lib/<target>/   (both git-ignored)
+  native/shim/         the hand-written half, compiled against the SDK's headers (contains none of Valve's text)
+  tools/steam_gen.ludic  reads <sdk>/public/steam/steam_api.json, writes gen/: C wrappers, Ludic externs, enum constants
+```
+
+- **Found at build time, from an environment variable.** `native/build.sh` needs `STEAMWORKS_SDK` (the SDK's
+  root) and nothing else; it names the variable when it is missing. A second `native` line lists the vendor's
+  runtime library, so `ludic bundle` copies and signs it into `Contents/Frameworks` (beside the `.exe` on
+  Windows) like any other native library, and the game that ships it does so under its own agreement.
+- **Bindings are generated, on the developer's machine.** The generator is checked in; its output - wrappers,
+  `extern function` lines, enum values - is derived from the vendor's description of its own API, carries the
+  vendor's identifiers, and is never committed (the package's `.gitignore` holds `gen/`, `lib/` and `build/`).
+  Code that uses it says so by importing `gen/...`: without the build, only a game that imports the package fails.
+- **The mechanic stays testable without it.** The package that uses the binding (`ludic.steam`) talks to a driver
+  record, not to the library; its tests run on a fake, so `ludic test packages` needs no SDK, and a smoke check
+  that does (`ludic.steamworks/check`) is not under `tests/`.
+- **A build script must run from an install.** `~/.ludic` holds `packages/` and not `tools/`, so such a package carries
+  its own copy of `tools/native/lib.sh` (`native/lib.sh`).
+
 ## Offline / hermetic builds
 
 `ludic vendor` copies the resolved packages out of the store into `./vendor`. Build

@@ -1,0 +1,368 @@
+# steam_gen.ludic - the binding generator: the developer's own steam_api.json in, the glue a build
+# links out. Nothing it writes is checked in: the Steamworks SDK is Valve's, under an agreement that
+# keeps it out of an open toolchain, so this reads the copy on the developer's machine and writes
+# into a git-ignored gen/ beside the package.
+#
+#   steam_gen --sdk <dir> --out <dir> [--interfaces ISteamUser,ISteamFriends,...] [--enums ELobbyType,...]
+#
+# It writes, into --out:
+#   lsg_wrap.cpp     one C wrapper per flat-API method of the chosen interfaces whose types can cross
+#                    (int, long, float, double, bool, a C string, a pointer): it fetches the
+#                    interface itself, and answers 0 / null / "" while Steam is not up, so no call
+#                    through it can touch an interface that does not exist
+#   steam_raw.ludic  the matching `extern function` declarations (names lsg_<Interface>_<Method>;
+#                    parameters a0, a1... in the flat API's order; the original names in a comment)
+#   steam_enums.ludic  the chosen enums' values as int constants, as the SDK in front of it says them
+#   report.txt       what was wrapped and what was left out, and why
+program SteamGen {
+  numbers float
+
+  property Ctx {
+    td_name: []string = new []string
+    td_base: []string = new []string
+    enums: []string = new []string
+  }
+
+  # what one C type becomes on each side of the boundary
+  property Ty {
+    kind: string = ""        # bool int long float double string ptr void, or skip
+    c: string = ""           # the C spelling to cast to (params) or read as (a pointer)
+    why: string = ""         # for skip
+  }
+
+  const DEFAULT_INTERFACES: string = "ISteamUser,ISteamFriends,ISteamUtils,ISteamMatchmaking,ISteamUserStats,ISteamRemoteStorage,ISteamApps,ISteamInput,ISteamTimeline,ISteamNetworkingMessages,ISteamNetworkingSockets,ISteamNetworkingUtils"
+  const DEFAULT_ENUMS: string = "EResult,EPersonaState,EFriendFlags,ELobbyType,ELobbyComparison,ELobbyDistanceFilter,EChatEntryType,EChatRoomEnterResponse,EOverlayToStoreFlag,ENotificationPosition,ELeaderboardSortMethod,ELeaderboardDisplayType,ELeaderboardDataRequest,ELeaderboardUploadScoreMethod,EGamepadTextInputMode,EGamepadTextInputLineMode,EInputSourceMode,EInputActionOrigin,ESteamInputGlyphSize,ESteamInputGlyphStyle,ETimelineGameMode,ETimelineEventClipPriority,ERemoteStoragePlatform,ESteamAPIInitResult,EAuthSessionResponse,EBeginAuthSessionResult,ESteamNetworkingSendFlags,ESteamNetworkingConnectionState,ESteamNetworkingAvailability"
+
+  function trim(s: string) -> string {
+    var a = 0
+    var b = len(s)
+    while a < b and (s[a] == 32 or s[a] == 9) { a += 1 }
+    while b > a and (s[b - 1] == 32 or s[b - 1] == 9) { b -= 1 }
+    return Text.slice(s, a, b)
+  }
+
+  function has(xs: []string, s: string) -> bool {
+    for i in 0 .. len(xs) { if xs[i] == s { return true } }
+    return false
+  }
+
+  function str_of(v: Val, key: string) -> string {
+    return Value.as_str(Value.get(v, key))
+  }
+
+  function ctx_load(c: Ctx, j: Val) -> void {
+    let tds = Value.get(j, "typedefs")
+    for i in 0 .. Value.count(tds) {
+      let t = Value.at(tds, i)
+      push(c.td_name, str_of(t, "typedef"))
+      push(c.td_base, str_of(t, "type"))
+    }
+    let es = Value.get(j, "enums")
+    for i in 0 .. Value.count(es) { push(c.enums, str_of(Value.at(es, i), "enumname")) }
+  }
+
+  # a typedef followed to the type it stands for
+  function resolve(c: Ctx, name: string) -> string {
+    var n = name
+    var guard = 0
+    while guard < 8 {
+      var found = false
+      for i in 0 .. len(c.td_name) {
+        if c.td_name[i] == n {
+          n = c.td_base[i]
+          found = true
+          break
+        }
+      }
+      if not found { return n }
+      guard += 1
+    }
+    return n
+  }
+
+  function skip(why: string) -> Ty {
+    let t = new Ty
+    t.kind = "skip"
+    t.why = why
+    return t
+  }
+
+  function ty(kind: string, cc: string) -> Ty {
+    let t = new Ty
+    t.kind = kind
+    t.c = cc
+    return t
+  }
+
+  # flat: the flat API's own spelling of the type, when the JSON gives one
+  function classify(c: Ctx, raw: string, flat: string, ret: bool) -> Ty {
+    let spelled = trim(raw)
+    if Text.contains(spelled, "&") { return skip("a C++ reference") }
+    if Text.contains(spelled, "(*)") { return skip("a function pointer") }
+    if Text.ends_with(spelled, "*") {
+      if spelled == "const char *" { return ty("string", "const char *") }
+      var base = trim(Text.slice(spelled, 0, len(spelled) - 1))
+      if Text.starts_with(base, "const ") { base = trim(Text.slice(base, 6, len(base))) }
+      if Text.starts_with(base, "ISteam") and not ret { return skip("an interface pointer (a callback object)") }
+      return ty("ptr", spelled)
+    }
+    var t = spelled
+    if Text.starts_with(t, "const ") { t = trim(Text.slice(t, 6, len(t))) }
+    if t == "void" { return ty("void", "void") }
+    if t == "bool" { return ty("bool", "bool") }
+    if t == "float" { return ty("float", "float") }
+    if t == "double" { return ty("double", "double") }
+    var cast = spelled
+    if len(flat) > 0 { cast = flat }
+    if t == "CSteamID" or t == "CGameID" { return ty("long", cast) }
+    if has(c.enums, t) { return ty("int", spelled) }
+    let base = resolve(c, t)
+    if base == "int" or base == "unsigned int" or base == "short" or base == "unsigned short" or base == "signed char" or base == "unsigned char" or base == "char" {
+      return ty("int", cast)
+    }
+    if base == "long long" or base == "unsigned long long" { return ty("long", cast) }
+    if base == "bool" { return ty("bool", "bool") }
+    if base == "float" { return ty("float", "float") }
+    if base == "double" { return ty("double", "double") }
+    if Text.ends_with(base, "*") { return ty("ptr", spelled) }
+    return skip("a " + spelled + " by value")
+  }
+
+  function ludic_type(k: string) -> string {
+    if k == "bool" { return "bool" }
+    if k == "int" { return "int" }
+    if k == "long" { return "long" }
+    if k == "float" { return "float" }
+    if k == "double" { return "double" }
+    if k == "string" { return "string" }
+    if k == "ptr" { return "pointer" }
+    return "void"
+  }
+
+  # the C type the wrapper takes or gives for a kind
+  function wrap_type(k: string) -> string {
+    if k == "bool" { return "int" }
+    if k == "int" { return "int" }
+    if k == "long" { return "int64_t" }
+    if k == "float" { return "float" }
+    if k == "double" { return "double" }
+    if k == "string" { return "const char *" }
+    if k == "ptr" { return "void *" }
+    return "void"
+  }
+
+  function zero_of(k: string) -> string {
+    if k == "void" { return "" }
+    if k == "string" { return "\"\"" }
+    if k == "ptr" { return "0" }
+    if k == "float" { return "0.0f" }
+    if k == "double" { return "0.0" }
+    return "0"
+  }
+
+  # the accessor the flat header declares for an interface (the version suffix is the SDK's)
+  function accessor_of(iface: Val) -> string {
+    let acs = Value.get(iface, "accessors")
+    for i in 0 .. Value.count(acs) {
+      let a = Value.at(acs, i)
+      if str_of(a, "kind") == "user" { return str_of(a, "name_flat") }
+    }
+    return ""
+  }
+
+  # one method: its wrapper and its extern, or why it is left out. Returns "" or the reason.
+  function wrap_method(c: Ctx, cls: string, acc: string, m: Val, cpp: []string, lud: []string) -> string {
+    let flat_name = str_of(m, "methodname_flat")
+    let short = Text.slice(flat_name, 9, len(flat_name))            # SteamAPI_ is nine bytes
+    let name = `lsg_{short}`
+    let rt = classify(c, str_of(m, "returntype"), str_of(m, "returntype_flat"), true)
+    if rt.kind == "skip" { return `return: {rt.why}` }
+    let ps = Value.get(m, "params")
+    let kinds = new []Ty
+    for i in 0 .. Value.count(ps) {
+      let p = Value.at(ps, i)
+      let k = classify(c, str_of(p, "paramtype"), str_of(p, "paramtype_flat"), false)
+      if k.kind == "skip" { return `{str_of(p, "paramname")}: {k.why}` }
+      if k.kind == "void" { return "a void parameter" }
+      push(kinds, k)
+    }
+    # the C wrapper
+    var sig = ""
+    var call = ""
+    var names = ""
+    for i in 0 .. len(kinds) {
+      let k = kinds[i]
+      if i > 0 {
+        sig = sig + ", "
+      }
+      sig = sig + `{wrap_type(k.kind)} a{i}`
+      var arg = `({k.c})a{i}`
+      if k.kind == "bool" { arg = `a{i} != 0` }
+      if k.kind == "string" { arg = `a{i}` }
+      if k.kind == "ptr" { arg = `({k.c})a{i}` }
+      call = call + ", " + arg
+      if i > 0 { names = names + ", " }
+      names = names + str_of(Value.at(ps, i), "paramname")
+    }
+    if len(kinds) == 0 { sig = "void" }
+    push(cpp, "LSG_API " + wrap_type(rt.kind) + " " + name + "(" + sig + ") {")
+    push(cpp, `  if (!lsx_ready) return {zero_of(rt.kind)};`)
+    push(cpp, `  {cls} *p = {acc}();`)
+    push(cpp, `  if (!p) return {zero_of(rt.kind)};`)
+    let callee = `{flat_name}(p{call})`
+    if rt.kind == "void" {
+      push(cpp, `  {callee};`)
+    } else if rt.kind == "bool" {
+      push(cpp, `  return {callee} ? 1 : 0;`)
+    } else if rt.kind == "string" {
+      push(cpp, `  return lsg_str({callee});`)
+    } else if rt.kind == "ptr" {
+      push(cpp, `  return (void *){callee};`)
+    } else {
+      push(cpp, `  return ({wrap_type(rt.kind)}){callee};`)
+    }
+    push(cpp, "}")
+    # the Ludic side
+    var lp = ""
+    for i in 0 .. len(kinds) {
+      if i > 0 { lp = lp + ", " }
+      lp = lp + `a{i}: {ludic_type(kinds[i].kind)}`
+    }
+    if len(names) > 0 { push(lud, `# {names}`) }
+    push(lud, `extern function {name}({lp}) -> {ludic_type(rt.kind)} = "{name}"`)
+    return ""
+  }
+
+  # an enum value that is a plain integer literal (decimal or 0x), else ""
+  function int_literal(s: string) -> string {
+    let t = trim(s)
+    if len(t) == 0 { return "" }
+    var i = 0
+    if t[0] == 45 { i = 1 }
+    if len(t) > i + 2 and t[i] == 48 and (t[i + 1] == 120 or t[i + 1] == 88) {
+      for k in i + 2 .. len(t) {
+        let ch = t[k]
+        if not ((ch >= 48 and ch <= 57) or (ch >= 97 and ch <= 102) or (ch >= 65 and ch <= 70)) { return "" }
+      }
+      if len(t) > i + 10 { return "" }
+      return t
+    }
+    if len(t) > 10 { return "" }
+    for k in i .. len(t) { if t[k] < 48 or t[k] > 57 { return "" } }
+    if i == len(t) { return "" }
+    return t
+  }
+
+  function write_file(path: string, lines: []string) -> bool {
+    return Fs.write_text(path, Text.join(lines, "\n") + "\n")
+  }
+
+  entry {
+    var sdk = ""
+    var out = ""
+    var ifaces = DEFAULT_INTERFACES
+    var enum_names = DEFAULT_ENUMS
+    var i = 1
+    while i < arg_count() {
+      let a = arg(i)
+      if a == "--sdk" and i + 1 < arg_count() { sdk = arg(i + 1);  i += 1 }
+      else if a == "--out" and i + 1 < arg_count() { out = arg(i + 1);  i += 1 }
+      else if a == "--interfaces" and i + 1 < arg_count() { ifaces = arg(i + 1);  i += 1 }
+      else if a == "--enums" and i + 1 < arg_count() { enum_names = arg(i + 1);  i += 1 }
+      else { print(`steam_gen: unknown argument {a}`);  exit(2) }
+      i += 1
+    }
+    if len(sdk) == 0 or len(out) == 0 {
+      print("usage: steam_gen --sdk <steamworks sdk dir> --out <dir> [--interfaces A,B] [--enums E,F]")
+      exit(2)
+    }
+    let json_path = `{sdk}/public/steam/steam_api.json`
+    if not Fs.exists(json_path) {
+      print(`steam_gen: {json_path} is not there: STEAMWORKS_SDK must name the SDK's root (the folder holding public/ and redistributable_bin/)`)
+      exit(1)
+    }
+    let j = Json.read_file(json_path)
+    if j == null {
+      print(`steam_gen: {json_path} did not parse`)
+      exit(1)
+    }
+    let c = new Ctx
+    ctx_load(c, j)
+    let want = Text.split(ifaces, ",")
+    let cpp = new []string
+    let lud = new []string
+    let report = new []string
+    push(cpp, "// lsg_wrap.cpp - generated by steam_gen from the developer's steam_api.json. Not checked in, not for redistribution.")
+    push(cpp, "#include <stdint.h>")
+    push(cpp, "#include <string.h>")
+    push(cpp, "#include \"steam/steam_api_flat.h\"")
+    push(cpp, "#if defined(_WIN32)")
+    push(cpp, "#define LSG_API extern \"C\" __declspec(dllexport)")
+    push(cpp, "#else")
+    push(cpp, "#define LSG_API extern \"C\" __attribute__((visibility(\"default\")))")
+    push(cpp, "#endif")
+    push(cpp, "extern \"C\" int lsx_ready;")
+    push(cpp, "extern \"C\" const char *lsg_str(const char *s);")
+    push(lud, "# steam_raw.ludic - generated by steam_gen from the developer's steam_api.json. Not checked in.")
+    push(lud, "# Each lsg_ function answers 0, null or \"\" while Steam is not up.")
+    var wrapped = 0
+    var left = 0
+    let ifs = Value.get(j, "interfaces")
+    for n in 0 .. Value.count(ifs) {
+      let iface = Value.at(ifs, n)
+      let cls = str_of(iface, "classname")
+      if not has(want, cls) { continue }
+      let acc = accessor_of(iface)
+      if len(acc) == 0 {
+        push(report, `{cls}: no accessor, skipped whole`)
+        continue
+      }
+      push(cpp, `// {cls} through {acc}`)
+      push(lud, `# {cls}`)
+      let ms = Value.get(iface, "methods")
+      var w = 0
+      for k in 0 .. Value.count(ms) {
+        let m = Value.at(ms, k)
+        let why = wrap_method(c, cls, acc, m, cpp, lud)
+        if len(why) == 0 { w += 1 } else {
+          left += 1
+          push(report, `{cls}::{str_of(m, "methodname")} left out - {why}`)
+        }
+      }
+      wrapped += w
+      push(report, `{cls}: {w} of {Value.count(ms)} wrapped`)
+    }
+    # the enums
+    let en = new []string
+    push(en, "# steam_enums.ludic - generated by steam_gen from the developer's steam_api.json. Not checked in.")
+    let wanted = Text.split(enum_names, ",")
+    let es = Value.get(j, "enums")
+    var consts = 0
+    for n in 0 .. Value.count(es) {
+      let e = Value.at(es, n)
+      if not has(wanted, str_of(e, "enumname")) { continue }
+      push(en, `# {str_of(e, "enumname")}`)
+      let vs = Value.get(e, "values")
+      for k in 0 .. Value.count(vs) {
+        let v = Value.at(vs, k)
+        let lit = int_literal(str_of(v, "value"))
+        var nm = str_of(v, "name")
+        if Text.starts_with(nm, "k_") { nm = Text.slice(nm, 2, len(nm)) }
+        if len(lit) == 0 or len(nm) == 0 { continue }
+        push(en, `export const {nm}: int = {lit}`)
+        consts += 1
+      }
+    }
+    push(report, `wrapped {wrapped} methods, left out {left}, {consts} enum constants`)
+    if not Fs.exists(out) { Fs.mkdir(out) }
+    let ok1 = write_file(`{out}/lsg_wrap.cpp`, cpp)
+    let ok2 = write_file(`{out}/steam_raw.ludic`, lud)
+    let ok3 = write_file(`{out}/steam_enums.ludic`, en)
+    let ok4 = write_file(`{out}/report.txt`, report)
+    if not (ok1 and ok2 and ok3 and ok4) {
+      print(`steam_gen: could not write into {out}`)
+      exit(1)
+    }
+    print(`steam_gen: wrapped {wrapped} methods ({left} left out, see report.txt), {consts} enum constants -> {out}`)
+  }
+}

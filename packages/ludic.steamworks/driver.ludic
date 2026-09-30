@@ -1,0 +1,587 @@
+# driver.ludic - the SteamDriver over the SDK. The plain calls go through the generated wrappers
+# (gen/steam_raw.ludic: lsg_<Interface>_<Method>, which answer 0 / null / "" while Steam is not up); what
+# is asynchronous or returns a struct goes through the shim (lsx_*). Every Valve enum value is the one the
+# developer's own steam_api.json says (gen/steam_enums.ludic), never a number written here.
+
+state SteamworksState {
+  sw_sb: StrBuf = null
+  sw_strs: StrTable = null
+  sw_buf: []byte = null                   # an out string
+  sw_ints: words = null                   # out ints
+  sw_one: []byte = null                   # an out bool (one byte)
+  sw_fl: floats = null
+  sw_dig_name: []string = new []string    # Steam Input handles, by name, found once
+  sw_dig_h: []long = new []long
+  sw_ana_name: []string = new []string
+  sw_ana_h: []long = new []long
+  sw_set_name: []string = new []string
+  sw_set_h: []long = new []long
+  sw_set_on: long = 0
+  sw_origins: words = null
+  sw_ticket_h: int = 0
+  sw_w: words = null
+  sw_h: words = null
+}
+
+const SW_BUF: int = 4096
+const SW_STRS_MOST: int = 16384
+
+@alloc_ok("once: the scratch buffers")
+function sw_ready(sw_st: mut SteamworksState) -> void {
+  if sw_st.sw_sb != null { return }
+  sw_st.sw_sb = sb_new(2100)
+  sw_st.sw_strs = strs_new(SW_STRS_MOST)
+  sw_st.sw_buf = buffer(SW_BUF)
+  sw_st.sw_ints = words(8)
+  sw_st.sw_one = buffer(8)
+  sw_st.sw_fl = floats(2)
+  sw_st.sw_origins = words(16)
+  sw_st.sw_w = words(1)
+  sw_st.sw_h = words(1)
+}
+
+# a C string the SDK handed back, as one Ludic string per distinct text (the wrappers' ring is reused by the
+# next call, so nothing keeps the pointer). Past the table's room a plain copy is made instead.
+@alloc_ok("one copy per distinct text; a plain copy only once the table is full")
+function sw_str(sw_st: mut SteamworksState, s: string) -> string {
+  sw_ready(sw_st)
+  let n = len(s)
+  if n == 0 { return "" }
+  if strs_count(sw_st.sw_strs) >= SW_STRS_MOST - 1 { return Text.slice(s, 0, n) }
+  sb_clear(sw_st.sw_sb)
+  for i in 0 .. n { sb_byte(sw_st.sw_sb, s[i]) }
+  return sb_intern(sw_st.sw_sb, sw_st.sw_strs)
+}
+
+# the text the SDK wrote into the scratch buffer (up to its zero, or `most` bytes), as an interned string
+@alloc_ok("one copy per distinct text, as sw_str")
+function sw_buf_str(sw_st: mut SteamworksState, most: int) -> string {
+  sw_ready(sw_st)
+  if strs_count(sw_st.sw_strs) >= SW_STRS_MOST - 1 { return text_of(sw_st.sw_buf, most) }
+  sb_clear(sw_st.sw_sb)
+  var i = 0
+  while i < most and i < SW_BUF and sw_st.sw_buf[i] != 0 {
+    sb_byte(sw_st.sw_sb, sw_st.sw_buf[i])
+    i += 1
+  }
+  if sb_len(sw_st.sw_sb) == 0 { return "" }
+  return sb_intern(sw_st.sw_sb, sw_st.sw_strs)
+}
+
+# ---- the session ----
+
+# a development run has steam_appid.txt where Steam looks for it (beside the executable and in the working
+# directory); a release never writes it, and is relaunched through Steam instead
+function sw_appid_file(app: int) -> void {
+  let text = string(app)
+  if not (Fs.exists("steam_appid.txt") and Fs.read_text("steam_appid.txt") == text) { Fs.write_text("steam_appid.txt", text) }
+  if arg_count() > 0 {
+    let exe = arg(0)
+    var slash = -1
+    for i in 0 .. len(exe) { if exe[i] == 47 or exe[i] == 92 { slash = i } }
+    if slash > 0 {
+      let there = Text.slice(exe, 0, slash) + "/steam_appid.txt"
+      if not (Fs.exists(there) and Fs.read_text(there) == text) { Fs.write_text(there, text) }
+    }
+  }
+}
+
+function sw_init(sw_st: mut SteamworksState, app: int, dev: bool) -> int {
+  sw_ready(sw_st)
+  var d = 0
+  if dev {
+    d = 1
+    sw_appid_file(app)
+  }
+  return lsx_init(app, d)
+}
+
+@alloc_ok("once per failed start: the message")
+function sw_error(sw_st: mut SteamworksState) -> string {
+  sw_ready(sw_st)
+  let n = lsx_error(sw_st.sw_buf, SW_BUF)
+  return text_of(sw_st.sw_buf, n)
+}
+
+function sw_shutdown() -> void { lsx_shutdown() }
+function sw_pump() -> void { lsx_pump() }
+function sw_poll() -> int { return lsx_poll() }
+function sw_fi(k: int) -> int { return lsx_fi(k) }
+function sw_fl(k: int) -> long { return lsx_fl(k) }
+
+@alloc_ok("a fact's text is copied out once per event")
+function sw_ftext(sw_st: mut SteamworksState) -> string {
+  sw_ready(sw_st)
+  let n = lsx_ftext(sw_st.sw_buf, SW_BUF)
+  if n <= 0 { return "" }
+  return text_of(sw_st.sw_buf, n)
+}
+
+# ---- the user and the app ----
+function sw_me() -> long { return lsg_ISteamUser_GetSteamID() }
+function sw_logged_on() -> bool { return lsg_ISteamUser_BLoggedOn() }
+function sw_persona(sw_st: mut SteamworksState) -> string { return sw_str(sw_st, lsg_ISteamFriends_GetPersonaName()) }
+function sw_app_id() -> int { return lsg_ISteamUtils_GetAppID() }
+function sw_language(sw_st: mut SteamworksState) -> string { return sw_str(sw_st, lsg_ISteamApps_GetCurrentGameLanguage()) }
+
+@alloc_ok("the launch command line is read at start and on a new launch")
+function sw_launch_cmd(sw_st: mut SteamworksState) -> string {
+  sw_ready(sw_st)
+  let n = lsg_ISteamApps_GetLaunchCommandLine(sw_st.sw_buf, SW_BUF - 1)
+  if n <= 0 { return "" }
+  return text_of(sw_st.sw_buf, n)
+}
+@alloc_ok("a launch parameter is read at start and on a new launch")
+function sw_launch_query(sw_st: mut SteamworksState, key: string) -> string {
+  let s = lsg_ISteamApps_GetLaunchQueryParam(key)
+  if len(s) == 0 { return "" }
+  return Text.slice(s, 0, len(s))
+}
+function sw_on_deck() -> bool { return lsg_ISteamUtils_IsRunningOnSteamHardware() == 1 }
+function sw_proton() -> bool { return lsg_ISteamUtils_IsRunningUnderProton() }
+function sw_overlay_on() -> bool { return lsg_ISteamUtils_IsOverlayEnabled() }
+
+function sw_auth_ticket(sw_st: mut SteamworksState, b: []byte, cap: int) -> int {
+  sw_ready(sw_st)
+  sw_st.sw_ints[0] = 0
+  let h = lsg_ISteamUser_GetAuthSessionTicket(b, cap, sw_st.sw_ints, null)
+  sw_st.sw_ticket_h = h
+  if h == 0 { return 0 }
+  return sw_st.sw_ints[0]
+}
+function sw_auth_handle(sw_st: SteamworksState) -> int { return sw_st.sw_ticket_h }
+function sw_auth_cancel(h: int) -> void { lsg_ISteamUser_CancelAuthTicket(h) }
+
+# ---- friends ----
+function sw_friend_count() -> int { return lsg_ISteamFriends_GetFriendCount(EFriendFlagImmediate) }
+function sw_friend_at(i: int) -> long { return lsg_ISteamFriends_GetFriendByIndex(i, EFriendFlagImmediate) }
+function sw_friend_name(sw_st: mut SteamworksState, id: long) -> string { return sw_str(sw_st, lsg_ISteamFriends_GetFriendPersonaName(id)) }
+function sw_friend_state(id: long) -> int { return lsg_ISteamFriends_GetFriendPersonaState(id) }
+function sw_friend_game(id: long) -> int {
+  if lsx_friend_game(id) == 0 { return 0 }
+  # the game's id is 64 bits, the app id its low 24
+  return int(lsx_friend_game_id() % long(16777216))
+}
+function sw_friend_lobby(id: long) -> long {
+  if lsx_friend_game(id) == 0 { return long(0) }
+  return lsx_friend_game_lobby()
+}
+function sw_user_info(id: long) -> void { lsg_ISteamFriends_RequestUserInformation(id, false) }
+
+# Steam says -1 while an avatar loads and 0 for none; the mechanic says 0 and -1
+function sw_avatar_request(id: long, size: int) -> int {
+  var h = 0
+  if size <= 0 { h = lsg_ISteamFriends_GetSmallFriendAvatar(id) }
+  else if size == 1 { h = lsg_ISteamFriends_GetMediumFriendAvatar(id) }
+  else { h = lsg_ISteamFriends_GetLargeFriendAvatar(id) }
+  if h == -1 { return 0 }
+  if h == 0 { return -1 }
+  return h
+}
+function sw_avatar_size(sw_st: mut SteamworksState, h: int) -> int {
+  sw_ready(sw_st)
+  sw_st.sw_w[0] = 0
+  sw_st.sw_h[0] = 0
+  if not lsg_ISteamUtils_GetImageSize(h, sw_st.sw_w, sw_st.sw_h) { return 0 }
+  return sw_st.sw_w[0] * 65536 + sw_st.sw_h[0]
+}
+function sw_avatar_rgba(sw_st: mut SteamworksState, h: int, b: []byte, cap: int) -> bool {
+  let size = sw_avatar_size(sw_st, h)
+  let need = (size / 65536) * (size % 65536) * 4
+  if need <= 0 or need > cap or need > len(b) { return false }
+  return lsg_ISteamUtils_GetImageRGBA(h, b, need)
+}
+
+function sw_presence_set(k: string, v: string) -> bool { return lsg_ISteamFriends_SetRichPresence(k, v) }
+function sw_presence_clear() -> void { lsg_ISteamFriends_ClearRichPresence() }
+function sw_friend_presence(sw_st: mut SteamworksState, id: long, k: string) -> string { return sw_str(sw_st, lsg_ISteamFriends_GetFriendRichPresence(id, k)) }
+function sw_overlay(what: string) -> void { lsg_ISteamFriends_ActivateGameOverlay(what) }
+function sw_overlay_user(what: string, id: long) -> void { lsg_ISteamFriends_ActivateGameOverlayToUser(what, id) }
+function sw_overlay_invite(lobby: long) -> void { lsg_ISteamFriends_ActivateGameOverlayInviteDialog(lobby) }
+function sw_overlay_url(url: string) -> void { lsg_ISteamFriends_ActivateGameOverlayToWebPage(url, 0) }
+function sw_invite_friend(id: long, connect: string) -> bool { return lsg_ISteamFriends_InviteUserToGame(id, connect) }
+function sw_overlay_pos(corner: int) -> void { lsg_ISteamUtils_SetOverlayNotificationPosition(corner) }
+
+# ---- lobbies: the mechanic's codes to Valve's enums ----
+function sw_lobby_kind(kind: int) -> int {
+  if kind == LOBBY_PRIVATE { return ELobbyTypePrivate }
+  if kind == LOBBY_FRIENDS { return ELobbyTypeFriendsOnly }
+  if kind == LOBBY_PUBLIC { return ELobbyTypePublic }
+  if kind == LOBBY_INVISIBLE { return ELobbyTypeInvisible }
+  return ELobbyTypePrivateUnique
+}
+function sw_lobby_cmp(cmp: int) -> int {
+  if cmp == LOBBY_CMP_EQUAL_OR_LESS { return ELobbyComparisonEqualToOrLessThan }
+  if cmp == LOBBY_CMP_LESS { return ELobbyComparisonLessThan }
+  if cmp == LOBBY_CMP_GREATER { return ELobbyComparisonGreaterThan }
+  if cmp == LOBBY_CMP_EQUAL_OR_GREATER { return ELobbyComparisonEqualToOrGreaterThan }
+  if cmp == LOBBY_CMP_NOT_EQUAL { return ELobbyComparisonNotEqual }
+  return ELobbyComparisonEqual
+}
+function sw_lobby_distance(d: int) -> int {
+  if d == LOBBY_NEAR { return ELobbyDistanceFilterClose }
+  if d == LOBBY_FAR { return ELobbyDistanceFilterFar }
+  if d == LOBBY_WORLD { return ELobbyDistanceFilterWorldwide }
+  return ELobbyDistanceFilterDefault
+}
+
+function sw_lobby_create(kind: int, most: int) -> bool { return lsg_ISteamMatchmaking_CreateLobby(sw_lobby_kind(kind), most) != long(0) }
+function sw_lobby_join(id: long) -> bool { return lsg_ISteamMatchmaking_JoinLobby(id) != long(0) }
+function sw_lobby_leave(id: long) -> void { lsg_ISteamMatchmaking_LeaveLobby(id) }
+function sw_lobby_filter_reset() -> void { }
+function sw_lobby_filter_text(k: string, v: string, cmp: int) -> void { lsg_ISteamMatchmaking_AddRequestLobbyListStringFilter(k, v, sw_lobby_cmp(cmp)) }
+function sw_lobby_filter_num(k: string, v: int, cmp: int) -> void { lsg_ISteamMatchmaking_AddRequestLobbyListNumericalFilter(k, v, sw_lobby_cmp(cmp)) }
+function sw_lobby_filter_near(k: string, v: int) -> void { lsg_ISteamMatchmaking_AddRequestLobbyListNearValueFilter(k, v) }
+function sw_lobby_filter_slots(n: int) -> void { lsg_ISteamMatchmaking_AddRequestLobbyListFilterSlotsAvailable(n) }
+function sw_lobby_filter_distance(d: int) -> void { lsg_ISteamMatchmaking_AddRequestLobbyListDistanceFilter(sw_lobby_distance(d)) }
+function sw_lobby_filter_limit(n: int) -> void { lsg_ISteamMatchmaking_AddRequestLobbyListResultCountFilter(n) }
+function sw_lobby_search() -> bool { return lsg_ISteamMatchmaking_RequestLobbyList() != long(0) }
+function sw_lobby_result(i: int) -> long { return lsg_ISteamMatchmaking_GetLobbyByIndex(i) }
+function sw_lobby_set_data(l: long, k: string, v: string) -> bool { return lsg_ISteamMatchmaking_SetLobbyData(l, k, v) }
+function sw_lobby_data(sw_st: mut SteamworksState, l: long, k: string) -> string { return sw_str(sw_st, lsg_ISteamMatchmaking_GetLobbyData(l, k)) }
+function sw_lobby_set_member(l: long, k: string, v: string) -> void { lsg_ISteamMatchmaking_SetLobbyMemberData(l, k, v) }
+function sw_lobby_member_data(sw_st: mut SteamworksState, l: long, who: long, k: string) -> string { return sw_str(sw_st, lsg_ISteamMatchmaking_GetLobbyMemberData(l, who, k)) }
+function sw_lobby_members(l: long) -> int { return lsg_ISteamMatchmaking_GetNumLobbyMembers(l) }
+function sw_lobby_member_at(l: long, i: int) -> long { return lsg_ISteamMatchmaking_GetLobbyMemberByIndex(l, i) }
+function sw_lobby_owner(l: long) -> long { return lsg_ISteamMatchmaking_GetLobbyOwner(l) }
+function sw_lobby_limit(l: long) -> int { return lsg_ISteamMatchmaking_GetLobbyMemberLimit(l) }
+function sw_lobby_joinable(l: long, b: bool) -> bool { return lsg_ISteamMatchmaking_SetLobbyJoinable(l, b) }
+function sw_lobby_type(l: long, kind: int) -> bool { return lsg_ISteamMatchmaking_SetLobbyType(l, sw_lobby_kind(kind)) }
+function sw_lobby_invite(l: long, who: long) -> bool { return lsg_ISteamMatchmaking_InviteUserToLobby(l, who) }
+function sw_lobby_set_owner(l: long, who: long) -> bool { return lsg_ISteamMatchmaking_SetLobbyOwner(l, who) }
+
+# a chat line: its bytes and the terminating zero, as Steam's own examples send them
+function sw_lobby_chat(sw_st: mut SteamworksState, l: long, text: string) -> bool {
+  sw_ready(sw_st)
+  let n = Math.min(len(text), SW_BUF - 2)
+  for i in 0 .. n { sw_st.sw_buf[i] = text[i] }
+  sw_st.sw_buf[n] = 0
+  return lsg_ISteamMatchmaking_SendLobbyChatMsg(l, sw_st.sw_buf, n + 1)
+}
+
+# ---- stats, achievements, leaderboards ----
+function sw_stats_request() -> bool { return true }        # the SDK sends the stats at start: UserStatsReceived_t comes by itself
+function sw_stat_set_int(k: string, v: int) -> bool { return lsg_ISteamUserStats_SetStatInt32(k, v) }
+function sw_stat_int(sw_st: mut SteamworksState, k: string) -> int {
+  sw_ready(sw_st)
+  sw_st.sw_ints[0] = 0
+  if not lsg_ISteamUserStats_GetStatInt32(k, sw_st.sw_ints) { return 0 }
+  return sw_st.sw_ints[0]
+}
+function sw_stat_set_float(k: string, v: float) -> bool { return lsg_ISteamUserStats_SetStatFloat(k, v) }
+function sw_stat_float(sw_st: mut SteamworksState, k: string) -> float {
+  sw_ready(sw_st)
+  sw_st.sw_fl[0] = 0.0
+  if not lsg_ISteamUserStats_GetStatFloat(k, sw_st.sw_fl) { return 0.0 }
+  return sw_st.sw_fl[0]
+}
+function sw_ach_set(k: string) -> bool { return lsg_ISteamUserStats_SetAchievement(k) }
+function sw_ach_clear(k: string) -> bool { return lsg_ISteamUserStats_ClearAchievement(k) }
+# 1 unlocked, 0 locked, -1 Steam does not know the name
+function sw_ach_get(sw_st: mut SteamworksState, k: string) -> int {
+  sw_ready(sw_st)
+  sw_st.sw_one[0] = 0
+  if not lsg_ISteamUserStats_GetAchievement(k, sw_st.sw_one) { return -1 }
+  if sw_st.sw_one[0] != 0 { return 1 }
+  return 0
+}
+function sw_ach_progress(k: string, cur: int, goal: int) -> bool { return lsg_ISteamUserStats_IndicateAchievementProgress(k, cur, goal) }
+function sw_stats_store() -> bool { return lsg_ISteamUserStats_StoreStats() }
+function sw_stats_reset(all: bool) -> bool { return lsg_ISteamUserStats_ResetAllStats(all) }
+
+function sw_lb_sort(sort: int) -> int {
+  if sort == LB_SORT_ASC { return ELeaderboardSortMethodAscending }
+  return ELeaderboardSortMethodDescending
+}
+function sw_lb_display(display: int) -> int {
+  if display == LB_DISPLAY_SECONDS { return ELeaderboardDisplayTypeTimeSeconds }
+  if display == LB_DISPLAY_MILLIS { return ELeaderboardDisplayTypeTimeMilliSeconds }
+  return ELeaderboardDisplayTypeNumeric
+}
+function sw_lb_find(name: string, create: bool, sort: int, display: int) -> bool {
+  if create { return lsg_ISteamUserStats_FindOrCreateLeaderboard(name, sw_lb_sort(sort), sw_lb_display(display)) != long(0) }
+  return lsg_ISteamUserStats_FindLeaderboard(name) != long(0)
+}
+function sw_lb_upload(h: long, score: int, method: int) -> bool {
+  var m = ELeaderboardUploadScoreMethodKeepBest
+  if method == LB_UPLOAD_FORCE { m = ELeaderboardUploadScoreMethodForceUpdate }
+  return lsg_ISteamUserStats_UploadLeaderboardScore(h, m, score, null, 0) != long(0)
+}
+function sw_lb_download(h: long, request: int, from: int, to: int) -> bool {
+  var r = ELeaderboardDataRequestGlobal
+  if request == LB_AROUND_USER { r = ELeaderboardDataRequestGlobalAroundUser }
+  if request == LB_FRIENDS { r = ELeaderboardDataRequestFriends }
+  return lsg_ISteamUserStats_DownloadLeaderboardEntries(h, r, from, to) != long(0)
+}
+function sw_lb_count() -> int { return lsx_lb_count() }
+function sw_lb_user(i: int) -> long { return lsx_lb_user(i) }
+function sw_lb_score(i: int) -> int { return lsx_lb_score(i) }
+function sw_lb_rank(i: int) -> int { return lsx_lb_rank(i) }
+
+# ---- cloud files ----
+function sw_rs_enabled() -> bool { return lsg_ISteamRemoteStorage_IsCloudEnabledForAccount() and lsg_ISteamRemoteStorage_IsCloudEnabledForApp() }
+function sw_rs_write(name: string, b: []byte, n: int) -> bool { return lsg_ISteamRemoteStorage_FileWrite(name, b, n) }
+function sw_rs_read(name: string, b: []byte, cap: int) -> int { return lsg_ISteamRemoteStorage_FileRead(name, b, cap) }
+function sw_rs_size(name: string) -> int { return lsg_ISteamRemoteStorage_GetFileSize(name) }
+function sw_rs_exists(name: string) -> bool { return lsg_ISteamRemoteStorage_FileExists(name) }
+function sw_rs_delete(name: string) -> bool { return lsg_ISteamRemoteStorage_FileDelete(name) }
+function sw_rs_count() -> int { return lsg_ISteamRemoteStorage_GetFileCount() }
+function sw_rs_name(sw_st: mut SteamworksState, i: int) -> string {
+  sw_ready(sw_st)
+  return sw_str(sw_st, lsg_ISteamRemoteStorage_GetFileNameAndSize(i, sw_st.sw_ints))
+}
+function sw_rs_time(name: string) -> long { return lsg_ISteamRemoteStorage_GetFileTimestamp(name) }
+
+# ---- Steam Input: a handle is found by name once ----
+function sw_input_start() -> bool { return lsg_ISteamInput_Init(true) }
+function sw_input_frame() -> void { lsg_ISteamInput_RunFrame(false) }
+function sw_input_count() -> int { return lsx_input_controllers() }
+function sw_input_controller(i: int) -> long { return lsx_input_controller(i) }
+
+@alloc_ok("once per action name: its handle is found and kept")
+function sw_handle_of(names: []string, handles: []long, name: string, kind: int) -> long {
+  for i in 0 .. len(names) { if names[i] == name { return handles[i] } }
+  var h = long(0)
+  if kind == 0 { h = lsg_ISteamInput_GetDigitalActionHandle(name) }
+  else if kind == 1 { h = lsg_ISteamInput_GetAnalogActionHandle(name) }
+  else { h = lsg_ISteamInput_GetActionSetHandle(name) }
+  push(names, name)
+  push(handles, h)
+  return h
+}
+
+function sw_input_activate(sw_st: mut SteamworksState, c: long, set: string) -> bool {
+  let h = sw_handle_of(sw_st.sw_set_name, sw_st.sw_set_h, set, 2)
+  if h == long(0) { return false }
+  lsg_ISteamInput_ActivateActionSet(c, h)
+  sw_st.sw_set_on = h
+  return true
+}
+# bit 0 down, bit 1 the action is active
+function sw_input_digital(sw_st: mut SteamworksState, c: long, action: string) -> int {
+  let h = sw_handle_of(sw_st.sw_dig_name, sw_st.sw_dig_h, action, 0)
+  if h == long(0) { return 0 }
+  return lsx_input_digital(c, h)
+}
+function sw_input_analog(sw_st: mut SteamworksState, c: long, action: string, xy: floats) -> bool {
+  let h = sw_handle_of(sw_st.sw_ana_name, sw_st.sw_ana_h, action, 1)
+  if h == long(0) { return false }
+  return lsx_input_analog(c, h, xy) != 0
+}
+function sw_glyph_size(size: int) -> int {
+  if size <= 0 { return ESteamInputGlyphSize_Small }
+  if size == 1 { return ESteamInputGlyphSize_Medium }
+  return ESteamInputGlyphSize_Large
+}
+function sw_input_glyph(sw_st: mut SteamworksState, c: long, action: string, size: int) -> string {
+  sw_ready(sw_st)
+  let dh = sw_handle_of(sw_st.sw_dig_name, sw_st.sw_dig_h, action, 0)
+  var n = 0
+  if dh != long(0) { n = lsg_ISteamInput_GetDigitalActionOrigins(c, sw_st.sw_set_on, dh, sw_st.sw_origins) }
+  if n <= 0 {
+    let ah = sw_handle_of(sw_st.sw_ana_name, sw_st.sw_ana_h, action, 1)
+    if ah != long(0) { n = lsg_ISteamInput_GetAnalogActionOrigins(c, sw_st.sw_set_on, ah, sw_st.sw_origins) }
+  }
+  if n <= 0 { return "" }
+  return sw_str(sw_st, lsg_ISteamInput_GetGlyphPNGForActionOrigin(sw_st.sw_origins[0], sw_glyph_size(size), 0))
+}
+
+# ---- apps and utilities ----
+function sw_dlc_count() -> int { return lsg_ISteamApps_GetDLCCount() }
+function sw_dlc_at(sw_st: mut SteamworksState, i: int) -> int {
+  sw_ready(sw_st)
+  sw_st.sw_ints[0] = 0
+  if not lsg_ISteamApps_BGetDLCDataByIndex(i, sw_st.sw_ints, sw_st.sw_one, sw_st.sw_buf, 256) { return 0 }
+  return sw_st.sw_ints[0]
+}
+function sw_dlc_owned(app: int) -> bool { return lsg_ISteamApps_BIsSubscribedApp(app) }
+function sw_dlc_name(sw_st: mut SteamworksState, i: int) -> string {
+  sw_ready(sw_st)
+  sw_st.sw_buf[0] = 0
+  if not lsg_ISteamApps_BGetDLCDataByIndex(i, sw_st.sw_ints, sw_st.sw_one, sw_st.sw_buf, 256) { return "" }
+  return sw_buf_str(sw_st, 255)
+}
+function sw_beta(sw_st: mut SteamworksState) -> string {
+  sw_ready(sw_st)
+  sw_st.sw_buf[0] = 0
+  if not lsg_ISteamApps_GetCurrentBetaName(sw_st.sw_buf, 256) { return "" }
+  return sw_buf_str(sw_st, 255)
+}
+function sw_gamepad_text(mode: int, line: int, desc: string, most: int, existing: string) -> bool {
+  var m = EGamepadTextInputModeNormal
+  if mode == 1 { m = EGamepadTextInputModePassword }
+  var l = EGamepadTextInputLineModeSingleLine
+  if line == 1 { l = EGamepadTextInputLineModeMultipleLines }
+  return lsg_ISteamUtils_ShowGamepadTextInput(m, l, desc, most, existing)
+}
+
+# ---- the timeline ----
+function sw_tl_mode(mode: int) -> void {
+  var m = ETimelineGameMode_Invalid
+  if mode == 1 { m = ETimelineGameMode_Playing }
+  else if mode == 2 { m = ETimelineGameMode_Staging }
+  else if mode == 3 { m = ETimelineGameMode_Menus }
+  else if mode == 4 { m = ETimelineGameMode_LoadingScreen }
+  lsg_ISteamTimeline_SetTimelineGameMode(m)
+}
+function sw_tl_clip(priority: int) -> int {
+  if priority <= 0 { return ETimelineEventClipPriority_None }
+  if priority == 1 { return ETimelineEventClipPriority_Standard }
+  return ETimelineEventClipPriority_Featured
+}
+function sw_tl_marker(icon: string, title: string, desc: string, priority: int, offset: float) -> void {
+  lsg_ISteamTimeline_AddInstantaneousTimelineEvent(title, desc, icon, 0, offset, sw_tl_clip(priority))
+}
+function sw_tl_range(icon: string, title: string, desc: string, priority: int, offset: float, duration: float) -> void {
+  lsg_ISteamTimeline_AddRangeTimelineEvent(title, desc, icon, 0, offset, duration, sw_tl_clip(priority))
+}
+function sw_tl_phase(id: string) -> void {
+  lsg_ISteamTimeline_StartGamePhase()
+  lsg_ISteamTimeline_SetGamePhaseID(id)
+}
+function sw_tl_phase_end() -> void { lsg_ISteamTimeline_EndGamePhase() }
+function sw_tl_tooltip(text: string) -> void {
+  if len(text) == 0 { lsg_ISteamTimeline_ClearTimelineTooltip(0.0) } else { lsg_ISteamTimeline_SetTimelineTooltip(text, 0.0) }
+}
+
+# ---- Steam's relay, as datagrams ----
+function sw_net_start() -> void { lsx_net_start() }
+function sw_net_allow(id: long) -> void { lsx_net_allow(id) }
+function sw_net_any(on: bool) -> void {
+  var v = 0
+  if on { v = 1 }
+  lsx_net_accept_any(v)
+}
+function sw_net_send(to: long, b: []byte, n: int, reliable: bool) -> bool {
+  var r = 0
+  if reliable { r = 1 }
+  return lsx_net_send(to, b, n, r, 0) != 0
+}
+function sw_net_recv(b: []byte, cap: int) -> int { return lsx_net_recv(b, cap, 0) }
+function sw_net_from() -> long { return lsx_net_from() }
+function sw_net_close(id: long) -> void { lsx_net_close(id) }
+
+# ---- the driver ----
+export function steamworks_driver() -> SteamDriver {
+  let d = steam_null_driver()
+  d.init = fn sw_init
+  d.error = fn sw_error
+  d.shutdown = fn sw_shutdown
+  d.pump = fn sw_pump
+  d.poll = fn sw_poll
+  d.fi = fn sw_fi
+  d.fl = fn sw_fl
+  d.ftext = fn sw_ftext
+  d.me = fn sw_me
+  d.logged_on = fn sw_logged_on
+  d.persona = fn sw_persona
+  d.app_id = fn sw_app_id
+  d.language = fn sw_language
+  d.launch_cmd = fn sw_launch_cmd
+  d.launch_query = fn sw_launch_query
+  d.on_deck = fn sw_on_deck
+  d.proton = fn sw_proton
+  d.overlay_on = fn sw_overlay_on
+  d.auth_ticket = fn sw_auth_ticket
+  d.auth_handle = fn sw_auth_handle
+  d.auth_cancel = fn sw_auth_cancel
+  d.friend_count = fn sw_friend_count
+  d.friend_at = fn sw_friend_at
+  d.friend_name = fn sw_friend_name
+  d.friend_state = fn sw_friend_state
+  d.friend_game = fn sw_friend_game
+  d.friend_lobby = fn sw_friend_lobby
+  d.user_info = fn sw_user_info
+  d.avatar_request = fn sw_avatar_request
+  d.avatar_size = fn sw_avatar_size
+  d.avatar_rgba = fn sw_avatar_rgba
+  d.presence_set = fn sw_presence_set
+  d.presence_clear = fn sw_presence_clear
+  d.friend_presence = fn sw_friend_presence
+  d.overlay = fn sw_overlay
+  d.overlay_user = fn sw_overlay_user
+  d.overlay_invite = fn sw_overlay_invite
+  d.overlay_url = fn sw_overlay_url
+  d.invite_friend = fn sw_invite_friend
+  d.lobby_create = fn sw_lobby_create
+  d.lobby_join = fn sw_lobby_join
+  d.lobby_leave = fn sw_lobby_leave
+  d.lobby_filter_reset = fn sw_lobby_filter_reset
+  d.lobby_filter_text = fn sw_lobby_filter_text
+  d.lobby_filter_num = fn sw_lobby_filter_num
+  d.lobby_filter_near = fn sw_lobby_filter_near
+  d.lobby_filter_slots = fn sw_lobby_filter_slots
+  d.lobby_filter_distance = fn sw_lobby_filter_distance
+  d.lobby_filter_limit = fn sw_lobby_filter_limit
+  d.lobby_search = fn sw_lobby_search
+  d.lobby_result = fn sw_lobby_result
+  d.lobby_set_data = fn sw_lobby_set_data
+  d.lobby_data = fn sw_lobby_data
+  d.lobby_set_member = fn sw_lobby_set_member
+  d.lobby_member_data = fn sw_lobby_member_data
+  d.lobby_members = fn sw_lobby_members
+  d.lobby_member_at = fn sw_lobby_member_at
+  d.lobby_owner = fn sw_lobby_owner
+  d.lobby_limit = fn sw_lobby_limit
+  d.lobby_joinable = fn sw_lobby_joinable
+  d.lobby_type = fn sw_lobby_type
+  d.lobby_chat = fn sw_lobby_chat
+  d.lobby_invite = fn sw_lobby_invite
+  d.lobby_set_owner = fn sw_lobby_set_owner
+  d.stats_request = fn sw_stats_request
+  d.stat_set_int = fn sw_stat_set_int
+  d.stat_int = fn sw_stat_int
+  d.stat_set_float = fn sw_stat_set_float
+  d.stat_float = fn sw_stat_float
+  d.ach_set = fn sw_ach_set
+  d.ach_clear = fn sw_ach_clear
+  d.ach_get = fn sw_ach_get
+  d.ach_progress = fn sw_ach_progress
+  d.stats_store = fn sw_stats_store
+  d.stats_reset = fn sw_stats_reset
+  d.lb_find = fn sw_lb_find
+  d.lb_upload = fn sw_lb_upload
+  d.lb_download = fn sw_lb_download
+  d.lb_count = fn sw_lb_count
+  d.lb_user = fn sw_lb_user
+  d.lb_score = fn sw_lb_score
+  d.lb_rank = fn sw_lb_rank
+  d.rs_enabled = fn sw_rs_enabled
+  d.rs_write = fn sw_rs_write
+  d.rs_read = fn sw_rs_read
+  d.rs_size = fn sw_rs_size
+  d.rs_exists = fn sw_rs_exists
+  d.rs_delete = fn sw_rs_delete
+  d.rs_count = fn sw_rs_count
+  d.rs_name = fn sw_rs_name
+  d.rs_time = fn sw_rs_time
+  d.input_start = fn sw_input_start
+  d.input_frame = fn sw_input_frame
+  d.input_count = fn sw_input_count
+  d.input_controller = fn sw_input_controller
+  d.input_activate = fn sw_input_activate
+  d.input_digital = fn sw_input_digital
+  d.input_analog = fn sw_input_analog
+  d.input_glyph = fn sw_input_glyph
+  d.dlc_count = fn sw_dlc_count
+  d.dlc_at = fn sw_dlc_at
+  d.dlc_owned = fn sw_dlc_owned
+  d.dlc_name = fn sw_dlc_name
+  d.beta = fn sw_beta
+  d.overlay_pos = fn sw_overlay_pos
+  d.gamepad_text = fn sw_gamepad_text
+  d.tl_mode = fn sw_tl_mode
+  d.tl_marker = fn sw_tl_marker
+  d.tl_range = fn sw_tl_range
+  d.tl_phase = fn sw_tl_phase
+  d.tl_phase_end = fn sw_tl_phase_end
+  d.tl_tooltip = fn sw_tl_tooltip
+  d.net_start = fn sw_net_start
+  d.net_allow = fn sw_net_allow
+  d.net_any = fn sw_net_any
+  d.net_send = fn sw_net_send
+  d.net_recv = fn sw_net_recv
+  d.net_from = fn sw_net_from
+  d.net_close = fn sw_net_close
+  return d
+}

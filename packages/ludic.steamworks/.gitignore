@@ -1,0 +1,4 @@
+# what native/build.sh makes from the developer's own Steamworks SDK: Valve's, never committed
+/gen/
+/lib/
+build/

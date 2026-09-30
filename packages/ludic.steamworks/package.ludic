@@ -1,0 +1,15 @@
+# ludic.steamworks - the Steamworks SDK as a Ludic package: the real backend for ludic.steam. The SDK is
+# Valve's and is not redistributable in an open toolchain, so none of it is here: `sh native/build.sh`
+# reads the copy on the developer's machine (STEAMWORKS_SDK) and builds lib/<target>/ and gen/ from it,
+# both git-ignored. See README.md.
+package "ludic.steamworks"
+version "0.1.0"
+kind source
+native "macos-arm64" "lib/macos-arm64/libludicsteam.dylib"
+native "macos-arm64" "lib/macos-arm64/libsteam_api.dylib"
+native "macos-x64" "lib/macos-x64/libludicsteam.dylib"
+native "macos-x64" "lib/macos-x64/libsteam_api.dylib"
+native "windows-x64" "lib/windows-x64/ludicsteam.dll"
+native "windows-x64" "lib/windows-x64/steam_api64.dll"
+native "linux-x64" "lib/linux-x64/libludicsteam.so"
+native "linux-x64" "lib/linux-x64/libsteam_api.so"
