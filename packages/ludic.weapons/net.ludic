@@ -1,12 +1,13 @@
 # net.ludic - weapons in a party. THE MODEL (README has it whole): the host decides. A guest fires its own gun
 # at once (the magazine, the recoil, the spread, the flash and a picture of the hit are all predicted, from a
-# seed the shot number makes), and says so in a ShotRequest (actor, gun, shot number, when, the aim ray, the
-# spread it used). The game sends it; the host runs `weapons_host_fire`, which checks the shooter could have
-# fired (holding it, loaded, within its rate, from where it stands), derives the seed ITSELF from the shot
-# number (a guest cannot pick a lucky one), puts the bodies back where the guest saw them (the lag
-# compensation port) and resolves the round for real through the damage port. The answer is a ShotConfirm
-# for the owner, and the host's facts (FIRED with the seed and spread) for the other guests to show. The
-# package sends nothing: the game puts the outbox, the confirms and the facts on its wire
+# seed the shot number makes), and says so in the @Net action WeaponsFire (actor, gun, shot number, when, the
+# aim ray, the spread it used). It travels through the NetActions port the game binds to its session; the host
+# checks it (`weapons_fire_ok`: the shooter could have fired - holding it, loaded, within its rate, from where
+# it stands, played by that sender), derives the seed ITSELF from the shot number (a guest cannot pick a lucky
+# one), puts the bodies back where the guest saw them (the lag compensation port) and resolves the round for
+# real through the damage port. The owner is told it was accepted (or refused: its pending shot is taken back),
+# every other guest gets the action and shows the shot. The package sends nothing: the game binds NetActions
+# and puts the inventory snapshots and the kill feed on its wire
 
 export function weapons_set_role(weapons_st: mut WeaponsState, role: int) -> void { weapons_st.wp__role = role }
 export function weapons_role(weapons_st: WeaponsState) -> int { return weapons_st.wp__role }
@@ -29,109 +30,90 @@ export function weapons_set_local(weapons_st: mut WeaponsState, actor: int) -> v
   if h >= 0 { weapons_set_mine(weapons_st, h, true) }
 }
 
-function wp__answer(weapons_st: mut WeaponsState, s: Shooter, actor: int, shot_no: int, accepted: bool, why: int) -> void {
-  var c = q_rec(weapons_st.wp__conf)
-  if c == null {
-    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
-    c = new ShotConfirm
-    q_ring_add(weapons_st.wp__conf, c)
-  }
-  c.actor = actor
-  c.shot_no = shot_no
-  c.accepted = accepted
-  c.why = why
-  c.mag = 0
-  c.reserve = 0
-  if s != null {
-    let g = wp__gun(s, s.cur)
-    if g != null {
-      c.mag = g.mag
-      if wp__ammo_ok(g.ammo_type) { c.reserve = s.reserve[g.ammo_type] }
-    }
-  }
-  q_push(weapons_st.wp__conf, c)
+# can the host take this shot, and if not why not: WP_OK, or the reason. It changes nothing, so the action's
+# validator and the verb that resolves it say the same. `sender` is the wire's slot (never the message's;
+# 0: this machine, which is trusted); the aim ray and the spread are the guest's, held to what the weapon can do
+function wp__fire_why(weapons_st: WeaponsState, sender: int, actor: int, gun: int, weapon: int, shot_no: int, ox: float, oy: float, oz: float) -> int {
+  if weapons_st.wp__role == WEAPONS_GUEST { return WP_NOT_HOST }
+  let h = weapons_of(weapons_st, actor)
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return WP_NO_SHOOTER }
+  if sender > 0 and not WeaponsWorld.allow_shot(sender, actor) { return WP_NOT_YOURS }
+  let g = wp__gun(s, s.cur)
+  if g == null or gun != s.cur or g.weapon != weapon { return WP_NOT_HELD }
+  if shot_no <= s.last_no { return WP_STALE }
+  if not WeaponsWorld.can_fire(actor) { return WP_CANT }
+  if s.busy == WBUSY_EQUIP or s.busy == WBUSY_RELOAD_END or (s.busy != WBUSY_NONE and not Weapons[g.weapon].reload_each) { return WP_BUSY }
+  if g.mag < Weapons[g.weapon].ammo_per_shot { return WP_NO_AMMO }
+  if weapons_st.wp__time + weapons_st.wp__slack < s.next_ok { return WP_TOO_FAST }
+  if not WeaponsWorld.origin_ok(actor, ox, oy, oz) { return WP_BAD_ORIGIN }
+  return WP_OK
 }
 
-# the host takes a guest's shot. Returns WP_OK, or why it was refused (and a refusal is an answer too: the
-# owner's confirm says so and sets its magazine right). The aim ray and the spread are the guest's, held to
-# what the weapon can do; the seed is the host's own
-export function weapons_host_fire(weapons_st: mut WeaponsState, r: ShotRequest) -> int {
-  if weapons_st.wp__role == WEAPONS_GUEST { return WP_NOT_HOST }
-  let h = weapons_of(weapons_st, r.actor)
+# the host's check of a guest's WeaponsFire, before it is reduced (@Validate): a refusal is told to the
+# guest, which takes its pending shot back
+export function weapons_fire_ok(weapons_st: WeaponsState, a: WeaponsFire, sender: int) -> bool {
+  return wp__fire_why(weapons_st, sender, a.actor, a.gun, a.weapon, a.shot_no, a.ox, a.oy, a.oz) == WP_OK
+}
+
+# the host takes a guest's shot (what the WeaponsFire reducer does on the host; a game that carries shots
+# some other way calls it). Returns WP_OK, or why it was refused. The seed is the host's own, derived from the
+# shot number, so a guest cannot pick a lucky one; the spread is held to what the weapon can have in any stance
+export function weapons_host_take(weapons_st: mut WeaponsState, sender: int, actor: int, gun: int, weapon: int, shot_no: int, stamp: float, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, claimed: float, charge: float) -> int {
+  let why = wp__fire_why(weapons_st, sender, actor, gun, weapon, shot_no, ox, oy, oz)
+  if why == WP_NOT_HOST { return why }
+  let h = weapons_of(weapons_st, actor)
   let s = wp__shooter(weapons_st, h)
-  if s == null {
-    wp__answer(weapons_st, null, r.actor, r.shot_no, false, WP_NO_SHOOTER)
-    return WP_NO_SHOOTER
-  }
-  let g = wp__gun(s, s.cur)
-  var why = WP_OK
-  if g == null or r.gun != s.cur or g.weapon != r.weapon {
-    why = WP_NOT_HELD
-  } else if r.shot_no <= s.last_no {
-    why = WP_STALE
-  } else if not WeaponsWorld.can_fire(r.actor) {
-    why = WP_CANT
-  } else if s.busy == WBUSY_EQUIP or s.busy == WBUSY_RELOAD_END or (s.busy != WBUSY_NONE and not Weapons[g.weapon].reload_each) {
-    why = WP_BUSY
-  } else if g.mag < Weapons[g.weapon].ammo_per_shot {
-    why = WP_NO_AMMO
-  } else if weapons_st.wp__time + weapons_st.wp__slack < s.next_ok {
-    why = WP_TOO_FAST
-  } else if not WeaponsWorld.origin_ok(r.actor, r.ox, r.oy, r.oz) {
-    why = WP_BAD_ORIGIN
-  }
+  if s == null { return WP_NO_SHOOTER }
   if why != WP_OK {
-    if r.shot_no > s.last_no { s.last_no = r.shot_no }
-    let f = wp__fact(weapons_st, WP_REFUSED, s, h, r.gun)
+    if shot_no > s.last_no { s.last_no = shot_no }
+    let f = wp__fact(weapons_st, WP_REFUSED, s, h, gun)
     f.zone = why
-    f.shot_no = r.shot_no
-    wp__answer(weapons_st, s, r.actor, r.shot_no, false, why)
+    f.shot_no = shot_no
     return why
   }
+  let g = wp__gun(s, s.cur)
   if s.busy != WBUSY_NONE {
     s.busy = WBUSY_NONE
     s.busy_t = 0.0
   }
-  let stamp = Math.clamp(r.stamp, weapons_st.wp__time - weapons_st.wp__max_rewind, weapons_st.wp__time)
-  let seed = weapons_shot_seed(weapons_st.wp__seed, r.actor, r.shot_no)
-  let spread = Math.clamp(r.spread, 0.0, wp__spread_cap(g))
-  WeaponsWorld.rewind(stamp)
-  wp__fire_round(weapons_st, s, h, r.gun, g, r.ox, r.oy, r.oz, r.dx, r.dy, r.dz, seed, r.shot_no, spread, r.charge, WP_MODE_AUTH)
+  let at = Math.clamp(stamp, weapons_st.wp__time - weapons_st.wp__max_rewind, weapons_st.wp__time)
+  let seed = weapons_shot_seed(weapons_st.wp__seed, actor, shot_no)
+  let spread = Math.clamp(claimed, 0.0, wp__spread_cap(g))
+  WeaponsWorld.rewind(at)
+  wp__fire_round(weapons_st, s, h, gun, g, ox, oy, oz, dx, dy, dz, seed, shot_no, spread, charge, WP_MODE_AUTH)
   WeaponsWorld.restore()
   s.next_ok = Math.max(s.next_ok, weapons_st.wp__time) + wp__interval(g)
-  wp__spent(weapons_st, s, g, h, r.gun)
-  s.shots = r.shot_no
-  s.last_no = r.shot_no
-  wp__answer(weapons_st, s, r.actor, r.shot_no, true, WP_OK)
+  wp__spent(weapons_st, s, g, h, gun)
+  s.shots = shot_no
+  s.last_no = shot_no
   return WP_OK
 }
 
-# the owner takes the host's answer to a shot: a refusal or a different magazine is corrected, and the
-# fact says which. While shots are still unanswered the magazine is the prediction's, less what they hold
-export function weapons_net_confirm(weapons_st: mut WeaponsState, actor: int, shot_no: int, accepted: bool, mag: int, reserve: int) -> bool {
-  let h = weapons_of(weapons_st, actor)
+# what a WeaponsFire does. On the host (and solo) the round is resolved for real; on a guest it is the host's
+# word: for the owner a confirm (a shot that is no longer in the air), for any other guest the shot of someone
+# else, shown (the owner's own shot is shown already, at the pull). The owner's magazine is its own prediction
+# until the host's inventory snapshot says otherwise (`weapons_apply_snapshot` leaves it alone while shots
+# are in the air)
+reducer WeaponsState on WeaponsFire(weapons_st: mut WeaponsState, a: WeaponsFire) {
+  if weapons_st.wp__role != WEAPONS_GUEST {
+    weapons_host_take(weapons_st, action_sender(), a.actor, a.gun, a.weapon, a.shot_no, a.stamp, a.ox, a.oy, a.oz, a.dx, a.dy, a.dz, a.spread, a.charge)
+    return
+  }
+  let h = weapons_of(weapons_st, a.actor)
   let s = wp__shooter(weapons_st, h)
-  if s == null { return false }
-  if s.pending > 0 { s.pending -= 1 }
-  let g = wp__gun(s, s.cur)
-  var corrected = not accepted
-  if g != null {
-    let aps = Weapons[g.weapon].ammo_per_shot
-    var want = mag - s.pending * aps
-    if want < 0 { want = 0 }
-    if g.mag != want and (not accepted or s.pending == 0) {
-      g.mag = want
-      corrected = true
-    }
-    if s.pending == 0 and wp__ammo_ok(g.ammo_type) { s.reserve[g.ammo_type] = reserve }
+  if s != null and s.mine {
+    if s.pending > 0 { s.pending -= 1 }
+    let f = wp__fact(weapons_st, WP_CONFIRMED, s, h, s.cur)
+    f.shot_no = a.shot_no
+    return
   }
-  let f = wp__fact(weapons_st, WP_CONFIRMED, s, h, s.cur)
-  f.shot_no = shot_no
-  if corrected {
-    f.what = WP_CORRECTED
-    if g != null { f.amount = float(g.mag) }
-  }
-  return true
+  weapons_net_fired(weapons_st, a.actor, a.weapon, a.ammo, a.shot_no, a.ox, a.oy, a.oz, a.dx, a.dy, a.dz, a.spread, a.charge)
+}
+
+# the owner's own shot is in the air from the pull until the host answers; a refusal puts the count back
+@Predicted reducer Shooter in WeaponsState.wp__shooters on WeaponsFire(r: mut Row<Shooter>, weapons_st: WeaponsState, a: WeaponsFire) {
+  if weapons_st.wp__role == WEAPONS_GUEST and r.rec.mine and r.rec.actor == a.actor { r.rec.pending += 1 }
 }
 
 # another machine's shot, shown here: the host's FIRED fact, relayed (the owner's own shot is shown already:

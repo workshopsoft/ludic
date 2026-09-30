@@ -58,6 +58,11 @@ program WeaponsTest {
     res_y: float = 0.0
     res_z: float = 0.0
     log_rays: bool = true
+    allow_shot: bool = true
+    wire: []int = null         # what the guest's port was given for the host: a word count, then the words, message after message
+    back: []int = null         # what the host's port was given for the asking guest (a confirm, a refusal)
+    all: []int = null          # what it was given for the other guests (the shot, to show)
+    all_except: int = -1       # and the one it was told to leave out
   }
   function a_aim_y(arena_st: Arena, a: int) -> float { return 1.0 }
   function a_muzzle_y(arena_st: Arena, a: int) -> float { return 1.0 }
@@ -185,8 +190,40 @@ program WeaponsTest {
     arena_st.effects += 1
     arena_st.last_effect_kind = kind
   }
-  bind WeaponsWorld { aim_y: fn a_aim_y, muzzle_y: fn a_muzzle_y, can_fire: fn a_can_fire, origin_ok: fn a_origin_ok, hostile: fn a_hostile, body_x: fn a_body_x, body_y: fn a_body_y, body_z: fn a_body_z, blocked: fn a_blocked, rewind: fn a_rewind, restore: fn a_restore, hit_actor: fn a_hit_actor, hit_zone: fn a_hit_zone, hit_material: fn a_hit_material, hit_nx: fn a_hit_nx, hit_ny: fn a_hit_ny, hit_nz: fn a_hit_nz, pierce_cost: fn a_cost, find: fn a_find, cast: fn a_cast, sweep: fn a_sweep }
+  function a_allow_shot(arena_st: Arena, sender: int, actor: int) -> bool { return arena_st.allow_shot }
+  bind WeaponsWorld { allow_shot: fn a_allow_shot, aim_y: fn a_aim_y, muzzle_y: fn a_muzzle_y, can_fire: fn a_can_fire, origin_ok: fn a_origin_ok, hostile: fn a_hostile, body_x: fn a_body_x, body_y: fn a_body_y, body_z: fn a_body_z, blocked: fn a_blocked, rewind: fn a_rewind, restore: fn a_restore, hit_actor: fn a_hit_actor, hit_zone: fn a_hit_zone, hit_material: fn a_hit_material, hit_nx: fn a_hit_nx, hit_ny: fn a_hit_ny, hit_nz: fn a_hit_nz, pierce_cost: fn a_cost, find: fn a_find, cast: fn a_cast, sweep: fn a_sweep }
   bind WeaponsDamage { hurt: fn d_hurt, alive: fn d_alive }
+
+  # the session, as the game would bind it: the role is the package's own, a message lands in a list
+  function a_role(weapons_st: WeaponsState) -> int {
+    if weapons_role(weapons_st) == WEAPONS_GUEST { return 2 }
+    if weapons_role(weapons_st) == WEAPONS_HOST { return 1 }
+    return 0
+  }
+  function a_put(list: []int, w: []int, n: int) -> void {
+    push(list, n)
+    for i in 0 .. n { push(list, w[i]) }
+  }
+  function a_to_host(arena_st: mut Arena, w: []int, n: int) -> void { a_put(arena_st.wire, w, n) }
+  function a_to_peer(arena_st: mut Arena, pid: int, w: []int, n: int) -> void { a_put(arena_st.back, w, n) }
+  function a_to_all(arena_st: mut Arena, except: int, w: []int, n: int) -> void {
+    arena_st.all_except = except
+    a_put(arena_st.all, w, n)
+  }
+  bind NetActions { role: fn a_role, to_host: fn a_to_host, to_peer: fn a_to_peer, to_all: fn a_to_all }
+  # every message of a list, to net_actions_receive as if it came from `from`
+  function deliver(list: []int, from: int) -> int {
+    var i = 0
+    var rc = 0
+    while i < len(list) {
+      let n = list[i]
+      let w = new []int
+      for k in 0 .. n { push(w, list[i + 1 + k]) }
+      rc = net_actions_receive(from, w, n)
+      i += 1 + n
+    }
+    return rc
+  }
   bind WeaponsEffects { apply: fn e_apply }
 
   # actor 1 is the shooter at the origin aiming along +z from 1 m up; 2 ahead at 10 m, 3 at 50 m, 4 off to the side, 5 at 30 m
@@ -214,6 +251,12 @@ program WeaponsTest {
     arena_st.cover = false
     arena_st.cost_wall = 2.0
     arena_st.log_rays = true
+    arena_st.allow_shot = true
+    arena_st.wire = new []int
+    arena_st.back = new []int
+    arena_st.all = new []int
+    arena_st.all_except = -1
+    net_actions_reset()
   }
   function pass_time(weapons_st: mut WeaponsState, secs: float) -> void {
     var t = 0.0
@@ -1025,22 +1068,9 @@ program WeaponsTest {
 
   # ---- a party
 
-  function request(actor: int, gun: int, weapon: int, shot_no: int, stamp: float) -> ShotRequest {
-    let r = new ShotRequest
-    r.actor = actor
-    r.gun = gun
-    r.weapon = weapon
-    r.shot_no = shot_no
-    r.stamp = stamp
-    r.ox = 0.0
-    r.oy = 1.0
-    r.oz = 0.0
-    r.dx = 0.0
-    r.dy = 0.0
-    r.dz = 1.0
-    r.spread = 1.0
-    r.charge = 1.0
-    return r
+  # what the host is asked: shot `shot_no` of `actor`'s gun `gun` (holding `weapon`), along +z from 1 m up
+  function take(weapons_st: mut WeaponsState, actor: int, gun: int, weapon: int, shot_no: int, stamp: float) -> int {
+    return weapons_host_take(weapons_st, 0, actor, gun, weapon, shot_no, stamp, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0)
   }
   # the host's view of the shooter a guest fired as: a fresh gun, drawn and ready, the clock well on
   function host_copy(weapons_st: mut WeaponsState, h: int) -> void {
@@ -1052,7 +1082,7 @@ program WeaponsTest {
     pass_time(weapons_st, 2.0)
   }
 
-  test "a guest's shot is shown at once and asked of the host, which takes the same shot from its own seed" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+  test "a guest's shot is shown at once and asked of the host, which takes the same shot from its own seed and confirms it" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
     fresh(weapons_st, arena_st)
     weapons_set_local(weapons_st, 1)
     weapons_set_role(weapons_st, WEAPONS_GUEST)
@@ -1069,21 +1099,19 @@ program WeaponsTest {
     expect(fs[1].predicted)
     expect_eq(fs[1].target, 2)
     expect(near(fs[1].damage, 20.0))
-    let out = q_drain(weapons_outbox(weapons_st))
-    expect_eq(len(out), 1)
-    expect_eq(out[0].shot_no, 1)
-    expect_eq(out[0].seed, weapons_shot_seed(5, 1, 1))
-    expect(near(out[0].spread, 1.0))
-    expect_eq(out[0].gun, 0)
-    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 2, 0.0)), WP_NOT_HOST)
+    drain_actions()                                 # the action leaves: one message for the host, and it is in the air
+    expect_eq(net_actions_pending(), 1)
+    expect_eq(weapons_unanswered(weapons_st, h), 1)
+    expect_eq(net_actions_stat(0), 1)
+    expect_eq(arena_st.hurts, 0)
+    expect_eq(weapons_host_take(weapons_st, 0, 1, 0, WPN_SIDEARM, 2, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0), WP_NOT_HOST)
     host_copy(weapons_st, h)
-    let r = request(1, 0, WPN_SIDEARM, 1, weapons_time(weapons_st) - 0.1)
-    r.seed = 999
     arena_st.rays_dx = new []float
     q_clear(weapons_facts(weapons_st))
-    expect_eq(weapons_host_fire(weapons_st, r), WP_OK)
-    expect(arena_st.rays_dx[0] == gx)
-    expect(near(arena_st.rewound, weapons_time(weapons_st) - 0.1))
+    expect_eq(deliver(arena_st.wire, 1), 0)         # pid 1 shot for its own actor
+    drain_actions()
+    expect(arena_st.rays_dx[0] == gx)               # the same spread from the seed the shot number makes
+    expect(near(arena_st.rewound, weapons_time(weapons_st) - 0.25))   # the stamp was 2 s old: held to max_rewind
     expect_eq(arena_st.restored, 1)
     expect(near(arena_st.dealt[2], 20.0))
     expect_eq(weapons_mag(weapons_st, h, 0), 9)
@@ -1091,10 +1119,17 @@ program WeaponsTest {
     expect_eq(hf[0].what, WP_FIRED)
     expect(not hf[0].predicted)
     expect_eq(hf[0].seed, weapons_shot_seed(5, 1, 1))
-    let cf = q_drain(weapons_confirms(weapons_st))
-    expect_eq(len(cf), 1)
-    expect(cf[0].accepted)
-    expect_eq(cf[0].mag, 9)
+    expect(len(arena_st.all) > 0)                   # the other guests are told, and the asker left out of it
+    expect_eq(arena_st.all_except, 1)
+    expect(len(arena_st.back) > 0)                  # it is told it was accepted
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    deliver(arena_st.back, 1)
+    drain_actions()
+    expect_eq(net_actions_pending(), 0)
+    expect_eq(net_actions_stat(2), 1)
+    expect_eq(weapons_unanswered(weapons_st, h), 0)
+    let cf = q_drain(weapons_facts(weapons_st))
+    expect_eq(cf[0].what, WP_CONFIRMED)
     expect_eq(cf[0].shot_no, 1)
   }
 
@@ -1104,43 +1139,35 @@ program WeaponsTest {
     let h = armed(weapons_st, WPN_SIDEARM, 30)
     weapons_set_role(weapons_st, WEAPONS_HOST)
     let t = weapons_time(weapons_st)
-    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 1, t)), WP_OK)
-    q_clear(weapons_confirms(weapons_st))
+    expect_eq(take(weapons_st, 1, 0, WPN_SIDEARM, 1, t), WP_OK)
     q_clear(weapons_facts(weapons_st))
-    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 1, t)), WP_STALE)
-    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 2, t)), WP_TOO_FAST)
-    let c0 = q_drain(weapons_confirms(weapons_st))
-    expect_eq(len(c0), 2)
-    expect(not c0[0].accepted)
-    expect_eq(c0[0].why, WP_STALE)
-    expect_eq(c0[1].why, WP_TOO_FAST)
+    expect_eq(take(weapons_st, 1, 0, WPN_SIDEARM, 1, t), WP_STALE)
+    expect_eq(take(weapons_st, 1, 0, WPN_SIDEARM, 2, t), WP_TOO_FAST)
     let f0 = q_drain(weapons_facts(weapons_st))
     expect_eq(f0[0].what, WP_REFUSED)
     expect_eq(f0[0].zone, WP_STALE)
     pass_time(weapons_st, 0.5)
-    expect_eq(weapons_host_fire(weapons_st, request(1, 3, WPN_SIDEARM, 3, t)), WP_NOT_HELD)
-    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_CARBINE, 3, t)), WP_NOT_HELD)
-    expect_eq(weapons_host_fire(weapons_st, request(77, 0, WPN_SIDEARM, 3, t)), WP_NO_SHOOTER)
+    expect_eq(take(weapons_st, 1, 3, WPN_SIDEARM, 3, t), WP_NOT_HELD)
+    expect_eq(take(weapons_st, 1, 0, WPN_CARBINE, 3, t), WP_NOT_HELD)
+    expect_eq(take(weapons_st, 77, 0, WPN_SIDEARM, 3, t), WP_NO_SHOOTER)
     arena_st.origin_ok = false
-    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 4, t)), WP_BAD_ORIGIN)
+    expect_eq(take(weapons_st, 1, 0, WPN_SIDEARM, 4, t), WP_BAD_ORIGIN)
     arena_st.origin_ok = true
     arena_st.can_fire = false
-    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 5, t)), WP_CANT)
+    expect_eq(take(weapons_st, 1, 0, WPN_SIDEARM, 5, t), WP_CANT)
     arena_st.can_fire = true
     weapons_reload(weapons_st, h)
-    expect_eq(weapons_host_fire(weapons_st, request(1, 0, WPN_SIDEARM, 6, t)), WP_BUSY)
+    expect_eq(take(weapons_st, 1, 0, WPN_SIDEARM, 6, t), WP_BUSY)
     pass_time(weapons_st, 3.0)
-    let far = request(1, 0, WPN_SIDEARM, 7, weapons_time(weapons_st) - 5.0)
-    far.spread = 50.0
     q_clear(weapons_facts(weapons_st))
-    expect_eq(weapons_host_fire(weapons_st, far), WP_OK)
+    expect_eq(weapons_host_take(weapons_st, 0, 1, 0, WPN_SIDEARM, 7, weapons_time(weapons_st) - 5.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 50.0, 1.0), WP_OK)
     expect(near(arena_st.rewound, weapons_time(weapons_st) - 0.25))
     let ff = q_drain(weapons_facts(weapons_st))
     expect_eq(ff[0].what, WP_FIRED)
     expect(near(ff[0].spread, 24.0))
   }
 
-  test "the owner's confirm sets the magazine right, and leaves alone what shots still in the air account for" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+  test "a guest's shots in the air are taken back when the host refuses them, and the ones it takes stay" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
     fresh(weapons_st, arena_st)
     weapons_set_local(weapons_st, 1)
     weapons_set_role(weapons_st, WEAPONS_GUEST)
@@ -1148,25 +1175,76 @@ program WeaponsTest {
     weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
     pass_time(weapons_st, 0.3)
     weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+    drain_actions()
+    expect_eq(weapons_unanswered(weapons_st, h), 2)
+    expect_eq(net_actions_pending(), 2)
     expect_eq(weapons_mag(weapons_st, h, 0), 8)
-    q_clear(weapons_facts(weapons_st))
-    expect(weapons_net_confirm(weapons_st, 1, 1, true, 9, 30))
-    expect_eq(weapons_mag(weapons_st, h, 0), 8)
-    var fs = q_drain(weapons_facts(weapons_st))
-    expect_eq(fs[0].what, WP_CONFIRMED)
-    expect(weapons_net_confirm(weapons_st, 1, 2, true, 8, 30))
-    fs = q_drain(weapons_facts(weapons_st))
-    expect_eq(fs[0].what, WP_CONFIRMED)
-    pass_time(weapons_st, 0.3)
+    arena_st.origin_ok = false                       # the host's world says neither could have started there
+    host_copy(weapons_st, h)
+    expect_eq(deliver(arena_st.wire, 1), 0)
+    drain_actions()
+    expect_eq(net_actions_stat(7), 2)                # refused by the host, nothing resolved
+    expect_eq(arena_st.hurts, 0)
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)   # this machine's own shot, asked after
+    deliver(arena_st.back, 1)
+    drain_actions()
+    expect_eq(net_actions_stat(3), 2)
+    expect_eq(net_actions_stat(4), 2)                # one rollback for each refusal
+    expect_eq(weapons_unanswered(weapons_st, h), 1)  # the third is still in the air: replayed on top
+    expect_eq(net_actions_pending(), 1)
+  }
+
+  test "the host does not take a shot for an actor the sender does not play" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    weapons_set_local(weapons_st, 1)
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    let h = armed(weapons_st, WPN_SIDEARM, 30)
     weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
-    pass_time(weapons_st, 0.3)
-    expect_eq(weapons_mag(weapons_st, h, 0), 7)
+    drain_actions()
+    host_copy(weapons_st, h)
+    arena_st.allow_shot = false
+    expect_eq(deliver(arena_st.wire, 4), 0)
+    drain_actions()
+    expect_eq(net_actions_stat(7), 1)
+    expect_eq(arena_st.hurts, 0)
+    expect_eq(weapons_mag(weapons_st, h, 0), 10)
+    expect_eq(len(arena_st.all), 0)                  # and nobody is told of it
+  }
+
+  test "the other guests get the shot and show it: a mirror, the flash and the impact, nothing spent or hurt" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    weapons_set_local(weapons_st, 1)
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    let h = armed(weapons_st, WPN_SIDEARM, 10)
+    weapons_fire_at(weapons_st, h, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+    drain_actions()
+    host_copy(weapons_st, h)
+    deliver(arena_st.wire, 1)
+    drain_actions()
+    expect(len(arena_st.all) > 0)
+    expect_eq(arena_st.all_except, 1)
+    # another guest's machine: it plays actor 9 and is handed what the host broadcast
+    weapons_set_role(weapons_st, WEAPONS_GUEST)
+    weapons_set_local(weapons_st, 9)
     q_clear(weapons_facts(weapons_st))
-    expect(weapons_net_confirm(weapons_st, 1, 3, false, 8, 30))
-    fs = q_drain(weapons_facts(weapons_st))
-    expect_eq(fs[0].what, WP_CORRECTED)
-    expect_eq(weapons_mag(weapons_st, h, 0), 8)
-    expect(not weapons_net_confirm(weapons_st, 55, 1, true, 1, 1))
+    let hurts = arena_st.hurts
+    let mag = weapons_mag(weapons_st, h, 0)
+    expect_eq(deliver(arena_st.all, 1), 0)
+    drain_actions()
+    expect_eq(arena_st.hurts, hurts)
+    expect_eq(weapons_mag(weapons_st, h, 0), mag)
+    let fs = q_drain(weapons_facts(weapons_st))
+    var fired = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == WP_FIRED {
+        fired += 1
+        expect(fs[i].remote)
+        expect_eq(fs[i].actor, 1)
+        expect_eq(fs[i].shot_no, 1)
+      }
+    }
+    expect_eq(fired, 1)
   }
 
   test "another machine's shot is shown here: the flash and the impact, from a mirror, with nothing spent or hurt" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
@@ -1196,7 +1274,6 @@ program WeaponsTest {
     expect(m >= 0)
     expect_eq(weapons_mag(weapons_st, m, 0), 10)
     expect_eq(weapons_shots(weapons_st, m), 4)
-    expect_eq(len(q_drain(weapons_outbox(weapons_st))), 0)
   }
 
   test "an inventory snapshot rebuilds the guns, parts, skin, hand and reserve on a mirror, in order" (weapons_st: mut WeaponsState, arena_st: mut Arena) {

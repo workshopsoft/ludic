@@ -4,7 +4,7 @@
 # put `n` of an item in: as many as fit the slot left and its stack limit, taken from the player's carry.
 # Returns how many went in, -1 when refused
 export function realty_store(realty_st: mut RealtyState, who: int, map: string, key: string, item: int, n: int) -> int {
-  if not rlt_authority(realty_st, who, map, key) { return -1 }
+  if rlt_remote(realty_st, who, RASK_STORE, map, key, item, n) { return -1 }
   let h = rlt_find(realty_st, map, key)
   if h == null {
     rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING)
@@ -49,7 +49,7 @@ export function realty_store(realty_st: mut RealtyState, who: int, map: string, 
 
 # take `n` of an item out into the carry: as many as are there and the carry will hold. Returns how many, -1 when refused
 export function realty_fetch(realty_st: mut RealtyState, who: int, map: string, key: string, item: int, n: int) -> int {
-  if not rlt_authority(realty_st, who, map, key) { return -1 }
+  if rlt_remote(realty_st, who, RASK_FETCH, map, key, item, n) { return -1 }
   let h = rlt_find(realty_st, map, key)
   if h == null {
     rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING)
@@ -104,7 +104,7 @@ export function realty_stacks_used(realty_st: RealtyState, map: string, key: str
 
 # put a vehicle in the garage: the game takes it out of the world through the port
 export function realty_park(realty_st: mut RealtyState, who: int, map: string, key: string, vehicle: int) -> bool {
-  if not rlt_authority(realty_st, who, map, key) { return false }
+  if rlt_remote(realty_st, who, RASK_PARK, map, key, vehicle, 0) { return false }
   let h = rlt_find(realty_st, map, key)
   if h == null { return rlt_no(realty_st, who, map, key, REALTY_NO_HOLDING) }
   if not rlt_can_use(h, who) { return rlt_no(realty_st, who, map, key, REALTY_NO_ACCESS) }
@@ -119,7 +119,7 @@ export function realty_park(realty_st: mut RealtyState, who: int, map: string, k
 
 # bring a vehicle out: the game puts it back at the garage spawn of the site (its entrance when it has none)
 export function realty_retrieve(realty_st: mut RealtyState, sites: Properties, who: int, key: string, vehicle: int) -> bool {
-  if not rlt_authority(realty_st, who, sites.map, key) { return false }
+  if rlt_remote(realty_st, who, RASK_RETRIEVE, sites.map, key, vehicle, 0) { return false }
   let s = properties_find(sites, key)
   if s < 0 { return rlt_no(realty_st, who, sites.map, key, REALTY_NO_SITE) }
   let h = rlt_find(realty_st, sites.map, key)
@@ -157,7 +157,7 @@ export function realty_vehicle_at(realty_st: RealtyState, map: string, key: stri
 # is taken (the game hands it to the raider); the property is safe for the kind's `raid_cooldown` game hours after.
 # Returns the total taken, -1 when refused
 export function realty_raid(realty_st: mut RealtyState, raider: int, map: string, key: string, pct: int) -> int {
-  if not rlt_authority(realty_st, raider, map, key) { return -1 }
+  if rlt_remote(realty_st, raider, RASK_RAID, map, key, pct, 0) { return -1 }
   let h = rlt_find(realty_st, map, key)
   if h == null {
     rlt_no(realty_st, raider, map, key, REALTY_NO_HOLDING)

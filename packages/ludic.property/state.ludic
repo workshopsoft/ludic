@@ -4,10 +4,12 @@
 # anybody's crew or friend
 export port RealtyWorld {
   authority: fn() -> bool = fn rlt_yes                # this machine owns the world: only it changes ownership
+  allow_ask: fn(int, int) -> bool = fn rlt_yes2        # the host: (sender, player) does the machine that sent an ask play that player
   same_crew: fn(int, int) -> bool = fn rlt_nobody         # (a, b): in one crew
   friends: fn(int, int) -> bool = fn rlt_nobody           # (a, b): friends
 }
 function rlt_yes() -> bool { return true }
+function rlt_yes2(sender: int, who: int) -> bool { return true }
 function rlt_nobody(a: int, b: int) -> bool { return false }
 
 # money. Unbound: money is no object, earning is nobody's
@@ -61,7 +63,7 @@ export const REALTY_NOT_FOR_SALE: int = 3   # its kind is not sold (or not rente
 export const REALTY_TAKEN: int = 4          # someone else has it
 export const REALTY_NOT_OWNER: int = 5
 export const REALTY_BROKE: int = 6          # the purse would not pay
-export const REALTY_NOT_HOST: int = 7       # this machine does not own the world: ask the host
+export const REALTY_NOT_HOST: int = 7       # (kept for its number: a guest's verb is asked of the host now, and says nothing here)
 export const REALTY_NO_ACCESS: int = 8
 export const REALTY_INSIDE: int = 9         # already inside
 export const REALTY_NOT_INSIDE: int = 10

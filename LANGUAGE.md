@@ -955,7 +955,7 @@ registry Tools of Tool as TL from "data/tools.lres"
 ```
 
 `@Unit` takes one of the canonical ASCII spellings - `m`, `m/s`, `m/s2`, `s`, `min`, `h`, `d`, `deg`,
-`rad`, `rad/s`, `kg`, `N`, `N.m`, `%`, `px` - so one word means one unit to an editor and a converter:
+`rad`, `rad/s`, `kg`, `N`, `N.m`, `%`, `px`, `ms`, `1/h` - so one word means one unit to an editor and a converter:
 the angle is `"deg"`, never `"°"`. Any other spelling is a warning naming the canonical one where
 there is an obvious one (`"°"`, `"degrees"` -> `deg`, `"sec"` -> `s`, `"m/s^2"` -> `m/s2`, `"Nm"` ->
 `N.m`), else listing them; the schema carries the list as `"units"`.

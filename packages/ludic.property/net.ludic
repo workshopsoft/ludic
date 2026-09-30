@@ -1,0 +1,115 @@
+# net.ludic - property in a party. The host owns the deeds. A verb called on a guest does not change anything
+# there: it dispatches the @Net action RealtyAsk, which travels through the NetActions port the game binds to
+# its session. The host checks it (`realty_ask_ok`: this machine owns the world, the kind exists and the sender
+# plays that player), finds the site the ask names (by the hashes of its map and of its key: a string does not
+# go on the wire, and a site is data on every machine) and reduces it by calling the very verb the guest
+# called, so every rule and every reason is the host's; the answer is the host's facts (BOUGHT, SOLD,
+# REFUSED with its reason...), which the game puts on its wire as before. Nothing is predicted: a deed is no
+# guess a guest can take back.
+
+# what a RealtyAsk asks (RASK_*): `who` is the player asking, the site is (hm, hk), a and b what the verb takes
+export const RASK_BUY: int = 0
+export const RASK_RENT: int = 1
+export const RASK_END_RENT: int = 2
+export const RASK_SELL: int = 3
+export const RASK_TRADE: int = 4           # a: the player it goes to, b: the price
+export const RASK_UPGRADE: int = 5         # a: the upgrade (a PropertyUpgrades row)
+export const RASK_SET_ACCESS: int = 6      # a: the mode
+export const RASK_INVITE: int = 7          # a: the player
+export const RASK_UNINVITE: int = 8        # a: the player
+export const RASK_STORE: int = 9           # a: the item, b: how many
+export const RASK_FETCH: int = 10          # a: the item, b: how many
+export const RASK_PARK: int = 11           # a: the vehicle
+export const RASK_RETRIEVE: int = 12       # a: the vehicle
+export const RASK_RAID: int = 13           # a: the share taken, in percent
+export const RASK_BUY_SUPPLY: int = 14     # a: how many batches
+export const RASK_SELL_STOCK: int = 15
+export const RASK_COLLECT: int = 16
+export const RASK_COUNT: int = 17
+
+# what a guest asks of the host: a verb on a site, as numbers
+@Net @Broadcast(none) @Validate(realty_ask_ok)
+export action RealtyAsk {
+  who: int = 0
+  kind: int = 0
+  hm: int = 0
+  hk: int = 0
+  a: int = 0
+  b: int = 0
+}
+
+# a stable number for a text, for naming a site on the wire (FNV-1a over its bytes)
+function rlt_hash(s: string) -> int {
+  let sp: string = s
+  var h = -2128831035
+  for i in 0 .. len(sp) { h = (h ^ sp[i]) * 16777619 }
+  return h
+}
+
+# a verb called on a guest: the ask goes to the host and the verb is done here (true); on the host or alone
+# (false) it carries on and does its own work
+function rlt_remote(realty_st: mut RealtyState, who: int, kind: int, map: string, key: string, a: int, b: int) -> bool {
+  if RealtyWorld.authority() { return false }
+  dispatch RealtyAsk { who: who, kind: kind, hm: rlt_hash(map), hk: rlt_hash(key), a: a, b: b }
+  return true
+}
+
+# the host's check of a guest's ask, before it is reduced (@Validate)
+export function realty_ask_ok(realty_st: RealtyState, a: RealtyAsk, sender: int) -> bool {
+  if not RealtyWorld.authority() { return false }
+  if a.kind < 0 or a.kind >= RASK_COUNT { return false }
+  return RealtyWorld.allow_ask(sender, a.who)
+}
+
+# the map and the key of the site named by the hashes of each: a holding's, or a site of the loaded map that
+# nobody holds yet. "" when this machine knows no such site
+function rlt_named_map(realty_st: RealtyState, sites: Properties, hm: int, hk: int) -> string {
+  for i in 0 .. tb_len(realty_st.rl_tab) {
+    let h = tb_rec(realty_st.rl_tab, i)
+    if rlt_hash(h.key) == hk and rlt_hash(h.map) == hm { return h.map }
+  }
+  if rlt_hash(sites.map) == hm {
+    for i in 0 .. len(sites.rows) { if rlt_hash(sites.rows[i].key) == hk { return sites.map } }
+  }
+  return ""
+}
+function rlt_named_key(realty_st: RealtyState, sites: Properties, hm: int, hk: int) -> string {
+  for i in 0 .. tb_len(realty_st.rl_tab) {
+    let h = tb_rec(realty_st.rl_tab, i)
+    if rlt_hash(h.key) == hk and rlt_hash(h.map) == hm { return h.key }
+  }
+  if rlt_hash(sites.map) == hm {
+    for i in 0 .. len(sites.rows) { if rlt_hash(sites.rows[i].key) == hk { return sites.rows[i].key } }
+  }
+  return ""
+}
+
+# what the host does with an ask: the verb the guest called, for the player who asked, on the site it
+# named. `sites` is the loaded map's registry (a site nobody holds yet is found there). Returns the verb's answer
+export function realty_apply_ask(realty_st: mut RealtyState, sites: Properties, kind: int, who: int, hm: int, hk: int, a: int, b: int) -> bool {
+  let map = rlt_named_map(realty_st, sites, hm, hk)
+  let key = rlt_named_key(realty_st, sites, hm, hk)
+  if map == "" { return rlt_no(realty_st, who, "", "", REALTY_NO_SITE) }
+  if kind == RASK_BUY { return realty_buy(realty_st, sites, who, key) }
+  if kind == RASK_RENT { return realty_rent(realty_st, sites, who, key) }
+  if kind == RASK_END_RENT { return realty_end_rent(realty_st, who, map, key) }
+  if kind == RASK_SELL { return realty_sell(realty_st, who, map, key) }
+  if kind == RASK_TRADE { return realty_trade(realty_st, who, a, map, key, b) }
+  if kind == RASK_UPGRADE { return realty_upgrade(realty_st, who, map, key, a) }
+  if kind == RASK_SET_ACCESS { return realty_set_access(realty_st, who, map, key, a) }
+  if kind == RASK_INVITE { return realty_invite(realty_st, who, map, key, a) }
+  if kind == RASK_UNINVITE { return realty_uninvite(realty_st, who, map, key, a) }
+  if kind == RASK_STORE { return realty_store(realty_st, who, map, key, a, b) >= 0 }
+  if kind == RASK_FETCH { return realty_fetch(realty_st, who, map, key, a, b) >= 0 }
+  if kind == RASK_PARK { return realty_park(realty_st, who, map, key, a) }
+  if kind == RASK_RETRIEVE { return realty_retrieve(realty_st, sites, who, key, a) }
+  if kind == RASK_RAID { return realty_raid(realty_st, who, map, key, a) >= 0 }
+  if kind == RASK_BUY_SUPPLY { return realty_buy_supply(realty_st, who, map, key, a) >= 0 }
+  if kind == RASK_SELL_STOCK { return realty_sell_stock(realty_st, who, map, key) }
+  if kind == RASK_COLLECT { return realty_collect(realty_st, who, map, key) >= 0 }
+  return false
+}
+
+reducer RealtyState on RealtyAsk(realty_st: mut RealtyState, sites: Properties, a: RealtyAsk) {
+  if RealtyWorld.authority() { realty_apply_ask(realty_st, sites, a.kind, a.who, a.hm, a.hk, a.a, a.b) }
+}

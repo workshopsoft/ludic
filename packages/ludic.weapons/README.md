@@ -128,7 +128,7 @@ ammo types (`weapons_set_ammo_type`). Skins: `weapons_set_skin` (the skin's weap
 | `weapons_run(dt)`, `weapons_reset()`, `weapons_save()`, `weapons_load(v, version)`, `weapons_system()` | `"weapons"`, `PH_SIMULATE` |
 
 `why` is `WP_OK`, `_NO_SHOOTER`, `_NO_GUN`, `_BUSY`, `_FULL`, `_NO_AMMO`, `_NOT_COMPATIBLE`, `_NO_SLOT`, `_CANT`, `_NOT_HOST`,
-`_NOT_HELD`, `_STALE`, `_TOO_FAST`, `_BAD_ORIGIN`.
+`_NOT_HELD`, `_STALE`, `_TOO_FAST`, `_BAD_ORIGIN`, `_NOT_YOURS`.
 
 ## Facts
 
@@ -141,7 +141,7 @@ spread, kick_pitch, kick_yaw, noise, amount, time, material, crit, killed, predi
 | `WP_RELOAD_STARTED` (clip, time), `WP_RELOADED` (amount), `WP_EMPTY` (clip), `WP_CHARGING` (clip, time to full) | the act, with the clip to play and how long it takes |
 | `WP_EQUIPPED`, `WP_HOLSTERED` (clip, time), `WP_ATTACHED`, `WP_DETACHED` (zone: slot, ammo: the part), `WP_MODE`, `WP_SKIN`, `WP_GIVEN`, `WP_TAKEN`, `WP_AMMO` | the inventory |
 | `WP_PROJECTILE` (id in `shot_no`, x y z, d its velocity), `WP_PROJECTILE_END` (zone: `WP_END_HIT`, `_EXPIRED`, `_FUSE`), `WP_EXPLODED` (amount: radius, target: how many reached) | bodies in flight |
-| `WP_REFUSED` (zone: why), `WP_CONFIRMED`, `WP_CORRECTED` | a verb not allowed; the host's answer to a guest's shot |
+| `WP_REFUSED` (zone: why), `WP_CONFIRMED` | a verb not allowed; the host's accept of a guest's shot |
 
 A fact made by a guest's own shot is `predicted`; one from another machine's shot shown here is `remote`.
 
@@ -149,7 +149,7 @@ A fact made by a guest's own shot is `predicted`; one from another machine's sho
 
 ```ludic
 export port WeaponsWorld { aim_x/y/z, aim_dx/dy/dz, muzzle_x/y/z, can_fire, cast, sweep, hit_actor, hit_zone, hit_material,
-                           hit_nx/ny/nz, pierce_cost, hostile, find, body_x/y/z, blocked, origin_ok, rewind, restore }
+                           hit_nx/ny/nz, pierce_cost, hostile, find, body_x/y/z, blocked, origin_ok, allow_shot, rewind, restore }
 export port WeaponsDamage { hurt: fn(victim, attacker, amount, type, zone) -> float, alive: fn(actor) -> bool }
 export port WeaponsEffects { apply: fn(target, source, kind, magnitude, seconds, bonus, label) -> void }
 ```
@@ -171,10 +171,13 @@ the match's `weapons_seed` by the host). A guest's own shot is predicted:
 1. **The guest fires at once**: the magazine, the flash, the recoil, the spread and a *picture* of the hit (HIT
    facts `predicted`, bodies in flight as cosmetic ones) all happen on the guest, from the seed
    `weapons_shot_seed(match seed, actor, shot number)`. Nothing is hurt: the damage port is never called on a guest.
-   The shot is queued on `weapons_outbox()` as a `ShotRequest { actor, gun, weapon, shot_no, seed, stamp, aim ray, spread, charge }`;
-   `stamp` is the time on the host's clock (the game estimates it from ludic.net's round trip, `weapons_time` is this
-   package's own).
-2. **The host checks** with `weapons_host_fire(request) -> why`: the shooter holds that gun, it is not busy, it has the
+   The shot is the `@Net` action `WeaponsFire { who, actor, gun, weapon, ammo, shot_no, stamp, aim ray, spread, charge }`
+   the pull dispatches: it travels through the `NetActions` port the game binds to its session (ludic.net's `netact_*`),
+   and the owner's count of shots in the air (`weapons_unanswered`) is a `@Predicted` row reducer of it, so a refusal takes
+   one back. `stamp` is the time on the host's clock (the game estimates it from ludic.net's round trip, `weapons_time` is
+   this package's own).
+2. **The host checks** (`weapons_fire_ok`, the action's `@Validate`; `weapons_host_take(...) -> why` is the same check and then
+   the shot): the machine that sent it plays that actor (`WeaponsWorld.allow_shot(sender, actor)`: `WP_NOT_YOURS`), the shooter holds that gun, it is not busy, it has the
    round, the shot number is new (`WP_STALE`), the rate allows it within a slack (`WP_TOO_FAST`; `weapons_config`), the
    world lets the actor fire and says the aim origin is near where the actor is (`origin_ok`: `WP_BAD_ORIGIN`).
 3. **The host derives the seed itself** from the shot number, so a guest cannot pick a lucky one, and holds the claimed
@@ -182,17 +185,19 @@ the match's `weapons_seed` by the host). A guest's own shot is predicted:
 4. **Lag compensation**: `WeaponsWorld.rewind(stamp)` (the stamp held to `weapons_config`'s `max_rewind` of now) puts the
    bodies back where the guest saw them, the round is resolved for real through the damage port, `restore()` puts them
    back. The game answers those two with the positions it keeps a short history of.
-5. **The answers**: a `ShotConfirm { actor, shot_no, accepted, why, mag, reserve }` on `weapons_confirms()` for the owner
-   (`weapons_net_confirm` sets its magazine right: a refusal or a different count is a `WP_CORRECTED` fact, and rounds
-   still unanswered are accounted for), and the host's own facts: its `WP_FIRED` (seed, spread, shot number, the ray) is
-   what the game relays to the *other* guests, who show it with `weapons_net_fired(...)` (a mirror shooter: flash, tracer,
-   impacts, a picture of a body in flight; nothing spent, nothing hurt). The host's `WP_HIT` / `WP_KILLED` are the kill feed.
+5. **The answers**: the action is `@Broadcast(all)`. The owner is told only that it was accepted (a `WP_CONFIRMED` fact, and the
+   shot is no longer in the air) or refused (the `@Predicted` count is put back, `NetActions.rejected` tells the game,
+   which can ask for the owner's snapshot: the magazine is not in an undo record, the snapshot sets it right, and
+   `weapons_apply_snapshot` leaves it alone while shots are in the air). Every *other* guest receives the action and its
+   reducer shows the shot with `weapons_net_fired(...)` (a mirror shooter: flash, tracer, impacts, a picture of a body in
+   flight; nothing spent, nothing hurt), so the game relays no `WP_FIRED` by hand. The host's `WP_HIT` / `WP_KILLED` are the
+   kill feed; a refused shot is told to its owner only (the host's check changes nothing, so it makes no fact).
 6. **Inventory** reaches guests as `weapons_snapshot(h, out)` / `weapons_apply_snapshot(actor, data, n)` (guns, parts,
    skin, the hand, the reserve; stale ones dropped; the owner's own magazine is left alone while its shots are
    unanswered). The owner's other intents (reload, switch, attach, mode) are the game's own messages: it sends them to the
    host, which runs the same verb, and the snapshot brings the truth back.
 
-The package sends nothing: the game puts the outbox, the confirms, the facts and the snapshots on its wire (ludic.net).
+The package sends nothing: the game binds `NetActions` and puts the snapshots and the kill feed on its wire (ludic.net).
 Floats in the cone are the platform's; host and guest draw the same numbers from the same seed, and what the host
 resolves is the only thing that hurts anyone, so an ulp between machines is a pixel of tracer, not a desync.
 

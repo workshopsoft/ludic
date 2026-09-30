@@ -342,7 +342,7 @@ export const WP_MODE: int = 13            # the fire mode changed (zone: the new
 export const WP_REFUSED: int = 14         # a verb was not allowed (zone: why)
 export const WP_CHARGING: int = 15        # a charge began (clip, time: to full)
 export const WP_CONFIRMED: int = 16       # the host accepted a predicted shot (shot_no)
-export const WP_CORRECTED: int = 17       # the host refused it, or counted differently (shot_no, amount: the host's magazine)
+export const WP_CORRECTED: int = 17       # (unused since WeaponsFire: a refusal takes the pending count back, the snapshot sets the magazine right)
 export const WP_SKIN: int = 18
 export const WP_GIVEN: int = 19           # a weapon joined the inventory
 export const WP_TAKEN: int = 20
@@ -368,6 +368,7 @@ export const WP_NOT_HELD: int = 10        # the gun is not the one in hand
 export const WP_STALE: int = 11           # the host: a shot number it has already taken
 export const WP_TOO_FAST: int = 12        # the host: more rounds than the weapon's rate allows
 export const WP_BAD_ORIGIN: int = 13      # the host: the shot starts where the shooter is not
+export const WP_NOT_YOURS: int = 14       # the host: the sender does not play that actor (WeaponsWorld.allow_shot)
 
 export property WeaponFact {
   what: int = 0
@@ -400,4 +401,30 @@ export property WeaponFact {
   dy: float = 0.0
   dz: float = 0.0
   clip: string = ""
+}
+
+# what a guest says it fired, the host resolves it: the @Net action a guest's pull dispatches (NetActions, the
+# game's session, carries it as one reliable message). The host checks it (weapons_fire_ok: the sender plays
+# that actor, the shooter holds that gun, it is loaded, within its rate, from where it stands), derives the
+# seed ITSELF from the shot number, rewinds the bodies to `stamp`, resolves the round for real and tells the
+# other guests, who show it (@Broadcast(all)); the asker is only told it was accepted. `who` is the shooter's row
+# on the asker's own machine, for its prediction; `stamp` is when, on the host's clock (the guest estimates it);
+# `spread` the half-angle it used, which the host holds to what the weapon can do
+@Net @Broadcast(all) @Validate(weapons_fire_ok)
+export action WeaponsFire {
+  @Target who: int = -1
+  actor: int = -1
+  gun: int = -1
+  weapon: int = -1
+  ammo: int = 0
+  shot_no: int = 0
+  stamp: float = 0.0
+  ox: float = 0.0
+  oy: float = 0.0
+  oz: float = 0.0
+  dx: float = 0.0
+  dy: float = 0.0
+  dz: float = 1.0
+  spread: float = 0.0
+  charge: float = 1.0
 }

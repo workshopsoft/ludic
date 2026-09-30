@@ -223,28 +223,7 @@ function wp__pull(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, g:
   s.streak = true
   weapons_st.wp__spread_used = spread
   if mode == WP_MODE_GUESS {
-    var q = q_rec(weapons_st.wp__out)
-    if q == null {
-      @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
-      q = new ShotRequest
-      q_ring_add(weapons_st.wp__out, q)
-    }
-    q.actor = s.actor
-    q.gun = gun
-    q.weapon = g.weapon
-    q.shot_no = shot_no
-    q.seed = seed
-    q.stamp = weapons_st.wp__time
-    q.ox = ox
-    q.oy = oy
-    q.oz = oz
-    q.dx = dx
-    q.dy = dy
-    q.dz = dz
-    q.spread = spread
-    q.charge = charge
-    q_push(weapons_st.wp__out, q)
-    s.pending += 1
+    dispatch WeaponsFire { who: h, actor: s.actor, gun: gun, weapon: g.weapon, ammo: g.ammo_type, shot_no: shot_no, stamp: weapons_st.wp__time, ox: ox, oy: oy, oz: oz, dx: dx, dy: dy, dz: dz, spread: spread, charge: charge }
   } else {
     s.next_ok = Math.max(s.next_ok, weapons_st.wp__time) + wp__interval(g)
   }

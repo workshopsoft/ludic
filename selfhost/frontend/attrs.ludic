@@ -253,6 +253,7 @@ function at_units() -> []pointer {
   let us = new []pointer
   push(us, "m");  push(us, "m/s");  push(us, "m/s2");  push(us, "s");  push(us, "min");  push(us, "h");  push(us, "d")
   push(us, "deg");  push(us, "rad");  push(us, "rad/s");  push(us, "kg");  push(us, "N");  push(us, "N.m");  push(us, "%");  push(us, "px")
+  push(us, "ms");  push(us, "1/h")
   return us
 }
 function at_unit_known(u: pointer) -> bool {
@@ -277,6 +278,8 @@ function at_unit_canon(u: pointer) -> pointer {
   if (u == "minutes") or (u == "minute") or (u == "mins") { return "min" }
   if (u == "hours") or (u == "hour") or (u == "hr") or (u == "hrs") { return "h" }
   if (u == "days") or (u == "day") { return "d" }
+  if (u == "msec") or (u == "msecs") or (u == "millis") or (u == "milliseconds") or (u == "millisecond") { return "ms" }
+  if (u == "/h") or (u == "per hour") or (u == "1/hr") { return "1/h" }
   if (u == "kilograms") or (u == "kilogram") or (u == "kgs") { return "kg" }
   if (u == "percent") or (u == "pct") { return "%" }
   if (u == "pixels") or (u == "pixel") { return "px" }
@@ -290,5 +293,5 @@ function at_unit_check(u: pointer, t: Tok) -> void {
     pwarn_at(g_parse_file, t.line, t.col, `@Unit("{u}"): the unit is spelled "{c}"`)
     return
   }
-  pwarn_at(g_parse_file, t.line, t.col, `@Unit("{u}") is not a known unit (m, m/s, m/s2, s, min, h, d, deg, rad, rad/s, kg, N, N.m, %, px)`)
+  pwarn_at(g_parse_file, t.line, t.col, `@Unit("{u}") is not a known unit (m, m/s, m/s2, s, min, h, d, deg, rad, rad/s, kg, N, N.m, %, px, ms, 1/h)`)
 }

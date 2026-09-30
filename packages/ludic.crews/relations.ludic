@@ -18,7 +18,7 @@ function crw_set_rel(crew_st: mut CrewState, p: CrewPair, rel: int, auto: bool) 
 # `mutual` takes hold at once; a mutual one waits for `crew_accept`. A relation may not change again until its
 # `hold_hours` have passed
 export function crew_propose(crew_st: mut CrewState, who: int, other_crew: int, rel: int) -> bool {
-  if not crw_authority(crew_st, who) { return false }
+  if crw_remote(crew_st, who, CASK_PROPOSE, other_crew, rel, 0) { return false }
   let m = crw_member(crew_st, who)
   if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
   if not crw_can(crew_st, who, CREW_PERM_DECLARE) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
@@ -43,7 +43,7 @@ export function crew_propose(crew_st: mut CrewState, who: int, other_crew: int, 
 
 # the other crew's word: take up what they proposed
 export function crew_accept(crew_st: mut CrewState, who: int, other_crew: int) -> bool {
-  if not crw_authority(crew_st, who) { return false }
+  if crw_remote(crew_st, who, CASK_ACCEPT, other_crew, 0, 0) { return false }
   let m = crw_member(crew_st, who)
   if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
   if not crw_can(crew_st, who, CREW_PERM_DECLARE) { return crw_no(crew_st, who, CREW_NO_PERMISSION) }
@@ -54,7 +54,7 @@ export function crew_accept(crew_st: mut CrewState, who: int, other_crew: int) -
 }
 
 export function crew_reject(crew_st: mut CrewState, who: int, other_crew: int) -> bool {
-  if not crw_authority(crew_st, who) { return false }
+  if crw_remote(crew_st, who, CASK_REJECT, other_crew, 0, 0) { return false }
   let m = crw_member(crew_st, who)
   if m == null { return crw_no(crew_st, who, CREW_NO_CREW) }
   let p = crw_pair(crew_st, m.crew, other_crew)
@@ -107,7 +107,7 @@ function crw_count_kill(crew_st: mut CrewState, killer_crew: int, victim_crew: i
 
 # put money on a player's head; it is paid to whoever kills them (`crew_killed`). Bounties add up
 export function crew_bounty_place(crew_st: mut CrewState, who: int, target: int, amount: int) -> bool {
-  if not crw_authority(crew_st, who) { return false }
+  if crw_remote(crew_st, who, CASK_BOUNTY, target, amount, 0) { return false }
   let cfg = crw_cfg(crew_st)
   if target == who { return crw_no(crew_st, who, CREW_SELF) }
   if amount < cfg.bounty_min or amount > cfg.bounty_max { return crw_no(crew_st, who, CREW_BAD_AMOUNT) }

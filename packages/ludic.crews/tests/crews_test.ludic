@@ -1,5 +1,5 @@
 # crews_test.ludic - founding (name, cost, leader), invites and joining, ranks and who outranks whom, the bank and its
-# daily limit, disbanding, a guest refused, relations (mutual proposals, hold time, a rivalry that hardens), influence from
+# daily limit, disbanding, a guest's verbs asked of the host over a fake wire, relations (mutual proposals, hold time, a rivalry that hardens), influence from
 # reports, kills and presence with decay and the cap, a territory taken from nobody, a turf war through every phase
 # (contested, declared or escalated, scored, captured or held, cooldown), bounties, income, friendly fire, the save
 import "ludic.crews"
@@ -32,6 +32,8 @@ program CrewsTest {
     pz: []float = new []float
     there: int = 0
     frame: int = 0
+    wire: []int = new []int    # what a guest's port was given for the host: a word count, then the words, message after message
+    rejected: int = 0          # the host's refusals the guest's port was told of
   }
   function fake_authority(crews_test_st: CrewsTestState) -> bool { return crews_test_st.host }
   function fake_players(crews_test_st: CrewsTestState) -> int { return crews_test_st.there }
@@ -44,7 +46,19 @@ program CrewsTest {
     return true
   }
   function fake_earn(crews_test_st: mut CrewsTestState, who: int, n: int) -> void { crews_test_st.purse[who] += n }
-  bind CrewWorld { authority: fn fake_authority, players: fn fake_players, player: fn fake_player, x: fn fake_x, z: fn fake_z }
+  # a player's machine is the pid 10 + its id
+  function fake_allow(crews_test_st: CrewsTestState, sender: int, who: int) -> bool { return sender == 10 + who }
+  function fake_role(crews_test_st: CrewsTestState) -> int {
+    if crews_test_st.host { return 1 }
+    return 2
+  }
+  function fake_to_host(crews_test_st: mut CrewsTestState, w: []int, n: int) -> void {
+    push(crews_test_st.wire, n)
+    for i in 0 .. n { push(crews_test_st.wire, w[i]) }
+  }
+  function fake_rejected(crews_test_st: mut CrewsTestState, kind: int, seq: int, why: int) -> void { crews_test_st.rejected += 1 }
+  bind NetActions { role: fn fake_role, to_host: fn fake_to_host, rejected: fn fake_rejected }
+  bind CrewWorld { allow_ask: fn fake_allow, authority: fn fake_authority, players: fn fake_players, player: fn fake_player, x: fn fake_x, z: fn fake_z }
   bind CrewWallet { spend: fn fake_spend, earn: fn fake_earn }
 
   function fresh(crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) -> void {
@@ -61,6 +75,26 @@ program CrewsTest {
     crews_test_st.host = true
     crews_test_st.there = 0
     crews_test_st.frame = 0
+    crews_test_st.wire = new []int
+    crews_test_st.rejected = 0
+    net_actions_reset()
+  }
+  # the host takes what the guests' port was given, each message from the machine `pid`, and reduces it
+  function via(crews_test_st: mut CrewsTestState, pid: int) -> int {
+    crews_test_st.host = true
+    var i = 0
+    var rc = 0
+    while i < len(crews_test_st.wire) {
+      let n = crews_test_st.wire[i]
+      let w = new []int
+      for k in 0 .. n { push(w, crews_test_st.wire[i + 1 + k]) }
+      rc = net_actions_receive(pid, w, n)
+      i += 1 + n
+    }
+    drain_actions()
+    crews_test_st.wire = new []int
+    crews_test_st.host = false
+    return rc
   }
   function pass(crew_st: mut CrewState, terr: Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState, secs: float, hours: float) -> void {
     var t = 0.0
@@ -242,19 +276,170 @@ program CrewsTest {
     expect_eq(crew_count(crew_st), 1)
   }
 
-  test "the world's owner alone changes crews: a guest is refused and told to ask" (crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) {
+  test "the world's owner alone changes crews: a guest's verb changes nothing there and says so to nobody" (crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) {
     fresh(crew_st, terr, crews_test_st)
     crews_test_st.host = false
     expect_eq(crew_create(crew_st, 1, "Alphas", "ALP", 0, 0, 0), -1)
-    expect_eq(crew_why(crew_st), CREW_NOT_HOST)
+    expect_eq(crew_count(crew_st), 0)
     crews_test_st.host = true
     crew_create(crew_st, 1, "Alphas", "ALP", 0, 0, 0)
+    count_of(crew_st, CREW_CREATED)
     crews_test_st.host = false
     expect(not crew_invite(crew_st, 1, 2))
     expect(not crew_deposit(crew_st, 1, 10))
     expect(not crew_bounty_place(crew_st, 1, 2, 500))
     expect(crew_add_influence(crew_st, terr, 1, "harbor", 10.0) < 0.0)
-    expect_eq(crew_why(crew_st), CREW_NOT_HOST)
+    expect_eq(count_of(crew_st, CREW_REFUSED), 0)    # nothing was refused: the asks are in the air
+    drain_actions()
+    expect_eq(net_actions_stat(0), 4)
+    expect_eq(crew_member_count(crew_st, 1), 1)
+    expect_eq(crew_bank(crew_st, 1), 0)
+  }
+
+  test "a guest founds a crew through the host: the name and the tag go as bytes, the host's own verb answers" (crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    crews_test_st.host = false
+    expect_eq(crew_create(crew_st, 1, "Alphas Co", "ALP", 0, 0xff0000, 0x00ff00), -1)
+    drain_actions()
+    expect_eq(crew_count(crew_st), 0)
+    expect_eq(via(crews_test_st, 11), 0)
+    expect_eq(crew_count(crew_st), 1)
+    let c = crew_of(crew_st, 1)
+    expect(c > 0)
+    expect(crew_name(crew_st, c) == "Alphas Co")
+    expect(crew_tag(crew_st, c) == "ALP")
+    expect_eq(crew_emblem(crew_st, c), 0)
+    expect_eq(crew_color_a(crew_st, c), 0xff0000)
+    expect_eq(crew_color_b(crew_st, c), 0x00ff00)
+    expect_eq(crews_test_st.purse[1], 100000 - 500)
+    expect_eq(count_of(crew_st, CREW_CREATED), 1)
+    # a name the wire cannot carry is told at once, and sent nowhere
+    crews_test_st.host = false
+    expect_eq(crew_create(crew_st, 4, "A name that is far too long for the wire", "X", 0, 0, 0), -1)
+    expect_eq(crew_why(crew_st), CREW_NAME_BAD)
+    expect_eq(len(crews_test_st.wire), 0)
+    # the host's rules still apply to what arrived: a taken name is refused with its reason
+    expect_eq(crew_create(crew_st, 4, "alphas co", "ALQ", 0, 0, 0), -1)
+    drain_actions()
+    expect_eq(via(crews_test_st, 14), 0)
+    expect_eq(crew_count(crew_st), 1)
+    expect_eq(crew_why(crew_st), CREW_NAME_TAKEN)
+    expect_eq(count_of(crew_st, CREW_REFUSED), 2)
+  }
+
+  test "a guest's verbs all go through the host: people, ranks, the bank, relations, bounties and a war" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    # the host made crew 2 (founder 4, recruit 5); players 1, 2 and 3 are guests that act through the wire
+    crew_create(crew_st, 4, "Bravos", "BRV", 1, 0x0000ff, 0xffffff)
+    crew_invite(crew_st, 4, 5)
+    crew_join(crew_st, 5, 1)
+    let bravos = crew_of(crew_st, 4)
+    crews_test_st.host = false
+    crew_create(crew_st, 1, "Alphas", "ALP", 0, 0xff0000, 0x000000)
+    drain_actions()
+    via(crews_test_st, 11)
+    let a = crew_of(crew_st, 1)
+    crews_test_st.host = false
+    crew_invite(crew_st, 1, 2)
+    crew_invite(crew_st, 1, 3)
+    drain_actions()
+    via(crews_test_st, 11)
+    expect(crew_invited(crew_st, 2, a))
+    crews_test_st.host = false
+    crew_join(crew_st, 2, a)
+    drain_actions()
+    via(crews_test_st, 12)
+    crews_test_st.host = false
+    crew_join(crew_st, 3, a)
+    drain_actions()
+    via(crews_test_st, 13)
+    expect_eq(crew_of(crew_st, 2), a)
+    expect_eq(crew_of(crew_st, 3), a)
+    crews_test_st.host = false
+    crew_set_rank(crew_st, 1, 2, CRR_OFFICER)
+    crew_set_rank(crew_st, 1, 3, CRR_MEMBER)
+    crew_set_open(crew_st, 1, true)
+    crew_set_look(crew_st, 1, 1, 0x112233, 0x445566)
+    crew_deposit(crew_st, 1, 700)
+    drain_actions()
+    via(crews_test_st, 11)
+    expect_eq(crew_rank_of(crew_st, 2), CRR_OFFICER)
+    expect_eq(crew_rank_of(crew_st, 3), CRR_MEMBER)
+    expect(crew_is_open(crew_st, a))
+    expect_eq(crew_emblem(crew_st, a), 1)
+    expect_eq(crew_color_a(crew_st, a), 0x112233)
+    expect_eq(crew_bank(crew_st, a), 700)
+    crews_test_st.host = false
+    expect(not crew_withdraw(crew_st, 3, 400))         # the member's own ask, refused on the host for its limit
+    crew_withdraw(crew_st, 2, 300)
+    drain_actions()
+    via(crews_test_st, 12)                              # (both asks are the officer's machine's in this test)
+    expect_eq(crew_bank(crew_st, a), 700 - 300)
+    crews_test_st.host = false
+    crew_propose(crew_st, 1, bravos, CRL_ALLY)
+    crew_bounty_place(crew_st, 1, 4, 200)
+    drain_actions()
+    via(crews_test_st, 11)
+    expect_eq(crew_pending(crew_st, a, bravos), CRL_ALLY)
+    expect_eq(crew_bounty_on(crew_st, 4), 200)
+    crews_test_st.host = false
+    crew_accept(crew_st, 4, a)
+    drain_actions()
+    via(crews_test_st, 14)
+    expect_eq(crew_relation(crew_st, a, bravos), CRL_ALLY)
+    crews_test_st.host = true
+    pass(crew_st, terr, m, crews_test_st, 12.0, 12.0)
+    crews_test_st.host = false
+    crew_propose(crew_st, 1, bravos, CRL_WAR)
+    drain_actions()
+    via(crews_test_st, 11)
+    expect_eq(crew_relation(crew_st, a, bravos), CRL_WAR)
+    # a territory contested, then the war declared by the asking guest, the territory named by its hashes
+    crews_test_st.host = true
+    crew_add_influence(crew_st, terr, bravos, "harbor", 400.0)
+    pass(crew_st, terr, m, crews_test_st, 2.0, 0.0)
+    pass(crew_st, terr, m, crews_test_st, 40.0, 0.0)
+    crew_add_influence(crew_st, terr, a, "harbor", 150.0)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    crews_test_st.host = false
+    crew_declare_war(crew_st, 1, "metro", "harbor")
+    drain_actions()
+    via(crews_test_st, 11)
+    pass(crew_st, terr, m, crews_test_st, 1.0, 0.0)
+    expect(crew_turf_phase(crew_st, "metro", "harbor") == TurfPhase.War)
+    # ranks go, people leave, the crew is handed over and closed
+    crews_test_st.host = false
+    crew_kick(crew_st, 1, 3)
+    crew_transfer(crew_st, 1, 2)
+    drain_actions()
+    via(crews_test_st, 11)
+    expect_eq(crew_of(crew_st, 3), 0)
+    expect_eq(crew_rank_of(crew_st, 2), CRR_BOSS)
+    crews_test_st.host = false
+    crew_leave(crew_st, 1)
+    crew_disband(crew_st, 2)
+    drain_actions()
+    via(crews_test_st, 12)
+    expect_eq(crew_exists(crew_st, a), false)
+  }
+
+  test "the host refuses an ask that is not its sender's to make: another player's, and a kind there is not" (crew_st: mut CrewState, terr: mut Territories, crews_test_st: mut CrewsTestState) {
+    fresh(crew_st, terr, crews_test_st)
+    crew_create(crew_st, 1, "Alphas", "ALP", 0, 0, 0)
+    crew_invite(crew_st, 1, 2)
+    let before = crew_bank(crew_st, crew_of(crew_st, 1))
+    crews_test_st.host = false
+    crew_deposit(crew_st, 1, 50)                        # player 1's ask, sent from player 2's machine
+    drain_actions()
+    expect_eq(via(crews_test_st, 12), 0)
+    expect_eq(net_actions_stat(7), 1)
+    expect_eq(crew_bank(crew_st, crew_of(crew_st, 1)), before)
+    crews_test_st.host = false
+    net_actions_reset()
+    dispatch CrewAsk { who: 1, kind: 99, a: 0, b: 0, c: 0 }
+    drain_actions()
+    via(crews_test_st, 11)
+    expect_eq(net_actions_stat(7), 1)
   }
 
   test "relations: the start one, a mutual proposal, a refusal, and a hold before it changes again" (crew_st: mut CrewState, terr: mut Territories, m: mut TurfStepsMachine, crews_test_st: mut CrewsTestState) {

@@ -4,7 +4,7 @@
 # buy `batches` of supplies (each the loop's `supply_batch`), as many as fit under `supply_max`, paid through
 # the purse. Returns the supplies that came, -1 when refused
 export function realty_buy_supply(realty_st: mut RealtyState, who: int, map: string, key: string, batches: int) -> int {
-  if not rlt_authority(realty_st, who, map, key) { return -1 }
+  if rlt_remote(realty_st, who, RASK_BUY_SUPPLY, map, key, batches, 0) { return -1 }
   let h = rlt_owned(realty_st, who, map, key)
   if h == null { return -1 }
   let l = rlt_loop(h)
@@ -31,7 +31,7 @@ export function realty_buy_supply(realty_st: mut RealtyState, who: int, map: str
 # start a sale run of everything in stock: it takes the loop's `sell_secs`, then the money is paid to the owner.
 # The action is reduced at the end of the phase
 export function realty_sell_stock(realty_st: mut RealtyState, who: int, map: string, key: string) -> bool {
-  if not rlt_authority(realty_st, who, map, key) { return false }
+  if rlt_remote(realty_st, who, RASK_SELL_STOCK, map, key, 0, 0) { return false }
   let h = rlt_owned(realty_st, who, map, key)
   if h == null { return false }
   if rlt_loop(h) < 0 { return rlt_no(realty_st, who, map, key, REALTY_NO_BUSINESS) }
@@ -42,7 +42,7 @@ export function realty_sell_stock(realty_st: mut RealtyState, who: int, map: str
 
 # take the passive income that has built up
 export function realty_collect(realty_st: mut RealtyState, who: int, map: string, key: string) -> int {
-  if not rlt_authority(realty_st, who, map, key) { return -1 }
+  if rlt_remote(realty_st, who, RASK_COLLECT, map, key, 0, 0) { return -1 }
   let h = rlt_owned(realty_st, who, map, key)
   if h == null { return -1 }
   if h.income <= 0 {
