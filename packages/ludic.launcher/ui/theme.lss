@@ -5,11 +5,13 @@
 :root {
   --lc-accent: #e8b04a;
   --lc-ink: #0c0f14;
-  --lc-panel: #161c25;
-  --lc-line: #2b3441;
+  --lc-panel: rgba(11,15,20,0.7);
+  --lc-line: rgba(255,255,255,0.12);
   --lc-text: #e9edf2;
   --lc-muted: #98a3b3;
   --lc-good: #6fcf97;
   --lc-bad: #eb5757;
   --lc-gap: 16px;
+  --lc-radius: 6px;
+  --lc-secondary: #7fb2d9;
 }

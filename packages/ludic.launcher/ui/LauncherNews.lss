@@ -1,14 +1,14 @@
 /* LauncherNews.lss */
-.news { width: 460px; gap: 8px; padding: 16px; background: var(--lc-panel, #161c25); border: 2px solid var(--lc-line, #2b3441) }
+.news { width: 460px; gap: 8px; padding: 16px; background: var(--lc-panel, rgba(11,15,20,0.7)); border: 1px solid var(--lc-line, rgba(255,255,255,0.12)); border-radius: var(--lc-radius, 6px) }
 .news.full { width: fill; height: fill }
 .head { align-items: center; gap: 12px }
-.head h2 { font-size: 20px }
+.head h2 { font-size: 13px; letter-spacing: 3px; text-transform: uppercase; color: var(--lc-secondary, #7fb2d9) }
 .grow { flex-grow: 1 }
 .empty { color: var(--lc-muted, #98a3b3) }
 .list { gap: 6px; max-height: 360px }
 .news.full .list { max-height: none; flex-grow: 1 }
 .story { gap: 6px }
-.line { height: 40px; padding: 0 12px; gap: 10px; align-items: center; background: var(--lc-ink, #0c0f14); color: var(--lc-text, #e9edf2) }
+.line { height: 40px; padding: 0 12px; gap: 10px; align-items: center; background: rgba(255,255,255,0.04); border-radius: var(--lc-radius, 6px); color: var(--lc-text, #e9edf2) }
 .line:hover { background: var(--lc-line, #2b3441) }
 .line:focus-visible { outline: 3px solid var(--lc-accent, #e8b04a) }
 .story.open .line { border-left: 4px solid var(--lc-accent, #e8b04a) }

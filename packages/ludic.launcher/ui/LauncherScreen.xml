@@ -1,6 +1,5 @@
 <div class="launcher" style="--lc-accent: {accent}; --lc-panel: {shade}">
   <if test="{background != ''}"><img class="bg" src="{background}"/></if>
-  <div class="veil"/>
   <div class="page">
     <row class="cols">
       <div class="left">

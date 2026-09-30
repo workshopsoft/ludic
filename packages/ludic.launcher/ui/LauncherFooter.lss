@@ -3,4 +3,4 @@
 .grow { flex-grow: 1 }
 .lang { height: 32px; padding: 0 12px; font-size: 15px; background: var(--lc-panel, #161c25); color: var(--lc-text, #e9edf2); border: 2px solid var(--lc-line, #2b3441) }
 .lang:focus-visible { outline: 2px solid var(--lc-accent, #e8b04a) }
-.version { color: var(--lc-muted, #98a3b3); font-size: 13px }
+.version { color: var(--lc-muted, #98a3b3); font-size: 12px; letter-spacing: 2px; text-transform: uppercase }
