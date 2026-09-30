@@ -1,0 +1,4 @@
+# clips.lres - what two clips say about themselves: sync markers of a cycle (a foot down)
+stepa { markers: [{ name: "left", at: 0.0 }, { name: "right", at: 0.25 }] }
+stepb { markers: [{ name: "left", at: 0.0 }, { name: "right", at: 0.5 }] }
+late { markers: [{ name: "left", at: 0.1 }] }

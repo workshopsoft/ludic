@@ -1,0 +1,57 @@
+# spaces.lres - the blend space tests' spaces
+speed1d {
+  dims: 1
+  x_param: "speed"
+  samples: [{ clip: "idle", x: 0.0 }, { clip: "walk", x: 1.0 }, { clip: "run", x: 3.0 }]
+}
+# a 3 x 3 grid: strafe -1..1 by speed 0..1
+grid {
+  dims: 2
+  x_param: "strafe"
+  y_param: "speed"
+  samples: [
+    { clip: "idle", x: -1.0, y: 0.0 }, { clip: "idle", x: 0.0, y: 0.0 }, { clip: "idle", x: 1.0, y: 0.0 },
+    { clip: "walk", x: -1.0, y: 0.5 }, { clip: "walk", x: 0.0, y: 0.5 }, { clip: "walk", x: 1.0, y: 0.5 },
+    { clip: "run", x: -1.0, y: 1.0 }, { clip: "run", x: 0.0, y: 1.0 }, { clip: "run", x: 1.0, y: 1.0 }
+  ]
+}
+# five points that are no grid
+scatter {
+  dims: 2
+  x_param: "strafe"
+  y_param: "speed"
+  samples: [
+    { clip: "idle", x: 0.0, y: 0.0 }, { clip: "walk", x: 2.0, y: 0.3 }, { clip: "run", x: 1.0, y: 2.0 },
+    { clip: "idle", x: -1.5, y: 1.0 }, { clip: "walk", x: 0.3, y: 0.8 }
+  ]
+}
+# every sample on one line: no triangle
+flat {
+  dims: 2
+  x_param: "strafe"
+  y_param: "speed"
+  samples: [{ clip: "idle", x: 0.0, y: 0.0 }, { clip: "walk", x: 1.0, y: 1.0 }, { clip: "run", x: 2.0, y: 2.0 }]
+}
+# two samples at one speed
+twin {
+  dims: 1
+  x_param: "speed"
+  samples: [{ clip: "idle", x: 0.0 }, { clip: "walk", x: 1.0 }, { clip: "run", x: 1.0 }]
+}
+loco {
+  dims: 1
+  x_param: "speed"
+  samples: [{ clip: "idle", x: 0.0 }, { clip: "walk", x: 1.0 }]
+}
+steps {
+  dims: 1
+  x_param: "speed"
+  samples: [{ clip: "stepa", x: 0.0 }, { clip: "stepb", x: 1.0 }]
+}
+# a triangle so thin its weights swing: two far apart and one just off the line between them
+sliver {
+  dims: 2
+  x_param: "strafe"
+  y_param: "speed"
+  samples: [{ clip: "walk", x: 0.0, y: 0.0 }, { clip: "walk", x: 1.0, y: 0.0 }, { clip: "run", x: 0.5, y: 0.001 }, { clip: "run", x: 0.5, y: 1.0 }]
+}

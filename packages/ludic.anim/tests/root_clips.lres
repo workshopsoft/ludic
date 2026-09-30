@@ -1,0 +1,4 @@
+# root_clips.lres - walk and turn extract the root's motion; slide (no row) plays it in the world
+walk { root_motion: "extract" }
+turn { root_motion: "extract", root_turn: true }
+hop { root_motion: "extract", root_axes: "xyz" }

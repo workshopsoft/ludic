@@ -1,0 +1,148 @@
+# layers_test.ludic - layers and masks: the math of an override and an additive layer through a bone mask,
+# weights driven by parameters, masks by a rig's canonical bone names, and the layer count a far actor plays.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program LayersTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimSkeletons from "rigs.lres"
+  def AnimMasks from "masks.lres"
+  def AnimSets from "layers.lres"
+
+  const BASE: int = 0
+  const NAMED: int = 3
+  const WHOLE: int = 4
+
+  # the base clip turns the spine by 0.2, the arm and the leg by 0.4; the shoot clip turns all three by 1.0;
+  # the breath clip turns the arm from 0 to 0.3 over a second
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    let b = clip_new("rig_base", 1.0, 3)
+    clip_rot(b, 0, 1, 0.2, 0.2)
+    clip_rot(b, 1, 2, 0.4, 0.4)
+    clip_rot(b, 2, 3, 0.4, 0.4)
+    anim_add(anim_st, b)
+    let s = clip_new("rig_shoot", 1.0, 3)
+    clip_rot(s, 0, 1, 1.0, 1.0)
+    clip_rot(s, 1, 2, 1.0, 1.0)
+    clip_rot(s, 2, 3, 1.0, 1.0)
+    anim_add(anim_st, s)
+    let r = clip_new("rig_breath", 1.0, 1)
+    clip_rot(r, 0, 2, 0.0, 0.3)
+    anim_add(anim_st, r)
+  }
+  function player(anim_st: mut AnimState, set: int) -> AnimPlayer {
+    clips(anim_st)
+    let pl = new AnimPlayer
+    if set == NAMED { expect(animset_bind_skel(anim_st, pl, set, ASK_RIG)) } else { expect(animset_bind(anim_st, pl, set, "rig")) }
+    return pl
+  }
+  function tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> void { expect(animset_tick(anim_st, pl, sk, dt)) }
+  # the bone's pose angle
+  function angle(sk: Skin, node: int) -> float { return 2.0 * Math.asin(pose_z(sk, node)) }
+
+  test "with no layer weight the base pose plays" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, BASE)
+    animset_param(pl, "breath", 0.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect_near(angle(sk, 1), 0.2, 0.001)
+    expect_near(angle(sk, 2), 0.4, 0.001)
+    expect_near(angle(sk, 3), 0.4, 0.001)
+  }
+
+  test "an override layer takes the bones its mask names and what is under them, and leaves the rest" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, BASE)
+    animset_param(pl, "breath", 0.0)
+    animset_param(pl, "aim", 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect_near(angle(sk, 1), 1.0, 0.001)
+    expect_near(angle(sk, 2), 1.0, 0.001)
+    expect_near(angle(sk, 3), 0.4, 0.001)
+    expect_near(angle(sk, 0), 0.0, 0.001)
+  }
+
+  test "the layer's weight (a parameter) blends its pose in: half is half the way, per bone" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, BASE)
+    animset_param(pl, "breath", 0.0)
+    animset_param(pl, "aim", 0.5)
+    tick(anim_st, pl, sk, 0.016)
+    expect_near(angle(sk, 1), 0.6, 0.002)
+    expect_near(angle(sk, 2), 0.7, 0.002)
+    expect_near(angle(sk, 3), 0.4, 0.001)
+    animset_param(pl, "aim", 2.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect_near(angle(sk, 2), 1.0, 0.001)
+  }
+
+  test "an additive layer adds its clip's change from its reference frame over whatever plays, by the mask" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, BASE)
+    animset_param(pl, "breath", 1.0)
+    tick(anim_st, pl, sk, 0.0)
+    # at the reference frame there is no change
+    expect_near(angle(sk, 2), 0.4, 0.001)
+    tick(anim_st, pl, sk, 0.5)
+    # the breath is 0.15 by now, the mask gives the arm half of it
+    expect_near(angle(sk, 2), 0.4 + 0.075, 0.002)
+    expect_near(angle(sk, 1), 0.2, 0.001)
+    expect_near(angle(sk, 3), 0.4, 0.001)
+    animset_param(pl, "breath", 0.5)
+    tick(anim_st, pl, sk, 0.0)
+    expect_near(angle(sk, 2), 0.4 + 0.0375, 0.002)
+  }
+
+  test "an additive layer rides on an override one: the shot's arm breathes" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, BASE)
+    animset_param(pl, "aim", 1.0)
+    tick(anim_st, pl, sk, 0.0)
+    tick(anim_st, pl, sk, 0.5)
+    expect_near(angle(sk, 2), 1.0 + 0.075, 0.003)
+  }
+
+  test "a mask by a canonical name goes through the skeleton row's bone map; a fixed weight scales it" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, NAMED)
+    tick(anim_st, pl, sk, 0.016)
+    expect_near(angle(sk, 1), 0.6, 0.002)
+    expect_near(angle(sk, 2), 0.7, 0.002)
+    expect_near(angle(sk, 3), 0.4, 0.001)
+  }
+
+  test "a mask whose default is one, with one bone at zero below it, keeps that branch on the base" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, WHOLE)
+    tick(anim_st, pl, sk, 0.016)
+    expect_near(angle(sk, 1), 1.0, 0.001)
+    expect_near(angle(sk, 3), 0.4, 0.001)
+  }
+
+  test "a far actor plays fewer layers and is updated one tick in `every`, by the time the skipped ones left" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    clips(anim_st)
+    let pl = new AnimPlayer
+    expect(animset_bind_skel(anim_st, pl, ASET_NAMED, ASK_RIG))
+    tick(anim_st, pl, sk, 0.016)
+    expect_near(angle(sk, 1), 0.6, 0.002)
+    # 25 m: every 4th tick, the base layer only
+    animset_distance(pl, 25.0)
+    let f0 = pl.frame
+    for i in 0 .. 8 { tick(anim_st, pl, sk, 0.1) }
+    expect_eq(pl.frame - f0, 2)
+    expect_near(angle(sk, 1), 0.2, 0.002)
+    # the two updates shared the 0.8 s between them
+    expect_near(animset_time(pl), 0.8, 0.02)
+    # close again: every tick
+    animset_distance(pl, 2.0)
+    let f1 = pl.frame
+    for i in 0 .. 5 { tick(anim_st, pl, sk, 0.1) }
+    expect_eq(pl.frame - f1, 5)
+    expect_near(angle(sk, 1), 0.6, 0.002)
+  }
+}

@@ -79,7 +79,7 @@ export property AnimTransition {
   priority: int = 0           # higher is tested first
   @OneOf("linear", "ease", "ease_in", "ease_out", "custom") curve: string = "linear"
   curve_points: []AnimCurvePoint = null
-  @OneOf("none", "source", "dest", "both") interrupt: string = "none"   # which states' transitions may cut this fade short
+  @OneOf("dest", "none", "source", "both") interrupt: string = "dest"   # which states' transitions may cut this fade short (dest: the state being faded into may leave at once)
   to_self: bool = false       # an any-state edge may restart its own target
   @Range(0, 1) offset: float = 0.0   # the target starts this far into its cycle
 }

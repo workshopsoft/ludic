@@ -3,9 +3,14 @@
 # A game that wants clips played from its own rig table writes an entry of the same key in its
 # studio.lres (rig_table, rig_graph, rig_file, rig_node and clip_pattern name the game's fields: a rig
 # is the game's, not this package's); its entry replaces this one.
+#
+# The keys down to `node_blend` are the graph view every studio understands. The rest name what a graph
+# editor needs to draw a whole animation graph - state kinds, conditions, fades, parameters, layers and the
+# tables a graph points at (blend spaces, masks, skeletons, what a clip says about itself) - and are read by
+# a studio that has them; one that does not still draws states, transitions and choices.
 
-# the animation sets: states are nodes, transitions edges, and inside a state an ordered list of
-# choices (the first whose need bands all hold plays) with a rate, or a rate by a parameter over ground
+# the animation sets: states are nodes, transitions edges, and a state is a clip (an ordered list of
+# choices, the first whose need bands hold plays), a blend space or a whole sub graph
 anims {
   title: "Animation"
   table: "AnimSets"
@@ -28,4 +33,93 @@ anims {
   choice_rate_by: "rate_by"
   choice_ground: "ground"
   node_blend: "blend"
+
+  # a state: its kind (clips, blend or sub), what it plays, how fast, and what it syncs with
+  node_kind: "kind"
+  node_space: "blend_space"      # blend: a row of space_table
+  node_sub: "sub"                # sub: a row of `table` (the graph inside this one; drawn as a node that opens)
+  node_loop: "loop"
+  node_speed: "speed"
+  node_speed_by: "speed_by"      # a parameter
+  node_sync: "sync"              # a sync group: states of one group keep their phase across a change
+  node_exit: "is_exit"           # in a sub graph: the state that says it is done (exit time counts from it)
+
+  # an edge: conditions over parameters, exit time, a fade with its curve, priority and interrupt rules
+  edge_blend: "blend"
+  edge_conditions: "conditions"
+  cond_param: "param"
+  cond_op: "op"
+  cond_value: "value"
+  edge_exit_time: "exit_time"
+  edge_has_exit_time: "has_exit_time"
+  edge_priority: "priority"
+  edge_curve: "curve"
+  edge_curve_points: "curve_points"
+  curve_t: "t"
+  curve_v: "v"
+  edge_interrupt: "interrupt"
+  edge_offset: "offset"
+  edge_to_self: "to_self"
+  edge_via: "via"
+
+  # the graph's parameters, typed (float, int, bool, trigger), and its layers
+  parameters: "parameters"
+  parameter_key: "key"
+  parameter_kind: "kind"
+  parameter_initial: "initial"
+  layers: "layers"
+  layer_key: "key"
+  layer_graph: "graph"           # a row of `table`
+  layer_mode: "mode"             # override or additive
+  layer_mask: "mask"             # a row of mask_table
+  layer_weight: "weight"
+  layer_weight_by: "weight_by"   # a parameter
+  skeleton: "skeleton"           # a row of skeleton_table
+
+  # blend spaces: dims 1 (one parameter) or 2 (two), samples at points of the plane
+  space_table: "AnimBlendSpaces"
+  space_dims: "dims"
+  space_x_param: "x_param"
+  space_y_param: "y_param"
+  space_samples: "samples"
+  sample_clip: "clip"
+  sample_x: "x"
+  sample_y: "y"
+
+  # masks: bones (canonical names through the skeleton's bone map) and their weights, `below` meaning the whole branch
+  mask_table: "AnimMasks"
+  mask_skeleton: "skeleton"
+  mask_default: "default"
+  mask_rows: "rows"
+  mask_bone: "bone"
+  mask_weight: "weight"
+  mask_below: "below"
+
+  # skeletons: the file, its root, the clip prefix, the bone map and the level of detail
+  skeleton_table: "AnimSkeletons"
+  skeleton_model: "model"
+  skeleton_root: "root"
+  skeleton_prefix: "prefix"
+  skeleton_bones: "bones"
+  bone_name: "name"
+  bone_node: "node"
+  skeleton_lod: "lod"
+
+  # what a clip says about itself, by its name without the rig's prefix: events on a timeline (a time, or a
+  # window from `at` to `until`), sync markers, root motion
+  clip_table: "AnimClips"
+  clip_model: "model"
+  clip_name: "clip"
+  clip_events: "events"
+  event_name: "name"
+  event_at: "at"
+  event_until: "until"
+  event_normalized: "normalized"
+  clip_markers: "markers"
+  marker_at: "at"
+  clip_root_motion: "root_motion"
+  clip_root_axes: "root_axes"
+  clip_root_turn: "root_turn"
+  clip_root_bone: "root_bone"
+  clip_ref_time: "ref_time"
 }

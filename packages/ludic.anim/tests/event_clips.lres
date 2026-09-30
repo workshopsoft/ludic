@@ -1,0 +1,12 @@
+# event_clips.lres - keyed times on clips: a notify, a window, one at the clip's end, one that is
+# normalized, one that needs half the pose; footfalls on a loop
+swing {
+  events: [
+    { name: "early", at: 0.05, min_weight: 0.5 },
+    { name: "whoosh", at: 0.25, arg: "air", value: 2.0 },
+    { name: "hit", at: 0.4, until: 0.6 },
+    { name: "mid", at: 0.5, normalized: true },
+    { name: "recover", at: 1.0 }
+  ]
+}
+foot { events: [{ name: "step", at: 0.0 }, { name: "step", at: 0.5 }] }

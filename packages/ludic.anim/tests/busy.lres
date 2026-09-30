@@ -1,0 +1,31 @@
+# busy.lres - a graph that uses everything at once: a sub graph, a blend state, conditions, a layer with a
+# mask driven by a parameter, events on its clips
+busy {
+  entry: "move"
+  params: ["speed", "strafe", "aim"]
+  parameters: [{ key: "armed", kind: "bool" }, { key: "stance", kind: "int" }, { key: "attack", kind: "trigger" }]
+  states: [
+    { key: "move", kind: "blend", blend_space: ABS_GRID, sync: "loco" },
+    { key: "combat", kind: "sub", sub: 1 },
+    { key: "swing", loop: false, next: "move", blend: 0.15, choices: [{ clip: "swing" }] },
+    { key: "foot", sync: "loco", choices: [{ clip: "foot" }] }
+  ]
+  transitions: [
+    { from: "move", to: "combat", blend: 0.2, curve: "ease", conditions: [{ param: "armed", op: "true" }] },
+    { from: "combat", to: "move", blend: 0.2, curve: "ease_out", conditions: [{ param: "armed", op: "false" }] },
+    { from: "*", to: "swing", blend: 0.1, priority: 3, interrupt: "both", conditions: [{ param: "attack", op: "trigger" }, { param: "armed", op: "true" }] },
+    { from: "move", to: "foot", blend: 0.3, curve: "custom", curve_points: [{ t: 0.0, v: 0.0 }, { t: 0.5, v: 0.9 }, { t: 1.0, v: 1.0 }], conditions: [{ param: "stance", op: "eq", value: 2.0 }] },
+    { from: "foot", to: "move", blend: 0.3, conditions: [{ param: "stance", op: "ne", value: 2.0 }] }
+  ]
+  layers: [{ key: "aim", graph: 2, mode: "override", mask: AMASK_UPPER, weight_by: "aim" }]
+  skeleton: ASK_RIG
+}
+combat_inner {
+  entry: "ready"
+  states: [
+    { key: "ready", choices: [{ clip: "walk", rate_by: "speed", ground: 1.0 }, { clip: "idle" }], rate_min: 0.5, rate_max: 2.0 },
+    { key: "strike", loop: false, is_exit: true, choices: [{ clip: "swing" }] }
+  ]
+  transitions: [{ from: "ready", to: "strike", has_exit_time: true, exit_time: 2.0 }, { from: "strike", to: "ready", has_exit_time: true, exit_time: 1.0 }]
+}
+aim_layer { entry: "s", states: [{ key: "s", choices: [{ clip: "shoot" }] }] }

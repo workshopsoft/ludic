@@ -1,0 +1,6 @@
+# masks.lres - which bones a layer reaches. The spine and everything under it; the arm alone at half; the
+# same spine by the rig's canonical name "torso"
+upper { default: 0.0, rows: [{ bone: "spine", weight: 1.0, below: true }] }
+arm_half { default: 0.0, rows: [{ bone: "arm", weight: 0.5, below: false }] }
+torso { skeleton: ASK_RIG, default: 0.0, rows: [{ bone: "torso", weight: 1.0, below: true }] }
+legs_off { default: 1.0, rows: [{ bone: "leg", weight: 0.0, below: true }] }

@@ -1,0 +1,226 @@
+# blend_test.ludic - blend spaces (1D and 2D, exact), sync groups and markers: the weights, the phase,
+# the pose a blend makes. No GPU.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program BlendTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimBlendSpaces from "spaces.lres"
+  def AnimClips from "clips.lres"
+  def AnimSets from "blend.lres"
+
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+    anim_add(anim_st, arm_clip("rig_walk", 2.0, 0.4))
+    anim_add(anim_st, arm_clip("rig_run", 0.5, 0.8))
+    anim_add(anim_st, arm_clip("rig_stepa", 1.0, 0.1))
+    anim_add(anim_st, arm_clip("rig_stepb", 1.0, 0.2))
+  }
+  function player(anim_st: mut AnimState, set: int) -> AnimPlayer {
+    clips(anim_st)
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, set, "rig"))
+    return pl
+  }
+  function tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> void { expect(animset_tick(anim_st, pl, sk, dt)) }
+
+  # the weights at a point: into the two buffers, how many
+  function at(anim_st: mut AnimState, sp: int, x: float, y: float, idx: words, w: floats) -> int {
+    anim_space_ready(anim_st, sp)
+    return anim_space_weights(anim_st, sp, x, y, idx, w)
+  }
+  function weight_of(n: int, idx: words, w: floats, sample: int) -> float {
+    var s = 0.0
+    for i in 0 .. n { if idx[i] == sample { s += w[i] } }
+    return s
+  }
+
+  test "1D: the two samples round the value are lerped, and the ends are held" (anim_st: mut AnimState) {
+    let idx = words(3)
+    let w = floats(3)
+    var n = at(anim_st, ABS_SPEED1D, 0.5, 0.0, idx, w)
+    expect_near(weight_of(n, idx, w, 0), 0.5, 0.00001)
+    expect_near(weight_of(n, idx, w, 1), 0.5, 0.00001)
+    n = at(anim_st, ABS_SPEED1D, 0.25, 0.0, idx, w)
+    expect_near(weight_of(n, idx, w, 0), 0.75, 0.00001)
+    expect_near(weight_of(n, idx, w, 1), 0.25, 0.00001)
+    n = at(anim_st, ABS_SPEED1D, 2.0, 0.0, idx, w)
+    expect_near(weight_of(n, idx, w, 1), 0.5, 0.00001)
+    expect_near(weight_of(n, idx, w, 2), 0.5, 0.00001)
+    n = at(anim_st, ABS_SPEED1D, 1.0, 0.0, idx, w)
+    expect_near(weight_of(n, idx, w, 1), 1.0, 0.00001)
+    n = at(anim_st, ABS_SPEED1D, -4.0, 0.0, idx, w)
+    expect_eq(n, 1)
+    expect_near(weight_of(n, idx, w, 0), 1.0, 0.00001)
+    n = at(anim_st, ABS_SPEED1D, 9.0, 0.0, idx, w)
+    expect_near(weight_of(n, idx, w, 2), 1.0, 0.00001)
+  }
+
+  # a point's weights reproduce it: they sum to one, none is negative, and sum(w * sample) is the point
+  function exact(anim_st: mut AnimState, sp: int, x: float, y: float) -> bool {
+    let idx = words(3)
+    let w = floats(3)
+    let n = at(anim_st, sp, x, y, idx, w)
+    var sum = 0.0
+    var px = 0.0
+    var py = 0.0
+    for i in 0 .. n {
+      if w[i] < -0.000001 { return false }
+      sum += w[i]
+      px += w[i] * AnimBlendSpaces[sp].samples[idx[i]].x
+      py += w[i] * AnimBlendSpaces[sp].samples[idx[i]].y
+    }
+    return Math.abs(sum - 1.0) < 0.00001 and Math.abs(px - x) < 0.0001 and Math.abs(py - y) < 0.0001
+  }
+
+  test "2D: the weights of a grid are exact, everywhere inside it" (anim_st: mut AnimState) {
+    anim_space_ready(anim_st, ABS_GRID)
+    # a 3 x 3 grid is eight triangles
+    expect_eq(len(anim_st.space_tris[ABS_GRID]), 24)
+    expect(exact(anim_st, ABS_GRID, 0.0, 0.0))
+    expect(exact(anim_st, ABS_GRID, 0.25, 0.75))
+    expect(exact(anim_st, ABS_GRID, -0.5, 0.5))
+    expect(exact(anim_st, ABS_GRID, 0.9, 0.1))
+    expect(exact(anim_st, ABS_GRID, 1.0, 1.0))
+    expect(exact(anim_st, ABS_GRID, -1.0, 0.0))
+    expect(exact(anim_st, ABS_GRID, 0.5, 0.5))
+    expect(exact(anim_st, ABS_GRID, -0.73, 0.31))
+    expect(exact(anim_st, ABS_GRID, 0.12, 0.98))
+  }
+
+  test "2D: the triangles of a grid cover it once: their areas add up to the grid's" (anim_st: mut AnimState) {
+    anim_space_ready(anim_st, ABS_GRID)
+    let s = AnimBlendSpaces[ABS_GRID]
+    let t = anim_st.space_tris[ABS_GRID]
+    var area = 0.0
+    var i = 0
+    while i < len(t) {
+      let a = s.samples[t[i]]
+      let b = s.samples[t[i + 1]]
+      let c = s.samples[t[i + 2]]
+      area += Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) / 2.0
+      i += 3
+    }
+    expect_near(area, 2.0, 0.0001)
+  }
+
+  test "2D: scattered samples are triangulated too, and a point outside goes to the nearest edge" (anim_st: mut AnimState) {
+    anim_space_ready(anim_st, ABS_SCATTER)
+    expect(len(anim_st.space_tris[ABS_SCATTER]) >= 9)
+    expect(exact(anim_st, ABS_SCATTER, 0.4, 0.6))
+    expect(exact(anim_st, ABS_SCATTER, 1.0, 0.8))
+    expect(exact(anim_st, ABS_SCATTER, -0.3, 0.7))
+    expect(exact(anim_st, ABS_SCATTER, 0.9, 1.2))
+    # the hull's corner: a sample's own point is that sample
+    let idx = words(3)
+    let w = floats(3)
+    let n = at(anim_st, ABS_SCATTER, 1.0, 2.0, idx, w)
+    expect_near(weight_of(n, idx, w, 2), 1.0, 0.0001)
+    # far to the right of the grid: held on its edge, at the same height when the edge reaches it
+    expect(exact(anim_st, ABS_GRID, 1.0, 0.5))
+    let n2 = at(anim_st, ABS_GRID, 4.0, 0.5, idx, w)
+    var px = 0.0
+    var py = 0.0
+    for i in 0 .. n2 {
+      px += w[i] * AnimBlendSpaces[ABS_GRID].samples[idx[i]].x
+      py += w[i] * AnimBlendSpaces[ABS_GRID].samples[idx[i]].y
+    }
+    expect_near(px, 1.0, 0.0001)
+    expect_near(py, 0.5, 0.0001)
+  }
+
+  test "a degenerate space still answers (by its nearest sample or edge), and validation says what is wrong" (anim_st: mut AnimState) {
+    let idx = words(3)
+    let w = floats(3)
+    let n = at(anim_st, ABS_FLAT, 0.2, 0.2, idx, w)
+    expect(n >= 1)
+    expect_near(w[0], 1.0, 0.0001)
+    expect_eq(len(anim_st.space_tris[ABS_FLAT]), 0)
+  }
+
+  test "a blend state plays the weighted clips: half way is half the angle (nlerp of turns about one axis)" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_LOCOMOTION)
+    animset_param(pl, "speed", 0.5)
+    tick(anim_st, pl, sk, 0.016)
+    expect_eq(pl.n_it, 2)
+    expect_near(pl.it_w[0], 0.5, 0.0001)
+    expect_near(pl.it_w[1], 0.5, 0.0001)
+    expect_near(pose_z(sk, 2), Math.sin(0.1), 0.001)
+    animset_param(pl, "speed", 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect_near(pose_z(sk, 2), Math.sin(0.2), 0.001)
+    animset_param(pl, "speed", 0.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect_near(pose_z(sk, 2), 0.0, 0.001)
+  }
+
+  test "the samples share one phase: the cycle takes the weighted duration, and each clip is at that phase of itself" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_LOCOMOTION)
+    animset_param(pl, "speed", 0.5)
+    tick(anim_st, pl, sk, 0.0)
+    # idle is 1 s and walk 2 s: a half and half blend cycles in 1.5 s
+    tick(anim_st, pl, sk, 0.75)
+    expect_near(pl.mach[0].i_dur[pl.mach[0].n_i - 1], 1.5, 0.0001)
+    expect_near(pl.it_t[0], 0.5, 0.001)
+    expect_near(pl.it_t[1], 1.0, 0.001)
+  }
+
+  test "markers line two clips up: the same phase is the same foot down, however unevenly the steps fall" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let a = AnimClips[ACLIP_STEPA]
+    let b = AnimClips[ACLIP_STEPB]
+    expect_near(anim_clip_time(a, 1.0, 0.0, true), 0.0, 0.0001)
+    expect_near(anim_clip_time(a, 1.0, 0.5, true), 0.25, 0.0001)
+    expect_near(anim_clip_time(b, 1.0, 0.5, true), 0.5, 0.0001)
+    expect_near(anim_clip_time(a, 1.0, 0.25, true), 0.125, 0.0001)
+    expect_near(anim_clip_time(b, 1.0, 0.25, true), 0.25, 0.0001)
+    expect_near(anim_clip_time(a, 1.0, 0.75, true), 0.625, 0.0001)
+    expect_near(anim_clip_time(b, 1.0, 0.75, true), 0.75, 0.0001)
+    # a cycle that starts on its marker
+    let l = AnimClips[ACLIP_LATE]
+    expect_near(anim_clip_time(l, 1.0, 0.0, true), 0.1, 0.0001)
+    expect_near(anim_clip_time(l, 1.0, 0.9, true), 0.0, 0.0001)
+    # time never goes backwards as the phase goes forward
+    var last = -1.0
+    for i in 0 .. 40 {
+      let u = anim_unwrapped_time(a, 1.0, float(i) / 10.0, true)
+      expect(u >= last)
+      last = u
+    }
+    # without markers, or on a one-shot, the phase is the time over the duration
+    expect_near(anim_clip_time(null, 2.0, 0.25, true), 0.5, 0.0001)
+    expect_near(anim_clip_time(a, 1.0, 1.0, false), 1.0, 0.0001)
+
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_STEPPING)
+    animset_param(pl, "speed", 0.5)
+    tick(anim_st, pl, sk, 0.0)
+    tick(anim_st, pl, sk, 0.5)
+    expect_near(pl.it_t[0], 0.25, 0.001)
+    expect_near(pl.it_t[1], 0.5, 0.001)
+  }
+
+  test "a sync group: a state entered from one of its group takes the phase; speed_by scales the rate" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_SYNCING)
+    animset_param(pl, "rate", 2.0)
+    tick(anim_st, pl, sk, 0.0)
+    # walk is 2 s; at rate 2 half a second is half a cycle
+    tick(anim_st, pl, sk, 0.5)
+    expect_near(pl.mach[0].i_ph[0], 0.5, 0.001)
+    animset_param(pl, "speed", 5.0)
+    tick(anim_st, pl, sk, 0.0)
+    expect(animset_state(pl) == "run")
+    expect_near(pl.mach[0].i_ph[pl.mach[0].n_i - 1], 0.5, 0.001)
+    # run is not in the walk's group, idle is in none: no carry
+    animset_param(pl, "speed", 0.0)
+    tick(anim_st, pl, sk, 0.0)
+    expect(animset_state(pl) == "idle")
+    expect_near(pl.mach[0].i_ph[pl.mach[0].n_i - 1], 0.0, 0.001)
+  }
+}

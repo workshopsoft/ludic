@@ -17,8 +17,12 @@ export function anim_space_cache() -> [][]int {
 @alloc_ok("a space's triangles, made once when its first player is bound")
 export function anim_space_ready(anim_st: mut AnimState, sp: int) -> void {
   if sp < 0 or sp >= len(AnimBlendSpaces) { return }
-  if len(anim_st.space_tris) != len(AnimBlendSpaces) { anim_st.space_tris = anim_space_cache() }
-  if len(anim_st.space_tris[sp]) > 0 { return }
+  if len(anim_st.space_tris) != len(AnimBlendSpaces) {
+    anim_st.space_tris = anim_space_cache()
+    anim_st.space_done = words(len(AnimBlendSpaces))
+  }
+  if anim_st.space_done[sp] == 1 { return }
+  anim_st.space_done[sp] = 1
   let s = AnimBlendSpaces[sp]
   if s.samples == null or len(s.samples) == 0 { return }
   let n = len(s.samples)

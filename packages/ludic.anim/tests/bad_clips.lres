@@ -1,0 +1,5 @@
+# bad_clips.lres - an event past the clip's end, a window that ends before it begins, markers out of order
+idle {
+  events: [{ name: "late", at: 5.0 }, { name: "wrong", at: 0.5, until: 0.2 }]
+  markers: [{ name: "a", at: 0.5 }, { name: "b", at: 0.1 }]
+}

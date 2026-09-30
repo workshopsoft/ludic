@@ -30,6 +30,7 @@ export state AnimState {
   v_b: floats = floats(3)
   v_k: floats = floats(3)
   space_tris: [][]int = new [][]int
+  space_done: words = null
   facts: []AnimFact = anim_facts_new()
   n_facts: int = 0
   facts_lost: int = 0

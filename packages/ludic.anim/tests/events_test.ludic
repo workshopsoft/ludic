@@ -1,0 +1,171 @@
+# events_test.ludic - a clip's keyed times become facts: each fires once, at the tick whose step crosses it,
+# once per lap on a loop, a window's begin and end pair up and a cancel closes one left open.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program EventsTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimClips from "event_clips.lres"
+  def AnimSets from "events.lres"
+
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_swing", 1.0, 0.5))
+    anim_add(anim_st, arm_clip("rig_foot", 1.0, 0.3))
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+  }
+  function player(anim_st: mut AnimState, set: int) -> AnimPlayer {
+    clips(anim_st)
+    anim_facts_clear(anim_st)
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, set, "rig"))
+    animset_actor(pl, 42)
+    return pl
+  }
+  # one tick of 1/8 s; what facts it made, as "name:kind" joined by spaces
+  function step(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> string {
+    anim_facts_clear(anim_st)
+    expect(animset_tick(anim_st, pl, sk, dt))
+    var s = ""
+    for i in 0 .. anim_fact_count(anim_st) {
+      let f = anim_fact_at(anim_st, i)
+      s = s + f.name + ":" + `{f.kind}` + " "
+    }
+    return s
+  }
+
+  test "each event fires once, in the tick whose step crosses it (a time on a step's end counts in that step)" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_FIGHT)
+    # a step is 0.125 s: tick n covers ((n-1)/8, n/8]; the first also takes what is at 0
+    expect(step(anim_st, pl, sk, 0.125) == "early:0 ")
+    expect(step(anim_st, pl, sk, 0.125) == "whoosh:0 ")
+    expect(step(anim_st, pl, sk, 0.125) == "")
+    expect(step(anim_st, pl, sk, 0.125) == "hit:1 mid:0 ")
+    expect(step(anim_st, pl, sk, 0.125) == "hit:2 ")
+    expect(step(anim_st, pl, sk, 0.125) == "")
+    expect(step(anim_st, pl, sk, 0.125) == "")
+    expect(step(anim_st, pl, sk, 0.125) == "recover:0 ")
+    expect(step(anim_st, pl, sk, 0.125) == "")
+    expect_eq(pl.n_ow, 0)
+  }
+
+  test "a fact carries its event's argument and value, the clip, the actor, its weight and time" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_FIGHT)
+    step(anim_st, pl, sk, 0.125)
+    anim_facts_clear(anim_st)
+    animset_tick(anim_st, pl, sk, 0.125)
+    expect_eq(anim_fact_count(anim_st), 1)
+    let f = anim_fact_at(anim_st, 0)
+    expect(f.name == "whoosh")
+    expect(f.arg == "air")
+    expect_near(f.value, 2.0, 0.0001)
+    expect(f.clip == "rig_swing")
+    expect_eq(f.actor, 42)
+    expect_near(f.weight, 1.0, 0.0001)
+    expect_near(f.time, 0.25, 0.0001)
+    expect_eq(f.kind, AF_NOTIFY)
+  }
+
+  test "on a loop an event fires once a lap, the one at time 0 on the first tick too" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_FOOTING)
+    var at0 = 0
+    var at_half = 0
+    var first = ""
+    for n in 1 .. 25 {
+      let s = step(anim_st, pl, sk, 0.125)
+      if n == 1 { first = s }
+      if s == "step:0 step:0 " { at0 += 100 }
+      else if s == "step:0 " {
+        # ticks 4, 12, 20 end at x.5; 1 (fresh), 8, 16, 24 end at a lap
+        if n % 8 == 4 { at_half += 1 } else { at0 += 1 }
+      }
+    }
+    expect(first == "step:0 ")
+    expect_eq(at_half, 3)
+    expect_eq(at0, 4)
+  }
+
+  test "a step over several laps fires each crossing, however big the step" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_FOOTING)
+    anim_facts_clear(anim_st)
+    animset_tick(anim_st, pl, sk, 2.7)
+    # 0, 1, 2 at the lap and 0.5, 1.5, 2.5 between
+    expect_eq(anim_fact_count(anim_st), 6)
+  }
+
+  test "an event that wants half the pose does not fire while its clip has less" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_FOOTING)
+    step(anim_st, pl, sk, 0.0)
+    animset_request(pl, "swing")
+    # swing fades in over a second: at its first steps it has an eighth, a quarter of the pose
+    var seen = false
+    for n in 0 .. 3 {
+      let s = step(anim_st, pl, sk, 0.125)
+      if s == "early:0 " { seen = true }
+    }
+    expect(not seen)
+  }
+
+  test "leaving a clip while a window is open cancels it, once, when the clip is gone" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_FIGHT)
+    for n in 0 .. 4 { step(anim_st, pl, sk, 0.125) }
+    # half a second in: the window (0.4 to 0.6) is open
+    expect_eq(pl.n_ow, 1)
+    animset_request(pl, "idle")
+    anim_facts_clear(anim_st)
+    var cancels = 0
+    var ends = 0
+    for n in 0 .. 8 {
+      animset_tick(anim_st, pl, sk, 0.0625)
+      for i in 0 .. anim_fact_count(anim_st) {
+        if anim_fact_at(anim_st, i).kind == AF_CANCEL { cancels += 1 }
+        if anim_fact_at(anim_st, i).kind == AF_END { ends += 1 }
+      }
+      anim_facts_clear(anim_st)
+    }
+    expect_eq(pl.n_ow, 0)
+    # the window's own end (0.6) fell inside the fade out, so it ended; nothing is left to cancel
+    expect_eq(ends, 1)
+    expect_eq(cancels, 0)
+  }
+
+  test "a window still open when its clip is dropped is cancelled" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_FIGHT)
+    for n in 0 .. 4 { step(anim_st, pl, sk, 0.125) }
+    expect_eq(pl.n_ow, 1)
+    # a cut: the fade is 0.2 s by the state's own blend, which this tick is longer than
+    animset_request(pl, "idle")
+    anim_facts_clear(anim_st)
+    animset_tick(anim_st, pl, sk, 0.01)
+    expect_eq(pl.n_ow, 1)
+    animset_tick(anim_st, pl, sk, 0.01)
+    animset_tick(anim_st, pl, sk, 0.5)
+    var cancels = 0
+    var ends = 0
+    for i in 0 .. anim_fact_count(anim_st) {
+      if anim_fact_at(anim_st, i).kind == AF_CANCEL { cancels += 1 }
+      if anim_fact_at(anim_st, i).kind == AF_END { ends += 1 }
+    }
+    expect_eq(pl.n_ow, 0)
+    expect_eq(cancels + ends, 1)
+  }
+
+  test "facts past the queue's room are counted, not kept" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, ASET_FOOTING)
+    anim_facts_clear(anim_st)
+    for n in 0 .. 200 { animset_tick(anim_st, pl, sk, 1.0) }
+    expect_eq(anim_fact_count(anim_st), 256)
+    expect(anim_facts_lost(anim_st) > 0)
+  }
+}

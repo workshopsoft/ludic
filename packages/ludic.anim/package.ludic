@@ -1,8 +1,9 @@
 # ludic.anim - the animation clips that ride inside a glTF, read out of the document render3d
-# just parsed, sampled at a time and cross-faded, and folded into a Skin's pose. Uses
+# just parsed, played through graphs held as data (state machines, blend spaces, layers, events, root
+# motion) and folded into a Skin's pose. Uses
 # ludic.render3d (the Skin, the glTF document and the quaternions). See README.md.
 package "ludic.anim"
-version "0.1.0"
+version "0.2.0"
 kind source
 native "macos-arm64" "lib/macos-arm64/libludicozz.dylib"
 native "windows-x64" "lib/windows-x64/ludicozz.dll"

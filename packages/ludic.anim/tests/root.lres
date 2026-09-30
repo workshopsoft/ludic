@@ -1,0 +1,12 @@
+# root.lres - graphs for root motion: a walk that extracts its root, a slide that plays it, a turn
+rm {
+  entry: "idle"
+  states: [
+    { key: "idle", choices: [{ clip: "idle" }] },
+    { key: "walk", choices: [{ clip: "walk" }] },
+    { key: "slide", choices: [{ clip: "slide" }] },
+    { key: "turn", choices: [{ clip: "turn" }] },
+    { key: "spin", choices: [{ clip: "spin" }] },
+    { key: "hop", loop: false, choices: [{ clip: "hop" }] }
+  ]
+}

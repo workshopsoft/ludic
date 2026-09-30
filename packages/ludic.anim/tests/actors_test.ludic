@@ -1,0 +1,122 @@
+# actors_test.ludic - the gameplay's way in (actor numbers, parameters by name, triggers) and the promise
+# that a tick makes nothing: the heap does not move over thousands of ticks through sub graphs, fades,
+# blend states, layers and events.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program ActorsTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimSkeletons from "rigs.lres"
+  def AnimMasks from "masks.lres"
+  def AnimBlendSpaces from "spaces.lres"
+  def AnimClips from "event_clips.lres"
+  def AnimSets from "busy.lres"
+
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+    anim_add(anim_st, arm_clip("rig_walk", 1.0, 0.4))
+    anim_add(anim_st, arm_clip("rig_run", 0.5, 0.8))
+    anim_add(anim_st, arm_clip("rig_swing", 1.0, 0.9))
+    anim_add(anim_st, arm_clip("rig_foot", 0.75, 0.2))
+    anim_add(anim_st, arm_clip("rig_stepa", 1.0, 0.1))
+    anim_add(anim_st, arm_clip("rig_stepb", 1.0, 0.2))
+    let b = clip_new("rig_base", 1.0, 3)
+    clip_rot(b, 0, 1, 0.2, 0.2)
+    clip_rot(b, 1, 2, 0.4, 0.4)
+    clip_rot(b, 2, 3, 0.4, 0.4)
+    anim_add(anim_st, b)
+    let s = clip_new("rig_shoot", 1.0, 3)
+    clip_rot(s, 0, 1, 1.0, 1.0)
+    clip_rot(s, 1, 2, 1.0, 1.0)
+    clip_rot(s, 2, 3, 1.0, 1.0)
+    anim_add(anim_st, s)
+  }
+
+  test "actors are found by number; parameters, bools, ints and triggers are set by name; unknown names say no" (anim_st: mut AnimState) {
+    clips(anim_st)
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, ASET_BUSY, "rig"))
+    expect(anim_actor_add(anim_st, 12, pl))
+    expect(anim_player_of(anim_st, 12) == pl)
+    expect(anim_player_of(anim_st, 13) == null)
+    expect(anim_set_param(anim_st, 12, "speed", 3.5))
+    expect_near(animset_get(pl, "speed"), 3.5, 0.0001)
+    expect(anim_set_bool(anim_st, 12, "armed", true))
+    expect(anim_set_int(anim_st, 12, "stance", 2))
+    expect(anim_trigger(anim_st, 12, "attack"))
+    expect_near(animset_get(pl, "attack"), 1.0, 0.0001)
+    expect(anim_reset_trigger(anim_st, 12, "attack"))
+    expect_near(animset_get(pl, "attack"), 0.0, 0.0001)
+    expect(not anim_set_param(anim_st, 12, "no_such", 1.0))
+    expect(not anim_set_param(anim_st, 13, "speed", 1.0))
+    expect(not anim_trigger(anim_st, 13, "attack"))
+    expect(anim_request(anim_st, 12, "combat"))
+    expect(not anim_request(anim_st, 12, "nonsense"))
+    expect(anim_set_distance(anim_st, 12, 55.0))
+    expect_near(pl.dist, 55.0, 0.0001)
+    expect_eq(pl.actor, 12)
+  }
+
+  test "the table grows and finds every actor, through removals" (anim_st: mut AnimState) {
+    clips(anim_st)
+    let pls = new []AnimPlayer
+    for i in 0 .. 150 {
+      let pl = new AnimPlayer
+      expect(animset_bind(anim_st, pl, ASET_BUSY, "rig"))
+      push(pls, pl)
+      expect(anim_actor_add(anim_st, i * 3 + 1, pl))
+    }
+    for i in 0 .. 150 { expect(anim_player_of(anim_st, i * 3 + 1) == pls[i]) }
+    for i in 0 .. 150 {
+      if i % 2 == 0 { anim_actor_remove(anim_st, i * 3 + 1) }
+    }
+    for i in 0 .. 150 {
+      if i % 2 == 0 { expect(anim_player_of(anim_st, i * 3 + 1) == null) } else { expect(anim_player_of(anim_st, i * 3 + 1) == pls[i]) }
+    }
+    expect(anim_set_param(anim_st, 4, "speed", 2.0))
+    expect_near(animset_get(pls[1], "speed"), 2.0, 0.0001)
+    # more actors than room: the table grows past the dead marks, and forgets them
+    for i in 150 .. 400 {
+      let pl = new AnimPlayer
+      expect(animset_bind(anim_st, pl, ASET_BUSY, "rig"))
+      expect(anim_actor_add(anim_st, i * 3 + 1, pl))
+    }
+    for i in 0 .. 150 {
+      if i % 2 == 0 { expect(anim_player_of(anim_st, i * 3 + 1) == null) } else { expect(anim_player_of(anim_st, i * 3 + 1) == pls[i]) }
+    }
+    expect(not anim_actor_add(anim_st, -1, pls[0]))
+  }
+
+  # a busy player: parameters wander, the graph changes states, fades, blends, runs layers, fires events
+  function wander(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, n: int) -> void {
+    for i in 0 .. n {
+      animset_param(pl, "speed", float(i % 7) * 0.7)
+      animset_param(pl, "strafe", float(i % 5) * 0.5 - 1.0)
+      animset_param(pl, "aim", float(i % 3) * 0.5)
+      animset_bool(pl, "armed", (i / 5) % 2 == 0)
+      if i % 11 == 0 { animset_trigger(pl, "attack") }
+      if i % 37 == 0 { animset_request(pl, "swing") }
+      if i % 53 == 0 { animset_request(pl, "move") }
+      animset_tick(anim_st, pl, sk, 0.033)
+      anim_facts_clear(anim_st)
+    }
+  }
+
+  test "a tick makes nothing: the heap does not move over thousands of ticks" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    clips(anim_st)
+    let pl = new AnimPlayer
+    expect(animset_bind_skel(anim_st, pl, ASET_BUSY, ASK_RIG))
+    animset_actor(pl, 3)
+    # warm up: the scratch is grown, the layers' masks made, every state seen once
+    wander(anim_st, pl, sk, 400)
+    let before = Os.heap_bytes()
+    wander(anim_st, pl, sk, 3000)
+    if before > 0 { expect(Os.heap_bytes() <= before) }
+    expect(pl.frame > 3000)
+  }
+}

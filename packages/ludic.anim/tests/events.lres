@@ -1,0 +1,17 @@
+# events.lres - a graph of a one-shot swing, a looping footfall and a way from one to the other
+fight {
+  entry: "swing"
+  states: [
+    { key: "swing", loop: false, next: "idle", choices: [{ clip: "swing" }] },
+    { key: "idle", choices: [{ clip: "idle" }] },
+    { key: "foot", choices: [{ clip: "foot" }] }
+  ]
+}
+footing {
+  entry: "foot"
+  states: [
+    { key: "foot", choices: [{ clip: "foot" }] },
+    { key: "swing", loop: false, blend: 1.0, choices: [{ clip: "swing" }] },
+    { key: "idle", blend: 0.25, choices: [{ clip: "idle" }] }
+  ]
+}

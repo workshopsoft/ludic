@@ -1,0 +1,165 @@
+# root_test.ludic - root motion as data: a clip that extracts its root reports the motion (weighted by its
+# share of the pose, accumulating across laps) and is held in place; one that does not plays as keyed.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program RootTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimClips from "root_clips.lres"
+  def AnimSets from "root.lres"
+
+  state RootLog {
+    n: int = 0
+    actor: int = -1
+    dx: float = 0.0
+    dyaw: float = 0.0
+  }
+  # the port's member: what a character controller would be told
+  function root_got(root_log: mut RootLog, actor: int, dx: float, dy: float, dz: float, dyaw: float) -> void {
+    root_log.n += 1
+    root_log.actor = actor
+    root_log.dx += dx
+    root_log.dyaw += dyaw
+  }
+  bind AnimRoot { apply: fn root_got }
+
+  # the root (node 0) walks 2 m along x and 1 m along z in a second, and turns; the arm only idles
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+    let w = clip_new("rig_walk", 1.0, 1)
+    clip_pos(w, 0, 0, 0.0, 2.0, 0.0, 1.0)
+    anim_add(anim_st, w)
+    let s = clip_new("rig_slide", 1.0, 1)
+    clip_pos(s, 0, 0, 0.0, 2.0, 0.0, 1.0)
+    anim_add(anim_st, s)
+    let t = clip_new("rig_turn", 1.0, 1)
+    clip_yaw(t, 0, 0, 0.0, 1.0)
+    anim_add(anim_st, t)
+    let p = clip_new("rig_spin", 1.0, 1)
+    clip_yaw(p, 0, 0, 0.0, 1.0)
+    anim_add(anim_st, p)
+    let h = clip_new("rig_hop", 1.0, 1)
+    clip_pos(h, 0, 0, 0.0, 0.0, 0.0, 0.0)
+    h.vals[1] = 0.0
+    h.vals[4] = 3.0
+    anim_add(anim_st, h)
+  }
+  function player(anim_st: mut AnimState, state_key: string) -> AnimPlayer {
+    clips(anim_st)
+    anim_set_positions(anim_st, true)
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, ASET_RM, "rig"))
+    animset_request(pl, state_key)
+    return pl
+  }
+  function tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> void { expect(animset_tick(anim_st, pl, sk, dt)) }
+
+  test "an extracting clip reports how its root moved, and the body stays where the clip starts" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, "walk")
+    tick(anim_st, pl, sk, 0.0)
+    let out = floats(4)
+    tick(anim_st, pl, sk, 0.5)
+    anim_root_take(pl, out)
+    expect_near(out[0], 1.0, 0.001)
+    expect_near(out[1], 0.0, 0.001)
+    expect_near(out[2], 0.5, 0.001)
+    expect_near(out[3], 0.0, 0.001)
+    # taken: nothing more until it moves again
+    anim_root_take(pl, out)
+    expect_near(out[0], 0.0, 0.0001)
+    # in place: the root's offset is where the clip starts, not where it has got to
+    expect_near(sk.pose_t[0], 0.0, 0.001)
+    expect_near(sk.pose_t[2], 0.0, 0.001)
+  }
+
+  test "a clip with no row plays its root as keyed, and reports nothing" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, "slide")
+    tick(anim_st, pl, sk, 0.0)
+    tick(anim_st, pl, sk, 0.5)
+    let out = floats(4)
+    anim_root_take(pl, out)
+    expect_near(out[0], 0.0, 0.0001)
+    expect_near(sk.pose_t[0], 1.0, 0.001)
+  }
+
+  test "motion accumulates across laps of a loop: each lap is the clip's whole displacement" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, "walk")
+    tick(anim_st, pl, sk, 0.0)
+    let out = floats(4)
+    for i in 0 .. 4 { tick(anim_st, pl, sk, 0.75) }
+    anim_root_take(pl, out)
+    expect_near(out[0], 6.0, 0.01)
+    expect_near(out[2], 3.0, 0.01)
+    # one big step over three laps and a bit gives the same
+    tick(anim_st, pl, sk, 3.25)
+    anim_root_take(pl, out)
+    expect_near(out[0], 6.5, 0.01)
+  }
+
+  test "the motion is weighted by the clip's share of the pose, so a fade hands it over" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, "idle")
+    tick(anim_st, pl, sk, 0.0)
+    animset_request(pl, "walk")
+    let out = floats(4)
+    tick(anim_st, pl, sk, 0.1)
+    anim_root_take(pl, out)
+    expect_near(out[0], 0.0, 0.001)
+    # half way through the 0.2 s fade the walk has half the pose, and moved 0.2 m in that step
+    tick(anim_st, pl, sk, 0.1)
+    anim_root_take(pl, out)
+    expect_near(out[0], 0.1, 0.005)
+    tick(anim_st, pl, sk, 0.5)
+    anim_root_take(pl, out)
+    expect_near(out[0], 1.0, 0.01)
+  }
+
+  test "yaw is extracted on request, and taken out of the pose" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, "turn")
+    tick(anim_st, pl, sk, 0.0)
+    tick(anim_st, pl, sk, 0.5)
+    let out = floats(4)
+    anim_root_take(pl, out)
+    expect_near(out[3], 0.5, 0.002)
+    expect_near(pose_y(sk, 0), 0.0, 0.002)
+    # the same turn with no row plays in the pose and reports nothing
+    let pl2 = player(anim_st, "spin")
+    tick(anim_st, pl2, sk, 0.0)
+    tick(anim_st, pl2, sk, 0.5)
+    anim_root_take(pl2, out)
+    expect_near(out[3], 0.0, 0.0001)
+    expect_near(pose_y(sk, 0), Math.sin(0.25), 0.002)
+  }
+
+  test "the height is reported only for clips that say xyz" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, "hop")
+    tick(anim_st, pl, sk, 0.0)
+    tick(anim_st, pl, sk, 0.5)
+    let out = floats(4)
+    anim_root_take(pl, out)
+    expect_near(out[1], 1.5, 0.002)
+    expect_near(sk.pose_t[1], 0.0, 0.002)
+  }
+
+  test "through the AnimRoot port, the game is told each tick what the root did, in degrees for the yaw" (anim_st: mut AnimState, render3d_st: mut Render3dState, root_log: mut RootLog) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, "turn")
+    animset_actor(pl, 9)
+    anim_root_port(anim_st, true)
+    tick(anim_st, pl, sk, 0.0)
+    tick(anim_st, pl, sk, 0.5)
+    expect_eq(root_log.n, 1)
+    expect_eq(root_log.actor, 9)
+    expect_near(root_log.dyaw, 0.5 * 57.2957795, 0.2)
+    anim_root_port(anim_st, false)
+  }
+}

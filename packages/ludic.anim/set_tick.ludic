@@ -44,9 +44,21 @@ function step_machine(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi
   var hi = 0
   for k in 1 .. m.n_i { if m.i_prog[k] >= 1.0 { hi = k } }
   if hi > 0 { drop_to(anim_st, pl, m, hi) }
+  resolve_picks(pl, m)
   decide(anim_st, pl, m, mi)
+  resolve_picks(pl, m)
   switch_choice(anim_st, pl, m, mi)
   for k in 0 .. m.n_i { advance_inst(anim_st, pl, m, k, dt) }
+}
+
+# an instance that has not chosen yet takes the choice that holds now
+function resolve_picks(pl: AnimPlayer, m: AnimMachine) -> void {
+  for k in 0 .. m.n_i {
+    if m.i_pick[k] >= 0 { continue }
+    let st = m.i_st[k]
+    if AnimSets[m.set].states[st].kind != "clips" { continue }
+    m.i_pick[k] = as_pick(pl, m, st)
+  }
 }
 
 # a `clips` state whose choice changed fades into the new one (keeping the cycle's phase, if it says so)
@@ -110,6 +122,7 @@ function advance_inst(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, k:
     dur = m.clips[slot].dur
     rate = as_rate(pl, m, st, slot, d.choices[m.i_pick[k]])
   } else {
+    anim_space_ready(anim_st, m.space[st])
     dur = blend_weights(anim_st, pl, m, k, st)
     rate = as_speed(pl, m, st)
   }

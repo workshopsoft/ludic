@@ -1,0 +1,303 @@
+# graph_test.ludic - state machines as data: conditions over float, int, bool and trigger parameters,
+# exit time, any-state edges, priorities, fades with curves, interrupt rules and nested graphs. The clips
+# are made by hand on a four-bone skin; no GPU.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program GraphTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimSets from "graph.lres"
+
+  const MOVE: int = 0
+  const PRIORITY: int = 1
+  const FADES: int = 2
+  const FADES_DEST: int = 3
+  const FADES_SOURCE: int = 4
+  const COMBAT: int = 5
+  const OUTER: int = 6
+
+  # every clip the graphs name, on the arm, each a different turn so a pose says which played
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+    anim_add(anim_st, arm_clip("rig_walk", 1.0, 0.4))
+    anim_add(anim_st, arm_clip("rig_run", 0.5, 0.8))
+    anim_add(anim_st, arm_clip("rig_jump", 1.0, 1.2))
+    anim_add(anim_st, arm_clip("rig_land", 1.0, 0.2))
+    anim_add(anim_st, arm_clip("rig_hit", 1.0, 1.6))
+    anim_add(anim_st, arm_clip("rig_draw", 1.0, 0.3))
+    anim_add(anim_st, arm_clip("rig_ready", 1.0, 0.5))
+    anim_add(anim_st, arm_clip("rig_swing", 1.0, 0.9))
+    anim_add(anim_st, arm_clip("rig_sheathe", 1.0, 0.1))
+  }
+  function player(anim_st: mut AnimState, set: int) -> AnimPlayer {
+    clips(anim_st)
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, set, "rig"))
+    return pl
+  }
+  function tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> void { expect(animset_tick(anim_st, pl, sk, dt)) }
+
+  test "the set's own order of ASET constants is what these tests assume" {
+    expect_eq(ASET_MOVE, MOVE)
+    expect_eq(ASET_OUTER, OUTER)
+    expect_eq(ASET_COMBAT, COMBAT)
+  }
+
+  test "float conditions move between states, int and bool ones too" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, MOVE)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "idle")
+    animset_param(pl, "speed", 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "walk")
+    animset_param(pl, "speed", 0.5)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "idle")
+    animset_param(pl, "speed", 4.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "walk")
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "run")
+    animset_param(pl, "speed", 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "walk")
+    animset_param(pl, "speed", 4.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "run")
+    animset_param(pl, "speed", 3.9)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "walk")
+    animset_param(pl, "speed", 0.0)
+    tick(anim_st, pl, sk, 0.016)
+    animset_int(pl, "gear", 2)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "gear2")
+    animset_int(pl, "gear", 3)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "idle")
+  }
+
+  test "a parameter kind is kept: an int rounds, a bool is on above a half, unknown names are ignored" (anim_st: mut AnimState) {
+    let pl = player(anim_st, MOVE)
+    animset_param(pl, "gear", 2.6)
+    expect_near(animset_get(pl, "gear"), 3.0, 0.0001)
+    animset_param(pl, "grounded", 0.2)
+    expect_near(animset_get(pl, "grounded"), 0.0, 0.0001)
+    animset_bool(pl, "grounded", true)
+    expect_near(animset_get(pl, "grounded"), 1.0, 0.0001)
+    expect_eq(anim_param_index(pl, "nope"), -1)
+    animset_param(pl, "nope", 3.0)
+    expect(anim_param_index(pl, "speed") >= 0)
+    expect_near(animset_get(pl, "grounded"), 1.0, 0.0001)
+  }
+
+  test "a trigger is on until a transition that tests it is taken; a failed companion condition keeps it" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, MOVE)
+    tick(anim_st, pl, sk, 0.016)
+    animset_bool(pl, "grounded", false)
+    animset_trigger(pl, "jump")
+    tick(anim_st, pl, sk, 0.016)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "idle")
+    expect_near(animset_get(pl, "jump"), 1.0, 0.0001)
+    animset_bool(pl, "grounded", true)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "jump")
+    expect_near(animset_get(pl, "jump"), 0.0, 0.0001)
+    animset_trigger(pl, "jump")
+    animset_reset_trigger(pl, "jump")
+    expect_near(animset_get(pl, "jump"), 0.0, 0.0001)
+  }
+
+  test "exit time: the edge is taken once the state's clip is that far through, counted in cycles" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, MOVE)
+    tick(anim_st, pl, sk, 0.016)
+    animset_trigger(pl, "jump")
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "jump")
+    tick(anim_st, pl, sk, 0.5)
+    expect(animset_state(pl) == "jump")
+    tick(anim_st, pl, sk, 0.2)
+    expect(animset_state(pl) == "jump")
+    tick(anim_st, pl, sk, 0.1)
+    expect(animset_state(pl) == "jump")
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "land")
+    tick(anim_st, pl, sk, 0.5)
+    expect(animset_state(pl) == "land")
+    tick(anim_st, pl, sk, 0.6)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "idle")
+  }
+
+  test "an any-state edge leaves from wherever the graph is, and the higher priority wins a tie" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, MOVE)
+    animset_param(pl, "speed", 5.0)
+    tick(anim_st, pl, sk, 0.016)
+    tick(anim_st, pl, sk, 0.016)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "run")
+    animset_trigger(pl, "jump")
+    animset_trigger(pl, "hit")
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "stagger")
+    expect_near(animset_get(pl, "hit"), 0.0, 0.0001)
+    expect_near(animset_get(pl, "jump"), 1.0, 0.0001)
+  }
+
+  test "of two transitions that hold, the higher priority is taken whatever the file order" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, PRIORITY)
+    tick(anim_st, pl, sk, 0.016)
+    animset_param(pl, "go", 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "c")
+  }
+
+  test "a fade's weights follow its curve; the new state is the only one once it is done" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, MOVE)
+    tick(anim_st, pl, sk, 0.016)
+    animset_param(pl, "speed", 1.0)
+    tick(anim_st, pl, sk, 0.0)
+    tick(anim_st, pl, sk, 0.1)
+    # half way through a 0.2 s fade, linear: walk 0.5, idle 0.5
+    expect_eq(pl.n_it, 2)
+    expect_near(pl.it_w[0] + pl.it_w[1], 1.0, 0.0001)
+    expect_near(pl.it_w[0], 0.5, 0.001)
+    tick(anim_st, pl, sk, 0.2)
+    expect_eq(pl.n_it, 1)
+    expect_near(pl.it_w[0], 1.0, 0.0001)
+  }
+
+  test "curves: linear, ease, ease in and out, and custom points as a polyline" {
+    expect_near(anim_curve("linear", null, 0.25), 0.25, 0.0001)
+    expect_near(anim_curve("ease", null, 0.5), 0.5, 0.0001)
+    expect_near(anim_curve("ease", null, 0.25), 0.15625, 0.0001)
+    expect_near(anim_curve("ease_in", null, 0.5), 0.25, 0.0001)
+    expect_near(anim_curve("ease_out", null, 0.5), 0.75, 0.0001)
+    expect_near(anim_curve("linear", null, 1.5), 1.0, 0.0001)
+    let pts = new []AnimCurvePoint
+    let a = new AnimCurvePoint
+    a.t = 0.0
+    a.v = 0.0
+    let b = new AnimCurvePoint
+    b.t = 0.5
+    b.v = 0.9
+    let c = new AnimCurvePoint
+    c.t = 1.0
+    c.v = 1.0
+    push(pts, a)
+    push(pts, b)
+    push(pts, c)
+    expect_near(anim_curve("custom", pts, 0.25), 0.45, 0.0001)
+    expect_near(anim_curve("custom", pts, 0.5), 0.9, 0.0001)
+    expect_near(anim_curve("custom", pts, 0.75), 0.95, 0.0001)
+  }
+
+  test "interrupt none: a fade in progress is finished before the next transition out of it" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, FADES)
+    tick(anim_st, pl, sk, 0.016)
+    animset_param(pl, "x", 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "b")
+    animset_param(pl, "y", 1.0)
+    tick(anim_st, pl, sk, 0.3)
+    expect(animset_state(pl) == "b")
+    tick(anim_st, pl, sk, 0.8)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "c")
+  }
+
+  test "interrupt dest: the state being faded into may leave at once" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, FADES_DEST)
+    tick(anim_st, pl, sk, 0.016)
+    animset_param(pl, "x", 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    animset_param(pl, "y", 1.0)
+    tick(anim_st, pl, sk, 0.3)
+    expect(animset_state(pl) == "c")
+    # b was half in and keeps fading out under c, which is cut in: no more than AM_INST instances
+    tick(anim_st, pl, sk, 0.016)
+    expect(pl.mach[0].n_i <= AM_INST)
+  }
+
+  test "interrupt source: a transition out of the state being left may cut the fade" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, FADES_SOURCE)
+    tick(anim_st, pl, sk, 0.016)
+    animset_param(pl, "x", 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "b")
+    animset_param(pl, "x", 0.0)
+    animset_param(pl, "y", 1.0)
+    tick(anim_st, pl, sk, 0.3)
+    expect(animset_state(pl) == "c")
+  }
+
+  test "a sub graph is a state machine of its own: entered at its entry, it runs, and its exit state counts for exit time" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, OUTER)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "free")
+    animset_bool(pl, "in_combat", true)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "combat")
+    expect_eq(animset_machines(pl), 2)
+    expect(animset_machine_state(pl, 1) == "draw")
+    tick(anim_st, pl, sk, 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_machine_state(pl, 1) == "ready")
+    animset_trigger(pl, "attack")
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_machine_state(pl, 1) == "swing")
+    tick(anim_st, pl, sk, 1.0)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_machine_state(pl, 1) == "ready")
+    animset_bool(pl, "relax", true)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_machine_state(pl, 1) == "sheathe")
+    expect(animset_state(pl) == "combat")
+    tick(anim_st, pl, sk, 0.5)
+    expect(animset_state(pl) == "combat")
+    tick(anim_st, pl, sk, 0.6)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "free")
+    # leaving it reset the sub graph: coming back starts at its entry
+    animset_bool(pl, "relax", false)
+    tick(anim_st, pl, sk, 0.016)
+    expect(animset_state(pl) == "combat")
+    expect(animset_machine_state(pl, 1) == "draw")
+  }
+
+  test "the sub graph's clips play through the parent: its state's clip is the pose" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = rig_skin(render3d_st)
+    let pl = player(anim_st, OUTER)
+    animset_bool(pl, "in_combat", true)
+    tick(anim_st, pl, sk, 0.016)
+    tick(anim_st, pl, sk, 0.016)
+    # rig_draw turns the arm 0.3 rad: sin(0.15)
+    expect_near(pose_z(sk, 2), Math.sin(0.15), 0.001)
+  }
+
+  test "the graphs of these tests keep the rules (no error), by validation" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    let sk = rig_skin(render3d_st)
+    for set in 0 .. ASET_COUNT {
+      let ps = anim_validate(anim_st, set, "rig", sk)
+      var errs = 0
+      for i in 0 .. len(ps) { if ps[i].severity == AP_ERROR { errs += 1 } }
+      expect_eq(errs, 0)
+    }
+  }
+}

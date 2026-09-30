@@ -142,4 +142,20 @@ program AnimSetTest {
     animset_tick(anim_st, pl, sk, 0.016)
     expect(playing(pl) == "rig_walk")
   }
+
+  test "a set written before graphs (states, choices, bands, edges) validates: the one clip the rig lacks is the only error" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = skin(render3d_st)
+    rig(anim_st)
+    let ps = anim_validate(anim_st, ASET_TOY, "rig", sk)
+    var errs = 0
+    var where = ""
+    for i in 0 .. len(ps) {
+      if ps[i].severity == AP_ERROR {
+        errs += 1
+        where = ps[i].where
+      }
+    }
+    expect_eq(errs, 1)
+    expect(where == "toy/states/bow/choices/0")
+  }
 }

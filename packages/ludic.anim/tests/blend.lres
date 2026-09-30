@@ -1,0 +1,24 @@
+# blend.lres - graphs with a blend state, a sync group and a speed parameter
+locomotion {
+  entry: "loco"
+  params: ["speed"]
+  states: [{ key: "loco", kind: "blend", blend_space: ABS_LOCO }]
+}
+stepping {
+  entry: "steps"
+  params: ["speed"]
+  states: [{ key: "steps", kind: "blend", blend_space: ABS_STEPS }]
+}
+syncing {
+  entry: "walk"
+  params: ["speed", "rate"]
+  states: [
+    { key: "walk", sync: "loco", speed_by: "rate", choices: [{ clip: "walk" }] },
+    { key: "run", sync: "loco", choices: [{ clip: "run" }] },
+    { key: "idle", choices: [{ clip: "idle" }] }
+  ]
+  transitions: [
+    { from: "walk", to: "run", blend: 0.1, conditions: [{ param: "speed", op: "ge", value: 4.0 }] },
+    { from: "run", to: "idle", blend: 0.1, conditions: [{ param: "speed", op: "le", value: 0.0 }] }
+  ]
+}

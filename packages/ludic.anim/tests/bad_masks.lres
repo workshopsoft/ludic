@@ -1,0 +1,2 @@
+# bad_masks.lres - a mask naming a bone the rig lacks, and a weight over one
+ghost { default: 0.0, rows: [{ bone: "tail", weight: 1.0 }, { bone: "spine", weight: 2.0 }] }

@@ -1,0 +1,29 @@
+# layers.lres - a base graph with an override layer (shooting, on the upper body, by a parameter) and an
+# additive one (breathing, on the arm)
+base {
+  entry: "stand"
+  params: ["aim"]
+  parameters: [{ key: "breath", initial: 1.0 }]
+  states: [{ key: "stand", choices: [{ clip: "base" }] }]
+  layers: [
+    { key: "shoot", graph: 1, mode: "override", mask: AMASK_UPPER, weight_by: "aim" },
+    { key: "breathe", graph: 2, mode: "additive", mask: AMASK_ARM_HALF, weight_by: "breath" }
+  ]
+}
+shoot { entry: "s", states: [{ key: "s", choices: [{ clip: "shoot" }] }] }
+breathe { entry: "b", states: [{ key: "b", choices: [{ clip: "breath" }] }] }
+
+# the same shooting layer, masked by a canonical name through the skeleton row, and a fixed weight
+named {
+  entry: "stand"
+  skeleton: ASK_RIG
+  states: [{ key: "stand", choices: [{ clip: "base" }] }]
+  layers: [{ key: "shoot", graph: 1, mode: "override", mask: AMASK_TORSO, weight: 0.5 }]
+}
+
+# a layer that masks out the legs of a whole-body one
+whole {
+  entry: "stand"
+  states: [{ key: "stand", choices: [{ clip: "base" }] }]
+  layers: [{ key: "shoot", graph: 1, mode: "override", mask: AMASK_LEGS_OFF }]
+}

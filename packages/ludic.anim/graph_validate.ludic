@@ -165,7 +165,7 @@ function check_edges(out: []AnimProblem, s: AnimSet, here: string, pn: []string,
     if t.curve == "custom" {
       if t.curve_points == null or len(t.curve_points) < 2 { prob(out, AP_ERROR, "anim.curve_points", at, "a custom curve needs at least two points") } else {
         for p in 1 .. len(t.curve_points) {
-          if t.curve_points[p].t < t.curve_points[p - 1].t { prob(out, AP_ERROR, "anim.curve_points", at, "curve points must go forward in t") ; break }
+          if t.curve_points[p].t < t.curve_points[p - 1].t { prob(out, AP_ERROR, "anim.curve_points", at, "curve points must go forward in t"); break }
         }
       }
     }
@@ -221,7 +221,7 @@ function check_sync(out: []AnimProblem, s: AnimSet, here: string) -> void {
   }
 }
 
-function starts_with(s: string, p: string) -> bool { return len(s) >= len(p) and s[0 .. len(p)] == p }
+function starts_with(s: string, p: string) -> bool { return len(s) >= len(p) and s[0..len(p)] == p }
 
 # whether the clip table holds anything of this rig at all (else clips are not checked: the model is not loaded)
 function rig_loaded(anim_st: AnimState, rig: string) -> bool {
@@ -287,7 +287,7 @@ function check_info(out: []AnimProblem, info: AnimClipInfo, at: string, clip: st
   }
   if info.markers != null {
     for m in 1 .. len(info.markers) {
-      if info.markers[m].at < info.markers[m - 1].at { prob(out, AP_ERROR, "anim.markers_unsorted", at + "/markers", "markers of " + clip + " must be in order of time") ; break }
+      if info.markers[m].at < info.markers[m - 1].at { prob(out, AP_ERROR, "anim.markers_unsorted", at + "/markers", "markers of " + clip + " must be in order of time"); break }
     }
   }
 }
@@ -313,22 +313,19 @@ function check_space(out: []AnimProblem, anim_st: AnimState, sp: int, at: string
   }
   if s.dims >= 2 {
     if n < 3 { prob(out, AP_ERROR, "anim.space_degenerate", here, "a 2D blend space needs three samples to make a triangle") } else {
-      var found = 0
-      var worst = 1000000.0
-      for i in 0 .. n {
-        for j in i + 1 .. n {
-          for k in j + 1 .. n {
-            let a = s.samples[i]
-            let b = s.samples[j]
-            let c = s.samples[k]
-            let ar = Math.abs(tri_area2(a.x, a.y, b.x, b.y, c.x, c.y))
-            if ar > 0.000001 { found += 1 }
-            let l2 = Math.max(Math.max((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y), (c.x - b.x) * (c.x - b.x) + (c.y - b.y) * (c.y - b.y)), (a.x - c.x) * (a.x - c.x) + (a.y - c.y) * (a.y - c.y))
-            if ar > 0.000001 and l2 > 0.0 { worst = Math.min(worst, ar / l2) }
-          }
-        }
+      let tris = new []int
+      tri_build(s, tris)
+      if len(tris) == 0 { prob(out, AP_ERROR, "anim.space_degenerate", here, "every sample lies on one line: no triangle can be made") }
+      var t = 0
+      while t < len(tris) {
+        let a = s.samples[tris[t]]
+        let b = s.samples[tris[t + 1]]
+        let c = s.samples[tris[t + 2]]
+        let ar = Math.abs(tri_area2(a.x, a.y, b.x, b.y, c.x, c.y))
+        let l2 = Math.max(Math.max((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y), (c.x - b.x) * (c.x - b.x) + (c.y - b.y) * (c.y - b.y)), (a.x - c.x) * (a.x - c.x) + (a.y - c.y) * (a.y - c.y))
+        if l2 > 0.0 and ar / l2 < 0.02 { prob(out, AP_WARNING, "anim.space_sliver", here, "samples " + si(tris[t]) + ", " + si(tris[t + 1]) + " and " + si(tris[t + 2]) + " make a sliver of a triangle: its weights swing with the smallest move") }
+        t += 3
       }
-      if found == 0 { prob(out, AP_ERROR, "anim.space_degenerate", here, "every sample lies on one line: no triangle can be made") }
     }
   }
 }
@@ -384,6 +381,6 @@ function check_skeleton(out: []AnimProblem, ki: int, sk: Skin) -> void {
   }
   if sk != null and k.root != "" and skin_joint_quiet(sk, k.root) < 0 { prob(out, AP_ERROR, "anim.skeleton_root_missing", here, "the skin has no root node " + k.root) }
   if k.lod != null {
-    for i in 1 .. len(k.lod) { if k.lod[i].dist < k.lod[i - 1].dist { prob(out, AP_ERROR, "anim.lod_unsorted", here + "/lod", "lod rows must go out in distance") ; break } }
+    for i in 1 .. len(k.lod) { if k.lod[i].dist < k.lod[i - 1].dist { prob(out, AP_ERROR, "anim.lod_unsorted", here + "/lod", "lod rows must go out in distance"); break } }
   }
 }

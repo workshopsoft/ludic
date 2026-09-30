@@ -1,0 +1,150 @@
+# validate_test.ludic - the rules a graph keeps, as problems: an unknown clip, a bone a mask names that the
+# rig lacks, an unreachable state, a blend space with no triangle, a sub graph inside itself, and more.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program ValidateTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimSkeletons from "rigs.lres"
+  def AnimSkeletons from "bad_rigs.lres"
+  def AnimMasks from "masks.lres"
+  def AnimMasks from "bad_masks.lres"
+  def AnimBlendSpaces from "spaces.lres"
+  def AnimClips from "bad_clips.lres"
+  def AnimSets from "bad.lres"
+
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+    anim_add(anim_st, arm_clip("rig_walk", 1.0, 0.4))
+    anim_add(anim_st, arm_clip("rig_run", 1.0, 0.8))
+    let s = clip_new("rig_stray", 1.0, 2)
+    clip_rot(s, 0, 2, 0.0, 0.1)
+    clip_rot(s, 1, 9, 0.0, 0.1)
+    anim_add(anim_st, s)
+  }
+  function codes(ps: []AnimProblem) -> string {
+    var s = " "
+    for i in 0 .. len(ps) { s = s + ps[i].code + " " }
+    return s
+  }
+  function has(ps: []AnimProblem, code: string) -> bool {
+    for i in 0 .. len(ps) { if ps[i].code == code { return true } }
+    return false
+  }
+  function errors(ps: []AnimProblem) -> int {
+    var n = 0
+    for i in 0 .. len(ps) { if ps[i].severity == AP_ERROR { n += 1 } }
+    return n
+  }
+  # the problems of a set, with the rig's clips and skin loaded
+  function check(anim_st: mut AnimState, render3d_st: mut Render3dState, set: int) -> []AnimProblem {
+    clips(anim_st)
+    let sk = rig_skin(render3d_st)
+    return anim_validate(anim_st, set, "rig", sk)
+  }
+
+  test "a graph that keeps the rules has no problem at all" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let ps = check(anim_st, render3d_st, ASET_CLEAN)
+    expect_eq(len(ps), 0)
+  }
+
+  test "states, transitions, parameters and clips the graph gets wrong are named, each by its row" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let ps = check(anim_st, render3d_st, ASET_BROKEN)
+    expect(has(ps, "anim.entry_unknown"))
+    expect(has(ps, "anim.duplicate_state"))
+    expect(has(ps, "anim.unknown_clip"))
+    expect(has(ps, "anim.unreachable_state"))
+    expect(has(ps, "anim.no_clips"))
+    expect(has(ps, "anim.transition_unknown_state"))
+    expect(has(ps, "anim.unknown_param"))
+    expect(has(ps, "anim.curve_points"))
+    expect(has(ps, "anim.exit_time_range"))
+    expect(has(ps, "anim.condition_kind"))
+    expect(has(ps, "anim.no_default_choice"))
+    expect(has(ps, "anim.sync_single"))
+    expect(has(ps, "anim.clip_bone_missing"))
+    expect(has(ps, "anim.event_out_of_range"))
+    expect(has(ps, "anim.window_inverted"))
+    expect(has(ps, "anim.markers_unsorted"))
+    expect(errors(ps) >= 10)
+    # a problem says where: the unknown clip is the `b` state's first choice
+    var where = ""
+    for i in 0 .. len(ps) { if ps[i].code == "anim.unknown_clip" { where = ps[i].where } }
+    expect(where == "broken/states/b/choices/0")
+  }
+
+  test "the orphan is found, and the states something reaches are not" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let ps = check(anim_st, render3d_st, ASET_BROKEN)
+    var orphans = 0
+    var stray_flagged = false
+    for i in 0 .. len(ps) {
+      if ps[i].code == "anim.unreachable_state" {
+        orphans += 1
+        if ps[i].where == "broken/states/stray" { stray_flagged = true }
+      }
+    }
+    # orphan, empty and the second `a` (a key finds the first): nothing leads to them; the first `a` is
+    # the entry's fallback, and b, stray and needs have edges
+    expect_eq(orphans, 3)
+    expect(not stray_flagged)
+  }
+
+  test "blend spaces that cannot work: no triangle, two samples at one point, a parameter nobody declares, none at all" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let ps = check(anim_st, render3d_st, ASET_SPACES)
+    expect(has(ps, "anim.space_degenerate"))
+    expect(has(ps, "anim.space_duplicate_point"))
+    expect(has(ps, "anim.unknown_param"))
+    expect(has(ps, "anim.space_missing"))
+    expect(has(ps, "anim.sub_missing"))
+  }
+
+  test "a blend space with a sliver of a triangle is a warning, not an error" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let ps = check(anim_st, render3d_st, ASET_SLIVERS)
+    expect(has(ps, "anim.space_sliver"))
+    expect_eq(errors(ps), 0)
+    # and a clean grid has none
+    let pc = check(anim_st, render3d_st, ASET_CLEAN)
+    expect(not has(pc, "anim.space_sliver"))
+  }
+
+  test "layers: a graph that is not there, a mask bone the rig lacks, a weight out of range, a parameter nobody declares" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let ps = check(anim_st, render3d_st, ASET_BADLAYERS)
+    expect(has(ps, "anim.layer_graph_missing"))
+    expect(has(ps, "anim.mask_bone_missing"))
+    expect(has(ps, "anim.mask_weight"))
+    expect(has(ps, "anim.unknown_param"))
+    expect(has(ps, "anim.additive_unmasked"))
+  }
+
+  test "a graph inside itself is a cycle" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let ps = check(anim_st, render3d_st, ASET_CYC)
+    expect(has(ps, "anim.sub_cycle"))
+  }
+
+  test "a skeleton row: a bone named twice, a node the skin lacks, a root it lacks, lod rows out of order" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let ps = check(anim_st, render3d_st, ASET_SKELSET)
+    expect(has(ps, "anim.skeleton_bone_duplicate"))
+    expect(has(ps, "anim.skeleton_bone_missing"))
+    expect(has(ps, "anim.skeleton_root_missing"))
+    expect(has(ps, "anim.lod_unsorted"))
+  }
+
+  test "without the rig loaded only what the data says is checked (clips are not judged)" (anim_st: mut AnimState) {
+    anim_clear(anim_st)
+    let ps = anim_validate(anim_st, ASET_BROKEN, "rig", null)
+    expect(not has(ps, "anim.unknown_clip"))
+    expect(not has(ps, "anim.clip_bone_missing"))
+    expect(has(ps, "anim.unreachable_state"))
+    expect(has(ps, "anim.duplicate_state"))
+  }
+
+  test "no such set is one problem, not a crash" (anim_st: mut AnimState) {
+    let ps = anim_validate(anim_st, 99, "rig", null)
+    expect_eq(len(ps), 1)
+    expect(ps[0].code == "anim.no_such_set")
+  }
+}

@@ -33,7 +33,7 @@ function actor_grow(anim_st: mut AnimState) -> void {
   for i in 0 .. cap { push(anim_st.actor_pl, null) }
   anim_st.n_actors = 0
   if ids != null {
-    for i in 0 .. len(ids) { if ids[i] > 0 { actor_put(anim_st, ids[i] - 1, pls[i]) } }
+    for i in 0 .. len(ids) { if ids[i] > 0 and pls[i] != null { actor_put(anim_st, ids[i] - 1, pls[i]) } }
   }
 }
 

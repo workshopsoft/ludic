@@ -1,0 +1,120 @@
+# graph.lres - the state machine tests' graphs: parameters of every kind, conditions, exit time, an
+# any-state edge, priorities, a nested graph with an exit state, and fades with curves and interrupts
+move {
+  entry: "idle"
+  params: ["speed"]
+  parameters: [
+    { key: "grounded", kind: "bool", initial: 1.0 },
+    { key: "gear", kind: "int" },
+    { key: "jump", kind: "trigger" },
+    { key: "hit", kind: "trigger" }
+  ]
+  states: [
+    { key: "idle", choices: [{ clip: "idle" }] },
+    { key: "walk", choices: [{ clip: "walk" }] },
+    { key: "run", choices: [{ clip: "run" }] },
+    { key: "jump", loop: false, choices: [{ clip: "jump" }] },
+    { key: "land", loop: false, choices: [{ clip: "land" }] },
+    { key: "stagger", loop: false, choices: [{ clip: "hit" }] },
+    { key: "gear2", choices: [{ clip: "run" }] }
+  ]
+  transitions: [
+    { from: "idle", to: "walk", blend: 0.2, conditions: [{ param: "speed", op: "gt", value: 0.5 }] },
+    { from: "walk", to: "idle", blend: 0.2, conditions: [{ param: "speed", op: "le", value: 0.5 }] },
+    { from: "walk", to: "run", blend: 0.2, conditions: [{ param: "speed", op: "ge", value: 4.0 }] },
+    { from: "run", to: "walk", blend: 0.2, conditions: [{ param: "speed", op: "lt", value: 4.0 }] },
+    { from: "*", to: "jump", blend: 0.1, conditions: [{ param: "jump", op: "trigger" }, { param: "grounded", op: "true" }] },
+    { from: "jump", to: "land", has_exit_time: true, exit_time: 0.75, blend: 0.1 },
+    { from: "land", to: "idle", has_exit_time: true, exit_time: 1.0, blend: 0.1 },
+    { from: "*", to: "stagger", priority: 10, blend: 0.0, conditions: [{ param: "hit", op: "trigger" }] },
+    { from: "stagger", to: "idle", has_exit_time: true, exit_time: 1.0 },
+    { from: "idle", to: "gear2", conditions: [{ param: "gear", op: "eq", value: 2.0 }] },
+    { from: "gear2", to: "idle", conditions: [{ param: "gear", op: "ne", value: 2.0 }] }
+  ]
+}
+
+# two transitions both true at once: the higher priority goes, whatever the order they are written in
+priority {
+  entry: "a"
+  params: ["go"]
+  states: [
+    { key: "a", choices: [{ clip: "idle" }] },
+    { key: "b", choices: [{ clip: "walk" }] },
+    { key: "c", choices: [{ clip: "run" }] }
+  ]
+  transitions: [
+    { from: "a", to: "b", priority: 1, blend: 0.0, conditions: [{ param: "go", op: "gt", value: 0.5 }] },
+    { from: "a", to: "c", priority: 5, blend: 0.0, conditions: [{ param: "go", op: "gt", value: 0.5 }] }
+  ]
+}
+
+# a long fade out of a, with a custom curve, to b; `cut` may interrupt it or not (the interrupt field)
+fades {
+  entry: "a"
+  params: ["x", "y"]
+  states: [
+    { key: "a", choices: [{ clip: "idle" }] },
+    { key: "b", choices: [{ clip: "walk" }] },
+    { key: "c", choices: [{ clip: "run" }] }
+  ]
+  transitions: [
+    { from: "a", to: "b", blend: 1.0, interrupt: "none", conditions: [{ param: "x", op: "gt", value: 0.5 }] },
+    { from: "b", to: "c", blend: 0.0, conditions: [{ param: "y", op: "gt", value: 0.5 }] }
+  ]
+}
+fades_dest {
+  entry: "a"
+  params: ["x", "y"]
+  states: [
+    { key: "a", choices: [{ clip: "idle" }] },
+    { key: "b", choices: [{ clip: "walk" }] },
+    { key: "c", choices: [{ clip: "run" }] }
+  ]
+  transitions: [
+    { from: "a", to: "b", blend: 1.0, interrupt: "dest", conditions: [{ param: "x", op: "gt", value: 0.5 }] },
+    { from: "b", to: "c", blend: 0.0, conditions: [{ param: "y", op: "gt", value: 0.5 }] }
+  ]
+}
+fades_source {
+  entry: "a"
+  params: ["x", "y"]
+  states: [
+    { key: "a", choices: [{ clip: "idle" }] },
+    { key: "b", choices: [{ clip: "walk" }] },
+    { key: "c", choices: [{ clip: "run" }] }
+  ]
+  transitions: [
+    { from: "a", to: "b", blend: 1.0, interrupt: "source", conditions: [{ param: "x", op: "gt", value: 0.5 }] },
+    { from: "a", to: "c", blend: 0.0, conditions: [{ param: "y", op: "gt", value: 0.5 }] }
+  ]
+}
+
+# a sub graph: the weapon's own little machine, which is done when it reaches its exit state
+combat {
+  entry: "draw"
+  parameters: [{ key: "attack", kind: "trigger" }, { key: "relax", kind: "bool" }]
+  states: [
+    { key: "draw", loop: false, choices: [{ clip: "draw" }] },
+    { key: "ready", choices: [{ clip: "ready" }] },
+    { key: "swing", loop: false, choices: [{ clip: "swing" }] },
+    { key: "sheathe", loop: false, is_exit: true, choices: [{ clip: "sheathe" }] }
+  ]
+  transitions: [
+    { from: "draw", to: "ready", has_exit_time: true, exit_time: 1.0, blend: 0.0 },
+    { from: "ready", to: "swing", blend: 0.0, conditions: [{ param: "attack", op: "trigger" }] },
+    { from: "swing", to: "ready", has_exit_time: true, exit_time: 1.0, blend: 0.0 },
+    { from: "ready", to: "sheathe", blend: 0.0, conditions: [{ param: "relax", op: "true" }] }
+  ]
+}
+outer {
+  entry: "free"
+  parameters: [{ key: "in_combat", kind: "bool" }]
+  states: [
+    { key: "free", choices: [{ clip: "idle" }] },
+    { key: "combat", kind: "sub", sub: 5 }
+  ]
+  transitions: [
+    { from: "free", to: "combat", blend: 0.0, conditions: [{ param: "in_combat", op: "true" }] },
+    { from: "combat", to: "free", has_exit_time: true, exit_time: 1.0, blend: 0.0 }
+  ]
+}

@@ -1,0 +1,12 @@
+# rigs.lres - a rig's skeleton row: its prefix, its bone names (Mixamo-style canonical names over the
+# nodes of the file) and how it is updated far from the camera
+rig {
+  prefix: "rig"
+  root: "root"
+  bones: [{ name: "torso", node: "spine" }, { name: "hand", node: "arm" }, { name: "hips", node: "root" }]
+  lod: [
+    { dist: 10.0, every: 1 },
+    { dist: 40.0, every: 4, layers: 1, events: false },
+    { dist: 1000.0, every: 8, layers: 1, events: false }
+  ]
+}

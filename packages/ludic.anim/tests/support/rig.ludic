@@ -1,0 +1,87 @@
+# rig.ludic - what the graph tests share (not a test: tests/support is not run): a skin made from a
+# glTF document with no GPU, and clips made by hand. Rotations are about Z, in radians; a bone's
+# pose rotation equals its local animation when the rest pose is the identity.
+
+# nodes: 0 root, 1 spine (of the root), 2 arm (of the spine), 3 leg (of the root); all four are joints
+function rig_skin(render3d_st: mut Render3dState) -> Skin {
+  render3d_st.gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"root\", \"children\": [1, 3]}, {\"name\": \"spine\", \"children\": [2]}, {\"name\": \"arm\"}, {\"name\": \"leg\"}], \"skins\": [{\"joints\": [0, 1, 2, 3]}]}")
+  return skin_load(render3d_st, 0)
+}
+
+# a clip of `nch` channels, each of two keys (0 and dur); fill them with clip_rot / clip_pos
+function clip_new(name: string, dur: float, nch: int) -> Clip {
+  let c = new Clip
+  c.name = name
+  c.n = nch
+  c.cnode = words(nch)
+  c.cpath = words(nch)
+  c.ckeys = words(nch)
+  c.coff = words(nch)
+  c.cvoff = words(nch)
+  c.times = floats(nch * 2)
+  c.vals = floats(nch * 8)
+  c.dur = dur
+  for ch in 0 .. nch {
+    c.ckeys[ch] = 2
+    c.coff[ch] = ch * 2
+    c.cvoff[ch] = ch * 8
+    c.times[ch * 2 + 1] = dur
+  }
+  return c
+}
+
+# channel ch turns `node` about Z from a0 to a1 over the clip
+function clip_rot(c: Clip, ch: int, node: int, a0: float, a1: float) -> void {
+  c.cnode[ch] = node
+  c.cpath[ch] = AC_ROT
+  c.vals[ch * 8 + 2] = Math.sin(a0 / 2.0)
+  c.vals[ch * 8 + 3] = Math.cos(a0 / 2.0)
+  c.vals[ch * 8 + 6] = Math.sin(a1 / 2.0)
+  c.vals[ch * 8 + 7] = Math.cos(a1 / 2.0)
+}
+
+# channel ch moves `node` along x from x0 to x1 (and z from z0 to z1)
+function clip_pos(c: Clip, ch: int, node: int, x0: float, x1: float, z0: float, z1: float) -> void {
+  c.cnode[ch] = node
+  c.cpath[ch] = AC_POS
+  c.vals[ch * 8] = x0
+  c.vals[ch * 8 + 2] = z0
+  c.vals[ch * 8 + 3] = x1
+  c.vals[ch * 8 + 5] = z1
+}
+
+# one clip on the arm: a constant turn of `a` radians
+function arm_clip(name: string, dur: float, a: float) -> Clip {
+  let c = clip_new(name, dur, 1)
+  clip_rot(c, 0, 2, a, a)
+  return c
+}
+
+# the pose rotation's z of a node (sine of half its angle)
+function pose_z(sk: Skin, node: int) -> float {
+  let q = floats(4)
+  q_load(q, sk.pose_r, node)
+  return q[2]
+}
+
+function pose_w(sk: Skin, node: int) -> float {
+  let q = floats(4)
+  q_load(q, sk.pose_r, node)
+  return q[3]
+}
+
+# channel ch turns `node` about Y (a yaw) from a0 to a1
+function clip_yaw(c: Clip, ch: int, node: int, a0: float, a1: float) -> void {
+  c.cnode[ch] = node
+  c.cpath[ch] = AC_ROT
+  c.vals[ch * 8 + 1] = Math.sin(a0 / 2.0)
+  c.vals[ch * 8 + 3] = Math.cos(a0 / 2.0)
+  c.vals[ch * 8 + 5] = Math.sin(a1 / 2.0)
+  c.vals[ch * 8 + 7] = Math.cos(a1 / 2.0)
+}
+
+function pose_y(sk: Skin, node: int) -> float {
+  let q = floats(4)
+  q_load(q, sk.pose_r, node)
+  return q[1]
+}

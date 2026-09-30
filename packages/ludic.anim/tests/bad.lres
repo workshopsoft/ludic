@@ -1,0 +1,70 @@
+# bad.lres - graphs that break the rules, one rule to a row, for the validation tests; and one that keeps them
+broken {
+  entry: "nowhere"
+  params: ["speed"]
+  states: [
+    { key: "a", choices: [{ clip: "idle", need: [{ param: "ghost_param", over: 1.0 }] }, { clip: "idle" }] },
+    { key: "a", choices: [{ clip: "idle" }] },
+    { key: "b", choices: [{ clip: "nosuch" }] },
+    { key: "orphan", choices: [{ clip: "idle" }] },
+    { key: "empty" },
+    { key: "stray", choices: [{ clip: "stray" }] },
+    { key: "needs", choices: [{ clip: "walk", need: [{ param: "speed", over: 1.0 }] }], sync: "lonely" }
+  ]
+  transitions: [
+    { from: "a", to: "zzz" },
+    { from: "a", to: "b", conditions: [{ param: "nope", op: "gt" }] },
+    { from: "a", to: "b", curve: "custom" },
+    { from: "b", to: "a", has_exit_time: true, exit_time: -1.0 },
+    { from: "a", to: "b", conditions: [{ param: "speed", op: "true" }] },
+    { from: "a", to: "stray", conditions: [{ param: "speed", op: "gt", value: 1.0 }] },
+    { from: "a", to: "needs", conditions: [{ param: "speed", op: "trigger" }] }
+  ]
+}
+spaces {
+  entry: "x"
+  params: ["speed"]
+  states: [
+    { key: "x", kind: "blend", blend_space: ABS_FLAT },
+    { key: "y", kind: "blend", blend_space: ABS_TWIN },
+    { key: "z", kind: "blend" },
+    { key: "w", kind: "sub" }
+  ]
+  transitions: [{ from: "x", to: "y" }, { from: "x", to: "z" }, { from: "x", to: "w" }]
+}
+badlayers {
+  entry: "s"
+  params: ["aim"]
+  states: [{ key: "s", choices: [{ clip: "walk" }] }]
+  layers: [
+    { key: "nograph", graph: -1 },
+    { key: "ghostbone", graph: 3, mask: AMASK_GHOST, weight_by: "missing_param" },
+    { key: "add", graph: 3, mode: "additive" }
+  ]
+}
+tiny { entry: "t", states: [{ key: "t", choices: [{ clip: "run" }] }] }
+cyc { entry: "a", states: [{ key: "a", kind: "sub", sub: 4 }] }
+skelset { entry: "s", skeleton: ASK_BADRIG, states: [{ key: "s", choices: [{ clip: "run" }] }] }
+
+# the rules kept: parameters declared, states reached, clips the rig has
+clean {
+  entry: "walk"
+  params: ["speed"]
+  parameters: [{ key: "jump", kind: "trigger" }]
+  states: [
+    { key: "walk", choices: [{ clip: "walk" }] },
+    { key: "run", choices: [{ clip: "run" }] },
+    { key: "hop", loop: false, next: "walk", choices: [{ clip: "run" }] }
+  ]
+  transitions: [
+    { from: "walk", to: "run", conditions: [{ param: "speed", op: "ge", value: 4.0 }] },
+    { from: "run", to: "walk", conditions: [{ param: "speed", op: "lt", value: 4.0 }] },
+    { from: "*", to: "hop", conditions: [{ param: "jump", op: "trigger" }] }
+  ]
+}
+
+slivers {
+  entry: "x"
+  params: ["strafe", "speed"]
+  states: [{ key: "x", kind: "blend", blend_space: ABS_SLIVER }]
+}

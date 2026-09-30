@@ -1,0 +1,7 @@
+# bad_rigs.lres - a skeleton row with a bone twice, a bone the skin lacks and lod rows out of order
+badrig {
+  prefix: "rig"
+  root: "nowhere"
+  bones: [{ name: "torso", node: "spine" }, { name: "torso", node: "arm" }, { name: "wing", node: "wing_l" }]
+  lod: [{ dist: 50.0, every: 2 }, { dist: 10.0, every: 4 }]
+}
