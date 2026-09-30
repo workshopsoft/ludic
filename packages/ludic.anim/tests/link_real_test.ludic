@@ -1,0 +1,186 @@
+# link_real_test.ludic - the adapters of the real mechanic packages (melee, weapons, vitals, crowd, character,
+# vehicles) read by rows of AnimBindings: every source is whole, facts of the real records fire their
+# triggers and requests with their clip and number, and values answer from the real states. Nothing in this
+# file is glue: the game's wiring is real_rows.lres.
+import "ludic.render3d/r3d.ludic"
+import "ludic.base"
+import "ludic.anim"
+import "ludic.melee"
+import "ludic.weapons"
+import "ludic.vitals"
+import "ludic.crowd"
+import "ludic.character"
+import "ludic.vehicles"
+import "support/rig.ludic"
+program LinkRealTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def VitalPools health { life: true, max: 100.0 }
+  def DamageTypes bullet { }
+  def HitZones body { }
+  def VitalClasses hero { }
+  def MeleeAttacks from "real_melee.lres"
+  def VehicleSpecs from "real_specs.lres"
+  def VehicleSeats from "real_seats.lres"
+  def AnimSets from "real_sets.lres"
+  def AnimBindings from "real_rows.lres"
+
+  function fk_ground(x: float, z: float) -> float { return 0.0 }
+  bind VehicleWorld { ground: fn fk_ground }
+  # a hull that is nowhere: the test makes a vehicle and never steps it
+  function fh_put(nid: int, x: float, y: float, z: float, yaw: float) -> void { }
+  function fh_row(nid: int, forward: float, turn: float) -> void { }
+  function fh_drift(nid: int, fx: float, fz: float) -> void { }
+  function fh_read(nid: int) -> bool { return false }
+  function fh_gone(nid: int) -> void { }
+  function fh_zero() -> float { return 0.0 }
+  bind VehicleHull { put: fn fh_put, row: fn fh_row, drift: fn fh_drift, read: fn fh_read, x: fn fh_zero, y: fn fh_zero, z: fn fh_zero, yaw: fn fh_zero, speed: fn fh_zero, gone: fn fh_gone }
+  # the body's ground: a flat plain and a walker that never moves (the test reads the adapters, not the walk)
+  function fk_walk(x: float, y: float, z: float, vx: float, vz: float, jump: float, step: float, slope: float, dt: float) -> int { return CHAR_WALK_GROUND }
+  bind CharacterGround { height: fn fk_ground, walk: fn fk_walk, walked_x: fn fh_zero, walked_y: fn fh_zero, walked_z: fn fh_zero }
+
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+  }
+  function person(anim_st: mut AnimState, actor: int) -> AnimPlayer {
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, ASET_PERSON, "rig"))
+    expect(anim_actor_add(anim_st, actor, pl))
+    return pl
+  }
+  function has_source(name: string, kind: string) -> bool {
+    let i = sig_find(name)
+    return i >= 0 and SignalSources[i].kind == kind and sig_problem(i) == ""
+  }
+
+  test "every package declares its sources, whole, under the names the docs give" () {
+    for i in 0 .. len(SignalSources) { expect(sig_problem(i) == "") }
+    expect(has_source("melee.SWING", "fact"))
+    expect(has_source("melee.HIT_TAKEN", "fact"))
+    expect(has_source("melee.attacking", "value"))
+    expect(has_source("weapons.RELOAD_STARTED", "fact"))
+    expect(has_source("weapons.ads", "value"))
+    expect(has_source("vitals.DOWNED", "fact"))
+    expect(has_source("vitals.DIED", "fact"))
+    expect(has_source("vitals.health", "value"))
+    expect(has_source("crowd.ACT", "fact"))
+    expect(has_source("crowd.speed", "value"))
+    expect(has_source("crowd.act_key", "text"))
+    expect(has_source("character.JUMPED", "fact"))
+    expect(has_source("character.grounded", "value"))
+    expect(has_source("vehicles.MOUNTED", "fact"))
+    expect(has_source("vehicles.seat_pose", "text"))
+    let ps = anim_link_validate()
+    for i in 0 .. len(ps) { expect(ps[i].severity != AP_ERROR) }
+  }
+
+  test "melee: a swing fires the attack's trigger with the clip's speed, and names its clip" (anim_st: mut AnimState, melee_st: mut MeleeState) {
+    clips(anim_st)
+    let pl = person(anim_st, 4)
+    melee_reset(melee_st)
+    let f = new MeleeFact
+    f.what = MELEE_SWING
+    f.actor = 4
+    f.attack = MAT_SLASH
+    q_push(melee_facts(melee_st), f)
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "slash"), 1.0, 0.0001)
+    expect_near(animset_get(pl, "attack_speed"), 1.25, 0.0001)
+    expect_eq(q_len(melee_facts(melee_st)), 1)
+    let other = new MeleeFact
+    other.what = MELEE_GUARD_UP
+    other.actor = 4
+    q_clear(melee_facts(melee_st))
+    q_push(melee_facts(melee_st), other)
+    animset_reset_trigger(pl, "slash")
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "slash"), 0.0, 0.0001)
+  }
+
+  test "weapons: a reload fact carries the clip's duration to the graph" (anim_st: mut AnimState, weapons_st: mut WeaponsState) {
+    clips(anim_st)
+    let pl = person(anim_st, 7)
+    weapons_reset(weapons_st)
+    let f = new WeaponFact
+    f.what = WP_RELOAD_STARTED
+    f.actor = 7
+    f.clip = "rifle_reload"
+    f.time = 2.4
+    q_push(weapons_facts(weapons_st), f)
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "reload"), 1.0, 0.0001)
+    expect_near(animset_get(pl, "reload_time"), 2.4, 0.0001)
+  }
+
+  test "vitals: damage gated by its size, a downing and a death as requests, health as a parameter" (anim_st: mut AnimState, vitals_st: mut VitalsState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    let sk = rig_skin(render3d_st)
+    let pl = person(anim_st, 3)
+    vitals_reset(vitals_st)
+    vitals_add(vitals_st, 3, VCLASS_HERO, true)
+    q_clear(vitals_facts(vitals_st))
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "health"), 1.0, 0.0001)
+    let h = vitals_of(vitals_st, 3)
+    vitals_hurt(vitals_st, h, -1, 40.0, DTYPE_BULLET, -1, 0)
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "health"), 0.6, 0.001)
+    expect_near(animset_get(pl, "hurt"), 1.0, 0.0001)
+    animset_reset_trigger(pl, "hurt")
+    q_clear(vitals_facts(vitals_st))
+    let d = new VitalsFact
+    d.what = VITALS_DIED
+    d.actor = 3
+    q_push(vitals_facts(vitals_st), d)
+    anim_link_tick(anim_st, 0.016)
+    animset_tick(anim_st, pl, sk, 0.05)
+    expect(animset_state(pl) == "dead")
+    expect_near(animset_get(pl, "hurt"), 0.0, 0.0001)
+  }
+
+  test "crowd: an act's anim key is requested by name" (anim_st: mut AnimState, crowd_st: mut CrowdState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    let sk = rig_skin(render3d_st)
+    let pl = person(anim_st, 99)
+    let f = new CrowdFact
+    f.what = CROWD_ACT
+    f.uid = 99
+    f.key = "wave"
+    q_push(crowd_facts(crowd_st), f)
+    anim_link_tick(anim_st, 0.016)
+    animset_tick(anim_st, pl, sk, 0.05)
+    expect(animset_state(pl) == "wave")
+    expect_near(animset_get(pl, "speed"), 0.0, 0.0001)
+  }
+
+  test "character: the body's ground state is a parameter and its jump a trigger for the actor the row names" (anim_st: mut AnimState, character_st: mut CharacterState) {
+    clips(anim_st)
+    let pl = person(anim_st, 1)
+    let f = new CharacterFact
+    f.what = CHAR_JUMPED
+    q_push(char_facts(character_st), f)
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "grounded"), 1.0, 0.0001)
+    expect_near(animset_get(pl, "jump"), 1.0, 0.0001)
+  }
+
+  test "vehicles: the rider's seat names its pose, the vehicle its riding" (anim_st: mut AnimState, vehicles_st: mut VehiclesState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    let sk = rig_skin(render3d_st)
+    let pl = person(anim_st, 1)
+    vehicles_reset(vehicles_st)
+    vehicles_dock_at(vehicles_st, 10.0, 0.0, 0.0)
+    expect(vehicle_call_for(vehicles_st, 0, VEHICLE_BOAT, 0))
+    let v = vehicle_find(vehicles_st, VEHICLE_BOAT)
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "riding"), 0.0, 0.0001)
+    v.rider = 1
+    anim_link_tick(anim_st, 0.016)
+    animset_tick(anim_st, pl, sk, 0.05)
+    expect_near(animset_get(pl, "riding"), 1.0, 0.0001)
+    expect(animset_state(pl) == "sit")
+  }
+}

@@ -1,0 +1,75 @@
+# signal_test.ludic - sources a mechanic declares with `def SignalSources`: found by name, whole by kind,
+# and listed through the dev link's verb for a studio's picker
+import "ludic.base"
+program SignalTest {
+  numbers float
+  state ToyState { facts: Queue<ToyFact> = toy_queue(), speed: float = 2.0 }
+  property ToyFact { what: int = 0 }
+  function toy_queue() -> Queue<ToyFact> { return queue_new("toy.facts") }
+  function toy_count(toy_st: ToyState) -> int { return q_len(toy_st.facts) }
+  function toy_read(toy_st: ToyState, i: int, arg: int, out: SigFact) -> bool {
+    out.actor = 5
+    out.value = 1.5
+    out.name = "clip"
+    return toy_st.facts.items[i].what == arg
+  }
+  function toy_get(toy_st: ToyState, actor: int, arg: int) -> float { return toy_st.speed * float(arg) }
+  function toy_say(toy_st: ToyState, actor: int, arg: int) -> string { return "sit" }
+  def SignalSources toy_hit { name: "toy.HIT", kind: "fact", about: "a hit", arg: 3, count: fn toy_count, read: fn toy_read }
+  def SignalSources toy_speed { name: "toy.speed", kind: "value", unit: "m/s", about: "how fast", arg: 2, get: fn toy_get }
+  def SignalSources toy_pose { name: "toy.pose", kind: "text", say: fn toy_say }
+  def SignalSources toy_half { name: "toy.half", kind: "value" }
+  def SignalSources toy_twin { name: "toy.speed", kind: "value", get: fn toy_get }
+  def SignalSources toy_odd { name: "toy.odd", kind: "noise" }
+
+  test "sources are found by name and sorted by kind" () {
+    expect_eq(sig_find("toy.HIT"), SIGSRC_TOY_HIT)
+    expect(sig_find("toy.none") < 0)
+    expect(sig_is_fact(SIGSRC_TOY_HIT) and sig_is_value(SIGSRC_TOY_SPEED) and sig_is_text(SIGSRC_TOY_POSE))
+    expect(not sig_is_fact(-1) and not sig_is_value(99))
+  }
+
+  test "a source missing what its kind needs, a second of a name, or a kind that is none, says so" () {
+    expect(sig_problem(SIGSRC_TOY_HIT) == "")
+    expect(sig_problem(SIGSRC_TOY_SPEED) == "")
+    expect(sig_problem(SIGSRC_TOY_POSE) == "")
+    expect(sig_problem(SIGSRC_TOY_HALF) != "")
+    expect(sig_problem(SIGSRC_TOY_TWIN) != "")
+    expect(sig_problem(SIGSRC_TOY_ODD) != "")
+  }
+
+  test "the functions get the mechanic's own state and the row's number" (toy_st: mut ToyState) {
+    let f = new ToyFact
+    f.what = 3
+    q_push(toy_st.facts, f)
+    let s = SignalSources[SIGSRC_TOY_HIT]
+    let out = sig_fact_new()
+    expect_eq(s.count(), 1)
+    expect(s.read(0, s.arg, out))
+    expect_eq(out.actor, 5)
+    expect(out.name == "clip")
+    expect(not s.read(0, 4, out))
+    expect_near(SignalSources[SIGSRC_TOY_SPEED].get(1, SignalSources[SIGSRC_TOY_SPEED].arg), 4.0, 0.0001)
+  }
+
+  test "the dev verb pages the registry for a picker" () {
+    let c = devcall_new()
+    var seen = 0
+    for k in 0 .. len(SignalSources) {
+      devcall_clear(c)
+      c.n = 1
+      c.has[0] = 1
+      c.i[0] = k
+      expect_eq(sig_verb(c), DV_OK)
+      seen += 1
+    }
+    expect_eq(seen, SIGSRC_COUNT)
+    devcall_clear(c)
+    c.n = 1
+    c.i[0] = SIGSRC_TOY_SPEED
+    expect_eq(sig_verb(c), DV_OK)
+    let want = " " + `{SIGSRC_COUNT}` + " \"toy.speed\" \"value\" \"m/s\" \"how fast\""
+    expect_eq(c.out_n, len(want))
+    for k in 0 .. len(want) { expect_eq(c.out[k], want[k]) }
+  }
+}

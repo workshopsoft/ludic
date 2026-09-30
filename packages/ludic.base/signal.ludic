@@ -1,0 +1,85 @@
+# ludic.base/signal.ludic - what a mechanic can SAY about an actor, by a stable name, for whoever listens:
+# the animation graph (ludic.anim's AnimBindings), a sound bank, a rumble table. A mechanic declares each
+# source once, from its own module, as `def SignalSources melee_swing { name: "melee.SWING", kind: "fact",
+# ... }` (an adapter file of a few lines per source, the mechanic's own). A listener names the source by
+# `name` in its data and never writes glue: the game owes nothing per source.
+#
+# Three kinds of source:
+#   "fact"   a kind of fact in a queue the mechanic owns. `count()` says how many facts wait in the queue
+#            (read, not drained: the game's own route still drains it), and `read(i, arg, out)` says whether
+#            fact i is of this source's kind (`arg` is the row's own number: the fact's `what`) and fills
+#            `out` with the actor it is about, a number (its `value`) and a word (its `name`: a clip).
+#   "value"  a number per actor, now: `get(actor, arg)`. A mechanic that keeps one body (a character) ignores
+#            the actor.
+#   "text"   a word per actor, now: `say(actor, arg)` ("" for none).
+# Every function takes the mechanic's own state (supplied, as a system's tick does); none allocates.
+export property SigFact {
+  actor: int = -1                        # the game's number for the actor; -1 for a mechanic with one body
+  value: float = 0.0
+  name: string = ""
+}
+
+export property SignalSource {
+  name: string = ""                      # "melee.SWING": the mechanic, a dot, what it says
+  kind: string = "value"                 # fact | value | text
+  about: string = ""                     # one line for a person (the studio's picker shows it)
+  unit: string = ""                      # what `value` is: "m/s", "0..1", "s" (for the picker)
+  arg: int = 0                           # handed back to the functions: a fact's kind, a value's selector
+  count: fn() -> int = null              # fact
+  read: fn(int, int, SigFact) -> bool = null
+  get: fn(int, int) -> float = null      # value: (actor, arg)
+  say: fn(int, int) -> string = null     # text: (actor, arg)
+}
+
+# every source any module declares; the order is the compiler's for an open registry
+export open registry SignalSources of SignalSource as SIGSRC
+
+@alloc_ok("once: the record a listener reads facts into")
+export function sig_fact_new() -> SigFact { return new SigFact }
+
+# a source's place by name, -1 for none. A listener asks once, when it starts.
+export function sig_find(name: string) -> int {
+  for i in 0 .. len(SignalSources) { if SignalSources[i].name == name { return i } }
+  return -1
+}
+
+export function sig_is_fact(i: int) -> bool { return i >= 0 and i < len(SignalSources) and SignalSources[i].kind == "fact" }
+export function sig_is_value(i: int) -> bool { return i >= 0 and i < len(SignalSources) and SignalSources[i].kind == "value" }
+export function sig_is_text(i: int) -> bool { return i >= 0 and i < len(SignalSources) and SignalSources[i].kind == "text" }
+
+# what a declared source is missing for its kind, "" when whole (a check a test or a tool runs)
+export function sig_problem(i: int) -> string {
+  let s = SignalSources[i]
+  if s.name == "" { return "a source without a name" }
+  if s.kind == "fact" {
+    if s.count == null or s.read == null { return "a fact source needs count and read" }
+  } else if s.kind == "value" {
+    if s.get == null { return "a value source needs get" }
+  } else if s.kind == "text" {
+    if s.say == null { return "a text source needs say" }
+  } else { return "kind is fact, value or text" }
+  for j in 0 .. i { if SignalSources[j].name == s.name { return "two sources are called " + s.name } }
+  return ""
+}
+
+# the dev link's way to list them, for a studio's source picker: `signal_source at:int` answers
+# `ok <count> "<name>" "<kind>" "<unit>" "<about>"` for the source at that place (the name, kind, unit
+# and about of an `at` out of range are empty), so a tool pages through the registry from 0 to count
+export function sig_verb(c: DevCall) -> int {
+  let at = dv_int(c, 0)
+  dv_reply_int(c, len(SignalSources))
+  if at < 0 or at >= len(SignalSources) {
+    dv_reply_str(c, "")
+    dv_reply_str(c, "")
+    dv_reply_str(c, "")
+    dv_reply_str(c, "")
+    return DV_OK
+  }
+  let s = SignalSources[at]
+  dv_reply_str(c, s.name)
+  dv_reply_str(c, s.kind)
+  dv_reply_str(c, s.unit)
+  dv_reply_str(c, s.about)
+  return DV_OK
+}
+def DevVerbs signal_source { args: "at:int", run: fn sig_verb }

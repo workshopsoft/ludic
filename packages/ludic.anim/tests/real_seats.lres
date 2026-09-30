@@ -1,0 +1,2 @@
+# real_seats.lres - the boat's rider sits, and the seat's pose is what vehicles.seat_pose says
+stern { vehicle: VSPEC_BOAT, x: 0.0, y: 0.30, z: -0.6, pose: "sit" }

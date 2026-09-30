@@ -45,7 +45,22 @@ kit holds several rigs. Each clip is built from the channels `anim_read_doc` alr
 | `anim_oz_sample(ctx, clip, t, rot, pos, n) -> bool` | the clip at t (wrapped), each node's local rotation (4) and translation (3) at its file node |
 
 A sampled rotation agrees with `anim_mix` to within 1e-4 a component (ozz keeps rotations in 16 bits).
-`anim_play` still runs the Ludic sampler until the callers move (Maroon Lake's phase 19).
+
+**`animset_tick` samples through ozz.** A player's skeleton and sampling context are made when its skin is bound, a clip the first
+time a player samples it (kept on the `Clip`: `oz`, `oz_n`), and every clip a frame mixes is sampled by ozz into the
+per-node buffers the mixer reads. The mixing itself (fades, override and additive layers, root motion, events) is the same code
+on either sampler. The Ludic sampler (`sample_rot`, `sample_pos`) is the reference and the fallback: it plays when
+`anim_oz_enable(anim_st, false)`, for a clip ozz's builder refuses, and for a player whose skeleton could not be made, and it is
+what `anim_play` and `anim_mix` still run. A one-shot sampled at its end is held just short of the duration (ozz wraps its time).
+`ozz_parity_test` poses two skins through the same fades, layers and root motion, one sampler each: the worst component
+difference is about 3.5e-5 (under the 1e-4 ozz's 16-bit rotations allow). The reference frames of an additive clip and the
+root's start pose are still read with the Ludic sampler at their fixed times.
+
+| | |
+| --- | --- |
+| `anim_oz_enable(anim_st, on)`, `anim_oz_enabled(anim_st)` | ozz (the default) or only the Ludic sampler |
+| `animset_oz_active(pl)` | the player samples through ozz |
+| `animset_release(pl)`, `anim_oz_release_clips(anim_st)` | give the native skeleton, context and clips back (an actor dropped, a rig unloaded) |
 
 ## Rules it keeps
 
@@ -164,11 +179,98 @@ layers share one table by name). The game keeps one `AnimPlayer` per actor and r
 | `anim_set_distance(anim_st, actor, metres)` | the camera's distance, for the skeleton's `lod` rows |
 | `animset_param_at(pl, i, v)`, `anim_param_index(pl, key)` | the same without a lookup: ask the index once, write it every frame |
 
-The mechanics stay apart (`uses ludic_base`), so the route is the game's: it reads a mechanic's ports and facts and turns them into these verbs. The conventional names:
+The mechanics stay apart (`uses ludic_base`), so something must turn their facts and values into these verbs. **That something is data, not code: see "Wiring gameplay to a graph" below.** A game with special needs can still call the verbs itself. The conventional names:
 `speed` (m/s), `direction`/`strafe`, `grounded`, `airborne`, `crouch`, `aim` (0..1), `aim_yaw`/`aim_pitch`, `steer`, and a trigger per action (`attack`, `jump`, `hit`, `die`).
 A melee attack's `clip` (`ludic.melee`: `MeleeWorld.play(actor, clip, speed)`) is `anim_trigger(actor, clip)` with a state of that name in the graph behind an any-state edge
 and `anim_set_param(actor, "attack_speed", speed)` read by `speed_by`; its hit windows are the same times as the clip's `begin`/`end` facts. A vehicle seat's `pose`
 (`ludic.vehicles`: the animation state the sitter plays) is `anim_request(actor, pose)`. `ludic.character`'s gait is `speed` and `grounded`.
+
+### Wiring gameplay to a graph: `AnimBindings`
+
+A game writes no glue. It says, as rows of a registry, which number or fact of which mechanic feeds which parameter, trigger or
+state of which graph, and calls `anim_link_tick(anim_st, dt)` once a frame.
+
+```ludic
+def AnimBindings from "assets/data/anim_bindings.lres"
+# each frame, after the mechanics ran and BEFORE the game drains their facts, and before animset_tick:
+#   anim_link_tick(anim_st, dt)
+```
+
+```lres
+speed    { set: ASET_PERSON, to: "speed", source: "crowd.speed", smooth: 0.15 }
+grounded { set: ASET_PERSON, to: "grounded", source: "character.grounded" }
+attack   { set: ASET_PERSON, kind: "trigger", to: "attack", source: "melee.SWING", also: "attack_speed" }
+reload   { set: ASET_PERSON, kind: "trigger", to: "reload", source: "weapons.RELOAD_STARTED", also: "reload_time" }
+hurt     { set: ASET_PERSON, kind: "trigger", to: "hit", source: "vitals.DAMAGED", gate: true, threshold: 5.0 }
+down     { set: ASET_PERSON, kind: "request", to: "down", source: "vitals.DOWNED" }
+act      { set: ASET_PERSON, kind: "request", by_name: true, source: "crowd.ACT" }
+seated   { set: ASET_PERSON, kind: "request", by_name: true, source: "vehicles.seat_pose" }
+jump     { set: ASET_PERSON, kind: "trigger", to: "jump", source: "character.JUMPED", actor: 1 }
+```
+
+`AnimBinding { key, set, kind, to, by_name, source, also, actor, scale, offset, curve, threshold, gate, clamp, lo, hi, smooth }`:
+
+| Field | Meaning |
+| --- | --- |
+| `set` | the graph it feeds (`ASET_*`); -1 feeds every graph that declares the name |
+| `kind` | `param` (writes a number; a bool or int parameter rounds as the graph says), `trigger` (sets a trigger on), `request` (asks for a state) |
+| `to` | the parameter, trigger or state. With `by_name`, the word the source brings (a fact's clip, a text source's word) is the trigger or state, so one row serves every clip |
+| `source` | a registered source's name, below |
+| `also` | a trigger's companion: this parameter gets the fact's number (mapped) just before the trigger is set (`attack_speed`, `reload_time`) |
+| `actor` | whose facts a source with no actor of its own tells (the character is one body: its facts say -1) |
+| `scale`, `offset`, `curve`, `threshold`, `clamp` / `lo` / `hi` | the number becomes `number * scale + offset`, then the curve (`linear`, `abs`, `square`, `sqrt`, `step`: 1 from `threshold` up else 0, `invert`: 1 - x), then the clamp |
+| `gate` | a fact fires only when its mapped number reaches `threshold` (a landing hard enough, a blow big enough) |
+| `smooth` | seconds: a parameter follows a value source with this time constant, from where it was (the first sample takes the value) |
+
+**Sources** are named by the package that knows them. A fact source fires once per fact waiting in the mechanic's queue when the link
+ticks (the queue is read, never drained: the game's own route still drains it; tick the link once a frame before that drain). A value
+source is asked of every actor whose graph the row feeds. A text source is a word that is requested by name when it changes to a new
+one. A `trigger` or `request` row on a value source fires when the mapped value rises through `threshold`.
+
+| Package | Fact sources (the word, the number) | Value sources | Text |
+| --- | --- | --- | --- |
+| `ludic.melee` | `melee.SWING` (attack clip, playing speed), `ENDED`, `STAGGERED` (-, seconds), `RECOVERED`, `GUARD_UP`, `GUARD_DOWN`, `HIT_TAKEN` (-, damage; about the victim) | `melee.attacking`, `blocking`, `staggered` (0/1), `progress` | |
+| `ludic.weapons` | `weapons.FIRED`, `RELOAD_STARTED`, `RELOADED`, `EMPTY`, `EQUIPPED`, `HOLSTERED`, `CHARGING` (the fact's clip, seconds the act takes) | `weapons.reloading` (0/1), `ads`, `charge`, `recoil_pitch` | |
+| `ludic.vitals` | `vitals.DAMAGED` (-, amount), `DOWNED`, `DIED`, `REVIVED`, `RESPAWNED` (the class's clip, amount) | `vitals.health` (0..1), `downed`, `dead` (0/1) | |
+| `ludic.crowd` | `crowd.ACT` (anim state key, act), `REACTED` (-, PedReact), `ATTACK` | `crowd.speed` (m/s), `turn` (rad/s), `state` (PedReact) | `crowd.act_key` |
+| `ludic.character` | `character.JUMPED`, `LANDED` (-, landing speed), `FOOTFALL`, `STARTED_SWIMMING`, `LEFT_WATER` | `character.speed`, `moving`, `run`, `airborne`, `grounded`, `sitting`, `swimming`, `diving`, `vy`, `depth`, `landing` | |
+| `ludic.vehicles` | `vehicles.MOUNTED` (seat pose), `DISMOUNTED` | `vehicles.speed`, `riding` | `vehicles.seat_pose` |
+
+Actors are the game's numbers, the ones given to `anim_actor_add`: the fighter, shooter, vital or ped the mechanic's own verbs name
+(a crowd ped is its uid; a vehicle's rider is the player it names).
+
+**Adding a source (a package, a car, anything).** A mechanic declares what it can tell in a file of its own, depending on `ludic.base` only,
+and this package imports no mechanic. `ludic.base`'s `SignalSources` is an open registry (`SignalSource { name, kind, about, unit, arg, count, read, get, say }`):
+
+```ludic
+function car__count(cars_st: CarsState) -> int { return len(car_facts(cars_st).items) }
+function car__read(cars_st: CarsState, i: int, arg: int, out: SigFact) -> bool {     # fact i, if it is of kind `arg`
+  let f = car_facts(cars_st).items[i]
+  if f.what != arg { return false }
+  out.actor = f.driver
+  out.value = f.speed
+  out.name = ""
+  return true
+}
+function car__get(cars_st: CarsState, actor: int, arg: int) -> float { return car_steer_of(cars_st, actor) }   # a value per actor
+def SignalSources car_crash  { name: "cars.CRASH", kind: "fact", about: "a car hit something (value: speed)", unit: "m/s", arg: CAR_CRASH, count: fn car__count, read: fn car__read }
+def SignalSources car_steer  { name: "cars.steer", kind: "value", about: "steering", unit: "-1..1", arg: 0, get: fn car__get }
+```
+
+The functions take the mechanic's own state (supplied, like a system's tick) and allocate nothing. The mechanic's README names its sources; a
+new fact kind is one `def`. A studio lists them through the dev verb `signal_source at:int` (`ok <count> "<name>" "<kind>" "<unit>" "<about>"`,
+paged from 0 to count), or by reading `SignalSources`.
+
+**Validation.** `anim_link_validate() -> []AnimProblem` checks every row by its key (`bindings/<key>`): `anim.link_unknown_source` (names the
+registered sources of that mechanic), `anim.link_source_broken` (a registered source missing what its kind needs),
+`anim.link_source_kind` (a text source on anything but a request, a word from a value source, a parameter named by a word),
+`anim.link_no_target`, `anim.link_unknown_param`, `anim.link_unknown_state`, `anim.link_unknown_set`, `anim.link_trigger_kind` and
+`anim.link_param_kind` (a trigger on a plain parameter and the reverse), `anim.link_smooth`, `anim.link_clamp`, `anim.link_param_conflict` (two rows
+writing one parameter of one graph), and the `@OneOf` hints refuse an unknown `kind` or `curve` at compile time. At run time a row with a
+source that is unknown or broken, or a target the graph does not declare, does nothing.
+
+**Cost.** A tick allocates nothing: each row's source and each player's parameter index are found once, and what a row last sent is
+kept in tables made when the player is first seen (`link_test` holds the heap still over thousands of ticks).
 
 ### Skeletons, validation
 
@@ -181,7 +283,7 @@ loaded (`sk` and the clip table may be empty) it checks what the data alone says
 `anim.negative_blend`, `anim.condition_kind`, `anim.param_kind_clash`, `anim.sync_single`, `anim.sub_missing`, `anim.sub_cycle`, `anim.space_missing`, `anim.space_empty`,
 `anim.space_degenerate`, `anim.space_duplicate_point`, `anim.space_sliver`, `anim.layer_graph_missing`, `anim.mask_missing`, `anim.mask_bone_missing`, `anim.mask_weight`, `anim.mask_empty`,
 `anim.additive_unmasked`, `anim.too_many_layers`, `anim.skeleton_bone_duplicate`, `anim.skeleton_bone_missing`, `anim.skeleton_root_missing`, `anim.lod_unsorted`,
-`anim.event_out_of_range`, `anim.window_inverted`, `anim.markers_unsorted`.
+`anim.event_out_of_range`, `anim.window_inverted`, `anim.markers_unsorted`. Rows of `AnimBindings` have their own (see above: `anim.link_*`).
 
 ### The player
 
@@ -204,7 +306,8 @@ far actor updates (`every`: one tick in that many, by the time the skipped ones 
 
 `studio.lres` beside `package.ludic` tells Ludic Studio how to draw `AnimSets` (key `anims`: states as nodes, transitions as edges, choices with their need bands and rates), and names
 what a whole graph editor needs (state kinds, conditions, fades, parameters, layers, blend spaces, masks, skeletons, clip events and root motion). It counts only in a game that uses
-this package; the compiler never reads it. A rig is the game's (its own table of files, nodes and clip prefix), so a game that wants its clips played in the graph writes an
+this package; the compiler never reads it. `anim_bindings` (table `AnimBindings`) is the wiring table: one row per binding, its `source` a pick from the registered
+`SignalSources` (`source_table`, `source_name`, `source_kind`, `source_about`), its `to` a parameter of the row's graph (`param_table: "AnimSets"`, `set_field: "set"`) or, for a request, one of its states. A rig is the game's (its own table of files, nodes and clip prefix), so a game that wants its clips played in the graph writes an
 `anims` entry of its own with `rig_table`, `rig_file` and `rig_node`, which replaces this one.
 
 ## Tests
@@ -217,4 +320,6 @@ On a four-bone skin made from a glTF document with no GPU, with clips made by ha
 written before graphs (`animset_test`, `sets.lres`); state machines - conditions of every kind, exit time, any-state edges, priority, fade curves, interrupts and nested graphs
 (`graph_test`); blend spaces, 1D and 2D exact, sync phase and markers (`blend_test`); layers, masks and the level of detail (`layers_test`); events firing once at the
 right tick, on a loop, windows and cancels (`events_test`); root motion accumulation and the port (`root_test`); every validation finding (`validate_test`); and the actor verbs with the
-zero-allocation check (`actors_test`). `ozz_test` runs the native library.
+zero-allocation check (`actors_test`). `ozz_test` runs the native library, and `ozz_parity_test` poses two skins through the same graphs with ozz and with the
+Ludic sampler. The wiring: `link_test` (a toy mechanic's declared sources, facts firing once, values through scale, curve, clamp and smoothing, requests by name, edges, the heap held still),
+`link_real_test` (the adapters of melee, weapons, vitals, crowd, character and vehicles against their real records and states) and `link_validate_test` (every `anim.link_*` finding).

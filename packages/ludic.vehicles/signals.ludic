@@ -1,0 +1,53 @@
+# signals.ludic - what vehicles say about a rider, by name, for a listener that wants no glue (ludic.anim's
+# AnimBindings, a sound bank). The actor is the rider's number: the player a vehicle's `rider` names (the game's
+# anim actor for that player). A fact's actor is the vehicle's owner. `vehicles.seat_pose` is the pose the
+# rider's seat names (VehicleSeat.pose), as a word for a request by name. The queue is read, never drained.
+
+function ve__sig_count(vehicles_st: VehiclesState) -> int { return len(vehicle_facts(vehicles_st).items) }
+
+function ve__sig_read(vehicles_st: VehiclesState, i: int, arg: int, out: SigFact) -> bool {
+  let items = vehicle_facts(vehicles_st).items
+  if i < 0 or i >= len(items) { return false }
+  let f = items[i]
+  if f.what != arg { return false }
+  out.actor = f.owner
+  out.value = f.v
+  out.name = ""
+  if arg == VEHICLE_MOUNTED or arg == VEHICLE_DISMOUNTED {
+    let r = vehicle_spec_row(f.kind)
+    if r >= 0 {
+      let s = vehicle_seat(r, 0)
+      if s != null { out.name = s.pose }
+    }
+  }
+  return true
+}
+
+# the vehicle a rider is on, null when none
+function ve__sig_of(vehicles_st: VehiclesState, rider: int) -> Vehicle {
+  let l = vehicles_all(vehicles_st)
+  for i in 0 .. len(l) { if l[i].rider == rider { return l[i] } }
+  return null
+}
+
+function ve__sig_value(vehicles_st: VehiclesState, rider: int, arg: int) -> float {
+  let v = ve__sig_of(vehicles_st, rider)
+  if v == null { return 0.0 }
+  if arg == 0 { return v.speed }
+  return 1.0
+}
+function ve__sig_say(vehicles_st: VehiclesState, rider: int, arg: int) -> string {
+  let v = ve__sig_of(vehicles_st, rider)
+  if v == null { return "" }
+  let r = vehicle_spec_row(v.kind)
+  if r < 0 { return "" }
+  let s = vehicle_seat(r, 0)
+  if s == null { return "" }
+  return s.pose
+}
+
+def SignalSources vehicles_mounted { name: "vehicles.MOUNTED", kind: "fact", about: "a rider got on (word: the seat's pose)", arg: VEHICLE_MOUNTED, count: fn ve__sig_count, read: fn ve__sig_read }
+def SignalSources vehicles_dismounted { name: "vehicles.DISMOUNTED", kind: "fact", about: "a rider got off", arg: VEHICLE_DISMOUNTED, count: fn ve__sig_count, read: fn ve__sig_read }
+def SignalSources vehicles_speed { name: "vehicles.speed", kind: "value", about: "the speed of the vehicle the rider is on", unit: "m/s", arg: 0, get: fn ve__sig_value }
+def SignalSources vehicles_riding { name: "vehicles.riding", kind: "value", about: "1 while the actor rides a vehicle", unit: "0/1", arg: 1, get: fn ve__sig_value }
+def SignalSources vehicles_seat_pose { name: "vehicles.seat_pose", kind: "text", about: "the pose of the seat the rider sits in, \"\" on foot", arg: 0, say: fn ve__sig_say }

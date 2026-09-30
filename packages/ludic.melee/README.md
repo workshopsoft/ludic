@@ -96,3 +96,7 @@ game's animation to start; `hurt` returns what the victim actually took (armour,
 ```bash
 ludic test packages/ludic.melee
 ```
+
+## Signals
+
+The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`): melee.SWING, melee.HIT_TAKEN, melee.attacking, and more. A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it.

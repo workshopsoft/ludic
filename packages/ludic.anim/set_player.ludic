@@ -105,6 +105,15 @@ export property AnimPlayer {
   rm: floats = floats(4)    # root motion since the game last took it: x, y, z, yaw (radians)
   rm_t: floats = floats(4)
   rm_u: floats = floats(4)
+  # the signal bindings (link.ludic): per row, the parameter it writes, what it last sent, its edge and its last word
+  oz_skel: pointer = null   # the skin's skeleton in ozz and what this actor samples with (ozz_play.ludic); null without the native layer
+  oz_ctx: pointer = null
+  oz_n: int = 0
+  lk_n: int = -1
+  lk_idx: words = null
+  lk_val: floats = null
+  lk_on: words = null
+  lk_txt: []string = null
 }
 
 export function animset_clip(pl: AnimPlayer) -> Clip {

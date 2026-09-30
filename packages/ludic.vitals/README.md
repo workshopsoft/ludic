@@ -179,3 +179,7 @@ ludic test packages/ludic.vitals
 pierce), regeneration after its delay, spending and maxima, the machine (down, bleed out, revive, raise, finish
 off, respawn), untouchable windows, a guest's prediction, asks and snapshots, the host's checks, the save, and a
 long run that makes nothing new. `adapters_test`: melee, abilities, weapons and respawn bound to vitals.
+
+## Signals
+
+The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`): vitals.DAMAGED, vitals.DOWNED, vitals.DIED, vitals.health, and more. A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it.

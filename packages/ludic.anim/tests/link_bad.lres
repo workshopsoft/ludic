@@ -1,0 +1,16 @@
+# link_bad.lres - rows that break the rules, one rule to a row, for the validation test; and one that keeps them
+good { set: ASET_LINKY, to: "attack_speed", source: "toy.speed" }
+no_source { set: ASET_LINKY, to: "speed", source: "toy.missing" }
+text_param { set: ASET_LINKY, to: "speed", source: "toy.pose" }
+value_named { set: ASET_LINKY, kind: "request", by_name: true, source: "toy.speed" }
+no_target { set: ASET_LINKY, source: "toy.speed" }
+ghost_param { set: ASET_LINKY, to: "ghost", source: "toy.speed" }
+float_trigger { set: ASET_LINKY, kind: "trigger", to: "speed", source: "toy.SWING" }
+trigger_param { set: ASET_LINKY, to: "attack", source: "toy.speed" }
+ghost_state { set: ASET_LINKY, kind: "request", to: "nowhere", source: "toy.SWING" }
+negative_smooth { set: ASET_LINKY, to: "aim", source: "toy.speed", smooth: -1.0 }
+inverted_clamp { set: ASET_LINKY, to: "lean", source: "toy.speed", clamp: true, lo: 2.0, hi: 1.0 }
+ghost_also { set: ASET_LINKY, kind: "trigger", to: "attack", source: "toy.SWING", also: "ghost" }
+broken_source { set: ASET_LINKY, to: "aim", source: "toy.broken" }
+any_set { to: "lean", source: "toy.speed" }
+any_ghost { to: "ghost_everywhere", source: "toy.speed" }

@@ -108,3 +108,7 @@ spec refused and a spec's walk and seat obeyed, berths and bays, calling and fet
 player leaving, a hungry horse, riding a horse into a trunk and to the water's edge; a real Jolt hull
 rowed out, losing its stroke to the swell, turned, stopped by the shore's bed and drifted by the
 wind; getting off near a shore and far from one, and the save.
+
+## Signals
+
+The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`): vehicles.MOUNTED, vehicles.speed, vehicles.seat_pose, and more. A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it.

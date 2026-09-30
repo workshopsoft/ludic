@@ -1,0 +1,103 @@
+# link_validate.ludic - the rules a row of AnimBindings must keep, as problems a tool can show, by the row:
+# a source nobody registered, a kind the source cannot feed, a parameter or state the graph does not
+# have, two rows writing one parameter. Nothing here runs in a frame; it needs no skin, no clips and no state.
+# Codes: anim.link_unknown_source, anim.link_source_broken, anim.link_bad_kind, anim.link_source_kind,
+# anim.link_no_target, anim.link_unknown_set, anim.link_unknown_param, anim.link_unknown_state,
+# anim.link_trigger_kind, anim.link_param_kind, anim.link_curve, anim.link_smooth, anim.link_clamp,
+# anim.link_param_conflict.
+
+# the kind code of a parameter a graph (or, with set -1, any graph) declares; -1 when none does
+function link_kind_of(set: int, name: string) -> int {
+  if name == "" { return -1 }
+  if set < 0 {
+    for si in 0 .. len(AnimSets) {
+      let k = link_kind_of(si, name)
+      if k >= 0 { return k }
+    }
+    return -1
+  }
+  let names = new []string
+  let kinds = new []int
+  let scratch = new []AnimProblem
+  tree_params(set, names, kinds, 0, scratch)
+  return param_kind(names, kinds, name)
+}
+
+function link_has_state(set: int, name: string) -> bool {
+  if set < 0 {
+    for si in 0 .. len(AnimSets) { if link_has_state(si, name) { return true } }
+    return false
+  }
+  return as_state(AnimSets[set], name) >= 0
+}
+
+# the registered sources that share the mechanic's prefix with `name`, for the message
+function link_hint(name: string) -> string {
+  var dot = -1
+  for k in 0 .. len(name) { if name[k] == 46 and dot < 0 { dot = k } }
+  var out = ""
+  var n = 0
+  for i in 0 .. len(SignalSources) {
+    let s = SignalSources[i].name
+    var same = dot >= 0 and len(s) > dot
+    if same { for k in 0 .. dot + 1 { if s[k] != name[k] { same = false } } }
+    if same and n < 6 {
+      if n > 0 { out = out + ", " }
+      out = out + s
+      n += 1
+    }
+  }
+  if n == 0 { return "no package that declares sources for it is imported" }
+  return "registered: " + out
+}
+
+function link_set_overlap(a: int, b: int) -> bool { return a < 0 or b < 0 or a == b }
+
+export function anim_link_validate() -> []AnimProblem {
+  let out = new []AnimProblem
+  for b in 0 .. len(AnimBindings) {
+    let r = AnimBindings[b]
+    let at = "bindings/" + r.key
+    let s = sig_find(r.source)
+    var sk = ""
+    if s < 0 {
+      prob(out, AP_ERROR, "anim.link_unknown_source", at, "no source is registered as " + r.source + " (" + link_hint(r.source) + ")")
+    } else {
+      let why = sig_problem(s)
+      if why != "" { prob(out, AP_ERROR, "anim.link_source_broken", at, "source " + r.source + ": " + why) } else { sk = SignalSources[s].kind }
+    }
+    if r.kind != "param" and r.kind != "trigger" and r.kind != "request" { prob(out, AP_ERROR, "anim.link_bad_kind", at, "kind is param, trigger or request, not " + r.kind) }
+    if r.set >= len(AnimSets) { prob(out, AP_ERROR, "anim.link_unknown_set", at, "the row feeds a graph that does not exist") }
+    if r.to == "" and not r.by_name { prob(out, AP_ERROR, "anim.link_no_target", at, "name what the row writes (to), or take the source's word (by_name)") }
+    if sk == "text" and r.kind != "request" { prob(out, AP_ERROR, "anim.link_source_kind", at, "a text source can only be requested: " + r.source) }
+    if sk == "value" and r.by_name { prob(out, AP_ERROR, "anim.link_source_kind", at, "a value source has no word to name the target by: " + r.source) }
+    if r.by_name and r.kind == "param" { prob(out, AP_ERROR, "anim.link_source_kind", at, "a parameter is named by `to`, not by a word") }
+    if r.curve != "linear" and r.curve != "abs" and r.curve != "square" and r.curve != "sqrt" and r.curve != "step" and r.curve != "invert" {
+      prob(out, AP_ERROR, "anim.link_curve", at, "curve is linear, abs, square, sqrt, step or invert, not " + r.curve)
+    }
+    if r.smooth < 0.0 { prob(out, AP_ERROR, "anim.link_smooth", at, "smooth is seconds, not " + sf(r.smooth)) }
+    if r.smooth > 0.0 and (r.kind != "param" or sk == "fact") { prob(out, AP_WARNING, "anim.link_smooth", at, "smooth only follows a value source written to a parameter") }
+    if r.clamp and r.lo > r.hi { prob(out, AP_ERROR, "anim.link_clamp", at, "lo is above hi") }
+    if r.set < len(AnimSets) {
+      if r.kind == "param" or r.kind == "trigger" {
+        if r.to != "" {
+          let k = link_kind_of(r.set, r.to)
+          if k < 0 { prob(out, AP_ERROR, "anim.link_unknown_param", at, "no graph declares the parameter " + r.to) } else if r.kind == "trigger" and k != 3 {
+            prob(out, AP_WARNING, "anim.link_trigger_kind", at, r.to + " is not a trigger parameter: it would stay on")
+          } else if r.kind == "param" and k == 3 { prob(out, AP_WARNING, "anim.link_param_kind", at, r.to + " is a trigger: write it with kind: \"trigger\"") }
+        }
+      }
+      if r.also != "" and link_kind_of(r.set, r.also) < 0 { prob(out, AP_ERROR, "anim.link_unknown_param", at, "also names a parameter no graph declares: " + r.also) }
+      if r.kind == "request" and r.to != "" and not link_has_state(r.set, r.to) { prob(out, AP_ERROR, "anim.link_unknown_state", at, "no graph has a state " + r.to) }
+    }
+    if r.kind == "param" and r.to != "" {
+      for c in b + 1 .. len(AnimBindings) {
+        let o = AnimBindings[c]
+        if o.kind == "param" and o.to == r.to and link_set_overlap(o.set, r.set) {
+          prob(out, AP_WARNING, "anim.link_param_conflict", at, "rows " + r.key + " and " + o.key + " both write " + r.to + ": the later one wins")
+        }
+      }
+    }
+  }
+  return out
+}

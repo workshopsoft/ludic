@@ -1,0 +1,169 @@
+# ozz_parity_test.ludic - animset_tick samples through ozz when the native layer is there and through the Ludic
+# sampler when it is not (or `anim_oz_enable(anim_st, false)`): the same graphs, fed the same parameters and
+# requests tick by tick, pose a skin the same either way. Two players on two skins of one rig, one with ozz
+# off and one on, through fades, a one-shot that holds its last frame, an override layer, an additive layer and
+# extracted root motion (translations and yaw); the worst difference over every tick and every node is printed.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program OzzParityTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimSkeletons from "rigs.lres"
+  def AnimMasks from "masks.lres"
+  def AnimClips from "root_clips.lres"
+  def AnimSets from "layers.lres"
+  def AnimSets from "root.lres"
+
+  # the clips of layers_test and of root_test on one rig, and a clip of three keys off the straight path
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    let b = clip_new("rig_base", 1.0, 3)
+    clip_rot(b, 0, 1, 0.2, 0.2)
+    clip_rot(b, 1, 2, 0.4, 0.9)
+    clip_rot(b, 2, 3, 0.4, 0.1)
+    anim_add(anim_st, b)
+    let s = clip_new("rig_shoot", 1.0, 3)
+    clip_rot(s, 0, 1, 1.0, 1.2)
+    clip_rot(s, 1, 2, 1.0, 0.7)
+    clip_rot(s, 2, 3, 1.0, 1.0)
+    anim_add(anim_st, s)
+    let r = clip_new("rig_breath", 1.0, 1)
+    clip_rot(r, 0, 2, 0.0, 0.3)
+    anim_add(anim_st, r)
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+    let w = clip_new("rig_walk", 1.0, 2)
+    clip_pos(w, 0, 0, 0.0, 2.0, 0.0, 1.0)
+    clip_rot(w, 1, 2, 0.1, 0.6)
+    anim_add(anim_st, w)
+    let sl = clip_new("rig_slide", 1.0, 1)
+    clip_pos(sl, 0, 0, 0.0, 2.0, 0.0, 1.0)
+    anim_add(anim_st, sl)
+    let t = clip_new("rig_turn", 1.0, 1)
+    clip_yaw(t, 0, 0, 0.0, 1.0)
+    anim_add(anim_st, t)
+    let p = clip_new("rig_spin", 1.0, 1)
+    clip_yaw(p, 0, 0, 0.0, 1.0)
+    anim_add(anim_st, p)
+    let h = clip_new("rig_hop", 0.6, 2)
+    clip_pos(h, 0, 0, 0.0, 0.0, 0.0, 0.0)
+    h.vals[1] = 0.0
+    h.vals[4] = 3.0
+    clip_rot(h, 1, 3, 0.0, 0.8)
+    anim_add(anim_st, h)
+  }
+  # the largest component difference of two rotations, each turned to the other's sign
+  function apart(a: floats, b: floats, i: int) -> float {
+    var d = 0.0
+    for k in 0 .. 4 { d += a[i * 4 + k] * b[i * 4 + k] }
+    var sgn = 1.0
+    if d < 0.0 { sgn = -1.0 }
+    var worst = 0.0
+    for k in 0 .. 4 { worst = Math.max(worst, Math.abs(a[i * 4 + k] - sgn * b[i * 4 + k])) }
+    return worst
+  }
+  function moved(a: Skin, b: Skin) -> float {
+    var worst = 0.0
+    for i in 0 .. a.n_nodes {
+      worst = Math.max(worst, apart(a.pose_r, b.pose_r, i))
+      for k in 0 .. 3 { worst = Math.max(worst, Math.abs(a.pose_t[i * 3 + k] - b.pose_t[i * 3 + k])) }
+    }
+    return worst
+  }
+  # the two players take the same call: the first with ozz off, the second on
+  function both(anim_st: mut AnimState, a: AnimPlayer, sa: Skin, b: AnimPlayer, sb: Skin, dt: float) -> float {
+    anim_oz_enable(anim_st, false)
+    expect(animset_tick(anim_st, a, sa, dt))
+    anim_oz_enable(anim_st, true)
+    expect(animset_tick(anim_st, b, sb, dt))
+    anim_facts_clear(anim_st)
+    return moved(sa, sb)
+  }
+
+  test "a native skeleton and context are made with the skin, and a clip the first time it is sampled" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    let sk = rig_skin(render3d_st)
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, ASET_BASE, "rig"))
+    expect(not animset_oz_active(pl))
+    expect(animset_tick(anim_st, pl, sk, 0.016))
+    expect(animset_oz_active(pl))
+    expect(anim_find(anim_st, "rig_base").oz != null)
+    animset_release(pl)
+    expect(not animset_oz_active(pl))
+    anim_oz_release_clips(anim_st)
+    expect(anim_find(anim_st, "rig_base").oz == null)
+  }
+
+  test "layers: fades, an override and an additive layer pose the same through ozz as through the Ludic sampler" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    let sa = rig_skin(render3d_st)
+    let sb = rig_skin(render3d_st)
+    let a = new AnimPlayer
+    let b = new AnimPlayer
+    expect(animset_bind(anim_st, a, ASET_BASE, "rig"))
+    expect(animset_bind(anim_st, b, ASET_BASE, "rig"))
+    var worst = 0.0
+    for i in 0 .. 150 {
+      let aim = float(i % 40) / 40.0
+      animset_param(a, "aim", aim)
+      animset_param(b, "aim", aim)
+      animset_param(a, "breath", 1.0 - aim * 0.5)
+      animset_param(b, "breath", 1.0 - aim * 0.5)
+      worst = Math.max(worst, both(anim_st, a, sa, b, sb, 0.031))
+    }
+    print(`ozz vs Ludic sampler, layers: worst component difference over 150 ticks {worst}`)
+    expect(animset_oz_active(b))
+    expect(worst < 0.0001)
+  }
+
+  test "root motion and translations: extracted walks and turns, a one-shot held at its end, agree, and so does the motion taken" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    anim_set_positions(anim_st, true)
+    let sa = rig_skin(render3d_st)
+    let sb = rig_skin(render3d_st)
+    let a = new AnimPlayer
+    let b = new AnimPlayer
+    expect(animset_bind(anim_st, a, ASET_RM, "rig"))
+    expect(animset_bind(anim_st, b, ASET_RM, "rig"))
+    let want = floats(4)
+    let got = floats(4)
+    var worst = 0.0
+    var root = 0.0
+    let plan = ["walk", "turn", "hop", "slide", "spin", "walk", "hop", "idle"]
+    for i in 0 .. 240 {
+      if i % 30 == 0 {
+        animset_request(a, plan[(i / 30) % 8])
+        animset_request(b, plan[(i / 30) % 8])
+      }
+      worst = Math.max(worst, both(anim_st, a, sa, b, sb, 0.033))
+      anim_root_take(a, want)
+      anim_root_take(b, got)
+      for e in 0 .. 4 { root = Math.max(root, Math.abs(want[e] - got[e])) }
+    }
+    print(`ozz vs Ludic sampler, root motion: worst pose difference {worst}, worst root motion difference {root}`)
+    expect(worst < 0.0001)
+    expect(root < 0.002)
+  }
+
+  test "with ozz off the Ludic sampler plays, and a player whose skeleton ozz could not make still plays" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    clips(anim_st)
+    let sk = rig_skin(render3d_st)
+    let pl = new AnimPlayer
+    expect(animset_bind(anim_st, pl, ASET_BASE, "rig"))
+    anim_oz_enable(anim_st, false)
+    expect(not anim_oz_enabled(anim_st))
+    animset_param(pl, "aim", 0.0)
+    animset_param(pl, "breath", 0.0)
+    expect(animset_tick(anim_st, pl, sk, 0.016))
+    expect(anim_find(anim_st, "rig_base").oz == null)
+    expect_near(2.0 * Math.asin(pose_z(sk, 1)), 0.2, 0.001)
+    anim_oz_enable(anim_st, true)
+    animset_release(pl)
+    pl.sk = sk
+    expect(animset_tick(anim_st, pl, sk, 0.016))
+    expect_near(2.0 * Math.asin(pose_z(sk, 1)), 0.2, 0.001)
+  }
+}

@@ -1,0 +1,89 @@
+# link_validate_test.ludic - the rules a row of AnimBindings keeps, as problems by the row: a source nobody
+# registered (with the mechanic's own sources named), a kind the source cannot feed, a parameter or state the
+# graph does not have, two rows writing one parameter. The studio shows these; nothing crashes at run time.
+import "ludic.render3d/r3d.ludic"
+import "ludic.base"
+import "ludic.anim"
+program LinkValidateTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+  function toy_get(toy_st: ToyState, actor: int, arg: int) -> float { return 0.0 }
+  function toy_say(toy_st: ToyState, actor: int, arg: int) -> string { return "" }
+  function toy_count(toy_st: ToyState) -> int { return 0 }
+  function toy_read(toy_st: ToyState, i: int, arg: int, out: SigFact) -> bool { return false }
+  state ToyState { n: int = 0 }
+  def SignalSources toy_speed_v { name: "toy.speed", kind: "value", get: fn toy_get }
+  def SignalSources toy_pose_t { name: "toy.pose", kind: "text", say: fn toy_say }
+  def SignalSources toy_swing { name: "toy.SWING", kind: "fact", arg: 1, count: fn toy_count, read: fn toy_read }
+  def SignalSources toy_broken { name: "toy.broken", kind: "fact" }
+  def AnimSets from "linky.lres"
+  def AnimBindings from "link_bad.lres"
+
+  # the codes the row `key` got
+  function codes(ps: []AnimProblem, key: string) -> string {
+    var s = " "
+    for i in 0 .. len(ps) { if ps[i].where == "bindings/" + key { s = s + ps[i].code + " " } }
+    return s
+  }
+  function has(ps: []AnimProblem, key: string, code: string) -> bool {
+    for i in 0 .. len(ps) { if ps[i].where == "bindings/" + key and ps[i].code == code { return true } }
+    return false
+  }
+  function within(hay: string, needle: string) -> bool {
+    for i in 0 .. len(hay) - len(needle) + 1 {
+      var ok = true
+      for k in 0 .. len(needle) { if hay[i + k] != needle[k] { ok = false } }
+      if ok { return true }
+    }
+    return false
+  }
+  function says(ps: []AnimProblem, key: string, code: string, text: string) -> bool {
+    for i in 0 .. len(ps) {
+      if ps[i].where == "bindings/" + key and ps[i].code == code and within(ps[i].what, text) { return true }
+    }
+    return false
+  }
+
+  test "a row that keeps the rules has no problem" () {
+    let ps = anim_link_validate()
+    expect(codes(ps, "good") == " ")
+  }
+
+  test "a source nobody registered is named, with what the mechanic does register" () {
+    let ps = anim_link_validate()
+    expect(has(ps, "no_source", "anim.link_unknown_source"))
+    expect(says(ps, "no_source", "anim.link_unknown_source", "toy.speed"))
+    expect(has(ps, "broken_source", "anim.link_source_broken"))
+  }
+
+  test "kinds the source cannot feed, and targets that are missing" () {
+    let ps = anim_link_validate()
+    expect(has(ps, "text_param", "anim.link_source_kind"))
+    expect(has(ps, "value_named", "anim.link_source_kind"))
+    expect(has(ps, "no_target", "anim.link_no_target"))
+  }
+
+  test "parameters and states the graph does not have" () {
+    let ps = anim_link_validate()
+    expect(has(ps, "ghost_param", "anim.link_unknown_param"))
+    expect(has(ps, "ghost_also", "anim.link_unknown_param"))
+    expect(has(ps, "ghost_state", "anim.link_unknown_state"))
+    expect(has(ps, "any_ghost", "anim.link_unknown_param"))
+    expect(not has(ps, "any_set", "anim.link_unknown_param"))
+    expect(has(ps, "float_trigger", "anim.link_trigger_kind"))
+    expect(has(ps, "trigger_param", "anim.link_param_kind"))
+  }
+
+  test "the numbers: a negative smooth, an inverted clamp, and two rows on one parameter" () {
+    let ps = anim_link_validate()
+    expect(has(ps, "negative_smooth", "anim.link_smooth"))
+    expect(has(ps, "inverted_clamp", "anim.link_clamp"))
+    expect(has(ps, "negative_smooth", "anim.link_param_conflict"))
+  }
+
+  test "a row with a broken source does nothing at run time" (anim_st: mut AnimState) {
+    anim_link_tick(anim_st, 0.016)
+    expect(anim_st.lk_src != null)
+  }
+}

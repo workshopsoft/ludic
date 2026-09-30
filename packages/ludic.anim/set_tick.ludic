@@ -206,7 +206,9 @@ function mix_items(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, rot: floats
     let w = pl.it_w[i]
     if not (w > 0.0) { continue }
     cum += w
+    anim_st.oz_live = oz_sample_item(anim_st, pl, sk, pl.it_clip[i], pl.it_t[i])
     mix_clip(anim_st, pl.it_clip[i], sk, pl.it_t[i], w / cum, rot, pos, hit, add, pl.it_ref[i], pl.it_ex[i], pl.it_rp[i], pl.it_rr[i])
+    anim_st.oz_live = false
     any = true
   }
   return any

@@ -1,0 +1,53 @@
+# signals.ludic - what the body says, by name, for a listener that wants no glue (ludic.anim's AnimBindings, a
+# sound bank). The character is one body, so the actor a binding names is the game's number for it and these
+# functions ignore it; facts carry no actor (-1), and a binding's own `actor` says whose they are.
+# The queue is read, never drained.
+
+function chr__sig_count(character_st: CharacterState) -> int { return len(char_facts(character_st).items) }
+
+function chr__sig_read(character_st: CharacterState, i: int, arg: int, out: SigFact) -> bool {
+  let items = char_facts(character_st).items
+  if i < 0 or i >= len(items) { return false }
+  let f = items[i]
+  if f.what != arg { return false }
+  out.actor = -1
+  out.value = f.v
+  out.name = ""
+  return true
+}
+
+function chr__b(on: bool) -> float {
+  if on { return 1.0 }
+  return 0.0
+}
+
+function chr__sig_value(character_st: CharacterState, actor: int, arg: int) -> float {
+  if arg == 0 { return body_speed(character_st) }
+  if arg == 1 { return body_moving(character_st) }
+  if arg == 2 { return body_run(character_st) }
+  if arg == 3 { return chr__b(body_airborne(character_st)) }
+  if arg == 4 { return chr__b(not body_airborne(character_st)) }
+  if arg == 5 { return chr__b(body_sitting(character_st)) }
+  if arg == 6 { return chr__b(body_swimming(character_st)) }
+  if arg == 7 { return chr__b(body_diving(character_st)) }
+  if arg == 8 { return body_vy(character_st) }
+  if arg == 9 { return body_depth(character_st) }
+  return body_landing(character_st)
+}
+
+def SignalSources character_jumped { name: "character.JUMPED", kind: "fact", about: "the body left the ground by a jump", arg: CHAR_JUMPED, count: fn chr__sig_count, read: fn chr__sig_read }
+def SignalSources character_landed { name: "character.LANDED", kind: "fact", about: "the body landed (value: the speed carried out of the air)", unit: "m/s", arg: CHAR_LANDED, count: fn chr__sig_count, read: fn chr__sig_read }
+def SignalSources character_footfall { name: "character.FOOTFALL", kind: "fact", about: "a boot came down", arg: CHAR_FOOTFALL, count: fn chr__sig_count, read: fn chr__sig_read }
+def SignalSources character_swim_started { name: "character.STARTED_SWIMMING", kind: "fact", about: "the body entered deep water", arg: CHAR_STARTED_SWIMMING, count: fn chr__sig_count, read: fn chr__sig_read }
+def SignalSources character_left_water { name: "character.LEFT_WATER", kind: "fact", about: "the body came out of deep water", arg: CHAR_LEFT_WATER, count: fn chr__sig_count, read: fn chr__sig_read }
+def SignalSources character_speed { name: "character.speed", kind: "value", about: "speed along the facing", unit: "m/s", arg: 0, get: fn chr__sig_value }
+def SignalSources character_moving { name: "character.moving", kind: "value", about: "0 standing .. 1 moving", unit: "0..1", arg: 1, get: fn chr__sig_value }
+def SignalSources character_run { name: "character.run", kind: "value", about: "0 walking .. 1 running", unit: "0..1", arg: 2, get: fn chr__sig_value }
+def SignalSources character_airborne { name: "character.airborne", kind: "value", about: "1 while off the ground", unit: "0/1", arg: 3, get: fn chr__sig_value }
+def SignalSources character_grounded { name: "character.grounded", kind: "value", about: "1 while on the ground", unit: "0/1", arg: 4, get: fn chr__sig_value }
+def SignalSources character_sitting { name: "character.sitting", kind: "value", about: "1 while seated", unit: "0/1", arg: 5, get: fn chr__sig_value }
+def SignalSources character_swimming { name: "character.swimming", kind: "value", about: "1 while swimming", unit: "0/1", arg: 6, get: fn chr__sig_value }
+def SignalSources character_diving { name: "character.diving", kind: "value", about: "1 while diving", unit: "0/1", arg: 7, get: fn chr__sig_value }
+def SignalSources character_vy { name: "character.vy", kind: "value", about: "vertical speed", unit: "m/s", arg: 8, get: fn chr__sig_value }
+def SignalSources character_depth { name: "character.depth", kind: "value", about: "how deep in the water", unit: "m", arg: 9, get: fn chr__sig_value }
+def SignalSources character_landing { name: "character.landing", kind: "value", about: "the landing's weight, decaying", unit: "0..1", arg: 10, get: fn chr__sig_value }

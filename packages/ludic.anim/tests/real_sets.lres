@@ -1,0 +1,19 @@
+# real_sets.lres - the graph the real packages' wiring feeds
+person {
+  entry: "ground"
+  params: ["speed", "grounded", "attack_speed", "health", "aim", "reload_time"]
+  parameters: [{ key: "attack", kind: "trigger" }, { key: "reload", kind: "trigger" }, { key: "jump", kind: "trigger" }, { key: "hurt", kind: "trigger" }, { key: "slash", kind: "trigger" }, { key: "riding", kind: "bool" }]
+  states: [
+    { key: "ground", choices: [{ clip: "idle" }] },
+    { key: "down", choices: [{ clip: "idle" }] },
+    { key: "dead", choices: [{ clip: "idle" }] },
+    { key: "sit", choices: [{ clip: "idle" }] },
+    { key: "wave", choices: [{ clip: "idle" }] }
+  ]
+  transitions: [
+    { from: "*", to: "down", blend: 0.0 },
+    { from: "*", to: "dead", blend: 0.0 },
+    { from: "*", to: "sit", blend: 0.0 },
+    { from: "*", to: "wave", blend: 0.0 }
+  ]
+}

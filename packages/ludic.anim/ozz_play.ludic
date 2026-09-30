@@ -1,0 +1,71 @@
+# ozz_play.ludic - animset_tick samples through ozz-animation when the native layer built the skeleton and the
+# clip, and through the Ludic sampler (mix.ludic's sample_rot / sample_pos) when it did not. The two give the
+# same pose (ozz keeps rotations in 16 bits: within 1e-4 a component, `ozz_play_test`); the Ludic sampler stays
+# the reference, the fallback (a clip ozz's builder refuses, a skeleton it could not make) and the path of
+# `anim_play` and `anim_mix`. The mixing, the fades, the additive layers and the root motion are the same code
+# on either: only the sample of one clip at one time, for every node it animates, comes from ozz.
+#
+# A player's skeleton and sampling context are made when its skin is bound; a clip is built the first time a
+# player samples it and kept on the Clip (built for a skeleton of that many joints: every skin of one rig is the
+# same skeleton). `animset_release(pl)` and `anim_oz_release_clips` give the native memory back.
+
+@alloc_ok("the native scratch is grown once to the largest skeleton sampled")
+function oz_scratch(anim_st: mut AnimState, n: int) -> void {
+  if anim_st.oz_cap >= n { return }
+  anim_st.oz_rot = floats(n * 4)
+  anim_st.oz_pos = floats(n * 3)
+  anim_st.oz_cap = n
+}
+
+# Sample clip c at tt (a time on the clip: a one-shot holds its last frame at its duration) into
+# anim_st.oz_rot / oz_pos. False when this item is to be sampled the Ludic way.
+@alloc_ok("a clip is built in ozz the first time a player samples it")
+function oz_sample_item(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, c: Clip, tt: float) -> bool {
+  if not anim_st.oz_use or pl.oz_ctx == null or c == null or not (c.dur > 0.0) { return false }
+  var p = 0
+  if anim_st.positions { p = 1 }
+  if c.oz != null and (c.oz_n != pl.oz_n or c.oz_p != p) {
+    anim_oz_clip_free(c.oz)
+    c.oz = null
+  }
+  if c.oz == null and c.oz_n == -1 and c.oz_p == p { return false }
+  if c.oz == null {
+    c.oz = anim_oz_clip(anim_st, pl.oz_skel, c)
+    c.oz_n = pl.oz_n
+    c.oz_p = p
+    if c.oz == null {
+      c.oz_n = -1      # refused by the builder: not asked again (until translations are switched)
+      return false
+    }
+  }
+  oz_scratch(anim_st, sk.n_nodes)
+  var t = tt
+  if t >= c.dur { t = c.dur * 0.999999 }     # ozz wraps the time: the last frame is just short of the end
+  if t < 0.0 { t = 0.0 }
+  return anim_oz_sample(pl.oz_ctx, c.oz, t, anim_st.oz_rot, anim_st.oz_pos, sk.n_nodes)
+}
+
+# sample through ozz (the default) or only through the Ludic sampler
+export function anim_oz_enable(anim_st: mut AnimState, on: bool) -> void { anim_st.oz_use = on }
+export function anim_oz_enabled(anim_st: AnimState) -> bool { return anim_st.oz_use }
+
+# this player samples through ozz: its skeleton and context exist
+export function animset_oz_active(pl: AnimPlayer) -> bool { return pl.oz_ctx != null }
+
+# give a player's native skeleton and context back (the game dropped the actor)
+export function animset_release(pl: AnimPlayer) -> void {
+  if pl.oz_ctx != null { anim_oz_ctx_free(pl.oz_ctx) }
+  if pl.oz_skel != null { anim_oz_skel_free(pl.oz_skel) }
+  pl.oz_ctx = null
+  pl.oz_skel = null
+  pl.oz_n = 0
+}
+
+# give back the ozz form of every clip in the table (before `anim_clear`, when a rig is unloaded)
+export function anim_oz_release_clips(anim_st: mut AnimState) -> void {
+  for i in 0 .. len(anim_st.clips) {
+    if anim_st.clips[i].oz != null { anim_oz_clip_free(anim_st.clips[i].oz) }
+    anim_st.clips[i].oz = null
+    anim_st.clips[i].oz_n = 0
+  }
+}

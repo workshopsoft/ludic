@@ -1,0 +1,60 @@
+# signals.ludic - what melee says about a fighter, by name, for a listener that wants no glue (ludic.anim's
+# AnimBindings, a sound bank). `melee.SWING` is the fact an attack began: its actor, the attack's clip as the
+# word and the clip's playing speed as the number. The queue is read, never drained. Actors are the game's
+# numbers for fighters, as every melee verb takes them.
+
+function ml__sig_count(melee_st: MeleeState) -> int { return len(melee_facts(melee_st).items) }
+
+# fact i when it is of kind `arg`; the actor is the one it is about (the attacker, or whoever the stagger hit)
+function ml__sig_read(melee_st: MeleeState, i: int, arg: int, out: SigFact) -> bool {
+  let items = melee_facts(melee_st).items
+  if i < 0 or i >= len(items) { return false }
+  let f = items[i]
+  if f.what != arg { return false }
+  out.actor = f.actor
+  out.value = f.stagger
+  out.name = ""
+  if f.attack >= 0 and f.attack < len(MeleeAttacks) {
+    out.name = MeleeAttacks[f.attack].clip
+    if arg == MELEE_SWING { out.value = MeleeAttacks[f.attack].speed }
+  }
+  return true
+}
+
+# a blow taken: the fact of a hit, about the actor it reached (value: the damage)
+function ml__sig_read_taken(melee_st: MeleeState, i: int, arg: int, out: SigFact) -> bool {
+  let items = melee_facts(melee_st).items
+  if i < 0 or i >= len(items) { return false }
+  let f = items[i]
+  if f.what != MELEE_HIT or f.victim < 0 { return false }
+  out.actor = f.victim
+  out.value = f.damage
+  out.name = ""
+  return true
+}
+
+function ml__sig_phase(melee_st: MeleeState, actor: int, arg: int) -> float {
+  let h = melee_fighter_of(melee_st, actor)
+  if h < 0 { return 0.0 }
+  if arg == 0 and melee_attacking(melee_st, h) { return 1.0 }
+  if arg == 1 and melee_blocking(melee_st, h) { return 1.0 }
+  if arg == 2 and melee_staggered(melee_st, h) { return 1.0 }
+  return 0.0
+}
+function ml__sig_progress(melee_st: MeleeState, actor: int, arg: int) -> float {
+  let h = melee_fighter_of(melee_st, actor)
+  if h < 0 { return 0.0 }
+  return melee_progress(melee_st, h)
+}
+
+def SignalSources melee_swing { name: "melee.SWING", kind: "fact", about: "an attack began (word: the attack's clip, value: its playing speed)", unit: "x", arg: MELEE_SWING, count: fn ml__sig_count, read: fn ml__sig_read }
+def SignalSources melee_ended { name: "melee.ENDED", kind: "fact", about: "an attack played out or was cancelled", arg: MELEE_ENDED, count: fn ml__sig_count, read: fn ml__sig_read }
+def SignalSources melee_staggered_fact { name: "melee.STAGGERED", kind: "fact", about: "a fighter lost its poise or was parried (value: the stagger seconds)", unit: "s", arg: MELEE_STAGGERED, count: fn ml__sig_count, read: fn ml__sig_read }
+def SignalSources melee_recovered { name: "melee.RECOVERED", kind: "fact", about: "a fighter got up from a stagger", arg: MELEE_RECOVERED, count: fn ml__sig_count, read: fn ml__sig_read }
+def SignalSources melee_guard_up { name: "melee.GUARD_UP", kind: "fact", about: "a fighter raised its guard", arg: MELEE_GUARD_UP, count: fn ml__sig_count, read: fn ml__sig_read }
+def SignalSources melee_guard_down { name: "melee.GUARD_DOWN", kind: "fact", about: "a fighter lowered its guard", arg: MELEE_GUARD_DOWN, count: fn ml__sig_count, read: fn ml__sig_read }
+def SignalSources melee_hit_taken { name: "melee.HIT_TAKEN", kind: "fact", about: "a blow reached this actor (value: the damage)", arg: 0, count: fn ml__sig_count, read: fn ml__sig_read_taken }
+def SignalSources melee_attacking_now { name: "melee.attacking", kind: "value", about: "1 while the fighter is mid-attack", unit: "0/1", arg: 0, get: fn ml__sig_phase }
+def SignalSources melee_blocking_now { name: "melee.blocking", kind: "value", about: "1 while the fighter guards", unit: "0/1", arg: 1, get: fn ml__sig_phase }
+def SignalSources melee_staggered_now { name: "melee.staggered", kind: "value", about: "1 while the fighter is staggered", unit: "0/1", arg: 2, get: fn ml__sig_phase }
+def SignalSources melee_progress_now { name: "melee.progress", kind: "value", about: "how far through its swing the fighter is", unit: "0..1", arg: 0, get: fn ml__sig_progress }

@@ -1,0 +1,31 @@
+# signals.ludic - what the crowd says about a ped, by name, for a listener that wants no glue (ludic.anim's
+# AnimBindings, a sound bank). The actor is the ped's uid. CROWD_ACT carries the act's anim state key as the
+# word (and the act's number as the value): bind it as a request by name. The queue is read, never drained.
+
+function cw__sig_count(crowd_st: CrowdState) -> int { return len(crowd_facts(crowd_st).items) }
+
+function cw__sig_read(crowd_st: CrowdState, i: int, arg: int, out: SigFact) -> bool {
+  let items = crowd_facts(crowd_st).items
+  if i < 0 or i >= len(items) { return false }
+  let f = items[i]
+  if f.what != arg { return false }
+  out.actor = f.uid
+  out.value = float(f.to)
+  out.name = f.key
+  return true
+}
+
+function cw__sig_value(crowd_st: CrowdState, uid: int, arg: int) -> float {
+  if arg == 0 { return crowd_anim_speed(crowd_st, uid) }
+  if arg == 1 { return crowd_anim_turn(crowd_st, uid) }
+  return float(crowd_anim_state(crowd_st, uid))
+}
+function cw__sig_say(crowd_st: CrowdState, uid: int, arg: int) -> string { return crowd_anim_key(crowd_st, uid) }
+
+def SignalSources crowd_act { name: "crowd.ACT", kind: "fact", about: "a near ped began an act (word: the anim state key, value: the act)", arg: CROWD_ACT, count: fn cw__sig_count, read: fn cw__sig_read }
+def SignalSources crowd_reacted { name: "crowd.REACTED", kind: "fact", about: "a ped's reaction changed (value: the new PedReact)", arg: CROWD_REACTED, count: fn cw__sig_count, read: fn cw__sig_read }
+def SignalSources crowd_attack { name: "crowd.ATTACK", kind: "fact", about: "a ped that fights landed a blow", arg: CROWD_ATTACK, count: fn cw__sig_count, read: fn cw__sig_read }
+def SignalSources crowd_speed_now { name: "crowd.speed", kind: "value", about: "ground speed", unit: "m/s", arg: 0, get: fn cw__sig_value }
+def SignalSources crowd_turn_now { name: "crowd.turn", kind: "value", about: "yaw rate", unit: "rad/s", arg: 1, get: fn cw__sig_value }
+def SignalSources crowd_state_now { name: "crowd.state", kind: "value", about: "the reaction as PedReact's number (calm 0 .. call 6)", unit: "n", arg: 2, get: fn cw__sig_value }
+def SignalSources crowd_act_key { name: "crowd.act_key", kind: "text", about: "the anim state key of the ped's current act", arg: 0, say: fn cw__sig_say }

@@ -1,0 +1,246 @@
+# link_test.ludic - the wiring as data: rows of AnimBindings name a source by its stable name and the graph's
+# parameter, trigger or state, and `anim_link_tick` does the rest. The mechanic here is a toy that declares its
+# sources the way a package does (`def SignalSources`), so no glue of any kind is written in this file:
+# facts fire a trigger once, values become parameters through a scale, a curve, a clamp and smoothing.
+import "ludic.render3d/r3d.ludic"
+import "ludic.base"
+import "ludic.anim"
+import "support/rig.ludic"
+program LinkTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # ---- a toy mechanic and its adapter: what a package's signals.ludic looks like ----
+  property ToyFact { what: int = 0, actor: int = -1, n: float = 0.0, word: string = "" }
+  function toy_queue() -> Queue<ToyFact> { return queue_new("toy.facts") }
+  state ToyState {
+    facts: Queue<ToyFact> = toy_queue()
+    speed: float = 0.0
+    aim: float = 0.0
+    lean: float = 0.0
+    air: float = 0.0
+    pose: string = ""
+    rec: ToyFact = new ToyFact
+  }
+  function toy_push(toy_st: mut ToyState, what: int, actor: int, n: float, word: string) -> void {
+    let f = new ToyFact
+    f.what = what
+    f.actor = actor
+    f.n = n
+    f.word = word
+    q_push(toy_st.facts, f)
+  }
+  # the same record again, for a test that counts the heap
+  function toy_push_rec(toy_st: mut ToyState, what: int, actor: int, n: float, word: string) -> void {
+    toy_st.rec.what = what
+    toy_st.rec.actor = actor
+    toy_st.rec.n = n
+    toy_st.rec.word = word
+    q_push(toy_st.facts, toy_st.rec)
+  }
+  function toy_count(toy_st: ToyState) -> int { return len(toy_st.facts.items) }
+  function toy_read(toy_st: ToyState, i: int, arg: int, out: SigFact) -> bool {
+    let f = toy_st.facts.items[i]
+    if f.what != arg { return false }
+    out.actor = f.actor
+    out.value = f.n
+    out.name = f.word
+    return true
+  }
+  function toy_get(toy_st: ToyState, actor: int, arg: int) -> float {
+    if arg == 0 { return toy_st.speed }
+    if arg == 1 { return toy_st.aim }
+    if arg == 2 { return toy_st.lean }
+    return toy_st.air
+  }
+  function toy_say(toy_st: ToyState, actor: int, arg: int) -> string { return toy_st.pose }
+  def SignalSources toy_swing { name: "toy.SWING", kind: "fact", arg: 1, count: fn toy_count, read: fn toy_read }
+  def SignalSources toy_reload { name: "toy.RELOAD", kind: "fact", arg: 2, count: fn toy_count, read: fn toy_read }
+  def SignalSources toy_hurt { name: "toy.HURT", kind: "fact", arg: 3, count: fn toy_count, read: fn toy_read }
+  def SignalSources toy_downed { name: "toy.DOWNED", kind: "fact", arg: 4, count: fn toy_count, read: fn toy_read }
+  def SignalSources toy_act { name: "toy.ACT", kind: "fact", arg: 5, count: fn toy_count, read: fn toy_read }
+  def SignalSources toy_foot { name: "toy.FOOT", kind: "fact", arg: 6, count: fn toy_count, read: fn toy_read }
+  def SignalSources toy_speed_v { name: "toy.speed", kind: "value", unit: "m/s", arg: 0, get: fn toy_get }
+  def SignalSources toy_aim_v { name: "toy.aim", kind: "value", arg: 1, get: fn toy_get }
+  def SignalSources toy_lean_v { name: "toy.lean", kind: "value", arg: 2, get: fn toy_get }
+  def SignalSources toy_air_v { name: "toy.air", kind: "value", arg: 3, get: fn toy_get }
+  def SignalSources toy_pose_t { name: "toy.pose", kind: "text", say: fn toy_say }
+
+  # ---- the game's side: data only ----
+  def AnimSets from "linky.lres"
+  def AnimBindings from "link_rows.lres"
+
+  function clips(anim_st: mut AnimState) -> void {
+    anim_clear(anim_st)
+    anim_add(anim_st, arm_clip("rig_idle", 1.0, 0.0))
+    anim_add(anim_st, arm_clip("rig_walk", 1.0, 0.4))
+  }
+  function actors(anim_st: mut AnimState) -> void {
+    clips(anim_st)
+    for k in 0 .. 3 {
+      let pl = new AnimPlayer
+      var set = ASET_LINKY
+      var id = 1
+      if k == 1 { set = ASET_OTHER
+        id = 2 }
+      if k == 2 { id = 9 }
+      expect(animset_bind(anim_st, pl, set, "rig"))
+      expect(anim_actor_add(anim_st, id, pl))
+    }
+  }
+  function p(anim_st: AnimState, actor: int) -> AnimPlayer { return anim_player_of(anim_st, actor) }
+
+  test "registered sources are whole and found by name" () {
+    for i in 0 .. len(SignalSources) { expect(sig_problem(i) == "") }
+    expect(sig_find("toy.SWING") >= 0)
+    expect(sig_find("toy.nothing") < 0)
+    expect(sig_is_fact(sig_find("toy.SWING")))
+    expect(sig_is_value(sig_find("toy.speed")))
+    expect(sig_is_text(sig_find("toy.pose")))
+    expect_eq(len(anim_link_validate()), 0)
+  }
+
+  test "a value becomes a parameter through scale and offset, for the graphs its row feeds and no other" (anim_st: mut AnimState, toy_st: mut ToyState) {
+    actors(anim_st)
+    toy_st.speed = 3.0
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "speed"), 7.0, 0.0001)
+    expect_near(animset_get(p(anim_st, 9), "speed"), 7.0, 0.0001)
+    expect_near(animset_get(p(anim_st, 2), "speed"), 3.0, 0.0001)
+    toy_st.speed = 0.0
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "speed"), 1.0, 0.0001)
+  }
+
+  test "a step curve turns a number into an on/off, a bool parameter included" (anim_st: mut AnimState, toy_st: mut ToyState) {
+    actors(anim_st)
+    toy_st.aim = 0.2
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "aim"), 0.0, 0.0001)
+    expect_near(animset_get(p(anim_st, 1), "armed"), 0.0, 0.0001)
+    toy_st.aim = 0.4
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "aim"), 1.0, 0.0001)
+    expect_near(animset_get(p(anim_st, 1), "armed"), 1.0, 0.0001)
+  }
+
+  test "smoothing follows a value with a time constant, from where it was; a clamp holds the result" (anim_st: mut AnimState, toy_st: mut ToyState) {
+    actors(anim_st)
+    toy_st.lean = 0.0
+    anim_link_tick(anim_st, 0.5)
+    expect_near(animset_get(p(anim_st, 1), "lean"), 0.0, 0.0001)
+    toy_st.lean = 5.0
+    anim_link_tick(anim_st, 0.5)
+    expect_near(animset_get(p(anim_st, 1), "lean"), 0.5, 0.0001)
+    anim_link_tick(anim_st, 0.5)
+    expect_near(animset_get(p(anim_st, 1), "lean"), 0.75, 0.0001)
+    for i in 0 .. 60 { anim_link_tick(anim_st, 0.5) }
+    expect_near(animset_get(p(anim_st, 1), "lean"), 1.0, 0.001)
+  }
+
+  test "a fact fires its trigger once, carries its number to a companion parameter, and the queue is left for the game" (anim_st: mut AnimState, toy_st: mut ToyState) {
+    actors(anim_st)
+    toy_push(toy_st, 1, 1, 1.5, "slash")
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "attack"), 1.0, 0.0001)
+    expect_near(animset_get(p(anim_st, 1), "attack_speed"), 1.5, 0.0001)
+    expect_near(animset_get(p(anim_st, 9), "attack"), 0.0, 0.0001)
+    expect_eq(q_len(toy_st.facts), 1)
+    animset_reset_trigger(p(anim_st, 1), "attack")
+    q_drain(toy_st.facts)
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "attack"), 0.0, 0.0001)
+    toy_push(toy_st, 1, 1, 1.0, "slash")
+    toy_push(toy_st, 1, 1, 2.0, "slash")
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "attack_speed"), 2.0, 0.0001)
+  }
+
+  test "a fact for an actor the table does not know, or whose graph the row does not feed, is ignored" (anim_st: mut AnimState, toy_st: mut ToyState) {
+    actors(anim_st)
+    toy_push(toy_st, 2, 77, 0.0, "")
+    toy_push(toy_st, 2, 2, 0.0, "")
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "reload"), 0.0, 0.0001)
+    expect_near(animset_get(p(anim_st, 9), "reload"), 0.0, 0.0001)
+  }
+
+  test "a gate keeps the small facts out; a fact with no actor of its own is the row's actor's" (anim_st: mut AnimState, toy_st: mut ToyState) {
+    actors(anim_st)
+    toy_push(toy_st, 3, 1, 4.0, "")
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "attack"), 0.0, 0.0001)
+    toy_push(toy_st, 3, 1, 25.0, "")
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 1), "attack"), 1.0, 0.0001)
+    toy_push(toy_st, 6, -1, 0.0, "")
+    animset_reset_trigger(p(anim_st, 9), "attack")
+    q_drain(toy_st.facts)
+    toy_push(toy_st, 6, -1, 0.0, "")
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(p(anim_st, 9), "attack"), 1.0, 0.0001)
+    expect_near(animset_get(p(anim_st, 2), "speed"), 0.0, 0.0001)
+  }
+
+  test "requests: a fixed state, a state named by the fact's word, a text source's word, and a rise through a threshold" (anim_st: mut AnimState, toy_st: mut ToyState, render3d_st: mut Render3dState) {
+    actors(anim_st)
+    let sk = rig_skin(render3d_st)
+    let pl = p(anim_st, 1)
+    toy_push(toy_st, 4, 1, 0.0, "")
+    anim_link_tick(anim_st, 0.016)
+    animset_tick(anim_st, pl, sk, 0.05)
+    expect(animset_state(pl) == "down")
+    q_drain(toy_st.facts)
+    toy_push(toy_st, 5, 1, 0.0, "wave")
+    anim_link_tick(anim_st, 0.016)
+    animset_tick(anim_st, pl, sk, 0.05)
+    expect(animset_state(pl) == "wave")
+    q_drain(toy_st.facts)
+    toy_st.pose = "sit"
+    anim_link_tick(anim_st, 0.016)
+    animset_tick(anim_st, pl, sk, 0.05)
+    expect(animset_state(pl) == "sit")
+    toy_st.pose = ""
+    anim_link_tick(anim_st, 0.016)
+    expect(animset_state(pl) == "sit")
+    # a value that rises through its threshold fires a trigger once, and again only after it falls back
+    animset_reset_trigger(pl, "reload")
+    toy_st.air = 0.0
+    anim_link_tick(anim_st, 0.016)
+    toy_st.air = 1.0
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "reload"), 1.0, 0.0001)
+    animset_reset_trigger(pl, "reload")
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "reload"), 0.0, 0.0001)
+    toy_st.air = 0.0
+    anim_link_tick(anim_st, 0.016)
+    toy_st.air = 1.0
+    anim_link_tick(anim_st, 0.016)
+    expect_near(animset_get(pl, "reload"), 1.0, 0.0001)
+  }
+
+  test "the link makes nothing in a frame" (anim_st: mut AnimState, toy_st: mut ToyState) {
+    actors(anim_st)
+    for i in 0 .. 50 {
+      toy_st.speed = float(i % 5)
+      toy_st.lean = float(i % 3)
+      toy_st.pose = "sit"
+      toy_push_rec(toy_st, 1, 1, 1.0, "slash")
+      anim_link_tick(anim_st, 0.016)
+      animset_reset_trigger(p(anim_st, 1), "attack")
+      q_drain(toy_st.facts)
+    }
+    let before = Os.heap_bytes()
+    for i in 0 .. 3000 {
+      toy_st.speed = float(i % 7)
+      toy_st.lean = float(i % 3)
+      if i % 9 == 0 { toy_st.pose = "wave" } else { toy_st.pose = "sit" }
+      toy_push_rec(toy_st, 1, 1, 1.0, "slash")
+      anim_link_tick(anim_st, 0.016)
+      q_drain(toy_st.facts)
+    }
+    if before > 0 { expect(Os.heap_bytes() <= before) }
+  }
+}

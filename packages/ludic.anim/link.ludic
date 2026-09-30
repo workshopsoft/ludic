@@ -1,0 +1,191 @@
+# link.ludic - what gameplay says to a graph, as DATA. A game writes rows of `AnimBindings` and calls
+# `anim_link_tick(anim_st, dt)` once a frame; no glue per game and no glue per mechanic. A row names
+#   - the graph it feeds (`set`; -1 for every graph) and what it writes: a `param`, a `trigger` or a `request`;
+#   - a SOURCE by its stable name (`source: "crowd.speed"`): a mechanic package declares the sources it can
+#     tell in a file of its own (ludic.base's `SignalSources`; `melee.SWING`, `weapons.RELOAD_STARTED`,
+#     `vitals.DOWNED`, `crowd.speed`, `character.grounded`, `vehicles.seat_pose`), and this package imports
+#     no mechanic;
+#   - how the number becomes the parameter: `scale`, `offset`, a `curve`, an optional clamp, and `smooth`.
+#
+# A FACT source fires once per fact WAITING in the mechanic's queue when the link ticks. The queue is read,
+# never drained, so the game's own route still drains it: tick the link ONCE a frame, after the mechanics
+# ran and before that drain (a second tick before the drain would fire the same facts again). A VALUE source is asked of every
+# actor whose graph the row feeds, each frame. A TEXT source is a word that, when it changes to a new one,
+# is requested by name. The actor numbers are the game's: the ones given to `anim_actor_add`.
+#
+# Nothing here allocates in a frame: the row's source and the parameter's place are found once, per row and
+# per player, and what a row last sent is kept in tables made when the player is first seen.
+
+export property AnimBinding {
+  key: string = ""
+  @Ref(AnimSets) set: int = -1                 # the graph it feeds; -1: every graph that declares the name
+  @OneOf("param", "trigger", "request") kind: string = "param"
+  to: string = ""                              # the parameter, trigger or state; "" with `by_name` takes the word the source brings
+  by_name: bool = false                        # a fact's clip (or a text source's word) names the trigger or state
+  source: string = ""                          # a SignalSources name: "melee.SWING"
+  also: string = ""                            # a trigger's companion: this parameter gets the fact's number (mapped) first
+  actor: int = -1                              # whose facts a source with no actor of its own (the character's) tells
+  scale: float = 1.0                           # the number times this, plus `offset`,
+  offset: float = 0.0
+  @OneOf("linear", "abs", "square", "sqrt", "step", "invert") curve: string = "linear"   # then the curve: step is 1 from `threshold` up, else 0; invert is 1 - x
+  threshold: float = 0.5                       # the edge a value makes to fire a trigger or request, the step's edge, a fact's gate
+  gate: bool = false                           # a fact fires only when its mapped number reaches `threshold` (a landing hard enough)
+  clamp: bool = false                          # hold the result to lo .. hi
+  lo: float = 0.0
+  hi: float = 1.0
+  @Range(0, 10) @Unit("s") smooth: float = 0.0 # a parameter follows its value with this time constant (0: at once)
+}
+
+# open: a game fills it (`def AnimBindings from "assets/data/anim_bindings.lres"`)
+@ByKey
+export open registry AnimBindings of AnimBinding as ABIND
+
+@alloc_ok("the tables are made when the link first runs, and once for each player the link first sees")
+function link_prepare(anim_st: mut AnimState) -> void {
+  let nb = len(AnimBindings)
+  anim_st.lk_n = nb
+  anim_st.lk_src = words(nb + 1)
+  anim_st.lk_seen = words(len(SignalSources) + 1)
+  for s in 0 .. len(SignalSources) { anim_st.lk_seen[s] = -1 }
+  for b in 0 .. nb {
+    var s = sig_find(AnimBindings[b].source)
+    if s >= 0 and sig_problem(s) != "" { s = -1 }
+    anim_st.lk_src[b] = s
+    if s >= 0 and sig_is_fact(s) { anim_st.lk_seen[s] = 1 }
+  }
+}
+
+@alloc_ok("once for each player the link first sees")
+function link_player(pl: AnimPlayer, nb: int) -> void {
+  pl.lk_n = nb
+  pl.lk_idx = words(nb + 1)
+  pl.lk_val = floats(nb + 1)
+  pl.lk_on = words(nb + 1)
+  pl.lk_txt = new []string
+  for b in 0 .. nb {
+    push(pl.lk_txt, "")
+    pl.lk_idx[b] = -2
+  }
+}
+
+# the number as the row wants it
+function link_map(r: AnimBinding, v: float) -> float {
+  var x = v * r.scale + r.offset
+  if r.curve == "abs" { x = Math.abs(x) } else if r.curve == "square" {
+    x = x * Math.abs(x)
+  } else if r.curve == "sqrt" {
+    x = Math.sqrt(Math.max(x, 0.0))
+  } else if r.curve == "step" {
+    if x >= r.threshold { x = 1.0 } else { x = 0.0 }
+  } else if r.curve == "invert" { x = 1.0 - x }
+  if r.clamp { x = Math.clamp(x, r.lo, r.hi) }
+  return x
+}
+
+# the parameter's place in the player's table, asked once per row
+function link_param(pl: AnimPlayer, b: int, name: string) -> int {
+  if pl.lk_idx[b] == -2 { pl.lk_idx[b] = as_param_idx(pl, name) }
+  return pl.lk_idx[b]
+}
+
+# a row wants this player: the graph it feeds
+function link_feeds(r: AnimBinding, pl: AnimPlayer) -> bool { return pl != null and pl.set >= 0 and (r.set < 0 or r.set == pl.set) }
+
+# one fact (or one edge) fires a trigger or a request; `word` is the fact's clip or the text source's word
+function link_fire(pl: AnimPlayer, r: AnimBinding, mapped: float, word: string) -> void {
+  var name = r.to
+  if r.by_name { name = word }
+  if name == "" { return }
+  if r.kind == "trigger" {
+    if r.also != "" { animset_param_at(pl, as_param_idx(pl, r.also), mapped) }
+    animset_param_at(pl, as_param_idx(pl, name), 1.0)
+  } else if r.kind == "request" {
+    animset_request(pl, name)
+  } else {
+    animset_param_at(pl, as_param_idx(pl, name), mapped)
+  }
+}
+
+# the facts since the last tick, source by source, each fact to every row that names the source
+function link_facts(anim_st: mut AnimState) -> void {
+  let nb = anim_st.lk_n
+  for s in 0 .. len(SignalSources) {
+    if anim_st.lk_seen[s] < 0 { continue }
+    let n = SignalSources[s].count()
+    for i in 0 .. n {
+      for b in 0 .. nb {
+        if anim_st.lk_src[b] != s { continue }
+        let r = AnimBindings[b]
+        if not SignalSources[s].read(i, SignalSources[s].arg, anim_st.lk_sf) { continue }
+        var actor = anim_st.lk_sf.actor
+        if actor < 0 { actor = r.actor }
+        if actor < 0 { continue }
+        let pl = anim_player_of(anim_st, actor)
+        if not link_feeds(r, pl) { continue }
+        let mapped = link_map(r, anim_st.lk_sf.value)
+        if r.gate and mapped < r.threshold { continue }
+        link_fire(pl, r, mapped, anim_st.lk_sf.name)
+      }
+    }
+  }
+}
+
+# a value or a text source, asked of one player
+function link_value(anim_st: AnimState, pl: AnimPlayer, actor: int, b: int, r: AnimBinding, s: int, dt: float) -> void {
+  if sig_is_text(s) {
+    let w = SignalSources[s].say(actor, SignalSources[s].arg)
+    if w != pl.lk_txt[b] {
+      pl.lk_txt[b] = w
+      if w != "" and r.kind == "request" {
+        if r.by_name { animset_request(pl, w) } else if r.to != "" { animset_request(pl, r.to) }
+      }
+    }
+    return
+  }
+  let raw = SignalSources[s].get(actor, SignalSources[s].arg)
+  let v = link_map(r, raw)
+  if r.kind == "param" {
+    let i = link_param(pl, b, r.to)
+    if i < 0 { return }
+    var out = v
+    if pl.lk_on[b] != 0 and r.smooth > 0.0 { out = pl.lk_val[b] + (v - pl.lk_val[b]) * (dt / (r.smooth + dt)) }
+    pl.lk_val[b] = out
+    pl.lk_on[b] = 1
+    animset_param_at(pl, i, out)
+    return
+  }
+  # a trigger or a request fires when the number rises through the threshold
+  let was = pl.lk_val[b]
+  var edge = false
+  if pl.lk_on[b] != 0 and was < r.threshold and v >= r.threshold { edge = true }
+  pl.lk_val[b] = v
+  pl.lk_on[b] = 1
+  if edge { link_fire(pl, r, v, "") }
+}
+
+# A frame of the bindings: the facts since the last tick, then every value and text source for every actor
+# its row feeds. Tick it after the mechanics have run, before the game drains their facts, and before
+# `animset_tick`.
+export function anim_link_tick(anim_st: mut AnimState, dt: float) -> void {
+  let nb = len(AnimBindings)
+  if anim_st.lk_n != nb or anim_st.lk_src == null { link_prepare(anim_st) }
+  if nb == 0 { return }
+  link_facts(anim_st)
+  if anim_st.actor_ids == null { return }
+  for k in 0 .. len(anim_st.actor_ids) {
+    let id = anim_st.actor_ids[k]
+    if id <= 0 or id == (1 << 30) { continue }
+    let pl = anim_st.actor_pl[k]
+    if pl == null or pl.set < 0 { continue }
+    if pl.lk_n != nb or pl.lk_idx == null { link_player(pl, nb) }
+    for b in 0 .. nb {
+      let s = anim_st.lk_src[b]
+      if s < 0 { continue }
+      if sig_is_fact(s) { continue }
+      let r = AnimBindings[b]
+      if not link_feeds(r, pl) { continue }
+      link_value(anim_st, pl, id - 1, b, r, s, dt)
+    }
+  }
+}
+

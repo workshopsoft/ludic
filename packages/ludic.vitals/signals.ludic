@@ -1,0 +1,35 @@
+# signals.ludic - what vitals says about an actor, by name, for a listener that wants no glue (ludic.anim's
+# AnimBindings, a sound bank). DOWNED, DIED, REVIVED and RESPAWNED carry the class's clip as the word (for a
+# binding that plays it by name); DAMAGED carries the damage taken as the number (a hit reaction).
+# The queue is read, never drained. Actors are the game's numbers for actors.
+
+function vt__sig_count(vitals_st: VitalsState) -> int { return len(vitals_facts(vitals_st).items) }
+
+function vt__sig_read(vitals_st: VitalsState, i: int, arg: int, out: SigFact) -> bool {
+  let items = vitals_facts(vitals_st).items
+  if i < 0 or i >= len(items) { return false }
+  let f = items[i]
+  if f.what != arg { return false }
+  out.actor = f.actor
+  out.value = f.amount
+  out.name = f.clip
+  return true
+}
+
+function vt__sig_value(vitals_st: VitalsState, actor: int, arg: int) -> float {
+  let h = vitals_of(vitals_st, actor)
+  if h < 0 { return 0.0 }
+  if arg == 0 { return vitals_fraction(vitals_st, h, vitals_life_pool(vitals_st)) }
+  if arg == 1 and vitals_downed(vitals_st, h) { return 1.0 }
+  if arg == 2 and vitals_dead(vitals_st, h) { return 1.0 }
+  return 0.0
+}
+
+def SignalSources vitals_damaged { name: "vitals.DAMAGED", kind: "fact", about: "a hit took something (value: the amount taken)", arg: VITALS_DAMAGED, count: fn vt__sig_count, read: fn vt__sig_read }
+def SignalSources vitals_downed_fact { name: "vitals.DOWNED", kind: "fact", about: "life ran out and the class falls (word: the class's clip)", arg: VITALS_DOWNED, count: fn vt__sig_count, read: fn vt__sig_read }
+def SignalSources vitals_died { name: "vitals.DIED", kind: "fact", about: "dead (word: the class's clip)", arg: VITALS_DIED, count: fn vt__sig_count, read: fn vt__sig_read }
+def SignalSources vitals_revived { name: "vitals.REVIVED", kind: "fact", about: "up again (word: the class's clip)", arg: VITALS_REVIVED, count: fn vt__sig_count, read: fn vt__sig_read }
+def SignalSources vitals_respawned { name: "vitals.RESPAWNED", kind: "fact", about: "dead to alive with the pools at their starts (word: the class's clip)", arg: VITALS_RESPAWNED, count: fn vt__sig_count, read: fn vt__sig_read }
+def SignalSources vitals_health_now { name: "vitals.health", kind: "value", about: "life as a share of its maximum", unit: "0..1", arg: 0, get: fn vt__sig_value }
+def SignalSources vitals_downed_now { name: "vitals.downed", kind: "value", about: "1 while the actor is downed", unit: "0/1", arg: 1, get: fn vt__sig_value }
+def SignalSources vitals_dead_now { name: "vitals.dead", kind: "value", about: "1 once the actor is dead", unit: "0/1", arg: 2, get: fn vt__sig_value }

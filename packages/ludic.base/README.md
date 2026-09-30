@@ -209,6 +209,21 @@ written before a generic call inside a `test` body resolved and before each test
 state, so the queue cases are functions a test calls and the runner's cases start with
 `core_clear()`; neither is needed any more.
 
+## Signals: what a mechanic can say, by name
+
+A mechanic that other packages want to listen to (an animation graph, a sound bank) declares its sources in a file of its own, as rows
+of the open registry `SignalSources`, and no listener imports the mechanic: it names a source by a stable string.
+
+- `SignalSource { name, kind, about, unit, arg, count, read, get, say }`, with `name` like `"melee.SWING"`; `kind` is
+  `fact` (`count() -> int` says how many facts wait in the mechanic's queue, read not drained; `read(i, arg, out: SigFact) -> bool`
+  says whether fact i is of this source's kind and fills `SigFact { actor, value, name }`), `value` (`get(actor, arg) -> float`) or `text`
+  (`say(actor, arg) -> string`). The functions take the mechanic's own state, as a system's tick does, and allocate nothing.
+- `sig_find(name) -> int`, `sig_is_fact/value/text(i)`, `sig_problem(i) -> string` ("" when whole), `sig_fact_new()`.
+- The dev link lists them for a studio's picker: `signal_source at:int` answers `ok <count> "<name>" "<kind>" "<unit>" "<about>"`.
+
+`ludic.melee`, `weapons`, `vitals`, `crowd`, `character` and `vehicles` each declare theirs in `signals.ludic`; `ludic.anim`'s `AnimBindings`
+reads them (see its README). `tests/signal_test.ludic`.
+
 ## Declared systems
 
 - `Systems` is an `open registry`, so a system can be declared instead of added: `def Systems

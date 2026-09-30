@@ -1,0 +1,14 @@
+# link_rows.lres - the wiring the test's toy mechanic feeds: data only, no code
+speed { set: ASET_LINKY, to: "speed", source: "toy.speed", scale: 2.0, offset: 1.0 }
+aim { set: ASET_LINKY, to: "aim", source: "toy.aim", curve: "step", threshold: 0.3 }
+lean { set: ASET_LINKY, to: "lean", source: "toy.lean", smooth: 0.5, clamp: true, lo: 0.0, hi: 1.0 }
+armed { set: ASET_LINKY, to: "armed", source: "toy.aim", curve: "step", threshold: 0.3 }
+swing { set: ASET_LINKY, kind: "trigger", to: "attack", source: "toy.SWING", also: "attack_speed" }
+reload { set: ASET_LINKY, kind: "trigger", to: "reload", source: "toy.RELOAD" }
+hurt_gate { set: ASET_LINKY, kind: "trigger", to: "attack", source: "toy.HURT", gate: true, threshold: 10.0 }
+down { set: ASET_LINKY, kind: "request", to: "down", source: "toy.DOWNED" }
+act { set: ASET_LINKY, kind: "request", by_name: true, source: "toy.ACT" }
+pose { set: ASET_LINKY, kind: "request", by_name: true, source: "toy.pose" }
+jump_edge { set: ASET_LINKY, kind: "trigger", to: "reload", source: "toy.air", threshold: 0.5 }
+foot { set: ASET_LINKY, kind: "trigger", to: "attack", source: "toy.FOOT", actor: 9 }
+other_speed { set: ASET_OTHER, to: "speed", source: "toy.speed" }

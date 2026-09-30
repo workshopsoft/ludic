@@ -123,3 +123,32 @@ anims {
   clip_root_bone: "root_bone"
   clip_ref_time: "ref_time"
 }
+
+# the wiring of gameplay to graphs: a row says which registered source (ludic.base's SignalSources: a fact
+# of a mechanic, or a number or word it keeps per actor) feeds which parameter, trigger or state of which graph.
+# A studio offers `source` as a pick from the registry (source_*), `to` as a pick from the row's graph (a parameter
+# for a param or trigger, a state for a request), and draws the mapping (scale, offset, curve, clamp, smooth).
+anim_bindings {
+  title: "Animation wiring"
+  table: "AnimBindings"
+  key: "key"
+  set_field: "set"
+  set_table: "AnimSets"
+  kind_field: "kind"
+  to_field: "to"
+  param_table: "AnimSets"
+  param_list: "params"
+  typed_param_list: "parameters"
+  state_list: "states"
+  by_name_field: "by_name"
+  source_field: "source"
+  source_table: "SignalSources"
+  source_name: "name"
+  source_kind: "kind"
+  source_about: "about"
+  source_unit: "unit"
+  also_field: "also"
+  actor_field: "actor"
+  map_fields: ["scale", "offset", "curve", "threshold", "gate", "clamp", "lo", "hi", "smooth"]
+  problems: "anim_link_validate"
+}

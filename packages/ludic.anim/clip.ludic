@@ -13,7 +13,10 @@ export property Clip {
   coff:  words,                    # where this channel starts in `times`
   cvoff: words,                    # where it starts in `vals`
   times: floats,
-  vals:  floats
+  vals:  floats,
+  oz:    pointer = null,           # the clip built in ozz for a skeleton of oz_n joints (ozz_play.ludic), made the first time it is sampled
+  oz_n:  int = 0,
+  oz_p:  int = 0            # 1 when it was built with its translations
 }
 
 export state AnimState {
@@ -45,6 +48,16 @@ export state AnimState {
   pos_s: floats = null
   hit_s: words = null
   cap: int = 0
+  # the signal bindings (link.ludic): each row's source, resolved once
+  oz_use: bool = true        # sample through ozz when the native layer built the skeleton and the clip (ozz_play.ludic)
+  oz_live: bool = false      # the item being mixed was sampled into oz_rot / oz_pos
+  oz_rot: floats = null
+  oz_pos: floats = null
+  oz_cap: int = 0
+  lk_n: int = -1
+  lk_src: words = null
+  lk_seen: words = null      # per source: 1 when a row listens to it as a fact source, else -1
+  lk_sf: SigFact = sig_fact_new()
 }
 # Keyed translations are off unless asked for: baking keys location on every bone, and a skeleton
 # does not translate its joints, so applying them turns rounding into a pose.

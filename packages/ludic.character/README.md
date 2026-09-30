@@ -88,3 +88,7 @@ ludic test packages/ludic.character
 A fake world of a meadow, a 45 cm deck, a cliff, a gentle rise, a boulder and a shelving lake: the
 step and the cliff at 30, 60 and 240 Hz, speeds and the sneak, wading into a swim and out, the dive
 and the breath, the jump, the safe spot, sitting and its refusals, holds, riding and the camera.
+
+## Signals
+
+The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`): character.JUMPED, character.grounded, character.speed, and more. A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it.

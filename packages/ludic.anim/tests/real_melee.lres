@@ -1,0 +1,5 @@
+# real_melee.lres - one attack: its clip and its speed are what melee.SWING hands the graph
+slash {
+  clip: "slash", length: 1.0, speed: 1.25
+  hits: [{ key: "arc", start: 0.2, stop: 0.4, shape: MELEE_SHAPE_ARC, reach: 3.0, arc: 120.0, damage: 40.0, stagger: 5.0 }]
+}

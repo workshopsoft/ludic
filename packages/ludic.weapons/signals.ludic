@@ -1,0 +1,42 @@
+# signals.ludic - what weapons says about a shooter, by name, for a listener that wants no glue (ludic.anim's
+# AnimBindings, a sound bank). A fact source hands the fact's clip as the word (the weapon's `@Clip` field the
+# mechanic chose for that act) and the seconds the act takes as the number. The queue is read, never drained.
+# Actors are the game's numbers for shooters.
+
+function wp__sig_count(weapons_st: WeaponsState) -> int { return len(weapons_facts(weapons_st).items) }
+
+function wp__sig_read(weapons_st: WeaponsState, i: int, arg: int, out: SigFact) -> bool {
+  let items = weapons_facts(weapons_st).items
+  if i < 0 or i >= len(items) { return false }
+  let f = items[i]
+  if f.what != arg { return false }
+  out.actor = f.actor
+  out.value = f.time
+  out.name = f.clip
+  return true
+}
+
+function wp__sig_value(weapons_st: WeaponsState, actor: int, arg: int) -> float {
+  let h = weapons_of(weapons_st, actor)
+  if h < 0 { return 0.0 }
+  if arg == 0 {
+    if weapons_reloading(weapons_st, h) { return 1.0 }
+    return 0.0
+  }
+  if arg == 1 { return weapons_ads(weapons_st, h) }
+  if arg == 2 { return weapons_charge(weapons_st, h) }
+  if arg == 3 { return weapons_recoil_pitch(weapons_st, h) }
+  return 0.0
+}
+
+def SignalSources weapons_fired { name: "weapons.FIRED", kind: "fact", about: "a round left (word: the fire clip, value: seconds)", unit: "s", arg: WP_FIRED, count: fn wp__sig_count, read: fn wp__sig_read }
+def SignalSources weapons_reload_started { name: "weapons.RELOAD_STARTED", kind: "fact", about: "a reload began (word: the reload clip, value: how long it takes)", unit: "s", arg: WP_RELOAD_STARTED, count: fn wp__sig_count, read: fn wp__sig_read }
+def SignalSources weapons_reloaded { name: "weapons.RELOADED", kind: "fact", about: "rounds went in", arg: WP_RELOADED, count: fn wp__sig_count, read: fn wp__sig_read }
+def SignalSources weapons_empty { name: "weapons.EMPTY", kind: "fact", about: "the trigger on an empty magazine (word: the dry-fire clip)", arg: WP_EMPTY, count: fn wp__sig_count, read: fn wp__sig_read }
+def SignalSources weapons_equipped { name: "weapons.EQUIPPED", kind: "fact", about: "a weapon is in hand (word: the equip clip, value: seconds)", unit: "s", arg: WP_EQUIPPED, count: fn wp__sig_count, read: fn wp__sig_read }
+def SignalSources weapons_holstered { name: "weapons.HOLSTERED", kind: "fact", about: "a weapon was put away (word: the holster clip)", arg: WP_HOLSTERED, count: fn wp__sig_count, read: fn wp__sig_read }
+def SignalSources weapons_charging { name: "weapons.CHARGING", kind: "fact", about: "a charge began (word: the charge clip, value: seconds to full)", unit: "s", arg: WP_CHARGING, count: fn wp__sig_count, read: fn wp__sig_read }
+def SignalSources weapons_reloading_now { name: "weapons.reloading", kind: "value", about: "1 while a reload runs", unit: "0/1", arg: 0, get: fn wp__sig_value }
+def SignalSources weapons_ads_now { name: "weapons.ads", kind: "value", about: "how far into the sights", unit: "0..1", arg: 1, get: fn wp__sig_value }
+def SignalSources weapons_charge_now { name: "weapons.charge", kind: "value", about: "how far a charge weapon is charged", unit: "0..1", arg: 2, get: fn wp__sig_value }
+def SignalSources weapons_recoil_now { name: "weapons.recoil_pitch", kind: "value", about: "the recoil the aim carries (for an additive layer)", unit: "deg", arg: 3, get: fn wp__sig_value }

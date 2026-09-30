@@ -1,0 +1,7 @@
+boat {
+  kind: VEHICLE_BOAT
+  model: "models/boat.glb", node: "hull"
+  seat_h: 0.2
+  row: 630.0, row_turn: 270.0, wind: 70.0
+  off_depth: 1.25
+}

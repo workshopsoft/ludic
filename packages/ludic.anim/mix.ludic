@@ -19,7 +19,7 @@ export function mix_clip(anim_st: mut AnimState, c: Clip, sk: Skin, tt: float, w
     let node = c.cnode[ch]
     if node < 0 or node >= sk.n_nodes { continue }
     if c.cpath[ch] == AC_ROT {
-      sample_rot(anim_st, c, ch, tt, anim_st.q_a)
+      if anim_st.oz_live { q_load(anim_st.q_a, anim_st.oz_rot, node) } else { sample_rot(anim_st, c, ch, tt, anim_st.q_a) }
       if add {
         sample_rot(anim_st, c, ch, ref, anim_st.q_r)
         q_conj(anim_st.q_r, anim_st.q_r)
@@ -32,7 +32,9 @@ export function mix_clip(anim_st: mut AnimState, c: Clip, sk: Skin, tt: float, w
       }
       mix_rot(anim_st, node, w, rot, hit)
     } else {
-      sample_pos(c, ch, tt, anim_st.v_a)
+      if anim_st.oz_live {
+        for e in 0 .. 3 { anim_st.v_a[e] = anim_st.oz_pos[node * 3 + e] }
+      } else { sample_pos(c, ch, tt, anim_st.v_a) }
       if add {
         sample_pos(c, ch, ref, anim_st.v_b)
         for e in 0 .. 3 { anim_st.v_a[e] = anim_st.v_a[e] - anim_st.v_b[e] }

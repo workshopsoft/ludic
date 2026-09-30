@@ -215,3 +215,7 @@ penetration through a wall and bodies, rockets (drop, blast falloff, cover) and 
 fuse), reloads (tactical, empty, shell by shell), the wheel and equip times, ammo types, skins, loadouts, the party
 model (prediction, the host's checks and rewind, the confirm, remote shots, snapshots), the save, and a long firefight
 that makes nothing new.
+
+## Signals
+
+The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`): weapons.RELOAD_STARTED, weapons.FIRED, weapons.ads, and more. A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it.

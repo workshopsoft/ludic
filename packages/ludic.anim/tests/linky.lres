@@ -1,0 +1,22 @@
+# linky.lres - a graph the wiring tests feed: floats, a bool, triggers, and states the code asks for
+linky {
+  entry: "ground"
+  params: ["speed", "aim", "attack_speed", "lean"]
+  parameters: [{ key: "attack", kind: "trigger" }, { key: "reload", kind: "trigger" }, { key: "armed", kind: "bool" }]
+  states: [
+    { key: "ground", choices: [{ clip: "walk", need: [{ param: "speed", over: 0.5 }] }, { clip: "idle" }] },
+    { key: "down", choices: [{ clip: "idle" }] },
+    { key: "sit", choices: [{ clip: "idle" }] },
+    { key: "wave", choices: [{ clip: "walk" }] }
+  ]
+  transitions: [
+    { from: "*", to: "down", blend: 0.0 },
+    { from: "*", to: "sit", blend: 0.0 },
+    { from: "*", to: "wave", blend: 0.0 }
+  ]
+}
+other {
+  entry: "idle"
+  params: ["speed"]
+  states: [{ key: "idle", choices: [{ clip: "idle" }] }]
+}

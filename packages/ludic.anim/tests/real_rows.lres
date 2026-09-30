@@ -1,0 +1,15 @@
+# real_rows.lres - the whole wiring a game writes for these six packages: data, no glue
+swing { set: ASET_PERSON, kind: "trigger", to: "slash", source: "melee.SWING", also: "attack_speed" }
+swing_any { set: ASET_PERSON, kind: "trigger", by_name: true, to: "", source: "melee.SWING" }
+reload { set: ASET_PERSON, kind: "trigger", to: "reload", source: "weapons.RELOAD_STARTED", also: "reload_time" }
+hurt { set: ASET_PERSON, kind: "trigger", to: "hurt", source: "vitals.DAMAGED", gate: true, threshold: 5.0 }
+down { set: ASET_PERSON, kind: "request", to: "down", source: "vitals.DOWNED" }
+died { set: ASET_PERSON, kind: "request", to: "dead", source: "vitals.DIED" }
+health { set: ASET_PERSON, to: "health", source: "vitals.health" }
+act { set: ASET_PERSON, kind: "request", by_name: true, source: "crowd.ACT" }
+speed { set: ASET_PERSON, to: "speed", source: "crowd.speed" }
+grounded { set: ASET_PERSON, to: "grounded", source: "character.grounded" }
+jump { set: ASET_PERSON, kind: "trigger", to: "jump", source: "character.JUMPED", actor: 1 }
+riding { set: ASET_PERSON, to: "riding", source: "vehicles.riding" }
+seat { set: ASET_PERSON, kind: "request", by_name: true, source: "vehicles.seat_pose" }
+mounted { set: ASET_PERSON, kind: "request", by_name: true, source: "vehicles.MOUNTED" }

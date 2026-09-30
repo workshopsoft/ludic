@@ -290,3 +290,7 @@ instead of passing it); a ped using a vehicle (hailing a taxi, a bus stop as a s
 (`ludic.avatar` parts); per-district schedules (a rule that changes a type's schedule by zone); the mid tier delegating its steering to `ludic.nav`'s Detour crowd; time-sliced spawn
 passes across frames for a hundred-thousand-ped city; projecting a zone's density onto the road network instead of
 the plane.
+
+## Signals
+
+The facts and values an animation graph (or a sound bank) can listen to, by name and without glue, are declared in `signals.ludic` as `SignalSources` (`ludic.base`): crowd.ACT, crowd.speed, crowd.turn, and more. A game writes `AnimBindings` rows naming them (`ludic.anim`). They read the fact queue without draining it.
