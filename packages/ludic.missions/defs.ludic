@@ -125,7 +125,7 @@ export property MissionStep {
   ey: float = 0.0
 }
 @AppendOnly @ByKey
-export open registry MissionSteps of MissionStep as MSTEP
+export open registry MissionSteps of MissionStep as MISSTEP
 
 # an edge: when `from` ends with the outcome `on` ("done", "fail", "timeout", or a choice's or a
 # signal's key), go to `to`. Edges are tried in table order and the first whose `cond` holds is taken;

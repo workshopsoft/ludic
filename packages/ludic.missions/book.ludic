@@ -53,7 +53,7 @@ function ms__build(missions_st: mut MissionsState) -> void {
   for i in 0 .. MIS_COUNT {
     let m = Missions[i]
     let nodes = new []MissionStep
-    for n in 0 .. MSTEP_COUNT { if MissionSteps[n].mission == m.key { push(nodes, MissionSteps[n]) } }
+    for n in 0 .. MISSTEP_COUNT { if MissionSteps[n].mission == m.key { push(nodes, MissionSteps[n]) } }
     let edges = new []MissionEdge
     for e in 0 .. MEDGE_COUNT { if MissionEdges[e].mission == m.key { push(edges, MissionEdges[e]) } }
     let roles = new []MissionRole

@@ -26,7 +26,7 @@ as two plain tables and a player's creation, which has no compiled constants, is
 | --- | --- | --- |
 | `Contacts` (`CONTACT_*`) | a person who gives missions | `title`, `intro`, `min_rank` |
 | `Missions` (`MIS_*`) | a mission: kind (`MSK_JOB`, `_CONTACT`, `_SETUP`, `_FINALE`, `_RACE`, `_ADVERSARY`, `_CUSTOM`), `contact`, `heist`, `min_players`/`max_players`, `teams`, `time_limit`, `start` (a node's key, else the first), the pot (`money`, `xp`, `item`), `fee`, `replay` (`MSREP_ALWAYS` / `_ONCE` / `_DAILY`), `cooldown`, `needs` (missions to have won), `min_rank`, `retries`, `join_in_progress`, `wipe`, `share` (`MSSHARE_EQUAL` / `_CUTS` / `_SCORE` / `_PLACE`), `payout` (percent by place), `leader_cut` | |
-| `MissionSteps` (`MSTEP_*`) | a node: `mission`, `kind` (`MSN_*`), `target`, `x` `y` `z` `radius`, `count`, `seconds`, `role`, `who` (`MSW_ANY` / `_ALL`), `join`, `checkpoint`, `hidden`, `blip`, `arg`, `gates`, and `ex` `ey` (where an editor draws it) | |
+| `MissionSteps` (`MISSTEP_*`) | a node: `mission`, `kind` (`MSN_*`), `target`, `x` `y` `z` `radius`, `count`, `seconds`, `role`, `who` (`MSW_ANY` / `_ALL`), `join`, `checkpoint`, `hidden`, `blip`, `arg`, `gates`, and `ex` `ey` (where an editor draws it) | |
 | `MissionEdges` (`MEDGE_*`) | an edge: `mission`, `from`, `to`, `on` (`"done"`, `"fail"`, `"timeout"`, or a choice's key), `cond`, `par` | |
 | `MissionRoles` (`MROLE_*`) | a part: `mission`, `least`, `most`, `team`, `cut` (a weight), `leader` | |
 | `HeistChains` (`HEIST_*`) | a heist: `finale`, `contact`, crew size, `crew_cut_floor` | |
