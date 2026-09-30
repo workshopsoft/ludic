@@ -6,7 +6,6 @@ in vec3 v_wpos;
 in vec3 v_nrm;
 in vec2 v_uv;
 in vec4 v_tint;
-in vec4 v_col;
 in float v_seed;
 out vec4 o_color;
 uniform sampler2D u_diff;
@@ -146,7 +145,7 @@ void main() {
   if (!gl_FrontFacing) N = -N;
   float dist = length(v_wpos - u_cam_pos);
   float viewDepth = -(u_view * vec4(v_wpos, 1.0)).z;
-  vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv) * v_col;
+  vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv);
   vec3 tn = texture(u_nrm, v_uv).rgb * 2.0 - 1.0;
   mat3 tbn = cotangentFrame(N, v_wpos, v_uv);
   vec3 n = normalize(tbn * tn);

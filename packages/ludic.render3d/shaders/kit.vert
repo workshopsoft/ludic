@@ -7,8 +7,6 @@ layout(location = 2) in vec2 a_uv;
 layout(location = 3) in vec4 i_pos;
 layout(location = 4) in vec4 i_rot;
 layout(location = 5) in vec4 i_tint;
-// COLOR_0 (glTF vertex colour), attribute 7. A mesh without it leaves the input unfed, which Vulkan reads as (0,0,0,0): that means white.
-layout(location = 7) in vec4 a_col;
 uniform mat4 u_view;
 uniform mat4 u_proj;
 uniform mat4 u_light_vp;
@@ -17,7 +15,6 @@ out vec3 v_wpos;
 out vec3 v_nrm;
 out vec2 v_uv;
 out vec4 v_tint;
-out vec4 v_col;
 out float v_seed;
 #ifdef INTERIOR_MAP
 // the model's own frame, where the facade's window grid lives: nothing in it moves when the origin does, and a
@@ -36,7 +33,6 @@ void main() {
   v_nrm = n;
   v_uv = a_uv;
   v_tint = i_tint;
-  v_col = (a_col == vec4(0.0)) ? vec4(1.0) : a_col;
   v_seed = i_rot.z;
 #ifdef INTERIOR_MAP
   v_lpos = a_pos;

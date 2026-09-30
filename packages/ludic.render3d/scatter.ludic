@@ -529,20 +529,6 @@ function layer_arena_build(render3d_st: mut Render3dState, l: Layer) -> void {
       gpu_mesh_attr(render3d_st, m, a, comps, GPU_F32, 0, 0, false)
       free(vb)
     }
-    # COLOR_0 (attribute 7, RGBA8 normalized): the LODs of a material share it or none has it; a LOD without it reads white
-    var has_col = false
-    for k in 0 .. l.n_lods { if l.lods[k].prims[j].mesh.n_attrs > 7 and l.lods[k].prims[j].mesh.attrs[7 * GPU_ATTR_W + 1] != 0 { has_col = true } }
-    if has_col {
-      let cb = bytes(nv * 4 + 8)
-      for i in 0 .. nv * 4 { cb[i] = 255 }
-      for k in 0 .. l.n_lods {
-        let pr = l.lods[k].prims[j]
-        if pr.mesh.n_attrs > 7 and pr.mesh.attrs[7 * GPU_ATTR_W + 1] != 0 { mem_copy(mem_off(cb, l.g_base[j * 4 + k] * 4), gpu_buffer_map(render3d_st, pr.mesh.attrs[7 * GPU_ATTR_W]), pr.verts * 4) }
-      }
-      gpu_mesh_vertices(render3d_st, m, cb, nv * 4, GPU_STATIC)
-      gpu_mesh_attr(render3d_st, m, 7, 4, GPU_U8, 0, 0, true)
-      free(cb)
-    }
     let ib = bytes(ni * 2 + 8)
     for k in 0 .. l.n_lods {
       let pm = l.lods[k].prims[j].mesh

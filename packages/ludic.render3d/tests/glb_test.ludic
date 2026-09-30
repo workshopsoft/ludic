@@ -95,29 +95,4 @@ program GlbTest {
     expect(tri_ok(render3d_st))
     file_close(render3d_st.gltf_bin)
   }
-
-  test "COLOR_0 of a glb reads as RGBA8, white-alpha when vec3, float and ushort forms agree" (render3d_st: mut Render3dState) {
-    expect(gltf_open(render3d_st, models(render3d_st), "vcol.glb"))
-    let data = gltf_accessor(render3d_st, 1)
-    expect_eq(render3d_st.gltf_count, 3)
-    expect_eq(render3d_st.gltf_comps, 4)
-    expect_eq(render3d_st.gltf_ctype, 5121)
-    let rgba = gltf_colour_rgba8(data, 3, 4, 5121)
-    expect_eq(gltf_byte_at(rgba, 0), 255);  expect_eq(gltf_byte_at(rgba, 1), 0);   expect_eq(gltf_byte_at(rgba, 3), 255)
-    expect_eq(gltf_byte_at(rgba, 5), 255);  expect_eq(gltf_byte_at(rgba, 7), 128)
-    expect_eq(gltf_byte_at(rgba, 10), 255)
-    gltf_bytes_free(rgba)
-    # the same bytes as a vec3 of unsigned bytes: alpha is 1, vertex 1 starts at the fourth byte
-    let v3 = gltf_colour_rgba8(data, 3, 3, 5121)
-    expect_eq(gltf_byte_at(v3, 0), 255);  expect_eq(gltf_byte_at(v3, 3), 255);  expect_eq(gltf_byte_at(v3, 4), 255)
-    gltf_bytes_free(v3)
-    gltf_bytes_free(data)
-    # floats: 0.5 -> 128, out of range clamps
-    let f = floats(3)
-    f[0] = 0.5;  f[1] = 2.0;  f[2] = -1.0
-    let fr = gltf_colour_floats(f, 1, 3)
-    expect_eq(gltf_byte_at(fr, 0), 128);  expect_eq(gltf_byte_at(fr, 1), 255);  expect_eq(gltf_byte_at(fr, 2), 0);  expect_eq(gltf_byte_at(fr, 3), 255)
-    gltf_bytes_free(fr)
-    file_close(render3d_st.gltf_bin)
-  }
 }

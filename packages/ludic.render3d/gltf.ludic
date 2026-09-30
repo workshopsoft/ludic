@@ -127,46 +127,6 @@ function gltf_attrib(render3d_st: mut Render3dState, m: Mesh, attrs: Val, name: 
   return true
 }
 
-# n COLOR_0 elements of `comps` (3 or 4) components of glTF componentType ct (5121 / 5123 normalized, 5126 float) as
-# RGBA8; a missing alpha is 1. The caller frees it.
-@alloc_ok("loading a model: a primitive's colour bytes, once")
-function gltf_colour_rgba8(data: pointer, n: int, comps: int, ct: int) -> pointer {
-  let out = bytes(n * 4 + 8)
-  for i in 0 .. n {
-    for c in 0 .. 4 {
-      var v = 255
-      if c < comps {
-        let at = i * comps + c
-        if ct == 5121 { v = int(data[at]) }
-        else if ct == 5123 { v = (int(data[at * 2]) + int(data[at * 2 + 1]) * 256) * 255 / 65535 }
-        else { v = int(clamp(float_from_bits(mem_get_f32_bits(data, at)), 0.0, 1.0) * 255.0 + 0.5) }
-      }
-      out[i * 4 + c] = v
-    }
-  }
-  return out
-}
-
-function gltf_colour_floats(f: floats, n: int, comps: int) -> pointer { unsafe { return gltf_colour_rgba8(data_of(f), n, comps, 5126) } }
-function gltf_bytes_free(p: pointer) -> void { free(p) }
-function gltf_byte_at(p: pointer, i: int) -> int { return int(p[i]) }
-
-# COLOR_0 (vec3 or vec4; float, or normalized unsigned byte / short) onto attribute 7 as RGBA8 normalized: the shaders
-# multiply it into the base colour (kit.vert, model.vert). A mesh without it records nothing there and the shaders read
-# the unfed input as white. Linear values, as the spec has them; 8 bits are what a building's flat colours need.
-@alloc_ok("loading a model: a primitive's colour buffer, once")
-function gltf_colour(render3d_st: mut Render3dState, m: Mesh, attrs: Val) -> bool {
-  if value_has(attrs, "COLOR_0") == 0 { return false }
-  let data = gltf_accessor(render3d_st, value_as_int(value_get(attrs, "COLOR_0")))
-  let n = render3d_st.gltf_count
-  let out = gltf_colour_rgba8(data, n, render3d_st.gltf_comps, render3d_st.gltf_ctype)
-  free(data)
-  gpu_mesh_vertices(render3d_st, m, out, n * 4, GPU_STATIC)
-  gpu_mesh_attr(render3d_st, m, 7, 4, GPU_U8, 0, 0, true)
-  free(out)
-  return true
-}
-
 function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
   let pr = new Prim
   let m = gpu_mesh_new(render3d_st)
@@ -175,7 +135,6 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
   let nverts = render3d_st.gltf_count
   gltf_attrib(render3d_st, m, attrs, "NORMAL", 1)
   gltf_attrib(render3d_st, m, attrs, "TEXCOORD_0", 2)
-  gltf_colour(render3d_st, m, attrs)                     # COLOR_0 onto 7, when the mesh has it
   skin_attribs(render3d_st, m, attrs)                    # JOINTS_0 / WEIGHTS_0 onto 5 / 6, when the mesh has them
   let idx = gltf_accessor(render3d_st, value_as_int(value_get(p, "indices")))
   var isz = 4
