@@ -31,6 +31,7 @@ export port WeaponsWorld {
   body_z: fn(int) -> float = fn wp__zero
   blocked: fn(float, float, float, float, float, float) -> bool = fn wp__open   # cover between a blast and a body
   origin_ok: fn(int, float, float, float) -> bool = fn wp__yes4                 # the host: may this actor shoot from there (near its own position)
+  allow_shot: fn(int, int) -> bool = fn wp__yes2           # the host: (sender, actor) does the machine that sent the shot play that actor
   rewind: fn(float) -> void = fn wp__rewind                # the host: put the bodies where they were at this time (lag compensation)
   restore: fn() -> void = fn wp__restore                   # ... and back
 }
@@ -39,6 +40,7 @@ function wp__one(a: int) -> float { return 1.0 }
 function wp__zero0() -> float { return 0.0 }
 function wp__one0() -> float { return 1.0 }
 function wp__yes(a: int) -> bool { return true }
+function wp__yes2(sender: int, actor: int) -> bool { return true }
 function wp__yes4(a: int, x: float, y: float, z: float) -> bool { return true }
 function wp__nothing(a: float, b: float, c: float, d: float, e: float, f: float, g: float, h: int) -> float { return -1.0 }
 function wp__no_actor() -> int { return -1 }

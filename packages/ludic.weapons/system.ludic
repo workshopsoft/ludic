@@ -10,8 +10,6 @@ export function weapons_reset(weapons_st: mut WeaponsState) -> void {
   weapons_st.wp__time = 0.0
   for i in 0 .. len(weapons_st.wp__projs) { weapons_st.wp__projs[i].live = false }
   q_clear(weapons_st.wp__q)
-  q_clear(weapons_st.wp__out)
-  q_clear(weapons_st.wp__conf)
 }
 
 function weapons_tick(weapons_st: mut WeaponsState, t: Tick) -> void { weapons_run(weapons_st, t.dt) }

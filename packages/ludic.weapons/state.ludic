@@ -34,7 +34,7 @@ export property Shooter {
   trig_prev: bool = false
   empty_said: bool = false                # the empty click was made for this press
   queued: float = 0.0                     # a semi press waiting for the rate: seconds it is kept
-  pending: int = 0                        # a guest: shots fired that the host has not yet answered
+  pending: int = 0                        # a guest: shots fired that the host has not yet answered (the @Predicted row reducer of WeaponsFire counts them, so a refusal takes one back)
   cool: float = 0.0                       # seconds until the next round may leave (may run negative while shooting on, to keep the rate exact)
   streak: bool = false                    # a round left this tick: the rate's carry is kept into the next
   burst_left: int = 0
@@ -89,34 +89,7 @@ export property Projectile {
   seed: int = 0
 }
 
-# what a guest says it fired: the host resolves it. `stamp` is when, on the host's clock (the guest
-# estimates it); `spread` the half-angle it used, which the host holds to what the weapon can do
-export property ShotRequest {
-  actor: int = -1
-  gun: int = -1
-  weapon: int = -1
-  shot_no: int = 0
-  seed: int = 0
-  stamp: float = 0.0
-  ox: float = 0.0
-  oy: float = 0.0
-  oz: float = 0.0
-  dx: float = 0.0
-  dy: float = 0.0
-  dz: float = 1.0
-  spread: float = 0.0
-  charge: float = 1.0
-}
-
-# the host's answer to an owner: whether the shot stood, and the magazine it leaves
-export property ShotConfirm {
-  actor: int = -1
-  shot_no: int = 0
-  accepted: bool = false
-  why: int = 0
-  mag: int = 0
-  reserve: int = 0
-}
+# (what a guest says it fired is the action WeaponsFire, in defs.ludic)
 
 export state WeaponsState {
   wp__shooters: Table<Shooter> = wp__table()
@@ -133,8 +106,6 @@ export state WeaponsState {
   wp__max_rewind: float = 0.25            # the host rewinds at most this far for a guest's shot
   wp__slack: float = 0.05                 # how far ahead of its rate the host lets a guest's shots run
   wp__q: Queue<WeaponFact> = wp__queue()
-  wp__out: Queue<ShotRequest> = wp__outbox()
-  wp__conf: Queue<ShotConfirm> = wp__confirms()
   wp__sx: float = 0.0                     # a direction worked out, read back (no record is made)
   wp__sy: float = 0.0
   wp__sz: float = 0.0
@@ -144,12 +115,8 @@ export state WeaponsState {
 }
 function wp__table() -> Table<Shooter> { return table_new(0, 0) }
 function wp__queue() -> Queue<WeaponFact> { return queue_new("weapons.facts") }
-function wp__outbox() -> Queue<ShotRequest> { return queue_new("weapons.outbox") }
-function wp__confirms() -> Queue<ShotConfirm> { return queue_new("weapons.confirms") }
 
 export function weapons_facts(weapons_st: WeaponsState) -> Queue<WeaponFact> { return weapons_st.wp__q }
-export function weapons_outbox(weapons_st: WeaponsState) -> Queue<ShotRequest> { return weapons_st.wp__out }
-export function weapons_confirms(weapons_st: WeaponsState) -> Queue<ShotConfirm> { return weapons_st.wp__conf }
 
 # a fact, from anywhere; every field is set here so a record used again carries nothing over
 function wp__fact(weapons_st: WeaponsState, what: int, s: Shooter, h: int, gun: int) -> WeaponFact {

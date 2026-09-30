@@ -159,5 +159,12 @@ export function weapons_shots(weapons_st: WeaponsState, h: int) -> int {
   return s.shots
 }
 
+# a guest's own shots the host has not answered yet (the action WeaponsFire in the air)
+export function weapons_unanswered(weapons_st: WeaponsState, h: int) -> int {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return 0 }
+  return s.pending
+}
+
 # seconds the tick has run: the clock a guest's shot is stamped with and the host rewinds by
 export function weapons_time(weapons_st: WeaponsState) -> float { return weapons_st.wp__time }
