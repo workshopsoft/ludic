@@ -9,7 +9,7 @@ for line in open(sys.argv[1]):
     if line.startswith("> ") or line == ">": reqs.append(line[2:]); exp.append([])
     elif line.startswith(("< ", "<= ", "<! ")) and reqs:
         k, _, t = line.partition(" "); exp[-1].append((k, t))
-p = subprocess.run([sys.argv[2]], input="\n".join(reqs) + "\n", capture_output=True, text=True, errors="replace", timeout=60)
+p = subprocess.run([sys.argv[2], "--no-default-font"], input="\n".join(reqs) + "\n", capture_output=True, text=True, errors="replace", timeout=60)
 out = p.stdout.splitlines()
 replies, cur = [], []
 for l in out:

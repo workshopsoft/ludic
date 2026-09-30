@@ -43,6 +43,7 @@ program LudicDev {
   import "pkg_test.ludic"
   import "release_test.ludic"
   import "templates_test.ludic"
+  import "font_test.ludic"
   import "symbols.ludic"
   import "symbols_test.ludic"
 
@@ -53,7 +54,7 @@ program LudicDev {
     print("which ships to users and carries none of the below.")
     print("")
     print("build:")
-    print("  build                         build the whole toolchain into bin/ (ludicc, ludic, ludic-dev, ludic-fmt, ludic-lsp, ludic-ui-preview)")
+    print("  build                         build the whole toolchain into bin/ (ludicc, ludic, ludic-dev, ludic-fmt, ludic-lsp, ludic-ui-preview, ludic-font-bake)")
     print("  build-cli                     build just bin/ludicc from the IR seed")
     print("  tools [--install] [--test]    build the editor toolchain (ludic-fmt, ludic-lsp)")
     print("  clean                         remove build/")
@@ -65,6 +66,7 @@ program LudicDev {
     print("  test-pkg                      the package-manager suite (hermetic git repos, offline)")
     print("  test-release                  `ludic release` and the manifest's release lines (a fake vpk, nothing real)")
     print("  test-symbols                  `ludic symbols`: the Mach-O / PE ids, the symbols a build keeps, the listing")
+    print("  test-fonts                    `ludic font bake` (metrics, the committed default font's bytes) and ui-preview's default font")
     print("  test-templates                every `ludic new --template` starter is created and passes `ludic build --check`")
     print("  selfhost-test                 the self-hosting suite (correctness + bootstrap fixpoints)")
     print("  test-tools                    the editor-toolchain suite")
@@ -115,6 +117,7 @@ program LudicDev {
     if (cmd == "test-pkg") { return cmd_test_pkg() }
     if (cmd == "test-release") { return cmd_test_release() }
     if (cmd == "test-templates") { return cmd_test_templates() }
+    if (cmd == "test-fonts") { return cmd_test_fonts() }
     if (cmd == "test-symbols") { return cmd_test_symbols() }
     if (cmd == "check-docs") { return cmd_check_docs() }
     if (cmd == "check-impl") { return cmd_check_impl() }

@@ -194,8 +194,8 @@ function install_layout_case() -> void {
   let home = `{tmp_dir()}/install`
   let lbl = "an installed layout (bin/ + runtime/ + packages/, found on PATH) builds a new project"
   shell(`rm -rf {home} && mkdir -p {home}/bin`)
-  shell(`cp bin/ludic bin/ludicc bin/ludic-fmt {home}/bin/`)
-  shell(`cp -R runtime {home}/runtime && cp -R packages {home}/packages && cp -R templates {home}/templates && cp VERSION {home}/VERSION`)
+  shell(`cp bin/ludic bin/ludicc bin/ludic-fmt bin/ludic-font-bake bin/ludic-ui-preview {home}/bin/`)
+  shell(`cp -R runtime {home}/runtime && cp -R packages {home}/packages && cp -R templates {home}/templates && cp -R fonts {home}/fonts && cp VERSION {home}/VERSION`)
   let work = `{tmp_dir()}/installwork`
   shell(`rm -rf {work} && mkdir -p {work}`)
   # PATH only — no LUDIC_HOME, and the current directory has no bin/ of its own.
@@ -225,6 +225,15 @@ function install_layout_case() -> void {
   if devrc == 0 or not s_contains(devout, "ludic-dev") {
     bad2("an installed `ludic` must not carry the toolchain's own tasks", `rc {string(devrc)}, said [{s_trim(devout)}]`)
     return
+  }
+  # the default font is in the install, bakes from there, and the preview finds it with only PATH to go on
+  let fbl = "an installed layout has the default font: ludic font bake works and ludic ui-preview loads it"
+  if not shq(`cd {work} && {envp} ludic font bake {home}/fonts/noto-sans/NotoSans-Bold.ttf -o {work}/fb > {work}/fb.out 2>&1`) or not file_exists(`{work}/fb/font.json`) {
+    bad2(fbl, capture_line(`tail -1 {work}/fb.out`)); return
+  }
+  let hello = capture_line(`cd {work} && printf 'hello\nquit\n' | {envp} ludic ui-preview 2>&1 | head -1`)
+  if not s_contains(hello, `"{home}/fonts/noto-sans/baked"`) and not s_contains(hello, `fonts/noto-sans/baked"`) {
+    bad2(fbl, hello); return
   }
   ok(lbl)
 }

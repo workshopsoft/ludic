@@ -46,7 +46,9 @@ function cmd_dev_build() -> int {
   if not build_tool("ludic-lsp", "tools/ludic-tools/lsp.ludic") { return 1 }
   print("ludicc: tools/ui-preview/main.ludic -> bin/ludic-ui-preview")
   if not build_tool("ludic-ui-preview", "tools/ui-preview/main.ludic") { return 1 }
+  print("ludicc: tools/font-bake/main.ludic -> bin/ludic-font-bake")
+  if not build_tool("ludic-font-bake", "tools/font-bake/main.ludic") { return 1 }
   sync_vscode_grammar()
-  print("done. toolchain in bin/ (ludicc, ludic, ludic-dev, ludic-fmt, ludic-lsp, ludic-ui-preview)")
+  print("done. toolchain in bin/ (ludicc, ludic, ludic-dev, ludic-fmt, ludic-lsp, ludic-ui-preview, ludic-font-bake)")
   return 0
 }

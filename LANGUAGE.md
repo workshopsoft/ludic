@@ -1593,6 +1593,13 @@ draw_9slice(panel, x, y, w, h, 10)     # stretch edges/center, keep 10px corners
 draw_image_scaled(icon, x, y, 32, 32)
 ```
 
+A 3D game draws its interface with `ludic.render3d`'s overlay, which reads a **baked font atlas**
+(`font.json` + `font.png`) rather than a `.ttf`. `ludic font bake MyFont.ttf -o assets/font` makes one
+with the same TrueType engine (Latin, Latin Extended, Greek and Cyrillic by default; `--size` is the
+pixels an em is rasterised at, `--chars` picks other code points), and `overlay_init(st, "assets/font")`
+loads it. A game that names no font (`overlay_init(st, "")`) gets the toolchain's default, Noto Sans
+(SIL OFL 1.1), which ships baked in `fonts/noto-sans/baked/` and inside `packages/ludic.render3d`.
+
 ## Retained UI (`ui`)
 
 UI is declared as **data** — a widget tree. The engine owns layout (stacked

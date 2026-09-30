@@ -6,7 +6,7 @@
 #   <= LINE    the request's terminal line is exactly LINE
 #   <! TEXT    no reply line of that request contains TEXT
 #
-# No font is loaded, so a character measures half the font size, and the viewport is 1920 x 1080, so
+# Run with --no-default-font (smoke.py does): no font is loaded, so a character measures half the font size, and the viewport is 1920 x 1080, so
 # a design pixel is a screen pixel and the default text is 16 px (a 4-letter word is 32 wide).
 
 > hello
