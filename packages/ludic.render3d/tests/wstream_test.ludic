@@ -1,0 +1,383 @@
+# wstream_test.ludic - the cell streaming scheduler on fake costs: the window of wanted cells, nearest and
+# forward first, the per-frame time budget, the memory budget (a nearer cell evicts a farther one, never the
+# reverse), hysteresis, drops given out once, async and failed loads, hold and pin, and the map's own row
+import "ludic.render3d/wpart.ludic"
+import "ludic.render3d/wstream.ludic"
+program WStreamTest {
+  numbers float
+
+  # a square map of n x n cells of 100 m with a proxy of 100 KB and a full layer of 1 MB each
+  function grid(n: int, size: float, hb: int, fb: int) -> WStream {
+    let s = ws_new(size, 250.0, 800.0)
+    s.margin = 40.0
+    for j in 0 .. n {
+      for i in 0 .. n { ws_add(s, i, j, hb, fb) }
+    }
+    return s
+  }
+
+  # one frame at the camera (x, z) heading +x: update, load everything the budgets allow at once, release drops
+  function frame(s: WStream, x: float, z: float, budget_us: float) -> int {
+    ws_begin_frame(s, budget_us)
+    ws_update(s, x, z, 1.0, 0.0)
+    var n = 0
+    var code = ws_next_job(s)
+    while code >= 0 {
+      let slot = ws_code_slot(code)
+      let layer = ws_code_layer(code)
+      let bytes = 0
+      ws_job_done(s, slot, layer, ws_estimate(s, slot, layer))
+      n += 1
+      code = ws_next_job(s)
+    }
+    code = ws_next_drop(s)
+    while code >= 0 { code = ws_next_drop(s) }
+    return n
+  }
+
+  function expect_layer_cells(s: WStream, x: float, z: float, r: float, layer: int) -> int {
+    # cells within r of the camera by the same distance the scheduler uses
+    var n = 0
+    for k in 0 .. ws_count(s) {
+      if wp_dist(ws_cell_x(s, k), ws_cell_z(s, k), s.size, x, z) <= r { n += 1 }
+    }
+    return n
+  }
+
+  function resident_layers(s: WStream, layer: int) -> int {
+    var n = 0
+    for k in 0 .. ws_count(s) {
+      if layer == WS_FULL and ws_has_full(s, k) { n += 1 }
+      if layer == WS_HLOD and ws_has_hlod(s, k) { n += 1 }
+    }
+    return n
+  }
+
+  test "cells are found by position, re-adding updates the sizes, and the table grows" {
+    let s = ws_new(100.0, 250.0, 800.0)
+    for i in 0 .. 3000 { ws_add(s, i % 60 - 30, i / 60 - 25, 10, 20) }
+    expect_eq(ws_count(s), 3000)
+    for i in 0 .. 3000 {
+      let k = ws_find(s, i % 60 - 30, i / 60 - 25)
+      expect_eq(k, i)
+    }
+    expect_eq(ws_find(s, 500, 500), -1)
+    ws_add(s, 0, 0, 7, 9)
+    expect_eq(ws_count(s), 3000)
+  }
+
+  test "the loaded set is exactly the cells inside each radius" {
+    let s = grid(40, 100.0, 100000, 1000000)
+    s.us_per_byte = 0.0                            # free loads: only the radii decide
+    frame(s, 2050.0, 2050.0, 1000000.0)
+    frame(s, 2050.0, 2050.0, 1000000.0)
+    expect_eq(resident_layers(s, WS_FULL), expect_layer_cells(s, 2050.0, 2050.0, 250.0, WS_FULL))
+    expect_eq(resident_layers(s, WS_HLOD), expect_layer_cells(s, 2050.0, 2050.0, 800.0, WS_HLOD))
+    # the cell the camera stands in shows its real instances; a far one its proxy
+    expect_eq(ws_show(s, ws_find(s, 20, 20)), WS_FULL)
+    expect_eq(ws_show(s, ws_find(s, 20, 26)), WS_HLOD)
+    expect_eq(ws_show(s, ws_find(s, 39, 39)), 0)
+  }
+
+  test "moving away drops layers, each handed out exactly once, and the bytes come back" {
+    let s = grid(40, 100.0, 100000, 1000000)
+    s.us_per_byte = 0.0
+    frame(s, 500.0, 500.0, 1000000.0)
+    let held = s.resident
+    expect(held > 0)
+    ws_begin_frame(s, 1000000.0)
+    ws_update(s, 3500.0, 3500.0, 1.0, 0.0)
+    expect(s.resident < held)                      # freed the moment they were judged
+    var drops = 0
+    var seen = 0
+    var code = ws_next_drop(s)
+    while code >= 0 {
+      drops += 1
+      seen = seen + ws_code_layer(code)
+      code = ws_next_drop(s)
+    }
+    expect(drops > 0)
+    expect_eq(ws_next_drop(s), -1)                 # nothing is given out twice
+    expect_eq(s.drops, drops)
+  }
+
+  test "the frame's time budget limits the jobs started, but one is always allowed" {
+    let s = grid(20, 100.0, 50000, 200000)         # full = 200 KB
+    s.us_per_byte = 0.002                          # 400 us a full layer, 100 us a proxy
+    ws_begin_frame(s, 1000.0)
+    ws_update(s, 1000.0, 1000.0, 1.0, 0.0)
+    var n = 0
+    var spent = 0.0
+    var code = ws_next_job(s)
+    while code >= 0 {
+      spent = spent + ws_estimate(s, ws_code_slot(code), ws_code_layer(code))
+      n += 1
+      code = ws_next_job(s)
+    }
+    expect(n >= 2 and n <= 3)
+    expect(spent <= 1000.0 + 0.001)
+    # a budget smaller than any one job still starts exactly one
+    let t = grid(20, 100.0, 50000, 200000)
+    t.us_per_byte = 0.002
+    t.max_jobs = 99
+    ws_begin_frame(t, 10.0)
+    ws_update(t, 1000.0, 1000.0, 1.0, 0.0)
+    expect(ws_next_job(t) >= 0)
+    expect_eq(ws_next_job(t), -1)
+  }
+
+  test "jobs come nearest first, and a cell ahead of the camera before one behind" {
+    let s = grid(40, 100.0, 50000, 200000)
+    s.us_per_byte = 0.0
+    s.max_jobs = 1000
+    ws_begin_frame(s, 1000000000.0)
+    ws_update(s, 2050.0, 2050.0, 1.0, 0.0)          # heading +x
+    var last_d = -1.0
+    var first = true
+    var ordered = true
+    var code = ws_next_job(s)
+    let first_code = code
+    var n = 0
+    while code >= 0 and n < 12 {
+      let slot = ws_code_slot(code)
+      if ws_code_layer(code) == WS_FULL {
+        let d = wp_dist(ws_cell_x(s, slot), ws_cell_z(s, slot), 100.0, 2050.0, 2050.0)
+        if d + 100.0 < last_d { ordered = false }   # within a cell of monotone: "ahead" bends the order a little
+        last_d = Math.max(last_d, d)
+      }
+      code = ws_next_job(s)
+      n += 1
+    }
+    expect(ordered)
+    # the first job is the cell under the camera or the one just ahead of it (a cell ahead counts `bias` nearer)
+    expect(ws_cell_x(s, ws_code_slot(first_code)) >= 20 and ws_cell_x(s, ws_code_slot(first_code)) <= 21)
+    expect_eq(ws_cell_z(s, ws_code_slot(first_code)), 20)
+    # ahead beats behind at the same distance
+    let t = grid(40, 100.0, 0, 200000)
+    t.us_per_byte = 0.0
+    t.max_jobs = 1000
+    ws_begin_frame(t, 1000000000.0)
+    ws_update(t, 2050.0, 2050.0, 1.0, 0.0)
+    var ahead_at = -1
+    var behind_at = -1
+    var k = 0
+    code = ws_next_job(t)
+    while code >= 0 {
+      let slot = ws_code_slot(code)
+      if ws_cell_x(t, slot) == 22 and ws_cell_z(t, slot) == 20 and ahead_at < 0 { ahead_at = k }
+      if ws_cell_x(t, slot) == 18 and ws_cell_z(t, slot) == 20 and behind_at < 0 { behind_at = k }
+      k += 1
+      code = ws_next_job(t)
+    }
+    expect(ahead_at >= 0 and behind_at >= 0 and ahead_at < behind_at)
+  }
+
+  test "the memory budget holds, and what is nearest is what stays" {
+    let s = grid(40, 100.0, 100000, 1000000)
+    s.us_per_byte = 0.0
+    s.mem_bytes = 12 * 1000000
+    var worst = 0
+    for f in 0 .. 12 {
+      frame(s, 2050.0, 2050.0, 1000000000.0)
+      if s.resident > worst { worst = s.resident }
+    }
+    expect(worst <= s.mem_bytes)
+    expect(ws_has_full(s, ws_find(s, 20, 20)))
+    expect(ws_has_full(s, ws_find(s, 21, 20)) or ws_has_full(s, ws_find(s, 19, 20)))
+    # walk the camera across the map: the budget is never exceeded, and the cell under it is always in
+    var x = 500.0
+    for f in 0 .. 60 {
+      x = x + 50.0
+      frame(s, x, 2050.0, 1000000000.0)
+      expect(s.resident <= s.mem_bytes)
+    }
+    frame(s, x, 2050.0, 1000000000.0)
+    frame(s, x, 2050.0, 1000000000.0)
+    expect(ws_has_full(s, ws_find(s, int(Math.floor(x / 100.0)), 20)))
+  }
+
+  test "a nearer cell evicts a farther resident one, never the reverse" {
+    let s = grid(40, 100.0, 0, 1000000)
+    s.us_per_byte = 0.0
+    s.mem_bytes = 3 * 1000000
+    frame(s, 500.0, 500.0, 1000000000.0)
+    frame(s, 500.0, 500.0, 1000000000.0)
+    expect_eq(resident_layers(s, WS_FULL), 3)
+    let near = ws_find(s, 5, 5)
+    expect(ws_has_full(s, near))
+    # jump: the old three are the farther ones now
+    frame(s, 3000.0, 3000.0, 1000000000.0)
+    frame(s, 3000.0, 3000.0, 1000000000.0)
+    expect(not ws_has_full(s, near))
+    expect(ws_has_full(s, ws_find(s, 30, 30)))
+    expect(s.resident <= s.mem_bytes)
+  }
+
+  test "hysteresis: pacing a radius by less than the margin loads and drops nothing" {
+    let s = grid(40, 100.0, 100000, 1000000)
+    s.us_per_byte = 0.0
+    s.update_dist = 4.0
+    frame(s, 2050.0, 2050.0, 1000000000.0)
+    frame(s, 2050.0, 2050.0, 1000000000.0)
+    # visit both ends of the swing first, so every cell either end wants is in
+    frame(s, 2065.0, 2050.0, 1000000000.0)
+    frame(s, 2035.0, 2050.0, 1000000000.0)
+    frame(s, 2065.0, 2050.0, 1000000000.0)
+    let loads = s.loads
+    let drops = s.drops
+    var x = 2050.0
+    var dir = 1.0
+    for i in 0 .. 400 {
+      x = x + dir * 3.0
+      if x > 2065.0 { dir = -1.0 }
+      if x < 2035.0 { dir = 1.0 }
+      frame(s, x, 2050.0, 1000000000.0)
+    }
+    # the camera moves within its own cell: the set of cells inside the radii does not change
+    expect_eq(s.loads, loads)
+    expect_eq(s.drops, drops)
+    # a cell just past the radius stays loaded until margin past it
+    let t = ws_new(100.0, 250.0, 800.0)
+    t.margin = 40.0
+    let k = ws_add(t, 3, 0, 0, 1000)                # cell 3 spans x 300 .. 400: 50 m from x = 250 - a bit
+    t.us_per_byte = 0.0
+    frame(t, 100.0, 50.0, 1000000000.0)                    # distance to the cell's edge = 200 (in)
+    expect(ws_has_full(t, k))
+    frame(t, 20.0, 50.0, 1000000000.0)                     # 280: out of 250 but inside 250 + 40
+    expect(ws_has_full(t, k))
+    frame(t, -40.0, 50.0, 1000000000.0)                    # 340: gone
+    expect(not ws_has_full(t, k))
+    frame(t, 20.0, 50.0, 1000000000.0)                     # 280 again: not in until inside 250
+    expect(not ws_has_full(t, k))
+  }
+
+  test "a pinned cell stays loaded at both layers, whatever the distance" {
+    let s = grid(40, 100.0, 100000, 1000000)
+    s.us_per_byte = 0.0
+    ws_pin(s, 35, 35, true)
+    frame(s, 100.0, 100.0, 1000000000.0)
+    frame(s, 100.0, 100.0, 1000000000.0)
+    let k = ws_find(s, 35, 35)
+    expect(ws_has_full(s, k) and ws_has_hlod(s, k))
+    ws_pin(s, 35, 35, false)
+    frame(s, 100.0, 100.0, 1000000000.0)
+    expect(not ws_has_full(s, k))
+  }
+
+  test "async loads: in flight is capped, and a layer is resident only when reported" {
+    let s = grid(20, 100.0, 50000, 200000)
+    s.us_per_byte = 0.0
+    s.max_jobs = 3
+    ws_begin_frame(s, 1000000000.0)
+    ws_update(s, 1000.0, 1000.0, 1.0, 0.0)
+    let a = ws_next_job(s)
+    let b = ws_next_job(s)
+    let c = ws_next_job(s)
+    expect(a >= 0 and b >= 0 and c >= 0)
+    expect_eq(ws_next_job(s), -1)                  # three in flight
+    expect(not ws_has_full(s, ws_code_slot(a)) and not ws_has_hlod(s, ws_code_slot(a)))
+    expect(ws_loading(s, ws_code_slot(a)) != 0)
+    ws_job_done(s, ws_code_slot(a), ws_code_layer(a), 100.0)
+    expect(ws_show(s, ws_code_slot(a)) != 0)
+    expect(ws_next_job(s) >= 0)                    # a slot freed
+  }
+
+  test "a failed load is not retried until asked, and gives its bytes back" {
+    let s = grid(20, 100.0, 0, 200000)
+    s.us_per_byte = 0.0
+    s.max_jobs = 1000
+    ws_begin_frame(s, 1000000000.0)
+    ws_update(s, 1000.0, 1000.0, 1.0, 0.0)
+    let a = ws_next_job(s)
+    let before = s.resident
+    ws_job_fail(s, ws_code_slot(a), ws_code_layer(a))
+    expect_eq(s.resident, before - 200000)
+    s.dirty = true
+    ws_begin_frame(s, 1000000000.0)
+    ws_update(s, 1000.0, 1000.0, 1.0, 0.0)
+    var again = false
+    var code = ws_next_job(s)
+    while code >= 0 {
+      if code == a { again = true }
+      code = ws_next_job(s)
+    }
+    expect(not again)
+    ws_retry(s)
+    ws_begin_frame(s, 1000000000.0)
+    ws_update(s, 1000.0, 1000.0, 1.0, 0.0)
+    code = ws_next_job(s)
+    expect_eq(code, a)
+  }
+
+  test "hold freezes streaming: no jobs, no drops" {
+    let s = grid(20, 100.0, 0, 200000)
+    s.us_per_byte = 0.0
+    frame(s, 1000.0, 1000.0, 1000000000.0)
+    let held = s.resident
+    ws_hold(s, true)
+    ws_begin_frame(s, 1000000000.0)
+    ws_update(s, 100.0, 100.0, 1.0, 0.0)
+    expect_eq(ws_next_job(s), -1)
+    expect_eq(ws_next_drop(s), -1)
+    expect_eq(s.resident, held)
+    ws_hold(s, false)
+    frame(s, 100.0, 100.0, 1000000000.0)
+    expect(s.resident != held)
+  }
+
+  test "the measured cost per byte is learned, so estimates follow the real loader" {
+    let s = grid(20, 100.0, 0, 100000)
+    s.us_per_byte = 0.002
+    for f in 0 .. 8 {
+      ws_begin_frame(s, 1000000000.0)
+      ws_update(s, 1000.0 + float(f) * 40.0, 1000.0, 1.0, 0.0)
+      var code = ws_next_job(s)
+      while code >= 0 {
+        ws_job_done(s, ws_code_slot(code), ws_code_layer(code), 100000.0 * 0.01)    # really 0.01 us a byte
+        code = ws_next_job(s)
+      }
+    }
+    expect(s.us_per_byte > 0.006 and s.us_per_byte <= 0.0100001)
+  }
+
+  function fake_load(cx: int, cz: int, layer: int, slot: int) -> int { return 50 }
+  function fake_async(cx: int, cz: int, layer: int, slot: int) -> int { return WS_ASYNC }
+  function fake_fail(cx: int, cz: int, layer: int, slot: int) -> int { return WS_FAILED }
+  function fake_drop(cx: int, cz: int, layer: int, slot: int) -> void { }
+
+  test "ws_run drives a frame with a loader and a release" {
+    let s = grid(20, 100.0, 50000, 200000)
+    s.us_per_byte = 0.0
+    s.max_jobs = 1000
+    ws_begin_frame(s, 1000000000.0)
+    ws_update(s, 1000.0, 1000.0, 1.0, 0.0)
+    let n = ws_run(s, fn fake_load, fn fake_drop)
+    expect(n > 0)
+    expect_eq(s.in_flight, 0)
+    expect(resident_layers(s, WS_FULL) > 0)
+    let t = grid(20, 100.0, 0, 200000)
+    t.max_jobs = 1000
+    ws_begin_frame(t, 1000000000.0)
+    ws_update(t, 1000.0, 1000.0, 1.0, 0.0)
+    ws_run(t, fn fake_fail, fn fake_drop)
+    expect_eq(resident_layers(t, WS_FULL), 0)
+    expect_eq(t.resident, 0)
+    let u = grid(20, 100.0, 0, 200000)
+    u.max_jobs = 5
+    ws_begin_frame(u, 1000000000.0)
+    ws_update(u, 1000.0, 1000.0, 1.0, 0.0)
+    ws_run(u, fn fake_async, fn fake_drop)
+    expect_eq(u.in_flight, 5)
+  }
+
+  test "the map's own row configures the scheduler" {
+    let wp = new WorldPartitions
+    expect(world_partitions_load(wp, "city"))
+    expect_eq(len(wp.rows), 1)
+    let s = ws_from_row(wp.rows[0])
+    expect(s.size == 128.0 and s.full_r == 512.0 and s.hlod_r == 2048.0)
+    expect_eq(s.max_jobs, 3)
+    expect(s.load_us == 3000.0)
+    expect_eq(s.mem_bytes, 256 * 1048576)
+  }
+}

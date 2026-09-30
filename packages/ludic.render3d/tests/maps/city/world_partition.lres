@@ -1,0 +1,10 @@
+# world_partition.lres - the fixture city's streaming numbers
+city {
+  cell_size: 128.0
+  full_radius: 512.0
+  hlod_radius: 2048.0
+  impostor_radius: 6000.0
+  load_ms: 3.0
+  memory_mb: 256
+  max_jobs: 3
+}

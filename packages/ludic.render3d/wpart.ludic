@@ -1,0 +1,62 @@
+# ============================================================================
+# wpart.ludic - the world partition as a map's data, and the cell arithmetic everything else shares.
+#
+# A big map is a grid of square cells (`cell_size` metres, a power of two keeps every offset inside a cell
+# exact). Each cell owns a list of placed things (cellfile.ludic), an optional far proxy (hlod.ludic), and is
+# brought in and out of memory by the streaming scheduler (wstream.ludic) by how far it is from the camera.
+# The numbers - cell size, the radii of the two tiers, the budgets - are one row of the map's own
+# world_partition.lres, so a town map and a city map tune themselves and the editor reads the same file.
+#
+#   assets/maps/<map>/world_partition.lres
+#     city { cell_size: 256.0, full_radius: 900.0, hlod_radius: 4000.0, impostor_radius: 9000.0,
+#            load_ms: 2.0, memory_mb: 768, max_jobs: 4 }
+# ============================================================================
+numbers float
+
+# one partition's numbers. A map usually has one row ("city"); a game with towns that stream on their own
+# clock may have several, each driving its own WStream.
+export property WorldPartition {
+  key: string = ""
+  @Unit("m") @Range(8, 4096) cell_size: float = 256.0          # the cell's side; keep it a power of two
+  @Unit("m") @Range(0, 20000) full_radius: float = 900.0       # cells this near are loaded in full (real instances)
+  @Unit("m") @Range(0, 40000) hlod_radius: float = 4000.0      # cells this near have their merged proxy loaded
+  @Unit("m") @Range(0, 80000) impostor_radius: float = 9000.0  # past hlod_radius, far buildings draw as impostors out to this
+  @Unit("m") @Range(0, 2048) margin: float = 48.0              # a loaded layer is kept this far past its radius (hysteresis)
+  @Unit("ms") @Range(0, 50) load_ms: float = 2.0               # the loads one frame may start (estimated cost)
+  @Unit("MB") @Range(16, 16384) memory_mb: int = 768           # what the loaded cells may hold in all
+  @Range(1, 32) max_jobs: int = 4                              # loads in flight at once
+  @Unit("m") @Range(0, 2048) bias: float = 0.0                 # how much nearer a cell ahead of the camera counts (0: one cell)
+}
+
+@PerMap @ByKey
+export registry WorldPartitions of WorldPartition from "world_partition.lres"
+
+# ---- cells ----------------------------------------------------------------------------------
+
+# the cell an (x, z) falls in, for cells of `size`
+export function wp_cell_of(v: float, size: float) -> int { return int(Math.floor(v / size)) }
+
+# the distance (m, on the ground) from a point to cell (cx, cz)'s square; 0 inside it
+export function wp_dist(cx: int, cz: int, size: float, x: float, z: float) -> float {
+  let x0 = float(cx) * size
+  let z0 = float(cz) * size
+  var dx = 0.0
+  var dz = 0.0
+  if x < x0 { dx = x0 - x } else if x > x0 + size { dx = x - x0 - size }
+  if z < z0 { dz = z0 - z } else if z > z0 + size { dz = z - z0 - size }
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+# a cell's centre
+export function wp_centre_x(cx: int, size: float) -> float { return (float(cx) + 0.5) * size }
+export function wp_centre_z(cz: int, size: float) -> float { return (float(cz) + 0.5) * size }
+
+# a stable non-negative hash of a cell, for tables and for the seeds of anything made per cell (two machines
+# make the same seed for the same cell)
+export function wp_hash(cx: int, cz: int) -> int {
+  var h = cx * 73856093 ^ cz * 19349663
+  h = h ^ (h >> 15)
+  h = h * 668265263
+  h = h ^ (h >> 13)
+  return h & 0x7fffffff
+}

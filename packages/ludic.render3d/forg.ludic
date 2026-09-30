@@ -1,0 +1,193 @@
+# ============================================================================
+# forg.ludic - a floating origin, for maps of 16 km and more.
+#
+# A float has 24 bits of mantissa: 8 km from zero a coordinate is good to about a millimetre, 16 km about
+# two, and the view matrix (world -> eye) loses the same bits, so a wall starts to shimmer and a car's
+# wheels to swim. The fix is to never hand the GPU a large number.
+#
+#   world space   double (53 bits: sub-micron at 100 km). The game's own coordinates, its save, its physics.
+#   render space  float, relative to a ForgOrigin: render = world - origin. Everything the renderer draws
+#                 (cam_set, instances, stream corners, actors) is in render space.
+#
+# The origin is moved ("rebased") to the nearest multiple of `grid` (a power of two, 256 m by default) when
+# the camera drifts `threshold` from it. Because the origin is a multiple of a power of two, and the
+# difference of two doubles that are both close to it is exact, a rebase changes no render-space
+# number by anything but the exact shift: render_new = render_old - shift, bit for bit where the float
+# holds it. Nothing jitters. The `threshold` must exceed `grid`, so the camera sits inside its own
+# hysteresis band and a camera pacing a boundary never rebases twice in a row.
+#
+# A second form, CellPos, holds a position as integer cells plus a float offset inside the cell: precision
+# that does not degrade with distance and is exact to add and subtract across cells. Cell content
+# (wpart.ludic, cellfile.ludic) is stored that way; `cellpos_sub` turns two of them into the float vector
+# between them with no large number in the middle.
+#
+# What a game does: see README.md, "Large coordinates".
+# ============================================================================
+
+numbers float
+
+property ForgOrigin {
+  ox: double = 0.0,            # the world position of render space's zero
+  oy: double = 0.0,
+  oz: double = 0.0,
+  grid: double = 256.0,        # the origin is always a multiple of this (m)
+  threshold: double = 1024.0,  # rebase when the camera is farther than this from the origin (horizontally)
+  vthreshold: double = 4096.0, # ... or this far vertically (a flight, a fall from orbit)
+  shift_x: float = 0.0,        # the last rebase's shift: everything in render space moved by minus this
+  shift_y: float = 0.0,
+  shift_z: float = 0.0,
+  rebases: int = 0,            # how many rebases so far
+  serial: int = 0,             # changes with every rebase, so a cache keyed on it knows to refill
+  on_rebase: fn(float, float, float) = null   # called after a rebase with the shift (dx, dy, dz)
+}
+
+# a floating origin at world zero. `grid` is raised to a power of two of at least 1 m, and `threshold` to
+# at least twice the grid, so the hysteresis band cannot be empty.
+@alloc_ok("a world being set up: one origin, made once")
+export function forg_new(grid: float, threshold: float) -> ForgOrigin {
+  let o = new ForgOrigin
+  forg_configure(o, grid, threshold)
+  return o
+}
+
+export function forg_configure(o: ForgOrigin, grid: float, threshold: float) -> void {
+  var g = 1.0
+  while g < double(grid) { g = g * 2.0 }
+  o.grid = g
+  var t = double(threshold)
+  if t < g * 2.0 { t = g * 2.0 }
+  o.threshold = t
+  if o.vthreshold < t { o.vthreshold = t }
+}
+
+# a function called with the shift after every rebase: the place a game moves what it keeps in render space
+export function forg_on(o: ForgOrigin, f: fn(float, float, float)) -> void { o.on_rebase = f }
+
+# the multiple of `grid` nearest `v`
+export function forg_snap(v: double, grid: double) -> double { return Math.floor(v / grid + 0.5) * grid }
+
+# render-space x, y, z of a world position: the difference is taken in double, then rounded once
+export function forg_rx(o: ForgOrigin, wx: double) -> float { return float(wx - o.ox) }
+export function forg_ry(o: ForgOrigin, wy: double) -> float { return float(wy - o.oy) }
+export function forg_rz(o: ForgOrigin, wz: double) -> float { return float(wz - o.oz) }
+
+# render -> world
+export function forg_wx(o: ForgOrigin, rx: float) -> double { return o.ox + double(rx) }
+export function forg_wy(o: ForgOrigin, ry: float) -> double { return o.oy + double(ry) }
+export function forg_wz(o: ForgOrigin, rz: float) -> double { return o.oz + double(rz) }
+
+# a world position into out[0 .. 2], render space
+export function forg_to_render(o: ForgOrigin, wx: double, wy: double, wz: double, out: floats) -> void {
+  out[0] = float(wx - o.ox)
+  out[1] = float(wy - o.oy)
+  out[2] = float(wz - o.oz)
+}
+
+# does a camera at this world position want the origin moved?
+export function forg_wants_rebase(o: ForgOrigin, cx: double, cy: double, cz: double) -> bool {
+  if Math.abs(cx - o.ox) > o.threshold or Math.abs(cz - o.oz) > o.threshold { return true }
+  return Math.abs(cy - o.oy) > o.vthreshold
+}
+
+# Move the origin to the camera's nearest grid point if it has drifted too far: true when it moved. The
+# shift (new origin - old origin, exact) goes in shift_x/y/z, `serial` and `rebases` step, and on_rebase is called.
+# Height is only ever rebased past vthreshold (a driving game never does), by the same rule.
+export function forg_update(o: ForgOrigin, cx: double, cy: double, cz: double) -> bool {
+  if not forg_wants_rebase(o, cx, cy, cz) { return false }
+  let nx = forg_snap(cx, o.grid)
+  var ny = o.oy
+  if Math.abs(cy - o.oy) > o.vthreshold { ny = forg_snap(cy, o.grid) }
+  let nz = forg_snap(cz, o.grid)
+  o.shift_x = float(nx - o.ox)
+  o.shift_y = float(ny - o.oy)
+  o.shift_z = float(nz - o.oz)
+  o.ox = nx
+  o.oy = ny
+  o.oz = nz
+  o.rebases += 1
+  o.serial += 1
+  if o.on_rebase != null { o.on_rebase(o.shift_x, o.shift_y, o.shift_z) }
+  return true
+}
+
+# Put the origin exactly at a grid point near a world position (a teleport, a map load), with no callback
+# and no shift: what the caller is about to fill is not in render space yet.
+export function forg_reset(o: ForgOrigin, wx: double, wy: double, wz: double) -> void {
+  o.ox = forg_snap(wx, o.grid)
+  o.oy = forg_snap(wy, o.grid)
+  o.oz = forg_snap(wz, o.grid)
+  o.shift_x = 0.0
+  o.shift_y = 0.0
+  o.shift_z = 0.0
+  o.serial += 1
+}
+
+# Shift `n` records of `stride` floats each by (-dx, -dy, -dz) in their first three floats: what a game does
+# to an array of render-space positions when on_rebase fires (an instance list, a stream's points).
+export function forg_shift_floats(a: floats, n: int, stride: int, dx: float, dy: float, dz: float) -> void {
+  for i in 0 .. n {
+    let k = i * stride
+    a[k] = a[k] - dx
+    a[k + 1] = a[k + 1] - dy
+    a[k + 2] = a[k + 2] - dz
+  }
+}
+
+# ---- CellPos: integer cell + float offset ------------------------------------------------------
+
+property CellPos {
+  cx: int = 0,        # the cell, floor(world / size)
+  cz: int = 0,
+  x: float = 0.0,     # the offset inside it, [0, size) after cellpos_norm; y is the height itself
+  y: float = 0.0,
+  z: float = 0.0
+}
+
+# the cell and offset of a world position, for cells of `size` metres (a power of two keeps the offset exact)
+export function cellpos_from_world(p: CellPos, wx: double, wy: double, wz: double, size: float) -> void {
+  let s = double(size)
+  let cx = Math.floor(wx / s)
+  let cz = Math.floor(wz / s)
+  p.cx = int(cx)
+  p.cz = int(cz)
+  p.x = float(wx - cx * s)
+  p.y = float(wy)
+  p.z = float(wz - cz * s)
+}
+
+# back into [0, size) on x and z, carrying whole cells into cx and cz (after adding a delta to x or z)
+export function cellpos_norm(p: CellPos, size: float) -> void {
+  let kx = int(Math.floor(p.x / size))
+  let kz = int(Math.floor(p.z / size))
+  if kx != 0 {
+    p.cx += kx
+    p.x = p.x - float(kx) * size
+  }
+  if kz != 0 {
+    p.cz += kz
+    p.z = p.z - float(kz) * size
+  }
+  # rounding can leave exactly `size` behind
+  if p.x >= size { p.cx += 1; p.x = p.x - size }
+  if p.z >= size { p.cz += 1; p.z = p.z - size }
+}
+
+# p moved by (dx, dy, dz)
+export function cellpos_add(p: CellPos, dx: float, dy: float, dz: float, size: float) -> void {
+  p.x = p.x + dx
+  p.y = p.y + dy
+  p.z = p.z + dz
+  cellpos_norm(p, size)
+}
+
+# the vector from b to a into out[0 .. 2]: the whole-cell part is exact (an integer times the size), so
+# nothing large is added to anything small
+export function cellpos_sub(a: CellPos, b: CellPos, size: float, out: floats) -> void {
+  out[0] = float(a.cx - b.cx) * size + (a.x - b.x)
+  out[1] = a.y - b.y
+  out[2] = float(a.cz - b.cz) * size + (a.z - b.z)
+}
+
+# a cell's corner as a render-space offset (x, z): the world corner minus the origin, done in double
+export function cell_render_x(o: ForgOrigin, cx: int, size: float) -> float { return float(double(cx) * double(size) - o.ox) }
+export function cell_render_z(o: ForgOrigin, cz: int, size: float) -> float { return float(double(cz) * double(size) - o.oz) }

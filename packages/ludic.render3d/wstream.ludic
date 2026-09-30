@@ -1,0 +1,583 @@
+# ============================================================================
+# wstream.ludic - the cell streaming scheduler: which cells of a big world should be in memory, at which of two
+# tiers, in what order to load them, under what budgets. Pure logic - no device, no files, no clock - so it
+# is tested on fake costs; the game (or wstream_gpu.ludic) does the loading and tells it what it cost.
+#
+# Two layers per cell, independent:
+#   HLOD  (layer 1) the merged far proxy (hlod.ludic): wanted within `hlod_r` of the camera
+#   FULL  (layer 2) the real instances (cellfile.ludic): wanted within `full_r`
+# A cell shows FULL when that is resident, else HLOD. Loading FULL never frees HLOD until FULL is in, and
+# dropping FULL leaves HLOD under it, so nothing pops to empty.
+#
+# A cell the game has not registered (`ws_add`) does not exist: a 16 km map of 64 m cells is 62 500 cells,
+# most of which are fields nobody placed anything in. The scheduler never scans them; each update looks at
+# the window of registered cells round the camera and at the ones already resident.
+#
+# One frame (see README, "World partition and streaming"):
+#   ws_begin_frame(s, budget_us)            the frame's load budget
+#   ws_update(s, cam_x, cam_z, fwd_x, fwd_z)  want bits, drops, the candidate order (cheap when the camera sat still)
+#   while (job = ws_next_job(s)) >= 0 { start it; sync: ws_job_done(s, slot, layer, cost_us); async: later }
+#   while (d = ws_next_drop(s)) >= 0 { release that cell's layer }
+# or all of it at once: ws_run(s, load, drop).
+#
+# Budgets: `load_us` per frame (estimated from bytes * the measured cost per byte, which each finished job
+# refines); `mem_bytes` over all resident and in-flight layers - a nearer candidate may evict a farther
+# resident layer to fit, never a nearer one; `max_jobs` in flight. The first job of a frame is always
+# allowed, so a cell dearer than one frame's budget still loads (a job is never split).
+# ============================================================================
+numbers float
+
+const WS_HLOD: int = 1          # layer numbers, and the bits of `res`, `want`, `busy` and `pend`
+const WS_FULL: int = 2
+const WS_ASYNC: int = -2        # what a loader answers when it will report with ws_job_done later
+const WS_FAILED: int = -1       # what a loader answers when the layer cannot be made (it is not retried until ws_retry)
+
+property WsCell {
+  cx: int = 0,
+  cz: int = 0,
+  bytes_hlod: int = 0,          # what each layer holds once loaded (0: the cell has none)
+  bytes_full: int = 0,
+  res: int = 0,                 # bits: layers loaded
+  want: int = 0,                # bits: layers wanted now
+  busy: int = 0,                # bits: layers being loaded
+  pend: int = 0,               # bits: layers dropped and not yet released by the driver (ws_next_drop)
+  dead: int = 0,                # bits: layers whose load failed
+  pin: bool = false,            # held at FULL + HLOD whatever the distance (the cell the player stands in, a mission)
+  score: float = 0.0,           # priority now: lower is sooner
+  dist: float = 0.0,
+  live_at: int = -1             # its place in the live list, or -1
+}
+
+property WStream {
+  size: float = 256.0,
+  full_r: float = 900.0,
+  hlod_r: float = 4000.0,
+  margin: float = 48.0,
+  bias: float = 256.0,
+  mem_bytes: int = 805306368,
+  load_us: float = 2000.0,
+  max_jobs: int = 4,
+  cells: []WsCell,
+  pinned: []int,                # slots held loaded whatever the distance (ws_pin)
+  table: words,                 # open addressing: slot + 1 by cell hash, 0 empty
+  cap: int = 0,
+  live: words,                  # slots with a layer loaded, loading or pending a drop
+  n_live: int = 0,
+  cand: words,                  # job candidates, best first: slot * 4 + layer
+  cand_key: floats,
+  n_cand: int = 0,
+  cur: int = 0,                 # the next candidate to consider this frame
+  resident: int = 0,            # bytes held by loaded and loading layers
+  in_flight: int = 0,
+  spent_us: float = 0.0,        # estimated cost of the jobs started this frame
+  started: int = 0,             # jobs started this frame
+  us_per_byte: float = 0.002,   # the measured cost of loading, refined by every finished job
+  frame: int = 0,
+  last_x: float = 0.0,
+  last_z: float = 0.0,
+  last_fx: float = 0.0,
+  last_fz: float = 0.0,
+  primed: bool = false,
+  dirty: bool = true,
+  hold: bool = false,           # streaming frozen (an interior is open): nothing new is asked for or dropped
+  update_dist: float = 16.0,    # the camera must move this far for ws_update to look again
+  loads: int = 0,               # counters, for the overlay and the tests
+  drops: int = 0,
+  evicts: int = 0,
+  blocked: int = 0
+}
+
+# ---- the table --------------------------------------------------------------------------------
+
+@alloc_ok("a world being set up: the scheduler and its tables are made once per map")
+export function ws_new(size: float, full_r: float, hlod_r: float) -> WStream {
+  let s = new WStream
+  s.size = size
+  s.full_r = full_r
+  s.hlod_r = Math.max(hlod_r, full_r)
+  s.bias = size
+  s.cells = new []WsCell
+  s.pinned = new []int
+  s.cap = 64
+  s.table = words(s.cap)
+  for i in 0 .. s.cap { s.table[i] = 0 }
+  s.live = words(64)
+  s.cand = words(64)
+  s.cand_key = floats(64)
+  return s
+}
+
+# a scheduler with a map's row of numbers
+@alloc_ok("a world being set up: the scheduler and its tables are made once per map")
+export function ws_from_row(row: WorldPartition) -> WStream {
+  let s = ws_new(row.cell_size, row.full_radius, row.hlod_radius)
+  ws_budgets(s, row.load_ms, row.memory_mb, row.max_jobs)
+  s.margin = row.margin
+  if row.bias > 0.0 { s.bias = row.bias }
+  return s
+}
+
+export function ws_budgets(s: WStream, load_ms: float, memory_mb: int, max_jobs: int) -> void {
+  s.load_us = load_ms * 1000.0
+  s.mem_bytes = memory_mb * 1048576
+  s.max_jobs = max_jobs
+}
+
+function ws_slot_at(s: WStream, cx: int, cz: int) -> int {
+  var i = wp_hash(cx, cz) & (s.cap - 1)
+  while true {
+    let e = s.table[i]
+    if e == 0 { return -1 - i }
+    let c = s.cells[e - 1]
+    if c.cx == cx and c.cz == cz { return e - 1 }
+    i = (i + 1) & (s.cap - 1)
+  }
+  return -1
+}
+
+# the slot of cell (cx, cz), or -1 when it is not registered
+export function ws_find(s: WStream, cx: int, cz: int) -> int {
+  let r = ws_slot_at(s, cx, cz)
+  if r < 0 { return -1 }
+  return r
+}
+
+@alloc_ok("a world being set up: the table grows as cells are registered")
+function ws_grow(s: WStream) -> void {
+  let nc = s.cap * 2
+  let t = words(nc)
+  for i in 0 .. nc { t[i] = 0 }
+  for k in 0 .. len(s.cells) {
+    let c = s.cells[k]
+    var i = wp_hash(c.cx, c.cz) & (nc - 1)
+    while t[i] != 0 { i = (i + 1) & (nc - 1) }
+    t[i] = k + 1
+  }
+  free(s.table)
+  s.table = t
+  s.cap = nc
+}
+
+# Register a cell with what its layers hold (bytes; 0 for a layer it does not have). Registering again updates
+# the sizes. Returns its slot. Cells are registered when the map opens, from the index the bake wrote.
+@alloc_ok("a world being set up: one record a cell with content")
+export function ws_add(s: WStream, cx: int, cz: int, bytes_hlod: int, bytes_full: int) -> int {
+  let r = ws_slot_at(s, cx, cz)
+  if r >= 0 {
+    let c = s.cells[r]
+    c.bytes_hlod = bytes_hlod
+    c.bytes_full = bytes_full
+    return r
+  }
+  if (len(s.cells) + 1) * 2 > s.cap { ws_grow(s) }
+  let c = new WsCell
+  c.cx = cx
+  c.cz = cz
+  c.bytes_hlod = bytes_hlod
+  c.bytes_full = bytes_full
+  push(s.cells, c)
+  let slot = len(s.cells) - 1
+  var i = wp_hash(cx, cz) & (s.cap - 1)
+  while s.table[i] != 0 { i = (i + 1) & (s.cap - 1) }
+  s.table[i] = slot + 1
+  s.dirty = true
+  return slot
+}
+
+export function ws_count(s: WStream) -> int { return len(s.cells) }
+export function ws_cell_x(s: WStream, slot: int) -> int { return s.cells[slot].cx }
+export function ws_cell_z(s: WStream, slot: int) -> int { return s.cells[slot].cz }
+
+# ---- what is loaded ----------------------------------------------------------------------------
+
+export function ws_layer_bit(layer: int) -> int { return layer }
+export function ws_has_hlod(s: WStream, slot: int) -> bool { return (s.cells[slot].res & WS_HLOD) != 0 }
+export function ws_has_full(s: WStream, slot: int) -> bool { return (s.cells[slot].res & WS_FULL) != 0 }
+export function ws_loading(s: WStream, slot: int) -> int { return s.cells[slot].busy }
+
+# what a cell shows now: 2 its real instances, 1 its proxy, 0 nothing
+export function ws_show(s: WStream, slot: int) -> int {
+  let r = s.cells[slot].res
+  if (r & WS_FULL) != 0 { return WS_FULL }
+  if (r & WS_HLOD) != 0 { return WS_HLOD }
+  return 0
+}
+
+function ws_layer_bytes(c: WsCell, bit: int) -> int {
+  if bit == WS_FULL { return c.bytes_full }
+  return c.bytes_hlod
+}
+
+# Hold a cell loaded at both layers whatever the distance (true), or let distance decide again (false).
+export function ws_pin(s: WStream, cx: int, cz: int, on: bool) -> void {
+  let k = ws_find(s, cx, cz)
+  if k < 0 { return }
+  if on and not s.cells[k].pin { push(s.pinned, k) }
+  if not on and s.cells[k].pin {
+    var kept = new []int
+    for i in 0 .. len(s.pinned) { if s.pinned[i] != k { push(kept, s.pinned[i]) } }
+    s.pinned = kept
+  }
+  s.cells[k].pin = on
+  s.dirty = true
+}
+
+# Freeze streaming (an interior is open, a loading screen is up): nothing new is started or dropped.
+export function ws_hold(s: WStream, on: bool) -> void {
+  s.hold = on
+  if not on { s.dirty = true }
+}
+
+# Forget a failed layer so it may be tried again.
+export function ws_retry(s: WStream) -> void {
+  for k in 0 .. len(s.cells) { s.cells[k].dead = 0 }
+  s.dirty = true
+}
+
+function ws_live_add(s: WStream, slot: int) -> void {
+  let c = s.cells[slot]
+  if c.live_at >= 0 { return }
+  if s.n_live >= len(s.live) {
+    let nl = words(len(s.live) * 2)
+    for i in 0 .. s.n_live { nl[i] = s.live[i] }
+    free(s.live)
+    s.live = nl
+  }
+  s.live[s.n_live] = slot
+  c.live_at = s.n_live
+  s.n_live += 1
+}
+
+function ws_live_drop(s: WStream, slot: int) -> void {
+  let c = s.cells[slot]
+  if c.live_at < 0 { return }
+  let last = s.live[s.n_live - 1]
+  s.live[c.live_at] = last
+  s.cells[last].live_at = c.live_at
+  s.n_live -= 1
+  c.live_at = -1
+}
+
+# ---- a frame -----------------------------------------------------------------------------------
+
+# the start of a frame: its load budget in microseconds, and a clean count of what it has started
+export function ws_begin_frame(s: WStream, budget_us: float) -> void {
+  s.frame += 1
+  s.load_us = budget_us
+  s.spent_us = 0.0
+  s.started = 0
+}
+
+# what loading this layer is expected to cost (us)
+export function ws_estimate(s: WStream, slot: int, layer: int) -> float {
+  return float(ws_layer_bytes(s.cells[slot], layer)) * s.us_per_byte
+}
+
+# one layer's want bit, with hysteresis: a loaded (or loading) layer is kept `margin` past its radius
+function ws_wants(c: WsCell, bit: int, d: float, r: float, margin: float) -> bool {
+  if ws_layer_bytes(c, bit) <= 0 { return false }
+  if c.pin { return true }
+  if (c.res & bit) != 0 or (c.busy & bit) != 0 { return d <= r + margin }
+  return d <= r
+}
+
+@alloc_ok("a window of cells round the camera: the candidate list grows when it must")
+function ws_cand_push(s: WStream, slot: int, layer: int, key: float) -> void {
+  if s.n_cand >= len(s.cand) {
+    let n = len(s.cand) * 2
+    let a = words(n)
+    let k = floats(n)
+    for i in 0 .. s.n_cand { a[i] = s.cand[i];  k[i] = s.cand_key[i] }
+    free(s.cand)
+    free(s.cand_key)
+    s.cand = a
+    s.cand_key = k
+  }
+  s.cand[s.n_cand] = slot * 4 + layer
+  s.cand_key[s.n_cand] = key
+  s.n_cand += 1
+}
+
+# priority of loading a layer of a cell `d` away whose centre lies along direction (ux, uz) from the camera:
+# nearer is sooner; a cell ahead of the camera counts `bias` metres nearer; FULL ahead of HLOD
+function ws_key(s: WStream, d: float, ahead: float, layer: int) -> float {
+  var k = d - s.bias * Math.max(ahead, 0.0)
+  if layer == WS_HLOD { k = k * 1.25 + s.size * 0.5 }
+  return k
+}
+
+# sort cand by key, ascending (shell sort: the list is a few hundred long and rebuilt only when the camera has moved)
+function ws_sort(s: WStream) -> void {
+  var gap = s.n_cand / 2
+  while gap > 0 {
+    for i in gap .. s.n_cand {
+      let a = s.cand[i]
+      let k = s.cand_key[i]
+      var j = i
+      while j >= gap and s.cand_key[j - gap] > k {
+        s.cand[j] = s.cand[j - gap]
+        s.cand_key[j] = s.cand_key[j - gap]
+        j -= gap
+      }
+      s.cand[j] = a
+      s.cand_key[j] = k
+    }
+    gap = gap / 2
+  }
+}
+
+# Look at the cells round the camera at (x, z) heading (fx, fz) (need not be unit): set what each wants, drop
+# layers no longer wanted (their bytes are free at once; ws_next_drop hands them to the driver to release), and
+# list the layers worth loading best first. Does nothing if the camera has moved less than `update_dist` and
+# nothing changed.
+export function ws_update(s: WStream, x: float, z: float, fx: float, fz: float) -> void {
+  if s.hold { return }
+  let moved = (x - s.last_x) * (x - s.last_x) + (z - s.last_z) * (z - s.last_z)
+  let turned = Math.abs(fx - s.last_fx) + Math.abs(fz - s.last_fz)
+  if s.primed and not s.dirty and moved < s.update_dist * s.update_dist and turned < 0.5 { return }
+  s.primed = true
+  s.dirty = false
+  s.last_x = x;  s.last_z = z;  s.last_fx = fx;  s.last_fz = fz
+  var fl = Math.sqrt(fx * fx + fz * fz)
+  var ux = 0.0
+  var uz = 0.0
+  if fl > 0.0001 { ux = fx / fl;  uz = fz / fl }
+  s.n_cand = 0
+  s.cur = 0
+  # 1. the resident and loading cells: drop what is no longer wanted
+  var i = 0
+  while i < s.n_live {
+    let slot = s.live[i]
+    let c = s.cells[slot]
+    let d = wp_dist(c.cx, c.cz, s.size, x, z)
+    ws_judge(s, slot, c, d, ux, uz)
+    if c.live_at == i { i += 1 }        # a cell that left the live list swapped another into place i
+  }
+  # 2. the registered cells in the window round the camera: what should start loading
+  let reach = s.hlod_r + s.margin
+  let c0 = wp_cell_of(x - reach, s.size)
+  let c1 = wp_cell_of(x + reach, s.size)
+  let r0 = wp_cell_of(z - reach, s.size)
+  let r1 = wp_cell_of(z + reach, s.size)
+  let win = (c1 - c0 + 1) * (r1 - r0 + 1)
+  if win <= len(s.cells) {
+    for rz in r0 .. r1 + 1 {
+      for rx in c0 .. c1 + 1 {
+        let slot = ws_find(s, rx, rz)
+        if slot < 0 { continue }
+        let c = s.cells[slot]
+        if c.live_at >= 0 { continue }          # judged above
+        ws_judge(s, slot, c, wp_dist(rx, rz, s.size, x, z), ux, uz)
+      }
+    }
+  } else {
+    # a window larger than the registry (a small map, a big radius): walk the registry instead
+    for slot in 0 .. len(s.cells) {
+      let c = s.cells[slot]
+      if c.live_at >= 0 { continue }
+      ws_judge(s, slot, c, wp_dist(c.cx, c.cz, s.size, x, z), ux, uz)
+    }
+  }
+  # 3. cells held loaded whatever the distance, where the window did not reach them
+  for p in 0 .. len(s.pinned) {
+    let slot = s.pinned[p]
+    let c = s.cells[slot]
+    if c.live_at < 0 and wp_dist(c.cx, c.cz, s.size, x, z) > reach {
+      ws_judge(s, slot, c, wp_dist(c.cx, c.cz, s.size, x, z), ux, uz)
+    }
+  }
+  # 4. the order
+  ws_sort(s)
+}
+
+# one cell: its want bits; layers loaded and no longer wanted are dropped; layers wanted and absent become candidates
+function ws_judge(s: WStream, slot: int, c: WsCell, d: float, ux: float, uz: float) -> void {
+  c.dist = d
+  var ahead = 0.0
+  if ux != 0.0 or uz != 0.0 {
+    let dx = wp_centre_x(c.cx, s.size) - s.last_x
+    let dz = wp_centre_z(c.cz, s.size) - s.last_z
+    let l = Math.sqrt(dx * dx + dz * dz)
+    if l > 0.001 { ahead = (dx * ux + dz * uz) / l }
+  }
+  var want = 0
+  if ws_wants(c, WS_HLOD, d, s.hlod_r, s.margin) { want = want | WS_HLOD }
+  if ws_wants(c, WS_FULL, d, s.full_r, s.margin) { want = want | WS_FULL }
+  # a FULL layer is only ever shown over a loaded or loading HLOD one; a cell with no proxy shows FULL alone
+  c.want = want
+  c.score = ws_key(s, d, ahead, WS_FULL)
+  for layer in 1 .. 3 {
+    let bit = layer
+    if (c.res & bit) != 0 and (want & bit) == 0 { ws_release(s, slot, c, bit) }
+    if (want & bit) != 0 and (c.res & bit) == 0 and (c.busy & bit) == 0 and (c.dead & bit) == 0 {
+      ws_cand_push(s, slot, layer, ws_key(s, d, ahead, layer))
+    }
+  }
+  # a layer loading that is no longer wanted is left to finish (its driver cannot be told) and dropped once it is in
+  if c.res == 0 and c.busy == 0 and c.pend == 0 { ws_live_drop(s, slot) }
+}
+
+function ws_release(s: WStream, slot: int, c: WsCell, bit: int) -> void {
+  c.res = c.res & (~bit)
+  c.pend = c.pend | bit
+  s.resident -= ws_layer_bytes(c, bit)
+  s.drops += 1
+}
+
+# The next layer to start loading, as slot * 4 + layer, or -1: best candidate first, within the budgets. The
+# caller starts the load and reports it (ws_job_done, ws_job_fail) - at once or on a later frame.
+export function ws_next_job(s: WStream) -> int {
+  if s.hold or s.in_flight >= s.max_jobs { return -1 }
+  while s.cur < s.n_cand {
+    let code = s.cand[s.cur]
+    let slot = code / 4
+    let layer = code - slot * 4
+    let c = s.cells[slot]
+    # stale: loaded or started since the list was made, or no longer wanted
+    if (c.res & layer) != 0 or (c.busy & layer) != 0 or (c.want & layer) == 0 or (c.dead & layer) != 0 {
+      s.cur += 1
+      continue
+    }
+    let bytes = ws_layer_bytes(c, layer)
+    let cost = float(bytes) * s.us_per_byte
+    if s.started > 0 and s.spent_us + cost > s.load_us { return -1 }       # the rest wait for the next frame
+    if s.resident + bytes > s.mem_bytes {
+      if not ws_make_room(s, bytes, s.cand_key[s.cur]) {
+        s.blocked += 1
+        s.cur += 1
+        continue
+      }
+    }
+    s.cur += 1
+    c.busy = c.busy | layer
+    s.resident += bytes
+    s.in_flight += 1
+    s.spent_us += cost
+    s.started += 1
+    s.loads += 1
+    ws_live_add(s, slot)
+    return slot * 4 + layer
+  }
+  return -1
+}
+
+# Free at least `need` bytes of headroom by dropping resident layers whose keys are worse (farther, less ahead)
+# than `key`, worst first. False if that is not enough, in which case nothing is dropped.
+function ws_make_room(s: WStream, need: int, key: float) -> bool {
+  var room = s.mem_bytes - s.resident
+  # pass 1: how much could be had from layers strictly worse than the candidate
+  var avail = 0
+  for i in 0 .. s.n_live {
+    let c = s.cells[s.live[i]]
+    for layer in 1 .. 3 {
+      if (c.res & layer) != 0 and not c.pin and ws_victim_key(s, c, layer) > key { avail += ws_layer_bytes(c, layer) }
+    }
+  }
+  if room + avail < need { return false }
+  # pass 2: worst first until it fits
+  while room < need {
+    var worst = -1000000000000.0
+    var wslot = -1
+    var wlayer = 0
+    for i in 0 .. s.n_live {
+      let slot = s.live[i]
+      let c = s.cells[slot]
+      if c.pin { continue }
+      for layer in 1 .. 3 {
+        if (c.res & layer) == 0 { continue }
+        let k = ws_victim_key(s, c, layer)
+        if k > key and k > worst { worst = k;  wslot = slot;  wlayer = layer }
+      }
+    }
+    if wslot < 0 { return false }
+    let v = s.cells[wslot]
+    ws_release(s, wslot, v, wlayer)
+    v.want = v.want & (~wlayer)
+    v.dead = v.dead | 0                # an evicted layer may come back when there is room
+    room = s.mem_bytes - s.resident
+    s.evicts += 1
+  }
+  return true
+}
+
+# how far down the list a loaded layer would sit: its cell's distance, the proxy counted dearer to lose (it is
+# the floor under FULL), so FULL layers go first
+function ws_victim_key(s: WStream, c: WsCell, layer: int) -> float {
+  var k = c.score
+  if layer == WS_HLOD { k = k * 0.8 }
+  return k
+}
+
+# a load has finished: it cost `cost_us`; the layer is resident
+export function ws_job_done(s: WStream, slot: int, layer: int, cost_us: float) -> void {
+  let c = s.cells[slot]
+  if (c.busy & layer) == 0 { return }
+  c.busy = c.busy & (~layer)
+  c.res = c.res | layer
+  s.in_flight -= 1
+  let bytes = ws_layer_bytes(c, layer)
+  if bytes > 0 and cost_us >= 0.0 {
+    # what it really cost replaces what it was expected to, in this frame's spend
+    s.spent_us += cost_us - float(bytes) * s.us_per_byte
+    let per = cost_us / float(bytes)
+    s.us_per_byte = s.us_per_byte * 0.75 + per * 0.25
+  }
+  s.dirty = true
+}
+
+# a load has failed: its bytes are given back and the layer is not tried again until ws_retry
+export function ws_job_fail(s: WStream, slot: int, layer: int) -> void {
+  let c = s.cells[slot]
+  if (c.busy & layer) == 0 { return }
+  c.busy = c.busy & (~layer)
+  c.dead = c.dead | layer
+  s.in_flight -= 1
+  s.resident -= ws_layer_bytes(c, layer)
+  if c.res == 0 and c.busy == 0 and c.pend == 0 { ws_live_drop(s, slot) }
+}
+
+# The next layer the driver must release, as slot * 4 + layer, or -1. Its bytes were already given back when it
+# was dropped; this is the notice. A layer dropped and wanted again before it is released is not handed out.
+export function ws_next_drop(s: WStream) -> int {
+  var i = 0
+  while i < s.n_live {
+    let slot = s.live[i]
+    let c = s.cells[slot]
+    if c.pend != 0 {
+      let layer = c.pend & (-c.pend)              # the lowest pending bit
+      c.pend = c.pend & (~layer)
+      if c.res == 0 and c.busy == 0 and c.pend == 0 { ws_live_drop(s, slot) }
+      return slot * 4 + layer
+    }
+    i += 1
+  }
+  return -1
+}
+
+export function ws_code_slot(code: int) -> int { return code / 4 }
+export function ws_code_layer(code: int) -> int { return code - (code / 4) * 4 }
+
+# One whole frame's streaming, synchronously: loads are started best first within the budgets by calling
+# `load(cx, cz, layer, slot)`, which answers the microseconds it took, WS_FAILED, or WS_ASYNC; drops are handed to
+# `drop(cx, cz, layer, slot)`. Returns how many loads were started.
+export function ws_run(s: WStream, load: fn(int, int, int, int) -> int, drop: fn(int, int, int, int) -> void) -> int {
+  var n = 0
+  var code = ws_next_job(s)
+  while code >= 0 {
+    let slot = ws_code_slot(code)
+    let layer = ws_code_layer(code)
+    let c = s.cells[slot]
+    let us = load(c.cx, c.cz, layer, slot)
+    if us == WS_ASYNC { } else if us < 0 { ws_job_fail(s, slot, layer) } else { ws_job_done(s, slot, layer, float(us)) }
+    n += 1
+    code = ws_next_job(s)
+  }
+  code = ws_next_drop(s)
+  while code >= 0 {
+    let slot = ws_code_slot(code)
+    let c = s.cells[slot]
+    drop(c.cx, c.cz, ws_code_layer(code), slot)
+    code = ws_next_drop(s)
+  }
+  return n
+}
