@@ -18,7 +18,6 @@ program CitizensCityTest {
   def ZoningRules from "data/city_zoning.lres"
   def BuildingKits from "data/city_kits.lres"
   def BuildingGenerators from "data/city_generators.lres"
-  def InteriorAtlases from "data/city_atlases.lres"
   def CzZoneTags from "data/zonetags.lres"
 
   bind CitizensCity { count: fn czk_count, id: fn czk_id, x: fn czk_x, z: fn czk_z, tags: fn czk_tags, homes: fn czk_homes, jobs: fn czk_jobs, district: fn czk_district }
