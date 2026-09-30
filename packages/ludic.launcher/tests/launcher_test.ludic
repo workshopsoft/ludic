@@ -304,16 +304,35 @@ program LauncherTest {
   }
 
 
-  # Components are registered with the first test's states only (a test of its own gets fresh ones),
-  # so every check of the screen is one test, declared first, walking these in turn.
-  test "the screen and its parts, driven through ludic.ui" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
+  test "the screen shows the menu's buttons and a press leaves the fact" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
     ui_the_screen_shows_the_menu_s_buttons_and(launcher_st, launcher_test_st, ui_st)
+  }
+
+  test "the screen carries the row's colours as custom properties on its root" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
     ui_the_screen_carries_the_row_s_colours_as(launcher_st, launcher_test_st, ui_st)
+  }
+
+  test "the update slot draws each state of the game's update" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
     ui_the_update_slot_draws_each_state_of_the(launcher_st, launcher_test_st, ui_st)
+  }
+
+  test "the crash slot is empty until the game fills it" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
     ui_the_crash_slot_is_empty_until_the_game_f(launcher_st, launcher_test_st, ui_st)
+  }
+
+  test "the news lists the row's few, opens an item out, and the panel lists them all" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
     ui_the_news_lists_the_row_s_few_opens_an_it(launcher_st, launcher_test_st, ui_st)
+  }
+
+  test "the language list names each language and a press picks it" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
     ui_the_language_list_names_each_language_an(launcher_st, launcher_test_st, ui_st)
+  }
+
+  test "the footer offers the language button only with two languages, and the links open" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
     ui_the_footer_offers_the_language_button_on(launcher_st, launcher_test_st, ui_st)
+  }
+
+  test "the screen puts a panel over the page while one is open" (launcher_st: mut LauncherState, launcher_test_st: mut LauncherTestState, ui_st: mut UiState) {
     ui_the_screen_puts_a_panel_over_the_page_wh(launcher_st, launcher_test_st, ui_st)
   }
 

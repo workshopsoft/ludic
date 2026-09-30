@@ -1,0 +1,37 @@
+# ui_registration_test - a component is registered for every test of a file, not only the first:
+# each test gets fresh states, and the registration lands in them. A screen that is not there is an
+# error in ui_errors, and an empty screen to read, never a crash.
+import "ludic.ui"
+program UiRegistrationTest {
+  numbers float
+
+  component Hello {
+  }
+
+  function shows(ui_st: mut UiState) -> int {
+    let root: UiNode = ui_nodes(ui_st, "Hello", null)
+    return len(root.children)
+  }
+
+  test "the first test shows the component" (ui_st: mut UiState) {
+    expect_eq(shows(ui_st), 1)
+    expect_eq(len(ui_errors(ui_st)), 0)
+  }
+  test "the second test shows it too" (ui_st: mut UiState) {
+    expect_eq(shows(ui_st), 1)
+    expect_eq(len(ui_errors(ui_st)), 0)
+  }
+  test "and the third, with the screen shown through ui_show" (ui_st: mut UiState) {
+    ui_show(ui_st, "Hello", null, 0.0, 0.0, 320.0, 200.0)
+    expect_eq(len(ui_errors(ui_st)), 0)
+  }
+  test "a screen that does not exist is an error and an empty screen" (ui_st: mut UiState) {
+    let root: UiNode = ui_nodes(ui_st, "Nowhere", null)
+    expect(root != null)
+    expect_eq(len(root.children), 0)
+    expect_eq(len(ui_errors(ui_st)), 1)
+    expect(Text.contains(ui_errors(ui_st)[0], "there is no screen Nowhere"))
+    ui_show(ui_st, "Nowhere", null, 0.0, 0.0, 320.0, 200.0)
+    expect_eq(len(ui_errors(ui_st)), 1)
+  }
+}

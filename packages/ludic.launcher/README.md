@@ -178,6 +178,4 @@ crash's slots, the feed (rows then items, languages, failure, refresh, no addres
 components driven through `ludic.ui` (a press leaves a fact). `wiring_test` joins it to `ludic.update`
 and `ludic.i18n`.
 
-The screen's checks are one `test` declared first: a component is registered with the states of the
-first test of a file only (a later test's fresh states have none), so a component under test must be in
-the first.
+The screen's checks are tests like the rest: each test gets the components registered, in its own fresh states.

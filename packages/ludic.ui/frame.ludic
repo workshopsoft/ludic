@@ -39,7 +39,13 @@ export function ui_nodes(ui_st: mut UiState, screen: string, view: UiView) -> Ui
   if si < 0 {
     @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     ui_err(ui_st, `there is no screen {screen} - ui_load the file that has it`)
-    return null
+    # an empty screen, not null: the error is reported, and a caller that reads the nodes (a test's
+    # look at them, a host that places them) finds nothing rather than crashing on a missing root
+    let none = nd_take(ui_st)
+    none.key = screen
+    none.env = env_new(ui_st, null)
+    none.tag = "screen"
+    return none
   }
   let t = ui_st.lib_screens[si]
   pl_begin(ui_st, screen)

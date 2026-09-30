@@ -183,8 +183,10 @@ function emit_test_runner() -> void {
     emit("  store i32 0, ptr @L_test_fail\n")
     # 0.S: every state fresh for each test - the states are what changes, and they are made here
     if i > 0 {
+      # states first: a registration an initializer makes (a component's ui_register) lands in the
+      # state this test will use, so it must run after the reset, never before it
+      emit("  call void @L_reset_states()\n")            # a lazy state is made by its getter, not below
       emit("  call void @L_init_globals()\n")
-      emit("  call void @L_reset_states()\n")            # a lazy state is made by its getter, not above
     }
     emit(`  call void @fn__test_{itoa(i)}()\n`)
     let f = emit_bind("load i32, ptr @L_test_fail")
