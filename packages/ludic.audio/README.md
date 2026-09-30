@@ -2,8 +2,8 @@
 
 A game's sounds, and the one door to the runtime's `Audio.*`. Uses nothing.
 
-**`Audio.play` is the interface; the world goes through `aud_emit`.** A click, a chime, a shutter
-and a warning happen in the player's head and are played flat (`aud_ui`). Everything that happens in
+**`aud_ui` is the interface; the world goes through `aud_emit`.** A click, a chime, a shutter
+and a warning happen in the player's head and are played flat (`aud_ui`, on the interface channel). Everything that happens in
 the world - a foot, an axe, a pot, a splash, a call - carries a gain, a pitch and a pan from where it
 is relative to the listener, even when that is the listener's own position. A game that played half
 its world flat had an axe across the camp as loud as your own and a pot at the fire as loud from the
@@ -36,10 +36,10 @@ port AudioFiles { cache_dir: fn() -> string }            # "" (the default): a p
 
 | | |
 | --- | --- |
-| `aud_emit(h, gain, pitch, pan)` | a world sound, as given: the ONE call to `Audio.play_at`, and the one place a float becomes the runtime's Q16.16 |
+| `aud_emit(h, gain, pitch, pan)` | a world sound, as given, handed to `aud_play`: the one place a float becomes the runtime's Q16.16 |
 | `aud_emit_at(h, x, z, range) -> bool` | a world sound at a place, gain, pitch and pan from the listener; false when out of earshot |
 | `aud_gain_at(x, z, range)`, `aud_pan_at(x, z)`, `aud_pitch_at(gain)` | a shaped roll-off (not an inverse square: that is deafening or inaudible in a valley of trees), the side from the listener's heading (ahead and behind centred), and a semitone lower at the edge of hearing |
-| `aud_ui(h)` | an interface sound, flat: the ONE call to `Audio.play` |
+| `aud_ui(h)` | an interface sound, flat, at the interface channel's volume |
 | `aud_music(h)`, `aud_stop_music()`, `aud_master(v)` | the loop and the master volume |
 | `aud_load(path) -> int`, `aud_unpack(path, name)`, `aud_tried()`, `aud_live()` | a clip, loaded past `Audio.load`'s blind spot; how many were asked for and how many loaded |
 | `aud_wav_seconds(path, fallback)` | a PCM WAV's length from its header, for re-triggering a loop before it ends |
@@ -58,8 +58,8 @@ indistinguishable from a working one.
 ## The guard
 
 A game keeps the rule with a grep (Maroon Lake's `tests/audio.sh`): nothing outside this package
-names `Audio.*`, `Audio.play` appears once here (in `aud_ui`) and `Audio.play_at` once (in
-`aud_emit`), and the game calls `aud_ui` only for its interface sounds.
+names `Audio.*`, `Audio.play_at` appears once here (in `aud_play`, which `aud_emit` and `aud_ui` both
+call) and `Audio.play` not at all, and the game calls `aud_ui` only for its interface sounds.
 
 ## Tests
 

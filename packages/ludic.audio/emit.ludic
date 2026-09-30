@@ -1,6 +1,6 @@
-# emit.ludic - the only calls into the runtime's playback. aud_emit is the ONE place a float
-# crosses into Audio.play_at's Q16.16: handed over unconverted, 0.94 as a pitch clamped to 4x and
-# -0.85 as a pan to hard left, and every sound in a valley played fast out of one speaker
+# emit.ludic - the only calls into the runtime's playback: aud_play, under aud_emit and aud_ui, is the ONE
+# place a float crosses into Audio.play_at's Q16.16 - handed over unconverted, 0.94 as a pitch clamped to 4x
+# and -0.85 as a pan to hard left, and every sound in a valley played fast out of one speaker
 export state AudioState {
   last_gain: float = 0.0
   last_pitch: float = 0.0
@@ -17,8 +17,11 @@ export function aud_emit(audio_st: mut AudioState, h: int, gain: float, pitch: f
   audio_st.last_pitch = pitch
   audio_st.last_pan = pan
   audio_st.emitted += 1
-  Audio.play_at(h, fixed(gain), fixed(pitch), fixed(pan))
+  aud_play(h, gain, pitch, pan)
 }
+
+# the ONE call into the runtime's playback, and the one place a float becomes its Q16.16
+function aud_play(h: int, gain: float, pitch: float, pan: float) -> void { Audio.play_at(h, fixed(gain), fixed(pitch), fixed(pan)) }
 
 # a sound at a place in the world, heard within `range` metres: false (and nothing played) when the
 # listener is out of earshot
@@ -33,7 +36,7 @@ export function aud_emit_at(audio_st: mut AudioState, h: int, x: float, z: float
 export function aud_ui(audio_st: mut AudioState, h: int) -> void {
   if h == 0 { return }
   audio_st.emitted += 1
-  Audio.play_at(h, fixed(aud_channel(audio_st, AUD_CH_UI)), fixed(1.0), fixed(0.0))
+  aud_play(h, aud_channel(audio_st, AUD_CH_UI), 1.0, 0.0)
 }
 
 export function aud_music(h: int) -> void { if h != 0 { Audio.play_music(h) } }
