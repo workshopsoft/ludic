@@ -168,6 +168,7 @@ function r3d_load_step_run(render3d_st: mut Render3dState, i: int) -> bool {
     render3d_st.r3d_fog_density = 0.00024
     render3d_st.r3d_fog_falloff = 0.002
     render3d_st.r3d_ready = true
+    r3d_warm_commands(render3d_st)
     gpu_check(render3d_st, "r3d init")
   }
   return true
