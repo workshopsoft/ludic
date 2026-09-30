@@ -44,13 +44,13 @@ program SeekPins {
     expect_eq(pn_drew(wildlife_st, 6), 0)
   }
 
-  test "IDLE, hunger over 60 and over thirst - or the two level: GO_FEED to forage" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+  test "IDLE, hunger over 60 and over thirst: GO_FEED to forage; the two level: GO_DRINK" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
     pn_setup(wildlife_st, wildlife_tests_fake_st)
     let a = needy(wildlife_st, WILD_IDLE, 10.0, 70.0)
     expect_eq(a.state, WILD_GO_FEED)
     expect(not a.spot_water)
     let b = needy(wildlife_st, WILD_IDLE, 70.0, 70.0)
-    expect_eq(b.state, WILD_GO_FEED)
+    expect_eq(b.state, WILD_GO_DRINK)
     expect_eq(pn_drew(wildlife_st, 6), 0)
   }
 
