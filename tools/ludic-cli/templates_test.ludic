@@ -1,0 +1,61 @@
+# templates_test.ludic — `ludic new --template` and `ludic templates` (ludic-dev test-templates).
+#
+# Every shipped template is created into a scratch directory and compiled with `ludic build --check`
+# (nothing is run, nothing is emitted), against this checkout as the install root.
+
+function cmd_test_templates() -> int {
+  PASS = 0
+  FAIL = 0
+  print("== ludic new --template: every starter is created and compiles ==")
+  let root = capture_line("pwd")
+  let work = `{tmp_dir()}/templates_test`
+  shell(`rm -rf {work} && mkdir -p {work}`)
+  let ludic = `{root}/bin/ludic`
+  let envp = `env LUDIC_HOME={root}`
+
+  # the list
+  shell(`cd {work} && {envp} {ludic} templates --json > {work}/list.json 2>&1`)
+  let lj = pt_read(`{work}/list.json`)
+  if shq(`python3 -m json.tool {work}/list.json > /dev/null`) and s_contains(lj, "\"name\": \"blank\"") and s_contains(lj, "\"packages\": []") {
+    ok("ludic templates --json is valid JSON and lists blank first, with no packages")
+  } else { bad2("ludic templates --json", lj) }
+  shell(`cd {work} && {envp} {ludic} templates > {work}/list.txt 2>&1`)
+  if s_contains(pt_read(`{work}/list.txt`), "blank  (Blank)") { ok("ludic templates lists a name, a title, a line and the packages") } else { bad2("ludic templates", pt_read(`{work}/list.txt`)) }
+
+  # blank is unchanged: `new` and `new --template blank` make the same tree
+  shell(`mkdir -p {work}/d1 {work}/d2 && cd {work}/d1 && {envp} {ludic} new plain > /dev/null 2>&1; cd {work}/d2 && {envp} {ludic} new plain --template blank > /dev/null 2>&1`)
+  if shq(`diff -r {work}/d1/plain {work}/d2/plain > /dev/null 2>&1`) and s_contains(pt_read(`{work}/d1/plain/src/main.ludic`), "HELLO LUDIC") and file_exists(`{work}/d1/plain/tests/smoke.ludic`) {
+    ok("blank is the default scaffold, unchanged")
+  } else { bad("blank differs from the default scaffold") }
+
+  # errors
+  if not shq(`cd {work} && {envp} {ludic} new x --template nope > {work}/nope.out 2>&1`) and s_contains(pt_read(`{work}/nope.out`), "no template called 'nope' (have: blank") and not file_exists(`{work}/x`) {
+    ok("an unknown template is refused, naming the ones there are, and creates nothing")
+  } else { bad2("unknown template", pt_read(`{work}/nope.out`)) }
+  if not shq(`cd {work} && {envp} {ludic} new y --template > /dev/null 2>&1`) { ok("--template with no name is refused") } else { bad("--template with no name") }
+
+  # every template on disk
+  let names = split_lines(capture(`ls -1 {root}/templates 2>/dev/null | LC_ALL=C sort`))
+  var i = 0
+  while i < len(names) {
+    let n = names[i]
+    if file_exists(`{root}/templates/{n}/template.ludic`) {
+      let proj = `{work}/p_{n}`
+      if not shq(`cd {work} && {envp} {ludic} new p_{n} --template {n} > {work}/new_{n}.out 2>&1`) {
+        bad2(`ludic new --template {n}`, pt_read(`{work}/new_{n}.out`))
+      } else {
+        let leftover = capture_line(`grep -rl '{{{{' {proj} 2>/dev/null`)
+        if leftover == "" and not file_exists(`{proj}/template.ludic`) and file_exists(`{proj}/package.ludic`) and file_exists(`{proj}/.gitignore`) and s_contains(pt_read(`{proj}/package.ludic`), `package "p_{n}"`) {
+          ok(`{n}: created, names substituted, no descriptor left behind`)
+        } else { bad2(`{n}: the created tree`, leftover) }
+        if shq(`cd {proj} && {envp} {ludic} build --check > {work}/chk_{n}.out 2>&1`) {
+          ok(`{n}: ludic build --check passes`)
+        } else { bad2(`{n}: ludic build --check`, capture_line(`head -3 {work}/chk_{n}.out`)) }
+      }
+    }
+    i += 1
+  }
+  if len(names) == 0 { skip("no templates/ directory beside this checkout's bin/") }
+
+  return report()
+}

@@ -1,0 +1,46 @@
+# src/main.ludic — a platformer. Build and play it with: ludic run
+#
+#   A D or the arrows  run        space  jump (hold for a higher one)        q  quit
+#
+# ludic.platformer is the controller: its feel (speed, jump height, coyote time, jump buffer, air
+# jumps) is the numbers on the `Platformer` component below. ludic.core's Position, Body and
+# Collider are what the engine's movement system moves and collides, so there is no collision
+# code in this file. Add a platform by spawning a Floor; tune the hero by editing its numbers.
+program {{ident}} {
+  import "ludic.core/components.ludic"
+  import "ludic.platformer/platformer.ludic"
+
+  model Hero  { Position, Body, Collider, Platformer }
+  model Floor { Position, Collider }
+  @OnSpawn(Hero)  handler HeroInit { }
+  @OnSpawn(Floor) handler FloorInit { }
+
+  handler Boot phase Start {
+    Input.bind("move_left", 'a')
+    Input.bind("move_right", 'd')
+    Input.bind("jump", ' ')
+    # the ground and three ledges (x, y, width, height in pixels)
+    spawn Floor { Position { x: 0, y: 208 }, Collider { w: 320, h: 32 } }
+    spawn Floor { Position { x: 48, y: 160 }, Collider { w: 64, h: 8 } }
+    spawn Floor { Position { x: 152, y: 120 }, Collider { w: 64, h: 8 } }
+    spawn Floor { Position { x: 240, y: 168 }, Collider { w: 48, h: 8 } }
+    spawn Hero { Position { x: 24, y: 160 }, Collider { w: 12, h: 16 },
+                 Platformer { move_speed: 3, jump_height: 4, apex_frames: 14, coyote_frames: 6, air_jumps: 1 } }
+  }
+
+  handler Draw phase Render {
+    Screen.clear(0x1b2a41)
+    for (p, c) in query [Position, Collider] {
+      Screen.fill_rectangle(x: p.x, y: p.y, width: c.w, height: c.h, color: Color.Gray)
+    }
+    for (p, c, pl) in query [Position, Collider, Platformer] {
+      Screen.fill_rectangle(x: p.x, y: p.y, width: c.w, height: c.h, color: Color.Crimson)
+    }
+    Screen.draw_text(x: 8, y: 8, text: "A D RUN   SPACE JUMP (TWICE IN THE AIR)", color: Color.White, scale: 1)
+    Screen.show()
+  }
+
+  handler Keys phase Input {
+    if Input.key() == 'q' { quit() }
+  }
+}

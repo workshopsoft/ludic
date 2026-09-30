@@ -1,0 +1,4 @@
+package "{{name}}"
+version "0.1.0"
+kind source
+entry "src/main.ludic"

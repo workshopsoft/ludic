@@ -36,6 +36,7 @@ property Manifest {
   entry: pointer = "",        # `entry "src/game.ludic"` — the program run/build/bundle compile
   packs: []pointer,           # `pack "<dir>"` — asset roots that go into the .lpak
   app: []pointer,             # `app <key> "<value>"` — flattened key, value, key, value…
+  rel: []pointer,             # `release <key> <a> [<b> [<c>]]` — flattened fours: key, a, b, c (missing ones "")
   scripts: []pointer,         # `script "<name>" "<command>"` — flattened name, command, …
   hooks: []pointer            # `hook <before|after> <event> "<command>"` — flattened triples
 }
@@ -52,6 +53,7 @@ function manifest_new() -> Manifest {
   m.deps = new []Dep
   m.packs = new []pointer
   m.app = new []pointer
+  m.rel = new []pointer
   m.scripts = new []pointer
   m.hooks = new []pointer
   return m
@@ -192,6 +194,20 @@ function parse_manifest(text: pointer) -> Manifest {
       else if head == "app" {
         if len(ts) > 2 { push(m.app, ts[1]);  push(m.app, ts[2]) }
       }
+      # `release id "MaroonLake"`, `release channel osx "osx"`, `release upload s3 "bucket" "endpoint"` —
+      # what `ludic release` packs and uploads with (see game_release.ludic). Held as fours so a new
+      # line with up to three values is a line in the releaser and nothing here. A line with only its
+      # key (`release sign`) is kept too, with every value "": that is how "auto-detect" is written.
+      else if head == "release" {
+        if len(ts) > 1 {
+          push(m.rel, ts[1])
+          var k = 2
+          while k < 5 {
+            if k < len(ts) { push(m.rel, ts[k]) } else { push(m.rel, "") }
+            k += 1
+          }
+        }
+      }
     }
   }
   return m
@@ -203,6 +219,36 @@ function manifest_app(m: Manifest, key: pointer) -> pointer {
   while i + 1 < len(m.app) {
     if m.app[i] == key { return m.app[i + 1] }
     i += 2
+  }
+  return ""
+}
+
+# the `idx`th value (0..2) of the first `release <key>` line, or "" when the manifest has none
+function manifest_release(m: Manifest, key: pointer, idx: int) -> pointer {
+  var i = 0
+  while i + 3 < len(m.rel) {
+    if m.rel[i] == key { return m.rel[i + 1 + idx] }
+    i += 4
+  }
+  return ""
+}
+
+# is there a `release <key>` line at all (even one with no values)?
+function manifest_has_release(m: Manifest, key: pointer) -> bool {
+  var i = 0
+  while i + 3 < len(m.rel) {
+    if m.rel[i] == key { return true }
+    i += 4
+  }
+  return false
+}
+
+# `release channel <os> "<name>"`: the channel for `os`, or "" when none is named
+function manifest_release_channel(m: Manifest, os: pointer) -> pointer {
+  var i = 0
+  while i + 3 < len(m.rel) {
+    if m.rel[i] == "channel" and m.rel[i + 1] == os { return m.rel[i + 2] }
+    i += 4
   }
   return ""
 }

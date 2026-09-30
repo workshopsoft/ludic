@@ -1,0 +1,139 @@
+# release_test.ludic — `ludic release` and the manifest's `release` lines (ludic-dev test-release).
+#
+# Hermetic: a fake manifest in a scratch directory and, where the commands really run, a fake `vpk`
+# script on PATH that only logs what it was given. Nothing here touches the real vpk, S3 or R2.
+# Every check drives a fresh bin/ludic process, as a game's own directory would.
+
+function rt_manifest(extra: pointer) -> pointer {
+  var b = "package \"git.example.com/me/maroon-lake\"" + nl() + "version \"0.5.0\"" + nl() + "kind source" + nl()
+  b = b + "app name \"Maroon Lake\"" + nl()
+  return b + extra
+}
+
+function rt_full() -> pointer {
+  var b = "release id \"MaroonLake\"" + nl()
+  b = b + "release title \"Maroon Lake\"" + nl()
+  b = b + "release authors \"Workshopsoft\"" + nl()
+  b = b + "release channel osx \"osx\"" + nl()
+  b = b + "release channel win \"stable\"" + nl()
+  b = b + "release feed \"https://dl.example.com\"" + nl()
+  b = b + "release keep 12" + nl()
+  b = b + "release notes \"build/release-notes.md\"" + nl()
+  b = b + "release entitlements \"tools/app.entitlements\"" + nl()
+  b = b + "release sign \"Dev ID: Me (ABC123)\"" + nl()
+  b = b + "release notary_profile \"maroon-lake\"" + nl()
+  b = b + "release upload s3 \"maroon-lake\" \"https://acct.r2.cloudflarestorage.com\"" + nl()
+  return b
+}
+
+function cmd_test_release() -> int {
+  PASS = 0
+  FAIL = 0
+  print("== ludic release: manifest lines, the plan, a dry run, a run against a fake vpk ==")
+  let root = capture_line("pwd")
+  let work = `{tmp_dir()}/release_test`
+  shell(`rm -rf {work} && mkdir -p {work}/a {work}/bin`)
+  let ludic = `{root}/bin/ludic`
+  let envp = `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY LUDIC_HOME={root}`
+
+  # ---- the manifest parses ---------------------------------------------------------------------
+  let m = parse_manifest(rt_manifest(rt_full() + "release sign" + nl()))
+  if manifest_release(m, "id", 0) == "MaroonLake" and manifest_release(m, "keep", 0) == "12" and manifest_release(m, "feed", 0) == "https://dl.example.com" {
+    ok("release id / keep / feed parse")
+  } else { bad("release id / keep / feed did not parse") }
+  if manifest_release(m, "upload", 0) == "s3" and manifest_release(m, "upload", 1) == "maroon-lake" and manifest_release(m, "upload", 2) == "https://acct.r2.cloudflarestorage.com" {
+    ok("release upload s3 <bucket> <endpoint> parses to three values")
+  } else { bad("release upload did not parse") }
+  if manifest_release_channel(m, "osx") == "osx" and manifest_release_channel(m, "win") == "stable" and manifest_release_channel(m, "linux") == "" {
+    ok("release channel is per OS, and an OS without one has none")
+  } else { bad("release channel did not parse per OS") }
+  if manifest_has_release(m, "sign") and manifest_release(m, "sign", 0) == "Dev ID: Me (ABC123)" and manifest_release(m, "entitlements", 0) == "tools/app.entitlements" and manifest_release(m, "notary_profile", 0) == "maroon-lake" {
+    ok("release sign / entitlements / notary_profile parse (the first sign line wins)")
+  } else { bad("release sign / entitlements / notary_profile did not parse") }
+  let bare = parse_manifest("release sign" + nl() + "release sign \"\"" + nl())
+  if manifest_has_release(bare, "sign") and manifest_release(bare, "sign", 0) == "" and not manifest_has_release(bare, "id") {
+    ok("a `release sign` with no value is kept (auto-detect), and an absent line is absent")
+  } else { bad("release sign with no value") }
+  if len(parse_manifest("app name \"x\"" + nl()).rel) == 0 {
+    ok("a manifest with no release lines has none")
+  } else { bad("a manifest with no release lines has some") }
+
+  # ---- a dry run prints the exact commands --------------------------------------------------------
+  pt_write(`{work}/a/package.ludic`, rt_manifest(rt_full()))
+  shell(`cd {work}/a && {envp} AWS_ACCESS_KEY_ID=AKIAFAKEKEY AWS_SECRET_ACCESS_KEY=fakesecret123 {ludic} release --os osx --dry-run > {work}/dry.out 2>&1`)
+  let dry = pt_read(`{work}/dry.out`)
+  let want_pack = "vpk pack --packId MaroonLake --packVersion 0.5.0 --packTitle 'Maroon Lake' --packAuthors Workshopsoft --packDir 'build/Maroon Lake.app' --mainExe 'Maroon Lake' --releaseNotes build/release-notes.md --channel osx --outputDir build/releases-osx --noInst --yes --signAppIdentity 'Dev ID: Me (ABC123)' --signEntitlements tools/app.entitlements --notaryProfile maroon-lake"
+  let want_dl = "vpk download s3 --endpoint https://acct.r2.cloudflarestorage.com --bucket maroon-lake --keyId <redacted> --secret <redacted> --channel osx --outputDir build/releases-osx"
+  let want_up = "vpk upload s3 --endpoint https://acct.r2.cloudflarestorage.com --bucket maroon-lake --keyId <redacted> --secret <redacted> --channel osx --outputDir build/releases-osx --keepMaxReleases 12"
+  if s_contains(dry, want_pack) { ok("dry run: the macOS vpk pack line, golden") } else { bad2("dry run: vpk pack line", dry) }
+  if s_contains(dry, want_dl) { ok("dry run: the vpk download line, golden, secrets redacted") } else { bad2("dry run: vpk download line", dry) }
+  if s_contains(dry, want_up) { ok("dry run: the vpk upload line, golden, secrets redacted") } else { bad2("dry run: vpk upload line", dry) }
+  if not s_contains(dry, "AKIAFAKEKEY") and not s_contains(dry, "fakesecret123") {
+    ok("dry run: the credentials never appear")
+  } else { bad("dry run printed a credential") }
+  let order_ok = s_index(dry, "1. clean", 0) >= 0 and s_index(dry, "2. download", 0) > s_index(dry, "1. clean", 0) and s_index(dry, "3. pack", 0) > s_index(dry, "2. download", 0) and s_index(dry, "4. upload", 0) > s_index(dry, "3. pack", 0)
+  if order_ok { ok("dry run: clean, download, pack, upload, in that order") } else { bad2("dry run: step order", dry) }
+  if not shq(`ls {work}/a/build > /dev/null 2>&1`) { ok("dry run wrote nothing") } else { bad("dry run created build/") }
+
+  # ---- --json --dry-run --------------------------------------------------------------------------
+  shell(`cd {work}/a && {envp} {ludic} release --os win --dry-run --json > {work}/plan.json 2>&1`)
+  let pj = pt_read(`{work}/plan.json`)
+  if shq(`python3 -m json.tool {work}/plan.json > /dev/null`) {
+    ok("release --json --dry-run is one valid JSON object")
+  } else { bad2("release --json is not valid JSON", pj) }
+  if s_contains(pj, "\"os\": \"win\"") and s_contains(pj, "\"channel\": \"stable\"") and s_contains(pj, "\"mainExe\"") == false and s_contains(pj, "--mainExe 'Maroon Lake.exe'") and s_contains(pj, "\"credentials\": \"missing\"") and s_contains(pj, "\"id\": \"upload\"") {
+    ok("the JSON plan: os, per-OS channel, the .exe, credentials state and the steps")
+  } else { bad2("the JSON plan's fields", pj) }
+  if not shq(`cd {work}/a && {envp} {ludic} release --json > /dev/null 2>&1`) { ok("--json without --dry-run is refused") } else { bad("--json without --dry-run ran") }
+
+  # ---- problems ----------------------------------------------------------------------------------
+  pt_write(`{work}/b/package.ludic`, rt_manifest("release title \"No Id\"" + nl()))
+  if not shq(`cd {work}/b && {envp} {ludic} release --os osx --dry-run > {work}/noid.out 2>&1`) and s_contains(pt_read(`{work}/noid.out`), "release id") {
+    ok("no `release id` is a problem (exit 1), named in the output")
+  } else { bad2("a manifest with no release id", pt_read(`{work}/noid.out`)) }
+  pt_write(`{work}/b/package.ludic`, rt_manifest("release id \"X\"" + nl()))
+  shell(`cd {work}/b && {envp} {ludic} release --os linux --dry-run > {work}/noup.out 2>&1`)
+  let noup = pt_read(`{work}/noup.out`)
+  if s_contains(noup, "vpk pack --packId X") and not s_contains(noup, "vpk upload") and s_contains(noup, "no `release upload` line") {
+    ok("without `release upload` the plan is just clean and pack, and says so")
+  } else { bad2("a plan with no upload", noup) }
+
+  # ---- a real run, against a fake vpk ------------------------------------------------------------
+  let fake = `{work}/bin/vpk`
+  pt_write(fake, "#!/bin/sh\nprintf '%s|' \"$@\" >> \"$VPK_LOG\"; printf '\\n' >> \"$VPK_LOG\"\n[ \"$1\" = \"$VPK_FAIL\" ] && exit 1\nexit 0\n")
+  shell(`chmod +x {fake}`)
+  shell(`mkdir -p "{work}/a/build/Maroon Lake.app"`)
+  let runenv = `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY LUDIC_HOME={root} PATH={work}/bin:/usr/bin:/bin:/usr/sbin:/sbin`
+  shell(`rm -f {work}/vpk.log`)
+  let rc1 = shell(`cd {work}/a && {runenv} VPK_LOG={work}/vpk.log VPK_FAIL=download {ludic} release --os osx --key-id KID1 --secret SEC1 > {work}/run1.out 2>&1`)
+  let log = pt_read(`{work}/vpk.log`)
+  if exit_code(rc1) == 0 and s_contains(log, "download|s3|") and s_contains(log, "pack|--packId|MaroonLake|") and s_contains(log, "upload|s3|") {
+    ok("a run calls vpk download, pack, upload; a failed download (a first release) does not stop it")
+  } else { bad2("a run against a fake vpk", log + pt_read(`{work}/run1.out`)) }
+  if s_contains(log, "--keyId|KID1|--secret|SEC1|") and not s_contains(pt_read(`{work}/run1.out`), "SEC1") {
+    ok("the credentials reach vpk (from --key-id/--secret) and are not echoed")
+  } else { bad2("credentials not passed, or echoed", log) }
+  shell(`rm -f {work}/vpk.log`)
+  let rc2 = shell(`cd {work}/a && {runenv} VPK_LOG={work}/vpk.log VPK_FAIL=pack AWS_ACCESS_KEY_ID=KID2 AWS_SECRET_ACCESS_KEY=SEC2 {ludic} release --os osx > {work}/run2.out 2>&1`)
+  let log2 = pt_read(`{work}/vpk.log`)
+  if exit_code(rc2) != 0 and s_contains(log2, "pack|") and not s_contains(log2, "upload|") and s_contains(log2, "--keyId|KID2|") {
+    ok("a failed pack stops the release before the upload; credentials from the environment")
+  } else { bad2("a failed pack did not stop the run", log2) }
+  let rc3 = shell(`cd {work}/a && {runenv} {ludic} release --os osx > {work}/run3.out 2>&1`)
+  if exit_code(rc3) != 0 and s_contains(pt_read(`{work}/run3.out`), "no credentials") {
+    ok("a run with no credentials is refused before anything runs")
+  } else { bad2("a run without credentials", pt_read(`{work}/run3.out`)) }
+  let rc4 = shell(`cd {work}/a && env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY LUDIC_HOME={root} HOME={work}/nohome PATH=/usr/bin:/bin {ludic} release --os osx --key-id a --secret b > {work}/run4.out 2>&1`)
+  if exit_code(rc4) != 0 and s_contains(pt_read(`{work}/run4.out`), "vpk is not installed") {
+    ok("a run without vpk says how to install it")
+  } else { bad2("a run without vpk", pt_read(`{work}/run4.out`)) }
+
+  # ---- a project's own release script still wins ---------------------------------------------------
+  pt_write(`{work}/c/package.ludic`, rt_manifest("release id \"X\"" + nl() + "script \"release\" \"echo the-games-own-release\"" + nl()))
+  shell(`cd {work}/c && {envp} {ludic} release > {work}/script.out 2>&1`)
+  if s_contains(pt_read(`{work}/script.out`), "the-games-own-release") and not s_contains(pt_read(`{work}/script.out`), "vpk") {
+    ok("a project's `script \"release\"` still takes the command")
+  } else { bad2("the release script was shadowed", pt_read(`{work}/script.out`)) }
+
+  return report()
+}

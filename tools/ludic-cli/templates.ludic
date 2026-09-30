@@ -1,0 +1,175 @@
+# templates.ludic — the starters `ludic new --template <t>` copies, and `ludic templates` lists.
+#
+# A template is a directory under the toolchain's templates/ (installed beside packages/, found
+# through ludic_home()) holding the files of a small project and one descriptor, template.ludic:
+#
+#   title "Third person"
+#   description "a body walking on a flat test plate under an orbit camera"
+#   uses "ludic.character" "ludic.lab"            # the packages it imports (may be empty)
+#
+# Everything else in the directory is copied into the new project, with `{{name}}` (the project's
+# name) and `{{ident}}` (its `program` identifier) replaced in every file. `blank` is the
+# scaffold `ludic new` always made and is built in, so it works from an install that has no
+# templates/ at all; a templates/blank/ directory, if present, is ignored.
+
+property Tmpl {
+  name: pointer = "",
+  title: pointer = "",
+  desc: pointer = "",
+  uses: []pointer,
+  dir: pointer = ""           # "" for the built-in blank
+}
+
+function templates_dir() -> pointer { return `{ludic_home()}templates` }
+
+function tmpl_blank() -> Tmpl {
+  let t = new Tmpl
+  t.name = "blank"
+  t.title = "Blank"
+  t.desc = "A window, an entity moving under the ECS, text, and a key to quit; no packages"
+  t.uses = new []pointer
+  t.dir = ""
+  return t
+}
+
+# read `<dir>/template.ludic`; null when the directory is not a template
+function tmpl_read(name: pointer, dir: pointer) -> Tmpl {
+  let txt = read_file(`{dir}/template.ludic`)
+  if txt == null { return null }
+  let t = new Tmpl
+  t.name = name
+  t.title = name
+  t.desc = ""
+  t.uses = new []pointer
+  t.dir = dir
+  let n = slen(txt)
+  var i = 0
+  while i < n {
+    let line = line_at(txt, i)
+    i = i + slen(line) + 1
+    let ts = tok_line(line)
+    if len(ts) > 1 {
+      if ts[0] == "title" { t.title = ts[1] }
+      else if ts[0] == "description" { t.desc = ts[1] }
+      else if ts[0] == "uses" { var k = 1;  while k < len(ts) { push(t.uses, ts[k]);  k += 1 } }
+    } else if len(ts) == 1 and ts[0] == "uses" {
+      t.uses = new []pointer
+    }
+  }
+  return t
+}
+
+# every template, `blank` first then the installed ones by name
+function tmpl_all() -> []Tmpl {
+  var out = new []Tmpl
+  push(out, tmpl_blank())
+  let root = templates_dir()
+  if file_exists(root) {
+    let names = split_lines(capture(`ls -1 "{root}" 2>/dev/null | LC_ALL=C sort`))
+    var i = 0
+    while i < len(names) {
+      if names[i] != "blank" {
+        let t = tmpl_read(names[i], `{root}/{names[i]}`)
+        if t != null { push(out, t) }
+      }
+      i += 1
+    }
+  }
+  return out
+}
+
+function tmpl_find(name: pointer) -> Tmpl {
+  let all = tmpl_all()
+  var i = 0
+  while i < len(all) {
+    if all[i].name == name { return all[i] }
+    i += 1
+  }
+  return null
+}
+
+function tmpl_names() -> pointer {
+  let all = tmpl_all()
+  var s = ""
+  var i = 0
+  while i < len(all) {
+    if i > 0 { s = s + ", " }
+    s = s + all[i].name
+    i += 1
+  }
+  return s
+}
+
+function tmpl_json(t: Tmpl) -> pointer {
+  return `{{"name": {pkg_jq(t.name)}, "title": {pkg_jq(t.title)}, "description": {pkg_jq(t.desc)}, "packages": [{tmpl_join_q(t.uses)}]}}`
+}
+
+function tmpl_join_q(items: []pointer) -> pointer {
+  var o = ""
+  var i = 0
+  while i < len(items) {
+    if i > 0 { o = o + ", " }
+    o = o + pkg_jq(items[i])
+    i += 1
+  }
+  return o
+}
+
+# ludic templates [--json]
+function cmd_templates() -> int {
+  var json = false
+  var ai = 2
+  while ai < arg_count() {
+    let a = arg(ai)
+    if a == "--json" { json = true }
+    else {
+      err(`ludic templates: unknown argument {a}\n`)
+      err("  usage: ludic templates [--json]\n")
+      return 2
+    }
+    ai += 1
+  }
+  let all = tmpl_all()
+  if json {
+    var o = "["
+    var i = 0
+    while i < len(all) {
+      if i > 0 { o = o + "," }
+      o = o + nl() + "  " + tmpl_json(all[i])
+      i += 1
+    }
+    print(o + nl() + "]")
+    return 0
+  }
+  var i = 0
+  while i < len(all) {
+    let t = all[i]
+    var pk = "no packages"
+    if len(t.uses) > 0 {
+      pk = ""
+      var k = 0
+      while k < len(t.uses) {
+        if k > 0 { pk = pk + ", " }
+        pk = pk + t.uses[k]
+        k += 1
+      }
+    }
+    print(`{t.name}  ({t.title})`)
+    print(`    {t.desc}`)
+    print(`    uses: {pk}`)
+    i += 1
+  }
+  return 0
+}
+
+# copy template `t` into a fresh directory `name`, substituting {{name}} and {{ident}}; true on success
+function tmpl_copy(t: Tmpl, name: pointer) -> bool {
+  shell(`mkdir -p {name}`)
+  if not shq(`cp -R "{t.dir}/." {name}/`) { return false }
+  shell(`rm -f {name}/template.ludic`)
+  # name is [A-Za-z0-9._-] (valid_project_name) and ident is alphanumeric, so neither needs
+  # escaping in a sed replacement
+  let ident = ident_of(name)
+  shell(`cd {name} && find . -type f | while IFS= read -r f; do sed -e 's/{{{{name}}}}/{name}/g' -e 's/{{{{ident}}}}/{ident}/g' "$f" > "$f.ludic-tmp" && mv "$f.ludic-tmp" "$f"; done`)
+  return true
+}

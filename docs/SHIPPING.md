@@ -235,6 +235,75 @@ xcrun notarytool submit "build/Maroon Lake.app" --keychain-profile NOTARY --wait
 xcrun stapler staple "build/Maroon Lake.app"
 ```
 
+## Releasing: `ludic release`
+
+`ludic bundle` makes the thing you give someone; `ludic release` puts a version of it where installed
+copies find it, with [Velopack](https://velopack.io)'s CLI, `vpk` (`dotnet tool install -g vpk`). It
+reads `release` lines from `package.ludic`, packs the bundle into Velopack's packages (an installer
+or portable zip, the full package, a delta against the last release) and uploads them with the feed.
+
+```ludic skip
+release id             "MaroonLake"
+release title          "Maroon Lake"
+release authors        "Workshopsoft"
+release channel        osx "osx"
+release channel        win "stable"
+release feed           "https://dl.example.com"
+release keep           12
+release notes          "build/release-notes.md"
+release entitlements   "tools/release/app.entitlements"
+release sign           "Developer ID Application: Your Name (TEAMID)"
+release notary_profile "my-notary-profile"
+release upload         s3 "my-bucket" "https://<account>.r2.cloudflarestorage.com"
+```
+
+| line | what it does | default |
+| --- | --- | --- |
+| `release id` | Velopack's pack id (`--packId`); required | none |
+| `release title`, `release authors` | `--packTitle`, `--packAuthors` | `app name`; vpk's own |
+| `release channel <os> "<name>"` | the channel for `osx`, `win` or `linux` (`--channel`) | the OS name |
+| `release feed "<https url>"` | where the game's updater looks. vpk does not use it; it is shown in the plan | none |
+| `release keep <n>` | releases the feed keeps (`--keepMaxReleases`) | vpk's |
+| `release notes "<file>"` | release notes, Markdown (`--releaseNotes`) | none |
+| `release entitlements "<file>"` | macOS: `--signEntitlements` (a file named `*.entitlements`, with no XML comment) | vpk's .NET defaults |
+| `release sign "<identity>"` | macOS: `--signAppIdentity`. The line with `""` (or no value) takes the keychain's first `Developer ID Application` identity. No line at all packs unsigned | unsigned |
+| `release notary_profile "<name>"` | macOS: `--notaryProfile`, a `xcrun notarytool store-credentials` profile; vpk notarizes and staples before it packages | not notarized |
+| `release upload s3 "<bucket>" "<endpoint>"` | where `vpk download s3` and `vpk upload s3` go (S3, R2, anything S3-shaped); the endpoint may be `""` for AWS itself | no upload |
+| `release dir`, `release exe`, `release icon` | the folder to pack, its main executable and `--icon` | macOS: `app out` or `build/<name>.app`; else `build/<name>`; the app name (`.exe` on Windows); Windows: `app icon` if it is an `.ico` |
+
+**Credentials are never in the manifest.** They come from `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` in the environment, or `--key-id` and `--secret` on the command line.
+
+```bash
+ludic bundle                          # the .app the release packs
+ludic release --dry-run               # the exact commands, secrets redacted; runs nothing
+ludic release --dry-run --json        # the same plan as JSON, for an editor
+ludic release [--os osx|win|linux]    # run them: stops at the first failure
+```
+
+The steps, in order: `clean` (a fresh `build/releases-<os>`), `download` (`vpk download s3`: the
+previous release, so vpk can make a delta; a first release has none and this step may fail),
+`pack` (`vpk pack --packId .. --packVersion <app version, else the manifest's version> --packTitle ..
+--packDir .. --mainExe .. --channel .. --outputDir ..`, and on macOS `--noInst --signAppIdentity
+--signEntitlements --notaryProfile`), `upload` (`vpk upload s3 --bucket .. --endpoint .. --keyId ..
+--secret .. --channel .. --keepMaxReleases ..`). `--os` defaults to the host. A `release` with no
+`release upload` line makes the packages and stops there.
+
+`--dry-run --json` prints one object: `os`, `dry_run`, `pack_id`, `version`, `title`, `channel`,
+`feed`, `bucket`, `pack_dir`, `pack_dir_exists`, `output_dir`, `credentials` (`"env"`, `"flags"` or
+`"missing"`), `vpk` (the path found, or `null`), `problems` (what stops a release: no `release id`,
+no Developer ID; the exit code is 1 when there are any), `warnings` (what a dry run can say and a real
+run refuses: no `vpk`, no bundle yet, no credentials, unsigned) and `steps`, each `{"id", "title",
+"optional", "command"}` with the credentials shown as `<redacted>`.
+
+What it does not do: build the bundle, write a changelog, tag, build a website, purge a cache, or
+reach another machine. Those are your release process around it. A project's own `script "release"`
+keeps running as `ludic release`, so existing ones are unaffected.
+
+The game's own updater (`ludic.update`'s `UpdateConfig.feed` and `app_id`) is configured in game code:
+no value in `package.ludic` reaches the program at build time (only `app name`, as the window title),
+so write the same feed and pack id in both places.
+
 ## The bundle it makes
 
 ```

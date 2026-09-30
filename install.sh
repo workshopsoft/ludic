@@ -229,6 +229,7 @@ install_from_source() {
   if [ -x "${_src}/bin/ludic-ui-preview" ]; then cp "${_src}/bin/ludic-ui-preview" "${_stage}/bin/"; fi
   cp -R "${_src}/runtime" "${_stage}/runtime"
   cp -R "${_src}/packages" "${_stage}/packages"
+  if [ -d "${_src}/templates" ]; then cp -R "${_src}/templates" "${_stage}/templates"; fi
   cp "${_src}/VERSION" "${_src}/LICENSE" "${_src}/README.md" "${_stage}/"
   install_staged "$_stage"
 }

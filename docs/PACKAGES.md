@@ -18,6 +18,7 @@ This is the v1 implementation of the direction decided in issue #63.
 ## Commands
 
 ```
+ludic new <name> [--template <t>]   a project from a starter; ludic templates [--json] lists them
 ludic add <module>[@version]   add a dependency to package.ludic, then resolve + fetch + link
 ludic remove <module>          the inverse of add: drop the require, what only it locked, its links
 ludic get [--json]             resolve every dependency in package.ludic, link them, write the lock
@@ -47,6 +48,27 @@ not require is refused (exit 1). Source that still imports a removed package is 
 failure - the caller may be about to delete it. If the store has no copy of a locked package, only
 the named module leaves the lock, and it says so.
 
+## Starter templates
+
+`ludic new <name> [--template <t>]` copies a starter; `ludic templates [--json]` lists them (name,
+title, a line on what it is, the packages it imports). `blank` (the default) is the original
+scaffold and is built in. The others are directories under the toolchain's `templates/`, installed
+beside `packages/`:
+
+```
+templates/third-person/
+  template.ludic        title "..."  description "..."  uses "ludic.character" "ludic.lab"
+  package.ludic         package "{{name}}"  ...
+  src/main.ludic        program {{ident}} { ... }
+  tests/smoke.ludic
+```
+
+Everything but `template.ludic` is copied, with `{{name}}` (the project's name) and `{{ident}}` (its
+`program` identifier) replaced in every file; a `.gitignore`, `README.md` and `assets/` are added when
+the template has none. Each one compiles: `ludic-dev test-templates` creates every template in a
+scratch directory and runs `ludic build --check` on it. `ludic templates --json` is an array of
+`{"name", "title", "description", "packages": [...]}`.
+
 ## The manifest — `package.ludic`
 
 A line-oriented manifest. `#` starts a comment; strings are double-quoted.
@@ -67,6 +89,15 @@ require "git.workshopsoft.io/orkun/util" "1.0.0"   # a dependency and its minimu
 A consumer project's manifest is the same file, usually with only `require`
 lines (the `package`/`version` fields describe a *publishable* package and are
 optional for a leaf application).
+
+### Release lines
+
+`release <key> <value>...` lines configure `ludic release` (packing and uploading a bundled game with
+Velopack's `vpk`): `release id`, `title`, `authors`, `channel <os> "<name>"`, `feed`, `keep`, `notes`,
+`entitlements`, `sign`, `notary_profile`, `upload s3 "<bucket>" "<endpoint>"`, and `dir`, `exe`, `icon`.
+They are read by the CLI and ignored by the compiler and the resolver. Credentials are never in the
+manifest (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, or `--key-id` / `--secret`). Every line and
+the steps it becomes are in [SHIPPING.md](SHIPPING.md#releasing-ludic-release).
 
 ### The entry program
 

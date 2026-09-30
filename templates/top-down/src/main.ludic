@@ -1,0 +1,104 @@
+# src/main.ludic — a top-down tile world. Build and play it with: ludic run
+#
+#   W A S D or the arrows  walk the unit one tile at a time      mouse  hover a tile      q  quit
+#
+# The map is data: a grid of characters, one per tile ('#' wall, '.' floor, '~' water, ',' grass).
+# Everything else reads it through `tile_at` (and the `Grid` state), so a level is this string and nothing more; load
+# one from a file or a Tiled map when it outgrows the source.
+program {{ident}} {
+  const COLS: int = 20
+  const ROWS: int = 14
+  const TILE: int = 16
+  # the map, a row to a line
+  function map_rows() -> string {
+    var m = ""
+    m = m + "####################"
+    m = m + "#,,,,,,....~~~.....#"
+    m = m + "#,,,,..#...~~~..,,,#"
+    m = m + "#,,....#...~~~..,,,#"
+    m = m + "#......#####...,,,,#"
+    m = m + "#..................#"
+    m = m + "#....~~~...........#"
+    m = m + "#....~~~....#####..#"
+    m = m + "#....~~~....#......#"
+    m = m + "#...........#..,,..#"
+    m = m + "#,,,........#..,,..#"
+    m = m + "#,,,,...#####......#"
+    m = m + "#,,,,,.............#"
+    m = m + "####################"
+    return m
+  }
+
+  property Place { col: int = 0, row: int = 0 }
+  property Cooldown { frames: int = 0 }
+
+  state Grid { cells: string = map_rows() }
+
+  function tile_at(grid: Grid, col: int, row: int) -> int {
+    if col < 0 or row < 0 or col >= COLS or row >= ROWS { return '#' }
+    return grid.cells[row * COLS + col]
+  }
+
+  # a wall and deep water stop the unit; floor and grass do not
+  function walkable(grid: Grid, col: int, row: int) -> bool {
+    let t = tile_at(grid, col, row)
+    return t != '#' and t != '~'
+  }
+
+  function tile_color(t: int) -> int {
+    if t == '#' { return 0x4a4e69 }
+    if t == '~' { return 0x22577a }
+    if t == ',' { return 0x386641 }
+    return 0x9a8c98
+  }
+
+  handler Boot phase Start {
+    spawn Unit { Place { col: 2, row: 5 }, Cooldown { frames: 0 } }
+  }
+
+  # one tile per press, with a short pause so holding a key walks at a steady pace
+  handler Walk(grid: Grid) phase FixedUpdate {
+    for (c, cd) in query [Place, Cooldown] {
+      if cd.frames > 0 { cd.frames = cd.frames - 1 }
+      if cd.frames == 0 {
+        let m = Input.move_i()
+        var nc = c.col + m.x
+        var nr = c.row
+        if m.x == 0 { nc = c.col;  nr = c.row + m.y }
+        if (nc != c.col or nr != c.row) and walkable(grid, nc, nr) {
+          c.col = nc
+          c.row = nr
+          cd.frames = 6
+        }
+      }
+    }
+  }
+
+  handler Draw(grid: Grid) phase Render {
+    Screen.clear(0x0d1020)
+    var row = 0
+    while row < ROWS {
+      var col = 0
+      while col < COLS {
+        Screen.fill_rectangle(x: col * TILE, y: row * TILE, width: TILE - 1, height: TILE - 1, color: tile_color(tile_at(grid, col, row)))
+        col += 1
+      }
+      row += 1
+    }
+    # the hovered tile
+    let hc = Input.mouse_x() / TILE
+    let hr = Input.mouse_y() / TILE
+    if hc >= 0 and hr >= 0 and hc < COLS and hr < ROWS {
+      Screen.draw_rectangle(x: hc * TILE, y: hr * TILE, width: TILE, height: TILE, color: Color.White)
+    }
+    for (c) in query [Place] {
+      Screen.fill_rectangle(x: c.col * TILE + 3, y: c.row * TILE + 3, width: TILE - 7, height: TILE - 7, color: Color.Crimson)
+    }
+    Screen.draw_text(x: 8, y: 228, text: "WASD WALK   MOUSE HOVER   Q QUIT", color: Color.White, scale: 1)
+    Screen.show()
+  }
+
+  handler Keys phase Input {
+    if Input.key() == 'q' { quit() }
+  }
+}

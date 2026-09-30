@@ -330,6 +330,7 @@ function build_artifacts(ver: pointer) -> bool {
     }
     shell(`cp -R runtime {stage}/runtime`)
     shell(`cp -R packages {stage}/packages`)
+    shell(`cp -R templates {stage}/templates`)       # the starters `ludic new --template` copies
     # the language reference: ludic-lsp indexes it for hover and go-to-definition
     # on built-ins (docs/language/**.md, ~4 MB of markdown)
     shell(`mkdir -p {stage}/docs && cp -R docs/language {stage}/docs/language`)

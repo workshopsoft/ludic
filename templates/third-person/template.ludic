@@ -1,0 +1,3 @@
+title "Third person"
+description "A body walking on a flat test plate under an orbit camera (ludic.character over ludic.lab's plate)"
+uses "ludic.character" "ludic.lab" "ludic.render3d"

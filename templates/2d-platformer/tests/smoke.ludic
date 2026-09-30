@@ -1,0 +1,7 @@
+# A test program is a set of test blocks; ludic test compiles and runs every
+# tests/*.ludic and reports the results.
+program {{ident}}Spec {
+  test "arithmetic still works" {
+    expect_eq(2 + 2, 4)
+  }
+}

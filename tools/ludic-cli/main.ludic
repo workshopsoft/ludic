@@ -38,6 +38,8 @@ program Ludic {
   import "ui_preview.ludic"
   import "testpar.ludic"
   import "migrate.ludic"
+  import "templates.ludic"
+  import "game_release.ludic"
 
   function usage() -> void {
     print("ludic — the toolchain for the Ludic language")
@@ -45,7 +47,8 @@ program Ludic {
     print("usage: ludic <command> [arguments]")
     print("")
     print("start a game:")
-    print("  new <name>                    create a project that builds and runs as it stands")
+    print("  new <name> [--template <t>]   create a project that builds and runs as it stands (from a starter: see templates)")
+    print("  templates [--json]            the starters `new` can copy: name, title, what it is, the packages it uses")
     print("  run [file] [--headless]       build the project and run it")
     print("  build [file] [--headless] [-o out]")
     print("                                compile to build/<name> (a native binary, nothing to ship beside it)")
@@ -79,6 +82,9 @@ program Ludic {
     print("  pack --list FILE              print what is in a pack")
     print("  pack --verify FILE            re-hash every entry against the table")
     print("  bundle [file]                 build a macOS .app: icon, metadata, assets, splash")
+    print("  release [--os osx|win|linux] [--dry-run] [--json] [--key-id ID --secret KEY]")
+    print("                                pack the bundle with Velopack (vpk) and upload it, from package.ludic's `release` lines;")
+    print("                                --dry-run prints the exact commands (secrets redacted) and stops; --json: the plan as JSON")
     print("")
     print("the toolchain:")
     print("  version                       print the toolchain version")
@@ -113,6 +119,8 @@ program Ludic {
   # down the per-process scratch directory before the process ends.
   function dispatch(cmd: pointer) -> int {
     if (cmd == "new") { return cmd_new() }
+    if (cmd == "templates") { return cmd_templates() }
+    if (cmd == "release") { return cmd_game_release() }
     if (cmd == "build") { return cmd_build() }
     if (cmd == "run") { return cmd_run() }
     if (cmd == "test") { return cmd_test() }

@@ -214,22 +214,53 @@ function template_readme(name: pointer) -> pointer {
   return b
 }
 
-# ludic new <name> — scaffold a project that builds and runs as it stands.
+# ludic new <name> [--template <t>] — scaffold a project that builds and runs as it stands.
+# `blank` (the default) is the scaffold above; any other template is a directory under the
+# toolchain's templates/ (see templates.ludic, and `ludic templates` for the list).
 function cmd_new() -> int {
-  if arg_count() < 3 {
-    err("usage: ludic new <name>\n")
+  var name = ""
+  var tname = "blank"
+  var ai = 2
+  while ai < arg_count() {
+    let a = arg(ai)
+    if a == "--template" or a == "-t" {
+      if ai + 1 >= arg_count() { err(`ludic new: {a} needs a template name (ludic templates lists them)\n`);  return 1 }
+      ai += 1
+      tname = arg(ai)
+    }
+    else if s_starts(a, "--template=") { tname = sslice(a, 11, slen(a)) }
+    else if s_starts(a, "-") and slen(a) > 1 {
+      err(`ludic new: unknown flag {a}\n`)
+      err("usage: ludic new <name> [--template <t>]\n")
+      return 1
+    }
+    else if name == "" { name = a }
+    else {
+      err(`ludic new: unexpected argument {a}\n`)
+      err("usage: ludic new <name> [--template <t>]\n")
+      return 1
+    }
+    ai += 1
+  }
+  if name == "" {
+    err("usage: ludic new <name> [--template <t>]\n")
     return 1
   }
-  let name = arg(2)
   if not valid_project_name(name) {
     err(`ludic new: '{name}' is not a usable project name\n`)
     err("  use letters, digits, '-', '_' or '.'  (it names a directory and a package)\n")
+    return 1
+  }
+  let t = tmpl_find(tname)
+  if t == null {
+    err(`ludic new: no template called '{tname}' (have: {tmpl_names()})\n`)
     return 1
   }
   if file_exists(name) {
     err(`ludic new: {name} already exists\n`)
     return 1
   }
+  if t.dir != "" { return new_from_template(t, name) }
   shell(`mkdir -p {name}/src {name}/tests {name}/assets`)
   if not write_file(`{name}/package.ludic`, template_manifest(name)) {
     err(`ludic new: cannot write {name}/package.ludic\n`)
@@ -244,6 +275,33 @@ function cmd_new() -> int {
   print("  src/main.ludic    the program")
   print("  tests/smoke.ludic a test to grow")
   print("  assets/           sprites, fonts and sounds")
+  print("")
+  print(`next:  cd {name} && ludic run`)
+  return 0
+}
+
+# a project made from an installed template: its files, plus a .gitignore, README and assets/
+# when the template has none of its own
+function new_from_template(t: Tmpl, name: pointer) -> int {
+  if not tmpl_copy(t, name) {
+    err(`ludic new: cannot copy the {t.name} template into {name}\n`)
+    shell(`rm -rf {name}`)
+    return 1
+  }
+  shell(`mkdir -p {name}/assets`)
+  if not file_exists(`{name}/.gitignore`) { write_file(`{name}/.gitignore`, template_gitignore()) }
+  if not file_exists(`{name}/README.md`) {
+    var r = template_readme(name)
+    r = r + "\n" + t.title + ": " + t.desc + ".\n"
+    write_file(`{name}/README.md`, r)
+  }
+  print(`created {name}/ from the {t.name} template`)
+  let files = split_lines(capture(`cd {name} && find . -type f | sed 's|^\./||' | LC_ALL=C sort`))
+  var i = 0
+  while i < len(files) {
+    print(`  {files[i]}`)
+    i += 1
+  }
   print("")
   print(`next:  cd {name} && ludic run`)
   return 0

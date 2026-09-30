@@ -1,0 +1,3 @@
+title "2D platformer"
+description "A jump-and-run: a controller with coyote time and jump buffering, over solid platforms (ludic.platformer)"
+uses "ludic.platformer" "ludic.core"

@@ -1,0 +1,97 @@
+# src/main.ludic — a body walking on a flat test plate, seen through its eyes.
+#
+#   ludic run        build and play (W A S D walk, shift runs, space jumps, Q E turn, R F look up and down)
+#
+# ludic.character is the body and its eyes (char_set_fps); it never draws. ludic.lab brings
+# the window, the renderer and a lit plate with a sky, so there is something to
+# stand on from the first run. Replace the plate with your own world by binding
+# CharacterGround to your ground height (below it is flat) and drawing your own
+# things in the scene's `draw`.
+import "ludic.lab"
+import "ludic.character"
+program {{ident}} {
+  numbers float
+
+  state Walker {
+    actor: Actor = null
+    y: float = 0.0
+    vy: float = 0.0
+    wx: float = 0.0
+    wy: float = 0.0
+    wz: float = 0.0
+    grounded: bool = true
+  }
+
+  # ---- the world the body asks about: a flat plate 18 m across ----
+  function ground_height(x: float, z: float) -> float { return 0.0 }
+
+  # the land mover the character hands the step to: gravity, landing, and the plate's edge.
+  # (x, y, z) is where the body stands, (vx, vz) the way it goes, jump > 0 leaves the ground
+  # at that speed up.
+  function walk(walker: mut Walker, x: float, y: float, z: float, vx: float, vz: float, jump: float, step: float, slope: float, dt: float) -> int {
+    if jump > 0.0 and walker.grounded { walker.vy = jump }
+    walker.vy = walker.vy - 9.8 * dt
+    var ny = y + walker.vy * dt
+    walker.grounded = false
+    if ny <= 0.0 {
+      ny = 0.0
+      walker.vy = 0.0
+      walker.grounded = true
+    }
+    var nx = x + vx * dt
+    var nz = z + vz * dt
+    let r = Math.sqrt(nx * nx + nz * nz)
+    if r > 18.0 {
+      nx = nx * 18.0 / r
+      nz = nz * 18.0 / r
+    }
+    walker.wx = nx
+    walker.wy = ny
+    walker.wz = nz
+    if walker.grounded { return CHAR_WALK_GROUND }
+    return CHAR_WALK_AIR
+  }
+  function walked_x(walker: Walker) -> float { return walker.wx }
+  function walked_y(walker: Walker) -> float { return walker.wy }
+  function walked_z(walker: Walker) -> float { return walker.wz }
+  bind CharacterGround { height: fn ground_height, walk: fn walk, walked_x: fn walked_x, walked_y: fn walked_y, walked_z: fn walked_z }
+
+  # ---- the stick: the keyboard, once a frame. Move is in the camera's frame (+z ahead). ----
+  function axis(minus: int, plus: int) -> float {
+    var v = 0.0
+    if Input.key_down(plus) { v += 1.0 }
+    if Input.key_down(minus) { v -= 1.0 }
+    return v
+  }
+  function in_move_x() -> float { return axis('a', 'd') }
+  function in_move_z() -> float { return axis('s', 'w') }
+  function in_run() -> bool { return Input.key_down(Key.Shift) }
+  function in_jump() -> bool { return Input.key_down(' ') }
+  function in_look_yaw() -> float { return axis('e', 'q') * 0.04 }
+  function in_look_pitch() -> float { return axis('f', 'r') * 0.03 }
+  bind CharacterInput { move_x: fn in_move_x, move_z: fn in_move_z, run: fn in_run, jump: fn in_jump, look_yaw: fn in_look_yaw, look_pitch: fn in_look_pitch }
+
+  # ---- the scene ----
+  function play_setup(lab_st: mut LabState, render3d_st: mut Render3dState, walker: mut Walker, character_st: mut CharacterState) -> void {
+    lab_title(lab_st, "{{name}}")
+    lab_note(lab_st, "WASD walk, shift run, space jump, Q E turn, R F look")
+    # a landmark to walk toward, since the body itself is never seen from inside
+    walker.actor = lab_model(render3d_st, lab_plate_dir(lab_st), "probe.gltf", "probe", 0.0, -6.0, 0.0)
+    char_reset(character_st)
+    char_release(character_st, CHAR_HOLD_SCREEN)
+    char_teleport(character_st, 0.0, 0.0, 0.0)
+    char_set_fps(character_st, true)
+  }
+  function walk_frame(walker: mut Walker, character_st: mut CharacterState, render3d_st: mut Render3dState) -> void {
+    let dt = 1.0 / 60.0
+    Input.poll()
+    char_tick(character_st, dt)
+    char_camera(character_st, dt)
+    cam_set(render3d_st, body_eye_x(character_st), body_eye_y(character_st), body_eye_z(character_st), body_eye_yaw(character_st) * 57.29578, body_eye_pitch(character_st) * 57.29578)
+  }
+  def LabScenes play { setup: fn play_setup }
+
+  handler Boot(lab_st: mut LabState, render3d_st: mut Render3dState) phase Start { lab_boot(lab_st, render3d_st) }
+  handler Walk(walker: mut Walker, character_st: mut CharacterState, render3d_st: mut Render3dState) phase Update { walk_frame(walker, character_st, render3d_st) }
+  handler Draw(lab_st: mut LabState, render3d_st: mut Render3dState) phase Render { lab_render(lab_st, render3d_st) }
+}

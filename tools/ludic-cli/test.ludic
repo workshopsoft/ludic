@@ -195,7 +195,7 @@ function install_layout_case() -> void {
   let lbl = "an installed layout (bin/ + runtime/ + packages/, found on PATH) builds a new project"
   shell(`rm -rf {home} && mkdir -p {home}/bin`)
   shell(`cp bin/ludic bin/ludicc bin/ludic-fmt {home}/bin/`)
-  shell(`cp -R runtime {home}/runtime && cp -R packages {home}/packages && cp VERSION {home}/VERSION`)
+  shell(`cp -R runtime {home}/runtime && cp -R packages {home}/packages && cp -R templates {home}/templates && cp VERSION {home}/VERSION`)
   let work = `{tmp_dir()}/installwork`
   shell(`rm -rf {work} && mkdir -p {work}`)
   # PATH only — no LUDIC_HOME, and the current directory has no bin/ of its own.

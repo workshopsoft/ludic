@@ -1,0 +1,443 @@
+# game_release.ludic — `ludic release`, shipping a bundled game with Velopack.
+#
+#   ludic release [--os osx|win|linux] [--dry-run] [--json] [--key-id ID] [--secret KEY]
+#
+# It turns package.ludic's `release` lines and the bundle `ludic bundle` made into the vpk
+# (Velopack CLI) commands that put a version on a bucket, and runs them in order:
+#
+#   clean      a fresh build/releases-<os>
+#   download   `vpk download s3`   the previous release, so vpk can make a delta (may fail: a first release)
+#   pack       `vpk pack`          the bundle into Setup/portable/full/delta packages (macOS: signed, notarized)
+#   upload     `vpk upload s3`     the packages and releases.<os>.json, keeping the newest N
+#
+# --dry-run prints exactly those commands, with the credentials redacted, and stops; with --json it
+# is the plan as one JSON object on stdout (what an editor shows before a person clicks Release).
+# Without it the steps run one by one and the first failure stops the release. It needs `vpk` on
+# PATH (or in ~/.dotnet/tools, where `dotnet tool install -g vpk` puts it).
+#
+# What it does NOT do: build or bundle the game (run `ludic bundle` first; on Windows and Linux
+# whatever makes the folder `release dir` names), changelogs, websites, cache purges, anything on
+# another machine. Those are the game's own release process around this.
+#
+# The manifest (every line optional except `release id`; values are quoted strings):
+#
+#   release id "MaroonLake"                  Velopack's pack id: letters and digits
+#   release title "Maroon Lake"              the installer's title (default: `app name`)
+#   release authors "Workshopsoft"           (default: vpk's, the pack id)
+#   release channel osx "osx"                the channel per OS (default: the OS name)
+#   release feed "https://dl.example.com"    where the game's updater looks; not used by vpk, shown in the plan
+#   release keep 12                          releases (entries + deltas) the feed keeps: --keepMaxReleases
+#   release notes "build/release-notes.md"   --releaseNotes
+#   release entitlements "tools/release/app.entitlements"   macOS: --signEntitlements
+#   release sign "Developer ID Application: …"   macOS: --signAppIdentity; "" finds the keychain's Developer ID
+#   release notary_profile "my-profile"      macOS: --notaryProfile (a `xcrun notarytool store-credentials` profile)
+#   release upload s3 "bucket" "https://<account>.r2.cloudflarestorage.com"   the bucket and endpoint (R2, S3, …)
+#   release dir "build/Maroon Lake.app"      the folder to pack (default: `app out` or build/<name>.app on macOS, build/<name>)
+#   release exe "Maroon Lake"                the main executable in it (default: the app name, +.exe on Windows)
+#   release icon "assets/app/icon.ico"       --icon (default: Windows `app icon` when it is an .ico)
+#
+# Credentials are never in the manifest: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from the
+# environment, or --key-id and --secret (the editor passes them through the environment from its
+# keychain). A project's own `script "release"` takes precedence over this command.
+
+property RelStep {
+  id: pointer = "",
+  title: pointer = "",
+  cmd: pointer = "",
+  optional: bool = false,
+  secrets: bool = false         # the command reads the credentials from the environment
+}
+
+property RelPlan {
+  os: pointer = "",
+  pack_id: pointer = "",
+  version: pointer = "",
+  title: pointer = "",
+  channel: pointer = "",
+  feed: pointer = "",
+  out_dir: pointer = "",
+  pack_dir: pointer = "",
+  exe: pointer = "",
+  bucket: pointer = "",
+  steps: []RelStep,
+  problems: []pointer,          # what stops a release: a missing id, no Developer ID
+  warnings: []pointer           # what a dry run can say and a real run refuses: no vpk, no bundle, no credentials
+}
+
+# ---- the commands as text ---------------------------------------------------
+
+# a word for a shell: bare when it is plainly safe, else single-quoted
+function grel_q(s: pointer) -> pointer {
+  let n = slen(s)
+  if n == 0 { return "''" }
+  var i = 0
+  while i < n {
+    let c = s[i]
+    let ok = (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_' or c == '.' or c == '/' or c == ':' or c == '=' or c == '@' or c == '%' or c == '+' or c == ',' or c == '-'
+    if not ok { return sh_single(s) }
+    i += 1
+  }
+  return s
+}
+
+# cmd + " --flag value"
+function grel_arg(cmd: pointer, flag: pointer, value: pointer) -> pointer { return `{cmd} {flag} {grel_q(value)}` }
+
+function grel_step(plan: RelPlan, id: pointer, title: pointer, cmd: pointer, optional: bool, secrets: bool) -> void {
+  let st = new RelStep
+  st.id = id
+  st.title = title
+  st.cmd = cmd
+  st.optional = optional
+  st.secrets = secrets
+  push(plan.steps, st)
+}
+
+# the credentials in a command: shown redacted, or read from the environment the step runs with
+function grel_keyid(redact: bool) -> pointer {
+  if redact { return "<redacted>" }
+  return "\"$LUDIC_REL_KEY\""
+}
+function grel_secret(redact: bool) -> pointer {
+  if redact { return "<redacted>" }
+  return "\"$LUDIC_REL_SECRET\""
+}
+
+# the s3 flags shared by download and upload
+function grel_s3(cmd: pointer, bucket: pointer, endpoint: pointer, channel: pointer, redact: bool) -> pointer {
+  var c = cmd
+  if endpoint != "" { c = grel_arg(c, "--endpoint", endpoint) }
+  c = grel_arg(c, "--bucket", bucket)
+  c = `{c} --keyId {grel_keyid(redact)} --secret {grel_secret(redact)}`
+  return grel_arg(c, "--channel", channel)
+}
+
+function grel_default_os() -> pointer {
+  if host_windows() { return "win" }
+  if is_darwin() { return "osx" }
+  return "linux"
+}
+
+# the first Developer ID Application identity in the keychain, or ""
+function grel_find_identity() -> pointer {
+  if not is_darwin() { return "" }
+  return capture(`security find-identity -v -p codesigning 2>/dev/null | grep 'Developer ID Application' | sed -n 's/.*"\(.*\)".*/\1/p' | head -1 | tr -d '\n'`)
+}
+
+# the plan for `os` from the manifest. `redact`: credentials shown as <redacted> (a dry run) rather
+# than as environment reads (a real run).
+function grel_plan(m: Manifest, os: pointer, redact: bool) -> RelPlan {
+  let plan = new RelPlan
+  plan.steps = new []RelStep
+  plan.problems = new []pointer
+  plan.warnings = new []pointer
+  plan.os = os
+  plan.pack_id = manifest_release(m, "id", 0)
+  if plan.pack_id == "" { push(plan.problems, "package.ludic has no `release id \"<PackId>\"` line") }
+  plan.version = app_version(m)
+  let name = app_name(m)
+  plan.title = manifest_release(m, "title", 0)
+  if plan.title == "" { plan.title = name }
+  plan.channel = manifest_release_channel(m, os)
+  if plan.channel == "" { plan.channel = os }
+  plan.feed = manifest_release(m, "feed", 0)
+  plan.out_dir = `build/releases-{os}`
+
+  plan.pack_dir = manifest_release(m, "dir", 0)
+  if plan.pack_dir == "" {
+    if os == "osx" {
+      let out = manifest_app(m, "out")
+      if out != "" { plan.pack_dir = out } else { plan.pack_dir = `build/{name}.app` }
+    } else { plan.pack_dir = `build/{name}` }
+  }
+  plan.exe = manifest_release(m, "exe", 0)
+  if plan.exe == "" {
+    plan.exe = name
+    if os == "win" { plan.exe = `{name}.exe` }
+  }
+
+  var keep = manifest_release(m, "keep", 0)
+  let up = manifest_release(m, "upload", 0)
+  var bucket = ""
+  var endpoint = ""
+  if manifest_has_release(m, "upload") {
+    if up != "s3" { push(plan.problems, `release upload: only \`s3\` is supported (got '{up}')`) }
+    bucket = manifest_release(m, "upload", 1)
+    endpoint = manifest_release(m, "upload", 2)
+    if bucket == "" { push(plan.problems, "release upload s3 needs a bucket: `release upload s3 \"<bucket>\" \"<endpoint>\"`") }
+  }
+  plan.bucket = bucket
+  let uploading = bucket != "" and up == "s3"
+
+  # pack
+  var pack = "vpk pack"
+  pack = grel_arg(pack, "--packId", plan.pack_id)
+  pack = grel_arg(pack, "--packVersion", plan.version)
+  pack = grel_arg(pack, "--packTitle", plan.title)
+  let authors = manifest_release(m, "authors", 0)
+  if authors != "" { pack = grel_arg(pack, "--packAuthors", authors) }
+  pack = grel_arg(pack, "--packDir", plan.pack_dir)
+  pack = grel_arg(pack, "--mainExe", plan.exe)
+  var icon = manifest_release(m, "icon", 0)
+  if icon == "" and os == "win" {
+    let ai = manifest_app(m, "icon")
+    if slen(ai) > 4 and sslice(ai, slen(ai) - 4, slen(ai)) == ".ico" { icon = ai }
+  }
+  if icon != "" { pack = grel_arg(pack, "--icon", icon) }
+  let notes = manifest_release(m, "notes", 0)
+  if notes != "" { pack = grel_arg(pack, "--releaseNotes", notes) }
+  pack = grel_arg(pack, "--channel", plan.channel)
+  pack = grel_arg(pack, "--outputDir", plan.out_dir)
+  if os == "osx" {
+    # the portable zip is the download and the feed's packages update it: no .pkg, which would need
+    # a Developer ID *Installer* certificate and a root-owned /Applications
+    pack = pack + " --noInst"
+  }
+  pack = pack + " --yes"
+  if os == "osx" {
+    if manifest_has_release(m, "sign") {
+      var ident = manifest_release(m, "sign", 0)
+      if ident == "" {
+        ident = grel_find_identity()
+        if ident == "" { push(plan.problems, "release sign \"\": no `Developer ID Application` identity in the keychain (security find-identity -v -p codesigning)") }
+      }
+      if ident != "" { pack = grel_arg(pack, "--signAppIdentity", ident) }
+      let ent = manifest_release(m, "entitlements", 0)
+      if ent != "" { pack = grel_arg(pack, "--signEntitlements", ent) }
+      let np = manifest_release(m, "notary_profile", 0)
+      if np != "" { pack = grel_arg(pack, "--notaryProfile", np) }
+      else { push(plan.warnings, "no `release notary_profile`: the app is signed but not notarized, and Gatekeeper will refuse a download of it") }
+    } else {
+      push(plan.warnings, "no `release sign` line: the app is packed unsigned (Gatekeeper refuses an unsigned download)")
+    }
+  }
+
+  # the steps: clean, download, pack, upload
+  grel_step(plan, "clean", "a fresh output folder", `rm -rf {grel_q(plan.out_dir)} && mkdir -p {grel_q(plan.out_dir)}`, false, false)
+  if uploading {
+    var dl = grel_s3("vpk download s3", bucket, endpoint, plan.channel, redact)
+    dl = grel_arg(dl, "--outputDir", plan.out_dir)
+    grel_step(plan, "download", "the previous release, for a delta (a first release has none)", dl, true, true)
+  }
+  grel_step(plan, "pack", `pack {plan.pack_dir} into packages`, pack, false, false)
+  if uploading {
+    var upl = grel_s3("vpk upload s3", bucket, endpoint, plan.channel, redact)
+    upl = grel_arg(upl, "--outputDir", plan.out_dir)
+    if keep != "" { upl = grel_arg(upl, "--keepMaxReleases", keep) }
+    grel_step(plan, "upload", `upload the packages and releases.{os}.json to {bucket}`, upl, false, true)
+  } else {
+    push(plan.warnings, "no `release upload` line: the packages are made in the output folder and not uploaded")
+  }
+  return plan
+}
+
+# ---- the plan as JSON / as text ----------------------------------------------
+
+function grel_json_list(items: []pointer) -> pointer {
+  var o = "["
+  var i = 0
+  while i < len(items) {
+    if i > 0 { o = o + ", " }
+    o = o + pkg_jq(items[i])
+    i += 1
+  }
+  return o + "]"
+}
+
+function grel_step_json(st: RelStep) -> pointer {
+  var opt = "false"
+  if st.optional { opt = "true" }
+  return `{{"id": {pkg_jq(st.id)}, "title": {pkg_jq(st.title)}, "optional": {opt}, "command": {pkg_jq(st.cmd)}}}`
+}
+
+# how the credentials would be found: "flags", "env" or "missing"
+function grel_creds_source(flag_key: pointer, flag_secret: pointer) -> pointer {
+  if flag_key != "" and flag_secret != "" { return "flags" }
+  if getenv_or("AWS_ACCESS_KEY_ID", "") != "" and getenv_or("AWS_SECRET_ACCESS_KEY", "") != "" { return "env" }
+  return "missing"
+}
+
+function grel_vpk_path() -> pointer {
+  if shq("command -v vpk >/dev/null 2>&1") { return "vpk" }
+  let home = getenv_or("HOME", "")
+  if home != "" and is_exec(`{home}/.dotnet/tools/vpk`) { return `{home}/.dotnet/tools/vpk` }
+  return ""
+}
+
+function grel_plan_json(plan: RelPlan, dry: bool, creds: pointer, vpk: pointer, dir_ok: bool) -> pointer {
+  var steps = "["
+  var i = 0
+  while i < len(plan.steps) {
+    if i > 0 { steps = steps + "," }
+    steps = steps + nl() + "    " + grel_step_json(plan.steps[i])
+    i += 1
+  }
+  if len(plan.steps) > 0 { steps = steps + nl() + "  " }
+  steps = steps + "]"
+  var d = "false"
+  if dry { d = "true" }
+  var vp = "null"
+  if vpk != "" { vp = pkg_jq(vpk) }
+  var dok = "false"
+  if dir_ok { dok = "true" }
+  var o = "{" + nl()
+  o = o + `  "os": {pkg_jq(plan.os)},` + nl()
+  o = o + `  "dry_run": {d},` + nl()
+  o = o + `  "pack_id": {pkg_jq(plan.pack_id)},` + nl()
+  o = o + `  "version": {pkg_jq(plan.version)},` + nl()
+  o = o + `  "title": {pkg_jq(plan.title)},` + nl()
+  o = o + `  "channel": {pkg_jq(plan.channel)},` + nl()
+  o = o + `  "feed": {pkg_jq(plan.feed)},` + nl()
+  o = o + `  "bucket": {pkg_jq(plan.bucket)},` + nl()
+  o = o + `  "pack_dir": {pkg_jq(plan.pack_dir)},` + nl()
+  o = o + `  "pack_dir_exists": {dok},` + nl()
+  o = o + `  "output_dir": {pkg_jq(plan.out_dir)},` + nl()
+  o = o + `  "credentials": {pkg_jq(creds)},` + nl()
+  o = o + `  "vpk": {vp},` + nl()
+  o = o + `  "problems": {grel_json_list(plan.problems)},` + nl()
+  o = o + `  "warnings": {grel_json_list(plan.warnings)},` + nl()
+  o = o + `  "steps": {steps}` + nl() + "}"
+  return o
+}
+
+function grel_print_plan(plan: RelPlan, dry: bool) -> void {
+  var mode = ""
+  if dry { mode = "  (dry run: nothing is run)" }
+  print(`ludic release: {plan.pack_id} {plan.version} for {plan.os}, channel {plan.channel}{mode}`)
+  if plan.feed != "" { print(`  feed: {plan.feed}`) }
+  var i = 0
+  while i < len(plan.steps) {
+    let st = plan.steps[i]
+    var tag = ""
+    if st.optional { tag = "  (may fail: no earlier release is fine)" }
+    print(`  {string(i + 1)}. {st.id}: {st.title}{tag}`)
+    print(`       {st.cmd}`)
+    i += 1
+  }
+  i = 0
+  while i < len(plan.warnings) {
+    print(`  note: {plan.warnings[i]}`)
+    i += 1
+  }
+  i = 0
+  while i < len(plan.problems) {
+    print(`  problem: {plan.problems[i]}`)
+    i += 1
+  }
+}
+
+# ---- the command ---------------------------------------------------------------
+
+function cmd_game_release() -> int {
+  # a project's own `script "release"` is how every game did this before: it keeps running
+  if script_command("release") != "" { return -1 }
+
+  var os = ""
+  var dry = false
+  var json = false
+  var flag_key = ""
+  var flag_secret = ""
+  var ai = 2
+  while ai < arg_count() {
+    let a = arg(ai)
+    if a == "--dry-run" { dry = true }
+    else if a == "--json" { json = true }
+    else if a == "--os" or a == "--key-id" or a == "--secret" {
+      if ai + 1 >= arg_count() { err(`ludic release: {a} needs a value\n`);  return 2 }
+      ai += 1
+      if a == "--os" { os = arg(ai) }
+      else if a == "--key-id" { flag_key = arg(ai) }
+      else { flag_secret = arg(ai) }
+    }
+    else {
+      err(`ludic release: unknown argument {a}\n`)
+      err("  usage: ludic release [--os osx|win|linux] [--dry-run] [--json] [--key-id ID --secret KEY]\n")
+      return 2
+    }
+    ai += 1
+  }
+  if os == "" { os = grel_default_os() }
+  if os != "osx" and os != "win" and os != "linux" {
+    err(`ludic release: --os is osx, win or linux (got '{os}')\n`)
+    return 2
+  }
+  if json and not dry {
+    err("ludic release: --json describes the plan, so it goes with --dry-run\n")
+    return 2
+  }
+  let txt = read_file("package.ludic")
+  if txt == null {
+    err("ludic release: no package.ludic in the current directory\n")
+    return 1
+  }
+  let m = parse_manifest(txt)
+  let plan = grel_plan(m, os, dry or json)
+  let vpk = grel_vpk_path()
+  let creds = grel_creds_source(flag_key, flag_secret)
+  let dir_ok = shq(`test -e {sh_single(plan.pack_dir)}`)
+  if vpk == "" { push(plan.warnings, "vpk is not on PATH (dotnet tool install -g vpk)") }
+  if not dir_ok { push(plan.warnings, `{plan.pack_dir} does not exist yet: build the bundle first (ludic bundle)`) }
+  if plan.bucket != "" and creds == "missing" { push(plan.warnings, "no credentials: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or pass --key-id and --secret") }
+
+  if dry {
+    if json { print(grel_plan_json(plan, true, creds, vpk, dir_ok)) }
+    else { grel_print_plan(plan, true) }
+    if len(plan.problems) > 0 { return 1 }
+    return 0
+  }
+
+  if len(plan.problems) > 0 {
+    var i = 0
+    while i < len(plan.problems) {
+      err(`ludic release: {plan.problems[i]}\n`)
+      i += 1
+    }
+    return 1
+  }
+  if vpk == "" {
+    err("ludic release: vpk is not installed (or not on PATH): dotnet tool install -g vpk\n")
+    return 1
+  }
+  if not dir_ok {
+    err(`ludic release: {plan.pack_dir} does not exist: build the bundle first (ludic bundle)\n`)
+    return 1
+  }
+  if plan.bucket != "" and creds == "missing" {
+    err("ludic release: no credentials: set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or pass --key-id and --secret\n")
+    return 1
+  }
+  var key = flag_key
+  var secret = flag_secret
+  if creds == "env" {
+    key = getenv_or("AWS_ACCESS_KEY_ID", "")
+    secret = getenv_or("AWS_SECRET_ACCESS_KEY", "")
+  }
+  # the real commands read the credentials from the environment of the step, never spelled out
+  let real = grel_plan(m, os, false)
+  grel_print_plan(plan, false)
+  # `dotnet tool install -g vpk` puts it in ~/.dotnet/tools, often not on PATH; after the rest of PATH,
+  # so a vpk the person put on PATH is the one that runs
+  let envp = `export PATH="$PATH:$HOME/.dotnet/tools"; `
+  var i = 0
+  while i < len(real.steps) {
+    let st = real.steps[i]
+    print("")
+    print(`== {st.id}: {st.title}`)
+    # exported, then read back by the command's own "$LUDIC_REL_KEY": the credentials live in the
+    # step's environment and not in anything printed
+    var pre = envp
+    if st.secrets { pre = `export LUDIC_REL_KEY={sh_single(key)} LUDIC_REL_SECRET={sh_single(secret)}; {envp}` }
+    if not shq(`( {pre}{st.cmd} )`) {
+      if st.optional {
+        print(`   ({st.id} did not succeed; continuing)`)
+      } else {
+        err(`ludic release: the {st.id} step failed; stopping\n`)
+        return 1
+      }
+    }
+    i += 1
+  }
+  print("")
+  print(`released {plan.pack_id} {plan.version} ({os}) in {plan.out_dir}`)
+  return 0
+}

@@ -60,7 +60,8 @@ ludic run            # compiles src/main.ludic and opens a native window
 ```
 
 `ludic new` writes a manifest, a program that already moves something on screen,
-and a test. `ludic build` stops at the binary; `ludic bundle` goes on to the
+and a test. `ludic templates` lists the other starters (`third-person`, `first-person`,
+`2d-platformer`, `top-down`); `ludic new mygame --template top-down` copies one. `ludic build` stops at the binary; `ludic bundle` goes on to the
 thing you can actually give someone. Rendering is deterministic, so a frame can
 be produced without a window, which is what CI diffs:
 
