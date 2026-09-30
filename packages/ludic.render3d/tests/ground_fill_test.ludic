@@ -25,6 +25,10 @@ program GroundFillTest {
     }
   }
 
+  test "the golden is one JSON object, every section in it and nothing after it" {
+    expect_eq(gft_golden_fault(Fs.read_text("packages/ludic.render3d/tests/ground_fill_golden.json")), "")
+  }
+
   test "Math.lerp is a + (b - a) * t" {
     let a = [1.0, 2.0, 6.04, -2.19]
     let b = [1.7, 7.0, 1.72, 3.62]

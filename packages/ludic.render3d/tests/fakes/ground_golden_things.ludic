@@ -37,7 +37,7 @@ function gg_cover_json(render3d_st: mut Render3dState) -> string {
       s = s + `    [{c.cell}, {gg_thing(c)}]`
     }
   }
-  return s + "\n  ]}},\n"
+  return s + "\n  ]},\n"
 }
 
 # the solid layer's things: [id, cell, x, z, scale, yaw, seed, wind, drawn at band 2]
@@ -53,7 +53,7 @@ function gg_solid_json(render3d_st: mut Render3dState) -> string {
     if k > 0 { s = s + ",\n" }
     s = s + `    [{c.id}, {c.cell}, {gg_thing(c)}, {far}]`
   }
-  return s + "\n  ]}}\n"
+  return s + "\n  ]}\n"
 }
 
 # the whole golden, as ground_fill_golden.json holds it

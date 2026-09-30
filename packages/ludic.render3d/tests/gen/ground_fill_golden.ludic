@@ -1,6 +1,12 @@
 # gen/ground_fill_golden.ludic - writes tests/ground_fill_golden.json from what ground_fill grows today. Run it
 # from the repository root after a deliberate change to the fill, and commit the file with the change.
 import "ludic.render3d/r3d.ludic"
+
+# Past the patch (tx0 .. tx0 + w - 1, all the chunk reads) an empty tile reads 0 for R and G, never its neighbour;
+# only a texel past the map's edge clamps to the edge texel (gd_texel, gd_fill), and a missing channel reads 128.
+
+# Several clearings MULTIPLY (ground_clear_at), in the order handed over: each floor..1, 1 past r_out, floor
+# clamped to 0..1, at most GD_CLEAR_MAX (32); a layer with trample multiplies its chance by the product.
 program GroundFillGolden {
   numbers float
   import "../fakes/ground_golden.ludic"
