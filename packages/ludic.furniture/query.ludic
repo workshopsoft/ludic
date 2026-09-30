@@ -1,0 +1,110 @@
+# query.ludic - what is in an instance: the pieces placed, the stock, and what is at a point
+
+export function furniture_count(furniture_st: FurnitureState, instance: string) -> int {
+  let r = furn__find_room(furniture_st, instance)
+  if r == null { return 0 }
+  return len(r.items)
+}
+
+# the id of the i-th piece placed
+export function furniture_id_at(furniture_st: FurnitureState, instance: string, i: int) -> int {
+  let r = furn__find_room(furniture_st, instance)
+  if r == null or i < 0 or i >= len(r.items) { return -1 }
+  return r.items[i].id
+}
+
+function furn__get(furniture_st: FurnitureState, instance: string, id: int) -> FurnPlaced {
+  let r = furn__find_room(furniture_st, instance)
+  if r == null { return null }
+  return furn__placed(r, id)
+}
+
+export function furniture_has(furniture_st: FurnitureState, instance: string, id: int) -> bool { return furn__get(furniture_st, instance, id) != null }
+
+export function furniture_item_of(furniture_st: FurnitureState, instance: string, id: int) -> int {
+  let p = furn__get(furniture_st, instance, id)
+  if p == null { return -1 }
+  return p.item
+}
+
+export function furniture_x(furniture_st: FurnitureState, instance: string, id: int) -> float {
+  let p = furn__get(furniture_st, instance, id)
+  if p == null { return 0.0 }
+  return p.x
+}
+
+export function furniture_y(furniture_st: FurnitureState, instance: string, id: int) -> float {
+  let p = furn__get(furniture_st, instance, id)
+  if p == null { return 0.0 }
+  return p.y
+}
+
+export function furniture_z(furniture_st: FurnitureState, instance: string, id: int) -> float {
+  let p = furn__get(furniture_st, instance, id)
+  if p == null { return 0.0 }
+  return p.z
+}
+
+export function furniture_yaw(furniture_st: FurnitureState, instance: string, id: int) -> float {
+  let p = furn__get(furniture_st, instance, id)
+  if p == null { return 0.0 }
+  return p.yaw
+}
+
+# what a piece stands on (-1: the floor, a wall, the ceiling)
+export function furniture_parent(furniture_st: FurnitureState, instance: string, id: int) -> int {
+  let p = furn__get(furniture_st, instance, id)
+  if p == null { return -1 }
+  return p.parent
+}
+
+# how many of a kind are owned and not placed
+export function furniture_stock(furniture_st: FurnitureState, instance: string, item: int) -> int {
+  let r = furn__find_room(furniture_st, instance)
+  if r == null or not furn__item_ok(item) or item >= len(r.stock) { return 0 }
+  return r.stock[item]
+}
+
+# how many of a kind are placed
+export function furniture_placed_of(furniture_st: FurnitureState, instance: string, item: int) -> int {
+  let r = furn__find_room(furniture_st, instance)
+  if r == null { return 0 }
+  var n = 0
+  for i in 0 .. len(r.items) { if r.items[i].item == item { n += 1 } }
+  return n
+}
+
+# the topmost piece whose footprint holds the point (x, z) - what a cursor picks - or -1
+export function furniture_pick(furniture_st: FurnitureState, instance: string, x: float, z: float) -> int {
+  let r = furn__find_room(furniture_st, instance)
+  if r == null { return -1 }
+  let cell = furn__cell(instance)
+  var best = -1
+  var top = -1000000.0
+  for i in 0 .. len(r.items) {
+    let p = r.items[i]
+    let t = p.y + FurnitureItems[p.item].h
+    if t > top and furn__contains(p.x, p.z, furn__w(p.item, cell), furn__d(p.item, cell), p.yaw, x, z) {
+      top = t
+      best = p.id
+    }
+  }
+  return best
+}
+
+# the instances there are a record of, and the n-th one's key
+export function furniture_instances(furniture_st: FurnitureState) -> int { return len(furniture_st.furn__rooms) }
+export function furniture_instance_at(furniture_st: FurnitureState, i: int) -> string {
+  if i < 0 or i >= len(furniture_st.furn__rooms) { return "" }
+  return furniture_st.furn__rooms[i].key
+}
+
+# an instance's record dropped (the property was sold, the session ended)
+export function furniture_forget(furniture_st: mut FurnitureState, instance: string) -> void {
+  for i in 0 .. len(furniture_st.furn__rooms) {
+    if furniture_st.furn__rooms[i].key == instance {
+      List.remove_at(furniture_st.furn__rooms, i)
+      return
+    }
+  }
+}

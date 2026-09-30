@@ -1,0 +1,158 @@
+# state.ludic - the ports, the codes, the facts, and what is kept per instance
+
+# what furniture asks the world about an instance (a string the game gives: one interior). Unbound: a room 10 m
+# by 10 m at the origin, free placement, a floor at 0 and a ceiling at 3 m, nothing in the way, a budget of 100,
+# anyone may edit, this machine is the host - and no wall is there to hang anything on
+export port FurnitureWorld {
+  room: fn(string, int) -> float = fn furn__room        # (instance, 0 min x, 1 min z, 2 max x, 3 max z): the floor's extent
+  cell: fn(string) -> float = fn furn__free_cell         # the grid's size in metres; 0 is free placement
+  floor_y: fn(string, float, float) -> float = fn furn__floor_zero
+  ceiling_y: fn(string, float, float) -> float = fn furn__ceiling_three
+  wall_ok: fn(string, float, float, float, float) -> bool = fn furn__no_wall   # (instance, x, z, yaw, width): a wall to hang on there?
+  blocked: fn(string, float, float, float, float, float, float, float) -> bool = fn furn__clear   # (instance, x, y, z, w, d, h, yaw): the world's own geometry in the way?
+  budget: fn(string) -> int = fn furn__budget_hundred
+  may_edit: fn(string, int) -> bool = fn furn__anyone     # (instance, player)
+  is_host: fn() -> bool = fn furn__host
+}
+function furn__room(instance: string, which: int) -> float {
+  if which == 0 or which == 1 { return 0.0 }
+  return 10.0
+}
+function furn__free_cell(instance: string) -> float { return 0.0 }
+function furn__floor_zero(instance: string, x: float, z: float) -> float { return 0.0 }
+function furn__ceiling_three(instance: string, x: float, z: float) -> float { return 3.0 }
+function furn__no_wall(instance: string, x: float, z: float, yaw: float, width: float) -> bool { return false }
+function furn__clear(instance: string, x: float, y: float, z: float, w: float, d: float, h: float, yaw: float) -> bool { return false }
+function furn__budget_hundred(instance: string) -> int { return 100 }
+function furn__anyone(instance: string, player: int) -> bool { return true }
+function furn__host() -> bool { return true }
+
+# the money: spent buying and earned selling back. A game that buys or sells binds it
+export port FurniturePurse {
+  spend: fn(int, int) -> bool          # (player, amount): false when the money is not there
+  earn: fn(int, int) -> void
+}
+
+# why a verb said no (FURN_OK when it did not)
+export const FURN_OK: int = 0
+export const FURN_NO_ITEM: int = 1        # no such kind, or no such placed piece
+export const FURN_HOST: int = 2           # not the host
+export const FURN_EDIT: int = 3           # the world does not let this player edit this instance
+export const FURN_STOCK: int = 4          # none of that kind is owned and unplaced
+export const FURN_BOUNDS: int = 5         # outside the room
+export const FURN_COLLIDES: int = 6       # into other furniture
+export const FURN_WORLD: int = 7          # into the world's own geometry
+export const FURN_BUDGET: int = 8         # past the instance's budget
+export const FURN_RULE: int = 9           # breaks its placement rule: no wall, no surface under it, off the ceiling
+export const FURN_LIMIT: int = 10         # its category is full
+export const FURN_MONEY: int = 11         # the money is not there
+
+export const FURN_PLACED: int = 0
+export const FURN_MOVED: int = 1
+export const FURN_ROTATED: int = 2
+export const FURN_REMOVED: int = 3        # back to stock
+export const FURN_BOUGHT: int = 4         # into stock (amount = how many, x = what they cost)
+export const FURN_SOLD: int = 5           # out of stock (amount, x = what was paid back)
+export const FURN_GIVEN: int = 6          # into stock, free
+export const FURN_REFUSED: int = 7        # a verb said no (code = why)
+
+export property FurnFact {
+  what: int = 0
+  instance: string = ""
+  player: int = -1
+  id: int = -1
+  item: int = -1
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  amount: int = 0
+  code: int = 0
+}
+
+# one piece placed: a stable id, its kind, where (y is its base), and the id of what it stands on (-1: nothing)
+export property FurnPlaced {
+  id: int = 0
+  item: int = 0
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  parent: int = -1
+}
+
+# an instance: what is owned and not placed (per kind), and what is placed
+export property FurnRoom {
+  key: string = ""
+  stock: []int = null
+  items: []FurnPlaced = null
+  next_id: int = 1
+}
+
+export state FurnitureState {
+  furn__rooms: []FurnRoom = new []FurnRoom
+  furn__why: int = 0
+  furn__ids: []int = new []int          # a scratch list: the pieces a move or a turn carries
+  furn__pose: FurnPose = new FurnPose    # the pose the last check found: where a ghost of the piece would stand
+  furn__at: FurnPose = new FurnPose      # a carried piece's pose, while a move or a turn is worked out
+  furn__facts: Queue<FurnFact> = furn__facts__new()
+}
+function furn__facts__new() -> Queue<FurnFact> { return queue_new("furniture.facts") }
+
+export function furniture_facts(furniture_st: FurnitureState) -> Queue<FurnFact> { return furniture_st.furn__facts }
+
+@alloc_ok("past the ring: more facts in a frame than its records, then kept in it")
+function furn__fact(furniture_st: mut FurnitureState, what: int, instance: string) -> FurnFact {
+  var f = q_rec(furniture_st.furn__facts)
+  if f == null {
+    f = new FurnFact
+    q_ring_add(furniture_st.furn__facts, f)
+  }
+  f.what = what
+  f.instance = instance
+  f.player = -1
+  f.id = -1
+  f.item = -1
+  f.x = 0.0
+  f.y = 0.0
+  f.z = 0.0
+  f.yaw = 0.0
+  f.amount = 0
+  f.code = 0
+  q_push(furniture_st.furn__facts, f)
+  return f
+}
+
+# a verb's answer: why it said no (or FURN_OK), kept for `furniture_why`, and a fact when it was a no
+function furn__say(furniture_st: mut FurnitureState, instance: string, player: int, code: int) -> void {
+  furniture_st.furn__why = code
+  if code == FURN_OK { return }
+  let f = furn__fact(furniture_st, FURN_REFUSED, instance)
+  f.player = player
+  f.code = code
+}
+
+export function furniture_why(furniture_st: FurnitureState) -> int { return furniture_st.furn__why }
+
+function furn__item_ok(item: int) -> bool { return item >= 0 and item < FURN_COUNT }
+
+function furn__find_room(furniture_st: FurnitureState, instance: string) -> FurnRoom {
+  for i in 0 .. len(furniture_st.furn__rooms) {
+    if furniture_st.furn__rooms[i].key == instance { return furniture_st.furn__rooms[i] }
+  }
+  return null
+}
+
+@alloc_ok("an instance's first record, made once and kept")
+function furn__room_of(furniture_st: mut FurnitureState, instance: string) -> FurnRoom {
+  var r = furn__find_room(furniture_st, instance)
+  if r == null {
+    r = new FurnRoom
+    r.key = instance
+    r.stock = new []int
+    r.items = new []FurnPlaced
+    push(furniture_st.furn__rooms, r)
+  }
+  while len(r.stock) < FURN_COUNT { push(r.stock, 0) }
+  return r
+}

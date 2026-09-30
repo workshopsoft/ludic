@@ -1,0 +1,80 @@
+# system.ludic - furniture as a system: a reset, and its own save section. An instance is saved under the key the
+# game gave it: its stock per kind, and each piece placed as [id, kind, x, y, z, yaw, parent] (floats in thousandths)
+
+export function furniture_reset(furniture_st: mut FurnitureState) -> void {
+  List.clear(furniture_st.furn__rooms)
+  List.clear(furniture_st.furn__ids)
+  furniture_st.furn__why = FURN_OK
+  q_clear(furniture_st.furn__facts)
+}
+
+function furn__thousandths(f: float) -> int { return int(Math.floor(f * 1000.0 + 0.5)) }
+
+export function furniture_save(furniture_st: FurnitureState) -> Val {
+  let v = Value.object()
+  let list = Value.list()
+  for i in 0 .. len(furniture_st.furn__rooms) {
+    let r = furniture_st.furn__rooms[i]
+    let o = Value.object()
+    sv_put_str(o, "key", r.key)
+    sv_put_int(o, "next", r.next_id)
+    sv_put_ints(o, "stock", r.stock)
+    let flat = new []int
+    for k in 0 .. len(r.items) {
+      let p = r.items[k]
+      push(flat, p.id)
+      push(flat, p.item)
+      push(flat, furn__thousandths(p.x))
+      push(flat, furn__thousandths(p.y))
+      push(flat, furn__thousandths(p.z))
+      push(flat, furn__thousandths(p.yaw))
+      push(flat, p.parent)
+    }
+    sv_put_ints(o, "items", flat)
+    Value.add(list, o)
+  }
+  Value.put(v, "rooms", list)
+  return v
+}
+
+@alloc_ok("on load: the pieces of a save read back")
+export function furniture_load(furniture_st: mut FurnitureState, v: Val, version: int) -> void {
+  furniture_reset(furniture_st)
+  if v == null or Value.kind(v) != 6 or Value.has(v, "rooms") == 0 { return }
+  let list = Value.get(v, "rooms")
+  for i in 0 .. Value.count(list) {
+    let o = Value.at(list, i)
+    let key = sv_str(o, "key", "")
+    if key == "" { continue }
+    let r = furn__room_of(furniture_st, key)
+    r.next_id = sv_int(o, "next", 1)
+    let stock = sv_ints(o, "stock")
+    for k in 0 .. Math.min(len(stock), FURN_COUNT) { r.stock[k] = stock[k] }
+    let flat = sv_ints(o, "items")
+    var at = 0
+    while at + 6 < len(flat) {
+      if flat[at + 1] >= 0 and flat[at + 1] < FURN_COUNT {
+        let p = new FurnPlaced
+        p.id = flat[at]
+        p.item = flat[at + 1]
+        p.x = float(flat[at + 2]) / 1000.0
+        p.y = float(flat[at + 3]) / 1000.0
+        p.z = float(flat[at + 4]) / 1000.0
+        p.yaw = float(flat[at + 5]) / 1000.0
+        p.parent = flat[at + 6]
+        push(r.items, p)
+        if p.id >= r.next_id { r.next_id = p.id + 1 }
+      }
+      at += 7
+    }
+  }
+}
+
+export function furniture_system() -> System {
+  let s = system_new("furniture", PH_COMMIT)
+  s.version = 1
+  s.reset = fn furniture_reset
+  s.save = fn furniture_save
+  s.load = fn furniture_load
+  return s
+}

@@ -1,0 +1,6 @@
+# ludic.furniture - player housing interiors: furniture as rows, placement in an instance the game keys
+# (a grid or free) validated against bounds, other furniture, the world's own geometry and a per-instance
+# budget, stock bought and kept, saved per instance key. Uses ludic.base and nothing else. See README.md.
+package "ludic.furniture"
+version "0.1.0"
+kind source

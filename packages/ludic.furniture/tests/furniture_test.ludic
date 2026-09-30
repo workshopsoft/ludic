@@ -1,0 +1,338 @@
+# furniture_test.ludic - an instance the world describes (a 6 m room, a pillar, a wall along two sides, a budget):
+# buying into stock and placing out of it, every rule of placement (bounds, other furniture by true shape, the
+# world's geometry, the wall, the ceiling, a surface, category and budget), moving and turning what carries
+# things, removal, selling, who may edit, a grid, and the save per instance key
+import "ludic.furniture"
+import "ludic.base"
+program FurnitureTest {
+  numbers float
+
+  state FurnTestState {
+    host: bool = true
+    money: int = 100000
+    cell: float = 0.0
+    ceil: float = 3.0
+    budget: int = 100
+    pillar: bool = true
+    earned: int = 0
+  }
+
+  function f_room(furn_test_st: FurnTestState, instance: string, which: int) -> float {
+    if which == 0 or which == 1 { return 0.0 }
+    if instance == "small" { return 3.0 }
+    return 6.0
+  }
+  function f_cell(furn_test_st: FurnTestState, instance: string) -> float { return furn_test_st.cell }
+  function f_ceiling(furn_test_st: FurnTestState, instance: string, x: float, z: float) -> float { return furn_test_st.ceil }
+  function f_wall(instance: string, x: float, z: float, yaw: float, width: float) -> bool { return x < 0.3 or z < 0.3 }
+  function f_blocked(furn_test_st: FurnTestState, instance: string, x: float, y: float, z: float, w: float, d: float, h: float, yaw: float) -> bool {
+    if not furn_test_st.pillar { return false }
+    return x + w * 0.5 > 5.0 and z + d * 0.5 > 5.0          # a pillar in the far corner, floor to ceiling
+  }
+  function f_budget(furn_test_st: FurnTestState, instance: string) -> int { return furn_test_st.budget }
+  function f_edit(instance: string, player: int) -> bool { return player != 9 }
+  function f_host(furn_test_st: FurnTestState) -> bool { return furn_test_st.host }
+  function p_spend(furn_test_st: mut FurnTestState, player: int, n: int) -> bool {
+    if n > furn_test_st.money { return false }
+    furn_test_st.money -= n
+    return true
+  }
+  function p_earn(furn_test_st: mut FurnTestState, player: int, n: int) -> void {
+    furn_test_st.money += n
+    furn_test_st.earned += n
+  }
+  bind FurnitureWorld { room: fn f_room, cell: fn f_cell, ceiling_y: fn f_ceiling, wall_ok: fn f_wall, blocked: fn f_blocked, budget: fn f_budget, may_edit: fn f_edit, is_host: fn f_host }
+  bind FurniturePurse { spend: fn p_spend, earn: fn p_earn }
+
+  def FurnitureCategories seating { limit: 3 }
+  def FurnitureCategories decor { }
+  def FurnitureItems from "furniture.lres"
+
+  # an instance with a couple of everything owned
+  function stocked(furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState, instance: string) -> void {
+    furniture_reset(furniture_st)
+    furn_test_st.host = true
+    furn_test_st.cell = 0.0
+    furn_test_st.ceil = 3.0
+    furn_test_st.budget = 100
+    furn_test_st.pillar = true
+    for it in 0 .. FURN_COUNT { furniture_give(furniture_st, instance, it, 4) }
+    q_clear(furniture_facts(furniture_st))
+  }
+
+  function near(a: float, b: float) -> bool { return Math.abs(a - b) < 0.002 }
+
+  test "buying puts a kind in the stock and placing takes one out; nothing is placed that is not owned" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    furniture_reset(furniture_st)
+    expect_eq(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 2.0, 0.0, 2.0, 0.0), -1)
+    expect_eq(furniture_why(furniture_st), FURN_STOCK)
+    q_clear(furniture_facts(furniture_st))
+    expect(furniture_buy(furniture_st, 1, "home", FURN_CHAIR, 2))
+    expect_eq(furn_test_st.money, 100000 - 200)
+    expect_eq(furniture_stock(furniture_st, "home", FURN_CHAIR), 2)
+    let id = furniture_place(furniture_st, 1, "home", FURN_CHAIR, 2.0, 0.0, 2.0, 0.0)
+    expect(id >= 0)
+    expect_eq(furniture_why(furniture_st), FURN_OK)
+    expect_eq(furniture_stock(furniture_st, "home", FURN_CHAIR), 1)
+    expect_eq(furniture_count(furniture_st, "home"), 1)
+    expect_eq(furniture_item_of(furniture_st, "home", id), FURN_CHAIR)
+    expect(near(furniture_x(furniture_st, "home", id), 2.0) and near(furniture_z(furniture_st, "home", id), 2.0))
+    expect(furniture_has(furniture_st, "home", id))
+    expect_eq(furniture_stock(furniture_st, "elsewhere", FURN_CHAIR), 0)             # instances are apart
+    let fs = q_drain(furniture_facts(furniture_st))
+    expect_eq(fs[0].what, FURN_BOUGHT)
+    expect_eq(fs[0].amount, 2)
+    expect(fs[0].x == 200.0)
+    expect_eq(fs[len(fs) - 1].what, FURN_PLACED)
+    expect(not furniture_buy(furniture_st, 1, "home", FURN_CHAIR, 0))
+    furn_test_st.money = 50
+    expect(not furniture_buy(furniture_st, 1, "home", FURN_SOFA, 1))
+    expect_eq(furniture_why(furniture_st), FURN_MONEY)
+    expect_eq(furn_test_st.money, 50)
+    furn_test_st.money = 100000
+  }
+
+  test "a piece has to be inside the room, and may touch its edge" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    expect_eq(furniture_check(furniture_st, "home", FURN_CHAIR, -1.0, 0.0, 3.0, 0.0), FURN_BOUNDS)
+    expect_eq(furniture_check(furniture_st, "home", FURN_CHAIR, 0.2, 0.0, 3.0, 0.0), FURN_BOUNDS)      # half of it out
+    expect_eq(furniture_check(furniture_st, "home", FURN_CHAIR, 0.25, 0.0, 3.0, 0.0), FURN_OK)        # just touching
+    expect_eq(furniture_check(furniture_st, "home", FURN_SOFA, 3.0, 0.0, 0.3, 0.0), FURN_BOUNDS)       # 0.9 deep, turned 0
+    expect_eq(furniture_check(furniture_st, "home", FURN_SOFA, 3.0, 0.0, 0.45, 0.0), FURN_OK)
+    expect_eq(furniture_check(furniture_st, "home", FURN_SOFA, 0.45, 0.0, 3.0, 90.0), FURN_OK)        # turned: 0.9 across
+    expect_eq(furniture_check(furniture_st, "home", FURN_SOFA, 0.3, 0.0, 3.0, 90.0), FURN_BOUNDS)
+    expect_eq(furniture_check(furniture_st, "small", FURN_SOFA, 2.8, 0.0, 1.0, 0.0), FURN_BOUNDS)      # another instance, another room
+    expect_eq(furniture_check(furniture_st, "home", 99, 1.0, 0.0, 1.0, 0.0), FURN_NO_ITEM)
+    expect_eq(furniture_place(furniture_st, 1, "home", FURN_CHAIR, -1.0, 0.0, 3.0, 0.0), -1)
+    expect_eq(furniture_why(furniture_st), FURN_BOUNDS)
+    expect_eq(furniture_count(furniture_st, "home"), 0)
+  }
+
+  test "furniture does not go into furniture - by its true shape, turned or not" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    expect(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 2.0, 0.0, 2.0, 0.0) >= 0)
+    expect_eq(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 2.3, 0.0, 2.0, 0.0), -1)
+    expect_eq(furniture_why(furniture_st), FURN_COLLIDES)
+    expect(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 2.5, 0.0, 2.0, 0.0) >= 0)          # touching is not in
+    expect(furniture_place(furniture_st, 1, "home", FURN_STATUE, 4.0, 0.0, 3.0, 0.0) >= 0)
+    expect_eq(furniture_check(furniture_st, "home", FURN_STATUE, 4.6, 0.0, 3.6, 45.0), FURN_OK)      # its corner points at the other's: clear, though their boxes cross
+    expect_eq(furniture_check(furniture_st, "home", FURN_STATUE, 4.5, 0.0, 3.5, 45.0), FURN_COLLIDES)
+    expect(near(furniture_pose_yaw(furniture_st), 45.0))                                          # a statue turns to any angle
+    expect_eq(furniture_check(furniture_st, "home", FURN_SOFA, 3.0, 0.0, 4.5, 37.0), FURN_OK)       # a sofa keeps to quarter turns
+    expect(near(furniture_pose_yaw(furniture_st), 0.0))
+  }
+
+  test "the world's own geometry is asked, and a wall piece needs a wall" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    expect_eq(furniture_check(furniture_st, "home", FURN_CHAIR, 5.5, 0.0, 5.5, 0.0), FURN_WORLD)     # the pillar
+    furn_test_st.pillar = false
+    expect_eq(furniture_check(furniture_st, "home", FURN_CHAIR, 5.5, 0.0, 5.5, 0.0), FURN_OK)
+    expect_eq(furniture_check(furniture_st, "home", FURN_PICTURE, 3.0, 1.5, 3.0, 0.0), FURN_RULE)    # no wall there
+    expect_eq(furniture_check(furniture_st, "home", FURN_PICTURE, 0.1, 1.5, 3.0, 90.0), FURN_OK)
+    expect(near(furniture_pose_y(furniture_st), 1.5))
+    expect_eq(furniture_check(furniture_st, "home", FURN_PICTURE, 0.1, 5.0, 3.0, 90.0), FURN_OK)
+    expect(near(furniture_pose_y(furniture_st), 2.4))                                              # kept under the ceiling
+    expect_eq(furniture_check(furniture_st, "home", FURN_PICTURE, 0.1, -2.0, 3.0, 90.0), FURN_OK)
+    expect(near(furniture_pose_y(furniture_st), 0.0))                                              # and over the floor
+    expect(furniture_place(furniture_st, 1, "home", FURN_SOFA, 1.0, 0.0, 3.0, 0.0) >= 0)
+    expect_eq(furniture_check(furniture_st, "home", FURN_PICTURE, 0.1, 1.0, 3.0, 90.0), FURN_OK)    # a picture above a sofa's top, the wall beside it
+    expect(furniture_place(furniture_st, 1, "home", FURN_PICTURE, 1.0, 0.85, 0.1, 0.0) >= 0)
+    expect_eq(furniture_check(furniture_st, "home", FURN_PICTURE, 1.0, 0.85, 0.1, 0.0), FURN_COLLIDES)  # not through another picture
+  }
+
+  test "a ceiling piece hangs from the ceiling the world says is there" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    let id = furniture_place(furniture_st, 1, "home", FURN_CHANDELIER, 3.0, 0.0, 3.0, 0.0)
+    expect(id >= 0)
+    expect(near(furniture_y(furniture_st, "home", id), 2.5))
+    furn_test_st.ceil = 0.4                                                                      # lower than the piece is tall
+    expect_eq(furniture_check(furniture_st, "home", FURN_CHANDELIER, 1.0, 0.0, 1.0, 0.0), FURN_RULE)
+    furn_test_st.ceil = 2.0
+    expect_eq(furniture_check(furniture_st, "home", FURN_CHAIR, 3.0, 0.0, 3.0, 0.0), FURN_OK)       # under a chandelier: nothing meets it
+    expect(furniture_place(furniture_st, 1, "home", FURN_STATUE, 3.0, 0.0, 3.0, 0.0) >= 0)
+    furn_test_st.ceil = 3.0
+    expect_eq(furniture_check(furniture_st, "home", FURN_CHANDELIER, 3.0, 0.0, 3.0, 0.0), FURN_COLLIDES)   # into the one already there
+  }
+
+  test "a surface piece stands on a stackable one, at its height, and only fully on it" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    expect_eq(furniture_check(furniture_st, "home", FURN_LAMP, 3.0, 0.0, 3.0, 0.0), FURN_RULE)       # nothing to stand on
+    let table = furniture_place(furniture_st, 1, "home", FURN_TABLE, 3.0, 0.0, 3.0, 0.0)
+    let lamp = furniture_place(furniture_st, 1, "home", FURN_LAMP, 3.5, 0.0, 3.0, 0.0)
+    expect(lamp >= 0)
+    expect_eq(furniture_parent(furniture_st, "home", lamp), table)
+    expect(near(furniture_y(furniture_st, "home", lamp), 0.8))
+    expect_eq(furniture_check(furniture_st, "home", FURN_LAMP, 3.5, 0.0, 3.0, 0.0), FURN_COLLIDES)    # the same spot of the same surface
+    expect_eq(furniture_check(furniture_st, "home", FURN_LAMP, 3.8, 0.0, 3.0, 0.0), FURN_OK)          # its far edge: 3.95 of a table that ends at 4.0
+    expect_eq(furniture_check(furniture_st, "home", FURN_LAMP, 3.9, 0.0, 3.0, 0.0), FURN_RULE)        # past the edge
+    expect_eq(furniture_check(furniture_st, "home", FURN_CHAIR, 3.0, 0.0, 3.0, 0.0), FURN_COLLIDES)   # a floor piece cannot go through the table
+    expect(furniture_stock(furniture_st, "home", FURN_LAMP) == 3)
+    expect_eq(furniture_pick(furniture_st, "home", 3.5, 3.0), lamp)                                 # the topmost at a point
+    expect_eq(furniture_pick(furniture_st, "home", 2.5, 3.0), table)
+    expect_eq(furniture_pick(furniture_st, "home", 1.0, 1.0), -1)
+  }
+
+  test "a category is full at its limit, and the budget counts what is placed" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    expect(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 1.0, 0.0, 1.0, 0.0) >= 0)
+    expect(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 2.0, 0.0, 1.0, 0.0) >= 0)
+    expect(furniture_place(furniture_st, 1, "home", FURN_SOFA, 4.0, 0.0, 1.0, 0.0) >= 0)
+    expect_eq(furniture_category_count(furniture_st, "home", FCAT_SEATING), 3)
+    expect_eq(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 3.0, 0.0, 3.0, 0.0), -1)
+    expect_eq(furniture_why(furniture_st), FURN_LIMIT)
+    expect_eq(furniture_budget_used(furniture_st, "home"), 5)
+    furn_test_st.budget = 7
+    expect_eq(furniture_budget_left(furniture_st, "home"), 2)
+    expect(furniture_place(furniture_st, 1, "home", FURN_TABLE, 3.0, 0.0, 4.0, 0.0) >= 0)             # cost 2: exactly what is left
+    expect_eq(furniture_place(furniture_st, 1, "home", FURN_STATUE, 1.0, 0.0, 5.0, 0.0), -1)
+    expect_eq(furniture_why(furniture_st), FURN_BUDGET)
+    expect_eq(furniture_budget_left(furniture_st, "home"), 0)
+  }
+
+  test "a piece moves where it fits and stays put where it does not" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    let a = furniture_place(furniture_st, 1, "home", FURN_CHAIR, 1.0, 0.0, 1.0, 0.0)
+    let b = furniture_place(furniture_st, 1, "home", FURN_CHAIR, 2.0, 0.0, 1.0, 0.0)
+    q_clear(furniture_facts(furniture_st))
+    expect(furniture_move(furniture_st, 1, "home", a, 1.0, 0.0, 3.0))
+    expect(near(furniture_z(furniture_st, "home", a), 3.0))
+    expect_eq(q_drain(furniture_facts(furniture_st))[0].what, FURN_MOVED)
+    expect(not furniture_move(furniture_st, 1, "home", a, 2.2, 0.0, 1.0))                           # onto b
+    expect_eq(furniture_why(furniture_st), FURN_COLLIDES)
+    expect(near(furniture_x(furniture_st, "home", a), 1.0))
+    expect(furniture_move(furniture_st, 1, "home", b, 2.0, 0.0, 1.0))                                # onto itself is fine
+    expect(not furniture_move(furniture_st, 1, "home", b, -3.0, 0.0, 1.0))
+    expect_eq(furniture_why(furniture_st), FURN_BOUNDS)
+    expect(not furniture_move(furniture_st, 1, "home", 999, 1.0, 0.0, 1.0))
+    expect_eq(furniture_why(furniture_st), FURN_NO_ITEM)
+  }
+
+  test "moving a table takes what stands on it along, or refuses the whole move" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    let table = furniture_place(furniture_st, 1, "home", FURN_TABLE, 2.0, 0.0, 2.0, 0.0)
+    let lamp = furniture_place(furniture_st, 1, "home", FURN_LAMP, 2.5, 0.0, 2.0, 0.0)
+    expect(furniture_move(furniture_st, 1, "home", table, 2.0, 0.0, 4.0))
+    expect(near(furniture_z(furniture_st, "home", lamp), 4.0) and near(furniture_x(furniture_st, "home", lamp), 2.5))
+    expect(near(furniture_y(furniture_st, "home", lamp), 0.8))
+    expect_eq(furniture_parent(furniture_st, "home", lamp), table)
+    expect(not furniture_move(furniture_st, 1, "home", table, 4.5, 0.0, 5.2))                      # the table clears the pillar, the lamp does not
+    expect_eq(furniture_why(furniture_st), FURN_WORLD)
+    expect(near(furniture_x(furniture_st, "home", table), 2.0) and near(furniture_x(furniture_st, "home", lamp), 2.5))
+  }
+
+  test "a turn snaps to the kind's turns and swings what stands on the piece round it" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    let table = furniture_place(furniture_st, 1, "home", FURN_TABLE, 3.0, 0.0, 3.0, 0.0)
+    let lamp = furniture_place(furniture_st, 1, "home", FURN_LAMP, 3.5, 0.0, 3.0, 0.0)
+    let chair = furniture_place(furniture_st, 1, "home", FURN_CHAIR, 3.0, 0.0, 3.75, 0.0)       # in the way of a quarter turn
+    expect(not furniture_rotate(furniture_st, 1, "home", table, 90.0))
+    expect_eq(furniture_why(furniture_st), FURN_COLLIDES)
+    expect(near(furniture_yaw(furniture_st, "home", table), 0.0) and near(furniture_x(furniture_st, "home", lamp), 3.5))
+    furniture_remove(furniture_st, 1, "home", chair)
+    expect(furniture_rotate(furniture_st, 1, "home", table, 90.0))
+    expect(near(furniture_yaw(furniture_st, "home", table), 90.0))
+    expect(near(furniture_x(furniture_st, "home", lamp), 3.0) and near(furniture_z(furniture_st, "home", lamp), 3.5))
+    expect(near(furniture_yaw(furniture_st, "home", lamp), 90.0))
+    expect(furniture_rotate(furniture_st, 1, "home", table, 30.0))                                  # 30 snaps to no turn at all
+    expect(near(furniture_yaw(furniture_st, "home", table), 90.0))
+    let s = furniture_place(furniture_st, 1, "home", FURN_STATUE, 1.0, 0.0, 1.0, 0.0)
+    expect(furniture_rotate(furniture_st, 1, "home", s, 33.0))
+    expect(near(furniture_yaw(furniture_st, "home", s), 33.0))
+  }
+
+  test "removing a piece puts it and what it carried back into stock" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    let table = furniture_place(furniture_st, 1, "home", FURN_TABLE, 3.0, 0.0, 3.0, 0.0)
+    furniture_place(furniture_st, 1, "home", FURN_LAMP, 3.5, 0.0, 3.0, 0.0)
+    furniture_place(furniture_st, 1, "home", FURN_LAMP, 2.5, 0.0, 3.0, 0.0)
+    furniture_place(furniture_st, 1, "home", FURN_CHAIR, 1.0, 0.0, 1.0, 0.0)
+    expect_eq(furniture_stock(furniture_st, "home", FURN_LAMP), 2)
+    q_clear(furniture_facts(furniture_st))
+    expect(furniture_remove(furniture_st, 1, "home", table))
+    expect_eq(furniture_count(furniture_st, "home"), 1)
+    expect_eq(furniture_stock(furniture_st, "home", FURN_LAMP), 4)
+    expect_eq(furniture_stock(furniture_st, "home", FURN_TABLE), 4)
+    expect_eq(len(q_drain(furniture_facts(furniture_st))), 3)
+    expect(not furniture_remove(furniture_st, 1, "home", table))
+    expect_eq(furniture_clear(furniture_st, 1, "home"), 1)
+    expect_eq(furniture_count(furniture_st, "home"), 0)
+    expect_eq(furniture_placed_of(furniture_st, "home", FURN_CHAIR), 0)
+  }
+
+  test "selling gives back a share of the price, only of what is in stock" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    furn_test_st.earned = 0
+    expect_eq(furniture_sell(furniture_st, 1, "home", FURN_SOFA, 10), 4)
+    expect_eq(furn_test_st.earned, 4 * 360)                                                        # 40 percent of 900
+    expect_eq(furniture_sell(furniture_st, 1, "home", FURN_SOFA, 1), 0)
+    expect_eq(furniture_why(furniture_st), FURN_STOCK)
+    expect_eq(furniture_sell(furniture_st, 1, "home", FURN_CHAIR, 1), 1)
+    expect_eq(furn_test_st.earned, 4 * 360 + 50)
+  }
+
+  test "only the host edits, and only for a player the world lets; a no is a fact" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    expect_eq(furniture_place(furniture_st, 9, "home", FURN_CHAIR, 1.0, 0.0, 1.0, 0.0), -1)
+    expect_eq(furniture_why(furniture_st), FURN_EDIT)
+    expect(not furniture_buy(furniture_st, 9, "home", FURN_CHAIR, 1))
+    furn_test_st.host = false
+    expect_eq(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 1.0, 0.0, 1.0, 0.0), -1)
+    expect_eq(furniture_why(furniture_st), FURN_HOST)
+    expect(not furniture_give(furniture_st, "home", FURN_CHAIR, 1))
+    let fs = q_drain(furniture_facts(furniture_st))
+    expect_eq(len(fs), 4)
+    expect_eq(fs[0].what, FURN_REFUSED)
+    expect_eq(fs[0].code, FURN_EDIT)
+    expect_eq(fs[2].code, FURN_HOST)
+    expect_eq(furniture_count(furniture_st, "home"), 0)
+    furn_test_st.host = true
+  }
+
+  test "on a grid a piece snaps to the cells, rounds its footprint up, and turns by quarters" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "home")
+    furn_test_st.cell = 0.5
+    expect_eq(furniture_check(furniture_st, "home", FURN_TABLE, 2.1, 0.0, 2.9, 0.0), FURN_OK)       # 2 x 1 m: four cells by two
+    expect(near(furniture_pose_x(furniture_st), 2.0) and near(furniture_pose_z(furniture_st), 3.0))
+    expect_eq(furniture_check(furniture_st, "home", FURN_TABLE, 2.4, 0.0, 2.6, 90.0), FURN_OK)      # turned: two cells by four
+    expect(near(furniture_pose_x(furniture_st), 2.5) and near(furniture_pose_z(furniture_st), 2.5))
+    expect_eq(furniture_check(furniture_st, "home", FURN_STATUE, 1.6, 0.0, 1.6, 50.0), FURN_OK)     # 0.6 is two cells of 0.5; any angle becomes a quarter
+    expect(near(furniture_pose_yaw(furniture_st), 90.0))
+    expect(near(furniture_pose_x(furniture_st), 1.5))
+    let a = furniture_place(furniture_st, 1, "home", FURN_CHAIR, 1.3, 0.0, 1.3, 0.0)
+    expect(a >= 0)
+    expect(near(furniture_x(furniture_st, "home", a), 1.25))
+    expect_eq(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 1.4, 0.0, 1.4, 0.0), -1)          # the same cell
+    expect_eq(furniture_why(furniture_st), FURN_COLLIDES)
+    expect(furniture_place(furniture_st, 1, "home", FURN_CHAIR, 1.8, 0.0, 1.3, 0.0) >= 0)            # the next one
+  }
+
+  test "a save keeps every instance apart, by its key, with stock, ids and poses" (furniture_st: mut FurnitureState, furn_test_st: mut FurnTestState) {
+    stocked(furniture_st, furn_test_st, "flat_4b")
+    furniture_give(furniture_st, "cabin", FURN_CHAIR, 2)
+    let table = furniture_place(furniture_st, 1, "flat_4b", FURN_TABLE, 3.0, 0.0, 3.0, 90.0)
+    let lamp = furniture_place(furniture_st, 1, "flat_4b", FURN_LAMP, 3.0, 0.0, 3.4, 0.0)
+    let chair = furniture_place(furniture_st, 1, "cabin", FURN_CHAIR, 1.0, 0.0, 1.0, 0.0)
+    let root = save_tree()
+    save_section(root, "furniture", 1, furniture_save(furniture_st))
+    let text = save_encode(root)
+    furniture_reset(furniture_st)
+    expect_eq(furniture_count(furniture_st, "flat_4b"), 0)
+    let n = load_section(save_decode(text), "furniture")
+    furniture_load(furniture_st, n.data, n.version)
+    expect_eq(furniture_instances(furniture_st), 2)
+    expect_eq(furniture_count(furniture_st, "flat_4b"), 2)
+    expect_eq(furniture_count(furniture_st, "cabin"), 1)
+    expect(furniture_instance_at(furniture_st, 0) == "flat_4b")
+    expect_eq(furniture_item_of(furniture_st, "flat_4b", lamp), FURN_LAMP)
+    expect_eq(furniture_parent(furniture_st, "flat_4b", lamp), table)
+    expect(near(furniture_yaw(furniture_st, "flat_4b", table), 90.0))
+    expect(near(furniture_z(furniture_st, "flat_4b", lamp), 3.4) and near(furniture_y(furniture_st, "flat_4b", lamp), 0.8))
+    expect_eq(furniture_stock(furniture_st, "flat_4b", FURN_TABLE), 3)
+    expect_eq(furniture_stock(furniture_st, "cabin", FURN_CHAIR), 1)
+    expect_eq(furniture_id_at(furniture_st, "cabin", 0), chair)
+    let again = furniture_place(furniture_st, 1, "cabin", FURN_CHAIR, 3.0, 0.0, 3.0, 0.0)
+    expect(again > chair)                                                                         # ids go on from where they were
+    furniture_forget(furniture_st, "cabin")
+    expect_eq(furniture_instances(furniture_st), 1)
+  }
+}

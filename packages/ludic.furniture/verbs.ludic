@@ -1,0 +1,290 @@
+# verbs.ludic - the only ways furniture changes: buy, give, sell (stock), place, move, rotate, remove. Each is
+# the host's and needs the world's leave for that player to edit that instance; each says why it refused
+# (`furniture_why`, and a FURN_REFUSED fact)
+
+# the host, and the world's leave
+function furn__gate(furniture_st: mut FurnitureState, instance: string, player: int) -> bool {
+  if not FurnitureWorld.is_host() {
+    furn__say(furniture_st, instance, player, FURN_HOST)
+    return false
+  }
+  if not FurnitureWorld.may_edit(instance, player) {
+    furn__say(furniture_st, instance, player, FURN_EDIT)
+    return false
+  }
+  return true
+}
+
+# `n` of a kind bought at its price into the instance's stock. False (and nothing spent) when the money is not there
+export function furniture_buy(furniture_st: mut FurnitureState, player: int, instance: string, item: int, n: int) -> bool {
+  if not furn__gate(furniture_st, instance, player) { return false }
+  if not furn__item_ok(item) or n <= 0 {
+    furn__say(furniture_st, instance, player, FURN_NO_ITEM)
+    return false
+  }
+  let cost = FurnitureItems[item].price * n
+  if not FurniturePurse.spend(player, cost) {
+    furn__say(furniture_st, instance, player, FURN_MONEY)
+    return false
+  }
+  let r = furn__room_of(furniture_st, instance)
+  r.stock[item] += n
+  let f = furn__fact(furniture_st, FURN_BOUGHT, instance)
+  f.player = player
+  f.item = item
+  f.amount = n
+  f.x = float(cost)
+  furn__say(furniture_st, instance, player, FURN_OK)
+  return true
+}
+
+# `n` of a kind into the stock for nothing (a gift, a reward, a starter set). Host only
+export function furniture_give(furniture_st: mut FurnitureState, instance: string, item: int, n: int) -> bool {
+  if not FurnitureWorld.is_host() {
+    furn__say(furniture_st, instance, -1, FURN_HOST)
+    return false
+  }
+  if not furn__item_ok(item) or n <= 0 {
+    furn__say(furniture_st, instance, -1, FURN_NO_ITEM)
+    return false
+  }
+  let r = furn__room_of(furniture_st, instance)
+  r.stock[item] += n
+  let f = furn__fact(furniture_st, FURN_GIVEN, instance)
+  f.item = item
+  f.amount = n
+  furn__say(furniture_st, instance, -1, FURN_OK)
+  return true
+}
+
+# up to `n` of the stock sold back for `refund_pct` of the price each; how many went
+export function furniture_sell(furniture_st: mut FurnitureState, player: int, instance: string, item: int, n: int) -> int {
+  if not furn__gate(furniture_st, instance, player) { return 0 }
+  if not furn__item_ok(item) or n <= 0 {
+    furn__say(furniture_st, instance, player, FURN_NO_ITEM)
+    return 0
+  }
+  let r = furn__room_of(furniture_st, instance)
+  let k = Math.min(n, r.stock[item])
+  if k <= 0 {
+    furn__say(furniture_st, instance, player, FURN_STOCK)
+    return 0
+  }
+  let back = (FurnitureItems[item].price * FurnitureItems[item].refund_pct / 100) * k
+  r.stock[item] -= k
+  FurniturePurse.earn(player, back)
+  let f = furn__fact(furniture_st, FURN_SOLD, instance)
+  f.player = player
+  f.item = item
+  f.amount = k
+  f.x = float(back)
+  furn__say(furniture_st, instance, player, FURN_OK)
+  return k
+}
+
+# one from the stock placed at (x, z) turned `yaw` degrees - `y` is the height of a wall piece; every other
+# place finds its own. The pose is snapped as `furniture_check` says. The new piece's id, or -1 (and why)
+@alloc_ok("a piece placed: made once and kept until it is removed")
+export function furniture_place(furniture_st: mut FurnitureState, player: int, instance: string, item: int, x: float, y: float, z: float, yaw: float) -> int {
+  if not furn__gate(furniture_st, instance, player) { return -1 }
+  if not furn__item_ok(item) {
+    furn__say(furniture_st, instance, player, FURN_NO_ITEM)
+    return -1
+  }
+  let r = furn__room_of(furniture_st, instance)
+  if r.stock[item] <= 0 {
+    furn__say(furniture_st, instance, player, FURN_STOCK)
+    return -1
+  }
+  List.clear(furniture_st.furn__ids)
+  let pose = furniture_st.furn__pose
+  let code = furn__fit(furniture_st, instance, item, x, y, z, yaw, false, pose)
+  if code != FURN_OK {
+    furn__say(furniture_st, instance, player, code)
+    return -1
+  }
+  let p = new FurnPlaced
+  p.id = r.next_id
+  r.next_id += 1
+  p.item = item
+  p.x = pose.x
+  p.y = pose.y
+  p.z = pose.z
+  p.yaw = pose.yaw
+  p.parent = pose.parent
+  push(r.items, p)
+  r.stock[item] -= 1
+  furn__tell(furniture_st, FURN_PLACED, instance, player, p)
+  furn__say(furniture_st, instance, player, FURN_OK)
+  return p.id
+}
+
+function furn__tell(furniture_st: mut FurnitureState, what: int, instance: string, player: int, p: FurnPlaced) -> void {
+  let f = furn__fact(furniture_st, what, instance)
+  f.player = player
+  f.id = p.id
+  f.item = p.item
+  f.x = p.x
+  f.y = p.y
+  f.z = p.z
+  f.yaw = p.yaw
+}
+
+# a piece and what stands on it (and what stands on that), into `furn__ids`
+function furn__collect(furniture_st: mut FurnitureState, r: FurnRoom, id: int) -> void {
+  List.clear(furniture_st.furn__ids)
+  push(furniture_st.furn__ids, id)
+  var at = 0
+  while at < len(furniture_st.furn__ids) {
+    let cur = furniture_st.furn__ids[at]
+    for i in 0 .. len(r.items) {
+      if r.items[i].parent == cur and not furn__ignored(furniture_st, r.items[i].id) { push(furniture_st.furn__ids, r.items[i].id) }
+    }
+    at += 1
+  }
+}
+
+# may a piece carried with its parent stand where it is carried to: in the room, clear of the world and of
+# every piece that is not going with it
+function furn__carry_ok(furniture_st: FurnitureState, instance: string, r: FurnRoom, c: FurnPlaced, nx: float, ny: float, nz: float, nyaw: float) -> int {
+  let k = FurnitureItems[c.item]
+  let cell = furn__cell(instance)
+  let w = furn__w(c.item, cell)
+  let d = furn__d(c.item, cell)
+  if not furn__in_room(instance, nx, nz, w, d, nyaw) { return FURN_BOUNDS }
+  for i in 0 .. len(r.items) {
+    let p = r.items[i]
+    if furn__ignored(furniture_st, p.id) { continue }
+    if ny >= p.y + FurnitureItems[p.item].h - FURN__EPS or p.y >= ny + k.h - FURN__EPS { continue }
+    if furn__overlap(nx, nz, w, d, nyaw, p.x, p.z, furn__w(p.item, cell), furn__d(p.item, cell), p.yaw) { return FURN_COLLIDES }
+  }
+  if FurnitureWorld.blocked(instance, nx, ny, nz, w, d, k.h, nyaw) { return FURN_WORLD }
+  return FURN_OK
+}
+
+# a piece moved to (x, z) (and `y` for a wall piece), whatever stands on it going along. False, and why, when it
+# cannot stand there or what it carries cannot
+export function furniture_move(furniture_st: mut FurnitureState, player: int, instance: string, id: int, x: float, y: float, z: float) -> bool {
+  if not furn__gate(furniture_st, instance, player) { return false }
+  let r = furn__room_of(furniture_st, instance)
+  let p = furn__placed(r, id)
+  if p == null {
+    furn__say(furniture_st, instance, player, FURN_NO_ITEM)
+    return false
+  }
+  furn__collect(furniture_st, r, id)
+  let pose = furniture_st.furn__pose
+  var code = furn__fit(furniture_st, instance, p.item, x, y, z, p.yaw, true, pose)
+  if code == FURN_OK { code = furn__carried(furniture_st, instance, r, p, pose, 0.0) }
+  if code != FURN_OK {
+    furn__say(furniture_st, instance, player, code)
+    return false
+  }
+  furn__commit(furniture_st, r, p, pose, 0.0)
+  furn__tell(furniture_st, FURN_MOVED, instance, player, p)
+  furn__say(furniture_st, instance, player, FURN_OK)
+  return true
+}
+
+# the pose a carried piece takes when its parent `p` takes `pose` (and turns `dyaw` more)
+function furn__carry_pose(p: FurnPlaced, c: FurnPlaced, pose: FurnPose, dyaw: float, out: FurnPose) -> void {
+  let rad = Math.deg_to_rad(dyaw)
+  let ox = c.x - p.x
+  let oz = c.z - p.z
+  out.x = pose.x + ox * Math.cos(rad) - oz * Math.sin(rad)
+  out.z = pose.z + ox * Math.sin(rad) + oz * Math.cos(rad)
+  out.y = c.y + (pose.y - p.y)
+  out.yaw = c.yaw + dyaw
+}
+
+function furn__carried(furniture_st: mut FurnitureState, instance: string, r: FurnRoom, p: FurnPlaced, pose: FurnPose, dyaw: float) -> int {
+  let at = furniture_st.furn__at
+  for i in 1 .. len(furniture_st.furn__ids) {
+    let c = furn__placed(r, furniture_st.furn__ids[i])
+    furn__carry_pose(p, c, pose, dyaw, at)
+    let code = furn__carry_ok(furniture_st, instance, r, c, at.x, at.y, at.z, at.yaw)
+    if code != FURN_OK { return code }
+  }
+  return FURN_OK
+}
+
+function furn__commit(furniture_st: mut FurnitureState, r: FurnRoom, p: FurnPlaced, pose: FurnPose, dyaw: float) -> void {
+  let at = furniture_st.furn__at
+  for i in 1 .. len(furniture_st.furn__ids) {
+    let c = furn__placed(r, furniture_st.furn__ids[i])
+    furn__carry_pose(p, c, pose, dyaw, at)
+    c.x = at.x
+    c.y = at.y
+    c.z = at.z
+    c.yaw = at.yaw
+  }
+  p.x = pose.x
+  p.y = pose.y
+  p.z = pose.z
+  p.yaw = pose.yaw
+  p.parent = pose.parent
+}
+
+# a piece turned by `delta` degrees (snapped to the turns its kind allows), what stands on it turning round with it
+export function furniture_rotate(furniture_st: mut FurnitureState, player: int, instance: string, id: int, delta: float) -> bool {
+  if not furn__gate(furniture_st, instance, player) { return false }
+  let r = furn__room_of(furniture_st, instance)
+  let p = furn__placed(r, id)
+  if p == null {
+    furn__say(furniture_st, instance, player, FURN_NO_ITEM)
+    return false
+  }
+  furn__collect(furniture_st, r, id)
+  let pose = furniture_st.furn__pose
+  var code = furn__fit(furniture_st, instance, p.item, p.x, p.y, p.z, p.yaw + delta, true, pose)
+  let dyaw = pose.yaw - p.yaw
+  if code == FURN_OK { code = furn__carried(furniture_st, instance, r, p, pose, dyaw) }
+  if code != FURN_OK {
+    furn__say(furniture_st, instance, player, code)
+    return false
+  }
+  furn__commit(furniture_st, r, p, pose, dyaw)
+  furn__tell(furniture_st, FURN_ROTATED, instance, player, p)
+  furn__say(furniture_st, instance, player, FURN_OK)
+  return true
+}
+
+# a piece, and what stands on it, back into the stock
+export function furniture_remove(furniture_st: mut FurnitureState, player: int, instance: string, id: int) -> bool {
+  if not furn__gate(furniture_st, instance, player) { return false }
+  let r = furn__room_of(furniture_st, instance)
+  if furn__placed(r, id) == null {
+    furn__say(furniture_st, instance, player, FURN_NO_ITEM)
+    return false
+  }
+  furn__collect(furniture_st, r, id)
+  for k in 0 .. len(furniture_st.furn__ids) {
+    let gone = furn__placed(r, furniture_st.furn__ids[len(furniture_st.furn__ids) - 1 - k])
+    r.stock[gone.item] += 1
+    furn__tell(furniture_st, FURN_REMOVED, instance, player, gone)
+    for i in 0 .. len(r.items) {
+      if r.items[i] == gone {
+        List.remove_at(r.items, i)
+        break
+      }
+    }
+  }
+  furn__say(furniture_st, instance, player, FURN_OK)
+  return true
+}
+
+# everything placed in an instance back into its stock; how many pieces
+export function furniture_clear(furniture_st: mut FurnitureState, player: int, instance: string) -> int {
+  if not furn__gate(furniture_st, instance, player) { return 0 }
+  let r = furn__room_of(furniture_st, instance)
+  var n = 0
+  while len(r.items) > 0 {
+    let gone = r.items[len(r.items) - 1]
+    r.stock[gone.item] += 1
+    furn__tell(furniture_st, FURN_REMOVED, instance, player, gone)
+    List.pop(r.items)
+    n += 1
+  }
+  furn__say(furniture_st, instance, player, FURN_OK)
+  return n
+}

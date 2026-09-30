@@ -1,0 +1,40 @@
+# defs.ludic - the two tables a game fills: what kinds of furniture there are, and the categories they
+# fall into (a limit on each, per instance)
+
+# a category of furniture: at most `limit` of it placed in one instance (0: no limit)
+export property FurnitureCategory {
+  key: string = ""
+  @Text title: Key = null
+  @Asset("png") icon: string = ""
+  @Range(0, 10000) limit: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry FurnitureCategories of FurnitureCategory as FCAT
+
+# a kind of furniture. `model` is the glTF it draws as and `socket` a node inside it (where a thing set on it sits,
+# or where it is held by), `w` by `d` by `h` metres its footprint and height. `place` is where it goes: on the
+# "floor", on a "wall" (at any height), on the "ceiling", or on a "surface" - the top of a `stackable` item, which
+# `surface_h` metres above that item's own base (0: its height). `yaw_steps` is how many turns it may stand at
+# (4: every quarter turn; 0: any angle). `price` is bought at and `refund_pct` of it is got back selling; `cost`
+# counts against the instance's budget while it is placed
+export property FurnitureItem {
+  key: string = ""
+  @Text name: Key = null
+  @Asset("gltf") model: string = ""
+  @Node(model) socket: string = ""
+  @Ref(FurnitureCategories) category: int = 0
+  @Unit("m") @Range(0.05, 20) w: float = 1.0
+  @Unit("m") @Range(0.05, 20) d: float = 1.0
+  @Unit("m") @Range(0.05, 10) h: float = 1.0
+  @OneOf("floor", "wall", "ceiling", "surface") place: string = "floor"
+  stackable: bool = false
+  @Unit("m") @Range(0, 10) surface_h: float = 0.0
+  @Range(0, 360) yaw_steps: int = 4
+  @Range(0, 100000000) price: int = 0
+  @Unit("%") @Range(0, 100) refund_pct: int = 50
+  @Range(0, 10000) cost: int = 1
+}
+
+@AppendOnly @ByKey
+export open registry FurnitureItems of FurnitureItem as FURN

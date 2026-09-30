@@ -1,0 +1,116 @@
+# geom.ludic - footprints: rectangles turned by a yaw, whether two overlap (touching is not overlap), whether one is
+# inside another or inside the room, and snapping to the grid and to an item's allowed turns
+
+const FURN__EPS: float = 0.001
+
+# the yaw snapped to an item's allowed turns, in [0, 360). A grid only allows quarter turns at most
+function furn__snap_yaw(item: int, grid: bool, yaw: float) -> float {
+  var steps = FurnitureItems[item].yaw_steps
+  if grid and (steps <= 0 or steps > 4) { steps = 4 }
+  var y = yaw
+  if steps > 0 {
+    let step = 360.0 / float(steps)
+    y = Math.floor(yaw / step + 0.5) * step
+  }
+  while y < 0.0 { y += 360.0 }
+  while y >= 360.0 { y -= 360.0 }
+  return y
+}
+
+# is the turn (nearly) a quarter or three quarters - the footprint's width and depth trade places
+function furn__sideways(yaw: float) -> bool {
+  let q = Math.floor(yaw / 90.0 + 0.5)
+  return Math.abs(yaw - q * 90.0) < 0.01 and (int(q) % 2) != 0
+}
+
+# a footprint's width and depth in metres: a grid rounds each up to whole cells
+function furn__w(item: int, cell: float) -> float {
+  if cell <= 0.0 { return FurnitureItems[item].w }
+  return Math.ceil(FurnitureItems[item].w / cell - 0.0001) * cell
+}
+
+function furn__d(item: int, cell: float) -> float {
+  if cell <= 0.0 { return FurnitureItems[item].d }
+  return Math.ceil(FurnitureItems[item].d / cell - 0.0001) * cell
+}
+
+# on a grid, the centre that puts the footprint's corner on a cell corner
+function furn__snap_xz(v: float, extent: float, cell: float) -> float {
+  if cell <= 0.0 { return v }
+  return Math.floor((v - extent * 0.5) / cell + 0.5) * cell + extent * 0.5
+}
+
+# do two turned rectangles (centre, width, depth, yaw in degrees) overlap? The separating-axis test
+function furn__overlap(ax: float, az: float, aw: float, ad: float, ayaw: float, bx: float, bz: float, bw: float, bd: float, byaw: float) -> bool {
+  let ar = Math.deg_to_rad(ayaw)
+  let br = Math.deg_to_rad(byaw)
+  let aux = Math.cos(ar)
+  let auz = Math.sin(ar)
+  let bux = Math.cos(br)
+  let buz = Math.sin(br)
+  let dx = bx - ax
+  let dz = bz - az
+  for k in 0 .. 4 {
+    var nx = aux
+    var nz = auz
+    if k == 1 {
+      nx = -auz
+      nz = aux
+    }
+    if k == 2 {
+      nx = bux
+      nz = buz
+    }
+    if k == 3 {
+      nx = -buz
+      nz = bux
+    }
+    let ra = aw * 0.5 * Math.abs(aux * nx + auz * nz) + ad * 0.5 * Math.abs(-auz * nx + aux * nz)
+    let rb = bw * 0.5 * Math.abs(bux * nx + buz * nz) + bd * 0.5 * Math.abs(-buz * nx + bux * nz)
+    if Math.abs(dx * nx + dz * nz) >= ra + rb - FURN__EPS { return false }
+  }
+  return true
+}
+
+# is the point inside a turned rectangle
+function furn__contains(ax: float, az: float, aw: float, ad: float, ayaw: float, px: float, pz: float) -> bool {
+  let r = Math.deg_to_rad(ayaw)
+  let dx = px - ax
+  let dz = pz - az
+  let lu = dx * Math.cos(r) + dz * Math.sin(r)
+  let lv = -dx * Math.sin(r) + dz * Math.cos(r)
+  return Math.abs(lu) <= aw * 0.5 + FURN__EPS and Math.abs(lv) <= ad * 0.5 + FURN__EPS
+}
+
+# is all of rectangle B inside rectangle A (B's four corners)
+function furn__inside(ax: float, az: float, aw: float, ad: float, ayaw: float, bx: float, bz: float, bw: float, bd: float, byaw: float) -> bool {
+  let br = Math.deg_to_rad(byaw)
+  let ux = Math.cos(br) * bw * 0.5
+  let uz = Math.sin(br) * bw * 0.5
+  let vx = -Math.sin(br) * bd * 0.5
+  let vz = Math.cos(br) * bd * 0.5
+  for k in 0 .. 4 {
+    var sx = 1.0
+    var sz = 1.0
+    if k == 1 { sx = -1.0 }
+    if k == 2 { sz = -1.0 }
+    if k == 3 {
+      sx = -1.0
+      sz = -1.0
+    }
+    if not furn__contains(ax, az, aw, ad, ayaw, bx + sx * ux + sz * vx, bz + sx * uz + sz * vz) { return false }
+  }
+  return true
+}
+
+# is the turned rectangle inside the room's extent [min_x, max_x] by [min_z, max_z]
+function furn__in_room(instance: string, x: float, z: float, w: float, d: float, yaw: float) -> bool {
+  let minx = FurnitureWorld.room(instance, 0)
+  let minz = FurnitureWorld.room(instance, 1)
+  let maxx = FurnitureWorld.room(instance, 2)
+  let maxz = FurnitureWorld.room(instance, 3)
+  let r = Math.deg_to_rad(yaw)
+  let hx = Math.abs(Math.cos(r)) * w * 0.5 + Math.abs(Math.sin(r)) * d * 0.5
+  let hz = Math.abs(Math.sin(r)) * w * 0.5 + Math.abs(Math.cos(r)) * d * 0.5
+  return x - hx >= minx - FURN__EPS and x + hx <= maxx + FURN__EPS and z - hz >= minz - FURN__EPS and z + hz <= maxz + FURN__EPS
+}

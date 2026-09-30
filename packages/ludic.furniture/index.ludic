@@ -1,0 +1,14 @@
+# ludic.furniture - what fills a room a player owns: furniture kinds are rows, an interior is an instance
+# the game names by a key (it is the game's property, or a flat, or a cabin; this module never says), and
+# what is placed in it is checked and kept per key. The room's size and its own geometry are asked of the
+# game through a port; money is a port; what happened is a fact.
+module ludic_furniture uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "state.ludic"
+import "geom.ludic"
+import "check.ludic"
+import "verbs.ludic"
+import "query.ludic"
+import "system.ludic"

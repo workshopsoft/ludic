@@ -1,0 +1,144 @@
+# check.ludic - may a piece go here? In the order of what is cheapest to say no to: the rule of its place (which
+# also finds its height and what it stands on), the room, other furniture, the world's own geometry, the
+# category's limit, the budget. `furn__ign` lists pieces a move carries with it, which do not count as in the way
+
+# the pose a check found: where the piece's base is and what it stands on
+export property FurnPose {
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  parent: int = -1
+}
+
+function furn__placed(r: FurnRoom, id: int) -> FurnPlaced {
+  for i in 0 .. len(r.items) { if r.items[i].id == id { return r.items[i] } }
+  return null
+}
+
+function furn__ignored(furniture_st: FurnitureState, id: int) -> bool {
+  for i in 0 .. len(furniture_st.furn__ids) { if furniture_st.furn__ids[i] == id { return true } }
+  return false
+}
+
+# the height of an item's top surface above its base
+function furn__top(item: int) -> float {
+  let k = FurnitureItems[item]
+  if k.surface_h > 0.0 { return k.surface_h }
+  return k.h
+}
+
+function furn__cell(instance: string) -> float { return Math.max(FurnitureWorld.cell(instance), 0.0) }
+
+# budget used by the pieces placed, and how many of a category are
+export function furniture_budget_used(furniture_st: FurnitureState, instance: string) -> int {
+  let r = furn__find_room(furniture_st, instance)
+  if r == null { return 0 }
+  var n = 0
+  for i in 0 .. len(r.items) { n += FurnitureItems[r.items[i].item].cost }
+  return n
+}
+
+export function furniture_budget_left(furniture_st: FurnitureState, instance: string) -> int {
+  return FurnitureWorld.budget(instance) - furniture_budget_used(furniture_st, instance)
+}
+
+export function furniture_category_count(furniture_st: FurnitureState, instance: string, category: int) -> int {
+  let r = furn__find_room(furniture_st, instance)
+  if r == null { return 0 }
+  var n = 0
+  for i in 0 .. len(r.items) { if FurnitureItems[r.items[i].item].category == category { n += 1 } }
+  return n
+}
+
+# the code a pose gets (FURN_OK when it may go), and in `out` the pose the rules give it. (x, z) and `yaw` are
+# asked for; `y` is the height asked for a wall piece (the rest find their own); `moving` is a piece being moved
+# (its cost and its slot in its category do not count twice), false when a new one
+function furn__fit(furniture_st: mut FurnitureState, instance: string, item: int, x: float, y: float, z: float, yaw: float, moving: bool, out: FurnPose) -> int {
+  let k = FurnitureItems[item]
+  let cell = furn__cell(instance)
+  let grid = cell > 0.0
+  out.yaw = furn__snap_yaw(item, grid, yaw)
+  let w = furn__w(item, cell)
+  let d = furn__d(item, cell)
+  var ex = w
+  var ez = d
+  if furn__sideways(out.yaw) {
+    ex = d
+    ez = w
+  }
+  out.x = furn__snap_xz(x, ex, cell)
+  out.z = furn__snap_xz(z, ez, cell)
+  out.parent = -1
+  let room = furn__find_room(furniture_st, instance)
+  let floor = FurnitureWorld.floor_y(instance, out.x, out.z)
+  let ceil = FurnitureWorld.ceiling_y(instance, out.x, out.z)
+  if k.place == "wall" {
+    out.y = Math.min(Math.max(y, floor), Math.max(ceil - k.h, floor))
+    if not FurnitureWorld.wall_ok(instance, out.x, out.z, out.yaw, w) { return FURN_RULE }
+  } else if k.place == "ceiling" {
+    out.y = ceil - k.h
+    if ceil - floor < k.h { return FURN_RULE }
+  } else if k.place == "surface" {
+    # the topmost stackable piece whose footprint holds all of this one
+    var top = -1.0
+    out.y = floor
+    if room != null {
+      for i in 0 .. len(room.items) {
+        let p = room.items[i]
+        if not FurnitureItems[p.item].stackable or furn__ignored(furniture_st, p.id) { continue }
+        let pw = furn__w(p.item, cell)
+        let pd = furn__d(p.item, cell)
+        if not furn__inside(p.x, p.z, pw, pd, p.yaw, out.x, out.z, w, d, out.yaw) { continue }
+        let t = p.y + furn__top(p.item)
+        if t > top {
+          top = t
+          out.parent = p.id
+        }
+      }
+    }
+    if out.parent < 0 { return FURN_RULE }
+    out.y = top
+  } else {
+    out.y = floor
+  }
+  # the room: a wall piece sits in the wall, so only its centre has to be in the room (a hand's breadth out)
+  if k.place == "wall" {
+    let minx = FurnitureWorld.room(instance, 0) - 0.25
+    let minz = FurnitureWorld.room(instance, 1) - 0.25
+    let maxx = FurnitureWorld.room(instance, 2) + 0.25
+    let maxz = FurnitureWorld.room(instance, 3) + 0.25
+    if out.x < minx or out.x > maxx or out.z < minz or out.z > maxz { return FURN_BOUNDS }
+  } else if not furn__in_room(instance, out.x, out.z, w, d, out.yaw) { return FURN_BOUNDS }
+  # other furniture: the same ground and the same height
+  if room != null {
+    for i in 0 .. len(room.items) {
+      let p = room.items[i]
+      if furn__ignored(furniture_st, p.id) { continue }
+      let pk = FurnitureItems[p.item]
+      if out.y >= p.y + pk.h - FURN__EPS or p.y >= out.y + k.h - FURN__EPS { continue }
+      if furn__overlap(out.x, out.z, w, d, out.yaw, p.x, p.z, furn__w(p.item, cell), furn__d(p.item, cell), p.yaw) { return FURN_COLLIDES }
+    }
+  }
+  if FurnitureWorld.blocked(instance, out.x, out.y, out.z, w, d, k.h, out.yaw) { return FURN_WORLD }
+  if not moving {
+    let lim = FurnitureCategories[k.category].limit
+    if FCAT_COUNT > 0 and lim > 0 and furniture_category_count(furniture_st, instance, k.category) >= lim { return FURN_LIMIT }
+    if furniture_budget_left(furniture_st, instance) < k.cost { return FURN_BUDGET }
+  }
+  return FURN_OK
+}
+
+# may this kind go here? Asked of a piece not yet placed (a ghost while a player aims it): the code, and in
+# `furniture_pose_*` the pose it would take - snapped to the grid and to its turns, at the height its rule gives it
+export function furniture_check(furniture_st: mut FurnitureState, instance: string, item: int, x: float, y: float, z: float, yaw: float) -> int {
+  if not furn__item_ok(item) { return FURN_NO_ITEM }
+  return furn__fit(furniture_st, instance, item, x, y, z, yaw, false, furniture_st.furn__pose)
+}
+
+export function furniture_pose_x(furniture_st: FurnitureState) -> float { return furniture_st.furn__pose.x }
+export function furniture_pose_y(furniture_st: FurnitureState) -> float { return furniture_st.furn__pose.y }
+export function furniture_pose_z(furniture_st: FurnitureState) -> float { return furniture_st.furn__pose.z }
+export function furniture_pose_yaw(furniture_st: FurnitureState) -> float { return furniture_st.furn__pose.yaw }
+# the id of the piece it would stand on, -1 none
+export function furniture_pose_parent(furniture_st: FurnitureState) -> int { return furniture_st.furn__pose.parent }
