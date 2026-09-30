@@ -38,6 +38,30 @@ program GraphTest {
     expect_eq(mission_node_find(m, c, "courier_drop"), 2)
   }
 
+  test "the editor's link asks for a mission's problems" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = devcall_new()
+    c.n = 1
+    c.has[0] = 1
+    c.s[0] = "courier"
+    expect_eq(DevVerbs[DVB_MISSION_PROBLEMS].run(c), DV_OK)
+    expect_eq(c.out_n, 0)
+    devcall_clear(c)
+    c.n = 1
+    c.has[0] = 1
+    c.s[0] = "broken"
+    expect_eq(DevVerbs[DVB_MISSION_PROBLEMS].run(c), DV_OK)
+    expect(c.out_n > 40)
+    expect_eq(c.out[1], 34)
+    expect_eq(c.out[2], 101)    # "error: ..." first: a quoted line per problem
+    devcall_clear(c)
+    c.n = 1
+    c.has[0] = 1
+    c.s[0] = "no_such_mission"
+    expect_eq(DevVerbs[DVB_MISSION_PROBLEMS].run(c), DV_BAD)
+    expect(len(c.why) > 0)
+  }
+
   test "what stops a group" (m: mut MissionsState, w: mut WorldState) {
     fresh(w, m)
     let c = mission_find(m, "courier")

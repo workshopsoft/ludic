@@ -58,6 +58,8 @@ prep set), `!flag:<key>`, or any other word, which `MissionsWorld.check` answers
 instant nodes loses the run (`MSE_GRAPH`). `mission_problems` is the lint a studio shows beside the graph
 (`error:` stops a run, `warning:` only looks wrong): unknown nodes, no gates in a race, a node that lasts no
 time, a choice with fewer than two options, a mission that can never be won, unreachable nodes.
+A running dev build offers it to the editor's link as the verb `mission_problems <mission key>` (`verbs.ludic`):
+one string per problem. `studio.lres` binds the graph for Ludic Studio's table-graph editor (`missions`).
 
 A `checkpoint` node snapshots the run as it opens; `mission_retry` restores it (or restarts at `start`
 without one) while the mission has `retries` left, members back on their feet and the mission's clock

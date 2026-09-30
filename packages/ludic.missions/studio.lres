@@ -1,0 +1,46 @@
+# studio.lres - how Ludic Studio draws this package's mission graphs. The studio's file: the compiler never reads it,
+# and it counts only in a game that uses ludic.missions (the game has the Missions registry). A mission is a row of
+# Missions; its graph is the MissionSteps rows and the MissionEdges rows that name it by `key` in their `mission`
+# field. The studio keeps where it draws each step in its own project file, so `ex` / `ey` are left alone.
+# `lint` is the DevVerbs verb (verbs.ludic) that runs check.ludic on a mission, for a running game.
+
+missions {
+  title: "Mission"
+  table: "Missions"
+  node_table: "MissionSteps"
+  node_group: "mission"
+  node_kind: "kind"
+  node_label: "title"
+  node_detail: "target"
+  node_badges: ["join", "checkpoint", "count", "seconds"]
+  edge_table: "MissionEdges"
+  edge_group: "mission"
+  edge_from: "from"
+  edge_to: "to"
+  edge_on: "on"
+  edge_label: "label"
+  edge_cond: "cond"
+  edge_flags: ["par"]
+  fail_on: ["fail", "timeout"]
+  entry: "start"
+  lint: "mission_problems"
+  kinds: [
+    { name: "MSN_GOTO", color: 0x7CC7FF, icon: "map-pin" },
+    { name: "MSN_COLLECT", color: 0xE9C46A, icon: "package" },
+    { name: "MSN_DELIVER", color: 0xD4A373, icon: "package-check" },
+    { name: "MSN_ELIMINATE", color: 0xE07A5F, icon: "crosshair" },
+    { name: "MSN_DEFEND", color: 0x5B9DFF, icon: "shield" },
+    { name: "MSN_MINIGAME", color: 0xB48CFF, icon: "key-round" },
+    { name: "MSN_SURVIVE", color: 0xC9ADA7, icon: "heart-pulse" },
+    { name: "MSN_ESCAPE", color: 0xFF9F6B, icon: "siren" },
+    { name: "MSN_RACE", color: 0x6FD3C4, icon: "flag-triangle-right" },
+    { name: "MSN_WAIT_TEAM", color: 0x84A59D, icon: "users" },
+    { name: "MSN_CHOICE", color: 0xF2C94C, icon: "git-fork" },
+    { name: "MSN_SCORE", color: 0x81B29A, icon: "trophy" },
+    { name: "MSN_WAIT", color: 0xA8B0BC, icon: "timer" },
+    { name: "MSN_SIGNAL", color: 0x8FA8FF, icon: "radio" },
+    { name: "MSN_DO", color: 0x9AA4B2, icon: "clapperboard" },
+    { name: "MSN_PASS", color: 0x4FC38A, icon: "flag", terminal: true },
+    { name: "MSN_FAIL", color: 0xF28482, icon: "skull", terminal: true },
+  ]
+}

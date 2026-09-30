@@ -1,0 +1,23 @@
+# verbs.ludic - what an editor's link into a running dev build can ask of missions: the lint of one mission's
+# graph, the same check.ludic a creation's gate runs. Nothing runs unless the link is up.
+
+# the problems of the mission `key`: one string per problem, "error: ..." or "warning: ..." (none: a graph a run
+# can follow). A reply holds DV_OUT bytes, so the lines that do not fit are left off and the last one says so
+@alloc_ok("a tool's question, not a frame's")
+function mission_problems_verb(missions_st: mut MissionsState, c: DevCall) -> int {
+  let plan = mission_find(missions_st, dv_str(c, 0))
+  if plan < 0 {
+    c.why = `no mission {dv_str(c, 0)}: there are {missions_plans(missions_st)}`
+    return DV_BAD
+  }
+  let lines = mission_problems(missions_st, plan)
+  for i in 0 .. len(lines) {
+    if c.out_n + len(lines[i]) * 2 + 40 > DV_OUT {
+      dv_reply_str(c, `warning: {len(lines) - i} more problems are not shown`)
+      return DV_OK
+    }
+    dv_reply_str(c, lines[i])
+  }
+  return DV_OK
+}
+def DevVerbs mission_problems { args: "mission:string", run: fn mission_problems_verb }
