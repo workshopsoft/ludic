@@ -418,6 +418,9 @@ function terrain_bind_prog(render3d_st: mut Render3dState, p: int) -> void {
   r3d_bind_2d(render3d_st, p, "u_snow_d", 10, render3d_st.ter_tex[9])
   if render3d_st.ter_carpet != 0 { r3d_bind_2d(render3d_st, p, "u_carpet", 11, render3d_st.ter_carpet);  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_carpet_on"), 1.0) }
   else { r3d_bind_2d(render3d_st, p, "u_carpet", 11, render3d_st.ter_tex[0]);  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_carpet_on"), 0.0) }
+  var reach = 0.0
+  if grass_live(render3d_st) { reach = render3d_st.grass_radius }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_grass_reach"), reach)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_half"), float(render3d_st.TERRAIN_HALF))
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_texel"), 1.0 / float(TERRAIN_RES))
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_snow_line"), render3d_st.ter_snow_line)

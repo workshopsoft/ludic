@@ -298,6 +298,7 @@ function gvk_alloc(render3d_st: mut Render3dState, req: bytes, want: int) -> lon
   Vk.put_i64(mai, VkMemoryAllocateInfo_allocationSize, Vk.get_i64(req, VkMemoryRequirements_size))
   Vk.put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, t)
   let out = bytes(8)
+  render3d_st.gvk_mk_mem += 1
   let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, null, out)
   if r != VK_SUCCESS { print(`r3d: vulkan: vkAllocateMemory failed (VkResult {r})`);  return zero }
   render3d_st.gvk_n_allocs += 1
@@ -338,6 +339,7 @@ function gvk_mem_raw(render3d_st: mut Render3dState, t: int, size: int, host: bo
   Vk.put_i64(mai, VkMemoryAllocateInfo_allocationSize, size_l)
   Vk.put_i32(mai, VkMemoryAllocateInfo_memoryTypeIndex, t)
   let out = bytes(8)
+  render3d_st.gvk_mk_mem += 1
   let r = Vk.allocate_memory(render3d_st.gvk_dev, mai, null, out)
   if r != VK_SUCCESS { gvk_note(render3d_st, `r3d: vulkan: vkAllocateMemory of {size} bytes failed (VkResult {r}, {render3d_st.gvk_n_allocs} allocations live)`);  return zero }
   render3d_st.gvk_n_allocs += 1
@@ -447,6 +449,7 @@ function gvk_mem_free(render3d_st: mut Render3dState, a: int) -> void {
   let zero: long = 0
   if b < 0 {
     if render3d_st.gvk_al_map[a] != null { Vk.unmap_memory(render3d_st.gvk_dev, render3d_st.gvk_al_mem[a]) }
+    render3d_st.gvk_mk_x_mem += 1
     Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_al_mem[a], null)
     render3d_st.gvk_n_allocs -= 1
   } else {
@@ -466,6 +469,7 @@ function gvk_mem_free(render3d_st: mut Render3dState, a: int) -> void {
     if off == 0 and n == render3d_st.gvk_blk_size[b] {
       # the block is empty again: give it back, or a world swapped out keeps its memory for good
       if render3d_st.gvk_blk_map[b] != null { Vk.unmap_memory(render3d_st.gvk_dev, render3d_st.gvk_blk_mem[b]) }
+      render3d_st.gvk_mk_x_mem += 1
       Vk.free_memory(render3d_st.gvk_dev, render3d_st.gvk_blk_mem[b], null)
       render3d_st.gvk_n_allocs -= 1
       render3d_st.gvk_blk_mem[b] = zero;  render3d_st.gvk_blk_map[b] = null;  render3d_st.gvk_blk_kind[b] = -1;  render3d_st.gvk_blk_size[b] = 0
@@ -503,17 +507,35 @@ function gvk_cmd_init(render3d_st: mut Render3dState) -> bool {
   return true
 }
 # a command buffer, begun
-function gvk_once_begin(render3d_st: Render3dState) -> pointer {
-  let cbai = bytes(VkCommandBufferAllocateInfo_sizeof)
+# ---- scratch -------------------------------------------------------------------------------
+# The structs a Vulkan call reads are copied before it returns, so the ones built for a draw, a
+# pass, a barrier or a submit need not outlive it. They were each a bytes() - a malloc nothing
+# freed, several per draw: about 0.5 MB a frame, and one windowed run grew past 150 GB. They
+# come from this ring instead: one block, handed out in order and wrapped when it is used up.
+const GVK_TMP_BYTES: int = 1048576
+
+function gvk_tmp(render3d_st: mut Render3dState, n: int) -> pointer {
+  if render3d_st.gvk_tmp_buf == null { render3d_st.gvk_tmp_buf = bytes(GVK_TMP_BYTES) }
+  let sz = (n + 15) / 16 * 16
+  if sz > GVK_TMP_BYTES { print(`r3d: vulkan: {n} bytes of scratch asked for at once`);  return null }
+  if render3d_st.gvk_tmp_off + sz > GVK_TMP_BYTES { render3d_st.gvk_tmp_off = 0 }
+  let p = mem_off(render3d_st.gvk_tmp_buf, render3d_st.gvk_tmp_off)
+  render3d_st.gvk_tmp_off += sz
+  return p
+}
+
+function gvk_once_begin(render3d_st: mut Render3dState) -> pointer {
+  let cbai = gvk_tmp(render3d_st, VkCommandBufferAllocateInfo_sizeof)
   Vk.zero(cbai, VkCommandBufferAllocateInfo_sizeof)
   Vk.put_i32(cbai, VkCommandBufferAllocateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO)
   Vk.put_i64(cbai, VkCommandBufferAllocateInfo_commandPool, render3d_st.gvk_pool)
   Vk.put_i32(cbai, VkCommandBufferAllocateInfo_level, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
   Vk.put_i32(cbai, VkCommandBufferAllocateInfo_commandBufferCount, 1)
-  let cbs = bytes(8)
+  let cbs = gvk_tmp(render3d_st, 8)
+  render3d_st.gvk_mk_cmd += 1
   if Vk.allocate_command_buffers(render3d_st.gvk_dev, cbai, cbs) != VK_SUCCESS { return null }
   let cb = Vk.get_ptr(cbs, 0)
-  let cbbi = bytes(VkCommandBufferBeginInfo_sizeof)
+  let cbbi = gvk_tmp(render3d_st, VkCommandBufferBeginInfo_sizeof)
   Vk.zero(cbbi, VkCommandBufferBeginInfo_sizeof)
   Vk.put_i32(cbbi, VkCommandBufferBeginInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO)
   Vk.put_i32(cbbi, VkCommandBufferBeginInfo_flags, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT)
@@ -525,10 +547,10 @@ function gvk_once_end(render3d_st: mut Render3dState, cb: pointer) -> bool {
   gvk_frame_wait(render3d_st)
   var r = Vk.end_command_buffer(cb)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkEndCommandBuffer", r) }
-  let cbs = bytes(8)
+  let cbs = gvk_tmp(render3d_st, 8)
   Vk.put_ptr(cbs, 0, cb)
   Vk.reset_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_fence)
-  let si = bytes(VkSubmitInfo_sizeof)
+  let si = gvk_tmp(render3d_st, VkSubmitInfo_sizeof)
   Vk.zero(si, VkSubmitInfo_sizeof)
   Vk.put_i32(si, VkSubmitInfo_sType, VK_STRUCTURE_TYPE_SUBMIT_INFO)
   Vk.put_i32(si, VkSubmitInfo_commandBufferCount, 1)
@@ -556,6 +578,7 @@ function gvk_inflight_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gvk_inflight < 0 {
     render3d_st.gvk_inflight = 0
     if Os.platform() == "macos" { render3d_st.gvk_inflight = 1 }
+    render3d_st.gvk_nopool = r3d_env_has(render3d_st, "R3D_VK_NOPOOL")
     if r3d_env_has(render3d_st, "R3D_VK_INFLIGHT") { render3d_st.gvk_inflight = Text.to_int(r3d_env(render3d_st, "R3D_VK_INFLIGHT")) }
   }
   return render3d_st.gvk_inflight == 1
@@ -565,10 +588,10 @@ function gvk_frame_submit(render3d_st: mut Render3dState, cb: pointer) -> bool {
   gvk_frame_wait(render3d_st)
   var r = Vk.end_command_buffer(cb)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkEndCommandBuffer", r) }
-  let cbs = bytes(8)
+  let cbs = gvk_tmp(render3d_st, 8)
   Vk.put_ptr(cbs, 0, cb)
   Vk.reset_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_frame_fence)
-  let si = bytes(VkSubmitInfo_sizeof)
+  let si = gvk_tmp(render3d_st, VkSubmitInfo_sizeof)
   Vk.zero(si, VkSubmitInfo_sizeof)
   Vk.put_i32(si, VkSubmitInfo_sType, VK_STRUCTURE_TYPE_SUBMIT_INFO)
   Vk.put_i32(si, VkSubmitInfo_commandBufferCount, 1)
@@ -585,7 +608,7 @@ function gvk_frame_wait(render3d_st: mut Render3dState) -> void {
   if not render3d_st.gvk_frame_pending { return }
   let forever: long = -1
   Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_frame_fence, 1, forever)
-  let cbs = bytes(8)
+  let cbs = gvk_tmp(render3d_st, 8)
   Vk.put_ptr(cbs, 0, render3d_st.gvk_frame_pending_cb)
   Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
   render3d_st.gvk_frame_pending = false
@@ -636,9 +659,9 @@ function gvk_query_end(render3d_st: mut Render3dState) -> void {
   Vk.cmd_write_timestamp(gvk_frame_cb(render3d_st), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, render3d_st.gvk_qpool, render3d_st.gvk_q_active * 2 + 1)
   render3d_st.gvk_q_active = -1
 }
-function gvk_query_result(render3d_st: Render3dState, id: int, out: words) -> bool {
+function gvk_query_result(render3d_st: mut Render3dState, id: int, out: words) -> bool {
   if render3d_st.gvk_qpool == 0 { return false }
-  let data = bytes(16)
+  let data = gvk_tmp(render3d_st, 16)
   let size: long = 16
   let stride: long = 8
   if Vk.get_query_pool_results(render3d_st.gvk_dev, render3d_st.gvk_qpool, id * 2, 2, size, data, stride, VK_QUERY_RESULT_64_BIT) != VK_SUCCESS { return false }
@@ -653,7 +676,7 @@ function gvk_label_begin(render3d_st: mut Render3dState, name: pointer) -> void 
   # only inside a frame: a pass the load profiles comes before the frame's pools exist
   if render3d_st.gpu_kind != GPU_VK or render3d_st.gvk_cb == null { return }
   let cb = render3d_st.gvk_cb
-  let li = bytes(VkDebugUtilsLabelEXT_sizeof)
+  let li = gvk_tmp(render3d_st, VkDebugUtilsLabelEXT_sizeof)
   Vk.zero(li, VkDebugUtilsLabelEXT_sizeof)
   Vk.put_i32(li, VkDebugUtilsLabelEXT_sType, VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT)
   Vk.put_ptr(li, VkDebugUtilsLabelEXT_pLabelName, name)

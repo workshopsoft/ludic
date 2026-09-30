@@ -142,7 +142,9 @@ void main() {
   // an occlusion term; grass albedo is capped near 0.5 and this was dividing it by five.
   // A blade is a thin thing standing in open air: shaded at the root by its neighbours,
   // not buried.
-  arm = vec3(mix(0.55, 1.0, t), 0.85, 0.0);
+  // the inside of a sward is its own shade: a blade's base sits among its neighbours (the old clumps
+  // got this from the shadow maps, at 4.5 ms; seen from above it is most of a meadow's texture)
+  arm = vec3(mix(0.30, 1.0, smoothstep(0.0, 0.8, t)), 0.85, 0.0);
 #elif defined(CARD)
   // thin grass is lit from either side: face the card toward the sun before shading
   if (dot(N, u_sun_dir) < 0.0) N = -N;

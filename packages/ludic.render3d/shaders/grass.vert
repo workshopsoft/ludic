@@ -84,7 +84,7 @@ vec3 bladeField(vec2 xz, float y) {
   // dry and green patches a few metres across, and the tussocks' own shade of the same green
   float dryp = smoothstep(0.2, 0.8, gnoise(xz * 0.33 + 17.0) * 0.5 + 0.5);
   t *= mix(vec3(0.92, 1.0, 0.95), vec3(1.30, 1.10, 0.62), dryp);
-  return t * (0.72 + 0.56 * (gnoise(xz * 1.9 + 41.0) * 0.5 + 0.5));
+  return t * (0.55 + 0.80 * (gnoise(xz * 1.9 + 41.0) * 0.5 + 0.5));
 }
 
 void main() {
