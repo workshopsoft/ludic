@@ -48,6 +48,7 @@ import "ludic.base"
 | `System { key, phase, version, init, reset, tick, save, load }`, `system_new(key, phase)` | a system; a null function is a verb it does not have |
 | `core_add(s)`, `core_clear()`, `core_count()` | the game's system list (a key may appear once) |
 | `def Systems key { ... }`, `SYS_<KEY>`, `SYS_COUNT` | a system declared from any module; the list starts from these |
+| `def DevVerbs key { args, run, late }`, `DevCall`, `dv_int` / `dv_float` / `dv_bool` / `dv_str` / `dv_has`, `dv_reply_*`, `DV_OK` / `DV_LATER` / `DV_FAILED` / `DV_UNBOUND` / `DV_BAD` | a verb a dev build's editor link (ludic.devlink) may call, declared from any module with its argument shape; nothing here runs without the link |
 | `core_init_all()`, `core_reset_all()`, `core_tick_all(t)`, `core_save_all() -> Val`, `core_load_all(v)` | the runner: in the order added, tick phase by phase |
 
 ## Entities: `Table<T>` and its indexes

@@ -1,0 +1,124 @@
+# ludic.base/devverb.ludic - a verb a dev build's editor link (ludic.devlink) may call, declared by whoever
+# owns it: the game or any package, from its own module, as `def DevVerbs goto { args: "x:float z:float
+# yaw:float?", run: fn goto_verb }`. The link reads the request against `args`, hands `run` the values in
+# one DevCall it keeps, and sends what `run` writes back. Nothing here runs unless a dev build's link is up.
+export const DV_OK: int = 0              # what `run` answers: done (its reply values are in the call)
+export const DV_LATER: int = 1           # ... started: the link asks `late` each frame until it is done
+export const DV_FAILED: int = -1         # ... could not (err failed, `why` is the message)
+export const DV_UNBOUND: int = -2        # ... not offered by this build (err unbound)
+export const DV_BAD: int = -3            # ... an argument is out of range (err bad_args, `why`)
+export const DV_MAX_ARGS: int = 8
+export const DV_OUT: int = 1024          # bytes of reply a verb may write
+
+# the arguments of the request being answered, by position in `args`: an int or a bool in `i`, a float
+# in `f`, a string in `s`; `has[k]` is 0 for an optional argument the request left out. Made once.
+export property DevCall {
+  n: int = 0                             # arguments given
+  has: words = null
+  i: words = null                        # int, and bool as 0/1
+  f: floats = null
+  s: []string = null
+  why: string = ""                       # the message for DV_FAILED and DV_BAD
+  out: []byte = null                     # the reply's values after "ok", written with dv_reply_*
+  out_n: int = 0
+}
+
+export property DevVerb {
+  key: string = ""                       # the word after the id
+  args: string = ""                      # "name:type" words, type int|float|string|bool, `?` after it: optional
+  run: fn(DevCall) -> int = null         # the verb; a null one is not offered
+  late: fn(DevCall) -> int = null        # set for a verb that may answer DV_LATER: 1 done, 0 not yet, -1 failed
+  late_s: float = 5.0                    # how long `late` may take before the link answers "timed out"
+}
+
+# the declared verbs, from any module; the game's own verbs first, then each other module's by name
+export open registry DevVerbs of DevVerb as DVB
+
+@alloc_ok("once: the link's call, and the strings it keeps")
+export function devcall_new() -> DevCall {
+  let c = new DevCall
+  c.has = words(DV_MAX_ARGS)
+  c.i = words(DV_MAX_ARGS)
+  c.f = floats(DV_MAX_ARGS)
+  c.s = new []string
+  for k in 0 .. DV_MAX_ARGS { push(c.s, "") }
+  c.out = buffer(DV_OUT)
+  return c
+}
+
+# empty for the next request (nothing is made)
+export function devcall_clear(c: DevCall) -> void {
+  c.n = 0
+  c.why = ""
+  c.out_n = 0
+  for k in 0 .. DV_MAX_ARGS {
+    c.has[k] = 0
+    c.i[k] = 0
+    c.f[k] = 0.0
+    c.s[k] = ""
+  }
+}
+
+export function dv_has(c: DevCall, k: int) -> bool { return c.has[k] != 0 }
+export function dv_int(c: DevCall, k: int) -> int { return c.i[k] }
+export function dv_float(c: DevCall, k: int) -> float { return c.f[k] }
+export function dv_bool(c: DevCall, k: int) -> bool { return c.i[k] != 0 }
+export function dv_str(c: DevCall, k: int) -> string { return c.s[k] }
+
+# ---- the reply: values after "ok", separated by one space each, written in place ----
+function dv_b(c: DevCall, b: int) -> void {
+  if c.out_n < DV_OUT {
+    c.out[c.out_n] = b
+    c.out_n += 1
+  }
+}
+function dv_sep(c: DevCall) -> void { dv_b(c, 32) }
+
+export function dv_reply_int(c: DevCall, v: int) -> void {
+  dv_sep(c)
+  var n = v
+  if n < 0 {
+    dv_b(c, 45)
+    n = -n
+  }
+  var div = 1
+  while div <= n / 10 { div = div * 10 }
+  while div > 0 {
+    dv_b(c, 48 + (n / div) % 10)
+    div = div / 10
+  }
+}
+
+export function dv_reply_bool(c: DevCall, v: bool) -> void {
+  dv_sep(c)
+  if v { dv_b(c, 49) } else { dv_b(c, 48) }
+}
+
+# three decimals, a millimetre or a thousandth of a degree, as the link's own numbers
+export function dv_reply_float(c: DevCall, v: float) -> void {
+  let m = int(Math.floor(Math.abs(v) * 1000.0 + 0.5))
+  dv_sep(c)
+  if v < 0.0 and m > 0 { dv_b(c, 45) }
+  var n = m / 1000
+  var div = 1
+  while div <= n / 10 { div = div * 10 }
+  while div > 0 {
+    dv_b(c, 48 + (n / div) % 10)
+    div = div / 10
+  }
+  dv_b(c, 46)
+  let f = m % 1000
+  dv_b(c, 48 + f / 100)
+  dv_b(c, 48 + (f / 10) % 10)
+  dv_b(c, 48 + f % 10)
+}
+
+export function dv_reply_str(c: DevCall, s: string) -> void {
+  dv_sep(c)
+  dv_b(c, 34)
+  for k in 0 .. len(s) {
+    if s[k] == 34 or s[k] == 92 { dv_b(c, 92) }
+    dv_b(c, s[k])
+  }
+  dv_b(c, 34)
+}

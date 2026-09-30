@@ -1,4 +1,4 @@
-# late.ludic - one slow request at a time (a map load, a shot, steps), answered by id when it is done or 5 s on
+# late.ludic - one slow request at a time (a declared verb, a shot, steps), answered by id when it is done or 5 s on
 function dl_busy(st: mut DevlinkState, id: int) -> bool {
   if st.dl_pend == DL_NONE { return false }
   dl_err(st, id, "refused", "busy with an earlier request")
@@ -20,23 +20,19 @@ export function devlink_late(st: mut DevlinkState, dt: float) -> bool {
   st.dl_pend_t = st.dl_pend_t + dt
   let id = st.dl_pend_id
   var done = true
-  if st.dl_pend == DL_MAP { done = dl_late_map(st, id) }
-  else if st.dl_pend == DL_SHOT { done = dl_late_shot(st, id) }
+  var limit = DL_LATE_S
+  if st.dl_pend == DL_VERB {
+    limit = DevVerbs[st.dl_pend_verb].late_s
+    done = dl_late_verb(st, id)
+  } else if st.dl_pend == DL_SHOT { done = dl_late_shot(st, id) }
   else if DevlinkWorld.steps_left() <= 0 { dl_ok(st, id) }
   else { done = false }
-  if not done and st.dl_pend_t >= DL_LATE_S {
+  if not done and st.dl_pend_t >= limit {
     dl_err(st, id, "failed", "timed out")
     done = true
   }
   if done { st.dl_pend = DL_NONE }
   return done
-}
-
-function dl_late_map(st: mut DevlinkState, id: int) -> bool {
-  let s = DevlinkWorld.map_state()
-  if s == 0 { return false }
-  if s > 0 { dl_ok(st, id) } else { dl_err(st, id, "failed", "the map did not load") }
-  return true
 }
 
 function dl_late_shot(st: mut DevlinkState, id: int) -> bool {

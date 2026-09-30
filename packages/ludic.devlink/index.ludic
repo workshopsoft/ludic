@@ -1,5 +1,5 @@
 # ludic.devlink - one request a frame from an editor on this machine: parsed in place from one fixed 8 KB
-# buffer and answered into another, each verb a port member the game binds; the slow ones answer later
+# buffer and answered into another, the core verbs port members the game binds, the game's and packages' own verbs declared (DevVerbs); the slow ones answer later
 module ludic_devlink uses ludic_base
 numbers float
 import "ludic.base"
@@ -10,6 +10,7 @@ import "wire_read.ludic"
 import "wire_write.ludic"
 import "verbs.ludic"
 import "verbs_world.ludic"
+import "verbs_declared.ludic"
 import "verbs_ui.ludic"
 import "late.ludic"
 import "system.ludic"

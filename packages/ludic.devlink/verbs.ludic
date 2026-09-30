@@ -24,17 +24,15 @@ function dl_hello(st: mut DevlinkState, id: int) -> void {
   dl_b(st, 32)
   dl_q(st, DevlinkWorld.map())
   dl_b(st, 32)
-  dl_q(st, DevlinkWorld.offers())
+  dl_hello_names(st)
+  dl_b(st, 32)
+  dl_hello_shapes(st)
 }
 
 function dl_verb(st: mut DevlinkState, id: int) -> void {
   if dl_word(st, "cam_get") { dl_cam_get(st, id) }
   else if dl_word(st, "cam_set") { dl_cam_set(st, id) }
   else if dl_word(st, "cam_release") { dl_answer(st, id, DevlinkWorld.camera_release()) }
-  else if dl_word(st, "goto") { dl_goto(st, id) }
-  else if dl_word(st, "map_load") { dl_map(st, id) }
-  else if dl_word(st, "time") { dl_time(st, id) }
-  else if dl_word(st, "weather") { dl_weather(st, id) }
   else if dl_word(st, "shot") { dl_shot(st, id) }
   else if dl_word(st, "pause") { dl_answer(st, id, DevlinkWorld.pause(true)) }
   else if dl_word(st, "resume") { dl_answer(st, id, DevlinkWorld.pause(false)) }
@@ -43,7 +41,7 @@ function dl_verb(st: mut DevlinkState, id: int) -> void {
   else if dl_word(st, "ui_model") { dl_ui_model(st, id) }
   else if dl_word(st, "ui_tree") { dl_ui_tree(st, id) }
   else if dl_word(st, "ui_override") { dl_ui_override(st, id) }
-  else { dl_err(st, id, "unknown_verb", "no such verb") }
+  else { dl_declared(st, id) }
 }
 
 # a member's answer: ok, or not offered

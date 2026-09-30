@@ -1,5 +1,6 @@
 # port.ludic - what the link asks the game, every member defaulting to "not offered": an unbound build
-# answers ping and hello and nothing else. DevlinkNet is the transport (Udp in a game, a fake in a test).
+# answers ping and hello and nothing else. The verbs of a game or a package (goto, time, weather, map_load,
+# a store's unlock...) are not here: each is declared as a DevVerb (ludic.base/devverb.ludic). DevlinkNet is the transport (Udp in a game, a fake in a test).
 export const DL_UNBOUND: int = -2          # a member the game left at its default
 export property DevlinkCam {
   x: float = 0.0
@@ -25,16 +26,11 @@ export port DevlinkWorld {
   build: fn() -> string = fn dlw_zero
   schema: fn() -> long = fn dlw_schema               # the build's schema hash (Build.schema_hash), 0 unknown
   map: fn() -> string = fn dlw_blank
-  offers: fn() -> string = fn dlw_blank               # the verbs bound, comma-separated
+  offers: fn() -> string = fn dlw_blank               # the core verbs bound, comma-separated (declared verbs are listed by the registry)
   coop: fn() -> bool = fn dlw_no                      # a co-op session is connected
   camera_get: fn(DevlinkCam) -> int = fn dlw_cam
   camera_set: fn(float, float, float, float, float) -> int = fn dlw_n5
   camera_release: fn() -> int = fn dlw_n0
-  teleport: fn(float, float, float, bool, DevlinkCam) -> int = fn dlw_tp   # x, z, yaw, yaw given, where it stood
-  load_map: fn(string) -> int = fn dlw_s                # 0 started, -1 no such map
-  map_state: fn() -> int = fn dlw_n0                    # 1 loaded, 0 loading, -1 failed
-  set_time: fn(float, int) -> int = fn dlw_ti           # hour, day (-1 keep)
-  set_weather: fn(string) -> int = fn dlw_s             # 0 set, -1 no such weather
   screenshot: fn(string) -> int = fn dlw_s              # the frame now being made, written there
   shot_state: fn() -> int = fn dlw_n0                   # 1 written, 0 not yet, -1 failed
   shot_w: fn() -> int = fn dlw_z0
@@ -60,8 +56,6 @@ function dlw_cam(c: DevlinkCam) -> int { return DL_UNBOUND }
 function dlw_n5(a: float, b: float, c: float, d: float, e: float) -> int { return DL_UNBOUND }
 function dlw_n0() -> int { return DL_UNBOUND }
 function dlw_z0() -> int { return 0 }
-function dlw_tp(x: float, z: float, yaw: float, has: bool, c: DevlinkCam) -> int { return DL_UNBOUND }
 function dlw_s(s: string) -> int { return DL_UNBOUND }
-function dlw_ti(h: float, d: int) -> int { return DL_UNBOUND }
 function dlw_b(b: bool) -> int { return DL_UNBOUND }
 function dlw_i(n: int) -> int { return DL_UNBOUND }

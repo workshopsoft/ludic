@@ -46,12 +46,15 @@ function dl_hex(st: mut DevlinkState, v: long) -> void {
   }
 }
 
-function dl_q(st: mut DevlinkState, s: string) -> void {
-  dl_b(st, 34)
+function dl_esc(st: mut DevlinkState, s: string) -> void {
   for i in 0 .. len(s) {
     if s[i] == 34 or s[i] == 92 { dl_b(st, 92) }
     dl_b(st, s[i])
   }
+}
+function dl_q(st: mut DevlinkState, s: string) -> void {
+  dl_b(st, 34)
+  dl_esc(st, s)
   dl_b(st, 34)
 }
 function dl_q_bytes(st: mut DevlinkState, b: []byte, n: int) -> void {

@@ -17,6 +17,7 @@ program DevlinkTest {
     shot_st: int = 0
     steps: int = 0
     last: string = ""             # the last text a verb was handed
+    calls: int = 0
   }
   function fk_open(fake_link_st: mut FakeLinkState, port: int) -> int {
     fake_link_st.opened += 1
@@ -44,7 +45,7 @@ program DevlinkTest {
     let h: long = 81985529216486895
     return h
   }
-  function fw_offers() -> string { return "cam_get,cam_set,goto,map_load,shot,step" }
+  function fw_offers() -> string { return "cam_get,cam_set,shot,step" }
   function fw_coop(fake_link_st: FakeLinkState) -> bool { return fake_link_st.coop }
   function fw_cam_get(c: DevlinkCam) -> int {
     c.x = 1038.5
@@ -59,22 +60,72 @@ program DevlinkTest {
     fake_link_st.cyaw = yaw
     return 0
   }
-  function fw_tp(x: float, z: float, yaw: float, has: bool, c: DevlinkCam) -> int {
-    c.x = x
-    c.y = 2919.5
-    c.z = z
-    return 0
+  # the verbs a game declares: goto, map_load, time, weather, as maroon-lake does, plus one of each argument type
+  function v_goto(c: DevCall) -> int {
+    dv_reply_float(c, dv_float(c, 0))
+    dv_reply_float(c, 2919.5)
+    dv_reply_float(c, dv_float(c, 1))
+    return DV_OK
   }
-  function fw_load(fake_link_st: mut FakeLinkState, key: string) -> int {
-    fake_link_st.last = key
-    if key == "nowhere" { return -1 }
-    return 0
+  function v_map(fake_link_st: mut FakeLinkState, c: DevCall) -> int {
+    fake_link_st.last = dv_str(c, 0)
+    if dv_str(c, 0) == "nowhere" {
+      c.why = "no such map"
+      return DV_FAILED
+    }
+    return DV_LATER
   }
-  function fw_map_st(fake_link_st: FakeLinkState) -> int { return fake_link_st.map_st }
-  function fw_weather(fake_link_st: mut FakeLinkState, key: string) -> int {
-    fake_link_st.last = key
-    return 0
+  function v_map_late(fake_link_st: FakeLinkState, c: DevCall) -> int {
+    if fake_link_st.map_st < 0 {
+      c.why = "the map did not load"
+      return -1
+    }
+    return fake_link_st.map_st
   }
+  function v_time(c: DevCall) -> int {
+    if dv_float(c, 0) < 0.0 or dv_float(c, 0) > 24.0 {
+      c.why = "an hour is 0 to 24"
+      return DV_BAD
+    }
+    return DV_OK
+  }
+  function v_weather(fake_link_st: mut FakeLinkState, c: DevCall) -> int {
+    fake_link_st.last = dv_str(c, 0)
+    if dv_str(c, 0) == "fog" { return DV_OK }
+    c.why = "unknown weather"
+    return DV_BAD
+  }
+  function v_noargs(fake_link_st: mut FakeLinkState, c: DevCall) -> int {
+    fake_link_st.calls += 1
+    dv_reply_int(c, fake_link_st.calls)
+    return DV_OK
+  }
+  # one of each type, the optional ones last; echoes what it was given
+  function v_kinds(c: DevCall) -> int {
+    dv_reply_int(c, dv_int(c, 0))
+    dv_reply_float(c, dv_float(c, 1))
+    dv_reply_str(c, dv_str(c, 2))
+    dv_reply_bool(c, dv_bool(c, 3))
+    if dv_has(c, 4) { dv_reply_int(c, dv_int(c, 4)) } else { dv_reply_str(c, "none") }
+    return DV_OK
+  }
+  function v_off(c: DevCall) -> int { return DV_UNBOUND }
+  function v_broken(c: DevCall) -> int { return DV_OK }
+  function v_fail(c: DevCall) -> int { return DV_FAILED }
+  function v_bad_later(c: DevCall) -> int { return DV_LATER }
+  def DevVerbs goto { args: "x:float z:float yaw:float?", run: fn v_goto }
+  def DevVerbs map_load { args: "key:string", run: fn v_map, late: fn v_map_late, late_s: 5.0 }
+  def DevVerbs time { args: "hour:float day:int?", run: fn v_time }
+  def DevVerbs weather { args: "key:string", run: fn v_weather }
+  def DevVerbs steam_state { run: fn v_noargs }
+  def DevVerbs kinds { args: "n:int f:float s:string b:bool o:int?", run: fn v_kinds }
+  def DevVerbs off { run: fn v_off }
+  def DevVerbs fail { run: fn v_fail }
+  def DevVerbs bad_later { run: fn v_bad_later }
+  def DevVerbs broken { args: "x:double", run: fn v_broken }
+  def DevVerbs broken2 { args: "x:int? y:int", run: fn v_broken }
+  def DevVerbs broken3 { args: "x:int", run: null }
+
   function fw_shot(fake_link_st: mut FakeLinkState, path: string) -> int {
     fake_link_st.last = path
     return 0
@@ -87,7 +138,7 @@ program DevlinkTest {
     return 0
   }
   function fw_left(fake_link_st: FakeLinkState) -> int { return fake_link_st.steps }
-  bind DevlinkWorld { enabled: fn fw_on, game: fn fw_game, schema: fn fw_schema, map: fn fw_map, offers: fn fw_offers, coop: fn fw_coop, camera_get: fn fw_cam_get, camera_set: fn fw_cam_set, teleport: fn fw_tp, load_map: fn fw_load, map_state: fn fw_map_st, set_weather: fn fw_weather, screenshot: fn fw_shot, shot_state: fn fw_shot_st, shot_w: fn fw_w, shot_h: fn fw_h, step: fn fw_step, steps_left: fn fw_left }
+  bind DevlinkWorld { enabled: fn fw_on, game: fn fw_game, schema: fn fw_schema, map: fn fw_map, offers: fn fw_offers, coop: fn fw_coop, camera_get: fn fw_cam_get, camera_set: fn fw_cam_set, screenshot: fn fw_shot, shot_state: fn fw_shot_st, shot_w: fn fw_w, shot_h: fn fw_h, step: fn fw_step, steps_left: fn fw_left }
 
   # one frame with `line` waiting (or nothing), and what the link sent (or "")
   function ask(devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState, line: string, dt: float) -> string {
@@ -99,7 +150,7 @@ program DevlinkTest {
 
   test "ping and hello, and the answers to the camera, byte for byte" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
     expect(ask(devlink_st, fake_link_st, "1 ping", 0.016) == "1 ok")
-    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"maroon-lake\" \"0\" \"0123456789abcdef\" \"maroon\" \"cam_get,cam_set,goto,map_load,shot,step\"")
+    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"maroon-lake\" \"0\" \"0123456789abcdef\" \"maroon\" \"cam_get,cam_set,shot,step,goto,map_load,time,weather,steam_state,kinds,off,fail,bad_later\" \"goto x:float z:float yaw:float?;map_load key:string;time hour:float day:int?;weather key:string;steam_state;kinds n:int f:float s:string b:bool o:int?;off;fail;bad_later\"")
     expect(ask(devlink_st, fake_link_st, "3 cam_get", 0.016) == "3 ok 1038.500 -38.000 -405.250 124.000 -10.000")
     expect(ask(devlink_st, fake_link_st, "4 cam_set 12.5 3 -7 90.25 -5", 0.016) == "4 ok")
     expect(fake_link_st.cx == 12.5 and fake_link_st.cyaw == 90.25)
@@ -112,6 +163,7 @@ program DevlinkTest {
     expect(ask(devlink_st, fake_link_st, "7 cam_set 1 2 3 4 5x", 0.016) == "7 err bad_args \"bad arguments\"")
     expect(ask(devlink_st, fake_link_st, "8 fly", 0.016) == "8 err unknown_verb \"no such verb\"")
     expect(ask(devlink_st, fake_link_st, "9 cam_release", 0.016) == "9 err unbound \"not offered\"")
+    expect(ask(devlink_st, fake_link_st, "9 off", 0.016) == "9 err unbound \"not offered\"")
     expect(ask(devlink_st, fake_link_st, "10 time 25", 0.016) == "10 err bad_args \"an hour is 0 to 24\"")
     expect(ask(devlink_st, fake_link_st, "hello", 0.016) == "")                  # no id: nothing to answer
     fake_link_st.from = 167772161                                                # 10.0.0.1
@@ -141,6 +193,47 @@ program DevlinkTest {
     fake_link_st.map_st = 0
     expect(ask(devlink_st, fake_link_st, "26 map_load \"lamar\"", 0.016) == "")
     expect(ask(devlink_st, fake_link_st, "", 6.0) == "26 err failed \"timed out\"")
+  }
+
+  test "declared verbs: each argument type read and validated in place, optional arguments, every error" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "30 kinds -4 2.5 \"a \\\"b\\\"\" true 9", 0.016) == "30 ok -4 2.500 \"a \\\"b\\\"\" 1 9")
+    expect(ask(devlink_st, fake_link_st, "31 kinds 0 -0.25 \"\" false", 0.016) == "31 ok 0 -0.250 \"\" 0 \"none\"")
+    expect(ask(devlink_st, fake_link_st, "32 goto 100 -200.5 90", 0.016) == "32 ok 100.000 2919.500 -200.500")
+    expect(ask(devlink_st, fake_link_st, "33 goto 1", 0.016) == "33 err bad_args \"bad arguments: goto x:float z:float yaw:float?\"")
+    expect(ask(devlink_st, fake_link_st, "34 goto 1 2 3 4", 0.016) == "34 err bad_args \"bad arguments: goto x:float z:float yaw:float?\"")
+    expect(ask(devlink_st, fake_link_st, "35 goto 1 two", 0.016) == "35 err bad_args \"bad arguments: goto x:float z:float yaw:float?\"")
+    expect(ask(devlink_st, fake_link_st, "36 kinds 1.5 2 \"s\" true", 0.016) == "36 err bad_args \"bad arguments: kinds n:int f:float s:string b:bool o:int?\"")
+    expect(ask(devlink_st, fake_link_st, "37 kinds 1 2 s true", 0.016) == "37 err bad_args \"bad arguments: kinds n:int f:float s:string b:bool o:int?\"")
+    expect(ask(devlink_st, fake_link_st, "38 kinds 1 2 \"s\" maybe", 0.016) == "38 err bad_args \"bad arguments: kinds n:int f:float s:string b:bool o:int?\"")
+    expect(ask(devlink_st, fake_link_st, "39 steam_state 1", 0.016) == "39 err bad_args \"bad arguments: steam_state\"")
+    expect(ask(devlink_st, fake_link_st, "40 steam_state", 0.016) == "40 ok 1")
+    expect(ask(devlink_st, fake_link_st, "41 steam_state", 0.016) == "41 ok 2")
+    expect(ask(devlink_st, fake_link_st, "42 weather \"fog\"", 0.016) == "42 ok")
+    expect(ask(devlink_st, fake_link_st, "43 weather \"lava\"", 0.016) == "43 err bad_args \"unknown weather\"")
+    expect(ask(devlink_st, fake_link_st, "44 time 12 3", 0.016) == "44 ok")
+    expect(ask(devlink_st, fake_link_st, "45 fail", 0.016) == "45 err failed \"failed\"")
+    expect(ask(devlink_st, fake_link_st, "46 bad_later", 0.016) == "46 err failed \"the verb cannot answer later\"")
+    expect(ask(devlink_st, fake_link_st, "47 broken 1", 0.016) == "47 err failed \"the verb is declared badly\"")
+    expect(ask(devlink_st, fake_link_st, "48 broken2 1 2", 0.016) == "48 err failed \"the verb is declared badly\"")
+    expect(ask(devlink_st, fake_link_st, "49 broken3 1", 0.016) == "49 err unknown_verb \"no such verb\"")
+    expect(ask(devlink_st, fake_link_st, "50 gotox 1 2", 0.016) == "50 err unknown_verb \"no such verb\"")
+    fake_link_st.coop = true
+    expect(ask(devlink_st, fake_link_st, "51 weather \"fog\"", 0.016) == "51 err refused \"co-op session connected\"")
+  }
+
+  test "a declared verb's late answer, by id, with the busy refusal, and its failure" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "60 map_load \"lamar\"", 0.016) == "")
+    expect(ask(devlink_st, fake_link_st, "61 weather \"fog\"", 0.016) == "61 ok")
+    expect(ask(devlink_st, fake_link_st, "62 map_load \"x\"", 0.016) == "62 err refused \"busy with an earlier request\"")
+    fake_link_st.map_st = -1
+    expect(ask(devlink_st, fake_link_st, "", 0.016) == "60 err failed \"the map did not load\"")
+  }
+
+  test "dispatch reuses the one call and its buffers, request after request" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    let a = devlink_st.dl_call
+    let b = devlink_st.dl_lcall
+    for i in 0 .. 50 { expect(ask(devlink_st, fake_link_st, "70 goto 1 2", 0.016) == "70 ok 1.000 2919.500 2.000") }
+    expect(devlink_st.dl_call == a and devlink_st.dl_lcall == b)
   }
 
   test "a build that is not a dev build never opens the socket" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {

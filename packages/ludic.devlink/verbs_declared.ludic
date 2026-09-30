@@ -1,0 +1,205 @@
+# verbs_declared.ludic - the verbs a game or a package declares (ludic.base's DevVerbs): listed in hello with
+# their argument shapes, and answered by reading the request against the shape and calling the verb's `run`.
+# Everything is read in place: nothing is made per frame (a string argument is one text per request, as a
+# quoted key always was).
+#
+# A shape is "name:type" words, type int|float|string|bool, `?` after the type for an optional argument
+# (optionals come last, at most DV_MAX_ARGS). An int is decimal, a float a plain decimal, a string quoted,
+# a bool the word true or false.
+
+const DL_T_NONE: int = -1
+
+# is s[a .. b) exactly w
+function dl_seg(s: string, a: int, b: int, w: string) -> bool {
+  if b - a != len(w) { return false }
+  for i in 0 .. len(w) { if s[a + i] != w[i] { return false } }
+  return true
+}
+
+# the schema word at or after `at`: its type and optional flag into the state, and where it ends; -1 when there
+# is none left, -2 when the word is not `name:type[?]`
+function dl_sch_next(st: mut DevlinkState, s: string, at: int) -> int {
+  var p = at
+  while p < len(s) and s[p] == 32 { p += 1 }
+  if p >= len(s) { return -1 }
+  var e = p
+  var colon = -1
+  while e < len(s) and s[e] != 32 {
+    if s[e] == 58 and colon < 0 { colon = e }
+    e += 1
+  }
+  if colon <= p { return -2 }
+  var t1 = e
+  st.dl_sopt = false
+  if s[e - 1] == 63 {
+    st.dl_sopt = true
+    t1 = e - 1
+  }
+  st.dl_sty = DL_T_NONE
+  if dl_seg(s, colon + 1, t1, "int") { st.dl_sty = DL_T_INT }
+  else if dl_seg(s, colon + 1, t1, "float") { st.dl_sty = DL_T_FLOAT }
+  else if dl_seg(s, colon + 1, t1, "string") { st.dl_sty = DL_T_STR }
+  else if dl_seg(s, colon + 1, t1, "bool") { st.dl_sty = DL_T_BOOL }
+  if st.dl_sty == DL_T_NONE { return -2 }
+  return e
+}
+
+# a verb the link can offer: a key that is one plain word, a run, and a well-formed shape
+function dl_verb_ok(st: mut DevlinkState, v: DevVerb) -> bool {
+  if v.run == null or len(v.key) == 0 { return false }
+  for i in 0 .. len(v.key) { if v.key[i] <= 32 or v.key[i] == 34 or v.key[i] == 92 or v.key[i] == 44 or v.key[i] == 59 { return false } }
+  var at = 0
+  var n = 0
+  var opt = false
+  while true {
+    at = dl_sch_next(st, v.args, at)
+    if at == -1 { break }
+    if at < 0 or n >= DV_MAX_ARGS { return false }
+    if opt and not st.dl_sopt { return false }       # a required argument after an optional one
+    if st.dl_sopt { opt = true }
+    n += 1
+  }
+  return true
+}
+
+# hello's sixth field: the core verbs the game offers, then the declared ones, comma-separated
+function dl_hello_names(st: mut DevlinkState) -> void {
+  dl_b(st, 34)
+  let core = DevlinkWorld.offers()
+  dl_esc(st, core)
+  var any = len(core) > 0
+  for k in 0 .. DVB_COUNT {
+    let v = DevVerbs[k]
+    if dl_verb_ok(st, v) {
+      if any { dl_b(st, 44) }
+      dl_esc(st, v.key)
+      any = true
+    }
+  }
+  dl_b(st, 34)
+}
+
+# hello's seventh field (v1.1; a v1 client stops at the sixth): `key shape;key shape;...`, the shape being
+# the verb's args as declared ("goto x:float z:float yaw:float?")
+function dl_hello_shapes(st: mut DevlinkState) -> void {
+  dl_b(st, 34)
+  var any = false
+  for k in 0 .. DVB_COUNT {
+    let v = DevVerbs[k]
+    if dl_verb_ok(st, v) {
+      if any { dl_b(st, 59) }
+      dl_esc(st, v.key)
+      if len(v.args) > 0 {
+        dl_b(st, 32)
+        dl_esc(st, v.args)
+      }
+      any = true
+    }
+  }
+  dl_b(st, 34)
+}
+
+# the cursor is past the verb's word: read each argument the shape names, into the call
+function dl_read_args(st: mut DevlinkState, v: DevVerb, c: DevCall) -> bool {
+  devcall_clear(c)
+  var at = 0
+  var k = 0
+  while true {
+    at = dl_sch_next(st, v.args, at)
+    if at < 0 { break }
+    if dl_done(st) {
+      if not st.dl_sopt { return false }
+      k += 1
+      continue
+    }
+    if st.dl_sty == DL_T_INT { c.i[k] = dl_int(st) }
+    else if st.dl_sty == DL_T_FLOAT { c.f[k] = dl_float(st) }
+    else if st.dl_sty == DL_T_STR {
+      let n = dl_quoted(st)
+      if not st.dl_bad { c.s[k] = dl_text(st, n) }
+    } else if dl_word(st, "true") { c.i[k] = 1 }
+    else if not dl_word(st, "false") { st.dl_bad = true }
+    if st.dl_bad { return false }
+    c.has[k] = 1
+    c.n += 1
+    k += 1
+  }
+  return dl_done(st)                                 # more than the shape names is an error too
+}
+
+function dl_reply(st: mut DevlinkState, c: DevCall) -> void {
+  for i in 0 .. c.out_n { dl_b(st, c.out[i]) }
+}
+
+# a verb's answer: its code, and the call's message or values
+function dl_answered(st: mut DevlinkState, id: int, r: int, c: DevCall, why: string) -> void {
+  if r == DV_UNBOUND { dl_err(st, id, "unbound", "not offered") }
+  else if r == DV_BAD { dl_err(st, id, "bad_args", dl_msg(c, why)) }
+  else if r < 0 { dl_err(st, id, "failed", dl_msg(c, why)) }
+  else {
+    dl_ok(st, id)
+    dl_reply(st, c)
+  }
+}
+function dl_msg(c: DevCall, dflt: string) -> string {
+  if len(c.why) > 0 { return c.why }
+  return dflt
+}
+
+function dl_bad_shape(st: mut DevlinkState, id: int, v: DevVerb) -> void {
+  dl_err(st, id, "bad_args", "bad arguments")
+  st.dl_o -= 1                                       # the closing quote: the shape goes inside it
+  dl_s(st, ": ")
+  dl_esc(st, v.key)
+  if len(v.args) > 0 {
+    dl_b(st, 32)
+    dl_esc(st, v.args)
+  }
+  dl_b(st, 34)
+}
+
+# the verb word is next: the declared verb it names, read and run; unknown_verb when none does
+function dl_declared(st: mut DevlinkState, id: int) -> void {
+  for k in 0 .. DVB_COUNT {
+    let v = DevVerbs[k]
+    if v.run != null and len(v.key) > 0 and dl_word(st, v.key) {
+      if not dl_verb_ok(st, v) {
+        dl_err(st, id, "failed", "the verb is declared badly")
+        return
+      }
+      dl_run_verb(st, id, k, v)
+      return
+    }
+  }
+  dl_err(st, id, "unknown_verb", "no such verb")
+}
+
+function dl_run_verb(st: mut DevlinkState, id: int, k: int, v: DevVerb) -> void {
+  let c = st.dl_call
+  if not dl_read_args(st, v, c) {
+    dl_bad_shape(st, id, v)
+    return
+  }
+  let slow = v.late != null
+  if slow and dl_busy(st, id) { return }
+  let r = v.run(c)
+  if r == DV_LATER {
+    if slow {
+      st.dl_pend_verb = k
+      dl_park(st, id, DL_VERB)
+    } else { dl_err(st, id, "failed", "the verb cannot answer later") }
+  } else { dl_answered(st, id, r, c, "failed") }
+}
+
+# a parked verb's `late`: true when it is done, its answer in dl_out
+function dl_late_verb(st: mut DevlinkState, id: int) -> bool {
+  let c = st.dl_lcall
+  devcall_clear(c)
+  let r = DevVerbs[st.dl_pend_verb].late(c)
+  if r == 0 { return false }
+  if r > 0 {
+    dl_ok(st, id)
+    dl_reply(st, c)
+  } else { dl_err(st, id, "failed", dl_msg(c, "failed")) }
+  return true
+}

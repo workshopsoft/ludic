@@ -1,8 +1,12 @@
 # state.ludic - the socket, the two buffers and the one late answer in flight; made once, reused every frame
 export const DL_BUF: int = 8192
 export const DL_LATE_S: float = 5.0        # a late answer gives up after this long
+export const DL_T_INT: int = 0
+export const DL_T_FLOAT: int = 1
+export const DL_T_STR: int = 2
+export const DL_T_BOOL: int = 3
 export const DL_NONE: int = 0              # what is waiting to be answered
-export const DL_MAP: int = 1
+export const DL_VERB: int = 1             # a declared verb answered DV_LATER
 export const DL_SHOT: int = 2
 export const DL_STEP: int = 3
 
@@ -21,10 +25,15 @@ export state DevlinkState {
   dl_ip: int = 0
   dl_port: int = 0
   dl_pend: int = 0
+  dl_pend_verb: int = 0                    # the declared verb a DL_VERB waits on
   dl_pend_id: int = 0
   dl_pend_ip: int = 0
   dl_pend_port: int = 0
   dl_pend_t: float = 0.0
   dl_cam: DevlinkCam = new DevlinkCam
   dl_ui: DevlinkUiScreen = new DevlinkUiScreen
+  dl_call: DevCall = devcall_new()         # the declared verb being answered
+  dl_lcall: DevCall = devcall_new()        # the late verb's reply, while it is polled
+  dl_sty: int = 0                          # the schema word last read: its type (DL_T_*), and optional
+  dl_sopt: bool = false
 }
