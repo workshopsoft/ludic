@@ -27,6 +27,7 @@ export property Vital {
 export state VitalsState {
   vt__vitals: Table<Vital> = vt__table()
   vt__by_actor: IntMap = imap_new()
+  vt__spare: []Vital = vt__spare_new()     # records of actors removed, given out again by the next vitals_add
   vt__role: int = 0
   vt__local: int = -1                        # the actor this machine plays (for a guest's requests)
   vt__chain: []int = vt__chain_build()       # the pools damage reaches before life, in order
@@ -37,6 +38,8 @@ export state VitalsState {
   vt__q: Queue<VitalsFact> = vt__queue()
 }
 function vt__table() -> Table<Vital> { return table_new(0, 0) }
+@alloc_ok("built once, with the state")
+function vt__spare_new() -> []Vital { return new []Vital }
 function vt__queue() -> Queue<VitalsFact> { return queue_new("vitals.facts") }
 
 # absorbing pools, lowest order first (ties in registry order)

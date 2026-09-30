@@ -1058,6 +1058,12 @@ worked out once and only when the program names it - so a tool talking to a runn
 whether it was compiled from the data in front of it. It is 0 in a release (`ludicc --release`,
 which `ludic bundle` passes).
 
+`Build.app_name()`, `Build.app_version()` and `Build.app_id()` are strings: the app's name, version and id
+from the nearest `package.ludic` (`app name`, `app version`, `app id`; the name falls back to the package's,
+the version to its `version` line and then `0.1.0`, the id to `""`). They take no arguments. `Os.save_dir`,
+`Os.config_dir` and `Os.cache_dir` take exactly one (the app's name): another count is a compile error that
+says so.
+
 ### Text keys (`Key`, `k"..."`, `lang`)
 
 A text the player reads is named by a KEY, and the key's English is a language file like any

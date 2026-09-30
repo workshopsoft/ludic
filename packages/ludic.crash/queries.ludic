@@ -22,6 +22,33 @@ export function crash_start(crash_st: mut CrashState) -> int {
   return n
 }
 
+# the whole wiring in one call, from data: the app's name and version from package.ludic, the folder (under
+# Os.save_dir of the name; a folder written as an absolute path is taken as it is), keep_n, enabled and the starting context from the first CrashSettings row (the
+# defaults when a game declares none), then crash_start. `build` is the game's own id (Build.schema_hash()
+# in a dev build, the release's in a shipped one). Answers how many records wait from earlier runs.
+@alloc_ok("once, at boot: the config")
+export function crash_up(crash_st: mut CrashState, build: string) -> int {
+  let c = new CrashConfig
+  c.app = Build.app_name()
+  c.version = Build.app_version()
+  c.build = build
+  var folder = "crashes"
+  var context = ""
+  if CRSET_COUNT > 0 {
+    let row = CrashSettings[0]
+    folder = row.dir
+    c.keep_n = row.keep_n
+    c.enabled = row.enabled
+    context = row.context
+  }
+  c.dir = folder
+  if not Text.starts_with(folder, "/") { c.dir = Path.join(Os.save_dir(c.app), folder) }
+  crash_config(crash_st, c)
+  let n = crash_start(crash_st)
+  if len(context) > 0 { crash_context(crash_st, context) }
+  return n
+}
+
 # the player's "crash reports" switch, at run time: off takes the handler out
 export function crash_set_enabled(crash_st: mut CrashState, on: bool) -> void {
   crash_st.crash__cfg.enabled = on

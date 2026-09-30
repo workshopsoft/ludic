@@ -34,20 +34,55 @@ function vt__fill_pools(v: Vital) -> void {
   }
 }
 
-@alloc_ok("an actor added: an event, not a frame")
+# a record for an actor: one a removed actor left (reset to a new one's starting values), else a new one,
+# so a crowd that spawns and despawns all day costs nothing per spawn once it has had its busiest moment
+@alloc_ok("a new peak of actors held at once: made once, then kept in vt__spare and reused")
+function vt__record(vitals_st: mut VitalsState, phase: VitalPhase) -> Vital {
+  # a removed actor's record of the same phase (a machine's phase changes only by its transitions, so a
+  # dead actor's record is for another dead one: those made from a save or a snapshot)
+  var at = len(vitals_st.vt__spare) - 1
+  while at >= 0 and vitals_st.vt__spare[at].phase != phase { at -= 1 }
+  if at < 0 {
+    let r = new Vital { phase: phase }
+    r.vals = new []float
+    r.maxs = new []float
+    r.wait = new []float
+    for p in 0 .. VPOOL_COUNT {
+      push(r.vals, 0.0)
+      push(r.maxs, -1.0)
+      push(r.wait, 0.0)
+    }
+    return r
+  }
+  let r = vitals_st.vt__spare[at]
+  let last = len(vitals_st.vt__spare) - 1
+  vitals_st.vt__spare[at] = vitals_st.vt__spare[last]
+  List.pop(vitals_st.vt__spare)
+  r.mine = false
+  r.invuln = 0.0
+  r.bleed = 0.0
+  r.dying = false
+  r.quiet = false
+  r.frac_in = 0.0
+  r.by_in = -1
+  r.last_source = -1
+  r.last_type = -1
+  r.last_zone = -1
+  r.last_crit = false
+  r.seq = 0
+  for p in 0 .. VPOOL_COUNT {
+    r.vals[p] = 0.0
+    r.maxs[p] = -1.0
+    r.wait[p] = 0.0
+  }
+  return r
+}
+
 function vt__make(vitals_st: mut VitalsState, actor: int, kind: int, persist: bool, phase: VitalPhase) -> int {
-  let r = new Vital { phase: phase }
+  let r = vt__record(vitals_st, phase)
   r.actor = actor
   r.kind = kind
   r.persist = persist
-  r.vals = new []float
-  r.maxs = new []float
-  r.wait = new []float
-  for p in 0 .. VPOOL_COUNT {
-    push(r.vals, 0.0)
-    push(r.maxs, -1.0)
-    push(r.wait, 0.0)
-  }
   vt__fill_pools(r)
   if vt__kind_ok(kind) { r.invuln = VitalClasses[kind].spawn_invuln }
   let h = tb_add(vitals_st.vt__vitals, r)
@@ -66,7 +101,9 @@ export function vitals_remove(vitals_st: mut VitalsState, h: int) -> bool {
   let r = vt__vital(vitals_st, h)
   if r == null { return false }
   imap_del(vitals_st.vt__by_actor, r.actor)
-  return tb_remove(vitals_st.vt__vitals, h)
+  if not tb_remove(vitals_st.vt__vitals, h) { return false }
+  kept_push(vitals_st.vt__spare, r)            # a later actor takes the record over: nothing is made per spawn
+  return true
 }
 
 # this machine owns the actor: its `predict` pools are simulated here (a guest's own player)

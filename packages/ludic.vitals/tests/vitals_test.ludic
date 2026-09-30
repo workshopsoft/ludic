@@ -575,4 +575,35 @@ program VitalsTest {
     expect(s.save != null)
     expect(s.load != null)
   }
+
+  test "a crowd that comes and goes reuses its records and starts each from scratch" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let g = vitals_add(vitals_st, 40, VCLASS_GHOUL, false)
+    vitals_spend(vitals_st, g, VPOOL_HEALTH, 20.0)
+    expect(near(vitals_value(vitals_st, g, VPOOL_HEALTH), 40.0))
+    expect(vitals_remove(vitals_st, g))
+    expect_eq(vitals_of(vitals_st, 40), -1)
+    # the next actor takes the record over as a new one: its own class, its pools at their start
+    let m = vitals_add(vitals_st, 41, VCLASS_MEDIC, true)
+    expect(near(vitals_value(vitals_st, m, VPOOL_STAMINA), 50.0))
+    expect(not vitals_has_pool(vitals_st, m, VPOOL_ARMOUR))
+    expect(vitals_actor(vitals_st, m) == 41)
+    expect_eq(vitals_count(vitals_st), 1)
+  }
+
+  test "spawning and despawning keeps nothing once the crowd has had its busiest moment" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    for round in 0 .. 3 {
+      for a in 0 .. 12 { vitals_add(vitals_st, 100 + a, VCLASS_GHOUL, false) }
+      for a in 0 .. 12 { vitals_remove(vitals_st, vitals_of(vitals_st, 100 + a)) }
+    }
+    Mem.play()
+    Mem.settled()
+    for f in 0 .. 30 {
+      for a in 0 .. 12 { vitals_add(vitals_st, 100 + a, VCLASS_GHOUL, false) }
+      for a in 0 .. 12 { vitals_remove(vitals_st, vitals_of(vitals_st, 100 + a)) }
+      Mem.frame()
+    }
+    expect(Mem.kept() == 0)
+  }
 }

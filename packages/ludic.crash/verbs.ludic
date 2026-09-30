@@ -1,0 +1,33 @@
+# verbs.ludic - what an editor's link into a running dev build can ask of the crash records: which are
+# waiting from earlier runs, and the newest one's text. Nothing runs unless the link is up.
+
+# `crash_pending`: the count, then up to six records newest first, each as file, signame, time (seconds
+# since 1970), version
+function crash_pending_verb(crash_st: mut CrashState, c: DevCall) -> int {
+  let n = crash_pending(crash_st)
+  dv_reply_int(c, n)
+  var k = n
+  if k > 6 { k = 6 }
+  for i in 0 .. k {
+    let r = crash_record(crash_st, i)
+    dv_reply_str(c, Path.base(crash_file(crash_st, i)))
+    dv_reply_str(c, r.signame)
+    dv_reply_int(c, r.time)
+    dv_reply_str(c, r.version)
+  }
+  return DV_OK
+}
+def DevVerbs crash_pending { args: "", run: fn crash_pending_verb }
+
+# `crash_context`: the record's context line (what the game was doing; an allocation fence's report leads it),
+# by position in crash_pending
+function crash_context_verb(crash_st: mut CrashState, c: DevCall) -> int {
+  let i = dv_int(c, 0)
+  if i < 0 or i >= crash_pending(crash_st) {
+    c.why = `no pending crash record {i}: there are {crash_pending(crash_st)}`
+    return DV_BAD
+  }
+  dv_reply_str(c, crash_record(crash_st, i).context)
+  return DV_OK
+}
+def DevVerbs crash_context { args: "i:int", run: fn crash_context_verb }

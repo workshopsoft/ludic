@@ -2,8 +2,12 @@
 # on POSIX 128 + the signal a signal ended it; on Windows the exception's NTSTATUS, as a negative int
 # (0xC0000005 is -1073741819). These say whether that was a crash.
 
-# the name of the crash an exit code stands for, or "" when it was not one
+# the name of the crash an exit code stands for, or "" when it was not one. 86 and 87 are the allocation
+# fence ending a dev run (a frame kept memory; a list or table passed its declared cap): a run that
+# installed the crash handler leaves a record for them too, signame ALLOC_FENCE
 export function crash_exit_name(code: int) -> string {
+  if code == 86 { return "ALLOC_FENCE" }
+  if code == 87 { return "ALLOC_CAP" }
   if code == 132 { return "SIGILL" }
   if code == 133 { return "SIGTRAP" }
   if code == 134 { return "SIGABRT" }
