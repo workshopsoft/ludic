@@ -1,0 +1,229 @@
+# ============================================================================
+# tilemap_lwt.ludic - the baked mesh of a tile (LWT1): what tilemap_bake.ludic writes and the game streams. A tile is cut
+# into patches (tilemap.ludic), every patch into its levels of detail, every level a grid of heights and normals on
+# cell corners. This file is the FORMAT: how a file is laid out, how its header is checked against the map's row (a
+# file baked for other numbers is refused, never drawn wrong), how a patch's level is read, and how the grid a file
+# holds becomes the vertices and indices a mesh takes (the decode: positions from the grid, the normal unpacked, the skirt
+# hung from the edge). Nothing is decided here: the heights, the levels and the normals were the bake's.
+#
+#   <tile>.lwt, little-endian
+#   0    magic "LWT1", version 1
+#   8    res, patch_texels, patches (a tile's side), levels (lod_max + 1), tx, tz          (u32)
+#   32   tile_size, height_min, height_max, height_offset, origin_x, origin_z              (f32: the row's numbers)
+#   56   the table's offset (64), the entry size in words (4)
+#   64   the table: for pz, then px, then lod: { the level's offset in the file, its lowest height and its highest (f32), 0 }
+#   then each level: (cells + 1)^2 vertices, row by row along +z, each 4 bytes
+#        height u16 (0 = height_offset + height_min, 65535 = height_offset + height_max), nx u8, nz u8 (-1 .. 1 over 0 .. 255)
+#   cells = patch_texels >> lod; the vertex (a, b) is at the patch's corner + (a, b) * (patch size / cells), the normal's y whatever
+#   makes it a unit vector
+# ============================================================================
+numbers float
+
+const LWT_MAGIC: int = 0x3154574C     # "LWT1"
+const LWT_HEAD: int = 64
+const LWT_ENTRY: int = 4              # words a table entry
+
+# the vertex a mesh takes: position (x, z from the patch's centre, y the height), normal, uv
+const TM_VERT: int = 8
+
+export property TmMeshes {
+  mslots: int = 0
+  slot_tile: words = null           # the tile whose table a slot holds, -1 free
+  slot_used: words = null
+  slot_of: words = null             # per tile: its slot, -1 not read, -2 no usable file
+  tab: words = null                 # mslots x entries x LWT_ENTRY
+  entries: int = 0                  # table entries a tile: patches^2 x levels
+  clock: int = 0
+  raw: []byte = null                # one level's bytes as read
+  vbuf: floats = null               # the level's vertices, expanded (TM_VERT floats each, made for level 0)
+  ibuf: words = null                # its indices
+  nv: int = 0
+  ni: int = 0
+  idx: []words = null               # the index list of each level, made once (the topology: a grid and a skirt)
+  idx_n: words = null
+  stale: int = 0                    # files refused for another row's numbers or another cut
+  no_file: int = 0
+  reads: int = 0
+  uv_per_tile: float = 1.0
+}
+
+function lwt_entries(tm: TileMap) -> int { return tm.patches * tm.patches * (tm.lod_max + 1) }
+# the table entry of (px, pz, lod)
+function lwt_entry(tm: TileMap, px: int, pz: int, lod: int) -> int { return (pz * tm.patches + px) * (tm.lod_max + 1) + lod }
+
+# the file's bytes for a header, from the map's row and the tile: what the bake writes and the reader checks against
+export function lwt_head_put(b: []byte, tm: TileMap, tx: int, tz: int) -> void {
+  lw_put32(b, 0, LWT_MAGIC);  lw_put32(b, 4, 1)
+  lw_put32(b, 8, tm.res);  lw_put32(b, 12, tm.patch_texels);  lw_put32(b, 16, tm.patches);  lw_put32(b, 20, tm.lod_max + 1)
+  lw_put32(b, 24, tx);  lw_put32(b, 28, tz)
+  lw_putf(b, 32, tm.tile_size);  lw_putf(b, 36, tm.h_min);  lw_putf(b, 40, tm.h_max);  lw_putf(b, 44, tm.h_off)
+  lw_putf(b, 48, tm.origin_x);  lw_putf(b, 52, tm.origin_z)
+  lw_put32(b, 56, LWT_HEAD);  lw_put32(b, 60, LWT_ENTRY)
+}
+
+# is this header a mesh of tile (tx, tz) baked for this map's numbers and this cut?
+export function lwt_head_ok(b: []byte, tm: TileMap, tx: int, tz: int) -> bool {
+  if len(b) < LWT_HEAD or lw_get32(b, 0) != LWT_MAGIC or lw_get32(b, 4) != 1 { return false }
+  if lw_get32(b, 8) != tm.res or lw_get32(b, 12) != tm.patch_texels or lw_get32(b, 16) != tm.patches or lw_get32(b, 20) != tm.lod_max + 1 { return false }
+  if lw_get32(b, 24) != tx or lw_get32(b, 28) != tz or lw_get32(b, 56) != LWT_HEAD or lw_get32(b, 60) != LWT_ENTRY { return false }
+  return lw_getf(b, 32) == tm.tile_size and lw_getf(b, 36) == tm.h_min and lw_getf(b, 40) == tm.h_max and lw_getf(b, 44) == tm.h_off and lw_getf(b, 48) == tm.origin_x and lw_getf(b, 52) == tm.origin_z
+}
+
+# the reader's pool: tables for `slots` tiles and the scratch one level is read and expanded in, and every level's indices
+@alloc_ok("a map being opened: the pool and the scratch are made once")
+export function tmm_new(tm: TileMap, slots: int) -> TmMeshes {
+  let ms = new TmMeshes
+  ms.mslots = min(max(slots, 1), tm.cols * tm.rows)
+  ms.entries = lwt_entries(tm)
+  ms.slot_tile = words(ms.mslots);  ms.slot_used = words(ms.mslots)
+  for s in 0 .. ms.mslots { ms.slot_tile[s] = -1;  ms.slot_used[s] = 0 }
+  ms.slot_of = words(tm.cols * tm.rows)
+  for t in 0 .. tm.cols * tm.rows { ms.slot_of[t] = -1 }
+  ms.tab = words(ms.mslots * ms.entries * LWT_ENTRY)
+  let c0 = tm.patch_texels
+  ms.raw = buffer((c0 + 1) * (c0 + 1) * 4)
+  ms.vbuf = floats(tmap_patch_verts(c0) * TM_VERT)
+  ms.idx = new []words
+  ms.idx_n = words(tm.lod_max + 1)
+  for l in 0 .. tm.lod_max + 1 {
+    let c = tm.patch_texels >> l
+    let ix = words(tmap_patch_tris(c) * 3)
+    ms.idx_n[l] = lwt_topology(c, ix)
+    push(ms.idx, ix)
+  }
+  ms.ibuf = ms.idx[0]
+  return ms
+}
+
+# the grid index of perimeter point p of a c-cell patch: along the low-z edge, up the high-x edge, back along the high-z edge,
+# down the low-x edge
+function lwt_perimeter(c: int, p: int) -> int {
+  let n1 = c + 1
+  if p < c { return p }
+  if p < 2 * c { return (p - c) * n1 + c }
+  if p < 3 * c { return c * n1 + (c - (p - 2 * c)) }
+  return (c - (p - 3 * c)) * n1
+}
+
+# the triangles of a c-cell patch into `idx`: the grid's two a cell, then the skirt's two a perimeter edge; how many indices
+function lwt_topology(c: int, idx: words) -> int {
+  let n1 = c + 1
+  let sk = n1 * n1
+  var k = 0
+  for b in 0 .. c {
+    for a in 0 .. c {
+      let g = b * n1 + a
+      idx[k] = g;  idx[k + 1] = g + n1;  idx[k + 2] = g + 1
+      idx[k + 3] = g + 1;  idx[k + 4] = g + n1;  idx[k + 5] = g + n1 + 1
+      k += 6
+    }
+  }
+  for p in 0 .. 4 * c {
+    let q = (p + 1) % (4 * c)
+    let g0 = lwt_perimeter(c, p)
+    let g1 = lwt_perimeter(c, q)
+    idx[k] = g0;  idx[k + 1] = g1;  idx[k + 2] = sk + p
+    idx[k + 3] = g1;  idx[k + 4] = sk + q;  idx[k + 5] = sk + p
+    k += 6
+  }
+  return k
+}
+
+# Tile (tx, tz)'s table read into the pool: its slot; -2 when it has no file or one baked for other numbers (known from
+# now on, so it is asked for once); -1 when the pool holds nothing it may let go of (a tile wanted this frame stays).
+# A load: the header and table are read here.
+@alloc_ok("a tile's table being read: its file, once")
+export function tmm_load(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> int {
+  let t = tz * tm.cols + tx
+  if tx < 0 or tz < 0 or tx >= tm.cols or tz >= tm.rows { return -2 }
+  if ms.slot_of[t] >= 0 { ms.slot_used[ms.slot_of[t]] = ms.clock;  return ms.slot_of[t] }
+  if ms.slot_of[t] == -2 { return -2 }
+  var s = -1
+  for k in 0 .. ms.mslots {
+    if ms.slot_tile[k] < 0 { s = k;  break }
+    if ms.slot_used[k] != ms.clock and (s < 0 or ms.slot_used[k] < ms.slot_used[s]) { s = k }
+  }
+  if s < 0 { return -1 }
+  let path = tmap_mesh_path(tm, tx, tz)
+  let f = file_open(path, "rb")
+  if f == null { free(path);  ms.slot_of[t] = -2;  ms.no_file += 1;  return -2 }
+  let n = LWT_HEAD + ms.entries * LWT_ENTRY * 4
+  let b = buffer(n)
+  let got = file_read(f, data_of(b), n)
+  file_close(f)
+  if got != n or not lwt_head_ok(b, tm, tx, tz) {
+    print(`tilemap: {path} was baked for other numbers or another cut (or is cut short): bake the terrain again`)
+    free(path);  free(b)
+    ms.slot_of[t] = -2;  ms.stale += 1
+    return -2
+  }
+  free(path)
+  if ms.slot_tile[s] >= 0 { ms.slot_of[ms.slot_tile[s]] = -1 }
+  for i in 0 .. ms.entries * LWT_ENTRY { ms.tab[s * ms.entries * LWT_ENTRY + i] = lw_get32(b, LWT_HEAD + i * 4) }
+  free(b)
+  ms.slot_tile[s] = t
+  ms.slot_used[s] = ms.clock
+  ms.slot_of[t] = s
+  return s
+}
+
+# a patch level's lowest and highest ground, from a loaded table
+export function tmm_ymin(ms: TmMeshes, tm: TileMap, slot: int, px: int, pz: int, lod: int) -> float {
+  return float_from_bits(ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY + 1])
+}
+export function tmm_ymax(ms: TmMeshes, tm: TileMap, slot: int, px: int, pz: int, lod: int) -> float {
+  return float_from_bits(ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY + 2])
+}
+
+# Patch (px, pz) of the tile in `slot` at `lod`, read from its file and expanded into the scratch (vbuf, ibuf, nv, ni): the
+# grid's vertices with positions from the patch's corner (x and z from its centre, y the height less `lift`), the normal
+# unpacked, the uv, and the skirt. false when the file cannot be read. Allocates nothing.
+export function tmm_patch(ms: TmMeshes, tm: TileMap, slot: int, tx: int, tz: int, px: int, pz: int, lod: int, lift: float) -> bool {
+  let c = tm.patch_texels >> lod
+  let n1 = c + 1
+  let at = ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY]
+  let path = tmap_mesh_path(tm, tx, tz)
+  let f = file_open(path, "rb")
+  free(path)
+  if f == null { return false }
+  file_seek(f, at, 0)
+  let got = file_read(f, data_of(ms.raw), n1 * n1 * 4)
+  file_close(f)
+  if got != n1 * n1 * 4 { return false }
+  ms.reads += 1
+  let size = tmap_patch_size(tm)
+  let cell = size / float(c)
+  let drop = 2.0 * cell + tm.skirt
+  let raw = ms.raw
+  let v = ms.vbuf
+  for b in 0 .. n1 {
+    for a in 0 .. n1 {
+      let i = b * n1 + a
+      let q = int(raw[i * 4]) | (int(raw[i * 4 + 1]) << 8)
+      let nx = float(raw[i * 4 + 2]) / 255.0 * 2.0 - 1.0
+      let nz = float(raw[i * 4 + 3]) / 255.0 * 2.0 - 1.0
+      let ny = Math.sqrt(Math.max(1.0 - nx * nx - nz * nz, 0.0))
+      let x = float(a) * cell - size * 0.5
+      let z = float(b) * cell - size * 0.5
+      let wx = tmap_patch_cx(tm, tx, px) + x
+      let wz = tmap_patch_cz(tm, tz, pz) + z
+      lwt_vert(v, i, x, tm.h_off + tm.h_min + float(q) * tm.step - lift, z, nx, ny, nz, (wx - tm.origin_x) / tm.tile_size * ms.uv_per_tile, (wz - tm.origin_z) / tm.tile_size * ms.uv_per_tile)
+    }
+  }
+  let sk = n1 * n1
+  for p in 0 .. 4 * c {
+    let o = lwt_perimeter(c, p) * TM_VERT
+    lwt_vert(v, sk + p, v[o], v[o + 1] - drop, v[o + 2], v[o + 3], v[o + 4], v[o + 5], v[o + 6], v[o + 7])
+  }
+  ms.nv = sk + 4 * c
+  ms.ibuf = ms.idx[lod]
+  ms.ni = ms.idx_n[lod]
+  return true
+}
+
+function lwt_vert(v: floats, i: int, x: float, y: float, z: float, nx: float, ny: float, nz: float, u: float, w: float) -> void {
+  let o = i * TM_VERT
+  v[o] = x;  v[o + 1] = y;  v[o + 2] = z
+  v[o + 3] = nx;  v[o + 4] = ny;  v[o + 5] = nz
+  v[o + 6] = u;  v[o + 7] = w
+}

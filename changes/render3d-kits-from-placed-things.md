@@ -1,0 +1,3 @@
+bump: minor
+type: feat
+**Placed things are baked into instanced kits.** `kitbake.ludic` turns a list of placements into the map's `RenderKits` rows (one kit for each model, node and interior atlas, so every building that names a model shares one mesh, drawn instanced by its cell) and the cell files and index the large world streams; rows already written keep their ids and a re-bake only appends. `ludic.city`'s `tools/cells_bake_city.ludic` (`city_cells_bake`) does it for `Buildings` rows, and `tests/cells_bake_test.ludic` runs it on the fixture city: 72 buildings in 6 kits drawn as one culler list a kit, then `hlod_bake` over the same files. Run by a person or a `hook before build`; the game only loads the result.

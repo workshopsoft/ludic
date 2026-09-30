@@ -1,0 +1,162 @@
+# ============================================================================
+# kitbake.ludic - placed things baked into what the large world streams: a list of (model, node, where, how turned) becomes the
+# map's RenderKits rows (one kit for each model and node, so every placement of it shares ONE mesh, drawn instanced by the
+# cell) and the cell files (cells.lwi, cell_<cx>_<cz>.lwc: cellfile.ludic) the scheduler loads. It knows nothing of what
+# placed the things (a city, a forest, a prop list): a program that does calls it; ludic.city's is
+# packages/ludic.city/tools/cells_bake.ludic.
+#
+# Baked, not derived in play: the game only loads the files and the kit rows (bigworld_gpu.ludic's bw_open, bw_setup_kits). Nothing
+# here is for a frame; it is what a person runs, or a package.ludic `hook before build`, after the rows change. The far layers
+# are baked after it by the tools that exist for them: `hlod_bake` (the merged proxy of each cell) and `kgpu_bake_kit` (a kit's
+# impostor atlas, a person's click).
+#
+#   let kb = kitbake_new(256.0)
+#   kitbake_seed(kb, existing_kits.rows)              # rows already written keep their ids (kits are only ever appended)
+#   let id = kitbake_kit(kb, "city/block_3.glb", "tower_a", 30.0, 30.0, 120.0, "")
+#   kitbake_place(kb, id, x, y, z, yaw_radians, 1.0, cell_rgba(255, 255, 255, 255), variation, flags)
+#   kitbake_write(kb, "assets/maps/meridian/cells")   # cells.lwi and the cell files
+#   Fs.write_text("assets/maps/meridian/render_kits.lres", kitbake_rows(kb, 0))
+# ============================================================================
+numbers float
+
+export property KitBake {
+  size: float = 256.0                # the cell's side, metres (the map's WorldPartition.cell_size)
+  kits: []RenderKit = null
+  kit_of: Dict = null                # "model|node|interior" -> kit id
+  seeded: int = 0                    # kits that came from rows already written
+  cells: []CellContent = null
+  cell_of: Dict = null               # "cx,cz" -> index in cells
+  placed: int = 0
+  near_scale: float = 30.0           # a new kit's `near` is this times its bounding radius ...
+  far_scale: float = 180.0           # ... its `far` this
+  near_min: float = 150.0
+  far_min: float = 1200.0
+}
+
+@alloc_ok("a bake: the lists are made once")
+export function kitbake_new(size: float) -> KitBake {
+  let kb = new KitBake
+  kb.size = size
+  kb.kits = new []RenderKit
+  kb.kit_of = Dict.new()
+  kb.cells = new []CellContent
+  kb.cell_of = Dict.new()
+  return kb
+}
+
+# the kit's name in the Dict: what makes two placements one mesh
+function kb_id(model: string, node: string, interior: string) -> string { return `{model}|{node}|{interior}` }
+
+# rows already written (the map's render_kits.lres as loaded): they keep their ids, and kitbake_kit finds them again by model,
+# node and interior atlas
+@alloc_ok("a bake: the existing rows are added once")
+export function kitbake_seed(kb: KitBake, rows: []RenderKit) -> void {
+  for i in 0 .. len(rows) {
+    push(kb.kits, rows[i])
+    Dict.set(kb.kit_of, kb_id(rows[i].model, rows[i].node, rows[i].interior), i)
+  }
+  kb.seeded = len(rows)
+}
+
+# a kit key: the node's name with anything a row's key cannot hold turned to "_"
+function kb_key(node: string) -> string {
+  var out = ""
+  for i in 0 .. len(node) {
+    let c = int(node[i])
+    let ok = (c >= 48 and c <= 57) or (c >= 65 and c <= 90) or (c >= 97 and c <= 122) or c == 95
+    if ok { out = out + Text.slice(node, i, i + 1) } else { out = out + "_" }
+  }
+  if out == "" { return "kit" }
+  let c0 = int(out[0])
+  if c0 >= 48 and c0 <= 57 { return "k_" + out }
+  return out
+}
+function kb_key_free(kb: KitBake, key: string) -> bool {
+  for i in 0 .. len(kb.kits) { if kb.kits[i].key == key { return false } }
+  return true
+}
+
+# The kit of a model's node (a glTF and the node in it: origin at the middle of the footprint, on the ground, +y up), made on the
+# first ask and the same one after: its id. `w`, `d`, `h` are the footprint and height in metres (the HLOD box, the impostor's
+# frame and the far distances come from them); `interior` is the InteriorAtlases key its windows show ("" plain glass). A second ask
+# with other measures keeps the first's.
+@alloc_ok("a bake: a kit's row is made once")
+export function kitbake_kit(kb: KitBake, model: string, node: string, w: float, d: float, h: float, interior: string) -> int {
+  let id = kb_id(model, node, interior)
+  if Dict.has(kb.kit_of, id) { return Dict.get(kb.kit_of, id) }
+  let k = new RenderKit
+  var key = kb_key(node)
+  var n = 2
+  while not kb_key_free(kb, key) { key = `{kb_key(node)}_{n}`;  n += 1 }
+  k.key = key
+  k.model = model
+  k.node = node
+  k.w = Math.max(w, 0.1);  k.d = Math.max(d, 0.1);  k.h = Math.max(h, 0.1)
+  let r = 0.5 * Math.sqrt(k.w * k.w + k.d * k.d + k.h * k.h)
+  k.near = Math.max(r * kb.near_scale, kb.near_min)
+  k.far = Math.max(r * kb.far_scale, Math.max(kb.far_min, k.near * 2.0))
+  k.interior = interior
+  push(kb.kits, k)
+  Dict.set(kb.kit_of, id, len(kb.kits) - 1)
+  return len(kb.kits) - 1
+}
+
+# the cell (cx, cz)'s content, made on the first placement
+function kb_cell(kb: KitBake, cx: int, cz: int) -> CellContent {
+  let key = `{cx},{cz}`
+  if Dict.has(kb.cell_of, key) { return kb.cells[Dict.get(kb.cell_of, key)] }
+  let c = cell_content_new(cx, cz, kb.size, 16)
+  push(kb.cells, c)
+  Dict.set(kb.cell_of, key, len(kb.cells) - 1)
+  return c
+}
+
+# One placement at world (x, y, z): into the cell the point is in, relative to its corner (exact however far from the origin).
+# `yaw` in radians as the renderer turns an instance, `tint` RGBA8 (cell_rgba), `variation` 0 .. 65535 seeds the facade and
+# each window's room, `flags` are the game's own bits. false for a kit that was never made.
+@alloc_ok("a bake: the cell's columns grow while it is filled")
+export function kitbake_place(kb: KitBake, kit: int, x: float, y: float, z: float, yaw: float, scale: float, tint: int, variation: int, flags: int) -> bool {
+  if kit < 0 or kit >= len(kb.kits) { return false }
+  let cx = int(Math.floor(x / kb.size))
+  let cz = int(Math.floor(z / kb.size))
+  cell_add(kb_cell(kb, cx, cz), kit, x - float(cx) * kb.size, y, z - float(cz) * kb.size, yaw, scale, tint, variation & 65535, flags)
+  kb.placed += 1
+  return true
+}
+
+export function kitbake_kit_count(kb: KitBake) -> int { return len(kb.kits) }
+export function kitbake_cell_count(kb: KitBake) -> int { return len(kb.cells) }
+
+# the cell files and the index into `dir` (made if need be): how many cells were written. The index's "proxy" weights stay 0 until
+# hlod_bake has run over the directory (it rewrites the index with them).
+@alloc_ok("a bake: the index is made once")
+export function kitbake_write(kb: KitBake, dir: string) -> int {
+  Fs.mkdir(dir)
+  let ix = cell_index_new(kb.size)
+  var n = 0
+  for i in 0 .. len(kb.cells) {
+    let c = kb.cells[i]
+    if not cell_save(dir, c) { print(`kitbake: cannot write {cell_path(dir, c.cx, c.cz, "lwc")}`);  continue }
+    cell_index_set(ix, c.cx, c.cz, c.n, cell_bytes(c), 0)
+    n += 1
+  }
+  if not cell_index_save(dir, ix) { print(`kitbake: cannot write the index in {dir}`);  return -1 }
+  return n
+}
+
+# a float as a row writes it ("12.5", never "1e1")
+function kb_num(v: float) -> string { return `{v}` }
+
+# The rows of RenderKits from kit `from` on, as the text of a render_kits.lres (`from` = the count that was seeded appends to an
+# existing file; 0 writes them all): the same fields the studio's RenderKits table edits.
+@alloc_ok("a bake: the rows' text is made once")
+export function kitbake_rows(kb: KitBake, from: int) -> string {
+  var out = ""
+  for i in from .. len(kb.kits) {
+    let k = kb.kits[i]
+    out = out + `{k.key} \{\n  model: "{k.model}", node: "{k.node}"\n  w: {kb_num(k.w)}, d: {kb_num(k.d)}, h: {kb_num(k.h)}\n  near: {kb_num(k.near)}, far: {kb_num(k.far)}\n`
+    if k.interior != "" { out = out + `  interior: "{k.interior}"\n  win_w: {kb_num(k.win_w)}, win_h: {kb_num(k.win_h)}\n` }
+    out = out + "}\n"
+  }
+  return out
+}

@@ -1,0 +1,43 @@
+# ============================================================================
+# glb.ludic - binary glTF (.glb): a 12-byte header (magic "glTF", version 2, total length), a JSON
+# chunk and, usually, one BIN chunk (each chunk: u32 length, u32 type, data padded to 4 bytes).
+# `glb_scan` finds the two chunks in an open file without reading either, so the loader reads the JSON
+# text and then only the byte ranges a node needs from the BIN chunk, as it does from a .gltf's .bin.
+# Nothing here touches a device.
+# ============================================================================
+const GLB_MAGIC: int = 1179937895      # "glTF" read as a little-endian u32: 0x46546C67
+const GLB_JSON: int = 1313821514       # "JSON": 0x4E4F534A
+const GLB_BIN: int = 5130562           # "BIN\0": 0x004E4942
+
+# the little-endian u32 at `at` of a raw buffer
+function glb_u32(b: pointer, at: int) -> int {
+  return b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)
+}
+
+# Is the open file `f` (of `size` bytes) a GLB? On true `out` (4 words at least) holds: [0] where the JSON
+# text starts, [1] its length, [2] where the BIN chunk's data starts (-1 when there is none), [3] its length.
+# A file that is something else (a .gltf's JSON), truncated, of another version or whose chunks overrun
+# the file answers false.
+@alloc_ok("a model being loaded: a header's scratch, once")
+function glb_scan(f: pointer, size: int, out: words) -> bool {
+  if size < 20 { return false }
+  let h = bytes(24)
+  file_seek(f, 0, 0)
+  var ok = file_read(f, h, 20) == 20
+  ok = ok and glb_u32(h, 0) == GLB_MAGIC and glb_u32(h, 4) == 2
+  let total = glb_u32(h, 8)
+  let jlen = glb_u32(h, 12)
+  ok = ok and glb_u32(h, 16) == GLB_JSON and total <= size and jlen >= 2 and 20 + jlen <= total
+  out[0] = 20;  out[1] = jlen;  out[2] = -1;  out[3] = 0
+  if ok {
+    let next = 20 + ((jlen + 3) & -4)
+    if next + 8 <= total {
+      file_seek(f, next, 0)
+      if file_read(f, h, 8) == 8 and glb_u32(h, 4) == GLB_BIN and next + 8 + glb_u32(h, 0) <= total {
+        out[2] = next + 8;  out[3] = glb_u32(h, 0)
+      } else { ok = false }
+    }
+  }
+  free(h)
+  return ok
+}

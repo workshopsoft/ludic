@@ -1,0 +1,275 @@
+# tilemap_test.ludic - a map's 16-bit height tiles read as the studio writes them (tests/maps/tiles: 3 x 2 tiles of 16 samples,
+# 32 m a tile, the tile (2, 1) missing): the layout from the row's numbers (texel centres, image row 0 the low z, the height
+# range and offset), heights across tile edges and past the map's edge, a tile with no file, streaming nearest first within a
+# budget and a pool that lets the least recently wanted go, heights for physics' heightfield, and the patches' meshes (levels
+# that agree on shared vertices, skirts, indices in range). No device.
+import "ludic.render3d/r3d.ludic"
+program TileMapTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # the test's own height: the texel (i, j) of the whole map, as the PNGs were written (tests/maps/tiles is made by this formula)
+  function raw_at(i: int, j: int) -> int { return 1000 + 600 * i + 350 * j + 40 * ((i * j) % 7) }
+  function want(i: int, j: int) -> float { return 3.0 - 10.0 + float(raw_at(i, j)) * 50.0 / 65535.0 }
+
+  function open(render3d_st: Render3dState, radius: float) -> TileMap {
+    let pattern = render3d_st.r3d_root + "/tests/maps/tiles/{tx}_{tz}.png"
+    return tmap_new(pattern, 32.0, 16, 3, 2, -48.0, -16.0, -10.0, 40.0, 3.0, radius)
+  }
+  # world x and z of the centre of texel (i, j)
+  function cx(i: int) -> float { return -48.0 + (float(i) + 0.5) * 2.0 }
+  function cz(j: int) -> float { return -16.0 + (float(j) + 0.5) * 2.0 }
+
+  test "a row that cannot be a map is refused and says why" (render3d_st: mut Render3dState) {
+    expect(tmap_new("tiles.png", 32.0, 16, 3, 2, 0.0, 0.0, 0.0, 10.0, 0.0, 100.0) == null)
+    expect(Text.contains(tmap_problem("a/{tx}.png", 32.0, 16, 3, 2, 0.0, 10.0), "{tz}"))
+    expect(Text.contains(tmap_problem("{tx}_{tz}", 0.0, 16, 3, 2, 0.0, 10.0), "tile_size"))
+    expect(Text.contains(tmap_problem("{tx}_{tz}", 32.0, 1, 3, 2, 0.0, 10.0), "tile_res"))
+    expect(Text.contains(tmap_problem("{tx}_{tz}", 32.0, 16, 3, 2, 10.0, 10.0), "height_max"))
+    expect_eq(tmap_problem("{tx}_{tz}", 32.0, 16, 3, 2, 0.0, 10.0), "")
+  }
+
+  test "the layout comes from the row: every texel centre answers its own sample" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    expect(tm != null)
+    expect_near(tm.texel, 2.0, 0.0001)
+    expect_eq(tmap_path(tm, 2, 1), render3d_st.r3d_root + "/tests/maps/tiles/2_1.png")
+    expect(tmap_stream(render3d_st, tm, 0.0, 0.0, 1000.0, 100) > 0)
+    expect_eq(tmap_resident_count(tm), 5)            # (2, 1) has no file
+    var bad = 0
+    for j in 0 .. 32 {
+      for i in 0 .. 48 {
+        if i >= 32 and j >= 16 { continue }          # the missing tile
+        if Math.abs(tmap_height(tm, cx(i), cz(j)) - want(i, j)) > 0.002 { bad += 1 }
+      }
+    }
+    expect_eq(bad, 0)
+  }
+
+  test "between texel centres it is bilinear, across a tile's edge as well, and flat where a tile has no file" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    tmap_stream(render3d_st, tm, 0.0, 0.0, 1000.0, 100)
+    # half way between texels 15 and 16 (the edge of tiles 0 and 1) on row 4
+    let mid = (want(15, 4) + want(16, 4)) * 0.5
+    expect_near(tmap_height(tm, -16.0, cz(4)), mid, 0.002)
+    # the middle of four texels over the corner of four tiles
+    let quad = (want(15, 15) + want(16, 15) + want(15, 16) + want(16, 16)) * 0.25
+    expect_near(tmap_height(tm, -16.0, 16.0), quad, 0.002)
+    # past the map's edge the edge texel holds
+    expect_near(tmap_height(tm, -500.0, cz(3)), want(0, 3), 0.002)
+    expect_near(tmap_height(tm, cx(10), 900.0), want(10, 31), 0.002)
+    # the tile with no file: flat at offset + height_min
+    expect_near(tmap_height(tm, cx(40), cz(25)), -7.0, 0.0001)
+    expect(tmap_ready(tm, cx(40), cz(25)))
+  }
+
+  test "a tile not loaded yet is flat and not ready, and tmap_height_sync loads what it needs" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    expect(not tmap_ready(tm, cx(5), cz(5)))
+    expect_near(tmap_height(tm, cx(5), cz(5)), -7.0, 0.0001)
+    expect_near(tmap_height_sync(render3d_st, tm, cx(5), cz(5)), want(5, 5), 0.002)
+    expect(tmap_ready(tm, cx(5), cz(5)))
+    expect_eq(tmap_resident_count(tm), 1)
+  }
+
+  test "streaming is nearest first within a budget" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    # the camera over tile (1, 0): it comes first, then the next nearest
+    expect_eq(tmap_stream(render3d_st, tm, 0.0, 0.0, 1000.0, 1), 1)
+    expect(tmap_resident(tm, 1, 0))
+    expect_eq(tmap_resident_count(tm), 1)
+    expect_eq(tmap_stream(render3d_st, tm, 0.0, 0.0, 1000.0, 1), 1)
+    expect_eq(tmap_resident_count(tm), 2)
+    expect(tmap_resident(tm, 1, 1) or tmap_resident(tm, 0, 0) or tmap_resident(tm, 2, 0) or tmap_resident(tm, 0, 1))
+    # nothing past the radius: from the far corner a 10 m radius reaches only its own tile
+    let tm2 = open(render3d_st, 10.0)
+    expect_eq(tmap_stream(render3d_st, tm2, 40.0, -10.0, 10.0, 100), 1)
+    expect(tmap_resident(tm2, 2, 0))
+    expect_eq(tmap_stream(render3d_st, tm2, 40.0, -10.0, 10.0, 100), 0)
+  }
+
+  test "the pool lets the tile wanted longest ago go, never one wanted this frame" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    tmap_pool(tm, 2)
+    expect_eq(tm.slots, 2)
+    tmap_stream(render3d_st, tm, -32.0, 0.0, 1.0, 10)      # tile (0, 0)
+    tmap_stream(render3d_st, tm, 0.0, 0.0, 1.0, 10)       # tile (1, 0)
+    expect(tmap_resident(tm, 0, 0) and tmap_resident(tm, 1, 0))
+    tmap_stream(render3d_st, tm, 0.0, 0.0, 1.0, 10)       # (1, 0) wanted again: (0, 0) is the older
+    tmap_stream(render3d_st, tm, 32.0, 0.0, 1.0, 10)      # tile (2, 0) comes in
+    expect(tmap_resident(tm, 2, 0) and tmap_resident(tm, 1, 0) and not tmap_resident(tm, 0, 0))
+    expect_eq(tm.evicts, 1)
+    # a frame that wants more than the pool holds loads what it can, nearest first, and says so
+    tmap_stream(render3d_st, tm, 0.0, 0.0, 1000.0, 10)
+    expect(tm.short)
+    expect_eq(tmap_resident_count(tm), 2)
+    expect(tmap_resident(tm, 1, 0))
+    expect_near(tmap_height(tm, cx(20), cz(3)), want(20, 3), 0.002)
+  }
+
+  test "heights for a physics heightfield are the ground's own, with a hole where a tile is not loaded" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    tmap_ensure(render3d_st, tm, -32.0, 0.0, 1.0)            # tile (0, 0) and its neighbour only as far as 1 m reaches
+    let h = floats(9 * 9)
+    let holes = tmap_field(tm, h, 9, -44.0, -12.0, 2.0, 12345.0)    # 16 m square inside tile (0, 0)
+    expect_eq(holes, 0)
+    for j in 0 .. 9 { for i in 0 .. 9 { expect_near(h[j * 9 + i], tmap_height(tm, -44.0 + float(i) * 2.0, -12.0 + float(j) * 2.0), 0.0001) } }
+    let k = floats(9 * 9)
+    let holes2 = tmap_field(tm, k, 9, 10.0, -12.0, 2.0, 12345.0)     # over tiles not loaded
+    expect_eq(holes2, 81)
+    expect(k[0] == 12345.0 and k[80] == 12345.0)
+  }
+
+  test "the normal and slope follow the ground" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    tmap_ensure(render3d_st, tm, 0.0, 0.0, 1000.0)
+    let n = floats(3)
+    tmap_normal(tm, cx(8), cz(8), n)
+    expect_near(n[0] * n[0] + n[1] * n[1] + n[2] * n[2], 1.0, 0.001)
+    expect(n[0] < 0.0 and n[2] < 0.0 and n[1] > 0.0)       # the ground rises with x and z
+    expect(tmap_slope(tm, cx(8), cz(8)) > 0.0)
+  }
+
+  test "the level a patch is drawn at follows its distance, and keeps its level near a boundary" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    expect_eq(tm.patch_texels, 16)
+    expect_eq(tm.lod_max, 2)
+    let d = tm.lod_dist
+    expect_eq(tmap_lod_for(tm, 1.0, -1), 0)
+    expect_eq(tmap_lod_for(tm, d * 1.05, -1), 1)
+    expect_eq(tmap_lod_for(tm, d * 2.5, -1), 2)
+    expect_eq(tmap_lod_for(tm, d * 50.0, -1), 2)
+    expect_eq(tmap_lod_for(tm, d * 1.05, 0), 0)            # still level 0 a little past its band
+    expect_eq(tmap_lod_for(tm, d * 1.2, 0), 1)
+    expect_eq(tmap_lod_for(tm, d * 0.95, 1), 1)            # and level 1 a little inside it
+    expect_eq(tmap_lod_for(tm, d * 0.5, 1), 0)
+  }
+
+  # bake the fixture into a fresh folder and open its files the way the game does
+  function baked(render3d_st: mut Render3dState, tm: TileMap, tag: string) -> string {
+    let pattern = Os.temp_dir() + "/r3d_tilemap_" + tag + "/{tx}_{tz}.lwt"
+    expect_eq(tmb_map(render3d_st, tm, pattern), 5)            # five tiles have a PNG; (2, 1) has none
+    return pattern
+  }
+
+  test "the bake writes a file a tile that has a PNG, and the game's reader checks it against the row" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    let pattern = baked(render3d_st, tm, "files")
+    expect(Fs.exists(Os.temp_dir() + "/r3d_tilemap_files/1_0.lwt"))
+    expect(not Fs.exists(Os.temp_dir() + "/r3d_tilemap_files/2_1.lwt"))
+    tmap_mesh_pattern(tm, pattern)
+    let ms = tmm_new(tm, 4)
+    let s = tmm_load(ms, tm, 1, 0)
+    expect(s >= 0)
+    expect_eq(tmm_load(ms, tm, 2, 1), -2)                     # no file
+    expect_eq(ms.no_file, 1)
+    # another row's numbers, or another cut, are refused and the file is left alone
+    let other = tmap_new(render3d_st.r3d_root + "/tests/maps/tiles/{tx}_{tz}.png", 32.0, 16, 3, 2, -48.0, -16.0, -10.0, 41.0, 3.0, 1000.0)
+    tmap_mesh_pattern(other, pattern)
+    let ms2 = tmm_new(other, 4)
+    expect_eq(tmm_load(ms2, other, 1, 0), -2)
+    expect_eq(ms2.stale, 1)
+    let cut = open(render3d_st, 1000.0)
+    tmap_mesh_pattern(cut, pattern)
+    tmap_patches(cut, 8)
+    expect_eq(cut.patches, 2)
+    expect_eq(tmm_load(tmm_new(cut, 4), cut, 1, 0), -2)
+  }
+
+  test "a baked patch is the ground where physics reads it, at every level, and its mesh is whole" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    tmap_mesh_pattern(tm, baked(render3d_st, tm, "patch"))
+    tmap_ensure(render3d_st, tm, 0.0, 0.0, 1000.0)
+    let ms = tmm_new(tm, 4)
+    let s = tmm_load(ms, tm, 1, 0)
+    expect_eq(ms.entries, 3)                                   # one patch, three levels
+    let cxw = tmap_patch_cx(tm, 1, 0)
+    let czw = tmap_patch_cz(tm, 0, 0)
+    var worst = 0.0
+    for lod in 0 .. 3 {
+      expect(tmm_patch(ms, tm, s, 1, 0, 0, 0, lod, 0.0))
+      let c = 16 >> lod
+      expect_eq(ms.nv, (c + 1) * (c + 1) + 4 * c)
+      expect_eq(ms.ni, (2 * c * c + 8 * c) * 3)
+      for i in 0 .. ms.ni { expect(ms.ibuf[i] >= 0 and ms.ibuf[i] < ms.nv) }
+      for k in 0 .. (c + 1) * (c + 1) {
+        let o = k * TM_VERT
+        worst = Math.max(worst, Math.abs(ms.vbuf[o + 1] - tmap_height(tm, cxw + ms.vbuf[o], czw + ms.vbuf[o + 2])))
+        let nl = ms.vbuf[o + 3] * ms.vbuf[o + 3] + ms.vbuf[o + 4] * ms.vbuf[o + 4] + ms.vbuf[o + 5] * ms.vbuf[o + 5]
+        expect_near(nl, 1.0, 0.02)
+      }
+    }
+    expect(worst < 50.0 / 65535.0)                             # within one step of the 16 bits
+    # the skirt hangs two cells of the level (and the row's skirt) under the edge vertex it copies
+    expect(tmm_patch(ms, tm, s, 1, 0, 0, 0, 0, 0.0))
+    for p in 0 .. 64 {
+      let o = (17 * 17 + p) * TM_VERT
+      var found = false
+      for k in 0 .. 17 * 17 {
+        let e = k * TM_VERT
+        if Math.abs(ms.vbuf[e] - ms.vbuf[o]) < 0.0001 and Math.abs(ms.vbuf[e + 2] - ms.vbuf[o + 2]) < 0.0001 { found = true;  expect_near(ms.vbuf[e + 1] - ms.vbuf[o + 1], 2.0 * (32.0 / 16.0) + 2.0, 0.001) }
+      }
+      expect(found)
+    }
+    # the table knows the patch's lowest and highest ground
+    expect(tmm_ymin(ms, tm, s, 0, 0, 0) < tmm_ymax(ms, tm, s, 0, 0, 0))
+    # the lift moves every y
+    expect(tmm_patch(ms, tm, s, 1, 0, 0, 0, 0, 10.0))
+    expect_near(ms.vbuf[1], tmap_height(tm, cxw + ms.vbuf[0], czw + ms.vbuf[2]) - 10.0, 50.0 / 65535.0)
+  }
+
+  test "coarser levels keep the vertices they share with the finer ones, and so do neighbours across a tile's edge" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    tmap_mesh_pattern(tm, baked(render3d_st, tm, "shared"))
+    let ms = tmm_new(tm, 4)
+    let s1 = tmm_load(ms, tm, 1, 0)
+    let s0 = tmm_load(ms, tm, 0, 0)
+    # tile (0, 0)'s high-x column at level 0 against tile (1, 0)'s low-x column at level 2: one line of ground
+    expect(tmm_patch(ms, tm, s0, 0, 0, 0, 0, 0, 0.0))
+    let a = floats(17)
+    for b in 0 .. 17 { a[b] = ms.vbuf[(b * 17 + 16) * TM_VERT + 1] }
+    expect(tmm_patch(ms, tm, s1, 1, 0, 0, 0, 2, 0.0))
+    for b in 0 .. 5 { expect_near(ms.vbuf[(b * 5) * TM_VERT + 1], a[b * 4], 50.0 / 65535.0) }
+    # level 1 is every second vertex of level 0
+    expect(tmm_patch(ms, tm, s1, 1, 0, 0, 0, 0, 0.0))
+    let f = floats(17 * 17)
+    for k in 0 .. 17 * 17 { f[k] = ms.vbuf[k * TM_VERT + 1] }
+    expect(tmm_patch(ms, tm, s1, 1, 0, 0, 0, 1, 0.0))
+    for b in 0 .. 9 { for c in 0 .. 9 { expect_near(ms.vbuf[(b * 9 + c) * TM_VERT + 1], f[(b * 2) * 17 + c * 2], 50.0 / 65535.0) } }
+  }
+
+  test "the mesh pool lets the tile wanted longest ago go" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    tmap_mesh_pattern(tm, baked(render3d_st, tm, "pool"))
+    let ms = tmm_new(tm, 2)
+    ms.clock = 1
+    expect(tmm_load(ms, tm, 0, 0) >= 0)
+    expect(tmm_load(ms, tm, 1, 0) >= 0)
+    ms.clock = 2
+    expect(tmm_load(ms, tm, 1, 0) >= 0)          # wanted again
+    expect(tmm_load(ms, tm, 2, 0) >= 0)          # (0, 0) goes
+    expect_eq(ms.slot_of[0], -1)
+    expect(ms.slot_of[1] >= 0 and ms.slot_of[2] >= 0)
+    expect_eq(tmm_load(ms, tm, 0, 1), -1)        # both slots were wanted this frame: nothing to let go
+  }
+
+  test "the path a baked mesh is read from is the tiles' pattern with .lwt, or the row's own" (render3d_st: mut Render3dState) {
+    expect_eq(tmap_mesh_pattern_of("assets/maps/m/terrain/{tx}_{tz}.png"), "assets/maps/m/terrain/{tx}_{tz}.lwt")
+    expect_eq(tmap_mesh_pattern_of("t/{tx}_{tz}"), "t/{tx}_{tz}.lwt")
+    let tm = open(render3d_st, 100.0)
+    expect_eq(tmap_mesh_path(tm, 2, 1), render3d_st.r3d_root + "/tests/maps/tiles/2_1.lwt")
+    tmap_mesh_pattern(tm, "x/{tz}/{tx}.lwt")
+    expect_eq(tmap_mesh_path(tm, 2, 1), "x/1/2.lwt")
+  }
+
+  test "the drawing half opens with a pool sized for its radius and one record a patch, nothing on the GPU" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 1000.0)
+    let td = tmd_new(render3d_st, tm, 40.0)
+    expect(td.ms.mslots >= 4 and td.ms.mslots <= 6)
+    expect_eq(len(td.patches), td.ms.mslots * tm.patches * tm.patches)
+    expect_eq(td.shown, 0)
+    expect(td.color[0] == 0.5)
+    tmd_free(render3d_st, td)
+    expect_eq(td.frees, 0)
+  }
+}

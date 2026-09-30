@@ -50,7 +50,7 @@ Geometry, terrain and world
 25. Satellite-classified materials and placement: bare ground (cobble shore near, talus far), snow, meadow, dense conifer stands (tree density and forest-floor duff follow the photograph) — `shaders/terrain.frag`, `terrain.ludic` `terrain_ortho_green/scree/forest`
 26. Terrain material splatting by slope, altitude and a track mask; height-map CPU read-back for placement queries — `shaders/terrain.frag`, `terrain.ludic` `terrain_height`
 27. Snow by altitude and slope, gully snow, forest-floor material under stands — `shaders/terrain.frag`
-28. glTF 2.0 loading of photogrammetry models by byte-range reads from the `.bin` — `gltf.ludic`
+28. glTF 2.0 loading of photogrammetry models by byte-range reads from the `.bin`, or from a binary `.glb`'s BIN chunk (told apart by the file's first bytes) — `gltf.ludic` `gltf_open`, `glb.ludic`
 29. GPU instancing with divisor attributes and per-instance transforms — `scatter.ludic`, `shaders/model.vert`
 30. Baked impostors (16-view atlas with coverage and normals, hull-normal blending, LOD switch) — `scatter.ludic` `impostor_bake`, `shaders/impostor.*`
 31. Baked branch-card trees: wedge slices of a scanned crown (sectors × height bands) on radial cards over the real trunk mesh — `scatter.ludic` `impostor_bake_wedges`, `model_branch_cards`
@@ -111,6 +111,9 @@ Large worlds (cities of hundreds of thousands of buildings on 16 km and more; RE
 79. Portal visibility inside buildings: rooms and portals as data, a frustum narrowed at each open portal, entry from outdoors through the exterior portals, the verdict driving the culler - `portal.ludic` `pg_visible`, `intr.ludic` `InteriorRooms`, `InteriorDoors`
 80. Multi-map and instanced interiors: an interior is a map loaded on demand (once however many instances), a slot and far-away origin for each (def, owner), fade / load / spawn / exit transition with events, eviction, keep time, the city's streaming held while inside - `intr.ludic` `intr_enter`, `intr_update`, `intr_rehome`
 81. A default font for a game that names none: `overlay_init(st, "")` loads Noto Sans (OFL, baked: Latin, Latin Extended-A, Greek, Cyrillic) from `fonts/default/` in this package, which a shipped game's pack carries; a game's own TTF is baked with `ludic font bake` — `overlay.ludic` `overlay_font_default`
+82. A map's ground from the studio's 16-bit height tiles, read as they are (layout from the map's row: texel centres, tile edges, height range), a pool of tiles streamed nearest first within a budget, heights and normals anywhere for physics and placement, and heights for a Jolt heightfield shape - `tilemap.ludic` `tmap_new`, `tmap_stream`, `tmap_height`, `tmap_field`
+83. The ground drawn from baked levels of detail: tiles cut into patches and levels offline (quantized heights and normals, one LWT1 file a tile, checked against the row), patches streamed and uploaded nearest first, a skirt hiding the cracks between levels, the renderer's own model pass lighting it - `tilemap_bake.ludic`, `tools/terrain_bake.ludic`, `tilemap_lwt.ludic`, `tilemap_draw.ludic` `tmd_frame`
+84. Placed things baked into instanced kits: one `RenderKits` row a model, node and atlas, the cell files and index the scheduler loads, rows a game reads back, existing ids kept - `kitbake.ludic` (ludic.city's rows: `packages/ludic.city/tools/cells_bake_city.ludic`)
 
 ## Against Unreal Engine 5 and RAGE (RDR2), honestly
 

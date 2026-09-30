@@ -1,0 +1,384 @@
+# ============================================================================
+# tilemap.ludic - a map's ground read from its height TILES: one 16-bit greyscale PNG a square tile, the way the
+# studio writes a map (`world_create`, `terrain_sculpt`). Nothing here is baked: the tiles are the game's own
+# files, read as they are, in a streamed cache round the camera.
+#
+# The layout, all of it from the map's row (the studio's World binding: `tiles`, `tile_size`, `tile_origin_x/z`,
+# `tile_cols`, `tile_rows`, `height_min`, `height_max`, and the row's `tile_res` and `height_offset`):
+#
+#   tile (tx, tz), 0 <= tx < cols, 0 <= tz < rows, is the file `pattern` with {tx} and {tz} filled in
+#   it covers x in [origin_x + tx * tile_size, + tile_size), z likewise, res x res samples, res samples a
+#   side (tile_res: 16 .. 4096), no sample shared with a neighbour, the texel a tile_size / res square
+#   sample (i, j) of a tile: i along +x, j along +z, row 0 of the image the LOW z (as the studio writes it)
+#   its centre is at origin + (tile * res + i + 0.5) * texel; height = offset + height_min +
+#       raw / 65535 * (height_max - height_min), raw the 16-bit grey value
+#   between texel centres the ground is bilinear, across a tile's edge as well; past the map's edge it stays
+#   at the edge texel; a tile with no file (or not a res x res 16-bit grey PNG) is flat at `base`
+#
+# What is here needs no device (the PNG decode aside, which is the renderer's own): the row's numbers
+# (tmap_new), a cache of tiles kept as their 16-bit samples (2 bytes a texel, the PNG's own order) with a
+# least-recently-used pool, streaming nearest first within a per-frame budget (tmap_stream), and the ground's
+# height and normal anywhere (tmap_height: the port a physics body and a walker ask, allocation free) and
+# heights for physics' heightfield shapes (tmap_field). That is the ground as DATA, read and sampled.
+#
+# What is DRAWN is not made here or at run time at all. Levels of detail are a BAKE (tilemap_bake.ludic,
+# tools/terrain_bake.ludic, run by a person or a `hook before build`): it cuts every tile into square PATCHES of
+# `patch_texels` texels (128 by default, a divisor of the tile's res), each a grid of (patch_texels >> lod) cells a
+# side - lod 0 every texel, each level doubling the cell, down to 4 cells - and writes one file a tile
+# (tilemap_lwt.ludic: heights and normals quantized, every level of every patch). The game only loads and
+# streams those (tilemap_draw.ludic). Patches share their edge vertices, whatever the level, and a skirt hangs
+# from every edge, so a coarser neighbour leaves no crack.
+# ============================================================================
+numbers float
+
+const TM_NO_FILE: int = -2          # slot_of: the tile has no usable file
+
+export property TileMap {
+  pattern: string = ""              # the tile files, "{tx}" and "{tz}" in it
+  tile_size: float = 0.0            # metres a tile's side
+  res: int = 0                      # samples a tile's side
+  cols: int = 0
+  rows: int = 0
+  origin_x: float = 0.0             # world x of tile 0's corner
+  origin_z: float = 0.0
+  h_min: float = 0.0                # metres at sample 0
+  h_max: float = 0.0                # and at 65535
+  h_off: float = 0.0                # added after
+  texel: float = 0.0                # tile_size / res
+  step: float = 0.0                 # metres a sample step (65535 of them span h_min .. h_max)
+  base: float = 0.0                 # the height of a tile with no file (h_off + h_min)
+  # the cache
+  slots: int = 0
+  data: []byte = null               # slots x res x res 16-bit samples, each in the PNG's order (high byte first)
+  slot_tile: words = null           # the tile in a slot, -1 free
+  slot_used: words = null           # the clock a slot was last wanted at
+  slot_of: words = null             # a tile's slot, -1 not loaded, TM_NO_FILE no usable file
+  clock: int = 0
+  loads: int = 0                    # tiles decoded, all time
+  evicts: int = 0
+  no_file: int = 0                  # tiles found unusable
+  short: bool = false               # the pool was too small for what was wanted (set by a stream, cleared by the next)
+  # patches: how the bake cut the tiles, and the levels the game picks between
+  patch_texels: int = 0
+  patches: int = 0                  # patches a tile's side
+  lod_max: int = 0
+  lod_dist: float = 0.0             # metres: lod 0 inside this; each level doubles it
+  skirt: float = 0.0                # metres added to every skirt (on top of two cells of its own level)
+  mesh_pattern: string = ""         # the baked mesh files (tilemap_lwt.ludic): the tiles pattern with .lwt for its extension
+  nrm: floats = null                # tmap_normal's scratch
+}
+
+# what is wrong with a row's numbers, or "" : the question a game asks before it opens a map
+export function tmap_problem(pattern: string, tile_size: float, res: int, cols: int, rows: int, height_min: float, height_max: float) -> string {
+  if pattern == null or not Text.contains(pattern, "{tx}") or not Text.contains(pattern, "{tz}") { return "the tiles pattern needs {tx} and {tz}" }
+  if not (tile_size > 0.0) { return "tile_size must be above zero" }
+  if res < 2 or res > 8192 { return "tile_res is 2 .. 8192 samples" }
+  if cols < 1 or rows < 1 { return "a map has at least one tile each way" }
+  if not (height_max > height_min) { return "height_max must be above height_min" }
+  return ""
+}
+
+# Open a map from its row's numbers (the row is the game's own record, so the fields are passed, one line:
+# `tmap_new(m.tiles, m.tile_size, m.tile_res, m.tile_cols, m.tile_rows, m.origin_x, m.origin_z, m.height_min, m.height_max, 0.0, 4000.0)`).
+# `radius` is how far round the camera (and the physics' bodies) the ground is wanted, in metres: it sizes the pool
+# (tiles within it and a ring more; a tile costs res x res x 2 bytes). null when the row is unusable (tmap_problem says why).
+@alloc_ok("a map being opened: the pool of tiles and the patch scratch are made once")
+export function tmap_new(pattern: string, tile_size: float, res: int, cols: int, rows: int, origin_x: float, origin_z: float, height_min: float, height_max: float, height_offset: float, radius: float) -> TileMap {
+  if tmap_problem(pattern, tile_size, res, cols, rows, height_min, height_max) != "" { return null }
+  let tm = new TileMap
+  tm.pattern = pattern
+  tm.tile_size = tile_size;  tm.res = res;  tm.cols = cols;  tm.rows = rows
+  tm.origin_x = origin_x;  tm.origin_z = origin_z
+  tm.h_min = height_min;  tm.h_max = height_max;  tm.h_off = height_offset
+  tm.texel = tile_size / float(res)
+  tm.step = (height_max - height_min) / 65535.0
+  tm.base = height_offset + height_min
+  let a = Math.max(radius, 0.0) / tile_size + 1.5
+  tmap_pool(tm, min(max(int(3.15 * a * a) + 4, 4), cols * rows))
+  tmap_patches(tm, 128)
+  tm.mesh_pattern = tmap_mesh_pattern_of(pattern)
+  tm.nrm = floats(3)
+  return tm
+}
+
+# The pool made (or made again) for `slots` tiles: what is loaded is dropped. A tile costs res x res x 2 bytes.
+@alloc_ok("a map being opened, or its pool resized: the tiles' memory is made once for the size")
+export function tmap_pool(tm: TileMap, slots: int) -> void {
+  tm.slots = min(max(slots, 1), tm.cols * tm.rows)
+  tm.data = buffer(tm.slots * tm.res * tm.res * 2)
+  tm.slot_tile = words(tm.slots);  tm.slot_used = words(tm.slots)
+  for s in 0 .. tm.slots { tm.slot_tile[s] = -1;  tm.slot_used[s] = 0 }
+  tm.slot_of = words(tm.cols * tm.rows)
+  for t in 0 .. tm.cols * tm.rows { tm.slot_of[t] = -1 }
+}
+
+# Cut tiles into patches of about `texels` (the largest divisor of res up to it that is a multiple of four, else the
+# whole tile) and set the levels that leaves. `lod_dist` becomes two patches. The bake and the game must cut alike:
+# the mesh file says how it was cut and is refused when it is not this.
+export function tmap_patches(tm: TileMap, texels: int) -> void {
+  var pt = min(max(texels, 4), tm.res)
+  while pt > 4 and (tm.res % pt != 0 or pt % 4 != 0) { pt -= 1 }
+  if tm.res % pt != 0 { pt = tm.res }
+  tm.patch_texels = pt
+  tm.patches = tm.res / pt
+  var l = 0
+  while (pt >> (l + 1)) >= 4 and pt % (1 << (l + 1)) == 0 { l += 1 }
+  tm.lod_max = l
+  tm.lod_dist = float(pt) * tm.texel * 2.0
+  tm.skirt = tm.texel
+}
+
+# where the baked mesh of a tile is kept by default: the tiles' pattern with ".lwt" for a trailing ".png" (else ".lwt" added).
+# A row may name its own (`tile_mesh`: the studio writes it beside `tiles`): pass it to tmap_mesh_pattern.
+@alloc_ok("a map being opened: the pattern, once")
+export function tmap_mesh_pattern_of(pattern: string) -> string {
+  let n = len(pattern)
+  if n > 4 and pattern[n - 4] == '.' and pattern[n - 3] == 'p' and pattern[n - 2] == 'n' and pattern[n - 1] == 'g' { return pattern[0 .. n - 4] + ".lwt" }
+  return pattern + ".lwt"
+}
+export function tmap_mesh_pattern(tm: TileMap, pattern: string) -> void { tm.mesh_pattern = pattern }
+
+# the file of tile (tx, tz)'s baked mesh
+@alloc_ok("a tile being loaded: its path, once")
+export function tmap_mesh_path(tm: TileMap, tx: int, tz: int) -> string {
+  return Text.replace(Text.replace(tm.mesh_pattern, "{tx}", string(tx)), "{tz}", string(tz))
+}
+
+# a patch of `c` cells a side: its vertices (the grid and a skirt) and triangles
+export function tmap_patch_verts(c: int) -> int { return (c + 1) * (c + 1) + 4 * c }
+export function tmap_patch_tris(c: int) -> int { return 2 * c * c + 8 * c }
+
+export function tmap_tile_count(tm: TileMap) -> int { return tm.cols * tm.rows }
+export function tmap_width(tm: TileMap) -> float { return float(tm.cols) * tm.tile_size }
+export function tmap_depth(tm: TileMap) -> float { return float(tm.rows) * tm.tile_size }
+# the tile a world point is in (clamped to the map) and its index tz * cols + tx
+export function tmap_tile_x(tm: TileMap, x: float) -> int { return min(max(int(Math.floor((x - tm.origin_x) / tm.tile_size)), 0), tm.cols - 1) }
+export function tmap_tile_z(tm: TileMap, z: float) -> int { return min(max(int(Math.floor((z - tm.origin_z) / tm.tile_size)), 0), tm.rows - 1) }
+export function tmap_resident(tm: TileMap, tx: int, tz: int) -> bool { return tm.slot_of[tz * tm.cols + tx] >= 0 }
+export function tmap_resident_count(tm: TileMap) -> int {
+  var n = 0
+  for s in 0 .. tm.slots { if tm.slot_tile[s] >= 0 { n += 1 } }
+  return n
+}
+
+# the file of tile (tx, tz)
+@alloc_ok("a tile being loaded: its path, once")
+export function tmap_path(tm: TileMap, tx: int, tz: int) -> string {
+  return Text.replace(Text.replace(tm.pattern, "{tx}", string(tx)), "{tz}", string(tz))
+}
+
+# ---- the cache -------------------------------------------------------------------------------------------------------
+
+# a slot to load into: a free one, else the one wanted longest ago, never one wanted this frame; -1 when there is none
+function tm_take_slot(tm: TileMap) -> int {
+  var best = -1
+  for s in 0 .. tm.slots {
+    if tm.slot_tile[s] < 0 { return s }
+    if tm.slot_used[s] != tm.clock and (best < 0 or tm.slot_used[s] < tm.slot_used[best]) { best = s }
+  }
+  return best
+}
+
+# Tile (tx, tz) into the cache: its slot, TM_NO_FILE when it has none (known from now on, so a missing file is asked
+# for once), -1 when the pool holds nothing it may let go of (a tile wanted this frame stays). A load, not a frame's work:
+# the PNG is decoded here.
+@alloc_ok("a tile being loaded: its decode and path, once")
+export function tmap_load(render3d_st: mut Render3dState, tm: TileMap, tx: int, tz: int) -> int {
+  let t = tz * tm.cols + tx
+  if tx < 0 or tz < 0 or tx >= tm.cols or tz >= tm.rows { return TM_NO_FILE }
+  if tm.slot_of[t] >= 0 { tm.slot_used[tm.slot_of[t]] = tm.clock;  return tm.slot_of[t] }
+  if tm.slot_of[t] == TM_NO_FILE { return TM_NO_FILE }
+  let s = tm_take_slot(tm)
+  if s < 0 { tm.short = true;  return -1 }
+  let path = tmap_path(tm, tx, tz)
+  let px = png_decode(render3d_st, path)
+  var ok = px != null
+  if ok and (render3d_st.tex_w != tm.res or render3d_st.tex_h != tm.res or render3d_st.tex_channels != 1 or render3d_st.tex_depth != 16) {
+    print(`tilemap: {path} is {render3d_st.tex_w} x {render3d_st.tex_h}, {render3d_st.tex_channels} channel, {render3d_st.tex_depth} bit: the row says {tm.res} x {tm.res}, one channel, 16 bit`)
+    ok = false
+  }
+  if not ok {
+    if px != null { free(px) }
+    free(path)
+    tm.slot_of[t] = TM_NO_FILE
+    tm.no_file += 1
+    return TM_NO_FILE
+  }
+  free(path)
+  let n = tm.res * tm.res * 2
+  mem_copy(mem_off(data_of(tm.data), s * n), px, n)
+  free(px)
+  if tm.slot_tile[s] >= 0 { tm.slot_of[tm.slot_tile[s]] = -1;  tm.evicts += 1 }
+  tm.slot_tile[s] = t
+  tm.slot_used[s] = tm.clock
+  tm.slot_of[t] = s
+  tm.loads += 1
+  return s
+}
+
+# metres from a point to tile (tx, tz)'s square (0 inside it)
+export function tmap_tile_dist(tm: TileMap, tx: int, tz: int, x: float, z: float) -> float {
+  let x0 = tm.origin_x + float(tx) * tm.tile_size
+  let z0 = tm.origin_z + float(tz) * tm.tile_size
+  let dx = Math.max(Math.max(x0 - x, x - (x0 + tm.tile_size)), 0.0)
+  let dz = Math.max(Math.max(z0 - z, z - (z0 + tm.tile_size)), 0.0)
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+# Once a frame: the tiles within `radius` of (x, z) are wanted (a loaded one is marked so, and kept), and up to `budget`
+# that are not loaded are loaded, nearest first. Answers the tiles it loaded (a tile with no file counts: it was tried).
+# Nothing is allocated but the decode of a tile that loads.
+export function tmap_stream(render3d_st: mut Render3dState, tm: TileMap, x: float, z: float, radius: float, budget: int) -> int {
+  tm.clock += 1
+  tm.short = false
+  let tx0 = tmap_tile_x(tm, x - radius)
+  let tx1 = tmap_tile_x(tm, x + radius)
+  let tz0 = tmap_tile_z(tm, z - radius)
+  let tz1 = tmap_tile_z(tm, z + radius)
+  for tz in tz0 .. tz1 + 1 {
+    for tx in tx0 .. tx1 + 1 {
+      let s = tm.slot_of[tz * tm.cols + tx]
+      if s >= 0 and tmap_tile_dist(tm, tx, tz, x, z) <= radius { tm.slot_used[s] = tm.clock }
+    }
+  }
+  var done = 0
+  while done < budget {
+    var bx = -1;  var bz = -1;  var bd = 1000000000.0
+    for tz in tz0 .. tz1 + 1 {
+      for tx in tx0 .. tx1 + 1 {
+        if tm.slot_of[tz * tm.cols + tx] != -1 { continue }
+        let d = tmap_tile_dist(tm, tx, tz, x, z)
+        if d <= radius and d < bd { bx = tx;  bz = tz;  bd = d }
+      }
+    }
+    if bx < 0 { break }
+    if tmap_load(render3d_st, tm, bx, bz) == -1 { break }
+    done += 1
+  }
+  return done
+}
+
+# Every tile within `radius` of (x, z) loaded now, however long it takes: a teleport, a spawn, the first frame, the
+# ground a physics body is about to stand on. Answers how many it could not (the pool holds no more of what is wanted).
+export function tmap_ensure(render3d_st: mut Render3dState, tm: TileMap, x: float, z: float, radius: float) -> int {
+  var failed = 0
+  let tx0 = tmap_tile_x(tm, x - radius)
+  let tx1 = tmap_tile_x(tm, x + radius)
+  let tz0 = tmap_tile_z(tm, z - radius)
+  let tz1 = tmap_tile_z(tm, z + radius)
+  for tz in tz0 .. tz1 + 1 {
+    for tx in tx0 .. tx1 + 1 {
+      if tmap_tile_dist(tm, tx, tz, x, z) > radius { continue }
+      if tmap_load(render3d_st, tm, tx, tz) == -1 { failed += 1 }
+    }
+  }
+  return failed
+}
+
+# ---- heights ---------------------------------------------------------------------------------------------------------
+
+# the height at global texel (I, J) (clamped to the map): a loaded tile's sample, else the flat base. `ok` counts
+# 1 when it was a real sample or a known empty tile
+function tm_texel(tm: TileMap, i: int, j: int) -> float {
+  let w = tm.cols * tm.res
+  let h = tm.rows * tm.res
+  let ci = min(max(i, 0), w - 1)
+  let cj = min(max(j, 0), h - 1)
+  let tx = ci / tm.res
+  let tz = cj / tm.res
+  let s = tm.slot_of[tz * tm.cols + tx]
+  if s < 0 { return tm.base }
+  let o = ((s * tm.res + (cj - tz * tm.res)) * tm.res + (ci - tx * tm.res)) * 2
+  return tm.h_off + tm.h_min + float((tm.data[o] << 8) | tm.data[o + 1]) * tm.step
+}
+
+# is the ground at this texel real data (a loaded tile) or a known flat one (no file)? false: not loaded yet
+function tm_texel_known(tm: TileMap, i: int, j: int) -> bool {
+  let w = tm.cols * tm.res
+  let h = tm.rows * tm.res
+  let ci = min(max(i, 0), w - 1)
+  let cj = min(max(j, 0), h - 1)
+  return tm.slot_of[(cj / tm.res) * tm.cols + ci / tm.res] != -1
+}
+
+# The ground's height at world (x, z), metres: bilinear between texel centres, across tile edges too. The port a physics
+# body, a walker and a placement ask: pure, allocation free, and what is not loaded is flat at `base` (tmap_ready says).
+export function tmap_height(tm: TileMap, x: float, z: float) -> float {
+  let fx = (x - tm.origin_x) / tm.texel - 0.5
+  let fz = (z - tm.origin_z) / tm.texel - 0.5
+  let i0 = int(Math.floor(fx))
+  let j0 = int(Math.floor(fz))
+  let tx = fx - float(i0)
+  let tz = fz - float(j0)
+  let a = Math.lerp(tm_texel(tm, i0, j0), tm_texel(tm, i0 + 1, j0), tx)
+  let b = Math.lerp(tm_texel(tm, i0, j0 + 1), tm_texel(tm, i0 + 1, j0 + 1), tx)
+  return Math.lerp(a, b, tz)
+}
+
+# is every texel the height at (x, z) reads loaded (or known to have no file)?
+export function tmap_ready(tm: TileMap, x: float, z: float) -> bool {
+  let i0 = int(Math.floor((x - tm.origin_x) / tm.texel - 0.5))
+  let j0 = int(Math.floor((z - tm.origin_z) / tm.texel - 0.5))
+  return tm_texel_known(tm, i0, j0) and tm_texel_known(tm, i0 + 1, j0) and tm_texel_known(tm, i0, j0 + 1) and tm_texel_known(tm, i0 + 1, j0 + 1)
+}
+
+# the height at (x, z), its tiles loaded first when they are not (a load: a spawn, a placement, a check; not a frame's query)
+export function tmap_height_sync(render3d_st: mut Render3dState, tm: TileMap, x: float, z: float) -> float {
+  if not tmap_ready(tm, x, z) { tmap_ensure(render3d_st, tm, x, z, tm.texel * 2.0) }
+  return tmap_height(tm, x, z)
+}
+
+# the surface normal at (x, z) into `out` (three floats the caller keeps): central differences one texel apart
+export function tmap_normal(tm: TileMap, x: float, z: float, out: floats) -> void {
+  let d = tm.texel
+  let dx = (tmap_height(tm, x + d, z) - tmap_height(tm, x - d, z)) / (2.0 * d)
+  let dz = (tmap_height(tm, x, z + d) - tmap_height(tm, x, z - d)) / (2.0 * d)
+  let l = Math.sqrt(dx * dx + 1.0 + dz * dz)
+  out[0] = -dx / l;  out[1] = 1.0 / l;  out[2] = -dz / l
+}
+
+# 0 (flat) .. 1 (a wall): how steep the ground is at (x, z), the `CharacterGround.slope` measure
+export function tmap_slope(tm: TileMap, x: float, z: float) -> float {
+  tmap_normal(tm, x, z, tm.nrm)
+  return 1.0 - tm.nrm[1]
+}
+
+# Heights for ludic.physics' heightfield shape: n x n samples row by row along z, the first at world (ox, oz), `cell` metres
+# apart, into `out` (n * n floats the caller keeps). A sample whose tile is not loaded takes `hole` (pass PHYS_HOLE: no
+# ground there); answers how many did. It is the same function tmap_height is, so the body stands where the ground is drawn:
+#   let holes = tmap_field(tm, h, 33, ox, oz, 2.0, PHYS_HOLE)
+#   if holes == 0 { phys_ground_add(physics_st, phys_heightfield(physics_st, h, 33, ox, oz, 2.0)) }
+export function tmap_field(tm: TileMap, out: floats, n: int, ox: float, oz: float, cell: float, hole: float) -> int {
+  var holes = 0
+  for j in 0 .. n {
+    for i in 0 .. n {
+      let x = ox + float(i) * cell
+      let z = oz + float(j) * cell
+      if tmap_ready(tm, x, z) { out[j * n + i] = tmap_height(tm, x, z) } else { out[j * n + i] = hole;  holes += 1 }
+    }
+  }
+  return holes
+}
+
+# ---- patch meshes ----------------------------------------------------------------------------------------------------
+
+# patch (px, pz) of tile (tx, tz): its centre in world x and z
+export function tmap_patch_cx(tm: TileMap, tx: int, px: int) -> float { return tm.origin_x + float(tx) * tm.tile_size + (float(px) + 0.5) * float(tm.patch_texels) * tm.texel }
+export function tmap_patch_cz(tm: TileMap, tz: int, pz: int) -> float { return tm.origin_z + float(tz) * tm.tile_size + (float(pz) + 0.5) * float(tm.patch_texels) * tm.texel }
+export function tmap_patch_size(tm: TileMap) -> float { return float(tm.patch_texels) * tm.texel }
+
+# the level a patch `d` metres from the camera is drawn at; `cur` is the level it has (-1: none), kept while d is within a tenth
+# of its band, so a camera pacing a boundary changes nothing
+export function tmap_lod_for(tm: TileMap, d: float, cur: int) -> int {
+  if cur >= 0 {
+    var lo = 0.0
+    if cur > 0 { lo = tm.lod_dist * float(1 << (cur - 1)) * 0.9 }
+    var hi = tm.lod_dist * float(1 << cur) * 1.1
+    if cur >= tm.lod_max { hi = 1000000000.0 }
+    if d >= lo and d < hi { return cur }
+  }
+  var l = 0
+  while l < tm.lod_max and d >= tm.lod_dist * float(1 << l) { l += 1 }
+  return l
+}
+

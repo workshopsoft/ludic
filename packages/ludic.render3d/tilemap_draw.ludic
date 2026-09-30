@@ -1,0 +1,223 @@
+# ============================================================================
+# tilemap_draw.ludic - the ground, drawn from its baked levels (tilemap_lwt.ludic, made by tilemap_bake.ludic): a patch at a
+# time, each an Actor over a mesh of its own level, so the renderer's own model pass lights, shadows and fogs it and no
+# shader is added. The game only LOADS and streams: a tile's table is read a frame within budget, a patch's level is
+# read from its file and uploaded a few a frame nearest first, a patch whose level changes gets the new mesh and lets the old one
+# go. A tile with no baked file, or one baked for other numbers than the row's, draws nothing and says so once.
+#
+#   let tm = tmap_new(m.tiles, m.tile_size, m.tile_res, m.tile_cols, m.tile_rows, m.origin_x, m.origin_z, m.height_min, m.height_max, 0.0, 300.0)
+#   let td = tmd_new(render3d_st, tm, 3000.0)
+#   r3d_plate_mode(render3d_st, true)                   # the sky, the sun, the shadows: this is the ground
+#   each frame (the camera's world x and z, the floating origin's, the view distance):
+#     tmd_frame(render3d_st, td, cam_x, cam_z, origin_x, origin_z, 3000.0)
+#
+# `tm`'s own pool (radius 300 above) is the ground as data for physics and placement (tilemap.ludic); drawing does not use it.
+# A frame allocates nothing but what a change of level needs (a mesh, a model: a load). The ground casts no shadow map
+# of its own (buildings and trees still fall on it).
+# ============================================================================
+numbers float
+
+export property TmPatch {
+  tile: int = -1                     # the tile it is of (tz * cols + tx) while it holds a mesh
+  px: int = 0
+  pz: int = 0
+  lod: int = -1                      # the level of the mesh it holds, -1 none
+  actor: Actor = null
+  model: Model = null
+}
+
+export property TileDraw {
+  tm: TileMap = null
+  ms: TmMeshes = null
+  patches: []TmPatch = null          # mesh slot * patches * patches + pz * patches + px
+  fac: floats = null                 # every patch's material factors (white, the roughness below), made once
+  color: floats = null               # the ground's colour, r g b (an actor's tint): a mid grey until the game says
+  rough: float = 0.95                # read when tmd_new makes the factors
+  build_budget: int = 2              # patches uploaded a frame
+  tile_budget: int = 1               # tile tables read a frame
+  ox: float = 0.0                    # the floating origin the actors stand in render space by
+  oz: float = 0.0
+  shown: int = 0                     # patches holding a mesh now
+  builds: int = 0                    # meshes made, all time
+  frees: int = 0
+}
+
+@alloc_ok("a map being opened: the reader's pool and one record a patch slot, made once")
+export function tmd_new(render3d_st: mut Render3dState, tm: TileMap, radius: float) -> TileDraw {
+  let td = new TileDraw
+  td.tm = tm
+  let a = Math.max(radius, 0.0) / tm.tile_size + 1.5
+  td.ms = tmm_new(tm, int(3.15 * a * a) + 4)
+  let pp = tm.patches * tm.patches
+  td.patches = new []TmPatch
+  for i in 0 .. td.ms.mslots * pp { push(td.patches, new TmPatch) }
+  td.color = floats(3)
+  td.color[0] = 0.5;  td.color[1] = 0.5;  td.color[2] = 0.5
+  td.fac = floats(9)
+  for k in 0 .. 6 { td.fac[k] = 1.0 }
+  for k in 6 .. 9 { td.fac[k] = 0.0 }
+  td.fac[4] = td.rough;  td.fac[5] = 0.0
+  return td
+}
+
+# a patch's mesh and actor let go
+function tmd_release(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch) -> void {
+  if p.actor != null { actor_release(render3d_st, p.actor);  p.actor = null;  td.shown -= 1 }
+  if p.model != null { model_release(render3d_st, p.model);  p.model = null;  td.frees += 1 }
+  p.lod = -1
+  p.tile = -1
+}
+
+# the whole ground let go (a map swap, the end)
+export function tmd_free(render3d_st: mut Render3dState, td: TileDraw) -> void {
+  for i in 0 .. len(td.patches) { tmd_release(render3d_st, td, td.patches[i]) }
+}
+
+# metres from a point to a patch's square
+function tmd_dist(tm: TileMap, cx: float, cz: float, x: float, z: float) -> float {
+  let h = tmap_patch_size(tm) * 0.5
+  let dx = Math.max(Math.max(cx - h - x, x - (cx + h)), 0.0)
+  let dz = Math.max(Math.max(cz - h - z, z - (cz + h)), 0.0)
+  return Math.sqrt(dx * dx + dz * dz)
+}
+
+# the white textures the ground's material stands on (what a glTF material without textures uses), made once
+function tmd_textures(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gltf_white == 0 { render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255);  render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255) }
+  if render3d_st.gltf_pure == 0 { render3d_st.gltf_pure = tex_solid(render3d_st, 255, 255, 255, 255) }
+}
+
+# The level the reader expanded (tmm_patch) as a one-primitive Model: attribute 0 the position, 1 the normal, 2 the uv, all read
+# from one interleaved buffer
+@alloc_ok("a patch changing level: its mesh and model are made when it does")
+@creates(Model)
+function tmd_model(render3d_st: mut Render3dState, td: TileDraw) -> Model {
+  let ms = td.ms
+  tmd_textures(render3d_st)
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  let m = gpu_mesh_new(render3d_st)
+  gpu_mesh_vertices(render3d_st, m, data_of(ms.vbuf), ms.nv * TM_VERT * 4, GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, TM_VERT * 4, 0, false)
+  gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, TM_VERT * 4, 12, false)
+  gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, TM_VERT * 4, 24, false)
+  gpu_mesh_indices(render3d_st, m, data_of(ms.ibuf), ms.ni * 4, 4)
+  m.count = ms.ni
+  gpu_mesh_done(render3d_st, m)
+  render3d_st.gvk_tag = was
+  let pr = new Prim
+  pr.mesh = m
+  pr.verts = ms.nv
+  pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
+  pr.fac = td.fac                                      # shared: model_release leaves a primitive's factors alone
+  let model = new Model
+  model.prims = new []Prim
+  push(model.prims, pr)
+  model.tris = ms.ni / 3
+  return model
+}
+
+# patch p (of mesh slot `slot`) at level `lod`: read, uploaded and put on the stage (or its actor given the new mesh and the old one
+# let go); false when its file cannot be read
+@alloc_ok("a patch changing level: its mesh, model and actor are made when it does")
+function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slot: int, lod: int) -> bool {
+  let tm = td.tm
+  let ms = td.ms
+  let tx = p.tile % tm.cols
+  let tz = p.tile / tm.cols
+  let half = tmap_patch_size(tm) * 0.5
+  let cell = tmap_patch_size(tm) / float(tm.patch_texels >> lod)
+  let y0 = tmm_ymin(ms, tm, slot, p.px, p.pz, lod) - (2.0 * cell + tm.skirt)
+  let y1 = tmm_ymax(ms, tm, slot, p.px, p.pz, lod)
+  let r = Math.sqrt(2.0 * half * half + (y1 - y0) * (y1 - y0) * 0.25) + 1.0
+  let lift = (y0 + y1) * 0.5 - r                      # an actor's cull sphere is centred r above its origin
+  if not tmm_patch(ms, tm, slot, tx, tz, p.px, p.pz, lod, lift) { return false }
+  let model = tmd_model(render3d_st, td)
+  let old = p.model
+  if p.actor == null {
+    p.actor = actor_new(render3d_st, model)
+    p.actor.casts = false
+    p.actor.cull = 0.0
+    p.actor.tint[0] = td.color[0];  p.actor.tint[1] = td.color[1];  p.actor.tint[2] = td.color[2]
+    td.shown += 1
+  } else { p.actor.model = model }
+  p.actor.radius = r
+  p.model = model
+  p.lod = lod
+  actor_place(p.actor, tmap_patch_cx(tm, tx, p.px) - td.ox, lift, tmap_patch_cz(tm, tz, p.pz) - td.oz, 0.0)
+  if old != null { model_release(render3d_st, old);  td.frees += 1 }
+  td.builds += 1
+  return true
+}
+
+# One frame of the ground: the tile tables within `radius` of the camera read (the nearest `tile_budget` a frame), the patches
+# inside `radius` given the level their distance asks for (the nearest `build_budget` changes a frame), the rest let go, and every
+# actor stood where the floating origin (`ox`, `oz`: zero without one) puts it. Give the camera's WORLD x and z.
+export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: float, cam_z: float, ox: float, oz: float, radius: float) -> void {
+  let tm = td.tm
+  let ms = td.ms
+  let ps = tmap_patch_size(tm)
+  ms.clock += 1
+  let dox = ox - td.ox
+  let doz = oz - td.oz
+  td.ox = ox;  td.oz = oz
+  # the tables: wanted ones marked, then the nearest not read yet
+  let tx0 = tmap_tile_x(tm, cam_x - radius)
+  let tx1 = tmap_tile_x(tm, cam_x + radius)
+  let tz0 = tmap_tile_z(tm, cam_z - radius)
+  let tz1 = tmap_tile_z(tm, cam_z + radius)
+  for tz in tz0 .. tz1 + 1 {
+    for tx in tx0 .. tx1 + 1 {
+      let s = ms.slot_of[tz * tm.cols + tx]
+      if s >= 0 and tmap_tile_dist(tm, tx, tz, cam_x, cam_z) <= radius { ms.slot_used[s] = ms.clock }
+    }
+  }
+  for n in 0 .. td.tile_budget {
+    var bx = -1;  var bz = -1;  var bd = 1000000000.0
+    for tz in tz0 .. tz1 + 1 {
+      for tx in tx0 .. tx1 + 1 {
+        if ms.slot_of[tz * tm.cols + tx] != -1 { continue }
+        let d = tmap_tile_dist(tm, tx, tz, cam_x, cam_z)
+        if d <= radius and d < bd { bx = tx;  bz = tz;  bd = d }
+      }
+    }
+    if bx < 0 { break }
+    if tmm_load(ms, tm, bx, bz) == -1 { break }
+  }
+  # what a mesh slot holds now: patches of a tile that left are let go, patches out of range too, the rest stood
+  let pp = tm.patches * tm.patches
+  for s in 0 .. ms.mslots {
+    let t = ms.slot_tile[s]
+    for k in 0 .. pp {
+      let p = td.patches[s * pp + k]
+      if p.tile >= 0 and p.tile != t { tmd_release(render3d_st, td, p);  continue }
+      if p.tile < 0 { continue }
+      let d = tmd_dist(tm, tmap_patch_cx(tm, t % tm.cols, k % tm.patches), tmap_patch_cz(tm, t / tm.cols, k / tm.patches), cam_x, cam_z)
+      if d > radius * 1.05 { tmd_release(render3d_st, td, p);  continue }
+      if p.actor != null and (dox != 0.0 or doz != 0.0) { actor_place(p.actor, p.actor.x - dox, p.actor.y, p.actor.z - doz, 0.0) }
+    }
+  }
+  # the nearest patches that need another level, a few a frame
+  for n in 0 .. td.build_budget {
+    var bi = -1
+    var bd = 1000000000.0
+    for s in 0 .. ms.mslots {
+      let t = ms.slot_tile[s]
+      if t < 0 { continue }
+      for k in 0 .. pp {
+        let p = td.patches[s * pp + k]
+        let d = tmd_dist(tm, tmap_patch_cx(tm, t % tm.cols, k % tm.patches), tmap_patch_cz(tm, t / tm.cols, k / tm.patches), cam_x, cam_z)
+        if d > radius or d >= bd { continue }
+        if tmap_lod_for(tm, d, p.lod) == p.lod { continue }
+        bi = s * pp + k;  bd = d
+      }
+    }
+    if bi < 0 { break }
+    let s = bi / pp
+    let k = bi % pp
+    let p = td.patches[bi]
+    p.tile = ms.slot_tile[s];  p.px = k % tm.patches;  p.pz = k / tm.patches
+    let want = tmap_lod_for(tm, bd, p.lod)
+    if not tmd_build(render3d_st, td, p, s, want) { p.lod = want }      # unreadable: no mesh, and not asked for again every frame
+  }
+}

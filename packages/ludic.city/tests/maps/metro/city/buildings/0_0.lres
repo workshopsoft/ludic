@@ -27,6 +27,7 @@ b0_0_01 {
   lot: "lot-0-0-1"
   address: "101 Main St"
   entrances: [{ x: 85.0, z: 35.0, yaw: 180.0, kind: "door" }]
+  footprint: [{ x: -7.0, z: -5.0 }, { x: 7.0, z: -5.0 }, { x: 9.0, z: 0.0 }, { x: 7.0, z: 5.0 }, { x: -7.0, z: 5.0 }, { x: -9.0, z: 0.0 }]
 }
 b0_0_02 {
   model: "blocks/core_1.glb"
@@ -41,6 +42,7 @@ b0_0_02 {
   height: 19.0
   lot: "lot-0-0-2"
   address: "102 Side St"
+  footprint: [{ x: -9.0, z: -8.0 }, { x: 9.0, z: -8.0 }, { x: 9.0, z: 0.0 }, { x: 0.0, z: 0.0 }, { x: 0.0, z: 8.0 }, { x: -9.0, z: 8.0 }]
 }
 b0_0_03 {
   kit: "house"

@@ -1,0 +1,91 @@
+# kitbake_test.ludic - placed things baked into kits and cells: one kit for each model, node and atlas however many things
+# stand, rows a game can read back, cells cut by world position (negative too) and exact relative to their corner, kits already
+# written keeping their ids, names a row can hold. ludic.city's bake (tests/cells_bake_test.ludic there) is the same calls over its rows.
+import "ludic.render3d/bigworld.ludic"
+program KitBakeTest {
+  numbers float
+  def InteriorAtlases from "interior_atlases.lres"
+
+  test "a model's node is one kit however many are placed, and another atlas is another kit" {
+    let kb = kitbake_new(256.0)
+    let a = kitbake_kit(kb, "m/block.glb", "tower_a", 30.0, 20.0, 100.0, "")
+    let b = kitbake_kit(kb, "m/block.glb", "tower_a", 99.0, 99.0, 99.0, "")
+    let c = kitbake_kit(kb, "m/block.glb", "tower_a", 30.0, 20.0, 100.0, "office")
+    let d = kitbake_kit(kb, "m/block.glb", "tower_b", 30.0, 20.0, 100.0, "")
+    let e = kitbake_kit(kb, "m/other.glb", "tower_a", 30.0, 20.0, 100.0, "")
+    expect_eq(a, b)
+    expect(a != c and a != d and a != e and c != d)
+    expect_eq(kitbake_kit_count(kb), 4)
+    expect_near(kb.kits[a].h, 100.0, 0.0001)                  # the first ask's measures stand
+    expect(kb.kits[c].interior == "office")
+    expect(kb.kits[a].near >= kb.near_min and kb.kits[a].far > kb.kits[a].near)
+    expect(kb.kits[d].key != kb.kits[a].key and kb.kits[c].key != kb.kits[a].key)        # keys are unique
+  }
+
+  test "a kit's key is a name a row can hold" {
+    let kb = kitbake_new(256.0)
+    let a = kitbake_kit(kb, "m.glb", "Building.001", 10.0, 10.0, 10.0, "")
+    let b = kitbake_kit(kb, "m.glb", "7th Ave", 10.0, 10.0, 10.0, "")
+    let c = kitbake_kit(kb, "m.glb", "", 10.0, 10.0, 10.0, "")
+    expect_eq(kb.kits[a].key, "Building_001")
+    expect_eq(kb.kits[b].key, "k_7th_Ave")
+    expect_eq(kb.kits[c].key, "kit")
+  }
+
+  test "a thing goes in the cell its world position is in, exact from that cell's corner, negative cells too" {
+    let kb = kitbake_new(256.0)
+    let k = kitbake_kit(kb, "m.glb", "b", 10.0, 10.0, 10.0, "")
+    expect(kitbake_place(kb, k, 300.5, 4.0, 700.25, 1.5, 1.0, 0xffffffff, 70000, 3))
+    expect(kitbake_place(kb, k, -0.5, 0.0, -256.0, 0.0, 2.0, 0xffffffff, 7, 0))
+    expect(not kitbake_place(kb, 5, 0.0, 0.0, 0.0, 0.0, 1.0, 0, 0, 0))
+    expect_eq(kitbake_cell_count(kb), 2)
+    let c0 = kb.cells[0]
+    expect_eq(c0.cx, 1)
+    expect_eq(c0.cz, 2)
+    expect(c0.xf[0] == 44.5 and c0.xf[2] == 188.25 and c0.xf[1] == 4.0)
+    expect_eq(c0.vari[0], 70000 & 65535)
+    expect_eq(c0.flags[0], 3)
+    let c1 = kb.cells[1]
+    expect_eq(c1.cx, -1)
+    expect_eq(c1.cz, -1)
+    expect(c1.xf[0] == 255.5 and c1.xf[2] == 0.0)
+    expect(c1.xf[4] == 2.0)
+  }
+
+  test "the written files and index round trip, and the rows read back as the same kits" {
+    let kb = kitbake_new(128.0)
+    let k = kitbake_kit(kb, "city/b1.glb", "Tower", 24.5, 18.0, 90.0, "office")
+    for i in 0 .. 10 { kitbake_place(kb, k, float(i) * 70.0, 0.0, float(i) * 13.0, 0.3, 1.0, 0xffffffff, i, 0) }
+    let dir = Os.temp_dir() + "/r3d_kitbake"
+    let cells = kitbake_write(kb, dir)
+    expect(cells > 1)
+    let ix = cell_index_load(dir)
+    expect(ix != null)
+    expect(ix.size == 128.0)
+    var n = 0
+    for i in 0 .. kitbake_cell_count(kb) {
+      let back = cell_load(dir, kb.cells[i].cx, kb.cells[i].cz)
+      expect(back != null)
+      n += back.n
+    }
+    expect_eq(n, 10)
+    let rows = kitbake_rows(kb, 0)
+    expect(Text.contains(rows, "Tower {"))
+    expect(Text.contains(rows, "model: \"city/b1.glb\", node: \"Tower\""))
+    expect(Text.contains(rows, "w: 24.5, d: 18.0, h: 90.0"))
+    expect(Text.contains(rows, "interior: \"office\""))
+  }
+
+  test "seeded rows keep their ids and a second bake appends only what is new" {
+    let first = kitbake_new(256.0)
+    kitbake_kit(first, "m.glb", "a", 10.0, 10.0, 10.0, "")
+    kitbake_kit(first, "m.glb", "b", 10.0, 10.0, 10.0, "")
+    let next = kitbake_new(256.0)
+    kitbake_seed(next, first.kits)
+    expect_eq(next.seeded, 2)
+    expect_eq(kitbake_kit(next, "m.glb", "b", 99.0, 99.0, 99.0, ""), 1)
+    expect_eq(kitbake_kit(next, "m.glb", "c", 10.0, 10.0, 10.0, ""), 2)
+    expect(Text.contains(kitbake_rows(next, next.seeded), "c {"))
+    expect(not Text.contains(kitbake_rows(next, next.seeded), "a {"))
+  }
+}

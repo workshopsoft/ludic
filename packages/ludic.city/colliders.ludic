@@ -1,0 +1,328 @@
+# colliders.ludic - what a building stops a body with, from its row: its footprint polygon (`footprint`, the model's real plan: an L, a U,
+# a warehouse with a lean-to), else the rectangle w x d, stood up to its height. BAKED, not worked out in play: `city_colliders_bake`
+# turns a map's Buildings rows into one file a chunk (`collider_<cx>_<cz>.lwk`: the convex pieces of every building, in world metres
+# from the cell's corner), and the game only loads them (`city_colliders_in`) and hands each piece to its physics through the
+# `CityPhysics` port. The bake is a person's task or a package.ludic `hook before build`; the loader allocates nothing past the
+# read of the file.
+#
+#   bind CityPhysics {
+#     add: fn city_add_piece          # function city_add_piece(physics_st: mut PhysicsState, p: CityPiece) -> int {
+#     remove: fn city_drop_piece      #   return phys_static_add(physics_st, phys_prism(physics_st, p.pts, p.n, p.y0, p.y1), 0.0, 0.0, 0.0, 0.0) }
+#   }                                 # function city_drop_piece(physics_st: mut PhysicsState, id: int) { phys_remove(physics_st, id) }
+#
+# A piece is a convex polygon in x, z (counter-clockwise, at most CK_MAX points) between two heights. A concave plan is cut into
+# triangles by ear clipping (a convex one stays one piece, a rectangle is one). A plan that is not a simple polygon (a crossing, a
+# repeated corner) is refused by `city_footprint_problem` and baked as its bounding rectangle, with a line saying so.
+#
+# Units: metres, x east and z south; `yaw` degrees with 0 facing +z in the row, turned as a renderer turns an instance (x' = c x + s z,
+# z' = -s x + c z); `scale` multiplies the plan and the height. A piece stands from the row's `y` (the ground it was placed on) to `y`
+# plus its height.
+
+export const CK_MAX: int = 64            # points a piece holds
+const CK_MAGIC: int = 0x314B574C          # "LWK1"
+const CK_HEAD: int = 24
+
+# one convex piece as the port hands it over: a record the loader keeps and reuses (read it in the call, never keep it)
+export property CityPiece {
+  cx: int = 0
+  cz: int = 0
+  building: int = 0                       # a hash of the building's key, to tell whose piece it is
+  y0: float = 0.0
+  y1: float = 0.0
+  n: int = 0
+  pts: []float = floats(CK_MAX * 2)       # x, z pairs in world metres
+}
+
+function cp_none(p: CityPiece) -> int { return -1 }
+function cp_gone(id: int) -> void { }
+
+# what the game binds to its physics: a body for a piece (its id, -1 none) and its removal
+export port CityPhysics {
+  add: fn(CityPiece) -> int = fn cp_none
+  remove: fn(int) -> void = fn cp_gone
+}
+
+# ---- polygons --------------------------------------------------------------------------------------------------------
+
+# twice the signed area of the polygon (x, z pairs): positive one way round, negative the other, zero when it has none
+function ck_area2(xs: []float, n: int) -> float {
+  var a = 0.0
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    a += xs[i * 2] * xs[j * 2 + 1] - xs[j * 2] * xs[i * 2 + 1]
+  }
+  return a
+}
+function ck_cross(xs: []float, a: int, b: int, c: int) -> float {
+  return (xs[b * 2] - xs[a * 2]) * (xs[c * 2 + 1] - xs[a * 2 + 1]) - (xs[b * 2 + 1] - xs[a * 2 + 1]) * (xs[c * 2] - xs[a * 2])
+}
+# is the polygon convex (every turn the same way; straight runs allowed)?
+function ck_convex(xs: []float, n: int) -> bool {
+  var sign = 0.0
+  for i in 0 .. n {
+    let c = ck_cross(xs, i, (i + 1) % n, (i + 2) % n)
+    if Math.abs(c) < 0.000001 { continue }
+    if sign == 0.0 { sign = c } else if sign * c < 0.0 { return false }
+  }
+  return true
+}
+# is point p inside triangle (a, b, c) (counter-clockwise), edges included?
+function ck_in_tri(xs: []float, p: int, a: int, b: int, c: int) -> bool {
+  return ck_cross(xs, a, b, p) >= -0.000001 and ck_cross(xs, b, c, p) >= -0.000001 and ck_cross(xs, c, a, p) >= -0.000001
+}
+# do two segments (a, b) and (c, d) cross at a point that is on neither's end?
+function ck_segs_cross(xs: []float, a: int, b: int, c: int, d: int) -> bool {
+  let d1 = ck_cross(xs, a, b, c)
+  let d2 = ck_cross(xs, a, b, d)
+  let d3 = ck_cross(xs, c, d, a)
+  let d4 = ck_cross(xs, c, d, b)
+  return d1 * d2 < -0.000001 and d3 * d4 < -0.000001
+}
+
+# "" when the points are a simple polygon a piece can be made of, else what is wrong with them
+export function city_footprint_problem(pts: []CityPt) -> string {
+  let n = len(pts)
+  if n == 0 { return "" }
+  if n < 3 { return `a footprint needs 3 points or more, it has {n}` }
+  let xs = floats(n * 2)
+  for i in 0 .. n { xs[i * 2] = pts[i].x;  xs[i * 2 + 1] = pts[i].z }
+  for i in 0 .. n {
+    for j in i + 1 .. n {
+      if Math.abs(xs[i * 2] - xs[j * 2]) < 0.0001 and Math.abs(xs[i * 2 + 1] - xs[j * 2 + 1]) < 0.0001 { return `footprint points {i} and {j} are the same place` }
+      if j == i + 1 or (i == 0 and j == n - 1) { continue }
+      if ck_segs_cross(xs, i, (i + 1) % n, j, (j + 1) % n) { return `footprint edges {i} and {j} cross` }
+    }
+  }
+  if Math.abs(ck_area2(xs, n)) < 0.0001 { return "a footprint has no area" }
+  return ""
+}
+
+# Cut the polygon into triangles by ear clipping: the corner indices, three a triangle, into `tri`; how many triangles (n - 2 when the
+# polygon is simple)
+function ck_triangulate(xs: []float, n: int, tri: []int) -> int {
+  let idx = new []int
+  let ccw = ck_area2(xs, n) > 0.0
+  for i in 0 .. n { if ccw { push(idx, i) } else { push(idx, n - 1 - i) } }
+  var count = 0
+  var guard = 0
+  while len(idx) > 3 and guard < n * n {
+    guard += 1
+    var clipped = false
+    let m = len(idx)
+    for k in 0 .. m {
+      let a = idx[(k + m - 1) % m]
+      let b = idx[k]
+      let c = idx[(k + 1) % m]
+      if ck_cross(xs, a, b, c) <= 0.000001 { continue }
+      var inside = false
+      for q in 0 .. m {
+        let p = idx[q]
+        if p == a or p == b or p == c { continue }
+        if ck_in_tri(xs, p, a, b, c) { inside = true;  break }
+      }
+      if inside { continue }
+      tri[count * 3] = a;  tri[count * 3 + 1] = b;  tri[count * 3 + 2] = c
+      count += 1
+      List.remove_at(idx, k)
+      clipped = true
+      break
+    }
+    if not clipped { break }
+  }
+  if len(idx) == 3 {
+    tri[count * 3] = idx[0];  tri[count * 3 + 1] = idx[1];  tri[count * 3 + 2] = idx[2]
+    count += 1
+  }
+  return count
+}
+
+# ---- the bake --------------------------------------------------------------------------------------------------------
+
+function ck_put(b: []byte, at: int, v: int) -> void {
+  b[at] = v & 255;  b[at + 1] = (v >> 8) & 255;  b[at + 2] = (v >> 16) & 255;  b[at + 3] = (v >> 24) & 255
+}
+function ck_get(b: []byte, at: int) -> int { return int(b[at]) | (int(b[at + 1]) << 8) | (int(b[at + 2]) << 16) | (int(b[at + 3]) << 24) }
+function ck_putf(b: []byte, at: int, v: float) -> void { ck_put(b, at, float_bits(v)) }
+function ck_getf(b: []byte, at: int) -> float { return float_from_bits(ck_get(b, at)) }
+
+# a hash of a key, 0 .. 65535 (the variation a renderer seeds a facade by, and the id of a collider's building)
+export function city_key_hash(key: string) -> int {
+  var h = 2166136261
+  for i in 0 .. len(key) { h = ((h ^ int(key[i])) * 16777619) & 0xffffffff }
+  return (h ^ (h >> 16)) & 65535
+}
+
+# the file of chunk (cx, cz)'s colliders
+export function city_colliders_path(dir: string, cx: int, cz: int) -> string { return `{dir}/collider_{cx}_{cz}.lwk` }
+
+# the cells of a map that hold buildings: every `{cx}_{cz}.lres` of maps_root/<map>/city/buildings, as cx, cz pairs into `out`; how many
+export function city_chunk_cells(maps_root: string, map: string, out: []int) -> int {
+  List.clear(out)
+  let names = Fs.list(`{maps_root}/{map}/city/buildings`)
+  if names == null { return 0 }
+  var n = 0
+  for i in 0 .. len(names) {
+    let f = names[i]
+    if not Text.ends_with(f, ".lres") { continue }
+    let parts = Text.split(Text.slice(f, 0, len(f) - 5), "_")
+    if len(parts) != 2 { continue }
+    push(out, Text.to_int(parts[0]))
+    push(out, Text.to_int(parts[1]))
+    n += 1
+  }
+  return n
+}
+
+# A building's plan in world metres into `xs` (x, z pairs, `cap` points at most): its footprint, or the rectangle w x d, scaled, turned by yaw and moved to
+# (x, z); how many points. A footprint with a problem is its bounding rectangle
+function ck_plan(b: CityBuilding, xs: []float, cap: int) -> int {
+  var n = 0
+  let local = floats(max(len(b.footprint), 4) * 2)
+  if len(b.footprint) >= 3 and city_footprint_problem(b.footprint) == "" and len(b.footprint) <= cap {
+    n = len(b.footprint)
+    for i in 0 .. n { local[i * 2] = b.footprint[i].x;  local[i * 2 + 1] = b.footprint[i].z }
+  } else {
+    var hx = b.w * 0.5
+    var hz = b.d * 0.5
+    if len(b.footprint) >= 3 {
+      hx = 0.0;  hz = 0.0
+      for i in 0 .. len(b.footprint) { hx = Math.max(hx, Math.abs(b.footprint[i].x));  hz = Math.max(hz, Math.abs(b.footprint[i].z)) }
+    }
+    n = 4
+    local[0] = -hx;  local[1] = -hz;  local[2] = hx;  local[3] = -hz;  local[4] = hx;  local[5] = hz;  local[6] = -hx;  local[7] = hz
+  }
+  let a = Math.deg_to_rad(b.yaw)
+  let c = Math.cos(a)
+  let s = Math.sin(a)
+  for i in 0 .. n {
+    let lx = local[i * 2] * b.scale
+    let lz = local[i * 2 + 1] * b.scale
+    xs[i * 2] = b.x + c * lx + s * lz
+    xs[i * 2 + 1] = b.z - s * lx + c * lz
+  }
+  return n
+}
+
+# Every building of the map's chunk files as convex pieces, one file a chunk in `dir`: how many pieces were written (-1: a file could
+# not be written). The pieces of a building: its plan if convex (one), else its triangles. One chunk in memory at a time.
+@alloc_ok("a bake: the chunks' pieces and files are made once")
+export function city_colliders_bake(city_st: mut CityState, bl: mut Buildings, map: string, maps_root: string, dir: string) -> int {
+  Fs.mkdir(dir)
+  let cells = new []int
+  let ncells = city_chunk_cells(maps_root, map, cells)
+  let xs = floats(CK_MAX * 2)
+  let tri = new []int
+  for i in 0 .. CK_MAX * 3 { push(tri, 0) }
+  var total = 0
+  for c in 0 .. ncells {
+    let cx = cells[c * 2]
+    let cz = cells[c * 2 + 1]
+    if city_cell_in(city_st, bl, map, cx, cz) <= 0 { continue }
+    let i = city_cell_of(city_st, cx, cz)
+    let rows = city_cell_size(city_st, bl, i)
+    # the pieces: a count up front would need every plan twice, so they are collected in flat lists
+    let head = new []float                    # per piece: building hash, y0, y1, m
+    let pts = new []float
+    for r in 0 .. rows {
+      let b = city_building(city_st, bl, i, r)
+      let why = city_footprint_problem(b.footprint)
+      if why != "" { print(`city colliders: building {b.key}: {why}; its bounding rectangle is used`) }
+      let n = ck_plan(b, xs, CK_MAX)
+      let y0 = b.y
+      let y1 = b.y + city_height(b) * b.scale
+      let id = city_key_hash(b.key)
+      if ck_convex(xs, n) {
+        push(head, float(id));  push(head, y0);  push(head, y1);  push(head, float(n))
+        if ck_area2(xs, n) >= 0.0 { for k in 0 .. n { push(pts, xs[k * 2] - float(cx * CITY_CELL));  push(pts, xs[k * 2 + 1] - float(cz * CITY_CELL)) } }
+        else { for k in 0 .. n { let q = n - 1 - k;  push(pts, xs[q * 2] - float(cx * CITY_CELL));  push(pts, xs[q * 2 + 1] - float(cz * CITY_CELL)) } }
+        total += 1
+      } else {
+        let m = ck_triangulate(xs, n, tri)
+        for t in 0 .. m {
+          push(head, float(id));  push(head, y0);  push(head, y1);  push(head, 3.0)
+          for k in 0 .. 3 { push(pts, xs[tri[t * 3 + k] * 2] - float(cx * CITY_CELL));  push(pts, xs[tri[t * 3 + k] * 2 + 1] - float(cz * CITY_CELL)) }
+          total += 1
+        }
+      }
+    }
+    let np = len(head) / 4
+    let b = buffer(CK_HEAD + np * 16 + len(pts) * 4)
+    ck_put(b, 0, CK_MAGIC);  ck_put(b, 4, 1);  ck_put(b, 8, cx);  ck_put(b, 12, cz);  ck_putf(b, 16, float(CITY_CELL));  ck_put(b, 20, np)
+    var at = CK_HEAD
+    var pi = 0
+    for k in 0 .. np {
+      ck_put(b, at, int(head[k * 4]));  ck_putf(b, at + 4, head[k * 4 + 1]);  ck_putf(b, at + 8, head[k * 4 + 2]);  ck_put(b, at + 12, int(head[k * 4 + 3]))
+      at += 16
+      for q in 0 .. int(head[k * 4 + 3]) * 2 { ck_putf(b, at, pts[pi]);  at += 4;  pi += 1 }
+    }
+    if not Fs.write_bytes(city_colliders_path(dir, cx, cz), b, at) { print(`city colliders: cannot write {city_colliders_path(dir, cx, cz)}`);  return -1 }
+    city_cell_out(city_st, bl, cx, cz)
+  }
+  return total
+}
+
+# ---- the game's side: load and hand over ---------------------------------------------------------------------------------
+
+# the colliders of the chunks that are in: for each, the chunk and the body ids the port answered
+export state CityColliders {
+  cx: []int = new []int
+  cz: []int = new []int
+  first: []int = new []int                # the chunk's first id in `ids`
+  count: []int = new []int
+  ids: []int = new []int
+  piece: CityPiece = new CityPiece
+  missing: int = 0                        # chunks asked for that had no file (not baked, or another version)
+}
+
+function ck_chunk(cs: CityColliders, cx: int, cz: int) -> int {
+  for i in 0 .. len(cs.cx) { if cs.cx[i] == cx and cs.cz[i] == cz { return i } }
+  return -1
+}
+
+# Chunk (cx, cz)'s baked colliders (`dir`: where the bake wrote them) handed to the port one piece at a time: how many pieces (0 for a chunk
+# that is in already, -1 for a file that is not there or not this format, counted in `missing`). Read the file, allocate nothing else.
+@alloc_ok("a chunk loading: its file is read once")
+export function city_colliders_in(cs: mut CityColliders, dir: string, cx: int, cz: int) -> int {
+  if ck_chunk(cs, cx, cz) >= 0 { return 0 }
+  let b = Fs.read_bytes(city_colliders_path(dir, cx, cz))
+  if b == null or len(b) < CK_HEAD or ck_get(b, 0) != CK_MAGIC or ck_get(b, 4) != 1 or ck_get(b, 8) != cx or ck_get(b, 12) != cz { cs.missing += 1;  return -1 }
+  let np = ck_get(b, 20)
+  let p = cs.piece
+  kept_push(cs.cx, cx)
+  kept_push(cs.cz, cz)
+  kept_push(cs.first, len(cs.ids))
+  var at = CK_HEAD
+  var got = 0
+  for k in 0 .. np {
+    if at + 16 > len(b) { break }
+    let m = ck_get(b, at + 12)
+    if m < 3 or m > CK_MAX or at + 16 + m * 8 > len(b) { break }
+    p.cx = cx;  p.cz = cz;  p.building = ck_get(b, at);  p.y0 = ck_getf(b, at + 4);  p.y1 = ck_getf(b, at + 8);  p.n = m
+    for q in 0 .. m {
+      p.pts[q * 2] = ck_getf(b, at + 16 + q * 8) + float(cx * CITY_CELL)
+      p.pts[q * 2 + 1] = ck_getf(b, at + 20 + q * 8) + float(cz * CITY_CELL)
+    }
+    kept_push(cs.ids, CityPhysics.add(p))
+    at += 16 + m * 8
+    got += 1
+  }
+  kept_push(cs.count, got)
+  return got
+}
+
+# chunk (cx, cz)'s bodies removed through the port; false when it was not in
+export function city_colliders_out(cs: mut CityColliders, cx: int, cz: int) -> bool {
+  let i = ck_chunk(cs, cx, cz)
+  if i < 0 { return false }
+  for k in 0 .. cs.count[i] { CityPhysics.remove(cs.ids[cs.first[i] + k]) }
+  # the lists keep their order: the later chunks' first places move up by what this one held
+  let n = cs.count[i]
+  let f = cs.first[i]
+  for k in f .. len(cs.ids) - n { cs.ids[k] = cs.ids[k + n] }
+  for k in 0 .. n { List.pop(cs.ids) }
+  for k in i + 1 .. len(cs.cx) { cs.first[k] = cs.first[k] - n }
+  List.remove_at(cs.cx, i);  List.remove_at(cs.cz, i);  List.remove_at(cs.first, i);  List.remove_at(cs.count, i)
+  return true
+}
+
+export function city_colliders_count(cs: CityColliders) -> int { return len(cs.ids) }
