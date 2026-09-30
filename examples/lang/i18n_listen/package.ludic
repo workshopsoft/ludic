@@ -1,0 +1,2 @@
+# the listener keys example (i18n_listen.ludic): lang/en.po is the source every key is checked against
+lang "lang" en

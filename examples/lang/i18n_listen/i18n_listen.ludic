@@ -1,0 +1,14 @@
+# i18n_listen.ludic - a key used only inside an @On listener is a used key: the check walks the
+# bodies kept beside the program's declarations (listeners, hooks, tests, scenes), so listen.put is
+# checked against en.po and `ludic schema` does not report it unused.
+#
+# Running it prints:  listen.put
+program I18nListen {
+  event Put { n: int = 0 }
+  function tr(key: Key) -> string {
+    let s = string(key)
+    return s[1..len(s)]
+  }
+  @On(Put) handler Said { print(tr(k"listen.put")) }
+  entry { emit Put(n: 1) }
+}
