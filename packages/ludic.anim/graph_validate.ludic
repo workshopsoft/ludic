@@ -1,0 +1,389 @@
+# graph_validate.ludic - the rules a graph must keep, as problems a tool can show: an unknown clip, a
+# bone a mask names that the rig lacks, a state nothing reaches, a blend space that cannot triangulate.
+# Nothing here runs in a frame. `anim_validate` needs no skin and no clips (then it checks what data alone
+# can say); with the clip table of the rig loaded it checks the clips too, and with the rig's skin the bones.
+
+export const AP_ERROR: int = 0
+export const AP_WARNING: int = 1
+
+export property AnimProblem {
+  severity: int = 0
+  code: string = ""       # a stable name: "anim.unknown_clip"
+  where: string = ""      # the row: "locomotion/states/run"
+  what: string = ""       # one sentence for a person
+}
+
+@alloc_ok("a problem report is made when a tool asks, not in a frame")
+function sf(f: float) -> string { return `{f}` }
+@alloc_ok("a problem report is made when a tool asks, not in a frame")
+function si(i: int) -> string { return `{i}` }
+
+function prob(out: []AnimProblem, sev: int, code: string, where: string, what: string) -> void {
+  let p = new AnimProblem
+  p.severity = sev
+  p.code = code
+  p.where = where
+  p.what = what
+  push(out, p)
+}
+
+function has_name(l: []string, n: string) -> bool {
+  for i in 0 .. len(l) { if l[i] == n { return true } }
+  return false
+}
+
+# every parameter the graph's own rows declare, its sub graphs' and its layers' graphs' too
+function tree_params(si: int, l: []string, kinds: []int, depth: int, out: []AnimProblem) -> void {
+  if si < 0 or si >= len(AnimSets) or depth > AM_DEPTH { return }
+  let s = AnimSets[si]
+  if s.params != null { for i in 0 .. len(s.params) { add_param(l, kinds, s.params[i], 0, s.key, out) } }
+  if s.parameters != null { for i in 0 .. len(s.parameters) { add_param(l, kinds, s.parameters[i].key, kind_code(s.parameters[i].kind), s.key, out) } }
+  if s.states != null {
+    for i in 0 .. len(s.states) { if s.states[i].kind == "sub" and s.states[i].sub != si { tree_params(s.states[i].sub, l, kinds, depth + 1, out) } }
+  }
+  if s.layers != null and depth == 0 {
+    for i in 0 .. len(s.layers) { tree_params(s.layers[i].graph, l, kinds, depth + 1, out) }
+  }
+}
+
+function add_param(l: []string, kinds: []int, name: string, kind: int, owner: string, out: []AnimProblem) -> void {
+  for i in 0 .. len(l) {
+    if l[i] == name {
+      if kinds[i] != kind { prob(out, AP_WARNING, "anim.param_kind_clash", owner + "/parameters/" + name, "parameter " + name + " is declared with two kinds in the graphs that share it") }
+      return
+    }
+  }
+  push(l, name)
+  push(kinds, kind)
+}
+
+function param_kind(l: []string, kinds: []int, name: string) -> int {
+  for i in 0 .. len(l) { if l[i] == name { return kinds[i] } }
+  return -1
+}
+
+# Check a set (and what it nests) for the rig `rig`. `sk` may be null.
+export function anim_validate(anim_st: AnimState, set: int, rig: string, sk: Skin) -> []AnimProblem {
+  let out = new []AnimProblem
+  if set < 0 or set >= len(AnimSets) {
+    prob(out, AP_ERROR, "anim.no_such_set", "", "no graph by that number")
+    return out
+  }
+  let names = new []string
+  let kinds = new []int
+  tree_params(set, names, kinds, 0, out)
+  let seen = new []int
+  check_set(out, anim_st, set, rig, sk, names, kinds, 0, seen)
+  let s = AnimSets[set]
+  if s.skeleton >= 0 { check_skeleton(out, s.skeleton, sk) }
+  return out
+}
+
+function check_set(out: []AnimProblem, anim_st: AnimState, si: int, rig: string, sk: Skin, pn: []string, pk: []int, depth: int, seen: []int) -> void {
+  if si < 0 or si >= len(AnimSets) { return }
+  for i in 0 .. len(seen) { if seen[i] == si { return } }
+  push(seen, si)
+  let s = AnimSets[si]
+  let here = s.key
+  if s.states == null or len(s.states) == 0 {
+    prob(out, AP_ERROR, "anim.no_states", here, "the graph has no states")
+    return
+  }
+  let ns = len(s.states)
+  if s.entry != "" and as_state(s, s.entry) < 0 { prob(out, AP_ERROR, "anim.entry_unknown", here, "entry names no state: " + s.entry) }
+  for i in 0 .. ns {
+    let d = s.states[i]
+    let at = here + "/states/" + d.key
+    for j in i + 1 .. ns { if s.states[j].key == d.key { prob(out, AP_ERROR, "anim.duplicate_state", at, "two states are called " + d.key) } }
+    check_state(out, anim_st, si, d, at, rig, sk, pn, pk, depth, seen)
+  }
+  check_edges(out, s, here, pn, pk)
+  check_reach(out, s, here)
+  check_sync(out, s, here)
+  if s.layers != null and depth == 0 {
+    if len(s.layers) > AM_LAYERS - 1 { prob(out, AP_WARNING, "anim.too_many_layers", here, "only the first " + si(AM_LAYERS - 1) + " layers play") }
+    for i in 0 .. len(s.layers) { check_layer(out, anim_st, s, s.layers[i], here + "/layers/" + s.layers[i].key, rig, sk, pn, pk, seen) }
+  }
+}
+
+function check_state(out: []AnimProblem, anim_st: AnimState, si: int, d: AnimStateDef, at: string, rig: string, sk: Skin, pn: []string, pk: []int, depth: int, seen: []int) -> void {
+  if d.blend < 0.0 { prob(out, AP_ERROR, "anim.negative_blend", at, "a fade of " + sf(d.blend) + " seconds") }
+  if d.speed_by != "" and not has_name(pn, d.speed_by) { prob(out, AP_ERROR, "anim.unknown_param", at, "speed_by names a parameter no graph declares: " + d.speed_by) }
+  if d.kind == "sub" {
+    if d.sub < 0 or d.sub >= len(AnimSets) { prob(out, AP_ERROR, "anim.sub_missing", at, "a sub state names no graph") } else if d.sub == si or depth >= AM_DEPTH {
+      prob(out, AP_ERROR, "anim.sub_cycle", at, "a graph inside itself, or nested deeper than " + si(AM_DEPTH))
+    } else { check_set(out, anim_st, d.sub, rig, sk, pn, pk, depth + 1, seen) }
+    return
+  }
+  if d.kind == "blend" {
+    if d.blend_space < 0 or d.blend_space >= len(AnimBlendSpaces) {
+      prob(out, AP_ERROR, "anim.space_missing", at, "a blend state names no blend space")
+      return
+    }
+    check_space(out, anim_st, d.blend_space, at, rig, pn)
+    return
+  }
+  if d.choices == null or len(d.choices) == 0 {
+    prob(out, AP_ERROR, "anim.no_clips", at, "the state has no choices")
+    return
+  }
+  for c in 0 .. len(d.choices) {
+    let ch = d.choices[c]
+    check_clip(out, anim_st, ch.clip, at + "/choices/" + si(c), rig, sk)
+    if ch.rate_by != "" and not has_name(pn, ch.rate_by) { prob(out, AP_ERROR, "anim.unknown_param", at + "/choices/" + si(c), "rate_by names a parameter no graph declares: " + ch.rate_by) }
+    if ch.need != null {
+      for k in 0 .. len(ch.need) { if not has_name(pn, ch.need[k].param) { prob(out, AP_ERROR, "anim.unknown_param", at + "/choices/" + si(c), "a need names a parameter no graph declares: " + ch.need[k].param) } }
+    }
+  }
+  let last = d.choices[len(d.choices) - 1]
+  if last.need != null and len(last.need) > 0 { prob(out, AP_WARNING, "anim.no_default_choice", at, "the last choice has a need: with none holding, the state plays nothing") }
+}
+
+function check_edges(out: []AnimProblem, s: AnimSet, here: string, pn: []string, pk: []int) -> void {
+  if s.transitions == null { return }
+  for i in 0 .. len(s.transitions) {
+    let t = s.transitions[i]
+    let at = here + "/transitions/" + si(i)
+    if t.from != "*" and as_state(s, t.from) < 0 { prob(out, AP_ERROR, "anim.transition_unknown_state", at, "from names no state: " + t.from) }
+    if as_state(s, t.to) < 0 { prob(out, AP_ERROR, "anim.transition_unknown_state", at, "to names no state: " + t.to) }
+    if t.via != "" and as_state(s, t.via) < 0 { prob(out, AP_ERROR, "anim.transition_unknown_state", at, "via names no state: " + t.via) }
+    if t.blend < 0.0 { prob(out, AP_ERROR, "anim.negative_blend", at, "a fade of " + sf(t.blend) + " seconds") }
+    if t.has_exit_time and t.exit_time < 0.0 { prob(out, AP_ERROR, "anim.exit_time_range", at, "exit_time is below zero") }
+    if t.conditions != null {
+      for c in 0 .. len(t.conditions) {
+        let cd = t.conditions[c]
+        let k = param_kind(pn, pk, cd.param)
+        if k < 0 { prob(out, AP_ERROR, "anim.unknown_param", at + "/conditions/" + si(c), "names a parameter no graph declares: " + cd.param) } else if cd.op == "trigger" and k != 3 {
+          prob(out, AP_WARNING, "anim.condition_kind", at + "/conditions/" + si(c), cd.param + " is not a trigger")
+        } else if (cd.op == "true" or cd.op == "false") and k == 0 {
+          prob(out, AP_WARNING, "anim.condition_kind", at + "/conditions/" + si(c), cd.param + " is a float: test it with gt or lt")
+        } else if k == 3 and cd.op != "trigger" {
+          prob(out, AP_WARNING, "anim.condition_kind", at + "/conditions/" + si(c), cd.param + " is a trigger: its op is trigger")
+        }
+      }
+    }
+    if t.curve == "custom" {
+      if t.curve_points == null or len(t.curve_points) < 2 { prob(out, AP_ERROR, "anim.curve_points", at, "a custom curve needs at least two points") } else {
+        for p in 1 .. len(t.curve_points) {
+          if t.curve_points[p].t < t.curve_points[p - 1].t { prob(out, AP_ERROR, "anim.curve_points", at, "curve points must go forward in t") ; break }
+        }
+      }
+    }
+  }
+}
+
+# a state no path leads to: not the entry, not the target of a `*` edge, an edge, a via or a `next`
+function check_reach(out: []AnimProblem, s: AnimSet, here: string) -> void {
+  let ns = len(s.states)
+  let reach = words(ns)
+  var e = as_state(s, s.entry)
+  if e < 0 { e = 0 }
+  reach[e] = 1
+  var moved = true
+  var rounds = 0
+  while moved and rounds < 64 {
+    moved = false
+    rounds += 1
+    for i in 0 .. ns {
+      if reach[i] == 1 { continue }
+      var ok = false
+      if s.transitions != null {
+        for t in 0 .. len(s.transitions) {
+          let tr = s.transitions[t]
+          if as_state(s, tr.to) == i or as_state(s, tr.via) == i {
+            if tr.from == "*" { ok = true } else {
+              let f = as_state(s, tr.from)
+              if f >= 0 and reach[f] == 1 { ok = true }
+            }
+          }
+        }
+      }
+      for j in 0 .. ns { if reach[j] == 1 and s.states[j].next != "" and as_state(s, s.states[j].next) == i { ok = true } }
+      if ok {
+        reach[i] = 1
+        moved = true
+      }
+    }
+  }
+  for i in 0 .. ns {
+    if reach[i] == 0 { prob(out, AP_WARNING, "anim.unreachable_state", here + "/states/" + s.states[i].key, "no transition, next or via leads here: only a request by name reaches it") }
+  }
+}
+
+# a sync group of one state syncs with nothing
+function check_sync(out: []AnimProblem, s: AnimSet, here: string) -> void {
+  for i in 0 .. len(s.states) {
+    let g = s.states[i].sync
+    if g == "" { continue }
+    var n = 0
+    for j in 0 .. len(s.states) { if s.states[j].sync == g { n += 1 } }
+    if n == 1 { prob(out, AP_WARNING, "anim.sync_single", here + "/states/" + s.states[i].key, "sync group " + g + " holds one state") }
+  }
+}
+
+function starts_with(s: string, p: string) -> bool { return len(s) >= len(p) and s[0 .. len(p)] == p }
+
+# whether the clip table holds anything of this rig at all (else clips are not checked: the model is not loaded)
+function rig_loaded(anim_st: AnimState, rig: string) -> bool {
+  let p = rig + "_"
+  for i in 0 .. len(anim_st.clips) { if starts_with(anim_st.clips[i].name, p) { return true } }
+  return false
+}
+
+# a clip the rig must carry, its events in range, and its channels on bones the skin has
+function check_clip(out: []AnimProblem, anim_st: AnimState, clip: string, at: string, rig: string, sk: Skin) -> void {
+  if clip == "" {
+    prob(out, AP_ERROR, "anim.unknown_clip", at, "an empty clip name")
+    return
+  }
+  let ii = animclips_find(clip)
+  if ii >= 0 { check_info(out, AnimClips[ii], at, clip) }
+  if not rig_loaded(anim_st, rig) { return }
+  let c = anim_find(anim_st, rig + "_" + clip)
+  if c == null {
+    prob(out, AP_ERROR, "anim.unknown_clip", at, "the rig " + rig + " has no clip " + clip)
+    return
+  }
+  if ii >= 0 and AnimClips[ii].events != null {
+    for e in 0 .. len(AnimClips[ii].events) {
+      let ev = AnimClips[ii].events[e]
+      var t = ev.at
+      var u = ev.until
+      if ev.normalized {
+        t = t * c.dur
+        u = u * c.dur
+      }
+      if t > c.dur + 0.0001 or u > c.dur + 0.0001 { prob(out, AP_WARNING, "anim.event_out_of_range", at + "/events/" + ev.name, "an event at " + sf(Math.max(t, u)) + " s on a clip of " + sf(c.dur) + " s") }
+    }
+  }
+  if sk != null { check_bones(out, c, sk, at) }
+}
+
+function check_bones(out: []AnimProblem, c: Clip, sk: Skin, at: string) -> void {
+  let inrig = words(sk.n_nodes)
+  for j in 0 .. sk.n_joints {
+    var up = sk.joints[j]
+    while up >= 0 and inrig[up] == 0 {
+      inrig[up] = 1
+      up = sk.par[up]
+    }
+  }
+  var bad = 0
+  for ch in 0 .. c.n {
+    let n = c.cnode[ch]
+    if n < 0 or n >= sk.n_nodes or inrig[n] == 0 { bad += 1 }
+  }
+  if bad > 0 { prob(out, AP_WARNING, "anim.clip_bone_missing", at, "the clip " + c.name + " drives " + si(bad) + " channels on bones the rig does not have") }
+}
+
+function check_info(out: []AnimProblem, info: AnimClipInfo, at: string, clip: string) -> void {
+  if info.events != null {
+    for e in 0 .. len(info.events) {
+      let ev = info.events[e]
+      if ev.until >= 0.0 and ev.until <= ev.at { prob(out, AP_ERROR, "anim.window_inverted", at + "/events/" + ev.name, "a window that ends (" + sf(ev.until) + ") before it begins (" + sf(ev.at) + ")") }
+      if ev.normalized and (ev.at < 0.0 or ev.at > 1.0 or ev.until > 1.0) { prob(out, AP_ERROR, "anim.event_out_of_range", at + "/events/" + ev.name, "a normalized time outside 0..1") }
+      if ev.at < 0.0 { prob(out, AP_ERROR, "anim.event_out_of_range", at + "/events/" + ev.name, "an event before the clip starts") }
+    }
+  }
+  if info.markers != null {
+    for m in 1 .. len(info.markers) {
+      if info.markers[m].at < info.markers[m - 1].at { prob(out, AP_ERROR, "anim.markers_unsorted", at + "/markers", "markers of " + clip + " must be in order of time") ; break }
+    }
+  }
+}
+
+function check_space(out: []AnimProblem, anim_st: AnimState, sp: int, at: string, rig: string, pn: []string) -> void {
+  let s = AnimBlendSpaces[sp]
+  let here = at + "/space/" + s.key
+  if s.samples == null or len(s.samples) == 0 {
+    prob(out, AP_ERROR, "anim.space_empty", here, "a blend space with no samples")
+    return
+  }
+  let n = len(s.samples)
+  if s.x_param == "" or not has_name(pn, s.x_param) { prob(out, AP_ERROR, "anim.unknown_param", here, "x_param names a parameter no graph declares: " + s.x_param) }
+  if s.dims >= 2 and (s.y_param == "" or not has_name(pn, s.y_param)) { prob(out, AP_ERROR, "anim.unknown_param", here, "y_param names a parameter no graph declares: " + s.y_param) }
+  for i in 0 .. n {
+    check_clip(out, anim_st, s.samples[i].clip, here + "/samples/" + si(i), rig, null)
+    for j in i + 1 .. n {
+      let dx = Math.abs(s.samples[i].x - s.samples[j].x)
+      var dy = 0.0
+      if s.dims >= 2 { dy = Math.abs(s.samples[i].y - s.samples[j].y) }
+      if dx < 0.000001 and dy < 0.000001 { prob(out, AP_ERROR, "anim.space_duplicate_point", here, "samples " + si(i) + " and " + si(j) + " sit at the same point") }
+    }
+  }
+  if s.dims >= 2 {
+    if n < 3 { prob(out, AP_ERROR, "anim.space_degenerate", here, "a 2D blend space needs three samples to make a triangle") } else {
+      var found = 0
+      var worst = 1000000.0
+      for i in 0 .. n {
+        for j in i + 1 .. n {
+          for k in j + 1 .. n {
+            let a = s.samples[i]
+            let b = s.samples[j]
+            let c = s.samples[k]
+            let ar = Math.abs(tri_area2(a.x, a.y, b.x, b.y, c.x, c.y))
+            if ar > 0.000001 { found += 1 }
+            let l2 = Math.max(Math.max((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y), (c.x - b.x) * (c.x - b.x) + (c.y - b.y) * (c.y - b.y)), (a.x - c.x) * (a.x - c.x) + (a.y - c.y) * (a.y - c.y))
+            if ar > 0.000001 and l2 > 0.0 { worst = Math.min(worst, ar / l2) }
+          }
+        }
+      }
+      if found == 0 { prob(out, AP_ERROR, "anim.space_degenerate", here, "every sample lies on one line: no triangle can be made") }
+    }
+  }
+}
+
+function check_layer(out: []AnimProblem, anim_st: AnimState, s: AnimSet, l: AnimLayer, at: string, rig: string, sk: Skin, pn: []string, pk: []int, seen: []int) -> void {
+  if l.graph < 0 or l.graph >= len(AnimSets) {
+    prob(out, AP_ERROR, "anim.layer_graph_missing", at, "a layer names no graph")
+    return
+  }
+  if l.weight_by != "" and not has_name(pn, l.weight_by) { prob(out, AP_ERROR, "anim.unknown_param", at, "weight_by names a parameter no graph declares: " + l.weight_by) }
+  if l.mask >= len(AnimMasks) { prob(out, AP_ERROR, "anim.mask_missing", at, "a layer names a mask that does not exist") }
+  if l.mask >= 0 and l.mask < len(AnimMasks) { check_mask(out, l.mask, at, s.skeleton, sk) }
+  if l.mode == "additive" and l.mask < 0 { prob(out, AP_WARNING, "anim.additive_unmasked", at, "an additive layer with no mask adds to every bone") }
+  check_set(out, anim_st, l.graph, rig, sk, pn, pk, 1, seen)
+}
+
+function check_mask(out: []AnimProblem, mi: int, at: string, skel: int, sk: Skin) -> void {
+  let m = AnimMasks[mi]
+  let here = at + "/mask/" + m.key
+  var sel = m.skeleton
+  if sel < 0 { sel = skel }
+  if m.rows == null or len(m.rows) == 0 { prob(out, AP_WARNING, "anim.mask_empty", here, "a mask with no rows has its default weight on every bone") }
+  if m.rows == null { return }
+  for r in 0 .. len(m.rows) {
+    let b = m.rows[r].bone
+    var found = false
+    var listed = false
+    if sel >= 0 and sel < len(AnimSkeletons) and AnimSkeletons[sel].bones != null and len(AnimSkeletons[sel].bones) > 0 {
+      listed = true
+      for k in 0 .. len(AnimSkeletons[sel].bones) {
+        if AnimSkeletons[sel].bones[k].name == b {
+          found = true
+          if sk != null and skin_joint_quiet(sk, AnimSkeletons[sel].bones[k].node) < 0 { found = false }
+        }
+      }
+    }
+    if not listed and sk != null { found = skin_joint_quiet(sk, b) >= 0 }
+    if not listed and sk == null { found = true }
+    if not found { prob(out, AP_ERROR, "anim.mask_bone_missing", here + "/rows/" + b, "the rig has no bone " + b) }
+    if m.rows[r].weight < 0.0 or m.rows[r].weight > 1.0 { prob(out, AP_ERROR, "anim.mask_weight", here + "/rows/" + b, "a weight outside 0..1") }
+  }
+}
+
+function check_skeleton(out: []AnimProblem, ki: int, sk: Skin) -> void {
+  if ki >= len(AnimSkeletons) { return }
+  let k = AnimSkeletons[ki]
+  let here = "skeletons/" + k.key
+  if k.bones != null {
+    for i in 0 .. len(k.bones) {
+      for j in i + 1 .. len(k.bones) { if k.bones[i].name == k.bones[j].name { prob(out, AP_ERROR, "anim.skeleton_bone_duplicate", here + "/bones/" + k.bones[i].name, "two bones are called " + k.bones[i].name) } }
+      if sk != null and skin_joint_quiet(sk, k.bones[i].node) < 0 { prob(out, AP_ERROR, "anim.skeleton_bone_missing", here + "/bones/" + k.bones[i].name, "the skin has no node " + k.bones[i].node) }
+    }
+  }
+  if sk != null and k.root != "" and skin_joint_quiet(sk, k.root) < 0 { prob(out, AP_ERROR, "anim.skeleton_root_missing", here, "the skin has no root node " + k.root) }
+  if k.lod != null {
+    for i in 1 .. len(k.lod) { if k.lod[i].dist < k.lod[i - 1].dist { prob(out, AP_ERROR, "anim.lod_unsorted", here + "/lod", "lod rows must go out in distance") ; break } }
+  }
+}

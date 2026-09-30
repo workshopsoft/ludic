@@ -1,53 +1,268 @@
-# set_tick.ludic - a frame of a player: follow the graph, pick the clip, cross-fade on a change,
-# advance both clips by the same step and play them into the skin (ludic.anim)
-export function animset_tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> bool {
-  if not pl.ready or sk == null { return false }
-  as_follow(pl)
-  let d = AnimSets[pl.set].states[pl.state]
-  let k = as_pick(pl, d)
-  if k < 0 { return false }
-  pl.pick = k
-  pl.rate = as_rate(pl, d, d.choices[k])
-  as_switch(pl, d, pl.clips[pl.base[pl.state] + k])
-  let adv = dt * pl.rate
-  pl.t = pl.t + adv
-  pl.pt = pl.pt + adv
-  as_one_shot(pl, d)
-  if pl.mix < 1.0 { pl.mix = Math.min(1.0, pl.mix + dt / pl.fade) }
-  # anim_play blends TOWARD its second clip, so the weight is how much of the old one is left
-  return anim_play(anim_st, sk, pl.clip, pl.t, pl.prev, pl.pt, 1.0 - pl.mix)
+# set_tick.ludic - a frame of a player: each machine steps (fades, transitions, choices), advances its
+# instances, and lays out the clips it plays with their shares; the clips are mixed into the pose per
+# layer and folded into the skin. Nothing here allocates: every array was made when the player was bound.
+
+function alpha_of(m: AnimMachine, k: int) -> float {
+  if k == 0 or m.i_prog[k] >= 1.0 { return 1.0 }
+  let t = tr_of(m, m.i_tr[k])
+  if t == null { return m.i_prog[k] }
+  return anim_curve(t.curve, t.curve_points, m.i_prog[k])
 }
 
-# a new clip fades in from the old one. Within a state it carries the PHASE across: two leg cycles
-# restarted at zero put the far leg forward for the length of the fade, which reads as a stumble.
-function as_switch(pl: AnimPlayer, d: AnimStateDef, want: Clip) -> void {
-  var fade = d.blend
-  if pl.fade_next > 0.0 { fade = pl.fade_next }
-  pl.fade_next = -1.0
-  if pl.clip == null {
-    pl.clip = want
-    pl.t = 0.0
-    pl.prev = null
-    pl.mix = 1.0
+# the machine's frame: what it plays, weighted by `wt`, goes onto the player's clip list. A sub graph
+# reached twice in a frame (two instances of the state holding it) steps once.
+function run_machine(anim_st: mut AnimState, pl: AnimPlayer, mi: int, dt: float, wt: float) -> void {
+  let m = pl.mach[mi]
+  var first = false
+  if m.stamp != pl.frame {
+    m.stamp = pl.frame
+    first = true
+    step_machine(anim_st, pl, m, mi, dt)
+  }
+  var above = 1.0
+  var k = m.n_i - 1
+  while k >= 0 {
+    let a = alpha_of(m, k)
+    let w = a * above
+    above = above * (1.0 - a)
+    emit_inst(anim_st, pl, m, mi, k, wt * w, first, dt)
+    k -= 1
+  }
+}
+
+function step_machine(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi: int, dt: float) -> void {
+  let s = AnimSets[m.set]
+  if m.n_i == 0 {
+    let e = as_entry(s)
+    push_inst(anim_st, pl, m, mi, e, -1, 0.0, 0.0, -1)
+  }
+  for k in 1 .. m.n_i {
+    if m.i_prog[k] < 1.0 {
+      if m.i_fdur[k] > 0.0 { m.i_prog[k] = Math.min(1.0, m.i_prog[k] + dt / m.i_fdur[k]) } else { m.i_prog[k] = 1.0 }
+    }
+  }
+  var hi = 0
+  for k in 1 .. m.n_i { if m.i_prog[k] >= 1.0 { hi = k } }
+  if hi > 0 { drop_to(anim_st, pl, m, hi) }
+  decide(anim_st, pl, m, mi)
+  switch_choice(anim_st, pl, m, mi)
+  for k in 0 .. m.n_i { advance_inst(anim_st, pl, m, k, dt) }
+}
+
+# a `clips` state whose choice changed fades into the new one (keeping the cycle's phase, if it says so)
+function switch_choice(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi: int) -> void {
+  let top = m.n_i - 1
+  let st = m.i_st[top]
+  let d = AnimSets[m.set].states[st]
+  if d.kind != "clips" { return }
+  let p = as_pick(pl, m, st)
+  if p < 0 { return }
+  if m.i_pick[top] < 0 {
+    m.i_pick[top] = p
     return
   }
-  if want == pl.clip { return }
+  if p == m.i_pick[top] { return }
   var ph = 0.0
-  if d.keep_phase and not pl.fresh and pl.clip.dur > 0.0 { ph = pl.t % pl.clip.dur / pl.clip.dur }
-  pl.prev = pl.clip
-  pl.pt = pl.t
-  pl.clip = want
-  pl.t = ph * want.dur
-  pl.fade = fade
-  pl.mix = 0.0
-  if not (fade > 0.0) { pl.mix = 1.0 }
+  if d.keep_phase { ph = m.i_ph[top] }
+  push_inst(anim_st, pl, m, mi, st, p, ph, d.blend, -1)
 }
 
-# a clip that does not loop holds its last pose, and hands over to its `next` state when played
-function as_one_shot(pl: AnimPlayer, d: AnimStateDef) -> void {
-  if d.loop or pl.clip.dur <= 0.0 or pl.t < pl.clip.dur { return }
-  pl.t = pl.clip.dur * 0.999
-  if d.next == "" { return }
-  let i = as_state(AnimSets[pl.set], d.next)
-  if i >= 0 { pl.want = i }
+# a blend state's weights into its instance: the space's at the parameters' values, the samples whose
+# clip the rig lacks taken out and the rest made to sum to one. Its cycle takes the weighted durations.
+function blend_weights(anim_st: AnimState, pl: AnimPlayer, m: AnimMachine, k: int, st: int) -> float {
+  let sp = m.space[st]
+  m.i_sn[k] = 0
+  if sp < 0 { return 0.0 }
+  var x = 0.0
+  var y = 0.0
+  if m.px[st] >= 0 { x = pl.vals[m.px[st]] }
+  if m.py[st] >= 0 { y = pl.vals[m.py[st]] }
+  let n = anim_space_weights(anim_st, sp, x, y, pl.bi, pl.bwt)
+  var sum = 0.0
+  var dur = 0.0
+  var got = 0
+  for j in 0 .. n {
+    let c = m.clips[m.base[st] + pl.bi[j]]
+    if c == null { continue }
+    m.i_si[k * 3 + got] = pl.bi[j]
+    m.i_sw[k * 3 + got] = pl.bwt[j]
+    sum += pl.bwt[j]
+    dur += pl.bwt[j] * c.dur
+    got += 1
+  }
+  m.i_sn[k] = got
+  if got == 0 or sum <= 0.0 { return 0.0 }
+  for j in 0 .. got { m.i_sw[k * 3 + j] = m.i_sw[k * 3 + j] / sum }
+  return dur / sum
 }
+
+function advance_inst(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, k: int, dt: float) -> void {
+  let st = m.i_st[k]
+  let d = AnimSets[m.set].states[st]
+  m.i_wr[k] = 0
+  m.i_p0[k] = m.i_ph[k]
+  if d.kind == "sub" { return }
+  var dur = 0.0
+  var rate = 1.0
+  if d.kind == "clips" {
+    if m.i_pick[k] < 0 { return }
+    let slot = m.base[st] + m.i_pick[k]
+    dur = m.clips[slot].dur
+    rate = as_rate(pl, m, st, slot, d.choices[m.i_pick[k]])
+  } else {
+    dur = blend_weights(anim_st, pl, m, k, st)
+    rate = as_speed(pl, m, st)
+  }
+  m.i_rate[k] = rate
+  m.i_dur[k] = dur
+  if not (dur > 0.0) or dt <= 0.0 { return }
+  var ph = m.i_ph[k] + dt * rate / dur
+  if d.loop {
+    if ph >= 1.0 {
+      let laps = int(Math.floor(ph))
+      ph = ph - float(laps)
+      m.i_wr[k] = laps
+      m.i_loops[k] = m.i_loops[k] + laps
+    }
+  } else if ph > 1.0 { ph = 1.0 }
+  m.i_ph[k] = ph
+  if not d.loop and ph >= 1.0 and k == m.n_i - 1 and d.next != "" {
+    let i = as_state(AnimSets[m.set], d.next)
+    if i >= 0 { m.want = i }
+  }
+}
+
+function emit_inst(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi: int, k: int, w: float, first: bool, dt: float) -> void {
+  let st = m.i_st[k]
+  let d = AnimSets[m.set].states[st]
+  if d.kind == "sub" {
+    if m.sub[st] >= 0 { run_machine(anim_st, pl, m.sub[st], dt, w) }
+  } else if d.kind == "clips" {
+    if m.i_pick[k] >= 0 { add_item(anim_st, pl, m, mi, m.base[st] + m.i_pick[k], k, w, first, d.loop) }
+  } else {
+    for j in 0 .. m.i_sn[k] { add_item(anim_st, pl, m, mi, m.base[st] + m.i_si[k * 3 + j], k, w * m.i_sw[k * 3 + j], first, d.loop) }
+  }
+  if first { m.i_new[k] = 0 }
+}
+
+# one clip at a share of the pose: onto the list the layer mixes, its events fired, its root motion taken
+function add_item(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi: int, slot: int, k: int, w: float, first: bool, loop: bool) -> void {
+  let c = m.clips[slot]
+  if c == null { return }
+  let ii = m.infos[slot]
+  var info: AnimClipInfo = null
+  if ii >= 0 { info = AnimClips[ii] }
+  if w > 0.0 and pl.n_it < AM_ITEMS {
+    let n = pl.n_it
+    pl.it_clip[n] = c
+    pl.it_w[n] = w
+    pl.it_t[n] = anim_clip_time(info, c.dur, m.i_ph[k], loop)
+    pl.it_ref[n] = 0.0
+    pl.it_ex[n] = 0
+    pl.it_rp[n] = m.rmp[slot]
+    pl.it_rr[n] = m.rmr[slot]
+    if info != null {
+      pl.it_ref[n] = info.ref_time
+      if info.root_motion == "extract" {
+        var ex = 0
+        if m.rmp[slot] >= 0 { ex = 1 }
+        if m.rmp[slot] >= 0 and info.root_axes == "xyz" { ex = ex | 2 }
+        if m.rmr[slot] >= 0 and info.root_turn { ex = ex | 4 }
+        pl.it_ex[n] = ex
+      }
+    }
+    pl.n_it = n + 1
+  }
+  if not first or not (w > 0.0) or info == null { return }
+  if pl.l_events and info.events != null and len(info.events) > 0 {
+    events_fire(anim_st, pl, m, mi, slot, m.i_uid[k], info, c, m.i_p0[k], m.i_ph[k], m.i_wr[k], loop, m.i_new[k] == 1, w)
+  }
+  if info.root_motion == "extract" and (m.rmp[slot] >= 0 or m.rmr[slot] >= 0) {
+    let u0 = anim_unwrapped_time(info, c.dur, m.i_p0[k], loop)
+    let u1 = anim_unwrapped_time(info, c.dur, m.i_ph[k] + float(m.i_wr[k]), loop)
+    anim_root_delta(anim_st, c, m.rmp[slot], m.rmr[slot], u0, u1, loop, info.root_turn, info.root_axes == "xyz", pl.rm_t)
+    for e in 0 .. 4 { pl.rm[e] = pl.rm[e] + w * pl.rm_t[e] }
+  }
+}
+
+# the list's clips mixed into one pose buffer by their shares; false when there was nothing to mix
+function mix_items(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, rot: floats, pos: floats, hit: words, add: bool) -> bool {
+  var cum = 0.0
+  var any = false
+  for i in 0 .. pl.n_it {
+    let w = pl.it_w[i]
+    if not (w > 0.0) { continue }
+    cum += w
+    mix_clip(anim_st, pl.it_clip[i], sk, pl.it_t[i], w / cum, rot, pos, hit, add, pl.it_ref[i], pl.it_ex[i], pl.it_rp[i], pl.it_rr[i])
+    any = true
+  }
+  return any
+}
+
+# the skeleton's level of detail for the distance the game last said
+function lod_pick(pl: AnimPlayer) -> void {
+  pl.l_every = 1
+  pl.l_layers = AM_LAYERS
+  pl.l_events = true
+  if pl.skel < 0 or pl.skel >= len(AnimSkeletons) { return }
+  let rows = AnimSkeletons[pl.skel].lod
+  if rows == null or len(rows) == 0 { return }
+  var at = len(rows) - 1
+  for i in 0 .. len(rows) { if pl.dist <= rows[i].dist { at = i;  break } }
+  pl.l_every = rows[at].every
+  pl.l_layers = rows[at].layers
+  pl.l_events = rows[at].events
+}
+
+# A tick of a player into its skin. A far actor (its skeleton's lod rows) is stepped one tick in `every`,
+# by the time the skipped ones left, and plays fewer layers. False when there is nothing to play.
+export function animset_tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> bool {
+  if not pl.ready or sk == null { return false }
+  if pl.sk != sk { animset_bind_skin(pl, sk) }
+  lod_pick(pl)
+  pl.acc += dt
+  if pl.posed and pl.l_every > 1 {
+    var ph = (pl.ticks + pl.seed) % pl.l_every
+    if ph < 0 { ph += pl.l_every }
+    if ph != 0 {
+      pl.ticks += 1
+      return true
+    }
+  }
+  pl.ticks += 1
+  let step = pl.acc
+  pl.acc = 0.0
+  pl.frame += 1
+  pl.n_it = 0
+  run_machine(anim_st, pl, pl.lm[0], step, 1.0)
+  let n = sk.n_nodes
+  scratch(anim_st, n)
+  for i in 0 .. n { anim_st.hit_s[i] = 0 }
+  skin_reset(sk)
+  if not mix_items(anim_st, pl, sk, anim_st.rot_s, anim_st.pos_s, anim_st.hit_s, false) { return false }
+  for li in 1 .. pl.nl {
+    if li >= pl.l_layers { break }
+    var w = pl.lw[li]
+    if pl.lwp[li] >= 0 { w = w * Math.clamp(pl.vals[pl.lwp[li]], 0.0, 1.0) }
+    if w <= 0.0005 { continue }
+    pl.n_it = 0
+    run_machine(anim_st, pl, pl.lm[li], step, 1.0)
+    layer_scratch(anim_st, n)
+    for i in 0 .. n { anim_st.lhit[i] = 0 }
+    let add = pl.lmode[li] == 1
+    if mix_items(anim_st, pl, sk, anim_st.lrot, anim_st.lpos, anim_st.lhit, add) { layer_apply(anim_st, sk, pl.lmask[li], w, add) }
+  }
+  anim_to_pose(anim_st, sk, anim_st.rot_s, anim_st.pos_s, anim_st.hit_s)
+  skin_pose(sk)
+  pl.posed = true
+  if anim_st.root_port and pl.actor >= 0 {
+    if pl.rm[0] != 0.0 or pl.rm[1] != 0.0 or pl.rm[2] != 0.0 or pl.rm[3] != 0.0 {
+      AnimRoot.apply(pl.actor, pl.rm[0], pl.rm[1], pl.rm[2], Math.rad_to_deg(pl.rm[3]))
+      for e in 0 .. 4 { pl.rm[e] = 0.0 }
+    }
+  }
+  return true
+}
+
+# the root motion goes to the AnimRoot port each tick, instead of waiting for anim_root_take
+export function anim_root_port(anim_st: mut AnimState, on: bool) -> void { anim_st.root_port = on }

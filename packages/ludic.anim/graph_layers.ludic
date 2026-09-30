@@ -1,0 +1,151 @@
+# graph_layers.ludic - layers and masks. A layer is another graph run on its own machine and mixed over the
+# base pose through a per-bone mask and a weight (a fixed number times a parameter). `override` blends the
+# pose toward the layer's, bone by bone; `additive` takes the layer's clips as a change away from their
+# own reference frame and adds it on the pose, so a breathing or a lean lands on whatever plays below.
+
+# the node a bone name means on this rig: the skeleton's bone map first, then the skin's own names
+function bone_node(pl: AnimPlayer, sk: Skin, name: string) -> int {
+  if pl.skel >= 0 and pl.skel < len(AnimSkeletons) and AnimSkeletons[pl.skel].bones != null {
+    let bs = AnimSkeletons[pl.skel].bones
+    for i in 0 .. len(bs) { if bs[i].name == name { return skin_joint_quiet(sk, bs[i].node) } }
+  }
+  return skin_joint_quiet(sk, name)
+}
+
+# the top of the skin's joints: the first joint whose parent is not one
+function top_joint(sk: Skin) -> int {
+  for j in 0 .. sk.n_joints {
+    let i = sk.joints[j]
+    var up = sk.par[i]
+    var inside = false
+    while up >= 0 {
+      for q in 0 .. sk.n_joints { if sk.joints[q] == up { inside = true } }
+      up = sk.par[up]
+    }
+    if not inside { return i }
+  }
+  return -1
+}
+
+# the mask row of a layer made per node of this skin: a row's weight at its bone, and below it when it says so
+@alloc_ok("a layer's mask, made once for the skin")
+function make_mask(pl: AnimPlayer, sk: Skin, mask: int) -> floats {
+  let n = sk.n_nodes
+  let out = floats(n)
+  if mask < 0 or mask >= len(AnimMasks) {
+    for i in 0 .. n { out[i] = 1.0 }
+    return out
+  }
+  let mk = AnimMasks[mask]
+  let own = floats(n)
+  let below = words(n)
+  let inh = words(n)
+  for i in 0 .. n { own[i] = -1.0 }
+  if mk.rows != null {
+    for r in 0 .. len(mk.rows) {
+      let node = bone_node(pl, sk, mk.rows[r].bone)
+      if node < 0 { continue }
+      own[node] = mk.rows[r].weight
+      if mk.rows[r].below { below[node] = 1 }
+    }
+  }
+  for k in 0 .. n {
+    let node = sk.walk[k]
+    let p = sk.par[node]
+    out[node] = mk.default
+    if p >= 0 and inh[p] == 1 {
+      out[node] = out[p]
+      inh[node] = 1
+    }
+    if own[node] >= 0.0 {
+      out[node] = own[node]
+      inh[node] = below[node]
+    }
+  }
+  return out
+}
+
+# the things that need the skin: the layers' masks, and the root's channel in every clip that extracts
+@alloc_ok("once per skin")
+export function animset_bind_skin(pl: AnimPlayer, sk: Skin) -> void {
+  pl.sk = sk
+  pl.lmask = new []floats
+  let root_mask = floats(0)
+  push(pl.lmask, root_mask)
+  let s = AnimSets[pl.set]
+  var li = 1
+  if s.layers != null {
+    for i in 0 .. len(s.layers) {
+      let l = s.layers[i]
+      if li >= pl.nl { break }
+      if l.graph < 0 or l.graph >= len(AnimSets) { continue }
+      push(pl.lmask, make_mask(pl, sk, l.mask))
+      li += 1
+    }
+  }
+  pl.root = top_joint(sk)
+  if pl.skel >= 0 and pl.skel < len(AnimSkeletons) and AnimSkeletons[pl.skel].root != "" {
+    let r = skin_joint_quiet(sk, AnimSkeletons[pl.skel].root)
+    if r >= 0 { pl.root = r }
+  }
+  for mi in 0 .. len(pl.mach) {
+    let m = pl.mach[mi]
+    for slot in 0 .. len(m.names) {
+      m.rmp[slot] = -1
+      m.rmr[slot] = -1
+      let ii = m.infos[slot]
+      if ii < 0 or AnimClips[ii].root_motion != "extract" or m.clips[slot] == null { continue }
+      var node = pl.root
+      if AnimClips[ii].root_bone != "" {
+        let b = bone_node(pl, sk, AnimClips[ii].root_bone)
+        if b >= 0 { node = b }
+      }
+      let c = m.clips[slot]
+      for ch in 0 .. c.n {
+        if c.cnode[ch] != node { continue }
+        if c.cpath[ch] == AC_POS { m.rmp[slot] = ch } else { m.rmr[slot] = ch }
+      }
+    }
+  }
+}
+
+# The scratch for a layer's own pose, grown once.
+@alloc_ok("grown once to the largest skeleton a layer is mixed on")
+function layer_scratch(anim_st: mut AnimState, n: int) -> void {
+  if anim_st.lhit != null and len(anim_st.lhit) >= n { return }
+  anim_st.lrot = floats(n * 4)
+  anim_st.lpos = floats(n * 3)
+  anim_st.lhit = words(n)
+}
+
+# a layer's pose (in lrot/lpos/lhit) onto the base pose, by `w` times the mask at each bone
+function layer_apply(anim_st: mut AnimState, sk: Skin, mask: floats, w: float, add: bool) -> void {
+  let q = anim_st.parts[7]
+  let base = anim_st.parts[6]
+  let id = anim_st.parts[5]
+  q_identity(id)
+  for i in 0 .. sk.n_nodes {
+    let f = w * mask[i]
+    if f <= 0.0 { continue }
+    let h = anim_st.lhit[i]
+    if (h & 1) != 0 {
+      if (anim_st.hit_s[i] & 1) != 0 { q_load(base, anim_st.rot_s, i) } else { q_load(base, sk.rest_r, i) }
+      q_load(q, anim_st.lrot, i)
+      if add {
+        q_nlerp(q, id, q, f)
+        q_mul(q, q, base)
+        q_normalize(q)
+      } else { q_nlerp(q, base, q, f) }
+      q_store(anim_st.rot_s, i, q)
+      anim_st.hit_s[i] = anim_st.hit_s[i] | 1
+    }
+    if (h & 2) != 0 {
+      for e in 0 .. 3 {
+        var b = sk.rest_t[i * 3 + e]
+        if (anim_st.hit_s[i] & 2) != 0 { b = anim_st.pos_s[i * 3 + e] }
+        if add { anim_st.pos_s[i * 3 + e] = b + f * anim_st.lpos[i * 3 + e] } else { anim_st.pos_s[i * 3 + e] = Math.lerp(b, anim_st.lpos[i * 3 + e], f) }
+      }
+      anim_st.hit_s[i] = anim_st.hit_s[i] | 2
+    }
+  }
+}

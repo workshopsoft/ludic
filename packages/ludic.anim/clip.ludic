@@ -19,9 +19,26 @@ export property Clip {
 export state AnimState {
   clips: []Clip = new []Clip
   positions: bool = false
+  root_port: bool = false
   q_a: floats = floats(4)
   q_b: floats = floats(4)
   q_cur: floats = floats(4)
+  q_k0: floats = floats(4)
+  q_k1: floats = floats(4)
+  q_r: floats = floats(4)
+  v_a: floats = floats(3)
+  v_b: floats = floats(3)
+  v_k: floats = floats(3)
+  space_tris: [][]int = new [][]int
+  facts: []AnimFact = anim_facts_new()
+  n_facts: int = 0
+  facts_lost: int = 0
+  actor_ids: words = null
+  actor_pl: []AnimPlayer = null
+  n_actors: int = 0
+  lrot: floats = null
+  lpos: floats = null
+  lhit: words = null
   parts: []floats = pose_parts_new()
   rot_s: floats = null
   pos_s: floats = null

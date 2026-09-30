@@ -1,44 +1,53 @@
-# set_bind.ludic - a player given a set and a rig: the clip names are made once per rig, and
-# looked up again (without making anything) until the model has loaded and read its clips
-@alloc_ok("a rig's clip names and tables, made once when the rig changes")
-function as_names(pl: AnimPlayer, set: int, rig: string) -> void {
-  let s = AnimSets[set]
-  pl.set = set
-  pl.rig = intern(rig)
-  pl.names = new []string
-  pl.clips = new []Clip
-  pl.base = new []int
-  pl.vals = new []float
-  for i in 0 .. len(s.states) {
-    push(pl.base, len(pl.names))
-    let d = s.states[i]
-    for c in 0 .. len(d.choices) {
-      push(pl.names, intern(rig + "_" + d.choices[c].clip))
-      push(pl.clips, null)
-    }
-  }
-  if s.params != null { for i in 0 .. len(s.params) { push(pl.vals, 0.0) } }
+# set_bind.ludic - a player given a set and a rig: the machines, the clip slots, the parameter table
+# and every name the graph uses turned into an index, made once per rig and looked up again (making
+# nothing) until the model has loaded and read its clips.
+
+# the parameter's place in the player's table; -1 for "" or a name no graph declares
+export function as_param_idx(pl: AnimPlayer, name: string) -> int {
+  if name == "" or pl.pnames == null { return -1 }
+  for i in 0 .. len(pl.pnames) { if pl.pnames[i] == name { return i } }
+  return -1
 }
 
-# Bind (or look again). A new rig is a different skeleton: nothing of the last one's cross-fade
-# may carry over. Ready once the entry state's default - its last choice - is found.
-export function animset_bind(anim_st: AnimState, pl: AnimPlayer, set: int, rig: string) -> bool {
-  if animset_bound(pl, set, rig) and pl.ready { return true }
-  if not animset_bound(pl, set, rig) {
-    as_names(pl, set, rig)
-    pl.ready = false
+@alloc_ok("a rig's tables, made once when the rig changes")
+function param_add(pl: AnimPlayer, name: string, kind: int, initial: float) -> void {
+  if name == "" or as_param_idx(pl, name) >= 0 { return }
+  push(pl.pnames, intern(name))
+  push(pl.pkind, kind)
+  push(pl.pinit, initial)
+}
+
+function kind_code(k: string) -> int {
+  if k == "int" { return 1 }
+  if k == "bool" { return 2 }
+  if k == "trigger" { return 3 }
+  return 0
+}
+
+# the parameters of a graph, its sub graphs' and its layers' graphs'
+@alloc_ok("once per bind")
+function collect_params(pl: AnimPlayer, si: int, depth: int) -> void {
+  if si < 0 or si >= len(AnimSets) or depth > AM_DEPTH { return }
+  let s = AnimSets[si]
+  if s.params != null { for i in 0 .. len(s.params) { param_add(pl, s.params[i], 0, 0.0) } }
+  if s.parameters != null { for i in 0 .. len(s.parameters) { param_add(pl, s.parameters[i].key, kind_code(s.parameters[i].kind), s.parameters[i].initial) } }
+  if s.states != null {
+    for i in 0 .. len(s.states) {
+      let d = s.states[i]
+      if d.kind == "sub" and d.sub != si { collect_params(pl, d.sub, depth + 1) }
+      if d.kind == "blend" and d.blend_space >= 0 and d.blend_space < len(AnimBlendSpaces) {
+        param_add(pl, AnimBlendSpaces[d.blend_space].x_param, 0, 0.0)
+        param_add(pl, AnimBlendSpaces[d.blend_space].y_param, 0, 0.0)
+      }
+      param_add(pl, d.speed_by, 0, 1.0)
+    }
   }
-  for i in 0 .. len(pl.names) { pl.clips[i] = anim_find(anim_st, pl.names[i]) }
-  let s = AnimSets[set]
-  pl.state = as_entry(s)
-  pl.want = pl.state
-  pl.asked = ""
-  pl.clip = null
-  pl.prev = null
-  let d = s.states[pl.state]
-  let n = len(d.choices)
-  pl.ready = n > 0 and pl.clips[pl.base[pl.state] + n - 1] != null
-  return pl.ready
+  if s.transitions != null {
+    for i in 0 .. len(s.transitions) {
+      let t = s.transitions[i]
+      if t.conditions != null { for c in 0 .. len(t.conditions) { param_add(pl, t.conditions[c].param, 0, 0.0) } }
+    }
+  }
 }
 
 function as_entry(s: AnimSet) -> int {
@@ -48,6 +57,208 @@ function as_entry(s: AnimSet) -> int {
 }
 
 export function as_state(s: AnimSet, key: string) -> int {
+  if s.states == null { return -1 }
   for i in 0 .. len(s.states) { if s.states[i].key == key { return i } }
   return -1
+}
+
+@alloc_ok("once per bind")
+function slot_add(pl: AnimPlayer, m: AnimMachine, clip: string, nbase: int, rby: int) -> void {
+  push(m.names, intern(pl.rig + "_" + clip))
+  push(m.clips, null)
+  push(m.infos, animclips_find(clip))
+  push(m.rmp, -1)
+  push(m.rmr, -1)
+  push(m.nbase, nbase)
+  push(m.rby, rby)
+}
+
+# the machine for a set (its sub graphs built under it); its number
+@alloc_ok("once per bind")
+function build_machine(pl: AnimPlayer, si: int, depth: int) -> int {
+  let m = new AnimMachine
+  push(pl.mach, m)
+  let mi = len(pl.mach) - 1
+  let s = AnimSets[si]
+  m.set = si
+  m.base = new []int
+  m.ncl = new []int
+  m.sub = new []int
+  m.space = new []int
+  m.px = new []int
+  m.py = new []int
+  m.spd = new []int
+  m.tfrom = new []int
+  m.tto = new []int
+  m.cbase = new []int
+  m.cparam = new []int
+  m.tord = new []int
+  m.names = new []string
+  m.clips = new []Clip
+  m.infos = new []int
+  m.rmp = new []int
+  m.rmr = new []int
+  m.nbase = new []int
+  m.nparam = new []int
+  m.rby = new []int
+  if s.states != null { m.ns = len(s.states) }
+  for i in 0 .. m.ns {
+    let d = s.states[i]
+    push(m.base, len(m.names))
+    var sub = -1
+    var space = -1
+    var px = -1
+    var py = -1
+    if d.kind == "sub" and d.sub >= 0 and d.sub < len(AnimSets) and d.sub != si and depth < AM_DEPTH { sub = build_machine(pl, d.sub, depth + 1) }
+    if d.kind == "blend" and d.blend_space >= 0 and d.blend_space < len(AnimBlendSpaces) {
+      space = d.blend_space
+      px = as_param_idx(pl, AnimBlendSpaces[space].x_param)
+      py = as_param_idx(pl, AnimBlendSpaces[space].y_param)
+    }
+    push(m.sub, sub)
+    push(m.space, space)
+    push(m.px, px)
+    push(m.py, py)
+    push(m.spd, as_param_idx(pl, d.speed_by))
+    var n = 0
+    if d.kind == "clips" and d.choices != null {
+      n = len(d.choices)
+      for c in 0 .. n {
+        let ch = d.choices[c]
+        let nb = len(m.nparam)
+        if ch.need != null { for k in 0 .. len(ch.need) { push(m.nparam, as_param_idx(pl, ch.need[k].param)) } }
+        slot_add(pl, m, ch.clip, nb, as_param_idx(pl, ch.rate_by))
+      }
+    }
+    if space >= 0 and AnimBlendSpaces[space].samples != null {
+      n = len(AnimBlendSpaces[space].samples)
+      for c in 0 .. n { slot_add(pl, m, AnimBlendSpaces[space].samples[c].clip, 0, -1) }
+    }
+    push(m.ncl, n)
+  }
+  if s.transitions != null {
+    for i in 0 .. len(s.transitions) {
+      let t = s.transitions[i]
+      push(m.cbase, len(m.cparam))
+      if t.conditions != null { for c in 0 .. len(t.conditions) { push(m.cparam, as_param_idx(pl, t.conditions[c].param)) } }
+      if t.from == "*" { push(m.tfrom, -1) } else {
+        let f = as_state(s, t.from)
+        if f < 0 { push(m.tfrom, -2) } else { push(m.tfrom, f) }
+      }
+      let to = as_state(s, t.to)
+      push(m.tto, to)
+      push(m.tord, i)
+    }
+    push(m.cbase, len(m.cparam))
+    # priority order: highest first, file order among equals (an insertion sort: a handful of rows)
+    for i in 1 .. len(m.tord) {
+      var j = i
+      while j > 0 and s.transitions[m.tord[j - 1]].priority < s.transitions[m.tord[j]].priority {
+        let tmp = m.tord[j - 1]
+        m.tord[j - 1] = m.tord[j]
+        m.tord[j] = tmp
+        j -= 1
+      }
+    }
+  }
+  m.want = as_entry(s)
+  return mi
+}
+
+@alloc_ok("a rig's tables, made once when the rig changes")
+function as_names(pl: AnimPlayer, set: int, rig: string) -> void {
+  let s = AnimSets[set]
+  pl.set = set
+  pl.rig = intern(rig)
+  pl.mach = new []AnimMachine
+  pl.pnames = new []string
+  pl.pkind = new []int
+  pl.pinit = new []float
+  collect_params(pl, set, 0)
+  if s.layers != null {
+    for i in 0 .. len(s.layers) {
+      if s.layers[i].graph >= 0 and s.layers[i].graph < len(AnimSets) { collect_params(pl, s.layers[i].graph, 1) }
+      param_add(pl, s.layers[i].weight_by, 0, 1.0)
+    }
+  }
+  build_machine(pl, set, 0)
+  pl.lm = new []int
+  pl.lmode = new []int
+  pl.lw = new []float
+  pl.lwp = new []int
+  push(pl.lm, 0)
+  push(pl.lmode, 0)
+  push(pl.lw, 1.0)
+  push(pl.lwp, -1)
+  if s.layers != null {
+    for i in 0 .. len(s.layers) {
+      let l = s.layers[i]
+      if len(pl.lm) >= AM_LAYERS or l.graph < 0 or l.graph >= len(AnimSets) { continue }
+      push(pl.lm, build_machine(pl, l.graph, 1))
+      if l.mode == "additive" { push(pl.lmode, 1) } else { push(pl.lmode, 0) }
+      push(pl.lw, l.weight)
+      push(pl.lwp, as_param_idx(pl, l.weight_by))
+    }
+  }
+  pl.nl = len(pl.lm)
+  pl.vals = floats(len(pl.pnames))
+  for i in 0 .. len(pl.pnames) { pl.vals[i] = pl.pinit[i] }
+  pl.it_clip = new []Clip
+  for i in 0 .. AM_ITEMS { push(pl.it_clip, null) }
+  pl.it_w = floats(AM_ITEMS)
+  pl.it_t = floats(AM_ITEMS)
+  pl.it_ref = floats(AM_ITEMS)
+  pl.it_ex = words(AM_ITEMS)
+  pl.it_rp = words(AM_ITEMS)
+  pl.it_rr = words(AM_ITEMS)
+  pl.sk = null
+  pl.lmask = null
+  pl.n_ow = 0
+  pl.n_it = 0
+}
+
+# Bind (or look again). A new rig is a different skeleton: nothing of the last one's cross-fade
+# may carry over. Ready once the entry state has a clip to play: its default (last) choice, a blend
+# state's first sample, or a sub graph.
+export function animset_bind(anim_st: AnimState, pl: AnimPlayer, set: int, rig: string) -> bool {
+  if set < 0 or set >= len(AnimSets) { return false }
+  if animset_bound(pl, set, rig) and pl.ready { return true }
+  if not animset_bound(pl, set, rig) {
+    as_names(pl, set, rig)
+    pl.ready = false
+  }
+  for mi in 0 .. len(pl.mach) {
+    let m = pl.mach[mi]
+    for i in 0 .. len(m.names) { m.clips[i] = anim_find(anim_st, m.names[i]) }
+    m.n_i = 0
+    m.asked = ""
+    m.stamp = -1
+    m.estamp = -1
+  }
+  for i in 0 .. len(pl.vals) { pl.vals[i] = pl.pinit[i] }
+  pl.n_ow = 0
+  pl.posed = false
+  pl.ready = entry_ready(pl)
+  return pl.ready
+}
+
+# bound through a skeleton row: its prefix is the rig, and its bone names, root and level of detail apply
+export function animset_bind_skel(anim_st: AnimState, pl: AnimPlayer, set: int, skel: int) -> bool {
+  if skel < 0 or skel >= len(AnimSkeletons) { return false }
+  pl.skel = skel
+  return animset_bind(anim_st, pl, set, AnimSkeletons[skel].prefix)
+}
+
+function entry_ready(pl: AnimPlayer) -> bool {
+  let m = pl.mach[0]
+  let s = AnimSets[m.set]
+  if m.ns == 0 { return false }
+  let e = as_entry(s)
+  let d = s.states[e]
+  if d.kind == "sub" { return m.sub[e] >= 0 }
+  let n = m.ncl[e]
+  if n == 0 { return false }
+  if d.kind == "clips" { return m.clips[m.base[e] + n - 1] != null }
+  for c in 0 .. n { if m.clips[m.base[e] + c] != null { return true } }
+  return false
 }

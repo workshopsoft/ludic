@@ -1,0 +1,66 @@
+# graph_math.ludic - the pure arithmetic of a graph, with no state: a fade's curve, a cycle's phase
+# turned into a clip time through its sync markers, and the test a condition makes.
+
+# how much of the new pose a fade has given at p (0..1 through it). `custom` walks the points as
+# a polyline from (0, 0) to (1, 1); a point list that does not cover the ends is held at its first
+# and last value
+export function anim_curve(kind: string, pts: []AnimCurvePoint, p: float) -> float {
+  let x = Math.clamp(p, 0.0, 1.0)
+  if kind == "ease" { return x * x * (3.0 - 2.0 * x) }
+  if kind == "ease_in" { return x * x }
+  if kind == "ease_out" { return 1.0 - (1.0 - x) * (1.0 - x) }
+  if kind == "custom" and pts != null and len(pts) > 0 {
+    let n = len(pts)
+    if x <= pts[0].t { return pts[0].v }
+    for i in 1 .. n {
+      if x <= pts[i].t {
+        let span = pts[i].t - pts[i - 1].t
+        if span <= 0.000001 { return pts[i].v }
+        return Math.lerp(pts[i - 1].v, pts[i].v, (x - pts[i - 1].t) / span)
+      }
+    }
+    return pts[n - 1].v
+  }
+  return x
+}
+
+# A cycle's phase, counted in whole cycles (1.25 is a quarter into the second), as a time on the clip
+# that has not been wrapped (so a crossing of the clip's end is a crossing). With markers the cycle's
+# k segments (marker i to marker i+1, the last to the first a cycle on) each take 1/k of the phase, so
+# two clips whose markers mean the same thing (left foot down, right foot down) stay in step however
+# unevenly their steps are timed. A marker list is sorted by `at`; with none, or on a clip that does
+# not loop, the phase is the time over the duration.
+export function anim_unwrapped_time(info: AnimClipInfo, dur: float, total: float, loop: bool) -> float {
+  if info == null or not loop or info.markers == null or len(info.markers) == 0 or dur <= 0.0 { return total * dur }
+  let k = len(info.markers)
+  let x = total * float(k)
+  let s = int(Math.floor(x))
+  let f = x - float(s)
+  let seg = s % k
+  let cyc = s / k
+  let start = info.markers[seg].at
+  var end = info.markers[0].at + dur
+  if seg + 1 < k { end = info.markers[seg + 1].at }
+  return float(cyc) * dur + start + f * (end - start)
+}
+
+# the same, wrapped onto the clip; a clip that does not loop holds its last frame at phase 1
+export function anim_clip_time(info: AnimClipInfo, dur: float, total: float, loop: bool) -> float {
+  let u = anim_unwrapped_time(info, dur, total, loop)
+  if dur <= 0.0 { return 0.0 }
+  if not loop { return Math.clamp(u, 0.0, dur) }
+  return u % dur
+}
+
+# a condition's answer for the value of its parameter
+export function anim_cond_holds(op: string, v: float, ref: float) -> bool {
+  if op == "gt" { return v > ref }
+  if op == "ge" { return v >= ref }
+  if op == "lt" { return v < ref }
+  if op == "le" { return v <= ref }
+  if op == "eq" { return Math.abs(v - ref) < 0.0001 }
+  if op == "ne" { return Math.abs(v - ref) >= 0.0001 }
+  if op == "true" or op == "trigger" { return v > 0.5 }
+  if op == "false" { return v <= 0.5 }
+  return false
+}

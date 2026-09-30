@@ -1,0 +1,218 @@
+# graph_space.ludic - the weights of a blend space. 1D: the two samples round the value, lerped (held at
+# the ends). 2D: the barycentre of the triangle of samples the point is in, the triangles being made
+# ONCE per space (a Delaunay triangulation of the sample points) and kept in the AnimState; a point
+# outside them goes to its nearest edge. The weights are exact (they sum to 1 and reproduce the point),
+# and a query writes into the caller's buffers and makes nothing.
+
+# the spaces' kept triangulations: one slot per blend space, empty until `anim_space_ready`
+export function anim_space_cache() -> [][]int {
+  let c = new [][]int
+  for i in 0 .. len(AnimBlendSpaces) { push(c, new []int) }
+  return c
+}
+
+# Made once per space (a bind calls it): 1D keeps the sample indices in order of x, 2D the triangles as
+# index triples. A space that is degenerate (fewer than two samples, or all in a line for 2D, or two at
+# one place) still answers, by its nearest sample; anim_validate reports it.
+@alloc_ok("a space's triangles, made once when its first player is bound")
+export function anim_space_ready(anim_st: mut AnimState, sp: int) -> void {
+  if sp < 0 or sp >= len(AnimBlendSpaces) { return }
+  if len(anim_st.space_tris) != len(AnimBlendSpaces) { anim_st.space_tris = anim_space_cache() }
+  if len(anim_st.space_tris[sp]) > 0 { return }
+  let s = AnimBlendSpaces[sp]
+  if s.samples == null or len(s.samples) == 0 { return }
+  let n = len(s.samples)
+  let out = anim_st.space_tris[sp]
+  if s.dims <= 1 {
+    for i in 0 .. n { push(out, i) }
+    # insertion sort by x: a handful of samples
+    for i in 1 .. n {
+      var j = i
+      while j > 0 and s.samples[out[j - 1]].x > s.samples[out[j]].x {
+        let t = out[j - 1]
+        out[j - 1] = out[j]
+        out[j] = t
+        j -= 1
+      }
+    }
+    return
+  }
+  tri_build(s, out)
+}
+
+function tri_area2(ax: float, ay: float, bx: float, by: float, cx: float, cy: float) -> float {
+  return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+}
+
+function tri_has(ax: float, ay: float, bx: float, by: float, cx: float, cy: float, px: float, py: float) -> bool {
+  let d = tri_area2(ax, ay, bx, by, cx, cy)
+  if Math.abs(d) < 0.000000001 { return false }
+  let e = 0.00001
+  let u = tri_area2(px, py, bx, by, cx, cy) / d
+  let v = tri_area2(ax, ay, px, py, cx, cy) / d
+  let w = tri_area2(ax, ay, bx, by, px, py) / d
+  return u >= -e and v >= -e and w >= -e
+}
+
+# is point d inside the circle through a, b, c
+function tri_circ(ax: float, ay: float, bx: float, by: float, cx: float, cy: float, dx: float, dy: float) -> bool {
+  let d2 = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+  if Math.abs(d2) < 0.000000001 { return false }
+  let a2 = ax * ax + ay * ay
+  let b2 = bx * bx + by * by
+  let c2 = cx * cx + cy * cy
+  let ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d2
+  let uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d2
+  let r2 = (ax - ux) * (ax - ux) + (ay - uy) * (ay - uy)
+  let q2 = (dx - ux) * (dx - ux) + (dy - uy) * (dy - uy)
+  return q2 < r2 - 0.000001 * Math.max(1.0, r2)
+}
+
+# Every triple with no other point strictly inside its circle is Delaunay; points on one circle (a grid's
+# squares) make both diagonals qualify, so a triangle is kept only when it does not lie on one already kept.
+@alloc_ok("once per space")
+function tri_build(s: AnimBlendSpace, out: []int) -> void {
+  let n = len(s.samples)
+  for i in 0 .. n {
+    for j in i + 1 .. n {
+      for k in j + 1 .. n {
+        let a = s.samples[i]
+        let b = s.samples[j]
+        let c = s.samples[k]
+        if Math.abs(tri_area2(a.x, a.y, b.x, b.y, c.x, c.y)) < 0.000001 { continue }
+        var ok = true
+        for m in 0 .. n {
+          if m == i or m == j or m == k { continue }
+          if tri_circ(a.x, a.y, b.x, b.y, c.x, c.y, s.samples[m].x, s.samples[m].y) { ok = false;  break }
+        }
+        if not ok { continue }
+        let gx = (a.x + b.x + c.x) / 3.0
+        let gy = (a.y + b.y + c.y) / 3.0
+        var t = 0
+        while t < len(out) {
+          let p = s.samples[out[t]]
+          let q = s.samples[out[t + 1]]
+          let r = s.samples[out[t + 2]]
+          let hx = (p.x + q.x + r.x) / 3.0
+          let hy = (p.y + q.y + r.y) / 3.0
+          if tri_has(p.x, p.y, q.x, q.y, r.x, r.y, gx, gy) or tri_has(a.x, a.y, b.x, b.y, c.x, c.y, hx, hy) { ok = false;  break }
+          t += 3
+        }
+        if ok { push(out, i);  push(out, j);  push(out, k) }
+      }
+    }
+  }
+}
+
+# the weights at (x, y): sample indices into `idx`, their weights into `w` (at most 3 of each); how many
+export function anim_space_weights(anim_st: AnimState, sp: int, x: float, y: float, idx: words, w: floats) -> int {
+  if sp < 0 or sp >= len(AnimBlendSpaces) or len(anim_st.space_tris) != len(AnimBlendSpaces) { return 0 }
+  let s = AnimBlendSpaces[sp]
+  if s.samples == null or len(s.samples) == 0 { return 0 }
+  let t = anim_st.space_tris[sp]
+  if s.dims <= 1 { return weights_1d(s, t, x, idx, w) }
+  return weights_2d(s, t, x, y, idx, w)
+}
+
+function weights_1d(s: AnimBlendSpace, ord: []int, x: float, idx: words, w: floats) -> int {
+  let n = len(ord)
+  if n == 0 { return 0 }
+  if n == 1 or x <= s.samples[ord[0]].x {
+    idx[0] = ord[0]
+    w[0] = 1.0
+    return 1
+  }
+  if x >= s.samples[ord[n - 1]].x {
+    idx[0] = ord[n - 1]
+    w[0] = 1.0
+    return 1
+  }
+  var i = 1
+  while i < n - 1 and s.samples[ord[i]].x < x { i += 1 }
+  let x0 = s.samples[ord[i - 1]].x
+  let x1 = s.samples[ord[i]].x
+  var f = 0.0
+  if x1 - x0 > 0.000001 { f = (x - x0) / (x1 - x0) }
+  idx[0] = ord[i - 1]
+  w[0] = 1.0 - f
+  idx[1] = ord[i]
+  w[1] = f
+  return 2
+}
+
+function weights_2d(s: AnimBlendSpace, tris: []int, x: float, y: float, idx: words, w: floats) -> int {
+  var t = 0
+  while t < len(tris) {
+    let a = s.samples[tris[t]]
+    let b = s.samples[tris[t + 1]]
+    let c = s.samples[tris[t + 2]]
+    if tri_has(a.x, a.y, b.x, b.y, c.x, c.y, x, y) {
+      let d = tri_area2(a.x, a.y, b.x, b.y, c.x, c.y)
+      var u = Math.max(0.0, tri_area2(x, y, b.x, b.y, c.x, c.y) / d)
+      var v = Math.max(0.0, tri_area2(a.x, a.y, x, y, c.x, c.y) / d)
+      var q = Math.max(0.0, tri_area2(a.x, a.y, b.x, b.y, x, y) / d)
+      let sum = u + v + q
+      idx[0] = tris[t]
+      w[0] = u / sum
+      idx[1] = tris[t + 1]
+      w[1] = v / sum
+      idx[2] = tris[t + 2]
+      w[2] = q / sum
+      return 3
+    }
+    t += 3
+  }
+  return nearest_edge(s, tris, x, y, idx, w)
+}
+
+# outside every triangle (or none): the closest point on any triangle's edge, between its two samples;
+# with no triangle at all, the nearest sample
+function nearest_edge(s: AnimBlendSpace, tris: []int, x: float, y: float, idx: words, w: floats) -> int {
+  var best = 1000000000.0
+  var bi = 0
+  var bj = 0
+  var bf = 0.0
+  var t = 0
+  while t < len(tris) {
+    for e in 0 .. 3 {
+      let i = tris[t + e]
+      let j = tris[t + (e + 1) % 3]
+      let p = s.samples[i]
+      let q = s.samples[j]
+      let dx = q.x - p.x
+      let dy = q.y - p.y
+      let l2 = dx * dx + dy * dy
+      var f = 0.0
+      if l2 > 0.000000001 { f = Math.clamp(((x - p.x) * dx + (y - p.y) * dy) / l2, 0.0, 1.0) }
+      let ex = p.x + f * dx - x
+      let ey = p.y + f * dy - y
+      let d = ex * ex + ey * ey
+      if d < best {
+        best = d
+        bi = i
+        bj = j
+        bf = f
+      }
+    }
+    t += 3
+  }
+  if len(tris) == 0 {
+    for i in 0 .. len(s.samples) {
+      let ex = s.samples[i].x - x
+      let ey = s.samples[i].y - y
+      let d = ex * ex + ey * ey
+      if d < best {
+        best = d
+        bi = i
+      }
+    }
+    idx[0] = bi
+    w[0] = 1.0
+    return 1
+  }
+  idx[0] = bi
+  w[0] = 1.0 - bf
+  idx[1] = bj
+  w[1] = bf
+  return 2
+}

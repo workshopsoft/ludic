@@ -1,81 +1,104 @@
-# set_pick.ludic - the code's side: a parameter set, a state asked for; and the choice a state
-# makes from them. Nothing here makes anything: it runs every frame.
-export function animset_param(pl: AnimPlayer, name: string, v: float) -> void {
-  let i = as_param_at(pl, name)
-  if i >= 0 { pl.vals[i] = v }
+# set_pick.ludic - the code's side of a graph: a parameter set, a trigger pulled, a state asked for; and
+# the choice a state makes from them. Nothing here makes anything: it runs every frame.
+
+# Write a parameter (by its place, from `anim_param_index`). An int rounds, a bool or a trigger is on
+# above one half.
+export function animset_param_at(pl: AnimPlayer, i: int, v: float) -> void {
+  if i < 0 or pl.vals == null or i >= len(pl.vals) { return }
+  let k = pl.pkind[i]
+  if k == 1 { pl.vals[i] = Math.floor(v + 0.5) } else if k >= 2 {
+    if v > 0.5 { pl.vals[i] = 1.0 } else { pl.vals[i] = 0.0 }
+  } else { pl.vals[i] = v }
 }
 
-# a state by name, taken once: the code may ask every frame, and a `when` edge that moved the
-# player on since is not undone by the same request again
+# a parameter's place in the player's table (-1: no graph of it declares the name); ask once, keep it
+export function anim_param_index(pl: AnimPlayer, name: string) -> int { return as_param_idx(pl, name) }
+
+export function animset_param(pl: AnimPlayer, name: string, v: float) -> void { animset_param_at(pl, as_param_idx(pl, name), v) }
+export function animset_int(pl: AnimPlayer, name: string, v: int) -> void { animset_param_at(pl, as_param_idx(pl, name), float(v)) }
+export function animset_bool(pl: AnimPlayer, name: string, on: bool) -> void {
+  if on { animset_param_at(pl, as_param_idx(pl, name), 1.0) } else { animset_param_at(pl, as_param_idx(pl, name), 0.0) }
+}
+# a trigger: on until a transition that tests it is taken
+export function animset_trigger(pl: AnimPlayer, name: string) -> void { animset_param_at(pl, as_param_idx(pl, name), 1.0) }
+export function animset_reset_trigger(pl: AnimPlayer, name: string) -> void { animset_param_at(pl, as_param_idx(pl, name), 0.0) }
+export function animset_get(pl: AnimPlayer, name: string) -> float {
+  let i = as_param_idx(pl, name)
+  if i < 0 { return 0.0 }
+  return pl.vals[i]
+}
+
+# a state by name, taken once: the code may ask every frame, and a transition that moved the player on
+# since is not undone by the same request again
 export function animset_request(pl: AnimPlayer, key: string) -> void {
-  if pl.set < 0 or key == pl.asked { return }
+  if pl.set < 0 or pl.mach == null or key == pl.mach[0].asked { return }
+  let m = pl.mach[0]
   let i = as_state(AnimSets[pl.set], key)
   if i < 0 { return }
-  let v = as_via(pl, key)
-  pl.asked = key
-  pl.want = i
-  if v >= 0 { pl.want = v }
+  let v = as_via(pl, m, key)
+  m.asked = key
+  m.want = i
+  if v >= 0 { m.want = v }
 }
 
 # the one-shot a request goes by: a `via` edge from where the code last asked (or "*") to this state,
 # whose clip the rig carries; -1 for none
-function as_via(pl: AnimPlayer, key: string) -> int {
+function as_via(pl: AnimPlayer, m: AnimMachine, key: string) -> int {
   let s = AnimSets[pl.set]
   if s.transitions == null { return -1 }
   for i in 0 .. len(s.transitions) {
     let tr = s.transitions[i]
-    if tr.via != "" and tr.to == key and (tr.from == "*" or tr.from == pl.asked) and animset_can(pl, tr.via) { return as_state(s, tr.via) }
+    if tr.via != "" and tr.to == key and (tr.from == "*" or tr.from == m.asked) and animset_can(pl, tr.via) { return as_state(s, tr.via) }
   }
   return -1
 }
 
 # the state is in the set and the rig carries one of its clips: a one-shot with none is not asked for
 export function animset_can(pl: AnimPlayer, key: string) -> bool {
-  if pl.set < 0 or pl.clips == null { return false }
+  if pl.set < 0 or pl.mach == null { return false }
+  let m = pl.mach[0]
   let i = as_state(AnimSets[pl.set], key)
   if i < 0 { return false }
-  let d = AnimSets[pl.set].states[i]
-  if d.choices == null { return false }
-  for c in 0 .. len(d.choices) { if pl.clips[pl.base[i] + c] != null { return true } }
+  if AnimSets[pl.set].states[i].kind == "sub" { return m.sub[i] >= 0 }
+  for c in 0 .. m.ncl[i] { if m.clips[m.base[i] + c] != null { return true } }
   return false
 }
 
-function as_param_at(pl: AnimPlayer, name: string) -> int {
-  if pl.set < 0 { return -1 }
-  let s = AnimSets[pl.set]
-  if s.params == null { return -1 }
-  for i in 0 .. len(s.params) { if s.params[i] == name { return i } }
-  return -1
-}
-
-function as_value(pl: AnimPlayer, name: string) -> float {
-  let i = as_param_at(pl, name)
-  if i < 0 { return 0.0 }
-  return pl.vals[i]
-}
-
-function as_holds(pl: AnimPlayer, c: AnimChoice) -> bool {
+function as_holds(pl: AnimPlayer, m: AnimMachine, slot: int, c: AnimChoice) -> bool {
   if c.need == null { return true }
+  let nb = m.nbase[slot]
   for k in 0 .. len(c.need) {
-    let n = c.need[k]
-    let v = as_value(pl, n.param)
-    if not (v > n.over and v < n.under) { return false }
+    let pi = m.nparam[nb + k]
+    var v = 0.0
+    if pi >= 0 { v = pl.vals[pi] }
+    if not (v > c.need[k].over and v < c.need[k].under) { return false }
   }
   return true
 }
 
 # the state's first choice that holds and whose clip the rig has; -1 none
-function as_pick(pl: AnimPlayer, d: AnimStateDef) -> int {
+function as_pick(pl: AnimPlayer, m: AnimMachine, st: int) -> int {
+  let d = AnimSets[m.set].states[st]
   if d.choices == null { return -1 }
-  let b = pl.base[pl.state]
+  let b = m.base[st]
   for c in 0 .. len(d.choices) {
-    if pl.clips[b + c] != null and as_holds(pl, d.choices[c]) { return c }
+    if m.clips[b + c] != null and as_holds(pl, m, b + c, d.choices[c]) { return c }
   }
   return -1
 }
 
-function as_rate(pl: AnimPlayer, d: AnimStateDef, c: AnimChoice) -> float {
+# a state's playing rate: the choice's (or its rate by a parameter over the ground a cycle covers), held
+# to the state's range, times the state's own speed and its speed parameter
+function as_rate(pl: AnimPlayer, m: AnimMachine, st: int, slot: int, c: AnimChoice) -> float {
+  let d = AnimSets[m.set].states[st]
   var r = c.rate
-  if c.rate_by != "" and c.ground > 0.0 { r = as_value(pl, c.rate_by) / c.ground }
-  return Math.clamp(r, d.rate_min, d.rate_max)
+  if m.rby[slot] >= 0 and c.ground > 0.0 { r = pl.vals[m.rby[slot]] / c.ground }
+  r = Math.clamp(r, d.rate_min, d.rate_max)
+  return r * as_speed(pl, m, st)
+}
+
+function as_speed(pl: AnimPlayer, m: AnimMachine, st: int) -> float {
+  var r = AnimSets[m.set].states[st].speed
+  if m.spd[st] >= 0 { r = r * pl.vals[m.spd[st]] }
+  return r
 }

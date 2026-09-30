@@ -6,33 +6,104 @@ export function anim_mix(anim_st: mut AnimState, c: Clip, sk: Skin, t: float, w:
   if c == null or sk == null { return }
   var tt = t
   if c.dur > 0.0 { tt = t % c.dur }
+  mix_clip(anim_st, c, sk, tt, w, rot, pos, hit, false, 0.0, 0, -1, -1)
+}
+
+# `tt` is already on the clip (no wrapping: a one-shot holds its last frame at its duration).
+# `add`: the sampled motion is taken as a change away from the clip's own pose at `ref`
+# (rotation L * Lref^-1, translation L - Lref), to be added over a base pose.
+# `ex` (root motion extracted): bit 0 holds the root's x and z at where the clip starts, bit 1 its y,
+# bit 2 takes the root's yaw out; `rp` and `rr` are the root's translation and rotation channels.
+export function mix_clip(anim_st: mut AnimState, c: Clip, sk: Skin, tt: float, w: float, rot: floats, pos: floats, hit: words, add: bool, ref: float, ex: int, rp: int, rr: int) -> void {
   for ch in 0 .. c.n {
     let node = c.cnode[ch]
     if node < 0 or node >= sk.n_nodes { continue }
-    let n = c.ckeys[ch]
-    let o = c.coff[ch]
-    let i0 = anim_key_at(c, ch, tt)
-    var i1 = i0 + 1
-    if i1 > n - 1 { i1 = n - 1 }
-    var f = 0.0
-    if i1 > i0 {
-      let span = c.times[o + i1] - c.times[o + i0]
-      if span > 0.000001 { f = Math.clamp((tt - c.times[o + i0]) / span, 0.0, 1.0) }
+    if c.cpath[ch] == AC_ROT {
+      sample_rot(anim_st, c, ch, tt, anim_st.q_a)
+      if add {
+        sample_rot(anim_st, c, ch, ref, anim_st.q_r)
+        q_conj(anim_st.q_r, anim_st.q_r)
+        q_mul(anim_st.q_a, anim_st.q_a, anim_st.q_r)
+      } else if ch == rr and (ex & 4) != 0 {
+        sample_rot(anim_st, c, ch, 0.0, anim_st.q_r)
+        let dy = q_yaw(anim_st.q_a) - q_yaw(anim_st.q_r)
+        q_axis_angle(anim_st.q_r, 0.0, 1.0, 0.0, -dy)
+        q_mul(anim_st.q_a, anim_st.q_r, anim_st.q_a)
+      }
+      mix_rot(anim_st, node, w, rot, hit)
+    } else {
+      sample_pos(c, ch, tt, anim_st.v_a)
+      if add {
+        sample_pos(c, ch, ref, anim_st.v_b)
+        for e in 0 .. 3 { anim_st.v_a[e] = anim_st.v_a[e] - anim_st.v_b[e] }
+      } else if ch == rp and (ex & 3) != 0 {
+        sample_pos(c, ch, 0.0, anim_st.v_b)
+        if (ex & 1) != 0 {
+          anim_st.v_a[0] = anim_st.v_b[0]
+          anim_st.v_a[2] = anim_st.v_b[2]
+        }
+        if (ex & 2) != 0 { anim_st.v_a[1] = anim_st.v_b[1] }
+      }
+      mix_pos(anim_st, node, w, pos, hit)
     }
-    if c.cpath[ch] == AC_ROT { mix_rot(anim_st, c, ch, node, i0, i1, f, w, rot, hit) } else { mix_pos(c, ch, node, i0, i1, f, w, pos, hit) }
   }
+}
+
+# the key pair round t and how far between them
+function key_pair(c: Clip, ch: int, t: float, out: floats) -> void {
+  let n = c.ckeys[ch]
+  let o = c.coff[ch]
+  let i0 = anim_key_at(c, ch, t)
+  var i1 = i0 + 1
+  if i1 > n - 1 { i1 = n - 1 }
+  var f = 0.0
+  if i1 > i0 {
+    let span = c.times[o + i1] - c.times[o + i0]
+    if span > 0.000001 { f = Math.clamp((t - c.times[o + i0]) / span, 0.0, 1.0) }
+  }
+  out[0] = float(i0)
+  out[1] = float(i1)
+  out[2] = f
+}
+
+# a channel's rotation at t, into q (nlerp between its two keys)
+export function sample_rot(anim_st: mut AnimState, c: Clip, ch: int, t: float, q: floats) -> void {
+  key_pair(c, ch, t, anim_st.v_k)
+  let i0 = int(anim_st.v_k[0])
+  let i1 = int(anim_st.v_k[1])
+  let vo = c.cvoff[ch]
+  for e in 0 .. 4 {
+    anim_st.q_k0[e] = c.vals[vo + i0 * 4 + e]
+    anim_st.q_k1[e] = c.vals[vo + i1 * 4 + e]
+  }
+  q_nlerp(q, anim_st.q_k0, anim_st.q_k1, anim_st.v_k[2])
+}
+
+# a channel's translation at t, into v
+export function sample_pos(c: Clip, ch: int, t: float, v: floats) -> void {
+  let n = c.ckeys[ch]
+  let o = c.coff[ch]
+  let i0 = anim_key_at(c, ch, t)
+  var i1 = i0 + 1
+  if i1 > n - 1 { i1 = n - 1 }
+  var f = 0.0
+  if i1 > i0 {
+    let span = c.times[o + i1] - c.times[o + i0]
+    if span > 0.000001 { f = Math.clamp((t - c.times[o + i0]) / span, 0.0, 1.0) }
+  }
+  let vo = c.cvoff[ch]
+  for e in 0 .. 3 { v[e] = Math.lerp(c.vals[vo + i0 * 3 + e], c.vals[vo + i1 * 3 + e], f) }
+}
+
+# the rotation's turn about the vertical axis, radians
+export function q_yaw(q: floats) -> float {
+  return Math.atan2(2.0 * (q[3] * q[1] + q[0] * q[2]), 1.0 - 2.0 * (q[0] * q[0] + q[1] * q[1]))
 }
 
 # Across clips the first contributor lands and the rest are nlerped onto it by their share, which
 # is what makes a cross-fade rather than a jump. Test the ROTATION bit, not the whole word: glTF
 # writes a node's translation before its rotation, and `hit == 0` then skipped every rotation.
-function mix_rot(anim_st: mut AnimState, c: Clip, ch: int, node: int, i0: int, i1: int, f: float, w: float, rot: floats, hit: words) -> void {
-  let vo = c.cvoff[ch]
-  for e in 0 .. 4 {
-    anim_st.q_a[e] = c.vals[vo + i0 * 4 + e]
-    anim_st.q_b[e] = c.vals[vo + i1 * 4 + e]
-  }
-  q_nlerp(anim_st.q_a, anim_st.q_a, anim_st.q_b, f)
+function mix_rot(anim_st: mut AnimState, node: int, w: float, rot: floats, hit: words) -> void {
   if (hit[node] & 1) == 0 {
     q_store(rot, node, anim_st.q_a)
     hit[node] = hit[node] | 1
@@ -43,19 +114,11 @@ function mix_rot(anim_st: mut AnimState, c: Clip, ch: int, node: int, i0: int, i
   }
 }
 
-function mix_pos(c: Clip, ch: int, node: int, i0: int, i1: int, f: float, w: float, pos: floats, hit: words) -> void {
-  let vo = c.cvoff[ch]
-  let ax = Math.lerp(c.vals[vo + i0 * 3], c.vals[vo + i1 * 3], f)
-  let ay = Math.lerp(c.vals[vo + i0 * 3 + 1], c.vals[vo + i1 * 3 + 1], f)
-  let az = Math.lerp(c.vals[vo + i0 * 3 + 2], c.vals[vo + i1 * 3 + 2], f)
+function mix_pos(anim_st: AnimState, node: int, w: float, pos: floats, hit: words) -> void {
   if (hit[node] & 2) == 0 {
-    pos[node * 3] = ax
-    pos[node * 3 + 1] = ay
-    pos[node * 3 + 2] = az
+    for e in 0 .. 3 { pos[node * 3 + e] = anim_st.v_a[e] }
     hit[node] = hit[node] | 2
   } else {
-    pos[node * 3] = Math.lerp(pos[node * 3], ax, w)
-    pos[node * 3 + 1] = Math.lerp(pos[node * 3 + 1], ay, w)
-    pos[node * 3 + 2] = Math.lerp(pos[node * 3 + 2], az, w)
+    for e in 0 .. 3 { pos[node * 3 + e] = Math.lerp(pos[node * 3 + e], anim_st.v_a[e], w) }
   }
 }

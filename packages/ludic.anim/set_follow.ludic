@@ -1,40 +1,194 @@
-# set_follow.ludic - moving between states: a `when` edge out of the current state that answers
-# true, else the state the code asked for, faded by the edge between them or the target's own blend
-function as_follow(pl: AnimPlayer) -> void {
-  pl.fresh = false
-  let s = AnimSets[pl.set]
-  var to = pl.want
-  var blend = -1.0
-  if s.transitions != null {
-    for i in 0 .. len(s.transitions) {
-      let tr = s.transitions[i]
-      if tr.when == null or not as_leaves(s, tr, pl.state) { continue }
-      if tr.when() {
-        to = as_state(s, tr.to)
-        blend = tr.blend
-        break
+# set_follow.ludic - moving between states. A machine holds a stack of instances, the newest on top, each
+# fading in over the one below it by its own transition's curve. A frame the machine looks for a
+# transition that takes itself (conditions, exit time, `when`), by priority, then for the state the code
+# asked for; a fade in progress lets only the transitions its `interrupt` names cut it short.
+
+# a fade's transition record, or null (a choice change inside a state, which fades linearly)
+function tr_of(m: AnimMachine, tr: int) -> AnimTransition {
+  if tr < 0 { return null }
+  return AnimSets[m.set].transitions[tr]
+}
+
+# how far through its clip a state's instance is, counted in cycles. A sub graph counts only while it
+# is in one of its exit states, then by that state.
+function progress(pl: AnimPlayer, m: AnimMachine, k: int) -> float {
+  let st = m.i_st[k]
+  let d = AnimSets[m.set].states[st]
+  if d.kind == "sub" {
+    let c = m.sub[st]
+    if c < 0 or pl.mach[c].n_i == 0 { return 0.0 }
+    let cm = pl.mach[c]
+    let ct = cm.n_i - 1
+    if not AnimSets[cm.set].states[cm.i_st[ct]].is_exit { return 0.0 }
+    return progress(pl, cm, ct)
+  }
+  return float(m.i_loops[k]) + m.i_ph[k]
+}
+
+# the first self-taking transition out of `from` (a state of this machine) that holds; -1 none.
+# `prog` is how far through its clip that state is.
+function find_auto(pl: AnimPlayer, m: AnimMachine, from: int, prog: float) -> int {
+  let s = AnimSets[m.set]
+  for oi in 0 .. len(m.tord) {
+    let ti = m.tord[oi]
+    let t = s.transitions[ti]
+    if t.when == null and t.conditions == null and not t.has_exit_time { continue }
+    let f = m.tfrom[ti]
+    let to = m.tto[ti]
+    if f == -2 or to < 0 { continue }
+    if f == -1 { if to == from and not t.to_self { continue } } else if f != from { continue }
+    if t.has_exit_time and prog < t.exit_time { continue }
+    if t.conditions != null {
+      var ok = true
+      for c in 0 .. len(t.conditions) {
+        let pi = m.cparam[m.cbase[ti] + c]
+        var v = 0.0
+        if pi >= 0 { v = pl.vals[pi] }
+        if not anim_cond_holds(t.conditions[c].op, v, t.conditions[c].value) { ok = false;  break }
       }
+      if not ok { continue }
     }
+    if t.when != null and not t.when() { continue }
+    return ti
   }
-  if to < 0 or to == pl.state { return }
-  if blend < 0.0 { blend = as_blend(s, pl.state, to) }
-  pl.state = to
-  pl.want = to
-  pl.fresh = true
-  pl.fade_next = blend
+  return -1
 }
 
-function as_leaves(s: AnimSet, tr: AnimTransition, from: int) -> bool {
-  return tr.from == "*" or tr.from == s.states[from].key
+# the edge the code's request crosses, if the graph has one; its number, else -1
+function request_edge(m: AnimMachine, from: int, to: int) -> int {
+  let s = AnimSets[m.set]
+  if s.transitions == null { return -1 }
+  for i in 0 .. len(s.transitions) {
+    let tr = s.transitions[i]
+    if tr.when == null and tr.via == "" and tr.conditions == null and not tr.has_exit_time and m.tto[i] == to and (m.tfrom[i] == -1 or m.tfrom[i] == from) { return i }
+  }
+  return -1
 }
 
-# the edge the code's request crosses, if the graph has one; else the target's own fade
-function as_blend(s: AnimSet, from: int, to: int) -> float {
-  if s.transitions != null {
-    for i in 0 .. len(s.transitions) {
-      let tr = s.transitions[i]
-      if tr.when == null and tr.via == "" and tr.to == s.states[to].key and as_leaves(s, tr, from) { return tr.blend }
+# an instance of a state on top of the stack (the bottom one goes if it is full). Its fade is `fdur`
+# seconds by `tr`'s curve; 0 cuts.
+function push_inst(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi: int, st: int, pick: int, ph: float, fdur: float, tr: int) -> void {
+  if m.n_i >= AM_INST { drop_to(anim_st, pl, m, 1) }
+  let k = m.n_i
+  m.i_st[k] = st
+  m.i_pick[k] = pick
+  m.i_loops[k] = 0
+  m.i_tr[k] = tr
+  pl.uid += 1
+  m.i_uid[k] = pl.uid
+  m.i_wr[k] = 0
+  m.i_ph[k] = ph
+  m.i_p0[k] = ph
+  m.i_new[k] = 0
+  if ph <= 0.0 { m.i_new[k] = 1 }
+  m.i_fdur[k] = fdur
+  m.i_prog[k] = 0.0
+  m.i_sn[k] = 0
+  m.i_rate[k] = 1.0
+  m.i_dur[k] = 0.0
+  m.n_i = k + 1
+  if AnimSets[m.set].states[st].kind == "sub" and m.sub[st] >= 0 { reset_machine(anim_st, pl, m.sub[st]) }
+  if not (fdur > 0.0) {
+    m.i_prog[k] = 1.0
+    if k > 0 { drop_to(anim_st, pl, m, k) }
+  }
+}
+
+# the instances below `keep` go (their open windows cancelled); the rest move down
+function drop_to(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, keep: int) -> void {
+  if keep <= 0 { return }
+  for k in 0 .. keep { drop_one(anim_st, pl, m, k) }
+  for k in keep .. m.n_i {
+    let d = k - keep
+    m.i_st[d] = m.i_st[k]
+    m.i_pick[d] = m.i_pick[k]
+    m.i_loops[d] = m.i_loops[k]
+    m.i_tr[d] = m.i_tr[k]
+    m.i_uid[d] = m.i_uid[k]
+    m.i_new[d] = m.i_new[k]
+    m.i_wr[d] = m.i_wr[k]
+    m.i_ph[d] = m.i_ph[k]
+    m.i_p0[d] = m.i_p0[k]
+    m.i_prog[d] = m.i_prog[k]
+    m.i_fdur[d] = m.i_fdur[k]
+    m.i_rate[d] = m.i_rate[k]
+    m.i_dur[d] = m.i_dur[k]
+    m.i_sn[d] = m.i_sn[k]
+    for j in 0 .. 3 {
+      m.i_si[d * 3 + j] = m.i_si[k * 3 + j]
+      m.i_sw[d * 3 + j] = m.i_sw[k * 3 + j]
     }
   }
-  return s.states[to].blend
+  m.n_i = m.n_i - keep
+}
+
+# an instance leaves: its windows are cancelled, and a sub graph it held starts over next time
+function drop_one(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, k: int) -> void {
+  events_cancel(anim_st, pl, m.i_uid[k])
+  let st = m.i_st[k]
+  if AnimSets[m.set].states[st].kind == "sub" and m.sub[st] >= 0 { reset_machine(anim_st, pl, m.sub[st]) }
+}
+
+# a machine back to nothing: its next step starts at its entry
+function reset_machine(anim_st: mut AnimState, pl: AnimPlayer, mi: int) -> void {
+  let m = pl.mach[mi]
+  for k in 0 .. m.n_i { drop_one(anim_st, pl, m, k) }
+  m.n_i = 0
+  m.stamp = -1
+  m.estamp = -1
+  m.asked = ""
+  m.want = as_entry(AnimSets[m.set])
+}
+
+# a transition is taken: the target comes in over `fdur` seconds; what it tested of a trigger is spent
+function take(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi: int, to: int, tr: int, fdur: float) -> void {
+  let s = AnimSets[m.set]
+  var ph = 0.0
+  if tr >= 0 { ph = s.transitions[tr].offset }
+  let top = m.n_i - 1
+  if top >= 0 {
+    let sy = s.states[to].sync
+    if sy != "" and s.states[m.i_st[top]].sync == sy { ph = m.i_ph[top] }
+  }
+  push_inst(anim_st, pl, m, mi, to, -1, ph, fdur, tr)
+  if m.want == to or tr >= 0 { m.want = to }
+  if tr >= 0 and s.transitions[tr].conditions != null {
+    for c in 0 .. len(s.transitions[tr].conditions) {
+      let pi = m.cparam[m.cbase[tr] + c]
+      if pi >= 0 and s.transitions[tr].conditions[c].op == "trigger" { pl.vals[pi] = 0.0 }
+    }
+  }
+}
+
+# the machine's decision this frame (a fade in progress first limits what may be tried)
+function decide(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi: int) -> void {
+  let s = AnimSets[m.set]
+  let top = m.n_i - 1
+  var dest = true
+  var src = false
+  if m.i_prog[top] < 1.0 {
+    let t = tr_of(m, m.i_tr[top])
+    if t != null {
+      dest = t.interrupt == "dest" or t.interrupt == "both"
+      src = t.interrupt == "source" or t.interrupt == "both"
+    }
+  }
+  if dest {
+    let ti = find_auto(pl, m, m.i_st[top], progress(pl, m, top))
+    if ti >= 0 {
+      take(anim_st, pl, m, mi, m.tto[ti], ti, s.transitions[ti].blend)
+      return
+    }
+    if m.want >= 0 and m.want != m.i_st[top] {
+      let e = request_edge(m, m.i_st[top], m.want)
+      var blend = s.states[m.want].blend
+      if e >= 0 { blend = s.transitions[e].blend }
+      take(anim_st, pl, m, mi, m.want, e, blend)
+      return
+    }
+  }
+  if src and m.n_i >= 2 {
+    let ti = find_auto(pl, m, m.i_st[top - 1], progress(pl, m, top - 1))
+    if ti >= 0 { take(anim_st, pl, m, mi, m.tto[ti], ti, s.transitions[ti].blend) }
+  }
 }

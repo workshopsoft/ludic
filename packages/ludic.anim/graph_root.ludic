@@ -1,0 +1,70 @@
+# graph_root.ludic - root motion as data. A clip whose AnimClips row says `root_motion: "extract"`
+# reports how its root bone moved (translation, and with `root_turn` its yaw) instead of playing it: the
+# pose keeps the root where the clip starts, and the movement goes to the game, weighted by the clip's
+# share of the pose - so a walk moves the body, an idle under it does not, and a fade between them
+# hands the motion over smoothly. The body is moved by the game (anim_root_take, or the AnimRoot port);
+# nothing is ever applied to a transform here. A clip whose row says nothing plays in place or in
+# world as it was keyed.
+
+# Applied once per tick the player's root motion is not nothing: (actor, dx, dy, dz, dyaw), the
+# translation in metres in the ROOT BONE's own frame (the model's, before the game turns it by the
+# body's heading) and the yaw in degrees. Bind it to drive a character controller.
+export port AnimRoot {
+  apply: fn(int, float, float, float, float) -> void = fn anim_root_none
+}
+function anim_root_none(actor: int, dx: float, dy: float, dz: float, yaw: float) -> void { }
+
+# the root motion gathered since the last take, into out (x, y, z, yaw radians); it starts over
+export function anim_root_take(pl: AnimPlayer, out: floats) -> void {
+  for e in 0 .. 4 {
+    out[e] = pl.rm[e]
+    pl.rm[e] = 0.0
+  }
+}
+export function anim_root_peek(pl: AnimPlayer, out: floats) -> void { for e in 0 .. 4 { out[e] = pl.rm[e] } }
+
+# what the root moved from a to b on one lap (a <= b), added into out
+function seg(anim_st: mut AnimState, c: Clip, rp: int, rr: int, a: float, b: float, sign: float, out: floats) -> void {
+  if b <= a { return }
+  if rp >= 0 {
+    sample_pos(c, rp, b, anim_st.v_a)
+    sample_pos(c, rp, a, anim_st.v_b)
+    for e in 0 .. 3 { out[e] = out[e] + sign * (anim_st.v_a[e] - anim_st.v_b[e]) }
+  }
+  if rr >= 0 {
+    sample_rot(anim_st, c, rr, b, anim_st.q_r)
+    let yb = q_yaw(anim_st.q_r)
+    sample_rot(anim_st, c, rr, a, anim_st.q_r)
+    out[3] = out[3] + sign * yaw_diff(yb - q_yaw(anim_st.q_r))
+  }
+}
+
+function yaw_diff(d: float) -> float {
+  var x = d
+  if x > 3.14159265 { x = x - 6.2831853 }
+  if x < -3.14159265 { x = x + 6.2831853 }
+  return x
+}
+
+# the root's movement as the clip's (unwrapped) time goes from u0 to u1, into out; `rp` and `rr` are the
+# root's channels (-1: it has none), `turn` and `ydim` whether yaw and height count
+export function anim_root_delta(anim_st: mut AnimState, c: Clip, rp: int, rr: int, u0: float, u1: float, loop: bool, turn: bool, ydim: bool, out: floats) -> void {
+  for e in 0 .. 4 { out[e] = 0.0 }
+  if c == null or c.dur <= 0.0 or u1 <= u0 { return }
+  if not loop {
+    seg(anim_st, c, rp, rr, Math.clamp(u0, 0.0, c.dur), Math.clamp(u1, 0.0, c.dur), 1.0, out)
+  } else {
+    let c0 = Math.floor(u0 / c.dur)
+    let c1 = Math.floor(u1 / c.dur)
+    let t0 = u0 - c0 * c.dur
+    let t1 = u1 - c1 * c.dur
+    if c1 <= c0 { seg(anim_st, c, rp, rr, t0, t1, 1.0, out) } else {
+      seg(anim_st, c, rp, rr, t0, c.dur, 1.0, out)
+      seg(anim_st, c, rp, rr, 0.0, t1, 1.0, out)
+      let laps = c1 - c0 - 1.0
+      if laps > 0.0 { seg(anim_st, c, rp, rr, 0.0, c.dur, laps, out) }
+    }
+  }
+  if not ydim { out[1] = 0.0 }
+  if not turn { out[3] = 0.0 }
+}

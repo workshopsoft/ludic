@@ -1,5 +1,7 @@
 # set_records.ludic - a rig's animation graph as the studio draws it: states are nodes,
-# transitions edges, and inside a state an ordered list of choices (a 1D blend by bands)
+# transitions edges, and a state is a clip (an ordered list of choices, a 1D blend by bands), a
+# blend space (graph_records.ludic) or a whole sub graph. A set may add layers. ALL of it is data:
+# no game animates in code. The parameter contract and every rule is in README.md.
 
 # a band's test on one parameter the code sets each frame: holds while over < value < under
 export property AnimCond {
@@ -18,7 +20,31 @@ export property AnimChoice {
   ground: float = 0.0    # the m/s one cycle covers, so the feet cover the ground the body does
 }
 
-# a node: the first choice that holds AND whose clip the rig carries plays. `blend` is the fade
+# a parameter the gameplay sets by name (anim_set_param / anim_set_bool / anim_trigger). `float` and
+# `int` hold a number, `bool` 0 or 1, and a `trigger` is 1 from anim_trigger until a transition that
+# tests it is taken (or anim_reset_trigger). A name in `params` alone is a float starting at 0.
+export property AnimParam {
+  key: string = ""
+  @OneOf("float", "int", "bool", "trigger") kind: string = "float"
+  initial: float = 0.0
+}
+
+# one test a transition makes on a parameter; all of a transition's conditions must hold
+export property AnimCondition {
+  param: string = ""
+  @OneOf("gt", "ge", "lt", "le", "eq", "ne", "true", "false", "trigger") op: string = "gt"
+  value: float = 0.0
+}
+
+# a point of a custom fade curve: how far through the fade (t, 0..1) and how much of the new pose (v, 0..1)
+export property AnimCurvePoint {
+  @Range(0, 1) t: float = 0.0
+  @Range(0, 1) v: float = 0.0
+}
+
+# a node: its content is decided by `kind`. `clips`: the first choice that holds AND whose clip the rig
+# carries plays. `blend`: the blend space `blend_space`, its samples weighted by the parameters it names.
+# `sub`: the graph `sub`, a state machine of its own (nested, sharing the parameters). `blend` is the fade
 # between its own choices and into it; `keep_phase` carries a cycle's phase across such a change
 export property AnimStateDef {
   key: string = ""
@@ -29,26 +55,57 @@ export property AnimStateDef {
   keep_phase: bool = true
   loop: bool = true
   next: string = ""   # a one-shot's state once it has played through (loop: false)
+  @OneOf("clips", "blend", "sub") kind: string = "clips"
+  @Ref(AnimBlendSpaces) blend_space: int = -1
+  @Ref(AnimSets) sub: int = -1
+  speed: float = 1.0          # times the state's playing rate
+  speed_by: string = ""       # and times this parameter's value as well (a play rate), when named
+  sync: string = ""           # a sync group: a state entered from one of the same group takes its phase
+  is_exit: bool = false       # in a sub graph: the state that says the graph is done (see exit_time)
 }
 
-# an edge: from a state (or "*", any) to another, with its fade. With no `when` it is the fade taken
-# when the code asks for `to`; with one, it is taken on its own the frame the function answers true
+# an edge: from a state (or "*", any) to another, with its fade. With no `when`, conditions or exit
+# time it is the fade taken when the code asks for `to`; with any of them it is taken on its own, the
+# first in priority order (then file order) whose tests all hold. `when` answers true the frame it is taken.
 export property AnimTransition {
   from: string = ""
   to: string = ""
-  blend: float = 0.2
+  blend: float = 0.2          # seconds of fade; 0 cuts
   @frame when: fn() -> bool = null
   via: string = ""       # a one-shot the code's request goes by when the rig carries its clip (its next hands on to `to`)
+  conditions: []AnimCondition = null
+  has_exit_time: bool = false
+  exit_time: float = 1.0      # how far through the state's clip (0..1, counted in cycles: 1.5 is half way into the second)
+  priority: int = 0           # higher is tested first
+  @OneOf("linear", "ease", "ease_in", "ease_out", "custom") curve: string = "linear"
+  curve_points: []AnimCurvePoint = null
+  @OneOf("none", "source", "dest", "both") interrupt: string = "none"   # which states' transitions may cut this fade short
+  to_self: bool = false       # an any-state edge may restart its own target
+  @Range(0, 1) offset: float = 0.0   # the target starts this far into its cycle
+}
+
+# a layer: another graph played over the base one, on the bones a mask names. `override` blends its pose
+# toward the layer's; `additive` adds its clips' motion away from their reference frame on top.
+export property AnimLayer {
+  key: string = ""
+  @Ref(AnimSets) graph: int = -1
+  @OneOf("override", "additive") mode: string = "override"
+  @Ref(AnimMasks) mask: int = -1
+  @Range(0, 1) weight: float = 1.0
+  weight_by: string = ""      # times this parameter (0..1), when named
 }
 
 # a graph for a kind of rig: its parameters, its states (the first is where it starts unless
-# `entry` says) and its transitions
+# `entry` says), its transitions and its layers
 export property AnimSet {
   key: string = ""
   entry: string = ""
   params: []string = null
   states: []AnimStateDef = null
   transitions: []AnimTransition = null
+  @Ref(AnimSkeletons) skeleton: int = -1
+  parameters: []AnimParam = null
+  layers: []AnimLayer = null
 }
 
 # open: a game fills it (`def AnimSets from "assets/data/anim_sets.lres"`), a set's place its ASET_ number

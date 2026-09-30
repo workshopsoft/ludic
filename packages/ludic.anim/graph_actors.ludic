@@ -1,0 +1,121 @@
+# graph_actors.ludic - the gameplay's way in. A game keeps one AnimPlayer per animated actor and gives the
+# table the actor's number once (anim_actor_add); from then on gameplay packages' glue sets parameters by
+# actor and name, and never touches a bone:
+#
+#   anim_set_param(anim_st, actor, "speed", 3.2)     anim_set_bool(anim_st, actor, "grounded", true)
+#   anim_set_int(anim_st, actor, "weapon", 2)        anim_trigger(anim_st, actor, "attack")
+#   anim_request(anim_st, actor, "sit")              (a state by name, for graphs that stay simple)
+#
+# A name the actor's graph does not declare is ignored (the verb answers false). For a parameter written
+# every frame, ask `anim_param_index(pl, name)` once and write with `animset_param_at`.
+
+function actor_slot(anim_st: AnimState, actor: int) -> int {
+  if anim_st.actor_ids == null { return -1 }
+  let cap = len(anim_st.actor_ids)
+  var i = actor & (cap - 1)
+  for n in 0 .. cap {
+    let v = anim_st.actor_ids[i]
+    if v == 0 { return -1 }
+    if v == actor + 1 { return i }
+    i = (i + 1) & (cap - 1)
+  }
+  return -1
+}
+
+@alloc_ok("the table grows when it fills, never in a frame the actors do not change")
+function actor_grow(anim_st: mut AnimState) -> void {
+  var cap = 64
+  if anim_st.actor_ids != null { cap = len(anim_st.actor_ids) * 2 }
+  let ids = anim_st.actor_ids
+  let pls = anim_st.actor_pl
+  anim_st.actor_ids = words(cap)
+  anim_st.actor_pl = new []AnimPlayer
+  for i in 0 .. cap { push(anim_st.actor_pl, null) }
+  anim_st.n_actors = 0
+  if ids != null {
+    for i in 0 .. len(ids) { if ids[i] > 0 { actor_put(anim_st, ids[i] - 1, pls[i]) } }
+  }
+}
+
+function actor_put(anim_st: mut AnimState, actor: int, pl: AnimPlayer) -> void {
+  let cap = len(anim_st.actor_ids)
+  var i = actor & (cap - 1)
+  while anim_st.actor_ids[i] > 0 { i = (i + 1) & (cap - 1) }
+  anim_st.actor_ids[i] = actor + 1
+  anim_st.actor_pl[i] = pl
+  anim_st.n_actors += 1
+}
+
+# the actor's player; an actor added again replaces its player
+export function anim_actor_add(anim_st: mut AnimState, actor: int, pl: AnimPlayer) -> bool {
+  if actor < 0 or pl == null { return false }
+  let s = actor_slot(anim_st, actor)
+  if s >= 0 {
+    anim_st.actor_pl[s] = pl
+    animset_actor(pl, actor)
+    return true
+  }
+  if anim_st.actor_ids == null or (anim_st.n_actors + 1) * 2 > len(anim_st.actor_ids) { actor_grow(anim_st) }
+  actor_put(anim_st, actor, pl)
+  animset_actor(pl, actor)
+  return true
+}
+
+# an actor leaves: the slot stays taken by a dead mark until the table next grows
+export function anim_actor_remove(anim_st: mut AnimState, actor: int) -> void {
+  let s = actor_slot(anim_st, actor)
+  if s < 0 { return }
+  anim_st.actor_ids[s] = 1 << 30
+  anim_st.actor_pl[s] = null
+}
+
+export function anim_player_of(anim_st: AnimState, actor: int) -> AnimPlayer {
+  let s = actor_slot(anim_st, actor)
+  if s < 0 { return null }
+  return anim_st.actor_pl[s]
+}
+
+function known(pl: AnimPlayer, name: string) -> bool { return pl != null and as_param_idx(pl, name) >= 0 }
+
+export function anim_set_param(anim_st: AnimState, actor: int, key: string, value: float) -> bool {
+  let pl = anim_player_of(anim_st, actor)
+  if not known(pl, key) { return false }
+  animset_param(pl, key, value)
+  return true
+}
+export function anim_set_int(anim_st: AnimState, actor: int, key: string, value: int) -> bool {
+  let pl = anim_player_of(anim_st, actor)
+  if not known(pl, key) { return false }
+  animset_int(pl, key, value)
+  return true
+}
+export function anim_set_bool(anim_st: AnimState, actor: int, key: string, on: bool) -> bool {
+  let pl = anim_player_of(anim_st, actor)
+  if not known(pl, key) { return false }
+  animset_bool(pl, key, on)
+  return true
+}
+export function anim_trigger(anim_st: AnimState, actor: int, key: string) -> bool {
+  let pl = anim_player_of(anim_st, actor)
+  if not known(pl, key) { return false }
+  animset_trigger(pl, key)
+  return true
+}
+export function anim_reset_trigger(anim_st: AnimState, actor: int, key: string) -> bool {
+  let pl = anim_player_of(anim_st, actor)
+  if not known(pl, key) { return false }
+  animset_reset_trigger(pl, key)
+  return true
+}
+export function anim_request(anim_st: AnimState, actor: int, state: string) -> bool {
+  let pl = anim_player_of(anim_st, actor)
+  if pl == null or pl.set < 0 or as_state(AnimSets[pl.set], state) < 0 { return false }
+  animset_request(pl, state)
+  return true
+}
+export function anim_set_distance(anim_st: AnimState, actor: int, d: float) -> bool {
+  let pl = anim_player_of(anim_st, actor)
+  if pl == null { return false }
+  animset_distance(pl, d)
+  return true
+}

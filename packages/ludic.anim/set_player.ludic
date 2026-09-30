@@ -1,35 +1,171 @@
-# set_player.ludic - one actor playing a set: which rig its clips were found for, the state it
-# is in and the one the code last asked for, and the two clips being cross-faded
+# set_player.ludic - one actor playing a graph. A graph is run by MACHINES: the set's own states are one,
+# every sub graph another, every layer's graph another; each holds a short stack of state INSTANCES that
+# are fading into one another (the newest on top). Everything a frame needs is made when the player is
+# bound, so a tick allocates nothing.
+export const AM_INST: int = 4       # instances one machine fades between at once
+export const AM_ITEMS: int = 48     # clips one layer mixes in a frame
+export const AM_WINDOWS: int = 16   # event windows open at once on one player
+export const AM_LAYERS: int = 6     # the base layer and five more
+export const AM_DEPTH: int = 4      # how deep sub graphs nest
+
+export property AnimMachine {
+  set: int = -1
+  ns: int = 0
+  # per state
+  base: []int = null        # the state's first clip slot
+  ncl: []int = null         # its clip slots
+  sub: []int = null         # its sub graph's machine, or -1
+  space: []int = null       # its blend space, or -1
+  px: []int = null          # the parameter of its blend space's x axis, or -1
+  py: []int = null
+  spd: []int = null         # its speed_by parameter, or -1
+  # per transition
+  tfrom: []int = null       # the state it leaves: -1 any, -2 none such
+  tto: []int = null
+  cbase: []int = null       # where its conditions start in cparam (one more entry than transitions)
+  cparam: []int = null      # each condition's parameter
+  tord: []int = null        # the transitions, highest priority first
+  # per clip slot (a choice's clip, or a blend sample's)
+  names: []string = null    # the full clip name
+  clips: []Clip = null      # found; null where the rig has no such clip
+  infos: []int = null       # the AnimClips row for it, or -1
+  rmp: []int = null         # the root's translation channel in it, or -1 (made with the skin)
+  rmr: []int = null
+  nbase: []int = null       # where a choice's need parameters start in nparam
+  nparam: []int = null
+  rby: []int = null         # a choice's rate_by parameter
+  # the instances
+  n_i: int = 0
+  i_st: words = words(AM_INST)
+  i_pick: words = words(AM_INST)
+  i_loops: words = words(AM_INST)
+  i_tr: words = words(AM_INST)
+  i_uid: words = words(AM_INST)
+  i_new: words = words(AM_INST)
+  i_wr: words = words(AM_INST)
+  i_ph: floats = floats(AM_INST)      # how far through its cycle (0..1; a one-shot stops at 1)
+  i_p0: floats = floats(AM_INST)      # and where it was before this frame
+  i_prog: floats = floats(AM_INST)    # how far through its fade in
+  i_fdur: floats = floats(AM_INST)
+  i_rate: floats = floats(AM_INST)
+  i_dur: floats = floats(AM_INST)
+  i_sn: words = words(AM_INST)        # a blend state's weighted samples
+  i_si: words = words(AM_INST * 3)
+  i_sw: floats = floats(AM_INST * 3)
+  want: int = 0
+  asked: string = ""
+  stamp: int = -1           # the frame it last stepped
+  estamp: int = -1          # and last fired events
+}
+
 export property AnimPlayer {
   set: int = -1
   rig: string = ""          # the clips' prefix it was bound with ("hiker_m")
-  names: []string = null    # every choice's full clip name, state by state, made once per rig
-  clips: []Clip = null      # the same, found; null where the rig has no such clip
-  base: []int = null        # where each state's choices start in names and clips
-  vals: []float = null      # the set's parameters, in its order
-  ready: bool = false       # the entry state's default clip is found: the model has loaded
-  state: int = 0
-  want: int = 0
-  asked: string = ""        # the last state asked for: a request is taken once, not every frame
-  fresh: bool = false       # the state changed this frame: its first clip starts at zero
-  fade_next: float = -1.0   # the fade a state change asked for
-  clip: Clip = null
-  t: float = 0.0
-  prev: Clip = null
-  pt: float = 0.0
-  mix: float = 1.0
-  fade: float = 0.2
-  rate: float = 1.0
-  pick: int = -1            # which of the state's choices plays
+  skel: int = -1            # its AnimSkeletons row, when bound through one
+  actor: int = -1
+  ready: bool = false       # the entry state's clips are found: the model has loaded
+  mach: []AnimMachine = null
+  pnames: []string = null   # every parameter of the graph and its sub graphs and layers
+  pkind: []int = null       # 0 float, 1 int, 2 bool, 3 trigger
+  pinit: []float = null     # where each starts
+  vals: floats = null
+  nl: int = 0               # layers, the base one included
+  lm: []int = null          # each layer's machine
+  lmode: []int = null       # 0 override, 1 additive
+  lw: []float = null
+  lwp: []int = null
+  lmask: []floats = null    # per layer, per node (made with the skin)
+  sk: Skin = null           # the skin the masks and root channels are made for
+  root: int = -1            # the node root motion is taken from
+  # the clips a frame mixes
+  it_clip: []Clip = null
+  it_w: floats = null
+  it_t: floats = null
+  it_ref: floats = null
+  it_ex: words = null
+  it_rp: words = null
+  it_rr: words = null
+  n_it: int = 0
+  # event windows open now
+  ow_key: words = words(AM_WINDOWS)
+  ow_uid: words = words(AM_WINDOWS)
+  n_ow: int = 0
+  uid: int = 0
+  frame: int = 0            # frames ticked that did work
+  ticks: int = 0            # ticks asked, even where a far actor skipped
+  dist: float = 0.0         # metres from the camera, set by the game
+  acc: float = 0.0          # time a skipped tick left
+  seed: int = 0
+  l_every: int = 1
+  l_layers: int = 8
+  l_events: bool = true
+  posed: bool = false
+  bi: words = words(3)      # a blend state's weights while they are made
+  bwt: floats = floats(3)
+  rm: floats = floats(4)    # root motion since the game last took it: x, y, z, yaw (radians)
+  rm_t: floats = floats(4)
+  rm_u: floats = floats(4)
 }
 
-export function animset_clip(pl: AnimPlayer) -> Clip { return pl.clip }
-export function animset_time(pl: AnimPlayer) -> float { return pl.t }
-export function animset_rate(pl: AnimPlayer) -> float { return pl.rate }
+export function animset_clip(pl: AnimPlayer) -> Clip {
+  if pl.mach == null or len(pl.mach) == 0 { return null }
+  let m = pl.mach[0]
+  if m.n_i == 0 { return null }
+  let k = m.n_i - 1
+  let s = AnimSets[m.set].states[m.i_st[k]]
+  if s.kind == "clips" {
+    if m.i_pick[k] < 0 { return null }
+    return m.clips[m.base[m.i_st[k]] + m.i_pick[k]]
+  }
+  if s.kind == "blend" and m.i_sn[k] > 0 { return m.clips[m.base[m.i_st[k]] + m.i_si[k * 3]] }
+  return null
+}
+# how far into its cycle the playing clip is, in seconds
+export function animset_time(pl: AnimPlayer) -> float {
+  let c = animset_clip(pl)
+  if c == null { return 0.0 }
+  let m = pl.mach[0]
+  return m.i_ph[m.n_i - 1] * c.dur
+}
+export function animset_rate(pl: AnimPlayer) -> float {
+  if pl.mach == null or len(pl.mach) == 0 or pl.mach[0].n_i == 0 { return 1.0 }
+  return pl.mach[0].i_rate[pl.mach[0].n_i - 1]
+}
 # the playing choice's clip as the set names it, without the rig ("sit_seat"); "" before a tick
 export function animset_choice(pl: AnimPlayer) -> string {
-  if pl.set < 0 or pl.pick < 0 { return "" }
-  return AnimSets[pl.set].states[pl.state].choices[pl.pick].clip
+  if pl.set < 0 or pl.mach == null or len(pl.mach) == 0 or pl.mach[0].n_i == 0 { return "" }
+  let m = pl.mach[0]
+  let k = m.n_i - 1
+  let d = AnimSets[m.set].states[m.i_st[k]]
+  if d.kind != "clips" or m.i_pick[k] < 0 { return "" }
+  return d.choices[m.i_pick[k]].clip
+}
+# the state the graph is in now (the newest instance's), "" before a tick
+export function animset_state(pl: AnimPlayer) -> string {
+  if pl.set < 0 or pl.mach == null or len(pl.mach) == 0 or pl.mach[0].n_i == 0 { return "" }
+  let m = pl.mach[0]
+  return AnimSets[m.set].states[m.i_st[m.n_i - 1]].key
+}
+# the state a sub graph (or a layer's graph) is in, by the machine's number in `animset_machines`
+export function animset_machine_state(pl: AnimPlayer, mi: int) -> string {
+  if pl.mach == null or mi < 0 or mi >= len(pl.mach) or pl.mach[mi].n_i == 0 { return "" }
+  let m = pl.mach[mi]
+  return AnimSets[m.set].states[m.i_st[m.n_i - 1]].key
+}
+export function animset_machines(pl: AnimPlayer) -> int {
+  if pl.mach == null { return 0 }
+  return len(pl.mach)
+}
+# the machine that runs layer `li` (0 the base)
+export function animset_layer_machine(pl: AnimPlayer, li: int) -> int {
+  if pl.lm == null or li < 0 or li >= pl.nl { return -1 }
+  return pl.lm[li]
 }
 export function animset_ready(pl: AnimPlayer) -> bool { return pl.ready }
-export function animset_bound(pl: AnimPlayer, set: int, rig: string) -> bool { return pl.set == set and pl.rig == rig and pl.names != null }
+export function animset_bound(pl: AnimPlayer, set: int, rig: string) -> bool { return pl.set == set and pl.rig == rig and pl.mach != null }
+# how far the game says the actor is from the camera (metres); the skeleton's lod rows decide from it
+export function animset_distance(pl: AnimPlayer, d: float) -> void { pl.dist = d }
+export function animset_actor(pl: AnimPlayer, actor: int) -> void {
+  pl.actor = actor
+  pl.seed = actor
+}

@@ -1,0 +1,122 @@
+# graph_events.ludic - a clip's events become facts: a notify when the clip passes its time, a window's
+# begin and end (and a cancel if the clip is left while it is open). Every crossing is found from where
+# the clip's (unwrapped) time was and where it is, so an event fires exactly once per pass however big
+# the step, and once per lap on a loop. The facts wait in the AnimState for gameplay and audio to drain.
+
+export function anim_facts_new() -> []AnimFact {
+  let l = new []AnimFact
+  for i in 0 .. 256 { push(l, new AnimFact) }
+  return l
+}
+
+# how many facts wait, and the i-th; `anim_facts_clear` when they are read. A full queue counts what it
+# could not keep in `anim_facts_lost`.
+export function anim_fact_count(anim_st: AnimState) -> int { return anim_st.n_facts }
+export function anim_fact_at(anim_st: AnimState, i: int) -> AnimFact { return anim_st.facts[i] }
+export function anim_facts_clear(anim_st: mut AnimState) -> void { anim_st.n_facts = 0 }
+export function anim_facts_lost(anim_st: AnimState) -> int { return anim_st.facts_lost }
+
+function fact_push(anim_st: mut AnimState, pl: AnimPlayer, kind: int, e: AnimEvent, clip: string, w: float, t: float) -> void {
+  if anim_st.n_facts >= len(anim_st.facts) {
+    anim_st.facts_lost += 1
+    return
+  }
+  let f = anim_st.facts[anim_st.n_facts]
+  anim_st.n_facts += 1
+  f.actor = pl.actor
+  f.kind = kind
+  f.name = e.name
+  f.clip = clip
+  f.arg = e.arg
+  f.value = e.value
+  f.weight = w
+  f.time = t
+}
+
+# laps of the clip's end that a step from u0 to u1 makes over an event at `at`: how many times it passed
+function crossings(at: float, u0: float, u1: float, dur: float, loop: bool) -> int {
+  if loop and dur > 0.0 { return int(Math.floor((u1 - at) / dur) - Math.floor((u0 - at) / dur)) }
+  if u0 < at and at <= u1 { return 1 }
+  return 0
+}
+
+function ow_find(pl: AnimPlayer, key: int, uid: int) -> int {
+  for i in 0 .. pl.n_ow { if pl.ow_key[i] == key and pl.ow_uid[i] == uid { return i } }
+  return -1
+}
+
+function ow_drop(pl: AnimPlayer, i: int) -> void {
+  pl.n_ow -= 1
+  pl.ow_key[i] = pl.ow_key[pl.n_ow]
+  pl.ow_uid[i] = pl.ow_uid[pl.n_ow]
+}
+
+# Fire what the step from p0 to ph (+ wr laps) crossed on a clip. `first` is a new instance, which also
+# fires what sits at time 0. w is the clip's share of the pose.
+function events_fire(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi: int, slot: int, uid: int, info: AnimClipInfo, c: Clip, p0: float, ph: float, wr: int, loop: bool, fresh: bool, w: float) -> void {
+  var u0 = anim_unwrapped_time(info, c.dur, p0, loop)
+  let u1 = anim_unwrapped_time(info, c.dur, ph + float(wr), loop)
+  if fresh { u0 = u0 - 0.000001 }
+  for ei in 0 .. len(info.events) {
+    let e = info.events[ei]
+    var at = e.at
+    var until = e.until
+    if e.normalized {
+      at = at * c.dur
+      if until >= 0.0 { until = until * c.dur }
+    }
+    if until > at { fire_window(anim_st, pl, m, mi, slot, uid, ei, e, c, at, until, u0, u1, loop, w) } else {
+      var n = crossings(at, u0, u1, c.dur, loop)
+      if n > 3 { n = 3 }
+      if w > e.min_weight { for j in 0 .. n { fact_push(anim_st, pl, AF_NOTIFY, e, m.names[slot], w, at) } }
+    }
+  }
+}
+
+function fire_window(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, mi: int, slot: int, uid: int, ei: int, e: AnimEvent, c: Clip, at: float, until: float, u0: float, u1: float, loop: bool, w: float) -> void {
+  let key = (mi * 4096 + slot) * 64 + ei
+  var nb = crossings(at, u0, u1, c.dur, loop)
+  var ne = crossings(until, u0, u1, c.dur, loop)
+  var open = ow_find(pl, key, uid)
+  if open >= 0 and ne >= 1 {
+    fact_push(anim_st, pl, AF_END, e, m.names[slot], w, until)
+    ow_drop(pl, open)
+    open = -1
+    ne -= 1
+  }
+  if nb >= 1 and open < 0 and w > e.min_weight and pl.n_ow < AM_WINDOWS {
+    fact_push(anim_st, pl, AF_BEGIN, e, m.names[slot], w, at)
+    pl.ow_key[pl.n_ow] = key
+    pl.ow_uid[pl.n_ow] = uid
+    pl.n_ow += 1
+    if ne >= 1 {
+      fact_push(anim_st, pl, AF_END, e, m.names[slot], w, until)
+      ow_drop(pl, pl.n_ow - 1)
+    }
+  }
+}
+
+# an instance is gone: every window it left open ends with a cancel
+function events_cancel(anim_st: mut AnimState, pl: AnimPlayer, uid: int) -> void {
+  var i = 0
+  while i < pl.n_ow {
+    if pl.ow_uid[i] != uid { i += 1;  continue }
+    let key = pl.ow_key[i]
+    let ei = key % 64
+    let slot = (key / 64) % 4096
+    let mi = key / 64 / 4096
+    let m = pl.mach[mi]
+    let info = m.infos[slot]
+    if info >= 0 and AnimClips[info].events != null and ei < len(AnimClips[info].events) {
+      fact_push(anim_st, pl, AF_CANCEL, AnimClips[info].events[ei], m.names[slot], 0.0, 0.0)
+    }
+    ow_drop(pl, i)
+  }
+}
+
+# every window of the player ends (a re-bind, a reset)
+export function animset_cancel_events(anim_st: mut AnimState, pl: AnimPlayer) -> void {
+  while pl.n_ow > 0 {
+    events_cancel(anim_st, pl, pl.ow_uid[0])
+  }
+}
