@@ -1,0 +1,617 @@
+# state.ludic - the authored city at run time: which 256 m cells of buildings are loaded (streamed as the player
+# moves, a fact each way so a renderer can batch its instances), queries over what is loaded (by cell, rectangle,
+# radius, key; homes and workplaces by capacity; the district, zoning and ambient density at a point) and the head
+# counts worked out from the authored floor area and the zoning. Nothing is generated: every row was placed by a
+# designer or by the studio's round trip through Blender.
+#
+# The tables are the compiler's states (`Buildings`, `Districts`, `CityBlocks`, `Landmarks`), passed in by the
+# caller. A row is a pooled record: keep its key or its (cell, row) for the frame, never the record itself.
+
+export const CITY_CELL: int = 256      # metres a chunk of buildings is on a side (the tables' @Chunked size)
+
+export const CITY_LOADED: int = 0      # a cell's buildings came in (cx, cz, how many)
+export const CITY_UNLOADED: int = 1    # a cell's buildings went out
+
+export property CityFact {
+  what: int = 0
+  cx: int = 0
+  cz: int = 0
+  count: int = 0
+}
+
+# rows found by a query: the loaded cell (an index into the state's list of cells, valid until the next stream), the
+# row in that cell, and the squared distance to the query's point (0 for a query without one)
+export property CityHits {
+  cell: []int = new []int
+  row: []int = new []int
+  d2: []float = new []float
+}
+
+# head counts of some buildings
+export property CityCensus {
+  buildings: int = 0
+  homes: int = 0          # buildings with room for at least one resident
+  workplaces: int = 0     # buildings with at least one job
+  residents: int = 0
+  jobs: int = 0
+  floor_area: int = 0     # square metres of floor, footprint times floors
+}
+
+# what a renderer needs to instance the buildings of a cell: where, which kit or which asset and node, how big
+export property CityInstances {
+  id: []string = new []string
+  kit: []int = new []int              # the BuildingKits index, -1 when it is a generated asset
+  model: []string = new []string
+  node: []string = new []string
+  x: []float = new []float
+  y: []float = new []float
+  z: []float = new []float
+  yaw: []float = new []float
+  scale: []float = new []float
+  w: []float = new []float
+  d: []float = new []float
+  h: []float = new []float
+  floors: []int = new []int
+}
+
+# the doors of a building
+export property CityEntrances {
+  x: []float = new []float
+  z: []float = new []float
+  yaw: []float = new []float
+  kind: []string = new []string
+}
+
+export state CityState {
+  ci_map: string = ""
+  ci_cx: []int = new []int               # the loaded cells
+  ci_cz: []int = new []int
+  ci_dx0: []float = new []float          # each district's bounding box
+  ci_dz0: []float = new []float
+  ci_dx1: []float = new []float
+  ci_dz1: []float = new []float
+  ci_facts: Queue<CityFact> = ci_facts__new()
+}
+function ci_facts__new() -> Queue<CityFact> { return queue_new("city.facts") }
+
+export function city_facts(city_st: CityState) -> Queue<CityFact> { return city_st.ci_facts }
+
+function ci_say(city_st: mut CityState, what: int, cx: int, cz: int, count: int) -> void {
+  var f = q_rec(city_st.ci_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new CityFact
+    q_ring_add(city_st.ci_facts, f)
+  }
+  f.what = what
+  f.cx = cx
+  f.cz = cz
+  f.count = count
+  q_push(city_st.ci_facts, f)
+}
+
+function ci_floor(v: float) -> int { return int(Math.floor(v)) }
+
+# ---- districts ---------------------------------------------------------------------------------------------
+
+# crossing-number test of a point against an outline
+function ci_in_poly(pts: []CityPt, px: float, pz: float) -> bool {
+  let n = len(pts)
+  if n < 3 { return false }
+  var inside = false
+  var j = n - 1
+  for i in 0 .. n {
+    let ax = pts[j].x
+    let az = pts[j].z
+    let bx = pts[i].x
+    let bz = pts[i].z
+    if (az <= pz) != (bz <= pz) {
+      if px < ax + (bx - ax) * (pz - az) / (bz - az) { inside = not inside }
+    }
+    j = i
+  }
+  return inside
+}
+
+# (re)build the district index after `districts_load`: a bounding box a row, so a point is tested against few outlines
+export function city_index(city_st: mut CityState, districts: Districts) -> void {
+  List.clear(city_st.ci_dx0)
+  List.clear(city_st.ci_dz0)
+  List.clear(city_st.ci_dx1)
+  List.clear(city_st.ci_dz1)
+  for i in 0 .. len(districts.rows) {
+    let p = districts.rows[i].pts
+    var x0 = 1.0
+    var z0 = 1.0
+    var x1 = 0.0
+    var z1 = 0.0
+    for k in 0 .. len(p) {
+      if k == 0 {
+        x0 = p[k].x
+        x1 = p[k].x
+        z0 = p[k].z
+        z1 = p[k].z
+      } else {
+        x0 = min(x0, p[k].x)
+        x1 = max(x1, p[k].x)
+        z0 = min(z0, p[k].z)
+        z1 = max(z1, p[k].z)
+      }
+    }
+    kept_push(city_st.ci_dx0, x0)
+    kept_push(city_st.ci_dz0, z0)
+    kept_push(city_st.ci_dx1, x1)
+    kept_push(city_st.ci_dz1, z1)
+  }
+}
+
+# the row of Districts holding the point (the first, where outlines overlap), or -1
+export function city_district_at(city_st: CityState, districts: Districts, x: float, z: float) -> int {
+  let n = min(len(districts.rows), len(city_st.ci_dx0))
+  for i in 0 .. n {
+    if x < city_st.ci_dx0[i] or x > city_st.ci_dx1[i] or z < city_st.ci_dz0[i] or z > city_st.ci_dz1[i] { continue }
+    if ci_in_poly(districts.rows[i].pts, x, z) { return i }
+  }
+  return -1
+}
+
+# the index into ZoningRules of the land at a point, or -1 outside every district
+export function city_zoning_at(city_st: CityState, districts: Districts, x: float, z: float) -> int {
+  let d = city_district_at(city_st, districts, x, z)
+  if d < 0 { return -1 }
+  return ci_zone_index(districts.rows[d].zoning)
+}
+
+function ci_zone_index(z: int) -> int {
+  if ZR_COUNT == 0 { return -1 }
+  if z < 0 { return 0 }
+  if z >= ZR_COUNT { return ZR_COUNT - 1 }
+  return z
+}
+
+# the ambient pedestrians and traffic (per mille) the land at a point asks for: its district's, else its zoning's.
+# Outside every district there are none. Read them with city_crowd_at / city_traffic_at
+export function city_crowd_at(city_st: CityState, districts: Districts, x: float, z: float) -> int {
+  let d = city_district_at(city_st, districts, x, z)
+  if d < 0 { return 0 }
+  if districts.rows[d].crowd >= 0 { return districts.rows[d].crowd }
+  let zi = ci_zone_index(districts.rows[d].zoning)
+  if zi < 0 { return 0 }
+  return ZoningRules[zi].crowd
+}
+
+export function city_traffic_at(city_st: CityState, districts: Districts, x: float, z: float) -> int {
+  let d = city_district_at(city_st, districts, x, z)
+  if d < 0 { return 0 }
+  if districts.rows[d].traffic >= 0 { return districts.rows[d].traffic }
+  let zi = ci_zone_index(districts.rows[d].zoning)
+  if zi < 0 { return 0 }
+  return ZoningRules[zi].traffic
+}
+
+# ---- streaming the cells of buildings --------------------------------------------------------------------------
+
+function ci_cell_index(city_st: CityState, cx: int, cz: int) -> int {
+  for i in 0 .. len(city_st.ci_cx) { if city_st.ci_cx[i] == cx and city_st.ci_cz[i] == cz { return i } }
+  return -1
+}
+
+# the loaded cell (cx, cz) as an index, or -1 when it is not loaded
+export function city_cell_of(city_st: CityState, cx: int, cz: int) -> int { return ci_cell_index(city_st, cx, cz) }
+
+export function city_cell_count(city_st: CityState) -> int { return len(city_st.ci_cx) }
+export function city_cell_cx(city_st: CityState, i: int) -> int { return city_st.ci_cx[i] }
+export function city_cell_cz(city_st: CityState, i: int) -> int { return city_st.ci_cz[i] }
+
+# the rows a loaded cell holds
+export function city_cell_size(city_st: CityState, bl: Buildings, i: int) -> int {
+  let s = buildings_slot(bl, city_st.ci_cx[i], city_st.ci_cz[i])
+  if s < 0 { return 0 }
+  return len(bl.chunks[s].rows)
+}
+
+# the record of row `row` of loaded cell `i`; valid until that cell goes out
+export function city_building(city_st: CityState, bl: Buildings, i: int, row: int) -> CityBuilding {
+  return bl.chunks[buildings_slot(bl, city_st.ci_cx[i], city_st.ci_cz[i])].rows[row]
+}
+
+# load cell (cx, cz) of a map: how many buildings it holds (0 for a cell nobody has placed in), -1 when its file is wrong
+# (`bl.err` says where). A cell already loaded is left as it is
+export function city_cell_in(city_st: mut CityState, bl: mut Buildings, map: string, cx: int, cz: int) -> int { return ci_cell_in(city_st, bl, map, cx, cz, true) }
+
+function ci_cell_in(city_st: mut CityState, bl: mut Buildings, map: string, cx: int, cz: int, loud: bool) -> int {
+  if city_st.ci_map != map {
+    List.clear(city_st.ci_cx)
+    List.clear(city_st.ci_cz)
+    city_st.ci_map = map
+  }
+  let have = ci_cell_index(city_st, cx, cz)
+  if have >= 0 { return city_cell_size(city_st, bl, have) }
+  let slot = buildings_in(bl, map, cx, cz)
+  if slot < 0 { return -1 }
+  kept_push(city_st.ci_cx, cx)
+  kept_push(city_st.ci_cz, cz)
+  let n = len(bl.chunks[slot].rows)
+  if loud { ci_say(city_st, CITY_LOADED, cx, cz, n) }
+  return n
+}
+
+# put cell (cx, cz) out; false when it was not loaded
+export function city_cell_out(city_st: mut CityState, bl: mut Buildings, cx: int, cz: int) -> bool { return ci_cell_out(city_st, bl, cx, cz, true) }
+
+function ci_cell_out(city_st: mut CityState, bl: mut Buildings, cx: int, cz: int, loud: bool) -> bool {
+  let i = ci_cell_index(city_st, cx, cz)
+  if i < 0 { return false }
+  let n = city_cell_size(city_st, bl, i)
+  buildings_out(bl, cx, cz)
+  let last = len(city_st.ci_cx) - 1
+  city_st.ci_cx[i] = city_st.ci_cx[last]
+  city_st.ci_cz[i] = city_st.ci_cz[last]
+  List.pop(city_st.ci_cx)
+  List.pop(city_st.ci_cz)
+  if loud { ci_say(city_st, CITY_UNLOADED, cx, cz, n) }
+  return true
+}
+
+# keep loaded exactly the cells within `reach` cells of the one holding the point (x, z): the rest go out, the missing
+# ones come in. How many cells changed. Call it when the player crosses into another cell, not every frame
+export function city_stream(city_st: mut CityState, bl: mut Buildings, map: string, x: float, z: float, reach: int) -> int {
+  let cx = ci_floor(x / 256.0)
+  let cz = ci_floor(z / 256.0)
+  var changed = 0
+  var i = 0
+  while i < len(city_st.ci_cx) {
+    if Math.abs(city_st.ci_cx[i] - cx) > reach or Math.abs(city_st.ci_cz[i] - cz) > reach {
+      if city_cell_out(city_st, bl, city_st.ci_cx[i], city_st.ci_cz[i]) { changed += 1 }
+    } else {
+      i += 1
+    }
+  }
+  for dz in 0 - reach .. reach + 1 {
+    for dx in 0 - reach .. reach + 1 {
+      if ci_cell_index(city_st, cx + dx, cz + dz) < 0 {
+        if city_cell_in(city_st, bl, map, cx + dx, cz + dz) >= 0 { changed += 1 }
+      }
+    }
+  }
+  return changed
+}
+
+# the same, a frame at a time: cells out of reach go out (cheap), and at most ONE missing cell comes in, the nearest to the
+# point; how many are still missing. Call it every frame while it returns more than 0 to spread a stream's loads over
+# frames instead of one hitch
+export function city_stream_step(city_st: mut CityState, bl: mut Buildings, map: string, x: float, z: float, reach: int) -> int {
+  let cx = ci_floor(x / 256.0)
+  let cz = ci_floor(z / 256.0)
+  var i = 0
+  while i < len(city_st.ci_cx) {
+    if Math.abs(city_st.ci_cx[i] - cx) > reach or Math.abs(city_st.ci_cz[i] - cz) > reach {
+      city_cell_out(city_st, bl, city_st.ci_cx[i], city_st.ci_cz[i])
+    } else {
+      i += 1
+    }
+  }
+  var best_dx = 0
+  var best_dz = 0
+  var best_d = -1
+  var missing = 0
+  for dz in 0 - reach .. reach + 1 {
+    for dx in 0 - reach .. reach + 1 {
+      if ci_cell_index(city_st, cx + dx, cz + dz) >= 0 { continue }
+      missing += 1
+      let d = dx * dx + dz * dz
+      if best_d < 0 or d < best_d {
+        best_d = d
+        best_dx = dx
+        best_dz = dz
+      }
+    }
+  }
+  if best_d >= 0 {
+    if city_cell_in(city_st, bl, map, cx + best_dx, cz + best_dz) >= 0 { missing -= 1 }
+  }
+  return missing
+}
+
+# put every cell out
+export function city_clear(city_st: mut CityState, bl: mut Buildings) -> void {
+  while len(city_st.ci_cx) > 0 { city_cell_out(city_st, bl, city_st.ci_cx[0], city_st.ci_cz[0]) }
+}
+
+# ---- queries over the loaded cells ---------------------------------------------------------------------------------
+
+function ci_hit(out: CityHits, cell: int, row: int, d2: float) -> void {
+  kept_push(out.cell, cell)
+  kept_push(out.row, row)
+  kept_push(out.d2, d2)
+}
+
+export function cityhits_clear(out: CityHits) -> void {
+  List.clear(out.cell)
+  List.clear(out.row)
+  List.clear(out.d2)
+}
+
+export function cityhits_count(out: CityHits) -> int { return len(out.cell) }
+
+# the nearest of a query's hits (the first on a tie), or -1
+export function cityhits_nearest(out: CityHits) -> int {
+  var best = -1
+  for i in 0 .. len(out.d2) { if best < 0 or out.d2[i] < out.d2[best] { best = i } }
+  return best
+}
+
+# every building of the loaded cell `i`
+export function city_in_cell(city_st: CityState, bl: Buildings, i: int, out: CityHits) -> int {
+  cityhits_clear(out)
+  let n = city_cell_size(city_st, bl, i)
+  for r in 0 .. n { ci_hit(out, i, r, 0.0) }
+  return len(out.cell)
+}
+
+# the buildings whose position is inside the rectangle, in the loaded cells
+export function city_in_rect(city_st: CityState, bl: Buildings, x0: float, z0: float, x1: float, z1: float, out: CityHits) -> int {
+  cityhits_clear(out)
+  for i in 0 .. len(city_st.ci_cx) {
+    let cx0 = city_st.ci_cx[i] * 256
+    let cz0 = city_st.ci_cz[i] * 256
+    if float(cx0 + 256) < x0 or float(cx0) > x1 or float(cz0 + 256) < z0 or float(cz0) > z1 { continue }
+    let s = buildings_slot(bl, city_st.ci_cx[i], city_st.ci_cz[i])
+    let rows = bl.chunks[s].rows
+    for r in 0 .. len(rows) {
+      if rows[r].x >= x0 and rows[r].x <= x1 and rows[r].z >= z0 and rows[r].z <= z1 { ci_hit(out, i, r, 0.0) }
+    }
+  }
+  return len(out.cell)
+}
+
+# the buildings within `r` metres of a point, in the loaded cells
+export function city_near(city_st: CityState, bl: Buildings, x: float, z: float, r: float, out: CityHits) -> int {
+  cityhits_clear(out)
+  ci_near(city_st, bl, x, z, r, out)
+  return len(out.cell)
+}
+
+function ci_near(city_st: CityState, bl: Buildings, x: float, z: float, r: float, out: CityHits) -> void {
+  for i in 0 .. len(city_st.ci_cx) {
+    let cx0 = city_st.ci_cx[i] * 256
+    let cz0 = city_st.ci_cz[i] * 256
+    if float(cx0 + 256) < x - r or float(cx0) > x + r or float(cz0 + 256) < z - r or float(cz0) > z + r { continue }
+    let s = buildings_slot(bl, city_st.ci_cx[i], city_st.ci_cz[i])
+    let rows = bl.chunks[s].rows
+    for k in 0 .. len(rows) {
+      let dx = rows[k].x - x
+      let dz = rows[k].z - z
+      if dx * dx + dz * dz <= r * r { ci_hit(out, i, k, dx * dx + dz * dz) }
+    }
+  }
+}
+
+# the building with this key among the loaded cells: true, and `out` holds it alone; false when it is not loaded (load
+# the cell it stands in first: city_cell_in with the position a property or a save remembers)
+export function city_find(city_st: CityState, bl: Buildings, key: string, out: CityHits) -> bool {
+  cityhits_clear(out)
+  for i in 0 .. len(city_st.ci_cx) {
+    let s = buildings_slot(bl, city_st.ci_cx[i], city_st.ci_cz[i])
+    let r = buildings_find(bl, s, key)
+    if r >= 0 {
+      ci_hit(out, i, r, 0.0)
+      return true
+    }
+  }
+  return false
+}
+
+# ---- what a building holds ------------------------------------------------------------------------------------------
+
+# the index into ZoningRules a building is zoned by: its `use`, else its `district`'s, else the district at its position,
+# -1 when none
+export function city_zone_of(city_st: CityState, districts: Districts, b: CityBuilding) -> int {
+  if b.use != "" {
+    for z in 0 .. ZR_COUNT { if ZoningRules[z].key == b.use { return z } }
+  }
+  var d = -1
+  if b.district != "" { d = districts_find(districts, b.district) }
+  if d < 0 { d = city_district_at(city_st, districts, b.x, b.z) }
+  if d < 0 { return -1 }
+  return ci_zone_index(districts.rows[d].zoning)
+}
+
+# square metres of floor: footprint times floors
+export function city_floor_area(b: CityBuilding) -> int { return int(Math.floor(b.w * b.d)) * b.floors }
+
+# the residents a building holds: its own number, else the homes' share of its floor area over what a resident has
+export function city_residents(city_st: CityState, districts: Districts, b: CityBuilding) -> int {
+  if b.residents >= 0 { return b.residents }
+  let z = city_zone_of(city_st, districts, b)
+  if z < 0 { return 0 }
+  let r = ZoningRules[z]
+  return city_floor_area(b) * r.res_pct / 100 / max(1, r.m2_per_person)
+}
+
+# the jobs: its own number, else the rest of the floor area over what a job has
+export function city_jobs(city_st: CityState, districts: Districts, b: CityBuilding) -> int {
+  if b.jobs >= 0 { return b.jobs }
+  let z = city_zone_of(city_st, districts, b)
+  if z < 0 { return 0 }
+  let r = ZoningRules[z]
+  return city_floor_area(b) * (100 - r.res_pct) / 100 / max(1, r.m2_per_job)
+}
+
+# 0 none, 1 a fake interior (an atlas behind the glass), 2 an enterable one (a map of its own)
+export function city_interior_class(b: CityBuilding) -> int {
+  if b.interior == "fake" { return 1 }
+  if b.interior == "enterable" { return 2 }
+  return 0
+}
+
+# the BuildingKits index a building is an instance of, -1 when it is not one
+export function city_kit_of(b: CityBuilding) -> int {
+  if b.kit == "" { return -1 }
+  for k in 0 .. BK_COUNT { if BuildingKits[k].key == b.kit { return k } }
+  return -1
+}
+
+# its height in metres: its own, else its floors times the kit's floor height (3.5 m without one)
+export function city_height(b: CityBuilding) -> float {
+  if b.height > 0.0 { return b.height }
+  let k = city_kit_of(b)
+  if k >= 0 { return float(b.floors) * BuildingKits[k].floor_h }
+  return float(b.floors) * 3.5
+}
+
+# the doors of a building, into `out`
+export function city_entrances(b: CityBuilding, out: CityEntrances) -> int {
+  List.clear(out.x)
+  List.clear(out.z)
+  List.clear(out.yaw)
+  List.clear(out.kind)
+  for i in 0 .. len(b.entrances) {
+    kept_push(out.x, b.entrances[i].x)
+    kept_push(out.z, b.entrances[i].z)
+    kept_push(out.yaw, b.entrances[i].yaw)
+    kept_push(out.kind, b.entrances[i].kind)
+  }
+  return len(out.x)
+}
+
+# ---- homes and workplaces -----------------------------------------------------------------------------------------
+
+# the buildings within `r` metres with room for residents, into `out` (hits, with their distances); a `kind` other than ""
+# keeps those zoned by a ZoningRules row of that kind
+export function city_homes_near(city_st: CityState, bl: Buildings, districts: Districts, x: float, z: float, r: float, kind: string, out: CityHits) -> int {
+  return ci_capacity_near(city_st, bl, districts, x, z, r, kind, out, true)
+}
+
+export function city_workplaces_near(city_st: CityState, bl: Buildings, districts: Districts, x: float, z: float, r: float, kind: string, out: CityHits) -> int {
+  return ci_capacity_near(city_st, bl, districts, x, z, r, kind, out, false)
+}
+
+function ci_capacity_near(city_st: CityState, bl: Buildings, districts: Districts, x: float, z: float, r: float, kind: string, out: CityHits, homes: bool) -> int {
+  cityhits_clear(out)
+  for i in 0 .. len(city_st.ci_cx) {
+    let cx0 = city_st.ci_cx[i] * 256
+    let cz0 = city_st.ci_cz[i] * 256
+    if float(cx0 + 256) < x - r or float(cx0) > x + r or float(cz0 + 256) < z - r or float(cz0) > z + r { continue }
+    let s = buildings_slot(bl, city_st.ci_cx[i], city_st.ci_cz[i])
+    let rows = bl.chunks[s].rows
+    for k in 0 .. len(rows) {
+      let dx = rows[k].x - x
+      let dz = rows[k].z - z
+      if dx * dx + dz * dz > r * r { continue }
+      var cap = 0
+      if homes { cap = city_residents(city_st, districts, rows[k]) } else { cap = city_jobs(city_st, districts, rows[k]) }
+      if cap <= 0 { continue }
+      if kind != "" {
+        let zi = city_zone_of(city_st, districts, rows[k])
+        if zi < 0 or ZoningRules[zi].kind != kind { continue }
+      }
+      ci_hit(out, i, k, dx * dx + dz * dz)
+    }
+  }
+  return len(out.cell)
+}
+
+export function citycensus_clear(out: CityCensus) -> void {
+  out.buildings = 0
+  out.homes = 0
+  out.workplaces = 0
+  out.residents = 0
+  out.jobs = 0
+  out.floor_area = 0
+}
+
+function ci_census_rows(city_st: CityState, districts: Districts, rows: []CityBuilding, out: CityCensus) -> void {
+  for k in 0 .. len(rows) {
+    let res = city_residents(city_st, districts, rows[k])
+    let jobs = city_jobs(city_st, districts, rows[k])
+    out.buildings += 1
+    out.residents += res
+    out.jobs += jobs
+    out.floor_area += city_floor_area(rows[k])
+    if res > 0 { out.homes += 1 }
+    if jobs > 0 { out.workplaces += 1 }
+  }
+}
+
+# add the loaded cell `i`'s buildings to a census (clear it first with citycensus_clear)
+export function city_census_cell(city_st: CityState, bl: Buildings, districts: Districts, i: int, out: CityCensus) -> void {
+  let s = buildings_slot(bl, city_st.ci_cx[i], city_st.ci_cz[i])
+  ci_census_rows(city_st, districts, bl.chunks[s].rows, out)
+}
+
+# the head count of every building of the map in the cells cx0 .. cx1, cz0 .. cz1, one cell in memory at a time (a cell
+# that was loaded stays loaded, any other goes out again): how many buildings, homes, residents, jobs and floor area an
+# authored city holds. A check to run offline or at load, not every frame
+export function city_census(city_st: mut CityState, bl: mut Buildings, districts: Districts, map: string, cx0: int, cz0: int, cx1: int, cz1: int, out: CityCensus) -> void {
+  citycensus_clear(out)
+  for cz in cz0 .. cz1 + 1 {
+    for cx in cx0 .. cx1 + 1 {
+      let had = ci_cell_index(city_st, cx, cz) >= 0
+      if ci_cell_in(city_st, bl, map, cx, cz, false) < 0 { continue }
+      city_census_cell(city_st, bl, districts, ci_cell_index(city_st, cx, cz), out)
+      if not had { ci_cell_out(city_st, bl, cx, cz, false) }
+    }
+  }
+}
+
+# ---- instancing ------------------------------------------------------------------------------------------------------
+
+export function cityinstances_clear(out: CityInstances) -> void {
+  List.clear(out.id)
+  List.clear(out.kit)
+  List.clear(out.model)
+  List.clear(out.node)
+  List.clear(out.x)
+  List.clear(out.y)
+  List.clear(out.z)
+  List.clear(out.yaw)
+  List.clear(out.scale)
+  List.clear(out.w)
+  List.clear(out.d)
+  List.clear(out.h)
+  List.clear(out.floors)
+}
+
+# the instances of loaded cell `i` appended to `out`: per building its id, the kit (or the asset and node), the transform
+# (position, yaw, scale), the footprint and the height. A kit's model and node stand in for an empty `model`
+export function city_instances(city_st: CityState, bl: Buildings, i: int, out: CityInstances) -> int {
+  let s = buildings_slot(bl, city_st.ci_cx[i], city_st.ci_cz[i])
+  let rows = bl.chunks[s].rows
+  for r in 0 .. len(rows) {
+    let b = rows[r]
+    let k = city_kit_of(b)
+    kept_push(out.id, b.key)
+    kept_push(out.kit, k)
+    if k >= 0 and b.model == "" {
+      kept_push(out.model, BuildingKits[k].model)
+      kept_push(out.node, BuildingKits[k].node)
+    } else {
+      kept_push(out.model, b.model)
+      kept_push(out.node, b.node)
+    }
+    kept_push(out.x, b.x)
+    kept_push(out.y, b.y)
+    kept_push(out.z, b.z)
+    kept_push(out.yaw, b.yaw)
+    kept_push(out.scale, b.scale)
+    kept_push(out.w, b.w)
+    kept_push(out.d, b.d)
+    kept_push(out.h, city_height(b))
+    kept_push(out.floors, b.floors)
+  }
+  return len(rows)
+}
+
+# ---- landmarks ------------------------------------------------------------------------------------------------------
+
+# the landmarks whose radius holds the point: their row indexes in Landmarks, in row order, into `out`
+export function city_landmarks_near(lm: Landmarks, x: float, z: float, out: []int) -> int {
+  List.clear(out)
+  for i in 0 .. len(lm.rows) {
+    let dx = lm.rows[i].x - x
+    let dz = lm.rows[i].z - z
+    if dx * dx + dz * dz <= lm.rows[i].radius * lm.rows[i].radius { kept_push(out, i) }
+  }
+  return len(out)
+}

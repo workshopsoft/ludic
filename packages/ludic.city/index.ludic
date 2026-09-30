@@ -1,0 +1,11 @@
+# ludic.city - a city as authored data: districts, blocks, buildings, landmarks, zoning rules, building kits, Blender
+# generator presets. At run time, nothing is generated: the cells of buildings stream in as the player moves, and what
+# is loaded answers queries (by cell, rectangle, radius, id; homes and workplaces by capacity; the district, zoning and
+# ambient density at a point) and the head counts worked out from the authored floor area and zoning. Uses
+# ludic.base and nothing else.
+module ludic_city uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "state.ludic"
+import "blocks.ludic"

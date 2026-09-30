@@ -1,0 +1,13 @@
+# blocks chunk (-1, 0): outlined blocks and how each was built
+blk_west_1 {
+  x: -128.0
+  z: 128.0
+  district: "west"
+  preset: "suburb_houses"
+  seed: 3
+  values: [{ name: "lot_w", value: 14.0, text: "" }]
+  asset: ""
+  node: ""
+  built_hash: 0
+  pts: [{ x: -192.0, z: 64.0 }, { x: -64.0, z: 64.0 }, { x: -64.0, z: 192.0 }, { x: -192.0, z: 192.0 }]
+}

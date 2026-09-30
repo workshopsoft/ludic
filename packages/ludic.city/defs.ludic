@@ -1,0 +1,179 @@
+# defs.ludic - a city as data a designer authors in the studio. What a game declares (zoning rules, building kits,
+# Blender generator presets, interior atlases) and what a map holds (maps/<map>/city/*.lres): districts, blocks,
+# buildings, landmarks. Nothing here is generated at run time. Units: metres, x east and z south (a map seen from above,
+# z down the page), `yaw` degrees with 0 facing +z. A chunked table keeps the rows whose (x, z) lies in a 256 m chunk in
+# the file of that chunk's cell (`{cx}_{cz}.lres`, cx = floor(x / 256), cz = floor(z / 256) in the map's coordinates).
+
+# a point of an outline
+export property CityPt {
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+}
+
+# how a kind of land is used: who lives and works in a building's floor area there, and how many people and cars an
+# ambient crowd and traffic keep on its streets. A game declares these (`def ZoningRules from "zoning.lres"`); a
+# district names one by its ZR_ constant
+export property ZoningRule {
+  key: string = ""
+  @OneOf("residential", "commercial", "industrial", "mixed", "civic", "park", "rural", "port") kind: string = "mixed"
+  @Unit("%") @Range(0, 100) res_pct: int = 60             # the share of a building's floor area that is homes
+  @Range(5, 500) m2_per_person: int = 40      # home floor area a resident has
+  @Range(5, 500) m2_per_job: int = 25         # the other floor area a job has
+  @Range(0, 1000) crowd: int = 300                        # ambient pedestrians (per mille of the most the game keeps)
+  @Range(0, 1000) traffic: int = 300                      # ambient traffic, likewise
+}
+
+@AppendOnly @ByKey
+export open registry ZoningRules of ZoningRule as ZR
+
+# a building a game has modelled whole, to place again and again: its model (and the node in it), footprint and floors
+export property BuildingKit {
+  key: string = ""
+  @Asset("gltf") model: string = ""
+  @Node(model) node: string = ""
+  @Unit("m") @Range(2, 500) w: float = 10.0               # footprint, along the front and deep
+  @Unit("m") @Range(2, 500) d: float = 10.0
+  @Range(1, 200) floors: int = 2
+  @Unit("m") @Range(2, 8) floor_h: float = 3.5
+  tags: []string = new []string
+}
+
+@AppendOnly @ByKey
+export open registry BuildingKits of BuildingKit as BK
+
+# one knob of a Blender generator, for the studio to show as a slider, a toggle or a list
+export property GenParam {
+  name: string = ""
+  @OneOf("int", "float", "bool", "choice") type: string = "float"
+  min: float = 0.0
+  max: float = 1.0
+  default_value: float = 0.0                              # a choice's default is an index into `choices`
+  choices: []string = new []string
+  label: string = ""
+  unit: string = ""
+}
+
+# a named preset of a generator that runs in Blender: which generator, what knobs it has, what it understands as style.
+# The studio sends a block's outline and knob values (a CityBlock) to it and gets glTF back
+export property BuildingGenerator {
+  key: string = ""
+  generator: string = ""                                  # the id the Blender side registers it under
+  script: string = ""                                     # the file that holds it, for the studio to open in Blender
+  description: string = ""
+  @OneOf("block", "building") output: string = "block"    # one glTF a block with a node a building, or one glTF a building
+  tags: []string = new []string                           # style tags it understands
+  params: []GenParam = new []GenParam
+}
+
+@AppendOnly @ByKey
+export open registry BuildingGenerators of BuildingGenerator as BG
+
+# a window interior mapped behind a building's glass (a fake interior): a grid of rooms in one image
+export property InteriorAtlas {
+  key: string = ""
+  @Asset("png") image: string = ""
+  @Range(1, 16) cols: int = 4
+  @Range(1, 16) rows: int = 4
+  @Unit("m") @Range(1, 10) depth: float = 4.0             # how far behind the glass the back wall is taken to be
+}
+
+@AppendOnly @ByKey
+export open registry InteriorAtlases of InteriorAtlas as IA
+
+# a polygon of land of one zoning. Where two overlap the first row wins
+export property District {
+  key: string = ""
+  @Ref(ZoningRules) zoning: int = 0
+  @Range(0, 1000) density: int = 500                      # how built up it is (an editor's guide; the buildings are placed by hand)
+  tags: []string = new []string                           # style tags, handed on to the Blender generator
+  generator: string = ""                                  # the preset new blocks start from (a BuildingGenerators key)
+  @Range(-1, 1000) crowd: int = -1                        # ambient pedestrians; -1: the zoning's
+  @Range(-1, 1000) traffic: int = -1                      # ambient traffic; -1: the zoning's
+  pts: []CityPt = new []CityPt
+}
+
+@PerMap @ByKey
+export registry Districts of District from "city/districts.lres"
+
+# one knob's value in a block: a number, or (for a choice) its index with the word beside it
+export property GenValue {
+  name: string = ""
+  value: float = 0.0
+  text: string = ""
+}
+
+# a block as the designer outlined it, and how it is built: the generator preset and knob values the studio sent to
+# Blender, the glTF that came back (`asset`; `built_hash` is city_block_hash of what was sent, so a block whose
+# knobs changed since is known to be stale). (x, z) is the block's centre and names its chunk
+export property CityBlock {
+  key: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Ref(Districts) district: string = ""
+  preset: string = ""                                     # a BuildingGenerators key
+  seed: int = 1
+  values: []GenValue = new []GenValue
+  @Asset("gltf") asset: string = ""
+  @Node(asset) node: string = ""
+  built_hash: int = 0
+  pts: []CityPt = new []CityPt
+}
+
+@PerMap @Chunked(256)
+export registry CityBlocks of CityBlock from "city/blocks/{cx}_{cz}.lres"
+
+# a door: where a person steps in, and the way they face when they do
+export property CityEntrance {
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0
+  @OneOf("door", "garage", "service") kind: string = "door"
+}
+
+# a building as placed: a kit or a generated asset, where it stands, how big, what is inside, who it holds. `key` is its
+# stable id, unique in the map and kept when the building is moved into another chunk
+export property CityBuilding {
+  key: string = ""
+  @Ref(CityBlocks) block: string = ""                     # the block it belongs to, "" for one on its own
+  @Ref(Districts) district: string = ""                   # "": the district its position is in
+  use: string = ""                                        # a ZoningRules key, "": the district's
+  kit: string = ""                                        # a BuildingKits key when it is an instance of a kit
+  @Asset("gltf") model: string = ""                       # else the glTF (and node) it is, from a generated block
+  @Node(model) node: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") y: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0
+  @Range(0.1, 10) scale: float = 1.0
+  @Unit("m") @Range(1, 500) w: float = 10.0               # footprint
+  @Unit("m") @Range(1, 500) d: float = 10.0
+  @Range(1, 200) floors: int = 1
+  @Unit("m") @Range(0, 800) height: float = 0.0           # 0: floors times the kit's floor height (3.5 m without a kit)
+  @OneOf("none", "fake", "enterable") interior: string = "none"
+  atlas: string = ""                                      # fake: an InteriorAtlases key
+  interior_map: string = ""                               # enterable: the map (key) that holds the inside
+  lot: string = ""                                        # the lot and address a property can be bought by
+  address: string = ""
+  @Range(-1, 100000) residents: int = -1                  # capacity; -1: worked out from the floor area and the zoning
+  @Range(-1, 100000) jobs: int = -1
+  entrances: []CityEntrance = new []CityEntrance
+}
+
+@PerMap @Chunked(256)
+export registry Buildings of CityBuilding from "city/buildings/{cx}_{cz}.lres"
+
+# a hand-placed landmark: something a player knows the city by (a compass or a map can mark it)
+export property CityLandmark {
+  key: string = ""
+  @OneOf("monument", "station", "stadium", "bridge", "tower", "other") kind: string = "other"
+  @Unit("m") x: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0
+  @Asset("gltf") model: string = ""
+  @Node(model) node: string = ""
+  @Ref(Buildings) building: string = ""                   # the building it is, if it is one
+  @Unit("m") @Range(0, 2000) radius: float = 50.0         # how far away it counts as near
+}
+
+@PerMap @ByKey
+export registry Landmarks of CityLandmark from "city/landmarks.lres"

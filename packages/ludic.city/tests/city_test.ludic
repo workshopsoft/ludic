@@ -1,0 +1,366 @@
+# city_test.ludic - the authored city on the fixture map (tests/maps/metro: five districts, buildings in six chunks, blocks,
+# landmarks): districts and what a point asks for, cells streamed in and out with their facts, the queries over what is
+# loaded, head counts from the floor area and zoning (and the rows that say their own), interiors and doors, instances for a
+# renderer, the block hash against an independent implementation, stale blocks and knob checks, landmarks
+import "ludic.city"
+import "ludic.base"
+program CityTest {
+  numbers float
+
+  def ZoningRules from "zoning.lres"
+  def BuildingKits from "kits.lres"
+  def BuildingGenerators from "generators.lres"
+  def InteriorAtlases from "atlases.lres"
+
+  function load_districts(city_st: mut CityState, districts: mut Districts) -> bool {
+    if not districts_load(districts, "metro") { return false }
+    city_index(city_st, districts)
+    return true
+  }
+
+  function near(a: float, b: float) -> bool { return Math.abs(a - b) < 0.001 }
+
+  function facts_of(city_st: CityState, what: int) -> int {
+    let fs = q_drain(city_facts(city_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "the zoning rules, kits, presets and atlases the game declared are there, in file order" {
+    expect_eq(ZR_COUNT, 6)
+    expect_eq(ZR_DOWNTOWN, 0)
+    expect_eq(ZR_PARK, 4)
+    expect_eq(ZoningRules[ZR_INDUSTRIAL].m2_per_job, 60)
+    expect_eq(BK_COUNT, 3)
+    expect_eq(BuildingKits[BK_SHOP].floors, 3)
+    expect_eq(BG_COUNT, 2)
+    expect_eq(len(BuildingGenerators[BG_MIDRISE_BLOCK].params), 4)
+    expect_eq(BuildingGenerators[BG_MIDRISE_BLOCK].params[2].choices[1], "glass")
+    expect_eq(IA_COUNT, 2)
+  }
+
+  test "a point is in the first district holding it, or in none" (city_st: mut CityState, districts: mut Districts) {
+    expect(load_districts(city_st, districts))
+    expect_eq(len(districts.rows), 5)
+    expect_eq(city_district_at(city_st, districts, 100.0, 100.0), 0)       # core
+    expect_eq(city_district_at(city_st, districts, 400.0, 100.0), 0)       # core and mall overlap: the first row
+    expect_eq(city_district_at(city_st, districts, 600.0, 100.0), 1)       # mall alone
+    expect_eq(city_district_at(city_st, districts, -100.0, 100.0), 2)      # west, in negative coordinates
+    expect_eq(city_district_at(city_st, districts, 100.0, 300.0), 3)       # south
+    expect_eq(city_district_at(city_st, districts, -200.0, 300.0), 4)      # green, a five sided outline
+    expect_eq(city_district_at(city_st, districts, -200.0, 500.0), -1)     # below green's cut corner
+    expect_eq(city_district_at(city_st, districts, 2000.0, 2000.0), -1)
+    expect_eq(districts_find(districts, "south"), 3)
+  }
+
+  test "what a point asks for: the district's zoning, its crowd and traffic unless the district says its own" (city_st: mut CityState, districts: mut Districts) {
+    expect(load_districts(city_st, districts))
+    expect_eq(city_zoning_at(city_st, districts, 100.0, 100.0), ZR_DOWNTOWN)
+    expect_eq(city_zoning_at(city_st, districts, -100.0, 100.0), ZR_RESIDENTIAL_LOW)
+    expect_eq(city_zoning_at(city_st, districts, 2000.0, 0.0), -1)
+    expect_eq(city_crowd_at(city_st, districts, 100.0, 100.0), 700)        # core: the zoning's
+    expect_eq(city_traffic_at(city_st, districts, 100.0, 100.0), 600)
+    expect_eq(city_crowd_at(city_st, districts, -100.0, 100.0), 100)       # west: its own crowd ...
+    expect_eq(city_traffic_at(city_st, districts, -100.0, 100.0), 150)     # ... the zoning's traffic
+    expect_eq(city_crowd_at(city_st, districts, 100.0, 300.0), 400)        # south: the zoning's crowd ...
+    expect_eq(city_traffic_at(city_st, districts, 100.0, 300.0), 250)      # ... its own traffic
+    expect_eq(city_crowd_at(city_st, districts, 2000.0, 0.0), 0)           # outside: nobody
+  }
+
+  test "streaming keeps the cells within reach of the player loaded, says so as facts, and puts the rest out" (city_st: mut CityState, bl: mut Buildings) {
+    expect_eq(city_stream(city_st, bl, "metro", 100.0, 100.0, 1), 9)
+    expect_eq(city_cell_count(city_st), 9)
+    expect_eq(facts_of(city_st, CITY_LOADED), 9)
+    expect(city_cell_of(city_st, 0, 0) >= 0)
+    expect_eq(city_cell_of(city_st, 5, 5), -1)
+    expect_eq(city_cell_size(city_st, bl, city_cell_of(city_st, 0, 0)), 12)
+    expect_eq(city_cell_size(city_st, bl, city_cell_of(city_st, 0, -1)), 0)   # nobody built there: an empty cell
+    expect_eq(city_stream(city_st, bl, "metro", 100.0, 100.0, 1), 0)          # nothing moved
+    # the player crosses into cell (1, 0): column -1 goes out, column 2 comes in
+    expect_eq(city_stream(city_st, bl, "metro", 300.0, 100.0, 1), 6)
+    expect_eq(city_cell_count(city_st), 9)
+    expect_eq(city_cell_of(city_st, -1, 0), -1)
+    expect(city_cell_of(city_st, 2, 0) >= 0)
+    expect_eq(facts_of(city_st, CITY_UNLOADED), 3)
+    city_clear(city_st, bl)
+    expect_eq(city_cell_count(city_st), 0)
+  }
+
+  test "a stream a frame at a time loads one cell a call, nearest first, and the census leaves no facts" (city_st: mut CityState, bl: mut Buildings, districts: mut Districts) {
+    expect(load_districts(city_st, districts))
+    expect_eq(city_stream_step(city_st, bl, "metro", 100.0, 100.0, 1), 8)     # the cell under the player first
+    expect_eq(city_cell_count(city_st), 1)
+    expect(city_cell_of(city_st, 0, 0) >= 0)
+    expect_eq(city_stream_step(city_st, bl, "metro", 100.0, 100.0, 1), 7)
+    expect_eq(city_cell_count(city_st), 2)
+    for i in 0 .. 7 { city_stream_step(city_st, bl, "metro", 100.0, 100.0, 1) }
+    expect_eq(city_cell_count(city_st), 9)
+    expect_eq(city_stream_step(city_st, bl, "metro", 100.0, 100.0, 1), 0)     # nothing left to do
+    expect_eq(facts_of(city_st, CITY_LOADED), 9)
+    # one cell east: three go out at once, three come in over three calls
+    expect_eq(city_stream_step(city_st, bl, "metro", 300.0, 100.0, 1), 2)
+    expect_eq(city_cell_count(city_st), 7)
+    expect_eq(facts_of(city_st, CITY_UNLOADED), 3)
+    expect_eq(city_stream_step(city_st, bl, "metro", 300.0, 100.0, 1), 1)
+    expect_eq(city_stream_step(city_st, bl, "metro", 300.0, 100.0, 1), 0)
+    expect_eq(city_cell_count(city_st), 9)
+    # a census in the middle of it changes nothing and says nothing
+    let cen = new CityCensus
+    city_census(city_st, bl, districts, "metro", -1, -1, 2, 2, cen)
+    expect_eq(city_cell_count(city_st), 9)
+    expect_eq(facts_of(city_st, CITY_LOADED), 2)
+    expect_eq(facts_of(city_st, CITY_UNLOADED), 0)
+  }
+
+  test "a cell loaded directly, a wrong map, and taking one out" (city_st: mut CityState, bl: mut Buildings) {
+    expect_eq(city_cell_in(city_st, bl, "metro", 0, 0), 12)
+    expect_eq(city_cell_in(city_st, bl, "metro", 0, 0), 12)        # already in: as it is
+    expect_eq(city_cell_count(city_st), 1)
+    expect(city_cell_out(city_st, bl, 0, 0))
+    expect(not city_cell_out(city_st, bl, 0, 0))
+    expect_eq(city_cell_count(city_st), 0)
+  }
+
+  test "buildings by cell, rectangle, radius and key" (city_st: mut CityState, bl: mut Buildings) {
+    expect_eq(city_stream(city_st, bl, "metro", 100.0, 100.0, 1), 9)
+    let hits = new CityHits
+    let c = city_cell_of(city_st, 0, 0)
+    expect_eq(city_in_cell(city_st, bl, c, hits), 12)
+    expect_eq(city_in_rect(city_st, bl, 0.0, 0.0, 256.0, 256.0, hits), 12)
+    expect_eq(city_in_rect(city_st, bl, 0.0, 0.0, 100.0, 40.0, hits), 2)     # (30, 30) and (85, 30), none of the row below
+    expect_eq(city_in_rect(city_st, bl, -300.0, 0.0, 600.0, 256.0, hits), 36)   # three cells of twelve
+    # near (30, 30): the tower there, then the shop 55 m east and the tower 60 m south
+    expect_eq(city_near(city_st, bl, 30.0, 30.0, 10.0, hits), 1)
+    expect_eq(city_building(city_st, bl, hits.cell[0], hits.row[0]).key, "b0_0_00")
+    expect_eq(city_near(city_st, bl, 30.0, 30.0, 70.0, hits), 3)
+    let n = cityhits_nearest(hits)
+    expect_eq(city_building(city_st, bl, hits.cell[n], hits.row[n]).key, "b0_0_00")
+    expect(near(hits.d2[n], 0.0))
+    # by key, across the loaded cells, and not once its cell is out
+    expect(city_find(city_st, bl, "b1_0_05", hits))
+    expect_eq(city_building(city_st, bl, hits.cell[0], hits.row[0]).address, "105 Main St")
+    expect(city_find(city_st, bl, "bm1_1_03", hits))
+    expect(not city_find(city_st, bl, "no_such", hits))
+    expect(city_cell_out(city_st, bl, 1, 0))
+    expect(not city_find(city_st, bl, "b1_0_05", hits))
+  }
+
+  test "a building's kit, height, interior class, doors, lot and address" (city_st: mut CityState, bl: mut Buildings) {
+    expect_eq(city_cell_in(city_st, bl, "metro", 0, 0), 12)
+    let c = city_cell_of(city_st, 0, 0)
+    let tower = city_building(city_st, bl, c, 0)
+    expect_eq(city_kit_of(tower), BK_TOWER)
+    expect(near(city_height(tower), 42.0))                   # twelve floors of 3.5 m
+    expect_eq(city_interior_class(tower), 2)
+    expect_eq(tower.interior_map, "tower_interior")
+    expect_eq(tower.block, "blk_core_1")
+    expect_eq(tower.lot, "lot-0-0-0")
+    let shop = city_building(city_st, bl, c, 1)
+    expect_eq(city_interior_class(shop), 1)
+    expect_eq(shop.atlas, "windows_a")
+    expect(near(city_height(shop), 12.0))                    # three floors of the shop's 4 m
+    let gen = city_building(city_st, bl, c, 2)
+    expect_eq(city_kit_of(gen), -1)
+    expect_eq(city_interior_class(gen), 0)
+    expect(near(city_height(gen), 19.0))                     # its own height
+    let house = city_building(city_st, bl, c, 3)
+    expect(near(city_height(house), 6.0))
+    let doors = new CityEntrances
+    expect_eq(city_entrances(tower, doors), 2)
+    expect_eq(doors.kind[0], "door")
+    expect_eq(doors.kind[1], "service")
+    expect(near(doors.z[0], 42.0))
+    expect(near(doors.yaw[0], 180.0))
+    expect_eq(city_entrances(gen, doors), 0)
+  }
+
+  test "head counts come from the floor area and the zoning, unless the row says its own" (city_st: mut CityState, bl: mut Buildings, districts: mut Districts) {
+    expect(load_districts(city_st, districts))
+    expect_eq(city_cell_in(city_st, bl, "metro", 0, 0), 12)
+    let c = city_cell_of(city_st, 0, 0)
+    let tower = city_building(city_st, bl, c, 0)
+    expect_eq(city_floor_area(tower), 6912)                  # 24 x 24 x 12
+    expect_eq(city_zone_of(city_st, districts, tower), ZR_DOWNTOWN)
+    expect_eq(city_residents(city_st, districts, tower), 51)   # 30% of 6912 over 40 m2
+    expect_eq(city_jobs(city_st, districts, tower), 193)       # the other 70% over 25 m2
+    let shop = city_building(city_st, bl, c, 5)              # `use: industrial` beats the district
+    expect_eq(city_zone_of(city_st, districts, shop), ZR_INDUSTRIAL)
+    expect_eq(city_residents(city_st, districts, shop), 0)
+    expect_eq(city_jobs(city_st, districts, shop), 7)          # 420 m2 over 60
+    let gen = city_building(city_st, bl, c, 6)               # `district: south` beats its position in core
+    expect_eq(city_zone_of(city_st, districts, gen), ZR_RESIDENTIAL_HIGH)
+    expect_eq(city_residents(city_st, districts, gen), 32)
+    let house = city_building(city_st, bl, c, 3)             # its own numbers
+    expect_eq(city_residents(city_st, districts, house), 6)
+    expect_eq(city_jobs(city_st, districts, house), 0)
+  }
+
+  test "a census of a cell, of the loaded cells, and of a range of the map one cell at a time" (city_st: mut CityState, bl: mut Buildings, districts: mut Districts) {
+    expect(load_districts(city_st, districts))
+    expect_eq(city_cell_in(city_st, bl, "metro", 0, 0), 12)
+    let cen = new CityCensus
+    city_census_cell(city_st, bl, districts, city_cell_of(city_st, 0, 0), cen)
+    expect_eq(cen.buildings, 12)
+    expect_eq(cen.residents, 229)
+    expect_eq(cen.jobs, 699)
+    expect_eq(cen.floor_area, 26748)
+    expect_eq(cen.homes, 11)
+    expect_eq(cen.workplaces, 9)
+    # the whole fixture: six chunks; the loaded cell stays loaded, the others come and go
+    city_census(city_st, bl, districts, "metro", -2, -1, 2, 2, cen)
+    expect_eq(cen.buildings, 72)
+    expect_eq(cen.residents, 2248)
+    expect_eq(cen.jobs, 2937)
+    expect_eq(city_cell_count(city_st), 1)
+    expect(city_cell_of(city_st, 0, 0) >= 0)
+  }
+
+  test "homes and workplaces near a point, by capacity and by the kind of land" (city_st: mut CityState, bl: mut Buildings, districts: mut Districts) {
+    expect(load_districts(city_st, districts))
+    expect_eq(city_stream(city_st, bl, "metro", 100.0, 100.0, 1), 9)
+    let hits = new CityHits
+    # within 70 m of (30, 30): the tower, the shop and the tower below, all with homes
+    expect_eq(city_homes_near(city_st, bl, districts, 30.0, 30.0, 70.0, "", hits), 3)
+    # the industrial shop has jobs and no homes
+    expect_eq(city_homes_near(city_st, bl, districts, 85.0, 90.0, 5.0, "", hits), 0)
+    expect_eq(city_workplaces_near(city_st, bl, districts, 85.0, 90.0, 5.0, "", hits), 1)
+    expect_eq(city_workplaces_near(city_st, bl, districts, 85.0, 90.0, 5.0, "industrial", hits), 1)
+    expect_eq(city_workplaces_near(city_st, bl, districts, 85.0, 90.0, 5.0, "mixed", hits), 0)
+    # the houses have homes and no jobs
+    expect_eq(city_workplaces_near(city_st, bl, districts, 195.0, 30.0, 5.0, "", hits), 0)
+    expect_eq(city_homes_near(city_st, bl, districts, 195.0, 30.0, 5.0, "", hits), 1)
+    # the nearest workplace to a point
+    expect(city_workplaces_near(city_st, bl, districts, 100.0, 100.0, 200.0, "industrial", hits) == 1)
+    let n = cityhits_nearest(hits)
+    expect_eq(city_building(city_st, bl, hits.cell[n], hits.row[n]).key, "b0_0_05")
+  }
+
+  test "instances for a renderer: id, kit or asset and node, transform, footprint, height" (city_st: mut CityState, bl: mut Buildings) {
+    expect_eq(city_cell_in(city_st, bl, "metro", 0, 0), 12)
+    let out = new CityInstances
+    expect_eq(city_instances(city_st, bl, city_cell_of(city_st, 0, 0), out), 12)
+    expect_eq(len(out.id), 12)
+    expect_eq(out.id[0], "b0_0_00")
+    expect_eq(out.kit[0], BK_TOWER)
+    expect_eq(out.model [0], "models/tower.glb")       # the kit's model stands in
+    expect_eq(out.node[0], "Tower")
+    expect(near(out.x[0], 30.0))
+    expect(near(out.yaw[0], 90.0))
+    expect(near(out.h[0], 42.0))
+    expect_eq(out.floors[0], 12)
+    expect_eq(out.kit[2], -1)                          # a generated building: its own asset and node
+    expect_eq(out.model [2], "blocks/core_1.glb")
+    expect_eq(out.node[2], "Bldg_2")
+    expect(near(out.scale[2], 1.0))
+    expect(near(out.w[2], 18.0))
+    cityinstances_clear(out)
+    expect_eq(len(out.id), 0)
+  }
+
+  # the block hash, worked out by a second implementation written from the README (Python, the numbers below)
+  test "the block hash is the one an independent implementation makes, and says when a block is stale" (blocks: mut CityBlocks) {
+    expect_eq(city_blocks_in(blocks, "metro", 0, 0), 0)
+    expect_eq(len(blocks.chunks[0].rows), 1)
+    let core1 = blocks.chunks[0].rows[0]
+    expect_eq(core1.key, "blk_core_1")
+    expect_eq(city_block_hash(core1), -172806178)
+    expect(city_block_fresh(core1))
+    expect_eq(city_blocks_in(blocks, "metro", 1, 0), 1)
+    let core2 = blocks.chunks[1].rows[0]
+    expect_eq(city_block_hash(core2), -1616549380)
+    expect(not city_block_fresh(core2))              # built_hash is one off: its knobs changed since
+    expect_eq(city_blocks_in(blocks, "metro", -1, 0), 2)
+    let west = blocks.chunks[2].rows[0]
+    expect_eq(city_block_hash(west), 150919449)
+    expect(not city_block_fresh(west))               # never built: no asset
+    expect_eq(city_blocks_in(blocks, "metro", 1, 1), 3)
+    expect_eq(city_block_hash(blocks.chunks[3].rows[0]), 1216658435)
+  }
+
+  test "the block hash moves with the preset, the seed, a knob, the outline to the centimetre, and not with the asset" {
+    let b = new CityBlock
+    b.preset = "midrise_block"
+    b.seed = 1
+    let v = new GenValue
+    v.name = "floors"
+    v.value = 6.0
+    push(b.values, v)
+    let p = new CityPt
+    p.x = 1.0
+    p.z = 2.0
+    push(b.pts, p)
+    let h0 = city_block_hash(b)
+    expect_eq(city_block_hash(b), h0)
+    b.asset = "blocks/x.glb"
+    expect_eq(city_block_hash(b), h0)
+    b.seed = 2
+    expect(city_block_hash(b) != h0)
+    b.seed = 1
+    v.value = 6.001
+    expect(city_block_hash(b) != h0)
+    v.value = 6.0004                                 # rounds to the thousandth: the same
+    expect_eq(city_block_hash(b), h0)
+    p.x = 1.004
+    expect_eq(city_block_hash(b), h0)
+    p.x = 1.02
+    expect(city_block_hash(b) != h0)
+    p.x = 1.0
+    b.preset = "suburb_houses"
+    expect(city_block_hash(b) != h0)
+    expect_eq(city_hash2(1, 0), city_hash2(1, 0))
+    expect(city_hash2(1, 0) != city_hash2(0, 1))
+  }
+
+  test "a block is checked against its preset's knobs before it is sent to Blender" {
+    let b = new CityBlock
+    let p1 = new CityPt
+    let p2 = new CityPt
+    let p3 = new CityPt
+    p2.x = 10.0
+    p3.z = 10.0
+    push(b.pts, p1)
+    push(b.pts, p2)
+    push(b.pts, p3)
+    expect(Text.contains(city_block_problem(b), "names no generator"))
+    b.preset = "nope"
+    expect(Text.contains(city_block_problem(b), "no generator preset nope"))
+    b.preset = "midrise_block"
+    expect_eq(city_block_problem(b), "")
+    let v = new GenValue
+    v.name = "wat"
+    push(b.values, v)
+    expect(Text.contains(city_block_problem(b), "no knob wat"))
+    v.name = "floors"
+    v.value = 20.0
+    expect(Text.contains(city_block_problem(b), "outside"))
+    v.value = 8.0
+    expect_eq(city_block_problem(b), "")
+    v.name = "style"
+    v.value = 5.0
+    expect(Text.contains(city_block_problem(b), "past the list"))
+    v.value = 2.0
+    expect_eq(city_block_problem(b), "")
+    v.name = "balconies"
+    v.value = 0.5
+    expect(Text.contains(city_block_problem(b), "toggle"))
+    v.value = 1.0
+    expect_eq(city_block_problem(b), "")
+    List.clear(b.pts)
+    expect(Text.contains(city_block_problem(b), "fewer than three"))
+    expect_eq(city_generator_find("suburb_houses"), BG_SUBURB_HOUSES)
+    expect_eq(city_generator_find("nope"), -1)
+  }
+
+  test "landmarks whose radius holds a point" (lm: mut Landmarks) {
+    expect(landmarks_load(lm, "metro"))
+    expect_eq(len(lm.rows), 2)
+    let out = new []int
+    expect_eq(city_landmarks_near(lm, 100.0, 100.0, out), 1)
+    expect_eq(out[0], 0)
+    expect_eq(lm.rows[0].building, "b0_0_00")
+    expect_eq(city_landmarks_near(lm, -150.0, 300.0, out), 1)
+    expect_eq(out[0], 1)
+    expect_eq(city_landmarks_near(lm, 1000.0, 1000.0, out), 0)
+  }
+}

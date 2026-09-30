@@ -1,0 +1,28 @@
+# kits.lres - buildings modelled whole
+tower {
+  model: "models/tower.glb"
+  node: "Tower"
+  w: 24.0
+  d: 24.0
+  floors: 12
+  floor_h: 3.5
+  tags: ["urban"]
+}
+shop {
+  model: "models/shop.glb"
+  node: "Shop"
+  w: 14.0
+  d: 10.0
+  floors: 3
+  floor_h: 4.0
+  tags: ["urban"]
+}
+house {
+  model: "models/house.glb"
+  node: "House"
+  w: 9.0
+  d: 8.0
+  floors: 2
+  floor_h: 3.0
+  tags: ["urban"]
+}

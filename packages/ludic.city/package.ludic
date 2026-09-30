@@ -1,0 +1,9 @@
+# ludic.city - a city made from what a designer painted: districts, arterials, town anchors, landmarks,
+# zoning rules and building kits in; streets (compatible with ludic.roads), blocks, lots, buildings,
+# props and head counts out, cell by cell (256 m), each cell on its own and the same every time. Integer math
+# only, so an editor reproduces every output exactly. Uses ludic.base and nothing else.
+package "ludic.city"
+version "0.1.0"
+kind source
+# the maps the tests read; a game's own package.ludic names its maps
+maps "tests/maps"

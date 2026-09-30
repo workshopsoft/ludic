@@ -1,0 +1,80 @@
+# blocks.ludic - the two small things the round trip through Blender needs from code: a hash of what the studio
+# sent (so a block whose outline or knobs changed since it was built is known to be stale) and a check of a block's
+# knob values against its generator preset's schema. Both are integer arithmetic a studio repeats exactly
+# (README: "The block hash").
+
+const CB_GOLDEN: int = -1640531527      # 0x9E3779B9
+const CB_C1: int = -2048144789          # 0x85EBCA6B
+const CB_C2: int = -1028477387          # 0xC2B2AE35
+const CB_FNV: int = 16777619
+
+function cb_mix(v: int) -> int {
+  var z = v
+  z = z ^ ((z >> 16) & 0xFFFF)
+  z = z * CB_C1
+  z = z ^ ((z >> 13) & 0x7FFFF)
+  z = z * CB_C2
+  z = z ^ ((z >> 16) & 0xFFFF)
+  return z
+}
+
+# mix(a * 16777619 + mix(b + 0x9E3779B9)), every operation a wrapping signed 32-bit one
+export function city_hash2(a: int, b: int) -> int { return cb_mix(a * CB_FNV + cb_mix(b + CB_GOLDEN)) }
+
+function cb_str(h: int, s: string) -> int {
+  var x = city_hash2(h, len(s))
+  for i in 0 .. len(s) { x = city_hash2(x, int(s[i])) }
+  return x
+}
+
+# a number to the nearest 1/scale, halves up: floor(v * scale + 0.5)
+function cb_round(v: float, scale: float) -> int { return int(Math.floor(v * scale + 0.5)) }
+
+# a hash of what a block's build depends on: the preset's key, the seed, every knob (its name, its value to the thousandth,
+# its text) in order, and every outline point to the centimetre. Start 17; each string folds its length then its bytes
+export function city_block_hash(b: CityBlock) -> int {
+  var h = cb_str(17, b.preset)
+  h = city_hash2(h, b.seed)
+  for i in 0 .. len(b.values) {
+    h = cb_str(h, b.values[i].name)
+    h = city_hash2(h, cb_round(b.values[i].value, 1000.0))
+    h = cb_str(h, b.values[i].text)
+  }
+  h = city_hash2(h, len(b.pts))
+  for i in 0 .. len(b.pts) {
+    h = city_hash2(h, cb_round(b.pts[i].x, 100.0))
+    h = city_hash2(h, cb_round(b.pts[i].z, 100.0))
+  }
+  return h
+}
+
+# has the block been built from what it says now: there is an asset, and the hash it was built from is this one
+export function city_block_fresh(b: CityBlock) -> bool { return b.asset != "" and b.built_hash == city_block_hash(b) }
+
+# the index into BuildingGenerators of a preset key, or -1
+export function city_generator_find(key: string) -> int {
+  for i in 0 .. BG_COUNT { if BuildingGenerators[i].key == key { return i } }
+  return -1
+}
+
+# the first thing wrong with a block before it is sent to Blender, or "" when it is ready: no preset, an unknown one, a
+# knob the preset does not have, a value outside its range (or a choice past its list, a toggle that is not 0 or 1), an
+# outline of fewer than three points
+export function city_block_problem(b: CityBlock) -> string {
+  if b.preset == "" { return "the block names no generator preset" }
+  let g = city_generator_find(b.preset)
+  if g < 0 { return `no generator preset {b.preset}` }
+  let gen = BuildingGenerators[g]
+  for i in 0 .. len(b.values) {
+    let v = b.values[i]
+    var p = -1
+    for k in 0 .. len(gen.params) { if gen.params[k].name == v.name { p = k } }
+    if p < 0 { return `preset {b.preset} has no knob {v.name}` }
+    let s = gen.params[p]
+    if s.type == "bool" and v.value != 0.0 and v.value != 1.0 { return `knob {v.name} is a toggle: 0 or 1, not {v.value}` }
+    if s.type == "choice" and (v.value < 0.0 or int(v.value) >= len(s.choices)) { return `knob {v.name} is a choice of {len(s.choices)}: {v.value} is past the list` }
+    if s.type != "bool" and s.type != "choice" and (v.value < s.min or v.value > s.max) { return `knob {v.name} is {v.value}, outside {s.min} .. {s.max}` }
+  }
+  if len(b.pts) < 3 { return "the outline has fewer than three points" }
+  return ""
+}

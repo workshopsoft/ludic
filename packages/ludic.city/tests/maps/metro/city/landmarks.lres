@@ -1,0 +1,18 @@
+# landmarks.lres - what the city is known by
+clock_tower {
+  kind: "tower"
+  x: 100.0
+  z: 100.0
+  yaw: 0.0
+  model: "models/clock.glb"
+  node: "Clock"
+  building: "b0_0_00"
+  radius: 80.0
+}
+old_bridge {
+  kind: "bridge"
+  x: -200.0
+  z: 300.0
+  model: "models/bridge.glb"
+  radius: 150.0
+}
