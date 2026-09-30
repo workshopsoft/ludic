@@ -1,0 +1,12 @@
+# registry_empty_def.ludic - `def Recipes from "empty.lres"` where the file has no entries yet: the
+# schema still lists the file among the registry's contributors (with no keys), so a tool knows
+# where its first row belongs.
+#
+# Running it prints:  1
+import "crafting"
+program RegistryEmptyDef {
+  def Recipes from "empty.lres"
+  entry {
+    print(`{RC_COUNT}`)
+  }
+}
