@@ -105,6 +105,7 @@ export property CityBlock {
   @Asset("gltf") asset: string = ""
   @Node(asset) node: string = ""
   built_hash: int = 0
+  source: string = ""                                     # the road edges the studio made it from ("r1 r2 r3"): making blocks again skips the ones it made
   pts: []CityPt = new []CityPt
 }
 

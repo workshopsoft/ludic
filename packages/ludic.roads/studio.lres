@@ -1,0 +1,27 @@
+# studio.lres - how Ludic Studio draws and edits this package's road network. The studio's file: the compiler never
+# reads it, and it counts only in a game that uses ludic.roads (the game has the RoadNodes and RoadSegs registries).
+# A game that binds a network of the same key in its own studio.lres replaces it.
+#
+# The entry has `world`, so it is a world part: the studio merges it into every world ("*") and a map's roads are
+# drawn, snapped, junctioned and edited with no binding in the game. `blocks` and `districts` name the world tables
+# of ludic.city (its studio.lres) that the studio's block maker writes and the district brush paints; a game
+# without ludic.city has roads and no blocks.
+#
+# Junction rules: `rules` is the values of RoadTurn.rule, the first being what a junction does when no turn row
+# says otherwise. A turn with no row runs by its node's control (free: priority, then first come). A row that
+# names no rule is RoadTurn's own default, yield: the safer reading of an unfinished row.
+roads_world {
+  title: "Roads"
+  world: "*"
+  networks: [
+    { key: "roads", title: "Roads", nodes: "RoadNodes", edges: "RoadSegs", points: "pts", node_control: "control",
+      lanes_fwd: "lanes_fwd", lanes_back: "lanes_back", lane_width: "lane_width", speed: "speed", priority: "priority", phase: "phase", kind: "kind",
+      turns: "RoadTurns", rules: "free yield stop forbid", blocks: "blocks", block_source: "source", districts: "districts", sidewalk: 2.0, snap: 4.0,
+      presets: [
+        { key: "street", title: "Street", set: "lanes_fwd=1 lanes_back=1 lane_width=3.5 speed=13.9 kind=street" },
+        { key: "avenue", title: "Avenue", set: "lanes_fwd=2 lanes_back=2 lane_width=3.5 speed=16.7 priority=2 kind=street" },
+        { key: "highway", title: "Highway", set: "lanes_fwd=3 lanes_back=3 lane_width=3.75 speed=27.8 priority=3 kind=highway" },
+      ],
+      color: 0x9AA5B1 },
+  ]
+}

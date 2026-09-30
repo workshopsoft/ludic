@@ -45,7 +45,9 @@ export registry RoadSegs of RoadSeg from "roads/segs.lres"
 
 # what the traffic may do at a node coming in along `from` and leaving along `to`: "free" (the node's
 # rule), "yield" (give way to any higher priority road), "stop" (come to a halt first) or "forbid" (never:
-# routes do not use it either)
+# routes do not use it either). A turn with no row at all is "free". A row that names no rule is "yield",
+# the safer reading of an unfinished row (the studio writes the rule it means, and removes a row it sets to
+# "free", which is what no row says)
 export property RoadTurn {
   key: string = ""
   @Ref(RoadNodes) node: string = ""

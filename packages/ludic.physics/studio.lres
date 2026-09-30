@@ -3,19 +3,25 @@
 # A game with a collider table of its own writes an entry of the same key in its studio.lres; its entry
 # replaces this one.
 
-# the colliders: each row's shape drawn as a primitive, over the model it stands for. A dome has no
-# primitive of its own in the studio yet, so it is left unbound (nothing drawn)
+# the colliders: each row's shape drawn as a primitive, over the model it stands for. A dome is half a
+# sphere, `radius` across and `height` tall, standing on its origin; `lift`, `x`, `z` and `yaw` move the
+# whole shape inside its body the way phys_shape_of does (raised, moved, turned about y)
 colliders {
   title: "Collider"
   table: "ColliderShapes"
   file: "model"
   node: "node"
   kind: "shape"
+  lift: "lift"
+  offset_x: "x"
+  offset_z: "z"
+  offset_yaw: "yaw"
   kinds: [
     { name: "cylinder", as: "cylinder", radius: "radius", height: "height" },
     { name: "box", as: "box", hx: "hx", hy: "hy", hz: "hz" },
     { name: "capsule", as: "capsule", radius: "radius", height: "height" },
     { name: "sphere", as: "sphere", radius: "radius" },
+    { name: "dome", as: "dome", radius: "radius", height: "height" },
     { name: "mesh", as: "mesh" },
     { name: "none", as: "none" },
   ]

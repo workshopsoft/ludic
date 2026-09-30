@@ -1,0 +1,25 @@
+# studio.lres - how Ludic Studio lays this package's data out in a world. The studio's file: the compiler never
+# reads it, and it counts only in a game that uses ludic.city (the game has the Districts, CityBlocks, Buildings
+# and Landmarks registries; a table whose registry the game lacks adds nothing). A game that binds a table of the
+# same key in its own studio.lres replaces it.
+#
+# The entry has `world`, so it is a world part: the studio merges it into every world ("*"; name a world's key to
+# narrow it) after that world's own tables, and a game with no table of its own sees the whole city.
+#   districts   polygons of land, each a zoning (region, drawn by zoning)
+#   blocks      the polygons a block is built on, each in a district (region; `source` notes the road edges a block
+#               was made from, so a second run of the studio's block maker skips what it made)
+#   buildings   a building as placed: the generated model it is (or, for a kit, none), its place and turn
+#   landmarks   what the city is known by
+city_world {
+  title: "City"
+  world: "*"
+  tables: [
+    { key: "districts", title: "Districts", table: "Districts", kind: "region", points: "pts", group: "zoning", label: "key", color: 0xB48CFF },
+    { key: "blocks", title: "Blocks", table: "CityBlocks", kind: "region", points: "pts", x: "x", z: "z", group: "district", label: "key", color: 0x88C0D0 },
+    { key: "buildings", title: "Buildings", table: "Buildings", kind: "point", model: "model", x: "x", z: "z", y: "y", yaw: "yaw", scale: "scale", group: "use", label: "key", color: 0xD4A373 },
+    { key: "landmarks", title: "Landmarks", table: "Landmarks", kind: "point", model: "model", x: "x", z: "z", yaw: "yaw", group: "kind", label: "key", color: 0xFFD166 },
+  ]
+  checks: [
+    { key: "buildings_in_districts", title: "Buildings inside a district", rule: "inside", table: "buildings", within: "districts", severity: "info" },
+  ]
+}

@@ -1,0 +1,20 @@
+# studio.lres - how Ludic Studio lays this package's map data out in a world. The studio's file: the compiler never
+# reads it, and it counts only in a game that uses ludic.render3d (the game has the WaterBodies and GroundLayers
+# registries). A game that binds the same key in its own studio.lres replaces it.
+#
+# The entry has `world`, so it is a world part: merged into every world ("*"), after that world's own entries.
+#   water    each WaterBodies row a plane at its level over (cx, cz) +- (ex, ez): drawn as water in the view, and the
+#            things standing under it counted as under water by the level checks
+#   ground   each GroundLayers row a painted density image, grown as ground_fill grows it (`fill: true`: the row's own
+#            step0..3, jitter, scale_lo/hi, scale_var, band_grow, wind_lo/hi, sink, trample, solid, foot, band1..3,
+#            reach and layer), so the brush's preview is the game's
+render3d_world {
+  title: "Renderer"
+  world: "*"
+  tables: [
+    { key: "water", title: "Water", table: "WaterBodies", kind: "region", shape: "rect", x: "cx", z: "cz", ex: "ex", ez: "ez", y: "level", water: true, label: "key", color: 0x3A7BB0 },
+  ]
+  ground: [
+    { key: "ground_layers", title: "Ground layers", table: "GroundLayers", density: "density", texel: "texel", kind: "kind", step: "step0", scale_lo: "scale_lo", scale_hi: "scale_hi", fill: true, color: 0xF2C94C },
+  ]
+}

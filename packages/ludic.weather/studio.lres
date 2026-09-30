@@ -1,0 +1,14 @@
+# studio.lres - the level editor's control over this package's wind. The studio's file: the compiler never reads it,
+# and it counts only in a game that uses ludic.weather (the game has the WeatherKinds registry).
+#
+# The entry has `world`, so it is a world part: a control merged into every world ("*"). Dragging it in the view
+# leans the ground cover as the wind would (0..1, scaled by each plant's own sway); "Set in data" writes it to the
+# `wind` of the first WeatherKinds row (the strength its spell builds toward: name another row with `row`). The game's
+# `weather key:string` verb picks a kind, not a strength, so this control has no live verb.
+weather_controls {
+  title: "Weather"
+  world: "*"
+  controls: [
+    { key: "wind", title: "Wind", kind: "wind", table: "WeatherKinds", field: "wind", min: 0.0, max: 1.0, step: 0.05 },
+  ]
+}

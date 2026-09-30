@@ -1,0 +1,14 @@
+# studio.lres - the level editor's control over this package's time. The studio's file: the compiler never reads it,
+# and it counts only in a game that uses ludic.clock (the game has the ClockSettings registry).
+#
+# The entry has `world`, so it is a world part: a control merged into every world ("*"). Dragging it in the view
+# moves the sun to that hour (a lighting preview); "Set in data" writes it to the first ClockSettings row's
+# start_hours (the hour a new trip starts at); and a running game that declares the devlink verb `time hour:float`
+# is set live, its clock moving as the slider does.
+clock_controls {
+  title: "Clock"
+  world: "*"
+  controls: [
+    { key: "hour", title: "Time of day", kind: "time", table: "ClockSettings", field: "start_hours", min: 0.0, max: 24.0, step: 0.25, unit: "h", verb: "time" },
+  ]
+}
