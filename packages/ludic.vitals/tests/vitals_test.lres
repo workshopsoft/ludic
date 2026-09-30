@@ -1,0 +1,18 @@
+# vitals_test.lres - the classes the tests play
+hero {
+  pools: [{ pool: VPOOL_HEALTH }, { pool: VPOOL_ARMOUR }, { pool: VPOOL_STAMINA }]
+  can_down: true, bleed_out: 10.0, downed_hurt: 0.0, revive_frac: 0.3, revive_invuln: 2.0
+  clip_down: "down", clip_bleed: "bleed", clip_death: "death", clip_revive: "revive", clip_respawn: "spawn"
+}
+ghoul {
+  pools: [{ pool: VPOOL_HEALTH, max: 60.0 }]
+  resists: [{ type: DTYPE_BULLET, mult: 0.5 }, { type: DTYPE_FIRE, mult: 0.0 }]
+  zones: [{ zone: HZONE_HEAD, mult: 0.5 }]
+}
+tank {
+  pools: [{ pool: VPOOL_HEALTH, max: 200.0 }, { pool: VPOOL_SHIELD }]
+}
+medic {
+  pools: [{ pool: VPOOL_HEALTH, regen_mult: 2.0, delay_mult: 0.5 }, { pool: VPOOL_STAMINA, start: 0.5 }]
+  can_down: true, bleed_out: 6.0, downed_hurt: 2.0, raise_dead: true, spawn_invuln: 3.0
+}

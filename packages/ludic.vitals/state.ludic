@@ -1,0 +1,167 @@
+# state.ludic - the actors (a row each, found by a handle), their pools, and the queues of facts
+# and of a guest's requests
+
+# one actor. `phase` is the machine's (@Machine(Vital.phase)): nothing else writes it.
+export property Vital {
+  phase: VitalPhase = VitalPhase.Alive
+  actor: int = -1
+  persist: bool = true                       # a save keeps it (the player's, not a pedestrian's)
+  kind: int = 0                              # its VitalClasses row
+  mine: bool = false                         # this machine owns it: its `predict` pools are simulated here
+  vals: []float = null                       # per pool: the amount
+  maxs: []float = null                       # per pool: the maximum; -1 when the actor has no such pool
+  wait: []float = null                       # per pool: seconds until regeneration starts
+  invuln: float = 0.0                        # seconds untouchable left; -1 for good
+  bleed: float = 0.0                         # seconds of bleeding out left while downed
+  dying: bool = false                        # life ran out and the machine has not run yet
+  quiet: bool = false                        # the next transition is a mirror's: no facts, no changes
+  frac_in: float = 0.0                       # what a revive action carried, for the machine's enter
+  by_in: int = -1
+  last_source: int = -1                      # the last to hurt it: for the fact of its death
+  last_type: int = -1
+  last_zone: int = -1
+  last_crit: bool = false
+  seq: int = 0                               # the last snapshot sent or taken
+}
+
+export state VitalsState {
+  vt__vitals: Table<Vital> = vt__table()
+  vt__by_actor: IntMap = imap_new()
+  vt__role: int = 0
+  vt__local: int = -1                        # the actor this machine plays (for a guest's requests)
+  vt__chain: []int = vt__chain_build()       # the pools damage reaches before life, in order
+  vt__life: int = vt__life_find()            # the pool of life, or -1
+  vt__r_absorbed: float = 0.0                # the last hit's numbers, read back by the verb
+  vt__r_life: float = 0.0
+  vt__r_crit: bool = false
+  vt__q: Queue<VitalsFact> = vt__queue()
+  vt__out: Queue<VitalsRequest> = vt__outbox()
+  vt__req_seq: int = 0
+}
+function vt__table() -> Table<Vital> { return table_new(0, 0) }
+function vt__queue() -> Queue<VitalsFact> { return queue_new("vitals.facts") }
+function vt__outbox() -> Queue<VitalsRequest> { return queue_new("vitals.outbox") }
+
+# absorbing pools, lowest order first (ties in registry order)
+@alloc_ok("built once, with the state")
+function vt__chain_build() -> []int {
+  let out = new []int
+  for p in 0 .. VPOOL_COUNT {
+    if VitalPools[p].absorb_order <= 0 { continue }
+    var at = len(out)
+    for k in 0 .. len(out) {
+      if VitalPools[out[k]].absorb_order > VitalPools[p].absorb_order {
+        at = k
+        break
+      }
+    }
+    push(out, p)
+    var j = len(out) - 1
+    while j > at {
+      out[j] = out[j - 1]
+      j -= 1
+    }
+    out[at] = p
+  }
+  return out
+}
+
+function vt__life_find() -> int {
+  for p in 0 .. VPOOL_COUNT { if VitalPools[p].life { return p } }
+  return -1
+}
+
+export function vitals_facts(vitals_st: VitalsState) -> Queue<VitalsFact> { return vitals_st.vt__q }
+export function vitals_outbox(vitals_st: VitalsState) -> Queue<VitalsRequest> { return vitals_st.vt__out }
+
+# a fact, from anywhere (the machine's functions only read the state, and a queue is not the state)
+function vt__fact(vitals_st: VitalsState, what: int, r: Vital, h: int) -> VitalsFact {
+  var f = q_rec(vitals_st.vt__q)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new VitalsFact
+    q_ring_add(vitals_st.vt__q, f)
+  }
+  f.what = what
+  f.vital = h
+  f.actor = -1
+  if r != null { f.actor = r.actor }
+  f.source = -1
+  f.pool = -1
+  f.type = -1
+  f.zone = -1
+  f.amount = 0.0
+  f.absorbed = 0.0
+  f.value = 0.0
+  f.crit = false
+  f.predicted = false
+  f.tag = 0
+  f.clip = ""
+  f.x = 0.0
+  f.y = 0.0
+  f.z = 0.0
+  q_push(vitals_st.vt__q, f)
+  return f
+}
+
+function vt__kind_ok(k: int) -> bool { return k >= 0 and k < VCLASS_COUNT }
+function vt__pool_ok(p: int) -> bool { return p >= 0 and p < VPOOL_COUNT }
+function vt__type_ok(t: int) -> bool { return t >= 0 and t < DTYPE_COUNT }
+function vt__zone_ok(z: int) -> bool { return z >= 0 and z < HZONE_COUNT }
+
+# the class's own numbers for a pool: null when the class has none (the pool's are used)
+function vt__cp(kind: int, p: int) -> ClassPool {
+  if not vt__kind_ok(kind) { return null }
+  let l = VitalClasses[kind].pools
+  if l == null { return null }
+  for i in 0 .. len(l) { if l[i].pool == p { return l[i] } }
+  return null
+}
+
+# does a class have the pool: all of them when it lists none
+function vt__class_has(kind: int, p: int) -> bool {
+  if not vt__kind_ok(kind) { return true }
+  let l = VitalClasses[kind].pools
+  if l == null or len(l) == 0 { return true }
+  return vt__cp(kind, p) != null
+}
+
+function vt__base_max(kind: int, p: int) -> float {
+  let cp = vt__cp(kind, p)
+  if cp != null and cp.max >= 0.0 { return cp.max }
+  return VitalPools[p].max
+}
+
+function vt__base_start(kind: int, p: int) -> float {
+  let cp = vt__cp(kind, p)
+  if cp != null and cp.start >= 0.0 { return cp.start }
+  return VitalPools[p].start
+}
+
+function vt__regen_of(kind: int, p: int) -> float {
+  let cp = vt__cp(kind, p)
+  if cp != null { return VitalPools[p].regen * cp.regen_mult }
+  return VitalPools[p].regen
+}
+
+function vt__delay_of(kind: int, p: int) -> float {
+  let cp = vt__cp(kind, p)
+  if cp != null { return VitalPools[p].regen_delay * cp.delay_mult }
+  return VitalPools[p].regen_delay
+}
+
+function vt__resist_of(kind: int, type: int) -> float {
+  if not vt__kind_ok(kind) { return 1.0 }
+  let l = VitalClasses[kind].resists
+  if l == null { return 1.0 }
+  for i in 0 .. len(l) { if l[i].type == type { return l[i].mult } }
+  return 1.0
+}
+
+function vt__zone_of(kind: int, zone: int) -> float {
+  if not vt__kind_ok(kind) { return 1.0 }
+  let l = VitalClasses[kind].zones
+  if l == null { return 1.0 }
+  for i in 0 .. len(l) { if l[i].zone == zone { return l[i].mult } }
+  return 1.0
+}

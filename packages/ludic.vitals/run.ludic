@@ -1,0 +1,53 @@
+# run.ludic - time passing: untouchable windows, regeneration after each pool's delay, the bleed-out
+# clock; then the machine's own transition (bled out)
+function vt__run_vital(vitals_st: mut VitalsState, v: Vital, h: int, dt: float) -> void {
+  if v.invuln > 0.0 {
+    v.invuln -= dt
+    if v.invuln <= 0.0 {
+      v.invuln = 0.0
+      vt__fact(vitals_st, VITALS_INVULN_END, v, h)
+    }
+  }
+  if v.phase == VitalPhase.Dead { return }
+  if v.phase == VitalPhase.Downed { v.bleed -= dt }
+  for p in 0 .. VPOOL_COUNT {
+    let m = v.maxs[p]
+    if m < 0.0 { continue }
+    var live = dt
+    if v.wait[p] > 0.0 {
+      if v.wait[p] >= dt {
+        v.wait[p] -= dt
+        continue
+      }
+      live = dt - v.wait[p]
+      v.wait[p] = 0.0
+    }
+    if v.phase == VitalPhase.Downed and not VitalPools[p].regen_downed { continue }
+    if v.dying { continue }
+    var rate = vt__regen_of(v.kind, p)
+    if rate == 0.0 { continue }
+    if VitalPools[p].regen_pct { rate = rate * m }
+    let was = v.vals[p]
+    var now = was + rate * live
+    if now > m { now = m }
+    if now <= 0.0 {
+      now = 0.0
+      if was > 0.0 and p != vitals_st.vt__life {
+        let f = vt__fact(vitals_st, VITALS_DEPLETED, v, h)
+        f.pool = p
+      }
+    }
+    v.vals[p] = now
+  }
+  if vitals_st.vt__role != VITALS_GUEST { vt__life_out(vitals_st, h, v) }
+}
+
+export function vitals_run(vitals_st: mut VitalsState, m: mut VitalsStepsMachine, dt: float) -> void {
+  let tb = vitals_st.vt__vitals
+  var i = 0
+  while i < tb_len(tb) {
+    vt__run_vital(vitals_st, tb_rec(tb, i), tb_handle(tb, i), dt)
+    i += 1
+  }
+  vitals_steps_tick(m, vitals_st)
+}

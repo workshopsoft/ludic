@@ -1,0 +1,258 @@
+# verbs.ludic - the only ways an actor's pools and phase change from outside: hurt, heal, spend,
+# restore, set_max, revive, kill (and respawn, invulnerable, set). The verbs that change the phase
+# dispatch an action the machine reduces at the end of the phase: call them in PH_SIMULATE and the state
+# is settled before PH_RESOLVE (a test calls drain_actions()). On a guest a verb that would change
+# authoritative state asks the host instead (the outbox) and, for a hit, shows predicted feedback.
+function vt__untouchable(v: Vital) -> bool {
+  if v.invuln != 0.0 { return true }
+  return not VitalsWorld.can_be_hurt(v.actor)
+}
+
+# a guest asks the host: the game sends what comes out of vitals_outbox()
+function vt__ask(vitals_st: mut VitalsState, kind: int, actor: int, pool: int, amount: float) -> void {
+  var q = q_rec(vitals_st.vt__out)
+  if q == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    q = new VitalsRequest
+    q_ring_add(vitals_st.vt__out, q)
+  }
+  vitals_st.vt__req_seq += 1
+  q.kind = kind
+  q.actor = actor
+  q.pool = pool
+  q.amount = amount
+  q.seq = vitals_st.vt__req_seq
+  q_push(vitals_st.vt__out, q)
+}
+
+function vt__local_pool(vitals_st: VitalsState, v: Vital, p: int) -> bool {
+  return v.mine and VitalPools[p].predict
+}
+
+# the life pool's end: empty life downs or kills (the machine does it at the end of the phase)
+function vt__life_out(vitals_st: mut VitalsState, h: int, v: Vital) -> void {
+  let life = vitals_st.vt__life
+  if life < 0 or v.phase != VitalPhase.Alive or v.dying or v.vals[life] > 0.0 { return }
+  v.dying = true
+  let f = vt__fact(vitals_st, VITALS_DEPLETED, v, h)
+  f.pool = life
+  f.source = v.last_source
+  f.type = v.last_type
+  if vt__kind_ok(v.kind) and VitalClasses[v.kind].can_down {
+    dispatch VitalsDownIn { who: h }
+  } else {
+    dispatch VitalsDieIn { who: h }
+  }
+}
+
+# a hit: `source` did it (the actor, -1 for the world), `tag` is the game's number for the act, carried
+# to the facts. Returns what it took from every pool (0 when nothing: untouchable, dead, immune)
+export function vitals_hurt(vitals_st: mut VitalsState, h: int, source: int, amount: float, type: int, zone: int, tag: int) -> float {
+  let v = vt__vital(vitals_st, h)
+  if v == null or amount <= 0.0 or v.phase == VitalPhase.Dead or v.dying { return 0.0 }
+  if vitals_st.vt__role == VITALS_GUEST {
+    if v.phase != VitalPhase.Alive or vt__untouchable(v) { return 0.0 }
+    let n = vt__run_hit(vitals_st, h, v, amount, type, zone, false)
+    if n > 0.0 {
+      let f = vt__fact(vitals_st, VITALS_DAMAGED, v, h)
+      f.source = source
+      f.pool = vitals_st.vt__life
+      f.type = type
+      f.zone = zone
+      f.amount = n
+      f.absorbed = vitals_st.vt__r_absorbed
+      f.crit = vitals_st.vt__r_crit
+      f.predicted = true
+      f.tag = tag
+      if vitals_st.vt__life >= 0 { f.value = v.vals[vitals_st.vt__life] - vitals_st.vt__r_life }
+    }
+    return n
+  }
+  if v.phase == VitalPhase.Downed {
+    if not vt__kind_ok(v.kind) or VitalClasses[v.kind].downed_hurt <= 0.0 or vt__untouchable(v) { return 0.0 }
+    v.last_source = source
+    v.last_type = type
+    v.last_zone = zone
+    v.bleed -= amount * VitalClasses[v.kind].downed_hurt
+    let f = vt__fact(vitals_st, VITALS_DAMAGED, v, h)
+    f.source = source
+    f.pool = vitals_st.vt__life
+    f.type = type
+    f.zone = zone
+    f.amount = amount
+    f.tag = tag
+    if v.bleed <= 0.0 {
+      v.bleed = 0.0
+      v.dying = true
+      dispatch VitalsDieIn { who: h }
+    }
+    return amount
+  }
+  if vt__untouchable(v) {
+    let b = vt__run_hit(vitals_st, h, v, amount, type, zone, false)
+    let f = vt__fact(vitals_st, VITALS_BLOCKED, v, h)
+    f.source = source
+    f.type = type
+    f.zone = zone
+    f.amount = b
+    f.tag = tag
+    return 0.0
+  }
+  v.last_source = source
+  v.last_type = type
+  v.last_zone = zone
+  let n = vt__run_hit(vitals_st, h, v, amount, type, zone, true)
+  v.last_crit = vitals_st.vt__r_crit
+  if n > 0.0 {
+    let f = vt__fact(vitals_st, VITALS_DAMAGED, v, h)
+    f.source = source
+    f.pool = vitals_st.vt__life
+    f.type = type
+    f.zone = zone
+    f.amount = n
+    f.absorbed = vitals_st.vt__r_absorbed
+    f.crit = vitals_st.vt__r_crit
+    f.tag = tag
+    if vitals_st.vt__life >= 0 { f.value = v.vals[vitals_st.vt__life] }
+  }
+  vt__life_out(vitals_st, h, v)
+  return n
+}
+
+# gives a pool something back, up to its maximum; returns what it took (0 when full, dead or absent)
+export function vitals_restore(vitals_st: mut VitalsState, h: int, pool: int, amount: float) -> float {
+  let v = vt__vital(vitals_st, h)
+  if v == null or amount <= 0.0 or not vt__pool_ok(pool) or v.maxs[pool] < 0.0 { return 0.0 }
+  if v.phase != VitalPhase.Alive or v.dying { return 0.0 }
+  if vitals_st.vt__role == VITALS_GUEST {
+    vt__ask(vitals_st, VREQ_RESTORE, v.actor, pool, amount)
+    if not vt__local_pool(vitals_st, v, pool) { return 0.0 }
+  }
+  let room = v.maxs[pool] - v.vals[pool]
+  let given = Math.min(room, amount)
+  if given <= 0.0 { return 0.0 }
+  v.vals[pool] = v.vals[pool] + given
+  let f = vt__fact(vitals_st, VITALS_RESTORED, v, h)
+  f.pool = pool
+  f.amount = given
+  f.value = v.vals[pool]
+  f.predicted = vitals_st.vt__role == VITALS_GUEST
+  return given
+}
+
+# life back (a medkit, a heal spell)
+export function vitals_heal(vitals_st: mut VitalsState, h: int, amount: float) -> float {
+  if vitals_st.vt__life < 0 { return 0.0 }
+  let v = vt__vital(vitals_st, h)
+  if v != null and vitals_st.vt__role == VITALS_GUEST and not vt__local_pool(vitals_st, v, vitals_st.vt__life) {
+    if v.phase == VitalPhase.Alive and not v.dying { vt__ask(vitals_st, VREQ_HEAL, v.actor, vitals_st.vt__life, amount) }
+    return 0.0
+  }
+  return vitals_restore(vitals_st, h, vitals_st.vt__life, amount)
+}
+
+# can the pool pay (alive, present, enough)
+export function vitals_can_spend(vitals_st: VitalsState, h: int, pool: int, amount: float) -> bool {
+  let v = vt__vital(vitals_st, h)
+  if v == null or not vt__pool_ok(pool) or v.maxs[pool] < 0.0 or v.phase != VitalPhase.Alive { return false }
+  return v.vals[pool] >= amount
+}
+
+# spends from a pool, all of it or none (stamina, fuel, a charge); a pool that has it says true
+export function vitals_spend(vitals_st: mut VitalsState, h: int, pool: int, amount: float) -> bool {
+  let v = vt__vital(vitals_st, h)
+  if v == null or not vt__pool_ok(pool) or v.maxs[pool] < 0.0 or v.phase != VitalPhase.Alive or v.dying { return false }
+  if amount <= 0.0 { return true }
+  if vitals_st.vt__role == VITALS_GUEST {
+    if not vt__local_pool(vitals_st, v, pool) {
+      vt__ask(vitals_st, VREQ_SPEND, v.actor, pool, amount)
+      return false
+    }
+    vt__ask(vitals_st, VREQ_SPEND, v.actor, pool, amount)
+  }
+  if v.vals[pool] < amount { return false }
+  v.vals[pool] = v.vals[pool] - amount
+  if VitalPools[pool].delay_on_spend { vt__touch(v, pool) }
+  if v.vals[pool] <= 0.0 {
+    v.vals[pool] = 0.0
+    let f = vt__fact(vitals_st, VITALS_DEPLETED, v, h)
+    f.pool = pool
+  }
+  if pool == vitals_st.vt__life { vt__life_out(vitals_st, h, v) }
+  return true
+}
+
+# a pool's maximum (armour upgrades, a level): the amount keeps its share when `keep_share`, else stays
+# as it is (clamped). A pool the actor did not have begins empty. Host and solo only
+export function vitals_set_max(vitals_st: mut VitalsState, h: int, pool: int, max: float, keep_share: bool) -> bool {
+  let v = vt__vital(vitals_st, h)
+  if v == null or not vt__pool_ok(pool) or max < 0.0 or vitals_st.vt__role == VITALS_GUEST { return false }
+  let was = v.maxs[pool]
+  v.maxs[pool] = max
+  if was < 0.0 {
+    v.vals[pool] = 0.0
+  } else if keep_share and was > 0.0 {
+    v.vals[pool] = v.vals[pool] / was * max
+  }
+  if v.vals[pool] > max { v.vals[pool] = max }
+  return true
+}
+
+# a pool straight to a number, clamped (a cheat, a scripted scene). Host and solo only
+export function vitals_set(vitals_st: mut VitalsState, h: int, pool: int, value: float) -> bool {
+  let v = vt__vital(vitals_st, h)
+  if v == null or not vt__pool_ok(pool) or v.maxs[pool] < 0.0 or vitals_st.vt__role == VITALS_GUEST { return false }
+  v.vals[pool] = Math.clamp(value, 0.0, v.maxs[pool])
+  return true
+}
+
+# up again, with `frac` of its life (0: the class's own share); `by` is the reviver's actor. A downed actor
+# always may be revived, a dead one only when its class says so. Returns why not, or VITALS_OK
+export function vitals_revive(vitals_st: mut VitalsState, h: int, by: int, frac: float) -> int {
+  let v = vt__vital(vitals_st, h)
+  if v == null { return VITALS_NO_SUCH }
+  if v.phase == VitalPhase.Alive { return VITALS_WRONG_PHASE }
+  if v.phase == VitalPhase.Dead and not (vt__kind_ok(v.kind) and VitalClasses[v.kind].raise_dead) { return VITALS_WRONG_PHASE }
+  if vitals_st.vt__role == VITALS_GUEST {
+    vt__ask(vitals_st, VREQ_REVIVE, v.actor, -1, frac)
+    return VITALS_NOT_HOST
+  }
+  dispatch VitalsReviveIn { who: h, frac: frac, by: by }
+  return VITALS_OK
+}
+
+# dead now, whatever it had left (a fall out of the world, a scripted death); `type` is the cause's damage type
+export function vitals_kill(vitals_st: mut VitalsState, h: int, source: int, type: int) -> bool {
+  let v = vt__vital(vitals_st, h)
+  if v == null or v.phase == VitalPhase.Dead or v.dying { return false }
+  if vitals_st.vt__role == VITALS_GUEST {
+    vt__ask(vitals_st, VREQ_KILL, v.actor, -1, 0.0)
+    return false
+  }
+  v.last_source = source
+  v.last_type = type
+  v.last_zone = -1
+  v.dying = true
+  dispatch VitalsDieIn { who: h }
+  return true
+}
+
+# dead to alive with every pool at its start (the respawn wait is ludic.respawn's, not vitals')
+export function vitals_respawn(vitals_st: mut VitalsState, h: int) -> bool {
+  let v = vt__vital(vitals_st, h)
+  if v == null or v.phase != VitalPhase.Dead { return false }
+  if vitals_st.vt__role == VITALS_GUEST {
+    vt__ask(vitals_st, VREQ_RESPAWN, v.actor, -1, 0.0)
+    return false
+  }
+  dispatch VitalsRespawnIn { who: h }
+  return true
+}
+
+# untouchable for `seconds` (-1: for good, 0: no longer)
+export function vitals_invulnerable(vitals_st: mut VitalsState, h: int, seconds: float) -> bool {
+  let v = vt__vital(vitals_st, h)
+  if v == null { return false }
+  v.invuln = seconds
+  return true
+}

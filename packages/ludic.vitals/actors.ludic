@@ -1,0 +1,78 @@
+# actors.ludic - the actors that hold pools: a row each, found by the game's number for the actor
+function vt__vital(vitals_st: VitalsState, h: int) -> Vital {
+  let r = tb_row(vitals_st.vt__vitals, h)
+  if r < 0 { return null }
+  return tb_rec(vitals_st.vt__vitals, r)
+}
+
+export function vitals_of(vitals_st: VitalsState, actor: int) -> int {
+  let h = imap_get(vitals_st.vt__by_actor, actor, -1)
+  if h < 0 or tb_row(vitals_st.vt__vitals, h) < 0 { return -1 }
+  return h
+}
+
+export function vitals_count(vitals_st: VitalsState) -> int { return tb_len(vitals_st.vt__vitals) }
+
+export function vitals_actor(vitals_st: VitalsState, h: int) -> int {
+  let r = vt__vital(vitals_st, h)
+  if r == null { return -1 }
+  return r.actor
+}
+
+# every pool an actor of the class has, at its start; the ones it has not, at -1
+function vt__fill_pools(v: Vital) -> void {
+  for p in 0 .. VPOOL_COUNT {
+    if not vt__class_has(v.kind, p) {
+      v.maxs[p] = -1.0
+      v.vals[p] = 0.0
+      v.wait[p] = 0.0
+      continue
+    }
+    if v.maxs[p] < 0.0 { v.maxs[p] = vt__base_max(v.kind, p) }
+    v.vals[p] = v.maxs[p] * vt__base_start(v.kind, p)
+    v.wait[p] = 0.0
+  }
+}
+
+@alloc_ok("an actor added: an event, not a frame")
+function vt__make(vitals_st: mut VitalsState, actor: int, kind: int, persist: bool, phase: VitalPhase) -> int {
+  let r = new Vital { phase: phase }
+  r.actor = actor
+  r.kind = kind
+  r.persist = persist
+  r.vals = new []float
+  r.maxs = new []float
+  r.wait = new []float
+  for p in 0 .. VPOOL_COUNT {
+    push(r.vals, 0.0)
+    push(r.maxs, -1.0)
+    push(r.wait, 0.0)
+  }
+  vt__fill_pools(r)
+  if vt__kind_ok(kind) { r.invuln = VitalClasses[kind].spawn_invuln }
+  let h = tb_add(vitals_st.vt__vitals, r)
+  imap_put(vitals_st.vt__by_actor, actor, h)
+  return h
+}
+
+# an actor starts to hold pools as a class (a VitalClasses row); returns its handle (the same if it already does)
+export function vitals_add(vitals_st: mut VitalsState, actor: int, kind: int, persist: bool) -> int {
+  let have = vitals_of(vitals_st, actor)
+  if have >= 0 { return have }
+  return vt__make(vitals_st, actor, kind, persist, VitalPhase.Alive)
+}
+
+export function vitals_remove(vitals_st: mut VitalsState, h: int) -> bool {
+  let r = vt__vital(vitals_st, h)
+  if r == null { return false }
+  imap_del(vitals_st.vt__by_actor, r.actor)
+  return tb_remove(vitals_st.vt__vitals, h)
+}
+
+# this machine owns the actor: its `predict` pools are simulated here (a guest's own player)
+export function vitals_set_mine(vitals_st: mut VitalsState, h: int, mine: bool) -> bool {
+  let r = vt__vital(vitals_st, h)
+  if r == null { return false }
+  r.mine = mine
+  return true
+}

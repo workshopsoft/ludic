@@ -1,0 +1,82 @@
+# queries.ludic - what the game asks of an actor each frame: its phase, its pools, how long untouchable
+export function vitals_phase(vitals_st: VitalsState, h: int) -> VitalPhase {
+  let v = vt__vital(vitals_st, h)
+  if v == null { return VitalPhase.Dead }
+  return v.phase
+}
+
+export function vitals_alive(vitals_st: VitalsState, h: int) -> bool { return vitals_phase(vitals_st, h) == VitalPhase.Alive }
+export function vitals_downed(vitals_st: VitalsState, h: int) -> bool { return vitals_phase(vitals_st, h) == VitalPhase.Downed }
+export function vitals_dead(vitals_st: VitalsState, h: int) -> bool { return vitals_phase(vitals_st, h) == VitalPhase.Dead }
+
+export function vitals_has_pool(vitals_st: VitalsState, h: int, pool: int) -> bool {
+  let v = vt__vital(vitals_st, h)
+  return v != null and vt__pool_ok(pool) and v.maxs[pool] >= 0.0
+}
+
+export function vitals_value(vitals_st: VitalsState, h: int, pool: int) -> float {
+  let v = vt__vital(vitals_st, h)
+  if v == null or not vt__pool_ok(pool) or v.maxs[pool] < 0.0 { return 0.0 }
+  return v.vals[pool]
+}
+
+export function vitals_max(vitals_st: VitalsState, h: int, pool: int) -> float {
+  let v = vt__vital(vitals_st, h)
+  if v == null or not vt__pool_ok(pool) or v.maxs[pool] < 0.0 { return 0.0 }
+  return v.maxs[pool]
+}
+
+# 0..1 of the maximum: for a bar
+export function vitals_fraction(vitals_st: VitalsState, h: int, pool: int) -> float {
+  let m = vitals_max(vitals_st, h, pool)
+  if m <= 0.0 { return 0.0 }
+  return vitals_value(vitals_st, h, pool) / m
+}
+
+# the life pool (health) of an actor, and its maximum
+export function vitals_health(vitals_st: VitalsState, h: int) -> float {
+  if vitals_st.vt__life < 0 { return 0.0 }
+  return vitals_value(vitals_st, h, vitals_st.vt__life)
+}
+export function vitals_health_max(vitals_st: VitalsState, h: int) -> float {
+  if vitals_st.vt__life < 0 { return 0.0 }
+  return vitals_max(vitals_st, h, vitals_st.vt__life)
+}
+export function vitals_life_pool(vitals_st: VitalsState) -> int { return vitals_st.vt__life }
+
+# seconds of bleeding out left while downed
+export function vitals_bleed_left(vitals_st: VitalsState, h: int) -> float {
+  let v = vt__vital(vitals_st, h)
+  if v == null or v.phase != VitalPhase.Downed { return 0.0 }
+  return v.bleed
+}
+
+# seconds untouchable left (-1: for good)
+export function vitals_invuln_left(vitals_st: VitalsState, h: int) -> float {
+  let v = vt__vital(vitals_st, h)
+  if v == null { return 0.0 }
+  return v.invuln
+}
+
+# may it be hurt now: alive and not untouchable (by a window here or by the world's own say)
+export function vitals_can_hurt(vitals_st: VitalsState, h: int) -> bool {
+  let v = vt__vital(vitals_st, h)
+  if v == null or v.phase != VitalPhase.Alive or v.dying { return false }
+  return not vt__untouchable(v)
+}
+
+export function vitals_class(vitals_st: VitalsState, h: int) -> int {
+  let v = vt__vital(vitals_st, h)
+  if v == null { return -1 }
+  return v.kind
+}
+
+# the damage a hit of `amount` would be before armour: zone and resistance only (for an aim assist or a
+# scoreboard's "effective damage")
+export function vitals_scaled(vitals_st: VitalsState, h: int, amount: float, type: int, zone: int) -> float {
+  let v = vt__vital(vitals_st, h)
+  if v == null { return 0.0 }
+  var d = amount
+  if vt__zone_ok(zone) and (not vt__type_ok(type) or DamageTypes[type].zoned) { d = d * HitZones[zone].mult * vt__zone_of(v.kind, zone) }
+  return d * vt__resist_of(v.kind, type) * VitalsWorld.resist_mult(v.actor, type)
+}

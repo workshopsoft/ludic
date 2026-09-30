@@ -1,0 +1,470 @@
+# vitals_test.ludic - the damage pipeline (zone, resistance, armour by type fraction and order, overflow,
+# pierce), regeneration after its delay, the phase machine (down, bleed out, revive, raise, respawn),
+# untouchable windows, spending, maxima, a guest's mirror and its requests, and the save
+import "ludic.vitals"
+import "ludic.base"
+program VitalsTest {
+  numbers float
+
+  def VitalPools health { life: true, max: 100.0, regen: 5.0, regen_delay: 3.0 }
+  def VitalPools armour { absorb_order: 2, absorb: 0.6, max: 100.0 }
+  def VitalPools shield { absorb_order: 1, absorb: 1.0, overflow: false, max: 40.0, regen: 10.0, regen_delay: 2.0 }
+  def VitalPools stamina { max: 100.0, regen: 20.0, regen_delay: 1.0, delay_on_spend: true, delay_on_damage: false, predict: true, reconcile: 5.0 }
+  def DamageTypes bullet { }
+  def DamageTypes fall { pierce: 1.0, zoned: false }
+  def DamageTypes fire { pierce: 0.5 }
+  def HitZones body { mult: 1.0 }
+  def HitZones head { mult: 2.0, crit: true }
+  def HitZones limb { mult: 0.5 }
+  def VitalClasses from "vitals_test.lres"
+
+  state Arena {
+    hurtable: bool = true
+    buff: float = 1.0
+    allow: bool = true
+    snap: []float = null
+  }
+  function a_can(arena_st: Arena, a: int) -> bool { return arena_st.hurtable }
+  function a_resist(arena_st: Arena, a: int, ty: int) -> float { return arena_st.buff }
+  function a_x(arena_st: Arena, a: int) -> float { return 10.0 + float(a) }
+  function a_allow(arena_st: Arena, sender: int, kind: int, target: int) -> bool { return arena_st.allow }
+  bind VitalsWorld { can_be_hurt: fn a_can, resist_mult: fn a_resist, x: fn a_x, allow_request: fn a_allow }
+
+  function fresh(vitals_st: mut VitalsState, arena_st: mut Arena) -> void {
+    vitals_reset(vitals_st)
+    arena_st.hurtable = true
+    arena_st.buff = 1.0
+    arena_st.allow = true
+    arena_st.snap = new []float
+  }
+  function step(vitals_st: mut VitalsState, m: mut VitalsStepsMachine, dt: float) -> void {
+    vitals_run(vitals_st, m, dt)
+    drain_actions()
+  }
+  function near(a: float, b: float) -> bool { return Math.abs(a - b) < 0.001 }
+  function count_facts(vitals_st: VitalsState, what: int) -> int {
+    let fs = q_drain(vitals_facts(vitals_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+  function first_fact(vitals_st: VitalsState, what: int) -> VitalsFact {
+    let fs = q_drain(vitals_facts(vitals_st))
+    for i in 0 .. len(fs) { if fs[i].what == what { return fs[i] } }
+    return null
+  }
+  function hero(vitals_st: mut VitalsState) -> int {
+    let h = vitals_add(vitals_st, 1, VCLASS_HERO, true)
+    q_clear(vitals_facts(vitals_st))
+    return h
+  }
+
+  test "pools begin at their start share, and a class lists the pools it has" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    expect(near(vitals_value(vitals_st, h, VPOOL_HEALTH), 100.0))
+    expect(near(vitals_value(vitals_st, h, VPOOL_ARMOUR), 100.0))
+    expect(not vitals_has_pool(vitals_st, h, VPOOL_SHIELD))
+    let g = vitals_add(vitals_st, 2, VCLASS_GHOUL, false)
+    expect(near(vitals_max(vitals_st, g, VPOOL_HEALTH), 60.0))
+    expect(not vitals_has_pool(vitals_st, g, VPOOL_ARMOUR))
+    let md = vitals_add(vitals_st, 3, VCLASS_MEDIC, false)
+    expect(near(vitals_value(vitals_st, md, VPOOL_STAMINA), 50.0))
+    expect_eq(vitals_of(vitals_st, 2), g)
+    expect_eq(vitals_of(vitals_st, 99), -1)
+    expect_eq(vitals_add(vitals_st, 2, VCLASS_TANK, false), g)
+  }
+
+  test "armour takes its share of the hit and life the rest" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    let n = vitals_hurt(vitals_st, h, 5, 50.0, DTYPE_BULLET, HZONE_BODY, 0)
+    expect(near(n, 50.0))
+    expect(near(vitals_value(vitals_st, h, VPOOL_ARMOUR), 70.0))
+    expect(near(vitals_value(vitals_st, h, VPOOL_HEALTH), 80.0))
+    let f = first_fact(vitals_st, VITALS_DAMAGED)
+    expect(f != null)
+    expect(near(f.amount, 50.0))
+    expect(near(f.absorbed, 30.0))
+    expect_eq(f.source, 5)
+    expect_eq(f.pool, VPOOL_HEALTH)
+  }
+
+  test "what armour cannot hold overflows into life, and an empty armour is nothing" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_set(vitals_st, h, VPOOL_ARMOUR, 10.0)
+    vitals_hurt(vitals_st, h, -1, 50.0, DTYPE_BULLET, HZONE_BODY, 0)
+    expect(near(vitals_value(vitals_st, h, VPOOL_ARMOUR), 0.0))
+    expect(near(vitals_value(vitals_st, h, VPOOL_HEALTH), 60.0))
+    expect_eq(count_facts(vitals_st, VITALS_DEPLETED), 1)
+    vitals_hurt(vitals_st, h, -1, 10.0, DTYPE_BULLET, HZONE_BODY, 0)
+    expect(near(vitals_value(vitals_st, h, VPOOL_HEALTH), 50.0))
+  }
+
+  test "pierce skips the absorbers: a fall goes to life, fire half and half" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_hurt(vitals_st, h, -1, 20.0, DTYPE_FALL, HZONE_HEAD, 0)
+    expect(near(vitals_value(vitals_st, h, VPOOL_ARMOUR), 100.0))
+    expect(near(vitals_value(vitals_st, h, VPOOL_HEALTH), 80.0))
+    vitals_hurt(vitals_st, h, -1, 20.0, DTYPE_FIRE, HZONE_BODY, 0)
+    expect(near(vitals_value(vitals_st, h, VPOOL_HEALTH), 80.0 - 10.0 - 4.0))
+    expect(near(vitals_value(vitals_st, h, VPOOL_ARMOUR), 100.0 - 6.0))
+  }
+
+  test "a shield that does not overflow swallows a blow it cannot hold; absorption goes shield first" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let t = vitals_add(vitals_st, 4, VCLASS_TANK, false)
+    vitals_hurt(vitals_st, t, -1, 100.0, DTYPE_BULLET, HZONE_BODY, 0)
+    expect(near(vitals_value(vitals_st, t, VPOOL_SHIELD), 0.0))
+    expect(near(vitals_value(vitals_st, t, VPOOL_HEALTH), 200.0))
+    vitals_hurt(vitals_st, t, -1, 30.0, DTYPE_BULLET, HZONE_BODY, 0)
+    expect(near(vitals_value(vitals_st, t, VPOOL_HEALTH), 170.0))
+  }
+
+  test "a hit zone multiplies, a crit says so, and a class scales zones and resists types" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let g = vitals_add(vitals_st, 2, VCLASS_GHOUL, false)
+    q_clear(vitals_facts(vitals_st))
+    let n = vitals_hurt(vitals_st, g, 1, 20.0, DTYPE_BULLET, HZONE_HEAD, 7)
+    expect(near(n, 20.0 * 2.0 * 0.5 * 0.5))
+    let f = first_fact(vitals_st, VITALS_DAMAGED)
+    expect(f.crit)
+    expect_eq(f.zone, HZONE_HEAD)
+    expect_eq(f.tag, 7)
+    expect(near(vitals_hurt(vitals_st, g, 1, 50.0, DTYPE_FIRE, HZONE_BODY, 0), 0.0))
+    expect(near(vitals_scaled(vitals_st, g, 10.0, DTYPE_BULLET, HZONE_LIMB), 2.5))
+    arena_st.buff = 0.5
+    expect(near(vitals_hurt(vitals_st, g, 1, 20.0, DTYPE_BULLET, HZONE_BODY, 0), 5.0))
+  }
+
+  test "a preview is the pipeline without the damage" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    let n = vitals_preview_hurt(vitals_st, h, 50.0, DTYPE_BULLET, HZONE_HEAD)
+    expect(near(n, 100.0))
+    expect(near(vitals_health(vitals_st, h), 100.0))
+    expect(near(vitals_hurt(vitals_st, h, -1, 50.0, DTYPE_BULLET, HZONE_HEAD, 0), n))
+  }
+
+  test "pools come back after their delay, and a use or a hit restarts it" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_hurt(vitals_st, h, -1, 40.0, DTYPE_FALL, HZONE_BODY, 0)
+    step(vitals_st, m, 2.0)
+    expect(near(vitals_health(vitals_st, h), 60.0))
+    step(vitals_st, m, 2.0)
+    expect(near(vitals_health(vitals_st, h), 65.0))
+    vitals_hurt(vitals_st, h, -1, 5.0, DTYPE_FALL, HZONE_BODY, 0)
+    step(vitals_st, m, 2.0)
+    expect(near(vitals_health(vitals_st, h), 60.0))
+    expect(vitals_spend(vitals_st, h, VPOOL_STAMINA, 60.0))
+    step(vitals_st, m, 0.5)
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 40.0))
+    step(vitals_st, m, 1.0)
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 50.0))
+    step(vitals_st, m, 10.0)
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 100.0))
+    let md = vitals_add(vitals_st, 3, VCLASS_MEDIC, false)
+    vitals_invulnerable(vitals_st, md, 0.0)
+    vitals_hurt(vitals_st, md, -1, 50.0, DTYPE_FALL, HZONE_BODY, 0)
+    step(vitals_st, m, 1.5)
+    expect(near(vitals_health(vitals_st, md), 50.0))
+    step(vitals_st, m, 1.0)
+    expect(near(vitals_health(vitals_st, md), 60.0))
+  }
+
+  test "spending is all or nothing; restoring stops at the maximum; a maximum keeps its share" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    expect(not vitals_spend(vitals_st, h, VPOOL_STAMINA, 101.0))
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 100.0))
+    expect(vitals_can_spend(vitals_st, h, VPOOL_STAMINA, 100.0))
+    expect(vitals_spend(vitals_st, h, VPOOL_STAMINA, 100.0))
+    expect_eq(count_facts(vitals_st, VITALS_DEPLETED), 1)
+    expect(near(vitals_restore(vitals_st, h, VPOOL_STAMINA, 500.0), 100.0))
+    expect(not vitals_spend(vitals_st, h, VPOOL_SHIELD, 1.0))
+    vitals_hurt(vitals_st, h, -1, 50.0, DTYPE_FALL, HZONE_BODY, 0)
+    expect(vitals_set_max(vitals_st, h, VPOOL_HEALTH, 200.0, true))
+    expect(near(vitals_health(vitals_st, h), 100.0))
+    expect(vitals_set_max(vitals_st, h, VPOOL_HEALTH, 40.0, false))
+    expect(near(vitals_health(vitals_st, h), 40.0))
+    expect(vitals_set_max(vitals_st, h, VPOOL_SHIELD, 25.0, false))
+    expect(near(vitals_value(vitals_st, h, VPOOL_SHIELD), 0.0))
+    expect(near(vitals_fraction(vitals_st, h, VPOOL_HEALTH), 1.0))
+    q_clear(vitals_facts(vitals_st))
+    expect(near(vitals_heal(vitals_st, h, 10.0), 0.0))
+    vitals_hurt(vitals_st, h, -1, 10.0, DTYPE_FALL, HZONE_BODY, 0)
+    expect(near(vitals_heal(vitals_st, h, 4.0), 4.0))
+    expect_eq(count_facts(vitals_st, VITALS_RESTORED), 1)
+  }
+
+  test "a lethal blow downs a class that falls, which bleeds out and dies" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_hurt(vitals_st, h, 9, 500.0, DTYPE_FALL, HZONE_BODY, 0)
+    expect(vitals_alive(vitals_st, h))
+    let again = vitals_hurt(vitals_st, h, 9, 500.0, DTYPE_FALL, HZONE_BODY, 0)
+    expect(near(again, 0.0))
+    drain_actions()
+    expect(vitals_downed(vitals_st, h))
+    expect(near(vitals_bleed_left(vitals_st, h), 10.0))
+    let fs = q_drain(vitals_facts(vitals_st))
+    expect_eq(fs[0].what, VITALS_DAMAGED)
+    expect_eq(fs[1].what, VITALS_DEPLETED)
+    expect_eq(fs[2].what, VITALS_DOWNED)
+    expect_eq(fs[2].clip, "down")
+    expect_eq(fs[2].source, 9)
+    expect(near(fs[2].x, 11.0))
+    expect(not vitals_spend(vitals_st, h, VPOOL_STAMINA, 1.0))
+    step(vitals_st, m, 9.5)
+    expect(vitals_downed(vitals_st, h))
+    step(vitals_st, m, 1.0)
+    expect(vitals_dead(vitals_st, h))
+    let d = first_fact(vitals_st, VITALS_DIED)
+    expect(d != null)
+    expect_eq(d.source, 9)
+    expect_eq(d.type, DTYPE_FALL)
+    expect_eq(d.clip, "death")
+    expect(near(vitals_health(vitals_st, h), 0.0))
+    expect(near(vitals_hurt(vitals_st, h, 1, 10.0, DTYPE_FALL, HZONE_BODY, 0), 0.0))
+  }
+
+  test "a class that does not fall dies at once" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let g = vitals_add(vitals_st, 2, VCLASS_GHOUL, false)
+    vitals_hurt(vitals_st, g, 1, 500.0, DTYPE_FALL, HZONE_BODY, 0)
+    drain_actions()
+    expect(vitals_dead(vitals_st, g))
+    expect_eq(count_facts(vitals_st, VITALS_DOWNED), 0)
+  }
+
+  test "a downed actor is revived, with the class's share of life and a window, and a dead one only if raised" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    expect_eq(vitals_revive(vitals_st, h, 2, 0.0), VITALS_WRONG_PHASE)
+    vitals_hurt(vitals_st, h, 9, 500.0, DTYPE_FALL, HZONE_BODY, 0)
+    drain_actions()
+    q_clear(vitals_facts(vitals_st))
+    step(vitals_st, m, 4.0)
+    expect_eq(vitals_revive(vitals_st, h, 2, 0.0), VITALS_OK)
+    drain_actions()
+    expect(vitals_alive(vitals_st, h))
+    expect(near(vitals_health(vitals_st, h), 30.0))
+    expect(near(vitals_invuln_left(vitals_st, h), 2.0))
+    let f = first_fact(vitals_st, VITALS_REVIVED)
+    expect_eq(f.source, 2)
+    expect_eq(f.clip, "revive")
+    expect(not vitals_can_hurt(vitals_st, h))
+    expect(near(vitals_hurt(vitals_st, h, 9, 10.0, DTYPE_BULLET, HZONE_BODY, 0), 0.0))
+    expect_eq(count_facts(vitals_st, VITALS_BLOCKED), 1)
+    step(vitals_st, m, 2.5)
+    expect(vitals_can_hurt(vitals_st, h))
+    vitals_kill(vitals_st, h, 9, DTYPE_BULLET)
+    drain_actions()
+    expect(vitals_dead(vitals_st, h))
+    expect_eq(vitals_revive(vitals_st, h, 2, 0.5), VITALS_WRONG_PHASE)
+    let md = vitals_add(vitals_st, 3, VCLASS_MEDIC, false)
+    vitals_kill(vitals_st, md, -1, -1)
+    drain_actions()
+    expect(vitals_dead(vitals_st, md))
+    expect_eq(vitals_revive(vitals_st, md, 2, 0.5), VITALS_OK)
+    drain_actions()
+    expect(vitals_alive(vitals_st, md))
+    expect(near(vitals_health(vitals_st, md), 50.0))
+  }
+
+  test "the dead are respawned with every pool at its start and the class's window" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let md = vitals_add(vitals_st, 3, VCLASS_MEDIC, false)
+    expect(near(vitals_invuln_left(vitals_st, md), 3.0))
+    step(vitals_st, m, 4.0)
+    vitals_spend(vitals_st, md, VPOOL_STAMINA, 30.0)
+    vitals_kill(vitals_st, md, -1, -1)
+    drain_actions()
+    expect(not vitals_respawn(vitals_st, 999))
+    q_clear(vitals_facts(vitals_st))
+    expect(vitals_respawn(vitals_st, md))
+    drain_actions()
+    expect(vitals_alive(vitals_st, md))
+    expect(near(vitals_health(vitals_st, md), 100.0))
+    expect(near(vitals_value(vitals_st, md, VPOOL_STAMINA), 50.0))
+    expect(near(vitals_invuln_left(vitals_st, md), 3.0))
+    expect_eq(count_facts(vitals_st, VITALS_RESPAWNED), 1)
+    expect(not vitals_respawn(vitals_st, md))
+  }
+
+  test "while downed, a class that can be finished off loses its bleed-out to damage" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let md = vitals_add(vitals_st, 3, VCLASS_MEDIC, false)
+    vitals_invulnerable(vitals_st, md, 0.0)
+    vitals_hurt(vitals_st, md, -1, 500.0, DTYPE_FALL, HZONE_BODY, 0)
+    drain_actions()
+    expect(vitals_downed(vitals_st, md))
+    expect(near(vitals_hurt(vitals_st, md, 4, 2.0, DTYPE_BULLET, HZONE_BODY, 0), 2.0))
+    expect(near(vitals_bleed_left(vitals_st, md), 2.0))
+    vitals_hurt(vitals_st, md, 4, 1.0, DTYPE_BULLET, HZONE_BODY, 0)
+    drain_actions()
+    expect(vitals_dead(vitals_st, md))
+    let h = hero(vitals_st)
+    vitals_hurt(vitals_st, h, -1, 500.0, DTYPE_FALL, HZONE_BODY, 0)
+    drain_actions()
+    expect(near(vitals_hurt(vitals_st, h, 4, 50.0, DTYPE_BULLET, HZONE_BODY, 0), 0.0))
+    expect(vitals_downed(vitals_st, h))
+  }
+
+  test "untouchable windows block a hit and say so; the world's port blocks too" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    expect(vitals_invulnerable(vitals_st, h, 1.0))
+    expect(near(vitals_hurt(vitals_st, h, 3, 40.0, DTYPE_BULLET, HZONE_BODY, 0), 0.0))
+    let b = first_fact(vitals_st, VITALS_BLOCKED)
+    expect(b != null)
+    expect(near(b.amount, 40.0))
+    expect(near(vitals_health(vitals_st, h), 100.0))
+    step(vitals_st, m, 1.5)
+    expect_eq(count_facts(vitals_st, VITALS_INVULN_END), 1)
+    expect(near(vitals_hurt(vitals_st, h, 3, 10.0, DTYPE_FALL, HZONE_BODY, 0), 10.0))
+    arena_st.hurtable = false
+    expect(not vitals_can_hurt(vitals_st, h))
+    expect(near(vitals_hurt(vitals_st, h, 3, 10.0, DTYPE_FALL, HZONE_BODY, 0), 0.0))
+    arena_st.hurtable = true
+    vitals_invulnerable(vitals_st, h, -1.0)
+    step(vitals_st, m, 100.0)
+    expect(not vitals_can_hurt(vitals_st, h))
+    vitals_invulnerable(vitals_st, h, 0.0)
+    expect(vitals_can_hurt(vitals_st, h))
+  }
+
+  test "a guest hurts nothing: it shows a predicted hit and asks the host for the rest" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    let n = vitals_hurt(vitals_st, h, 5, 50.0, DTYPE_BULLET, HZONE_HEAD, 42)
+    expect(near(n, 100.0))
+    expect(near(vitals_health(vitals_st, h), 100.0))
+    let f = first_fact(vitals_st, VITALS_DAMAGED)
+    expect(f.predicted)
+    expect_eq(f.tag, 42)
+    expect(f.crit)
+    expect(not vitals_kill(vitals_st, h, 5, 0))
+    expect(near(vitals_heal(vitals_st, h, 5.0), 0.0))
+    expect(not vitals_spend(vitals_st, h, VPOOL_ARMOUR, 5.0))
+    expect_eq(vitals_revive(vitals_st, h, 1, 0.0), VITALS_WRONG_PHASE)
+    let out = q_drain(vitals_outbox(vitals_st))
+    expect_eq(len(out), 3)
+    expect_eq(out[0].kind, VREQ_KILL)
+    expect_eq(out[1].kind, VREQ_HEAL)
+    expect_eq(out[2].kind, VREQ_SPEND)
+    expect_eq(out[2].actor, 1)
+    expect(out[2].seq > out[0].seq)
+    expect(not vitals_set_max(vitals_st, h, VPOOL_HEALTH, 10.0, false))
+  }
+
+  test "a guest's own stamina is simulated here and the host pulls it back only past the tolerance" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_set_local(vitals_st, 1)
+    vitals_snapshot(vitals_st, h, arena_st.snap)
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    expect(vitals_spend(vitals_st, h, VPOOL_STAMINA, 30.0))
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 70.0))
+    expect_eq(len(q_drain(vitals_outbox(vitals_st))), 1)
+    arena_st.snap[0] = 50.0
+    arena_st.snap[5 + 2 * VPOOL_STAMINA] = 68.0
+    expect(vitals_apply_snapshot(vitals_st, 1, arena_st.snap, len(arena_st.snap)))
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 70.0))
+    arena_st.snap[0] = 51.0
+    arena_st.snap[5 + 2 * VPOOL_STAMINA] = 20.0
+    expect(vitals_apply_snapshot(vitals_st, 1, arena_st.snap, len(arena_st.snap)))
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 20.0))
+  }
+
+  test "a snapshot is the host's state on a mirror: silent, in order, and its phase follows through the machine" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_hurt(vitals_st, h, 9, 60.0, DTYPE_BULLET, HZONE_BODY, 0)
+    let size = vitals_snapshot(vitals_st, h, arena_st.snap)
+    expect_eq(size, vitals_snapshot_size())
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    q_clear(vitals_facts(vitals_st))
+    expect(vitals_apply_snapshot(vitals_st, 101, arena_st.snap, size))
+    let mh = vitals_of(vitals_st, 101)
+    expect(mh >= 0)
+    expect(near(vitals_health(vitals_st, mh), 76.0))
+    expect(near(vitals_value(vitals_st, mh, VPOOL_ARMOUR), 64.0))
+    expect(not vitals_apply_snapshot(vitals_st, 101, arena_st.snap, size))
+    vitals_set_role(vitals_st, VITALS_HOST)
+    vitals_hurt(vitals_st, h, 9, 500.0, DTYPE_FALL, HZONE_BODY, 0)
+    drain_actions()
+    vitals_snapshot(vitals_st, h, arena_st.snap)
+    q_clear(vitals_facts(vitals_st))
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    expect(vitals_apply_snapshot(vitals_st, 101, arena_st.snap, size))
+    drain_actions()
+    expect(vitals_downed(vitals_st, mh))
+    expect(near(vitals_health(vitals_st, mh), 0.0))
+    expect_eq(q_len(vitals_facts(vitals_st)), 0)
+    step(vitals_st, m, 100.0)
+    expect(vitals_downed(vitals_st, mh))
+    vitals_net_fact(vitals_st, VITALS_DOWNED, 101, 9, 0, DTYPE_FALL, 0, 0.0, 0.0, false, 0)
+    let f = first_fact(vitals_st, VITALS_DOWNED)
+    expect_eq(f.clip, "down")
+    expect(not f.predicted)
+  }
+
+  test "the host decides a guest's ask: who may revive, spend or kill, through the port" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    expect_eq(vitals_apply_request(vitals_st, 1, VREQ_SPEND, 1, VPOOL_STAMINA, 30.0), VITALS_OK)
+    expect(near(vitals_value(vitals_st, h, VPOOL_STAMINA), 70.0))
+    expect_eq(vitals_apply_request(vitals_st, 1, VREQ_SPEND, 1, VPOOL_STAMINA, 300.0), VITALS_NOT_ENOUGH)
+    arena_st.allow = false
+    expect_eq(vitals_apply_request(vitals_st, 2, VREQ_SPEND, 1, VPOOL_STAMINA, 10.0), VITALS_REFUSED)
+    arena_st.allow = true
+    expect_eq(vitals_apply_request(vitals_st, 9, VREQ_SPEND, 1, VPOOL_STAMINA, 10.0), VITALS_OK)
+    expect_eq(vitals_apply_request(vitals_st, 1, VREQ_REVIVE, 77, -1, 0.0), VITALS_NO_SUCH)
+    vitals_hurt(vitals_st, h, 9, 500.0, DTYPE_FALL, HZONE_BODY, 0)
+    drain_actions()
+    expect_eq(vitals_apply_request(vitals_st, 2, VREQ_REVIVE, 1, -1, 0.5), VITALS_OK)
+    drain_actions()
+    expect(vitals_alive(vitals_st, h))
+    expect(near(vitals_health(vitals_st, h), 50.0))
+    expect_eq(vitals_apply_request(vitals_st, 2, VREQ_KILL, 1, -1, 0.0), VITALS_OK)
+    drain_actions()
+    expect(vitals_dead(vitals_st, h))
+    vitals_set_role(vitals_st, VITALS_GUEST)
+    expect_eq(vitals_apply_request(vitals_st, 1, VREQ_SPEND, 1, 0, 1.0), VITALS_NOT_HOST)
+  }
+
+  test "the save keeps each persisting actor's class, phase, pools and maxima, and not the rest" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    vitals_add(vitals_st, 2, VCLASS_GHOUL, false)
+    vitals_set_max(vitals_st, h, VPOOL_ARMOUR, 150.0, false)
+    vitals_hurt(vitals_st, h, 9, 500.0, DTYPE_FALL, HZONE_BODY, 0)
+    drain_actions()
+    step(vitals_st, m, 2.0)
+    let saved = vitals_save(vitals_st)
+    vitals_load(vitals_st, saved, 1)
+    expect_eq(vitals_count(vitals_st), 1)
+    expect_eq(vitals_of(vitals_st, 2), -1)
+    let r = vitals_of(vitals_st, 1)
+    expect(vitals_downed(vitals_st, r))
+    expect(near(vitals_max(vitals_st, r, VPOOL_ARMOUR), 150.0))
+    expect(near(vitals_bleed_left(vitals_st, r), 8.0))
+    expect_eq(vitals_class(vitals_st, r), VCLASS_HERO)
+    expect(vitals_revive(vitals_st, r, 3, 0.5) == VITALS_OK)
+    drain_actions()
+    expect(near(vitals_health(vitals_st, r), 50.0))
+  }
+
+  test "the system runs as one and keeps its own section" (vitals_st: mut VitalsState) {
+    let s = vitals_system()
+    expect_eq(s.key, "vitals")
+    expect_eq(s.phase, PH_SIMULATE)
+    expect(s.save != null)
+    expect(s.load != null)
+  }
+}

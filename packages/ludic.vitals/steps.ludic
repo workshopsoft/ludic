@@ -1,0 +1,111 @@
+# steps.ludic - an actor's phase as a machine. The registry is the transitions, one row each in
+# steps.lres (a studio edits it as a graph); the compiler writes a reducer for each action a row names
+# and vitals_steps_tick for the rows the tick asks (bled out). The functions the rows name are here.
+export property VitalStep {
+  from: VitalPhase = VitalPhase.Alive
+  to: VitalPhase = VitalPhase.Alive
+  on: string = ""
+  guard: fn(Row<Vital>, VitalsState) -> bool = null
+  enter: fn(Row<Vital>, VitalsState) -> void = null
+}
+
+@Machine(Vital.phase) export open registry VitalsSteps of VitalStep as VSTEP from "steps.lres"
+
+# what a revive carried, kept on the row for the machine's enter
+reducer Vital in VitalsState.vt__vitals on VitalsReviveIn(r: mut Row<Vital>, a: VitalsReviveIn) {
+  r.rec.frac_in = a.frac
+  r.rec.by_in = a.by
+}
+
+# the guards
+function vt_bled_out(r: Row<Vital>, s: VitalsState) -> bool {
+  if s.vt__role == VITALS_GUEST { return false }
+  return r.rec.bleed <= 0.0
+}
+
+function vt_raisable(r: Row<Vital>, s: VitalsState) -> bool {
+  return vt__kind_ok(r.rec.kind) and VitalClasses[r.rec.kind].raise_dead
+}
+
+# a mirror's transition (a guest following the host's snapshot) makes no facts and changes no pool
+function vt__take_quiet(v: Vital) -> bool {
+  let q = v.quiet
+  v.quiet = false
+  return q
+}
+
+function vt__fill_source(f: VitalsFact, v: Vital) -> void {
+  f.source = v.last_source
+  f.type = v.last_type
+  f.zone = v.last_zone
+  f.crit = v.last_crit
+  f.x = VitalsWorld.x(v.actor)
+  f.y = VitalsWorld.y(v.actor)
+  f.z = VitalsWorld.z(v.actor)
+}
+
+# the enters
+function vt_enter_downed(r: mut Row<Vital>, s: VitalsState) -> void {
+  r.rec.dying = false
+  if vt__take_quiet(r.rec) { return }
+  var clip = ""
+  if vt__kind_ok(r.rec.kind) {
+    r.rec.bleed = VitalClasses[r.rec.kind].bleed_out
+    clip = VitalClasses[r.rec.kind].clip_down
+  }
+  let f = vt__fact(s, VITALS_DOWNED, r.rec, r.h)
+  vt__fill_source(f, r.rec)
+  f.clip = clip
+  f.amount = r.rec.bleed
+}
+
+function vt_enter_dead(r: mut Row<Vital>, s: VitalsState) -> void {
+  r.rec.dying = false
+  if vt__take_quiet(r.rec) { return }
+  if s.vt__life >= 0 { r.rec.vals[s.vt__life] = 0.0 }
+  r.rec.bleed = 0.0
+  let f = vt__fact(s, VITALS_DIED, r.rec, r.h)
+  vt__fill_source(f, r.rec)
+  if vt__kind_ok(r.rec.kind) { f.clip = VitalClasses[r.rec.kind].clip_death }
+}
+
+function vt_enter_revived(r: mut Row<Vital>, s: VitalsState) -> void {
+  r.rec.dying = false
+  if vt__take_quiet(r.rec) { return }
+  var frac = r.rec.frac_in
+  var clip = ""
+  if vt__kind_ok(r.rec.kind) {
+    if frac <= 0.0 { frac = VitalClasses[r.rec.kind].revive_frac }
+    r.rec.invuln = VitalClasses[r.rec.kind].revive_invuln
+    clip = VitalClasses[r.rec.kind].clip_revive
+  }
+  r.rec.bleed = 0.0
+  if s.vt__life >= 0 {
+    let life = s.vt__life
+    let to = Math.clamp(frac, 0.0, 1.0) * Math.max(r.rec.maxs[life], 0.0)
+    if r.rec.vals[life] < to { r.rec.vals[life] = to }
+    r.rec.wait[life] = 0.0
+  }
+  let f = vt__fact(s, VITALS_REVIVED, r.rec, r.h)
+  f.source = r.rec.by_in
+  f.clip = clip
+  if s.vt__life >= 0 { f.value = r.rec.vals[s.vt__life] }
+  r.rec.frac_in = 0.0
+  r.rec.by_in = -1
+}
+
+function vt_enter_respawned(r: mut Row<Vital>, s: VitalsState) -> void {
+  r.rec.dying = false
+  if vt__take_quiet(r.rec) { return }
+  vt__fill_pools(r.rec)
+  r.rec.bleed = 0.0
+  r.rec.invuln = 0.0
+  var clip = ""
+  if vt__kind_ok(r.rec.kind) {
+    r.rec.invuln = VitalClasses[r.rec.kind].spawn_invuln
+    clip = VitalClasses[r.rec.kind].clip_respawn
+  }
+  let f = vt__fact(s, VITALS_RESPAWNED, r.rec, r.h)
+  f.clip = clip
+  if s.vt__life >= 0 { f.value = r.rec.vals[s.vt__life] }
+}

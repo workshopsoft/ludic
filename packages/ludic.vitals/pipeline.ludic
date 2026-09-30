@@ -1,0 +1,79 @@
+# pipeline.ludic - a hit's arithmetic, in the order the README gives it:
+#   amount x zone (row x class) x resistance (class row x the port's buff) = D
+#   D x pierce (type + zone) goes straight to life; the rest walks the absorbing pools in order,
+#   each taking its `absorb` share of what reaches it (what it cannot hold overflows on, or is lost)
+#   and life takes what is left. One function runs it for a preview and for a hit, so the number a
+#   guest shows is the number the host would apply.
+
+# the pool's delay restarts (a use, a hit)
+function vt__touch(v: Vital, p: int) -> void {
+  v.wait[p] = vt__delay_of(v.kind, p)
+}
+
+# runs the pipeline on v. `apply` false writes nothing (a preview). Leaves vt__r_* for the caller
+function vt__run_hit(vitals_st: mut VitalsState, h: int, v: Vital, amount: float, type: int, zone: int, apply: bool) -> float {
+  var d = amount
+  var pierce = 0.0
+  var crit = false
+  var zoned = true
+  if vt__type_ok(type) {
+    pierce = DamageTypes[type].pierce
+    zoned = DamageTypes[type].zoned
+  }
+  if zoned and vt__zone_ok(zone) {
+    d = d * HitZones[zone].mult * vt__zone_of(v.kind, zone)
+    pierce += HitZones[zone].pierce
+    crit = HitZones[zone].crit
+  }
+  d = d * vt__resist_of(v.kind, type) * VitalsWorld.resist_mult(v.actor, type)
+  pierce = Math.clamp(pierce, 0.0, 1.0)
+  if d < 0.0 { d = 0.0 }
+  var rest = d * (1.0 - pierce)
+  let direct = d * pierce
+  var absorbed = 0.0
+  for i in 0 .. len(vitals_st.vt__chain) {
+    let p = vitals_st.vt__chain[i]
+    if v.maxs[p] < 0.0 { continue }
+    let have = v.vals[p]
+    if have <= 0.0 or rest <= 0.0 { continue }
+    let pool = VitalPools[p]
+    let take = rest * pool.absorb
+    let eff = Math.min(have, take)
+    let spill = take - eff
+    rest = rest - take
+    if pool.overflow { rest += spill }
+    absorbed += eff
+    if apply {
+      v.vals[p] = have - eff
+      if pool.delay_on_damage { vt__touch(v, p) }
+      if v.vals[p] <= 0.0 {
+        v.vals[p] = 0.0
+        let f = vt__fact(vitals_st, VITALS_DEPLETED, v, h)
+        f.pool = p
+        f.source = v.last_source
+        f.type = type
+      }
+    }
+  }
+  var took = 0.0
+  let life = vitals_st.vt__life
+  if life >= 0 and v.maxs[life] >= 0.0 {
+    let want = rest + direct
+    took = Math.min(v.vals[life], want)
+    if apply and want > 0.0 {
+      v.vals[life] = v.vals[life] - took
+      if VitalPools[life].delay_on_damage { vt__touch(v, life) }
+    }
+  }
+  vitals_st.vt__r_absorbed = absorbed
+  vitals_st.vt__r_life = took
+  vitals_st.vt__r_crit = crit
+  return absorbed + took
+}
+
+# what a hit would take, without taking it: the guest's number for its floating text
+export function vitals_preview_hurt(vitals_st: mut VitalsState, h: int, amount: float, type: int, zone: int) -> float {
+  let v = vt__vital(vitals_st, h)
+  if v == null or v.phase != VitalPhase.Alive { return 0.0 }
+  return vt__run_hit(vitals_st, h, v, amount, type, zone, false)
+}

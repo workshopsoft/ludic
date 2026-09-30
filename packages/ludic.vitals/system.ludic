@@ -1,0 +1,82 @@
+# system.ludic - vitals as a system: PH_SIMULATE, and its own save section (version 1): each persisting
+# actor by the game's number, with its class key, phase, bleed-out and untouchable time left, and every
+# pool's amount and maximum by the pool's KEY (handles are not saved: ask vitals_of(actor)). A pool or a
+# class the file names and the game no longer has is skipped, a pool the file lacks starts full
+@alloc_ok("a new game or a load: the table made again")
+export function vitals_reset(vitals_st: mut VitalsState) -> void {
+  vitals_st.vt__vitals = vt__table()
+  vitals_st.vt__by_actor = imap_new()
+  vitals_st.vt__req_seq = 0
+  q_clear(vitals_st.vt__q)
+  q_clear(vitals_st.vt__out)
+}
+
+function vitals_tick(vitals_st: mut VitalsState, m: mut VitalsStepsMachine, t: Tick) -> void { vitals_run(vitals_st, m, t.dt) }
+
+@alloc_ok("a save: a tree written from the state")
+export function vitals_save(vitals_st: VitalsState) -> Val {
+  let v = Value.object()
+  let l = Value.list()
+  let tb = vitals_st.vt__vitals
+  for i in 0 .. tb_len(tb) {
+    let r = tb_rec(tb, i)
+    if not r.persist { continue }
+    let o = Value.object()
+    sv_put_int(o, "actor", r.actor)
+    if vt__kind_ok(r.kind) { sv_put_str(o, "class", VitalClasses[r.kind].key) }
+    var ph = 0
+    if r.phase == VitalPhase.Downed { ph = 1 }
+    if r.phase == VitalPhase.Dead { ph = 2 }
+    sv_put_int(o, "phase", ph)
+    sv_put_float(o, "bleed", r.bleed)
+    sv_put_float(o, "invuln", r.invuln)
+    let pl = Value.list()
+    for p in 0 .. VPOOL_COUNT {
+      let po = Value.object()
+      sv_put_str(po, "key", VitalPools[p].key)
+      sv_put_float(po, "v", r.vals[p])
+      sv_put_float(po, "max", r.maxs[p])
+      Value.add(pl, po)
+    }
+    Value.put(o, "pools", pl)
+    Value.add(l, o)
+  }
+  Value.put(v, "actors", l)
+  return v
+}
+
+@alloc_ok("a load: actors read back")
+export function vitals_load(vitals_st: mut VitalsState, v: Val, version: int) -> void {
+  vitals_reset(vitals_st)
+  if Value.has(v, "actors") == 0 { return }
+  let l = Value.get(v, "actors")
+  for i in 0 .. Value.count(l) {
+    let o = Value.at(l, i)
+    var kind = vitalclasses_find(sv_str(o, "class", ""))
+    if kind < 0 { kind = 0 }
+    let ph = sv_int(o, "phase", 0)
+    let h = vt__make(vitals_st, sv_int(o, "actor", -1), kind, true, vt__phase_of(ph))
+    let r = vt__vital(vitals_st, h)
+    r.bleed = sv_float(o, "bleed", 0.0)
+    r.invuln = sv_float(o, "invuln", 0.0)
+    if Value.has(o, "pools") == 0 { continue }
+    let pl = Value.get(o, "pools")
+    for k in 0 .. Value.count(pl) {
+      let po = Value.at(pl, k)
+      let p = vitalpools_find(sv_str(po, "key", ""))
+      if p < 0 { continue }
+      r.maxs[p] = sv_float(po, "max", r.maxs[p])
+      r.vals[p] = sv_float(po, "v", r.vals[p])
+      if r.vals[p] > r.maxs[p] { r.vals[p] = Math.max(r.maxs[p], 0.0) }
+    }
+  }
+}
+
+export function vitals_system() -> System {
+  let s = system_new("vitals", PH_SIMULATE)
+  s.reset = fn vitals_reset
+  s.tick = fn vitals_tick
+  s.save = fn vitals_save
+  s.load = fn vitals_load
+  return s
+}

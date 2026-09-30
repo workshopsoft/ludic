@@ -1,0 +1,18 @@
+# ports.ludic - what vitals asks the game. Every member has a default: unbound, everyone may be hurt,
+# nothing resists beyond the class rows, actors stand at the origin, and a guest's request is allowed
+# only as far as it concerns the asker's own actor or a revive
+export port VitalsWorld {
+  can_be_hurt: fn(int) -> bool = fn vt__yes              # (actor): false while it is untouchable for a reason vitals does not know (ludic.respawn's window)
+  resist_mult: fn(int, int) -> float = fn vt__one        # (actor, damage type): times the damage, from buffs (ludic.effects)
+  x: fn(int) -> float = fn vt__zero                      # where it stands, for a death's fact
+  y: fn(int) -> float = fn vt__zero
+  z: fn(int) -> float = fn vt__zero
+  allow_request: fn(int, int, int) -> bool = fn vt__allow   # (sender, request kind, target actor): the host decides a guest's ask
+}
+function vt__yes(a: int) -> bool { return true }
+function vt__one(a: int, ty: int) -> float { return 1.0 }
+function vt__zero(a: int) -> float { return 0.0 }
+function vt__allow(sender: int, kind: int, target: int) -> bool {
+  if kind == VREQ_REVIVE { return true }
+  return sender == target and kind != VREQ_KILL and kind != VREQ_RESPAWN
+}

@@ -1,0 +1,21 @@
+# ludic.vitals - what an actor can lose and spend. Pools (health, armour, stamina, a shield, fuel) are
+# rows with a maximum and a regeneration; damage types, hit zones and an actor class's resistances are
+# rows too; the pipeline (zone, resistance, what armour absorbs, then health) is the package's. An
+# actor's phase - alive, downed, dead - is a @Machine whose transitions are steps.lres. The world (may
+# this actor be hurt now, where does it stand) is asked through a port, every outcome is a fact, and in
+# a party the host's pools are the truth while a guest shows predicted feedback
+module ludic_vitals uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "steps.ludic"
+import "actors.ludic"
+import "pipeline.ludic"
+import "verbs.ludic"
+import "queries.ludic"
+import "run.ludic"
+import "net.ludic"
+import "adapters.ludic"
+import "system.ludic"

@@ -1,0 +1,82 @@
+# adapters.ludic - ready-made port members for the mechanics that hurt and spend. Each is a function a
+# game names in a bind - `bind MeleeDamage { hurt: fn vitals_melee_hurt }` - with the vitals state
+# supplied and the actors named by the game's number. Nothing here names another package: a port is a
+# record of function values, and these are the shapes the ports want. An actor that holds no pools is
+# never hurt (0 comes back) and has nothing to spend
+
+
+# alive or downed: still in the world and a fair target
+export function vitals_actor_alive(vitals_st: VitalsState, actor: int) -> bool {
+  let h = vitals_of(vitals_st, actor)
+  return h >= 0 and not vitals_dead(vitals_st, h)
+}
+
+# on its feet: what "is it still fighting" asks
+export function vitals_actor_standing(vitals_st: VitalsState, actor: int) -> bool {
+  let h = vitals_of(vitals_st, actor)
+  return h >= 0 and vitals_alive(vitals_st, h)
+}
+
+# ludic.melee: `bind MeleeDamage { hurt: fn vitals_melee_hurt }` and `bind MeleeWorld { alive: fn vitals_actor_alive,
+# can_afford: fn vitals_actor_can_spend, spend: fn vitals_actor_spend }`. The melee damage type is the DamageTypes index
+export function vitals_melee_hurt(vitals_st: mut VitalsState, victim: int, attacker: int, amount: float, type: int) -> float {
+  let h = vitals_of(vitals_st, victim)
+  if h < 0 { return 0.0 }
+  return vitals_hurt(vitals_st, h, attacker, amount, type, -1, 0)
+}
+
+# the resource members of melee and abilities, by actor and pool: `bind AbilityResources { have: fn vitals_actor_have,
+# spend: fn vitals_actor_spend, give: fn vitals_actor_give }`
+export function vitals_actor_can_spend(vitals_st: VitalsState, actor: int, pool: int, amount: float) -> bool {
+  let h = vitals_of(vitals_st, actor)
+  return h >= 0 and vitals_can_spend(vitals_st, h, pool, amount)
+}
+
+export function vitals_actor_spend(vitals_st: mut VitalsState, actor: int, pool: int, amount: float) -> bool {
+  let h = vitals_of(vitals_st, actor)
+  return h >= 0 and vitals_spend(vitals_st, h, pool, amount)
+}
+
+export function vitals_actor_have(vitals_st: VitalsState, actor: int, pool: int) -> float {
+  let h = vitals_of(vitals_st, actor)
+  if h < 0 { return 0.0 }
+  return vitals_value(vitals_st, h, pool)
+}
+
+export function vitals_actor_give(vitals_st: mut VitalsState, actor: int, pool: int, amount: float) -> void {
+  let h = vitals_of(vitals_st, actor)
+  if h >= 0 { vitals_restore(vitals_st, h, pool, amount) }
+}
+
+# ludic.abilities: `bind AbilityEffects { damage: fn vitals_ability_damage, heal: fn vitals_ability_heal }`
+export function vitals_ability_damage(vitals_st: mut VitalsState, target: int, source: int, amount: float, type: int) -> void {
+  let h = vitals_of(vitals_st, target)
+  if h >= 0 { vitals_hurt(vitals_st, h, source, amount, type, -1, 0) }
+}
+
+export function vitals_ability_heal(vitals_st: mut VitalsState, target: int, source: int, amount: float) -> void {
+  let h = vitals_of(vitals_st, target)
+  if h >= 0 { vitals_heal(vitals_st, h, amount) }
+}
+
+# ludic.weapons: `bind WeaponsDamage { hurt: fn vitals_weapon_hurt, alive: fn vitals_actor_standing }`; the zone is the HitZones index
+export function vitals_weapon_hurt(vitals_st: mut VitalsState, victim: int, attacker: int, amount: float, type: int, zone: int) -> float {
+  let h = vitals_of(vitals_st, victim)
+  if h < 0 { return 0.0 }
+  return vitals_hurt(vitals_st, h, attacker, amount, type, zone, 0)
+}
+
+# ludic.respawn: `bind VitalsWorld { can_be_hurt: fn respawn_can_be_hurt }` keeps the untouchable window after a
+# respawn; the two routes are a line each in the game's resolve step:
+#   a DIED fact:               respawn_died(respawn_st, f.actor, vitals_death_cause(f), f.x, f.y, f.z)
+#   a RESPAWN_RESPAWNED fact:  vitals_actor_respawn(vitals_st, r.who)
+# the cause is the dying blow's damage type key (the respawn rule row of that name), "" for a death with none
+export function vitals_death_cause(f: VitalsFact) -> string {
+  if f.type >= 0 and f.type < DTYPE_COUNT { return DamageTypes[f.type].key }
+  return ""
+}
+
+export function vitals_actor_respawn(vitals_st: mut VitalsState, actor: int) -> bool {
+  let h = vitals_of(vitals_st, actor)
+  return h >= 0 and vitals_respawn(vitals_st, h)
+}

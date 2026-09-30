@@ -1,0 +1,7 @@
+# ludic.vitals - per-actor pools as data (health, armour, stamina, a shield, fuel...): maximum, regeneration
+# and its delay, the order damage is absorbed in; damage types and resistances per actor class, hit zones,
+# the damage pipeline; alive, downed, dead and respawned as a @Machine; invulnerability windows; host-
+# authoritative damage with predicted local feedback. Uses ludic.base and nothing else. See README.md.
+package "ludic.vitals"
+version "0.1.0"
+kind source

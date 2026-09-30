@@ -1,0 +1,10 @@
+# steps.lres - an actor's phase machine: a row a transition. `on` is the action that asks for it (a
+# hit that empties life, a revive), "" for a transition the tick asks (bled out). The first row whose
+# guard passes is taken.
+down      { from: VitalPhase.Alive,  to: VitalPhase.Downed, on: "VitalsDownIn",    enter: fn vt_enter_downed }
+die       { from: VitalPhase.Alive,  to: VitalPhase.Dead,   on: "VitalsDieIn",     enter: fn vt_enter_dead }
+finish    { from: VitalPhase.Downed, to: VitalPhase.Dead,   on: "VitalsDieIn",     enter: fn vt_enter_dead }
+bleed_out { from: VitalPhase.Downed, to: VitalPhase.Dead,                          guard: fn vt_bled_out, enter: fn vt_enter_dead }
+revive    { from: VitalPhase.Downed, to: VitalPhase.Alive,  on: "VitalsReviveIn",  enter: fn vt_enter_revived }
+raise     { from: VitalPhase.Dead,   to: VitalPhase.Alive,  on: "VitalsReviveIn",  guard: fn vt_raisable, enter: fn vt_enter_revived }
+respawn   { from: VitalPhase.Dead,   to: VitalPhase.Alive,  on: "VitalsRespawnIn", enter: fn vt_enter_respawned }

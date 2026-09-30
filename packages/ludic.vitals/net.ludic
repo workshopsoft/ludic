@@ -1,0 +1,156 @@
+# net.ludic - vitals in a party. The host (or a solo game) simulates and its pools are the truth. A guest
+# holds a mirror: hurting one shows predicted feedback only, a verb that would change a pool asks the host
+# (vitals_outbox), and what the host says arrives as snapshots (state) and relayed facts (events). The
+# package sends nothing: the game puts the snapshot, the outbox and the facts on its wire (ludic.net)
+
+export function vitals_set_role(vitals_st: mut VitalsState, role: int) -> void { vitals_st.vt__role = role }
+export function vitals_role(vitals_st: VitalsState) -> int { return vitals_st.vt__role }
+
+# the actor this machine plays: its `predict` pools are simulated here on a guest
+export function vitals_set_local(vitals_st: mut VitalsState, actor: int) -> void {
+  let old = vitals_of(vitals_st, vitals_st.vt__local)
+  if old >= 0 { vitals_set_mine(vitals_st, old, false) }
+  vitals_st.vt__local = actor
+  let h = vitals_of(vitals_st, actor)
+  if h >= 0 { vitals_set_mine(vitals_st, h, true) }
+}
+
+# the layout of a snapshot: seq, class, phase (0 alive, 1 downed, 2 dead), bleed, invuln, then value and
+# maximum per pool (a maximum of -1: the actor has no such pool)
+export function vitals_snapshot_size() -> int { return 5 + 2 * VPOOL_COUNT }
+
+# writes the actor's state into `out` (kept by the caller; cleared first): the host sends it to guests
+export function vitals_snapshot(vitals_st: mut VitalsState, h: int, out: []float) -> int {
+  let v = vt__vital(vitals_st, h)
+  List.clear(out)
+  if v == null { return 0 }
+  v.seq += 1
+  push(out, float(v.seq))
+  push(out, float(v.kind))
+  var ph = 0.0
+  if v.phase == VitalPhase.Downed { ph = 1.0 }
+  if v.phase == VitalPhase.Dead { ph = 2.0 }
+  push(out, ph)
+  push(out, v.bleed)
+  push(out, v.invuln)
+  for p in 0 .. VPOOL_COUNT {
+    push(out, v.vals[p])
+    push(out, v.maxs[p])
+  }
+  return len(out)
+}
+
+function vt__phase_of(ph: int) -> VitalPhase {
+  if ph == 1 { return VitalPhase.Downed }
+  if ph == 2 { return VitalPhase.Dead }
+  return VitalPhase.Alive
+}
+
+# a guest takes the host's snapshot of an actor (made a mirror if it was not known). Silent: the phase
+# follows through the machine without facts (the host's facts, relayed, are the events), a stale snapshot
+# (older seq) is dropped, and a `predict` pool of a local actor is pulled back only past its tolerance.
+# Returns false for one that was dropped or malformed
+export function vitals_apply_snapshot(vitals_st: mut VitalsState, actor: int, data: []float, n: int) -> bool {
+  if n < vitals_snapshot_size() or len(data) < n { return false }
+  let seq = int(data[0])
+  let kind = int(data[1])
+  let ph = int(data[2])
+  var h = vitals_of(vitals_st, actor)
+  if h < 0 {
+    h = vt__make(vitals_st, actor, kind, false, vt__phase_of(ph))
+    let nv = vt__vital(vitals_st, h)
+    if actor == vitals_st.vt__local { nv.mine = true }
+  }
+  let v = vt__vital(vitals_st, h)
+  if v.seq != 0 and seq <= v.seq and seq > v.seq - 1000000 { return false }
+  v.seq = seq
+  if vt__phase_of(ph) != v.phase and not v.quiet {
+    v.quiet = true
+    if ph == 1 {
+      dispatch VitalsDownIn { who: h }
+    } else if ph == 2 {
+      dispatch VitalsDieIn { who: h }
+    } else if v.phase == VitalPhase.Dead {
+      dispatch VitalsRespawnIn { who: h }
+    } else {
+      dispatch VitalsReviveIn { who: h }
+    }
+  }
+  v.kind = kind
+  v.bleed = data[3]
+  v.invuln = data[4]
+  v.dying = false
+  for p in 0 .. VPOOL_COUNT {
+    let val = data[5 + 2 * p]
+    let mx = data[6 + 2 * p]
+    v.maxs[p] = mx
+    if mx < 0.0 {
+      v.vals[p] = 0.0
+    } else if v.mine and VitalPools[p].predict {
+      if Math.abs(v.vals[p] - val) > VitalPools[p].reconcile or v.vals[p] > mx { v.vals[p] = val }
+    } else {
+      v.vals[p] = val
+    }
+  }
+  return true
+}
+
+# the host decides a guest's ask (sender: the asker's actor, from the wire's slot, never from the message).
+# Returns VITALS_OK, or why not
+export function vitals_apply_request(vitals_st: mut VitalsState, sender: int, kind: int, actor: int, pool: int, amount: float) -> int {
+  if vitals_st.vt__role == VITALS_GUEST { return VITALS_NOT_HOST }
+  let h = vitals_of(vitals_st, actor)
+  if h < 0 { return VITALS_NO_SUCH }
+  if not VitalsWorld.allow_request(sender, kind, actor) { return VITALS_REFUSED }
+  if kind == VREQ_SPEND {
+    if not vt__pool_ok(pool) { return VITALS_NO_POOL }
+    if vitals_spend(vitals_st, h, pool, amount) { return VITALS_OK }
+    return VITALS_NOT_ENOUGH
+  }
+  if kind == VREQ_RESTORE {
+    if not vt__pool_ok(pool) { return VITALS_NO_POOL }
+    vitals_restore(vitals_st, h, pool, amount)
+    return VITALS_OK
+  }
+  if kind == VREQ_HEAL {
+    vitals_heal(vitals_st, h, amount)
+    return VITALS_OK
+  }
+  if kind == VREQ_REVIVE { return vitals_revive(vitals_st, h, sender, amount) }
+  if kind == VREQ_KILL {
+    if vitals_kill(vitals_st, h, sender, -1) { return VITALS_OK }
+    return VITALS_WRONG_PHASE
+  }
+  if kind == VREQ_RESPAWN {
+    if vitals_respawn(vitals_st, h) { return VITALS_OK }
+    return VITALS_WRONG_PHASE
+  }
+  return VITALS_NO_SUCH
+}
+
+# a guest shows a fact the host made and relayed (the record's fields are the wire's): the events of a
+# remote actor, which the snapshots (state only) do not carry. The clip comes from the actor's class
+export function vitals_net_fact(vitals_st: mut VitalsState, what: int, actor: int, source: int, pool: int, type: int, zone: int, amount: float, absorbed: float, crit: bool, tag: int) -> bool {
+  let h = vitals_of(vitals_st, actor)
+  let v = vt__vital(vitals_st, h)
+  if v == null { return false }
+  let f = vt__fact(vitals_st, what, v, h)
+  f.source = source
+  f.pool = pool
+  f.type = type
+  f.zone = zone
+  f.amount = amount
+  f.absorbed = absorbed
+  f.crit = crit
+  f.tag = tag
+  f.x = VitalsWorld.x(actor)
+  f.y = VitalsWorld.y(actor)
+  f.z = VitalsWorld.z(actor)
+  if vt__kind_ok(v.kind) {
+    if what == VITALS_DOWNED { f.clip = VitalClasses[v.kind].clip_down }
+    if what == VITALS_DIED { f.clip = VitalClasses[v.kind].clip_death }
+    if what == VITALS_REVIVED { f.clip = VitalClasses[v.kind].clip_revive }
+    if what == VITALS_RESPAWNED { f.clip = VitalClasses[v.kind].clip_respawn }
+  }
+  return true
+}

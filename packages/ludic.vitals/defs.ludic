@@ -1,0 +1,173 @@
+# defs.ludic - the tables a game fills (usually from resource files: `def VitalPools from "pools.lres"`),
+# the records, the actions the machine listens to, and the facts. Amounts are the game's own units,
+# times seconds. Nothing here says what health or armour IS: a pool is a row, and the ones that matter
+# to the pipeline say so in their fields (`life`, `absorb_order`).
+
+export enum VitalPhase { Alive, Downed, Dead }
+
+# a pool: something an actor holds an amount of, up to a maximum. `life` marks the pool whose emptying
+# downs or kills the actor (health); a pool with an `absorb_order` above 0 takes damage before life does
+# (a shield, armour), in ascending order; the rest (stamina, fuel, poise) are spent and restored, never
+# hit. The numbers are the pool's defaults: a class may change a pool's maximum, start and pace
+export property VitalPool {
+  key: string = ""
+  @Text name: Key = null
+  @Asset("png") icon: string = ""
+  @Range(0, 1000000) max: float = 100.0
+  @Range(0, 1) start: float = 1.0                       # the share of max an actor begins, and is respawned, with
+  @Range(-100000, 100000) regen: float = 0.0            # per second once the delay is over; negative drains (fuel)
+  @Unit("s") @Range(0, 600) regen_delay: float = 0.0    # seconds after a use before it comes back
+  regen_pct: bool = false                               # `regen` is a share of the maximum a second
+  delay_on_damage: bool = true                          # damage restarts the delay
+  delay_on_spend: bool = false                          # so does spending (stamina)
+  regen_downed: bool = false                            # keeps regenerating while downed
+  @Range(0, 100) absorb_order: int = 0                  # above 0: damage reaches this pool first, lower numbers first
+  @Range(0, 1) absorb: float = 1.0                      # the share of the damage reaching it that it takes (armour 0.6: 40% goes through)
+  overflow: bool = true                                 # what it cannot hold carries on to the next pool (false: a shield that pops swallows the hit)
+  life: bool = false
+  predict: bool = false                                 # the owner's machine simulates it (stamina, fuel) and the host only corrects it
+  @Range(0, 1000000) reconcile: float = 5.0             # how far a predicted pool may drift from the host's before it is pulled back
+}
+
+@ByKey
+export open registry VitalPools of VitalPool as VPOOL
+
+# a kind of damage: how much of it gets past absorbing pools (`pierce` 1: fall damage and poison go
+# straight to life), and whether the hit zone's multiplier applies (a fall has no head)
+export property DamageType {
+  key: string = ""
+  @Text name: Key = null
+  @Range(0, 1) pierce: float = 0.0
+  zoned: bool = true
+}
+
+@ByKey
+export open registry DamageTypes of DamageType as DTYPE
+
+# a place on a body a hit lands (the game's hit volumes name one): a multiplier on the damage, a share
+# of it that skips armour, and whether a hit there is a crit (a headshot) for the facts
+export property HitZone {
+  key: string = ""
+  @Text name: Key = null
+  @Range(0, 100) mult: float = 1.0
+  @Range(0, 1) pierce: float = 0.0
+  crit: bool = false
+}
+
+@ByKey
+export open registry HitZones of HitZone as HZONE
+
+# what one class of actor takes, per kind of damage and per zone (times: 0 immune, 0.5 half, 1.5 weak)
+export property ClassResist {
+  @Ref(DamageTypes) type: int = 0
+  @Range(0, 100) mult: float = 1.0
+}
+export property ClassZone {
+  @Ref(HitZones) zone: int = 0
+  @Range(0, 100) mult: float = 1.0
+}
+# a pool a class has: -1 keeps the pool's own number, the multipliers scale its pace
+export property ClassPool {
+  @Ref(VitalPools) pool: int = 0
+  @Range(-1, 1000000) max: float = -1.0
+  @Range(-1, 1) start: float = -1.0
+  @Range(0, 100) regen_mult: float = 1.0
+  @Range(0, 100) delay_mult: float = 1.0
+}
+
+# a class of actor (a pedestrian, a player, a wall turret, a vehicle). `pools` lists the pools it has
+# (none listed: all of them); `can_down` has it fall to the ground and bleed out for `bleed_out` seconds
+# (another actor may revive it) before dying, instead of dying at once. While downed, damage takes
+# `downed_hurt` seconds off the bleed-out a point (0: it cannot be hurt; large: finished off)
+export property VitalClass {
+  key: string = ""
+  @Text name: Key = null
+  pools: []ClassPool = null
+  resists: []ClassResist = null
+  zones: []ClassZone = null
+  can_down: bool = false
+  @Unit("s") @Range(0, 3600) bleed_out: float = 30.0
+  @Range(0, 1000) downed_hurt: float = 0.0
+  @Range(0, 1) revive_frac: float = 0.3                 # the share of life a revive gives when it names none
+  @Unit("s") @Range(0, 600) revive_invuln: float = 2.0
+  @Unit("s") @Range(0, 600) spawn_invuln: float = 0.0   # untouchable when added and when respawned
+  raise_dead: bool = false                              # a revive may raise the dead (a resurrection)
+  # the body's motion is the animation graph's (ludic.anim), never the package's: the facts name the
+  # clip (or graph state) for the anim layer to play, and these are where the class says which
+  @Asset("gltf") model: string = ""
+  @Clip(model) clip_down: string = ""                   # going down
+  @Clip(model) clip_bleed: string = ""                  # the loop while bleeding out
+  @Clip(model) clip_death: string = ""
+  @Clip(model) clip_revive: string = ""
+  @Clip(model) clip_respawn: string = ""
+}
+
+@ByKey
+export open registry VitalClasses of VitalClass as VCLASS
+
+# what the machine listens to (dispatched by the verbs; a game may dispatch them too)
+export action VitalsDownIn { @Target who: int = -1 }
+export action VitalsDieIn { @Target who: int = -1 }
+export action VitalsReviveIn { @Target who: int = -1, frac: float = 0.0, by: int = -1 }
+export action VitalsRespawnIn { @Target who: int = -1 }
+
+# the roles in a party. Solo and host simulate; a guest shows what the host says
+export const VITALS_SOLO: int = 0
+export const VITALS_HOST: int = 1
+export const VITALS_GUEST: int = 2
+
+# the facts
+export const VITALS_DAMAGED: int = 0     # a hit took something (pool: life's, amount, absorbed, type, zone, crit)
+export const VITALS_DOWNED: int = 1      # life ran out and the class falls rather than dies
+export const VITALS_DIED: int = 2        # dead (source: the last to hurt it, type, zone, x y z)
+export const VITALS_REVIVED: int = 3     # up again (source: the reviver)
+export const VITALS_DEPLETED: int = 4    # a pool reached 0 (pool)
+export const VITALS_RESTORED: int = 5    # a pool was given something back (pool, amount)
+export const VITALS_RESPAWNED: int = 6   # dead to alive with the pools at their starts
+export const VITALS_BLOCKED: int = 7     # a hit refused: untouchable (amount: what it would have been)
+export const VITALS_INVULN_END: int = 8  # an untouchable window closed
+
+# why a verb did nothing
+export const VITALS_OK: int = 0
+export const VITALS_NO_SUCH: int = 1
+export const VITALS_NO_POOL: int = 2
+export const VITALS_NOT_ENOUGH: int = 3
+export const VITALS_WRONG_PHASE: int = 4
+export const VITALS_NOT_HOST: int = 5       # a guest asked; the request went to the host
+export const VITALS_REFUSED: int = 6        # the host's port said no
+
+export property VitalsFact {
+  what: int = 0
+  vital: int = -1                          # the handle of the actor it is about
+  actor: int = -1
+  source: int = -1                         # who did it
+  pool: int = -1
+  type: int = -1
+  zone: int = -1
+  amount: float = 0.0                      # taken (damaged), given (restored), or refused (blocked)
+  absorbed: float = 0.0                    # of a hit, what armour and shields took
+  value: float = 0.0                       # the pool's amount afterwards
+  crit: bool = false
+  predicted: bool = false                  # a guest's own guess, before the host spoke
+  tag: int = 0                             # the game's number for the act (a shot's id), carried to the facts
+  clip: string = ""                        # downed, died, revived, respawned: the class's clip for the anim layer
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+}
+
+# what a guest asks of the host: the kinds
+export const VREQ_SPEND: int = 0
+export const VREQ_RESTORE: int = 1
+export const VREQ_HEAL: int = 2
+export const VREQ_REVIVE: int = 3
+export const VREQ_KILL: int = 4
+export const VREQ_RESPAWN: int = 5
+
+export property VitalsRequest {
+  kind: int = 0
+  actor: int = -1                          # the actor it is about
+  pool: int = -1
+  amount: float = 0.0
+  seq: int = 0
+}
