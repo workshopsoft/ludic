@@ -8,7 +8,7 @@
 # world_partition.lres, so a town map and a city map tune themselves and the editor reads the same file.
 #
 #   assets/maps/<map>/world_partition.lres
-#     city { cell_size: 256.0, full_radius: 900.0, hlod_radius: 4000.0, impostor_radius: 9000.0,
+#     city { cell_size: 256.0, full_radius: 900.0, hlod_radius: 4000.0,
 #            load_ms: 2.0, memory_mb: 768, max_jobs: 4 }
 # ============================================================================
 numbers float
@@ -20,7 +20,6 @@ export property WorldPartition {
   @Unit("m") @Range(8, 4096) cell_size: float = 256.0          # the cell's side; keep it a power of two
   @Unit("m") @Range(0, 20000) full_radius: float = 900.0       # cells this near are loaded in full (real instances)
   @Unit("m") @Range(0, 40000) hlod_radius: float = 4000.0      # cells this near have their merged proxy loaded
-  @Unit("m") @Range(0, 80000) impostor_radius: float = 9000.0  # past hlod_radius, far buildings draw as impostors out to this
   @Unit("m") @Range(0, 2048) margin: float = 48.0              # a loaded layer is kept this far past its radius (hysteresis)
   @Range(0, 50) load_ms: float = 2.0               # the loads one frame may start (estimated cost)
   @Range(16, 16384) memory_mb: int = 768           # what the loaded cells may hold in all

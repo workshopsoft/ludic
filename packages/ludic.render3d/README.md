@@ -100,7 +100,7 @@ The map is a grid of square cells. Their size and the streaming numbers are data
 `world_partition.lres` (`WorldPartitions`, `@PerMap`, loaded with `world_partitions_load(wp, map)`):
 
 ```text
-city { cell_size: 256.0, full_radius: 900.0, hlod_radius: 4000.0, impostor_radius: 9000.0, margin: 48.0,
+city { cell_size: 256.0, full_radius: 900.0, hlod_radius: 4000.0, margin: 48.0,
        load_ms: 2.0, memory_mb: 768, max_jobs: 4 }
 ```
 
@@ -127,6 +127,8 @@ It is pure: the game does the loading and tells it what it cost.
 - Layers: **HLOD** (the merged far proxy) wanted within `hlod_r` of the camera, **FULL** (the real instances) within `full_r`. A cell shows FULL
   if it has it, else HLOD: loading FULL never frees HLOD until it is in, dropping FULL leaves HLOD under it. A layer is kept `margin` past
   its radius (hysteresis), so pacing a radius loads and drops nothing.
+  So far buildings are layered by distance: inside `full_radius` a cell's instances draw as the mesh (to each kit's `near`) and then as impostor cards (to its
+  `far`, capped by the cell being FULL); past it the cell is its HLOD proxy boxes out to `hlod_radius`; past that, nothing.
 - A frame: `ws_begin_frame(s, budget_us)`, `ws_update(s, x, z, fwd_x, fwd_z)` (cheap when the camera sat still), then `ws_next_job(s)` until -1
   (each is `slot * 4 + layer`: start the load, then `ws_job_done(s, slot, layer, cost_us)` now or on a later frame, or `ws_job_fail`), then
   `ws_next_drop(s)` until -1 (release that layer). Or all at once: `ws_run(s, load_fn, drop_fn)`.

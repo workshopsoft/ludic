@@ -99,6 +99,18 @@ Characters and moving objects
 69. An outline pass: an actor carries a rim width and colour, drawn as an inverted hull depth-tested against the scene, and anything that is not an actor can queue one at a transform (a scatter instance, a tile) — `actor.ludic` `actor_draw_outlines`, `outline_model`, `shaders/outline.frag`
 70. Two ways to make an island out of a survey: a radius from a centre, or the sea put around the survey's own edge with a noise-wobbled coast, both scaling the existing relief into the water and compressing the last few metres of height either side of the line into beach and shallows — `terrain.ludic` `terrain_island`, `terrain_coast`, `shaders/heightgen.frag`
 
+Large worlds (cities of hundreds of thousands of buildings on 16 km and more; README, "Large worlds")
+71. Floating origin: world positions in double, render space a float offset from an origin snapped to a power-of-two grid, rebased with hysteresis and no jitter (a rebase moves every render number by exactly the shift); integer-cell + float-offset positions - `forg.ludic` `forg_update`, `forg_shift_floats`, `CellPos`
+72. World partition as data (cell size, tier radii, budgets in one row of the map's `world_partition.lres`) and a pure streaming scheduler: two layers a cell (HLOD proxy, full instances), nearest-and-forward-first, per-frame time budget from measured cost per byte, memory budget with nearer-evicts-farther, hysteresis, pins, async and failed loads, drops handed out once - `wpart.ludic`, `wstream.ludic`
+73. Per-cell content files (kit id, cell-local transform, tint, variation, flags), a cell index and the map's building kits as data - `cellfile.ludic` `CellContent`, `CellIndex`, `BuildingKits`
+74. HLOD: a merged, simplified far proxy a cell (buildings to boxes, merged by ground cell and height band under a volume-growth limit), a bake task and its files - `hlod.ludic` `hlod_bake`, `tools/hlod_bake.ludic`, `hlod_gpu.ludic`, `shaders/hlod.vert`, `shaders/hlod.frag`
+75. Instancing at scale, CPU: per-cell frustum culling (cells culled whole), distance LOD binning to (kit, level) lists, per-list caps and an adaptive distance scale for a steady frame time - `kinst.ludic` `kinst_cull`, `kinst_adapt`
+76. Instancing at scale, GPU: one arena of every resident cell's instances, a parallel frustum/distance cull with two-pass atomic binning (count, scan, scatter) in compute, indirect draws a material, a range allocator that holds a freed range while a frame is in flight - `kgpu.ludic`, `karena.ludic`, `shaders/kinst_cull.comp`, `shaders/kinst_args.comp`, `shaders/kinst_reset.comp`, `shaders/kit.vert`
+77. Octahedral impostors for far buildings: hemi-octahedral frame atlas, three-frame barycentric blend with per-frame reprojection, baked from the kit's model by an MRT pass - `oimp.ludic`, `oimp_gpu.ludic`, `shaders/oimp.vert`, `shaders/oimp.frag`
+78. Interior mapping: per-window room from an atlas (deterministic hash of the instance's variation, wall and window cell), lights on at night room by room, glossy glass over the room, a facade measured in the model's own frame (nothing moves with the origin) - `imi.ludic`, `interior_atlas.ludic` `InteriorAtlases`, `shaders/kit.frag` `INTERIOR_MAP`
+79. Portal visibility inside buildings: rooms and portals as data, a frustum narrowed at each open portal, entry from outdoors through the exterior portals, the verdict driving the culler - `portal.ludic` `pg_visible`, `intr.ludic` `InteriorRooms`, `InteriorDoors`
+80. Multi-map and instanced interiors: an interior is a map loaded on demand (once however many instances), a slot and far-away origin for each (def, owner), fade / load / spawn / exit transition with events, eviction, keep time, the city's streaming held while inside - `intr.ludic` `intr_enter`, `intr_update`, `intr_rehome`
+
 ## Against Unreal Engine 5 and RAGE (RDR2), honestly
 
 | Technique | UE5 / RAGE | Here |
@@ -113,7 +125,7 @@ Characters and moving objects
 | Terrain: height fields, layered materials, real-world data | both | implemented (22–27) |
 | Water with planar reflection | RAGE planar, UE SSR | planar reflection implemented (40); no screen-space reflection |
 | Post: bloom, exposure, tonemap, grading, DoF, motion blur | both | bloom/exposure/tonemap/grading implemented (44–49); no depth of field, no motion blur |
-| Streaming world | both | chunk streaming of cover (35); terrain is one 8 km tile |
+| Streaming world | both | chunk streaming of cover (35); terrain is one 8 km tile; cell streaming with HLOD, floating origin and instancing for a city (71-76) |
 | Compute shaders, indirect draw, bindless | both | compute passes and indirect draws implemented (`gpu.ludic`, `shaders/grass_cull.comp`); no bindless |
 
 Where the remaining visual gap sits: photogrammetry cards for several meadow
