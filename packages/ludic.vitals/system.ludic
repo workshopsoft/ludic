@@ -4,8 +4,10 @@
 # class the file names and the game no longer has is skipped, a pool the file lacks starts full
 @alloc_ok("a new game or a load: the table made again")
 export function vitals_reset(vitals_st: mut VitalsState) -> void {
-  vitals_st.vt__vitals = vt__table()
-  vitals_st.vt__by_actor = imap_new()
+  let tb = vitals_st.vt__vitals
+  # every actor's record goes back to the free list (a reset keeps what it made)
+  while tb_len(tb) > 0 { vitals_remove(vitals_st, tb_handle(tb, tb_len(tb) - 1)) }
+  imap_clear(vitals_st.vt__by_actor)
   q_clear(vitals_st.vt__q)
 }
 

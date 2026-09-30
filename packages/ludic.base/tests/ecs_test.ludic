@@ -200,5 +200,26 @@ program EcsTest {
   test "the kind index follows the setters, the gate and removals" () { index_case() }
   test "change ticks name the rows written since" () { ticks_case() }
   test "IntMap puts, finds, deletes and grows" () { map_case() }
+  test "an IntMap whose keys come and go makes nothing in a frame (the alloc fence)" () { churn_case() }
   test "a reserved table holds its rows and indexes as an unreserved one does" () { reserve_case() }
+
+  function churn_case() -> void {
+    let m = imap_new()
+    imap_reserve(m, 200)
+    var k = 0
+    for i in 0 .. 100 { imap_put(m, k, k); k += 1 }
+    Mem.play()
+    Mem.settled()
+    # ids never repeat: each put leaves a deleted key behind until the map sweeps them
+    for frame in 0 .. 6000 {
+      imap_put(m, k, k)
+      imap_del(m, k - 100)
+      k += 1
+      Mem.frame()
+    }
+    expect_eq(imap_len(m), 100)
+    expect_eq(imap_get(m, k - 1, -1), k - 1)
+    expect_eq(imap_get(m, k - 101, -1), -1)
+    expect(Mem.bad_frames() == 0)
+  }
 }

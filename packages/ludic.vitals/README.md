@@ -90,7 +90,26 @@ ludic.respawn's.
 | `vitals_set_max(h, pool, max, keep_share)`, `vitals_set(h, pool, value)` | upgrades and scripted scenes (host and solo) |
 | `vitals_revive(h, by, frac) -> why`, `vitals_kill(h, source, type)`, `vitals_respawn(h)`, `vitals_invulnerable(h, seconds)` | the phase; -1 seconds is for good |
 | `vitals_value`, `vitals_max`, `vitals_fraction`, `vitals_health`, `vitals_health_max`, `vitals_has_pool`, `vitals_life_pool`, `vitals_phase`, `vitals_alive`, `vitals_downed`, `vitals_dead`, `vitals_bleed_left`, `vitals_invuln_left`, `vitals_can_hurt`, `vitals_class`, `vitals_scaled` | what a bar or an AI asks |
+| `vitals_reserve(n)` | room for n actors at once, made now (see Actors come and go) |
 | `vitals_run(dt)`, `vitals_reset()`, `vitals_save()`, `vitals_load(v, version)`, `vitals_system()` | `"vitals"`, `PH_SIMULATE` |
+
+## Actors come and go
+
+A crowd spawns and despawns actors all game, so nothing is made per spawn. `vitals_remove` gives the actor's
+record (and its three pool lists) back to a free list and `vitals_add` takes from it; a record is made only
+when more actors are held at once than ever before, and then kept. A record that was downed or dead is
+brought back to Alive by the machine's own `VitalsRecycle` (rows `recycle_downed`, `recycle_dead` in
+steps.lres) before it is kept, so the phase is still only ever written by a transition.
+
+Room is made ahead, before play: a state starts with `max_actors` records (the `VitalsSettings` row 0, a
+`VitalsSetting { max_actors }` from a resource file; none: 128), and `vitals_reserve(n)` makes room for n
+(records, table rows, the actor map) when a game wants more, for instance at a load. Past that a spawn is
+still free once the new high water is reached, but a game that knows its busiest moment should size for it so
+no frame ever makes a record.
+
+Handles stay stable: a handle is a slot and a generation, and the slot's generation moves on at every
+remove, so a stale handle misses (`vitals_actor(h)` is -1, `vitals_remove(h)` is false) and never reaches the
+actor that now holds the record. `vitals_reset` returns every record to the free list too.
 
 `why` is `VITALS_OK`, `_NO_SUCH`, `_NO_POOL`, `_NOT_ENOUGH`, `_WRONG_PHASE`, `_NOT_HOST` or `_REFUSED`.
 

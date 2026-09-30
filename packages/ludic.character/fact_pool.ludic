@@ -1,21 +1,19 @@
 # ludic.character/fact_pool.ludic - the facts' records made at the start (CHARACTERFACTS of them) with a free list
 # of room for all, so a frame holding a new peak of facts makes nothing until that many are held
-const CHR_FACTS: int = 64
+# 1024 is the cap: a frame that holds more facts than that (nobody drained them) loses the rest, counted in
+# char_facts_dropped. Nothing is made in play
+const CHR_FACTS: int = 1024
 
+@alloc_ok("a state's start: every fact record there will ever be")
 function chr_fpool_new() -> []CharacterFact {
   let l = new []CharacterFact
   for i in 0 .. CHR_FACTS { push(l, new CharacterFact) }
   return l
 }
+@alloc_ok("a state's start: room for the free list, holding none yet")
 function chr_ffree_new() -> []CharacterFact {
-  let l = chr_fpool_new()
+  let l = new []CharacterFact
+  for i in 0 .. CHR_FACTS { push(l, null) }
   List.clear(l)
   return l
-}
-# past them: a record for the new peak, kept in the pool for good
-@alloc_ok("a new peak of facts held at once, past the 64 made at the start; kept and reused")
-function chr_fact_more(character_st: mut CharacterState) -> CharacterFact {
-  let f = new CharacterFact
-  push(character_st.chr_fpool, f)
-  return f
 }

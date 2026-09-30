@@ -8,3 +8,5 @@ bleed_out { from: VitalPhase.Downed, to: VitalPhase.Dead,                       
 revive    { from: VitalPhase.Downed, to: VitalPhase.Alive,  on: "VitalsReviveIn",  enter: fn vt_enter_revived }
 raise     { from: VitalPhase.Dead,   to: VitalPhase.Alive,  on: "VitalsReviveIn",  guard: fn vt_raisable, enter: fn vt_enter_revived }
 respawn   { from: VitalPhase.Dead,   to: VitalPhase.Alive,  on: "VitalsRespawnIn", enter: fn vt_enter_respawned }
+recycle_downed { from: VitalPhase.Downed, to: VitalPhase.Alive, on: "VitalsRecycle" }
+recycle_dead   { from: VitalPhase.Dead,   to: VitalPhase.Alive, on: "VitalsRecycle" }

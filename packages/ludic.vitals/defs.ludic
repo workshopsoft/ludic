@@ -110,6 +110,7 @@ export action VitalsDownIn { @Target who: int = -1 }
 export action VitalsDieIn { @Target who: int = -1 }
 export action VitalsReviveIn { @Target who: int = -1, frac: float = 0.0, by: int = -1 }
 export action VitalsRespawnIn { @Target who: int = -1 }
+export action VitalsRecycle { @Target who: int = -1 }     # a removed actor's record, brought back to Alive to be reused
 
 # the roles in a party. Solo and host simulate; a guest shows what the host says
 export const VITALS_SOLO: int = 0
@@ -170,3 +171,13 @@ export const VREQ_RESPAWN: int = 5
 # go back out as snapshots. `who` is the row on the asker's own machine, for its prediction (net.ludic)
 @Net @Broadcast(none) @Validate(vitals_ask_ok)
 export action VitalsAsk { @Target who: int = -1, kind: int = 0, actor: int = -1, pool: int = -1, amount: float = 0.0 }
+
+# the room a state is made with: how many actors may be held at once before a spawn has to make a record.
+# The first row is used (none: 128). Past it the pool grows once to the new most and stays there
+export property VitalsSetting {
+  key: string = ""
+  @Range(1, 20000) max_actors: int = 128
+}
+
+@AppendOnly @ByKey
+export open registry VitalsSettings of VitalsSetting as VSET

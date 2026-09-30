@@ -77,6 +77,7 @@ still stick.
 | `char_camera(dt)`, `char_camera_third(dt)`, `char_look(yaw, pitch)`, `char_look_pitch`, `char_orbit(dist)`, `char_lock_orbit`, `char_set_fps`, `char_fps_toggle() -> CHAR_EYES_*` | the camera; read it back with `body_eye_x/y/z/yaw/pitch()` and `body_eyes_now()` |
 | `body_x()`, `body_y()`, `body_z()`, `body_yaw()`, `body_speed()`, `body_moving()`, `body_run()`, `body_phase()`, `body_time()`, `body_water()`, `body_airborne()`, `body_vy()`, `body_landing()`, `body_steep()`, `body_step()`, `body_sitting()`, `body_sit_mode()`, `body_sit_t()`, `body_sit_y()`, `body_sit_h()`, `body_swimming()`, `body_diving()`, `body_depth()`, `body_breath()`, `body_breath_max()`, `body_floating()`, `body_swim_phase()`, `body_can_run()`, `body_crouch()`, `body_sprint()`, `body_direction()`, `body_gait()`, `body_held()`, `body_fps()`, `body_cam_yaw()`, `body_cam_pitch()`, `body_cam_dist()` | the queries |
 | `char_wrap(a)`, `char_toward(cur, target, rate)`, `char_ease(t)` | the helpers a pose needs |
+| `char_facts_dropped() -> int` | facts lost because the pool's 1024 records were all held (nobody drained): the cap's count. The pool is made with the state and never grows |
 | `char_facts() -> Queue<CharacterFact>` | `{ what, x, y, z, v }`: `CHAR_LANDED`, `_JUMPED`, `_FOOTFALL`, `_TOO_STEEP` (once per refusal), `_STARTED_SWIMMING`, `_LEFT_WATER`, `_OUT_OF_AIR` (v: seconds), `_CURRENT` (every 12 s) |
 | `char_reset()`, `char_system() -> System` | `"character"`, `PH_INPUT`, nothing saved: where a body stands is the game's to write |
 

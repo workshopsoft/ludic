@@ -123,6 +123,7 @@ export state CharacterState {
   @max(1024) chr_fpool: []CharacterFact = chr_fpool_new()   # every fact record made, reused once no drain holds it
   @max(1024) chr_ffree: []CharacterFact = chr_ffree_new()
   chr_fnext: int = 0
+  chr_fdrop: int = 0                # facts lost at the cap
 }
 function chr__top_plain(x: float, z: float, r: float, from_y: float, step: float, base: float) -> float { return base }
 function chr__bed_plain(x: float, z: float) -> float { return CharacterGround.height(x, z) }

@@ -6,6 +6,8 @@ export property IntMap {
   mask: int = 63
   n: int = 0
   used: int = 0               # live and deleted slots: what makes probing long
+  tk: words = null            # scratch for a rehash that only sweeps deleted keys: made once, so churn makes nothing
+  tv: words = null
 }
 
 export function imap_new() -> IntMap {
@@ -77,6 +79,7 @@ export function imap_clear(m: IntMap) -> void {
 # room for `n` keys before the map grows, made now
 @alloc_ok("at a world's start: the keys it will need")
 export function imap_reserve(m: IntMap, n: int) -> void {
+  imap_scratch(m)
   if (m.mask + 1) * 3 >= n * 4 { return }
   var cap = m.mask + 1
   while cap * 3 < n * 4 { cap = cap * 2 }
@@ -84,14 +87,36 @@ export function imap_reserve(m: IntMap, n: int) -> void {
   let ov = m.vals
   imap_alloc(m, cap)
   for i in 0 .. len(ok) { if ok[i] >= 0 { imap_put(m, ok[i], ov[i]) } }
+  imap_scratch(m)
+}
+
+@alloc_ok("the rehash's scratch, once per size of the map")
+function imap_scratch(m: IntMap) -> void {
+  if m.tk != null and len(m.tk) == len(m.keys) { return }
+  m.tk = words(len(m.keys))
+  m.tv = words(len(m.keys))
 }
 
 @alloc_ok("past imap_reserve only: doubles when half full; the old arrays are not given back")
 function imap_grow(m: IntMap) -> void {
-  let ok = m.keys
-  let ov = m.vals
   var cap = m.mask + 1
-  if m.n * 2 > cap { cap = cap * 2 }
-  imap_alloc(m, cap)
-  for i in 0 .. len(ok) { if ok[i] >= 0 { imap_put(m, ok[i], ov[i]) } }
+  if m.n * 2 > cap {
+    let ok = m.keys
+    let ov = m.vals
+    cap = cap * 2
+    imap_alloc(m, cap)
+    for i in 0 .. len(ok) { if ok[i] >= 0 { imap_put(m, ok[i], ov[i]) } }
+    return
+  }
+  # mostly deleted keys: sweep them out through the scratch, making nothing (a map that churns ids, as a
+  # crowd's actors do, came here over and over and left two arrays behind each time)
+  imap_scratch(m)
+  for i in 0 .. cap {
+    m.tk[i] = m.keys[i]
+    m.tv[i] = m.vals[i]
+    m.keys[i] = -1
+  }
+  m.n = 0
+  m.used = 0
+  for i in 0 .. cap { if m.tk[i] >= 0 { imap_put(m, m.tk[i], m.tv[i]) } }
 }

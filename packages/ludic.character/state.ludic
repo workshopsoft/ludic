@@ -13,8 +13,8 @@ export function char_facts(character_st: CharacterState) -> Queue<CharacterFact>
   return character_st.chr_fact_q
 }
 
-# a fact record no drain holds any more, made fresh (and kept) only when every one is held: a
-# fact can come every frame, and a record a frame is never given back
+# a fact record no drain holds any more; null when every one is held (the cap): a fact can come
+# every frame, so none is made in play
 function chr_fact_record(character_st: mut CharacterState) -> CharacterFact {
   if character_st.chr_fnext >= len(character_st.chr_ffree) {
     q_unheld(char_facts(character_st), character_st.chr_fpool, character_st.chr_ffree)
@@ -25,10 +25,17 @@ function chr_fact_record(character_st: mut CharacterState) -> CharacterFact {
     character_st.chr_fnext += 1
     return f
   }
-  return chr_fact_more(character_st)
+  return null
 }
+
+# facts lost because every one of the CHR_FACTS records was held (not drained): the cap's count
+export function char_facts_dropped(character_st: CharacterState) -> int { return character_st.chr_fdrop }
 function chr_say(character_st: mut CharacterState, what: int, v: float) -> void {
   let f = chr_fact_record(character_st)
+  if f == null {
+    character_st.chr_fdrop += 1
+    return
+  }
   f.what = what
   f.x = character_st.chr_x
   f.y = character_st.chr_y

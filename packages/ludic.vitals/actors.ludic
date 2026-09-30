@@ -34,12 +34,18 @@ function vt__fill_pools(v: Vital) -> void {
   }
 }
 
-@alloc_ok("an actor added: an event, not a frame")
-function vt__make(vitals_st: mut VitalsState, actor: int, kind: int, persist: bool, phase: VitalPhase) -> int {
-  let r = new Vital { phase: phase }
-  r.actor = actor
-  r.kind = kind
-  r.persist = persist
+# a record for an actor: one given back by vitals_remove, else (only past the most actors held at once,
+# once) a new one with its three pool lists. A record is never thrown away, so a crowd that churns
+# costs nothing per spawn
+@alloc_ok("past the most actors ever held at once: a record made once, then kept and reused")
+function vt__record(vitals_st: mut VitalsState) -> Vital {
+  if len(vitals_st.vt__free) > 0 { return List.pop(vitals_st.vt__free) }
+  return vt__blank()
+}
+
+@alloc_ok("a record and its pool lists, made at the start or past the high water")
+function vt__blank() -> Vital {
+  let r = new Vital
   r.vals = new []float
   r.maxs = new []float
   r.wait = new []float
@@ -48,11 +54,66 @@ function vt__make(vitals_st: mut VitalsState, actor: int, kind: int, persist: bo
     push(r.maxs, -1.0)
     push(r.wait, 0.0)
   }
+  return r
+}
+
+# every field as a new actor has it (the pool lists keep their length). The phase is the machine's: a record
+# given back in another phase is brought to Alive by VitalsRecycle first
+function vt__wipe(r: Vital) -> void {
+  r.actor = -1
+  r.persist = true
+  r.kind = 0
+  r.mine = false
+  r.invuln = 0.0
+  r.bleed = 0.0
+  r.dying = false
+  r.quiet = false
+  r.frac_in = 0.0
+  r.by_in = -1
+  r.last_source = -1
+  r.last_type = -1
+  r.last_zone = -1
+  r.last_crit = false
+  r.seq = 0
+  for p in 0 .. VPOOL_COUNT {
+    r.vals[p] = 0.0
+    r.maxs[p] = -1.0
+    r.wait[p] = 0.0
+  }
+}
+
+# an actor's record goes back to the free list; its handle's generation has moved on, so a stale handle misses
+function vt__give_back(vitals_st: mut VitalsState, r: Vital) -> void {
+  vt__wipe(r)
+  kept_push(vitals_st.vt__free, r)
+}
+
+function vt__make(vitals_st: mut VitalsState, actor: int, kind: int, persist: bool, phase: VitalPhase) -> int {
+  let r = vt__record(vitals_st)
+  vt__wipe(r)
+  r.actor = actor
+  r.kind = kind
+  r.persist = persist
   vt__fill_pools(r)
   if vt__kind_ok(kind) { r.invuln = VitalClasses[kind].spawn_invuln }
   let h = tb_add(vitals_st.vt__vitals, r)
   imap_put(vitals_st.vt__by_actor, actor, h)
+  if phase != VitalPhase.Alive {
+    # a mirror of an actor already downed or dead: the machine takes it there without facts (quiet)
+    r.quiet = true
+    if phase == VitalPhase.Downed { dispatch VitalsDownIn { who: h } } else { dispatch VitalsDieIn { who: h } }
+    drain_actions()
+  }
   return h
+}
+
+# room for `n` actors made now, before play: their records, the table's rows and the map. No spawn allocates
+# until more than n are held at once; `VitalsSettings` row 0's `max_actors` is what a state starts with
+@alloc_ok("before play: the records, rows and map for n actors")
+export function vitals_reserve(vitals_st: mut VitalsState, n: int) -> void {
+  while len(vitals_st.vt__free) + tb_len(vitals_st.vt__vitals) < n { push(vitals_st.vt__free, vt__blank()) }
+  tb_reserve(vitals_st.vt__vitals, n)
+  imap_reserve(vitals_st.vt__by_actor, n * 2)
 }
 
 # an actor starts to hold pools as a class (a VitalClasses row); returns its handle (the same if it already does)
@@ -66,7 +127,14 @@ export function vitals_remove(vitals_st: mut VitalsState, h: int) -> bool {
   let r = vt__vital(vitals_st, h)
   if r == null { return false }
   imap_del(vitals_st.vt__by_actor, r.actor)
-  return tb_remove(vitals_st.vt__vitals, h)
+  if r.phase != VitalPhase.Alive {
+    # the machine alone writes the phase: it brings the record back to Alive before it is kept
+    dispatch VitalsRecycle { who: h }
+    drain_actions()
+  }
+  if not tb_remove(vitals_st.vt__vitals, h) { return false }
+  vt__give_back(vitals_st, r)
+  return true
 }
 
 # this machine owns the actor: its `predict` pools are simulated here (a guest's own player)

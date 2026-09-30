@@ -568,6 +568,79 @@ program VitalsTest {
     expect(vitals_count(vitals_st) == 2)
   }
 
+  test "peds spawned and despawned for thousands of frames make nothing in a frame (the alloc fence)" (vitals_st: mut VitalsState, m: mut VitalsStepsMachine, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let h = hero(vitals_st)
+    var uid = 100
+    # a crowd of 40 that churns: every frame a few go, as many come. Warm first, then the fence
+    let live = new []int
+    for k in 0 .. 40 { push(live, vitals_add(vitals_st, uid + k, VCLASS_GHOUL, false)) }
+    uid += 40
+    for frame in 0 .. 600 {
+      for j in 0 .. 3 {
+        let at = (frame * 3 + j) % 40
+        vitals_remove(vitals_st, live[at])
+        live[at] = vitals_add(vitals_st, uid, VCLASS_GHOUL, false)
+        uid += 1
+      }
+      step(vitals_st, m, 0.05)
+      q_drain(vitals_facts(vitals_st))
+    }
+    Mem.play()
+    Mem.settled()
+    for frame in 0 .. 5000 {
+      for j in 0 .. 3 {
+        let at = (frame * 3 + j) % 40
+        vitals_remove(vitals_st, live[at])
+        live[at] = vitals_add(vitals_st, uid, VCLASS_GHOUL, false)
+        vitals_hurt(vitals_st, live[at], 1, 5.0, DTYPE_BULLET, HZONE_BODY, 0)
+        uid += 1
+      }
+      step(vitals_st, m, 0.05)
+      q_drain(vitals_facts(vitals_st))
+      Mem.frame()
+    }
+    print(`vitals: 15000 spawns and despawns, {Mem.bad_frames()} frames kept memory`)
+    expect(Mem.bad_frames() == 0)
+    expect(vitals_count(vitals_st) == 41)
+    expect(vitals_alive(vitals_st, h))
+  }
+
+  test "a removed actor's record is reused, and its old handle never reaches the new actor" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    let a = vitals_add(vitals_st, 7, VCLASS_GHOUL, false)
+    vitals_hurt(vitals_st, a, 1, 20.0, DTYPE_BULLET, HZONE_BODY, 0)
+    expect(vitals_remove(vitals_st, a))
+    expect(not vitals_remove(vitals_st, a))
+    let b = vitals_add(vitals_st, 8, VCLASS_GHOUL, false)
+    expect(b != a)
+    expect(vitals_actor(vitals_st, a) == -1)
+    expect(vitals_actor(vitals_st, b) == 8)
+    expect(vitals_of(vitals_st, 7) == -1)
+    expect(not vitals_remove(vitals_st, a))
+    expect(vitals_alive(vitals_st, b))
+    expect(near(vitals_health(vitals_st, b), vitals_health_max(vitals_st, b)))
+    # a reused record starts as a new actor's does
+    expect(vitals_phase(vitals_st, b) == VitalPhase.Alive)
+    expect(vitals_count(vitals_st) == 1)
+  }
+
+  test "vitals_reserve makes the room once, and a reset keeps it" (vitals_st: mut VitalsState, arena_st: mut Arena) {
+    fresh(vitals_st, arena_st)
+    vitals_reserve(vitals_st, 300)
+    Mem.play()
+    Mem.settled()
+    for round in 0 .. 3 {
+      for k in 0 .. 300 { vitals_add(vitals_st, 1000 + k, VCLASS_GHOUL, false) }
+      expect(vitals_count(vitals_st) == 300)
+      Mem.frame()
+      vitals_reset(vitals_st)
+      expect(vitals_count(vitals_st) == 0)
+      Mem.frame()
+    }
+    expect(Mem.bad_frames() == 0)
+  }
+
   test "the system runs as one and keeps its own section" (vitals_st: mut VitalsState) {
     let s = vitals_system()
     expect_eq(s.key, "vitals")

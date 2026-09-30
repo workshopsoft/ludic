@@ -7,8 +7,7 @@ import "ludic.base"
 import "ludic.physics"
 program CharacterTest {
   numbers float
-  function wpose(physics_st: mut PhysicsState, id: int) -> PhysWalk {
-    let p = new PhysWalk
+  function wpose(physics_st: mut PhysicsState, id: int, p: PhysWalk) -> PhysWalk {
     if not phys_walker_pose(physics_st, id, p) { return null }
     return p
   }
@@ -43,6 +42,7 @@ program CharacterTest {
     wx: float = 0.0
     wy: float = 0.0
     wz: float = 0.0
+    pose: PhysWalk = new PhysWalk     # one record the fake reads the walker's pose into, so a frame makes nothing
   }
   function fk_ring(character_test_st: mut CharacterTestState, x: float, z: float, cx: float, cz: float, r: float) -> bool {
     let dx = x - cx
@@ -94,7 +94,7 @@ program CharacterTest {
   function fk_walk(physics_st: mut PhysicsState, character_test_st: mut CharacterTestState, x: float, y: float, z: float, vx: float, vz: float, jump: float, step: float, slope: float, dt: float) -> int {
     if character_test_st.walker < 0 { character_test_st.walker = fk_jolt(physics_st) }
     let g = phys_walker_move(physics_st, character_test_st.walker, x, y, z, vx, vz, jump, step, slope, dt)
-    let p = wpose(physics_st, character_test_st.walker)
+    let p = wpose(physics_st, character_test_st.walker, character_test_st.pose)
     character_test_st.wx = p.x
     character_test_st.wy = p.y
     character_test_st.wz = p.z
@@ -424,6 +424,34 @@ program CharacterTest {
     character_test_st.riding = false
     char_step_off(character_st, 5.0, 0.0)
     expect_near(body_y(character_st), 0.45, 0.001)
+  }
+
+  test "a burst of facts nobody drains is capped and counted, and makes nothing in a frame (the alloc fence)" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, 0.0, 0.0)
+    walk(character_st, 20.0, 60.0, true)
+    q_drain(char_facts(character_st))
+    Mem.play()
+    Mem.settled()
+    # 11 minutes of running and jumping with the facts never drained: far more than the pool holds
+    for k in 0 .. 40000 {
+      char_update(character_st, 0.0, 1.0, true, true, 0.0, 0.0, 1.0 / 60.0)
+      if k % 150 == 0 { char_teleport(character_st, -15.0, -4.0, EAST) }
+      Mem.frame()
+    }
+    let held = len(char_facts(character_st).items)
+    print(`character: {held} facts held, {char_facts_dropped(character_st)} dropped, {Mem.bad_frames()} frames kept memory`)
+    expect(char_facts_dropped(character_st) > 0)
+    expect(Mem.bad_frames() == 0)
+    # drained, it takes facts again
+    q_drain(char_facts(character_st))
+    let d = char_facts_dropped(character_st)
+    for k in 0 .. 600 {
+      char_update(character_st, 0.0, 1.0, true, false, 0.0, 0.0, 1.0 / 60.0)
+      q_drain(char_facts(character_st))
+      Mem.frame()
+    }
+    expect_eq(char_facts_dropped(character_st), d)
+    expect(Mem.bad_frames() == 0)
   }
 
   test "the orbit sits behind and above the ground; the eyes at head height, refused when sat" (character_st: mut CharacterState) {
