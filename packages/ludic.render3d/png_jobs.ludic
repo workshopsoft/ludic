@@ -1,0 +1,181 @@
+# png_jobs.ludic - a PNG decoded in three steps, so the middle one can run on a worker: png_parse (the
+# program's thread) reads the file, walks its chunks and makes every buffer; png_work inflates, unfilters
+# and packs into them with a context of its own and makes nothing; png_take hands the samples back and
+# tells the renderer their shape. tex_prefetch runs png_work for a list of files on every core, and
+# png_decode takes a prefetched image when one is waiting - so what a load uploads, and in what order,
+# is what it always was.
+property PngJob {
+  path: string = ""
+  z: ZInflate = null
+  idat: pointer = null
+  idlen: int = 0
+  raw: pointer = null
+  plte: pointer = null
+  stride: int = 0
+  rawlen: int = 0
+  w: int = 0
+  h: int = 0
+  bd: int = 0
+  ct: int = 0
+  channels: int = 0
+  fbpp: int = 0
+  oc: int = 0
+  out: pointer = null
+  ok: bool = false
+  taken: bool = false
+}
+property PngBatch { jobs: []PngJob = null }
+
+@alloc_ok("loading a texture or a font: a load, not a frame")
+function png_parse(render3d_st: mut Render3dState, path: pointer) -> PngJob {
+  let d = r3d_read_file(render3d_st, path)
+  if d == null { print(`png: cannot read {path}`);  return null }
+  let size = render3d_st.tex_file_len
+  if size < 8 or d[0] != 137 or d[1] != 80 { free(d);  print(`png: not a png: {path}`);  return null }
+  var w = 0;  var h = 0;  var bd = 0;  var ct = 0
+  let plte = bytes(768)
+  let idat = bytes(size)
+  var idlen = 0
+  var i = 8
+  var done = false
+  while not done {
+    if i + 8 > size { done = true;  continue }
+    let ln = be32(d, i)
+    let typ = i + 4
+    let body = i + 8
+    if ln < 0 or body + ln > size { done = true;  continue }
+    if tag4(d, typ, 73, 72, 68, 82) { w = be32(d, body);  h = be32(d, body + 4);  bd = d[body + 8];  ct = d[body + 9] }
+    if tag4(d, typ, 80, 76, 84, 69) { let m = min(ln, 768);  for k in 0 .. m { plte[k] = d[body + k] } }
+    if tag4(d, typ, 73, 68, 65, 84) { mem_copy(mem_off(idat, idlen), mem_off(d, body), ln);  idlen += ln }
+    if tag4(d, typ, 73, 69, 78, 68) { done = true }
+    i = i + 12 + ln
+  }
+  free(d)
+  if w <= 0 or h <= 0 { free(idat);  free(plte);  return null }
+  let j = new PngJob
+  j.w = w;  j.h = h;  j.bd = bd;  j.ct = ct;  j.idat = idat;  j.idlen = idlen;  j.plte = plte
+  j.channels = 1
+  if ct == 2 { j.channels = 3 }
+  if ct == 4 { j.channels = 2 }
+  if ct == 6 { j.channels = 4 }
+  let bppbits = bd * j.channels
+  j.fbpp = max(1, (bppbits + 7) / 8)
+  j.stride = (w * bppbits + 7) / 8
+  j.rawlen = h * (j.stride + 1)
+  # one zeroed scanline in front of the data, so row 0's "row above" is real
+  j.raw = bytes(j.stride + j.rawlen + 8)
+  for z in 0 .. j.stride { j.raw[z] = 0 }
+  if (ct == 3) or (bd < 8) {
+    j.oc = 1
+    if ct == 3 { j.oc = 3 }
+    j.out = bytes(w * h * j.oc)
+  } else { j.out = bytes(h * j.stride + 8) }
+  return j
+}
+
+# the part a worker may run: into what png_parse made, in the context it was handed
+function png_work(j: PngJob) -> void {
+  j.ok = false
+  let stride = j.stride
+  let raw = j.raw
+  if z_uncompress_in(j.z, j.idat, j.idlen, mem_off(raw, stride), j.rawlen) < 0 { return }
+  # reverse the per-scanline filters in place, then pack rows without the filter byte
+  for y in 0 .. j.h {
+    let line = stride + y * (stride + 1)
+    png_unfilter(raw, line + 1, line + 1 - (stride + 1), stride, j.fbpp, raw[line])
+  }
+  let w = j.w
+  let out = j.out
+  if (j.ct == 3) or (j.bd < 8) {
+    # expand palette / sub-byte grey to 8-bit RGB (palette) or 8-bit grey
+    let bd = j.bd
+    let maxv = (1 << bd) - 1
+    let plte = j.plte
+    for yy in 0 .. j.h {
+      let row = stride + yy * (stride + 1) + 1
+      for x in 0 .. w {
+        let bp = x * bd
+        let idx = ((raw[row + bp / 8] >> (8 - bd - bp % 8)) & maxv)
+        if j.ct == 3 { out[(yy * w + x) * 3] = plte[idx * 3];  out[(yy * w + x) * 3 + 1] = plte[idx * 3 + 1];  out[(yy * w + x) * 3 + 2] = plte[idx * 3 + 2] }
+        else { out[yy * w + x] = idx * 255 / maxv }
+      }
+    }
+  } else {
+    for yy in 0 .. j.h { mem_copy(mem_off(out, yy * stride), mem_off(raw, stride + yy * (stride + 1) + 1), stride) }
+  }
+  j.ok = true
+}
+
+# back on the program's thread: the samples (null if the stream was bad), and their shape told
+function png_take(render3d_st: mut Render3dState, j: PngJob) -> pointer {
+  free(j.idat);  free(j.raw);  free(j.plte)
+  j.idat = null;  j.raw = null;  j.plte = null
+  if not j.ok {
+    free(j.out)
+    print(`png: inflate failed: {j.path}`)
+    return null
+  }
+  var ch = j.channels
+  var bd = j.bd
+  if (j.ct == 3) or (j.bd < 8) {
+    ch = j.oc
+    bd = 8
+  }
+  render3d_st.tex_w = j.w;  render3d_st.tex_h = j.h;  render3d_st.tex_channels = ch;  render3d_st.tex_depth = bd
+  let out = j.out
+  j.out = null
+  return out
+}
+
+# the inflate context a decode on this thread (or the i-th of a batch) works in: made here, never by
+# a worker, and kept
+@alloc_ok("once per concurrent decode: an inflate's tables, kept and reused")
+function tex_z(render3d_st: mut Render3dState, i: int) -> ZInflate {
+  if render3d_st.tex_zs == null { render3d_st.tex_zs = new []ZInflate }
+  while len(render3d_st.tex_zs) <= i { push(render3d_st.tex_zs, z_inflate_new()) }
+  return render3d_st.tex_zs[i]
+}
+
+# Decode these PNGs on every core now, for png_decode (tex_load, the font) to take in its own time and
+# order. A file nobody takes is let go by tex_prefetch_drop.
+@alloc_ok("a load: the batch's list and each file's job")
+function tex_prefetch(render3d_st: mut Render3dState, paths: []string) -> void {
+  if render3d_st.tex_pf == null { render3d_st.tex_pf = new []PngJob }
+  let b = new PngBatch
+  b.jobs = new []PngJob
+  for i in 0 .. len(paths) {
+    let j = png_parse(render3d_st, paths[i])
+    if j == null { continue }
+    j.path = paths[i]
+    j.z = tex_z(render3d_st, len(b.jobs))
+    push(b.jobs, j)
+  }
+  Job.parallel_for(len(b.jobs), fn png_batch_one, b)
+  for i in 0 .. len(b.jobs) { push(render3d_st.tex_pf, b.jobs[i]) }
+}
+function png_batch_one(i: int, b: PngBatch) -> void { png_work(b.jobs[i]) }
+
+# a prefetched image of this path, not taken yet, or null
+function tex_pf_take(render3d_st: mut Render3dState, path: string) -> PngJob {
+  if render3d_st.tex_pf == null { return null }
+  for i in 0 .. len(render3d_st.tex_pf) {
+    let j = render3d_st.tex_pf[i]
+    if not j.taken and j.path == path {
+      j.taken = true
+      return j
+    }
+  }
+  return null
+}
+
+# what a prefetch decoded and nobody took, let go
+function tex_prefetch_drop(render3d_st: mut Render3dState) -> void {
+  if render3d_st.tex_pf == null { return }
+  for i in 0 .. len(render3d_st.tex_pf) {
+    let j = render3d_st.tex_pf[i]
+    if not j.taken { png_take(render3d_st, j) }
+    if j.out != null { free(j.out) }
+    j.out = null
+  }
+  List.clear(render3d_st.tex_pf)
+}
