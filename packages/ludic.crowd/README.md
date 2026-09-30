@@ -60,7 +60,7 @@ The world is cut into square cells (`cell`, 32 m). For the seed and the hour a c
 (a person, or a group of friends): the density of the zones over its area (four sample points), over the average
 people a unit makes from the mix, the remainder decided by the cell's seed. Unit `k` of cell `(cx, cz)` is a pure
 function of `(seed, cx, cz, k)`: where it stands, its type, whether it has friends and how many, each one's look. Its
-**uid** packs the cell (11 bits each way), the slot (6) and the member of the group (3): the same on every machine,
+**uid** packs the cell (11 bits each way), the slot (5) and the member of the group (3): the same on every machine,
 and a client can work out a ped's look from it. Nothing random is kept; later choices (the next act, the next
 place) are a hash of `(uid, how many choices it has made)`, not a shared dice, so one ped's day does not depend on
 another's.
@@ -155,6 +155,46 @@ other mechanic: the game's route turns the fact into `wanted_crime(source, crime
 peds within `witness_r` with a clear line (up to 12, not those cowering, not the far tier) reach `witness_need`.
 `crowd_witness_weight` gives the sum.
 
+## Embodying a persistent identity (`ludic.citizens`)
+
+The crowd can give a body to an identity another mechanic owns (a citizen with a home, a job and needs), near the
+players, and hand it back. It knows an identity only as an int the owner chooses (`ext`); the filler round it keeps
+the density (an embodied ped counts against `max_peds`, so the ring thins to make room).
+
+1. **Embody.** `crowd_embody(ext, type, look, x, z, yaw, has_dest, dest_x, dest_z, act, key, act_left) -> uid` makes
+   the body and returns its uid (bit 30 set), or 0 when `ext` already has one or the type is unknown. `look` is a
+   seed in the look set's range, or -1 to derive it; `has_dest` with a destination is the current leg; `act` is
+   `CROWD_WALK`, `STAND`, `SIT`, ... and `key` the owner's activity key (played by the graph); `act_left` the seconds
+   of a standing act. Facts: `CROWD_EMBODIED` (uid, `from` = ext) and `CROWD_SPAWNED`. The owner embodies when the
+   identity comes inside its own near radius (within the crowd's full and mid radii) and keeps the uid.
+2. **While embodied the crowd owns the position.** The owner does not move it; it reads `crowd_x/_z(uid)`. The ped
+   walks the leg and is never scheduled, spawned away or culled by the crowd. At the destination the crowd pushes
+   `CROWD_ARRIVED` (`from` = ext) and the ped stands; the owner answers with `crowd_set_leg(ext, has_dest, dx, dz,
+   act, key, act_left)`. It reacts to threats like any ped (`crowd_react`, `CROWD_REACTED`, a report to the police).
+3. **Hand back.** `crowd_release(ext) -> bool` fills `crowd_handoff()` (valid until the next release): `x`, `z`,
+   `yaw`, `dest_x`, `dest_z`, `has_dest` (it had not arrived), `arrived`, `act`, `key`, `act_left` (seconds of the
+   standing act still to go), `react`, `fear`; removes the body; and pushes `CROWD_HANDBACK` (`from` = ext, why
+   `CROWD_WHY_RELEASED`). The owner writes the record into the identity and simulates it abstractly again. The owner
+   releases when the identity leaves its near radius. If the crowd loses the body itself (`crowd_kill`, a reset) it
+   pushes `CROWD_HANDBACK` with that why and the place, and the owner reads the identity's fate from it.
+4. `crowd_uid_of(ext)` (0 none) and `crowd_ext_of(uid)` (-1 anonymous) translate.
+
+## Animation: parameters and keys, no poses
+
+The crowd writes no pose and plays no animation of its own. Bodies play clips through `ludic.anim` graphs (data,
+`AnimSets`); the crowd hands the graph only:
+
+- **parameters**: `crowd_anim_speed(uid)` (ground speed), `crowd_anim_turn(uid)` (yaw rate), `crowd_anim_state(uid)`
+  (the reaction: calm, alert, flee, panic, cower, fight, call) and `crowd_act(uid)` (walk, stand, sit, use, wait,
+  phone ...);
+- **keys, as data**: `PedType.anim_set` (the `AnimSets` row that plays the type), `PedSlot.anim` and `PedScenario.anim`
+  (a state key of that graph for a schedule slot or a scenario) - the graph owns the clips, so the clips' own
+  `@Clip` bindings live in its rows; an embodied identity's `key` is the owner's;
+- **facts**: `CROWD_ACT` (uid, act, `key`) when a near ped begins an act and `CROWD_USING` for scenarios, so the game's
+  graph is told once, not every frame.
+
+The far tier is drawn as impostors baked offline from those clips (or not drawn); nothing here samples a clip.
+
 ## Traffic
 
 `crowd_traffic_target(crowd)` is the ambient vehicles the zones round the players ask for now (each zone's `traffic`
@@ -205,6 +245,8 @@ shots fired, spawning and culling the whole time, and the heap does not grow by 
 | `crowd_count`, `crowd_ped_at(i)`, `crowd_alive`, `crowd_x/_z/_yaw/_speed/_type/_look/_act/_lod/_fear/_react/_group_size(uid)`, `crowd_nearest`, `crowd_count_within` | what the game reads |
 | `crowd_carry_count/_item/carries(uid, i)` | what a ped carries, from its uid |
 | `crowd_threat`, `crowd_scare`, `crowd_witness_weight`, `crowd_witnessed` | what happens, who saw |
+| `crowd_embody`, `crowd_set_leg`, `crowd_release`, `crowd_handoff`, `crowd_uid_of`, `crowd_ext_of` | persistent identities |
+| `crowd_anim_speed/_turn/_state/_key/_set(uid)` | the graph's parameters and keys |
 | `crowd_remove`, `crowd_kill`, `crowd_place`, `crowd_goto` | the game's hand on a ped |
 | `crowd_zone_at`, `crowd_density_at`, `crowd_traffic_at`, `crowd_traffic_target`, `crowd_cell_units`, `crowd_cell_seed`, `crowd_unit_id`, `crowd_uid` | the data's answers |
 | `crowd_scenario_count/_key/_users` | scenarios |
@@ -212,7 +254,7 @@ shots fired, spawning and culling the whole time, and the heap does not grow by 
 
 `crowd_facts()` is a `Queue<CrowdFact>`: `CROWD_SPAWNED`, `CROWD_GONE` (why: far, culled, removed, killed, reset, sync),
 `CROWD_REACTED` (from, to), `CROWD_REPORT`, `CROWD_USING` (scenario, count 1 or 0), `CROWD_ATTACK`, `CROWD_THREAT` (how
-many it reached).
+many it reached), `CROWD_ACT`, `CROWD_EMBODIED`, `CROWD_HANDBACK`, `CROWD_ARRIVED`.
 
 Save: section `crowd`, version 1: the clock and the places still empty after a kill. The people are the seed's and are
 made again round the players.

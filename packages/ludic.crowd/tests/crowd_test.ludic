@@ -37,6 +37,11 @@ program CrowdTest {
     n_threat: int = 0
     reacted_to: int = 0          # bit set of the reactions any ped entered
     n_react: int = 0
+    n_arrived: int = 0
+    n_embodied: int = 0
+    n_handback: int = 0
+    n_act: int = 0
+    sit_key: int = 0
     tk: Tick = tick_new(0.1, 0, 12.0)
   }
   function fake_players(crowd_test_st: CrowdTestState) -> int { return crowd_test_st.npl }
@@ -109,6 +114,13 @@ program CrowdTest {
       }
       if f.what == CROWD_ATTACK { s.n_attack += 1 }
       if f.what == CROWD_THREAT { s.n_threat += 1 }
+      if f.what == CROWD_ARRIVED { s.n_arrived += 1 }
+      if f.what == CROWD_EMBODIED { s.n_embodied += 1 }
+      if f.what == CROWD_HANDBACK { s.n_handback += 1 }
+      if f.what == CROWD_ACT {
+        s.n_act += 1
+        if f.key == "sit_bench" { s.sit_key += 1 }
+      }
       if f.what == CROWD_REACTED {
         s.n_react += 1
         s.reacted_to = s.reacted_to | (1 << f.to)
@@ -739,6 +751,75 @@ program CrowdTest {
     expect(load_town(crowd_st, zones, scen))
     crowd_prime(crowd_st)
     expect(not crowd_alive(crowd_st, a))
+  }
+
+  test "an identity is embodied: it walks its leg, arrives, is left standing, and is handed back where it got to" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    let before = crowd_count(crowd_st)
+    let uid = crowd_embody(crowd_st, 9001, PEDT_COMMUTER, 5, 10.0, 10.0, 0.0, true, 10.0, 40.0, CROWD_WALK, "errand", 0.0)
+    expect(uid != 0)
+    expect_eq(crowd_embody(crowd_st, 9001, PEDT_COMMUTER, 5, 10.0, 10.0, 0.0, false, 0.0, 0.0, CROWD_STAND, "", 0.0), 0)
+    expect_eq(crowd_count(crowd_st), before + 1)
+    expect_eq(crowd_look(crowd_st, uid), 5)
+    expect_eq(crowd_ext_of(crowd_st, uid), 9001)
+    expect_eq(crowd_uid_of(crowd_st, 9001), uid)
+    expect_eq(crowd_ext_of(crowd_st, crowd_ped_at(crowd_st, 0)) >= -1, true)
+    sim(crowd_st, m, s, 40.0, 0.1)
+    expect_eq(s.n_embodied, 1)
+    expect_eq(s.n_arrived, 1)
+    expect(crowd_alive(crowd_st, uid))
+    expect(dist(crowd_x(crowd_st, uid), crowd_z(crowd_st, uid), 10.0, 40.0) < 1.0)
+    expect_eq(crowd_anim_key(crowd_st, uid), "errand")
+    expect_eq(crowd_anim_set(crowd_st, uid), "walker")
+    # the next leg, then a hand-back in the middle of it
+    expect(crowd_set_leg(crowd_st, 9001, true, 10.0, -30.0, CROWD_WALK, "home", 0.0))
+    sim(crowd_st, m, s, 4.0, 0.1)
+    expect(crowd_release(crowd_st, 9001))
+    let h = crowd_handoff(crowd_st)
+    expect(h.found)
+    expect(h.has_dest)
+    expect(not h.arrived)
+    expect(h.z < 40.0 and h.z > -30.0)
+    expect(h.dest_z == -30.0)
+    expect_eq(h.key, "home")
+    expect(not crowd_alive(crowd_st, uid))
+    expect_eq(crowd_uid_of(crowd_st, 9001), 0)
+    expect(not crowd_release(crowd_st, 9001))
+    drain(crowd_st, s)
+    expect_eq(s.n_handback, 1)
+  }
+
+  test "an embodied ped is never culled, and it reacts: a blast makes it flee; killed, it reports its loss" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    let uid = crowd_embody(crowd_st, 7, PEDT_COMMUTER, -1, 0.0, 30.0, 0.0, false, 0.0, 0.0, CROWD_STAND, "idle", 0.0)
+    crowd_threat(crowd_st, CTHR_BLAST, 0.0, 30.0, 1)
+    sim(crowd_st, m, s, 3.0, 0.1)
+    expect(crowd_react(crowd_st, uid) != int(PedReact.Calm))
+    # the players leave for a long time: the anonymous go, the owned body stays
+    s.px = 250.0
+    s.pz = -250.0
+    sim(crowd_st, m, s, 30.0, 0.1)
+    expect(crowd_alive(crowd_st, uid))
+    s.n_handback = 0
+    expect(crowd_kill(crowd_st, uid))
+    drain(crowd_st, s)
+    expect_eq(s.n_handback, 1)
+    expect_eq(crowd_uid_of(crowd_st, 7), 0)
+  }
+
+  test "the graph is given parameters and keys, never a pose: speed, turn, reaction, and the act's state key as a fact" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 240.0, 0.1)
+    expect(s.n_act > 10)
+    expect(s.sit_key > 0)
+    let u = ped_of_type(crowd_st, PEDT_COMMUTER, 0.0, 0.0)
+    expect_eq(crowd_anim_set(crowd_st, u), "walker")
+    expect(crowd_anim_speed(crowd_st, u) >= 0.0)
+    expect(Math.abs(crowd_anim_turn(crowd_st, u)) < 100.0)
+    expect_eq(crowd_anim_state(crowd_st, u), crowd_react(crowd_st, u))
   }
 
   test "no heap grows once the crowd is warm: spawning, culling, reacting and walking allocate nothing" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {

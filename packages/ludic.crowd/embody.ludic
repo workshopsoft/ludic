@@ -1,0 +1,141 @@
+# embody.ludic - a persistent identity (a citizen of ludic.citizens) given a body near a player, and handed back.
+# The crowd knows nothing of citizens: an identity is an int the owner chooses (`ext`), a leg is where it is, which
+# way it faces, where it is going, what it is doing (an act and the owner's own activity key), and the crowd's body
+# for it is a ped like any other - tiered, avoided round, reacting, told to the body and the animation graph - that
+# follows the leg and is never spawned, culled or scheduled by the crowd. Anonymous filler keeps the density round
+# it (embodied peds count against max_peds, so the ring thins to make room).
+#
+# The contract, exactly:
+#  1. crowd_embody(ext, ...) makes the body and returns its uid (0: ext already has one, or the type is unknown).
+#     Facts: CROWD_EMBODIED (uid, from = ext) and CROWD_SPAWNED. The owner calls it when the identity comes within
+#     its own near radius (inside the crowd's full/mid radii) and keeps the uid.
+#  2. While embodied the crowd owns the identity's position: the owner must not move it, and reads it with
+#     crowd_x/_z(uid). The crowd reports CROWD_ARRIVED (from = ext) when the leg's destination is reached; the owner
+#     answers with crowd_set_leg (the next leg) or leaves it standing. An embodied ped reacts to threats like any
+#     other (fear, flee, call the police); its owner sees it through crowd_react / CROWD_REACTED.
+#  3. crowd_release(ext) hands it back: it fills crowd_handoff() (position, heading, destination and whether it had
+#     arrived, act, activity key, seconds of a standing act left, reaction, fear) and removes the body. The owner
+#     writes that back into the identity and goes on simulating it abstractly. The record is valid until the next
+#     release. The owner calls it when the identity leaves its near radius, or when it wants the body for something
+#     else. If the crowd loses the body itself (crowd_kill, a reset) it pushes CROWD_HANDBACK (from = ext, why,
+#     where) and the owner reads the identity's fate from that; crowd_release also pushes CROWD_HANDBACK.
+#  4. Nothing of the crowd's dice is in an embodied ped: its look is the owner's `look` seed (or the uid's when
+#     negative), its pace a hash of its uid.
+
+# a body for an identity. `look` is a seed in [0, the look set's variants) or -1 to derive it; `has_dest` with
+# (dest_x, dest_z) is the leg; `act` (CROWD_WALK, STAND, SIT, ...) and `key` (the owner's activity key, played by the
+# graph) say what it is doing; `act_left` seconds of a standing act
+export function crowd_embody(crowd_st: mut CrowdState, ext: int, type: int, look: int, x: float, z: float, yaw: float, has_dest: bool, dest_x: float, dest_z: float, act: int, key: string, act_left: float) -> int {
+  if ext < 0 or type < 0 or type >= PEDT_COUNT { return 0 }
+  if imap_get(crowd_st.cw_ext, ext, -1) >= 0 { return 0 }
+  let uid = 0x40000000 | (crowd_st.cw_ext_seq << 3)
+  crowd_st.cw_ext_seq += 1
+  let p = cw_add(crowd_st, uid, type, x, z, yaw, 0, 0, 0)
+  p.ext = ext
+  if look >= 0 { p.look = look }
+  p.lod = cw_lod_for(crowd_st, cw_nearest_player2(crowd_st, x, z))
+  p.near = Math.sqrt(cw_nearest_player2(crowd_st, x, z))
+  p.has_dest = has_dest
+  p.dest_x = dest_x
+  p.dest_z = dest_z
+  p.act = act
+  p.key = key
+  p.act_t = act_left
+  p.repath = 0.0
+  imap_put(crowd_st.cw_ext, ext, imap_get(crowd_st.cw_live, uid, -1))
+  let e = cw_fact(crowd_st, CROWD_EMBODIED, uid)
+  e.from = ext
+  e.type = type
+  e.x = x
+  e.z = z
+  let f = cw_fact(crowd_st, CROWD_SPAWNED, uid)
+  f.type = type
+  f.x = x
+  f.z = z
+  CrowdBody.born(uid, type, p.look, x, z)
+  return uid
+}
+
+# the next leg of an embodied identity
+export function crowd_set_leg(crowd_st: mut CrowdState, ext: int, has_dest: bool, dest_x: float, dest_z: float, act: int, key: string, act_left: float) -> bool {
+  let row = tb_row(crowd_st.cw_tab, imap_get(crowd_st.cw_ext, ext, -1))
+  if row < 0 { return false }
+  let p = crowd_st.cw_tab.rec[row]
+  p.has_dest = has_dest
+  p.dest_x = dest_x
+  p.dest_z = dest_z
+  p.act = act
+  p.key = key
+  p.act_t = act_left
+  p.repath = 0.0
+  p.blocked = 0.0
+  return true
+}
+
+# hand the identity back: crowd_handoff() says how it is, and the body is gone
+export function crowd_release(crowd_st: mut CrowdState, ext: int) -> bool {
+  let hd = imap_get(crowd_st.cw_ext, ext, -1)
+  let row = tb_row(crowd_st.cw_tab, hd)
+  let h = crowd_st.cw_hand
+  if row < 0 {
+    h.found = false
+    h.ext = ext
+    return false
+  }
+  let p = crowd_st.cw_tab.rec[row]
+  h.found = true
+  h.ext = ext
+  h.uid = p.uid
+  h.x = p.x
+  h.z = p.z
+  h.yaw = p.yaw
+  h.dest_x = p.dest_x
+  h.dest_z = p.dest_z
+  h.has_dest = p.has_dest
+  h.act = p.act
+  h.key = p.key
+  h.act_left = Math.max(0.0, p.act_t)
+  h.arrived = not p.has_dest
+  h.react = int(p.react)
+  h.fear = p.fear
+  h.alive = true
+  cw_remove(crowd_st, hd, CROWD_WHY_RELEASED)
+  return true
+}
+
+export function crowd_handoff(crowd_st: CrowdState) -> CrowdHandoff { return crowd_st.cw_hand }
+
+# the body of an identity (0 none) and the identity of a body (-1 an anonymous ped; an embodied ped's uid has bit 30 set)
+export function crowd_uid_of(crowd_st: CrowdState, ext: int) -> int {
+  let row = tb_row(crowd_st.cw_tab, imap_get(crowd_st.cw_ext, ext, -1))
+  if row < 0 { return 0 }
+  return crowd_st.cw_tab.rec[row].uid
+}
+export function crowd_ext_of(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return -1 }
+  return crowd_st.cw_tab.rec[r].ext
+}
+
+# ---- what the animation graph is given: parameters and keys, never a pose -----------------------
+
+# the graph's parameters: ground speed (m/s), yaw rate (rad/s), the reaction state (PedReact's number), the act
+export function crowd_anim_speed(crowd_st: CrowdState, uid: int) -> float { return crowd_speed(crowd_st, uid) }
+export function crowd_anim_turn(crowd_st: CrowdState, uid: int) -> float {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return 0.0 }
+  return crowd_st.cw_tab.rec[r].turn
+}
+export function crowd_anim_state(crowd_st: CrowdState, uid: int) -> int { return crowd_react(crowd_st, uid) }
+# the state key of the act's clip in the graph (a schedule slot's or a scenario's `anim`, or the owner's activity key)
+export function crowd_anim_key(crowd_st: CrowdState, uid: int) -> string {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return "" }
+  return crowd_st.cw_tab.rec[r].key
+}
+# the AnimSets row that plays this ped's type
+export function crowd_anim_set(crowd_st: CrowdState, uid: int) -> string {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return "" }
+  return PedTypes[crowd_st.cw_tab.rec[r].type].anim_set
+}

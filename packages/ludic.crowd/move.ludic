@@ -121,6 +121,7 @@ function cw_next_act(crowd_st: mut CrowdState, p: CrowdPed) -> void {
     if act == CROWD_WORK { act = CROWD_STAND }
   }
   p.act = act
+  p.key = crowd_st.cw_sl_anim[s]
   if act == CROWD_STAND or act == CROWD_SIT or act == CROWD_WORK {
     p.act_t = dur
   }
@@ -327,6 +328,7 @@ function cw_arrive(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
   if p.scn >= 0 and not p.scn_used {
     p.scn_used = true
     p.act = crowd_st.cw_sn_act[p.scn]
+    p.key = crowd_st.cw_sn_anim[p.scn]
     p.yaw = crowd_st.cw_sn_yaw[p.scn]
     p.speed = 0.0
     p.act_t = crowd_st.cw_sn_min[p.scn] + (crowd_st.cw_sn_max[p.scn] - crowd_st.cw_sn_min[p.scn]) * cw_roll(p, 24)
@@ -340,7 +342,30 @@ function cw_arrive(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
   cw_next_act(crowd_st, p)
 }
 
+# an embodied identity follows its leg and nothing else: it walks to the destination it was given and stands there
+# until its owner gives it another (crowd_set_leg) or takes it back
+function cw_leg(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, dt: float) -> void {
+  if p.has_dest {
+    var sp = ty.walk_speed * p.pace
+    if p.act == CROWD_COMMUTE { sp = sp * 1.2 }
+    if cw_move(crowd_st, p, row, p.dest_x, p.dest_z, sp, dt) {
+      p.has_dest = false
+      let f = cw_fact(crowd_st, CROWD_ARRIVED, p.uid)
+      f.from = p.ext
+      f.x = p.x
+      f.z = p.z
+    }
+    return
+  }
+  cw_halt(p, dt)
+  if p.act_t > 0.0 { p.act_t -= dt }
+}
+
 function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, dt: float) -> void {
+  if p.ext >= 0 {
+    cw_leg(crowd_st, p, row, ty, dt)
+    return
+  }
   if p.lead >= 0 {
     let lrow = tb_row(crowd_st.cw_tab, p.lead)
     if lrow < 0 { p.lead = -1 } else {
@@ -400,6 +425,7 @@ function cw_panic_dest(crowd_st: mut CrowdState, p: CrowdPed) -> void {
 
 function cw_step(crowd_st: mut CrowdState, p: CrowdPed, row: int, dt: float) -> void {
   let ty = PedTypes[p.type]
+  let yaw0 = p.yaw
   if p.react == PedReact.Calm {
     cw_calm(crowd_st, p, row, ty, dt)
   } else if p.react == PedReact.Flee {
@@ -437,10 +463,18 @@ function cw_step(crowd_st: mut CrowdState, p: CrowdPed, row: int, dt: float) -> 
   var act = p.act
   if p.react == PedReact.Call { act = CROWD_PHONE }
   if p.wait_t > 0.0 and p.speed == 0.0 { act = CROWD_WAIT }
+  p.turn = cw_turn(yaw0, p.yaw) / Math.max(0.001, dt)
   if act != p.act_sent {
-    # a change of act with no move still goes in the next delta
+    # a change of act with no move still goes in the next delta; a near ped's graph is told which state to play
     p.act_sent = act
     tb_mark(crowd_st.cw_tab, row)
+    if p.lod != CROWD_FAR {
+      let f = cw_fact(crowd_st, CROWD_ACT, p.uid)
+      f.to = act
+      f.key = p.key
+      f.x = p.x
+      f.z = p.z
+    }
   }
   CrowdBody.place(p.uid, p.x, CrowdWorld.ground(p.x, p.z), p.z, p.yaw, p.speed, act, p.lod)
 }

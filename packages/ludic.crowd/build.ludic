@@ -36,6 +36,7 @@ function cw_prepare_static(crowd_st: mut CrowdState) -> void {
   List.clear(crowd_st.cw_sl_w)
   List.clear(crowd_st.cw_sl_min)
   List.clear(crowd_st.cw_sl_max)
+  List.clear(crowd_st.cw_sl_anim)
   List.clear(crowd_st.cw_sch0)
   List.clear(crowd_st.cw_schn)
   List.clear(crowd_st.cw_tags)
@@ -51,6 +52,7 @@ function cw_prepare_static(crowd_st: mut CrowdState) -> void {
       push(crowd_st.cw_sl_w, sl[i].weight)
       push(crowd_st.cw_sl_min, sl[i].min_s)
       push(crowd_st.cw_sl_max, sl[i].max_s)
+      push(crowd_st.cw_sl_anim, sl[i].anim)
     }
   }
   List.clear(crowd_st.cw_ty_panic)
@@ -105,6 +107,7 @@ function cw_clear_map(crowd_st: mut CrowdState) -> void {
   List.clear(crowd_st.cw_sn_to)
   List.clear(crowd_st.cw_sn_min)
   List.clear(crowd_st.cw_sn_max)
+  List.clear(crowd_st.cw_sn_anim)
   imap_clear(crowd_st.cw_si_head)
   List.clear(crowd_st.cw_si_next)
 }
@@ -218,6 +221,7 @@ export function crowd_build(crowd_st: mut CrowdState, zones: PopulationZones, sc
     push(crowd_st.cw_sn_to, s.to)
     push(crowd_st.cw_sn_min, s.min_s)
     push(crowd_st.cw_sn_max, s.max_s)
+    push(crowd_st.cw_sn_anim, s.anim)
     let k = cw_cellkey(int(Math.floor(s.x / crowd_st.cw_cfg.cell)), int(Math.floor(s.z / crowd_st.cw_cfg.cell)))
     push(crowd_st.cw_si_next, imap_get(crowd_st.cw_si_head, k, 0))
     imap_put(crowd_st.cw_si_head, k, i + 1)

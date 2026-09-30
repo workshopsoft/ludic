@@ -46,6 +46,7 @@ export property PedType {
   @Range(2, 6) group_max: int = 3
   carry: []PedCarry = new []PedCarry
   tags: []string = new []string              # the game's own words (a behaviour the crowd does not know)
+  anim_set: string = ""                      # the AnimSets row (ludic.anim graph) that plays this type: the crowd only sets its parameters
 }
 
 @AppendOnly @ByKey
@@ -60,6 +61,7 @@ export property PedSlot {
   @Range(0, 100) weight: float = 1.0
   @Unit("s") @Range(1, 7200) min_s: float = 20.0
   @Unit("s") @Range(1, 7200) max_s: float = 90.0
+  anim: string = ""                          # a state of the type's ludic.anim graph to play for this (data; the graph owns the clips)
 }
 
 export property PedSchedule {

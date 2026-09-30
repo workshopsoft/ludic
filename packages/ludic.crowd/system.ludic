@@ -6,6 +6,8 @@ export function crowd_reset(crowd_st: mut CrowdState) -> void {
   cw_remove_all(crowd_st, CROWD_WHY_RESET)
   if crowd_st.cw_grid == null { crowd_st.cw_grid = tb_grid(crowd_st.cw_tab, 0, 1, 0, 8.0) }
   imap_clear(crowd_st.cw_live)
+  imap_clear(crowd_st.cw_ext)
+  crowd_st.cw_ext_seq = 1
   imap_clear(crowd_st.cw_units)
   imap_clear(crowd_st.cw_cool)
   List.clear(crowd_st.cw_cool_unit)

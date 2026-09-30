@@ -100,6 +100,10 @@ export const CROWD_REPORT: int = 3       # a ped calls the police about a crime 
 export const CROWD_USING: int = 4        # a ped took a scenario (uid, scenario row, x, z); count 0 when it left
 export const CROWD_ATTACK: int = 5       # a ped that fights lands a blow on its target (uid, x, z of the target)
 export const CROWD_THREAT: int = 6       # a threat was raised and reached `count` peds (crime, x, z)
+export const CROWD_ACT: int = 7          # a near ped began an act (uid, to: act, key: the anim state key to play)
+export const CROWD_EMBODIED: int = 8     # an external identity got a body (uid, from: its id)
+export const CROWD_HANDBACK: int = 9     # an embodied ped was handed back or lost (uid, from: its id, why)
+export const CROWD_ARRIVED: int = 10     # an embodied ped reached the destination of its leg (uid, from: its id)
 
 export const CROWD_WHY_FAR: int = 0      # left behind by every player
 export const CROWD_WHY_CULLED: int = 1   # over the budget, or the hour thinned the zone
@@ -107,6 +111,7 @@ export const CROWD_WHY_REMOVED: int = 2  # crowd_remove
 export const CROWD_WHY_KILLED: int = 3   # crowd_kill: its place stays empty a while
 export const CROWD_WHY_RESET: int = 4    # the map was rebuilt
 export const CROWD_WHY_SYNC: int = 5     # a client's copy the host no longer sends
+export const CROWD_WHY_RELEASED: int = 6 # crowd_release: handed back to its owner
 
 export property CrowdFact {
   what: int = 0
@@ -118,6 +123,7 @@ export property CrowdFact {
   crime: int = -1
   count: int = 0
   weight: float = 0.0
+  key: string = ""               # an animation state key (data) or the external identity's activity key
   x: float = 0.0
   z: float = 0.0
 }
@@ -134,6 +140,9 @@ export property CrowdPed {
   act: int = 0
   cx: int = 0                    # the spawn cell it was made in
   cz: int = 0
+  ext: int = -1                  # an embodied identity's id (ludic.citizens'), -1 an anonymous ped
+  key: string = ""               # the anim state key of its act (data), for the game's graph
+  turn: float = 0.0              # yaw rate, rad/s: a graph parameter
   seq: int = 0                   # how many choices it has made: each is a hash of (uid, seq)
   x: float = 0.0
   z: float = 0.0
@@ -173,11 +182,34 @@ export property CrowdPed {
   act_sent: int = -1             # the act the last message could have carried
 }
 
+# what an embodied ped gives back (crowd_handoff): where it is, where it was going, how far its act got
+export property CrowdHandoff {
+  ext: int = -1
+  uid: int = 0
+  found: bool = false
+  x: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  dest_x: float = 0.0
+  dest_z: float = 0.0
+  has_dest: bool = false       # it had not arrived
+  act: int = 0
+  key: string = ""
+  act_left: float = 0.0        # seconds of a standing act still to go
+  arrived: bool = false
+  react: int = 0               # PedReact as a number
+  fear: float = 0.0
+  alive: bool = true
+}
+
 export state CrowdState {
   cw_tab: Table<CrowdPed> = cw_tab__new()
   cw_grid: Grid = null
   cw_pool: []CrowdPed = new []CrowdPed
   cw_live: IntMap = imap_new()               # uid -> handle
+  cw_ext: IntMap = imap_new()                # external id -> handle
+  cw_ext_seq: int = 1
+  cw_hand: CrowdHandoff = new CrowdHandoff
   cw_units: IntMap = imap_new()              # unit -> how many of it are alive
   cw_cool_unit: []int = new []int            # units whose place is empty until (a queue, oldest first)
   cw_cool_until: []float = new []float
@@ -253,6 +285,8 @@ export state CrowdState {
   cw_sn_use: []int = new []int               # how many are at it or on their way
   cw_sn_from: []float = new []float
   cw_sn_to: []float = new []float
+  cw_sn_anim: []string = new []string
+  cw_sl_anim: []string = new []string
   cw_sn_min: []float = new []float
   cw_sn_max: []float = new []float
   cw_si_head: IntMap = imap_new()            # scenario cell -> first + 1
@@ -313,6 +347,7 @@ function cw_fact(crowd_st: mut CrowdState, what: int, uid: int) -> CrowdFact {
   f.crime = -1
   f.count = 0
   f.weight = 0.0
+  f.key = ""
   f.x = 0.0
   f.z = 0.0
   q_push(crowd_st.cw_facts, f)

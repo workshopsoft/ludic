@@ -110,6 +110,9 @@ function cw_ped_clear(p: CrowdPed) -> void {
   p.cx = 0
   p.cz = 0
   p.seq = 0
+  p.ext = -1
+  p.key = ""
+  p.turn = 0.0
   p.x = 0.0
   p.z = 0.0
   p.yaw = 0.0
@@ -148,10 +151,10 @@ function cw_ped_clear(p: CrowdPed) -> void {
   p.act_sent = -1
 }
 
-# a unit's id: its cell (11 bits each way, so 65 km at 32 m), its slot in the cell (6 bits) - 28 bits; a ped's
-# uid is its unit and its member in the group (3 bits)
+# a unit's id: its cell (11 bits each way, so 65 km at 32 m), its slot in the cell (5 bits) - 27 bits; a ped's
+# uid is its unit and its member in the group (3 bits): 30 bits, the 31st marks an embodied identity's
 export function crowd_unit_id(cx: int, cz: int, k: int) -> int {
-  return (((cx + 1024) & 2047) << 17) | (((cz + 1024) & 2047) << 6) | (k & 63)
+  return (((cx + 1024) & 2047) << 16) | (((cz + 1024) & 2047) << 5) | (k & 31)
 }
 export function crowd_uid(unit: int, member: int) -> int { return (unit << 3) | (member & 7) }
 
@@ -177,7 +180,7 @@ export function crowd_cell_units(crowd_st: CrowdState, cx: int, cz: int, hour: f
   var n = int(Math.floor(lam))
   let frac = lam - float(n)
   if cw_unit(crowd_hash(crowd_cell_seed(crowd_st, cx, cz), 999, 1)) < frac { n += 1 }
-  if n > 63 { n = 63 }
+  if n > 31 { n = 31 }
   return n
 }
 
@@ -279,6 +282,15 @@ function cw_remove(crowd_st: mut CrowdState, hd: int, why: int) -> void {
     if why == CROWD_WHY_KILLED { cw_cool_add(crowd_st, p.unit) }
   } else {
     imap_put(crowd_st.cw_units, p.unit, left)
+  }
+  if p.ext >= 0 {
+    # an owned body that is lost (killed, reset) says so: its owner takes the identity back from the fact
+    let h = cw_fact(crowd_st, CROWD_HANDBACK, p.uid)
+    h.from = p.ext
+    h.why = why
+    h.x = p.x
+    h.z = p.z
+    imap_del(crowd_st.cw_ext, p.ext)
   }
   cw_gone_log(crowd_st, p.uid)
   tb_remove(crowd_st.cw_tab, hd)
@@ -430,6 +442,10 @@ function cw_cull_pass(crowd_st: mut CrowdState) -> void {
     if i >= tb_len(crowd_st.cw_tab) { i = 0 }
     if tb_len(crowd_st.cw_tab) == 0 { break }
     let p = crowd_st.cw_tab.rec[i]
+    if p.ext >= 0 {
+      i += 1
+      continue
+    }
     let d = Math.sqrt(cw_nearest_player2(crowd_st, p.x, p.z))
     var gone = false
     var why = CROWD_WHY_FAR
@@ -441,7 +457,7 @@ function cw_cull_pass(crowd_st: mut CrowdState) -> void {
     } else if p.member == 0 and d > c.spawn_min and p.react == PedReact.Calm {
       # the hour thinned the cell: slots at or over its count go, out of sight
       let slots = crowd_cell_units(crowd_st, p.cx, p.cz, crowd_st.cw_hour)
-      if (p.unit & 63) >= slots and not CrowdWorld.visible(p.x, p.z) {
+      if (p.unit & 31) >= slots and not CrowdWorld.visible(p.x, p.z) {
         gone = true
         why = CROWD_WHY_CULLED
       }
