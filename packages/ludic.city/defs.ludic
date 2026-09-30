@@ -39,7 +39,7 @@ export property BuildingKit {
 }
 
 @AppendOnly @ByKey
-export open registry BuildingKits of BuildingKit as BK
+export open registry BuildingKits of BuildingKit as CKIT
 
 # one knob of a Blender generator, for the studio to show as a slider, a toggle or a list
 export property GenParam {

@@ -32,7 +32,7 @@ Every registry is `open` and `@ByKey`; a game fills it with `def Registry from "
 | `CarLiveries` (`CLIV_*`) | `CarLivery` | `@Color` primary, secondary and pearlescent, `@Asset("png")` livery and decal textures, for one model or (`car: -1`) any |
 | `CarSeats` (`CSEAT_*`) | `CarSeat` | where a sitter sits in the model (`@Ref(CarModels)`), which seat drives, its door, the animation graph states it asks for |
 | `CarSockets` (`CSOCK_*`) | `CarSocket` | a named node of the model's glTF (`@Node`): wheels, doors, exhausts, lights, with the door's clips (`@Clip`) |
-| `CarSettingsRows` (`CSET_*`) | `CarSettings` | the simulation's own numbers; the first row is the one in use |
+| `CarSettingsRows` (`CARSET_*`) | `CarSettings` | the simulation's own numbers; the first row is the one in use |
 
 A model (abridged; the test data in `tests/cars_models.lres` is complete):
 

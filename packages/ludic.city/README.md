@@ -38,7 +38,7 @@ The studio knows a block is **stale** - its outline or knobs changed after the g
 
 ## The data
 
-Game tables, declared by the game (`def ZoningRules from "zoning.lres"`, open, append-only, constants `ZR_*`, `BK_*`, `BG_*`, `IA_*`):
+Game tables, declared by the game (`def ZoningRules from "zoning.lres"`, open, append-only, constants `ZR_*`, `CKIT_*`, `BG_*`, `IA_*`):
 
 | table | a row |
 | --- | --- |

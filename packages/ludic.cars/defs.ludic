@@ -285,4 +285,4 @@ export property CarSettings {
 }
 
 @ByKey
-export open registry CarSettingsRows of CarSettings as CSET
+export open registry CarSettingsRows of CarSettings as CARSET

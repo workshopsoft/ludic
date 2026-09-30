@@ -366,6 +366,6 @@ function cr_fact(cars_st: CarsState, what: int, c: Car) -> CarFact {
 }
 
 export function cars_config(cars_st: CarsState) -> CarSettings {
-  if CSET_COUNT > 0 { return CarSettingsRows[0] }
+  if CARSET_COUNT > 0 { return CarSettingsRows[0] }
   return cars_st.cr_cfg
 }
