@@ -1,0 +1,18 @@
+# pa: the plaza to a: no handles at all (the Catmull-Rom spline, as ever)
+pa { from: "p", to: "a", profile: "street", name: "Plaza Street" }
+# plain and auto: the same bowed road, without handles and with a handle row of every anchor left automatic (the same curve)
+plain { from: "a", to: "b", pts: [{ x: 100.0, z: 40.0 }], profile: "avenue", lanes_fwd: 1, lanes_back: 0 }
+auto { from: "a", to: "b", pts: [{ x: 100.0, z: 40.0 }], handles: [{ smooth: true }, { smooth: true }, { smooth: true }], lanes_fwd: 1, lanes_back: 0 }
+# arch: out of a straight up, into b straight down: a cubic with both controls 50 m out
+arch { from: "a", to: "b", handles: [{ oz: 50.0 }, { iz: 50.0 }], lanes_fwd: 1, lanes_back: 0, profile: "boulevard", taper: 1.5 }
+# bent: b to the dead end through a point, with handles set on every anchor
+bent { from: "b", to: "dead", pts: [{ x: 260.0, z: 60.0 }], handles: [{ ox: 30.0 }, { iz: -25.0, oz: 25.0 }, { ix: 30.0 }], profile: "lane", name: "Bent Lane", kind: "lane" }
+# link: b to the roundabout's west entry
+link { from: "b", to: "r3", profile: "street" }
+# the ring, one way, each arc a cubic with handles that make it round (0.5523 of the radius, here 11 m)
+ring1 { from: "r1", to: "r2", handles: [{ oz: 11.0 }, { ix: 11.0 }], lanes_back: 0, profile: "lane", kind: "lane" }
+ring2 { from: "r2", to: "r3", handles: [{ ox: -11.0 }, { iz: 11.0 }], lanes_back: 0, profile: "lane", kind: "lane" }
+ring3 { from: "r3", to: "r4", handles: [{ oz: -11.0 }, { ix: -11.0 }], lanes_back: 0, profile: "lane", kind: "lane" }
+ring4 { from: "r4", to: "r1", handles: [{ ox: 11.0 }, { iz: -11.0 }], lanes_back: 0, profile: "lane", kind: "lane" }
+# zero: two nodes in one place and a road between them: no length, no edge, no crash
+zero { from: "t1", to: "t2", handles: [{ smooth: true }], profile: "street" }

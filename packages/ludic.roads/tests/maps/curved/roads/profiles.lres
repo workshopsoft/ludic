@@ -1,0 +1,12 @@
+# profiles.lres - a starter for a map's roads/profiles.lres: a European street hierarchy as cross-sections (see the
+# package README). Copy it into maps/<map>/roads/ and edit; widths are metres, `walk_l`/`walk_r` are left and right of
+# the heading from -> to, the section from the middle out is carriageway, parking, curb, planting strip, sidewalk.
+highway { title: "Highway", lanes_fwd: 3, lanes_back: 3, lane_width: 3.75, speed: 27.8, priority: 3, kind: "highway", walk_l: 0.0, walk_r: 0.0, curb_h: 0.1 }
+boulevard { title: "Boulevard", lanes_fwd: 3, lanes_back: 3, lane_width: 3.25, speed: 16.7, priority: 3, kind: "street", walk_l: 4.5, walk_r: 4.5, plant_l: 2.5, plant_r: 2.5, park_l: 2.3, park_r: 2.3, curb_h: 0.15 }
+tram_avenue { title: "Tram avenue", lanes_fwd: 2, lanes_back: 2, lane_width: 3.25, speed: 13.9, priority: 3, kind: "street", walk_l: 4.0, walk_r: 4.0, plant_l: 1.5, plant_r: 1.5, park_l: 0.0, park_r: 0.0, tram: true, tram_w: 2.8, curb_h: 0.15 }
+avenue { title: "Avenue", lanes_fwd: 2, lanes_back: 2, lane_width: 3.25, speed: 13.9, priority: 2, kind: "street", walk_l: 3.5, walk_r: 3.5, plant_l: 1.5, plant_r: 1.5, park_l: 0.0, park_r: 2.3 }
+street { title: "Street", lanes_fwd: 1, lanes_back: 1, lane_width: 3.0, speed: 11.1, priority: 1, kind: "street", walk_l: 2.5, walk_r: 2.5, park_l: 0.0, park_r: 2.0 }
+lane { title: "Lane", lanes_fwd: 1, lanes_back: 1, lane_width: 2.6, speed: 8.3, priority: 1, kind: "lane", walk_l: 1.2, walk_r: 1.2 }
+alley { title: "Alley", lanes_fwd: 1, lanes_back: 1, lane_width: 2.2, speed: 5.5, priority: 0, kind: "alley", walk_l: 0.6, walk_r: 0.6, curb_h: 0.08 }
+pedestrian { title: "Pedestrian street", lanes_fwd: 0, lanes_back: 0, lane_width: 3.0, speed: 2.0, priority: 0, kind: "pedestrian", carriage: 6.0, walk_l: 0.0, walk_r: 0.0, curb_h: 0.0, curb_w: 0.0, gutter: 0.0, mat_road: "cobble" }
+stairs { title: "Stairs", lanes_fwd: 0, lanes_back: 0, lane_width: 3.0, speed: 2.0, priority: 0, kind: "stairs", carriage: 3.0, walk_l: 0.0, walk_r: 0.0, curb_h: 0.0, curb_w: 0.0, gutter: 0.0, steps: 0.17, mat_road: "stone" }

@@ -9,7 +9,9 @@ Cars move through ports (a body the game places, what its physics has in the way
 import "ludic.roads"
 ```
 
-The package draws nothing and owns no physics. Each tick it tells the game where every car is
+The package draws nothing and owns no physics. (Roads are not drawn by `ludic.render3d` or `ludic.city` either: a grep of both
+finds no road mesh, curb or sidewalk code, only the words "road" in a comment and in `CityBlock.source`, so there was
+nothing to move. The surfaces are baked offline, see [The bake](#the-bake).) Each tick it tells the game where every car is
 (`RoadsBody.place`) and asks whether the game's world has something in a car's way (`RoadsBody.probe`).
 
 Conventions: metres, **x east and z south** (a map from above, z down the page); the right of a heading `h` is
@@ -17,8 +19,11 @@ Conventions: metres, **x east and z south** (a map from above, z down the page);
 
 ## The data: per map, in `maps/<map>/roads/`
 
-Three `@PerMap` tables, so an editor paints roads as splines and the map's own files hold them. The compiler
-writes their states (`RoadNodes`, `RoadSegs`, `RoadTurns`) and verbs (`road_nodes_load(nodes, map)` ...).
+Three `@PerMap` tables, so an editor paints roads as curves and the map's own files hold them, and more for streets
+that are more than a line (profiles, furniture rules, props, the bake: below). The compiler writes their states
+(`RoadNodes`, `RoadSegs`, `RoadTurns`, `RoadProfiles` ...) and verbs (`road_nodes_load(nodes, map)` ...). A file a map
+does not have is an empty table; every field added after the first version has a default, so an older map reads as it
+always did.
 
 ```
 # roads/nodes.lres
@@ -34,21 +39,99 @@ no_ne { node: "c", from: "nc", to: "ce", rule: "forbid" }
 ```
 
 - **Node**: `x`, `z`, `control` (`free`: by priority, then who came first; `signal`: roads take turns),
-  `cycle` seconds a phase.
-- **Road** (`RoadSeg`): `from`, `to` (`@Ref(RoadNodes)`), `pts` (control points between), `lanes_fwd`
+  `cycle` seconds a phase, `kind` and `radius` (below).
+- **Road** (`RoadSeg`): `from`, `to` (`@Ref(RoadNodes)`), `pts` (control points between), `handles`, `lanes_fwd`
   (from -> to) and `lanes_back` (0 is one way), `lane_width`, `speed` (the limit, m/s), `priority` (higher
-  goes first at a free junction), `phase` (the signal phase that lets it through), `kind`. Its shape is a
-  uniform **Catmull-Rom spline** through the node, each point, the other node (the ends run straight in and
-  out), sampled at 8 steps a span and measured; an editor reproduces it with `P(t) = 0.5 * (2 P1 + (P2 - P0) t
-  + (2 P0 - 5 P1 + 4 P2 - P3) t^2 + (3 P1 - P0 - 3 P2 + P3) t^3)`.
+  goes first at a free junction), `phase` (the signal phase that lets it through), `kind` (`street`, `highway`,
+  `track`, `lane`, `alley`, `pedestrian`, `stairs`), `profile` (a `RoadProfiles` key, `""` for none), `taper`, `name`.
+  Its shape is the curve below.
 - **Turn** (`RoadTurn`): at `node`, coming in along `from` and leaving along `to`: `free`, `yield`, `stop` or
   `forbid` (routes avoid it too).
 - **Car kinds**, a game table `RoadCarKinds` (open, `RCK_*`): `length`, `max_speed`, `accel`, `brake`, `headway`,
   `gap`, `pace` (the share of the limit it drives at), `weight` (its odds when traffic is made).
 
-`ludicc --check` reads every map's three files against these records, including that a road's nodes exist.
+`ludicc --check` reads every map's files against these records, including that a road's nodes and profile exist.
 `roads_build(roads, nodes, segs, turns)` turns the loaded tables into the graph; it returns false, and
 `roads_error()` says the first fault (a turn whose roads do not meet at its node), building the rest.
+
+### The curve
+
+The anchors of a road are `A_0` = the `from` node, `A_1 ..` = `pts`, `A_last` = the `to` node.
+
+- **No `handles`** (the list is empty): a uniform **Catmull-Rom spline** through the anchors (the ends run straight in
+  and out), sampled at 8 steps a span and measured, exactly as before; an editor reproduces it with
+  `P(t) = 0.5 * (2 P1 + (P2 - P0) t + (2 P0 - 5 P1 + 4 P2 - P3) t^2 + (3 P1 - P0 - 3 P2 + P3) t^3)`.
+- **With `handles`**: a chain of cubic **Beziers** through the same anchors. Span `i` runs `A_i -> A_(i+1)` with
+  controls `C1 = A_i + out_i` and `C2 = A_(i+1) + in_(i+1)`, and
+  `B(t) = (1-t)^3 A_i + 3 (1-t)^2 t C1 + 3 (1-t) t^2 C2 + t^3 A_(i+1)`. Handle row `k` (`RoadHandle { ix, iz, ox, oz,
+  smooth }`, offsets in metres from the anchor; row 0 is the `from` node, rows past the list's end are all zero)
+  gives `in_k = (ix, iz)` and `out_k = (ox, oz)`. A side that is exactly `(0, 0)` is **automatic**: with the
+  tangent `T_k = (A_(k+1) - A_(k-1)) / 2`, `out_k = T_k / 3` and `in_k = -T_k / 3`. The missing neighbour of an end
+  anchor is the anchor itself (`A_(-1) = A_0`, `A_(last+1) = A_last`, what the spline does), so **an all-automatic
+  chain is the Catmull-Rom spline** and a road can be given handles one anchor at a time. Each span is sampled at
+  `n = clamp(ceil(control polygon length / 4 m), 8, 64)` steps and the polyline measured. `smooth` is the editor's
+  (it keeps the two sides of a handle in line); the curve reads the four numbers. A zero-length or degenerate span
+  is sampled as the point it is: its road has no length, so no lanes.
+
+Everything that reads a road's shape (`roads_pose`, `roads_nearest`, lengths, routes, traffic) reads the one sampled
+polyline, so the same curve is driven as is drawn. `taper` (0.2 to 4) is the width multiplier at the `to` end (1 at
+`from`): the baked surface widens or narrows linearly by distance along the road; driving ignores it.
+
+### Node kinds
+
+`kind`: `junction` (the default), `roundabout`, `plaza` or `deadend`; `radius` (metres, 0: the kind's own default) is the
+plaza's disc or the roundabout's ring. Driving treats a plaza like a free junction, a dead end like a node with one
+road, and a roundabout like any node: the studio models it as a real one way ring of roads around the node, so the graph
+needs nothing special. The studio draws and bakes the kinds.
+
+### Profiles: a street's cross-section
+
+`RoadProfiles` (`roads/profiles.lres`, keyed) holds cross-sections as data. The first fields (`lanes_fwd`,
+`lanes_back`, `lane_width`, `speed`, `priority`, `kind`) are what a studio applies to a road when it picks the
+profile; the rest is the section, in metres, left and right seen along the heading from -> to:
+
+```
+ walk_l plant_l park_l  curb  gutter   carriageway   gutter  curb park_r plant_r walk_r
+|------|-------|------|||-----|=============[ tram ]=============|-----|||------|-------|------|
+  mat_walk  mat_plant  mat_park   mat_curb        mat_road (tram bed: mat_tram, tram_w, centred)
+```
+
+`carriage` overrides the carriageway width (0: lanes times `lane_width`, which is how a pedestrian way or a flight of
+stairs, with no lanes, gets a width); `curb_h` / `curb_w` (0.15 each), `gutter` (0.3); `walk_*`, `plant_*` (the
+planting strip between curb and sidewalk), `park_*` (a parking lane beside the carriageway); `tram` with `tram_w`;
+`steps` is a riser height in metres (0: not stairs), stairs are built as steps between the road's two ends; `mat_road`,
+`mat_curb`, `mat_walk`, `mat_plant`, `mat_park`, `mat_tram` are material slot names the game maps to materials.
+`RoadSeg.profile` is a `@Ref(RoadProfiles)`: `ludicc --check` fails a road whose profile is not in the map's file, so
+a map that uses profiles ships the file; a road with no profile (`""`) needs none. The starter
+[`data/profiles.lres`](data/profiles.lres) has `boulevard`, `tram_avenue`, `avenue`, `street`, `lane`, `alley`,
+`pedestrian`, `stairs` and `highway`: copy it into `maps/<map>/roads/` and edit.
+
+### Furniture rules and props
+
+`RoadFurnitureRules` (`roads/furniture.lres`, keyed) says where street furniture goes: `kind` (`street_lamp`, `bench`,
+`bin`, `bollard`, `tree`, `bus_stop`, `kiosk`, `traffic_light`, `stop_line`, `sign_stop`, `sign_yield`, `sign_name`
+...), `model` (a kit asset key), `profiles` (space separated profile keys, or `*`), `side` (`both`, `left`, `right`,
+`alternate`), `zone` (`walk`, `plant`, `park`, `curb`, `road`: the strip of the section), `offset` (metres from the
+zone's curb side towards the far side), `spacing` (metres along the street, 0: one at the place), `start` / `stop`
+(margins from the road's ends), `junction_gap`, `yaw` (`to_road`, `from_road`, `along`), `scale`, `min_length` (the
+shortest street it applies to) and `at`: `street` (along it) or a place, a `junction`, a `signal` node, a `stop` or
+`yield` turn, a `deadend`, or a junction of a `named` street. The starter
+[`data/furniture_rules.lres`](data/furniture_rules.lres) has lamps every 28 m, benches, bins, bollards on pedestrian
+streets, trees, bus stops, traffic lights, stop lines and the signs.
+
+The studio runs the rules **once** and writes what they made into `RoadProps` (a `@PerMap @Chunked(256)` table,
+`roads/props/{cx}_{cz}.lres`, like the city's buildings): `key`, `kind`, `model`, `x`, `z`, `yaw` (degrees, 0 faces
++z), `scale`, `edge` (`@Ref(RoadSegs)`) and `s` (metres along it), `node` (`@Ref(RoadNodes)`), `text` (a name sign's
+text), `rule` (the rule it came from). A designer can also place a prop by hand. The game loads the props and places
+their models; nothing is generated at run time.
+
+### The bake
+
+`ludic.roads` still draws nothing. The road surfaces, curbs and sidewalks are baked **offline** by Ludic Studio (its
+`roads_bake` tool) into one glTF per map, `maps/<map>/roads/roads.glb`, with one mesh node per material slot (`mat_road`,
+`mat_curb` ... the names are the glTF material names), and a row in `RoadBakes` (`roads/bake.lres`, keyed) with the
+`asset` (the glTF path), the studio's `hash` of the data it was built from (so a bake older than the roads is known)
+and `tris`. The game loads the glTF and maps the slot names to its materials.
 
 ## The graph
 
@@ -96,7 +179,9 @@ on load; ambient traffic is made again to the target.
 ## Tests
 
 `ludic test packages/ludic.roads`, on the maps under `tests/maps` (a crossroads with a fast bypass and a one way
-road, a signalled crossing, a one way ring, a map with a turn that does not fit).
+road, a signalled crossing, a one way ring, a map with a turn that does not fit, and `curved`: handles, the same road
+with and without automatic handles, a plaza, a dead end, a roundabout ring, a zero-length road, and the starter
+profiles and furniture rules).
 
 ## v2
 

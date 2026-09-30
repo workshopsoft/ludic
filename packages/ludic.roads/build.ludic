@@ -2,7 +2,10 @@
 # splines sampled into a polyline and measured, the directed edges (two a segment), who leaves and enters
 # each node, and the turn rules keyed by the pair of edges
 
-const RD_SUB: int = 8                 # samples a spline span is cut into
+const RD_SUB: int = 8                 # samples a Catmull-Rom span is cut into
+const RD_BEZ_STEP: float = 4.0        # a Bezier span is cut into about one sample per this many metres of control polygon
+const RD_BEZ_MIN: int = 8             # ... at least this many samples a span
+const RD_BEZ_MAX: int = 64            # ... at most this many
 const RD_MAX_SEGS: int = 4000         # an edge number stays under 8192, so a turn is one int key
 
 function rd_clear_lists(roads_st: mut RoadsState) -> void {
@@ -52,7 +55,96 @@ function rd_cr(p0: float, p1: float, p2: float, p3: float, t: float) -> float {
   return 0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t3)
 }
 
-# the segment's control points (its two nodes and the points between) sampled into the polyline, measured
+# a cubic Bezier from p0 to p3 with controls c1, c2, at t in 0..1
+function rd_bez(p0: float, c1: float, c2: float, p3: float, t: float) -> float {
+  let u = 1.0 - t
+  return u * u * u * p0 + 3.0 * u * u * t * c1 + 3.0 * u * t * t * c2 + t * t * t * p3
+}
+
+# the automatic tangent at anchor k of m: half the span between its neighbours, an end anchor taking itself for
+# the missing neighbour (what the Catmull-Rom spline above does, so an all-automatic chain is that spline exactly)
+function rd_auto_tan(c: []float, k: int, m: int) -> float {
+  var k0 = k - 1
+  if k0 < 0 { k0 = 0 }
+  var k1 = k + 1
+  if k1 > m - 1 { k1 = m - 1 }
+  return (c[k1] - c[k0]) * 0.5
+}
+
+# one number of anchor k's handle row (which: 0 in x, 1 in z, 2 out x, 3 out z); a row past the list is zero
+function rd_handle_of(seg: RoadSeg, k: int, which: int) -> float {
+  if k >= len(seg.handles) { return 0.0 }
+  let h = seg.handles[k]
+  if which == 0 { return h.ix }
+  if which == 1 { return h.iz }
+  if which == 2 { return h.ox }
+  return h.oz
+}
+
+# a handle side (in, or out when `out`) of anchor k is automatic when its x and z are both exactly 0
+function rd_side_auto(seg: RoadSeg, k: int, out: bool) -> bool {
+  var w = 0
+  if out { w = 2 }
+  return rd_handle_of(seg, k, w) == 0.0 and rd_handle_of(seg, k, w + 1) == 0.0
+}
+
+# the offset of a control point from anchor k along one axis (c holds that axis of the anchors; axis 0 is x, 1 is z):
+# the handle's number, or for an automatic side a third of the automatic tangent (ahead for out, behind for in)
+function rd_ctrl(seg: RoadSeg, c: []float, k: int, m: int, axis: int, out: bool) -> float {
+  var w = axis
+  if out { w = 2 + axis }
+  if not rd_side_auto(seg, k, out) { return rd_handle_of(seg, k, w) }
+  let t = rd_auto_tan(c, k, m) / 3.0
+  if out { return t }
+  return 0.0 - t
+}
+
+# the anchors in rd_cx / rd_cz sampled into the polyline as a chain of cubic Beziers, measured (the road has `handles`)
+function rd_sample_bezier(roads_st: mut RoadsState, seg: RoadSeg, n0: int) -> void {
+  let m = len(roads_st.rd_cx)
+  var run = 0.0
+  for i in 0 .. m - 1 {
+    let j = i + 1
+    let ax = roads_st.rd_cx[i]
+    let az = roads_st.rd_cz[i]
+    let bx = roads_st.rd_cx[j]
+    let bz = roads_st.rd_cz[j]
+    let c1x = ax + rd_ctrl(seg, roads_st.rd_cx, i, m, 0, true)
+    let c1z = az + rd_ctrl(seg, roads_st.rd_cz, i, m, 1, true)
+    let c2x = bx + rd_ctrl(seg, roads_st.rd_cx, j, m, 0, false)
+    let c2z = bz + rd_ctrl(seg, roads_st.rd_cz, j, m, 1, false)
+    let d1 = Math.sqrt((c1x - ax) * (c1x - ax) + (c1z - az) * (c1z - az))
+    let d2 = Math.sqrt((c2x - c1x) * (c2x - c1x) + (c2z - c1z) * (c2z - c1z))
+    let d3 = Math.sqrt((bx - c2x) * (bx - c2x) + (bz - c2z) * (bz - c2z))
+    let q = (d1 + d2 + d3) / RD_BEZ_STEP
+    var steps = int(Math.floor(q))
+    if float(steps) < q { steps += 1 }
+    if steps < RD_BEZ_MIN { steps = RD_BEZ_MIN }
+    if steps > RD_BEZ_MAX { steps = RD_BEZ_MAX }
+    var last = steps - 1
+    if i == m - 2 { last = steps }
+    for k in 0 .. last + 1 {
+      let t = float(k) / float(steps)
+      let x = rd_bez(ax, c1x, c2x, bx, t)
+      let z = rd_bez(az, c1z, c2z, bz, t)
+      let n = len(roads_st.rd_px)
+      if n > n0 {
+        let dx = x - roads_st.rd_px[n - 1]
+        let dz = z - roads_st.rd_pz[n - 1]
+        run += Math.sqrt(dx * dx + dz * dz)
+      }
+      kept_push(roads_st.rd_px, x)
+      kept_push(roads_st.rd_pz, z)
+      kept_push(roads_st.rd_ps, run)
+    }
+  }
+  kept_push(roads_st.rd_sp1, len(roads_st.rd_px))
+  kept_push(roads_st.rd_slen, run)
+}
+
+# the segment's anchors (its two nodes and the points between) sampled into the polyline, measured: a Catmull-Rom
+# spline, or with `handles` a chain of cubic Beziers through the same anchors. Everything that reads a road's shape
+# (poses, the nearest road, lengths) reads this polyline
 function rd_sample_seg(roads_st: mut RoadsState, seg: RoadSeg, a: int, b: int) -> void {
   let n0 = len(roads_st.rd_px)
   kept_push(roads_st.rd_sp0, n0)
@@ -66,6 +158,10 @@ function rd_sample_seg(roads_st: mut RoadsState, seg: RoadSeg, a: int, b: int) -
   }
   kept_push(roads_st.rd_cx, roads_st.rd_nx[b])
   kept_push(roads_st.rd_cz, roads_st.rd_nz[b])
+  if len(seg.handles) > 0 {
+    rd_sample_bezier(roads_st, seg, n0)
+    return
+  }
   let m = len(roads_st.rd_cx)
   var run = 0.0
   for i in 0 .. m - 1 {
