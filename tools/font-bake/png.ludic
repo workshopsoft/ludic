@@ -1,0 +1,183 @@
+# png.ludic - an 8-bit RGBA image as a PNG: Sub-filtered rows, deflated with LZ77 (a hash chain over a
+# 32 KiB window) and the fixed Huffman code, inside the zlib wrapper, with the CRC-32 and Adler-32 the
+# format asks for. A font atlas is mostly empty cells, so runs of zeros are what it compresses.
+const PNG_WIN: int = 32768
+const PNG_CHAIN: int = 48
+
+# the bits are packed least significant first; `acc` holds the `nb` (under 8) bits not yet written
+property PngBits {
+  out: []byte = new []byte
+  o: int = 0
+  acc: int = 0
+  nb: int = 0
+}
+function pb_put(b: PngBits, v: int, n: int) -> void {
+  b.acc = b.acc | (v << b.nb)
+  b.nb += n
+  while b.nb >= 8 {
+    b.out[b.o] = b.acc & 255
+    b.o += 1
+    b.acc = b.acc >> 8
+    b.nb -= 8
+  }
+}
+# a Huffman code of `n` bits goes most significant bit first
+function pb_code(b: PngBits, code: int, n: int) -> void {
+  var r = 0
+  for i in 0 .. n { r = r | (((code >> i) & 1) << (n - 1 - i)) }
+  pb_put(b, r, n)
+}
+function pb_lit(b: PngBits, sym: int) -> void {
+  if sym < 144 { pb_code(b, 48 + sym, 8) } else if sym < 256 { pb_code(b, 400 + sym - 144, 9) } else if sym < 280 { pb_code(b, sym - 256, 7) } else { pb_code(b, 192 + sym - 280, 8) }
+}
+function pb_match(b: PngBits, len: int, dist: int, lbase: []int, lext: []int, dbase: []int, dext: []int) -> void {
+  var lc = 28
+  while lbase[lc] > len { lc -= 1 }
+  pb_lit(b, 257 + lc)
+  if lext[lc] > 0 { pb_put(b, len - lbase[lc], lext[lc]) }
+  var dc = 29
+  while dbase[dc] > dist { dc -= 1 }
+  pb_code(b, dc, 5)
+  if dext[dc] > 0 { pb_put(b, dist - dbase[dc], dext[dc]) }
+}
+function fpng_crc_table() -> []long {
+  let t = new []long
+  let poly: long = 3988292384
+  for n in 0 .. 256 {
+    var c = long(n)
+    for k in 0 .. 8 {
+      if (c & long(1)) != long(0) { c = (c >> long(1)) ^ poly } else { c = c >> long(1) }
+    }
+    push(t, c)
+  }
+  return t
+}
+function fpng_crc(table: []long, d: []byte, from: int, n: int) -> long {
+  let mask: long = 4294967295
+  var c = mask
+  for i in from .. from + n {
+    let k = int((c ^ long(d[i] & 255)) & long(255))
+    c = table[k] ^ (c >> long(8))
+  }
+  return c ^ mask
+}
+function fpng_put32(d: []byte, at: int, v: long) -> void {
+  d[at] = int((v >> long(24)) & long(255))
+  d[at + 1] = int((v >> long(16)) & long(255))
+  d[at + 2] = int((v >> long(8)) & long(255))
+  d[at + 3] = int(v & long(255))
+}
+function fpng_tag(d: []byte, at: int, tag: string) -> void {
+  for i in 0 .. 4 { d[at + i] = tag[i] }
+}
+# the zlib stream of raw[0 .. n), written into b.out from b.o
+@alloc_ok("a bake: one image compressed, once")
+function fpng_deflate(b: PngBits, raw: []byte, n: int) -> void {
+  let lbase = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258]
+  let lext = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0]
+  let dbase = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577]
+  let dext = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13]
+  b.out[b.o] = 120
+  b.out[b.o + 1] = 156
+  b.o += 2
+  pb_put(b, 1, 1)                          # the one and final block
+  pb_put(b, 1, 2)                          # fixed Huffman codes
+  let head = words(65536)
+  let prev = words(PNG_WIN)
+  for i in 0 .. 65536 { head[i] = 0 }
+  var i = 0
+  var a = 1
+  var s2 = 0
+  while i < n {
+    var best = 0
+    var best_d = 0
+    var h = 0
+    if i + 2 < n {
+      h = (((raw[i] & 255) << 10) ^ ((raw[i + 1] & 255) << 5) ^ (raw[i + 2] & 255)) & 65535
+      var cand = head[h] - 1
+      var chain = 0
+      while cand >= 0 and i - cand <= PNG_WIN - 1 and chain < PNG_CHAIN {
+        var l = 0
+        let lim = Math.min(258, n - i)
+        while l < lim and raw[cand + l] == raw[i + l] { l += 1 }
+        if l > best {
+          best = l
+          best_d = i - cand
+          if l >= 258 { break }
+        }
+        let nx = prev[cand & (PNG_WIN - 1)] - 1
+        if nx >= cand { break }
+        cand = nx
+        chain += 1
+      }
+    }
+    var step = 1
+    if best >= 3 {
+      pb_match(b, best, best_d, lbase, lext, dbase, dext)
+      step = best
+    } else {
+      pb_lit(b, raw[i] & 255)
+    }
+    for k in 0 .. step {
+      let p = i + k
+      if p + 2 < n {
+        let hh = (((raw[p] & 255) << 10) ^ ((raw[p + 1] & 255) << 5) ^ (raw[p + 2] & 255)) & 65535
+        prev[p & (PNG_WIN - 1)] = head[hh]
+        head[hh] = p + 1
+      }
+      a = (a + (raw[p] & 255)) % 65521
+      s2 = (s2 + a) % 65521
+    }
+    i += step
+  }
+  pb_lit(b, 256)
+  if b.nb > 0 { pb_put(b, 0, 8 - b.nb) }
+  let ad = long(s2) * long(65536) + long(a)
+  b.out[b.o] = int((ad >> long(24)) & long(255))
+  b.out[b.o + 1] = int((ad >> long(16)) & long(255))
+  b.out[b.o + 2] = int((ad >> long(8)) & long(255))
+  b.out[b.o + 3] = int(ad & long(255))
+  b.o += 4
+  free(head)
+  free(prev)
+}
+# w x h RGBA pixels (rows top down) as a PNG file's bytes; the length is written to b.o's return
+@alloc_ok("a bake: one image written, once")
+function fpng_encode(w: int, h: int, px: []byte, out: []byte) -> int {
+  let table = fpng_crc_table()
+  let stride = w * 4
+  let raw = buffer((stride + 1) * h)
+  for y in 0 .. h {
+    raw[y * (stride + 1)] = 1                       # Sub: each byte less the one a pixel before
+    for x in 0 .. stride {
+      var left = 0
+      if x >= 4 { left = px[y * stride + x - 4] & 255 }
+      raw[y * (stride + 1) + 1 + x] = ((px[y * stride + x] & 255) - left) & 255
+    }
+  }
+  let sig = [137, 80, 78, 71, 13, 10, 26, 10]
+  for i in 0 .. 8 { out[i] = sig[i] }
+  fpng_put32(out, 8, long(13))
+  fpng_tag(out, 12, "IHDR")
+  fpng_put32(out, 16, long(w))
+  fpng_put32(out, 20, long(h))
+  out[24] = 8
+  out[25] = 6
+  out[26] = 0
+  out[27] = 0
+  out[28] = 0
+  fpng_put32(out, 29, fpng_crc(table, out, 12, 17))
+  let b = new PngBits
+  b.out = out
+  b.o = 41                                          # past IDAT's length and tag
+  fpng_tag(out, 37, "IDAT")
+  fpng_deflate(b, raw, (stride + 1) * h)
+  fpng_put32(out, 33, long(b.o - 41))
+  fpng_put32(out, b.o, fpng_crc(table, out, 37, b.o - 37))
+  var o = b.o + 4
+  fpng_put32(out, o, long(0))
+  fpng_tag(out, o + 4, "IEND")
+  fpng_put32(out, o + 8, fpng_crc(table, out, o + 4, 4))
+  free(raw)
+  return o + 12
+}

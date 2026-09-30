@@ -1,0 +1,71 @@
+# charset.ludic - which code points a bake covers: `--chars` is a comma list of numbers and ranges
+# (`32-126,0x100-0x17f,U+20AC`), and the words default, ascii, latin, greek and cyrillic stand for
+# their blocks. A code point the font has no glyph for is left out of the atlas, not drawn as a box.
+const CS_MAX: int = 1114112
+const CS_DEFAULT: string = "32-126,160-255,256-383,536-539,710-711,728-733,900-974,1024-1119,1168-1169,8211-8212,8216-8222,8224-8226,8230,8240,8249-8250,8364,8378,8470,8482,8592-8595,8722"
+function cs_digit(c: int) -> int {
+  if c >= 48 and c <= 57 { return c - 48 }
+  if c >= 97 and c <= 102 { return c - 87 }
+  if c >= 65 and c <= 70 { return c - 55 }
+  return -1
+}
+# one number: decimal, 0x1F or U+1F; -1 if it is none of them
+function cs_number(s: string) -> int {
+  var t = s
+  var base = 10
+  if len(t) > 2 and t[0] == 48 and (t[1] == 120 or t[1] == 88) { base = 16;  t = t[2 .. len(t)] }
+  else if len(t) > 2 and (t[0] == 85 or t[0] == 117) and t[1] == 43 { base = 16;  t = t[2 .. len(t)] }
+  if len(t) == 0 { return -1 }
+  var v = 0
+  for i in 0 .. len(t) {
+    let d = cs_digit(t[i])
+    if d < 0 or d >= base { return -1 }
+    v = v * base + d
+    if v > CS_MAX { return -1 }
+  }
+  return v
+}
+function cs_mark(flags: []byte, lo: int, hi: int) -> void {
+  var a = lo
+  while a <= hi and a < CS_MAX {
+    flags[a] = 1
+    a += 1
+  }
+}
+# marks the code points `spec` names in flags; false (and says so) when a part is not understood
+function cs_parse(spec: string, flags: []byte) -> bool {
+  var start = 0
+  let n = len(spec)
+  for i in 0 .. n + 1 {
+    if i == n or spec[i] == 44 {
+      let tok = s_strip(spec[start .. i])
+      start = i + 1
+      if len(tok) == 0 { continue }
+      if tok == "default" { if not cs_parse(CS_DEFAULT, flags) { return false };  continue }
+      if tok == "ascii" { cs_mark(flags, 32, 126);  continue }
+      if tok == "latin" { cs_mark(flags, 32, 126);  cs_mark(flags, 160, 383);  cs_mark(flags, 536, 539);  continue }
+      if tok == "greek" { cs_mark(flags, 900, 974);  continue }
+      if tok == "cyrillic" { cs_mark(flags, 1024, 1119);  cs_mark(flags, 1168, 1169);  continue }
+      var dash = -1
+      for k in 1 .. len(tok) { if tok[k] == 45 and dash < 0 { dash = k } }
+      if dash < 0 {
+        let v = cs_number(tok)
+        if v < 0 { Os.stderr_write(`ludic font bake: --chars: "{tok}" is not a number or a range\n`);  return false }
+        cs_mark(flags, v, v)
+      } else {
+        let lo = cs_number(tok[0 .. dash])
+        let hi = cs_number(tok[dash + 1 .. len(tok)])
+        if lo < 0 or hi < lo { Os.stderr_write(`ludic font bake: --chars: "{tok}" is not a range\n`);  return false }
+        cs_mark(flags, lo, hi)
+      }
+    }
+  }
+  return true
+}
+function s_strip(s: string) -> string {
+  var a = 0
+  var b = len(s)
+  while a < b and (s[a] == 32 or s[a] == 9) { a += 1 }
+  while b > a and (s[b - 1] == 32 or s[b - 1] == 9) { b -= 1 }
+  return s[a .. b]
+}

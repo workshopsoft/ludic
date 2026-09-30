@@ -227,9 +227,11 @@ install_from_source() {
   mkdir -p "${_stage}/bin"
   cp "${_src}"/bin/ludic "${_src}"/bin/ludicc "${_src}"/bin/ludic-fmt "${_src}"/bin/ludic-lsp "${_stage}/bin/"
   if [ -x "${_src}/bin/ludic-ui-preview" ]; then cp "${_src}/bin/ludic-ui-preview" "${_stage}/bin/"; fi
+  if [ -x "${_src}/bin/ludic-font-bake" ]; then cp "${_src}/bin/ludic-font-bake" "${_stage}/bin/"; fi
   cp -R "${_src}/runtime" "${_stage}/runtime"
   cp -R "${_src}/packages" "${_stage}/packages"
   if [ -d "${_src}/templates" ]; then cp -R "${_src}/templates" "${_stage}/templates"; fi
+  if [ -d "${_src}/fonts" ]; then cp -R "${_src}/fonts" "${_stage}/fonts"; fi
   cp "${_src}/VERSION" "${_src}/LICENSE" "${_src}/README.md" "${_stage}/"
   install_staged "$_stage"
 }

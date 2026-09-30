@@ -60,7 +60,8 @@ function overlay_init(render3d_st: mut Render3dState, font_dir: string) -> bool 
   render3d_st.ov_buf = fbuf_floats(OV_MAX_QUADS * 6 * OV_FLOATS)
   render3d_st.ov_ranges = words(OV_MAX_RANGES * OV_RANGE_W)
   render3d_st.ov_white = tex_solid(render3d_st, 255, 255, 255, 255)
-  overlay_font(render3d_st, font_dir)
+  # a game that names no font gets the toolchain's (Noto Sans, fonts/default/ in this package)
+  if font_dir == "" { overlay_font_default(render3d_st) } else { overlay_font(render3d_st, font_dir) }
   if render3d_st.ov_font == 0 { print("overlay: no font atlas, text disabled") }
   render3d_st.ov_dbg = r3d_env_has(render3d_st, "R3D_FONTDBG")
   render3d_st.ov_ready = true
@@ -131,6 +132,17 @@ function overlay_font(render3d_st: mut Render3dState, font_dir: string) -> bool 
   if render3d_st.ov_font_map[63] > 0 { render3d_st.ov_font_qmark = render3d_st.ov_font_map[63] - 1 }
   render3d_st.ov_font = tex
   return true
+}
+
+# The toolchain's default font: Noto Sans baked (fonts/noto-sans/baked/ in the toolchain, copied to
+# fonts/default/ in this package so a shipped game's pack carries it like the shaders). overlay_init does
+# this for a font directory of "" - a game that declares no font. A game with its own font bakes the
+# TTF with `ludic font bake` and passes that directory instead. False, and the font it had kept, if the
+# package's copy is not found.
+@alloc_ok("loading a font: a load, not a frame")
+function overlay_font_default(render3d_st: mut Render3dState) -> bool {
+  r3d_find_root(render3d_st)
+  return overlay_font(render3d_st, `{render3d_st.r3d_root}/fonts/default`)
 }
 
 # The code point starting at sp[i], with the bytes it took in ov_u8_len. A malformed or

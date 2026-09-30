@@ -3,7 +3,7 @@
 # records its draw calls, and component classes the studio describes. No game code, no GPU, no
 # network. The studio spawns it; tools/ui-preview/protocol-v1.md is the contract.
 #
-#   ludic ui-preview [--font DIR]    the host, on stdin and stdout
+#   ludic ui-preview [--font DIR]    the host, on stdin and stdout (no --font: the toolchain's default font)
 function cmd_ui_preview() -> int {
   var args = ""
   var ai = 2

@@ -35,6 +35,30 @@ function pv_font_load(pv: mut PvState, dir: string) -> bool {
   pv.fn_on = true
   return true
 }
+# The toolchain's own font, for a host started with no --font: Noto Sans, baked, under the install root
+# as fonts/noto-sans/baked/. The root is $LUDIC_HOME, else the parent of the directory this binary is in
+# (bin/), else ~/.ludic - the order the CLI and ludic.render3d find it in. False if there is none.
+const PV_DEFAULT_FONT: string = "fonts/noto-sans/baked"
+@alloc_ok("start-up: the default font is read once")
+function pv_font_default(pv: mut PvState) -> bool {
+  let env = Os.env("LUDIC_HOME")
+  if env != null and env != "" {
+    if pv_font_load(pv, `{env}/{PV_DEFAULT_FONT}`) { return true }
+  }
+  let a0 = Os.arg(0)
+  var slash = -1
+  for i in 0 .. len(a0) { if a0[i] == 47 { slash = i } }
+  if slash >= 0 {
+    var d = a0[0..slash + 1]                    # "<home>/bin/", or "bin/" from the checkout's root
+    if len(d) >= 4 and d[len(d) - 4..len(d)] == "bin/" {
+      d = d[0..len(d) - 4]
+      if pv_font_load(pv, `{d}{PV_DEFAULT_FONT}`) { return true }
+    }
+  }
+  let home = Os.env("HOME")
+  if home != null and home != "" { return pv_font_load(pv, `{home}/.ludic/{PV_DEFAULT_FONT}`) }
+  return false
+}
 # the glyph for a code point, as ov_glyph: a control character is a space, a missing one is '?'
 function pv_glyph(pv: PvState, cp: int) -> int {
   if cp < 32 { return pv.fn_space }

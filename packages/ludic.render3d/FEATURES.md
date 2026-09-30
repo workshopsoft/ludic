@@ -110,6 +110,7 @@ Large worlds (cities of hundreds of thousands of buildings on 16 km and more; RE
 78. Interior mapping: per-window room from an atlas (deterministic hash of the instance's variation, wall and window cell), lights on at night room by room, glossy glass over the room, a facade measured in the model's own frame (nothing moves with the origin) - `imi.ludic`, `interior_atlas.ludic` `InteriorAtlases`, `shaders/kit.frag` `INTERIOR_MAP`
 79. Portal visibility inside buildings: rooms and portals as data, a frustum narrowed at each open portal, entry from outdoors through the exterior portals, the verdict driving the culler - `portal.ludic` `pg_visible`, `intr.ludic` `InteriorRooms`, `InteriorDoors`
 80. Multi-map and instanced interiors: an interior is a map loaded on demand (once however many instances), a slot and far-away origin for each (def, owner), fade / load / spawn / exit transition with events, eviction, keep time, the city's streaming held while inside - `intr.ludic` `intr_enter`, `intr_update`, `intr_rehome`
+81. A default font for a game that names none: `overlay_init(st, "")` loads Noto Sans (OFL, baked: Latin, Latin Extended-A, Greek, Cyrillic) from `fonts/default/` in this package, which a shipped game's pack carries; a game's own TTF is baked with `ludic font bake` — `overlay.ludic` `overlay_font_default`
 
 ## Against Unreal Engine 5 and RAGE (RDR2), honestly
 

@@ -10,6 +10,11 @@ v1 host may add a request or an event kind; a studio ignores reply lines it does
 - The studio starts `ludic ui-preview [--font DIR]` (or `bin/ludic-ui-preview` directly) and talks
   to it over stdin (requests) and stdout (replies). Nothing else is read or written except the files
   a request names. stderr carries only a start-up complaint about `--font`; ignore it.
+- With no `--font`, the host loads the toolchain's default font (Noto Sans, baked, found under the
+  install root as `fonts/noto-sans/baked`) and `hello` reports that directory as the font dir; a
+  studio that wants to know whether it is the default compares it with its own copy of the path.
+  `--no-default-font` starts with no font, as v1 hosts without a default did. Nothing in the
+  line formats changes.
 - Everything is UTF-8. A line ends with LF (`\n`); a CR before the LF of a request is dropped.
 - One request is one line. The host answers every request, in order, with zero or more reply lines
   followed by exactly one **terminal line** (§3). It reads the next request only after writing and
@@ -145,7 +150,8 @@ unclipped, and the next frame starts unclipped again.
   a code point the atlas lacks is `?`) times `floor(size)`, summed, the sum truncated to a whole
   pixel. Line breaking, `text-fit: shrink` and ellipses were decided with the same numbers, so the
   studio's own rendering of the run should be fitted to `width`.
-- With no font loaded (`hello` says `""`), every code point measures half of `floor(size)`.
+- With no font loaded (`hello` says `""`: only with `--no-default-font`, or an install without
+  `fonts/`), every code point measures half of `floor(size)`.
 - The string is the text as drawn: already translated (`locale`), already wrapped (one line a `text`
   line) and already cut with its ellipsis. A text-shadow is its own `text` line, drawn before.
 

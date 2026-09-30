@@ -37,6 +37,7 @@ program Ludic {
   import "schema.ludic"
   import "syntax_cli.ludic"
   import "ui_preview.ludic"
+  import "font_cmd.ludic"
   import "testpar.ludic"
   import "migrate.ludic"
   import "templates.ludic"
@@ -97,7 +98,9 @@ program Ludic {
     print("  fmt - [--stdin-name PATH]     format stdin to stdout under the project's rules, as if it were PATH")
     print("  fmt - --lint [--json] [--stdin-name PATH]   lint stdin as PATH")
     print("  lsp                           run the language server on stdio (what editors spawn)")
-    print("  ui-preview [--font DIR]       preview a game's ludic.ui components for a studio, on stdio")
+    print("  ui-preview [--font DIR]       preview a game's ludic.ui components for a studio, on stdio (no --font: the default font)")
+    print("  font bake <ttf> [-o DIR] [--size N] [--chars SPEC]")
+    print("                                bake a TrueType font into the font.json + font.png atlas ludic.ui reads")
     print("  help                          this message")
     print("")
     print("package scripts (package.ludic):")
@@ -134,6 +137,7 @@ program Ludic {
     if (cmd == "fmt") { return cmd_fmt() }
     if (cmd == "lsp") { return cmd_lsp() }
     if (cmd == "ui-preview") { return cmd_ui_preview() }
+    if (cmd == "font") { return cmd_font() }
     if (cmd == "doctor") { return cmd_doctor() }
     if (cmd == "upgrade") { return cmd_upgrade() }
     if (cmd == "script") { return cmd_script() }

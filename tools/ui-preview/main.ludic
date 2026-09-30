@@ -2,7 +2,7 @@
 # ludic.ui itself with a backend that records instead of drawing, and component classes the studio
 # describes (their templates, styles, models and function answers): no game code, no GPU, no
 # network. One request a line in, a reply a request out; protocol-v1.md is the whole contract.
-#   ui-preview [--font DIR]
+#   ui-preview [--font DIR] [--no-default-font]
 import "ludic.ui"
 import "ludic.i18n"
 program UiPreview {
@@ -71,13 +71,16 @@ program UiPreview {
   entry (pv: mut PvState, ui_st: mut UiState, i18n_st: mut I18nState) {
     ui_backend(ui_st, pv_backend())
     var ai = 1
+    var no_default = false
     while ai < Os.arg_count() {
       if Os.arg(ai) == "--font" and ai + 1 < Os.arg_count() {
         ai += 1
         if not pv_font_load(pv, Os.arg(ai)) { Os.stderr_write(`ui-preview: no font.json with "adv" in {Os.arg(ai)}\n`) }
-      }
+      } else if Os.arg(ai) == "--no-default-font" { no_default = true }
       ai += 1
     }
+    # no font asked for: the toolchain's own, so text measures and is drawn as real text
+    if not pv.fn_on and not no_default { pv_font_default(pv) }
     var going = true
     while going {
       let line = pv_read_line(pv.inb)

@@ -324,13 +324,14 @@ function build_artifacts(ver: pointer) -> bool {
     let name = `ludic-{ver}-{plat}-{arch}`
     let stage = `{tmp_dir()}/{name}`
     shell(`rm -rf {stage} && mkdir -p {stage}/bin`)
-    if not shq(`cp bin/ludic bin/ludicc bin/ludic-fmt bin/ludic-lsp bin/ludic-ui-preview {stage}/bin/`) {
+    if not shq(`cp bin/ludic bin/ludicc bin/ludic-fmt bin/ludic-lsp bin/ludic-ui-preview bin/ludic-font-bake {stage}/bin/`) {
       err("release: the toolchain is not built (run: ludic-dev build)\n")
       return false
     }
     shell(`cp -R runtime {stage}/runtime`)
     shell(`cp -R packages {stage}/packages`)
     shell(`cp -R templates {stage}/templates`)       # the starters `ludic new --template` copies
+    shell(`cp -R fonts {stage}/fonts`)               # the default font (Noto Sans): its TTFs, licence and baked atlas
     # the language reference: ludic-lsp indexes it for hover and go-to-definition
     # on built-ins (docs/language/**.md, ~4 MB of markdown)
     shell(`mkdir -p {stage}/docs && cp -R docs/language {stage}/docs/language`)

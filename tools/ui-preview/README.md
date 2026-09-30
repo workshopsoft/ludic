@@ -6,7 +6,7 @@ the studio describes over stdin. No game code is built, nothing touches a GPU, n
 network connection. It is the toolchain's own program, shipped prebuilt as `bin/ludic-ui-preview`.
 
 ```bash
-ludic ui-preview [--font DIR]      # the host on stdin/stdout; DIR holds the game's font.json
+ludic ui-preview [--font DIR] [--no-default-font]   # the host on stdin/stdout; DIR holds the game's font.json
 ```
 
 **The wire protocol is [protocol-v1.md](protocol-v1.md)**, frozen: every request, every reply and
@@ -27,6 +27,10 @@ every line format. `smoke.txt` is a scripted session with what each reply must c
   `font.json` ludic.render3d's overlay reads, and the width of a run is the overlay's sum of glyph
   advances at the font's whole-pixel size; each `text` line carries it, so the studio fits its own
   rendering to the game's line breaks.
+- **No font asked for means the toolchain's.** With no `--font` the host loads the default font
+  (Noto Sans, `fonts/noto-sans/baked/` under the install root: `$LUDIC_HOME`, else beside `bin/`, else
+  `~/.ludic`) and `hello` reports its directory; `--no-default-font` keeps the old half-size measure
+  (smoke.py uses it). A studio that knows the game's font passes `--font` or sends `font DIR`.
 - **Languages** are the game's: `locale <file.po>` translates every drawn text with ludic.i18n.
 - **Natives** (a radar, a dial) are game code, so a `native` line is a box for the studio to fill.
 - **Inspection**: `tree`, `box <id>` (box and computed style) and `rules <id>` (the matching rules,

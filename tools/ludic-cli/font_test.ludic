@@ -1,0 +1,54 @@
+# font_test.ludic — `ludic font bake`, the committed default font and ui-preview's use of it
+# (ludic-dev test-fonts). Runs bin/ludic-font-bake and bin/ludic-ui-preview of this checkout.
+
+# tools/font-bake/check.py says OK when font DIR's metrics, atlas and PNG hold together
+function font_check(dir: pointer) -> pointer {
+  return capture_line(`python3 tools/font-bake/check.py {dir} 2>&1 | tail -1`)
+}
+
+function cmd_test_fonts() -> int {
+  PASS = 0
+  FAIL = 0
+  print("== ludic font bake: the atlas, the committed default font, ui-preview's default ==")
+  let root = capture_line("pwd")
+  let work = `{tmp_dir()}/font_test`
+  shell(`rm -rf {work} && mkdir -p {work}`)
+  let bake = `{root}/bin/ludic-font-bake`
+  let ttf = `{root}/fonts/noto-sans/NotoSans-Regular.ttf`
+  if not is_exec(bake) { skip("no bin/ludic-font-bake (ludic-dev build)");  return report() }
+
+  # the default bake: valid metrics for known glyphs, a PNG that inflates
+  if shq(`{bake} bake {ttf} -o {work}/a --name "Noto Sans" > {work}/a.out 2>&1`) { ok("ludic font bake bakes Noto Sans Regular") } else { bad2("the bake", pt_read(`{work}/a.out`)) }
+  let chk = font_check(`{work}/a`)
+  if s_starts(chk, "OK ") { ok(`the atlas has valid metrics for A, ş, İ, ğ, ș, Ω, б, € and a sound PNG ({chk})`) } else { bad2("the atlas", chk) }
+  if shq(`python3 -c "import json;j=json.load(open('{work}/a/font.json'));assert j['name']=='Noto Sans' and j['em']==48"`) { ok("font.json names the font and the em it was rasterised at") } else { bad("font.json's name and em") }
+
+  # a bake is repeatable, and the committed default is that bake
+  shell(`{bake} bake {ttf} -o {work}/b --name "Noto Sans" > /dev/null 2>&1`)
+  if shq(`diff -r {work}/a {work}/b > /dev/null 2>&1`) { ok("a bake is byte-for-byte repeatable") } else { bad("two bakes of one font differ") }
+  if shq(`diff -r {work}/a {root}/fonts/noto-sans/baked > /dev/null 2>&1`) { ok("fonts/noto-sans/baked is what the tool bakes (re-bake it if this fails)") } else { bad("fonts/noto-sans/baked differs from a fresh bake: ludic font bake fonts/noto-sans/NotoSans-Regular.ttf -o fonts/noto-sans/baked --name \"Noto Sans\"") }
+  if shq(`diff -r {root}/fonts/noto-sans/baked {root}/packages/ludic.render3d/fonts/default > /dev/null 2>&1`) { ok("the copy in packages/ludic.render3d/fonts/default is the same") } else { bad("packages/ludic.render3d/fonts/default differs from fonts/noto-sans/baked") }
+  if file_exists(`{root}/fonts/noto-sans/OFL.txt`) and file_exists(`{root}/fonts/noto-sans/NotoSans-Bold.ttf`) and file_exists(`{root}/fonts/noto-sans/README.md`) { ok("the TTFs, the OFL and the README ship beside it") } else { bad("fonts/noto-sans is missing a file") }
+
+  # options: size and characters
+  if shq(`{bake} bake {ttf} -o {work}/s --size 24 --chars ascii,U+20AC,0x15e > {work}/s.out 2>&1`) and s_contains(pt_read(`{work}/s.out`), "97 glyphs") and shq(`python3 -c "import json;j=json.load(open('{work}/s/font.json'));assert j['em']==24 and j['cell']<=40 and j['codes'][-1]==8364 and 350 in j['codes']"`) { ok("--size and --chars: 97 glyphs at a 24 px em") } else { bad2("--size / --chars", pt_read(`{work}/s.out`)) }
+  if not shq(`{bake} bake {root}/nothing.ttf -o {work}/n > {work}/n.out 2>&1`) and s_contains(pt_read(`{work}/n.out`), "not a TrueType font") { ok("a missing font is refused with a reason") } else { bad2("a missing font", pt_read(`{work}/n.out`)) }
+  if not shq(`{bake} bake {ttf} -o {work}/m --chars 0x2FFFF > {work}/m.out 2>&1`) and s_contains(pt_read(`{work}/m.out`), "none of those characters") { ok("a range the font lacks is refused") } else { bad2("an empty charset", pt_read(`{work}/m.out`)) }
+
+  # ui-preview: hello reports the default font, and text measures with it
+  let ui = `{root}/bin/ludic-ui-preview`
+  if not is_exec(ui) { skip("no bin/ludic-ui-preview");  return report() }
+  shell(`cat > {work}/req.txt <<'REQEOF'\nhello\nviewport 1920 1080\nload "T" "<row id=\\"root\\"><p id=\\"a\\">Hello</p></row>" ""\nmodel "T" {{}}\nshow T\nframe 0\nquit\nREQEOF`)
+  shell(`env LUDIC_HOME={root} {ui} < {work}/req.txt > {work}/ui_default.out 2>&1`)
+  shell(`env LUDIC_HOME={root} {ui} --no-default-font < {work}/req.txt > {work}/ui_none.out 2>&1`)
+  let d = pt_read(`{work}/ui_default.out`)
+  let n = pt_read(`{work}/ui_none.out`)
+  if s_contains(d, `ok ui-preview 1 "{root}/fonts/noto-sans/baked" ""`) { ok("hello reports the default font's directory when started with no --font") } else { bad2("hello with the default", d) }
+  if s_contains(n, `ok ui-preview 1 "" ""`) { ok("--no-default-font: hello says \"\" as a v1 host did") } else { bad2("hello without a font", n) }
+  if s_contains(n, "text 0 0 16 40 ") and s_contains(d, "text 0 0 16 38 ") { ok("text measures with the font's advances (Hello at 16 px: 38, not half-size 40)") } else { bad2("the measured width", capture_line(`grep '^text' {work}/ui_default.out`)) }
+  shell(`printf 'hello\\nquit\\n' | env LUDIC_HOME={work}/nowhere HOME={work}/nohome {ui} --no-default-font > {work}/ui_x.out 2>&1`)
+  if s_contains(pt_read(`{work}/ui_x.out`), `ok ui-preview 1 "" ""`) { ok("with no font found anywhere, hello says \"\" and the host still answers") } else { bad("no-font start-up") }
+  shell(`printf 'hello\\nquit\\n' | env LUDIC_HOME={work}/nowhere HOME={work}/nohome {ui} > {work}/ui_y.out 2>&1`)
+  if s_contains(pt_read(`{work}/ui_y.out`), "ok ui-preview 1 ") { ok("an install without fonts/ starts the host all the same") } else { bad("start-up without fonts") }
+  return report()
+}
