@@ -72,6 +72,14 @@ holds its last pose and hands on to `next`. `animset_choice` names the playing c
 does ("sit_seat", no rig), and `animset_can(key)` says whether the rig carries any of a state's clips, so a
 one-shot with none yet is not asked for. Clip names are made once per rig; a tick makes nothing.
 
+## In the studio
+
+`studio.lres` beside `package.ludic` tells Ludic Studio how to draw `AnimSets` (key `anims`: states as
+nodes, transitions as edges, choices with their need bands and rates). It counts only in a game that
+uses this package; the compiler never reads it. A rig is the game's (its own table of files, nodes and
+clip prefix), so a game that wants its clips played in the graph writes an `anims` entry of its own with
+`rig_table`, `rig_file` and `rig_node`, which replaces this one.
+
 ## Tests
 
 ```bash
